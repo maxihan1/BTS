@@ -39,25 +39,11 @@ BTS/
 Maxi_wiki/BTS/                             # Obsidian (외부, 단방향 미러)
 ```
 
-## 워크플로우 — `/bts` 단일 진입점 (6단계)
+## 워크플로우 — `/bts` 단일 진입점
 
-```
-/bts <자연어 요청>
-   ↓ [자동 선행 읽기] _index + history(최근10) + learnings(최근5)
-[1] /bts-start       → classify + git worktree add .worktrees/<slug> + Draft PR
-[2] /bts-domain      → grill-with-docs (도메인 용어 정제, CONTEXT.md/ADR)
-[3] /bts-spec        → Phase A: office-hours (세부 스펙) → Phase B: brainstorming (sanity check, gap 시 A loop back)
-[4] /bts-plan        → writing-plans (TDD task 분해)
-[5] /bts-review-plan → plan-ceo + plan-design + plan-eng 순차
-   ↓ 🛑 게이트 1 — Maxi 검토 (도메인/스펙/계획 일괄)
-[6] /bts-impl        → subagent-driven-development + TDD 강제 (red→green→refactor)
-                        sub-agent: security / backend / frontend / designer / db / qa
-[7] /bts-codereview  → code-reviewer agent (PR 단위, 절대 규칙 18개 인라인)
-   ↓ 🛑 게이트 2 — Maxi 검토 (BLOCKER)
-[자동] verify → merge → worktree 정리 + sync-obsidian (history/decisions append)
-```
+`/bts <자연어>` → start → domain → spec → plan → review-plan → 🛑게이트1 → impl → codereview → 🛑게이트2 → merge
 
-자세히. `.claude/skills/bts-workflow/SKILL.md`.
+자세한 다이어그램 + 단계별 절차. `.claude/skills/bts-workflow/SKILL.md`.
 
 ## 핵심 패턴 (BTS만의)
 
@@ -68,14 +54,9 @@ Maxi_wiki/BTS/                             # Obsidian (외부, 단방향 미러)
 
 ## sub-agent 6종
 
-| 에이전트 | 담당 영역 |
-|---|---|
-| `security-engineer` | 인증/2FA/SSO/권한/CSRF/암호화 (`identity-access`) |
-| `backend-engineer` | Kotlin/Spring 일반 (이슈/워크플로우/자동화/알림 BC) |
-| `frontend-engineer` | React 19 / TanStack / TipTap |
-| `designer` | shadcn/Radix 스펙, 목업, DESIGN.md (Phase 1+) |
-| `db-engineer` | Flyway / jOOQ / 스키마 / 마이그레이션 |
-| `qa-engineer` | Playwright E2E + Testcontainers + 커버리지 감사 |
+`security` (인증/권한) / `backend` (Kotlin 일반) / `frontend` (React) / `designer` (스펙만) / `db` (Flyway/jOOQ) / `qa` (E2E)
+
+각 책임/금지/참조. `.claude/agents/<role>-engineer.md`.
 
 ## 자주 쓰는 명령어 (PoC 도입 후 적용)
 
