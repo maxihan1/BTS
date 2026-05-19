@@ -1,0 +1,60 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+
+# Kotlin / Gradle (백엔드)
+.gradle/
+build/
+out/
+!gradle/wrapper/gradle-wrapper.jar
+*.class
+hs_err_pid*
+
+# Node / pnpm (프론트엔드)
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+dist/
+.vite/
+.next/
+.turbo/
+coverage/
+*.tsbuildinfo
+
+# 환경 변수
+.env
+.env.local
+.env.*.local
+*.pem
+
+# 로그
+*.log
+logs/
+
+# 테스트
+playwright-report/
+test-results/
+.nyc_output/
+
+# Atlas 워크플로우 산출물
+.worktrees/
+.atlas-cache/
+.claude/settings.local.json
+
+# Python (가능성 있는 보조 스크립트)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 보안
+*.key
+*.crt
+secrets/
