@@ -1,6 +1,6 @@
 ---
 name: bts-review-plan
-description: 작업 타입에 따라 plan 리뷰 체인 자동 실행. auth/migration은 plan-eng+plan-ceo, ui는 plan-design, api는 plan-eng+plan-devex, feature(task≥3)는 /autoplan, 그 외 feature는 plan-eng. /bts-plan 이후 자동 호출.
+description: Use when a plan file is ready and needs type-specific multi-perspective review (eng / ceo / design / devex / autoplan) before the user approval gate. Skipped for chore/bugfix.
 ---
 
 # /bts-review-plan

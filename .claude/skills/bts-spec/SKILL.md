@@ -1,6 +1,6 @@
 ---
 name: bts-spec
-description: 작업의 세부 스펙을 작성. 2-Phase 구조 — Phase A는 office-hours로 스펙 도출, Phase B는 superpowers:brainstorming으로 sanity check. UI 타입은 design-consultation(첫 UI)/design-shotgun(변형) 추가. /bts-domain 이후 자동 호출.
+description: Use when a task needs a written specification with user scenarios, FR/NFR, edge cases, and a sanity check before planning. Skipped for chore/bugfix fast-track.
 ---
 
 # /bts-spec
@@ -18,7 +18,21 @@ description: 작업의 세부 스펙을 작성. 2-Phase 구조 — Phase A는 of
 
 ### Phase A. 세부 스펙 도출
 
-#### A-1. (UI 타입 + DESIGN.md 없음) design-consultation 호출
+#### A-1. (UI 작업 + DESIGN.md 없음) design-consultation 호출
+
+UI 작업 판정. `classify.type ∈ {ui, design}` OR (`classify.type == feature` AND 본문에 UI 키워드 `["페이지", "화면", "컴포넌트", "ui"]` 중 1개 이상).
+
+```bash
+# DESIGN.md 부재 체크 — 프로젝트 첫 UI 작업 여부 판정
+if [ ! -f /Users/maxi.moff/Projects/BTS/DESIGN.md ]; then
+  # design-consultation 호출 (아래)
+  IS_FIRST_UI=true
+else
+  IS_FIRST_UI=false
+fi
+```
+
+`IS_FIRST_UI == true` 시.
 
 ```
 Skill({
@@ -27,9 +41,11 @@ Skill({
 })
 ```
 
-**프로젝트 첫 UI 작업에서만 1회.** 이후 작업은 기존 DESIGN.md 위에 작업.
+**프로젝트당 1회만.** 이후 UI 작업은 기존 DESIGN.md 위에서 작업.
 
-#### A-2. (UI 타입) design-shotgun 호출
+#### A-2. (UI 작업 — 새 화면 / 컴포넌트) design-shotgun 호출
+
+UI 작업 판정. A-1과 동일 조건. 단, `bugfix` (기존 UI 수정) 또는 단순 텍스트 변경은 스킵.
 
 ```
 Skill({
@@ -40,7 +56,7 @@ Skill({
 
 산출물. `public/mockups/<slug>-{1,2,3,4}.html`. Maxi가 1개 선택 → 선택된 변형이 designer agent의 입력.
 
-비-UI 타입이면 스킵.
+비-UI 작업이면 스킵.
 
 #### A-3. office-hours 호출
 

@@ -1,6 +1,6 @@
 ---
 name: bts-impl
-description: 구현 단계. superpowers:subagent-driven-development를 사용해 task마다 implementer(TDD 강제) → spec-compliance-verifier 루프. 실패 시 systematic-debugging 자동 invoke. 모든 task 완료 후 verification-before-completion. /bts-review-plan 게이트 1 통과 후 호출.
+description: Use when a reviewed plan has been approved by the user (게이트 1) and implementation tasks need to be executed with TDD discipline by sub-agents.
 ---
 
 # /bts-impl
@@ -37,9 +37,13 @@ controller(메인 에이전트)가 plan을 읽고 다음을 반복.
 
 #### 2-A. implementer dispatch (TDD 강제)
 
+**agent=null 처리** (`classify.type == "unknown"` 또는 Maxi가 reclassify 거부 시).
+- fallback. `backend-engineer`로 dispatch (모듈러 모놀리스 기본 영역)
+- prompt 맨 위에 "type 분류 모호함. 구현 전 작업 의도/영역을 한 번 더 확인하고 보고" 한 줄 추가
+
 ```
 Agent({
-  subagent_type: "<classify.agent>",  # backend-engineer / frontend-engineer / etc.
+  subagent_type: "<classify.agent ?? 'backend-engineer'>",
   description: "Task N — <task 제목>",
   prompt: """
 plan 파일의 Task N을 구현. 작업 디렉토리: .worktrees/<slug>.

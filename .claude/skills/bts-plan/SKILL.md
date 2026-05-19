@@ -1,6 +1,6 @@
 ---
 name: bts-plan
-description: 스펙을 TDD 기반 구현 계획으로 분해. superpowers:writing-plans 스킬 사용. 각 task가 red→green→refactor 사이클로 명시되어야 함. /bts-spec 이후 자동 호출.
+description: Use when a written spec is ready and needs to be decomposed into bite-sized TDD tasks before implementation.
 ---
 
 # /bts-plan
@@ -59,7 +59,12 @@ writing-plans 산출물이 BTS의 다음 형식을 따르는지 확인.
 
 ```bash
 TASK_COUNT=$(grep -cE '^### Task [0-9]+:' "docs/plans/<date>-<slug>.md")
-echo "{ \"task_count\": ${TASK_COUNT} }" >> .bts-cache/classify.json  # merge
+
+# JSON 머지 (>> append 금지 — invalid JSON 됨)
+# jq로 task_count 필드만 교체. `jq` 없으면 jq 설치 또는 Node oneliner 대안.
+jq --argjson tc "$TASK_COUNT" '.task_count = $tc' \
+  .bts-cache/classify.json > .bts-cache/classify.json.tmp \
+  && mv .bts-cache/classify.json.tmp .bts-cache/classify.json
 ```
 
 ### Step 4. plan 파일 갱신
@@ -93,7 +98,7 @@ worktree plan 파일의 `## Plan` 섹션이 위 형식으로 채워짐.
 
 ## Fast-track 스킵 조건
 
-`classify.type ∈ {chore, docs}`이고 변경이 명확히 작음 (제목에서 추정) 시 스킵.
+`classify.type == "chore"`이고 변경이 명확히 작음 (제목에서 추정) 시 스킵. classify-task는 `chore`/`docs`/`style`/`perf`/`test` 접두사를 모두 `chore` 타입으로 통합하므로 별도 `docs` 분기 불필요.
 
 이유. config 1줄 수정 / 오타 / 문서 한 줄 변경은 plan 분해 자체가 비용. 단, `bugfix`는 TDD 강제하므로 plan 작성 필요 (스킵 안 함).
 

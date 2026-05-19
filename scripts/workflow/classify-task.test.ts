@@ -155,10 +155,9 @@ describe('classify — 메타 필드', () => {
     assert.ok(r.slug.includes('-') || r.slug.length < 5);
   });
 
-  test('task_count 초기 0, ultraplan false', () => {
+  test('task_count 초기 0 (jq로 /bts-plan에서 머지됨)', () => {
     const r = classify({ title: '이슈 카드 디자인' });
     assert.equal(r.task_count, 0);
-    assert.equal(r.ultraplan, false);
   });
 
   test('cached_at ISO timestamp', () => {

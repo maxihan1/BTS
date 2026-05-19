@@ -1,6 +1,6 @@
 ---
 name: bts-domain
-description: 작업의 도메인 컨텍스트를 정리. grill-with-docs 스킬을 사용해 유비쿼터스 언어 정제 + Obsidian glossary/domain 노트 + ADR 갱신. /bts-start 이후 자동 호출.
+description: Use when starting a non-trivial task and the bounded context, ubiquitous language, or prior ADRs need to be reviewed before designing the solution. Skipped for chore/bugfix fast-track.
 ---
 
 # /bts-domain
@@ -12,8 +12,12 @@ DDD의 유비쿼터스 언어를 다지는 단계. 작업이 어느 바운디드
 작업 진입 시 다음 노트를 Read tool로 로드.
 
 1. `/Users/maxi.moff/Maxi_wiki/BTS/glossary.md` — 전체 용어 사전
-2. `/Users/maxi.moff/Maxi_wiki/BTS/domain/<bc>.md` — `classify.agent`가 가리키는 BC 노트
+2. `/Users/maxi.moff/Maxi_wiki/BTS/domain/<bc>.md` — `classify.primary_bc`가 가리키는 BC 노트
 3. `docs/decisions/` — 영향 받을 가능성 있는 ADR (관련 키워드 grep)
+
+**ADR 디렉토리가 비어 있을 때 (Phase 0 초기)**.
+- grep 결과 0 → 자동 fallback. "신규 작업, 기존 결정 충돌 없음"으로 진행
+- plan 파일 `## 도메인 정리` 섹션에 명시. "관련 ADR: 없음 (BTS 첫 ADR 후보)"
 
 ## 절차
 

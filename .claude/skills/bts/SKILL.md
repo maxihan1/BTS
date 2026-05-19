@@ -1,6 +1,6 @@
 ---
 name: bts
-description: BTS 프로젝트의 단일 진입점. 자연어 1줄을 받아 classify → worktree → domain → spec → plan → review → 사용자 승인 → impl(TDD) → codereview → 사용자 승인 → merge까지 자동 체이닝. 사용자는 명시적 승인 게이트 2 곳에서만 개입.
+description: Use when user gives a natural-language coding request for BTS — feature add, bug fix, refactor, new module. Skip for read-only questions, code explanation, or continuing existing work that doesn't start a new branch.
 ---
 
 # /bts

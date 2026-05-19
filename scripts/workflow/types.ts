@@ -41,16 +41,12 @@ export interface ClassifyResult {
   agent: AgentName | null;
   /** 주된 바운디드 컨텍스트 (해당 없으면 null) */
   primary_bc: BoundedContext | null;
-  /** plan task 수 — /bts-plan 단계에서 채워짐. 초기 0 */
+  /** plan task 수 — /bts-plan 단계에서 jq로 머지됨. 초기 0 */
   task_count: number;
-  /** /autoplan 발동 여부 — type=feature AND task_count>=3 */
-  ultraplan: boolean;
   /** ISO timestamp */
   cached_at: string;
 }
 
 export interface ClassifyInput {
   title: string;
-  /** 캐시 파일 사용 여부 (.bts-cache/classify.json) */
-  useCache?: boolean;
 }

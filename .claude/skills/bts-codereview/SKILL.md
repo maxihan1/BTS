@@ -1,6 +1,6 @@
 ---
 name: bts-codereview
-description: PR 단위 코드 리뷰. superpowers:code-reviewer agent(독립 컨텍스트, 절대 규칙 검증) + /review(gstack, 구조적 이슈 특화) 병행. 두 결과 통합 후 사용자 게이트 2 진입. /bts-impl 이후 자동 호출.
+description: Use when implementation tasks are complete and the resulting PR needs a single-shot multi-source code review against absolute rules and structural issues before the final approval gate.
 ---
 
 # /bts-codereview
@@ -37,15 +37,19 @@ plan 파일. docs/plans/<date>-<slug>.md
 PR diff. <PR_DIFF>
 
 **중점 검증 항목** (auth/migration 시 추가 강조).
-- 평문 비밀번호/토큰 저장 (§1.1)
-- SQL 문자열 결합 (§1.3)
-- 인증/CSRF 우회 (§1.4, §1.5)
-- @Transactional 누락 (§1.9 + DATA.md §6)
-- DELETE without WHERE (§1.7)
-- 이슈키 영속성 위반 (§1.10, DATA.md §2)
-- any 타입 / !! / 빈 catch (§1.11~13)
-- console.log/println (§1.15)
-- localStorage 토큰 저장 (§1.17)
+
+DEVELOPMENT.md의 절대 규칙은 §1 안에서 18개 규칙이 일련번호(1~18)로 매겨져 있다. "NEVER-N" 표기는 그 N번 규칙을 가리킨다. 섹션 위치는 참고용.
+
+- 평문 비밀번호/토큰 저장 — DEVELOPMENT.md §1.1 NEVER-1
+- SQL 문자열 결합 — DEVELOPMENT.md §1.1 NEVER-3
+- 인증 우회 / CSRF 비활성화 — DEVELOPMENT.md §1.1 NEVER-4, NEVER-5
+- DELETE without WHERE — DEVELOPMENT.md §1.2 NEVER-7
+- Flyway 외 마이그레이션 — DEVELOPMENT.md §1.2 NEVER-8
+- @Transactional 누락 — DEVELOPMENT.md §1.2 NEVER-9 + DATA.md §6
+- 이슈키 영속성 위반 — DEVELOPMENT.md §1.2 NEVER-10 + DATA.md §2
+- any 타입 / !! / 빈 catch — DEVELOPMENT.md §1.3 NEVER-11~13
+- console.log / println 디버깅 잔존 — DEVELOPMENT.md §1.3 NEVER-15
+- localStorage 토큰 저장 — DEVELOPMENT.md §1.4 NEVER-17
 
 learnings.md 전체. <첨부> (회귀 방지)
 
@@ -137,15 +141,28 @@ AskUserQuestion으로 응답 수집.
 ```bash
 gh pr merge --squash --delete-branch
 cd /Users/maxi.moff/Projects/BTS
-git worktree remove .worktrees/<slug>
 
-# Obsidian 동기화
-npx tsx scripts/workflow/sync-obsidian.ts
-# → Maxi_wiki/BTS/history.md append
-# → docs/decisions/<new>.md → Maxi_wiki/BTS/decisions/ 복사
-# → docs/plans/<merged>.md → Maxi_wiki/BTS/plans/ 복사
-# → PR 라벨에 learning:* 있으면 learnings.md append
+# worktree 정리. uncommitted/unpushed 있을 가능성 대비 force 옵션
+git worktree remove --force .worktrees/<slug> 2>/dev/null \
+  || echo "worktree 이미 제거됨 또는 부재"
 ```
+
+### Obsidian 동기화 (Phase 0 임시. Phase 1에 자동화 예정)
+
+**현재 (Phase 0 PoC)**. 다음을 메인 에이전트가 수동으로 수행 (스크립트 부재).
+
+1. `Maxi_wiki/BTS/history.md`에 1줄 append.
+   ```
+   - YYYY-MM-DD #<PR번호> [<type>/<slug>] <PR 제목> (<리뷰 종류>)
+   ```
+2. `docs/decisions/<new>.md`가 새로 생긴 경우 → `Maxi_wiki/BTS/decisions/`에 복사
+3. `docs/plans/<merged>.md` → `Maxi_wiki/BTS/plans/`에 복사
+4. PR 라벨에 `learning:<topic>` 있으면 → `Maxi_wiki/BTS/learnings.md` append (수동 정리)
+
+**Phase 1 도입 예정**.
+- `scripts/workflow/sync-obsidian.ts` 작성 (실제 머지 1회 후 패턴 학습 → 자동화)
+- `.git/hooks/post-merge` 또는 `.github/workflows/post-merge.yml` 설치 스크립트
+- 머지마다 1번 자동 실행, 1줄 stdout 보고
 
 ## 실패 / 엣지 케이스
 

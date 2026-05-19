@@ -1,6 +1,6 @@
 ---
 name: bts-start
-description: 사용자 자연어 입력을 받아 classify → git worktree 생성 → plan 스텁 → Draft PR 자동 개설. /bts 진입 직후 자동 호출. 외부 스킬 superpowers:using-git-worktrees, office-hours(builder, feature 신규 시) 사용.
+description: Use when /bts has accepted a new coding request and the working environment (branch, worktree, plan stub, draft PR) must be bootstrapped before any other workflow step runs.
 ---
 
 # /bts-start

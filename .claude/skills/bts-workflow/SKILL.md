@@ -1,6 +1,6 @@
 ---
 name: bts-workflow
-description: BTS 프로젝트 워크플로우 전체 개요 — /bts-start부터 /bts-codereview까지 7단계 + 9개 보강 스킬 매핑. 다른 bts-* 스킬이 참조.
+description: Use when another bts-* skill references this for the overall workflow map, or when looking up which step/skill handles a given task type, or when onboarding to BTS workflow conventions.
 ---
 
 # BTS 워크플로우 개요
@@ -71,8 +71,12 @@ description: BTS 프로젝트 워크플로우 전체 개요 — /bts-start부터
 
 | 방향 | 시점 | 동작 |
 |---|---|---|
-| Repo → Obsidian | post-merge hook | `scripts/workflow/sync-obsidian.ts` 실행 |
+| Repo → Obsidian | 머지 직후 (Phase 0. 수동 / Phase 1. hook + sync-obsidian.ts) | history append + plans/decisions 복사 |
 | Obsidian → Repo | **없음** | Maxi의 사고 공간은 코드 영역에 반영 안 됨 |
+
+**Phase 0 PoC 단계**. `scripts/workflow/sync-obsidian.ts` 미존재. `/bts-codereview` 머지 후 단계가 수동으로 history/decisions/plans을 미러 (해당 SKILL.md "Obsidian 동기화" 섹션 참조).
+
+**Phase 1 도입 예정**. sync-obsidian.ts + post-merge hook 자동화. 첫 머지 1회 수동 처리 후 패턴 학습한 다음 스크립트 작성.
 
 각 단계가 진입 시 읽는 Obsidian 노트는 해당 `/bts-*` SKILL.md 참조.
 

@@ -282,7 +282,6 @@ export const classify = (input: ClassifyInput): ClassifyResult => {
     agent,
     primary_bc,
     task_count: 0,
-    ultraplan: false,
     cached_at: new Date().toISOString(),
   };
 };
@@ -346,7 +345,7 @@ if (isMain) {
     }
   }
 
-  const result = classify({ title, useCache });
+  const result = classify({ title });
   if (useCache) writeCache(result);
   console.log(JSON.stringify(result, null, 2));
 }
