@@ -28,7 +28,7 @@
    ↓ [자동 선행 읽기] _index + history(최근10) + learnings(최근5)
 [1] /bts-start       → classify + git worktree add .worktrees/<slug> + Draft PR
 [2] /bts-domain      → grill-with-docs (도메인 용어 정제, CONTEXT.md/ADR)
-[3] /bts-spec        → office-hours (스펙 + 디자인 결정 통합)
+[3] /bts-spec        → Phase A: office-hours (세부 스펙) → Phase B: brainstorming (sanity check, gap 시 A loop back)
 [4] /bts-plan        → writing-plans (TDD task 분해)
 [5] /bts-review-plan → plan-ceo + plan-design + plan-eng 순차
    ↓ 🛑 게이트 1 — Maxi 검토 (도메인/스펙/계획 일괄)
