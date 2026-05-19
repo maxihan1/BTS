@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)"
+    ],
+    "deny": [
+      "Bash(rm:*)",
+      "Bash(sudo:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(chmod:*)",
+      "Bash(mv:*)"
+    ]
+  }
+}
