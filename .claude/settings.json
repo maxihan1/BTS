@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(*)"
+      "Bash(*)",
+      "Read",
+      "Write",
+      "Edit",
+      "MultiEdit"
     ],
     "deny": [
       "Bash(rm:*)",
