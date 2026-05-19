@@ -1,0 +1,14 @@
+{
+  "name": "bts-monorepo",
+  "version": "0.5.0",
+  "private": true,
+  "type": "module",
+  "description": "BTS (Project Atlas) — 사내 협업 워크스페이스. Phase 0 PoC.",
+  "scripts": {
+    "classify": "node scripts/workflow/classify-task.ts",
+    "test:workflow": "node --test scripts/workflow/*.test.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
