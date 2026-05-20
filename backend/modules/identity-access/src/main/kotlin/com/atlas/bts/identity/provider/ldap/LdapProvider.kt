@@ -192,7 +192,7 @@ class LdapProvider(
         config: LdapConfig,
     ): String = "uid=$username,${config.userSearchBase},${config.baseDn}"
 
-    companion object {
+    internal companion object {
         const val MAX_USERNAME_LENGTH = 256
 
         /**
@@ -201,8 +201,7 @@ class LdapProvider(
          * 공백은 RFC 4515 비규정 — escape 시 합법 사용자명 (예: "John Doe") 이 LDAP 검색에서
          * 매칭 실패하는 false-positive 발생. 보안 영향 없으므로 제외.
          */
-        @JvmStatic
-        internal fun escapeForLdapFilter(value: String): String =
+        fun escapeForLdapFilter(value: String): String =
             value
                 .replace("\\", "\\5c")
                 .replace("*", "\\2a")
