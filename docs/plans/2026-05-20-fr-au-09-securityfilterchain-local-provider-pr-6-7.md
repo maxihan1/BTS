@@ -437,6 +437,7 @@
 **GREEN**. SessionService(repo, clock). create 메서드 sid 생성 + UPSERT 아닌 INSERT. fingerprint = MessageDigest.
 
 **REFACTOR**. internal const FP_LENGTH = 12 / SESSION_TTL_DAYS = 14.
+> 완료 (GREEN 커밋에 포함). GC job (SessionGcJob.kt, @Scheduled) 은 별도 후속 PR 에서 처리 — expires_at < NOW() 세션 + 귀속 RefreshToken 을 30일 보존 후 제거 (감사 보존 정책).
 
 **검증**. `./gradlew :backend:identity-access:test --tests SessionServiceTest`
 
