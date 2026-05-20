@@ -14,3 +14,7 @@ CREATE TABLE personal_access_tokens (
 
 -- partial index: 활성 PAT 를 user_id 로 빠르게 조회 (revoked 제외)
 CREATE INDEX idx_pat_user_active ON personal_access_tokens(user_id) WHERE revoked_at IS NULL;
+
+COMMENT ON COLUMN personal_access_tokens.token_hash IS 'SHA-256 hex 64자 — SHA-256(전체 token 그대로). 평문 token 미저장 (EC-26)';
+COMMENT ON COLUMN personal_access_tokens.scopes IS 'JSON array of scope strings — SDD 19.2 supportedScopes 평가용';
+COMMENT ON COLUMN personal_access_tokens.expires_at IS 'NULL 허용 — 무기한 PAT (EC-27). 후속 PR 에서 1년 default 강제 검토';
