@@ -52,9 +52,9 @@ class PersonalAccessTokenRepositoryTest {
         }
 
         /** 테스트용 token_hash — SHA-256 형식 64자 hex (실제 값 불필요, 형식만 충족). */
-        private const val TOKEN_HASH_A = "a".repeat(64)
-        private const val TOKEN_HASH_B = "b".repeat(64)
-        private const val TOKEN_HASH_C = "c".repeat(64)
+        private const val TOKEN_HASH_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        private const val TOKEN_HASH_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        private const val TOKEN_HASH_C = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
     }
 
     @Autowired
