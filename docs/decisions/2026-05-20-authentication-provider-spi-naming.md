@@ -101,3 +101,29 @@ sealed interface AuthnResult {
 - 마스터플랜 §2.1 (`docs/plan/product/identity-access.md`)
 - SDD 19장 (인증)
 - PoC ADR 4건 (2026-05-20)
+
+## 2026-05-20 정정 — UserCredential phantom 가설 회고 (PR #6)
+
+### 무엇이 잘못됐나
+
+본 ADR 라인 68-73 의 진술 — "UserCredential = DB 영속 엔티티 (Argon2 해시 + algoVersion + updatedAt). PoC #2에서 도입. 변경 없음." — 은 사실과 달랐다.
+
+### 실제 상태
+
+PoC #2 (PR #2) 는 `LocalCredentialService` (Argon2 해시 계산 로직) 만 도입하고, DB 영속 엔티티 (`UserCredential`) 는 미도입이었다. PoC #2 의 spec (`docs/specs/2026-05-20-identity-access-authn-poc.md §F1 + §5`) 자체는 `local_credentials` 테이블 + 해시 저장을 명세했으나 구현에서 누락되었다.
+
+### 발견 경위
+
+PR #4 머지 후 정리 작업 묶음 (escapeForLdapFilter / INSERT...RETURNING / UserCredential rename) 점검 중, rename 대상 `UserCredential` 클래스가 실재하지 않음을 확인했다. `git grep` 결과 코드 0건 — `docs/` 내 ADR 6개 파일에서만 언급되는 phantom 이었다.
+
+### 해소
+
+PR #6 이 `StoredPasswordCredential` 이름으로 처음 도입한다 (SPI `Credential` 과 명확 구분 + V003 마이그레이션 + Repository + `LocalCredentialService` 통합).
+
+### 회귀 방지
+
+plan 의 "활용 엔티티 — 기존" 항목 작성 시 `git grep -n "class <Name>"` 으로 실재 검증 필수. 이 학습은 PR 머지 후 `Maxi_wiki/BTS/learnings.md` 에 정식 등록 예정.
+
+### 이름 변경
+
+본 ADR 라인 73 의 결정 — "향후 `UserCredential` 을 `StoredPasswordCredential` 로 리네임 검토 — 다음 PR 로 분리" — 은 PR #6 이 실행한다. 단, `UserCredential` 자체가 phantom 이었으므로 rename 이 아닌 신규 도입 형태로 형태 변환된다.
