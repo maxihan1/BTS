@@ -34,7 +34,13 @@ dependencies {
 
     // 인증 / 보안 (의존성 카탈로그 §2.3)
     implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
+    // FR-AU-09 JWT 자체 발급 + PEM 파싱
+    // spring-boot-starter-oauth2-resource-server 가 nimbus-jose-jwt transitive 포함하지만
+    // 9.37.x 고정 — FR-AU-09 JWSSigner/JWKSet API 를 위해 9.40 명시 강제.
     implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
+    implementation("com.nimbusds:nimbus-jose-jwt:9.40")
+    // BouncyCastle bcpkix: PEM 파싱 (PEMParser) — bcprov 를 transitive 포함
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.78")
     implementation("de.mkammerer:argon2-jvm:2.11")
 
     // LDAP 인증 공급자 (FR-AU-02)
