@@ -19,8 +19,17 @@ import java.util.UUID
  * user_external_accounts + users 테이블 접근 Repository (FR-AU-02).
  *
  * **트랜잭션 경계 (DATA.md §6)**:
- * [provisionUser] 는 users INSERT + user_external_accounts INSERT 를 단일 트랜잭션으로 처리한다.
+ * [provisionUser] 는 users UPSERT + user_external_accounts UPSERT 를 단일 트랜잭션으로 처리한다.
  * 어느 한 쪽이 실패하면 양쪽 모두 rollback 된다 (부분 성공 금지).
+ *
+ * **UPSERT 설계 (DATA.md §5 idempotency)**:
+ * user_external_accounts 는 INSERT ... ON CONFLICT (provider_id, external_subject) DO UPDATE 로
+ * 멱등성을 보장한다. RETURNING 절로 DB 저장 행을 그대로 반환 — 추가 SELECT 불필요.
+ *
+ * **UUID RowMapper**:
+ * [ResultSet.getObject] + UUID::class.java 를 사용한다.
+ * UUID.fromString(getString(...)) 캐스팅은 Postgres JDBC가 비권장하는 방식이며
+ * 향후 드라이버 업그레이드 시 문제가 될 수 있어 이 패턴으로 통일한다.
  *
  * SQL 인젝션 방어: 모든 파라미터를 NamedParameterJdbcTemplate 에 바인딩.
  * 문자열 결합 금지 (DEVELOPMENT.md §1.3).
@@ -52,10 +61,13 @@ class ExternalAccountRepository(
     }
 
     /**
-     * 사용자 자동 프로비저닝 — users INSERT + user_external_accounts INSERT 단일 트랜잭션.
+     * 사용자 자동 프로비저닝 — users UPSERT + user_external_accounts UPSERT 단일 트랜잭션.
      *
-     * **DATA.md §6**: 두 INSERT 는 단일 @Transactional 경계 안에서 처리된다.
+     * **DATA.md §6**: 두 UPSERT 는 단일 @Transactional 경계 안에서 처리된다.
      * username 중복 등 제약 위반 시 양쪽 모두 rollback.
+     *
+     * **멱등성**: 동일 (provider_id, external_subject) 로 재호출 시 같은 row 를 반환한다.
+     * users 는 ON CONFLICT (username) DO UPDATE 로 display_name/email 을 최신화한다.
      */
     @Suppress("LongParameterList")
     fun provisionUser(
@@ -67,10 +79,11 @@ class ExternalAccountRepository(
         groups: List<String>,
     ): ExternalAccount {
         val userId = UUID.randomUUID()
+        val groupsJson = objectMapper.writeValueAsString(groups)
 
-        // Step 1: users 테이블 INSERT
+        // Step 1: users UPSERT — username 중복 시 display_name/email 갱신
         jdbc.update(
-            SQL_INSERT_USER,
+            SQL_UPSERT_USER,
             mapOf(
                 "id" to userId,
                 "username" to username,
@@ -79,11 +92,10 @@ class ExternalAccountRepository(
             ),
         )
 
-        // Step 2: user_external_accounts INSERT
+        // Step 2: user_external_accounts UPSERT + RETURNING — 추가 SELECT 없이 row 직접 반환
         val accountId = UUID.randomUUID()
-        val groupsJson = objectMapper.writeValueAsString(groups)
-        jdbc.update(
-            SQL_INSERT_EXTERNAL_ACCOUNT,
+        return jdbc.queryForObject(
+            SQL_UPSERT_EXTERNAL_ACCOUNT,
             mapOf(
                 "id" to accountId,
                 "providerId" to providerId,
@@ -91,10 +103,8 @@ class ExternalAccountRepository(
                 "userId" to userId,
                 "groups" to groupsJson,
             ),
-        )
-
-        return findByProviderIdAndExternalSubject(providerId, externalSubject)
-            ?: error("provisionUser 직후 조회 실패 — subject=$externalSubject")
+            rowMapper,
+        ) ?: error("UPSERT RETURNING 결과 없음 — subject=$externalSubject")
     }
 
     /** 연속 실패 횟수 +1 */
@@ -136,14 +146,22 @@ class ExternalAccountRepository(
             WHERE provider_id = :providerId AND external_subject = :externalSubject
         """
 
-        const val SQL_INSERT_USER = """
+        const val SQL_UPSERT_USER = """
             INSERT INTO users (id, username, email, display_name)
             VALUES (:id, :username, :email, :displayName)
+            ON CONFLICT (username) DO UPDATE
+                SET display_name = EXCLUDED.display_name,
+                    email        = EXCLUDED.email
         """
 
-        const val SQL_INSERT_EXTERNAL_ACCOUNT = """
+        const val SQL_UPSERT_EXTERNAL_ACCOUNT = """
             INSERT INTO user_external_accounts (id, provider_id, external_subject, user_id, groups)
             VALUES (:id, :providerId, :externalSubject, :userId, :groups::jsonb)
+            ON CONFLICT (provider_id, external_subject) DO UPDATE
+                SET groups     = EXCLUDED.groups,
+                    updated_at = NOW()
+            RETURNING id, provider_id, external_subject, user_id, groups,
+                      failed_attempts, locked_until, last_login_at, created_at, updated_at
         """
 
         const val SQL_INCREMENT_FAILED_ATTEMPTS = """
@@ -185,10 +203,11 @@ private class ExternalAccountRowMapper(
         val groups = objectMapper.readValue(groupsJson, List::class.java) as List<String>
 
         return ExternalAccount(
-            id = UUID.fromString(rs.getString("id")),
-            providerId = UUID.fromString(rs.getString("provider_id")),
+            // getObject + UUID::class.java — Postgres JDBC 권장 방식 (UUID.fromString 캐스팅 회피)
+            id = rs.getObject("id", UUID::class.java),
+            providerId = rs.getObject("provider_id", UUID::class.java),
             externalSubject = rs.getString("external_subject"),
-            userId = UUID.fromString(rs.getString("user_id")),
+            userId = rs.getObject("user_id", UUID::class.java),
             groups = groups,
             failedAttempts = rs.getInt("failed_attempts"),
             lockedUntil = rs.getTimestamp("locked_until")?.toInstant(),
