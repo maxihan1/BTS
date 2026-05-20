@@ -5,12 +5,22 @@ package com.atlas.bts.identity.credential
 import de.mkammerer.argon2.Argon2Factory
 
 /**
+ * Argon2id 파라미터 상수.
+ *
+ * 출처: OWASP Password Storage Cheat Sheet 2024
+ * https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
+ */
+object Argon2Params {
+    const val MEMORY_KB = 65536
+    const val ITERATIONS = 3
+    const val PARALLELISM = 4
+}
+
+/**
  * 로컬 인증 패스워드 해싱/검증 서비스.
  *
- * Argon2id 파라미터 출처: OWASP Password Storage Cheat Sheet 2024
- * - memory: 65536 KB (64 MiB)
- * - iterations: 3
- * - parallelism: 4
+ * - 해싱: Argon2id, memory=65536KB, iterations=3, parallelism=4
+ * - 평문 메모리 폐기: hash/verify 완료 후 [wipeArray] 호출
  */
 class LocalCredentialService {
 
@@ -18,15 +28,23 @@ class LocalCredentialService {
 
     /**
      * 평문 패스워드를 Argon2id 인코딩 문자열로 해싱한다.
-     * 호출 후 [plain] 배열 내용은 즉시 폐기된다.
+     * 반환 후 [plain] 배열 내용은 즉시 폐기된다.
      */
     fun hash(plain: CharArray): String =
-        argon2.hash(3, 65536, 4, plain)
+        try {
+            argon2.hash(Argon2Params.ITERATIONS, Argon2Params.MEMORY_KB, Argon2Params.PARALLELISM, plain)
+        } finally {
+            argon2.wipeArray(plain)
+        }
 
     /**
      * Argon2id 해시와 평문 패스워드가 일치하는지 검증한다.
-     * 호출 후 [plain] 배열 내용은 즉시 폐기된다.
+     * 반환 후 [plain] 배열 내용은 즉시 폐기된다.
      */
     fun verify(hash: String, plain: CharArray): Boolean =
-        argon2.verify(hash, plain)
+        try {
+            argon2.verify(hash, plain)
+        } finally {
+            argon2.wipeArray(plain)
+        }
 }
