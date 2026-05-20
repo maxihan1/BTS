@@ -74,6 +74,8 @@ tasks.withType<KotlinCompile> {
     compilerOptions {
         freeCompilerArgs.addAll("-Xjsr305=strict")
     }
+    // 증분 컴파일 캐시 손상 방지 (worktree 환경에서 반복 발생하는 PersistentEnumeratorBase 오류 회피)
+    incremental = false
 }
 
 tasks.withType<Test> {
