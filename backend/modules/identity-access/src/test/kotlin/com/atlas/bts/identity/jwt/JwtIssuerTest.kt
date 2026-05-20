@@ -57,7 +57,7 @@ class JwtIssuerTest {
     fun `iss claim 은 주입된 issuerUri 와 일치한다`() {
         val claims = parseClaims(jwtIssuer.issue(userId, sessionId, providerId, scopes))
 
-        assertThat(claims.issuer.value).isEqualTo(issuerUri)
+        assertThat(claims.issuer).isEqualTo(issuerUri)
     }
 
     @Test
