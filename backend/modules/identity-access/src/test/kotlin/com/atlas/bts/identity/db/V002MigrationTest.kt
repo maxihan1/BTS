@@ -17,14 +17,14 @@ import java.sql.DriverManager
  */
 @Testcontainers
 class V002MigrationTest {
-
     companion object {
         @Container
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16-alpine")
-            .withDatabaseName("bts_test")
-            .withUsername("bts")
-            .withPassword("bts_test")
+        val postgres: PostgreSQLContainer<*> =
+            PostgreSQLContainer("postgres:16-alpine")
+                .withDatabaseName("bts_test")
+                .withUsername("bts")
+                .withPassword("bts_test")
 
         @BeforeAll
         @JvmStatic
@@ -40,7 +40,7 @@ class V002MigrationTest {
     private fun tableExists(tableName: String): Boolean {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.prepareStatement(
-                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?"
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?",
             ).use { stmt ->
                 stmt.setString(1, tableName)
                 stmt.executeQuery().use { rs ->
@@ -54,7 +54,7 @@ class V002MigrationTest {
     private fun indexExists(indexName: String): Boolean {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.prepareStatement(
-                "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname = ?"
+                "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname = ?",
             ).use { stmt ->
                 stmt.setString(1, indexName)
                 stmt.executeQuery().use { rs ->
@@ -65,10 +65,14 @@ class V002MigrationTest {
         }
     }
 
-    private fun columnExists(tableName: String, columnName: String): Boolean {
+    private fun columnExists(
+        tableName: String,
+        columnName: String,
+    ): Boolean {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.prepareStatement(
-                "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ? AND column_name = ?"
+                "SELECT COUNT(*) FROM information_schema.columns" +
+                    " WHERE table_schema = 'public' AND table_name = ? AND column_name = ?",
             ).use { stmt ->
                 stmt.setString(1, tableName)
                 stmt.setString(2, columnName)
@@ -149,7 +153,7 @@ class V002MigrationTest {
                 WHERE tc.table_name = 'user_external_accounts'
                   AND tc.constraint_type = 'UNIQUE'
                   AND kcu.column_name IN ('provider_id', 'external_subject')
-                """
+                """,
             ).use { stmt ->
                 stmt.executeQuery().use { rs ->
                     rs.next()

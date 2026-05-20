@@ -43,7 +43,6 @@ class LdapProvider(
     private val ldapTemplate: LdapTemplate,
     private val clock: Clock = Clock.systemUTC(),
 ) : AuthenticationProvider {
-
     private val log = LoggerFactory.getLogger(LdapProvider::class.java)
 
     override val type: ProviderType = ProviderType.LDAP
@@ -56,19 +55,21 @@ class LdapProvider(
      * Contract: password CharArray 는 예외 여부와 무관하게 finally 블록에서 wipe 됨.
      * 예외를 throw 하지 않고 AuthnResult.Failure 로 반환 (Provider contract).
      */
+    @Suppress("ReturnCount", "TooGenericExceptionCaught", "SwallowedException")
     override fun authenticate(credential: Credential): AuthnResult {
         require(credential is Credential.LdapBind) { "LdapProvider는 LdapBind 자격증명만 처리합니다." }
 
         try {
             // 1. 설정 로드
-            val (providerId, config) = configService.findEnabledLdapConfig()
-                ?: run {
-                    log.warn("LDAP provider 미설정 — authn_providers 에 활성 LDAP 행 없음")
-                    return AuthnResult.Failure(FailureReason.PROVIDER_UNAVAILABLE)
-                }
+            val (providerId, config) =
+                configService.findEnabledLdapConfig()
+                    ?: run {
+                        log.warn("LDAP provider 미설정 — authn_providers 에 활성 LDAP 행 없음")
+                        return AuthnResult.Failure(FailureReason.PROVIDER_UNAVAILABLE)
+                    }
 
-            // 2. bind password 확인
-            val bindPassword = config.resolveBindPassword()
+            // 2. bind password 확인 (값은 resolveBindPassword() 로 null 여부만 확인)
+            config.resolveBindPassword()
                 ?: run {
                     log.warn("LDAP bind password 환경변수 미설정 — env: {}", config.bindPasswordEnv)
                     return AuthnResult.Failure(FailureReason.PROVIDER_UNAVAILABLE)
@@ -83,10 +84,11 @@ class LdapProvider(
             val externalSubject = buildExternalSubject(credential.username, config)
 
             // 3. 기존 매핑 조회 — DN 형태로 저장되어 있으므로 동일 형태로 조회
-            val existing = externalAccountRepo.findByProviderIdAndExternalSubject(
-                providerId,
-                externalSubject,
-            )
+            val existing =
+                externalAccountRepo.findByProviderIdAndExternalSubject(
+                    providerId,
+                    externalSubject,
+                )
 
             // 4. 잠금 상태 확인
             if (existing?.lockedUntil?.isAfter(now) == true) {
@@ -95,8 +97,15 @@ class LdapProvider(
 
             // 5. LDAP 인증
             return try {
-                val searchFilter = config.userSearchFilter.replace("{0}", escapeForLdapFilter(credential.username))
-                val authenticated = ldapTemplate.authenticate(config.userSearchBase, searchFilter, String(credential.password))
+                val searchFilter =
+                    config.userSearchFilter
+                        .replace("{0}", escapeForLdapFilter(credential.username))
+                val authenticated =
+                    ldapTemplate.authenticate(
+                        config.userSearchBase,
+                        searchFilter,
+                        String(credential.password),
+                    )
 
                 if (!authenticated) {
                     return onFailure(existing, config.lockoutPolicy, now, providerId, externalSubject)
@@ -121,6 +130,7 @@ class LdapProvider(
     }
 
     /** 인증 성공 처리 — 자동 프로비저닝 + last_login_at 갱신 */
+    @Suppress("LongParameterList")
     private fun onSuccess(
         username: String,
         existing: ExternalAccount?,
@@ -129,19 +139,20 @@ class LdapProvider(
         now: Instant,
         externalSubject: String,
     ): AuthnResult {
-        val account = if (existing == null) {
-            // 첫 로그인 — 자동 프로비저닝 (DATA.md §6 단일 트랜잭션)
-            externalAccountRepo.provisionUser(
-                providerId = providerId,
-                externalSubject = externalSubject,
-                username = "$username@${config.baseDn.removePrefix("dc=").replace(",dc=", ".")}",
-                displayName = username,
-                email = null,
-                groups = emptyList(),
-            )
-        } else {
-            existing
-        }
+        val account =
+            if (existing == null) {
+                // 첫 로그인 — 자동 프로비저닝 (DATA.md §6 단일 트랜잭션)
+                externalAccountRepo.provisionUser(
+                    providerId = providerId,
+                    externalSubject = externalSubject,
+                    username = "$username@${config.baseDn.removePrefix("dc=").replace(",dc=", ".")}",
+                    displayName = username,
+                    email = null,
+                    groups = emptyList(),
+                )
+            } else {
+                existing
+            }
 
         externalAccountRepo.updateLastLoginAt(account.id, now)
 
@@ -176,8 +187,10 @@ class LdapProvider(
     }
 
     /** LDAP DN 형식의 externalSubject 생성 */
-    private fun buildExternalSubject(username: String, config: LdapConfig): String =
-        "uid=$username,${config.userSearchBase},${config.baseDn}"
+    private fun buildExternalSubject(
+        username: String,
+        config: LdapConfig,
+    ): String = "uid=$username,${config.userSearchBase},${config.baseDn}"
 
     /**
      * LDAP 필터 특수문자 escape (LDAP injection 방어 — DEVELOPMENT.md §1.6).

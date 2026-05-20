@@ -29,14 +29,14 @@ import java.util.UUID
 @Import(ExternalAccountRepository::class)
 @Testcontainers
 class ExternalAccountRepositoryTest {
-
     companion object {
         @Container
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16-alpine")
-            .withDatabaseName("bts_test")
-            .withUsername("bts")
-            .withPassword("bts_test")
+        val postgres: PostgreSQLContainer<*> =
+            PostgreSQLContainer("postgres:16-alpine")
+                .withDatabaseName("bts_test")
+                .withUsername("bts")
+                .withPassword("bts_test")
 
         @DynamicPropertySource
         @JvmStatic
@@ -85,14 +85,15 @@ class ExternalAccountRepositoryTest {
 
     @Test
     fun `provisionUser — users + user_external_accounts 단일 트랜잭션 INSERT`() {
-        val account = repo.provisionUser(
-            providerId = providerId,
-            externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
-            username = "alice@bts.local",
-            displayName = "Alice Test",
-            email = "alice@bts.local",
-            groups = listOf("cn=engineers,ou=groups,dc=bts,dc=local"),
-        )
+        val account =
+            repo.provisionUser(
+                providerId = providerId,
+                externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
+                username = "alice@bts.local",
+                displayName = "Alice Test",
+                email = "alice@bts.local",
+                groups = listOf("cn=engineers,ou=groups,dc=bts,dc=local"),
+            )
 
         assertThat(account.externalSubject).isEqualTo("uid=alice,ou=people,dc=bts,dc=local")
         assertThat(account.userId).isNotNull()
@@ -100,11 +101,12 @@ class ExternalAccountRepositoryTest {
         assertThat(account.lockedUntil).isNull()
 
         // users 테이블에 삽입됐는지 확인
-        val userCount = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM users WHERE username = :username",
-            mapOf("username" to "alice@bts.local"),
-            Int::class.java,
-        )
+        val userCount =
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM users WHERE username = :username",
+                mapOf("username" to "alice@bts.local"),
+                Int::class.java,
+            )
         assertThat(userCount).isEqualTo(1)
     }
 
@@ -142,7 +144,7 @@ class ExternalAccountRepositoryTest {
             repo.provisionUser(
                 providerId = providerId,
                 externalSubject = "uid=alice2,ou=people,dc=bts,dc=local",
-                username = "alice@bts.local",  // 동일 username
+                username = "alice@bts.local",
                 displayName = "Alice2",
                 email = "alice2@bts.local",
                 groups = emptyList(),
@@ -157,14 +159,15 @@ class ExternalAccountRepositoryTest {
 
     @Test
     fun `incrementFailedAttempts — 카운터 +1`() {
-        val account = repo.provisionUser(
-            providerId = providerId,
-            externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
-            username = "alice@bts.local",
-            displayName = "Alice",
-            email = "alice@bts.local",
-            groups = emptyList(),
-        )
+        val account =
+            repo.provisionUser(
+                providerId = providerId,
+                externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
+                username = "alice@bts.local",
+                displayName = "Alice",
+                email = "alice@bts.local",
+                groups = emptyList(),
+            )
 
         repo.incrementFailedAttempts(account.id)
 
@@ -174,14 +177,15 @@ class ExternalAccountRepositoryTest {
 
     @Test
     fun `resetFailedAttempts — 카운터 0 으로 reset`() {
-        val account = repo.provisionUser(
-            providerId = providerId,
-            externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
-            username = "alice@bts.local",
-            displayName = "Alice",
-            email = "alice@bts.local",
-            groups = emptyList(),
-        )
+        val account =
+            repo.provisionUser(
+                providerId = providerId,
+                externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
+                username = "alice@bts.local",
+                displayName = "Alice",
+                email = "alice@bts.local",
+                groups = emptyList(),
+            )
 
         repo.incrementFailedAttempts(account.id)
         repo.incrementFailedAttempts(account.id)
@@ -193,14 +197,15 @@ class ExternalAccountRepositoryTest {
 
     @Test
     fun `markLockedUntil — locked_until 갱신`() {
-        val account = repo.provisionUser(
-            providerId = providerId,
-            externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
-            username = "alice@bts.local",
-            displayName = "Alice",
-            email = "alice@bts.local",
-            groups = emptyList(),
-        )
+        val account =
+            repo.provisionUser(
+                providerId = providerId,
+                externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
+                username = "alice@bts.local",
+                displayName = "Alice",
+                email = "alice@bts.local",
+                groups = emptyList(),
+            )
 
         val lockUntil = Instant.now().plus(15, ChronoUnit.MINUTES).truncatedTo(ChronoUnit.MILLIS)
         repo.markLockedUntil(account.id, lockUntil)
@@ -212,14 +217,15 @@ class ExternalAccountRepositoryTest {
 
     @Test
     fun `updateLastLoginAt — last_login_at 갱신 + failedAttempts 0 reset`() {
-        val account = repo.provisionUser(
-            providerId = providerId,
-            externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
-            username = "alice@bts.local",
-            displayName = "Alice",
-            email = "alice@bts.local",
-            groups = emptyList(),
-        )
+        val account =
+            repo.provisionUser(
+                providerId = providerId,
+                externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
+                username = "alice@bts.local",
+                displayName = "Alice",
+                email = "alice@bts.local",
+                groups = emptyList(),
+            )
 
         repo.incrementFailedAttempts(account.id)
         val loginTime = Instant.now().truncatedTo(ChronoUnit.MILLIS)

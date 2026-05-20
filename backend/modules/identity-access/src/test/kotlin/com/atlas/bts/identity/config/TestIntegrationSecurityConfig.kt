@@ -18,13 +18,13 @@ import org.springframework.security.oauth2.jwt.JwtDecoder
 @TestConfiguration
 @Profile("test-integration")
 class TestIntegrationSecurityConfig {
-
     @Bean
-    fun jwtDecoder(): JwtDecoder = JwtDecoder { token ->
-        // 테스트 전용 가짜 디코더 — 모든 토큰을 빈 Jwt 로 반환
-        Jwt.withTokenValue(token)
-            .header("alg", "none")
-            .claim("sub", "test-user")
-            .build()
-    }
+    fun jwtDecoder(): JwtDecoder =
+        JwtDecoder { token ->
+            // 테스트 전용 가짜 디코더 — 모든 토큰을 빈 Jwt 로 반환
+            Jwt.withTokenValue(token)
+                .header("alg", "none")
+                .claim("sub", "test-user")
+                .build()
+        }
 }

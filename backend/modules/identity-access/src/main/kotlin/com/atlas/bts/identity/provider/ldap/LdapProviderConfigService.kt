@@ -28,16 +28,18 @@ class LdapProviderConfigService(
      * 활성 LDAP Provider 설정을 반환한다.
      * @return Pair(providerId, LdapConfig) 또는 null (미설정 / 비활성 시)
      */
+    @Suppress("TooGenericExceptionCaught")
     fun findEnabledLdapConfig(): Pair<UUID, LdapConfig>? {
         return try {
-            val rows = jdbc.query(
-                "SELECT id, config FROM authn_providers WHERE type = 'LDAP' AND enabled = true LIMIT 1",
-                emptyMap<String, Any>(),
-            ) { rs, _ ->
-                val id = UUID.fromString(rs.getString("id"))
-                val config = objectMapper.readValue(rs.getString("config"), LdapConfig::class.java)
-                Pair(id, config)
-            }
+            val rows =
+                jdbc.query(
+                    "SELECT id, config FROM authn_providers WHERE type = 'LDAP' AND enabled = true LIMIT 1",
+                    emptyMap<String, Any>(),
+                ) { rs, _ ->
+                    val id = UUID.fromString(rs.getString("id"))
+                    val config = objectMapper.readValue(rs.getString("config"), LdapConfig::class.java)
+                    Pair(id, config)
+                }
             rows.firstOrNull()
         } catch (ex: Exception) {
             log.warn("LDAP provider 설정 로드 실패: {}", ex.message)

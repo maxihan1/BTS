@@ -10,7 +10,6 @@ import org.junit.jupiter.api.Test
  * spec FR-3: maxAttempts=5, lockoutMinutes=15, scope=PER_USER_PER_PROVIDER.
  */
 class LockoutPolicyDefaultsTest {
-
     @Test
     fun `LockoutPolicy 기본값 — maxAttempts 5`() {
         val policy = LockoutPolicy()

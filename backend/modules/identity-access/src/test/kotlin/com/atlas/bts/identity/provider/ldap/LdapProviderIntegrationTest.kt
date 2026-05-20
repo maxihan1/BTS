@@ -28,7 +28,6 @@ import java.util.UUID
 @ActiveProfiles("test-integration")
 @Import(TestIntegrationSecurityConfig::class)
 class LdapProviderIntegrationTest : LdapTestcontainersBase() {
-
     @Autowired
     private lateinit var ldapProvider: LdapProvider
 
@@ -53,7 +52,8 @@ class LdapProviderIntegrationTest : LdapTestcontainersBase() {
             """.trimIndent(),
             mapOf(
                 "id" to providerId,
-                "config" to """
+                "config" to
+                    """
                     {
                         "serverUrl": "$ldapUrl",
                         "baseDn": "dc=example,dc=org",
@@ -65,7 +65,7 @@ class LdapProviderIntegrationTest : LdapTestcontainersBase() {
                         "groupSearchFilter": "(member={0})",
                         "lockoutPolicy": {"maxAttempts": 3, "lockoutMinutes": 1, "scope": "PER_USER_PER_PROVIDER"}
                     }
-                """.trimIndent(),
+                    """.trimIndent(),
             ),
         )
     }
@@ -88,19 +88,21 @@ class LdapProviderIntegrationTest : LdapTestcontainersBase() {
         assertThat(result is AuthnResult.Success).isTrue()
 
         // users 테이블에 alice 생성 확인
-        val userCount = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM users WHERE username LIKE '%alice%'",
-            emptyMap<String, Any>(),
-            Int::class.java,
-        )
+        val userCount =
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM users WHERE username LIKE '%alice%'",
+                emptyMap<String, Any>(),
+                Int::class.java,
+            )
         assertThat(userCount).isEqualTo(1)
 
         // user_external_accounts 매핑 확인
-        val accountCount = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM user_external_accounts WHERE provider_id = :pid",
-            mapOf("pid" to providerId),
-            Int::class.java,
-        )
+        val accountCount =
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM user_external_accounts WHERE provider_id = :pid",
+                mapOf("pid" to providerId),
+                Int::class.java,
+            )
         assertThat(accountCount).isEqualTo(1)
     }
 
@@ -149,11 +151,12 @@ class LdapProviderIntegrationTest : LdapTestcontainersBase() {
 
         // user_external_accounts.groups JSONB 에 engineers 그룹 저장 확인
         // 현재 구현에서는 groups 를 빈 목록으로 저장 (그룹 검색 구현 미완 — FR-PM-01 위임)
-        val groupsJson = jdbc.queryForObject(
-            "SELECT groups::text FROM user_external_accounts WHERE provider_id = :pid",
-            mapOf("pid" to providerId),
-            String::class.java,
-        )
+        val groupsJson =
+            jdbc.queryForObject(
+                "SELECT groups::text FROM user_external_accounts WHERE provider_id = :pid",
+                mapOf("pid" to providerId),
+                String::class.java,
+            )
         assertThat(groupsJson).isNotNull()
     }
 }

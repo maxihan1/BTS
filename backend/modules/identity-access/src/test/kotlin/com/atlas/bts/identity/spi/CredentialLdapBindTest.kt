@@ -10,7 +10,6 @@ import org.junit.jupiter.api.Test
  * PR #3 ADR 2026-05-20-authentication-provider-spi-naming.md line 51~57 약속 이행 확인.
  */
 class CredentialLdapBindTest {
-
     @Test
     fun `LdapBind equals same content CharArray`() {
         val a = Credential.LdapBind("alice", "Test1234!".toCharArray())
@@ -43,11 +42,12 @@ class CredentialLdapBindTest {
     fun `LdapBind is a sealed Credential variant`() {
         // when 분기 망라성 검증 — 컴파일 시점에 sealed 변종이 포함됨을 런타임에도 확인
         val cred: Credential = Credential.LdapBind("alice", "Test1234!".toCharArray())
-        val result = when (cred) {
-            is Credential.UsernamePassword -> "username-password"
-            is Credential.Pat -> "pat"
-            is Credential.LdapBind -> "ldap-bind"
-        }
+        val result =
+            when (cred) {
+                is Credential.UsernamePassword -> "username-password"
+                is Credential.Pat -> "pat"
+                is Credential.LdapBind -> "ldap-bind"
+            }
         assertThat(result).isEqualTo("ldap-bind")
     }
 

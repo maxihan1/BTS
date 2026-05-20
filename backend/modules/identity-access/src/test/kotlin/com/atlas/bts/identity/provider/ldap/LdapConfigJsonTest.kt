@@ -12,20 +12,20 @@ import org.junit.jupiter.api.Test
  * - bindPassword 자체는 LdapConfig 클래스에 필드가 없음을 검증 (DEVELOPMENT.md §1.1)
  */
 class LdapConfigJsonTest {
-
     private val mapper = ObjectMapper().findAndRegisterModules()
 
-    private val sampleConfig = LdapConfig(
-        serverUrl = "ldap://openldap:389",
-        baseDn = "dc=bts,dc=local",
-        bindDn = "cn=admin,dc=bts,dc=local",
-        bindPasswordEnv = "BTS_LDAP_BIND_PASSWORD",
-        userSearchBase = "ou=people",
-        userSearchFilter = "(uid={0})",
-        groupSearchBase = "ou=groups",
-        groupSearchFilter = "(member={0})",
-        lockoutPolicy = LockoutPolicy(),
-    )
+    private val sampleConfig =
+        LdapConfig(
+            serverUrl = "ldap://openldap:389",
+            baseDn = "dc=bts,dc=local",
+            bindDn = "cn=admin,dc=bts,dc=local",
+            bindPasswordEnv = "BTS_LDAP_BIND_PASSWORD",
+            userSearchBase = "ou=people",
+            userSearchFilter = "(uid={0})",
+            groupSearchBase = "ou=groups",
+            groupSearchFilter = "(member={0})",
+            lockoutPolicy = LockoutPolicy(),
+        )
 
     @Test
     fun `LdapConfig JSON round-trip — 모든 필드 복원`() {

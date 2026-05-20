@@ -16,46 +16,51 @@ import java.time.Duration
  * LDAP (osixia/openldap) + PostgreSQL Testcontainers 공통 기반.
  * 상속 클래스는 @SpringBootTest + @Testcontainers 를 추가해야 한다.
  *
+ * companion object 만 사용하지만 상속 기반 클래스로 abstract class 로 정의.
  * osixia/openldap:1.5.0 선정 이유 — ADR: docs/decisions/2026-05-20-ldap-testcontainers-image.md
  */
+@Suppress("UtilityClassWithPublicConstructor")
 abstract class LdapTestcontainersBase {
-
     companion object {
-        private val ldifPath: String = run {
-            val gradleDir = System.getProperty("user.dir")
-            val candidates = listOf(
-                Paths.get(gradleDir, "infra/ldap/seed.ldif"),
-                Paths.get(gradleDir, "../infra/ldap/seed.ldif"),
-                Paths.get(gradleDir, "../../infra/ldap/seed.ldif"),
-                Paths.get(gradleDir, "../../../infra/ldap/seed.ldif"),
-            )
-            candidates.firstOrNull { it.toFile().exists() }?.toAbsolutePath()?.toString()
-                ?: error("seed.ldif 파일을 찾을 수 없음. candidates: $candidates")
-        }
+        private val ldifPath: String =
+            run {
+                val gradleDir = System.getProperty("user.dir")
+                val candidates =
+                    listOf(
+                        Paths.get(gradleDir, "infra/ldap/seed.ldif"),
+                        Paths.get(gradleDir, "../infra/ldap/seed.ldif"),
+                        Paths.get(gradleDir, "../../infra/ldap/seed.ldif"),
+                        Paths.get(gradleDir, "../../../infra/ldap/seed.ldif"),
+                    )
+                candidates.firstOrNull { it.toFile().exists() }?.toAbsolutePath()?.toString()
+                    ?: error("seed.ldif 파일을 찾을 수 없음. candidates: $candidates")
+            }
 
         @Container
         @JvmStatic
-        val openldap: GenericContainer<*> = GenericContainer("osixia/openldap:1.5.0")
-            .withEnv("LDAP_ORGANISATION", "BTS")
-            .withEnv("LDAP_DOMAIN", "example.org")
-            .withEnv("LDAP_ADMIN_PASSWORD", "adminpassword")
-            .withEnv("LDAP_READONLY_USER", "false")
-            .withCopyFileToContainer(
-                MountableFile.forHostPath(ldifPath),
-                "/container/service/slapd/assets/config/bootstrap/ldif/50-bootstrap.ldif",
-            )
-            .withCommand("--copy-service --loglevel debug")
-            .withExposedPorts(389)
-            .waitingFor(
-                Wait.forListeningPort().withStartupTimeout(Duration.ofSeconds(60)),
-            )
+        val openldap: GenericContainer<*> =
+            GenericContainer("osixia/openldap:1.5.0")
+                .withEnv("LDAP_ORGANISATION", "BTS")
+                .withEnv("LDAP_DOMAIN", "example.org")
+                .withEnv("LDAP_ADMIN_PASSWORD", "adminpassword")
+                .withEnv("LDAP_READONLY_USER", "false")
+                .withCopyFileToContainer(
+                    MountableFile.forHostPath(ldifPath),
+                    "/container/service/slapd/assets/config/bootstrap/ldif/50-bootstrap.ldif",
+                )
+                .withCommand("--copy-service --loglevel debug")
+                .withExposedPorts(389)
+                .waitingFor(
+                    Wait.forListeningPort().withStartupTimeout(Duration.ofSeconds(60)),
+                )
 
         @Container
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16-alpine")
-            .withDatabaseName("bts_test")
-            .withUsername("bts")
-            .withPassword("bts_test")
+        val postgres: PostgreSQLContainer<*> =
+            PostgreSQLContainer("postgres:16-alpine")
+                .withDatabaseName("bts_test")
+                .withUsername("bts")
+                .withPassword("bts_test")
 
         @DynamicPropertySource
         @JvmStatic

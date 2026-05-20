@@ -26,7 +26,6 @@ import java.util.UUID
  * 시간 검증을 위해 Clock.fixed 주입.
  */
 class LdapProviderUnitTest {
-
     private lateinit var configService: LdapProviderConfigService
     private lateinit var externalAccountRepo: ExternalAccountRepository
     private lateinit var ldapTemplate: LdapTemplate
@@ -39,30 +38,33 @@ class LdapProviderUnitTest {
     private val accountId = UUID.fromString("33333333-3333-3333-3333-333333333333")
 
     // PATH 환경변수는 어느 환경에서나 존재하므로 bind password env var 로 활용
-    private val sampleConfig = LdapConfig(
-        serverUrl = "ldap://openldap:389",
-        baseDn = "dc=bts,dc=local",
-        bindDn = "cn=admin,dc=bts,dc=local",
-        bindPasswordEnv = "PATH",  // 테스트 환경에서 항상 존재하는 env var
-        userSearchBase = "ou=people",
-        userSearchFilter = "(uid={0})",
-        groupSearchBase = "ou=groups",
-        groupSearchFilter = "(member={0})",
-        lockoutPolicy = LockoutPolicy(maxAttempts = 3, lockoutMinutes = 1),
-    )
+    private val sampleConfig =
+        LdapConfig(
+            serverUrl = "ldap://openldap:389",
+            baseDn = "dc=bts,dc=local",
+            bindDn = "cn=admin,dc=bts,dc=local",
+            // PATH 환경변수는 어느 환경에서나 존재하므로 bind password 테스트용으로 활용
+            bindPasswordEnv = "PATH",
+            userSearchBase = "ou=people",
+            userSearchFilter = "(uid={0})",
+            groupSearchBase = "ou=groups",
+            groupSearchFilter = "(member={0})",
+            lockoutPolicy = LockoutPolicy(maxAttempts = 3, lockoutMinutes = 1),
+        )
 
-    private val sampleAccount = ExternalAccount(
-        id = accountId,
-        providerId = providerId,
-        externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
-        userId = userId,
-        groups = listOf("cn=engineers,ou=groups,dc=bts,dc=local"),
-        failedAttempts = 0,
-        lockedUntil = null,
-        lastLoginAt = null,
-        createdAt = fixedNow,
-        updatedAt = fixedNow,
-    )
+    private val sampleAccount =
+        ExternalAccount(
+            id = accountId,
+            providerId = providerId,
+            externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
+            userId = userId,
+            groups = listOf("cn=engineers,ou=groups,dc=bts,dc=local"),
+            failedAttempts = 0,
+            lockedUntil = null,
+            lastLoginAt = null,
+            createdAt = fixedNow,
+            updatedAt = fixedNow,
+        )
 
     @BeforeEach
     fun setUp() {
@@ -111,7 +113,7 @@ class LdapProviderUnitTest {
         every { ldapTemplate.authenticate(any<String>(), any<String>(), any<String>()) } returns true
         every {
             externalAccountRepo.findByProviderIdAndExternalSubject(providerId, any())
-        } returns null  // 기존 매핑 없음
+        } returns null // 기존 매핑 없음
         every {
             externalAccountRepo.provisionUser(any(), any(), any(), any(), any(), any())
         } returns sampleAccount
@@ -126,7 +128,9 @@ class LdapProviderUnitTest {
     @Test
     fun `S-03 잘못된 비밀번호 — INVALID_CREDENTIALS`() {
         every { configService.findEnabledLdapConfig() } returns Pair(providerId, sampleConfig)
-        every { ldapTemplate.authenticate(any<String>(), any<String>(), any<String>()) } throws AuthenticationException(javax.naming.AuthenticationException("bad credentials"))
+        every {
+            ldapTemplate.authenticate(any<String>(), any<String>(), any<String>())
+        } throws AuthenticationException(javax.naming.AuthenticationException("bad credentials"))
         every {
             externalAccountRepo.findByProviderIdAndExternalSubject(providerId, any())
         } returns sampleAccount
@@ -141,10 +145,12 @@ class LdapProviderUnitTest {
     @Test
     fun `S-04 사용자 미존재 — INVALID_CREDENTIALS (enumeration 방지)`() {
         every { configService.findEnabledLdapConfig() } returns Pair(providerId, sampleConfig)
-        every { ldapTemplate.authenticate(any<String>(), any<String>(), any<String>()) } throws AuthenticationException(javax.naming.AuthenticationException("user not found"))
+        every {
+            ldapTemplate.authenticate(any<String>(), any<String>(), any<String>())
+        } throws AuthenticationException(javax.naming.AuthenticationException("user not found"))
         every {
             externalAccountRepo.findByProviderIdAndExternalSubject(providerId, any())
-        } returns null  // 매핑 없음
+        } returns null // 매핑 없음
 
         val result = provider.authenticate(Credential.LdapBind("nonexistent", "anything".toCharArray()))
 
@@ -154,9 +160,11 @@ class LdapProviderUnitTest {
 
     @Test
     fun `S-05 잠금 상태 — ACCOUNT_LOCKED`() {
-        val lockedAccount = sampleAccount.copy(
-            lockedUntil = fixedNow.plus(5, ChronoUnit.MINUTES),  // 아직 잠금 중
-        )
+        val lockedAccount =
+            sampleAccount.copy(
+                // 아직 잠금 중
+                lockedUntil = fixedNow.plus(5, ChronoUnit.MINUTES),
+            )
         every { configService.findEnabledLdapConfig() } returns Pair(providerId, sampleConfig)
         every {
             externalAccountRepo.findByProviderIdAndExternalSubject(providerId, any())
@@ -169,9 +177,11 @@ class LdapProviderUnitTest {
 
     @Test
     fun `S-05 잠금 만료 후 — 인증 시도 허용`() {
-        val expiredLock = sampleAccount.copy(
-            lockedUntil = fixedNow.minus(1, ChronoUnit.SECONDS),  // 이미 만료
-        )
+        val expiredLock =
+            sampleAccount.copy(
+                // 이미 만료
+                lockedUntil = fixedNow.minus(1, ChronoUnit.SECONDS),
+            )
         every { configService.findEnabledLdapConfig() } returns Pair(providerId, sampleConfig)
         every { ldapTemplate.authenticate(any<String>(), any<String>(), any<String>()) } returns true
         every {
@@ -187,7 +197,9 @@ class LdapProviderUnitTest {
     @Test
     fun `S-06 LDAP 서버 장애 — PROVIDER_UNAVAILABLE`() {
         every { configService.findEnabledLdapConfig() } returns Pair(providerId, sampleConfig)
-        every { ldapTemplate.authenticate(any<String>(), any<String>(), any<String>()) } throws CommunicationException(javax.naming.CommunicationException("connection refused"))
+        every {
+            ldapTemplate.authenticate(any<String>(), any<String>(), any<String>())
+        } throws CommunicationException(javax.naming.CommunicationException("connection refused"))
         every {
             externalAccountRepo.findByProviderIdAndExternalSubject(providerId, any())
         } returns sampleAccount
@@ -203,7 +215,7 @@ class LdapProviderUnitTest {
         every { ldapTemplate.authenticate(any<String>(), any<String>(), any<String>()) } returns true
         every {
             externalAccountRepo.findByProviderIdAndExternalSubject(providerId, any())
-        } returns null  // 첫 로그인
+        } returns null // 첫 로그인
         every {
             externalAccountRepo.provisionUser(any(), any(), any(), any(), any(), any())
         } returns sampleAccount
@@ -227,9 +239,10 @@ class LdapProviderUnitTest {
     @Test
     fun `bind password env var 미설정 — PROVIDER_UNAVAILABLE`() {
         // 존재하지 않는 env var 이름을 사용하는 config
-        val configWithMissingEnv = sampleConfig.copy(
-            bindPasswordEnv = "BTS_LDAP_BIND_PASSWORD_TEST_NONEXISTENT_XYZ_123456",
-        )
+        val configWithMissingEnv =
+            sampleConfig.copy(
+                bindPasswordEnv = "BTS_LDAP_BIND_PASSWORD_TEST_NONEXISTENT_XYZ_123456",
+            )
         every { configService.findEnabledLdapConfig() } returns Pair(providerId, configWithMissingEnv)
 
         val result = provider.authenticate(Credential.LdapBind("alice", "Test1234!".toCharArray()))

@@ -38,12 +38,16 @@ class ExternalAccountRepository(
      * provider_id + external_subject 로 매핑 조회.
      * 매핑 없으면 null 반환.
      */
-    fun findByProviderIdAndExternalSubject(providerId: UUID, externalSubject: String): ExternalAccount? {
-        val results = jdbc.query(
-            SQL_FIND_BY_PROVIDER_AND_SUBJECT,
-            mapOf("providerId" to providerId, "externalSubject" to externalSubject),
-            rowMapper,
-        )
+    fun findByProviderIdAndExternalSubject(
+        providerId: UUID,
+        externalSubject: String,
+    ): ExternalAccount? {
+        val results =
+            jdbc.query(
+                SQL_FIND_BY_PROVIDER_AND_SUBJECT,
+                mapOf("providerId" to providerId, "externalSubject" to externalSubject),
+                rowMapper,
+            )
         return results.firstOrNull()
     }
 
@@ -53,6 +57,7 @@ class ExternalAccountRepository(
      * **DATA.md §6**: 두 INSERT 는 단일 @Transactional 경계 안에서 처리된다.
      * username 중복 등 제약 위반 시 양쪽 모두 rollback.
      */
+    @Suppress("LongParameterList")
     fun provisionUser(
         providerId: UUID,
         externalSubject: String,
@@ -103,7 +108,10 @@ class ExternalAccountRepository(
     }
 
     /** 잠금 만료 시각 설정 */
-    fun markLockedUntil(id: UUID, until: Instant) {
+    fun markLockedUntil(
+        id: UUID,
+        until: Instant,
+    ) {
         jdbc.update(SQL_MARK_LOCKED_UNTIL, mapOf("id" to id, "lockedUntil" to Timestamp.from(until)))
     }
 
@@ -111,7 +119,10 @@ class ExternalAccountRepository(
      * 마지막 로그인 시각 갱신 + failed_attempts 0 reset.
      * 로그인 성공 시 잠금 카운터도 함께 초기화한다.
      */
-    fun updateLastLoginAt(id: UUID, now: Instant) {
+    fun updateLastLoginAt(
+        id: UUID,
+        now: Instant,
+    ) {
         jdbc.update(SQL_UPDATE_LAST_LOGIN, mapOf("id" to id, "lastLoginAt" to Timestamp.from(now)))
     }
 
@@ -166,7 +177,10 @@ private class ExternalAccountRowMapper(
     private val objectMapper: ObjectMapper,
 ) : RowMapper<ExternalAccount> {
     @Suppress("UNCHECKED_CAST")
-    override fun mapRow(rs: ResultSet, rowNum: Int): ExternalAccount {
+    override fun mapRow(
+        rs: ResultSet,
+        rowNum: Int,
+    ): ExternalAccount {
         val groupsJson = rs.getString("groups") ?: "[]"
         val groups = objectMapper.readValue(groupsJson, List::class.java) as List<String>
 
