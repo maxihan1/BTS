@@ -1,4 +1,4 @@
-// LdapProvider 단위 테스트 — MockK 기반, S-01~S-07 + 엣지 케이스 시나리오
+// LdapProvider 단위 테스트 — MockK 기반, S-01~S-07 + 엣지 케이스 + CONCERN-3 회귀 가드
 
 package com.atlas.bts.identity.provider.ldap
 
