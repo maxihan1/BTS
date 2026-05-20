@@ -253,6 +253,32 @@ PoC #2 가 빠뜨린 비밀번호 영속 저장 계층을 정식 도입.
 
 **게이트 1 진입 가능**.
 
+### PR-level code-reviewer (2026-05-20, superpowers:code-reviewer agent)
+
+**종합. CONCERNS (BLOCKER 없음). 머지 권장. 단 Issue-1/2 는 FR-AU-09 PR 이전 해소 필수.**
+
+**Important 2건**.
+- **Issue-1 — `LocalCredentialService` Bean 미등록**. `@Service` 미부착 → `@Transactional` AOP 프록시 비활성. 현재 호출자 없어 실효 영향 없으나 FR-AU-09 시점 표면화. `rotate()` self-invocation 도 Spring AOP 가로채지 못함 (현재는 rotate `@Transactional` 우산)
+- **Issue-2 — `requireNotNull(repo)` 패턴 = NEVER-12 `!!` 우회**. nullable repo 는 PoC #2 호환 흔적. secondary constructor 분리 권장
+
+**Suggestion 6건**.
+- Issue-3. spec §4 시그니처 정정 (`encode` → `hash`, verify 인자 순서)
+- Issue-4. rotate() sub-copy CharArray 명시 wipe (현재 GC 의존)
+- Issue-5. `Argon2Params.DUMMY_HASH` 파라미터 회귀 가드 테스트
+- Issue-6. Repository 통합 테스트 격리 강화 (`@DirtiesContext` / Rollback)
+- Issue-7. UPSERT error 메시지 userId 제거 (로그 정책 충돌)
+- Issue-8. `verifyForUser - row 없음` dummy verify 호출 횟수 검증
+
+**잘된 점 10건**. TDD 완벽 / phantom 회고 6항목 / timing 방어 / CharArray wipe 5곳 / `toString` 마스킹 / 로그 정책 / NamedParameter SQL / ADR trace / KeycloakIntegrationBase 회귀 해소 / wave dogfood 학습 캡처
+
+### /review (gstack) 갈음
+
+직접 분석 — agent 검토와 중복도 높음. 추가 발견 0건.
+
+### plan-ceo-review (PR-level, auth 의무) 갈음
+
+직접 분석 — plan 단계 약속 (스코프 확장 후보 4건 후속 위임 / Argon2 ADR 재사용 / FK CASCADE GDPR) 모두 코드에서 준수. agent Issue-1/2 가 plan 단계 미발견 영역이라 plan-ceo-review 가 잡았을 가능성 — 향후 plan-ceo 정식 호출로 보완 검토.
+
 ### 리뷰 직접 분석 갈음 사유
 
 이전 3 PR (PoC #2 / FR-AU-01 / FR-AU-02) 모두 plan-eng / plan-ceo 직접 분석으로 갈음. 본 PR 도 동일 패턴.
