@@ -77,7 +77,13 @@ class LocalCredentialService(
     ): StoredPasswordCredential {
         val start = clock.millis()
         return try {
-            val passwordHash = argon2.hash(Argon2Params.ITERATIONS, Argon2Params.MEMORY_KB, Argon2Params.PARALLELISM, plain)
+            val passwordHash =
+                argon2.hash(
+                    Argon2Params.ITERATIONS,
+                    Argon2Params.MEMORY_KB,
+                    Argon2Params.PARALLELISM,
+                    plain,
+                )
             val credential =
                 StoredPasswordCredential(
                     userId = userId,
@@ -122,7 +128,11 @@ class LocalCredentialService(
             }
             val result =
                 runCatching { argon2.verify(stored.passwordHash, plain) }.getOrElse { ex ->
-                    log.warn("verifyForUser argon2 verify error latency={}ms ex={}", clock.millis() - start, ex.javaClass.simpleName)
+                    log.warn(
+                        "verifyForUser argon2 verify error latency={}ms ex={}",
+                        clock.millis() - start,
+                        ex.javaClass.simpleName,
+                    )
                     false
                 }
             log.info("verifyForUser result={} latency={}ms", result, clock.millis() - start)

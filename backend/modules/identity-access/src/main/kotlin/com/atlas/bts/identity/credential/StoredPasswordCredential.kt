@@ -55,5 +55,7 @@ data class StoredPasswordCredential(
     override fun hashCode(): Int = userId.hashCode()
 
     override fun toString(): String =
-        "StoredPasswordCredential(userId=$userId, passwordHash=***, algoVersion=$algoVersion, createdAt=$createdAt, updatedAt=$updatedAt)"
+        "StoredPasswordCredential(" +
+            "userId=$userId, passwordHash=***, algoVersion=$algoVersion, " +
+            "createdAt=$createdAt, updatedAt=$updatedAt)"
 }

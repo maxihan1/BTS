@@ -40,6 +40,7 @@ class LocalCredentialsMigrationTest {
 
     // ── 헬퍼 ────────────────────────────────────────────────────────────────────
 
+    @Suppress("NestedBlockDepth")
     private fun columnInfo(
         tableName: String,
         columnName: String,
@@ -68,6 +69,7 @@ class LocalCredentialsMigrationTest {
         }
     }
 
+    @Suppress("NestedBlockDepth")
     private fun primaryKeyColumns(tableName: String): List<String> {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.prepareStatement(
@@ -93,6 +95,7 @@ class LocalCredentialsMigrationTest {
         }
     }
 
+    @Suppress("NestedBlockDepth")
     private fun fkDeleteRule(
         tableName: String,
         columnName: String,
@@ -189,6 +192,7 @@ class LocalCredentialsMigrationTest {
     }
 
     @Test
+    @Suppress("NestedBlockDepth")
     fun `users 삭제 시 local_credentials 행이 CASCADE 삭제된다`() {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.autoCommit = false

@@ -74,7 +74,8 @@ class StoredPasswordCredentialRepositoryTest {
                 userId = userId,
                 passwordHash = "\$argon2id\$v=19\$m=65536,t=3,p=4\$salt1\$hash1",
                 algoVersion = "argon2id-v1",
-                createdAt = java.time.Instant.EPOCH, // Repository가 DB now() 로 덮어씀
+                // Repository가 DB now() 로 덮어씀
+                createdAt = java.time.Instant.EPOCH,
                 updatedAt = java.time.Instant.EPOCH,
             )
 
