@@ -39,7 +39,7 @@ SPA는 다음 흐름으로 동작한다.
 
 ### 대안 1. HttpSessionCsrfTokenRepository (Spring Security 기본값, 불채택)
 
-서버 세션에 토큰을 저장한다. BTS는 JWT Bearer Token 기반 stateless 아키텍처이므로 세션을 유지하지 않는다. SPA + JWT 환경에서 구조적으로 부적합하다.
+서버 세션에 토큰을 저장한다. BTS는 Access Token 검증을 stateless JWT Bearer 방식으로 처리하지만, Session · Refresh Token · PAT은 revoke 보조 DB(`session` 테이블, SHA-256 해시)를 함께 사용한다 (SDD 19.5). 그러나 `HttpSessionCsrfTokenRepository`가 요구하는 `HttpSession`(서버 메모리/Redis에 상태를 유지하는 표준 Servlet 세션)은 BTS 구조에서 관리하지 않으므로 구조적으로 부적합하다. (FR-AU-09 정정 — 원문 "세션을 유지하지 않는다" 표현은 Session DB 존재와 모순이었음.)
 
 ### 대안 2. Header-based Double Submit (커스텀 구현, 불채택)
 
