@@ -5,10 +5,12 @@ package com.atlas.bts.identity.audit
 import java.util.UUID
 
 /**
- * 인증 감사 로그 기록 및 조회 서비스 계약.
+ * 인증 감사 로그 기록 및 조회 서비스 계약 (FR-09-31).
  *
- * 현재 구현체. [InMemoryAuthAuditLogService] (in-memory, 본 PR 범위).
- * 후속 구현체. DB persistence + 월 단위 파티션 (SDD 19.9 후속 PR).
+ * ## 구현체 현황
+ *
+ * - **현재 (이 PR):** [InMemoryAuthAuditLogService] — in-memory + logback 파일 기록.
+ * - **후속 PR (SDD 19.9):** `JdbcAuthAuditLogService` — `audit_logs` 테이블 + 월 단위 파티션.
  */
 interface AuthAuditLogService {
 
