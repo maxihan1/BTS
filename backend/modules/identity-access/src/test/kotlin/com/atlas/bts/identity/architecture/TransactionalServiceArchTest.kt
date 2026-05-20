@@ -24,7 +24,10 @@ private const val CONFIGURATION = "org.springframework.context.annotation.Config
  * `@Transactional`은 Spring AOP 프록시를 통해 동작한다. Spring AOP 프록시는 Spring 컨테이너가
  * 빈으로 등록한 객체에만 적용된다. 따라서 `@Transactional` 메서드를 보유하면서 Spring 빈
  * 어노테이션(`@Service`, `@Component`, `@Repository`, `@Configuration`)이 없는 클래스는
- * 트랜잭션이 무효화되어 데이터 정합성 문제가 무음으로 발생할 수 있다.
+ * 트랜잭션이 무효화되어 데이터 정합성 문제가 **무음으로** 발생할 수 있다.
+ *
+ * PR #6에서 `LocalCredentialService`에 `@Service`를 누락한 사례에서 발견.
+ * `Maxi_wiki/BTS/learnings.md` PR #6 learning #1 참고.
  *
  * ## 룰 요약
  * `@Transactional`이 붙은 메서드를 1개 이상 보유한 클래스는
@@ -36,6 +39,11 @@ private const val CONFIGURATION = "org.springframework.context.annotation.Config
  * - 데이터 접근 클래스 → `@Repository`
  * - 일반 인프라 컴포넌트 → `@Component`
  * - 설정/빈 팩토리 → `@Configuration`
+ *
+ * ## API 노트
+ * `CanBeAnnotated.Predicates.annotatedWith(String)` 은 `DescribedPredicate<CanBeAnnotated>` 를 반환한다.
+ * Kotlin/Java 제네릭 경계 불일치로 `forSubtype()` 타입 추론이 실패하므로 명시적 캐스팅을 사용한다.
+ * `JavaMethod`는 `CanBeAnnotated`를 구현하므로 런타임 안전하다.
  */
 @AnalyzeClasses(
     packages = ["com.atlas.bts.identity"],
