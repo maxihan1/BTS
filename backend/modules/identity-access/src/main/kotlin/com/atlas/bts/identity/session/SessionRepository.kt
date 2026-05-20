@@ -27,6 +27,7 @@ interface SessionRepository {
     /**
      * 세션 ID 로 단건 조회.
      *
+     * @param id 조회할 세션 ID
      * @return 존재하면 [Session], 없으면 null
      */
     fun findById(id: UUID): Session?
@@ -46,7 +47,10 @@ interface SessionRepository {
      * 신규 세션 INSERT.
      *
      * 호출 측에서 [Session.id] (UUID v4) 를 생성하여 전달한다.
-     * RETURNING 없이 단순 INSERT — id 충돌 시 DataIntegrityViolationException 전파.
+     * RETURNING 없이 단순 INSERT.
+     *
+     * @param session 저장할 세션 엔티티
+     * @throws org.springframework.dao.DataIntegrityViolationException [Session.id] 중복 또는 FK 위반 시
      */
     fun save(session: Session)
 
