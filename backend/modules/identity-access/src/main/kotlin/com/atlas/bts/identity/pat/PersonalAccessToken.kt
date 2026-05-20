@@ -55,6 +55,9 @@ data class PersonalAccessToken(
      * 요청된 [scope] 가 이 PAT 에 허용되어 있는지 확인한다.
      *
      * `*` (와일드카드) 가 scopes 에 포함된 경우 모든 scope 를 허용한다.
+     *
+     * @param scope 확인할 scope 문자열 (예: `"read:issues"`, `"write:comments"`)
+     * @return scope 가 허용되면 true, 아니면 false
      */
     fun hasScope(scope: String): Boolean = scopes.contains(scope) || scopes.contains("*")
 
@@ -63,6 +66,9 @@ data class PersonalAccessToken(
      *
      * [expiresAt] 이 null 이면 무기한 토큰이므로 false 를 반환한다 (EC-27).
      * [expiresAt] <= [now] 이면 만료된 것으로 간주한다.
+     *
+     * @param now 현재 시각 기준점. 테스트에서 시각을 고정할 수 있도록 파라미터로 받는다.
+     * @return 만료됐으면 true, 아직 유효하거나 무기한이면 false
      */
     fun isExpired(now: Instant): Boolean = expiresAt != null && !expiresAt.isAfter(now)
 
@@ -70,6 +76,10 @@ data class PersonalAccessToken(
      * 사용 가능한 활성 상태인지 확인한다.
      *
      * revoke 되지 않고 만료되지 않은 경우에만 true 를 반환한다.
+     * PatProvider 의 토큰 검증 진입점에서 사용된다.
+     *
+     * @param now 현재 시각 기준점
+     * @return 활성 상태이면 true, revoke 됐거나 만료됐으면 false
      */
     fun isActive(now: Instant): Boolean = revokedAt == null && !isExpired(now)
 
