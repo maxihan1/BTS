@@ -165,7 +165,8 @@ class PatProviderTest {
 
     @Test
     fun `EC-09 — 만료된 PAT 시 INVALID_CREDENTIALS`() {
-        val expiredPat = activePat.copy(expiresAt = fixedNow.minusSeconds(1))
+        // Instant.EPOCH(1970-01-01) 로 설정 — 어떤 테스트 환경에서도 반드시 만료됨
+        val expiredPat = activePat.copy(expiresAt = Instant.EPOCH)
         every { patRepository.findByTokenHash(tokenHash) } returns expiredPat
 
         val result = provider.authenticate(Credential.Pat(rawToken))
