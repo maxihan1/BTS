@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class Argon2ParamsTest {
-
     @Test
     fun `DUMMY_HASH starts with argon2id prefix`() {
         assertTrue(Argon2Params.DUMMY_HASH.startsWith("\$argon2id\$"))

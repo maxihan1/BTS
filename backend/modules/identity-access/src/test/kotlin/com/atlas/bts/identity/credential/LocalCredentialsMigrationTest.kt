@@ -18,7 +18,6 @@ import java.sql.DriverManager
  */
 @Testcontainers
 class LocalCredentialsMigrationTest {
-
     companion object {
         @Container
         @JvmStatic

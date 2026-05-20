@@ -27,7 +27,6 @@ import java.util.UUID
 @Import(StoredPasswordCredentialRepository::class)
 @Testcontainers
 class StoredPasswordCredentialRepositoryTest {
-
     companion object {
         @Container
         @JvmStatic
@@ -64,19 +63,20 @@ class StoredPasswordCredentialRepositoryTest {
         userId = UUID.randomUUID()
         jdbc.update(
             "INSERT INTO users (id, username) VALUES (:id, :username)",
-            mapOf("id" to userId, "username" to "test-user-${userId}"),
+            mapOf("id" to userId, "username" to "test-user-$userId"),
         )
     }
 
     @Test
     fun `save 신규 INSERT — created_at 설정되고 updated_at 과 동일하다`() {
-        val credential = StoredPasswordCredential(
-            userId = userId,
-            passwordHash = "\$argon2id\$v=19\$m=65536,t=3,p=4\$salt1\$hash1",
-            algoVersion = "argon2id-v1",
-            createdAt = java.time.Instant.EPOCH, // Repository가 DB now() 로 덮어씀
-            updatedAt = java.time.Instant.EPOCH,
-        )
+        val credential =
+            StoredPasswordCredential(
+                userId = userId,
+                passwordHash = "\$argon2id\$v=19\$m=65536,t=3,p=4\$salt1\$hash1",
+                algoVersion = "argon2id-v1",
+                createdAt = java.time.Instant.EPOCH, // Repository가 DB now() 로 덮어씀
+                updatedAt = java.time.Instant.EPOCH,
+            )
 
         val saved = repo.save(credential)
 
@@ -90,26 +90,28 @@ class StoredPasswordCredentialRepositoryTest {
 
     @Test
     fun `save UPSERT — 같은 user_id 두 번 호출 시 password_hash 갱신, created_at 보존`() {
-        val first = repo.save(
-            StoredPasswordCredential(
-                userId = userId,
-                passwordHash = "\$argon2id\$v=19\$m=65536,t=3,p=4\$salt1\$hash1",
-                algoVersion = "argon2id-v1",
-                createdAt = java.time.Instant.EPOCH,
-                updatedAt = java.time.Instant.EPOCH,
-            ),
-        )
+        val first =
+            repo.save(
+                StoredPasswordCredential(
+                    userId = userId,
+                    passwordHash = "\$argon2id\$v=19\$m=65536,t=3,p=4\$salt1\$hash1",
+                    algoVersion = "argon2id-v1",
+                    createdAt = java.time.Instant.EPOCH,
+                    updatedAt = java.time.Instant.EPOCH,
+                ),
+            )
 
         // 짧은 시간 차이도 DB now() 로 처리되므로 충분
-        val second = repo.save(
-            StoredPasswordCredential(
-                userId = userId,
-                passwordHash = "\$argon2id\$v=19\$m=65536,t=3,p=4\$salt2\$hash2",
-                algoVersion = "argon2id-v1",
-                createdAt = java.time.Instant.EPOCH,
-                updatedAt = java.time.Instant.EPOCH,
-            ),
-        )
+        val second =
+            repo.save(
+                StoredPasswordCredential(
+                    userId = userId,
+                    passwordHash = "\$argon2id\$v=19\$m=65536,t=3,p=4\$salt2\$hash2",
+                    algoVersion = "argon2id-v1",
+                    createdAt = java.time.Instant.EPOCH,
+                    updatedAt = java.time.Instant.EPOCH,
+                ),
+            )
 
         assertThat(second.userId).isEqualTo(userId)
         assertThat(second.passwordHash).isEqualTo("\$argon2id\$v=19\$m=65536,t=3,p=4\$salt2\$hash2")
@@ -121,15 +123,16 @@ class StoredPasswordCredentialRepositoryTest {
 
     @Test
     fun `findByUserId 존재 — save 후 동일 user_id 조회 시 5 필드 일치`() {
-        val saved = repo.save(
-            StoredPasswordCredential(
-                userId = userId,
-                passwordHash = "\$argon2id\$v=19\$m=65536,t=3,p=4\$salt1\$hash1",
-                algoVersion = "argon2id-v1",
-                createdAt = java.time.Instant.EPOCH,
-                updatedAt = java.time.Instant.EPOCH,
-            ),
-        )
+        val saved =
+            repo.save(
+                StoredPasswordCredential(
+                    userId = userId,
+                    passwordHash = "\$argon2id\$v=19\$m=65536,t=3,p=4\$salt1\$hash1",
+                    algoVersion = "argon2id-v1",
+                    createdAt = java.time.Instant.EPOCH,
+                    updatedAt = java.time.Instant.EPOCH,
+                ),
+            )
 
         val found = repo.findByUserId(userId)
 

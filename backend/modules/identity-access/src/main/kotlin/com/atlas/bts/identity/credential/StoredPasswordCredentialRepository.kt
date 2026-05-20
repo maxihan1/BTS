@@ -45,11 +45,12 @@ class StoredPasswordCredentialRepository(
      * @return DB에 반영된 최신 상태의 [StoredPasswordCredential]
      */
     fun save(credential: StoredPasswordCredential): StoredPasswordCredential {
-        val params = mapOf(
-            "userId" to credential.userId,
-            "passwordHash" to credential.passwordHash,
-            "algoVersion" to credential.algoVersion,
-        )
+        val params =
+            mapOf(
+                "userId" to credential.userId,
+                "passwordHash" to credential.passwordHash,
+                "algoVersion" to credential.algoVersion,
+            )
         return jdbc.queryForObject(SQL_UPSERT, params, rowMapper)
             ?: error("UPSERT RETURNING 결과 없음 — userId=${credential.userId}")
     }
@@ -70,8 +71,7 @@ class StoredPasswordCredentialRepository(
      *
      * @return 삭제된 행 수 (존재했으면 1, 없었으면 0)
      */
-    fun deleteByUserId(userId: UUID): Int =
-        jdbc.update(SQL_DELETE, mapOf("userId" to userId))
+    fun deleteByUserId(userId: UUID): Int = jdbc.update(SQL_DELETE, mapOf("userId" to userId))
 
     // ── SQL 상수 ─────────────────────────────────────────────────────────────
 
