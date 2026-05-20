@@ -62,10 +62,11 @@ description: Use when another bts-* skill references this for the overall workfl
 
 1. **PR + worktree = 작업 단위** — 어떤 Edit/Write도 worktree 없이 main에 적용 금지
 2. **TDD 강제 (`/bts-impl`)** — `test:` 커밋이 `feat:` 커밋보다 먼저 있어야 함 (verifier가 git log 검증)
-3. **코드 리뷰는 PR 단위 1회** — task별 quality review 없음, spec-compliance만 가벼운 drift 감지
-4. **`auth`/`migration` 작업** 특별 취급 — plan-eng + plan-ceo 둘 다, codereview에 추가 가이드 첨부
-5. **`feature` + task ≥ 3** — `/autoplan` 자동 진입 (4종 리뷰 + 결정 게이트)
-6. **첫 실질 커밋 시 Draft PR 자동 개설** (`/bts-start`이 처리)
+3. **task 병렬 dispatch (`/bts-impl`)** — plan 메타 `depends-on` + `files` 로 wave 계산, 같은 wave task는 한 응답에 묶어 동시 dispatch. 파일 겹치면 자동 직렬화
+4. **코드 리뷰는 PR 단위 1회** — task별 quality review 없음, spec-compliance만 가벼운 drift 감지
+5. **`auth`/`migration` 작업** 특별 취급 — plan-eng + plan-ceo 둘 다, codereview에 추가 가이드 첨부
+6. **`feature` + task ≥ 3** — `/autoplan` 자동 진입 (4종 리뷰 + 결정 게이트)
+7. **첫 실질 커밋 시 Draft PR 자동 개설** (`/bts-start`이 처리)
 
 ## Obsidian 단방향 동기화
 
@@ -83,3 +84,4 @@ description: Use when another bts-* skill references this for the overall workfl
 ## 변경 이력
 
 - 2026-05-19. 초안 (Phase 0 PoC 진입 전). AIG `aig-workflow` 패턴 + 9개 보강 반영.
+- 2026-05-20. `/bts-impl` task 병렬 dispatch 도입. `bts-plan` 에 task 메타(`agent` / `files` / `depends-on`) 형식 추가, `bts-impl` 에 wave 계산 + 병렬 발행 절차 추가.
