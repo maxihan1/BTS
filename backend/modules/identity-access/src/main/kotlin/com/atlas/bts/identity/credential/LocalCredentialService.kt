@@ -68,7 +68,7 @@ class LocalCredentialService(
      *
      * @param userId  저장 대상 사용자 식별자
      * @param plain   평문 비밀번호 CharArray — 호출 후 wipe 됨
-     * @return        DB 에 저장된 [StoredPasswordCredential]
+     * @return DB 에 저장된 [StoredPasswordCredential]
      */
     @Transactional
     fun store(
@@ -78,12 +78,13 @@ class LocalCredentialService(
         val start = clock.millis()
         return try {
             val passwordHash = argon2.hash(Argon2Params.ITERATIONS, Argon2Params.MEMORY_KB, Argon2Params.PARALLELISM, plain)
-            val credential = StoredPasswordCredential(
-                userId = userId,
-                passwordHash = passwordHash,
-                createdAt = Instant.now(clock),
-                updatedAt = Instant.now(clock),
-            )
+            val credential =
+                StoredPasswordCredential(
+                    userId = userId,
+                    passwordHash = passwordHash,
+                    createdAt = Instant.now(clock),
+                    updatedAt = Instant.now(clock),
+                )
             requireNotNull(repo) { "repo 가 주입되지 않음 — store() 호출 불가" }.save(credential).also {
                 log.info("store success latency={}ms", clock.millis() - start)
             }
@@ -103,7 +104,7 @@ class LocalCredentialService(
      *
      * @param userId  검증 대상 사용자 식별자
      * @param plain   평문 비밀번호 CharArray — 호출 후 wipe 됨
-     * @return        비밀번호 일치 시 true, 불일치/row 없음/예외 시 false
+     * @return 비밀번호 일치 시 true, 불일치/row 없음/예외 시 false
      */
     @Transactional(readOnly = true)
     fun verifyForUser(
@@ -119,10 +120,11 @@ class LocalCredentialService(
                 log.info("verifyForUser result=false (no row) latency={}ms", clock.millis() - start)
                 return false
             }
-            val result = runCatching { argon2.verify(stored.passwordHash, plain) }.getOrElse { ex ->
-                log.warn("verifyForUser argon2 verify error latency={}ms ex={}", clock.millis() - start, ex.javaClass.simpleName)
-                false
-            }
+            val result =
+                runCatching { argon2.verify(stored.passwordHash, plain) }.getOrElse { ex ->
+                    log.warn("verifyForUser argon2 verify error latency={}ms ex={}", clock.millis() - start, ex.javaClass.simpleName)
+                    false
+                }
             log.info("verifyForUser result={} latency={}ms", result, clock.millis() - start)
             result
         } finally {
@@ -142,7 +144,7 @@ class LocalCredentialService(
      * @param userId    변경 대상 사용자 식별자
      * @param oldPlain  현재 비밀번호 CharArray — 호출 후 wipe 됨
      * @param newPlain  새 비밀번호 CharArray — 호출 후 wipe 됨
-     * @return          변경 성공 시 true, old 불일치 시 false
+     * @return 변경 성공 시 true, old 불일치 시 false
      */
     @Transactional
     fun rotate(

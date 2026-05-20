@@ -52,12 +52,13 @@ class LocalCredentialServiceTest {
         val service = LocalCredentialService(repo)
         val userId = UUID.randomUUID()
         val now = Instant.now()
-        val savedCredential = StoredPasswordCredential(
-            userId = userId,
-            passwordHash = "\$argon2id\$stubhash",
-            createdAt = now,
-            updatedAt = now,
-        )
+        val savedCredential =
+            StoredPasswordCredential(
+                userId = userId,
+                passwordHash = "\$argon2id\$stubhash",
+                createdAt = now,
+                updatedAt = now,
+            )
         every { repo.save(any()) } returns savedCredential
 
         val result = service.store(userId, "P@ssw0rd!".toCharArray())
@@ -72,12 +73,13 @@ class LocalCredentialServiceTest {
         val service = LocalCredentialService(repo)
         val userId = UUID.randomUUID()
         val now = Instant.now()
-        val credential = StoredPasswordCredential(
-            userId = userId,
-            passwordHash = "\$argon2id\$stubhash",
-            createdAt = now,
-            updatedAt = now,
-        )
+        val credential =
+            StoredPasswordCredential(
+                userId = userId,
+                passwordHash = "\$argon2id\$stubhash",
+                createdAt = now,
+                updatedAt = now,
+            )
         every { repo.save(any()) } returns credential
 
         service.store(userId, "P@ssw0rd!1".toCharArray())
@@ -93,12 +95,13 @@ class LocalCredentialServiceTest {
         val userId = UUID.randomUUID()
         val now = Instant.now()
         val plain = "P@ssw0rd!".toCharArray()
-        val credential = StoredPasswordCredential(
-            userId = userId,
-            passwordHash = "\$argon2id\$stubhash",
-            createdAt = now,
-            updatedAt = now,
-        )
+        val credential =
+            StoredPasswordCredential(
+                userId = userId,
+                passwordHash = "\$argon2id\$stubhash",
+                createdAt = now,
+                updatedAt = now,
+            )
         every { repo.save(any()) } returns credential
 
         service.store(userId, plain)
@@ -117,12 +120,13 @@ class LocalCredentialServiceTest {
         // 실제 Argon2 해시를 사전 생성
         val rawHash = service.hash("CorrectPass!".toCharArray())
         val now = Instant.now()
-        every { repo.findByUserId(userId) } returns StoredPasswordCredential(
-            userId = userId,
-            passwordHash = rawHash,
-            createdAt = now,
-            updatedAt = now,
-        )
+        every { repo.findByUserId(userId) } returns
+            StoredPasswordCredential(
+                userId = userId,
+                passwordHash = rawHash,
+                createdAt = now,
+                updatedAt = now,
+            )
 
         val result = service.verifyForUser(userId, "CorrectPass!".toCharArray())
 
@@ -136,12 +140,13 @@ class LocalCredentialServiceTest {
         val userId = UUID.randomUUID()
         val rawHash = service.hash("CorrectPass!".toCharArray())
         val now = Instant.now()
-        every { repo.findByUserId(userId) } returns StoredPasswordCredential(
-            userId = userId,
-            passwordHash = rawHash,
-            createdAt = now,
-            updatedAt = now,
-        )
+        every { repo.findByUserId(userId) } returns
+            StoredPasswordCredential(
+                userId = userId,
+                passwordHash = rawHash,
+                createdAt = now,
+                updatedAt = now,
+            )
 
         val result = service.verifyForUser(userId, "WrongPass!".toCharArray())
 
@@ -171,12 +176,13 @@ class LocalCredentialServiceTest {
         val userId = UUID.randomUUID()
         val now = Instant.now()
         // 비정상 해시값으로 Argon2 라이브러리가 예외를 던지도록 유도
-        every { repo.findByUserId(userId) } returns StoredPasswordCredential(
-            userId = userId,
-            passwordHash = "not-a-valid-argon2-hash",
-            createdAt = now,
-            updatedAt = now,
-        )
+        every { repo.findByUserId(userId) } returns
+            StoredPasswordCredential(
+                userId = userId,
+                passwordHash = "not-a-valid-argon2-hash",
+                createdAt = now,
+                updatedAt = now,
+            )
 
         val result = service.verifyForUser(userId, "AnyPass!".toCharArray())
 
@@ -193,18 +199,20 @@ class LocalCredentialServiceTest {
         val userId = UUID.randomUUID()
         val now = Instant.now()
         val oldHash = service.hash("OldPass!".toCharArray())
-        val newCredential = StoredPasswordCredential(
-            userId = userId,
-            passwordHash = "\$argon2id\$newhash",
-            createdAt = now,
-            updatedAt = now,
-        )
-        every { repo.findByUserId(userId) } returns StoredPasswordCredential(
-            userId = userId,
-            passwordHash = oldHash,
-            createdAt = now,
-            updatedAt = now,
-        )
+        val newCredential =
+            StoredPasswordCredential(
+                userId = userId,
+                passwordHash = "\$argon2id\$newhash",
+                createdAt = now,
+                updatedAt = now,
+            )
+        every { repo.findByUserId(userId) } returns
+            StoredPasswordCredential(
+                userId = userId,
+                passwordHash = oldHash,
+                createdAt = now,
+                updatedAt = now,
+            )
         every { repo.save(any()) } returns newCredential
 
         val result = service.rotate(userId, "OldPass!".toCharArray(), "NewPass!".toCharArray())
@@ -220,12 +228,13 @@ class LocalCredentialServiceTest {
         val userId = UUID.randomUUID()
         val now = Instant.now()
         val oldHash = service.hash("OldPass!".toCharArray())
-        every { repo.findByUserId(userId) } returns StoredPasswordCredential(
-            userId = userId,
-            passwordHash = oldHash,
-            createdAt = now,
-            updatedAt = now,
-        )
+        every { repo.findByUserId(userId) } returns
+            StoredPasswordCredential(
+                userId = userId,
+                passwordHash = oldHash,
+                createdAt = now,
+                updatedAt = now,
+            )
 
         val result = service.rotate(userId, "WrongOld!".toCharArray(), "NewPass!".toCharArray())
 
