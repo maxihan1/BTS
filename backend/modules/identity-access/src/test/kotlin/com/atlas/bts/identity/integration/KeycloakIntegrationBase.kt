@@ -2,6 +2,7 @@
 
 package com.atlas.bts.identity.integration
 
+import com.atlas.bts.identity.credential.StoredPasswordCredentialRepository
 import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
 import com.atlas.bts.identity.provider.ldap.LdapProvider
 import com.atlas.bts.identity.provider.ldap.LdapProviderConfigService
@@ -100,6 +101,9 @@ abstract class KeycloakIntegrationBase {
 
     @MockBean
     lateinit var externalAccountRepository: ExternalAccountRepository
+
+    @MockBean
+    lateinit var storedPasswordCredentialRepository: StoredPasswordCredentialRepository
 
     @MockBean
     lateinit var ldapTemplate: LdapTemplate
