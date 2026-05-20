@@ -119,6 +119,33 @@ scripts/verify-master-plan.sh       # FR 누락 + 체크박스 마커 자동 검
 
 ---
 
+## 2026-05-20 — Kotlin 2.0.10 고정 (detekt 1.23.7 호환 상한)
+
+**결정**. BTS 첫 백엔드 도입(PR #2, identity-access §1 AuthN PoC)에서 Kotlin 버전을 `2.0.10`으로 고정. `2.0.21`을 시도했으나 detekt 1.23.7이 컴파일러 ABI 호환 상한(2.0.10)을 초과하면 에러.
+
+**근거**.
+
+- 의존성 카탈로그 §2.6 — detekt 1.23+, Kotlin 2.0+ 명시 (구체 버전 미명시)
+- detekt 2.x 정식 릴리즈 전까지 1.23.x 라인이 최신. 1.23.7의 컴파일러 호환 상한이 Kotlin 2.0.10
+- Spring Boot 3.3.x는 Kotlin 2.0.x와 호환되므로 2.0.10 채택 시 운영 영향 0
+- 향후 detekt 2.x 출시 시 재검토 (이때 Kotlin 2.0.21+ 또는 2.1.x 업그레이드 가능)
+
+**대안 (불채택)**.
+
+- A. detekt 제거. → DEVELOPMENT.md §정적 분석 위반.
+- B. ktlint만 유지. → 코드 스멜 검출 약화.
+- C. Kotlin 2.0.10 고정 (채택).
+
+**영향**.
+
+- 모든 BTS 백엔드 모듈에 2.0.10 적용. 새 모듈 build.gradle.kts에서도 동일.
+- 향후 모듈에서 Kotlin 2.0.21+ 기능을 쓰고 싶다면 detekt 호환 업그레이드 선행 필요.
+- 카탈로그 §2.6에 구체 버전(`Kotlin 2.0.10`, `detekt 1.23.7`)을 명시하는 follow-up 권장.
+
+**관련**. PR #2, `backend/build.gradle.kts` 상단 주석, code-reviewer agent CONCERN-NEW-3.
+
+---
+
 ## 다음 결정 후보 (PoC 진입 시 발생 예정)
 
 - 첫 PoC 항목 선택 순서 (FSM부터? React 19부터?). Maxi 결정 영역.
