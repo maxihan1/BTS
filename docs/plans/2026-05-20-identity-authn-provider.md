@@ -17,9 +17,21 @@ identity-access BC 정식 진입의 첫 PR. SDD 04장 (인증/계정) §1 + 마�
 
 **이 PR 스코프** = §2.1 D1~D5 (백엔드 + 백엔드 테스트) 까지. D6 (UI) + D7 (E2E) 는 별도 PR.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
 
-_TBD_
+- **BC**. identity-access
+- **영향 엔티티**. `AuthenticationProvider` (기존 glossary 등재, 인터페이스 정식화), `ProviderRegistry` (신규), VO 3종 `Principal`/`Credential`/`AuthnResult` (신규)
+- **새 용어** (glossary 추가 후보, Maxi 승인 필요).
+  - `Principal` — 인증 완료 후의 주체 식별 정보 VO (userId, providerType, displayName, externalSubject)
+  - `Credential` — 인증 시도 입력 VO. sealed (UsernamePassword / OidcToken / SamlAssertion / LdapBind / Pat). 메모리에만 존재, DB 저장 안 됨
+  - `AuthnResult` — 인증 결과 VO. sealed (Success / Failure / RequiresMfa)
+  - `ProviderRegistry` — 도메인 `AuthenticationProvider` Bean 등록소, Spring DI 컨테이너 위 얇은 추상화
+- **기존 결정 충돌**.
+  - **명명 충돌 위험**. BTS 도메인 `AuthenticationProvider` ≠ Spring Security `org.springframework.security.authentication.AuthenticationProvider`. ADR로 해소 (B안. 도메인 이름 유지 + 패키지 격리 + Spring 어댑터 1개)
+  - **`UserCredential` (PoC DB 엔티티)** vs **`Credential` (신규 입력 VO)** — 다른 레이어. 다음 PR로 `UserCredential` 리네임 검토 (본 PR 스코프 외)
+- **관련 ADR**. [docs/decisions/2026-05-20-authentication-provider-spi-naming.md](../decisions/2026-05-20-authentication-provider-spi-naming.md) (신규, 본 PR로 생성)
+- **선행 PoC ADR** (PR #2, 2026-05-20). argon2id-parameters / csrf-cookie-mode / keycloak-image-selection / testcontainers-docker-desktop-config — 변경 없음, 본 PR 영향 없음
+- **grill-with-docs 우회 사유**. FR-AU-01은 인터페이스 + Registry라는 단일 책임. 도메인 모델 면적 작음. 1인 부담 + Auto mode 합리적 판단으로 직접 분석 (PoC 패턴 일관성)
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
