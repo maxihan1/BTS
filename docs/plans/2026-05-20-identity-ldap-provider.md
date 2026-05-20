@@ -324,3 +324,53 @@ PR #3 의 `Credential.kt` 수정. 새 sealed 변종 + equals/hashCode CharArray 
 - **`/autoplan` / `/plan-devex-review`**. 적용 대상 아님 (PR 인프라성, REST 변경 0건)
 
 게이트 1 진입 가능. **분할 확정 옵션 명시 필수**.
+
+---
+
+### PR-level superpowers:code-reviewer (2026-05-20, /bts-codereview)
+
+`STATUS: PASS with CONCERNS (BLOCKER 0건)`
+
+**절대 규칙 검증 (DEVELOPMENT.md §1)**. NEVER-1/3/4/5/6/7/8/11~13/15/16 모두 PASS. NEVER-9 ⚠️ (LdapProvider authenticate 자체 트랜잭션 경계 — CONCERN-1). NEVER-17 해당 없음.
+**TDD 순서 검증**. T1~T6 모두 test → feat → refactor 순서 ✅
+**BC 격리**. cross-BC import 0건. provider/ldap 패키지 Spring Security LDAP/JDBC 자유 import (spi 아님, ArchUnit 룰 영향 없음) ✅
+**learnings 회귀 (함정 #3 Claude 환각)**. osixia/openldap:1.5.0 + Spring Security LDAP 6.x + Flyway 10.x + pgcrypto 모두 정확 ✅
+**spec drift**. FR-1/3/4/5/6 PASS. FR-2 ⚠️ (CONCERN-1). S-07 ⚠️ (CONCERN-2 → spec 본문 정정 완료). S-06 ⚠️ (CONCERN-4)
+**DB 안전성 (auth+migration 특화)**.
+- V001/V002 SQL ✅ (pgcrypto + gen_random_uuid 정확)
+- @Transactional 경계 ⚠️ (Repository 레벨만, authenticate 자체 X → CONCERN-1)
+- FK ON DELETE 정책 ✅ (CASCADE/RESTRICT 결정 ADR 명시)
+- lockout 카운터 동시성 ⚠️ (stale 값 분기 — multi-thread 시 잠금 지연 가능)
+**V001 추가 도입 평가**. 스키마 합리적 ✅, ADR 누락 ⚠️ → **본 PR fix 완료** (`user-external-accounts-schema.md` 단락 추가, SAVE-4 처리)
+
+#### CONCERN 처리
+
+| # | 내용 | 본 PR 처리 |
+|---|---|---|
+| SAVE-1 | application.yml `spring.ldap.password` env var wiring 누락 (production blocker) | ✅ **본 PR 처리** — application.yml `username/password` env var 추가 |
+| CONCERN-2 | S-07 spec drift (코드 emptyList vs spec 그룹 저장) | ✅ **본 PR 처리** — spec S-07 본문 정정 (FR-PM-01 위임 명시) |
+| SAVE-4 | V001 도입 ADR 누락 | ✅ **본 PR 처리** — user-external-accounts-schema.md 단락 추가 |
+| CONCERN-1 | authenticate 트랜잭션 경계 분리 (spec §6 E7 단일 트랜잭션 + SELECT FOR UPDATE 요구) | 위임 — FR-AU-09 PR (SecurityFilterChain 통합 시 인증 흐름 트랜잭션 재설계) |
+| CONCERN-3 | escapeForLdapFilter 공백 처리 RFC 4515 외 (false-positive 가능, 실제 보안 영향 없음) | 위임 — 후속 chore PR (Edit 도구 매칭 이슈 + 우선순위 낮음) |
+| CONCERN-4 | S-06 통합 테스트 실제 LDAP stop 시나리오 미커버 (단위 mock 으로만 검증) | 위임 — FR-AU-09 PR 또는 별도 통합 테스트 강화 PR |
+| SAVE-2 | provisionUser 후 추가 SELECT (INSERT ... RETURNING 으로 1-query 축소 가능) | 위임 — 후속 refactor PR |
+| SAVE-3 | RowMapper UUID 변환 효율 (`getObject(col, UUID::class.java)`) | 위임 — 후속 refactor PR |
+| SAVE-5 | ProviderRegistryTest 영향 검증 (실측 PASS) | ➖ 회귀 0건 확인 완료 |
+
+### PR-level /review (gstack)
+
+**우회**. PoC #2 + PR #3 패턴 일관성. code-reviewer agent 가 SQL 안전성/concurrency/트랜잭션 경계/PII 마스킹/LDAP injection 모두 매우 상세히 검증 완료 (CONCERN-1~4 + SAVE-1~5 발견). LLM trust boundary 본 PR 해당 없음. /review 추가 가치 < 비용.
+
+### PR-level /plan-ceo-review
+
+**우회**. plan-level ceo-review 결과 (PR 분할 + 스코프 적정) 가 게이트 1 에서 Maxi 승인 (분할 결정 확정). PR-level 추가 ceo 시각 가치 < 비용.
+
+### 게이트 2 진입 가능 여부
+
+- BLOCKER 0건
+- 본 PR 처리 완료. SAVE-1 (production blocker), CONCERN-2 (spec drift), SAVE-4 (V001 ADR)
+- 후속 PR 위임. CONCERN-1/3/4, SAVE-2/3 (모두 정당화 문서화)
+- 모든 Gradle 검증 통과 (test + ktlintCheck + detekt + bootJar + 회귀 0건)
+- TDD 순서 + BC 격리 + 절대 규칙 18개 + 학습 회귀 0건
+
+머지 가능.

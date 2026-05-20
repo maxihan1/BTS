@@ -49,11 +49,12 @@
 - **When**. `LdapProvider.authenticate(...)` 호출.
 - **Then**. `Failure(PROVIDER_UNAVAILABLE)` (5초 timeout 후). 예외 throw 금지 — Provider contract.
 
-### S-07. 그룹 정보 저장 (권한 매핑 자체는 FR-PM-01 위임)
+### S-07. 그룹 정보 저장 — **본 PR 빈 list 저장, FR-PM-01 위임**
 
 - **Given**. alice 가 OpenLDAP 그룹 `cn=engineers,ou=groups,dc=bts,dc=local` 멤버.
 - **When**. 로그인 성공.
-- **Then**. `user_external_accounts.groups` (JSONB array) = `["cn=engineers,ou=groups,dc=bts,dc=local"]`. **권한 매핑은 본 PR 범위 외**, FR-PM-01 가 group → role 매핑 처리.
+- **Then**. `user_external_accounts.groups` (JSONB array) = `[]` (본 PR). 실제 LDAP 그룹 조회 + 저장은 FR-PM-01 PR 에서 구현 (ADR `ldap-group-mapping-policy.md` 결정). **본 PR 은 컬럼 + JSONB 기본값만 보장**.
+- **사유**. 그룹 조회 결과의 권한 매핑 (group DN → BTS role) 정책 결정이 FR-PM-01 영역이라 본 PR 에서 조회만 미리 도입할 의미 작음. `LdapProvider.kt:151` `groups = emptyList()` 명시 + ADR 인용.
 
 ## §2 기능 요구사항 (FR)
 
