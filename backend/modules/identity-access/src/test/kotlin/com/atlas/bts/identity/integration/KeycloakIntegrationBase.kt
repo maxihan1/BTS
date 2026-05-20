@@ -100,6 +100,11 @@ abstract class KeycloakIntegrationBase {
             }
         val headers = HttpHeaders().apply { contentType = MediaType.APPLICATION_FORM_URLENCODED }
         val resp = RestTemplate().postForEntity(tokenUrl, HttpEntity(body, headers), Map::class.java)
-        return resp.body?.get("access_token") as String
+        // 진단 메시지 보강 (CONCERN-NEW-1 — 토큰 자체는 절대 로그 출력 금지, 키 집합만)
+        return resp.body?.get("access_token") as? String
+            ?: error(
+                "Keycloak token endpoint returned no access_token: " +
+                    "status=${resp.statusCode} bodyKeys=${resp.body?.keys}",
+            )
     }
 }
