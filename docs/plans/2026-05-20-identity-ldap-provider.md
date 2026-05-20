@@ -52,9 +52,41 @@ PR #3 가 도입한 `AuthenticationProvider` SPI 의 **첫 실제 구현**. 사�
   - `2026-05-20-ldap-group-mapping-policy.md` — LDAP 그룹 DN → BTS role 매핑 (1:1 명시 매핑 vs 패턴 매칭)
 - **grill-with-docs 우회 사유**. PR #3 ADR (`authentication-provider-spi-naming`) 가 본 PR 의 도메인 결정 (sealed Credential 확장 + Provider 패키지 규칙) 을 이미 설정함. LDAP 용어 (BaseDN/BindDN/ExternalSubject) 는 표준이라 모호성 적음. 1인 부담 + Auto mode 합리적 판단으로 직접 분석 (PoC 패턴 일관성).
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-05-20-identity-ldap-provider.md](../specs/2026-05-20-identity-ldap-provider.md)
+
+핵심 5줄.
+- **`Credential.LdapBind` sealed 변종 추가** — PR #3 ADR 약속 이행
+- **`LdapProvider` 구현** — Spring `LdapAuthenticationProvider` 위 BTS SPI 어댑터 + LockoutPolicy + 자동 프로비저닝 (단일 트랜잭션)
+- **Flyway V002 마이그레이션** — `authn_providers` + `user_external_accounts` (FR-AU-01 보류 D3 통합)
+- **Testcontainers OpenLDAP** — 7 시나리오 (S-01~S-07) 모두 통합 테스트
+- **로그인 폼 UI + Playwright E2E 별도 PR** (§10 분할 정당화) — design-consultation 트리거 + 디자인 시스템 신중도
+
+**PR 분할 결정**. D1~D5 본 PR / D6~D7 PR #5, #6 위임. 게이트 1 에서 Maxi 확정 필요.
+
+명시적 비-스코프 (spec §9). FR-AU-06 다중 활성, FR-AU-07 도메인 라우팅, FR-AU-08 계정 통합, FR-PM-* 권한 매핑, UserCredential 리네임.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration, gap 10건 식별 — 4건 spec 본문 보강, 6건 impl 단계 결정).
+
+### Phase B 직접 수행 — 발견된 gap
+
+1. Spring Data JDBC vs JPA vs plain JDBC — impl 결정 (plain JDBC 권장)
+2. **bind password env var 로딩 시점** — startup 1회 + restart 필요 (매 인증 syscall 회피). spec FR-2 보강 ✅
+3. seed.ldif 위치 = `infra/ldap/seed.ldif` (PoC #2 패턴 일관성)
+4. **authn_providers 0행 처리** — lazy init + Failure(PROVIDER_UNAVAILABLE). 부팅 실패 X (다른 Provider 만으로 동작 가능). spec FR-2 보강 ✅
+5. **groups JSONB 인덱스** — 본 PR 검색 query 없음, 인덱스 X. FR-PM-01 도입 시 GIN 검토. spec NFR 보강 ✅
+6. @Transactional 의존성 — Spring Boot starter 자동 활성. impl 결정
+7. AuthenticationManager vs LdapAuthenticationProvider — impl 결정 (Spring 표준 LdapAuthenticationProvider 위 BTS SPI 어댑터)
+8. ArchUnit 룰 — `provider.ldap` 패키지는 spi 아님, Spring Security 자유 import. plan-eng-review 검토 항목
+9. @Component 자동 등록 + @Profile("test-spi") 가짜 Provider — production / test 프로필 분리 OK
+10. **PoC #2 + PR #3 회귀 격리** — LdapProvider 가 통합 테스트 컨텍스트에 자동 로드됨, lazy init 분기로 안전. ProviderRegistryTest assertion 갱신 가능성 — impl 단계. spec NFR 보강 ✅
+
+### iteration 결정
+
+gap 4건 spec 본문 보강 + 6건 impl 단계 결정 가능. iteration 불필요. office-hours/brainstorming 대화형 우회 사유. PoC 패턴 일관성. `/bts-plan` 진입.
 
 ## Plan (← /bts-plan 채움)
 
