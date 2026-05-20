@@ -11,6 +11,7 @@ import java.io.FileReader
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.security.KeyFactory
+import java.security.interfaces.RSAPrivateCrtKey
 import java.security.interfaces.RSAPrivateKey
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.RSAPublicKeySpec
@@ -90,9 +91,14 @@ class PemFileKeyProvider(
                 )
             }
 
-        // 개인키에서 공개키 파생
-        val rsaPrivateKey = privateKey as java.security.interfaces.RSAKey
-        val publicKeySpec = RSAPublicKeySpec(rsaPrivateKey.modulus, java.math.BigInteger.valueOf(65537))
+        // 개인키에서 공개키 파생 — RSAPrivateCrtKey 에서 공개 지수(publicExponent)를 올바르게 읽는다.
+        // RSA CRT 키는 공개 지수를 포함한다. 65537 하드코딩은 다른 exponent 값 시 오동작하므로 사용 금지.
+        val crtKey =
+            privateKey as? RSAPrivateCrtKey
+                ?: throw IllegalStateException(
+                    "PEM 파일이 RSA CRT 키 형식이 아닙니다: $pemPath. RSA CRT 형식(PKCS#1)을 사용하세요.",
+                )
+        val publicKeySpec = RSAPublicKeySpec(crtKey.modulus, crtKey.publicExponent)
         val publicKey = KeyFactory.getInstance("RSA").generatePublic(publicKeySpec) as RSAPublicKey
 
         _privateKey = privateKey
