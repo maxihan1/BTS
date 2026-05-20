@@ -1,0 +1,19 @@
+# DEV ONLY — Keycloak 25 개발 환경. KEYCLOAK_ADMIN_PASSWORD=admin 은 개발 전용이며 production 사용 금지.
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8180:8080"
+    volumes:
+      - ./keycloak/realm-bts.json:/opt/keycloak/data/import/realm-bts.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && printf 'GET /realms/bts HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'bts'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s

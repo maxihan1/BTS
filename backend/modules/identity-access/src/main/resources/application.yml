@@ -1,0 +1,27 @@
+# identity-access 모듈 Spring Boot 설정 — 개발 환경 (Keycloak 8180, 앱 8090)
+
+server:
+  port: 8090
+
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8180/realms/bts
+      client:
+        registration:
+          keycloak:
+            client-id: bts-web
+            authorization-grant-type: authorization_code
+            scope: openid,profile,email
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+        provider:
+          keycloak:
+            issuer-uri: http://localhost:8180/realms/bts
+
+logging:
+  level:
+    root: INFO
+    com.atlas.bts: DEBUG
+    org.springframework.security: INFO
