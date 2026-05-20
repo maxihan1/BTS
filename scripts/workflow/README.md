@@ -32,7 +32,6 @@ npm run classify -- --title "<...>" --cache
   "agent": "backend-engineer",
   "primary_bc": "notification",
   "task_count": 0,
-  "ultraplan": false,
   "cached_at": "2026-05-19T13:01:11.945Z"
 }
 ```
@@ -66,9 +65,11 @@ npm run classify -- --title "<...>" --cache
 
 각 BC별 키워드 합산 점수가 가장 높은 것을 선택. 점수 0이면.
 
-- `auth` 타입 → `identity-access`
-- 그 외 → `issue-tracking` (기본 BC)
-- `migration` / `qa` / `design` / `chore` → `null`
+- `auth` 타입 → `identity-access` (보안 영역 특수 fallback)
+- 그 외 → `null` (강제 매핑 금지. 약한 신호로 잘못된 BC에 떨어지는 amplification 방지 — 2026-05-20 회귀)
+- `migration` / `qa` / `design` / `chore` → `null` (BC 무관 타입)
+
+각 BC는 자기 이름 자체(`identity-access`, `issue-tracking` 등)를 키워드로 가진다. 입력에 BC 이름이 직접 명시되면(`identity-access §1 AuthN PoC`) 즉시 해당 BC로 매핑.
 
 ## 테스트
 
