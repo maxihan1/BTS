@@ -1,0 +1,213 @@
+<!-- search-export-import BC — AQL 검색 + Export + Import + REST API + Webhook + PAT 12 FR + AQL 파서 PoC -->
+
+# search-export-import BC
+
+**소속 FR**. 12개 (SR 4 + EX 2 + IM 2 + API 4).
+**책임**. 이슈 검색(AQL/필터/형태소) + Export(CSV/XLSX/비동기) + Import(Jira) + REST API + Webhook + Personal Access Token.
+**SDD 참조**. 10장 (검색/Export/Import), 11장 (API).
+**다른 BC와의 경계**. issue-tracking BC의 이슈를 검색/Export. 다른 모든 BC의 REST API 엔드포인트는 각 BC에서 정의하되, 본 BC는 그 API의 **표준 규약** (페이지네이션/벌크/에러 응답 포맷)을 책임. **import 금지 — API 호출만**.
+
+## §0 진입 조건
+
+- [ ] identity-access §2.9 (FR-AU-09 PAT 토큰) 완료
+- [ ] issue-tracking §2~§6 (검색/Export 대상 데이터 안정) 완료
+- [ ] §1 기술 검증 통과 (아래)
+
+## §1 기술 검증
+
+### §1.1 AQL 파서 + PostgreSQL 변환 PoC (3일)
+
+**SDD**. 10장. **checklist.md 위임**. §1.2. **ADR 후보**. 없음.
+
+- [ ] ANTLR 4 문법 정의 (`backend/modules/search-export-import/aql/Aql.g4`)
+- [ ] AST → jOOQ Condition 변환기 1차 구현
+- [ ] JQL 기본 키워드 (AND/OR/`=`/`!=`/`IN`/`~`/`ORDER BY`) 동작
+- [ ] 단위 테스트 50개 통과 (JQL 호환)
+- [ ] `pg_trgm` 확장 설치 (텍스트 매칭 가속)
+
+## §2 검색 (FR-SR, 4개)
+
+### §2.1 FR-SR-01 — 이슈 필터 (다중 필드 조합)
+
+**우선순위**. 필수 | **선행**. §0 | **Plan slug**. `search/filter`
+
+- [ ] D1. 도메인 — Filter VO (책임. backend-engineer)
+- [ ] D2. 명세 — 필드 조합 + AND/OR (책임. backend-engineer)
+- [ ] D3. 데이터 모델 — PostgreSQL 인덱스 (status, assignee_id, project_id, label) (책임. db-engineer)
+- [ ] D4. 백엔드 — `GET /api/v1/issues?filter=...` jOOQ 동적 쿼리 (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [ ] D6. 프론트 UI — 필터 패널 (책임. designer → frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
+### §2.2 FR-SR-02 — AQL 텍스트 쿼리 (JQL 호환)
+
+**우선순위**. 필수 | **선행**. §1, §2.1 | **Plan slug**. `search/aql`
+
+- [ ] D1. 도메인 — AqlQuery (책임. backend-engineer)
+- [ ] D2. 명세 — JQL 호환 키워드 목록 (책임. backend-engineer)
+- [ ] D3. 데이터 모델 — `pg_trgm` 인덱스 (책임. db-engineer)
+- [ ] D4. 백엔드 — `POST /api/v1/search/aql` AST 변환 (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 — JQL 50개 쿼리 대응 (책임. backend-engineer)
+- [ ] D6. 프론트 UI — AQL 입력창 + syntax highlight (책임. designer → frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
+| 항목 | 임계 | 실측 (p95) |
+|---|---|---|
+| AQL 100만건 검색 | 1s | ___ |
+
+### §2.3 FR-SR-03 — 필터 저장 및 공유
+
+**우선순위**. 필수 | **선행**. §2.1, §2.2 | **Plan slug**. `search/saved-filters`
+
+- [ ] D1. 도메인 — SavedFilter (책임. backend-engineer)
+- [ ] D2. 명세 — 권한 (개인/팀/공개) (책임. backend-engineer + security-engineer)
+- [ ] D3. 데이터 모델 — `saved_filters(owner_id, name, query, visibility)` (책임. db-engineer)
+- [ ] D4. 백엔드 — CRUD API (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [ ] D6. 프론트 UI — 필터 저장/공유 모달 (책임. designer → frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
+### §2.4 FR-SR-04 — 한글 형태소 기반 전문 검색
+
+**우선순위**. 필수 | **선행**. §2.2 | **Plan slug**. `search/korean-morpheme`
+
+- [ ] D1. 도메인 (책임. backend-engineer)
+- [ ] D2. 명세 — Mecab-ko vs Lucene-Kr 비교 후 선택. PostgreSQL FTS 통합 (책임. backend-engineer)
+- [ ] D3. 데이터 모델 — `tsvector` 컬럼 + GIN 인덱스 + 한글 dictionary (책임. db-engineer)
+- [ ] D4. 백엔드 — 인덱스 생성 트리거 + 검색 함수 (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 — 형태소 분리 케이스 30개 (책임. backend-engineer)
+- [ ] D6. 프론트 UI — (§2.2와 통합 — 검색창 동일) (책임. frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
+## §3 Export (FR-EX, 2개)
+
+### §3.1 FR-EX-01 — 필터 결과 CSV/XLSX Export
+
+**우선순위**. 필수 | **선행**. §2.1, §2.2 | **Plan slug**. `search/export-csv-xlsx`
+
+- [ ] D1. 도메인 — ExportRequest (책임. backend-engineer)
+- [ ] D2. 명세 — 필드 선택 + 한글 인코딩 (UTF-8 BOM) (책임. backend-engineer)
+- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
+- [ ] D4. 백엔드 — `POST /api/v1/exports` (CSV + Apache POI XLSX) (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 — Excel 검증 (책임. backend-engineer)
+- [ ] D6. 프론트 UI — Export 다이얼로그 + 진행률 (책임. designer → frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
+### §3.2 FR-EX-02 — 대용량(>1만건) 비동기 Export
+
+**우선순위**. 높음 | **선행**. §3.1 | **Plan slug**. `search/export-async`
+
+- [ ] D1. 도메인 — ExportJob (책임. backend-engineer)
+- [ ] D2. 명세 — 큐 + 진행률 + 결과 URL TTL (책임. backend-engineer)
+- [ ] D3. 데이터 모델 — `export_jobs(status, progress, result_minio_key, expires_at)` (책임. db-engineer)
+- [ ] D4. 백엔드 — pgmq job + 백그라운드 worker (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 — 1만건 시나리오 (책임. backend-engineer)
+- [ ] D6. 프론트 UI — 진행률 + 알림 + 다운로드 (책임. designer → frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
+## §4 Import (FR-IM, 2개)
+
+### §4.1 FR-IM-01 — CSV/JSON Import (Jira 마이그레이션)
+
+**우선순위**. 필수 | **선행**. issue-tracking §2~§3 (이슈/컴포넌트/버전 작성 API) | **Plan slug**. `search/import`
+
+- [ ] D1. 도메인 — ImportJob (책임. backend-engineer)
+- [ ] D2. 명세 — CSV/JSON 파싱 + 트랜잭션 정책 + dry-run (책임. backend-engineer)
+- [ ] D3. 데이터 모델 — `import_jobs(status, error_log_minio_key)` (책임. db-engineer)
+- [ ] D4. 백엔드 — `POST /api/v1/imports` + 백그라운드 worker (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 — Jira CSV 샘플 (책임. backend-engineer)
+- [ ] D6. 프론트 UI — 파일 업로드 + 진행률 (책임. designer → frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
+### §4.2 FR-IM-02 — Import 매핑 UI (필드/사용자 매핑)
+
+**우선순위**. 필수 | **선행**. §4.1 | **Plan slug**. `search/import-mapping`
+
+- [ ] D1. 도메인 — ImportMapping (책임. backend-engineer)
+- [ ] D2. 명세 — 필드 매핑 + 사용자 매핑 + 미매핑 처리 (책임. backend-engineer)
+- [ ] D3. 데이터 모델 — `import_mappings(import_job_id, source_field, target_field)` (책임. db-engineer)
+- [ ] D4. 백엔드 — 매핑 검증 API (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [ ] D6. 프론트 UI — 매핑 마법사 (다단계) (책임. designer → frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
+## §5 REST API + Webhook + PAT (FR-API, 4개)
+
+### §5.1 FR-API-01 — 이슈 CRUD REST API (표준화)
+
+**우선순위**. 필수 | **선행**. issue-tracking §2.1.1 | **Plan slug**. `search/api-issue-crud`
+
+- [ ] D1. 도메인 — API 응답 표준 (페이지네이션, 에러 포맷) (책임. backend-engineer)
+- [ ] D2. 명세 — OpenAPI 3.1 스펙 작성 (책임. backend-engineer)
+- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
+- [ ] D4. 백엔드 — issue-tracking API에 cursor pagination + bulk ops 표준 적용 (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 — OpenAPI 스펙 검증 + contract test (책임. backend-engineer)
+- [ ] D6. 프론트 UI — (해당 없음 — API 문서는 §A) (책임. -)
+- [ ] D7. E2E — Postman/Insomnia 시나리오 (책임. qa-engineer)
+
+### §5.2 FR-API-02 — AQL 검색 REST API
+
+**우선순위**. 필수 | **선행**. §2.2, §5.1 | **Plan slug**. `search/api-aql`
+
+- [ ] D1. 도메인 (책임. backend-engineer)
+- [ ] D2. 명세 — 동기/비동기 응답 정책 (책임. backend-engineer)
+- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
+- [ ] D4. 백엔드 — `POST /api/v1/search/aql` + 페이지네이션 (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [ ] D6. 프론트 UI — (해당 없음) (책임. -)
+- [ ] D7. E2E (책임. qa-engineer)
+
+### §5.3 FR-API-03 — Webhook (외부 시스템 통지)
+
+**우선순위**. 필수 | **선행**. §5.1, identity-access §2.10 (감사) | **Plan slug**. `search/api-webhook-out`
+
+- [ ] D1. 도메인 — OutboundWebhook (책임. backend-engineer)
+- [ ] D2. 명세 — HMAC-SHA256 서명 + 재시도 + circuit breaker (책임. backend-engineer + security-engineer)
+- [ ] D3. 데이터 모델 — `outbound_webhooks(url, secret_encrypted, event_filter)` + `webhook_deliveries(status, response_code)` (책임. db-engineer)
+- [ ] D4. 백엔드 — pgmq event → HTTP 발송 + 재시도 (책임. backend-engineer + security-engineer)
+- [ ] D5. 백엔드 테스트 — 재시도 + circuit breaker (책임. backend-engineer)
+- [ ] D6. 프론트 UI — Webhook 관리 페이지 + 발송 이력 (책임. designer → frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
+### §5.4 FR-API-04 — Personal Access Token
+
+**우선순위**. 필수 | **선행**. identity-access §2.9 (PAT 데이터 모델) | **Plan slug**. `search/api-pat`
+
+- [ ] D1. 도메인 (책임. security-engineer)
+- [ ] D2. 명세 — scope + TTL + 회전 + 취소 (책임. security-engineer)
+- [ ] D3. 데이터 모델 — (identity-access §2.9 활용) (책임. db-engineer)
+- [ ] D4. 백엔드 — `POST /api/v1/users/me/pats` 발급 + 인증 미들웨어에 PAT 인식 추가 (책임. security-engineer)
+- [ ] D5. 백엔드 테스트 — scope 위반 reject (책임. security-engineer)
+- [ ] D6. 프론트 UI — PAT 발급/회전/취소 페이지. **DEVELOPMENT.md §1.17 — 토큰은 화면 표시 1회만, localStorage 금지** (책임. designer → frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
+## §A OpenAPI 문서 게시
+
+- [ ] `springdoc-openapi-starter-webmvc-ui` 통합
+- [ ] `/v3/api-docs` + `/swagger-ui` 호스팅
+- [ ] CI에서 OpenAPI 스펙 변경 시 알림 (계약 변경 감시)
+
+## §NFR search-export-import BC 완료 게이트
+
+### 측정값 기록표
+
+| 항목 | 임계 | 실측 (p95) | 비고 |
+|---|---|---|---|
+| AQL 100만건 검색 | 1s | ___ | k6 + `pg_stat_statements` |
+| AQL 단순 쿼리 | 500ms | ___ | k6 |
+| API 단순 GET | 100ms | ___ | k6 |
+| Export 1만건 (비동기) | 60s | ___ | 백그라운드 worker |
+| Import 1만건 | 120s | ___ | 백그라운드 worker |
+| Webhook 발송 응답 | 500ms | ___ | k6 (외부 mock) |
+| PAT 인증 검증 | 50ms | ___ | k6 |
+| 한글 형태소 정확도 | 95% | ___ | 30 케이스 |
+| OpenAPI 스펙 contract test | 0 회귀 | ___ | CI |
+
+### BC 완료 조건
+
+- [ ] §2~§5 (12 FR) 모두 `[x]` 마킹
+- [ ] §A OpenAPI 게시 완료
+- [ ] §NFR 측정표 모든 항목 임계 통과
+- [ ] CHANGELOG.md 정리
+- [ ] README.md §7 변경 이력에 "search-export-import BC 완료 — YYYY-MM-DD" 추가
+- [ ] Maxi 1인 선언 — "search-export-import BC 완료"

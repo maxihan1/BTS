@@ -1,0 +1,87 @@
+<!-- project-workflow BC — 워크플로우 FSM 2 FR + 워크플로우 FSM PoC + pgmq 트랜잭션 PoC -->
+
+# project-workflow BC
+
+**소속 FR**. 2개 (WF 2).
+**책임**. 상태 기계(FSM) 기반 워크플로우, YAML 정의, 전이 검증, 후처리.
+**SDD 참조**. 07장 (워크플로우 엔진).
+**다른 BC와의 경계**. issue-tracking BC의 상태 전이 호출을 받아 검증. pgmq 이벤트 발행.
+
+## §0 진입 조건
+
+- [ ] identity-access §2.1, §4.4 (워크플로우 관리 권한) 완료
+- [ ] DATA.md §트랜잭션 + §pgmq 규칙 숙지
+- [ ] §1 기술 검증 통과 (아래)
+
+## §1 기술 검증
+
+### §1.1 워크플로우 FSM PoC (3일)
+
+**SDD**. 07장. **checklist.md 위임**. §1.1. **ADR 후보**. 없음.
+
+- [ ] PostgreSQL 테이블 스키마 1차 안정 (Flyway V001)
+- [ ] Spring Boot 진입점 (`./gradlew :backend:bootRun` 성공)
+- [ ] TDD 사이클 1회 완료 (`test:` → `feat:` → `refactor:`)
+- [ ] Testcontainers 통합 테스트 1개 통과 (상태 전이 invariant 검증)
+- [ ] Maxi 검토 통과
+
+### §1.2 pgmq 트랜잭션 일관성 PoC (1일)
+
+**SDD**. 03.6. **checklist.md 위임**. §1.5. **ADR 후보**. **pgmq 이미지 선정** (fr-index.md §A.3 #1).
+
+- [ ] pgmq 이미지 선정 ADR 작성 (`docs/adr/<date>-pgmq-image.md`)
+- [ ] PostgreSQL 16 + pgmq 컨테이너 기동
+- [ ] `pg_trgm` 확장 설치
+- [ ] jOOQ routine 래퍼 (pgmq 함수 호출)
+- [ ] 트랜잭션 일관성 통합 테스트 — "이슈 생성 ↔ 알림 큐 발행" 동일 트랜잭션 (롤백 시 큐도 롤백)
+
+## §2 워크플로우 (FR-WF, 2개)
+
+### §2.1 FR-WF-01 — FSM 워크플로우 (상태/전이/조건/검증/후처리)
+
+**우선순위**. 필수 | **선행**. §1 | **Plan slug**. `workflow/fsm`
+
+- [ ] D1. 도메인 — Workflow Aggregate, State, Transition, Guard, PostAction (책임. backend-engineer + Maxi)
+- [ ] D2. 명세 — Given/When/Then. 표준 4종 워크플로우 (Software Dev, Bug Tracking, Service Desk, Task) (책임. backend-engineer)
+- [ ] D3. 데이터 모델 — `workflows`, `workflow_states`, `workflow_transitions`, `workflow_guards` (책임. db-engineer)
+- [ ] D4. 백엔드 — `WorkflowEngine` + 상태 전이 API + invariant 검증 (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 — TDD + property-based test (전이 무결성) (책임. backend-engineer)
+- [ ] D6. 프론트 UI — 워크플로우 다이어그램 (mermaid 또는 SVG) (책임. designer → frontend-engineer)
+- [ ] D7. E2E + NFR — 상태 전이 6단계 시나리오 (책임. qa-engineer)
+
+| 항목 | 임계 | 실측 (p95) |
+|---|---|---|
+| 상태 전이 처리 | 100ms | ___ |
+
+### §2.2 FR-WF-02 — 프로젝트별 워크플로우 스킴 + 타입별 매핑
+
+**우선순위**. 필수 | **선행**. §2.1 | **Plan slug**. `workflow/scheme`
+
+- [ ] D1. 도메인 — WorkflowScheme (책임. backend-engineer)
+- [ ] D2. 명세 (책임. backend-engineer)
+- [ ] D3. 데이터 모델 — `workflow_schemes`, `project_workflow_scheme_map`, `scheme_issue_type_workflow` (책임. db-engineer)
+- [ ] D4. 백엔드 — Scheme 관리 API (책임. backend-engineer + security-engineer)
+- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [ ] D6. 프론트 UI — 프로젝트 설정 → 워크플로우 (책임. designer → frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
+## §NFR project-workflow BC 완료 게이트
+
+### 측정값 기록표
+
+| 항목 | 임계 | 실측 (p95) | 비고 |
+|---|---|---|---|
+| 상태 전이 처리 (FSM) | 100ms | ___ | k6 (단일 트랜잭션 + pgmq 이벤트) |
+| 스킴 매핑 조회 | 50ms | ___ | k6 |
+| 워크플로우 다이어그램 렌더 | 1s | ___ | Playwright |
+| pgmq 트랜잭션 롤백 정합성 | 100% | ___ | 통합 테스트 |
+| WCAG 2.1 AA | 0 violations | ___ | axe-core |
+
+### BC 완료 조건
+
+- [ ] §2 (FR-WF 2개) 모두 `[x]` 마킹
+- [ ] §NFR 측정표 모든 항목 임계 통과
+- [ ] pgmq ADR (§A.3 #1) 발행 완료
+- [ ] CHANGELOG.md 정리
+- [ ] README.md §7 변경 이력에 "project-workflow BC 완료 — YYYY-MM-DD" 추가
+- [ ] Maxi 1인 선언 — "project-workflow BC 완료"
