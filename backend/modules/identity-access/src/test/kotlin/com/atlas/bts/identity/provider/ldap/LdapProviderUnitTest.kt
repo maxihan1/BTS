@@ -251,6 +251,18 @@ class LdapProviderUnitTest {
     }
 
     @Test
+    fun `escapeForLdapFilter 는 공백을 escape 하지 않는다`() {
+        // given: 공백 포함 username (RFC 4515 가 규정하지 않는 문자)
+        val input = "John Doe"
+
+        // when: internal 가시성으로 직접 호출
+        val escaped = LdapProvider.escapeForLdapFilter(input)
+
+        // then: 공백은 그대로 보존 (false-positive 방지)
+        assertThat(escaped).isEqualTo("John Doe")
+    }
+
+    @Test
     fun `password wipe — 인증 완료 후 CharArray 가 비워짐`() {
         every { configService.findEnabledLdapConfig() } returns Pair(providerId, sampleConfig)
         // bind password 미설정으로 조기 반환되지만 wipe는 항상 발생해야 함
