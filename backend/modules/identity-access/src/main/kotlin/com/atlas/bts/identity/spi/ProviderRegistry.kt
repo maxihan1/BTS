@@ -12,6 +12,9 @@ import java.util.Collections
  * Spring 부팅 시 모든 [AuthenticationProvider] Bean을 자동 수집한다.
  * providers 파라미터가 비어있어도 정상 동작 (required = false).
  *
+ * [findFor]는 [AuthenticationProvider.priority] 내림차순 정렬 후 첫 번째 supports 공급자를
+ * 반환하므로 FR-09-25 (provider 우선순위 보장) 요구사항을 충족한다. 동률 정책은 EC-25 참조.
+ *
  * 주의: 이 레지스트리는 Spring Security FilterChain에 직접 연결되지 않는다.
  * FilterChain 통합은 [com.atlas.bts.identity.adapter.spring.SpringSecurityProviderAdapter]를
  * 통해 수행되며, 해당 어댑터는 FR-AU-09 PR에서 SecurityConfig에 명시 등록된다.
