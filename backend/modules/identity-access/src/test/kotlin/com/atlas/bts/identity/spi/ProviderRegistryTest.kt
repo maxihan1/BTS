@@ -1,4 +1,4 @@
-// ProviderRegistry — 공급자 등록/조회 동작 검증 테스트
+// ProviderRegistry — 공급자 등록/조회 동작 검증 테스트 (Spring 컨텍스트 없는 단위 테스트)
 
 package com.atlas.bts.identity.spi
 
@@ -6,16 +6,24 @@ import com.atlas.bts.identity.spi.fake.FakeLocalProvider
 import com.atlas.bts.identity.spi.fake.FakePatProvider
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.test.context.ActiveProfiles
 
-@SpringBootTest
-@ActiveProfiles("test-spi")
+/**
+ * ProviderRegistry 단위 테스트.
+ * Spring 전체 컨텍스트(Keycloak OAuth2 자동설정 포함) 없이 Registry와 Fake Provider만 직접 조립.
+ */
 class ProviderRegistryTest {
-    @Autowired
+    private lateinit var localProvider: FakeLocalProvider
+    private lateinit var patProvider: FakePatProvider
     private lateinit var registry: ProviderRegistry
+
+    @BeforeEach
+    fun setUp() {
+        localProvider = FakeLocalProvider()
+        patProvider = FakePatProvider()
+        registry = ProviderRegistry(listOf(localProvider, patProvider))
+    }
 
     @Test
     fun `findByType LOCAL returns FakeLocalProvider`() {
@@ -50,18 +58,28 @@ class ProviderRegistryTest {
     }
 
     @Test
-    fun `registry with no providers returns null`() {
+    fun `registry with no providers — findByType returns null`() {
         val emptyRegistry = ProviderRegistry(emptyList())
         assertThat(emptyRegistry.findByType(ProviderType.LOCAL)).isNull()
+    }
+
+    @Test
+    fun `registry with no providers — findFor returns null`() {
+        val emptyRegistry = ProviderRegistry(emptyList())
         assertThat(emptyRegistry.findFor(Credential.Pat("any"))).isNull()
+    }
+
+    @Test
+    fun `registry with no providers — all() is empty`() {
+        val emptyRegistry = ProviderRegistry(emptyList())
         assertThat(emptyRegistry.all()).isEmpty()
     }
 
     @Test
-    fun `all() returns immutable copy — size check`() {
+    fun `all() returns immutable copy — UnsupportedOperationException on mutation`() {
         val all = registry.all()
         assertThat(all.size).isEqualTo(2)
-        // 불변 리스트 검증: UnsupportedOperationException 발생
+        // toList()는 불변 복사본을 반환하므로 add 시 UnsupportedOperationException 발생
         assertThatThrownBy { (all as MutableList).add(FakeLocalProvider()) }
             .isInstanceOf(UnsupportedOperationException::class.java)
     }
