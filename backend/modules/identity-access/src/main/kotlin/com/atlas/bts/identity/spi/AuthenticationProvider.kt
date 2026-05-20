@@ -20,8 +20,10 @@ interface AuthenticationProvider {
     /**
      * 이 공급자의 우선순위. 높을수록 [ProviderRegistry]가 먼저 시도한다.
      *
-     * 기본값은 [ProviderType.priority]에서 위임한다 (EC-25, FR-AU-09 §19.2).
+     * 기본값은 [ProviderType.priority]에서 위임한다 (EC-25, SDD §19.2, FR-AU-09-28).
      * 특수한 배포 환경에서 우선순위를 재조정해야 할 경우 구현체에서 override 가능.
+     *
+     * 동률 발생 시 [ProviderRegistry]가 [ProviderType.ordinal] 오름차순으로 최종 결정.
      */
     val priority: Int get() = type.priority
 
