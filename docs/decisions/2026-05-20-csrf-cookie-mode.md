@@ -86,3 +86,27 @@ DEVELOPMENT.md §1.5에서 명시적으로 금지. T4에서 임시로 `.csrf { i
 - **SecurityConfig.kt.** `csrf { it.disable() }` → `CookieCsrfTokenRepository` 교체.
 - **SPA(apps/web).** 모든 POST/PUT/DELETE 요청에서 `X-XSRF-TOKEN` 헤더를 추가해야 한다 (axios interceptor 또는 fetch wrapper에서 처리 예정).
 - **테스트.** `@WebMvcTest` 슬라이스 테스트에서 jwt() 경로는 CSRF를 skip하므로, 세션 기반 CSRF 검증은 T6 통합 테스트(Testcontainers)에서 별도 검증.
+
+---
+
+## 보정 (2026-05-20 FR-AU-09 PR)
+
+### stateless 아키텍처 표현 정정
+
+| 항목 | 정정 전 | 정정 후 |
+|---|---|---|
+| 대안 1 불채택 이유 | "BTS는 JWT Bearer Token 기반 stateless 아키텍처이므로 세션을 유지하지 않는다." | "Access Token 검증은 stateless JWT Bearer. Session·Refresh·PAT은 revoke 보조 DB 사용. HttpSession(Servlet 세션)을 관리하지 않으므로 부적합." |
+| 아키텍처 분류 | stateless 단일 | Access Token stateless + Session/Refresh/PAT DB 혼합 |
+
+### FR-AU-09 PR의 Session DB 도입 영향
+
+FR-AU-09 PR에서 `session` 테이블(SDD 19.5)이 도입됨에 따라 다음이 확정된다.
+
+- **CSRF 토큰은 Session DB와 무관하다.** `CookieCsrfTokenRepository`는 쿠키에 상태를 저장하므로 Session DB 도입 여부와 독립적이다.
+- **Bearer Token 경로의 CSRF skip은 유지된다.** `SecurityMockMvcRequestPostProcessors.jwt()`의 `CsrfFilter.skipRequest()` 동작은 Session DB 도입 후에도 변하지 않는다.
+- **Refresh Token revoke 시 CSRF 토큰 무효화는 불필요하다.** CSRF 토큰은 로그인 상태가 아닌 Origin 검증 목적이므로 Refresh Token 만료와 생명주기를 공유하지 않는다.
+
+### 향후 후속 PR 메모
+
+- **만료 Session 행 GC job** — `session` 테이블이 커지면 만료된 행을 주기적으로 삭제하는 배치 job이 필요하다. 별도 후속 PR(identity-access BC) 에서 처리 예정. 이 ADR 범위 밖임.
+- **XOR CSRF 마스킹 재검토** — BREACH 공격 위협 모델 확정 후 `XorCsrfTokenRequestAttributeHandler` 전환 여부 재검토 예정.
