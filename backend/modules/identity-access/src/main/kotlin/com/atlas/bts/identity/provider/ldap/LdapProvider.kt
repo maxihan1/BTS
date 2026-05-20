@@ -12,14 +12,14 @@ import org.slf4j.LoggerFactory
 import org.springframework.ldap.AuthenticationException
 import org.springframework.ldap.CommunicationException
 import org.springframework.ldap.core.LdapTemplate
-import org.springframework.stereotype.Component
+import org.springframework.stereotype.Service
 import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 /**
- * LDAP/AD 인증 공급자 (FR-AU-02).
+ * LDAP/AD 인증 공급자 (FR-AU-02, FR-AU-09 Task 15).
  *
  * **인증 흐름**:
  * 1. LdapProviderConfigService 에서 활성 LdapConfig 로드 (lazy init — 0건이면 PROVIDER_UNAVAILABLE)
@@ -27,19 +27,34 @@ import java.util.UUID
  * 3. user_external_accounts 에서 기존 매핑 조회
  * 4. 잠금 상태 확인 (lockedUntil > now → ACCOUNT_LOCKED)
  * 5. Spring LdapTemplate.authenticate() 호출
- * 6. 성공 → 자동 프로비저닝 (첫 로그인 시) + last_login_at 갱신 + lockout reset
+ * 6. 성공 → AutoProvisionService.provision (users + user_external_accounts UPSERT 단일 트랜잭션)
+ *           + last_login_at 갱신 + lockout reset
  * 7. 실패 → failedAttempts +1, maxAttempts 초과 시 locked_until 설정
- * 8. 서버 장애 → PROVIDER_UNAVAILABLE
+ * 8. 서버 장애 → PROVIDER_UNAVAILABLE (AuthnResult.Failure)
+ *
+ * **@Service (PR #6 learning #1)**:
+ * @Transactional 을 위임 받는 AutoProvisionService 가 @Service 이며, 이 클래스도 Spring Bean 이어야
+ * AutoProvisionService 를 올바른 프록시로 주입받을 수 있다. @Component → @Service 변경.
+ *
+ * **priority = 80 (SDD §19.2, FR-AU-09-28)**:
+ * ProviderType.LDAP.priority = 80 — AuthenticationProvider 인터페이스 default getter 로 위임.
+ * LDAP > LOCAL(70) > PAT(60) 순서.
+ *
+ * **CONCERN-4 (LDAP unavailable 격리)**:
+ * CommunicationException 등 서버 장애 시 AuthnResult.Failure(PROVIDER_UNAVAILABLE) 반환.
+ * ProviderRegistry(Task 35) 는 이 결과를 보고 다른 Provider 를 시도하지 않아야 한다.
+ * (ProviderUnavailableException throw 방식은 Task 35 격리 정책 결정 후 적용 가능)
  *
  * **보안 (DEVELOPMENT.md §1.1, §1.2)**:
  * - password CharArray 는 finally 블록에서 반드시 wipe (fill ' ')
  * - 로그에 password / DN / externalSubject 미출력
  * - @Profile 미부착 → production 자동 활성
  */
-@Component
+@Service
 class LdapProvider(
     private val configService: LdapProviderConfigService,
     private val externalAccountRepo: ExternalAccountRepository,
+    private val autoProvisionService: AutoProvisionService,
     private val ldapTemplate: LdapTemplate,
     private val clock: Clock = Clock.systemUTC(),
 ) : AuthenticationProvider {
@@ -129,7 +144,14 @@ class LdapProvider(
         }
     }
 
-    /** 인증 성공 처리 — 자동 프로비저닝 + last_login_at 갱신 */
+    /**
+     * 인증 성공 처리 — AutoProvisionService 위임 + last_login_at 갱신.
+     *
+     * AutoProvisionService.provision 이 users + user_external_accounts UPSERT 를
+     * 단일 @Transactional 경계 안에서 처리한다 (EC-17, DATA.md §6).
+     * 첫 로그인(existing=null)이든 재로그인(existing!=null)이든 동일하게 UPSERT 를 통해
+     * email/displayName 을 최신화한다 (기존 id 보존).
+     */
     @Suppress("LongParameterList")
     private fun onSuccess(
         username: String,
@@ -139,20 +161,19 @@ class LdapProvider(
         now: Instant,
         externalSubject: String,
     ): AuthnResult {
-        val account =
-            if (existing == null) {
-                // 첫 로그인 — 자동 프로비저닝 (DATA.md §6 단일 트랜잭션)
-                externalAccountRepo.provisionUser(
-                    providerId = providerId,
-                    externalSubject = externalSubject,
-                    username = "$username@${config.baseDn.removePrefix("dc=").replace(",dc=", ".")}",
-                    displayName = username,
-                    email = null,
-                    groups = emptyList(),
-                )
-            } else {
-                existing
-            }
+        val btsUsername = "$username@${config.baseDn.removePrefix("dc=").replace(",dc=", ".")}"
+
+        // AutoProvisionService 가 users UPSERT + user_external_accounts UPSERT 를 단일 트랜잭션으로 처리
+        val account = autoProvisionService.provision(
+            providerId = providerId,
+            attrs = LdapProvisionAttrs(
+                username = btsUsername,
+                email = null,
+                displayName = username,
+                externalSubject = externalSubject,
+                groups = existing?.groups ?: emptyList(),
+            ),
+        )
 
         externalAccountRepo.updateLastLoginAt(account.id, now)
 

@@ -28,6 +28,7 @@ import java.util.UUID
 class LdapProviderUnitTest {
     private lateinit var configService: LdapProviderConfigService
     private lateinit var externalAccountRepo: ExternalAccountRepository
+    private lateinit var autoProvisionService: AutoProvisionService
     private lateinit var ldapTemplate: LdapTemplate
     private lateinit var clock: Clock
     private lateinit var provider: LdapProvider
@@ -70,9 +71,10 @@ class LdapProviderUnitTest {
     fun setUp() {
         configService = mockk()
         externalAccountRepo = mockk(relaxed = true)
+        autoProvisionService = mockk(relaxed = true)
         ldapTemplate = mockk()
         clock = Clock.fixed(fixedNow, ZoneOffset.UTC)
-        provider = LdapProvider(configService, externalAccountRepo, ldapTemplate, clock)
+        provider = LdapProvider(configService, externalAccountRepo, autoProvisionService, ldapTemplate, clock)
     }
 
     @Test
@@ -97,6 +99,7 @@ class LdapProviderUnitTest {
         every {
             externalAccountRepo.findByProviderIdAndExternalSubject(providerId, any())
         } returns sampleAccount
+        every { autoProvisionService.provision(any(), any()) } returns sampleAccount
         every { externalAccountRepo.updateLastLoginAt(accountId, any()) } returns Unit
 
         val result = provider.authenticate(Credential.LdapBind("alice", "Test1234!".toCharArray()))
@@ -114,15 +117,13 @@ class LdapProviderUnitTest {
         every {
             externalAccountRepo.findByProviderIdAndExternalSubject(providerId, any())
         } returns null // 기존 매핑 없음
-        every {
-            externalAccountRepo.provisionUser(any(), any(), any(), any(), any(), any())
-        } returns sampleAccount
+        every { autoProvisionService.provision(any(), any()) } returns sampleAccount
         every { externalAccountRepo.updateLastLoginAt(accountId, any()) } returns Unit
 
         val result = provider.authenticate(Credential.LdapBind("alice", "Test1234!".toCharArray()))
 
         assertThat(result is AuthnResult.Success).isTrue()
-        verify { externalAccountRepo.provisionUser(any(), any(), any(), any(), any(), any()) }
+        verify { autoProvisionService.provision(any(), any()) }
     }
 
     @Test
@@ -187,6 +188,7 @@ class LdapProviderUnitTest {
         every {
             externalAccountRepo.findByProviderIdAndExternalSubject(providerId, any())
         } returns expiredLock
+        every { autoProvisionService.provision(any(), any()) } returns sampleAccount
         every { externalAccountRepo.updateLastLoginAt(accountId, any()) } returns Unit
 
         val result = provider.authenticate(Credential.LdapBind("alice", "Test1234!".toCharArray()))
@@ -210,21 +212,19 @@ class LdapProviderUnitTest {
     }
 
     @Test
-    fun `S-07 그룹 정보 저장 — provisionUser 호출 시 groups 전달`() {
+    fun `S-07 그룹 정보 저장 — autoProvisionService provision 호출 시 attrs 전달`() {
         every { configService.findEnabledLdapConfig() } returns Pair(providerId, sampleConfig)
         every { ldapTemplate.authenticate(any<String>(), any<String>(), any<String>()) } returns true
         every {
             externalAccountRepo.findByProviderIdAndExternalSubject(providerId, any())
         } returns null // 첫 로그인
-        every {
-            externalAccountRepo.provisionUser(any(), any(), any(), any(), any(), any())
-        } returns sampleAccount
+        every { autoProvisionService.provision(any(), any()) } returns sampleAccount
         every { externalAccountRepo.updateLastLoginAt(accountId, any()) } returns Unit
 
         provider.authenticate(Credential.LdapBind("alice", "Test1234!".toCharArray()))
 
-        // groups 파라미터가 전달됐는지 — 정확한 값 대신 호출 여부만 (LdapTemplate mock 한계)
-        verify { externalAccountRepo.provisionUser(any(), any(), any(), any(), any(), any()) }
+        // AutoProvisionService 를 통해 provisioning 됐는지 검증 (Task 15 위임 확인)
+        verify { autoProvisionService.provision(any(), any()) }
     }
 
     @Test
