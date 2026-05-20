@@ -85,7 +85,7 @@ class StoredPasswordCredentialRepositoryTest {
         assertThat(saved.algoVersion).isEqualTo("argon2id-v1")
         assertThat(saved.createdAt).isNotNull()
         // 신규 INSERT 시 created_at == updated_at (오차 허용: 같거나 updated_at >= created_at)
-        assertThat(saved.updatedAt).isGreaterThanOrEqualTo(saved.createdAt)
+        assertThat(saved.updatedAt).isAfterOrEqualTo(saved.createdAt)
     }
 
     @Test
@@ -116,7 +116,7 @@ class StoredPasswordCredentialRepositoryTest {
         // created_at 보존 — 첫 번째 저장과 동일해야 함
         assertThat(second.createdAt).isEqualTo(first.createdAt)
         // updated_at 갱신 — 두 번째가 같거나 이후
-        assertThat(second.updatedAt).isGreaterThanOrEqualTo(first.updatedAt)
+        assertThat(second.updatedAt).isAfterOrEqualTo(first.updatedAt)
     }
 
     @Test
