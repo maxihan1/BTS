@@ -29,9 +29,27 @@ class ProviderRegistry(
 
     /**
      * 주어진 [credential]을 처리할 수 있는 공급자를 반환.
-     * [AuthenticationProvider.supports]가 true인 첫 번째 공급자를 반환하고, 없으면 null.
+     *
+     * [AuthenticationProvider.priority] 내림차순으로 정렬 후 [AuthenticationProvider.supports]가
+     * true인 첫 번째 공급자를 반환한다. 없으면 null.
+     *
+     * 동률 발생 시 [ProviderType.ordinal] 오름차순으로 최종 순서를 결정한다 (EC-25).
+     * 정렬은 호출마다 수행되므로 런타임 priority override가 즉시 반영된다.
+     *
+     * Priority 기본값 (SDD §19.2, FR-AU-09-28):
+     * | Provider | priority |
+     * |---|---|
+     * | LDAP   | 80 |
+     * | LOCAL  | 70 |
+     * | PAT    | 60 |
+     * | OIDC   | 50 |
+     * | SAML   | 40 |
+     * | OAUTH  | 30 |
      */
-    fun findFor(credential: Credential): AuthenticationProvider? = providers.firstOrNull { it.supports(credential) }
+    fun findFor(credential: Credential): AuthenticationProvider? =
+        providers
+            .sortedWith(compareByDescending<AuthenticationProvider> { it.priority }.thenBy { it.type.ordinal })
+            .firstOrNull { it.supports(credential) }
 
     /**
      * 등록된 모든 공급자의 불변 복사본을 반환.
