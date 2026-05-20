@@ -20,7 +20,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
  * 3. allowed methods — GET / POST / PUT / DELETE / OPTIONS
  * 4. allowed headers — Authorization / X-XSRF-TOKEN / Content-Type
  * 5. allowCredentials — true (Cookie 전달 필요)
- * 6. /api/v1/** 경로에만 CORS 설정이 등록됨
+ * 6. /api/v1/GLOB 경로에만 CORS 설정이 등록됨
  */
 class CorsConfigTest {
 
