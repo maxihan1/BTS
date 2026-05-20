@@ -2,11 +2,20 @@
 
 package com.atlas.bts.identity.architecture
 
+import com.tngtech.archunit.base.DescribedPredicate
+import com.tngtech.archunit.core.domain.JavaMethod
+import com.tngtech.archunit.core.domain.properties.CanBeAnnotated
 import com.tngtech.archunit.core.importer.ImportOption
 import com.tngtech.archunit.junit.AnalyzeClasses
 import com.tngtech.archunit.junit.ArchTest
 import com.tngtech.archunit.lang.ArchRule
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes
+
+private const val TRANSACTIONAL = "org.springframework.transaction.annotation.Transactional"
+private const val SERVICE = "org.springframework.stereotype.Service"
+private const val COMPONENT = "org.springframework.stereotype.Component"
+private const val REPOSITORY = "org.springframework.stereotype.Repository"
+private const val CONFIGURATION = "org.springframework.context.annotation.Configuration"
 
 /**
  * PR #6 learning #1 회귀 가드 — @Transactional 메서드 보유 클래스 Spring 빈 등록 강제.
@@ -34,15 +43,23 @@ import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes
 )
 @Suppress("PropertyName", "VariableNaming")
 class TransactionalServiceArchTest {
+    /**
+     * `CanBeAnnotated.Predicates.annotatedWith(String)` 은 `DescribedPredicate<CanBeAnnotated>` 를 반환한다.
+     * `JavaMethod`는 `CanBeAnnotated`의 하위 타입이므로 `.forSubtype()` 으로 `DescribedPredicate<JavaMethod>`로 좁힌다.
+     * `containAnyMethodsThat(DescribedPredicate<JavaMethod>)` 에 타입 안전하게 전달된다.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private val isTransactionalMethod: DescribedPredicate<JavaMethod> =
+        CanBeAnnotated.Predicates.annotatedWith(TRANSACTIONAL) as DescribedPredicate<JavaMethod>
+
     @ArchTest
     val `classes with Transactional methods must be Spring beans`: ArchRule =
         classes()
-            .that().containAnyMethodsThat()
-            .areAnnotatedWith("org.springframework.transaction.annotation.Transactional")
-            .should().beAnnotatedWith("org.springframework.stereotype.Service")
-            .orShould().beAnnotatedWith("org.springframework.stereotype.Component")
-            .orShould().beAnnotatedWith("org.springframework.stereotype.Repository")
-            .orShould().beAnnotatedWith("org.springframework.context.annotation.Configuration")
+            .that().containAnyMethodsThat(isTransactionalMethod)
+            .should().beAnnotatedWith(SERVICE)
+            .orShould().beAnnotatedWith(COMPONENT)
+            .orShould().beAnnotatedWith(REPOSITORY)
+            .orShould().beAnnotatedWith(CONFIGURATION)
             .because(
                 "PR #6 learning #1: @Transactional은 Spring AOP 프록시를 통해 동작한다. " +
                     "Spring 빈으로 등록되지 않은 클래스는 프록시가 생성되지 않아 @Transactional이 무효화된다. " +
