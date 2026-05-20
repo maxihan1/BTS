@@ -110,7 +110,8 @@ class PersonalAccessTokenServiceTest {
 
     @Test
     fun `verify 실패 — 만료된 PAT → Result failure`() {
-        val expiredPat = buildActivePat(expiresAt = fixedNow.minusSeconds(1))
+        // expiresAt 을 충분히 과거로 설정하여 시스템 시각과 무관하게 만료 상태 보장
+        val expiredPat = buildActivePat(expiresAt = Instant.parse("2020-01-01T00:00:00Z"))
         every { patRepository.findByTokenHash(knownHash) } returns expiredPat
 
         val result = service.verify(rawTokenValid)
