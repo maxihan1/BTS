@@ -33,13 +33,34 @@ identity-access BC 정식 진입의 첫 PR. SDD 04장 (인증/계정) §1 + 마�
 - **선행 PoC ADR** (PR #2, 2026-05-20). argon2id-parameters / csrf-cookie-mode / keycloak-image-selection / testcontainers-docker-desktop-config — 변경 없음, 본 PR 영향 없음
 - **grill-with-docs 우회 사유**. FR-AU-01은 인터페이스 + Registry라는 단일 책임. 도메인 모델 면적 작음. 1인 부담 + Auto mode 합리적 판단으로 직접 분석 (PoC 패턴 일관성)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-_TBD_
+전체 스펙. [docs/specs/2026-05-20-identity-authn-provider.md](../specs/2026-05-20-identity-authn-provider.md)
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+핵심 3줄.
+- **순수 SPI 도입** — `AuthenticationProvider` 인터페이스 + `ProviderRegistry` + VO 3종 (`Principal`/`Credential`/`AuthnResult`) + Spring 어댑터 1개. 외부 REST 변경 0건
+- **명명 충돌 해소** — BTS 도메인 SPI vs Spring Security 동명 인터페이스 분리. ArchUnit 룰로 경계 강제
+- **CONCERN-NEW-2 처리** — PoC #2의 `issuer-uri` 하드코딩을 `${BTS_KEYCLOAK_ISSUER_URI:...}` 환경변수로 외부화
 
-_TBD_
+명시적 비-스코프. LDAP/SAML/OIDC Provider 실제 구현 (FR-AU-02~04 별도 PR), `authn_providers` 테이블 (LDAP PR에서 도입), SecurityFilterChain 통합 (FR-AU-09 PR에서).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration, gap 7건 식별 모두 spec 본문에서 닫힘 — iteration 불필요).
+
+### Phase B 직접 수행 — 발견된 gap
+
+1. **`Credential.UsernamePassword.password: CharArray` equals/hashCode 우려** — Argon2.verify로 비교하므로 data class equals 불사용. 정상.
+2. **가짜 Provider 등록 프로필** — `@TestConfiguration` + `@Profile("test")` 보다 **`@Profile("test-spi")` 별도 프로필**이 PoC #2 OIDC 통합 테스트와 충돌 방지에 안전. spec FR-1 보강 — plan task에서 명시.
+3. **ArchUnit 신규 도입** — `libs.versions.toml` 등록 task 분리. plan T1 (인프라).
+4. **`SpringSecurityProviderAdapter` 의 Spring DI 등록 정책** — `@Component` 자동 등록은 SecurityFilterChain 충돌 위험. `@Bean` 명시 등록만 + 본 PR에서는 FilterChain 미등록 (단위 테스트만). spec FR-3 명시.
+5. **`MfaChallenge.NOT_IMPLEMENTED_YET`** placeholder enum — 향후 sealed로 변경 시 ABI 깨짐, BTS는 내부 backend라 무관. 정상.
+6. **CONCERN-NEW-2 + PoC #2 회귀** — `@DynamicPropertySource` > env > yaml 우선순위로 PoC #2 `KeycloakIntegrationTest` 영향 없음 확인. spec NFR 명시.
+7. **`Principal.toString` PII 마스킹** — Kotlin data class toString override. spec §7 §1.2 명시.
+
+### iteration 결정
+
+gap 모두 spec 본문 내에서 닫힘 + plan task 분리로 위임 가능. office-hours/brainstorming 대화형 우회 사유. PoC 패턴 일관성 (1인 부담 + 도메인/스펙 결정이 비교적 명확). `/bts-plan` 진입.
 
 ## Plan (← /bts-plan 채움)
 
