@@ -43,8 +43,9 @@ playwright-report/
 test-results/
 .nyc_output/
 
-# Atlas 워크플로우 산출물
+# BTS 워크플로우 산출물
 .worktrees/
+.bts-cache/
 .atlas-cache/
 .claude/settings.local.json
 
