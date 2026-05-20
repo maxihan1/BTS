@@ -54,13 +54,26 @@ PoC #2 가 빠뜨린 비밀번호 영속 저장 계층을 정식 도입.
 - 영향 받는 ADR. `argon2id-parameters` (재사용), `authentication-provider-spi-naming` (정정), `user-external-accounts-schema` (패턴 재사용)
 - 본 PR 신규 ADR. 1건 예상 — `stored-password-credential-schema`
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-(아직 비어 있음 — `/bts-spec` 진입 시 office-hours 가 채울 영역)
+전체 스펙. [docs/specs/2026-05-20-identity-stored-password-credential.md](../specs/2026-05-20-identity-stored-password-credential.md)
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+핵심 5줄.
+- V003 마이그레이션. `local_credentials` 테이블 (user_id PK FK → users.id CASCADE, password_hash TEXT, algo_version, timestamps)
+- `StoredPasswordCredential` JPA 엔티티 + Repository (UPSERT / find / delete)
+- `LocalCredentialService` 신규 3 메서드 — `store` / `verifyForUser` / `rotate`. timing attack 방어 dummy hash + 평문 wipe
+- ADR 1건 신규 (`stored-password-credential-schema`) + 1건 정정 (`authentication-provider-spi-naming` phantom 단락)
+- 회귀 검증. PoC OIDC + LDAP Provider 흐름 본 테이블 미사용 확인
 
-(아직 비어 있음)
+## Brainstorming Check
+
+✅ 통과 (1회 iteration, 직접 분석).
+
+발견된 gap 2건 스펙 본문 보강.
+- timing attack 방어용 dummy hash 상수 명시
+- password / hash / userId 로그 출력 금지 NFR 추가
+
+수용 안 한 검토 항목 3건 (algo_version 컬럼 redundancy / rotate race 정밀 방어 / username 변경 시나리오) — 사유 spec 본문 R1~R3 참조.
 
 ## Plan (← /bts-plan 채움)
 
