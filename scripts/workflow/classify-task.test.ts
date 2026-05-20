@@ -165,3 +165,74 @@ describe('classify — 메타 필드', () => {
     assert.ok(r.cached_at.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/));
   });
 });
+
+// ─────────────────────────────────────────────────────────
+// 회귀 방지 (2026-05-20 분류기 버그)
+// ─────────────────────────────────────────────────────────
+
+describe('classify — auth 키워드 보강 (회귀 방지)', () => {
+  test('AuthN / Spring Security / Argon2 / Keycloak → auth', () => {
+    assert.equal(classify({ title: 'AuthN Provider 구조 추가' }).type, 'auth');
+    assert.equal(classify({ title: 'Spring Security 필터 체인 설정' }).type, 'auth');
+    assert.equal(classify({ title: 'Argon2 비밀번호 해싱 적용' }).type, 'auth');
+    assert.equal(classify({ title: 'Keycloak 컨테이너 도입' }).type, 'auth');
+  });
+
+  test('Passkey / MFA → auth', () => {
+    assert.equal(classify({ title: 'Passkey 등록 흐름' }).type, 'auth');
+    assert.equal(classify({ title: 'MFA 강제 정책 추가' }).type, 'auth');
+  });
+
+  test('authentication / authn 영문 약어 → auth', () => {
+    assert.equal(classify({ title: 'authentication provider plug 구조' }).type, 'auth');
+    assert.equal(classify({ title: 'authn 인터페이스 설계' }).type, 'auth');
+  });
+});
+
+describe('classify — primary_bc 보강 (회귀 방지)', () => {
+  test('BC 이름이 입력에 직접 포함되면 해당 BC 매핑', () => {
+    assert.equal(
+      classify({ title: 'identity-access §1 AuthN PoC 시작' }).primary_bc,
+      'identity-access'
+    );
+    assert.equal(
+      classify({ title: 'agile-planning 보드 개선' }).primary_bc,
+      'agile-planning'
+    );
+    assert.equal(
+      classify({ title: 'slack-integration BC 진입' }).primary_bc,
+      'slack-integration'
+    );
+  });
+
+  test('Keycloak / Argon2 / authn 키워드 → identity-access', () => {
+    assert.equal(classify({ title: 'Keycloak realm import' }).primary_bc, 'identity-access');
+    assert.equal(
+      classify({ title: 'Argon2 해싱 라이브러리 도입' }).primary_bc,
+      'identity-access'
+    );
+    assert.equal(classify({ title: 'authn provider 인터페이스' }).primary_bc, 'identity-access');
+  });
+
+  test('BC 신호 0이면 fallback null (강제 issue-tracking 매핑 금지)', () => {
+    // 어떤 BC 키워드와도 매치 안 되는 입력. issue-tracking으로 떨어지면 잘못.
+    const r = classify({ title: 'Foo Bar 정리' });
+    assert.equal(r.primary_bc, null);
+  });
+});
+
+describe('classify — 원본 회귀 시나리오 (2026-05-20)', () => {
+  test('AuthN PoC 원본 입력 — type/agent/primary_bc 모두 정확', () => {
+    const r = classify({
+      title:
+        'identity-access §1 AuthN PoC 시작 — Spring Boot + Spring Security + Argon2 + Keycloak 컨테이너 (docs/plan/product/identity-access.md §1 기술검증 6항목)',
+    });
+    assert.equal(r.type, 'auth', `type가 ${r.type} (auth 기대)`);
+    assert.equal(r.agent, 'security-engineer', `agent가 ${r.agent} (security-engineer 기대)`);
+    assert.equal(
+      r.primary_bc,
+      'identity-access',
+      `primary_bc가 ${r.primary_bc} (identity-access 기대)`
+    );
+  });
+});
