@@ -9,7 +9,6 @@ import com.atlas.bts.identity.spi.MfaChallenge
 import com.atlas.bts.identity.spi.Principal
 import com.atlas.bts.identity.spi.ProviderRegistry
 import com.atlas.bts.identity.spi.ProviderType
-import com.atlas.bts.identity.spi.fake.FakeLocalProvider
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
@@ -39,11 +38,6 @@ class SpringSecurityProviderAdapterTest {
             displayName = "Alice",
             externalSubject = null,
         )
-        val fakeProvider = FakeLocalProvider()
-        every { registry.findFor(any<Credential>()) } returns fakeProvider
-        every { fakeProvider.authenticate(any()) } returns AuthnResult.Success(principal)
-
-        // FakeLocalProvider.authenticate는 override 안됨 — mockk provider 사용
         val mockProvider = mockk<com.atlas.bts.identity.spi.AuthenticationProvider>()
         every { mockProvider.authenticate(any()) } returns AuthnResult.Success(principal)
         every { registry.findFor(any<Credential>()) } returns mockProvider
