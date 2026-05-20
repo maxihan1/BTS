@@ -75,9 +75,154 @@ PoC #2 가 빠뜨린 비밀번호 영속 저장 계층을 정식 도입.
 
 수용 안 한 검토 항목 3건 (algo_version 컬럼 redundancy / rotate race 정밀 방어 / username 변경 시나리오) — 사유 spec 본문 R1~R3 참조.
 
-## Plan (← /bts-plan 채움)
+## Plan
 
-(아직 비어 있음 — `/bts-plan` 진입 시 writing-plans 가 채울 영역. task 메타 블록 형식 [agent / files / depends-on] 적용 예정)
+### Task 1. V003 마이그레이션 — `local_credentials` 테이블 (TDD)
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/identity-access/src/main/resources/db/migration/V003__local_credentials.sql`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/credential/LocalCredentialsMigrationTest.kt`]
+- depends-on: []
+
+**RED**.
+- 파일. `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/credential/LocalCredentialsMigrationTest.kt`
+- 테스트. Testcontainers Postgres + Flyway 자동 적용 후 `information_schema.columns` 조회로 5 컬럼 (user_id / password_hash / algo_version / created_at / updated_at) 존재 + 타입/NOT NULL/PK/FK CASCADE 검증.
+- 실패 메시지 (예상). `Migration V003 not found` 또는 `relation "local_credentials" does not exist`
+
+**GREEN**.
+- 파일. `V003__local_credentials.sql`
+- spec §5 SQL 그대로 + COMMENT 2건 + algo_version 컬럼
+
+**REFACTOR**. SQL 주석 정리 + Flyway 명명 규칙 확인.
+
+**검증**. `./gradlew :backend:identity-access:test --tests LocalCredentialsMigrationTest`
+
+### Task 2. `StoredPasswordCredential` 데이터 클래스 (TDD)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/credential/StoredPasswordCredential.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/credential/StoredPasswordCredentialTest.kt`]
+- depends-on: []
+
+**RED**.
+- 파일. `StoredPasswordCredentialTest.kt`
+- 테스트 3건. (1) 인스턴스 생성 + 필드 5개 정상 노출, (2) `toString()` 이 `passwordHash=***` 로 마스킹, (3) `equals()`/`hashCode()` 가 userId 기반 (다른 필드 변경 시도 equal)
+- 실패 메시지. `unresolved reference: StoredPasswordCredential`
+
+**GREEN**.
+- 파일. `StoredPasswordCredential.kt`
+- `data class` + custom `toString()` override
+- userId 기반 equals/hashCode = data class default override (userId 만 in equals)
+
+**REFACTOR**. KDoc 추가. SPI `Credential` 과의 구분 인라인 명시.
+
+**검증**. `./gradlew :backend:identity-access:test --tests StoredPasswordCredentialTest`
+
+### Task 3. `Argon2Params.DUMMY_HASH` 상수 (TDD)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/credential/Argon2Params.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/credential/Argon2ParamsTest.kt`]
+- depends-on: []
+
+**RED**.
+- 파일. `Argon2ParamsTest.kt`
+- 테스트 2건. (1) `DUMMY_HASH` 가 `$argon2id$` prefix 로 시작, (2) `Argon2.verify("not-real-password".toCharArray(), DUMMY_HASH) == false` (timing 일정 verify 호출 + false 결과)
+- 실패 메시지. `unresolved reference: DUMMY_HASH`
+
+**GREEN**.
+- 파일. `Argon2Params.kt` (기존, 본 PR 신규 상수 추가)
+- companion `DUMMY_HASH` 선언 — JVM static init 시 `Argon2.hash(빈 비밀번호)` 결과 사전 인코딩 (또는 hardcoded encoded string)
+
+**REFACTOR**. 주석 — "verifyForUser 가 row 없는 경우 timing attack 방어 목적. 사용 시 절대 평문 비교 안 함" 명시.
+
+**검증**. `./gradlew :backend:identity-access:test --tests Argon2ParamsTest`
+
+### Task 4. ADR 정정 — `authentication-provider-spi-naming` phantom 단락 (문서, TDD 미적용)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`docs/decisions/2026-05-20-authentication-provider-spi-naming.md`]
+- depends-on: []
+
+**작업**. 기존 ADR 끝에 "2026-05-20 정정 (PR #6/7 후속)" 단락 추가. 라인 68-73 의 "UserCredential = PoC #2 도입 엔티티" 가설이 phantom 이었음을 명시. 본 PR 이 `StoredPasswordCredential` 이름으로 처음 도입했음을 인용.
+
+**검증**. `grep -n "정정" docs/decisions/2026-05-20-authentication-provider-spi-naming.md` 로 단락 추가 확인.
+
+### Task 5. `StoredPasswordCredentialRepository` (TDD, Testcontainers Postgres)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/credential/StoredPasswordCredentialRepository.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/credential/StoredPasswordCredentialRepositoryTest.kt`]
+- depends-on: [1, 2]
+
+**RED**.
+- 파일. `StoredPasswordCredentialRepositoryTest.kt`
+- Testcontainers Postgres (PR #4 패턴 재사용 — `KeycloakIntegrationBase` 와 별개 Postgres 베이스 또는 동일 컨테이너 공유)
+- 테스트 6건. (1) save 신규 INSERT, (2) save UPSERT (같은 user_id 두 번), (3) findByUserId 존재, (4) findByUserId 없음 → null, (5) deleteByUserId, (6) users CASCADE 삭제 시 자동 정리
+- 실패 메시지. `unresolved reference: StoredPasswordCredentialRepository`
+
+**GREEN**.
+- 파일. `StoredPasswordCredentialRepository.kt`
+- `NamedParameterJdbcTemplate` 기반. PR #4 `ExternalAccountRepository` 패턴 재사용. **본 PR이 INSERT ... RETURNING + getObject(UUID) 패턴 처음 적용** (PR #4 SAVE-2/3 부채 본 Repository 에 선반영, ExternalAccountRepository 자체 refactor 는 별도 chore PR)
+- SQL_UPSERT. `INSERT INTO local_credentials (...) VALUES (...) ON CONFLICT (user_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, algo_version = EXCLUDED.algo_version, updated_at = now() RETURNING *`
+
+**REFACTOR**. SQL 상수 추출 + RowMapper 분리.
+
+**검증**. `./gradlew :backend:identity-access:test --tests StoredPasswordCredentialRepositoryTest`
+
+### Task 6. `LocalCredentialService` 신규 메서드 — `store` / `verifyForUser` / `rotate` (TDD)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/credential/LocalCredentialService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/credential/LocalCredentialServiceTest.kt`]
+- depends-on: [3, 5]
+
+**RED**.
+- 파일. `LocalCredentialServiceTest.kt` (기존, 본 PR 새 테스트 추가)
+- 테스트 9건. store(정상/같은user 갱신) / verifyForUser(정상/실패/row없음 dummy verify timing) / rotate(정상/old 불일치/new = old)
+- Repository mock (mockk) 사용. timing 검증은 ms 비교 안 함 (불안정), dummy verify 호출 횟수만 검증
+- 실패 메시지. `LocalCredentialService 에 store/verifyForUser/rotate 메서드 없음`
+
+**GREEN**.
+- 파일. `LocalCredentialService.kt`
+- 의존성. `StoredPasswordCredentialRepository`, `Argon2Params.DUMMY_HASH`, `Clock`
+- 3 메서드 구현. plain CharArray 는 finally 블록 wipe. 로그는 boolean + ms latency 만 (NFR 로그 정책)
+
+**REFACTOR**. KDoc — Contract 명시 (예외 throw 안 함, dummy verify 보장 등). 로그 정책 주석.
+
+**검증**. `./gradlew :backend:identity-access:test --tests LocalCredentialServiceTest`
+
+### Task 7. 신규 ADR — `stored-password-credential-schema` (문서, TDD 미적용)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`docs/decisions/2026-05-20-stored-password-credential-schema.md`]
+- depends-on: [1, 5]
+
+**작업**. V003 스키마 + Repository 구현 결정 사항 ADR.
+
+섹션. 컨텍스트 (phantom 발견 + PoC #2 spec 마저 완성) / 선택지 (테이블명 local_credentials vs user_credentials, algo_version 컬럼 vs prefix-only, UPSERT vs INSERT+UPDATE 분리) / 결정 (local_credentials + algo_version 보존 + UPSERT 단일 SQL) / 영향 (V003 적용 + LocalCredentialService 통합) / 관련 ADR 링크 (`argon2id-parameters` 재사용).
+
+**검증**. ADR 파일 존재 + plan 의 도메인 정리 섹션과 일관.
+
+## Plan 메타
+
+- task 수: 7
+- 예상 시간: task × 4분 = 약 28분 (직렬 기준). 병렬 wave 적용 시 약 16분 (3 wave)
+- TDD 강제: yes (T4 / T7 문서 task 제외)
+- 병렬 dispatch: 본 PR 이 새 도입된 wave 계산 첫 dogfood
+- 추가 검증: ktlint, detekt, Testcontainers Postgres (PR #4 회귀 검증 포함)
+
+### Wave 계산 (bts-impl 이 자동 계산하나 미리 명시)
+
+- **Wave 1** = [T1, T2, T3, T4] — 의존성 없음, 파일 겹침 없음. **4 task 병렬 dispatch**
+  - db-engineer (T1) + security-engineer 3건 (T2, T3, T4) 동시 발행
+- **Wave 2** = [T5] — T1 (테이블) + T2 (엔티티) 완료 후
+- **Wave 3** = [T6, T7] — T5 (Repository) 완료 후. T6 추가로 T3 필요 (wave 1 졸업), T7 추가로 T1 필요 (wave 1 졸업)
+  - T6 + T7 병렬 dispatch (security-engineer 2건 동시)
+
+직렬 7 단계 → 3 wave. 약 57% 시간 단축 예상.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
 
