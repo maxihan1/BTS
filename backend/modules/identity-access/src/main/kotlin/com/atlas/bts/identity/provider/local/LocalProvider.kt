@@ -19,11 +19,16 @@ import java.util.UUID
 /**
  * Local username/password 인증 공급자 (FR-AU-09 Task 13 / SDD §19.2).
  *
+ * ## supports 메서드 (SDD §19.2)
+ * [Credential.UsernamePassword] 타입만 처리. [Credential.Pat], [Credential.LdapBind] 는 false 반환.
+ *
  * ## 인증 흐름
  * 1. [UserRepository.findByUsername] 으로 사용자 조회
- * 2. user 미존재 시: [LocalCredentialService.verifyForUser] 를 dummy UUID 로 호출하여 응답 시간 일정화 후 Failure 반환
+ * 2. user 미존재 시: [LocalCredentialService.verifyForUser] 를 [DUMMY_USER_ID] 로 호출하여
+ *    응답 시간 일정화 후 Failure 반환
  *    — EC-02 timing attack 방어: user 존재 여부와 무관하게 Argon2 연산 수행
- * 3. user 존재 시: [LocalCredentialService.verifyForUser] 로 패스워드 검증
+ *    ([LocalCredentialService] 내부에서 [com.atlas.bts.identity.credential.Argon2Params.DUMMY_HASH] 사용)
+ * 3. user 존재 시: [LocalCredentialService.verifyForUser] 로 패스워드 검증 (EC-01)
  * 4. 검증 성공 → [AuthnResult.Success], 실패 → [AuthnResult.Failure]
  *
  * ## Priority 표 (SDD §19.2, FR-AU-09-28)
