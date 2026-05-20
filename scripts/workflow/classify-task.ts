@@ -21,10 +21,23 @@ const AUTH_KEYWORDS = [
   'csrf', 'cors',
   'session', '세션',
   'pat', 'personal access token', '토큰', // 광의 토큰은 다른 영역에도 있어 weak
+  // 보강 (2026-05-20 회귀 방지)
+  'authn', 'authentication',
+  'argon2', 'keycloak',
+  'spring security',
+  'mfa', 'passkey',
+  '비밀번호', 'password',
 ];
 
-// auth로 강하게 끌어당기는 키워드 (단독으로 auth 확정)
-const AUTH_STRONG = ['2fa', 'totp', 'saml', 'oauth', 'oidc', 'ldap', 'csrf', 'webauthn'];
+// auth로 강하게 끌어당기는 키워드 (단독으로 auth 확정. 보안 영역 fast-track 우선)
+const AUTH_STRONG = [
+  '2fa', 'totp', 'saml', 'oauth', 'oidc', 'ldap', 'csrf', 'webauthn',
+  // 보강 (2026-05-20). 이 단어들도 단독으로 보안 작업 신호 확정
+  'authn', 'authentication',
+  'argon2', 'keycloak',
+  'spring security',
+  'mfa', 'passkey',
+];
 
 const MIGRATION_KEYWORDS = [
   'flyway', '마이그레이션', 'migration',
@@ -91,24 +104,34 @@ const FEATURE_TRIGGERS = [
 // BC 키워드
 // ─────────────────────────────────────────────────────────
 
+// 각 BC는 자기 이름 자체를 키워드로 가진다 (입력에 "identity-access §1" 처럼 직접 명시되는 경우).
 const BC_KEYWORDS: Record<BoundedContext, string[]> = {
   'identity-access': [
+    'identity-access', 'identity access',
     '인증', '로그인', '권한', '계정',
     '2fa', 'totp', 'saml', 'oauth', 'oidc', 'ldap', 'csrf',
     'user', 'session',
+    // 보강
+    'authn', 'authentication',
+    'argon2', 'keycloak',
+    'spring security',
+    'mfa', 'passkey',
   ],
   'issue-tracking': [
+    'issue-tracking', 'issue tracking',
     '이슈', 'issue', '코멘트', 'comment', '첨부', 'attachment',
     '라벨', 'label', '컴포넌트', '버전', 'version',
     '워처', 'watcher',
   ],
   'project-workflow': [
+    'project-workflow', 'project workflow',
     '워크플로우', 'workflow',
     '전이', 'transition', 'fsm',
     '상태', 'status',
     '게이트', 'gate',
   ],
   'agile-planning': [
+    'agile-planning', 'agile planning', '애자일',
     '스프린트', 'sprint',
     '백로그', 'backlog',
     '보드', 'board', '칸반', 'kanban',
@@ -116,18 +139,21 @@ const BC_KEYWORDS: Record<BoundedContext, string[]> = {
     '번다운', 'burndown',
   ],
   'automation': [
-    '자동화', 'automation',
+    'automation',
+    '자동화',
     '룰', 'rule',
     '트리거', 'trigger',
     '액션', 'action',
     'aql', '검색', 'search',
   ],
   'notification': [
-    '알림', 'notification', 'notify',
+    'notification', 'notify',
+    '알림',
     '멘션', 'mention',
     '이메일', 'email',
   ],
   'slack-integration': [
+    'slack-integration', 'slack integration',
     'slack', '슬랙',
     'unfurl',
     'slash',
@@ -258,8 +284,9 @@ const detectBoundedContext = (raw: string, type: TaskType): BoundedContext | nul
   scores.sort((a, b) => b[1] - a[1]);
   const top = scores[0];
   if (!top || top[1] === 0) {
-    // 키워드 못 찾음 → auth면 identity-access, 그 외는 issue-tracking 기본
-    return type === 'auth' ? 'identity-access' : 'issue-tracking';
+    // 키워드 못 찾음 → auth는 identity-access 특수 fallback (보안 영역은 BC 신호 약해도 식별 필요).
+    // 그 외 타입은 강제 매핑 금지 (null 반환) — 약한 신호로 잘못된 BC에 떨어지는 amplification 방지.
+    return type === 'auth' ? 'identity-access' : null;
   }
   return top[0];
 };
