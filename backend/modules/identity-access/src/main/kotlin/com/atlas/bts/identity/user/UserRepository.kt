@@ -112,6 +112,12 @@ class JdbcUserRepository(
         displayName: String,
     ): User = upsert(username, email, displayName)
 
+    /**
+     * 마지막 로그인 시각으로 users.updated_at 을 갱신한다 (FR-AU-09 §29).
+     *
+     * 존재하지 않는 id 는 조용히 무시한다 (0 행 영향 — 예외 없음).
+     * 호출 측에서 id 검증이 필요한 경우 [findById] 로 선조회한다.
+     */
     override fun updateLastLogin(id: UUID) {
         jdbc.update(
             SQL_UPDATE_LAST_LOGIN,
@@ -119,6 +125,12 @@ class JdbcUserRepository(
         )
     }
 
+    /**
+     * users UPSERT 공통 로직.
+     *
+     * UUID.randomUUID() 로 신규 id 를 미리 생성하지만, ON CONFLICT 시 DB 는 기존 id 를 보존한다.
+     * RETURNING 절로 DB 반영 상태 (id / 타임스탬프 포함) 를 그대로 반환한다.
+     */
     private fun upsert(
         username: String,
         email: String?,
@@ -167,6 +179,10 @@ class JdbcUserRepository(
             RETURNING id, username, email, display_name, created_at, updated_at
         """
 
+        /**
+         * 마지막 로그인 시각 갱신 — updated_at 컬럼만 갱신한다.
+         * 향후 last_login_at 전용 컬럼 추가 시 이 SQL 과 함께 마이그레이션 필요.
+         */
         const val SQL_UPDATE_LAST_LOGIN = """
             UPDATE users
             SET updated_at = :now
