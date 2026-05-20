@@ -255,7 +255,9 @@ class ExternalAccountRepositoryTest {
 
         // then: id 가 UUID 타입이고 조회 가능해야 함
         assertThat(account.id).isInstanceOf(UUID::class.java)
-        assertThat(repo.findByProviderIdAndExternalSubject(providerId, "uid=alice,ou=people,dc=bts,dc=local")).isNotNull()
+        val externalSubject = "uid=alice,ou=people,dc=bts,dc=local"
+        assertThat(repo.findByProviderIdAndExternalSubject(providerId, externalSubject))
+            .isNotNull()
     }
 
     @Test
