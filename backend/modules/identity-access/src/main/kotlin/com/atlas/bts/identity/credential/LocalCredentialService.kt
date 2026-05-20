@@ -5,18 +5,6 @@ package com.atlas.bts.identity.credential
 import de.mkammerer.argon2.Argon2Factory
 
 /**
- * Argon2id 파라미터 상수.
- *
- * 출처: OWASP Password Storage Cheat Sheet 2024
- * https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
- */
-object Argon2Params {
-    const val MEMORY_KB = 65536
-    const val ITERATIONS = 3
-    const val PARALLELISM = 4
-}
-
-/**
  * 로컬 인증 패스워드 해싱/검증 서비스.
  *
  * - 해싱: Argon2id, memory=65536KB, iterations=3, parallelism=4
