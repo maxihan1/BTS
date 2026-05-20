@@ -66,24 +66,27 @@ gap 모두 spec 본문 내에서 닫힘 + plan task 분리로 위임 가능. off
 
 직접 분해 (`superpowers:writing-plans` 대화형 우회 — PoC 패턴 일관성 + 1인 부담 + spec 결정 명확). spec `docs/specs/2026-05-20-identity-authn-provider.md` 의 FR-1~FR-5 + §6 엣지케이스 + §8 완료기준을 6 task 로 분해.
 
-### Task 1. 의존성 카탈로그 — ArchUnit 추가 (인프라, TDD 미적용)
+### Task 1. ArchUnit 의존성 추가 (인프라, TDD 미적용)
 
-`learnings.md` 함정 #3 (Claude 환각) 적용. ArchUnit 1.3.0 정확성 확인 — `com.tngtech.archunit:archunit-junit5:1.3.0` 은 2024-04 릴리스 (Maven Central 확인 가능). 본 task 진입 시 Maxi가 직접 확인 권장.
+`learnings.md` 함정 #3 (Claude 환각) 적용. ArchUnit `com.tngtech.archunit:archunit-junit5:1.3.0` 정확성 — Maven Central 확인 (2024년 릴리스). impl 진입 시 1회 직접 확인 권장.
+
+**[impl 단계 drift 정리]**. plan 작성 시 가정 (libs.versions.toml 사용) 과 실측 (PoC #2가 build.gradle.kts 에 직접 명시) 불일치. **plan 작성 시점 가정이 잘못됨, 실측에 맞춰 단순화**.
 
 **파일**.
-- `backend/gradle/libs.versions.toml` — `[versions]` `archunit = "1.3.0"`, `[libraries]` `archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }`
-- `backend/modules/identity-access/build.gradle.kts` — `testImplementation(libs.archunit.junit5)` 추가
+- `backend/modules/identity-access/build.gradle.kts` — `testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")` 1줄 추가
 
 **검증**.
 ```bash
 ./gradlew :modules:identity-access:dependencies --configuration testRuntimeClasspath | grep archunit
 ```
-ArchUnit jar 1개 + transitive (slf4j-api 등) 출력 확인. 커밋 prefix `chore(deps):`.
+ArchUnit jar + transitive 출력 확인. 커밋 prefix `chore(deps):`.
+
+**향후 노트**. PoC #2 의 의존성을 `libs.versions.toml` 로 모으는 리팩토링은 별도 PR (의존성 카탈로그 일괄 도입). 본 PR 스코프 외.
 
 ### Task 2. SPI VO 정의 — Principal / Credential / AuthnResult / ProviderType (TDD)
 
 **RED**.
-- 파일. `backend/modules/identity-access/src/test/kotlin/kr/co/bts/identity/spi/CredentialTest.kt`, `AuthnResultTest.kt`, `PrincipalTest.kt`
+- 파일. `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/spi/CredentialTest.kt`, `AuthnResultTest.kt`, `PrincipalTest.kt`
 - 테스트.
   ```kotlin
   // CredentialTest
@@ -99,23 +102,23 @@ ArchUnit jar 1개 + transitive (slf4j-api 등) 출력 확인. 커밋 prefix `cho
 - 실패 (예상). 클래스/sealed 변종 없음
 
 **GREEN**.
-- `kr/co/bts/identity/spi/Principal.kt` — data class with custom `toString` (DEVELOPMENT.md §1.2)
-- `kr/co/bts/identity/spi/Credential.kt` — `sealed interface` + `UsernamePassword(username, password: CharArray)`, `Pat(token: String)`
-- `kr/co/bts/identity/spi/AuthnResult.kt` — `sealed interface` + 3 branches
-- `kr/co/bts/identity/spi/ProviderType.kt` — `enum class { LOCAL, LDAP, SAML, OIDC, PAT }`
-- `kr/co/bts/identity/spi/FailureReason.kt`, `MfaChallenge.kt` — placeholder enum (`NOT_IMPLEMENTED_YET`)
+- `com/atlas/bts/identity/spi/Principal.kt` — data class with custom `toString` (DEVELOPMENT.md §1.2)
+- `com/atlas/bts/identity/spi/Credential.kt` — `sealed interface` + `UsernamePassword(username, password: CharArray)`, `Pat(token: String)`
+- `com/atlas/bts/identity/spi/AuthnResult.kt` — `sealed interface` + 3 branches
+- `com/atlas/bts/identity/spi/ProviderType.kt` — `enum class { LOCAL, LDAP, SAML, OIDC, PAT }`
+- `com/atlas/bts/identity/spi/FailureReason.kt`, `MfaChallenge.kt` — placeholder enum (`NOT_IMPLEMENTED_YET`)
 - 각 파일 한글 KDoc 1줄 헤더 (CLAUDE.md §6)
 
 **REFACTOR**.
 - `Credential.UsernamePassword.password: CharArray` — `equals/hashCode` override (CharArray reference equality 명시). KDoc 에 "Argon2.wipeArray 호출 contract" 명시
 - `Principal.toString` — `userId` last-8 + `displayName` + `providerType` + `externalSubject` masked (`<masked>`)
 
-**검증**. `./gradlew :modules:identity-access:test --tests 'kr.co.bts.identity.spi.*Test'`
+**검증**. `./gradlew :modules:identity-access:test --tests 'com.atlas.bts.identity.spi.*Test'`
 
 ### Task 3. AuthenticationProvider 인터페이스 + ProviderRegistry (TDD)
 
 **RED**.
-- 파일. `src/test/kotlin/kr/co/bts/identity/spi/ProviderRegistryTest.kt`
+- 파일. `src/test/kotlin/com/atlas/bts/identity/spi/ProviderRegistryTest.kt`
 - 테스트.
   ```kotlin
   @Test fun `registry with no providers returns null for findByType`()
@@ -124,26 +127,26 @@ ArchUnit jar 1개 + transitive (slf4j-api 등) 출력 확인. 커밋 prefix `cho
   @Test fun `registry returns first matching provider for credential`()
   @Test fun `registry all() returns immutable copy`()
   ```
-- 가짜 Provider 2개. `src/test/kotlin/kr/co/bts/identity/spi/fake/FakeLocalProvider.kt`, `FakePatProvider.kt` — `@Profile("test-spi")` (Brainstorming gap #2 적용)
+- 가짜 Provider 2개. `src/test/kotlin/com/atlas/bts/identity/spi/fake/FakeLocalProvider.kt`, `FakePatProvider.kt` — `@Profile("test-spi")` (Brainstorming gap #2 적용)
 - 실패 (예상). 인터페이스/Registry 미존재
 
 **GREEN**.
-- `kr/co/bts/identity/spi/AuthenticationProvider.kt` — `interface AuthenticationProvider { val type: ProviderType; fun supports(credential: Credential): Boolean; fun authenticate(credential: Credential): AuthnResult }`
-- `kr/co/bts/identity/spi/ProviderRegistry.kt` — `@Component class ProviderRegistry(private val providers: List<AuthenticationProvider>)` + 3 함수 (`findByType`, `findFor`, `all`)
+- `com/atlas/bts/identity/spi/AuthenticationProvider.kt` — `interface AuthenticationProvider { val type: ProviderType; fun supports(credential: Credential): Boolean; fun authenticate(credential: Credential): AuthnResult }`
+- `com/atlas/bts/identity/spi/ProviderRegistry.kt` — `@Component class ProviderRegistry(private val providers: List<AuthenticationProvider>)` + 3 함수 (`findByType`, `findFor`, `all`)
 
 **REFACTOR**.
 - `findFor` 가 `supports` 우선 검사 후 `type` 일치 확인 (두 단계 매칭 명시)
 - `all()` 은 `providers.toList()` 로 immutable copy 반환
 - KDoc — "Spring 부팅 시 모든 AuthenticationProvider Bean 자동 수집" 명시
 
-**검증**. `./gradlew :modules:identity-access:test --tests 'kr.co.bts.identity.spi.ProviderRegistryTest'`
+**검증**. `./gradlew :modules:identity-access:test --tests 'com.atlas.bts.identity.spi.ProviderRegistryTest'`
 
 ### Task 4. SpringSecurityProviderAdapter — 단위 테스트만 (TDD)
 
 본 PR 은 FilterChain 미등록 (spec FR-3 명시). 어댑터 클래스 정의 + 단위 테스트만.
 
 **RED**.
-- 파일. `src/test/kotlin/kr/co/bts/identity/adapter/spring/SpringSecurityProviderAdapterTest.kt`
+- 파일. `src/test/kotlin/com/atlas/bts/identity/adapter/spring/SpringSecurityProviderAdapterTest.kt`
 - 테스트.
   ```kotlin
   @Test fun `adapter delegates to ProviderRegistry`()
@@ -155,22 +158,22 @@ ArchUnit jar 1개 + transitive (slf4j-api 등) 출력 확인. 커밋 prefix `cho
 - 실패 (예상). 어댑터 미존재
 
 **GREEN**.
-- `kr/co/bts/identity/adapter/spring/SpringSecurityProviderAdapter.kt` — Spring `AuthenticationProvider` 구현. `@Component` 없음 (수동 `@Bean` 등록 강제, brainstorming gap #4 적용)
+- `com/atlas/bts/identity/adapter/spring/SpringSecurityProviderAdapter.kt` — Spring `AuthenticationProvider` 구현. `@Component` 없음 (수동 `@Bean` 등록 강제, brainstorming gap #4 적용)
 - 변환 로직. `UsernamePasswordAuthenticationToken` → `Credential.UsernamePassword` ; `Credential.UsernamePassword` Argon2.wipeArray 호출은 본 어댑터 책임 외 (Provider 책임)
 
 **REFACTOR**.
 - 변환 함수 분리. `private fun Authentication.toBtsCredential(): Credential`, `private fun AuthnResult.toSpringAuthentication(original: Authentication): Authentication`
 - KDoc — "본 PR 은 FilterChain 미등록. FR-AU-09 PR 에서 SecurityConfig 에 명시 등록 예정" 명시
 
-**검증**. `./gradlew :modules:identity-access:test --tests 'kr.co.bts.identity.adapter.spring.SpringSecurityProviderAdapterTest'`
+**검증**. `./gradlew :modules:identity-access:test --tests 'com.atlas.bts.identity.adapter.spring.SpringSecurityProviderAdapterTest'`
 
 ### Task 5. ArchUnit SpiBoundary 룰 (TDD)
 
 **RED**.
-- 파일. `src/test/kotlin/kr/co/bts/identity/architecture/SpiBoundaryArchTest.kt`
+- 파일. `src/test/kotlin/com/atlas/bts/identity/architecture/SpiBoundaryArchTest.kt`
 - 테스트 2개.
   ```kotlin
-  @AnalyzeClasses(packages = ["kr.co.bts.identity"])
+  @AnalyzeClasses(packages = ["com.atlas.bts.identity"])
   class SpiBoundaryArchTest {
     @ArchTest
     val `spi package must not import Spring Framework` = noClasses()
@@ -193,13 +196,13 @@ ArchUnit jar 1개 + transitive (slf4j-api 등) 출력 확인. 커밋 prefix `cho
 **REFACTOR**.
 - `..spi..` 의 Spring `@Component` allow-list 정확화. `org.springframework.stereotype..`, `org.springframework.context.annotation..` 만 허용
 
-**검증**. `./gradlew :modules:identity-access:test --tests 'kr.co.bts.identity.architecture.SpiBoundaryArchTest'`
+**검증**. `./gradlew :modules:identity-access:test --tests 'com.atlas.bts.identity.architecture.SpiBoundaryArchTest'`
 
 ### Task 6. CONCERN-NEW-2 + bootJar fake 제외 검증 (TDD)
 
 **RED**.
-- 파일 1. `src/test/kotlin/kr/co/bts/identity/config/IssuerUriEnvOverrideTest.kt` — `@SpringBootTest(properties = ["BTS_KEYCLOAK_ISSUER_URI=https://example/realms/test"])` + ApplicationContext 확인. (Spring 의 `${ENV:default}` syntax 우선순위 검증)
-- 파일 2. `src/test/kotlin/kr/co/bts/identity/build/BootJarTest.kt` — `./gradlew bootJar` 산출물에 `FakeLocalProvider.class`/`FakePatProvider.class` 미포함 확인. 또는 Gradle test 가 아닌 별도 verify 스크립트.
+- 파일 1. `src/test/kotlin/com/atlas/bts/identity/config/IssuerUriEnvOverrideTest.kt` — `@SpringBootTest(properties = ["BTS_KEYCLOAK_ISSUER_URI=https://example/realms/test"])` + ApplicationContext 확인. (Spring 의 `${ENV:default}` syntax 우선순위 검증)
+- 파일 2. `src/test/kotlin/com/atlas/bts/identity/build/BootJarTest.kt` — `./gradlew bootJar` 산출물에 `FakeLocalProvider.class`/`FakePatProvider.class` 미포함 확인. 또는 Gradle test 가 아닌 별도 verify 스크립트.
 
 **파일 2 결정**. Gradle test 통합이 복잡 (bootJar task 의존성 충돌). **별도 verify 스크립트** `scripts/verify/bootjar-no-fakes.sh` 로 분리 + CI 통합은 후속. 본 PR 은 스크립트만 제공 + plan 메타에 명시.
 

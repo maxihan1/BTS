@@ -32,7 +32,7 @@
 ### B. 우리는 도메인 이름 유지 + 패키지 격리 + 어댑터 명시
 
 장점. 마스터플랜/SDD 용어 그대로. 도메인 언어 일관성.
-단점. import 충돌 가능 — `import kr.co.bts.identity.AuthenticationProvider` vs `import org.springframework.security.authentication.AuthenticationProvider`. 코드에서 둘 다 쓸 일은 어댑터 클래스 안에만 존재하므로 영향 제한.
+단점. import 충돌 가능 — `import com.atlas.bts.identity.AuthenticationProvider` vs `import org.springframework.security.authentication.AuthenticationProvider`. 코드에서 둘 다 쓸 일은 어댑터 클래스 안에만 존재하므로 영향 제한.
 
 ## 결정
 
@@ -40,10 +40,10 @@
 
 ### 구체 결정
 
-1. **도메인 SPI 위치** = `backend/modules/identity-access/src/main/kotlin/kr/co/bts/identity/spi/AuthenticationProvider.kt`
-2. **Spring 어댑터** = `backend/modules/identity-access/src/main/kotlin/kr/co/bts/identity/adapter/spring/SpringSecurityProviderAdapter.kt` — 도메인 `AuthenticationProvider`를 Spring `AuthenticationProvider`로 래핑. 어댑터 클래스 내부에서만 두 이름이 공존하며, Spring 측은 풀-경로 import.
-3. **ProviderRegistry 위치** = `kr/co/bts/identity/spi/ProviderRegistry.kt`. Spring Bean이지만 도메인 패키지 소속. Spring DI 컨테이너 생성 시 등록된 모든 도메인 `AuthenticationProvider` Bean을 수집.
-4. **VO 3종 위치** = `kr/co/bts/identity/spi/` (Principal, Credential, AuthnResult). sealed 클래스 (Kotlin) 로 정의.
+1. **도메인 SPI 위치** = `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/spi/AuthenticationProvider.kt`
+2. **Spring 어댑터** = `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/adapter/spring/SpringSecurityProviderAdapter.kt` — 도메인 `AuthenticationProvider`를 Spring `AuthenticationProvider`로 래핑. 어댑터 클래스 내부에서만 두 이름이 공존하며, Spring 측은 풀-경로 import.
+3. **ProviderRegistry 위치** = `com/atlas/bts/identity/spi/ProviderRegistry.kt`. Spring Bean이지만 도메인 패키지 소속. Spring DI 컨테이너 생성 시 등록된 모든 도메인 `AuthenticationProvider` Bean을 수집.
+4. **VO 3종 위치** = `com/atlas/bts/identity/spi/` (Principal, Credential, AuthnResult). sealed 클래스 (Kotlin) 로 정의.
 
 ### Credential / AuthnResult sealed 형태
 
@@ -82,7 +82,7 @@ sealed interface AuthnResult {
 
 - glossary.md — `Principal`, `Credential` (Sealed 입력), `AuthnResult`, `ProviderRegistry` 4개 추가 (Maxi 승인 후).
 - domain/identity-access.md — 핵심 엔티티 섹션 갱신 + ADR 링크.
-- 코드 — `kr/co/bts/identity/spi/` 패키지 신설.
+- 코드 — `com/atlas/bts/identity/spi/` 패키지 신설.
 
 ## 관련
 

@@ -12,7 +12,7 @@
 
 ### S-01. Provider 개발자가 새 Provider 등록
 
-- **Given**. `kr.co.bts.identity.spi.AuthenticationProvider` 인터페이스 + Spring DI 컨테이너
+- **Given**. `com.atlas.bts.identity.spi.AuthenticationProvider` 인터페이스 + Spring DI 컨테이너
 - **When**. 개발자가 `class LdapProvider : AuthenticationProvider { ... }` + `@Component` 선언
 - **Then**. Spring 부팅 시 `ProviderRegistry`가 자동으로 해당 Bean 수집. `registry.findByType(ProviderType.LDAP)` 로 조회 가능
 
@@ -31,14 +31,14 @@
 ### S-04. Spring Security 와 BTS SPI 분리 보장
 
 - **Given**. Spring Security 의 `org.springframework.security.authentication.AuthenticationProvider` 가 클래스패스에 있음
-- **When**. BTS 코드 어디서든 `import kr.co.bts.identity.spi.AuthenticationProvider` 만 사용 (Spring 측 인터페이스 직접 import 금지)
+- **When**. BTS 코드 어디서든 `import com.atlas.bts.identity.spi.AuthenticationProvider` 만 사용 (Spring 측 인터페이스 직접 import 금지)
 - **Then**. ArchUnit 또는 Detekt 룰로 검증. 어댑터 클래스 (`SpringSecurityProviderAdapter`) 만 예외
 
 ## §2 기능 요구사항 (FR)
 
 ### FR-1. 도메인 SPI 정의
 
-`backend/modules/identity-access/src/main/kotlin/kr/co/bts/identity/spi/` 에 4개 파일 추가.
+`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/spi/` 에 4개 파일 추가.
 
 - `AuthenticationProvider.kt` — 인터페이스. `authenticate(credential: Credential): AuthnResult` + `supports(credentialType: KClass<out Credential>): Boolean` + `type: ProviderType`
 - `Credential.kt` — sealed interface. PoC 단계는 `UsernamePassword` + `Pat` 2개만 정의 (나머지 LDAP/SAML/OIDC 는 각 PR로 추가)
@@ -49,7 +49,7 @@
 
 ### FR-2. ProviderRegistry
 
-`kr/co/bts/identity/spi/ProviderRegistry.kt` 작성. Spring Bean.
+`com/atlas/bts/identity/spi/ProviderRegistry.kt` 작성. Spring Bean.
 
 - `findByType(type: ProviderType): AuthenticationProvider?` — 해당 타입의 Provider 단일 조회
 - `findFor(credential: Credential): AuthenticationProvider?` — credential.type 으로 `supports` 검사 후 첫 매치 반환
@@ -59,7 +59,7 @@
 
 ### FR-3. Spring Security 어댑터
 
-`kr/co/bts/identity/adapter/spring/SpringSecurityProviderAdapter.kt`.
+`com/atlas/bts/identity/adapter/spring/SpringSecurityProviderAdapter.kt`.
 
 - Spring Security 의 `org.springframework.security.authentication.AuthenticationProvider` 구현
 - 내부적으로 BTS `ProviderRegistry` 호출 → 결과를 Spring `Authentication` 으로 변환
@@ -92,7 +92,7 @@ spring:
 - **테스트 커버리지**. `spi/` 패키지 100%, `adapter/spring/` 100%. 가짜 Provider 2개 (`FakeLocalProvider`, `FakePatProvider`) 로 등록/조회/라우팅 검증
 - **빌드 시간**. 본 PR 추가로 `:identity-access:test` 가 10초 이상 늘지 않음 (PoC #2 베이스라인 측정 후 비교)
 - **의존성 추가**. 0건. PoC #2 의존성으로 충분 (Kotlin stdlib + Spring Security 6.3 + JUnit 5 만 사용)
-- **ArchUnit 추가** — `com.tngtech.archunit:archunit-junit5` 1.3.x 신규 도입. 의존성 카탈로그 `libs.versions.toml` 에 등록 후 PR 본문에 명시
+- **ArchUnit 추가** — `com.tngtech.archunit:archunit-junit5` 1.3.0 신규 도입. PoC #2 패턴 일관성 (build.gradle.kts 직접 명시). 의존성 카탈로그 (libs.versions.toml) 도입은 별도 리팩토링 PR로 위임
 
 ## §4 API 인터페이스 (REST 변경 0건)
 
@@ -125,13 +125,13 @@ spring:
   - §1.1 평문 비밀번호 저장 금지 — 본 PR은 저장 흐름 없음 (인터페이스만). `Credential.UsernamePassword.password` 는 `CharArray` 로 정의 + `Argon2.wipeArray` 호출 contract 명시 (구현자 책임)
   - §1.2 PII 로깅 금지 — `Principal.toString()` 오버라이드. `displayName` 만 표시, `externalSubject` 마스킹
   - §1.4 인증 없는 엔드포인트 추가 금지 — 본 PR 추가 REST 엔드포인트 0건
-- **DEVELOPMENT.md §1.16 의존성 카탈로그** — ArchUnit 신규 도입 시 `libs.versions.toml` 의 `[versions]` `[libraries]` `[bundles]` 정상 등록
+- **DEVELOPMENT.md §1.16 의존성 카탈로그** — PoC #2 가 카탈로그 미사용 (build.gradle.kts 직접 명시). 본 PR 도 동일 패턴 (드리프트 일관성). 카탈로그 일괄 도입은 별도 리팩토링 PR
 - **§ TDD 강제** — FR-1~FR-4 모두 RED→GREEN→REFACTOR 사이클. FR-5 는 단순 yaml 변경 (TDD 미적용 가능)
 
 ## §8 측정 가능한 완료 기준
 
-- [ ] `kr/co/bts/identity/spi/` 4개 파일 (AuthenticationProvider, Credential, AuthnResult, Principal) + ProviderType enum + ProviderRegistry — 모두 작성 + KDoc 1줄 한글 헤더
-- [ ] `kr/co/bts/identity/adapter/spring/SpringSecurityProviderAdapter.kt` — 작성 + 단위 테스트 통과
+- [ ] `com/atlas/bts/identity/spi/` 4개 파일 (AuthenticationProvider, Credential, AuthnResult, Principal) + ProviderType enum + ProviderRegistry — 모두 작성 + KDoc 1줄 한글 헤더
+- [ ] `com/atlas/bts/identity/adapter/spring/SpringSecurityProviderAdapter.kt` — 작성 + 단위 테스트 통과
 - [ ] `FakeLocalProvider`, `FakePatProvider` 2개 — `src/test/kotlin/` 위치, `@TestConfiguration` 으로 main jar 미포함
 - [ ] ArchUnit 룰 1개 (`SpiBoundaryArchTest`) — Green
 - [ ] `application.yml` 의 `issuer-uri` 환경변수 외부화 (`${BTS_KEYCLOAK_ISSUER_URI:...}`)
