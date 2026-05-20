@@ -4,6 +4,7 @@ package com.atlas.bts.identity.credential
 
 import de.mkammerer.argon2.Argon2Factory
 import org.slf4j.LoggerFactory
+import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
 import java.time.Instant
@@ -26,8 +27,9 @@ import java.util.UUID
  * 성공/실패 boolean + ms latency 만 INFO 레벨로 기록한다.
  * 예외 발생 시 stack trace 에 password 가 포함되지 않도록 runCatching 으로 감싼다.
  */
+@Service
 class LocalCredentialService(
-    private val repo: StoredPasswordCredentialRepository? = null,
+    private val repo: StoredPasswordCredentialRepository,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(LocalCredentialService::class.java)
@@ -91,7 +93,7 @@ class LocalCredentialService(
                     createdAt = Instant.now(clock),
                     updatedAt = Instant.now(clock),
                 )
-            requireNotNull(repo) { "repo 가 주입되지 않음 — store() 호출 불가" }.save(credential).also {
+            repo.save(credential).also {
                 log.info("store success latency={}ms", clock.millis() - start)
             }
         } finally {
@@ -119,7 +121,7 @@ class LocalCredentialService(
     ): Boolean {
         val start = clock.millis()
         return try {
-            val stored = requireNotNull(repo) { "repo 가 주입되지 않음 — verifyForUser() 호출 불가" }.findByUserId(userId)
+            val stored = repo.findByUserId(userId)
             if (stored == null) {
                 // timing attack 방어: row 없어도 dummy verify 수행 (응답 시간 일정화)
                 runCatching { argon2.verify(Argon2Params.DUMMY_HASH, plain) }

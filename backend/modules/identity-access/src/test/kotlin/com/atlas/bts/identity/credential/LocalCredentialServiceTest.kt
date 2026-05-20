@@ -13,7 +13,8 @@ import java.time.Instant
 import java.util.UUID
 
 class LocalCredentialServiceTest {
-    private val sut = LocalCredentialService()
+    // 기존 hash/verify 케이스는 repo 미사용. relaxed mock 으로 비활성 의존성 주입
+    private val sut = LocalCredentialService(repo = mockk(relaxed = true))
 
     @Test
     fun `hash returns argon2id encoded string`() {
