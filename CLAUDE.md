@@ -24,6 +24,7 @@
 | 도메인 용어 사전 (DDD) | `Maxi_wiki/BTS/glossary.md` (Obsidian) |
 | 과거 사고/교훈 (회귀 방지) | `Maxi_wiki/BTS/learnings.md` (Obsidian) |
 | 바운디드 컨텍스트별 노트 | `Maxi_wiki/BTS/domain/<bc>.md` |
+| 기능 구현 진척 / FR 추적 | `docs/plan/README.md` (BC별 product/*.md, 117 FR) |
 
 ## 디렉토리 (한눈에)
 

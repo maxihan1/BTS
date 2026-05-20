@@ -70,6 +70,55 @@
 
 ---
 
+## 2026-05-20 — 마스터 구현 계획을 BC 단위 완제품 기준으로 작성 (Phase 분할 폐기)
+
+**결정**. `docs/plan/` 디렉토리 신설. SDD 17장의 Phase 0~4 분할 대신 **9개 BC 단위 완제품 기준** 계획으로 작성. PoC 13개 항목은 각 BC 파일 안 "§1 기술 검증" 섹션으로 흡수.
+
+**근거**.
+
+1. **Maxi 결정** — "PoC/MVP 레벨 작성 안 하고 완제품 기준으로 계획"
+2. **BC 격리 원칙 정렬** — 헌법 `한 PR = 한 BC` 와 일치. Phase 분할은 같은 BC가 여러 Phase에 흩어져 인지 부담.
+3. **마이그레이션 비용 0** — Phase 간 스키마 변경 없음.
+4. **누락 자동 검증** — `scripts/verify-master-plan.sh`로 117 FR ID 전수 매핑 강제. 처음부터 끝까지 동일한 검증.
+
+**구조**.
+
+```
+docs/plan/
+├── README.md                       # 인덱스 + §0 사용 가이드 + §6 NFR 게이트 + §7 변경 이력
+├── fr-index.md                     # 117 FR 역인덱스 (FR ID → BC → §x.y)
+└── product/                        # 9개 BC 파일
+    ├── identity-access.md          (22 FR: AU 10 + MF 5 + PM 7) + AuthN PoC
+    ├── issue-tracking.md           (29 FR)
+    ├── project-workflow.md         (2 FR) + FSM PoC + pgmq PoC
+    ├── agile-planning.md           (14 FR) + LexoRank + @dnd-kit + Gantt PoC
+    ├── automation.md               (7 FR)
+    ├── notification-dashboard.md   (13 FR) + STOMP PoC
+    ├── slack-integration.md        (6 FR)
+    ├── personalization.md          (12 FR)
+    └── search-export-import.md     (12 FR) + AQL PoC
+scripts/verify-master-plan.sh       # FR 누락 + 체크박스 마커 자동 검증
+```
+
+**대안 (불채택)**.
+
+- Phase 0~4 분할 유지 (SDD 17장 그대로). → BC 분산으로 인지 부담 ↑, 사용자가 반대.
+- BC 분할만 + PoC 별도 유지 (`docs/plan/phase-0-poc.md`). → PoC 단계를 별도로 두면 BC와 의존 추적이 분산됨. PoC는 BC 안 "§1 기술 검증"으로 흡수가 더 깔끔.
+- 단일 마스터 파일 (~4,000줄). → 컨텍스트 한계 위반.
+
+**Maxi 확인**. 2026-05-20, "완전 완제품. PoC도 없애고 BC 단위만" 명시 선택.
+
+**영향**.
+
+- 진입 순서. README §0.7 BC 의존 그래프 권장. identity-access → issue-tracking → project-workflow → agile-planning → notification-dashboard → search-export-import → slack-integration → automation → personalization.
+- `docs/poc/checklist.md` 와의 관계. `checklist.md`는 의존성 도입 순서 책임 유지. BC 파일의 "§1 기술 검증" 섹션이 `checklist.md §1.x`로 cross-link.
+- `CLAUDE.md` 진입 트리에 1행 추가 — "기능 구현 진척 / FR 추적 → docs/plan/README.md".
+- 기존 `docs/plan/phase-0-poc.md`, `phase-1-mvp.md` 폐기 (BC 파일로 흡수). 파일 삭제는 별도 git 커밋.
+
+**관련**. [docs/plan/README.md](../plan/README.md), [docs/plan/fr-index.md](../plan/fr-index.md), [scripts/verify-master-plan.sh](../../scripts/verify-master-plan.sh).
+
+---
+
 ## 다음 결정 후보 (PoC 진입 시 발생 예정)
 
 - 첫 PoC 항목 선택 순서 (FSM부터? React 19부터?). Maxi 결정 영역.
