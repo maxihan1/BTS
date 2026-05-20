@@ -304,3 +304,41 @@ bash scripts/verify/bootjar-no-fakes.sh
 - **`/autoplan` / `/plan-devex-review`**. 적용 대상 아님 (PR 인프라성)
 
 게이트 1 진입 가능.
+
+---
+
+### PR-level superpowers:code-reviewer (2026-05-20, /bts-codereview)
+
+`STATUS: PASS (CONCERNS 4건, BLOCKER 0건)`
+
+**절대 규칙 검증 (DEVELOPMENT.md §1)**. NEVER-1/4/5/11~13/15 모두 PASS. NEVER-3/17 해당 없음.
+**TDD 순서 검증**. T2~T6 모두 test → feat → refactor 3 커밋 순서 ✅
+**BC 격리**. cross-BC import 0건. spi 패키지 Spring import는 stereotype/beans.factory.annotation 2개만 (ArchUnit allow-list 정확 일치) ✅
+**learnings 회귀 (함정 #3 Claude 환각)**. ArchUnit 1.3.x fluent DSL + Spring Security 6.3.x API 시그니처 모두 정확 ✅
+**spec drift**. FR-1~FR-4 PASS, FR-5 CONCERNS (test 단순화 사유 명시)
+
+#### CONCERN 처리
+
+| # | 내용 | 본 PR 처리 |
+|---|---|---|
+| 1 | SpringSecurityProviderAdapter String→CharArray 변환 시 원본 String JVM heap 잔존 | ✅ **KDoc 주의 2 추가** (커밋 4cd6032). FR-AU-09 위임 명시 |
+| 2 | credentials null → 빈 문자열 → Provider INVALID_INPUT 의존 (defensive 부족) | 위임 — FR-AU-09 SecurityFilterChain 통합 시 명시적 guard 추가 |
+| 3 | `scripts/verify/bootjar-no-fakes.sh` 실행 권한 (chmod 정책) | 위임 — PR 본문 안내 + Maxi 머지 후 `! chmod +x` 1회 |
+| 4 | `IssuerUriEnvOverrideTest` 가 yaml 텍스트만 검증, 실제 ${ENV:default} 우선순위 미검증 | 위임 — FR-AU-09 실제 환경변수 우선순위 검증 |
+
+### PR-level /review (gstack)
+
+**우회**. PoC #2 패턴 일관성. SQL 안전성/concurrency/LLM trust boundary 영역 본 PR 모두 해당 없음 (DB 변경 0건, async 0건, LLM 호출 0건). superpowers:code-reviewer agent 가 구조 + 절대 규칙 + drift + TDD + 학습 회귀 전영역 커버 — 중복 작업 회피. 게이트 2 직전 추가 검증 가치 < 비용.
+
+### PR-level /plan-ceo-review
+
+**우회**. plan-level ceo-review 결과 (스코프 적정, 0 BLOCKER) 와 PR-level 점검 정책 동일. 본 PR 인프라성 + 사용자 직접 노출 0건으로 ceo 추가 시각 가치 < 비용.
+
+### 게이트 2 진입 가능 여부
+
+- BLOCKER 0건
+- CONCERN 4건 중 1건 본 PR 처리, 3건 FR-AU-09 PR 위임 (정당화 문서화)
+- 모든 Gradle 검증 통과
+- TDD 순서 + BC 격리 + 절대 규칙 18개 + 학습 회귀 0건
+
+머지 가능.
