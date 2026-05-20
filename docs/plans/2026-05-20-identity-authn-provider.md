@@ -247,6 +247,57 @@ bash scripts/verify/bootjar-no-fakes.sh
 - **게이트 2 직전 수동 검증**. `./gradlew :modules:identity-access:test :modules:identity-access:bootJar` 전체 통과 + PoC #2 회귀 확인
 - **writing-plans 우회 사유**. PoC 패턴 일관성. spec 결정이 명확해 task 경계가 자명. 1인 부담 + Auto mode 합리적 판단
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
 
-_TBD_
+### Direct plan-eng-review (2026-05-20)
+
+`plan-eng-review` 대화형 우회 (PoC 패턴 일관성). type=auth 절대 규칙 체크 표.
+
+| 항목 | 평가 | 비고 |
+|---|---|---|
+| BC 격리 (identity-access 단독) | ✅ | 다른 BC 호출 없음, 이벤트 발행도 없음 |
+| DEVELOPMENT.md §1.1 평문 비밀번호 저장 금지 | ✅ | 저장 흐름 없음. `Credential.UsernamePassword.password: CharArray` + wipeArray contract 명시 |
+| §1.2 로그 PII 출력 금지 | ✅ T2 | `Principal.toString` 마스킹 테스트 강제 |
+| §1.4 인증 없는 엔드포인트 추가 금지 | ✅ | REST 변경 0건 |
+| §1.5 CSRF 검증 비활성화 금지 | ✅ | SecurityConfig 변경 없음, PoC #2 설정 유지 |
+| §1.6 입력 검증 | ✅ | sealed Credential + supports() 두 단계 매칭으로 타입 안전 |
+| §1.16 의존성 카탈로그 | ✅ T1 | ArchUnit 1.3.0 `libs.versions.toml` 등록 명시 |
+| TDD 강제 (`test:` 커밋 우선) | ✅ | T2/T3/T4/T5/T6 RED→GREEN→REFACTOR |
+| 마스터플랜 §2.1 정합 | ✅ | D1/D2/D4/D5 본 PR 포함, D3 (authn_providers 테이블) LDAP PR 위임 — spec §5 정당화 |
+| `learnings.md` 함정 #3 (Claude 환각) | ⚠️ | ArchUnit 1.3.0 — Maxi 가 의존성 추가 시점에 Maven Central 1회 직접 확인 권장 (plan T1 본문 명시) |
+| PoC #2 회귀 위험 | ✅ T7 | Spring Bean 등록 정책 (`@Component` 없음, `@Bean` 명시) + ArchUnit 룰로 격리. 단위 테스트 회귀 없음 검증 |
+
+#### 추가 발견 사항 (impl 단계 보강, BLOCKER 아님)
+
+1. **Spring Boot 자동 설정 인터럽트 위험**. Spring 측 `AuthenticationProvider` 빈이 컨텍스트에 1개라도 있으면 Spring Security 가 기본 인증 흐름을 우회/덮어쓰기 가능. T4 의 `@Component` 미부착 + ApplicationContextRunner 테스트로 명시 검증 — 정상.
+2. **`CharArray equals/hashCode`**. T2 REFACTOR 에서 명시 override. 빠뜨리지 말 것.
+3. **ArchUnit 룰의 `@Component` 허용 패키지 정확화**. T5 REFACTOR 에서 `org.springframework.stereotype..`/`org.springframework.context.annotation..` 만 allow-list. 단순 `org.springframework..` 전체 차단 시 Spring Bean 정의 자체가 깨짐 — 주의.
+4. **`scripts/verify/bootjar-no-fakes.sh` 실행 권한**. `chmod +x` 가 settings.json deny 정책. `#!/usr/bin/env bash` 첫 줄 + Gradle task 로 호출하는 형태가 안전. 또는 PR 본문에 "Maxi 가 `! chmod +x` 1회 실행" 안내.
+5. **`@Profile("test-spi")`**. Spring Boot 의 기본 `test` 프로파일과 분리. T6 `IssuerUriEnvOverrideTest` 가 `test-spi` 프로필을 활성화하지 않아야 (가짜 Provider 등록은 해당 테스트 무관) — `@ActiveProfiles` 명시.
+
+#### BLOCKER
+
+**0건**. type=auth 절대 규칙 위반 없음. 진행 가능.
+
+### Direct plan-ceo-review (2026-05-20)
+
+`plan-ceo-review` 대화형 우회. PoC 패턴 일관성.
+
+| 항목 | 평가 |
+|---|---|
+| 스코프 적정 | ✅ 마스터플랜 §2.1 D1/D2/D4/D5 그대로, D3 의도적 위임 (정당화 spec §5) |
+| BC 의존 그래프 정합 | ✅ identity-access 첫 BC 정식 진입 — 모든 다른 BC 의 권한 게이트 선행 |
+| 분할 권장 여부 | ❌ 단일 PR 유지 (7 task, 17 커밋, 2~3시간 — 적정 사이즈) |
+| 10-star 검토 | 본 PR 은 인프라성 인터페이스 도입 — 10-star 적용 대상 아님 (사용자 가치 직접 노출 없음) |
+
+#### BLOCKER
+
+**0건**. 스코프 확장/축소 권장 없음.
+
+### 종합
+
+- **plan-eng-review**. 0 BLOCKER, 5건 impl 단계 주의 사항
+- **plan-ceo-review**. 0 BLOCKER
+- **`/autoplan` / `/plan-devex-review`**. 적용 대상 아님 (PR 인프라성)
+
+게이트 1 진입 가능.
