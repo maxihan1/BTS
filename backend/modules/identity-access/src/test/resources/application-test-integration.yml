@@ -1,0 +1,22 @@
+# LDAP 통합 테스트 프로필 — Keycloak OAuth2 자동설정 비활성화
+
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration
+      - org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: "http://localhost:8180/realms/bts-test-placeholder"
+      client:
+        registration:
+          keycloak:
+            client-id: bts-test
+            authorization-grant-type: authorization_code
+            scope: openid
+            redirect-uri: "http://localhost/callback"
+        provider:
+          keycloak:
+            issuer-uri: "http://localhost:8180/realms/bts-test-placeholder"

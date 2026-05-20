@@ -68,8 +68,8 @@ abstract class LdapTestcontainersBase {
             r.add("spring.ldap.base") { "dc=example,dc=org" }
             r.add("spring.ldap.username") { "cn=admin,dc=example,dc=org" }
             r.add("spring.ldap.password") { "adminpassword" }
-            // BTS_LDAP_BIND_PASSWORD_INTEGRATION env var 로 bind password 제공
-            r.add("BTS_LDAP_BIND_PASSWORD_INTEGRATION") { "adminpassword" }
+            // LdapConfig.resolveBindPassword() 는 System.getProperty() 도 fallback 으로 확인 (LdapConfig.kt)
+            System.setProperty("BTS_LDAP_BIND_PASSWORD_INTEGRATION", "adminpassword")
         }
     }
 }

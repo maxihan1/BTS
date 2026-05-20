@@ -40,10 +40,12 @@ data class LdapConfig(
 ) {
     /**
      * bind password 를 환경변수에서 로딩한다.
-     * 환경변수 미설정 시 null 반환 — 호출자가 Failure(PROVIDER_UNAVAILABLE) 처리.
+     * 환경변수 미설정 시 JVM 시스템 프로퍼티를 fallback 으로 확인 (테스트 환경 지원).
+     * 미설정 시 null 반환 — 호출자가 Failure(PROVIDER_UNAVAILABLE) 처리.
      * 1회 로딩 후 캐싱을 권장한다 (매 인증마다 syscall 회피).
      */
-    fun resolveBindPassword(): String? = System.getenv(bindPasswordEnv)
+    fun resolveBindPassword(): String? =
+        System.getenv(bindPasswordEnv) ?: System.getProperty(bindPasswordEnv)
 
     /** PII 마스킹 toString — bindDn 은 <masked> 로 대체 (DEVELOPMENT.md §1.2) */
     override fun toString(): String =

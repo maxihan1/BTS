@@ -80,11 +80,12 @@ class LdapProvider(
             }
 
             val now = Instant.now(clock)
+            val externalSubject = buildExternalSubject(credential.username, config)
 
-            // 3. 기존 매핑 조회
+            // 3. 기존 매핑 조회 — DN 형태로 저장되어 있으므로 동일 형태로 조회
             val existing = externalAccountRepo.findByProviderIdAndExternalSubject(
                 providerId,
-                credential.username,
+                externalSubject,
             )
 
             // 4. 잠금 상태 확인
@@ -98,14 +99,14 @@ class LdapProvider(
                 val authenticated = ldapTemplate.authenticate(config.userSearchBase, searchFilter, String(credential.password))
 
                 if (!authenticated) {
-                    return onFailure(existing, config.lockoutPolicy, now, providerId, credential.username)
+                    return onFailure(existing, config.lockoutPolicy, now, providerId, externalSubject)
                 }
 
                 // 6. 성공 처리
-                onSuccess(credential.username, existing, providerId, config, now, bindPassword)
+                onSuccess(credential.username, existing, providerId, config, now, externalSubject)
             } catch (e: AuthenticationException) {
                 log.debug("LDAP 인증 실패 — reason=BadCredentials (detail masked)")
-                onFailure(existing, config.lockoutPolicy, now, providerId, credential.username)
+                onFailure(existing, config.lockoutPolicy, now, providerId, externalSubject)
             } catch (e: CommunicationException) {
                 log.warn("LDAP 서버 통신 오류 — {}", e.message)
                 AuthnResult.Failure(FailureReason.PROVIDER_UNAVAILABLE)
@@ -126,9 +127,8 @@ class LdapProvider(
         providerId: UUID,
         config: LdapConfig,
         now: Instant,
-        @Suppress("UNUSED_PARAMETER") bindPassword: String,
+        externalSubject: String,
     ): AuthnResult {
-        val externalSubject = buildExternalSubject(username, config)
         val account = if (existing == null) {
             // 첫 로그인 — 자동 프로비저닝 (DATA.md §6 단일 트랜잭션)
             externalAccountRepo.provisionUser(
@@ -160,8 +160,8 @@ class LdapProvider(
         existing: ExternalAccount?,
         policy: LockoutPolicy,
         now: Instant,
-        providerId: UUID,
-        username: String,
+        @Suppress("UNUSED_PARAMETER") providerId: UUID,
+        @Suppress("UNUSED_PARAMETER") externalSubject: String,
     ): AuthnResult {
         if (existing != null) {
             externalAccountRepo.incrementFailedAttempts(existing.id)
