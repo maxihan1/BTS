@@ -596,22 +596,24 @@
 
 ---
 
-### Task 25. CORS 설정 + application.yml issuer-uri 교체
+### Task 25. application.yml issuer-uri 교체 + prod profile
+
+**주의**. CORS 관련 부분은 **Task 37 책임** (CorsConfig 신규). 본 task 는 application.yml 의 oauth2ResourceServer.jwt 설정 + prod profile 분리만 담당. CorsConfig.kt / CorsConfigTest.kt 작성 금지 (Task 37 와 파일 충돌 방지).
 
 **메타**.
 - agent. `security-engineer`
-- files. [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/config/CorsConfig.kt`, `backend/modules/identity-access/src/main/resources/application.yml` (수정), `backend/modules/identity-access/src/main/resources/application-prod.yml` (신규), `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/config/CorsConfigTest.kt`]
+- files. [`backend/modules/identity-access/src/main/resources/application.yml` (수정), `backend/modules/identity-access/src/main/resources/application-prod.yml` (신규), `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/config/IssuerUriEnvOverrideTest.kt`]
 - depends-on. [19]
-- 가시성 영향. `@Configuration`.
-- 회귀 가드. FR-09-17 (issuer-uri Keycloak 제거) / FR-09-24 (CORS 환경별).
+- 가시성 영향. 설정 파일만.
+- 회귀 가드. FR-09-17 (issuer-uri Keycloak 제거).
 
-**RED**. CorsConfigTest. dev profile = http://localhost:5173 allowed / prod profile = https://bts.example.com (env var BTS_FRONTEND_ORIGIN override).
+**RED**. `IssuerUriEnvOverrideTest`. `fun "application.yml jwk-set-uri resolves bts.auth.issuer-uri env var"()` — `@SpringBootTest` + `@TestPropertySource("bts.auth.issuer-uri=http://test:9999")` → JwtDecoder bean 의 jwk-set-uri 가 `http://test:9999/.well-known/jwks.json` 으로 해석되는지 검증. 실패. issuer-uri 가 Keycloak 으로 hardcoded.
 
-**GREEN**. CorsConfigurationSource Bean + application.yml `bts.security.cors.allowed-origins`. application.yml issuer-uri 제거 (oauth2ResourceServer.jwt.jwk-set-uri = `${bts.auth.issuer-uri:http://localhost:8080}/.well-known/jwks.json`).
+**GREEN**. application.yml 의 oauth2ResourceServer.jwt.issuer-uri 제거 + `jwk-set-uri: ${bts.auth.issuer-uri:http://localhost:8080}/.well-known/jwks.json` 으로 교체. application-prod.yml 신규 (prod profile 의 issuer-uri 환경 변수 기본값 + JwtKeyProvider PEM path env var).
 
-**REFACTOR**. dev-key.pem 은 generation 책임이 DevMemoryKeyProvider → application.yml 의 PEM path env var 는 prod only.
+**REFACTOR**. dev-key.pem 생성은 DevMemoryKeyProvider 책임 (Task 7). application-prod.yml 만 PEM path env var 명시.
 
-**검증**. `./gradlew :backend:identity-access:test --tests CorsConfigTest IssuerUriEnvOverrideTest`
+**검증**. `./gradlew :backend:identity-access:test --tests IssuerUriEnvOverrideTest`
 
 ### Wave 5 — Wave 4 의존 (통합 테스트 + ArchUnit + ADR 3건)
 
