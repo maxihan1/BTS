@@ -235,4 +235,54 @@ class ExternalAccountRepositoryTest {
         assertThat(found!!.lastLoginAt).isNotNull()
         assertThat(found.failedAttempts).isZero()
     }
+
+    // ── 회귀 가드 강화 + UPSERT 시나리오 (Task 2 RED) ──────────────────────────
+
+    @Test
+    fun `provisionUser 는 단일 SQL 로 row 를 반환한다 (회귀 가드)`() {
+        // given: provider 가 등록된 상태 (setUp 에서 이미 준비됨)
+
+        // when: provisionUser 호출
+        val account =
+            repo.provisionUser(
+                providerId = providerId,
+                externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
+                username = "alice@bts.local",
+                displayName = "Alice",
+                email = "alice@bts.local",
+                groups = emptyList(),
+            )
+
+        // then: id 가 UUID 타입이고 조회 가능해야 함
+        assertThat(account.id).isInstanceOf(UUID::class.java)
+        assertThat(repo.findByProviderIdAndExternalSubject(providerId, "uid=alice,ou=people,dc=bts,dc=local")).isNotNull()
+    }
+
+    @Test
+    fun `provisionUser 두 번 호출 시 같은 row 반환 (UPSERT)`() {
+        // given: 한 번 provisioned 상태
+        val first =
+            repo.provisionUser(
+                providerId = providerId,
+                externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
+                username = "alice@bts.local",
+                displayName = "Alice",
+                email = "alice@bts.local",
+                groups = emptyList(),
+            )
+
+        // when: 같은 externalSubject 로 재호출
+        val second =
+            repo.provisionUser(
+                providerId = providerId,
+                externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
+                username = "alice@bts.local",
+                displayName = "Alice",
+                email = "alice@bts.local",
+                groups = emptyList(),
+            )
+
+        // then: UPSERT 동작 — 같은 id 여야 함
+        assertThat(second.id).isEqualTo(first.id)
+    }
 }
