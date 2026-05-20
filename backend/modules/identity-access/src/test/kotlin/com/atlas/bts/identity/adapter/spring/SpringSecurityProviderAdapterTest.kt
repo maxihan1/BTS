@@ -15,7 +15,6 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.security.authentication.BadCredentialsException
 import org.springframework.security.authentication.InsufficientAuthenticationException
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
@@ -32,12 +31,13 @@ class SpringSecurityProviderAdapterTest {
 
     @Test
     fun `BTS Success maps to Spring authenticated Authentication`() {
-        val principal = Principal(
-            userId = UUID.randomUUID(),
-            providerType = ProviderType.LOCAL,
-            displayName = "Alice",
-            externalSubject = null,
-        )
+        val principal =
+            Principal(
+                userId = UUID.randomUUID(),
+                providerType = ProviderType.LOCAL,
+                displayName = "Alice",
+                externalSubject = null,
+            )
         val mockProvider = mockk<com.atlas.bts.identity.spi.AuthenticationProvider>()
         every { mockProvider.authenticate(any()) } returns AuthnResult.Success(principal)
         every { registry.findFor(any<Credential>()) } returns mockProvider
@@ -98,9 +98,10 @@ class SpringSecurityProviderAdapterTest {
         // 주의: 전체 SpringBootTest 컨텍스트 로드는 Keycloak issuer-uri 문제로 불가.
         // @Component 어노테이션 부재를 소스 레벨에서 직접 검증.
         val annotations = SpringSecurityProviderAdapter::class.java.annotations
-        val hasComponent = annotations.any {
-            it.annotationClass.qualifiedName == "org.springframework.stereotype.Component"
-        }
+        val hasComponent =
+            annotations.any {
+                it.annotationClass.qualifiedName == "org.springframework.stereotype.Component"
+            }
         assertThat(hasComponent)
             .describedAs("SpringSecurityProviderAdapter는 @Component가 없어야 한다 — 수동 @Bean 등록 강제")
             .isFalse()

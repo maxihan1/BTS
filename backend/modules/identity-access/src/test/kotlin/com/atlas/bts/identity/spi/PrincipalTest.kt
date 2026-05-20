@@ -11,12 +11,13 @@ class PrincipalTest {
 
     @Test
     fun `toString masks externalSubject`() {
-        val principal = Principal(
-            userId = userId,
-            providerType = ProviderType.LOCAL,
-            displayName = "Alice",
-            externalSubject = "secret-subject-id-12345",
-        )
+        val principal =
+            Principal(
+                userId = userId,
+                providerType = ProviderType.LOCAL,
+                displayName = "Alice",
+                externalSubject = "secret-subject-id-12345",
+            )
         val str = principal.toString()
         assertThat(str).doesNotContain("secret-subject-id-12345")
         assertThat(str).contains("<masked>")
@@ -24,24 +25,26 @@ class PrincipalTest {
 
     @Test
     fun `toString includes displayName`() {
-        val principal = Principal(
-            userId = userId,
-            providerType = ProviderType.OIDC,
-            displayName = "Bob",
-            externalSubject = "some-external-id",
-        )
+        val principal =
+            Principal(
+                userId = userId,
+                providerType = ProviderType.OIDC,
+                displayName = "Bob",
+                externalSubject = "some-external-id",
+            )
         val str = principal.toString()
         assertThat(str).contains("Bob")
     }
 
     @Test
     fun `toString with null externalSubject shows null masked`() {
-        val principal = Principal(
-            userId = userId,
-            providerType = ProviderType.LOCAL,
-            displayName = "Carol",
-            externalSubject = null,
-        )
+        val principal =
+            Principal(
+                userId = userId,
+                providerType = ProviderType.LOCAL,
+                displayName = "Carol",
+                externalSubject = null,
+            )
         val str = principal.toString()
         assertThat(str).doesNotContain("null")
     }

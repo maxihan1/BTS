@@ -25,15 +25,13 @@ class ProviderRegistry(
      * 주어진 [type]을 담당하는 공급자를 반환.
      * 해당 type의 공급자가 없으면 null.
      */
-    fun findByType(type: ProviderType): AuthenticationProvider? =
-        providers.firstOrNull { it.type == type }
+    fun findByType(type: ProviderType): AuthenticationProvider? = providers.firstOrNull { it.type == type }
 
     /**
      * 주어진 [credential]을 처리할 수 있는 공급자를 반환.
      * [AuthenticationProvider.supports]가 true인 첫 번째 공급자를 반환하고, 없으면 null.
      */
-    fun findFor(credential: Credential): AuthenticationProvider? =
-        providers.firstOrNull { it.supports(credential) }
+    fun findFor(credential: Credential): AuthenticationProvider? = providers.firstOrNull { it.supports(credential) }
 
     /**
      * 등록된 모든 공급자의 불변 복사본을 반환.

@@ -4,7 +4,6 @@ package com.atlas.bts.identity.adapter.spring
 
 import com.atlas.bts.identity.spi.AuthnResult
 import com.atlas.bts.identity.spi.Credential
-import com.atlas.bts.identity.spi.Principal
 import com.atlas.bts.identity.spi.ProviderRegistry
 import org.springframework.security.authentication.BadCredentialsException
 import org.springframework.security.authentication.InsufficientAuthenticationException
@@ -23,11 +22,11 @@ import org.springframework.security.core.Authentication
 class SpringSecurityProviderAdapter(
     private val registry: ProviderRegistry,
 ) : org.springframework.security.authentication.AuthenticationProvider {
-
     override fun authenticate(authentication: Authentication): Authentication {
         val credential = authentication.toBtsCredential()
-        val provider = registry.findFor(credential)
-            ?: throw BadCredentialsException("no provider for credential: ${credential::class.simpleName}")
+        val provider =
+            registry.findFor(credential)
+                ?: throw BadCredentialsException("no provider for credential: ${credential::class.simpleName}")
 
         return when (val result = provider.authenticate(credential)) {
             is AuthnResult.Success -> result.toSpringAuthentication()
@@ -51,11 +50,8 @@ class SpringSecurityProviderAdapter(
 
     private fun AuthnResult.Success.toSpringAuthentication(): Authentication =
         UsernamePasswordAuthenticationToken(
-            /* principal = */ principal,
-            /* credentials = */ null,
-            /* authorities = */ emptyList(),
+            principal,
+            null,
+            emptyList(),
         )
 }
-
-// 타입 별칭: BTS 도메인 Principal (Spring의 Principal 인터페이스와 혼동 방지용 KDoc)
-private typealias BtsPrincipal = Principal

@@ -84,6 +84,18 @@ sealed interface AuthnResult {
 - domain/identity-access.md — 핵심 엔티티 섹션 갱신 + ADR 링크.
 - 코드 — `com/atlas/bts/identity/spi/` 패키지 신설.
 
+## 구현 후 확인 사항 (2026-05-20, PR #3 완료)
+
+- **단위 테스트 (T2~T6)**: 40 tests passed, 0 failures.
+  - `spi/PrincipalTest`, `CredentialTest`, `AuthnResultTest` — VO 동작 및 PII 마스킹 검증
+  - `spi/ProviderRegistryTest` — findByType/findFor/all() + immutable 복사본 검증
+  - `adapter/spring/SpringSecurityProviderAdapterTest` — Success/Failure/RequiresMfa 변환 + @Component 미부착 검증
+  - `config/IssuerUriEnvOverrideTest` — CONCERN-NEW-2 issuer-uri placeholder 적용 검증
+  - `integration/KeycloakIntegrationTest` — PoC #2 회귀 없음 확인 (Testcontainers Keycloak)
+- **ArchUnit 룰 (T5)**: `SpiBoundaryArchTest` 룰 2개 통과 — spi 패키지 Spring Web/Security 비결합 + adapter.spring 외 AP import 금지
+- **ktlintCheck + detekt**: 0 violations
+- **bootJar**: `scripts/verify/bootjar-no-fakes.sh` OK — Fake Provider 클래스 미포함 확인
+
 ## 관련
 
 - 마스터플랜 §2.1 (`docs/plan/product/identity-access.md`)

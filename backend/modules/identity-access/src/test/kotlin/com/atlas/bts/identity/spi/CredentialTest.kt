@@ -8,16 +8,18 @@ import org.junit.jupiter.api.Test
 class CredentialTest {
     @Test
     fun `sealed Credential when is exhaustive for UsernamePassword and Pat`() {
-        val credentials: List<Credential> = listOf(
-            Credential.UsernamePassword("alice", "p@ssword".toCharArray()),
-            Credential.Pat("token-abc"),
-        )
+        val credentials: List<Credential> =
+            listOf(
+                Credential.UsernamePassword("alice", "p@ssword".toCharArray()),
+                Credential.Pat("token-abc"),
+            )
         credentials.forEach { cred ->
             // when 식이 모든 분기를 커버해야 컴파일됨 — exhaustive 검증
-            val label: String = when (cred) {
-                is Credential.UsernamePassword -> "username-password"
-                is Credential.Pat -> "pat"
-            }
+            val label: String =
+                when (cred) {
+                    is Credential.UsernamePassword -> "username-password"
+                    is Credential.Pat -> "pat"
+                }
             assertThat(label).isNotEmpty()
         }
     }

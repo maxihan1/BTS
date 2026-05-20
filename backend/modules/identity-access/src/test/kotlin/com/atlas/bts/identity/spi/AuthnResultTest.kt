@@ -7,12 +7,13 @@ import org.junit.jupiter.api.Test
 import java.util.UUID
 
 class AuthnResultTest {
-    private val samplePrincipal = Principal(
-        userId = UUID.randomUUID(),
-        providerType = ProviderType.LOCAL,
-        displayName = "Alice",
-        externalSubject = null,
-    )
+    private val samplePrincipal =
+        Principal(
+            userId = UUID.randomUUID(),
+            providerType = ProviderType.LOCAL,
+            displayName = "Alice",
+            externalSubject = null,
+        )
 
     @Test
     fun `Success carries Principal`() {
@@ -37,17 +38,19 @@ class AuthnResultTest {
 
     @Test
     fun `sealed AuthnResult when is exhaustive`() {
-        val results: List<AuthnResult> = listOf(
-            AuthnResult.Success(samplePrincipal),
-            AuthnResult.Failure(FailureReason.ACCOUNT_LOCKED),
-            AuthnResult.RequiresMfa(MfaChallenge.NOT_IMPLEMENTED_YET),
-        )
+        val results: List<AuthnResult> =
+            listOf(
+                AuthnResult.Success(samplePrincipal),
+                AuthnResult.Failure(FailureReason.ACCOUNT_LOCKED),
+                AuthnResult.RequiresMfa(MfaChallenge.NOT_IMPLEMENTED_YET),
+            )
         results.forEach { result ->
-            val label: String = when (result) {
-                is AuthnResult.Success -> "success"
-                is AuthnResult.Failure -> "failure"
-                is AuthnResult.RequiresMfa -> "requires-mfa"
-            }
+            val label: String =
+                when (result) {
+                    is AuthnResult.Success -> "success"
+                    is AuthnResult.Failure -> "failure"
+                    is AuthnResult.RequiresMfa -> "requires-mfa"
+                }
             assertThat(label).isNotEmpty()
         }
     }

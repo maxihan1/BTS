@@ -24,8 +24,8 @@ import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
     packages = ["com.atlas.bts.identity"],
     importOptions = [ImportOption.DoNotIncludeTests::class],
 )
+@Suppress("PropertyName", "VariableNaming")
 class SpiBoundaryArchTest {
-
     @ArchTest
     val `spi package must not import Spring Web or Security`: ArchRule =
         noClasses()

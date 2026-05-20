@@ -2,8 +2,8 @@
 
 package com.atlas.bts.identity.spi.fake
 
-import com.atlas.bts.identity.spi.AuthnResult
 import com.atlas.bts.identity.spi.AuthenticationProvider
+import com.atlas.bts.identity.spi.AuthnResult
 import com.atlas.bts.identity.spi.Credential
 import com.atlas.bts.identity.spi.FailureReason
 import com.atlas.bts.identity.spi.Principal

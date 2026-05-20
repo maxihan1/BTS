@@ -11,6 +11,8 @@ package com.atlas.bts.identity.spi
  */
 sealed interface AuthnResult {
     data class Success(val principal: Principal) : AuthnResult
+
     data class Failure(val reason: FailureReason) : AuthnResult
+
     data class RequiresMfa(val challenge: MfaChallenge) : AuthnResult
 }

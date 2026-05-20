@@ -2,8 +2,8 @@
 
 package com.atlas.bts.identity.spi.fake
 
-import com.atlas.bts.identity.spi.AuthnResult
 import com.atlas.bts.identity.spi.AuthenticationProvider
+import com.atlas.bts.identity.spi.AuthnResult
 import com.atlas.bts.identity.spi.Credential
 import com.atlas.bts.identity.spi.FailureReason
 import com.atlas.bts.identity.spi.MfaChallenge
@@ -35,16 +35,19 @@ class FakeLocalProvider : AuthenticationProvider {
         require(credential is Credential.UsernamePassword)
         return when {
             credential.password.isEmpty() -> AuthnResult.Failure(FailureReason.INVALID_INPUT)
-            credential.password.contentEquals("wrong".toCharArray()) -> AuthnResult.Failure(FailureReason.INVALID_CREDENTIALS)
-            credential.password.contentEquals("mfa".toCharArray()) -> AuthnResult.RequiresMfa(MfaChallenge.NOT_IMPLEMENTED_YET)
-            credential.password.contentEquals("correct".toCharArray()) -> AuthnResult.Success(
-                Principal(
-                    userId = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-                    providerType = ProviderType.LOCAL,
-                    displayName = credential.username,
-                    externalSubject = null,
-                ),
-            )
+            credential.password.contentEquals("wrong".toCharArray()) ->
+                AuthnResult.Failure(FailureReason.INVALID_CREDENTIALS)
+            credential.password.contentEquals("mfa".toCharArray()) ->
+                AuthnResult.RequiresMfa(MfaChallenge.NOT_IMPLEMENTED_YET)
+            credential.password.contentEquals("correct".toCharArray()) ->
+                AuthnResult.Success(
+                    Principal(
+                        userId = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                        providerType = ProviderType.LOCAL,
+                        displayName = credential.username,
+                        externalSubject = null,
+                    ),
+                )
             else -> AuthnResult.Failure(FailureReason.INVALID_CREDENTIALS)
         }
     }

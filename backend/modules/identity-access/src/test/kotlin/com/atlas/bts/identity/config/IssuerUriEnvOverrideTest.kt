@@ -5,8 +5,8 @@ package com.atlas.bts.identity.config
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.boot.env.YamlPropertySourceLoader
-import org.springframework.core.io.ClassPathResource
 import org.springframework.core.env.EnumerablePropertySource
+import org.springframework.core.io.ClassPathResource
 
 /**
  * application.yml의 issuer-uri가 환경변수 override placeholder 형식인지 검증.
@@ -18,7 +18,6 @@ import org.springframework.core.env.EnumerablePropertySource
  * YamlPropertySourceLoader로 application.yml을 직접 파싱하여 placeholder 존재 여부를 검증.
  */
 class IssuerUriEnvOverrideTest {
-
     @Test
     fun `application yml issuer-uri uses BTS_KEYCLOAK_ISSUER_URI placeholder`() {
         val loader = YamlPropertySourceLoader()
@@ -28,10 +27,11 @@ class IssuerUriEnvOverrideTest {
         val key = "spring.security.oauth2.resourceserver.jwt.issuer-uri"
 
         // EnumerablePropertySource로 프로퍼티 값 직접 추출
-        val rawValue = propertySources
-            .filterIsInstance<EnumerablePropertySource<*>>()
-            .mapNotNull { it.getProperty(key) }
-            .firstOrNull()
+        val rawValue =
+            propertySources
+                .filterIsInstance<EnumerablePropertySource<*>>()
+                .mapNotNull { it.getProperty(key) }
+                .firstOrNull()
 
         assertThat(rawValue)
             .`as`("issuer-uri는 BTS_KEYCLOAK_ISSUER_URI 환경변수 placeholder를 포함해야 한다 (CONCERN-NEW-2)")

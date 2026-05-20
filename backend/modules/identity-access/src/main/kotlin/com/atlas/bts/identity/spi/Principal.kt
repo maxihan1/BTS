@@ -17,8 +17,14 @@ data class Principal(
     val displayName: String,
     val externalSubject: String?,
 ) {
+    @Suppress("MagicNumber")
     override fun toString(): String {
-        val shortId = userId.toString().takeLast(8)
-        return "Principal(userId=...${shortId}, displayName=$displayName, providerType=$providerType, externalSubject=<masked>)"
+        val shortId = userId.toString().takeLast(SHORT_ID_LENGTH)
+        return "Principal(userId=...$shortId, displayName=$displayName," +
+            " providerType=$providerType, externalSubject=<masked>)"
+    }
+
+    companion object {
+        private const val SHORT_ID_LENGTH = 8
     }
 }
