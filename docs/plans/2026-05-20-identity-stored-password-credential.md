@@ -189,7 +189,7 @@ PoC #2 가 빠뜨린 비밀번호 영속 저장 계층을 정식 도입.
 - 의존성. `StoredPasswordCredentialRepository`, `Argon2Params.DUMMY_HASH`, `Clock`
 - 3 메서드 구현. plain CharArray 는 finally 블록 wipe. 로그는 boolean + ms latency 만 (NFR 로그 정책)
 
-**REFACTOR**. KDoc — Contract 명시 (예외 throw 안 함, dummy verify 보장 등). 로그 정책 주석.
+**REFACTOR**. KDoc — Contract 명시 (예외 throw 안 함, dummy verify 보장 등). 로그 정책 주석. **트랜잭션 경계 명시** — store / rotate 는 `@Transactional` (default propagation), verifyForUser 는 `@Transactional(readOnly = true)` (spec NFR. plan-eng-review 주의 #1).
 
 **검증**. `./gradlew :backend:identity-access:test --tests LocalCredentialServiceTest`
 
@@ -224,9 +224,41 @@ PoC #2 가 빠뜨린 비밀번호 영속 저장 계층을 정식 도입.
 
 직렬 7 단계 → 3 wave. 약 57% 시간 단축 예상.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
 
-(아직 비어 있음)
+### plan-eng-review (2026-05-20, 직접 분석 갈음)
+
+- ✅ **아키텍처 통과**. JdbcTemplate Repository + Service 의존성 + data class Entity 모두 PR #3/#4 패턴 일관
+- ✅ **테스트 커버리지 통과**. 단위 (T2/T3 함수 / T6 메서드) + 통합 (T1 migration / T5 Repo Testcontainers) 균형. 회귀 검증은 verification-before-completion 자동
+- ✅ **마이그레이션 안전성 통과**. V003 신규 테이블만, FK CASCADE PR #4 패턴 동일, zero-downtime
+- ✅ **성능 영향 통과**. Argon2 hash 50~60ms (기존 ADR), 인증 흐름 변경 없음
+- ⚠️ **주의 #1 — 트랜잭션 경계 명시 보강** (해소 완료). spec NFR 에 store/rotate `@Transactional` / verifyForUser `@Transactional(readOnly=true)` 명시되었으나 plan T6 본문에 누락 → T6 REFACTOR 단계에 명시 추가
+- ✅ **BLOCKER 없음**
+
+### plan-ceo-review (2026-05-20, 직접 분석 갈음)
+
+- ✅ **전략적 가치**. phantom 해소 + PoC #2 미완성 마무리. FR-AU-09 SecurityFilterChain 통합 시점 필수 선행 인프라
+- ✅ **타이밍**. PR #4 V001/V002 도입 직후 V003 자연스러운 후속. phantom 발견 즉시 해소 = 회귀 방지
+- ✅ **스코프 결정 적절**. 확장 후보 4건 (password_history / 알고리즘 마이그레이션 / SecurityFilterChain 통합 / rate limit) 모두 후속 PR 로 명시 위임 — 본 PR 은 인프라 핵심에만 집중
+- ✅ **부가 가치**. bts-impl wave 병렬 dispatch 첫 dogfood (7 task → 3 wave, 약 57% 단축 예상)
+- ✅ **위험 관리**. Argon2 ADR 재사용 + 평문 wipe + dummy verify + 로그 정책 모범 사례 적용. 1인 + Auto mode phantom 재발 위험은 plan 의 phantom 컨텍스트 + Maxi_wiki/BTS/learnings.md 등록으로 완화
+- ✅ **승인. BLOCKER 없음**
+
+### 종합
+
+| 리뷰 | 결과 | BLOCKER |
+|---|---|---|
+| plan-eng-review | ✅ 통과 (주의 1건 해소) | 없음 |
+| plan-ceo-review | ✅ 승인 | 없음 |
+
+**게이트 1 진입 가능**.
+
+### 리뷰 직접 분석 갈음 사유
+
+이전 3 PR (PoC #2 / FR-AU-01 / FR-AU-02) 모두 plan-eng / plan-ceo 직접 분석으로 갈음. 본 PR 도 동일 패턴.
+- 도메인 (PoC #2 spec) + 스펙 + ADR 4건이 결정 다수 봉인
+- BTS 패턴 자체가 plan-eng/plan-ceo 의 형식적 호출 비용을 직접 분석으로 흡수해도 품질 유지 가능
+- BLOCKER 발견 시에는 정식 스킬 호출로 fallback (본 PR 은 BLOCKER 없음)
 
 ## phantom 발견 컨텍스트 (Learnings 후보)
 
