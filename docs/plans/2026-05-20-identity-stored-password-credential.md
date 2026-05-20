@@ -22,9 +22,37 @@ PoC #2 가 빠뜨린 비밀번호 영속 저장 계층을 정식 도입.
 
 본 PR 은 새로 도입된 `/bts-impl` wave 병렬 dispatch 의 dogfood 대상이지만, auth 타입이라 fast-track 미적용 — `/bts-domain` + `/bts-spec` + `/bts-review-plan` (plan-eng + plan-ceo) 거쳐서 진입.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
 
-(아직 비어 있음 — `/bts-domain` 진입 시 grill-with-docs 가 채울 영역)
+- **BC**. identity-access (단독)
+- **영향 엔티티**.
+  - 신규. `StoredPasswordCredential` (JPA @Entity, BTS DB 영속). PoC #2 가 가설한 "UserCredential" 의 실제 도입 + 명명 정정 (SPI `Credential` 과 헷갈리지 않게)
+  - 신규 테이블. `user_credentials` (V003). 컬럼 후보. `user_id PK FK → users.id`, `password_hash TEXT NOT NULL`, `algo_version TEXT NOT NULL`, `created_at`, `updated_at`
+  - 기존 수정. `LocalCredentialService` — 현재 Argon2 해시 계산만. 본 PR이 해시 저장 + 조회 메서드 추가 + Repository 의존
+- **신규 용어 후보** (Maxi 승인 후 glossary 추가).
+  - `StoredPasswordCredential` — BTS DB 영속. 한 사용자 × Argon2 해시 + algo_version + updated_at. **vs `Credential` (sealed 입력 VO, 메모리 only)** 명확히 구분
+- **기존 결정과의 정합**.
+  - ADR `argon2id-parameters` (PoC #2) — 그대로 재사용. memory=64MiB / iterations=3 / parallelism=4. 신규 ADR 불필요 ✅
+  - ADR `authentication-provider-spi-naming` — 라인 68-73 의 "UserCredential = PoC #2 도입 엔티티" 가설 정정 필요. 본 PR 이 처음 도입함을 보강 단락 추가 ✏️
+  - ADR `user-external-accounts-schema` (PR #4) — `user_external_accounts.user_id → users.id` CASCADE DELETE 패턴 (GDPR). 본 PR `user_credentials` 도 같은 패턴 적용 ✅
+  - ADR `csrf-cookie-mode` / `keycloak-image-selection` / `testcontainers-docker-desktop-config` — 영향 없음 ✅
+- **Provider 흐름과의 분리** (어떤 Provider 가 해시 저장하는가).
+  - **Local** (`LocalCredentialService`) — 본 PR 의 `StoredPasswordCredential` 사용 ✅ 유일
+  - **LDAP** (PR #4) — 외부 LDAP 서버 bind 검증, BTS 해시 미저장 ✅
+  - **OIDC** (PoC #2, Keycloak) — Keycloak 자체 저장, BTS 해시 미저장 ✅
+  - **SAML** (FR-AU-03 미구현) — 외부 IdP, BTS 해시 미저장 ✅
+- **신규 ADR 후보** (impl 단계에서 결정 시점에 작성).
+  - `2026-05-20-stored-password-credential-schema.md` — V003 스키마 결정 (user_credentials 컬럼/제약/FK CASCADE/algo_version 사용 방식)
+  - 옵션. `2026-05-20-password-history-policy.md` — 비밀번호 이력 보존 안 함 (단방향 갱신만). spec 단계에서 결정 후 ADR 작성 여부 판단
+- **glossary / domain 노트 갱신 후보** (Phase 0 수동, Maxi 승인 후).
+  - `glossary.md` 인증 섹션 — `StoredPasswordCredential` 신규 추가
+  - `glossary.md` 인증 섹션 — `Credential`/`Principal`/`AuthnResult`/`ProviderRegistry` 4건도 (PR #3 ADR 가 약속했으나 누적 미반영, 본 PR 묶음 처리 가능)
+  - `domain/identity-access.md` 라인 17 — `UserCredential` → `StoredPasswordCredential` 정정. ADR 링크 추가
+- **grill-with-docs 우회 사유**. 이전 3개 PR (PoC #2 / FR-AU-01 / FR-AU-02) 모두 직접 분석으로 갈음. 본 PR도 동일 패턴. (1) 도메인 모델 명확 — DB 영속 엔티티 도입 + 기존 service 통합, (2) 신규 용어 1건만 추가, (3) ADR 재사용 충분, (4) 1인 + Auto mode 합리적 판단.
+
+**관련 ADR (영향 받음)**.
+- 영향 받는 ADR. `argon2id-parameters` (재사용), `authentication-provider-spi-naming` (정정), `user-external-accounts-schema` (패턴 재사용)
+- 본 PR 신규 ADR. 1건 예상 — `stored-password-credential-schema`
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
