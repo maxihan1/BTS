@@ -256,4 +256,71 @@ PR #3 의 `Credential.kt` 수정. 새 sealed 변종 + equals/hashCode CharArray 
 - **writing-plans 우회 사유**. PoC 패턴 일관성. spec 결정 명확.
 - **PR 분할 확정 (게이트 1)**. D6 (UI 로그인 폼) + D7 (Playwright E2E) PR #5 ~ #6 위임 — Maxi 확정 필요
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### Direct plan-eng-review (2026-05-20)
+
+`plan-eng-review` 대화형 우회 (PoC 패턴 일관성). type=auth + migration 동시 영역 — 절대 규칙 강화 적용.
+
+| 항목 | 평가 | 비고 |
+|---|---|---|
+| BC 격리 (identity-access 단독) | ✅ | 다른 BC 호출 없음. PR #3 ProviderRegistry 만 활용 |
+| NEVER-1 (평문 비밀번호 저장 금지) | ✅ T3 | bind password env var (값 미저장). LDAP 측 사용자 비밀번호 BTS DB 미저장 |
+| NEVER-2 (PII 로깅 금지) | ✅ T5 | LdapProvider 로그 마스킹. `Principal.toString` PR #3 패턴 활용 |
+| NEVER-3 (SQL 문자열 결합) | ✅ T4 | plain JDBC + `NamedParameterJdbcTemplate` (parameterized query). 문자열 결합 0건 |
+| NEVER-4 (인증 우회) | ✅ | 본 PR REST 엔드포인트 0건. SecurityFilterChain 변경 0건 |
+| NEVER-5 (CSRF 비활성화) | ✅ | 본 PR 영향 없음 |
+| NEVER-6 (입력 검증) | ✅ T5 | LdapBind.username 길이 제한 + LDAP injection 방어 (Spring Security 자동) |
+| NEVER-7 (DELETE without WHERE) | ✅ | 본 PR DELETE 0건. FK CASCADE/RESTRICT 만 V002 |
+| NEVER-8 (Flyway only 마이그레이션) | ✅ T1 | V002 SQL 통한 Flyway 마이그레이션. JPA `ddl-auto` 사용 0건 |
+| NEVER-9 (`@Transactional` 누락) | ✅ T4/T5 | provisionUser + lockout query 모두 `@Transactional`. 자동 프로비저닝 단일 트랜잭션 (DATA.md §6) |
+| NEVER-10 (이슈키 영속성) | ➖ | 해당 없음 (인증 영역) |
+| NEVER-11~13 (any/!!/empty catch) | ⏳ | impl 단계 sub-agent 검증 (security-engineer Kotlin 표준) |
+| NEVER-15 (`println`/`System.out`) | ⏳ | impl 단계 검증. Spring 표준 Logger 사용 강제 |
+| NEVER-16 (`@Profile` 격리) | ✅ T5 | LdapProvider `@Profile` 미부착 (production 자동), 가짜 Provider 만 `@Profile("test-spi")` 격리 |
+| NEVER-17 (localStorage 토큰) | ➖ | 본 PR UI 변경 0건. D6 PR 영역 |
+| NEVER-18 (의존성 카탈로그) | ⚠️ T1 | PoC #2 패턴 (build.gradle.kts 직접 명시) — 의존성 카탈로그 미사용. 신규 의존성 (spring-boot-starter-data-ldap, spring-security-ldap, postgresql JDBC, jdbc starter) 모두 build.gradle.kts 명시 |
+| TDD 강제 (`test:` 커밋 우선) | ✅ | T2/T3/T4/T5/T6 RED → GREEN → REFACTOR |
+| DATA.md §6 트랜잭션 경계 | ✅ T4/T5 | provisionUser 단일 트랜잭션. lockout 카운터 갱신 + last_login_at 갱신 명시 |
+| 마스터플랜 §2.2 정합 | ✅ | D1~D5 본 PR. D6/D7 PR 분할 정당화 (§10) |
+| PR #3 ArchUnit 룰 회귀 | ✅ T7 | provider/ldap/ 는 spi 아님, Spring Security LDAP import 자유. SpiBoundary 룰 위반 0건 |
+| PR #3 ProviderRegistryTest 회귀 | ⚠️ T7 | LdapProvider 자동 등록 영향 — assertion 갱신 가능성, impl 단계 검증 |
+| PoC #2 회귀 (KeycloakIntegrationTest) | ✅ T7 | V001 미변경 + Keycloak 컨테이너 무영향 |
+| `learnings.md` 함정 #3 (Claude 환각) | ⚠️ T6 | Spring Security LDAP API + OpenLDAP Testcontainers 이미지 정확성 — impl 진입 시 Maven Central + Docker Hub 1회 확인 권장 |
+
+#### 추가 발견 사항 (impl 단계 보강, BLOCKER 아님)
+
+1. **V001 의 존재 확인 책임 명확화**. PoC #2 가 `users` 테이블 V001 도입했는지 plan T1 본문이 "impl 단계 실측 후 결정"으로 보류 — impl 첫 task 진입 시 `find backend -name "V001*.sql"` 확인 + 부재 시 본 PR 첫 task 로 V001 포함 또는 별도 chore PR. Maxi 결정 영역.
+2. **`provider.*` 패키지 ArchUnit 룰 강화 권장**. `provider.ldap` (그리고 향후 `provider.saml`, `provider.oidc`) 는 Controller/Filter import 금지. 본 PR T7 후속 ArchUnit 룰 1건 추가 검토 (BLOCKER 아님, 후속 PR 가능).
+3. **`LdapProvider` 자동 등록 + 통합 테스트 컨텍스트 영향**. ProviderRegistryTest (PR #3) 가 가짜 Provider 카운트 assertion 사용 시 LdapProvider 등장으로 영향 가능. impl 단계 — `@TestConfiguration` 분리 또는 `lazy init` 분기로 안전.
+4. **bind password env var 부재 처리 정책**. spec FR-2 보강 (lazy init + Failure(PROVIDER_UNAVAILABLE) + 1회 WARN). 부팅 실패 안 함 — 다른 Provider 만으로 동작 가능. 정합.
+5. **PostgreSQL `gen_random_uuid()`** — V002 사용. `pgcrypto` 확장 필요 (PoC #2 V001 이 활성화했을 수도 있음). T1 V001 확인 시 함께 검증.
+6. **Testcontainers OpenLDAP 이미지 fetch 실패 대비**. learnings 함정 #3 적용. T6 시작 시 1회 docker pull 검증. CI 환경 cold start 측정.
+
+#### BLOCKER
+
+**0건**. auth + migration 절대 규칙 위반 없음. 진행 가능.
+
+### Direct plan-ceo-review (2026-05-20)
+
+`plan-ceo-review` 대화형 우회. PoC 패턴 일관성.
+
+| 항목 | 평가 |
+|---|---|
+| 스코프 적정 | ✅ D1~D5 본 PR 명확. D6/D7 별도 PR 정당화 §10 명확 |
+| BC 의존 그래프 정합 | ✅ identity-access 첫 외부 IdP 통합 — FR-AU-03/04 (SAML/OIDC) 의 패턴 선례 |
+| 분할 권장 여부 | ✅ **이미 분할됨** (D6/D7 PR 위임). 본 PR 스코프 내 추가 분할 권장 없음 (7 task, 22~25 커밋, 4~5시간 — PoC #2 14커밋 + PR #3 17커밋 보다 큰 편이지만 정합) |
+| 10-star 검토 | 본 PR 은 인프라/SPI 영역 — 10-star 적용 대상 아님. 사용자 가치 직접 노출은 D6 (UI) PR 영역 |
+| PR 분할 (게이트 1 확정) | ⚠️ Maxi 확정 필요 — 사용자 입력에 "로그인 폼 UI + Playwright E2E" 포함이라 일괄 처리 의도 가능. 분할 정당화 §10 제시 + Maxi 결정 위임 |
+
+#### BLOCKER
+
+**0건**. 스코프 확장 권장 없음. 분할 결정만 Maxi 확정.
+
+### 종합
+
+- **plan-eng-review**. 0 BLOCKER, 6건 impl 단계 주의사항
+- **plan-ceo-review**. 0 BLOCKER, **PR 분할 Maxi 확정 필요** (게이트 1)
+- **`/autoplan` / `/plan-devex-review`**. 적용 대상 아님 (PR 인프라성, REST 변경 0건)
+
+게이트 1 진입 가능. **분할 확정 옵션 명시 필수**.
