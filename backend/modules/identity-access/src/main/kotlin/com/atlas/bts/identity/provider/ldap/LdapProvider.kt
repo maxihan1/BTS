@@ -37,13 +37,23 @@ import java.util.UUID
  * AutoProvisionService 를 올바른 프록시로 주입받을 수 있다. @Component → @Service 변경.
  *
  * **priority = 80 (SDD §19.2, FR-AU-09-28)**:
- * ProviderType.LDAP.priority = 80 — AuthenticationProvider 인터페이스 default getter 로 위임.
- * LDAP > LOCAL(70) > PAT(60) 순서.
+ * [ProviderType.LDAP].priority = 80 — [AuthenticationProvider] 인터페이스 default getter 위임.
+ *
+ * | Provider | priority |
+ * |---|---|
+ * | LDAP  | **80** |
+ * | LOCAL | 70     |
+ * | PAT   | 60     |
+ * | OIDC  | 50     |
+ * | SAML  | 40     |
+ * | OAUTH | 30     |
  *
  * **CONCERN-4 (LDAP unavailable 격리)**:
- * CommunicationException 등 서버 장애 시 AuthnResult.Failure(PROVIDER_UNAVAILABLE) 반환.
- * ProviderRegistry(Task 35) 는 이 결과를 보고 다른 Provider 를 시도하지 않아야 한다.
- * (ProviderUnavailableException throw 방식은 Task 35 격리 정책 결정 후 적용 가능)
+ * CommunicationException 등 서버 장애 시 AuthnResult.Failure(PROVIDER_UNAVAILABLE) 를 반환하며
+ * 예외를 throw 하지 않는다. 이는 Provider contract (예외 대신 Failure 반환) 를 준수하기 위함.
+ * ProviderRegistry(Task 35) 는 PROVIDER_UNAVAILABLE 결과를 받으면 다른 Provider 시도를 건너뛰어야 한다.
+ * LDAP 장애 시 다른 Provider 폴백 여부는 Task 35 격리 정책에서 결정한다.
+ * [ProviderUnavailableException] 은 이 클래스 외부에서 LDAP unavailable 을 시그널할 때 사용한다.
  *
  * **보안 (DEVELOPMENT.md §1.1, §1.2)**:
  * - password CharArray 는 finally 블록에서 반드시 wipe (fill ' ')
