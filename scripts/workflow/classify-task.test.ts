@@ -236,3 +236,23 @@ describe('classify — 원본 회귀 시나리오 (2026-05-20)', () => {
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────
+// Task 3 RED — slug ASCII 강제 + 50자 컷 (2026-05-20)
+// ─────────────────────────────────────────────────────────
+
+describe('toSlug — ASCII 강제 + 50자 컷 (Task 3)', () => {
+  test('한국어 100자 입력은 50자 이하 ASCII-only slug 로 변환된다', () => {
+    const title =
+      'chore 정리 묶음 — PR #4 잔여 (escapeForLdapFilter 공백, INSERT...RETURNING, classify-task slug 50자컷) + Obsidian 동기화';
+    const { slug } = classify({ title });
+    assert.ok(slug.length <= 50, `slug 길이 ${slug.length} > 50: "${slug}"`);
+    assert.match(slug, /^[a-z0-9-]+$/, `ASCII-only 아님: "${slug}"`);
+  });
+
+  test('한국어 음절 중간에서 컷팅하지 않는다 (UTF-16 surrogate 안전)', () => {
+    const title = '가나다라마바사아자차카타파하';
+    const { slug } = classify({ title });
+    assert.doesNotMatch(slug, /[\uD800-\uDFFF]/, `lone surrogate 포함: "${slug}"`);
+  });
+});
