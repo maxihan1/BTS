@@ -6,17 +6,25 @@ import de.mkammerer.argon2.Argon2Factory
 import org.slf4j.LoggerFactory
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
+import java.time.Instant
 import java.util.UUID
 
 /**
  * 로컬 인증 패스워드 해싱/검증 서비스.
  *
  * - 해싱: Argon2id, memory=65536KB, iterations=3, parallelism=4
- * - 평문 메모리 폐기: hash/verify 완료 후 [wipeArray] 호출
+ * - 평문 메모리 폐기: 모든 메서드 완료 후 [CharArray.fill] 로 wipe (DEVELOPMENT.md §1.1)
  *
- * ## 로그 정책 (NFR §3)
+ * ## 트랜잭션 경계 (DATA.md §6)
+ * - [store]: `@Transactional` (REQUIRED) — 해시 + UPSERT 단일 경계
+ * - [verifyForUser]: `@Transactional(readOnly = true)` — 조회 전용
+ * - [rotate]: `@Transactional` (REQUIRED) — verifyForUser + store 포함 단일 경계
+ * - [hash] / [verify]: 트랜잭션 없음 (순수 계산)
+ *
+ * ## 로그 정책 (spec §3 NFR)
  * 이 클래스의 어떤 메서드도 password / hash / userId 를 로그에 출력하지 않는다.
  * 성공/실패 boolean + ms latency 만 INFO 레벨로 기록한다.
+ * 예외 발생 시 stack trace 에 password 가 포함되지 않도록 runCatching 으로 감싼다.
  */
 class LocalCredentialService(
     private val repo: StoredPasswordCredentialRepository? = null,
@@ -73,8 +81,8 @@ class LocalCredentialService(
             val credential = StoredPasswordCredential(
                 userId = userId,
                 passwordHash = passwordHash,
-                createdAt = java.time.Instant.now(clock),
-                updatedAt = java.time.Instant.now(clock),
+                createdAt = Instant.now(clock),
+                updatedAt = Instant.now(clock),
             )
             requireNotNull(repo) { "repo 가 주입되지 않음 — store() 호출 불가" }.save(credential).also {
                 log.info("store success latency={}ms", clock.millis() - start)
