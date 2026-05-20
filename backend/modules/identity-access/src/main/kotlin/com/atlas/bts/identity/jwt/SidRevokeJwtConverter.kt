@@ -97,11 +97,20 @@ class SidRevokeJwtConverter(
         return session.isActive(clock.instant())
     }
 
-    private companion object {
-        /** EC-29 캐시 TTL — revoke 후 최대 5초 내 차단 보장 */
+    internal companion object {
+        /**
+         * EC-29 캐시 TTL — revoke 후 최대 5초 내 차단 보장.
+         *
+         * Access Token 수명(15분) 대비 DB hit를 대폭 줄이면서
+         * 세션 폐기 후 허용 창을 5초로 제한한다 (EC-29 정책).
+         */
         val CACHE_TTL: Duration = Duration.ofSeconds(5)
 
-        /** 동시 접속 피크 추정치 기준 최대 캐시 항목 수 */
+        /**
+         * EC-29 캐시 최대 항목 수 — 동시 접속 피크 추정치 기준.
+         *
+         * 1,000명 규모 사내 워크스페이스 기준 피크 동시 세션 추정치의 10배 마진.
+         */
         const val CACHE_MAX_SIZE: Long = 10_000L
     }
 }
