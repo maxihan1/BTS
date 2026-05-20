@@ -19,24 +19,32 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder
 /**
  * JWT 인프라 Bean — JwkSource, JwtEncoder, JwtDecoder.
  *
- * ## BLOCKER #4 해소 — Spring Authorization Server 미도입
+ * ## BLOCKER #4 해소 — Spring Authorization Server 미도입 결정 (2026-05-21)
  * Spring Authorization Server(RegisteredClient, OAuth2AuthorizationServerConfiguration 등)는
  * BTS 자체 JWT 발급 범위에 비해 과잉 의존성이다. 3rd-party OAuth2 클라이언트 통합이 필요한
- * 후속 PR까지 도입을 보류하고 nimbus-jose-jwt 9.40 + spring-security-oauth2-jose 직접 사용으로
- * 결정했다 (2026-05-21, ADR docs/decisions/2026-05-21-no-auth-server.md 예정).
+ * 후속 PR까지 도입을 보류한다.
+ *
+ * **결정 근거.**
+ * - BTS는 자체 발급 JWT만 검증하면 된다 — Keycloak 위임 없이 nimbus-jose-jwt 직접 사용으로 충분.
+ * - Spring Authorization Server는 OAuth2 Authorization Code Flow, PKCE, Token Introspection 등을
+ *   전제한다. BTS 현재 범위(세션 기반 + PAT)에는 불필요하다.
+ * - 후속 PR에서 3rd-party OAuth2 클라이언트 통합 시 재검토한다.
+ *
+ * **금지 항목 (회귀 방지).** `RegisteredClient`, `OAuth2AuthorizationServerConfiguration`,
+ * `@EnableAuthorizationServer` import 절대 금지.
  *
  * ## Bean 구성
  * - [jwkSource] — [JwtKeyProvider] 의 RSA 공개키 + kid 로 단일 JWK Set 구성.
- *   SecurityFilterChain 의 oauth2ResourceServer 가 JWK 공개키를 여기서 조회한다.
+ *   SecurityFilterChain 의 `oauth2ResourceServer` 가 JWK 공개키를 여기서 조회한다.
  * - [jwtEncoder] — [NimbusJwtEncoder] + [jwkSource]. [com.atlas.bts.identity.jwt.JwtIssuer] 가 사용.
  * - [jwtDecoder] — [NimbusJwtDecoder.withPublicKey]. RS256 서명 검증.
  *   SecurityFilterChain 의 `.oauth2ResourceServer { it.jwt { jwt -> jwt.decoder(jwtDecoder()) } }` 가 사용.
  *
- * ## 참조
- * - FR-AU-09: JWT 자체 발급 결정
- * - FR-AU-26: 토큰 검증 (RS256 공개키 검증)
- * - FR-AU-18: 토큰 클레임 구조
- * - FR-AU-20: kid 헤더 — 다중 키 공존 지원
+ * ## FR 참조
+ * - **FR-09-2 / FR-AU-09** — JWT 자체 발급 결정 (nimbus-jose-jwt, Spring Auth Server 미도입)
+ * - **FR-09-18 / FR-AU-18** — 토큰 클레임 구조 (sub/iss/aud/exp/iat/jti + BTS 확장 클레임)
+ * - **FR-09-20 / FR-AU-20** — kid 헤더 — 다중 키 공존 지원 (키 교체 시 이전 토큰 호환성 보장)
+ * - **FR-09-26 / FR-AU-26** — 토큰 검증 (RS256 공개키 검증, JwtDecoder 책임)
  */
 @Configuration
 class JwtConfig {
