@@ -1,4 +1,4 @@
-// LdapProvider 단위 테스트 — MockK 기반, S-01~S-07 + 엣지 케이스 시나리오
+// LdapProvider 단위 테스트 — MockK 기반, S-01~S-07 + 엣지 케이스 + CONCERN-3 회귀 가드
 
 package com.atlas.bts.identity.provider.ldap
 
@@ -248,6 +248,18 @@ class LdapProviderUnitTest {
         val result = provider.authenticate(Credential.LdapBind("alice", "Test1234!".toCharArray()))
 
         assertThat(result).isEqualTo(AuthnResult.Failure(FailureReason.PROVIDER_UNAVAILABLE))
+    }
+
+    @Test
+    fun `escapeForLdapFilter 는 공백을 escape 하지 않는다`() {
+        // given: 공백 포함 username (RFC 4515 가 규정하지 않는 문자)
+        val input = "John Doe"
+
+        // when: internal 가시성으로 직접 호출
+        val escaped = LdapProvider.escapeForLdapFilter(input)
+
+        // then: 공백은 그대로 보존 (false-positive 방지)
+        assertThat(escaped).isEqualTo("John Doe")
     }
 
     @Test
