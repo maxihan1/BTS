@@ -168,11 +168,21 @@ const BC_KEYWORDS: Record<BoundedContext, string[]> = {
 const stripConventionalPrefix = (s: string): string =>
   s.replace(/^(feat|fix|refactor|chore|docs|style|test|perf)(\([^)]+\))?:\s*/i, '');
 
-const ASCII_SLUG_MAX = 50;
+export const ASCII_SLUG_MAX = 50;
+
+// 문자열의 결정론적 6자리 hex 해시. 한국어-only slug fallback에 사용.
+// Node crypto 모듈을 동기로 쓰기 어려운 환경을 위해 간단한 수치 해시 사용.
+export const shortHash = (s: string): string => {
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) {
+    hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+  }
+  return hash.toString(16).padStart(6, '0').slice(0, 6);
+};
 
 // 입력을 ASCII-only kebab-case slug로 변환.
 // 한국어 등 비-ASCII는 제거하고 ASCII 단어만 추출한다.
-// ASCII 단어가 전혀 없으면 'task-<shorthash>' fallback.
+// ASCII 단어가 전혀 없으면 'task-<shortHash>' fallback.
 export const toSlug = (title: string): string => {
   let s = stripConventionalPrefix(title.trim());
   s = s.toLowerCase();
@@ -183,12 +193,7 @@ export const toSlug = (title: string): string => {
   // 공백 → '-'
   s = s.replace(/\s/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
   if (s.length === 0) {
-    // 한국어-only 입력 → crypto 없이 간단한 수치 fallback
-    let hash = 0;
-    for (let i = 0; i < title.length; i++) {
-      hash = (hash * 31 + title.charCodeAt(i)) >>> 0;
-    }
-    return `task-${hash.toString(16).slice(0, 6)}`;
+    return `task-${shortHash(title)}`;
   }
   return s.slice(0, ASCII_SLUG_MAX).replace(/-+$/, '');
 };
