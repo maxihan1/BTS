@@ -23,7 +23,6 @@ object Argon2Params {
  * - 평문 메모리 폐기: hash/verify 완료 후 [wipeArray] 호출
  */
 class LocalCredentialService {
-
     private val argon2 = Argon2Factory.createAdvanced(Argon2Factory.Argon2Types.ARGON2id)
 
     /**
@@ -41,7 +40,10 @@ class LocalCredentialService {
      * Argon2id 해시와 평문 패스워드가 일치하는지 검증한다.
      * 반환 후 [plain] 배열 내용은 즉시 폐기된다.
      */
-    fun verify(hash: String, plain: CharArray): Boolean =
+    fun verify(
+        hash: String,
+        plain: CharArray,
+    ): Boolean =
         try {
             argon2.verify(hash, plain)
         } finally {

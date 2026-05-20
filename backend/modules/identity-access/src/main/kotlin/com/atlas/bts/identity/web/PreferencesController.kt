@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 class PreferencesController {
-
     @PostMapping("/api/v1/users/me/preferences")
     fun update(
         @RequestBody(required = false) body: Map<String, Any>?,

@@ -40,7 +40,6 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 )
 @Import(SecurityConfig::class, PreferencesControllerCsrfTest.MockJwtDecoderConfig::class)
 class PreferencesControllerCsrfTest {
-
     @TestConfiguration
     class MockJwtDecoderConfig {
         @Bean

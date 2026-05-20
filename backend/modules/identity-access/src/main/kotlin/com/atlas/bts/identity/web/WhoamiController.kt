@@ -11,7 +11,8 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 class WhoamiController {
-
     @GetMapping("/api/v1/users/me/whoami")
-    fun whoami(@AuthenticationPrincipal jwt: Jwt): WhoamiResponse = jwt.toWhoami()
+    fun whoami(
+        @AuthenticationPrincipal jwt: Jwt,
+    ): WhoamiResponse = jwt.toWhoami()
 }

@@ -3,6 +3,7 @@
 package com.atlas.bts.identity.web
 
 import com.atlas.bts.identity.config.SecurityConfig
+import io.mockk.mockk
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration
@@ -16,7 +17,6 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
-import io.mockk.mockk
 
 // OAuth2ClientAutoConfiguration 제외 — @WebMvcTest 환경에서 Keycloak issuer-uri 네트워크 접속 차단
 // JwtDecoder는 MockJwtDecoderConfig으로 모의 빈 제공 (spring-security-test jwt() 포스트 프로세서가 우회)
@@ -26,7 +26,6 @@ import io.mockk.mockk
 )
 @Import(SecurityConfig::class, WhoamiControllerTest.MockJwtDecoderConfig::class)
 class WhoamiControllerTest {
-
     @TestConfiguration
     class MockJwtDecoderConfig {
         @Bean

@@ -61,4 +61,23 @@ tasks.withType<KotlinCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+
+    // Testcontainers — Docker Desktop(macOS)에서 현재 활성 context의 소켓 경로를 명시적으로 주입.
+    // Docker Desktop은 /var/run/docker.sock에 정상 응답하지 않으므로 (Status 400 빈 응답),
+    // 활성 context의 소켓 경로를 DOCKER_HOST 환경변수 + jvmArgs 시스템 프로퍼티 두 경로로 전달.
+    // CI 환경에서 DOCKER_HOST가 이미 설정된 경우는 Gradle 상위 환경에서 상속되므로 별도 처리 불필요.
+    val dockerSocketPath =
+        runCatching {
+            val contextOutput =
+                ProcessBuilder("docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}")
+                    .start().inputStream.bufferedReader().readLine() ?: ""
+            // "unix:///path" → "/path"
+            contextOutput.removePrefix("unix://")
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+
+    if (dockerSocketPath != null) {
+        environment("DOCKER_HOST", "unix://$dockerSocketPath")
+        // TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE: JVM 시스템 프로퍼티로도 전달 (환경변수 누락 방어)
+        jvmArgs("-DDOCKER_HOST=unix://$dockerSocketPath")
+    }
 }
