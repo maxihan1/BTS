@@ -168,19 +168,29 @@ const BC_KEYWORDS: Record<BoundedContext, string[]> = {
 const stripConventionalPrefix = (s: string): string =>
   s.replace(/^(feat|fix|refactor|chore|docs|style|test|perf)(\([^)]+\))?:\s*/i, '');
 
-// 입력을 kebab-case slug로 변환. 한글 단어는 보존, 공백 → '-'
+const ASCII_SLUG_MAX = 50;
+
+// 입력을 ASCII-only kebab-case slug로 변환.
+// 한국어 등 비-ASCII는 제거하고 ASCII 단어만 추출한다.
+// ASCII 단어가 전혀 없으면 'task-<shorthash>' fallback.
 export const toSlug = (title: string): string => {
   let s = stripConventionalPrefix(title.trim());
-  // 영문은 소문자
   s = s.toLowerCase();
-  // 특수문자 → 공백 (한글/영문/숫자/공백만 유지)
-  s = s.replace(/[^\p{L}\p{N}\s]/gu, ' ');
+  // 비-ASCII 문자 (한국어 포함) → 공백으로 치환 후 ASCII 단어만 추출
+  s = s.replace(/[^a-z0-9\s]/g, ' ');
   // 다중 공백 압축
   s = s.replace(/\s+/g, ' ').trim();
   // 공백 → '-'
-  s = s.replace(/\s/g, '-');
-  // 50자 컷
-  return s.slice(0, 50).replace(/-+$/, '');
+  s = s.replace(/\s/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  if (s.length === 0) {
+    // 한국어-only 입력 → crypto 없이 간단한 수치 fallback
+    let hash = 0;
+    for (let i = 0; i < title.length; i++) {
+      hash = (hash * 31 + title.charCodeAt(i)) >>> 0;
+    }
+    return `task-${hash.toString(16).slice(0, 6)}`;
+  }
+  return s.slice(0, ASCII_SLUG_MAX).replace(/-+$/, '');
 };
 
 // 키워드 매치 (case-insensitive, 단어 경계 검사 없이 substring)

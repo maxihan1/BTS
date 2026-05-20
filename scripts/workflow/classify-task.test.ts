@@ -4,9 +4,11 @@ import { strict as assert } from 'node:assert';
 import { classify, toSlug } from './classify-task.ts';
 
 describe('toSlug', () => {
-  test('한글 입력을 한 단어 단위로 보존하면서 kebab-case 변환', () => {
+  test('한글 only 입력은 ASCII fallback slug (task-<hash>)', () => {
     const slug = toSlug('이슈에 멘션 알림 추가');
-    assert.equal(slug, '이슈에-멘션-알림-추가');
+    // 한국어만 있으면 ASCII fallback. 두 번 호출해도 같은 값 (결정론적).
+    assert.match(slug, /^task-[a-f0-9]+$/, `fallback 형식 불일치: "${slug}"`);
+    assert.equal(toSlug('이슈에 멘션 알림 추가'), slug);
   });
 
   test('영어 입력은 소문자 kebab-case', () => {
