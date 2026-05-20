@@ -2,13 +2,18 @@
 
 package com.atlas.bts.identity.integration
 
+import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
+import com.atlas.bts.identity.provider.ldap.LdapProvider
+import com.atlas.bts.identity.provider.ldap.LdapProviderConfigService
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.mock.mockito.MockBean
 import org.springframework.boot.test.web.client.TestRestTemplate
 import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
+import org.springframework.ldap.core.LdapTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.springframework.util.LinkedMultiValueMap
@@ -74,8 +79,30 @@ abstract class KeycloakIntegrationBase {
             r.add("spring.security.oauth2.client.provider.keycloak.issuer-uri") {
                 "http://${keycloak.host}:${keycloak.firstMappedPort}/realms/bts"
             }
+            // DataSource/Flyway/LDAP 비활성화 — Keycloak 통합 테스트는 DB/LDAP 불필요 (LDAP Bean은 @MockBean)
+            r.add("spring.autoconfigure.exclude") {
+                "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration," +
+                    "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration," +
+                    "org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration," +
+                    "org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration," +
+                    "org.springframework.boot.autoconfigure.data.ldap.LdapDataAutoConfiguration," +
+                    "org.springframework.boot.autoconfigure.ldap.LdapAutoConfiguration"
+            }
         }
     }
+
+    // LDAP Bean들 — Keycloak 통합 테스트에서 불필요하므로 Mock으로 대체 (DataSource 없음)
+    @MockBean
+    lateinit var ldapProvider: LdapProvider
+
+    @MockBean
+    lateinit var ldapProviderConfigService: LdapProviderConfigService
+
+    @MockBean
+    lateinit var externalAccountRepository: ExternalAccountRepository
+
+    @MockBean
+    lateinit var ldapTemplate: LdapTemplate
 
     @LocalServerPort
     var serverPort: Int = 0

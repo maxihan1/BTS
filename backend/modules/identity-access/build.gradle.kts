@@ -37,6 +37,16 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
     implementation("de.mkammerer:argon2-jvm:2.11")
 
+    // LDAP 인증 공급자 (FR-AU-02)
+    implementation("org.springframework.boot:spring-boot-starter-data-ldap")
+    implementation("org.springframework.security:spring-security-ldap")
+
+    // JDBC + Flyway (FR-AU-02 DB 마이그레이션 + ExternalAccount Repository)
+    implementation("org.springframework.boot:spring-boot-starter-jdbc")
+    implementation("org.flywaydb:flyway-core")
+    implementation("org.flywaydb:flyway-database-postgresql")
+    runtimeOnly("org.postgresql:postgresql")
+
     // Kotlin 기본
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")

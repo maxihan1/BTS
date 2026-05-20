@@ -1,0 +1,30 @@
+# BTS OpenLDAP 테스트 초기 데이터 — alice/bob 사용자 + engineers 그룹
+
+dn: ou=people,dc=example,dc=org
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,dc=example,dc=org
+objectClass: organizationalUnit
+ou: groups
+
+dn: uid=alice,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: alice
+cn: Alice Test
+sn: Test
+mail: alice@bts.local
+userPassword: Test1234!
+
+dn: uid=bob,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: bob
+cn: Bob Test
+sn: Test
+mail: bob@bts.local
+userPassword: Test1234!
+
+dn: cn=engineers,ou=groups,dc=example,dc=org
+objectClass: groupOfNames
+cn: engineers
+member: uid=alice,ou=people,dc=example,dc=org
