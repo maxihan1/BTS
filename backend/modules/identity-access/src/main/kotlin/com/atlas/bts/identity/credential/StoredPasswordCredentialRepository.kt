@@ -9,7 +9,6 @@ import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import java.sql.ResultSet
-import java.time.Instant
 import java.util.UUID
 
 /**
