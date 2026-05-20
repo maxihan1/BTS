@@ -4,6 +4,17 @@ server:
   port: 8090
 
 spring:
+  datasource:
+    url: ${BTS_DB_URL:jdbc:postgresql://localhost:5432/bts}
+    username: ${BTS_DB_USERNAME:bts}
+    password: ${BTS_DB_PASSWORD:bts}
+    driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  ldap:
+    urls: ${BTS_LDAP_URL:ldap://localhost:389}
+    base: ${BTS_LDAP_BASE_DN:dc=bts,dc=local}
   security:
     oauth2:
       resourceserver:
@@ -19,19 +30,6 @@ spring:
         provider:
           keycloak:
             issuer-uri: http://localhost:8180/realms/bts
-
-spring:
-  datasource:
-    url: ${BTS_DB_URL:jdbc:postgresql://localhost:5432/bts}
-    username: ${BTS_DB_USERNAME:bts}
-    password: ${BTS_DB_PASSWORD:bts}
-    driver-class-name: org.postgresql.Driver
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
-  ldap:
-    urls: ${BTS_LDAP_URL:ldap://localhost:389}
-    base: ${BTS_LDAP_BASE_DN:dc=bts,dc=local}
 
 logging:
   level:
