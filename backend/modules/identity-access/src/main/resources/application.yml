@@ -8,7 +8,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8180/realms/bts
+          issuer-uri: ${BTS_KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/bts}
       client:
         registration:
           keycloak:
