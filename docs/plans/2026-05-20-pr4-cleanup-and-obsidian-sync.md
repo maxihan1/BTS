@@ -280,6 +280,14 @@ T1, T2 의 LDAP/Repository 영역은 identity-access BC 내부. 신규 도메인
 - 검증 도구. ktlint + detekt (backend 변경 시), vitest/node:test (TS), markdown lint (있으면).
 - wave 후 controller chore commit 후보. `./gradlew :backend:identity-access:ktlintFormat` 부수 변경 (PR #6 learning #2 패턴).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
 
-(`/bts-review-plan` 단계에서 채움)
+**SKIPPED — Fast-track**. `bts-review-plan` SKILL.md 명시. `TYPE ∈ {bugfix, chore, qa}` 전체 스킵.
+
+자체 점검 (수동, 게이트 1 전 sanity check).
+- ✅ TDD 강제. T1/T2/T3 RED phase 명시 (단순 docs T4/T5 는 비대상).
+- ✅ 파일 경로 모두 실재 확인 (T1 LdapProvider.kt 199-205, T2 Repository, T3 classify-task.ts, T5 CLAUDE.md). T4 CONTRIBUTING.md 는 신규 (의도된 부재).
+- ✅ 의존성 없음 + 파일 겹침 없음 → 단일 wave 5-병렬 가능. 두 번째 dogfood.
+- ✅ phantom 검증. `escapeForLdapFilter` 함수 실재 (`LdapProvider.kt:199-205`), `ExternalAccountRepository` 실재 (PR #4 머지본), `classify-task.ts` 실재 (PR #1 머지본). learnings #1 (phantom 엔티티) 회귀 가드.
+- ⚠️ 주의 (BLOCKER 아님). T2 의 UPSERT 마이그레이션이 SAVE-2/3 부채 본체 — 회귀 위험 가장 큼. wave dispatch 시 implementer 가 현재 구현 우선 검토 후 RED 작성. integration test 회귀 확인 필수.
+- ⚠️ 주의 (BLOCKER 아님). T1 의 `escapeForLdapFilter` 가시성 `private → internal` 변경 — 테스트 직접 호출 위해. ArchUnit 룰 영향 없음 (외부 모듈 노출 없음).
