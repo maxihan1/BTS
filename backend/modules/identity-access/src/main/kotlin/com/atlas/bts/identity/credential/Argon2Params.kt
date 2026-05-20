@@ -24,9 +24,20 @@ object Argon2Params {
     /**
      * verifyForUser 가 row 없는 경우 timing attack 방어 목적으로 사용하는 더미 해시.
      *
-     * 실제 사용자 비밀번호와 무관한 플레이스홀더("DUMMY") 를 Argon2id 로 사전 인코딩한 결과.
-     * 사용 시 절대 평문 비교 안 함 — Argon2.verify 를 통해서만 호출.
-     * verify 결과는 항상 false (실제 비밀번호와 일치할 확률 0).
+     * 존재하지 않는 사용자 조회 시 응답 시간이 존재하는 사용자와 동일하도록
+     * 실제 Argon2id verify 호출을 수행하기 위한 플레이스홀더 해시.
+     *
+     * - 사용 시 절대 평문 직접 비교 안 함 — 반드시 [Argon2.verify] 를 통해서만 호출.
+     * - verify 결과는 항상 false ("DUMMY" 와 일치하는 실제 사용자 비밀번호는 없어야 함).
+     *
+     * ## DUMMY_HASH 재생성 방법 (파라미터 변경 시)
+     * argon2-jvm 라이브러리로 일회 실행:
+     * ```kotlin
+     * Argon2Factory.createAdvanced(Argon2Factory.Argon2Types.ARGON2id)
+     *     .hash(ITERATIONS, MEMORY_KB, PARALLELISM, "DUMMY".toCharArray())
+     * ```
+     * 결과 문자열을 이 상수에 붙여 넣는다.
+     * [MEMORY_KB], [ITERATIONS], [PARALLELISM] 변경 시 반드시 재생성.
      */
     const val DUMMY_HASH =
         "\$argon2id\$v=19\$m=65536,t=3,p=4\$JqBo0yO1FXh5APsSwPIrmQ\$RST0s/txadZqJbiUAhKG6EsqxvoAJdtYsWEedJZo1G0"
