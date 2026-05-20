@@ -146,6 +146,10 @@ class ExternalAccountRepository(
             WHERE provider_id = :providerId AND external_subject = :externalSubject
         """
 
+        /**
+         * users UPSERT — 신규 사용자 INSERT, username 충돌 시 display_name/email 최신화.
+         * ON CONFLICT 시 기존 id 가 보존된다 — user_external_accounts 연결이 끊기지 않는다.
+         */
         const val SQL_UPSERT_USER = """
             INSERT INTO users (id, username, email, display_name)
             VALUES (:id, :username, :email, :displayName)
@@ -154,6 +158,12 @@ class ExternalAccountRepository(
                     email        = EXCLUDED.email
         """
 
+        /**
+         * user_external_accounts UPSERT + RETURNING.
+         * ON CONFLICT (provider_id, external_subject) 시 groups/updated_at 만 갱신.
+         * user_id, id, failed_attempts, locked_until 등은 기존 값을 보존한다.
+         * RETURNING 으로 추가 SELECT 없이 최신 상태 반환.
+         */
         const val SQL_UPSERT_EXTERNAL_ACCOUNT = """
             INSERT INTO user_external_accounts (id, provider_id, external_subject, user_id, groups)
             VALUES (:id, :providerId, :externalSubject, :userId, :groups::jsonb)
