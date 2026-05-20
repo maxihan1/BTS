@@ -33,6 +33,10 @@ spring:
           keycloak:
             issuer-uri: http://localhost:8180/realms/bts
 
+bts:
+  auth:
+    issuer-uri: ${BTS_AUTH_ISSUER_URI:http://localhost:8090}
+
 logging:
   level:
     root: INFO
