@@ -114,18 +114,18 @@ class JdbcPersonalAccessTokenRepository(
             "scopes" to scopesJson,
             "expiresAt" to pat.expiresAt?.let { Timestamp.from(it) },
         )
-        return jdbc.queryForObject(SQL_INSERT, params, rowMapper())
+        return jdbc.queryForObject(SQL_INSERT, params, rowMapper)
             ?: error("INSERT RETURNING 결과 없음 — id=${pat.id}")
     }
 
     @Transactional(readOnly = true)
     override fun findByTokenHash(tokenHash: String): PersonalAccessToken? =
-        jdbc.query(SQL_FIND_BY_TOKEN_HASH, mapOf("tokenHash" to tokenHash), rowMapper())
+        jdbc.query(SQL_FIND_BY_TOKEN_HASH, mapOf("tokenHash" to tokenHash), rowMapper)
             .firstOrNull()
 
     @Transactional(readOnly = true)
     override fun findActiveByUserId(userId: UUID): List<PersonalAccessToken> =
-        jdbc.query(SQL_FIND_ACTIVE_BY_USER_ID, mapOf("userId" to userId), rowMapper())
+        jdbc.query(SQL_FIND_ACTIVE_BY_USER_ID, mapOf("userId" to userId), rowMapper)
 
     override fun updateLastUsed(id: UUID) {
         jdbc.update(SQL_UPDATE_LAST_USED, mapOf("id" to id, "now" to Timestamp.from(Instant.now())))
@@ -147,8 +147,11 @@ class JdbcPersonalAccessTokenRepository(
 
     // ── RowMapper ─────────────────────────────────────────────────────────────
 
-    private fun rowMapper(): RowMapper<PersonalAccessToken> =
-        RowMapper { rs, _ -> mapRow(rs) }
+    /**
+     * ResultSet → [PersonalAccessToken] 변환기.
+     * 인스턴스당 한 번만 생성되어 재사용된다.
+     */
+    private val rowMapper: RowMapper<PersonalAccessToken> = RowMapper { rs, _ -> mapRow(rs) }
 
     private fun mapRow(rs: ResultSet): PersonalAccessToken =
         PersonalAccessToken(
