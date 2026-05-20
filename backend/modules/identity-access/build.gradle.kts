@@ -53,6 +53,9 @@ dependencies {
     implementation("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.postgresql:postgresql")
 
+    // EC-29 Caffeine 캐시 — SidRevokeJwtConverter 5s TTL 캐시 (Task 34)
+    implementation("com.github.ben-manes.caffeine:caffeine:3.1.8")
+
     // Kotlin 기본
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
