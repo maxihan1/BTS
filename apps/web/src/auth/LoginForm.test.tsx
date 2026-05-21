@@ -109,20 +109,23 @@ describe('LoginForm', () => {
     await screen.findByText('추가 인증이 필요합니다. 관리자에게 문의하세요.')
   })
 
-  it('provider 드롭다운이 기본값 local이고 ldap-corp 옵션을 포함한다', async () => {
-    const user = userEvent.setup()
+  it('provider 드롭다운이 기본값 local이고 ldap-corp 옵션을 포함한다', () => {
     renderLoginForm()
 
-    // 기본값 "Local" 표시 확인
-    expect(screen.getByText('Local')).toBeInTheDocument()
-
-    // 드롭다운 열기
+    // combobox 트리거 — 기본값 "Local" 텍스트 포함 확인
     const trigger = screen.getByRole('combobox', { name: '로그인 방식' })
-    await user.click(trigger)
+    expect(trigger).toBeInTheDocument()
+    expect(trigger).toHaveTextContent('Local')
 
-    // 두 옵션 확인
-    await screen.findByRole('option', { name: 'Local' })
-    await screen.findByRole('option', { name: 'LDAP-corp' })
+    // Radix Select는 접근성용 숨겨진 <select> 요소를 DOM에 렌더링한다.
+    // jsdom 환경에서 Portal은 옵션을 role="option"으로 노출하지 않으므로,
+    // 숨겨진 네이티브 select의 option 목록으로 두 옵션을 검증한다.
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const nativeSelect = document.querySelector('select[aria-hidden="true"]')!
+    expect(nativeSelect).toBeInTheDocument()
+    const options = Array.from(nativeSelect.querySelectorAll('option')).map((o) => o.textContent)
+    expect(options).toContain('Local')
+    expect(options).toContain('LDAP-corp')
   })
 
   it('키보드 탐색 — label/aria-invalid/aria-describedby 접근성을 충족한다', async () => {
