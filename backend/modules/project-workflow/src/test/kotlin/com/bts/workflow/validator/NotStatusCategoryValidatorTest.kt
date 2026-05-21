@@ -16,6 +16,15 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.EnumSource
 
+/**
+ * [NotStatusCategoryValidator] 단위 테스트.
+ *
+ * Spring 컨텍스트 없이 순수 단위 테스트로 실행한다.
+ * 테스트 케이스.
+ * - pass — fromState 카테고리가 forbidden 과 다르면 [com.bts.workflow.domain.spi.ValidatorResult.Pass] 반환.
+ * - fail — fromState 카테고리가 forbidden 과 같으면 [com.bts.workflow.domain.spi.ValidatorResult.Fail] 반환.
+ * - edge — [StateCategory] 모든 enum 값에 대해 forbidden 과 동일하면 Fail 임을 파라미터 테스트로 검증.
+ */
 class NotStatusCategoryValidatorTest {
 
     /**
