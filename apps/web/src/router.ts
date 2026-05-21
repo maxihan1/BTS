@@ -20,12 +20,14 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   component: LoginPage,
+  staticData: { requireAuth: false },
 })
 
 const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/dashboard',
   component: DashboardPage,
+  staticData: { requireAuth: true },
 })
 
 export const routeTree = rootRoute.addChildren([
@@ -39,5 +41,10 @@ export const router = createRouter({ routeTree })
 declare module '@tanstack/react-router' {
   interface Register {
     router: typeof router
+  }
+  // 라우트별 인증 필요 여부를 staticData 로 선언.
+  // 실제 가드 로직은 T13 beforeLoad 에서 구현.
+  interface StaticDataRouteOption {
+    requireAuth?: boolean
   }
 }
