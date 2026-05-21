@@ -93,7 +93,7 @@ class JwksControllerTest {
         // key rotation 후 클라이언트 캐시 — public, max-age=86400 (24h)
         mockMvc.perform(get("/.well-known/jwks.json"))
             .andExpect(status().isOk)
-            .andExpect(header().string("Cache-Control", "public, max-age=86400"))
+            .andExpect(header().string("Cache-Control", "max-age=86400, public"))
     }
 
     @Test
