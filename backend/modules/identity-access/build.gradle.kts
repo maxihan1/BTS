@@ -71,6 +71,10 @@ dependencies {
     testImplementation("org.testcontainers:junit-jupiter:1.20.3")
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
+    // LocalAuthFlowIntegrationTest — 401 응답 body 읽기 (HttpURLConnection 재시도 방지)
+    // TestRestTemplate 의 기본 HttpURLConnection 은 401 POST 응답 시 HttpRetryException.
+    // Apache HttpComponents 5 ClientHttpRequestFactory 로 교체하여 해결.
+    testImplementation("org.apache.httpcomponents.client5:httpclient5:5.3.1")
 }
 
 tasks.withType<KotlinCompile> {

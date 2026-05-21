@@ -91,11 +91,15 @@ class SecurityConfig(
             .cors { it.configurationSource(corsConfigurationSource) }
             // DEVELOPMENT.md §1.5 — CSRF 비활성화 금지.
             // login: credentials 수신 전이므로 CSRF skip. jwks.json / actuator: 공개 리소스.
+            // refresh: Cookie 기반 엔드포인트. SameSite=Strict refresh_token Cookie 로
+            //   CSRF 위험을 동등하게 방어한다 (AuthController KDoc §CSRF 처리 참조).
+            //   Bearer 토큰 없이 Cookie 만으로 동작하므로 CSRF skip 추가 (FR-09-21 회귀 방지).
             .csrf { csrf ->
                 csrf.csrfTokenRepository(csrfRepo)
                 csrf.csrfTokenRequestHandler(CsrfTokenRequestAttributeHandler())
                 csrf.ignoringRequestMatchers(
                     "/api/v1/auth/login",
+                    "/api/v1/auth/refresh",
                     "/.well-known/jwks.json",
                     "/actuator/**",
                 )
