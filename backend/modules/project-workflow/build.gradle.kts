@@ -61,7 +61,8 @@ dependencies {
     // ── jOOQ 코드 생성 전용 classpath ─────────────────────────────────────────
     // DDLDatabase: 외부 DB 없이 SQL 파일로 jOOQ 코드 생성 (nu.studer.jooq codegen 전용)
     jooqGenerator("org.jooq:jooq-codegen")
-    jooqGenerator("org.jooq:jooq-meta-extensions")
+    // jooq-meta-extensions: Spring BOM 관리 범위 밖 — jooq-codegen 과 동일 major.minor 버전 명시
+    jooqGenerator("org.jooq:jooq-meta-extensions:3.19.14")
 
     // ── 테스트 ─────────────────────────────────────────────────────────────────
     // Spring Boot 테스트 슬라이스 (JUnit Vintage 제외 — Kotest runner 사용)
