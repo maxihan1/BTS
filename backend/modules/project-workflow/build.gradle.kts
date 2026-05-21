@@ -59,10 +59,16 @@ dependencies {
     implementation("org.jooq:jooq")
 
     // ── jOOQ 코드 생성 전용 classpath ─────────────────────────────────────────
-    // DDLDatabase: 외부 DB 없이 SQL 파일로 jOOQ 코드 생성 (nu.studer.jooq codegen 전용)
+    // PostgresDatabase: 실제 PostgreSQL 인스턴스를 통해 jOOQ 코드 생성 (nu.studer.jooq codegen 전용)
     jooqGenerator("org.jooq:jooq-codegen")
-    // jooq-meta-extensions: Spring BOM 관리 범위 밖 — jooq-codegen 과 동일 major.minor 버전 명시
-    jooqGenerator("org.jooq:jooq-meta-extensions:3.19.14")
+    jooqGenerator("org.jooq:jooq-meta")
+    // Testcontainers PostgreSQL: codegen 시 자동으로 PostgreSQL 컨테이너를 띄워 스키마 introspection
+    jooqGenerator("org.testcontainers:postgresql:1.20.3")
+    jooqGenerator("org.testcontainers:jdbc:1.20.3")
+    jooqGenerator("org.postgresql:postgresql:42.7.3")
+    // Flyway: 컨테이너 기동 후 V001 SQL 적용 (onMigrate hook 사용)
+    jooqGenerator("org.flywaydb:flyway-core:10.17.3")
+    jooqGenerator("org.flywaydb:flyway-database-postgresql:10.17.3")
 
     // ── 테스트 ─────────────────────────────────────────────────────────────────
     // Spring Boot 테스트 슬라이스 (JUnit Vintage 제외 — Kotest runner 사용)
@@ -92,36 +98,35 @@ dependencies {
 }
 
 // ── jOOQ 코드 생성 설정 ───────────────────────────────────────────────────────
-// DDLDatabase: V001 SQL 파일을 입력으로 삼아 외부 DB 없이 Kotlin 소스를 생성한다.
+// PostgresDatabase: Testcontainers가 PostgreSQL 컨테이너를 띄우고 Flyway onMigrate hook으로
+// V001 SQL을 적용한 뒤 information_schema introspection으로 정확한 Kotlin 소스를 생성한다.
 jooq {
     configurations {
         create("main") {
             generateSchemaSourceOnCompilation.set(false) // generateJooq 태스크를 수동 트리거 (wave-2 종료 후 controller 실행)
 
             jooqConfiguration.apply {
+                logging = org.jooq.meta.jaxb.Logging.WARN
+
+                // Testcontainers PostgreSQL JDBC URL — 자동 컨테이너 기동 + TC_INITSCRIPT로 V001 적용
+                // TC_INITSCRIPT: 컨테이너 기동 직후 JDBC를 통해 SQL 파일을 실행하므로 PostgreSQL 문법 그대로 적용 가능
+                jdbc.apply {
+                    driver = "org.testcontainers.jdbc.ContainerDatabaseDriver"
+                    url = "jdbc:tc:postgresql:16-alpine:///bts_codegen" +
+                        "?TC_INITSCRIPT=file:src/main/resources/db/migration/V001__init_workflow.sql"
+                    user = "test"
+                    password = "test"
+                }
+
                 generator.apply {
                     name = "org.jooq.codegen.KotlinGenerator"
 
                     database.apply {
-                        // DDLDatabase: SQL 파일을 파싱해 스키마를 추론하므로 DB 연결 불필요
-                        name = "org.jooq.meta.extensions.ddl.DDLDatabase"
-                        properties.addAll(
-                            listOf(
-                                org.jooq.meta.jaxb.Property().apply {
-                                    key = "scripts"
-                                    // Flyway V001 DDL 파일 경로 (codegen 입력 스키마)
-                                    value = "src/main/resources/db/migration/V001__init_workflow.sql"
-                                },
-                                org.jooq.meta.jaxb.Property().apply {
-                                    key = "sort"
-                                    value = "flyway"
-                                },
-                                org.jooq.meta.jaxb.Property().apply {
-                                    key = "defaultNameCase"
-                                    value = "as_is"
-                                },
-                            ),
-                        )
+                        // PostgresDatabase: 실제 PostgreSQL information_schema로 스키마 introspection
+                        name = "org.jooq.meta.postgres.PostgresDatabase"
+                        inputSchema = "public"
+                        includes = ".*"
+                        excludes = "flyway_schema_history"
                     }
 
                     generate.apply {
