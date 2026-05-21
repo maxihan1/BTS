@@ -44,8 +44,11 @@ class WorkflowPropertyTest : StringSpec({
     // ──────────────────────────────────────────────────────────────────────── //
 
     "invariant 1: 1000건 임의 전이 시 결과 상태 키는 항상 Workflow.states 집합 안에 있다" {
-        checkAll(WorkflowGenerators.transitions, iterations = 1000) { (workflow, fromStateKey, transition) ->
-            val stateKeys = workflow.states.map { it.key }.toSet()
+        checkAll(1000, WorkflowGenerators.transitions) { triple ->
+            val wf = triple.first
+            val fromStateKey = triple.second
+            val transition = triple.third
+            val stateKeys = wf.states.map { it.key }.toSet()
 
             // 전이가 선택된 경우만 — transition 은 workflow.transitions 에서 뽑혔으므로 반드시 유효
             stateKeys.contains(transition.toStateKey).shouldBeTrue()
@@ -58,7 +61,7 @@ class WorkflowPropertyTest : StringSpec({
     // ──────────────────────────────────────────────────────────────────────── //
 
     "invariant 2: 1000건 임의 조합 — validator Fail 시 결과 상태 = 출발 상태 (rollback)" {
-        checkAll(WorkflowGenerators.validatorScenarios, iterations = 1000) { scenario ->
+        checkAll(1000, WorkflowGenerators.validatorScenarios) { scenario ->
             val result = simulateTransition(
                 workflow = scenario.workflow,
                 fromStateKey = scenario.fromStateKey,
@@ -79,7 +82,7 @@ class WorkflowPropertyTest : StringSpec({
     // ──────────────────────────────────────────────────────────────────────── //
 
     "invariant 3: 1000건 임의 조합 — validator 실패 시 PostAction 실행 횟수 = 0" {
-        checkAll(WorkflowGenerators.validatorScenarios, iterations = 1000) { scenario ->
+        checkAll(1000, WorkflowGenerators.validatorScenarios) { scenario ->
             val result = simulateTransition(
                 workflow = scenario.workflow,
                 fromStateKey = scenario.fromStateKey,
