@@ -34,6 +34,23 @@ PR #10 (project-workflow) 의 plan 에 pgmq (`CREATE EXTENSION pgmq`) 가 명시
 - `postgres:16-alpine` 대비 이미지 크기 증가 (pgmq 및 관련 의존 패키지 포함).
 - `:latest` 태그 사용으로 재현성 위험 — 향후 prod 고정 버전 태그 검토 필요.
 
+## 향후 고려 — Prod 배포 시 이미지 전략
+
+Naver Cloud 배포 시 두 가지 선택지가 있다.
+
+**선택 1. `quay.io/tembo/pg16-pgmq` 고정 버전 태그 사용 (권장).**
+현재 `:latest` 태그는 재현성을 보장하지 않으므로, prod 배포 전
+`quay.io/tembo/pg16-pgmq:<구체적 버전>` 으로 고정한다.
+Tembo 릴리즈 채널을 주기적으로 모니터링해 패치 버전을 올린다.
+
+**선택 2. Naver Cloud 관리형 PostgreSQL (Cloud DB for PostgreSQL) 사용.**
+Naver Cloud 가 PostgreSQL 16 을 지원하면 확장 설치 가능 여부를 확인해야 한다.
+관리형 서비스는 pgmq 같은 서드파티 확장 설치를 제한할 수 있다 — 사전 검증 필수.
+관리형 서비스 사용 시 이미지 의존성 자체가 사라지므로 이 ADR 은 dev/test 전용으로 축소된다.
+
+현재 Phase 0 기준으로는 단일 호스트 Docker Compose 이므로 선택 1 을 따른다.
+Prod 배포 전 별도 ADR 로 관리형 서비스 여부를 재결정한다.
+
 ## 관련
 
 - `infra/docker-compose.dev.yml`
