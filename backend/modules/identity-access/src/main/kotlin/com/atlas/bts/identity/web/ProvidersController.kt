@@ -9,12 +9,17 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
 
 /**
- * GET /api/v1/auth/providers — UI 로그인 폼용 공급자 목록 (FR-AU-09-22).
+ * GET /api/v1/auth/providers — UI 로그인 폼용 공급자 목록 (FR-AU-09-22 / spec §4.7).
  *
- * - permitAll (인증 불필요): SecurityConfig 에서 해당 경로가 permitAll 처리됨.
- * - PAT 공급자 제외: PAT 는 UI 로그인 폼 대상이 아닌 API 전용 인증 방식.
- * - priority 내림차순 정렬: 높은 우선순위 공급자가 앞에 위치.
- * - available 필드: 공급자 현재 가용 여부 반영 ([AuthenticationProvider.available]).
+ * ## 응답 계약
+ * - 인증 불필요 (permitAll): SecurityConfig Task 19 에서 `/api/v1/auth/providers` permitAll 선언.
+ * - PAT 제외: PAT 는 API 전용 방식으로 UI 로그인 폼에 노출하지 않음.
+ * - priority 내림차순: 높은 우선순위 공급자가 목록 앞에 위치 (SDD §19.2).
+ * - available 필드: [com.atlas.bts.identity.spi.AuthenticationProvider.available] 현재 가용 여부.
+ *
+ * ## 보안 (DEVELOPMENT.md §1.4)
+ * 이 엔드포인트는 permitAll 이므로 @PreAuthorize 를 적용하지 않는다.
+ * SecurityConfig 의 authorizeHttpRequests 에서 명시적 허용이 선언되어 있다.
  *
  * @see com.atlas.bts.identity.config.SecurityConfig — /api/v1/auth/providers permitAll 선언
  */
