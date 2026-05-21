@@ -2,7 +2,8 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgmq 확장 사전 설치된 Tembo 공식 이미지 (postgres:16 기반). ADR: docs/adr/2026-05-22-pgmq-postgres-image.md
+    image: quay.io/tembo/pg16-pgmq:latest
     container_name: bts-postgres-dev
     environment:
       POSTGRES_DB: bts
