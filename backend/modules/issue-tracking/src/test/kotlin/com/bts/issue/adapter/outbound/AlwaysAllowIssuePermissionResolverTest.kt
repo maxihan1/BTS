@@ -69,7 +69,7 @@ class AlwaysAllowIssuePermissionResolverTest {
         assertThat(result).isTrue()
     }
 
-    // ── 4. WARN 로그 발생 검증 ──────────────────────────────────────────────
+    // ── 4. WARN 로그 발생 및 메시지 포맷 검증 ──────────────────────────────────
 
     @Test
     fun `hasPermission 호출 시 WARN 레벨 로그가 발생한다`() {
@@ -85,6 +85,44 @@ class AlwaysAllowIssuePermissionResolverTest {
             assertThat(appender.list)
                 .filteredOn { it.level == Level.WARN }
                 .isNotEmpty()
+        } finally {
+            logger.detachAppender(appender)
+        }
+    }
+
+    /**
+     * WARN 로그 메시지에 PII 가 포함되지 않음을 검증한다.
+     *
+     * - actorId: UUID (PII 아님 — 식별자일 뿐, 이름/이메일 등 개인정보 아님)
+     * - permission: enum 이름 (PII 아님)
+     * - scope: sealed class 표현 (PII 아님)
+     *
+     * 로그에 이메일, 이름, 전화번호 등 실제 개인정보가 포함되지 않는지 확인한다.
+     * 추가로 메시지에 "stub" 키워드와 "FR-AU-12" 가 포함되어 임시 구현임을 명시함을 검증한다.
+     */
+    @Test
+    fun `WARN 로그 메시지는 stub 임을 명시하고 PII 를 포함하지 않는다`() {
+        val resolver = AlwaysAllowIssuePermissionResolver()
+
+        val logger = LoggerFactory.getLogger(AlwaysAllowIssuePermissionResolver::class.java) as Logger
+        val appender = ListAppender<ILoggingEvent>().also { it.start() }
+        logger.addAppender(appender)
+
+        try {
+            resolver.hasPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Issue("ATLAS-1"))
+
+            val warnLogs = appender.list.filter { it.level == Level.WARN }
+            assertThat(warnLogs).isNotEmpty()
+
+            val formattedMessage = warnLogs.first().formattedMessage
+            // stub 임시 구현 표시가 있어야 한다
+            assertThat(formattedMessage).contains("stub")
+            assertThat(formattedMessage).contains("FR-AU-12")
+            // permission 과 scope 가 로그에 포함돼야 한다 (enum/sealed — PII 없음)
+            assertThat(formattedMessage).contains("SOFT_DELETE")
+            assertThat(formattedMessage).contains("ATLAS-1")
+            // 이메일, 이름 등 개인정보 패턴은 포함하지 않는다
+            assertThat(formattedMessage).doesNotContainPattern("[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}")
         } finally {
             logger.detachAppender(appender)
         }
