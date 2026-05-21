@@ -39,6 +39,7 @@ class V001MigrationTest {
         fun applyMigrations() {
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+                .placeholderReplacement(false)
                 .locations("classpath:db/migration")
                 .load()
                 .migrate()
