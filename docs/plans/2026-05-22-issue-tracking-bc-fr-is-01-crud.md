@@ -131,7 +131,42 @@ IssueApplicationService.transition() — @Transactional
 - `docs/adr/2026-05-21-v001-initial-schema-non-concurrent.md` — V001 스키마 작성 시 CONCURRENTLY 안 씀 (본 PR `V007__issues_initial.sql` 동일 정책)
 - `docs/decisions/2026-05-20-session-pat-schema.md` — `actor_id` UUID 컬럼 명명 일관성
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
+
+전체 스펙. [`docs/specs/2026-05-22-issue-tracking-bc-fr-is-01-crud.md`](../specs/2026-05-22-issue-tracking-bc-fr-is-01-crud.md)
+
+### 핵심 시나리오 6줄 요약
+
+- S1. 사용자가 `POST /api/v1/issues { projectKey: "ATLAS", summary: "..." }` 호출 → `key_sequence` 증가 + `ATLAS-1` 발급 + pgmq `IssueCreated` (같은 트랜잭션)
+- S2~S3. 단건 조회 / 부분 수정 (낙관락 version 검증) — 표준 REST
+- S4. 상태 전이 — `WorkflowTransitionPort.plan()` 호출 (Propagation.MANDATORY) → 반환된 TransitionPlan 을 issue-tracking 이 적용 + pgmq `IssueTransitioned`
+- S5. 소프트 삭제 — `deleted_at=NOW()` + 키 영구 보존. 새 이슈는 `ATLAS-2` 발급 (`ATLAS-1` 재발급 절대 없음)
+- S6. 목록 조회 — Page<IssueResponse> + 페이지네이션 + 프로젝트 필터 + 정렬
+
+### 7 엣지 케이스 (FR-IS-01 D2)
+
+EC-1 키 race condition (advisory_xact_lock) / EC-2 권한 부재 (403 ProblemDetail) / EC-3 전이 위반 (409) / EC-4 대용량 목록 (인덱스) / EC-5 동시 편집 (낙관락 409) / EC-6 소프트 삭제 조회 (404) / EC-7 키 영속성 (재발급 차단).
+
+### 추가 결정 (spec §6.1, §7.1, §7.2)
+
+- §6.1. **RFC 7807 ProblemDetail** 표준 에러 형식 — issue-tracking BC 부터 BTS 전체 적용
+- §7.1. `IssueApplicationService.transition()` 의 workflow.plan() 호출 + TransitionPlan 적용 + pgmq enqueue **단일 `@Transactional`** 흐름 명시 (Propagation.MANDATORY)
+- §7.2. Testcontainers **singleton pattern** + workflow Bean wiring 격리 (PR #8/#10 learning 적용)
+
+### 데이터 모델 (V007 + V008)
+
+- `projects(id, key UNIQUE, name, key_sequence, ...)` 신규 + dev seed 1건 (`ATLAS`)
+- `issues(id, key UNIQUE, project_id, summary, reporter_id, current_state_key, version, deleted_at, ...)` 신규
+- `issue_key_redirects(old_key PK, new_key, redirected_at)` 신규 — **스키마만**, FR-MV-01 도입 시 사용
+- pgmq 큐 `q_issue_events` 신규
+
+### 본 PR 스코프 외 (명시 제외)
+
+타입/담당자/본문/Resolution/첨부/멘션/Watcher/링크/히스토리/템플릿/이동 — 모두 후속 FR.
+
+## Brainstorming Check
+
+✅ 통과 (self-conducted, office-hours 우회). 4건 gap 발견 후 spec 보강 완료. 자세히 spec §Brainstorming Check.
 
 ## Brainstorming Check (← /bts-spec Phase B 채움)
 
