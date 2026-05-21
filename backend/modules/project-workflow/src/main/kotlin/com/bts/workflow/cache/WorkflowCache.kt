@@ -50,12 +50,18 @@ class WorkflowCache(
      * @return 조회된 [Workflow], 부재 시 null
      */
     fun findByKey(key: String): Workflow? {
-        cache[key]?.let {
+        val cached = cache[key]
+        return if (cached != null) {
             log.debug("WorkflowCache hit: key={}", key)
-            return it
+            cached
+        } else {
+            log.debug("WorkflowCache miss: key={}, loading from DB", key)
+            val loaded = repo.findByKey(key) ?: return null
+            // putIfAbsent — 다른 thread 가 먼저 put 한 경우 그 값을 반환, 아니면 null 반환.
+            // null 반환 = 현재 thread 가 최초 put (loaded 사용).
+            // non-null 반환 = 다른 thread 의 값 (그 값 사용). cache 에 정확히 1 instance 보장.
+            cache.putIfAbsent(key, loaded) ?: loaded
         }
-        log.debug("WorkflowCache miss: key={}, loading from DB", key)
-        return repo.findByKey(key)?.also { cache[key] = it }
     }
 
     /**

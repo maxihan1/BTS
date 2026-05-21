@@ -24,6 +24,10 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.sql.DriverManager
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * WorkflowCache — 4 시나리오 검증.
@@ -202,6 +206,55 @@ class WorkflowCacheTest {
                     assertThat(ex.workflowKey).isEqualTo("lock-contention-key")
                     assertThat(ex.timeoutMillis).isEqualTo(200L)
                 })
+        }
+    }
+
+    // ── 시나리오 5 — 동시 getOrLoad (putIfAbsent stampede 방지) ─────────────────
+
+    @Nested
+    inner class ConcurrentFindByKeyCase {
+        @Test
+        fun `시나리오 5 - 동시 다중 thread 가 같은 key 로 findByKey 호출 시 cache 에 정확히 1 instance 가 저장된다`() {
+            val mockRepo = mockk<WorkflowRepository>()
+            val mockDsl = mockk<org.jooq.DSLContext>()
+            val fixture = fixtureWorkflow("concurrent-key")
+
+            // 모든 thread 가 DB 를 호출할 수 있도록 허용하되, 같은 객체 반환
+            every { mockRepo.findByKey("concurrent-key") } returns fixture
+
+            val cache = WorkflowCache(mockRepo, mockDsl)
+
+            val threadCount = 20
+            val startLatch = CountDownLatch(1)
+            val doneLatch = CountDownLatch(threadCount)
+            val executor = Executors.newFixedThreadPool(threadCount)
+            val results = Collections.synchronizedList(mutableListOf<Workflow>())
+
+            repeat(threadCount) {
+                executor.submit {
+                    try {
+                        startLatch.await(5, TimeUnit.SECONDS)
+                        val result = cache.findByKey("concurrent-key")
+                        if (result != null) results.add(result)
+                    } finally {
+                        doneLatch.countDown()
+                    }
+                }
+            }
+
+            // 모든 thread 동시 출발
+            startLatch.countDown()
+            doneLatch.await(10, TimeUnit.SECONDS)
+            executor.shutdown()
+
+            // 모든 thread 가 non-null 반환 받아야 한다
+            assertThat(results).hasSize(threadCount)
+            // cache 에 저장된 instance 는 모든 결과와 동일한 객체여야 한다 (putIfAbsent 보장)
+            val cached = cache.findByKey("concurrent-key")
+            assertThat(cached).isNotNull
+            results.forEach { result ->
+                assertThat(result).isSameAs(cached)
+            }
         }
     }
 
