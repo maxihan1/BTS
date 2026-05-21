@@ -29,7 +29,47 @@ PR #10 (project-workflow BC FR-WF-01 FSM 워크플로우 완제품, 머지 완�
 - **Task 37**. `apps/web/src/components/workflow/WorkflowDiagram.tsx` + types + 테스트. mermaid stateDiagram-v2. 카테고리별 색상.
 - **Task 38**. `apps/web/tests/e2e/workflow.spec.ts`. Playwright 4 시나리오 (software-default / bug-tracking / simple / kanban-basic happy path).
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+### BC
+
+`project-workflow` (frontend view layer 만 — backend domain 모델 변경 0).
+
+### 영향 엔티티
+
+- **신규 0건**. backend 의 `Workflow` / `WorkflowState` / `WorkflowTransition` / `StateCategory` (PR #10 도입) 을 view layer 로 변환만.
+- frontend 의 표현 데이터 구조 (`WorkflowDto` / `TransitionDto`) 는 backend `web/dto/*` 의 직렬화 형태와 1:1 대응. 별도 도메인 모델 X.
+
+### 신규 용어 (glossary 등록 여부 검토)
+
+| 후보 | 성격 | glossary 등록? |
+|---|---|---|
+| `WorkflowDiagram` | React 컴포넌트 이름 (시각화) | ❌ 구현 디테일 |
+| `StateNode` | mermaid stateDiagram 의 상태 표현 | ❌ 라이브러리 용어 |
+| `TransitionEdge` | mermaid stateDiagram 의 전이 표현 | ❌ 라이브러리 용어 |
+| `CategoryColor` | `StateCategory` 별 색상 매핑 (CSS 클래스 또는 mermaid theme override) | ❌ 시각 디테일 |
+
+**결론**. glossary 갱신 0건. 모든 후보가 frontend 구현 디테일로 BTS 의 ubiquitous language (도메인 모델 용어) 가치 낮음. 후속 frontend 작업에서 자연스럽게 재사용될 단어들이라 컴포넌트 이름 / type 정의 / 색상 상수로 표현되면 충분.
+
+### 기존 결정 충돌
+
+없음. PR #10 의 ADR 5건 (v001-initial-schema-non-concurrent / workflow-validator-terminology / workflow-expression-parser-spel / workflow-yaml-vs-db-storage / workflow-bc-cross-bc-port) 모두 backend domain 결정 — 본 PR 의 view layer 와 무관.
+
+### 신규 ADR 후보
+
+**ADR-1. mermaid stateDiagram-v2 채택 근거** (선택 사항).
+
+- 결정. FSM 시각화 라이브러리로 `mermaid` 의 `stateDiagram-v2` 사용.
+- 사전 승인. PR #10 plan §909 CONCERN-4 (Maxi 2026-05-21 승인).
+- 대안 평가. `react-flow` (인터랙티브 강력, 번들 크기 큼 100KB+) / `cytoscape` (그래프 일반화, 학습 곡선 가파름) / 커스텀 SVG (자유도 최대, 구현 비용 큼). `mermaid` 의 stateDiagram-v2 는 텍스트 → 다이어그램 변환이 가장 직관적 + FSM 시각화에 최적화. 번들 크기 약 50KB gzip.
+- trade-off. mermaid 는 인터랙티브 (노드 드래그 / 줌) 제한적. 본 PR 의 read-only 다이어그램 목적에 충분. 추후 인터랙티브 요구가 생기면 별도 PR 에서 react-flow 로 마이그레이션 검토.
+
+이 ADR 은 `/bts-plan` 단계에서 Task 화 (신규 `docs/adr/2026-05-22-mermaid-stateDiagram-v2-for-fsm-viz.md` 작성) 또는 plan 본문 인용으로 처리 결정.
+
+### 관련 ADR / 도메인 노트
+
+- 기존. [domain/project-workflow.md](/Users/maxi.moff/Maxi_wiki/BTS/domain/project-workflow.md) — Phase 0 진입 후 갱신 필요한 영역 (PR #10 의 5 엔티티 + ADR 5건 미반영). 본 PR 의 frontend 작업과 별개의 cleanup PR 후보.
+- 본 PR 신규 ADR. ADR-1 (mermaid 채택) — plan 단계에서 작성 여부 결정.
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
