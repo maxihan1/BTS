@@ -18,7 +18,6 @@ import com.bts.workflow.engine.WorkflowDefinitionRepository
 import com.bts.workflow.engine.WorkflowEngine
 import com.bts.workflow.engine.WorkflowPostActionFactory
 import com.bts.workflow.engine.WorkflowValidatorFactory
-import com.bts.workflow.engine.WorkflowTransition
 import com.bts.workflow.expression.SpelEvaluator
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.validator.CustomExpressionValidator
@@ -340,8 +339,12 @@ class WorkflowIntegrationTest {
     @Test
     @Order(4)
     fun `S4 - SpEL pass - 커스텀 SpEL 표현식 true 평가 후 전이가 성공한다`() {
-        // Given — SpelEvaluator 실제 구현 + CustomExpressionValidator 실제 구현
-        val spelEvaluator = SpelEvaluator()
+        // Given — SpelEvaluator 실제 구현 (executor 주입) + CustomExpressionValidator 실제 구현
+        // timeoutMillis 5000ms: 통합 테스트 환경에서 JVM 워밍업 미완 시 SpEL 초기화가 50ms 초과 가능
+        val spelEvaluator = SpelEvaluator(
+            executor = java.util.concurrent.Executors.newSingleThreadExecutor(),
+            timeoutMillis = 5000L,
+        )
         val spelValidator = CustomExpressionValidator(
             evaluator = spelEvaluator,
             expression = "issue.priority == 'HIGH'",
