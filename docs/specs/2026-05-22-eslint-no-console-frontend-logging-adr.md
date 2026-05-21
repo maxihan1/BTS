@@ -143,10 +143,10 @@
 
 추천 **D4-a**. 본 PR 는 정책 명시 + 도구화. Pino / Sentry 같은 인프라 결정은 별도 PR (별도 ADR).
 
-**D4-a 의 미래 정정 트리거 조건** (sanity check G3 결과, Maxi 확정 2026-05-22). 다음 중 1건 충족 시 본 ADR 재검토 + Pino / 외부 수집기 도입 결정.
+**D4-a 의 미래 정정 트리거 조건** (sanity check G3 + plan-eng-review D-1·D-2 결과, Maxi 확정 2026-05-22). 다음 중 1건 충족 시 본 ADR 재검토 + Pino / 외부 수집기 도입 결정.
 
-1. **prod 사용자 100명 초과** — 1K 규모 BTS 의 10% 도달. 사용자 incident 발생 시 frontend 측 로그 추적 부재가 BLOCKER 가 되는 임계점.
-2. **첫 prod incident 발생** — 사용자가 보고한 issue 중 root cause 가 frontend 인 것으로 의심되는 사건이 1회 이상. 재현 시도 시 console 로그만으로 부족하다고 판단되면 즉시 트리거.
+1. **prod 사용자 100명 초과** — 1K 규모 BTS 의 10% 도달. 사용자 incident 발생 시 frontend 측 로그 추적 부재가 BLOCKER 가 되는 임계점. **단, 본 트리거는 사용자 수 측정 인프라 도입 시점부터 발효** (BTS 가 Phase 0 진입 직전 — prod 사용자 수 측정 인프라 부재). 측정 인프라 도입 PR 시 본 ADR 함께 갱신.
+2. **첫 prod incident 발생 (frontend 원인 의심)** — 사용자가 보고한 incident (장애 / 오동작 / 사고) 중 root cause 가 **frontend 사용 중 발생한 것으로 의심**되는 사건이 1회 이상. 객관 기준 — 보고된 사용자 행위가 frontend 페이지 / 컴포넌트 / 클라이언트 사이드 로직 동작 중 발생, 그리고 재현 시도 시 console 로그만으로 root cause 식별 불가.
 3. **Sentry / Datadog / Loki 등 외부 로그 수집기 도입 결정 (다른 결정으로 인한)** — backend 측 또는 별도 결정으로 외부 수집 인프라가 들어오면 frontend 도 그 transport 에 붙어야 함. 도입 결정 시 본 ADR 즉시 재검토.
 
 ### D5. CI workflow 실행 항목 (BTS 첫 CI 도입)
@@ -163,10 +163,13 @@
 추천 **D5-c**. lint (본 PR trigger) + typecheck (TS strict 자연스러움) + test (PR #11 의 77개 vitest 회귀 가드). build / E2E 는 후속 PR.
 
 **선택 trade-offs**.
-- workflow trigger. `pull_request` 시 `apps/web/**` 또는 `package.json` / `pnpm-lock.yaml` 또는 본 workflow 파일 자체 변경 path 만 실행 (다른 PR 에는 무관 — backend-only PR 가 frontend CI 끌어들이지 않음)
-- Node 버전. 22 (BTS 표준, package.json engines 일치)
-- pnpm 버전. lockfile 표준. action `pnpm/action-setup@v4` 사용. pnpm store 캐시 hit 시간 단축
-- 동시 실행. 같은 PR 의 새 push 시 이전 run cancel-in-progress 적용
+- workflow trigger. `pull_request` 시 `apps/web/**` 또는 `package.json` / `pnpm-lock.yaml` 또는 본 workflow 파일 자체 변경 path 만 실행 (다른 PR 에는 무관 — backend-only PR 가 frontend CI 끌어들이지 않음).
+- `docs/decisions/**` 미포함 — ADR 만 변경 PR 는 frontend CI 안 트리거 (의도된 동작). ADR 갱신 후속 PR 가 자동 워크플로우 트리거 필요 시 path filter 갱신.
+- 향후 `apps/admin/`, `packages/ui/` 같은 frontend 영역 추가 시 path filter 갱신 필요 (silent skip 위험).
+- Node 버전. 22 (BTS 표준, package.json engines 일치).
+- pnpm 버전. lockfile 표준. action `pnpm/action-setup@v4` 사용. pnpm store 캐시 hit 시간 단축.
+- 동시 실행. 같은 PR 의 새 push 시 이전 run cancel-in-progress 적용.
+- **확장성**. 본 workflow 패턴은 후속 도입 시 복제 가능. naming `<영역>-ci` (예. `backend-ci`, `e2e-ci`) + path filter + concurrency 패턴 일관 유지. ADR 본문에 명시.
 
 ## 8. 측정 가능한 완료 기준
 
