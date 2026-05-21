@@ -70,17 +70,18 @@ data class TransitionYamlDto(
  * Konform 은 Kotlin-native 선언형 검증 라이브러리다. Jakarta Validation 어노테이션 대신
  * 코드로 검증 규칙을 선언하며, 결과를 [ValidationResult] 타입으로 반환한다.
  */
-val workflowYamlValidation: Validation<WorkflowYamlDto> = Validation {
-    WorkflowYamlDto::key {
-        minLength(1)
+val workflowYamlValidation: Validation<WorkflowYamlDto> =
+    Validation {
+        WorkflowYamlDto::key {
+            minLength(1)
+        }
+        WorkflowYamlDto::name {
+            minLength(1)
+        }
+        WorkflowYamlDto::states {
+            minItems(1)
+        }
     }
-    WorkflowYamlDto::name {
-        minLength(1)
-    }
-    WorkflowYamlDto::states {
-        minItems(1)
-    }
-}
 
 // ── YamlSeedService ──────────────────────────────────────────────────────────
 
@@ -105,12 +106,13 @@ class YamlSeedService(
     private val log = LoggerFactory.getLogger(javaClass)
 
     /** 표준 4 워크플로우 YAML 키 목록 (classpath:workflows/<key>.yaml). */
-    private val standardWorkflowKeys = listOf(
-        "software-default",
-        "bug-tracking",
-        "simple",
-        "kanban-basic",
-    )
+    private val standardWorkflowKeys =
+        listOf(
+            "software-default",
+            "bug-tracking",
+            "simple",
+            "kanban-basic",
+        )
 
     /**
      * 부팅 시 1회 실행. 표준 4 YAML을 읽고 dirty-diff 비교 후 변경된 경우만 재적재.
@@ -139,16 +141,22 @@ class YamlSeedService(
      *
      * 파싱 실패 또는 검증 실패 시 [IllegalStateException] 을 던진다.
      */
-    private fun parseAndValidate(key: String, content: ByteArray): WorkflowYamlDto {
-        val dto = try {
-            yamlMapper.readValue(content, WorkflowYamlDto::class.java)
-        } catch (ex: Exception) {
-            throw IllegalStateException("워크플로우 YAML '$key' 파싱 실패: ${ex.message}", ex)
-        }
+    private fun parseAndValidate(
+        key: String,
+        content: ByteArray,
+    ): WorkflowYamlDto {
+        val dto =
+            try {
+                yamlMapper.readValue(content, WorkflowYamlDto::class.java)
+            } catch (ex: com.fasterxml.jackson.core.JsonProcessingException) {
+                throw IllegalStateException("워크플로우 YAML '$key' 파싱 실패: ${ex.message}", ex)
+            } catch (ex: java.io.IOException) {
+                throw IllegalStateException("워크플로우 YAML '$key' 읽기 실패: ${ex.message}", ex)
+            }
 
         val result = workflowYamlValidation(dto)
         if (result is io.konform.validation.Invalid) {
-            throw IllegalStateException("워크플로우 YAML '$key' 검증 실패: ${result.errors}")
+            error("워크플로우 YAML '$key' 검증 실패: ${result.errors}")
         }
 
         return dto
@@ -187,31 +195,50 @@ class YamlSeedService(
      *
      * @return 변경이 있으면 true, 없으면 false
      */
-    private fun isDirty(existing: Workflow, dto: WorkflowYamlDto): Boolean {
-        if (existing.name != dto.name) return true
+    private fun isDirty(
+        existing: Workflow,
+        dto: WorkflowYamlDto,
+    ): Boolean =
+        differsInName(existing, dto) ||
+            differsInStateSet(existing, dto) ||
+            differsInStateDetails(existing, dto) ||
+            differsInTransitions(existing, dto)
 
-        val existingStateKeys = existing.states.map { it.key }.toSet()
-        val dtoStateKeys = dto.states.map { it.key }.toSet()
-        if (existingStateKeys != dtoStateKeys) return true
+    private fun differsInName(
+        existing: Workflow,
+        dto: WorkflowYamlDto,
+    ): Boolean = existing.name != dto.name
 
-        // states 상세 비교 (name, category, displayOrder)
-        for (dtoState in dto.states) {
-            val existingState = existing.states.firstOrNull { it.key == dtoState.key } ?: return true
-            if (existingState.name != dtoState.name) return true
-            if (existingState.category.name != dtoState.category) return true
-            if (existingState.displayOrder != dtoState.displayOrder) return true
+    private fun differsInStateSet(
+        existing: Workflow,
+        dto: WorkflowYamlDto,
+    ): Boolean = existing.states.map { it.key }.toSet() != dto.states.map { it.key }.toSet()
+
+    private fun differsInStateDetails(
+        existing: Workflow,
+        dto: WorkflowYamlDto,
+    ): Boolean =
+        dto.states.any { dtoState ->
+            val existingState = existing.states.firstOrNull { it.key == dtoState.key }
+            existingState == null ||
+                existingState.name != dtoState.name ||
+                existingState.category.name != dtoState.category ||
+                existingState.displayOrder != dtoState.displayOrder
         }
 
-        // transitions 비교 (from/to/name 집합 동일 여부)
-        val existingTransitions = existing.transitions
-            .map { Triple(it.fromStateKey, it.toStateKey, it.name) }
-            .toSet()
-        val dtoTransitions = dto.transitions
-            .map { Triple(it.from, it.to, it.name) }
-            .toSet()
-        if (existingTransitions != dtoTransitions) return true
-
-        return false
+    private fun differsInTransitions(
+        existing: Workflow,
+        dto: WorkflowYamlDto,
+    ): Boolean {
+        val existingTransitions =
+            existing.transitions
+                .map { Triple(it.fromStateKey, it.toStateKey, it.name) }
+                .toSet()
+        val dtoTransitions =
+            dto.transitions
+                .map { Triple(it.from, it.to, it.name) }
+                .toSet()
+        return existingTransitions != dtoTransitions
     }
 
     /**
@@ -236,36 +263,40 @@ class YamlSeedService(
      */
     private fun insertWorkflow(dto: WorkflowYamlDto) {
         // 1. workflows 삽입
-        val workflowId = dsl.insertInto(WORKFLOWS)
-            .set(WORKFLOWS.KEY, dto.key)
-            .set(WORKFLOWS.NAME, dto.name)
-            .returningResult(WORKFLOWS.ID)
-            .fetchOne()
-            ?.value1()
-            ?: error("workflows 삽입 실패: ${dto.key}")
+        val workflowId =
+            dsl.insertInto(WORKFLOWS)
+                .set(WORKFLOWS.KEY, dto.key)
+                .set(WORKFLOWS.NAME, dto.name)
+                .returningResult(WORKFLOWS.ID)
+                .fetchOne()
+                ?.value1()
+                ?: error("workflows 삽입 실패: ${dto.key}")
 
         // 2. workflow_states 삽입 + key → UUID 매핑
         val stateKeyToId = mutableMapOf<String, java.util.UUID>()
         for (state in dto.states) {
-            val stateId = dsl.insertInto(WORKFLOW_STATES)
-                .set(WORKFLOW_STATES.WORKFLOW_ID, workflowId)
-                .set(WORKFLOW_STATES.KEY, state.key)
-                .set(WORKFLOW_STATES.NAME, state.name)
-                .set(WORKFLOW_STATES.CATEGORY, state.category)
-                .set(WORKFLOW_STATES.DISPLAY_ORDER, state.displayOrder)
-                .returningResult(WORKFLOW_STATES.ID)
-                .fetchOne()
-                ?.value1()
-                ?: error("workflow_states 삽입 실패: ${dto.key}/${state.key}")
+            val stateId =
+                dsl.insertInto(WORKFLOW_STATES)
+                    .set(WORKFLOW_STATES.WORKFLOW_ID, workflowId)
+                    .set(WORKFLOW_STATES.KEY, state.key)
+                    .set(WORKFLOW_STATES.NAME, state.name)
+                    .set(WORKFLOW_STATES.CATEGORY, state.category)
+                    .set(WORKFLOW_STATES.DISPLAY_ORDER, state.displayOrder)
+                    .returningResult(WORKFLOW_STATES.ID)
+                    .fetchOne()
+                    ?.value1()
+                    ?: error("workflow_states 삽입 실패: ${dto.key}/${state.key}")
             stateKeyToId[state.key] = stateId
         }
 
         // 3. workflow_transitions 삽입
         for (transition in dto.transitions) {
-            val fromStateId = stateKeyToId[transition.from]
-                ?: error("전이 from 상태 키 '${transition.from}' 가 states 에 없음: ${dto.key}")
-            val toStateId = stateKeyToId[transition.to]
-                ?: error("전이 to 상태 키 '${transition.to}' 가 states 에 없음: ${dto.key}")
+            val fromStateId =
+                stateKeyToId[transition.from]
+                    ?: error("전이 from 상태 키 '${transition.from}' 가 states 에 없음: ${dto.key}")
+            val toStateId =
+                stateKeyToId[transition.to]
+                    ?: error("전이 to 상태 키 '${transition.to}' 가 states 에 없음: ${dto.key}")
 
             dsl.insertInto(WORKFLOW_TRANSITIONS)
                 .set(WORKFLOW_TRANSITIONS.WORKFLOW_ID, workflowId)

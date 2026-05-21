@@ -27,7 +27,6 @@ class CustomExpressionValidator(
     private val evaluator: SpelEvaluator,
     private val expression: String,
 ) : WorkflowValidator {
-
     override val type: String = "CustomExpression"
 
     /**
@@ -38,7 +37,13 @@ class CustomExpressionValidator(
      * @return 표현식이 true 이면 [ValidatorResult.Pass],
      *   false 이면 [ValidatorResult.Fail] (reason = "expression evaluated to false"),
      *   timeout 이면 [ValidatorResult.Fail] (reason = "expression_timeout").
+     *
+     * ### SwallowedException 억제 근거
+     * [ValidatorResult.Fail] 에 cause 필드가 없어 timeout 예외를 직접 전달할 수 없다.
+     * 예외 타입을 명시적으로 포착해 TooGenericExceptionCaught 를 방지하며,
+     * swallow 는 의도된 동작이다.
      */
+    @Suppress("SwallowedException")
     override fun validate(ctx: TransitionContext): ValidatorResult {
         return try {
             val root = DefaultSpelRoot(issue = ctx.issueView, actor = ctx.actorView)
@@ -48,7 +53,6 @@ class CustomExpressionValidator(
                 ValidatorResult.Fail(field = null, reason = "expression evaluated to false")
             }
         } catch (e: WorkflowExpressionTimeoutException) {
-            // timeout 원인은 reason 에 명시. ValidatorResult.Fail 에 cause 필드 없음.
             ValidatorResult.Fail(field = null, reason = "expression_timeout")
         }
     }

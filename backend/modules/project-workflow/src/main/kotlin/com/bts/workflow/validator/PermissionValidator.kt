@@ -48,7 +48,6 @@ class PermissionValidator(
     private val permission: String,
     private val scope: ValidatorScope = ValidatorScope.ISSUE,
 ) : WorkflowValidator {
-
     override val type: String = "permission-check"
 
     /**
@@ -60,13 +59,19 @@ class PermissionValidator(
      *
      * @param ctx 전이 컨텍스트. actorId 와 scope 키를 여기서 추출한다.
      * @return [ValidatorResult.Pass] 또는 [ValidatorResult.Fail].
+     *
+     * ### Exception 포착 근거
+     * [PermissionResolver] 구현체는 외부 BC(identity-access) 가 제공한다.
+     * 어떤 예외를 던질지 이 BC 에서 알 수 없으므로 Exception 전체를 포착해 보안 우선 원칙을 지킨다.
      */
+    @Suppress("TooGenericExceptionCaught")
     override fun validate(ctx: TransitionContext): ValidatorResult {
         val actorId = ActorId(ctx.request.actorId)
-        val resolvedScope = when (scope) {
-            ValidatorScope.ISSUE -> Scope.Issue(ctx.request.issueKey)
-            ValidatorScope.PROJECT -> Scope.Project(ctx.request.workflowKey)
-        }
+        val resolvedScope =
+            when (scope) {
+                ValidatorScope.ISSUE -> Scope.Issue(ctx.request.issueKey)
+                ValidatorScope.PROJECT -> Scope.Project(ctx.request.workflowKey)
+            }
 
         return try {
             val allowed = resolver.hasPermission(actorId, permission, resolvedScope)
@@ -75,8 +80,9 @@ class PermissionValidator(
             } else {
                 ValidatorResult.Fail(field = null, reason = "permission denied: $permission")
             }
-        } catch (@Suppress("TooGenericExceptionCaught") ex: Exception) {
-            ValidatorResult.Fail(field = null, reason = "permission resolver error")
+        } catch (ex: Exception) {
+            // resolver 예외는 보안 우선 원칙에 따라 전이를 차단한다.
+            ValidatorResult.Fail(field = null, reason = "permission resolver error: ${ex.message}")
         }
     }
 }

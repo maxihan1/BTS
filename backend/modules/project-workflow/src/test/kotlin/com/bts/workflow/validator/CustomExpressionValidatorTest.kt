@@ -32,68 +32,75 @@ import org.junit.jupiter.api.Test
  *   ValidatorResult.Fail(field=null, reason="expression_timeout") 으로 변환하고 예외를 전파하지 않는다.
  */
 class CustomExpressionValidatorTest {
-
     private val evaluator: SpelEvaluator = mockk()
     private val expression = "issue.priority == 'HIGH'"
 
-    private val validator = CustomExpressionValidator(
-        evaluator = evaluator,
-        expression = expression,
-    )
+    private val validator =
+        CustomExpressionValidator(
+            evaluator = evaluator,
+            expression = expression,
+        )
 
     // -------------------------------------------------------------------------
     // 헬퍼 — TransitionContext 를 최소한의 데이터로 생성한다.
     // -------------------------------------------------------------------------
 
     private fun buildContext(): TransitionContext {
-        val inProgress = WorkflowState(
-            key = "IN_PROGRESS",
-            name = "In Progress",
-            category = StateCategory.IN_PROGRESS,
-            displayOrder = 1,
-        )
-        val done = WorkflowState(
-            key = "DONE",
-            name = "Done",
-            category = StateCategory.DONE,
-            displayOrder = 2,
-        )
-        val transition = WorkflowTransition(
-            fromStateKey = "IN_PROGRESS",
-            toStateKey = "DONE",
-            name = "resolve",
-        )
-        val workflow = Workflow.of(
-            key = "DEFAULT",
-            name = "Default Workflow",
-            states = listOf(inProgress, done),
-            transitions = listOf(transition),
-        )
-        val request = TransitionRequest(
-            workflowKey = "DEFAULT",
-            issueKey = "BTS-1",
-            fromStateKey = "IN_PROGRESS",
-            toStateKey = "DONE",
-            transitionName = "resolve",
-            actorId = "user-1",
-            issueFields = mapOf("priority" to "HIGH"),
-            actorRoles = setOf("DEVELOPER"),
-            version = 1L,
-        )
+        val inProgress =
+            WorkflowState(
+                key = "IN_PROGRESS",
+                name = "In Progress",
+                category = StateCategory.IN_PROGRESS,
+                displayOrder = 1,
+            )
+        val done =
+            WorkflowState(
+                key = "DONE",
+                name = "Done",
+                category = StateCategory.DONE,
+                displayOrder = 2,
+            )
+        val transition =
+            WorkflowTransition(
+                fromStateKey = "IN_PROGRESS",
+                toStateKey = "DONE",
+                name = "resolve",
+            )
+        val workflow =
+            Workflow.of(
+                key = "DEFAULT",
+                name = "Default Workflow",
+                states = listOf(inProgress, done),
+                transitions = listOf(transition),
+            )
+        val request =
+            TransitionRequest(
+                workflowKey = "DEFAULT",
+                issueKey = "BTS-1",
+                fromStateKey = "IN_PROGRESS",
+                toStateKey = "DONE",
+                transitionName = "resolve",
+                actorId = "user-1",
+                issueFields = mapOf("priority" to "HIGH"),
+                actorRoles = setOf("DEVELOPER"),
+                version = 1L,
+            )
         return TransitionContext(
             request = request,
             workflow = workflow,
             fromState = inProgress,
             transition = transition,
-            issueView = DefaultIssueView(
-                key = "BTS-1",
-                priority = "HIGH",
-                fields = mapOf("priority" to "HIGH"),
-            ),
-            actorView = DefaultActorView(
-                userId = "user-1",
-                roles = setOf("DEVELOPER"),
-            ),
+            issueView =
+                DefaultIssueView(
+                    key = "BTS-1",
+                    priority = "HIGH",
+                    fields = mapOf("priority" to "HIGH"),
+                ),
+            actorView =
+                DefaultActorView(
+                    userId = "user-1",
+                    roles = setOf("DEVELOPER"),
+                ),
         )
     }
 
@@ -123,11 +130,12 @@ class CustomExpressionValidatorTest {
     }
 
     @Test
-    fun `edge — SpelEvaluator 가 WorkflowExpressionTimeoutException 을 던지면 Fail(field=null, reason=expression_timeout) 으로 변환한다`() {
-        val timeoutEx = WorkflowExpressionTimeoutException(
-            expression = expression,
-            timeoutMillis = 50L,
-        )
+    fun `edge — SpelEvaluator 가 WorkflowExpressionTimeoutException 을 던지면 Fail(reason=expression_timeout) 으로 변환한다`() {
+        val timeoutEx =
+            WorkflowExpressionTimeoutException(
+                expression = expression,
+                timeoutMillis = 50L,
+            )
         every { evaluator.evaluate(expression, any<SpelRoot>()) } throws timeoutEx
 
         val result = validator.validate(buildContext())
