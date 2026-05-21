@@ -72,7 +72,7 @@ class PermissionResolverContractTest {
     }
 
     @Test
-    fun `Scope Project 는 key: String 프로퍼티를 갖는 data class 여야 한다`() {
+    fun `Scope Project 는 key String 프로퍼티를 갖는 data class 여야 한다`() {
         val projectClass = Scope::class.sealedSubclasses.find { it.simpleName == "Project" }
         assertThat(projectClass).isNotNull()
         val keyParam = projectClass!!.constructors.first().parameters.find { it.name == "key" }
@@ -81,7 +81,7 @@ class PermissionResolverContractTest {
     }
 
     @Test
-    fun `Scope Issue 는 key: String 프로퍼티를 갖는 data class 여야 한다`() {
+    fun `Scope Issue 는 key String 프로퍼티를 갖는 data class 여야 한다`() {
         val issueClass = Scope::class.sealedSubclasses.find { it.simpleName == "Issue" }
         assertThat(issueClass).isNotNull()
         val keyParam = issueClass!!.constructors.first().parameters.find { it.name == "key" }
