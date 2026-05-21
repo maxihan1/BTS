@@ -23,3 +23,8 @@ export const WhoamiResponseSchema = z.object({
 export const ApiErrorResponseSchema = z.object({
   error: z.string(),
 })
+
+export type LoginRequest = z.infer<typeof LoginRequestSchema>
+export type TokenResponse = z.infer<typeof TokenResponseSchema>
+export type WhoamiResponse = z.infer<typeof WhoamiResponseSchema>
+export type ApiErrorResponse = z.infer<typeof ApiErrorResponseSchema>
