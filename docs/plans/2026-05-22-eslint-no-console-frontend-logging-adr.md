@@ -618,6 +618,40 @@ plan §9 비스코프 7건 명시 완료. ✓
 
 ---
 
+### PR-codereview (2026-05-22) — bts-codereview 단계
+
+**전체 판정. ✅ PASS (BLOCKER 0건, CONCERNS 0건, informational 3건)**
+
+#### superpowers:code-reviewer agent
+
+PASS. 절대 규칙 위반 0건 / learnings 회귀 0건 / ADR 정합 / workflow 안전.
+
+검증 매트릭스 (모두 PASS).
+- DEVELOPMENT.md §1 절대 규칙 18개. NEVER-15 (no-console 룰 자체가 강제) / NEVER-16 (PoC 단어 검출 0건) / NEVER-11~13 (any/!!/빈 catch 0건) / NEVER-17 (localStorage 토큰 무관). 나머지 14건 무관.
+- learnings.md 회귀 가드. PoC 표현 (2026-05-21) / wave 병렬 dispatch ktlintFormat 부수 변경 (2026-05-20) / 기타 무관 항목 모두 회귀 0건.
+- ADR 본문 정합성. 섹션 6 / D1~D5 5건 / 트리거 3건 / Maxi 후속 액션 / D5 확장성 / NEVER-15 풀이 / PR #11 참조 모두 grep 통과.
+- workflow yml 안전성. secrets 0건 / action 버전 안정 / timeout / cancel-in-progress / frozen-lockfile 모두 적정.
+- 실제 명령 재실행. lint/typecheck/test 77/build 모두 exit 0. apps/web/src 안 console.* 1건 (`useLogoutMutation.ts:21` D1-a 통과). test 파일 안 console.* 0건 (D3-a 정합).
+
+#### /review (gstack) skill
+
+PASS. CRITICAL 0 / CONCERNS 0 / informational 3건.
+
+informational 3건 (머지 차단 아님).
+1. Node.js 20 deprecation (2026-06-02 부터 Node 24 기본). 본 PR 무관, 별도 후속 PR 후보.
+2. workflow yml path filter `docs/decisions/**` 미포함 — 의도된 동작. ADR Consequences 에 명문화됨. silent failure 가드 적정.
+3. frontend 영역 (`apps/admin/`, `packages/ui/`) 확장 시 path filter 갱신 필요. ADR D5 확장성 섹션에 명시.
+
+#### /plan-ceo-review
+
+스킵 (type=chore, classify.type ∈ {auth, migration} 조건 미충족).
+
+#### 종합
+
+본 PR 의 구조적 이슈 0건. informational 3건 모두 의도된 동작 또는 후속 PR 후보. **머지 가능** — 게이트 2 진입 대기.
+
+---
+
 ### bts-impl 실행 결과 (2026-05-22)
 
 **전체 판정. ✅ PASS (Wave 1 3-병렬 + Wave 2 1-순차, 모두 verifier PASS)**
