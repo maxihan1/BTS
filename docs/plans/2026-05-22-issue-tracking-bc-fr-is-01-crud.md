@@ -286,6 +286,30 @@ EC-1 키 race condition (advisory_xact_lock) / EC-2 권한 부재 (403 ProblemDe
 
 **REFACTOR**. 주석 — "dev/staging 전용. Project Management 후속 PR 도입 시 제거 검토".
 
+### Wave 1c — 인프라 결손 fix (impl 진입 후 발견, 3 task)
+
+> **배경**. Wave 1 진행 중 T6/T9 implementer 가 인프라 결손 보고. Maxi 결정 — 본 PR 에서 함께 처리.
+
+#### Task 6.5. pgmq 포함 postgres 이미지 결정 (ADR + docker-compose)
+
+**메타**. agent: `db-engineer` / files: `[infra/docker-compose.dev.yml, docs/adr/2026-05-22-pgmq-postgres-image.md]` / depends-on: `[6]`
+
+**TDD red→green→refactor**. RED. 현재 이미지에서 `CREATE EXTENSION pgmq` 실패. GREEN. ADR + docker-compose 이미지 교체. REFACTOR. ADR 보강.
+
+핵심. `quay.io/tembo/pg16-pgmq:latest` 또는 ghcr.io 등 pgmq 포함 공식 이미지 채택. ADR 에 이미지 선택 근거 + 대체 옵션 + 운영 차단 위험.
+
+#### Task 6.6. build.gradle.kts — Testcontainers 이미지 교체 + jOOQ excludes
+
+**메타**. agent: `backend-engineer` / files: `[backend/modules/issue-tracking/build.gradle.kts]` / depends-on: `[6.5]`
+
+**TDD red→green→refactor**. RED. 현재 `postgres:16-alpine` 이미지로 `generateJooq` 시 V002 적용 시점에 fail (pgmq 없음). GREEN. (1) `jdbc:tc:postgresql:16-alpine` → ADR 결정 이미지 (예. `jdbc:tc:quay.io/tembo/pg16-pgmq:latest`). (2) `TC_INITSCRIPT` 가 V001 만 적용하므로 V002 도 적용되도록 multi-init 또는 단일 init SQL 합치기. (3) jOOQ excludes — pgmq schema 의 테이블/함수를 codegen 대상에서 제외 (`excludes = "pgmq\\..*"`). REFACTOR. 주석.
+
+#### Task 9.5. application-dev.yml + application-test.yml
+
+**메타**. agent: `backend-engineer` / files: `[backend/modules/issue-tracking/src/main/resources/application-dev.yml, backend/modules/issue-tracking/src/main/resources/application-test.yml]` / depends-on: `[9]`
+
+**TDD red→green→refactor**. RED. dev seed 미적용 (현재 상태). GREEN. identity-access 패턴 차용 — `spring.sql.init.data-locations: classpath:data-dev.sql` + `mode: always` + datasource + flyway locations. REFACTOR. yml 주석.
+
 ### Wave 2 — Domain entity + Exceptions + Outbox event types (4 task, 병렬)
 
 #### Task 10. `Issue` Aggregate Root + `IssueId` VO
