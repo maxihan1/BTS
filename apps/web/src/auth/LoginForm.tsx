@@ -22,43 +22,17 @@ import {
 } from '@/components/ui/select'
 import { useLoginMutation } from './useLoginMutation'
 import { loginStrings } from '@/i18n/ko'
-import { ApiErrorResponseSchema } from '@/api/schemas'
 
-/** 백엔드 에러 코드 → 한국어 메시지 매핑 */
+/**
+ * onError 콜백에서 받은 에러를 사용자 노출 한국어 메시지로 변환한다.
+ * useLoginMutation은 이미 한국어 메시지를 Error.message에 담아 throw하므로
+ * 그 값을 그대로 사용하고, Error가 아닌 경우에만 기본 메시지를 반환한다.
+ */
 function resolveLoginErrorMessage(error: unknown): string {
-  if (!(error instanceof Error)) {
-    return loginStrings.errorDefault
+  if (error instanceof Error && error.message) {
+    return error.message
   }
-
-  // useLoginMutation이 이미 한국어 메시지를 Error.message에 담아 throw한다
-  const message = error.message
-
-  // 알려진 한국어 메시지면 그대로 반환
-  if (
-    message === loginStrings.errorInvalidCredentials ||
-    message === loginStrings.errorMfaRequired
-  ) {
-    return message
-  }
-
-  // ApiErrorResponseSchema 파싱 시도 (직접 ApiError가 올 경우 대비)
-  const bodyMatch = ApiErrorResponseSchema.safeParse(
-    (() => {
-      try {
-        return JSON.parse(message)
-      } catch {
-        return null
-      }
-    })(),
-  )
-
-  if (bodyMatch.success) {
-    const code = bodyMatch.data.error
-    if (code === 'invalid_credentials') return loginStrings.errorInvalidCredentials
-    if (code === 'mfa_required') return loginStrings.errorMfaRequired
-  }
-
-  return message || loginStrings.errorDefault
+  return loginStrings.errorDefault
 }
 
 const loginFormSchema = z.object({
