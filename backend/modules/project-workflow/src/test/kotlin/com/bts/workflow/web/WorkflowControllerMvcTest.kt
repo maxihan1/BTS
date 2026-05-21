@@ -16,74 +16,90 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
 import io.mockk.mockk
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
-import org.springframework.boot.test.context.TestConfiguration
+import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Import
+import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.test.context.support.WithMockUser
 import org.springframework.security.web.SecurityFilterChain
+import org.springframework.test.context.ContextConfiguration
+import org.springframework.test.context.junit.jupiter.SpringExtension
+import org.springframework.test.context.web.WebAppConfiguration
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import org.springframework.web.context.WebApplicationContext
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers
+import org.springframework.web.servlet.config.annotation.EnableWebMvc
 
 /**
  * WorkflowController REST API 슬라이스 테스트.
  *
- * 테스트 케이스 4건.
+ * `@SpringBootApplication` 없이 `@ContextConfiguration` 으로 최소 컨텍스트를 직접 구성한다.
+ * Spring Security method security (@PreAuthorize) 포함.
+ *
+ * 테스트 케이스 4건 + 권한 실패 1건.
  * - Case 1. GET /api/v1/workflows — 200 + 4 워크플로우 목록
  * - Case 2. GET /api/v1/workflows/{key} — 200 + 계층 구조 (states + transitions)
  * - Case 3. POST /api/v1/workflows/{key}/transitions — 200 + TransitionPlan 반환
- * - Case 4. POST /api/v1/workflows/cache/invalidate — WORKFLOW_MANAGE 권한 있으면 200, 없으면 403
- *
- * MockMvc 슬라이스 (@WebMvcTest) 에서 WorkflowCache / WorkflowEngine / WorkflowRepository 를
- * MockK stub 으로 주입한다.
+ * - Case 4a. POST /api/v1/workflows/cache/invalidate — WORKFLOW_MANAGE 권한 있으면 200
+ * - Case 4b. POST /api/v1/workflows/cache/invalidate — WORKFLOW_MANAGE 권한 없으면 403
  */
-@WebMvcTest(controllers = [WorkflowController::class])
-@Import(WorkflowControllerMvcTest.TestSecurityConfig::class, WorkflowControllerMvcTest.MockBeansConfig::class)
+@ExtendWith(SpringExtension::class)
+@ContextConfiguration(classes = [WorkflowControllerMvcTest.TestMvcConfig::class])
+@WebAppConfiguration
 class WorkflowControllerMvcTest {
 
     /**
-     * 테스트 전용 SecurityFilterChain — CSRF 비활성화, 모든 요청 허용.
-     * 권한 검사는 @PreAuthorize (method security) 로만 수행한다.
+     * 테스트 전용 Spring MVC + Security 최소 컨텍스트.
+     *
+     * [WorkflowController], [WorkflowExceptionHandler] 와 MockK stub Bean 을 등록한다.
+     * @EnableMethodSecurity 로 @PreAuthorize 가 동작하도록 활성화한다.
      */
-    @TestConfiguration
+    @Configuration
+    @EnableWebMvc
     @EnableWebSecurity
     @EnableMethodSecurity
-    class TestSecurityConfig {
+    open class TestMvcConfig {
+
         @Bean
-        fun testSecurityFilterChain(http: HttpSecurity): SecurityFilterChain =
+        open fun workflowCache(): WorkflowCache = mockk(relaxed = true)
+
+        @Bean
+        open fun workflowEngine(): WorkflowEngine = mockk(relaxed = true)
+
+        @Bean
+        open fun workflowRepository(): WorkflowRepository = mockk(relaxed = true)
+
+        @Bean
+        open fun workflowController(
+            repo: WorkflowRepository,
+            cache: WorkflowCache,
+            engine: WorkflowEngine,
+        ): WorkflowController = WorkflowController(repo, cache, engine)
+
+        @Bean
+        open fun workflowExceptionHandler(): WorkflowExceptionHandler = WorkflowExceptionHandler()
+
+        @Bean
+        open fun testSecurityFilterChain(http: HttpSecurity): SecurityFilterChain =
             http
                 .csrf { it.disable() }
                 .authorizeHttpRequests { it.anyRequest().permitAll() }
                 .build()
     }
 
-    /**
-     * WorkflowController 가 의존하는 Bean 을 MockK stub 으로 제공한다.
-     */
-    @TestConfiguration
-    class MockBeansConfig {
-
-        @Bean
-        fun workflowCache(): WorkflowCache = mockk(relaxed = true)
-
-        @Bean
-        fun workflowEngine(): WorkflowEngine = mockk(relaxed = true)
-
-        @Bean
-        fun workflowRepository(): WorkflowRepository = mockk(relaxed = true)
-    }
-
     @Autowired
-    lateinit var mockMvc: MockMvc
+    lateinit var webApplicationContext: WebApplicationContext
 
     @Autowired
     lateinit var workflowCache: WorkflowCache
@@ -94,7 +110,17 @@ class WorkflowControllerMvcTest {
     @Autowired
     lateinit var workflowRepository: WorkflowRepository
 
+    lateinit var mockMvc: MockMvc
+
     private val mapper: ObjectMapper = ObjectMapper().registerKotlinModule()
+
+    @BeforeEach
+    fun setUp() {
+        mockMvc = MockMvcBuilders
+            .webAppContextSetup(webApplicationContext)
+            .apply<org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder>(SecurityMockMvcConfigurers.springSecurity())
+            .build()
+    }
 
     // ── Case 1: GET /api/v1/workflows — 목록 200 ─────────────────────────────
 
@@ -142,7 +168,6 @@ class WorkflowControllerMvcTest {
             "transitionName" to "시작",
             "fields" to mapOf("priority" to "HIGH"),
             "version" to 1,
-            "workflowKey" to "software-default",
             "issueKey" to "BTS-1",
             "fromStateKey" to "TODO",
             "actorId" to "user-1",

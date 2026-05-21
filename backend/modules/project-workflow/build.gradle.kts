@@ -40,6 +40,8 @@ dependencies {
     // MVC + REST controller
     implementation("org.springframework:spring-webmvc")
     implementation("org.springframework:spring-web")
+    // Servlet API — spring-webmvc 가 참조. 실제 구현은 런타임 컨테이너(Tomcat 등)가 제공
+    compileOnly("jakarta.servlet:jakarta.servlet-api")
 
     // @PreAuthorize + method security
     implementation("org.springframework.security:spring-security-core")
@@ -90,6 +92,8 @@ dependencies {
     testImplementation("org.springframework:spring-test")
     // Spring Security 테스트 유틸 (@WithMockUser 등)
     testImplementation("org.springframework.security:spring-security-test")
+    // Servlet API — 테스트 환경에서 MockMvc / @WebMvcTest 에 필요
+    testImplementation("jakarta.servlet:jakarta.servlet-api")
 
     // Kotest BOM (Bill of Materials — 버전 일괄 관리 패키지)
     testImplementation(platform("io.kotest:kotest-bom:5.9.1"))
