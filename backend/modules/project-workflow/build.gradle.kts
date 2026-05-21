@@ -157,6 +157,9 @@ tasks.withType<KotlinCompile> {
 // ── 테스트 JVM + Docker 소켓 설정 ─────────────────────────────────────────────
 tasks.withType<Test> {
     useJUnitPlatform()
+    // Testcontainers + jOOQ 동시 실행 시 메모리 확보. 포크 1개씩 순차 실행으로 OOM 방지
+    maxHeapSize = "1024m"
+    maxParallelForks = 1
 
     // Testcontainers — Docker Desktop(macOS)에서 현재 활성 context의 소켓 경로를 명시적으로 주입.
     // Docker Desktop은 /var/run/docker.sock에 정상 응답하지 않으므로 (Status 400 빈 응답),

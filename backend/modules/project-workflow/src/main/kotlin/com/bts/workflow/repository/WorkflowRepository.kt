@@ -9,8 +9,10 @@ import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.jooq.tables.WorkflowStates.Companion.WORKFLOW_STATES
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
+import org.jooq.Condition
 import org.jooq.DSLContext
 import org.jooq.Record
+import org.jooq.impl.DSL
 import org.springframework.stereotype.Repository
 import java.util.UUID
 
@@ -59,7 +61,7 @@ class WorkflowRepository(private val dsl: DSLContext) {
      * LEFT JOIN 을 사용하므로 state / transition 이 없는 workflow 도 포함된다.
      * (현재 스키마는 states 필수이나 향후 확장성을 위해 LEFT JOIN 유지)
      */
-    private fun fetchJoinedRows(condition: org.jooq.Condition): List<Record> =
+    private fun fetchJoinedRows(condition: Condition): List<Record> =
         dsl
             .select(
                 // workflows 컬럼
@@ -162,6 +164,6 @@ class WorkflowRepository(private val dsl: DSLContext) {
 
     companion object {
         // DSL_TRUE — 조건 없이 전체 조회할 때 사용하는 항등 조건
-        private val DSL_TRUE: org.jooq.Condition = org.jooq.impl.DSL.trueCondition()
+        private val DSL_TRUE: Condition = DSL.trueCondition()
     }
 }
