@@ -1,0 +1,27 @@
+# issue-tracking 모듈 dev profile — data-dev.sql 자동 로드 + datasource 5433 + Flyway issue-tracking namespace
+# spring.profiles.active=dev 시에만 이 파일이 적용된다.
+# 기동 방법: ./gradlew :modules:issue-tracking:bootRun --args='--spring.profiles.active=dev'
+# 사전 조건: docker compose -f infra/docker-compose.dev.yml up -d postgres
+
+spring:
+  datasource:
+    # docker compose 의 postgres 가 host 5432 (Homebrew postgres 흔히 점유) 와 충돌 회피 위해 5433 매핑.
+    # identity-access 와 동일 포트 — infra/docker-compose.dev.yml postgres 노출 포트 기준.
+    url: ${BTS_DB_URL:jdbc:postgresql://localhost:5433/bts_dev}
+    username: ${BTS_DB_USERNAME:bts_dev}
+    password: ${BTS_DB_PASSWORD:bts_dev}
+    driver-class-name: org.postgresql.Driver
+  sql:
+    init:
+      # always: 기동 시마다 data-dev.sql 실행 — dev seed 자동 로드.
+      mode: always
+      data-locations: classpath:data-dev.sql
+      # false: 중복 삽입 등 에러 발생 시 기동 중단 (dev 에서 시드 오류 즉시 감지).
+      continue-on-error: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    # PR #10 learning — Flyway 가 ${...} 패턴을 변수로 치환하려 해서 SQL 파싱 오류 발생.
+    # placeholder-replacement: false 로 비활성화해 순수 SQL 그대로 실행.
+    placeholder-replacement: false
