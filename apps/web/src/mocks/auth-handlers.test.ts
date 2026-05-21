@@ -1,5 +1,4 @@
 // identity-access BC auth MSW 핸들러 단위 테스트 — 응답 schema 및 에러 분기 검증
-import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { authHandlers } from './auth-handlers'
