@@ -179,13 +179,23 @@ class RefreshTokenService(
     enum class FailureReason { NotFound, Expired, Revoked, Replay, Race }
 
     internal companion object {
-        /** Refresh Token 유효 기간 (일) — 14일 (SDD §19.5) */
+        /**
+         * Refresh Token 유효 기간 — 14일 (SDD §19.5 세션 저장 스펙).
+         * Session TTL 과 동일. Session 만료 = 마지막 Refresh Token 도 무효화.
+         */
         internal const val REFRESH_TTL_DAYS: Long = 14L
 
-        /** raw token 생성 시 사용하는 바이트 수 — 32바이트 = 256비트 엔트로피 */
+        /**
+         * raw token CSPRNG 바이트 수 — 32바이트 = 256비트 엔트로피.
+         * hex 인코딩 결과 64자 문자열 (= [RefreshToken.HASH_LENGTH]).
+         */
         internal const val TOKEN_BYTES: Int = 32
 
-        /** replay 감지 / race loser 시 session revoke 사유 */
-        private const val REVOKE_REASON_REPLAY = "REFRESH_REPLAY"
+        /**
+         * EC-23 replay 감지 / EC-22 race loser 시 세션 폐기 사유.
+         * sessions.revoke_reason 컬럼에 기록된다.
+         * "REFRESH_REPLAY" — 감사 로그 검색 키. 변경 시 운영 알림 쿼리도 함께 수정.
+         */
+        internal const val REVOKE_REASON_REPLAY = "REFRESH_REPLAY"
     }
 }
