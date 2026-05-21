@@ -406,14 +406,15 @@ B1. CSRF 헤더 echo / B2. 422 처리 / B3. 헤더 위치 / B4. Vite React 플�
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/routes/dashboard.tsx` (실제 구현), `apps/web/src/components/Header.tsx`, `apps/web/src/components/Header.test.tsx`]
+- files: [`apps/web/src/routes/dashboard.tsx` (실제 구현), `apps/web/src/components/Header.tsx`, `apps/web/src/components/Header.test.tsx`, `apps/web/src/routes/__root.tsx` (REFACTOR 헤더 마운트), `apps/web/src/components/ui/dropdown-menu.tsx` (controller 사전 추가, shadcn add dropdown-menu)]
 - depends-on: [7, 11, 13]
+- 메타 보정 (2026-05-21 W7 controller). (a) `__root.tsx` 추가 — plan REFACTOR "헤더가 __root layout 내부에 마운트" 의도 명시. (b) `components/ui/dropdown-menu.tsx` 추가 — plan GREEN "shadcn/ui DropdownMenu" 명시, T14 select 와 동일 패턴으로 사전 추가.
 
 **RED**. `Header.test.tsx`. 인증 사용자 username 표시, 로그아웃 클릭 → `useLogoutMutation.mutate` 호출 → `/login` 리다이렉트.
 
 **GREEN**. shadcn/ui DropdownMenu + 사용자 이름. dashboard 페이지는 "환영합니다, {username}".
 
-**REFACTOR**. 헤더가 `__root` layout 내부에 마운트.
+**REFACTOR**. 헤더가 `__root` layout 내부에 마운트 — `routes/__root.tsx` 의 RootLayout 에 Header 컴포넌트 추가. 단, /login 라우트는 헤더 미표시 (인증 전이므로) — Outlet 위에 useRouter 또는 useMatchRoute 로 분기.
 
 **검증**. `pnpm --filter @bts/web test src/components/Header`.
 
