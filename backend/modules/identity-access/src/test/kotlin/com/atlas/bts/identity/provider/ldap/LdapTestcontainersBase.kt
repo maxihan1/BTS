@@ -7,17 +7,22 @@ import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.containers.wait.strategy.Wait
-import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.utility.MountableFile
 import java.nio.file.Paths
 import java.time.Duration
 
 /**
  * LDAP (osixia/openldap) + PostgreSQL Testcontainers 공통 기반.
- * 상속 클래스는 @SpringBootTest + @Testcontainers 를 추가해야 한다.
+ * 상속 클래스는 @SpringBootTest 를 추가해야 한다.
  *
  * companion object 만 사용하지만 상속 기반 클래스로 abstract class 로 정의.
  * osixia/openldap:1.5.0 선정 이유 — ADR: docs/decisions/2026-05-20-ldap-testcontainers-image.md
+ *
+ * **Testcontainers singleton pattern** — `@Container` annotation 대신 `.apply { start() }` 로 JVM 단위 라이프사이클.
+ * 두 자식 클래스 (LdapProvider/LdapAuthFlow IntegrationTest) 가 같은 ApplicationContext cache key 를
+ * 공유하므로 클래스 단위 (`@Container` 기본) 라이프사이클은 첫 클래스 종료 시 container stop →
+ * 두 번째 클래스 재실행 시 stopped container 의 stale port 로 connection 시도 → fail. JVM 종료 시
+ * docker 가 자동 정리 (Ryuk).
  */
 @Suppress("UtilityClassWithPublicConstructor")
 abstract class LdapTestcontainersBase {
@@ -36,7 +41,6 @@ abstract class LdapTestcontainersBase {
                     ?: error("seed.ldif 파일을 찾을 수 없음. candidates: $candidates")
             }
 
-        @Container
         @JvmStatic
         val openldap: GenericContainer<*> =
             GenericContainer("osixia/openldap:1.5.0")
@@ -53,14 +57,15 @@ abstract class LdapTestcontainersBase {
                 .waitingFor(
                     Wait.forListeningPort().withStartupTimeout(Duration.ofSeconds(60)),
                 )
+                .apply { start() }
 
-        @Container
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
             PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("bts_test")
                 .withUsername("bts")
                 .withPassword("bts_test")
+                .apply { start() }
 
         @DynamicPropertySource
         @JvmStatic

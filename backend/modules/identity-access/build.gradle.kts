@@ -1,4 +1,4 @@
-// identity-access BC 서브모듈 빌드 스크립트 — Spring Boot + Security + Argon2 의존성 선언
+// identity-access BC 서브모듈 빌드 스크립트 — Spring Boot + Security + Argon2 + JWT 자체 발급(FR-AU-09) 의존성 선언
 
 // Kotlin 버전: 2.0.10 (detekt 1.23.7 호환 상한 — build.gradle.kts 루트 주석 참고)
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
@@ -34,7 +34,13 @@ dependencies {
 
     // 인증 / 보안 (의존성 카탈로그 §2.3)
     implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
+    // FR-AU-09 JWT 자체 발급 + PEM 파싱
+    // spring-boot-starter-oauth2-resource-server 가 nimbus-jose-jwt transitive 포함하지만
+    // 9.37.x 고정 — FR-AU-09 JWSSigner/JWKSet API 를 위해 9.40 명시 강제.
     implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
+    implementation("com.nimbusds:nimbus-jose-jwt:9.40")
+    // BouncyCastle bcpkix: PEM 파싱 (PEMParser) — bcprov 를 transitive 포함
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.78")
     implementation("de.mkammerer:argon2-jvm:2.11")
 
     // LDAP 인증 공급자 (FR-AU-02)
@@ -46,6 +52,9 @@ dependencies {
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.postgresql:postgresql")
+
+    // EC-29 Caffeine 캐시 — SidRevokeJwtConverter 5s TTL 캐시 (Task 34)
+    implementation("com.github.ben-manes.caffeine:caffeine:3.1.8")
 
     // Kotlin 기본
     implementation("org.jetbrains.kotlin:kotlin-reflect")
@@ -62,12 +71,18 @@ dependencies {
     testImplementation("org.testcontainers:junit-jupiter:1.20.3")
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
+    // LocalAuthFlowIntegrationTest — 401 응답 body 읽기 (HttpURLConnection 재시도 방지)
+    // TestRestTemplate 의 기본 HttpURLConnection 은 401 POST 응답 시 HttpRetryException.
+    // Apache HttpComponents 5 ClientHttpRequestFactory 로 교체하여 해결.
+    testImplementation("org.apache.httpcomponents.client5:httpclient5:5.3.1")
 }
 
 tasks.withType<KotlinCompile> {
     compilerOptions {
         freeCompilerArgs.addAll("-Xjsr305=strict")
     }
+    // 증분 컴파일 캐시 손상 방지 (worktree 환경에서 반복 발생하는 PersistentEnumeratorBase 오류 회피)
+    incremental = false
 }
 
 tasks.withType<Test> {
