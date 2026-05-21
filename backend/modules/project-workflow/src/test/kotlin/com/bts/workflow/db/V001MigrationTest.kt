@@ -15,7 +15,12 @@ import java.sql.DriverManager
  * Flyway V001 마이그레이션 적용 후 5 테이블 + 6 인덱스 존재를 검증한다.
  * Testcontainers PostgreSQL 을 직접 사용하며 Spring 컨텍스트 없이 실행한다.
  *
- * FR-WF-01 / DATA.md §4 / CONCERN-6 (FK 컬럼 인덱스 누락 해소) 참조.
+ * 검증 범위.
+ * - 5 테이블 존재 (workflows, workflow_states, workflow_transitions, workflow_validators, workflow_post_actions)
+ * - 6 인덱스 존재 (FK 컬럼 전부 포함 — DATA.md §7, CONCERN-6 해소)
+ * - TIMESTAMPTZ 타입 강제 (DATA.md §4 — TIMESTAMP without time zone 금지)
+ *
+ * 참조. FR-WF-01 / ADR 2026-05-21-v001-initial-schema-non-concurrent.
  */
 @Testcontainers
 class V001MigrationTest {
