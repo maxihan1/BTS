@@ -172,10 +172,11 @@ B1. CSRF 헤더 echo / B2. 422 처리 / B3. 헤더 위치 / B4. Vite React 플�
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/index.css`, `apps/web/postcss.config.mjs`, `apps/web/components.json`, `apps/web/src/components/ui/button.tsx`, `apps/web/src/components/ui/input.tsx`, `apps/web/src/components/ui/label.tsx`, `apps/web/src/components/ui/form.tsx`, `apps/web/src/components/ui/card.tsx`, `apps/web/src/lib/utils.ts`, `apps/web/package.json`, `pnpm-lock.yaml`, `apps/web/vite.config.ts`, `apps/web/src/App.tsx`]
+- files: [`apps/web/src/index.css`, `apps/web/components.json`, `apps/web/src/components/ui/button.tsx`, `apps/web/src/components/ui/input.tsx`, `apps/web/src/components/ui/label.tsx`, `apps/web/src/components/ui/form.tsx`, `apps/web/src/components/ui/card.tsx`, `apps/web/src/lib/utils.ts`, `apps/web/package.json`, `pnpm-lock.yaml`, `apps/web/vite.config.ts`, `apps/web/src/App.tsx`, `apps/web/src/main.tsx`, `apps/web/tsconfig.json`, `apps/web/tsconfig.app.json`, `apps/web/eslint.config.js`]
 - depends-on: [1]
 - tdd: false
-- 메타 보정 (2026-05-21 W2 dispatch 직전). package.json/pnpm-lock.yaml 추가 — controller가 wave 2 의존성 일괄 install 후 shadcn CLI 추가 install 시 lockfile 보강 가능. vite.config.ts/App.tsx는 Tailwind 플러그인 + Button 렌더 검증.
+- 메타 보정 1 (2026-05-21 W2 dispatch 직전). package.json/pnpm-lock.yaml/vite.config.ts/App.tsx 추가 — controller wave 2 일괄 install + Tailwind 플러그인 + Button 렌더 검증.
+- 메타 보정 2 (2026-05-21 W2 verifier DRIFT 정정). shadcn CLI가 path alias `@/*` 를 위해 `tsconfig.json` + `tsconfig.app.json` 의 `paths`/`baseUrl` 보강이 필수이고, shadcn 컴포넌트 (buttonVariants/useFormField 등 비컴포넌트 export 포함)와 eslint `react-refresh/only-export-components` 룰이 충돌하므로 `eslint.config.js` 보강이 필수. `main.tsx`에 `index.css` import 추가도 Tailwind 적용에 필수. `postcss.config.mjs` 는 `@tailwindcss/vite` 플러그인 채택으로 의도적으로 미생성 (메타에서 제외). shadcn init이 자동 추가한 라이브러리 (`radix-ui`, `@fontsource-variable/geist`, `tw-animate-css`, `shadcn` 자체) 도 정당한 부수 변경.
 
 **GREEN**.
 - Tailwind CSS v4 (`@tailwindcss/postcss` + `@tailwindcss/vite` 선택). `index.css`에 `@import 'tailwindcss'` + `@theme { ... }` (디자인 토큰).
@@ -188,9 +189,10 @@ B1. CSRF 헤더 echo / B2. 422 처리 / B3. 헤더 위치 / B4. Vite React 플�
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/vitest.config.ts`, `apps/web/src/test/setup.ts`, `apps/web/src/test/server.ts`, `apps/web/src/test/handlers.ts`, `apps/web/package.json`]
+- files: [`apps/web/vitest.config.ts`, `apps/web/src/test/setup.ts`, `apps/web/src/test/server.ts`, `apps/web/src/test/handlers.ts`, `apps/web/package.json`, `apps/web/src/App.test.tsx`, `pnpm-workspace.yaml`]
 - depends-on: [1]
 - tdd: false
+- 메타 보정 (2026-05-21 W2 verifier DRIFT 정정). `App.test.tsx` smoke test 추가 + `pnpm-workspace.yaml`의 msw 빌드 스크립트 placeholder를 `false`로 명시 (Node 모드 전용이라 service worker 빌드 불필요). 둘 다 정당한 부수 변경.
 
 **GREEN**.
 - 의존성. `vitest`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom`, `msw`.
