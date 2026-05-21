@@ -59,8 +59,9 @@ COMMENT ON COLUMN issues.deleted_at          IS 'NULL=활성, NOT NULL=삭제됨
 -- FK 인덱스 (DATA.md §7 — PostgreSQL 은 FK 에 인덱스 자동 생성 안 함)
 CREATE INDEX idx_issues_project_id ON issues(project_id);
 
--- 부분 인덱스: 활성 이슈(deleted_at IS NULL) 필터 쿼리 최적화
-CREATE INDEX idx_issues_project_id_active ON issues(project_id, deleted_at) WHERE deleted_at IS NULL;
+-- 부분 인덱스: 활성 이슈(deleted_at IS NULL) 기준 프로젝트별 조회 최적화.
+-- idx_<table>_<columns> 패턴: project_id + deleted_at 복합 (부분 인덱스로 NULL 행만 커버)
+CREATE INDEX idx_issues_project_id_deleted_at ON issues(project_id, deleted_at) WHERE deleted_at IS NULL;
 
 -- 4. issue_key_redirects 테이블
 -- 이슈 이동(FR-MV-01) 시 old_key → new_key 영구 매핑 테이블.
