@@ -7,4 +7,8 @@ plugins {
     id("io.spring.dependency-management") version "1.1.6" apply false
     id("org.jlleitschuh.gradle.ktlint") version "12.1.1" apply false
     id("io.gitlab.arturbosch.detekt") version "1.23.7" apply false
+    // DB 마이그레이션 (Flyway 11.x — flyway-core 11.x 와 동일 major 버전으로 호환)
+    id("org.flywaydb.flyway") version "11.0.0" apply false
+    // jOOQ 코드 생성 (Gradle 8 + jOOQ 3.19+ 호환 안정 버전)
+    id("nu.studer.jooq") version "9.0" apply false
 }
