@@ -6,6 +6,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest
 import org.springframework.context.annotation.Import
@@ -27,9 +28,11 @@ import java.util.UUID
  * EC-26. token_hash = SHA-256("pat_" + body) 64자 hex 저장, raw token 미저장.
  * EC-27. expires_at nullable — 무기한 PAT.
  */
+// JacksonAutoConfiguration 명시 — @JdbcTest 슬라이스는 ObjectMapper 자동 구성을 포함하지 않으므로
+// JdbcPersonalAccessTokenRepository 의 scopes JSONB 직렬화에 필요한 ObjectMapper Bean 을 공급한다.
 @JdbcTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(JdbcPersonalAccessTokenRepository::class)
+@Import(JdbcPersonalAccessTokenRepository::class, JacksonAutoConfiguration::class)
 @Testcontainers
 class PersonalAccessTokenRepositoryTest {
 
