@@ -26,60 +26,66 @@ import java.time.Instant
  * Spring 컨텍스트 없이 순수 단위 테스트로 실행한다.
  */
 class SetFieldPostActionTest {
-
     // -------------------------------------------------------------------------
     // 헬퍼 — TransitionContext 를 최소한의 데이터로 생성한다.
     // -------------------------------------------------------------------------
 
     private fun buildContext(issueFields: Map<String, Any?> = emptyMap()): TransitionContext {
-        val todo = WorkflowState(
-            key = "TODO",
-            name = "To Do",
-            category = StateCategory.TODO,
-            displayOrder = 1,
-        )
-        val done = WorkflowState(
-            key = "DONE",
-            name = "Done",
-            category = StateCategory.DONE,
-            displayOrder = 2,
-        )
-        val transition = WorkflowTransition(
-            fromStateKey = "TODO",
-            toStateKey = "DONE",
-            name = "close",
-        )
-        val workflow = Workflow.of(
-            key = "DEFAULT",
-            name = "Default Workflow",
-            states = listOf(todo, done),
-            transitions = listOf(transition),
-        )
-        val request = TransitionRequest(
-            workflowKey = "DEFAULT",
-            issueKey = "BTS-1",
-            fromStateKey = "TODO",
-            toStateKey = "DONE",
-            transitionName = "close",
-            actorId = "user-42",
-            issueFields = issueFields,
-            actorRoles = setOf("DEVELOPER"),
-            version = 1L,
-        )
+        val todo =
+            WorkflowState(
+                key = "TODO",
+                name = "To Do",
+                category = StateCategory.TODO,
+                displayOrder = 1,
+            )
+        val done =
+            WorkflowState(
+                key = "DONE",
+                name = "Done",
+                category = StateCategory.DONE,
+                displayOrder = 2,
+            )
+        val transition =
+            WorkflowTransition(
+                fromStateKey = "TODO",
+                toStateKey = "DONE",
+                name = "close",
+            )
+        val workflow =
+            Workflow.of(
+                key = "DEFAULT",
+                name = "Default Workflow",
+                states = listOf(todo, done),
+                transitions = listOf(transition),
+            )
+        val request =
+            TransitionRequest(
+                workflowKey = "DEFAULT",
+                issueKey = "BTS-1",
+                fromStateKey = "TODO",
+                toStateKey = "DONE",
+                transitionName = "close",
+                actorId = "user-42",
+                issueFields = issueFields,
+                actorRoles = setOf("DEVELOPER"),
+                version = 1L,
+            )
         return TransitionContext(
             request = request,
             workflow = workflow,
             fromState = todo,
             transition = transition,
-            issueView = DefaultIssueView(
-                key = "BTS-1",
-                priority = "HIGH",
-                fields = issueFields,
-            ),
-            actorView = DefaultActorView(
-                userId = "user-42",
-                roles = setOf("DEVELOPER"),
-            ),
+            issueView =
+                DefaultIssueView(
+                    key = "BTS-1",
+                    priority = "HIGH",
+                    fields = issueFields,
+                ),
+            actorView =
+                DefaultActorView(
+                    userId = "user-42",
+                    roles = setOf("DEVELOPER"),
+                ),
         )
     }
 

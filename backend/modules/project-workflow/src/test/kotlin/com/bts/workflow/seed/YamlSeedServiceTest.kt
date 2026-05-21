@@ -43,7 +43,6 @@ import java.io.InputStream
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class YamlSeedServiceTest {
-
     companion object {
         private val log = LoggerFactory.getLogger(YamlSeedServiceTest::class.java)
 
@@ -69,11 +68,12 @@ class YamlSeedServiceTest {
                 .load()
                 .migrate()
 
-            val dataSource = DriverManagerDataSource(
-                postgres.jdbcUrl,
-                postgres.username,
-                postgres.password,
-            )
+            val dataSource =
+                DriverManagerDataSource(
+                    postgres.jdbcUrl,
+                    postgres.username,
+                    postgres.password,
+                )
 
             // jOOQ DSLContext — SQL을 코드로 안전하게 작성하는 라이브러리의 핵심 진입점
             val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
@@ -151,11 +151,12 @@ class YamlSeedServiceTest {
     @Test
     @Order(3)
     fun `YAML 변경 시 dirty diff 감지 후 재적재한다`() {
-        val dataSource = DriverManagerDataSource(
-            postgres.jdbcUrl,
-            postgres.username,
-            postgres.password,
-        )
+        val dataSource =
+            DriverManagerDataSource(
+                postgres.jdbcUrl,
+                postgres.username,
+                postgres.password,
+            )
         val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
         val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
 
@@ -179,11 +180,12 @@ class YamlSeedServiceTest {
     @Test
     @Order(4)
     fun `잘못된 YAML 은 IllegalStateException 으로 부팅을 차단한다`() {
-        val dataSource = DriverManagerDataSource(
-            postgres.jdbcUrl,
-            postgres.username,
-            postgres.password,
-        )
+        val dataSource =
+            DriverManagerDataSource(
+                postgres.jdbcUrl,
+                postgres.username,
+                postgres.password,
+            )
         val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
         val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
 
@@ -224,8 +226,11 @@ private class ModifiedSimpleWorkflowResourceLoader : ResourceLoader {
         """.trimIndent().toByteArray()
 
     override fun getResource(location: String): Resource =
-        if (location.endsWith("simple.yaml")) InMemoryResource(modifiedSimpleYaml, "simple.yaml")
-        else delegate.getResource(location)
+        if (location.endsWith("simple.yaml")) {
+            InMemoryResource(modifiedSimpleYaml, "simple.yaml")
+        } else {
+            delegate.getResource(location)
+        }
 
     override fun getClassLoader() = delegate.classLoader
 }
@@ -248,8 +253,11 @@ private class InvalidWorkflowResourceLoader : ResourceLoader {
         """.trimIndent().toByteArray()
 
     override fun getResource(location: String): Resource =
-        if (location.endsWith("software-default.yaml")) InMemoryResource(invalidYaml, "software-default.yaml")
-        else delegate.getResource(location)
+        if (location.endsWith("software-default.yaml")) {
+            InMemoryResource(invalidYaml, "software-default.yaml")
+        } else {
+            delegate.getResource(location)
+        }
 
     override fun getClassLoader() = delegate.classLoader
 }
@@ -260,6 +268,8 @@ private class InMemoryResource(
     private val resourceDescription: String,
 ) : AbstractResource() {
     override fun getDescription(): String = "InMemoryResource[$resourceDescription]"
+
     override fun getInputStream(): InputStream = ByteArrayInputStream(bytes)
+
     override fun exists(): Boolean = true
 }

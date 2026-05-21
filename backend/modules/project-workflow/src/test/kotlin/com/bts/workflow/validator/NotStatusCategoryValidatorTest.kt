@@ -26,46 +26,50 @@ import org.junit.jupiter.params.provider.EnumSource
  * - edge — [StateCategory] 모든 enum 값에 대해 forbidden 과 동일하면 Fail 임을 파라미터 테스트로 검증.
  */
 class NotStatusCategoryValidatorTest {
-
     /**
      * 최소한의 TransitionContext 픽스처를 만든다.
      * fromState 의 category 만 테스트마다 다르게 주입한다.
      */
     private fun makeContext(fromCategory: StateCategory): TransitionContext {
-        val fromState = WorkflowState(
-            key = "S1",
-            name = "State 1",
-            category = fromCategory,
-            displayOrder = 0,
-        )
-        val toState = WorkflowState(
-            key = "S2",
-            name = "State 2",
-            category = StateCategory.IN_PROGRESS,
-            displayOrder = 1,
-        )
-        val transition = WorkflowTransition(
-            fromStateKey = fromState.key,
-            toStateKey = toState.key,
-            name = "Move",
-        )
-        val workflow = Workflow.of(
-            key = "TEST-WF",
-            name = "Test Workflow",
-            states = listOf(fromState, toState),
-            transitions = listOf(transition),
-        )
-        val request = TransitionRequest(
-            workflowKey = "TEST-WF",
-            issueKey = "BTS-1",
-            fromStateKey = fromState.key,
-            toStateKey = toState.key,
-            transitionName = transition.name,
-            actorId = "user-1",
-            issueFields = emptyMap(),
-            actorRoles = emptySet(),
-            version = 1L,
-        )
+        val fromState =
+            WorkflowState(
+                key = "S1",
+                name = "State 1",
+                category = fromCategory,
+                displayOrder = 0,
+            )
+        val toState =
+            WorkflowState(
+                key = "S2",
+                name = "State 2",
+                category = StateCategory.IN_PROGRESS,
+                displayOrder = 1,
+            )
+        val transition =
+            WorkflowTransition(
+                fromStateKey = fromState.key,
+                toStateKey = toState.key,
+                name = "Move",
+            )
+        val workflow =
+            Workflow.of(
+                key = "TEST-WF",
+                name = "Test Workflow",
+                states = listOf(fromState, toState),
+                transitions = listOf(transition),
+            )
+        val request =
+            TransitionRequest(
+                workflowKey = "TEST-WF",
+                issueKey = "BTS-1",
+                fromStateKey = fromState.key,
+                toStateKey = toState.key,
+                transitionName = transition.name,
+                actorId = "user-1",
+                issueFields = emptyMap(),
+                actorRoles = emptySet(),
+                version = 1L,
+            )
         return TransitionContext(
             request = request,
             workflow = workflow,

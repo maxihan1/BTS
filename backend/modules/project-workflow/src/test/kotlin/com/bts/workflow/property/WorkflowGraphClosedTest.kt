@@ -26,78 +26,87 @@ class WorkflowGraphClosedTest : FunSpec({
 
     // ── 표준 4 워크플로우 인라인 픽스처 ────────────────────────────────────────
 
-    val standardWorkflows: List<Workflow> = listOf(
-        // 1. software-default (5 상태 + 6 전이)
-        Workflow.of(
-            key = "software-default",
-            name = "소프트웨어 개발 기본 워크플로우",
-            states = listOf(
-                WorkflowState("open", "Open", StateCategory.TODO, 1),
-                WorkflowState("in_progress", "In Progress", StateCategory.IN_PROGRESS, 2),
-                WorkflowState("in_review", "In Review", StateCategory.IN_PROGRESS, 3),
-                WorkflowState("done", "Done", StateCategory.DONE, 4),
-                WorkflowState("closed", "Closed", StateCategory.DONE, 5),
+    val standardWorkflows: List<Workflow> =
+        listOf(
+            // 1. software-default (5 상태 + 6 전이)
+            Workflow.of(
+                key = "software-default",
+                name = "소프트웨어 개발 기본 워크플로우",
+                states =
+                    listOf(
+                        WorkflowState("open", "Open", StateCategory.TODO, 1),
+                        WorkflowState("in_progress", "In Progress", StateCategory.IN_PROGRESS, 2),
+                        WorkflowState("in_review", "In Review", StateCategory.IN_PROGRESS, 3),
+                        WorkflowState("done", "Done", StateCategory.DONE, 4),
+                        WorkflowState("closed", "Closed", StateCategory.DONE, 5),
+                    ),
+                transitions =
+                    listOf(
+                        WorkflowTransition("open", "in_progress", "Start Work"),
+                        WorkflowTransition("in_progress", "in_review", "Submit for Review"),
+                        WorkflowTransition("in_review", "done", "Approve"),
+                        WorkflowTransition("in_review", "in_progress", "Request Changes"),
+                        WorkflowTransition("done", "closed", "Close"),
+                        WorkflowTransition("open", "closed", "Cancel"),
+                    ),
             ),
-            transitions = listOf(
-                WorkflowTransition("open", "in_progress", "Start Work"),
-                WorkflowTransition("in_progress", "in_review", "Submit for Review"),
-                WorkflowTransition("in_review", "done", "Approve"),
-                WorkflowTransition("in_review", "in_progress", "Request Changes"),
-                WorkflowTransition("done", "closed", "Close"),
-                WorkflowTransition("open", "closed", "Cancel"),
+            // 2. bug-tracking (5 상태 + 5 전이)
+            Workflow.of(
+                key = "bug-tracking",
+                name = "버그 추적 워크플로우",
+                states =
+                    listOf(
+                        WorkflowState("reported", "Reported", StateCategory.TODO, 1),
+                        WorkflowState("triaged", "Triaged", StateCategory.TODO, 2),
+                        WorkflowState("in_progress", "In Progress", StateCategory.IN_PROGRESS, 3),
+                        WorkflowState("resolved", "Resolved", StateCategory.DONE, 4),
+                        WorkflowState("closed", "Closed", StateCategory.DONE, 5),
+                    ),
+                transitions =
+                    listOf(
+                        WorkflowTransition("reported", "triaged", "Triage"),
+                        WorkflowTransition("triaged", "in_progress", "Start Fix"),
+                        WorkflowTransition("in_progress", "resolved", "Resolve"),
+                        WorkflowTransition("resolved", "closed", "Close"),
+                        WorkflowTransition("resolved", "in_progress", "Reopen"),
+                    ),
             ),
-        ),
-        // 2. bug-tracking (5 상태 + 5 전이)
-        Workflow.of(
-            key = "bug-tracking",
-            name = "버그 추적 워크플로우",
-            states = listOf(
-                WorkflowState("reported", "Reported", StateCategory.TODO, 1),
-                WorkflowState("triaged", "Triaged", StateCategory.TODO, 2),
-                WorkflowState("in_progress", "In Progress", StateCategory.IN_PROGRESS, 3),
-                WorkflowState("resolved", "Resolved", StateCategory.DONE, 4),
-                WorkflowState("closed", "Closed", StateCategory.DONE, 5),
+            // 3. simple (3 상태 + 3 전이)
+            Workflow.of(
+                key = "simple",
+                name = "단순 워크플로우 (TODO/DOING/DONE)",
+                states =
+                    listOf(
+                        WorkflowState("todo", "To Do", StateCategory.TODO, 1),
+                        WorkflowState("doing", "Doing", StateCategory.IN_PROGRESS, 2),
+                        WorkflowState("done", "Done", StateCategory.DONE, 3),
+                    ),
+                transitions =
+                    listOf(
+                        WorkflowTransition("todo", "doing", "Start"),
+                        WorkflowTransition("doing", "done", "Complete"),
+                        WorkflowTransition("done", "doing", "Reopen"),
+                    ),
             ),
-            transitions = listOf(
-                WorkflowTransition("reported", "triaged", "Triage"),
-                WorkflowTransition("triaged", "in_progress", "Start Fix"),
-                WorkflowTransition("in_progress", "resolved", "Resolve"),
-                WorkflowTransition("resolved", "closed", "Close"),
-                WorkflowTransition("resolved", "in_progress", "Reopen"),
+            // 4. kanban-basic (4 상태 + 3 전이)
+            Workflow.of(
+                key = "kanban-basic",
+                name = "칸반 기본 워크플로우",
+                states =
+                    listOf(
+                        WorkflowState("backlog", "Backlog", StateCategory.TODO, 1),
+                        WorkflowState("ready", "Ready", StateCategory.TODO, 2),
+                        WorkflowState("in_progress", "In Progress", StateCategory.IN_PROGRESS, 3),
+                        WorkflowState("done", "Done", StateCategory.DONE, 4),
+                    ),
+                transitions =
+                    listOf(
+                        WorkflowTransition("backlog", "ready", "Refine"),
+                        WorkflowTransition("ready", "in_progress", "Pull"),
+                        WorkflowTransition("in_progress", "done", "Finish"),
+                    ),
             ),
-        ),
-        // 3. simple (3 상태 + 3 전이)
-        Workflow.of(
-            key = "simple",
-            name = "단순 워크플로우 (TODO/DOING/DONE)",
-            states = listOf(
-                WorkflowState("todo", "To Do", StateCategory.TODO, 1),
-                WorkflowState("doing", "Doing", StateCategory.IN_PROGRESS, 2),
-                WorkflowState("done", "Done", StateCategory.DONE, 3),
-            ),
-            transitions = listOf(
-                WorkflowTransition("todo", "doing", "Start"),
-                WorkflowTransition("doing", "done", "Complete"),
-                WorkflowTransition("done", "doing", "Reopen"),
-            ),
-        ),
-        // 4. kanban-basic (4 상태 + 3 전이)
-        Workflow.of(
-            key = "kanban-basic",
-            name = "칸반 기본 워크플로우",
-            states = listOf(
-                WorkflowState("backlog", "Backlog", StateCategory.TODO, 1),
-                WorkflowState("ready", "Ready", StateCategory.TODO, 2),
-                WorkflowState("in_progress", "In Progress", StateCategory.IN_PROGRESS, 3),
-                WorkflowState("done", "Done", StateCategory.DONE, 4),
-            ),
-            transitions = listOf(
-                WorkflowTransition("backlog", "ready", "Refine"),
-                WorkflowTransition("ready", "in_progress", "Pull"),
-                WorkflowTransition("in_progress", "done", "Finish"),
-            ),
-        ),
-    )
+        )
 
     // ── 검증 1: 시작점(initial state)이 그래프에 존재한다 ────────────────────────
 
@@ -142,7 +151,6 @@ class WorkflowGraphClosedTest : FunSpec({
  * BFS 는 "가장 가까운 이웃부터 탐색하는 그래프 탐색 알고리즘"이다.
  */
 object GraphVerifier {
-
     /**
      * 워크플로우의 initial state 를 반환한다.
      *
@@ -162,9 +170,10 @@ object GraphVerifier {
         val initial = resolveInitialState(workflow)
 
         // 인접 리스트 구성: fromStateKey → toStateKey 목록
-        val adjacency: Map<String, List<String>> = workflow.transitions
-            .groupBy { it.fromStateKey }
-            .mapValues { (_, transitions) -> transitions.map { it.toStateKey } }
+        val adjacency: Map<String, List<String>> =
+            workflow.transitions
+                .groupBy { it.fromStateKey }
+                .mapValues { (_, transitions) -> transitions.map { it.toStateKey } }
 
         val visited = mutableSetOf<String>()
         val queue = ArrayDeque<String>()

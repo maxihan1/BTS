@@ -37,24 +37,26 @@ import java.util.concurrent.TimeoutException
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SpelEvaluatorTest {
-
     /** Case 1/2/4 — 실제 SpEL 평가 검증용 executor. */
     private val sharedExecutor: ExecutorService = Executors.newFixedThreadPool(2)
 
     /** Case 1/2/4 — 테스트 환경 JVM 콜드 스타트 허용 마진 5000ms. */
     private val testEvaluator = SpelEvaluator(sharedExecutor, timeoutMillis = 5000L)
 
-    private val sampleRoot = DefaultSpelRoot(
-        issue = DefaultIssueView(
-            key = "PROJ-1",
-            priority = "HIGH",
-            fields = mapOf("customField" to "value"),
-        ),
-        actor = DefaultActorView(
-            userId = "user-42",
-            roles = setOf("DEVELOPER"),
-        ),
-    )
+    private val sampleRoot =
+        DefaultSpelRoot(
+            issue =
+                DefaultIssueView(
+                    key = "PROJ-1",
+                    priority = "HIGH",
+                    fields = mapOf("customField" to "value"),
+                ),
+            actor =
+                DefaultActorView(
+                    userId = "user-42",
+                    roles = setOf("DEVELOPER"),
+                ),
+        )
 
     @AfterAll
     fun tearDown() {

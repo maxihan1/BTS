@@ -29,7 +29,6 @@ import org.junit.jupiter.api.Test
  * 3. scope 분기 — Scope.Issue(issueKey) / Scope.Project(workflowKey) 둘 다 호출 가능
  */
 class PermissionValidatorTest {
-
     private val resolver: PermissionResolver = mockk()
 
     // ── 공통 픽스처 ──────────────────────────────────────────────────────────────
@@ -39,17 +38,18 @@ class PermissionValidatorTest {
         issueKey: String = "BTS-1",
         workflowKey: String = "DEFAULT",
     ): TransitionContext {
-        val request = TransitionRequest(
-            workflowKey = workflowKey,
-            issueKey = issueKey,
-            fromStateKey = "TODO",
-            toStateKey = "IN_PROGRESS",
-            transitionName = "start",
-            actorId = actorId,
-            issueFields = emptyMap(),
-            actorRoles = emptySet(),
-            version = 1L,
-        )
+        val request =
+            TransitionRequest(
+                workflowKey = workflowKey,
+                issueKey = issueKey,
+                fromStateKey = "TODO",
+                toStateKey = "IN_PROGRESS",
+                transitionName = "start",
+                actorId = actorId,
+                issueFields = emptyMap(),
+                actorRoles = emptySet(),
+                version = 1L,
+            )
         val workflow = mockk<Workflow>(relaxed = true)
         val fromState = mockk<WorkflowState>(relaxed = true)
         val transition = mockk<WorkflowTransition>(relaxed = true)

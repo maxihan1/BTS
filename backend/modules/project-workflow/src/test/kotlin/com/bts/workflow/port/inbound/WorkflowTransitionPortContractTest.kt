@@ -22,7 +22,6 @@ import kotlin.reflect.full.memberFunctions
  * 4. @Transactional propagation 이 Propagation.MANDATORY 다.
  */
 class WorkflowTransitionPortContractTest {
-
     private val portClass: KClass<WorkflowTransitionPort> = WorkflowTransitionPort::class
 
     // ── 1. interface 존재 ──────────────────────────────────────────────────────

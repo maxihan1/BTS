@@ -15,7 +15,6 @@ import com.bts.workflow.domain.dto.TransitionContext
  * 참조. FR-WF-01, SDD §07, ADR 2026-05-21.
  */
 interface WorkflowValidator {
-
     /**
      * 이 Validator 의 고유 식별자. 예: "field-required", "permission-check".
      * YAML 워크플로우 정의의 `validators[].type` 값과 매칭된다.
@@ -36,7 +35,6 @@ interface WorkflowValidator {
  * 가지로 완전히 열거(exhaustive)한다. when 식에서 else 분기 없이 컴파일러가 완전성을 보장한다.
  */
 sealed interface ValidatorResult {
-
     /**
      * 전이를 허용한다.
      */

@@ -15,15 +15,16 @@ import io.konform.validation.jsonschema.minimum
  * - [io.konform.validation.Valid] — 모든 규칙 통과
  * - [io.konform.validation.Invalid] — 위반된 규칙 목록 포함
  */
-private val transitionRequestValidation: Validation<TransitionRequest> = Validation {
-    TransitionRequest::workflowKey { minLength(1) }
-    TransitionRequest::issueKey { minLength(1) }
-    TransitionRequest::fromStateKey { minLength(1) }
-    TransitionRequest::toStateKey { minLength(1) }
-    TransitionRequest::transitionName { minLength(1) }
-    TransitionRequest::actorId { minLength(1) }
-    TransitionRequest::version { minimum(1) }
-}
+private val transitionRequestValidation: Validation<TransitionRequest> =
+    Validation {
+        TransitionRequest::workflowKey { minLength(1) }
+        TransitionRequest::issueKey { minLength(1) }
+        TransitionRequest::fromStateKey { minLength(1) }
+        TransitionRequest::toStateKey { minLength(1) }
+        TransitionRequest::transitionName { minLength(1) }
+        TransitionRequest::actorId { minLength(1) }
+        TransitionRequest::version { minimum(1) }
+    }
 
 /**
  * 워크플로우 전이 요청 DTO.

@@ -14,8 +14,8 @@ class WorkflowValidatorFailureException(
     val field: String?,
     val reason: String,
 ) : RuntimeException(
-    "Validator '$validatorType' failed${field?.let { " on field '$it'" } ?: ""}: $reason",
-)
+        "Validator '$validatorType' failed${field?.let { " on field '$it'" } ?: ""}: $reason",
+    )
 
 /**
  * 요청한 워크플로우 키에 해당하는 워크플로우가 없을 때 던지는 예외.

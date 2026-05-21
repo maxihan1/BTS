@@ -50,17 +50,19 @@ data class DomainEventDto(
 fun TransitionPlan.toDto(): TransitionResponseDto =
     TransitionResponseDto(
         toStateKey = toStateKey,
-        fieldChanges = fieldChanges.map { fc ->
-            FieldChangeDto(
-                field = fc.field,
-                oldValue = fc.oldValue,
-                newValue = fc.newValue,
-            )
-        },
-        events = emitEvents.map { event ->
-            DomainEventDto(
-                type = event.type,
-                payload = event.payload,
-            )
-        },
+        fieldChanges =
+            fieldChanges.map { fc ->
+                FieldChangeDto(
+                    field = fc.field,
+                    oldValue = fc.oldValue,
+                    newValue = fc.newValue,
+                )
+            },
+        events =
+            emitEvents.map { event ->
+                DomainEventDto(
+                    type = event.type,
+                    payload = event.payload,
+                )
+            },
     )

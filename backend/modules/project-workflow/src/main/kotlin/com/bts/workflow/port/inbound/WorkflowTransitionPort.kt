@@ -25,7 +25,6 @@ import org.springframework.transaction.annotation.Transactional
  *   SpEL(Spring Expression Language) 조건식 평가가 제한 시간을 초과할 때.
  */
 interface WorkflowTransitionPort {
-
     /**
      * 전이 요청을 검증하고 실행 계획을 반환한다.
      *

@@ -7,7 +7,6 @@ import com.bts.workflow.port.outbound.PermissionResolver
 import com.bts.workflow.port.outbound.Scope
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import org.springframework.beans.factory.NoSuchBeanDefinitionException
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 
 /**
@@ -18,9 +17,9 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner
  * 2. prod profile — Bean 미등록 확인 (운영 환경에서 stub 권한 우회 차단)
  */
 class AlwaysAllowPermissionResolverTest {
-
-    private val contextRunner = ApplicationContextRunner()
-        .withUserConfiguration(AlwaysAllowPermissionResolver::class.java)
+    private val contextRunner =
+        ApplicationContextRunner()
+            .withUserConfiguration(AlwaysAllowPermissionResolver::class.java)
 
     // ── 1. test profile: Bean 로드 + hasPermission 항상 true ──────────────────
 

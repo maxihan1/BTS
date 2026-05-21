@@ -21,7 +21,6 @@ import kotlin.reflect.full.memberFunctions
  * 5. ActorId 가 blank 이면 IllegalArgumentException 발생
  */
 class PermissionResolverContractTest {
-
     // ── 1. PermissionResolver 인터페이스 존재 ────────────────────────────────────
 
     @Test

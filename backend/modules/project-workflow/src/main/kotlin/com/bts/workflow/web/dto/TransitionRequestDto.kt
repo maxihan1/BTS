@@ -14,11 +14,12 @@ import io.konform.validation.jsonschema.minimum
  * [TransitionRequestDto.toStateKey] 와 [TransitionRequestDto.transitionName] 은 길이 1 이상,
  * [TransitionRequestDto.version] 은 1 이상이어야 한다.
  */
-private val transitionRequestDtoValidation: Validation<TransitionRequestDto> = Validation {
-    TransitionRequestDto::toStateKey { minLength(1) }
-    TransitionRequestDto::transitionName { minLength(1) }
-    TransitionRequestDto::version { minimum(1) }
-}
+private val transitionRequestDtoValidation: Validation<TransitionRequestDto> =
+    Validation {
+        TransitionRequestDto::toStateKey { minLength(1) }
+        TransitionRequestDto::transitionName { minLength(1) }
+        TransitionRequestDto::version { minimum(1) }
+    }
 
 /**
  * REST 전이 요청 DTO.

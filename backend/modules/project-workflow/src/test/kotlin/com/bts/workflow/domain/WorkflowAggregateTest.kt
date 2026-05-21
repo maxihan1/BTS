@@ -18,7 +18,6 @@ import org.junit.jupiter.api.Test
  * 6. transition (from, to, name) 조합 중복 → IllegalArgumentException
  */
 class WorkflowAggregateTest {
-
     // ── 픽스처 ────────────────────────────────────────────────────────────────
 
     private val todoState =

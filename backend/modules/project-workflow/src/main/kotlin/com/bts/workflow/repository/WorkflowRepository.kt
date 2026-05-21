@@ -30,7 +30,6 @@ import java.util.UUID
  */
 @Repository
 class WorkflowRepository(private val dsl: DSLContext) {
-
     /**
      * key 로 [Workflow] aggregate 를 조회한다.
      *
@@ -106,25 +105,28 @@ class WorkflowRepository(private val dsl: DSLContext) {
             val workflowName = firstRow[WORKFLOWS.NAME]!!
 
             // states — (workflow_states.id, key, name, category, display_order) 기준 dedup
-            val states = rows
-                .filter { it[WORKFLOW_STATES.ID] != null }
-                .distinctBy { it[WORKFLOW_STATES.ID] as UUID }
-                .map { row -> row.toWorkflowState() }
-                .sortedBy { it.displayOrder }
+            val states =
+                rows
+                    .filter { it[WORKFLOW_STATES.ID] != null }
+                    .distinctBy { it[WORKFLOW_STATES.ID] as UUID }
+                    .map { row -> row.toWorkflowState() }
+                    .sortedBy { it.displayOrder }
 
             // UUID → state key 매핑 (transitions 복원에 사용)
-            val stateIdToKey: Map<UUID, String> = rows
-                .filter { it[WORKFLOW_STATES.ID] != null }
-                .distinctBy { it[WORKFLOW_STATES.ID] as UUID }
-                .associate { row ->
-                    (row[WORKFLOW_STATES.ID] as UUID) to row[WORKFLOW_STATES.KEY]!!
-                }
+            val stateIdToKey: Map<UUID, String> =
+                rows
+                    .filter { it[WORKFLOW_STATES.ID] != null }
+                    .distinctBy { it[WORKFLOW_STATES.ID] as UUID }
+                    .associate { row ->
+                        (row[WORKFLOW_STATES.ID] as UUID) to row[WORKFLOW_STATES.KEY]!!
+                    }
 
             // transitions — (workflow_transitions.id) 기준 dedup
-            val transitions = rows
-                .filter { it[WORKFLOW_TRANSITIONS.ID] != null }
-                .distinctBy { it[WORKFLOW_TRANSITIONS.ID] as UUID }
-                .map { row -> row.toWorkflowTransition(stateIdToKey) }
+            val transitions =
+                rows
+                    .filter { it[WORKFLOW_TRANSITIONS.ID] != null }
+                    .distinctBy { it[WORKFLOW_TRANSITIONS.ID] as UUID }
+                    .map { row -> row.toWorkflowTransition(stateIdToKey) }
 
             Workflow.of(
                 key = workflowKey,
@@ -154,10 +156,12 @@ class WorkflowRepository(private val dsl: DSLContext) {
         val fromStateId = this[WORKFLOW_TRANSITIONS.FROM_STATE_ID] as UUID
         val toStateId = this[WORKFLOW_TRANSITIONS.TO_STATE_ID] as UUID
         return WorkflowTransition(
-            fromStateKey = stateIdToKey[fromStateId]
-                ?: error("from_state_id $fromStateId 에 해당하는 state key 가 없습니다"),
-            toStateKey = stateIdToKey[toStateId]
-                ?: error("to_state_id $toStateId 에 해당하는 state key 가 없습니다"),
+            fromStateKey =
+                stateIdToKey[fromStateId]
+                    ?: error("from_state_id $fromStateId 에 해당하는 state key 가 없습니다"),
+            toStateKey =
+                stateIdToKey[toStateId]
+                    ?: error("to_state_id $toStateId 에 해당하는 state key 가 없습니다"),
             name = this[WORKFLOW_TRANSITIONS.NAME]!!,
         )
     }

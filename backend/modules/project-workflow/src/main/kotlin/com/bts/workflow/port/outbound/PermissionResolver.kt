@@ -37,7 +37,6 @@ value class ActorId(val raw: String) {
  * 참조. FR-WF-01, docs/sdd/ §12-permissions, identity-access.md
  */
 interface PermissionResolver {
-
     /**
      * 주어진 액터가 지정된 범위에서 요청한 권한을 보유하는지 판정한다.
      *
@@ -46,5 +45,9 @@ interface PermissionResolver {
      * @param scope 권한 평가 범위. [Scope.Global], [Scope.Project], [Scope.Issue] 중 하나.
      * @return 권한을 보유하면 true, 아니면 false.
      */
-    fun hasPermission(actorId: ActorId, permission: String, scope: Scope): Boolean
+    fun hasPermission(
+        actorId: ActorId,
+        permission: String,
+        scope: Scope,
+    ): Boolean
 }

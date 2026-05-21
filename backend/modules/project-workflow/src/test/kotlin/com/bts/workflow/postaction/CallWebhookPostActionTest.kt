@@ -24,60 +24,66 @@ import org.junit.jupiter.api.Test
  * Spring 컨텍스트 없이 순수 단위 테스트로 실행한다.
  */
 class CallWebhookPostActionTest {
-
     // -------------------------------------------------------------------------
     // 헬퍼 — TransitionContext 를 최소한의 데이터로 생성한다.
     // -------------------------------------------------------------------------
 
     private fun buildContext(): TransitionContext {
-        val inProgress = WorkflowState(
-            key = "IN_PROGRESS",
-            name = "In Progress",
-            category = StateCategory.IN_PROGRESS,
-            displayOrder = 1,
-        )
-        val done = WorkflowState(
-            key = "DONE",
-            name = "Done",
-            category = StateCategory.DONE,
-            displayOrder = 2,
-        )
-        val transition = WorkflowTransition(
-            fromStateKey = "IN_PROGRESS",
-            toStateKey = "DONE",
-            name = "resolve",
-        )
-        val workflow = Workflow.of(
-            key = "DEFAULT",
-            name = "Default Workflow",
-            states = listOf(inProgress, done),
-            transitions = listOf(transition),
-        )
-        val request = TransitionRequest(
-            workflowKey = "DEFAULT",
-            issueKey = "BTS-42",
-            fromStateKey = "IN_PROGRESS",
-            toStateKey = "DONE",
-            transitionName = "resolve",
-            actorId = "user-1",
-            issueFields = emptyMap(),
-            actorRoles = setOf("DEVELOPER"),
-            version = 1L,
-        )
+        val inProgress =
+            WorkflowState(
+                key = "IN_PROGRESS",
+                name = "In Progress",
+                category = StateCategory.IN_PROGRESS,
+                displayOrder = 1,
+            )
+        val done =
+            WorkflowState(
+                key = "DONE",
+                name = "Done",
+                category = StateCategory.DONE,
+                displayOrder = 2,
+            )
+        val transition =
+            WorkflowTransition(
+                fromStateKey = "IN_PROGRESS",
+                toStateKey = "DONE",
+                name = "resolve",
+            )
+        val workflow =
+            Workflow.of(
+                key = "DEFAULT",
+                name = "Default Workflow",
+                states = listOf(inProgress, done),
+                transitions = listOf(transition),
+            )
+        val request =
+            TransitionRequest(
+                workflowKey = "DEFAULT",
+                issueKey = "BTS-42",
+                fromStateKey = "IN_PROGRESS",
+                toStateKey = "DONE",
+                transitionName = "resolve",
+                actorId = "user-1",
+                issueFields = emptyMap(),
+                actorRoles = setOf("DEVELOPER"),
+                version = 1L,
+            )
         return TransitionContext(
             request = request,
             workflow = workflow,
             fromState = inProgress,
             transition = transition,
-            issueView = DefaultIssueView(
-                key = "BTS-42",
-                priority = "MEDIUM",
-                fields = emptyMap(),
-            ),
-            actorView = DefaultActorView(
-                userId = "user-1",
-                roles = setOf("DEVELOPER"),
-            ),
+            issueView =
+                DefaultIssueView(
+                    key = "BTS-42",
+                    priority = "MEDIUM",
+                    fields = emptyMap(),
+                ),
+            actorView =
+                DefaultActorView(
+                    userId = "user-1",
+                    roles = setOf("DEVELOPER"),
+                ),
         )
     }
 
@@ -87,10 +93,11 @@ class CallWebhookPostActionTest {
 
     @Test
     fun `valid — url + method 설정 시 WebhookRequested 이벤트 1건을 반환한다`() {
-        val action = CallWebhookPostAction(
-            url = "https://example.com/hook",
-            method = "POST",
-        )
+        val action =
+            CallWebhookPostAction(
+                url = "https://example.com/hook",
+                method = "POST",
+            )
         val ctx = buildContext()
 
         val plan = action.evaluate(ctx)

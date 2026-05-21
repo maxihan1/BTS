@@ -42,7 +42,6 @@ class WorkflowController(
     private val workflowApplicationService: WorkflowApplicationService,
     private val workflowCache: WorkflowCache,
 ) {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
@@ -65,7 +64,9 @@ class WorkflowController(
      * @throws com.bts.workflow.domain.exception.WorkflowNotFoundException key 에 해당하는 워크플로우가 없을 때 (→ 404)
      */
     @GetMapping("/{key}")
-    fun getWorkflow(@PathVariable key: String): ResponseEntity<DataResponse<WorkflowDto>> {
+    fun getWorkflow(
+        @PathVariable key: String,
+    ): ResponseEntity<DataResponse<WorkflowDto>> {
         log.debug("WorkflowController.getWorkflow key={}", key)
         val workflow = workflowApplicationService.getWorkflow(key)
         return ResponseEntity.ok(DataResponse(data = workflow.toDto()))
@@ -87,29 +88,31 @@ class WorkflowController(
     ): ResponseEntity<DataResponse<TransitionResponseDto>> {
         log.debug("WorkflowController.plan key={} body={}", key, body)
 
-        val dto = TransitionRequestDto(
-            toStateKey = body.toStateKey,
-            transitionName = body.transitionName,
-            fields = body.fields,
-            version = body.version,
-        )
+        val dto =
+            TransitionRequestDto(
+                toStateKey = body.toStateKey,
+                transitionName = body.transitionName,
+                fields = body.fields,
+                version = body.version,
+            )
         val validation = dto.validate()
         if (validation is Invalid) {
             val messages = validation.errors.joinToString("; ") { it.message }
             throw IllegalArgumentException("전이 요청 검증 실패: $messages")
         }
 
-        val req = TransitionRequest(
-            workflowKey = key,
-            issueKey = body.issueKey,
-            fromStateKey = body.fromStateKey,
-            toStateKey = body.toStateKey,
-            transitionName = body.transitionName,
-            actorId = body.actorId,
-            issueFields = body.fields,
-            actorRoles = body.actorRoles,
-            version = body.version,
-        )
+        val req =
+            TransitionRequest(
+                workflowKey = key,
+                issueKey = body.issueKey,
+                fromStateKey = body.fromStateKey,
+                toStateKey = body.toStateKey,
+                transitionName = body.transitionName,
+                actorId = body.actorId,
+                issueFields = body.fields,
+                actorRoles = body.actorRoles,
+                version = body.version,
+            )
 
         val plan = workflowApplicationService.planTransition(req)
         return ResponseEntity.ok(DataResponse(data = plan.toDto()))
@@ -126,7 +129,9 @@ class WorkflowController(
      */
     @PostMapping("/cache/invalidate")
     @PreAuthorize("hasAuthority('WORKFLOW_MANAGE')")
-    fun invalidateCache(@RequestBody body: CacheInvalidateRequest): ResponseEntity<DataResponse<Nothing?>> {
+    fun invalidateCache(
+        @RequestBody body: CacheInvalidateRequest,
+    ): ResponseEntity<DataResponse<Nothing?>> {
         log.info("WorkflowController.invalidateCache key={}", body.key)
         workflowCache.invalidate(body.key)
         return ResponseEntity.ok(DataResponse(data = null))

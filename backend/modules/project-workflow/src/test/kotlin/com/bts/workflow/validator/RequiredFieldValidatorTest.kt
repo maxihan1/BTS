@@ -25,7 +25,6 @@ import org.junit.jupiter.api.Test
  * Spring 컨텍스트 없이 순수 단위 테스트로 실행한다.
  */
 class RequiredFieldValidatorTest {
-
     /** config = `{"field": "resolution"}` 에 해당하는 Validator 인스턴스. */
     private val validator = RequiredFieldValidator(field = "resolution")
 
@@ -34,54 +33,61 @@ class RequiredFieldValidatorTest {
     // -------------------------------------------------------------------------
 
     private fun buildContext(issueFields: Map<String, Any?>): TransitionContext {
-        val inProgress = WorkflowState(
-            key = "IN_PROGRESS",
-            name = "In Progress",
-            category = StateCategory.IN_PROGRESS,
-            displayOrder = 1,
-        )
-        val done = WorkflowState(
-            key = "DONE",
-            name = "Done",
-            category = StateCategory.DONE,
-            displayOrder = 2,
-        )
-        val transition = WorkflowTransition(
-            fromStateKey = "IN_PROGRESS",
-            toStateKey = "DONE",
-            name = "resolve",
-        )
-        val workflow = Workflow.of(
-            key = "DEFAULT",
-            name = "Default Workflow",
-            states = listOf(inProgress, done),
-            transitions = listOf(transition),
-        )
-        val request = TransitionRequest(
-            workflowKey = "DEFAULT",
-            issueKey = "BTS-1",
-            fromStateKey = "IN_PROGRESS",
-            toStateKey = "DONE",
-            transitionName = "resolve",
-            actorId = "user-1",
-            issueFields = issueFields,
-            actorRoles = setOf("DEVELOPER"),
-            version = 1L,
-        )
+        val inProgress =
+            WorkflowState(
+                key = "IN_PROGRESS",
+                name = "In Progress",
+                category = StateCategory.IN_PROGRESS,
+                displayOrder = 1,
+            )
+        val done =
+            WorkflowState(
+                key = "DONE",
+                name = "Done",
+                category = StateCategory.DONE,
+                displayOrder = 2,
+            )
+        val transition =
+            WorkflowTransition(
+                fromStateKey = "IN_PROGRESS",
+                toStateKey = "DONE",
+                name = "resolve",
+            )
+        val workflow =
+            Workflow.of(
+                key = "DEFAULT",
+                name = "Default Workflow",
+                states = listOf(inProgress, done),
+                transitions = listOf(transition),
+            )
+        val request =
+            TransitionRequest(
+                workflowKey = "DEFAULT",
+                issueKey = "BTS-1",
+                fromStateKey = "IN_PROGRESS",
+                toStateKey = "DONE",
+                transitionName = "resolve",
+                actorId = "user-1",
+                issueFields = issueFields,
+                actorRoles = setOf("DEVELOPER"),
+                version = 1L,
+            )
         return TransitionContext(
             request = request,
             workflow = workflow,
             fromState = inProgress,
             transition = transition,
-            issueView = DefaultIssueView(
-                key = "BTS-1",
-                priority = "MEDIUM",
-                fields = issueFields,
-            ),
-            actorView = DefaultActorView(
-                userId = "user-1",
-                roles = setOf("DEVELOPER"),
-            ),
+            issueView =
+                DefaultIssueView(
+                    key = "BTS-1",
+                    priority = "MEDIUM",
+                    fields = issueFields,
+                ),
+            actorView =
+                DefaultActorView(
+                    userId = "user-1",
+                    roles = setOf("DEVELOPER"),
+                ),
         )
     }
 

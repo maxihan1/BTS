@@ -31,7 +31,6 @@ class WorkflowApplicationService(
     private val workflowEngine: WorkflowEngine,
     private val workflowRepository: WorkflowRepository,
 ) {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
@@ -74,7 +73,10 @@ class WorkflowApplicationService(
     fun planTransition(request: TransitionRequest): TransitionPlan {
         log.debug(
             "WorkflowApplicationService.planTransition workflowKey={} issueKey={} {}→{}",
-            request.workflowKey, request.issueKey, request.fromStateKey, request.toStateKey,
+            request.workflowKey,
+            request.issueKey,
+            request.fromStateKey,
+            request.toStateKey,
         )
         return workflowEngine.plan(request)
     }

@@ -27,7 +27,6 @@ import com.bts.workflow.domain.spi.WorkflowPostAction
 class RunAutomationPostAction(
     private val automationKey: String,
 ) : WorkflowPostAction {
-
     init {
         require(automationKey.isNotEmpty()) { "automationKey 는 빈 문자열이 될 수 없습니다." }
     }
@@ -43,13 +42,15 @@ class RunAutomationPostAction(
      * @return fieldChanges 빈 리스트 + emitEvents 1건 (type="AutomationRequested", payload=issueKey+automationKey).
      */
     override fun evaluate(ctx: TransitionContext): PostActionPlan {
-        val event = DomainEvent(
-            type = "AutomationRequested",
-            payload = mapOf(
-                "issueKey" to ctx.request.issueKey,
-                "automationKey" to automationKey,
-            ),
-        )
+        val event =
+            DomainEvent(
+                type = "AutomationRequested",
+                payload =
+                    mapOf(
+                        "issueKey" to ctx.request.issueKey,
+                        "automationKey" to automationKey,
+                    ),
+            )
         return PostActionPlan(
             fieldChanges = emptyList(),
             emitEvents = listOf(event),

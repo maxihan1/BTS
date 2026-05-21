@@ -27,7 +27,6 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
  */
 @RestControllerAdvice
 class WorkflowExceptionHandler {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
@@ -40,10 +39,11 @@ class WorkflowExceptionHandler {
         log.info("WORKFLOW_422 validator='{}' field='{}' reason='{}'", ex.validatorType, ex.field, ex.reason)
         return ResponseEntity.unprocessableEntity().body(
             ErrorResponse(
-                error = ErrorBody(
-                    code = "WORKFLOW_VALIDATION_FAILED",
-                    message = ex.message ?: "워크플로우 검증에 실패했습니다.",
-                ),
+                error =
+                    ErrorBody(
+                        code = "WORKFLOW_VALIDATION_FAILED",
+                        message = ex.message ?: "워크플로우 검증에 실패했습니다.",
+                    ),
             ),
         )
     }
@@ -58,10 +58,11 @@ class WorkflowExceptionHandler {
         log.info("WORKFLOW_404 key='{}'", ex.workflowKey)
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
             ErrorResponse(
-                error = ErrorBody(
-                    code = "WORKFLOW_NOT_FOUND",
-                    message = ex.message ?: "워크플로우를 찾을 수 없습니다.",
-                ),
+                error =
+                    ErrorBody(
+                        code = "WORKFLOW_NOT_FOUND",
+                        message = ex.message ?: "워크플로우를 찾을 수 없습니다.",
+                    ),
             ),
         )
     }
@@ -76,10 +77,11 @@ class WorkflowExceptionHandler {
         log.warn("WORKFLOW_503 cache lock timeout key='{}' timeoutMs={}", ex.workflowKey, ex.timeoutMillis)
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(
             ErrorResponse(
-                error = ErrorBody(
-                    code = "WORKFLOW_UNAVAILABLE",
-                    message = ex.message ?: "워크플로우 서비스를 일시적으로 사용할 수 없습니다.",
-                ),
+                error =
+                    ErrorBody(
+                        code = "WORKFLOW_UNAVAILABLE",
+                        message = ex.message ?: "워크플로우 서비스를 일시적으로 사용할 수 없습니다.",
+                    ),
             ),
         )
     }
@@ -94,10 +96,11 @@ class WorkflowExceptionHandler {
         log.warn("WORKFLOW_503 expression timeout expression='{}' timeoutMs={}", ex.expression, ex.timeoutMillis)
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(
             ErrorResponse(
-                error = ErrorBody(
-                    code = "WORKFLOW_UNAVAILABLE",
-                    message = "워크플로우 표현식 평가 시간이 초과되었습니다.",
-                ),
+                error =
+                    ErrorBody(
+                        code = "WORKFLOW_UNAVAILABLE",
+                        message = "워크플로우 표현식 평가 시간이 초과되었습니다.",
+                    ),
             ),
         )
     }
@@ -115,10 +118,11 @@ class WorkflowExceptionHandler {
         log.info("WORKFLOW_403 access denied: {}", ex.message)
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
             ErrorResponse(
-                error = ErrorBody(
-                    code = "WORKFLOW_PERMISSION_DENIED",
-                    message = "이 작업을 수행할 권한이 없습니다.",
-                ),
+                error =
+                    ErrorBody(
+                        code = "WORKFLOW_PERMISSION_DENIED",
+                        message = "이 작업을 수행할 권한이 없습니다.",
+                    ),
             ),
         )
     }

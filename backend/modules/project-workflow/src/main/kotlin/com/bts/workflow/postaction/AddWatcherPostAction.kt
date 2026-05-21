@@ -29,7 +29,6 @@ import com.bts.workflow.domain.spi.WorkflowPostAction
  *   빈 문자열 또는 공백 전용 값은 허용하지 않는다.
  */
 class AddWatcherPostAction(private val watcher: String) : WorkflowPostAction {
-
     init {
         require(watcher.isNotBlank()) { "watcher 는 빈 문자열이나 공백일 수 없습니다." }
     }
@@ -44,13 +43,15 @@ class AddWatcherPostAction(private val watcher: String) : WorkflowPostAction {
      */
     override fun evaluate(ctx: TransitionContext): PostActionPlan {
         val resolvedWatcher = if (watcher == "\${actor}") ctx.actorView.userId else watcher
-        val event = DomainEvent(
-            type = "WatcherAdded",
-            payload = mapOf(
-                "issueKey" to ctx.request.issueKey,
-                "watcher" to resolvedWatcher,
-            ),
-        )
+        val event =
+            DomainEvent(
+                type = "WatcherAdded",
+                payload =
+                    mapOf(
+                        "issueKey" to ctx.request.issueKey,
+                        "watcher" to resolvedWatcher,
+                    ),
+            )
         return PostActionPlan(
             fieldChanges = emptyList(),
             emitEvents = listOf(event),

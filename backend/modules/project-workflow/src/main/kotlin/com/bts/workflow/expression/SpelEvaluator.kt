@@ -4,8 +4,6 @@ package com.bts.workflow.expression
 
 import com.bts.workflow.domain.exception.WorkflowExpressionTimeoutException
 import com.bts.workflow.domain.expression.ActorView
-import com.bts.workflow.domain.expression.DefaultActorView
-import com.bts.workflow.domain.expression.DefaultIssueView
 import com.bts.workflow.domain.expression.IssueView
 import org.springframework.expression.spel.standard.SpelExpressionParser
 import org.springframework.expression.spel.support.SimpleEvaluationContext
@@ -48,7 +46,6 @@ class SpelEvaluator(
     private val executor: ExecutorService,
     private val timeoutMillis: Long = DEFAULT_TIMEOUT_MILLIS,
 ) {
-
     private val parser = SpelExpressionParser()
 
     /**
@@ -61,10 +58,14 @@ class SpelEvaluator(
      * @throws org.springframework.expression.spel.SpelEvaluationException 평가 중 오류 시.
      * @throws WorkflowExpressionTimeoutException 평가가 [timeoutMillis] 를 초과한 경우.
      */
-    fun evaluate(expression: String, root: SpelRoot): Boolean {
-        val context = SimpleEvaluationContext
-            .forReadOnlyDataBinding()
-            .build()
+    fun evaluate(
+        expression: String,
+        root: SpelRoot,
+    ): Boolean {
+        val context =
+            SimpleEvaluationContext
+                .forReadOnlyDataBinding()
+                .build()
 
         // RootAdapter: SpelRoot 의 issue/actor 두 객체를 단일 루트로 노출하는 어댑터.
         // SpEL 은 루트 객체가 하나여야 하므로, issue.* 와 actor.* 모두 접근할 수 있도록
@@ -73,9 +74,10 @@ class SpelEvaluator(
 
         val parsed = parser.parseExpression(expression)
 
-        val future = executor.submit<Boolean> {
-            parsed.getValue(context, rootAdapter, Boolean::class.java) ?: false
-        }
+        val future =
+            executor.submit<Boolean> {
+                parsed.getValue(context, rootAdapter, Boolean::class.java) ?: false
+            }
 
         return try {
             future.get(timeoutMillis, TimeUnit.MILLISECONDS)

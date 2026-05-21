@@ -31,7 +31,6 @@ class SetFieldPostAction(
     private val field: String,
     private val value: Any?,
 ) : WorkflowPostAction {
-
     init {
         require(field.isNotEmpty()) { "field 는 빈 문자열이 될 수 없습니다." }
     }
@@ -60,7 +59,10 @@ class SetFieldPostAction(
      * - `${now}` → [Instant.now()].toString() (ISO-8601 UTC)
      * - `${actor}` → ctx.request.actorId
      */
-    private fun resolvePlaceholders(raw: Any?, ctx: TransitionContext): Any? {
+    private fun resolvePlaceholders(
+        raw: Any?,
+        ctx: TransitionContext,
+    ): Any? {
         if (raw !is String) return raw
         return raw
             .replace("\${now}", Instant.now().toString())

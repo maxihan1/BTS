@@ -14,26 +14,27 @@ import org.junit.jupiter.api.Test
  * 3. [WorkflowExpressionTimeoutException] — expression / timeoutMillis 필드 + cause 전파 + 메시지 포맷
  */
 class WorkflowExceptionsTest {
-
     // ── WorkflowValidatorFailureException ────────────────────────────────────
 
     @Test
     fun `WorkflowValidatorFailureException 은 RuntimeException 상속`() {
-        val ex = WorkflowValidatorFailureException(
-            validatorType = "RequiredFieldValidator",
-            field = "assignee",
-            reason = "must not be null",
-        )
+        val ex =
+            WorkflowValidatorFailureException(
+                validatorType = "RequiredFieldValidator",
+                field = "assignee",
+                reason = "must not be null",
+            )
         assertThat(RuntimeException::class.java.isAssignableFrom(ex.javaClass)).isTrue()
     }
 
     @Test
     fun `WorkflowValidatorFailureException field 있을 때 메시지에 validatorType, field, reason 모두 포함`() {
-        val ex = WorkflowValidatorFailureException(
-            validatorType = "RequiredFieldValidator",
-            field = "assignee",
-            reason = "must not be null",
-        )
+        val ex =
+            WorkflowValidatorFailureException(
+                validatorType = "RequiredFieldValidator",
+                field = "assignee",
+                reason = "must not be null",
+            )
 
         assertThat(ex.validatorType).isEqualTo("RequiredFieldValidator")
         assertThat(ex.field).isEqualTo("assignee")
@@ -46,11 +47,12 @@ class WorkflowExceptionsTest {
 
     @Test
     fun `WorkflowValidatorFailureException field null 일 때 메시지에 field 구문 없음`() {
-        val ex = WorkflowValidatorFailureException(
-            validatorType = "PermissionValidator",
-            field = null,
-            reason = "user lacks TRANSITION permission",
-        )
+        val ex =
+            WorkflowValidatorFailureException(
+                validatorType = "PermissionValidator",
+                field = null,
+                reason = "user lacks TRANSITION permission",
+            )
 
         assertThat(ex.field).isNull()
         // plan 명세 메시지 포맷: "Validator '...' failed: ..." (field 구문 없음)
@@ -79,19 +81,21 @@ class WorkflowExceptionsTest {
 
     @Test
     fun `WorkflowExpressionTimeoutException 은 RuntimeException 상속`() {
-        val ex = WorkflowExpressionTimeoutException(
-            expression = "#issue.priority == 'HIGH'",
-            timeoutMillis = 500L,
-        )
+        val ex =
+            WorkflowExpressionTimeoutException(
+                expression = "#issue.priority == 'HIGH'",
+                timeoutMillis = 500L,
+            )
         assertThat(RuntimeException::class.java.isAssignableFrom(ex.javaClass)).isTrue()
     }
 
     @Test
     fun `WorkflowExpressionTimeoutException expression, timeoutMillis 필드 + 메시지에 포함`() {
-        val ex = WorkflowExpressionTimeoutException(
-            expression = "#issue.priority == 'HIGH'",
-            timeoutMillis = 500L,
-        )
+        val ex =
+            WorkflowExpressionTimeoutException(
+                expression = "#issue.priority == 'HIGH'",
+                timeoutMillis = 500L,
+            )
 
         assertThat(ex.expression).isEqualTo("#issue.priority == 'HIGH'")
         assertThat(ex.timeoutMillis).isEqualTo(500L)
@@ -105,11 +109,12 @@ class WorkflowExceptionsTest {
     @Test
     fun `WorkflowExpressionTimeoutException cause 전파됨`() {
         val root = RuntimeException("interrupted")
-        val ex = WorkflowExpressionTimeoutException(
-            expression = "someExpr",
-            timeoutMillis = 200L,
-            cause = root,
-        )
+        val ex =
+            WorkflowExpressionTimeoutException(
+                expression = "someExpr",
+                timeoutMillis = 200L,
+                cause = root,
+            )
 
         assertThat(ex.cause).isSameAs(root)
     }

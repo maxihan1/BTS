@@ -18,7 +18,6 @@ import com.bts.workflow.domain.dto.TransitionContext
  * 참조. FR-WF-01 / docs/sdd/ §project-workflow
  */
 interface WorkflowPostAction {
-
     /**
      * 이 PostAction 의 고유 타입 식별자.
      * YAML 워크플로우 정의의 `post_actions[].type` 값과 일치해야 한다.

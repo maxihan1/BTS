@@ -32,7 +32,6 @@ import org.junit.jupiter.api.Test
  * Spring AOP 는 구체 클래스(Bean)에만 어드바이스를 적용하므로 룰 1 대상에서 제외한다.
  */
 class ProjectWorkflowArchitectureTest {
-
     /** project-workflow BC 클래스 파일 전체 (테스트 클래스 제외). */
     private val importedClasses by lazy {
         ClassFileImporter()
@@ -83,7 +82,6 @@ class ProjectWorkflowArchitectureTest {
     }
 
     companion object {
-
         /**
          * 룰 1 DSL — `@Transactional` 메서드를 보유한 구체 클래스는 Bean 어노테이션 필수.
          *
@@ -122,7 +120,10 @@ class ProjectWorkflowArchitectureTest {
          * @param targetPackage 금지 대상 패키지 (예. `"com.bts.identityaccess.."`)
          * @param bcName 에러 메시지에 포함할 BC 이름 (예. `"identity-access"`)
          */
-        private fun bcIsolationRule(targetPackage: String, bcName: String): ArchRule =
+        private fun bcIsolationRule(
+            targetPackage: String,
+            bcName: String,
+        ): ArchRule =
             noClasses()
                 .that()
                 .resideInAPackage("com.bts.workflow..")

@@ -22,7 +22,6 @@ import kotlin.reflect.full.memberProperties
  * 6. ValidatorResult.Pass (data object) 와 ValidatorResult.Fail(field, reason) (data class) 이 존재한다.
  */
 class WorkflowValidatorContractTest {
-
     private val validatorClass: KClass<WorkflowValidator> = WorkflowValidator::class
 
     @Test

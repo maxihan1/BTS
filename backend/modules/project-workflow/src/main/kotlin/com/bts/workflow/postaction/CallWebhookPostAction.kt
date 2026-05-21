@@ -26,7 +26,6 @@ class CallWebhookPostAction(
     private val url: String,
     private val method: String,
 ) : WorkflowPostAction {
-
     init {
         require(url.isNotEmpty()) { "url 은 빈 문자열이 될 수 없습니다." }
     }
@@ -45,14 +44,16 @@ class CallWebhookPostAction(
      * @return fieldChanges 빈 리스트 + emitEvents 1건 (WebhookRequested).
      */
     override fun evaluate(ctx: TransitionContext): PostActionPlan {
-        val event = DomainEvent(
-            type = "WebhookRequested",
-            payload = mapOf(
-                "issueKey" to ctx.request.issueKey,
-                "url" to url,
-                "method" to method,
-            ),
-        )
+        val event =
+            DomainEvent(
+                type = "WebhookRequested",
+                payload =
+                    mapOf(
+                        "issueKey" to ctx.request.issueKey,
+                        "url" to url,
+                        "method" to method,
+                    ),
+            )
         return PostActionPlan(
             fieldChanges = emptyList(),
             emitEvents = listOf(event),

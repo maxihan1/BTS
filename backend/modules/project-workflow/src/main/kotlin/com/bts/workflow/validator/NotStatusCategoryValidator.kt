@@ -19,7 +19,6 @@ import com.bts.workflow.domain.spi.WorkflowValidator
 class NotStatusCategoryValidator(
     private val forbidden: StateCategory,
 ) : WorkflowValidator {
-
     override val type: String = "not-status-category"
 
     /**

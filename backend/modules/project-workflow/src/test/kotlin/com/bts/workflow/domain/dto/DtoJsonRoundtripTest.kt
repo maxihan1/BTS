@@ -20,7 +20,6 @@ import org.junit.jupiter.api.Test
  * 직접 참조하므로 단독 라운드트립 검증은 wave 2 이후 일괄 수행한다.
  */
 class DtoJsonRoundtripTest {
-
     private val mapper: ObjectMapper = ObjectMapper().registerKotlinModule()
 
     // ── FieldChange 라운드트립 ────────────────────────────────────────────────
@@ -56,10 +55,11 @@ class DtoJsonRoundtripTest {
 
     @Test
     fun `DomainEvent 라운드트립 — payload 포함`() {
-        val original = DomainEvent(
-            type = "ISSUE_TRANSITIONED",
-            payload = mapOf("issueKey" to "BTS-1", "toState" to "DONE", "count" to 42),
-        )
+        val original =
+            DomainEvent(
+                type = "ISSUE_TRANSITIONED",
+                payload = mapOf("issueKey" to "BTS-1", "toState" to "DONE", "count" to 42),
+            )
         val json = mapper.writeValueAsString(original)
         val restored = mapper.readValue(json, DomainEvent::class.java)
         assertThat(restored.type).isEqualTo(original.type)
@@ -79,15 +79,18 @@ class DtoJsonRoundtripTest {
 
     @Test
     fun `TransitionPlan 라운드트립 — fieldChanges + emitEvents 포함`() {
-        val original = TransitionPlan(
-            toStateKey = "DONE",
-            fieldChanges = listOf(
-                FieldChange(field = "status", oldValue = "IN_PROGRESS", newValue = "DONE"),
-            ),
-            emitEvents = listOf(
-                DomainEvent(type = "ISSUE_DONE", payload = mapOf("issueKey" to "BTS-42")),
-            ),
-        )
+        val original =
+            TransitionPlan(
+                toStateKey = "DONE",
+                fieldChanges =
+                    listOf(
+                        FieldChange(field = "status", oldValue = "IN_PROGRESS", newValue = "DONE"),
+                    ),
+                emitEvents =
+                    listOf(
+                        DomainEvent(type = "ISSUE_DONE", payload = mapOf("issueKey" to "BTS-42")),
+                    ),
+            )
         val json = mapper.writeValueAsString(original)
         val restored = mapper.readValue(json, TransitionPlan::class.java)
         assertThat(restored.toStateKey).isEqualTo(original.toStateKey)
@@ -99,11 +102,12 @@ class DtoJsonRoundtripTest {
 
     @Test
     fun `TransitionPlan 라운드트립 — 빈 리스트`() {
-        val original = TransitionPlan(
-            toStateKey = "TODO",
-            fieldChanges = emptyList(),
-            emitEvents = emptyList(),
-        )
+        val original =
+            TransitionPlan(
+                toStateKey = "TODO",
+                fieldChanges = emptyList(),
+                emitEvents = emptyList(),
+            )
         val json = mapper.writeValueAsString(original)
         val restored = mapper.readValue(json, TransitionPlan::class.java)
         assertThat(restored).isEqualTo(original)
@@ -113,17 +117,18 @@ class DtoJsonRoundtripTest {
 
     @Test
     fun `TransitionRequest 라운드트립`() {
-        val original = TransitionRequest(
-            workflowKey = "WF-001",
-            issueKey = "BTS-1",
-            fromStateKey = "TODO",
-            toStateKey = "IN_PROGRESS",
-            transitionName = "시작",
-            actorId = "user-123",
-            issueFields = mapOf("priority" to "HIGH", "labels" to listOf("bug")),
-            actorRoles = setOf("DEVELOPER", "VIEWER"),
-            version = 1L,
-        )
+        val original =
+            TransitionRequest(
+                workflowKey = "WF-001",
+                issueKey = "BTS-1",
+                fromStateKey = "TODO",
+                toStateKey = "IN_PROGRESS",
+                transitionName = "시작",
+                actorId = "user-123",
+                issueFields = mapOf("priority" to "HIGH", "labels" to listOf("bug")),
+                actorRoles = setOf("DEVELOPER", "VIEWER"),
+                version = 1L,
+            )
         val json = mapper.writeValueAsString(original)
         val restored = mapper.readValue(json, TransitionRequest::class.java)
         assertThat(restored.workflowKey).isEqualTo(original.workflowKey)
@@ -140,85 +145,90 @@ class DtoJsonRoundtripTest {
 
     @Test
     fun `TransitionRequest validate — 정상 입력은 Valid 반환`() {
-        val request = TransitionRequest(
-            workflowKey = "WF-001",
-            issueKey = "BTS-1",
-            fromStateKey = "TODO",
-            toStateKey = "IN_PROGRESS",
-            transitionName = "시작",
-            actorId = "user-123",
-            issueFields = emptyMap(),
-            actorRoles = setOf("DEVELOPER"),
-            version = 1L,
-        )
+        val request =
+            TransitionRequest(
+                workflowKey = "WF-001",
+                issueKey = "BTS-1",
+                fromStateKey = "TODO",
+                toStateKey = "IN_PROGRESS",
+                transitionName = "시작",
+                actorId = "user-123",
+                issueFields = emptyMap(),
+                actorRoles = setOf("DEVELOPER"),
+                version = 1L,
+            )
         val result = request.validate()
         assertThat(result).isInstanceOf(Valid::class.java)
     }
 
     @Test
     fun `TransitionRequest validate — issueKey 가 빈 문자열이면 Invalid 반환`() {
-        val request = TransitionRequest(
-            workflowKey = "WF-001",
-            issueKey = "",
-            fromStateKey = "TODO",
-            toStateKey = "IN_PROGRESS",
-            transitionName = "시작",
-            actorId = "user-123",
-            issueFields = emptyMap(),
-            actorRoles = setOf("DEVELOPER"),
-            version = 1L,
-        )
+        val request =
+            TransitionRequest(
+                workflowKey = "WF-001",
+                issueKey = "",
+                fromStateKey = "TODO",
+                toStateKey = "IN_PROGRESS",
+                transitionName = "시작",
+                actorId = "user-123",
+                issueFields = emptyMap(),
+                actorRoles = setOf("DEVELOPER"),
+                version = 1L,
+            )
         val result = request.validate()
         assertThat(result).isInstanceOf(Invalid::class.java)
     }
 
     @Test
     fun `TransitionRequest validate — version 이 0 이면 Invalid 반환`() {
-        val request = TransitionRequest(
-            workflowKey = "WF-001",
-            issueKey = "BTS-1",
-            fromStateKey = "TODO",
-            toStateKey = "IN_PROGRESS",
-            transitionName = "시작",
-            actorId = "user-123",
-            issueFields = emptyMap(),
-            actorRoles = setOf("DEVELOPER"),
-            version = 0L,
-        )
+        val request =
+            TransitionRequest(
+                workflowKey = "WF-001",
+                issueKey = "BTS-1",
+                fromStateKey = "TODO",
+                toStateKey = "IN_PROGRESS",
+                transitionName = "시작",
+                actorId = "user-123",
+                issueFields = emptyMap(),
+                actorRoles = setOf("DEVELOPER"),
+                version = 0L,
+            )
         val result = request.validate()
         assertThat(result).isInstanceOf(Invalid::class.java)
     }
 
     @Test
     fun `TransitionRequest validate — workflowKey 가 빈 문자열이면 Invalid 반환`() {
-        val request = TransitionRequest(
-            workflowKey = "",
-            issueKey = "BTS-1",
-            fromStateKey = "TODO",
-            toStateKey = "IN_PROGRESS",
-            transitionName = "시작",
-            actorId = "user-123",
-            issueFields = emptyMap(),
-            actorRoles = setOf("DEVELOPER"),
-            version = 1L,
-        )
+        val request =
+            TransitionRequest(
+                workflowKey = "",
+                issueKey = "BTS-1",
+                fromStateKey = "TODO",
+                toStateKey = "IN_PROGRESS",
+                transitionName = "시작",
+                actorId = "user-123",
+                issueFields = emptyMap(),
+                actorRoles = setOf("DEVELOPER"),
+                version = 1L,
+            )
         val result = request.validate()
         assertThat(result).isInstanceOf(Invalid::class.java)
     }
 
     @Test
     fun `TransitionRequest validate — actorId 가 빈 문자열이면 Invalid 반환`() {
-        val request = TransitionRequest(
-            workflowKey = "WF-001",
-            issueKey = "BTS-1",
-            fromStateKey = "TODO",
-            toStateKey = "IN_PROGRESS",
-            transitionName = "시작",
-            actorId = "",
-            issueFields = emptyMap(),
-            actorRoles = setOf("DEVELOPER"),
-            version = 1L,
-        )
+        val request =
+            TransitionRequest(
+                workflowKey = "WF-001",
+                issueKey = "BTS-1",
+                fromStateKey = "TODO",
+                toStateKey = "IN_PROGRESS",
+                transitionName = "시작",
+                actorId = "",
+                issueFields = emptyMap(),
+                actorRoles = setOf("DEVELOPER"),
+                version = 1L,
+            )
         val result = request.validate()
         assertThat(result).isInstanceOf(Invalid::class.java)
     }

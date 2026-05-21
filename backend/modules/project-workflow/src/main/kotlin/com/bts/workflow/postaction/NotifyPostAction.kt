@@ -29,7 +29,6 @@ class NotifyPostAction(
     private val channel: String,
     private val recipients: String,
 ) : WorkflowPostAction {
-
     init {
         require(channel.isNotBlank()) { "channel 은 blank 일 수 없습니다." }
     }
@@ -48,14 +47,16 @@ class NotifyPostAction(
      * @return fieldChanges 빈 리스트 + emitEvents 1건([DomainEvent]("NotificationRequested")).
      */
     override fun evaluate(ctx: TransitionContext): PostActionPlan {
-        val event = DomainEvent(
-            type = "NotificationRequested",
-            payload = mapOf(
-                "issueKey" to ctx.request.issueKey,
-                "channel" to channel,
-                "recipients" to recipients,
-            ),
-        )
+        val event =
+            DomainEvent(
+                type = "NotificationRequested",
+                payload =
+                    mapOf(
+                        "issueKey" to ctx.request.issueKey,
+                        "channel" to channel,
+                        "recipients" to recipients,
+                    ),
+            )
         return PostActionPlan(
             fieldChanges = emptyList(),
             emitEvents = listOf(event),

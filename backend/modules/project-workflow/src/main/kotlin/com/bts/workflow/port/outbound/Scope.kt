@@ -27,7 +27,6 @@ package com.bts.workflow.port.outbound
  * 연결 시점. identity-access PR #8 머지 후 별도 PR.
  */
 sealed interface Scope {
-
     /**
      * 시스템 전역 권한 범위.
      *

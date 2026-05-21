@@ -24,60 +24,66 @@ import org.junit.jupiter.api.Test
  * Spring 컨텍스트 없이 순수 단위 테스트로 실행한다.
  */
 class NotifyPostActionTest {
-
     // -------------------------------------------------------------------------
     // 헬퍼 — TransitionContext 를 최소한의 데이터로 생성한다.
     // -------------------------------------------------------------------------
 
     private fun buildContext(issueKey: String = "BTS-42"): TransitionContext {
-        val todo = WorkflowState(
-            key = "TODO",
-            name = "Todo",
-            category = StateCategory.TODO,
-            displayOrder = 1,
-        )
-        val inProgress = WorkflowState(
-            key = "IN_PROGRESS",
-            name = "In Progress",
-            category = StateCategory.IN_PROGRESS,
-            displayOrder = 2,
-        )
-        val transition = WorkflowTransition(
-            fromStateKey = "TODO",
-            toStateKey = "IN_PROGRESS",
-            name = "start",
-        )
-        val workflow = Workflow.of(
-            key = "DEFAULT",
-            name = "Default Workflow",
-            states = listOf(todo, inProgress),
-            transitions = listOf(transition),
-        )
-        val request = TransitionRequest(
-            workflowKey = "DEFAULT",
-            issueKey = issueKey,
-            fromStateKey = "TODO",
-            toStateKey = "IN_PROGRESS",
-            transitionName = "start",
-            actorId = "user-1",
-            issueFields = emptyMap(),
-            actorRoles = setOf("DEVELOPER"),
-            version = 1L,
-        )
+        val todo =
+            WorkflowState(
+                key = "TODO",
+                name = "Todo",
+                category = StateCategory.TODO,
+                displayOrder = 1,
+            )
+        val inProgress =
+            WorkflowState(
+                key = "IN_PROGRESS",
+                name = "In Progress",
+                category = StateCategory.IN_PROGRESS,
+                displayOrder = 2,
+            )
+        val transition =
+            WorkflowTransition(
+                fromStateKey = "TODO",
+                toStateKey = "IN_PROGRESS",
+                name = "start",
+            )
+        val workflow =
+            Workflow.of(
+                key = "DEFAULT",
+                name = "Default Workflow",
+                states = listOf(todo, inProgress),
+                transitions = listOf(transition),
+            )
+        val request =
+            TransitionRequest(
+                workflowKey = "DEFAULT",
+                issueKey = issueKey,
+                fromStateKey = "TODO",
+                toStateKey = "IN_PROGRESS",
+                transitionName = "start",
+                actorId = "user-1",
+                issueFields = emptyMap(),
+                actorRoles = setOf("DEVELOPER"),
+                version = 1L,
+            )
         return TransitionContext(
             request = request,
             workflow = workflow,
             fromState = todo,
             transition = transition,
-            issueView = DefaultIssueView(
-                key = issueKey,
-                priority = "MEDIUM",
-                fields = emptyMap(),
-            ),
-            actorView = DefaultActorView(
-                userId = "user-1",
-                roles = setOf("DEVELOPER"),
-            ),
+            issueView =
+                DefaultIssueView(
+                    key = issueKey,
+                    priority = "MEDIUM",
+                    fields = emptyMap(),
+                ),
+            actorView =
+                DefaultActorView(
+                    userId = "user-1",
+                    roles = setOf("DEVELOPER"),
+                ),
         )
     }
 
