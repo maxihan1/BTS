@@ -5,3 +5,4 @@ packages:
 allowBuilds:
   '@swc/core': true
   esbuild: true
+  msw: set this to true or false

@@ -172,9 +172,10 @@ B1. CSRF 헤더 echo / B2. 422 처리 / B3. 헤더 위치 / B4. Vite React 플�
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/index.css`, `apps/web/postcss.config.mjs`, `apps/web/components.json`, `apps/web/src/components/ui/button.tsx`, `apps/web/src/components/ui/input.tsx`, `apps/web/src/components/ui/label.tsx`, `apps/web/src/components/ui/form.tsx`, `apps/web/src/components/ui/card.tsx`, `apps/web/src/lib/utils.ts`]
+- files: [`apps/web/src/index.css`, `apps/web/postcss.config.mjs`, `apps/web/components.json`, `apps/web/src/components/ui/button.tsx`, `apps/web/src/components/ui/input.tsx`, `apps/web/src/components/ui/label.tsx`, `apps/web/src/components/ui/form.tsx`, `apps/web/src/components/ui/card.tsx`, `apps/web/src/lib/utils.ts`, `apps/web/package.json`, `pnpm-lock.yaml`, `apps/web/vite.config.ts`, `apps/web/src/App.tsx`]
 - depends-on: [1]
 - tdd: false
+- 메타 보정 (2026-05-21 W2 dispatch 직전). package.json/pnpm-lock.yaml 추가 — controller가 wave 2 의존성 일괄 install 후 shadcn CLI 추가 install 시 lockfile 보강 가능. vite.config.ts/App.tsx는 Tailwind 플러그인 + Button 렌더 검증.
 
 **GREEN**.
 - Tailwind CSS v4 (`@tailwindcss/postcss` + `@tailwindcss/vite` 선택). `index.css`에 `@import 'tailwindcss'` + `@theme { ... }` (디자인 토큰).
