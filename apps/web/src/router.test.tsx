@@ -27,7 +27,7 @@ describe('Router', () => {
       user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1' },
     })
     renderWithRoute('/dashboard')
-    expect(await screen.findByText(/대시보드/)).toBeInTheDocument()
+    expect(await screen.findByText(/환영합니다/)).toBeInTheDocument()
   })
 
   // 미인증 상태에서 /dashboard 진입 시 /login 리다이렉트는 routeGuard.test.tsx 가 검증
