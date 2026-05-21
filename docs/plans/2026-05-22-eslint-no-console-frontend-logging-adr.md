@@ -54,9 +54,37 @@ apps/web 에 eslint no-console 룰 추가 + frontend logging 정책 ADR 작성. 
 - `Maxi_wiki/BTS/glossary.md` 갱신. **없음** (인프라 용어라 BC glossary 대상 아님)
 - `Maxi_wiki/BTS/domain/<bc>.md` 갱신. **없음** (BC 미해당)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-05-22-eslint-no-console-frontend-logging-adr.md](../specs/2026-05-22-eslint-no-console-frontend-logging-adr.md)
+
+### 핵심 시나리오 3줄 요약
+
+- frontend 개발자가 새 파일에 `console.log` 작성 → CI lint 단계에서 fail check → PR 머지 차단 (BTS 첫 자동 차단)
+- 기존 위반 1건 (`useLogoutMutation.ts:21` console.error) — D1-a (warn/error allow) 추천 시 그대로 통과 (NEVER-15 의 `console.log`/`println` 문자와 정확히 일치하지 않음)
+- `docs/decisions/2026-05-22-frontend-logging-policy.md` 신규 ADR — Pino / 외부 수집기 미래 도입 트리거 조건 3건 명시 (사용자 100명 / 첫 prod incident / 외부 수집기 결정)
+
+### 게이트 1 검토 대상 — 결정 사항 5건
+
+| ID | 결정 | 추천 옵션 | 사유 |
+|---|---|---|---|
+| D1 | no-console 룰 allow list | **D1-a** `{ allow: ['warn', 'error'] }` | NEVER-15 문자와 정확 일치, cleanup 부담 0 |
+| D2 | dev 디버깅 패턴 | **D2-a** `import.meta.env.DEV` 가드 + allow list | Vite dead-code-elimination 활용, logger 없이 단순 |
+| D3 | test 파일 처리 | **D3-a** 동일 룰 (overrides 없음) | 현재 test 위반 0건, 완화 사유 없음 |
+| D4 | prod 로그 인프라 / Pino 도입 시점 | **D4-a** 보류 + 트리거 3건 명시 | scope 일치, 인프라 부재 인정 |
+| D5 | CI workflow 실행 항목 | **D5-c** lint + typecheck + test | PR #11 의 77개 vitest 회귀 가드, 4분 NFR 안 |
+
+## Brainstorming Check
+
+✅ 통과 (2회 iteration, gap 5건 발견).
+
+| Gap | 분류 | 처리 |
+|---|---|---|
+| G1 CI / pre-commit 통합 미존재 | Maxi 결정 필요 | GitHub Actions workflow 본 PR scope 포함 (D5 신설) |
+| G2 FR-LOG-FE-03 grep 기준 모호 | spec 본문 보강 | D1-a / D1-c 선택지별 정확화 inline |
+| G3 D4 트리거 조건 미명시 | Maxi 결정 필요 | 트리거 3건 명문화 (사용자 100명 / 첫 incident / 외부 수집기 결정) |
+| G4 NFR-LOG-FE-04 페르소나 약함 | spec 본문 보강 | "Maxi 본인 6개월 후 재독" 페르소나 inline |
+| G5 EC-5 error boundary 처리 모호 | ADR 본문 항목 | console.error allow list 통과 정책 명시 (ADR 작성 시 한 줄) |
 
 ## Plan (← /bts-plan 채움)
 
