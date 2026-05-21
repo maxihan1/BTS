@@ -17,25 +17,35 @@ import org.springframework.web.cors.CorsConfigurationSource
 /**
  * BTS 단일 SecurityFilterChain 설정 (FR-09-26 / FR-09-27 / FR-09-30).
  *
- * 설계 결정 (BLOCKER #4/#5 해소).
- * - Spring Authorization Server 미도입. RegisteredClient / OAuth2AuthorizationServerConfiguration 사용 금지.
- *   BTS는 JWT를 자체 발급(JwtIssuer)하며 Nimbus-JOSE-JWT 9.40 + spring-security-oauth2-jose 를 직접 사용한다.
- * - /oauth2/token 등 Spring Authorization Server 표준 endpoint 비활성. 공격 표면 축소 (BLOCKER #5).
- * - 단일 SecurityFilterChain Bean — Order(1) AuthServer + Order(2) API 분리 구조 폐기.
+ * ## BLOCKER #4 해소 — Spring Authorization Server 미도입
+ * RegisteredClient / OAuth2AuthorizationServerConfiguration 사용 금지.
+ * BTS는 JWT를 자체 발급(JwtIssuer, Task 12)하며 Nimbus-JOSE-JWT 9.40 +
+ * spring-security-oauth2-jose 를 직접 사용한다.
+ * 이전 plan의 Order(1) AuthServer + Order(2) BTS API 분리 구조 폐기.
+ * 단일 SecurityFilterChain Bean 으로 통합한다.
  *
- * permitAll 4경로 (FR-09-30).
- * - /api/v1/auth/login      — 로그인 요청 (credentials 수신)
+ * ## BLOCKER #5 해소 — 표준 OAuth2 endpoint 비활성
+ * /oauth2/token, /oauth2/authorize 등 Spring Authorization Server 표준 endpoint 가
+ * 미등록 상태로 404 를 반환하므로 공격 표면이 없다.
+ * 사용자 로그인은 /api/v1/auth/login (Custom) 만 제공한다.
+ *
+ * ## permitAll 4경로 (FR-09-30)
+ * - /api/v1/auth/login      — 로그인 요청 (credentials 수신, CSRF skip)
  * - /api/v1/auth/providers  — 활성 Provider 목록 조회 (인증 전 필요)
- * - /.well-known/jwks.json  — 공개키 제공 (외부 검증용)
- * - /actuator/health        — 헬스체크 (로드밸런서)
+ * - /.well-known/jwks.json  — 공개키 제공 (외부 검증용, CSRF skip)
+ * - /actuator/health        — 헬스체크 (로드밸런서, CSRF skip)
  *
- * CSRF Cookie 모드 (ADR docs/decisions/2026-05-20-csrf-cookie-mode.md).
- * - CookieCsrfTokenRepository.withHttpOnlyFalse() — SPA가 Cookie 읽어 X-XSRF-TOKEN 헤더로 전송.
- * - login / jwks.json / actuator 경로는 CSRF skip (credentials 수신 이전 + 공개 리소스).
+ * ## CSRF Cookie 모드 (ADR docs/decisions/2026-05-20-csrf-cookie-mode.md)
+ * CookieCsrfTokenRepository.withHttpOnlyFalse() — SPA가 Cookie를 읽어 X-XSRF-TOKEN 헤더로 전송.
+ * SameSite=Strict + secure=true 설정 (DEVELOPMENT.md §1.5).
  *
- * JWT sid revoke 회로 (FR-09-11 / Task 34).
- * - [SidRevokeJwtConverter] 를 jwtAuthenticationConverter 로 등록.
- *   모든 API 요청의 JWT sid 클레임으로 세션 revoke 여부를 확인한다.
+ * ## JWT sid revoke 회로 (FR-09-11 / Task 34)
+ * [SidRevokeJwtConverter] 를 jwtAuthenticationConverter 로 등록.
+ * 모든 API 요청의 JWT sid 클레임으로 세션 revoke 여부를 Caffeine 캐시(5s TTL)와 함께 확인한다.
+ *
+ * ## @EnableMethodSecurity
+ * 엔드포인트별 @PreAuthorize 이중 가드 (DEVELOPMENT.md §1.4 Spring Security 주의사항).
+ * SecurityConfig 필터 체인 + @PreAuthorize 두 레이어로 우회를 방지한다.
  */
 @Configuration
 @EnableWebSecurity
