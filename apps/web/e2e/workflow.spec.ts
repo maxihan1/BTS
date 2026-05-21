@@ -41,8 +41,8 @@ test('T6-1 software-default — 페이지 진입 + 다이어그램 렌더 + 5 �
   // mermaid가 SVG를 주입할 때까지 대기
   await page.waitForSelector('[aria-label*="다이어그램"] svg', { state: 'visible', timeout: 10_000 })
 
-  // 상태 노드 수 검증 — mermaid stateDiagram-v2 의 .node 클래스
-  const nodeCount = await page.locator('[aria-label*="다이어그램"] svg .node').count()
+  // 상태 노드 수 검증 — mermaid stateDiagram-v2 의 .statediagram-state 클래스 (시작/종료 [*] 노드 제외)
+  const nodeCount = await page.locator('[aria-label*="다이어그램"] svg .statediagram-state').count()
   expect(nodeCount).toBe(wf.stateCount)
 })
 
@@ -59,7 +59,8 @@ test('T6-2 bug-tracking — 페이지 진입 + 다이어그램 렌더 + 5 노드
 
   await page.waitForSelector('[aria-label*="다이어그램"] svg', { state: 'visible', timeout: 10_000 })
 
-  const nodeCount = await page.locator('[aria-label*="다이어그램"] svg .node').count()
+  // 상태 노드 수 검증 — mermaid stateDiagram-v2 의 .statediagram-state 클래스 (시작/종료 [*] 노드 제외)
+  const nodeCount = await page.locator('[aria-label*="다이어그램"] svg .statediagram-state').count()
   expect(nodeCount).toBe(wf.stateCount)
 })
 
@@ -76,7 +77,8 @@ test('T6-3 simple — 페이지 진입 + 다이어그램 렌더 + 3 노드 + 헤
 
   await page.waitForSelector('[aria-label*="다이어그램"] svg', { state: 'visible', timeout: 10_000 })
 
-  const nodeCount = await page.locator('[aria-label*="다이어그램"] svg .node').count()
+  // 상태 노드 수 검증 — mermaid stateDiagram-v2 의 .statediagram-state 클래스 (시작/종료 [*] 노드 제외)
+  const nodeCount = await page.locator('[aria-label*="다이어그램"] svg .statediagram-state').count()
   expect(nodeCount).toBe(wf.stateCount)
 })
 
@@ -93,6 +95,7 @@ test('T6-4 kanban-basic — 페이지 진입 + 다이어그램 렌더 + 4 노드
 
   await page.waitForSelector('[aria-label*="다이어그램"] svg', { state: 'visible', timeout: 10_000 })
 
-  const nodeCount = await page.locator('[aria-label*="다이어그램"] svg .node').count()
+  // 상태 노드 수 검증 — mermaid stateDiagram-v2 의 .statediagram-state 클래스 (시작/종료 [*] 노드 제외)
+  const nodeCount = await page.locator('[aria-label*="다이어그램"] svg .statediagram-state').count()
   expect(nodeCount).toBe(wf.stateCount)
 })

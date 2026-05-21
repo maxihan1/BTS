@@ -1,5 +1,6 @@
 // 워크플로우 상세 페이지 (FR-WF-01 read-only 다이어그램)
 import type { JSX } from 'react'
+import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { WorkflowDiagram } from '@/components/workflow/WorkflowDiagram'
 import { fetchWorkflow } from '@/api/workflows'
@@ -7,19 +8,27 @@ import { fetchWorkflow } from '@/api/workflows'
 // ─────────────────────────────────────────────────────────────────────────────
 // router.ts 등록 방법 (code-based 패턴 — PR #11 컨벤션).
 //
-//   import { WorkflowDetailPage } from './routes/workflows.$key'
+//   import { WorkflowDetailRouteAdapter } from './routes/workflows.$key'
 //
 //   const workflowsKeyRoute = createRoute({
 //     getParentRoute: () => rootRoute,
 //     path: '/workflows/$key',
-//     component: function WorkflowDetailRouteAdapter() {
-//       const { key } = workflowsKeyRoute.useParams()
-//       return <WorkflowDetailPage workflowKey={key} />
-//     },
+//     component: WorkflowDetailRouteAdapter,
 //   })
 //
-// 이 파일은 컴포넌트만 export한다. 라우터 등록은 router.ts 담당.
+// WorkflowDetailRouteAdapter는 useParams({ strict: false })로 key를 추출해
+// WorkflowDetailPage에 전달한다. 라우터 등록은 router.ts 담당.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * router.ts 에 등록되는 라우트 어댑터 컴포넌트.
+ * useParams로 URL의 $key param을 추출하여 WorkflowDetailPage에 전달한다.
+ */
+export function WorkflowDetailRouteAdapter(): JSX.Element {
+  // strict: false — 라우트 트리 어느 위치에서나 param을 추출 가능
+  const { key } = useParams({ strict: false })
+  return <WorkflowDetailPage workflowKey={key ?? ''} />
+}
 
 interface WorkflowDetailPageProps {
   /** URL params에서 추출한 워크플로우 식별 키 */
