@@ -1,0 +1,8 @@
+# pnpm 모노레포 워크스페이스 — apps/* 와 packages/* 를 관리 대상으로 등록
+packages:
+  - 'apps/*'
+  - 'packages/*'
+allowBuilds:
+  '@swc/core': true
+  esbuild: true
+  msw: false

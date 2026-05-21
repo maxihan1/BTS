@@ -19,9 +19,12 @@ hs_err_pid*
 
 # Node / pnpm (프론트엔드)
 node_modules/
+apps/web/node_modules/
 .pnpm-store/
 .pnpm-debug.log*
+pnpm-debug.log
 dist/
+apps/web/dist/
 .vite/
 .next/
 .turbo/
@@ -41,6 +44,7 @@ logs/
 # 테스트
 playwright-report/
 test-results/
+e2e-results/
 .nyc_output/
 
 # BTS 워크플로우 산출물

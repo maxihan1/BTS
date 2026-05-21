@@ -1,10 +1,10 @@
 # DEVELOPMENT.md
 
 > **BTS 개발 헌법 §2 — 절대 규칙 + 코드 스타일.**
-> `CLAUDE.md`가 진입점, 이 파일은 위반 시 빌드/리뷰가 차단되는 18개 절대 규칙 + 스타일.
+> `CLAUDE.md`가 진입점, 이 파일은 위반 시 빌드/리뷰가 차단되는 19개 절대 규칙 + 스타일.
 > 관련. `DATA.md` (데이터/DB 규칙), Obsidian `Maxi_wiki/BTS/learnings.md` (과거 사고 회귀 방지).
 
-## §1. 절대 규칙 (NEVER) — 18개
+## §1. 절대 규칙 (NEVER) — 19개
 
 다음 규칙은 어떤 경우에도 위반하지 않는다. PR 단위 코드 리뷰(`/bts-codereview`)에서 인라인 가이드로 첨부되어 자동 검증.
 
@@ -26,19 +26,20 @@
 
 자세히. `DATA.md`.
 
-### §1.3 코드 품질 (5개)
+### §1.3 코드 품질 (6개)
 
 11. **`any` 타입 금지** (TypeScript). 모르면 `unknown`.
 12. **`!!` null assertion 금지** (Kotlin/TS). 명시적 null 체크.
 13. **빈 catch 블록 금지.** 최소한 로그.
 14. **테스트 없는 새 기능 커밋 금지.** TDD red→green→refactor 강제 (`/bts-impl`).
 15. **`console.log` / `println` 디버깅 코드 커밋 금지.** Pino/Logback 사용.
+16. **PoC / 프로토타입 / 임시 코드 금지.** 모든 작업은 완제품(production) 기준으로 작성한다. Phase 0 / Phase 1 단계 표기는 도입 시점 표시일 뿐, 작업 품질 수준이 아니다. "일단 동작만" / "나중에 리팩토링" 금지. Maxi가 "PoC 수준으로"라고 명시한 경우에만 예외. 자세히. `CLAUDE.md §작업 기준 — 완제품`.
 
 ### §1.4 외부 의존성 (3개)
 
-16. **신규 npm/maven 의존성 추가 시 Maxi 확인 필수.** SDD/Skills에 명시된 라이브러리만 자동 사용.
-17. **토큰 `localStorage` 저장 금지.** `sessionStorage` 또는 HttpOnly Cookie.
-18. **CDN에서 임의 스크립트 로드 금지.** 의존성은 npm으로.
+17. **신규 npm/maven 의존성 추가 시 Maxi 확인 필수.** SDD/Skills에 명시된 라이브러리만 자동 사용.
+18. **토큰 `localStorage` 저장 금지.** `sessionStorage` 또는 HttpOnly Cookie.
+19. **CDN에서 임의 스크립트 로드 금지.** 의존성은 npm으로.
 
 ## §2. 코드 스타일
 

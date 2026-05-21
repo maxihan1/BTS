@@ -75,7 +75,7 @@ description: Use when another bts-* skill references this for the overall workfl
 | Repo → Obsidian | 머지 직후 (Phase 0. 수동 / Phase 1. hook + sync-obsidian.ts) | history append + plans/decisions 복사 |
 | Obsidian → Repo | **없음** | Maxi의 사고 공간은 코드 영역에 반영 안 됨 |
 
-**Phase 0 PoC 단계**. `scripts/workflow/sync-obsidian.ts` 미존재. `/bts-codereview` 머지 후 단계가 수동으로 history/decisions/plans을 미러 (해당 SKILL.md "Obsidian 동기화" 섹션 참조).
+**Phase 0 단계**. `scripts/workflow/sync-obsidian.ts` 미존재. `/bts-codereview` 머지 후 단계가 수동으로 history/decisions/plans을 미러 (해당 SKILL.md "Obsidian 동기화" 섹션 참조).
 
 **Phase 1 도입 예정**. sync-obsidian.ts + post-merge hook 자동화. 첫 머지 1회 수동 처리 후 패턴 학습한 다음 스크립트 작성.
 
@@ -83,5 +83,5 @@ description: Use when another bts-* skill references this for the overall workfl
 
 ## 변경 이력
 
-- 2026-05-19. 초안 (Phase 0 PoC 진입 전). AIG `aig-workflow` 패턴 + 9개 보강 반영.
+- 2026-05-19. 초안 (Phase 0 진입 전). AIG `aig-workflow` 패턴 + 9개 보강 반영.
 - 2026-05-20. `/bts-impl` task 병렬 dispatch 도입. `bts-plan` 에 task 메타(`agent` / `files` / `depends-on`) 형식 추가, `bts-impl` 에 wave 계산 + 병렬 발행 절차 추가.
