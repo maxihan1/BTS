@@ -125,7 +125,7 @@ class PatAndConcurrencyIntegrationTest {
     }
 
     // LDAP Bean들 — 통합 테스트에서 LDAP 서버 없이 부팅하기 위해 Mock으로 대체
-    // KeycloakIntegrationBase 와 동일한 패턴 (LdapProvider가 LdapTemplate을 직접 요구)
+    // (LdapProvider 가 LdapTemplate 을 직접 요구하므로 둘 다 명시적 Mock 필요)
     @MockBean
     lateinit var ldapProvider: LdapProvider
 
