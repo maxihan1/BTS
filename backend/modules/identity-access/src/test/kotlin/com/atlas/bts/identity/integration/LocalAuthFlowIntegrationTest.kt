@@ -4,6 +4,10 @@ package com.atlas.bts.identity.integration
 
 import com.atlas.bts.identity.credential.LocalCredentialService
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
+import com.atlas.bts.identity.provider.ldap.AutoProvisionService
+import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
+import com.atlas.bts.identity.provider.ldap.LdapProvider
+import com.atlas.bts.identity.provider.ldap.LdapProviderConfigService
 import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.user.UserRepository
 import com.github.benmanes.caffeine.cache.Cache
@@ -15,6 +19,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.mock.mockito.MockBean
 import org.springframework.boot.test.web.client.TestRestTemplate
 import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.http.HttpEntity
@@ -23,6 +28,7 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
+import org.springframework.ldap.core.LdapTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.springframework.transaction.support.TransactionSynchronizationManager
@@ -76,7 +82,15 @@ import java.util.UUID
  * "active=true" 항목을 반환할 수 있다. 이를 방지하기 위해 logout 후 캐시를 직접 invalidate한다.
  * 캐시 필드는 reflection 으로 접근한다 (테스트 전용 안전한 접근 — production 코드 미수정).
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    // OAuth2ClientAutoConfiguration: application.yml 의 keycloak provider issuer-uri 가
+    // 테스트 환경에서 OIDC discovery 원격 호출을 시도 → ConnectException.
+    // Local 인증 통합 테스트는 Keycloak 불필요 — 자동 설정 제외.
+    properties = [
+        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration",
+    ],
+)
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class LocalAuthFlowIntegrationTest {
@@ -97,7 +111,7 @@ class LocalAuthFlowIntegrationTest {
          * - `spring.datasource.*`: Testcontainers PostgreSQL JDBC URL
          * - `bts.auth.issuer-uri`: 테스트 전용 dummy URI (JwtIssuer iss claim 용)
          * - `bts.security.cors.allowed-origins`: CorsConfig Bean 생성에 필수 (빈 목록 주입)
-         * - `spring.ldap.*`: LDAP 자동 설정 비활성 (Local 인증만 검증)
+         * - `spring.ldap.*`: LDAP 연결 주소 설정 (LdapAutoConfiguration 조건 충족용 — LdapProvider @MockBean 으로 대체)
          */
         @DynamicPropertySource
         @JvmStatic
@@ -107,20 +121,59 @@ class LocalAuthFlowIntegrationTest {
             registry.add("spring.datasource.password") { postgres.password }
             registry.add("bts.auth.issuer-uri") { "http://localhost:8090" }
             registry.add("bts.security.cors.allowed-origins") { "http://localhost:5173" }
-            // LDAP 자동 설정 비활성 — Local 인증 단독 스택 검증
+            // LDAP 설정 — LdapAutoConfiguration 이 LdapTemplate Bean 을 생성하도록 URL 유지
+            // LdapProvider / AutoProvisionService / ExternalAccountRepository 는 @MockBean 으로 대체
             registry.add("spring.ldap.urls") { "ldap://localhost:389" }
-            registry.add("spring.autoconfigure.exclude") {
-                "org.springframework.boot.autoconfigure.ldap.LdapAutoConfiguration," +
-                    "org.springframework.boot.autoconfigure.data.ldap.LdapDataAutoConfiguration"
-            }
+            registry.add("spring.ldap.base") { "dc=bts,dc=local" }
         }
     }
+
+    // ── LDAP Bean @MockBean — Local 인증 단독 스택 검증을 위해 목킹 ────────────────
+    // LdapProvider 는 LdapTemplate (constructor param) 을 필요로 하므로 @MockBean 으로 대체.
+    // LdapAutoConfiguration 이 LdapTemplate Bean 을 생성하지만 실제 LDAP 연결은 시도하지 않는다.
+    // (LdapTemplate 은 lazy 연결 — 실제 LDAP 서버 없이 Bean 생성 가능)
+
+    @MockBean
+    lateinit var ldapProvider: LdapProvider
+
+    @MockBean
+    lateinit var ldapProviderConfigService: LdapProviderConfigService
+
+    @MockBean
+    lateinit var externalAccountRepository: ExternalAccountRepository
+
+    @MockBean
+    lateinit var autoProvisionService: AutoProvisionService
+
+    // ── 테스트 대상 Bean ────────────────────────────────────────────────────────
 
     @LocalServerPort
     var port: Int = 0
 
     @Autowired
     lateinit var restTemplate: TestRestTemplate
+
+    /**
+     * Apache HttpComponents 5 기반 RestTemplate.
+     *
+     * `TestRestTemplate` 기본 HttpURLConnection 은 401 POST 응답 시
+     * 재인증 재시도를 시도하다 `HttpRetryException: cannot retry due to server authentication,
+     * in streaming mode` 를 던진다.
+     * Apache HttpComponents 5 는 이 제한 없이 401 응답 body 를 정상적으로 읽는다.
+     *
+     * 4xx/5xx 를 예외로 throw 하지 않고 ResponseEntity 로 반환 — assertThat 으로 직접 단언.
+     */
+    private val plainRestTemplate: org.springframework.web.client.RestTemplate by lazy {
+        val httpClient = org.apache.hc.client5.http.impl.classic.HttpClients.createDefault()
+        val factory = org.springframework.http.client.HttpComponentsClientHttpRequestFactory(httpClient)
+        org.springframework.web.client.RestTemplate(factory).apply {
+            // 4xx/5xx 를 예외로 throw 하지 않음 — ResponseEntity 로 반환
+            errorHandler = object : org.springframework.web.client.ResponseErrorHandler {
+                override fun hasError(response: org.springframework.http.client.ClientHttpResponse) = false
+                override fun handleError(response: org.springframework.http.client.ClientHttpResponse) {}
+            }
+        }
+    }
 
     @Autowired
     lateinit var userRepository: UserRepository
@@ -482,16 +535,19 @@ class LocalAuthFlowIntegrationTest {
     /**
      * POST /api/v1/auth/refresh 요청을 보내고 응답을 반환한다.
      *
-     * refresh 는 SecurityConfig 에서 permitAll 이므로 CSRF 헤더 불필요.
-     * Cookie 헤더에 refresh_token 을 수동으로 설정한다.
+     * ## CSRF 전략
+     * `/api/v1/auth/refresh` 는 SecurityConfig 의 `ignoringRequestMatchers` 에 포함되어 CSRF skip.
+     * SameSite=Strict refresh_token Cookie 로 CSRF 위험을 동등하게 방어한다.
+     * Cookie 헤더에 refresh_token 만 설정하면 된다.
      *
      * @param refreshTokenRaw raw refresh token 값 (Cookie 헤더 값)
      */
     private fun performRefresh(refreshTokenRaw: String): ResponseEntity<Map<*, *>> {
         val headers = HttpHeaders().apply {
-            set("Cookie", "refresh_token=$refreshTokenRaw")
+            set(HttpHeaders.COOKIE, "refresh_token=$refreshTokenRaw")
         }
-        return restTemplate.exchange(
+        // plainRestTemplate: setOutputStreaming(false) 로 401 응답 body 읽기 보장
+        return plainRestTemplate.exchange(
             "http://localhost:$port/api/v1/auth/refresh",
             HttpMethod.POST,
             HttpEntity<Void>(headers),
@@ -519,7 +575,10 @@ class LocalAuthFlowIntegrationTest {
     }
 
     /**
-     * 로그인/refresh 응답의 Set-Cookie 헤더에서 refresh_token 값을 추출한다.
+     * 로그인/refresh 응답의 Set-Cookie 헤더 목록에서 refresh_token 값을 추출한다.
+     *
+     * Spring Security 는 CSRF 쿠키 + refresh_token 쿠키를 별도 Set-Cookie 헤더로 전송할 수 있다.
+     * `getFirst(SET_COOKIE)` 는 CSRF 쿠키를 반환할 수 있으므로 모든 Set-Cookie 헤더를 조회한다.
      *
      * Set-Cookie 헤더 형식: `refresh_token=<value>; HttpOnly; Secure; ...`
      * 값 파트만 추출하여 반환한다.
@@ -527,14 +586,19 @@ class LocalAuthFlowIntegrationTest {
      * @return raw refresh token 값, 없으면 빈 문자열
      */
     private fun extractRefreshCookieValue(response: ResponseEntity<*>): String {
-        val setCookie = response.headers.getFirst(HttpHeaders.SET_COOKIE) ?: return ""
-        // "refresh_token=<value>; ..."
-        return setCookie
-            .split(";")
-            .firstOrNull { it.trim().startsWith("refresh_token=") }
-            ?.substringAfter("refresh_token=")
-            ?.trim()
-            ?: ""
+        val allCookies = response.headers[HttpHeaders.SET_COOKIE] ?: return ""
+        // 여러 Set-Cookie 헤더 중 refresh_token= 으로 시작하는 것을 탐색
+        for (cookie in allCookies) {
+            if (cookie.startsWith("refresh_token=")) {
+                return cookie
+                    .split(";")
+                    .firstOrNull { it.trim().startsWith("refresh_token=") }
+                    ?.substringAfter("refresh_token=")
+                    ?.trim()
+                    ?: ""
+            }
+        }
+        return ""
     }
 
     /**
