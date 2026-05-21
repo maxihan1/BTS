@@ -64,9 +64,7 @@ import java.util.concurrent.Executors
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class WorkflowIntegrationTest {
-
     companion object {
-
         @Container
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
@@ -139,10 +137,11 @@ class WorkflowIntegrationTest {
     @Order(1)
     fun `S1 - happy path - open 에서 in_progress 로 정상 전이된다`() {
         // Given
-        val definitionRepo = mockk<WorkflowDefinitionRepository> {
-            every { findValidators(any()) } returns emptyList()
-            every { findPostActions(any()) } returns emptyList()
-        }
+        val definitionRepo =
+            mockk<WorkflowDefinitionRepository> {
+                every { findValidators(any()) } returns emptyList()
+                every { findPostActions(any()) } returns emptyList()
+            }
         val engine = buildEngine(definitionRepo, mockk(), mockk())
 
         val request = WorkflowFixtures.softwareDefaultRequest()
@@ -167,25 +166,32 @@ class WorkflowIntegrationTest {
     @Order(2)
     fun `S2 - permission fail - 권한 부족 시 WorkflowValidatorFailureException 이 발생한다`() {
         // Given
-        val permissionValidator = mockk<WorkflowValidator> {
-            every { type } returns "permission-check"
-            every { validate(any()) } returns ValidatorResult.Fail(
-                field = null,
-                reason = "permission denied: TRANSITION_ISSUE",
-            )
-        }
+        val permissionValidator =
+            mockk<WorkflowValidator> {
+                every { type } returns "permission-check"
+                every { validate(any()) } returns
+                    ValidatorResult.Fail(
+                        field = null,
+                        reason = "permission denied: TRANSITION_ISSUE",
+                    )
+            }
         val validatorConfig = ValidatorConfig("permission-check", mapOf("permission" to "TRANSITION_ISSUE"))
 
-        val definitionRepo = mockk<WorkflowDefinitionRepository> {
-            every { findValidators(any()) } returns listOf(validatorConfig)
-            every { findPostActions(any()) } returns emptyList()
-        }
-        val validatorFactory = mockk<WorkflowValidatorFactory> {
-            every { create("permission-check", any()) } returns permissionValidator
-        }
+        val definitionRepo =
+            mockk<WorkflowDefinitionRepository> {
+                every { findValidators(any()) } returns listOf(validatorConfig)
+                every { findPostActions(any()) } returns emptyList()
+            }
+        val validatorFactory =
+            mockk<WorkflowValidatorFactory> {
+                every { create("permission-check", any()) } returns permissionValidator
+            }
         val engine = buildEngine(definitionRepo, validatorFactory, mockk())
 
-        val request = WorkflowFixtures.softwareDefaultRequest(actorRoles = setOf("VIEWER"))
+        val request =
+            WorkflowFixtures.softwareDefaultRequest(
+                TransitionRequestSpec(actorRoles = setOf("VIEWER")),
+            )
 
         // When / Then
         assertThatThrownBy {
@@ -213,19 +219,22 @@ class WorkflowIntegrationTest {
         val requiredFieldValidator = RequiredFieldValidator("resolution")
         val validatorConfig = ValidatorConfig("RequiredField", mapOf("field" to "resolution"))
 
-        val definitionRepo = mockk<WorkflowDefinitionRepository> {
-            every { findValidators(any()) } returns listOf(validatorConfig)
-            every { findPostActions(any()) } returns emptyList()
-        }
-        val validatorFactory = mockk<WorkflowValidatorFactory> {
-            every { create("RequiredField", any()) } returns requiredFieldValidator
-        }
+        val definitionRepo =
+            mockk<WorkflowDefinitionRepository> {
+                every { findValidators(any()) } returns listOf(validatorConfig)
+                every { findPostActions(any()) } returns emptyList()
+            }
+        val validatorFactory =
+            mockk<WorkflowValidatorFactory> {
+                every { create("RequiredField", any()) } returns requiredFieldValidator
+            }
         val engine = buildEngine(definitionRepo, validatorFactory, mockk())
 
         // resolution 필드 없이 요청 (WorkflowFixtures 기본값에 resolution 없음)
-        val request = WorkflowFixtures.softwareDefaultRequest(
-            issueFields = mapOf("priority" to "HIGH"),
-        )
+        val request =
+            WorkflowFixtures.softwareDefaultRequest(
+                TransitionRequestSpec(issueFields = mapOf("priority" to "HIGH")),
+            )
 
         // When / Then
         assertThatThrownBy {
@@ -252,28 +261,33 @@ class WorkflowIntegrationTest {
     @Order(4)
     fun `S4 - SpEL pass - 커스텀 SpEL 표현식 true 평가 후 전이가 성공한다`() {
         // Given — SpelEvaluator 실제 구현체 + CustomExpressionValidator 실제 구현체
-        val spelValidator = CustomExpressionValidator(
-            evaluator = SpelEvaluator(executor = spelExecutor, timeoutMillis = 5000L),
-            expression = "issue.priority == 'HIGH'",
-        )
-        val validatorConfig = ValidatorConfig(
-            "CustomExpression",
-            mapOf("expression" to "issue.priority == 'HIGH'"),
-        )
+        val spelValidator =
+            CustomExpressionValidator(
+                evaluator = SpelEvaluator(executor = spelExecutor, timeoutMillis = 5000L),
+                expression = "issue.priority == 'HIGH'",
+            )
+        val validatorConfig =
+            ValidatorConfig(
+                "CustomExpression",
+                mapOf("expression" to "issue.priority == 'HIGH'"),
+            )
 
-        val definitionRepo = mockk<WorkflowDefinitionRepository> {
-            every { findValidators(any()) } returns listOf(validatorConfig)
-            every { findPostActions(any()) } returns emptyList()
-        }
-        val validatorFactory = mockk<WorkflowValidatorFactory> {
-            every { create("CustomExpression", any()) } returns spelValidator
-        }
+        val definitionRepo =
+            mockk<WorkflowDefinitionRepository> {
+                every { findValidators(any()) } returns listOf(validatorConfig)
+                every { findPostActions(any()) } returns emptyList()
+            }
+        val validatorFactory =
+            mockk<WorkflowValidatorFactory> {
+                every { create("CustomExpression", any()) } returns spelValidator
+            }
         val engine = buildEngine(definitionRepo, validatorFactory, mockk())
 
         // priority == "HIGH" → SpEL true → pass
-        val request = WorkflowFixtures.softwareDefaultRequest(
-            issueFields = mapOf("priority" to "HIGH"),
-        )
+        val request =
+            WorkflowFixtures.softwareDefaultRequest(
+                TransitionRequestSpec(issueFields = mapOf("priority" to "HIGH")),
+            )
 
         // When
         val plan = txTemplate.execute { engine.plan(request) }!!
@@ -295,30 +309,36 @@ class WorkflowIntegrationTest {
     @Order(5)
     fun `S5 - PostAction emitEvents - Notify PostAction 이 전이 후 DomainEvent 를 발행한다`() {
         // Given
-        val notifyEvent = DomainEvent(
-            type = "NotificationRequested",
-            payload = mapOf(
-                "issueKey" to "BTS-1",
-                "channel" to "slack",
-                "recipients" to "team-dev",
-            ),
-        )
-        val notifyPostAction = mockk<WorkflowPostAction> {
-            every { type } returns "NOTIFY"
-            every { evaluate(any()) } returns PostActionPlan(
-                fieldChanges = emptyList(),
-                emitEvents = listOf(notifyEvent),
+        val notifyEvent =
+            DomainEvent(
+                type = "NotificationRequested",
+                payload =
+                    mapOf(
+                        "issueKey" to "BTS-1",
+                        "channel" to "slack",
+                        "recipients" to "team-dev",
+                    ),
             )
-        }
+        val notifyPostAction =
+            mockk<WorkflowPostAction> {
+                every { type } returns "NOTIFY"
+                every { evaluate(any()) } returns
+                    PostActionPlan(
+                        fieldChanges = emptyList(),
+                        emitEvents = listOf(notifyEvent),
+                    )
+            }
         val postActionConfig = PostActionConfig("NOTIFY", mapOf("channel" to "slack", "recipients" to "team-dev"))
 
-        val definitionRepo = mockk<WorkflowDefinitionRepository> {
-            every { findValidators(any()) } returns emptyList()
-            every { findPostActions(any()) } returns listOf(postActionConfig)
-        }
-        val postActionFactory = mockk<WorkflowPostActionFactory> {
-            every { create("NOTIFY", any()) } returns notifyPostAction
-        }
+        val definitionRepo =
+            mockk<WorkflowDefinitionRepository> {
+                every { findValidators(any()) } returns emptyList()
+                every { findPostActions(any()) } returns listOf(postActionConfig)
+            }
+        val postActionFactory =
+            mockk<WorkflowPostActionFactory> {
+                every { create("NOTIFY", any()) } returns notifyPostAction
+            }
         val engine = buildEngine(definitionRepo, mockk(), postActionFactory)
 
         val request = WorkflowFixtures.softwareDefaultRequest()
@@ -345,14 +365,15 @@ class WorkflowIntegrationTest {
     @Order(6)
     fun `S6 - 동시 전이 낙관락 - 동일 전이 두 번 호출 시 동일 결과를 반환한다`() {
         // Given
-        val definitionRepo = mockk<WorkflowDefinitionRepository> {
-            every { findValidators(any()) } returns emptyList()
-            every { findPostActions(any()) } returns emptyList()
-        }
+        val definitionRepo =
+            mockk<WorkflowDefinitionRepository> {
+                every { findValidators(any()) } returns emptyList()
+                every { findPostActions(any()) } returns emptyList()
+            }
         val engine = buildEngine(definitionRepo, mockk(), mockk())
 
-        val request1 = WorkflowFixtures.softwareDefaultRequest(version = 1L)
-        val request2 = WorkflowFixtures.softwareDefaultRequest(version = 1L)
+        val request1 = WorkflowFixtures.softwareDefaultRequest(TransitionRequestSpec(version = 1L))
+        val request2 = WorkflowFixtures.softwareDefaultRequest(TransitionRequestSpec(version = 1L))
 
         // When — 두 호출 모두 실행 (호출자 BC 가 version 비교 전 단계)
         val plan1 = txTemplate.execute { engine.plan(request1) }!!
@@ -398,36 +419,53 @@ class WorkflowIntegrationTest {
 // ── 픽스처 빌더 — WorkflowFixtures ─────────────────────────────────────────────
 
 /**
+ * insertState 호출 시 사용하는 상태 삽입 파라미터 모음.
+ */
+data class StateInsertSpec(
+    val key: String,
+    val name: String,
+    val category: String,
+    val displayOrder: Int,
+)
+
+/**
+ * softwareDefaultRequest 생성 시 재정의할 수 있는 전이 파라미터 모음.
+ *
+ * 기본값은 open→in_progress "Start Work" 전이다.
+ */
+data class TransitionRequestSpec(
+    val fromStateKey: String = "open",
+    val toStateKey: String = "in_progress",
+    val transitionName: String = "Start Work",
+    val issueFields: Map<String, Any?> = mapOf("priority" to "HIGH"),
+    val actorRoles: Set<String> = setOf("MEMBER"),
+    val version: Long = 1L,
+)
+
+/**
  * 통합 테스트 전용 픽스처 빌더.
  *
  * 표준 seed 데이터 삽입([seedSoftwareDefault])과 표준 전이 요청 생성([softwareDefaultRequest])을
  * 한 곳에 모아 여러 테스트가 재사용할 수 있도록 한다.
  */
 object WorkflowFixtures {
-
     /**
      * software-default 워크플로우 기반 표준 전이 요청을 생성한다.
      *
-     * 기본값은 open→in_progress "Start Work" 전이이며, 각 파라미터로 재정의 가능하다.
+     * @param spec 재정의할 전이 파라미터. 기본값 사용 시 open→in_progress "Start Work" 전이 생성.
      */
-    fun softwareDefaultRequest(
-        fromStateKey: String = "open",
-        toStateKey: String = "in_progress",
-        transitionName: String = "Start Work",
-        issueFields: Map<String, Any?> = mapOf("priority" to "HIGH"),
-        actorRoles: Set<String> = setOf("MEMBER"),
-        version: Long = 1L,
-    ): TransitionRequest = TransitionRequest(
-        workflowKey = "software-default",
-        issueKey = "BTS-1",
-        fromStateKey = fromStateKey,
-        toStateKey = toStateKey,
-        transitionName = transitionName,
-        actorId = "user-integration-test",
-        issueFields = issueFields,
-        actorRoles = actorRoles,
-        version = version,
-    )
+    fun softwareDefaultRequest(spec: TransitionRequestSpec = TransitionRequestSpec()): TransitionRequest =
+        TransitionRequest(
+            workflowKey = "software-default",
+            issueKey = "BTS-1",
+            fromStateKey = spec.fromStateKey,
+            toStateKey = spec.toStateKey,
+            transitionName = spec.transitionName,
+            actorId = "user-integration-test",
+            issueFields = spec.issueFields,
+            actorRoles = spec.actorRoles,
+            version = spec.version,
+        )
 
     /**
      * software-default 워크플로우 (5 states + 6 transitions) 를 JDBC 로 직접 DB 에 삽입한다.
@@ -436,20 +474,30 @@ object WorkflowFixtures {
      * 통합 테스트에서는 JDBC 직접 삽입으로 seed 를 대체한다.
      * (YamlSeedServiceTest 에서 YAML 파싱 + 정합성이 이미 검증됨)
      */
-    fun seedSoftwareDefault(jdbcUrl: String, username: String, password: String) {
+    fun seedSoftwareDefault(
+        jdbcUrl: String,
+        username: String,
+        password: String,
+    ) {
         DriverManager.getConnection(jdbcUrl, username, password).use { conn ->
             conn.autoCommit = false
 
-            val wfId = conn.prepareStatement(
-                "INSERT INTO workflows (key, name)" +
-                    " VALUES ('software-default', '소프트웨어 개발 기본 워크플로우') RETURNING id",
-            ).use { stmt -> stmt.executeQuery().use { rs -> rs.next(); rs.getObject(1) as UUID } }
+            val wfId =
+                conn.prepareStatement(
+                    "INSERT INTO workflows (key, name)" +
+                        " VALUES ('software-default', '소프트웨어 개발 기본 워크플로우') RETURNING id",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as UUID
+                    }
+                }
 
-            val openId = insertState(conn, wfId, "open", "Open", "TODO", 1)
-            val inProgressId = insertState(conn, wfId, "in_progress", "In Progress", "IN_PROGRESS", 2)
-            val inReviewId = insertState(conn, wfId, "in_review", "In Review", "IN_PROGRESS", 3)
-            val doneId = insertState(conn, wfId, "done", "Done", "DONE", 4)
-            val closedId = insertState(conn, wfId, "closed", "Closed", "DONE", 5)
+            val openId = insertState(conn, wfId, StateInsertSpec("open", "Open", "TODO", 1))
+            val inProgressId = insertState(conn, wfId, StateInsertSpec("in_progress", "In Progress", "IN_PROGRESS", 2))
+            val inReviewId = insertState(conn, wfId, StateInsertSpec("in_review", "In Review", "IN_PROGRESS", 3))
+            val doneId = insertState(conn, wfId, StateInsertSpec("done", "Done", "DONE", 4))
+            val closedId = insertState(conn, wfId, StateInsertSpec("closed", "Closed", "DONE", 5))
 
             insertTransition(conn, wfId, openId, inProgressId, "Start Work")
             insertTransition(conn, wfId, inProgressId, inReviewId, "Submit for Review")
@@ -465,21 +513,21 @@ object WorkflowFixtures {
     private fun insertState(
         conn: Connection,
         wfId: UUID,
-        key: String,
-        name: String,
-        category: String,
-        displayOrder: Int,
+        spec: StateInsertSpec,
     ): UUID =
         conn.prepareStatement(
             "INSERT INTO workflow_states (workflow_id, key, name, category, display_order)" +
                 " VALUES (?, ?, ?, ?, ?) RETURNING id",
         ).use { stmt ->
             stmt.setObject(1, wfId)
-            stmt.setString(2, key)
-            stmt.setString(3, name)
-            stmt.setString(4, category)
-            stmt.setInt(5, displayOrder)
-            stmt.executeQuery().use { rs -> rs.next(); rs.getObject(1) as UUID }
+            stmt.setString(2, spec.key)
+            stmt.setString(3, spec.name)
+            stmt.setString(4, spec.category)
+            stmt.setInt(5, spec.displayOrder)
+            stmt.executeQuery().use { rs ->
+                rs.next()
+                rs.getObject(1) as UUID
+            }
         }
 
     private fun insertTransition(
