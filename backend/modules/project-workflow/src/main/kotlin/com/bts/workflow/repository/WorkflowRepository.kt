@@ -67,6 +67,7 @@ class WorkflowRepository(private val dsl: DSLContext) {
                 WORKFLOWS.ID,
                 WORKFLOWS.KEY,
                 WORKFLOWS.NAME,
+                WORKFLOWS.DESCRIPTION,
                 // workflow_states 컬럼
                 WORKFLOW_STATES.ID,
                 WORKFLOW_STATES.WORKFLOW_ID,
@@ -103,6 +104,7 @@ class WorkflowRepository(private val dsl: DSLContext) {
             val firstRow = rows.first()
             val workflowKey = firstRow[WORKFLOWS.KEY]!!
             val workflowName = firstRow[WORKFLOWS.NAME]!!
+            val workflowDescription = firstRow[WORKFLOWS.DESCRIPTION]
 
             // states — (workflow_states.id, key, name, category, display_order) 기준 dedup
             val states =
@@ -131,6 +133,7 @@ class WorkflowRepository(private val dsl: DSLContext) {
             Workflow.of(
                 key = workflowKey,
                 name = workflowName,
+                description = workflowDescription,
                 states = states,
                 transitions = transitions,
             )

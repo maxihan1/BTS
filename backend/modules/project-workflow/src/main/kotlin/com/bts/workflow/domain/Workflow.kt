@@ -10,12 +10,14 @@ package com.bts.workflow.domain
  *
  * @property key 워크플로우 식별 키. 시스템 전역에서 고유.
  * @property name 사람이 읽을 수 있는 워크플로우 이름.
+ * @property description 워크플로우 설명. 관리자용. null 허용 (DB nullable 컬럼과 일치).
  * @property states 이 워크플로우가 포함하는 상태 목록. 비어 있을 수 없으며 key 중복 불가.
  * @property transitions 이 워크플로우가 허용하는 전이 목록. from/to 키는 모두 [states] 집합에 포함돼야 한다.
  */
 data class Workflow private constructor(
     val key: String,
     val name: String,
+    val description: String?,
     val states: List<WorkflowState>,
     val transitions: List<WorkflowTransition>,
 ) {
@@ -35,6 +37,7 @@ data class Workflow private constructor(
         fun of(
             key: String,
             name: String,
+            description: String? = null,
             states: List<WorkflowState>,
             transitions: List<WorkflowTransition>,
         ): Workflow {
@@ -69,6 +72,7 @@ data class Workflow private constructor(
             return Workflow(
                 key = key,
                 name = name,
+                description = description,
                 states = states,
                 transitions = transitions,
             )

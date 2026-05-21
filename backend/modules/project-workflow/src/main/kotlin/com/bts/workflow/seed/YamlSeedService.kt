@@ -26,12 +26,14 @@ import org.springframework.transaction.annotation.Transactional
  *
  * @property key 워크플로우 식별 키 (예: software-default)
  * @property name 워크플로우 이름
+ * @property description 워크플로우 설명. null 허용 (YAML에 명시 안 된 경우 null).
  * @property states 상태 목록. 비어 있으면 Konform 검증 실패.
  * @property transitions 전이 목록.
  */
 data class WorkflowYamlDto(
     val key: String = "",
     val name: String = "",
+    val description: String? = null,
     val states: List<StateYamlDto> = emptyList(),
     val transitions: List<TransitionYamlDto> = emptyList(),
 )
@@ -208,6 +210,7 @@ class YamlSeedService(
         dto: WorkflowYamlDto,
     ): Boolean =
         differsInName(existing, dto) ||
+            differsInDescription(existing, dto) ||
             differsInStateSet(existing, dto) ||
             differsInStateDetails(existing, dto) ||
             differsInTransitions(existing, dto)
@@ -216,6 +219,11 @@ class YamlSeedService(
         existing: Workflow,
         dto: WorkflowYamlDto,
     ): Boolean = existing.name != dto.name
+
+    private fun differsInDescription(
+        existing: Workflow,
+        dto: WorkflowYamlDto,
+    ): Boolean = existing.description != dto.description
 
     private fun differsInStateSet(
         existing: Workflow,
@@ -275,6 +283,7 @@ class YamlSeedService(
             dsl.insertInto(WORKFLOWS)
                 .set(WORKFLOWS.KEY, dto.key)
                 .set(WORKFLOWS.NAME, dto.name)
+                .set(WORKFLOWS.DESCRIPTION, dto.description)
                 .returningResult(WORKFLOWS.ID)
                 .fetchOne()
                 ?.value1()

@@ -1,6 +1,7 @@
 # 소프트웨어 개발 기본 워크플로우 (5 상태 + 6 전이)
 key: software-default
 name: 소프트웨어 개발 기본 워크플로우
+description: "Open → In Progress → In Review → Done → Closed 흐름의 표준 소프트웨어 개발 워크플로우"
 states:
   - { key: open, name: Open, category: TODO, displayOrder: 1 }
   - { key: in_progress, name: In Progress, category: IN_PROGRESS, displayOrder: 2 }
