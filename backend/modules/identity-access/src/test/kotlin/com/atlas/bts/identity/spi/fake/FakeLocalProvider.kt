@@ -15,7 +15,7 @@ import java.util.UUID
 
 /**
  * test-spi 프로필 전용 가짜 LocalProvider.
- * PoC #2 Keycloak 통합 테스트(test 프로필)와 충돌 방지를 위해 별도 프로필 사용.
+ * PR #2 Keycloak 통합 테스트(test 프로필)와 충돌 방지를 위해 별도 프로필 사용.
  *
  * 인증 규칙:
  * - password가 빈 문자열 → Failure(INVALID_INPUT)

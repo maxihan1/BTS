@@ -31,16 +31,10 @@ spring:
           #
           # bts.auth.issuer-uri 기본값: http://localhost:8080 (로컬 개발 서버)
           jwk-set-uri: ${bts.auth.issuer-uri:http://localhost:8080}/.well-known/jwks.json
-      client:
-        registration:
-          keycloak:
-            client-id: bts-web
-            authorization-grant-type: authorization_code
-            scope: openid,profile,email
-            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
-        provider:
-          keycloak:
-            issuer-uri: ${bts.auth.issuer-uri:http://localhost:8080}
+      # oauth2.client (registration/provider) 블록은 본 PR 에서 제거됨. plan §line 36
+      # ("Keycloak 은 SDD 19.2 ProviderType.OIDC 의 한 인스턴스로 역할 재정의") 정신상
+      # BTS prod 가 oauth2-client (외부 IdP 로그인) 를 직접 쓰지 않으므로 잔재 정리.
+      # 미래 OidcAuthenticationProvider PR 에서 DB authn_providers.config 기반 동적 wiring 으로 재도입.
 
 bts:
   auth:
