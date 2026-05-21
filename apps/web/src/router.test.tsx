@@ -2,13 +2,21 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { RouterProvider, createRouter, createMemoryHistory } from '@tanstack/react-router'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { routeTree } from './router'
 import { useAuthStore } from './auth/authStore'
 
 function renderWithRoute(path: string) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
   const memoryHistory = createMemoryHistory({ initialEntries: [path] })
   const testRouter = createRouter({ routeTree, history: memoryHistory })
-  return render(<RouterProvider router={testRouter} />)
+  return render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={testRouter} />
+    </QueryClientProvider>,
+  )
 }
 
 describe('Router', () => {
@@ -18,7 +26,7 @@ describe('Router', () => {
 
   it('/login 라우트 마운트 → LoginPage placeholder 렌더', async () => {
     renderWithRoute('/login')
-    expect(await screen.findByText(/로그인 페이지/)).toBeInTheDocument()
+    expect(await screen.findByText(/BTS 로그인/)).toBeInTheDocument()
   })
 
   it('/dashboard 라우트 마운트 (인증 상태) → DashboardPage placeholder 렌더', async () => {
