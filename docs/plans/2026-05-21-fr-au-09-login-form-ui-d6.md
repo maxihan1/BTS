@@ -388,6 +388,7 @@ B1. CSRF 헤더 echo / B2. 422 처리 / B3. 헤더 위치 / B4. Vite React 플�
 - depends-on: [2, 6, 10, 13]
 - 메타 보정 1 (2026-05-21 W7 controller). `components/ui/select.tsx` 추가 — 게이트 1 G6 결정 (provider 드롭다운) 위해 shadcn add 로 사전 추가. W2 의 shadcn init 5종 (button/card/form/input/label) 패턴과 동일.
 - 메타 보정 2 (2026-05-21 W7 controller concern fix). `apps/web/src/router.ts` 추가 — T14 implementer 가 `redirectIfAuth` attach 필요했으나 router.ts 가 메타 외라 NEEDS_CONTEXT/concern 처리. controller 직접 fix (T13 dashboardRoute.beforeLoad 와 동일 패턴). loginRoute 에 `beforeLoad: redirectIfAuth` 한 줄 추가.
+- 메타 보정 3 (2026-05-21 W7 verifier 권장). `apps/web/src/router.test.tsx` 추가 — T14 가 `routes/login.tsx` placeholder ("로그인 페이지") → 실제 LoginForm ("BTS 로그인") 변경하면서 router.test.tsx /login 매처 깨짐. T15 implementer 가 같은 wave 내 직전 task orphan 을 정리하는 차원에서 fix (CLAUDE.md §3 응용). 정당한 부수 변경.
 
 **RED**. `LoginForm.test.tsx`.
 - 입력 + 제출 → `useLoginMutation.mutate` 호출 (msw 응답 모킹).
@@ -409,7 +410,8 @@ B1. CSRF 헤더 echo / B2. 422 처리 / B3. 헤더 위치 / B4. Vite React 플�
 - agent: `frontend-engineer`
 - files: [`apps/web/src/routes/dashboard.tsx` (실제 구현), `apps/web/src/components/Header.tsx`, `apps/web/src/components/Header.test.tsx`, `apps/web/src/routes/__root.tsx` (REFACTOR 헤더 마운트), `apps/web/src/components/ui/dropdown-menu.tsx` (controller 사전 추가, shadcn add dropdown-menu)]
 - depends-on: [7, 11, 13]
-- 메타 보정 (2026-05-21 W7 controller). (a) `__root.tsx` 추가 — plan REFACTOR "헤더가 __root layout 내부에 마운트" 의도 명시. (b) `components/ui/dropdown-menu.tsx` 추가 — plan GREEN "shadcn/ui DropdownMenu" 명시, T14 select 와 동일 패턴으로 사전 추가.
+- 메타 보정 1 (2026-05-21 W7 controller). (a) `__root.tsx` 추가 — plan REFACTOR "헤더가 __root layout 내부에 마운트" 의도 명시. (b) `components/ui/dropdown-menu.tsx` 추가 — plan GREEN "shadcn/ui DropdownMenu" 명시, T14 select 와 동일 패턴으로 사전 추가.
+- 메타 보정 2 (2026-05-21 W7 verifier 권장). `apps/web/src/router.test.tsx` 추가 — T15 가 dashboard.tsx placeholder ("대시보드") → "환영합니다, {username}" 변경하면서 router.test.tsx /dashboard 매처 깨짐 + Header 가 __root 에 마운트되며 useMutation 사용으로 QueryClientProvider wrap 필요. T15 implementer 가 자기 변경 orphan 정리 (CLAUDE.md §3 — 내 변경이 만든 orphan 은 내가 정리) + T14 orphan 동시 정리. 정당한 부수 변경.
 
 **RED**. `Header.test.tsx`. 인증 사용자 username 표시, 로그아웃 클릭 → `useLogoutMutation.mutate` 호출 → `/login` 리다이렉트.
 
