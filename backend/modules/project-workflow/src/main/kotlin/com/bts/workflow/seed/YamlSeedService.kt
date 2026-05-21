@@ -210,7 +210,7 @@ class YamlSeedService(
         dto: WorkflowYamlDto,
     ): Boolean =
         differsInName(existing, dto) ||
-            differsInDescription(existing, dto) ||
+            existing.description != dto.description ||
             differsInStateSet(existing, dto) ||
             differsInStateDetails(existing, dto) ||
             differsInTransitions(existing, dto)
@@ -219,11 +219,6 @@ class YamlSeedService(
         existing: Workflow,
         dto: WorkflowYamlDto,
     ): Boolean = existing.name != dto.name
-
-    private fun differsInDescription(
-        existing: Workflow,
-        dto: WorkflowYamlDto,
-    ): Boolean = existing.description != dto.description
 
     private fun differsInStateSet(
         existing: Workflow,

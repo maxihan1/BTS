@@ -15,5 +15,5 @@ data class WorkflowTransition(
     val toStateKey: String,
     val name: String,
 ) {
-    val key: String get() = "${fromStateKey}__${toStateKey}"
+    val key: String get() = "${fromStateKey}__$toStateKey"
 }
