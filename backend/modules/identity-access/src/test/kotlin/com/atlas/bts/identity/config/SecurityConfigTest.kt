@@ -3,6 +3,7 @@
 package com.atlas.bts.identity.config
 
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
+import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.session.Session
 import com.atlas.bts.identity.session.SessionService
 import io.mockk.every
@@ -47,7 +48,10 @@ import java.util.UUID
  *
  * @see SecurityConfig 검증 대상 설정 클래스
  */
+// controllers = [ProbeController::class] 로 한정 — 미지정 시 모든 @RestController (AuthController/ProvidersController 등) 가
+// 컨텍스트에 등록되어 ProviderRegistry 등 추가 의존성을 요구하므로 SecurityFilterChain 단독 검증 의도와 어긋난다.
 @WebMvcTest(
+    controllers = [SecurityConfigTest.ProbeController::class],
     excludeAutoConfiguration = [OAuth2ClientAutoConfiguration::class],
 )
 @Import(
@@ -148,6 +152,11 @@ class SecurityConfigTest {
         @Bean
         fun corsConfigurationSource(): CorsConfigurationSource =
             CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+
+        // SecurityConfig 가 PatAuthenticationFilter 생성을 위해 요구하는 Bean.
+        // 본 테스트는 PAT 흐름을 검증하지 않으므로 relaxed mock 으로 충분하다.
+        @Bean
+        fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)
     }
 
     @Autowired

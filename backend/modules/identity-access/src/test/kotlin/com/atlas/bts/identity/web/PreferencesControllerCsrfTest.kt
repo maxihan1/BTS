@@ -18,6 +18,7 @@ package com.atlas.bts.identity.web
 import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
+import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.session.SessionService
 import io.mockk.mockk
 import org.junit.jupiter.api.Test
@@ -63,6 +64,11 @@ class PreferencesControllerCsrfTest {
         @Bean
         fun corsConfigurationSource(): CorsConfigurationSource =
             CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+
+        // SecurityConfig 가 PatAuthenticationFilter 생성을 위해 요구하는 Bean.
+        // PreferencesController CSRF 검증 자체는 PAT 를 사용하지 않으나 SecurityFilterChain 빌드 시점에 필요하다.
+        @Bean
+        fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)
     }
 
     @Autowired
