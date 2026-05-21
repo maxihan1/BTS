@@ -2,6 +2,7 @@
 
 package com.bts.workflow.web
 
+import com.bts.workflow.application.WorkflowApplicationService
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.StateCategory
 import com.bts.workflow.domain.Workflow
@@ -10,8 +11,6 @@ import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.domain.dto.DomainEvent
 import com.bts.workflow.domain.dto.FieldChange
 import com.bts.workflow.domain.dto.TransitionPlan
-import com.bts.workflow.engine.WorkflowEngine
-import com.bts.workflow.repository.WorkflowRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
@@ -75,17 +74,13 @@ class WorkflowControllerMvcTest {
         open fun workflowCache(): WorkflowCache = mockk(relaxed = true)
 
         @Bean
-        open fun workflowEngine(): WorkflowEngine = mockk(relaxed = true)
-
-        @Bean
-        open fun workflowRepository(): WorkflowRepository = mockk(relaxed = true)
+        open fun workflowApplicationService(): WorkflowApplicationService = mockk(relaxed = true)
 
         @Bean
         open fun workflowController(
-            repo: WorkflowRepository,
+            service: WorkflowApplicationService,
             cache: WorkflowCache,
-            engine: WorkflowEngine,
-        ): WorkflowController = WorkflowController(repo, cache, engine)
+        ): WorkflowController = WorkflowController(service, cache)
 
         @Bean
         open fun workflowExceptionHandler(): WorkflowExceptionHandler = WorkflowExceptionHandler()
@@ -105,10 +100,7 @@ class WorkflowControllerMvcTest {
     lateinit var workflowCache: WorkflowCache
 
     @Autowired
-    lateinit var workflowEngine: WorkflowEngine
-
-    @Autowired
-    lateinit var workflowRepository: WorkflowRepository
+    lateinit var workflowApplicationService: WorkflowApplicationService
 
     lateinit var mockMvc: MockMvc
 
@@ -128,7 +120,7 @@ class WorkflowControllerMvcTest {
     @WithMockUser
     fun `GET 워크플로우 목록 — 4건 반환 200`() {
         val workflows = buildFourWorkflows()
-        every { workflowRepository.findAll() } returns workflows
+        every { workflowApplicationService.listWorkflows() } returns workflows
 
         mockMvc.perform(get("/api/v1/workflows").accept(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk)
@@ -142,7 +134,7 @@ class WorkflowControllerMvcTest {
     @WithMockUser
     fun `GET 워크플로우 단건 — 계층 구조 반환 200`() {
         val workflow = buildWorkflow("software-default", "소프트웨어 기본", stateCount = 3, transitionCount = 2)
-        every { workflowRepository.findByKey("software-default") } returns workflow
+        every { workflowApplicationService.getWorkflow("software-default") } returns workflow
 
         mockMvc.perform(get("/api/v1/workflows/software-default").accept(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk)
@@ -161,7 +153,7 @@ class WorkflowControllerMvcTest {
             fieldChanges = listOf(FieldChange(field = "status", oldValue = "TODO", newValue = "IN_PROGRESS")),
             emitEvents = listOf(DomainEvent(type = "ISSUE_TRANSITIONED", payload = mapOf("issueKey" to "BTS-1"))),
         )
-        every { workflowEngine.plan(any()) } returns plan
+        every { workflowApplicationService.planTransition(any()) } returns plan
 
         val body = mapOf(
             "toStateKey" to "IN_PROGRESS",
