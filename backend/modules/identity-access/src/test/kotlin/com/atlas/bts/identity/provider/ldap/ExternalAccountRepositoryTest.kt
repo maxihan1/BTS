@@ -55,6 +55,7 @@ class ExternalAccountRepositoryTest {
     private lateinit var jdbc: NamedParameterJdbcTemplate
 
     private lateinit var providerId: UUID
+    private lateinit var aliceUserId: UUID
 
     @BeforeEach
     fun setUp() {
@@ -75,6 +76,13 @@ class ExternalAccountRepositoryTest {
             """.trimIndent(),
             mapOf("id" to providerId),
         )
+
+        // users 픽스처 — provisionUser 가 user_external_accounts.user_id FK 만 검증하므로 users 선행 필요.
+        aliceUserId = UUID.randomUUID()
+        jdbc.update(
+            "INSERT INTO users (id, username, email, display_name) VALUES (:id, :u, :e, :d)",
+            mapOf("id" to aliceUserId, "u" to "alice@bts.local", "e" to "alice@bts.local", "d" to "Alice"),
+        )
     }
 
     @Test
@@ -84,30 +92,19 @@ class ExternalAccountRepositoryTest {
     }
 
     @Test
-    fun `provisionUser — users + user_external_accounts 단일 트랜잭션 INSERT`() {
+    fun `provisionUser — user_external_accounts INSERT 후 row 반환`() {
         val account =
             repo.provisionUser(
                 providerId = providerId,
                 externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
-                username = "alice@bts.local",
-                displayName = "Alice Test",
-                email = "alice@bts.local",
+                userId = aliceUserId,
                 groups = listOf("cn=engineers,ou=groups,dc=bts,dc=local"),
             )
 
         assertThat(account.externalSubject).isEqualTo("uid=alice,ou=people,dc=bts,dc=local")
-        assertThat(account.userId).isNotNull()
+        assertThat(account.userId).isEqualTo(aliceUserId)
         assertThat(account.failedAttempts).isZero()
         assertThat(account.lockedUntil).isNull()
-
-        // users 테이블에 삽입됐는지 확인
-        val userCount =
-            jdbc.queryForObject(
-                "SELECT COUNT(*) FROM users WHERE username = :username",
-                mapOf("username" to "alice@bts.local"),
-                Int::class.java,
-            )
-        assertThat(userCount).isEqualTo(1)
     }
 
     @Test
@@ -115,9 +112,7 @@ class ExternalAccountRepositoryTest {
         repo.provisionUser(
             providerId = providerId,
             externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
-            username = "alice@bts.local",
-            displayName = "Alice Test",
-            email = "alice@bts.local",
+            userId = aliceUserId,
             groups = emptyList(),
         )
 
@@ -127,33 +122,22 @@ class ExternalAccountRepositoryTest {
     }
 
     @Test
-    fun `provisionUser — username 중복 시 예외 발생`() {
-        // 첫 번째 provisionUser 성공
-        repo.provisionUser(
-            providerId = providerId,
-            externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
-            username = "alice@bts.local",
-            displayName = "Alice Test",
-            email = "alice@bts.local",
-            groups = emptyList(),
-        )
+    fun `provisionUser — 미존재 userId 전달 시 FK 위반 예외`() {
+        // user_external_accounts.user_id → users.id FK. users 에 없는 UUID 는 예외.
+        val ghostUserId = UUID.randomUUID()
 
-        // 두 번째 — 다른 externalSubject 지만 동일 username → users.username UNIQUE 위반 → 예외
         var thrown: Exception? = null
         try {
             repo.provisionUser(
                 providerId = providerId,
-                externalSubject = "uid=alice2,ou=people,dc=bts,dc=local",
-                username = "alice@bts.local",
-                displayName = "Alice2",
-                email = "alice2@bts.local",
+                externalSubject = "uid=ghost,ou=people,dc=bts,dc=local",
+                userId = ghostUserId,
                 groups = emptyList(),
             )
         } catch (e: Exception) {
             thrown = e
         }
 
-        // username 중복으로 예외 발생해야 함 (rollback 트리거)
         assertThat(thrown).isNotNull()
     }
 
@@ -163,9 +147,7 @@ class ExternalAccountRepositoryTest {
             repo.provisionUser(
                 providerId = providerId,
                 externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
-                username = "alice@bts.local",
-                displayName = "Alice",
-                email = "alice@bts.local",
+                userId = aliceUserId,
                 groups = emptyList(),
             )
 
@@ -181,9 +163,7 @@ class ExternalAccountRepositoryTest {
             repo.provisionUser(
                 providerId = providerId,
                 externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
-                username = "alice@bts.local",
-                displayName = "Alice",
-                email = "alice@bts.local",
+                userId = aliceUserId,
                 groups = emptyList(),
             )
 
@@ -201,9 +181,7 @@ class ExternalAccountRepositoryTest {
             repo.provisionUser(
                 providerId = providerId,
                 externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
-                username = "alice@bts.local",
-                displayName = "Alice",
-                email = "alice@bts.local",
+                userId = aliceUserId,
                 groups = emptyList(),
             )
 
@@ -221,9 +199,7 @@ class ExternalAccountRepositoryTest {
             repo.provisionUser(
                 providerId = providerId,
                 externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
-                username = "alice@bts.local",
-                displayName = "Alice",
-                email = "alice@bts.local",
+                userId = aliceUserId,
                 groups = emptyList(),
             )
 
@@ -236,24 +212,18 @@ class ExternalAccountRepositoryTest {
         assertThat(found.failedAttempts).isZero()
     }
 
-    // ── 회귀 가드 강화 + UPSERT 시나리오 (Task 2 RED) ──────────────────────────
+    // ── 회귀 가드 강화 + UPSERT 시나리오 ────────────────────────────────────────
 
     @Test
     fun `provisionUser 는 단일 SQL 로 row 를 반환한다 (회귀 가드)`() {
-        // given: provider 가 등록된 상태 (setUp 에서 이미 준비됨)
-
-        // when: provisionUser 호출
         val account =
             repo.provisionUser(
                 providerId = providerId,
                 externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
-                username = "alice@bts.local",
-                displayName = "Alice",
-                email = "alice@bts.local",
+                userId = aliceUserId,
                 groups = emptyList(),
             )
 
-        // then: id 가 UUID 타입이고 조회 가능해야 함
         assertThat(account.id).isInstanceOf(UUID::class.java)
         val externalSubject = "uid=alice,ou=people,dc=bts,dc=local"
         assertThat(repo.findByProviderIdAndExternalSubject(providerId, externalSubject))
@@ -262,29 +232,23 @@ class ExternalAccountRepositoryTest {
 
     @Test
     fun `provisionUser 두 번 호출 시 같은 row 반환 (UPSERT)`() {
-        // given: 한 번 provisioned 상태
         val first =
             repo.provisionUser(
                 providerId = providerId,
                 externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
-                username = "alice@bts.local",
-                displayName = "Alice",
-                email = "alice@bts.local",
+                userId = aliceUserId,
                 groups = emptyList(),
             )
 
-        // when: 같은 externalSubject 로 재호출
         val second =
             repo.provisionUser(
                 providerId = providerId,
                 externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
-                username = "alice@bts.local",
-                displayName = "Alice",
-                email = "alice@bts.local",
+                userId = aliceUserId,
                 groups = emptyList(),
             )
 
-        // then: UPSERT 동작 — 같은 id 여야 함
+        // UPSERT 동작 — ON CONFLICT (provider_id, external_subject) 로 같은 id 보존
         assertThat(second.id).isEqualTo(first.id)
     }
 }

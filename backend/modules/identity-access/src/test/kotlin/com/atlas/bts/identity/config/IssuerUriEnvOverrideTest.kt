@@ -1,4 +1,4 @@
-// issuer-uri 환경변수 override 검증 테스트 — application.yml placeholder 형식 확인
+// application.yml jwk-set-uri 환경변수 override 검증 테스트 — FR-09-17 issuer-uri Keycloak 제거 확인
 
 package com.atlas.bts.identity.config
 
@@ -9,34 +9,59 @@ import org.springframework.core.env.EnumerablePropertySource
 import org.springframework.core.io.ClassPathResource
 
 /**
- * application.yml의 issuer-uri가 환경변수 override placeholder 형식인지 검증.
+ * application.yml 의 oauth2ResourceServer.jwt 설정 검증 (FR-09-17).
  *
- * CONCERN-NEW-2: PoC #2의 issuer-uri 하드코딩을
- * `${BTS_KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/bts}` 로 변경해야 함.
+ * ## 검증 항목
+ * - (a) issuer-uri 가 완전히 제거됐는지 — Keycloak hardcoded URI 잔존 여부
+ * - (b) jwk-set-uri 가 bts.auth.issuer-uri placeholder 형식인지
+ *       → `${bts.auth.issuer-uri:http://localhost:8080}/.well-known/jwks.json`
  *
- * SecurityConfig가 JwtDecoder를 요구하여 @SpringBootTest로 전체 컨텍스트 로드가 불가능하므로,
- * YamlPropertySourceLoader로 application.yml을 직접 파싱하여 placeholder 존재 여부를 검증.
+ * ## 왜 @SpringBootTest 대신 YamlPropertySourceLoader?
+ * SecurityConfig 가 JwtDecoder Bean 을 요구해 전체 컨텍스트 기동이 무거우므로
+ * YAML 파일만 직접 파싱해 설정 값을 단위 검증한다.
+ * 이 방식은 환경변수 resolve 전 raw placeholder 문자열을 읽는다.
+ *
+ * ## RED → GREEN 순서
+ * RED. issuer-uri 가 아직 application.yml 에 존재하므로 (b) 검증이 실패한다.
+ * GREEN. application.yml 에서 issuer-uri 제거 + jwk-set-uri 추가 후 통과.
  */
 class IssuerUriEnvOverrideTest {
-    @Test
-    fun `application yml issuer-uri uses BTS_KEYCLOAK_ISSUER_URI placeholder`() {
+    private fun loadApplicationYml(): List<EnumerablePropertySource<*>> {
         val loader = YamlPropertySourceLoader()
         val resource = ClassPathResource("application.yml")
-        val propertySources = loader.load("application.yml", resource)
+        return loader.load("application.yml", resource)
+            .filterIsInstance<EnumerablePropertySource<*>>()
+    }
 
-        val key = "spring.security.oauth2.resourceserver.jwt.issuer-uri"
+    @Test
+    fun `application yml 에 spring security oauth2 resourceserver jwt issuer-uri 가 존재하지 않는다 (FR-09-17)`() {
+        val sources = loadApplicationYml()
+        val issuerUriKey = "spring.security.oauth2.resourceserver.jwt.issuer-uri"
 
-        // EnumerablePropertySource로 프로퍼티 값 직접 추출
-        val rawValue =
-            propertySources
-                .filterIsInstance<EnumerablePropertySource<*>>()
-                .mapNotNull { it.getProperty(key) }
-                .firstOrNull()
+        val value = sources.mapNotNull { it.getProperty(issuerUriKey) }.firstOrNull()
+
+        assertThat(value)
+            .`as`("FR-09-17: issuer-uri (Keycloak hardcoded) 가 application.yml 에 남아있다 — 제거 필요")
+            .isNull()
+    }
+
+    @Test
+    fun `application yml 의 jwk-set-uri 가 bts auth issuer-uri placeholder 형식이다 (FR-09-17)`() {
+        val sources = loadApplicationYml()
+        val jwkSetUriKey = "spring.security.oauth2.resourceserver.jwt.jwk-set-uri"
+
+        val rawValue = sources.mapNotNull { it.getProperty(jwkSetUriKey) }.firstOrNull()
 
         assertThat(rawValue)
-            .`as`("issuer-uri는 BTS_KEYCLOAK_ISSUER_URI 환경변수 placeholder를 포함해야 한다 (CONCERN-NEW-2)")
+            .`as`("jwk-set-uri 가 application.yml 에 없다 — jwk-set-uri 추가 필요")
             .isNotNull()
-            .asString()
-            .contains("BTS_KEYCLOAK_ISSUER_URI")
+
+        assertThat(rawValue.toString())
+            .`as`("jwk-set-uri 가 bts.auth.issuer-uri placeholder 를 포함해야 한다")
+            .contains("bts.auth.issuer-uri")
+
+        assertThat(rawValue.toString())
+            .`as`("jwk-set-uri 가 /.well-known/jwks.json 경로를 포함해야 한다 (Task 23 JwksController)")
+            .contains("/.well-known/jwks.json")
     }
 }

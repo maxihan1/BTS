@@ -15,7 +15,11 @@
 
 package com.atlas.bts.identity.web
 
+import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
+import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
+import com.atlas.bts.identity.pat.PersonalAccessTokenService
+import com.atlas.bts.identity.session.SessionService
 import io.mockk.mockk
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -31,19 +35,40 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.web.cors.CorsConfigurationSource
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 
 // OAuth2ClientAutoConfiguration 제외 — Keycloak issuer-uri 네트워크 접속 차단
-// JwtDecoder는 MockJwtDecoderConfig으로 모의 빈 제공
+// SecurityConfig 가 SidRevokeJwtConverter + CorsConfigurationSource Bean 을 요구하므로 MockSecurityBeans 로 공급.
 @WebMvcTest(
     controllers = [PreferencesController::class],
     excludeAutoConfiguration = [OAuth2ClientAutoConfiguration::class],
 )
-@Import(SecurityConfig::class, PreferencesControllerCsrfTest.MockJwtDecoderConfig::class)
+@Import(SecurityConfig::class, PreferencesControllerCsrfTest.MockSecurityBeans::class)
 class PreferencesControllerCsrfTest {
     @TestConfiguration
-    class MockJwtDecoderConfig {
+    class MockSecurityBeans {
         @Bean
         fun jwtDecoder(): JwtDecoder = mockk(relaxed = true)
+
+        @Bean
+        fun sidRevokeJwtConverter(): SidRevokeJwtConverter {
+            val sessionService: SessionService = mockk(relaxed = true)
+            val now = Instant.parse("2026-05-21T10:00:00Z")
+            val clock = Clock.fixed(now, ZoneOffset.UTC)
+            return SidRevokeJwtConverter(sessionService, clock)
+        }
+
+        @Bean
+        fun corsConfigurationSource(): CorsConfigurationSource =
+            CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+
+        // SecurityConfig 가 PatAuthenticationFilter 생성을 위해 요구하는 Bean.
+        // PreferencesController CSRF 검증 자체는 PAT 를 사용하지 않으나 SecurityFilterChain 빌드 시점에 필요하다.
+        @Bean
+        fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)
     }
 
     @Autowired

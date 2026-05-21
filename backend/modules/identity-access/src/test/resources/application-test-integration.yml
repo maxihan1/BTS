@@ -1,6 +1,9 @@
 # LDAP 통합 테스트 프로필 — Keycloak OAuth2 자동설정 비활성화
+# TestIntegrationSecurityConfig.jwtDecoder 가 JwtConfig.jwtDecoder 를 대체하도록 override 허용
 
 spring:
+  main:
+    allow-bean-definition-overriding: true
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration
@@ -20,3 +23,11 @@ spring:
         provider:
           keycloak:
             issuer-uri: "http://localhost:8180/realms/bts-test-placeholder"
+
+bts:
+  security:
+    cors:
+      # 통합 테스트 전용 CORS 허용 Origin — CorsConfig 가 이 값을 요구한다
+      allowed-origins: "http://localhost:5173"
+  auth:
+    issuer-uri: "http://localhost:8090"

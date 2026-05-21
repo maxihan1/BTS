@@ -1,4 +1,5 @@
-# identity-access 모듈 Spring Boot 설정 — 개발 환경 (Keycloak 8180, 앱 8090)
+# identity-access 모듈 Spring Boot 설정 — 개발 환경 기본값 (앱 8090)
+# prod 환경 override: application-prod.yml 참조
 
 server:
   port: 8090
@@ -21,17 +22,26 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${BTS_KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/bts}
-      client:
-        registration:
-          keycloak:
-            client-id: bts-web
-            authorization-grant-type: authorization_code
-            scope: openid,profile,email
-            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
-        provider:
-          keycloak:
-            issuer-uri: http://localhost:8180/realms/bts
+          # FR-09-17: Keycloak issuer-uri 제거 — BTS 자체 JwksController (Task 23 Wave 6) 를 바라본다.
+          #
+          # JwtConfig.jwtDecoder() 가 NimbusJwtDecoder.withPublicKey() 로 공개키를 직접 주입하므로
+          # Spring Boot 가 이 URI 로 원격 JWK Set 을 fetch 하지 않는다.
+          # 이 설정은 향후 멀티 키 교체(key rotation) 또는 외부 검증 클라이언트가
+          # Spring 표준 auto-configure 를 사용할 때를 대비한 fallback 선언이다.
+          #
+          # bts.auth.issuer-uri 기본값: http://localhost:8080 (로컬 개발 서버)
+          jwk-set-uri: ${bts.auth.issuer-uri:http://localhost:8080}/.well-known/jwks.json
+      # oauth2.client (registration/provider) 블록은 본 PR 에서 제거됨. plan §line 36
+      # ("Keycloak 은 SDD 19.2 ProviderType.OIDC 의 한 인스턴스로 역할 재정의") 정신상
+      # BTS prod 가 oauth2-client (외부 IdP 로그인) 를 직접 쓰지 않으므로 잔재 정리.
+      # 미래 OidcAuthenticationProvider PR 에서 DB authn_providers.config 기반 동적 wiring 으로 재도입.
+
+bts:
+  auth:
+    # BTS 자체 issuer URI — JWT iss 클레임 + JwksController endpoint 기반 URI
+    # dev 기본값: http://localhost:8080 (로컬 개발 서버)
+    # prod: application-prod.yml 의 BTS_AUTH_ISSUER_URI 환경변수로 override
+    issuer-uri: ${BTS_AUTH_ISSUER_URI:http://localhost:8080}
 
 logging:
   level:
