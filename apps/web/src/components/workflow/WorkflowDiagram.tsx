@@ -1,11 +1,14 @@
 // 워크플로우 FSM 다이어그램 컴포넌트 (mermaid stateDiagram-v2 + 카테고리별 색상)
+/* eslint-disable react-refresh/only-export-components -- generateMermaidCode/categoryToClass는 단위 테스트용 named export (spec FR-1 명시) */
 import { useEffect, useRef, useState } from 'react'
+import type { JSX } from 'react'
 import type { WorkflowView, WorkflowStateView, StateCategory } from './workflow.types'
 
 // --- 카테고리 → mermaid classDef 이름 매핑 ---
 
 /**
  * StateCategory를 mermaid classDef 식별자로 변환한다.
+ * switch의 모든 case를 명시하고 default에서 never 타입 가드로 미래 enum 확장을 안전하게 감지한다.
  * @param category 상태 카테고리 (TODO / IN_PROGRESS / DONE)
  * @returns mermaid classDef 이름 문자열
  */
@@ -17,6 +20,11 @@ export function categoryToClass(category: StateCategory): string {
       return 'in_progress'
     case 'DONE':
       return 'done'
+    default: {
+      // 미래에 StateCategory에 새 값이 추가되면 TypeScript 컴파일 에러로 감지된다.
+      const _exhaustive: never = category
+      return _exhaustive
+    }
   }
 }
 
@@ -24,10 +32,13 @@ export function categoryToClass(category: StateCategory): string {
 
 /**
  * WorkflowView 데이터로부터 mermaid stateDiagram-v2 코드 문자열을 생성한다.
- * 노드 ID = WorkflowStateView.key (영문), 전이 라벨 = WorkflowTransitionView.name.
+ *
+ * 노드 ID = WorkflowStateView.key (영문만 사용 — EC-5: 한글/특수문자 key는 mermaid 직렬화 불안정).
+ * 표시 라벨 = WorkflowStateView.name (한글 허용 — mermaid 전이 라벨은 따옴표 없이도 처리).
  * displayOrder 최솟값 state → 시작 [*], category === 'DONE' state → 종료 [*].
+ *
  * @param workflow WorkflowView — states + transitions
- * @returns mermaid stateDiagram-v2 코드 문자열
+ * @returns mermaid stateDiagram-v2 코드 문자열. states가 비어있으면 빈 문자열 반환.
  */
 export function generateMermaidCode(workflow: WorkflowView): string {
   const { states, transitions } = workflow
@@ -38,11 +49,11 @@ export function generateMermaidCode(workflow: WorkflowView): string {
 
   const lines: string[] = ['stateDiagram-v2']
 
-  // 시작 노드: displayOrder가 가장 낮은 state
+  // 시작 노드: displayOrder가 가장 낮은 state — noUncheckedIndexedAccess 대응으로 undefined 가드
   const sortedByOrder = [...states].sort((a, b) => a.displayOrder - b.displayOrder)
-  const firstState = sortedByOrder[0]
-  if (firstState !== undefined) {
-    lines.push(`  [*] --> ${firstState.key}`)
+  const initialState: WorkflowStateView | undefined = sortedByOrder[0]
+  if (initialState !== undefined) {
+    lines.push(`  [*] --> ${initialState.key}`)
   }
 
   // 전이 라인 — "from --> to : label"
@@ -145,8 +156,9 @@ export function WorkflowDiagram({ workflow, debug = false }: WorkflowDiagramProp
     return () => {
       cancelled = true
     }
-    // workflow.key + code 변경 시 재렌더 (FR-5)
-  }, [workflow.key, code])
+    // workflow.key + code + states.length 변경 시 재렌더 (FR-5)
+    // states.length 포함: states가 빈 배열 → 비어있지 않음으로 변경될 때 재실행 보장
+  }, [workflow.key, workflow.states.length, code])
 
   // EC-1: 빈 워크플로우
   if (workflow.states.length === 0) {
