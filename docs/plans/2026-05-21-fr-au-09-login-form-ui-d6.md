@@ -386,7 +386,8 @@ B1. CSRF 헤더 echo / B2. 422 처리 / B3. 헤더 위치 / B4. Vite React 플�
 - agent: `frontend-engineer`
 - files: [`apps/web/src/routes/login.tsx` (실제 구현), `apps/web/src/auth/LoginForm.tsx`, `apps/web/src/auth/LoginForm.test.tsx`, `apps/web/src/i18n/ko.ts`, `apps/web/src/components/ui/select.tsx` (controller 사전 추가, shadcn add select)]
 - depends-on: [2, 6, 10, 13]
-- 메타 보정 (2026-05-21 W7 controller). `components/ui/select.tsx` 추가 — 게이트 1 G6 결정 (provider 드롭다운) 위해 shadcn add 로 사전 추가. W2 의 shadcn init 5종 (button/card/form/input/label) 패턴과 동일.
+- 메타 보정 1 (2026-05-21 W7 controller). `components/ui/select.tsx` 추가 — 게이트 1 G6 결정 (provider 드롭다운) 위해 shadcn add 로 사전 추가. W2 의 shadcn init 5종 (button/card/form/input/label) 패턴과 동일.
+- 메타 보정 2 (2026-05-21 W7 controller concern fix). `apps/web/src/router.ts` 추가 — T14 implementer 가 `redirectIfAuth` attach 필요했으나 router.ts 가 메타 외라 NEEDS_CONTEXT/concern 처리. controller 직접 fix (T13 dashboardRoute.beforeLoad 와 동일 패턴). loginRoute 에 `beforeLoad: redirectIfAuth` 한 줄 추가.
 
 **RED**. `LoginForm.test.tsx`.
 - 입력 + 제출 → `useLoginMutation.mutate` 호출 (msw 응답 모킹).

@@ -1,6 +1,6 @@
 // TanStack Router 라우트 트리 정의 — code-based 패턴, 3개 라우트 (/, /login, /dashboard)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
-import { requireAuth } from './auth/routeGuard'
+import { requireAuth, redirectIfAuth } from './auth/routeGuard'
 import { RootLayout } from './routes/__root'
 import { IndexPage } from './routes/index'
 import { LoginPage } from './routes/login'
@@ -22,6 +22,7 @@ const loginRoute = createRoute({
   path: '/login',
   component: LoginPage,
   staticData: { requireAuth: false },
+  beforeLoad: redirectIfAuth,
 })
 
 const dashboardRoute = createRoute({
