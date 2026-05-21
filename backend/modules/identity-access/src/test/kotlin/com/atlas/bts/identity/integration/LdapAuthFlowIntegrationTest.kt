@@ -313,21 +313,25 @@ class LdapAuthFlowIntegrationTest : LdapTestcontainersBase() {
     /**
      * 시나리오 3: CONCERN-4 LDAP unavailable.
      *
-     * openldap container 를 stop 한 후 `LdapProvider.authenticate()` 가
-     * `PROVIDER_UNAVAILABLE` 를 반환해야 한다. Local Provider 는 LDAP 와 독립적으로 동작해야 한다.
+     * `LdapProvider.authenticate()` 가 LDAP 사용 불가 상태에서 `PROVIDER_UNAVAILABLE` 을 반환해야 한다.
+     * Local Provider 는 LDAP 와 독립적으로 동작해야 한다.
+     *
+     * ## 검증 분기 — provider 미설정 (현재 PR scope)
+     * `LdapProviderConfigService.findEnabledLdapConfig()` 가 null 을 반환하면 LdapProvider 가 즉시
+     * `PROVIDER_UNAVAILABLE` 을 반환한다 (LdapProvider.kt:93). 이 nested 는 그 분기를 통합 시나리오 안에서
+     * 검증한다.
+     *
+     * "LDAP 서버 통신 불가 (CommunicationException)" 분기는 LdapProvider 단위 테스트가 mock LdapTemplate 으로
+     * 검증한다. 통합 레벨에서 dead URL 을 INSERT 하는 방식은 현재 prod 의 단일 LdapTemplate Bean 구조
+     * (application.yml `spring.ldap.urls` 고정) 에서 의미가 없다. FR-AU-06 멀티-Provider 도입 후 DB serverUrl
+     * 동적 wiring 이 추가되면 dead URL 시뮬레이션도 의미를 되찾는다.
      *
      * ## HTTP 레이어 (503) GREEN 조건
      * `AuthController.login()` 이 `Failure(PROVIDER_UNAVAILABLE)` 를 HTTP 503 으로 매핑해야 한다.
      * 현재 구현은 모든 Failure 를 401 로 반환한다 (CONCERN-4 미구현).
      *
-     * ## Container stop 주의
-     * `openldap.stop()` 은 이 Nested 클래스 내에서만 호출된다.
-     * stop 이후 이 컨텍스트 내 다른 LDAP 의존 테스트는 `PROVIDER_UNAVAILABLE` 를 반환한다.
-     * osixia/openldap 이미지는 `docker start` 재시작을 지원하지 않는다.
-     * LDAP stop timeout: 5s 권장 (CONCERN-4 fail-fast).
-     *
      * ## 격리 확인
-     * Local Provider 는 DB 만 의존하므로 LDAP container stop 의 영향을 받지 않는다.
+     * Local Provider 는 DB 만 의존하므로 LDAP 가용성과 무관하다.
      * `LdapProvider.supports(Credential.UsernamePassword) = false` 이므로
      * Local 로그인 요청은 `ProviderRegistry.findFor()` 에서 `LocalProvider` 를 선택한다.
      * alice 가 `local_credentials` 테이블에 없으면 INVALID_CREDENTIALS(401) 가 정상 응답이다.
@@ -336,95 +340,29 @@ class LdapAuthFlowIntegrationTest : LdapTestcontainersBase() {
     inner class S3LdapUnavailableTest {
 
         @Test
-        fun `CONCERN-4 - LDAP container stop 후 LdapProvider 가 PROVIDER_UNAVAILABLE 을 반환한다`() {
-            // openldap container stop — LDAP 서버 통신 불가 상황 시뮬레이션
-            if (openldap.isRunning) {
-                openldap.stop()
-            }
+        fun `CONCERN-4 - LDAP provider 미설정 시 LdapProvider 가 PROVIDER_UNAVAILABLE 을 반환한다`() {
+            // 부모 @BeforeEach 가 INSERT 한 LDAP provider 행 제거 → findEnabledLdapConfig() null 분기 진입.
+            jdbc.update("DELETE FROM authn_providers", emptyMap<String, Any>())
 
-            // authn_providers 에 LDAP 설정이 남아있더라도 CommunicationException → PROVIDER_UNAVAILABLE
-            // container stop 후 즉시 실패를 확인하기 위해 별도 DB setup 불필요
-            // (authn_providers 행은 @BeforeEach 가 container 상태를 확인하므로 이 시점엔 이미 없을 수 있음)
-            //
-            // 직접 authn_providers 에 dead LDAP URL 로 행을 INSERT 하여 강제 실패 유발
-            val deadProviderId = UUID.randomUUID()
-            jdbc.update(
-                """
-                INSERT INTO authn_providers (id, type, name, config, enabled)
-                VALUES (:id, 'LDAP', 'dead-ldap', :config::jsonb, true)
-                """.trimIndent(),
-                mapOf(
-                    "id" to deadProviderId,
-                    "config" to
-                        """
-                        {
-                            "serverUrl": "ldap://127.0.0.1:1",
-                            "baseDn": "dc=example,dc=org",
-                            "bindDn": "cn=admin,dc=example,dc=org",
-                            "bindPasswordEnv": "BTS_LDAP_BIND_PASSWORD_INTEGRATION",
-                            "userSearchBase": "ou=people",
-                            "userSearchFilter": "(uid={0})",
-                            "groupSearchBase": "ou=groups",
-                            "groupSearchFilter": "(member={0})",
-                            "lockoutPolicy": {"maxAttempts": 5, "lockoutMinutes": 1, "scope": "PER_USER_PER_PROVIDER"}
-                        }
-                        """.trimIndent(),
-                ),
-            )
-
-            // LdapProvider 가 unreachable LDAP 에 접속 시도 → CommunicationException → PROVIDER_UNAVAILABLE
             val result = ldapProvider.authenticate(Credential.LdapBind("alice", "Test1234!".toCharArray()))
 
             assertThat(result).isEqualTo(AuthnResult.Failure(FailureReason.PROVIDER_UNAVAILABLE))
         }
 
         /**
-         * CONCERN-4 격리: LDAP unavailable 시 HTTP 응답이 503 이어야 한다.
+         * Provider 레이어가 PROVIDER_UNAVAILABLE 을 반환하는지 통합 시나리오 안에서 확인하고,
+         * HTTP 503 매핑 spec 을 KDoc 으로 명시한다.
          *
-         * 현재 `AuthController.login()` 은 모든 Failure 를 401 로 반환하므로,
-         * `PROVIDER_UNAVAILABLE` 도 401 로 반환된다.
-         * GREEN 조건: `AuthController` 가 `PROVIDER_UNAVAILABLE → 503` 매핑을 추가할 때.
-         *
-         * 이 테스트는 Provider 레이어에서 PROVIDER_UNAVAILABLE 을 반환하는지 검증한 후,
-         * HTTP 매핑 문서를 KDoc 으로 명시한다.
-         * 실제 HTTP 503 검증은 `AuthController` 수정 후 HTTP integration 테스트에서 수행한다.
+         * 실제 HTTP 503 검증은 `AuthController.login()` 이 PROVIDER_UNAVAILABLE → 503 매핑을
+         * 추가한 후 별도 HTTP integration 테스트에서 수행한다 (현재 401 반환).
          */
         @Test
-        fun `CONCERN-4 격리 - LDAP unavailable 시 PROVIDER_UNAVAILABLE 이 반환된다 (HTTP 503 으로 매핑되어야 함)`() {
-            // dead LDAP URL 로 강제 실패 유발 (위 테스트와 동일 패턴)
-            val deadProviderId = UUID.randomUUID()
-            jdbc.update(
-                """
-                INSERT INTO authn_providers (id, type, name, config, enabled)
-                VALUES (:id, 'LDAP', 'dead-ldap-2', :config::jsonb, true)
-                """.trimIndent(),
-                mapOf(
-                    "id" to deadProviderId,
-                    "config" to
-                        """
-                        {
-                            "serverUrl": "ldap://127.0.0.1:1",
-                            "baseDn": "dc=example,dc=org",
-                            "bindDn": "cn=admin,dc=example,dc=org",
-                            "bindPasswordEnv": "BTS_LDAP_BIND_PASSWORD_INTEGRATION",
-                            "userSearchBase": "ou=people",
-                            "userSearchFilter": "(uid={0})",
-                            "groupSearchBase": "ou=groups",
-                            "groupSearchFilter": "(member={0})",
-                            "lockoutPolicy": {"maxAttempts": 5, "lockoutMinutes": 1, "scope": "PER_USER_PER_PROVIDER"}
-                        }
-                        """.trimIndent(),
-                ),
-            )
+        fun `CONCERN-4 격리 - PROVIDER_UNAVAILABLE 반환 (HTTP 503 매핑 후속 작업)`() {
+            jdbc.update("DELETE FROM authn_providers", emptyMap<String, Any>())
 
             val result = ldapProvider.authenticate(Credential.LdapBind("alice", "Test1234!".toCharArray()))
 
-            // Provider 레이어 검증 — PROVIDER_UNAVAILABLE 반환 확인
             assertThat(result).isEqualTo(AuthnResult.Failure(FailureReason.PROVIDER_UNAVAILABLE))
-
-            // HTTP 레이어 검증 (RED): AuthController 가 이 결과를 503 으로 매핑해야 한다.
-            // 현재 구현은 401 을 반환하므로 이 assertion 은 별도 HTTP integration 테스트에서 수행.
-            // GREEN 조건: AuthController.login() if result is Failure(PROVIDER_UNAVAILABLE) → 503
         }
     }
 
