@@ -12,6 +12,8 @@ import com.atlas.bts.identity.pat.PatVerificationException
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.session.SessionService
+import com.atlas.bts.identity.user.User
+import com.atlas.bts.identity.user.UserRepository
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -75,6 +77,9 @@ class WhoamiControllerTest {
 
         @Bean
         fun authAuditLogService(): AuthAuditLogService = mockk(relaxed = true)
+
+        @Bean
+        fun userRepository(): UserRepository = mockk(relaxed = true)
     }
 
     @Autowired
@@ -86,6 +91,9 @@ class WhoamiControllerTest {
     @Autowired
     lateinit var authAuditLogService: AuthAuditLogService
 
+    @Autowired
+    lateinit var userRepository: UserRepository
+
     // ── 기존 JWT 케이스 (PR #2 회귀 방지) ─────────────────────────────────────
 
     @Test
@@ -96,13 +104,20 @@ class WhoamiControllerTest {
 
     @Test
     fun `whoami returns 200 with mock JWT and authMethod jwt`() {
+        val aliceId = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val now = Instant.parse("2026-05-21T10:00:00Z")
+        every { userRepository.findById(aliceId) } returns User(
+            id = aliceId,
+            username = "alice",
+            email = "alice@bts.local",
+            displayName = "Alice",
+            createdAt = now,
+            updatedAt = now,
+        )
         mockMvc.perform(
             get("/api/v1/users/me/whoami").with(
                 jwt().jwt { builder ->
-                    builder
-                        .subject("alice-id")
-                        .claim("preferred_username", "alice")
-                        .claim("email", "alice@bts.local")
+                    builder.subject(aliceId.toString())
                 },
             ),
         )
@@ -110,6 +125,29 @@ class WhoamiControllerTest {
             .andExpect(jsonPath("$.username").value("alice"))
             .andExpect(jsonPath("$.email").value("alice@bts.local"))
             .andExpect(jsonPath("$.authMethod").value("jwt"))
+            .andExpect(jsonPath("$.userId").value(aliceId.toString()))
+    }
+
+    @Test
+    fun `whoami returns 401 when JWT subject is not a valid UUID`() {
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder -> builder.subject("not-a-uuid") },
+            ),
+        )
+            .andExpect(status().isUnauthorized)
+    }
+
+    @Test
+    fun `whoami returns 401 when User is not found in DB`() {
+        val unknownId = UUID.fromString("99999999-9999-9999-9999-999999999999")
+        every { userRepository.findById(unknownId) } returns null
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder -> builder.subject(unknownId.toString()) },
+            ),
+        )
+            .andExpect(status().isUnauthorized)
     }
 
     // ── PAT 케이스 ──────────────────────────────────────────────────────────────

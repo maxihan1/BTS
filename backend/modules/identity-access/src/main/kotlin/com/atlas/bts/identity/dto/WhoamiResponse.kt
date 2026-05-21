@@ -2,7 +2,6 @@
 
 package com.atlas.bts.identity.dto
 
-import org.springframework.security.oauth2.jwt.Jwt
 import java.util.UUID
 
 data class WhoamiResponse(
@@ -11,10 +10,3 @@ data class WhoamiResponse(
     val authMethod: String,
     val userId: UUID? = null,
 )
-
-fun Jwt.toWhoami(): WhoamiResponse =
-    WhoamiResponse(
-        username = getClaimAsString("preferred_username") ?: "",
-        email = getClaimAsString("email") ?: "",
-        authMethod = "jwt",
-    )
