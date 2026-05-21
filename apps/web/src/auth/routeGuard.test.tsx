@@ -9,6 +9,14 @@ interface MinimalBeforeLoadContext {
   location: { href: string; pathname: string }
 }
 
+// redirect() 반환 타입 — Response & { options: { to, search, ... } }
+interface RedirectResponse extends Response {
+  options: {
+    to: string
+    search?: Record<string, string>
+  }
+}
+
 const makeCtx = (pathname: string, search = ''): MinimalBeforeLoadContext => ({
   location: {
     href: pathname + search,
@@ -80,8 +88,8 @@ describe('requireAuth', () => {
 
     expect(thrown).toBeDefined()
     expect(isRedirect(thrown)).toBe(true)
-    const r = thrown as { to: string; search: { returnTo: string } }
-    expect(r.to).toBe('/login')
+    const r = thrown as RedirectResponse
+    expect(r.options.to).toBe('/login')
   })
 
   it('미인증 → redirect search에 returnTo가 현재 location.href', () => {
@@ -94,8 +102,8 @@ describe('requireAuth', () => {
       thrown = e
     }
 
-    const r = thrown as { search: { returnTo: string } }
-    expect(r.search.returnTo).toBe('/dashboard?foo=bar')
+    const r = thrown as RedirectResponse
+    expect(r.options.search?.['returnTo']).toBe('/dashboard?foo=bar')
   })
 
   it('인증 상태에서 호출 → throw 없음 (통과)', () => {
@@ -139,8 +147,8 @@ describe('redirectIfAuth', () => {
       thrown = e
     }
 
-    const r = thrown as { to: string }
-    expect(r.to).toBe('/dashboard')
+    const r = thrown as RedirectResponse
+    expect(r.options.to).toBe('/dashboard')
   })
 
   it('인증 상태 + 외부 URL returnTo (http://evil.com) → /dashboard 로 리다이렉트', () => {
@@ -153,8 +161,8 @@ describe('redirectIfAuth', () => {
       thrown = e
     }
 
-    const r = thrown as { to: string }
-    expect(r.to).toBe('/dashboard')
+    const r = thrown as RedirectResponse
+    expect(r.options.to).toBe('/dashboard')
   })
 
   it('인증 상태 + 프로토콜 상대 URL (//evil.com) → /dashboard 로 리다이렉트', () => {
@@ -167,8 +175,8 @@ describe('redirectIfAuth', () => {
       thrown = e
     }
 
-    const r = thrown as { to: string }
-    expect(r.to).toBe('/dashboard')
+    const r = thrown as RedirectResponse
+    expect(r.options.to).toBe('/dashboard')
   })
 
   it('인증 상태 + javascript: returnTo → /dashboard 로 리다이렉트', () => {
@@ -181,8 +189,8 @@ describe('redirectIfAuth', () => {
       thrown = e
     }
 
-    const r = thrown as { to: string }
-    expect(r.to).toBe('/dashboard')
+    const r = thrown as RedirectResponse
+    expect(r.options.to).toBe('/dashboard')
   })
 
   it('인증 상태 + returnTo 없음 → /dashboard 로 리다이렉트', () => {
@@ -195,7 +203,7 @@ describe('redirectIfAuth', () => {
       thrown = e
     }
 
-    const r = thrown as { to: string }
-    expect(r.to).toBe('/dashboard')
+    const r = thrown as RedirectResponse
+    expect(r.options.to).toBe('/dashboard')
   })
 })
