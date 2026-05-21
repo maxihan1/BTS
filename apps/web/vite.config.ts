@@ -13,5 +13,12 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // /api/* 요청을 백엔드(8080)로 프록시 — 로컬 개발 시 CORS 없이 통신
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+    },
   },
 })
