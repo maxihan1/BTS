@@ -19,7 +19,7 @@ describe('401 인터셉터', () => {
 
     // 첫 번째 호출은 401, retry는 200
     server.use(
-      http.get('http://localhost/api/v1/protected', () => {
+      http.get('/api/v1/protected', () => {
         protectedCallCount.count++
         if (protectedCallCount.count === 1) {
           return new HttpResponse(JSON.stringify({ error: 'Unauthorized' }), {
@@ -29,7 +29,7 @@ describe('401 인터셉터', () => {
         }
         return HttpResponse.json({ data: 'ok' })
       }),
-      http.post('http://localhost/api/v1/auth/refresh', () => {
+      http.post('/api/v1/auth/refresh', () => {
         refreshCallCount.count++
         return HttpResponse.json({
           access_token: 'new-access-token',
@@ -41,7 +41,7 @@ describe('401 인터셉터', () => {
 
     useAuthStore.setState({ accessToken: 'old-token', user: null })
 
-    const res = await apiFetch('http://localhost/api/v1/protected')
+    const res = await apiFetch('/api/v1/protected')
 
     expect(res.ok).toBe(true)
     expect(refreshCallCount.count).toBe(1)
@@ -55,13 +55,13 @@ describe('401 인터셉터', () => {
     const refreshCallCount = { count: 0 }
 
     server.use(
-      http.get('http://localhost/api/v1/resource', () => {
+      http.get('/api/v1/resource', () => {
         return new HttpResponse(JSON.stringify({ error: 'Unauthorized' }), {
           status: 401,
           headers: { 'Content-Type': 'application/json' },
         })
       }),
-      http.post('http://localhost/api/v1/auth/refresh', async () => {
+      http.post('/api/v1/auth/refresh', async () => {
         refreshCallCount.count++
         // 약간의 지연으로 동시성 시뮬레이션
         await new Promise<void>((resolve) => setTimeout(resolve, 10))
@@ -77,10 +77,10 @@ describe('401 인터셉터', () => {
 
     // 4개 요청 동시 발사 — 모두 401을 받을 것이고 동일한 refreshPromise를 공유해야 한다
     await Promise.allSettled([
-      apiFetch('http://localhost/api/v1/resource'),
-      apiFetch('http://localhost/api/v1/resource'),
-      apiFetch('http://localhost/api/v1/resource'),
-      apiFetch('http://localhost/api/v1/resource'),
+      apiFetch('/api/v1/resource'),
+      apiFetch('/api/v1/resource'),
+      apiFetch('/api/v1/resource'),
+      apiFetch('/api/v1/resource'),
     ])
 
     expect(refreshCallCount.count).toBe(1)
@@ -88,13 +88,13 @@ describe('401 인터셉터', () => {
 
   it('refresh가 401을 반환하면 clearSession()을 호출하고 reject한다', async () => {
     server.use(
-      http.get('http://localhost/api/v1/protected', () => {
+      http.get('/api/v1/protected', () => {
         return new HttpResponse(JSON.stringify({ error: 'Unauthorized' }), {
           status: 401,
           headers: { 'Content-Type': 'application/json' },
         })
       }),
-      http.post('http://localhost/api/v1/auth/refresh', () => {
+      http.post('/api/v1/auth/refresh', () => {
         return new HttpResponse(JSON.stringify({ error: 'Refresh token expired' }), {
           status: 401,
           headers: { 'Content-Type': 'application/json' },
@@ -106,7 +106,7 @@ describe('401 인터셉터', () => {
 
     const clearSessionSpy = vi.spyOn(useAuthStore.getState(), 'clearSession')
 
-    await expect(apiFetch('http://localhost/api/v1/protected')).rejects.toThrow()
+    await expect(apiFetch('/api/v1/protected')).rejects.toThrow()
 
     // store가 비워져야 한다
     expect(useAuthStore.getState().accessToken).toBeNull()

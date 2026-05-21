@@ -1,7 +1,50 @@
-// 백엔드 API fetch wrapper — Authorization 헤더 자동 주입 + Zod 응답 파싱
+// 백엔드 API fetch wrapper — Authorization 헤더 자동 주입 + Zod 응답 파싱 + 401 인터셉터
 /// <reference types="vite/client" />
 import type { ZodSchema } from 'zod'
 import { useAuthStore } from '@/auth/authStore'
+
+/**
+ * 진행 중인 refresh 요청을 캐싱하는 전역 Promise.
+ * null이면 현재 refresh 중이 아님.
+ * 복수 요청이 동시에 401을 받아도 단 1회만 /refresh를 호출하도록 보장 (race lock).
+ */
+let refreshPromise: Promise<string> | null = null
+
+/** 현재 refresh가 진행 중인지 반환하는 헬퍼 */
+export function isRefreshing(): boolean {
+  return refreshPromise !== null
+}
+
+/**
+ * /api/v1/auth/refresh를 호출해 새 access token을 발급받는다.
+ * 성공하면 authStore에 토큰을 저장하고 새 토큰을 반환.
+ * 실패하면 authStore를 초기화하고 에러를 throw.
+ */
+function doRefresh(): Promise<string> {
+  if (refreshPromise === null) {
+    refreshPromise = (async () => {
+      try {
+        const res = await fetch(`${getBaseUrl()}/api/v1/auth/refresh`, {
+          method: 'POST',
+          credentials: 'include',
+        })
+        if (!res.ok) {
+          useAuthStore.getState().clearSession()
+          throw new ApiError(res.status, await res.json().catch(() => ({})))
+        }
+        const data = (await res.json()) as { access_token: string }
+        const newToken = data.access_token
+        useAuthStore.getState().setAccessToken(newToken)
+        return newToken
+      } finally {
+        // refresh 완료(성공/실패 모두) 후 lock 해제
+        refreshPromise = null
+      }
+    })()
+  }
+  // refreshPromise가 이미 있으면 그것을 공유 (race lock의 핵심)
+  return refreshPromise as Promise<string>
+}
 
 export interface ApiFetchOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
@@ -30,6 +73,7 @@ function getBaseUrl(): string {
  * - credentials: 'include' 고정 (refresh_token Cookie 자동 송수신)
  * - body 있으면 Content-Type: application/json 자동 설정
  * - accessToken 있으면 Authorization: Bearer 헤더 자동 추가
+ * - 401 응답 시 자동으로 /refresh 호출 후 1회 retry (race lock 포함)
  */
 export async function apiFetch(path: string, options: ApiFetchOptions = {}): Promise<Response> {
   const { method = 'GET', body, headers: extraHeaders } = options
@@ -37,25 +81,41 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}): Pro
   // 절대 URL이면 그대로, 아니면 base URL 앞에 붙임
   const url = path.startsWith('http://') || path.startsWith('https://') ? path : `${getBaseUrl()}${path}`
 
-  const headers = new Headers(extraHeaders)
-
-  // body가 있고 Content-Type이 아직 미설정인 경우에만 자동 추가
-  if (body !== undefined && !headers.has('content-type')) {
-    headers.set('Content-Type', 'application/json')
+  const buildHeaders = (token: string | null): Headers => {
+    const headers = new Headers(extraHeaders)
+    // body가 있고 Content-Type이 아직 미설정인 경우에만 자동 추가
+    if (body !== undefined && !headers.has('content-type')) {
+      headers.set('Content-Type', 'application/json')
+    }
+    // accessToken이 있을 때만 Authorization 헤더 추가
+    if (token !== null) {
+      headers.set('Authorization', `Bearer ${token}`)
+    }
+    return headers
   }
 
-  // accessToken이 있을 때만 Authorization 헤더 추가
-  const accessToken = useAuthStore.getState().accessToken
-  if (accessToken !== null) {
-    headers.set('Authorization', `Bearer ${accessToken}`)
-  }
-
-  return fetch(url, {
+  const fetchOptions = {
     method,
-    credentials: 'include',
-    headers,
+    credentials: 'include' as const,
     body: body !== undefined ? JSON.stringify(body) : undefined,
-  })
+  }
+
+  const res = await fetch(url, { ...fetchOptions, headers: buildHeaders(useAuthStore.getState().accessToken) })
+
+  // 401이 아니면 그대로 반환
+  if (res.status !== 401) {
+    return res
+  }
+
+  // 401: refresh 시도 (race lock으로 중복 호출 방지)
+  try {
+    const newToken = await doRefresh()
+    // 새 토큰으로 원래 요청 1회 retry
+    return fetch(url, { ...fetchOptions, headers: buildHeaders(newToken) })
+  } catch (err) {
+    // refresh 실패 — doRefresh 내부에서 clearSession 이미 호출됨
+    throw err
+  }
 }
 
 /** 응답을 검사하고 ok가 아니면 ApiError, ok면 Zod 스키마로 파싱해 반환 */
