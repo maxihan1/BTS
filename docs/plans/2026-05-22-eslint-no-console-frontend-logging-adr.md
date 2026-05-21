@@ -618,6 +618,40 @@ plan §9 비스코프 7건 명시 완료. ✓
 
 ---
 
+### bts-impl 실행 결과 (2026-05-22)
+
+**전체 판정. ✅ PASS (Wave 1 3-병렬 + Wave 2 1-순차, 모두 verifier PASS)**
+
+#### Wave 1 (T1+T2+T3 3-병렬 dispatch, 파일 겹침 0)
+
+| Task | implementer | verifier | 커밋 |
+|---|---|---|---|
+| T1. eslint config (D1-a) | DONE — fixture (prod + test 2 위치) 검증 모두 lint fail, 회귀 0 | PASS | `857f960` |
+| T2. ADR 신규 | DONE — 59줄, 6 grep 검증 모두 통과, 권장 보완 4건 본문 반영 | PASS | `eb656e4` |
+| T3. frontend-ci.yml (BTS 첫 GH Actions) | DONE — 47줄, yaml 구조 + step name 명시, 권장 보완 #5 반영 | PASS | `6d4833c` |
+
+#### Wave 2 (T4 검증, depends-on [1,2,3])
+
+| 검증 항목 | 결과 |
+|---|---|
+| 로컬 lint | exit 0, 위반 0 (useLogoutMutation.ts:21 D1-a allow 통과) |
+| 로컬 typecheck | exit 0 |
+| 로컬 test | exit 0, **77 passed** (PR #11 baseline 동일) |
+| 로컬 build | exit 0, 2099 modules transformed |
+| GH Actions trigger | success — run id `26256139867` |
+| **NFR-LOG-FE-05 cold start** | **59초 (목표 ≤ 4분, 75% 여유)** ✅ |
+| 정보 항목 | actions/checkout / setup-node / pnpm-action-setup 의 Node.js 20 deprecation 경고 (2026-06-02 부터 Node 24 기본). 본 PR 무관, 후속 PR 후보 |
+
+#### qa-engineer 호출
+
+스킵 (type=chore, classify.type ∈ {feature, auth} 조건 미충족).
+
+#### verification-before-completion
+
+T4 안에서 이미 lint / typecheck / test / build 4건 + GH Actions 실제 trigger 모두 검증 완료. 별도 호출 스킵.
+
+---
+
 ### 게이트 1 진입 준비
 
 plan-eng-review (PASS, 권장 보완 4건) + plan-devex-review (PASS, 권장 보완 5건). **BLOCKER 0건, 진행 가능**.
