@@ -1,0 +1,145 @@
+// 백엔드 API fetch wrapper — Authorization 헤더 자동 주입 + Zod 응답 파싱 + 401 인터셉터
+/// <reference types="vite/client" />
+import type { ZodSchema } from 'zod'
+import { useAuthStore } from '@/auth/authStore'
+
+export interface ApiFetchOptions {
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
+  body?: unknown
+  headers?: HeadersInit
+}
+
+/** 비-2xx 응답 시 throw되는 에러 — status와 응답 body를 포함 */
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly body: unknown,
+  ) {
+    super(`API ${status}`)
+    this.name = 'ApiError'
+  }
+}
+
+/** 환경 변수에서 base URL 조회 — 미설정 시 빈 문자열 (dev proxy 의존) */
+function getBaseUrl(): string {
+  return import.meta.env['VITE_API_BASE_URL'] ?? ''
+}
+
+/**
+ * 진행 중인 refresh 요청을 캐싱하는 전역 Promise.
+ * null이면 현재 refresh 중이 아님.
+ * 복수 요청이 동시에 401을 받아도 단 1회만 /refresh를 호출하도록 보장 (race lock).
+ */
+let refreshPromise: Promise<string> | null = null
+
+/** 현재 refresh가 진행 중인지 반환하는 헬퍼 */
+export function isRefreshing(): boolean {
+  return refreshPromise !== null
+}
+
+/**
+ * /api/v1/auth/refresh를 호출해 새 access token을 발급받는다.
+ * 성공하면 authStore에 토큰을 저장하고 새 토큰을 반환.
+ * 실패하면 authStore를 초기화하고 에러를 throw.
+ * 이미 진행 중인 refresh가 있으면 그 Promise를 공유해 중복 호출을 방지한다 (race lock).
+ */
+function doRefresh(): Promise<string> {
+  if (refreshPromise === null) {
+    refreshPromise = (async () => {
+      try {
+        const res = await fetch(`${getBaseUrl()}/api/v1/auth/refresh`, {
+          method: 'POST',
+          credentials: 'include',
+        })
+        if (!res.ok) {
+          useAuthStore.getState().clearSession()
+          throw new ApiError(res.status, await res.json().catch(() => ({})))
+        }
+        const data = (await res.json()) as { access_token: string }
+        const newToken = data.access_token
+        useAuthStore.getState().setAccessToken(newToken)
+        return newToken
+      } finally {
+        // refresh 완료(성공/실패 모두) 후 lock 해제
+        refreshPromise = null
+      }
+    })()
+  }
+  return refreshPromise as Promise<string>
+}
+
+/**
+ * 기본 fetch wrapper.
+ * - credentials: 'include' 고정 (refresh_token Cookie 자동 송수신)
+ * - body 있으면 Content-Type: application/json 자동 설정
+ * - accessToken 있으면 Authorization: Bearer 헤더 자동 추가
+ * - 401 응답 시 자동으로 /refresh 호출 후 1회 retry (race lock 포함)
+ */
+export async function apiFetch(path: string, options: ApiFetchOptions = {}): Promise<Response> {
+  const { method = 'GET', body, headers: extraHeaders } = options
+
+  // 절대 URL이면 그대로, 아니면 base URL 앞에 붙임
+  const url = path.startsWith('http://') || path.startsWith('https://') ? path : `${getBaseUrl()}${path}`
+
+  const buildHeaders = (token: string | null): Headers => {
+    const headers = new Headers(extraHeaders)
+    // body가 있고 Content-Type이 아직 미설정인 경우에만 자동 추가
+    if (body !== undefined && !headers.has('content-type')) {
+      headers.set('Content-Type', 'application/json')
+    }
+    // accessToken이 있을 때만 Authorization 헤더 추가
+    if (token !== null) {
+      headers.set('Authorization', `Bearer ${token}`)
+    }
+    return headers
+  }
+
+  const fetchOptions = {
+    method,
+    credentials: 'include' as const,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  }
+
+  const res = await fetch(url, { ...fetchOptions, headers: buildHeaders(useAuthStore.getState().accessToken) })
+
+  // 401이 아니면 그대로 반환
+  if (res.status !== 401) {
+    return res
+  }
+
+  // 401: refresh 시도 (race lock으로 중복 호출 방지)
+  // doRefresh 실패 시 clearSession은 doRefresh 내부에서 처리되고 에러가 그대로 전파된다
+  const newToken = await doRefresh()
+  // 새 토큰으로 원래 요청 1회 retry
+  return fetch(url, { ...fetchOptions, headers: buildHeaders(newToken) })
+}
+
+/** 응답을 검사하고 ok가 아니면 ApiError, ok면 Zod 스키마로 파싱해 반환 */
+async function parseResponse<T>(res: Response, schema: ZodSchema<T>): Promise<T> {
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const data: unknown = await res.json()
+  return schema.parse(data)
+}
+
+/**
+ * POST 요청 후 Zod 스키마로 응답 파싱.
+ * - 비-2xx → ApiError throw
+ * - 스키마 불일치 → ZodError throw
+ */
+export async function apiPost<T>(path: string, body: unknown, schema: ZodSchema<T>): Promise<T> {
+  const res = await apiFetch(path, { method: 'POST', body })
+  return parseResponse(res, schema)
+}
+
+/**
+ * GET 요청 후 Zod 스키마로 응답 파싱.
+ * - 비-2xx → ApiError throw
+ * - 스키마 불일치 → ZodError throw
+ */
+export async function apiGet<T>(path: string, schema: ZodSchema<T>): Promise<T> {
+  const res = await apiFetch(path, { method: 'GET' })
+  return parseResponse(res, schema)
+}

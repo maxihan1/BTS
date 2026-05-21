@@ -1,0 +1,247 @@
+// SessionService 단위 테스트 — MockK 기반 세션 생명주기 검증 (FR-AU-09 Task 16)
+
+package com.atlas.bts.identity.session
+
+import io.mockk.every
+import io.mockk.justRun
+import io.mockk.mockk
+import io.mockk.slot
+import io.mockk.verify
+import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.temporal.ChronoUnit
+import java.util.UUID
+
+/**
+ * SessionService 단위 테스트 (FR-AU-09 Task 16).
+ *
+ * 검증 대상:
+ * - create: Session row 생성 + expires_at = now + 14d + device_fingerprint = SHA-256(ua+ip) hex 12자
+ * - lookup: 활성/폐기/만료 세션 상태 정확 반환
+ * - revoke: revoked_at + revoke_reason 채움 (repo.markRevoked 호출)
+ * - revokeAllOfUser: 활성 세션 전체 폐기 (repo.revokeAllByUserId 호출)
+ * - markLastSeen: last_seen_at 갱신 (repo.updateLastSeen 호출)
+ *
+ * 통합 테스트(DB)는 SessionRepositoryTest(Task 8)가 담당.
+ * 여기서는 MockK 로 SessionRepository 를 모킹하여 서비스 로직만 검증한다.
+ */
+class SessionServiceTest {
+
+    private lateinit var repo: SessionRepository
+    private lateinit var service: SessionService
+
+    private val fixedNow: Instant = Instant.parse("2026-05-21T10:00:00Z")
+    private val clock: Clock = Clock.fixed(fixedNow, ZoneOffset.UTC)
+
+    private val userId: UUID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+
+    @BeforeEach
+    fun setUp() {
+        repo = mockk()
+        service = SessionService(repo, clock)
+    }
+
+    // ── create ────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `create — Session 이 INSERT 되고 expires_at 이 now + 14d 로 설정된다`() {
+        val savedSlot = slot<Session>()
+        justRun { repo.save(capture(savedSlot)) }
+
+        service.create(
+            userId = userId,
+            providerId = "local",
+            ipAddress = "127.0.0.1",
+            userAgent = "Mozilla/5.0",
+        )
+
+        val saved = savedSlot.captured
+        assertThat(saved.userId).isEqualTo(userId)
+        assertThat(saved.providerId).isEqualTo("local")
+        assertThat(saved.expiresAt).isEqualTo(fixedNow.plus(14, ChronoUnit.DAYS))
+        assertThat(saved.createdAt).isEqualTo(fixedNow)
+        assertThat(saved.lastSeenAt).isEqualTo(fixedNow)
+        assertThat(saved.revokedAt).isNull()
+        assertThat(saved.revokeReason).isNull()
+    }
+
+    @Test
+    fun `create — device_fingerprint 가 SHA-256(ua+ip) hex 앞 12자로 설정된다`() {
+        val savedSlot = slot<Session>()
+        justRun { repo.save(capture(savedSlot)) }
+
+        service.create(
+            userId = userId,
+            providerId = "local",
+            ipAddress = "192.168.1.1",
+            userAgent = "TestAgent/1.0",
+        )
+
+        val fingerprint = savedSlot.captured.deviceFingerprint
+        assertThat(fingerprint).isNotNull()
+        assertThat(fingerprint).hasSize(12)
+        // hex 문자만 허용 [0-9a-f]
+        assertThat(fingerprint).matches("[0-9a-f]{12}")
+    }
+
+    @Test
+    fun `create — ipAddress null 이면 deviceFingerprint 도 null`() {
+        val savedSlot = slot<Session>()
+        justRun { repo.save(capture(savedSlot)) }
+
+        service.create(
+            userId = userId,
+            providerId = "local",
+            ipAddress = null,
+            userAgent = null,
+        )
+
+        assertThat(savedSlot.captured.deviceFingerprint).isNull()
+    }
+
+    @Test
+    fun `create — 생성된 Session ID 를 반환한다`() {
+        val savedSlot = slot<Session>()
+        justRun { repo.save(capture(savedSlot)) }
+
+        val result = service.create(
+            userId = userId,
+            providerId = "local",
+            ipAddress = "10.0.0.1",
+            userAgent = "Agent",
+        )
+
+        assertThat(result).isEqualTo(savedSlot.captured)
+    }
+
+    // ── lookup ────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `lookup — 활성 세션 정상 반환`() {
+        val session = buildActiveSession()
+        every { repo.findById(session.id) } returns session
+
+        val found = service.lookup(session.id)
+
+        assertThat(found).isEqualTo(session)
+    }
+
+    @Test
+    fun `lookup — 존재하지 않는 sid 는 null 반환`() {
+        every { repo.findById(any()) } returns null
+
+        val found = service.lookup(UUID.randomUUID())
+
+        assertThat(found).isNull()
+    }
+
+    @Test
+    fun `lookup — 폐기된 세션을 조회하면 revoked 상태로 반환된다`() {
+        val revoked = buildActiveSession().copy(
+            revokedAt = fixedNow.minusSeconds(60),
+            revokeReason = "logout",
+        )
+        every { repo.findById(revoked.id) } returns revoked
+
+        val found = service.lookup(revoked.id)!!
+
+        assertThat(found.isRevoked()).isTrue()
+        assertThat(found.revokeReason).isEqualTo("logout")
+    }
+
+    @Test
+    fun `lookup — 만료된 세션을 조회하면 isActive false 로 반환된다`() {
+        val expired = buildActiveSession().copy(
+            expiresAt = fixedNow.minus(1, ChronoUnit.HOURS),
+        )
+        every { repo.findById(expired.id) } returns expired
+
+        val found = service.lookup(expired.id)!!
+
+        assertThat(found.isActive(fixedNow)).isFalse()
+        assertThat(found.isExpired(fixedNow)).isTrue()
+    }
+
+    // ── revoke ────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `revoke — repo markRevoked 를 sid + reason 으로 호출한다`() {
+        val sid = UUID.randomUUID()
+        justRun { repo.markRevoked(sid, "logout") }
+
+        service.revoke(sid, "logout")
+
+        verify(exactly = 1) { repo.markRevoked(sid, "logout") }
+    }
+
+    @Test
+    fun `revoke — 존재하지 않는 sid 도 예외 없이 처리된다 (멱등)`() {
+        val sid = UUID.randomUUID()
+        justRun { repo.markRevoked(sid, "logout") }
+
+        // 예외 없이 실행돼야 함
+        service.revoke(sid, "logout")
+    }
+
+    // ── revokeAllOfUser ───────────────────────────────────────────────────────
+
+    @Test
+    fun `revokeAllOfUser — repo revokeAllByUserId 를 userId + reason 으로 호출한다`() {
+        every { repo.revokeAllByUserId(userId, "password_changed") } returns 3
+
+        val count = service.revokeAllOfUser(userId, "password_changed")
+
+        verify(exactly = 1) { repo.revokeAllByUserId(userId, "password_changed") }
+        assertThat(count).isEqualTo(3)
+    }
+
+    @Test
+    fun `revokeAllOfUser — 활성 세션이 없으면 0 반환`() {
+        every { repo.revokeAllByUserId(userId, "logout_all") } returns 0
+
+        val count = service.revokeAllOfUser(userId, "logout_all")
+
+        assertThat(count).isEqualTo(0)
+    }
+
+    // ── markLastSeen ──────────────────────────────────────────────────────────
+
+    @Test
+    fun `markLastSeen — repo updateLastSeen 을 해당 sid 로 호출한다`() {
+        val sid = UUID.randomUUID()
+        justRun { repo.updateLastSeen(sid) }
+
+        service.markLastSeen(sid)
+
+        verify(exactly = 1) { repo.updateLastSeen(sid) }
+    }
+
+    @Test
+    fun `markLastSeen — 존재하지 않는 sid 도 예외 없이 처리된다 (best-effort)`() {
+        val sid = UUID.randomUUID()
+        justRun { repo.updateLastSeen(sid) }
+
+        service.markLastSeen(sid)
+    }
+
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    private fun buildActiveSession(id: UUID = UUID.randomUUID()): Session =
+        Session(
+            id = id,
+            userId = userId,
+            providerId = "local",
+            deviceFingerprint = "abc123def456",
+            ipAddress = "127.0.0.1",
+            userAgent = "TestAgent",
+            createdAt = fixedNow,
+            expiresAt = fixedNow.plus(14, ChronoUnit.DAYS),
+            lastSeenAt = fixedNow,
+            revokedAt = null,
+            revokeReason = null,
+        )
+}

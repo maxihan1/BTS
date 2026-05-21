@@ -1,0 +1,23 @@
+# dev profile 전용 설정 — 로컬 개발 자동 시드 (prod 영향 없음)
+# spring.profiles.active=dev 시에만 이 파일이 적용된다.
+# 기동 방법: ./gradlew :modules:identity-access:bootRun --args='--spring.profiles.active=dev'
+# 사전 조건: docker compose -f infra/docker-compose.dev.yml up -d postgres
+server:
+  # frontend vite proxy 가 :8080 으로 호출하도록 dev 한정 포트 정렬 (default 8090 override)
+  port: 8080
+
+spring:
+  datasource:
+    # docker compose 의 postgres 가 host 5432 (Homebrew postgres 흔히 점유) 와 충돌 회피 위해 5433 매핑.
+    url: ${BTS_DB_URL:jdbc:postgresql://localhost:5433/bts}
+  sql:
+    init:
+      mode: always
+      data-locations: classpath:data-dev.sql
+
+bts:
+  security:
+    cors:
+      # Vite dev server (5173) 가 backend 8080 을 호출할 때 CORS 허용. prod 는 application-prod.yml override.
+      # @Value("${...}") List<String> 는 comma-separated string 만 자동 split. YAML list 안 됨.
+      allowed-origins: http://localhost:5173
