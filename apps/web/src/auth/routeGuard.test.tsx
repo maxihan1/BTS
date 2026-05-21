@@ -1,0 +1,201 @@
+// 라우트 가드 헬퍼 단위 테스트 — requireAuth / redirectIfAuth / isSafeReturnTo
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { isRedirect } from '@tanstack/react-router'
+import { useAuthStore } from './authStore'
+import { requireAuth, redirectIfAuth, isSafeReturnTo } from './routeGuard'
+
+// TanStack Router beforeLoad 컨텍스트 중 가드에서 사용하는 최소 형태
+interface MinimalBeforeLoadContext {
+  location: { href: string; pathname: string }
+}
+
+const makeCtx = (pathname: string, search = ''): MinimalBeforeLoadContext => ({
+  location: {
+    href: pathname + search,
+    pathname,
+  },
+})
+
+beforeEach(() => {
+  useAuthStore.setState({ accessToken: null, user: null })
+})
+
+afterEach(() => {
+  useAuthStore.setState({ accessToken: null, user: null })
+})
+
+// ─────────────────────────────────────────────
+// isSafeReturnTo
+// ─────────────────────────────────────────────
+describe('isSafeReturnTo', () => {
+  it('슬래시로 시작하는 내부 경로 → 허용', () => {
+    expect(isSafeReturnTo('/dashboard')).toBe(true)
+    expect(isSafeReturnTo('/issues/PROJ-1')).toBe(true)
+    expect(isSafeReturnTo('/login?next=foo')).toBe(true)
+  })
+
+  it('// 로 시작하는 경로 → 차단 (프로토콜 상대 URL, open redirect)', () => {
+    expect(isSafeReturnTo('//evil.com')).toBe(false)
+    expect(isSafeReturnTo('//evil.com/path')).toBe(false)
+  })
+
+  it('http/https 절대 URL → 차단', () => {
+    expect(isSafeReturnTo('http://evil.com')).toBe(false)
+    expect(isSafeReturnTo('https://evil.com')).toBe(false)
+    expect(isSafeReturnTo('http://evil.com/path')).toBe(false)
+  })
+
+  it('javascript: 스킴 → 차단 (XSS)', () => {
+    expect(isSafeReturnTo('javascript:alert(1)')).toBe(false)
+    expect(isSafeReturnTo('JavaScript:alert(1)')).toBe(false)
+  })
+
+  it('data: 스킴 → 차단', () => {
+    expect(isSafeReturnTo('data:text/html,<script>alert(1)</script>')).toBe(false)
+  })
+
+  it('빈 문자열 → 차단', () => {
+    expect(isSafeReturnTo('')).toBe(false)
+  })
+
+  it('슬래시 없이 시작하는 상대 경로 → 차단 (경로 탈출 위험)', () => {
+    expect(isSafeReturnTo('evil.com')).toBe(false)
+    expect(isSafeReturnTo('dashboard')).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────
+// requireAuth
+// ─────────────────────────────────────────────
+describe('requireAuth', () => {
+  it('미인증 상태에서 호출 → redirect throw (to: /login)', () => {
+    useAuthStore.setState({ accessToken: null })
+
+    let thrown: unknown
+    try {
+      requireAuth(makeCtx('/dashboard'))
+    } catch (e) {
+      thrown = e
+    }
+
+    expect(thrown).toBeDefined()
+    expect(isRedirect(thrown)).toBe(true)
+    const r = thrown as { to: string; search: { returnTo: string } }
+    expect(r.to).toBe('/login')
+  })
+
+  it('미인증 → redirect search에 returnTo가 현재 location.href', () => {
+    useAuthStore.setState({ accessToken: null })
+
+    let thrown: unknown
+    try {
+      requireAuth(makeCtx('/dashboard', '?foo=bar'))
+    } catch (e) {
+      thrown = e
+    }
+
+    const r = thrown as { search: { returnTo: string } }
+    expect(r.search.returnTo).toBe('/dashboard?foo=bar')
+  })
+
+  it('인증 상태에서 호출 → throw 없음 (통과)', () => {
+    useAuthStore.setState({ accessToken: 'valid-token' })
+
+    expect(() => requireAuth(makeCtx('/dashboard'))).not.toThrow()
+  })
+})
+
+// ─────────────────────────────────────────────
+// redirectIfAuth
+// ─────────────────────────────────────────────
+describe('redirectIfAuth', () => {
+  it('미인증 상태에서 /login 진입 → throw 없음 (통과)', () => {
+    useAuthStore.setState({ accessToken: null })
+
+    expect(() => redirectIfAuth(makeCtx('/login'))).not.toThrow()
+  })
+
+  it('인증 상태에서 /login 진입 → redirect throw', () => {
+    useAuthStore.setState({ accessToken: 'valid-token' })
+
+    let thrown: unknown
+    try {
+      redirectIfAuth(makeCtx('/login'))
+    } catch (e) {
+      thrown = e
+    }
+
+    expect(thrown).toBeDefined()
+    expect(isRedirect(thrown)).toBe(true)
+  })
+
+  it('인증 상태 + 안전한 returnTo → returnTo로 리다이렉트', () => {
+    useAuthStore.setState({ accessToken: 'valid-token' })
+
+    let thrown: unknown
+    try {
+      redirectIfAuth(makeCtx('/login', '?returnTo=/dashboard'))
+    } catch (e) {
+      thrown = e
+    }
+
+    const r = thrown as { to: string }
+    expect(r.to).toBe('/dashboard')
+  })
+
+  it('인증 상태 + 외부 URL returnTo (http://evil.com) → /dashboard 로 리다이렉트', () => {
+    useAuthStore.setState({ accessToken: 'valid-token' })
+
+    let thrown: unknown
+    try {
+      redirectIfAuth(makeCtx('/login', '?returnTo=http://evil.com'))
+    } catch (e) {
+      thrown = e
+    }
+
+    const r = thrown as { to: string }
+    expect(r.to).toBe('/dashboard')
+  })
+
+  it('인증 상태 + 프로토콜 상대 URL (//evil.com) → /dashboard 로 리다이렉트', () => {
+    useAuthStore.setState({ accessToken: 'valid-token' })
+
+    let thrown: unknown
+    try {
+      redirectIfAuth(makeCtx('/login', '?returnTo=//evil.com'))
+    } catch (e) {
+      thrown = e
+    }
+
+    const r = thrown as { to: string }
+    expect(r.to).toBe('/dashboard')
+  })
+
+  it('인증 상태 + javascript: returnTo → /dashboard 로 리다이렉트', () => {
+    useAuthStore.setState({ accessToken: 'valid-token' })
+
+    let thrown: unknown
+    try {
+      redirectIfAuth(makeCtx('/login', '?returnTo=javascript:alert(1)'))
+    } catch (e) {
+      thrown = e
+    }
+
+    const r = thrown as { to: string }
+    expect(r.to).toBe('/dashboard')
+  })
+
+  it('인증 상태 + returnTo 없음 → /dashboard 로 리다이렉트', () => {
+    useAuthStore.setState({ accessToken: 'valid-token' })
+
+    let thrown: unknown
+    try {
+      redirectIfAuth(makeCtx('/login'))
+    } catch (e) {
+      thrown = e
+    }
+
+    const r = thrown as { to: string }
+    expect(r.to).toBe('/dashboard')
+  })
+})
