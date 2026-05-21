@@ -17,6 +17,9 @@ out/
 *.class
 hs_err_pid*
 
+# jOOQ generated 소스 — V001 SQL 이 source of truth, 매 빌드시 generateJooq 로 재생성
+**/src/generated/jooq/
+
 # Node / pnpm (프론트엔드)
 node_modules/
 .pnpm-store/
