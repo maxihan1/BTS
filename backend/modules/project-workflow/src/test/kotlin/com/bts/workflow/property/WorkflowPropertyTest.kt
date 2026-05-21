@@ -44,7 +44,7 @@ class WorkflowPropertyTest : StringSpec({
     // ──────────────────────────────────────────────────────────────────────── //
 
     "invariant 1: 1000건 임의 전이 시 결과 상태 키는 항상 Workflow.states 집합 안에 있다" {
-        checkAll(1000, WorkflowGenerators.transitions) { triple ->
+        checkAll(1000, WorkflowGenerators.transitionTriples) { triple ->
             val wf = triple.first
             val fromStateKey = triple.second
             val transition = triple.third
@@ -256,8 +256,9 @@ object WorkflowGenerators {
      * (workflow, fromStateKey, transition) 조합.
      *
      * 전이가 있는 workflow 에서 임의 전이 1개와 해당 출발 상태를 선택한다.
+     * invariant 1 검증에서 사용한다.
      */
-    val transitions: Arb<Triple<Workflow, String, WorkflowTransition>> = arbitrary { rs ->
+    val transitionTriples: Arb<Triple<Workflow, String, WorkflowTransition>> = arbitrary { rs ->
         val wf = workflow.bind()
         // transitions 이 비어 있는 경우 대비 — 최소 1개 보장하는 workflow Arb 덕분에 safe
         val tr = Arb.element(wf.transitions).bind()
