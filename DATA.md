@@ -148,7 +148,7 @@ fun transitionIssue(key: IssueKey, action: TransitionAction) {
 ### FTS (전체 텍스트 검색)
 
 - `tsvector` 컬럼은 generated column (`STORED`)
-- 한국어 형태소. `pg_search_korean` 또는 `mecab-ko` 확장 (Phase 0 PoC)
+- 한국어 형태소. `pg_search_korean` 또는 `mecab-ko` 확장 (Phase 0)
 - GIN 인덱스 필수
 
 ```sql

@@ -77,7 +77,7 @@ ALTER TABLE issues ADD COLUMN search_vector tsvector
 CREATE INDEX CONCURRENTLY idx_issues_search ON issues USING GIN(search_vector);
 ```
 
-한국어 형태소는 Phase 0 PoC에서 `pg_search_korean` 또는 `mecab-ko` 평가.
+한국어 형태소는 Phase 0에서 `pg_search_korean` 또는 `mecab-ko` 평가.
 
 ## 핵심 패턴 — pgmq
 

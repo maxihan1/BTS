@@ -7,10 +7,19 @@
 
 **BTS (Project Atlas)** — 사내 1,000명 규모 협업 워크스페이스. Atlas Issues (이슈 트래커) + Atlas Wiki (v0.5 예정). Kotlin/Spring + React 19, Naver Cloud Docker Compose 단일 호스트. Maxi 1인 + Claude Code 개발 모델.
 
-**현재 단계**. SDD v0.5.0 + 하네스 작성 완료, **Phase 0 PoC 진입 직전** (코드 0줄).
+**현재 단계**. SDD v0.5.0 + 하네스 작성 완료, **Phase 0 진입 직전** (코드 0줄).
 
 - 오늘 동작. `/bts` 워크플로우 스킬 체인, `scripts/workflow/*` (Node 22+ 필요)
-- PoC 도입 후 동작. Gradle / pnpm / Docker Compose 명령 (아래 §자주 쓰는 명령어)
+- Phase 0 도입 후 동작. Gradle / pnpm / Docker Compose 명령 (아래 §자주 쓰는 명령어)
+
+## 작업 기준 — 완제품
+
+**모든 작업은 완제품(production) 기준으로 진행한다.** PoC / 프로토타입 / 임시 코드 금지.
+
+- 단계 표기(Phase 0 / Phase 1)는 **도입 시점**의 표시일 뿐, 작업 **품질 수준**이 아니다. Phase 0에 작성하는 코드도 완제품 품질을 충족해야 한다.
+- "일단 동작만 하게" / "나중에 리팩토링" / "PoC라서 생략" 같은 사고 금지. 작성 시점에 절대 규칙 (`DEVELOPMENT.md §1`) · 테스트 · 보안 · 에러 처리 모두 만족해야 한다.
+- Maxi가 "PoC 수준으로" 라고 명시한 경우에만 예외. 그 외는 모든 코드가 production-ready.
+- 에이전트(sub-agent 포함)가 이 작업을 PoC로 오인하지 않도록, 새 코드/문서/스킬 작성 시 PoC·prototype 같은 단어 사용 금지.
 
 ## 진입 트리 — 어떤 상황에 어느 문서
 
@@ -36,7 +45,7 @@ BTS/
 ├── .claude/agents/*-engineer.md           # sub-agent 6개
 ├── .claude/settings.json                  # 권한 (Bash deny 6종)
 ├── scripts/workflow/                      # classify-task.ts (Phase 0 동작)
-└── (backend/, apps/web/, packages/)       # Phase 0 PoC 진입 후 생성
+└── (backend/, apps/web/, packages/)       # Phase 0 진입 후 생성
 Maxi_wiki/BTS/                             # Obsidian (외부, 단방향 미러)
 ```
 
@@ -59,7 +68,7 @@ Maxi_wiki/BTS/                             # Obsidian (외부, 단방향 미러)
 
 각 책임/금지/참조. `.claude/agents/<role>-engineer.md`.
 
-## 자주 쓰는 명령어 (PoC 도입 후 적용)
+## 자주 쓰는 명령어 (Phase 0 도입 후 적용)
 
 ```bash
 # 백엔드 (Gradle)

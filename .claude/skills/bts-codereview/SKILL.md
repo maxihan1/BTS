@@ -149,7 +149,7 @@ git worktree remove --force .worktrees/<slug> 2>/dev/null \
 
 ### Obsidian 동기화 (Phase 0 임시. Phase 1에 자동화 예정)
 
-**현재 (Phase 0 PoC)**. 다음을 메인 에이전트가 수동으로 수행 (스크립트 부재).
+**현재 (Phase 0)**. 다음을 메인 에이전트가 수동으로 수행 (스크립트 부재).
 
 1. `Maxi_wiki/BTS/history.md`에 1줄 append.
    ```
