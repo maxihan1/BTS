@@ -128,7 +128,7 @@ jooq {
                 jdbc.apply {
                     driver = "org.testcontainers.jdbc.ContainerDatabaseDriver"
                     url = "jdbc:tc:postgresql:16-alpine:///bts_codegen" +
-                        "?TC_INITSCRIPT=file:src/main/resources/db/migration/V001__init_issue.sql"
+                        "?TC_INITSCRIPT=file:src/main/resources/db/migration/V001__issues_initial.sql"
                     user = "test"
                     password = "test"
                 }
