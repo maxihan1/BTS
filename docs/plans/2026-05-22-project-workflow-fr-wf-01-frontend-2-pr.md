@@ -226,4 +226,45 @@ PR #10 (project-workflow BC FR-WF-01 FSM 워크플로우 완제품, 머지 완�
   - CONCERN-3. MSW 가 Playwright 와 호환 — PR #11 의 도입 패턴 확인 후 Task 4 의 GREEN 결정. 호환 안 되면 backend dev 서버 + Playwright `webServer` 활용.
   - CONCERN-4. 라우트 통합 — `/workflows/:key` 페이지 미존재. 옵션 A. PR #11 dashboard 안에 임시 라우트 + 컴포넌트 mount. 옵션 B. dev only query param. 옵션 C. 별도 페이지 라우트 신규 추가 (TanStack Router 패턴 따름). Task 5 의 GREEN 단계에서 controller 결정 or Maxi 결정.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+manually 압축 진행 (본 세션 컨텍스트 부담). 4 관점 자체 검토. 세부 sub-skill (plan-eng-review / plan-ceo-review / plan-design-review / plan-devex-review) 의 외부 호출은 게이트 1 후 새 세션에서 필요 시 진행.
+
+### Eng review (자체)
+
+- **wave 분해 합리적**. depends-on 그래프 명확 (1,2 → 3,4 → 5). 파일 충돌 0 (workflow/ vs api/ vs mocks/ vs e2e/).
+- **CONCERN 4건 합리적**. CONCERN-1 (vi.mock mermaid) + CONCERN-2 (Vite ESM) + CONCERN-3 (MSW Playwright) + CONCERN-4 (라우트 통합 옵션) 모두 구체. 다만 CONCERN-4 (라우트) 는 게이트 1 후 Maxi 결정 권장 — 옵션 A (dashboard 안 임시 라우트) / B (dev query param) / C (별도 페이지 라우트).
+- **agent 분포 단순**. 5/5 frontend-engineer. Task 5 (E2E) 의 qa-engineer 보조는 controller 가 dispatch 시점 판단.
+- **TDD chain 보장**. 모든 task 의 RED/GREEN/REFACTOR 명세. Task 1 (types) 만 별도 테스트 없이 의존성 통한 검증 — 합리적 (순수 type 정의).
+
+### CEO review (자체)
+
+- **스코프 적정**. PR #10 의 옵션 B 결정으로 분리된 Task 37/38 만 다룸. Task 33~36 (backend) 은 PR #10 에서 완결. 본 PR 로 FR-WF-01 완결.
+- **우선순위**. FR-WF-01 의 사용자 인지 가치 (워크플로우 시각화) 가 backend 만으로는 미흡. 본 PR 이 FR-WF-01 의 "사용자가 실제로 볼 수 있는 부분" — high value.
+- **확장 가능성**. 본 PR 의 read-only 다이어그램 위에 후속 PR 로 인터랙티브 / 편집 UI 검토 자연스러움.
+
+### Design review (자체)
+
+- **DESIGN.md 토큰 활용 일관**. shadcn radix-nova OKLCH 변수 + `classDef` 활용. 별도 색상 추가 0.
+- **접근성 (NFR-3)**. `aria-label` + axe 검사 (Task 5 REFACTOR). 다이어그램 SVG 의 screen reader 처리는 본 PR 의 read-only 목적 적합.
+- **카테고리 색상 디자인 결정**. TODO=muted / IN_PROGRESS=primary tint / DONE=emerald tint. 의미 + 시각 일관성 OK. 다만 색약 대응 — `prefers-reduced-motion` 무관, 색맹 친화 검토 후속 PR 후보 (low priority).
+- **다크 모드 미지원**. DESIGN.md 일관 (라이트 전용).
+- **mermaid 라이브러리 디자인 영향**. 다이어그램 폰트 / 노드 모양 / 화살표 스타일이 mermaid 의 기본값. 통일감 위해 custom theme 검토 가능하나, 본 PR 범위 외 (low priority).
+
+### DevEx review (자체)
+
+- **type 정의 분리** (Task 1) 가 명확. frontend ↔ backend DTO 1:1 대응 가시화.
+- **API client 패턴 일관**. PR #11 의 `client.ts` Zod schema 패턴 따름.
+- **MSW handlers 분리** (Task 4). 다른 BC 의 handlers 와 충돌 0 (path 별 핸들러).
+- **mermaid 라이브러리 학습 곡선**. 본 BC 의 처음 도입 — KDoc / README snippet 으로 후속 frontend 작업자가 패턴 재사용 가능하게 권장.
+
+### 자체 검토 결론
+
+⚠️ **CONCERNS — Conditional GO**. 4 CONCERN 모두 명세 명확. CONCERN-4 (라우트 통합 옵션) 만 게이트 1 에서 Maxi 결정 권장.
+
+**BLOCKER 0 / CONCERNS 1 / SUGGESTIONS 2**.
+- CONCERN-1 (라우트 통합 — Maxi 결정).
+- SUGGESTION-1. mermaid custom theme (다이어그램 폰트 / 색상 통일감) — 후속 PR.
+- SUGGESTION-2. 색맹 친화 색상 검토 — 후속 PR.
+
+**상세 sub-skill 외부 호출 (plan-eng-review / plan-design-review 등) 은 게이트 1 후 새 세션에서 필요 시 진행**. 본 PR 의 작업 범위가 단순 + plan 명세 명확 + 의존성 그래프 단순 → 단일 세션 manually 검토로 충분.
