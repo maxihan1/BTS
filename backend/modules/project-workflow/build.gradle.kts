@@ -37,6 +37,16 @@ dependencies {
     implementation("org.springframework:spring-context")
     implementation("org.springframework:spring-tx")
 
+    // MVC + REST controller
+    implementation("org.springframework:spring-webmvc")
+    implementation("org.springframework:spring-web")
+
+    // @PreAuthorize + method security
+    implementation("org.springframework.security:spring-security-core")
+    implementation("org.springframework.security:spring-security-config")
+    implementation("org.springframework.security:spring-security-web")
+    implementation("org.springframework.security:spring-security-aspects")
+
     // Jackson (JSON/YAML 직렬화 — workflow YAML 파싱 포함)
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
@@ -75,6 +85,11 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test") {
         exclude(group = "org.junit.vintage", module = "junit-vintage-engine")
     }
+
+    // MockMvc — REST API 슬라이스 테스트
+    testImplementation("org.springframework:spring-test")
+    // Spring Security 테스트 유틸 (@WithMockUser 등)
+    testImplementation("org.springframework.security:spring-security-test")
 
     // Kotest BOM (Bill of Materials — 버전 일괄 관리 패키지)
     testImplementation(platform("io.kotest:kotest-bom:5.9.1"))
