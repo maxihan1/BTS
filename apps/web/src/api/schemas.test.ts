@@ -1,3 +1,4 @@
+// @vitest-environment node
 // LoginRequest / TokenResponse / WhoamiResponse / ApiErrorResponse Zod 스키마 검증 테스트
 import { describe, it, expect } from 'vitest'
 import {
