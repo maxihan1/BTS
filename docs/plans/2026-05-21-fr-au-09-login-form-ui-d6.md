@@ -347,8 +347,9 @@ B1. CSRF 헤더 echo / B2. 422 처리 / B3. 헤더 위치 / B4. Vite React 플�
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/router.ts`, `apps/web/src/routes/__root.tsx`, `apps/web/src/routes/login.tsx`, `apps/web/src/routes/dashboard.tsx`, `apps/web/src/main.tsx` (보강)]
+- files: [`apps/web/src/router.ts`, `apps/web/src/routes/__root.tsx`, `apps/web/src/routes/index.tsx`, `apps/web/src/routes/login.tsx`, `apps/web/src/routes/dashboard.tsx`, `apps/web/src/main.tsx` (보강), `apps/web/src/router.test.tsx`]
 - depends-on: [2, 7]
+- 메타 보정 (2026-05-21 W4 verifier 정당화). `routes/index.tsx` 추가 — router.ts는 `.ts` 확장자라 JSX 인라인 불가하므로 `/` 라우트 컴포넌트를 별도 파일로 분리하는 게 기술적으로 필수. `router.test.tsx` 추가 — RED 단계 테스트 위치 명시.
 
 **RED**. `routes/__root.test.tsx`. router가 `/` → `/dashboard` (or `/login`) 리다이렉트, `/login` 라우트 마운트, `/dashboard` 라우트 마운트.
 
