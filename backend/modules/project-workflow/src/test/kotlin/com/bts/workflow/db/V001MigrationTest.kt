@@ -24,7 +24,6 @@ import java.sql.DriverManager
  */
 @Testcontainers
 class V001MigrationTest {
-
     companion object {
         @Container
         @JvmStatic
@@ -82,17 +81,22 @@ class V001MigrationTest {
         tableName: String,
         columnName: String,
     ): String? {
-        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.prepareStatement(
-                "SELECT data_type FROM information_schema.columns" +
-                    " WHERE table_schema = 'public' AND table_name = ? AND column_name = ?",
-            ).use { stmt ->
-                stmt.setString(1, tableName)
-                stmt.setString(2, columnName)
-                stmt.executeQuery().use { rs ->
-                    return if (rs.next()) rs.getString(1) else null
-                }
-            }
+        val conn = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
+        return conn.use { queryColumnDataType(it, tableName, columnName) }
+    }
+
+    private fun queryColumnDataType(
+        conn: java.sql.Connection,
+        tableName: String,
+        columnName: String,
+    ): String? {
+        val sql =
+            "SELECT data_type FROM information_schema.columns" +
+                " WHERE table_schema = 'public' AND table_name = ? AND column_name = ?"
+        return conn.prepareStatement(sql).use { stmt ->
+            stmt.setString(1, tableName)
+            stmt.setString(2, columnName)
+            stmt.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
         }
     }
 
