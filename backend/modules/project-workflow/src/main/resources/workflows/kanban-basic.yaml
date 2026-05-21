@@ -1,0 +1,12 @@
+# 칸반 기본 워크플로우 (4 상태 + 3 전이)
+key: kanban-basic
+name: 칸반 기본 워크플로우
+states:
+  - { key: backlog, name: Backlog, category: TODO, displayOrder: 1 }
+  - { key: ready, name: Ready, category: TODO, displayOrder: 2 }
+  - { key: in_progress, name: In Progress, category: IN_PROGRESS, displayOrder: 3 }
+  - { key: done, name: Done, category: DONE, displayOrder: 4 }
+transitions:
+  - { from: backlog, to: ready, name: Refine }
+  - { from: ready, to: in_progress, name: Pull }
+  - { from: in_progress, to: done, name: Finish }
