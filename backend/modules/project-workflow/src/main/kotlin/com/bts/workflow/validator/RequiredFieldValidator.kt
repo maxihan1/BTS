@@ -22,7 +22,6 @@ import com.bts.workflow.domain.spi.WorkflowValidator
  * @param field 검사할 이슈 필드 이름. [TransitionContext.request.issueFields] 맵의 키와 일치해야 한다.
  */
 class RequiredFieldValidator(private val field: String) : WorkflowValidator {
-
     override val type: String = "RequiredField"
 
     /**
@@ -33,12 +32,11 @@ class RequiredFieldValidator(private val field: String) : WorkflowValidator {
      */
     override fun validate(ctx: TransitionContext): ValidatorResult {
         val value = ctx.request.issueFields[field]
-        if (value == null) {
-            return ValidatorResult.Fail(field = field, reason = "required field missing")
+        return when {
+            value == null -> ValidatorResult.Fail(field = field, reason = "required field missing")
+            value is String && value.trim().isEmpty() ->
+                ValidatorResult.Fail(field = field, reason = "required field blank")
+            else -> ValidatorResult.Pass
         }
-        if (value is String && value.trim().isEmpty()) {
-            return ValidatorResult.Fail(field = field, reason = "required field blank")
-        }
-        return ValidatorResult.Pass
     }
 }
