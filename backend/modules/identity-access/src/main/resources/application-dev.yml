@@ -1,0 +1,8 @@
+# dev profile 전용 설정 — 로컬 개발 자동 시드 (prod 영향 없음)
+# spring.profiles.active=dev 시에만 이 파일이 적용된다.
+# 기동 방법: ./gradlew :backend:bootRun --args='--spring.profiles.active=dev'
+spring:
+  sql:
+    init:
+      mode: always
+      data-locations: classpath:data-dev.sql
