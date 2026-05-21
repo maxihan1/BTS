@@ -12,6 +12,8 @@ import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
+import org.springframework.transaction.annotation.Propagation
+import org.springframework.transaction.annotation.Transactional
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
@@ -217,7 +219,15 @@ class RefreshTokenRepositoryTest {
         assertThat(result).isNull()
     }
 
+    /**
+     * EC-23 동시성 테스트.
+     *
+     * `@Transactional(NOT_SUPPORTED)` — @JdbcTest 기본 테스트 트랜잭션을 비활성화한다.
+     * 이렇게 해야 save() 결과가 즉시 커밋되어 별개 스레드의 트랜잭션에서 행이 보인다.
+     * 테스트 후 데이터는 @BeforeEach 의 DELETE 로 정리된다.
+     */
     @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun `markUsedAndChain — 두 트랜잭션이 동시에 요청하면 정확히 1개만 성공한다 (EC-23 race-safe)`() {
         val oldToken = buildToken()
         repo.save(oldToken)
