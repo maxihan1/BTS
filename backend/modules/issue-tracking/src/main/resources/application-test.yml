@@ -1,6 +1,10 @@
 # issue-tracking 모듈 test profile — Testcontainers Postgres 동적 주입 + dev seed 미적용
 # IssueTestcontainersBase 의 @DynamicPropertySource 가 datasource url/username/password 를 런타임에 주입.
 # spring.profiles.active=test 또는 @ActiveProfiles("test") 로 활성화.
+#
+# [dev vs test 차이]
+#   dev  — data-dev.sql 로드 (sql.init.mode=always), 실제 로컬 postgres (5433) 연결.
+#   test — data-dev.sql 미로드 (sql.init.mode=never),  Testcontainers 동적 datasource 주입.
 
 spring:
   datasource:

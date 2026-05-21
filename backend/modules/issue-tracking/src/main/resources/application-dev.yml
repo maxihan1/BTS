@@ -2,6 +2,10 @@
 # spring.profiles.active=dev 시에만 이 파일이 적용된다.
 # 기동 방법: ./gradlew :modules:issue-tracking:bootRun --args='--spring.profiles.active=dev'
 # 사전 조건: docker compose -f infra/docker-compose.dev.yml up -d postgres
+#
+# [dev vs test 차이]
+#   dev  — data-dev.sql 로드 (sql.init.mode=always), 실제 로컬 postgres (5433) 연결.
+#   test — data-dev.sql 미로드 (sql.init.mode=never),  Testcontainers 동적 datasource 주입.
 
 spring:
   datasource:
