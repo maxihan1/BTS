@@ -71,9 +71,28 @@ PR #10 (project-workflow BC FR-WF-01 FSM 워크플로우 완제품, 머지 완�
 - 기존. [domain/project-workflow.md](/Users/maxi.moff/Maxi_wiki/BTS/domain/project-workflow.md) — Phase 0 진입 후 갱신 필요한 영역 (PR #10 의 5 엔티티 + ADR 5건 미반영). 본 PR 의 frontend 작업과 별개의 cleanup PR 후보.
 - 본 PR 신규 ADR. ADR-1 (mermaid 채택) — plan 단계에서 작성 여부 결정.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-05-22-project-workflow-fr-wf-01-frontend-2-pr.md](../specs/2026-05-22-project-workflow-fr-wf-01-frontend-2-pr.md)
+
+핵심 시나리오 3줄.
+- **S1 (Task 37 핵심)**. 사용자가 워크플로우 상세 진입 → `WorkflowDiagram` 이 5 상태 + 4 전이 mermaid stateDiagram-v2 다이어그램으로 카테고리별 색상 (TODO/IN_PROGRESS/DONE) 구분해서 렌더.
+- **S2~S3**. 작은 워크플로우 (`simple` 2 상태) 도 정상 + debug prop 시 mermaid source 노출.
+- **S4 (Task 38 핵심)**. Playwright 가 표준 4 워크플로우 happy path — 페이지 진입 + 다이어그램 렌더 + 첫 전이 호출 + 200 응답 검증.
+
+핵심 FR 9건 + NFR 4건 + EC 6건. 측정 가능한 완료 기준 7항목.
+
+## Brainstorming Check
+
+✅ 1 iteration 통과 (manually 압축 진행, 본 세션 컨텍스트 부담).
+
+검토한 gap 후보 4건.
+1. Vitest 의 jsdom 에서 mermaid SVG 렌더 어려움 → 단위 테스트 = 코드 생성 정확성, Playwright = 실제 SVG 렌더 책임 분리.
+2. mermaid v11 의 ESM dynamic import → `useEffect` 안 `async` 처리.
+3. 카테고리 색상 = mermaid `classDef` + DESIGN.md OKLCH 토큰 활용.
+4. E2E backend 의존성 = MSW mock (Testcontainers over-engineering).
+
+→ 모두 plan 단계에서 task 분해 가능. gap 0 확정.
 
 ## Plan (← /bts-plan 채움)
 
