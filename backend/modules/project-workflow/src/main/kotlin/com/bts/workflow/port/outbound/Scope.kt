@@ -11,6 +11,20 @@ package com.bts.workflow.port.outbound
  * - [Global] — 시스템 전역 수준 권한 (예. 관리자 기능).
  * - [Project] — 특정 프로젝트 키 수준 권한 (예. 이슈 생성).
  * - [Issue] — 특정 이슈 키 수준 권한 (예. 이슈 삭제).
+ *
+ * ## 사용 예
+ * ```kotlin
+ * val label = when (scope) {
+ *     is Scope.Global          -> "전역"
+ *     is Scope.Project         -> "프로젝트(${scope.key})"
+ *     is Scope.Issue           -> "이슈(${scope.key})"
+ * }
+ * ```
+ *
+ * ## identity-access 연결
+ * [PermissionResolver] 의 구현체 `IdentityAccessPermissionResolver` 는 이 sealed 타입을
+ * identity-access BC 의 권한 판정 API 호출 매개변수로 변환한다.
+ * 연결 시점. identity-access PR #8 머지 후 별도 PR.
  */
 sealed interface Scope {
 
