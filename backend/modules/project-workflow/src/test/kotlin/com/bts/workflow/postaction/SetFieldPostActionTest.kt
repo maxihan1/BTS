@@ -104,7 +104,7 @@ class SetFieldPostActionTest {
     }
 
     @Test
-    fun `placeholder — newValue 가 \${now} 이면 Instant 문자열로 치환된다`() {
+    fun `placeholder — newValue 가 now 이면 Instant 문자열로 치환된다`() {
         val action = SetFieldPostAction(field = "closedAt", value = "\${now}")
         val before = Instant.now()
         val ctx = buildContext(issueFields = emptyMap())
