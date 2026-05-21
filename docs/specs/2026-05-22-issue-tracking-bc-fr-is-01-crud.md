@@ -165,7 +165,7 @@ OpenAPI 3.1 스타일 요약. 본 PR에서 `apps/web/openapi` 자동 생성 + `s
 
 ## 5. 데이터 모델 변경
 
-`backend/db/migration/V007__issues_initial.sql` (단일 마이그레이션).
+`backend/modules/issue-tracking/src/main/resources/db/migration/V001__issues_initial.sql` (모듈별 Flyway namespace, identity-access V001~V006 / project-workflow V001 과 별개) (단일 마이그레이션).
 
 ### 5.1 `projects` (신규)
 
@@ -206,7 +206,7 @@ OpenAPI 3.1 스타일 요약. 본 PR에서 `apps/web/openapi` 자동 생성 + `s
 
 본 PR 은 INSERT 없음. FR-MV-01 (이슈 이동) 도입 시 사용.
 
-### 5.4 dev seed (`backend/db/seed/data-dev.sql`)
+### 5.4 dev seed (`backend/modules/issue-tracking/src/main/resources/data-dev.sql` — 모듈별 separate)
 
 ```sql
 INSERT INTO projects (id, key, name, key_sequence) VALUES
@@ -214,11 +214,11 @@ INSERT INTO projects (id, key, name, key_sequence) VALUES
 ON CONFLICT (key) DO NOTHING;
 ```
 
-PR #11 의 `data-dev.sql` (Alice 사용자) 와 동일 파일에 추가 (분리하지 않음).
+PR #11 의 `data-dev.sql` (Alice 사용자) 와 **분리** — 모듈별 separate 파일 (identity-access 와 issue-tracking 각자 보유). Spring Boot `spring.sql.init.data-locations` 가 두 파일 모두 로드.
 
 ### 5.5 pgmq 큐 — `q_issue_events`
 
-`backend/db/migration/V008__pgmq_queue_issue_events.sql`. workflow 가 PR #10 에서 도입한 pgmq 확장 (`CREATE EXTENSION pgmq`) 활용.
+`backend/modules/issue-tracking/src/main/resources/db/migration/V002__pgmq_queue_issue_events.sql`. workflow 가 PR #10 에서 도입한 pgmq 확장 (`CREATE EXTENSION pgmq`) 활용.
 
 ```sql
 SELECT pgmq.create('q_issue_events');

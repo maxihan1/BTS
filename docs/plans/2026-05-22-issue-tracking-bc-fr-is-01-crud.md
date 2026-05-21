@@ -174,6 +174,20 @@ EC-1 키 race condition (advisory_xact_lock) / EC-2 권한 부재 (403 ProblemDe
 
 > **참고**. 본 plan 은 writing-plans 우회 (Maxi 의 "게이트 1까지 자동 진행" 의도 + 도메인/spec 단계 충분 도출). TDD red→green→refactor 강제 + wave 당 5~7 task (PR #10 learning) + task 메타 블록 (agent / files / depends-on) 필수 명시.
 
+### Wave -1 — Module 부트스트랩 (단일 task, prerequisite)
+
+#### Task 0. issue-tracking Gradle 모듈 셋업
+
+**메타**. agent: `backend-engineer` / files: `[backend/settings.gradle.kts, backend/modules/issue-tracking/build.gradle.kts, backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/.gitkeep, backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/.gitkeep, backend/modules/issue-tracking/src/main/resources/db/migration/.gitkeep]` / depends-on: `[]`
+
+**RED**. `./gradlew :modules:issue-tracking:tasks` 실행 시 "Project 'modules:issue-tracking' not found" → fail.
+
+**GREEN**. (1) `backend/settings.gradle.kts` 에 `include(":modules:issue-tracking")` 한 줄 추가. (2) `backend/modules/issue-tracking/build.gradle.kts` 작성 — **project-workflow 패턴 그대로 복사** + 의존성 조정 (jOOQ source set 별도 schema, 모듈 자체 V001~V002 마이그레이션 참조). (3) 디렉토리 골격 `.gitkeep` 5건.
+
+**REFACTOR**. 주석 한 줄 ("issue-tracking 모듈 빌드 스크립트 — project-workflow 패턴 일관, DEVELOPMENT.md §모듈 격리").
+
+**검증**. `./gradlew :modules:issue-tracking:tasks` 통과 + `./gradlew :modules:issue-tracking:compileKotlin` (현재 src 없으므로 0 file compiled, BUILD SUCCESSFUL).
+
 ### Wave 0 — Domain VO 4종 (병렬, files 겹침 0)
 
 #### Task 1. `ActorId` VO
@@ -220,21 +234,21 @@ EC-1 키 race condition (advisory_xact_lock) / EC-2 권한 부재 (403 ProblemDe
 
 ### Wave 1 — DB migration + jOOQ codegen + Permission stub (5 task, 일부 직렬)
 
-#### Task 5. Flyway `V007__issues_initial.sql`
+#### Task 5. Flyway `V001__issues_initial.sql` (issue-tracking 모듈 자체 namespace)
 
-**메타**. agent: `db-engineer` / files: `[backend/db/migration/V007__issues_initial.sql]` / depends-on: `[]`
+**메타**. agent: `db-engineer` / files: `[backend/modules/issue-tracking/src/main/resources/db/migration/V001__issues_initial.sql]` / depends-on: `[0]` (모듈 셋업)
 
 **RED**. Testcontainers Postgres 부팅 + `flywayMigrate` 실행 후 `psql -c "\d issues"` 가 4컬럼 이상 보유 검증 (현재는 테이블 미존재). 실패.
 
-**GREEN**. spec §5 의 `projects`, `issues`, `issue_key_redirects` 3 테이블 + 인덱스 + CHECK 제약 작성. `CREATE EXTENSION IF NOT EXISTS "pgcrypto"` (gen_random_uuid).
+**GREEN**. spec §5 의 `projects`, `issues`, `issue_key_redirects` 3 테이블 + 인덱스 + CHECK 제약 작성. `CREATE EXTENSION IF NOT EXISTS "pgcrypto"` (gen_random_uuid). **모듈별 Flyway namespace 라 V001 부터 시작** (identity-access 의 V001~V006 과 별개).
 
 **REFACTOR**. SQL 코멘트 — 각 테이블 책임 + DATA.md §1.1 인용.
 
-**검증**. `./gradlew :backend:flywayMigrate -Pflyway.url=jdbc:postgresql://<testcontainer>` + jOOQ codegen `./gradlew generateJooq` 성공.
+**검증**. `./gradlew :modules:issue-tracking:flywayMigrate` + jOOQ codegen `./gradlew :modules:issue-tracking:generateJooq` 성공.
 
-#### Task 6. Flyway `V008__pgmq_queue_issue_events.sql`
+#### Task 6. Flyway `V002__pgmq_queue_issue_events.sql`
 
-**메타**. agent: `db-engineer` / files: `[backend/db/migration/V008__pgmq_queue_issue_events.sql]` / depends-on: `[5]` (V007 마이그레이션 후 V008)
+**메타**. agent: `db-engineer` / files: `[backend/modules/issue-tracking/src/main/resources/db/migration/V002__pgmq_queue_issue_events.sql]` / depends-on: `[5]` (V001 마이그레이션 후 V002)
 
 **RED**. `pgmq.q_q_issue_events` 큐 미존재 검증 → fail.
 
@@ -262,13 +276,13 @@ EC-1 키 race condition (advisory_xact_lock) / EC-2 권한 부재 (403 ProblemDe
 
 **REFACTOR**. KDoc — FR-AU-12 시 교체 명시 + ADR 인용.
 
-#### Task 9. `data-dev.sql` 의 `projects` seed 추가
+#### Task 9. `data-dev.sql` 의 `projects` seed (모듈별 separate)
 
-**메타**. agent: `db-engineer` / files: `[backend/db/seed/data-dev.sql]` / depends-on: `[5]`
+**메타**. agent: `db-engineer` / files: `[backend/modules/issue-tracking/src/main/resources/data-dev.sql]` / depends-on: `[5]`
 
 **RED**. dev profile 부팅 + `psql -c "SELECT count(*) FROM projects WHERE key='ATLAS'"` = 0 (seed 미적용). fail.
 
-**GREEN**. spec §5.4 의 `INSERT INTO projects ... ON CONFLICT (key) DO NOTHING` 추가. PR #11 의 alice seed 와 동일 파일 (`data-dev.sql`) append.
+**GREEN**. spec §5.4 의 `INSERT INTO projects ... ON CONFLICT (key) DO NOTHING`. **모듈별 separate 파일** (identity-access 의 alice seed 와 분리) — Spring Boot `spring.sql.init.data-locations` 로 두 파일 모두 로드.
 
 **REFACTOR**. 주석 — "dev/staging 전용. Project Management 후속 PR 도입 시 제거 검토".
 
@@ -574,8 +588,9 @@ EC-1 키 race condition (advisory_xact_lock) / EC-2 권한 부재 (403 ProblemDe
 
 ## Plan 메타
 
-- **task 수**. 38 (Wave 0 = 4 / Wave 1 = 5 / Wave 2 = 4 / Wave 3 = 2 / Wave 4 = 6 / Wave 5 = 5 / Wave 6 = 6 / Wave 7 = 4 / Wave 8 = 2)
-- **wave 수**. 9 (Wave 7~8 은 PR #13 머지 조건부)
+- **task 수**. 39 (Wave -1 = 1 / Wave 0 = 4 / Wave 1 = 5 / Wave 2 = 4 / Wave 3 = 2 / Wave 4 = 6 / Wave 5 = 5 / Wave 6 = 6 / Wave 7 = 4 / Wave 8 = 2)
+- **wave 수**. 10 (Wave -1 module 셋업 + Wave 0~8, Wave 7~8 은 PR #13 머지 조건부)
+- **drift fix (2026-05-22)**. impl 진입 직전 발견 3건 정정 — (1) Wave -1 module 셋업 task 0 신설 / (2) Flyway 경로 모듈별 namespace 로 정정 (V007 → V001, V008 → V002) / (3) data-dev.sql 모듈별 separate 파일 분리
 - **예상 시간**. monster PR 수준 (PR #10 = 36 task, PR #11 = 20 task + 10 controller wave). 약 4~6시간 (병렬 dispatch 가정)
 - **TDD 강제**. yes (모든 task RED → GREEN → REFACTOR + spec-compliance-verifier 자동 검증)
 - **wave 당 task 상한**. 7 (PR #10 learning 준수, wave 4 의 6 task 가 최대)
