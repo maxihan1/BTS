@@ -2,6 +2,8 @@
 
 package com.bts.workflow.archunit
 
+import com.tngtech.archunit.base.DescribedPredicate
+import com.tngtech.archunit.core.domain.JavaMethod
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.core.importer.ImportOption
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes
@@ -45,12 +47,16 @@ class ProjectWorkflowArchitectureTest {
      */
     @Test
     fun transactionalClassesMustBeServiceOrComponent() {
+        val hasTransactionalMethod: DescribedPredicate<JavaMethod> =
+            DescribedPredicate.describe("annotated with @Transactional") { method ->
+                method.isAnnotatedWith(org.springframework.transaction.annotation.Transactional::class.java)
+            }
+
         val rule = classes()
             .that()
             .areNotInterfaces()
             .and()
-            .containAnyMethodsThat()
-            .areAnnotatedWith(org.springframework.transaction.annotation.Transactional::class.java)
+            .containAnyMethodsThat(hasTransactionalMethod)
             .should()
             .beAnnotatedWith(org.springframework.stereotype.Service::class.java)
             .orShould()
