@@ -6,13 +6,14 @@ import com.bts.workflow.domain.dto.PostActionPlan
 import com.bts.workflow.domain.dto.TransitionContext
 
 /**
- * 전이(Transition) 후 자동 처리 항목을 계산하는 SPI (Service Provider Interface).
+ * 전이(Transition) 후 자동 처리 항목을 **계산**하는 SPI (Service Provider Interface).
  *
- * GAP-2 결정 — 적용은 호출자 BC 책임.
- * 이 interface 는 [PostActionPlan] 을 **계산**만 하고 실제 실행은 하지 않는다.
- * 실행 책임은 이 SPI 를 호출하는 BC(예. issue-tracking) 에 있다.
+ * ## GAP-2 결정 — 적용은 호출자 BC 책임
+ * 이 interface 는 무엇을 해야 하는지 [PostActionPlan] 으로 반환만 할 뿐,
+ * 실제 필드 변경·이벤트 발행 등의 **실행**은 수행하지 않는다.
+ * 실행 책임은 이 SPI 를 호출하는 BC (예. issue-tracking) 가 진다.
  *
- * 구현체는 Spring 빈으로 등록되어 WorkflowEngine 이 type 으로 조회한다.
+ * 구현체는 Spring 빈으로 등록되며, WorkflowEngine 이 [type] 문자열로 조회한다.
  *
  * 참조. FR-WF-01 / docs/sdd/ §project-workflow
  */
