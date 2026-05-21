@@ -120,10 +120,11 @@ describe('LoginForm', () => {
     // Radix Select는 접근성용 숨겨진 <select> 요소를 DOM에 렌더링한다.
     // jsdom 환경에서 Portal은 옵션을 role="option"으로 노출하지 않으므로,
     // 숨겨진 네이티브 select의 option 목록으로 두 옵션을 검증한다.
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const nativeSelect = document.querySelector('select[aria-hidden="true"]')!
+    const nativeSelect = document.querySelector('select[aria-hidden="true"]')
     expect(nativeSelect).toBeInTheDocument()
-    const options = Array.from(nativeSelect.querySelectorAll('option')).map((o) => o.textContent)
+    const options = Array.from(nativeSelect?.querySelectorAll('option') ?? []).map(
+      (o) => o.textContent,
+    )
     expect(options).toContain('Local')
     expect(options).toContain('LDAP-corp')
   })
