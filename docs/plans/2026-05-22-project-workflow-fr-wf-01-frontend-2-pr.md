@@ -209,6 +209,36 @@ PR #10 (project-workflow BC FR-WF-01 FSM 워크플로우 완제품, 머지 완�
 
 ---
 
+### Task 7. backend WorkflowDto patch — description + transition.key 필드 추가 (옵션 C, 게이트 1 후 추가)
+
+**메타**.
+- agent. `backend-engineer`
+- files. [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/web/dto/WorkflowDto.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/web/dto/WebDtoSerializationTest.kt`, (필요 시) 도메인 `Workflow*.kt` mapping 갱신]
+- depends-on. []
+
+**추가 배경**. Wave 1 Task 4 verifier 가 발견. spec §6 의 `WorkflowView.description` 과 `WorkflowTransitionView.key` 가 backend DTO (PR #10 산출물) 에 누락. Maxi 결정 (D2 — 2026-05-22) 옵션 C 채택. 본 PR 에서 군더붙여 수정. **BC 격리 예외** — frontend 가 요구하는 same BC (project-workflow) view layer 변경이라 자연스러움.
+
+**RED**. `WebDtoSerializationTest` 에 `WorkflowDto.description` + `WorkflowTransitionDto.key` 직렬화 검증 테스트 추가 → 즉시 실패 (필드 미존재).
+
+**GREEN**. 
+1. `WorkflowDto` 에 `description: String?` 또는 `description: String` 추가 (도메인 `Workflow` 의 description 필드 존재 여부 확인 후 결정. 도메인 미존재 시 도메인 + yaml seed 도 함께 추가 필요 — 그 경우 본 task 의 files 메타 확장 + 보고).
+2. `WorkflowTransitionDto` 에 `key: String` 추가 (도메인 `WorkflowTransition.key` 존재 확인. 미존재 시 추가).
+3. `Workflow.toDto()`, `WorkflowTransition.toDto()` mapping 갱신.
+
+**REFACTOR**. KDoc 갱신 + nullability 정리.
+
+**검증**.
+```bash
+./gradlew :project-workflow:test --tests "*WebDtoSerializationTest*"
+./gradlew :project-workflow:ktlintCheck :project-workflow:detekt
+```
+
+**리스크**.
+- 도메인 `Workflow` 가 description 필드 미보유 시 도메인 + yaml seed (`backend/modules/project-workflow/src/main/resources/workflows/*.yaml`) 까지 수정 필요 → task scope 확장. implementer 가 보고 후 결정.
+- `WorkflowTransition.key` 도 동일 — 도메인 미존재 시 추가 필요.
+
+---
+
 ### Task 6. Playwright E2E — 표준 4 워크플로우 happy path
 
 **메타**.
@@ -239,13 +269,13 @@ PR #10 (project-workflow BC FR-WF-01 FSM 워크플로우 완제품, 머지 완�
 
 ## Plan 메타
 
-- **task 총 수**. 6 (게이트 1 결정 — CONCERN-1 옵션 A 채택으로 Task 5 라우트 신설)
+- **task 총 수**. 7 (게이트 1 결정 — Task 5 라우트 신설 + Wave 1 후 D2 결정 — Task 7 backend DTO patch 추가)
 - **예상 wave 수**. 4
   - Wave 0 (depends-on `[]`). Task 1 (types) + Task 2 (mermaid dep) — **2 task 병렬**.
   - Wave 1 (depends-on ⊂ wave 0). Task 3 (WorkflowDiagram) + Task 4 (API client + MSW) — **2 task 병렬**.
-  - Wave 2 (depends-on ⊂ wave 0~1). Task 5 (route + detail page) — 1 task.
+  - Wave 2 (depends-on ⊂ wave 0~1). Task 5 (route + detail page) + Task 7 (backend DTO patch, depends-on []) — **2 task 병렬** (다른 BC 영역이라 파일 충돌 0).
   - Wave 3 (depends-on ⊂ wave 0~2). Task 6 (Playwright E2E) — 1 task.
-- **agent 분포**. 5/5 `frontend-engineer` (Task 5 는 controller 가 qa-engineer 보조 dispatch 도 결정 가능).
+- **agent 분포**. 5 frontend-engineer + 1 backend-engineer (Task 7) — 총 6 implementer.
 - **신규 의존성**. mermaid v11.x (Maxi 사전 승인 — PR #10 plan §909).
 - **CONCERN**.
   - CONCERN-1. Vitest jsdom 환경에서 mermaid 비동기 dynamic import 처리 — Task 3 의 GREEN 단계에서 `vi.mock('mermaid')` 패턴 필요 가능성. spec §11 의 Brainstorming gap 4 의 결정 (단위 = 코드 생성 검증, E2E = 실제 SVG 검증).
