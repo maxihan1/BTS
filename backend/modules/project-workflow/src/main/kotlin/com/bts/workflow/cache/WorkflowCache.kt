@@ -85,7 +85,10 @@ class WorkflowCache(
      * @throws WorkflowCacheLockTimeoutException 200ms 내 lock 획득 실패 시
      */
     @Transactional
-    fun withWriteLock(key: String, block: () -> Unit) {
+    fun withWriteLock(
+        key: String,
+        block: () -> Unit,
+    ) {
         val lockKey = key.hashCode().toLong()
 
         if (tryAcquireLock(lockKey)) {
@@ -115,12 +118,15 @@ class WorkflowCache(
      *
      * 프로덕션 코드에서 호출 금지.
      */
-    internal fun injectForTest(key: String, workflow: Workflow) {
+    internal fun injectForTest(
+        key: String,
+        workflow: Workflow,
+    ) {
         cache[key] = workflow
     }
 
-    private fun tryAcquireLock(lockKey: Long): Boolean =
-        dsl.fetchValue("SELECT pg_try_advisory_xact_lock(?)", lockKey) as Boolean
+    @Suppress("MaxLineLength")
+    private fun tryAcquireLock(lockKey: Long): Boolean = dsl.fetchValue("SELECT pg_try_advisory_xact_lock(?)", lockKey) as Boolean
 
     companion object {
         private const val LOCK_TIMEOUT_MS = 200L

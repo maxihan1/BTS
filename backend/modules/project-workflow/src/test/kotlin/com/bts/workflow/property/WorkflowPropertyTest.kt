@@ -62,13 +62,14 @@ class WorkflowPropertyTest : StringSpec({
 
     "invariant 2: 1000건 임의 조합 — validator Fail 시 결과 상태 = 출발 상태 (rollback)" {
         checkAll(1000, WorkflowGenerators.validatorScenarios) { scenario ->
-            val result = simulateTransition(
-                workflow = scenario.workflow,
-                fromStateKey = scenario.fromStateKey,
-                transition = scenario.transition,
-                validators = scenario.validators,
-                postActions = scenario.postActions,
-            )
+            val result =
+                simulateTransition(
+                    workflow = scenario.workflow,
+                    fromStateKey = scenario.fromStateKey,
+                    transition = scenario.transition,
+                    validators = scenario.validators,
+                    postActions = scenario.postActions,
+                )
 
             if (!result.allValidatorsPass) {
                 // validator 실패 → 상태 미변경
@@ -83,13 +84,14 @@ class WorkflowPropertyTest : StringSpec({
 
     "invariant 3: 1000건 임의 조합 — validator 실패 시 PostAction 실행 횟수 = 0" {
         checkAll(1000, WorkflowGenerators.validatorScenarios) { scenario ->
-            val result = simulateTransition(
-                workflow = scenario.workflow,
-                fromStateKey = scenario.fromStateKey,
-                transition = scenario.transition,
-                validators = scenario.validators,
-                postActions = scenario.postActions,
-            )
+            val result =
+                simulateTransition(
+                    workflow = scenario.workflow,
+                    fromStateKey = scenario.fromStateKey,
+                    transition = scenario.transition,
+                    validators = scenario.validators,
+                    postActions = scenario.postActions,
+                )
 
             if (!result.allValidatorsPass) {
                 result.postActionsExecuted shouldBe 0
@@ -168,17 +170,18 @@ private fun buildStubContext(
     transition: WorkflowTransition,
 ): TransitionContext {
     val fromState = workflow.states.first { it.key == fromStateKey }
-    val request = TransitionRequest(
-        workflowKey = workflow.key,
-        issueKey = "PROP-TEST",
-        fromStateKey = fromStateKey,
-        toStateKey = transition.toStateKey,
-        transitionName = transition.name,
-        actorId = "tester",
-        issueFields = emptyMap(),
-        actorRoles = setOf("MEMBER"),
-        version = 1L,
-    )
+    val request =
+        TransitionRequest(
+            workflowKey = workflow.key,
+            issueKey = "PROP-TEST",
+            fromStateKey = fromStateKey,
+            toStateKey = transition.toStateKey,
+            transitionName = transition.name,
+            actorId = "tester",
+            issueFields = emptyMap(),
+            actorRoles = setOf("MEMBER"),
+            version = 1L,
+        )
     return TransitionContext(
         request = request,
         workflow = workflow,
@@ -200,7 +203,6 @@ private fun buildStubContext(
  * `checkAll` 호출 시 지정한 iterations 만큼 값을 뽑아 테스트를 반복한다.
  */
 object WorkflowGenerators {
-
     // ── 기본 Arb ──────────────────────────────────────────────────────────────
 
     /** StateCategory 임의 선택. */
@@ -214,41 +216,43 @@ object WorkflowGenerators {
      * 상태 키 중복을 피하기 위해 index 기반 키를 사용한다.
      * DONE 카테고리 상태를 최소 1개 보장해 그래프 closed 조건을 충족한다.
      */
-    val workflow: Arb<Workflow> = arbitrary { rs ->
-        val stateCount = Arb.int(2..6).bind()
-        val wfKey = "WF-${Arb.int(1..9999).bind()}"
+    val workflow: Arb<Workflow> =
+        arbitrary { rs ->
+            val stateCount = Arb.int(2..6).bind()
+            val wfKey = "WF-${Arb.int(1..9999).bind()}"
 
-        val states = (0 until stateCount).map { idx ->
-            val category = if (idx == stateCount - 1) StateCategory.DONE else categoryArb.bind()
-            WorkflowState(
-                key = "S$idx",
-                name = "State$idx",
-                category = category,
-                displayOrder = idx,
-            )
-        }
+            val states =
+                (0 until stateCount).map { idx ->
+                    val category = if (idx == stateCount - 1) StateCategory.DONE else categoryArb.bind()
+                    WorkflowState(
+                        key = "S$idx",
+                        name = "State$idx",
+                        category = category,
+                        displayOrder = idx,
+                    )
+                }
 
-        val stateKeys = states.map { it.key }
+            val stateKeys = states.map { it.key }
 
-        // 전이 1~(stateCount*2) 개 생성 — 중복 방지 위해 Set 기반
-        val transitionCount = Arb.int(1..minOf(stateCount * 2, 8)).bind()
-        val transitionSet = mutableSetOf<Triple<String, String, String>>()
-        val transitions = mutableListOf<WorkflowTransition>()
-        var attempts = 0
-        while (transitions.size < transitionCount && attempts < transitionCount * 5) {
-            attempts++
-            val from = Arb.element(stateKeys).bind()
-            val to = Arb.element(stateKeys.filter { it != from }.ifEmpty { stateKeys }).bind()
-            val name = "T${transitions.size}"
-            val triple = Triple(from, to, name)
-            if (triple !in transitionSet) {
-                transitionSet.add(triple)
-                transitions.add(WorkflowTransition(fromStateKey = from, toStateKey = to, name = name))
+            // 전이 1~(stateCount*2) 개 생성 — 중복 방지 위해 Set 기반
+            val transitionCount = Arb.int(1..minOf(stateCount * 2, 8)).bind()
+            val transitionSet = mutableSetOf<Triple<String, String, String>>()
+            val transitions = mutableListOf<WorkflowTransition>()
+            var attempts = 0
+            while (transitions.size < transitionCount && attempts < transitionCount * 5) {
+                attempts++
+                val from = Arb.element(stateKeys).bind()
+                val to = Arb.element(stateKeys.filter { it != from }.ifEmpty { stateKeys }).bind()
+                val name = "T${transitions.size}"
+                val triple = Triple(from, to, name)
+                if (triple !in transitionSet) {
+                    transitionSet.add(triple)
+                    transitions.add(WorkflowTransition(fromStateKey = from, toStateKey = to, name = name))
+                }
             }
-        }
 
-        Workflow.of(key = wfKey, name = wfKey, states = states, transitions = transitions)
-    }
+            Workflow.of(key = wfKey, name = wfKey, states = states, transitions = transitions)
+        }
 
     // ── 전이 선택 Arb ─────────────────────────────────────────────────────────
 
@@ -258,43 +262,47 @@ object WorkflowGenerators {
      * 전이가 있는 workflow 에서 임의 전이 1개와 해당 출발 상태를 선택한다.
      * invariant 1 검증에서 사용한다.
      */
-    val transitionTriples: Arb<Triple<Workflow, String, WorkflowTransition>> = arbitrary { rs ->
-        val wf = workflow.bind()
-        // transitions 이 비어 있는 경우 대비 — 최소 1개 보장하는 workflow Arb 덕분에 safe
-        val tr = Arb.element(wf.transitions).bind()
-        Triple(wf, tr.fromStateKey, tr)
-    }
+    val transitionTriples: Arb<Triple<Workflow, String, WorkflowTransition>> =
+        arbitrary { rs ->
+            val wf = workflow.bind()
+            // transitions 이 비어 있는 경우 대비 — 최소 1개 보장하는 workflow Arb 덕분에 safe
+            val tr = Arb.element(wf.transitions).bind()
+            Triple(wf, tr.fromStateKey, tr)
+        }
 
     // ── Validator/PostAction stub Arb ─────────────────────────────────────────
 
     /**
      * validator pass/fail 무작위 + postAction stub 목록을 포함하는 시나리오.
      */
-    val validatorScenarios: Arb<ValidatorScenario> = arbitrary { rs ->
-        val wf = workflow.bind()
-        val tr = Arb.element(wf.transitions).bind()
+    val validatorScenarios: Arb<ValidatorScenario> =
+        arbitrary { rs ->
+            val wf = workflow.bind()
+            val tr = Arb.element(wf.transitions).bind()
 
-        // Validator 0~3개 — 각각 Pass/Fail 무작위
-        val validatorCount = Arb.int(0..3).bind()
-        val validators = (0 until validatorCount).map { idx ->
-            val shouldPass = Arb.boolean().bind()
-            StubValidator(type = "STUB-V$idx", pass = shouldPass)
+            // Validator 0~3개 — 각각 Pass/Fail 무작위
+            val validatorCount = Arb.int(0..3).bind()
+            val validators =
+                (0 until validatorCount).map { idx ->
+                    val shouldPass = Arb.boolean().bind()
+                    StubValidator(type = "STUB-V$idx", pass = shouldPass)
+                }
+
+            // PostAction 0~3개
+            val postActionCount = Arb.int(0..3).bind()
+            val postActions =
+                (0 until postActionCount).map { idx ->
+                    StubPostAction(type = "STUB-PA$idx")
+                }
+
+            ValidatorScenario(
+                workflow = wf,
+                fromStateKey = tr.fromStateKey,
+                transition = tr,
+                validators = validators,
+                postActions = postActions,
+            )
         }
-
-        // PostAction 0~3개
-        val postActionCount = Arb.int(0..3).bind()
-        val postActions = (0 until postActionCount).map { idx ->
-            StubPostAction(type = "STUB-PA$idx")
-        }
-
-        ValidatorScenario(
-            workflow = wf,
-            fromStateKey = tr.fromStateKey,
-            transition = tr,
-            validators = validators,
-            postActions = postActions,
-        )
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────── //
@@ -329,6 +337,6 @@ private class StubValidator(
 private class StubPostAction(
     override val type: String,
 ) : WorkflowPostAction {
-    override fun evaluate(ctx: TransitionContext): PostActionPlan =
-        PostActionPlan(fieldChanges = emptyList(), emitEvents = emptyList())
+    @Suppress("MaxLineLength")
+    override fun evaluate(ctx: TransitionContext): PostActionPlan = PostActionPlan(fieldChanges = emptyList(), emitEvents = emptyList())
 }
