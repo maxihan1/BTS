@@ -3,6 +3,28 @@
 import type { ZodSchema } from 'zod'
 import { useAuthStore } from '@/auth/authStore'
 
+export interface ApiFetchOptions {
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
+  body?: unknown
+  headers?: HeadersInit
+}
+
+/** 비-2xx 응답 시 throw되는 에러 — status와 응답 body를 포함 */
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly body: unknown,
+  ) {
+    super(`API ${status}`)
+    this.name = 'ApiError'
+  }
+}
+
+/** 환경 변수에서 base URL 조회 — 미설정 시 빈 문자열 (dev proxy 의존) */
+function getBaseUrl(): string {
+  return import.meta.env['VITE_API_BASE_URL'] ?? ''
+}
+
 /**
  * 진행 중인 refresh 요청을 캐싱하는 전역 Promise.
  * null이면 현재 refresh 중이 아님.
@@ -19,6 +41,7 @@ export function isRefreshing(): boolean {
  * /api/v1/auth/refresh를 호출해 새 access token을 발급받는다.
  * 성공하면 authStore에 토큰을 저장하고 새 토큰을 반환.
  * 실패하면 authStore를 초기화하고 에러를 throw.
+ * 이미 진행 중인 refresh가 있으면 그 Promise를 공유해 중복 호출을 방지한다 (race lock).
  */
 function doRefresh(): Promise<string> {
   if (refreshPromise === null) {
@@ -42,30 +65,7 @@ function doRefresh(): Promise<string> {
       }
     })()
   }
-  // refreshPromise가 이미 있으면 그것을 공유 (race lock의 핵심)
   return refreshPromise as Promise<string>
-}
-
-export interface ApiFetchOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
-  body?: unknown
-  headers?: HeadersInit
-}
-
-/** 비-2xx 응답 시 throw되는 에러 — status와 응답 body를 포함 */
-export class ApiError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly body: unknown,
-  ) {
-    super(`API ${status}`)
-    this.name = 'ApiError'
-  }
-}
-
-/** 환경 변수에서 base URL 조회 — 미설정 시 빈 문자열 (dev proxy 의존) */
-function getBaseUrl(): string {
-  return import.meta.env['VITE_API_BASE_URL'] ?? ''
 }
 
 /**
@@ -108,14 +108,10 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}): Pro
   }
 
   // 401: refresh 시도 (race lock으로 중복 호출 방지)
-  try {
-    const newToken = await doRefresh()
-    // 새 토큰으로 원래 요청 1회 retry
-    return fetch(url, { ...fetchOptions, headers: buildHeaders(newToken) })
-  } catch (err) {
-    // refresh 실패 — doRefresh 내부에서 clearSession 이미 호출됨
-    throw err
-  }
+  // doRefresh 실패 시 clearSession은 doRefresh 내부에서 처리되고 에러가 그대로 전파된다
+  const newToken = await doRefresh()
+  // 새 토큰으로 원래 요청 1회 retry
+  return fetch(url, { ...fetchOptions, headers: buildHeaders(newToken) })
 }
 
 /** 응답을 검사하고 ok가 아니면 ApiError, ok면 Zod 스키마로 파싱해 반환 */
