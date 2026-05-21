@@ -62,13 +62,11 @@ class AutoProvisionService(
             displayName = attrs.displayName,
         )
 
-        // Step 2: user_external_accounts UPSERT — (provider_id, external_subject) 충돌 시 groups 갱신
+        // Step 2: user_external_accounts UPSERT — Step 1 의 user.id 를 FK 로 사용 (REFERENCES users(id))
         val account = externalAccountRepo.provisionUser(
             providerId = providerId,
             externalSubject = attrs.externalSubject,
-            username = attrs.username,
-            displayName = attrs.displayName,
-            email = attrs.email,
+            userId = user.id,
             groups = attrs.groups,
         )
 

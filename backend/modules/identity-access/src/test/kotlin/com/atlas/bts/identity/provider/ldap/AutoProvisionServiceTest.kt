@@ -80,7 +80,7 @@ class AutoProvisionServiceTest {
     fun `첫 로그인 — UserRepository provisionFromExternal 호출 후 ExternalAccountRepository UPSERT`() {
         every { userRepo.provisionFromExternal(any(), any(), any()) } returns sampleUser
         every {
-            externalAccountRepo.provisionUser(any(), any(), any(), any(), any(), any())
+            externalAccountRepo.provisionUser(any(), any(), any(), any())
         } returns sampleAccount
 
         val result = service.provision(providerId, ldapAttrs)
@@ -91,9 +91,7 @@ class AutoProvisionServiceTest {
             externalAccountRepo.provisionUser(
                 providerId = providerId,
                 externalSubject = "uid=bob,ou=people,dc=example,dc=org",
-                username = "bob@example.org",
-                displayName = "Bob",
-                email = "bob@example.org",
+                userId = userId,
                 groups = emptyList(),
             )
         }
@@ -103,7 +101,7 @@ class AutoProvisionServiceTest {
     fun `첫 로그인 — UserRepository 먼저, ExternalAccountRepository 나중 순서 보장 (DATA-md 단일 트랜잭션)`() {
         every { userRepo.provisionFromExternal(any(), any(), any()) } returns sampleUser
         every {
-            externalAccountRepo.provisionUser(any(), any(), any(), any(), any(), any())
+            externalAccountRepo.provisionUser(any(), any(), any(), any())
         } returns sampleAccount
 
         service.provision(providerId, ldapAttrs)
@@ -111,7 +109,7 @@ class AutoProvisionServiceTest {
         // users UPSERT → user_external_accounts UPSERT 순서 보장 (FK 의존성)
         verifyOrder {
             userRepo.provisionFromExternal(any(), any(), any())
-            externalAccountRepo.provisionUser(any(), any(), any(), any(), any(), any())
+            externalAccountRepo.provisionUser(any(), any(), any(), any())
         }
     }
 
@@ -125,7 +123,7 @@ class AutoProvisionServiceTest {
             userRepo.provisionFromExternal("bob@example.org", "bob-new@example.org", "Bob Updated")
         } returns updatedUser
         every {
-            externalAccountRepo.provisionUser(any(), any(), any(), any(), any(), any())
+            externalAccountRepo.provisionUser(any(), any(), any(), any())
         } returns sampleAccount
 
         val result = service.provision(providerId, updatedAttrs)
@@ -146,14 +144,14 @@ class AutoProvisionServiceTest {
             .isInstanceOf(RuntimeException::class.java)
 
         // users 실패 시 user_external_accounts 는 호출되지 않아야 함
-        verify(exactly = 0) { externalAccountRepo.provisionUser(any(), any(), any(), any(), any(), any()) }
+        verify(exactly = 0) { externalAccountRepo.provisionUser(any(), any(), any(), any()) }
     }
 
     @Test
     fun `EC-17 ExternalAccountRepository 오류 시 예외 전파 — @Transactional rollback 대상`() {
         every { userRepo.provisionFromExternal(any(), any(), any()) } returns sampleUser
         every {
-            externalAccountRepo.provisionUser(any(), any(), any(), any(), any(), any())
+            externalAccountRepo.provisionUser(any(), any(), any(), any())
         } throws RuntimeException("DB 연결 오류 — user_external_accounts UPSERT 실패")
 
         assertThatThrownBy { service.provision(providerId, ldapAttrs) }

@@ -61,38 +61,22 @@ class ExternalAccountRepository(
     }
 
     /**
-     * 사용자 자동 프로비저닝 — users UPSERT + user_external_accounts UPSERT 단일 트랜잭션.
+     * user_external_accounts UPSERT.
      *
-     * **DATA.md §6**: 두 UPSERT 는 단일 @Transactional 경계 안에서 처리된다.
-     * username 중복 등 제약 위반 시 양쪽 모두 rollback.
+     * **단일 책임 (AutoProvisionService.kt KDoc)**: users UPSERT 는 호출 측이 선행한다.
+     * 본 메서드는 user_external_accounts 만 처리하며 [userId] 는 이미 users 에 존재하는 row 의 id 여야 한다.
      *
      * **멱등성**: 동일 (provider_id, external_subject) 로 재호출 시 같은 row 를 반환한다.
-     * users 는 ON CONFLICT (username) DO UPDATE 로 display_name/email 을 최신화한다.
+     * ON CONFLICT 시 groups / updated_at 만 갱신, user_id 는 보존.
      */
     @Suppress("LongParameterList")
     fun provisionUser(
         providerId: UUID,
         externalSubject: String,
-        username: String,
-        displayName: String,
-        email: String?,
+        userId: UUID,
         groups: List<String>,
     ): ExternalAccount {
-        val userId = UUID.randomUUID()
         val groupsJson = objectMapper.writeValueAsString(groups)
-
-        // Step 1: users UPSERT — username 중복 시 display_name/email 갱신
-        jdbc.update(
-            SQL_UPSERT_USER,
-            mapOf(
-                "id" to userId,
-                "username" to username,
-                "email" to email,
-                "displayName" to displayName,
-            ),
-        )
-
-        // Step 2: user_external_accounts UPSERT + RETURNING — 추가 SELECT 없이 row 직접 반환
         val accountId = UUID.randomUUID()
         return jdbc.queryForObject(
             SQL_UPSERT_EXTERNAL_ACCOUNT,
@@ -144,18 +128,6 @@ class ExternalAccountRepository(
                    failed_attempts, locked_until, last_login_at, created_at, updated_at
             FROM user_external_accounts
             WHERE provider_id = :providerId AND external_subject = :externalSubject
-        """
-
-        /**
-         * users UPSERT — 신규 사용자 INSERT, username 충돌 시 display_name/email 최신화.
-         * ON CONFLICT 시 기존 id 가 보존된다 — user_external_accounts 연결이 끊기지 않는다.
-         */
-        const val SQL_UPSERT_USER = """
-            INSERT INTO users (id, username, email, display_name)
-            VALUES (:id, :username, :email, :displayName)
-            ON CONFLICT (username) DO UPDATE
-                SET display_name = EXCLUDED.display_name,
-                    email        = EXCLUDED.email
         """
 
         /**
