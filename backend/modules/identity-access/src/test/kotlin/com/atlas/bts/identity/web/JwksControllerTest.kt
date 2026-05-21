@@ -6,6 +6,7 @@ import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
 import com.atlas.bts.identity.jwt.JwtKeyProvider
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
+import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.session.SessionService
 import io.mockk.every
 import io.mockk.mockk
@@ -53,6 +54,9 @@ class JwksControllerTest {
         @Bean
         fun corsConfigurationSource(): CorsConfigurationSource =
             CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+
+        @Bean
+        fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)
 
         @Bean
         fun jwtKeyProvider(): JwtKeyProvider {
