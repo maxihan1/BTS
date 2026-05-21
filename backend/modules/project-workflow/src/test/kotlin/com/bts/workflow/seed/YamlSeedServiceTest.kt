@@ -91,7 +91,7 @@ class YamlSeedServiceTest {
     @Test
     @Order(1)
     fun `부팅 시 4 YAML 적재되어 4 workflows 와 states transitions 가 정합한다`() {
-        service.seed()
+        service.seedAll()
 
         val workflows = repository.findAll()
         assertThat(workflows).hasSize(4)
@@ -133,7 +133,7 @@ class YamlSeedServiceTest {
     @Order(2)
     fun `동일 YAML 재호출 시 skip 하고 row 수가 변하지 않는다`() {
         // Order(1) 에서 이미 적재됨. 동일 seed() 재호출 — dirty diff 비교로 skip
-        service.seed()
+        service.seedAll()
 
         val workflows = repository.findAll()
         // 재적재 없이 동일 4개 유지
@@ -165,7 +165,7 @@ class YamlSeedServiceTest {
         val modifiedResourceLoader = ModifiedSimpleWorkflowResourceLoader()
         val serviceWithModified = YamlSeedService(WorkflowRepository(dsl), dsl, modifiedResourceLoader, yamlMapper)
 
-        serviceWithModified.seed()
+        serviceWithModified.seedAll()
 
         // 재적재 후 simple 워크플로우 이름 변경 확인
         val workflows = WorkflowRepository(dsl).findAll()
@@ -193,10 +193,38 @@ class YamlSeedServiceTest {
         val invalidResourceLoader = InvalidWorkflowResourceLoader()
         val serviceWithInvalid = YamlSeedService(WorkflowRepository(dsl), dsl, invalidResourceLoader, yamlMapper)
 
-        assertThatThrownBy { serviceWithInvalid.seed() }
+        assertThatThrownBy { serviceWithInvalid.seedAll() }
             .isInstanceOf(IllegalStateException::class.java)
 
         log.info("시나리오 4 통과 — FailFast 부팅 차단 확인")
+    }
+
+    // ── 시나리오 5. seedAll() 과 seedOnReady() 에 @Transactional 어노테이션 존재 검증 ──
+
+    /**
+     * Spring AOP 기반 `@Transactional` 은 Spring ApplicationContext 없이는 동작하지 않으므로
+     * 어노테이션 존재 여부를 reflection 으로 검증한다.
+     *
+     * `seedAll()` 에 `@Transactional` 이 있으면 Spring 이 트랜잭션 경계를 보장하며,
+     * DELETE 후 INSERT 실패 시 롤백이 일어남을 컴파일 타임에 보장할 수 있다.
+     */
+    @Test
+    @Order(5)
+    fun `seedAll 에 @Transactional 과 @EventListener 어노테이션이 있어야 한다`() {
+        val seedAllMethod = YamlSeedService::class.java.getMethod("seedAll")
+        assertThat(
+            seedAllMethod.isAnnotationPresent(
+                org.springframework.transaction.annotation.Transactional::class.java,
+            ),
+        ).`as`("seedAll() 에 @Transactional 어노테이션 필요").isTrue()
+
+        assertThat(
+            seedAllMethod.isAnnotationPresent(
+                org.springframework.context.event.EventListener::class.java,
+            ),
+        ).`as`("seedAll() 에 @EventListener 어노테이션 필요").isTrue()
+
+        log.info("시나리오 5 통과 — @Transactional + @EventListener 어노테이션 존재 확인")
     }
 }
 

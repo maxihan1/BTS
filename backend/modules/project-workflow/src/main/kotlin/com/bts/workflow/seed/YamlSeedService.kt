@@ -11,11 +11,13 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.konform.validation.Validation
 import io.konform.validation.jsonschema.minItems
 import io.konform.validation.jsonschema.minLength
-import jakarta.annotation.PostConstruct
 import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
+import org.springframework.boot.context.event.ApplicationReadyEvent
+import org.springframework.context.event.EventListener
 import org.springframework.core.io.ResourceLoader
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 
 // ── YAML DTO — Jackson 역직렬화 대상 ─────────────────────────────────────────
 
@@ -88,7 +90,7 @@ val workflowYamlValidation: Validation<WorkflowYamlDto> =
 /**
  * 표준 4 워크플로우 YAML 시드 서비스.
  *
- * 부팅 시 [@PostConstruct]를 통해 classpath:workflows/ 아래 4개 YAML 파일을 읽고
+ * 부팅 완료 후 [ApplicationReadyEvent] 를 통해 classpath:workflows/ 아래 4개 YAML 파일을 읽고
  * 현재 DB 상태와 dirty-diff 비교해 변경이 있는 경우만 재적재한다.
  *
  * YAML 파싱/검증 실패 시 [IllegalStateException] 을 던져 부팅을 차단한다 (fail-fast).
@@ -115,12 +117,18 @@ class YamlSeedService(
         )
 
     /**
-     * 부팅 시 1회 실행. 표준 4 YAML을 읽고 dirty-diff 비교 후 변경된 경우만 재적재.
+     * 표준 4 YAML을 읽고 dirty-diff 비교 후 변경된 경우만 재적재.
+     *
+     * `@PostConstruct` 대신 [ApplicationReadyEvent] 를 사용한다. `@PostConstruct` 는 Bean 초기화 단계
+     * 이므로 TransactionManager 가 미준비 상태일 수 있어 `@Transactional` AOP 가 작동하지 않을 수 있다.
+     * [ApplicationReadyEvent] 는 모든 Bean 초기화 완료 후 발행되므로 트랜잭션 매니저를 보장한다.
      *
      * YAML 파일 부재 또는 Konform 검증 실패 시 [IllegalStateException] 으로 부팅 차단.
+     * 테스트에서 직접 호출할 수 있다.
      */
-    @PostConstruct
-    fun seed() {
+    @EventListener(ApplicationReadyEvent::class)
+    @Transactional
+    fun seedAll() {
         log.info("YamlSeedService 시작 — 표준 4 워크플로우 시드 점검")
 
         for (key in standardWorkflowKeys) {
