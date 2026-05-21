@@ -386,4 +386,107 @@ jobs:
 placeholder scan. TBD / TODO 없음. ✓
 type consistency. D1-a / D2-a / D3-a / D4-a / D5-c 일관 ✓ / 파일 경로 일관 ✓.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-05-22)
+
+**전체 판정. ✅ PASS (BLOCKER 0건, 주의 5건, 정보 2건, 권장 보완 1건)**
+
+#### Step 0. Scope Challenge
+
+- 복잡도 임계 (8 file 또는 2 신규 class/service) 미만 — 4 task / 3 신규 file + 1 수정.
+- scope reduction 옵션 (GH Actions 별도 PR 분리) 은 sanity check G1 단계에서 이미 Maxi 검토 완료, 본 PR 포함 결정.
+- 결과. **scope 적정, reduction 불필요.**
+
+#### Section 1. Architecture
+
+| ID | 분류 | 항목 |
+|---|---|---|
+| A-1 | ✅ PASS | D5-c CI workflow 설계 — Node 22 / pnpm action-setup@v4 / cache pnpm / cancel-in-progress / path filter 모두 GitHub Actions best practice (2026-05 기준). timeout-minutes 10 분 여유 적정 |
+| A-2 | ✅ PASS | Wave 1 3-병렬 dispatch — T1/T2/T3 file 겹침 0 (서로 다른 디렉토리), 코드 의존성 0 (구현 시 spec 보고 작성), eslint --fix / pnpm install 같은 자동 정리 도구 사용 없음. PR #7 "가장 빠른 케이스" 패턴 일치 |
+| A-3 | ⚠️ 주의 | workflow yml path filter 에 `docs/decisions/` 미포함 — ADR 만 변경 PR 는 frontend CI 안 트리거. 의도된 동작이지만 plan 본문 또는 ADR Consequences 한 줄 명시 권장 |
+| A-4 | ⚠️ 주의 | 향후 `apps/web/` 외 frontend 영역 (예. `apps/admin/`, `packages/ui/`) 추가 시 path filter 갱신 필요. silent skip 위험 — 본 plan 의 D5 본문 또는 ADR 본문에 "frontend 영역 확장 시 path filter 갱신" 한 줄 권장 |
+
+#### Section 2. Code Quality
+
+- 0 항목. eslint config 한 줄 추가 / ADR 양식 일관 / workflow yml 표준 패턴. DRY / 에러 핸들링 / over-under engineering 모두 적정.
+
+#### Section 3. Test (E2E TDD 변형 정당성 + 누락 검증)
+
+| ID | 분류 | 항목 |
+|---|---|---|
+| T-1 | ✅ PASS | E2E TDD 변형 정당성 — T1 fixture 임시 작성 → lint fail 확인 → 제거 패턴은 정상 RED→GREEN 과 동등 검증력. T2 ADR grep / T3 yaml syntax + 실제 push 후 GH Actions trigger 결과 모두 충분 |
+| T-2 | 권장 보완 | **D3-a (test 파일도 동일 룰) 검증 누락**. T1 의 fixture 검증을 prod 코드 위반 1 케이스만 수행. test 파일 (`*.test.ts`) 안 console.log 도 차단되는지 확인 필요. → T1 검증 단계에 fixture 를 prod + test 2 위치에 작성하는 항목 추가 권장 |
+
+#### Section 4. Performance
+
+| ID | 분류 | 항목 |
+|---|---|---|
+| P-1 | ✅ PASS | NFR-LOG-FE-05 시간 목표 적정 — cache hit ≈ 80s ≤ 90s / cold start ≈ 125~185s ≤ 4분. lint/typecheck/test 합산 추정 ≈ 50s 안. D5-c scope 와 일치 |
+| P-2 | ℹ️ 정보 | cold start dominant 요인이 pnpm install fresh — 현재 frontend 의존성 ~50건 추정. 향후 100건 초과 시 4분 NFR 위협 가능. ADR D4-a 트리거 4번째 후보로 "CI cold start 4분 NFR 위반 시" 검토 가능 (본 PR 비스코프) |
+
+#### Section 5. ADR D4-a 트리거 운영 가능성
+
+| ID | 분류 | 항목 |
+|---|---|---|
+| D-1 | ⚠️ 주의 | 트리거 1 "prod 사용자 100명 초과" — BTS 가 Phase 0 진입 직전 → prod 사용자 수 측정 인프라 부재. ADR 본문에 "측정 인프라 도입 시점부터 발효" 한 줄 권장 |
+| D-2 | ⚠️ 주의 | 트리거 2 "첫 prod incident (frontend 원인 의심)" — "frontend 원인 의심" 정의 주관적. "사용자 보고 incident 중 root cause 가 frontend 사용 중 발생으로 의심" 식으로 객관화 권장 |
+| D-3 | ✅ PASS | 트리거 3 "외부 로그 수집기 도입 결정" — 다른 결정 (별도 ADR) 으로 발효, 측정 인프라 무관, 적합 |
+
+#### Section 6. Spec coverage self-review 정합성
+
+- plan 끝 표 (FR/NFR/EC/완료기준 27 행) 전수 검증 완료. 매핑 완전.
+- ℹ️ 정보. 완료 기준 #8 (PR 라벨 `learning:logging-policy` 부착) 은 "workflow 외 PR 메타" 로 표시. 실제 부착은 게이트 2 직전 controller (메인 워크플로우) 가 처리. 본 plan task 매핑 무관.
+
+#### Failure modes
+
+- T1 fail. eslint config 변경 후 lint 위반 발견 → PR check fail → silent failure 아님. ✓
+- T2 fail. ADR 본문 누락 — T2 검증 grep 으로 발견. silent failure 아님. ✓
+- T3 fail. workflow yml syntax error → GH Actions UI "invalid workflow" 표시. silent failure 아님. ✓
+- T4 fail. 회귀 발견 → PR 차단. silent failure 아님. ✓
+- **critical gaps. 0건**.
+
+#### Worktree parallelization
+
+이미 plan §Plan 메타 에 명시. Wave 1 (T1/T2/T3 3-병렬, 파일 겹침 0) / Wave 2 (T4, depends-on [1,2,3]). ✓
+
+#### NOT in scope
+
+plan §9 비스코프 7건 명시 완료. ✓
+
+#### What already exists
+
+- `apps/web/eslint.config.js` (PR #11 도입) — 한 줄 추가 재사용.
+- `docs/decisions/` 13건 — ADR 양식 일관 재사용.
+- pnpm workspace + Vite + Vitest + Playwright (PR #11) — T4 검증 환경 재사용.
+- `.github/workflows/` — 없음. 본 PR 가 신규 (의도).
+- `.husky/` — 없음. 비스코프 (의도).
+
+재구축 없음. ✓
+
+#### 권장 보완 사항 (Maxi 게이트 1 검토 시 반영 가능)
+
+본 review 의 발견 중 plan / spec / ADR 본문 보완 후보 4건. **모두 BLOCKER 아니라 Maxi 가 선택적 반영 결정**.
+
+1. **A-3 + A-4**. workflow yml path filter 의 docs/decisions/ 미포함 + 향후 frontend 영역 확장 시 갱신 필요 → ADR Consequences 또는 plan §Plan 메타에 한 줄 명시.
+2. **T-2**. T1 검증 단계의 fixture 를 prod + test 2 위치 작성으로 확장 → D3-a (test 파일도 동일 룰) 검증 완전성 보장.
+3. **D-1**. ADR D4-a 트리거 1 "사용자 100명 초과" 에 "측정 인프라 도입 시점부터 발효" 한 줄 추가.
+4. **D-2**. ADR D4-a 트리거 2 "첫 prod incident" 정의 객관화 — "사용자 보고 incident 중 root cause 가 frontend 사용 중 발생으로 의심" 식.
+
+#### Completion Summary (plan-eng-review)
+
+- Step 0. scope 적정 (수용).
+- Architecture. 4 항목 (2 PASS + 2 주의).
+- Code Quality. 0 항목.
+- Test. 2 항목 (1 PASS + 1 권장 보완).
+- Performance. 2 항목 (1 PASS + 1 정보).
+- ADR D4-a 트리거. 3 항목 (1 PASS + 2 주의).
+- Spec coverage. 정합 (1 정보).
+- Failure modes. 0 critical gaps.
+- NOT in scope / What already exists. 모두 명시.
+- Parallelization. 2 lanes (3-병렬 + 1-순차).
+- **BLOCKER 0건**.
+
+---
+
+### plan-devex-review (← 다음 호출)
