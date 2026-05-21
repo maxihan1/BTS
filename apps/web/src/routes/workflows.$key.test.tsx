@@ -2,14 +2,11 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { workflowHandlers } from '@/mocks/workflow-handlers'
 import { WorkflowDetailPage } from './workflows.$key'
 
-// WorkflowDetailPage는 Route.useParams()가 아니라 props로 key를 받는 것이 단위 테스트 가능.
-// 만약 내부에서 Route.useParams()를 사용한다면 테스트용 wrapper가 필요하다.
-// 이 테스트는 RED 단계이므로, 컴포넌트 미존재 상태에서 import 실패를 기대한다.
+// WorkflowDetailPage는 props로 workflowKey를 받으므로 라우터 없이 단위 테스트 가능.
 
 function renderPage(workflowKey: string) {
   const client = new QueryClient({
