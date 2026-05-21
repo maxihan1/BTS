@@ -3,7 +3,6 @@
 package com.bts.workflow.postaction
 
 import com.bts.workflow.domain.dto.DomainEvent
-import com.bts.workflow.domain.dto.FieldChange
 import com.bts.workflow.domain.dto.PostActionPlan
 import com.bts.workflow.domain.dto.TransitionContext
 import com.bts.workflow.domain.spi.WorkflowPostAction
@@ -58,7 +57,7 @@ class NotifyPostAction(
             ),
         )
         return PostActionPlan(
-            fieldChanges = emptyList<FieldChange>(),
+            fieldChanges = emptyList(),
             emitEvents = listOf(event),
         )
     }
