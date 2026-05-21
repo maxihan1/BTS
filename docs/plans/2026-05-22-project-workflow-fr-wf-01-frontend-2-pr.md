@@ -183,12 +183,38 @@ PR #10 (project-workflow BC FR-WF-01 FSM 워크플로우 완제품, 머지 완�
 
 ---
 
-### Task 5. Playwright E2E — 표준 4 워크플로우 happy path
+### Task 5. workflow detail page + TanStack Router 라우트 (CONCERN-1 옵션 A)
+
+**메타**.
+- agent. `frontend-engineer`
+- files. [`apps/web/src/routes/workflows.$key.tsx` (또는 `routes/workflows/$key.tsx` — PR #11 의 file-based routing 패턴 확인 후 결정), `apps/web/src/routes/workflows.$key.test.tsx` (Vitest 단위 — query / mount)]
+- depends-on. [3, 4]
+
+**RED**. 테스트 2건.
+- T5-1. 라우트가 `key` param 받으면 `useQuery(fetchWorkflow)` 트리거 + `WorkflowDiagram` mount.
+- T5-2. fetch 실패 시 error boundary 또는 fallback `<div>워크플로우를 찾을 수 없습니다</div>`.
+
+실패 예상. route file 미존재로 router build 단계 실패 또는 컴포넌트 미존재.
+
+**GREEN**.
+- `// 워크플로우 상세 페이지 (FR-WF-01 read-only 다이어그램)` 첫 줄 헤더.
+- TanStack Router file-based route — `useParams({ from: '...' })` 로 key 추출.
+- `useQuery({ queryKey: ['workflow', key], queryFn: () => fetchWorkflow(key) })`.
+- 로딩 / 에러 / 성공 3 상태 분기 (PR #11 의 dashboard 패턴 따름).
+- 성공 시 `<WorkflowDiagram workflow={data} />` mount + 페이지 헤더 (workflow name + description).
+
+**REFACTOR**. PR #11 의 routes 컨벤션 (file-based vs object) + Header 컴포넌트 reuse + 한국어 헤더.
+
+**검증**. `pnpm --filter @bts/web test workflows.$key`.
+
+---
+
+### Task 6. Playwright E2E — 표준 4 워크플로우 happy path
 
 **메타**.
 - agent. `frontend-engineer` (또는 qa-engineer 보조 — controller 결정)
 - files. [`apps/web/e2e/workflow.spec.ts`]
-- depends-on. [3, 4]
+- depends-on. [3, 4, 5]
 
 **RED**. 테스트 4건 (4 표준 워크플로우).
 - T5-1. `software-default` happy path — 페이지 진입 + 다이어그램 SVG 렌더 (`svg.mermaid` + node count) + 첫 전이 호출 + 200 검증.
@@ -213,11 +239,12 @@ PR #10 (project-workflow BC FR-WF-01 FSM 워크플로우 완제품, 머지 완�
 
 ## Plan 메타
 
-- **task 총 수**. 5
-- **예상 wave 수**. 3
-  - Wave 0 (depends-on `[]`). Task 1 (types) + Task 2 (mermaid dep) — **2 task 병렬** (파일 충돌 0).
-  - Wave 1 (depends-on ⊂ wave 0). Task 3 (WorkflowDiagram) + Task 4 (API client + MSW) — **2 task 병렬** (파일 충돌 0).
-  - Wave 2 (depends-on ⊂ wave 0~1). Task 5 (E2E) — 1 task.
+- **task 총 수**. 6 (게이트 1 결정 — CONCERN-1 옵션 A 채택으로 Task 5 라우트 신설)
+- **예상 wave 수**. 4
+  - Wave 0 (depends-on `[]`). Task 1 (types) + Task 2 (mermaid dep) — **2 task 병렬**.
+  - Wave 1 (depends-on ⊂ wave 0). Task 3 (WorkflowDiagram) + Task 4 (API client + MSW) — **2 task 병렬**.
+  - Wave 2 (depends-on ⊂ wave 0~1). Task 5 (route + detail page) — 1 task.
+  - Wave 3 (depends-on ⊂ wave 0~2). Task 6 (Playwright E2E) — 1 task.
 - **agent 분포**. 5/5 `frontend-engineer` (Task 5 는 controller 가 qa-engineer 보조 dispatch 도 결정 가능).
 - **신규 의존성**. mermaid v11.x (Maxi 사전 승인 — PR #10 plan §909).
 - **CONCERN**.
