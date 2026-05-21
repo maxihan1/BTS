@@ -1,4 +1,4 @@
-// 워크플로우 도메인 예외 3종 — validator 실패, 워크플로우 미발견, SpEL 평가 타임아웃
+// FR-WF-01 도메인 예외 3종 — Validator 실패 / Workflow 부재 / SpEL timeout
 
 package com.bts.workflow.domain.exception
 
@@ -14,11 +14,7 @@ class WorkflowValidatorFailureException(
     val field: String?,
     val reason: String,
 ) : RuntimeException(
-    if (field != null) {
-        "Validator '$validatorType' rejected transition on field '$field': $reason"
-    } else {
-        "Validator '$validatorType' rejected transition: $reason"
-    },
+    "Validator '$validatorType' failed${field?.let { " on field '$it'" } ?: ""}: $reason",
 )
 
 /**
@@ -41,4 +37,4 @@ class WorkflowExpressionTimeoutException(
     val expression: String,
     val timeoutMillis: Long,
     cause: Throwable? = null,
-) : RuntimeException("SpEL expression timed out after ${timeoutMillis}ms: '$expression'", cause)
+) : RuntimeException("SpEL expression evaluation exceeded ${timeoutMillis}ms: '$expression'", cause)
