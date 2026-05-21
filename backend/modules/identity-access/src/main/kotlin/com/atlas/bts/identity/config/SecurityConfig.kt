@@ -3,12 +3,19 @@
 package com.atlas.bts.identity.config
 
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
+import com.atlas.bts.identity.pat.PersonalAccessToken
+import com.atlas.bts.identity.pat.PersonalAccessTokenService
+import com.atlas.bts.identity.web.PatAuthenticationFilter
+import jakarta.servlet.http.HttpServletRequest
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler
@@ -53,6 +60,7 @@ import org.springframework.web.cors.CorsConfigurationSource
 class SecurityConfig(
     private val sidRevokeJwtConverter: SidRevokeJwtConverter,
     private val corsConfigurationSource: CorsConfigurationSource,
+    private val personalAccessTokenService: PersonalAccessTokenService,
 ) {
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
@@ -67,6 +75,16 @@ class SecurityConfig(
                     cookie.secure(true)
                 }
             }
+
+        // EC-26: pat_ prefix 토큰은 JWT 파싱 대상에서 제외.
+        // DefaultBearerTokenResolver 가 Authorization 헤더에서 Bearer 토큰을 추출하되,
+        // pat_ prefix 인 경우 null 을 반환하여 JWT 필터가 처리하지 않도록 한다.
+        // PAT 요청은 PatAuthenticationFilter 가 JWT 필터보다 먼저 처리하여 SecurityContext 에 인증 정보를 설정한다.
+        val delegate = DefaultBearerTokenResolver()
+        val patSkippingBearerTokenResolver = BearerTokenResolver { req: HttpServletRequest ->
+            val token = delegate.resolve(req)
+            if (token != null && token.startsWith(PersonalAccessToken.TOKEN_PREFIX)) null else token
+        }
 
         return http
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
@@ -83,9 +101,10 @@ class SecurityConfig(
                 )
             }
             .authorizeHttpRequests { auth ->
-                // FR-09-30 permitAll 4경로
+                // FR-09-30 permitAll 4경로 + refresh (쿠키 기반, 인증 토큰 불요)
                 auth.requestMatchers(
                     "/api/v1/auth/login",
+                    "/api/v1/auth/refresh",
                     "/api/v1/auth/providers",
                     "/.well-known/jwks.json",
                     "/actuator/health",
@@ -93,8 +112,15 @@ class SecurityConfig(
                 auth.requestMatchers("/api/**").authenticated()
                 auth.anyRequest().authenticated()
             }
+            // PAT Bearer 필터: JWT 필터보다 먼저 실행하여 pat_ prefix 토큰을 SecurityContext 에 설정
+            .addFilterBefore(
+                PatAuthenticationFilter(personalAccessTokenService),
+                BearerTokenAuthenticationFilter::class.java,
+            )
             // FR-09-11: SidRevokeJwtConverter — sid claim 으로 세션 revoke 여부 확인 후 인증 토큰 발급
+            // bearerTokenResolver: pat_ prefix 토큰은 null 반환하여 JWT 필터가 처리하지 않도록 한다
             .oauth2ResourceServer { rs ->
+                rs.bearerTokenResolver(patSkippingBearerTokenResolver)
                 rs.jwt { jwt -> jwt.jwtAuthenticationConverter(sidRevokeJwtConverter) }
             }
             .build()
