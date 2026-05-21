@@ -19,9 +19,12 @@ hs_err_pid*
 
 # Node / pnpm (프론트엔드)
 node_modules/
+apps/web/node_modules/
 .pnpm-store/
 .pnpm-debug.log*
+pnpm-debug.log
 dist/
+apps/web/dist/
 .vite/
 .next/
 .turbo/
