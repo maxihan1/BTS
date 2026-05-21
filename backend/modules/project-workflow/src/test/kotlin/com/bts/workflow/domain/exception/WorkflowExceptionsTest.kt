@@ -24,7 +24,7 @@ class WorkflowExceptionsTest {
             field = "assignee",
             reason = "must not be null",
         )
-        assertThat(ex is RuntimeException).isTrue()
+        assertThat(RuntimeException::class.java.isAssignableFrom(ex.javaClass)).isTrue()
     }
 
     @Test
@@ -64,7 +64,7 @@ class WorkflowExceptionsTest {
     @Test
     fun `WorkflowNotFoundException 은 RuntimeException 상속`() {
         val ex = WorkflowNotFoundException(workflowKey = "WF-MISSING")
-        assertThat(ex is RuntimeException).isTrue()
+        assertThat(RuntimeException::class.java.isAssignableFrom(ex.javaClass)).isTrue()
     }
 
     @Test
@@ -83,7 +83,7 @@ class WorkflowExceptionsTest {
             expression = "#issue.priority == 'HIGH'",
             timeoutMillis = 500L,
         )
-        assertThat(ex is RuntimeException).isTrue()
+        assertThat(RuntimeException::class.java.isAssignableFrom(ex.javaClass)).isTrue()
     }
 
     @Test
