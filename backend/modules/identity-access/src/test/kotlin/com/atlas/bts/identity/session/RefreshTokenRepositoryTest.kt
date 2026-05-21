@@ -240,7 +240,9 @@ class RefreshTokenRepositoryTest {
             executor.submit {
                 latch.await()
                 val newId = UUID.randomUUID()
-                // 각 스레드가 독립적으로 자신의 ApplicationContext 에서 실행
+                // FK refresh_tokens.replaced_by → refresh_tokens(id) 충족.
+                // prod RefreshTokenService.rotate() 도 markUsedAndChain 전에 새 RT 를 먼저 INSERT (FK 제약).
+                repo.save(buildToken(id = newId))
                 val r = repo.markUsedAndChain(oldToken.id, newId)
                 if (r != null) successCount.incrementAndGet()
             }
