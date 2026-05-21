@@ -8,7 +8,10 @@ bts:
     issuer-uri: ${BTS_AUTH_ISSUER_URI}
 
     jwt:
-      # prod 환경 RSA 개인키 PEM 파일 경로 — JwtKeyProviderConfig @Profile("prod") 가 사용
-      # DevMemoryKeyProvider (dev/test 전용) 로 silent fallback 절대 금지 (BLOCKER #6)
-      # PemFileKeyProvider.load() 가 파일 존재 여부 + 형식 검증 후 fail-fast (EC-19)
+      # prod 환경 RSA 개인키 PEM 파일 절대 경로 — JwtKeyProviderConfig @Profile("prod") 가 주입.
+      # dev/test 환경의 인메모리 키 생성(DevMemoryKeyProvider) 로 silent fallback 하지 않는다 (BLOCKER #6).
+      # PemFileKeyProvider.load() 가 파일 존재 여부 + RSA CRT 형식 검증 후 fail-fast (EC-19).
+      #
+      # dev-key.pem 생성 책임: DevMemoryKeyProvider (Task 7) — prod 에서는 사용 금지.
+      # prod key 생성 예시: openssl genrsa -out /secrets/bts-jwt.pem 2048
       private-key-pem-path: ${BTS_JWT_PRIVATE_KEY_PATH}

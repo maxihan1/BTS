@@ -22,9 +22,14 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          # FR-09-17: Keycloak issuer-uri 제거. BTS 자체 JwksController (Task 23) 를 바라본다.
-          # JwtConfig.jwtDecoder() 가 NimbusJwtDecoder.withPublicKey() 로 직접 검증하므로
-          # 이 설정은 Spring Boot auto-configure fallback 용도로만 남겨둔다.
+          # FR-09-17: Keycloak issuer-uri 제거 — BTS 자체 JwksController (Task 23 Wave 6) 를 바라본다.
+          #
+          # JwtConfig.jwtDecoder() 가 NimbusJwtDecoder.withPublicKey() 로 공개키를 직접 주입하므로
+          # Spring Boot 가 이 URI 로 원격 JWK Set 을 fetch 하지 않는다.
+          # 이 설정은 향후 멀티 키 교체(key rotation) 또는 외부 검증 클라이언트가
+          # Spring 표준 auto-configure 를 사용할 때를 대비한 fallback 선언이다.
+          #
+          # bts.auth.issuer-uri 기본값: http://localhost:8080 (로컬 개발 서버)
           jwk-set-uri: ${bts.auth.issuer-uri:http://localhost:8080}/.well-known/jwks.json
       client:
         registration:
