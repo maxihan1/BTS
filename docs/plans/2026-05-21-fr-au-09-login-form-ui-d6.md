@@ -412,6 +412,7 @@ B1. CSRF 헤더 echo / B2. 422 처리 / B3. 헤더 위치 / B4. Vite React 플�
 - depends-on: [7, 11, 13]
 - 메타 보정 1 (2026-05-21 W7 controller). (a) `__root.tsx` 추가 — plan REFACTOR "헤더가 __root layout 내부에 마운트" 의도 명시. (b) `components/ui/dropdown-menu.tsx` 추가 — plan GREEN "shadcn/ui DropdownMenu" 명시, T14 select 와 동일 패턴으로 사전 추가.
 - 메타 보정 2 (2026-05-21 W7 verifier 권장). `apps/web/src/router.test.tsx` 추가 — T15 가 dashboard.tsx placeholder ("대시보드") → "환영합니다, {username}" 변경하면서 router.test.tsx /dashboard 매처 깨짐 + Header 가 __root 에 마운트되며 useMutation 사용으로 QueryClientProvider wrap 필요. T15 implementer 가 자기 변경 orphan 정리 (CLAUDE.md §3 — 내 변경이 만든 orphan 은 내가 정리) + T14 orphan 동시 정리. 정당한 부수 변경.
+- 메타 보정 3 (2026-05-21 W8 controller fix). `apps/web/src/main.tsx` 추가 — T15 implementer 가 router.test.tsx 에는 QueryClientProvider wrap 을 추가했으나 production main.tsx 에 누락. W8 E2E 가 처음 실행 시 "No QueryClient set" runtime 에러로 앱 crash. controller 직접 fix (production 진입점 보강 + retry: false 옵션). plan T15 의 의도와 실제 구현 사이 gap 의 마무리.
 
 **RED**. `Header.test.tsx`. 인증 사용자 username 표시, 로그아웃 클릭 → `useLogoutMutation.mutate` 호출 → `/login` 리다이렉트.
 
