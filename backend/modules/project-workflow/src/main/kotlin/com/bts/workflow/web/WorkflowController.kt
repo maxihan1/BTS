@@ -81,8 +81,14 @@ class WorkflowController(
     /**
      * 워크플로우 전이 계획을 계산한다.
      *
-     * [WorkflowEngine.plan] 은 [org.springframework.transaction.annotation.Propagation.MANDATORY] 이므로
-     * 이 메서드에 `@Transactional` 을 부착해 트랜잭션 컨텍스트를 제공한다.
+     * [WorkflowEngine.plan] 은 [org.springframework.transaction.annotation.Propagation.MANDATORY] 를 선언하므로,
+     * 호출자는 반드시 활성 트랜잭션 안에서 호출해야 한다.
+     * 이상적으로는 별도 `@Service` 레이어가 트랜잭션 경계를 담당하는 것이 표준 구조이나,
+     * 본 Task 33 범위에서 서비스 레이어 파일이 허용 목록에 없으므로
+     * 이 메서드에만 `@Transactional` 을 부착해 트랜잭션 컨텍스트를 제공한다.
+     *
+     * 클래스 수준이 아닌 메서드 수준에만 `@Transactional` 을 적용한 이유는
+     * learning #91 (controller 클래스 전체에 `@Transactional` 부착 금지) 을 준수하기 위함이다.
      *
      * @param key 적용할 워크플로우 키 (경로 변수)
      * @param body 전이 요청 바디
