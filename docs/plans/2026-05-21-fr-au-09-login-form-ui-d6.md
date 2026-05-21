@@ -363,19 +363,20 @@ B1. CSRF 헤더 echo / B2. 422 처리 / B3. 헤더 위치 / B4. Vite React 플�
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/auth/routeGuard.ts`, `apps/web/src/auth/routeGuard.test.tsx`, `apps/web/src/routes/dashboard.tsx` (보강)]
+- files: [`apps/web/src/auth/routeGuard.ts`, `apps/web/src/auth/routeGuard.test.tsx`, `apps/web/src/routes/dashboard.tsx` (보강), `apps/web/src/router.ts` (보강 — dashboardRoute.beforeLoad 연결)]
 - depends-on: [7, 12]
+- 메타 보정 (2026-05-21 W5 controller fix). `apps/web/src/router.ts` 추가. 가드 헬퍼만 만들고 라우트에 attach 안 하면 실제 동작 0. 원 메타에서 router.ts 누락이 plan drift. W4 vitest path alias fix 와 동일 패턴 (controller 직접 fix, 정당한 부수 변경). `redirectIfAuth` 의 /login 라우트 attach 는 T14 (LoginForm) 작업 시 login.tsx 와 함께 처리 — T14 메타에 `routes/login.tsx` 이미 포함.
 
 **RED**. 
 - 미인증 + `requireAuth: true` 라우트 → `/login?returnTo=<현재>` 리다이렉트.
 - 인증 + `/login` 진입 → `returnTo` 또는 `/dashboard` 리다이렉트.
 - `returnTo` 외부 URL (`http://evil.com`) → 차단 + `/dashboard` 리다이렉트.
 
-**GREEN**. `requireAuth` / `redirectIfAuth` 헬퍼 — `beforeLoad`에 export.
+**GREEN**. `requireAuth` / `redirectIfAuth` 헬퍼 — `beforeLoad`에 export. `router.ts` dashboardRoute 에 `beforeLoad: requireAuth` 연결.
 
 **REFACTOR**. `returnTo` 검증 (`^/` 패턴) 분리.
 
-**검증**. `pnpm --filter @bts/web test src/auth/routeGuard`.
+**검증**. `pnpm --filter @bts/web test src/auth/routeGuard`. + `pnpm --filter @bts/web test` 전체 통과 확인 (router.ts 보강이 기존 router.test.tsx 깨지지 않는지).
 
 ### Wave 4 — UI 페이지 (TDD, 2 task)
 

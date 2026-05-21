@@ -156,9 +156,11 @@ describe('apiPost (Zod 파싱)', () => {
   })
 
   it('비-2xx 응답 → ApiError throw (status + body 포함)', async () => {
+    // 401 은 T9 인터셉터가 /refresh 자동 호출 흐름으로 잡으므로 500 으로 검증.
+    // 401 의 인터셉터 동작은 interceptor.test.ts 가 별도로 검증.
     server.use(
       http.post('/api/v1/auth/login', () => {
-        return HttpResponse.json({ error: 'invalid_credentials' }, { status: 401 })
+        return HttpResponse.json({ error: 'server_error' }, { status: 500 })
       }),
     )
 
@@ -171,8 +173,8 @@ describe('apiPost (Zod 파싱)', () => {
 
     expect(caughtError).toBeInstanceOf(ApiError)
     const apiError = caughtError as ApiError
-    expect(apiError.status).toBe(401)
-    expect(apiError.body).toEqual({ error: 'invalid_credentials' })
+    expect(apiError.status).toBe(500)
+    expect(apiError.body).toEqual({ error: 'server_error' })
   })
 })
 
