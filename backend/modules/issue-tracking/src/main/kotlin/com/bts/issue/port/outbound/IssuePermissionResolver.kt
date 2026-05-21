@@ -29,6 +29,10 @@ import com.bts.issue.domain.ActorId
  * 2. [com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver] 는 dev/staging 에서만 활성.
  * 3. 이 interface 를 사용하는 IssueApplicationService 코드는 **변경 없음** — adapter 추가만으로 교체 완료.
  *
+ * ## ArchUnit 강제
+ * - `IssueApplicationService` (Service 계층) 는 이 interface 만 의존한다. 구체 구현체 직접 import 금지.
+ * - `com.bts.identity.*` 의 클래스를 issue-tracking 에서 직접 import 하면 빌드 실패 (BC 격리 룰).
+ *
  * @see com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
  * @see docs/adr/2026-05-22-issue-permission-resolver-port.md
  */
