@@ -73,6 +73,70 @@ class WebDtoSerializationTest {
         assertThat(restored.transitions).hasSize(2)
     }
 
+    // ── T7-1: WorkflowDto description 직렬화 검증 ────────────────────────────
+
+    @Test
+    fun `T7-1 WorkflowDto toDto — description 필드가 JSON 에 포함된다`() {
+        val workflow =
+            Workflow.of(
+                key = "TEST",
+                name = "테스트 워크플로우",
+                description = "워크플로우 설명 텍스트",
+                states =
+                    listOf(
+                        WorkflowState(key = "TODO", name = "할 일", category = StateCategory.TODO, displayOrder = 0),
+                        WorkflowState(key = "DONE", name = "완료", category = StateCategory.DONE, displayOrder = 1),
+                    ),
+                transitions =
+                    listOf(
+                        WorkflowTransition(fromStateKey = "TODO", toStateKey = "DONE", name = "완료"),
+                    ),
+            )
+
+        val dto = workflow.toDto()
+
+        assertThat(dto.description).isEqualTo("워크플로우 설명 텍스트")
+
+        val json = mapper.writeValueAsString(dto)
+        assertThat(json).contains("\"description\"")
+        assertThat(json).contains("워크플로우 설명 텍스트")
+    }
+
+    @Test
+    fun `T7-1b WorkflowDto toDto — description null 이면 JSON 에 null 직렬화`() {
+        val workflow =
+            Workflow.of(
+                key = "TEST-NULL",
+                name = "설명 없는 워크플로우",
+                description = null,
+                states =
+                    listOf(
+                        WorkflowState(key = "TODO", name = "할 일", category = StateCategory.TODO, displayOrder = 0),
+                        WorkflowState(key = "DONE", name = "완료", category = StateCategory.DONE, displayOrder = 1),
+                    ),
+                transitions = emptyList(),
+            )
+
+        val dto = workflow.toDto()
+
+        assertThat(dto.description).isNull()
+    }
+
+    // ── T7-2: WorkflowTransitionDto key 직렬화 검증 ──────────────────────────
+
+    @Test
+    fun `T7-2 WorkflowTransitionDto toDto — key 필드가 JSON 에 포함된다`() {
+        val transition = WorkflowTransition(fromStateKey = "TODO", toStateKey = "IN_PROGRESS", name = "시작")
+
+        val dto = transition.toDto()
+
+        assertThat(dto.key).isEqualTo("TODO__IN_PROGRESS")
+
+        val json = mapper.writeValueAsString(dto)
+        assertThat(json).contains("\"key\"")
+        assertThat(json).contains("TODO__IN_PROGRESS")
+    }
+
     // ── Case 2: TransitionRequestDto Konform 검증 ────────────────────────────
 
     @Test
