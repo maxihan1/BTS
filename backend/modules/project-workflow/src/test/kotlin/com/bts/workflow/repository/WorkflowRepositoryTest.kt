@@ -3,9 +3,6 @@
 package com.bts.workflow.repository
 
 import com.bts.workflow.domain.StateCategory
-import com.bts.workflow.domain.Workflow
-import com.bts.workflow.domain.WorkflowState
-import com.bts.workflow.domain.WorkflowTransition
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
@@ -16,6 +13,9 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.sql.DriverManager
+
+/** 테스트 seed 용 상태 삽입 파라미터 묶음. */
+private data class RawState(val key: String, val name: String, val category: String, val displayOrder: Int)
 
 /**
  * WorkflowRepository — jOOQ DSLContext 기반 3 테이블 join 조회 통합 테스트.
@@ -30,7 +30,6 @@ import java.sql.DriverManager
  */
 @Testcontainers
 class WorkflowRepositoryTest {
-
     companion object {
         @Container
         @JvmStatic
@@ -57,11 +56,12 @@ class WorkflowRepositoryTest {
             seedData()
 
             // jOOQ DSLContext — SQL을 코드로 안전하게 작성하는 라이브러리의 핵심 진입점
-            val dataSource = org.springframework.jdbc.datasource.DriverManagerDataSource(
-                postgres.jdbcUrl,
-                postgres.username,
-                postgres.password,
-            )
+            val dataSource =
+                org.springframework.jdbc.datasource.DriverManagerDataSource(
+                    postgres.jdbcUrl,
+                    postgres.username,
+                    postgres.password,
+                )
             val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
             repository = WorkflowRepository(dsl)
         }
@@ -69,82 +69,81 @@ class WorkflowRepositoryTest {
         private fun seedData() {
             DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
                 conn.autoCommit = false
-
-                // 워크플로우 1 — software-default (findByKey 적중 케이스)
-                val wfId1 = conn.prepareStatement(
-                    "INSERT INTO workflows (key, name) VALUES ('software-default', '소프트웨어 기본') RETURNING id",
-                ).use { stmt ->
-                    stmt.executeQuery().use { rs -> rs.next(); rs.getObject(1) as java.util.UUID }
-                }
-
-                // workflow_states 3개 (TODO/IN_PROGRESS/DONE)
-                val stateOpenId = conn.prepareStatement(
-                    "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) VALUES (?, 'open', '열림', 'TODO', 0) RETURNING id",
-                ).use { stmt ->
-                    stmt.setObject(1, wfId1)
-                    stmt.executeQuery().use { rs -> rs.next(); rs.getObject(1) as java.util.UUID }
-                }
-                val stateInProgressId = conn.prepareStatement(
-                    "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) VALUES (?, 'in-progress', '진행 중', 'IN_PROGRESS', 1) RETURNING id",
-                ).use { stmt ->
-                    stmt.setObject(1, wfId1)
-                    stmt.executeQuery().use { rs -> rs.next(); rs.getObject(1) as java.util.UUID }
-                }
-                val stateDoneId = conn.prepareStatement(
-                    "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) VALUES (?, 'done', '완료', 'DONE', 2) RETURNING id",
-                ).use { stmt ->
-                    stmt.setObject(1, wfId1)
-                    stmt.executeQuery().use { rs -> rs.next(); rs.getObject(1) as java.util.UUID }
-                }
-
-                // workflow_transitions 2개
-                conn.prepareStatement(
-                    "INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name) VALUES (?, ?, ?, '시작')",
-                ).use { stmt ->
-                    stmt.setObject(1, wfId1)
-                    stmt.setObject(2, stateOpenId)
-                    stmt.setObject(3, stateInProgressId)
-                    stmt.executeUpdate()
-                }
-                conn.prepareStatement(
-                    "INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name) VALUES (?, ?, ?, '완료')",
-                ).use { stmt ->
-                    stmt.setObject(1, wfId1)
-                    stmt.setObject(2, stateInProgressId)
-                    stmt.setObject(3, stateDoneId)
-                    stmt.executeUpdate()
-                }
-
-                // 워크플로우 2 — bug-tracking (findAll 케이스용)
-                val wfId2 = conn.prepareStatement(
-                    "INSERT INTO workflows (key, name) VALUES ('bug-tracking', '버그 추적') RETURNING id",
-                ).use { stmt ->
-                    stmt.executeQuery().use { rs -> rs.next(); rs.getObject(1) as java.util.UUID }
-                }
-
-                val stateBugOpenId = conn.prepareStatement(
-                    "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) VALUES (?, 'bug-open', '버그 등록', 'TODO', 0) RETURNING id",
-                ).use { stmt ->
-                    stmt.setObject(1, wfId2)
-                    stmt.executeQuery().use { rs -> rs.next(); rs.getObject(1) as java.util.UUID }
-                }
-                val stateBugFixedId = conn.prepareStatement(
-                    "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) VALUES (?, 'bug-fixed', '수정 완료', 'DONE', 1) RETURNING id",
-                ).use { stmt ->
-                    stmt.setObject(1, wfId2)
-                    stmt.executeQuery().use { rs -> rs.next(); rs.getObject(1) as java.util.UUID }
-                }
-
-                conn.prepareStatement(
-                    "INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name) VALUES (?, ?, ?, '수정')",
-                ).use { stmt ->
-                    stmt.setObject(1, wfId2)
-                    stmt.setObject(2, stateBugOpenId)
-                    stmt.setObject(3, stateBugFixedId)
-                    stmt.executeUpdate()
-                }
-
+                seedSoftwareDefault(conn)
+                seedBugTracking(conn)
                 conn.commit()
+            }
+        }
+
+        private fun seedSoftwareDefault(conn: java.sql.Connection) {
+            val wfId = insertWorkflowRaw(conn, "software-default", "소프트웨어 기본")
+            val openId = insertStateRaw(conn, wfId, RawState("open", "열림", "TODO", 0))
+            val inProgressId = insertStateRaw(conn, wfId, RawState("in-progress", "진행 중", "IN_PROGRESS", 1))
+            val doneId = insertStateRaw(conn, wfId, RawState("done", "완료", "DONE", 2))
+            insertTransitionRaw(conn, wfId, openId, inProgressId, "시작")
+            insertTransitionRaw(conn, wfId, inProgressId, doneId, "완료")
+        }
+
+        private fun seedBugTracking(conn: java.sql.Connection) {
+            val wfId = insertWorkflowRaw(conn, "bug-tracking", "버그 추적")
+            val bugOpenId = insertStateRaw(conn, wfId, RawState("bug-open", "버그 등록", "TODO", 0))
+            val bugFixedId = insertStateRaw(conn, wfId, RawState("bug-fixed", "수정 완료", "DONE", 1))
+            insertTransitionRaw(conn, wfId, bugOpenId, bugFixedId, "수정")
+        }
+
+        private fun insertWorkflowRaw(
+            conn: java.sql.Connection,
+            key: String,
+            name: String,
+        ): java.util.UUID =
+            conn.prepareStatement(
+                "INSERT INTO workflows (key, name) VALUES (?, ?) RETURNING id",
+            ).use { stmt ->
+                stmt.setString(1, key)
+                stmt.setString(2, name)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getObject(1) as java.util.UUID
+                }
+            }
+
+        private fun insertStateRaw(
+            conn: java.sql.Connection,
+            wfId: java.util.UUID,
+            spec: RawState,
+        ): java.util.UUID =
+            conn.prepareStatement(
+                "INSERT INTO workflow_states" +
+                    " (workflow_id, key, name, category, display_order)" +
+                    " VALUES (?, ?, ?, ?, ?) RETURNING id",
+            ).use { stmt ->
+                stmt.setObject(1, wfId)
+                stmt.setString(2, spec.key)
+                stmt.setString(3, spec.name)
+                stmt.setString(4, spec.category)
+                stmt.setInt(5, spec.displayOrder)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getObject(1) as java.util.UUID
+                }
+            }
+
+        private fun insertTransitionRaw(
+            conn: java.sql.Connection,
+            wfId: java.util.UUID,
+            fromId: java.util.UUID,
+            toId: java.util.UUID,
+            name: String,
+        ) {
+            conn.prepareStatement(
+                "INSERT INTO workflow_transitions" +
+                    " (workflow_id, from_state_id, to_state_id, name) VALUES (?, ?, ?, ?)",
+            ).use { stmt ->
+                stmt.setObject(1, wfId)
+                stmt.setObject(2, fromId)
+                stmt.setObject(3, toId)
+                stmt.setString(4, name)
+                stmt.executeUpdate()
             }
         }
     }
