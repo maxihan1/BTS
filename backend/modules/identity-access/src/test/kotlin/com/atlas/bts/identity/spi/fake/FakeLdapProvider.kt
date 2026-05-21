@@ -24,9 +24,10 @@ import java.util.UUID
 @Component
 @Profile("test-spi")
 class FakeLdapProvider(
-    val available: Boolean = true,
+    private val _available: Boolean = true,
 ) : AuthenticationProvider {
     override val type: ProviderType = ProviderType.LDAP
+    override val available: Boolean get() = _available
 
     override fun supports(credential: Credential): Boolean = credential is Credential.LdapBind
 

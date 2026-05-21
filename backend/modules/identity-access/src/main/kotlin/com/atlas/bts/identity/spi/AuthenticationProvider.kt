@@ -28,6 +28,17 @@ interface AuthenticationProvider {
     val priority: Int get() = type.priority
 
     /**
+     * 이 공급자가 현재 정상적으로 서비스 가능한 상태인지 반환.
+     *
+     * - `true` (기본값): 공급자가 활성 상태이며 인증 요청을 처리할 수 있음.
+     * - `false`: 공급자를 사용할 수 없음 (예: LDAP 서버 미설정, 연결 불가).
+     *
+     * [ProvidersController]가 UI 로그인 폼에 노출할 공급자 목록을 조회할 때 이 값을 포함한다
+     * (FR-AU-09-22). 기본 구현은 `true` 반환 — 특수한 경우만 override.
+     */
+    val available: Boolean get() = true
+
+    /**
      * 주어진 [credential]을 이 공급자가 처리할 수 있는지 반환.
      * [ProviderRegistry.findFor]가 적합한 공급자를 찾을 때 호출된다.
      */
