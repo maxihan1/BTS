@@ -42,7 +42,7 @@ describe('authHandlers — POST /api/v1/auth/login', () => {
 describe('authHandlers — GET /api/v1/users/me/whoami', () => {
   it('Authorization: Bearer alice-token → 200 + alice user info', async () => {
     const res = await fetch('/api/v1/users/me/whoami', {
-      headers: { Authorization: 'Bearer alice-mock-access-token' },
+      headers: { Authorization: 'Bearer mock-access-token-alice' },
     })
 
     expect(res.status).toBe(200)
