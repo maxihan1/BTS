@@ -1,4 +1,4 @@
-// AuthController 슬라이스 테스트 — login/logout/refresh 3 엔드포인트 RED 케이스 (FR-AU-09 Task 21)
+// AuthController 슬라이스 테스트 — login/logout/refresh 3 엔드포인트 (FR-AU-09 Task 21)
 
 package com.atlas.bts.identity.web
 
@@ -6,6 +6,7 @@ import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
 import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
+import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.session.RefreshTokenRepository
 import com.atlas.bts.identity.session.RefreshTokenService
 import com.atlas.bts.identity.session.RefreshTokenService.FailureReason
@@ -18,14 +19,16 @@ import com.atlas.bts.identity.spi.FailureReason.INVALID_CREDENTIALS
 import com.atlas.bts.identity.spi.Principal
 import com.atlas.bts.identity.spi.ProviderRegistry
 import com.atlas.bts.identity.spi.ProviderType
-import io.mockk.every
 import io.mockk.mockk
 import jakarta.servlet.http.Cookie
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito.`when`
+import org.mockito.Mockito.mock
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.boot.test.mock.mockito.MockBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
@@ -44,7 +47,7 @@ import java.time.ZoneOffset
 import java.util.UUID
 
 /**
- * AuthController WebMvcTest 슬라이스 테스트 (FR-AU-09 Task 21 RED).
+ * AuthController WebMvcTest 슬라이스 테스트 (FR-AU-09 Task 21).
  *
  * ## 검증 시나리오
  * - login 성공 — 200 + access_token body + Set-Cookie refresh_token HttpOnly Secure SameSite=Strict Max-Age=1209600
@@ -57,28 +60,33 @@ import java.util.UUID
  * - refresh 만료 — 401 + {"error": "refresh_token_expired"}
  * - refresh cookie 없음 — 401 + {"error": "refresh_token_invalid"}
  *
- * ## CSRF 처리
- * - login: SecurityConfig 에서 CSRF skip
- * - logout: jwt() 포스트 프로세서 — Bearer stateless 로 CsrfFilter skip
- * - refresh: csrf() 포스트 프로세서 사용 (public endpoint, CSRF 보호 대상)
+ * ## 의존성 모킹 전략
+ * - SecurityConfig 필수 Bean (SidRevokeJwtConverter, JwtDecoder, CorsConfigurationSource, PersonalAccessTokenService):
+ *   @TestConfiguration + MockK — WhoamiControllerTest 패턴과 일관.
+ * - AuthController 의존 서비스 (SessionService, RefreshTokenRepository, RefreshTokenService, JwtIssuer, ProviderRegistry):
+ *   @MockBean (Mockito) — MockK 로 companion object 포함 클래스를 Spring @Bean 등록 시
+ *   ByteBuddy 의 $Companion 클래스 로드 실패 (NoClassDefFoundError) 회피.
  */
 @WebMvcTest(
     controllers = [AuthController::class],
     excludeAutoConfiguration = [OAuth2ClientAutoConfiguration::class],
 )
-@Import(SecurityConfig::class, AuthControllerTest.MockBeans::class)
+@Import(SecurityConfig::class, AuthControllerTest.SecurityBeans::class)
 class AuthControllerTest {
 
-    /** raw refresh token — 64자 소문자 hex (RefreshToken.HASH_LENGTH 와 동일 길이) */
+    /** raw refresh token — 64자 소문자 hex */
     private val refreshTokenRaw = "ab".repeat(32)
 
     @TestConfiguration
-    class MockBeans {
+    class SecurityBeans {
         @Bean
         fun jwtDecoder(): JwtDecoder = mockk(relaxed = true)
 
         @Bean
         fun sidRevokeJwtConverter(): SidRevokeJwtConverter {
+            // SidRevokeJwtConverter 생성용 SessionService 는 지역 mock — Bean 등록 없음.
+            // @MockBean SessionService 와는 별개 인스턴스이나, SidRevokeJwtConverter 는
+            // jwt() 포스트 프로세서 사용 시 실제로 호출되지 않으므로 무방.
             val sessionService: SessionService = mockk(relaxed = true)
             val clock = Clock.fixed(Instant.parse("2026-05-21T10:00:00Z"), ZoneOffset.UTC)
             return SidRevokeJwtConverter(sessionService, clock)
@@ -89,37 +97,26 @@ class AuthControllerTest {
             CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
 
         @Bean
-        fun providerRegistry(): ProviderRegistry = mockk(relaxed = true)
-
-        @Bean
-        fun sessionService(): SessionService = mockk(relaxed = true)
-
-        @Bean
-        fun refreshTokenRepository(): RefreshTokenRepository = mockk(relaxed = true)
-
-        @Bean
-        fun refreshTokenService(): RefreshTokenService = mockk(relaxed = true)
-
-        @Bean
-        fun jwtIssuer(): JwtIssuer = mockk(relaxed = true)
+        fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)
     }
 
     @Autowired
     lateinit var mockMvc: MockMvc
 
-    @Autowired
+    // AuthController 의존 서비스 — Mockito @MockBean (companion object ByteBuddy 문제 회피)
+    @MockBean
     lateinit var providerRegistry: ProviderRegistry
 
-    @Autowired
+    @MockBean
     lateinit var sessionService: SessionService
 
-    @Autowired
+    @MockBean
     lateinit var refreshTokenRepository: RefreshTokenRepository
 
-    @Autowired
+    @MockBean
     lateinit var refreshTokenService: RefreshTokenService
 
-    @Autowired
+    @MockBean
     lateinit var jwtIssuer: JwtIssuer
 
     // ── login 성공 ─────────────────────────────────────────────────────────────
@@ -130,24 +127,38 @@ class AuthControllerTest {
         val sessionId = UUID.fromString("22222222-2222-2222-2222-222222222222")
         val accessToken = "eyJhbGciOiJSUzI1NiJ9.test.access"
 
-        val mockProvider: com.atlas.bts.identity.spi.AuthenticationProvider = mockk()
-        val principal = Principal(
-            userId = userId,
-            providerType = ProviderType.LOCAL,
-            displayName = "Alice",
-            externalSubject = null,
-        )
-        val mockSession: Session = mockk {
-            every { id } returns sessionId
-            every { userId } returns userId
-            every { providerId } returns "local"
+        val mockProvider = mock(com.atlas.bts.identity.spi.AuthenticationProvider::class.java)
+        val principal =
+            Principal(
+                userId = userId,
+                providerType = ProviderType.LOCAL,
+                displayName = "Alice",
+                externalSubject = null,
+            )
+        val mockSession = mock(Session::class.java).also {
+            `when`(it.id).thenReturn(sessionId)
+            `when`(it.userId).thenReturn(userId)
+            `when`(it.providerId).thenReturn("local")
         }
 
-        every { providerRegistry.findFor(any<Credential>()) } returns mockProvider
-        every { mockProvider.authenticate(any()) } returns AuthnResult.Success(principal)
-        every { sessionService.create(any(), any(), any(), any()) } returns mockSession
-        every { jwtIssuer.issue(userId, sessionId, "local", emptyList()) } returns accessToken
-        every { refreshTokenRepository.save(any()) } returns Unit
+        `when`(providerRegistry.findFor(anyCredential())).thenReturn(mockProvider)
+        `when`(mockProvider.authenticate(anyCredential())).thenReturn(AuthnResult.Success(principal))
+        `when`(
+            sessionService.create(
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+            ),
+        ).thenReturn(mockSession)
+        `when`(
+            jwtIssuer.issue(
+                anyUuid(),
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyList(),
+            ),
+        ).thenReturn(accessToken)
 
         mockMvc.perform(
             post("/api/v1/auth/login")
@@ -169,10 +180,10 @@ class AuthControllerTest {
 
     @Test
     fun `login returns 401 when password is wrong`() {
-        val mockProvider: com.atlas.bts.identity.spi.AuthenticationProvider = mockk()
+        val mockProvider = mock(com.atlas.bts.identity.spi.AuthenticationProvider::class.java)
 
-        every { providerRegistry.findFor(any<Credential>()) } returns mockProvider
-        every { mockProvider.authenticate(any()) } returns AuthnResult.Failure(INVALID_CREDENTIALS)
+        `when`(providerRegistry.findFor(anyCredential())).thenReturn(mockProvider)
+        `when`(mockProvider.authenticate(anyCredential())).thenReturn(AuthnResult.Failure(INVALID_CREDENTIALS))
 
         mockMvc.perform(
             post("/api/v1/auth/login")
@@ -183,11 +194,11 @@ class AuthControllerTest {
             .andExpect(jsonPath("$.error").value("invalid_credentials"))
     }
 
-    // ── login 실패 (provider 없음) ────────────────────────────────────────────
+    // ── login 실패 (provider 없음) ─────────────────────────────────────────────
 
     @Test
     fun `login returns 401 when no provider found for credential`() {
-        every { providerRegistry.findFor(any<Credential>()) } returns null
+        `when`(providerRegistry.findFor(anyCredential())).thenReturn(null)
 
         mockMvc.perform(
             post("/api/v1/auth/login")
@@ -203,9 +214,6 @@ class AuthControllerTest {
     @Test
     fun `logout returns 204 and expires refresh_token cookie`() {
         val sessionId = UUID.fromString("22222222-2222-2222-2222-222222222222")
-
-        every { sessionService.revoke(any(), any()) } returns Unit
-        every { refreshTokenRepository.revokeChainFromSession(any()) } returns 0
 
         mockMvc.perform(
             post("/api/v1/auth/logout")
@@ -239,9 +247,11 @@ class AuthControllerTest {
         val accessToken = "eyJhbGciOiJSUzI1NiJ9.refreshed.access"
         val newRefreshRaw = "cd".repeat(32)
 
-        every { refreshTokenService.rotate(any()) } returns RotateResult.Success(
-            accessToken = accessToken,
-            newRefreshTokenRaw = newRefreshRaw,
+        `when`(refreshTokenService.rotate(org.mockito.ArgumentMatchers.anyString())).thenReturn(
+            RotateResult.Success(
+                accessToken = accessToken,
+                newRefreshTokenRaw = newRefreshRaw,
+            ),
         )
 
         mockMvc.perform(
@@ -264,7 +274,9 @@ class AuthControllerTest {
 
     @Test
     fun `refresh returns 401 with refresh_token_reused when token is replayed`() {
-        every { refreshTokenService.rotate(any()) } returns RotateResult.Failure(FailureReason.Replay)
+        `when`(refreshTokenService.rotate(org.mockito.ArgumentMatchers.anyString())).thenReturn(
+            RotateResult.Failure(FailureReason.Replay),
+        )
 
         mockMvc.perform(
             post("/api/v1/auth/refresh")
@@ -279,7 +291,9 @@ class AuthControllerTest {
 
     @Test
     fun `refresh returns 401 with refresh_token_expired when token is expired`() {
-        every { refreshTokenService.rotate(any()) } returns RotateResult.Failure(FailureReason.Expired)
+        `when`(refreshTokenService.rotate(org.mockito.ArgumentMatchers.anyString())).thenReturn(
+            RotateResult.Failure(FailureReason.Expired),
+        )
 
         mockMvc.perform(
             post("/api/v1/auth/refresh")
@@ -301,4 +315,21 @@ class AuthControllerTest {
             .andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.error").value("refresh_token_invalid"))
     }
+
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    /**
+     * Credential sealed interface 의 Mockito any() 매처.
+     * Kotlin non-null 타입에 Mockito any() 가 null 을 반환하는 것을 방지하기 위해
+     * Elvis 연산자로 더미 기본값을 제공한다.
+     */
+    private fun anyCredential(): Credential =
+        org.mockito.ArgumentMatchers.any(Credential::class.java)
+            ?: Credential.UsernamePassword("", charArrayOf())
+
+    /**
+     * UUID 파라미터의 Mockito any() 매처 — Kotlin non-null UUID 에 null 전달 방지.
+     */
+    private fun anyUuid(): UUID =
+        org.mockito.ArgumentMatchers.any(UUID::class.java) ?: UUID.randomUUID()
 }
