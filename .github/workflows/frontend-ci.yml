@@ -1,0 +1,47 @@
+# .github/workflows/frontend-ci.yml — BTS 첫 GitHub Actions CI workflow
+# Scope. apps/web (frontend) — lint / typecheck / test. ADR. docs/decisions/2026-05-22-frontend-logging-policy.md (D5-c)
+name: frontend-ci
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/frontend-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/frontend-ci.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - name: Setup Node 22 (with pnpm cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+      - name: Lint (no-console + react-hooks + tseslint)
+        run: pnpm --filter @bts/web lint
+      - name: Typecheck (TS strict)
+        run: pnpm --filter @bts/web typecheck
+      - name: Test (vitest unit + msw)
+        run: pnpm --filter @bts/web test
