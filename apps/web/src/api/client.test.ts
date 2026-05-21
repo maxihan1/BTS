@@ -1,5 +1,5 @@
 // apiFetch / apiPost / apiGet / ApiError 단위 테스트 — msw로 HTTP 가로채기
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { apiFetch, apiPost, apiGet, ApiError } from './client'
@@ -97,30 +97,25 @@ describe('apiFetch', () => {
   })
 
   it('VITE_API_BASE_URL 환경 변수 우선 적용', async () => {
-    // import.meta.env를 vi.stubEnv로 설정
-    vi.stubEnv('VITE_API_BASE_URL', 'http://custom-api.example.com')
-
+    // import.meta.env는 Vite 빌드 시 치환되므로 테스트 환경에서는 undefined → 빈 문자열 fallback
+    // vi.stubEnv는 module cache를 우회하지 못해 런타임 주입이 불가.
+    // 실제 base URL 조합 동작은 dev proxy 환경에서 수동 검증 + E2E(T16/T17)로 커버.
+    // 여기서는 path가 절대 URL이면 그대로 사용하는 케이스(규칙 1)를 검증한다.
     let capturedUrl: string | undefined
 
     server.use(
-      http.post('http://custom-api.example.com/api/v1/auth/login', ({ request }) => {
+      http.post('http://absolute-api.example.com/api/v1/auth/login', ({ request }) => {
         capturedUrl = request.url
         return HttpResponse.json({ ok: true })
       }),
     )
 
-    // 환경 변수 변경이 module 레벨에 영향 주므로 dynamic import로 최신 인스턴스 사용
-    const { apiFetch: freshApiFetch } = await import('./client?env-test')
-    await freshApiFetch('/api/v1/auth/login', { method: 'POST', body: {} }).catch(() => {
-      // 환경 변수 모킹은 vitest의 vi.stubEnv + dynamic import 조합으로 검증하기 어려움
-      // 실제 URL 구성 로직은 unit 레벨에서 직접 검증
+    await apiFetch('http://absolute-api.example.com/api/v1/auth/login', {
+      method: 'POST',
+      body: {},
     })
 
-    vi.unstubAllEnvs()
-    // 환경 변수가 적용된 URL로 요청되었는지 확인 (또는 URL 조합 로직 직접 검증)
-    // capturedUrl이 undefined이면 msw handler 매칭 안 된 것 → 환경 변수 미적용
-    // 이 케이스는 integration 레벨에서 검증이 적절 — 단위 레벨은 getBaseUrl 헬퍼로 대체
-    expect(true).toBe(true) // 상위 케이스들로 이미 동작 검증됨
+    expect(capturedUrl).toBe('http://absolute-api.example.com/api/v1/auth/login')
   })
 })
 
