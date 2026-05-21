@@ -1,0 +1,14 @@
+# identity-access prod 프로필 설정 — 환경변수 fail-fast (BLOCKER #6, EC-30)
+# 이 파일은 --spring.profiles.active=prod 시 application.yml 위에 병합된다.
+
+bts:
+  auth:
+    # prod 환경 BTS issuer URI — JWT iss 클레임 + /.well-known/jwks.json endpoint 기반
+    # 환경변수 미설정 시 Spring placeholder 해소 실패 → 기동 즉시 실패 (EC-30 fail-fast)
+    issuer-uri: ${BTS_AUTH_ISSUER_URI}
+
+    jwt:
+      # prod 환경 RSA 개인키 PEM 파일 경로 — JwtKeyProviderConfig @Profile("prod") 가 사용
+      # DevMemoryKeyProvider (dev/test 전용) 로 silent fallback 절대 금지 (BLOCKER #6)
+      # PemFileKeyProvider.load() 가 파일 존재 여부 + 형식 검증 후 fail-fast (EC-19)
+      private-key-pem-path: ${BTS_JWT_PRIVATE_KEY_PATH}

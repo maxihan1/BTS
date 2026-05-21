@@ -1,4 +1,5 @@
-# identity-access 모듈 Spring Boot 설정 — 개발 환경 (Keycloak 8180, 앱 8090)
+# identity-access 모듈 Spring Boot 설정 — 개발 환경 기본값 (앱 8090)
+# prod 환경 override: application-prod.yml 참조
 
 server:
   port: 8090
@@ -21,7 +22,10 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${BTS_KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/bts}
+          # FR-09-17: Keycloak issuer-uri 제거. BTS 자체 JwksController (Task 23) 를 바라본다.
+          # JwtConfig.jwtDecoder() 가 NimbusJwtDecoder.withPublicKey() 로 직접 검증하므로
+          # 이 설정은 Spring Boot auto-configure fallback 용도로만 남겨둔다.
+          jwk-set-uri: ${bts.auth.issuer-uri:http://localhost:8080}/.well-known/jwks.json
       client:
         registration:
           keycloak:
@@ -31,11 +35,14 @@ spring:
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
         provider:
           keycloak:
-            issuer-uri: http://localhost:8180/realms/bts
+            issuer-uri: ${bts.auth.issuer-uri:http://localhost:8080}
 
 bts:
   auth:
-    issuer-uri: ${BTS_AUTH_ISSUER_URI:http://localhost:8090}
+    # BTS 자체 issuer URI — JWT iss 클레임 + JwksController endpoint 기반 URI
+    # dev 기본값: http://localhost:8080 (로컬 개발 서버)
+    # prod: application-prod.yml 의 BTS_AUTH_ISSUER_URI 환경변수로 override
+    issuer-uri: ${BTS_AUTH_ISSUER_URI:http://localhost:8080}
 
 logging:
   level:
