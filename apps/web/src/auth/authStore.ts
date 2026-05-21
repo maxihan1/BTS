@@ -32,3 +32,13 @@ export const useAuthStore = create<AuthState & AuthActions>()(
     },
   ),
 )
+
+// 컴포넌트가 store 변화의 정확한 슬라이스만 구독하도록 하는 셀렉터 헬퍼
+export const useAuthUser = () => useAuthStore((s) => s.user)
+export const useIsAuthenticated = () => useAuthStore((s) => s.accessToken !== null)
+export const useAuthActions = () =>
+  useAuthStore((s) => ({
+    setSession: s.setSession,
+    clearSession: s.clearSession,
+    setAccessToken: s.setAccessToken,
+  }))
