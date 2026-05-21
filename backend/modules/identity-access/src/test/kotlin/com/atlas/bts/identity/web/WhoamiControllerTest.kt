@@ -2,7 +2,10 @@
 
 package com.atlas.bts.identity.web
 
+import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
+import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
+import com.atlas.bts.identity.session.SessionService
 import io.mockk.mockk
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -17,19 +20,39 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.web.cors.CorsConfigurationSource
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.temporal.ChronoUnit
+import java.util.UUID
 
 // OAuth2ClientAutoConfiguration 제외 — @WebMvcTest 환경에서 Keycloak issuer-uri 네트워크 접속 차단
-// JwtDecoder는 MockJwtDecoderConfig으로 모의 빈 제공 (spring-security-test jwt() 포스트 프로세서가 우회)
+// SecurityConfig 가 SidRevokeJwtConverter + CorsConfigurationSource Bean 을 요구하므로 MockSecurityBeans 로 공급.
 @WebMvcTest(
     controllers = [WhoamiController::class],
     excludeAutoConfiguration = [OAuth2ClientAutoConfiguration::class],
 )
-@Import(SecurityConfig::class, WhoamiControllerTest.MockJwtDecoderConfig::class)
+@Import(SecurityConfig::class, WhoamiControllerTest.MockSecurityBeans::class)
 class WhoamiControllerTest {
     @TestConfiguration
-    class MockJwtDecoderConfig {
+    class MockSecurityBeans {
         @Bean
         fun jwtDecoder(): JwtDecoder = mockk(relaxed = true)
+
+        @Bean
+        fun sidRevokeJwtConverter(): SidRevokeJwtConverter {
+            val sessionService: SessionService = mockk(relaxed = true)
+            val now = Instant.parse("2026-05-21T10:00:00Z")
+            val clock = Clock.fixed(now, ZoneOffset.UTC)
+            // WhoamiControllerTest 는 jwt() post-processor 를 사용하므로 실제 SidRevokeJwtConverter 는 호출되지 않음.
+            // relaxed mock SessionService 로 생성만 한다.
+            return SidRevokeJwtConverter(sessionService, clock)
+        }
+
+        @Bean
+        fun corsConfigurationSource(): CorsConfigurationSource =
+            CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
     }
 
     @Autowired

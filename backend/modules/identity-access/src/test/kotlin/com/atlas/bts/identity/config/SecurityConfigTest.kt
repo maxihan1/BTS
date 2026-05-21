@@ -16,8 +16,8 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
+import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.security.oauth2.jwt.JwtDecoder
-import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options
@@ -48,12 +48,12 @@ import java.util.UUID
  * @see SecurityConfig 검증 대상 설정 클래스
  */
 @WebMvcTest(
-    controllers = [SecurityConfigTest.ProbeController::class],
     excludeAutoConfiguration = [OAuth2ClientAutoConfiguration::class],
 )
 @Import(
     SecurityConfig::class,
     SecurityConfigTest.TestSecurityBeans::class,
+    SecurityConfigTest.ProbeController::class,
 )
 class SecurityConfigTest {
 
@@ -90,19 +90,34 @@ class SecurityConfigTest {
     class TestSecurityBeans {
 
         private val sessionService: SessionService = mockk()
+        private val now: Instant = Instant.parse("2026-05-21T10:00:00Z")
+        private val clock: Clock = Clock.fixed(now, ZoneOffset.UTC)
 
+        /**
+         * JwtDecoder mock — Bearer 헤더 토큰을 받으면 sid claim 이 포함된 Jwt 를 반환한다.
+         * "active-token" → ACTIVE_SID / "revoked-token" → REVOKED_SID.
+         * jwt() post-processor 는 JwtDecoder 를 우회하므로, sid revoke 검증은 Bearer 헤더 방식으로만 가능.
+         */
         @Bean
-        fun jwtDecoder(): JwtDecoder = mockk(relaxed = true)
+        fun jwtDecoder(): JwtDecoder = JwtDecoder { token ->
+            val sid = when (token) {
+                "active-token" -> ACTIVE_SID.toString()
+                "revoked-token" -> REVOKED_SID.toString()
+                else -> null
+            }
+            Jwt.withTokenValue(token)
+                .header("alg", "RS256")
+                .subject("user-test")
+                .issuedAt(now)
+                .expiresAt(now.plusSeconds(900))
+                .apply { if (sid != null) claim("sid", sid) }
+                .build()
+        }
 
         @Bean
         fun sidRevokeJwtConverter(): SidRevokeJwtConverter {
-            val activeId = ACTIVE_SID
-            val revokedId = REVOKED_SID
-            val now = Instant.parse("2026-05-21T10:00:00Z")
-            val clock = Clock.fixed(now, ZoneOffset.UTC)
-
-            every { sessionService.lookup(activeId) } returns Session(
-                id = activeId,
+            every { sessionService.lookup(ACTIVE_SID) } returns Session(
+                id = ACTIVE_SID,
                 userId = UUID.randomUUID(),
                 providerId = "local",
                 deviceFingerprint = null,
@@ -114,8 +129,8 @@ class SecurityConfigTest {
                 revokedAt = null,
                 revokeReason = null,
             )
-            every { sessionService.lookup(revokedId) } returns Session(
-                id = revokedId,
+            every { sessionService.lookup(REVOKED_SID) } returns Session(
+                id = REVOKED_SID,
                 userId = UUID.randomUUID(),
                 providerId = "local",
                 deviceFingerprint = null,
@@ -127,7 +142,6 @@ class SecurityConfigTest {
                 revokedAt = now.minusSeconds(60),
                 revokeReason = "logout",
             )
-
             return SidRevokeJwtConverter(sessionService, clock)
         }
 
@@ -175,32 +189,30 @@ class SecurityConfigTest {
 
     // --- (c) 유효한 JWT Bearer + 활성 sid → 200 --------------------------------------
 
+    /**
+     * Bearer 헤더로 실제 JwtDecoder → SidRevokeJwtConverter 흐름을 통과하여 200 검증.
+     * jwt() post-processor 는 JwtDecoder/SidRevokeJwtConverter 를 우회하므로 Bearer 헤더 방식을 사용한다.
+     */
     @Test
     fun `유효한 JWT Bearer 와 활성 sid 로 보호 경로에 접근하면 200 을 반환한다 (FR-09-11)`() {
         mockMvc.perform(
-            get("/api/v1/protected").with(
-                jwt().jwt { builder ->
-                    builder
-                        .subject("user-001")
-                        .claim("sid", ACTIVE_SID.toString())
-                },
-            ),
+            get("/api/v1/protected")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer active-token"),
         )
             .andExpect(status().isOk)
     }
 
     // --- (d) revoke된 sid JWT → 401 -------------------------------------------------
 
+    /**
+     * Bearer 헤더로 revoke된 sid를 가진 JWT 를 전달 — SidRevokeJwtConverter 가 401 로 거부.
+     * jwt() post-processor 는 SidRevokeJwtConverter 를 우회하므로 Bearer 헤더 방식을 사용한다.
+     */
     @Test
     fun `revoke 된 세션 sid 를 가진 JWT 로 접근하면 401 을 반환한다 (FR-09-11 sid revoke)`() {
         mockMvc.perform(
-            get("/api/v1/protected").with(
-                jwt().jwt { builder ->
-                    builder
-                        .subject("user-002")
-                        .claim("sid", REVOKED_SID.toString())
-                },
-            ),
+            get("/api/v1/protected")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer revoked-token"),
         )
             .andExpect(status().isUnauthorized)
     }
