@@ -3,9 +3,8 @@
 package com.bts.issue.domain
 
 /**
- * 이슈 키 prefix 예약어 차단.
+ * 이슈 키 prefix 예약어 차단. ADR `2026-05-22-issue-key-prefix-policy §예약어 차단`.
  *
- * ADR `2026-05-22-issue-key-prefix-policy §예약어 차단` 기준.
  * 본 PR 의 dev seed (`ATLAS`) 는 SQL 직접 INSERT 라 이 검증을 우회한다.
  * Project Management 후속 PR 의 사용자 입력 API 에서 [isReserved] 를 호출해 차단한다.
  *
