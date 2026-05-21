@@ -9,6 +9,7 @@ import com.bts.workflow.domain.expression.DefaultIssueView
 import com.bts.workflow.domain.expression.IssueView
 import org.springframework.expression.spel.standard.SpelExpressionParser
 import org.springframework.expression.spel.support.SimpleEvaluationContext
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -40,8 +41,13 @@ import java.util.concurrent.TimeoutException
  * @param executor 표현식 평가를 실행할 [ExecutorService].
  *   Spring `@Configuration` 에서 `ThreadPoolExecutor(corePool=2)` 로 주입한다.
  *   테스트에서는 mock 으로 교체해 timeout 동작을 결정적으로 검증한다.
+ * @param timeoutMillis 표현식 평가 최대 허용 시간 (밀리초). 기본값 [DEFAULT_TIMEOUT_MILLIS] = 50ms.
+ *   운영 환경에서는 기본값을 사용한다. 테스트에서 JVM 워밍업 이전에 실제 SpEL 평가를 확인할 때만 조정 가능.
  */
-class SpelEvaluator(private val executor: ExecutorService) {
+class SpelEvaluator(
+    private val executor: ExecutorService,
+    private val timeoutMillis: Long = DEFAULT_TIMEOUT_MILLIS,
+) {
 
     private val parser = SpelExpressionParser()
 
@@ -53,7 +59,7 @@ class SpelEvaluator(private val executor: ExecutorService) {
      * @return 표현식 평가 결과. 평가 결과가 null 이면 false 로 처리한다.
      * @throws org.springframework.expression.spel.SpelParseException 표현식 문법 오류 시.
      * @throws org.springframework.expression.spel.SpelEvaluationException 평가 중 오류 시.
-     * @throws WorkflowExpressionTimeoutException 평가가 50ms 를 초과한 경우.
+     * @throws WorkflowExpressionTimeoutException 평가가 [timeoutMillis] 를 초과한 경우.
      */
     fun evaluate(expression: String, root: SpelRoot): Boolean {
         val context = SimpleEvaluationContext
@@ -72,20 +78,24 @@ class SpelEvaluator(private val executor: ExecutorService) {
         }
 
         return try {
-            future.get(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
+            future.get(timeoutMillis, TimeUnit.MILLISECONDS)
         } catch (e: TimeoutException) {
             future.cancel(true)
             throw WorkflowExpressionTimeoutException(
                 expression = expression,
-                timeoutMillis = TIMEOUT_MILLIS,
+                timeoutMillis = timeoutMillis,
                 cause = e,
             )
+        } catch (e: ExecutionException) {
+            // ExecutionException 은 Callable 내부에서 발생한 예외를 감싸는 래퍼다.
+            // SpelParseException / SpelEvaluationException 등 SpEL 평가 오류를 언래핑해서 던진다.
+            throw e.cause ?: e
         }
     }
 
     companion object {
-        /** 표현식 평가 최대 허용 시간 (밀리초). DoS 차단을 위해 50ms 로 고정한다. */
-        const val TIMEOUT_MILLIS = 50L
+        /** 운영 환경 표현식 평가 최대 허용 시간 (밀리초). DoS 차단을 위해 50ms. */
+        const val DEFAULT_TIMEOUT_MILLIS = 50L
     }
 }
 
