@@ -18,25 +18,19 @@ const DEFAULT_LOGIN_ERROR_MESSAGE = '로그인 중 오류가 발생했습니다.
 
 /**
  * ApiError의 body에서 에러 코드를 추출해 한국어 메시지를 반환하는 헬퍼.
- * 알 수 없는 코드면 기본 메시지를 반환한다.
+ * 알 수 없는 에러 코드면 기본 메시지를 반환한다.
  */
 function resolveLoginErrorMessage(error: unknown): string {
   if (!(error instanceof ApiError)) {
     return DEFAULT_LOGIN_ERROR_MESSAGE
   }
 
-  const body = error.body
-  if (
-    typeof body === 'object' &&
-    body !== null &&
-    'error' in body &&
-    typeof (body as Record<string, unknown>)['error'] === 'string'
-  ) {
-    const code = (body as Record<string, string>)['error']
-    return LOGIN_ERROR_MESSAGES[code] ?? DEFAULT_LOGIN_ERROR_MESSAGE
+  const parsedBody = ApiErrorResponseSchema.safeParse(error.body)
+  if (!parsedBody.success) {
+    return DEFAULT_LOGIN_ERROR_MESSAGE
   }
 
-  return DEFAULT_LOGIN_ERROR_MESSAGE
+  return LOGIN_ERROR_MESSAGES[parsedBody.data.error] ?? DEFAULT_LOGIN_ERROR_MESSAGE
 }
 
 /**
@@ -71,12 +65,7 @@ export function useLoginMutation() {
 
       if (!loginRes.ok) {
         const errorBody: unknown = await loginRes.json().catch(() => ({}))
-        const parsed_error = ApiErrorResponseSchema.safeParse(errorBody)
-        const apiError = new ApiError(
-          loginRes.status,
-          parsed_error.success ? parsed_error.data : errorBody,
-        )
-        throw new Error(resolveLoginErrorMessage(apiError))
+        throw new Error(resolveLoginErrorMessage(new ApiError(loginRes.status, errorBody)))
       }
 
       const tokenData: unknown = await loginRes.json()
