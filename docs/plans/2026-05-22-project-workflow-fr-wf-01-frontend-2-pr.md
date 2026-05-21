@@ -94,6 +94,136 @@ PR #10 (project-workflow BC FR-WF-01 FSM 워크플로우 완제품, 머지 완�
 
 → 모두 plan 단계에서 task 분해 가능. gap 0 확정.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+### Task 1. workflow.types.ts — frontend type 정의
+
+**메타**.
+- agent. `frontend-engineer`
+- files. [`apps/web/src/components/workflow/workflow.types.ts`]
+- depends-on. []
+
+**RED**. 별도 테스트 X (순수 type 정의). 단, `WorkflowDiagram.test.tsx` 가 type 을 import 해서 사용 → 의존성 통한 검증.
+
+**GREEN**. spec §6 의 4 type (`StateCategory` / `WorkflowStateView` / `WorkflowTransitionView` / `WorkflowView`) named export. JSDoc 일관.
+
+**REFACTOR**. 첫 줄 한국어 헤더 (`// 워크플로우 다이어그램 view 모델 type 정의`).
+
+**검증**. `pnpm --filter @bts/web typecheck`.
+
+---
+
+### Task 2. mermaid 의존성 추가
+
+**메타**.
+- agent. `frontend-engineer`
+- files. [`apps/web/package.json`, `pnpm-lock.yaml`]
+- depends-on. []
+
+**RED**. 의존성 추가 자체는 테스트 X. Task 3 의 import 가 컴파일 검증.
+
+**GREEN**. `apps/web/package.json` 의 `dependencies` 에 `mermaid` 추가 (최신 stable, v11.x). `pnpm install --filter @bts/web` → lockfile 갱신.
+
+**REFACTOR**. n/a (config 변경).
+
+**검증**. `pnpm --filter @bts/web build` 통과.
+
+---
+
+### Task 3. WorkflowDiagram.tsx + Vitest 단위 테스트
+
+**메타**.
+- agent. `frontend-engineer`
+- files. [`apps/web/src/components/workflow/WorkflowDiagram.tsx`, `apps/web/src/components/workflow/WorkflowDiagram.test.tsx`]
+- depends-on. [1, 2]
+
+**RED**. 테스트 3건.
+- T3-1. workflow prop 주면 mermaid 코드 생성 — `code` 상태에 `stateDiagram-v2` + 5 노드 + 4 엣지.
+- T3-2. 4 표준 워크플로우 각각 (software-default / bug-tracking / simple / kanban-basic) 의 generator 출력 snapshot 검증.
+- T3-3. `debug=true` 시 `<details>` + `<pre>` 안에 mermaid source 노출.
+
+실패 예상. `Cannot find module './WorkflowDiagram'`.
+
+**GREEN**. WorkflowDiagram 컴포넌트 (spec FR-1~6).
+- `// 워크플로우 FSM 다이어그램 컴포넌트 (mermaid stateDiagram-v2 + 카테고리별 색상)` 첫 줄 헤더.
+- named export. `interface WorkflowDiagramProps { workflow: WorkflowView; debug?: boolean }`.
+- mermaid 동적 import (`useEffect` 안 `await import('mermaid')` + `mermaid.run()` 또는 `mermaid.render()`).
+- mermaid 코드 generator. helper function `generateMermaidCode(workflow: WorkflowView): string` 추출 (테스트 가능성).
+- 카테고리별 색상 — `classDef` 활용. `classDef todo fill:var(--muted) ...` 등. DESIGN.md OKLCH 토큰 활용.
+- `<div ref={ref} aria-label="${workflow.name} 다이어그램">` + (debug) `<details>` + `<pre>`.
+- mermaid render 실패 시 try/catch + fallback `<div>다이어그램 렌더 실패</div>` + 콘솔 에러.
+
+**REFACTOR**. helper 함수 분리 (`generateMermaidCode`, `categoryToClass`) + JSDoc + spec EC-1 (빈 워크플로우 placeholder) / EC-5 (mermaid 특수 문자 — 영문 key 만 노드 ID) 처리.
+
+**검증**. `pnpm --filter @bts/web test WorkflowDiagram`.
+
+---
+
+### Task 4. workflows API client + MSW handlers
+
+**메타**.
+- agent. `frontend-engineer`
+- files. [`apps/web/src/api/workflows.ts`, `apps/web/src/api/workflows.test.ts`, `apps/web/src/mocks/workflow-handlers.ts`, `apps/web/src/mocks/handlers.ts` (msw handlers index — 기존 패턴 확장)]
+- depends-on. [1]
+
+**RED**. 테스트 2건 (`workflows.test.ts`).
+- T4-1. `fetchWorkflows()` MSW mock 의 4 워크플로우 목록 반환 검증.
+- T4-2. `fetchWorkflow('software-default')` MSW mock 의 단건 + Zod 파싱 검증.
+
+실패 예상. `Cannot find module './workflows'`.
+
+**GREEN**.
+- `apps/web/src/api/workflows.ts`. `fetchWorkflows()` + `fetchWorkflow(key)` + `planTransition(key, request)` + Zod schema (`apps/web/src/api/client.ts` 패턴 따름).
+- `apps/web/src/mocks/workflow-handlers.ts`. MSW handlers — `GET /api/v1/workflows` (4 워크플로우 fixture) + `GET /api/v1/workflows/:key` (4 워크플로우 매칭) + `POST /api/v1/workflows/:key/transitions` (mock TransitionPlan).
+- `apps/web/src/mocks/handlers.ts` 에 workflow-handlers spread (또는 별도 export pattern — PR #11 패턴 확인 후 결정).
+
+**REFACTOR**. fixture 데이터 분리 (`apps/web/src/mocks/workflow-fixtures.ts` — 4 표준 워크플로우 JSON).
+
+**검증**. `pnpm --filter @bts/web test workflows`.
+
+---
+
+### Task 5. Playwright E2E — 표준 4 워크플로우 happy path
+
+**메타**.
+- agent. `frontend-engineer` (또는 qa-engineer 보조 — controller 결정)
+- files. [`apps/web/e2e/workflow.spec.ts`]
+- depends-on. [3, 4]
+
+**RED**. 테스트 4건 (4 표준 워크플로우).
+- T5-1. `software-default` happy path — 페이지 진입 + 다이어그램 SVG 렌더 (`svg.mermaid` + node count) + 첫 전이 호출 + 200 검증.
+- T5-2. `bug-tracking` 동일 패턴.
+- T5-3. `simple` 동일 패턴 (2 상태 / 2 전이 검증).
+- T5-4. `kanban-basic` 동일 패턴 (4 상태 / 3 전이 검증).
+
+실패 예상. `workflow.spec.ts` 신규라 첫 실행 시 즉시 RED 또는 라우트 미존재 시 navigation fail.
+
+**GREEN**.
+- `// FR-WF-01 E2E — 표준 4 워크플로우 happy path` 첫 줄 헤더.
+- Playwright `test.describe('workflow diagram', ...)` + 4 `test()` 또는 `test.describe.parallel` 활용.
+- 라우트. PR #11 의 dashboard 안에 임시 `/workflows/:key` 라우트 추가 (TanStack Router) — 또는 dev only `?workflow=software-default` query param 활용.
+- backend mock — MSW 의 service worker 가 Playwright 환경에서 자동 활성 (PR #11 의 패턴 확인 후 결정. MSW 가 Playwright 와 호환 안 되면 backend dev 서버 + Playwright `webServer` 옵션).
+- 공통 fixture 추출 — `apps/web/e2e/fixtures/workflow-helpers.ts` (선택, REFACTOR 단계).
+
+**REFACTOR**. fixture helper 추출 + 한국어 헤더 + axe 접근성 검사 (`@axe-core/playwright` 활용 — NFR-3).
+
+**검증**. `pnpm --filter @bts/web test:e2e workflow`.
+
+---
+
+## Plan 메타
+
+- **task 총 수**. 5
+- **예상 wave 수**. 3
+  - Wave 0 (depends-on `[]`). Task 1 (types) + Task 2 (mermaid dep) — **2 task 병렬** (파일 충돌 0).
+  - Wave 1 (depends-on ⊂ wave 0). Task 3 (WorkflowDiagram) + Task 4 (API client + MSW) — **2 task 병렬** (파일 충돌 0).
+  - Wave 2 (depends-on ⊂ wave 0~1). Task 5 (E2E) — 1 task.
+- **agent 분포**. 5/5 `frontend-engineer` (Task 5 는 controller 가 qa-engineer 보조 dispatch 도 결정 가능).
+- **신규 의존성**. mermaid v11.x (Maxi 사전 승인 — PR #10 plan §909).
+- **CONCERN**.
+  - CONCERN-1. Vitest jsdom 환경에서 mermaid 비동기 dynamic import 처리 — Task 3 의 GREEN 단계에서 `vi.mock('mermaid')` 패턴 필요 가능성. spec §11 의 Brainstorming gap 4 의 결정 (단위 = 코드 생성 검증, E2E = 실제 SVG 검증).
+  - CONCERN-2. mermaid v11 의 ESM dynamic import + Vite 빌드 호환성 — package.json 의 `dependencies` 추가 시 자동 처리 예상 (Vite v5+ 의 ESM 지원). 실패 시 Task 2 의 GREEN 단계에서 `optimizeDeps.include` 추가 또는 mermaid 의 sync import 대체.
+  - CONCERN-3. MSW 가 Playwright 와 호환 — PR #11 의 도입 패턴 확인 후 Task 4 의 GREEN 결정. 호환 안 되면 backend dev 서버 + Playwright `webServer` 활용.
+  - CONCERN-4. 라우트 통합 — `/workflows/:key` 페이지 미존재. 옵션 A. PR #11 dashboard 안에 임시 라우트 + 컴포넌트 mount. 옵션 B. dev only query param. 옵션 C. 별도 페이지 라우트 신규 추가 (TanStack Router 패턴 따름). Task 5 의 GREEN 단계에서 controller 결정 or Maxi 결정.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
