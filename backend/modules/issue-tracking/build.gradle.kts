@@ -1,3 +1,4 @@
+// issue-tracking 모듈 — DEVELOPMENT.md §모듈 격리 + project-workflow 패턴 일관
 // issue-tracking 모듈 빌드 스크립트 — project-workflow 패턴 일관, DEVELOPMENT.md §모듈 격리
 
 // Kotlin 버전: 2.0.10 (detekt 1.23.7 호환 상한 — build.gradle.kts 루트 주석 참고)
