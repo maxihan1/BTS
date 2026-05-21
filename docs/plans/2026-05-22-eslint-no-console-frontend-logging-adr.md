@@ -489,4 +489,124 @@ plan §9 비스코프 7건 명시 완료. ✓
 
 ---
 
-### plan-devex-review (← 다음 호출)
+### plan-devex-review (2026-05-22)
+
+**전체 판정. ✅ PASS (BLOCKER 0건, 권장 보완 5건)**
+
+#### 격식 적용 수준 (Step 0 명시적 결정)
+
+본 plan 의 developer-facing surface 는 "외부 개발자 onboarding" 시나리오가 아니라 **Maxi 1인 + Claude Code subagent (다중 worktree) 의 내부 도구화**. 향후 1K 사용자 운영 시 추가 frontend / backend 개발자 합류 가능성은 있으나 현 시점 직접 사용자는 1인.
+
+- **Step 0A 페르소나**. (a) Maxi 본인 (BTS 헌법 친숙) + (b) Claude Code subagent (CLI 환경, IDE 없음). 외부 onboarding 페르소나 무관.
+- **Step 0B 엠퍼시 narrative**. Maxi 가 6개월 후 본 PR 의 결정 재독 시 / Claude subagent 가 wave 1 dispatch 시 plan 만으로 작업 가능한지 — 둘 다 본 plan 의 한국어 본문 + 양식 일관성으로 충족 (PR #6 ~ #11 의 plan 양식 재사용).
+- **Step 0C 경쟁 benchmark**. internal tooling 이라 외부 경쟁 부재. skip.
+- **Step 0D 마법의 순간**. CI 가 첫 PR check 트리거하는 순간 (T4 검증) = 마법의 순간 자체.
+- **Step 0E 모드**. **DX POLISH** 적용 (touchpoint 다 짚기, scope 확장 안 함).
+- **Step 0F~G 저니 / 혼란 로그**. 본 PR 의 직접 시나리오 = (1) 본 PR 머지 (2) 다음 PR 작성 시 console.log 실수 (3) CI fail → fix → 머지. 본 review 의 발견 항목으로 통합.
+- **Pass 1~8 격식**. 본 plan scope 대비 overkill. 호출자 명시 5건 검증으로 압축 — 각 검증이 Pass 1 (Getting Started) / Pass 2 (API/CLI) / Pass 3 (Error Messages) / Pass 4 (Docs) / Pass 6 (Dev Environment) 의 핵심을 다룸.
+
+#### 검증 1. CI 피드백 품질 (Pass 3 핵심)
+
+- 현재 workflow yml 의 step 이 raw 명령 (`pnpm --filter @bts/web lint`) — GH Actions UI 의 step 이름이 그 명령 그대로 표시. 적합.
+- fail 시 메시지 = ESLint / tsc / vitest stdout 의 `file:line:column` 표준. PR check UI raw log 만 확인 가능 → CI fail 추적 가능하지만 친숙도 약함.
+- **권장 보완 #1**. workflow step 에 명시적 `name:` 추가. 예. `name: Lint (no-console + react-hooks)` / `name: Typecheck (TS strict)` / `name: Test (vitest unit)`. GH Actions UI 가독성 + 후속 PR 의 CI fail debugging UX 개선. plan T3 의 yml 양식에 반영.
+
+#### 검증 2. 신규 console.log 작성 시 lint 에러 UX (Pass 1 핵심)
+
+- pre-commit hook 부재 (비스코프) → 개발자 (Claude subagent / Maxi) 가 PR push 후 GH Actions wait (~1~3분) → fail → 수정 → push → wait. 1 cycle ≈ 5분 friction.
+- dev 시점 lint 실행 가능 명령 = `pnpm --filter @bts/web lint`. spec / ADR 어디에도 dev 가이드 명시 없음.
+- **권장 보완 #2**. ADR §Consequences 또는 plan §Plan 메타에 "dev 시점 즉시 검증. `pnpm --filter @bts/web lint` 실행 권장. VS Code eslint extension 자동 인식" 한 줄 명시. Claude subagent prompt 에도 dispatch 직전 lint 자체 검증 가이드 추가 가능 (본 PR 비스코프, 후속 SKILL 갱신).
+
+#### 검증 3. ADR 가독성 (NFR-LOG-FE-04, Pass 4 핵심)
+
+- ADR 양식 (Status / Context / Decision D1~D5 / Consequences / 트리거 / 참조) 격식 적합. ✓
+- D1~D5 각각 "추천 + 대안 + 사유" 구조 → 6개월 후 재독 시 결정 사유 추적 가능. ✓
+- **권장 보완 #3**. ADR §1 Context 의 "NEVER-15" 가 약어. 첫 등장 시 풀이 한 줄 권장. 예. "NEVER-15 = `DEVELOPMENT.md §1 절대 규칙 #15` (console.log / println 사용 금지)". 외부 frontend 개발자 (향후 합류) 가 ADR 단독으로 결정 사유 추적 가능.
+
+#### 검증 4. workflow yml 향후 확장성 (Pass 6 핵심)
+
+- naming. `frontend-ci` — 영역 명시 명확. 향후 `backend-ci`, `e2e-ci`, `infra-ci` 자연스러운 복제. ✓
+- path filter 패턴. (`apps/web/**` + 의존성 + 자기 자신) — backend (예. `backend/**` + `build.gradle.kts` + `gradle/**` + 자기 자신) 와 동일 패턴 복제 가능. ✓
+- concurrency group. 다른 workflow 와 독립. ✓
+- **권장 보완 #4**. ADR §D5 본문에 "본 workflow 패턴은 backend-ci / e2e-ci 후속 도입 시 복제 가능. naming `<영역>-ci` + path filter + concurrency 패턴 일관 유지" 한 줄 명시. 향후 backend-ci 도입 PR 가 본 ADR 만 보고 복제 가능.
+
+#### 검증 5. branch protection 누락의 Maxi onboarding 가이드 (Pass 1 핵심)
+
+- spec §9 비스코프 + EC-8 에 명시되어 있음. plan-eng-review 의 ⚠️ 주의로도 발견 (D-1 측정 인프라와 다른 항목).
+- 그러나 Maxi 가 머지 후 GitHub Settings 액션을 잊으면 CI 가 실제로는 "fail check 표시만 + 머지 차단 안 됨" 상태. 의도와 다른 silent failure.
+- **권장 보완 #5**. PR #12 body 또는 ADR §Consequences 마지막에 별도 강조 섹션. 예.
+  > **🔔 Maxi 후속 액션 (1건, 본 PR 머지 후 즉시)**.
+  > GitHub Settings → Branches → Branch protection rules → main → Required status checks → `frontend-ci / lint` 추가 → Save changes.
+  > 미설정 시 CI fail check 표시는 되나 머지 차단 안 됨 (silent failure).
+
+#### Required Outputs (BTS 컨텍스트 적응)
+
+- **Developer Persona Card**. Maxi 1인 + Claude Code subagent. 외부 onboarding 무관 (현 시점).
+- **Empathy narrative**. plan §리뷰 결과 의 plan-eng-review + plan-devex-review 본문으로 갈음.
+- **경쟁 benchmark**. internal tooling, skip.
+- **마법의 순간**. T4 검증의 GH Actions trigger 자체.
+- **저니 맵**. 1 단계 (PR push → CI trigger → check 결과 확인). 트리거 자체가 발견.
+- **NOT in scope**. plan §9 비스코프 7건 (재인용 생략).
+- **What already exists**. plan-eng-review 섹션 참조.
+
+#### DX Scorecard (BTS 적응. 8 차원 중 적용 차원만)
+
+```
++====================================================================+
+|              DX PLAN REVIEW — SCORECARD (BTS 적응)                    |
++====================================================================+
+| Dimension            | Score  | Note                                |
+|----------------------|--------|--------------------------------------|
+| Getting Started      |  8/10  | CI 가 첫 PR 자동 트리거 = 마법의 순간. dev 단계 lint 실행 가이드 부재 (-2) |
+| API/CLI/SDK          |  N/A   | API 아님, lint 룰만                       |
+| Error Messages       |  7/10  | stdout 표준 file:line:column. step name 명시 없음 (-3) |
+| Documentation        |  8/10  | ADR 양식 격식 적합. NEVER-15 약어 풀이 부재 (-2) |
+| Upgrade Path         |  9/10  | D4-a 트리거 3건 + 정정 시 ADR 재검토 절차 명시. 본 PR 자체 upgrade 없음 |
+| Dev Environment      |  7/10  | `pnpm --filter @bts/web lint` 단순. dev 가이드 명문화 부재 (-3) |
+| Community            |  N/A   | internal tooling, 외부 community 무관          |
+| DX Measurement       |  8/10  | NFR-LOG-FE-05 (CI 시간) + ADR D4-a 트리거 발효 측정 명시. 측정 인프라 부재 (-2) |
++--------------------------------------------------------------------+
+| TTHW                 | < 1 min (CI 자동 트리거, 사용자 액션 0)         |
+| 경쟁 tier             | internal tooling N/A                       |
+| 마법의 순간            | 디자인됨 (T4 trigger 자체)                    |
+| Product Type         | internal CI infra + 정책 ADR                   |
+| Mode                 | DX POLISH                                  |
+| Overall DX           |  8/10                                      |
++====================================================================+
+| DX 원칙 커버리지                                                       |
+| Zero Friction      | covered (CI 자동, 사용자 액션 0)                    |
+| Learn by Doing     | partial (dev lint 가이드 부재)                    |
+| Fight Uncertainty  | partial (step name 명시 부재)                     |
+| Opinionated + Escape Hatches | covered (D1~D5 추천 + 대안 명시)         |
+| Code in Context    | covered (plan T1~T4 의 코드 + 검증 명령 완전)         |
+| Magical Moments    | covered (T4 GH Actions trigger)              |
++====================================================================+
+```
+
+#### Completion Summary (plan-devex-review)
+
+- Step 0. internal tooling 컨텍스트 → 격식 명시적 압축 (Step 0A~G + Pass 1~8 → 호출자 5건 검증).
+- 검증 1 (CI 피드백). 권장 보완 1건 — step name 명시.
+- 검증 2 (lint UX). 권장 보완 1건 — dev 가이드 명문화.
+- 검증 3 (ADR 가독성). 권장 보완 1건 — NEVER-15 풀이.
+- 검증 4 (workflow 확장성). 권장 보완 1건 — D5 본문에 복제 패턴 명시.
+- 검증 5 (branch protection). 권장 보완 1건 — PR body 또는 ADR Consequences 에 후속 액션 강조.
+- Overall DX. **8/10**. internal tooling 기준 좋은 점수.
+- **BLOCKER 0건**.
+
+---
+
+### 게이트 1 진입 준비
+
+plan-eng-review (PASS, 권장 보완 4건) + plan-devex-review (PASS, 권장 보완 5건). **BLOCKER 0건, 진행 가능**.
+
+권장 보완 사항 통합 (중복 제거 후 6건):
+
+| # | 출처 | 보완 위치 | 내용 |
+|---|---|---|---|
+| 1 | eng A-3 + eng A-4 + devex 검증 4 | ADR §D5 본문 또는 §Consequences | workflow path filter 의 docs/decisions/ 미포함 + 향후 frontend 영역 확장 시 갱신 + backend-ci / e2e-ci 복제 패턴 일관 명시 |
+| 2 | eng T-2 | plan T1 검증 단계 | fixture 를 prod + test 2 위치 작성으로 확장. D3-a 검증 완전성 |
+| 3 | eng D-1 | ADR §미래 정정 트리거 1 | "측정 인프라 도입 시점부터 발효" 한 줄 추가 |
+| 4 | eng D-2 | ADR §미래 정정 트리거 2 | "사용자 보고 incident 중 root cause 가 frontend 사용 중 발생으로 의심" 식 객관화 |
+| 5 | devex 검증 1 | plan T3 workflow yml | step name 명시 (Lint / Typecheck / Test 각각) |
+| 6 | devex 검증 2 + 3 + 5 | ADR §Consequences | dev 시점 lint 실행 가이드 + NEVER-15 풀이 + Maxi 후속 액션 (branch protection) 강조 |
