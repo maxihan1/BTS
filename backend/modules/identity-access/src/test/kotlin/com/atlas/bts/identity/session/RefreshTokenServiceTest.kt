@@ -72,6 +72,7 @@ class RefreshTokenServiceTest {
         val newTokenSlot = slot<RefreshToken>()
 
         every { repo.findByTokenHash("a".repeat(64)) } returns oldToken
+        every { sessionService.lookup(sessionId) } returns buildSession()
         every { repo.save(capture(newTokenSlot)) } answers { Unit }
         every { repo.markUsedAndChain(oldId = oldTokenId, newId = any()) } returns oldTokenId
         every { jwtIssuer.issue(any(), sessionId, any(), any()) } returns "access.jwt.token"
@@ -97,6 +98,7 @@ class RefreshTokenServiceTest {
         val newIdSlot = slot<UUID>()
 
         every { repo.findByTokenHash("a".repeat(64)) } returns oldToken
+        every { sessionService.lookup(sessionId) } returns buildSession()
         every { repo.save(any()) } answers { Unit }
         every { repo.markUsedAndChain(oldId = oldTokenId, newId = capture(newIdSlot)) } returns oldTokenId
         every { jwtIssuer.issue(any(), sessionId, any(), any()) } returns "access.jwt.token"
@@ -111,6 +113,7 @@ class RefreshTokenServiceTest {
         val oldToken = buildUsableToken()
 
         every { repo.findByTokenHash("a".repeat(64)) } returns oldToken
+        every { sessionService.lookup(sessionId) } returns buildSession()
         every { repo.save(any()) } answers { Unit }
         every { repo.markUsedAndChain(any(), any()) } returns oldTokenId
         every { jwtIssuer.issue(any(), sessionId, any(), any()) } returns "jwt"
@@ -210,6 +213,7 @@ class RefreshTokenServiceTest {
         val oldToken = buildUsableToken()
 
         every { repo.findByTokenHash("a".repeat(64)) } returns oldToken
+        every { sessionService.lookup(sessionId) } returns buildSession()
         every { repo.save(any()) } answers { Unit }
         // markUsedAndChain null → DB optimistic locking race loser
         every { repo.markUsedAndChain(any(), any()) } returns null
