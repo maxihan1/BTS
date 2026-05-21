@@ -585,4 +585,85 @@ EC-1 키 race condition (advisory_xact_lock) / EC-2 권한 부재 (403 ProblemDe
 - **추가 검증**. ktlintCheck / detekt / generateJooq / ArchUnit / Playwright / k6 / typecheck / vitest
 
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+> **참고**. type=api → plan-eng-review + plan-devex-review 체인. Maxi 의 "게이트 1까지 자동 진행" 의도 반영 — sub-skill 인터랙티브 우회, 인라인 self-conducted (PR #10 의 plan-eng/ceo-review skip 패턴 일관). 4종 리뷰 (eng / ceo / design / devex) 의 핵심 룰 동시 적용.
+
+### plan-eng-review (self-conducted, 2026-05-22)
+
+| 영역 | 평가 | 메모 |
+|---|---|---|
+| 아키텍처 일관성 | ✅ PASS | port-adapter 패턴 일관 (workflow `WorkflowTransitionPort` ↔ issue `IssuePermissionResolver`). BC 격리 ArchUnit 룰 명시 |
+| 트랜잭션 경계 | ✅ PASS | spec §7.1 IssueApplicationService 의사코드 + Propagation.MANDATORY workflow 호출 + pgmq enqueue 동일 트랜잭션. ArchUnit `@Transactional` 룰 (PR #8 learning) Task 28 에 명시 |
+| 동시성 / race condition | ✅ PASS | EC-1 (`pg_advisory_xact_lock(hash('project:' || project_id))` PR #10 패턴) + EC-5 낙관락 version 명시. Task 30 (20 thread 통합 테스트) 검증 |
+| 테스트 커버리지 | ✅ PASS | 단위 (MockK) + 통합 (Testcontainers singleton) + property (Kotest 1000건) + ArchUnit. 임계 line 80% / branch 70% 명시 |
+| 성능 / NFR | ⚠️ CONCERN-1 | k6 인프라가 본 PR 에서 첫 도입. 인프라 셋업 task (T38) 가 측정 task 와 묶여 있음. 분리 권장 — `T38a: k6 도구 설치 / T38b: 측정` 또는 `qa-engineer agent prompt 에 도구 설치 단계 명시` |
+| 회귀 가드 (learning 반영) | ✅ PASS | PR #6 (`@Service` 누락) / PR #8 (Testcontainers singleton) / PR #10 (wave 7 task 상한 + cache stampede) learning 모두 plan 에 반영 |
+
+**eng-review BLOCKER**: 없음
+**eng-review CONCERN**: 1건 (k6 인프라 setup 분리)
+
+### plan-devex-review (self-conducted, 2026-05-22)
+
+API 인지 type 이므로 외부 개발자 (API consumer = frontend, 향후 자동화 BC, Slack 통합 BC) 관점 검증.
+
+| 영역 | 평가 | 메모 |
+|---|---|---|
+| API 설계 일관성 | ✅ PASS | REST 표준 (CRUD + transition action) + Page<T> + RFC 7807 ProblemDetail + Spring `@AuthenticationPrincipal` |
+| 에러 응답 표준 | ✅ PASS | spec §6.1 ProblemDetail 9 errorCode 표 + `IssueExceptionHandler` 명시. **다른 BC 도 동일 적용 권장** (CONCERN-2) |
+| OpenAPI / 문서 | ⚠️ CONCERN-3 | spec §8 에 "springdoc-openapi" 명시했으나 plan task 에 explicit task 부재. `Wave 5` 끝에 OpenAPI 검증 task 추가 권장 — `T26.5: springdoc-openapi 통합 + apps/web/src/api/openapi-issue.d.ts 생성` |
+| 버전 관리 | ✅ PASS | `/api/v1/issues` prefix 명시. v2 분기 후속 결정 |
+| Idempotency | ✅ PASS | POST/PATCH/DELETE 모두 명확한 단일 효과. Idempotency-Key 헤더 미사용 — 본 PR scope 외 (후속 자동화 BC 도입 시) |
+| frontend client schema | ⚠️ CONCERN-4 | T35 `useIssue` 의 Zod schema 가 plan 에 명시됨. 단, ProblemDetail 의 typed error code 매칭 — `IssueErrorCode` enum 을 frontend 도 공유? `packages/contracts/issue.ts` 같은 shared types 모듈 후속 권장 |
+
+**devex-review BLOCKER**: 없음
+**devex-review CONCERN**: 3건 (다른 BC 의 ProblemDetail 적용 권장 / OpenAPI task 명시 / shared types 모듈 후속)
+
+### plan-ceo-review (self-conducted, 2026-05-22) — scope + 가치 판단
+
+| 영역 | 평가 | 메모 |
+|---|---|---|
+| 사용자 가치 | ✅ PASS | BTS 의 핵심 가치. issue-tracking BC 진입 첫 PR — 27 후속 FR 모두 본 PR 의존 |
+| scope 적정성 | ⚠️ CONCERN-5 | 38 task / 9 wave — PR #10 (36) / PR #11 (20+10) 수준 monster PR. Maxi 가 명시적으로 monster PR 선택 (옵션 A 거부) — 정당화 됨. 단, Wave 7~8 conditional 처리가 PR 사이즈 변동성 큼. **PR #13/#12 머지 ETA 확인 권장** — 미머지 시 옵션 B (D5 까지만 머지 / D6/D7 후속 PR 분리) 미리 결정 |
+| 시간 비용 | ⚠️ CONCERN-6 | monster PR review burden 누적. `/bts-codereview` 가 code-reviewer agent + /review 2종 다 돌림. PR #10 의 CONCERN 2건 (medium + medium) 머지 직전 fix 패턴 반복 우려 |
+| 대체 접근 (10-star product) | ✅ PASS | 더 큰 그림 (자동 분류 / AI 자동 assign / 자연어 검색 등) 은 후속 FR 에서 가능. 본 PR 은 fundamental coverage. CEO 시각 도 정당 |
+| 결정 회수성 | ✅ PASS | port-adapter 패턴으로 FR-AU-12 교체 가능. RFC 7807 표준 채택 — 후속 BC 도 일관 가능 |
+
+**ceo-review BLOCKER**: 없음
+**ceo-review CONCERN**: 2건 (PR #13/#12 머지 ETA 의존 / monster PR review burden)
+
+### plan-design-review (self-conducted, 2026-05-22) — Wave 7 D6 한정
+
+| 영역 | 평가 | 메모 |
+|---|---|---|
+| DESIGN.md 일관 | ✅ PASS | PR #11 의 DESIGN.md (21 KB Tailwind v4) 활용. shadcn/ui radix-nova 토큰 활용 |
+| design-shotgun 시점 | ⚠️ CONCERN-7 | Task 33 design-shotgun 결과 Maxi 가 1개 선택 요구. 사실상 게이트 1.5 발생 — implementation 중간에 추가 사용자 개입. plan §Plan 메타 에 conditional wave 명시했으나, **Maxi 게이트 1 승인 시점에 "Wave 7 진입 시 추가 Maxi 선택 1회 발생" 명시 권장** |
+| IssueDetail.tsx scope | ✅ PASS | 본 PR 은 summary 만 (body/type/assignee 후속). FR-IS-04 body Markdown 도입 시 TipTap 자리만 두기 명시 (Task 34) |
+| WCAG / 접근성 | ⚠️ CONCERN-8 | spec §NFR 표에 "WCAG 2.1 AA 0 violations" 명시되어 있으나 D6 task (T34) 에 axe-core 검증 명시 없음. 추가 권장 |
+
+**design-review BLOCKER**: 없음
+**design-review CONCERN**: 2건 (Wave 7 추가 게이트 / axe-core 검증)
+
+### autoplan 결정 원칙 적용 (8건)
+
+| # | 결정 영역 | 자동 결정 / taste decision | 결과 |
+|---|---|---|---|
+| 1 | 이슈 키 prefix 정책 | taste decision | Maxi 결정 완료 (ADR-1, "사용자 직접 입력") |
+| 2 | PERMISSION 가드 전략 | taste decision | Maxi 결정 완료 (ADR-2, port-adapter stub) |
+| 3 | RFC 7807 ProblemDetail 채택 | 자동 결정 | 표준 + 일관성. 채택 |
+| 4 | advisory_xact_lock vs ON CONFLICT | 자동 결정 | PR #10 패턴 일관 + race condition 검증 명확 → advisory_xact_lock |
+| 5 | issue_key_redirects 스키마 본 PR 도입 | 자동 결정 | DATA.md §1.1 영속성 보장 일관 + 후속 FR-MV-01 변경 비용 절감 |
+| 6 | Wave 7~8 conditional 처리 | 자동 결정 | PR #13/#12 머지 의존 — 미머지 시 옵션 B (D5 머지 + D6/D7 분리) |
+| 7 | k6 도입 본 PR vs 후속 | taste decision | 본 PR 도입 (CONCERN-1) — 첫 NFR 측정 BC 라 도입 가치 큼 |
+| 8 | Issue Aggregate 단순 data class vs 진짜 DDD Aggregate | 자동 결정 | 본 PR 은 data class. invariant 메서드 분리 (Task 10 refactor). uncommitted events 패턴은 후속 FR 누적 시 도입 검토 |
+
+**taste decision 의 Maxi 검토 결과**. 본 게이트 1 에서 추가 확인.
+
+### 종합 (BLOCKER / CONCERN 카운트)
+
+- **BLOCKER 0건**
+- **CONCERN 8건** (eng 1 / devex 3 / ceo 2 / design 2)
+  - 핵심 3건. PR #13/#12 머지 ETA / monster PR review burden / Wave 7 추가 게이트
+  - 보강 5건. k6 분리 / ProblemDetail 타 BC 적용 / OpenAPI task 명시 / shared types 후속 / axe-core 검증
+
+CONCERN 은 머지 차단 사유 아님 (PR #10 도 머지 직전 fix 패턴). 본 PR 진행 가능하되 implementation 중 보강 권장.
