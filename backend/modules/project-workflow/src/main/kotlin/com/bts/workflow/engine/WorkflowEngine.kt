@@ -40,7 +40,10 @@ interface WorkflowValidatorFactory {
      * @param config YAML 워크플로우 정의의 `validators[].config` 값
      * @throws IllegalArgumentException 지원하지 않는 type 일 때
      */
-    fun create(type: String, config: Map<String, Any?>): WorkflowValidator
+    fun create(
+        type: String,
+        config: Map<String, Any?>,
+    ): WorkflowValidator
 }
 
 /**
@@ -55,7 +58,10 @@ interface WorkflowPostActionFactory {
      * @param config YAML 워크플로우 정의의 `post_actions[].config` 값
      * @throws IllegalArgumentException 지원하지 않는 type 일 때
      */
-    fun create(type: String, config: Map<String, Any?>): WorkflowPostAction
+    fun create(
+        type: String,
+        config: Map<String, Any?>,
+    ): WorkflowPostAction
 }
 
 /**
@@ -114,7 +120,6 @@ class WorkflowEngine(
     private val postActionFactory: WorkflowPostActionFactory,
     private val definitionRepo: WorkflowDefinitionRepository,
 ) : WorkflowTransitionPort {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
@@ -128,7 +133,13 @@ class WorkflowEngine(
      */
     @Transactional(propagation = Propagation.MANDATORY)
     override fun plan(req: TransitionRequest): TransitionPlan {
-        log.debug("WorkflowEngine.plan: workflowKey={}, issueKey={}, transition={}→{}", req.workflowKey, req.issueKey, req.fromStateKey, req.toStateKey)
+        log.debug(
+            "WorkflowEngine.plan: workflowKey={}, issueKey={}, transition={}→{}",
+            req.workflowKey,
+            req.issueKey,
+            req.fromStateKey,
+            req.toStateKey,
+        )
 
         val workflow = resolveWorkflow(req)
         val transition = resolveTransition(req, workflow)
@@ -146,39 +157,61 @@ class WorkflowEngine(
         cache.findByKey(req.workflowKey)
             ?: throw WorkflowNotFoundException(req.workflowKey)
 
-    private fun resolveTransition(req: TransitionRequest, workflow: Workflow): WorkflowTransition =
+    private fun resolveTransition(
+        req: TransitionRequest,
+        workflow: Workflow,
+    ): WorkflowTransition =
         workflow.transitions.find {
             it.fromStateKey == req.fromStateKey &&
                 it.toStateKey == req.toStateKey &&
                 it.name == req.transitionName
-        } ?: throw WorkflowNotFoundException("${req.workflowKey}::${req.transitionName}(${req.fromStateKey}→${req.toStateKey})")
-
-    private fun buildContext(req: TransitionRequest, workflow: Workflow, transition: WorkflowTransition): TransitionContext {
-        val fromState: WorkflowState = workflow.states.find { it.key == req.fromStateKey }
-            ?: throw WorkflowNotFoundException("${req.workflowKey}::state::${req.fromStateKey}")
-        val issueView = DefaultIssueView(
-            key = req.issueKey,
-            priority = req.issueFields["priority"] as? String ?: "",
-            fields = req.issueFields,
+        } ?: throw WorkflowNotFoundException(
+            "${req.workflowKey}::${req.transitionName}(${req.fromStateKey}→${req.toStateKey})",
         )
+
+    private fun buildContext(
+        req: TransitionRequest,
+        workflow: Workflow,
+        transition: WorkflowTransition,
+    ): TransitionContext {
+        val fromState: WorkflowState =
+            workflow.states.find { it.key == req.fromStateKey }
+                ?: throw WorkflowNotFoundException("${req.workflowKey}::state::${req.fromStateKey}")
+        val issueView =
+            DefaultIssueView(
+                key = req.issueKey,
+                priority = req.issueFields["priority"] as? String ?: "",
+                fields = req.issueFields,
+            )
         val actorView = DefaultActorView(userId = req.actorId, roles = req.actorRoles)
         return TransitionContext(req, workflow, fromState, transition, issueView, actorView)
     }
 
     /** Validator 를 순차 평가한다. 첫 Fail 즉시 예외를 던진다. */
-    private fun runValidators(ctx: TransitionContext, transition: WorkflowTransition) {
+    private fun runValidators(
+        ctx: TransitionContext,
+        transition: WorkflowTransition,
+    ) {
         for (cfg in definitionRepo.findValidators(transition)) {
             val validator = validatorFactory.create(cfg.type, cfg.config)
             val result = validator.validate(ctx)
             if (result is ValidatorResult.Fail) {
-                log.info("WorkflowEngine.plan: validator='{}' failed field='{}' reason='{}'", validator.type, result.field, result.reason)
+                log.info(
+                    "WorkflowEngine.plan: validator='{}' failed field='{}' reason='{}'",
+                    validator.type,
+                    result.field,
+                    result.reason,
+                )
                 throw WorkflowValidatorFailureException(validator.type, result.field, result.reason)
             }
         }
     }
 
     /** PostAction 을 모두 평가하고 fieldChanges 와 emitEvents 를 누적해 반환한다. */
-    private fun runPostActions(ctx: TransitionContext, transition: WorkflowTransition): Pair<List<FieldChange>, List<DomainEvent>> {
+    private fun runPostActions(
+        ctx: TransitionContext,
+        transition: WorkflowTransition,
+    ): Pair<List<FieldChange>, List<DomainEvent>> {
         val fieldChanges = mutableListOf<FieldChange>()
         val emitEvents = mutableListOf<DomainEvent>()
         for (cfg in definitionRepo.findPostActions(transition)) {

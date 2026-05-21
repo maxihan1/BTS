@@ -36,7 +36,6 @@ import java.sql.DriverManager
  */
 @Testcontainers
 class WorkflowCacheTest {
-
     companion object {
         @Container
         @JvmStatic
@@ -73,28 +72,45 @@ class WorkflowCacheTest {
             DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
                 conn.autoCommit = false
 
-                val wfId = conn.prepareStatement(
-                    "INSERT INTO workflows (key, name) VALUES ('software-default', '소프트웨어 기본') RETURNING id",
-                ).use { stmt ->
-                    stmt.executeQuery().use { rs -> rs.next(); rs.getObject(1) as java.util.UUID }
-                }
+                val wfId =
+                    conn.prepareStatement(
+                        "INSERT INTO workflows (key, name) VALUES ('software-default', '소프트웨어 기본') RETURNING id",
+                    ).use { stmt ->
+                        stmt.executeQuery().use { rs ->
+                            rs.next()
+                            rs.getObject(1) as java.util.UUID
+                        }
+                    }
 
-                val openId = conn.prepareStatement(
-                    "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) VALUES (?, 'open', '열림', 'TODO', 0) RETURNING id",
-                ).use { stmt ->
-                    stmt.setObject(1, wfId)
-                    stmt.executeQuery().use { rs -> rs.next(); rs.getObject(1) as java.util.UUID }
-                }
+                val openId =
+                    conn.prepareStatement(
+                        "INSERT INTO workflow_states" +
+                            " (workflow_id, key, name, category, display_order)" +
+                            " VALUES (?, 'open', '열림', 'TODO', 0) RETURNING id",
+                    ).use { stmt ->
+                        stmt.setObject(1, wfId)
+                        stmt.executeQuery().use { rs ->
+                            rs.next()
+                            rs.getObject(1) as java.util.UUID
+                        }
+                    }
 
-                val doneId = conn.prepareStatement(
-                    "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) VALUES (?, 'done', '완료', 'DONE', 1) RETURNING id",
-                ).use { stmt ->
-                    stmt.setObject(1, wfId)
-                    stmt.executeQuery().use { rs -> rs.next(); rs.getObject(1) as java.util.UUID }
-                }
+                val doneId =
+                    conn.prepareStatement(
+                        "INSERT INTO workflow_states" +
+                            " (workflow_id, key, name, category, display_order)" +
+                            " VALUES (?, 'done', '완료', 'DONE', 1) RETURNING id",
+                    ).use { stmt ->
+                        stmt.setObject(1, wfId)
+                        stmt.executeQuery().use { rs ->
+                            rs.next()
+                            rs.getObject(1) as java.util.UUID
+                        }
+                    }
 
                 conn.prepareStatement(
-                    "INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name) VALUES (?, ?, ?, '완료')",
+                    "INSERT INTO workflow_transitions" +
+                        " (workflow_id, from_state_id, to_state_id, name) VALUES (?, ?, ?, '완료')",
                 ).use { stmt ->
                     stmt.setObject(1, wfId)
                     stmt.setObject(2, openId)
@@ -111,13 +127,15 @@ class WorkflowCacheTest {
             Workflow.of(
                 key = key,
                 name = "테스트 워크플로우",
-                states = listOf(
-                    WorkflowState(key = "open", name = "열림", category = StateCategory.TODO, displayOrder = 0),
-                    WorkflowState(key = "done", name = "완료", category = StateCategory.DONE, displayOrder = 1),
-                ),
-                transitions = listOf(
-                    WorkflowTransition(fromStateKey = "open", toStateKey = "done", name = "완료"),
-                ),
+                states =
+                    listOf(
+                        WorkflowState(key = "open", name = "열림", category = StateCategory.TODO, displayOrder = 0),
+                        WorkflowState(key = "done", name = "완료", category = StateCategory.DONE, displayOrder = 1),
+                    ),
+                transitions =
+                    listOf(
+                        WorkflowTransition(fromStateKey = "open", toStateKey = "done", name = "완료"),
+                    ),
             )
     }
 
@@ -125,7 +143,6 @@ class WorkflowCacheTest {
 
     @Nested
     inner class IntegrationCases {
-
         private lateinit var cache: WorkflowCache
 
         @BeforeEach
@@ -165,7 +182,6 @@ class WorkflowCacheTest {
 
     @Nested
     inner class AdvisoryLockTimeoutCase {
-
         @Test
         fun `시나리오 3 - pg_try_advisory_xact_lock false 반환 시 200ms 후 WorkflowCacheLockTimeoutException`() {
             val mockRepo = mockk<WorkflowRepository>()
@@ -193,7 +209,6 @@ class WorkflowCacheTest {
 
     @Nested
     inner class SeedReadDuringLockCase {
-
         @Test
         fun `시나리오 4 - withWriteLock block 실행 중 findByKey 는 cache hit 으로 즉시 반환`() {
             val mockRepo = mockk<WorkflowRepository>()

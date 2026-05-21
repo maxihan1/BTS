@@ -18,6 +18,7 @@ import io.mockk.mockk
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
@@ -25,9 +26,8 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.test.context.support.WithMockUser
-import org.springframework.security.web.SecurityFilterChain
-import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers
+import org.springframework.security.web.SecurityFilterChain
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.test.context.web.WebAppConfiguration
@@ -57,7 +57,6 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc
 @ContextConfiguration(classes = [WorkflowControllerMvcTest.TestMvcConfig::class])
 @WebAppConfiguration
 class WorkflowControllerMvcTest {
-
     /**
      * 테스트 전용 Spring MVC + Security 최소 컨텍스트.
      *
@@ -69,7 +68,6 @@ class WorkflowControllerMvcTest {
     @EnableWebSecurity
     @EnableMethodSecurity
     open class TestMvcConfig {
-
         @Bean
         open fun workflowCache(): WorkflowCache = mockk(relaxed = true)
 
@@ -108,10 +106,12 @@ class WorkflowControllerMvcTest {
 
     @BeforeEach
     fun setUp() {
-        mockMvc = MockMvcBuilders
-            .webAppContextSetup(webApplicationContext)
-            .apply<org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder>(SecurityMockMvcConfigurers.springSecurity())
-            .build()
+        val securityConfigurer = SecurityMockMvcConfigurers.springSecurity()
+        @Suppress("MaxLineLength")
+        mockMvc =
+            MockMvcBuilders.webAppContextSetup(webApplicationContext)
+                .apply<org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder>(securityConfigurer)
+                .build()
     }
 
     // ── Case 1: GET /api/v1/workflows — 목록 200 ─────────────────────────────
@@ -148,23 +148,25 @@ class WorkflowControllerMvcTest {
     @Test
     @WithMockUser
     fun `POST 전이 계획 — TransitionPlan 반환 200`() {
-        val plan = TransitionPlan(
-            toStateKey = "IN_PROGRESS",
-            fieldChanges = listOf(FieldChange(field = "status", oldValue = "TODO", newValue = "IN_PROGRESS")),
-            emitEvents = listOf(DomainEvent(type = "ISSUE_TRANSITIONED", payload = mapOf("issueKey" to "BTS-1"))),
-        )
+        val plan =
+            TransitionPlan(
+                toStateKey = "IN_PROGRESS",
+                fieldChanges = listOf(FieldChange(field = "status", oldValue = "TODO", newValue = "IN_PROGRESS")),
+                emitEvents = listOf(DomainEvent(type = "ISSUE_TRANSITIONED", payload = mapOf("issueKey" to "BTS-1"))),
+            )
         every { workflowApplicationService.planTransition(any()) } returns plan
 
-        val body = mapOf(
-            "toStateKey" to "IN_PROGRESS",
-            "transitionName" to "시작",
-            "fields" to mapOf("priority" to "HIGH"),
-            "version" to 1,
-            "issueKey" to "BTS-1",
-            "fromStateKey" to "TODO",
-            "actorId" to "user-1",
-            "actorRoles" to listOf("MEMBER"),
-        )
+        val body =
+            mapOf(
+                "toStateKey" to "IN_PROGRESS",
+                "transitionName" to "시작",
+                "fields" to mapOf("priority" to "HIGH"),
+                "version" to 1,
+                "issueKey" to "BTS-1",
+                "fromStateKey" to "TODO",
+                "actorId" to "user-1",
+                "actorRoles" to listOf("MEMBER"),
+            )
 
         mockMvc.perform(
             post("/api/v1/workflows/software-default/transitions")
@@ -211,26 +213,34 @@ class WorkflowControllerMvcTest {
         listOf("software-default", "service-desk", "bug-fix", "simple")
             .mapIndexed { idx, key -> buildWorkflow(key, "워크플로우 $idx", stateCount = 3, transitionCount = 2) }
 
-    private fun buildWorkflow(key: String, name: String, stateCount: Int, transitionCount: Int): Workflow {
-        val states = (0 until stateCount).map { i ->
-            WorkflowState(
-                key = "STATE_$i",
-                name = "상태 $i",
-                category = when (i) {
-                    0 -> StateCategory.TODO
-                    stateCount - 1 -> StateCategory.DONE
-                    else -> StateCategory.IN_PROGRESS
-                },
-                displayOrder = i,
-            )
-        }
-        val transitions = (0 until transitionCount).map { i ->
-            WorkflowTransition(
-                fromStateKey = "STATE_$i",
-                toStateKey = "STATE_${i + 1}",
-                name = "전이_$i",
-            )
-        }
+    private fun buildWorkflow(
+        key: String,
+        name: String,
+        stateCount: Int,
+        transitionCount: Int,
+    ): Workflow {
+        val states =
+            (0 until stateCount).map { i ->
+                WorkflowState(
+                    key = "STATE_$i",
+                    name = "상태 $i",
+                    category =
+                        when (i) {
+                            0 -> StateCategory.TODO
+                            stateCount - 1 -> StateCategory.DONE
+                            else -> StateCategory.IN_PROGRESS
+                        },
+                    displayOrder = i,
+                )
+            }
+        val transitions =
+            (0 until transitionCount).map { i ->
+                WorkflowTransition(
+                    fromStateKey = "STATE_$i",
+                    toStateKey = "STATE_${i + 1}",
+                    name = "전이_$i",
+                )
+            }
         return Workflow.of(key = key, name = name, states = states, transitions = transitions)
     }
 }

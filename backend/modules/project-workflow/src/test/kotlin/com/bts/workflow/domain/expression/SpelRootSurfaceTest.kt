@@ -25,7 +25,6 @@ import kotlin.reflect.full.declaredMemberProperties
  * 8. ActorView 의 val property 목록 — userId, roles
  */
 class SpelRootSurfaceTest {
-
     // ── data class 합성 메서드 필터 ──────────────────────────────────────────────
     // Kotlin data class 는 컴파일 시 copy/equals/hashCode/toString/componentN 을 자동 생성한다.
     // 이 합성 메서드들은 사용자가 추가한 비즈니스 메서드가 아니므로 검증 대상에서 제외한다.
@@ -90,7 +89,8 @@ class SpelRootSurfaceTest {
 
     @Test
     fun `DefaultIssueView 는 IssueView 를 구현한다`() {
-        assertThat(IssueView::class.isInstance(DefaultIssueView(key = "PROJ-1", priority = "HIGH", fields = emptyMap()))).isTrue()
+        val view = DefaultIssueView(key = "PROJ-1", priority = "HIGH", fields = emptyMap())
+        assertThat(IssueView::class.isInstance(view)).isTrue()
     }
 
     // ── DefaultActorView 구현체 ───────────────────────────────────────────────

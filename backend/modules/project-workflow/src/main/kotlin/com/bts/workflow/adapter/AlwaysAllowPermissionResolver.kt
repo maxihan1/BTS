@@ -1,4 +1,5 @@
-// 개발/테스트 전용 stub — 항상 true. @Profile("!prod") 으로 운영 부팅 차단. identity-access PR #8 머지 후 IdentityAccessPermissionResolver 가 대체
+// 개발/테스트 전용 stub — 항상 true 반환. @Profile("!prod") 로 운영 부팅 차단.
+// identity-access PR #8 머지 후 IdentityAccessPermissionResolver 가 대체한다.
 
 package com.bts.workflow.adapter
 
@@ -31,7 +32,6 @@ import org.springframework.stereotype.Component
 @Component
 @Profile("!prod")
 class AlwaysAllowPermissionResolver : PermissionResolver {
-
     /**
      * 항상 `true` 를 반환한다.
      *
@@ -43,5 +43,9 @@ class AlwaysAllowPermissionResolver : PermissionResolver {
      * @param scope 권한 평가 범위.
      * @return 항상 `true`.
      */
-    override fun hasPermission(actorId: ActorId, permission: String, scope: Scope): Boolean = true
+    override fun hasPermission(
+        actorId: ActorId,
+        permission: String,
+        scope: Scope,
+    ): Boolean = true
 }

@@ -24,7 +24,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
-import java.util.UUID
 
 /**
  * [WorkflowEngine] 단위 테스트.
@@ -34,7 +33,6 @@ import java.util.UUID
  * (실제 트랜잭션 동작은 Spring AOP 프록시 레이어에서 발효되므로 단위 테스트 범위 밖).
  */
 class WorkflowEngineUnitTest {
-
     private val cache = mockk<WorkflowCache>()
     private val validatorFactory = mockk<WorkflowValidatorFactory>()
     private val postActionFactory = mockk<WorkflowPostActionFactory>()
@@ -47,30 +45,33 @@ class WorkflowEngineUnitTest {
     private val todoState = WorkflowState("TODO", "할 일", StateCategory.TODO, 0)
     private val inProgressState = WorkflowState("IN_PROGRESS", "진행 중", StateCategory.IN_PROGRESS, 1)
 
-    private val transition = WorkflowTransition(
-        fromStateKey = "TODO",
-        toStateKey = "IN_PROGRESS",
-        name = "시작",
-    )
+    private val transition =
+        WorkflowTransition(
+            fromStateKey = "TODO",
+            toStateKey = "IN_PROGRESS",
+            name = "시작",
+        )
 
-    private val workflow = Workflow.of(
-        key = "DEFAULT",
-        name = "기본 워크플로우",
-        states = listOf(todoState, inProgressState),
-        transitions = listOf(transition),
-    )
+    private val workflow =
+        Workflow.of(
+            key = "DEFAULT",
+            name = "기본 워크플로우",
+            states = listOf(todoState, inProgressState),
+            transitions = listOf(transition),
+        )
 
-    private val baseRequest = TransitionRequest(
-        workflowKey = "DEFAULT",
-        issueKey = "BTS-1",
-        fromStateKey = "TODO",
-        toStateKey = "IN_PROGRESS",
-        transitionName = "시작",
-        actorId = "user-1",
-        issueFields = mapOf("priority" to "HIGH"),
-        actorRoles = setOf("MEMBER"),
-        version = 1L,
-    )
+    private val baseRequest =
+        TransitionRequest(
+            workflowKey = "DEFAULT",
+            issueKey = "BTS-1",
+            fromStateKey = "TODO",
+            toStateKey = "IN_PROGRESS",
+            transitionName = "시작",
+            actorId = "user-1",
+            issueFields = mapOf("priority" to "HIGH"),
+            actorRoles = setOf("MEMBER"),
+            version = 1L,
+        )
 
     private val validatorConfigA = ValidatorConfig("RequiredField", mapOf("field" to "priority"))
     private val postActionConfigA = PostActionConfig("SetField", mapOf("field" to "assignee", "value" to "user-1"))
@@ -87,21 +88,31 @@ class WorkflowEngineUnitTest {
     @Test
     fun `happy path — Validator pass + PostAction 누적 → TransitionPlan 반환`() {
         // Validator 2개 — 둘 다 Pass
-        val validatorA = mockk<WorkflowValidator> { every { type } returns "RequiredField"; every { validate(any()) } returns ValidatorResult.Pass }
-        val validatorB = mockk<WorkflowValidator> { every { type } returns "Permission"; every { validate(any()) } returns ValidatorResult.Pass }
+        val validatorA =
+            mockk<WorkflowValidator> {
+                every { type } returns "RequiredField"
+                every { validate(any()) } returns ValidatorResult.Pass
+            }
+        val validatorB =
+            mockk<WorkflowValidator> {
+                every { type } returns "Permission"
+                every { validate(any()) } returns ValidatorResult.Pass
+            }
 
         // PostAction 2개 — 각각 다른 결과 반환
         val fieldChange1 = FieldChange("assignee", null, "user-1")
         val event1 = DomainEvent("ISSUE_TRANSITIONED", mapOf("issueKey" to "BTS-1"))
-        val postActionA = mockk<WorkflowPostAction> {
-            every { type } returns "SetField"
-            every { evaluate(any()) } returns PostActionPlan(listOf(fieldChange1), listOf(event1))
-        }
+        val postActionA =
+            mockk<WorkflowPostAction> {
+                every { type } returns "SetField"
+                every { evaluate(any()) } returns PostActionPlan(listOf(fieldChange1), listOf(event1))
+            }
         val fieldChange2 = FieldChange("priority", "HIGH", "MEDIUM")
-        val postActionB = mockk<WorkflowPostAction> {
-            every { type } returns "Notify"
-            every { evaluate(any()) } returns PostActionPlan(listOf(fieldChange2), emptyList())
-        }
+        val postActionB =
+            mockk<WorkflowPostAction> {
+                every { type } returns "Notify"
+                every { evaluate(any()) } returns PostActionPlan(listOf(fieldChange2), emptyList())
+            }
 
         val validatorConfigB = ValidatorConfig("Permission", emptyMap())
         val postActionConfigB = PostActionConfig("Notify", emptyMap())
@@ -127,10 +138,14 @@ class WorkflowEngineUnitTest {
 
     @Test
     fun `Validator Fail 반환 시 WorkflowValidatorFailureException 을 던진다`() {
-        val failValidator = mockk<WorkflowValidator> {
-            every { type } returns "RequiredField"
-            every { validate(any()) } returns ValidatorResult.Fail(field = "priority", reason = "priority 필드는 필수입니다")
-        }
+        val failValidator =
+            mockk<WorkflowValidator> {
+                every { type } returns "RequiredField"
+                every { validate(any()) } returns
+                    ValidatorResult.Fail(
+                        field = "priority", reason = "priority 필드는 필수입니다",
+                    )
+            }
 
         every { cache.findByKey("DEFAULT") } returns workflow
         every { definitionRepo.findValidators(transition) } returns listOf(validatorConfigA)

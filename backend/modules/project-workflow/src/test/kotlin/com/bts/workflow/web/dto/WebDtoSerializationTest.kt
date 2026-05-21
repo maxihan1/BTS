@@ -24,26 +24,33 @@ import org.junit.jupiter.api.Test
  * Case 3. [TransitionResponseDto] 라운드트립 — [TransitionPlan.toDto] 변환 포함.
  */
 class WebDtoSerializationTest {
-
     private val mapper: ObjectMapper = ObjectMapper().registerKotlinModule()
 
     // ── Case 1: WorkflowDto Jackson 직렬화 ───────────────────────────────────
 
     @Test
     fun `WorkflowDto 직렬화 — 계층 구조가 JSON 에 올바르게 반영된다`() {
-        val workflow = Workflow.of(
-            key = "DEFAULT",
-            name = "기본 워크플로우",
-            states = listOf(
-                WorkflowState(key = "TODO", name = "할 일", category = StateCategory.TODO, displayOrder = 0),
-                WorkflowState(key = "IN_PROGRESS", name = "진행 중", category = StateCategory.IN_PROGRESS, displayOrder = 1),
-                WorkflowState(key = "DONE", name = "완료", category = StateCategory.DONE, displayOrder = 2),
-            ),
-            transitions = listOf(
-                WorkflowTransition(fromStateKey = "TODO", toStateKey = "IN_PROGRESS", name = "시작"),
-                WorkflowTransition(fromStateKey = "IN_PROGRESS", toStateKey = "DONE", name = "완료"),
-            ),
-        )
+        val workflow =
+            Workflow.of(
+                key = "DEFAULT",
+                name = "기본 워크플로우",
+                states =
+                    listOf(
+                        WorkflowState(key = "TODO", name = "할 일", category = StateCategory.TODO, displayOrder = 0),
+                        WorkflowState(
+                            key = "IN_PROGRESS",
+                            name = "진행 중",
+                            category = StateCategory.IN_PROGRESS,
+                            displayOrder = 1,
+                        ),
+                        WorkflowState(key = "DONE", name = "완료", category = StateCategory.DONE, displayOrder = 2),
+                    ),
+                transitions =
+                    listOf(
+                        WorkflowTransition(fromStateKey = "TODO", toStateKey = "IN_PROGRESS", name = "시작"),
+                        WorkflowTransition(fromStateKey = "IN_PROGRESS", toStateKey = "DONE", name = "완료"),
+                    ),
+            )
 
         val dto = workflow.toDto()
 
@@ -70,45 +77,49 @@ class WebDtoSerializationTest {
 
     @Test
     fun `TransitionRequestDto validate — 정상 입력은 Valid 반환`() {
-        val dto = TransitionRequestDto(
-            toStateKey = "IN_PROGRESS",
-            transitionName = "시작",
-            fields = mapOf("priority" to "HIGH"),
-            version = 1L,
-        )
+        val dto =
+            TransitionRequestDto(
+                toStateKey = "IN_PROGRESS",
+                transitionName = "시작",
+                fields = mapOf("priority" to "HIGH"),
+                version = 1L,
+            )
         val result = dto.validate()
         assertThat(result).isInstanceOf(Valid::class.java)
     }
 
     @Test
     fun `TransitionRequestDto validate — toStateKey 가 빈 문자열이면 Invalid 반환`() {
-        val dto = TransitionRequestDto(
-            toStateKey = "",
-            transitionName = "시작",
-            version = 1L,
-        )
+        val dto =
+            TransitionRequestDto(
+                toStateKey = "",
+                transitionName = "시작",
+                version = 1L,
+            )
         val result = dto.validate()
         assertThat(result).isInstanceOf(Invalid::class.java)
     }
 
     @Test
     fun `TransitionRequestDto validate — transitionName 이 빈 문자열이면 Invalid 반환`() {
-        val dto = TransitionRequestDto(
-            toStateKey = "IN_PROGRESS",
-            transitionName = "",
-            version = 1L,
-        )
+        val dto =
+            TransitionRequestDto(
+                toStateKey = "IN_PROGRESS",
+                transitionName = "",
+                version = 1L,
+            )
         val result = dto.validate()
         assertThat(result).isInstanceOf(Invalid::class.java)
     }
 
     @Test
     fun `TransitionRequestDto validate — version 이 0 이면 Invalid 반환`() {
-        val dto = TransitionRequestDto(
-            toStateKey = "IN_PROGRESS",
-            transitionName = "시작",
-            version = 0L,
-        )
+        val dto =
+            TransitionRequestDto(
+                toStateKey = "IN_PROGRESS",
+                transitionName = "시작",
+                version = 0L,
+            )
         val result = dto.validate()
         assertThat(result).isInstanceOf(Invalid::class.java)
     }
@@ -117,15 +128,18 @@ class WebDtoSerializationTest {
 
     @Test
     fun `TransitionResponseDto 라운드트립 — TransitionPlan 변환 + Jackson 왕복 일치`() {
-        val plan = TransitionPlan(
-            toStateKey = "DONE",
-            fieldChanges = listOf(
-                FieldChange(field = "status", oldValue = "IN_PROGRESS", newValue = "DONE"),
-            ),
-            emitEvents = listOf(
-                DomainEvent(type = "ISSUE_TRANSITIONED", payload = mapOf("issueKey" to "BTS-1")),
-            ),
-        )
+        val plan =
+            TransitionPlan(
+                toStateKey = "DONE",
+                fieldChanges =
+                    listOf(
+                        FieldChange(field = "status", oldValue = "IN_PROGRESS", newValue = "DONE"),
+                    ),
+                emitEvents =
+                    listOf(
+                        DomainEvent(type = "ISSUE_TRANSITIONED", payload = mapOf("issueKey" to "BTS-1")),
+                    ),
+            )
 
         val dto = plan.toDto()
 
@@ -148,11 +162,12 @@ class WebDtoSerializationTest {
 
     @Test
     fun `TransitionResponseDto 라운드트립 — 빈 fieldChanges + 빈 events`() {
-        val plan = TransitionPlan(
-            toStateKey = "TODO",
-            fieldChanges = emptyList(),
-            emitEvents = emptyList(),
-        )
+        val plan =
+            TransitionPlan(
+                toStateKey = "TODO",
+                fieldChanges = emptyList(),
+                emitEvents = emptyList(),
+            )
 
         val dto = plan.toDto()
 

@@ -28,7 +28,6 @@ import org.junit.jupiter.api.Test
  * [WorkflowEngine] / [WorkflowRepository] 는 MockK stub 으로 대체한다.
  */
 class WorkflowApplicationServiceTest {
-
     private val workflowEngine: WorkflowEngine = mockk()
     private val workflowRepository: WorkflowRepository = mockk()
     private lateinit var service: WorkflowApplicationService
@@ -42,10 +41,11 @@ class WorkflowApplicationServiceTest {
 
     @Test
     fun `listWorkflows — repository findAll 결과를 그대로 반환한다`() {
-        val workflows = listOf(
-            buildWorkflow("software-default"),
-            buildWorkflow("service-desk"),
-        )
+        val workflows =
+            listOf(
+                buildWorkflow("software-default"),
+                buildWorkflow("service-desk"),
+            )
         every { workflowRepository.findAll() } returns workflows
 
         val result = service.listWorkflows()
@@ -80,11 +80,12 @@ class WorkflowApplicationServiceTest {
     @Test
     fun `planTransition — engine plan 결과를 그대로 반환한다`() {
         val request = buildTransitionRequest()
-        val plan = TransitionPlan(
-            toStateKey = "IN_PROGRESS",
-            fieldChanges = listOf(FieldChange(field = "status", oldValue = "TODO", newValue = "IN_PROGRESS")),
-            emitEvents = listOf(DomainEvent(type = "ISSUE_TRANSITIONED", payload = mapOf("issueKey" to "BTS-1"))),
-        )
+        val plan =
+            TransitionPlan(
+                toStateKey = "IN_PROGRESS",
+                fieldChanges = listOf(FieldChange(field = "status", oldValue = "TODO", newValue = "IN_PROGRESS")),
+                emitEvents = listOf(DomainEvent(type = "ISSUE_TRANSITIONED", payload = mapOf("issueKey" to "BTS-1"))),
+            )
         every { workflowEngine.plan(request) } returns plan
 
         val result = service.planTransition(request)
@@ -98,7 +99,8 @@ class WorkflowApplicationServiceTest {
     @Test
     fun `planTransition — engine 이 예외를 던지면 그대로 전파한다`() {
         val request = buildTransitionRequest()
-        every { workflowEngine.plan(request) } throws WorkflowNotFoundException("software-default::시작(TODO→IN_PROGRESS)")
+        val notFoundKey = "software-default::시작(TODO→IN_PROGRESS)"
+        every { workflowEngine.plan(request) } throws WorkflowNotFoundException(notFoundKey)
 
         assertThatThrownBy { service.planTransition(request) }
             .isInstanceOf(WorkflowNotFoundException::class.java)
@@ -107,14 +109,21 @@ class WorkflowApplicationServiceTest {
     // ── 픽스처 ───────────────────────────────────────────────────────────────
 
     private fun buildWorkflow(key: String): Workflow {
-        val states = listOf(
-            WorkflowState(key = "TODO", name = "할 일", category = StateCategory.TODO, displayOrder = 0),
-            WorkflowState(key = "IN_PROGRESS", name = "진행 중", category = StateCategory.IN_PROGRESS, displayOrder = 1),
-            WorkflowState(key = "DONE", name = "완료", category = StateCategory.DONE, displayOrder = 2),
-        )
-        val transitions = listOf(
-            WorkflowTransition(fromStateKey = "TODO", toStateKey = "IN_PROGRESS", name = "시작"),
-        )
+        val states =
+            listOf(
+                WorkflowState(key = "TODO", name = "할 일", category = StateCategory.TODO, displayOrder = 0),
+                WorkflowState(
+                    key = "IN_PROGRESS",
+                    name = "진행 중",
+                    category = StateCategory.IN_PROGRESS,
+                    displayOrder = 1,
+                ),
+                WorkflowState(key = "DONE", name = "완료", category = StateCategory.DONE, displayOrder = 2),
+            )
+        val transitions =
+            listOf(
+                WorkflowTransition(fromStateKey = "TODO", toStateKey = "IN_PROGRESS", name = "시작"),
+            )
         return Workflow.of(key = key, name = "워크플로우 $key", states = states, transitions = transitions)
     }
 
