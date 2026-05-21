@@ -1,0 +1,11 @@
+# 단순 워크플로우 (3 상태 + 3 전이 — TODO/DOING/DONE)
+key: simple
+name: 단순 워크플로우 (TODO/DOING/DONE)
+states:
+  - { key: todo, name: To Do, category: TODO, displayOrder: 1 }
+  - { key: doing, name: Doing, category: IN_PROGRESS, displayOrder: 2 }
+  - { key: done, name: Done, category: DONE, displayOrder: 3 }
+transitions:
+  - { from: todo, to: doing, name: Start }
+  - { from: doing, to: done, name: Complete }
+  - { from: done, to: doing, name: Reopen }

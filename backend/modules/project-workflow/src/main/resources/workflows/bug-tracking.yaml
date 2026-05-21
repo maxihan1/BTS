@@ -1,0 +1,15 @@
+# 버그 추적 워크플로우 (5 상태 + 5 전이)
+key: bug-tracking
+name: 버그 추적 워크플로우
+states:
+  - { key: reported, name: Reported, category: TODO, displayOrder: 1 }
+  - { key: triaged, name: Triaged, category: TODO, displayOrder: 2 }
+  - { key: in_progress, name: In Progress, category: IN_PROGRESS, displayOrder: 3 }
+  - { key: resolved, name: Resolved, category: DONE, displayOrder: 4 }
+  - { key: closed, name: Closed, category: DONE, displayOrder: 5 }
+transitions:
+  - { from: reported, to: triaged, name: Triage }
+  - { from: triaged, to: in_progress, name: Start Fix }
+  - { from: in_progress, to: resolved, name: Resolve }
+  - { from: resolved, to: closed, name: Close }
+  - { from: resolved, to: in_progress, name: Reopen }
