@@ -122,6 +122,69 @@ class WebDtoSerializationTest {
         assertThat(dto.description).isNull()
     }
 
+    // ── T9: description null 흡수 — CONCERN-1 hot-fix ───────────────────────
+
+    @Test
+    fun `T9-1 WorkflowDto toDto — 도메인 description null 이면 DTO description 은 빈 문자열`() {
+        val workflow =
+            Workflow.of(
+                key = "T9-NULL",
+                name = "설명 없는 워크플로우",
+                description = null,
+                states =
+                    listOf(
+                        WorkflowState(key = "TODO", name = "할 일", category = StateCategory.TODO, displayOrder = 0),
+                        WorkflowState(key = "DONE", name = "완료", category = StateCategory.DONE, displayOrder = 1),
+                    ),
+                transitions = emptyList(),
+            )
+
+        val dto = workflow.toDto()
+
+        assertThat(dto.description).isEqualTo("")
+    }
+
+    @Test
+    fun `T9-2 WorkflowDto toDto — 도메인 description non-null 이면 DTO description 에 그대로 전달`() {
+        val workflow =
+            Workflow.of(
+                key = "T9-NONNULL",
+                name = "설명 있는 워크플로우",
+                description = "abc",
+                states =
+                    listOf(
+                        WorkflowState(key = "TODO", name = "할 일", category = StateCategory.TODO, displayOrder = 0),
+                        WorkflowState(key = "DONE", name = "완료", category = StateCategory.DONE, displayOrder = 1),
+                    ),
+                transitions = emptyList(),
+            )
+
+        val dto = workflow.toDto()
+
+        assertThat(dto.description).isEqualTo("abc")
+    }
+
+    @Test
+    fun `T9-3 WorkflowDto JSON 직렬화 — description 은 항상 string (null 아님)`() {
+        val workflow =
+            Workflow.of(
+                key = "T9-JSON",
+                name = "JSON 검증 워크플로우",
+                description = null,
+                states =
+                    listOf(
+                        WorkflowState(key = "TODO", name = "할 일", category = StateCategory.TODO, displayOrder = 0),
+                        WorkflowState(key = "DONE", name = "완료", category = StateCategory.DONE, displayOrder = 1),
+                    ),
+                transitions = emptyList(),
+            )
+
+        val json = mapper.writeValueAsString(workflow.toDto())
+
+        assertThat(json).contains("\"description\":\"\"")
+        assertThat(json).doesNotContain("\"description\":null")
+    }
+
     // ── T7-2: WorkflowTransitionDto key 직렬화 검증 ──────────────────────────
 
     @Test
