@@ -22,6 +22,46 @@ docker --version # Docker version 26.x 이상
 
 ---
 
+## pre-commit hook (husky + lint-staged)
+
+husky 는 git hook (커밋 직전에 자동 실행되는 스크립트) 을 프로젝트 코드로 관리하는 도구. lint-staged 는 staged (커밋 예정) 파일에만 린터를 실행해 속도를 최적화하는 도구.
+
+### 왜 필요한가
+
+`DEVELOPMENT.md §1 절대 규칙 #15` (NEVER-15. `console.log` / `println` 금지) 를 frontend (`apps/web`) 영역에서 client-side 로 강제. PR #12 의 `no-console` ESLint 룰을 `git commit` 시점에 자동 검증해 의도치 않은 commit 차단. server-side branch protection 은 GitHub free tier private repo 라 차단됨 (자세한 사유. [`docs/decisions/2026-05-22-frontend-logging-policy.md`](docs/decisions/2026-05-22-frontend-logging-policy.md) §정정 이력).
+
+### 활성화 방법
+
+**repo root 또는 worktree 어디서든** `pnpm install` 1회 실행.
+
+```bash
+pnpm install
+```
+
+`.git/` 와 `.husky/` 는 monorepo 1개라 worktree 별 별도 install 불필요 (BTS `worktree per 작업` 패턴 호환). root `prepare` script 가 husky 자동 활성화.
+
+### 활성화 검증
+
+```bash
+git config --get core.hooksPath
+```
+
+출력이 `.husky` 면 정상. 출력 0줄이면 `pnpm install` 재실행.
+
+### 작동 방식
+
+`git commit` 시 staged frontend 파일 (`apps/web/**/*.{ts,tsx,js,jsx}`) 에 eslint `no-console` 자동 검증. 위반 시 commit 차단 + ESLint 에러 메시지 (파일 경로 + 라인 + 룰 명).
+
+### 의도적 우회
+
+```bash
+git commit --no-verify
+```
+
+`--no-verify` 로 hook 건너뛰기 가능. 단, PR review 단계에서 사유 확인. hook 은 실수성 위반 차단용이므로 의도적 우회는 정당한 사유가 있을 때만.
+
+---
+
 ## Docker Desktop 설정 (macOS 기준)
 
 설치 페이지에서 다운로드.

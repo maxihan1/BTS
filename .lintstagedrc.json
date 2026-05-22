@@ -1,0 +1,5 @@
+{
+  "apps/web/**/*.{ts,tsx,js,jsx}": [
+    "pnpm --filter @bts/web exec eslint --max-warnings 0 --cache"
+  ]
+}
