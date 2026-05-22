@@ -612,9 +612,45 @@ EC-1 키 race condition (advisory_xact_lock) / EC-2 권한 부재 (403 ProblemDe
 
 ## Plan 메타
 
-- **task 수**. 39 (Wave -1 = 1 / Wave 0 = 4 / Wave 1 = 5 / Wave 2 = 4 / Wave 3 = 2 / Wave 4 = 6 / Wave 5 = 5 / Wave 6 = 6 / Wave 7 = 4 / Wave 8 = 2)
+- **task 수**. 39 (Wave -1 = 1 / Wave 0 = 4 / Wave 1 = 5 / Wave 2 = 4 / Wave 3 = 2 / Wave 4 = 6 / Wave 5 = 5 / Wave 6 = 6 / Wave 7 = 4 / Wave 8 = 2) + Wave 1c 인프라 fix 3 = **총 42**
 - **wave 수**. 10 (Wave -1 module 셋업 + Wave 0~8, Wave 7~8 은 PR #13 머지 조건부)
 - **drift fix (2026-05-22)**. impl 진입 직전 발견 3건 정정 — (1) Wave -1 module 셋업 task 0 신설 / (2) Flyway 경로 모듈별 namespace 로 정정 (V007 → V001, V008 → V002) / (3) data-dev.sql 모듈별 separate 파일 분리
+
+## PR scope 결정 (2026-05-22, Wave 1c 종료 시점)
+
+> **결정 시점**. Wave 1c 완료 (13/42 task = 31%) 후 monster PR review burden 누적 + T6.6 reflection 우회 fragility 신호 → Maxi 결정 **본 PR scope 를 Wave 0~1c 까지로 축소**.
+
+### 본 PR (#14) scope — issue-tracking BC 부트스트랩
+
+완료 task. T0 / T1 / T2 / T3 / T4 / T5 / T6 / T6.5 / T6.6 / T7 / T8 / T9 / T9.5 — 총 13 task.
+
+산출물.
+- 모듈 부트스트랩. Gradle 서브프로젝트 + build.gradle.kts (project-workflow 패턴 + jOOQ codegen Testcontainers 우회)
+- Domain VO 4종. ActorId / IssueKey / IssuePermission+Scope / IssueKeyPrefixReservedWords
+- DB 마이그레이션. V001 (projects + issues + issue_key_redirects) + V002 (pgmq 큐)
+- Outbound port + stub. IssuePermissionResolver + AlwaysAllowIssuePermissionResolver (@Profile("!prod"))
+- 인프라. docker-compose dev postgres 이미지 (`quay.io/tembo/pg16-pgmq:latest`) + application-dev.yml + application-test.yml + dev seed (ATLAS 프로젝트 1건)
+- ADR 4건. issue-key-prefix-policy + issue-permission-resolver-port + pgmq-postgres-image
+
+### 후속 PR (분리 예정)
+
+**후속 PR #1 — issue-tracking BC 비즈니스 로직 백엔드**. Wave 2~6 (T10~T32, 26 task).
+- Entity (`Issue` Aggregate, IssueId VO) + 예외 + Outbox event types + Response DTO
+- IssueRepository (jOOQ) + IssueEventPublisher (pgmq enqueue)
+- IssueApplicationService 6 메서드 (create / find / update / transition / softDelete / list)
+- IssueController (REST 6 엔드포인트) + IssueExceptionHandler (RFC 7807 ProblemDetail)
+- ArchUnit (BC 격리 + @Transactional Bean) + Testcontainers 통합 (EC-1~EC-7) + Kotest property test
+
+**후속 PR #2 — issue-tracking BC 프런트 + E2E + NFR (conditional)**. Wave 7~8 (T33~T38, 6 task).
+- design-shotgun → designer → IssueDetail.tsx + IssueList + TanStack Query hooks
+- Playwright E2E S1~S6 + k6 NFR 측정
+- PR #13 (`ui/project-workflow-fr-wf-01-frontend-2-pr`) + PR #12 (`chore/eslint-no-console-frontend-logging-adr`) 머지 완료 후 진입
+
+### 본 PR 의 의미
+
+본 PR 은 issue-tracking BC 의 **부트스트랩** — 다른 BC 가 이 BC 의 인프라/스키마/도메인 VO 를 활용할 수 있는 기반 마련. 후속 PR 의 비즈니스 로직 작성이 본 PR 의 외부 인터페이스 (테이블 + Port + VO) 위에서 진행됨.
+
+PR #10 (project-workflow) 의 패턴 일관 — 인프라 + 도메인 코어 + 비즈니스 로직을 한 PR 에 묶지 않고 적정 단위로 분리. monster PR 회피.
 - **예상 시간**. monster PR 수준 (PR #10 = 36 task, PR #11 = 20 task + 10 controller wave). 약 4~6시간 (병렬 dispatch 가정)
 - **TDD 강제**. yes (모든 task RED → GREEN → REFACTOR + spec-compliance-verifier 자동 검증)
 - **wave 당 task 상한**. 7 (PR #10 learning 준수, wave 4 의 6 task 가 최대)
