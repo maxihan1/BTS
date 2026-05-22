@@ -448,4 +448,16 @@ pnpm exec lint-staged
 
 **미검증 1건** — GH Actions husky silent skip (EC-2 의 `CI=true` 자동 감지). 본 PR push 후 `frontend-ci.yml` 재실행 시점에 GH Actions run log 의 `prepare` 단계 출력 확인 가능. /bts-codereview 단계에서 검증.
 
+### /bts-codereview (2026-05-22)
+
+**상태**. ✅ PASS (BLOCKER 0건, CRITICAL 0건, CONCERNS 1건 해소 + NOTE 2건 후속 위임).
+
+**superpowers:code-reviewer agent**. CONCERNS 1건 발견 — spec EC-11 / D6-a 구현 세부 / §완료 기준 line 210 의 "exec bit 100755" 표기가 T7 실측 결과 husky v9 의 정상 동작 (`.husky/pre-commit` 본체 100644 + `.husky/_/pre-commit` shim 만 100755) 과 불일치. spec 3곳 외과적 정정 적용 (2026-05-22 PR #15 정정 사유 명시). NOTE 2건 (NFR baseline plan-only 명시 / learnings.md 후속 정리) 본 PR 비스코프.
+
+**`/review` (gstack)**. ✅ PASS — `pnpm audit` 0 vulnerabilities (husky 9.1.7 + lint-staged 17.0.5 + transitive deps). ADR §Consequences D1~D5 본문 모두 보존 (외과적 정정 정합). lint-staged 의 staged 파일 path escape 안전 (path injection 위험 0). `--no-verify` 우회는 auth/CSRF 무관 (lint 강제만, 사회적 처리). SQL/LLM/Race condition 등 critical 카테고리 본 PR 무관.
+
+**`/plan-ceo-review`** skip (type=chore + 인프라/문서, auth/migration 조건 미충족).
+
+**EC-2 (GH Actions husky silent skip) — 실측 검증** 게이트 2 진입 시 본문에 결과 명시.
+
 

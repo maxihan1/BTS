@@ -106,7 +106,7 @@
 | **EC-8** | `prepare` script 가 `pnpm install --frozen-lockfile` (CI) 에서 husky 명령 실패 | husky v9 의 `CI=true` 환경 skip (EC-2). 또는 `prepare` script 가 `husky || true` 패턴으로 graceful fallback. |
 | **EC-9** | 향후 `apps/admin/`, `packages/ui/` 등 frontend 영역 추가 시 lint-staged 매칭 패턴 갱신 누락 | ADR §Consequences 의 "path filter docs 미포함 의도" 와 동일 패턴. 영역 확장 PR 시 lint-staged 패턴도 함께 갱신 필요 명시. |
 | **EC-10** | BTS 의 `worktree per 작업` 패턴 환경 — `.worktrees/<slug>/` 각각이 별도 working tree | `.git/` 는 monorepo root 1개 → `.git/hooks/` 도 1개 → git config `core.hooksPath` 가 root `.husky/` 가리킴. 모든 worktree 가 같은 hook 공유. 신규 worktree 생성 후 별도 `pnpm install` 불필요. T4 검증 — `.worktrees/husky-lint-staged-adr-revise/` 안에서 fixture commit 시도 시 hook 정상 작동 확인. |
-| **EC-11** | `.husky/pre-commit` 의 executable bit (chmod +x) 처리 | husky v9 는 자체 호출이라 shebang/exec bit 의존성 없음. 그러나 일부 환경 (macOS Finder copy / Windows clone) 에서 exec bit 사라질 위험. git 은 `core.fileMode` 가 `true` 일 때 100755 / `false` 일 때 무시. macOS + Linux default 는 `true`. 본 PR T1 단계에서 `git update-index --chmod=+x .husky/pre-commit` 명시 적용 + `git ls-files --stage .husky/pre-commit` 결과 `100755` 확인. |
+| **EC-11** | `.husky/pre-commit` 의 executable bit 처리 (T7 실측 후 정정, 2026-05-22 PR #15) | **husky v9 의 정상 동작 — `.husky/_/pre-commit` shim 만 100755, 사용자의 `.husky/pre-commit` 본체는 100644**. `core.hooksPath=.husky/_` 가 shim 가리킴 → shim 이 `.husky/pre-commit` 의 sh content 를 읽어서 실행 (본체 exec bit 불필요). T7 실측에서 husky v9 가 `prepare` 시점에 본체 mode 를 자동으로 100644 로 reset 함을 확인. 본 PR T1 시점에 `git update-index --chmod=+x` 100755 적용했으나 `pnpm install` 후 100644 로 정상 변경됨 (정합). git index 의 100755 강제는 불필요 — 향후 회귀 검증 기준은 본체 100644 + shim 100755. |
 
 ## 6. 제약 조건
 
@@ -189,7 +189,7 @@ PR #12 가 확립한 패턴. eslint config / workflow yml / ADR 같은 인프라
 - `package.json` devDependencies. `husky@^9.0.0`, `lint-staged@^17.0.0` (plan-eng-review A1 결정 — husky v9 와 동일 원칙으로 최신 major 채택, 2026-05-22 시점 최신 17.0.5).
 - root `package.json` 의 `prepare` script. `"prepare": "husky"` (v9 의 install 명령).
 - `.husky/_/` 디렉토리는 `.gitignore` 등록 (husky v9 의 sample/transition shim).
-- `.husky/pre-commit` 만 git tracked + executable bit 100755 (EC-11 참고).
+- `.husky/pre-commit` git tracked. mode 100644 (husky v9 정상 — shim 만 100755. T7 실측 후 EC-11 정정 적용, 2026-05-22 PR #15).
 
 ### D5. pre-commit hook 외 다른 hook (commit-msg / pre-push 등) 추가 여부
 
@@ -207,7 +207,7 @@ PR #12 가 확립한 패턴. eslint config / workflow yml / ADR 같은 인프라
 - [ ] root `.lintstagedrc.json` (또는 `package.json` 의 `lint-staged` 필드) 에 매칭 패턴 (`apps/web/**/*.{ts,tsx,js,jsx}`) + D2-a 명령
 - [ ] `.husky/pre-commit` 생성 + `pnpm exec lint-staged` 호출 + git tracked (FR-HUSKY-01)
 - [ ] `.husky/_/` 디렉토리는 `.gitignore` 등록 (D6-a 구현 세부)
-- [ ] `.husky/pre-commit` executable bit 100755 (`git update-index --chmod=+x` 적용, EC-11)
+- [ ] `.husky/pre-commit` mode 100644 (husky v9 정상 — shim `.husky/_/pre-commit` 만 100755. T7 실측 후 EC-11 정정 적용, PR #15)
 - [ ] `pnpm install` 후 hook 자동 활성화 확인 (`git config core.hooksPath` 가 `.husky` 가리킴, FR-HUSKY-04)
 - [ ] idempotency 검증 — `pnpm install` 재실행 시 정상 (FR-HUSKY-04, G5)
 - [ ] S1 fixture 검증 — `apps/web/src/` 안 임시 파일에 `console.log` 작성 → `git add` → `git commit` 시도 → 차단 확인 → fixture 제거
