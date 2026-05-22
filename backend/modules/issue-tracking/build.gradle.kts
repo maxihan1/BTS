@@ -1,15 +1,16 @@
-// issue-tracking 모듈 — DEVELOPMENT.md §모듈 격리 + project-workflow 패턴 일관
-// issue-tracking 모듈 빌드 스크립트 — project-workflow 패턴 일관, DEVELOPMENT.md §모듈 격리
-
+// issue-tracking 모듈 빌드 스크립트 — DEVELOPMENT.md §모듈 격리 + project-workflow 패턴 일관
 // Kotlin 버전: 2.0.10 (detekt 1.23.7 호환 상한 — build.gradle.kts 루트 주석 참고)
 
-// ── buildscript — jOOQ generateJooq 훅에서 사용할 Testcontainers + Flyway classpath ────────────
-// Testcontainers JDBC URL(jdbc:tc:)의 imageTag 파싱 정규식([^:]+)은
-// quay.io/tembo/pg16-pgmq:latest 형식을 지원하지 않는다.
-// (PostgreSQLContainerProvider.newInstance 가 DockerImageName.parse("postgres").withTag(tag) 호출 —
-//  레지스트리 경로를 tag로 취급해 postgres:<레지스트리경로> 로 잘못 조합됨)
-// 따라서 generateJooq doFirst 훅에서 PostgreSQLContainer 를 직접 기동하고 JDBC URL 을 주입한다.
-// ADR 2026-05-22-pgmq-postgres-image: quay.io/tembo/pg16-pgmq:latest 채택 결정.
+// ── buildscript — generateJooq doFirst 훅에서 사용할 Testcontainers + PostgreSQL driver ──────────
+// 설계 이유:
+//   1. jdbc:tc: URL 방식 — Testcontainers JDBC URL 의 imageTag 파싱 정규식([^:]+) 이
+//      quay.io/tembo/pg16-pgmq:latest 형식을 지원하지 않는다.
+//      (PostgreSQLContainerProvider.newInstance 가 DockerImageName.parse("postgres").withTag(tag) 호출 —
+//       레지스트리 경로가 tag 로 취급돼 postgres:<레지스트리경로> 로 잘못 조합됨)
+//   2. Flyway Community Edition — PostgreSQL 16.x 미지원 (Commercial 전용).
+//      마이그레이션은 JDBC 직접 실행(db/codegen/init_codegen.sql) 으로 대체.
+//   결론: generateJooq doFirst 훅에서 PostgreSQLContainer 를 직접 기동 → JDBC URL 주입 방식 채택.
+//   ADR 2026-05-22-pgmq-postgres-image: quay.io/tembo/pg16-pgmq:latest 채택 결정.
 buildscript {
     repositories {
         mavenCentral()
@@ -18,11 +19,9 @@ buildscript {
         // Testcontainers: PostgreSQLContainer 직접 기동용 (generateJooq doFirst 훅)
         classpath("org.testcontainers:postgresql:1.20.3")
         classpath("org.testcontainers:testcontainers:1.20.3")
-        // Flyway 제거 — Flyway Community Edition 이 PostgreSQL 16.x 미지원 (Commercial 전용).
-        // V001 + V002 SQL 은 JDBC 직접 실행 방식으로 적용 (db/codegen/init_codegen.sql).
-        // PostgreSQL JDBC 드라이버 (Testcontainers + Flyway 에 모두 필요)
+        // PostgreSQL JDBC 드라이버: DriverManager.getConnection + Class.forName 에 필요
         classpath("org.postgresql:postgresql:42.7.3")
-        // SLF4J: Testcontainers 로깅 (NoSLF4J warning 방지)
+        // SLF4J: Testcontainers 로깅 바인딩 (NoSLF4J warning 방지)
         classpath("org.slf4j:slf4j-simple:2.0.13")
     }
 }
@@ -140,17 +139,15 @@ dependencies {
 
 // ── jOOQ 코드 생성 설정 ───────────────────────────────────────────────────────
 // generateJooq doFirst 훅에서 quay.io/tembo/pg16-pgmq:latest 컨테이너를 직접 기동하고
-// Flyway 로 V001 + V002 를 적용한 뒤 실제 JDBC URL 을 jooqConfiguration 에 주입한다.
+// JDBC 로 db/codegen/init_codegen.sql(V001+V002 통합) 을 적용한 뒤 실제 JDBC URL 을 주입한다.
 //
-// 설계 결정:
-//   1. 이미지 — jdbc:tc: URL 의 PostgreSQLContainerProvider 는 imageTag 를
-//      DockerImageName.parse("postgres").withTag(tag) 로 조합하므로 레지스트리 경로 지정 불가.
-//      doFirst 훅에서 PostgreSQLContainer("quay.io/tembo/pg16-pgmq:latest") 직접 생성으로 우회.
-//      (ADR 2026-05-22-pgmq-postgres-image)
-//   2. 마이그레이션 — TC_INITSCRIPT 단일 파일 제한으로 V001 + V002 를 Flyway 로 직접 적용.
-//      db/codegen/init_codegen.sql 은 TC_INITSCRIPT 방식이 필요할 때를 대비해 유지.
-//   3. pgmq excludes — inputSchema = "public" 로 pgmq 스키마는 이미 introspection 대상 외.
-//      pgmq 호출은 raw SQL (DATA.md §7.2). BC 격리 준수.
+// 설계 결정 (ADR 2026-05-22-pgmq-postgres-image):
+//   1. 이미지 — jdbc:tc: URL 의 imageTag 파싱 정규식([^:]+) 이 레지스트리 경로 미지원.
+//      buildscript classpath 에서 PostgreSQLContainer 직접 생성, asCompatibleSubstituteFor 로 우회.
+//   2. 마이그레이션 — Flyway Community Edition 이 PostgreSQL 16.x 미지원.
+//      db/codegen/init_codegen.sql (V001+V002 통합) 을 JDBC 직접 실행으로 대체.
+//   3. pgmq 스키마 제외 — inputSchema = "public" 로 pgmq 스키마는 introspection 대상 외.
+//      pgmq 호출은 raw SQL (dsl.execute("SELECT pgmq.send(...)"), DATA.md §7.2). BC 격리 준수.
 jooq {
     configurations {
         create("main") {
@@ -201,11 +198,11 @@ jooq {
 }
 
 // ── generateJooq doFirst 훅 — quay.io/tembo/pg16-pgmq:latest 컨테이너 기동 ──────
-// nu.studer.jooq 플러그인이 생성하는 generateJooq 태스크 실행 직전에:
-//   1. quay.io/tembo/pg16-pgmq:latest 컨테이너를 PostgreSQLContainer 로 직접 기동.
-//   2. Flyway 로 V001 + V002 마이그레이션 적용.
-//   3. jooqConfiguration.jdbc.url / user / password 를 실제 컨테이너 접속 정보로 교체.
-// 컨테이너는 doLast 훅에서 종료한다.
+// generateJooq 실행 직전 (doFirst):
+//   1. quay.io/tembo/pg16-pgmq:latest 컨테이너 기동 (pgmq 사전 설치 — ADR 2026-05-22-pgmq-postgres-image)
+//   2. db/codegen/init_codegen.sql (V001+V002 통합) JDBC 직접 실행
+//   3. JooqGenerate.jooqConfiguration.jdbc (private 필드) 를 reflection 으로 실제 URL 로 교체
+// generateJooq 완료 후 (doLast): 컨테이너 종료 — 리소스 반환
 afterEvaluate {
     val dockerSocketPath =
         runCatching {
