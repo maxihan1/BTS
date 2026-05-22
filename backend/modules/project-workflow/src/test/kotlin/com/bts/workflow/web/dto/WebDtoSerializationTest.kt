@@ -103,7 +103,7 @@ class WebDtoSerializationTest {
     }
 
     @Test
-    fun `T7-1b WorkflowDto toDto — description null 이면 JSON 에 null 직렬화`() {
+    fun `T7-1b WorkflowDto toDto — 도메인 description null 이면 DTO description 은 빈 문자열 (CONCERN-1 hot-fix)`() {
         val workflow =
             Workflow.of(
                 key = "TEST-NULL",
@@ -119,7 +119,7 @@ class WebDtoSerializationTest {
 
         val dto = workflow.toDto()
 
-        assertThat(dto.description).isNull()
+        assertThat(dto.description).isEqualTo("")
     }
 
     // ── T9: description null 흡수 — CONCERN-1 hot-fix ───────────────────────
