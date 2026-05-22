@@ -38,11 +38,18 @@ Accepted (2026-05-22).
 ### 개발 가이드 (dev 시점)
 - **dev 디버깅 시 `console.log` 사용 금지** → `import.meta.env.DEV && console.warn(...)` 패턴 권장.
 - **dev 시점 즉시 검증**. 코드 작성 후 `pnpm --filter @bts/web lint` 실행 권장. VS Code 의 `dbaeumer.vscode-eslint` extension 가 ESLint flat config 를 자동 인식 → 작성 시점 즉시 빨간 줄 표시 (IDE 사용자). Claude Code subagent 는 dispatch 직전 lint 자체 실행.
-- pre-commit hook (husky + lint-staged) 부재 (본 ADR 비스코프). 본 PR 머지 후 별도 후속 PR 도입 가능.
+- **pre-commit hook (husky + lint-staged) 도입 완료** (후속 PR #15, 2026-05-22). root `package.json` 에 `husky@^9.0.0` + `lint-staged@^17.0.0` + `prepare` script 추가. `.husky/pre-commit` 가 `pnpm exec lint-staged` 호출 → staged `apps/web/**/*.{ts,tsx,js,jsx}` 만 eslint no-console 검증. 본 ADR 의 **client-side mitigation 1차 방어선**.
 
-### 🔔 Maxi 후속 액션 (본 PR 머지 후 즉시, 1건)
-- **GitHub Settings → Branches → Branch protection rules → main → Required status checks → `frontend-ci / lint` 추가 → Save changes**.
-- 미설정 시 CI fail check 표시는 되나 머지 차단 안 됨 (silent failure). 본 ADR 의 "자동 차단" 의도 무력화 위험.
+### ~~Maxi 후속 액션~~ (정정됨, 2026-05-22 — PR #15)
+
+**본 ADR 의 server-side 머지 차단 전제는 불성립**. BTS repo (`maxihan1/BTS`) 는 GitHub free tier private repo. `gh api repos/maxihan1/BTS/branches/main/protection` 과 `gh api repos/maxihan1/BTS/rulesets` 모두 `403 Upgrade to GitHub Pro or make this repository public` 반환. GitHub Settings UI 에서도 동일하게 등록 불가. Branch protection / Repository Rulesets 모두 차단됨.
+
+**재정의된 강제 분담**.
+- **1차 방어선 (client-side, 본 ADR §정정 이력 PR #15 도입)**. husky + lint-staged 가 `git commit` 시점에 staged frontend 파일을 자동 검증 + 차단. 의도적 우회는 `git commit --no-verify` (PR review 단계에서 사유 확인).
+- **2차 방어선 (server-side, GH Actions CI)**. PR 시 `frontend-ci / lint` workflow 가 fail check 빨강 표시. 머지 차단은 안 됨 (branch protection 미지원). 사용자/리뷰어가 적색 표시를 인지하고 머지 안 하는 책임.
+- **3차 (사회적)**. PR review 단계에서 `--no-verify` 우회 commit 의 사유 확인.
+
+자세한 사유와 정정 전후 비교. §정정 이력 참고.
 
 ## 미래 정정 트리거
 다음 중 1건 충족 시 본 ADR 재검토 + Pino / 외부 수집기 도입 결정.
@@ -50,6 +57,13 @@ Accepted (2026-05-22).
 1. **prod 사용자 100명 초과** — 1K BTS 의 10% 도달. 사용자 incident 발생 시 frontend 로그 추적 부재가 BLOCKER 가 되는 임계점. **단, 본 트리거는 사용자 수 측정 인프라 도입 시점부터 발효** (현재 Phase 0 진입 직전, prod 사용자 수 측정 인프라 부재). 측정 인프라 도입 PR 시 본 ADR 함께 갱신.
 2. **첫 prod incident 발생 (frontend 원인 의심)** — 사용자가 보고한 incident (장애 / 오동작 / 사고) 중 root cause 가 **frontend 사용 중 발생한 것으로 의심**되는 사건이 1회 이상. 객관 기준 — 보고된 사용자 행위가 frontend 페이지 / 컴포넌트 / 클라이언트 사이드 로직 동작 중 발생, 그리고 재현 시도 시 console 로그만으로 root cause 식별 불가.
 3. **외부 로그 수집기 도입 결정** — Sentry / Datadog / Loki 등이 다른 결정 (예. backend) 으로 들어오면 frontend 도 그 transport 에 붙어야 함. 도입 결정 시 본 ADR 즉시 재검토.
+4. **GitHub Pro 도입 또는 repo public 전환** — Branch Protection / Repository Rulesets 사용 가능 → server-side 머지 차단 재시도 가능. 본 ADR §Consequences 의 client-side / server-side 분담 재검토 + §정정 이력 추가.
+
+### 정정 이력
+
+| 날짜 | PR | 사유 | 정정 전 | 정정 후 |
+|---|---|---|---|---|
+| 2026-05-22 | #15 | GitHub free tier private repo 의 branch protection 차단 발견 (`gh api repos/maxihan1/BTS/branches/main/protection → 403 Upgrade to GitHub Pro or make this repository public`). server-side 머지 차단 전제 불성립. | "Maxi 후속 액션. GitHub Settings → Branches → Branch protection rules → main → Required status checks → `frontend-ci / lint` 추가 → Save changes" + "미설정 시 silent failure 위험" | client-side mitigation (husky + lint-staged) 1차 방어선 + GH Actions CI 2차 (PR check 적색 표시만, 차단 안 됨) + 미래 정정 트리거 4번째 신규 (GitHub Pro 도입 / public 전환 시점) |
 
 ## 참조
 - PR #11 (FR-AU-09 D6 로그인 폼 UI) CONCERNS-1.
