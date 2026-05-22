@@ -56,6 +56,9 @@ e2e-results/
 .atlas-cache/
 .claude/settings.local.json
 
+# husky v9 shim 디렉토리 (sample/transition hooks)
+.husky/_/
+
 # Python (가능성 있는 보조 스크립트)
 __pycache__/
 *.py[cod]
