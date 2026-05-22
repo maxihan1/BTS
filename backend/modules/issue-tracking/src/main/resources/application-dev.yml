@@ -11,9 +11,9 @@ spring:
   datasource:
     # docker compose 의 postgres 가 host 5432 (Homebrew postgres 흔히 점유) 와 충돌 회피 위해 5433 매핑.
     # identity-access 와 동일 포트 — infra/docker-compose.dev.yml postgres 노출 포트 기준.
-    url: ${BTS_DB_URL:jdbc:postgresql://localhost:5433/bts_dev}
-    username: ${BTS_DB_USERNAME:bts_dev}
-    password: ${BTS_DB_PASSWORD:bts_dev}
+    url: ${BTS_DB_URL:jdbc:postgresql://localhost:5433/bts}
+    username: ${BTS_DB_USERNAME:bts}
+    password: ${BTS_DB_PASSWORD:bts}
     driver-class-name: org.postgresql.Driver
   sql:
     init:
