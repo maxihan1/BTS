@@ -1,10 +1,11 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 3개 라우트 (/, /login, /dashboard)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 4개 라우트 (/, /login, /dashboard, /workflows/$key)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth } from './auth/routeGuard'
 import { RootLayout } from './routes/__root'
 import { IndexPage } from './routes/index'
 import { LoginPage } from './routes/login'
 import { DashboardPage } from './routes/dashboard'
+import { WorkflowDetailRouteAdapter } from './routes/workflows.$key'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -33,10 +34,17 @@ const dashboardRoute = createRoute({
   beforeLoad: requireAuth,
 })
 
+const workflowsKeyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/workflows/$key',
+  component: WorkflowDetailRouteAdapter,
+})
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   dashboardRoute,
+  workflowsKeyRoute,
 ])
 
 export const router = createRouter({ routeTree })

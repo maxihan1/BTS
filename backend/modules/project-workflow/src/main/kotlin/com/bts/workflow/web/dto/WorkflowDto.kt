@@ -14,12 +14,16 @@ import com.bts.workflow.domain.WorkflowTransition
  *
  * @property key 워크플로우 식별 키. 시스템 전역에서 고유.
  * @property name 사람이 읽을 수 있는 워크플로우 이름.
+ * @property description 워크플로우 설명. 다이어그램 위 헤더 표시용.
+ *   도메인 [Workflow.description] 이 null 인 경우 빈 문자열로 흡수한다.
+ *   프론트엔드 Zod schema (required string) 와의 타입 일치를 보장한다.
  * @property states 이 워크플로우가 포함하는 상태 목록.
  * @property transitions 이 워크플로우가 허용하는 전이 목록.
  */
 data class WorkflowDto(
     val key: String,
     val name: String,
+    val description: String,
     val states: List<WorkflowStateDto>,
     val transitions: List<WorkflowTransitionDto>,
 )
@@ -42,11 +46,13 @@ data class WorkflowStateDto(
 /**
  * [WorkflowTransition] 의 REST 응답 DTO.
  *
+ * @property key 전이 고유 식별 키. fromStateKey__toStateKey 합성. 향후 라우팅/API 호출용.
  * @property fromStateKey 전이 출발 상태의 키.
  * @property toStateKey 전이 도착 상태의 키.
  * @property name 전이 이름. 예: "시작", "완료", "재열기".
  */
 data class WorkflowTransitionDto(
+    val key: String,
     val fromStateKey: String,
     val toStateKey: String,
     val name: String,
@@ -59,6 +65,7 @@ fun Workflow.toDto(): WorkflowDto =
     WorkflowDto(
         key = key,
         name = name,
+        description = description ?: "",
         states = states.map { it.toDto() },
         transitions = transitions.map { it.toDto() },
     )
@@ -81,6 +88,7 @@ fun WorkflowState.toDto(): WorkflowStateDto =
  */
 fun WorkflowTransition.toDto(): WorkflowTransitionDto =
     WorkflowTransitionDto(
+        key = key,
         fromStateKey = fromStateKey,
         toStateKey = toStateKey,
         name = name,

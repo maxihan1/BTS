@@ -209,3 +209,11 @@ sourceSets {
         }
     }
 }
+
+// ── ktlint — generated 소스 제외 ─────────────────────────────────────────────
+// jOOQ codegen 출력은 수동 관리 불가이므로 ktlint 검사 범위에서 제외한다.
+configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
+    filter {
+        exclude { element -> element.file.path.contains("/generated/") }
+    }
+}

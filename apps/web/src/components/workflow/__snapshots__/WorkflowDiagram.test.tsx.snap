@@ -1,0 +1,68 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`generateMermaidCode > T3-2: 4 표준 워크플로우 snapshot — 노드/엣지 수 일치 검증 > bug-tracking 1`] = `
+"stateDiagram-v2
+  [*] --> reported
+  reported --> triaged : 분류
+  triaged --> fixing : 수정 시작
+  fixing --> fixed : 수정 완료
+  fixed --> verified : 검증 완료
+  fixed --> [*]
+  verified --> [*]
+  classDef todo fill:var(--muted),stroke:var(--border)
+  classDef in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)
+  classDef done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)
+  class reported todo
+  class triaged todo
+  class fixing in_progress
+  class fixed done
+  class verified done"
+`;
+
+exports[`generateMermaidCode > T3-2: 4 표준 워크플로우 snapshot — 노드/엣지 수 일치 검증 > kanban-basic 1`] = `
+"stateDiagram-v2
+  [*] --> backlog
+  backlog --> todo : 계획
+  todo --> doing : 시작
+  doing --> done : 완료
+  done --> [*]
+  classDef todo fill:var(--muted),stroke:var(--border)
+  classDef in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)
+  classDef done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)
+  class backlog todo
+  class todo todo
+  class doing in_progress
+  class done done"
+`;
+
+exports[`generateMermaidCode > T3-2: 4 표준 워크플로우 snapshot — 노드/엣지 수 일치 검증 > simple 1`] = `
+"stateDiagram-v2
+  [*] --> open
+  open --> closed : 닫기
+  closed --> open : 다시 열기
+  closed --> [*]
+  classDef todo fill:var(--muted),stroke:var(--border)
+  classDef in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)
+  classDef done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)
+  class open todo
+  class closed done"
+`;
+
+exports[`generateMermaidCode > T3-2: 4 표준 워크플로우 snapshot — 노드/엣지 수 일치 검증 > software-default 1`] = `
+"stateDiagram-v2
+  [*] --> open
+  open --> in_progress : 진행 시작
+  in_progress --> in_review : 검토 요청
+  in_review --> resolved : 해결 완료
+  resolved --> closed : 닫기
+  resolved --> [*]
+  closed --> [*]
+  classDef todo fill:var(--muted),stroke:var(--border)
+  classDef in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)
+  classDef done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)
+  class open todo
+  class in_progress in_progress
+  class in_review in_progress
+  class resolved done
+  class closed done"
+`;

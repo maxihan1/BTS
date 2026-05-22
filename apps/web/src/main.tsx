@@ -19,10 +19,22 @@ const queryClient = new QueryClient({
   },
 })
 
-createRoot(rootElement).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  </StrictMode>,
-)
+async function mountApp(root: HTMLElement) {
+  // dev 모드에서 MSW browser worker 활성화 — backend 없이 API mock 처리
+  if (import.meta.env.DEV) {
+    const { worker } = await import('./mocks/browser')
+    await worker.start({
+      onUnhandledRequest: 'bypass', // API 외 정적 자산 요청은 그대로 통과
+    })
+  }
+
+  createRoot(root).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </StrictMode>,
+  )
+}
+
+void mountApp(rootElement)

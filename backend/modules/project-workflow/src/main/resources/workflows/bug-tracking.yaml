@@ -1,6 +1,7 @@
 # 버그 추적 워크플로우 (5 상태 + 5 전이)
 key: bug-tracking
 name: 버그 추적 워크플로우
+description: "Reported → Triaged → In Progress → Resolved → Closed 흐름의 버그 추적 워크플로우"
 states:
   - { key: reported, name: Reported, category: TODO, displayOrder: 1 }
   - { key: triaged, name: Triaged, category: TODO, displayOrder: 2 }
