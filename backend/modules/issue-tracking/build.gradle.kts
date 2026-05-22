@@ -317,10 +317,21 @@ sourceSets {
     }
 }
 
-// ── ktlint 가 jOOQ 자동 생성 소스를 검사 대상에서 제외 ────────────────
-// jOOQ generated 는 PostgreSQL 컬럼명 매핑 (SCREAMING_SNAKE) 으로 ktlint naming 룰과 충돌.
-// .gitignore (`**/src/generated/jooq/`) 와 같은 사유 — V001 SQL 이 source of truth.
-// ktlint plugin 12.x 의 filter 가 sourceSet 직접 지정으로 우회 안 됨 → task 단위 exclude.
-tasks.withType<org.jlleitschuh.gradle.ktlint.tasks.BaseKtLintCheckTask>().configureEach {
-    exclude("**/generated/**")
+// ── ktlintMainSourceSetCheck 가 generated 소스를 검사하지 않도록 source 재설정 ──
+// 설계 결정 (ktlint generated 제외 — PR #14 lint fix):
+//   nu.studer.jooq 9.0 플러그인이 target.directory 를 자동으로 SourceDirectorySet.srcDir() 에 등록.
+//   sourceSets.main.kotlin.srcDir 를 제거해도 JooqPlugin 이 재등록하므로 효과 없음.
+//   ktlint plugin 12.x 가 KotlinSourceSet.kotlin.sourceDirectories 를 수집해 task source 확정.
+//   exclude("**/generated/**") 패턴은 각 srcDir root 기준 상대경로 매칭이므로
+//   src/generated/jooq root 기준 파일 경로에 "generated" 세그먼트가 없어 매칭 불가.
+//   → afterEvaluate 에서 ktlintMainSourceSetCheck task 의 source 를 직접 재설정:
+//     src/main/kotlin 만 포함하는 FileTree 로 교체 — generated 완전 제외.
+//     컴파일은 sourceSets.main.kotlin.srcDir 경유로 정상 포함.
+//
+//   project-workflow BC 는 CI 에서 generateJooq 를 실행하지 않아 이 문제가 노출되지 않았음.
+//   본 PR 은 로컬 검증을 명시적으로 통과해야 하므로 이 패턴을 채택.
+afterEvaluate {
+    tasks.named<org.jlleitschuh.gradle.ktlint.tasks.BaseKtLintCheckTask>("runKtlintCheckOverMainSourceSet") {
+        setSource(fileTree("src/main/kotlin"))
+    }
 }
