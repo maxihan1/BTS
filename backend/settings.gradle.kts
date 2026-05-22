@@ -4,3 +4,4 @@ rootProject.name = "bts-backend"
 
 include(":modules:identity-access")
 include(":modules:project-workflow")
+include(":modules:issue-tracking")
