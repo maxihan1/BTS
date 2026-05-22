@@ -16,7 +16,6 @@ import org.junit.jupiter.api.Test
  * - permission_entries_size — [IssuePermission] 항목 수 6개 (VIEW, CREATE, UPDATE, TRANSITION, SOFT_DELETE, HARD_DELETE).
  */
 class IssueScopeTest {
-
     @Test
     fun `global_singleton — IssueScope Global 은 같은 인스턴스다`() {
         assertThat(IssueScope.Global).isSameAs(IssueScope.Global)

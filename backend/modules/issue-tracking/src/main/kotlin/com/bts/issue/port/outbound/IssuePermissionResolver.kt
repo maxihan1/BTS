@@ -37,7 +37,6 @@ import com.bts.issue.domain.ActorId
  * @see docs/adr/2026-05-22-issue-permission-resolver-port.md
  */
 interface IssuePermissionResolver {
-
     /**
      * 주어진 행위자([actorId])가 특정 범위([scope]) 내에서 요청 권한([permission])을 보유하는지 판정한다.
      *
@@ -46,5 +45,9 @@ interface IssuePermissionResolver {
      * @param scope 권한 적용 범위. [IssueScope.Global], [IssueScope.Project], [IssueScope.Issue] 중 하나.
      * @return 권한 있으면 `true`, 없으면 `false`.
      */
-    fun hasPermission(actorId: ActorId, permission: IssuePermission, scope: IssueScope): Boolean
+    fun hasPermission(
+        actorId: ActorId,
+        permission: IssuePermission,
+        scope: IssueScope,
+    ): Boolean
 }

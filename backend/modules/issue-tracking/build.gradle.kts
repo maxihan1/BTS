@@ -1,36 +1,36 @@
 // issue-tracking 모듈 빌드 스크립트 — DEVELOPMENT.md §모듈 격리 + project-workflow 패턴 일관
-// Kotlin 버전: 2.0.10 (detekt 1.23.7 호환 상한 — build.gradle.kts 루트 주석 참고)
-
-// ── buildscript — generateJooq doFirst 훅에서 사용할 Testcontainers + PostgreSQL driver ──────────
-// 설계 이유:
-//   1. jdbc:tc: URL 방식 — Testcontainers JDBC URL 의 imageTag 파싱 정규식([^:]+) 이
-//      quay.io/tembo/pg16-pgmq:latest 형식을 지원하지 않는다.
-//      (PostgreSQLContainerProvider.newInstance 가 DockerImageName.parse("postgres").withTag(tag) 호출 —
-//       레지스트리 경로가 tag 로 취급돼 postgres:<레지스트리경로> 로 잘못 조합됨)
-//   2. Flyway Community Edition — PostgreSQL 16.x 미지원 (Commercial 전용).
-//      마이그레이션은 JDBC 직접 실행(db/codegen/init_codegen.sql) 으로 대체.
-//   결론: generateJooq doFirst 훅에서 PostgreSQLContainer 를 직접 기동 → JDBC URL 주입 방식 채택.
-//   ADR 2026-05-22-pgmq-postgres-image: quay.io/tembo/pg16-pgmq:latest 채택 결정.
-buildscript {
-    repositories {
-        mavenCentral()
-    }
-    dependencies {
-        // Testcontainers: PostgreSQLContainer 직접 기동용 (generateJooq doFirst 훅)
-        classpath("org.testcontainers:postgresql:1.20.3")
-        classpath("org.testcontainers:testcontainers:1.20.3")
-        // PostgreSQL JDBC 드라이버: DriverManager.getConnection + Class.forName 에 필요
-        classpath("org.postgresql:postgresql:42.7.3")
-        // SLF4J: Testcontainers 로깅 바인딩 (NoSLF4J warning 방지)
-        classpath("org.slf4j:slf4j-simple:2.0.13")
-    }
-}
+// Kotlin 버전. 2.0.10 (detekt 1.23.7 호환 상한 — build.gradle.kts 루트 주석 참고)
 
 import nu.studer.gradle.jooq.JooqGenerate
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import org.testcontainers.containers.PostgreSQLContainer
 import java.io.File
 import java.sql.DriverManager
+
+// ── buildscript — generateJooq doFirst 훅에서 사용할 Testcontainers + PostgreSQL driver ──────────
+// 설계 이유.
+//   1. jdbc:tc: URL 방식 — Testcontainers JDBC URL 의 imageTag 파싱 정규식([^:]+) 이
+//      quay.io/tembo/pg16-pgmq:latest 형식을 지원하지 않는다.
+//      (PostgreSQLContainerProvider.newInstance 가 DockerImageName.parse("postgres").withTag(tag) 호출 —
+//       레지스트리 경로가 tag 로 취급돼 postgres:<레지스트리경로> 로 잘못 조합됨)
+//   2. Flyway Community Edition — PostgreSQL 16.x 미지원 (Commercial 전용).
+//      마이그레이션은 JDBC 직접 실행(db/codegen/init_codegen.sql) 으로 대체.
+//   결론. generateJooq doFirst 훅에서 PostgreSQLContainer 를 직접 기동 → JDBC URL 주입 방식 채택.
+//   ADR 2026-05-22-pgmq-postgres-image. quay.io/tembo/pg16-pgmq:latest 채택 결정.
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        // Testcontainers. PostgreSQLContainer 직접 기동용 (generateJooq doFirst 훅)
+        classpath("org.testcontainers:postgresql:1.20.3")
+        classpath("org.testcontainers:testcontainers:1.20.3")
+        // PostgreSQL JDBC 드라이버. DriverManager.getConnection + Class.forName 에 필요
+        classpath("org.postgresql:postgresql:42.7.3")
+        // SLF4J. Testcontainers 로깅 바인딩 (NoSLF4J warning 방지)
+        classpath("org.slf4j:slf4j-simple:2.0.13")
+    }
+}
 
 plugins {
     kotlin("jvm")
@@ -230,13 +230,15 @@ afterEvaluate {
             // quay.io/tembo/pg16-pgmq:latest — pgmq 확장 사전 설치 이미지 (ADR 2026-05-22-pgmq-postgres-image).
             // asCompatibleSubstituteFor("postgres"): Testcontainers 이미지 호환성 검증 우회.
             // Tembo 이미지는 postgres 호환 — pgmq 확장이 추가된 공식 postgres 16 기반 이미지.
-            val temboImage = org.testcontainers.utility.DockerImageName
-                .parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-            val container = PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_codegen")
-                .withUsername("test")
-                .withPassword("test")
+            val temboImage =
+                org.testcontainers.utility.DockerImageName
+                    .parse("quay.io/tembo/pg16-pgmq:latest")
+                    .asCompatibleSubstituteFor("postgres")
+            val container =
+                PostgreSQLContainer(temboImage)
+                    .withDatabaseName("bts_codegen")
+                    .withUsername("test")
+                    .withPassword("test")
             container.start()
             containerHolder[0] = container
 
@@ -244,8 +246,9 @@ afterEvaluate {
             // Flyway Community Edition 은 PostgreSQL 16.x 미지원 (Commercial 전용).
             // db/codegen/init_codegen.sql 에 V001 + V002 통합 — 단일 JDBC execute.
             Class.forName("org.postgresql.Driver")
-            val initSql = File("${project.projectDir}/src/main/resources/db/codegen/init_codegen.sql")
-                .readText()
+            val initSql =
+                File("${project.projectDir}/src/main/resources/db/codegen/init_codegen.sql")
+                    .readText()
             DriverManager.getConnection(container.jdbcUrl, container.username, container.password)
                 .use { conn ->
                     conn.createStatement().use { stmt ->
@@ -312,4 +315,12 @@ sourceSets {
             srcDir("src/generated/jooq")
         }
     }
+}
+
+// ── ktlint 가 jOOQ 자동 생성 소스를 검사 대상에서 제외 ────────────────
+// jOOQ generated 는 PostgreSQL 컬럼명 매핑 (SCREAMING_SNAKE) 으로 ktlint naming 룰과 충돌.
+// .gitignore (`**/src/generated/jooq/`) 와 같은 사유 — V001 SQL 이 source of truth.
+// ktlint plugin 12.x 의 filter 가 sourceSet 직접 지정으로 우회 안 됨 → task 단위 exclude.
+tasks.withType<org.jlleitschuh.gradle.ktlint.tasks.BaseKtLintCheckTask>().configureEach {
+    exclude("**/generated/**")
 }

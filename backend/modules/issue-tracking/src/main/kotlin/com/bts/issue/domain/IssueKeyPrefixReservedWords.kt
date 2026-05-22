@@ -11,7 +11,6 @@ package com.bts.issue.domain
  * 예약어 추가/제거 시 ADR 갱신 + Maxi 승인 필요.
  */
 object IssueKeyPrefixReservedWords {
-
     /**
      * 예약어 집합. 대문자 정규화 후 비교하므로 모든 원소는 대문자로 유지한다.
      *
@@ -21,16 +20,17 @@ object IssueKeyPrefixReservedWords {
      * - HTTP. REST API 동사 (RFC 7231)
      * - SQL. DML/DDL 키워드
      */
-    val WORDS: Set<String> = setOf(
-        // 시스템
-        "ADMIN", "API", "ATLAS", "BTS", "ROOT", "SYSTEM", "WWW",
-        // 보안
-        "DEBUG", "NULL", "TEST", "UNDEFINED",
-        // HTTP
-        "DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT",
-        // SQL
-        "DROP", "FROM", "INSERT", "SELECT", "TABLE", "UPDATE", "WHERE",
-    )
+    val WORDS: Set<String> =
+        setOf(
+            // 시스템
+            "ADMIN", "API", "ATLAS", "BTS", "ROOT", "SYSTEM", "WWW",
+            // 보안
+            "DEBUG", "NULL", "TEST", "UNDEFINED",
+            // HTTP
+            "DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT",
+            // SQL
+            "DROP", "FROM", "INSERT", "SELECT", "TABLE", "UPDATE", "WHERE",
+        )
 
     /**
      * [word] 가 예약어인지 대소문자 무관 검사한다.

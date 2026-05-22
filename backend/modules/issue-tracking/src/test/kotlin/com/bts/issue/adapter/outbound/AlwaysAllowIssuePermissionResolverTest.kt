@@ -28,7 +28,6 @@ import java.util.UUID
  * 6. prod profile 에서 Bean 이 등록되지 않는다 (stub 운영 노출 차단).
  */
 class AlwaysAllowIssuePermissionResolverTest {
-
     private val actor = ActorId(UUID.randomUUID())
 
     // ── ApplicationContextRunner 픽스처 ─────────────────────────────────────

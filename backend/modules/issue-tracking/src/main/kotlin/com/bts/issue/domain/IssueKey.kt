@@ -30,6 +30,9 @@ value class IssueKey(val value: String) {
     companion object {
         val REGEX = Regex("^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]*$")
 
-        fun of(prefix: String, number: Long): IssueKey = IssueKey("$prefix-$number")
+        fun of(
+            prefix: String,
+            number: Long,
+        ): IssueKey = IssueKey("$prefix-$number")
     }
 }

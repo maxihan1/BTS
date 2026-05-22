@@ -1,4 +1,4 @@
-// AlwaysAllow stub — FR-AU-12 까지 임시. 운영(prod) 환경 부팅 차단 (@Profile("!prod")). ADR 2026-05-22-issue-permission-resolver-port
+// AlwaysAllow stub — FR-AU-12 까지 임시. @Profile("!prod") 로 운영 차단. ADR issue-permission-resolver-port
 
 package com.bts.issue.adapter.outbound
 
@@ -41,7 +41,6 @@ import org.springframework.stereotype.Component
 @Component
 @Profile("!prod")
 class AlwaysAllowIssuePermissionResolver : IssuePermissionResolver {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**

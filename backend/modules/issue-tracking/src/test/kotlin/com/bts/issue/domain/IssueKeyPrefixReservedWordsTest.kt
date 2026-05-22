@@ -18,7 +18,6 @@ import org.junit.jupiter.api.Test
  * - 일반 단어 (`BUG`, `PROJ`, `ISS`) → false
  */
 class IssueKeyPrefixReservedWordsTest {
-
     @Test
     fun `isReserved — API 는 시스템 예약어이므로 true 를 반환한다`() {
         assertThat(IssueKeyPrefixReservedWords.isReserved("API")).isTrue()
