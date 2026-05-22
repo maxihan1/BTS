@@ -13,7 +13,12 @@
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
     "build": "pnpm -r run build",
+    "prepare": "husky",
     "verify": "pnpm -r run lint && pnpm -r run typecheck && pnpm -r run test && pnpm -r run build"
+  },
+  "devDependencies": {
+    "husky": "^9.0.0",
+    "lint-staged": "^17.0.0"
   },
   "engines": {
     "node": ">=22"
