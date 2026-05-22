@@ -1,5 +1,8 @@
 # jOOQ generated 소스 — ktlint naming 룰 제외 (DefaultCatalog의 PUBLIC, Public.kt의 routine 함수명 등)
 # PostgreSQL 컬럼/함수명이 SCREAMING_SNAKE → Kotlin convention 강제 불가
+#
+# 주 제외 전략. build.gradle.kts afterEvaluate { runKtlintCheckOverMainSourceSet.setSource(...) }
+# 이 .editorconfig 는 ktlintFormat 등 다른 task 경로에서 generated 가 검사될 경우의 방어막.
 root = false
 
 [**.kt]
