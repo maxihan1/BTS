@@ -76,10 +76,18 @@ data class Issue(
                 updatedAt = now,
             )
         }
-
-        private fun validateSummary(summary: String) {
-            require(summary.isNotBlank()) { "summary must not be blank" }
-            require(summary.length <= 255) { "summary must be 255 characters or fewer, but was ${summary.length}" }
-        }
     }
+}
+
+/**
+ * [Issue.summary] 도메인 불변식(invariant) 검증.
+ *
+ * - 빈 문자열 또는 공백만으로 구성된 문자열은 거부한다.
+ * - 255자를 초과하면 거부한다.
+ *
+ * @throws IllegalArgumentException invariant 위반 시.
+ */
+private fun validateSummary(summary: String) {
+    require(summary.isNotBlank()) { "summary must not be blank" }
+    require(summary.length <= 255) { "summary must be 255 characters or fewer, but was ${summary.length}" }
 }
