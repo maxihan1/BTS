@@ -97,6 +97,10 @@ dependencies {
     // jOOQ 런타임 (jOOQ: SQL을 코드로 안전하게 작성하는 라이브러리)
     implementation("org.jooq:jooq")
 
+    // Spring Data Commons — Pageable / Page / PageImpl (list 페이지네이션용)
+    // spring-boot-starter-data-jpa 전체가 아닌 commons 만 추가해 불필요한 JPA 자동 설정 차단
+    implementation("org.springframework.data:spring-data-commons")
+
     // ── jOOQ 코드 생성 전용 classpath ─────────────────────────────────────────
     // PostgresDatabase: 실제 PostgreSQL 인스턴스를 통해 jOOQ 코드 생성 (nu.studer.jooq codegen 전용)
     // 3.19.14 로 명시 — BOM 에서 오는 3.19.1 과 충돌(version mismatch warning) 방지
