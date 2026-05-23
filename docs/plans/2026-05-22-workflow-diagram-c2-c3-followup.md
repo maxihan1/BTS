@@ -60,6 +60,194 @@ PR #13 (FR-WF-01 frontend) 의 /bts-codereview CONCERN-2 + CONCERN-3 후속 PR. 
 
 ✅ 통과 (1회 iteration, gap 6건 발견 — Maxi 결정 4건 + spec 보강 2건 모두 inline 반영).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+### Task 1. transitionKey() helper export + 명시적 단위 테스트
+
+**메타**.
+- agent. `frontend-engineer`
+- files. [`apps/web/src/components/workflow/workflow.types.ts`, `apps/web/src/components/workflow/workflow.types.test.ts`]
+- depends-on. []
+
+**RED**. `workflow.types.test.ts` 신규. transitionKey() 2건 expectation.
+```ts
+import { describe, it, expect } from 'vitest'
+import { transitionKey } from './workflow.types'
+
+describe('transitionKey', () => {
+  it('returns "{from}__{to}" composition for plain state keys', () => {
+    expect(transitionKey('open', 'in_progress')).toBe('open__in_progress')
+  })
+
+  it('preserves underscores in state keys (no escaping)', () => {
+    expect(transitionKey('in_progress', 'in_review')).toBe('in_progress__in_review')
+  })
+})
+```
+실패 메시지 (예상). `transitionKey` named export 없음 → TypeScript 컴파일 에러 → vitest fail.
+
+**GREEN**. `workflow.types.ts` 에 다음 추가 (파일 끝 export 영역).
+```ts
+/**
+ * 두 state key 를 backend WorkflowTransition.key 와 같은 형식으로 합성.
+ * backend domain WorkflowTransition.kt:18 의 `"${fromStateKey}__$toStateKey"` 와 정확 일치.
+ */
+export function transitionKey(fromStateKey: string, toStateKey: string): string {
+  return `${fromStateKey}__${toStateKey}`
+}
+```
+
+**REFACTOR**. JSDoc 1줄 보강 + named export 위치 확인 (파일 끝).
+
+**검증**. `pnpm --filter web test -- workflow.types.test.ts`. 2 pass.
+
+---
+
+### Task 2. workflow-fixtures.ts + workflows.test.ts inline → 옵션 B 패턴 (helper 호출)
+
+**메타**.
+- agent. `frontend-engineer`
+- files. [`apps/web/src/mocks/workflow-fixtures.ts`, `apps/web/src/api/workflows.test.ts`]
+- depends-on. [1]
+
+**RED**. 새 검증 테스트 (회귀 가드) 신규 — `workflow-fixtures.test.ts`.
+```ts
+import { describe, it, expect } from 'vitest'
+import { allWorkflowFixtures } from './workflow-fixtures'
+import { transitionKey } from '@/components/workflow/workflow.types'
+
+describe('workflow-fixtures transition key 형식 검증', () => {
+  it.each(allWorkflowFixtures)(
+    '$key — 모든 transition.key 가 transitionKey() 결과와 일치',
+    (workflow) => {
+      workflow.transitions.forEach((t) => {
+        expect(t.key).toBe(transitionKey(t.fromStateKey, t.toStateKey))
+      })
+    },
+  )
+})
+```
+실패 메시지 (예상). 현재 fixture key (`open-to-in_progress`) ≠ `transitionKey('open', 'in_progress')` (`open__in_progress`) → 17건 fail.
+
+**GREEN**. 두 파일 갱신.
+
+1. `workflow-fixtures.ts` (17건) — fixture transition 정의를 옵션 B 패턴으로 변환. 예시 (softwareDefaultFixture 1건).
+```ts
+import { transitionKey } from '@/components/workflow/workflow.types'
+
+// before. { key: 'open-to-in_progress', name: 'Start Work', ... }
+// after.
+{ key: transitionKey('open', 'in_progress'), name: 'Start Work', fromStateKey: 'open', toStateKey: 'in_progress' }
+```
+4 워크플로우 × 합계 17건 전체.
+
+2. `workflows.test.ts` (라인 23-28 / 44-48 / 62-64 / 79-81 — 17건 inline) — 동일 패턴 일괄 변환. import 추가.
+
+**REFACTOR**. 두 파일의 transition 정의 alignment 확인 (가독성). 코멘트 1줄 — fixture 가 helper 호출로 drift 차단 명시.
+
+**검증**. `pnpm --filter web test -- workflow-fixtures workflows`. 17건 회귀 가드 + 기존 workflows.test.ts pass.
+
+---
+
+### Task 3. categoryToClass() 언더스코어 prefix + classDef 라인 동기 + 명시적 단위 테스트 3건
+
+**메타**.
+- agent. `frontend-engineer`
+- files. [`apps/web/src/components/workflow/WorkflowDiagram.tsx`, `apps/web/src/components/workflow/WorkflowDiagram.test.tsx`]
+- depends-on. []
+
+**RED**. `WorkflowDiagram.test.tsx` 에 categoryToClass 명시적 단위 테스트 3건 신규 (describe block 추가).
+```ts
+import { categoryToClass } from './WorkflowDiagram'
+
+describe('categoryToClass — 카테고리 → mermaid classDef 식별자 변환 (D3 언더스코어 prefix)', () => {
+  it("'TODO' → 'category_todo'", () => {
+    expect(categoryToClass('TODO')).toBe('category_todo')
+  })
+  it("'IN_PROGRESS' → 'category_in_progress'", () => {
+    expect(categoryToClass('IN_PROGRESS')).toBe('category_in_progress')
+  })
+  it("'DONE' → 'category_done'", () => {
+    expect(categoryToClass('DONE')).toBe('category_done')
+  })
+})
+```
+실패 메시지 (예상). 현재 categoryToClass 반환 (`'todo'` / `'in_progress'` / `'done'`) ≠ 새 기대값 → 3건 fail.
+
+**GREEN**. `WorkflowDiagram.tsx` 갱신 2부분.
+
+1. `categoryToClass()` 본문.
+```ts
+case 'TODO':
+  return 'category_todo'
+case 'IN_PROGRESS':
+  return 'category_in_progress'
+case 'DONE':
+  return 'category_done'
+```
+
+2. `generateMermaidCode()` 의 classDef 라인 3건 동기.
+```ts
+lines.push(`  classDef category_todo fill:var(--muted),stroke:var(--border)`)
+lines.push(`  classDef category_in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)`)
+lines.push(`  classDef category_done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)`)
+```
+
+3. `class <stateKey> categoryToClass(state.category)` 라인은 변경 0 — helper 호출 결과만 변경됨.
+
+**REFACTOR**. categoryToClass KDoc 갱신 — D3 결정 (언더스코어 prefix, mermaid v11 호환성 100%) 사유 1줄 보강.
+
+**검증**. `pnpm --filter web test -- WorkflowDiagram`. categoryToClass 3건 + 기존 generateMermaidCode 단위 테스트 모두 pass. snapshot 4건은 다음 Task 에서 갱신.
+
+---
+
+### Task 4. snapshot 4 워크플로우 갱신 + 시각 회귀 0 검증
+
+**메타**.
+- agent. `frontend-engineer`
+- files. [`apps/web/src/components/workflow/__snapshots__/WorkflowDiagram.test.tsx.snap`]
+- depends-on. [3]
+
+**RED**. Task 3 GREEN 후 `pnpm --filter web test -- WorkflowDiagram` 실행 → 4 워크플로우 snapshot 모두 mismatch (classDef 3 라인 + class N 라인 prefix 차이).
+- software-default. 3 classDef 라인 + 5 class 라인 (open / in_progress / in_review / resolved / closed).
+- bug-tracking. 3 classDef 라인 + 5 class 라인.
+- simple. 3 classDef 라인 + 2 class 라인 (open / closed).
+- kanban-basic. 3 classDef 라인 + 4 class 라인.
+합계 변경 라인. 3 classDef × 4 = 12 + class N 라인 합 16 = 28 라인.
+
+**GREEN**. `pnpm --filter web test -- WorkflowDiagram -u`. snapshot 일괄 갱신.
+
+**검증** (필수). `git diff __snapshots__/WorkflowDiagram.test.tsx.snap` 으로 diff 검토. 다음 검증.
+- 변경 라인이 classDef 3 라인 + class N 라인 (prefix `category_` 추가) 만 포함. **노드 / 전이 / 시작·종료 라인 변경 0**.
+- 변경되지 않은 라인 (예. `[*] --> open`, `open --> in_progress : 진행 시작`, `done --> [*]`) 가 정확히 보존.
+
+diff 가 예상 패턴과 다르면 RED 로 돌아가서 Task 3 GREEN 점검 (의도치 않은 부수 변경 의심).
+
+**REFACTOR**. 없음. snapshot 은 generated artifact.
+
+**검증**. `pnpm --filter web test`. 86 unit (기존 추정 86 + Task 1 의 transitionKey 2건 + Task 2 의 fixture 회귀 가드 4건 (4 워크플로우 × 1 인라인 it.each) + Task 3 의 categoryToClass 3건 = 약 95). 0 fail.
+
+---
+
+## Plan 메타
+
+- task 수. 4
+- wave 분석. depends-on 그래프 longest path = 2 (Task 1→2 또는 Task 3→4). **2 wave 가능**.
+  - Wave 0. Task 1 (workflow.types) + Task 3 (WorkflowDiagram) — 2 task 병렬. 파일 겹침 0.
+  - Wave 1. Task 2 (fixtures) + Task 4 (snapshot) — 2 task 병렬. 파일 겹침 0.
+- 예상 시간. wave 당 약 10분 × 2 = 약 20분. controller verify 단계 약 5분 추가.
+- TDD 강제. yes (모든 task RED → GREEN → REFACTOR).
+- 병렬 dispatch. bts-impl 자동.
+- 추가 검증 (Step 4 verification-before-completion). `pnpm --filter web typecheck` + `pnpm --filter web lint` + `pnpm --filter web build` + `pnpm --filter web test:e2e` (4 happy path 시각 회귀 0). backend 변경 0 — `git diff --stat main backend/` empty 확인.
+
+## 리스크
+
+1. **mermaid 의 underscore classDef 식별자 실제 처리**. spec EC-3 + D3 결정. mermaid v11 의 `classDef` 식별자 정규식 `[a-zA-Z][a-zA-Z0-9_-]*` 명시 허용. 단 stateDiagram-v2 의 v11 변경 가능성. Task 4 E2E (workflow.spec.ts) 가 .statediagram-state 셀렉터로 노드 수 검증 — class 속성 변경이 SVG 구조에 영향 0. 시각 회귀 0 자동 검증.
+
+2. **fixture 옵션 B 채택 후 가독성 약간 저하**. fixture 라인 길이 증가 (`transitionKey('open', 'in_progress')` 가 `'open__in_progress'` 보다 19자 길음). drift 차단 가치 > 가독성 비용 (PR #13 learnings 정신 적용).
+
+3. **D4 결정 — workflows.test.ts inline 17건도 본 PR scope**. workflows.test.ts 가 workflow-fixtures.ts import 로 일관화는 별 PR 후속 후보 (spec §9 Out of scope). 본 PR 머지 후 inline 구조 유지 — 다음 fixture 추가 시 재발 가능성 명시.
+
+4. **snapshot diff 검토 누락 위험**. Task 4 검증 단계가 git diff 검토를 verifier 단계 명시. 의도치 않은 부수 변경 (예. mermaid 코드의 indent / 줄바꿈) 발생 시 즉시 RED 회귀. PR #13 learnings 의 "spec/plan 표기 drift 발견 시 spec 우선" 정신.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
