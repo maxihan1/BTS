@@ -4,8 +4,8 @@
 // 주의사항.
 // - backend WorkflowDto에는 `description`과 transition의 `key` 필드가 없다.
 //   frontend spec §6 WorkflowView 스키마에 맞게 MSW 레벨에서 보완한다.
-// - transition.key 는 backend computed property 와 동일 형식(`${fromStateKey}__${toStateKey}`)으로 통일.
-//   정적 문자열 직접 작성 금지 — transitionKey() helper 호출로 drift 를 원천 차단한다.
+// - transition.key 는 backend computed property 와 동일 형식(`${fromStateKey}__${toStateKey}`)으로 통일됨.
+//   (PR #16 C-2 옵션 B 채택) 정적 문자열 직접 작성 금지 — transitionKey() helper 호출로 drift 를 원천 차단한다.
 // - software-default: 5 상태 + 6 전이 (backend YAML 기준)
 // - bug-tracking: 5 상태 + 5 전이
 // - simple: 3 상태 + 3 전이
