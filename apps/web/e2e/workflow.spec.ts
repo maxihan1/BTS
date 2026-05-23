@@ -75,3 +75,22 @@ test('T6-4 kanban-basic — 페이지 진입 + 다이어그램 렌더 + 4 노드
 
   await expect(page.locator(`[aria-label*="${wf.name}"]`)).toBeVisible()
 })
+
+// T6-5: unknown-key 404 fallback
+// Given: 존재하지 않는 워크플로우 키로 진입
+// When: /workflows/non-existent 페이지 로드
+// Then: role=alert 에 "워크플로우를 찾을 수 없습니다" 표시 + 다이어그램 노드 0건
+test('T6-5 unknown-key — 404 응답 → fallback UI ("워크플로우를 찾을 수 없습니다") 표시', async ({ page }) => {
+  // PR #16 D5 옵션 C 위임 충족.
+  // workflows.$key.test.tsx T5-2 (jsdom mermaid getBBox 미구현 timeout 으로 it.skip) 의 E2E 위임 시나리오.
+  // 본 시나리오는 unknown key 진입 시 workflows.$key.tsx 의 error fallback UI 검증.
+  await page.goto('/workflows/non-existent')
+
+  const alert = page.getByRole('alert')
+  await expect(alert).toBeVisible()
+  await expect(alert).toHaveText('워크플로우를 찾을 수 없습니다')
+
+  // mermaid 다이어그램 렌더 0 검증 — 일반 상태 노드 0건
+  const stateNodes = page.locator('.statediagram-state')
+  await expect(stateNodes).toHaveCount(0)
+})
