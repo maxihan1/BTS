@@ -4,11 +4,14 @@
 // 주의사항.
 // - backend WorkflowDto에는 `description`과 transition의 `key` 필드가 없다.
 //   frontend spec §6 WorkflowView 스키마에 맞게 MSW 레벨에서 보완한다.
+// - transition.key 는 backend computed property 와 동일 형식(`${fromStateKey}__${toStateKey}`)으로 통일.
+//   정적 문자열 직접 작성 금지 — transitionKey() helper 호출로 drift 를 원천 차단한다.
 // - software-default: 5 상태 + 6 전이 (backend YAML 기준)
 // - bug-tracking: 5 상태 + 5 전이
 // - simple: 3 상태 + 3 전이
 // - kanban-basic: 4 상태 + 3 전이
 import type { WorkflowView } from '@/api/workflows'
+import { transitionKey } from '@/components/workflow/workflow.types'
 
 /** 소프트웨어 개발 기본 워크플로우 — 5 상태 + 6 전이 */
 export const softwareDefaultFixture: WorkflowView = {
@@ -23,12 +26,12 @@ export const softwareDefaultFixture: WorkflowView = {
     { key: 'closed', name: 'Closed', category: 'DONE', displayOrder: 5 },
   ],
   transitions: [
-    { key: 'open-to-in_progress', name: 'Start Work', fromStateKey: 'open', toStateKey: 'in_progress' },
-    { key: 'in_progress-to-in_review', name: 'Submit for Review', fromStateKey: 'in_progress', toStateKey: 'in_review' },
-    { key: 'in_review-to-done', name: 'Approve', fromStateKey: 'in_review', toStateKey: 'done' },
-    { key: 'in_review-to-in_progress', name: 'Request Changes', fromStateKey: 'in_review', toStateKey: 'in_progress' },
-    { key: 'done-to-closed', name: 'Close', fromStateKey: 'done', toStateKey: 'closed' },
-    { key: 'open-to-closed', name: 'Cancel', fromStateKey: 'open', toStateKey: 'closed' },
+    { key: transitionKey('open', 'in_progress'), name: 'Start Work', fromStateKey: 'open', toStateKey: 'in_progress' },
+    { key: transitionKey('in_progress', 'in_review'), name: 'Submit for Review', fromStateKey: 'in_progress', toStateKey: 'in_review' },
+    { key: transitionKey('in_review', 'done'), name: 'Approve', fromStateKey: 'in_review', toStateKey: 'done' },
+    { key: transitionKey('in_review', 'in_progress'), name: 'Request Changes', fromStateKey: 'in_review', toStateKey: 'in_progress' },
+    { key: transitionKey('done', 'closed'), name: 'Close', fromStateKey: 'done', toStateKey: 'closed' },
+    { key: transitionKey('open', 'closed'), name: 'Cancel', fromStateKey: 'open', toStateKey: 'closed' },
   ],
 }
 
@@ -45,11 +48,11 @@ export const bugTrackingFixture: WorkflowView = {
     { key: 'closed', name: 'Closed', category: 'DONE', displayOrder: 5 },
   ],
   transitions: [
-    { key: 'reported-to-triaged', name: 'Triage', fromStateKey: 'reported', toStateKey: 'triaged' },
-    { key: 'triaged-to-in_progress', name: 'Start Fix', fromStateKey: 'triaged', toStateKey: 'in_progress' },
-    { key: 'in_progress-to-resolved', name: 'Resolve', fromStateKey: 'in_progress', toStateKey: 'resolved' },
-    { key: 'resolved-to-closed', name: 'Close', fromStateKey: 'resolved', toStateKey: 'closed' },
-    { key: 'resolved-to-in_progress', name: 'Reopen', fromStateKey: 'resolved', toStateKey: 'in_progress' },
+    { key: transitionKey('reported', 'triaged'), name: 'Triage', fromStateKey: 'reported', toStateKey: 'triaged' },
+    { key: transitionKey('triaged', 'in_progress'), name: 'Start Fix', fromStateKey: 'triaged', toStateKey: 'in_progress' },
+    { key: transitionKey('in_progress', 'resolved'), name: 'Resolve', fromStateKey: 'in_progress', toStateKey: 'resolved' },
+    { key: transitionKey('resolved', 'closed'), name: 'Close', fromStateKey: 'resolved', toStateKey: 'closed' },
+    { key: transitionKey('resolved', 'in_progress'), name: 'Reopen', fromStateKey: 'resolved', toStateKey: 'in_progress' },
   ],
 }
 
@@ -64,9 +67,9 @@ export const simpleFixture: WorkflowView = {
     { key: 'done', name: 'Done', category: 'DONE', displayOrder: 3 },
   ],
   transitions: [
-    { key: 'todo-to-doing', name: 'Start', fromStateKey: 'todo', toStateKey: 'doing' },
-    { key: 'doing-to-done', name: 'Complete', fromStateKey: 'doing', toStateKey: 'done' },
-    { key: 'done-to-doing', name: 'Reopen', fromStateKey: 'done', toStateKey: 'doing' },
+    { key: transitionKey('todo', 'doing'), name: 'Start', fromStateKey: 'todo', toStateKey: 'doing' },
+    { key: transitionKey('doing', 'done'), name: 'Complete', fromStateKey: 'doing', toStateKey: 'done' },
+    { key: transitionKey('done', 'doing'), name: 'Reopen', fromStateKey: 'done', toStateKey: 'doing' },
   ],
 }
 
@@ -82,9 +85,9 @@ export const kanbanBasicFixture: WorkflowView = {
     { key: 'done', name: 'Done', category: 'DONE', displayOrder: 4 },
   ],
   transitions: [
-    { key: 'backlog-to-ready', name: 'Refine', fromStateKey: 'backlog', toStateKey: 'ready' },
-    { key: 'ready-to-in_progress', name: 'Pull', fromStateKey: 'ready', toStateKey: 'in_progress' },
-    { key: 'in_progress-to-done', name: 'Finish', fromStateKey: 'in_progress', toStateKey: 'done' },
+    { key: transitionKey('backlog', 'ready'), name: 'Refine', fromStateKey: 'backlog', toStateKey: 'ready' },
+    { key: transitionKey('ready', 'in_progress'), name: 'Pull', fromStateKey: 'ready', toStateKey: 'in_progress' },
+    { key: transitionKey('in_progress', 'done'), name: 'Finish', fromStateKey: 'in_progress', toStateKey: 'done' },
   ],
 }
 
