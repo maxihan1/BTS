@@ -6,8 +6,10 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.jooq.tables.records.IssuesRecord
 import com.bts.issue.jooq.tables.references.ISSUES
 import com.bts.issue.jooq.tables.references.PROJECTS
+import org.jooq.Condition
 import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
@@ -17,7 +19,11 @@ import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
-import java.util.UUID
+
+// ── SQL 상수 ──────────────────────────────────────────────────────────────────
+// pg_advisory_xact_lock — 트랜잭션 범위 권고 락. hashtext() 로 VARCHAR → INT4 해시값 생성.
+// 같은 projectKey 에 대한 동시 incrementKeySequence 호출을 직렬화한다.
+private const val SQL_ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(hashtext(?))"
 
 /**
  * 이슈 Repository.
@@ -30,7 +36,7 @@ import java.util.UUID
  * - [findByKeyForUpdate] — [findByKey] + SELECT FOR UPDATE (비관락).
  * - [applyTransition] — currentStateKey + updatedAt + version 을 낙관락 조건 업데이트.
  * - [softDelete] — deleted_at 를 NOW() 로 설정.
- * - [list] — 프로젝트별 활성 이슈 커서 기반 페이지 조회.
+ * - [list] — 프로젝트별 활성 이슈 페이지 조회.
  * - [incrementKeySequence] — pg_advisory_xact_lock 으로 동시성 제어 후 key_sequence +1 RETURNING.
  */
 @Repository
@@ -48,16 +54,19 @@ class IssueRepository(
     fun insert(issue: Issue): Issue {
         log.debug("Inserting issue key={}", issue.key.value)
         val record =
-            dsl.insertInto(ISSUES)
-                .set(ISSUES.ID, issue.id.value)
-                .set(ISSUES.KEY, issue.key.value)
-                .set(ISSUES.PROJECT_ID, issue.projectId)
-                .set(ISSUES.SUMMARY, issue.summary)
-                .set(ISSUES.REPORTER_ID, issue.reporterId.value)
-                .set(ISSUES.CURRENT_STATE_KEY, issue.currentStateKey)
-                .set(ISSUES.VERSION, issue.version)
-                .returning()
-                .fetchOne()
+            issue.toInsertRecord()
+                .let { r ->
+                    dsl.insertInto(ISSUES)
+                        .set(ISSUES.ID, r.id)
+                        .set(ISSUES.KEY, r.key)
+                        .set(ISSUES.PROJECT_ID, r.projectId)
+                        .set(ISSUES.SUMMARY, r.summary)
+                        .set(ISSUES.REPORTER_ID, r.reporterId)
+                        .set(ISSUES.CURRENT_STATE_KEY, r.currentStateKey)
+                        .set(ISSUES.VERSION, r.version)
+                        .returning()
+                        .fetchOne()
+                }
                 ?: error("insert returning() returned null for key=${issue.key.value}")
 
         return record.toIssue()
@@ -69,13 +78,11 @@ class IssueRepository(
      * @return 이슈가 없거나 소프트 삭제된 경우 null.
      */
     @Transactional(readOnly = true)
-    fun findByKey(key: IssueKey): Issue? {
-        return dsl.selectFrom(ISSUES)
-            .where(ISSUES.KEY.eq(key.value))
-            .and(ISSUES.DELETED_AT.isNull)
+    fun findByKey(key: IssueKey): Issue? =
+        dsl.selectFrom(ISSUES)
+            .where(activeByKey(key))
             .fetchOne()
             ?.toIssue()
-    }
 
     /**
      * 활성 이슈를 key 로 조회하면서 비관락(SELECT FOR UPDATE) 을 획득한다.
@@ -86,14 +93,12 @@ class IssueRepository(
      * @return 이슈가 없거나 소프트 삭제된 경우 null.
      */
     @Transactional
-    fun findByKeyForUpdate(key: IssueKey): Issue? {
-        return dsl.selectFrom(ISSUES)
-            .where(ISSUES.KEY.eq(key.value))
-            .and(ISSUES.DELETED_AT.isNull)
+    fun findByKeyForUpdate(key: IssueKey): Issue? =
+        dsl.selectFrom(ISSUES)
+            .where(activeByKey(key))
             .forUpdate()
             .fetchOne()
             ?.toIssue()
-    }
 
     /**
      * 이슈 상태를 전이한다 (낙관락).
@@ -140,8 +145,7 @@ class IssueRepository(
         log.debug("softDelete key={}", key.value)
         return dsl.update(ISSUES)
             .set(ISSUES.DELETED_AT, OffsetDateTime.now(ZoneOffset.UTC))
-            .where(ISSUES.KEY.eq(key.value))
-            .and(ISSUES.DELETED_AT.isNull)
+            .where(activeByKey(key))
             .execute()
     }
 
@@ -159,20 +163,22 @@ class IssueRepository(
         projectKey: String,
         pageable: Pageable,
     ): Page<Issue> {
+        val activeInProject =
+            PROJECTS.KEY.eq(projectKey)
+                .and(ISSUES.DELETED_AT.isNull)
+
         val total =
             dsl.selectCount()
                 .from(ISSUES)
                 .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
-                .where(PROJECTS.KEY.eq(projectKey))
-                .and(ISSUES.DELETED_AT.isNull)
+                .where(activeInProject)
                 .fetchOne(0, Long::class.java) ?: 0L
 
         val content =
             dsl.select(ISSUES.fields().toList())
                 .from(ISSUES)
                 .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
-                .where(PROJECTS.KEY.eq(projectKey))
-                .and(ISSUES.DELETED_AT.isNull)
+                .where(activeInProject)
                 .orderBy(ISSUES.CREATED_AT.desc())
                 .limit(pageable.pageSize)
                 .offset(pageable.offset)
@@ -193,9 +199,7 @@ class IssueRepository(
      */
     @Transactional
     fun incrementKeySequence(projectKey: String): Long {
-        // pg_advisory_xact_lock — 트랜잭션 범위 권고 락 (같은 projectKey 에 대한 동시 실행 직렬화)
-        // hashtext() 는 PostgreSQL 내장 함수로 VARCHAR → INT4 해시값 생성
-        dsl.execute("SELECT pg_advisory_xact_lock(hashtext(?))", "project:$projectKey")
+        dsl.execute(SQL_ADVISORY_LOCK, "project:$projectKey")
         log.debug("incrementKeySequence acquired advisory lock for projectKey={}", projectKey)
 
         return dsl.update(PROJECTS)
@@ -207,17 +211,40 @@ class IssueRepository(
             ?.keySequence
             ?: error("Project not found for key=$projectKey")
     }
+
+    // ── private helpers ───────────────────────────────────────────────────────
+
+    /** 활성 이슈를 key 로 필터하는 jOOQ Condition. */
+    private fun activeByKey(key: IssueKey): Condition =
+        ISSUES.KEY.eq(key.value).and(ISSUES.DELETED_AT.isNull)
 }
 
-// ── private 확장 함수 — IssuesRecord → Issue 도메인 변환 ──────────────────────────
+// ── file-level 확장 함수 ────────────────────────────────────────────────────────
 
 /**
- * jOOQ [com.bts.issue.jooq.tables.records.IssuesRecord] 를 도메인 [Issue] 로 변환한다.
+ * 도메인 [Issue] 를 insert 용 데이터 컨테이너로 변환한다.
+ *
+ * jOOQ UpdatableRecord 의 attach 없이 필드값만 추출하는 용도로 사용한다.
+ * IssuesRecord 는 생성자에서 필요한 값만 받아 detached record 로 생성한다.
+ */
+private fun Issue.toInsertRecord(): IssuesRecord =
+    IssuesRecord(
+        id = id.value,
+        key = key.value,
+        projectId = projectId,
+        summary = summary,
+        reporterId = reporterId.value,
+        currentStateKey = currentStateKey,
+        version = version,
+    )
+
+/**
+ * jOOQ [IssuesRecord] 를 도메인 [Issue] 로 변환한다.
  *
  * DB 는 TIMESTAMPTZ 를 OffsetDateTime 으로 반환한다.
  * Instant 로 변환해 도메인 타입과 일치시킨다.
  */
-private fun com.bts.issue.jooq.tables.records.IssuesRecord.toIssue(): Issue {
+private fun IssuesRecord.toIssue(): Issue {
     val recordId = id ?: error("issues.id must not be null after insert/select")
     return Issue(
         id = IssueId(recordId),
