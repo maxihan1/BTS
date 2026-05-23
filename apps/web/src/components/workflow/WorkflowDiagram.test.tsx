@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import type { WorkflowView } from './workflow.types'
+import { categoryToClass } from './WorkflowDiagram'
 
 // mermaid 라이브러리 mock — jsdom 환경에서 실제 SVG 렌더 불가
 // 단위 테스트 책임: mermaid 코드 생성 정확성만 검증. 실제 SVG 렌더는 Playwright E2E(Task 6) 담당.
@@ -89,6 +90,18 @@ const kanbanBasicWorkflow: WorkflowView = {
 }
 
 // --- 테스트 ---
+
+describe('categoryToClass — 카테고리 → mermaid classDef 식별자 변환 (D3 언더스코어 prefix)', () => {
+  it("'TODO' → 'category_todo'", () => {
+    expect(categoryToClass('TODO')).toBe('category_todo')
+  })
+  it("'IN_PROGRESS' → 'category_in_progress'", () => {
+    expect(categoryToClass('IN_PROGRESS')).toBe('category_in_progress')
+  })
+  it("'DONE' → 'category_done'", () => {
+    expect(categoryToClass('DONE')).toBe('category_done')
+  })
+})
 
 describe('generateMermaidCode', () => {
   // generateMermaidCode를 직접 import해서 단위 검증
