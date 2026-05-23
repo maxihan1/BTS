@@ -9,14 +9,14 @@ exports[`generateMermaidCode > T3-2: 4 표준 워크플로우 snapshot — 노�
   fixed --> verified : 검증 완료
   fixed --> [*]
   verified --> [*]
-  classDef todo fill:var(--muted),stroke:var(--border)
-  classDef in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)
-  classDef done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)
-  class reported todo
-  class triaged todo
-  class fixing in_progress
-  class fixed done
-  class verified done"
+  classDef category_todo fill:var(--muted),stroke:var(--border)
+  classDef category_in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)
+  classDef category_done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)
+  class reported category_todo
+  class triaged category_todo
+  class fixing category_in_progress
+  class fixed category_done
+  class verified category_done"
 `;
 
 exports[`generateMermaidCode > T3-2: 4 표준 워크플로우 snapshot — 노드/엣지 수 일치 검증 > kanban-basic 1`] = `
@@ -26,13 +26,13 @@ exports[`generateMermaidCode > T3-2: 4 표준 워크플로우 snapshot — 노�
   todo --> doing : 시작
   doing --> done : 완료
   done --> [*]
-  classDef todo fill:var(--muted),stroke:var(--border)
-  classDef in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)
-  classDef done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)
-  class backlog todo
-  class todo todo
-  class doing in_progress
-  class done done"
+  classDef category_todo fill:var(--muted),stroke:var(--border)
+  classDef category_in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)
+  classDef category_done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)
+  class backlog category_todo
+  class todo category_todo
+  class doing category_in_progress
+  class done category_done"
 `;
 
 exports[`generateMermaidCode > T3-2: 4 표준 워크플로우 snapshot — 노드/엣지 수 일치 검증 > simple 1`] = `
@@ -41,11 +41,11 @@ exports[`generateMermaidCode > T3-2: 4 표준 워크플로우 snapshot — 노�
   open --> closed : 닫기
   closed --> open : 다시 열기
   closed --> [*]
-  classDef todo fill:var(--muted),stroke:var(--border)
-  classDef in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)
-  classDef done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)
-  class open todo
-  class closed done"
+  classDef category_todo fill:var(--muted),stroke:var(--border)
+  classDef category_in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)
+  classDef category_done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)
+  class open category_todo
+  class closed category_done"
 `;
 
 exports[`generateMermaidCode > T3-2: 4 표준 워크플로우 snapshot — 노드/엣지 수 일치 검증 > software-default 1`] = `
@@ -57,12 +57,12 @@ exports[`generateMermaidCode > T3-2: 4 표준 워크플로우 snapshot — 노�
   resolved --> closed : 닫기
   resolved --> [*]
   closed --> [*]
-  classDef todo fill:var(--muted),stroke:var(--border)
-  classDef in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)
-  classDef done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)
-  class open todo
-  class in_progress in_progress
-  class in_review in_progress
-  class resolved done
-  class closed done"
+  classDef category_todo fill:var(--muted),stroke:var(--border)
+  classDef category_in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)
+  classDef category_done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)
+  class open category_todo
+  class in_progress category_in_progress
+  class in_review category_in_progress
+  class resolved category_done
+  class closed category_done"
 `;

@@ -9,17 +9,22 @@ import type { WorkflowView, WorkflowStateView, StateCategory } from './workflow.
 /**
  * StateCategory를 mermaid classDef 식별자로 변환한다.
  * switch의 모든 case를 명시하고 default에서 never 타입 가드로 미래 enum 확장을 안전하게 감지한다.
+ *
+ * D3 결정. 언더스코어 prefix 채택 사유 — mermaid v11 stateDiagram-v2 의 classDef 식별자 정규식
+ * `[a-zA-Z][a-zA-Z0-9_-]*` 허용 + state id (예. simple 의 `done`) 와 토큰 충돌 회피.
+ * 일부 mermaid 버전의 하이픈 비일관 처리 (issue #5263 등) 위험 회피.
+ *
  * @param category 상태 카테고리 (TODO / IN_PROGRESS / DONE)
- * @returns mermaid classDef 이름 문자열
+ * @returns mermaid classDef 이름 문자열 (예. 'category_todo')
  */
 export function categoryToClass(category: StateCategory): string {
   switch (category) {
     case 'TODO':
-      return 'todo'
+      return 'category_todo'
     case 'IN_PROGRESS':
-      return 'in_progress'
+      return 'category_in_progress'
     case 'DONE':
-      return 'done'
+      return 'category_done'
     default: {
       // 미래에 StateCategory에 새 값이 추가되면 TypeScript 컴파일 에러로 감지된다.
       const _exhaustive: never = category
@@ -72,9 +77,9 @@ export function generateMermaidCode(workflow: WorkflowView): string {
   // TODO: bg-muted/text-muted-foreground → --muted 토큰
   // IN_PROGRESS: bg-primary/10 → --primary 토큰 (투명도 15%)
   // DONE: bg-emerald-500/10 → --success 계열 (emerald)
-  lines.push(`  classDef todo fill:var(--muted),stroke:var(--border)`)
-  lines.push(`  classDef in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)`)
-  lines.push(`  classDef done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)`)
+  lines.push(`  classDef category_todo fill:var(--muted),stroke:var(--border)`)
+  lines.push(`  classDef category_in_progress fill:oklch(from var(--primary) l c h / 0.15),stroke:var(--primary)`)
+  lines.push(`  classDef category_done fill:oklch(0.94 0.05 160 / 0.15),stroke:oklch(0.5 0.12 160)`)
 
   // class 할당 — 각 state에 카테고리 클래스 부여
   for (const state of states) {

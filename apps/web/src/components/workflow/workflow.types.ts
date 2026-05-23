@@ -27,3 +27,12 @@ export interface WorkflowView {
   states: WorkflowStateView[];
   transitions: WorkflowTransitionView[];
 }
+
+/**
+ * 두 state key 를 backend WorkflowTransition.key 와 같은 형식으로 합성한다.
+ * backend `WorkflowTransition.kt:18` 의 `"${fromStateKey}__$toStateKey"` 와 정확 일치.
+ * MSW fixture / production 검증 / 향후 라우팅 시 frontend-backend key 형식 일관성 보장.
+ */
+export function transitionKey(fromStateKey: string, toStateKey: string): string {
+  return `${fromStateKey}__${toStateKey}`
+}
