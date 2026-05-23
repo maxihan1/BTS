@@ -9,8 +9,13 @@ import type { WorkflowView, WorkflowStateView, StateCategory } from './workflow.
 /**
  * StateCategory를 mermaid classDef 식별자로 변환한다.
  * switch의 모든 case를 명시하고 default에서 never 타입 가드로 미래 enum 확장을 안전하게 감지한다.
+ *
+ * D3 결정. 언더스코어 prefix 채택 사유 — mermaid v11 stateDiagram-v2 의 classDef 식별자 정규식
+ * `[a-zA-Z][a-zA-Z0-9_-]*` 허용 + state id (예. simple 의 `done`) 와 토큰 충돌 회피.
+ * 일부 mermaid 버전의 하이픈 비일관 처리 (issue #5263 등) 위험 회피.
+ *
  * @param category 상태 카테고리 (TODO / IN_PROGRESS / DONE)
- * @returns mermaid classDef 이름 문자열
+ * @returns mermaid classDef 이름 문자열 (예. 'category_todo')
  */
 export function categoryToClass(category: StateCategory): string {
   switch (category) {
