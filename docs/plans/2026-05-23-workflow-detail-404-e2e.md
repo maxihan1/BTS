@@ -106,6 +106,32 @@ test('T6-5 unknown-key — 404 응답 → fallback UI ("워크플로우를 찾�
 - TDD 강제. E2E 변형 (test 작성 = RED → 실행 = GREEN, 별도 commit 분리 불필요).
 - 추가 검증. `pnpm --filter web test:e2e` 전체 9/9 pass + 기존 unit test 97 + skipped 2 회귀 0.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
 
-type=qa 의 fast-track skip 조건 적용 — review-plan 스킵. /bts-codereview 단계에서 code-reviewer agent + /review 가 검증.
+### /bts-review-plan
+type=qa 의 fast-track skip 조건 적용 — review-plan 스킵.
+
+### /bts-codereview (PR 단위, 2026-05-23)
+
+#### superpowers:code-reviewer agent
+**판정**. ✅ PASS (CONCERNS 0건 / BLOCKER 0건 / SUGGESTIONS 2건 — 모두 수정 강제 없음).
+
+검증 결과 5건.
+1. T6-5 시나리오 19 라인 — surgical change, PR #16 D5 옵션 C 약속 충족.
+2. 인증 처리 — `apps/web/src/router.ts:37-41` 확인. `/workflows/$key` 는 `beforeLoad: requireAuth` + `staticData: { requireAuth: true }` 모두 부재 → 공개 접근 가능. qa-engineer 의 helper 분석 정확.
+3. selector/assertion 정확성 — `workflows.$key.tsx:62-68` fallback UI 와 정확 일치 (`role="alert"` + `toHaveText`).
+4. 헤더 정확성 — SUGGESTION (수정 권장하지 않음, surgical 원칙 + scope 보존).
+5. plan 문서 정합성 — 100% 일치 (FR-1 코드 / EC-1~3 가정 모두 검증).
+
+learnings 회귀 0. 절대 규칙 19개 (NEVER-15/16/BC 격리/TDD) 모두 PASS.
+
+#### /review (gstack) critical pass
+**판정**. ✅ PASS (critical category 위반 0).
+
+- Scope Check. CLEAN (intent 와 delivered 정확 일치).
+- NEVER-15 (console.log) — 본 PR 영역 0 hit.
+- NEVER-16 (PoC/prototype) — 본 PR 영역 0 hit (grep hit 3건은 main 의 PR #13 기존 파일 — False positive).
+- specialist + adversarial — scope 작아 SKIP.
+
+#### 머지 게이트
+**최종 PASS — 머지 가능**. verification 전부 통과 (typecheck/lint/test 97+skip 2/E2E 9/9). backend 변경 0. mergeStateStatus CLEAN (CI lint 완료 대기 중).
