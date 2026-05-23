@@ -80,6 +80,8 @@ dependencies {
 
     // Jackson (JSON 직렬화)
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+    // Jackson JSR-310 모듈 — java.time.Instant 등 Java 8 날짜/시간 타입 직렬화 지원 (pgmq 이벤트 occurredAt)
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
 
     // Kotlin 기본
     implementation("org.jetbrains.kotlin:kotlin-reflect")

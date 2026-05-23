@@ -5,6 +5,7 @@ package com.bts.issue.event
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -14,7 +15,9 @@ import java.util.UUID
 
 class IssueDomainEventTest : DescribeSpec({
 
-    val mapper = ObjectMapper().registerKotlinModule().findAndRegisterModules()
+    val mapper = ObjectMapper()
+        .registerKotlinModule()
+        .registerModule(JavaTimeModule())
 
     val issueKey = IssueKey("ATLAS-1")
     val actorId = ActorId(UUID.fromString("11111111-1111-1111-1111-111111111111"))
@@ -106,7 +109,7 @@ class IssueDomainEventTest : DescribeSpec({
                   "issueKey": "ATLAS-1",
                   "projectKey": "ATLAS",
                   "summary": "첫 번째 이슈",
-                  "reporterId": "11111111-1111-1111-1111-111111111111",
+                  "reporterId": {"value": "11111111-1111-1111-1111-111111111111"},
                   "occurredAt": "2026-01-01T00:00:00Z"
                 }
             """.trimIndent()
