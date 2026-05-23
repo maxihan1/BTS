@@ -250,4 +250,37 @@ diff 가 예상 패턴과 다르면 RED 로 돌아가서 Task 3 GREEN 점검 (�
 
 4. **snapshot diff 검토 누락 위험**. Task 4 검증 단계가 git diff 검토를 verifier 단계 명시. 의도치 않은 부수 변경 (예. mermaid 코드의 indent / 줄바꿈) 발생 시 즉시 RED 회귀. PR #13 learnings 의 "spec/plan 표기 drift 발견 시 spec 우선" 정신.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### /plan-design-review — SKIP
+
+본 PR 의 사용자 시각 변화 0 (NFR-1 명시). classDef 이름만 변경 (SVG class 속성 비가시), 색상 / 노드 / 전이 동일. design-review 가 평가할 시각 요소 0. **skip**.
+
+### /plan-eng-review (2026-05-22)
+
+**Step 0 — scope challenge**. ✅ trigger 안 됨 (4 task / 7 file / 0 new class / 1 new function). 기존 codebase 재사용 100%. 최소 변경. scope accepted as-is.
+
+**Section 1 — Architecture**. ✅ No issues. 의존성 그래프 / 데이터 흐름 / 보안 / 분배 변경 0. plan §리스크 1번 (mermaid underscore classDef) 이 D3 결정으로 해소.
+
+**Section 2 — Code Quality**. ✅ No issues. helper 1 함수 재사용 (fixture + workflows.test.ts inline). 한국어 헤더 / NEVER-15 (console.error 만 허용) / TDD 강제 모두 준수.
+
+**Section 3 — Tests**. ✅ Coverage 8/8 paths (100%). 모든 새 코드패스 (transitionKey 2건 / categoryToClass 3건 / generateMermaidCode snapshot 4건 / fixture 회귀 가드 1건) 가 ★★★ (behavior + edge + error). gaps 0. Test plan artifact 불필요 (spec §8 완료 기준 충분).
+
+**Section 4 — Performance**. ✅ No issues. 런타임 영향 0. 소스 코드 +1 KB.
+
+**Outside voice**. skip (PR scope 작음).
+
+**Completion Summary**.
+- Step 0 — scope accepted as-is.
+- Architecture — 0 issues.
+- Code Quality — 0 issues.
+- Tests — 100% coverage / 0 gaps.
+- Performance — 0 issues.
+- NOT in scope — spec §9 (axe / SUGGESTION-1 / 새 워크플로우 / mermaid 버전 / workflows.test.ts inline → import 일관화 모두 후속 PR).
+- What already exists — 본 PR 의 모든 영향 파일은 PR #13 에서 도입. 신규 파일 0.
+- TODOS — 0 proposed (NOT in scope 항목은 history.md PR #13 entry 에 후속 PR 후보 기록 완료).
+- Failure modes — 0 critical gaps.
+- Parallelization — 2 lanes (Wave 0. Task 1+3 / Wave 1. Task 2+4).
+- Lake Score — 4/4 (D1 helper 위치 명시 / D2 옵션 B drift 차단 / D3 underscore 안전 옵션 / D4 본 PR scope 내 처리).
+
+**VERDICT**. CLEARED — ready to implement.
