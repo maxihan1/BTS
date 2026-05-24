@@ -9,8 +9,10 @@ import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.event.IssueUpdated
 import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
@@ -108,7 +110,58 @@ class IssueApplicationService(
         return IssueResponse.from(issue, key.projectPrefix)
     }
 
+    /**
+     * 이슈 필드를 수정한다 (낙관락).
+     *
+     * 흐름.
+     * 1. UPDATE 권한 검증 (Issue 범위)
+     * 2. 이슈 조회 — 미존재 시 IssueNotFoundException
+     * 3. updateSummary 호출 — 0 row 반환 시 IssueVersionConflictException
+     * 4. 변경 후 이슈 재조회
+     * 5. IssueUpdated 이벤트 발행 (변경 필드 목록 포함)
+     *
+     * @param actor 수정 행위자.
+     * @param key 수정할 이슈 키.
+     * @param request 수정 요청 DTO.
+     * @return 수정된 이슈의 [IssueResponse].
+     * @throws IssueAccessDeniedException 권한 없을 때.
+     * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우.
+     * @throws IssueVersionConflictException 낙관락 충돌 시.
+     */
+    fun updateIssue(
+        actor: ActorId,
+        key: IssueKey,
+        request: UpdateIssueRequest,
+    ): IssueResponse {
+        assertPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(key.value))
+        val existing = repo.findByKey(key) ?: throw IssueNotFoundException(key)
+        val changedFields = buildChangedFields(existing, request)
+        val updatedRows = repo.updateSummary(key, request.summary, request.expectedVersion)
+        if (updatedRows == 0) {
+            throw IssueVersionConflictException(key, existing.version)
+        }
+        val updated = repo.findByKey(key) ?: throw IssueNotFoundException(key)
+        eventPublisher.publish(
+            IssueUpdated(
+                issueKey = key,
+                fields = changedFields,
+                occurredAt = Instant.now(clock),
+            ),
+        )
+        log.info("issue_updated key={} fields={} actor={}", key.value, changedFields, actor.value)
+        return IssueResponse.from(updated, key.projectPrefix)
+    }
+
     // ── private helpers ────────────────────────────────────────────────────────
+
+    private fun buildChangedFields(
+        existing: Issue,
+        request: UpdateIssueRequest,
+    ): Set<String> {
+        val fields = mutableSetOf<String>()
+        if (existing.summary != request.summary) fields.add("summary")
+        return fields
+    }
 
     private fun assertPermission(
         actor: ActorId,

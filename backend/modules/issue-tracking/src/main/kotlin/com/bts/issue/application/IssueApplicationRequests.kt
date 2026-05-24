@@ -16,3 +16,14 @@ data class CreateIssueRequest(
     val summary: String,
     val reporterId: ActorId,
 )
+
+/**
+ * 이슈 수정 요청 DTO.
+ *
+ * @param summary 새 이슈 제목.
+ * @param expectedVersion 낙관적 잠금 버전. 읽은 version 값과 일치해야 업데이트가 성공한다.
+ */
+data class UpdateIssueRequest(
+    val summary: String,
+    val expectedVersion: Long,
+)

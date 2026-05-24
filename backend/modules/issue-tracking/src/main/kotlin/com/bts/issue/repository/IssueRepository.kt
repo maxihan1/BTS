@@ -101,6 +101,34 @@ class IssueRepository(
             ?.toIssue()
 
     /**
+     * 이슈 summary 를 수정한다 (낙관락).
+     *
+     * WHERE key=? AND version=? AND deleted_at IS NULL 조건으로 업데이트.
+     * version 불일치(stale read) 시 영향 행 0 반환.
+     *
+     * @param key 이슈 키.
+     * @param summary 새 이슈 제목.
+     * @param expectedVersion 현재 버전. DB 버전과 일치해야 업데이트가 실행된다.
+     * @return 업데이트된 행 수 (성공=1, 낙관락 충돌=0).
+     */
+    @Transactional
+    fun updateSummary(
+        key: IssueKey,
+        summary: String,
+        expectedVersion: Long,
+    ): Int {
+        log.debug("updateSummary key={} expectedVersion={}", key.value, expectedVersion)
+        return dsl.update(ISSUES)
+            .set(ISSUES.SUMMARY, summary)
+            .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+            .set(ISSUES.VERSION, expectedVersion + 1)
+            .where(ISSUES.KEY.eq(key.value))
+            .and(ISSUES.VERSION.eq(expectedVersion))
+            .and(ISSUES.DELETED_AT.isNull)
+            .execute()
+    }
+
+    /**
      * 이슈 상태를 전이한다 (낙관락).
      *
      * WHERE key=? AND version=? AND deleted_at IS NULL 조건으로 업데이트.

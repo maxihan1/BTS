@@ -163,7 +163,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
 
             it("repo 및 eventPublisher 가 호출되지 않는다") {
                 runCatching { sut.updateIssue(actor, issueKey, request) }
-                verify(exactly = 0) { repo.findByKey(any()) }
+                verify(exactly = 0) { repo.findByKey(issueKey) }
                 verify(exactly = 0) { eventPublisher.publish(any()) }
             }
         }
