@@ -12,6 +12,7 @@ import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.event.IssueSoftDeleted
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.event.IssueUpdated
 import com.bts.workflow.domain.dto.TransitionRequest
@@ -210,6 +211,37 @@ class IssueApplicationService(
         log.info("issue_transitioned key={} from={} to={} actor={}", key.value, issue.currentStateKey, plan.toStateKey, actor.value)
         val updated = repo.findByKey(key) ?: throw IssueNotFoundException(key)
         return IssueResponse.from(updated, key.projectPrefix)
+    }
+
+    /**
+     * 이슈를 소프트 삭제한다.
+     *
+     * 흐름.
+     * 1. SOFT_DELETE 권한 검증 (Issue 범위)
+     * 2. repo.softDelete 호출 — 0 row 면 IssueNotFoundException (미존재 또는 이미 삭제)
+     * 3. IssueSoftDeleted 이벤트 발행
+     *
+     * @param actor 삭제 행위자.
+     * @param key 삭제할 이슈 키.
+     * @throws IssueAccessDeniedException 권한 없을 때.
+     * @throws IssueNotFoundException 이슈가 없거나 이미 삭제된 경우.
+     */
+    fun softDeleteIssue(
+        actor: ActorId,
+        key: IssueKey,
+    ) {
+        assertPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Issue(key.value))
+        val deletedRows = repo.softDelete(key)
+        if (deletedRows == 0) {
+            throw IssueNotFoundException(key)
+        }
+        eventPublisher.publish(
+            IssueSoftDeleted(
+                issueKey = key,
+                occurredAt = Instant.now(clock),
+            ),
+        )
+        log.info("issue_soft_deleted key={} actor={}", key.value, actor.value)
     }
 
     private fun buildChangedFields(
