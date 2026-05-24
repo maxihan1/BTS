@@ -27,3 +27,18 @@ data class UpdateIssueRequest(
     val summary: String,
     val expectedVersion: Long,
 )
+
+/**
+ * 이슈 전이 요청 DTO.
+ *
+ * @param workflowKey 적용할 워크플로우 키. 예: "DEFAULT".
+ * @param toStateKey 목표 상태 키. 예: "IN_PROGRESS".
+ * @param transitionName 실행할 전이 이름. YAML 워크플로우 정의의 name 과 일치해야 한다.
+ * @param expectedVersion 낙관적 잠금 버전.
+ */
+data class TransitionIssueRequest(
+    val workflowKey: String,
+    val toStateKey: String,
+    val transitionName: String,
+    val expectedVersion: Long,
+)

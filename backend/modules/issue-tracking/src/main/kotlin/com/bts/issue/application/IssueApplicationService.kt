@@ -12,7 +12,9 @@ import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.event.IssueUpdated
+import com.bts.workflow.domain.dto.TransitionRequest
 import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
@@ -153,6 +155,62 @@ class IssueApplicationService(
     }
 
     // ── private helpers ────────────────────────────────────────────────────────
+
+    /**
+     * 이슈 상태를 전이한다 (workflowPort.plan() 호출 + 낙관락).
+     *
+     * 흐름.
+     * 1. TRANSITION 권한 검증 (Issue 범위)
+     * 2. SELECT FOR UPDATE 로 이슈 조회 (비관락) — 미존재 시 IssueNotFoundException
+     * 3. workflowPort.plan() 호출 — 예외 발생 시 그대로 propagate
+     * 4. applyTransition 호출 — 0 row 면 IssueVersionConflictException
+     * 5. IssueTransitioned 이벤트 발행
+     *
+     * 클래스 레벨 @Transactional(REQUIRED) 이 적용되므로 workflowPort.plan (MANDATORY) 호출 가능.
+     *
+     * @param actor 전이 행위자.
+     * @param key 전이할 이슈 키.
+     * @param request 전이 요청 DTO.
+     * @return 전이된 이슈의 [IssueResponse].
+     * @throws IssueAccessDeniedException 권한 없을 때.
+     * @throws IssueNotFoundException 이슈가 없는 경우.
+     * @throws IssueVersionConflictException 낙관락 충돌 시.
+     */
+    fun transitionIssue(
+        actor: ActorId,
+        key: IssueKey,
+        request: TransitionIssueRequest,
+    ): IssueResponse {
+        assertPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(key.value))
+        val issue = repo.findByKeyForUpdate(key) ?: throw IssueNotFoundException(key)
+        val transitionReq = TransitionRequest(
+            workflowKey = request.workflowKey,
+            issueKey = key.value,
+            fromStateKey = issue.currentStateKey,
+            toStateKey = request.toStateKey,
+            transitionName = request.transitionName,
+            actorId = actor.value.toString(),
+            issueFields = mapOf("summary" to issue.summary),
+            actorRoles = emptySet(),
+            version = request.expectedVersion,
+        )
+        val plan = workflowPort.plan(transitionReq)
+        val updatedRows = repo.applyTransition(key, plan.toStateKey, request.expectedVersion)
+        if (updatedRows == 0) {
+            throw IssueVersionConflictException(key, issue.version)
+        }
+        eventPublisher.publish(
+            IssueTransitioned(
+                issueKey = key,
+                fromState = issue.currentStateKey,
+                toState = plan.toStateKey,
+                occurredAt = Instant.now(clock),
+            ),
+        )
+        log.info("issue_transitioned key={} from={} to={} actor={}", key.value, issue.currentStateKey, plan.toStateKey, actor.value)
+        val updated = repo.findByKey(key) ?: throw IssueNotFoundException(key)
+        return IssueResponse.from(updated, key.projectPrefix)
+    }
 
     private fun buildChangedFields(
         existing: Issue,
