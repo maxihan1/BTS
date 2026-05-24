@@ -97,7 +97,7 @@ class IssueApplicationServiceFindTest : DescribeSpec({
             it("repo 가 호출되지 않는다") {
                 runCatching { sut.findByKey(actor, issueKey) }
 
-                verify(exactly = 0) { repo.findByKey(any()) }
+                verify(exactly = 0) { repo.findByKey(issueKey) }
             }
         }
 

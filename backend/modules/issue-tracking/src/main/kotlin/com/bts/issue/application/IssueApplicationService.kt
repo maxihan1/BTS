@@ -2,11 +2,13 @@
 
 package com.bts.issue.application
 
+import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.port.outbound.IssuePermission
@@ -85,6 +87,25 @@ class IssueApplicationService(
         )
         log.info("issue_created key={} actor={}", saved.key.value, actor.value)
         return saved
+    }
+
+    /**
+     * 이슈 단건을 조회한다.
+     *
+     * @param actor 조회 행위자.
+     * @param key 조회할 이슈 키.
+     * @return [IssueResponse] DTO.
+     * @throws IssueAccessDeniedException 권한 없을 때.
+     * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우.
+     */
+    @Transactional(readOnly = true)
+    fun findByKey(
+        actor: ActorId,
+        key: IssueKey,
+    ): IssueResponse {
+        assertPermission(actor, IssuePermission.VIEW, IssueScope.Issue(key.value))
+        val issue = repo.findByKey(key) ?: throw IssueNotFoundException(key)
+        return IssueResponse.from(issue, key.projectPrefix)
     }
 
     // ── private helpers ────────────────────────────────────────────────────────
