@@ -22,6 +22,9 @@ import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
 import com.bts.workflow.port.inbound.WorkflowTransitionPort
 import org.slf4j.LoggerFactory
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.PageImpl
+import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -242,6 +245,31 @@ class IssueApplicationService(
             ),
         )
         log.info("issue_soft_deleted key={} actor={}", key.value, actor.value)
+    }
+
+    /**
+     * 프로젝트의 활성 이슈 목록을 페이지로 조회한다.
+     *
+     * @param actor 조회 행위자.
+     * @param projectKey 프로젝트 키.
+     * @param pageable 페이지 정보. pageSize > 100 이면 거부.
+     * @return [Page]<[IssueResponse]>.
+     * @throws IssueAccessDeniedException 권한 없을 때.
+     * @throws IllegalArgumentException pageSize > 100 일 때.
+     */
+    @Transactional(readOnly = true)
+    fun listIssues(
+        actor: ActorId,
+        projectKey: String,
+        pageable: Pageable,
+    ): Page<IssueResponse> {
+        require(pageable.pageSize <= 100) {
+            "pageSize must be 100 or fewer, but was ${pageable.pageSize}"
+        }
+        assertPermission(actor, IssuePermission.VIEW, IssueScope.Project(projectKey))
+        val page = repo.list(projectKey, pageable)
+        val responses = page.content.map { IssueResponse.from(it, projectKey) }
+        return PageImpl(responses, pageable, page.totalElements)
     }
 
     private fun buildChangedFields(
