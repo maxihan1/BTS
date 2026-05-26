@@ -76,7 +76,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
 
             it("updateSummary 가 호출되지 않는다") {
                 sut.updateIssue(actor, issueKey, request)
-                verify(exactly = 0) { repo.updateSummary(any(), any(), any()) }
+                verify(exactly = 0) { repo.updateSummary(issueKey, any<String>(), any<Long>()) }
             }
 
             it("eventPublisher.publish 가 호출되지 않는다") {
@@ -141,7 +141,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
 
             it("updateSummary 가 호출되지 않는다") {
                 sut.updateIssue(actor, issueKey, request)
-                verify(exactly = 0) { repo.updateSummary(any(), any(), any()) }
+                verify(exactly = 0) { repo.updateSummary(issueKey, any<String>(), any<Long>()) }
             }
 
             it("eventPublisher.publish 가 호출되지 않는다 (changedFields empty)") {
