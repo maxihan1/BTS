@@ -333,4 +333,47 @@ class IssueControllerUpdateTest {
             "controller 가 summary null 을 그대로 전달해야 하지만 '${capturedRequest.captured.summary}' 를 전달함"
         }
     }
+
+    // ── T8-4: PATCH summary="" 빈 문자열 → 400 VALIDATION_FAILED (F-1 가드) ──
+
+    /**
+     * T8-4. PATCH body 에 summary="" 명시적 빈 문자열을 전송한 경우.
+     *
+     * PR #23 adversarial F-1 — `?: ""` 제거 후 빈 문자열 명시 입력 가드가 부재하면
+     * production 시점에 사용자가 모든 이슈를 빈 제목으로 만들 수 있는 회귀 위험.
+     * Bean Validation `@NotBlank` 가 null 통과 + 빈 문자열/공백 거부 시맨틱으로
+     * RFC 7396 partial 시맨틱과 양립. 400 + VALIDATION_FAILED errorCode 응답.
+     */
+    @Test
+    fun `PATCH summary 빈 문자열 — 400 VALIDATION_FAILED (F-1 가드)`() {
+        val body = """{"summary": "", "expectedVersion": 1}"""
+
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+    }
+
+    // ── T8-5: PATCH summary="   " 공백만 → 400 VALIDATION_FAILED (F-1 가드) ──
+
+    /**
+     * T8-5. PATCH body 에 summary="   " 공백만으로 구성된 입력을 전송한 경우.
+     *
+     * `@NotBlank` 가 공백만으로 구성된 문자열도 거부. 빈 문자열과 동일 시맨틱.
+     */
+    @Test
+    fun `PATCH summary 공백만 — 400 VALIDATION_FAILED (F-1 가드)`() {
+        val body = """{"summary": "   ", "expectedVersion": 1}"""
+
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+    }
 }
