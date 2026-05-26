@@ -96,6 +96,5 @@ class WorkflowScheme private constructor(
 
     override fun hashCode(): Int = key.hashCode()
 
-    override fun toString(): String =
-        "WorkflowScheme(key=${key.value}, name=$name, isDefault=$isDefault)"
+    override fun toString(): String = "WorkflowScheme(key=${key.value}, name=$name, isDefault=$isDefault)"
 }
