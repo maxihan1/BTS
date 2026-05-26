@@ -77,12 +77,14 @@
 | pgmq 트랜잭션 롤백 정합성 | 100% | ___ | 통합 테스트 — k6 + axe 도입 후속 |
 | WCAG 2.1 AA | 0 violations | ___ | axe-core — k6 + axe 도입 후속 |
 
+> **Deferred trigger**. §NFR 5건 미실측은 silent 영구 보류 아님. trigger — (a) FR-WF-02 (스킴 매핑) 머지 후 + (b) `docs/adr/*-k6-load-testing.md` + `docs/adr/*-axe-accessibility.md` 2건 ADR 발행 시점에 측정 일괄 진행. Maxi 1인 선언으로 trigger 조정 가능.
+
 ### BC 완료 조건
 
 > **§2 진척**. FR-WF-01 ✅ / FR-WF-02 진행 중
 
 - [ ] §2 (FR-WF 2개) 모두 `[x]` 마킹
-- [ ] §NFR 측정표 모든 항목 임계 통과
+- [ ] §NFR 측정표 모든 항목 임계 통과 (위 deferred trigger 충족 후)
 - [ ] pgmq ADR (§A.3 #1) 발행 완료
 - [ ] CHANGELOG.md 정리
 - [ ] README.md §7 변경 이력에 "project-workflow BC 완료 — YYYY-MM-DD" 추가
