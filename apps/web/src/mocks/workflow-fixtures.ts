@@ -17,7 +17,7 @@ import { transitionKey } from '@/components/workflow/workflow.types'
 export const softwareDefaultFixture: WorkflowView = {
   key: 'software-default',
   name: '소프트웨어 개발 기본 워크플로우',
-  description: '소프트웨어 개발 팀을 위한 기본 워크플로우',
+  description: 'Open → In Progress → In Review → Done → Closed 흐름의 표준 소프트웨어 개발 워크플로우',
   states: [
     { key: 'open', name: 'Open', category: 'TODO', displayOrder: 1 },
     { key: 'in_progress', name: 'In Progress', category: 'IN_PROGRESS', displayOrder: 2 },
@@ -39,7 +39,7 @@ export const softwareDefaultFixture: WorkflowView = {
 export const bugTrackingFixture: WorkflowView = {
   key: 'bug-tracking',
   name: '버그 추적 워크플로우',
-  description: '버그 수명 주기를 추적하는 워크플로우',
+  description: 'Reported → Triaged → In Progress → Resolved → Closed 흐름의 버그 추적 워크플로우',
   states: [
     { key: 'reported', name: 'Reported', category: 'TODO', displayOrder: 1 },
     { key: 'triaged', name: 'Triaged', category: 'TODO', displayOrder: 2 },
@@ -60,7 +60,7 @@ export const bugTrackingFixture: WorkflowView = {
 export const simpleFixture: WorkflowView = {
   key: 'simple',
   name: '단순 워크플로우 (TODO/DOING/DONE)',
-  description: '3단계 단순 워크플로우',
+  description: 'To Do → Doing → Done 3단계 단순 워크플로우',
   states: [
     { key: 'todo', name: 'To Do', category: 'TODO', displayOrder: 1 },
     { key: 'doing', name: 'Doing', category: 'IN_PROGRESS', displayOrder: 2 },
@@ -77,7 +77,7 @@ export const simpleFixture: WorkflowView = {
 export const kanbanBasicFixture: WorkflowView = {
   key: 'kanban-basic',
   name: '칸반 기본 워크플로우',
-  description: '칸반 방식의 기본 워크플로우',
+  description: 'Backlog → Ready → In Progress → Done 흐름의 칸반 기본 워크플로우',
   states: [
     { key: 'backlog', name: 'Backlog', category: 'TODO', displayOrder: 1 },
     { key: 'ready', name: 'Ready', category: 'TODO', displayOrder: 2 },
