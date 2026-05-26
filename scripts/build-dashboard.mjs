@@ -44,8 +44,8 @@ function readFileSafe(p) {
 function aggregateFrStatus(steps) {
   if (steps.length === 0) return '미진행';
   if (steps.some(s => s.status === '차단')) return '차단';
-  if (steps.some(s => s.status === '진행중')) return '진행중';
   if (steps.every(s => s.status === '완료')) return '완료';
+  if (steps.some(s => s.status === '완료' || s.status === '진행중')) return '진행중';
   return '미진행';
 }
 

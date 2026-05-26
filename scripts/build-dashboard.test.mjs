@@ -56,6 +56,21 @@ test('parsePlanFile — 진행중 마커(~)는 차단보다 낮은 우선순위'
   assert.equal(frs[0].status, '진행중');
 });
 
+test('parsePlanFile — 일부 완료 + 일부 미진행은 진행중으로 집계', () => {
+  const md = `#### §1.1 FR-AU-02 — LDAP
+
+- [x] D1. 도메인
+- [x] D2. 명세
+- [x] D3. 데이터 모델
+- [x] D4. 백엔드
+- [x] D5. 백엔드 테스트
+- [x] D6. 프론트 UI
+- [ ] D7. E2E
+`;
+  const { frs } = parsePlanFile(md, 'identity-access');
+  assert.equal(frs[0].status, '진행중');
+});
+
 test('parsePlanFile — ### 헤더(3 해시)도 FR 헤더로 인식', () => {
   const md = `## §6 이슈 이동
 

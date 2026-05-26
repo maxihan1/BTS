@@ -31,24 +31,24 @@
 
 **우선순위**. 필수 | **선행**. §1 기술 검증 | **Plan slug**. `identity/authn-provider`
 
-- [ ] D1. 도메인 정의 — `Maxi_wiki/BTS/domain/identity-access.md`. Principal/Credential/AuthnResult VO (책임. security-engineer + Maxi)
-- [ ] D2. 명세 — `AuthenticationProvider` 인터페이스 + 등록 메커니즘 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `authn_providers` (provider_type, config) (책임. db-engineer)
-- [ ] D4. 백엔드 — `ProviderRegistry` + `AuthenticationManager` Spring Bean (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 — 가짜 Provider 2개로 등록/조회 (책임. security-engineer)
+- [x] D1. 도메인 정의 — `Maxi_wiki/BTS/domain/identity-access.md`. Principal/Credential/AuthnResult VO (책임. security-engineer + Maxi)
+- [x] D2. 명세 — `AuthenticationProvider` 인터페이스 + 등록 메커니즘 (책임. security-engineer)
+- [x] D3. 데이터 모델 — `authn_providers` (provider_type, config) (책임. db-engineer)
+- [x] D4. 백엔드 — `ProviderRegistry` + `AuthenticationManager` Spring Bean (책임. security-engineer)
+- [x] D5. 백엔드 테스트 — 가짜 Provider 2개로 등록/조회 (책임. security-engineer)
 - [ ] D6. 프론트 UI — Provider 선택 화면 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [~] D7. E2E (책임. qa-engineer)
 
 ### §2.2 FR-AU-02 — LDAP/AD 연동
 
 **우선순위**. 필수 | **선행**. §2.1 | **Plan slug**. `identity/ldap`
 
-- [ ] D1. 도메인 (책임. security-engineer)
-- [ ] D2. 명세 — baseDN, 사용자/그룹 매핑, lockout 정책 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `users`, `user_external_accounts(provider, externalId)` (책임. db-engineer)
-- [ ] D4. 백엔드 — Spring Security LDAP authenticator + `UserDetailsService` (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 — Testcontainers OpenLDAP (책임. security-engineer)
-- [ ] D6. 프론트 UI — 로그인 폼 (책임. designer → frontend-engineer)
+- [x] D1. 도메인 (책임. security-engineer)
+- [x] D2. 명세 — baseDN, 사용자/그룹 매핑, lockout 정책 (책임. security-engineer)
+- [x] D3. 데이터 모델 — `users`, `user_external_accounts(provider, externalId)` (책임. db-engineer)
+- [x] D4. 백엔드 — Spring Security LDAP authenticator + `UserDetailsService` (책임. security-engineer)
+- [x] D5. 백엔드 테스트 — Testcontainers OpenLDAP (책임. security-engineer)
+- [x] D6. 프론트 UI — 로그인 폼 (책임. designer → frontend-engineer)
 - [ ] D7. E2E — Playwright (책임. qa-engineer)
 
 | 항목 | 임계 | 실측 (p95) |
@@ -83,11 +83,11 @@
 
 **우선순위**. 필수 | **선행**. §2.1 | **Plan slug**. `identity/local-account`
 
-- [ ] D1. 도메인 — LocalCredential VO (책임. security-engineer)
-- [ ] D2. 명세 — 비밀번호 정책 (길이/복잡도/이력) + Argon2id (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `local_credentials(password_hash, last_changed_at)` (책임. db-engineer)
-- [ ] D4. 백엔드 — 가입/비밀번호 변경/리셋 (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 — 비밀번호 정책 위반 케이스 (책임. security-engineer)
+- [x] D1. 도메인 — LocalCredential VO (책임. security-engineer)
+- [x] D2. 명세 — 비밀번호 정책 (길이/복잡도/이력) + Argon2id (책임. security-engineer)
+- [x] D3. 데이터 모델 — `local_credentials(password_hash, last_changed_at)` (책임. db-engineer)
+- [~] D4. 백엔드 — 가입/비밀번호 변경/리셋 (책임. security-engineer)
+- [~] D5. 백엔드 테스트 — 비밀번호 정책 위반 케이스 (책임. security-engineer)
 - [ ] D6. 프론트 UI — 가입/비밀번호 변경 폼 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
@@ -131,13 +131,13 @@
 
 **우선순위**. 필수 | **선행**. §2.1 | **Plan slug**. `identity/sessions`
 
-- [ ] D1. 도메인 — Session/AccessToken/RefreshToken/PAT 분리 (책임. security-engineer)
-- [ ] D2. 명세 — TTL, 회전 정책, 세션 강제 종료 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `sessions`, `refresh_tokens`, `pats(scope, revoked_at)` (책임. db-engineer)
-- [ ] D4. 백엔드 — JWT 발급/검증 + Redis 세션 + PAT 발급 API (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 — 토큰 만료/회전/취소 (책임. security-engineer)
+- [x] D1. 도메인 — Session/AccessToken/RefreshToken/PAT 분리 (책임. security-engineer)
+- [~] D2. 명세 — TTL, 회전 정책, 세션 강제 종료 (책임. security-engineer)
+- [x] D3. 데이터 모델 — `sessions`, `refresh_tokens`, `pats(scope, revoked_at)` (책임. db-engineer)
+- [~] D4. 백엔드 — JWT 발급/검증 + Redis 세션 + PAT 발급 API (책임. security-engineer)
+- [x] D5. 백엔드 테스트 — 토큰 만료/회전/취소 (책임. security-engineer)
 - [ ] D6. 프론트 UI — 활성 세션 목록 + 강제 로그아웃 (책임. designer → frontend-engineer). **DEVELOPMENT.md §1.17 — 토큰 localStorage 금지 (sessionStorage 강제)**
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ### §2.10 FR-AU-10 — 인증 감사 로그
 
