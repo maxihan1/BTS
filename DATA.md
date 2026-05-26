@@ -93,6 +93,8 @@ backend/db/migration/
 - `String.format("SELECT ... %s ...", userInput)` 같은 문자열 결합
 - `dsl.execute(rawSql)` — 정적 검증 우회
 
+> **예외 (2026-05-26 추가)**. 다음은 위 금지의 정식 예외 — (i) parameter binding (`?` placeholder) 사용 + (ii) jOOQ 미지원 PostgreSQL 함수 (pg_advisory_lock, pgmq.send 등) 호출. 자세한 결정 근거 + 잠재 잘못된 사용 가드. [docs/adr/2026-05-26-jooq-execute-advisory-lock-exception.md](docs/adr/2026-05-26-jooq-execute-advisory-lock-exception.md).
+
 ### 권장
 
 ```kotlin
@@ -206,3 +208,4 @@ Phase 4에서 Jira → BTS 마이그레이션 진행. 자세히. `docs/sdd/15-mi
 ## §10. 변경 이력
 
 - 2026-05-19. 초안. BTS 데이터 무결성 5원칙 정의 + Flyway/jOOQ/트랜잭션/FTS/pgmq 규칙 통합.
+- 2026-05-26. §5 예외 단서 추가. parameter binding + jOOQ 미지원 PG 함수 한정 예외 등록. 근거 — [docs/adr/2026-05-26-jooq-execute-advisory-lock-exception.md](docs/adr/2026-05-26-jooq-execute-advisory-lock-exception.md).
