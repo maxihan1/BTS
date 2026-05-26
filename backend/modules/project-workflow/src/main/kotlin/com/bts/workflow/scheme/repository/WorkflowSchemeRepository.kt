@@ -129,7 +129,7 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
 
         dsl
             .update(WORKFLOW_SCHEMES)
-            .set(DELETED_AT, DSL.now())
+            .set(DELETED_AT, OffsetDateTime.now(ZoneOffset.UTC))
             .where(ID.eq(id.value))
             .execute()
     }
