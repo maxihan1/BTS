@@ -37,18 +37,19 @@ class WorkflowTransitionAdapter(
     /**
      * 전이 요청을 [WorkflowEngine] 에 위임하고 결과를 [TransitionResult] 로 매핑한다.
      *
+     * 내부 예외는 [mapException] 에서 [TransitionResult] 케이스로 변환한다.
+     * 인식되지 않은 예외는 그대로 re-throw 한다.
+     *
      * @param req 전이 요청 DTO
      * @return [TransitionResult] — 4 케이스 반환 계약은 [WorkflowTransitionPort] KDoc 참조
      */
     @Transactional(propagation = Propagation.MANDATORY)
-    override fun plan(req: TransitionRequest): TransitionResult {
-        return try {
-            val plan = workflowEngine.plan(req)
-            TransitionResult.Success(plan)
+    override fun plan(req: TransitionRequest): TransitionResult =
+        try {
+            TransitionResult.Success(workflowEngine.plan(req))
         } catch (e: Exception) {
             mapException(req, e)
         }
-    }
 
     // ── private helper ────────────────────────────────────────────────────────
 
