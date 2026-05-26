@@ -2,9 +2,9 @@
 
 package com.bts.workflow.scheme.port.outbound
 
-import com.bts.workflow.scheme.domain.ProjectKey
-import com.bts.workflow.scheme.domain.IssueTypeKey
+import com.bts.issue.type.domain.IssueTypeKey
 import com.bts.workflow.domain.Workflow
+import com.bts.workflow.scheme.domain.ProjectKey
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.transaction.annotation.Propagation

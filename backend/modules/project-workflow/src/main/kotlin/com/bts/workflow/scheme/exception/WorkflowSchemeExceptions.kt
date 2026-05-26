@@ -106,3 +106,19 @@ class MappingDefaultDuplicateException(
 class WorkflowSchemeNoDefaultException(
     val schemeKey: String,
 ) : WorkflowSchemeDomainException("No default mapping for: $schemeKey")
+
+/**
+ * 요청한 키에 해당하는 프로젝트가 존재하지 않을 때 던지는 예외.
+ *
+ * ArchUnit NFR-7 준수 — project-workflow BC 는 issue-tracking domain 패키지를 import 할 수 없으므로
+ * project-workflow BC 자체에 이 예외를 정의한다.
+ *
+ * [com.bts.workflow.scheme.port.outbound.WorkflowResolver.resolveFor] 에서
+ * projectKey 에 해당하는 프로젝트가 없을 때 발생한다 (EC-7).
+ * errorCode: `WORKFLOW_PROJECT_NOT_FOUND`
+ *
+ * @param projectKey 조회를 시도한 프로젝트 키. 예: "ATLAS".
+ */
+class ProjectNotFoundException(
+    val projectKey: String,
+) : WorkflowSchemeDomainException("Project not found: $projectKey")
