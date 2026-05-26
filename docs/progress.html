@@ -98,18 +98,18 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <svg viewBox="0 0 260 260" class="donut">
     <circle cx="130" cy="130" r="116" fill="none" stroke="#e5e7eb" stroke-width="28" />
     <circle cx="130" cy="130" r="116" fill="none" stroke="#22c55e" stroke-width="28"
-      stroke-dasharray="728.849495632832" stroke-dashoffset="728.849495632832"
+      stroke-dasharray="728.849495632832" stroke-dashoffset="721.5610006765037"
       transform="rotate(-90 130 130)" stroke-linecap="round" />
-    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">0%</text>
+    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">1%</text>
   </svg>
       <div class="overview-numbers">
-        <div class="big-num">0 / 117</div>
+        <div class="big-num">1 / 117</div>
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
-          <div><span class="dot dot-done"></span> 완료 <b>0</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>0</b></div>
+          <div><span class="dot dot-done"></span> 완료 <b>1</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>1</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>117</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>115</b></div>
         </div>
       </div>
     </div>
@@ -121,9 +121,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bc-card-pct">0%</div>
     </div><div class="bc-card" data-nav="bc-project-workflow">
       <div class="bc-card-head">🔄 워크플로우</div>
-      <div class="bc-card-stats">0 / 2 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:0%"></div></div>
-      <div class="bc-card-pct">0%</div>
+      <div class="bc-card-stats">1 / 2 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:50%"></div></div>
+      <div class="bc-card-pct">50%</div>
     </div><div class="bc-card" data-nav="bc-automation">
       <div class="bc-card-head">🤖 자동화 규칙</div>
       <div class="bc-card-stats">0 / 7 완료</div>
@@ -170,19 +170,19 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:0%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 0</div>
-        <div>🔄 진행중 0</div>
+        <div>🔄 진행중 1</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 29</div>
+        <div>⬜ 대기 28</div>
       </div>
     </div>
     <h2>세부 기능 (29개)</h2>
-    <div class="fr-list"><details class="fr-item fr-미진행">
+    <div class="fr-list"><details class="fr-item fr-진행중">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">🔄</span>
         <span class="fr-id">FR-IS-01</span>
         <span class="fr-desc"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> CRUD, 상태 변경 시 <span class="term" data-def="이슈의 상태 전이 FSM. YAML로 정의">워크플로우</span> 검증 + 알림</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span> Aggregate Root, IssueKey VO</li><li><span class="step-icon">⬜</span> D2 — 명세 — Given/When/Then. 7 엣지 케이스 (중복 키/권한/<span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span> 위반/대용량/동시 편집/소프트 삭제/키 보존)</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — <span class="term" data-def="&quot;DB 도면 버전 관리자 / 안전한 번역기&quot; DB 구조의 변경 이력을 꼼꼼히 기록하고(Flyway), 오타 없이 안전하게 DB 언어로 번역해 주는 도구(jOOQ)입니다.">Flyway</span>. `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s`, `issue_key_redirects`. DATA.md 영속성</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `POST/GET/<span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>CH/DELETE /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s`. `@Trans<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">action</span>al`. <span class="term" data-def="PostgreSQL 기반 메시지 큐 (Kafka 대체)">pgmq</span> 이벤트 발행 동일 트랜잭션</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;마네킹 / 가짜 부품&quot; 테스트를 할 때 실제 결제 시스템이나 외부 서버를 연결하면 돈이 나가거나 느려지므로, 진짜처럼 행동하는 가짜 부품을 끼워놓는 것입니다.">Mock</span>K 단위 + <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> 통합. <span class="term" data-def="&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.">TDD</span> red→green→refactor</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>Detail.tsx`. TanStack Query 캐싱 + 낙관적 업데이트</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> + <span class="term" data-def="&quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.">NFR</span> — 생성→조회→수정→상태 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span>→소프트 삭제→키 영속성 (이동 후 옛 키 redirect)</li></ol>
+      <ol class="step-list"><li><span class="step-icon">🔄</span> D1 — 도메인 — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span> Aggregate Root, IssueKey VO</li><li><span class="step-icon">✅</span> D2 — 명세 — Given/When/Then. 7 엣지 케이스 (중복 키/권한/<span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span> 위반/대용량/동시 편집/소프트 삭제/키 보존)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — <span class="term" data-def="&quot;DB 도면 버전 관리자 / 안전한 번역기&quot; DB 구조의 변경 이력을 꼼꼼히 기록하고(Flyway), 오타 없이 안전하게 DB 언어로 번역해 주는 도구(jOOQ)입니다.">Flyway</span>. `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s`, `issue_key_redirects`. DATA.md 영속성</li><li><span class="step-icon">🔄</span> D4 — 백엔드 — `POST/GET/<span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>CH/DELETE /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s`. `@Trans<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">action</span>al`. <span class="term" data-def="PostgreSQL 기반 메시지 큐 (Kafka 대체)">pgmq</span> 이벤트 발행 동일 트랜잭션</li><li><span class="step-icon">🔄</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;마네킹 / 가짜 부품&quot; 테스트를 할 때 실제 결제 시스템이나 외부 서버를 연결하면 돈이 나가거나 느려지므로, 진짜처럼 행동하는 가짜 부품을 끼워놓는 것입니다.">Mock</span>K 단위 + <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> 통합. <span class="term" data-def="&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.">TDD</span> red→green→refactor</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>Detail.tsx`. TanStack Query 캐싱 + 낙관적 업데이트</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> + <span class="term" data-def="&quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.">NFR</span> — 생성→조회→수정→상태 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span>→소프트 삭제→키 영속성 (이동 후 옛 키 redirect)</li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
@@ -384,24 +384,24 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h1>🔄 워크플로우</h1>
     <p class="bc-desc">이슈가 어떤 상태를 거쳐 가는지 규칙을 정하는 영역.</p>
     <div class="bc-detail-stats">
-      <div class="big-pct">0%</div>
-      <div>0 / 2 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:0%"></div></div>
+      <div class="big-pct">50%</div>
+      <div>1 / 2 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:50%"></div></div>
       <div class="status-grid">
-        <div>✅ 완료 0</div>
+        <div>✅ 완료 1</div>
         <div>🔄 진행중 0</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 2</div>
+        <div>⬜ 대기 1</div>
       </div>
     </div>
     <h2>세부 기능 (2개)</h2>
-    <div class="fr-list"><details class="fr-item fr-미진행">
+    <div class="fr-list"><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-WF-01</span>
         <span class="fr-desc"><span class="term" data-def="&quot;정해진 상태 지도&quot; 이슈가 &#39;대기 → 진행 → 완료&#39;처럼 어떻게 상태가 변할 수 있는지 길을 정해둔 규칙입니다.">FSM</span> <span class="term" data-def="이슈의 상태 전이 FSM. YAML로 정의">워크플로우</span> (상태/전이/조건/검증/후처리)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — <span class="term" data-def="이슈의 상태 전이 FSM. YAML로 정의">Workflow</span> Aggregate, State, Transition, Guard, Post<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">Action</span></li><li><span class="step-icon">⬜</span> D2 — 명세 — Given/When/Then. 표준 4종 <span class="term" data-def="이슈의 상태 전이 FSM. YAML로 정의">워크플로우</span> (<span class="term" data-def="&quot;휴지통 이동 vs 영구 삭제&quot; 소프트 삭제는 화면에서만 안 보이게 &#39;삭제됨&#39; 꼬리표만 다는 것이고, 하드 삭제는 DB에서 진짜 날려버리는 것입니다.">Soft</span>ware Dev, Bug Tracking, Service Desk, <span class="term" data-def="&quot;작업 쪼개기 단위&quot; 큰 프로젝트(에픽) → 사용자 기능(스토리) → 개발자 작업(태스크).">Task</span>)</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `<span class="term" data-def="이슈의 상태 전이 FSM. YAML로 정의">workflow</span>s`, `workflow_states`, `workflow_transitions`, `workflow_guards`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `<span class="term" data-def="이슈의 상태 전이 FSM. YAML로 정의">Workflow</span>En<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>e` + 상태 전이 API + invariant 검증</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.">TDD</span> + <span class="term" data-def="&quot;무작위 융단폭격 테스트&quot; 사람이 일일이 테스트 값(1, 2, 3...)을 넣지 않고, &quot;숫자이기만 하면 돼&quot;라고 규칙을 주면 컴퓨터가 수만 가지 이상한 랜덤 값을 때려 넣어보는 독한 테스트입니다."><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>operty-based test</span> (<span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span> 무결성)</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="이슈의 상태 전이 FSM. YAML로 정의">워크플로우</span> 다이어그램 (mermaid 또는 SVG)</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> + <span class="term" data-def="&quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.">NFR</span> — 상태 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span> 6단계 시나리오</li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="이슈의 상태 전이 FSM. YAML로 정의">Workflow</span> Aggregate, State, Transition, Guard, Post<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">Action</span></li><li><span class="step-icon">✅</span> D2 — 명세 — Given/When/Then. 표준 4종 <span class="term" data-def="이슈의 상태 전이 FSM. YAML로 정의">워크플로우</span> (<span class="term" data-def="&quot;휴지통 이동 vs 영구 삭제&quot; 소프트 삭제는 화면에서만 안 보이게 &#39;삭제됨&#39; 꼬리표만 다는 것이고, 하드 삭제는 DB에서 진짜 날려버리는 것입니다.">Soft</span>ware Dev, Bug Tracking, Service Desk, <span class="term" data-def="&quot;작업 쪼개기 단위&quot; 큰 프로젝트(에픽) → 사용자 기능(스토리) → 개발자 작업(태스크).">Task</span>)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `<span class="term" data-def="이슈의 상태 전이 FSM. YAML로 정의">workflow</span>s`, `workflow_states`, `workflow_transitions`, `workflow_guards`</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `<span class="term" data-def="이슈의 상태 전이 FSM. YAML로 정의">Workflow</span>En<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>e` + 상태 전이 API + invariant 검증</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.">TDD</span> + <span class="term" data-def="&quot;무작위 융단폭격 테스트&quot; 사람이 일일이 테스트 값(1, 2, 3...)을 넣지 않고, &quot;숫자이기만 하면 돼&quot;라고 규칙을 주면 컴퓨터가 수만 가지 이상한 랜덤 값을 때려 넣어보는 독한 테스트입니다."><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>operty-based test</span> (<span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span> 무결성)</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="이슈의 상태 전이 FSM. YAML로 정의">워크플로우</span> 다이어그램 (mermaid 또는 SVG)</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> + <span class="term" data-def="&quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.">NFR</span> — 상태 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span> 6단계 시나리오</li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
