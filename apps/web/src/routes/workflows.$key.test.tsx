@@ -6,13 +6,22 @@ import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { workflowHandlers } from '@/mocks/workflow-handlers'
 import { softwareDefaultFixture } from '@/mocks/workflow-fixtures'
+import type { WorkflowDiagramProps } from '@/components/workflow/WorkflowDiagram'
 import { WorkflowDetailPage } from './workflows.$key'
 
 // WorkflowDiagram 컴포넌트 자체를 stub — mermaid import / SVG 렌더 자체 발생 안 함
 // (PR #20 — vi.mock('mermaid') 가 worker scope leak 으로 LoginForm.test.tsx timing 영향 발견 후 좁힘)
-// 단위 테스트 책임: header 의 description <p> 렌더 behavior 검증만. WorkflowDiagram 자체 렌더는 Playwright E2E 담당.
+// (PR #21 — aria-label wrapper stub 으로 교체. workflow.name 기반 aria-label 로 T5-1 DOM 검증 가능하게 함)
+// 단위 테스트 책임: header 의 description <p> 렌더 + WorkflowDiagram 마운트 여부 검증. mermaid 실제 렌더는 Playwright E2E 담당.
+// aria-label wrapper stub: workflow.name 을 aria-label 에 노출해 T5-1 에서 getByLabelText 로 마운트 여부를 검증한다.
+// type=WorkflowDiagramProps 명시로 실 컴포넌트 prop 추가 시 즉시 TS 에러 감지 (contract drift 본질 차단).
+// outer wrapper `space-y-2` 1단 유지 — 실 컴포넌트 DOM 위상 (`<div className="space-y-2"><div aria-label/></div>`) 과 일치시켜 향후 부모 selector 변경 시 mock false positive 회피.
 vi.mock('@/components/workflow/WorkflowDiagram', () => ({
-  WorkflowDiagram: () => null,
+  WorkflowDiagram: ({ workflow }: WorkflowDiagramProps) => (
+    <div className="space-y-2">
+      <div aria-label={`${workflow.name} 다이어그램`} />
+    </div>
+  ),
 }))
 
 // WorkflowDetailPage는 props로 workflowKey를 받으므로 라우터 없이 단위 테스트 가능.
@@ -36,11 +45,9 @@ describe('WorkflowDetailPage', () => {
    * T5-1. key param으로 fetchWorkflow 트리거 + WorkflowDiagram 마운트 검증.
    * MSW server.use(...workflowHandlers)로 /api/v1/workflows/software-default 200 응답.
    * 성공 시 aria-label="소프트웨어 개발 기본 워크플로우 다이어그램" 요소가 DOM에 존재해야 한다.
+   * PR #21 mock 패턴 조정으로 unskip. mermaid 실제 렌더는 e2e/workflow.spec.ts 4 happy path 가 본질 검증 담당.
    */
-  // jsdom 환경에서 mermaid SVG getBBox() 미구현으로 mermaid.render() timeout 발생 (PR #10 시점부터 잠재).
-  // WorkflowDetailPage 의 실제 mermaid 렌더 검증은 e2e/workflow.spec.ts 4 happy path 가 커버.
-  // PR #16 hot-fix (D5 옵션 C) — 단위 테스트의 jsdom 한계 명시 + E2E 위임.
-  it.skip('T5-1: key prop을 받으면 fetchWorkflow를 호출하고 WorkflowDiagram을 마운트한다', async () => {
+  it('T5-1: key prop을 받으면 fetchWorkflow를 호출하고 WorkflowDiagram을 마운트한다', async () => {
     server.use(...workflowHandlers)
 
     renderPage('software-default')
@@ -60,11 +67,9 @@ describe('WorkflowDetailPage', () => {
    * T5-2. fetch 실패(404) 시 에러 폴백 텍스트 렌더 검증.
    * MSW handler override — 존재하지 않는 key에 대해 404 응답.
    * 에러 상태 시 role="alert" + "워크플로우를 찾을 수 없습니다" 텍스트가 DOM에 존재해야 한다.
+   * PR #21 mock 패턴 조정으로 unskip. mermaid 실제 렌더는 e2e/workflow.spec.ts 4 happy path 가 본질 검증 담당.
    */
-  // jsdom 환경에서 mermaid SVG getBBox() 미구현으로 mermaid.render() timeout 발생 (PR #10 시점부터 잠재).
-  // WorkflowDetailPage 의 실제 mermaid 렌더 검증은 e2e/workflow.spec.ts 4 happy path 가 커버.
-  // PR #16 hot-fix (D5 옵션 C) — 단위 테스트의 jsdom 한계 명시 + E2E 위임.
-  it.skip('T5-2: fetch 실패(404) 시 에러 폴백 텍스트를 렌더한다', async () => {
+  it('T5-2: fetch 실패(404) 시 에러 폴백 텍스트를 렌더한다', async () => {
     // workflowHandlers 등록 후 unknown-key에 대해 404가 자동으로 반환된다 (workflow-handlers.ts 참조)
     server.use(...workflowHandlers)
 
