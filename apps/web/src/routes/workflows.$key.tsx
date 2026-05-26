@@ -72,7 +72,8 @@ export function WorkflowDetailPage({ workflowKey }: WorkflowDetailPageProps): JS
       {/* 페이지 헤더 — 워크플로우 이름 + 설명 */}
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold">{data.name}</h1>
-        {data.description !== '' && (
+        {/* backend toDto 가 description 미제공 시 빈 문자열 반환 (PR #13 Task 9 fallback) — .length > 0 으로 빈 문자열 분기 명시 */}
+        {data.description.length > 0 && (
           <p className="text-muted-foreground text-sm">{data.description}</p>
         )}
       </header>
