@@ -288,4 +288,32 @@ self-eng-review 1회 (PR #19 patten — 작은 후속 PR plan §inline 통합). 
 
 ### 후속 후보 (게이트 2 통과 후 검토)
 
-- **T5-1/T5-2 unskip + mermaid mock 일관화** — 본 PR Task 3 의 mermaid mock 추가 후 T5-1/T5-2 의 jsdom timeout 회피 가능 검증. it.skip 해제 + 본질 검증 영역 (`getByLabelText` + fallback alert) 모두 정상 동작 확인. 추정 scope = 1 task / 매우 작음.
+- **T5-1/T5-2 unskip + WorkflowDiagram mock 일관화** — 본 PR Task 3 의 fix 단계에서 `vi.mock('@/components/workflow/WorkflowDiagram')` 으로 좁힘. T5-1 의 `getByLabelText(/소프트웨어 개발 기본 워크플로우 다이어그램/)` 셀렉터는 WorkflowDiagram 의 aria-label 이라 mock 가 null 반환 시 부재 → unskip 시 fail. 본 PR 시점은 it.skip 유지. 별도 후속 PR 후보로 (a) WorkflowDiagram mock 가 aria-label wrapper 만 stub 반환 + 내부 mermaid 부재 패턴 또는 (b) WorkflowDetailPage 의 header 영역만 추출한 컴포넌트 신규.
+
+## 통합 검증 + 본 PR Learnings 후보
+
+### 통합 검증 결과 (Task 4)
+
+| 항목 | 결과 |
+|---|---|
+| typecheck | ✅ 0 issue |
+| lint (ESLint flat config, NEVER-15 본 PR 영역 0 hit) | ✅ 0 issue, EXIT 0 |
+| test (vitest) | ✅ 17 file / 103 passed + 2 skipped (T5-1/T5-2 it.skip 유지). 본 PR 신규 +6건 (description 회귀 가드 4건 + behavior preservation 2건) |
+| build | ✅ EXIT 0 |
+| E2E (playwright) | ✅ 9/9 통과 (workflow 5 + login 3 + smoke 1, 44.4s) |
+| backend diff | ✅ empty (git diff --stat origin/main -- backend/ empty) |
+| generated diff | ✅ empty (jOOQ 무관) |
+
+### 본 PR 의 두 learnings 후보 (머지 후 learnings.md 등재)
+
+1. **병렬 dispatch race — Task 1 GREEN commit 에 Task 3 RED 산출물 흡수 (옵션 A 재커밋 정리)**.
+   - **사고**. wave 1 의 3-병렬 dispatch (Task 1, 2, 3) 중 Task 1 implementer 의 commit 시 lint-staged 의 자동 stage / 광범위 staging 으로 Task 3 implementer 가 동시 작업 중인 `workflows.$key.test.tsx` 의 staged 변경분 (vi.mock + 새 describe + T-NEW-1/2) 까지 Task 1 GREEN commit (4fcde1f) 에 흡수. Task 3 의 RED commit (`test: ... task-3 red`) 부재. verifier 가 Task 1 DRIFT + Task 3 TDD_VIOLATION 보고.
+   - **근본 원인**. worktree 공유 + 병렬 dispatch race. lint-staged 도구의 자동 stage 가 다른 implementer 의 변경분 흡수.
+   - **해결**. 옵션 A 재커밋. `git reset --hard 715819f` (Task 1 RED commit 직후) + 각 commit 의 file snapshot 으로 분리 재 commit 6 step + force-push (Draft PR 이라 안전).
+   - **예방**. (1) implementer prompt 에 "git commit 시 git add <file> 단위로 명시 stage. `git add -A` / `git add .` 금지" 명시 강화. (2) bts-impl SKILL.md §실패 케이스에 "lint-staged 가 자동 stage 시 다른 implementer 의 staged 변경분 흡수 가능 — 해당 commit 의 변경 파일을 `git show <commit> --stat` 으로 검증 후 분리" 추가. (3) verifier 의 검증 항목에 "허용 files 외 commit 포함 검출" 강조 — 본 PR 의 Task 1 verifier 가 정확 catch.
+
+2. **vi.mock 의 광범위 module mock 은 vitest worker scope leak 잠재 → 컴포넌트 단위 mock 우선**.
+   - **사고**. Task 3 implementer 가 `vi.mock('mermaid', ...)` 패턴 채택 (WorkflowDiagram.test.tsx 의 동일 패턴 복사). 단독 실행 시 `workflows.$key.test.tsx` 6/6 통과 + LoginForm.test.tsx 단독 6/6 통과. 그러나 `pnpm test` 전체 실행 시 LoginForm.test.tsx 의 `userEvent.type` 5000ms timeout 1건 fail (다른 test file 영향).
+   - **근본 원인**. vitest worker thread 공유 + mermaid 같은 무거운 module 의 mock 등록 overhead 가 같은 worker 안 다른 test file 의 timing 에 간섭. vitest `isolate: true` default 도 module cache 만 격리, worker thread 자체는 공유.
+   - **해결**. `vi.mock('mermaid', ...)` → `vi.mock('@/components/workflow/WorkflowDiagram', () => ({ WorkflowDiagram: () => null }))` 로 영역 좁힘. WorkflowDiagram 컴포넌트 자체를 stub → 내부의 mermaid import 자체 안 발생. 전체 test duration 89s → 23s (4x 단축).
+   - **예방**. (1) frontend-engineer agent prompt 에 "vi.mock 사용 시 가장 좁은 영역 (컴포넌트 또는 함수 단위) 우선. 광범위 module (mermaid, react, lodash 등) 직접 mock 은 worker scope leak 잠재 — 다른 test file timing 영향 검증 필수" 추가. (2) vitest config 에 `isolate: true` (default) + 추후 worker fork 분리 옵션 (`pool: 'forks'`) 도입 검토. (3) WorkflowDiagram.test.tsx 의 기존 `vi.mock('mermaid')` 도 후속 PR 에서 같은 패턴 (컴포넌트 단위 mock) 으로 마이그레이션 검토.
