@@ -72,7 +72,7 @@ class WorkflowSchemeDomainEventTest {
             )
 
         assertThat(e1).isEqualTo(e2)
-        assertThat(e1.hashCode()).isEqualTo(e2.hashCode())
+        assertThat(e1).hasSameHashCodeAs(e2)
     }
 
     // ── WorkflowSchemeUpdatedEvent 라운드트립 ─────────────────────────────────
@@ -113,7 +113,7 @@ class WorkflowSchemeDomainEventTest {
         val e2 = WorkflowSchemeUpdatedEvent(schemeId = WorkflowSchemeId(2L), field = "name", occurredAt = Instant.parse("2026-05-26T00:00:00Z"))
 
         assertThat(e1).isEqualTo(e2)
-        assertThat(e1.hashCode()).isEqualTo(e2.hashCode())
+        assertThat(e1).hasSameHashCodeAs(e2)
     }
 
     // ── WorkflowSchemeDeletedEvent 라운드트립 ─────────────────────────────────
@@ -152,6 +152,6 @@ class WorkflowSchemeDomainEventTest {
         val e2 = WorkflowSchemeDeletedEvent(schemeId = WorkflowSchemeId(3L), occurredAt = Instant.parse("2026-05-26T00:00:00Z"))
 
         assertThat(e1).isEqualTo(e2)
-        assertThat(e1.hashCode()).isEqualTo(e2.hashCode())
+        assertThat(e1).hasSameHashCodeAs(e2)
     }
 }
