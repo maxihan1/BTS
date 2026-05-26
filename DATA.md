@@ -60,16 +60,38 @@ AIG의 "자금 손실 5원칙"과 동일 패턴. 위반 시 즉시 PR BLOCKER.
 ### 파일 명명 규칙
 
 ```
-backend/db/migration/
-├── V1__init_schema.sql
-├── V2__add_issue_resolution.sql
-├── V3__create_workflow_tables.sql
+backend/modules/<bc>/src/main/resources/db/migration/
+├── V<번호>__<설명>.sql
 └── ...
 ```
 
 - 접두사. `V<번호>__<설명>.sql`
-- 번호. 단조 증가 정수 (gap 허용)
+- 번호. 단조 증가 정수 (gap 허용), **BC 별 100단위 범위 할당** (§4.1)
 - 설명. snake_case, 명령형 어조 (`add_`, `drop_`, `rename_`)
+
+### §4.1. BC 별 번호 범위 (cross-BC 충돌 방지)
+
+cross-BC 의존이 도입된 모듈 (예: project-workflow → issue-tracking) 에서
+classpath 합쳐질 때 동일 버전 번호 (`V001`) 가 두 모듈에 존재하면
+Flyway 가 `Found more than one migration with version` 으로 실패한다.
+
+이를 막기 위해 BC 별 100단위 범위를 할당한다.
+
+| BC                 | 범위        | 사용 중                           |
+|--------------------|------------|------------------------------------|
+| identity-access    | V001~V099  | V001~V006                         |
+| issue-tracking     | V001~V099  | V001~V003 (grand-fathered)        |
+| project-workflow   | V200~V299  | V200, V004 (V004 = issue-tracking V003 다음 단조 증가) |
+| automation (예정)  | V300~V399  | —                                 |
+| (새 BC)            | V400+      | —                                 |
+
+**grand-fathered 예외**. identity-access (V001~V006) 와 issue-tracking (V001~V003)
+는 cross-BC 의존이 도입되기 전부터 V001 부터 시작했으므로 그대로 유지.
+project-workflow 가 issue-tracking 을 cross-BC import 하면서 처음 충돌이
+노출되어 V200~ 으로 옮겨졌다 (ADR `2026-05-26-bc-migration-prefix-policy`).
+
+**새 BC 가 추가될 때**. 위 표에 다음 사용 가능 범위 (V300, V400, ...)
+를 부여하고, 첫 마이그레이션은 해당 범위의 시작 번호로 작성한다.
 
 ### 마이그레이션 작성 시 규칙
 

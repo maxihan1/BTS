@@ -97,12 +97,12 @@ class WorkflowIntegrationTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            // Flyway 2단계 — V004 issue_types cross-BC FK 대응
+            // Flyway 2단계 — V201 (workflow_schemes) issue_types cross-BC FK 대응
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
                 .locations("classpath:db/migration")
-                .target("1")
+                .target("200")
                 .load()
                 .migrate()
 

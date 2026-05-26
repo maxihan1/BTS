@@ -77,12 +77,13 @@ class SchemeIssueTypeMappingRepositoryIntegrationTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            // 2단계 Flyway — V001 먼저 → issue_types 스텁 → V002~V004
+            // 2단계 Flyway — V200 까지 적용 → issue_types 스텁 IF NOT EXISTS → V201 실행.
+            // cross-BC dep 으로 issue-tracking V001~V003 도 함께 적용됨 (V003 가 issue_types 진짜 테이블 생성).
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
                 .locations("classpath:db/migration")
-                .target("1")
+                .target("200")
                 .load()
                 .migrate()
 

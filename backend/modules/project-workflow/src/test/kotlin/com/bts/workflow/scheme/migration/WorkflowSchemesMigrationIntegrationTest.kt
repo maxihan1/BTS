@@ -54,12 +54,14 @@ class WorkflowSchemesMigrationIntegrationTest {
         @BeforeAll
         @JvmStatic
         fun applyMigrations() {
-            // D13 결정: 프로덕션에서는 issue-tracking V003 → project-workflow V004 순서 (단일 DB).
-            // 통합 테스트는 project-workflow 모듈 Flyway 만 실행하므로 issue_types 테이블이 없음.
+            // D13 결정: 프로덕션에서는 issue-tracking V003 → project-workflow V201 (이전 V004) 순서 (단일 DB).
+            // 본 PR 의 cross-BC dep (implementation(project(":modules:issue-tracking"))) 으로
+            // testRuntimeClasspath 에 issue-tracking 마이그레이션도 포함되어 V001~V003 동시 적용 가능.
             //
             // 해결 전략 (2단계):
-            //   1단계: Flyway target=1 로 V001 (workflows 테이블) 만 먼저 적용.
-            //   2단계: issue_types 스텁 테이블 직접 생성 → Flyway migrate 재실행 (V002~V004).
+            //   1단계: Flyway target=200 으로 V200 (project-workflow init) 까지 적용
+            //          (cross-BC dep 으로 issue-tracking V001~V003 도 동시 적용 — issue_types 진짜 테이블 V003 으로 생성).
+            //   2단계: issue_types 스텁 IF NOT EXISTS 안전판 → Flyway migrate 재실행 (V201 적용).
             //
             // Flyway 가 이미 schema history 를 갖고 있으면 "non-empty schema" 오류 없이
             // 남은 마이그레이션만 추가 실행한다.
@@ -68,7 +70,7 @@ class WorkflowSchemesMigrationIntegrationTest {
                     .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                     .placeholderReplacement(false)
                     .locations("classpath:db/migration")
-                    .target("1")
+                    .target("200")
                     .load()
             flyway.migrate()
 

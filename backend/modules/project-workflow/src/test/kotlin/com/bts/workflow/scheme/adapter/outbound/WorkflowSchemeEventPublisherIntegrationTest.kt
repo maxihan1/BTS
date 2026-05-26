@@ -329,20 +329,20 @@ class WorkflowSchemeEventPublisherIntegrationTest : DescribeSpec({
 }) {
     companion object {
         /**
-         * V001 → V004 마이그레이션 적용.
+         * V200 + V201 마이그레이션 적용 (project-workflow init + workflow_schemes).
          *
          * Cross-BC FK 패턴 (WorkflowSchemesMigrationIntegrationTest 와 동일).
-         * 1단계: Flyway target=1 로 V001 만 먼저 적용.
-         * 2단계: issue_types 스텁 테이블 직접 생성.
-         * 3단계: Flyway migrate 재실행 (V002~V004).
+         * 1단계: Flyway target=200 으로 V200 까지 적용 (cross-BC dep 으로 issue-tracking V001~V003 동시 적용).
+         * 2단계: issue_types 스텁 테이블 IF NOT EXISTS — V003 가 진짜 테이블을 만들면 no-op.
+         * 3단계: Flyway migrate 재실행 (V201 적용).
          */
         private fun applyMigrations(postgres: PostgreSQLContainer<*>) {
-            // 1단계: V001 만 적용
+            // 1단계: V200 (project-workflow init) 까지 적용
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
                 .locations("classpath:db/migration")
-                .target("1")
+                .target("200")
                 .load()
                 .migrate()
 

@@ -69,14 +69,14 @@ class YamlSeedServiceTest {
         @JvmStatic
         fun setup() {
             // Flyway — DB 스키마 변경을 버전 관리하는 도구.
-            // V004 가 issue_types FK 를 참조하므로 2단계 실행:
-            //   1단계: V001 까지만 (workflows 테이블 생성)
-            //   2단계: issue_types 스텁 생성 → V004 까지 (issue_types FK 통과)
+            // V201 (workflow_schemes) 가 issue_types FK 를 참조하므로 2단계 실행:
+            //   1단계: V200 (project-workflow init) 까지만 — cross-BC dep 으로 issue-tracking V001~V003 도 함께 적용
+            //   2단계: issue_types 스텁 IF NOT EXISTS 안전판 → V201 까지
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
                 .locations("classpath:db/migration")
-                .target("1")
+                .target("200")
                 .load()
                 .migrate()
 

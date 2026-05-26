@@ -61,12 +61,14 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            // 2단계 Flyway: V001 먼저 → issue_types 스텁 생성 → V002~V004 실행
+            // 2단계 Flyway: V200 (project-workflow init) 까지 적용 → issue_types 스텁 IF NOT EXISTS → V201 실행.
+            // cross-BC dep 도입 결과 issue-tracking V001~V003 도 함께 적용됨 (issue_types 진짜 테이블 V003 으로 생성).
+            // 스텁은 안전판으로 유지 (IF NOT EXISTS — V003 가 먼저 실행되면 no-op).
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
                 .locations("classpath:db/migration")
-                .target("1")
+                .target("200")
                 .load()
                 .migrate()
 

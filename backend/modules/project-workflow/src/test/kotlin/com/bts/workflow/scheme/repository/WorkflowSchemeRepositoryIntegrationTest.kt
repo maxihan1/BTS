@@ -70,12 +70,12 @@ class WorkflowSchemeRepositoryIntegrationTest {
         @JvmStatic
         fun setup() {
             // 2단계 Flyway — cross-BC FK (issue_types) 스텁 패턴
-            // 1단계: V001 만 적용
+            // 1단계: V200 (project-workflow init) 까지 적용 (cross-BC dep 으로 issue-tracking V001~V003 동시 적용)
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
                 .locations("classpath:db/migration")
-                .target("1")
+                .target("200")
                 .load()
                 .migrate()
 
