@@ -26,9 +26,11 @@ value class IssueTypeKey(val value: String) {
     companion object {
         /**
          * URL-safe 소문자 슬러그 정규식. WorkflowSchemeKey 와 동일 패턴.
-         * - 소문자 알파벳으로 시작
-         * - 소문자 알파벳·숫자·하이픈 조합, 후속 1~29자
-         * - 총 2~30자
+         *
+         * 규칙 요약.
+         * - `^[a-z]` — 소문자 알파벳으로 시작 (대문자·숫자·특수문자 시작 불가)
+         * - `[a-z0-9-]{1,29}` — 소문자·숫자·하이픈 조합 후속 1~29자
+         * - 총 길이 2~30자 (URL 경로 파라미터 및 YAML 키로 안전하게 사용 가능)
          */
         val REGEX = Regex("^[a-z][a-z0-9-]{1,29}$")
     }
