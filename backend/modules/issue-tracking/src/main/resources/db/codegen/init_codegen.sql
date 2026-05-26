@@ -76,3 +76,29 @@ CREATE EXTENSION IF NOT EXISTS pgmq CASCADE;
 SELECT pgmq.create('q_issue_events');
 
 COMMENT ON SCHEMA pgmq IS 'PostgreSQL 기반 메시지 큐 (Kafka 대체). DATA.md §7.2.';
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V003: issue_types 테이블 + 5 표준 seed (FR-WF-02 cross-BC 사전 도입)
+-- 원본: db/migration/V003__issue_types.sql
+-- ═══════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE issue_types (
+    id           BIGSERIAL    PRIMARY KEY,
+    key          VARCHAR(30)  NOT NULL UNIQUE,
+    name         VARCHAR(255) NOT NULL,
+    description  TEXT,
+    icon_name    VARCHAR(50),
+    is_standard  BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    deleted_at   TIMESTAMPTZ
+);
+
+CREATE INDEX ix_issue_types_key_active ON issue_types (key) WHERE deleted_at IS NULL;
+
+INSERT INTO issue_types (key, name, description, icon_name, is_standard) VALUES
+    ('epic',    'Epic',    '큰 작업 단위 (자식 이슈 보유)', 'epic',    true),
+    ('story',   'Story',   '사용자 가치 단위',              'story',   true),
+    ('task',    'Task',    '일반 작업',                     'task',    true),
+    ('subtask', 'Subtask', '하위 작업',       'subtask', true),
+    ('bug',     'Bug',     '결함',            'bug',     true);
