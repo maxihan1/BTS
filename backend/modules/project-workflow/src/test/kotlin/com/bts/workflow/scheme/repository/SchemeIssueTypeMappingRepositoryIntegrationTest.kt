@@ -161,13 +161,13 @@ class SchemeIssueTypeMappingRepositoryIntegrationTest {
                         }
                     }
 
-                // issue_types fixture — 테스트에서 issue_type_id FK 참조용
+                // issue_types fixture — issue-tracking V003 이 5 표준 seed (story/bug/task/epic/subtask) 를
+                // 이미 INSERT 했으므로, 신규 INSERT 가 아니라 SELECT 로 id 를 조회해 FK 참조용으로 사용한다.
                 issueTypeId1 =
                     conn.prepareStatement(
-                        "INSERT INTO issue_types (key, name) VALUES (?, ?) RETURNING id",
+                        "SELECT id FROM issue_types WHERE key = ?",
                     ).use { stmt ->
                         stmt.setString(1, "story")
-                        stmt.setString(2, "스토리")
                         stmt.executeQuery().use { rs ->
                             rs.next()
                             rs.getLong(1)
@@ -176,10 +176,9 @@ class SchemeIssueTypeMappingRepositoryIntegrationTest {
 
                 issueTypeId2 =
                     conn.prepareStatement(
-                        "INSERT INTO issue_types (key, name) VALUES (?, ?) RETURNING id",
+                        "SELECT id FROM issue_types WHERE key = ?",
                     ).use { stmt ->
                         stmt.setString(1, "task")
-                        stmt.setString(2, "태스크")
                         stmt.executeQuery().use { rs ->
                             rs.next()
                             rs.getLong(1)

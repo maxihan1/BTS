@@ -60,6 +60,9 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
             assignment.assignedBy,
         )
 
+        // raw SQL dsl.execute 는 args 의 타입 추론을 안 하므로 OffsetDateTime 이
+        // PostgreSQL JDBC 의 setString 으로 fallback (character varying) → TIMESTAMPTZ 컬럼과 타입 불일치.
+        // java.sql.Timestamp 는 JDBC 표준 timestamp 타입이라 PG 가 TIMESTAMPTZ 로 안전하게 받는다.
         dsl.execute(
             "INSERT INTO project_workflow_scheme_assignments" +
                 " (project_id, workflow_scheme_id, assigned_at, assigned_by)" +
@@ -70,7 +73,7 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
                 " assigned_by = EXCLUDED.assigned_by",
             assignment.projectId,
             assignment.workflowSchemeId.value,
-            assignment.assignedAt.atOffset(java.time.ZoneOffset.UTC),
+            java.sql.Timestamp.from(assignment.assignedAt),
             assignment.assignedBy,
         )
     }

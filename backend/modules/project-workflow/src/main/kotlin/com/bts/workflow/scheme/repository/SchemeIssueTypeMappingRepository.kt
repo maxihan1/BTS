@@ -73,8 +73,9 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
 
             return record.toMapping()
         } catch (ex: DataIntegrityViolationException) {
+            // Spring 의 ExceptionTranslator 가 활성화된 컨텍스트 (운영) — DataIntegrityViolationException 으로 도착.
             log.warn(
-                "addMapping UNIQUE 위반 — scheme_id={} issue_type_id={}",
+                "addMapping UNIQUE 위반 (Spring 변환) — scheme_id={} issue_type_id={}",
                 mapping.schemeId.value,
                 mapping.issueTypeId?.value,
             )
@@ -82,6 +83,24 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
                 schemeKey = mapping.schemeId.value.toString(),
                 issueTypeKey = mapping.issueTypeId?.value?.toString() ?: "null(default)",
             )
+        } catch (ex: org.jooq.exception.DataAccessException) {
+            // Spring ExceptionTranslator 비활성 컨텍스트 (예: 통합 테스트의 plain DSL.using()) —
+            // jOOQ native DataAccessException 으로 도착. cause SQLException 의 sqlstate "23505"
+            // (unique_violation) 인 경우만 MappingDuplicateException 변환.
+            val sqlEx = generateSequence(ex as Throwable?) { it.cause }
+                .firstOrNull { it is java.sql.SQLException } as? java.sql.SQLException
+            if (sqlEx?.sqlState == "23505") {
+                log.warn(
+                    "addMapping UNIQUE 위반 (jOOQ native) — scheme_id={} issue_type_id={}",
+                    mapping.schemeId.value,
+                    mapping.issueTypeId?.value,
+                )
+                throw MappingDuplicateException(
+                    schemeKey = mapping.schemeId.value.toString(),
+                    issueTypeKey = mapping.issueTypeId?.value?.toString() ?: "null(default)",
+                )
+            }
+            throw ex
         }
     }
 
