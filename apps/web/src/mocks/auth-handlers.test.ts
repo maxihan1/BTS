@@ -74,6 +74,28 @@ describe('authHandlers — POST /api/v1/auth/login (ldap-corp)', () => {
 
     expect(res.status).toBe(401)
   })
+
+  it('S6-unknown-provider-missing: provider 누락 → 401 + { error: "unknown_provider" } (silent local fallback 차단)', async () => {
+    const res = await fetch('/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'alice', password: 'password' }),
+    })
+
+    expect(res.status).toBe(401)
+    expect(await res.json()).toEqual({ error: 'unknown_provider' })
+  })
+
+  it('S7-unknown-provider-value: provider="saml" (미지원) → 401 + { error: "unknown_provider" }', async () => {
+    const res = await fetch('/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: 'saml', username: 'alice', password: 'anything' }),
+    })
+
+    expect(res.status).toBe(401)
+    expect(await res.json()).toEqual({ error: 'unknown_provider' })
+  })
 })
 
 describe('authHandlers — GET /api/v1/users/me/whoami', () => {

@@ -12,6 +12,7 @@ import { useAuthStore } from './authStore'
 const LOGIN_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   invalid_credentials: '사용자명 또는 비밀번호가 올바르지 않습니다.',
   mfa_required: '추가 인증이 필요합니다. 관리자에게 문의하세요.',
+  unknown_provider: '지원하지 않는 로그인 방식입니다. 다시 시도해 주세요.',
 }
 
 const DEFAULT_LOGIN_ERROR_MESSAGE = '로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.'

@@ -5,17 +5,17 @@ import { AUTH_USERS, LDAP_VALID_PASSWORDS, VALID_PASSWORDS, mockAccessToken } fr
 /**
  * POST /api/v1/auth/login — provider + username/password 검증 후 token 또는 401 반환.
  *
- * provider 분기.
+ * provider 분기 (provider 누락 또는 미지원 값 모두 unknown_provider — silent 'local' fallback 금지).
  * - `local`: VALID_PASSWORDS (alice/password, bob/password) 검증
  * - `ldap-corp`: LDAP_VALID_PASSWORDS (alice/Test1234!, bob/Test1234!) 검증
- * - 그 외: 401 `{ error: "unknown_provider" }` (방어 layer)
+ * - 누락 / 그 외: 401 `{ error: "unknown_provider" }` (방어 layer, frontend Zod 가 1차 차단 + 본 분기 가 2차)
  *
  * 응답 schema: backend AuthController.TokenResponse (`access_token`, `token_type`, `expires_in`)
- * 에러 schema: `{ error: "invalid_credentials" }` — useLoginMutation의 resolveLoginErrorMessage 가 사용
+ * 에러 schema: `{ error: "invalid_credentials" | "unknown_provider" }` — useLoginMutation 의 resolveLoginErrorMessage 가 한국어 매핑
  */
 const loginHandler = http.post('/api/v1/auth/login', async ({ request }) => {
   const body = await request.json() as { provider?: string; username?: string; password?: string }
-  const provider = body.provider ?? 'local'
+  const provider = body.provider
   const username = body.username ?? ''
   const password = body.password ?? ''
 
