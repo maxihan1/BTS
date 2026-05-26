@@ -7,6 +7,7 @@ import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -355,5 +356,49 @@ class IssueRepositoryTest {
 
         assertThat(first).isEqualTo(1L)
         assertThat(second).isEqualTo(2L)
+    }
+
+    // ── T9. softDelete 후 같은 key INSERT — unique 위반 ──────────────────────────
+
+    /**
+     * Given  활성 이슈 TPRJ-1 이 존재하고 softDelete 완료
+     * When   같은 IssueKey("TPRJ", 1L) + 새 id 로 Issue.create 후 repository.insert 호출
+     * Then   PostgreSQL 23505 unique_violation — DataIntegrityViolationException 또는
+     *        IntegrityConstraintViolationException throw.
+     *
+     * FR-6 S13 (soft delete 키 보존) 을 DB 통합 영역으로 이동한 시나리오.
+     * issues.key UNIQUE 제약이 소프트 삭제 후에도 row 를 보존하므로 동일 key INSERT 는 항상 위반.
+     */
+    @Test
+    @Order(10)
+    fun `T9 - softDelete - 삭제 후 같은 key INSERT 시 DB unique constraint 위반`() {
+        val key = IssueKey.of("TPRJ", 1L)
+        val original =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = key,
+                projectId = testProjectId,
+                summary = "원래",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "OPEN",
+            )
+        repository.insert(original)
+        repository.softDelete(key)
+
+        val duplicate =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = key,
+                projectId = testProjectId,
+                summary = "중복 시도",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "OPEN",
+            )
+
+        assertThatThrownBy { repository.insert(duplicate) }
+            .isInstanceOfAny(
+                org.springframework.dao.DataIntegrityViolationException::class.java,
+                org.jooq.exception.IntegrityConstraintViolationException::class.java,
+            )
     }
 }
