@@ -8,6 +8,7 @@ import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueTransitioned
@@ -18,6 +19,7 @@ import com.bts.issue.repository.IssueRepository
 import com.bts.workflow.domain.dto.TransitionPlan
 import com.bts.workflow.domain.dto.TransitionRequest
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
+import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.workflow.port.inbound.WorkflowTransitionPort
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
@@ -147,6 +149,48 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                 shouldThrow<WorkflowNotFoundException> {
                     sut.transitionIssue(actor, issueKey, request)
                 }
+            }
+
+            it("이벤트가 발행되지 않는다") {
+                runCatching { sut.transitionIssue(actor, issueKey, request) }
+                verify(exactly = 0) { eventPublisher.publish(any()) }
+            }
+        }
+
+        context("workflowPort.plan 이 WorkflowValidatorFailureException 을 던질 때") {
+            val request = TransitionIssueRequest(
+                workflowKey = "DEFAULT",
+                toStateKey = "IN_PROGRESS",
+                transitionName = "start",
+                expectedVersion = existingVersion,
+            )
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
+                } returns true
+                every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
+                every { workflowPort.plan(any()) } throws WorkflowValidatorFailureException(
+                    "PermissionValidator",
+                    "status",
+                    "전이 권한 없음",
+                )
+            }
+
+            it("IssueTransitionNotAllowedException 으로 변환되어 throw 된다") {
+                val ex = shouldThrow<IssueTransitionNotAllowedException> {
+                    sut.transitionIssue(actor, issueKey, request)
+                }
+                ex.issueKey shouldBe issueKey
+                ex.fromStatus shouldBe "OPEN"
+                ex.toStatus shouldBe "IN_PROGRESS"
+            }
+
+            it("원인 예외(cause) 가 WorkflowValidatorFailureException 이다") {
+                val ex = shouldThrow<IssueTransitionNotAllowedException> {
+                    sut.transitionIssue(actor, issueKey, request)
+                }
+                (ex.cause is WorkflowValidatorFailureException) shouldBe true
             }
 
             it("이벤트가 발행되지 않는다") {

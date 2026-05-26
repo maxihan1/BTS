@@ -6,8 +6,8 @@ import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKeyPrefixReservedException
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueProjectNotFoundException
+import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
-import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -31,7 +31,7 @@ import java.time.Instant
  * - [IssueProjectNotFoundException] → 404 + [IssueErrorCodes.PROJECT_NOT_FOUND]
  * - [IssueKeyPrefixReservedException] → 409 + [IssueErrorCodes.KEY_PREFIX_RESERVED]
  * - [IssueVersionConflictException] → 409 + [IssueErrorCodes.VERSION_CONFLICT]
- * - [WorkflowValidatorFailureException] → 409 + [IssueErrorCodes.TRANSITION_NOT_ALLOWED]
+ * - [IssueTransitionNotAllowedException] → 409 + [IssueErrorCodes.TRANSITION_NOT_ALLOWED]
  * - [Exception] (fallback) → 500 + [IssueErrorCodes.INTERNAL_ERROR]
  */
 @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
@@ -178,20 +178,21 @@ class IssueExceptionHandler {
     // ── 409 TRANSITION_NOT_ALLOWED ────────────────────────────────────────────
 
     /**
-     * [WorkflowValidatorFailureException] — 워크플로우 Validator 가 전이를 거부 — 409.
+     * [IssueTransitionNotAllowedException] — 워크플로우 전이가 허용되지 않음 — 409.
      *
-     * issue-tracking BC 의 `transitionIssue` 가 `WorkflowTransitionPort.plan()` 을 호출할 때
-     * propagate 되는 예외다. BC 격리 관점 우려 사항은 context-notes 에 기록.
+     * issue-tracking BC 의 `transitionIssue` 가 `WorkflowTransitionPort.plan()` 호출 후
+     * [IssueTransitionNotAllowedException] 으로 감싸서 throw 한다.
+     * project-workflow BC 예외가 어댑터 계층까지 누출되지 않는다.
      *
-     * @param ex 거부한 Validator 타입, 필드, 사유를 포함하는 예외.
+     * @param ex 이슈 키, 출발 상태, 도착 상태를 포함하는 예외.
      */
-    @ExceptionHandler(WorkflowValidatorFailureException::class)
-    fun handleTransitionNotAllowed(ex: WorkflowValidatorFailureException): ProblemDetail {
+    @ExceptionHandler(IssueTransitionNotAllowedException::class)
+    fun handleTransitionNotAllowed(ex: IssueTransitionNotAllowedException): ProblemDetail {
         log.info(
-            "ISSUE_409 transition_not_allowed validator='{}' field='{}' reason='{}'",
-            ex.validatorType,
-            ex.field,
-            ex.reason,
+            "ISSUE_409 transition_not_allowed key='{}' from='{}' to='{}'",
+            ex.issueKey.value,
+            ex.fromStatus,
+            ex.toStatus,
         )
         return problem(
             status = HttpStatus.CONFLICT,

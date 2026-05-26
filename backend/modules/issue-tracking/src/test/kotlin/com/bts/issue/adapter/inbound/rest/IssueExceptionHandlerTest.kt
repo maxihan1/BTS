@@ -8,8 +8,8 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueKeyPrefixReservedException
+import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
-import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssueScope
 import org.junit.jupiter.api.BeforeEach
@@ -49,7 +49,7 @@ import java.util.UUID
  * - H-5. `IssueProjectNotFoundException` → 404 + `PROJECT_NOT_FOUND`
  * - H-6. `IssueKeyPrefixReservedException` → 409 + `KEY_PREFIX_RESERVED`
  * - H-7. `IssueVersionConflictException` → 409 + `VERSION_CONFLICT`
- * - H-8. `WorkflowValidatorFailureException` → 409 + `TRANSITION_NOT_ALLOWED`
+ * - H-8. `IssueTransitionNotAllowedException` → 409 + `TRANSITION_NOT_ALLOWED`
  * - H-9. generic `RuntimeException` → 500 + `INTERNAL_ERROR`
  */
 @ExtendWith(SpringExtension::class)
@@ -105,7 +105,7 @@ class IssueExceptionHandlerTest {
 
         @GetMapping("/transition-not-allowed")
         fun throwTransitionNotAllowed(): Nothing =
-            throw WorkflowValidatorFailureException("PermissionValidator", "status", "전이 권한 없음")
+            throw IssueTransitionNotAllowedException(sampleKey, "OPEN", "IN_PROGRESS")
 
         @GetMapping("/unauthenticated")
         fun throwUnauthenticated(): Nothing = throw BadCredentialsException("세션 만료")
@@ -179,7 +179,7 @@ class IssueExceptionHandlerTest {
     }
 
     @Test
-    fun `H-8 WorkflowValidatorFailureException 발생 시 409 + TRANSITION_NOT_ALLOWED`() {
+    fun `H-8 IssueTransitionNotAllowedException 발생 시 409 + TRANSITION_NOT_ALLOWED`() {
         mockMvc.perform(get("/exceptions/transition-not-allowed").accept(MediaType.APPLICATION_JSON))
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.status").value(409))
