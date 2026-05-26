@@ -42,12 +42,12 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
     val issueKey = IssueKey("BTS-1")
     val existingVersion = 1L
 
-    fun makeIssue(version: Long = existingVersion) =
+    fun makeIssue(summary: String = "원래", version: Long = existingVersion) =
         Issue(
             id = IssueId(UUID.randomUUID()),
             key = issueKey,
             projectId = UUID.randomUUID(),
-            summary = "Old summary",
+            summary = summary,
             reporterId = actor,
             currentStateKey = "OPEN",
             version = version,
@@ -62,59 +62,103 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
 
     describe("updateIssue") {
 
-        context("정상 — 권한 있고 version 일치") {
-            val request = UpdateIssueRequest(summary = "New summary", expectedVersion = existingVersion)
-            val updatedIssue = makeIssue(version = existingVersion + 1).copy(summary = "New summary")
+        // T7-1: summary=null 이면 updateSummary·eventPublisher 모두 호출하지 않고 기존 이슈를 그대로 반환한다
+        context("T7-1 — summary null (RFC 7396 JSON Merge Patch: 필드 생략)") {
+            val request = UpdateIssueRequest(summary = null, expectedVersion = existingVersion)
+            val existingIssue = makeIssue(summary = "원래")
 
             beforeEach {
                 every {
                     permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
-                every { repo.findByKey(issueKey) } returnsMany listOf(makeIssue(), updatedIssue)
-                every { repo.updateSummary(issueKey, "New summary", existingVersion) } returns 1
+                every { repo.findByKey(issueKey) } returns existingIssue
+            }
+
+            it("updateSummary 가 호출되지 않는다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 0) { repo.updateSummary(any(), any(), any()) }
+            }
+
+            it("eventPublisher.publish 가 호출되지 않는다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 0) { eventPublisher.publish(any()) }
+            }
+
+            it("기존 이슈의 summary 와 version 을 그대로 반환한다") {
+                val result = sut.updateIssue(actor, issueKey, request)
+                result.summary shouldBe "원래"
+                result.version shouldBe existingVersion
+            }
+        }
+
+        // T7-2: summary 가 새 값이면 updateSummary 1회 + IssueUpdated(fields={"summary"}) 1회 발행
+        context("T7-2 — summary 변경 (기존값과 다른 새 값)") {
+            val request = UpdateIssueRequest(summary = "새 제목", expectedVersion = existingVersion)
+            val existingIssue = makeIssue(summary = "원래")
+            val updatedIssue = makeIssue(summary = "새 제목", version = existingVersion + 1)
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                } returns true
+                every { repo.findByKey(issueKey) } returnsMany listOf(existingIssue, updatedIssue)
+                every { repo.updateSummary(issueKey, "새 제목", existingVersion) } returns 1
                 every { eventPublisher.publish(any()) } returns Unit
             }
 
-            it("IssueResponse 를 반환한다") {
-                val result = sut.updateIssue(actor, issueKey, request)
-                result.key shouldBe issueKey.value
-                result.summary shouldBe "New summary"
-            }
-
-            it("IssueUpdated 이벤트가 summary 필드를 포함해 발행된다") {
+            it("updateSummary 가 1회 호출된다") {
                 sut.updateIssue(actor, issueKey, request)
-                verify {
+                verify(exactly = 1) { repo.updateSummary(issueKey, "새 제목", existingVersion) }
+            }
+
+            it("IssueUpdated(fields={summary}) 이벤트가 1회 발행된다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 1) {
                     eventPublisher.publish(
-                        match { it is IssueUpdated && it.fields.contains("summary") },
+                        match { it is IssueUpdated && it.fields == setOf("summary") },
                     )
                 }
             }
 
-            it("변경 없을 때 fields 집합이 비어 있다") {
-                val sameRequest = UpdateIssueRequest(summary = "Old summary", expectedVersion = existingVersion)
-                val sameIssue = makeIssue()
-                every { repo.findByKey(issueKey) } returnsMany listOf(sameIssue, sameIssue)
-                every { repo.updateSummary(issueKey, "Old summary", existingVersion) } returns 1
+            it("응답 summary='새 제목', version=2 를 반환한다") {
+                val result = sut.updateIssue(actor, issueKey, request)
+                result.summary shouldBe "새 제목"
+                result.version shouldBe existingVersion + 1
+            }
+        }
 
-                sut.updateIssue(actor, issueKey, sameRequest)
+        // T7-3: summary 가 기존값과 동일하면 updateSummary·eventPublisher 모두 호출하지 않는다
+        context("T7-3 — summary 동일값 (변경 없음)") {
+            val request = UpdateIssueRequest(summary = "원래", expectedVersion = existingVersion)
+            val existingIssue = makeIssue(summary = "원래")
 
-                verify {
-                    eventPublisher.publish(
-                        match { it is IssueUpdated && it.fields.isEmpty() },
-                    )
-                }
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                } returns true
+                every { repo.findByKey(issueKey) } returns existingIssue
+            }
+
+            it("updateSummary 가 호출되지 않는다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 0) { repo.updateSummary(any(), any(), any()) }
+            }
+
+            it("eventPublisher.publish 가 호출되지 않는다 (changedFields empty)") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 0) { eventPublisher.publish(any()) }
             }
         }
 
         context("version 불일치 — 낙관락 충돌") {
-            val request = UpdateIssueRequest(summary = "New summary", expectedVersion = existingVersion)
+            val request = UpdateIssueRequest(summary = "새 제목", expectedVersion = existingVersion)
 
             beforeEach {
                 every {
                     permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
-                every { repo.findByKey(issueKey) } returns makeIssue()
-                every { repo.updateSummary(issueKey, "New summary", existingVersion) } returns 0
+                every { repo.findByKey(issueKey) } returns makeIssue(summary = "원래")
+                every { repo.updateSummary(issueKey, "새 제목", existingVersion) } returns 0
             }
 
             it("IssueVersionConflictException 을 던진다") {
@@ -130,7 +174,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
         }
 
         context("이슈 미존재") {
-            val request = UpdateIssueRequest(summary = "New summary", expectedVersion = existingVersion)
+            val request = UpdateIssueRequest(summary = "새 제목", expectedVersion = existingVersion)
 
             beforeEach {
                 every {
@@ -147,7 +191,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
         }
 
         context("권한 없을 때") {
-            val request = UpdateIssueRequest(summary = "New summary", expectedVersion = existingVersion)
+            val request = UpdateIssueRequest(summary = "새 제목", expectedVersion = existingVersion)
 
             beforeEach {
                 every {
