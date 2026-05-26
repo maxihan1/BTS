@@ -19,7 +19,9 @@ import java.util.UUID
  * @property id DB PK. 저장 전(신규 생성 시)에는 null 이다.
  * @property schemeId 이 매핑이 속한 [WorkflowScheme] 의 식별자.
  * @property issueTypeId 매핑 대상 이슈 타입 식별자.
- *   `null` = default mapping — 스킴 내에서 다른 명시적 매핑이 없는 이슈 타입 전부에 적용.
+ *   `null` = default mapping for unmatched types —
+ *   스킴 내에서 다른 명시적 매핑이 없는 이슈 타입 전부에 이 워크플로우가 적용된다.
+ *   (Jira `workflowschemeentity.issuetype = NULL` 패턴 일치)
  * @property workflowId 실제로 사용할 워크플로우의 UUID.
  * @property createdAt 레코드 생성 시각 (UTC).
  */
