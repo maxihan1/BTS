@@ -106,6 +106,10 @@ dependencies {
     // spring-boot-starter-data-jpa 전체가 아닌 commons 만 추가해 불필요한 JPA 자동 설정 차단
     implementation("org.springframework.data:spring-data-commons")
 
+    // Jakarta Bean Validation (DEVELOPMENT.md — @field:NotBlank 등 Kotlin prefix 어노테이션)
+    // Hibernate Validator 는 runtime 구현체. spring-boot-starter-validation 이 둘 다 포함.
+    implementation("org.springframework.boot:spring-boot-starter-validation")
+
     // ── jOOQ 코드 생성 전용 classpath ─────────────────────────────────────────
     // PostgresDatabase: 실제 PostgreSQL 인스턴스를 통해 jOOQ 코드 생성 (nu.studer.jooq codegen 전용)
     // 3.19.14 로 명시 — BOM 에서 오는 3.19.1 과 충돌(version mismatch warning) 방지
