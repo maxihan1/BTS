@@ -1,9 +1,12 @@
-// 워크플로우 스킴 Application Service — Scheme CRUD 5 메서드 (create/find/update/softDelete/list)
+// 워크플로우 스킴 Application Service — Scheme CRUD 5 메서드 + Mapping CRUD 2 메서드 (addMapping/deleteMapping)
 
 package com.bts.workflow.scheme.application
 
+import com.bts.issue.type.domain.IssueTypeId
 import com.bts.workflow.port.outbound.ActorId
+import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowScheme
+import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
 import com.bts.workflow.scheme.exception.SchemeInUseException
 import com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException
@@ -13,10 +16,13 @@ import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermission
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermissionResolver
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemeScope
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
+import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
+import java.util.UUID
 
 /**
  * 워크플로우 스킴 Application Service.
@@ -35,6 +41,7 @@ import org.springframework.transaction.annotation.Transactional
  *
  * @param schemeRepo 워크플로우 스킴 Repository.
  * @param assignmentRepo 프로젝트-스킴 할당 Repository (S7 사용 중 검증용).
+ * @param mappingRepo 스킴-이슈타입 매핑 Repository.
  * @param permissionResolver 스킴 권한 평가 outbound port.
  */
 @Service
@@ -42,6 +49,7 @@ import org.springframework.transaction.annotation.Transactional
 class WorkflowSchemeApplicationService(
     private val schemeRepo: WorkflowSchemeRepository,
     private val assignmentRepo: ProjectWorkflowSchemeAssignmentRepository,
+    private val mappingRepo: SchemeIssueTypeMappingRepository,
     private val permissionResolver: WorkflowSchemePermissionResolver,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -162,6 +170,70 @@ class WorkflowSchemeApplicationService(
      */
     @Transactional(readOnly = true)
     fun list(): List<WorkflowScheme> = schemeRepo.findAll()
+
+    /**
+     * 스킴에 이슈타입-워크플로우 매핑을 추가한다.
+     *
+     * [issueTypeId] 가 null 이면 default mapping (명시적 매핑이 없는 이슈 타입 전체에 적용) 이다.
+     * 스킴 당 default mapping 은 최대 1개 허용된다.
+     *
+     * ## UNIQUE 위반 시 예외 전파
+     * - (scheme_id, issue_type_id) 중복 → [com.bts.workflow.scheme.exception.MappingDuplicateException]
+     * - (scheme_id) WHERE issue_type_id IS NULL 중복 (default mapping 이미 존재) →
+     *   [com.bts.workflow.scheme.exception.MappingDefaultDuplicateException]
+     *
+     * UNIQUE 위반 감지는 Repository 계층(`ix_scheme_default_mapping` partial UNIQUE INDEX)에서 수행되어
+     * 위 두 예외 중 하나로 변환되어 도착한다. Application layer 는 예외를 그대로 전파한다.
+     *
+     * ## EC-2 note
+     * 커스텀 스킴 생성 직후 default mapping 이 0개인 상태를 감지해 강제 추가를 유도하는 검증은
+     * 후속 task (assignToProject 흐름) 에서 처리한다.
+     *
+     * @param actor 작업 수행 행위자. MANAGE_SCHEME 권한이 필요하다.
+     * @param schemeKey 매핑을 추가할 스킴 키.
+     * @param issueTypeId 매핑 대상 이슈 타입 식별자. null = default mapping.
+     * @param workflowId 사용할 워크플로우 UUID.
+     * @return 저장된 매핑 (DB 생성 id 포함).
+     * @throws WorkflowSchemeNotFoundException 스킴이 없을 때.
+     * @throws com.bts.workflow.scheme.exception.MappingDuplicateException (scheme_id, issue_type_id) UNIQUE 위반 시.
+     * @throws com.bts.workflow.scheme.exception.MappingDefaultDuplicateException default mapping 중복 시.
+     */
+    fun addMapping(
+        actor: ActorId,
+        schemeKey: WorkflowSchemeKey,
+        issueTypeId: IssueTypeId?,
+        workflowId: UUID,
+    ): SchemeIssueTypeMapping {
+        permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
+        val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
+        log.info("addMapping: actor={} schemeKey={} issueTypeId={}", actor.raw, schemeKey.value, issueTypeId?.value)
+        val mapping = SchemeIssueTypeMapping(
+            id = null,
+            schemeId = schemeId,
+            issueTypeId = issueTypeId,
+            workflowId = workflowId,
+            createdAt = Instant.now(),
+        )
+        return mappingRepo.addMapping(mapping)
+    }
+
+    /**
+     * 스킴에서 이슈타입-워크플로우 매핑을 삭제한다.
+     *
+     * 존재하지 않는 [mappingId] 에 대해서는 no-op 으로 처리된다 (Repository 동작 일치).
+     *
+     * @param actor 작업 수행 행위자. MANAGE_SCHEME 권한이 필요하다.
+     * @param mappingId 삭제할 매핑 PK.
+     */
+    fun deleteMapping(
+        actor: ActorId,
+        mappingId: Long,
+    ) {
+        permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        log.info("deleteMapping: actor={} mappingId={}", actor.raw, mappingId)
+        mappingRepo.deleteMapping(mappingId)
+    }
 
     // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
 
