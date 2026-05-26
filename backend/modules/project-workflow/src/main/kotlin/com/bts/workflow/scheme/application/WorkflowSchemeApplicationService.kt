@@ -6,6 +6,7 @@ import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.scheme.domain.WorkflowScheme
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
 import com.bts.workflow.scheme.exception.SchemeInUseException
+import com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException
 import com.bts.workflow.scheme.exception.SchemeStandardNotDeletableException
 import com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermission
@@ -177,13 +178,13 @@ class WorkflowSchemeApplicationService(
         newIsDefault: Boolean,
     ) {
         if (existing.name != newName) {
-            throw com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException(existing.key.value, "name")
+            throw SchemeStandardFieldLockedException(existing.key.value, "name")
         }
         if (existing.description != newDescription) {
-            throw com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException(existing.key.value, "description")
+            throw SchemeStandardFieldLockedException(existing.key.value, "description")
         }
         if (existing.isDefault != newIsDefault) {
-            throw com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException(existing.key.value, "is_default")
+            throw SchemeStandardFieldLockedException(existing.key.value, "is_default")
         }
     }
 }
