@@ -13,14 +13,23 @@ import org.springframework.transaction.annotation.Transactional
 /**
  * 워크플로우 스킴 도메인 이벤트를 pgmq 큐에 발행하는 아웃바운드 어댑터.
  *
- * transaction outbox 패턴. 호출자 트랜잭션 필수. PR #17 IssueEventPublisher 패턴 일치.
+ * **transaction outbox 패턴.** 호출자 트랜잭션 필수. PR #17 IssueEventPublisher 패턴 일치.
+ *
+ * 스킴 Application Service 가 DB 변경(UPSERT/DELETE) 과 이벤트 enqueue 를
+ * 동일 트랜잭션 안에서 수행한다. 트랜잭션 롤백 시 이벤트도 자동으로 폐기되어
+ * DB 상태와 이벤트 큐가 항상 일치한다 (DATA.md §7.2).
  *
  * [Propagation.MANDATORY] — 반드시 호출자의 트랜잭션 안에서 실행되어야 한다.
- * 스킴 상태 변경과 이벤트 enqueue 가 같은 트랜잭션에 묶여야 outbox 패턴이 보장된다 (DATA.md §7.2).
  * 트랜잭션 없이 호출하면 [org.springframework.transaction.IllegalTransactionStateException] 이 발생한다.
+ *
+ * 발행 가능 이벤트 3종.
+ * - [com.bts.workflow.scheme.event.WorkflowSchemeAssignedEvent] — 스킴 프로젝트 배정
+ * - [com.bts.workflow.scheme.event.WorkflowSchemeUpdatedEvent] — 스킴 필드 변경
+ * - [com.bts.workflow.scheme.event.WorkflowSchemeDeletedEvent] — 스킴 삭제
  *
  * @param dsl jOOQ [DSLContext] — pgmq.send raw SQL 실행에 사용.
  * @param objectMapper Jackson [ObjectMapper] — [WorkflowSchemeDomainEvent] → JSON 직렬화.
+ *   [@JsonTypeInfo] 로 `type` 필드가 포함된 다형성 JSON 을 생성한다.
  */
 @Component
 class WorkflowSchemeEventPublisher(
