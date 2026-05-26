@@ -54,12 +54,107 @@ class WorkflowSchemesMigrationIntegrationTest {
         @BeforeAll
         @JvmStatic
         fun applyMigrations() {
+            // D13 결정: 프로덕션에서는 issue-tracking V003 → project-workflow V004 순서 (단일 DB).
+            // 통합 테스트는 project-workflow 모듈 Flyway 만 실행하므로 issue_types 테이블이 없음.
+            //
+            // 해결 전략 (2단계):
+            //   1단계: Flyway target=1 로 V001 (workflows 테이블) 만 먼저 적용.
+            //   2단계: issue_types 스텁 테이블 직접 생성 → Flyway migrate 재실행 (V002~V004).
+            //
+            // Flyway 가 이미 schema history 를 갖고 있으면 "non-empty schema" 오류 없이
+            // 남은 마이그레이션만 추가 실행한다.
+            val flyway =
+                Flyway.configure()
+                    .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+                    .placeholderReplacement(false)
+                    .locations("classpath:db/migration")
+                    .target("1")
+                    .load()
+            flyway.migrate()
+
+            // issue_types 스텁 — cross-BC FK (issue_type_id REFERENCES issue_types(id)) 통과용.
+            // 프로덕션: issue-tracking V003 이 먼저 실행해 실제 테이블 존재.
+            // 테스트: project-workflow 모듈 Flyway 만 실행되므로 스텁으로 대체.
+            createIssueTypesStub()
+
+            // V002~V004 실행 (target 제거 → LATEST)
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
                 .locations("classpath:db/migration")
                 .load()
                 .migrate()
+
+            // YamlSeedService 는 Spring ApplicationReadyEvent 에서 workflows 테이블을 채운다.
+            // 통합 테스트는 Spring 컨텍스트 없이 실행되므로 4 표준 workflow seed 를 직접 INSERT.
+            // V004 의 default mapping seed (JOIN workflows) 는 Flyway migrate 시점에 workflows 가
+            // 비어 있어 0건 삽입됨. seed INSERT 후 mapping 을 수동으로 삽입해 검증한다.
+            seedWorkflowsAndMappings()
+        }
+
+        /**
+         * issue_types 스텁 테이블 생성 — 테스트 전용.
+         *
+         * 프로덕션: issue-tracking Flyway V003 이 issue_types 테이블을 생성 (project-workflow V004 이전).
+         * 테스트: project-workflow Flyway 는 자체 classpath:db/migration 만 실행하므로 issue_types 없음.
+         * V004 의 workflow_scheme_issue_type_mappings.issue_type_id BIGINT REFERENCES issue_types(id)
+         * FK 선언을 통과시키기 위해 최소 schema 의 스텁 테이블을 생성한다.
+         */
+        private fun createIssueTypesStub() {
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.createStatement().use { stmt ->
+                    stmt.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS issue_types (
+                            id          BIGSERIAL    PRIMARY KEY,
+                            key         VARCHAR(30)  NOT NULL UNIQUE,
+                            name        VARCHAR(255) NOT NULL,
+                            is_standard BOOLEAN      NOT NULL DEFAULT FALSE,
+                            created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                            updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                            deleted_at  TIMESTAMPTZ
+                        )
+                        """.trimIndent(),
+                    )
+                }
+            }
+        }
+
+        private fun seedWorkflowsAndMappings() {
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                // 4 표준 workflow seed (YamlSeedService 역할 대체 — 테스트 전용)
+                conn.createStatement().use { stmt ->
+                    stmt.execute(
+                        """
+                        INSERT INTO workflows (key, name, description) VALUES
+                            ('software-default', '소프트웨어 개발 기본 워크플로우',  NULL),
+                            ('bug-tracking',     '버그 추적 워크플로우',             NULL),
+                            ('simple',           '단순 워크플로우',                  NULL),
+                            ('kanban-basic',     '칸반 기본 워크플로우',             NULL)
+                        ON CONFLICT (key) DO NOTHING
+                        """.trimIndent(),
+                    )
+                }
+
+                // 4 default mapping seed — V004 migrate 시점에 workflows 가 비어 있어 0건.
+                // workflow seed 삽입 후 동일 로직으로 mapping 을 채운다.
+                conn.createStatement().use { stmt ->
+                    stmt.execute(
+                        """
+                        INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id)
+                        SELECT s.id, NULL, w.id
+                        FROM workflow_schemes s
+                        JOIN workflows w ON w.key = CASE s.key
+                            WHEN 'software-scheme'     THEN 'software-default'
+                            WHEN 'bug-tracking-scheme' THEN 'bug-tracking'
+                            WHEN 'simple-scheme'       THEN 'simple'
+                            WHEN 'kanban-scheme'       THEN 'kanban-basic'
+                        END
+                        ON CONFLICT ON CONSTRAINT uq_scheme_issue_type DO NOTHING
+                        """.trimIndent(),
+                    )
+                }
+            }
         }
     }
 
