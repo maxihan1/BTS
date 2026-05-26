@@ -4,9 +4,9 @@ package com.bts.issue.application
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
-import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
@@ -16,12 +16,12 @@ import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueSoftDeleted
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.event.IssueUpdated
-import com.bts.workflow.domain.dto.TransitionRequest
-import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
+import com.bts.workflow.domain.dto.TransitionRequest
+import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.workflow.port.inbound.WorkflowTransitionPort
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
@@ -77,14 +77,16 @@ class IssueApplicationService(
 
         val seq = repo.incrementKeySequence(request.projectKey)
         val key = IssueKey.of(request.projectKey, seq)
-        val issue = Issue.create(
-            id = IssueId(UUID.randomUUID()),
-            key = key,
-            projectId = UUID.randomUUID(), // Wave 5 Controller 에서 project lookup 으로 대체
-            summary = request.summary,
-            reporterId = request.reporterId,
-            currentStateKey = "OPEN",
-        )
+        val issue =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = key,
+                // Wave 5 Controller 에서 project lookup 으로 대체
+                projectId = UUID.randomUUID(),
+                summary = request.summary,
+                reporterId = request.reporterId,
+                currentStateKey = "OPEN",
+            )
         val saved = repo.insert(issue)
         eventPublisher.publish(
             IssueCreated(
@@ -189,27 +191,29 @@ class IssueApplicationService(
     ): IssueResponse {
         assertPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(key.value))
         val issue = repo.findByKeyForUpdate(key) ?: throw IssueNotFoundException(key)
-        val transitionReq = TransitionRequest(
-            workflowKey = request.workflowKey,
-            issueKey = key.value,
-            fromStateKey = issue.currentStateKey,
-            toStateKey = request.toStateKey,
-            transitionName = request.transitionName,
-            actorId = actor.value.toString(),
-            issueFields = mapOf("summary" to issue.summary),
-            actorRoles = emptySet(),
-            version = request.expectedVersion,
-        )
-        val plan = try {
-            workflowPort.plan(transitionReq)
-        } catch (e: WorkflowValidatorFailureException) {
-            throw IssueTransitionNotAllowedException(
-                issueKey = key,
-                fromStatus = issue.currentStateKey,
-                toStatus = request.toStateKey,
-                cause = e,
+        val transitionReq =
+            TransitionRequest(
+                workflowKey = request.workflowKey,
+                issueKey = key.value,
+                fromStateKey = issue.currentStateKey,
+                toStateKey = request.toStateKey,
+                transitionName = request.transitionName,
+                actorId = actor.value.toString(),
+                issueFields = mapOf("summary" to issue.summary),
+                actorRoles = emptySet(),
+                version = request.expectedVersion,
             )
-        }
+        val plan =
+            try {
+                workflowPort.plan(transitionReq)
+            } catch (e: WorkflowValidatorFailureException) {
+                throw IssueTransitionNotAllowedException(
+                    issueKey = key,
+                    fromStatus = issue.currentStateKey,
+                    toStatus = request.toStateKey,
+                    cause = e,
+                )
+            }
         val updatedRows = repo.applyTransition(key, plan.toStateKey, request.expectedVersion)
         if (updatedRows == 0) {
             throw IssueVersionConflictException(key, issue.version)

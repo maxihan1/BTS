@@ -5,9 +5,9 @@ package com.bts.issue.adapter.inbound.rest
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.domain.IssueKeyPrefixReservedException
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueProjectNotFoundException
-import com.bts.issue.domain.IssueKeyPrefixReservedException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.port.outbound.IssuePermission
@@ -28,7 +28,6 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.context.WebApplicationContext
@@ -56,7 +55,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [IssueExceptionHandlerTest.TestConfig::class])
 @WebAppConfiguration
 class IssueExceptionHandlerTest {
-
     /**
      * 테스트 전용 최소 Spring MVC 컨텍스트.
      *
@@ -80,7 +78,6 @@ class IssueExceptionHandlerTest {
     @RestController
     @RequestMapping("/exceptions")
     class StubExceptionController {
-
         private val sampleKey = IssueKey("ATLAS-1")
         private val sampleActor = ActorId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
 
@@ -91,11 +88,12 @@ class IssueExceptionHandlerTest {
         fun throwProjectNotFound(): Nothing = throw IssueProjectNotFoundException("UNKNOWN")
 
         @GetMapping("/access-denied")
-        fun throwAccessDenied(): Nothing = throw IssueAccessDeniedException(
-            sampleActor,
-            IssuePermission.VIEW,
-            IssueScope.Issue(sampleKey.value),
-        )
+        fun throwAccessDenied(): Nothing =
+            throw IssueAccessDeniedException(
+                sampleActor,
+                IssuePermission.VIEW,
+                IssueScope.Issue(sampleKey.value),
+            )
 
         @GetMapping("/version-conflict")
         fun throwVersionConflict(): Nothing = throw IssueVersionConflictException(sampleKey, 3L)
@@ -104,8 +102,7 @@ class IssueExceptionHandlerTest {
         fun throwKeyPrefixReserved(): Nothing = throw IssueKeyPrefixReservedException("SYS")
 
         @GetMapping("/transition-not-allowed")
-        fun throwTransitionNotAllowed(): Nothing =
-            throw IssueTransitionNotAllowedException(sampleKey, "OPEN", "IN_PROGRESS")
+        fun throwTransitionNotAllowed(): Nothing = throw IssueTransitionNotAllowedException(sampleKey, "OPEN", "IN_PROGRESS")
 
         @GetMapping("/unauthenticated")
         fun throwUnauthenticated(): Nothing = throw BadCredentialsException("세션 만료")

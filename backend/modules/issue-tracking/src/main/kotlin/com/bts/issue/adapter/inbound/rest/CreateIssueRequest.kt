@@ -16,7 +16,6 @@ import jakarta.validation.constraints.Size
 data class CreateIssueRequest(
     @field:NotBlank(message = "projectKey는 비어 있을 수 없습니다.")
     val projectKey: String,
-
     @field:NotBlank(message = "summary는 비어 있을 수 없습니다.")
     @field:Size(max = 200, message = "summary는 200자 이하여야 합니다.")
     val summary: String,

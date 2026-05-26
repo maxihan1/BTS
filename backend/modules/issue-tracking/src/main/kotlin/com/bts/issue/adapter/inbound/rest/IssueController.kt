@@ -2,9 +2,6 @@
 
 package com.bts.issue.adapter.inbound.rest
 
-import com.bts.issue.application.CreateIssueRequest as AppCreateIssueRequest
-import com.bts.issue.application.TransitionIssueRequest as AppTransitionIssueRequest
-import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
@@ -13,6 +10,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.web.PageableDefault
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -24,9 +22,11 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.http.HttpStatus
 import java.net.URI
 import java.util.UUID
+import com.bts.issue.application.CreateIssueRequest as AppCreateIssueRequest
+import com.bts.issue.application.TransitionIssueRequest as AppTransitionIssueRequest
+import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
 
 /**
  * 이슈 REST API 컨트롤러.
@@ -70,11 +70,12 @@ class IssueController(
 
         // TODO: security context 연동 후 실제 인증된 사용자 UUID 로 교체 (security-engineer wave)
         val actor = ActorId(SYSTEM_ACTOR_UUID)
-        val appRequest = AppCreateIssueRequest(
-            projectKey = request.projectKey,
-            summary = request.summary,
-            reporterId = actor,
-        )
+        val appRequest =
+            AppCreateIssueRequest(
+                projectKey = request.projectKey,
+                summary = request.summary,
+                reporterId = actor,
+            )
         val issue = service.createIssue(actor, appRequest)
         val response = IssueResponse.from(issue, issue.key.projectPrefix)
 
@@ -140,10 +141,11 @@ class IssueController(
 
         val actor = ActorId(SYSTEM_ACTOR_UUID)
         val issueKey = IssueKey(key)
-        val appRequest = AppUpdateIssueRequest(
-            summary = request.summary ?: "",
-            expectedVersion = request.expectedVersion,
-        )
+        val appRequest =
+            AppUpdateIssueRequest(
+                summary = request.summary ?: "",
+                expectedVersion = request.expectedVersion,
+            )
         val response = service.updateIssue(actor, issueKey, appRequest)
         return ResponseEntity.ok(DataResponse(data = response))
     }
@@ -169,12 +171,13 @@ class IssueController(
 
         val actor = ActorId(SYSTEM_ACTOR_UUID)
         val issueKey = IssueKey(key)
-        val appRequest = AppTransitionIssueRequest(
-            workflowKey = "DEFAULT",
-            toStateKey = request.toStatusKey,
-            transitionName = request.toStatusKey,
-            expectedVersion = request.expectedVersion,
-        )
+        val appRequest =
+            AppTransitionIssueRequest(
+                workflowKey = "DEFAULT",
+                toStateKey = request.toStatusKey,
+                transitionName = request.toStatusKey,
+                expectedVersion = request.expectedVersion,
+            )
         val response = service.transitionIssue(actor, issueKey, appRequest)
         return ResponseEntity.ok(DataResponse(data = response))
     }

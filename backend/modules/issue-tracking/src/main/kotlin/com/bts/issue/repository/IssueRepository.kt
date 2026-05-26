@@ -243,8 +243,7 @@ class IssueRepository(
     // ── private helpers ───────────────────────────────────────────────────────
 
     /** 활성 이슈를 key 로 필터하는 jOOQ Condition. */
-    private fun activeByKey(key: IssueKey): Condition =
-        ISSUES.KEY.eq(key.value).and(ISSUES.DELETED_AT.isNull)
+    private fun activeByKey(key: IssueKey): Condition = ISSUES.KEY.eq(key.value).and(ISSUES.DELETED_AT.isNull)
 }
 
 // ── file-level 확장 함수 ────────────────────────────────────────────────────────

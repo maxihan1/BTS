@@ -17,7 +17,6 @@ import jakarta.validation.constraints.NotNull
 data class TransitionIssueRequest(
     @field:NotBlank(message = "toStatusKey는 비어 있을 수 없습니다.")
     val toStatusKey: String,
-
     @field:NotNull(message = "expectedVersion은 필수입니다.")
     val expectedVersion: Long,
 )

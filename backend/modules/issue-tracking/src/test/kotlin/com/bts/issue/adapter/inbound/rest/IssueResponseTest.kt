@@ -12,21 +12,21 @@ import java.time.Instant
 import java.util.UUID
 
 class IssueResponseTest {
-
     private val fixedNow: Instant = Instant.parse("2026-05-24T00:00:00Z")
 
-    private val sampleIssue = Issue(
-        id = IssueId(UUID.fromString("00000000-0000-0000-0000-000000000001")),
-        key = IssueKey("ATLAS-1"),
-        projectId = UUID.fromString("00000000-0000-0000-0000-000000000002"),
-        summary = "Sample issue",
-        reporterId = ActorId(UUID.fromString("00000000-0000-0000-0000-000000000003")),
-        currentStateKey = "OPEN",
-        version = 1L,
-        deletedAt = null,
-        createdAt = fixedNow,
-        updatedAt = fixedNow,
-    )
+    private val sampleIssue =
+        Issue(
+            id = IssueId(UUID.fromString("00000000-0000-0000-0000-000000000001")),
+            key = IssueKey("ATLAS-1"),
+            projectId = UUID.fromString("00000000-0000-0000-0000-000000000002"),
+            summary = "Sample issue",
+            reporterId = ActorId(UUID.fromString("00000000-0000-0000-0000-000000000003")),
+            currentStateKey = "OPEN",
+            version = 1L,
+            deletedAt = null,
+            createdAt = fixedNow,
+            updatedAt = fixedNow,
+        )
 
     @Test
     fun `from — Issue 의 모든 필드가 IssueResponse 에 올바르게 매핑된다`() {

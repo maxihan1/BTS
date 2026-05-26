@@ -36,7 +36,6 @@ import java.time.Instant
  */
 @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
 class IssueExceptionHandler {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     // ── 400 VALIDATION_FAILED ─────────────────────────────────────────────────
@@ -48,9 +47,10 @@ class IssueExceptionHandler {
      */
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleValidationFailed(ex: MethodArgumentNotValidException): ProblemDetail {
-        val fieldErrors = ex.bindingResult.fieldErrors.joinToString("; ") {
-            "${it.field}: ${it.defaultMessage}"
-        }
+        val fieldErrors =
+            ex.bindingResult.fieldErrors.joinToString("; ") {
+                "${it.field}: ${it.defaultMessage}"
+            }
         log.info("ISSUE_400 validation_failed fields='{}'", fieldErrors)
         return problem(
             status = HttpStatus.BAD_REQUEST,

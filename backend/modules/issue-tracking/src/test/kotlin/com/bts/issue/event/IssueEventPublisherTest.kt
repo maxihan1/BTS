@@ -33,24 +33,27 @@ import java.util.UUID
 class IssueEventPublisherTest : DescribeSpec({
 
     // ── Testcontainers: quay.io/tembo/pg16-pgmq:latest ──────────────────────
-    val temboImage = DockerImageName
-        .parse("quay.io/tembo/pg16-pgmq:latest")
-        .asCompatibleSubstituteFor("postgres")
+    val temboImage =
+        DockerImageName
+            .parse("quay.io/tembo/pg16-pgmq:latest")
+            .asCompatibleSubstituteFor("postgres")
 
-    val postgres = PostgreSQLContainer(temboImage)
-        .withDatabaseName("bts_test")
-        .withUsername("test")
-        .withPassword("test")
+    val postgres =
+        PostgreSQLContainer(temboImage)
+            .withDatabaseName("bts_test")
+            .withUsername("test")
+            .withPassword("test")
 
     beforeSpec {
         postgres.start()
 
         // V001 + V002 통합 SQL 적용 (init_codegen.sql 재사용)
         Class.forName("org.postgresql.Driver")
-        val initSql = IssueEventPublisherTest::class.java
-            .getResourceAsStream("/db/codegen/init_codegen.sql")
-            ?.bufferedReader()?.readText()
-            ?: error("init_codegen.sql 을 찾을 수 없습니다")
+        val initSql =
+            IssueEventPublisherTest::class.java
+                .getResourceAsStream("/db/codegen/init_codegen.sql")
+                ?.bufferedReader()?.readText()
+                ?: error("init_codegen.sql 을 찾을 수 없습니다")
 
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.createStatement().use { stmt ->
@@ -65,12 +68,12 @@ class IssueEventPublisherTest : DescribeSpec({
 
     // ── 공통 헬퍼 ────────────────────────────────────────────────────────────
 
-    fun newConnection(): Connection =
-        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
+    fun newConnection(): Connection = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
 
-    fun buildObjectMapper(): ObjectMapper = ObjectMapper()
-        .registerKotlinModule()
-        .registerModule(JavaTimeModule())
+    fun buildObjectMapper(): ObjectMapper =
+        ObjectMapper()
+            .registerKotlinModule()
+            .registerModule(JavaTimeModule())
 
     /**
      * 단일 [conn] 위에 DSLContext 를 구성하고 트랜잭션을 열어 [block] 을 실행한 뒤 커밋한다.
@@ -78,7 +81,10 @@ class IssueEventPublisherTest : DescribeSpec({
      * publisher 내부 DSLContext 와 트랜잭션이 같은 커넥션을 공유해야
      * pgmq.send 결과가 커밋 후 pgmq.read 로 확인 가능하다.
      */
-    fun withTransaction(conn: Connection, block: (DSLContext) -> Unit) {
+    fun withTransaction(
+        conn: Connection,
+        block: (DSLContext) -> Unit,
+    ) {
         val savedAutoCommit = conn.autoCommit
         conn.autoCommit = false
         try {
@@ -115,13 +121,14 @@ class IssueEventPublisherTest : DescribeSpec({
             newConnection().use { conn ->
                 purgeQueue(conn)
 
-                val event = IssueCreated(
-                    issueKey = IssueKey("ATLAS-1"),
-                    projectKey = "ATLAS",
-                    summary = "첫 번째 이슈",
-                    reporterId = ActorId(UUID.fromString("11111111-1111-1111-1111-111111111111")),
-                    occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
-                )
+                val event =
+                    IssueCreated(
+                        issueKey = IssueKey("ATLAS-1"),
+                        projectKey = "ATLAS",
+                        summary = "첫 번째 이슈",
+                        reporterId = ActorId(UUID.fromString("11111111-1111-1111-1111-111111111111")),
+                        occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
+                    )
 
                 // publisher 와 트랜잭션이 같은 커넥션을 공유 — pgmq.send 결과가 트랜잭션 내에서 가시
                 withTransaction(conn) { dsl ->
@@ -152,12 +159,13 @@ class IssueEventPublisherTest : DescribeSpec({
             newConnection().use { conn ->
                 purgeQueue(conn)
 
-                val event = IssueTransitioned(
-                    issueKey = IssueKey("ATLAS-2"),
-                    fromState = "OPEN",
-                    toState = "IN_PROGRESS",
-                    occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
-                )
+                val event =
+                    IssueTransitioned(
+                        issueKey = IssueKey("ATLAS-2"),
+                        fromState = "OPEN",
+                        toState = "IN_PROGRESS",
+                        occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
+                    )
 
                 withTransaction(conn) { dsl ->
                     val publisher = IssueEventPublisher(dsl, mapper)

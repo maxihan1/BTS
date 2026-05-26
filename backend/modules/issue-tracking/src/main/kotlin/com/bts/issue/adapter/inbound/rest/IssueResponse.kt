@@ -44,16 +44,17 @@ data class IssueResponse(
         fun from(
             issue: Issue,
             projectKey: String,
-        ): IssueResponse = IssueResponse(
-            key = issue.key.value,
-            id = issue.id.value,
-            projectKey = projectKey,
-            summary = issue.summary,
-            currentStateKey = issue.currentStateKey,
-            reporterId = issue.reporterId.value,
-            version = issue.version,
-            createdAt = issue.createdAt,
-            updatedAt = issue.updatedAt,
-        )
+        ): IssueResponse =
+            IssueResponse(
+                key = issue.key.value,
+                id = issue.id.value,
+                projectKey = projectKey,
+                summary = issue.summary,
+                currentStateKey = issue.currentStateKey,
+                reporterId = issue.reporterId.value,
+                version = issue.version,
+                createdAt = issue.createdAt,
+                updatedAt = issue.updatedAt,
+            )
     }
 }

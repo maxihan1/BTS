@@ -3,8 +3,8 @@
 package com.bts.issue.application
 
 import com.bts.issue.domain.ActorId
-import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.Issue
+import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.event.IssueEventPublisher
@@ -39,18 +39,19 @@ class IssueApplicationServiceListTest : DescribeSpec({
     val actor = ActorId(UUID.randomUUID())
     val projectKey = "BTS"
 
-    fun makeIssue(seq: Int) = Issue(
-        id = IssueId(UUID.randomUUID()),
-        key = IssueKey("BTS-$seq"),
-        projectId = UUID.randomUUID(),
-        summary = "Issue $seq",
-        reporterId = actor,
-        currentStateKey = "OPEN",
-        version = 1L,
-        deletedAt = null,
-        createdAt = Instant.parse("2026-05-24T00:00:00Z"),
-        updatedAt = Instant.parse("2026-05-24T00:00:00Z"),
-    )
+    fun makeIssue(seq: Int) =
+        Issue(
+            id = IssueId(UUID.randomUUID()),
+            key = IssueKey("BTS-$seq"),
+            projectId = UUID.randomUUID(),
+            summary = "Issue $seq",
+            reporterId = actor,
+            currentStateKey = "OPEN",
+            version = 1L,
+            deletedAt = null,
+            createdAt = Instant.parse("2026-05-24T00:00:00Z"),
+            updatedAt = Instant.parse("2026-05-24T00:00:00Z"),
+        )
 
     beforeEach {
         clearMocks(repo, eventPublisher, permissionResolver, answers = false)

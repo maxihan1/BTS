@@ -4,9 +4,9 @@ package com.bts.issue.application
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
-import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.event.IssueEventPublisher
@@ -48,18 +48,19 @@ class IssueApplicationServiceFindTest : DescribeSpec({
 
         context("권한이 있고 이슈가 존재할 때") {
             val fixedNow = Instant.parse("2026-05-24T00:00:00Z")
-            val issue = Issue(
-                id = IssueId(UUID.randomUUID()),
-                key = issueKey,
-                projectId = UUID.randomUUID(),
-                summary = "Test issue",
-                reporterId = actor,
-                currentStateKey = "OPEN",
-                version = 1L,
-                deletedAt = null,
-                createdAt = fixedNow,
-                updatedAt = fixedNow,
-            )
+            val issue =
+                Issue(
+                    id = IssueId(UUID.randomUUID()),
+                    key = issueKey,
+                    projectId = UUID.randomUUID(),
+                    summary = "Test issue",
+                    reporterId = actor,
+                    currentStateKey = "OPEN",
+                    version = 1L,
+                    deletedAt = null,
+                    createdAt = fixedNow,
+                    updatedAt = fixedNow,
+                )
 
             beforeEach {
                 every {

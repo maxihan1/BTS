@@ -4,7 +4,6 @@ package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
-import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
@@ -50,7 +49,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [IssueControllerUpdateTest.TestMvcConfig::class])
 @WebAppConfiguration
 class IssueControllerUpdateTest {
-
     /**
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
@@ -63,8 +61,7 @@ class IssueControllerUpdateTest {
         open fun issueApplicationService(): IssueApplicationService = mockk(relaxed = true)
 
         @Bean
-        open fun issueController(service: IssueApplicationService): IssueController =
-            IssueController(service)
+        open fun issueController(service: IssueApplicationService): IssueController = IssueController(service)
 
         @Bean
         open fun issueExceptionHandler(): IssueExceptionHandler = IssueExceptionHandler()
@@ -85,17 +82,18 @@ class IssueControllerUpdateTest {
     private val actorId = ActorId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
     private val issueId = UUID.fromString("00000000-0000-0000-0000-000000000002")
 
-    private val sampleResponse = IssueResponse(
-        key = "ATLAS-1",
-        id = issueId,
-        projectKey = "ATLAS",
-        summary = "수정된 요약",
-        currentStateKey = "OPEN",
-        reporterId = actorId.value,
-        version = 2L,
-        createdAt = fixedNow,
-        updatedAt = fixedNow,
-    )
+    private val sampleResponse =
+        IssueResponse(
+            key = "ATLAS-1",
+            id = issueId,
+            projectKey = "ATLAS",
+            summary = "수정된 요약",
+            currentStateKey = "OPEN",
+            reporterId = actorId.value,
+            version = 2L,
+            createdAt = fixedNow,
+            updatedAt = fixedNow,
+        )
 
     @BeforeEach
     fun setUp() {
@@ -110,10 +108,11 @@ class IssueControllerUpdateTest {
             issueApplicationService.updateIssue(any(), IssueKey("ATLAS-1"), any())
         } returns sampleResponse
 
-        val body = mapOf(
-            "summary" to "수정된 요약",
-            "expectedVersion" to 1,
-        )
+        val body =
+            mapOf(
+                "summary" to "수정된 요약",
+                "expectedVersion" to 1,
+            )
 
         mockMvc.perform(
             patch("/api/v1/issues/ATLAS-1")
@@ -134,10 +133,11 @@ class IssueControllerUpdateTest {
             issueApplicationService.updateIssue(any(), IssueKey("ATLAS-1"), any())
         } throws IssueVersionConflictException(issueKey, currentVersion = 5L)
 
-        val body = mapOf(
-            "summary" to "수정된 요약",
-            "expectedVersion" to 1,
-        )
+        val body =
+            mapOf(
+                "summary" to "수정된 요약",
+                "expectedVersion" to 1,
+            )
 
         mockMvc.perform(
             patch("/api/v1/issues/ATLAS-1")
@@ -159,10 +159,11 @@ class IssueControllerUpdateTest {
             issueApplicationService.transitionIssue(any(), IssueKey("ATLAS-1"), any())
         } returns transitionedResponse
 
-        val body = mapOf(
-            "toStatusKey" to "IN_PROGRESS",
-            "expectedVersion" to 1,
-        )
+        val body =
+            mapOf(
+                "toStatusKey" to "IN_PROGRESS",
+                "expectedVersion" to 1,
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/ATLAS-1/transition")
@@ -180,16 +181,18 @@ class IssueControllerUpdateTest {
     fun `POST transition 전이 거부이면 409 ProblemDetail TRANSITION_NOT_ALLOWED`() {
         every {
             issueApplicationService.transitionIssue(any(), IssueKey("ATLAS-1"), any())
-        } throws IssueTransitionNotAllowedException(
-            issueKey = issueKey,
-            fromStatus = "OPEN",
-            toStatus = "DONE",
-        )
+        } throws
+            IssueTransitionNotAllowedException(
+                issueKey = issueKey,
+                fromStatus = "OPEN",
+                toStatus = "DONE",
+            )
 
-        val body = mapOf(
-            "toStatusKey" to "DONE",
-            "expectedVersion" to 1,
-        )
+        val body =
+            mapOf(
+                "toStatusKey" to "DONE",
+                "expectedVersion" to 1,
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/ATLAS-1/transition")

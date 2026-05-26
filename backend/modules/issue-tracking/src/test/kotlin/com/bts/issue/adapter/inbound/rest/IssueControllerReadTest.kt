@@ -4,7 +4,6 @@ package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
-import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import io.mockk.every
@@ -17,6 +16,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
+import org.springframework.data.web.config.EnableSpringDataWebSupport
 import org.springframework.http.MediaType
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
@@ -26,7 +26,6 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
-import org.springframework.data.web.config.EnableSpringDataWebSupport
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import java.time.Instant
@@ -49,7 +48,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [IssueControllerReadTest.TestMvcConfig::class])
 @WebAppConfiguration
 class IssueControllerReadTest {
-
     /**
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
@@ -63,8 +61,7 @@ class IssueControllerReadTest {
         open fun issueApplicationService(): IssueApplicationService = mockk(relaxed = true)
 
         @Bean
-        open fun issueController(service: IssueApplicationService): IssueController =
-            IssueController(service)
+        open fun issueController(service: IssueApplicationService): IssueController = IssueController(service)
 
         @Bean
         open fun issueExceptionHandler(): IssueExceptionHandler = IssueExceptionHandler()
@@ -83,17 +80,18 @@ class IssueControllerReadTest {
     private val actorId = ActorId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
     private val issueId = UUID.fromString("00000000-0000-0000-0000-000000000002")
 
-    private val sampleResponse = IssueResponse(
-        key = "ATLAS-1",
-        id = issueId,
-        projectKey = "ATLAS",
-        summary = "샘플 이슈 요약",
-        currentStateKey = "OPEN",
-        reporterId = actorId.value,
-        version = 1L,
-        createdAt = fixedNow,
-        updatedAt = fixedNow,
-    )
+    private val sampleResponse =
+        IssueResponse(
+            key = "ATLAS-1",
+            id = issueId,
+            projectKey = "ATLAS",
+            summary = "샘플 이슈 요약",
+            currentStateKey = "OPEN",
+            reporterId = actorId.value,
+            version = 1L,
+            createdAt = fixedNow,
+            updatedAt = fixedNow,
+        )
 
     @BeforeEach
     fun setUp() {

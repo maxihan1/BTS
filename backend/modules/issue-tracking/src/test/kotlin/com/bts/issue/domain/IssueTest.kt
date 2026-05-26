@@ -30,14 +30,15 @@ class IssueTest {
 
     @Test
     fun `create_returns_issue — 유효한 인자로 Issue 를 생성하면 모든 필드가 기대 값과 일치한다`() {
-        val issue = Issue.create(
-            id = validId,
-            key = validKey,
-            projectId = validProjectId,
-            summary = validSummary,
-            reporterId = validReporterId,
-            currentStateKey = validStateKey,
-        )
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+            )
 
         assertThat(issue.id).isEqualTo(validId)
         assertThat(issue.key).isEqualTo(validKey)
@@ -49,28 +50,30 @@ class IssueTest {
 
     @Test
     fun `create_sets_version_to_one — 생성 직후 version 은 항상 1 이다`() {
-        val issue = Issue.create(
-            id = validId,
-            key = validKey,
-            projectId = validProjectId,
-            summary = validSummary,
-            reporterId = validReporterId,
-            currentStateKey = validStateKey,
-        )
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+            )
 
         assertThat(issue.version).isEqualTo(1L)
     }
 
     @Test
     fun `create_sets_deletedAt_null — 생성 직후 deletedAt 은 항상 null 이다`() {
-        val issue = Issue.create(
-            id = validId,
-            key = validKey,
-            projectId = validProjectId,
-            summary = validSummary,
-            reporterId = validReporterId,
-            currentStateKey = validStateKey,
-        )
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+            )
 
         assertThat(issue.deletedAt).isNull()
     }
@@ -123,14 +126,15 @@ class IssueTest {
     fun `accept_summary_exactly_255 — summary 가 정확히 255자이면 정상 생성한다`() {
         val exactly255 = "a".repeat(255)
 
-        val issue = Issue.create(
-            id = validId,
-            key = validKey,
-            projectId = validProjectId,
-            summary = exactly255,
-            reporterId = validReporterId,
-            currentStateKey = validStateKey,
-        )
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = exactly255,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+            )
 
         assertThat(issue.summary).hasSize(255)
     }

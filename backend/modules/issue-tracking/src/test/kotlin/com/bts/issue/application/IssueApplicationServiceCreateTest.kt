@@ -39,11 +39,12 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
 
     val actor = ActorId(UUID.randomUUID())
     val projectKey = "BTS"
-    val request = CreateIssueRequest(
-        projectKey = projectKey,
-        summary = "Test summary",
-        reporterId = actor,
-    )
+    val request =
+        CreateIssueRequest(
+            projectKey = projectKey,
+            summary = "Test summary",
+            reporterId = actor,
+        )
 
     beforeEach {
         clearMocks(repo, eventPublisher, permissionResolver, answers = false)

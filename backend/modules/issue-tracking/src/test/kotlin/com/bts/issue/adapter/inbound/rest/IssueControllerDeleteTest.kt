@@ -40,7 +40,6 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc
 @ContextConfiguration(classes = [IssueControllerDeleteTest.TestMvcConfig::class])
 @WebAppConfiguration
 class IssueControllerDeleteTest {
-
     /**
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
@@ -53,8 +52,7 @@ class IssueControllerDeleteTest {
         open fun issueApplicationService(): IssueApplicationService = mockk(relaxed = true)
 
         @Bean
-        open fun issueController(service: IssueApplicationService): IssueController =
-            IssueController(service)
+        open fun issueController(service: IssueApplicationService): IssueController = IssueController(service)
 
         @Bean
         open fun issueExceptionHandler(): IssueExceptionHandler = IssueExceptionHandler()

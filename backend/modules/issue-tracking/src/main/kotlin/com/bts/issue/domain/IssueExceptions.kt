@@ -33,8 +33,8 @@ class IssueAccessDeniedException(
     permission: IssuePermission,
     scope: IssueScope,
 ) : IssueDomainException(
-    "Access denied: actor=${actor.value}, permission=${permission.name}, scope=$scope",
-)
+        "Access denied: actor=${actor.value}, permission=${permission.name}, scope=$scope",
+    )
 
 /**
  * 낙관적 잠금(optimistic locking) 충돌 — 읽은 버전과 현재 버전이 다를 때.
@@ -46,8 +46,8 @@ class IssueVersionConflictException(
     key: IssueKey,
     currentVersion: Long,
 ) : IssueDomainException(
-    "Version conflict: key=${key.value}, currentVersion=$currentVersion",
-)
+        "Version conflict: key=${key.value}, currentVersion=$currentVersion",
+    )
 
 /**
  * 이슈를 생성하려는 프로젝트가 존재하지 않을 때.

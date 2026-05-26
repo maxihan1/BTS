@@ -7,7 +7,6 @@ import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
-import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.event.IssueEventPublisher
@@ -17,14 +16,12 @@ import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
 import com.bts.workflow.domain.dto.TransitionPlan
-import com.bts.workflow.domain.dto.TransitionRequest
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.workflow.port.inbound.WorkflowTransitionPort
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -49,7 +46,10 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
     val issueKey = IssueKey("BTS-1")
     val existingVersion = 1L
 
-    fun makeIssue(state: String = "OPEN", version: Long = existingVersion) = Issue(
+    fun makeIssue(
+        state: String = "OPEN",
+        version: Long = existingVersion,
+    ) = Issue(
         id = IssueId(UUID.randomUUID()),
         key = issueKey,
         projectId = UUID.randomUUID(),
@@ -70,21 +70,23 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
 
         it("IssueApplicationService 는 @Transactional 어노테이션을 클래스 또는 메서드에 선언한다") {
             val classAnnotation = IssueApplicationService::class.java.getAnnotation(Transactional::class.java)
-            val methodAnnotation = runCatching {
-                IssueApplicationService::class.java
-                    .getMethod("transitionIssue", ActorId::class.java, IssueKey::class.java, TransitionIssueRequest::class.java)
-                    .getAnnotation(Transactional::class.java)
-            }.getOrNull()
+            val methodAnnotation =
+                runCatching {
+                    IssueApplicationService::class.java
+                        .getMethod("transitionIssue", ActorId::class.java, IssueKey::class.java, TransitionIssueRequest::class.java)
+                        .getAnnotation(Transactional::class.java)
+                }.getOrNull()
             (classAnnotation != null || methodAnnotation != null) shouldBe true
         }
 
         context("정상 — plan 성공, version 일치") {
-            val request = TransitionIssueRequest(
-                workflowKey = "DEFAULT",
-                toStateKey = "IN_PROGRESS",
-                transitionName = "start",
-                expectedVersion = existingVersion,
-            )
+            val request =
+                TransitionIssueRequest(
+                    workflowKey = "DEFAULT",
+                    toStateKey = "IN_PROGRESS",
+                    transitionName = "start",
+                    expectedVersion = existingVersion,
+                )
             val plan = TransitionPlan(toStateKey = "IN_PROGRESS", fieldChanges = emptyList(), emitEvents = emptyList())
             val updatedIssue = makeIssue(state = "IN_PROGRESS", version = existingVersion + 1)
 
@@ -130,12 +132,13 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         }
 
         context("workflowPort.plan 이 예외를 던질 때") {
-            val request = TransitionIssueRequest(
-                workflowKey = "DEFAULT",
-                toStateKey = "IN_PROGRESS",
-                transitionName = "start",
-                expectedVersion = existingVersion,
-            )
+            val request =
+                TransitionIssueRequest(
+                    workflowKey = "DEFAULT",
+                    toStateKey = "IN_PROGRESS",
+                    transitionName = "start",
+                    expectedVersion = existingVersion,
+                )
 
             beforeEach {
                 every {
@@ -158,38 +161,42 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         }
 
         context("workflowPort.plan 이 WorkflowValidatorFailureException 을 던질 때") {
-            val request = TransitionIssueRequest(
-                workflowKey = "DEFAULT",
-                toStateKey = "IN_PROGRESS",
-                transitionName = "start",
-                expectedVersion = existingVersion,
-            )
+            val request =
+                TransitionIssueRequest(
+                    workflowKey = "DEFAULT",
+                    toStateKey = "IN_PROGRESS",
+                    transitionName = "start",
+                    expectedVersion = existingVersion,
+                )
 
             beforeEach {
                 every {
                     permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
-                every { workflowPort.plan(any()) } throws WorkflowValidatorFailureException(
-                    "PermissionValidator",
-                    "status",
-                    "전이 권한 없음",
-                )
+                every { workflowPort.plan(any()) } throws
+                    WorkflowValidatorFailureException(
+                        "PermissionValidator",
+                        "status",
+                        "전이 권한 없음",
+                    )
             }
 
             it("IssueTransitionNotAllowedException 으로 변환되어 throw 된다") {
-                val ex = shouldThrow<IssueTransitionNotAllowedException> {
-                    sut.transitionIssue(actor, issueKey, request)
-                }
+                val ex =
+                    shouldThrow<IssueTransitionNotAllowedException> {
+                        sut.transitionIssue(actor, issueKey, request)
+                    }
                 ex.issueKey shouldBe issueKey
                 ex.fromStatus shouldBe "OPEN"
                 ex.toStatus shouldBe "IN_PROGRESS"
             }
 
             it("원인 예외(cause) 가 WorkflowValidatorFailureException 이다") {
-                val ex = shouldThrow<IssueTransitionNotAllowedException> {
-                    sut.transitionIssue(actor, issueKey, request)
-                }
+                val ex =
+                    shouldThrow<IssueTransitionNotAllowedException> {
+                        sut.transitionIssue(actor, issueKey, request)
+                    }
                 (ex.cause is WorkflowValidatorFailureException) shouldBe true
             }
 
@@ -200,12 +207,13 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         }
 
         context("version conflict — applyTransition 0 row 반환") {
-            val request = TransitionIssueRequest(
-                workflowKey = "DEFAULT",
-                toStateKey = "IN_PROGRESS",
-                transitionName = "start",
-                expectedVersion = existingVersion,
-            )
+            val request =
+                TransitionIssueRequest(
+                    workflowKey = "DEFAULT",
+                    toStateKey = "IN_PROGRESS",
+                    transitionName = "start",
+                    expectedVersion = existingVersion,
+                )
             val plan = TransitionPlan(toStateKey = "IN_PROGRESS", fieldChanges = emptyList(), emitEvents = emptyList())
 
             beforeEach {
@@ -225,12 +233,13 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         }
 
         context("권한 없을 때") {
-            val request = TransitionIssueRequest(
-                workflowKey = "DEFAULT",
-                toStateKey = "IN_PROGRESS",
-                transitionName = "start",
-                expectedVersion = existingVersion,
-            )
+            val request =
+                TransitionIssueRequest(
+                    workflowKey = "DEFAULT",
+                    toStateKey = "IN_PROGRESS",
+                    transitionName = "start",
+                    expectedVersion = existingVersion,
+                )
 
             beforeEach {
                 every {

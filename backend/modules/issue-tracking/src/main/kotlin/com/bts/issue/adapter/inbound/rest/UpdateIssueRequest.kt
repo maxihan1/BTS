@@ -17,7 +17,6 @@ import jakarta.validation.constraints.Size
 data class UpdateIssueRequest(
     @field:Size(max = 200, message = "summary는 200자 이하여야 합니다.")
     val summary: String?,
-
     @field:NotNull(message = "expectedVersion은 필수입니다.")
     val expectedVersion: Long,
 )

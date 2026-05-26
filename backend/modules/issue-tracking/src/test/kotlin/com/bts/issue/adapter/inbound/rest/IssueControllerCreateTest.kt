@@ -5,7 +5,6 @@ package com.bts.issue.adapter.inbound.rest
 import com.bts.issue.application.CreateIssueRequest
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
-import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
@@ -50,7 +49,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [IssueControllerCreateTest.TestMvcConfig::class])
 @WebAppConfiguration
 class IssueControllerCreateTest {
-
     /**
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
@@ -63,8 +61,7 @@ class IssueControllerCreateTest {
         open fun issueApplicationService(): IssueApplicationService = mockk(relaxed = true)
 
         @Bean
-        open fun issueController(service: IssueApplicationService): IssueController =
-            IssueController(service)
+        open fun issueController(service: IssueApplicationService): IssueController = IssueController(service)
     }
 
     @Autowired
@@ -86,10 +83,11 @@ class IssueControllerCreateTest {
 
     @Test
     fun `POST 이슈 생성 — projectKey blank 이면 400`() {
-        val body = mapOf(
-            "projectKey" to "",
-            "summary" to "유효한 요약",
-        )
+        val body =
+            mapOf(
+                "projectKey" to "",
+                "summary" to "유효한 요약",
+            )
 
         mockMvc.perform(
             post("/api/v1/issues")
@@ -103,10 +101,11 @@ class IssueControllerCreateTest {
 
     @Test
     fun `POST 이슈 생성 — summary blank 이면 400`() {
-        val body = mapOf(
-            "projectKey" to "ATLAS",
-            "summary" to "",
-        )
+        val body =
+            mapOf(
+                "projectKey" to "ATLAS",
+                "summary" to "",
+            )
 
         mockMvc.perform(
             post("/api/v1/issues")
@@ -120,10 +119,11 @@ class IssueControllerCreateTest {
 
     @Test
     fun `POST 이슈 생성 — summary 200자 초과이면 400`() {
-        val body = mapOf(
-            "projectKey" to "ATLAS",
-            "summary" to "A".repeat(201),
-        )
+        val body =
+            mapOf(
+                "projectKey" to "ATLAS",
+                "summary" to "A".repeat(201),
+            )
 
         mockMvc.perform(
             post("/api/v1/issues")
@@ -141,18 +141,19 @@ class IssueControllerCreateTest {
         val issueKey = IssueKey("ATLAS-1")
         val actorId = ActorId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
 
-        val stubIssue = Issue(
-            id = IssueId(UUID.fromString("00000000-0000-0000-0000-000000000002")),
-            key = issueKey,
-            projectId = UUID.fromString("00000000-0000-0000-0000-000000000003"),
-            summary = "정상 요약",
-            reporterId = actorId,
-            currentStateKey = "OPEN",
-            version = 1L,
-            deletedAt = null,
-            createdAt = fixedNow,
-            updatedAt = fixedNow,
-        )
+        val stubIssue =
+            Issue(
+                id = IssueId(UUID.fromString("00000000-0000-0000-0000-000000000002")),
+                key = issueKey,
+                projectId = UUID.fromString("00000000-0000-0000-0000-000000000003"),
+                summary = "정상 요약",
+                reporterId = actorId,
+                currentStateKey = "OPEN",
+                version = 1L,
+                deletedAt = null,
+                createdAt = fixedNow,
+                updatedAt = fixedNow,
+            )
 
         every {
             issueApplicationService.createIssue(any(), CreateIssueRequest("ATLAS", "정상 요약", actorId))
@@ -160,10 +161,11 @@ class IssueControllerCreateTest {
 
         every { issueApplicationService.createIssue(any(), any()) } returns stubIssue
 
-        val body = mapOf(
-            "projectKey" to "ATLAS",
-            "summary" to "정상 요약",
-        )
+        val body =
+            mapOf(
+                "projectKey" to "ATLAS",
+                "summary" to "정상 요약",
+            )
 
         mockMvc.perform(
             post("/api/v1/issues")
