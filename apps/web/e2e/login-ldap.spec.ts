@@ -1,5 +1,6 @@
 // LDAP 로그인 E2E 시나리오 — S1-ldap 정상 로그인 (LDAP-corp provider) + S2-ldap 잘못된 비번 (401 한국어 에러)
 import { test, expect } from '@playwright/test'
+import { loginStrings, loginPageStrings } from '../src/i18n/ko'
 
 /**
  * S1-ldap — LDAP-corp provider 정상 로그인
@@ -12,20 +13,20 @@ test('S1-ldap LDAP-corp 정상 로그인 — alice/Test1234! → /dashboard 환�
   await page.goto('/login')
 
   // 페이지 진입 확인 — "BTS 로그인" 헤딩 (LoginPage)
-  await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: loginPageStrings.heading })).toBeVisible()
 
-  // provider 드롭다운 클릭 — aria-label="로그인 방식" 기준 (fallback: role="combobox")
-  await page.getByRole('combobox', { name: '로그인 방식' }).click()
+  // provider 드롭다운 클릭 — aria-label=loginStrings.providerLabel 기준 (i18n drift 차단)
+  await page.getByRole('combobox', { name: loginStrings.providerLabel }).click()
 
   // LDAP-corp 옵션 선택 — Radix Portal 렌더이므로 role="option" 으로 자동 탐색
-  await page.getByRole('option', { name: 'LDAP-corp' }).click()
+  await page.getByRole('option', { name: loginStrings.providerLdapCorp }).click()
 
   // username, password 입력
-  await page.getByLabel('사용자명').fill('alice')
-  await page.getByLabel('비밀번호').fill('Test1234!')
+  await page.getByLabel(loginStrings.usernameLabel).fill('alice')
+  await page.getByLabel(loginStrings.passwordLabel).fill('Test1234!')
 
   // 로그인 버튼 클릭 → 제출
-  await page.getByRole('button', { name: '로그인' }).click()
+  await page.getByRole('button', { name: loginStrings.submitButton }).click()
 
   // /dashboard 리다이렉트 대기
   await page.waitForURL('**/dashboard')
@@ -47,23 +48,23 @@ test('S1-ldap LDAP-corp 정상 로그인 — alice/Test1234! → /dashboard 환�
 test('S2-ldap LDAP-corp 잘못된 비밀번호 — alice/wrong → 401 한국어 에러 + URL /login 유지', async ({ page }) => {
   await page.goto('/login')
 
-  // provider 드롭다운 클릭 후 LDAP-corp 선택
-  await page.getByRole('combobox', { name: '로그인 방식' }).click()
-  await page.getByRole('option', { name: 'LDAP-corp' }).click()
+  // provider 드롭다운 클릭 후 LDAP-corp 선택 (i18n drift 차단)
+  await page.getByRole('combobox', { name: loginStrings.providerLabel }).click()
+  await page.getByRole('option', { name: loginStrings.providerLdapCorp }).click()
 
   // username 입력
-  await page.getByLabel('사용자명').fill('alice')
+  await page.getByLabel(loginStrings.usernameLabel).fill('alice')
 
   // 잘못된 비밀번호 입력
-  await page.getByLabel('비밀번호').fill('wrong')
+  await page.getByLabel(loginStrings.passwordLabel).fill('wrong')
 
   // 로그인 버튼 클릭
-  await page.getByRole('button', { name: '로그인' }).click()
+  await page.getByRole('button', { name: loginStrings.submitButton }).click()
 
   // 에러 메시지가 나타날 때까지 대기 (API 응답 소요 시간 감안)
   const errorAlert = page.getByRole('alert')
   await expect(errorAlert).toBeVisible({ timeout: 10_000 })
-  await expect(errorAlert).toHaveText('사용자명 또는 비밀번호가 올바르지 않습니다.')
+  await expect(errorAlert).toHaveText(loginStrings.errorInvalidCredentials)
 
   // URL이 /login (또는 /login?returnTo=...) 에 머물러 있어야 한다
   await expect(page).toHaveURL(/\/login/)
