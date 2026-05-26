@@ -171,54 +171,6 @@ class IssueApplicationService(
         return IssueResponse.from(updated, key.projectPrefix)
     }
 
-    // ── private helpers ────────────────────────────────────────────────────────
-
-    /**
-     * [TransitionResult] sealed 분기를 [TransitionPlan] 으로 매핑하거나 BC 경계 예외로 변환한다.
-     *
-     * ADR 2026-05-26-workflow-transition-port-result-sealed 참조.
-     * automation BC 가 동일 패턴을 사용할 경우 이 helper 를 공통 모듈로 이동할 수 있다 (plan F10 deferred G2).
-     *
-     * @param result workflowPort.plan 반환값.
-     * @param issueKey 전이 대상 이슈 키 — 예외 컨텍스트용.
-     * @param fromStatus 전이 전 상태 키.
-     * @param toStatus 전이 목표 상태 키.
-     * @return [TransitionPlan] — [TransitionResult.Success] 케이스에서만 반환.
-     * @throws IssueTransitionNotAllowedException [TransitionResult.ValidatorFailure], [TransitionResult.WorkflowNotFound],
-     *   [TransitionResult.ExpressionTimeout] 케이스.
-     */
-    private fun resolveWorkflowResult(
-        result: TransitionResult,
-        issueKey: IssueKey,
-        fromStatus: String,
-        toStatus: String,
-    ): TransitionPlan =
-        when (result) {
-            is TransitionResult.Success ->
-                result.plan
-            is TransitionResult.ValidatorFailure ->
-                throw IssueTransitionNotAllowedException(
-                    issueKey = issueKey,
-                    fromStatus = fromStatus,
-                    toStatus = toStatus,
-                    reason = result.message,
-                )
-            is TransitionResult.WorkflowNotFound ->
-                throw IssueTransitionNotAllowedException(
-                    issueKey = issueKey,
-                    fromStatus = fromStatus,
-                    toStatus = toStatus,
-                    reason = "워크플로우를 찾을 수 없습니다: ${result.key}",
-                )
-            is TransitionResult.ExpressionTimeout ->
-                throw IssueTransitionNotAllowedException(
-                    issueKey = issueKey,
-                    fromStatus = fromStatus,
-                    toStatus = toStatus,
-                    reason = result.message,
-                )
-        }
-
     /**
      * 이슈 상태를 전이한다 (workflowPort.plan() 호출 + 낙관락).
      *
@@ -334,6 +286,54 @@ class IssueApplicationService(
         val responses = page.content.map { IssueResponse.from(it, projectKey) }
         return PageImpl(responses, pageable, page.totalElements)
     }
+
+    // ── private helpers ────────────────────────────────────────────────────────
+
+    /**
+     * [TransitionResult] sealed 분기를 [TransitionPlan] 으로 매핑하거나 BC 경계 예외로 변환한다.
+     *
+     * ADR 2026-05-26-workflow-transition-port-result-sealed 참조.
+     * automation BC 가 동일 패턴을 사용할 경우 이 helper 를 공통 모듈로 이동할 수 있다 (plan F10 deferred G2).
+     *
+     * @param result workflowPort.plan 반환값.
+     * @param issueKey 전이 대상 이슈 키 — 예외 컨텍스트용.
+     * @param fromStatus 전이 전 상태 키.
+     * @param toStatus 전이 목표 상태 키.
+     * @return [TransitionPlan] — [TransitionResult.Success] 케이스에서만 반환.
+     * @throws IssueTransitionNotAllowedException [TransitionResult.ValidatorFailure], [TransitionResult.WorkflowNotFound],
+     *   [TransitionResult.ExpressionTimeout] 케이스.
+     */
+    private fun resolveWorkflowResult(
+        result: TransitionResult,
+        issueKey: IssueKey,
+        fromStatus: String,
+        toStatus: String,
+    ): TransitionPlan =
+        when (result) {
+            is TransitionResult.Success ->
+                result.plan
+            is TransitionResult.ValidatorFailure ->
+                throw IssueTransitionNotAllowedException(
+                    issueKey = issueKey,
+                    fromStatus = fromStatus,
+                    toStatus = toStatus,
+                    reason = result.message,
+                )
+            is TransitionResult.WorkflowNotFound ->
+                throw IssueTransitionNotAllowedException(
+                    issueKey = issueKey,
+                    fromStatus = fromStatus,
+                    toStatus = toStatus,
+                    reason = "워크플로우를 찾을 수 없습니다: ${result.key}",
+                )
+            is TransitionResult.ExpressionTimeout ->
+                throw IssueTransitionNotAllowedException(
+                    issueKey = issueKey,
+                    fromStatus = fromStatus,
+                    toStatus = toStatus,
+                    reason = result.message,
+                )
+        }
 
     private fun buildChangedFields(
         existing: Issue,
