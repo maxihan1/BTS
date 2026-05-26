@@ -116,10 +116,10 @@ SELECT pgmq.create('q_workflow_scheme_events');
 -- is_default = true: 시스템 표준 스킴 — key/name/description/is_default 변경/삭제 불가 (FR-WF-02-07).
 -- mapping 은 admin 이 변경 가능 (D11 결정 — mapping 자유, 4 field 만 lock).
 INSERT INTO workflow_schemes (key, name, description, is_default) VALUES
-    ('software-scheme',     'Software',     '소프트웨어 개발 표준 스킴 (기본)', TRUE),
-    ('bug-tracking-scheme', 'Bug Tracking', '버그 추적 전용 스킴',              TRUE),
-    ('simple-scheme',       'Simple',       '단순 워크플로우 (To Do → Done)',   TRUE),
-    ('kanban-scheme',       'Kanban',       '칸반 보드 스킴',                   TRUE);
+    ('software-scheme',     'Software 표준 스킴', '소프트웨어 개발 팀의 기본 워크플로우 스킴', TRUE),
+    ('bug-tracking-scheme', 'Bug 추적 스킴',      '버그 추적 전용 워크플로우 스킴',            TRUE),
+    ('simple-scheme',       '단순 스킴',          '단순 워크플로우 (To Do → Done)',             TRUE),
+    ('kanban-scheme',       '칸반 기본 스킴',     '칸반 보드 기본 워크플로우 스킴',             TRUE);
 
 -- ── 6. 4 표준 스킴 default mapping seed (§5.1.6) ───────────────────────────────
 -- 각 표준 스킴에 default mapping (issue_type_id IS NULL) 1건씩 INSERT.
