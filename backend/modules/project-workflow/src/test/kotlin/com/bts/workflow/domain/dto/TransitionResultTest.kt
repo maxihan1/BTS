@@ -17,7 +17,6 @@ import org.junit.jupiter.api.Test
  * - when exhaustive — when 식이 모든 sealed 케이스를 빠짐없이 커버하여 컴파일이 통과함을 검증.
  */
 class TransitionResultTest {
-
     // ── 픽스처 ────────────────────────────────────────────────────────────────
 
     private val samplePlan =

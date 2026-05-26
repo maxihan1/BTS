@@ -34,7 +34,6 @@ import org.junit.jupiter.api.Test
  * `ImportOption.DoNotIncludeTests()` 를 적용해 테스트 클래스 자신의 패키지를 검사 대상에서 제외한다.
  */
 class IssueBcArchTest {
-
     /**
      * issue-tracking BC production 클래스 파일 전체 (테스트 클래스 제외).
      *

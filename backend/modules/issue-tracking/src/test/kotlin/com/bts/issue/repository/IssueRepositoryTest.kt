@@ -38,7 +38,6 @@ import java.util.UUID
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class IssueRepositoryTest : IssueTestcontainersBase() {
-
     // ── T1. insert ───────────────────────────────────────────────────────────────
 
     /**
