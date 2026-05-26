@@ -72,7 +72,7 @@ export function WorkflowDetailPage({ workflowKey }: WorkflowDetailPageProps): JS
       {/* 페이지 헤더 — 워크플로우 이름 + 설명 */}
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold">{data.name}</h1>
-        {data.description !== '' && (
+        {data.description.length > 0 && (
           <p className="text-muted-foreground text-sm">{data.description}</p>
         )}
       </header>
