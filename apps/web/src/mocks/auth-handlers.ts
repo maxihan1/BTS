@@ -1,19 +1,30 @@
 // identity-access BC MSW mock handlers (alice/bob 두 사용자 + 401 invalid + 200 happy + me 조회)
 import { http, HttpResponse } from 'msw'
-import { AUTH_USERS, VALID_PASSWORDS, mockAccessToken } from './auth-fixtures'
+import { AUTH_USERS, LDAP_VALID_PASSWORDS, VALID_PASSWORDS, mockAccessToken } from './auth-fixtures'
 
 /**
- * POST /api/v1/auth/login — username/password 검증 후 token 또는 401 반환.
+ * POST /api/v1/auth/login — provider + username/password 검증 후 token 또는 401 반환.
+ *
+ * provider 분기 (provider 누락 또는 미지원 값 모두 unknown_provider — silent 'local' fallback 금지).
+ * - `local`: VALID_PASSWORDS (alice/password, bob/password) 검증
+ * - `ldap-corp`: LDAP_VALID_PASSWORDS (alice/Test1234!, bob/Test1234!) 검증
+ * - 누락 / 그 외: 401 `{ error: "unknown_provider" }` (방어 layer, frontend Zod 가 1차 차단 + 본 분기 가 2차)
  *
  * 응답 schema: backend AuthController.TokenResponse (`access_token`, `token_type`, `expires_in`)
- * 에러 schema: `{ error: "invalid_credentials" }` — useLoginMutation의 resolveLoginErrorMessage 가 사용
+ * 에러 schema: `{ error: "invalid_credentials" | "unknown_provider" }` — useLoginMutation 의 resolveLoginErrorMessage 가 한국어 매핑
  */
 const loginHandler = http.post('/api/v1/auth/login', async ({ request }) => {
-  const body = await request.json() as { username?: string; password?: string }
+  const body = await request.json() as { provider?: string; username?: string; password?: string }
+  const provider = body.provider
   const username = body.username ?? ''
   const password = body.password ?? ''
 
-  const validPassword = VALID_PASSWORDS[username]
+  let validPasswordMap: Readonly<Record<string, string>>
+  if (provider === 'local') validPasswordMap = VALID_PASSWORDS
+  else if (provider === 'ldap-corp') validPasswordMap = LDAP_VALID_PASSWORDS
+  else return HttpResponse.json({ error: 'unknown_provider' }, { status: 401 })
+
+  const validPassword = validPasswordMap[username]
   if (validPassword === undefined || password !== validPassword) {
     return HttpResponse.json({ error: 'invalid_credentials' }, { status: 401 })
   }

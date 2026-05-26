@@ -29,6 +29,12 @@ export const VALID_PASSWORDS: Readonly<Record<string, string>> = {
   bob: 'password',
 }
 
+/** username → 유효 비밀번호 맵 (LDAP provider, mock 전용 — backend `LdapAuthFlowIntegrationTest` (uid=alice/bob, Test1234!) 매칭) */
+export const LDAP_VALID_PASSWORDS: Readonly<Record<string, string>> = {
+  alice: 'Test1234!',
+  bob: 'Test1234!',
+}
+
 /** mock access token 생성 — username 기반으로 E2E에서 추적 가능 */
 export function mockAccessToken(username: string): string {
   return `mock-access-token-${username}`
