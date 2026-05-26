@@ -55,6 +55,8 @@ dependencies {
     // Jackson (JSON/YAML 직렬화 — workflow YAML 파싱 포함)
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
+    // Java 8 date/time (Instant 등) 직렬화 — WorkflowScheme 도메인 이벤트 occurredAt 필드용
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
 
     // Kotlin 기본
     implementation("org.jetbrains.kotlin:kotlin-reflect")

@@ -18,7 +18,11 @@ import java.util.UUID
  * - data class equals/hashCode 기반으로 원본과 복원본이 일치한다.
  */
 class WorkflowSchemeDomainEventTest {
-    private val mapper: ObjectMapper = ObjectMapper().registerKotlinModule()
+    // findAndRegisterModules — JavaTimeModule (jsr310) 자동 등록으로 Instant 직렬화 활성화 (운영 Spring autoconfigured ObjectMapper 와 동일)
+    private val mapper: ObjectMapper =
+        ObjectMapper()
+            .registerKotlinModule()
+            .findAndRegisterModules()
 
     // ── WorkflowSchemeAssignedEvent 라운드트립 ────────────────────────────────
 
