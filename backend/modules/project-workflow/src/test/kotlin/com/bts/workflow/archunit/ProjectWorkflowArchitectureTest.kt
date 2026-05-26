@@ -97,6 +97,8 @@ class ProjectWorkflowArchitectureTest {
                     )
                 }
 
+            // Spring stereotype 어노테이션은 모두 @Component 의 specialization (메타 어노테이션) —
+            // @Repository / @Controller / @RestController / @Service 도 Bean 으로 등록되어 트랜잭션 AOP 적용 대상.
             classes()
                 .that()
                 .areNotInterfaces()
@@ -106,8 +108,14 @@ class ProjectWorkflowArchitectureTest {
                 .beAnnotatedWith(org.springframework.stereotype.Service::class.java)
                 .orShould()
                 .beAnnotatedWith(org.springframework.stereotype.Component::class.java)
+                .orShould()
+                .beAnnotatedWith(org.springframework.stereotype.Repository::class.java)
+                .orShould()
+                .beAnnotatedWith(org.springframework.stereotype.Controller::class.java)
+                .orShould()
+                .beAnnotatedWith(org.springframework.web.bind.annotation.RestController::class.java)
                 .because(
-                    "@Transactional 메서드를 갖는 구체 클래스는 Spring Bean(@Service 또는 @Component)이어야 트랜잭션 AOP가 적용됩니다",
+                    "@Transactional 메서드를 갖는 구체 클래스는 Spring Bean(@Service/@Component/@Repository/@Controller/@RestController — 모두 @Component 의 stereotype specialization)이어야 트랜잭션 AOP가 적용됩니다",
                 )
         }
 
