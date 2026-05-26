@@ -86,6 +86,43 @@ class WorkflowScheme private constructor(
                 deletedAt = null,
             )
         }
+
+        /**
+         * DB 조회 결과 복원용 factory (Repository 전용).
+         *
+         * [create] 와 달리 이미 DB 에 저장된 인스턴스를 복원할 때 사용한다.
+         * [id] 는 반드시 non-null (DB 저장 후 BIGSERIAL id 할당 완료 상태).
+         * 불변식 검증 없이 DB 상태를 그대로 복원한다.
+         *
+         * @param id DB `workflow_schemes.id` 값.
+         * @param key 스킴 키.
+         * @param name 스킴 이름.
+         * @param description 스킴 설명. null 허용.
+         * @param isDefault 표준 스킴 여부.
+         * @param createdAt 생성 시각.
+         * @param updatedAt 최종 변경 시각.
+         * @param deletedAt soft-delete 시각. null = 활성.
+         */
+        fun reconstruct(
+            id: WorkflowSchemeId,
+            key: WorkflowSchemeKey,
+            name: String,
+            description: String?,
+            isDefault: Boolean,
+            createdAt: Instant,
+            updatedAt: Instant,
+            deletedAt: Instant?,
+        ): WorkflowScheme =
+            WorkflowScheme(
+                id = id,
+                key = key,
+                name = name,
+                description = description,
+                isDefault = isDefault,
+                createdAt = createdAt,
+                updatedAt = updatedAt,
+                deletedAt = deletedAt,
+            )
     }
 
     override fun equals(other: Any?): Boolean {
