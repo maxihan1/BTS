@@ -31,7 +31,6 @@ import org.springframework.transaction.annotation.Transactional
 class WorkflowTransitionAdapter(
     private val workflowEngine: WorkflowEngine,
 ) : WorkflowTransitionPort {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
@@ -44,16 +43,22 @@ class WorkflowTransitionAdapter(
      * @return [TransitionResult] — 4 케이스 반환 계약은 [WorkflowTransitionPort] KDoc 참조
      */
     @Transactional(propagation = Propagation.MANDATORY)
+    @Suppress("TooGenericExceptionCaught")
     override fun plan(req: TransitionRequest): TransitionResult =
         try {
             TransitionResult.Success(workflowEngine.plan(req))
         } catch (e: Exception) {
+            // workflow domain exception 4종을 sealed Result 로 매핑하는 책임이 본 adapter — 의도된 generic catch.
+            // 알 수 없는 RuntimeException 은 mapException 에서 재throw → fallback 동작.
             mapException(req, e)
         }
 
     // ── private helper ────────────────────────────────────────────────────────
 
-    private fun mapException(req: TransitionRequest, e: Exception): TransitionResult =
+    private fun mapException(
+        req: TransitionRequest,
+        e: Exception,
+    ): TransitionResult =
         when (e) {
             is WorkflowValidatorFailureException -> {
                 log.info(

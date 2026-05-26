@@ -15,13 +15,13 @@ package com.bts.workflow.domain.dto
  * when (val result = workflowPort.planSafe(req)) {
  *     is TransitionResult.Success            -> applyPlan(result.plan)
  *     is TransitionResult.ValidatorFailure   -> throw IssueTransitionNotAllowedException(result.message)
- *     is TransitionResult.WorkflowNotFound   -> throw IssueTransitionNotAllowedException("워크플로우를 찾을 수 없습니다: ${result.key}")
+ *     is TransitionResult.WorkflowNotFound   ->
+ *         throw IssueTransitionNotAllowedException("워크플로우를 찾을 수 없습니다: ${result.key}")
  *     is TransitionResult.ExpressionTimeout  -> throw IssueTransitionNotAllowedException(result.message)
  * }
  * ```
  */
 sealed interface TransitionResult {
-
     /**
      * 전이 검증을 통과했을 때 반환된다.
      *

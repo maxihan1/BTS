@@ -189,8 +189,8 @@ class IssueApplicationService(
      * @return 전이된 이슈의 [IssueResponse].
      * @throws IssueAccessDeniedException 권한 없을 때.
      * @throws IssueNotFoundException 이슈가 없는 경우.
-     * @throws IssueTransitionNotAllowedException [TransitionResult.ValidatorFailure], [TransitionResult.WorkflowNotFound],
-     *   [TransitionResult.ExpressionTimeout] 케이스에서 BC 경계 변환.
+     * @throws IssueTransitionNotAllowedException [TransitionResult.ValidatorFailure],
+     *   [TransitionResult.WorkflowNotFound], [TransitionResult.ExpressionTimeout] 케이스에서 BC 경계 변환.
      * @throws IssueVersionConflictException 낙관락 충돌 시.
      */
     @Suppress("ThrowsCount")
@@ -213,7 +213,13 @@ class IssueApplicationService(
                 actorRoles = emptySet(),
                 version = request.expectedVersion,
             )
-        val plan = resolveWorkflowResult(workflowPort.plan(transitionReq), key, issue.currentStateKey, request.toStateKey)
+        val plan =
+            resolveWorkflowResult(
+                workflowPort.plan(transitionReq),
+                key,
+                issue.currentStateKey,
+                request.toStateKey,
+            )
         val updatedRows = repo.applyTransition(key, plan.toStateKey, request.expectedVersion)
         if (updatedRows == 0) {
             throw IssueVersionConflictException(key, issue.version)
@@ -300,8 +306,8 @@ class IssueApplicationService(
      * @param fromStatus 전이 전 상태 키.
      * @param toStatus 전이 목표 상태 키.
      * @return [TransitionPlan] — [TransitionResult.Success] 케이스에서만 반환.
-     * @throws IssueTransitionNotAllowedException [TransitionResult.ValidatorFailure], [TransitionResult.WorkflowNotFound],
-     *   [TransitionResult.ExpressionTimeout] 케이스.
+     * @throws IssueTransitionNotAllowedException [TransitionResult.ValidatorFailure],
+     *   [TransitionResult.WorkflowNotFound], [TransitionResult.ExpressionTimeout] 케이스.
      */
     private fun resolveWorkflowResult(
         result: TransitionResult,

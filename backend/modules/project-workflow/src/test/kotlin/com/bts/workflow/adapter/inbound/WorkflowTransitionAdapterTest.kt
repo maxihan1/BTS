@@ -1,4 +1,5 @@
-// WorkflowTransitionAdapter 단위 테스트 — 4 시나리오 (S1 Success / S2 ValidatorFailure / S3 WorkflowNotFound / S4 ExpressionTimeout)
+// WorkflowTransitionAdapter 단위 테스트 — 4 시나리오
+// (S1 Success / S2 ValidatorFailure / S3 WorkflowNotFound / S4 ExpressionTimeout)
 
 package com.bts.workflow.adapter.inbound
 
@@ -29,7 +30,6 @@ import org.junit.jupiter.api.Test
  * - S4. WorkflowEngine 이 WorkflowExpressionTimeoutException throw → TransitionResult.ExpressionTimeout(message) 반환.
  */
 class WorkflowTransitionAdapterTest {
-
     private val mockEngine: WorkflowEngine = mockk()
     private lateinit var adapter: WorkflowTransitionAdapter
 
@@ -76,11 +76,12 @@ class WorkflowTransitionAdapterTest {
 
     @Test
     fun `S2 — WorkflowEngine 이 WorkflowValidatorFailureException throw 시 TransitionResult ValidatorFailure 를 반환한다`() {
-        val exception = WorkflowValidatorFailureException(
-            validatorType = "RequiredField",
-            field = "assignee",
-            reason = "조건 X 위반",
-        )
+        val exception =
+            WorkflowValidatorFailureException(
+                validatorType = "RequiredField",
+                field = "assignee",
+                reason = "조건 X 위반",
+            )
         every { mockEngine.plan(validReq) } throws exception
 
         val result = adapter.plan(validReq)
@@ -108,10 +109,11 @@ class WorkflowTransitionAdapterTest {
 
     @Test
     fun `S4 — WorkflowEngine 이 WorkflowExpressionTimeoutException throw 시 TransitionResult ExpressionTimeout 를 반환한다`() {
-        val exception = WorkflowExpressionTimeoutException(
-            expression = "issue.priority == 'HIGH'",
-            timeoutMillis = 500L,
-        )
+        val exception =
+            WorkflowExpressionTimeoutException(
+                expression = "issue.priority == 'HIGH'",
+                timeoutMillis = 500L,
+            )
         every { mockEngine.plan(validReq) } throws exception
 
         val result = adapter.plan(validReq)

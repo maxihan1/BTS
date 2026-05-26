@@ -129,7 +129,8 @@ class IssueController(
      * non-null 이면 새 값으로 변경한다.
      *
      * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
-     * @param request 수정 요청 바디 (Jakarta Validation 적용). [UpdateIssueRequest.summary] null 이면 변경 안 함 (RFC 7396 JSON Merge Patch).
+     * @param request 수정 요청 바디 (Jakarta Validation 적용).
+     *   [UpdateIssueRequest.summary] null 이면 변경 안 함 (RFC 7396 JSON Merge Patch).
      * @return 200 OK + 수정된 [IssueResponse] body
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우 → 404
      * @throws com.bts.issue.domain.IssueVersionConflictException 낙관락 충돌 → 409

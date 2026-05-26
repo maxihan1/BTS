@@ -1,4 +1,5 @@
-// IssueInvariantPropertyTest — Issue 도메인 invariant Kotest property test × 1000 (S11 IssueKey regex + S12 version monotonic + S14 state 전이 이름 수용). seed 고정 1234L.
+// IssueInvariantPropertyTest — Issue 도메인 invariant Kotest property test × 1000
+// (S11 IssueKey regex + S12 version monotonic + S14 state 전이 이름 수용). seed 고정 1234L.
 
 package com.bts.issue.domain
 
@@ -84,7 +85,7 @@ class IssueInvariantPropertyTest : FunSpec({
      */
     test("S11 IssueKey regex — 소문자 시작 반례 20건 모두 IllegalArgumentException throw") {
         val lowerStartArb: Arb<String> =
-            Arb.string(1, 9, Codepoint.az()).map { suffix -> "a${suffix}-1" }
+            Arb.string(1, 9, Codepoint.az()).map { suffix -> "a$suffix-1" }
         checkAll(20, config, lowerStartArb) { key ->
             shouldThrow<IllegalArgumentException> { IssueKey(key) }
         }
@@ -97,7 +98,7 @@ class IssueInvariantPropertyTest : FunSpec({
      */
     test("S11 IssueKey regex — number=0 반례 20건 모두 IllegalArgumentException throw") {
         val zeroNumberArb: Arb<String> =
-            Arb.string(1, 9, upperAlphaNumCodepoint).map { suffix -> "A${suffix}-0" }
+            Arb.string(1, 9, upperAlphaNumCodepoint).map { suffix -> "A$suffix-0" }
         checkAll(20, config, zeroNumberArb) { key ->
             shouldThrow<IllegalArgumentException> { IssueKey(key) }
         }
@@ -166,10 +167,11 @@ class IssueInvariantPropertyTest : FunSpec({
 
             // Issue 는 immutable data class — updateSummary = copy(summary=..., version=version+1)
             repeat(n) { i ->
-                issue = issue.copy(
-                    summary = "updated-$i",
-                    version = issue.version + 1L,
-                )
+                issue =
+                    issue.copy(
+                        summary = "updated-$i",
+                        version = issue.version + 1L,
+                    )
             }
 
             issue.version shouldBe (1L + n)

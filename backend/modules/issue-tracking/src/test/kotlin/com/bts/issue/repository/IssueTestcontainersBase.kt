@@ -1,4 +1,5 @@
-// IssueTestcontainersBase — Testcontainers PostgreSQL singleton + Flyway migrate. PR #8 learning #2 패턴 (JVM 단위 라이프사이클 + Ryuk 자동 정리).
+// IssueTestcontainersBase — Testcontainers PostgreSQL singleton + Flyway migrate.
+// PR #8 learning #2 패턴 (JVM 단위 라이프사이클 + Ryuk 자동 정리).
 
 package com.bts.issue.repository
 
@@ -29,7 +30,8 @@ import java.util.UUID
  * **사용 가이드.**
  * - 자식 클래스에 `@Testcontainers` annotation 을 붙이지 않는다 — JVM singleton 라이프사이클 사용.
  * - `@TestInstance(TestInstance.Lifecycle.PER_CLASS)` 이 선언되어 있으므로 자식 클래스도 동일 적용.
- * - Flyway 설정을 변경하려면 `configureFlyway(builder)` 를 override 한다 (기본 = placeholderReplacement(false) + classpath:db/migration).
+ * - Flyway 설정을 변경하려면 `configureFlyway(builder)` 를 override 한다.
+ *   기본 = placeholderReplacement(false) + classpath:db/migration.
  *   ```kotlin
  *   override fun configureFlyway(builder: FluentConfiguration) =
  *       super.configureFlyway(builder).locations("classpath:db/migration", "classpath:db/test-migration")
@@ -44,7 +46,6 @@ import java.util.UUID
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 abstract class IssueTestcontainersBase {
-
     companion object {
         /**
          * quay.io/tembo/pg16-pgmq:latest 이미지로 생성되는 JVM 단위 singleton PostgreSQL container.

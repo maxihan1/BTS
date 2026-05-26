@@ -42,19 +42,21 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
     val issueKey = IssueKey("BTS-1")
     val existingVersion = 1L
 
-    fun makeIssue(summary: String = "원래", version: Long = existingVersion) =
-        Issue(
-            id = IssueId(UUID.randomUUID()),
-            key = issueKey,
-            projectId = UUID.randomUUID(),
-            summary = summary,
-            reporterId = actor,
-            currentStateKey = "OPEN",
-            version = version,
-            deletedAt = null,
-            createdAt = Instant.parse("2026-05-24T00:00:00Z"),
-            updatedAt = Instant.parse("2026-05-24T00:00:00Z"),
-        )
+    fun makeIssue(
+        summary: String = "원래",
+        version: Long = existingVersion,
+    ) = Issue(
+        id = IssueId(UUID.randomUUID()),
+        key = issueKey,
+        projectId = UUID.randomUUID(),
+        summary = summary,
+        reporterId = actor,
+        currentStateKey = "OPEN",
+        version = version,
+        deletedAt = null,
+        createdAt = Instant.parse("2026-05-24T00:00:00Z"),
+        updatedAt = Instant.parse("2026-05-24T00:00:00Z"),
+    )
 
     beforeEach {
         clearMocks(repo, eventPublisher, permissionResolver, answers = false)

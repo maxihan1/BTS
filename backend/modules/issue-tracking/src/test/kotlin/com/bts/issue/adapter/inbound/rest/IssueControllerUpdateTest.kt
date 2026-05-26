@@ -3,7 +3,6 @@
 package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.application.IssueApplicationService
-import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueTransitionNotAllowedException
@@ -13,7 +12,6 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
-import io.mockk.verify
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -34,6 +32,7 @@ import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import java.time.Instant
 import java.util.UUID
+import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
 
 /**
  * IssueController PATCH /api/v1/issues/{key} 및 POST /api/v1/issues/{key}/transition MockMvc 슬라이스 테스트.
