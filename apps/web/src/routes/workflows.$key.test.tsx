@@ -8,15 +8,11 @@ import { workflowHandlers } from '@/mocks/workflow-handlers'
 import { softwareDefaultFixture } from '@/mocks/workflow-fixtures'
 import { WorkflowDetailPage } from './workflows.$key'
 
-// mermaid 라이브러리 mock — jsdom 환경에서 실제 SVG 렌더 불가
-// (WorkflowDiagram.test.tsx 와 동일 패턴. PR #16 D5 옵션 C 후속)
-// 단위 테스트 책임: description 렌더 behavior 검증만. 실제 SVG 렌더는 Playwright E2E 담당.
-vi.mock('mermaid', () => ({
-  default: {
-    initialize: vi.fn(),
-    run: vi.fn().mockResolvedValue(undefined),
-    render: vi.fn().mockResolvedValue({ svg: '<svg></svg>' }),
-  },
+// WorkflowDiagram 컴포넌트 자체를 stub — mermaid import / SVG 렌더 자체 발생 안 함
+// (PR #20 — vi.mock('mermaid') 가 worker scope leak 으로 LoginForm.test.tsx timing 영향 발견 후 좁힘)
+// 단위 테스트 책임: header 의 description <p> 렌더 behavior 검증만. WorkflowDiagram 자체 렌더는 Playwright E2E 담당.
+vi.mock('@/components/workflow/WorkflowDiagram', () => ({
+  WorkflowDiagram: () => null,
 }))
 
 // WorkflowDetailPage는 props로 workflowKey를 받으므로 라우터 없이 단위 테스트 가능.
