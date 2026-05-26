@@ -43,13 +43,13 @@
 
 **우선순위**. 필수 | **선행**. §2.1 | **Plan slug**. `identity/ldap`
 
-- [x] D1. 도메인 (책임. security-engineer)
-- [x] D2. 명세 — baseDN, 사용자/그룹 매핑, lockout 정책 (책임. security-engineer)
-- [x] D3. 데이터 모델 — `users`, `user_external_accounts(provider, externalId)` (책임. db-engineer)
-- [x] D4. 백엔드 — Spring Security LDAP authenticator + `UserDetailsService` (책임. security-engineer)
-- [x] D5. 백엔드 테스트 — Testcontainers OpenLDAP (책임. security-engineer)
-- [x] D6. 프론트 UI — 로그인 폼 (책임. designer → frontend-engineer)
-- [ ] D7. E2E — Playwright (책임. qa-engineer)
+- [x] D1. 도메인 (책임. security-engineer) (PR #8, 2026-05-21)
+- [x] D2. 명세 — baseDN, 사용자/그룹 매핑, lockout 정책 (책임. security-engineer) (PR #8, 2026-05-21)
+- [x] D3. 데이터 모델 — `users`, `user_external_accounts(provider, externalId)` (책임. db-engineer) (PR #8, 2026-05-21)
+- [x] D4. 백엔드 — Spring Security LDAP authenticator + `UserDetailsService` (책임. security-engineer) (PR #8, 2026-05-21)
+- [x] D5. 백엔드 테스트 — Testcontainers OpenLDAP (책임. security-engineer) (PR #8, 2026-05-21)
+- [x] D6. 프론트 UI — 로그인 폼 (책임. designer → frontend-engineer) (PR #11, 2026-05-22)
+- [x] D7. E2E — Playwright (책임. qa-engineer) (PR #22, 2026-05-26)
 
 | 항목 | 임계 | 실측 (p95) |
 |---|---|---|
