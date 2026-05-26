@@ -9,6 +9,7 @@ import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
@@ -16,6 +17,7 @@ import com.bts.issue.event.IssueSoftDeleted
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.event.IssueUpdated
 import com.bts.workflow.domain.dto.TransitionRequest
+import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
@@ -198,7 +200,16 @@ class IssueApplicationService(
             actorRoles = emptySet(),
             version = request.expectedVersion,
         )
-        val plan = workflowPort.plan(transitionReq)
+        val plan = try {
+            workflowPort.plan(transitionReq)
+        } catch (e: WorkflowValidatorFailureException) {
+            throw IssueTransitionNotAllowedException(
+                issueKey = key,
+                fromStatus = issue.currentStateKey,
+                toStatus = request.toStateKey,
+                cause = e,
+            )
+        }
         val updatedRows = repo.applyTransition(key, plan.toStateKey, request.expectedVersion)
         if (updatedRows == 0) {
             throw IssueVersionConflictException(key, issue.version)
