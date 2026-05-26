@@ -1,16 +1,23 @@
-// IssueController — POST /api/v1/issues 이슈 생성 REST 엔드포인트
+// IssueController — POST /api/v1/issues 이슈 생성, GET 단건/목록 REST 엔드포인트
 
 package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.application.CreateIssueRequest as AppCreateIssueRequest
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.IssueKey
 import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
+import org.springframework.data.web.PageableDefault
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.net.URI
 import java.util.UUID
@@ -18,15 +25,17 @@ import java.util.UUID
 /**
  * 이슈 REST API 컨트롤러.
  *
- * 엔드포인트 목록 (T13 범위 — POST 만).
- * - POST /api/v1/issues — 이슈 생성
+ * 엔드포인트 목록.
+ * - POST /api/v1/issues — 이슈 생성 (T13)
+ * - GET  /api/v1/issues/{key} — 이슈 단건 조회 (T14)
+ * - GET  /api/v1/issues — 이슈 목록 조회 (페이지) (T14)
  *
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다.
  * 트랜잭션 개시는 [IssueApplicationService] 가 담당한다 (@Transactional 클래스 레벨 선언).
  *
  * ### ActorId 임시 처리
- * T13 범위에서는 security context 연동 대신 고정 UUID 를 임시 사용한다.
+ * security context 연동 전까지 고정 UUID 를 사용한다.
  * 인증 연동은 이후 security-engineer wave 에서 처리한다.
  *
  * @param service 이슈 유스케이스 서비스
@@ -62,6 +71,44 @@ class IssueController(
 
         val location = buildLocation(response.key)
         return ResponseEntity.created(location).body(DataResponse(data = response))
+    }
+
+    /**
+     * 이슈 단건을 조회한다.
+     *
+     * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
+     * @return 200 OK + [IssueResponse] body
+     * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우 → 404
+     */
+    @GetMapping("/{key}")
+    fun get(
+        @PathVariable key: String,
+    ): ResponseEntity<DataResponse<IssueResponse>> {
+        log.info("IssueController.get key={}", key)
+
+        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val issueKey = IssueKey(key)
+        val response = service.findByKey(actor, issueKey)
+        return ResponseEntity.ok(DataResponse(data = response))
+    }
+
+    /**
+     * 프로젝트 이슈 목록을 페이지로 조회한다.
+     *
+     * @param projectKey 프로젝트 키. 생략 가능하며 생략 시 빈 문자열로 위임한다.
+     * @param pageable 페이지 정보. 기본값 size=20, page=0.
+     * @return 200 OK + [Page]<[IssueResponse]>
+     */
+    @GetMapping
+    fun list(
+        @RequestParam projectKey: String?,
+        @PageableDefault(size = 20) pageable: Pageable,
+    ): ResponseEntity<Page<IssueResponse>> {
+        log.info("IssueController.list projectKey={} pageable={}", projectKey, pageable)
+
+        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val page = service.listIssues(actor, projectKey ?: "", pageable)
+        return ResponseEntity.ok(page)
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
