@@ -389,7 +389,7 @@
 
 - [ ] D1. 도메인 — IssueMoveOperation (책임. backend-engineer)
 - [ ] D2. 명세 — 새 이슈 키 생성 + 옛 키 redirect (DATA.md §이슈키 영속성) (책임. backend-engineer + Maxi)
-- [ ] D3. 데이터 모델 — `issue_key_redirects(old_key, new_key, moved_at)` (책임. db-engineer)
+- [x] D3. 데이터 모델 — `issue_key_redirects(old_key, new_key, moved_at)` (책임. db-engineer)
 - [ ] D4. 백엔드 — `POST /api/v1/issues/{key}/move` 트랜잭션 (책임. backend-engineer)
 - [ ] D5. 백엔드 테스트 — 옛 키로 조회 시 308 redirect (책임. backend-engineer)
 - [ ] D6. 프론트 UI — 이동 다이얼로그 (책임. designer → frontend-engineer)
@@ -401,7 +401,7 @@
 
 - [ ] D1. 도메인 (책임. backend-engineer)
 - [ ] D2. 명세 — 히스토리/링크/Watcher/첨부 보존 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용. id 보존 + key만 변경) (책임. db-engineer)
+- [x] D3. 데이터 모델 — (활용. id 보존 + key만 변경) (책임. db-engineer)
 - [ ] D4. 백엔드 — 이동 시 모든 FK 보존 검증 (책임. backend-engineer)
 - [ ] D5. 백엔드 테스트 — 이동 전후 invariant 비교 (책임. backend-engineer)
 - [ ] D6. 프론트 UI — 이동 후 페이지 자동 갱신 (책임. frontend-engineer)
