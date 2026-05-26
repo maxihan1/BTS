@@ -68,7 +68,7 @@ class IssueController(
     ): ResponseEntity<DataResponse<IssueResponse>> {
         log.info("IssueController.create projectKey={}", request.projectKey)
 
-        // TODO: security context 연동 후 실제 인증된 사용자 UUID 로 교체 (security-engineer wave)
+        // 임시 fallback — security-engineer wave 에서 SecurityContextHolder 의 인증된 UUID 로 교체 예정.
         val actor = ActorId(SYSTEM_ACTOR_UUID)
         val appRequest =
             AppCreateIssueRequest(

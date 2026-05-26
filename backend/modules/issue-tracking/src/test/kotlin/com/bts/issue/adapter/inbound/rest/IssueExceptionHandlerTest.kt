@@ -102,13 +102,16 @@ class IssueExceptionHandlerTest {
         fun throwKeyPrefixReserved(): Nothing = throw IssueKeyPrefixReservedException("SYS")
 
         @GetMapping("/transition-not-allowed")
-        fun throwTransitionNotAllowed(): Nothing = throw IssueTransitionNotAllowedException(sampleKey, "OPEN", "IN_PROGRESS")
+        fun throwTransitionNotAllowed(): Nothing {
+            throw IssueTransitionNotAllowedException(sampleKey, "OPEN", "IN_PROGRESS")
+        }
 
         @GetMapping("/unauthenticated")
         fun throwUnauthenticated(): Nothing = throw BadCredentialsException("세션 만료")
 
+        @Suppress("TooGenericExceptionThrown")
         @GetMapping("/internal-error")
-        fun throwInternalError(): Nothing = throw RuntimeException("예기치 않은 오류")
+        fun throwInternalError(): Nothing = throw Exception("예기치 않은 오류")
     }
 
     @org.springframework.beans.factory.annotation.Autowired

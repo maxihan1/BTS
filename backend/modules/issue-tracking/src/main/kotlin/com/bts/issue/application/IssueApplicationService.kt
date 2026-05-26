@@ -182,8 +182,10 @@ class IssueApplicationService(
      * @return 전이된 이슈의 [IssueResponse].
      * @throws IssueAccessDeniedException 권한 없을 때.
      * @throws IssueNotFoundException 이슈가 없는 경우.
+     * @throws IssueTransitionNotAllowedException workflow validator 실패 (BC 경계 변환).
      * @throws IssueVersionConflictException 낙관락 충돌 시.
      */
+    @Suppress("ThrowsCount")
     fun transitionIssue(
         actor: ActorId,
         key: IssueKey,

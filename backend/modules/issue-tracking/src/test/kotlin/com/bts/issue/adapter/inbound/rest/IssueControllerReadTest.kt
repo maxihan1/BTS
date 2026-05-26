@@ -76,7 +76,6 @@ class IssueControllerReadTest {
     lateinit var mockMvc: MockMvc
 
     private val fixedNow: Instant = Instant.parse("2026-05-26T00:00:00Z")
-    private val issueKey = IssueKey("ATLAS-1")
     private val actorId = ActorId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
     private val issueId = UUID.fromString("00000000-0000-0000-0000-000000000002")
 
