@@ -10,7 +10,7 @@ package com.bts.workflow.scheme.domain
  *
  * equals/hashCode 는 내부 [value] Long 기반으로 Kotlin 컴파일러가 자동 생성한다.
  *
- * @property value `workflow_schemes.id` 원본 값.
+ * @property value `workflow_schemes.id BIGINT` 컬럼 원본 값. 1 이상의 자동 증가 양의 정수.
  */
 @JvmInline
 value class WorkflowSchemeId(val value: Long)
