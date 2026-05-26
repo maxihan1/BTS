@@ -70,17 +70,22 @@ class IssueKeyPrefixReservedException(prefix: String) :
 /**
  * 워크플로우 전이가 허용되지 않을 때.
  *
- * project-workflow BC 의 WorkflowValidatorFailureException 을 issue-tracking BC 경계 내부에서
- * 감싸는 wrapper 예외다. 외부 BC 예외가 issue-tracking 어댑터 계층까지 누출되지 않도록 막는다.
+ * project-workflow BC 의 [TransitionResult] 실패 케이스를 issue-tracking BC 경계 내부에서
+ * 변환하는 예외다. 외부 BC 예외/결과가 issue-tracking 어댑터 계층까지 누출되지 않도록 막는다.
  *
  * @param issueKey 전이를 시도한 이슈 키
  * @param fromStatus 전이 전 상태 키
  * @param toStatus 전이 후 상태 키
- * @param cause 원인 예외 (project-workflow BC 에서 발생). 없으면 null.
+ * @param reason 전이가 거부된 사유. 사용자에게 노출 가능한 메시지. 없으면 null.
  */
 class IssueTransitionNotAllowedException(
     val issueKey: IssueKey,
     val fromStatus: String,
     val toStatus: String,
-    cause: Throwable? = null,
-) : RuntimeException("Transition not allowed: ${issueKey.value} ($fromStatus → $toStatus)", cause)
+    val reason: String? = null,
+) : RuntimeException(
+        buildString {
+            append("Transition not allowed: ${issueKey.value} ($fromStatus → $toStatus)")
+            if (reason != null) append(" — $reason")
+        },
+    )
