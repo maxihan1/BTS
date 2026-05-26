@@ -123,17 +123,17 @@ INSERT INTO workflow_schemes (key, name, description, is_default) VALUES
 
 -- ── 6. 4 표준 스킴 default mapping seed (§5.1.6) ───────────────────────────────
 -- 각 표준 스킴에 default mapping (issue_type_id IS NULL) 1건씩 INSERT.
--- workflows key 매핑 (V001 seed YAML 파일명 = workflow key 확인):
+-- workflows key 매핑 — V001 YAML 파일명과 동일:
 --   software-scheme     → software-default  (workflows/software-default.yaml)
 --   bug-tracking-scheme → bug-tracking      (workflows/bug-tracking.yaml)
 --   simple-scheme       → simple            (workflows/simple.yaml)
 --   kanban-scheme       → kanban-basic      (workflows/kanban-basic.yaml)
--- 주의: workflows 테이블은 YamlSeedService 가 애플리케이션 기동 시 INSERT 함.
--- 마이그레이션 시점에 workflows 테이블이 비어 있으면 매핑 0건 — 런타임 seed 후 backfill 필요.
--- 테스트 환경에서는 직접 workflows seed 를 아래에서 삽입한다.
--- 프로덕션: Spring Boot 기동 → YamlSeedService seed → 매핑은 이미 V004 으로 삽입됨.
--- 따라서 YamlSeedService 와 V004 의 실행 순서 dependency 존재.
--- 해결: 조건부 INSERT (workflow row 존재 시만) — WHERE EXISTS 서브쿼리로 안전 처리.
+--
+-- 실행 순서 의존성: workflows 테이블은 YamlSeedService(ApplicationReadyEvent) 가 채운다.
+-- Flyway migrate(V004) 는 Spring Boot 기동 전에 실행되므로 workflows 가 비어 있으면 0건 삽입.
+-- 이 경우 default mapping 은 후속 ApplicationRunner 에서 보완 (Wave-2 범위 — EC-2 참조).
+--
+-- workflows.deleted_at 없음 (V001 — soft-delete 미도입). WHERE 조건 없이 전체 JOIN.
 INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id)
 SELECT s.id, NULL, w.id
 FROM workflow_schemes s
@@ -142,5 +142,4 @@ JOIN workflows w ON w.key = CASE s.key
     WHEN 'bug-tracking-scheme' THEN 'bug-tracking'
     WHEN 'simple-scheme'       THEN 'simple'
     WHEN 'kanban-scheme'       THEN 'kanban-basic'
-END
--- workflows 테이블에 deleted_at 컬럼 없음 (V001 참조 — soft-delete 미도입). 조건 없이 전체 JOIN.
+END;

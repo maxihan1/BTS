@@ -23,6 +23,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
@@ -41,10 +42,16 @@ import java.util.concurrent.TimeUnit
 @Testcontainers
 class WorkflowCacheTest {
     companion object {
+        // quay.io/tembo/pg16-pgmq:latest — V004 pgmq 확장 요구로 인해 tembo 이미지 사용.
+        // ADR 2026-05-22-pgmq-postgres-image 와 동일 패턴.
+        private val temboImage: DockerImageName =
+            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
+                .asCompatibleSubstituteFor("postgres")
+
         @Container
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
+            PostgreSQLContainer(temboImage)
                 .withDatabaseName("bts_test")
                 .withUsername("bts")
                 .withPassword("bts_test")
@@ -58,6 +65,27 @@ class WorkflowCacheTest {
         @JvmStatic
         @org.junit.jupiter.api.BeforeAll
         fun setupAll() {
+            // Flyway 2단계 — V004 issue_types cross-BC FK 대응
+            Flyway.configure()
+                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+                .placeholderReplacement(false)
+                .locations("classpath:db/migration")
+                .target("1")
+                .load()
+                .migrate()
+
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.createStatement().use { stmt ->
+                    stmt.execute(
+                        "CREATE TABLE IF NOT EXISTS issue_types (" +
+                            "id BIGSERIAL PRIMARY KEY, key VARCHAR(30) NOT NULL UNIQUE, " +
+                            "name VARCHAR(255) NOT NULL, is_standard BOOLEAN NOT NULL DEFAULT FALSE, " +
+                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
+                            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
+                    )
+                }
+            }
+
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)

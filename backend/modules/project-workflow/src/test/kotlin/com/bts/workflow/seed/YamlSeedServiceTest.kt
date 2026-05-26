@@ -25,7 +25,9 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import org.testcontainers.utility.DockerImageName
 import java.io.ByteArrayInputStream
+import java.sql.DriverManager
 import java.io.InputStream
 
 /**
@@ -46,10 +48,16 @@ class YamlSeedServiceTest {
     companion object {
         private val log = LoggerFactory.getLogger(YamlSeedServiceTest::class.java)
 
+        // quay.io/tembo/pg16-pgmq:latest — V004 pgmq 확장 요구로 인해 tembo 이미지 사용.
+        // ADR 2026-05-22-pgmq-postgres-image 와 동일 패턴.
+        private val temboImage: DockerImageName =
+            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
+                .asCompatibleSubstituteFor("postgres")
+
         @Container
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
+            PostgreSQLContainer(temboImage)
                 .withDatabaseName("bts_test")
                 .withUsername("bts")
                 .withPassword("bts_test")
@@ -60,7 +68,37 @@ class YamlSeedServiceTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            // Flyway — DB 스키마 변경을 버전 관리하는 도구. V001 마이그레이션으로 5 테이블 생성
+            // Flyway — DB 스키마 변경을 버전 관리하는 도구.
+            // V004 가 issue_types FK 를 참조하므로 2단계 실행:
+            //   1단계: V001 까지만 (workflows 테이블 생성)
+            //   2단계: issue_types 스텁 생성 → V004 까지 (issue_types FK 통과)
+            Flyway.configure()
+                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+                .placeholderReplacement(false)
+                .locations("classpath:db/migration")
+                .target("1")
+                .load()
+                .migrate()
+
+            // issue_types 스텁 — V004 의 cross-BC FK 통과용 (프로덕션에서는 issue-tracking V003 이 생성)
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.createStatement().use { stmt ->
+                    stmt.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS issue_types (
+                            id          BIGSERIAL    PRIMARY KEY,
+                            key         VARCHAR(30)  NOT NULL UNIQUE,
+                            name        VARCHAR(255) NOT NULL,
+                            is_standard BOOLEAN      NOT NULL DEFAULT FALSE,
+                            created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                            updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                            deleted_at  TIMESTAMPTZ
+                        )
+                        """.trimIndent(),
+                    )
+                }
+            }
+
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
