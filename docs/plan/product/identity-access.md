@@ -36,7 +36,7 @@
 - [x] D3. 데이터 모델 — `authn_providers` (provider_type, config) (책임. db-engineer)
 - [x] D4. 백엔드 — `ProviderRegistry` + `AuthenticationManager` Spring Bean (책임. security-engineer)
 - [x] D5. 백엔드 테스트 — 가짜 Provider 2개로 등록/조회 (책임. security-engineer)
-- [ ] D6. 프론트 UI — Provider 선택 화면 (책임. designer → frontend-engineer)
+- [~] D6. 프론트 UI — Provider 선택 화면 (책임. designer → frontend-engineer)
 - [~] D7. E2E (책임. qa-engineer)
 
 ### §2.2 FR-AU-02 — LDAP/AD 연동
@@ -136,7 +136,7 @@
 - [x] D3. 데이터 모델 — `sessions`, `refresh_tokens`, `pats(scope, revoked_at)` (책임. db-engineer)
 - [~] D4. 백엔드 — JWT 발급/검증 + Redis 세션 + PAT 발급 API (책임. security-engineer)
 - [x] D5. 백엔드 테스트 — 토큰 만료/회전/취소 (책임. security-engineer)
-- [ ] D6. 프론트 UI — 활성 세션 목록 + 강제 로그아웃 (책임. designer → frontend-engineer). **DEVELOPMENT.md §1.17 — 토큰 localStorage 금지 (sessionStorage 강제)**
+- [~] D6. 프론트 UI — 활성 세션 목록 + 강제 로그아웃 (책임. designer → frontend-engineer). **DEVELOPMENT.md §1.17 — 토큰 localStorage 금지 (sessionStorage 강제)**
 - [x] D7. E2E (책임. qa-engineer)
 
 ### §2.10 FR-AU-10 — 인증 감사 로그
