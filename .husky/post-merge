@@ -1,0 +1,11 @@
+# main 머지 시점에 진척도 대시보드(docs/progress.html) 자동 재생성 + 푸시
+[ "$(git rev-parse --abbrev-ref HEAD)" = "main" ] || exit 0
+
+node scripts/build-dashboard.mjs
+
+if ! git diff --quiet docs/progress.html 2>/dev/null; then
+  git add docs/progress.html
+  git commit -m "[chore] dashboard regen [skip ci]"
+  git push
+  echo "✅ docs/progress.html 갱신 + 푸시 완료"
+fi
