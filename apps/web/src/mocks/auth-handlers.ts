@@ -3,7 +3,12 @@ import { http, HttpResponse } from 'msw'
 import { AUTH_USERS, LDAP_VALID_PASSWORDS, VALID_PASSWORDS, mockAccessToken } from './auth-fixtures'
 
 /**
- * POST /api/v1/auth/login — username/password 검증 후 token 또는 401 반환.
+ * POST /api/v1/auth/login — provider + username/password 검증 후 token 또는 401 반환.
+ *
+ * provider 분기.
+ * - `local`: VALID_PASSWORDS (alice/password, bob/password) 검증
+ * - `ldap-corp`: LDAP_VALID_PASSWORDS (alice/Test1234!, bob/Test1234!) 검증
+ * - 그 외: 401 `{ error: "unknown_provider" }` (방어 layer)
  *
  * 응답 schema: backend AuthController.TokenResponse (`access_token`, `token_type`, `expires_in`)
  * 에러 schema: `{ error: "invalid_credentials" }` — useLoginMutation의 resolveLoginErrorMessage 가 사용

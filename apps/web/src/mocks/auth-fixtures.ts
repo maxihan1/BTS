@@ -29,7 +29,7 @@ export const VALID_PASSWORDS: Readonly<Record<string, string>> = {
   bob: 'password',
 }
 
-/** username → 유효 비밀번호 맵 (LDAP provider, mock 전용, 실제 비밀번호 아님) */
+/** username → 유효 비밀번호 맵 (LDAP provider, mock 전용 — backend `LdapAuthFlowIntegrationTest` (uid=alice/bob, Test1234!) 매칭) */
 export const LDAP_VALID_PASSWORDS: Readonly<Record<string, string>> = {
   alice: 'Test1234!',
   bob: 'Test1234!',
