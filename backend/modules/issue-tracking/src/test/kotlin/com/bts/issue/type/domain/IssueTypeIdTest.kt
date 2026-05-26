@@ -20,7 +20,7 @@ class IssueTypeIdTest {
     fun `create — 양의 Long 으로 IssueTypeId 를 생성하면 value 가 입력값 그대로다`() {
         val id = IssueTypeId(1L)
 
-        assertThat(id.value).isEqualTo(1L)
+        assertThat(id.value as Long).isEqualTo(1L)
     }
 
     @Test
@@ -40,7 +40,7 @@ class IssueTypeIdTest {
         val a = IssueTypeId(42L)
         val b = IssueTypeId(42L)
 
-        assertThat(a).isEqualTo(b)
-        assertThat(a.hashCode()).isEqualTo(b.hashCode())
+        assertThat(a as Any).isEqualTo(b)
+        assertThat(a.hashCode() as Int).isEqualTo(b.hashCode())
     }
 }
