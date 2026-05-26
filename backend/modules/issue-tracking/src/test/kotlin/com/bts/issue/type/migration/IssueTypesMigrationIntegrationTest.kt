@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 
 /**
@@ -21,15 +22,27 @@ import java.sql.DriverManager
  * - ix_issue_types_key_active 부분 인덱스 존재
  * - TIMESTAMPTZ 타입 강제 (DATA.md §4)
  *
+ * 이미지 선택 이유.
+ * V002 마이그레이션이 pgmq 확장을 요구하므로 postgres:16-alpine 사용 불가.
+ * quay.io/tembo/pg16-pgmq:latest (pgmq 사전 설치) 로 전체 마이그레이션 체인 실행.
+ * ADR 2026-05-22-pgmq-postgres-image 와 동일 결정.
+ *
  * 참조. spec §5.2.1 / FR-WF-02 cross-BC 사전 도입 / ADR issue-type-cross-bc-introduction.
  */
 @Testcontainers
 class IssueTypesMigrationIntegrationTest {
     companion object {
+        // quay.io/tembo/pg16-pgmq:latest — V002 pgmq 확장 요구로 인해 tembo 이미지 사용.
+        // asCompatibleSubstituteFor("postgres"): Testcontainers 이미지 호환성 검증 우회.
+        // ADR 2026-05-22-pgmq-postgres-image 와 동일 패턴.
+        private val temboImage: DockerImageName =
+            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
+                .asCompatibleSubstituteFor("postgres")
+
         @Container
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
+            PostgreSQLContainer(temboImage)
                 .withDatabaseName("bts_test")
                 .withUsername("bts")
                 .withPassword("bts_test")
