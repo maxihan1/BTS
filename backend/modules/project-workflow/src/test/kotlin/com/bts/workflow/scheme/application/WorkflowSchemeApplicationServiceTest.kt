@@ -2,18 +2,24 @@
 
 package com.bts.workflow.scheme.application
 
+import com.bts.issue.type.domain.IssueTypeId
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermissionResolver
+import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowScheme
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
+import com.bts.workflow.scheme.exception.MappingDefaultDuplicateException
+import com.bts.workflow.scheme.exception.MappingDuplicateException
 import com.bts.workflow.scheme.exception.SchemeInUseException
 import com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException
 import com.bts.workflow.scheme.exception.SchemeStandardNotDeletableException
 import com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
+import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
 import io.mockk.every
+import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
@@ -21,6 +27,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.time.Instant
+import java.util.UUID
 
 /**
  * [WorkflowSchemeApplicationService] 단위 테스트.
@@ -33,6 +40,7 @@ class WorkflowSchemeApplicationServiceTest {
 
     private val schemeRepo: WorkflowSchemeRepository = mockk()
     private val assignmentRepo: ProjectWorkflowSchemeAssignmentRepository = mockk()
+    private val mappingRepo: SchemeIssueTypeMappingRepository = mockk()
     private val permissionResolver = AlwaysAllowWorkflowSchemePermissionResolver()
 
     private lateinit var service: WorkflowSchemeApplicationService
@@ -41,7 +49,7 @@ class WorkflowSchemeApplicationServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = WorkflowSchemeApplicationService(schemeRepo, assignmentRepo, permissionResolver)
+        service = WorkflowSchemeApplicationService(schemeRepo, assignmentRepo, mappingRepo, permissionResolver)
     }
 
     // ── create ────────────────────────────────────────────────────────────────
@@ -173,7 +181,85 @@ class WorkflowSchemeApplicationServiceTest {
         verify(exactly = 1) { schemeRepo.findAll() }
     }
 
+    // ── addMapping ────────────────────────────────────────────────────────────
+
+    @Test
+    fun `addMapping — 정상 입력 시 mappingRepo addMapping 호출 후 저장된 매핑을 반환한다`() {
+        val key = WorkflowSchemeKey("software-scheme")
+        val schemeId = WorkflowSchemeId(1L)
+        val scheme = buildScheme(key, id = schemeId)
+        val issueTypeId = IssueTypeId(10L)
+        val workflowId = UUID.randomUUID()
+        val expected = buildMapping(schemeId, issueTypeId, workflowId)
+
+        every { schemeRepo.findByKey(key) } returns scheme
+        every { mappingRepo.addMapping(any()) } returns expected
+
+        val result = service.addMapping(actor, key, issueTypeId, workflowId)
+
+        assertThat(result.schemeId).isEqualTo(schemeId)
+        assertThat(result.issueTypeId).isEqualTo(issueTypeId)
+        verify(exactly = 1) { mappingRepo.addMapping(any()) }
+    }
+
+    @Test
+    fun `addMapping — UNIQUE 위반 시 MappingDuplicateException 을 전파한다`() {
+        val key = WorkflowSchemeKey("software-scheme")
+        val schemeId = WorkflowSchemeId(1L)
+        val scheme = buildScheme(key, id = schemeId)
+        val issueTypeId = IssueTypeId(10L)
+
+        every { schemeRepo.findByKey(key) } returns scheme
+        every { mappingRepo.addMapping(any()) } throws MappingDuplicateException(
+            schemeKey = key.value,
+            issueTypeKey = issueTypeId.value.toString(),
+        )
+
+        assertThatThrownBy { service.addMapping(actor, key, issueTypeId, UUID.randomUUID()) }
+            .isInstanceOf(MappingDuplicateException::class.java)
+    }
+
+    @Test
+    fun `addMapping — default mapping UNIQUE 위반 시 MappingDefaultDuplicateException 을 전파한다`() {
+        val key = WorkflowSchemeKey("software-scheme")
+        val schemeId = WorkflowSchemeId(1L)
+        val scheme = buildScheme(key, id = schemeId)
+
+        every { schemeRepo.findByKey(key) } returns scheme
+        every { mappingRepo.addMapping(any()) } throws MappingDefaultDuplicateException(
+            schemeKey = key.value,
+        )
+
+        assertThatThrownBy { service.addMapping(actor, key, issueTypeId = null, UUID.randomUUID()) }
+            .isInstanceOf(MappingDefaultDuplicateException::class.java)
+    }
+
+    // ── deleteMapping ─────────────────────────────────────────────────────────
+
+    @Test
+    fun `deleteMapping — 정상 호출 시 mappingRepo deleteMapping 이 호출된다`() {
+        justRun { mappingRepo.deleteMapping(any()) }
+
+        service.deleteMapping(actor, mappingId = 99L)
+
+        verify(exactly = 1) { mappingRepo.deleteMapping(99L) }
+    }
+
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
+
+    private fun buildMapping(
+        schemeId: WorkflowSchemeId,
+        issueTypeId: IssueTypeId?,
+        workflowId: UUID,
+        id: Long = 1L,
+    ): SchemeIssueTypeMapping =
+        SchemeIssueTypeMapping(
+            id = id,
+            schemeId = schemeId,
+            issueTypeId = issueTypeId,
+            workflowId = workflowId,
+            createdAt = Instant.now(),
+        )
 
     private fun buildScheme(
         key: WorkflowSchemeKey,
