@@ -1,0 +1,274 @@
+// project-workflow V004 마이그레이션 검증 — workflow_schemes 3 테이블 + pgmq 큐 + 4 표준 seed 존재 확인
+
+package com.bts.workflow.scheme.migration
+
+import org.assertj.core.api.Assertions.assertThat
+import org.flywaydb.core.Flyway
+import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.Test
+import org.testcontainers.containers.PostgreSQLContainer
+import org.testcontainers.junit.jupiter.Container
+import org.testcontainers.junit.jupiter.Testcontainers
+import org.testcontainers.utility.DockerImageName
+import java.sql.DriverManager
+
+/**
+ * Flyway V001~V004 마이그레이션 적용 후 workflow_schemes 3 테이블 + pgmq 큐 + 4 표준 seed 를 검증한다.
+ * Testcontainers PostgreSQL 을 직접 사용하며 Spring 컨텍스트 없이 실행한다.
+ *
+ * 검증 범위.
+ * - workflow_schemes 4 row 존재 (software-scheme / bug-tracking-scheme / simple-scheme / kanban-scheme)
+ * - 4 row 전부 is_default = true
+ * - project_workflow_scheme_assignments 0 row (application 레이어 UPSERT 동작, EC-1)
+ * - workflow_scheme_issue_type_mappings 4 row 존재 (default mapping, issue_type_id IS NULL, 각 스킴 1건)
+ * - pgmq queue q_workflow_scheme_events 존재 (pgmq.list_queues() 확인)
+ * - partial UNIQUE INDEX ix_scheme_default_mapping 존재
+ * - ix_workflow_schemes_key_active 부분 인덱스 존재
+ * - TIMESTAMPTZ 타입 강제 (DATA.md §4)
+ *
+ * 이미지 선택 이유.
+ * V004 마이그레이션이 pgmq 확장 + SELECT pgmq.create() 를 사용하므로 postgres:16-alpine 사용 불가.
+ * quay.io/tembo/pg16-pgmq:latest (pgmq 사전 설치) 로 전체 마이그레이션 체인 실행.
+ * ADR 2026-05-22-pgmq-postgres-image 와 동일 결정.
+ *
+ * 참조. spec §5.1 / FR-WF-02 / D13 결정 (issue-tracking V003 → project-workflow V004 순서).
+ */
+@Testcontainers
+class WorkflowSchemesMigrationIntegrationTest {
+    companion object {
+        // quay.io/tembo/pg16-pgmq:latest — V004 pgmq 확장 + pgmq.create() 요구로 인해 tembo 이미지 사용.
+        // asCompatibleSubstituteFor("postgres"): Testcontainers 이미지 호환성 검증 우회.
+        // ADR 2026-05-22-pgmq-postgres-image 와 동일 패턴.
+        private val temboImage: DockerImageName =
+            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
+                .asCompatibleSubstituteFor("postgres")
+
+        @Container
+        @JvmStatic
+        val postgres: PostgreSQLContainer<*> =
+            PostgreSQLContainer(temboImage)
+                .withDatabaseName("bts_test")
+                .withUsername("bts")
+                .withPassword("bts_test")
+
+        @BeforeAll
+        @JvmStatic
+        fun applyMigrations() {
+            Flyway.configure()
+                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+                .placeholderReplacement(false)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate()
+        }
+    }
+
+    // ── 헬퍼 ──────────────────────────────────────────────────────────────────
+
+    private fun tableExists(tableName: String): Boolean =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "SELECT COUNT(*) FROM information_schema.tables" +
+                    " WHERE table_schema = 'public' AND table_name = ?",
+            ).use { stmt ->
+                stmt.setString(1, tableName)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getInt(1) > 0
+                }
+            }
+        }
+
+    private fun indexExists(indexName: String): Boolean =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "SELECT COUNT(*) FROM pg_indexes" +
+                    " WHERE schemaname = 'public' AND indexname = ?",
+            ).use { stmt ->
+                stmt.setString(1, indexName)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getInt(1) > 0
+                }
+            }
+        }
+
+    private fun columnDataType(
+        tableName: String,
+        columnName: String,
+    ): String? =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "SELECT data_type FROM information_schema.columns" +
+                    " WHERE table_schema = 'public' AND table_name = ? AND column_name = ?",
+            ).use { stmt ->
+                stmt.setString(1, tableName)
+                stmt.setString(2, columnName)
+                stmt.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
+            }
+        }
+
+    private fun countRows(
+        tableName: String,
+        whereClause: String = "",
+    ): Int =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            val sql = "SELECT COUNT(*) FROM $tableName${if (whereClause.isNotEmpty()) " WHERE $whereClause" else ""}"
+            conn.createStatement().use { stmt ->
+                stmt.executeQuery(sql).use { rs ->
+                    rs.next()
+                    rs.getInt(1)
+                }
+            }
+        }
+
+    private fun schemeKeyExists(key: String): Boolean =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "SELECT COUNT(*) FROM workflow_schemes WHERE key = ?",
+            ).use { stmt ->
+                stmt.setString(1, key)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getInt(1) > 0
+                }
+            }
+        }
+
+    private fun pgmqQueueExists(queueName: String): Boolean =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "SELECT COUNT(*) FROM pgmq.list_queues() WHERE queue_name = ?",
+            ).use { stmt ->
+                stmt.setString(1, queueName)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getInt(1) > 0
+                }
+            }
+        }
+
+    // ── 테이블 3개 존재 검증 ──────────────────────────────────────────────────
+
+    @Test
+    fun `V004 workflow_schemes 테이블 존재`() {
+        assertThat(tableExists("workflow_schemes")).isTrue()
+    }
+
+    @Test
+    fun `V004 project_workflow_scheme_assignments 테이블 존재`() {
+        assertThat(tableExists("project_workflow_scheme_assignments")).isTrue()
+    }
+
+    @Test
+    fun `V004 workflow_scheme_issue_type_mappings 테이블 존재`() {
+        assertThat(tableExists("workflow_scheme_issue_type_mappings")).isTrue()
+    }
+
+    // ── workflow_schemes 4 표준 seed 검증 ─────────────────────────────────────
+
+    @Test
+    fun `V004 workflow_schemes 에 정확히 4 row 존재`() {
+        assertThat(countRows("workflow_schemes")).isEqualTo(4)
+    }
+
+    @Test
+    fun `V004 모든 4 row 의 is_default 는 true`() {
+        assertThat(countRows("workflow_schemes", "is_default = true")).isEqualTo(4)
+    }
+
+    @Test
+    fun `V004 software-scheme key 존재`() {
+        assertThat(schemeKeyExists("software-scheme")).isTrue()
+    }
+
+    @Test
+    fun `V004 bug-tracking-scheme key 존재`() {
+        assertThat(schemeKeyExists("bug-tracking-scheme")).isTrue()
+    }
+
+    @Test
+    fun `V004 simple-scheme key 존재`() {
+        assertThat(schemeKeyExists("simple-scheme")).isTrue()
+    }
+
+    @Test
+    fun `V004 kanban-scheme key 존재`() {
+        assertThat(schemeKeyExists("kanban-scheme")).isTrue()
+    }
+
+    // ── project_workflow_scheme_assignments 빈 검증 (EC-1) ───────────────────
+
+    @Test
+    fun `V004 project_workflow_scheme_assignments 는 0 row`() {
+        assertThat(countRows("project_workflow_scheme_assignments")).isEqualTo(0)
+    }
+
+    // ── workflow_scheme_issue_type_mappings default mapping 4건 검증 ──────────
+
+    @Test
+    fun `V004 workflow_scheme_issue_type_mappings 에 정확히 4 row 존재`() {
+        assertThat(countRows("workflow_scheme_issue_type_mappings")).isEqualTo(4)
+    }
+
+    @Test
+    fun `V004 workflow_scheme_issue_type_mappings 4 row 모두 issue_type_id IS NULL`() {
+        assertThat(countRows("workflow_scheme_issue_type_mappings", "issue_type_id IS NULL")).isEqualTo(4)
+    }
+
+    // ── pgmq 큐 존재 검증 ────────────────────────────────────────────────────
+
+    @Test
+    fun `V004 q_workflow_scheme_events 큐 존재`() {
+        assertThat(pgmqQueueExists("q_workflow_scheme_events")).isTrue()
+    }
+
+    // ── 인덱스 존재 검증 ─────────────────────────────────────────────────────
+
+    @Test
+    fun `V004 ix_workflow_schemes_key_active 부분 인덱스 존재`() {
+        assertThat(indexExists("ix_workflow_schemes_key_active")).isTrue()
+    }
+
+    @Test
+    fun `V004 ix_scheme_default_mapping partial UNIQUE INDEX 존재`() {
+        assertThat(indexExists("ix_scheme_default_mapping")).isTrue()
+    }
+
+    @Test
+    fun `V004 ix_pwsa_scheme 인덱스 존재`() {
+        assertThat(indexExists("ix_pwsa_scheme")).isTrue()
+    }
+
+    // ── TIMESTAMPTZ 타입 검증 (DATA.md §4) ───────────────────────────────────
+
+    @Test
+    fun `V004 workflow_schemes created_at 은 TIMESTAMPTZ`() {
+        assertThat(columnDataType("workflow_schemes", "created_at"))
+            .isEqualTo("timestamp with time zone")
+    }
+
+    @Test
+    fun `V004 workflow_schemes updated_at 은 TIMESTAMPTZ`() {
+        assertThat(columnDataType("workflow_schemes", "updated_at"))
+            .isEqualTo("timestamp with time zone")
+    }
+
+    @Test
+    fun `V004 workflow_schemes deleted_at 은 TIMESTAMPTZ`() {
+        assertThat(columnDataType("workflow_schemes", "deleted_at"))
+            .isEqualTo("timestamp with time zone")
+    }
+
+    @Test
+    fun `V004 project_workflow_scheme_assignments assigned_at 은 TIMESTAMPTZ`() {
+        assertThat(columnDataType("project_workflow_scheme_assignments", "assigned_at"))
+            .isEqualTo("timestamp with time zone")
+    }
+
+    @Test
+    fun `V004 workflow_scheme_issue_type_mappings created_at 은 TIMESTAMPTZ`() {
+        assertThat(columnDataType("workflow_scheme_issue_type_mappings", "created_at"))
+            .isEqualTo("timestamp with time zone")
+    }
+}
