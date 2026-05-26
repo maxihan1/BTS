@@ -1,7 +1,8 @@
 -- issue-tracking V003 — issue_types 테이블 + 5 표준 타입 seed (FR-WF-02 cross-BC 사전 도입)
--- spec §5.2.1 issue-tracking BC IssueType 5 표준 seed (FR-WF-02 cross-BC 사전 도입)
--- BC 격리 의식적 예외 — project-workflow PR 안에 issue-tracking 의 V003 마이그레이션 도입.
+-- spec §5.2 issue-tracking BC IssueType 5 표준 seed (FR-WF-02 cross-BC 사전 도입)
+-- BC 격리 의식적 예외 — project-workflow PR 안에 issue-tracking V003 마이그레이션 도입.
 -- ADR 후보: issue-type-cross-bc-introduction
+-- Flyway placeholder: 이 파일에 ${...} 패턴 없음 — placeholderReplacement=false 불필요 (PR #10 학습 재확인).
 
 -- 1. issue_types 테이블
 -- 이슈 유형 정의. is_standard=true 인 5개는 시스템 표준 타입 — 삭제/변경 비권장.
