@@ -149,7 +149,12 @@ class IssueApplicationService(
         assertPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(key.value))
         val existing = repo.findByKey(key) ?: throw IssueNotFoundException(key)
         val changedFields = buildChangedFields(existing, request)
-        val updatedRows = repo.updateSummary(key, request.summary, request.expectedVersion)
+        if (changedFields.isEmpty()) {
+            log.info("issue_update_noop key={} actor={}", key.value, actor.value)
+            return IssueResponse.from(existing, key.projectPrefix)
+        }
+        val newSummary = requireNotNull(request.summary) { "summary must be non-null when changedFields is non-empty" }
+        val updatedRows = repo.updateSummary(key, newSummary, request.expectedVersion)
         if (updatedRows == 0) {
             throw IssueVersionConflictException(key, existing.version)
         }
@@ -297,7 +302,7 @@ class IssueApplicationService(
         request: UpdateIssueRequest,
     ): Set<String> {
         val fields = mutableSetOf<String>()
-        if (existing.summary != request.summary) fields.add("summary")
+        if (request.summary != null && existing.summary != request.summary) fields.add("summary")
         return fields
     }
 
