@@ -1,13 +1,16 @@
-// 워크플로우 스킴 Application Service — Scheme CRUD 5 메서드 + Mapping CRUD 2 메서드 (addMapping/deleteMapping)
+// 워크플로우 스킴 Application Service — Scheme CRUD 5 메서드 + Mapping CRUD 2 메서드 (addMapping/deleteMapping) + Project assign 2 메서드
 
 package com.bts.workflow.scheme.application
 
 import com.bts.issue.type.domain.IssueTypeId
 import com.bts.workflow.port.outbound.ActorId
+import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
+import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowScheme
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
+import com.bts.workflow.scheme.event.WorkflowSchemeAssignedEvent
 import com.bts.workflow.scheme.exception.SchemeInUseException
 import com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException
 import com.bts.workflow.scheme.exception.SchemeStandardNotDeletableException
@@ -40,8 +43,9 @@ import java.util.UUID
  * 권한이 없으면 resolver 가 예외를 던진다 (Guard 패턴).
  *
  * @param schemeRepo 워크플로우 스킴 Repository.
- * @param assignmentRepo 프로젝트-스킴 할당 Repository (S7 사용 중 검증용).
+ * @param assignmentRepo 프로젝트-스킴 할당 Repository (S7 사용 중 검증용, assignToProject 에도 사용).
  * @param mappingRepo 스킴-이슈타입 매핑 Repository.
+ * @param eventPublisher 워크플로우 스킴 도메인 이벤트 pgmq publisher (Propagation.MANDATORY).
  * @param permissionResolver 스킴 권한 평가 outbound port.
  */
 @Service
@@ -50,6 +54,7 @@ class WorkflowSchemeApplicationService(
     private val schemeRepo: WorkflowSchemeRepository,
     private val assignmentRepo: ProjectWorkflowSchemeAssignmentRepository,
     private val mappingRepo: SchemeIssueTypeMappingRepository,
+    private val eventPublisher: WorkflowSchemeEventPublisher,
     private val permissionResolver: WorkflowSchemePermissionResolver,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -235,7 +240,104 @@ class WorkflowSchemeApplicationService(
         mappingRepo.deleteMapping(mappingId)
     }
 
+    /**
+     * 프로젝트에 워크플로우 스킴을 배정(UPSERT)하고 배정 결과를 반환한다.
+     *
+     * ## 권한
+     * [WorkflowSchemePermission.ASSIGN_SCHEME] — [WorkflowSchemeScope.Project] 범위 검증.
+     * 프로젝트 어드민 레벨 권한이 필요하다.
+     *
+     * ## 트랜잭션
+     * `@Transactional` 클래스 어노테이션 상속. [assignmentRepo.saveAssignment] 와
+     * [eventPublisher.publish] 가 동일 트랜잭션 안에서 실행된다 (outbox 패턴).
+     * [eventPublisher] 는 [Propagation.MANDATORY] 이므로 별도 처리 불필요.
+     *
+     * ## EC-1 D10 auto-assign
+     * [findAssignedScheme] 이 assignment 없는 프로젝트를 감지했을 때 SYSTEM_ACTOR 로 이 메서드를 호출한다.
+     * `assigned_by = SYSTEM_ACTOR.raw` (UUID sentinel: 00000000-0000-0000-0000-000000000000).
+     *
+     * @param actor 작업 수행 행위자. ASSIGN_SCHEME 권한이 필요하다. SYSTEM_ACTOR 도 허용.
+     * @param projectId 스킴을 배정할 프로젝트 ID.
+     * @param projectKey 권한 범위 결정에 사용할 프로젝트 키 (예. "ATLAS").
+     * @param schemeKey 배정할 스킴 키.
+     * @return 저장된 [ProjectWorkflowSchemeAssignment].
+     * @throws WorkflowSchemeNotFoundException [schemeKey] 에 해당하는 활성 스킴이 없을 때.
+     */
+    fun assignToProject(
+        actor: ActorId,
+        projectId: Long,
+        projectKey: String,
+        schemeKey: WorkflowSchemeKey,
+    ): ProjectWorkflowSchemeAssignment {
+        permissionResolver.requirePermission(actor, WorkflowSchemePermission.ASSIGN_SCHEME, WorkflowSchemeScope.Project(projectKey))
+        val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
+        val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
+
+        val actorUuid = runCatching { UUID.fromString(actor.raw) }.getOrElse { SYSTEM_ACTOR_UUID }
+        val now = Instant.now()
+        val assignment = ProjectWorkflowSchemeAssignment(
+            projectId = projectId,
+            workflowSchemeId = schemeId,
+            assignedAt = now,
+            assignedBy = actorUuid,
+        )
+        assignmentRepo.saveAssignment(assignment)
+        log.info("assignToProject: actor={} projectId={} schemeKey={}", actor.raw, projectId, schemeKey.value)
+        eventPublisher.publish(
+            WorkflowSchemeAssignedEvent(
+                schemeId = schemeId,
+                projectId = projectId,
+                assignedBy = actorUuid,
+                occurredAt = now,
+            ),
+        )
+        return assignment
+    }
+
+    /**
+     * 프로젝트에 배정된 워크플로우 스킴을 반환한다.
+     *
+     * ## EC-1 D10 — software-scheme auto-assign
+     * assignment 가 없는 신규 프로젝트의 경우, `software-scheme` 을 SYSTEM_ACTOR 로 1회 자동 배정한다.
+     * 배정 후 해당 스킴을 반환한다. 이후 호출부터는 assignment 가 존재하므로 auto-assign 이 재실행되지 않는다.
+     *
+     * @param projectId 조회할 프로젝트 ID.
+     * @param projectKey auto-assign 시 권한 범위 결정에 사용할 프로젝트 키.
+     * @return 배정된 [WorkflowScheme].
+     * @throws WorkflowSchemeNotFoundException assignment 는 있지만 scheme 이 soft-delete 된 경우.
+     */
+    @Transactional
+    fun findAssignedScheme(projectId: Long, projectKey: String): WorkflowScheme {
+        val assignment = assignmentRepo.findByProjectId(projectId)
+            ?: run {
+                // EC-1 D10 — assignment 없으면 software-scheme 1회 auto-assign (assigned_by = SYSTEM_ACTOR)
+                log.info("findAssignedScheme: no assignment for projectId={}, auto-assigning software-scheme", projectId)
+                val autoAssignment = assignToProject(SYSTEM_ACTOR, projectId, projectKey, SOFTWARE_SCHEME_KEY)
+                return schemeRepo.findById(autoAssignment.workflowSchemeId)
+                    ?: throw WorkflowSchemeNotFoundException(SOFTWARE_SCHEME_KEY.value)
+            }
+        return schemeRepo.findById(assignment.workflowSchemeId)
+            ?: throw WorkflowSchemeNotFoundException(assignment.workflowSchemeId.value.toString())
+    }
+
     // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
+
+    companion object {
+        /**
+         * 시스템 자동 배정에 사용하는 sentinel UUID.
+         *
+         * 사용자 요청 없이 시스템이 자동 배정(EC-1 D10 software-scheme auto-assign)을 수행할 때
+         * `assigned_by` 컬럼에 기록된다.
+         * 실제 사용자 UUID 는 RFC 4122 V4 형식이므로 올-제로 UUID 와 충돌하지 않는다.
+         */
+        val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000000")
+
+        /** EC-1 D10 auto-assign 에 사용하는 system actor [ActorId]. */
+        val SYSTEM_ACTOR: ActorId = ActorId(SYSTEM_ACTOR_UUID.toString())
+
+        /** EC-1 D10 auto-assign 기본 스킴 키. */
+        val SOFTWARE_SCHEME_KEY: WorkflowSchemeKey = WorkflowSchemeKey("software-scheme")
+    }
 
     /**
      * EC-4 D11 — 표준 스킴의 잠긴 필드(name/description/isDefault) 변경 시도를 차단한다.

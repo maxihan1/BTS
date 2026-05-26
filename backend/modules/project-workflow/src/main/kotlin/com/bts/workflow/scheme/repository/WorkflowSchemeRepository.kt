@@ -82,6 +82,26 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
     }
 
     /**
+     * id 로 활성 WorkflowScheme 을 조회한다.
+     *
+     * `WHERE id = :id AND deleted_at IS NULL` 필터 적용.
+     * T21 findAssignedScheme D10 auto-assign 흐름에서 saveAssignment 후 scheme 재조회에 사용한다.
+     *
+     * @param id 조회할 스킴 식별자.
+     * @return 존재하는 활성 스킴, 부재 또는 soft-delete 된 경우 null.
+     */
+    @Transactional(readOnly = true)
+    fun findById(id: WorkflowSchemeId): WorkflowScheme? {
+        val record =
+            dsl
+                .selectFrom(WORKFLOW_SCHEMES)
+                .where(ID.eq(id.value).and(DELETED_AT.isNull))
+                .fetchOne()
+
+        return record?.toWorkflowScheme()
+    }
+
+    /**
      * key 로 활성 WorkflowScheme 을 조회한다.
      *
      * `WHERE key = :key AND deleted_at IS NULL` 필터 적용.
