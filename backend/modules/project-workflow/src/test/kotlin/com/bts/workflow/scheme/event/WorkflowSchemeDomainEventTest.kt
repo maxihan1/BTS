@@ -109,8 +109,10 @@ class WorkflowSchemeDomainEventTest {
 
     @Test
     fun `WorkflowSchemeUpdatedEvent equals hashCode — 동일 값이면 동등`() {
-        val e1 = WorkflowSchemeUpdatedEvent(schemeId = WorkflowSchemeId(2L), field = "name", occurredAt = Instant.parse("2026-05-26T00:00:00Z"))
-        val e2 = WorkflowSchemeUpdatedEvent(schemeId = WorkflowSchemeId(2L), field = "name", occurredAt = Instant.parse("2026-05-26T00:00:00Z"))
+        val e1 =
+            WorkflowSchemeUpdatedEvent(schemeId = WorkflowSchemeId(2L), field = "name", occurredAt = Instant.parse("2026-05-26T00:00:00Z"))
+        val e2 =
+            WorkflowSchemeUpdatedEvent(schemeId = WorkflowSchemeId(2L), field = "name", occurredAt = Instant.parse("2026-05-26T00:00:00Z"))
 
         assertThat(e1).isEqualTo(e2)
         assertThat(e1).hasSameHashCodeAs(e2)

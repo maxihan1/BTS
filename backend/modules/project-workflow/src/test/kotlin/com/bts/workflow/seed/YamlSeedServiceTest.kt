@@ -27,8 +27,8 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
 import java.io.ByteArrayInputStream
-import java.sql.DriverManager
 import java.io.InputStream
+import java.sql.DriverManager
 
 /**
  * YamlSeedService 통합 테스트.
