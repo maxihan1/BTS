@@ -121,6 +121,10 @@ ArchUnit (아키텍처 규칙을 테스트 코드로 작성하는 라이브러�
 - **인터페이스 계약 변경 비용**. `TransitionRequest` / `TransitionPlan` DTO 변경 시 모든 호출자 BC 동시 수정 필요. 버전 관리 정책은 FR-WF 후속 PR에서 결정.
 - **AlwaysAllowPermissionResolver 운영 노출 위험**. `@Profile("!prod")` 적용으로 기계적으로 차단하지만, profile 설정 오류 시 stub이 운영에 노출될 수 있음. prod 배포 전 profile 검증 체크리스트 필요.
 
+## 정정 이력
+
+2026-05-26 PR #23. 본 ADR 의 BC 격리 본질 강화 보강. WorkflowTransitionPort 시그니처가 throws → sealed Result 로 진화. 자세한 결정 근거. [2026-05-26-workflow-transition-port-result-sealed.md](2026-05-26-workflow-transition-port-result-sealed.md). 본 ADR 의 핵심 결정 (Hexagonal port-adapter + plan() + Propagation.MANDATORY) 은 그대로 유효.
+
 ## 관련
 
 - `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/port/inbound/WorkflowTransitionPort.kt`

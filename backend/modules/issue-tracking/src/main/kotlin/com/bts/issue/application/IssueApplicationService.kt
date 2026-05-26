@@ -21,8 +21,9 @@ import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
+import com.bts.workflow.domain.dto.TransitionPlan
 import com.bts.workflow.domain.dto.TransitionRequest
-import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
+import com.bts.workflow.domain.dto.TransitionResult
 import com.bts.workflow.port.inbound.WorkflowTransitionPort
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
@@ -149,7 +150,12 @@ class IssueApplicationService(
         assertPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(key.value))
         val existing = repo.findByKey(key) ?: throw IssueNotFoundException(key)
         val changedFields = buildChangedFields(existing, request)
-        val updatedRows = repo.updateSummary(key, request.summary, request.expectedVersion)
+        if (changedFields.isEmpty()) {
+            log.info("issue_update_noop key={} actor={}", key.value, actor.value)
+            return IssueResponse.from(existing, key.projectPrefix)
+        }
+        val newSummary = requireNotNull(request.summary) { "summary must be non-null when changedFields is non-empty" }
+        val updatedRows = repo.updateSummary(key, newSummary, request.expectedVersion)
         if (updatedRows == 0) {
             throw IssueVersionConflictException(key, existing.version)
         }
@@ -165,15 +171,13 @@ class IssueApplicationService(
         return IssueResponse.from(updated, key.projectPrefix)
     }
 
-    // ── private helpers ────────────────────────────────────────────────────────
-
     /**
      * 이슈 상태를 전이한다 (workflowPort.plan() 호출 + 낙관락).
      *
      * 흐름.
      * 1. TRANSITION 권한 검증 (Issue 범위)
      * 2. SELECT FOR UPDATE 로 이슈 조회 (비관락) — 미존재 시 IssueNotFoundException
-     * 3. workflowPort.plan() 호출 — 예외 발생 시 그대로 propagate
+     * 3. workflowPort.plan() 호출 — [TransitionResult] sealed 분기 처리
      * 4. applyTransition 호출 — 0 row 면 IssueVersionConflictException
      * 5. IssueTransitioned 이벤트 발행
      *
@@ -185,7 +189,8 @@ class IssueApplicationService(
      * @return 전이된 이슈의 [IssueResponse].
      * @throws IssueAccessDeniedException 권한 없을 때.
      * @throws IssueNotFoundException 이슈가 없는 경우.
-     * @throws IssueTransitionNotAllowedException workflow validator 실패 (BC 경계 변환).
+     * @throws IssueTransitionNotAllowedException [TransitionResult.ValidatorFailure],
+     *   [TransitionResult.WorkflowNotFound], [TransitionResult.ExpressionTimeout] 케이스에서 BC 경계 변환.
      * @throws IssueVersionConflictException 낙관락 충돌 시.
      */
     @Suppress("ThrowsCount")
@@ -209,16 +214,12 @@ class IssueApplicationService(
                 version = request.expectedVersion,
             )
         val plan =
-            try {
-                workflowPort.plan(transitionReq)
-            } catch (e: WorkflowValidatorFailureException) {
-                throw IssueTransitionNotAllowedException(
-                    issueKey = key,
-                    fromStatus = issue.currentStateKey,
-                    toStatus = request.toStateKey,
-                    cause = e,
-                )
-            }
+            resolveWorkflowResult(
+                workflowPort.plan(transitionReq),
+                key,
+                issue.currentStateKey,
+                request.toStateKey,
+            )
         val updatedRows = repo.applyTransition(key, plan.toStateKey, request.expectedVersion)
         if (updatedRows == 0) {
             throw IssueVersionConflictException(key, issue.version)
@@ -292,12 +293,60 @@ class IssueApplicationService(
         return PageImpl(responses, pageable, page.totalElements)
     }
 
+    // ── private helpers ────────────────────────────────────────────────────────
+
+    /**
+     * [TransitionResult] sealed 분기를 [TransitionPlan] 으로 매핑하거나 BC 경계 예외로 변환한다.
+     *
+     * ADR 2026-05-26-workflow-transition-port-result-sealed 참조.
+     * automation BC 가 동일 패턴을 사용할 경우 이 helper 를 공통 모듈로 이동할 수 있다 (plan F10 deferred G2).
+     *
+     * @param result workflowPort.plan 반환값.
+     * @param issueKey 전이 대상 이슈 키 — 예외 컨텍스트용.
+     * @param fromStatus 전이 전 상태 키.
+     * @param toStatus 전이 목표 상태 키.
+     * @return [TransitionPlan] — [TransitionResult.Success] 케이스에서만 반환.
+     * @throws IssueTransitionNotAllowedException [TransitionResult.ValidatorFailure],
+     *   [TransitionResult.WorkflowNotFound], [TransitionResult.ExpressionTimeout] 케이스.
+     */
+    private fun resolveWorkflowResult(
+        result: TransitionResult,
+        issueKey: IssueKey,
+        fromStatus: String,
+        toStatus: String,
+    ): TransitionPlan =
+        when (result) {
+            is TransitionResult.Success ->
+                result.plan
+            is TransitionResult.ValidatorFailure ->
+                throw IssueTransitionNotAllowedException(
+                    issueKey = issueKey,
+                    fromStatus = fromStatus,
+                    toStatus = toStatus,
+                    reason = result.message,
+                )
+            is TransitionResult.WorkflowNotFound ->
+                throw IssueTransitionNotAllowedException(
+                    issueKey = issueKey,
+                    fromStatus = fromStatus,
+                    toStatus = toStatus,
+                    reason = "워크플로우를 찾을 수 없습니다: ${result.key}",
+                )
+            is TransitionResult.ExpressionTimeout ->
+                throw IssueTransitionNotAllowedException(
+                    issueKey = issueKey,
+                    fromStatus = fromStatus,
+                    toStatus = toStatus,
+                    reason = result.message,
+                )
+        }
+
     private fun buildChangedFields(
         existing: Issue,
         request: UpdateIssueRequest,
     ): Set<String> {
         val fields = mutableSetOf<String>()
-        if (existing.summary != request.summary) fields.add("summary")
+        if (request.summary != null && existing.summary != request.summary) fields.add("summary")
         return fields
     }
 

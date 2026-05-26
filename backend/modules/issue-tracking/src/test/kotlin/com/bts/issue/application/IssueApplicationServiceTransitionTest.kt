@@ -16,12 +16,12 @@ import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
 import com.bts.workflow.domain.dto.TransitionPlan
-import com.bts.workflow.domain.exception.WorkflowNotFoundException
-import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
+import com.bts.workflow.domain.dto.TransitionResult
 import com.bts.workflow.port.inbound.WorkflowTransitionPort
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -79,7 +79,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             (classAnnotation != null || methodAnnotation != null) shouldBe true
         }
 
-        context("정상 — plan 성공, version 일치") {
+        context("S1 — TransitionResult.Success 반환 시 정상 전이") {
             val request =
                 TransitionIssueRequest(
                     workflowKey = "DEFAULT",
@@ -95,13 +95,13 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                     permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
-                every { workflowPort.plan(any()) } returns plan
+                every { workflowPort.plan(any()) } returns TransitionResult.Success(plan)
                 every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion) } returns 1
                 every { repo.findByKey(issueKey) } returns updatedIssue
                 every { eventPublisher.publish(any()) } returns Unit
             }
 
-            it("IssueResponse 를 반환한다") {
+            it("IssueResponse 를 반환하고 currentStateKey 가 toState 와 같다") {
                 val result = sut.transitionIssue(actor, issueKey, request)
                 result.key shouldBe issueKey.value
                 result.currentStateKey shouldBe "IN_PROGRESS"
@@ -131,7 +131,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             }
         }
 
-        context("workflowPort.plan 이 예외를 던질 때") {
+        context("S2 — TransitionResult.ValidatorFailure 반환 시 IssueTransitionNotAllowedException") {
             val request =
                 TransitionIssueRequest(
                     workflowKey = "DEFAULT",
@@ -145,44 +145,10 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                     permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
-                every { workflowPort.plan(any()) } throws WorkflowNotFoundException("DEFAULT")
+                every { workflowPort.plan(any()) } returns TransitionResult.ValidatorFailure("조건 X 위반")
             }
 
-            it("예외가 그대로 propagate 된다") {
-                shouldThrow<WorkflowNotFoundException> {
-                    sut.transitionIssue(actor, issueKey, request)
-                }
-            }
-
-            it("이벤트가 발행되지 않는다") {
-                runCatching { sut.transitionIssue(actor, issueKey, request) }
-                verify(exactly = 0) { eventPublisher.publish(any()) }
-            }
-        }
-
-        context("workflowPort.plan 이 WorkflowValidatorFailureException 을 던질 때") {
-            val request =
-                TransitionIssueRequest(
-                    workflowKey = "DEFAULT",
-                    toStateKey = "IN_PROGRESS",
-                    transitionName = "start",
-                    expectedVersion = existingVersion,
-                )
-
-            beforeEach {
-                every {
-                    permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
-                } returns true
-                every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
-                every { workflowPort.plan(any()) } throws
-                    WorkflowValidatorFailureException(
-                        "PermissionValidator",
-                        "status",
-                        "전이 권한 없음",
-                    )
-            }
-
-            it("IssueTransitionNotAllowedException 으로 변환되어 throw 된다") {
+            it("IssueTransitionNotAllowedException 을 던진다") {
                 val ex =
                     shouldThrow<IssueTransitionNotAllowedException> {
                         sut.transitionIssue(actor, issueKey, request)
@@ -192,12 +158,78 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                 ex.toStatus shouldBe "IN_PROGRESS"
             }
 
-            it("원인 예외(cause) 가 WorkflowValidatorFailureException 이다") {
+            it("예외 메시지에 ValidatorFailure 사유가 포함된다") {
                 val ex =
                     shouldThrow<IssueTransitionNotAllowedException> {
                         sut.transitionIssue(actor, issueKey, request)
                     }
-                (ex.cause is WorkflowValidatorFailureException) shouldBe true
+                ex.message shouldContain "조건 X 위반"
+            }
+
+            it("이벤트가 발행되지 않는다") {
+                runCatching { sut.transitionIssue(actor, issueKey, request) }
+                verify(exactly = 0) { eventPublisher.publish(any()) }
+            }
+        }
+
+        context("S3 — TransitionResult.WorkflowNotFound 반환 시 IssueTransitionNotAllowedException") {
+            val request =
+                TransitionIssueRequest(
+                    workflowKey = "ATLAS",
+                    toStateKey = "IN_PROGRESS",
+                    transitionName = "start",
+                    expectedVersion = existingVersion,
+                )
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
+                } returns true
+                every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
+                every { workflowPort.plan(any()) } returns TransitionResult.WorkflowNotFound("ATLAS")
+            }
+
+            it("IssueTransitionNotAllowedException 을 던진다") {
+                val ex =
+                    shouldThrow<IssueTransitionNotAllowedException> {
+                        sut.transitionIssue(actor, issueKey, request)
+                    }
+                ex.issueKey shouldBe issueKey
+                ex.fromStatus shouldBe "OPEN"
+                ex.toStatus shouldBe "IN_PROGRESS"
+            }
+
+            it("이벤트가 발행되지 않는다") {
+                runCatching { sut.transitionIssue(actor, issueKey, request) }
+                verify(exactly = 0) { eventPublisher.publish(any()) }
+            }
+        }
+
+        context("S4 — TransitionResult.ExpressionTimeout 반환 시 IssueTransitionNotAllowedException") {
+            val request =
+                TransitionIssueRequest(
+                    workflowKey = "DEFAULT",
+                    toStateKey = "IN_PROGRESS",
+                    transitionName = "start",
+                    expectedVersion = existingVersion,
+                )
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
+                } returns true
+                every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
+                every { workflowPort.plan(any()) } returns TransitionResult.ExpressionTimeout("SpEL timeout")
+            }
+
+            it("IssueTransitionNotAllowedException 을 던진다") {
+                val ex =
+                    shouldThrow<IssueTransitionNotAllowedException> {
+                        sut.transitionIssue(actor, issueKey, request)
+                    }
+                ex.issueKey shouldBe issueKey
+                ex.fromStatus shouldBe "OPEN"
+                ex.toStatus shouldBe "IN_PROGRESS"
             }
 
             it("이벤트가 발행되지 않는다") {
@@ -221,7 +253,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                     permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
-                every { workflowPort.plan(any()) } returns plan
+                every { workflowPort.plan(any()) } returns TransitionResult.Success(plan)
                 every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion) } returns 0
             }
 

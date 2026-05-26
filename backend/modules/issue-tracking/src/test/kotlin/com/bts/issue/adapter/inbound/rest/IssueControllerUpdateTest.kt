@@ -1,4 +1,4 @@
-// IssueController PATCH + POST transition MockMvc 슬라이스 테스트 — task-15 RED
+// IssueController PATCH + POST transition MockMvc 슬라이스 테스트 — task-15 RED + task-8 RED
 
 package com.bts.issue.adapter.inbound.rest
 
@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -31,6 +32,7 @@ import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import java.time.Instant
 import java.util.UUID
+import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
 
 /**
  * IssueController PATCH /api/v1/issues/{key} 및 POST /api/v1/issues/{key}/transition MockMvc 슬라이스 테스트.
@@ -202,5 +204,176 @@ class IssueControllerUpdateTest {
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.status").value(409))
             .andExpect(jsonPath("$.errorCode").value("TRANSITION_NOT_ALLOWED"))
+    }
+
+    // ── T8-1: PATCH summary=null → 200, service 에 AppUpdateIssueRequest.summary==null 전달 ──
+
+    /**
+     * T8-1. PATCH body 에 summary=null 을 명시적으로 포함한 경우.
+     *
+     * controller 가 `?: ""` 없이 null 을 그대로 application 계층에 전달해야 한다.
+     * service mock 은 "변경 없음" 동작을 시뮬레이션 — 원래 summary "원래" 그대로 반환.
+     */
+    @Test
+    fun `PATCH summary null 명시 — 200 OK, service 에 summary null 전달`() {
+        val originalResponse =
+            IssueResponse(
+                key = "ATLAS-1",
+                id = issueId,
+                projectKey = "ATLAS",
+                summary = "원래",
+                currentStateKey = "OPEN",
+                reporterId = actorId.value,
+                version = 1L,
+                createdAt = fixedNow,
+                updatedAt = fixedNow,
+            )
+
+        val capturedRequest = slot<AppUpdateIssueRequest>()
+        every {
+            issueApplicationService.updateIssue(any(), IssueKey("ATLAS-1"), capture(capturedRequest))
+        } returns originalResponse
+
+        val body = """{"summary": null, "expectedVersion": 1}"""
+
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.summary").value("원래"))
+
+        assert(capturedRequest.captured.summary == null) {
+            "controller 가 summary null 을 그대로 전달해야 하지만 '${capturedRequest.captured.summary}' 를 전달함"
+        }
+    }
+
+    // ── T8-2: PATCH summary="새 제목" → 200, service 에 summary=="새 제목" 전달 ──
+
+    /**
+     * T8-2. PATCH body 에 summary 값이 있는 경우.
+     *
+     * controller 가 non-null summary 를 그대로 application 계층에 전달해야 한다.
+     */
+    @Test
+    fun `PATCH summary 비어 있지 않음 — 200 OK, service 에 새 summary 전달`() {
+        val updatedResponse =
+            IssueResponse(
+                key = "ATLAS-1",
+                id = issueId,
+                projectKey = "ATLAS",
+                summary = "새 제목",
+                currentStateKey = "OPEN",
+                reporterId = actorId.value,
+                version = 2L,
+                createdAt = fixedNow,
+                updatedAt = fixedNow,
+            )
+
+        val capturedRequest = slot<AppUpdateIssueRequest>()
+        every {
+            issueApplicationService.updateIssue(any(), IssueKey("ATLAS-1"), capture(capturedRequest))
+        } returns updatedResponse
+
+        val body = """{"summary": "새 제목", "expectedVersion": 1}"""
+
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.summary").value("새 제목"))
+
+        assert(capturedRequest.captured.summary == "새 제목") {
+            "controller 가 summary '새 제목' 을 전달해야 하지만 '${capturedRequest.captured.summary}' 를 전달함"
+        }
+    }
+
+    // ── T8-3: PATCH body 에 summary 필드 미포함 → T8-1 과 동일, summary null 전달 ──
+
+    /**
+     * T8-3. PATCH body 에 summary 필드 자체를 포함하지 않은 경우 (JSON Merge Patch 시맨틱).
+     *
+     * RFC 7396 에 따라 필드 미포함 = null 과 동등하게 처리되어야 한다.
+     * controller 가 summary null 을 그대로 application 계층에 전달해야 한다.
+     */
+    @Test
+    fun `PATCH summary 필드 미포함 — 200 OK, service 에 summary null 전달`() {
+        val originalResponse =
+            IssueResponse(
+                key = "ATLAS-1",
+                id = issueId,
+                projectKey = "ATLAS",
+                summary = "원래",
+                currentStateKey = "OPEN",
+                reporterId = actorId.value,
+                version = 1L,
+                createdAt = fixedNow,
+                updatedAt = fixedNow,
+            )
+
+        val capturedRequest = slot<AppUpdateIssueRequest>()
+        every {
+            issueApplicationService.updateIssue(any(), IssueKey("ATLAS-1"), capture(capturedRequest))
+        } returns originalResponse
+
+        val body = """{"expectedVersion": 1}"""
+
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.summary").value("원래"))
+
+        assert(capturedRequest.captured.summary == null) {
+            "controller 가 summary null 을 그대로 전달해야 하지만 '${capturedRequest.captured.summary}' 를 전달함"
+        }
+    }
+
+    // ── T8-4: PATCH summary="" 빈 문자열 → 400 VALIDATION_FAILED (F-1 가드) ──
+
+    /**
+     * T8-4. PATCH body 에 summary="" 명시적 빈 문자열을 전송한 경우.
+     *
+     * PR #23 adversarial F-1 — `?: ""` 제거 후 빈 문자열 명시 입력 가드가 부재하면
+     * production 시점에 사용자가 모든 이슈를 빈 제목으로 만들 수 있는 회귀 위험.
+     * Bean Validation `@NotBlank` 가 null 통과 + 빈 문자열/공백 거부 시맨틱으로
+     * RFC 7396 partial 시맨틱과 양립. 400 + VALIDATION_FAILED errorCode 응답.
+     */
+    @Test
+    fun `PATCH summary 빈 문자열 — 400 VALIDATION_FAILED (F-1 가드)`() {
+        val body = """{"summary": "", "expectedVersion": 1}"""
+
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+    }
+
+    // ── T8-5: PATCH summary="   " 공백만 → 400 VALIDATION_FAILED (F-1 가드) ──
+
+    /**
+     * T8-5. PATCH body 에 summary="   " 공백만으로 구성된 입력을 전송한 경우.
+     *
+     * `@NotBlank` 가 공백만으로 구성된 문자열도 거부. 빈 문자열과 동일 시맨틱.
+     */
+    @Test
+    fun `PATCH summary 공백만 — 400 VALIDATION_FAILED (F-1 가드)`() {
+        val body = """{"summary": "   ", "expectedVersion": 1}"""
+
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
     }
 }

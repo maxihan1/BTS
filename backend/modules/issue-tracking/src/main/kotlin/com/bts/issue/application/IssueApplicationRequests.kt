@@ -18,13 +18,13 @@ data class CreateIssueRequest(
 )
 
 /**
- * 이슈 수정 요청 DTO.
+ * 이슈 수정 요청 DTO (RFC 7396 JSON Merge Patch 시맨틱).
  *
- * @param summary 새 이슈 제목.
+ * @param summary 새 이슈 제목. null 이면 변경하지 않는다 (RFC 7396 JSON Merge Patch 시맨틱).
  * @param expectedVersion 낙관적 잠금 버전. 읽은 version 값과 일치해야 업데이트가 성공한다.
  */
 data class UpdateIssueRequest(
-    val summary: String,
+    val summary: String?,
     val expectedVersion: Long,
 )
 

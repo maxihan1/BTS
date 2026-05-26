@@ -18,7 +18,6 @@ import com.bts.workflow.domain.expression.DefaultIssueView
 import com.bts.workflow.domain.spi.ValidatorResult
 import com.bts.workflow.domain.spi.WorkflowPostAction
 import com.bts.workflow.domain.spi.WorkflowValidator
-import com.bts.workflow.port.inbound.WorkflowTransitionPort
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Propagation
@@ -100,13 +99,14 @@ data class PostActionConfig(val type: String, val config: Map<String, Any?>)
 /**
  * 워크플로우 전이 엔진.
  *
- * [WorkflowTransitionPort.plan] 을 구현하며, 다음 두 단계를 순서대로 수행한다.
+ * [plan] 을 통해 다음 두 단계를 순서대로 수행한다.
  *
  * 1. **Validator 순차 평가** — 첫 Fail 즉시 [WorkflowValidatorFailureException].
  * 2. **PostAction 누적** — 모든 PostAction 의 [FieldChange] + [DomainEvent] 를 합산해 [TransitionPlan] 반환.
  *
  * 이 클래스는 상태를 직접 변경하지 않는다.
- * 반환된 [TransitionPlan] 을 호출자 BC 가 자신의 트랜잭션 안에서 적용해야 한다.
+ * 반환된 [TransitionPlan] 을 호출자 ([com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter]) 가
+ * [com.bts.workflow.domain.dto.TransitionResult] 로 래핑하여 상위 BC 에 전달한다.
  *
  * @param cache 워크플로우 메모리 캐시
  * @param validatorFactory Validator 인스턴스 팩토리
@@ -119,20 +119,23 @@ class WorkflowEngine(
     private val validatorFactory: WorkflowValidatorFactory,
     private val postActionFactory: WorkflowPostActionFactory,
     private val definitionRepo: WorkflowDefinitionRepository,
-) : WorkflowTransitionPort {
+) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
      * 전이 요청을 검증하고 실행 계획을 반환한다.
      *
-     * 호출자는 반드시 활성 트랜잭션 안에서 이 메서드를 호출해야 한다.
+     * 반드시 활성 트랜잭션 안에서 호출해야 한다 ([Propagation.MANDATORY]).
      * 트랜잭션 없이 호출하면 Spring 이 [org.springframework.transaction.IllegalTransactionStateException] 을 던진다.
+     *
+     * 호출자인 [com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter] 가 아래 예외를
+     * [com.bts.workflow.domain.dto.TransitionResult] 케이스로 매핑한다.
      *
      * @throws WorkflowNotFoundException 워크플로우·전이 정의를 찾을 수 없을 때
      * @throws WorkflowValidatorFailureException Validator 가 전이를 거부할 때
      */
     @Transactional(propagation = Propagation.MANDATORY)
-    override fun plan(req: TransitionRequest): TransitionPlan {
+    fun plan(req: TransitionRequest): TransitionPlan {
         log.debug(
             "WorkflowEngine.plan: workflowKey={}, issueKey={}, transition={}→{}",
             req.workflowKey,
