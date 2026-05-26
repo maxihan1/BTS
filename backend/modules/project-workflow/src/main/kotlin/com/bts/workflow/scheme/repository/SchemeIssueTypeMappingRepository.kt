@@ -11,7 +11,8 @@ import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Repository
-import java.time.Instant
+import org.springframework.transaction.annotation.Transactional
+import java.time.OffsetDateTime
 import java.util.UUID
 
 /**
@@ -20,10 +21,14 @@ import java.util.UUID
  * `workflow_scheme_issue_type_mappings` 테이블에 대한 CRUD 를 담당한다.
  * V004 마이그레이션으로 생성된 테이블이며 jOOQ codegen 범위(V001 only) 밖이므로
  * `DSL.table()` / `DSL.field()` 동적 참조 방식을 사용한다.
+ * Wave-2 종료 후 generateJooq 태스크를 재실행하면 generated 클래스로 교체 가능.
  *
  * ## 제약 처리
- * - `uq_scheme_issue_type` UNIQUE constraint — (scheme_id, issue_type_id) 중복 시 [DataIntegrityViolationException] → [MappingDuplicateException] 변환.
- * - `ix_scheme_default_mapping` partial UNIQUE INDEX — (scheme_id) WHERE issue_type_id IS NULL 중복 시 동일 변환.
+ * - `uq_scheme_issue_type` UNIQUE constraint — (scheme_id, issue_type_id) 중복 시
+ *   [DataIntegrityViolationException] → [MappingDuplicateException] 변환.
+ * - `ix_scheme_default_mapping` partial UNIQUE INDEX — (scheme_id) WHERE issue_type_id IS NULL 중복 시
+ *   동일 변환. PostgreSQL 에서 NULL ≠ NULL 로 UNIQUE constraint 만으로는 default mapping 중복 방지
+ *   불가하므로 partial UNIQUE INDEX 로 보완한 구조를 Repository 에서 동일하게 처리한다.
  *
  * @property dsl jOOQ DSLContext (SQL을 코드로 안전하게 작성하는 라이브러리의 핵심 진입점).
  */
@@ -32,24 +37,35 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
+    // V004 테이블은 jOOQ codegen 범위(V001 only) 밖 — DSL.table()/DSL.field() 동적 참조 사용.
+    // T14 ProjectWorkflowSchemeAssignmentRepository 와 동일 패턴.
+    private val TABLE = DSL.table("workflow_scheme_issue_type_mappings")
+    private val COL_ID = DSL.field("id", Long::class.java)
+    private val COL_SCHEME_ID = DSL.field("scheme_id", Long::class.java)
+    private val COL_ISSUE_TYPE_ID = DSL.field("issue_type_id", Long::class.java)
+    private val COL_WORKFLOW_ID = DSL.field("workflow_id", UUID::class.java)
+    // TIMESTAMPTZ → jOOQ 는 OffsetDateTime 으로 읽음. toInstant() 변환은 toMapping() 에서 처리.
+    private val COL_CREATED_AT = DSL.field("created_at", OffsetDateTime::class.java)
+
     /**
      * 매핑을 저장하고 DB 에서 할당된 id 를 포함한 [SchemeIssueTypeMapping] 을 반환한다.
      *
      * @param mapping 저장할 매핑. [SchemeIssueTypeMapping.id] 는 null 이어야 한다 (신규 삽입).
      * @return id 가 할당된 [SchemeIssueTypeMapping].
-     * @throws MappingDuplicateException (scheme_id, issue_type_id) UNIQUE 또는 partial UNIQUE INDEX 위반 시.
+     * @throws MappingDuplicateException (scheme_id, issue_type_id) UNIQUE 또는
+     *   ix_scheme_default_mapping partial UNIQUE INDEX 위반 시.
      */
+    @Transactional
     fun addMapping(mapping: SchemeIssueTypeMapping): SchemeIssueTypeMapping {
         try {
             val record =
                 dsl
                     .insertInto(TABLE)
-                    .columns(COL_SCHEME_ID, COL_ISSUE_TYPE_ID, COL_WORKFLOW_ID, COL_CREATED_AT)
+                    .columns(COL_SCHEME_ID, COL_ISSUE_TYPE_ID, COL_WORKFLOW_ID)
                     .values(
                         mapping.schemeId.value,
                         mapping.issueTypeId?.value,
                         mapping.workflowId,
-                        mapping.createdAt,
                     )
                     .returningResult(COL_ID, COL_SCHEME_ID, COL_ISSUE_TYPE_ID, COL_WORKFLOW_ID, COL_CREATED_AT)
                     .fetchOne()
@@ -75,6 +91,7 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
      * @param schemeId 조회할 스킴 식별자.
      * @return 해당 스킴의 매핑 목록. 매핑이 없으면 빈 목록.
      */
+    @Transactional(readOnly = true)
     fun findBySchemeId(schemeId: WorkflowSchemeId): List<SchemeIssueTypeMapping> =
         dsl
             .select(COL_ID, COL_SCHEME_ID, COL_ISSUE_TYPE_ID, COL_WORKFLOW_ID, COL_CREATED_AT)
@@ -88,10 +105,12 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
      *
      * Jira `workflowschemeentity.issuetype = NULL` 패턴 align.
      * 명시적으로 매핑되지 않은 이슈 타입 전부에 적용되는 워크플로우를 가리킨다.
+     * `ix_scheme_default_mapping` partial UNIQUE INDEX 에 의해 스킴당 최대 1건이 보장된다.
      *
      * @param schemeId 조회할 스킴 식별자.
      * @return default mapping, 없으면 null.
      */
+    @Transactional(readOnly = true)
     fun findDefaultMapping(schemeId: WorkflowSchemeId): SchemeIssueTypeMapping? =
         dsl
             .select(COL_ID, COL_SCHEME_ID, COL_ISSUE_TYPE_ID, COL_WORKFLOW_ID, COL_CREATED_AT)
@@ -108,6 +127,7 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
      * @param issueTypeId 조회할 이슈 타입 식별자.
      * @return 해당 이슈 타입의 매핑, 없으면 null.
      */
+    @Transactional(readOnly = true)
     fun findByIssueType(
         schemeId: WorkflowSchemeId,
         issueTypeId: IssueTypeId,
@@ -123,10 +143,11 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
     /**
      * 매핑을 삭제한다.
      *
-     * 존재하지 않는 id 에 대해 예외 없이 no-op 처리한다.
+     * 존재하지 않는 id 에 대해 예외 없이 no-op 으로 처리한다.
      *
      * @param id 삭제할 매핑의 PK.
      */
+    @Transactional
     fun deleteMapping(id: Long) {
         dsl
             .deleteFrom(TABLE)
@@ -141,25 +162,18 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
      *
      * COL_ISSUE_TYPE_ID 가 NULL 인 경우 issueTypeId = null (default mapping).
      * COL_WORKFLOW_ID 는 UUID 타입으로 캐스팅한다 (workflows.id UUID).
+     * COL_CREATED_AT 은 TIMESTAMPTZ → jOOQ OffsetDateTime → Instant 변환 (DATA.md §4 TIMESTAMPTZ 강제).
      */
     private fun org.jooq.Record.toMapping(): SchemeIssueTypeMapping {
         val rawIssueTypeId = get(COL_ISSUE_TYPE_ID)
+        val createdAtOdt =
+            get(COL_CREATED_AT) ?: error("created_at is null — DB NOT NULL 제약 위반")
         return SchemeIssueTypeMapping(
-            id = get(COL_ID) as Long,
-            schemeId = WorkflowSchemeId(get(COL_SCHEME_ID) as Long),
-            issueTypeId = rawIssueTypeId?.let { IssueTypeId(it as Long) },
-            workflowId = get(COL_WORKFLOW_ID) as UUID,
-            createdAt = get(COL_CREATED_AT) as Instant,
+            id = get(COL_ID) ?: error("id is null — DB BIGSERIAL 제약 위반"),
+            schemeId = WorkflowSchemeId(get(COL_SCHEME_ID) ?: error("scheme_id is null — DB NOT NULL 제약 위반")),
+            issueTypeId = rawIssueTypeId?.let { IssueTypeId(it) },
+            workflowId = get(COL_WORKFLOW_ID) ?: error("workflow_id is null — DB NOT NULL 제약 위반"),
+            createdAt = createdAtOdt.toInstant(),
         )
-    }
-
-    companion object {
-        // V004 테이블은 jOOQ codegen 범위(V001 only) 밖 — DSL.table()/DSL.field() 동적 참조 사용.
-        private val TABLE = DSL.table("workflow_scheme_issue_type_mappings")
-        private val COL_ID = DSL.field("id", Long::class.java)
-        private val COL_SCHEME_ID = DSL.field("scheme_id", Long::class.java)
-        private val COL_ISSUE_TYPE_ID = DSL.field("issue_type_id", Long::class.java)
-        private val COL_WORKFLOW_ID = DSL.field("workflow_id", UUID::class.java)
-        private val COL_CREATED_AT = DSL.field("created_at", Instant::class.java)
     }
 }
