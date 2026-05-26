@@ -5,22 +5,29 @@ package com.bts.workflow.scheme.application
 import com.bts.issue.type.domain.IssueTypeId
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermissionResolver
+import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
+import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowScheme
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
+import com.bts.workflow.scheme.event.WorkflowSchemeAssignedEvent
 import com.bts.workflow.scheme.exception.MappingDefaultDuplicateException
 import com.bts.workflow.scheme.exception.MappingDuplicateException
 import com.bts.workflow.scheme.exception.SchemeInUseException
 import com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException
 import com.bts.workflow.scheme.exception.SchemeStandardNotDeletableException
 import com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException
+import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermission
+import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermissionResolver
+import com.bts.workflow.scheme.port.outbound.WorkflowSchemeScope
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -41,6 +48,7 @@ class WorkflowSchemeApplicationServiceTest {
     private val schemeRepo: WorkflowSchemeRepository = mockk()
     private val assignmentRepo: ProjectWorkflowSchemeAssignmentRepository = mockk()
     private val mappingRepo: SchemeIssueTypeMappingRepository = mockk()
+    private val eventPublisher: WorkflowSchemeEventPublisher = mockk()
     private val permissionResolver = AlwaysAllowWorkflowSchemePermissionResolver()
 
     private lateinit var service: WorkflowSchemeApplicationService
@@ -49,7 +57,7 @@ class WorkflowSchemeApplicationServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = WorkflowSchemeApplicationService(schemeRepo, assignmentRepo, mappingRepo, permissionResolver)
+        service = WorkflowSchemeApplicationService(schemeRepo, assignmentRepo, mappingRepo, eventPublisher, permissionResolver)
     }
 
     // ── create ────────────────────────────────────────────────────────────────
@@ -243,6 +251,99 @@ class WorkflowSchemeApplicationServiceTest {
         service.deleteMapping(actor, mappingId = 99L)
 
         verify(exactly = 1) { mappingRepo.deleteMapping(99L) }
+    }
+
+    // ── assignToProject ───────────────────────────────────────────────────────
+
+    @Test
+    fun `assignToProject — 정상 케이스 — saveAssignment 호출 + WorkflowSchemeAssignedEvent 발행된다`() {
+        val schemeKey = WorkflowSchemeKey("software-scheme")
+        val schemeId = WorkflowSchemeId(1L)
+        val projectId = 42L
+        val projectKey = "ATLAS"
+        val scheme = buildScheme(schemeKey, id = schemeId)
+
+        every { schemeRepo.findByKey(schemeKey) } returns scheme
+        justRun { assignmentRepo.saveAssignment(any()) }
+        val eventSlot = slot<WorkflowSchemeAssignedEvent>()
+        justRun { eventPublisher.publish(capture(eventSlot)) }
+
+        val result = service.assignToProject(actor, projectId, projectKey, schemeKey)
+
+        assertThat(result.projectId).isEqualTo(projectId)
+        assertThat(result.workflowSchemeId).isEqualTo(schemeId)
+        verify(exactly = 1) { assignmentRepo.saveAssignment(any()) }
+        verify(exactly = 1) { eventPublisher.publish(any<WorkflowSchemeAssignedEvent>()) }
+        assertThat(eventSlot.captured.schemeId).isEqualTo(schemeId)
+        assertThat(eventSlot.captured.projectId).isEqualTo(projectId)
+    }
+
+    @Test
+    fun `assignToProject — 스킴이 없으면 WorkflowSchemeNotFoundException 을 던진다`() {
+        val schemeKey = WorkflowSchemeKey("nonexistent-scheme")
+        every { schemeRepo.findByKey(schemeKey) } returns null
+
+        assertThatThrownBy { service.assignToProject(actor, 1L, "PROJ", schemeKey) }
+            .isInstanceOf(WorkflowSchemeNotFoundException::class.java)
+    }
+
+    @Test
+    fun `findAssignedScheme — assignment 존재 시 해당 scheme 을 반환한다`() {
+        val schemeKey = WorkflowSchemeKey("software-scheme")
+        val schemeId = WorkflowSchemeId(1L)
+        val projectId = 10L
+        val scheme = buildScheme(schemeKey, id = schemeId)
+        val assignment = ProjectWorkflowSchemeAssignment(
+            projectId = projectId,
+            workflowSchemeId = schemeId,
+            assignedAt = Instant.now(),
+            assignedBy = UUID.randomUUID(),
+        )
+
+        every { assignmentRepo.findByProjectId(projectId) } returns assignment
+        every { schemeRepo.findById(schemeId) } returns scheme
+
+        val result = service.findAssignedScheme(projectId, "ATLAS")
+
+        assertThat(result.key).isEqualTo(schemeKey)
+    }
+
+    @Test
+    fun `EC-1 D10 — findAssignedScheme assignment 없으면 software-scheme 으로 auto-assign 후 scheme 반환한다`() {
+        val softwareSchemeKey = WorkflowSchemeKey("software-scheme")
+        val schemeId = WorkflowSchemeId(1L)
+        val projectId = 99L
+        val projectKey = "NEW"
+        val scheme = buildScheme(softwareSchemeKey, id = schemeId)
+
+        // 첫 호출: assignment 없음
+        every { assignmentRepo.findByProjectId(projectId) } returns null
+        // auto-assign 흐름: software-scheme 조회
+        every { schemeRepo.findByKey(softwareSchemeKey) } returns scheme
+        justRun { assignmentRepo.saveAssignment(any()) }
+        justRun { eventPublisher.publish(any<WorkflowSchemeAssignedEvent>()) }
+        // auto-assign 후 scheme 재조회
+        every { schemeRepo.findById(schemeId) } returns scheme
+
+        val result = service.findAssignedScheme(projectId, projectKey)
+
+        assertThat(result.key).isEqualTo(softwareSchemeKey)
+        verify(exactly = 1) { assignmentRepo.saveAssignment(any()) }
+        verify(exactly = 1) { eventPublisher.publish(any<WorkflowSchemeAssignedEvent>()) }
+    }
+
+    @Test
+    fun `assignToProject — ASSIGN_SCHEME 권한 거부 시 예외를 던진다`() {
+        val denyingResolver = mockk<WorkflowSchemePermissionResolver>()
+        every {
+            denyingResolver.requirePermission(any(), WorkflowSchemePermission.ASSIGN_SCHEME, any<WorkflowSchemeScope.Project>())
+        } throws RuntimeException("WORKFLOW_PERMISSION_DENIED")
+
+        val svcWithDeny = WorkflowSchemeApplicationService(schemeRepo, assignmentRepo, mappingRepo, eventPublisher, denyingResolver)
+
+        assertThatThrownBy {
+            svcWithDeny.assignToProject(actor, 1L, "PROJ", WorkflowSchemeKey("software-scheme"))
+        }.hasMessageContaining("WORKFLOW_PERMISSION_DENIED")
     }
 
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
