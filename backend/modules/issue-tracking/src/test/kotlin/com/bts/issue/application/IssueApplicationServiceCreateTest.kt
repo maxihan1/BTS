@@ -5,6 +5,7 @@ package com.bts.issue.application
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.port.outbound.IssuePermission
@@ -16,9 +17,11 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.mockk.CapturingSlot
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import io.mockk.verifyOrder
 import org.springframework.transaction.annotation.Transactional
@@ -53,11 +56,14 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
     describe("createIssue") {
 
         context("권한이 있을 때") {
+            val fixedProjectId = UUID.fromString("00000000-0000-0000-0000-000000000001")
+
             beforeEach {
                 every {
                     permissionResolver.hasPermission(actor, IssuePermission.CREATE, IssueScope.Project(projectKey))
                 } returns true
                 every { repo.incrementKeySequence(projectKey) } returns 1L
+                every { repo.findProjectIdByKey(projectKey) } returns fixedProjectId
                 every { repo.insert(any()) } answers { firstArg() }
                 every { eventPublisher.publish(any()) } returns Unit
             }
@@ -84,6 +90,39 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
 
                 verify {
                     eventPublisher.publish(match { it is IssueCreated && it.projectKey == projectKey })
+                }
+            }
+
+            // A-1: CRITICAL-1 — createIssue 가 findProjectIdByKey 로 조회한 projectId 를 사용하는지 검증
+            it("조회한 projectId 가 repo.insert 의 Issue.projectId 와 일치한다") {
+                val issueSlot: CapturingSlot<com.bts.issue.domain.Issue> = slot()
+                every { repo.insert(capture(issueSlot)) } answers { issueSlot.captured }
+
+                sut.createIssue(actor, request)
+
+                issueSlot.captured.projectId shouldBe fixedProjectId
+            }
+        }
+
+        // A-2: CRITICAL-1 — 미존재 프로젝트 키 → IssueProjectNotFoundException
+        context("프로젝트가 존재하지 않을 때") {
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(actor, IssuePermission.CREATE, IssueScope.Project("UNKNOWN"))
+                } returns true
+                every { repo.incrementKeySequence("UNKNOWN") } returns 1L
+                every { repo.findProjectIdByKey("UNKNOWN") } returns null
+            }
+
+            it("IssueProjectNotFoundException 을 던진다") {
+                val unknownRequest =
+                    CreateIssueRequest(
+                        projectKey = "UNKNOWN",
+                        summary = "Test summary",
+                        reporterId = actor,
+                    )
+                io.kotest.assertions.throwables.shouldThrow<IssueProjectNotFoundException> {
+                    sut.createIssue(actor, unknownRequest)
                 }
             }
         }
