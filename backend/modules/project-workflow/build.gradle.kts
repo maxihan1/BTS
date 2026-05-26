@@ -30,6 +30,9 @@ repositories {
 }
 
 dependencies {
+    // issue-tracking BC 의존 — IssueTypeId 직접 import (BC 격리 의식적 예외: same DB schema 공유, ADR issue-type-cross-bc-introduction)
+    implementation(project(":modules:issue-tracking"))
+
     // 도메인 검증 (Konform — Kotlin-native 선언형 검증 라이브러리, ADR 2026-05-21 GAP-17)
     implementation("io.konform:konform-jvm:0.7.0")
 
