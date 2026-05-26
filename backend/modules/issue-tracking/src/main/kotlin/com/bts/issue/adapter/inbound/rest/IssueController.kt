@@ -143,7 +143,7 @@ class IssueController(
         val issueKey = IssueKey(key)
         val appRequest =
             AppUpdateIssueRequest(
-                summary = request.summary ?: "",
+                summary = request.summary,
                 expectedVersion = request.expectedVersion,
             )
         val response = service.updateIssue(actor, issueKey, appRequest)
