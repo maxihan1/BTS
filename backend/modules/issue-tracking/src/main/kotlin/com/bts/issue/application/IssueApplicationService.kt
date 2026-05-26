@@ -9,6 +9,7 @@ import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.event.IssueCreated
@@ -77,12 +78,14 @@ class IssueApplicationService(
 
         val seq = repo.incrementKeySequence(request.projectKey)
         val key = IssueKey.of(request.projectKey, seq)
+        val projectId =
+            repo.findProjectIdByKey(request.projectKey)
+                ?: throw IssueProjectNotFoundException(request.projectKey)
         val issue =
             Issue.create(
                 id = IssueId(UUID.randomUUID()),
                 key = key,
-                // Wave 5 Controller 에서 project lookup 으로 대체
-                projectId = UUID.randomUUID(),
+                projectId = projectId,
                 summary = request.summary,
                 reporterId = request.reporterId,
                 currentStateKey = "OPEN",

@@ -6,6 +6,7 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.jooq.tables.records.IssuesRecord
 import com.bts.issue.jooq.tables.references.ISSUES
 import com.bts.issue.jooq.tables.references.PROJECTS
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.util.UUID
 
 // ── SQL 상수 ──────────────────────────────────────────────────────────────────
 // pg_advisory_xact_lock — 트랜잭션 범위 권고 락. hashtext() 로 VARCHAR → INT4 해시값 생성.
@@ -216,6 +218,20 @@ class IssueRepository(
     }
 
     /**
+     * 프로젝트 키로 projects.id 를 조회한다.
+     *
+     * @param projectKey 프로젝트 접두사 (예: "BTS").
+     * @return 프로젝트 UUID. 존재하지 않거나 소프트 삭제된 경우 null.
+     */
+    @Transactional(readOnly = true)
+    fun findProjectIdByKey(projectKey: String): UUID? =
+        dsl.select(PROJECTS.ID)
+            .from(PROJECTS)
+            .where(PROJECTS.KEY.eq(projectKey))
+            .and(PROJECTS.DELETED_AT.isNull)
+            .fetchOne(PROJECTS.ID)
+
+    /**
      * 프로젝트의 key_sequence 를 1 증가시키고 새 값을 반환한다.
      *
      * pg_advisory_xact_lock 으로 동일 projectKey 에 대한 동시 호출을 직렬화한다.
@@ -223,7 +239,7 @@ class IssueRepository(
      *
      * @param projectKey 프로젝트 접두사 (예: "BTS").
      * @return 증가된 key_sequence 값.
-     * @throws IllegalStateException 프로젝트가 존재하지 않는 경우.
+     * @throws IssueProjectNotFoundException 프로젝트가 존재하지 않는 경우.
      */
     @Transactional
     fun incrementKeySequence(projectKey: String): Long {
@@ -237,7 +253,7 @@ class IssueRepository(
             .returning(PROJECTS.KEY_SEQUENCE)
             .fetchOne()
             ?.keySequence
-            ?: error("Project not found for key=$projectKey")
+            ?: throw IssueProjectNotFoundException(projectKey)
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
