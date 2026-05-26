@@ -97,6 +97,24 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
     }
 
     /**
+     * 특정 스킴 ID 에 대한 할당(assignment) 이 하나 이상 존재하는지 확인한다.
+     *
+     * S7 softDelete 사용 중 차단 검증에 사용한다.
+     * `SELECT EXISTS(SELECT 1 FROM project_workflow_scheme_assignments WHERE workflow_scheme_id = ?)`.
+     *
+     * @param schemeId 확인할 스킴 식별자.
+     * @return 해당 스킴에 할당된 프로젝트가 하나 이상 있으면 true.
+     */
+    @Transactional(readOnly = true)
+    fun existsBySchemeId(schemeId: WorkflowSchemeId): Boolean =
+        dsl
+            .selectOne()
+            .from(TABLE)
+            .where(WORKFLOW_SCHEME_ID.eq(schemeId.value))
+            .limit(1)
+            .fetchOne() != null
+
+    /**
      * project_id 에 대한 스킴 할당을 삭제한다.
      *
      * 존재하지 않는 `projectId` 에 대해 예외 없이 no-op 으로 처리한다.

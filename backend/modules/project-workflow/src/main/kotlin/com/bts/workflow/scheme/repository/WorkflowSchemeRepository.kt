@@ -116,6 +116,42 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
             .map { it.toWorkflowScheme() }
 
     /**
+     * 스킴 필드를 UPDATE 한다.
+     *
+     * `UPDATE workflow_schemes SET name=?, description=?, is_default=?, updated_at=NOW() WHERE id=?` 실행.
+     * key 는 immutable 이므로 변경 대상에서 제외한다 (EC-4 D11 표준 스킴 필드 잠금은 Application Service 계층에서 적용).
+     *
+     * @param scheme 갱신할 스킴. [WorkflowScheme.id] 는 non-null 이어야 한다.
+     * @return 갱신된 스킴 인스턴스.
+     */
+    @Transactional
+    fun update(scheme: WorkflowScheme): WorkflowScheme {
+        val id = requireNotNull(scheme.id) { "WorkflowScheme.id must not be null for update" }
+        log.debug("workflow scheme update: id={} key={}", id.value, scheme.key.value)
+
+        val now = OffsetDateTime.now(ZoneOffset.UTC)
+        dsl
+            .update(WORKFLOW_SCHEMES)
+            .set(NAME, scheme.name)
+            .set(DESCRIPTION, scheme.description)
+            .set(IS_DEFAULT, scheme.isDefault)
+            .set(UPDATED_AT, now)
+            .where(ID.eq(id.value))
+            .execute()
+
+        return WorkflowScheme.reconstruct(
+            id = id,
+            key = scheme.key,
+            name = scheme.name,
+            description = scheme.description,
+            isDefault = scheme.isDefault,
+            createdAt = scheme.createdAt,
+            updatedAt = now.toInstant(),
+            deletedAt = scheme.deletedAt,
+        )
+    }
+
+    /**
      * id 에 해당하는 스킴을 soft-delete 한다.
      *
      * `UPDATE workflow_schemes SET deleted_at = NOW() WHERE id = :id` 실행.
