@@ -1,4 +1,4 @@
-// IssueController — POST /api/v1/issues 이슈 생성, GET 단건/목록, PATCH 수정, POST 전이 REST 엔드포인트
+// IssueController — POST /api/v1/issues 이슈 생성, GET 단건/목록, PATCH 수정, POST 전이, DELETE 소프트 삭제 REST 엔드포인트
 
 package com.bts.issue.adapter.inbound.rest
 
@@ -14,6 +14,7 @@ import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.web.PageableDefault
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -21,7 +22,9 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.http.HttpStatus
 import java.net.URI
 import java.util.UUID
 
@@ -29,11 +32,12 @@ import java.util.UUID
  * 이슈 REST API 컨트롤러.
  *
  * 엔드포인트 목록.
- * - POST  /api/v1/issues — 이슈 생성 (T13)
- * - GET   /api/v1/issues/{key} — 이슈 단건 조회 (T14)
- * - GET   /api/v1/issues — 이슈 목록 조회 (페이지) (T14)
- * - PATCH /api/v1/issues/{key} — 이슈 수정 (T15)
- * - POST  /api/v1/issues/{key}/transition — 이슈 상태 전이 (T15)
+ * - POST   /api/v1/issues — 이슈 생성 (T13)
+ * - GET    /api/v1/issues/{key} — 이슈 단건 조회 (T14)
+ * - GET    /api/v1/issues — 이슈 목록 조회 (페이지) (T14)
+ * - PATCH  /api/v1/issues/{key} — 이슈 수정 (T15)
+ * - POST   /api/v1/issues/{key}/transition — 이슈 상태 전이 (T15)
+ * - DELETE /api/v1/issues/{key} — 이슈 소프트 삭제 (T16)
  *
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다.
@@ -173,6 +177,26 @@ class IssueController(
         )
         val response = service.transitionIssue(actor, issueKey, appRequest)
         return ResponseEntity.ok(DataResponse(data = response))
+    }
+
+    /**
+     * 이슈를 소프트 삭제한다.
+     *
+     * 실제 DB 행을 제거하지 않고 삭제 플래그를 세운다 (soft delete).
+     * 삭제 후 해당 이슈 키로 조회하면 [com.bts.issue.domain.IssueNotFoundException] 이 발생한다.
+     *
+     * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
+     * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 이미 삭제된 경우 → 404
+     */
+    @DeleteMapping("/{key}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun delete(
+        @PathVariable key: String,
+    ) {
+        log.info("IssueController.delete key={}", key)
+
+        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        service.softDeleteIssue(actor, IssueKey(key))
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
