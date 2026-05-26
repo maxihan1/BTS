@@ -8,7 +8,6 @@ import com.bts.workflow.scheme.event.WorkflowSchemeDeletedEvent
 import com.bts.workflow.scheme.event.WorkflowSchemeDomainEvent
 import com.bts.workflow.scheme.event.WorkflowSchemeUpdatedEvent
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -73,7 +72,7 @@ class WorkflowSchemeEventPublisherIntegrationTest : DescribeSpec({
     fun buildObjectMapper(): ObjectMapper =
         ObjectMapper()
             .registerKotlinModule()
-            .registerModule(JavaTimeModule())
+            .findAndRegisterModules()
 
     /**
      * 단일 [conn] 위에 DSLContext 를 구성하고 트랜잭션을 열어 [block] 을 실행한 뒤 커밋한다.
