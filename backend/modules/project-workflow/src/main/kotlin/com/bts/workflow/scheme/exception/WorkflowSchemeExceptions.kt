@@ -5,9 +5,20 @@ package com.bts.workflow.scheme.exception
 /**
  * 워크플로우 스킴(WorkflowScheme) BC 내 모든 도메인 예외의 봉인 기반 클래스.
  *
- * - [WorkflowExceptionHandler]가 이 타입을 catch하여 RFC 7807 ProblemDetail 응답으로 변환한다.
- * - 각 sub-class의 `errorCode` 프로퍼티는 ProblemDetail `type` URI 및 클라이언트 에러 식별에 사용된다.
- * - 에러 코드 prefix는 프로젝트 규약(`WORKFLOW_` 또는 `SCHEME_` / `MAPPING_`)을 따른다.
+ * T28 WorkflowSchemeExceptionHandler가 이 타입을 catch하여 RFC 7807 ProblemDetail 응답으로 변환한다.
+ * 에러 코드 prefix는 프로젝트 규약(`SCHEME_` / `MAPPING_` / `WORKFLOW_SCHEME_`)을 따른다.
+ *
+ * ## spec §4.5 ProblemDetail errorCode 매핑
+ *
+ * | 예외 클래스                          | errorCode                        | HTTP 상태 |
+ * |--------------------------------------|----------------------------------|-----------|
+ * | [WorkflowSchemeNotFoundException]    | `SCHEME_NOT_FOUND`               | 404       |
+ * | [SchemeInUseException]               | `SCHEME_IN_USE`                  | 409       |
+ * | [SchemeStandardNotDeletableException]| `SCHEME_STANDARD_NOT_DELETABLE`  | 409       |
+ * | [SchemeStandardFieldLockedException] | `SCHEME_STANDARD_FIELD_LOCKED`   | 409       |
+ * | [MappingDuplicateException]          | `MAPPING_DUPLICATE`              | 409       |
+ * | [MappingDefaultDuplicateException]   | `MAPPING_DEFAULT_DUPLICATE`      | 409       |
+ * | [WorkflowSchemeNoDefaultException]   | `WORKFLOW_SCHEME_NO_DEFAULT`     | 422       |
  */
 sealed class WorkflowSchemeDomainException(message: String) : RuntimeException(message)
 

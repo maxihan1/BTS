@@ -22,15 +22,16 @@ class WorkflowSchemeExceptionsTest {
 
     @Test
     fun `모든 예외는 WorkflowSchemeDomainException 상속`() {
-        val exceptions: List<WorkflowSchemeDomainException> = listOf(
-            WorkflowSchemeNotFoundException(key = "SCM-1"),
-            SchemeInUseException(usedByProjects = listOf(1L, 2L, 3L)),
-            SchemeStandardNotDeletableException(key = "DEFAULT"),
-            SchemeStandardFieldLockedException(key = "DEFAULT", field = "name"),
-            MappingDuplicateException(schemeKey = "SCM-1", issueTypeKey = "BUG"),
-            MappingDefaultDuplicateException(schemeKey = "SCM-1"),
-            WorkflowSchemeNoDefaultException(schemeKey = "SCM-1"),
-        )
+        val exceptions: List<WorkflowSchemeDomainException> =
+            listOf(
+                WorkflowSchemeNotFoundException(key = "SCM-1"),
+                SchemeInUseException(usedByProjects = listOf(1L, 2L, 3L)),
+                SchemeStandardNotDeletableException(key = "DEFAULT"),
+                SchemeStandardFieldLockedException(key = "DEFAULT", field = "name"),
+                MappingDuplicateException(schemeKey = "SCM-1", issueTypeKey = "BUG"),
+                MappingDefaultDuplicateException(schemeKey = "SCM-1"),
+                WorkflowSchemeNoDefaultException(schemeKey = "SCM-1"),
+            )
         exceptions.forEach { ex ->
             assertThat(ex).isInstanceOf(WorkflowSchemeDomainException::class.java)
             assertThat(ex).isInstanceOf(RuntimeException::class.java)

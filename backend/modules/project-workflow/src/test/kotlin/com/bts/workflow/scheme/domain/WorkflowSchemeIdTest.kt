@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Test
 
 class WorkflowSchemeIdTest {
-
     @Test
     fun `WorkflowSchemeId 인스턴스화 및 value 접근`() {
         val id = WorkflowSchemeId(42L)
