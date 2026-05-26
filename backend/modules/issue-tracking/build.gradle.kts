@@ -59,6 +59,11 @@ repositories {
 }
 
 dependencies {
+    // project-workflow BC inbound port — WorkflowTransitionPort + TransitionRequest/TransitionPlan DTO
+    // BC 격리 원칙상 port (com.bts.workflow.port.inbound.*) 와 dto (com.bts.workflow.domain.dto.*) 만 허용.
+    // workflow 내부 adapter/engine 직접 import 금지.
+    implementation(project(":modules:project-workflow"))
+
     // 도메인 검증 (Konform — Kotlin-native 선언형 검증 라이브러리, ADR 2026-05-21 GAP-17)
     implementation("io.konform:konform-jvm:0.7.0")
 
@@ -80,6 +85,8 @@ dependencies {
 
     // Jackson (JSON 직렬화)
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+    // Jackson JSR-310 모듈 — java.time.Instant 등 Java 8 날짜/시간 타입 직렬화 지원 (pgmq 이벤트 occurredAt)
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
 
     // Kotlin 기본
     implementation("org.jetbrains.kotlin:kotlin-reflect")
@@ -94,6 +101,14 @@ dependencies {
 
     // jOOQ 런타임 (jOOQ: SQL을 코드로 안전하게 작성하는 라이브러리)
     implementation("org.jooq:jooq")
+
+    // Spring Data Commons — Pageable / Page / PageImpl (list 페이지네이션용)
+    // spring-boot-starter-data-jpa 전체가 아닌 commons 만 추가해 불필요한 JPA 자동 설정 차단
+    implementation("org.springframework.data:spring-data-commons")
+
+    // Jakarta Bean Validation (DEVELOPMENT.md — @field:NotBlank 등 Kotlin prefix 어노테이션)
+    // Hibernate Validator 는 runtime 구현체. spring-boot-starter-validation 이 둘 다 포함.
+    implementation("org.springframework.boot:spring-boot-starter-validation")
 
     // ── jOOQ 코드 생성 전용 classpath ─────────────────────────────────────────
     // PostgresDatabase: 실제 PostgreSQL 인스턴스를 통해 jOOQ 코드 생성 (nu.studer.jooq codegen 전용)
