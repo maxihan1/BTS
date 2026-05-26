@@ -12,6 +12,7 @@ import { WorkflowDetailPage } from './workflows.$key'
 // (PR #20 — vi.mock('mermaid') 가 worker scope leak 으로 LoginForm.test.tsx timing 영향 발견 후 좁힘)
 // (PR #21 — aria-label wrapper stub 으로 교체. workflow.name 기반 aria-label 로 T5-1 DOM 검증 가능하게 함)
 // 단위 테스트 책임: header 의 description <p> 렌더 + WorkflowDiagram 마운트 여부 검증. mermaid 실제 렌더는 Playwright E2E 담당.
+// aria-label wrapper stub: workflow.name 을 aria-label 에 노출해 T5-1 에서 getByLabelText 로 마운트 여부를 검증한다
 vi.mock('@/components/workflow/WorkflowDiagram', () => ({
   WorkflowDiagram: ({ workflow }: { workflow: { name: string } }) => (
     <div aria-label={`${workflow.name} 다이어그램`} />
