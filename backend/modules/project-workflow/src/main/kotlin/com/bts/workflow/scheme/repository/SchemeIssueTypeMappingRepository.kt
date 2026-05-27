@@ -5,6 +5,7 @@ package com.bts.workflow.scheme.repository
 import com.bts.issue.type.domain.IssueTypeId
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
+import com.bts.workflow.scheme.exception.MappingDefaultDuplicateException
 import com.bts.workflow.scheme.exception.MappingDuplicateException
 import org.jooq.DSLContext
 import org.jooq.impl.DSL
@@ -75,6 +76,17 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
             return record.toMapping()
         } catch (ex: DataIntegrityViolationException) {
             // Spring 의 ExceptionTranslator 가 활성화된 컨텍스트 (운영) — DataIntegrityViolationException 으로 도착.
+            val constraintName =
+                generateSequence(ex as Throwable?) { it.cause }
+                    .firstOrNull { it is org.postgresql.util.PSQLException }
+                    ?.let { (it as org.postgresql.util.PSQLException).serverErrorMessage?.constraint }
+            if (constraintName == "ix_scheme_default_mapping") {
+                log.warn(
+                    "addMapping default mapping 중복 (Spring 변환) — scheme_id={}",
+                    mapping.schemeId.value,
+                )
+                throw MappingDefaultDuplicateException(schemeKey = mapping.schemeId.value.toString())
+            }
             log.warn(
                 "addMapping UNIQUE 위반 (Spring 변환) — scheme_id={} issue_type_id={}",
                 mapping.schemeId.value,
@@ -87,11 +99,23 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
         } catch (ex: org.jooq.exception.DataAccessException) {
             // Spring ExceptionTranslator 비활성 컨텍스트 (예: 통합 테스트의 plain DSL.using()) —
             // jOOQ native DataAccessException 으로 도착. cause SQLException 의 sqlstate "23505"
-            // (unique_violation) 인 경우만 MappingDuplicateException 변환.
+            // (unique_violation) 인 경우만 예외 분기 변환.
             val sqlEx =
                 generateSequence(ex as Throwable?) { it.cause }
                     .firstOrNull { it is java.sql.SQLException } as? java.sql.SQLException
             if (sqlEx?.sqlState == "23505") {
+                // PostgreSQL JDBC PSQLException 에서 violated constraint name 으로 default mapping 중복 판별.
+                val constraintName =
+                    generateSequence(ex as Throwable?) { it.cause }
+                        .firstOrNull { it is org.postgresql.util.PSQLException }
+                        ?.let { (it as org.postgresql.util.PSQLException).serverErrorMessage?.constraint }
+                if (constraintName == "ix_scheme_default_mapping") {
+                    log.warn(
+                        "addMapping default mapping 중복 (jOOQ native) — scheme_id={}",
+                        mapping.schemeId.value,
+                    )
+                    throw MappingDefaultDuplicateException(schemeKey = mapping.schemeId.value.toString())
+                }
                 log.warn(
                     "addMapping UNIQUE 위반 (jOOQ native) — scheme_id={} issue_type_id={}",
                     mapping.schemeId.value,

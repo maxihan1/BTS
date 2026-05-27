@@ -5,6 +5,7 @@ package com.bts.workflow.scheme.repository
 import com.bts.issue.type.domain.IssueTypeId
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
+import com.bts.workflow.scheme.exception.MappingDefaultDuplicateException
 import com.bts.workflow.scheme.exception.MappingDuplicateException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -251,7 +252,7 @@ class SchemeIssueTypeMappingRepositoryIntegrationTest {
     // ── addMapping: partial UNIQUE INDEX ix_scheme_default_mapping 검증 ────────
 
     @Test
-    fun `addMapping - 같은 scheme_id 로 default mapping(issue_type_id IS NULL) 2건 시 MappingDuplicateException`() {
+    fun `addMapping - 같은 scheme_id 로 default mapping(issue_type_id IS NULL) 2건 시 MappingDefaultDuplicateException`() {
         // 별도 scheme — schemeId1/schemeId2 는 다른 테스트에서 조작하므로 신규 스킴 생성
         val newSchemeId =
             DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
@@ -280,7 +281,8 @@ class SchemeIssueTypeMappingRepositoryIntegrationTest {
             ),
         )
 
-        // 2차 default mapping (issue_type_id = null) 삽입 — partial UNIQUE INDEX 위반
+        // 2차 default mapping (issue_type_id = null) 삽입 — ix_scheme_default_mapping partial UNIQUE INDEX 위반
+        // constraint name "ix_scheme_default_mapping" 분기 → MappingDefaultDuplicateException (CONCERN-5 옵션 a)
         assertThatThrownBy {
             repository.addMapping(
                 SchemeIssueTypeMapping(
@@ -291,7 +293,7 @@ class SchemeIssueTypeMappingRepositoryIntegrationTest {
                     createdAt = Instant.now(),
                 ),
             )
-        }.isInstanceOf(MappingDuplicateException::class.java)
+        }.isInstanceOf(MappingDefaultDuplicateException::class.java)
     }
 
     // ── findBySchemeId: 목록 반환 ─────────────────────────────────────────────
