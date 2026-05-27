@@ -2,7 +2,7 @@
 
 package com.bts.workflow.web.dto
 
-import com.bts.workflow.domain.dto.TransitionRequest
+import com.bts.shared.workflow.TransitionRequest
 import io.konform.validation.Validation
 import io.konform.validation.ValidationResult
 import io.konform.validation.jsonschema.minLength

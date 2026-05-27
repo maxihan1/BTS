@@ -30,8 +30,14 @@ repositories {
 }
 
 dependencies {
-    // issue-tracking BC 의존 — IssueTypeId 직접 import (BC 격리 의식적 예외: same DB schema 공유, ADR issue-type-cross-bc-introduction)
-    implementation(project(":modules:issue-tracking"))
+    // shared-kernel — WorkflowTransitionPort + TransitionRequest/Result/Plan/FieldChange/DomainEvent (PR #25 Task 3)
+    //   + IssueTypeId/IssueTypeKey 공유 VO. issue-tracking 직접 의존을 제거해 순환(issue-tracking ↔ project-workflow) 회피.
+    implementation(project(":modules:shared-kernel"))
+
+    // issue-tracking — 테스트 런타임 전용. project-workflow V202 마이그레이션이 issue-tracking V001 의
+    //   projects 테이블을 FK 참조하므로, 통합 테스트(Testcontainers)에서 그 마이그레이션 SQL 이 classpath 에 있어야 한다.
+    //   컴파일 의존이 아니라 순환을 만들지 않고(issue-tracking 은 shared-kernel 만 의존), BC 격리 ArchUnit 도 import 가 아니라 통과.
+    testRuntimeOnly(project(":modules:issue-tracking"))
 
     // 도메인 검증 (Konform — Kotlin-native 선언형 검증 라이브러리, ADR 2026-05-21 GAP-17)
     implementation("io.konform:konform-jvm:0.7.0")
@@ -69,8 +75,10 @@ dependencies {
     // SpEL — Spring Expression Language (Task 20 CustomExpression validator 에서 사용)
     implementation("org.springframework:spring-expression")
 
-    // PostgreSQL 드라이버 (런타임만 — 컴파일 타임 불필요)
-    runtimeOnly("org.postgresql:postgresql")
+    // PostgreSQL 드라이버 — SchemeIssueTypeMappingRepository 가 PSQLException.serverErrorMessage 로
+    // 제약조건 이름을 추출하므로 컴파일 타임에 직접 참조한다.
+    // (이전엔 issue-tracking implementation 의존을 통해 transitive 로 노출됐으나, 순환 회피로 그 의존을 끊으며 명시화)
+    implementation("org.postgresql:postgresql")
 
     // jOOQ 런타임 (jOOQ: SQL을 코드로 안전하게 작성하는 라이브러리)
     implementation("org.jooq:jooq")
@@ -171,6 +179,14 @@ jooq {
     }
 }
 
+// ── compileKotlin → generateJooq 명시적 의존 선언 ────────────────────────────
+// generateSchemaSourceOnCompilation = false 로 jOOQ 자동 트리거를 끈 상태에서도
+// clean 빌드 시 compileKotlin 이 src/generated/jooq 를 읽기 전에 generateJooq 가
+// 반드시 먼저 실행되도록 Gradle 태스크 의존을 명시한다 (Gradle 8.10 implicit dependency 오류 해소).
+tasks.named<KotlinCompile>("compileKotlin") {
+    dependsOn("generateJooq")
+}
+
 // ── KotlinCompile 옵션 ────────────────────────────────────────────────────────
 tasks.withType<KotlinCompile> {
     compilerOptions {
@@ -215,10 +231,22 @@ sourceSets {
     }
 }
 
-// ── ktlint — generated 소스 제외 ─────────────────────────────────────────────
-// jOOQ codegen 출력은 수동 관리 불가이므로 ktlint 검사 범위에서 제외한다.
-configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
-    filter {
-        exclude { element -> element.file.path.contains("/generated/") }
+// ── ktlintMainSourceSetCheck 가 generated 소스를 검사하지 않도록 source 재설정 ──
+// 설계 결정 (ktlint generated 제외 — issue-tracking PR #14 lint fix 와 동일 패턴):
+//   nu.studer.jooq 9.0 플러그인이 target.directory 를 자동으로 SourceDirectorySet.srcDir() 에 등록.
+//   sourceSets.main.kotlin.srcDir 를 제거해도 JooqPlugin 이 재등록하므로 효과 없음.
+//   ktlint plugin 12.x 가 KotlinSourceSet.kotlin.sourceDirectories 를 수집해 task source 확정.
+//   exclude("**/generated/**") 패턴은 각 srcDir root 기준 상대경로 매칭이므로
+//   src/generated/jooq root 기준 파일 경로에 "generated" 세그먼트가 없어 매칭 불가.
+//   → afterEvaluate 에서 runKtlintCheckOverMainSourceSet task 의 source 를 직접 재설정:
+//     src/main/kotlin 만 포함하는 FileTree 로 교체 — generated 완전 제외.
+//     컴파일은 sourceSets.main.kotlin.srcDir 경유로 정상 포함.
+//
+//   KtlintExtension.filter { exclude { ... } } 는 리포트 필터일 뿐 task 입력(source)을 줄이지 못함.
+//   Gradle 8.10 implicit-dependency 감지는 task 입력 기준이므로 filter 로는 오류가 남는다.
+//   → setSource 로 task 입력 자체를 src/main/kotlin 로 한정해야 implicit-dependency 해소.
+afterEvaluate {
+    tasks.named<org.jlleitschuh.gradle.ktlint.tasks.BaseKtLintCheckTask>("runKtlintCheckOverMainSourceSet") {
+        setSource(fileTree("src/main/kotlin"))
     }
 }

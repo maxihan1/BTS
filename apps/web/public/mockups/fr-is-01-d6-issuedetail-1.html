@@ -1,0 +1,75 @@
+<!doctype html>
+<!-- FR-IS-01 D6 이슈 상세 시안 1 — 단일 컬럼 (Linear풍, content-first) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>이슈 상세 시안 1 — 단일 컬럼</title>
+<style>
+  :root {
+    --background: oklch(1 0 0); --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0); --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0); --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0); --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0); --input: oklch(0.922 0 0); --ring: oklch(0.708 0 0);
+    --radius: 0.625rem;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Geist Variable', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+    background: var(--background); color: var(--foreground);
+    font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 720px; margin: 0 auto; padding: 48px 24px; }
+  .breadcrumb { font-size: 13px; color: var(--muted-foreground); margin-bottom: 16px; display: flex; gap: 6px; align-items: center; }
+  .breadcrumb .key { font-weight: 500; color: var(--foreground); }
+  .title-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+  .title { font-size: 24px; line-height: 2rem; font-weight: 600; flex: 1; cursor: text; padding: 4px 6px; margin: -4px -6px; border-radius: 8px; }
+  .title:hover { background: var(--accent); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border: 1px solid var(--border); border-radius: 999px; font-size: 13px; font-weight: 500; background: var(--card); cursor: pointer; white-space: nowrap; }
+  .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: oklch(0.6 0.13 250); }
+  .menu-btn { width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); cursor: pointer; color: var(--muted-foreground); font-size: 18px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 16px; padding: 16px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin: 24px 0; font-size: 13px; color: var(--muted-foreground); }
+  .meta b { color: var(--foreground); font-weight: 500; }
+  .section-label { font-size: 13px; font-weight: 500; color: var(--muted-foreground); margin-bottom: 8px; }
+  .desc { color: var(--muted-foreground); font-size: 14px; padding: 12px; background: var(--muted); border-radius: 10px; }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 12px 16px; box-shadow: 0 8px 24px rgba(0,0,0,.10); display: flex; gap: 10px; align-items: center; font-size: 13px; max-width: 420px; }
+  .toast .ic { color: var(--destructive); font-weight: 700; }
+  .hint { margin-top: 40px; font-size: 12px; color: var(--muted-foreground); border-top: 1px dashed var(--border); padding-top: 12px; }
+  .hint b { color: var(--foreground); }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="breadcrumb">ATLAS <span>›</span> <span class="key">ATLAS-42</span></div>
+
+    <div class="title-row">
+      <h1 class="title" title="클릭하면 인라인 편집">결제 모듈에서 환불 시 잔액이 음수로 표시됨</h1>
+      <button class="pill" title="클릭하면 상태 전이"><span class="dot"></span>진행 중 ▾</button>
+      <button class="menu-btn" title="더 보기 (수정 / 삭제)">⋯</button>
+    </div>
+
+    <div class="meta">
+      <span>보고자 <b>김민지</b></span>
+      <span>생성 <b>2026-05-25</b></span>
+      <span>수정 <b>2026-05-27 14:02</b></span>
+      <span>버전 <b>v3</b></span>
+    </div>
+
+    <div class="section-label">설명</div>
+    <div class="desc">(FR-IS-04 본문 단계에서 추가 예정 — D6은 요약·상태·메타 중심)</div>
+
+    <div class="hint">
+      <b>시안 1 — 단일 컬럼 (Linear풍).</b> 제목(summary)을 화면 주인공으로. 제목 클릭 → 인라인 편집(낙관적 저장).
+      상태 pill 클릭 → 전이 드롭다운. 수정/삭제는 우상단 ⋯ 메뉴로 숨김. 정보 밀도 낮고 읽기 집중.
+      로딩=중앙 스피너, 에러/404=role=alert 폴백, 409 충돌=하단 토스트(아래).
+    </div>
+  </div>
+
+  <div class="toast">
+    <span class="ic">⚠</span>
+    <span>다른 사용자가 먼저 수정했습니다. 최신 내용으로 갱신했어요. 다시 시도해 주세요.</span>
+  </div>
+</body>
+</html>

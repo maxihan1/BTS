@@ -2,8 +2,8 @@
 
 package com.bts.issue.type.repository
 
-import com.bts.issue.type.domain.IssueTypeId
-import com.bts.issue.type.domain.IssueTypeKey
+import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.issue.IssueTypeKey
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
@@ -39,7 +39,6 @@ import org.testcontainers.utility.DockerImageName
  */
 @Testcontainers
 class IssueTypeRepositoryIntegrationTest {
-
     companion object {
         // quay.io/tembo/pg16-pgmq:latest — V002 pgmq 확장 요구로 인해 tembo 이미지 사용.
         // asCompatibleSubstituteFor("postgres"): Testcontainers 이미지 호환성 검증 우회.

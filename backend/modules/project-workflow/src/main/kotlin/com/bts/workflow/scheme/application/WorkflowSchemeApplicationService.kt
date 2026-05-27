@@ -2,7 +2,7 @@
 
 package com.bts.workflow.scheme.application
 
-import com.bts.issue.type.domain.IssueTypeId
+import com.bts.shared.issue.IssueTypeId
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
 import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment

@@ -2,7 +2,7 @@
 
 package com.bts.workflow.scheme.application
 
-import com.bts.issue.type.domain.IssueTypeId
+import com.bts.shared.issue.IssueTypeId
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermissionResolver
 import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
@@ -340,7 +340,8 @@ class WorkflowSchemeApplicationServiceTest {
     fun `assignToProject — ASSIGN_SCHEME 권한 거부 시 예외를 던진다`() {
         val denyingResolver = mockk<WorkflowSchemePermissionResolver>()
         every {
-            denyingResolver.requirePermission(any(), WorkflowSchemePermission.ASSIGN_SCHEME, any<WorkflowSchemeScope.Project>())
+            // ActorId 는 UUID 강제 value class — any() 매칭 시 MockK 가 임의값으로 생성하다 검증 실패한다. 구체 actor 로 매칭.
+            denyingResolver.requirePermission(actor, WorkflowSchemePermission.ASSIGN_SCHEME, any<WorkflowSchemeScope.Project>())
         } throws RuntimeException("WORKFLOW_PERMISSION_DENIED")
 
         val svcWithDeny = WorkflowSchemeApplicationService(schemeRepo, assignmentRepo, mappingRepo, eventPublisher, denyingResolver)

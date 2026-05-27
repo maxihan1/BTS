@@ -1,7 +1,7 @@
 // SchemeIssueTypeMapping Entity 단위 테스트 — nullable issueTypeId + UUID workflowId + equals
 package com.bts.workflow.scheme.domain
 
-import com.bts.issue.type.domain.IssueTypeId
+import com.bts.shared.issue.IssueTypeId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull

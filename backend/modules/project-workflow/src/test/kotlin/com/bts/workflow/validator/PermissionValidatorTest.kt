@@ -2,11 +2,11 @@
 
 package com.bts.workflow.validator
 
+import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.domain.dto.TransitionContext
-import com.bts.workflow.domain.dto.TransitionRequest
 import com.bts.workflow.domain.expression.ActorView
 import com.bts.workflow.domain.expression.IssueView
 import com.bts.workflow.domain.spi.ValidatorResult
@@ -107,7 +107,7 @@ class PermissionValidatorTest {
     fun `scope issue 기본값은 Scope Issue(issueKey) 로 resolver 를 호출한다`() {
         val permission = "TRANSITION_ISSUE"
         val validator = PermissionValidator(resolver, permission) // scope 미지정 → 기본 Issue
-        val ctx = buildContext(actorId = "user-abc", issueKey = "BTS-42")
+        val ctx = buildContext(issueKey = "BTS-42")
 
         every {
             resolver.hasPermission(ActorId(ACTOR_UUID), permission, Scope.Issue("BTS-42"))
@@ -124,7 +124,7 @@ class PermissionValidatorTest {
     fun `scope project 지정 시 Scope Project(workflowKey) 로 resolver 를 호출한다`() {
         val permission = "ADMIN_WORKFLOW"
         val validator = PermissionValidator(resolver, permission, scope = ValidatorScope.PROJECT)
-        val ctx = buildContext(actorId = "user-abc", workflowKey = "CUSTOM")
+        val ctx = buildContext(workflowKey = "CUSTOM")
 
         every {
             resolver.hasPermission(ActorId(ACTOR_UUID), permission, Scope.Project("CUSTOM"))
@@ -146,7 +146,9 @@ class PermissionValidatorTest {
         val ctx = buildContext()
 
         every {
-            resolver.hasPermission(any(), any(), any())
+            // ActorId 는 UUID 강제 value class — MockK 가 any() 로 매칭하면 임의값으로 생성하다 검증 실패한다.
+            // 구체 ActorId(ACTOR_UUID) 로 매칭 (ctx 가 buildContext 기본 actor 이므로 실제 호출과 일치).
+            resolver.hasPermission(ActorId(ACTOR_UUID), any(), any())
         } throws RuntimeException("downstream unavailable")
 
         val result = validator.validate(ctx)

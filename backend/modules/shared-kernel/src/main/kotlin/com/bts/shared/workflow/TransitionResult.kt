@@ -1,6 +1,6 @@
 // 워크플로우 전이 결과 — sealed interface 로 호출자 BC 가 when exhaustive 분기 처리
 
-package com.bts.workflow.domain.dto
+package com.bts.shared.workflow
 
 /**
  * 워크플로우 전이 결과를 표현하는 sealed interface.
@@ -32,7 +32,7 @@ sealed interface TransitionResult {
     data class Success(val plan: TransitionPlan) : TransitionResult
 
     /**
-     * 등록된 [com.bts.workflow.domain.spi.WorkflowValidator] 중 하나 이상이 전이를 거부했을 때 반환된다.
+     * 등록된 WorkflowValidator 중 하나 이상이 전이를 거부했을 때 반환된다.
      *
      * issue-tracking BC 는 이 케이스를 `IssueTransitionNotAllowedException` 으로 변환해 던져야 한다.
      *

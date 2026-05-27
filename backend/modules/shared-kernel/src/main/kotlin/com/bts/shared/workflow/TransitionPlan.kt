@@ -1,6 +1,6 @@
 // 워크플로우 전이 결과 계획 DTO — 호출자 BC 가 적용 (영속화/이벤트 발행 책임)
 
-package com.bts.workflow.domain.dto
+package com.bts.shared.workflow
 
 /**
  * 워크플로우 전이 결과 계획.

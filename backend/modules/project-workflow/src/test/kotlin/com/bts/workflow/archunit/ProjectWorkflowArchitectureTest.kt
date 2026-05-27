@@ -65,22 +65,16 @@ class ProjectWorkflowArchitectureTest {
     /**
      * 룰 3 — project-workflow 패키지가 issue-tracking BC 내부 패키지를 직접 import하지 않는다.
      *
-     * 허용 예외.
-     * - `com.bts.issue.*.jooq.tables.*` (jOOQ 생성 코드).
-     * - `com.bts.issue.type.domain.IssueTypeId` / `IssueTypeKey` — WorkflowResolver port 계약 및
-     *   SchemeIssueTypeMappingRepository JOIN 에서 사용하는 공개 API 타입. BC 격리 예외 허용
-     *   (ADR project-scheme-mapping-jira-align §cross-BC type sharing).
+     * IssueTypeId / IssueTypeKey 는 PR #25 에서 shared-kernel(`com.bts.shared.issue`)로 이동되어
+     * 더 이상 issue-tracking 직접 import 가 아니다. issue-tracking ↔ project-workflow 순환을
+     * 회피하기 위해 예외 없이 전면 금지한다.
      */
     @Test
     fun mustNotImportIssueTracking() {
         bcIsolationRuleWithAllowedClasses(
             targetPackage = "com.bts.issue..",
             bcName = "issue-tracking",
-            allowedClassNames =
-                setOf(
-                    "com.bts.issue.type.domain.IssueTypeId",
-                    "com.bts.issue.type.domain.IssueTypeKey",
-                ),
+            allowedClassNames = emptySet(),
         ).check(importedClasses)
     }
 

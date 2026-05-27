@@ -2,7 +2,7 @@
 
 package com.bts.workflow.scheme.repository
 
-import com.bts.issue.type.domain.IssueTypeId
+import com.bts.shared.issue.IssueTypeId
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.scheme.exception.MappingDefaultDuplicateException

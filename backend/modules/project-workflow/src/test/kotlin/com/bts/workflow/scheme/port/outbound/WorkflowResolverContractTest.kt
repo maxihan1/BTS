@@ -2,7 +2,7 @@
 
 package com.bts.workflow.scheme.port.outbound
 
-import com.bts.issue.type.domain.IssueTypeKey
+import com.bts.shared.issue.IssueTypeKey
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.scheme.domain.ProjectKey
 import org.assertj.core.api.Assertions.assertThat

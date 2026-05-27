@@ -1,9 +1,7 @@
 // 워크플로우 전이 inbound port — issue-tracking / automation BC 호출 (Propagation.MANDATORY)
 
-package com.bts.workflow.port.inbound
+package com.bts.shared.workflow
 
-import com.bts.workflow.domain.dto.TransitionRequest
-import com.bts.workflow.domain.dto.TransitionResult
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 
@@ -20,8 +18,8 @@ import org.springframework.transaction.annotation.Transactional
  * 구현체는 내부 예외를 [TransitionResult] 케이스로 매핑하여 반환해야 한다.
  * 호출자 BC 는 `when` 식으로 exhaustive 하게 처리해야 하며 `else` 브랜치는 금지한다.
  *
- * - [TransitionResult.Success] — 검증 통과. [com.bts.workflow.domain.dto.TransitionPlan] 을 포함.
- * - [TransitionResult.ValidatorFailure] — 등록된 [com.bts.workflow.domain.spi.WorkflowValidator] 중
+ * - [TransitionResult.Success] — 검증 통과. [TransitionPlan] 을 포함.
+ * - [TransitionResult.ValidatorFailure] — 등록된 WorkflowValidator 중
  *   하나 이상이 전이를 거부했을 때. [TransitionResult.ValidatorFailure.message] 에 사유 포함.
  * - [TransitionResult.WorkflowNotFound] — [TransitionRequest.workflowKey] 에 해당하는 워크플로우가
  *   DB 에 없을 때. [TransitionResult.WorkflowNotFound.key] 에 조회 실패한 키 포함.

@@ -2,7 +2,7 @@
 
 package com.bts.workflow.scheme.adapter.inbound
 
-import com.bts.issue.type.domain.IssueTypeKey
+import com.bts.shared.issue.IssueTypeKey
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermissionResolver

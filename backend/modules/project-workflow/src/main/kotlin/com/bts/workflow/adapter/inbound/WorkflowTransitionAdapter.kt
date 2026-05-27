@@ -2,13 +2,13 @@
 
 package com.bts.workflow.adapter.inbound
 
-import com.bts.workflow.domain.dto.TransitionRequest
-import com.bts.workflow.domain.dto.TransitionResult
+import com.bts.shared.workflow.TransitionRequest
+import com.bts.shared.workflow.TransitionResult
+import com.bts.shared.workflow.WorkflowTransitionPort
 import com.bts.workflow.domain.exception.WorkflowExpressionTimeoutException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.workflow.engine.WorkflowEngine
-import com.bts.workflow.port.inbound.WorkflowTransitionPort
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Propagation

@@ -1,6 +1,8 @@
 // 이슈 타입 Aggregate Root — 5 표준 (Epic/Story/Task/Subtask/Bug) + 커스텀 후속 FR-IS-02
 package com.bts.issue.type.domain
 
+import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.issue.IssueTypeKey
 import java.time.Instant
 
 /**
@@ -77,48 +79,53 @@ data class IssueType(
         }
 
         /** 표준 이슈 타입 — Epic. 에픽(큰 사용자 스토리 묶음). */
-        val EPIC: IssueType = create(
-            key = IssueTypeKey("epic"),
-            name = "Epic",
-            description = "대규모 작업 단위. 여러 Story 로 분해된다.",
-            iconName = "epic",
-            isStandard = true,
-        )
+        val EPIC: IssueType =
+            create(
+                key = IssueTypeKey("epic"),
+                name = "Epic",
+                description = "대규모 작업 단위. 여러 Story 로 분해된다.",
+                iconName = "epic",
+                isStandard = true,
+            )
 
         /** 표준 이슈 타입 — Story. 사용자 관점에서 정의된 기능 단위. */
-        val STORY: IssueType = create(
-            key = IssueTypeKey("story"),
-            name = "Story",
-            description = "사용자 스토리. 하나의 기능을 사용자 관점으로 서술한다.",
-            iconName = "story",
-            isStandard = true,
-        )
+        val STORY: IssueType =
+            create(
+                key = IssueTypeKey("story"),
+                name = "Story",
+                description = "사용자 스토리. 하나의 기능을 사용자 관점으로 서술한다.",
+                iconName = "story",
+                isStandard = true,
+            )
 
         /** 표준 이슈 타입 — Task. 구체적인 작업 항목. */
-        val TASK: IssueType = create(
-            key = IssueTypeKey("task"),
-            name = "Task",
-            description = "구체적인 작업 항목. Story 를 달성하기 위한 단위 작업.",
-            iconName = "task",
-            isStandard = true,
-        )
+        val TASK: IssueType =
+            create(
+                key = IssueTypeKey("task"),
+                name = "Task",
+                description = "구체적인 작업 항목. Story 를 달성하기 위한 단위 작업.",
+                iconName = "task",
+                isStandard = true,
+            )
 
         /** 표준 이슈 타입 — Subtask. Task 를 세분화한 하위 작업. */
-        val SUBTASK: IssueType = create(
-            key = IssueTypeKey("subtask"),
-            name = "Subtask",
-            description = "Task 를 세분화한 하위 작업 단위.",
-            iconName = "subtask",
-            isStandard = true,
-        )
+        val SUBTASK: IssueType =
+            create(
+                key = IssueTypeKey("subtask"),
+                name = "Subtask",
+                description = "Task 를 세분화한 하위 작업 단위.",
+                iconName = "subtask",
+                isStandard = true,
+            )
 
         /** 표준 이슈 타입 — Bug. 결함 및 오류 항목. */
-        val BUG: IssueType = create(
-            key = IssueTypeKey("bug"),
-            name = "Bug",
-            description = "시스템 결함 또는 예상치 못한 동작.",
-            iconName = "bug",
-            isStandard = true,
-        )
+        val BUG: IssueType =
+            create(
+                key = IssueTypeKey("bug"),
+                name = "Bug",
+                description = "시스템 결함 또는 예상치 못한 동작.",
+                iconName = "bug",
+                isStandard = true,
+            )
     }
 }

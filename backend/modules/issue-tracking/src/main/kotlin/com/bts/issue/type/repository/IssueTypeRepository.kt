@@ -3,8 +3,8 @@
 package com.bts.issue.type.repository
 
 import com.bts.issue.type.domain.IssueType
-import com.bts.issue.type.domain.IssueTypeId
-import com.bts.issue.type.domain.IssueTypeKey
+import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.issue.IssueTypeKey
 import org.jooq.DSLContext
 import org.jooq.Record
 import org.jooq.impl.DSL.field
@@ -12,7 +12,6 @@ import org.jooq.impl.DSL.name
 import org.jooq.impl.DSL.table
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
-import java.time.Instant
 import java.time.OffsetDateTime
 
 /**
@@ -33,8 +32,8 @@ import java.time.OffsetDateTime
  * - WorkflowSchemeRepository / SchemeIssueTypeMappingRepository 와 동일 패턴.
  *
  * @see com.bts.issue.type.domain.IssueType
- * @see com.bts.issue.type.domain.IssueTypeKey
- * @see com.bts.issue.type.domain.IssueTypeId
+ * @see com.bts.shared.issue.IssueTypeKey
+ * @see com.bts.shared.issue.IssueTypeId
  */
 @Repository
 class IssueTypeRepository(
@@ -61,7 +60,17 @@ class IssueTypeRepository(
      */
     @Transactional(readOnly = true)
     fun findAll(): List<IssueType> =
-        dsl.select(idField, keyField, nameField, descriptionField, iconNameField, isStandardField, createdAtField, updatedAtField, deletedAtField)
+        dsl.select(
+            idField,
+            keyField,
+            nameField,
+            descriptionField,
+            iconNameField,
+            isStandardField,
+            createdAtField,
+            updatedAtField,
+            deletedAtField,
+        )
             .from(issueTypes)
             .where(deletedAtField.isNull)
             .fetch()
@@ -75,7 +84,17 @@ class IssueTypeRepository(
      */
     @Transactional(readOnly = true)
     fun findByKey(key: IssueTypeKey): IssueType? =
-        dsl.select(idField, keyField, nameField, descriptionField, iconNameField, isStandardField, createdAtField, updatedAtField, deletedAtField)
+        dsl.select(
+            idField,
+            keyField,
+            nameField,
+            descriptionField,
+            iconNameField,
+            isStandardField,
+            createdAtField,
+            updatedAtField,
+            deletedAtField,
+        )
             .from(issueTypes)
             .where(keyField.eq(key.value))
             .and(deletedAtField.isNull)
@@ -90,7 +109,17 @@ class IssueTypeRepository(
      */
     @Transactional(readOnly = true)
     fun findById(id: IssueTypeId): IssueType? =
-        dsl.select(idField, keyField, nameField, descriptionField, iconNameField, isStandardField, createdAtField, updatedAtField, deletedAtField)
+        dsl.select(
+            idField,
+            keyField,
+            nameField,
+            descriptionField,
+            iconNameField,
+            isStandardField,
+            createdAtField,
+            updatedAtField,
+            deletedAtField,
+        )
             .from(issueTypes)
             .where(idField.eq(id.value))
             .and(deletedAtField.isNull)

@@ -1,6 +1,7 @@
 // IssueType Aggregate Root 단위 테스트 — factory invariants + 5 표준 키 검증
 package com.bts.issue.type.domain
 
+import com.bts.shared.issue.IssueTypeKey
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
@@ -23,59 +24,65 @@ class IssueTypeTest : DescribeSpec({
 
         context("유효한 입력") {
             it("key/name 입력 시 IssueType 인스턴스를 반환한다") {
-                val issueType = IssueType.create(
-                    key = IssueTypeKey("task"),
-                    name = "Task",
-                )
+                val issueType =
+                    IssueType.create(
+                        key = IssueTypeKey("task"),
+                        name = "Task",
+                    )
 
                 issueType.key.value shouldBe "task"
                 issueType.name shouldBe "Task"
             }
 
             it("isStandard 기본값은 false 다") {
-                val issueType = IssueType.create(
-                    key = IssueTypeKey("task"),
-                    name = "Task",
-                )
+                val issueType =
+                    IssueType.create(
+                        key = IssueTypeKey("task"),
+                        name = "Task",
+                    )
 
                 issueType.isStandard shouldBe false
             }
 
             it("isStandard = true 로 명시 가능하다") {
-                val issueType = IssueType.create(
-                    key = IssueTypeKey("task"),
-                    name = "Task",
-                    isStandard = true,
-                )
+                val issueType =
+                    IssueType.create(
+                        key = IssueTypeKey("task"),
+                        name = "Task",
+                        isStandard = true,
+                    )
 
                 issueType.isStandard shouldBe true
             }
 
             it("description 은 null 허용이다") {
-                val issueType = IssueType.create(
-                    key = IssueTypeKey("task"),
-                    name = "Task",
-                    description = null,
-                )
+                val issueType =
+                    IssueType.create(
+                        key = IssueTypeKey("task"),
+                        name = "Task",
+                        description = null,
+                    )
 
                 issueType.description.shouldBeNull()
             }
 
             it("iconName 은 null 허용이다") {
-                val issueType = IssueType.create(
-                    key = IssueTypeKey("task"),
-                    name = "Task",
-                    iconName = null,
-                )
+                val issueType =
+                    IssueType.create(
+                        key = IssueTypeKey("task"),
+                        name = "Task",
+                        iconName = null,
+                    )
 
                 issueType.iconName.shouldBeNull()
             }
 
             it("id 는 null 허용이다 (신규 생성 전 DB PK 미확정 상태)") {
-                val issueType = IssueType.create(
-                    key = IssueTypeKey("task"),
-                    name = "Task",
-                )
+                val issueType =
+                    IssueType.create(
+                        key = IssueTypeKey("task"),
+                        name = "Task",
+                    )
 
                 issueType.id.shouldBeNull()
             }
@@ -125,13 +132,14 @@ class IssueTypeTest : DescribeSpec({
         }
 
         it("표준 5종은 모두 isStandard = true 다") {
-            val standards = listOf(
-                IssueType.EPIC,
-                IssueType.STORY,
-                IssueType.TASK,
-                IssueType.SUBTASK,
-                IssueType.BUG,
-            )
+            val standards =
+                listOf(
+                    IssueType.EPIC,
+                    IssueType.STORY,
+                    IssueType.TASK,
+                    IssueType.SUBTASK,
+                    IssueType.BUG,
+                )
 
             standards.forEach { it.isStandard shouldBe true }
         }

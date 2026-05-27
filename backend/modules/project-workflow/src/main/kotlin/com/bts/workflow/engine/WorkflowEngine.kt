@@ -2,15 +2,15 @@
 
 package com.bts.workflow.engine
 
+import com.bts.shared.workflow.DomainEvent
+import com.bts.shared.workflow.FieldChange
+import com.bts.shared.workflow.TransitionPlan
+import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition
-import com.bts.workflow.domain.dto.DomainEvent
-import com.bts.workflow.domain.dto.FieldChange
 import com.bts.workflow.domain.dto.TransitionContext
-import com.bts.workflow.domain.dto.TransitionPlan
-import com.bts.workflow.domain.dto.TransitionRequest
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.workflow.domain.expression.DefaultActorView
@@ -106,7 +106,7 @@ data class PostActionConfig(val type: String, val config: Map<String, Any?>)
  *
  * 이 클래스는 상태를 직접 변경하지 않는다.
  * 반환된 [TransitionPlan] 을 호출자 ([com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter]) 가
- * [com.bts.workflow.domain.dto.TransitionResult] 로 래핑하여 상위 BC 에 전달한다.
+ * [com.bts.shared.workflow.TransitionResult] 로 래핑하여 상위 BC 에 전달한다.
  *
  * @param cache 워크플로우 메모리 캐시
  * @param validatorFactory Validator 인스턴스 팩토리
@@ -129,7 +129,7 @@ class WorkflowEngine(
      * 트랜잭션 없이 호출하면 Spring 이 [org.springframework.transaction.IllegalTransactionStateException] 을 던진다.
      *
      * 호출자인 [com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter] 가 아래 예외를
-     * [com.bts.workflow.domain.dto.TransitionResult] 케이스로 매핑한다.
+     * [com.bts.shared.workflow.TransitionResult] 케이스로 매핑한다.
      *
      * @throws WorkflowNotFoundException 워크플로우·전이 정의를 찾을 수 없을 때
      * @throws WorkflowValidatorFailureException Validator 가 전이를 거부할 때

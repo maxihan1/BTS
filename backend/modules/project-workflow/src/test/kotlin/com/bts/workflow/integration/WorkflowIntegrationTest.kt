@@ -2,10 +2,10 @@
 
 package com.bts.workflow.integration
 
+import com.bts.shared.workflow.DomainEvent
+import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.cache.WorkflowCache
-import com.bts.workflow.domain.dto.DomainEvent
 import com.bts.workflow.domain.dto.PostActionPlan
-import com.bts.workflow.domain.dto.TransitionRequest
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.workflow.domain.spi.ValidatorResult
 import com.bts.workflow.domain.spi.WorkflowPostAction
@@ -121,7 +121,7 @@ class WorkflowIntegrationTest {
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
-                .locations("classpath:db/migration/project-workflow")
+                .locations("classpath:db/migration")
                 .load()
                 .migrate()
 

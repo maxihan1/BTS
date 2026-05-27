@@ -1,7 +1,7 @@
 // 스킴-이슈타입-워크플로우 매핑 Entity — Jira workflowschemeentity align (issue_type NULL = default mapping)
 package com.bts.workflow.scheme.domain
 
-import com.bts.issue.type.domain.IssueTypeId
+import com.bts.shared.issue.IssueTypeId
 import java.time.Instant
 import java.util.UUID
 

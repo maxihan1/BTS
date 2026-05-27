@@ -9,6 +9,14 @@ export const DashboardPage = () => {
       <h1 className="text-2xl font-semibold">
         환영합니다, {user?.username ?? ''}
       </h1>
+      <nav className="mt-6 flex gap-4" aria-label="주요 메뉴">
+        <a
+          href="/issues"
+          className="text-sm font-medium text-primary hover:underline"
+        >
+          이슈
+        </a>
+      </nav>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 // 이슈 필드 변경 명세 (old → new)
 
-package com.bts.workflow.domain.dto
+package com.bts.shared.workflow
 
 /**
  * 이슈의 단일 필드 변경 명세.
