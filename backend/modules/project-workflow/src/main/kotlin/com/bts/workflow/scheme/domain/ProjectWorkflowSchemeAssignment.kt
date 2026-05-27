@@ -21,13 +21,13 @@ import java.util.UUID
  * 3. 감사 추적: [assignedAt], [assignedBy] 컬럼을 테이블에 직접 보유.
  * 4. jOOQ DSL 호환: 생성된 레코드 타입이 BC 내부에서 타입 안전하게 사용됨.
  *
- * @property projectId 스킴이 할당된 프로젝트 ID (`projects.id BIGINT`).
+ * @property projectId 스킴이 할당된 프로젝트 UUID (`projects.id UUID`). V202 에서 BIGINT → UUID 정정.
  * @property workflowSchemeId 할당된 워크플로우 스킴 식별자.
  * @property assignedAt 할당이 이루어진 시각 (UTC Instant).
  * @property assignedBy 할당을 수행한 사용자 UUID.
  */
 data class ProjectWorkflowSchemeAssignment(
-    val projectId: Long,
+    val projectId: UUID,
     val workflowSchemeId: WorkflowSchemeId,
     val assignedAt: Instant,
     val assignedBy: UUID,

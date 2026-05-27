@@ -8,7 +8,6 @@ import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
 import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowScheme
-import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
 import com.bts.workflow.scheme.event.WorkflowSchemeAssignedEvent
 import com.bts.workflow.scheme.exception.SchemeInUseException
@@ -123,16 +122,17 @@ class WorkflowSchemeApplicationService(
         }
 
         log.info("update scheme: actor={} key={}", actor.raw, key.value)
-        val updated = WorkflowScheme.reconstruct(
-            id = requireNotNull(existing.id) { "scheme.id must not be null" },
-            key = existing.key,
-            name = newName,
-            description = newDescription,
-            isDefault = newIsDefault,
-            createdAt = existing.createdAt,
-            updatedAt = existing.updatedAt,
-            deletedAt = existing.deletedAt,
-        )
+        val updated =
+            WorkflowScheme.reconstruct(
+                id = requireNotNull(existing.id) { "scheme.id must not be null" },
+                key = existing.key,
+                name = newName,
+                description = newDescription,
+                isDefault = newIsDefault,
+                createdAt = existing.createdAt,
+                updatedAt = existing.updatedAt,
+                deletedAt = existing.deletedAt,
+            )
         return schemeRepo.update(updated)
     }
 
@@ -148,7 +148,10 @@ class WorkflowSchemeApplicationService(
      * @throws SchemeStandardNotDeletableException S6 — 표준 스킴 삭제 시도 시.
      * @throws SchemeInUseException S7 — 사용 중인 스킴 삭제 시도 시.
      */
-    fun softDelete(actor: ActorId, key: WorkflowSchemeKey) {
+    fun softDelete(
+        actor: ActorId,
+        key: WorkflowSchemeKey,
+    ) {
         permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
         val scheme = schemeRepo.findByKey(key) ?: throw WorkflowSchemeNotFoundException(key.value)
 
@@ -213,13 +216,14 @@ class WorkflowSchemeApplicationService(
         val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
         val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
         log.info("addMapping: actor={} schemeKey={} issueTypeId={}", actor.raw, schemeKey.value, issueTypeId?.value)
-        val mapping = SchemeIssueTypeMapping(
-            id = null,
-            schemeId = schemeId,
-            issueTypeId = issueTypeId,
-            workflowId = workflowId,
-            createdAt = Instant.now(),
-        )
+        val mapping =
+            SchemeIssueTypeMapping(
+                id = null,
+                schemeId = schemeId,
+                issueTypeId = issueTypeId,
+                workflowId = workflowId,
+                createdAt = Instant.now(),
+            )
         return mappingRepo.addMapping(mapping)
     }
 
@@ -257,7 +261,7 @@ class WorkflowSchemeApplicationService(
      * `assigned_by = SYSTEM_ACTOR.raw` (UUID sentinel: 00000000-0000-0000-0000-000000000000).
      *
      * @param actor 작업 수행 행위자. ASSIGN_SCHEME 권한이 필요하다. SYSTEM_ACTOR 도 허용.
-     * @param projectId 스킴을 배정할 프로젝트 ID.
+     * @param projectId 스킴을 배정할 프로젝트 UUID (projects.id UUID — V202 에서 BIGINT → UUID 정정).
      * @param projectKey 권한 범위 결정에 사용할 프로젝트 키 (예. "ATLAS").
      * @param schemeKey 배정할 스킴 키.
      * @return 저장된 [ProjectWorkflowSchemeAssignment].
@@ -265,7 +269,7 @@ class WorkflowSchemeApplicationService(
      */
     fun assignToProject(
         actor: ActorId,
-        projectId: Long,
+        projectId: UUID,
         projectKey: String,
         schemeKey: WorkflowSchemeKey,
     ): ProjectWorkflowSchemeAssignment {
@@ -275,12 +279,13 @@ class WorkflowSchemeApplicationService(
 
         val actorUuid = runCatching { UUID.fromString(actor.raw) }.getOrElse { SYSTEM_ACTOR_UUID }
         val now = Instant.now()
-        val assignment = ProjectWorkflowSchemeAssignment(
-            projectId = projectId,
-            workflowSchemeId = schemeId,
-            assignedAt = now,
-            assignedBy = actorUuid,
-        )
+        val assignment =
+            ProjectWorkflowSchemeAssignment(
+                projectId = projectId,
+                workflowSchemeId = schemeId,
+                assignedAt = now,
+                assignedBy = actorUuid,
+            )
         assignmentRepo.saveAssignment(assignment)
         log.info("assignToProject: actor={} projectId={} schemeKey={}", actor.raw, projectId, schemeKey.value)
         eventPublisher.publish(
@@ -301,21 +306,25 @@ class WorkflowSchemeApplicationService(
      * assignment 가 없는 신규 프로젝트의 경우, `software-scheme` 을 SYSTEM_ACTOR 로 1회 자동 배정한다.
      * 배정 후 해당 스킴을 반환한다. 이후 호출부터는 assignment 가 존재하므로 auto-assign 이 재실행되지 않는다.
      *
-     * @param projectId 조회할 프로젝트 ID.
+     * @param projectId 조회할 프로젝트 UUID (projects.id UUID — V202 에서 BIGINT → UUID 정정).
      * @param projectKey auto-assign 시 권한 범위 결정에 사용할 프로젝트 키.
      * @return 배정된 [WorkflowScheme].
      * @throws WorkflowSchemeNotFoundException assignment 는 있지만 scheme 이 soft-delete 된 경우.
      */
     @Transactional
-    fun findAssignedScheme(projectId: Long, projectKey: String): WorkflowScheme {
-        val assignment = assignmentRepo.findByProjectId(projectId)
-            ?: run {
-                // EC-1 D10 — assignment 없으면 software-scheme 1회 auto-assign (assigned_by = SYSTEM_ACTOR)
-                log.info("findAssignedScheme: no assignment for projectId={}, auto-assigning software-scheme", projectId)
-                val autoAssignment = assignToProject(SYSTEM_ACTOR, projectId, projectKey, SOFTWARE_SCHEME_KEY)
-                return schemeRepo.findById(autoAssignment.workflowSchemeId)
-                    ?: throw WorkflowSchemeNotFoundException(SOFTWARE_SCHEME_KEY.value)
-            }
+    fun findAssignedScheme(
+        projectId: UUID,
+        projectKey: String,
+    ): WorkflowScheme {
+        val assignment =
+            assignmentRepo.findByProjectId(projectId)
+                ?: run {
+                    // EC-1 D10 — assignment 없으면 software-scheme 1회 auto-assign (assigned_by = SYSTEM_ACTOR)
+                    log.info("findAssignedScheme: no assignment for projectId={}, auto-assigning software-scheme", projectId)
+                    val autoAssignment = assignToProject(SYSTEM_ACTOR, projectId, projectKey, SOFTWARE_SCHEME_KEY)
+                    return schemeRepo.findById(autoAssignment.workflowSchemeId)
+                        ?: throw WorkflowSchemeNotFoundException(SOFTWARE_SCHEME_KEY.value)
+                }
         return schemeRepo.findById(assignment.workflowSchemeId)
             ?: throw WorkflowSchemeNotFoundException(assignment.workflowSchemeId.value.toString())
     }

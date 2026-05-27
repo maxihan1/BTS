@@ -31,7 +31,7 @@ class WorkflowSchemeDomainEventTest {
         val event =
             WorkflowSchemeAssignedEvent(
                 schemeId = WorkflowSchemeId(1L),
-                projectId = 42L,
+                projectId = UUID.fromString("00000000-0000-0000-0000-000000000042"),
                 assignedBy = UUID.fromString("00000000-0000-0000-0000-000000000001"),
                 occurredAt = Instant.parse("2026-05-26T00:00:00Z"),
             )
@@ -46,7 +46,7 @@ class WorkflowSchemeDomainEventTest {
         val original =
             WorkflowSchemeAssignedEvent(
                 schemeId = WorkflowSchemeId(1L),
-                projectId = 42L,
+                projectId = UUID.fromString("00000000-0000-0000-0000-000000000042"),
                 assignedBy = UUID.fromString("00000000-0000-0000-0000-000000000001"),
                 occurredAt = Instant.parse("2026-05-26T00:00:00Z"),
             )
@@ -63,14 +63,14 @@ class WorkflowSchemeDomainEventTest {
         val e1 =
             WorkflowSchemeAssignedEvent(
                 schemeId = WorkflowSchemeId(1L),
-                projectId = 42L,
+                projectId = UUID.fromString("00000000-0000-0000-0000-000000000042"),
                 assignedBy = UUID.fromString("00000000-0000-0000-0000-000000000001"),
                 occurredAt = Instant.parse("2026-05-26T00:00:00Z"),
             )
         val e2 =
             WorkflowSchemeAssignedEvent(
                 schemeId = WorkflowSchemeId(1L),
-                projectId = 42L,
+                projectId = UUID.fromString("00000000-0000-0000-0000-000000000042"),
                 assignedBy = UUID.fromString("00000000-0000-0000-0000-000000000001"),
                 occurredAt = Instant.parse("2026-05-26T00:00:00Z"),
             )

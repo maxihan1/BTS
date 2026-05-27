@@ -118,6 +118,21 @@ class WorkflowSchemesMigrationIntegrationTest {
                         )
                         """.trimIndent(),
                     )
+                    // V202 FK (project_id → projects.id ON DELETE CASCADE) 를 위해 projects 스텁 보장.
+                    // issue-tracking V001 이 먼저 실행되면 no-op.
+                    stmt.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS projects (
+                            id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+                            key           VARCHAR(10)  NOT NULL UNIQUE,
+                            name          VARCHAR(255) NOT NULL,
+                            key_sequence  BIGINT       NOT NULL DEFAULT 0,
+                            created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                            updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                            deleted_at    TIMESTAMPTZ
+                        )
+                        """.trimIndent(),
+                    )
                 }
             }
         }
@@ -361,6 +376,13 @@ class WorkflowSchemesMigrationIntegrationTest {
     fun `V004 project_workflow_scheme_assignments assigned_at 은 TIMESTAMPTZ`() {
         assertThat(columnDataType("project_workflow_scheme_assignments", "assigned_at"))
             .isEqualTo("timestamp with time zone")
+    }
+
+    @Test
+    fun `V202 project_workflow_scheme_assignments project_id 는 UUID 타입`() {
+        // V202 BIGINT → UUID 정정 검증. projects.id (UUID) 와 타입 일치.
+        assertThat(columnDataType("project_workflow_scheme_assignments", "project_id"))
+            .isEqualTo("uuid")
     }
 
     @Test

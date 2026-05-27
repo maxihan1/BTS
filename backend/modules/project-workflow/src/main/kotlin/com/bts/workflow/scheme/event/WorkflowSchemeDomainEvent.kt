@@ -32,13 +32,13 @@ sealed interface WorkflowSchemeDomainEvent {
  * 워크플로우 스킴이 프로젝트에 배정된 이벤트.
  *
  * @property schemeId 배정된 스킴 식별자.
- * @property projectId 스킴이 배정된 프로젝트 ID (project_id BIGINT).
+ * @property projectId 스킴이 배정된 프로젝트 UUID (projects.id UUID — V202 에서 BIGINT → UUID 정정).
  * @property assignedBy 배정을 수행한 사용자 UUID.
  * @property occurredAt 이벤트 발생 시각 (pgmq publish 시점 UTC).
  */
 data class WorkflowSchemeAssignedEvent(
     val schemeId: WorkflowSchemeId,
-    val projectId: Long,
+    val projectId: UUID,
     val assignedBy: UUID,
     override val occurredAt: Instant,
 ) : WorkflowSchemeDomainEvent

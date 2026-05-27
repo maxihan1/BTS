@@ -126,7 +126,7 @@ class WorkflowSchemeEventPublisherIntegrationTest : DescribeSpec({
                 val event =
                     WorkflowSchemeAssignedEvent(
                         schemeId = WorkflowSchemeId(1L),
-                        projectId = 42L,
+                        projectId = UUID.fromString("00000000-0000-0000-0000-000000000042"),
                         assignedBy = UUID.fromString("00000000-0000-0000-0000-000000000001"),
                         occurredAt = Instant.parse("2026-05-26T00:00:00Z"),
                     )
@@ -146,7 +146,7 @@ class WorkflowSchemeEventPublisherIntegrationTest : DescribeSpec({
                 val json = mapper.readTree(body)
 
                 json.get("type").asText() shouldBe "WorkflowSchemeAssigned"
-                json.get("projectId").asLong() shouldBe 42L
+                json.get("projectId").asText() shouldBe "00000000-0000-0000-0000-000000000042"
             }
         }
 
@@ -156,7 +156,7 @@ class WorkflowSchemeEventPublisherIntegrationTest : DescribeSpec({
             val original =
                 WorkflowSchemeAssignedEvent(
                     schemeId = WorkflowSchemeId(2L),
-                    projectId = 99L,
+                    projectId = UUID.fromString("00000000-0000-0000-0000-000000000099"),
                     assignedBy = UUID.fromString("00000000-0000-0000-0000-000000000002"),
                     occurredAt = Instant.parse("2026-05-26T12:00:00Z"),
                 )
@@ -346,7 +346,7 @@ class WorkflowSchemeEventPublisherIntegrationTest : DescribeSpec({
                 .load()
                 .migrate()
 
-            // 2단계: issue_types 스텁 — cross-BC FK (issue_type_id REFERENCES issue_types(id)) 통과용
+            // 2단계: 스텁 테이블 — cross-BC FK 통과용 (V001/V003 이 먼저 실행되면 no-op)
             DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
                 conn.createStatement().use { stmt ->
                     stmt.execute(
@@ -359,6 +359,21 @@ class WorkflowSchemeEventPublisherIntegrationTest : DescribeSpec({
                             created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
                             updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
                             deleted_at  TIMESTAMPTZ
+                        )
+                        """.trimIndent(),
+                    )
+                    // V202 FK (project_id → projects.id ON DELETE CASCADE) 를 위해 projects 스텁 보장.
+                    // issue-tracking V001 이 먼저 실행되면 no-op.
+                    stmt.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS projects (
+                            id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+                            key           VARCHAR(10)  NOT NULL UNIQUE,
+                            name          VARCHAR(255) NOT NULL,
+                            key_sequence  BIGINT       NOT NULL DEFAULT 0,
+                            created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                            updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                            deleted_at    TIMESTAMPTZ
                         )
                         """.trimIndent(),
                     )

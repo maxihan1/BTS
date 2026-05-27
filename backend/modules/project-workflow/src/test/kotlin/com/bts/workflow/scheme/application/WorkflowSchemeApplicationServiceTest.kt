@@ -44,7 +44,6 @@ import java.util.UUID
  * 권한 검증은 [AlwaysAllowWorkflowSchemePermissionResolver] stub 을 직접 주입해 항상 통과시킨다.
  */
 class WorkflowSchemeApplicationServiceTest {
-
     private val schemeRepo: WorkflowSchemeRepository = mockk()
     private val assignmentRepo: ProjectWorkflowSchemeAssignmentRepository = mockk()
     private val mappingRepo: SchemeIssueTypeMappingRepository = mockk()
@@ -176,10 +175,11 @@ class WorkflowSchemeApplicationServiceTest {
 
     @Test
     fun `list — findAll 결과를 그대로 반환한다`() {
-        val schemes = listOf(
-            buildScheme(WorkflowSchemeKey("software-scheme"), isDefault = false),
-            buildScheme(WorkflowSchemeKey("service-desk"), isDefault = false),
-        )
+        val schemes =
+            listOf(
+                buildScheme(WorkflowSchemeKey("software-scheme"), isDefault = false),
+                buildScheme(WorkflowSchemeKey("service-desk"), isDefault = false),
+            )
         every { schemeRepo.findAll() } returns schemes
 
         val result: List<WorkflowScheme> = service.list()
@@ -218,10 +218,11 @@ class WorkflowSchemeApplicationServiceTest {
         val issueTypeId = IssueTypeId(10L)
 
         every { schemeRepo.findByKey(key) } returns scheme
-        every { mappingRepo.addMapping(any()) } throws MappingDuplicateException(
-            schemeKey = key.value,
-            issueTypeKey = issueTypeId.value.toString(),
-        )
+        every { mappingRepo.addMapping(any()) } throws
+            MappingDuplicateException(
+                schemeKey = key.value,
+                issueTypeKey = issueTypeId.value.toString(),
+            )
 
         assertThatThrownBy { service.addMapping(actor, key, issueTypeId, UUID.randomUUID()) }
             .isInstanceOf(MappingDuplicateException::class.java)
@@ -234,9 +235,10 @@ class WorkflowSchemeApplicationServiceTest {
         val scheme = buildScheme(key, id = schemeId)
 
         every { schemeRepo.findByKey(key) } returns scheme
-        every { mappingRepo.addMapping(any()) } throws MappingDefaultDuplicateException(
-            schemeKey = key.value,
-        )
+        every { mappingRepo.addMapping(any()) } throws
+            MappingDefaultDuplicateException(
+                schemeKey = key.value,
+            )
 
         assertThatThrownBy { service.addMapping(actor, key, issueTypeId = null, UUID.randomUUID()) }
             .isInstanceOf(MappingDefaultDuplicateException::class.java)
@@ -259,7 +261,7 @@ class WorkflowSchemeApplicationServiceTest {
     fun `assignToProject — 정상 케이스 — saveAssignment 호출 + WorkflowSchemeAssignedEvent 발행된다`() {
         val schemeKey = WorkflowSchemeKey("software-scheme")
         val schemeId = WorkflowSchemeId(1L)
-        val projectId = 42L
+        val projectId = UUID.fromString("00000000-0000-0000-0000-000000000042")
         val projectKey = "ATLAS"
         val scheme = buildScheme(schemeKey, id = schemeId)
 
@@ -283,22 +285,24 @@ class WorkflowSchemeApplicationServiceTest {
         val schemeKey = WorkflowSchemeKey("nonexistent-scheme")
         every { schemeRepo.findByKey(schemeKey) } returns null
 
-        assertThatThrownBy { service.assignToProject(actor, 1L, "PROJ", schemeKey) }
-            .isInstanceOf(WorkflowSchemeNotFoundException::class.java)
+        assertThatThrownBy {
+            service.assignToProject(actor, UUID.randomUUID(), "PROJ", schemeKey)
+        }.isInstanceOf(WorkflowSchemeNotFoundException::class.java)
     }
 
     @Test
     fun `findAssignedScheme — assignment 존재 시 해당 scheme 을 반환한다`() {
         val schemeKey = WorkflowSchemeKey("software-scheme")
         val schemeId = WorkflowSchemeId(1L)
-        val projectId = 10L
+        val projectId = UUID.fromString("00000000-0000-0000-0000-000000000010")
         val scheme = buildScheme(schemeKey, id = schemeId)
-        val assignment = ProjectWorkflowSchemeAssignment(
-            projectId = projectId,
-            workflowSchemeId = schemeId,
-            assignedAt = Instant.now(),
-            assignedBy = UUID.randomUUID(),
-        )
+        val assignment =
+            ProjectWorkflowSchemeAssignment(
+                projectId = projectId,
+                workflowSchemeId = schemeId,
+                assignedAt = Instant.now(),
+                assignedBy = UUID.randomUUID(),
+            )
 
         every { assignmentRepo.findByProjectId(projectId) } returns assignment
         every { schemeRepo.findById(schemeId) } returns scheme
@@ -312,7 +316,7 @@ class WorkflowSchemeApplicationServiceTest {
     fun `EC-1 D10 — findAssignedScheme assignment 없으면 software-scheme 으로 auto-assign 후 scheme 반환한다`() {
         val softwareSchemeKey = WorkflowSchemeKey("software-scheme")
         val schemeId = WorkflowSchemeId(1L)
-        val projectId = 99L
+        val projectId = UUID.fromString("00000000-0000-0000-0000-000000000099")
         val projectKey = "NEW"
         val scheme = buildScheme(softwareSchemeKey, id = schemeId)
 
@@ -342,7 +346,7 @@ class WorkflowSchemeApplicationServiceTest {
         val svcWithDeny = WorkflowSchemeApplicationService(schemeRepo, assignmentRepo, mappingRepo, eventPublisher, denyingResolver)
 
         assertThatThrownBy {
-            svcWithDeny.assignToProject(actor, 1L, "PROJ", WorkflowSchemeKey("software-scheme"))
+            svcWithDeny.assignToProject(actor, UUID.randomUUID(), "PROJ", WorkflowSchemeKey("software-scheme"))
         }.hasMessageContaining("WORKFLOW_PERMISSION_DENIED")
     }
 

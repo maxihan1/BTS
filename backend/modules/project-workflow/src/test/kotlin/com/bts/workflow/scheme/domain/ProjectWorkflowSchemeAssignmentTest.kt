@@ -8,10 +8,10 @@ import java.time.Instant
 import java.util.UUID
 
 class ProjectWorkflowSchemeAssignmentTest {
-    private val fixedProjectId = 1L
+    private val fixedProjectId = UUID.fromString("00000000-0000-0000-0000-000000000001")
     private val fixedSchemeId = WorkflowSchemeId(10L)
     private val fixedInstant = Instant.parse("2026-05-26T00:00:00Z")
-    private val fixedUserId = UUID.fromString("00000000-0000-0000-0000-000000000001")
+    private val fixedUserId = UUID.fromString("00000000-0000-0000-0000-000000000002")
 
     @Test
     fun `4 필드 인스턴스화 후 각 프로퍼티가 올바르게 반환된다`() {
@@ -53,12 +53,12 @@ class ProjectWorkflowSchemeAssignmentTest {
     fun `projectId 가 다르면 equals 가 false 이다`() {
         val a =
             ProjectWorkflowSchemeAssignment(
-                projectId = 1L,
+                projectId = UUID.fromString("00000000-0000-0000-0000-000000000010"),
                 workflowSchemeId = fixedSchemeId,
                 assignedAt = fixedInstant,
                 assignedBy = fixedUserId,
             )
-        val b = a.copy(projectId = 2L)
+        val b = a.copy(projectId = UUID.fromString("00000000-0000-0000-0000-000000000020"))
 
         assertNotEquals(a, b)
     }

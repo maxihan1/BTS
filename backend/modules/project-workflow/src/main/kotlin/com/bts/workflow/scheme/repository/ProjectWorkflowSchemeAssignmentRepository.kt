@@ -38,7 +38,7 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
     // ── 테이블 / 컬럼 상수 ────────────────────────────────────────────────────
 
     private val TABLE = DSL.table("project_workflow_scheme_assignments")
-    private val PROJECT_ID = DSL.field("project_id", Long::class.java)
+    private val PROJECT_ID = DSL.field("project_id", UUID::class.java)
     private val WORKFLOW_SCHEME_ID = DSL.field("workflow_scheme_id", Long::class.java)
     private val ASSIGNED_AT = DSL.field("assigned_at", java.time.OffsetDateTime::class.java)
     private val ASSIGNED_BY = DSL.field("assigned_by", UUID::class.java)
@@ -85,7 +85,7 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
      * @return 할당된 [ProjectWorkflowSchemeAssignment], 없으면 null.
      */
     @Transactional(readOnly = true)
-    fun findByProjectId(projectId: Long): ProjectWorkflowSchemeAssignment? {
+    fun findByProjectId(projectId: UUID): ProjectWorkflowSchemeAssignment? {
         val record =
             dsl
                 .select(PROJECT_ID, WORKFLOW_SCHEME_ID, ASSIGNED_AT, ASSIGNED_BY)
@@ -122,7 +122,7 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
      * @param projectId 삭제할 프로젝트 ID.
      */
     @Transactional
-    fun deleteByProjectId(projectId: Long) {
+    fun deleteByProjectId(projectId: UUID) {
         log.info("deleteByProjectId projectId={}", projectId)
 
         dsl.deleteFrom(TABLE)
