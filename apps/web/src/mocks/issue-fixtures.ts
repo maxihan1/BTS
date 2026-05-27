@@ -4,11 +4,11 @@ import type { IssueResponse, IssuePage } from '@/api/issues'
 /** 이슈 단건 fixture — ATLAS-1 */
 export const issueAtlas1Fixture: IssueResponse = {
   key: 'ATLAS-1',
-  id: '11111111-1111-1111-1111-111111111111',
+  id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
   projectKey: 'ATLAS',
   summary: '첫 번째 이슈 — 로그인 페이지 구현',
   currentStateKey: 'open',
-  reporterId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+  reporterId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
   version: 0,
   createdAt: '2026-01-01T09:00:00Z',
   updatedAt: null,
@@ -17,11 +17,11 @@ export const issueAtlas1Fixture: IssueResponse = {
 /** 이슈 단건 fixture — ATLAS-2 */
 export const issueAtlas2Fixture: IssueResponse = {
   key: 'ATLAS-2',
-  id: '22222222-2222-2222-2222-222222222222',
+  id: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f',
   projectKey: 'ATLAS',
   summary: '두 번째 이슈 — 이슈 목록 페이지 UI 구현. 긴 요약 텍스트: 모바일 반응형 + 페이지네이션 + 빈 상태 안내 + 접근성 WCAG AA 준수.',
   currentStateKey: 'in_progress',
-  reporterId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+  reporterId: 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a',
   version: 1,
   createdAt: '2026-01-02T10:00:00Z',
   updatedAt: '2026-01-03T11:00:00Z',
@@ -30,11 +30,11 @@ export const issueAtlas2Fixture: IssueResponse = {
 /** 이슈 단건 fixture — ATLAS-3 */
 export const issueAtlas3Fixture: IssueResponse = {
   key: 'ATLAS-3',
-  id: '33333333-3333-3333-3333-333333333333',
+  id: 'e5f6a7b8-c9d0-4e1f-ab2a-4c5d6e7f8a9b',
   projectKey: 'ATLAS',
   summary: '세 번째 이슈 — 이슈 상세 페이지 구현',
   currentStateKey: 'done',
-  reporterId: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+  reporterId: 'f6a7b8c9-d0e1-4f2a-bc3b-5d6e7f8a9b0c',
   version: 2,
   createdAt: '2026-01-03T08:00:00Z',
   updatedAt: '2026-01-04T12:00:00Z',
