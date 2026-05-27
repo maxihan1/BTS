@@ -16,11 +16,11 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 const issueFixture = {
   key: 'ATLAS-1',
-  id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+  id: 'a1b2c3d4-e5f6-4890-abcd-ef1234567890',
   projectKey: 'ATLAS',
   summary: '로그인 버튼이 클릭되지 않는 버그',
   currentStateKey: 'open',
-  reporterId: 'f0e9d8c7-b6a5-4321-fedc-ba9876543210',
+  reporterId: 'f0e9d8c7-b6a5-4321-8edc-ba9876543210',
   version: 1,
   createdAt: '2024-01-15T09:00:00Z',
   updatedAt: '2024-01-15T10:30:00Z',
@@ -102,11 +102,11 @@ describe('issueResponseSchema', () => {
     const result = issueResponseSchema.parse(issueFixture)
 
     expect(result.key).toBe('ATLAS-1')
-    expect(result.id).toBe('a1b2c3d4-e5f6-7890-abcd-ef1234567890')
+    expect(result.id).toBe('a1b2c3d4-e5f6-4890-abcd-ef1234567890')
     expect(result.projectKey).toBe('ATLAS')
     expect(result.summary).toBe('로그인 버튼이 클릭되지 않는 버그')
     expect(result.currentStateKey).toBe('open')
-    expect(result.reporterId).toBe('f0e9d8c7-b6a5-4321-fedc-ba9876543210')
+    expect(result.reporterId).toBe('f0e9d8c7-b6a5-4321-8edc-ba9876543210')
     expect(result.version).toBe(1)
     expect(result.createdAt).toBe('2024-01-15T09:00:00Z')
     expect(result.updatedAt).toBe('2024-01-15T10:30:00Z')
