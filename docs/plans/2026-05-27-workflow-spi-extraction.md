@@ -26,7 +26,20 @@
 - 새 패키지 네임스페이스 (예. `com.bts.spi.workflow.*`)
 - IssueTypeId/Key 가 issue 도메인 정체성이 강한데 SPI 로 빼는 게 DDD 상 타당한지 (shared-kernel 패턴 vs published-language)
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**. project-workflow + issue-tracking (양 BC — 구조 리팩토링, BC 격리 정당 예외)
+- **결정 (Maxi 2026-05-27)**. 옵션 A — `modules:shared-kernel` 신설, 공유 port/VO/DTO 양쪽 다 이전. 양방향 직접 import 완전 제거.
+- **패키지**. `com.bts.shared.workflow.*`(포트+DTO 6) + `com.bts.shared.issue.*`(VO 2). 루트는 두 당사자 BC 의 `com.bts.*` 와 일치(identity 의 `com.atlas.bts.*` 차용 안 함).
+- **이전 대상 8 (전이 폐쇄 코드 검증)**.
+  - workflow→shared. `WorkflowTransitionPort` + `TransitionRequest`/`TransitionResult`/`TransitionPlan`/`FieldChange`/`DomainEvent`
+  - issue→shared. `IssueTypeId`/`IssueTypeKey`
+  - 잔류(제외 확인). `PostActionPlan`/`TransitionContext`/`WorkflowValidator`(폐쇄 밖), project-workflow 자체 `IssueDomainEvent`(별개 타입)
+- **부수**. shared-kernel build.gradle 에 `io.konform`(TransitionRequest 검증) + spring-tx(`@Transactional(MANDATORY)`) 필요. 다른 모듈 의존 0.
+- **새 용어**. "shared kernel"(DDD 공유 커널) — glossary 추가 후보(Maxi 승인 대기).
+- **기존 결정 충돌**. `project-workflow/build.gradle.kts:34` 가 인용한 `ADR issue-type-cross-bc-introduction` 은 phantom(미실재). 본 ADR 이 공백 보강.
+- **관련 ADR**. [docs/decisions/2026-05-27-shared-kernel-extraction.md](../decisions/2026-05-27-shared-kernel-extraction.md) (생성됨)
+- **eng-review 검토 위임**. (1) `@Transactional` 인터페이스 유지 vs impl 이동(SPI 프레임워크 비결합), (2) shared-kernel 역참조 금지 ArchUnit 룰.
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
