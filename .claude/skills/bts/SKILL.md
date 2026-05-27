@@ -38,7 +38,40 @@ BTS 모든 코드 작업의 **단일 진입점**. 7단계 스킬을 자연어 1�
 
 ## 절차
 
-### Phase A. 입력 분석
+### Phase A. 입력 분석 + 세션 복원
+
+#### A-0. 활성 작업 감지 (모든 입력 형태에 선행, 필수)
+
+이전 세션이 중단된 채 남긴 worktree / draft PR을 감지. 발견되면 사용자 확인 없이 진행 금지.
+
+```bash
+ACTIVE_WORKTREES=$(ls -d .worktrees/*/ 2>/dev/null)
+ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefName 2>/dev/null)
+```
+
+둘 중 하나라도 비어있지 않으면 `AskUserQuestion`.
+
+```
+"진행 중인 작업이 감지되었습니다 (worktree: N개, draft PR: M개). 어떻게 할까요?"
+- 옵션 1. 이전 작업 이어가기 → 해당 worktree로 진입 + plan 파일 상태 기반 다음 단계 추정
+- 옵션 2. 새 작업 시작 → 이전은 그대로 유지, 새 worktree 추가 생성
+- 옵션 3. 이전 작업 폐기 → worktree 삭제 + draft PR close
+```
+
+**"이어가기" 선택 시** — `docs/plans/<date>-<slug>.md`의 채워진 섹션을 읽어 다음 단계 추정 (`bts-start`는 스킵, worktree 재생성 안 함).
+
+| plan 섹션 상태 | 재진입 단계 |
+|---|---|
+| `## 도메인 정리` 비어있음 | `bts-domain` |
+| `## 스펙` 비어있음 | `bts-spec` |
+| `## Plan` 비어있음 | `bts-plan` |
+| `## 리뷰 결과` 비어있음 | `bts-review-plan` |
+| 모두 채워졌고 PR `Draft` | 게이트 1 재진입 (또는 commit 1개 이상이면 `bts-impl` 진행 중으로 간주, 사용자에 확인) |
+| PR `Ready for review` | 게이트 2 재진입 |
+
+**"새 작업 시작" / 활성 작업 없음** → A-1로 진행.
+
+#### A-1. 신규 입력 분석
 
 | 입력 형태 | 처리 |
 |---|---|
@@ -54,14 +87,33 @@ BTS 모든 코드 작업의 **단일 진입점**. 7단계 스킬을 자연어 1�
 - `/Users/maxi.moff/Maxi_wiki/BTS/history.md` (마지막 50줄)
 - `/Users/maxi.moff/Maxi_wiki/BTS/learnings.md`
 
-### Phase C. 단계 체이닝
+### Phase C. 단계 체이닝 (호출 책임 = bts 컨트롤러)
 
-1. `/bts-start` 호출 → `classify` 결과를 `.bts-cache/classify.json`에 저장 (이후 단계 재사용)
-2. `/bts-domain` → `/bts-spec` → `/bts-plan` → `/bts-review-plan` 자동 체이닝
-3. 🛑 게이트 1. plan 파일 경로 + 4종 산출물 요약 출력 → "계획 OK?" AskUserQuestion
-4. 승인 시 `/bts-impl` → `/bts-codereview` 체이닝
-5. 🛑 게이트 2. PR diff 요약 + 리뷰 결과 → "머지 OK?" AskUserQuestion
-6. 승인 시 merge + worktree 정리 + sync-obsidian
+**bts 컨트롤러는 각 단계 응답을 받은 후 명시적으로 다음 `Skill()`을 호출.** "다음 단계가 자동으로 호출된 셈" 가정 금지 — 명시적 호출 없으면 진행 안 함.
+
+1. `Skill({skill: "bts-start"})` → classify 결과를 `.bts-cache/classify.json` 저장
+2. `Skill({skill: "bts-domain"})` (fast-track 시 스킵)
+3. `Skill({skill: "bts-spec"})` (fast-track 시 스킵)
+4. `Skill({skill: "bts-plan"})`
+5. `Skill({skill: "bts-review-plan"})` (fast-track 시 스킵)
+
+#### 🛑 게이트 1 (plan 산출물 요약 → `AskUserQuestion`)
+
+응답 분기 — bts 컨트롤러가 직접 처리.
+
+| 응답 | bts 컨트롤러 동작 |
+|---|---|
+| `승인` | 즉시 `Skill({skill: "bts-impl"})` 호출 → 응답 후 `Skill({skill: "bts-codereview"})` 호출 |
+| `수정 요청` | "어느 섹션?" `AskUserQuestion` → 해당 단계 (`bts-plan` / `bts-spec` / `bts-domain`) 재호출 → 게이트 1 재진입 |
+| `중단` | 워크플로우 종료. worktree + draft PR 유지 (재진입 가능) |
+
+#### 🛑 게이트 2 (PR diff + 리뷰 결과 요약 → `AskUserQuestion`)
+
+| 응답 | bts 컨트롤러 동작 |
+|---|---|
+| `승인` | `bts-codereview`의 "머지 후 자동 처리" 섹션 실행 (gh pr merge → worktree 정리 → sync-obsidian) |
+| `수정 후 재리뷰` | concerns 첨부해 `Skill({skill: "bts-impl"})` 재호출 → `bts-codereview` 재호출 → 게이트 2 재진입 |
+| `보류` | 워크플로우 일시 중단. draft PR + worktree 유지 (다음 `/bts` 호출 시 Phase A-0 복원 경로로 재진입) |
 
 ### Phase D. 진행 상황 출력
 

@@ -7,16 +7,16 @@ description: Use when a reviewed plan has been approved by the user (게이트 1
 
 plan의 task를 sub-agent에게 위임. **TDD 강제 (red → green → refactor)**.
 
-## 선행 읽기 (sub-agent별로 다름)
+## 선행 읽기 (controller 1회 로드 → sub-agent prompt에 inject)
 
-controller(메인 에이전트)는 모든 task에 공통으로 다음을 prompt 인라인 주입.
+controller(메인 에이전트)는 다음 4개를 **세션당 1회만 Read**하고, 모든 implementer/verifier prompt에 본문 인라인 주입.
 
 - `DEVELOPMENT.md` (절대 규칙 18개)
 - `DATA.md` (데이터 무결성 5원칙)
 - `Maxi_wiki/BTS/domain/<bc>.md` (해당 BC 노트)
 - 작업 관련 `Maxi_wiki/BTS/decisions/<adr>.md` (있을 때)
 
-sub-agent별 추가 읽기는 해당 agent.md의 "참조 파일" 섹션 참조.
+**sub-agent는 위 4개 파일을 직접 Read 금지** (controller가 이미 prompt 본문에 첨부함, 중복 로드는 토큰 낭비). 각 agent.md의 "참조 파일" 섹션은 "controller inject" 표시가 있는 항목은 직접 Read 금지, "필요 시 직접 Read" 표시 항목만 직접 Read 가능.
 
 ## 절차
 
@@ -123,27 +123,71 @@ Skill({
 
 진단 결과로 implementer 재dispatch (추가 컨텍스트 + 수정 방향).
 
-#### 2-D. wave 내 spec-compliance-verifier 병렬 dispatch
+#### 2-D. wave 내 spec-compliance-verifier 병렬 dispatch (TDD 강제 검증)
 
-wave 내 `DONE` / `DONE_WITH_CONCERNS` task 전부에 대해 **한 응답 안에 여러 Agent() 호출**로 동시 dispatch. verifier는 read-only (git log + diff 분석)라 worktree 동시 접근 안전.
+wave 내 `DONE` / `DONE_WITH_CONCERNS` task 전부에 대해 검증. **controller가 task별 git log + diff를 먼저 직접 수집한 후 verifier prompt에 인라인 첨부** — verifier가 추측/누락으로 거짓 PASS 응답하는 위험 차단 (LLM 신뢰만으로는 강제 불가).
+
+##### 2-D-pre. controller가 직접 수집 (task당 1회, Bash)
+
+```
+Bash({
+  command: "cd .worktrees/<slug> && git log --reverse --pretty='%h %s' -- <plan 메타 files 공백 구분> && echo '---DIFF---' && git diff main...HEAD -- <plan 메타 files 공백 구분>"
+})
+```
+
+수집 출력 예시 (verifier prompt에 그대로 인라인).
+
+```
+a1b2c3d test: <slug> task-1 red
+e4f5g6h feat: <slug> task-1 green
+i7j8k9l refactor: <slug> task-1
+---DIFF---
+<unified diff>
+```
+
+##### 2-D-dispatch. verifier 병렬 호출 (한 응답에 여러 Agent())
 
 ```
 Agent({
   subagent_type: "general-purpose",
   description: "Task N — spec compliance",
   prompt: """
-다음을 확인하고 보고.
+이 verifier는 **read-only 분석 전용**. 추가 git/Bash 명령 실행 금지. 아래 첨부 데이터로만 판정.
 
-1. git log에서 Task N 의 `test:` 커밋이 `feat:` 커밋보다 먼저 있는가? (TDD 검증, Task N 의 files 한정해 `git log -- <files>`)
-2. 변경 diff가 plan Task N의 명세와 일치하는가? (drift 검증)
-3. plan 메타 `files` 외 파일 수정이 있는가? 있다면 정당한가?
+## git log + diff 출력 (controller가 수집, Task N 의 files 한정)
+<여기에 2-D-pre의 출력 전체 inline 첨부>
 
-작업 디렉토리. .worktrees/<slug>. plan 파일. docs/plans/<date>-<slug>.md.
-**코드 품질 / 절대 규칙 검증은 안 함** (PR 단위 코드 리뷰가 담당).
-보고. PASS / DRIFT / TDD_VIOLATION.
+## plan Task N 명세
+<plan 파일의 Task N 섹션 전체 inline>
+
+## 판정 기준 (셋 다 확인)
+
+1. **TDD 순서**. 위 git log 출력에서 `test: <slug> task-N red` commit의 hash가 `feat: <slug> task-N green` commit의 hash보다 먼저(위쪽 = 더 오래된)에 있는가? **응답에 두 commit hash를 직접 인용**하여 증거 제시.
+2. **drift**. 첨부된 diff가 plan Task N의 RED/GREEN/REFACTOR 명세와 일치하는가? 불일치 항목 나열.
+3. **선언 외 파일**. diff에 plan 메타 `files` 외 경로가 등장하는가? 있다면 정당한 사유 명시.
+
+## 응답 형식 (필수, 증거 인용 없이는 PASS 무효)
+
+PASS:
+- TDD: test commit `<hash>` (<message>) → feat commit `<hash>` (<message>) 순서 확인됨.
+- drift: 없음.
+- 선언 외 파일: 없음.
+
+DRIFT:
+- TDD: (확인)
+- drift 항목: 1. <항목>, 2. <항목>
+- 선언 외 파일: <목록 또는 없음>
+
+TDD_VIOLATION:
+- 증거: git log 출력에 `test:` commit 없음 OR `feat:` commit이 `test:` commit보다 먼저 등장.
+- 인용: <git log 해당 줄 그대로>.
+
+**증거 commit hash 인용 없는 PASS 응답은 controller가 거절하고 verifier 재dispatch**.
 """
 })
 ```
+
+controller는 응답을 받은 후 PASS 응답에 실제 hash 문자열 (`a1b2c3d` 형태)이 포함되어 있는지 검증. 누락 시 TDD_VIOLATION으로 간주.
 
 | verifier 응답 | 동작 |
 |---|---|
@@ -217,6 +261,3 @@ pnpm test:e2e                       # (qa-engineer 추가 시)
 - **systematic-debugging이 "도메인 모델 잘못됨"으로 결론**. 작업 중단 → `/bts-domain` loop back (드문 케이스)
 - **plan 메타 누락 / 파싱 실패**. Step 2-pre에서 BLOCKED → `/bts-plan` loop back (메타 블록 강제 가이드 prompt 주입)
 - **depends-on 순환 참조**. Step 2-pre cycle 감지 → `/bts-plan` loop back (cycle 그래프 첨부)
-- **wave 내 일부 task BLOCKED**. 해당 task만 systematic-debugging + 재dispatch. 그 task에 의존하지 않는 다음 wave task는 선진입 가능
-- **선언 외 파일 수정 (병렬 안전성 위반)**. implementer BLOCKED 처리. plan 메타 `files` 갱신이 진짜 필요한지 검토 후 재dispatch (drift 가능성 우선 의심)
-- **wave 1 task 수 == 전체 task 수 (의존성/파일 충돌 전혀 없음)**. 전 task 1-shot 병렬. 가장 빠른 케이스. plan이 잘 분해됨

@@ -9,9 +9,12 @@ PR 단위 1회 코드 리뷰. **두 종류의 리뷰를 병행**.
 
 ## 선행 읽기
 
-- `Maxi_wiki/BTS/learnings.md` (전체, 회귀 방지)
-- `DEVELOPMENT.md` 절대 규칙 18개
-- `DATA.md` 데이터 무결성 5원칙 (`auth`/`migration` 시)
+**모두 컨텍스트에 이미 있음. 재로드 금지** (`/bts` 진입 시 + `/bts-impl` controller inject로 로드 완료).
+- `Maxi_wiki/BTS/learnings.md` — `/bts` Phase B에서 로드됨
+- `DEVELOPMENT.md` 절대 규칙 18개 — `/bts-impl` controller가 inject
+- `DATA.md` 데이터 무결성 5원칙 — `/bts-impl` controller가 inject (`auth`/`migration` 시)
+
+Step 2 agent prompt에 본문 inline 첨부할 때도 컨텍스트 내 내용을 그대로 사용 (재 Read 불필요).
 
 ## 절차
 
@@ -36,22 +39,7 @@ BTS 프로젝트 PR 리뷰. 절대 규칙 18개 (DEVELOPMENT.md §1) + 데이터
 plan 파일. docs/plans/<date>-<slug>.md
 PR diff. <PR_DIFF>
 
-**중점 검증 항목** (auth/migration 시 추가 강조).
-
-DEVELOPMENT.md의 절대 규칙은 §1 안에서 18개 규칙이 일련번호(1~18)로 매겨져 있다. "NEVER-N" 표기는 그 N번 규칙을 가리킨다. 섹션 위치는 참고용.
-
-- 평문 비밀번호/토큰 저장 — DEVELOPMENT.md §1.1 NEVER-1
-- SQL 문자열 결합 — DEVELOPMENT.md §1.1 NEVER-3
-- 인증 우회 / CSRF 비활성화 — DEVELOPMENT.md §1.1 NEVER-4, NEVER-5
-- DELETE without WHERE — DEVELOPMENT.md §1.2 NEVER-7
-- Flyway 외 마이그레이션 — DEVELOPMENT.md §1.2 NEVER-8
-- @Transactional 누락 — DEVELOPMENT.md §1.2 NEVER-9 + DATA.md §6
-- 이슈키 영속성 위반 — DEVELOPMENT.md §1.2 NEVER-10 + DATA.md §2
-- any 타입 / !! / 빈 catch — DEVELOPMENT.md §1.3 NEVER-11~13
-- console.log / println 디버깅 잔존 — DEVELOPMENT.md §1.3 NEVER-15
-- localStorage 토큰 저장 — DEVELOPMENT.md §1.4 NEVER-17
-
-learnings.md 전체. <첨부> (회귀 방지)
+**중점 검증**. DEVELOPMENT.md §1 절대 규칙 18개 (NEVER-1~18) + DATA.md §1 데이터 무결성 5원칙 전부 위반 여부 검증. auth/migration 시 §1.1 보안 + §1.2 데이터 무결성 추가 강조. agent prompt에 DEVELOPMENT.md / DATA.md / learnings.md 본문 전체를 인라인 첨부 (controller가 주입).
 
 보고. PASS / CONCERNS (수정 권장) / BLOCKER (수정 필수).
 """

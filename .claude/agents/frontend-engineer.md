@@ -91,7 +91,10 @@ const form = useForm<FormValues>({ resolver: zodResolver(schema) });
 
 ## 참조 파일
 
+**controller가 prompt에 inline 첨부 — 직접 Read 금지** (중복 로드 토큰 낭비).
 - `DEVELOPMENT.md` §2.2 (TypeScript 스타일), §1 (절대 규칙)
-- `DESIGN.md` (Phase 1+ 시점, designer가 생성)
 - 작업 영역. `Maxi_wiki/BTS/domain/<bc>.md`
+
+**필요 시 직접 Read 가능**.
+- `DESIGN.md` (Phase 1+ 시점, designer가 생성)
 - 관련 SDD. `docs/sdd/21-frontend.md`, `docs/sdd/20-personalization.md`

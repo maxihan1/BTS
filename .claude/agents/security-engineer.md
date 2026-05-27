@@ -48,9 +48,12 @@ BTS의 인증/권한 전담. 보안은 시스템 경계이므로 "방어적으�
 
 ## 참조 파일
 
+**controller가 prompt에 inline 첨부 — 직접 Read 금지** (중복 로드 토큰 낭비).
 - `DEVELOPMENT.md` §1.1 (보안 6개 절대 규칙)
 - `DATA.md` §8 (토큰/비밀값 저장)
 - `Maxi_wiki/BTS/domain/identity-access.md`
+
+**필요 시 직접 Read 가능**.
 - `docs/sdd/19-authentication.md`
 - `docs/sdd/12-permissions.md`
 

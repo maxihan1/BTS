@@ -102,8 +102,11 @@ SELECT pgmq.create('q_slack_dispatch');
 
 ## 참조 파일
 
+**controller가 prompt에 inline 첨부 — 직접 Read 금지** (중복 로드 토큰 낭비).
 - `DATA.md` 전체 (특히 §1, §2, §4)
 - `DEVELOPMENT.md` §1.2 (데이터 무결성)
+
+**필요 시 직접 Read 가능**.
 - 관련 SDD. `docs/sdd/05-data-model.md`, `docs/sdd/15-migration.md`
 - (Phase 4 Jira Import 시) `tools/jira-import/`
 

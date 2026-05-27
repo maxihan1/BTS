@@ -9,9 +9,10 @@ description: Use when a written spec is ready and needs to be decomposed into bi
 
 ## 선행 읽기 (필수)
 
-1. `/Users/maxi.moff/Maxi_wiki/BTS/learnings.md` — **전체** (회귀 방지)
-2. `docs/plans/<date>-<slug>.md` — 직전 단계 결과 (`## 도메인 정리`, `## 스펙`)
-3. `docs/specs/<date>-<slug>.md` — 세부 스펙 본문
+1. `docs/plans/<date>-<slug>.md` — 직전 단계 결과 (`## 도메인 정리`, `## 스펙`)
+2. `docs/specs/<date>-<slug>.md` — 세부 스펙 본문
+
+**`learnings.md`는 `/bts` 진입 시 이미 로드됨 (Phase B). 컨텍스트 재사용, 재로드 금지.**
 
 ## 절차
 

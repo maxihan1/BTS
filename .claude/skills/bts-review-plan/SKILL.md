@@ -10,7 +10,8 @@ description: Use when a plan file is ready and needs type-specific multi-perspec
 ## 선행 읽기
 
 - `docs/plans/<date>-<slug>.md` — 작성된 plan 전체
-- `Maxi_wiki/BTS/decisions/` — 관련 ADR
+
+**`Maxi_wiki/BTS/decisions/`는 `/bts-domain` Step 1에서 이미 grep 완료, plan의 `## 도메인 정리` 섹션에 관련 ADR 링크 반영됨. 재검색 금지** (이미 잡힌 ADR로 충분).
 
 ## 절차
 

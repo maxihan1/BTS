@@ -75,9 +75,12 @@ class IssueTransitionService(
 
 ## 참조 파일
 
+**controller가 prompt에 inline 첨부 — 직접 Read 금지** (중복 로드 토큰 낭비).
 - `DEVELOPMENT.md` §1 (절대 규칙), §2 (Kotlin 스타일)
 - `DATA.md` §5 (jOOQ), §6 (트랜잭션), §7 (pgmq)
 - 작업 BC. `Maxi_wiki/BTS/domain/<bc>.md`
+
+**필요 시 직접 Read 가능**.
 - 관련 SDD. `docs/sdd/0{5,7,8,9,10,11}.md`
 
 ## Spring Boot 3.3+ / Kotlin 1.9+ 주의

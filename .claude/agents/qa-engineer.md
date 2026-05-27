@@ -107,7 +107,10 @@ abstract class IntegrationTestBase {
 
 ## 참조 파일
 
+**controller가 prompt에 inline 첨부 — 직접 Read 금지** (중복 로드 토큰 낭비).
 - `DEVELOPMENT.md` §5 (도구 표준 — 테스트), §2.3 (테스트 규칙)
+
+**필요 시 직접 Read 가능**.
 - 관련 SDD. `docs/sdd/22-claude-code-env.md` §22.7.2
 
 ## Playwright 설정 권장
