@@ -25,6 +25,10 @@ import java.time.Instant
  * project-workflow scheme BC 의 도메인 예외를 RFC 7807 ProblemDetail 형식으로 변환하는 핸들러.
  *
  * [basePackages] 를 `com.bts.workflow.scheme` 으로 한정하여 다른 BC 예외를 잡지 않는다.
+ * Spring @ControllerAdvice 우선순위 규칙에 의해 basePackages 를 지정한 이 핸들러가
+ * 전역 [com.bts.workflow.web.WorkflowExceptionHandler] 보다 높은 우선순위를 가진다.
+ * 따라서 scheme 패키지 컨트롤러에서 [WorkflowNotFoundException] 이 throw 되면
+ * 이 핸들러의 [handleWorkflowNotFound] 가 먼저 처리하여 WORKFLOW_NOT_FOUND errorCode 를 반환한다.
  *
  * 매핑 규칙 (spec §4.5, 11건).
  * - [SchemeKeyInvalidException]             → 400 + SCHEME_KEY_INVALID
