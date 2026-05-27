@@ -122,3 +122,40 @@ class WorkflowSchemeNoDefaultException(
 class ProjectNotFoundException(
     val projectKey: String,
 ) : WorkflowSchemeDomainException("Project not found: $projectKey")
+
+/**
+ * 스킴 키가 정규식 규칙을 위반할 때 던지는 예외.
+ *
+ * [com.bts.workflow.scheme.domain.WorkflowSchemeKey] VO 생성 시 검증 실패를 어댑터 계층이
+ * 잡아서 이 예외로 변환하거나, 직접 throw 한다.
+ * errorCode: `SCHEME_KEY_INVALID`
+ *
+ * @param key 유효하지 않은 스킴 키 원문.
+ */
+class SchemeKeyInvalidException(
+    val key: String,
+) : WorkflowSchemeDomainException("Invalid scheme key: '$key'. Must match ^[a-z][a-z0-9-]{1,29}\$")
+
+/**
+ * 요청한 이슈 타입 키에 해당하는 이슈 타입이 존재하지 않을 때 던지는 예외.
+ *
+ * 매핑 추가 시 issueTypeKey 가 DB 에 없을 때 발생한다.
+ * errorCode: `ISSUE_TYPE_NOT_FOUND`
+ *
+ * @param issueTypeKey 조회를 시도한 이슈 타입 키. 예: "bug".
+ */
+class IssueTypeNotFoundException(
+    val issueTypeKey: String,
+) : WorkflowSchemeDomainException("IssueType not found: $issueTypeKey")
+
+/**
+ * 표준(is_standard = true) 이슈 타입을 삭제하려 할 때 던지는 예외.
+ *
+ * 5 표준 IssueType(epic/story/task/subtask/bug)은 삭제 불가 정책이 도메인 규칙으로 고정된다.
+ * errorCode: `TYPE_STANDARD_NOT_DELETABLE`
+ *
+ * @param issueTypeKey 삭제 시도된 표준 이슈 타입 키.
+ */
+class TypeStandardNotDeletableException(
+    val issueTypeKey: String,
+) : WorkflowSchemeDomainException("Standard issue type not deletable: $issueTypeKey")
