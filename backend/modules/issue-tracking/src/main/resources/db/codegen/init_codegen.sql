@@ -6,7 +6,7 @@
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- V001: issue-tracking 초기 스키마 (projects, issues, issue_key_redirects)
--- 원본: db/migration/V001__issues_initial.sql
+-- 원본: db/migration/issue-tracking/V001__issues_initial.sql
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- 1. pgcrypto extension (gen_random_uuid 용)
@@ -65,7 +65,7 @@ CREATE INDEX idx_issue_key_redirects_new_key ON issue_key_redirects(new_key);
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- V002: pgmq 확장 + q_issue_events 큐 생성
--- 원본: db/migration/V002__pgmq_queue_issue_events.sql
+-- 원본: db/migration/issue-tracking/V002__pgmq_queue_issue_events.sql
 -- 이미지: quay.io/tembo/pg16-pgmq:latest — pgmq 사전 설치됨 (ADR 2026-05-22-pgmq-postgres-image).
 -- ═══════════════════════════════════════════════════════════════════════════
 

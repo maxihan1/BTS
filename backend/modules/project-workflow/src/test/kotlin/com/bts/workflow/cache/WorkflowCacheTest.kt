@@ -61,7 +61,7 @@ class WorkflowCacheTest {
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
-                .locations("classpath:db/migration")
+                .locations("classpath:db/migration/project-workflow")
                 .load()
                 .migrate()
 

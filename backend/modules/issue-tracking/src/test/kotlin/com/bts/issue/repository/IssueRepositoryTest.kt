@@ -18,8 +18,9 @@ import java.util.UUID
 /**
  * IssueRepository 통합 테스트.
  *
- * IssueTestcontainersBase 상속으로 Testcontainers quay.io/tembo/pg16-pgmq:latest + Flyway V001 + V002 를
- * JVM singleton 라이프사이클로 기동하고, IssueRepository 의 메서드를 순서대로 검증한다.
+ * IssueTestcontainersBase 상속으로 Testcontainers quay.io/tembo/pg16-pgmq:latest + Flyway V001 + V002
+ * (`db/migration/issue-tracking/` 하위 namespace 격리 경로) 를 JVM singleton 라이프사이클로 기동하고,
+ * IssueRepository 의 메서드를 순서대로 검증한다.
  * Spring ApplicationContext 없이 DSLContext 를 직접 조합한다 (project-workflow 패턴 준용).
  *
  * **`@Testcontainers` annotation 불필요** — IssueTestcontainersBase 가 JVM singleton 패턴 적용 (PR #8 learning #2).
@@ -35,14 +36,10 @@ import java.util.UUID
  * - T7. list — 활성 이슈 목록을 페이지 단위로 조회한다.
  * - T8. incrementKeySequence — 동일 projectKey 로 두 번 호출 시 연속된 두 숫자를 반환한다.
  * - T9. softDelete 후 같은 key INSERT — PostgreSQL 23505 unique_violation (FR-6 S13).
+ *
+ * **PR #24** — Flyway V001 namespace 격리 완료로 `@Disabled` 해제. file path = `db/migration/issue-tracking/` 하위.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
-@org.junit.jupiter.api.Disabled(
-    "Flyway V001 namespace 충돌 (issue-tracking + project-workflow 동일 db/migration/V001 path) — " +
-        "후속 PR 위임 (plan F10 deferred). 본 PR Wave 6 T9 는 singleton 패턴 정비 + " +
-        "T9 soft-delete 키 보존 시나리오 추가가 본질. Flyway namespace 정비는 " +
-        "별 cleanup PR (file rename db/migration/issue-tracking/* + application.yml locations 갱신).",
-)
 class IssueRepositoryTest : IssueTestcontainersBase() {
     // ── T1. insert ───────────────────────────────────────────────────────────────
 
