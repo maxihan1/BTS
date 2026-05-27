@@ -72,8 +72,10 @@ export type IssuePage = z.infer<ReturnType<typeof pageSchema<IssueResponse>>>
 
 /**
  * 이슈 단건을 조회한다.
- * GET /api/v1/issues/{key} → { data: IssueResponse }
- * 404 시 ApiError(404, ...) throw.
+ *
+ * @param key 이슈 식별 키 (예: "ATLAS-1")
+ * @returns IssueResponse — 백엔드 `{ data: IssueResponse }` 래퍼를 언래핑해 반환
+ * @throws ApiError(404) 해당 key의 이슈가 없을 때
  */
 export async function fetchIssue(key: string): Promise<IssueResponse> {
   const wrapped = await apiGet(
@@ -90,7 +92,9 @@ export async function fetchIssue(key: string): Promise<IssueResponse> {
 
 /**
  * 프로젝트 이슈 목록을 페이징 조회한다.
- * GET /api/v1/issues?projectKey=&page=&size= → Page<IssueResponse> (래퍼 없음)
+ *
+ * @param params projectKey · page · size 쿼리 파라미터
+ * @returns Spring Page 구조 — content 배열 + 페이징 메타 (래퍼 없음)
  */
 export async function fetchIssues(params: FetchIssuesParams): Promise<IssuePage> {
   const query = new URLSearchParams({
@@ -106,7 +110,9 @@ export async function fetchIssues(params: FetchIssuesParams): Promise<IssuePage>
 
 /**
  * 새 이슈를 생성한다.
- * POST /api/v1/issues body { projectKey, summary } → 201 { data: IssueResponse }
+ *
+ * @param input projectKey · summary
+ * @returns 생성된 IssueResponse — 백엔드 201 `{ data: IssueResponse }` 언래핑
  */
 export async function createIssue(input: CreateIssueInput): Promise<IssueResponse> {
   const wrapped = await apiPost(
@@ -119,7 +125,11 @@ export async function createIssue(input: CreateIssueInput): Promise<IssueRespons
 
 /**
  * 이슈 요약을 수정한다.
- * PATCH /api/v1/issues/{key} body { summary?, expectedVersion } → 200 { data: IssueResponse }
+ * Optimistic Concurrency Control을 위해 expectedVersion을 필수로 전달해야 한다.
+ *
+ * @param key 수정할 이슈 키
+ * @param input summary(선택) · expectedVersion(필수)
+ * @returns 수정된 IssueResponse — version이 증가된 상태로 반환
  */
 export async function updateIssue(key: string, input: UpdateIssueInput): Promise<IssueResponse> {
   const res = await apiFetch(`/api/v1/issues/${key}`, { method: 'PATCH', body: input })
@@ -134,7 +144,9 @@ export async function updateIssue(key: string, input: UpdateIssueInput): Promise
 
 /**
  * 이슈를 삭제한다.
- * DELETE /api/v1/issues/{key} → 204 no content
+ *
+ * @param key 삭제할 이슈 키
+ * @returns void — 204 no content
  */
 export async function deleteIssue(key: string): Promise<void> {
   const res = await apiFetch(`/api/v1/issues/${key}`, { method: 'DELETE' })
