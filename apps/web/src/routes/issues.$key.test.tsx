@@ -123,8 +123,10 @@ describe('IssueDetailPage — 성공 레이아웃', () => {
     renderPage('ATLAS-1')
 
     await waitFor(() => {
-      expect(screen.getByText('ATLAS')).toBeInTheDocument()
-      expect(screen.getByText('ATLAS-1')).toBeInTheDocument()
+      // nav 내부에서만 검사 — 메타패널에도 ATLAS가 있으므로 nav 범위로 좁힘
+      const nav = screen.getByRole('navigation', { name: '이동 경로' })
+      expect(within(nav).getByText('ATLAS')).toBeInTheDocument()
+      expect(within(nav).getByText('ATLAS-1')).toBeInTheDocument()
     })
   })
 
