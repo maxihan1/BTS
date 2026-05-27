@@ -66,8 +66,7 @@ class WorkflowSchemeEventPublisherIntegrationTest : DescribeSpec({
 
     // ── 공통 헬퍼 ────────────────────────────────────────────────────────────
 
-    fun newConnection(): Connection =
-        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
+    fun newConnection(): Connection = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
 
     fun buildObjectMapper(): ObjectMapper =
         ObjectMapper()

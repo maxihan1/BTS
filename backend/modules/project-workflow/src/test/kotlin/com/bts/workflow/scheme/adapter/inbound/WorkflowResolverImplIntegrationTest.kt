@@ -8,8 +8,6 @@ import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermissionResolver
 import com.bts.workflow.scheme.adapter.outbound.JdbcProjectLookupAdapter
 import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.domain.ProjectKey
 import com.bts.workflow.scheme.exception.ProjectNotFoundException
@@ -18,6 +16,8 @@ import com.bts.workflow.scheme.port.outbound.WorkflowResolver
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
@@ -58,9 +58,7 @@ import java.util.UUID
  */
 @Testcontainers
 class WorkflowResolverImplIntegrationTest {
-
     companion object {
-
         private val temboImage: DockerImageName =
             DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
                 .asCompatibleSubstituteFor("postgres")
@@ -98,11 +96,12 @@ class WorkflowResolverImplIntegrationTest {
         fun setup() {
             applyMigrations()
 
-            val dataSource = DriverManagerDataSource(
-                postgres.jdbcUrl,
-                postgres.username,
-                postgres.password,
-            )
+            val dataSource =
+                DriverManagerDataSource(
+                    postgres.jdbcUrl,
+                    postgres.username,
+                    postgres.password,
+                )
             val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
 
             val txManager = org.springframework.jdbc.datasource.DataSourceTransactionManager(dataSource)
@@ -116,21 +115,23 @@ class WorkflowResolverImplIntegrationTest {
             val workflowRepo = WorkflowRepository(dsl)
             val projectLookup: ProjectLookupPort = JdbcProjectLookupAdapter(dsl)
 
-            val schemeAppService = WorkflowSchemeApplicationService(
-                schemeRepo,
-                assignmentRepo,
-                mappingRepo,
-                eventPublisher,
-                permissionResolver,
-            )
+            val schemeAppService =
+                WorkflowSchemeApplicationService(
+                    schemeRepo,
+                    assignmentRepo,
+                    mappingRepo,
+                    eventPublisher,
+                    permissionResolver,
+                )
 
-            resolver = WorkflowResolverImpl(
-                projectLookup = projectLookup,
-                assignmentRepo = assignmentRepo,
-                mappingRepo = mappingRepo,
-                workflowRepo = workflowRepo,
-                schemeAS = schemeAppService,
-            )
+            resolver =
+                WorkflowResolverImpl(
+                    projectLookup = projectLookup,
+                    assignmentRepo = assignmentRepo,
+                    mappingRepo = mappingRepo,
+                    workflowRepo = workflowRepo,
+                    schemeAS = schemeAppService,
+                )
 
             seedWorkflowsAndMappings()
             insertProjectFixtures()
@@ -236,12 +237,13 @@ class WorkflowResolverImplIntegrationTest {
 
                 // S5: story issueType 전용 매핑 추가 (software-scheme + story issue_type)
                 // issue_types 에서 story id 조회
-                val storyId = conn.prepareStatement(
-                    "SELECT id FROM issue_types WHERE key = ?",
-                ).use { stmt ->
-                    stmt.setString(1, ISSUE_TYPE_STORY_KEY)
-                    stmt.executeQuery().use { rs -> if (rs.next()) rs.getLong(1) else null }
-                }
+                val storyId =
+                    conn.prepareStatement(
+                        "SELECT id FROM issue_types WHERE key = ?",
+                    ).use { stmt ->
+                        stmt.setString(1, ISSUE_TYPE_STORY_KEY)
+                        stmt.executeQuery().use { rs -> if (rs.next()) rs.getLong(1) else null }
+                    }
 
                 if (storyId != null) {
                     // software-scheme + story 조합의 명시적 매핑 추가 (software-default 워크플로우 사용)
@@ -271,8 +273,11 @@ class WorkflowResolverImplIntegrationTest {
                     stmt.setString(2, PROJECT_S5_KEY)
                     stmt.setString(3, "Project S5")
                     stmt.executeQuery().use { rs ->
-                        if (rs.next()) projectS5Id = rs.getObject(1) as UUID
-                        else projectS5Id = UUID.fromString(s5Uuid)
+                        if (rs.next()) {
+                            projectS5Id = rs.getObject(1) as UUID
+                        } else {
+                            projectS5Id = UUID.fromString(s5Uuid)
+                        }
                     }
                 }
 
@@ -284,8 +289,11 @@ class WorkflowResolverImplIntegrationTest {
                     stmt.setString(2, PROJECT_EC2_KEY)
                     stmt.setString(3, "Project EC2")
                     stmt.executeQuery().use { rs ->
-                        if (rs.next()) projectEc2Id = rs.getObject(1) as UUID
-                        else projectEc2Id = UUID.fromString(ec2Uuid)
+                        if (rs.next()) {
+                            projectEc2Id = rs.getObject(1) as UUID
+                        } else {
+                            projectEc2Id = UUID.fromString(ec2Uuid)
+                        }
                     }
                 }
 
@@ -297,8 +305,11 @@ class WorkflowResolverImplIntegrationTest {
                     stmt.setString(2, PROJECT_EC1_KEY)
                     stmt.setString(3, "Project EC1")
                     stmt.executeQuery().use { rs ->
-                        if (rs.next()) projectEc1Id = rs.getObject(1) as UUID
-                        else projectEc1Id = UUID.fromString(ec1Uuid)
+                        if (rs.next()) {
+                            projectEc1Id = rs.getObject(1) as UUID
+                        } else {
+                            projectEc1Id = UUID.fromString(ec1Uuid)
+                        }
                     }
                 }
             }
@@ -343,9 +354,10 @@ class WorkflowResolverImplIntegrationTest {
 
     @Test
     fun `S5 - assignment 있고 issueTypeKey 가 story 매핑에 매치되면 해당 workflow 를 반환한다`() {
-        val result: Workflow = txTemplate.execute {
-            resolver.resolveFor(ProjectKey(PROJECT_S5_KEY), IssueTypeKey(ISSUE_TYPE_STORY_KEY))
-        }!!
+        val result: Workflow =
+            txTemplate.execute {
+                resolver.resolveFor(ProjectKey(PROJECT_S5_KEY), IssueTypeKey(ISSUE_TYPE_STORY_KEY))
+            }!!
 
         assertThat(result).isNotNull
         assertThat(result.key).isEqualTo("software-default")
@@ -355,9 +367,10 @@ class WorkflowResolverImplIntegrationTest {
 
     @Test
     fun `EC-2 - assignment 있고 issueTypeKey 매핑 없으면 default mapping workflow 를 반환한다`() {
-        val result: Workflow = txTemplate.execute {
-            resolver.resolveFor(ProjectKey(PROJECT_EC2_KEY), IssueTypeKey(ISSUE_TYPE_UNKNOWN_KEY))
-        }!!
+        val result: Workflow =
+            txTemplate.execute {
+                resolver.resolveFor(ProjectKey(PROJECT_EC2_KEY), IssueTypeKey(ISSUE_TYPE_UNKNOWN_KEY))
+            }!!
 
         assertThat(result).isNotNull
         assertThat(result.key).isEqualTo("software-default")
@@ -367,9 +380,10 @@ class WorkflowResolverImplIntegrationTest {
 
     @Test
     fun `EC-1 D10 - assignment 없는 프로젝트는 software-scheme 자동 배정 후 default workflow 를 반환한다`() {
-        val result: Workflow = txTemplate.execute {
-            resolver.resolveFor(ProjectKey(PROJECT_EC1_KEY), null)
-        }!!
+        val result: Workflow =
+            txTemplate.execute {
+                resolver.resolveFor(ProjectKey(PROJECT_EC1_KEY), null)
+            }!!
 
         assertThat(result).isNotNull
         assertThat(result.key).isEqualTo("software-default")

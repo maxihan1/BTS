@@ -115,7 +115,9 @@ class ProjectWorkflowArchitectureTest {
                 .orShould()
                 .beAnnotatedWith(org.springframework.web.bind.annotation.RestController::class.java)
                 .because(
-                    "@Transactional 메서드를 갖는 구체 클래스는 Spring Bean(@Service/@Component/@Repository/@Controller/@RestController — 모두 @Component 의 stereotype specialization)이어야 트랜잭션 AOP가 적용됩니다",
+                    "@Transactional 메서드를 갖는 구체 클래스는 Spring Bean " +
+                        "(@Service/@Component/@Repository/@Controller/@RestController — 모두 @Component 의 stereotype specialization) " +
+                        "이어야 트랜잭션 AOP가 적용됩니다",
                 )
         }
 

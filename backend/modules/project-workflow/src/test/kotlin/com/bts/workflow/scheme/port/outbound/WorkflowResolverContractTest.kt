@@ -9,8 +9,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
-import kotlin.reflect.full.memberFunctions
 import kotlin.reflect.full.findAnnotation
+import kotlin.reflect.full.memberFunctions
 
 /**
  * WorkflowResolver outbound port 계약 검증.
@@ -24,7 +24,6 @@ import kotlin.reflect.full.findAnnotation
  * 3. resolveFor 에 @Transactional(readOnly=true, propagation=MANDATORY) 부착 확인
  */
 class WorkflowResolverContractTest {
-
     // ── 1. WorkflowResolver 는 interface 여야 한다 ──────────────────────────────
 
     @Test

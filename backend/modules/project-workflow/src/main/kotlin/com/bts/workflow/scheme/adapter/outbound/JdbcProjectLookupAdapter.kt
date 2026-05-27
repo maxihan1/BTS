@@ -27,8 +27,8 @@ import java.util.UUID
  * @param dsl jOOQ DSLContext.
  */
 @Component
+@Suppress("PropertyName") // jOOQ 필드 상수 — SQL 컬럼명 매칭 (UPPER_SNAKE_CASE). FR-PM-04 교체 시 정식 cross-BC port 로 대체 예정.
 class JdbcProjectLookupAdapter(private val dsl: DSLContext) : ProjectLookupPort {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     // projects 테이블 — project-management BC 소유. 읽기 전용 참조 (FR-PM-04 교체 예정).

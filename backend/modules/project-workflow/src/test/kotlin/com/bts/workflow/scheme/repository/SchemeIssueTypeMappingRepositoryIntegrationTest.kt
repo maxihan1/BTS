@@ -47,7 +47,6 @@ import java.util.UUID
  */
 @Testcontainers
 class SchemeIssueTypeMappingRepositoryIntegrationTest {
-
     companion object {
         // quay.io/tembo/pg16-pgmq:latest — V004 pgmq 확장 + pgmq.create() 요구로 인해 tembo 이미지 사용.
         // asCompatibleSubstituteFor("postgres"): Testcontainers 이미지 호환성 검증 우회.

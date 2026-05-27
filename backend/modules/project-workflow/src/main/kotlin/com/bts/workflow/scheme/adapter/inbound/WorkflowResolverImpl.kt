@@ -55,7 +55,6 @@ class WorkflowResolverImpl(
     private val workflowRepo: WorkflowRepository,
     private val schemeAS: WorkflowSchemeApplicationService,
 ) : WorkflowResolver {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
@@ -80,32 +79,35 @@ class WorkflowResolverImpl(
         issueTypeKey: IssueTypeKey?,
     ): Workflow {
         // 1. projectKey → projectId(UUID) 변환. 없으면 EC-7.
-        val projectId = projectLookup.findIdByKey(projectKey)
-            ?: throw ProjectNotFoundException(projectKey.value)
+        val projectId =
+            projectLookup.findIdByKey(projectKey)
+                ?: throw ProjectNotFoundException(projectKey.value)
 
         log.debug("resolveFor projectKey={} projectId={} issueTypeKey={}", projectKey.value, projectId, issueTypeKey?.value)
 
         // 2. assignment 조회. 없으면 EC-1 D10 — software-scheme 자동 배정.
-        val assignment = assignmentRepo.findByProjectId(projectId)
-            ?: run {
-                log.info("resolveFor: no assignment for projectId={}, auto-assigning software-scheme (EC-1 D10)", projectId)
-                schemeAS.assignToProject(
-                    actor = WorkflowSchemeApplicationService.SYSTEM_ACTOR,
-                    projectId = projectId,
-                    projectKey = projectKey.value,
-                    schemeKey = WorkflowSchemeApplicationService.SOFTWARE_SCHEME_KEY,
-                )
-            }
+        val assignment =
+            assignmentRepo.findByProjectId(projectId)
+                ?: run {
+                    log.info("resolveFor: no assignment for projectId={}, auto-assigning software-scheme (EC-1 D10)", projectId)
+                    schemeAS.assignToProject(
+                        actor = WorkflowSchemeApplicationService.SYSTEM_ACTOR,
+                        projectId = projectId,
+                        projectKey = projectKey.value,
+                        schemeKey = WorkflowSchemeApplicationService.SOFTWARE_SCHEME_KEY,
+                    )
+                }
 
         val schemeId = assignment.workflowSchemeId
 
         // 3. 매핑 조회 — S5(명시적) 우선, 없으면 EC-2(default fallback).
-        val mapping = if (issueTypeKey != null) {
-            mappingRepo.findByIssueTypeKey(schemeId, issueTypeKey.value)
-                ?: mappingRepo.findDefaultMapping(schemeId)
-        } else {
-            mappingRepo.findDefaultMapping(schemeId)
-        } ?: throw WorkflowSchemeNoDefaultException(schemeId.value.toString())
+        val mapping =
+            if (issueTypeKey != null) {
+                mappingRepo.findByIssueTypeKey(schemeId, issueTypeKey.value)
+                    ?: mappingRepo.findDefaultMapping(schemeId)
+            } else {
+                mappingRepo.findDefaultMapping(schemeId)
+            } ?: throw WorkflowSchemeNoDefaultException(schemeId.value.toString())
 
         // 4. workflow aggregate 반환. 매핑에 있는 workflowId 가 없으면 데이터 무결성 위반.
         return workflowRepo.findById(mapping.workflowId)

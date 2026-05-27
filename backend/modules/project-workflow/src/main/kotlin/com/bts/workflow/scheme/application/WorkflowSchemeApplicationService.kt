@@ -89,8 +89,7 @@ class WorkflowSchemeApplicationService(
      * @throws WorkflowSchemeNotFoundException key 에 해당하는 활성 스킴이 없을 때.
      */
     @Transactional(readOnly = true)
-    fun find(key: WorkflowSchemeKey): WorkflowScheme =
-        schemeRepo.findByKey(key) ?: throw WorkflowSchemeNotFoundException(key.value)
+    fun find(key: WorkflowSchemeKey): WorkflowScheme = schemeRepo.findByKey(key) ?: throw WorkflowSchemeNotFoundException(key.value)
 
     /**
      * 스킴의 가변 필드(name / description / isDefault) 를 변경한다.

@@ -22,7 +22,6 @@ import java.util.UUID
  * @see com.bts.workflow.scheme.adapter.outbound.JdbcProjectLookupAdapter
  */
 interface ProjectLookupPort {
-
     /**
      * [projectKey] 에 해당하는 프로젝트의 UUID(projects.id) 를 반환한다.
      *

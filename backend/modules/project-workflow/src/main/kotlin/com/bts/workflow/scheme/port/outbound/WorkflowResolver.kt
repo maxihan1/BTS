@@ -32,7 +32,6 @@ import org.springframework.transaction.annotation.Transactional
  * 은 T22 (Wave 4) 에서 등록된다. consumer wiring 은 본 PR scope 외 (G2 — PR #17 후속).
  */
 interface WorkflowResolver {
-
     /**
      * 프로젝트와 이슈 타입에 적합한 워크플로우를 반환한다.
      *
@@ -45,5 +44,8 @@ interface WorkflowResolver {
      * @throws WorkflowSchemeNoDefaultException issueTypeKey 매칭 mapping 없음 + default mapping 도 없을 때 (EC-2).
      */
     @Transactional(readOnly = true, propagation = Propagation.MANDATORY)
-    fun resolveFor(projectKey: ProjectKey, issueTypeKey: IssueTypeKey?): Workflow
+    fun resolveFor(
+        projectKey: ProjectKey,
+        issueTypeKey: IssueTypeKey?,
+    ): Workflow
 }
