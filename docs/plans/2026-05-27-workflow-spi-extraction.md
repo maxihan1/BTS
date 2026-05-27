@@ -147,4 +147,43 @@
 - eng-review 위임: EC3 `@Transactional` 인터페이스 유지 vs impl 이동(SPI 프레임워크 비결합 — identity 선례 대비).
 - 검증 baseline 주의: main clean 빌드가 jOOQ 로 깨진 상태 → Task 4 이전 검증은 generateJooq 수동 선행 필요, Task 4 이후 우회 불요.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-05-27)
+
+**Step 0 스코프.** 축소 불요. ~43 파일 터치는 이동 리팩토링의 본질(import 경로 churn)이지 scope creep 아님. 신규 로직 0. SPI/shared-kernel 은 표준 DDD 패턴 [Layer 1].
+
+**Architecture** ✅ — 순환 해소 정합성 코드 검증(build.gradle + import 양방향). issue→workflow edge 제거(본 PR) + workflow→issue edge 제거(PR #18 rebase 시 IssueTypeId shared-kernel 경유).
+- **결정 1 (EC3 @Transactional) → 1A 채택.** `@Transactional(MANDATORY)` 를 포트 인터페이스에 유지, shared-kernel 이 spring-tx 의존. NFR1(동작 불변) 정신 — 가장 작은 diff, 어노테이션 위치 보존. identity SpiBoundaryArchTest "spi 프레임워크 비결합" 선례와는 다르나, 프레임워크 비결합화는 별도 후속으로 분리 가능(TODO 후보).
+
+**Code Quality** ✅ — 이동은 package 선언만(본문/시그니처 불변). IssueTypeId/Key 가 본 PR shared-kernel 과 PR #18 issue-tracking 에 일시 중복 → PR #18 rebase 시 4파일 제거로 해소(DRY 회복, 문서화됨).
+
+**Tests** ✅ gap 0 — FR3 신규 VO 는 TDD red→green(require>0 / REGEX 엣지 ★★★), FR2 이동은 기존 project-workflow/issue-tracking 테스트가 회귀 가드(green 유지 = 동작 보존 증명), T5 ArchUnit 이 shared-kernel 역참조 재발 차단. 런타임 동작 변경 0 이라 user-flow 커버리지 N/A.
+
+**Performance** ✅ 해당 없음 — 런타임 변경 0, 모듈 분할의 빌드 영향 미미.
+
+**NOT in scope.**
+- @Transactional 프레임워크 비결합화(impl 이동) — 1A 로 보류, 별도 리팩토링 TODO.
+- issue-tracking 의 jOOQ `false` 설정 자체 재검토 — FR6 는 dependsOn 만 추가, 설정 철학 변경 아님.
+- PR #18 본체 수정 — 본 PR 머지 후 rebase 단계에서 처리.
+
+**What already exists.** 재사용 대상 없음 — 순환은 cross-import 자체가 원인. identity-access 의 `SpiBoundaryArchTest`(`backend/modules/identity-access/.../architecture/`) 가 T5 ArchUnit 룰 작성 시 참조 선례.
+
+**병렬화.** 대체로 직렬(이동 원자성 — 중간 상태 비컴파일). W1=[T1] → W2=[T2 issue VO, T3 workflow 이동] (파일 무겹침, 병렬 가능) → W3=[T4 jOOQ, T5 ArchUnit]. T4↔T3 는 동일 build.gradle 겹침으로 자동 직렬.
+
+**Failure modes.** 런타임 신규 코드 경로 0 → 프로덕션 실패 모드 신규 없음. 유일 리스크는 빌드 타임(import 누락 시 compile fail — loud, silent 아님). T3 검증의 grep 잔존참조 0 체크가 가드.
+
+- BLOCKER: 없음. unresolved: 0. critical gaps: 0.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 1 issue (EC3 @Transactional → 1A), 0 critical gaps |
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | 동작 변경 0 리팩토링 — 해당 약함 |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | UI 변경 없음 |
+| DX Review | `/plan-devex-review` | DX gaps | 0 | — | API/도구 표면 변경 없음 |
+
+- **UNRESOLVED:** 0
+- **OUTSIDE VOICE:** 생략 (기계적 리팩토링, 코드 분석으로 충분 검증)
+- **VERDICT:** ENG CLEARED — 구현 진행 가능. @Transactional 1A 확정, BLOCKER 0.
