@@ -2,10 +2,10 @@
 
 package com.bts.workflow.validator
 
+import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition
-import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.domain.dto.TransitionContext
 import com.bts.workflow.domain.expression.ActorView
 import com.bts.workflow.domain.expression.IssueView

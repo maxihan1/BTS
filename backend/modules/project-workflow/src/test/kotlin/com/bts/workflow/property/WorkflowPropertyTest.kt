@@ -2,11 +2,11 @@
 
 package com.bts.workflow.property
 
+import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.domain.StateCategory
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition
-import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.domain.dto.PostActionPlan
 import com.bts.workflow.domain.dto.TransitionContext
 import com.bts.workflow.domain.expression.DefaultActorView

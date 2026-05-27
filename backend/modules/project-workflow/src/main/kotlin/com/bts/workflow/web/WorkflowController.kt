@@ -2,9 +2,9 @@
 
 package com.bts.workflow.web
 
+import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.application.WorkflowApplicationService
 import com.bts.workflow.cache.WorkflowCache
-import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.web.dto.TransitionRequestDto
 import com.bts.workflow.web.dto.TransitionResponseDto
 import com.bts.workflow.web.dto.WorkflowDto
