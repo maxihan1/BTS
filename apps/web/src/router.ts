@@ -73,6 +73,11 @@ const issuesKeyRoute = createRoute({
   beforeLoad: requireAuth,
 })
 
+/**
+ * 전체 라우트 트리.
+ * 7개 라우트: / · /login · /dashboard · /workflows/$key · /issues · /issues/new · /issues/$key
+ * requireAuth 라우트: /dashboard · /issues · /issues/new · /issues/$key
+ */
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -83,6 +88,7 @@ export const routeTree = rootRoute.addChildren([
   issuesKeyRoute,
 ])
 
+/** 앱 전역 라우터 인스턴스 — Register 모듈 증강으로 전체 타입 안전 navigate 보장 */
 export const router = createRouter({ routeTree })
 
 declare module '@tanstack/react-router' {
