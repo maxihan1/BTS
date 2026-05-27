@@ -32,7 +32,7 @@ import java.util.UUID
  * @param dsl jOOQ DSLContext — SQL 을 코드로 안전하게 작성하는 라이브러리의 핵심 진입점.
  */
 @Repository
-@Suppress("PropertyName") // jOOQ 필드 상수 — SQL 컬럼명 매칭 (UPPER_SNAKE_CASE). codegen 도입 시 typed table 로 교체 예정.
+@Suppress("PropertyName", "VariableNaming") // jOOQ 필드 상수 — SQL 컬럼명 매칭 (UPPER_SNAKE_CASE). codegen 도입 시 typed table 로 교체 예정.
 class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
     private val log = LoggerFactory.getLogger(javaClass)
 
