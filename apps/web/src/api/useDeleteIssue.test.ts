@@ -6,7 +6,7 @@ import { createElement } from 'react'
 import type { ReactNode } from 'react'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
-import { useDeleteIssue } from './useDeleteIssue'
+import { useDeleteIssue, issuesListQueryKey } from './useDeleteIssue'
 
 // sonner toast mock — 실제 DOM 없이 호출 여부만 검증
 vi.mock('sonner', () => ({
@@ -44,8 +44,8 @@ describe('useDeleteIssue', () => {
       wrapper: createWrapper(queryClient),
     })
 
-    // 쿼리 캐시에 ['issues'] 키로 데이터를 미리 설정해 invalidate 검증에 활용
-    queryClient.setQueryData(['issues'], [{ key: 'ATLAS-1' }])
+    // 쿼리 캐시에 issuesListQueryKey로 데이터를 미리 설정해 invalidate 검증에 활용
+    queryClient.setQueryData(issuesListQueryKey, [{ key: 'ATLAS-1' }])
 
     await act(async () => {
       result.current.mutate('ATLAS-1')
@@ -55,7 +55,7 @@ describe('useDeleteIssue', () => {
 
     // invalidateQueries는 해당 쿼리를 stale 상태로 만들어 다음 사용 시 재fetch하게 한다
     // setQueryData로 설정한 데이터가 stale이 되었는지 확인
-    const queryState = queryClient.getQueryState(['issues'])
+    const queryState = queryClient.getQueryState(issuesListQueryKey)
     expect(queryState?.isInvalidated).toBe(true)
 
     expect(onSuccess).toHaveBeenCalledOnce()
@@ -86,7 +86,7 @@ describe('useDeleteIssue', () => {
       http.delete('/api/v1/issues/ATLAS-2', () => new HttpResponse(null, { status: 204 })),
     )
 
-    queryClient.setQueryData(['issues'], [{ key: 'ATLAS-2' }])
+    queryClient.setQueryData(issuesListQueryKey, [{ key: 'ATLAS-2' }])
 
     const { result } = renderHook(() => useDeleteIssue({}), {
       wrapper: createWrapper(queryClient),
@@ -98,7 +98,7 @@ describe('useDeleteIssue', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    const queryState = queryClient.getQueryState(['issues'])
+    const queryState = queryClient.getQueryState(issuesListQueryKey)
     expect(queryState?.isInvalidated).toBe(true)
   })
 })
