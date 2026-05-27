@@ -14,7 +14,8 @@ vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({}),
 }))
 
-function renderForm() {
+/** onSuccess prop 없이 폼만 렌더하는 헬퍼 */
+function renderForm(onSuccess?: (key: string) => void) {
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -23,7 +24,7 @@ function renderForm() {
   })
   return render(
     <QueryClientProvider client={client}>
-      <IssueCreateForm />
+      <IssueCreateForm onSuccess={onSuccess} />
     </QueryClientProvider>,
   )
 }
@@ -59,11 +60,16 @@ describe('IssueCreateForm', () => {
 
   /**
    * T6-2. 유효한 입력 후 제출하면 createIssue 가 호출되고
-   * 201 응답의 key 로 navigate('/issues/$key') 가 호출된다.
+   * 201 응답의 key 로 onSuccess(key) 가 호출된다.
+   * IssueCreateRouteAdapter 는 onSuccess 에서 navigate 를 호출하는 역할이므로,
+   * 여기서는 onSuccess 콜백에 mockNavigate 를 직접 연결해 검증한다.
    */
-  it('T6-2: 유효한 입력 제출 후 201 응답 key로 navigate한다', async () => {
+  it('T6-2: 유효한 입력 제출 후 201 응답 key로 onSuccess가 호출된다', async () => {
     const user = userEvent.setup()
-    renderForm()
+    const onSuccess = (key: string) => {
+      mockNavigate({ to: '/issues/$key', params: { key } })
+    }
+    renderForm(onSuccess)
 
     await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
     await user.type(screen.getByLabelText('제목'), '새 이슈 제목')

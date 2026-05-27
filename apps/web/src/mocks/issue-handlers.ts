@@ -10,11 +10,11 @@ import {
 /** 이슈 생성 성공 응답 픽스처 */
 export const createdIssueFixture = {
   key: 'ATLAS-42',
-  id: '00000000-0000-0000-0000-000000000042',
+  id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
   projectKey: 'ATLAS',
   summary: '새 이슈 제목',
   currentStateKey: 'OPEN',
-  reporterId: '00000000-0000-0000-0000-000000000001',
+  reporterId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
   version: 0,
   createdAt: '2026-05-27T00:00:00Z',
   updatedAt: null,
