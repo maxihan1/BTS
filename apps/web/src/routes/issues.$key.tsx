@@ -1,114 +1,29 @@
-// 이슈 상세 페이지 — 시안 2 사이드 메타패널 (좌 본문 / 우 메타패널, 상태 읽기전용 배지)
+// 이슈 상세 페이지 라우트 — 시안 2 사이드 메타패널 (좌 본문 / 우 메타패널, 상태 읽기전용 배지)
 import type { JSX } from 'react'
 import { useState } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { fetchIssue } from '@/api/issues'
-import type { IssueResponse } from '@/api/issues'
 import { useUpdateIssueSummary, issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { useDeleteIssue } from '@/api/useDeleteIssue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import { issueDetailStrings } from '@/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 날짜 포매터 유틸
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * ISO 날짜 문자열을 "YYYY-MM-DD HH:mm" 형식으로 포맷한다.
- * null이면 "—"를 반환한다.
- */
-function formatDate(iso: string | null): string {
-  if (iso === null) return '—'
-  const d = new Date(iso)
-  const date = d.toISOString().slice(0, 10)
-  const time = d.toISOString().slice(11, 16)
-  return `${date} ${time}`
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// IssueMetaPanel — 우측 메타 패널 서브 컴포넌트
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface IssueMetaPanelProps {
-  /** 렌더할 이슈 데이터 */
-  issue: IssueResponse
-  /** 삭제 버튼 클릭 핸들러 */
-  onDeleteClick: () => void
-}
-
-/**
- * 이슈 상세 우측 메타패널 컴포넌트.
- *
- * - 상태: 읽기전용 배지 (전이 UI 없음 — D6 제외)
- * - 보고자 UUID, 프로젝트 키, 버전, 생성/수정 날짜 표시
- * - 생성/수정 날짜 null → "—" 표기
- * - 하단 "이슈 삭제" 버튼 → onDeleteClick 호출
- */
-export function IssueMetaPanel({ issue, onDeleteClick }: IssueMetaPanelProps): JSX.Element {
-  return (
-    <aside className="flex flex-col gap-3">
-      {/* 메타 패널 카드 */}
-      <div className="border border-border rounded-xl overflow-hidden">
-        {/* 상태 — 읽기전용 배지 */}
-        <div className="px-3.5 py-3 border-b border-border">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.statLabel}</p>
-          <span
-            data-testid="issue-state-badge"
-            className="inline-flex items-center gap-1.5 text-sm font-medium"
-          >
-            <span className="size-2 rounded-full bg-primary/60 shrink-0" aria-hidden="true" />
-            {issue.currentStateKey}
-          </span>
-        </div>
-
-        {/* 보고자 */}
-        <div className="px-3.5 py-3 border-b border-border">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.reporterLabel}</p>
-          <p className="text-sm font-medium truncate">{issue.reporterId}</p>
-        </div>
-
-        {/* 프로젝트 */}
-        <div className="px-3.5 py-3 border-b border-border">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.projectLabel}</p>
-          <p className="text-sm font-medium">{issue.projectKey}</p>
-        </div>
-
-        {/* 버전 (낙관락 OCC 버전 번호) */}
-        <div className="px-3.5 py-3 border-b border-border">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.versionLabel}</p>
-          <p className="text-sm font-medium">v{issue.version}</p>
-        </div>
-
-        {/* 생성일 */}
-        <div className="px-3.5 py-3 border-b border-border">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.createdAtLabel}</p>
-          <p className="text-sm font-medium">{formatDate(issue.createdAt)}</p>
-        </div>
-
-        {/* 수정일 */}
-        <div className="px-3.5 py-3">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.updatedAtLabel}</p>
-          <p className="text-sm font-medium">{formatDate(issue.updatedAt)}</p>
-        </div>
-      </div>
-
-      {/* 삭제 버튼 */}
-      <Button
-        variant="destructive"
-        className="w-full min-h-[44px]"
-        onClick={onDeleteClick}
-        aria-label={issueDetailStrings.deleteButton}
-      >
-        {issueDetailStrings.deleteButton}
-      </Button>
-    </aside>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// IssueDetailPage — props 기반 메인 컴포넌트 (useParams 비의존 — 단위 테스트 가능)
+// router.ts 등록 방법 (code-based 패턴 — PR #11 컨벤션).
+//
+//   import { IssueDetailRouteAdapter } from './routes/issues.$key'
+//
+//   const issuesKeyRoute = createRoute({
+//     getParentRoute: () => rootRoute,
+//     path: '/issues/$key',
+//     component: IssueDetailRouteAdapter,
+//   })
+//
+// IssueDetailRouteAdapter는 useParams({ strict: false })로 key를 추출해
+// IssueDetailPage에 전달한다. 라우터 등록은 router.ts 담당.
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface IssueDetailPageProps {
