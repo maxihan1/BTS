@@ -74,6 +74,129 @@ FR-IS-01 (이슈 CRUD + 상태 전이 검증 + 알림)의 D6 단계 — 프론�
 
 ✅ 통과 (1 iteration). 전이 백엔드 미연동 gap 발견 → Maxi 결정으로 전이 D6 제외 + 메모리 기록. projectKey 자유입력 / 목록 진입 동선은 기본값 적용.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+모든 task agent=`frontend-engineer`. TDD red→green→refactor 강제. 테스트=Vitest+RTL, API=MSW. `vi.mock`은 컴포넌트/함수 단위 좁은 범위(learnings 2026-05-26). commit 시 `git add <file>` 파일 단위(lint-staged race 회피, learnings 2026-05-26).
+
+### Task 1. 이슈 API 모듈 + Zod 스키마 (`@/api/issues.ts`)
+
+**메타.**
+- files: [`apps/web/src/api/issues.ts`, `apps/web/src/api/issues.test.ts`]
+- depends-on: []
+
+**RED.** `issues.test.ts` — (a) `issueResponseSchema`가 IssueResponse 9필드 파싱 + createdAt/updatedAt nullable, (b) 단건 `DataResponse` 언래핑, (c) 목록 `Page<IssueResponse>`(래퍼 없음) 파싱, (d) fetchIssue/fetchIssues/createIssue/updateIssue/deleteIssue가 올바른 method·path·body로 `apiFetch` 호출(MSW). 실패: 모듈 없음.
+
+**GREEN.** `issues.ts` — Zod 스키마(issueResponseSchema, dataResponse 래퍼, issuePageSchema) + 5 함수. 기존 `@/api/client.ts`의 `apiFetch`/`apiGet`/`apiPost` 재사용(`@/api/workflows.ts` 패턴).
+
+**REFACTOR.** 타입 export(`IssueResponse`, `CreateIssueInput`, `UpdateIssueInput`) + KDoc + 헤더 한국어 주석.
+
+**검증.** `pnpm -C apps/web test issues.test`
+
+### Task 2. 최소 toast 컴포넌트 (`@/components/ui/toast` + Provider)
+
+**메타.**
+- files: [`apps/web/src/components/ui/toast.tsx`, `apps/web/src/components/ui/toast.test.tsx`]
+- depends-on: []
+
+**RED.** `toast.test.tsx` — `useToast().show(msg)` 호출 시 메시지가 role=status/alert로 렌더 + 자동 dismiss. 실패: 모듈 없음.
+
+**GREEN.** Context 기반 최소 toast(새 npm 의존성 없이). DESIGN.md 토큰(`rounded-2xl`, border, shadow) + 한국어. **sonner 등 새 의존성 도입은 Maxi 승인 시에만 — 기본은 in-house.**
+
+**REFACTOR.** ToastProvider를 main.tsx에 마운트(QueryClientProvider 인접). KDoc.
+
+**검증.** `pnpm -C apps/web test toast.test`
+
+### Task 3. 요약 수정 훅 (`useUpdateIssueSummary`) — 완전 낙관적 + 409 토스트
+
+**메타.**
+- files: [`apps/web/src/api/useUpdateIssueSummary.ts`, `apps/web/src/api/useUpdateIssueSummary.test.ts`]
+- depends-on: [1, 2]
+
+**RED.** test — (a) onMutate가 cancelQueries + snapshot + 캐시 선반영(낙관적), (b) 성공 시 응답 `version` 반영, (c) 409 VERSION_CONFLICT 시 snapshot 롤백 + invalidate 재조회 + toast 호출, (d) onSettled invalidate. `ApiError(409)` 모킹. 실패: 훅 없음.
+
+**GREEN.** `useMutation` 래핑 훅. `updateIssue(key, {summary, expectedVersion})`. onMutate/onError/onSettled. 409는 `ApiError.status===409 && body.errorCode==='VERSION_CONFLICT'` 분기 → toast.
+
+**REFACTOR.** queryKey 상수화(`['issue', key]`) + KDoc.
+
+**검증.** `pnpm -C apps/web test useUpdateIssueSummary.test`
+
+### Task 4. 삭제 훅 (`useDeleteIssue`)
+
+**메타.**
+- files: [`apps/web/src/api/useDeleteIssue.ts`, `apps/web/src/api/useDeleteIssue.test.ts`]
+- depends-on: [1]
+
+**RED.** test — deleteIssue(key) 성공 시 목록 캐시 invalidate + onSuccess 콜백(navigate용) 호출. 404는 toast. 실패: 훅 없음.
+
+**GREEN.** `useMutation` 래핑. `deleteIssue(key)`.
+
+**REFACTOR.** KDoc + queryKey 상수 공유.
+
+**검증.** `pnpm -C apps/web test useDeleteIssue.test`
+
+### Task 5. 이슈 목록 페이지 (`routes/issues.index.tsx`)
+
+**메타.**
+- files: [`apps/web/src/routes/issues.index.tsx`, `apps/web/src/routes/issues.index.test.tsx`]
+- depends-on: [1]
+
+**RED.** test — `IssueListPage`(props 기반) + 라우트 어댑터. useQuery fetchIssues. 3-상태(로딩/에러/성공) + 빈 목록 빈 상태 + 항목(키·요약·상태 배지) + "새 이슈" 링크 + 항목 클릭 시 상세 링크 + 페이지네이션. MSW Page 응답. 실패: 모듈 없음.
+
+**GREEN.** IssueListPage + IssueListRouteAdapter(code-based, workflows.$key 패턴). shadcn card/button.
+
+**REFACTOR.** 항목 컴포넌트 추출 + KDoc.
+
+**검증.** `pnpm -C apps/web test issues.index.test`
+
+### Task 6. 이슈 생성 폼 (`routes/issues.new.tsx`)
+
+**메타.**
+- files: [`apps/web/src/routes/issues.new.tsx`, `apps/web/src/routes/issues.new.test.tsx`]
+- depends-on: [1]
+
+**RED.** test — projectKey + summary 입력. 빈 summary 검증 차단(서버 도달 전). 제출 시 createIssue 호출 → 201 응답 key로 `/issues/$key` navigate. PROJECT_NOT_FOUND(404)는 폼 에러 표시. MSW. 실패: 모듈 없음.
+
+**GREEN.** IssueCreateForm + 어댑터. shadcn form/input/label/button.
+
+**REFACTOR.** Zod 폼 검증 + KDoc.
+
+**검증.** `pnpm -C apps/web test issues.new.test`
+
+### Task 7. 이슈 상세 페이지 (`routes/issues.$key.tsx`) — 시안 2 + 수정/삭제 연결
+
+**메타.**
+- files: [`apps/web/src/routes/issues.$key.tsx`, `apps/web/src/routes/issues.$key.test.tsx`]
+- depends-on: [1, 3, 4]
+
+**RED.** test — `IssueDetailPage`(props 기반) + RouteAdapter(useParams). useQuery fetchIssue 3-상태(로딩/404 role=alert/성공). 시안 2 레이아웃(좌 본문: breadcrumb+제목, 우 메타패널: 상태 **읽기전용 배지**+보고자+프로젝트+버전+생성·수정). 제목 인라인 편집 → useUpdateIssueSummary 연결. 삭제 버튼+확인 → useDeleteIssue 연결 후 목록 navigate. 실패: 모듈 없음.
+
+**GREEN.** IssueDetailPage + adapter. useUpdateIssueSummary(T3)/useDeleteIssue(T4) 와이어링. createdAt/updatedAt null → "—".
+
+**REFACTOR.** 메타패널 컴포넌트 추출 + KDoc. 시안 2 목업 대조.
+
+**검증.** `pnpm -C apps/web test issues.\$key.test`
+
+### Task 8. 라우터 등록 + 네비 링크
+
+**메타.**
+- files: [`apps/web/src/router.ts`, `apps/web/src/router.test.tsx`, `apps/web/src/routes/dashboard.tsx`]
+- depends-on: [5, 6, 7]
+
+**RED.** `router.test.tsx` — `/issues`, `/issues/new`, `/issues/$key` 라우트 resolve + `requireAuth` 가드(dashboard 일관). dashboard에 "이슈" 링크 1개. 실패: 라우트 미등록.
+
+**GREEN.** router.ts에 3 라우트 추가(어댑터 import, `staticData:{requireAuth:true}`, `beforeLoad: requireAuth`) + dashboard 네비 링크.
+
+**REFACTOR.** 주석 갱신(헤더의 "4개 라우트" → 7개).
+
+**검증.** `pnpm -C apps/web test router.test` + `pnpm -C apps/web verify`
+
+## Plan 메타
+
+- task 수: 8
+- 예상 wave: 4 (w1: T1·T2 / w2: T3·T4·T5·T6 / w3: T7 / w4: T8). 파일 겹침 0 + depends-on 기준.
+- TDD 강제: yes (red→green→refactor)
+- 병렬 dispatch: bts-impl이 메타(depends-on + files)로 wave 계산
+- 추가 검증: typecheck, eslint(no-console), vitest, 최종 `pnpm verify`. E2E(D7)는 별도 + 백엔드 wiring 선결
+- 미해결 결정(게이트1 검토): toast = in-house 최소 구현(기본) vs sonner 도입(새 의존성, 승인 필요)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
