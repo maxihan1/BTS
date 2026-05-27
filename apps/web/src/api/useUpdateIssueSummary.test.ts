@@ -121,7 +121,11 @@ describe('useUpdateIssueSummary — 성공 시 version 반영', () => {
 // T3-3. 409 VERSION_CONFLICT — 롤백 + toast.error 호출
 // ─────────────────────────────────────────────────────────────────────────────
 describe('useUpdateIssueSummary — 409 VERSION_CONFLICT 처리', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    // 각 테스트 전에 toast mock 호출 기록 초기화
+    const { toast } = await import('sonner')
+    vi.mocked(toast.error).mockClear()
+
     server.use(
       http.patch('/api/v1/issues/:key', async () => {
         return HttpResponse.json(
