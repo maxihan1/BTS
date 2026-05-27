@@ -22,7 +22,13 @@ value class IssueTypeKey(val value: String) {
     }
 
     companion object {
-        /** URL-safe 소문자 슬러그 패턴 — 소문자 시작, 소문자/숫자/하이픈, 총 2~30자. */
+        /**
+         * URL-safe 소문자 슬러그 패턴.
+         *
+         * - 첫 글자: 소문자 알파벳 `[a-z]`
+         * - 후속 글자: 소문자/숫자/하이픈 `[a-z0-9-]` 1~29자
+         * - 총 길이: 2~30자
+         */
         val REGEX = Regex("^[a-z][a-z0-9-]{1,29}\$")
     }
 }
