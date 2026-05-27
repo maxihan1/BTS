@@ -1,4 +1,4 @@
-// issue-tracking BC MSW mock handlers — GET 목록/단건 + POST /api/v1/issues (생성)
+// issue-tracking BC MSW mock handlers — GET 목록/단건 + POST 생성 + PATCH 수정 + DELETE 삭제
 import { http, HttpResponse } from 'msw'
 import {
   issuePageFixture,
@@ -63,4 +63,43 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
   )
 })
 
-export const issueHandlers = [listIssuesHandler, getIssueHandler, createIssueHandler]
+/**
+ * PATCH /api/v1/issues/:key — 이슈 수정 핸들러.
+ * 존재하는 key면 200 + { data: 수정된 IssueResponse(version+1) } 반환.
+ * 존재하지 않는 key면 404 반환.
+ */
+const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, request }) => {
+  const key = params['key'] as string
+  const found = issueFixtureMap[key]
+  if (found === undefined) {
+    return HttpResponse.json(
+      { message: `이슈를 찾을 수 없습니다: ${key}` },
+      { status: 404 },
+    )
+  }
+  const body = await request.json() as { summary?: string; version?: number }
+  return HttpResponse.json({
+    data: {
+      ...found,
+      summary: body.summary ?? found.summary,
+      version: found.version + 1,
+      updatedAt: new Date().toISOString(),
+    },
+  })
+})
+
+/**
+ * DELETE /api/v1/issues/:key — 이슈 삭제 핸들러.
+ * 204 No Content 반환.
+ */
+const deleteIssueHandler = http.delete('/api/v1/issues/:key', () => {
+  return new HttpResponse(null, { status: 204 })
+})
+
+export const issueHandlers = [
+  listIssuesHandler,
+  getIssueHandler,
+  createIssueHandler,
+  updateIssueHandler,
+  deleteIssueHandler,
+]
