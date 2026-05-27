@@ -1,10 +1,14 @@
 // sonner Toaster 래퍼 — 렌더 및 접근성 노출 검증
 import { render, screen, act, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
-import { describe, it, expect } from 'vitest'
+import { afterEach, describe, it, expect } from 'vitest'
 import { Toaster } from './sonner'
 
 describe('Toaster', () => {
+  afterEach(() => {
+    // 테스트 간 토스트 상태 오염 방지
+    toast.dismiss()
+  })
   it('<Toaster />가 DOM에 마운트된다', () => {
     render(<Toaster />)
     // sonner v2는 aria-live="polite" section을 document.body에 포탈로 삽입한다

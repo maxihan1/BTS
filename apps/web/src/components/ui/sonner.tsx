@@ -25,7 +25,8 @@ export const Toaster = () => (
     position="bottom-right"
     toastOptions={{
       classNames: {
-        toast: 'rounded-[0.625rem] font-sans text-sm',
+        // rounded-lg = --radius-lg = var(--radius) = 0.625rem (DESIGN.md 토큰)
+        toast: 'rounded-lg font-sans text-sm',
       },
     }}
   />
