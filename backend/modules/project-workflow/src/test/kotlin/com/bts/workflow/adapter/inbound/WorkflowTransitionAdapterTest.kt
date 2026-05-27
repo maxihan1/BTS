@@ -3,9 +3,9 @@
 
 package com.bts.workflow.adapter.inbound
 
-import com.bts.workflow.domain.dto.TransitionPlan
-import com.bts.workflow.domain.dto.TransitionRequest
-import com.bts.workflow.domain.dto.TransitionResult
+import com.bts.shared.workflow.TransitionPlan
+import com.bts.shared.workflow.TransitionRequest
+import com.bts.shared.workflow.TransitionResult
 import com.bts.workflow.domain.exception.WorkflowExpressionTimeoutException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException

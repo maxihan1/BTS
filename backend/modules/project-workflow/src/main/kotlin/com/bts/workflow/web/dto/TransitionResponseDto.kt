@@ -2,7 +2,7 @@
 
 package com.bts.workflow.web.dto
 
-import com.bts.workflow.domain.dto.TransitionPlan
+import com.bts.shared.workflow.TransitionPlan
 
 /**
  * REST 전이 응답 DTO.

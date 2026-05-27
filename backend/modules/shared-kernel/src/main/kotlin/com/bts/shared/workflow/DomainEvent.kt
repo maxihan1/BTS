@@ -1,6 +1,6 @@
 // outbox 발행 예약 — 호출자 BC 가 outbox INSERT
 
-package com.bts.workflow.domain.dto
+package com.bts.shared.workflow
 
 /**
  * 도메인 이벤트 발행 예약 DTO.

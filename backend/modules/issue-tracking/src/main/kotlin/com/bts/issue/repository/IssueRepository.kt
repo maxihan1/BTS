@@ -136,7 +136,7 @@ class IssueRepository(
      * WHERE key=? AND version=? AND deleted_at IS NULL 조건으로 업데이트.
      * version 불일치(stale read) 시 영향 행 0 반환.
      *
-     * NOTE. [com.bts.workflow.domain.dto.TransitionPlan] (project-workflow BC) 직접 import 금지 —
+     * NOTE. [com.bts.shared.workflow.TransitionPlan] 직접 import 금지 —
      * BC 격리 원칙 (CLAUDE.md §BC 격리). 호출자 ApplicationService (T10) 가 TransitionPlan 을
      * 이 메서드 파라미터로 분해해서 전달한다.
      *

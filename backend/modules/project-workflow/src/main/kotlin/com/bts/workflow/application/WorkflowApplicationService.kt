@@ -2,9 +2,9 @@
 
 package com.bts.workflow.application
 
+import com.bts.shared.workflow.TransitionPlan
+import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.domain.Workflow
-import com.bts.workflow.domain.dto.TransitionPlan
-import com.bts.workflow.domain.dto.TransitionRequest
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.engine.WorkflowEngine
 import com.bts.workflow.repository.WorkflowRepository
