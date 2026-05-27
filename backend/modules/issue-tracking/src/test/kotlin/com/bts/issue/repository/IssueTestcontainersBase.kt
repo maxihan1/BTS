@@ -31,7 +31,7 @@ import java.util.UUID
  * - 자식 클래스에 `@Testcontainers` annotation 을 붙이지 않는다 — JVM singleton 라이프사이클 사용.
  * - `@TestInstance(TestInstance.Lifecycle.PER_CLASS)` 이 선언되어 있으므로 자식 클래스도 동일 적용.
  * - Flyway 설정을 변경하려면 `configureFlyway(builder)` 를 override 한다.
- *   기본 = placeholderReplacement(false) + classpath:db/migration.
+ *   기본 = placeholderReplacement(false) + classpath:db/migration/issue-tracking.
  *   ```kotlin
  *   override fun configureFlyway(builder: FluentConfiguration) =
  *       super.configureFlyway(builder).locations("classpath:db/migration", "classpath:db/test-migration")
@@ -78,7 +78,7 @@ abstract class IssueTestcontainersBase {
     /**
      * Flyway 설정 훅 — 자식 클래스가 placeholder 사용 여부 등을 override 가능.
      *
-     * 기본 구현 = `placeholderReplacement(false)` + `classpath:db/migration`.
+     * 기본 구현 = `placeholderReplacement(false)` + `classpath:db/migration/issue-tracking`.
      * 자식이 다른 마이그레이션 위치가 필요한 경우 이 메서드만 override 한다.
      */
     protected open fun configureFlyway(builder: FluentConfiguration): FluentConfiguration =
