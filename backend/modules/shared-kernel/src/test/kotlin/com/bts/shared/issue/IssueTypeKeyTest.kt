@@ -18,7 +18,6 @@ import org.junit.jupiter.params.provider.ValueSource
  *   [IllegalArgumentException]을 던진다.
  */
 class IssueTypeKeyTest {
-
     @ParameterizedTest(name = "정상 — `{0}` 은 유효한 IssueTypeKey 이다")
     @ValueSource(strings = ["bug", "subtask", "task-item", "a1", "ab", "a1b2c3-d4e5"])
     fun `정상 — 유효한 슬러그는 IssueTypeKey 를 생성한다`(value: String) {

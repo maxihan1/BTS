@@ -30,7 +30,6 @@ import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
 )
 @Suppress("PropertyName", "VariableNaming")
 class SharedKernelBoundaryArchTest {
-
     @ArchTest
     val `shared-kernel must not depend on any BC package`: ArchRule =
         noClasses()

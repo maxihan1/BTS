@@ -17,7 +17,6 @@ import org.junit.jupiter.api.Test
  * - Long.MAX_VALUE 같은 큰 값도 정상 생성된다.
  */
 class IssueTypeIdTest {
-
     @Test
     fun `정상 — 양수 값으로 IssueTypeId 를 생성한다`() {
         val id = IssueTypeId(1L)
