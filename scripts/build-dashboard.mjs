@@ -246,7 +246,7 @@ function annotateTerms(text, sortedTerms) {
     if (m && !isInsideTag(html, m.index)) {
       const before = html.slice(0, m.index);
       const after = html.slice(m.index + m[0].length);
-      const def = escapeAttr(t.definition).slice(0, 200);
+      const def = escapeAttr(t.definition);
       html = `${before}<span class="term" data-def="${def}">${m[0]}</span>${after}`;
       used.add(t.term.toLowerCase());
     }
@@ -362,8 +362,32 @@ function renderBcDetail(slug, meta, frs, sortedTerms) {
 }
 
 function renderGlossary(terms) {
-  const byCategory = new Map();
+  // 중복 항목 정리: "FTS (Full Text Search)" 합본이 있으면 같은 개념의 단독 약어("FTS")·
+  // 단독 풀이("Full Text Search") 항목은 목록에서 숨기고 합본 하나만 남긴다.
+  // (본문 하이라이트용 분해 항목은 parseYongeo가 그대로 유지하므로 인라인 툴팁/검색은 영향 없음.)
+  const acronymRe = /^([A-Z][A-Za-z0-9]+)\s*\(([^)]+)\)\s*$/;
+  const acronymForms = new Set();
   for (const t of terms) {
+    const m = t.term.match(acronymRe);
+    if (m) {
+      acronymForms.add(m[1].trim().toLowerCase());
+      acronymForms.add(m[2].trim().toLowerCase());
+    }
+  }
+  // 같은 이름이 초보자용 용어집(yongeo)에도 있으면 도메인 사전(glossary) 쪽 항목은 숨긴다.
+  // 대시보드는 비개발자용이라 비유 설명(yongeo)을 남기는 편이 유용 (AQL/Epic/LexoRank 등).
+  const yongeoNames = new Set(
+    terms.filter(t => t.source === 'yongeo').map(t => t.term.toLowerCase())
+  );
+  const visibleTerms = terms.filter(t => {
+    if (acronymRe.test(t.term)) return true;
+    if (acronymForms.has(t.term.toLowerCase())) return false;
+    if (t.source === 'glossary' && yongeoNames.has(t.term.toLowerCase())) return false;
+    return true;
+  });
+
+  const byCategory = new Map();
+  for (const t of visibleTerms) {
     if (!byCategory.has(t.category)) byCategory.set(t.category, []);
     byCategory.get(t.category).push(t);
   }
@@ -371,7 +395,7 @@ function renderGlossary(terms) {
   const tabs = ['전체', ...categories].map(c =>
     `<button class="tab ${c === '전체' ? 'active' : ''}" data-cat="${escapeAttr(c)}">${escapeHtml(c)}</button>`
   ).join('');
-  const items = terms.map(t =>
+  const items = visibleTerms.map(t =>
     `<div class="term-item" data-cat="${escapeAttr(t.category)}" data-search="${escapeAttr(t.term.toLowerCase() + ' ' + t.definition.toLowerCase())}">
       <div class="term-name">${escapeHtml(t.term)}</div>
       <div class="term-cat">${escapeHtml(t.category)}</div>
@@ -475,7 +499,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 .term-cat { font-size: 11px; color: #9ca3af; text-transform: uppercase; margin: 4px 0; }
 .term-def { font-size: 14px; color: #374151; }
 .term { border-bottom: 1px dashed #94a3b8; cursor: help; position: relative; }
-.term:hover::after { content: attr(data-def); position: absolute; left: 0; top: 100%; margin-top: 4px; background: #1f2937; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 400; max-width: 360px; white-space: normal; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.term:hover::after { content: attr(data-def); position: absolute; left: 0; top: 100%; margin-top: 4px; background: #1f2937; color: #fff; padding: 10px 14px; border-radius: 6px; font-size: 12px; font-weight: 400; line-height: 1.65; width: max-content; max-width: 480px; white-space: normal; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
 `;
 
 const JS_RUNTIME = `

@@ -70,7 +70,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 .term-cat { font-size: 11px; color: #9ca3af; text-transform: uppercase; margin: 4px 0; }
 .term-def { font-size: 14px; color: #374151; }
 .term { border-bottom: 1px dashed #94a3b8; cursor: help; position: relative; }
-.term:hover::after { content: attr(data-def); position: absolute; left: 0; top: 100%; margin-top: 4px; background: #1f2937; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 400; max-width: 360px; white-space: normal; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.term:hover::after { content: attr(data-def); position: absolute; left: 0; top: 100%; margin-top: 4px; background: #1f2937; color: #fff; padding: 10px 14px; border-radius: 6px; font-size: 12px; font-weight: 400; line-height: 1.65; width: max-content; max-width: 480px; white-space: normal; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
 </style>
 </head>
 <body>
@@ -182,7 +182,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-id">FR-IS-01</span>
         <span class="fr-desc"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> CRUD, 상태 변경 시 <span class="term" data-def="이슈의 상태 전이 FSM. YAML로 정의">워크플로우</span> 검증 + 알림</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span> Aggregate Root, IssueKey VO</li><li><span class="step-icon">✅</span> D2 — 명세 — Given/When/Then. 7 엣지 케이스 (중복 키/권한/<span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span> 위반/대용량/동시 편집/소프트 삭제/키 보존)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — <span class="term" data-def="&quot;DB 도면 버전 관리자 / 안전한 번역기&quot; DB 구조의 변경 이력을 꼼꼼히 기록하고(Flyway), 오타 없이 안전하게 DB 언어로 번역해 주는 도구(jOOQ)입니다.">Flyway</span>. `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s`, `issue_key_redirects`. DATA.md 영속성</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `POST/GET/<span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>CH/DELETE /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s`. `@Trans<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">action</span>al`. <span class="term" data-def="PostgreSQL 기반 메시지 큐 (Kafka 대체)">pgmq</span> 이벤트 발행 동일 트랜잭션</li><li><span class="step-icon">🔄</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;마네킹 / 가짜 부품&quot; 테스트를 할 때 실제 결제 시스템이나 외부 서버를 연결하면 돈이 나가거나 느려지므로, 진짜처럼 행동하는 가짜 부품을 끼워놓는 것입니다.">Mock</span>K 단위 + <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> 통합. <span class="term" data-def="&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.">TDD</span> red→green→refactor</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>Detail.tsx`. TanStack Query 캐싱 + 낙관적 업데이트</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> + <span class="term" data-def="&quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.">NFR</span> — 생성→조회→수정→상태 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span>→소프트 삭제→키 영속성 (이동 후 옛 키 redirect)</li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span> Aggregate Root, IssueKey VO</li><li><span class="step-icon">✅</span> D2 — 명세 — Given/When/Then. 7 엣지 케이스 (중복 키/권한/<span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span> 위반/대용량/동시 편집/소프트 삭제/키 보존)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — <span class="term" data-def="&quot;DB 도면 버전 관리자 / 안전한 번역기&quot; DB 구조의 변경 이력을 꼼꼼히 기록하고(Flyway), 오타 없이 안전하게 DB 언어로 번역해 주는 도구(jOOQ)입니다.">Flyway</span>. `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s`, `issue_key_redirects`. DATA.md 영속성</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `POST/GET/<span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>CH/DELETE /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s`. `@Trans<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">action</span>al`. <span class="term" data-def="PostgreSQL 기반 메시지 큐 (Kafka 대체)">pgmq</span> 이벤트 발행 동일 트랜잭션</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;마네킹 / 가짜 부품&quot; 테스트를 할 때 실제 결제 시스템이나 외부 서버를 연결하면 돈이 나가거나 느려지므로, 진짜처럼 행동하는 가짜 부품을 끼워놓는 것입니다.">Mock</span>K 단위 + <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> 통합. <span class="term" data-def="&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.">TDD</span> red→green→refactor</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>Detail.tsx`. TanStack Query 캐싱 + 낙관적 업데이트</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> + <span class="term" data-def="&quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.">NFR</span> — 생성→조회→수정→상태 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span>→소프트 삭제→키 영속성 (이동 후 옛 키 redirect)</li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
@@ -1128,7 +1128,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 <section id="glossary" class="page">
     <h1>📖 용어 사전</h1>
     <input type="search" id="term-search" placeholder="용어 검색 (한글/영문)..." />
-    <div class="tab-bar"><button class="tab active" data-cat="전체">전체</button><button class="tab " data-cat="계정, 권한 및 보안 (Identity &amp; Security)">계정, 권한 및 보안 (Identity &amp; Security)</button><button class="tab " data-cat="데이터베이스 및 저장소 (Database &amp; Data)">데이터베이스 및 저장소 (Database &amp; Data)</button><button class="tab " data-cat="도메인 — 검색 / AQL">도메인 — 검색 / AQL</button><button class="tab " data-cat="도메인 — 관계 / 연결">도메인 — 관계 / 연결</button><button class="tab " data-cat="도메인 — 권한 (두 레이어)">도메인 — 권한 (두 레이어)</button><button class="tab " data-cat="도메인 — 데이터 무결성 키워드">도메인 — 데이터 무결성 키워드</button><button class="tab " data-cat="도메인 — 워크플로우 / 자동화">도메인 — 워크플로우 / 자동화</button><button class="tab " data-cat="도메인 — 인증">도메인 — 인증</button><button class="tab " data-cat="도메인 — 핵심 엔티티">도메인 — 핵심 엔티티</button><button class="tab " data-cat="백엔드 및 통신 (Backend &amp; Network)">백엔드 및 통신 (Backend &amp; Network)</button><button class="tab " data-cat="아키텍처 및 도메인 설계 (Architecture)">아키텍처 및 도메인 설계 (Architecture)</button><button class="tab " data-cat="인프라 및 환경 도구 (Infra &amp; DevOps)">인프라 및 환경 도구 (Infra &amp; DevOps)</button><button class="tab " data-cat="테스트 및 품질 관리 (Testing &amp; QA)">테스트 및 품질 관리 (Testing &amp; QA)</button><button class="tab " data-cat="프론트엔드 및 사용자 인터페이스 (Frontend &amp; UI)">프론트엔드 및 사용자 인터페이스 (Frontend &amp; UI)</button><button class="tab " data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</button></div>
+    <div class="tab-bar"><button class="tab active" data-cat="전체">전체</button><button class="tab " data-cat="계정, 권한 및 보안 (Identity &amp; Security)">계정, 권한 및 보안 (Identity &amp; Security)</button><button class="tab " data-cat="데이터베이스 및 저장소 (Database &amp; Data)">데이터베이스 및 저장소 (Database &amp; Data)</button><button class="tab " data-cat="도메인 — 관계 / 연결">도메인 — 관계 / 연결</button><button class="tab " data-cat="도메인 — 권한 (두 레이어)">도메인 — 권한 (두 레이어)</button><button class="tab " data-cat="도메인 — 데이터 무결성 키워드">도메인 — 데이터 무결성 키워드</button><button class="tab " data-cat="도메인 — 워크플로우 / 자동화">도메인 — 워크플로우 / 자동화</button><button class="tab " data-cat="도메인 — 인증">도메인 — 인증</button><button class="tab " data-cat="도메인 — 핵심 엔티티">도메인 — 핵심 엔티티</button><button class="tab " data-cat="백엔드 및 통신 (Backend &amp; Network)">백엔드 및 통신 (Backend &amp; Network)</button><button class="tab " data-cat="아키텍처 및 도메인 설계 (Architecture)">아키텍처 및 도메인 설계 (Architecture)</button><button class="tab " data-cat="인프라 및 환경 도구 (Infra &amp; DevOps)">인프라 및 환경 도구 (Infra &amp; DevOps)</button><button class="tab " data-cat="테스트 및 품질 관리 (Testing &amp; QA)">테스트 및 품질 관리 (Testing &amp; QA)</button><button class="tab " data-cat="프론트엔드 및 사용자 인터페이스 (Frontend &amp; UI)">프론트엔드 및 사용자 인터페이스 (Frontend &amp; UI)</button><button class="tab " data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</button></div>
     <div class="term-list"><div class="term-item" data-cat="도메인 — 핵심 엔티티" data-search="이슈 작업 단위. 고유 키(`proj-123`)는 영구 보존">
       <div class="term-name">이슈</div>
       <div class="term-cat">도메인 — 핵심 엔티티</div>
@@ -1177,28 +1177,8 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">Version</div>
       <div class="term-cat">도메인 — 핵심 엔티티</div>
       <div class="term-def">릴리스 단위. fix/affects 관계로 이슈에 연결</div>
-    </div><div class="term-item" data-cat="도메인 — 핵심 엔티티" data-search="스프린트 애자일 작업 기간 (1~4주)">
-      <div class="term-name">스프린트</div>
-      <div class="term-cat">도메인 — 핵심 엔티티</div>
-      <div class="term-def">애자일 작업 기간 (1~4주)</div>
-    </div><div class="term-item" data-cat="도메인 — 핵심 엔티티" data-search="sprint 애자일 작업 기간 (1~4주)">
-      <div class="term-name">Sprint</div>
-      <div class="term-cat">도메인 — 핵심 엔티티</div>
-      <div class="term-def">애자일 작업 기간 (1~4주)</div>
-    </div><div class="term-item" data-cat="도메인 — 핵심 엔티티" data-search="백로그 미할당 이슈 목록">
-      <div class="term-name">백로그</div>
-      <div class="term-cat">도메인 — 핵심 엔티티</div>
-      <div class="term-def">미할당 이슈 목록</div>
-    </div><div class="term-item" data-cat="도메인 — 핵심 엔티티" data-search="backlog 미할당 이슈 목록">
-      <div class="term-name">Backlog</div>
-      <div class="term-cat">도메인 — 핵심 엔티티</div>
-      <div class="term-def">미할당 이슈 목록</div>
     </div><div class="term-item" data-cat="도메인 — 핵심 엔티티" data-search="에픽 큰 작업을 묶는 상위 이슈">
       <div class="term-name">에픽</div>
-      <div class="term-cat">도메인 — 핵심 엔티티</div>
-      <div class="term-def">큰 작업을 묶는 상위 이슈</div>
-    </div><div class="term-item" data-cat="도메인 — 핵심 엔티티" data-search="epic 큰 작업을 묶는 상위 이슈">
-      <div class="term-name">Epic</div>
       <div class="term-cat">도메인 — 핵심 엔티티</div>
       <div class="term-def">큰 작업을 묶는 상위 이슈</div>
     </div><div class="term-item" data-cat="도메인 — 관계 / 연결" data-search="링크 link. 이슈 간 의존/연관 (blocks, relates to, duplicates 등)">
@@ -1237,14 +1217,6 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">이슈 데이터 접근 권한</div>
       <div class="term-cat">도메인 — 권한 (두 레이어)</div>
       <div class="term-def">Issue Data Access. 특정 이슈 보기/수정 권한 (역할 기반)</div>
-    </div><div class="term-item" data-cat="도메인 — 검색 / AQL" data-search="aql atlas query language. jql 호환 검색 문법">
-      <div class="term-name">AQL</div>
-      <div class="term-cat">도메인 — 검색 / AQL</div>
-      <div class="term-def">Atlas Query Language. JQL 호환 검색 문법</div>
-    </div><div class="term-item" data-cat="도메인 — 검색 / AQL" data-search="fts full-text search. postgresql tsvector 기반">
-      <div class="term-name">FTS</div>
-      <div class="term-cat">도메인 — 검색 / AQL</div>
-      <div class="term-def">Full-Text Search. PostgreSQL tsvector 기반</div>
     </div><div class="term-item" data-cat="도메인 — 인증" data-search="authenticationprovider 플러그형 인증 백엔드 (ldap/saml/oidc/local/oauth)">
       <div class="term-name">AuthenticationProvider</div>
       <div class="term-cat">도메인 — 인증</div>
@@ -1261,10 +1233,6 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">pgmq</div>
       <div class="term-cat">도메인 — 데이터 무결성 키워드</div>
       <div class="term-def">PostgreSQL 기반 메시지 큐 (Kafka 대체)</div>
-    </div><div class="term-item" data-cat="도메인 — 데이터 무결성 키워드" data-search="lexorank 순서 보존 알고리즘 (보드/백로그 정렬)">
-      <div class="term-name">LexoRank</div>
-      <div class="term-cat">도메인 — 데이터 무결성 키워드</div>
-      <div class="term-def">순서 보존 알고리즘 (보드/백로그 정렬)</div>
     </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="epic &quot;작업 쪼개기 단위&quot; 큰 프로젝트(에픽) → 사용자 기능(스토리) → 개발자 작업(태스크).">
       <div class="term-name">Epic</div>
       <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
@@ -1281,36 +1249,12 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">Sprint (스프린트)</div>
       <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
       <div class="term-def">&quot;단기 집중 질주&quot; 보통 1~2주 단위로 목표를 정해 완성품을 찍어내는 업무 주기입니다.</div>
-    </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="sprint &quot;단기 집중 질주&quot; 보통 1~2주 단위로 목표를 정해 완성품을 찍어내는 업무 주기입니다.">
-      <div class="term-name">Sprint</div>
-      <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
-      <div class="term-def">&quot;단기 집중 질주&quot; 보통 1~2주 단위로 목표를 정해 완성품을 찍어내는 업무 주기입니다.</div>
-    </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="스프린트 &quot;단기 집중 질주&quot; 보통 1~2주 단위로 목표를 정해 완성품을 찍어내는 업무 주기입니다.">
-      <div class="term-name">스프린트</div>
-      <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
-      <div class="term-def">&quot;단기 집중 질주&quot; 보통 1~2주 단위로 목표를 정해 완성품을 찍어내는 업무 주기입니다.</div>
     </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="backlog (백로그) &quot;숙제 목록&quot; 앞으로 팀이 해야 할 모든 일들을 중요도 순서대로 쌓아둔 대기열입니다.">
       <div class="term-name">Backlog (백로그)</div>
       <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
       <div class="term-def">&quot;숙제 목록&quot; 앞으로 팀이 해야 할 모든 일들을 중요도 순서대로 쌓아둔 대기열입니다.</div>
-    </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="backlog &quot;숙제 목록&quot; 앞으로 팀이 해야 할 모든 일들을 중요도 순서대로 쌓아둔 대기열입니다.">
-      <div class="term-name">Backlog</div>
-      <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
-      <div class="term-def">&quot;숙제 목록&quot; 앞으로 팀이 해야 할 모든 일들을 중요도 순서대로 쌓아둔 대기열입니다.</div>
-    </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="백로그 &quot;숙제 목록&quot; 앞으로 팀이 해야 할 모든 일들을 중요도 순서대로 쌓아둔 대기열입니다.">
-      <div class="term-name">백로그</div>
-      <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
-      <div class="term-def">&quot;숙제 목록&quot; 앞으로 팀이 해야 할 모든 일들을 중요도 순서대로 쌓아둔 대기열입니다.</div>
     </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="velocity (벨로시티) &quot;팀의 소화 능력치&quot; 우리 팀이 한 스프린트 동안 숙제를 얼마나 많이 해낼 수 있는지 나타내는 속도입니다.">
       <div class="term-name">Velocity (벨로시티)</div>
-      <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
-      <div class="term-def">&quot;팀의 소화 능력치&quot; 우리 팀이 한 스프린트 동안 숙제를 얼마나 많이 해낼 수 있는지 나타내는 속도입니다.</div>
-    </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="velocity &quot;팀의 소화 능력치&quot; 우리 팀이 한 스프린트 동안 숙제를 얼마나 많이 해낼 수 있는지 나타내는 속도입니다.">
-      <div class="term-name">Velocity</div>
-      <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
-      <div class="term-def">&quot;팀의 소화 능력치&quot; 우리 팀이 한 스프린트 동안 숙제를 얼마나 많이 해낼 수 있는지 나타내는 속도입니다.</div>
-    </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="벨로시티 &quot;팀의 소화 능력치&quot; 우리 팀이 한 스프린트 동안 숙제를 얼마나 많이 해낼 수 있는지 나타내는 속도입니다.">
-      <div class="term-name">벨로시티</div>
       <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
       <div class="term-def">&quot;팀의 소화 능력치&quot; 우리 팀이 한 스프린트 동안 숙제를 얼마나 많이 해낼 수 있는지 나타내는 속도입니다.</div>
     </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="burndown chart &quot;불씨 꺼지는 그래프&quot; 남은 일의 양이 날짜가 지날수록 얼마나 줄어드는지 보여주는 하향식 그래프입니다.">
@@ -1329,36 +1273,12 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">PR (Pull Request)</div>
       <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
       <div class="term-def">&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.</div>
-    </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="pr &quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">
-      <div class="term-name">PR</div>
-      <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
-      <div class="term-def">&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.</div>
-    </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="pull request &quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">
-      <div class="term-name">Pull Request</div>
-      <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
-      <div class="term-def">&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.</div>
     </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="adr (architecture decision record) &quot;기술 결정 일기장&quot; &quot;왜 a 대신 b 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.">
       <div class="term-name">ADR (Architecture Decision Record)</div>
       <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
       <div class="term-def">&quot;기술 결정 일기장&quot; &quot;왜 A 대신 B 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.</div>
-    </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="adr &quot;기술 결정 일기장&quot; &quot;왜 a 대신 b 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.">
-      <div class="term-name">ADR</div>
-      <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
-      <div class="term-def">&quot;기술 결정 일기장&quot; &quot;왜 A 대신 B 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.</div>
-    </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="architecture decision record &quot;기술 결정 일기장&quot; &quot;왜 a 대신 b 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.">
-      <div class="term-name">Architecture Decision Record</div>
-      <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
-      <div class="term-def">&quot;기술 결정 일기장&quot; &quot;왜 A 대신 B 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.</div>
     </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="poc (proof of concept) &quot;아이디어 검증용 시제품&quot; 본격적으로 개발하기 전에 &quot;이 기술이 진짜 작동할까?&quot; 테스트해 보는 미니 프로젝트입니다.">
       <div class="term-name">PoC (Proof of Concept)</div>
-      <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
-      <div class="term-def">&quot;아이디어 검증용 시제품&quot; 본격적으로 개발하기 전에 &quot;이 기술이 진짜 작동할까?&quot; 테스트해 보는 미니 프로젝트입니다.</div>
-    </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="poc &quot;아이디어 검증용 시제품&quot; 본격적으로 개발하기 전에 &quot;이 기술이 진짜 작동할까?&quot; 테스트해 보는 미니 프로젝트입니다.">
-      <div class="term-name">PoC</div>
-      <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
-      <div class="term-def">&quot;아이디어 검증용 시제품&quot; 본격적으로 개발하기 전에 &quot;이 기술이 진짜 작동할까?&quot; 테스트해 보는 미니 프로젝트입니다.</div>
-    </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="proof of concept &quot;아이디어 검증용 시제품&quot; 본격적으로 개발하기 전에 &quot;이 기술이 진짜 작동할까?&quot; 테스트해 보는 미니 프로젝트입니다.">
-      <div class="term-name">Proof of Concept</div>
       <div class="term-cat">협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)</div>
       <div class="term-def">&quot;아이디어 검증용 시제품&quot; 본격적으로 개발하기 전에 &quot;이 기술이 진짜 작동할까?&quot; 테스트해 보는 미니 프로젝트입니다.</div>
     </div><div class="term-item" data-cat="협업, 방법론 및 프로젝트 관리 (Agile &amp; Collab)" data-search="worktree (워크트리) &quot;책상 여러 개 쓰기&quot; git(코드 저장소)에서 여러 작업을 동시에 펼쳐놓고 할 수 있게 해주는 기능입니다.">
@@ -1369,24 +1289,8 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">BC (Bounded Context)</div>
       <div class="term-cat">아키텍처 및 도메인 설계 (Architecture)</div>
       <div class="term-def">&quot;관련 업무 부서&quot; 시스템을 &#39;로그인 부서&#39;, &#39;알림 부서&#39;처럼 책임 범위별로 깔끔하게 나눈 구역입니다.</div>
-    </div><div class="term-item" data-cat="아키텍처 및 도메인 설계 (Architecture)" data-search="bc &quot;관련 업무 부서&quot; 시스템을 &#39;로그인 부서&#39;, &#39;알림 부서&#39;처럼 책임 범위별로 깔끔하게 나눈 구역입니다.">
-      <div class="term-name">BC</div>
-      <div class="term-cat">아키텍처 및 도메인 설계 (Architecture)</div>
-      <div class="term-def">&quot;관련 업무 부서&quot; 시스템을 &#39;로그인 부서&#39;, &#39;알림 부서&#39;처럼 책임 범위별로 깔끔하게 나눈 구역입니다.</div>
-    </div><div class="term-item" data-cat="아키텍처 및 도메인 설계 (Architecture)" data-search="bounded context &quot;관련 업무 부서&quot; 시스템을 &#39;로그인 부서&#39;, &#39;알림 부서&#39;처럼 책임 범위별로 깔끔하게 나눈 구역입니다.">
-      <div class="term-name">Bounded Context</div>
-      <div class="term-cat">아키텍처 및 도메인 설계 (Architecture)</div>
-      <div class="term-def">&quot;관련 업무 부서&quot; 시스템을 &#39;로그인 부서&#39;, &#39;알림 부서&#39;처럼 책임 범위별로 깔끔하게 나눈 구역입니다.</div>
     </div><div class="term-item" data-cat="아키텍처 및 도메인 설계 (Architecture)" data-search="fsm (finite state machine) &quot;정해진 상태 지도&quot; 이슈가 &#39;대기 → 진행 → 완료&#39;처럼 어떻게 상태가 변할 수 있는지 길을 정해둔 규칙입니다.">
       <div class="term-name">FSM (Finite State Machine)</div>
-      <div class="term-cat">아키텍처 및 도메인 설계 (Architecture)</div>
-      <div class="term-def">&quot;정해진 상태 지도&quot; 이슈가 &#39;대기 → 진행 → 완료&#39;처럼 어떻게 상태가 변할 수 있는지 길을 정해둔 규칙입니다.</div>
-    </div><div class="term-item" data-cat="아키텍처 및 도메인 설계 (Architecture)" data-search="fsm &quot;정해진 상태 지도&quot; 이슈가 &#39;대기 → 진행 → 완료&#39;처럼 어떻게 상태가 변할 수 있는지 길을 정해둔 규칙입니다.">
-      <div class="term-name">FSM</div>
-      <div class="term-cat">아키텍처 및 도메인 설계 (Architecture)</div>
-      <div class="term-def">&quot;정해진 상태 지도&quot; 이슈가 &#39;대기 → 진행 → 완료&#39;처럼 어떻게 상태가 변할 수 있는지 길을 정해둔 규칙입니다.</div>
-    </div><div class="term-item" data-cat="아키텍처 및 도메인 설계 (Architecture)" data-search="finite state machine &quot;정해진 상태 지도&quot; 이슈가 &#39;대기 → 진행 → 완료&#39;처럼 어떻게 상태가 변할 수 있는지 길을 정해둔 규칙입니다.">
-      <div class="term-name">Finite State Machine</div>
       <div class="term-cat">아키텍처 및 도메인 설계 (Architecture)</div>
       <div class="term-def">&quot;정해진 상태 지도&quot; 이슈가 &#39;대기 → 진행 → 완료&#39;처럼 어떻게 상태가 변할 수 있는지 길을 정해둔 규칙입니다.</div>
     </div><div class="term-item" data-cat="아키텍처 및 도메인 설계 (Architecture)" data-search="hexagonal architecture &quot;부품 교체형 설계&quot; 핵심 로직은 가운데에 두고, 데이터베이스나 화면은 언제든 갈아 끼울 수 있게 분리한 설계입니다.">
@@ -1401,14 +1305,6 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">SPI (Service Provider Interface)</div>
       <div class="term-cat">아키텍처 및 도메인 설계 (Architecture)</div>
       <div class="term-def">&quot;멀티탭 공용 콘센트&quot; 코드를 다 뜯어고치지 않아도 새로운 기능을 플러그처럼 꽂아서 추가할 수 있는 연결 단자입니다.</div>
-    </div><div class="term-item" data-cat="아키텍처 및 도메인 설계 (Architecture)" data-search="spi &quot;멀티탭 공용 콘센트&quot; 코드를 다 뜯어고치지 않아도 새로운 기능을 플러그처럼 꽂아서 추가할 수 있는 연결 단자입니다.">
-      <div class="term-name">SPI</div>
-      <div class="term-cat">아키텍처 및 도메인 설계 (Architecture)</div>
-      <div class="term-def">&quot;멀티탭 공용 콘센트&quot; 코드를 다 뜯어고치지 않아도 새로운 기능을 플러그처럼 꽂아서 추가할 수 있는 연결 단자입니다.</div>
-    </div><div class="term-item" data-cat="아키텍처 및 도메인 설계 (Architecture)" data-search="service provider interface &quot;멀티탭 공용 콘센트&quot; 코드를 다 뜯어고치지 않아도 새로운 기능을 플러그처럼 꽂아서 추가할 수 있는 연결 단자입니다.">
-      <div class="term-name">Service Provider Interface</div>
-      <div class="term-cat">아키텍처 및 도메인 설계 (Architecture)</div>
-      <div class="term-def">&quot;멀티탭 공용 콘센트&quot; 코드를 다 뜯어고치지 않아도 새로운 기능을 플러그처럼 꽂아서 추가할 수 있는 연결 단자입니다.</div>
     </div><div class="term-item" data-cat="아키텍처 및 도메인 설계 (Architecture)" data-search="fail-fast (페일 패스트) &quot;빠른 포기 및 안전 차단&quot; 시스템이 켜질 때 설정에 문제가 있으면, 억지로 켜서 사고를 내지 않고 아예 켜지지도 않게 막는 안전장치입니다.">
       <div class="term-name">Fail-fast (페일 패스트)</div>
       <div class="term-cat">아키텍처 및 도메인 설계 (Architecture)</div>
@@ -1417,36 +1313,12 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">Idempotent (멱등성)</div>
       <div class="term-cat">아키텍처 및 도메인 설계 (Architecture)</div>
       <div class="term-def">&quot;몇 번을 눌러도 똑같은 결과&quot; 결제 버튼을 실수로 10번 눌러도 1번만 결제되도록, 여러 번 실행해도 결과가 달라지지 않게 보장하는 특성입니다.</div>
-    </div><div class="term-item" data-cat="아키텍처 및 도메인 설계 (Architecture)" data-search="idempotent &quot;몇 번을 눌러도 똑같은 결과&quot; 결제 버튼을 실수로 10번 눌러도 1번만 결제되도록, 여러 번 실행해도 결과가 달라지지 않게 보장하는 특성입니다.">
-      <div class="term-name">Idempotent</div>
-      <div class="term-cat">아키텍처 및 도메인 설계 (Architecture)</div>
-      <div class="term-def">&quot;몇 번을 눌러도 똑같은 결과&quot; 결제 버튼을 실수로 10번 눌러도 1번만 결제되도록, 여러 번 실행해도 결과가 달라지지 않게 보장하는 특성입니다.</div>
-    </div><div class="term-item" data-cat="아키텍처 및 도메인 설계 (Architecture)" data-search="멱등성 &quot;몇 번을 눌러도 똑같은 결과&quot; 결제 버튼을 실수로 10번 눌러도 1번만 결제되도록, 여러 번 실행해도 결과가 달라지지 않게 보장하는 특성입니다.">
-      <div class="term-name">멱등성</div>
-      <div class="term-cat">아키텍처 및 도메인 설계 (Architecture)</div>
-      <div class="term-def">&quot;몇 번을 눌러도 똑같은 결과&quot; 결제 버튼을 실수로 10번 눌러도 1번만 결제되도록, 여러 번 실행해도 결과가 달라지지 않게 보장하는 특성입니다.</div>
     </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="jwt (json web token) &quot;디지털 출입증&quot; 로그인 성공 시 발급받는 암호화된 방문증. 이거 하나면 매번 비밀번호를 안 쳐도 됩니다.">
       <div class="term-name">JWT (JSON Web Token)</div>
       <div class="term-cat">계정, 권한 및 보안 (Identity &amp; Security)</div>
       <div class="term-def">&quot;디지털 출입증&quot; 로그인 성공 시 발급받는 암호화된 방문증. 이거 하나면 매번 비밀번호를 안 쳐도 됩니다.</div>
-    </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="jwt &quot;디지털 출입증&quot; 로그인 성공 시 발급받는 암호화된 방문증. 이거 하나면 매번 비밀번호를 안 쳐도 됩니다.">
-      <div class="term-name">JWT</div>
-      <div class="term-cat">계정, 권한 및 보안 (Identity &amp; Security)</div>
-      <div class="term-def">&quot;디지털 출입증&quot; 로그인 성공 시 발급받는 암호화된 방문증. 이거 하나면 매번 비밀번호를 안 쳐도 됩니다.</div>
-    </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="json web token &quot;디지털 출입증&quot; 로그인 성공 시 발급받는 암호화된 방문증. 이거 하나면 매번 비밀번호를 안 쳐도 됩니다.">
-      <div class="term-name">JSON Web Token</div>
-      <div class="term-cat">계정, 권한 및 보안 (Identity &amp; Security)</div>
-      <div class="term-def">&quot;디지털 출입증&quot; 로그인 성공 시 발급받는 암호화된 방문증. 이거 하나면 매번 비밀번호를 안 쳐도 됩니다.</div>
     </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="sso (single sign-on) &quot;통합 로그인&quot; 회사 아이디 하나로 여러 사내 시스템을 전부 로그인할 수 있는 기술입니다. (예: ldap, saml, oidc)">
       <div class="term-name">SSO (Single Sign-On)</div>
-      <div class="term-cat">계정, 권한 및 보안 (Identity &amp; Security)</div>
-      <div class="term-def">&quot;통합 로그인&quot; 회사 아이디 하나로 여러 사내 시스템을 전부 로그인할 수 있는 기술입니다. (예: LDAP, SAML, OIDC)</div>
-    </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="sso &quot;통합 로그인&quot; 회사 아이디 하나로 여러 사내 시스템을 전부 로그인할 수 있는 기술입니다. (예: ldap, saml, oidc)">
-      <div class="term-name">SSO</div>
-      <div class="term-cat">계정, 권한 및 보안 (Identity &amp; Security)</div>
-      <div class="term-def">&quot;통합 로그인&quot; 회사 아이디 하나로 여러 사내 시스템을 전부 로그인할 수 있는 기술입니다. (예: LDAP, SAML, OIDC)</div>
-    </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="single sign-on &quot;통합 로그인&quot; 회사 아이디 하나로 여러 사내 시스템을 전부 로그인할 수 있는 기술입니다. (예: ldap, saml, oidc)">
-      <div class="term-name">Single Sign-On</div>
       <div class="term-cat">계정, 권한 및 보안 (Identity &amp; Security)</div>
       <div class="term-def">&quot;통합 로그인&quot; 회사 아이디 하나로 여러 사내 시스템을 전부 로그인할 수 있는 기술입니다. (예: LDAP, SAML, OIDC)</div>
     </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="idp &quot;통합 경비실 / 디지털 신분증 발급처&quot; 우리 시스템이 직접 검사하지 않고 외부의 &#39;로그인 전문 솔루션(구글, 카카오 등)&#39;에 확인을 맡길 때 씁니다.">
@@ -1461,14 +1333,6 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">MFA (Multi-Factor Auth)</div>
       <div class="term-cat">계정, 권한 및 보안 (Identity &amp; Security)</div>
       <div class="term-def">&quot;2단계 인증&quot; 비밀번호 치고, 핸드폰 앱이나 문자로 숫자 6자리를 한 번 더 쳐야만 들어갈 수 있는 2중 보안입니다.</div>
-    </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="mfa &quot;2단계 인증&quot; 비밀번호 치고, 핸드폰 앱이나 문자로 숫자 6자리를 한 번 더 쳐야만 들어갈 수 있는 2중 보안입니다.">
-      <div class="term-name">MFA</div>
-      <div class="term-cat">계정, 권한 및 보안 (Identity &amp; Security)</div>
-      <div class="term-def">&quot;2단계 인증&quot; 비밀번호 치고, 핸드폰 앱이나 문자로 숫자 6자리를 한 번 더 쳐야만 들어갈 수 있는 2중 보안입니다.</div>
-    </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="multi-factor auth &quot;2단계 인증&quot; 비밀번호 치고, 핸드폰 앱이나 문자로 숫자 6자리를 한 번 더 쳐야만 들어갈 수 있는 2중 보안입니다.">
-      <div class="term-name">Multi-Factor Auth</div>
-      <div class="term-cat">계정, 권한 및 보안 (Identity &amp; Security)</div>
-      <div class="term-def">&quot;2단계 인증&quot; 비밀번호 치고, 핸드폰 앱이나 문자로 숫자 6자리를 한 번 더 쳐야만 들어갈 수 있는 2중 보안입니다.</div>
     </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="brute-force &quot;무차별 자물쇠 따기 / 계정 잠금&quot; 해커가 번호를 무식하게 다 찍어보는 공격(brute-force)을 막기 위해 5번 틀리면 30분간 정지시키는 것(lockout)입니다.">
       <div class="term-name">Brute-force</div>
       <div class="term-cat">계정, 권한 및 보안 (Identity &amp; Security)</div>
@@ -1479,14 +1343,6 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-def">&quot;무차별 자물쇠 따기 / 계정 잠금&quot; 해커가 번호를 무식하게 다 찍어보는 공격(Brute-force)을 막기 위해 5번 틀리면 30분간 정지시키는 것(Lockout)입니다.</div>
     </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="argon2id (알고리즘) &quot;비밀번호 초강력 분쇄기&quot; 비밀번호를 데이터베이스에 저장할 때 해커가 훔쳐가도 절대 원본을 풀지 못하도록 복잡하게 꼬아버리는 최신 암호화 기술입니다.">
       <div class="term-name">Argon2id (알고리즘)</div>
-      <div class="term-cat">계정, 권한 및 보안 (Identity &amp; Security)</div>
-      <div class="term-def">&quot;비밀번호 초강력 분쇄기&quot; 비밀번호를 데이터베이스에 저장할 때 해커가 훔쳐가도 절대 원본을 풀지 못하도록 복잡하게 꼬아버리는 최신 암호화 기술입니다.</div>
-    </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="argon2id &quot;비밀번호 초강력 분쇄기&quot; 비밀번호를 데이터베이스에 저장할 때 해커가 훔쳐가도 절대 원본을 풀지 못하도록 복잡하게 꼬아버리는 최신 암호화 기술입니다.">
-      <div class="term-name">Argon2id</div>
-      <div class="term-cat">계정, 권한 및 보안 (Identity &amp; Security)</div>
-      <div class="term-def">&quot;비밀번호 초강력 분쇄기&quot; 비밀번호를 데이터베이스에 저장할 때 해커가 훔쳐가도 절대 원본을 풀지 못하도록 복잡하게 꼬아버리는 최신 암호화 기술입니다.</div>
-    </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="알고리즘 &quot;비밀번호 초강력 분쇄기&quot; 비밀번호를 데이터베이스에 저장할 때 해커가 훔쳐가도 절대 원본을 풀지 못하도록 복잡하게 꼬아버리는 최신 암호화 기술입니다.">
-      <div class="term-name">알고리즘</div>
       <div class="term-cat">계정, 권한 및 보안 (Identity &amp; Security)</div>
       <div class="term-def">&quot;비밀번호 초강력 분쇄기&quot; 비밀번호를 데이터베이스에 저장할 때 해커가 훔쳐가도 절대 원본을 풀지 못하도록 복잡하게 꼬아버리는 최신 암호화 기술입니다.</div>
     </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="salt &quot;비밀번호 요리법&quot; 비밀번호에 의미 없는 무작위 문자(salt)를 치고, 잘게 썰어서(hash), 수백 번 반복해서 볶아(iteration) 원래 모양을 없앱니다.">
@@ -1503,14 +1359,6 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-def">&quot;비밀번호 요리법&quot; 비밀번호에 의미 없는 무작위 문자(Salt)를 치고, 잘게 썰어서(Hash), 수백 번 반복해서 볶아(Iteration) 원래 모양을 없앱니다.</div>
     </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="pat (personal access token) &quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">
       <div class="term-name">PAT (Personal Access Token)</div>
-      <div class="term-cat">계정, 권한 및 보안 (Identity &amp; Security)</div>
-      <div class="term-def">&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.</div>
-    </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="pat &quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">
-      <div class="term-name">PAT</div>
-      <div class="term-cat">계정, 권한 및 보안 (Identity &amp; Security)</div>
-      <div class="term-def">&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.</div>
-    </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="personal access token &quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">
-      <div class="term-name">Personal Access Token</div>
       <div class="term-cat">계정, 권한 및 보안 (Identity &amp; Security)</div>
       <div class="term-def">&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.</div>
     </div><div class="term-item" data-cat="계정, 권한 및 보안 (Identity &amp; Security)" data-search="csrf &quot;웹사이트 해킹 수법&quot; 해커가 사용자 몰래 악성 행동을 클릭하게 하거나(csrf), 게시판에 악성 코드를 심어두는(xss) 공격 방식입니다.">
@@ -1549,24 +1397,8 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">Schema (스키마)</div>
       <div class="term-cat">데이터베이스 및 저장소 (Database &amp; Data)</div>
       <div class="term-def">&quot;데이터 엑셀 양식&quot; 이름은 문자, 나이는 숫자 등 데이터베이스에 정보를 어떤 모양으로 저장할지 정해둔 도면입니다.</div>
-    </div><div class="term-item" data-cat="데이터베이스 및 저장소 (Database &amp; Data)" data-search="schema &quot;데이터 엑셀 양식&quot; 이름은 문자, 나이는 숫자 등 데이터베이스에 정보를 어떤 모양으로 저장할지 정해둔 도면입니다.">
-      <div class="term-name">Schema</div>
-      <div class="term-cat">데이터베이스 및 저장소 (Database &amp; Data)</div>
-      <div class="term-def">&quot;데이터 엑셀 양식&quot; 이름은 문자, 나이는 숫자 등 데이터베이스에 정보를 어떤 모양으로 저장할지 정해둔 도면입니다.</div>
-    </div><div class="term-item" data-cat="데이터베이스 및 저장소 (Database &amp; Data)" data-search="스키마 &quot;데이터 엑셀 양식&quot; 이름은 문자, 나이는 숫자 등 데이터베이스에 정보를 어떤 모양으로 저장할지 정해둔 도면입니다.">
-      <div class="term-name">스키마</div>
-      <div class="term-cat">데이터베이스 및 저장소 (Database &amp; Data)</div>
-      <div class="term-def">&quot;데이터 엑셀 양식&quot; 이름은 문자, 나이는 숫자 등 데이터베이스에 정보를 어떤 모양으로 저장할지 정해둔 도면입니다.</div>
     </div><div class="term-item" data-cat="데이터베이스 및 저장소 (Database &amp; Data)" data-search="ddl (data definition language) &quot;db 건축 허가서&quot; 데이터베이스 방 구조를 바꾸거나, 테이블을 새로 짓고 부술 때 쓰는 명령어입니다.">
       <div class="term-name">DDL (Data Definition Language)</div>
-      <div class="term-cat">데이터베이스 및 저장소 (Database &amp; Data)</div>
-      <div class="term-def">&quot;DB 건축 허가서&quot; 데이터베이스 방 구조를 바꾸거나, 테이블을 새로 짓고 부술 때 쓰는 명령어입니다.</div>
-    </div><div class="term-item" data-cat="데이터베이스 및 저장소 (Database &amp; Data)" data-search="ddl &quot;db 건축 허가서&quot; 데이터베이스 방 구조를 바꾸거나, 테이블을 새로 짓고 부술 때 쓰는 명령어입니다.">
-      <div class="term-name">DDL</div>
-      <div class="term-cat">데이터베이스 및 저장소 (Database &amp; Data)</div>
-      <div class="term-def">&quot;DB 건축 허가서&quot; 데이터베이스 방 구조를 바꾸거나, 테이블을 새로 짓고 부술 때 쓰는 명령어입니다.</div>
-    </div><div class="term-item" data-cat="데이터베이스 및 저장소 (Database &amp; Data)" data-search="data definition language &quot;db 건축 허가서&quot; 데이터베이스 방 구조를 바꾸거나, 테이블을 새로 짓고 부술 때 쓰는 명령어입니다.">
-      <div class="term-name">Data Definition Language</div>
       <div class="term-cat">데이터베이스 및 저장소 (Database &amp; Data)</div>
       <div class="term-def">&quot;DB 건축 허가서&quot; 데이터베이스 방 구조를 바꾸거나, 테이블을 새로 짓고 부술 때 쓰는 명령어입니다.</div>
     </div><div class="term-item" data-cat="데이터베이스 및 저장소 (Database &amp; Data)" data-search="flyway &quot;db 도면 버전 관리자 / 안전한 번역기&quot; db 구조의 변경 이력을 꼼꼼히 기록하고(flyway), 오타 없이 안전하게 db 언어로 번역해 주는 도구(jooq)입니다.">
@@ -1589,28 +1421,12 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">Rollback (롤백)</div>
       <div class="term-cat">데이터베이스 및 저장소 (Database &amp; Data)</div>
       <div class="term-def">&quot;타임머신&quot; 데이터를 저장하다가 중간에 에러가 났을 때, 데이터가 꼬이지 않게 &#39;작업하기 전 상태&#39;로 시간을 되돌리는 기능입니다.</div>
-    </div><div class="term-item" data-cat="데이터베이스 및 저장소 (Database &amp; Data)" data-search="rollback &quot;타임머신&quot; 데이터를 저장하다가 중간에 에러가 났을 때, 데이터가 꼬이지 않게 &#39;작업하기 전 상태&#39;로 시간을 되돌리는 기능입니다.">
-      <div class="term-name">Rollback</div>
-      <div class="term-cat">데이터베이스 및 저장소 (Database &amp; Data)</div>
-      <div class="term-def">&quot;타임머신&quot; 데이터를 저장하다가 중간에 에러가 났을 때, 데이터가 꼬이지 않게 &#39;작업하기 전 상태&#39;로 시간을 되돌리는 기능입니다.</div>
-    </div><div class="term-item" data-cat="데이터베이스 및 저장소 (Database &amp; Data)" data-search="롤백 &quot;타임머신&quot; 데이터를 저장하다가 중간에 에러가 났을 때, 데이터가 꼬이지 않게 &#39;작업하기 전 상태&#39;로 시간을 되돌리는 기능입니다.">
-      <div class="term-name">롤백</div>
-      <div class="term-cat">데이터베이스 및 저장소 (Database &amp; Data)</div>
-      <div class="term-def">&quot;타임머신&quot; 데이터를 저장하다가 중간에 에러가 났을 때, 데이터가 꼬이지 않게 &#39;작업하기 전 상태&#39;로 시간을 되돌리는 기능입니다.</div>
     </div><div class="term-item" data-cat="데이터베이스 및 저장소 (Database &amp; Data)" data-search="optimistic locking &quot;눈치게임 잠금&quot; 두 명이 동시에 수정할 때 &quot;설마 겹치겠어?&quot; 하고 일단 진행한 뒤, 마지막 저장 순간에 남이 안 건드렸는지 확인하는 기법입니다.">
       <div class="term-name">Optimistic Locking</div>
       <div class="term-cat">데이터베이스 및 저장소 (Database &amp; Data)</div>
       <div class="term-def">&quot;눈치게임 잠금&quot; 두 명이 동시에 수정할 때 &quot;설마 겹치겠어?&quot; 하고 일단 진행한 뒤, 마지막 저장 순간에 남이 안 건드렸는지 확인하는 기법입니다.</div>
     </div><div class="term-item" data-cat="데이터베이스 및 저장소 (Database &amp; Data)" data-search="concurrently (인덱스) &quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">
       <div class="term-name">CONCURRENTLY (인덱스)</div>
-      <div class="term-cat">데이터베이스 및 저장소 (Database &amp; Data)</div>
-      <div class="term-def">&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.</div>
-    </div><div class="term-item" data-cat="데이터베이스 및 저장소 (Database &amp; Data)" data-search="concurrently &quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">
-      <div class="term-name">CONCURRENTLY</div>
-      <div class="term-cat">데이터베이스 및 저장소 (Database &amp; Data)</div>
-      <div class="term-def">&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.</div>
-    </div><div class="term-item" data-cat="데이터베이스 및 저장소 (Database &amp; Data)" data-search="인덱스 &quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">
-      <div class="term-name">인덱스</div>
       <div class="term-cat">데이터베이스 및 저장소 (Database &amp; Data)</div>
       <div class="term-def">&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.</div>
     </div><div class="term-item" data-cat="데이터베이스 및 저장소 (Database &amp; Data)" data-search="advisory lock &quot;회의실 사용 팻말&quot; 데이터 자체가 아니라 &quot;지금 이 작업 중이니 아무도 건드리지 마!&quot;라고 프로그램끼리 약속하고 문을 잠그는 논리적 잠금입니다.">
@@ -1629,14 +1445,6 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">FTS (Full Text Search)</div>
       <div class="term-cat">데이터베이스 및 저장소 (Database &amp; Data)</div>
       <div class="term-def">&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.</div>
-    </div><div class="term-item" data-cat="데이터베이스 및 저장소 (Database &amp; Data)" data-search="fts &quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">
-      <div class="term-name">FTS</div>
-      <div class="term-cat">데이터베이스 및 저장소 (Database &amp; Data)</div>
-      <div class="term-def">&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.</div>
-    </div><div class="term-item" data-cat="데이터베이스 및 저장소 (Database &amp; Data)" data-search="full text search &quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">
-      <div class="term-name">Full Text Search</div>
-      <div class="term-cat">데이터베이스 및 저장소 (Database &amp; Data)</div>
-      <div class="term-def">&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.</div>
     </div><div class="term-item" data-cat="데이터베이스 및 저장소 (Database &amp; Data)" data-search="gin &quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">
       <div class="term-name">GIN</div>
       <div class="term-cat">데이터베이스 및 저장소 (Database &amp; Data)</div>
@@ -1651,14 +1459,6 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-def">&quot;자유형 수납장 / 만물 창고&quot; 모양이 불규칙한 복잡한 데이터나 크기가 큰 파일(이미지 등)을 형태 그대로 유연하게 쑤셔 넣을 수 있는 저장 공간입니다.</div>
     </div><div class="term-item" data-cat="프론트엔드 및 사용자 인터페이스 (Frontend &amp; UI)" data-search="cta (call to action) &quot;핵심 행동 유도 버튼&quot; &#39;가입하기&#39;, &#39;결제하기&#39;처럼 화면에서 사용자가 가장 눌러주기를 바라는 시선 집중 버튼입니다.">
       <div class="term-name">CTA (Call To Action)</div>
-      <div class="term-cat">프론트엔드 및 사용자 인터페이스 (Frontend &amp; UI)</div>
-      <div class="term-def">&quot;핵심 행동 유도 버튼&quot; &#39;가입하기&#39;, &#39;결제하기&#39;처럼 화면에서 사용자가 가장 눌러주기를 바라는 시선 집중 버튼입니다.</div>
-    </div><div class="term-item" data-cat="프론트엔드 및 사용자 인터페이스 (Frontend &amp; UI)" data-search="cta &quot;핵심 행동 유도 버튼&quot; &#39;가입하기&#39;, &#39;결제하기&#39;처럼 화면에서 사용자가 가장 눌러주기를 바라는 시선 집중 버튼입니다.">
-      <div class="term-name">CTA</div>
-      <div class="term-cat">프론트엔드 및 사용자 인터페이스 (Frontend &amp; UI)</div>
-      <div class="term-def">&quot;핵심 행동 유도 버튼&quot; &#39;가입하기&#39;, &#39;결제하기&#39;처럼 화면에서 사용자가 가장 눌러주기를 바라는 시선 집중 버튼입니다.</div>
-    </div><div class="term-item" data-cat="프론트엔드 및 사용자 인터페이스 (Frontend &amp; UI)" data-search="call to action &quot;핵심 행동 유도 버튼&quot; &#39;가입하기&#39;, &#39;결제하기&#39;처럼 화면에서 사용자가 가장 눌러주기를 바라는 시선 집중 버튼입니다.">
-      <div class="term-name">Call To Action</div>
       <div class="term-cat">프론트엔드 및 사용자 인터페이스 (Frontend &amp; UI)</div>
       <div class="term-def">&quot;핵심 행동 유도 버튼&quot; &#39;가입하기&#39;, &#39;결제하기&#39;처럼 화면에서 사용자가 가장 눌러주기를 바라는 시선 집중 버튼입니다.</div>
     </div><div class="term-item" data-cat="프론트엔드 및 사용자 인터페이스 (Frontend &amp; UI)" data-search="breadcrumbs &quot;헨젤과 그레텔의 빵가루&quot; 사용자가 현재 페이지까지 어떤 메뉴를 거쳐 들어왔는지 상단에 순서대로 보여주는 내비게이션 발자취입니다.">
@@ -1707,14 +1507,6 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-def">&quot;코드 맞춤법 검사기 / 부품 로켓 배송&quot; 코드가 팀 규칙에 맞는지 검사하고(Biome), 개발에 필요한 남이 만든 부품들을 아주 빠르고 깔끔하게 설치해 주는(pnpm) 도구입니다.</div>
     </div><div class="term-item" data-cat="백엔드 및 통신 (Backend &amp; Network)" data-search="webhook (웹훅) &quot;실시간 알림 호출기&quot; &quot;새 글 떴어?&quot; 하고 매번 물어볼 필요 없이, 시스템에 사건(댓글 등)이 터지면 상대방에게 &quot;방금 달렸어!&quot;라고 알아서 찔러주는 기능입니다.">
       <div class="term-name">Webhook (웹훅)</div>
-      <div class="term-cat">백엔드 및 통신 (Backend &amp; Network)</div>
-      <div class="term-def">&quot;실시간 알림 호출기&quot; &quot;새 글 떴어?&quot; 하고 매번 물어볼 필요 없이, 시스템에 사건(댓글 등)이 터지면 상대방에게 &quot;방금 달렸어!&quot;라고 알아서 찔러주는 기능입니다.</div>
-    </div><div class="term-item" data-cat="백엔드 및 통신 (Backend &amp; Network)" data-search="webhook &quot;실시간 알림 호출기&quot; &quot;새 글 떴어?&quot; 하고 매번 물어볼 필요 없이, 시스템에 사건(댓글 등)이 터지면 상대방에게 &quot;방금 달렸어!&quot;라고 알아서 찔러주는 기능입니다.">
-      <div class="term-name">Webhook</div>
-      <div class="term-cat">백엔드 및 통신 (Backend &amp; Network)</div>
-      <div class="term-def">&quot;실시간 알림 호출기&quot; &quot;새 글 떴어?&quot; 하고 매번 물어볼 필요 없이, 시스템에 사건(댓글 등)이 터지면 상대방에게 &quot;방금 달렸어!&quot;라고 알아서 찔러주는 기능입니다.</div>
-    </div><div class="term-item" data-cat="백엔드 및 통신 (Backend &amp; Network)" data-search="웹훅 &quot;실시간 알림 호출기&quot; &quot;새 글 떴어?&quot; 하고 매번 물어볼 필요 없이, 시스템에 사건(댓글 등)이 터지면 상대방에게 &quot;방금 달렸어!&quot;라고 알아서 찔러주는 기능입니다.">
-      <div class="term-name">웹훅</div>
       <div class="term-cat">백엔드 및 통신 (Backend &amp; Network)</div>
       <div class="term-def">&quot;실시간 알림 호출기&quot; &quot;새 글 떴어?&quot; 하고 매번 물어볼 필요 없이, 시스템에 사건(댓글 등)이 터지면 상대방에게 &quot;방금 달렸어!&quot;라고 알아서 찔러주는 기능입니다.</div>
     </div><div class="term-item" data-cat="백엔드 및 통신 (Backend &amp; Network)" data-search="stomp &quot;실시간 직통 전화선&quot; 웹페이지를 새로고침 하지 않아도, 누군가 채팅을 치면 내 화면에 실시간으로 알림이나 메시지가 뿅 하고 나타나게 해주는 통신 기술입니다.">
@@ -1769,14 +1561,6 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">YAML (.yml)</div>
       <div class="term-cat">백엔드 및 통신 (Backend &amp; Network)</div>
       <div class="term-def">&quot;사람과 컴퓨터의 공용어&quot; 괄호 대신 &#39;들여쓰기&#39;로 설정을 적어서, 사람도 읽기 편하고 컴퓨터도 이해하기 쉬운 문서 형식입니다.</div>
-    </div><div class="term-item" data-cat="백엔드 및 통신 (Backend &amp; Network)" data-search="yaml &quot;사람과 컴퓨터의 공용어&quot; 괄호 대신 &#39;들여쓰기&#39;로 설정을 적어서, 사람도 읽기 편하고 컴퓨터도 이해하기 쉬운 문서 형식입니다.">
-      <div class="term-name">YAML</div>
-      <div class="term-cat">백엔드 및 통신 (Backend &amp; Network)</div>
-      <div class="term-def">&quot;사람과 컴퓨터의 공용어&quot; 괄호 대신 &#39;들여쓰기&#39;로 설정을 적어서, 사람도 읽기 편하고 컴퓨터도 이해하기 쉬운 문서 형식입니다.</div>
-    </div><div class="term-item" data-cat="백엔드 및 통신 (Backend &amp; Network)" data-search=".yml &quot;사람과 컴퓨터의 공용어&quot; 괄호 대신 &#39;들여쓰기&#39;로 설정을 적어서, 사람도 읽기 편하고 컴퓨터도 이해하기 쉬운 문서 형식입니다.">
-      <div class="term-name">.yml</div>
-      <div class="term-cat">백엔드 및 통신 (Backend &amp; Network)</div>
-      <div class="term-def">&quot;사람과 컴퓨터의 공용어&quot; 괄호 대신 &#39;들여쓰기&#39;로 설정을 적어서, 사람도 읽기 편하고 컴퓨터도 이해하기 쉬운 문서 형식입니다.</div>
     </div><div class="term-item" data-cat="백엔드 및 통신 (Backend &amp; Network)" data-search="multi-tenant &quot;아파트 입주민 분리 기술&quot; 하나의 서버를 여러 회사(a회사, b회사)가 같이 쓰면서도, 서로 데이터가 절대 섞이지 않고 마치 자기들만의 전용 서버처럼 쓰게 하는 기술입니다.">
       <div class="term-name">Multi-tenant</div>
       <div class="term-cat">백엔드 및 통신 (Backend &amp; Network)</div>
@@ -1785,36 +1569,12 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">TDD (Test-Driven Dev)</div>
       <div class="term-cat">테스트 및 품질 관리 (Testing &amp; QA)</div>
       <div class="term-def">&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.</div>
-    </div><div class="term-item" data-cat="테스트 및 품질 관리 (Testing &amp; QA)" data-search="tdd &quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.">
-      <div class="term-name">TDD</div>
-      <div class="term-cat">테스트 및 품질 관리 (Testing &amp; QA)</div>
-      <div class="term-def">&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.</div>
-    </div><div class="term-item" data-cat="테스트 및 품질 관리 (Testing &amp; QA)" data-search="test-driven dev &quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.">
-      <div class="term-name">Test-Driven Dev</div>
-      <div class="term-cat">테스트 및 품질 관리 (Testing &amp; QA)</div>
-      <div class="term-def">&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.</div>
     </div><div class="term-item" data-cat="테스트 및 품질 관리 (Testing &amp; QA)" data-search="e2e (end-to-end test) &quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">
       <div class="term-name">E2E (End-to-End Test)</div>
       <div class="term-cat">테스트 및 품질 관리 (Testing &amp; QA)</div>
       <div class="term-def">&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.</div>
-    </div><div class="term-item" data-cat="테스트 및 품질 관리 (Testing &amp; QA)" data-search="e2e &quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">
-      <div class="term-name">E2E</div>
-      <div class="term-cat">테스트 및 품질 관리 (Testing &amp; QA)</div>
-      <div class="term-def">&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.</div>
-    </div><div class="term-item" data-cat="테스트 및 품질 관리 (Testing &amp; QA)" data-search="end-to-end test &quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">
-      <div class="term-name">End-to-End Test</div>
-      <div class="term-cat">테스트 및 품질 관리 (Testing &amp; QA)</div>
-      <div class="term-def">&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.</div>
     </div><div class="term-item" data-cat="테스트 및 품질 관리 (Testing &amp; QA)" data-search="nfr (non-functional req) &quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.">
       <div class="term-name">NFR (Non-Functional Req)</div>
-      <div class="term-cat">테스트 및 품질 관리 (Testing &amp; QA)</div>
-      <div class="term-def">&quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.</div>
-    </div><div class="term-item" data-cat="테스트 및 품질 관리 (Testing &amp; QA)" data-search="nfr &quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.">
-      <div class="term-name">NFR</div>
-      <div class="term-cat">테스트 및 품질 관리 (Testing &amp; QA)</div>
-      <div class="term-def">&quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.</div>
-    </div><div class="term-item" data-cat="테스트 및 품질 관리 (Testing &amp; QA)" data-search="non-functional req &quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.">
-      <div class="term-name">Non-Functional Req</div>
       <div class="term-cat">테스트 및 품질 관리 (Testing &amp; QA)</div>
       <div class="term-def">&quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.</div>
     </div><div class="term-item" data-cat="테스트 및 품질 관리 (Testing &amp; QA)" data-search="playwright &quot;가상 브라우저 자동 조종 로봇&quot; 사람을 대신해서 가상의 크롬 브라우저를 띄운 뒤, 버튼도 눌러보고 글자도 입력하며 화면이 잘 도는지 검사하는 매크로 로봇입니다.">
@@ -1857,14 +1617,6 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">Docker (도커)</div>
       <div class="term-cat">인프라 및 환경 도구 (Infra &amp; DevOps)</div>
       <div class="term-def">&quot;어디서든 열리는 마법의 컨테이너&quot; &quot;내 컴퓨터에선 되는데 서버에선 안 돼!&quot;를 없애기 위해, 프로그램과 실행 환경을 통째로 캡슐에 포장해 어디서든 똑같이 돌아가게 만듭니다.</div>
-    </div><div class="term-item" data-cat="인프라 및 환경 도구 (Infra &amp; DevOps)" data-search="docker &quot;어디서든 열리는 마법의 컨테이너&quot; &quot;내 컴퓨터에선 되는데 서버에선 안 돼!&quot;를 없애기 위해, 프로그램과 실행 환경을 통째로 캡슐에 포장해 어디서든 똑같이 돌아가게 만듭니다.">
-      <div class="term-name">Docker</div>
-      <div class="term-cat">인프라 및 환경 도구 (Infra &amp; DevOps)</div>
-      <div class="term-def">&quot;어디서든 열리는 마법의 컨테이너&quot; &quot;내 컴퓨터에선 되는데 서버에선 안 돼!&quot;를 없애기 위해, 프로그램과 실행 환경을 통째로 캡슐에 포장해 어디서든 똑같이 돌아가게 만듭니다.</div>
-    </div><div class="term-item" data-cat="인프라 및 환경 도구 (Infra &amp; DevOps)" data-search="도커 &quot;어디서든 열리는 마법의 컨테이너&quot; &quot;내 컴퓨터에선 되는데 서버에선 안 돼!&quot;를 없애기 위해, 프로그램과 실행 환경을 통째로 캡슐에 포장해 어디서든 똑같이 돌아가게 만듭니다.">
-      <div class="term-name">도커</div>
-      <div class="term-cat">인프라 및 환경 도구 (Infra &amp; DevOps)</div>
-      <div class="term-def">&quot;어디서든 열리는 마법의 컨테이너&quot; &quot;내 컴퓨터에선 되는데 서버에선 안 돼!&quot;를 없애기 위해, 프로그램과 실행 환경을 통째로 캡슐에 포장해 어디서든 똑같이 돌아가게 만듭니다.</div>
     </div><div class="term-item" data-cat="인프라 및 환경 도구 (Infra &amp; DevOps)" data-search="fargate &quot;서버 관리 필요 없는 자동 서버&quot; 도커 캡슐을 올리기만 하면 aws(아마존 클라우드)가 알아서 컴퓨터 자원을 켜고 끄면서 관리해 주는 편리한 서비스입니다.">
       <div class="term-name">Fargate</div>
       <div class="term-cat">인프라 및 환경 도구 (Infra &amp; DevOps)</div>
@@ -1885,24 +1637,12 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">KMS (Key Management)</div>
       <div class="term-cat">인프라 및 환경 도구 (Infra &amp; DevOps)</div>
       <div class="term-def">&quot;초강력 철통 금고&quot; 데이터베이스 비밀번호나 암호화 키 등 소스코드에 절대 적으면 안 되는 가장 중요한 1급 기밀들을 안전하게 보관해 주는 서비스입니다.</div>
-    </div><div class="term-item" data-cat="인프라 및 환경 도구 (Infra &amp; DevOps)" data-search="kms &quot;초강력 철통 금고&quot; 데이터베이스 비밀번호나 암호화 키 등 소스코드에 절대 적으면 안 되는 가장 중요한 1급 기밀들을 안전하게 보관해 주는 서비스입니다.">
-      <div class="term-name">KMS</div>
-      <div class="term-cat">인프라 및 환경 도구 (Infra &amp; DevOps)</div>
-      <div class="term-def">&quot;초강력 철통 금고&quot; 데이터베이스 비밀번호나 암호화 키 등 소스코드에 절대 적으면 안 되는 가장 중요한 1급 기밀들을 안전하게 보관해 주는 서비스입니다.</div>
-    </div><div class="term-item" data-cat="인프라 및 환경 도구 (Infra &amp; DevOps)" data-search="key management &quot;초강력 철통 금고&quot; 데이터베이스 비밀번호나 암호화 키 등 소스코드에 절대 적으면 안 되는 가장 중요한 1급 기밀들을 안전하게 보관해 주는 서비스입니다.">
-      <div class="term-name">Key Management</div>
-      <div class="term-cat">인프라 및 환경 도구 (Infra &amp; DevOps)</div>
-      <div class="term-def">&quot;초강력 철통 금고&quot; 데이터베이스 비밀번호나 암호화 키 등 소스코드에 절대 적으면 안 되는 가장 중요한 1급 기밀들을 안전하게 보관해 주는 서비스입니다.</div>
     </div><div class="term-item" data-cat="인프라 및 환경 도구 (Infra &amp; DevOps)" data-search="sentry &quot;cctv 및 에러 실시간 알림장&quot; 사용자가 서비스를 쓰다 에러가 나면 &quot;누가, 어떤 화면에서, 뭐 하다가 에러가 났는지&quot;를 개발자에게 즉시 알려주는 추적 도구입니다.">
       <div class="term-name">Sentry</div>
       <div class="term-cat">인프라 및 환경 도구 (Infra &amp; DevOps)</div>
       <div class="term-def">&quot;CCTV 및 에러 실시간 알림장&quot; 사용자가 서비스를 쓰다 에러가 나면 &quot;누가, 어떤 화면에서, 뭐 하다가 에러가 났는지&quot;를 개발자에게 즉시 알려주는 추적 도구입니다.</div>
     </div><div class="term-item" data-cat="인프라 및 환경 도구 (Infra &amp; DevOps)" data-search="gitops &quot;설정 문서가 곧 시스템&quot; 클릭해서 서버를 세팅하는 게 아니라, yaml 문서에 &quot;서버 3대 켜줘&quot;라고 적어서 git에 올리면 그대로 인프라가 자동으로 구축되는 방식입니다.">
       <div class="term-name">GitOps</div>
-      <div class="term-cat">인프라 및 환경 도구 (Infra &amp; DevOps)</div>
-      <div class="term-def">&quot;설정 문서가 곧 시스템&quot; 클릭해서 서버를 세팅하는 게 아니라, YAML 문서에 &quot;서버 3대 켜줘&quot;라고 적어서 Git에 올리면 그대로 인프라가 자동으로 구축되는 방식입니다.</div>
-    </div><div class="term-item" data-cat="인프라 및 환경 도구 (Infra &amp; DevOps)" data-search="yaml &quot;설정 문서가 곧 시스템&quot; 클릭해서 서버를 세팅하는 게 아니라, yaml 문서에 &quot;서버 3대 켜줘&quot;라고 적어서 git에 올리면 그대로 인프라가 자동으로 구축되는 방식입니다.">
-      <div class="term-name">YAML</div>
       <div class="term-cat">인프라 및 환경 도구 (Infra &amp; DevOps)</div>
       <div class="term-def">&quot;설정 문서가 곧 시스템&quot; 클릭해서 서버를 세팅하는 게 아니라, YAML 문서에 &quot;서버 3대 켜줘&quot;라고 적어서 Git에 올리면 그대로 인프라가 자동으로 구축되는 방식입니다.</div>
     </div></div>
