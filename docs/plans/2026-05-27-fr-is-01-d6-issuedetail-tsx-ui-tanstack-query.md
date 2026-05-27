@@ -92,19 +92,21 @@ FR-IS-01 (이슈 CRUD + 상태 전이 검증 + 알림)의 D6 단계 — 프론�
 
 **검증.** `pnpm -C apps/web test issues.test`
 
-### Task 2. 최소 toast 컴포넌트 (`@/components/ui/toast` + Provider)
+### Task 2. toast — sonner 도입 (`@/components/ui/sonner` + Toaster)
+
+> Maxi 승인(게이트1): sonner 새 의존성 도입 확정.
 
 **메타.**
-- files: [`apps/web/src/components/ui/toast.tsx`, `apps/web/src/components/ui/toast.test.tsx`]
+- files: [`apps/web/package.json`, `apps/web/src/components/ui/sonner.tsx`, `apps/web/src/components/ui/sonner.test.tsx`, `apps/web/src/main.tsx`]
 - depends-on: []
 
-**RED.** `toast.test.tsx` — `useToast().show(msg)` 호출 시 메시지가 role=status/alert로 렌더 + 자동 dismiss. 실패: 모듈 없음.
+**RED.** `sonner.test.tsx` — `<Toaster>` 렌더 + `toast.error(msg)` 호출 시 메시지가 접근성 영역(role)으로 노출. 실패: 모듈 없음.
 
-**GREEN.** Context 기반 최소 toast(새 npm 의존성 없이). DESIGN.md 토큰(`rounded-2xl`, border, shadow) + 한국어. **sonner 등 새 의존성 도입은 Maxi 승인 시에만 — 기본은 in-house.**
+**GREEN.** `pnpm -C apps/web add sonner`. shadcn sonner 래퍼(`components/ui/sonner.tsx`, DESIGN.md 토큰 정렬 — `theme`/`toastOptions`). `<Toaster richColors />` 를 main.tsx에 마운트(QueryClientProvider 인접).
 
-**REFACTOR.** ToastProvider를 main.tsx에 마운트(QueryClientProvider 인접). KDoc.
+**REFACTOR.** KDoc + 헤더 한국어 주석. 409/일반 오류 메시지 카피 상수화.
 
-**검증.** `pnpm -C apps/web test toast.test`
+**검증.** `pnpm -C apps/web test sonner.test` + `pnpm -C apps/web typecheck`
 
 ### Task 3. 요약 수정 훅 (`useUpdateIssueSummary`) — 완전 낙관적 + 409 토스트
 
@@ -197,7 +199,7 @@ FR-IS-01 (이슈 CRUD + 상태 전이 검증 + 알림)의 D6 단계 — 프론�
 - TDD 강제: yes (red→green→refactor)
 - 병렬 dispatch: bts-impl이 메타(depends-on + files)로 wave 계산
 - 추가 검증: typecheck, eslint(no-console), vitest, 최종 `pnpm verify`. E2E(D7)는 별도 + 백엔드 wiring 선결
-- 미해결 결정(게이트1 검토): toast = in-house 최소 구현(기본) vs sonner 도입(새 의존성, 승인 필요)
+- 결정(게이트1 완료): toast = **sonner 도입** (Maxi 승인). 게이트1 승인 → bts-impl 진입.
 
 ## 리뷰 결과
 
