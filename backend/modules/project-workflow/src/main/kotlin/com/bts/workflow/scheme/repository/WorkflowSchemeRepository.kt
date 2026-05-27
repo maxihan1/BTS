@@ -199,13 +199,13 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
      */
     private fun org.jooq.Record.toWorkflowScheme(): WorkflowScheme =
         WorkflowScheme.reconstruct(
-            id = WorkflowSchemeId(this[ID]!!),
-            key = WorkflowSchemeKey(this[KEY]!!),
-            name = this[NAME]!!,
+            id = WorkflowSchemeId(this[ID] ?: error("workflow_schemes.id NOT NULL constraint violated: row $this")),
+            key = WorkflowSchemeKey(this[KEY] ?: error("workflow_schemes.key NOT NULL constraint violated: row $this")),
+            name = this[NAME] ?: error("workflow_schemes.name NOT NULL constraint violated: row $this"),
             description = this[DESCRIPTION],
-            isDefault = this[IS_DEFAULT]!!,
-            createdAt = this[CREATED_AT]!!.toInstant(),
-            updatedAt = this[UPDATED_AT]!!.toInstant(),
+            isDefault = this[IS_DEFAULT] ?: error("workflow_schemes.is_default NOT NULL constraint violated: row $this"),
+            createdAt = (this[CREATED_AT] ?: error("workflow_schemes.created_at NOT NULL constraint violated: row $this")).toInstant(),
+            updatedAt = (this[UPDATED_AT] ?: error("workflow_schemes.updated_at NOT NULL constraint violated: row $this")).toInstant(),
             deletedAt = this[DELETED_AT]?.toInstant(),
         )
 
