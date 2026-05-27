@@ -169,6 +169,14 @@ jooq {
     }
 }
 
+// ── compileKotlin → generateJooq 명시적 의존 선언 ────────────────────────────
+// generateSchemaSourceOnCompilation = false 로 jOOQ 자동 트리거를 끈 상태에서도
+// clean 빌드 시 compileKotlin 이 src/generated/jooq 를 읽기 전에 generateJooq 가
+// 반드시 먼저 실행되도록 Gradle 태스크 의존을 명시한다 (Gradle 8.10 implicit dependency 오류 해소).
+tasks.named<KotlinCompile>("compileKotlin") {
+    dependsOn("generateJooq")
+}
+
 // ── KotlinCompile 옵션 ────────────────────────────────────────────────────────
 tasks.withType<KotlinCompile> {
     compilerOptions {
