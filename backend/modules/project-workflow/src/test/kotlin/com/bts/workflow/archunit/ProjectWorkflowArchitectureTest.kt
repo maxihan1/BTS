@@ -3,6 +3,7 @@
 package com.bts.workflow.archunit
 
 import com.tngtech.archunit.base.DescribedPredicate
+import com.tngtech.archunit.core.domain.JavaClass
 import com.tngtech.archunit.core.domain.JavaMethod
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.core.importer.ImportOption
@@ -54,21 +55,33 @@ class ProjectWorkflowArchitectureTest {
     /**
      * 룰 2 — project-workflow 패키지가 identity-access BC 내부 패키지를 직접 import하지 않는다.
      *
-     * 허용 예외. `com.bts.identityaccess.jooq.tables.*` (jOOQ 생성 코드).
+     * 허용 예외. `com.atlas.bts.identity.*.jooq.tables.*` (jOOQ 생성 코드).
      */
     @Test
     fun mustNotImportIdentityAccess() {
-        bcIsolationRule(targetPackage = "com.bts.identityaccess..", bcName = "identity-access").check(importedClasses)
+        bcIsolationRule(targetPackage = "com.atlas.bts.identity..", bcName = "identity-access").check(importedClasses)
     }
 
     /**
      * 룰 3 — project-workflow 패키지가 issue-tracking BC 내부 패키지를 직접 import하지 않는다.
      *
-     * 허용 예외. `com.bts.issuetracking.jooq.tables.*` (jOOQ 생성 코드).
+     * 허용 예외.
+     * - `com.bts.issue.*.jooq.tables.*` (jOOQ 생성 코드).
+     * - `com.bts.issue.type.domain.IssueTypeId` / `IssueTypeKey` — WorkflowResolver port 계약 및
+     *   SchemeIssueTypeMappingRepository JOIN 에서 사용하는 공개 API 타입. BC 격리 예외 허용
+     *   (ADR project-scheme-mapping-jira-align §cross-BC type sharing).
      */
     @Test
     fun mustNotImportIssueTracking() {
-        bcIsolationRule(targetPackage = "com.bts.issuetracking..", bcName = "issue-tracking").check(importedClasses)
+        bcIsolationRuleWithAllowedClasses(
+            targetPackage = "com.bts.issue..",
+            bcName = "issue-tracking",
+            allowedClassNames =
+                setOf(
+                    "com.bts.issue.type.domain.IssueTypeId",
+                    "com.bts.issue.type.domain.IssueTypeKey",
+                ),
+        ).check(importedClasses)
     }
 
     /**
@@ -145,6 +158,41 @@ class ProjectWorkflowArchitectureTest {
                 .because(
                     "project-workflow BC는 $bcName BC를 직접 import할 수 없습니다. " +
                         "이벤트(pgmq)나 공개 API를 통해서만 통신해야 합니다",
+                )
+
+        /**
+         * BC 격리 룰 팩토리 (허용 클래스 목록 포함).
+         *
+         * [allowedClassNames] 에 포함된 클래스는 이 BC 가 cross-BC 계약 타입으로 허용한 공개 API 이다.
+         * 예: `IssueTypeId`, `IssueTypeKey` — WorkflowResolver port 계약 및 Repository JOIN 에서 사용.
+         *
+         * @param targetPackage 금지 대상 패키지 (예. `"com.bts.issue.."`)
+         * @param bcName 에러 메시지에 포함할 BC 이름 (예. `"issue-tracking"`)
+         * @param allowedClassNames 예외 허용 클래스 전체 이름 목록.
+         */
+        private fun bcIsolationRuleWithAllowedClasses(
+            targetPackage: String,
+            bcName: String,
+            allowedClassNames: Set<String>,
+        ): ArchRule =
+            noClasses()
+                .that()
+                .resideInAPackage("com.bts.workflow..")
+                .and()
+                .resideOutsideOfPackage("com.bts.workflow..jooq.tables..")
+                .should()
+                .dependOnClassesThat(
+                    DescribedPredicate.describe<JavaClass>("reside in $targetPackage and are not in the allow-list") { javaClass ->
+                        javaClass.packageName.let { pkg ->
+                            pkg.startsWith(targetPackage.removeSuffix("..")) &&
+                                javaClass.name !in allowedClassNames
+                        }
+                    },
+                )
+                .because(
+                    "project-workflow BC는 $bcName BC를 직접 import할 수 없습니다. " +
+                        "이벤트(pgmq)나 공개 API를 통해서만 통신해야 합니다. " +
+                        "예외 허용 타입: $allowedClassNames",
                 )
     }
 }
