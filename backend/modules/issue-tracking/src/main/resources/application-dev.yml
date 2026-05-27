@@ -24,7 +24,7 @@ spring:
       continue-on-error: false
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    locations: classpath:db/migration/issue-tracking
     baseline-on-migrate: true
     # PR #10 learning — Flyway 가 ${...} 패턴을 변수로 치환하려 해서 SQL 파싱 오류 발생.
     # placeholder-replacement: false 로 비활성화해 순수 SQL 그대로 실행.

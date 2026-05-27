@@ -82,7 +82,7 @@ abstract class IssueTestcontainersBase {
      * 자식이 다른 마이그레이션 위치가 필요한 경우 이 메서드만 override 한다.
      */
     protected open fun configureFlyway(builder: FluentConfiguration): FluentConfiguration =
-        builder.placeholderReplacement(false).locations("classpath:db/migration")
+        builder.placeholderReplacement(false).locations("classpath:db/migration/issue-tracking")
 
     /**
      * JVM 당 1회 실행 — Flyway migrate + DSLContext 생성 + 테스트용 프로젝트 1건 삽입.
