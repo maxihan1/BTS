@@ -6,9 +6,9 @@ import com.bts.workflow.domain.StateCategory
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition
-import com.bts.workflow.domain.dto.DomainEvent
-import com.bts.workflow.domain.dto.FieldChange
-import com.bts.workflow.domain.dto.TransitionPlan
+import com.bts.shared.workflow.DomainEvent
+import com.bts.shared.workflow.FieldChange
+import com.bts.shared.workflow.TransitionPlan
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.konform.validation.Invalid

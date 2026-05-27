@@ -2,6 +2,10 @@
 
 package com.bts.workflow.domain.dto
 
+import com.bts.shared.workflow.DomainEvent
+import com.bts.shared.workflow.FieldChange
+import com.bts.shared.workflow.TransitionPlan
+import com.bts.shared.workflow.TransitionRequest
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.konform.validation.Invalid

@@ -2,7 +2,7 @@
 
 package com.bts.workflow.postaction
 
-import com.bts.workflow.domain.dto.FieldChange
+import com.bts.shared.workflow.FieldChange
 import com.bts.workflow.domain.dto.PostActionPlan
 import com.bts.workflow.domain.dto.TransitionContext
 import com.bts.workflow.domain.spi.WorkflowPostAction

@@ -6,9 +6,9 @@ import com.bts.workflow.domain.StateCategory
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition
-import com.bts.workflow.domain.dto.DomainEvent
+import com.bts.shared.workflow.DomainEvent
+import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.domain.dto.TransitionContext
-import com.bts.workflow.domain.dto.TransitionRequest
 import com.bts.workflow.domain.expression.DefaultActorView
 import com.bts.workflow.domain.expression.DefaultIssueView
 import org.assertj.core.api.Assertions.assertThat

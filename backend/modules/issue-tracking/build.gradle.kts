@@ -59,10 +59,9 @@ repositories {
 }
 
 dependencies {
-    // project-workflow BC inbound port — WorkflowTransitionPort + TransitionRequest/TransitionPlan DTO
-    // BC 격리 원칙상 port (com.bts.workflow.port.inbound.*) 와 dto (com.bts.workflow.domain.dto.*) 만 허용.
-    // workflow 내부 adapter/engine 직접 import 금지.
-    implementation(project(":modules:project-workflow"))
+    // shared-kernel — WorkflowTransitionPort + TransitionRequest/Result/Plan DTO (순환 의존 차단)
+    // Task 3 이동: com.bts.workflow.port.inbound.* / com.bts.workflow.domain.dto.* → com.bts.shared.workflow.*
+    implementation(project(":modules:shared-kernel"))
 
     // 도메인 검증 (Konform — Kotlin-native 선언형 검증 라이브러리, ADR 2026-05-21 GAP-17)
     implementation("io.konform:konform-jvm:0.7.0")

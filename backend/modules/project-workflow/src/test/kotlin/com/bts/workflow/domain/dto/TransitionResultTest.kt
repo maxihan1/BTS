@@ -2,6 +2,8 @@
 
 package com.bts.workflow.domain.dto
 
+import com.bts.shared.workflow.TransitionPlan
+import com.bts.shared.workflow.TransitionResult
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 

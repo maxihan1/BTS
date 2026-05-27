@@ -2,6 +2,9 @@
 
 package com.bts.workflow.domain.dto
 
+import com.bts.shared.workflow.DomainEvent
+import com.bts.shared.workflow.FieldChange
+
 /**
  * [com.bts.workflow.domain.spi.WorkflowPostAction.evaluate] 의 반환값.
  *

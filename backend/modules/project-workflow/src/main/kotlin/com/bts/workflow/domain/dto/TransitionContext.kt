@@ -2,6 +2,7 @@
 
 package com.bts.workflow.domain.dto
 
+import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition

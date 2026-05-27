@@ -1,6 +1,6 @@
 // 워크플로우 전이 요청 DTO — 호출자 BC 가 제공
 
-package com.bts.workflow.domain.dto
+package com.bts.shared.workflow
 
 import io.konform.validation.Validation
 import io.konform.validation.ValidationResult

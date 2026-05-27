@@ -2,8 +2,9 @@
 
 package com.bts.workflow.port.inbound
 
-import com.bts.workflow.domain.dto.TransitionRequest
-import com.bts.workflow.domain.dto.TransitionResult
+import com.bts.shared.workflow.TransitionRequest
+import com.bts.shared.workflow.TransitionResult
+import com.bts.shared.workflow.WorkflowTransitionPort
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.transaction.annotation.Propagation

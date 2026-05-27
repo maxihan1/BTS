@@ -2,7 +2,7 @@
 
 package com.bts.workflow.postaction
 
-import com.bts.workflow.domain.dto.DomainEvent
+import com.bts.shared.workflow.DomainEvent
 import com.bts.workflow.domain.dto.PostActionPlan
 import com.bts.workflow.domain.dto.TransitionContext
 import com.bts.workflow.domain.spi.WorkflowPostAction

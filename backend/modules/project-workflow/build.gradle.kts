@@ -30,6 +30,9 @@ repositories {
 }
 
 dependencies {
+    // shared-kernel — WorkflowTransitionPort + TransitionRequest/Result/Plan/FieldChange/DomainEvent 이동됨 (Task 3)
+    implementation(project(":modules:shared-kernel"))
+
     // 도메인 검증 (Konform — Kotlin-native 선언형 검증 라이브러리, ADR 2026-05-21 GAP-17)
     implementation("io.konform:konform-jvm:0.7.0")
 
