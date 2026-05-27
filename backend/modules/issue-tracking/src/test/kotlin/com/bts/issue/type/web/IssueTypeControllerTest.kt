@@ -30,8 +30,13 @@ import java.time.Instant
 /**
  * IssueTypeController GET /api/v1/issue-types MockMvc 슬라이스 테스트.
  *
+ * FR-WF-02-10 (IssueType read-only API) 를 검증한다.
  * `@SpringBootApplication` 없이 최소 컨텍스트로 구성한다.
  * [IssueTypeRepository] 는 MockK stub 으로 대체한다.
+ *
+ * **PR scope (read-only).**
+ * 본 PR (FR-WF-02) 에서는 5 표준 타입 read 엔드포인트만 검증한다.
+ * 커스텀 IssueType CRUD 테스트는 후속 FR-IS-02 PR scope.
  *
  * 테스트 케이스.
  * - T-1. GET /api/v1/issue-types — 5 표준 타입 반환 → 200 + 5건
