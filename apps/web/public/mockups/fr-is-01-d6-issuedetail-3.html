@@ -1,0 +1,94 @@
+<!doctype html>
+<!-- FR-IS-01 D6 이슈 상세 시안 3 — 편집 모드 토글 (카드 중심, view↔edit 분리) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>이슈 상세 시안 3 — 편집 모드 토글</title>
+<style>
+  :root {
+    --background: oklch(1 0 0); --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0); --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0); --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0); --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0); --input: oklch(0.922 0 0); --radius: 0.625rem;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Geist Variable','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+    background: oklch(0.985 0 0); color: var(--foreground); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .page { max-width: 760px; margin: 0 auto; padding: 40px 24px; }
+  .breadcrumb { font-size: 13px; color: var(--muted-foreground); margin-bottom: 16px; }
+  .breadcrumb .key { font-weight: 500; color: var(--foreground); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .card + .card { margin-top: 16px; }
+  .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .card-head h2 { font-size: 18px; font-weight: 600; }
+  .btn { height: 36px; padding: 0 14px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--card); }
+  .btn.primary { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+  .btn.ghost { border-color: transparent; background: transparent; }
+  .btn.danger { color: var(--destructive); }
+  .btn.sm { height: 30px; padding: 0 10px; font-size: 13px; }
+  h1 { font-size: 22px; font-weight: 600; line-height: 1.4; }
+  .input { width: 100%; height: 40px; border: 1px solid var(--input); border-radius: 8px; padding: 0 12px; font-size: 16px; font-family: inherit; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { height: 34px; padding: 0 14px; border: 0; background: var(--card); font-size: 13px; font-weight: 500; cursor: pointer; border-right: 1px solid var(--border); color: var(--muted-foreground); }
+  .seg button:last-child { border-right: 0; }
+  .seg button.active { background: var(--primary); color: var(--primary-foreground); }
+  .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; font-size: 13px; }
+  .meta-grid .lab { color: var(--muted-foreground); }
+  .row-between { display: flex; justify-content: space-between; align-items: center; }
+  .editing { display: flex; gap: 8px; margin-top: 12px; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 6px; background: var(--muted); font-size: 12px; font-weight: 500; }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 12px 16px; box-shadow: 0 8px 24px rgba(0,0,0,.10); display: flex; gap: 10px; align-items: center; font-size: 13px; max-width: 440px; }
+  .toast .ic { color: var(--destructive); font-weight: 700; }
+  .hint { margin-top: 32px; font-size: 12px; color: var(--muted-foreground); border-top: 1px dashed var(--border); padding-top: 12px; }
+  .hint b { color: var(--foreground); }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="breadcrumb">ATLAS / <span class="key">ATLAS-42</span> · <span class="badge">v3</span></div>
+
+    <!-- 제목 카드: 편집 모드 ON 예시 -->
+    <div class="card">
+      <div class="card-head"><h2>제목</h2><span style="font-size:12px;color:var(--muted-foreground)">편집 중…</span></div>
+      <input class="input" value="결제 모듈에서 환불 시 잔액이 음수로 표시됨" />
+      <div class="editing">
+        <button class="btn primary sm">저장</button>
+        <button class="btn ghost sm">취소</button>
+      </div>
+    </div>
+
+    <!-- 상태 카드: 세그먼트 전이 -->
+    <div class="card">
+      <div class="card-head"><h2>상태</h2></div>
+      <div class="seg">
+        <button>할 일</button>
+        <button class="active">진행 중</button>
+        <button>검토</button>
+        <button>완료</button>
+      </div>
+    </div>
+
+    <!-- 메타 카드 (read-only) -->
+    <div class="card">
+      <div class="card-head"><h2>정보</h2><button class="btn danger sm">🗑 삭제</button></div>
+      <div class="meta-grid">
+        <div><span class="lab">보고자</span><br>김민지</div>
+        <div><span class="lab">프로젝트</span><br>ATLAS</div>
+        <div><span class="lab">생성</span><br>2026-05-25</div>
+        <div><span class="lab">수정</span><br>2026-05-27 14:02</div>
+      </div>
+    </div>
+
+    <div class="hint">
+      <b>시안 3 — 편집 모드 토글 (카드 중심).</b> view/edit를 명확히 분리 — 평소엔 읽기 전용, "편집" 누르면 입력 폼 등장(위 제목 카드가 편집 ON 상태).
+      상태 전이는 세그먼트 컨트롤로 다음 단계 한 번에. 카드 단위라 후속 단계(설명·담당자·라벨) 카드 추가가 자연스러움.
+      실수 편집 방지에 강함. 409 충돌=하단 토스트.
+    </div>
+  </div>
+
+  <div class="toast"><span class="ic">⚠</span><span>다른 사용자가 먼저 수정했습니다. 최신 내용으로 갱신했어요. 다시 시도해 주세요.</span></div>
+</body>
+</html>

@@ -1,0 +1,83 @@
+<!doctype html>
+<!-- FR-IS-01 D6 이슈 상세 시안 2 — 사이드 메타패널 (Jira풍, 2-컬럼) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>이슈 상세 시안 2 — 사이드 메타패널</title>
+<style>
+  :root {
+    --background: oklch(1 0 0); --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0); --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0); --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0); --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0); --input: oklch(0.922 0 0); --radius: 0.625rem;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Geist Variable','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+    background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .page { max-width: 960px; margin: 0 auto; padding: 40px 24px; }
+  .breadcrumb { font-size: 13px; color: var(--muted-foreground); margin-bottom: 16px; }
+  .breadcrumb .key { font-weight: 500; color: var(--foreground); }
+  .grid { display: grid; grid-template-columns: 1fr 280px; gap: 32px; align-items: start; }
+  .main h1 { font-size: 24px; line-height: 2rem; font-weight: 600; margin-bottom: 6px; }
+  .edit-inline { font-size: 13px; color: var(--muted-foreground); }
+  .edit-inline a { color: oklch(0.45 0.13 250); text-decoration: none; cursor: pointer; }
+  .desc-label { font-size: 13px; font-weight: 500; color: var(--muted-foreground); margin: 24px 0 8px; }
+  .desc { color: var(--muted-foreground); padding: 12px; background: var(--muted); border-radius: 10px; }
+  .panel { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .panel .row { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .panel .row:last-child { border-bottom: 0; }
+  .panel .lab { font-size: 12px; color: var(--muted-foreground); margin-bottom: 4px; }
+  .panel .val { font-size: 14px; font-weight: 500; }
+  .select { width: 100%; height: 36px; border: 1px solid var(--input); border-radius: 8px; padding: 0 10px; background: var(--card); font-size: 14px; font-weight: 500; display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+  .select .dot { width: 8px; height: 8px; border-radius: 50%; background: oklch(0.6 0.13 250); display: inline-block; margin-right: 6px; }
+  .actions { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .btn { height: 36px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--card); display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .btn.primary { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+  .btn.danger { color: var(--destructive); border-color: var(--border); }
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 12px 16px; box-shadow: 0 8px 24px rgba(0,0,0,.10); display: flex; gap: 10px; align-items: center; font-size: 13px; max-width: 360px; }
+  .toast .ic { color: var(--destructive); font-weight: 700; }
+  .hint { margin-top: 40px; font-size: 12px; color: var(--muted-foreground); border-top: 1px dashed var(--border); padding-top: 12px; }
+  .hint b { color: var(--foreground); }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="breadcrumb">ATLAS / <span class="key">ATLAS-42</span></div>
+    <div class="grid">
+      <div class="main">
+        <h1>결제 모듈에서 환불 시 잔액이 음수로 표시됨</h1>
+        <div class="edit-inline"><a>✎ 제목 수정</a></div>
+        <div class="desc-label">설명</div>
+        <div class="desc">(FR-IS-04 본문 단계에서 추가 예정 — D6은 요약·상태·메타 중심)</div>
+      </div>
+
+      <aside>
+        <div class="panel">
+          <div class="row">
+            <div class="lab">상태</div>
+            <div class="select"><span><span class="dot"></span>진행 중</span><span>▾</span></div>
+          </div>
+          <div class="row"><div class="lab">보고자</div><div class="val">김민지</div></div>
+          <div class="row"><div class="lab">프로젝트</div><div class="val">ATLAS</div></div>
+          <div class="row"><div class="lab">버전 (낙관락)</div><div class="val">v3</div></div>
+          <div class="row"><div class="lab">생성</div><div class="val">2026-05-25</div></div>
+          <div class="row"><div class="lab">수정</div><div class="val">2026-05-27 14:02</div></div>
+        </div>
+        <div class="actions">
+          <button class="btn danger">🗑 이슈 삭제</button>
+        </div>
+      </aside>
+    </div>
+
+    <div class="hint">
+      <b>시안 2 — 사이드 메타패널 (Jira풍).</b> 좌측 본문(제목+설명), 우측 고정 메타패널(상태 드롭다운·보고자·버전·날짜)+삭제.
+      상태 전이는 우측 상태 select에서 바로. 정보 밀도 높고 한눈에 메타 파악. 데스크톱 협업 도구 표준 레이아웃.
+      모바일에서는 우측 패널이 본문 아래로 스택. 409 충돌=우하단 토스트.
+    </div>
+  </div>
+
+  <div class="toast"><span class="ic">⚠</span><span>다른 사용자가 먼저 수정했습니다. 최신 내용으로 갱신했어요.</span></div>
+</body>
+</html>
