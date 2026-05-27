@@ -6,15 +6,24 @@ package com.bts.workflow.port.outbound
  * 권한 평가 요청자(Actor)를 식별하는 타입 안전 값 래퍼(Value Object).
  *
  * String 을 직접 받는 대신 이 타입을 사용해 잘못된 호출자 ID 가 권한 평가 경로에 진입하지 못하도록 한다.
- * blank 값은 생성 시점에 즉시 거부한다.
+ * blank 값과 UUID 형식이 아닌 값은 생성 시점에 즉시 거부한다.
  *
- * @param raw 원시 식별자 문자열 (예. 사용자 UUID, 서비스 계정 ID). blank 불가.
- * @throws IllegalArgumentException raw 가 blank 인 경우
+ * BC 의 audit 정확성을 위해 UUID String 강제.
+ * 비-UUID actor 표현은 별도 sentinel (예: SYSTEM_ACTOR_UUID) 을 UUID String 으로 변환한 후에만 전달 가능.
+ *
+ * @param raw 원시 UUID 문자열 (예. "550e8400-e29b-41d4-a716-446655440000"). blank 불가, UUID 형식 필수.
+ * @throws IllegalArgumentException raw 가 blank 이거나 UUID 형식이 아닌 경우
  */
 @JvmInline
 value class ActorId(val raw: String) {
     init {
         require(raw.isNotBlank()) { "ActorId must not be blank" }
+        require(UUID_REGEX.matches(raw)) { "ActorId must be a valid UUID String: '$raw'" }
+    }
+
+    companion object {
+        private val UUID_REGEX =
+            Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
     }
 }
 

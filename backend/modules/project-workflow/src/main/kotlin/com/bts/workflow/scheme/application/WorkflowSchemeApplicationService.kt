@@ -276,7 +276,7 @@ class WorkflowSchemeApplicationService(
         val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
         val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
 
-        val actorUuid = runCatching { UUID.fromString(actor.raw) }.getOrElse { SYSTEM_ACTOR_UUID }
+        val actorUuid = UUID.fromString(actor.raw) // ActorId VO 가 UUID 형식을 이미 보장 — 안전 변환.
         val now = Instant.now()
         val assignment =
             ProjectWorkflowSchemeAssignment(

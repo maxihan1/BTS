@@ -28,7 +28,7 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner
  * 7. prod profile 에서 Bean 이 등록되지 않는다 (stub 운영 노출 차단).
  */
 class AlwaysAllowWorkflowSchemePermissionResolverTest {
-    private val actor = ActorId("user-uuid-1234")
+    private val actor = ActorId("22222222-2222-2222-2222-222222222222")
 
     // ── ApplicationContextRunner 픽스처 ──────────────────────────────────────
     private val contextRunner =

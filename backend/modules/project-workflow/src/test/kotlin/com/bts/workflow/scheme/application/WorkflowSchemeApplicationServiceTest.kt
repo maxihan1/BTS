@@ -52,7 +52,7 @@ class WorkflowSchemeApplicationServiceTest {
 
     private lateinit var service: WorkflowSchemeApplicationService
 
-    private val actor = ActorId("test-user")
+    private val actor = ActorId("11111111-1111-1111-1111-111111111111")
 
     @BeforeEach
     fun setUp() {
