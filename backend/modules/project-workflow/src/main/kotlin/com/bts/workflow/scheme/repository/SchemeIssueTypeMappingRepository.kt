@@ -203,7 +203,7 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
                 SchemeIssueTypeMapping(
                     id = rec.get(M_ID) ?: error("id is null — DB BIGSERIAL 제약 위반"),
                     schemeId = WorkflowSchemeId(rec.get(M_SCHEME_ID) ?: error("scheme_id is null")),
-                    issueTypeId = rawIssueTypeId?.let { com.bts.issue.type.domain.IssueTypeId(it) },
+                    issueTypeId = rawIssueTypeId?.let { IssueTypeId(it) },
                     workflowId = rec.get(M_WORKFLOW_ID) ?: error("workflow_id is null"),
                     createdAt = createdAtOdt.toInstant(),
                 )
