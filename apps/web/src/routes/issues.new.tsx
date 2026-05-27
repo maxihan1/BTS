@@ -40,16 +40,20 @@ type IssueCreateFormValues = z.infer<typeof issueCreateSchema>
 // 에러 코드 → 사용자 메시지 매핑
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * ApiError body에서 errorCode 를 추출해 사용자 노출 메시지로 변환한다.
+ *
+ * @param err 임의 에러 — ApiError 가 아니면 기본 메시지 반환
+ * @returns 사용자 노출 한국어 에러 메시지
+ */
 function resolveCreateErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     const body = err.body
-    if (
-      typeof body === 'object' &&
-      body !== null &&
-      'errorCode' in body &&
-      (body as Record<string, unknown>)['errorCode'] === 'PROJECT_NOT_FOUND'
-    ) {
-      return issueCreateStrings.errorProjectNotFound
+    if (typeof body === 'object' && body !== null && 'errorCode' in body) {
+      const { errorCode } = body as { errorCode: unknown }
+      if (errorCode === 'PROJECT_NOT_FOUND') {
+        return issueCreateStrings.errorProjectNotFound
+      }
     }
   }
   return issueCreateStrings.errorDefault
@@ -120,8 +124,8 @@ export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.E
             <FormItem>
               <FormLabel>{issueCreateStrings.projectKeyLabel}</FormLabel>
               <FormControl>
+                {/* aria-label — FormLabel.htmlFor 가 wrapper div 를 가리키므로 input 자체에 aria-label 로 WCAG AA 보장 */}
                 <Input
-                  id={`${field.name}-input`}
                   placeholder="예: ATLAS"
                   aria-label={issueCreateStrings.projectKeyLabel}
                   {...field}
@@ -141,7 +145,6 @@ export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.E
               <FormLabel>{issueCreateStrings.summaryLabel}</FormLabel>
               <FormControl>
                 <Input
-                  id={`${field.name}-input`}
                   placeholder="이슈 제목을 입력하세요"
                   aria-label={issueCreateStrings.summaryLabel}
                   {...field}
