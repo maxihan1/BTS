@@ -27,3 +27,20 @@ export const loginStrings = {
 export const loginPageStrings = {
   heading: 'BTS 로그인',
 } as const
+
+/** 이슈 생성 폼 관련 문자열 */
+export const issueCreateStrings = {
+  /** 폼 레이블 */
+  projectKeyLabel: '프로젝트 키',
+  summaryLabel: '제목',
+  submitButton: '이슈 생성',
+
+  /** Zod 검증 에러 메시지 */
+  projectKeyRequired: '프로젝트 키를 입력하세요.',
+  summaryRequired: '제목을 입력하세요.',
+  summaryTooLong: '제목은 500자 이하로 입력하세요.',
+
+  /** 백엔드 에러 코드 → 사용자 메시지 */
+  errorProjectNotFound: '존재하지 않는 프로젝트입니다.',
+  errorDefault: '이슈 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+} as const
