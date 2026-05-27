@@ -32,7 +32,7 @@ export interface UpdateIssueSummaryInput {
 export function useUpdateIssueSummary() {
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useMutation<IssueResponse, ApiError, UpdateIssueSummaryInput, { previousIssue: IssueResponse | undefined }>({
     mutationFn: ({ key, summary, expectedVersion }: UpdateIssueSummaryInput) =>
       updateIssue(key, { summary, expectedVersion }),
 
@@ -53,15 +53,15 @@ export function useUpdateIssueSummary() {
       return { previousIssue }
     },
 
-    onSuccess: (updatedIssue: IssueResponse, { key }: UpdateIssueSummaryInput) => {
+    onSuccess: (updatedIssue, { key }: UpdateIssueSummaryInput) => {
       // 서버 응답으로 캐시 갱신 — version 포함 전체 필드 반영
       queryClient.setQueryData<IssueResponse>(issueQueryKey(key), updatedIssue)
     },
 
     onError: (
-      error: unknown,
+      error,
       { key }: UpdateIssueSummaryInput,
-      context: { previousIssue: IssueResponse | undefined } | undefined,
+      context,
     ) => {
       // 이전 캐시로 롤백
       if (context?.previousIssue !== undefined) {
@@ -74,7 +74,7 @@ export function useUpdateIssueSummary() {
       }
     },
 
-    onSettled: (_data: unknown, _error: unknown, { key }: UpdateIssueSummaryInput) => {
+    onSettled: (_data, _error, { key }: UpdateIssueSummaryInput) => {
       // 성공/실패 무관하게 서버 상태와 동기화
       void queryClient.invalidateQueries({ queryKey: issueQueryKey(key) })
     },

@@ -282,7 +282,7 @@ export function IssueListRouteAdapter(): JSX.Element {
   const page = typeof search.page === 'number' ? search.page : 0
 
   function handlePageChange(nextPage: number): void {
-    void navigate({ search: (prev: Record<string, unknown>) => ({ ...prev, page: nextPage }) })
+    void navigate({ to: '/issues', search: (prev) => ({ ...prev, page: nextPage }) })
   }
 
   function handleNavigate(key: string): void {

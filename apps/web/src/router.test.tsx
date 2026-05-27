@@ -66,15 +66,10 @@ describe('Router', () => {
     expect(await screen.findByText(/이슈 목록/)).toBeInTheDocument()
   })
 
-  it('/issues 라우트 — requireAuth: true 가 staticData에 선언됨', () => {
-    // routeTree에서 /issues 라우트를 찾아 staticData 확인
-    const routes = routeTree.children ?? []
-    const issuesRoute = routes.find(
-      (r) => (r as { path?: string }).path === '/issues',
-    )
-    expect(issuesRoute).toBeDefined()
-    expect((issuesRoute as { options?: { staticData?: { requireAuth?: boolean } } })
-      ?.options?.staticData?.requireAuth).toBe(true)
+  it('/issues 라우트 — 미인증 상태에서 /login 으로 리다이렉트 (requireAuth 가드 적용 증거)', async () => {
+    // clearSession 상태(미인증) — requireAuth 가드가 /login 으로 redirect
+    renderWithRoute('/issues')
+    expect(await screen.findByText(/BTS 로그인/)).toBeInTheDocument()
   })
 
   it('/issues/new 라우트 마운트 (인증 상태) → IssueCreateRouteAdapter 렌더', async () => {
