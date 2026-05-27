@@ -63,6 +63,88 @@
 - main clean 빌드 깨짐(jOOQ task 의존) → FR6 으로 동반 수정(Maxi 결정).
 - 전이 폐쇄 완전성(FieldChange/DomainEvent) → 6 클래스 확정.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> **리팩토링 TDD 변형.** 이동(move) task 는 RED 가 없다 — 기존 테스트가 회귀 가드. 이동 후 기존 테스트가 그대로 green 이면 성공. 커밋은 `refactor:`. bts-impl 의 TDD 순서 검증은 신규 작성(Task 2)에만 엄격 적용, 이동 task(3)는 "기존 테스트 green 유지 + refactor 커밋" 으로 판정.
+
+### Task 1. shared-kernel 모듈 스캐폴드
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/settings.gradle.kts`, `backend/modules/shared-kernel/build.gradle.kts`]
+- depends-on: []
+
+**작업 (config — 단위테스트 없음, gradle 검증)**.
+- `backend/settings.gradle.kts` 에 `include(":modules:shared-kernel")` 추가.
+- `backend/modules/shared-kernel/build.gradle.kts` 신규 — plugins: kotlin jvm + plugin.spring + ktlint + detekt. dependencies: `io.konform:konform-jvm:0.7.0`, `org.springframework:spring-context`, `org.springframework:spring-tx`, test: kotlin-test/junit5/mockk. **flyway/jooq/webmvc/spring-boot 미포함.** group `com.atlas.bts`, JVM 21 — 기존 모듈 패턴 일치.
+- 빈 패키지 디렉토리 `com/bts/shared/workflow`, `com/bts/shared/issue` 준비.
+
+**검증**: `./gradlew :modules:shared-kernel:compileKotlin` SUCCESS (빈 모듈 컴파일).
+
+### Task 2. IssueTypeId / IssueTypeKey 신규 생성 (TDD red→green)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/issue/IssueTypeId.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/issue/IssueTypeKey.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/issue/IssueTypeIdTest.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/issue/IssueTypeKeyTest.kt`]
+- depends-on: [1]
+
+**RED**: shared-kernel test 에 `IssueTypeIdTest`(value>0 require, 0/음수 IllegalArgument) + `IssueTypeKeyTest`(REGEX `^[a-z][a-z0-9-]{1,29}$`, 위반 시 IllegalArgument) 작성. 클래스 부재로 실패. (PR #18 의 동명 테스트 본문을 정본으로 차용 — package 만 `com.bts.shared.issue`.)
+
+**GREEN**: `IssueTypeId(@JvmInline value class, Long, require>0)` + `IssueTypeKey(@JvmInline value class, String, REGEX)` 작성. PR #18 본과 동일 시맨틱.
+
+**REFACTOR**: KDoc + REGEX companion 상수.
+
+**검증**: `./gradlew :modules:shared-kernel:test` PASS.
+
+### Task 3. workflow 포트/DTO 6종 이동 + importer 재지정 + build.gradle 재배선 (원자적 refactor)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/*` (신규 6), project-workflow 의 기존 6 클래스 (삭제), `backend/modules/issue-tracking/build.gradle.kts`, `backend/modules/project-workflow/build.gradle.kts`, project-workflow ~37 importer + issue-tracking ~6 importer (main+test)]
+- depends-on: [1]
+
+**작업 (이동 — RED 없음, 기존 테스트 회귀 가드)**.
+1. 6 클래스를 `com.bts.shared.workflow` 로 이동 — `WorkflowTransitionPort`, `TransitionRequest`, `TransitionResult`, `TransitionPlan`, `FieldChange`, `DomainEvent`. package 선언만 변경, 본문 동일. (EC3: `@Transactional(MANDATORY)` 인터페이스 유지 — eng-review 결과 반영 가능.)
+2. project-workflow 의 원본 6 파일 삭제.
+3. 전 importer 의 `import com.bts.workflow.{port.inbound,domain.dto}.*` → `import com.bts.shared.workflow.*` 재지정. FQN 인라인 참조 포함. (grep 으로 누락 0 확인.)
+4. `issue-tracking/build.gradle.kts:65` `:modules:project-workflow` 제거 → `:modules:shared-kernel` 추가.
+5. `project-workflow/build.gradle.kts` `:modules:shared-kernel` 추가.
+
+**검증**:
+- `./gradlew :modules:project-workflow:compileKotlin` SUCCESS.
+- `./gradlew :modules:project-workflow:test :modules:issue-tracking:test` 기존 테스트 전부 그대로 PASS (동작 불변 증명).
+- `grep -rn "com.bts.workflow.domain.dto\|com.bts.workflow.port.inbound" backend/modules` → 0 (잔존 참조 없음).
+
+### Task 4. jOOQ task 의존 수정 (clean 빌드 회복)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/build.gradle.kts`, `backend/modules/issue-tracking/build.gradle.kts`]
+- depends-on: [3]   # 동일 build.gradle 파일 — 파일 겹침 자동 직렬
+
+**작업 (config)**.
+- 두 모듈 build.gradle 에 `tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileKotlin") { dependsOn("generateJooq") }` (또는 동등) 추가. compileKotlin↔generateJooq 미선언 의존 해소.
+
+**검증**: clean 상태에서 `./gradlew clean test` 가 generateJooq 수동 선행 없이 통과.
+
+### Task 5. shared-kernel 역참조 금지 ArchUnit 가드 (NFR2)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/architecture/SharedKernelBoundaryArchTest.kt`]
+- depends-on: [1, 3]
+
+**RED→GREEN**: `com.bts.shared..` 가 `com.bts.issue..` / `com.bts.workflow..` / `com.atlas.bts..` 에 의존하지 않음을 ArchUnit 으로 검증. shared-kernel 이 중립이므로 GREEN. identity 의 `SpiBoundaryArchTest` 선례 참고.
+
+**검증**: `./gradlew :modules:shared-kernel:test --tests *SharedKernelBoundaryArchTest` PASS.
+
+## Plan 메타
+
+- task 수: 5
+- wave 예상: W1=[T1] → W2=[T2, T3] (파일 무겹침, 둘 다 depends-on [1]) → W3=[T4, T5]. 약 3 wave.
+- TDD 강제: Task 2 (신규 VO) 만 red→green 엄격. Task 3 (이동) 은 refactor — 기존 테스트 green 유지로 판정. Task 1/4 는 config(gradle 검증). Task 5 는 guard test.
+- 동작 변경: 0 (NFR1). FR2 이동은 시그니처/본문 불변.
+- eng-review 위임: EC3 `@Transactional` 인터페이스 유지 vs impl 이동(SPI 프레임워크 비결합 — identity 선례 대비).
+- 검증 baseline 주의: main clean 빌드가 jOOQ 로 깨진 상태 → Task 4 이전 검증은 generateJooq 수동 선행 필요, Task 4 이후 우회 불요.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
