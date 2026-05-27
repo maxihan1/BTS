@@ -41,9 +41,27 @@
 - **관련 ADR**. [docs/decisions/2026-05-27-shared-kernel-extraction.md](../decisions/2026-05-27-shared-kernel-extraction.md) (생성됨)
 - **eng-review 검토 위임**. (1) `@Transactional` 인터페이스 유지 vs impl 이동(SPI 프레임워크 비결합), (2) shared-kernel 역참조 금지 ArchUnit 룰.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-05-27-workflow-spi-extraction.md](../specs/2026-05-27-workflow-spi-extraction.md)
+
+핵심 3줄.
+- workflow 포트/DTO 6종 MOVE(`com.bts.shared.workflow.*`) + issue VO 2종 CREATE(`com.bts.shared.issue.*`) → shared-kernel 신설.
+- `issue-tracking → project-workflow` edge 제거로 PR #18 머지 시 cycle 부재. 동작 변경 0(import 경로 + package 선언만).
+- jOOQ task 의존(`compileKotlin dependsOn generateJooq`) 동반 수정 → clean 빌드 회복(별도 커밋).
+
+**base 사실.** main 엔 cycle 없음(issue→workflow 한 방향만). IssueTypeId/Key 는 PR #18 소유 → 본 PR 에선 shared-kernel 에 신규 생성. PR #18 은 rebase 시 자기 IssueTypeId 4파일 제거 + 재지정.
+
+## Brainstorming Check
+
+✅ 통과 (직접 sanity check — office-hours/brainstorming 스킬은 제품 발굴용이라 동작 변경 0 리팩토링엔 부적합, 코드 분석으로 gap 직접 탐지).
+
+발견·해소한 gap.
+- automation BC importer 우려 → **미생성 모듈**로 확인(KDoc 미래 의도). 영향 없음.
+- IssueTypeId/Key 가 main 미존재 → 이전 전략 move→create 로 재정의(옵션 2, Maxi 결정).
+- import 갱신 범위 ~43 파일(DTO 가 project-workflow 내부 광범위 사용) → plan task 에 반영.
+- main clean 빌드 깨짐(jOOQ task 의존) → FR6 으로 동반 수정(Maxi 결정).
+- 전이 폐쇄 완전성(FieldChange/DomainEvent) → 6 클래스 확정.
 
 ## Plan (← /bts-plan 채움)
 

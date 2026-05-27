@@ -49,18 +49,34 @@ workflow-spi 가 포트+DTO 보유 + project-workflow 가 `IssueTypeId` 대신 `
 
 이유. BTS 의 BC 격리 원칙은 "다른 BC 직접 import 금지" 로 엄격하다. A 만이 양방향 직접 import 를 모두 제거한다. 이전 대상 VO(`IssueTypeId/Key`) 는 다른 클래스 의존이 없는 작고 안정적인 `@JvmInline value class` 라 shared-kernel 잡동사니화 위험이 낮다.
 
+### base 브랜치 사실 (git 검증 2026-05-27) — 중요
+
+본 PR 은 **main(04c3e04) 기준**이다. main 의 의존 현황은 비대칭이다.
+
+- main 에는 **`issue-tracking → project-workflow` 한 방향만** 존재(PR #17 의 `WorkflowTransitionPort` 의존). **순환 고리 아직 없음.**
+- `IssueTypeId/IssueTypeKey` + `project-workflow → issue-tracking` 역방향 의존은 **PR #18 이 만든 것** — main 에 미존재. 고리는 PR #18 머지 순간 완성되는 latent cycle.
+
+따라서 이전 대상은 "move" 와 "create" 로 갈린다.
+
 ### 이전 대상 (전이 폐쇄 — 코드 검증 완료 2026-05-27)
 
-issue-tracking 이 도달 가능한 타입 전체를 이전해야 한다. `IssueApplicationService` 가 `WorkflowTransitionPort` + `TransitionRequest/Result/Plan` 을 import 하고, `TransitionPlan` 이 `FieldChange` + `DomainEvent` 를 참조하므로 후자 둘도 포함된다.
-
-**workflow 쪽 (6) — `com.bts.workflow.*` → `com.bts.shared.workflow.*`**
+**workflow 쪽 (6) — MOVE. `com.bts.workflow.*` → `com.bts.shared.workflow.*`** (main 에 실재, 이동)
 - `WorkflowTransitionPort` (port.inbound)
 - `TransitionRequest`, `TransitionResult`, `TransitionPlan`, `FieldChange`, `DomainEvent` (domain.dto)
+- 근거. `IssueApplicationService` 가 port + `TransitionRequest/Result/Plan` import → `TransitionPlan` 이 `FieldChange`+`DomainEvent` 참조 → 전이 폐쇄에 6 전부 포함.
+- importer ~43 파일(project-workflow 내부 광범위 사용 + issue-tracking) 의 import 경로 갱신 필요.
 
-**issue 쪽 (2) — `com.bts.issue.type.domain.*` → `com.bts.shared.issue.*`**
-- `IssueTypeId`, `IssueTypeKey`
+**issue 쪽 (2) — CREATE. `com.bts.shared.issue.*` 에 신규 생성** (main 에 미존재)
+- `IssueTypeId`, `IssueTypeKey` + 단위 테스트. main 에 없으므로 "이동"이 아니라 shared-kernel 에 TDD 로 신규 작성. PR #18 머지 전까지 소비자 없음(테스트가 검증). 옵션 2(Maxi 결정)의 의도된 시퀀싱.
 
 **이전 제외 (잔류 확인).** 같은 `com.bts.workflow.domain.dto` 패키지의 `PostActionPlan`, `TransitionContext` 는 issue-tracking 도달 폐쇄에 미포함 → project-workflow 잔류. `WorkflowValidator` (port KDoc 언급)는 실제 import 아님 → 잔류. project-workflow 자체의 `IssueDomainEvent` 와 본 `DomainEvent` 는 별개 타입.
+
+### PR #18 후속 수술 (본 PR 머지 후, rebase 시)
+
+본 PR 은 main 만 정리한다. PR #18 은 rebase 시 다음을 수정해야 한다.
+- issue-tracking 의 `IssueTypeId/IssueTypeKey` + 두 테스트(4 파일) **제거** — shared-kernel 본이 정본.
+- project-workflow 의 5 scheme 파일 + 관련 테스트 import 경로 `com.bts.issue.type.domain.*` → `com.bts.shared.issue.*` 재지정.
+- `project-workflow/build.gradle.kts` 의 `:modules:issue-tracking` 의존 제거(IssueTypeId 를 shared-kernel 에서 가져오므로 불필요).
 
 ### 패키지 네임스페이스
 
@@ -68,19 +84,27 @@ issue-tracking 이 도달 가능한 타입 전체를 이전해야 한다. `Issue
 - `com.bts.shared.workflow` — 포트 + 워크플로우 DTO 6종
 - `com.bts.shared.issue` — IssueTypeId/Key 2종
 
-### 모듈 build.gradle 변경
+### 모듈 build.gradle 변경 (본 PR — main 기준)
 
-- 신규 `modules:shared-kernel/build.gradle.kts` — 의존. `io.konform`(TransitionRequest 검증), spring-tx(WorkflowTransitionPort 의 `@Transactional(MANDATORY)`). 다른 모듈 의존 0.
-- `issue-tracking/build.gradle.kts` — `:modules:project-workflow` 의존 제거 → `:modules:shared-kernel` 추가.
-- `project-workflow/build.gradle.kts` — `:modules:issue-tracking` 의존 제거 → `:modules:shared-kernel` 추가.
-- `settings.gradle.kts` — `include(":modules:shared-kernel")` 등록.
+- 신규 `backend/modules/shared-kernel/build.gradle.kts` — 의존. `io.konform:konform-jvm:0.7.0`(TransitionRequest 검증), `spring-context` + `spring-tx`(WorkflowTransitionPort 의 `@Transactional(MANDATORY)`). 다른 모듈 의존 0. flyway/jooq/webmvc 불필요(순수 VO/DTO/포트).
+- `issue-tracking/build.gradle.kts:65` — `:modules:project-workflow` 의존 **제거** → `:modules:shared-kernel` 추가.
+- `project-workflow/build.gradle.kts` — `:modules:shared-kernel` **추가**(제거 없음 — main 의 project-workflow 는 issue-tracking 의존이 없다. 그 제거는 PR #18 rebase 몫).
+- `backend/settings.gradle.kts` — `include(":modules:shared-kernel")` 등록.
 
-### 결과 모듈 그래프 (cycle 부재)
+### 결과 모듈 그래프
 
+**본 PR 머지 직후 (main).**
+```
+issue-tracking   → shared-kernel   (포트/DTO)
+project-workflow → shared-kernel   (포트/DTO + IssueTypeId/Key)
+issue-tracking → project-workflow edge 제거됨. cycle 부재.
+```
+
+**PR #18 rebase + 머지 후 (최종).**
 ```
 issue-tracking   → shared-kernel
 project-workflow → shared-kernel
-(상호 직접 의존 0)
+상호 BC 직접 의존 0 (project-workflow 의 IssueTypeId 도 shared-kernel 경유). cycle 부재.
 ```
 
 ## 미해결 / eng-review 검토 항목
@@ -94,6 +118,7 @@ project-workflow → shared-kernel
 - PR #18 — 본 PR 머지 후 rebase. project-workflow 의 IssueTypeId import 경로가 `com.bts.shared.issue.*` 로 바뀜.
 - glossary — "shared kernel"(DDD 공유 커널 패턴) 용어 추가 후보(Maxi 승인).
 - 회귀 검증 — `./gradlew clean test` 전체 PASS + `:modules:project-workflow:compileKotlin` SUCCESS.
+- 빌드 그래프 동반 수정 — project-workflow + issue-tracking 의 `compileKotlin dependsOn generateJooq` 미선언으로 main clean 빌드가 깨진 상태(2026-05-27 baseline). 본 PR 이 주제(빌드 그래프 정합성)와 일관되게 함께 수정. 순환 해소와는 별도 커밋으로 추적 분리.
 
 ## 관련
 
