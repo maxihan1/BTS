@@ -72,8 +72,10 @@ issue-tracking 을 cross-BC import 하면서 처음 충돌이 노출되었고, �
 - **DATA.md §4.1** 에 BC 별 번호 범위 표 추가.
 - **project-workflow**.
   - `V001__init_workflow.sql` → `V200__init_workflow.sql` rename.
-  - `V004__workflow_schemes.sql` 는 단조 증가 컨벤션 유지 (issue-tracking
-    V003 직후) 라 그대로.
+  - `V004__workflow_schemes.sql` → `V201__workflow_schemes.sql` rename (BC prefix 적용).
+  - `V202__assignment_project_id_to_uuid.sql` 추가 — project_id BIGINT → UUID 정정.
+    V202 는 `USING NULL` 으로 기존 컬럼 데이터를 비우는 destructive 변경의 예시 케이스
+    (Phase 0 직전 실데이터 없으므로 허용, 운영 재사용 금지 — V202 SQL 주석 참조).
   - `build.gradle.kts:140` jOOQ codegen TC_INITSCRIPT URL 의 V001 참조 →
     V200 으로 업데이트.
   - `V001MigrationTest.kt` → `V200MigrationTest.kt` 파일/클래스 rename.

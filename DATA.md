@@ -81,7 +81,7 @@ Flyway 가 `Found more than one migration with version` 으로 실패한다.
 |--------------------|------------|------------------------------------|
 | identity-access    | V001~V099  | V001~V006                         |
 | issue-tracking     | V001~V099  | V001~V003 (grand-fathered)        |
-| project-workflow   | V200~V299  | V200, V004 (V004 = issue-tracking V003 다음 단조 증가) |
+| project-workflow   | V200~V299  | V200, V201, V202 |
 | automation (예정)  | V300~V399  | —                                 |
 | (새 BC)            | V400+      | —                                 |
 

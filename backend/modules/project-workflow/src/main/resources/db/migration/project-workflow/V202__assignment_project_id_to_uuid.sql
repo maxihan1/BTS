@@ -3,6 +3,8 @@
 -- Jira align 정신: 매핑 양쪽 entity ID 타입 통일 (양쪽 모두 UUID).
 -- assigned_by (UUID, spec line 142) 와 같은 row 안에서 UUID 통일이 자연스러움.
 -- Phase 0 직전 — 시드/실데이터 없음. USING NULL 으로 기존 데이터 비움 (destructive OK).
+-- ⚠️ FUTURE MIGRATION CAUTION: V202 의 USING NULL 패턴은 운영 데이터 존재 후 재사용 금지.
+-- 실데이터 존재 시 multi-step backfill 필수 — (1) UUID 컬럼 nullable 추가 (2) backfill 스크립트 (3) NOT NULL 강제 + 기존 컬럼 drop.
 
 -- PK + FK 제약 재설정
 ALTER TABLE project_workflow_scheme_assignments
