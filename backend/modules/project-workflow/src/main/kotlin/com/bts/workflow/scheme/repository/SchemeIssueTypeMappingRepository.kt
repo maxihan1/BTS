@@ -34,7 +34,6 @@ import java.util.UUID
  */
 @Repository
 class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     // V004 테이블은 jOOQ codegen 범위(V001 only) 밖 — DSL.table()/DSL.field() 동적 참조 사용.
@@ -44,6 +43,7 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
     private val COL_SCHEME_ID = DSL.field("scheme_id", Long::class.java)
     private val COL_ISSUE_TYPE_ID = DSL.field("issue_type_id", Long::class.java)
     private val COL_WORKFLOW_ID = DSL.field("workflow_id", UUID::class.java)
+
     // TIMESTAMPTZ → jOOQ 는 OffsetDateTime 으로 읽음. toInstant() 변환은 toMapping() 에서 처리.
     private val COL_CREATED_AT = DSL.field("created_at", OffsetDateTime::class.java)
 
@@ -87,8 +87,9 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
             // Spring ExceptionTranslator 비활성 컨텍스트 (예: 통합 테스트의 plain DSL.using()) —
             // jOOQ native DataAccessException 으로 도착. cause SQLException 의 sqlstate "23505"
             // (unique_violation) 인 경우만 MappingDuplicateException 변환.
-            val sqlEx = generateSequence(ex as Throwable?) { it.cause }
-                .firstOrNull { it is java.sql.SQLException } as? java.sql.SQLException
+            val sqlEx =
+                generateSequence(ex as Throwable?) { it.cause }
+                    .firstOrNull { it is java.sql.SQLException } as? java.sql.SQLException
             if (sqlEx?.sqlState == "23505") {
                 log.warn(
                     "addMapping UNIQUE 위반 (jOOQ native) — scheme_id={} issue_type_id={}",
@@ -158,6 +159,56 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
             .and(COL_ISSUE_TYPE_ID.eq(issueTypeId.value))
             .fetchOne()
             ?.toMapping()
+
+    /**
+     * 스킴 내 특정 이슈 타입 **키** 에 대한 매핑을 반환한다.
+     *
+     * WorkflowResolverImpl 에서 issueTypeKey(String) → mapping 변환에 사용한다.
+     * application layer 가 issue-tracking BC 의 IssueTypeId 를 직접 조회하지 않도록
+     * Repository 내부에서 issue_types JOIN 을 수행한다 (BC 격리 컨벤션 준수).
+     *
+     * issue_types 테이블은 issue-tracking BC 소유이므로 읽기 전용 JOIN 만 허용한다.
+     * 쓰기(INSERT/UPDATE/DELETE) 금지.
+     *
+     * @param schemeId 조회할 스킴 식별자.
+     * @param issueTypeKey 조회할 이슈 타입 키 (예: "story", "bug").
+     * @return 해당 이슈 타입 키의 매핑, 없으면 null.
+     */
+    @Transactional(readOnly = true)
+    fun findByIssueTypeKey(
+        schemeId: WorkflowSchemeId,
+        issueTypeKey: String,
+    ): SchemeIssueTypeMapping? {
+        val ISSUE_TYPES = DSL.table("issue_types")
+        val IT_ID = DSL.field("issue_types.id", Long::class.java)
+        val IT_KEY = DSL.field("issue_types.key", String::class.java)
+
+        // JOIN 시 COL_ID(= "id") 가 양 테이블에 모두 있어 ambiguous — 테이블 한정자 명시.
+        val M_ID = DSL.field("workflow_scheme_issue_type_mappings.id", Long::class.java)
+        val M_SCHEME_ID = DSL.field("workflow_scheme_issue_type_mappings.scheme_id", Long::class.java)
+        val M_ISSUE_TYPE_ID = DSL.field("workflow_scheme_issue_type_mappings.issue_type_id", Long::class.java)
+        val M_WORKFLOW_ID = DSL.field("workflow_scheme_issue_type_mappings.workflow_id", UUID::class.java)
+        val M_CREATED_AT = DSL.field("workflow_scheme_issue_type_mappings.created_at", OffsetDateTime::class.java)
+
+        return dsl
+            .select(M_ID, M_SCHEME_ID, M_ISSUE_TYPE_ID, M_WORKFLOW_ID, M_CREATED_AT)
+            .from(TABLE)
+            .join(ISSUE_TYPES).on(COL_ISSUE_TYPE_ID.eq(IT_ID))
+            .where(M_SCHEME_ID.eq(schemeId.value))
+            .and(IT_KEY.eq(issueTypeKey))
+            .fetchOne()
+            ?.let { rec ->
+                val rawIssueTypeId = rec.get(M_ISSUE_TYPE_ID)
+                val createdAtOdt = rec.get(M_CREATED_AT) ?: error("created_at is null — DB NOT NULL 제약 위반")
+                SchemeIssueTypeMapping(
+                    id = rec.get(M_ID) ?: error("id is null — DB BIGSERIAL 제약 위반"),
+                    schemeId = WorkflowSchemeId(rec.get(M_SCHEME_ID) ?: error("scheme_id is null")),
+                    issueTypeId = rawIssueTypeId?.let { com.bts.issue.type.domain.IssueTypeId(it) },
+                    workflowId = rec.get(M_WORKFLOW_ID) ?: error("workflow_id is null"),
+                    createdAt = createdAtOdt.toInstant(),
+                )
+            }
+    }
 
     /**
      * 매핑을 삭제한다.

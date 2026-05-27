@@ -42,6 +42,19 @@ class WorkflowRepository(private val dsl: DSLContext) {
     }
 
     /**
+     * UUID(PK) 로 [Workflow] aggregate 를 조회한다.
+     *
+     * WorkflowResolverImpl 에서 mapping.workflowId(UUID) → Workflow 변환에 사용한다.
+     *
+     * @param id workflows.id (UUID PK)
+     * @return 조회된 [Workflow], 부재 시 null
+     */
+    fun findById(id: UUID): Workflow? {
+        val rows = fetchJoinedRows(WORKFLOWS.ID.eq(id))
+        return rows.toWorkflows().firstOrNull()
+    }
+
+    /**
      * 저장된 모든 [Workflow] aggregate 를 반환한다.
      *
      * @return [Workflow] 목록 (비어 있을 수 있음)

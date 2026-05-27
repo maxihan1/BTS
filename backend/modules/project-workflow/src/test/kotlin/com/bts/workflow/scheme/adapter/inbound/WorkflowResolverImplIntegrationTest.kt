@@ -9,6 +9,7 @@ import com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermiss
 import com.bts.workflow.scheme.adapter.outbound.JdbcProjectLookupAdapter
 import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.domain.ProjectKey
 import com.bts.workflow.scheme.exception.ProjectNotFoundException
@@ -110,7 +111,7 @@ class WorkflowResolverImplIntegrationTest {
             val schemeRepo = WorkflowSchemeRepository(dsl)
             val assignmentRepo = ProjectWorkflowSchemeAssignmentRepository(dsl)
             val mappingRepo = SchemeIssueTypeMappingRepository(dsl)
-            val eventPublisher = WorkflowSchemeEventPublisher(dsl, ObjectMapper())
+            val eventPublisher = WorkflowSchemeEventPublisher(dsl, ObjectMapper().registerModule(JavaTimeModule()))
             val permissionResolver = AlwaysAllowWorkflowSchemePermissionResolver()
             val workflowRepo = WorkflowRepository(dsl)
             val projectLookup: ProjectLookupPort = JdbcProjectLookupAdapter(dsl)
