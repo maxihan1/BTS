@@ -199,4 +199,16 @@ FR-IS-01 (이슈 CRUD + 상태 전이 검증 + 알림)의 D6 단계 — 프론�
 - 추가 검증: typecheck, eslint(no-console), vitest, 최종 `pnpm verify`. E2E(D7)는 별도 + 백엔드 wiring 선결
 - 미해결 결정(게이트1 검토): toast = in-house 최소 구현(기본) vs sonner 도입(새 의존성, 승인 필요)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-design-review (2026-05-27, ui 타입)
+
+- ✅ 상태 커버리지. 목록 로딩/에러/빈상태(T5), 상세 3-상태 로딩/404 role=alert/성공(T7). workflows.$key 선례와 일관.
+- ✅ 접근성(WCAG AA). role=alert 에러(T7), toast role=status(T2), 키보드 탐색·44px 터치(spec NFR). 디자인 시스템 DESIGN.md §8 준수.
+- ✅ 디자인 시스템. shadcn 기존 컴포넌트 + DESIGN.md 토큰. 임의 색/폰트 0. 시안 2 레이아웃.
+- ✅ 낙관적 피드백. T3 onMutate 선반영 + 409 VERSION_CONFLICT 토스트 + 재조회.
+- ⚠️ 주의 1. 시안 2 목업의 상태 select 드롭다운은 전이 제외로 **읽기전용 배지**로 구현. plan T7 + spec에 명시 — 일관 확인.
+- ⚠️ 주의 2. 긴 summary 말줄임 + 빈 목록 빈상태는 spec 엣지케이스에 있으나 task 본문엔 암묵 — T5/T7 구현 시 명시 반영 권장.
+- 🛑 BLOCKER. 없음.
+
+미해결 결정(게이트1). toast = in-house 최소 구현(기본 권장) vs sonner 새 의존성 도입(승인 필요).
