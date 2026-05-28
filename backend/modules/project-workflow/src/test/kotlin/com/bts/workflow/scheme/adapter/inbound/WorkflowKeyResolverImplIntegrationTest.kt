@@ -310,7 +310,7 @@ class WorkflowKeyResolverImplIntegrationTest {
                 conn.createStatement().use { stmt ->
                     stmt.execute(
                         """
-                        INSERT INTO workflow_schemes (key, name, is_standard)
+                        INSERT INTO workflow_schemes (key, name, is_default)
                         VALUES ('no-default-scheme', 'No Default Scheme', false)
                         ON CONFLICT (key) DO NOTHING
                         """.trimIndent(),
