@@ -233,9 +233,10 @@ object WorkflowGenerators {
 
             val stateKeys = states.map { it.key }
 
-            // 전이 1~(stateCount*2) 개 생성 — 중복 방지 위해 Set 기반
+            // 전이 1~(stateCount*2) 개 생성 — (from, to) 2 튜플 dedup
+            // ADR 2026-05-28-workflow-transition-identity-policy.md 의 transition identity 정책과 정합.
             val transitionCount = Arb.int(1..minOf(stateCount * 2, 8)).bind()
-            val transitionSet = mutableSetOf<Triple<String, String, String>>()
+            val transitionSet = mutableSetOf<Pair<String, String>>()
             val transitions = mutableListOf<WorkflowTransition>()
             var attempts = 0
             while (transitions.size < transitionCount && attempts < transitionCount * 5) {
@@ -243,9 +244,9 @@ object WorkflowGenerators {
                 val from = Arb.element(stateKeys).bind()
                 val to = Arb.element(stateKeys.filter { it != from }.ifEmpty { stateKeys }).bind()
                 val name = "T${transitions.size}"
-                val triple = Triple(from, to, name)
-                if (triple !in transitionSet) {
-                    transitionSet.add(triple)
+                val pair = from to to
+                if (pair !in transitionSet) {
+                    transitionSet.add(pair)
                     transitions.add(WorkflowTransition(fromStateKey = from, toStateKey = to, name = name))
                 }
             }

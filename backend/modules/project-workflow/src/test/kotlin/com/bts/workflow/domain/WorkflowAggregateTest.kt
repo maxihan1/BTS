@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test
  * 3. state.key 중복 → IllegalArgumentException
  * 4. transition.fromStateKey 가 states 집합에 없음 → IllegalArgumentException
  * 5. transition.toStateKey 가 states 집합에 없음 → IllegalArgumentException
- * 6. transition (from, to, name) 조합 중복 → IllegalArgumentException
+ * 6. transition (from, to) 조합 중복 → IllegalArgumentException
  */
 class WorkflowAggregateTest {
     // ── 픽스처 ────────────────────────────────────────────────────────────────
@@ -146,10 +146,10 @@ class WorkflowAggregateTest {
             .hasMessageContaining("toStateKey")
     }
 
-    // ── transition (from, to, name) 조합 중복 ─────────────────────────────────
+    // ── transition (from, to) 조합 중복 ──────────────────────────────────────
 
     @Test
-    fun `transition from-to-name 조합 중복 시 IllegalArgumentException`() {
+    fun `transition (from, to) 조합 중복 시 IllegalArgumentException`() {
         val duplicateTransitions =
             listOf(
                 WorkflowTransition(fromStateKey = "TODO", toStateKey = "IN_PROGRESS", name = "시작"),
@@ -165,5 +165,45 @@ class WorkflowAggregateTest {
             )
         }.isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("duplicate")
+            .hasMessageContaining("(from, to)")
+    }
+
+    @Test
+    fun `transition (from, to) 가 같고 name 만 다른 두 transition 시 IllegalArgumentException`() {
+        val duplicateTransitions =
+            listOf(
+                WorkflowTransition(fromStateKey = "TODO", toStateKey = "IN_PROGRESS", name = "Start Work"),
+                WorkflowTransition(fromStateKey = "TODO", toStateKey = "IN_PROGRESS", name = "시작"),
+            )
+
+        assertThatThrownBy {
+            Workflow.of(
+                key = "WF-007",
+                name = "name 다른 중복 전이 워크플로우",
+                states = defaultStates,
+                transitions = duplicateTransitions,
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("duplicate")
+            .hasMessageContaining("(from, to)")
+    }
+
+    @Test
+    fun `다른 (from, to) 가 같은 name 인 두 transition 은 정상 생성`() {
+        val validTransitions =
+            listOf(
+                WorkflowTransition(fromStateKey = "TODO", toStateKey = "IN_PROGRESS", name = "Move"),
+                WorkflowTransition(fromStateKey = "IN_PROGRESS", toStateKey = "DONE", name = "Move"),
+            )
+
+        val workflow =
+            Workflow.of(
+                key = "WF-008",
+                name = "같은 name 다른 경로 워크플로우",
+                states = defaultStates,
+                transitions = validTransitions,
+            )
+
+        assertThat(workflow.transitions).hasSize(2)
     }
 }

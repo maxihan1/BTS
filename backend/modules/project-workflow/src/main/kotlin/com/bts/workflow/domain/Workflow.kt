@@ -6,7 +6,7 @@ package com.bts.workflow.domain
  * FSM(유한 상태 기계) 워크플로우 Aggregate Root.
  *
  * 직접 생성자 호출을 막고 companion factory [of]를 통해서만 생성한다.
- * factory가 4가지 invariant를 검증하므로 인스턴스가 존재하면 항상 일관된 상태임을 보장한다.
+ * factory가 5가지 invariant를 검증하므로 인스턴스가 존재하면 항상 일관된 상태임을 보장한다.
  *
  * @property key 워크플로우 식별 키. 시스템 전역에서 고유.
  * @property name 사람이 읽을 수 있는 워크플로우 이름.
@@ -30,7 +30,8 @@ data class Workflow private constructor(
          * 2. [states] 내 key 중복이 0건이어야 한다.
          * 3. 모든 [transitions]의 [WorkflowTransition.fromStateKey] 가 [states] 키 집합 안에 있어야 한다.
          * 4. 모든 [transitions]의 [WorkflowTransition.toStateKey] 가 [states] 키 집합 안에 있어야 한다.
-         * 5. [transitions] 내 (fromStateKey, toStateKey, name) 조합 중복이 0건이어야 한다.
+         * 5. [transitions] 내 (fromStateKey, toStateKey) 조합 중복이 0건이어야 한다.
+         *    name 이 달라도 (from, to) 가 같으면 중복으로 간주한다.
          *
          * @throws IllegalArgumentException 위 invariant 중 하나라도 위반 시
          */
@@ -63,10 +64,10 @@ data class Workflow private constructor(
                 "Workflow '$key': transition toStateKey not in states — $invalidToKeys"
             }
 
-            val transitionKeys = transitions.map { Triple(it.fromStateKey, it.toStateKey, it.name) }
+            val transitionKeys = transitions.map { it.fromStateKey to it.toStateKey }
             val duplicateTransitions = transitionKeys.groupBy { it }.filter { it.value.size > 1 }.keys
             require(duplicateTransitions.isEmpty()) {
-                "Workflow '$key': duplicate transition (from, to, name) combinations found — $duplicateTransitions"
+                "Workflow '$key': duplicate transition (from, to) combinations found — $duplicateTransitions"
             }
 
             return Workflow(
