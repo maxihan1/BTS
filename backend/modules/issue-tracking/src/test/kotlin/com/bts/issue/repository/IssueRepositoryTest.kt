@@ -290,6 +290,37 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
         assertThat(second).isEqualTo(2L)
     }
 
+    // ── T9-regression. currentStateKey 소문자 회귀 가드 ─────────────────────────
+
+    /**
+     * Given  currentStateKey = "open" (소문자, V007 마이그레이션 이후 표준) 으로 Issue 를 insert
+     * When   findByKey 로 조회
+     * Then   currentStateKey 가 "open" (소문자) 로 반환된다.
+     *
+     * Task 9 회귀 가드: V007 이 기존 "OPEN" → "open" 으로 변환했으므로, 신규 저장 시
+     * 소문자 키를 그대로 유지해야 함. "OPEN" 대문자가 코드에 남아있으면 이 테스트가 RED.
+     */
+    @Test
+    @Order(10)
+    fun `T9-regression - currentStateKey 소문자 — insert 후 findByKey 시 소문자로 반환된다`() {
+        val key = IssueKey.of("TPRJ", 42L)
+        val issue =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = key,
+                projectId = testProjectId,
+                summary = "소문자 상태키 회귀 가드",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+            )
+        repository.insert(issue)
+
+        val found = repository.findByKey(key)
+
+        assertThat(found).isNotNull
+        assertThat(found!!.currentStateKey).isEqualTo("open")
+    }
+
     // ── T9. softDelete 후 같은 key INSERT — unique 위반 ──────────────────────────
 
     /**
@@ -302,7 +333,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
      * issues.key UNIQUE 제약이 소프트 삭제 후에도 row 를 보존하므로 동일 key INSERT 는 항상 위반.
      */
     @Test
-    @Order(10)
+    @Order(11)
     fun `T9 - softDelete - 삭제 후 같은 key INSERT 시 DB unique constraint 위반`() {
         val key = IssueKey.of("TPRJ", 1L)
         val original =
