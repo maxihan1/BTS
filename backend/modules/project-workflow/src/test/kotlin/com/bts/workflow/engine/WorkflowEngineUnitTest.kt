@@ -176,7 +176,69 @@ class WorkflowEngineUnitTest {
     }
 
     // ---------------------------------------------------------------------- //
-    // 4. Propagation.MANDATORY — plan() 메서드에 어노테이션이 선언돼 있는지 검증 //
+    // 4. (from, to) 2튜플 매칭 — transitionName 과 무관하게 전이가 매칭된다    //
+    // ---------------------------------------------------------------------- //
+
+    /**
+     * BLOCKER-1 회귀 가드.
+     *
+     * yaml seed 에 { from: open, to: in_progress, name: "Start Work" } 가 정의된 워크플로우에서,
+     * TransitionRequest 가 transitionName = "anything" (yaml name 과 무관한 값) 으로 호출됐을 때
+     * 정확한 transition 매칭 + TransitionPlan 정상 반환을 보장한다.
+     *
+     * 전이 identity = (from, to) — ADR 2026-05-28-workflow-transition-identity-policy 참조.
+     */
+    @Test
+    fun `transitionName 과 무관하게 (from, to) 2튜플로 전이가 매칭된다`() {
+        val openState = WorkflowState("open", "열림", StateCategory.TODO, 0)
+        val inProgressState2 = WorkflowState("in_progress", "진행 중", StateCategory.IN_PROGRESS, 1)
+        val yamlTransition =
+            WorkflowTransition(
+                fromStateKey = "open",
+                toStateKey = "in_progress",
+                name = "Start Work",
+            )
+        val seedWorkflow =
+            Workflow.of(
+                key = "SEED",
+                name = "시드 워크플로우",
+                states = listOf(openState, inProgressState2),
+                transitions = listOf(yamlTransition),
+            )
+
+        val postAction =
+            mockk<WorkflowPostAction> {
+                every { type } returns "SetField"
+                every { evaluate(any()) } returns PostActionPlan(emptyList(), emptyList())
+            }
+        val postActionCfg = PostActionConfig("SetField", emptyMap())
+
+        every { cache.findByKey("SEED") } returns seedWorkflow
+        every { definitionRepo.findValidators(yamlTransition) } returns emptyList()
+        every { definitionRepo.findPostActions(yamlTransition) } returns listOf(postActionCfg)
+        every { postActionFactory.create("SetField", postActionCfg.config) } returns postAction
+
+        // transitionName = "anything" — yaml 의 "Start Work" 와 다름
+        val request =
+            TransitionRequest(
+                workflowKey = "SEED",
+                issueKey = "BTS-2",
+                fromStateKey = "open",
+                toStateKey = "in_progress",
+                transitionName = "anything",
+                actorId = "user-1",
+                issueFields = emptyMap(),
+                actorRoles = setOf("MEMBER"),
+                version = 1L,
+            )
+
+        val plan = engine.plan(request)
+
+        assertThat(plan.toStateKey).isEqualTo("in_progress")
+    }
+
+    // ---------------------------------------------------------------------- //
+    // 5. Propagation.MANDATORY — plan() 메서드에 어노테이션이 선언돼 있는지 검증 //
     // ---------------------------------------------------------------------- //
 
     @Test
