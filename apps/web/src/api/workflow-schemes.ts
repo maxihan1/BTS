@@ -6,6 +6,7 @@ import {
   schemeDetailResponseSchema,
   mappingResponseSchema,
   assignmentResponseSchema,
+  dataOf,
 } from './workflow-schemes.types'
 import type {
   SchemeResponse,

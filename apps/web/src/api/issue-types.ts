@@ -1,6 +1,7 @@
 // 이슈 타입 backend API 클라이언트 + Zod 스키마 (5 표준 read-only)
 import { z } from 'zod'
 import { apiGet } from './client'
+import { dataOf } from './workflow-schemes.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zod 스키마 정의
@@ -24,14 +25,6 @@ export const issueTypeResponseSchema = z.object({
 
 /** 이슈 타입 응답 타입 */
 export type IssueTypeResponse = z.infer<typeof issueTypeResponseSchema>
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 내부 유틸리티
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** backend `{ data: T }` 래퍼 파싱 헬퍼 */
-const dataOf = <T>(innerSchema: z.ZodSchema<T>) =>
-  z.object({ data: innerSchema })
 
 // ─────────────────────────────────────────────────────────────────────────────
 // API 함수
