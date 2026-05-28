@@ -339,5 +339,34 @@ PR #27 (FR-IS-01 transition wiring) 머지 직전 `/review` adversarial subagent
 
 - ⏭️ **skip**. type=api hot-fix slice + fast-track 일관성. ceo / design / devex 영역 영향 0 (외부 contract 변경 1건이지만 dead code 정리). PR #21/#22/#23/#24 fast-track 패턴 따름.
 
+### PR 단위 code-reviewer agent (superpowers, 2026-05-28)
+
+- ✅ **PASS w/ CONCERNS** (BLOCKER 0, CONCERN 3 — 본 PR scope 외 cleanup 후보)
+- **검증 통과**. DEVELOPMENT.md §1 절대 규칙 19개 위반 0 + DATA.md §1 5원칙 위반 0 + learnings 회귀 0 + Plan 명세 일치.
+- **CONCERN-1 (Important, 별 PR)**. `Workflow.of()` aggregate factory invariant 5번이 여전히 `(from, to, name)` 3 튜플 — yaml seed `validateTransitionUniqueness` (2 튜플) 와 부정합. yaml seed 안 거치는 다른 경로 (`WorkflowRepository.toAggregate()`, FR-WF-02 CRUD) 로 같은 (from, to) 가 들어와도 통과. **별 PR cleanup**.
+- **CONCERN-2 (Suggestion, 별 PR)**. dead parameter/helper — frontend `planTransition()` 의 `transitionKey: string` 미사용 + backend `TransitionRequestDto.toDomain()` caller 0. **별 PR cleanup**.
+- **CONCERN-3 (Info, 수용)**. Plan §Task 3 files 19개 외 4 file 추가 수정 (컴파일 의존성 정당). **learnings 후보**.
+
+### PR 단위 /review (gstack) adversarial subagent
+
+- ✅ **PASS** (BLOCKER 0, INVESTIGATE 1건 informational)
+- **cross-branch 충돌**. 0 (미머지 PR 0).
+- **잔여 transitionName 사용처**. 모두 의도된 컨텍스트 (회귀 가드 + DB seed helper + JSDoc).
+- **표준 4종 yaml fail-fast 안전**. (from, to) 유일성 사전 검증 통과.
+- **INVESTIGATE 1건**. Spring Boot Jackson `FAIL_ON_UNKNOWN_PROPERTIES` 정책 미명시 — 외부 consumer 가 transitionName 보낼 때 silent ignore vs 400 reject 결정. 본 PR scope 외, 향후 외부 API 통합 시 명시 권장.
+- **추가 BLOCKER/HIGH severity 발견 0**. code-reviewer 의 CONCERN-1/2/3 모두 confirm.
+
+### 권장 액션 — Ship as-is
+
+본 PR scope 의 BLOCKER 1 본질 fix 완료. CONCERN-1/2/3 모두 본 PR scope 외 cleanup, 별 PR 후보로 분리.
+
+### 후속 cleanup PR 후보 (별 작업)
+
+1. **Workflow aggregate invariant 정렬** — `Workflow.of()` 의 invariant 5번을 `(from, to)` 2 튜플로 정정 (CONCERN-1).
+2. **Dead parameter/helper cleanup** — `planTransition()` 의 `transitionKey: string` + `TransitionRequestDto.toDomain()` 제거 (CONCERN-2).
+3. **Pre-existing ktlint test + detekt 64 weighted issues** — learnings PR #25 C1 본질 동일, multi-BC chore cleanup PR (BLOCKER 2 와 묶어도 가능).
+4. **BLOCKER 2 hot-fix** — V003+V004 Flyway 경로 정리 (저장 컨텍스트 2026-05-28 #28 priority 3).
+5. **learnings 후보 추가**. (a) shared-kernel SPI 시그니처 변경 task 의 plan §files 메타는 전수 grep 후 작성 (CONCERN-3). (b) ADR 결정 시 도메인 aggregate invariant 와의 정합 검토 필수 (CONCERN-1 회귀 차단).
+
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
