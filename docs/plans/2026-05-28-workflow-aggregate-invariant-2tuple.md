@@ -264,4 +264,33 @@ raw grep 결과 (`grep -RIn "Workflow\.of" backend/modules/project-workflow/src/
 
 = 모두 `Workflow.of(...)` 통과 → invariant 정정 시 자동 적용. 기존 test 의 transition 정의가 같은 `(from, to)` 에 다른 `name` 을 보유한 경우는 invariant 강화 후 fail 가능 — 그러나 정책 정합 의도 본질이라 fail 발생 시 test 도 정합 정정 대상 (가능성 낮음, GREEN 후 grep 으로 확인).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+- **fast-track 사유**. `type=bugfix` → 분기표 §"bugfix/chore/qa = skip". 외부 plan-eng-review / plan-ceo-review / plan-design-review / autoplan 호출 없음. controller inline self-review 1단락 (PR #21~#29 일관 패턴).
+
+### controller inline self-review (2026-05-28)
+
+#### 통과 (8건)
+
+1. ✅ **ADR 정합** — `Workflow.of()` invariant 5번이 ADR `2026-05-28-workflow-transition-identity-policy.md` §결정 (`(from, to)` 2 튜플 채택) 과 정합 정렬.
+2. ✅ **scope 명확** — 단일 prod 파일 (`Workflow.kt`) + 단일 test 파일 (`WorkflowAggregateTest.kt`). 1 task TDD 1 cycle.
+3. ✅ **호출자 전수 확인** — raw grep 인용 (prod 1건 + test ~25건). 모두 `Workflow.of(...)` 통과 → invariant 정정 자동 적용.
+4. ✅ **회귀 가드 핵심 시나리오 명시** — 시나리오 2 (name 만 다른 두 transition) RED case 신규 추가. ADR 정신 직접 검증.
+5. ✅ **false positive 방지** — 시나리오 4 (다른 from/to 같은 name) RED case 신규 추가. invariant 가 너무 강해지지 않음을 검증.
+6. ✅ **Brainstorming ⚠️ 우려 해소** — yaml seed fail-fast `(from, to)` 검증이 `YamlSeedService.kt:205-218` 이미 적용 중. 본 PR scope 와 분리.
+7. ✅ **BC 격리** — project-workflow 단일 BC. cross-BC import / pgmq event 발사 없음.
+8. ✅ **DEVELOPMENT.md 절대 규칙 정렬** — 변경이 작아 #1.1~#1.5 모두 자명 통과. `@Service` / `@Transactional` 변경 0, Spring Bean 영향 없음.
+
+#### CONCERN (2건, 본 PR 안 처리)
+
+- **C1 — 잠재 회귀 가능성 (Suggestion)**. invariant 강화 시 기존 test (~25 호출자) 중 `(from, to)` 같고 `name` 다른 transition 정의를 보유한 케이스가 fail 가능. plan §검증 #2 (`./gradlew :modules:project-workflow:test`) 에서 표면화. 발견 시 옵션. (a) 정합 강화 자연 부작용 → 본 PR 안 정정 (test 의 정의도 ADR 정합) (b) scope 명확성 위해 별 cleanup PR 분리. GREEN 후 실제 발견 여부에 따라 결정. 본 PR plan §verification 결과 단락에 명시 예정.
+
+- **C2 — TDD 변형 (Note)**. REFACTOR phase 의 본질 변경 없음 (factory KDoc 정정만 GREEN 에 포함, 클래스 KDoc 정정은 RED 에 같이 수반). plan §RED §(d) 에 변형 사유 명시. PR #29 의 task 3/4 변형 패턴 일관.
+
+#### BLOCKER (0건)
+
+- 없음.
+
+### 다음 단계
+
+🛑 **게이트 1 — Maxi 검토 부탁드립니다**.
