@@ -149,6 +149,141 @@ cross-BC 의존 (testRuntimeOnly) 으로 issue-tracking 마이그레이션도 �
 - D2 옵션 B 선택 (사용자 결정) — cross-BC 정합성 우선
 - TDD 변형 후보. Task 5 (refactor / 주석 정정) — RED 분리 어려움, 정통 사이클 외
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+TDD red→green→refactor 사이클 강제. hot-fix 특성상 task 일부 변형 (RED 분리 어려운 경우 commit message + plan 본문에 변형 사유 명시, PR #21/#22/#23/#24/#28 패턴 일관).
+
+### Task 1. 회귀 가드 단위 테스트 — `db/migration/` 루트 V*.sql 잔존 0 검증
+
+**메타**.
+- agent. `db-engineer`
+- files. [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/migration/MigrationFileLayoutTest.kt` (신규)]
+- depends-on. []
+
+**RED**.
+- 파일. `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/migration/MigrationFileLayoutTest.kt` (신규)
+- 테스트.
+  ```kotlin
+  @Test
+  fun `db_migration 루트에 V SQL 파일이 잔존하지 않아야 한다 (BC prefix 정책)`() {
+      val resolver = PathMatchingResourcePatternResolver(javaClass.classLoader)
+      val resources = resolver.getResources("classpath:db/migration/V*.sql")
+      assertEquals(0, resources.size,
+          "db/migration/ 루트에 V*.sql 잔존. ADR 2026-05-26-bc-migration-prefix-policy.md 위반. " +
+          "BC 폴더 (db/migration/issue-tracking/, db/migration/project-workflow/) 하위로 이동 필요. " +
+          "잔존 파일: ${resources.map { it.filename }}")
+  }
+  ```
+- 실패 메시지 (예상). `db/migration/ 루트에 V*.sql 잔존. ... 잔존 파일: [V003__issue_types.sql, V004__lowercase_current_state_key.sql]`
+- 정당성. Spring 의 `PathMatchingResourcePatternResolver` 사용 (issue-tracking 이 이미 Spring 의존). classpath 기반이라 build output 의 실제 resources 디렉토리 검증.
+
+**GREEN**. (Task 2 에서 file 이동 → 회귀 가드 자동 통과)
+
+**REFACTOR**. (Task 4 에서 KDoc 통합 정리)
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests MigrationFileLayoutTest`
+
+---
+
+### Task 2. V003/V004 파일 이동 + issue-tracking IT location 정리 (한 BC 일관)
+
+**메타**.
+- agent. `db-engineer`
+- files. 이동.
+  - `backend/modules/issue-tracking/src/main/resources/db/migration/V003__issue_types.sql` → `db/migration/issue-tracking/V003__issue_types.sql`
+  - `backend/modules/issue-tracking/src/main/resources/db/migration/V004__lowercase_current_state_key.sql` → `db/migration/issue-tracking/V004__lowercase_current_state_key.sql`
+- files. 변경.
+  - `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/type/repository/IssueTypeRepositoryIntegrationTest.kt`
+  - `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/type/migration/IssueTypesMigrationIntegrationTest.kt`
+  - `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/migration/LowercaseCurrentStateKeyMigrationTest.kt`
+  - `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueControllerTransitionIntegrationTest.kt` (locations 의 `classpath:db/migration` 항목 제거)
+- depends-on. [1]
+
+**TDD 변형** (RED 분리 불필요 — Task 1 의 회귀 가드가 RED 역할, file 이동 + IT location 변경이 일관 GREEN).
+
+**GREEN**.
+1. `git mv` 로 V003/V004 두 파일 이동 (history 보존)
+2. `IssueTypeRepositoryIntegrationTest.kt:66, 194` 의 `.locations("classpath:db/migration")` → `.locations("classpath:db/migration/issue-tracking")`
+3. `IssueTypesMigrationIntegrationTest.kt:56` 동일
+4. `LowercaseCurrentStateKeyMigrationTest.kt:66, 117` 동일
+5. `IssueControllerTransitionIntegrationTest.kt:500` 의 3행 locations 에서 `classpath:db/migration` 행 제거 (BC 별 2행 유지)
+
+**검증**.
+- `./gradlew :modules:issue-tracking:test` 전체 통과 (회귀 0)
+- Task 1 의 `MigrationFileLayoutTest` GREEN
+- `find backend/modules/issue-tracking/src/main/resources/db/migration -maxdepth 1 -name 'V*.sql'` 결과 0
+
+---
+
+### Task 3. project-workflow IT location 정리 (cross-BC 의존)
+
+**메타**.
+- agent. `db-engineer`
+- files. (14 occurrences in 8 파일)
+  - `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/scheme/repository/WorkflowSchemeRepositoryIntegrationTest.kt`
+  - `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/scheme/repository/SchemeIssueTypeMappingRepositoryIntegrationTest.kt`
+  - `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/scheme/repository/ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest.kt`
+  - `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/scheme/adapter/inbound/WorkflowKeyResolverImplIntegrationTest.kt`
+  - `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/scheme/adapter/inbound/WorkflowResolverImplIntegrationTest.kt`
+  - `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/scheme/adapter/outbound/WorkflowSchemeEventPublisherIntegrationTest.kt`
+  - `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/scheme/migration/WorkflowSchemesMigrationIntegrationTest.kt`
+  - `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/cache/WorkflowCacheTest.kt`
+  - `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/repository/WorkflowRepositoryTest.kt`
+  - `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/YamlSeedServiceTest.kt`
+- depends-on. [2]
+
+**TDD 변형** (RED 자연 발생 — Task 2 후 V003/V004 가 issue-tracking/ 하위로 이동되면, `db/migration` 루트만 명시한 project-workflow IT 가 V003/V004 미스캔 → FK 참조 실패. 그 RED 상태를 GREEN 으로 전환).
+
+**GREEN**. 각 파일의.
+```kotlin
+.locations("classpath:db/migration")
+```
+→
+```kotlin
+.locations(
+    "classpath:db/migration/issue-tracking",
+    "classpath:db/migration/project-workflow",
+)
+```
+Flyway `locations(...)` 가 replace 동작이므로 양쪽 path 모두 명시 필수. learnings PR #24 와 동일 패턴.
+
+**참고**. `WorkflowSchemesMigrationIntegrationTest.kt:101` 의 주석 `테스트: project-workflow Flyway 는 자체 classpath:db/migration 만 실행하므로 issue_types 없음` 은 의도된 분기 시나리오일 수 있음 — 단순 일괄 변경 대상이 아닌지 verifier 검증 필요.
+
+**검증**.
+- `./gradlew :modules:project-workflow:test` 전체 통과 (회귀 0)
+- cross-BC 의존 IT 가 V001~V004 + V200~V202 모두 적용 후 동작
+
+---
+
+### Task 4. REFACTOR — KDoc 주석 정정 + plan/learnings append
+
+**메타**.
+- agent. `db-engineer`
+- files.
+  - `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueControllerTransitionIntegrationTest.kt` (KDoc 의 "V003~V004 는 classpath:db/migration (루트)" 주석 → "V001~V004 는 classpath:db/migration/issue-tracking" 정정)
+  - `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/repository/IssueTestcontainersBase.kt` (KDoc 예시 정정 시)
+  - `docs/plans/2026-05-28-blocker-2-hot-fix-slice-v003-v004-flyway-db-migrat.md` (§완료 기준 체크)
+- depends-on. [3]
+
+**TDD 변형 (정통 cycle 외)**. RED 분리 불필요 — 문서/주석 정정만 수행.
+
+**검증**.
+- `git grep -n "classpath:db/migration\"" backend/modules/issue-tracking/src/test/` 결과 0
+- `git grep -n "classpath:db/migration\"" backend/modules/project-workflow/src/test/` 결과 0
+- `./gradlew :modules:issue-tracking:test :modules:project-workflow:test` 전체 통과
+
+---
+
+## Plan 메타
+
+- task 수. 4
+- 예상 시간. task × 2~5분 = 약 12~15분 (단순 file/string 변경 위주)
+- 예상 wave. Wave 0 (Task 1) → Wave 1 (Task 2) → Wave 2 (Task 3) → Wave 3 (Task 4). 직렬 의존 chain, 병렬 wave 없음.
+- TDD 강제. yes. 정통 사이클 1건 (Task 1 RED → Task 2 GREEN), 변형 사이클 2건 (Task 3, Task 4 — RED 자연 발생 또는 RED 분리 불필요, commit message + plan 본문에 명시).
+- TDD 강제 위반 위험. 낮음 — Task 1 가 명시적 RED, Task 2 가 명시적 GREEN. Task 3/4 의 변형 사유 명시.
+- 추가 검증. ktlintCheck, detekt (Phase 0 정책). 통합테스트 부담 큼 (Testcontainers 19+ singleton 재기동).
+- 회귀 가드. Task 1 의 `MigrationFileLayoutTest` 가 향후 V005+ 추가 시 자동 회귀 차단.
+
+## 리뷰 결과 (← /bts-review-plan 채움)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
