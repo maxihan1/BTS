@@ -11,6 +11,7 @@ import {
   FormLabel,
   FormControl,
   FormMessage,
+  FormDescription,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -66,8 +67,11 @@ export function WorkflowSchemeNewForm({ onSuccess }: WorkflowSchemeNewFormProps 
   const { mutate, isPending } = useCreateWorkflowScheme()
 
   function handleSubmit(values: CreateSchemeFormValues): void {
+    // description 빈 문자열은 undefined로 정규화 — API에 불필요한 빈 문자열 전송 방지
+    const description = values.description?.trim() === '' ? undefined : values.description?.trim()
+
     mutate(
-      { name: values.name, description: values.description },
+      { name: values.name, description },
       {
         onSuccess: (created) => {
           onSuccess?.(created.schemeKey)
@@ -97,6 +101,9 @@ export function WorkflowSchemeNewForm({ onSuccess }: WorkflowSchemeNewFormProps 
                   {...field}
                 />
               </FormControl>
+              <FormDescription>
+                소문자 영문자로 시작하고 소문자/숫자/하이픈 2~30자 (예: software-default)
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
