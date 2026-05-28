@@ -3,10 +3,13 @@
 package com.bts.workflow.scheme.application
 
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.issue.IssueTypeRef
+import com.bts.workflow.domain.Workflow
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermissionResolver
 import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
+import com.bts.workflow.scheme.application.port.IssueTypeLookupPort
 import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowScheme
@@ -51,6 +54,7 @@ class WorkflowSchemeApplicationServiceTest {
     private val eventPublisher: WorkflowSchemeEventPublisher = mockk()
     private val permissionResolver = AlwaysAllowWorkflowSchemePermissionResolver()
     private val workflowRepo: WorkflowRepository = mockk()
+    private val issueTypeLookupPort: IssueTypeLookupPort = mockk()
 
     private lateinit var service: WorkflowSchemeApplicationService
 
@@ -66,6 +70,7 @@ class WorkflowSchemeApplicationServiceTest {
                 eventPublisher,
                 permissionResolver,
                 workflowRepo,
+                issueTypeLookupPort,
             )
     }
 
@@ -81,6 +86,84 @@ class WorkflowSchemeApplicationServiceTest {
 
         assertThat(result.key).isEqualTo(key)
         verify(exactly = 1) { schemeRepo.save(any()) }
+    }
+
+    // ── findDetail (task-4 RED) ───────────────────────────────────────────────
+
+    @Test
+    fun `findDetail — mappingRepo findBySchemeId + IssueTypeLookupPort lookup + workflowRepo findByIds 호출 (task-4 RED)`() {
+        val key = WorkflowSchemeKey("software-scheme")
+        val schemeId = WorkflowSchemeId(1L)
+        val scheme = buildScheme(key, id = schemeId)
+        val issueTypeId = IssueTypeId(10L)
+        val workflowId = java.util.UUID.fromString("cccccccc-0000-0000-0000-000000000001")
+        val mapping =
+            SchemeIssueTypeMapping(
+                id = 1L,
+                schemeId = schemeId,
+                issueTypeId = issueTypeId,
+                workflowId = workflowId,
+                createdAt = java.time.Instant.now(),
+            )
+        val issueTypeRef = IssueTypeRef(key = "bug", name = "버그")
+        val workflow =
+            com.bts.workflow.domain.Workflow.of(
+                key = "software-default",
+                name = "소프트웨어 기본",
+                states =
+                    listOf(
+                        com.bts.workflow.domain.WorkflowState(
+                            key = "open",
+                            name = "열림",
+                            category = com.bts.workflow.domain.StateCategory.TODO,
+                            displayOrder = 0,
+                        ),
+                    ),
+                transitions = emptyList(),
+            )
+
+        every { schemeRepo.findByKey(key) } returns scheme
+        every { mappingRepo.findBySchemeId(schemeId) } returns listOf(mapping)
+        every { issueTypeLookupPort.lookup(listOf(issueTypeId)) } returns mapOf(issueTypeId to issueTypeRef)
+        every { workflowRepo.findByIds(listOf(workflowId)) } returns mapOf(workflowId to workflow)
+        every { schemeRepo.countAssignedProjects(schemeId) } returns 2L
+
+        val result = service.findDetail(key)
+
+        assertThat(result.key).isEqualTo(key.value)
+        assertThat(result.usedByProjectsCount).isEqualTo(2L)
+        assertThat(result.mappingsCount).isEqualTo(1L)
+        assertThat(result.mappings).hasSize(1)
+        assertThat(result.mappings[0].issueTypeKey).isEqualTo("bug")
+        assertThat(result.mappings[0].workflowKey).isEqualTo("software-default")
+
+        verify(exactly = 1) { mappingRepo.findBySchemeId(schemeId) }
+        verify(exactly = 1) { issueTypeLookupPort.lookup(listOf(issueTypeId)) }
+        verify(exactly = 1) { workflowRepo.findByIds(listOf(workflowId)) }
+        verify(exactly = 1) { schemeRepo.countAssignedProjects(schemeId) }
+    }
+
+    @Test
+    fun `listWithCounts — findAllWithCounts 호출 후 WorkflowSchemeDetailResponse 목록을 반환한다 (task-4 RED)`() {
+        val key1 = WorkflowSchemeKey("software-scheme")
+        val key2 = WorkflowSchemeKey("service-desk")
+        val schemeId1 = WorkflowSchemeId(1L)
+        val schemeId2 = WorkflowSchemeId(2L)
+
+        val countRows =
+            listOf(
+                com.bts.workflow.scheme.repository.SchemeCountRow(buildScheme(key1, id = schemeId1), 3L, 4L),
+                com.bts.workflow.scheme.repository.SchemeCountRow(buildScheme(key2, id = schemeId2), 0L, 1L),
+            )
+        every { schemeRepo.findAllWithCounts() } returns countRows
+
+        val result = service.listWithCounts()
+
+        assertThat(result).hasSize(2)
+        assertThat(result[0].key).isEqualTo("software-scheme")
+        assertThat(result[0].usedByProjectsCount).isEqualTo(3L)
+        assertThat(result[0].mappingsCount).isEqualTo(4L)
+        verify(exactly = 1) { schemeRepo.findAllWithCounts() }
     }
 
     // ── find ──────────────────────────────────────────────────────────────────
