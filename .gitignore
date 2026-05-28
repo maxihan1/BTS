@@ -69,3 +69,4 @@ venv/
 *.key
 *.crt
 secrets/
+.gstack/
