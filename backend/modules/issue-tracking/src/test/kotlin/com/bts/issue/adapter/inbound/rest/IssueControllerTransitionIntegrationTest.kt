@@ -478,8 +478,7 @@ class IssueControllerTransitionIntegrationTest {
     /**
      * Flyway 마이그레이션 — issue-tracking + project-workflow 두 BC를 단일 pass로 적용.
      *
-     * issue-tracking V001~V002 는 classpath:db/migration/issue-tracking.
-     * issue-tracking V003~V004 는 classpath:db/migration (루트).
+     * issue-tracking V001~V004 는 classpath:db/migration/issue-tracking.
      * project-workflow V200~V202 는 classpath:db/migration/project-workflow.
      *
      * 단계별 적용 이유: issue-tracking V001~V002 의 projects/issues 테이블이
@@ -499,7 +498,6 @@ class IssueControllerTransitionIntegrationTest {
             .placeholderReplacement(false)
             .locations(
                 "classpath:db/migration/issue-tracking",
-                "classpath:db/migration",
                 "classpath:db/migration/project-workflow",
             )
             .load()
