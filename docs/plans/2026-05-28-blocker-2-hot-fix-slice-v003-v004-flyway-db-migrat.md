@@ -325,3 +325,24 @@ Flyway `locations(...)` 가 replace 동작이므로 양쪽 path 모두 명시 �
 #### 결정 권한 위임 항목
 
 없음. D2 (scope 결정) 는 spec 단계에서 이미 사용자 확정 (옵션 B). 게이트 1 에서 추가 분기 없음.
+
+### controller verification-before-completion 결과 (2026-05-28)
+
+#### 통과 (✅)
+
+- `./gradlew :modules:issue-tracking:test :modules:project-workflow:test` BUILD SUCCESSFUL (회귀 0, 223 + 377 = 600 tests, 실패 0)
+- `MigrationFileLayoutTest` GREEN (Task 1 회귀 가드 작동 확인)
+- `./gradlew :modules:issue-tracking:ktlintMainSourceSetCheck :modules:project-workflow:ktlintMainSourceSetCheck` BUILD SUCCESSFUL (commit `865be3f` hot-fix 후)
+- 루트 V*.sql 잔존 0건, `issue-tracking/` 하위 4건 (V001~V004)
+- project-workflow + issue-tracking 모든 IT location BC 별 명시 (잔존 0)
+
+#### PRE_EXISTING 잔존 (본 PR scope 밖, D5 옵션 C 결정 — 별 cleanup PR 위임)
+
+- **ktlintTestSourceSetCheck**. `IssueControllerTransitionIntegrationTest.kt` 의 10+ violations (line 6 import-ordering, line 101/107 no-empty-first-line-in-class-body, line 123/131/174/178/190/194/202 function-signature). 본 PR 변경 영역 (line 480 KDoc + line 498 locations) 외 — main 동일 결함 확인.
+- **detekt**. issue-tracking 16 weighted issues (TooManyFunctions, LongParameterList, NestedBlockDepth, TooGenericExceptionCaught, ThrowsCount, MaxLineLength 등). 본 PR 변경 file 일부 포함되나 변경 line 과 무관 — main 동일 결함.
+- **결정**. D5 옵션 C — 저장 컨텍스트 §33 "Pre-existing ktlint test + detekt cleanup PR" 위임. learnings PR #16 D5 옵션 C "PRE_EXISTING 회귀 본 PR 검증 차단 시 hot-fix 가능" 의 적용 — main `IssueApplicationService.kt:5:1` 은 본 PR hot-fix (commit `865be3f`) 로 해소, 나머지는 cleanup PR 위임.
+- **commit message 명시**. `865be3f` 의 message 에 PRE_EXISTING hot-fix 사유 + cleanup PR 위임 명시.
+
+#### CI 머지 가드 영향
+
+본 PR 의 ktlintMainSourceSetCheck + 단위/통합테스트 BUILD SUCCESSFUL. ktlintTestSourceSetCheck + detekt 의 PRE_EXISTING fail 은 머지 가드 영향 — 게이트 2 단계에서 CI 통과 여부 확인 후 머지 결정. admin override 또는 cleanup PR 선 머지 옵션 게이트 2 에서 사용자 결정.
