@@ -4,6 +4,7 @@ package com.bts.workflow.scheme.web.dto
 
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowScheme
+
 /**
  * 매핑 추가 요청 DTO.
  *

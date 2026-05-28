@@ -4,6 +4,7 @@ package com.bts.workflow.scheme.application
 
 import com.bts.shared.issue.IssueTypeId
 import com.bts.workflow.port.outbound.ActorId
+import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermissionResolver
 import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
 import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
@@ -21,7 +22,6 @@ import com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermission
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermissionResolver
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemeScope
-import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
@@ -58,7 +58,15 @@ class WorkflowSchemeApplicationServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = WorkflowSchemeApplicationService(schemeRepo, assignmentRepo, mappingRepo, eventPublisher, permissionResolver, workflowRepo)
+        service =
+            WorkflowSchemeApplicationService(
+                schemeRepo,
+                assignmentRepo,
+                mappingRepo,
+                eventPublisher,
+                permissionResolver,
+                workflowRepo,
+            )
     }
 
     // ── create ────────────────────────────────────────────────────────────────
@@ -346,7 +354,8 @@ class WorkflowSchemeApplicationServiceTest {
             denyingResolver.requirePermission(actor, WorkflowSchemePermission.ASSIGN_SCHEME, any<WorkflowSchemeScope.Project>())
         } throws RuntimeException("WORKFLOW_PERMISSION_DENIED")
 
-        val svcWithDeny = WorkflowSchemeApplicationService(schemeRepo, assignmentRepo, mappingRepo, eventPublisher, denyingResolver, workflowRepo)
+        val svcWithDeny =
+            WorkflowSchemeApplicationService(schemeRepo, assignmentRepo, mappingRepo, eventPublisher, denyingResolver, workflowRepo)
 
         assertThatThrownBy {
             svcWithDeny.assignToProject(actor, UUID.randomUUID(), "PROJ", WorkflowSchemeKey("software-scheme"))

@@ -5,10 +5,9 @@ package com.bts.workflow.scheme.web
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.domain.ProjectKey
-import com.bts.workflow.scheme.domain.WorkflowScheme
-import com.bts.workflow.scheme.domain.WorkflowSchemeId
-import com.bts.workflow.scheme.domain.WorkflowSchemeKey
 import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
+import com.bts.workflow.scheme.domain.WorkflowScheme
+import com.bts.workflow.scheme.domain.WorkflowSchemeKey
 import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermission
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermissionResolver
@@ -77,8 +76,9 @@ class ProjectWorkflowSchemeController(
     ): ResponseEntity<DataResponse<AssignmentResponse>> {
         log.info("assignScheme: projectKey={} schemeKey={}", projectKey, body.schemeKey)
         val key = ProjectKey(projectKey)
-        val projectId = projectLookupPort.findIdByKey(key)
-            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
+        val projectId =
+            projectLookupPort.findIdByKey(key)
+                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
         val actor = ActorId(SYSTEM_ACTOR_UUID)
         permissionResolver.requirePermission(actor, WorkflowSchemePermission.ASSIGN_SCHEME, WorkflowSchemeScope.Project(projectKey))
         val assignment = appService.assignToProject(actor, projectId, projectKey, WorkflowSchemeKey(body.schemeKey))
@@ -100,8 +100,9 @@ class ProjectWorkflowSchemeController(
     ): ResponseEntity<DataResponse<SchemeResponse>> {
         log.info("getAssignedScheme: projectKey={}", projectKey)
         val key = ProjectKey(projectKey)
-        val projectId = projectLookupPort.findIdByKey(key)
-            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
+        val projectId =
+            projectLookupPort.findIdByKey(key)
+                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
         val actor = ActorId(SYSTEM_ACTOR_UUID)
         permissionResolver.requirePermission(actor, WorkflowSchemePermission.ASSIGN_SCHEME, WorkflowSchemeScope.Project(projectKey))
         val scheme = appService.findAssignedScheme(projectId, projectKey)

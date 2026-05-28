@@ -70,7 +70,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [WorkflowSchemeControllerTest.TestMvcConfig::class])
 @WebAppConfiguration
 class WorkflowSchemeControllerTest {
-
     @Configuration(proxyBeanMethods = false)
     @EnableWebMvc
     open class TestMvcConfig {
@@ -124,11 +123,12 @@ class WorkflowSchemeControllerTest {
             )
         } returns scheme
 
-        val body = mapOf(
-            "key" to "team-a-scheme",
-            "name" to "팀 A 스킴",
-            "description" to "설명",
-        )
+        val body =
+            mapOf(
+                "key" to "team-a-scheme",
+                "name" to "팀 A 스킴",
+                "description" to "설명",
+            )
 
         mockMvc.perform(
             post("/api/v1/workflow-schemes")
@@ -144,10 +144,11 @@ class WorkflowSchemeControllerTest {
 
     @Test
     fun `GET 스킴 목록 — 200 + data 배열`() {
-        val schemes = listOf(
-            buildScheme("software-scheme", "Software 스킴"),
-            buildScheme("simple-scheme", "단순 스킴"),
-        )
+        val schemes =
+            listOf(
+                buildScheme("software-scheme", "Software 스킴"),
+                buildScheme("simple-scheme", "단순 스킴"),
+            )
         every { applicationService.list() } returns schemes
 
         mockMvc.perform(get("/api/v1/workflow-schemes").accept(MediaType.APPLICATION_JSON))
@@ -195,10 +196,11 @@ class WorkflowSchemeControllerTest {
             )
         } returns updated
 
-        val body = mapOf(
-            "name" to "팀 A 스킴 수정",
-            "description" to "새 설명",
-        )
+        val body =
+            mapOf(
+                "name" to "팀 A 스킴 수정",
+                "description" to "새 설명",
+            )
 
         mockMvc.perform(
             put("/api/v1/workflow-schemes/team-a-scheme")
@@ -237,10 +239,11 @@ class WorkflowSchemeControllerTest {
             )
         } returns mapping
 
-        val body = mapOf(
-            "issueTypeKey" to "bug",
-            "workflowKey" to "software-default",
-        )
+        val body =
+            mapOf(
+                "issueTypeKey" to "bug",
+                "workflowKey" to "software-default",
+            )
 
         mockMvc.perform(
             post("/api/v1/workflow-schemes/team-a-scheme/mappings")
@@ -264,10 +267,11 @@ class WorkflowSchemeControllerTest {
             )
         } returns mapping
 
-        val body = mapOf(
-            "issueTypeKey" to null,
-            "workflowKey" to "simple",
-        )
+        val body =
+            mapOf(
+                "issueTypeKey" to null,
+                "workflowKey" to "simple",
+            )
 
         mockMvc.perform(
             post("/api/v1/workflow-schemes/team-a-scheme/mappings")
@@ -423,11 +427,12 @@ class WorkflowSchemeControllerTest {
             )
         } returns scheme
 
-        val body = mapOf(
-            "key" to "team-b-scheme",
-            "name" to "팀 B 스킴",
-            "description" to null,
-        )
+        val body =
+            mapOf(
+                "key" to "team-b-scheme",
+                "name" to "팀 B 스킴",
+                "description" to null,
+            )
 
         mockMvc.perform(
             post("/api/v1/workflow-schemes")
@@ -460,7 +465,10 @@ class WorkflowSchemeControllerTest {
             createdAt = Instant.parse("2026-01-01T00:00:00Z"),
         )
 
-    private fun buildScheme(key: String, name: String): WorkflowScheme =
+    private fun buildScheme(
+        key: String,
+        name: String,
+    ): WorkflowScheme =
         WorkflowScheme.reconstruct(
             id = WorkflowSchemeId(1L),
             key = WorkflowSchemeKey(key),

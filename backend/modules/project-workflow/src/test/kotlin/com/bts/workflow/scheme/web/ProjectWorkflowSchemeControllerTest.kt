@@ -3,7 +3,6 @@
 package com.bts.workflow.scheme.web
 
 import com.bts.workflow.port.outbound.ActorId
-import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.domain.ProjectKey
 import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
@@ -57,7 +56,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [ProjectWorkflowSchemeControllerTest.TestMvcConfig::class])
 @WebAppConfiguration
 class ProjectWorkflowSchemeControllerTest {
-
     /**
      * ActorId inline value class MockK 우회용 권한 resolver stub.
      *
@@ -96,9 +94,14 @@ class ProjectWorkflowSchemeControllerTest {
         assignmentRepo = mockk(),
         mappingRepo = mockk(),
         eventPublisher = mockk(),
-        permissionResolver = object : WorkflowSchemePermissionResolver {
-            override fun requirePermission(actor: ActorId, permission: WorkflowSchemePermission, scope: WorkflowSchemeScope) = Unit
-        },
+        permissionResolver =
+            object : WorkflowSchemePermissionResolver {
+                override fun requirePermission(
+                    actor: ActorId,
+                    permission: WorkflowSchemePermission,
+                    scope: WorkflowSchemeScope,
+                ) = Unit
+            },
         workflowRepo = mockk(),
     ) {
         var assignToProjectResponse: ProjectWorkflowSchemeAssignment? = null
@@ -115,8 +118,7 @@ class ProjectWorkflowSchemeControllerTest {
         override fun findAssignedScheme(
             projectId: UUID,
             projectKey: String,
-        ): WorkflowScheme =
-            findAssignedSchemeResponse ?: throw IllegalStateException("findAssignedSchemeResponse not configured")
+        ): WorkflowScheme = findAssignedSchemeResponse ?: throw IllegalStateException("findAssignedSchemeResponse not configured")
     }
 
     @Configuration
@@ -139,8 +141,7 @@ class ProjectWorkflowSchemeControllerTest {
             appService: WorkflowSchemeApplicationService,
             permissionResolver: WorkflowSchemePermissionResolver,
             projectLookupPort: ProjectLookupPort,
-        ): ProjectWorkflowSchemeController =
-            ProjectWorkflowSchemeController(appService, permissionResolver, projectLookupPort)
+        ): ProjectWorkflowSchemeController = ProjectWorkflowSchemeController(appService, permissionResolver, projectLookupPort)
 
         @Bean
         open fun workflowSchemeExceptionHandler(): WorkflowSchemeExceptionHandler = WorkflowSchemeExceptionHandler()
@@ -173,12 +174,13 @@ class ProjectWorkflowSchemeControllerTest {
 
     @Test
     fun `PUT — 프로젝트에 스킴 할당 성공 시 200 + assignment 응답`() {
-        val assignment = ProjectWorkflowSchemeAssignment(
-            projectId = projectId,
-            workflowSchemeId = schemeId,
-            assignedAt = Instant.parse("2026-01-01T00:00:00Z"),
-            assignedBy = UUID.fromString("00000000-0000-0000-0000-000000000000"),
-        )
+        val assignment =
+            ProjectWorkflowSchemeAssignment(
+                projectId = projectId,
+                workflowSchemeId = schemeId,
+                assignedAt = Instant.parse("2026-01-01T00:00:00Z"),
+                assignedBy = UUID.fromString("00000000-0000-0000-0000-000000000000"),
+            )
 
         every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
         config.appServiceStub.assignToProjectResponse = assignment
@@ -199,16 +201,17 @@ class ProjectWorkflowSchemeControllerTest {
 
     @Test
     fun `GET — 프로젝트에 배정된 스킴 조회 성공 시 200 + scheme 응답`() {
-        val scheme = WorkflowScheme.reconstruct(
-            id = schemeId,
-            key = schemeKey,
-            name = "Software 표준 스킴",
-            description = null,
-            isDefault = true,
-            createdAt = Instant.parse("2026-01-01T00:00:00Z"),
-            updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
-            deletedAt = null,
-        )
+        val scheme =
+            WorkflowScheme.reconstruct(
+                id = schemeId,
+                key = schemeKey,
+                name = "Software 표준 스킴",
+                description = null,
+                isDefault = true,
+                createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+                updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
+                deletedAt = null,
+            )
 
         every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
         config.appServiceStub.findAssignedSchemeResponse = scheme
@@ -223,12 +226,13 @@ class ProjectWorkflowSchemeControllerTest {
 
     @Test
     fun `PUT — ASSIGN_SCHEME 권한 검증이 호출된다`() {
-        val assignment = ProjectWorkflowSchemeAssignment(
-            projectId = projectId,
-            workflowSchemeId = schemeId,
-            assignedAt = Instant.now(),
-            assignedBy = UUID.fromString("00000000-0000-0000-0000-000000000000"),
-        )
+        val assignment =
+            ProjectWorkflowSchemeAssignment(
+                projectId = projectId,
+                workflowSchemeId = schemeId,
+                assignedAt = Instant.now(),
+                assignedBy = UUID.fromString("00000000-0000-0000-0000-000000000000"),
+            )
 
         every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
         config.appServiceStub.assignToProjectResponse = assignment
@@ -251,16 +255,17 @@ class ProjectWorkflowSchemeControllerTest {
 
     @Test
     fun `GET — ASSIGN_SCHEME 권한 검증이 호출된다`() {
-        val scheme = WorkflowScheme.reconstruct(
-            id = schemeId,
-            key = schemeKey,
-            name = "Software 표준 스킴",
-            description = null,
-            isDefault = true,
-            createdAt = Instant.now(),
-            updatedAt = Instant.now(),
-            deletedAt = null,
-        )
+        val scheme =
+            WorkflowScheme.reconstruct(
+                id = schemeId,
+                key = schemeKey,
+                name = "Software 표준 스킴",
+                description = null,
+                isDefault = true,
+                createdAt = Instant.now(),
+                updatedAt = Instant.now(),
+                deletedAt = null,
+            )
 
         every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
         config.appServiceStub.findAssignedSchemeResponse = scheme

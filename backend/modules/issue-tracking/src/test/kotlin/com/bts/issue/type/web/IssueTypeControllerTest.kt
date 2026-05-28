@@ -2,8 +2,8 @@
 
 package com.bts.issue.type.web
 
-import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.issue.type.domain.IssueType
+import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeKey
 import io.mockk.every
@@ -60,8 +60,7 @@ class IssueTypeControllerTest {
         open fun issueTypeRepository(): IssueTypeRepository = mockk(relaxed = true)
 
         @Bean
-        open fun issueTypeController(repository: IssueTypeRepository): IssueTypeController =
-            IssueTypeController(repository)
+        open fun issueTypeController(repository: IssueTypeRepository): IssueTypeController = IssueTypeController(repository)
     }
 
     @Autowired
@@ -74,13 +73,14 @@ class IssueTypeControllerTest {
 
     private val fixedNow: Instant = Instant.parse("2026-05-27T00:00:00Z")
 
-    private val standardTypes = listOf(
-        issueType(1L, "epic", "Epic", "대규모 작업 단위. 여러 Story 로 분해된다.", "epic"),
-        issueType(2L, "story", "Story", "사용자 스토리.", "story"),
-        issueType(3L, "task", "Task", "구체적인 작업 항목.", "task"),
-        issueType(4L, "subtask", "Subtask", "Task 를 세분화한 하위 작업 단위.", "subtask"),
-        issueType(5L, "bug", "Bug", "시스템 결함 또는 예상치 못한 동작.", "bug"),
-    )
+    private val standardTypes =
+        listOf(
+            issueType(1L, "epic", "Epic", "대규모 작업 단위. 여러 Story 로 분해된다.", "epic"),
+            issueType(2L, "story", "Story", "사용자 스토리.", "story"),
+            issueType(3L, "task", "Task", "구체적인 작업 항목.", "task"),
+            issueType(4L, "subtask", "Subtask", "Task 를 세분화한 하위 작업 단위.", "subtask"),
+            issueType(5L, "bug", "Bug", "시스템 결함 또는 예상치 못한 동작.", "bug"),
+        )
 
     @BeforeEach
     fun setUp() {

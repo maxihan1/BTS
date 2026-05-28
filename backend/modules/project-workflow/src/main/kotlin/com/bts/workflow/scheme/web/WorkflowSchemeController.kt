@@ -77,12 +77,13 @@ class WorkflowSchemeController(
         val actor = systemActor()
         permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
         log.info("WorkflowSchemeController.create key={}", request.key)
-        val scheme = applicationService.create(
-            actor = actor,
-            key = WorkflowSchemeKey(request.key),
-            name = request.name,
-            description = request.description,
-        )
+        val scheme =
+            applicationService.create(
+                actor = actor,
+                key = WorkflowSchemeKey(request.key),
+                name = request.name,
+                description = request.description,
+            )
         return ResponseEntity.status(HttpStatus.CREATED).body(DataEnvelope(WorkflowSchemeResponse.from(scheme)))
     }
 
@@ -132,13 +133,14 @@ class WorkflowSchemeController(
         val actor = systemActor()
         permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
         log.info("WorkflowSchemeController.update schemeKey={}", schemeKey)
-        val scheme = applicationService.update(
-            actor = actor,
-            key = WorkflowSchemeKey(schemeKey),
-            newName = request.name,
-            newDescription = request.description,
-            newIsDefault = false,
-        )
+        val scheme =
+            applicationService.update(
+                actor = actor,
+                key = WorkflowSchemeKey(schemeKey),
+                newName = request.name,
+                newDescription = request.description,
+                newIsDefault = false,
+            )
         return ResponseEntity.ok(DataEnvelope(WorkflowSchemeResponse.from(scheme)))
     }
 
@@ -185,12 +187,13 @@ class WorkflowSchemeController(
             request.issueTypeKey,
             request.workflowKey,
         )
-        val mapping = applicationService.addMappingByKeys(
-            actor = actor,
-            schemeKey = WorkflowSchemeKey(schemeKey),
-            issueTypeKey = request.issueTypeKey,
-            workflowKey = request.workflowKey,
-        )
+        val mapping =
+            applicationService.addMappingByKeys(
+                actor = actor,
+                schemeKey = WorkflowSchemeKey(schemeKey),
+                issueTypeKey = request.issueTypeKey,
+                workflowKey = request.workflowKey,
+            )
         return ResponseEntity.ok(DataEnvelope(MappingResponse.from(mapping)))
     }
 

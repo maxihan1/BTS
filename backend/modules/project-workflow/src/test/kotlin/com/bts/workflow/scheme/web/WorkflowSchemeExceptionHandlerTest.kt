@@ -15,6 +15,8 @@ import com.bts.workflow.scheme.exception.WorkflowSchemeNoDefaultException
 import com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.ExtendWith
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
@@ -28,8 +30,6 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
-import org.junit.jupiter.api.extension.ExtendWith
-import org.springframework.beans.factory.annotation.Autowired
 
 /**
  * [WorkflowSchemeExceptionHandler] RFC 7807 ProblemDetail 매핑 11건 검증.
@@ -55,7 +55,6 @@ import org.springframework.beans.factory.annotation.Autowired
 @ContextConfiguration(classes = [WorkflowSchemeExceptionHandlerTest.TestMvcConfig::class])
 @WebAppConfiguration
 class WorkflowSchemeExceptionHandlerTest {
-
     @Autowired
     private lateinit var wac: WebApplicationContext
 
@@ -215,7 +214,6 @@ class WorkflowSchemeExceptionHandlerTest {
     @Configuration(proxyBeanMethods = false)
     @EnableWebMvc
     class TestMvcConfig {
-
         @Bean
         fun stubController(): StubExceptionController = StubExceptionController()
 
@@ -228,7 +226,6 @@ class WorkflowSchemeExceptionHandlerTest {
      */
     @RestController
     class StubExceptionController {
-
         @GetMapping("/test/scheme-key-invalid")
         fun schemeKeyInvalid(): Nothing = throw SchemeKeyInvalidException(key = "INVALID_KEY!")
 

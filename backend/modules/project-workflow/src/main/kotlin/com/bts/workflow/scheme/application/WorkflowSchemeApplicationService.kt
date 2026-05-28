@@ -3,6 +3,7 @@
 package com.bts.workflow.scheme.application
 
 import com.bts.shared.issue.IssueTypeId
+import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
@@ -11,7 +12,6 @@ import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowScheme
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
 import com.bts.workflow.scheme.event.WorkflowSchemeAssignedEvent
-import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.scheme.exception.IssueTypeNotFoundException
 import com.bts.workflow.scheme.exception.SchemeInUseException
 import com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException
