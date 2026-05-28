@@ -62,7 +62,7 @@
 - [x] D3. 데이터 모델 — `workflow_schemes`, `project_workflow_scheme_map`, `scheme_issue_type_workflow` (책임. db-engineer) — PR #18
 - [x] D4. 백엔드 — Scheme 관리 API — REST 10 endpoint (Scheme CRUD 5 + Mapping 2 + Project assignment 2 + IssueType read 1) + 예외 핸들러 (책임. backend-engineer + security-engineer) — PR #18
 - [x] D5. 백엔드 테스트 — 단위·Controller·Repository 통합 완료 (책임. backend-engineer) — PR #18. *S1~S8 시나리오 통합테스트 + ADR·SDD 정정은 Wave 6 후속*
-- [ ] D6. 프론트 UI — 프로젝트 설정 → 워크플로우 (책임. designer → frontend-engineer)
+- [x] D6. 프론트 UI — 프로젝트 설정 → 워크플로우 (책임. designer → frontend-engineer) — PR #31
 - [ ] D7. E2E (책임. qa-engineer)
 
 ## §NFR project-workflow BC 완료 게이트

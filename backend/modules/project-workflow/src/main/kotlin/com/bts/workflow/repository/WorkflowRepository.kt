@@ -72,6 +72,27 @@ class WorkflowRepository(private val dsl: DSLContext) {
             ?.get(WORKFLOWS.ID) as UUID?
 
     /**
+     * UUID 목록으로 [Workflow] aggregate 를 일괄 조회한다.
+     *
+     * 입력이 빈 리스트이면 DB 호출 없이 빈 map 을 반환한다.
+     * 매핑 응답(MappingResponseDetail) 에서 workflowId → Workflow 변환에 사용한다.
+     *
+     * @param ids 조회할 workflows.id(UUID) 목록.
+     * @return UUID → [Workflow] 매핑. 미존재 ID 는 포함되지 않는다.
+     */
+    fun findByIds(ids: List<UUID>): Map<UUID, Workflow> {
+        if (ids.isEmpty()) return emptyMap()
+        val rows = fetchJoinedRows(WORKFLOWS.ID.`in`(ids))
+        return rows.toWorkflows().associateBy { workflow ->
+            // Workflow.key 기준으로는 UUID FK 를 복원할 수 없으므로
+            // JOIN 결과에서 WORKFLOWS.ID 를 직접 읽어 매핑한다.
+            rows.firstOrNull { row -> row[WORKFLOWS.KEY] == workflow.key }
+                ?.let { row -> row[WORKFLOWS.ID] as UUID }
+                ?: error("WORKFLOWS.ID not found for workflow key=${workflow.key}")
+        }
+    }
+
+    /**
      * 저장된 모든 [Workflow] aggregate 를 반환한다.
      *
      * @return [Workflow] 목록 (비어 있을 수 있음)

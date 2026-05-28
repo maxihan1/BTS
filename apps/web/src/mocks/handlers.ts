@@ -1,10 +1,20 @@
 // MSW 핸들러 통합 인덱스 — BC별 handlers를 spread해서 내보낸다
-import { workflowHandlers } from './workflow-handlers'
 import { authHandlers } from './auth-handlers'
 import { issueHandlers } from './issue-handlers'
+import { issueTypeHandlers } from './issue-type-handlers'
+import { schemeHandlers } from './scheme-handlers'
+import { workflowHandlers } from './workflow-handlers'
 
+/**
+ * 애플리케이션 전체 MSW 핸들러 집합.
+ *
+ * 모든 BC(issue-tracking, project-workflow, auth)의 mock endpoint를
+ * 하나의 배열로 통합한다. 알파벳순 BC 그룹 정렬.
+ */
 export const handlers = [
-  ...workflowHandlers,
   ...authHandlers,
   ...issueHandlers,
+  ...issueTypeHandlers,
+  ...schemeHandlers,
+  ...workflowHandlers,
 ]

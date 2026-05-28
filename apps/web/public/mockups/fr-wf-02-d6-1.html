@@ -1,0 +1,110 @@
+<!doctype html>
+<!-- FR-WF-02 D6 워크플로우 스킴 관리 시안 1 — Multi-pane admin console (3-컬럼: 좌 네비 + 중 매핑 테이블 + 우 메타패널) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>워크플로우 스킴 관리 시안 1 — Multi-pane admin console</title>
+<style>
+  :root {
+    --background: oklch(1 0 0); --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0); --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0); --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0); --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0); --input: oklch(0.922 0 0); --radius: 0.625rem;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Geist Variable','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+    background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .shell { display: grid; grid-template-columns: 240px 1fr 280px; min-height: 100vh; }
+  .sidebar { background: var(--muted); border-right: 1px solid var(--border); padding: 24px 16px; }
+  .sidebar h2 { font-size: 13px; color: var(--muted-foreground); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .nav-group { margin-bottom: 20px; }
+  .nav-group-title { font-size: 11px; color: var(--muted-foreground); margin-bottom: 6px; padding: 0 8px; }
+  .nav-item { padding: 8px 10px; border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between; font-size: 13px; }
+  .nav-item.active { background: var(--card); font-weight: 500; border: 1px solid var(--border); }
+  .nav-item:hover:not(.active) { background: oklch(0.94 0 0); }
+  .nav-item .count { color: var(--muted-foreground); font-size: 11px; }
+  .nav-btn-new { width: 100%; margin-top: 8px; padding: 8px; border: 1px dashed var(--border); border-radius: 6px; background: transparent; font-size: 12px; color: var(--muted-foreground); cursor: pointer; }
+  .main { padding: 32px 40px; overflow-y: auto; }
+  .breadcrumb { font-size: 13px; color: var(--muted-foreground); margin-bottom: 12px; }
+  .breadcrumb .key { color: var(--foreground); }
+  h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 10px; }
+  .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 500; background: var(--muted); color: var(--muted-foreground); }
+  .badge.standard { background: oklch(0.95 0.03 250); color: oklch(0.4 0.1 250); }
+  .name-line { color: var(--muted-foreground); font-size: 14px; margin-bottom: 24px; }
+  h2 { font-size: 14px; font-weight: 600; margin: 28px 0 12px; display: flex; justify-content: space-between; align-items: center; }
+  h2 .h-action { font-size: 12px; font-weight: 500; color: oklch(0.45 0.13 250); cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  th { background: var(--muted); padding: 10px 14px; text-align: left; font-size: 12px; color: var(--muted-foreground); font-weight: 500; }
+  td { padding: 12px 14px; border-top: 1px solid var(--border); font-size: 14px; }
+  tr.default td { background: oklch(0.985 0.005 80); font-weight: 500; }
+  tr.default td:first-child::before { content: "★"; color: oklch(0.65 0.15 80); margin-right: 6px; }
+  .type-chip { display: inline-flex; align-items: center; padding: 2px 8px; background: var(--muted); border-radius: 4px; font-size: 12px; }
+  .wf-link { color: oklch(0.45 0.13 250); cursor: pointer; }
+  .row-actions { color: var(--muted-foreground); cursor: pointer; font-size: 16px; }
+  .panel { background: var(--muted); border-left: 1px solid var(--border); padding: 24px 20px; }
+  .panel h3 { font-size: 12px; color: var(--muted-foreground); text-transform: uppercase; margin-bottom: 12px; letter-spacing: 0.05em; }
+  .panel .row { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .panel .row:last-of-type { border-bottom: 0; }
+  .panel .lab { font-size: 12px; color: var(--muted-foreground); margin-bottom: 3px; }
+  .panel .val { font-size: 13px; font-weight: 500; }
+  .panel .val a { color: oklch(0.45 0.13 250); cursor: pointer; }
+  .panel .actions { margin-top: 20px; display: flex; flex-direction: column; gap: 8px; }
+  .btn { height: 36px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--card); display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .btn.danger { color: var(--destructive); border-color: var(--border); }
+  .btn.danger.disabled { color: var(--muted-foreground); cursor: not-allowed; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <h2>워크플로우 스킴</h2>
+    <div class="nav-group">
+      <div class="nav-group-title">표준 (4)</div>
+      <div class="nav-item active">software <span class="count">2</span></div>
+      <div class="nav-item">bug-tracking <span class="count">0</span></div>
+      <div class="nav-item">simple <span class="count">1</span></div>
+      <div class="nav-item">kanban <span class="count">0</span></div>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">커스텀 (2)</div>
+      <div class="nav-item">team-a-scheme <span class="count">1</span></div>
+      <div class="nav-item">design-team <span class="count">0</span></div>
+      <button class="nav-btn-new">＋ 새 스킴 생성</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="breadcrumb">관리 / 워크플로우 스킴 / <span class="key">software</span></div>
+    <h1>software <span class="badge standard">표준</span></h1>
+    <div class="name-line">Software 표준 스킴 · 소프트웨어 개발 팀의 기본 워크플로우 스킴</div>
+
+    <h2>이슈 타입별 매핑 <span class="h-action">＋ 매핑 추가</span></h2>
+    <table>
+      <thead>
+        <tr><th style="width: 220px;">이슈 타입</th><th>워크플로우</th><th style="width: 40px;"></th></tr>
+      </thead>
+      <tbody>
+        <tr class="default"><td>기본 (모든 타입)</td><td><span class="wf-link">software-default</span></td><td><span class="row-actions">⋯</span></td></tr>
+        <tr><td><span class="type-chip">🐛 Bug</span></td><td><span class="wf-link">bug-tracking</span></td><td><span class="row-actions">⋯</span></td></tr>
+        <tr><td><span class="type-chip">📖 Story</span></td><td><span class="wf-link">software-default</span></td><td><span class="row-actions">⋯</span></td></tr>
+      </tbody>
+    </table>
+  </main>
+
+  <aside class="panel">
+    <h3>스킴 메타</h3>
+    <div class="row"><div class="lab">key</div><div class="val">software</div></div>
+    <div class="row"><div class="lab">표준 여부</div><div class="val">표준 (삭제 불가, key 변경 불가)</div></div>
+    <div class="row"><div class="lab">사용 중 프로젝트</div><div class="val"><a>ATLAS</a>, <a>PROJ-X</a> (2)</div></div>
+    <div class="row"><div class="lab">생성</div><div class="val">2026-05-23</div></div>
+    <div class="row"><div class="lab">수정</div><div class="val">2026-05-28</div></div>
+    <div class="actions">
+      <button class="btn">설명 수정</button>
+      <button class="btn danger disabled" title="표준 스킴은 삭제 불가">삭제 불가</button>
+    </div>
+  </aside>
+</div>
+</body>
+</html>

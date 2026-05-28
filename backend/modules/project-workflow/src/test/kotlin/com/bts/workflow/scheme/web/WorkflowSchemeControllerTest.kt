@@ -17,6 +17,8 @@ import com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermission
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermissionResolver
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemeScope
+import com.bts.workflow.scheme.web.dto.MappingResponseDetail
+import com.bts.workflow.scheme.web.dto.WorkflowSchemeDetailResponse
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
@@ -146,10 +148,10 @@ class WorkflowSchemeControllerTest {
     fun `GET 스킴 목록 — 200 + data 배열`() {
         val schemes =
             listOf(
-                buildScheme("software-scheme", "Software 스킴"),
-                buildScheme("simple-scheme", "단순 스킴"),
+                buildSchemeDetail(key = "software-scheme", name = "Software 스킴"),
+                buildSchemeDetail(key = "simple-scheme", name = "단순 스킴"),
             )
-        every { applicationService.list() } returns schemes
+        every { applicationService.listWithCounts() } returns schemes
 
         mockMvc.perform(get("/api/v1/workflow-schemes").accept(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk)
@@ -162,8 +164,9 @@ class WorkflowSchemeControllerTest {
 
     @Test
     fun `GET 스킴 단건 — 200 + key 포함`() {
-        val scheme = buildScheme("software-scheme", "Software 스킴")
-        every { applicationService.find(WorkflowSchemeKey("software-scheme")) } returns scheme
+        val schemeDetail =
+            buildSchemeDetail(key = "software-scheme", name = "Software 스킴")
+        every { applicationService.findDetail(WorkflowSchemeKey("software-scheme")) } returns schemeDetail
 
         mockMvc.perform(get("/api/v1/workflow-schemes/software-scheme").accept(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk)
@@ -172,8 +175,70 @@ class WorkflowSchemeControllerTest {
     }
 
     @Test
+    fun `GET 스킴 단건 — mappings 리스트 동봉 (task-4 RED)`() {
+        val scheme = buildScheme("software-scheme", "Software 스킴")
+        val workflowId = UUID.fromString("bbbbbbbb-0000-0000-0000-000000000001")
+        val schemeWithMappings =
+            buildSchemeDetail(
+                key = "software-scheme",
+                name = "Software 스킴",
+                usedByProjectsCount = 2L,
+                mappingsCount = 1L,
+                mappings =
+                    listOf(
+                        buildMappingResponse(
+                            id = 5L,
+                            issueTypeKey = "bug",
+                            issueTypeName = "버그",
+                            workflowKey = "software-default",
+                            workflowName = "소프트웨어 기본",
+                        ),
+                    ),
+            )
+        every { applicationService.findDetail(WorkflowSchemeKey("software-scheme")) } returns schemeWithMappings
+
+        mockMvc.perform(get("/api/v1/workflow-schemes/software-scheme").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.usedByProjectsCount").value(2))
+            .andExpect(jsonPath("$.data.mappingsCount").value(1))
+            .andExpect(jsonPath("$.data.mappings").isArray)
+            .andExpect(jsonPath("$.data.mappings[0].issueTypeKey").value("bug"))
+            .andExpect(jsonPath("$.data.mappings[0].issueTypeName").value("버그"))
+            .andExpect(jsonPath("$.data.mappings[0].workflowKey").value("software-default"))
+            .andExpect(jsonPath("$.data.mappings[0].workflowName").value("소프트웨어 기본"))
+    }
+
+    @Test
+    fun `GET 스킴 목록 — usedByProjectsCount + mappingsCount 카운트 포함 (task-4 RED)`() {
+        val schemes =
+            listOf(
+                buildSchemeDetail(
+                    key = "software-scheme",
+                    name = "Software 스킴",
+                    usedByProjectsCount = 3L,
+                    mappingsCount = 4L,
+                    mappings = emptyList(),
+                ),
+                buildSchemeDetail(
+                    key = "simple-scheme",
+                    name = "단순 스킴",
+                    usedByProjectsCount = 0L,
+                    mappingsCount = 1L,
+                    mappings = emptyList(),
+                ),
+            )
+        every { applicationService.listWithCounts() } returns schemes
+
+        mockMvc.perform(get("/api/v1/workflow-schemes").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data[0].usedByProjectsCount").value(3))
+            .andExpect(jsonPath("$.data[0].mappingsCount").value(4))
+            .andExpect(jsonPath("$.data[1].usedByProjectsCount").value(0))
+    }
+
+    @Test
     fun `GET 스킴 단건 — 없는 키 404 SCHEME_NOT_FOUND`() {
-        every { applicationService.find(WorkflowSchemeKey("missing-scheme")) } throws
+        every { applicationService.findDetail(WorkflowSchemeKey("missing-scheme")) } throws
             WorkflowSchemeNotFoundException(key = "missing-scheme")
 
         mockMvc.perform(get("/api/v1/workflow-schemes/missing-scheme").accept(MediaType.APPLICATION_JSON))
@@ -478,5 +543,40 @@ class WorkflowSchemeControllerTest {
             createdAt = Instant.parse("2026-01-01T00:00:00Z"),
             updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
             deletedAt = null,
+        )
+
+    private fun buildSchemeDetail(
+        key: String,
+        name: String,
+        usedByProjectsCount: Long = 0L,
+        mappingsCount: Long = 0L,
+        mappings: List<MappingResponseDetail> = emptyList(),
+    ): WorkflowSchemeDetailResponse =
+        WorkflowSchemeDetailResponse(
+            id = 1L,
+            key = key,
+            name = name,
+            description = null,
+            isDefault = false,
+            createdAt = "2026-01-01T00:00:00Z",
+            updatedAt = "2026-01-01T00:00:00Z",
+            usedByProjectsCount = usedByProjectsCount,
+            mappingsCount = mappingsCount,
+            mappings = mappings,
+        )
+
+    private fun buildMappingResponse(
+        id: Long,
+        issueTypeKey: String?,
+        issueTypeName: String?,
+        workflowKey: String,
+        workflowName: String,
+    ): MappingResponseDetail =
+        MappingResponseDetail(
+            id = id,
+            issueTypeKey = issueTypeKey,
+            issueTypeName = issueTypeName,
+            workflowKey = workflowKey,
+            workflowName = workflowName,
         )
 }

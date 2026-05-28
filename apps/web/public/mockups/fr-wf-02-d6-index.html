@@ -1,0 +1,98 @@
+<!doctype html>
+<!-- FR-WF-02 D6 워크플로우 스킴 관리 시안 비교 페이지 -->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FR-WF-02 D6 시안 비교 — 워크플로우 스킴 관리 UI</title>
+<style>
+  :root {
+    --background: oklch(1 0 0); --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0); --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0);
+    --border: oklch(0.922 0 0);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Geist Variable','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+    background: oklch(0.99 0 0); color: var(--foreground); font-size: 14px; line-height: 1.5; }
+  .page { max-width: 1280px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+  .sub { color: var(--muted-foreground); margin-bottom: 32px; }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .card iframe { width: 100%; height: 540px; border: 0; display: block; border-bottom: 1px solid var(--border); }
+  .card-body { padding: 20px 24px; }
+  .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .card-num { width: 28px; height: 28px; border-radius: 6px; background: var(--primary); color: var(--primary-foreground); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; }
+  .card h2 { font-size: 17px; font-weight: 600; }
+  .card .desc { color: var(--muted-foreground); font-size: 13px; margin-bottom: 12px; }
+  .card .pros, .card .cons { font-size: 12px; line-height: 1.7; }
+  .pros li, .cons li { list-style: none; padding-left: 18px; position: relative; }
+  .pros li::before { content: "✓"; position: absolute; left: 0; color: oklch(0.55 0.13 145); font-weight: 600; }
+  .cons li::before { content: "−"; position: absolute; left: 0; color: var(--muted-foreground); }
+  .open-link { display: inline-block; margin-top: 12px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; color: var(--foreground); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>FR-WF-02 D6 — 워크플로우 스킴 관리 UI 시안 비교</h1>
+  <p class="sub">화면 = 스킴 상세 + 매핑 편집 (가장 정보 위계 결정 중요한 화면). 색/폰트는 DESIGN.md 고정. 레이아웃·정보위계·매핑 편집 패턴·액션 위치로 차별화.</p>
+
+  <div class="grid">
+    <div class="card">
+      <iframe src="fr-wf-02-d6-1.html"></iframe>
+      <div class="card-body">
+        <div class="card-head"><span class="card-num">1</span><h2>Multi-pane admin console</h2></div>
+        <div class="desc">3-컬럼. 좌 사이드바 (스킴 네비) + 중앙 매핑 테이블 + 우 메타패널. PR #26 의 사이드 메타패널 taste 직접 계승.</div>
+        <ul class="pros"><li>정보 밀도 최고 (한 화면에 모든 컨텍스트)</li><li>스킴 간 전환 빠름 (좌 네비)</li><li>광폭 모니터 admin 워크플로우 최적</li></ul>
+        <ul class="cons"><li>1280px 미만에서 컬럼 압박</li><li>모바일 대응 필요 시 별도 레이아웃</li></ul>
+        <a class="open-link" href="fr-wf-02-d6-1.html" target="_blank">새 탭에서 열기 →</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <iframe src="fr-wf-02-d6-2.html"></iframe>
+      <div class="card-body">
+        <div class="card-head"><span class="card-num">2</span><h2>Top-down stacked</h2></div>
+        <div class="desc">풀폭 single-column (~880px). default mapping highlight 카드 + 매핑 테이블 + 사용 프로젝트 카드. primary CTA "＋ 매핑 추가" 상단 우.</div>
+        <ul class="pros"><li>default mapping 시각적 강조 (★ + 색)</li><li>모바일 대응 자연 (single-column)</li><li>CTA 위치 명확 (상단 primary)</li></ul>
+        <ul class="cons"><li>스킴 간 전환은 별 페이지 (목록 → 상세)</li><li>좌측 네비 부재로 컨텍스트 약함</li></ul>
+        <a class="open-link" href="fr-wf-02-d6-2.html" target="_blank">새 탭에서 열기 →</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <iframe src="fr-wf-02-d6-3.html"></iframe>
+      <div class="card-body">
+        <div class="card-head"><span class="card-num">3</span><h2>Card grid + drawer</h2></div>
+        <div class="desc">스킴 목록 = 카드 그리드 (3-col). 카드 클릭 → 우 480px drawer slide-in (매핑 + 메타). Linear/Notion 풍.</div>
+        <ul class="pros"><li>스킴 개요 한 눈 (카드별 매핑/프로젝트 수)</li><li>drawer 로 컨텍스트 유지하며 편집</li><li>가벼운 미적 (admin 무거움 회피)</li></ul>
+        <ul class="cons"><li>매핑 편집 영역이 drawer 라 좁음 (480px)</li><li>카드 그리드와 drawer 동시 노출 시 시각 복잡</li></ul>
+        <a class="open-link" href="fr-wf-02-d6-3.html" target="_blank">새 탭에서 열기 →</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <iframe src="fr-wf-02-d6-4.html"></iframe>
+      <div class="card-body">
+        <div class="card-head"><span class="card-num">4</span><h2>Master-detail single screen</h2></div>
+        <div class="desc">한 화면 좌 = 스킴 compact list (검색 가능) + 우 = full editor. URL `?selected=software` 로 컨텍스트 유지. 페이지 전환 없음.</div>
+        <ul class="pros"><li>스킴 비교 빠름 (좌 list 의 매핑/프로젝트 수)</li><li>full editor 영역 넓음 (drawer 보다 우세)</li><li>검색 자연 (좌 list 상단)</li></ul>
+        <ul class="cons"><li>좌 list + 우 editor 양분 시 모바일 대응 어려움</li><li>URL 쿼리 패턴이 TanStack Router file-route 와 비대칭</li></ul>
+        <a class="open-link" href="fr-wf-02-d6-4.html" target="_blank">새 탭에서 열기 →</a>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top: 40px; padding: 20px 24px; background: var(--card); border: 1px solid var(--border); border-radius: 12px;">
+    <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">선택 기준 제안</h3>
+    <ul style="font-size: 13px; color: var(--muted-foreground); padding-left: 20px;">
+      <li><strong>시안 1 (Multi-pane)</strong> — PR #26 taste 직접 계승, admin 도구 정보 밀도 최우선이면 선택.</li>
+      <li><strong>시안 2 (Top-down)</strong> — default mapping 강조 + 모바일 대응 우선, primary CTA 위치 명확하게 가고 싶으면.</li>
+      <li><strong>시안 3 (Card + drawer)</strong> — 가벼운 미적, 스킴 목록을 카드로 일목요연하게 보여주고 싶을 때.</li>
+      <li><strong>시안 4 (Master-detail)</strong> — 스킴 간 비교 + 검색이 핵심 use case, full editor 영역도 넓게 쓰고 싶을 때.</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>
