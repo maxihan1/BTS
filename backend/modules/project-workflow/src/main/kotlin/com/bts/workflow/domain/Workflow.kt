@@ -6,7 +6,7 @@ package com.bts.workflow.domain
  * FSM(유한 상태 기계) 워크플로우 Aggregate Root.
  *
  * 직접 생성자 호출을 막고 companion factory [of]를 통해서만 생성한다.
- * factory가 4가지 invariant를 검증하므로 인스턴스가 존재하면 항상 일관된 상태임을 보장한다.
+ * factory가 5가지 invariant를 검증하므로 인스턴스가 존재하면 항상 일관된 상태임을 보장한다.
  *
  * @property key 워크플로우 식별 키. 시스템 전역에서 고유.
  * @property name 사람이 읽을 수 있는 워크플로우 이름.
