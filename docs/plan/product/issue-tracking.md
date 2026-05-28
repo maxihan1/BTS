@@ -37,6 +37,12 @@
 - [x] D6. 프론트 UI — `IssueDetail.tsx`. TanStack Query 캐싱 + 낙관적 업데이트 (책임. designer → frontend-engineer) (완료. PR #26 — 목록(issues.index)+생성(issues.new)+상세(issues.$key, 시안2 사이드 메타패널)+요약 인라인 수정(완전 낙관적 onMutate/onError/onSettled+409 토스트)+소프트 삭제. sonner toast 도입. router 3라우트 requireAuth. **상태 전이 UI는 제외** — 백엔드 미연동(DEFAULT 워크플로우 미시드 + OPEN/open 케이스 불일치), 별 slice. 8 TDD task / 173 테스트 통과)
 - [ ] D7. E2E + NFR — 생성→조회→수정→상태 전이→소프트 삭제→키 영속성 (이동 후 옛 키 redirect) (책임. qa-engineer)
 
+> **D7 부분 통과 (PR #32, 2026-05-28)**. E2E-1~4 적용 — 생성/조회/인라인 수정/소프트 삭제/목록 제외 + 비로그인 가드 + 미존재 키 404 + UI 회귀 가드 3건 (인라인 편집 취소 / 다이얼로그 취소 / 빈 summary Zod 검증). MSW mock 환경 (backend dev 불필요). full 통과 후속 의존:
+> - **상태 전이 E2E** ← FR-IS-01 D6.5 신규 slice (전이 UI 추가 — DropdownMenu + useTransitionMutation, 백엔드 wiring 은 PR #27/#28 완료).
+> - **이슈 이동 + 키 redirect E2E** ← FR-IS-12 move 별 FR (백엔드 IssueKeyRedirect + Flyway + jOOQ + frontend 이동 다이얼로그 + redirect 라우트).
+> - **NFR p95 측정 3건 (조회 200ms / 목록 500ms / POST 300ms)** Deferred trigger — (a) k6-load-testing + Playwright NFR 계층 도구 도입 + (b) 실 backend 환경 사전 구축, Maxi 선언으로 trigger 조정 (PR #21 §F4 패턴).
+> - **권한 모델 E2E** ← 실 RBAC 가드 구현 (현재 dev/test = `AlwaysAllowIssuePermissionResolver`) 별 FR 후.
+
 | 항목 | 임계 | 실측 (p95) |
 |---|---|---|
 | 단건 조회 | 200ms | ___ |
