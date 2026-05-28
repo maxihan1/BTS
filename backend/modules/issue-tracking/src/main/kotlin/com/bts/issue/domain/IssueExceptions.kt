@@ -67,6 +67,9 @@ class IssueProjectNotFoundException(projectKey: String) :
 class IssueKeyPrefixReservedException(prefix: String) :
     IssueDomainException("Issue key prefix is reserved: $prefix")
 
+class IssueWorkflowNotConfiguredException(projectKey: String, issueTypeKey: String?) :
+    IssueDomainException("Workflow not configured for project=$projectKey, issueType=${issueTypeKey ?: "<default>"}")
+
 /**
  * 워크플로우 전이가 허용되지 않을 때.
  *
