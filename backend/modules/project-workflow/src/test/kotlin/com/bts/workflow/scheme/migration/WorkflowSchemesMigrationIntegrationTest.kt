@@ -69,7 +69,10 @@ class WorkflowSchemesMigrationIntegrationTest {
                 Flyway.configure()
                     .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                     .placeholderReplacement(false)
-                    .locations("classpath:db/migration")
+                    .locations(
+                        "classpath:db/migration/issue-tracking",
+                        "classpath:db/migration/project-workflow",
+                    )
                     .target("200")
                     .load()
             flyway.migrate()
@@ -83,7 +86,10 @@ class WorkflowSchemesMigrationIntegrationTest {
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
-                .locations("classpath:db/migration")
+                .locations(
+                    "classpath:db/migration/issue-tracking",
+                    "classpath:db/migration/project-workflow",
+                )
                 .load()
                 .migrate()
 
@@ -95,12 +101,14 @@ class WorkflowSchemesMigrationIntegrationTest {
         }
 
         /**
-         * issue_types 스텁 테이블 생성 — 테스트 전용.
+         * issue_types 스텁 테이블 생성 — 테스트 전용 first-pass FK 안전판.
          *
-         * 프로덕션: issue-tracking Flyway V003 이 issue_types 테이블을 생성 (project-workflow V004 이전).
-         * 테스트: project-workflow Flyway 는 자체 classpath:db/migration 만 실행하므로 issue_types 없음.
-         * V004 의 workflow_scheme_issue_type_mappings.issue_type_id BIGINT REFERENCES issue_types(id)
-         * FK 선언을 통과시키기 위해 최소 schema 의 스텁 테이블을 생성한다.
+         * 프로덕션. issue-tracking Flyway V003 이 issue_types 테이블을 생성 (project-workflow V200/V201 이전).
+         * 테스트. cross-BC classpath 의 issue-tracking V003 가 testRuntimeOnly 의존으로 적용 가능하나,
+         * 본 IT 가 V200/V201 단계까지의 Flyway 동작을 단계별 검증하므로 V003 적용 전 시점에 FK 선언이 통과해야 한다.
+         * V201 의 workflow_scheme_issue_type_mappings.issue_type_id BIGINT REFERENCES issue_types(id)
+         * FK 선언을 first-pass 에 통과시키기 위해 최소 schema 의 스텁 테이블을 생성. IF NOT EXISTS 로 멱등 보장 —
+         * V003 가 이후 적용되어 실제 issue_types 가 생성되어도 안전.
          */
         private fun createIssueTypesStub() {
             DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->

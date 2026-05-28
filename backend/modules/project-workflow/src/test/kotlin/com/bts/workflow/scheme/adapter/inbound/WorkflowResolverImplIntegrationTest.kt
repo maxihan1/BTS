@@ -145,7 +145,10 @@ class WorkflowResolverImplIntegrationTest {
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
-                .locations("classpath:db/migration")
+                .locations(
+                    "classpath:db/migration/issue-tracking",
+                    "classpath:db/migration/project-workflow",
+                )
                 .target("200")
                 .load()
                 .migrate()
@@ -175,7 +178,10 @@ class WorkflowResolverImplIntegrationTest {
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
-                .locations("classpath:db/migration")
+                .locations(
+                    "classpath:db/migration/issue-tracking",
+                    "classpath:db/migration/project-workflow",
+                )
                 .load()
                 .migrate()
         }

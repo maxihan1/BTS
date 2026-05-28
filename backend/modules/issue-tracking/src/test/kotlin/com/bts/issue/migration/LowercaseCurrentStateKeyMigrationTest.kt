@@ -63,7 +63,7 @@ class LowercaseCurrentStateKeyMigrationTest {
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
-                .locations("classpath:db/migration")
+                .locations("classpath:db/migration/issue-tracking")
                 .target("3")
                 .load()
                 .migrate()
@@ -114,7 +114,7 @@ class LowercaseCurrentStateKeyMigrationTest {
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
-                .locations("classpath:db/migration")
+                .locations("classpath:db/migration/issue-tracking")
                 .load()
                 .migrate()
         }
