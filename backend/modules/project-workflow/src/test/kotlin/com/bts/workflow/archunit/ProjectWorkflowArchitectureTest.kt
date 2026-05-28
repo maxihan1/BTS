@@ -68,6 +68,18 @@ class ProjectWorkflowArchitectureTest {
      * IssueTypeId / IssueTypeKey 는 PR #25 에서 shared-kernel(`com.bts.shared.issue`)로 이동되어
      * 더 이상 issue-tracking 직접 import 가 아니다. issue-tracking ↔ project-workflow 순환을
      * 회피하기 위해 예외 없이 전면 금지한다.
+     *
+     * ### IssueTypeRef 허용 근거 (FR-WF-02 D6 Task 1)
+     *
+     * `IssueTypeRef` 는 shared-kernel(`com.bts.shared.issue`) 패키지에 위치하므로
+     * `com.bts.issue..` 금지 패키지 매칭 대상이 아니다. ArchUnit 룰 상 자동 통과.
+     * 이 주석은 의도를 명시하기 위한 것이며 실제 룰 동작에는 영향 없다.
+     *
+     * - `IssueTypeLookupPort` — project-workflow 내부(`com.bts.workflow.scheme.application.port`)
+     *   에 선언된 outbound interface 로, issue-tracking 이 구현을 제공한다.
+     *   issue-tracking 에서 이를 import 하면 IssueBcArchTest 금지 목록에 해당 패키지가 없으므로 룰 통과.
+     *
+     * 결정 근거: docs/adr/2026-05-28-workflow-scheme-frontend-view-layer-cross-bc-lookup.md
      */
     @Test
     fun mustNotImportIssueTracking() {
