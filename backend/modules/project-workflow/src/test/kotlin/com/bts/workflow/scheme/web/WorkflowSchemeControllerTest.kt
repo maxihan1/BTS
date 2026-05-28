@@ -1,12 +1,16 @@
-// WorkflowSchemeController — Scheme CRUD 5 endpoint MockMvc 슬라이스 테스트 (Task 24)
+// WorkflowSchemeController — Scheme CRUD 5 endpoint + Mapping CRUD 2 endpoint MockMvc 슬라이스 테스트 (Task 24, Task 25)
 
 package com.bts.workflow.scheme.web
 
+import com.bts.shared.issue.IssueTypeId
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
+import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowScheme
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
+import com.bts.workflow.scheme.exception.MappingDefaultDuplicateException
+import com.bts.workflow.scheme.exception.MappingDuplicateException
 import com.bts.workflow.scheme.exception.SchemeInUseException
 import com.bts.workflow.scheme.exception.SchemeStandardNotDeletableException
 import com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException
@@ -16,6 +20,7 @@ import com.bts.workflow.scheme.port.outbound.WorkflowSchemeScope
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
+import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.verify
 import org.junit.jupiter.api.BeforeEach
@@ -39,6 +44,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import java.time.Instant
+import java.util.UUID
 
 /**
  * WorkflowSchemeController — Scheme CRUD 5 endpoint MockMvc 슬라이스 테스트.
@@ -216,6 +222,167 @@ class WorkflowSchemeControllerTest {
             .andExpect(status().isNoContent)
     }
 
+    // ── M1. POST /api/v1/workflow-schemes/{schemeKey}/mappings — 200 매핑 추가 ─
+
+    @Test
+    fun `POST 매핑 추가 — 200 OK + 저장된 매핑 id 반환`() {
+        val workflowId = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000001")
+        val mapping = buildMapping(id = 10L, issueTypeId = IssueTypeId(1L), workflowId = workflowId)
+        every {
+            applicationService.addMappingByKeys(
+                actor = systemActor,
+                schemeKey = WorkflowSchemeKey("team-a-scheme"),
+                issueTypeKey = "bug",
+                workflowKey = "software-default",
+            )
+        } returns mapping
+
+        val body = mapOf(
+            "issueTypeKey" to "bug",
+            "workflowKey" to "software-default",
+        )
+
+        mockMvc.perform(
+            post("/api/v1/workflow-schemes/team-a-scheme/mappings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.id").value(10))
+    }
+
+    @Test
+    fun `POST 매핑 추가 — issueTypeKey null 은 default mapping — 200 OK`() {
+        val workflowId = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000002")
+        val mapping = buildMapping(id = 11L, issueTypeId = null, workflowId = workflowId)
+        every {
+            applicationService.addMappingByKeys(
+                actor = systemActor,
+                schemeKey = WorkflowSchemeKey("team-a-scheme"),
+                issueTypeKey = null,
+                workflowKey = "simple",
+            )
+        } returns mapping
+
+        val body = mapOf(
+            "issueTypeKey" to null,
+            "workflowKey" to "simple",
+        )
+
+        mockMvc.perform(
+            post("/api/v1/workflow-schemes/team-a-scheme/mappings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.id").value(11))
+    }
+
+    @Test
+    fun `POST 매핑 추가 — 중복 시 409 MAPPING_DUPLICATE`() {
+        every {
+            applicationService.addMappingByKeys(
+                actor = systemActor,
+                schemeKey = WorkflowSchemeKey("team-a-scheme"),
+                issueTypeKey = "bug",
+                workflowKey = "software-default",
+            )
+        } throws MappingDuplicateException(schemeKey = "team-a-scheme", issueTypeKey = "bug")
+
+        val body = mapOf("issueTypeKey" to "bug", "workflowKey" to "software-default")
+
+        mockMvc.perform(
+            post("/api/v1/workflow-schemes/team-a-scheme/mappings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("MAPPING_DUPLICATE"))
+    }
+
+    @Test
+    fun `POST 매핑 추가 — default 중복 시 409 MAPPING_DEFAULT_DUPLICATE`() {
+        every {
+            applicationService.addMappingByKeys(
+                actor = systemActor,
+                schemeKey = WorkflowSchemeKey("team-a-scheme"),
+                issueTypeKey = null,
+                workflowKey = "simple",
+            )
+        } throws MappingDefaultDuplicateException(schemeKey = "team-a-scheme")
+
+        val body = mapOf("issueTypeKey" to null, "workflowKey" to "simple")
+
+        mockMvc.perform(
+            post("/api/v1/workflow-schemes/team-a-scheme/mappings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("MAPPING_DEFAULT_DUPLICATE"))
+    }
+
+    @Test
+    fun `POST 매핑 추가 — permissionResolver MANAGE_SCHEME 호출 검증`() {
+        val workflowId = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000003")
+        val mapping = buildMapping(id = 12L, issueTypeId = IssueTypeId(2L), workflowId = workflowId)
+        every {
+            applicationService.addMappingByKeys(
+                actor = systemActor,
+                schemeKey = WorkflowSchemeKey("team-a-scheme"),
+                issueTypeKey = "story",
+                workflowKey = "software-default",
+            )
+        } returns mapping
+
+        val body = mapOf("issueTypeKey" to "story", "workflowKey" to "software-default")
+
+        mockMvc.perform(
+            post("/api/v1/workflow-schemes/team-a-scheme/mappings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+
+        verify {
+            permissionResolver.requirePermission(
+                systemActor,
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
+        }
+    }
+
+    // ── M2. DELETE /api/v1/workflow-schemes/{schemeKey}/mappings/{mappingId} — 204 ──
+
+    @Test
+    fun `DELETE 매핑 삭제 — 204 No Content`() {
+        justRun {
+            applicationService.deleteMapping(systemActor, 42L)
+        }
+
+        mockMvc.perform(delete("/api/v1/workflow-schemes/team-a-scheme/mappings/42"))
+            .andExpect(status().isNoContent)
+    }
+
+    @Test
+    fun `DELETE 매핑 삭제 — permissionResolver MANAGE_SCHEME 호출 검증`() {
+        justRun {
+            applicationService.deleteMapping(systemActor, 99L)
+        }
+
+        mockMvc.perform(delete("/api/v1/workflow-schemes/team-a-scheme/mappings/99"))
+            .andExpect(status().isNoContent)
+
+        verify {
+            permissionResolver.requirePermission(
+                systemActor,
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
+        }
+    }
+
     // ── C6. DELETE 표준 스킴 차단 — 403 ──────────────────────────────────────
 
     @Test
@@ -279,6 +446,19 @@ class WorkflowSchemeControllerTest {
     }
 
     // ── 픽스처 ────────────────────────────────────────────────────────────────
+
+    private fun buildMapping(
+        id: Long,
+        issueTypeId: IssueTypeId?,
+        workflowId: UUID,
+    ): SchemeIssueTypeMapping =
+        SchemeIssueTypeMapping(
+            id = id,
+            schemeId = WorkflowSchemeId(1L),
+            issueTypeId = issueTypeId,
+            workflowId = workflowId,
+            createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+        )
 
     private fun buildScheme(key: String, name: String): WorkflowScheme =
         WorkflowScheme.reconstruct(
