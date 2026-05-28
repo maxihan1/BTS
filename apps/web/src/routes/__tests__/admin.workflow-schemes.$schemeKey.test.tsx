@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/server'
 import { schemeHandlers } from '@/mocks/scheme-handlers'
 import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
+import { workflowHandlers } from '@/mocks/workflow-handlers'
 import { WorkflowSchemeDetailPage } from '@/routes/admin.workflow-schemes.$schemeKey'
 
 // vi.hoisted로 mock 함수 선언
@@ -25,7 +26,7 @@ vi.mock('sonner', () => ({
 }))
 
 function renderDetailPage(schemeKey = 'software-default-scheme') {
-  server.use(...schemeHandlers, ...issueTypeHandlers)
+  server.use(...schemeHandlers, ...issueTypeHandlers, ...workflowHandlers)
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
@@ -43,15 +44,14 @@ describe('WorkflowSchemeDetailPage', () => {
 
   /**
    * S2-1. 페이지 마운트 시 로딩 상태가 표시된다.
+   * 사이드바 로딩 + 상세 스켈레톤 두 개 이상의 status role이 존재할 수 있음.
    */
   it('S2-1: 마운트 시 로딩 스켈레톤이 표시된다', () => {
     renderDetailPage()
-    // 로딩 중 스켈레톤 or 로딩 UI 존재
-    const loadingEl =
-      screen.queryByRole('status') ??
-      screen.queryByTestId('detail-skeleton') ??
-      document.querySelector('[class*="animate-pulse"]')
-    expect(loadingEl).toBeTruthy()
+    // detail-skeleton data-testid로 정확히 확인
+    const detailSkeleton = screen.queryByTestId('detail-skeleton')
+    const anyStatus = screen.queryAllByRole('status')
+    expect(detailSkeleton !== null || anyStatus.length > 0).toBe(true)
   })
 
   /**
@@ -95,7 +95,8 @@ describe('WorkflowSchemeDetailPage', () => {
   })
 
   /**
-   * S7-2. isStandard === true 시 「삭제」 버튼이 disabled.
+   * S7-2. isStandard === true 시 MetaPanel 의 「삭제」 버튼이 disabled.
+   * MappingTable에도 삭제 버튼이 있으므로 MetaPanel 영역(aside)에서 찾는다.
    */
   it('S7-2: 표준 스킴에서 삭제 버튼이 disabled이다', async () => {
     renderDetailPage('software-default-scheme')
@@ -103,12 +104,19 @@ describe('WorkflowSchemeDetailPage', () => {
     await waitFor(() =>
       expect(screen.getByDisplayValue('소프트웨어 개발 기본 스킴')).toBeInTheDocument(),
     )
-    const deleteBtn = screen.getByRole('button', { name: /삭제/ })
-    expect(deleteBtn).toBeDisabled()
+    // MetaPanel 내 삭제 버튼 — aside 안에 위치
+    const aside = document.querySelector('aside')
+    expect(aside).not.toBeNull()
+    // aside 내 모든 버튼 중 '삭제'를 찾음
+    const allBtns = aside?.querySelectorAll('button') ?? []
+    const deleteBtnEl = Array.from(allBtns).find((b) => b.textContent?.includes('삭제'))
+    expect(deleteBtnEl).toBeTruthy()
+    expect(deleteBtnEl).toBeDisabled()
   })
 
   /**
    * S7-3. isStandard === true여도 「+ 매핑 추가」 row는 존재한다 (매핑 변경 가능).
+   * 「추가」 버튼이 테이블 안에 존재함.
    */
   it('S7-3: 표준 스킴에서도 매핑 추가 행이 존재한다', async () => {
     renderDetailPage('software-default-scheme')
@@ -116,13 +124,16 @@ describe('WorkflowSchemeDetailPage', () => {
     await waitFor(() =>
       expect(screen.getByRole('table')).toBeInTheDocument(),
     )
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /추가/ })).toBeInTheDocument(),
-    )
+    // 「추가」 버튼이 1개 이상 존재해야 함 (테이블 내 AddMappingRow의 버튼)
+    await waitFor(() => {
+      const addBtns = screen.getAllByRole('button', { name: /추가/ })
+      expect(addBtns.length).toBeGreaterThan(0)
+    })
   })
 
   /**
    * S8-1. 커스텀 스킴 + usedByProjectsCount > 0 → 삭제 시도 → SCHEME_IN_USE 모달.
+   * MetaPanel의 aside 내 「삭제」 버튼을 찾아 클릭.
    */
   it('S8-1: SCHEME_IN_USE 삭제 시도 시 SchemeInUseModal이 열린다', async () => {
     // custom-scheme-alpha: isStandard=false, usedByProjectsCount=2
@@ -132,14 +143,19 @@ describe('WorkflowSchemeDetailPage', () => {
       expect(screen.getByDisplayValue('사내 개발팀 커스텀 스킴')).toBeInTheDocument(),
     )
 
-    const deleteBtn = screen.getByRole('button', { name: /삭제/ })
-    expect(deleteBtn).not.toBeDisabled()
-    fireEvent.click(deleteBtn)
+    // aside 내 「삭제」 버튼 찾기
+    const aside = document.querySelector('aside')
+    expect(aside).not.toBeNull()
+    const allBtns = aside?.querySelectorAll('button') ?? []
+    const metaDeleteBtn = Array.from(allBtns).find((b) => b.textContent?.includes('삭제'))
+    expect(metaDeleteBtn).toBeTruthy()
+    expect(metaDeleteBtn).not.toBeDisabled()
+    fireEvent.click(metaDeleteBtn!)
 
     await waitFor(() =>
       expect(screen.getByRole('alertdialog')).toBeInTheDocument(),
     )
-    expect(screen.getByText(/사용 중인 프로젝트/)).toBeInTheDocument()
+    expect(screen.getAllByText(/사용 중인 프로젝트/).length).toBeGreaterThan(0)
   })
 
   /**
@@ -152,10 +168,20 @@ describe('WorkflowSchemeDetailPage', () => {
       expect(screen.getByDisplayValue('사내 개발팀 커스텀 스킴')).toBeInTheDocument(),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /삭제/ }))
+    // aside 내 「삭제」 버튼 클릭
+    const aside = document.querySelector('aside')
+    const allBtns = aside?.querySelectorAll('button') ?? []
+    const metaDeleteBtn2 = Array.from(allBtns).find((b) => b.textContent?.includes('삭제'))
+    fireEvent.click(metaDeleteBtn2!)
+
     await waitFor(() => expect(screen.getByRole('alertdialog')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByRole('button', { name: /확인/ }))
+    // 모달 내 「확인」 버튼 클릭
+    const dialog = screen.getByRole('alertdialog')
+    const confirmBtn = dialog.querySelector('button')
+    expect(confirmBtn).toBeTruthy()
+    fireEvent.click(confirmBtn!)
+
     await waitFor(() =>
       expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
     )

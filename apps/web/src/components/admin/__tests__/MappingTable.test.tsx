@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/server'
 import { schemeHandlers } from '@/mocks/scheme-handlers'
 import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
+import { workflowHandlers } from '@/mocks/workflow-handlers'
 import { softwareDefaultSchemeFixture } from '@/mocks/scheme-fixtures'
 import { MappingTable } from '@/components/admin/MappingTable'
 
@@ -16,7 +17,7 @@ vi.mock('sonner', () => ({
 }))
 
 function renderTable(schemeKey = 'software-default-scheme') {
-  server.use(...schemeHandlers, ...issueTypeHandlers)
+  server.use(...schemeHandlers, ...issueTypeHandlers, ...workflowHandlers)
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
@@ -121,7 +122,7 @@ describe('MappingTable', () => {
    */
   it('MT-7: 이슈 타입/워크플로우 선택 후 추가 버튼 클릭 시 mutate가 호출된다', async () => {
     // custom-scheme-beta: subtask만 남음 (default 매핑만 있음 → bug/story/task/epic 모두 미매핑)
-    server.use(...schemeHandlers, ...issueTypeHandlers)
+    server.use(...schemeHandlers, ...issueTypeHandlers, ...workflowHandlers)
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     })
