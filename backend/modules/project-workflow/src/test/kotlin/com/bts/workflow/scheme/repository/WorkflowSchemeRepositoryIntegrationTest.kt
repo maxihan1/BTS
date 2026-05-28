@@ -330,6 +330,93 @@ class WorkflowSchemeRepositoryIntegrationTest {
         assertThat(deletedAt).isNotNull
     }
 
+    // ── findAllWithCounts — cartesian product 회귀 가드 ─────────────────────────
+    // 결함: LEFT JOIN 2회 (assignments + mappings) → cartesian product.
+    // 예. 매핑 3건 + 할당 2건 = 6행 → count(*) = 6 (기댓값. 매핑 3, 할당 2).
+    // 권장 옵션 B (서브쿼리) 로 수정 후 이 테스트가 GREEN 이 되어야 한다.
+
+    @Test
+    @Order(50)
+    fun `findAllWithCounts - cartesian product 없이 정확한 카운트 반환`() {
+        // 전용 스킴 생성 — 다른 테스트 데이터와 격리
+        val scheme =
+            WorkflowScheme.create(
+                key = WorkflowSchemeKey("count-guard-scheme"),
+                name = "카운트 회귀 가드 스킴",
+                description = null,
+                isDefault = false,
+                clock = fixedClock,
+            )
+        val saved = repository.save(scheme)
+        val schemeId = saved.id!!.value
+
+        // 워크플로우 id 조회 (매핑에 필요)
+        val workflowId =
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.prepareStatement("SELECT id FROM workflows LIMIT 1").use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        if (rs.next()) rs.getString(1) else error("workflows 테이블이 비어 있음 — setup 확인")
+                    }
+                }
+            }
+
+        // issue_type_id NULL 매핑 3건 삽입 — 단, uq_scheme_issue_type(NULL)은 1건만 허용.
+        // partial unique index 우회: issue_type_id 를 다른 row 로 넣으려면 issue_types 행 필요.
+        // 여기서는 uq_scheme_issue_type 제약 때문에 NULL 매핑은 1건만 가능하므로
+        // 나머지 2건은 실존 issue_type_id 로 삽입한다.
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            // 실존 issue_type id 2개 조회
+            val issueTypeIds = mutableListOf<Long>()
+            conn.prepareStatement("SELECT id FROM issue_types LIMIT 2").use { stmt ->
+                stmt.executeQuery().use { rs ->
+                    while (rs.next()) issueTypeIds.add(rs.getLong(1))
+                }
+            }
+            check(issueTypeIds.size >= 2) { "issue_types seed 부족 — setup 확인" }
+
+            // 매핑 3건: (NULL, issueTypeIds[0], issueTypeIds[1])
+            conn.createStatement().use { stmt ->
+                stmt.execute(
+                    """
+                    INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id)
+                    VALUES
+                        ($schemeId, NULL,                  '$workflowId'::uuid),
+                        ($schemeId, ${issueTypeIds[0]},    '$workflowId'::uuid),
+                        ($schemeId, ${issueTypeIds[1]},    '$workflowId'::uuid)
+                    ON CONFLICT ON CONSTRAINT uq_scheme_issue_type DO NOTHING
+                    """.trimIndent(),
+                )
+            }
+
+            // 할당 2건: project_id 9001, 9002 (cross-BC stub; FK 없음)
+            conn.createStatement().use { stmt ->
+                stmt.execute(
+                    """
+                    INSERT INTO project_workflow_scheme_assignments (project_id, workflow_scheme_id, assigned_by)
+                    VALUES
+                        (9001, $schemeId, '00000000-0000-0000-0000-000000000001'),
+                        (9002, $schemeId, '00000000-0000-0000-0000-000000000002')
+                    ON CONFLICT (project_id) DO NOTHING
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        // findAllWithCounts 실행
+        val rows = repository.findAllWithCounts()
+        val row = rows.firstOrNull { it.scheme.key.value == "count-guard-scheme" }
+            ?: error("count-guard-scheme 이 findAllWithCounts 결과에 없음")
+
+        // cartesian product 버그 시: mappingsCount = 6, usedByProjectsCount = 6
+        // 서브쿼리 수정 후: mappingsCount = 3, usedByProjectsCount = 2
+        assertThat(row.mappingsCount)
+            .withFailMessage("cartesian product 버그 — mappingsCount 기댓값 3, 실제 %d", row.mappingsCount)
+            .isEqualTo(3L)
+        assertThat(row.usedByProjectsCount)
+            .withFailMessage("cartesian product 버그 — usedByProjectsCount 기댓값 2, 실제 %d", row.usedByProjectsCount)
+            .isEqualTo(2L)
+    }
+
     // ── findAll ─────────────────────────────────────────────────────────────────
 
     @Test
