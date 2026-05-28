@@ -31,6 +31,9 @@ private val transitionRequestValidation: Validation<TransitionRequest> =
  * 호출자 BC(바운디드 컨텍스트 — 책임 범위로 나눈 도메인 단위, 예: issue-tracking)가
  * project-workflow 에 전이를 요청할 때 이 DTO 를 구성해 전달한다.
  *
+ * 전이 동일성 식별 정책. [WorkflowTransition.key] (`from__to`) 합성 기반 매칭 —
+ * ADR 2026-05-28-workflow-transition-identity-policy 참조.
+ *
  * @param workflowKey 적용할 워크플로우의 고유 키. 예: "DEFAULT", "BUGFIX".
  * @param issueKey 전이 대상 이슈의 키. 예: "BTS-1".
  * @param fromStateKey 현재 이슈 상태 키. 예: "TODO".
