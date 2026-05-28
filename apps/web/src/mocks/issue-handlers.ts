@@ -86,7 +86,7 @@ const getIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
  * 그 외는 201 + { data: createdIssueFixture } 반환.
  */
 const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
-  const body = await request.json() as { projectKey?: string; summary?: string }
+  const body = await request.clone().json() as { projectKey?: string; summary?: string }
   if (body.projectKey === 'INVALID') {
     return HttpResponse.json(
       { errorCode: 'PROJECT_NOT_FOUND', message: '프로젝트를 찾을 수 없습니다' },
@@ -103,10 +103,14 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
   return HttpResponse.json({ data: created }, { status: 201 })
 })
 
+/** E2E-5 회귀 가드 트리거 — summary 값이 이 문자열이면 409 VERSION_CONFLICT 응답. */
+export const MOCK_CONFLICT_TRIGGER = '__TRIGGER_409__'
+
 /**
  * PATCH /api/v1/issues/:key — 이슈 수정 핸들러.
  * 존재하는 key면 200 + { data: 수정된 IssueResponse(version+1) } 반환.
  * 존재하지 않는 key면 404 반환.
+ * summary 가 MOCK_CONFLICT_TRIGGER 이면 409 VERSION_CONFLICT — E2E-5 동시 편집 회귀 가드용.
  */
 const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, request }) => {
   const key = params['key'] as string
@@ -117,7 +121,13 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
       { status: 404 },
     )
   }
-  const body = await request.json() as { summary?: string; version?: number }
+  const body = await request.clone().json() as { summary?: string; version?: number }
+  if (body.summary === MOCK_CONFLICT_TRIGGER) {
+    return HttpResponse.json(
+      { errorCode: 'VERSION_CONFLICT', message: '버전 충돌이 발생했습니다.' },
+      { status: 409 },
+    )
+  }
   const updated: IssueResponse = {
     ...found,
     summary: body.summary ?? found.summary,
