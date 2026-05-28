@@ -146,6 +146,14 @@ controller inline brainstorming (D6 spec line 156 패턴 따름 — brainstormin
 - **G5 (확인 필요).** PR #11 의 loginAsAlice 가 admin 권한 가정 또는 가드 0 인지 확인. AlwaysAllow stub (`@Profile("!prod")`) 단계라 권한 분기 없음 추정 — D6 spec §FR11 일관.
 - **G6 (보강).** `pnpm test:e2e` 전체 duration baseline 측정 (PR #32 머지 후 현재). D7 5 spec 추가 후 < +2분 증가 확인.
 
+### ✅ Maxi 결정 (2026-05-29)
+
+**옵션 (C) 채택 — 셀렉터 영역만 const file 추출**.
+
+- 신규 file. `apps/web/src/i18n/workflow-scheme-labels.ts` — E2E 셀렉터가 의존하는 라벨/텍스트만 const export. 예. `sidebarNav: '워크플로우 스킴 목록'`, `addSchemeButton: '+ 새 스킴'`, `addMappingButton: '+ 매핑 추가'`, `inUseModalLabel: 'SchemeInUseModal 모달'` 등.
+- 기존 components 의 hardcoded literal 중 E2E 가 셀렉터로 참조하는 라벨만 const import 로 대체 (최소 영역). 그 외 텍스트 (placeholder, 에러 메시지 등) 는 hardcoded 그대로 둠 — 전면 i18n migration 은 별 후속 PR scope.
+- E2E 가 import 후 정본 참조 — 라벨 변경 시 자동 sync. PR #22 §F4 정신 부분 적용 (selector 영역 한정).
+
 ### Final Status
 
-✅ 통과 (1 iteration, BLOCKER 1건 = i18n 옵션 결정, gap 6건 plan 단계 흡수). 게이트 1 에서 G-BLOCKER-1 결정 필요.
+✅ 통과 (1 iteration, BLOCKER 1건 옵션 (C) 채택, gap 6건 plan 단계 흡수). 게이트 1 에서 plan 일괄 검토.

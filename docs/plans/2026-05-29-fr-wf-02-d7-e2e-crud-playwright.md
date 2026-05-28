@@ -98,9 +98,9 @@ bts-domain SKILL.md §Fast-track 스킵 조건은 명시적으로 `chore/bugfix`
 
 controller inline brainstorming (D6 spec line 156 패턴 따름).
 
-### 🚨 BLOCKER 1건 (게이트 1 결정)
+### 🚨 BLOCKER 1건 — Maxi 결정 완료 (2026-05-29)
 
-- **G-BLOCKER-1. 셀렉터 정본화 정책 (FR3) 결정 필요**. workflow-scheme UI 의 한국어 strings 가 모두 hardcoded (PR #22 §F4 학습과 어긋남). 옵션 3안 — (A) 본 PR 에서 i18n 추출 동반 task 3~5 추가, (B) E2E 가 hardcoded literal 직접 사용 + 후속 i18n migration PR 위임, (C) 셀렉터 영역만 const file export (최소 추출). spec §FR3 + §제약 조건 + §Brainstorming Check 명시.
+- **G-BLOCKER-1. 셀렉터 정본화 정책 (FR3)**. **옵션 (C) 채택** — 신규 `apps/web/src/i18n/workflow-scheme-labels.ts` 에 E2E 셀렉터가 의존하는 라벨/텍스트만 const export. 기존 components 의 hardcoded 중 셀렉터 참조 영역만 import 로 대체. 전면 i18n migration 은 별 후속 PR scope. plan §Task 단계에서 추가 task (라벨 file 신규 + 컴포넌트 부분 마이그레이션) 흡수.
 
 ### gap 6건 (BLOCKER 아님, plan 단계 흡수)
 
