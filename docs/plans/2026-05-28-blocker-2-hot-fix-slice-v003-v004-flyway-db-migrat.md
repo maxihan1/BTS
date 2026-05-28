@@ -274,6 +274,17 @@ Flyway `locations(...)` 가 replace 동작이므로 양쪽 path 모두 명시 �
 
 ---
 
+### Task 4 변형 사유 (verifier 보강)
+
+원 plan §Task 4 명세는 `IssueControllerTransitionIntegrationTest.kt` KDoc 정정 + `IssueTestcontainersBase.kt` KDoc 확인이 핵심이었으나.
+
+- `IssueControllerTransitionIntegrationTest.kt` 의 KDoc 정정 + locations 3행→2행 = Task 2 (`90c78e0`) 에서 일괄 처리 완료 — Task 4 재변경 불필요.
+- `IssueTestcontainersBase.kt` KDoc 예시 = 이미 `db/migration/issue-tracking` 정확 명시 (line 89) — 정정 불필요.
+
+대신 Task 3 verifier 가 plan 메타 누락 발견 (`V200MigrationTest.kt` line 56/76 + `WorkflowIntegrationTest.kt` line 104/124, 총 4 occurrence). learnings PR #28 (a) "shared-kernel SPI 시그니처 변경 task 의 plan §files 메타는 전수 grep 후 작성" 동일 패턴 회귀. Task 4 가 누락 보강 + plan 메타 정정 commit 으로 일괄 처리.
+
+---
+
 ## Plan 메타
 
 - task 수. 4
