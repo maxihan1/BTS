@@ -28,7 +28,6 @@ import kotlin.reflect.full.memberFunctions
  * outbound port 결정 근거: docs/adr/2026-05-28-workflow-scheme-frontend-view-layer-cross-bc-lookup.md
  */
 class IssueTypeLookupPortContractTest {
-
     private val portClass: KClass<IssueTypeLookupPort> = IssueTypeLookupPort::class
 
     // ── 1. interface 존재 ──────────────────────────────────────────────────────

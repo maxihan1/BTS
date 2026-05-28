@@ -1,4 +1,5 @@
-// 워크플로우 스킴 Application Service — Scheme CRUD 5 메서드 + Mapping CRUD 2 메서드 (addMapping/deleteMapping) + Project assign 2 메서드
+// 워크플로우 스킴 Application Service — Scheme CRUD 5 메서드 + Mapping CRUD 2 메서드 (addMapping/deleteMapping)
+// + Project assign 2 메서드 (assignToProject/findAssignedScheme) + View 2 메서드 (findDetail/listWithCounts)
 
 package com.bts.workflow.scheme.application
 
@@ -6,9 +7,8 @@ import com.bts.shared.issue.IssueTypeId
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.repository.WorkflowRepository
-import com.bts.workflow.scheme.application.port.IssueTypeLookupPort
-import com.bts.workflow.scheme.repository.SchemeCountRow
 import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
+import com.bts.workflow.scheme.application.port.IssueTypeLookupPort
 import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowScheme
@@ -23,6 +23,7 @@ import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermission
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermissionResolver
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemeScope
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
+import com.bts.workflow.scheme.repository.SchemeCountRow
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
 import com.bts.workflow.scheme.web.dto.MappingResponseDetail
@@ -61,7 +62,7 @@ import java.util.UUID
  * + private helper(validateStandardFieldNotChanged, buildMappingDetail) 2 = 14개.
  * 스킴 Application Service 의 본질적 use case 범위. 별도 서비스로 분리하면 트랜잭션 경계가 깨지거나 순환 의존이 발생한다.
  */
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LongParameterList")
 @Service
 @Transactional
 class WorkflowSchemeApplicationService(
@@ -105,6 +106,7 @@ class WorkflowSchemeApplicationService(
      * @return 활성 스킴.
      * @throws WorkflowSchemeNotFoundException key 에 해당하는 활성 스킴이 없을 때.
      */
+    @Suppress("MaxLineLength") // 단순 위임 한 줄 — 분할 시 function-signature ktlint 위반
     @Transactional(readOnly = true)
     fun find(key: WorkflowSchemeKey): WorkflowScheme = schemeRepo.findByKey(key) ?: throw WorkflowSchemeNotFoundException(key.value)
 
@@ -364,7 +366,11 @@ class WorkflowSchemeApplicationService(
         projectKey: String,
         schemeKey: WorkflowSchemeKey,
     ): ProjectWorkflowSchemeAssignment {
-        permissionResolver.requirePermission(actor, WorkflowSchemePermission.ASSIGN_SCHEME, WorkflowSchemeScope.Project(projectKey))
+        permissionResolver.requirePermission(
+            actor,
+            WorkflowSchemePermission.ASSIGN_SCHEME,
+            WorkflowSchemeScope.Project(projectKey),
+        )
         val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
         val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
 
@@ -411,7 +417,10 @@ class WorkflowSchemeApplicationService(
             assignmentRepo.findByProjectId(projectId)
                 ?: run {
                     // EC-1 D10 — assignment 없으면 software-scheme 1회 auto-assign (assigned_by = SYSTEM_ACTOR)
-                    log.info("findAssignedScheme: no assignment for projectId={}, auto-assigning software-scheme", projectId)
+                    log.info(
+                        "findAssignedScheme: no assignment for projectId={}, auto-assigning software-scheme",
+                        projectId,
+                    )
                     val autoAssignment = assignToProject(SYSTEM_ACTOR, projectId, projectKey, SOFTWARE_SCHEME_KEY)
                     return schemeRepo.findById(autoAssignment.workflowSchemeId)
                         ?: throw WorkflowSchemeNotFoundException(SOFTWARE_SCHEME_KEY.value)
@@ -428,9 +437,7 @@ class WorkflowSchemeApplicationService(
      * @param mappings 변환할 매핑 도메인 객체 목록.
      * @return [MappingResponseDetail] 목록.
      */
-    private fun buildMappingDetails(
-        mappings: List<com.bts.workflow.scheme.domain.SchemeIssueTypeMapping>,
-    ): List<MappingResponseDetail> {
+    private fun buildMappingDetails(mappings: List<SchemeIssueTypeMapping>): List<MappingResponseDetail> {
         if (mappings.isEmpty()) return emptyList()
 
         val issueTypeIds = mappings.mapNotNull { it.issueTypeId }
@@ -444,13 +451,7 @@ class WorkflowSchemeApplicationService(
             val workflow =
                 workflowMap[mapping.workflowId]
                     ?: error("Workflow not found for id=${mapping.workflowId}")
-            MappingResponseDetail(
-                id = requireNotNull(mapping.id) { "SchemeIssueTypeMapping.id must not be null" },
-                issueTypeKey = issueTypeRef?.key,
-                issueTypeName = issueTypeRef?.name,
-                workflowKey = workflow.key,
-                workflowName = workflow.name,
-            )
+            MappingResponseDetail.from(mapping, issueTypeRef, workflow)
         }
     }
 

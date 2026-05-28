@@ -26,7 +26,6 @@ import com.bts.shared.issue.IssueTypeRef
  * @see com.bts.issue.type.adapter.outbound.IssueTypeLookupAdapter
  */
 interface IssueTypeLookupPort {
-
     /**
      * 요청된 IssueType ID 목록에 해당하는 [IssueTypeRef] map 을 반환한다.
      *

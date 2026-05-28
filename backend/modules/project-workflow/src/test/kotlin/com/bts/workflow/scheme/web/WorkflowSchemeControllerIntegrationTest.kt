@@ -4,13 +4,15 @@ package com.bts.workflow.scheme.web
 
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeRef
-import com.bts.workflow.domain.StateCategory
-import com.bts.workflow.domain.Workflow
-import com.bts.workflow.domain.WorkflowState
-import com.bts.workflow.port.outbound.ActorId
+import com.bts.workflow.repository.WorkflowRepository
+import com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermissionResolver
+import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.application.port.IssueTypeLookupPort
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
+import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
+import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
+import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
 import com.bts.workflow.scheme.web.dto.WorkflowSchemeDetailResponse
 import io.mockk.every
 import io.mockk.mockk
@@ -18,15 +20,14 @@ import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
-import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
+import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
-import java.util.UUID
 
 /**
  * WorkflowSchemeController 통합 테스트 (task-4).
@@ -57,6 +58,7 @@ class WorkflowSchemeControllerIntegrationTest {
         lateinit var service: WorkflowSchemeApplicationService
         lateinit var issueTypeLookupPort: IssueTypeLookupPort
 
+        @Suppress("LongMethod") // 2-phase Flyway + seed + mock 조합 — 통합 테스트 구조상 불가피.
         @BeforeAll
         @JvmStatic
         fun setup() {
@@ -166,12 +168,12 @@ class WorkflowSchemeControllerIntegrationTest {
             dsl: org.jooq.DSLContext,
             issueTypeLookupPort: IssueTypeLookupPort,
         ): WorkflowSchemeApplicationService {
-            val schemeRepo = com.bts.workflow.scheme.repository.WorkflowSchemeRepository(dsl)
-            val assignmentRepo = com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository(dsl)
-            val mappingRepo = com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository(dsl)
-            val workflowRepo = com.bts.workflow.repository.WorkflowRepository(dsl)
-            val eventPublisher = mockk<com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher>(relaxed = true)
-            val permissionResolver = com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermissionResolver()
+            val schemeRepo = WorkflowSchemeRepository(dsl)
+            val assignmentRepo = ProjectWorkflowSchemeAssignmentRepository(dsl)
+            val mappingRepo = SchemeIssueTypeMappingRepository(dsl)
+            val workflowRepo = WorkflowRepository(dsl)
+            val eventPublisher = mockk<WorkflowSchemeEventPublisher>(relaxed = true)
+            val permissionResolver = AlwaysAllowWorkflowSchemePermissionResolver()
 
             return WorkflowSchemeApplicationService(
                 schemeRepo = schemeRepo,

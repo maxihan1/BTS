@@ -1,4 +1,5 @@
-// WorkflowSchemeRepository — workflow_schemes 테이블 jOOQ CRUD (save/findByKey/softDelete/findAll/countAssignedProjects/findAllWithCounts)
+// WorkflowSchemeRepository — workflow_schemes 테이블 jOOQ CRUD
+// (save/findByKey/softDelete/findAll/countAssignedProjects/findAllWithCounts)
 
 package com.bts.workflow.scheme.repository
 
@@ -47,7 +48,8 @@ data class SchemeCountRow(
  * @param dsl jOOQ DSL 컨텍스트 (SQL 을 코드로 안전하게 작성하는 라이브러리의 핵심 진입점).
  */
 @Repository
-@Suppress("PropertyName", "VariableNaming") // jOOQ 필드 상수 — SQL 컬럼명 매칭 (UPPER_SNAKE_CASE). codegen 도입 시 typed table 로 교체 예정.
+// jOOQ 필드 상수 — SQL 컬럼명 매칭 (UPPER_SNAKE_CASE). codegen 도입 시 typed table 로 교체 예정.
+@Suppress("PropertyName", "VariableNaming")
 class WorkflowSchemeRepository(private val dsl: DSLContext) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -236,12 +238,15 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
      *
      * @return [SchemeCountRow] 목록. 비어 있을 수 있음.
      */
+    @Suppress("LongMethod") // LEFT JOIN + 8-column groupBy — 구조상 단축 불가. jOOQ codegen 도입 시 재검토.
     @Transactional(readOnly = true)
     fun findAllWithCounts(): List<SchemeCountRow> {
         val ASSIGNMENTS = table(name("project_workflow_scheme_assignments"))
         val MAPPINGS_TABLE = table(name("workflow_scheme_issue_type_mappings"))
-        // project_workflow_scheme_assignments 의 FK 컬럼명은 workflow_scheme_id (ProjectWorkflowSchemeAssignmentRepository 확인)
-        val A_WORKFLOW_SCHEME_ID = field(name("project_workflow_scheme_assignments", "workflow_scheme_id"), Long::class.java)
+        // project_workflow_scheme_assignments FK 컬럼명은 workflow_scheme_id
+        // (ProjectWorkflowSchemeAssignmentRepository 확인)
+        val A_WORKFLOW_SCHEME_ID =
+            field(name("project_workflow_scheme_assignments", "workflow_scheme_id"), Long::class.java)
         val M_SCHEME_ID = field(name("workflow_scheme_issue_type_mappings", "scheme_id"), Long::class.java)
         val WS_ID = field(name("workflow_schemes", "id"), Long::class.java)
         val WS_KEY = field(name("workflow_schemes", "key"), String::class.java)
@@ -272,18 +277,27 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
             .leftJoin(ASSIGNMENTS).on(A_WORKFLOW_SCHEME_ID.eq(WS_ID))
             .leftJoin(MAPPINGS_TABLE).on(M_SCHEME_ID.eq(WS_ID))
             .where(WS_DELETED_AT.isNull)
-            .groupBy(WS_ID, WS_KEY, WS_NAME, WS_DESCRIPTION, WS_IS_DEFAULT, WS_CREATED_AT, WS_UPDATED_AT, WS_DELETED_AT)
+            .groupBy(
+                WS_ID,
+                WS_KEY,
+                WS_NAME,
+                WS_DESCRIPTION,
+                WS_IS_DEFAULT,
+                WS_CREATED_AT,
+                WS_UPDATED_AT,
+                WS_DELETED_AT,
+            )
             .fetch()
             .map { rec ->
                 val scheme =
                     WorkflowScheme.reconstruct(
-                        id = WorkflowSchemeId(rec[WS_ID] ?: error("workflow_schemes.id NOT NULL constraint violated")),
-                        key = WorkflowSchemeKey(rec[WS_KEY] ?: error("workflow_schemes.key NOT NULL constraint violated")),
-                        name = rec[WS_NAME] ?: error("workflow_schemes.name NOT NULL constraint violated"),
+                        id = WorkflowSchemeId(rec[WS_ID] ?: error("workflow_schemes.id NOT NULL")),
+                        key = WorkflowSchemeKey(rec[WS_KEY] ?: error("workflow_schemes.key NOT NULL")),
+                        name = rec[WS_NAME] ?: error("workflow_schemes.name NOT NULL"),
                         description = rec[WS_DESCRIPTION],
-                        isDefault = rec[WS_IS_DEFAULT] ?: error("workflow_schemes.is_default NOT NULL constraint violated"),
-                        createdAt = (rec[WS_CREATED_AT] ?: error("workflow_schemes.created_at NOT NULL constraint violated")).toInstant(),
-                        updatedAt = (rec[WS_UPDATED_AT] ?: error("workflow_schemes.updated_at NOT NULL constraint violated")).toInstant(),
+                        isDefault = rec[WS_IS_DEFAULT] ?: error("workflow_schemes.is_default NOT NULL"),
+                        createdAt = (rec[WS_CREATED_AT] ?: error("workflow_schemes.created_at NOT NULL")).toInstant(),
+                        updatedAt = (rec[WS_UPDATED_AT] ?: error("workflow_schemes.updated_at NOT NULL")).toInstant(),
                         deletedAt = rec[WS_DELETED_AT]?.toInstant(),
                     )
                 SchemeCountRow(
@@ -308,9 +322,9 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
             key = WorkflowSchemeKey(this[KEY] ?: error("workflow_schemes.key NOT NULL constraint violated: row $this")),
             name = this[NAME] ?: error("workflow_schemes.name NOT NULL constraint violated: row $this"),
             description = this[DESCRIPTION],
-            isDefault = this[IS_DEFAULT] ?: error("workflow_schemes.is_default NOT NULL constraint violated: row $this"),
-            createdAt = (this[CREATED_AT] ?: error("workflow_schemes.created_at NOT NULL constraint violated: row $this")).toInstant(),
-            updatedAt = (this[UPDATED_AT] ?: error("workflow_schemes.updated_at NOT NULL constraint violated: row $this")).toInstant(),
+            isDefault = this[IS_DEFAULT] ?: error("workflow_schemes.is_default NOT NULL"),
+            createdAt = (this[CREATED_AT] ?: error("workflow_schemes.created_at NOT NULL")).toInstant(),
+            updatedAt = (this[UPDATED_AT] ?: error("workflow_schemes.updated_at NOT NULL")).toInstant(),
             deletedAt = this[DELETED_AT]?.toInstant(),
         )
 

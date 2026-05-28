@@ -2,6 +2,8 @@
 
 package com.bts.workflow.scheme.web.dto
 
+import com.bts.shared.issue.IssueTypeRef
+import com.bts.workflow.domain.Workflow
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowScheme
 
@@ -70,7 +72,30 @@ data class MappingResponseDetail(
     val issueTypeName: String?,
     val workflowKey: String,
     val workflowName: String,
-)
+) {
+    companion object {
+        /**
+         * 도메인 [SchemeIssueTypeMapping], [IssueTypeRef]?, [Workflow] 을 응답 DTO 로 변환한다.
+         *
+         * @param mapping 변환할 매핑. id 가 null 이면 예외가 발생한다.
+         * @param issueTypeRef 이슈 타입 정보. null = default mapping 또는 조회 불가.
+         * @param workflow 워크플로우 도메인 객체.
+         * @return [MappingResponseDetail] 인스턴스.
+         */
+        fun from(
+            mapping: SchemeIssueTypeMapping,
+            issueTypeRef: IssueTypeRef?,
+            workflow: Workflow,
+        ): MappingResponseDetail =
+            MappingResponseDetail(
+                id = requireNotNull(mapping.id) { "SchemeIssueTypeMapping.id must not be null" },
+                issueTypeKey = issueTypeRef?.key,
+                issueTypeName = issueTypeRef?.name,
+                workflowKey = workflow.key,
+                workflowName = workflow.name,
+            )
+    }
+}
 
 /**
  * 스킴 단건/목록 상세 응답 DTO — 카운트 + 매핑 리스트 동봉.

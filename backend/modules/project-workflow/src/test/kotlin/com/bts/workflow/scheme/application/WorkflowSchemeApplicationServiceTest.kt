@@ -91,7 +91,7 @@ class WorkflowSchemeApplicationServiceTest {
     // ── findDetail (task-4 RED) ───────────────────────────────────────────────
 
     @Test
-    fun `findDetail — mappingRepo findBySchemeId + IssueTypeLookupPort lookup + workflowRepo findByIds 호출 (task-4 RED)`() {
+    fun `findDetail — mappingRepo findBySchemeId + IssueTypeLookupPort lookup + workflowRepo findByIds 호출`() {
         val key = WorkflowSchemeKey("software-scheme")
         val schemeId = WorkflowSchemeId(1L)
         val scheme = buildScheme(key, id = schemeId)
@@ -434,11 +434,23 @@ class WorkflowSchemeApplicationServiceTest {
         val denyingResolver = mockk<WorkflowSchemePermissionResolver>()
         every {
             // ActorId 는 UUID 강제 value class — any() 매칭 시 MockK 가 임의값으로 생성하다 검증 실패한다. 구체 actor 로 매칭.
-            denyingResolver.requirePermission(actor, WorkflowSchemePermission.ASSIGN_SCHEME, any<WorkflowSchemeScope.Project>())
+            denyingResolver.requirePermission(
+                actor,
+                WorkflowSchemePermission.ASSIGN_SCHEME,
+                any<WorkflowSchemeScope.Project>(),
+            )
         } throws RuntimeException("WORKFLOW_PERMISSION_DENIED")
 
         val svcWithDeny =
-            WorkflowSchemeApplicationService(schemeRepo, assignmentRepo, mappingRepo, eventPublisher, denyingResolver, workflowRepo, issueTypeLookupPort)
+            WorkflowSchemeApplicationService(
+                schemeRepo,
+                assignmentRepo,
+                mappingRepo,
+                eventPublisher,
+                denyingResolver,
+                workflowRepo,
+                issueTypeLookupPort,
+            )
 
         assertThatThrownBy {
             svcWithDeny.assignToProject(actor, UUID.randomUUID(), "PROJ", WorkflowSchemeKey("software-scheme"))

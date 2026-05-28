@@ -25,7 +25,6 @@ import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
-import org.junit.jupiter.api.RepeatedTest
 import org.junit.jupiter.api.Test
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
@@ -395,7 +394,9 @@ class WorkflowKeyResolverImplIntegrationTest {
                         resolver.resolveStart(ProjectKey(PROJECT_EC8_KEY), null)
                     }
                     successCount.incrementAndGet()
-                } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                } catch (
+                    @Suppress("TooGenericExceptionCaught") e: Exception,
+                ) {
                     errorCount.incrementAndGet()
                 }
             }
