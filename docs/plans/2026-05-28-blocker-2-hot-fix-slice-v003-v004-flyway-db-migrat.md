@@ -284,6 +284,33 @@ Flyway `locations(...)` 가 replace 동작이므로 양쪽 path 모두 명시 �
 - 추가 검증. ktlintCheck, detekt (Phase 0 정책). 통합테스트 부담 큼 (Testcontainers 19+ singleton 재기동).
 - 회귀 가드. Task 1 의 `MigrationFileLayoutTest` 가 향후 V005+ 추가 시 자동 회귀 차단.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+### controller inline self-eng-review (2026-05-28, hot-fix fast-track)
+
+본 PR 은 hot-fix slice 특성상 `plan-eng-review` / `plan-ceo-review` 외부 호출 생략 + controller inline self-review (PR #21/#22/#23/#24/#28 패턴 일관). 정식 리뷰 체인 미실행 사유. (a) 도메인 모델 변경 0, (b) 결정 분기 없음 (D2 옵션 B 사용자 확정), (c) hot-fix slice 컨텍스트 (변경 본질 file rename + string replace) — 외부 리뷰의 발견 가치 < 호출 비용. 추후 게이트 2 단계에서 adversarial 외부 리뷰 (`code-reviewer` agent + `/review` gstack) 가 PR 단위 검증.
+
+#### 통과 항목 (✅)
+
+1. **TDD 강제**. Task 1 RED 명시 (`MigrationFileLayoutTest` 신규 + 실패 메시지 정확 인용) + Task 2 GREEN 명시 (file 이동 + IT location 정렬). Task 3 / Task 4 변형 사유 plan 본문에 명시 (RED 자연 발생 / RED 분리 불필요). PR #28 의 Task 5/7 변형 패턴 일관.
+2. **BC 격리**. 코드 import 변경 0 (Flyway classpath path-string 만). 본 PR 의 변경은 `:modules:issue-tracking` main + test + `:modules:project-workflow` test (testRuntimeOnly 의존을 통한 마이그레이션 classpath 영향), cross-BC ArchUnit `BoundedContextIsolationTest` 영향 없음.
+3. **depends-on chain**. Task 1 ← 2 ← 3 ← 4 직렬 의존. 순환 참조 0. 병렬 wave 없음 (hot-fix slice 의 자연스러운 직렬 sequence).
+4. **누락 검증**. IT 우회 location 전수 grep 완료 (issue-tracking 5 occurrence + project-workflow 14 occurrence). 별도 누락 파일 없음.
+5. **회귀 가드 본질**. Task 1 의 `MigrationFileLayoutTest` 가 향후 V005+ 추가 시 자동 회귀 차단. PR #25 의 ArchUnit 회귀 가드 도입 패턴 일관.
+6. **운영 위험 해소**. prod boot 시 V003/V004 미스캔 → 자동 스캔 전환. Phase 0 진입 직전 실데이터 0, flyway_schema_history 충돌 없음.
+7. **ADR 정합성**. `docs/adr/2026-05-26-bc-migration-prefix-policy.md` 의 후속 적용. 정책 충돌 0.
+8. **단위 / 통합 부담**. Task 1 단위 테스트 (Spring resolver) 빠름. Task 3 (project-workflow 14 occurrence) 의 통합테스트 부담 큼 (Testcontainers 19+ singleton 재기동) — 의도된 비용, 회귀 본질 차단 가치 > 비용.
+
+#### 주의 항목 (⚠️ CONCERN, BLOCKER 아님)
+
+- **CONCERN-1**. `WorkflowSchemesMigrationIntegrationTest.kt:101` 의 주석 _"테스트. project-workflow Flyway 는 자체 classpath:db/migration 만 실행하므로 issue_types 없음"_ 은 의도된 분기 시나리오일 수 있음. Task 3 verifier 단계에서 _"단순 일괄 변경 대상인지 / 의도된 분기 보존 대상인지"_ 명시 확인. 분기 보존 대상이면 해당 IT 만 변경 제외.
+- **CONCERN-2**. `IssueControllerTransitionIntegrationTest.kt:500` 의 3행 locations 중 `classpath:db/migration` 행 제거 — 그 라인의 원 의도는 V003 (issue_types) 의 직접 적용. V003 이 `db/migration/issue-tracking/` 하위로 이동되면 같은 BC 폴더 location 으로 자동 적용 가능. Task 2 verifier 가 통합테스트 통과 (회귀 0) 확인.
+- **CONCERN-3**. `MigrationFileLayoutTest` 의 classpath 검증 범위 — `PathMatchingResourcePatternResolver` 가 issue-tracking 모듈 단독 실행 시 `:modules:issue-tracking` 의 main resources 만 검사. project-workflow IT 실행 시에는 cross-BC classpath 에 issue-tracking 의 resources 포함되므로 issue-tracking 의 V*.sql 도 검출. 의도된 동작 — 두 모듈 모두에서 회귀 가드 효과.
+
+#### BLOCKER
+
+없음.
+
+#### 결정 권한 위임 항목
+
+없음. D2 (scope 결정) 는 spec 단계에서 이미 사용자 확정 (옵션 B). 게이트 1 에서 추가 분기 없음.
