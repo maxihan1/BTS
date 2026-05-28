@@ -31,10 +31,15 @@ import org.junit.jupiter.api.Test
 class PermissionValidatorTest {
     private val resolver: PermissionResolver = mockk()
 
+    companion object {
+        /** 테스트 픽스처 actor UUID sentinel. ActorId VO UUID 형식 강제 (CONCERN-2). */
+        const val ACTOR_UUID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    }
+
     // ── 공통 픽스처 ──────────────────────────────────────────────────────────────
 
     private fun buildContext(
-        actorId: String = "user-abc",
+        actorId: String = ACTOR_UUID,
         issueKey: String = "BTS-1",
         workflowKey: String = "DEFAULT",
     ): TransitionContext {
@@ -67,7 +72,7 @@ class PermissionValidatorTest {
         val ctx = buildContext()
 
         every {
-            resolver.hasPermission(ActorId("user-abc"), permission, Scope.Issue("BTS-1"))
+            resolver.hasPermission(ActorId(ACTOR_UUID), permission, Scope.Issue("BTS-1"))
         } returns true
 
         val result = validator.validate(ctx)
@@ -84,7 +89,7 @@ class PermissionValidatorTest {
         val ctx = buildContext()
 
         every {
-            resolver.hasPermission(ActorId("user-abc"), permission, Scope.Issue("BTS-1"))
+            resolver.hasPermission(ActorId(ACTOR_UUID), permission, Scope.Issue("BTS-1"))
         } returns false
 
         val result = validator.validate(ctx)
@@ -102,16 +107,16 @@ class PermissionValidatorTest {
     fun `scope issue 기본값은 Scope Issue(issueKey) 로 resolver 를 호출한다`() {
         val permission = "TRANSITION_ISSUE"
         val validator = PermissionValidator(resolver, permission) // scope 미지정 → 기본 Issue
-        val ctx = buildContext(actorId = "user-abc", issueKey = "BTS-42")
+        val ctx = buildContext(issueKey = "BTS-42")
 
         every {
-            resolver.hasPermission(ActorId("user-abc"), permission, Scope.Issue("BTS-42"))
+            resolver.hasPermission(ActorId(ACTOR_UUID), permission, Scope.Issue("BTS-42"))
         } returns true
 
         validator.validate(ctx)
 
         verify(exactly = 1) {
-            resolver.hasPermission(ActorId("user-abc"), permission, Scope.Issue("BTS-42"))
+            resolver.hasPermission(ActorId(ACTOR_UUID), permission, Scope.Issue("BTS-42"))
         }
     }
 
@@ -119,16 +124,16 @@ class PermissionValidatorTest {
     fun `scope project 지정 시 Scope Project(workflowKey) 로 resolver 를 호출한다`() {
         val permission = "ADMIN_WORKFLOW"
         val validator = PermissionValidator(resolver, permission, scope = ValidatorScope.PROJECT)
-        val ctx = buildContext(actorId = "user-abc", workflowKey = "CUSTOM")
+        val ctx = buildContext(workflowKey = "CUSTOM")
 
         every {
-            resolver.hasPermission(ActorId("user-abc"), permission, Scope.Project("CUSTOM"))
+            resolver.hasPermission(ActorId(ACTOR_UUID), permission, Scope.Project("CUSTOM"))
         } returns true
 
         validator.validate(ctx)
 
         verify(exactly = 1) {
-            resolver.hasPermission(ActorId("user-abc"), permission, Scope.Project("CUSTOM"))
+            resolver.hasPermission(ActorId(ACTOR_UUID), permission, Scope.Project("CUSTOM"))
         }
     }
 
@@ -141,7 +146,9 @@ class PermissionValidatorTest {
         val ctx = buildContext()
 
         every {
-            resolver.hasPermission(any(), any(), any())
+            // ActorId 는 UUID 강제 value class — MockK 가 any() 로 매칭하면 임의값으로 생성하다 검증 실패한다.
+            // 구체 ActorId(ACTOR_UUID) 로 매칭 (ctx 가 buildContext 기본 actor 이므로 실제 호출과 일치).
+            resolver.hasPermission(ActorId(ACTOR_UUID), any(), any())
         } throws RuntimeException("downstream unavailable")
 
         val result = validator.validate(ctx)

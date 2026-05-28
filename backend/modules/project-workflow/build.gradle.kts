@@ -30,8 +30,14 @@ repositories {
 }
 
 dependencies {
-    // shared-kernel — WorkflowTransitionPort + TransitionRequest/Result/Plan/FieldChange/DomainEvent 이동됨 (Task 3)
+    // shared-kernel — WorkflowTransitionPort + TransitionRequest/Result/Plan/FieldChange/DomainEvent (PR #25 Task 3)
+    //   + IssueTypeId/IssueTypeKey 공유 VO. issue-tracking 직접 의존을 제거해 순환(issue-tracking ↔ project-workflow) 회피.
     implementation(project(":modules:shared-kernel"))
+
+    // issue-tracking — 테스트 런타임 전용. project-workflow V202 마이그레이션이 issue-tracking V001 의
+    //   projects 테이블을 FK 참조하므로, 통합 테스트(Testcontainers)에서 그 마이그레이션 SQL 이 classpath 에 있어야 한다.
+    //   컴파일 의존이 아니라 순환을 만들지 않고(issue-tracking 은 shared-kernel 만 의존), BC 격리 ArchUnit 도 import 가 아니라 통과.
+    testRuntimeOnly(project(":modules:issue-tracking"))
 
     // 도메인 검증 (Konform — Kotlin-native 선언형 검증 라이브러리, ADR 2026-05-21 GAP-17)
     implementation("io.konform:konform-jvm:0.7.0")
@@ -45,6 +51,8 @@ dependencies {
     implementation("org.springframework:spring-web")
     // Servlet API — spring-webmvc 가 참조. 실제 구현은 런타임 컨테이너(Tomcat 등)가 제공
     compileOnly("jakarta.servlet:jakarta.servlet-api")
+    // Jakarta Validation API — @Valid, @NotBlank 등 (Task 24 WorkflowSchemeController 에서 사용)
+    implementation("jakarta.validation:jakarta.validation-api")
 
     // @PreAuthorize + method security
     implementation("org.springframework.security:spring-security-core")
@@ -55,6 +63,8 @@ dependencies {
     // Jackson (JSON/YAML 직렬화 — workflow YAML 파싱 포함)
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
+    // Java 8 date/time (Instant 등) 직렬화 — WorkflowScheme 도메인 이벤트 occurredAt 필드용
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
 
     // Kotlin 기본
     implementation("org.jetbrains.kotlin:kotlin-reflect")
@@ -67,8 +77,10 @@ dependencies {
     // SpEL — Spring Expression Language (Task 20 CustomExpression validator 에서 사용)
     implementation("org.springframework:spring-expression")
 
-    // PostgreSQL 드라이버 (런타임만 — 컴파일 타임 불필요)
-    runtimeOnly("org.postgresql:postgresql")
+    // PostgreSQL 드라이버 — SchemeIssueTypeMappingRepository 가 PSQLException.serverErrorMessage 로
+    // 제약조건 이름을 추출하므로 컴파일 타임에 직접 참조한다.
+    // (이전엔 issue-tracking implementation 의존을 통해 transitive 로 노출됐으나, 순환 회피로 그 의존을 끊으며 명시화)
+    implementation("org.postgresql:postgresql")
 
     // jOOQ 런타임 (jOOQ: SQL을 코드로 안전하게 작성하는 라이브러리)
     implementation("org.jooq:jooq")
@@ -135,7 +147,7 @@ jooq {
                 jdbc.apply {
                     driver = "org.testcontainers.jdbc.ContainerDatabaseDriver"
                     url = "jdbc:tc:postgresql:16-alpine:///bts_codegen" +
-                        "?TC_INITSCRIPT=file:src/main/resources/db/migration/project-workflow/V001__init_workflow.sql"
+                        "?TC_INITSCRIPT=file:src/main/resources/db/migration/project-workflow/V200__init_workflow.sql"
                     user = "test"
                     password = "test"
                 }

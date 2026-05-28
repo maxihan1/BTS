@@ -1,4 +1,4 @@
-// V001 마이그레이션 검증 — Testcontainers postgres + Flyway migrate 후 information_schema 조회로 5 테이블 + 6 인덱스 존재 확인
+// V200 (workflow init) 마이그레이션 검증 — Testcontainers postgres + Flyway migrate 후 information_schema 조회로 5 테이블 + 6 인덱스 존재 확인
 
 package com.bts.workflow.db
 
@@ -9,10 +9,11 @@ import org.junit.jupiter.api.Test
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 
 /**
- * Flyway V001 마이그레이션 적용 후 5 테이블 + 6 인덱스 존재를 검증한다.
+ * Flyway V200 (project-workflow init) 마이그레이션 적용 후 5 테이블 + 6 인덱스 존재를 검증한다.
  * Testcontainers PostgreSQL 을 직접 사용하며 Spring 컨텍스트 없이 실행한다.
  *
  * 검증 범위.
@@ -20,15 +21,27 @@ import java.sql.DriverManager
  * - 6 인덱스 존재 (FK 컬럼 전부 포함 — DATA.md §7, CONCERN-6 해소)
  * - TIMESTAMPTZ 타입 강제 (DATA.md §4 — TIMESTAMP without time zone 금지)
  *
- * 참조. FR-WF-01 / ADR 2026-05-21-v001-initial-schema-non-concurrent.
+ * 이미지 변경 이유 (V004 추가 후).
+ * V004 마이그레이션이 pgmq 확장(CREATE EXTENSION pgmq) + pgmq.create() 를 사용하므로
+ * postgres:16-alpine 으로는 전체 마이그레이션 체인(V200, V004) 실행 불가.
+ * quay.io/tembo/pg16-pgmq:latest 로 변경 (ADR 2026-05-22-pgmq-postgres-image 동일 결정).
+ *
+ * 참조. FR-WF-01 / ADR 2026-05-21-v001-initial-schema-non-concurrent / ADR 2026-05-26-bc-migration-prefix-policy.
  */
 @Testcontainers
-class V001MigrationTest {
+class V200MigrationTest {
     companion object {
+        // quay.io/tembo/pg16-pgmq:latest — V004 pgmq 확장 요구로 인해 tembo 이미지 사용.
+        // asCompatibleSubstituteFor("postgres"): Testcontainers 이미지 호환성 검증 우회.
+        // ADR 2026-05-22-pgmq-postgres-image 와 동일 패턴.
+        private val temboImage: DockerImageName =
+            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
+                .asCompatibleSubstituteFor("postgres")
+
         @Container
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
+            PostgreSQLContainer(temboImage)
                 .withDatabaseName("bts_test")
                 .withUsername("bts")
                 .withPassword("bts_test")
@@ -36,10 +49,31 @@ class V001MigrationTest {
         @BeforeAll
         @JvmStatic
         fun applyMigrations() {
+            // Flyway 2단계 — V201 (workflow_schemes) issue_types cross-BC FK 대응
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
-                .locations("classpath:db/migration/project-workflow")
+                .locations("classpath:db/migration")
+                .target("200")
+                .load()
+                .migrate()
+
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.createStatement().use { stmt ->
+                    stmt.execute(
+                        "CREATE TABLE IF NOT EXISTS issue_types (" +
+                            "id BIGSERIAL PRIMARY KEY, key VARCHAR(30) NOT NULL UNIQUE, " +
+                            "name VARCHAR(255) NOT NULL, is_standard BOOLEAN NOT NULL DEFAULT FALSE, " +
+                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
+                            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
+                    )
+                }
+            }
+
+            Flyway.configure()
+                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+                .placeholderReplacement(false)
+                .locations("classpath:db/migration")
                 .load()
                 .migrate()
         }

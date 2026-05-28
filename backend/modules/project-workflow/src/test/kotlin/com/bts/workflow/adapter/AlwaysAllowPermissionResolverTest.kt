@@ -41,9 +41,15 @@ class AlwaysAllowPermissionResolverTest {
             .run { ctx ->
                 val resolver = ctx.getBean(PermissionResolver::class.java)
 
-                assertThat(resolver.hasPermission(ActorId("user-1"), "CREATE_ISSUE", Scope.Global)).isTrue()
-                assertThat(resolver.hasPermission(ActorId("user-2"), "ADMIN_WORKFLOW", Scope.Project("ATLAS"))).isTrue()
-                assertThat(resolver.hasPermission(ActorId("user-3"), "DELETE_ISSUE", Scope.Issue("ATLAS-99"))).isTrue()
+                assertThat(
+                    resolver.hasPermission(ActorId("11111111-1111-1111-1111-111111111111"), "CREATE_ISSUE", Scope.Global),
+                ).isTrue()
+                assertThat(
+                    resolver.hasPermission(ActorId("22222222-2222-2222-2222-222222222222"), "ADMIN_WORKFLOW", Scope.Project("ATLAS")),
+                ).isTrue()
+                assertThat(
+                    resolver.hasPermission(ActorId("33333333-3333-3333-3333-333333333333"), "DELETE_ISSUE", Scope.Issue("ATLAS-99")),
+                ).isTrue()
             }
     }
 

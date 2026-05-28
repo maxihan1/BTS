@@ -3,6 +3,7 @@
 package com.bts.workflow.archunit
 
 import com.tngtech.archunit.base.DescribedPredicate
+import com.tngtech.archunit.core.domain.JavaClass
 import com.tngtech.archunit.core.domain.JavaMethod
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.core.importer.ImportOption
@@ -54,21 +55,27 @@ class ProjectWorkflowArchitectureTest {
     /**
      * 룰 2 — project-workflow 패키지가 identity-access BC 내부 패키지를 직접 import하지 않는다.
      *
-     * 허용 예외. `com.bts.identityaccess.jooq.tables.*` (jOOQ 생성 코드).
+     * 허용 예외. `com.atlas.bts.identity.*.jooq.tables.*` (jOOQ 생성 코드).
      */
     @Test
     fun mustNotImportIdentityAccess() {
-        bcIsolationRule(targetPackage = "com.bts.identityaccess..", bcName = "identity-access").check(importedClasses)
+        bcIsolationRule(targetPackage = "com.atlas.bts.identity..", bcName = "identity-access").check(importedClasses)
     }
 
     /**
      * 룰 3 — project-workflow 패키지가 issue-tracking BC 내부 패키지를 직접 import하지 않는다.
      *
-     * 허용 예외. `com.bts.issuetracking.jooq.tables.*` (jOOQ 생성 코드).
+     * IssueTypeId / IssueTypeKey 는 PR #25 에서 shared-kernel(`com.bts.shared.issue`)로 이동되어
+     * 더 이상 issue-tracking 직접 import 가 아니다. issue-tracking ↔ project-workflow 순환을
+     * 회피하기 위해 예외 없이 전면 금지한다.
      */
     @Test
     fun mustNotImportIssueTracking() {
-        bcIsolationRule(targetPackage = "com.bts.issuetracking..", bcName = "issue-tracking").check(importedClasses)
+        bcIsolationRuleWithAllowedClasses(
+            targetPackage = "com.bts.issue..",
+            bcName = "issue-tracking",
+            allowedClassNames = emptySet(),
+        ).check(importedClasses)
     }
 
     /**
@@ -97,6 +104,8 @@ class ProjectWorkflowArchitectureTest {
                     )
                 }
 
+            // Spring stereotype 어노테이션은 모두 @Component 의 specialization (메타 어노테이션) —
+            // @Repository / @Controller / @RestController / @Service 도 Bean 으로 등록되어 트랜잭션 AOP 적용 대상.
             classes()
                 .that()
                 .areNotInterfaces()
@@ -106,8 +115,16 @@ class ProjectWorkflowArchitectureTest {
                 .beAnnotatedWith(org.springframework.stereotype.Service::class.java)
                 .orShould()
                 .beAnnotatedWith(org.springframework.stereotype.Component::class.java)
+                .orShould()
+                .beAnnotatedWith(org.springframework.stereotype.Repository::class.java)
+                .orShould()
+                .beAnnotatedWith(org.springframework.stereotype.Controller::class.java)
+                .orShould()
+                .beAnnotatedWith(org.springframework.web.bind.annotation.RestController::class.java)
                 .because(
-                    "@Transactional 메서드를 갖는 구체 클래스는 Spring Bean(@Service 또는 @Component)이어야 트랜잭션 AOP가 적용됩니다",
+                    "@Transactional 메서드를 갖는 구체 클래스는 Spring Bean " +
+                        "(@Service/@Component/@Repository/@Controller/@RestController — 모두 @Component 의 stereotype specialization) " +
+                        "이어야 트랜잭션 AOP가 적용됩니다",
                 )
         }
 
@@ -135,6 +152,41 @@ class ProjectWorkflowArchitectureTest {
                 .because(
                     "project-workflow BC는 $bcName BC를 직접 import할 수 없습니다. " +
                         "이벤트(pgmq)나 공개 API를 통해서만 통신해야 합니다",
+                )
+
+        /**
+         * BC 격리 룰 팩토리 (허용 클래스 목록 포함).
+         *
+         * [allowedClassNames] 에 포함된 클래스는 이 BC 가 cross-BC 계약 타입으로 허용한 공개 API 이다.
+         * 예: `IssueTypeId`, `IssueTypeKey` — WorkflowResolver port 계약 및 Repository JOIN 에서 사용.
+         *
+         * @param targetPackage 금지 대상 패키지 (예. `"com.bts.issue.."`)
+         * @param bcName 에러 메시지에 포함할 BC 이름 (예. `"issue-tracking"`)
+         * @param allowedClassNames 예외 허용 클래스 전체 이름 목록.
+         */
+        private fun bcIsolationRuleWithAllowedClasses(
+            targetPackage: String,
+            bcName: String,
+            allowedClassNames: Set<String>,
+        ): ArchRule =
+            noClasses()
+                .that()
+                .resideInAPackage("com.bts.workflow..")
+                .and()
+                .resideOutsideOfPackage("com.bts.workflow..jooq.tables..")
+                .should()
+                .dependOnClassesThat(
+                    DescribedPredicate.describe<JavaClass>("reside in $targetPackage and are not in the allow-list") { javaClass ->
+                        javaClass.packageName.let { pkg ->
+                            pkg.startsWith(targetPackage.removeSuffix("..")) &&
+                                javaClass.name !in allowedClassNames
+                        }
+                    },
+                )
+                .because(
+                    "project-workflow BC는 $bcName BC를 직접 import할 수 없습니다. " +
+                        "이벤트(pgmq)나 공개 API를 통해서만 통신해야 합니다. " +
+                        "예외 허용 타입: $allowedClassNames",
                 )
     }
 }

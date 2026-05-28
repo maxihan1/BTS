@@ -102,8 +102,19 @@ class PermissionResolverContractTest {
     }
 
     @Test
-    fun `ActorId 는 non-blank raw 값으로 정상 생성돼야 한다`() {
-        val actorId = ActorId("user-123")
-        assertThat(actorId.raw).isEqualTo("user-123")
+    fun `ActorId 는 UUID 형식이 아닌 값으로 생성 시 IllegalArgumentException 을 던져야 한다`() {
+        assertThatThrownBy { ActorId("user-abc") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("UUID")
+
+        assertThatThrownBy { ActorId("not-a-uuid-at-all") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("UUID")
+    }
+
+    @Test
+    fun `ActorId 는 유효한 UUID String 으로 정상 생성돼야 한다`() {
+        val actorId = ActorId("44444444-4444-4444-4444-444444444444")
+        assertThat(actorId.raw).isEqualTo("44444444-4444-4444-4444-444444444444")
     }
 }

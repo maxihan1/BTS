@@ -1,0 +1,422 @@
+// 워크플로우 스킴 Application Service — Scheme CRUD 5 메서드 + Mapping CRUD 2 메서드 (addMapping/deleteMapping) + Project assign 2 메서드
+
+package com.bts.workflow.scheme.application
+
+import com.bts.shared.issue.IssueTypeId
+import com.bts.workflow.domain.exception.WorkflowNotFoundException
+import com.bts.workflow.port.outbound.ActorId
+import com.bts.workflow.repository.WorkflowRepository
+import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
+import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
+import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
+import com.bts.workflow.scheme.domain.WorkflowScheme
+import com.bts.workflow.scheme.domain.WorkflowSchemeKey
+import com.bts.workflow.scheme.event.WorkflowSchemeAssignedEvent
+import com.bts.workflow.scheme.exception.IssueTypeNotFoundException
+import com.bts.workflow.scheme.exception.SchemeInUseException
+import com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException
+import com.bts.workflow.scheme.exception.SchemeStandardNotDeletableException
+import com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException
+import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermission
+import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermissionResolver
+import com.bts.workflow.scheme.port.outbound.WorkflowSchemeScope
+import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
+import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
+import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
+import org.slf4j.LoggerFactory
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
+import java.util.UUID
+
+/**
+ * 워크플로우 스킴 Application Service.
+ *
+ * Scheme CRUD 5 메서드를 담당한다.
+ * Repository 호출과 도메인 불변식(invariant) 위임만 수행한다 — SQL 직접 작성 금지 (DATA.md §5).
+ *
+ * ## PR #6 learning — @Service 구체 클래스 부착
+ * interface 가 아닌 구체 클래스에 @Service 를 부착해야 Spring AOP 프록시가
+ * @Transactional 을 정상 적용한다 (interface proxy 시 @Transactional 무력화 방지).
+ *
+ * ## 권한 검증
+ * 모든 mutating 메서드(create/update/softDelete) 진입 직후
+ * [WorkflowSchemePermissionResolver.requirePermission] 을 호출한다.
+ * 권한이 없으면 resolver 가 예외를 던진다 (Guard 패턴).
+ *
+ * @param schemeRepo 워크플로우 스킴 Repository.
+ * @param assignmentRepo 프로젝트-스킴 할당 Repository (S7 사용 중 검증용, assignToProject 에도 사용).
+ * @param mappingRepo 스킴-이슈타입 매핑 Repository.
+ * @param eventPublisher 워크플로우 스킴 도메인 이벤트 pgmq publisher (Propagation.MANDATORY).
+ * @param permissionResolver 스킴 권한 평가 outbound port.
+ *
+ * @suppress TooManyFunctions — Scheme CRUD(create/find/update/softDelete/list) 5 +
+ * Mapping 관리(addMapping/addMappingByKeys/deleteMapping) 3 + Assignment(assignToProject/findAssignedScheme) 2
+ * + private helper(validateStandardFieldNotChanged) 1 = 11개. 스킴 Application Service 의 본질적 use case 범위.
+ * 별도 서비스로 분리하면 하나의 트랜잭션 경계가 깨지거나 순환 의존이 발생한다.
+ */
+@Suppress("TooManyFunctions")
+@Service
+@Transactional
+class WorkflowSchemeApplicationService(
+    private val schemeRepo: WorkflowSchemeRepository,
+    private val assignmentRepo: ProjectWorkflowSchemeAssignmentRepository,
+    private val mappingRepo: SchemeIssueTypeMappingRepository,
+    private val eventPublisher: WorkflowSchemeEventPublisher,
+    private val permissionResolver: WorkflowSchemePermissionResolver,
+    private val workflowRepo: WorkflowRepository,
+) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
+    /**
+     * 새 워크플로우 스킴을 생성한다.
+     *
+     * @param actor 작업 수행 행위자. MANAGE_SCHEME 권한이 필요하다.
+     * @param key 스킴 식별 키. URL-safe 소문자 슬러그.
+     * @param name 스킴 이름. 빈 문자열 불허.
+     * @param description 스킴 설명. null 허용.
+     * @param isDefault 표준 스킴 여부. 기본값 false.
+     * @return 저장된 스킴 (DB 생성 id 포함).
+     */
+    fun create(
+        actor: ActorId,
+        key: WorkflowSchemeKey,
+        name: String,
+        description: String?,
+        isDefault: Boolean = false,
+    ): WorkflowScheme {
+        permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        log.info("create scheme: actor={} key={}", actor.raw, key.value)
+        val scheme = WorkflowScheme.create(key = key, name = name, description = description, isDefault = isDefault)
+        return schemeRepo.save(scheme)
+    }
+
+    /**
+     * key 로 활성 스킴을 조회한다.
+     *
+     * @param key 조회할 스킴 키.
+     * @return 활성 스킴.
+     * @throws WorkflowSchemeNotFoundException key 에 해당하는 활성 스킴이 없을 때.
+     */
+    @Transactional(readOnly = true)
+    fun find(key: WorkflowSchemeKey): WorkflowScheme = schemeRepo.findByKey(key) ?: throw WorkflowSchemeNotFoundException(key.value)
+
+    /**
+     * 스킴의 가변 필드(name / description / isDefault) 를 변경한다.
+     *
+     * EC-4 D11 — 표준 스킴(isDefault=true)의 name / description / isDefault 변경은 차단한다.
+     * key 는 항상 immutable 이므로 변경 파라미터에서 제외한다.
+     *
+     * @param actor 작업 수행 행위자. MANAGE_SCHEME 권한이 필요하다.
+     * @param key 수정할 스킴 키.
+     * @param newName 새 이름.
+     * @param newDescription 새 설명. null 허용.
+     * @param newIsDefault 새 isDefault 값.
+     * @return 변경된 스킴.
+     * @throws WorkflowSchemeNotFoundException 스킴이 없을 때.
+     * @throws com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException 표준 스킴의 잠긴 필드를 변경하려 할 때.
+     */
+    fun update(
+        actor: ActorId,
+        key: WorkflowSchemeKey,
+        newName: String,
+        newDescription: String?,
+        newIsDefault: Boolean,
+    ): WorkflowScheme {
+        permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        val existing = schemeRepo.findByKey(key) ?: throw WorkflowSchemeNotFoundException(key.value)
+
+        if (existing.isDefault) {
+            validateStandardFieldNotChanged(existing, newName, newDescription, newIsDefault)
+        }
+
+        log.info("update scheme: actor={} key={}", actor.raw, key.value)
+        val updated =
+            WorkflowScheme.reconstruct(
+                id = requireNotNull(existing.id) { "scheme.id must not be null" },
+                key = existing.key,
+                name = newName,
+                description = newDescription,
+                isDefault = newIsDefault,
+                createdAt = existing.createdAt,
+                updatedAt = existing.updatedAt,
+                deletedAt = existing.deletedAt,
+            )
+        return schemeRepo.update(updated)
+    }
+
+    /**
+     * 스킴을 soft-delete 한다.
+     *
+     * S6 — 표준 스킴(isDefault=true) 삭제 불가.
+     * S7 — 하나 이상의 프로젝트에 할당된 스킴 삭제 불가.
+     *
+     * @param actor 작업 수행 행위자. MANAGE_SCHEME 권한이 필요하다.
+     * @param key 삭제할 스킴 키.
+     * @throws WorkflowSchemeNotFoundException 스킴이 없을 때.
+     * @throws SchemeStandardNotDeletableException S6 — 표준 스킴 삭제 시도 시.
+     * @throws SchemeInUseException S7 — 사용 중인 스킴 삭제 시도 시.
+     */
+    fun softDelete(
+        actor: ActorId,
+        key: WorkflowSchemeKey,
+    ) {
+        permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        val scheme = schemeRepo.findByKey(key) ?: throw WorkflowSchemeNotFoundException(key.value)
+
+        // S6 — 표준 스킴 삭제 불가
+        if (scheme.isDefault) {
+            throw SchemeStandardNotDeletableException(key.value)
+        }
+
+        val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
+
+        // S7 — 사용 중인 스킴 삭제 불가
+        if (assignmentRepo.existsBySchemeId(schemeId)) {
+            throw SchemeInUseException(usedByProjects = emptyList())
+        }
+
+        log.info("softDelete scheme: actor={} key={}", actor.raw, key.value)
+        schemeRepo.softDelete(schemeId)
+    }
+
+    /**
+     * 활성 스킴 전체 목록을 반환한다.
+     *
+     * @return 활성 스킴 목록. 비어 있을 수 있음.
+     */
+    @Transactional(readOnly = true)
+    fun list(): List<WorkflowScheme> = schemeRepo.findAll()
+
+    /**
+     * 스킴에 이슈타입-워크플로우 매핑을 추가한다.
+     *
+     * [issueTypeId] 가 null 이면 default mapping (명시적 매핑이 없는 이슈 타입 전체에 적용) 이다.
+     * 스킴 당 default mapping 은 최대 1개 허용된다.
+     *
+     * ## UNIQUE 위반 시 예외 전파
+     * - (scheme_id, issue_type_id) 중복 → [com.bts.workflow.scheme.exception.MappingDuplicateException]
+     * - (scheme_id) WHERE issue_type_id IS NULL 중복 (default mapping 이미 존재) →
+     *   [com.bts.workflow.scheme.exception.MappingDefaultDuplicateException]
+     *
+     * UNIQUE 위반 감지는 Repository 계층(`ix_scheme_default_mapping` partial UNIQUE INDEX)에서 수행되어
+     * 위 두 예외 중 하나로 변환되어 도착한다. Application layer 는 예외를 그대로 전파한다.
+     *
+     * ## EC-2 note
+     * 커스텀 스킴 생성 직후 default mapping 이 0개인 상태를 감지해 강제 추가를 유도하는 검증은
+     * 후속 task (assignToProject 흐름) 에서 처리한다.
+     *
+     * @param actor 작업 수행 행위자. MANAGE_SCHEME 권한이 필요하다.
+     * @param schemeKey 매핑을 추가할 스킴 키.
+     * @param issueTypeId 매핑 대상 이슈 타입 식별자. null = default mapping.
+     * @param workflowId 사용할 워크플로우 UUID.
+     * @return 저장된 매핑 (DB 생성 id 포함).
+     * @throws WorkflowSchemeNotFoundException 스킴이 없을 때.
+     * @throws com.bts.workflow.scheme.exception.MappingDuplicateException (scheme_id, issue_type_id) UNIQUE 위반 시.
+     * @throws com.bts.workflow.scheme.exception.MappingDefaultDuplicateException default mapping 중복 시.
+     */
+    fun addMapping(
+        actor: ActorId,
+        schemeKey: WorkflowSchemeKey,
+        issueTypeId: IssueTypeId?,
+        workflowId: UUID,
+    ): SchemeIssueTypeMapping {
+        permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
+        val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
+        log.info("addMapping: actor={} schemeKey={} issueTypeId={}", actor.raw, schemeKey.value, issueTypeId?.value)
+        val mapping =
+            SchemeIssueTypeMapping(
+                id = null,
+                schemeId = schemeId,
+                issueTypeId = issueTypeId,
+                workflowId = workflowId,
+                createdAt = Instant.now(),
+            )
+        return mappingRepo.addMapping(mapping)
+    }
+
+    /**
+     * 스킴에 이슈타입-워크플로우 매핑을 key 기반으로 추가한다.
+     *
+     * 컨트롤러 레이어에서 받은 [issueTypeKey] / [workflowKey] 문자열을 DB ID 로 변환한 뒤
+     * [addMapping] 에 위임한다.
+     *
+     * - [issueTypeKey] null → default mapping (issue_type_id IS NULL).
+     * - [workflowKey] 미존재 → [WorkflowNotFoundException] (404).
+     * - [issueTypeKey] 미존재 → [IssueTypeNotFoundException] (404).
+     *
+     * @param actor 작업 수행 행위자. MANAGE_SCHEME 권한이 필요하다.
+     * @param schemeKey 매핑을 추가할 스킴 키.
+     * @param issueTypeKey 매핑 대상 이슈 타입 키. null = default mapping.
+     * @param workflowKey 사용할 워크플로우 키.
+     * @return 저장된 매핑 (DB 생성 id 포함).
+     * @throws WorkflowSchemeNotFoundException 스킴이 없을 때.
+     * @throws WorkflowNotFoundException workflowKey 에 해당하는 워크플로우가 없을 때.
+     * @throws IssueTypeNotFoundException issueTypeKey 에 해당하는 이슈 타입이 없을 때.
+     */
+    fun addMappingByKeys(
+        actor: ActorId,
+        schemeKey: WorkflowSchemeKey,
+        issueTypeKey: String?,
+        workflowKey: String,
+    ): SchemeIssueTypeMapping {
+        val workflowId =
+            workflowRepo.findIdByKey(workflowKey)
+                ?: throw WorkflowNotFoundException(workflowKey)
+
+        val issueTypeId: IssueTypeId? =
+            if (issueTypeKey != null) {
+                mappingRepo.findIssueTypeIdByKey(issueTypeKey)
+                    ?: throw IssueTypeNotFoundException(issueTypeKey)
+            } else {
+                null
+            }
+
+        return addMapping(actor, schemeKey, issueTypeId, workflowId)
+    }
+
+    /**
+     * 스킴에서 이슈타입-워크플로우 매핑을 삭제한다.
+     *
+     * 존재하지 않는 [mappingId] 에 대해서는 no-op 으로 처리된다 (Repository 동작 일치).
+     *
+     * @param actor 작업 수행 행위자. MANAGE_SCHEME 권한이 필요하다.
+     * @param mappingId 삭제할 매핑 PK.
+     */
+    fun deleteMapping(
+        actor: ActorId,
+        mappingId: Long,
+    ) {
+        permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        log.info("deleteMapping: actor={} mappingId={}", actor.raw, mappingId)
+        mappingRepo.deleteMapping(mappingId)
+    }
+
+    /**
+     * 프로젝트에 워크플로우 스킴을 배정(UPSERT)하고 배정 결과를 반환한다.
+     *
+     * ## 권한
+     * [WorkflowSchemePermission.ASSIGN_SCHEME] — [WorkflowSchemeScope.Project] 범위 검증.
+     * 프로젝트 어드민 레벨 권한이 필요하다.
+     *
+     * ## 트랜잭션
+     * `@Transactional` 클래스 어노테이션 상속. [assignmentRepo.saveAssignment] 와
+     * [eventPublisher.publish] 가 동일 트랜잭션 안에서 실행된다 (outbox 패턴).
+     * [eventPublisher] 는 [Propagation.MANDATORY] 이므로 별도 처리 불필요.
+     *
+     * ## EC-1 D10 auto-assign
+     * [findAssignedScheme] 이 assignment 없는 프로젝트를 감지했을 때 SYSTEM_ACTOR 로 이 메서드를 호출한다.
+     * `assigned_by = SYSTEM_ACTOR.raw` (UUID sentinel: 00000000-0000-0000-0000-000000000000).
+     *
+     * @param actor 작업 수행 행위자. ASSIGN_SCHEME 권한이 필요하다. SYSTEM_ACTOR 도 허용.
+     * @param projectId 스킴을 배정할 프로젝트 UUID (projects.id UUID — V202 에서 BIGINT → UUID 정정).
+     * @param projectKey 권한 범위 결정에 사용할 프로젝트 키 (예. "ATLAS").
+     * @param schemeKey 배정할 스킴 키.
+     * @return 저장된 [ProjectWorkflowSchemeAssignment].
+     * @throws WorkflowSchemeNotFoundException [schemeKey] 에 해당하는 활성 스킴이 없을 때.
+     */
+    fun assignToProject(
+        actor: ActorId,
+        projectId: UUID,
+        projectKey: String,
+        schemeKey: WorkflowSchemeKey,
+    ): ProjectWorkflowSchemeAssignment {
+        permissionResolver.requirePermission(actor, WorkflowSchemePermission.ASSIGN_SCHEME, WorkflowSchemeScope.Project(projectKey))
+        val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
+        val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
+
+        val actorUuid = UUID.fromString(actor.raw) // ActorId VO 가 UUID 형식을 이미 보장 — 안전 변환.
+        val now = Instant.now()
+        val assignment =
+            ProjectWorkflowSchemeAssignment(
+                projectId = projectId,
+                workflowSchemeId = schemeId,
+                assignedAt = now,
+                assignedBy = actorUuid,
+            )
+        assignmentRepo.saveAssignment(assignment)
+        log.info("assignToProject: actor={} projectId={} schemeKey={}", actor.raw, projectId, schemeKey.value)
+        eventPublisher.publish(
+            WorkflowSchemeAssignedEvent(
+                schemeId = schemeId,
+                projectId = projectId,
+                assignedBy = actorUuid,
+                occurredAt = now,
+            ),
+        )
+        return assignment
+    }
+
+    /**
+     * 프로젝트에 배정된 워크플로우 스킴을 반환한다.
+     *
+     * ## EC-1 D10 — software-scheme auto-assign
+     * assignment 가 없는 신규 프로젝트의 경우, `software-scheme` 을 SYSTEM_ACTOR 로 1회 자동 배정한다.
+     * 배정 후 해당 스킴을 반환한다. 이후 호출부터는 assignment 가 존재하므로 auto-assign 이 재실행되지 않는다.
+     *
+     * @param projectId 조회할 프로젝트 UUID (projects.id UUID — V202 에서 BIGINT → UUID 정정).
+     * @param projectKey auto-assign 시 권한 범위 결정에 사용할 프로젝트 키.
+     * @return 배정된 [WorkflowScheme].
+     * @throws WorkflowSchemeNotFoundException assignment 는 있지만 scheme 이 soft-delete 된 경우.
+     */
+    @Transactional
+    fun findAssignedScheme(
+        projectId: UUID,
+        projectKey: String,
+    ): WorkflowScheme {
+        val assignment =
+            assignmentRepo.findByProjectId(projectId)
+                ?: run {
+                    // EC-1 D10 — assignment 없으면 software-scheme 1회 auto-assign (assigned_by = SYSTEM_ACTOR)
+                    log.info("findAssignedScheme: no assignment for projectId={}, auto-assigning software-scheme", projectId)
+                    val autoAssignment = assignToProject(SYSTEM_ACTOR, projectId, projectKey, SOFTWARE_SCHEME_KEY)
+                    return schemeRepo.findById(autoAssignment.workflowSchemeId)
+                        ?: throw WorkflowSchemeNotFoundException(SOFTWARE_SCHEME_KEY.value)
+                }
+        return schemeRepo.findById(assignment.workflowSchemeId)
+            ?: throw WorkflowSchemeNotFoundException(assignment.workflowSchemeId.value.toString())
+    }
+
+    // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
+
+    companion object {
+        /**
+         * 시스템 자동 배정에 사용하는 sentinel UUID.
+         *
+         * 사용자 요청 없이 시스템이 자동 배정(EC-1 D10 software-scheme auto-assign)을 수행할 때
+         * `assigned_by` 컬럼에 기록된다.
+         * 실제 사용자 UUID 는 RFC 4122 V4 형식이므로 올-제로 UUID 와 충돌하지 않는다.
+         */
+        val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000000")
+
+        /** EC-1 D10 auto-assign 에 사용하는 system actor [ActorId]. */
+        val SYSTEM_ACTOR: ActorId = ActorId(SYSTEM_ACTOR_UUID.toString())
+
+        /** EC-1 D10 auto-assign 기본 스킴 키. */
+        val SOFTWARE_SCHEME_KEY: WorkflowSchemeKey = WorkflowSchemeKey("software-scheme")
+    }
+
+    /**
+     * EC-4 D11 — 표준 스킴의 잠긴 필드(name/description/isDefault) 변경 시도를 차단한다.
+     *
+     * 표준 스킴의 name / description / isDefault 는 변경 불가 필드다.
+     * 현재 값과 다를 때 [com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException] 을 던진다.
+     */
+    private fun validateStandardFieldNotChanged(
+        existing: WorkflowScheme,
+        newName: String,
+        newDescription: String?,
+        newIsDefault: Boolean,
+    ) {
+        if (existing.name != newName) {
+            throw SchemeStandardFieldLockedException(existing.key.value, "name")
+        }
+        if (existing.description != newDescription) {
+            throw SchemeStandardFieldLockedException(existing.key.value, "description")
+        }
+        if (existing.isDefault != newIsDefault) {
+            throw SchemeStandardFieldLockedException(existing.key.value, "is_default")
+        }
+    }
+}
