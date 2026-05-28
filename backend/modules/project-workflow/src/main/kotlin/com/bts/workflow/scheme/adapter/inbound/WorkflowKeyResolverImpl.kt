@@ -52,8 +52,17 @@ class WorkflowKeyResolverImpl(
      * 내부적으로 [WorkflowResolver.resolveFor] 에 위임하고,
      * 반환된 [com.bts.workflow.domain.Workflow] 에서 최소 displayOrder 상태를 시작 상태로 추출한다.
      *
+     * ## 시나리오별 동작
+     * - **EC-1 auto-assign**: assignment 없는 신규 프로젝트는 software-scheme 을 자동 배정한 뒤 default mapping workflow 를 반환한다.
+     *   자동 배정은 [WorkflowResolverImpl] 이 수행한다.
+     * - **EC-2 no-default**: issueTypeKey 매칭 + default mapping 모두 부재 시 [com.bts.workflow.scheme.exception.WorkflowSchemeNoDefaultException] 가 발생한다.
+     *   issue-tracking 에서 [com.bts.issue.domain.IssueWorkflowNotConfiguredException] 으로 변환한다 (Task 3/4).
+     * - **EC-8 race-safe**: 동시에 여러 스레드가 동일 프로젝트에 auto-assign 을 시도해도 DB 의 ON CONFLICT 처리로 idempotent 하게 동작한다.
+     *   중복 배정 없이 최초 1회만 기록되며 모든 스레드가 정상 응답을 받는다.
+     *
      * @param projectKey shared-kernel [SharedProjectKey]. 내부 [InternalProjectKey] 로 변환 후 전달.
      * @param issueTypeKey 이슈 타입 키. null 이면 default mapping 직접 조회.
+     *   FR-IS-02 (이슈 타입 도입) 이전에는 null 을 전달한다.
      * @return 결정된 [WorkflowStartState] (workflowKey + startStateKey).
      * @throws RuntimeException ([com.bts.workflow.scheme.exception.ProjectNotFoundException]) projectKey 미존재 시 (EC-7).
      * @throws RuntimeException ([com.bts.workflow.scheme.exception.WorkflowSchemeNoDefaultException]) default mapping 부재 시 (EC-2).
