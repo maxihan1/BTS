@@ -67,14 +67,18 @@ class IssueApplicationService(
      * 흐름.
      * 1. CREATE 권한 검증 (Project 범위)
      * 2. pg_advisory_xact_lock 으로 보호된 key_sequence 증가
-     * 3. IssueKey 발급 → Issue.create
-     * 4. DB INSERT
-     * 5. IssueCreated 이벤트 발행
+     * 3. IssueKey 발급
+     * 4. [WorkflowKeyResolver.resolveStart] 로 초기 상태 키 결정 (issueTypeKey = null, FR-IS-02 이전)
+     *    — WorkflowSchemeNoDefaultException 발생 시 [IssueWorkflowNotConfiguredException] 으로 변환 (BC 격리)
+     * 5. Issue.create
+     * 6. DB INSERT
+     * 7. IssueCreated 이벤트 발행
      *
      * @param actor 이슈를 생성하는 행위자.
      * @param request 생성 요청 DTO.
      * @return 삽입된 [Issue].
      * @throws IssueAccessDeniedException 권한 없을 때.
+     * @throws IssueWorkflowNotConfiguredException 프로젝트에 기본 워크플로우 스킴이 없을 때.
      */
     fun createIssue(
         actor: ActorId,
