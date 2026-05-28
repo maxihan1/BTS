@@ -118,9 +118,13 @@ dependencies {
     jooqGenerator("org.postgresql:postgresql:42.7.3")
 
     // ── 테스트 ─────────────────────────────────────────────────────────────────
-    // project-workflow — 통합 테스트(IssueControllerTransitionIntegrationTest)에서 실제 wire 필요.
-    // production code 의존 아님 (ArchUnit IssueBcArchTest 가 DoNotIncludeTests() 로 테스트 클래스 제외하므로 룰 위반 아님).
-    // shared-kernel SPI 경계를 넘어 두 BC 전체 스택을 E2E 검증하기 위한 testImplementation 선언.
+    // project-workflow — IssueTypeLookupAdapter 가 IssueTypeLookupPort (project-workflow 선언) 를 구현하므로
+    // production code 에서도 project-workflow 에 의존한다 (FR-WF-02 D6 Task 1 outbound port).
+    // IssueBcArchTest 금지 패키지 목록 (com.bts.workflow.domain.exception/spi/application/infrastructure/adapter/engine/repository)
+    // 에 com.bts.workflow.scheme.application.port 는 포함되지 않으므로 ArchUnit 룰 통과.
+    // project-workflow 는 issue-tracking 을 testRuntimeOnly 만 갖고 있으므로 컴파일 타임 순환 없음.
+    // ADR 2026-05-28-workflow-scheme-frontend-view-layer-cross-bc-lookup 참조.
+    implementation(project(":modules:project-workflow"))
     testImplementation(project(":modules:project-workflow"))
 
     // Spring Boot 테스트 슬라이스 (JUnit Vintage 제외 — Kotest runner 사용)
