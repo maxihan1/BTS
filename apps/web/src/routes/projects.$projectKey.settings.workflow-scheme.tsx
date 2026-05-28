@@ -154,14 +154,15 @@ export function ProjectWorkflowSchemeSettingsPage({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// UnassignedSchemeCard — EC-1 안내 카드 (REFACTOR 단계에서 추출 예정)
+// UnassignedSchemeCard — EC-1 안내 카드 (독립 named export — 재사용 가능)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * EC-1 — 프로젝트에 워크플로우 스킴이 할당되지 않은 경우 표시되는 안내 카드.
  * 자동 할당 동작과 미리 지정 가능 여부를 안내한다.
+ * named export로 다른 페이지에서 재사용 가능하다.
  */
-function UnassignedSchemeCard(): JSX.Element {
+export function UnassignedSchemeCard(): JSX.Element {
   return (
     <Card className="border-amber-500/40 bg-amber-50/30 dark:bg-amber-950/20">
       <CardHeader>
