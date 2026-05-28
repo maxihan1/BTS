@@ -237,7 +237,33 @@ class YamlSeedServiceTest {
         log.info("시나리오 4 통과 — FailFast 부팅 차단 확인")
     }
 
-    // ── 시나리오 5. seedAll() 과 seedOnReady() 에 @Transactional 어노테이션 존재 검증 ──
+    // ── 시나리오 5. (from, to) 중복 전이 정의 → IllegalStateException fail-fast ─────
+
+    @Test
+    @Order(5)
+    fun `같은 워크플로우 안에 from-to 가 동일한 전이가 중복 정의되면 IllegalStateException 이 발생한다`() {
+        val dataSource =
+            DriverManagerDataSource(
+                postgres.jdbcUrl,
+                postgres.username,
+                postgres.password,
+            )
+        val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
+        val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
+
+        // (from: open, to: done) 이 name 만 다르게 두 번 정의된 중복 YAML
+        val duplicateTransitionResourceLoader = DuplicateTransitionResourceLoader()
+        val serviceWithDuplicate =
+            YamlSeedService(WorkflowRepository(dsl), dsl, duplicateTransitionResourceLoader, yamlMapper)
+
+        assertThatThrownBy { serviceWithDuplicate.seedAll() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("duplicate (from, to)=(open,done)")
+
+        log.info("시나리오 5 통과 — (from,to) 중복 fail-fast 확인")
+    }
+
+    // ── 시나리오 6. seedAll() 에 @Transactional 어노테이션 존재 검증 ─────────────────
 
     /**
      * Spring AOP 기반 `@Transactional` 은 Spring ApplicationContext 없이는 동작하지 않으므로
@@ -247,7 +273,7 @@ class YamlSeedServiceTest {
      * DELETE 후 INSERT 실패 시 롤백이 일어남을 컴파일 타임에 보장할 수 있다.
      */
     @Test
-    @Order(5)
+    @Order(6)
     fun `seedAll 에 @Transactional 과 @EventListener 어노테이션이 있어야 한다`() {
         val seedAllMethod = YamlSeedService::class.java.getMethod("seedAll")
         assertThat(
@@ -321,6 +347,36 @@ private class InvalidWorkflowResourceLoader : ResourceLoader {
     override fun getResource(location: String): Resource =
         if (location.endsWith("software-default.yaml")) {
             InMemoryResource(invalidYaml, "software-default.yaml")
+        } else {
+            delegate.getResource(location)
+        }
+
+    override fun getClassLoader() = delegate.classLoader
+}
+
+/**
+ * (from: open, to: done) 이 name 만 다르게 두 번 정의된 YAML 을 반환하는 ResourceLoader.
+ * 시나리오 5 ((from,to) 중복 fail-fast) 검증에 사용한다.
+ */
+private class DuplicateTransitionResourceLoader : ResourceLoader {
+    private val delegate = DefaultResourceLoader()
+
+    /** (from: open, to: done) 이 A / B 두 개 정의된 중복 YAML. */
+    private val duplicateTransitionYaml =
+        """
+        key: software-default
+        name: 중복전이 워크플로우
+        states:
+          - { key: open,   name: Open,   category: TODO,        displayOrder: 1 }
+          - { key: done,   name: Done,   category: DONE,        displayOrder: 2 }
+        transitions:
+          - { from: open, to: done, name: A }
+          - { from: open, to: done, name: B }
+        """.trimIndent().toByteArray()
+
+    override fun getResource(location: String): Resource =
+        if (location.endsWith("software-default.yaml")) {
+            InMemoryResource(duplicateTransitionYaml, "software-default.yaml")
         } else {
             delegate.getResource(location)
         }

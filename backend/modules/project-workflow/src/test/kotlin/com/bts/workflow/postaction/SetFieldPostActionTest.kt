@@ -64,7 +64,6 @@ class SetFieldPostActionTest {
                 issueKey = "BTS-1",
                 fromStateKey = "TODO",
                 toStateKey = "DONE",
-                transitionName = "close",
                 actorId = "user-42",
                 issueFields = issueFields,
                 actorRoles = setOf("DEVELOPER"),

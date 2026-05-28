@@ -106,6 +106,9 @@ export async function fetchWorkflow(key: string): Promise<WorkflowView> {
  * 워크플로우 전이 계획을 계산한다.
  * POST /api/v1/workflows/{key}/transitions → { data: TransitionPlan }
  *
+ * transition identity = (fromStateKey, toStateKey) — transitionName은 불필요.
+ * ADR 2026-05-28-workflow-transition-identity-policy 참조.
+ *
  * @param key 워크플로우 식별 키
  * @param request 전이 요청 — issueKey와 transitionKey를 포함
  */
@@ -116,7 +119,6 @@ export async function planTransition(
     transitionKey: string
     fromStateKey: string
     toStateKey: string
-    transitionName: string
     actorId: string
     actorRoles?: string[]
     version: number
@@ -128,7 +130,6 @@ export async function planTransition(
       issueKey: request.issueKey,
       fromStateKey: request.fromStateKey,
       toStateKey: request.toStateKey,
-      transitionName: request.transitionName,
       actorId: request.actorId,
       actorRoles: request.actorRoles ?? [],
       version: request.version,

@@ -238,7 +238,6 @@ class IssueApplicationService(
                 issueKey = key.value,
                 fromStateKey = issue.currentStateKey,
                 toStateKey = request.toStateKey,
-                transitionName = request.transitionName,
                 actorId = actor.value.toString(),
                 issueFields = mapOf("summary" to issue.summary),
                 actorRoles = emptySet(),

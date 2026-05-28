@@ -176,7 +176,6 @@ private fun buildStubContext(
             issueKey = "PROP-TEST",
             fromStateKey = fromStateKey,
             toStateKey = transition.toStateKey,
-            transitionName = transition.name,
             actorId = "tester",
             issueFields = emptyMap(),
             actorRoles = setOf("MEMBER"),

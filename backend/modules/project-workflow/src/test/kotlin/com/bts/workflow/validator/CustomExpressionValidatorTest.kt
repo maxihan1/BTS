@@ -79,7 +79,6 @@ class CustomExpressionValidatorTest {
                 issueKey = "BTS-1",
                 fromStateKey = "IN_PROGRESS",
                 toStateKey = "DONE",
-                transitionName = "resolve",
                 actorId = "user-1",
                 issueFields = mapOf("priority" to "HIGH"),
                 actorRoles = setOf("DEVELOPER"),
