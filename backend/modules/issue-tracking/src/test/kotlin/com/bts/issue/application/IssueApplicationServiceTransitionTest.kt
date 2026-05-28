@@ -87,7 +87,6 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         context("S1 — TransitionResult.Success 반환 시 정상 전이") {
             val request =
                 TransitionIssueRequest(
-                    workflowKey = "DEFAULT",
                     toStateKey = "IN_PROGRESS",
                     transitionName = "start",
                     expectedVersion = existingVersion,
@@ -142,7 +141,6 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         context("S5 — WorkflowKeyResolver 호출 계약") {
             val request =
                 TransitionIssueRequest(
-                    workflowKey = "IGNORED",
                     toStateKey = "IN_PROGRESS",
                     transitionName = "start",
                     expectedVersion = existingVersion,
@@ -182,7 +180,6 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         context("S6 — WorkflowSchemeNoDefaultException → IssueWorkflowNotConfiguredException 변환") {
             val request =
                 TransitionIssueRequest(
-                    workflowKey = "DEFAULT",
                     toStateKey = "IN_PROGRESS",
                     transitionName = "start",
                     expectedVersion = existingVersion,
@@ -224,7 +221,6 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         context("S2 — TransitionResult.ValidatorFailure 반환 시 IssueTransitionNotAllowedException") {
             val request =
                 TransitionIssueRequest(
-                    workflowKey = "DEFAULT",
                     toStateKey = "IN_PROGRESS",
                     transitionName = "start",
                     expectedVersion = existingVersion,
@@ -268,7 +264,6 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         context("S3 — TransitionResult.WorkflowNotFound 반환 시 IssueTransitionNotAllowedException") {
             val request =
                 TransitionIssueRequest(
-                    workflowKey = "ATLAS",
                     toStateKey = "IN_PROGRESS",
                     transitionName = "start",
                     expectedVersion = existingVersion,
@@ -304,7 +299,6 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         context("S4 — TransitionResult.ExpressionTimeout 반환 시 IssueTransitionNotAllowedException") {
             val request =
                 TransitionIssueRequest(
-                    workflowKey = "DEFAULT",
                     toStateKey = "IN_PROGRESS",
                     transitionName = "start",
                     expectedVersion = existingVersion,
@@ -340,7 +334,6 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         context("version conflict — applyTransition 0 row 반환") {
             val request =
                 TransitionIssueRequest(
-                    workflowKey = "DEFAULT",
                     toStateKey = "IN_PROGRESS",
                     transitionName = "start",
                     expectedVersion = existingVersion,
@@ -369,7 +362,6 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         context("권한 없을 때") {
             val request =
                 TransitionIssueRequest(
-                    workflowKey = "DEFAULT",
                     toStateKey = "IN_PROGRESS",
                     transitionName = "start",
                     expectedVersion = existingVersion,

@@ -8,6 +8,7 @@ import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
+import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -23,7 +24,7 @@ import java.time.Instant
  *
  * [basePackages] 를 `com.bts.issue.adapter.inbound.rest` 로 한정하여 다른 BC 의 예외를 잡지 않는다.
  *
- * 매핑 규칙 (spec §6.1, 9건).
+ * 매핑 규칙 (spec §6.1, 10건).
  * - [MethodArgumentNotValidException] → 400 + [IssueErrorCodes.VALIDATION_FAILED]
  * - [AuthenticationException] → 401 + [IssueErrorCodes.UNAUTHENTICATED]
  * - [IssueAccessDeniedException] → 403 + [IssueErrorCodes.ACCESS_DENIED]
@@ -32,6 +33,7 @@ import java.time.Instant
  * - [IssueKeyPrefixReservedException] → 409 + [IssueErrorCodes.KEY_PREFIX_RESERVED]
  * - [IssueVersionConflictException] → 409 + [IssueErrorCodes.VERSION_CONFLICT]
  * - [IssueTransitionNotAllowedException] → 409 + [IssueErrorCodes.TRANSITION_NOT_ALLOWED]
+ * - [IssueWorkflowNotConfiguredException] → 422 + [IssueErrorCodes.WORKFLOW_NOT_CONFIGURED]
  * - [Exception] (fallback) → 500 + [IssueErrorCodes.INTERNAL_ERROR]
  */
 @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
@@ -203,6 +205,29 @@ class IssueExceptionHandler {
         )
     }
 
+    // ── 422 WORKFLOW_NOT_CONFIGURED ──────────────────────────────────────────
+
+    /**
+     * [IssueWorkflowNotConfiguredException] — 프로젝트에 기본 워크플로우 스킴이 없음 — 422.
+     *
+     * project-workflow BC 의 WorkflowSchemeNoDefaultException 을 issue-tracking BC 경계 내부에서
+     * [IssueWorkflowNotConfiguredException] 으로 변환하여 도달한다.
+     * 클라이언트에게 프로젝트 워크플로우 설정이 필요함을 알린다 (처리 불가 엔티티).
+     *
+     * @param ex 미설정 프로젝트 키와 이슈 타입 키 정보를 포함하는 예외.
+     */
+    @ExceptionHandler(IssueWorkflowNotConfiguredException::class)
+    fun handleWorkflowNotConfigured(ex: IssueWorkflowNotConfiguredException): ProblemDetail {
+        log.info("ISSUE_422 workflow_not_configured message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.UNPROCESSABLE_ENTITY,
+            type = "workflow-not-configured",
+            title = "Workflow Not Configured",
+            errorCode = IssueErrorCodes.WORKFLOW_NOT_CONFIGURED,
+            detail = ex.message,
+        )
+    }
+
     // ── 500 INTERNAL_ERROR (fallback) ─────────────────────────────────────────
 
     /**
@@ -271,5 +296,6 @@ object IssueErrorCodes {
     const val KEY_PREFIX_RESERVED = "KEY_PREFIX_RESERVED"
     const val VERSION_CONFLICT = "VERSION_CONFLICT"
     const val TRANSITION_NOT_ALLOWED = "TRANSITION_NOT_ALLOWED"
+    const val WORKFLOW_NOT_CONFIGURED = "WORKFLOW_NOT_CONFIGURED"
     const val INTERNAL_ERROR = "INTERNAL_ERROR"
 }

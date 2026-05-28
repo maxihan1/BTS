@@ -31,13 +31,15 @@ data class UpdateIssueRequest(
 /**
  * 이슈 전이 요청 DTO.
  *
- * @param workflowKey 적용할 워크플로우 키. 예: "DEFAULT".
- * @param toStateKey 목표 상태 키. 예: "IN_PROGRESS".
+ * workflowKey 는 [com.bts.issue.application.IssueApplicationService.transitionIssue] 가
+ * [com.bts.shared.workflow.WorkflowKeyResolver] 를 통해 자동 결정한다.
+ * 컨트롤러(transport 계층) 는 toStateKey 만 전달한다.
+ *
+ * @param toStateKey 목표 상태 키. 예: "in_progress".
  * @param transitionName 실행할 전이 이름. YAML 워크플로우 정의의 name 과 일치해야 한다.
  * @param expectedVersion 낙관적 잠금 버전.
  */
 data class TransitionIssueRequest(
-    val workflowKey: String,
     val toStateKey: String,
     val transitionName: String,
     val expectedVersion: Long,

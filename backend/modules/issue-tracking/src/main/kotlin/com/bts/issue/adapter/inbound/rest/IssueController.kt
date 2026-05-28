@@ -176,7 +176,6 @@ class IssueController(
         val issueKey = IssueKey(key)
         val appRequest =
             AppTransitionIssueRequest(
-                workflowKey = "DEFAULT",
                 toStateKey = request.toStatusKey,
                 transitionName = request.toStatusKey,
                 expectedVersion = request.expectedVersion,
