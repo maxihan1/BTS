@@ -1,4 +1,4 @@
-// 워크플로우 스킴 CRUD TanStack Query hooks + sonner 토스트 + errorCode 한국어 매핑
+// 워크플로우 스킴 CRUD TanStack Query hooks
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -9,7 +9,6 @@ import {
   deleteWorkflowScheme,
   addMapping,
   deleteMapping,
-  WorkflowSchemeApiError,
 } from '@/api/workflow-schemes'
 import type {
   SchemeResponse,
@@ -19,6 +18,9 @@ import type {
   UpdateSchemeInput,
   AddMappingInput,
 } from '@/api/workflow-schemes'
+import { notifySchemeError, mapWorkflowSchemeError } from './workflow-scheme-error'
+
+export { mapWorkflowSchemeError }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // queryKey 상수
@@ -31,52 +33,6 @@ export const SCHEME_KEYS = {
   /** 스킴 단건 queryKey */
   detail: (schemeKey: string) => ['workflow-schemes', schemeKey] as const,
 } satisfies Record<string, readonly string[] | ((...args: string[]) => readonly string[])>
-
-// ─────────────────────────────────────────────────────────────────────────────
-// errorCode 한국어 매핑
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** 워크플로우 스킴 errorCode → 한국어 사용자 메시지 매핑 */
-const SCHEME_ERROR_MESSAGES: Readonly<Record<string, string>> = {
-  SCHEME_IN_USE: '사용 중인 스킴은 삭제할 수 없습니다',
-  MAPPING_DUPLICATE: '이미 매핑된 이슈 타입입니다',
-  MAPPING_DEFAULT_DUPLICATE: '기본 매핑은 한 개만 허용됩니다',
-  SCHEME_STANDARD_NOT_DELETABLE: '표준 스킴은 삭제할 수 없습니다',
-  SCHEME_STANDARD_FIELD_LOCKED: '표준 스킴의 키/이름은 변경할 수 없습니다',
-}
-
-const DEFAULT_SCHEME_ERROR_MESSAGE = '요청 처리 중 오류가 발생했습니다'
-
-/**
- * errorCode를 한국어 사용자 메시지로 변환한다.
- * 알 수 없는 코드면 기본 메시지를 반환한다.
- *
- * @param errorCode WorkflowSchemeApiError.errorCode
- */
-export function mapWorkflowSchemeError(errorCode: string): string {
-  return SCHEME_ERROR_MESSAGES[errorCode] ?? DEFAULT_SCHEME_ERROR_MESSAGE
-}
-
-/**
- * errorCode 기반으로 toast.error를 호출한다.
- *
- * @param errorCode WorkflowSchemeApiError.errorCode
- */
-function notifySchemeError(errorCode: string): void {
-  toast.error(mapWorkflowSchemeError(errorCode))
-}
-
-/**
- * 에러에서 errorCode를 추출해 toast.error를 호출한다.
- * WorkflowSchemeApiError가 아니면 기본 메시지를 사용한다.
- */
-function notifyErrorFromUnknown(error: unknown): void {
-  if (error instanceof WorkflowSchemeApiError) {
-    notifySchemeError(error.errorCode)
-  } else {
-    toast.error(DEFAULT_SCHEME_ERROR_MESSAGE)
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Query hooks
@@ -126,9 +82,7 @@ export function useCreateWorkflowScheme() {
       toast.success('스킴이 생성됐습니다')
       await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.list })
     },
-    onError: (error) => {
-      notifyErrorFromUnknown(error)
-    },
+    onError: notifySchemeError,
   })
 }
 
@@ -154,7 +108,6 @@ export function useUpdateWorkflowScheme(schemeKey: string) {
       )
       const prevList = queryClient.getQueryData<SchemeResponse[]>(SCHEME_KEYS.list)
 
-      // 낙관적 단건 캐시 업데이트
       if (prevDetail !== undefined) {
         queryClient.setQueryData<SchemeDetailResponse>(SCHEME_KEYS.detail(schemeKey), {
           ...prevDetail,
@@ -163,7 +116,6 @@ export function useUpdateWorkflowScheme(schemeKey: string) {
         })
       }
 
-      // 낙관적 목록 캐시 업데이트
       if (prevList !== undefined) {
         queryClient.setQueryData<SchemeResponse[]>(
           SCHEME_KEYS.list,
@@ -192,7 +144,7 @@ export function useUpdateWorkflowScheme(schemeKey: string) {
       if (ctx?.prevList !== undefined) {
         queryClient.setQueryData(SCHEME_KEYS.list, ctx.prevList)
       }
-      notifyErrorFromUnknown(error)
+      notifySchemeError(error)
     },
     onSuccess: () => {
       toast.success('스킴이 수정됐습니다')
@@ -208,7 +160,7 @@ export function useUpdateWorkflowScheme(schemeKey: string) {
  * 워크플로우 스킴을 삭제한다.
  * DELETE /api/v1/workflow-schemes/{schemeKey} → 204
  *
- * 409 SCHEME_IN_USE 시 toast.error로 한국어 메시지를 표시한다.
+ * 409 SCHEME_IN_USE / SCHEME_STANDARD_NOT_DELETABLE 시 toast.error로 한국어 메시지를 표시한다.
  */
 export function useDeleteWorkflowScheme() {
   const queryClient = useQueryClient()
@@ -220,9 +172,7 @@ export function useDeleteWorkflowScheme() {
       await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.list })
       queryClient.removeQueries({ queryKey: SCHEME_KEYS.detail(schemeKey) })
     },
-    onError: (error) => {
-      notifyErrorFromUnknown(error)
-    },
+    onError: notifySchemeError,
   })
 }
 
@@ -249,7 +199,7 @@ export function useAddMapping(schemeKey: string) {
       )
 
       if (prevDetail !== undefined) {
-        // 임시 ID는 음수 — 서버 응답 후 invalidate로 교체됨
+        // 임시 ID는 음수 — 서버 응답 후 onSettled invalidate로 교체됨
         const optimisticMapping: MappingResponse = {
           id: -Date.now(),
           issueTypeKey: input.issueTypeKey,
@@ -274,7 +224,7 @@ export function useAddMapping(schemeKey: string) {
       if (ctx?.prevDetail !== undefined) {
         queryClient.setQueryData(SCHEME_KEYS.detail(schemeKey), ctx.prevDetail)
       }
-      notifyErrorFromUnknown(error)
+      notifySchemeError(error)
     },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.detail(schemeKey) })
@@ -313,13 +263,13 @@ export function useRemoveMapping(schemeKey: string) {
 
       return { prevDetail }
     },
-    onError: (_error, _mappingId, context) => {
+    onError: (error, _mappingId, context) => {
       const ctx = context as { prevDetail?: SchemeDetailResponse } | undefined
 
       if (ctx?.prevDetail !== undefined) {
         queryClient.setQueryData(SCHEME_KEYS.detail(schemeKey), ctx.prevDetail)
       }
-      notifyErrorFromUnknown(_error)
+      notifySchemeError(error)
     },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.detail(schemeKey) })

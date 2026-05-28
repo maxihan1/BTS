@@ -1,13 +1,9 @@
 // 프로젝트-스킴 할당 TanStack Query hooks — UPSERT + 낙관적 업데이트
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import {
-  fetchProjectAssignment,
-  assignSchemeToProject,
-  WorkflowSchemeApiError,
-} from '@/api/workflow-schemes'
+import { fetchProjectAssignment, assignSchemeToProject } from '@/api/workflow-schemes'
 import type { AssignmentResponse, AssignSchemeInput } from '@/api/workflow-schemes'
-import { mapWorkflowSchemeError } from './use-workflow-schemes'
+import { notifySchemeError } from './workflow-scheme-error'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // queryKey 상수
@@ -19,23 +15,6 @@ export const ASSIGNMENT_KEYS = {
   byProject: (projectKey: string) =>
     ['projects', projectKey, 'workflow-scheme'] as const,
 } satisfies Record<string, (...args: string[]) => readonly string[]>
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 내부 유틸리티
-// ─────────────────────────────────────────────────────────────────────────────
-
-const DEFAULT_ERROR_MESSAGE = '요청 처리 중 오류가 발생했습니다'
-
-/**
- * 에러에서 errorCode를 추출해 toast.error를 호출한다.
- */
-function notifyAssignmentError(error: unknown): void {
-  if (error instanceof WorkflowSchemeApiError) {
-    toast.error(mapWorkflowSchemeError(error.errorCode))
-  } else {
-    toast.error(DEFAULT_ERROR_MESSAGE)
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Query hooks
@@ -105,7 +84,7 @@ export function useUpdateAssignment(projectKey: string) {
           ctx.prevAssignment,
         )
       }
-      notifyAssignmentError(error)
+      notifySchemeError(error)
     },
     onSuccess: () => {
       toast.success('프로젝트에 스킴이 할당됐습니다')
