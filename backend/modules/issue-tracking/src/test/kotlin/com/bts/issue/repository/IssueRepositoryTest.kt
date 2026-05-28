@@ -293,11 +293,11 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
     // ── T9-regression. currentStateKey 소문자 회귀 가드 ─────────────────────────
 
     /**
-     * Given  currentStateKey = "open" (소문자, V007 마이그레이션 이후 표준) 으로 Issue 를 insert
+     * Given  currentStateKey = "open" (소문자, V004 마이그레이션 이후 표준) 으로 Issue 를 insert
      * When   findByKey 로 조회
      * Then   currentStateKey 가 "open" (소문자) 로 반환된다.
      *
-     * Task 9 회귀 가드: V007 이 기존 OPEN(대문자) → open(소문자) 으로 변환했으므로, 신규 저장 시
+     * Task 9 회귀 가드: V004 가 기존 OPEN(대문자) → open(소문자) 으로 변환했으므로, 신규 저장 시
      * 소문자 키를 그대로 유지해야 함. 대문자 상태키가 코드에 남아있으면 이 테스트가 RED.
      */
     @Test

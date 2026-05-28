@@ -50,7 +50,7 @@ data class Issue(
          * @param projectId 이슈가 속한 프로젝트 UUID.
          * @param summary 이슈 제목. 1~255자, 공백만으로 구성 불가.
          * @param reporterId 이슈를 생성하는 행위자.
-         * @param currentStateKey 초기 워크플로우 상태 키. 예: `"open"` (소문자, V007 마이그레이션 기준).
+         * @param currentStateKey 초기 워크플로우 상태 키. 예: `"open"` (소문자, V004 마이그레이션 기준).
          * @return 생성된 [Issue] 인스턴스.
          */
         fun create(
