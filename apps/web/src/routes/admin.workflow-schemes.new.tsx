@@ -202,7 +202,7 @@ export function WorkflowSchemeNewRouteAdapter(): JSX.Element {
   const navigate = useNavigate()
 
   function handleSuccess(schemeKey: string): void {
-    void navigate({ to: '/admin/workflow-schemes/$key', params: { key: schemeKey } })
+    void navigate({ to: '/admin/workflow-schemes/$schemeKey', params: { schemeKey } })
   }
 
   return <WorkflowSchemeNewForm onSuccess={handleSuccess} />

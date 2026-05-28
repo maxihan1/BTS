@@ -16,11 +16,13 @@ export const dataOf = <T>(innerSchema: z.ZodSchema<T>) =>
 // Zod 스키마 — backend DTO 직렬화 형태와 1:1 대응
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 워크플로우 스킴 단건 목록 응답 Zod 스키마 — usedByProjectsCount, mappingsCount 포함 */
+/** 워크플로우 스킴 단건 목록 응답 Zod 스키마 — usedByProjectsCount, mappingsCount, isStandard 포함 */
 export const schemeResponseSchema = z.object({
   schemeKey: z.string().min(1),
   name: z.string().min(1),
   description: z.string(),
+  /** 표준 스킴 여부 (D11 — 표준 보호. backend 의 isDefault 와 동일 의미, 후속 PR 에서 backend 계약 정렬 예정) */
+  isStandard: z.boolean(),
   usedByProjectsCount: z.number().int().nonnegative(),
   mappingsCount: z.number().int().nonnegative(),
 })
@@ -69,8 +71,9 @@ export type AssignmentResponse = z.infer<typeof assignmentResponseSchema>
 // Input 인터페이스 — 뮤테이션 요청 타입
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 스킴 생성 입력 */
+/** 스킴 생성 입력 — backend POST body 와 매칭 (key/name/description), schemeKey 는 form 사용자 입력 */
 export interface CreateSchemeInput {
+  schemeKey: string
   name: string
   description?: string
 }
