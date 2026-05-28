@@ -3,6 +3,7 @@ import type { Page } from '@playwright/test'
 import { expect } from '@playwright/test'
 
 import { loginStrings, issueDetailStrings, issueCreateStrings } from '../../src/i18n/ko'
+import { createdIssueFixture } from '../../src/mocks/issue-handlers'
 
 /**
  * i18n 정본 재노출 — E2E 셀렉터가 hardcoded string 대신 정본 키 참조 (PR #22 §F4 학습).
@@ -34,12 +35,13 @@ export async function loginAsAlice(page: Page): Promise<void> {
 /**
  * /issues/new 폼을 통해 새 이슈를 생성하고 상세 페이지로 이동한 상태로 끝낸다.
  *
- * MSW mock 의 createIssueHandler 가 createdIssueFixture (ATLAS-42) 응답을 stateful 보관한다.
- * 같은 test 안에서 여러 번 호출하면 항상 같은 key (ATLAS-42) 가 반환된다.
+ * MSW mock 의 createIssueHandler 는 createdIssueFixture 응답을 stateful 보관한다.
+ * 같은 test 안에서 여러 번 호출하면 항상 같은 key (createdIssueFixture.key) 가 반환된다.
+ * 키는 createdIssueFixture 에서 단일 진실 원천으로 import — mock fixture 변경 시 자동 동기화.
  *
  * @param page Playwright Page 객체
  * @param summary 입력할 이슈 제목 (기본값: 테스트용 더미)
- * @returns 발급된 이슈 키 (현재 mock 은 ATLAS-42 고정)
+ * @returns 발급된 이슈 키 (mock fixture 의 key)
  */
 export async function createIssueViaUI(
   page: Page,
@@ -49,7 +51,7 @@ export async function createIssueViaUI(
   await page.getByLabel(issueCreateStrings.projectKeyLabel).fill('ATLAS')
   await page.getByLabel(issueCreateStrings.summaryLabel).fill(summary)
   await page.getByRole('button', { name: issueCreateStrings.submitButton }).click()
-  // 상세 페이지로 redirect 대기 — createdIssueFixture.key 'ATLAS-42' 고정
-  await page.waitForURL(/\/issues\/ATLAS-42$/)
-  return 'ATLAS-42'
+  // 상세 페이지로 redirect 대기 — mock fixture 의 key 사용 (변경 시 자동 동기화).
+  await page.waitForURL(new RegExp(`/issues/${createdIssueFixture.key}$`))
+  return createdIssueFixture.key
 }
