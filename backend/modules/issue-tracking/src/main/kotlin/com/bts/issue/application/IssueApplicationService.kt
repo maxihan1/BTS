@@ -87,6 +87,15 @@ class IssueApplicationService(
         val projectId =
             repo.findProjectIdByKey(request.projectKey)
                 ?: throw IssueProjectNotFoundException(request.projectKey)
+        val startState =
+            try {
+                workflowKeyResolver.resolveStart(ProjectKey.of(request.projectKey), null)
+            } catch (e: RuntimeException) {
+                if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") {
+                    throw IssueWorkflowNotConfiguredException(request.projectKey, null)
+                }
+                throw e
+            }
         val issue =
             Issue.create(
                 id = IssueId(UUID.randomUUID()),
@@ -94,7 +103,7 @@ class IssueApplicationService(
                 projectId = projectId,
                 summary = request.summary,
                 reporterId = request.reporterId,
-                currentStateKey = "OPEN",
+                currentStateKey = startState.startStateKey,
             )
         val saved = repo.insert(issue)
         eventPublisher.publish(
