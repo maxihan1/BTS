@@ -88,7 +88,6 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             val request =
                 TransitionIssueRequest(
                     toStateKey = "IN_PROGRESS",
-                    transitionName = "start",
                     expectedVersion = existingVersion,
                 )
             val plan = TransitionPlan(toStateKey = "IN_PROGRESS", fieldChanges = emptyList(), emitEvents = emptyList())
@@ -142,7 +141,6 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             val request =
                 TransitionIssueRequest(
                     toStateKey = "IN_PROGRESS",
-                    transitionName = "start",
                     expectedVersion = existingVersion,
                 )
             val plan = TransitionPlan(toStateKey = "IN_PROGRESS", fieldChanges = emptyList(), emitEvents = emptyList())
@@ -181,7 +179,6 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             val request =
                 TransitionIssueRequest(
                     toStateKey = "IN_PROGRESS",
-                    transitionName = "start",
                     expectedVersion = existingVersion,
                 )
 
@@ -222,7 +219,6 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             val request =
                 TransitionIssueRequest(
                     toStateKey = "IN_PROGRESS",
-                    transitionName = "start",
                     expectedVersion = existingVersion,
                 )
 
@@ -265,7 +261,6 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             val request =
                 TransitionIssueRequest(
                     toStateKey = "IN_PROGRESS",
-                    transitionName = "start",
                     expectedVersion = existingVersion,
                 )
 
@@ -300,7 +295,6 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             val request =
                 TransitionIssueRequest(
                     toStateKey = "IN_PROGRESS",
-                    transitionName = "start",
                     expectedVersion = existingVersion,
                 )
 
@@ -335,7 +329,6 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             val request =
                 TransitionIssueRequest(
                     toStateKey = "IN_PROGRESS",
-                    transitionName = "start",
                     expectedVersion = existingVersion,
                 )
             val plan = TransitionPlan(toStateKey = "IN_PROGRESS", fieldChanges = emptyList(), emitEvents = emptyList())
@@ -363,7 +356,6 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             val request =
                 TransitionIssueRequest(
                     toStateKey = "IN_PROGRESS",
-                    transitionName = "start",
                     expectedVersion = existingVersion,
                 )
 
