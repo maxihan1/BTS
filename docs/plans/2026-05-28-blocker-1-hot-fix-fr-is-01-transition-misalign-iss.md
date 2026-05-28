@@ -108,6 +108,180 @@ PR #27 (FR-IS-01 transition wiring) 머지 직전 `/review` adversarial subagent
 
 상세. `docs/specs/2026-05-28-<slug>.md §Brainstorming Check`.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> Fast-track inline 모드 (PR #21/#22/#23/#24 패턴). writing-plans 스킬 우회.
+> TDD red→green→refactor 정통. 각 task 메타 블록 (agent / files / depends-on) bts-impl wave 계산 입력.
+
+### Task 1. WorkflowEngine.resolveTransition (from, to) 매칭 + 예외 메시지 정리
+
+**메타**.
+- agent. `backend-engineer`
+- files. [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/WorkflowEngine.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineUnitTest.kt`]
+- depends-on. `[]`
+
+**RED**.
+- 파일. `WorkflowEngineUnitTest.kt`
+- 테스트 (Kotlin). yaml seed 에 `{ from: open, to: in_progress, name: "Start Work" }` 가 정의된 워크플로우에서, `TransitionRequest` 가 `(fromStateKey="open", toStateKey="in_progress")` 만 전달했을 때 (transitionName 누락/임의값/공백 모두) 정확한 transition 매칭. 현재 코드에서 fail (name 매칭 조건 위반).
+- 실패 메시지 예상. `WorkflowNotFoundException("DEFAULT::?(open→in_progress)")` 또는 매칭 실패.
+
+**GREEN**.
+- 파일. `WorkflowEngine.kt:163-173`
+- `resolveTransition` 의 `it.name == req.transitionName` 조건 삭제. 매칭 = `it.fromStateKey == req.fromStateKey && it.toStateKey == req.toStateKey`.
+- 예외 메시지에서 `${req.transitionName}` 토큰 제거 — `"${req.workflowKey}::${req.fromStateKey}→${req.toStateKey}"`.
+
+**REFACTOR**.
+- `resolveTransition` 함수 KDoc 추가 (1줄, "transition identity = (from, to) — ADR 2026-05-28 참조").
+
+**검증**. `./gradlew :modules:project-workflow:test --tests WorkflowEngineUnitTest`.
+
+---
+
+### Task 2. YamlSeedService (from, to) 유일성 검증 + fail-fast
+
+**메타**.
+- agent. `backend-engineer`
+- files. [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/seed/YamlSeedService.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/YamlSeedServiceTest.kt`]
+- depends-on. `[]`
+
+**RED**.
+- 파일. `YamlSeedServiceTest.kt`
+- 테스트. 같은 워크플로우 안에 `{ from: open, to: done, name: A }` + `{ from: open, to: done, name: B }` 중복 정의된 fixture yaml 로 `loadAndSeed()` 호출 시 `IllegalStateException` 발생 + 메시지에 `"duplicate (from, to)=(open,done)"` 포함 기대. 현재 코드에서 검증 누락이라 fail (예외 미발생).
+
+**GREEN**.
+- 파일. `YamlSeedService.kt` (validation 단계)
+- yaml 적재 시 `transitions` 의 `(from, to)` pair 가 모두 distinct 인지 검증. `groupBy { it.from to it.to }.filter { it.value.size > 1 }` 결과 0 이 아니면 `IllegalStateException("Workflow '${workflowKey}' has duplicate (from, to)=${dup}")` throw.
+
+**REFACTOR**.
+- 검증 로직을 private fun extractor (`validateTransitionUniqueness`) 로 추출.
+
+**검증**. `./gradlew :modules:project-workflow:test --tests YamlSeedServiceTest`.
+
+---
+
+### Task 3. shared-kernel TransitionRequest.transitionName 제거 + 모든 caller 갱신
+
+**메타**.
+- agent. `backend-engineer`
+- files. [
+    `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/TransitionRequest.kt`,
+    `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/workflow/TransitionRequestTest.kt` (신규),
+    `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`,
+    `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/validator/CustomExpressionValidatorTest.kt`,
+    `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/validator/PermissionValidatorTest.kt`,
+    `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/validator/NotStatusCategoryValidatorTest.kt`,
+    `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/validator/RequiredFieldValidatorTest.kt`,
+    `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/postaction/RunAutomationPostActionTest.kt`,
+    `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/postaction/NotifyPostActionTest.kt`,
+    `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/postaction/CallWebhookPostActionTest.kt`,
+    `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/property/WorkflowPropertyTest.kt`
+  ]
+- depends-on. `[1]`  (WorkflowEngine 이 transitionName 안 봐야 안전)
+
+**RED**.
+- 파일. `TransitionRequestTest.kt` (신규)
+- 테스트. `TransitionRequest(workflowKey, issueKey, fromStateKey, toStateKey, actorId, issueFields, actorRoles, version)` — 9 → 8 파라미터 시그니처 컴파일 + `validate()` 통과 기대. 현재 컴파일 fail.
+
+**GREEN**.
+- `TransitionRequest.kt`. `transitionName: String` 필드 제거 + Konform `transitionRequestValidation` 에서 `TransitionRequest::transitionName { minLength(1) }` 라인 제거 + KDoc `@param transitionName ...` 줄 제거.
+- caller (8 파일) 의 `TransitionRequest(...)` 생성 호출에서 `transitionName = "..."` 명명 인자 제거. positional 호출은 인자 1개 축소.
+
+**REFACTOR**.
+- `TransitionRequest.kt` KDoc 의 `@param transitionName` 자리에 "L11 `WorkflowTransition.key` (`from__to`) 합성 기반 매칭 — ADR 2026-05-28 참조" 1줄 추가.
+
+**검증**. `./gradlew :modules:shared-kernel:test :modules:project-workflow:test :modules:issue-tracking:compileKotlin`.
+
+---
+
+### Task 4. issue-tracking AppTransitionIssueRequest + IssueController 의 transitionName 라인 제거
+
+**메타**.
+- agent. `backend-engineer`
+- files. [
+    `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationRequests.kt`,
+    `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueController.kt`,
+    `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueApplicationServiceTransitionTest.kt`
+  ]
+- depends-on. `[3]`  (shared-kernel TransitionRequest 시그니처 + IssueApplicationService 의 호출 갱신 선행)
+
+**RED**.
+- 파일. `IssueApplicationServiceTransitionTest.kt`
+- 테스트. `AppTransitionIssueRequest(toStateKey, expectedVersion)` 2 파라미터 시그니처로 `transitionIssue()` 호출. 현재 3 파라미터라 컴파일 fail.
+
+**GREEN**.
+- `IssueApplicationRequests.kt`. `AppTransitionIssueRequest.transitionName` 필드 제거 (3 → 2 필드).
+- `IssueController.kt:190-195`. `AppTransitionIssueRequest` 생성에서 `transitionName = request.toStatusKey` 라인 제거 (BLOCKER 본질 부위).
+- `IssueApplicationService.kt` 의 `transitionIssue()` 메서드에서 `TransitionRequest` 생성 시 `transitionName` 안 넘김 (Task 3 에서 이미 처리됐을 수 있음 — 검증 후 정리).
+
+**REFACTOR**.
+- `AppTransitionIssueRequest` KDoc 갱신 — `transitionName` 제거 사유 (ADR 2026-05-28 참조) 1줄.
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests IssueApplicationServiceTransitionTest`.
+
+---
+
+### Task 5. IssueControllerTransitionIntegrationTest 우회 seed 해제 + production-aligned 시드
+
+**메타**.
+- agent. `backend-engineer`
+- files. [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueControllerTransitionIntegrationTest.kt`]
+- depends-on. `[4]`  (IssueController + AppTransitionIssueRequest 변경 선행)
+
+**RED 변형**. 본 task 는 우회 seed 제거 단계라 정통 RED commit 분리 불가능 — PR #12, #16, #19 패턴 적용. commit message 에 변형 사유 명시 + plan §Plan 변형 단락 inline (verifier prompt 첨부 대상).
+
+- 변형 본질. PR #27 머지 시점의 통합 테스트가 `transitionName=toStateKey` 우회 seed 로 production 함정을 가렸음 — 본 task 가 그 우회 제거. 우회 제거 후 시드를 표준 `software-default.yaml` 로 정렬하면, Task 1~4 의 GREEN 이 이미 적용된 상태에서는 PASS 가 정상.
+- 회귀 가드. 같은 (from, to) 전이가 정상 매칭되는 시나리오 (S1) + 정의 안 된 (from, to) 가 409 (S3) + version conflict 409 (S4) 추가.
+
+**GREEN**.
+- `IssueControllerTransitionIntegrationTest.kt` 의 setup 단계에서 hand-crafted `transitionName=toStateKey` 우회 yaml 제거.
+- 표준 `software-default.yaml` 시드로 교체 (이미 `YamlSeedService` 가 부팅 시 적재하므로 추가 호출 0 가능 — 검증 후 정리).
+- 시나리오 S1 (happy path), S3 (invalid transition 409), S4 (version conflict 409) 통합 테스트 추가 또는 갱신.
+
+**REFACTOR**.
+- 테스트 base class 활용 (PR #23 의 `IssueTestcontainersBase` 패턴) — 이미 적용 중인지 검증.
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests IssueControllerTransitionIntegrationTest`.
+
+---
+
+### Task 6. ADR + WorkflowTransition.kt KDoc 정정
+
+**메타**.
+- agent. `backend-engineer`
+- files. [
+    `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/WorkflowTransition.kt`,
+    `docs/adr/2026-05-28-workflow-transition-identity-policy.md` (신규)
+  ]
+- depends-on. `[5]`  (전체 결정 박힌 후 ADR 정정)
+
+**RED 변형**. docs/KDoc 정정 task — TDD RED 의 본질은 "ADR 부재 = 결정 미박힘". commit message 에 명시 + verifier prompt 첨부.
+
+**GREEN**.
+- `WorkflowTransition.kt` L10 KDoc 정정 — `(fromStateKey, toStateKey)` 가 §유일성 보장키, `name` 의 역할 = 사람 친화 표시 라벨 (1급 시민 아님).
+- `WorkflowTransition.kt` L11 KDoc — `key` 의 "라우팅/API 호출용" 표현 보존 (이제 진짜 라우팅 키).
+- 신규 ADR 작성. 결정 본문 (옵션 a/c 기각 사유, 옵션 b 채택 근거, 향후 "같은 (from, to) 에 여러 transition" 탈출구).
+
+**REFACTOR**.
+- `learnings.md` 후보 정리 (본 PR codereview 단계에서 진행).
+
+**검증**. `./gradlew :modules:project-workflow:test :modules:project-workflow:ktlintCheck :modules:project-workflow:detekt`.
+
+---
+
+## Plan 메타
+
+- task 수. 6
+- wave 수. 5
+  - Wave 1. T1, T2 (병렬, project-workflow 모듈, file 겹침 0)
+  - Wave 2. T3 (depends-on [1], shared-kernel + caller 갱신)
+  - Wave 3. T4 (depends-on [3], issue-tracking application/adapter)
+  - Wave 4. T5 (depends-on [4], 통합테스트 우회 seed 해제)
+  - Wave 5. T6 (depends-on [5], ADR + KDoc)
+- 예상 시간. task × 5분 = 약 30분 (직렬 기준), wave 병렬 적용 시 약 25분
+- TDD 강제. yes (T5 / T6 변형 + commit message 본질 명시)
+- 병렬 dispatch. bts-impl wave 계산 입력
+- 추가 검증. 3 모듈 (`:modules:shared-kernel :modules:project-workflow :modules:issue-tracking`) clean test ktlintCheck detekt 전부 BUILD SUCCESSFUL
+- ADR 신규. 1건
+
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
