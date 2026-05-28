@@ -172,7 +172,10 @@ backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/adapter
 - files:
   - `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/Workflow.kt`
   - `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/domain/WorkflowAggregateTest.kt`
+  - `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/property/WorkflowPropertyTest.kt` (D2 변경 — 잠재 회귀 C1 표면화 자연 정렬)
 - depends-on: []
+
+> **변형 사유 — D2 (controller 직접 fix)**. RED + GREEN 후 verification 단계에서 `WorkflowPropertyTest.kt` 3 case fail 표면화. 제너레이터 L246 의 dedup key `Triple(from, to, name)` 이 invariant 강화 시 같은 `(from, to)` 다른 name transition 을 생성 → throw. plan §리뷰 §C1 "잠재 회귀 GREEN 후 결정" 의 정답 = 본 PR 안 정렬 (Maxi D2 옵션 A 결정). controller 가 dedup key 를 `Pair(from, to)` 로 1-line fix + 별 commit (`fix: ... WorkflowPropertyTest 제너레이터 정합`). PR #29 의 task 4 변형 패턴 (verifier 발견 자연 보강) 일관.
 
 #### RED (테스트 fail 보장)
 
@@ -284,6 +287,8 @@ raw grep 결과 (`grep -RIn "Workflow\.of" backend/modules/project-workflow/src/
 #### CONCERN (2건, 본 PR 안 처리)
 
 - **C1 — 잠재 회귀 가능성 (Suggestion)**. invariant 강화 시 기존 test (~25 호출자) 중 `(from, to)` 같고 `name` 다른 transition 정의를 보유한 케이스가 fail 가능. plan §검증 #2 (`./gradlew :modules:project-workflow:test`) 에서 표면화. 발견 시 옵션. (a) 정합 강화 자연 부작용 → 본 PR 안 정정 (test 의 정의도 ADR 정합) (b) scope 명확성 위해 별 cleanup PR 분리. GREEN 후 실제 발견 여부에 따라 결정. 본 PR plan §verification 결과 단락에 명시 예정.
+
+  > **GREEN 후 실측 — D2 옵션 A 선택**. `WorkflowPropertyTest.kt` 제너레이터 L246 dedup key 가 `Triple(from, to, name)` 이라 invariant 강화 후 3 case fail. Maxi D2 결정으로 본 PR 안 1-line fix (Pair(from, to) dedup). Task 1 변형 사유에 명시.
 
 - **C2 — TDD 변형 (Note)**. REFACTOR phase 의 본질 변경 없음 (factory KDoc 정정만 GREEN 에 포함, 클래스 KDoc 정정은 RED 에 같이 수반). plan §RED §(d) 에 변형 사유 명시. PR #29 의 task 3/4 변형 패턴 일관.
 
