@@ -1,4 +1,5 @@
 // issue-tracking BC MSW mock handlers — GET 목록/단건 + POST 생성 + PATCH 수정 + DELETE 삭제
+// 소프트 삭제 stateful: deletedKeys 와 createdIssues 로 모듈-스코프 상태 유지 (E2E 검증 gap-H + E2E-1 happy path).
 import { http, HttpResponse } from 'msw'
 import {
   issuePageFixture,
@@ -6,6 +7,7 @@ import {
   issueAtlas2Fixture,
   issueAtlas3Fixture,
 } from './issue-fixtures'
+import type { IssueResponse, IssuePage } from '@/api/issues'
 
 /** 이슈 생성 성공 응답 픽스처 */
 export const createdIssueFixture = {
@@ -20,21 +22,55 @@ export const createdIssueFixture = {
   updatedAt: null,
 }
 
-const issueFixtureMap: Record<string, typeof issueAtlas1Fixture> = {
+const issueFixtureMap: Record<string, IssueResponse> = {
   'ATLAS-1': issueAtlas1Fixture,
   'ATLAS-2': issueAtlas2Fixture,
   'ATLAS-3': issueAtlas3Fixture,
 }
 
-/** GET /api/v1/issues — 이슈 목록 페이징 조회 (Spring Page 구조, 래퍼 없음) */
+// 소프트 삭제된 이슈 키 집합 — DELETE 핸들러가 add, GET 목록/단건이 필터링 (gap-H).
+const deletedKeys = new Set<string>()
+
+// E2E-1 happy path 용 — POST 로 생성된 이슈를 GET 목록/단건 에서 조회 가능하도록 stateful 유지.
+const createdIssues = new Map<string, IssueResponse>()
+
+/** E2E / 단위 테스트 격리용 — 모듈-스코프 state 초기화. 각 test setup 에서 호출. */
+export function resetIssueState(): void {
+  deletedKeys.clear()
+  createdIssues.clear()
+}
+
+function buildFilteredPage(): IssuePage {
+  const fixtureContent = issuePageFixture.content.filter((i) => !deletedKeys.has(i.key))
+  const createdContent = Array.from(createdIssues.values()).filter((i) => !deletedKeys.has(i.key))
+  const content = [...fixtureContent, ...createdContent]
+  return {
+    ...issuePageFixture,
+    content,
+    totalElements: content.length,
+    empty: content.length === 0,
+  }
+}
+
+/** GET /api/v1/issues — 이슈 목록 페이징 조회. 소프트 삭제된 이슈는 응답에서 제외 (gap-H). */
 const listIssuesHandler = http.get('/api/v1/issues', () => {
-  return HttpResponse.json(issuePageFixture)
+  return HttpResponse.json(buildFilteredPage())
 })
 
-/** GET /api/v1/issues/:key — 이슈 단건 조회 (`{ data: IssueResponse }` 래퍼) */
+/**
+ * GET /api/v1/issues/:key — 이슈 단건 조회 (`{ data: IssueResponse }` 래퍼).
+ * 소프트 삭제된 키는 404 (production backend 의 `deleted_at IS NOT NULL` 필터링 시뮬).
+ * POST 로 생성된 이슈도 조회 가능.
+ */
 const getIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
   const key = params['key'] as string
-  const found = issueFixtureMap[key]
+  if (deletedKeys.has(key)) {
+    return HttpResponse.json(
+      { message: `이슈를 찾을 수 없습니다: ${key}` },
+      { status: 404 },
+    )
+  }
+  const found = createdIssues.get(key) ?? issueFixtureMap[key]
   if (found === undefined) {
     return HttpResponse.json(
       { message: `이슈를 찾을 수 없습니다: ${key}` },
@@ -57,10 +93,14 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
       { status: 404 },
     )
   }
-  return HttpResponse.json(
-    { data: { ...createdIssueFixture, projectKey: body.projectKey ?? 'ATLAS', summary: body.summary ?? '' } },
-    { status: 201 },
-  )
+  const created: IssueResponse = {
+    ...createdIssueFixture,
+    projectKey: body.projectKey ?? 'ATLAS',
+    summary: body.summary ?? '',
+  }
+  // E2E-1 happy path 용 — POST 직후 GET 으로 조회 가능하도록 stateful 보관.
+  createdIssues.set(created.key, created)
+  return HttpResponse.json({ data: created }, { status: 201 })
 })
 
 /**
@@ -70,7 +110,7 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
  */
 const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, request }) => {
   const key = params['key'] as string
-  const found = issueFixtureMap[key]
+  const found = createdIssues.get(key) ?? issueFixtureMap[key]
   if (found === undefined) {
     return HttpResponse.json(
       { message: `이슈를 찾을 수 없습니다: ${key}` },
@@ -78,21 +118,26 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     )
   }
   const body = await request.json() as { summary?: string; version?: number }
-  return HttpResponse.json({
-    data: {
-      ...found,
-      summary: body.summary ?? found.summary,
-      version: found.version + 1,
-      updatedAt: new Date().toISOString(),
-    },
-  })
+  const updated: IssueResponse = {
+    ...found,
+    summary: body.summary ?? found.summary,
+    version: found.version + 1,
+    updatedAt: new Date().toISOString(),
+  }
+  // POST 로 생성된 이슈가 수정되면 stateful 보관도 갱신.
+  if (createdIssues.has(key)) {
+    createdIssues.set(key, updated)
+  }
+  return HttpResponse.json({ data: updated })
 })
 
 /**
  * DELETE /api/v1/issues/:key — 이슈 삭제 핸들러.
- * 204 No Content 반환.
+ * 소프트 삭제: deletedKeys add + 204 No Content. 이후 GET 목록/단건 모두 제외 (gap-H).
  */
-const deleteIssueHandler = http.delete('/api/v1/issues/:key', () => {
+const deleteIssueHandler = http.delete('/api/v1/issues/:key', ({ params }) => {
+  const key = params['key'] as string
+  deletedKeys.add(key)
   return new HttpResponse(null, { status: 204 })
 })
 
