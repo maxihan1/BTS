@@ -116,7 +116,6 @@ export async function planTransition(
     transitionKey: string
     fromStateKey: string
     toStateKey: string
-    transitionName: string
     actorId: string
     actorRoles?: string[]
     version: number
@@ -128,7 +127,6 @@ export async function planTransition(
       issueKey: request.issueKey,
       fromStateKey: request.fromStateKey,
       toStateKey: request.toStateKey,
-      transitionName: request.transitionName,
       actorId: request.actorId,
       actorRoles: request.actorRoles ?? [],
       version: request.version,
