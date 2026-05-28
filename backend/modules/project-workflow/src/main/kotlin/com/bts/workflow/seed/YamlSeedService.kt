@@ -169,14 +169,7 @@ class YamlSeedService(
             error("워크플로우 YAML '$key' 검증 실패: ${result.errors}")
         }
 
-        val duplicates =
-            dto.transitions
-                .groupBy { it.from to it.to }
-                .filter { it.value.size > 1 }
-        if (duplicates.isNotEmpty()) {
-            val dup = duplicates.keys.first().let { (f, t) -> "($f,$t)" }
-            error("Workflow '${dto.key}' has duplicate (from, to)=$dup")
-        }
+        validateTransitionUniqueness(dto.key, dto.transitions)
 
         return dto
     }
@@ -207,6 +200,21 @@ class YamlSeedService(
         }
 
         insertWorkflow(dto)
+    }
+
+    /** 같은 워크플로우 안에 (from, to) 쌍이 중복 정의된 전이가 있으면 [IllegalStateException] 을 던진다. */
+    private fun validateTransitionUniqueness(
+        workflowKey: String,
+        transitions: List<TransitionYamlDto>,
+    ) {
+        val duplicates =
+            transitions
+                .groupBy { it.from to it.to }
+                .filter { it.value.size > 1 }
+        if (duplicates.isNotEmpty()) {
+            val dup = duplicates.keys.first().let { (f, t) -> "($f,$t)" }
+            error("Workflow '$workflowKey' has duplicate (from, to)=$dup")
+        }
     }
 
     /**
