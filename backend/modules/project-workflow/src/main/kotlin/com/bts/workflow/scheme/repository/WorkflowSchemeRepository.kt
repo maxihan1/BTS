@@ -232,19 +232,24 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
     /**
      * 활성 스킴 전체 목록을 프로젝트 수 + 매핑 수 카운트와 함께 반환한다.
      *
-     * jOOQ LEFT JOIN 으로 단일 쿼리에서 카운트를 계산한다.
-     * - `project_workflow_scheme_assignments` : 프로젝트 할당 수
-     * - `workflow_scheme_issue_type_mappings` : 이슈타입-워크플로우 매핑 수
+     * ## 구현 방식 — 스칼라 서브쿼리 (옵션 B)
+     *
+     * LEFT JOIN 2회를 사용하면 두 테이블의 행이 서로 곱해지는 cartesian product 문제가 발생한다.
+     * 예. 매핑 3건 + 할당 2건인 스킴 → join 후 6행 → COUNT(*) = 6 (실제값 오염).
+     *
+     * 대신 각 카운트를 독립 스칼라 서브쿼리로 계산한다.
+     * - `project_count` : `SELECT COUNT(*) FROM project_workflow_scheme_assignments WHERE workflow_scheme_id = ws.id`
+     * - `mapping_count` : `SELECT COUNT(*) FROM workflow_scheme_issue_type_mappings WHERE scheme_id = ws.id`
+     *
+     * 서브쿼리 방식은 cartesian product 자체가 발생하지 않고 GROUP BY 도 불필요하다.
+     * jOOQ `dsl.selectCount().from(...).where(...).asField<Long>("alias")` 패턴으로 표현한다.
      *
      * @return [SchemeCountRow] 목록. 비어 있을 수 있음.
      */
-    @Suppress("LongMethod") // LEFT JOIN + 8-column groupBy — 구조상 단축 불가. jOOQ codegen 도입 시 재검토.
     @Transactional(readOnly = true)
     fun findAllWithCounts(): List<SchemeCountRow> {
         val ASSIGNMENTS = table(name("project_workflow_scheme_assignments"))
         val MAPPINGS_TABLE = table(name("workflow_scheme_issue_type_mappings"))
-        // project_workflow_scheme_assignments FK 컬럼명은 workflow_scheme_id
-        // (ProjectWorkflowSchemeAssignmentRepository 확인)
         val A_WORKFLOW_SCHEME_ID =
             field(name("project_workflow_scheme_assignments", "workflow_scheme_id"), Long::class.java)
         val M_SCHEME_ID = field(name("workflow_scheme_issue_type_mappings", "scheme_id"), Long::class.java)
@@ -257,8 +262,17 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
         val WS_UPDATED_AT = field(name("workflow_schemes", "updated_at"), OffsetDateTime::class.java)
         val WS_DELETED_AT = field(name("workflow_schemes", "deleted_at"), OffsetDateTime::class.java)
 
-        val projectCount = org.jooq.impl.DSL.count(A_WORKFLOW_SCHEME_ID).`as`("project_count")
-        val mappingCount = org.jooq.impl.DSL.count(M_SCHEME_ID).`as`("mapping_count")
+        // 스칼라 서브쿼리 — LEFT JOIN cartesian product 없이 독립 카운트 계산
+        val projectCount =
+            dsl.selectCount()
+                .from(ASSIGNMENTS)
+                .where(A_WORKFLOW_SCHEME_ID.eq(WS_ID))
+                .asField<Long>("project_count")
+        val mappingCount =
+            dsl.selectCount()
+                .from(MAPPINGS_TABLE)
+                .where(M_SCHEME_ID.eq(WS_ID))
+                .asField<Long>("mapping_count")
 
         return dsl
             .select(
@@ -274,19 +288,7 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
                 mappingCount,
             )
             .from(WORKFLOW_SCHEMES)
-            .leftJoin(ASSIGNMENTS).on(A_WORKFLOW_SCHEME_ID.eq(WS_ID))
-            .leftJoin(MAPPINGS_TABLE).on(M_SCHEME_ID.eq(WS_ID))
             .where(WS_DELETED_AT.isNull)
-            .groupBy(
-                WS_ID,
-                WS_KEY,
-                WS_NAME,
-                WS_DESCRIPTION,
-                WS_IS_DEFAULT,
-                WS_CREATED_AT,
-                WS_UPDATED_AT,
-                WS_DELETED_AT,
-            )
             .fetch()
             .map { rec ->
                 val scheme =
