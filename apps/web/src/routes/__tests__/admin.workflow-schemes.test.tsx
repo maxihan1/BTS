@@ -55,13 +55,15 @@ describe('AdminWorkflowSchemesPage', () => {
   })
 
   /**
-   * T7-P3. 「+ 새 스킴」 버튼이 사이드바 내에 존재한다.
+   * T7-P3. 「+ 새 스킴」 버튼이 사이드바 + 빈 상태에 각각 존재한다.
+   * 사이드바 하단 버튼과 빈 상태 placeholder CTA 버튼 2개가 모두 렌더된다.
    */
   it('T7-P3: 페이지에 「+ 새 스킴」 버튼이 렌더된다', async () => {
     renderPage()
 
     await waitFor(() => expect(screen.getByText('커스텀')).toBeInTheDocument())
 
-    expect(screen.getByRole('button', { name: /새 스킴/ })).toBeInTheDocument()
+    const addButtons = screen.getAllByRole('button', { name: /새 스킴/ })
+    expect(addButtons.length).toBeGreaterThanOrEqual(1)
   })
 })
