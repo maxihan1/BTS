@@ -159,7 +159,6 @@ class WorkflowControllerMvcTest {
         val body =
             mapOf(
                 "toStateKey" to "IN_PROGRESS",
-                "transitionName" to "시작",
                 "fields" to mapOf("priority" to "HIGH"),
                 "version" to 1,
                 "issueKey" to "BTS-1",

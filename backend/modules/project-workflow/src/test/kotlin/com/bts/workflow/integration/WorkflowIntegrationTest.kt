@@ -463,7 +463,6 @@ data class StateInsertSpec(
 data class TransitionRequestSpec(
     val fromStateKey: String = "open",
     val toStateKey: String = "in_progress",
-    val transitionName: String = "Start Work",
     val issueFields: Map<String, Any?> = mapOf("priority" to "HIGH"),
     val actorRoles: Set<String> = setOf("MEMBER"),
     val version: Long = 1L,
@@ -487,7 +486,6 @@ object WorkflowFixtures {
             issueKey = "BTS-1",
             fromStateKey = spec.fromStateKey,
             toStateKey = spec.toStateKey,
-            transitionName = spec.transitionName,
             actorId = "user-integration-test",
             issueFields = spec.issueFields,
             actorRoles = spec.actorRoles,

@@ -127,7 +127,6 @@ class DtoJsonRoundtripTest {
                 issueKey = "BTS-1",
                 fromStateKey = "TODO",
                 toStateKey = "IN_PROGRESS",
-                transitionName = "시작",
                 actorId = "user-123",
                 issueFields = mapOf("priority" to "HIGH", "labels" to listOf("bug")),
                 actorRoles = setOf("DEVELOPER", "VIEWER"),
@@ -139,7 +138,6 @@ class DtoJsonRoundtripTest {
         assertThat(restored.issueKey).isEqualTo(original.issueKey)
         assertThat(restored.fromStateKey).isEqualTo(original.fromStateKey)
         assertThat(restored.toStateKey).isEqualTo(original.toStateKey)
-        assertThat(restored.transitionName).isEqualTo(original.transitionName)
         assertThat(restored.actorId).isEqualTo(original.actorId)
         assertThat(restored.version).isEqualTo(original.version)
         assertThat(restored.actorRoles).containsExactlyInAnyOrder("DEVELOPER", "VIEWER")
@@ -155,7 +153,6 @@ class DtoJsonRoundtripTest {
                 issueKey = "BTS-1",
                 fromStateKey = "TODO",
                 toStateKey = "IN_PROGRESS",
-                transitionName = "시작",
                 actorId = "user-123",
                 issueFields = emptyMap(),
                 actorRoles = setOf("DEVELOPER"),
@@ -173,7 +170,6 @@ class DtoJsonRoundtripTest {
                 issueKey = "",
                 fromStateKey = "TODO",
                 toStateKey = "IN_PROGRESS",
-                transitionName = "시작",
                 actorId = "user-123",
                 issueFields = emptyMap(),
                 actorRoles = setOf("DEVELOPER"),
@@ -191,7 +187,6 @@ class DtoJsonRoundtripTest {
                 issueKey = "BTS-1",
                 fromStateKey = "TODO",
                 toStateKey = "IN_PROGRESS",
-                transitionName = "시작",
                 actorId = "user-123",
                 issueFields = emptyMap(),
                 actorRoles = setOf("DEVELOPER"),
@@ -209,7 +204,6 @@ class DtoJsonRoundtripTest {
                 issueKey = "BTS-1",
                 fromStateKey = "TODO",
                 toStateKey = "IN_PROGRESS",
-                transitionName = "시작",
                 actorId = "user-123",
                 issueFields = emptyMap(),
                 actorRoles = setOf("DEVELOPER"),
@@ -227,7 +221,6 @@ class DtoJsonRoundtripTest {
                 issueKey = "BTS-1",
                 fromStateKey = "TODO",
                 toStateKey = "IN_PROGRESS",
-                transitionName = "시작",
                 actorId = "",
                 issueFields = emptyMap(),
                 actorRoles = setOf("DEVELOPER"),

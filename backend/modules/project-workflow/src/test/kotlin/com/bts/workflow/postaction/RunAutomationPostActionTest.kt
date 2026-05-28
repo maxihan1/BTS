@@ -63,7 +63,6 @@ class RunAutomationPostActionTest {
                 issueKey = issueKey,
                 fromStateKey = "TODO",
                 toStateKey = "IN_PROGRESS",
-                transitionName = "start",
                 actorId = "user-42",
                 issueFields = emptyMap(),
                 actorRoles = setOf("DEVELOPER"),

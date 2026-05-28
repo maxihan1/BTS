@@ -49,7 +49,6 @@ class PermissionValidatorTest {
                 issueKey = issueKey,
                 fromStateKey = "TODO",
                 toStateKey = "IN_PROGRESS",
-                transitionName = "start",
                 actorId = actorId,
                 issueFields = emptyMap(),
                 actorRoles = emptySet(),

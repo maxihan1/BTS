@@ -62,7 +62,6 @@ class CallWebhookPostActionTest {
                 issueKey = "BTS-42",
                 fromStateKey = "IN_PROGRESS",
                 toStateKey = "DONE",
-                transitionName = "resolve",
                 actorId = "user-1",
                 issueFields = emptyMap(),
                 actorRoles = setOf("DEVELOPER"),

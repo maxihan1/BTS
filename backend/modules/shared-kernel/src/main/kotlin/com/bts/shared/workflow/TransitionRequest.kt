@@ -21,7 +21,6 @@ private val transitionRequestValidation: Validation<TransitionRequest> =
         TransitionRequest::issueKey { minLength(1) }
         TransitionRequest::fromStateKey { minLength(1) }
         TransitionRequest::toStateKey { minLength(1) }
-        TransitionRequest::transitionName { minLength(1) }
         TransitionRequest::actorId { minLength(1) }
         TransitionRequest::version { minimum(1) }
     }
@@ -36,7 +35,6 @@ private val transitionRequestValidation: Validation<TransitionRequest> =
  * @param issueKey 전이 대상 이슈의 키. 예: "BTS-1".
  * @param fromStateKey 현재 이슈 상태 키. 예: "TODO".
  * @param toStateKey 전이 목표 상태 키. 예: "IN_PROGRESS".
- * @param transitionName 실행할 전이 이름. YAML 워크플로우 정의의 `name` 필드와 일치해야 한다.
  * @param actorId 전이를 실행하는 사용자 ID.
  * @param issueFields 현재 이슈의 커스텀 필드 스냅샷. Validator/PostAction 평가에 사용한다.
  * @param actorRoles 실행자의 역할 집합. 권한 기반 Validator 에서 사용한다.
@@ -47,7 +45,6 @@ data class TransitionRequest(
     val issueKey: String,
     val fromStateKey: String,
     val toStateKey: String,
-    val transitionName: String,
     val actorId: String,
     val issueFields: Map<String, Any?>,
     val actorRoles: Set<String>,

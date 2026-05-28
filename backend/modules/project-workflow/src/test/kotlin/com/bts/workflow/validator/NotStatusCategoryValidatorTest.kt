@@ -64,7 +64,6 @@ class NotStatusCategoryValidatorTest {
                 issueKey = "BTS-1",
                 fromStateKey = fromState.key,
                 toStateKey = toState.key,
-                transitionName = transition.name,
                 actorId = "user-1",
                 issueFields = emptyMap(),
                 actorRoles = emptySet(),

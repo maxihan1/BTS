@@ -66,7 +66,6 @@ class WorkflowEngineUnitTest {
             issueKey = "BTS-1",
             fromStateKey = "TODO",
             toStateKey = "IN_PROGRESS",
-            transitionName = "시작",
             actorId = "user-1",
             issueFields = mapOf("priority" to "HIGH"),
             actorRoles = setOf("MEMBER"),
@@ -218,14 +217,13 @@ class WorkflowEngineUnitTest {
         every { definitionRepo.findPostActions(yamlTransition) } returns listOf(postActionCfg)
         every { postActionFactory.create("SetField", postActionCfg.config) } returns postAction
 
-        // transitionName = "anything" — yaml 의 "Start Work" 와 다름
+        // (from, to) 2튜플 매칭 — transitionName 이 없어도 open→in_progress 전이가 매칭된다
         val request =
             TransitionRequest(
                 workflowKey = "SEED",
                 issueKey = "BTS-2",
                 fromStateKey = "open",
                 toStateKey = "in_progress",
-                transitionName = "anything",
                 actorId = "user-1",
                 issueFields = emptyMap(),
                 actorRoles = setOf("MEMBER"),

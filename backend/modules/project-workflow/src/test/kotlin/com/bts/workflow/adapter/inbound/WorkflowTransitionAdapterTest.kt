@@ -39,7 +39,6 @@ class WorkflowTransitionAdapterTest {
             issueKey = "BTS-1",
             fromStateKey = "TODO",
             toStateKey = "IN_PROGRESS",
-            transitionName = "시작",
             actorId = "user-001",
             issueFields = emptyMap(),
             actorRoles = setOf("MEMBER"),

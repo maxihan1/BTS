@@ -11,13 +11,12 @@ import io.konform.validation.jsonschema.minimum
 /**
  * Konform 검증 규칙 — 모듈 수준에서 한 번만 생성해 재사용한다.
  *
- * [TransitionRequestDto.toStateKey] 와 [TransitionRequestDto.transitionName] 은 길이 1 이상,
+ * [TransitionRequestDto.toStateKey] 는 길이 1 이상,
  * [TransitionRequestDto.version] 은 1 이상이어야 한다.
  */
 private val transitionRequestDtoValidation: Validation<TransitionRequestDto> =
     Validation {
         TransitionRequestDto::toStateKey { minLength(1) }
-        TransitionRequestDto::transitionName { minLength(1) }
         TransitionRequestDto::version { minimum(1) }
     }
 
@@ -28,13 +27,11 @@ private val transitionRequestDtoValidation: Validation<TransitionRequestDto> =
  * [toDomain] 을 통해 서비스 레이어에서 사용하는 도메인 DTO [TransitionRequest] 로 변환한다.
  *
  * @property toStateKey 전이 목표 상태 키. 예: "IN_PROGRESS", "DONE".
- * @property transitionName 실행할 전이 이름. 워크플로우 정의의 transition name 과 일치해야 한다.
  * @property fields 이슈의 커스텀 필드 스냅샷. Validator/PostAction 평가에 사용한다. 기본값 빈 Map.
  * @property version 낙관적 잠금(optimistic lock) 버전. 최솟값 1. 동시 수정 충돌 감지에 사용한다.
  */
 data class TransitionRequestDto(
     val toStateKey: String,
-    val transitionName: String,
     val fields: Map<String, Any?> = emptyMap(),
     val version: Long,
 ) {
@@ -68,7 +65,6 @@ data class TransitionRequestDto(
             issueKey = issueKey,
             fromStateKey = fromStateKey,
             toStateKey = toStateKey,
-            transitionName = transitionName,
             actorId = actorId,
             issueFields = fields,
             actorRoles = actorRoles,

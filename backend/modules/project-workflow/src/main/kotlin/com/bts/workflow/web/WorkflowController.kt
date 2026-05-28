@@ -91,7 +91,6 @@ class WorkflowController(
         val dto =
             TransitionRequestDto(
                 toStateKey = body.toStateKey,
-                transitionName = body.transitionName,
                 fields = body.fields,
                 version = body.version,
             )
@@ -107,7 +106,6 @@ class WorkflowController(
                 issueKey = body.issueKey,
                 fromStateKey = body.fromStateKey,
                 toStateKey = body.toStateKey,
-                transitionName = body.transitionName,
                 actorId = body.actorId,
                 issueFields = body.fields,
                 actorRoles = body.actorRoles,
@@ -142,7 +140,6 @@ class WorkflowController(
  * 전이 계획 요청 바디.
  *
  * @property toStateKey 전이 목표 상태 키
- * @property transitionName 실행할 전이 이름
  * @property fields 이슈 커스텀 필드 스냅샷 (기본값 빈 Map)
  * @property version 낙관적 잠금 버전
  * @property issueKey 전이 대상 이슈 키
@@ -152,7 +149,6 @@ class WorkflowController(
  */
 data class TransitionPlanRequestBody(
     val toStateKey: String,
-    val transitionName: String,
     val fields: Map<String, Any?> = emptyMap(),
     val version: Long,
     val issueKey: String,

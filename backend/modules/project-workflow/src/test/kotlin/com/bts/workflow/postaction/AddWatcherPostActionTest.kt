@@ -63,7 +63,6 @@ class AddWatcherPostActionTest {
                 issueKey = "BTS-99",
                 fromStateKey = "TODO",
                 toStateKey = "IN_PROGRESS",
-                transitionName = "start",
                 actorId = actorId,
                 issueFields = emptyMap(),
                 actorRoles = setOf("DEVELOPER"),

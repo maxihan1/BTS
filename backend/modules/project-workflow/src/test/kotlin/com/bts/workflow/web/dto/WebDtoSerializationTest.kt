@@ -207,7 +207,6 @@ class WebDtoSerializationTest {
         val dto =
             TransitionRequestDto(
                 toStateKey = "IN_PROGRESS",
-                transitionName = "시작",
                 fields = mapOf("priority" to "HIGH"),
                 version = 1L,
             )
@@ -220,19 +219,6 @@ class WebDtoSerializationTest {
         val dto =
             TransitionRequestDto(
                 toStateKey = "",
-                transitionName = "시작",
-                version = 1L,
-            )
-        val result = dto.validate()
-        assertThat(result).isInstanceOf(Invalid::class.java)
-    }
-
-    @Test
-    fun `TransitionRequestDto validate — transitionName 이 빈 문자열이면 Invalid 반환`() {
-        val dto =
-            TransitionRequestDto(
-                toStateKey = "IN_PROGRESS",
-                transitionName = "",
                 version = 1L,
             )
         val result = dto.validate()
@@ -244,7 +230,6 @@ class WebDtoSerializationTest {
         val dto =
             TransitionRequestDto(
                 toStateKey = "IN_PROGRESS",
-                transitionName = "시작",
                 version = 0L,
             )
         val result = dto.validate()
