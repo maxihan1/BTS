@@ -1,4 +1,4 @@
-// issue-tracking BC 도메인 예외 계층 — sealed 베이스 + 5 서브클래스
+// issue-tracking BC 도메인 예외 계층 — sealed 베이스 + 6 서브클래스
 
 package com.bts.issue.domain
 
@@ -66,6 +66,19 @@ class IssueProjectNotFoundException(projectKey: String) :
  */
 class IssueKeyPrefixReservedException(prefix: String) :
     IssueDomainException("Issue key prefix is reserved: $prefix")
+
+/**
+ * 프로젝트에 대해 적용 가능한 워크플로우가 설정되어 있지 않을 때.
+ *
+ * project-workflow BC 의 스킴(WorkflowScheme) 에서 기본 매핑이 존재하지 않는 경우
+ * issue-tracking BC 경계 내부에서 발생하는 도메인 예외다.
+ * HTTP 422 매핑은 IssueExceptionHandler 에서 처리한다 (Task 6 scope).
+ *
+ * @param projectKey 워크플로우가 미설정된 프로젝트 키
+ * @param issueTypeKey 이슈 타입 키. 없으면 null (기본 매핑 탐색 실패 의미)
+ */
+class IssueWorkflowNotConfiguredException(projectKey: String, issueTypeKey: String?) :
+    IssueDomainException("Workflow not configured for project=$projectKey, issueType=${issueTypeKey ?: "<default>"}")
 
 /**
  * 워크플로우 전이가 허용되지 않을 때.

@@ -36,12 +36,17 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
  * - GET    /api/v1/issues/{key} — 이슈 단건 조회 (T14)
  * - GET    /api/v1/issues — 이슈 목록 조회 (페이지) (T14)
  * - PATCH  /api/v1/issues/{key} — 이슈 수정 (T15)
- * - POST   /api/v1/issues/{key}/transition — 이슈 상태 전이 (T15)
+ * - POST   /api/v1/issues/{key}/transition — 이슈 상태 전이 (T15, T6)
  * - DELETE /api/v1/issues/{key} — 이슈 소프트 삭제 (T16)
  *
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다.
  * 트랜잭션 개시는 [IssueApplicationService] 가 담당한다 (@Transactional 클래스 레벨 선언).
+ *
+ * ### 워크플로우 키 결정 정책 (T6)
+ * `transition` 메서드는 `toStateKey` 와 `expectedVersion` 만 서비스에 위임한다.
+ * `workflowKey` 는 [IssueApplicationService] 가 [com.bts.shared.workflow.WorkflowKeyResolver] 를
+ * 통해 프로젝트 스킴 설정에서 자동 결정한다. 컨트롤러(transport 계층) 는 workflow 결정 책임을 갖지 않는다.
  *
  * ### ActorId 임시 처리
  * security context 연동 전까지 고정 UUID 를 사용한다.
@@ -156,12 +161,20 @@ class IssueController(
     /**
      * 이슈 상태를 전이한다.
      *
+     * ### 책임 분리
+     * - **컨트롤러 (transport)** — HTTP 요청을 받아 `toStateKey`, `expectedVersion` 만 [IssueApplicationService] 에 위임한다.
+     *   `workflowKey` 결정은 컨트롤러 책임이 아니다.
+     * - **[IssueApplicationService]** — [com.bts.shared.workflow.WorkflowKeyResolver] 를 통해
+     *   프로젝트에 적합한 `workflowKey` 를 자동 결정한다 (T4 구현).
+     *
      * 워크플로우 정의에 허용된 전이가 아닌 경우 409 Transition Not Allowed.
+     * 프로젝트에 기본 워크플로우 스킴이 없는 경우 422 Workflow Not Configured.
      *
      * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
      * @param request 전이 요청 바디 (Jakarta Validation 적용)
      * @return 200 OK + 전이된 [IssueResponse] body
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우 → 404
+     * @throws com.bts.issue.domain.IssueWorkflowNotConfiguredException 프로젝트에 워크플로우 미설정 → 422
      * @throws com.bts.issue.domain.IssueTransitionNotAllowedException 전이 거부 → 409
      * @throws com.bts.issue.domain.IssueVersionConflictException 낙관락 충돌 → 409
      */
@@ -176,7 +189,6 @@ class IssueController(
         val issueKey = IssueKey(key)
         val appRequest =
             AppTransitionIssueRequest(
-                workflowKey = "DEFAULT",
                 toStateKey = request.toStatusKey,
                 transitionName = request.toStatusKey,
                 expectedVersion = request.expectedVersion,

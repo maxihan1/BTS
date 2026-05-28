@@ -21,7 +21,7 @@ class IssueResponseTest {
             projectId = UUID.fromString("00000000-0000-0000-0000-000000000002"),
             summary = "Sample issue",
             reporterId = ActorId(UUID.fromString("00000000-0000-0000-0000-000000000003")),
-            currentStateKey = "OPEN",
+            currentStateKey = "open",
             version = 1L,
             deletedAt = null,
             createdAt = fixedNow,
@@ -36,7 +36,7 @@ class IssueResponseTest {
         assertEquals(UUID.fromString("00000000-0000-0000-0000-000000000001"), response.id)
         assertEquals("ATLAS", response.projectKey)
         assertEquals("Sample issue", response.summary)
-        assertEquals("OPEN", response.currentStateKey)
+        assertEquals("open", response.currentStateKey)
         assertEquals(UUID.fromString("00000000-0000-0000-0000-000000000003"), response.reporterId)
         assertEquals(1L, response.version)
         assertEquals(fixedNow, response.createdAt)

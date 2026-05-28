@@ -6,12 +6,16 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueProjectNotFoundException
+import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
+import com.bts.shared.workflow.ProjectKey
+import com.bts.shared.workflow.WorkflowKeyResolver
+import com.bts.shared.workflow.WorkflowStartState
 import com.bts.shared.workflow.WorkflowTransitionPort
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
@@ -36,9 +40,10 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
     val eventPublisher = mockk<IssueEventPublisher>()
     val permissionResolver = mockk<IssuePermissionResolver>()
     val workflowPort = mockk<WorkflowTransitionPort>()
+    val workflowKeyResolver = mockk<WorkflowKeyResolver>()
     val clock = Clock.fixed(Instant.parse("2026-05-24T00:00:00Z"), ZoneOffset.UTC)
 
-    val sut = IssueApplicationService(repo, eventPublisher, permissionResolver, workflowPort, clock)
+    val sut = IssueApplicationService(repo, eventPublisher, permissionResolver, workflowPort, workflowKeyResolver, clock)
 
     val actor = ActorId(UUID.randomUUID())
     val projectKey = "BTS"
@@ -66,6 +71,9 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 every { repo.findProjectIdByKey(projectKey) } returns fixedProjectId
                 every { repo.insert(any()) } answers { firstArg() }
                 every { eventPublisher.publish(any()) } returns Unit
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
+                } returns WorkflowStartState(workflowKey = "software-default", startStateKey = "open")
             }
 
             it("권한 체크 → incrementKeySequence → insert → publish 순서로 호출한다") {
@@ -101,6 +109,49 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 sut.createIssue(actor, request)
 
                 issueSlot.captured.projectId shouldBe fixedProjectId
+            }
+
+            // C-1: WorkflowKeyResolver 호출 계약 — resolveStart 가 실제로 호출되었는지
+            it("create uses startStateKey from WorkflowKeyResolver (not hardcoded OPEN)") {
+                val issueSlot: CapturingSlot<com.bts.issue.domain.Issue> = slot()
+                every { repo.insert(capture(issueSlot)) } answers { issueSlot.captured }
+
+                sut.createIssue(actor, request)
+
+                verify { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null) }
+                issueSlot.captured.currentStateKey shouldBe "open"
+            }
+
+            // C-2: startStateKey = "open" (소문자) 로 Issue 가 생성되는지
+            it("create assigns currentStateKey = open (lowercase) for software-default workflow") {
+                val issueSlot: CapturingSlot<com.bts.issue.domain.Issue> = slot()
+                every { repo.insert(capture(issueSlot)) } answers { issueSlot.captured }
+
+                sut.createIssue(actor, request)
+
+                issueSlot.captured.currentStateKey shouldBe "open"
+            }
+        }
+
+        // C-3: WorkflowSchemeNoDefaultException → IssueWorkflowNotConfiguredException 변환
+        context("WorkflowKeyResolver 가 WorkflowSchemeNoDefaultException 을 던질 때") {
+            val fixedProjectId = UUID.fromString("00000000-0000-0000-0000-000000000002")
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(actor, IssuePermission.CREATE, IssueScope.Project(projectKey))
+                } returns true
+                every { repo.incrementKeySequence(projectKey) } returns 1L
+                every { repo.findProjectIdByKey(projectKey) } returns fixedProjectId
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
+                } throws WorkflowSchemeNoDefaultException(projectKey)
+            }
+
+            it("create throws IssueWorkflowNotConfiguredException when resolver default-mapping missing") {
+                shouldThrow<IssueWorkflowNotConfiguredException> {
+                    sut.createIssue(actor, request)
+                }
             }
         }
 
@@ -155,3 +206,5 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
         }
     }
 })
+
+// WorkflowSchemeNoDefaultException 스텁은 WorkflowSchemeNoDefaultException.kt (공유 파일) 에 정의.

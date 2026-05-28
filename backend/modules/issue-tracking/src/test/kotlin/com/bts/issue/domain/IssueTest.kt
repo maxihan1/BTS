@@ -26,7 +26,7 @@ class IssueTest {
     private val validProjectId: UUID = UUID.randomUUID()
     private val validSummary = "Fix login bug"
     private val validReporterId = ActorId(UUID.randomUUID())
-    private val validStateKey = "OPEN"
+    private val validStateKey = "open"
 
     @Test
     fun `create_returns_issue — 유효한 인자로 Issue 를 생성하면 모든 필드가 기대 값과 일치한다`() {

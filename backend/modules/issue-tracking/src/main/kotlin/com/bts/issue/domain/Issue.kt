@@ -21,7 +21,7 @@ import java.util.UUID
  * @property projectId 이슈가 속한 프로젝트의 UUID.
  * @property summary 이슈 제목. 1~255자.
  * @property reporterId 이슈를 생성한 행위자.
- * @property currentStateKey 현재 워크플로우 상태 키. 예: `"OPEN"`.
+ * @property currentStateKey 현재 워크플로우 상태 키. 예: `"open"`.
  * @property version 낙관적 잠금 버전. 생성 시 1, 수정마다 +1.
  * @property deletedAt 소프트 삭제 타임스탬프. null 이면 삭제되지 않은 상태.
  * @property createdAt 생성 시각.
@@ -50,7 +50,7 @@ data class Issue(
          * @param projectId 이슈가 속한 프로젝트 UUID.
          * @param summary 이슈 제목. 1~255자, 공백만으로 구성 불가.
          * @param reporterId 이슈를 생성하는 행위자.
-         * @param currentStateKey 초기 워크플로우 상태 키.
+         * @param currentStateKey 초기 워크플로우 상태 키. 예: `"open"` (소문자, V004 마이그레이션 기준).
          * @return 생성된 [Issue] 인스턴스.
          */
         fun create(

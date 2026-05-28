@@ -63,4 +63,21 @@ class IssueExceptionsTest : DescribeSpec({
             ex.message shouldContain "ADMIN"
         }
     }
+
+    describe("IssueWorkflowNotConfiguredException") {
+        it("projectKey 와 nullable issueTypeKey 가 message 에 포함된다") {
+            val exWithType = IssueWorkflowNotConfiguredException("MYPROJ", "bug")
+            exWithType.message shouldContain "MYPROJ"
+            exWithType.message shouldContain "bug"
+
+            val exDefault = IssueWorkflowNotConfiguredException("MYPROJ", null)
+            exDefault.message shouldContain "MYPROJ"
+            exDefault.message shouldContain "<default>"
+        }
+
+        it("IssueDomainException 을 상속한다") {
+            val ex = IssueWorkflowNotConfiguredException("PROJ", null)
+            ex.shouldBeInstanceOf<IssueDomainException>()
+        }
+    }
 })

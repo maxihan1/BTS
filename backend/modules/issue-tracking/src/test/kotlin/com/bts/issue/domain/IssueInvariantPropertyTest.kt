@@ -162,7 +162,7 @@ class IssueInvariantPropertyTest : FunSpec({
                     projectId = UUID.randomUUID(),
                     summary = "initial",
                     reporterId = ActorId(UUID.randomUUID()),
-                    currentStateKey = "OPEN",
+                    currentStateKey = "open",
                 )
 
             // Issue 는 immutable data class — updateSummary = copy(summary=..., version=version+1)
@@ -204,7 +204,7 @@ class IssueInvariantPropertyTest : FunSpec({
                     projectId = UUID.randomUUID(),
                     summary = "state transition test",
                     reporterId = ActorId(UUID.randomUUID()),
-                    currentStateKey = "OPEN",
+                    currentStateKey = "open",
                 )
 
             // Issue 는 immutable data class — transition = copy(currentStateKey=toState)

@@ -70,7 +70,7 @@ class IssueDomainEventTest : DescribeSpec({
         val event =
             IssueTransitioned(
                 issueKey = issueKey,
-                fromState = "OPEN",
+                fromState = "open",
                 toState = "IN_PROGRESS",
                 occurredAt = now,
             )
@@ -143,7 +143,7 @@ class IssueDomainEventTest : DescribeSpec({
                 {
                   "type": "issue.transitioned",
                   "issueKey": "ATLAS-1",
-                  "fromState": "OPEN",
+                  "fromState": "open",
                   "toState": "IN_PROGRESS",
                   "occurredAt": "2026-01-01T00:00:00Z"
                 }

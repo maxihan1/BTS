@@ -21,9 +21,12 @@ import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.domain.IssueWorkflowNotConfiguredException
+import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.TransitionPlan
 import com.bts.shared.workflow.TransitionRequest
 import com.bts.shared.workflow.TransitionResult
+import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowTransitionPort
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
@@ -42,6 +45,7 @@ import java.util.UUID
  * - 이슈 키 발급: [IssueRepository.incrementKeySequence] (pg_advisory_xact_lock 포함)
  * - 이벤트 발행: [IssueEventPublisher] (Propagation.MANDATORY — 같은 트랜잭션)
  * - 워크플로우 전이: [WorkflowTransitionPort] (inbound port — BC 격리 준수)
+ * - 워크플로우 키 결정: [WorkflowKeyResolver] (shared-kernel SPI — project-workflow BC 내부 직접 import 금지)
  *
  * 모든 public 메서드는 @Transactional 을 명시한다 (DEVELOPMENT.md §절대규칙).
  */
@@ -52,6 +56,7 @@ class IssueApplicationService(
     private val eventPublisher: IssueEventPublisher,
     private val permissionResolver: IssuePermissionResolver,
     private val workflowPort: WorkflowTransitionPort,
+    private val workflowKeyResolver: WorkflowKeyResolver,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -62,14 +67,18 @@ class IssueApplicationService(
      * 흐름.
      * 1. CREATE 권한 검증 (Project 범위)
      * 2. pg_advisory_xact_lock 으로 보호된 key_sequence 증가
-     * 3. IssueKey 발급 → Issue.create
-     * 4. DB INSERT
-     * 5. IssueCreated 이벤트 발행
+     * 3. IssueKey 발급
+     * 4. [WorkflowKeyResolver.resolveStart] 로 초기 상태 키 결정 (issueTypeKey = null, FR-IS-02 이전)
+     *    — WorkflowSchemeNoDefaultException 발생 시 [IssueWorkflowNotConfiguredException] 으로 변환 (BC 격리)
+     * 5. Issue.create
+     * 6. DB INSERT
+     * 7. IssueCreated 이벤트 발행
      *
      * @param actor 이슈를 생성하는 행위자.
      * @param request 생성 요청 DTO.
      * @return 삽입된 [Issue].
      * @throws IssueAccessDeniedException 권한 없을 때.
+     * @throws IssueWorkflowNotConfiguredException 프로젝트에 기본 워크플로우 스킴이 없을 때.
      */
     fun createIssue(
         actor: ActorId,
@@ -82,6 +91,15 @@ class IssueApplicationService(
         val projectId =
             repo.findProjectIdByKey(request.projectKey)
                 ?: throw IssueProjectNotFoundException(request.projectKey)
+        val startState =
+            try {
+                workflowKeyResolver.resolveStart(ProjectKey.of(request.projectKey), null)
+            } catch (e: RuntimeException) {
+                if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") {
+                    throw IssueWorkflowNotConfiguredException(request.projectKey, null)
+                }
+                throw e
+            }
         val issue =
             Issue.create(
                 id = IssueId(UUID.randomUUID()),
@@ -89,7 +107,7 @@ class IssueApplicationService(
                 projectId = projectId,
                 summary = request.summary,
                 reporterId = request.reporterId,
-                currentStateKey = "OPEN",
+                currentStateKey = startState.startStateKey,
             )
         val saved = repo.insert(issue)
         eventPublisher.publish(
@@ -172,16 +190,19 @@ class IssueApplicationService(
     }
 
     /**
-     * 이슈 상태를 전이한다 (workflowPort.plan() 호출 + 낙관락).
+     * 이슈 상태를 전이한다 (WorkflowKeyResolver → workflowPort.plan() 호출 + 낙관락).
      *
      * 흐름.
      * 1. TRANSITION 권한 검증 (Issue 범위)
      * 2. SELECT FOR UPDATE 로 이슈 조회 (비관락) — 미존재 시 IssueNotFoundException
-     * 3. workflowPort.plan() 호출 — [TransitionResult] sealed 분기 처리
-     * 4. applyTransition 호출 — 0 row 면 IssueVersionConflictException
-     * 5. IssueTransitioned 이벤트 발행
+     * 3. [WorkflowKeyResolver.resolveStart] 로 workflowKey 결정 (issueTypeKey = null, FR-IS-02 이전)
+     *    — WorkflowSchemeNoDefaultException 발생 시 [IssueWorkflowNotConfiguredException] 으로 변환 (BC 격리)
+     * 4. workflowPort.plan() 호출 — [TransitionResult] sealed 분기 처리
+     * 5. applyTransition 호출 — 0 row 면 IssueVersionConflictException
+     * 6. IssueTransitioned 이벤트 발행
      *
-     * 클래스 레벨 @Transactional(REQUIRED) 이 적용되므로 workflowPort.plan (MANDATORY) 호출 가능.
+     * 클래스 레벨 @Transactional(REQUIRED) 이 적용되므로 workflowKeyResolver.resolveStart (MANDATORY),
+     * workflowPort.plan (MANDATORY) 호출 모두 만족한다.
      *
      * @param actor 전이 행위자.
      * @param key 전이할 이슈 키.
@@ -189,6 +210,7 @@ class IssueApplicationService(
      * @return 전이된 이슈의 [IssueResponse].
      * @throws IssueAccessDeniedException 권한 없을 때.
      * @throws IssueNotFoundException 이슈가 없는 경우.
+     * @throws IssueWorkflowNotConfiguredException 프로젝트에 기본 워크플로우 스킴이 없을 때.
      * @throws IssueTransitionNotAllowedException [TransitionResult.ValidatorFailure],
      *   [TransitionResult.WorkflowNotFound], [TransitionResult.ExpressionTimeout] 케이스에서 BC 경계 변환.
      * @throws IssueVersionConflictException 낙관락 충돌 시.
@@ -201,9 +223,18 @@ class IssueApplicationService(
     ): IssueResponse {
         assertPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(key.value))
         val issue = repo.findByKeyForUpdate(key) ?: throw IssueNotFoundException(key)
+        val resolvedWorkflow =
+            try {
+                workflowKeyResolver.resolveStart(ProjectKey.of(key.projectPrefix), null)
+            } catch (e: RuntimeException) {
+                if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") {
+                    throw IssueWorkflowNotConfiguredException(key.projectPrefix, null)
+                }
+                throw e
+            }
         val transitionReq =
             TransitionRequest(
-                workflowKey = request.workflowKey,
+                workflowKey = resolvedWorkflow.workflowKey,
                 issueKey = key.value,
                 fromStateKey = issue.currentStateKey,
                 toStateKey = request.toStateKey,

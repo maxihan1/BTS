@@ -90,7 +90,7 @@ class IssueControllerUpdateTest {
             id = issueId,
             projectKey = "ATLAS",
             summary = "수정된 요약",
-            currentStateKey = "OPEN",
+            currentStateKey = "open",
             reporterId = actorId.value,
             version = 2L,
             createdAt = fixedNow,
@@ -186,7 +186,7 @@ class IssueControllerUpdateTest {
         } throws
             IssueTransitionNotAllowedException(
                 issueKey = issueKey,
-                fromStatus = "OPEN",
+                fromStatus = "open",
                 toStatus = "DONE",
             )
 
@@ -222,7 +222,7 @@ class IssueControllerUpdateTest {
                 id = issueId,
                 projectKey = "ATLAS",
                 summary = "원래",
-                currentStateKey = "OPEN",
+                currentStateKey = "open",
                 reporterId = actorId.value,
                 version = 1L,
                 createdAt = fixedNow,
@@ -264,7 +264,7 @@ class IssueControllerUpdateTest {
                 id = issueId,
                 projectKey = "ATLAS",
                 summary = "새 제목",
-                currentStateKey = "OPEN",
+                currentStateKey = "open",
                 reporterId = actorId.value,
                 version = 2L,
                 createdAt = fixedNow,
@@ -307,7 +307,7 @@ class IssueControllerUpdateTest {
                 id = issueId,
                 projectKey = "ATLAS",
                 summary = "원래",
-                currentStateKey = "OPEN",
+                currentStateKey = "open",
                 reporterId = actorId.value,
                 version = 1L,
                 createdAt = fixedNow,

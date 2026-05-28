@@ -148,7 +148,7 @@ class IssueControllerCreateTest {
                 projectId = UUID.fromString("00000000-0000-0000-0000-000000000003"),
                 summary = "정상 요약",
                 reporterId = actorId,
-                currentStateKey = "OPEN",
+                currentStateKey = "open",
                 version = 1L,
                 deletedAt = null,
                 createdAt = fixedNow,
