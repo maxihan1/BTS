@@ -160,6 +160,9 @@ class WorkflowEngine(
         cache.findByKey(req.workflowKey)
             ?: throw WorkflowNotFoundException(req.workflowKey)
 
+    /**
+     * transition identity = (from, to) — ADR 2026-05-28-workflow-transition-identity-policy 참조.
+     */
     private fun resolveTransition(
         req: TransitionRequest,
         workflow: Workflow,
