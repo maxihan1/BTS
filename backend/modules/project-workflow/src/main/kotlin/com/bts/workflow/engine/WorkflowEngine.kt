@@ -166,10 +166,9 @@ class WorkflowEngine(
     ): WorkflowTransition =
         workflow.transitions.find {
             it.fromStateKey == req.fromStateKey &&
-                it.toStateKey == req.toStateKey &&
-                it.name == req.transitionName
+                it.toStateKey == req.toStateKey
         } ?: throw WorkflowNotFoundException(
-            "${req.workflowKey}::${req.transitionName}(${req.fromStateKey}→${req.toStateKey})",
+            "${req.workflowKey}::${req.fromStateKey}→${req.toStateKey}",
         )
 
     private fun buildContext(
