@@ -38,6 +38,10 @@ class SharedKernelBoundaryArchTest {
         noClasses()
             .that().resideInAPackage("com.bts.shared..")
             .should().dependOnClassesThat().resideInAPackage("com.bts.issue..")
+            .because(
+                "shared-kernel 은 중립 공유 커널이므로 issue-tracking BC 를 역참조하면 순환 의존이 재발한다. " +
+                    "ADR: docs/decisions/2026-05-27-shared-kernel-extraction.md",
+            )
             .check(classes)
     }
 
@@ -46,6 +50,10 @@ class SharedKernelBoundaryArchTest {
         noClasses()
             .that().resideInAPackage("com.bts.shared..")
             .should().dependOnClassesThat().resideInAPackage("com.bts.workflow..")
+            .because(
+                "shared-kernel 은 중립 공유 커널이므로 project-workflow BC 를 역참조하면 순환 의존이 재발한다. " +
+                    "ADR: docs/decisions/2026-05-27-shared-kernel-extraction.md",
+            )
             .check(classes)
     }
 
@@ -54,6 +62,10 @@ class SharedKernelBoundaryArchTest {
         noClasses()
             .that().resideInAPackage("com.bts.shared..")
             .should().dependOnClassesThat().resideInAPackage("com.atlas.bts.identity..")
+            .because(
+                "shared-kernel 은 중립 공유 커널이므로 identity-access BC 를 역참조하면 안 된다. " +
+                    "ADR: docs/decisions/2026-05-27-shared-kernel-extraction.md",
+            )
             .check(classes)
     }
 }
