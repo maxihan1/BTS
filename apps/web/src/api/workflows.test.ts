@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
-import { fetchWorkflows, fetchWorkflow } from './workflows'
+import { fetchWorkflows, fetchWorkflow, planTransition } from './workflows'
 import { transitionKey } from '@/components/workflow/workflow.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -151,5 +151,74 @@ describe('fetchWorkflow', () => {
 
   it('T4-2b: 존재하지 않는 key 조회 시 에러를 throw한다', async () => {
     await expect(fetchWorkflow('non-existent')).rejects.toThrow()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T6-1. planTransition — transitionName 없이 호출 가능 (회귀 가드)
+// backend POST /api/v1/workflows/{key}/transitions 스키마에서 transitionName 제거됨.
+// 시그니처에 transitionName이 남아 있으면 이 테스트는 컴파일 단계에서 실패한다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('planTransition', () => {
+  beforeEach(() => {
+    server.use(
+      http.post('/api/v1/workflows/:key/transitions', async ({ request }) => {
+        const body = await request.json() as Record<string, unknown>
+        // transitionName이 body에 포함되어 있으면 500으로 거부 (회귀 가드)
+        if ('transitionName' in body) {
+          return HttpResponse.json({ message: 'transitionName은 허용되지 않는 필드입니다' }, { status: 500 })
+        }
+        return HttpResponse.json({
+          data: {
+            toStateKey: 'in_progress',
+            fieldChanges: [],
+            events: [{ type: 'ISSUE_TRANSITIONED', payload: { workflowKey: 'software-default' } }],
+          },
+        })
+      }),
+    )
+  })
+
+  it('T6-1: transitionName 없이 planTransition 호출이 성공하고 toStateKey를 반환한다', async () => {
+    const result = await planTransition('software-default', {
+      issueKey: 'PROJ-1',
+      transitionKey: transitionKey('open', 'in_progress'),
+      fromStateKey: 'open',
+      toStateKey: 'in_progress',
+      actorId: 'user-1',
+      actorRoles: ['MEMBER'],
+      version: 1,
+    })
+
+    expect(result.toStateKey).toBe('in_progress')
+  })
+
+  it('T6-2: planTransition이 직렬화하는 body에 transitionName 키가 없다', async () => {
+    let capturedBody: Record<string, unknown> | null = null
+
+    server.use(
+      http.post('/api/v1/workflows/:key/transitions', async ({ request }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json({
+          data: {
+            toStateKey: 'in_progress',
+            fieldChanges: [],
+            events: [],
+          },
+        })
+      }),
+    )
+
+    await planTransition('software-default', {
+      issueKey: 'PROJ-1',
+      transitionKey: transitionKey('open', 'in_progress'),
+      fromStateKey: 'open',
+      toStateKey: 'in_progress',
+      actorId: 'user-1',
+      version: 1,
+    })
+
+    expect(capturedBody).not.toBeNull()
+    expect(capturedBody).not.toHaveProperty('transitionName')
   })
 })
