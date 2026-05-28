@@ -8,15 +8,19 @@ import { server } from '@/test/server'
 import type { SchemeResponse } from '@/api/workflow-schemes'
 import { WorkflowSchemeNewForm } from '../admin.workflow-schemes.new'
 
+// vi.hoisted로 mock 함수 선언 — vi.mock 호이스팅보다 먼저 초기화 보장
+const { mockNavigate, mockToastError } = vi.hoisted(() => ({
+  mockNavigate: vi.fn(),
+  mockToastError: vi.fn(),
+}))
+
 // useNavigate mock — TanStack Router 의존 없이 폼 자체 테스트
-const mockNavigate = vi.fn()
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mockNavigate,
   useParams: () => ({}),
 }))
 
 // sonner toast mock — 토스트 호출 검증
-const mockToastError = vi.fn()
 vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
