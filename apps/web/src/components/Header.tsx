@@ -1,5 +1,5 @@
-// 전역 헤더 컴포넌트 — 사용자명 표시 + 로그아웃 드롭다운 메뉴
-import { useNavigate } from '@tanstack/react-router'
+// 전역 헤더 컴포넌트 — 관리 nav + 사용자명 표시 + 로그아웃 드롭다운 메뉴
+import { useNavigate, Link } from '@tanstack/react-router'
 import { useAuthUser } from '@/auth/authStore'
 import { useLogoutMutation } from '@/auth/useLogoutMutation'
 import {
@@ -27,6 +27,15 @@ export const Header = () => {
 
   return (
     <header className="flex h-14 items-center border-b bg-background px-4">
+      {/* 관리 nav — 워크플로우 스킴 등 관리자 링크 그룹 */}
+      <nav className="flex items-center gap-4 text-sm font-medium" aria-label="관리 메뉴">
+        <Link
+          to="/admin/workflow-schemes"
+          className="text-muted-foreground hover:text-foreground [&.active]:text-foreground [&.active]:font-semibold"
+        >
+          워크플로우 스킴
+        </Link>
+      </nav>
       <div className="flex-1" />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

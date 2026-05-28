@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 7개 라우트 (/, /login, /dashboard, /workflows/$key, /issues, /issues/new, /issues/$key)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 11개 라우트 (이슈 7 + 워크플로우 스킴 4)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth } from './auth/routeGuard'
 import { RootLayout } from './routes/__root'
@@ -9,6 +9,10 @@ import { WorkflowDetailRouteAdapter } from './routes/workflows.$key'
 import { IssueListRouteAdapter } from './routes/issues.index'
 import { IssueCreateRouteAdapter } from './routes/issues.new'
 import { IssueDetailRouteAdapter } from './routes/issues.$key'
+import { AdminWorkflowSchemesRouteAdapter } from './routes/admin.workflow-schemes'
+import { WorkflowSchemeNewRouteAdapter } from './routes/admin.workflow-schemes.new'
+import { WorkflowSchemeDetailRouteAdapter } from './routes/admin.workflow-schemes.$schemeKey'
+import { ProjectWorkflowSchemeSettingsRouteAdapter } from './routes/projects.$projectKey.settings.workflow-scheme'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -73,10 +77,48 @@ const issuesKeyRoute = createRoute({
   beforeLoad: requireAuth,
 })
 
+/** 워크플로우 스킴 목록 라우트 — /admin/workflow-schemes, requireAuth */
+const adminWorkflowSchemesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin/workflow-schemes',
+  component: AdminWorkflowSchemesRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuth,
+})
+
+/** 워크플로우 스킴 생성 라우트 — /admin/workflow-schemes/new, requireAuth */
+const adminWorkflowSchemesNewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin/workflow-schemes/new',
+  component: WorkflowSchemeNewRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuth,
+})
+
+/** 워크플로우 스킴 상세 라우트 — /admin/workflow-schemes/$schemeKey, requireAuth */
+const adminWorkflowSchemesDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin/workflow-schemes/$schemeKey',
+  component: WorkflowSchemeDetailRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuth,
+})
+
+/** 프로젝트 워크플로우 스킴 할당 라우트 — /projects/$projectKey/settings/workflow-scheme, requireAuth */
+const projectWorkflowSchemeSettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects/$projectKey/settings/workflow-scheme',
+  component: ProjectWorkflowSchemeSettingsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuth,
+})
+
 /**
  * 전체 라우트 트리.
- * 7개 라우트: / · /login · /dashboard · /workflows/$key · /issues · /issues/new · /issues/$key
- * requireAuth 라우트: /dashboard · /issues · /issues/new · /issues/$key
+ * 11개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
+ *   · /projects/:projectKey/settings/workflow-scheme
+ * requireAuth 라우트: /dashboard · /issues · /issues/* · /admin/* · /projects/*\/settings/*
  */
 export const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -86,6 +128,10 @@ export const routeTree = rootRoute.addChildren([
   issuesIndexRoute,
   issuesNewRoute,
   issuesKeyRoute,
+  adminWorkflowSchemesRoute,
+  adminWorkflowSchemesNewRoute,
+  adminWorkflowSchemesDetailRoute,
+  projectWorkflowSchemeSettingsRoute,
 ])
 
 /** 앱 전역 라우터 인스턴스 — Register 모듈 증강으로 전체 타입 안전 navigate 보장 */
