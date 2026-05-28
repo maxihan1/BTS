@@ -1,0 +1,129 @@
+<!doctype html>
+<!-- FR-WF-02 D6 워크플로우 스킴 관리 시안 3 — Card grid + drawer (스킴 카드 그리드 + 우측 drawer slide-in) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>워크플로우 스킴 관리 시안 3 — Card grid + drawer</title>
+<style>
+  :root {
+    --background: oklch(1 0 0); --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0); --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0); --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0); --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0); --input: oklch(0.922 0 0); --radius: 0.625rem;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Geist Variable','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+    background: oklch(0.99 0 0); color: var(--foreground); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .page { max-width: 1280px; margin: 0 auto; padding: 32px 32px 80px; position: relative; }
+  .breadcrumb { font-size: 13px; color: var(--muted-foreground); margin-bottom: 8px; }
+  .breadcrumb .key { color: var(--foreground); }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+  h1 { font-size: 22px; font-weight: 600; }
+  .btn { height: 36px; padding: 0 14px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--card); display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .btn.primary { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+  .section-title { font-size: 12px; color: var(--muted-foreground); margin: 0 0 12px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; cursor: pointer; transition: border-color 0.15s; }
+  .card:hover { border-color: oklch(0.85 0.05 250); }
+  .card.selected { border-color: oklch(0.4 0.13 250); background: oklch(0.99 0.01 250); }
+  .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .card-key { font-size: 15px; font-weight: 600; }
+  .card-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 500; background: oklch(0.95 0.03 250); color: oklch(0.4 0.1 250); }
+  .card-badge.custom { background: var(--muted); color: var(--muted-foreground); }
+  .card-default-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: oklch(0.95 0.03 80); color: oklch(0.45 0.13 80); border-radius: 4px; font-size: 11px; margin-bottom: 8px; }
+  .card-desc { color: var(--muted-foreground); font-size: 13px; min-height: 36px; }
+  .card-foot { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted-foreground); margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .card-foot .mc { color: var(--foreground); font-weight: 500; }
+  .add-card { display: flex; align-items: center; justify-content: center; border: 2px dashed var(--border); background: transparent; cursor: pointer; color: var(--muted-foreground); font-size: 14px; min-height: 140px; }
+  /* drawer */
+  .drawer { position: fixed; top: 0; right: 0; width: 480px; height: 100vh; background: var(--card); border-left: 1px solid var(--border); padding: 28px 28px 100px; overflow-y: auto; box-shadow: -16px 0 32px rgba(0,0,0,0.08); }
+  .drawer-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+  .drawer-head h2 { font-size: 20px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .close { font-size: 22px; cursor: pointer; color: var(--muted-foreground); }
+  .drawer-sub { color: var(--muted-foreground); font-size: 13px; margin-bottom: 20px; }
+  .drawer h3 { font-size: 12px; color: var(--muted-foreground); margin: 20px 0 8px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  .mapping-list { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .mapping-row { padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .mapping-row:last-of-type { border-bottom: 0; }
+  .mapping-row.default { background: oklch(0.985 0.005 80); }
+  .mapping-row .star { color: oklch(0.65 0.15 80); margin-right: 6px; }
+  .type-chip { display: inline-flex; align-items: center; padding: 3px 8px; background: var(--muted); border-radius: 4px; font-size: 12px; }
+  .wf-link { color: oklch(0.45 0.13 250); cursor: pointer; }
+  .add-mapping { padding: 10px 16px; background: var(--muted); font-size: 12px; color: oklch(0.45 0.13 250); cursor: pointer; }
+  .meta-grid { display: grid; grid-template-columns: 90px 1fr; gap: 8px 12px; font-size: 13px; }
+  .meta-grid .l { color: var(--muted-foreground); }
+  .drawer .actions { display: flex; gap: 8px; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); }
+  .btn.danger { color: var(--destructive); }
+  .btn.danger.disabled { color: var(--muted-foreground); cursor: not-allowed; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb">관리 / <span class="key">워크플로우 스킴</span></div>
+  <div class="header"><h1>워크플로우 스킴</h1><button class="btn primary">＋ 새 스킴 생성</button></div>
+
+  <div class="section-title">표준 스킴 (4)</div>
+  <div class="grid">
+    <div class="card selected">
+      <div class="card-head"><div class="card-key">software</div><span class="card-badge">표준</span></div>
+      <div class="card-default-chip">★ software-default</div>
+      <div class="card-desc">소프트웨어 개발 팀의 기본 워크플로우 스킴</div>
+      <div class="card-foot"><span><span class="mc">3</span> 매핑</span><span>사용 <span class="mc">2</span> 프로젝트</span></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-key">bug-tracking</div><span class="card-badge">표준</span></div>
+      <div class="card-default-chip">★ bug-tracking</div>
+      <div class="card-desc">버그 라이프사이클 추적 워크플로우 스킴</div>
+      <div class="card-foot"><span><span class="mc">1</span> 매핑</span><span>사용 <span class="mc">0</span> 프로젝트</span></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-key">simple</div><span class="card-badge">표준</span></div>
+      <div class="card-default-chip">★ simple</div>
+      <div class="card-desc">Open / Closed 2단계 단순 스킴</div>
+      <div class="card-foot"><span><span class="mc">1</span> 매핑</span><span>사용 <span class="mc">1</span> 프로젝트</span></div>
+    </div>
+  </div>
+
+  <div class="section-title">커스텀 스킴 (2)</div>
+  <div class="grid">
+    <div class="card">
+      <div class="card-head"><div class="card-key">team-a-scheme</div><span class="card-badge custom">커스텀</span></div>
+      <div class="card-default-chip">★ software-default</div>
+      <div class="card-desc">팀 A 의 사용자 정의 워크플로우 스킴</div>
+      <div class="card-foot"><span><span class="mc">2</span> 매핑</span><span>사용 <span class="mc">1</span> 프로젝트</span></div>
+    </div>
+    <button class="card add-card">＋ 새 스킴 생성</button>
+  </div>
+</div>
+
+<!-- drawer (예시. selected card 클릭 결과) -->
+<aside class="drawer">
+  <div class="drawer-head"><h2>software <span class="card-badge">표준</span></h2><span class="close">✕</span></div>
+  <div class="drawer-sub">Software 표준 스킴 · 소프트웨어 개발 팀의 기본 워크플로우 스킴</div>
+
+  <h3>이슈 타입별 매핑 (3)</h3>
+  <div class="mapping-list">
+    <div class="mapping-row default"><span><span class="star">★</span>기본 (모든 타입)</span><span class="wf-link">software-default</span></div>
+    <div class="mapping-row"><span class="type-chip">🐛 Bug</span><span class="wf-link">bug-tracking</span></div>
+    <div class="mapping-row"><span class="type-chip">📖 Story</span><span class="wf-link">software-default</span></div>
+    <div class="add-mapping">＋ 이슈 타입 매핑 추가</div>
+  </div>
+
+  <h3>스킴 메타</h3>
+  <div class="meta-grid">
+    <div class="l">key</div><div>software</div>
+    <div class="l">표준 여부</div><div>표준 (삭제 불가)</div>
+    <div class="l">사용 프로젝트</div><div>ATLAS, PROJ-X (2)</div>
+    <div class="l">생성</div><div>2026-05-23</div>
+    <div class="l">수정</div><div>2026-05-28</div>
+  </div>
+
+  <div class="actions">
+    <button class="btn" style="flex: 1;">설명 수정</button>
+    <button class="btn danger disabled" style="flex: 1;" title="표준 스킴 삭제 불가">삭제 불가</button>
+  </div>
+</aside>
+</body>
+</html>

@@ -1,0 +1,107 @@
+<!doctype html>
+<!-- FR-WF-02 D6 워크플로우 스킴 관리 시안 2 — Top-down stacked (풀폭 single-column, default mapping highlight) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>워크플로우 스킴 관리 시안 2 — Top-down stacked</title>
+<style>
+  :root {
+    --background: oklch(1 0 0); --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0); --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0); --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0); --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0); --input: oklch(0.922 0 0); --radius: 0.625rem;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Geist Variable','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+    background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .page { max-width: 880px; margin: 0 auto; padding: 40px 24px 80px; }
+  .breadcrumb { font-size: 13px; color: var(--muted-foreground); margin-bottom: 16px; }
+  .breadcrumb .key { color: var(--foreground); }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; }
+  .header h1 { font-size: 26px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 10px; }
+  .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 500; background: oklch(0.95 0.03 250); color: oklch(0.4 0.1 250); }
+  .header .sub { color: var(--muted-foreground); font-size: 14px; }
+  .header .header-actions { display: flex; gap: 8px; }
+  .btn { height: 36px; padding: 0 14px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--card); display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .btn.primary { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+  .btn.danger { color: var(--destructive); border-color: var(--border); }
+  .btn.danger.disabled { color: var(--muted-foreground); cursor: not-allowed; }
+  .section-title { font-size: 13px; color: var(--muted-foreground); margin: 32px 0 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .default-card { border: 2px solid oklch(0.85 0.1 80); background: oklch(0.99 0.02 80); border-radius: 10px; padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; }
+  .default-card .label { display: flex; align-items: center; gap: 12px; }
+  .default-card .star { color: oklch(0.65 0.15 80); font-size: 18px; }
+  .default-card .text-block .l { font-size: 11px; color: var(--muted-foreground); margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .default-card .text-block .v { font-size: 16px; font-weight: 600; }
+  .default-card .right { display: flex; align-items: center; gap: 14px; }
+  .default-card .wf-name { font-size: 14px; font-weight: 500; }
+  .default-card .change { font-size: 13px; color: oklch(0.45 0.13 250); cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-top: 12px; }
+  th { background: var(--muted); padding: 12px 16px; text-align: left; font-size: 12px; color: var(--muted-foreground); font-weight: 500; }
+  td { padding: 14px 16px; border-top: 1px solid var(--border); font-size: 14px; }
+  .type-chip { display: inline-flex; align-items: center; padding: 3px 10px; background: var(--muted); border-radius: 4px; font-size: 13px; }
+  .wf-link { color: oklch(0.45 0.13 250); cursor: pointer; font-weight: 500; }
+  .dropdown { color: var(--muted-foreground); cursor: pointer; font-size: 18px; padding: 4px; }
+  .add-mapping-row { padding: 10px 16px; border-top: 1px solid var(--border); background: var(--muted); }
+  .add-mapping-row a { font-size: 13px; color: oklch(0.45 0.13 250); cursor: pointer; }
+  .usage-card { border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin-top: 12px; }
+  .usage-card h3 { font-size: 13px; font-weight: 500; margin-bottom: 10px; display: flex; justify-content: space-between; }
+  .usage-card h3 .count { color: var(--muted-foreground); font-weight: 400; }
+  .usage-card .proj-chip { display: inline-block; padding: 4px 10px; margin: 2px 4px 2px 0; background: var(--muted); border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb">관리 / 워크플로우 스킴 / <span class="key">software</span></div>
+
+  <div class="header">
+    <div>
+      <h1>software <span class="badge">표준</span></h1>
+      <div class="sub">소프트웨어 개발 팀의 기본 워크플로우 스킴</div>
+    </div>
+    <div class="header-actions">
+      <button class="btn">설명 수정</button>
+      <button class="btn primary">＋ 매핑 추가</button>
+    </div>
+  </div>
+
+  <div class="section-title">기본 매핑 (Default mapping)</div>
+  <div class="default-card">
+    <div class="label">
+      <span class="star">★</span>
+      <div class="text-block">
+        <div class="l">명시 매핑 없는 타입 적용</div>
+        <div class="v">기본 워크플로우</div>
+      </div>
+    </div>
+    <div class="right">
+      <span class="wf-name wf-link">software-default</span>
+      <span class="change">변경</span>
+    </div>
+  </div>
+
+  <div class="section-title">이슈 타입별 매핑 (2)</div>
+  <table>
+    <thead>
+      <tr><th style="width: 240px;">이슈 타입</th><th>워크플로우</th><th style="width: 50px;"></th></tr>
+    </thead>
+    <tbody>
+      <tr><td><span class="type-chip">🐛 Bug</span></td><td><span class="wf-link">bug-tracking</span></td><td><span class="dropdown">⋯</span></td></tr>
+      <tr><td><span class="type-chip">📖 Story</span></td><td><span class="wf-link">software-default</span></td><td><span class="dropdown">⋯</span></td></tr>
+    </tbody>
+    <tfoot><tr><td colspan="3" class="add-mapping-row"><a>＋ 이슈 타입 매핑 추가</a></td></tr></tfoot>
+  </table>
+
+  <div class="section-title">사용 중인 프로젝트</div>
+  <div class="usage-card">
+    <h3>이 스킴을 적용 중인 프로젝트 <span class="count">2개</span></h3>
+    <span class="proj-chip">ATLAS</span><span class="proj-chip">PROJ-X</span>
+    <p style="font-size: 12px; color: var(--muted-foreground); margin-top: 10px;">사용 중인 스킴은 삭제할 수 없습니다. 다른 스킴으로 변경 후 삭제 가능.</p>
+  </div>
+
+  <div class="section-title">위험 영역</div>
+  <button class="btn danger disabled" title="표준 스킴은 삭제 불가">표준 스킴은 삭제 불가</button>
+</div>
+</body>
+</html>
