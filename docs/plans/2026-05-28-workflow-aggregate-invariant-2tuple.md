@@ -73,9 +73,83 @@ backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/adapter
 - `docs/adr/2026-05-21-workflow-yaml-vs-db-storage.md` (yaml seed 정책 정합)
 - `docs/adr/2026-05-26-workflow-transition-port-result-sealed.md` (보완)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+- **fast-track 사유**. `type=bugfix` (정책 정합 정정). office-hours / brainstorming 비용 > 효익. PR #28/#29 inline 패턴 일관.
+
+### 사용자 시나리오 (Given-When-Then)
+
+#### 시나리오 1 — 정상 transitions 통과 (회귀 0)
+
+- Given. yaml 표준 4종 (`software-default`, `bug-tracking`, `simple`, `kanban-basic`) 의 transition 정의 (`(from, to)` 모두 유일)
+- When. `Workflow.of(...)` 호출
+- Then. invariant 5번 통과 → Workflow 인스턴스 정상 생성
+
+#### 시나리오 2 — 같은 (from, to) 가 name 만 다른 두 transition (회귀 가드 핵심)
+
+- Given. transitions = `[ T1(from=open, to=in_progress, name="Start Work"), T2(from=open, to=in_progress, name="시작") ]`
+- When. `Workflow.of(...)` 호출
+- Then. invariant 5번 위반 → `IllegalArgumentException` throw + 메시지에 duplicate `(from, to)` 표현 포함
+
+#### 시나리오 3 — 같은 (from, to) 동일 name 중복 (회귀 0)
+
+- Given. transitions = `[ T1(from=open, to=in_progress, name="Start"), T2(from=open, to=in_progress, name="Start") ]`
+- When. `Workflow.of(...)` 호출
+- Then. invariant 5번 위반 → throw (변경 전후 동일 동작)
+
+#### 시나리오 4 — 다른 (from, to) 가 같은 name (회귀 0)
+
+- Given. transitions = `[ T1(from=open, to=in_progress, name="Move"), T2(from=in_progress, to=done, name="Move") ]`
+- When. `Workflow.of(...)` 호출
+- Then. invariant 5번 통과 (name 은 사람 친화 라벨, identity 아님)
+
+### 기능 요구사항 (FR)
+
+- **FR-1**. `Workflow.of()` 의 invariant 5번이 `(fromStateKey, toStateKey)` 2 튜플 기준 중복 검증
+- **FR-2**. invariant 5번 위반 오류 메시지가 duplicate `(from, to)` 표현 + workflow key 포함
+- **FR-3**. KDoc L33 의 invariant 5번 명세가 코드 동작과 일치 (`(fromStateKey, toStateKey)` 명시)
+- **FR-4**. 회귀 가드 단위 테스트가 시나리오 1~4 모두 검증
+
+### 비기능 요구사항 (NFR)
+
+- **NFR-1**. 변경 후 기존 테스트 전체 (단위 + 통합) 회귀 0
+- **NFR-2**. 변경 영역 = `Workflow.kt` 단일 파일 + 회귀 가드 테스트 1 파일
+
+### API 인터페이스 (REST)
+
+- 변경 없음 (내부 도메인 invariant 정정).
+
+### 데이터 모델 변경
+
+- 변경 없음 (Workflow.kt 의 검증 로직만 정정).
+
+### 엣지 케이스
+
+- **EC-1**. transitions 빈 리스트 → invariant 5번 무관 통과 (states 검증만 적용)
+- **EC-2**. 단일 transition → 중복 검증 무관 통과
+- **EC-3**. 다른 workflow key 의 같은 `(from, to)` → invariant 5번은 workflow 내부만 검증 (집계 영역 한정)
+
+### 제약 조건
+
+- **C-1**. ADR `docs/adr/2026-05-28-workflow-transition-identity-policy.md` 의 §결정 (`(from, to)` 2 튜플 채택) 과 정합
+- **C-2**. WorkflowRepository.toAggregate() 와 WorkflowKeyResolverImpl 의 호출 흐름 회귀 0 (모두 `Workflow.of(...)` 경로 통과 → 자동 적용)
+
+### 측정 가능한 완료 기준
+
+1. `Workflow.kt` 의 L33 KDoc + L66 `Triple` → `Pair` + L69 오류 메시지 모두 `(fromStateKey, toStateKey)` 표현으로 정렬
+2. 신규 회귀 가드 단위 테스트 1 파일 (`WorkflowInvariantTest.kt`) 시나리오 1~4 모두 GREEN
+3. `./gradlew :modules:project-workflow:test` 전체 통과 (회귀 0)
+4. `./gradlew :modules:issue-tracking:test` 전체 통과 (cross-BC test 무영향)
+
+## Brainstorming Check
+
+✅ 통과 (fast-track inline, 1회). office-hours / brainstorming sub-agent 호출 없음 — PR #28/#29 일관 패턴.
+
+- ✅ scope 명확 (Workflow.of() 단일 메서드)
+- ✅ 회귀 가드 핵심 시나리오 (시나리오 2) 명시
+- ✅ ADR 정합 기준 명시
+- ✅ 다른 진입 경로 (toAggregate, FR-WF-02 CRUD) 자동 적용 확인
+- ⚠️ 잠재 우려. yaml seed 단의 fail-fast 가 이미 적용 중인지 plan 단계에서 grep 확인 필요 (이미 적용되어 있으면 본 PR 와 정합. 미적용이면 별 PR 위임 또는 scope 확장 판단).
 
 ## Plan (← /bts-plan 채움)
 
