@@ -80,7 +80,9 @@ Then fail-fast — IllegalStateException("Workflow '<key>' has duplicate (from, 
 - **NFR-1 (성능)**. transition 매칭은 워크플로우 메모리 캐시 `workflow.transitions.find { ... }` 라 O(N) 선형 탐색 — N=10 미만 (표준 워크플로우 transition 수). 옵션 b 채택으로 비교 조건 1개 줄어들어 미미한 개선.
 - **NFR-2 (기존 회귀)**. 변경 후 `:modules:issue-tracking:test :modules:project-workflow:test :modules:shared-kernel:test` 3 모듈 전체 BUILD SUCCESSFUL 유지. transitionName 제거로 영향 받는 모든 단위/통합 테스트 정합 갱신.
 - **NFR-3 (yaml 호환성)**. 표준 4종 yaml (`software-default`, `bug-tracking`, `simple`, `kanban-basic`) 의 transition.name 필드 보존 (사람 친화 라벨로 유지). yaml 스키마 변경 0.
-- **NFR-4 (API 하위 호환)**. REST 외부 contract (`POST /api/v1/issues/{key}/transition` 의 request body) 변경 0 — `TransitionIssueRequest { toStatusKey, expectedVersion }` 그대로. frontend 영향 0.
+- **NFR-4 (API 하위 호환)**.
+  - **issue-tracking** `POST /api/v1/issues/{key}/transition` body 변경 0 — `TransitionIssueRequest { toStatusKey, expectedVersion }` 그대로. frontend 영향 0.
+  - **project-workflow** `POST /api/v1/workflows/{key}/transitions` body 변경 1건 — `TransitionPlanRequestBody.transitionName` 필드 제거 (self-eng-review BLOCKER 1 해소). frontend `apps/web/src/api/workflows.ts:112-139` 의 `planTransition` 함수도 동반 정리. **dead code 정리** — `planTransition` 실제 caller 0 (`apps/web/src` 내 grep 결과), production 영향 0.
 
 ## API 인터페이스 (REST)
 
@@ -104,7 +106,7 @@ Body: { "toStatusKey": "in_progress", "expectedVersion": 1 }
 - **EC-2**. shared-kernel `TransitionRequest` 의 Konform `transitionRequestValidation` 에서 `transitionName { minLength(1) }` 라인 제거. 다른 BC (FR-WF-02 의 WorkflowEngine 호출자) 에 영향 0 확인 — `grep -RIn "TransitionRequest(" backend/modules`.
 - **EC-3**. yaml 적재 시 같은 워크플로우 내 같은 `(from, to)` 가 다른 `name` 으로 중복 정의된 경우 — fail-fast (FR-6). 표준 4종 yaml 모두 사전 검증 통과 (수동 검사 결과 0 충돌).
 - **EC-4**. 신규 detekt / ktlint issue. `WorkflowTransition.name` 필드 자체는 유지 (사람 친화 라벨로 strict 1 사용처 — yaml 응답 DTO `TransitionResponseDto`). detekt UnusedPrivateProperty 등 발현 0.
-- **EC-5**. WorkflowController.kt 의 transition API endpoint (있다면) — 검토 필요. 만약 transitionName 받는 endpoint 가 있다면 deprecated 또는 무시.
+- **EC-5**. `WorkflowController.kt:84-115` 의 `POST /api/v1/workflows/{key}/transitions` endpoint 가 `TransitionPlanRequestBody.transitionName` 을 외부 contract 로 받는 것 확인 (self-eng-review BLOCKER 1 발견). **옵션 b1 채택 — endpoint 도 transitionName 제거**. `TransitionPlanRequestBody`, `TransitionRequestDto`, `WorkflowController.plan` 갱신. frontend `apps/web/src/api/workflows.ts` 의 `planTransition()` 함수 시그니처 + body 직렬화 갱신.
 - **EC-6**. FR-WF-02 (커스텀 워크플로우) 시 (from, to) 유일성 강제는 이미 FR-6 으로 확립. 미래 호환.
 
 ## 제약 조건
