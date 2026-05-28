@@ -144,5 +144,51 @@ Then  sonner toast '다른 사용자가 이미 이 이슈를 수정했습니다.
 
 **검증**. typecheck / lint clean. playwright --list 에서 신규 spec 인식 (총 20 tests). 실 실행은 원격 환경 보류 (CI frontend-ci.yml playwright 미실행 + cdn.playwright.dev allowlist 차단, PR #32 와 동일 패턴). **commit `33e2093`**.
 
-## 리뷰 결과 (← /bts-codereview 가 채움)
+## 리뷰 결과 (PR #33 단위, bts-codereview)
+
+### code-review skill (high effort, 2 agent + sweep)
+
+**PASS with 1 BLOCKER (즉시 fix) + 4 CONCERN + 7 LOW advisory**. 게이트 2 진입 가능 (BLOCKER fix 후).
+
+#### BLOCKER (1건 — 본 PR 안에서 fix 완료)
+
+| # | severity | 위치 | 내용 | 처리 |
+|---|---|---|---|---|
+| B1 | BLOCKER → **FIXED** | `apps/web/e2e/issue-edit-conflict.spec.ts:29` (원본) | E2E-5 Then 2 가 deterministic fail — `useUpdateIssueSummary.onError` 가 `setIsEditingTitle(false)` 호출 안 함 (`issues.$key.tsx:98` 의 onSuccess 분기에만 존재). 409 시 편집 input 유지 → h1 미렌더 → timeout. | commit `a2b41bd` — spec 재작성 (Maxi option A: 현재 UX 보존, source 변경 0). 4단계 검증 — toast + input 보존 + 취소 + h1 원본. |
+
+#### CONCERN (4건 — 머지 차단 사유 아님)
+
+| # | 위치 | 내용 | 처리 권장 |
+|---|---|---|---|
+| C1 | `apps/web/e2e/issue-edit-conflict.spec.ts:23` + `apps/web/src/api/useUpdateIssueSummary.ts:73` | 409 toast 메시지 hardcoded 양쪽 (i18n 부재). PR #22 §F4 학습 (i18n 단일 정본) 위반 — pre-existing 부채를 본 PR E2E-5 가 표면화 + 복사 증폭. | **별 i18n cleanup PR 위임** — `issueDetailStrings.conflictErrorMessage` 추가 + 양쪽 import. 본 PR scope (cleanup advisory 4건) 외. |
+| C2 | `apps/web/src/mocks/issue-handlers.ts:89` plan §PE1 §원인 분석 | "MSW v2.14 가 request 를 두 번 clone" 원인 분석이 over-generalized. 실 trigger 는 multiple setupServer 인스턴스 공존 (`handlers.test.ts` / `auth-handlers.test.ts` 가 자체 server 인스턴스 보유 + 글로벌 server). `api/*.test.ts` 의 inline `server.use()` 핸들러는 PE1 미트리거 (검증 완료, stderr 0건). | plan §PE1 본문에 원인 보강 — multiple setupServer 인스턴스 trigger 명시. fix scope 는 정확함. |
+| C3 | `apps/web/src/test/setup.ts:11` | global afterEach 의 `resetIssueState()` 가 "test 간 leak 방지" 만 명시. 단일 test 안 다중 it 블록 (예: POST → GET → DELETE 분할) 사용 시 silent break 위험 — 의도 명시 부족. | 본 PR setup.ts 주석에 scope 명시 보강 권장 (다음 commit 가능). |
+| C4 | `apps/web/src/mocks/issue-handlers.ts:107` | MOCK_CONFLICT_TRIGGER sentinel 이 summary 필드 overload — `setIssueConflictMode(boolean)` 함수 패턴이 더 일관적 (resetIssueState export 패턴과 동일). | **별 follow-up PR 위임** — 패턴 일관성 / mock 의 mode flag 표준화. 본 PR 의 E2E-5 동작은 정합. |
+
+#### LOW advisory (7건 — 모두 follow-up PR 후보)
+
+| # | 위치 | 내용 |
+|---|---|---|
+| L1 | `apps/web/e2e/fixtures/issue-fixtures.ts:55` | `new RegExp(\`/issues/\${createdIssueFixture.key}$\`)` — fixture key 의 regex metachar escape 부재. 현재 'ATLAS-42' 는 안전, 향후 key 가 `.`/`+`/`(` 포함 시 silent match. |
+| L2 | e2e 디렉토리 | tsconfig.app.json (`include: ['src']`) / eslint (`files: src`) 에서 e2e 제외 → 정적 guard 부재. typecheck/lint clean 이 'src 만' 보장. |
+| L3 | `apps/web/src/mocks/issue-handlers.ts:107` | `MOCK_CONFLICT_TRIGGER` 가 production 번들에 export 됨 (tree-shake 불확실). MSW worker 는 DEV 가드라 prod 미작동, 단 dev 환경 사용자가 우연히 같은 문자열 입력 시 가짜 409 — 매우 낮은 확률, dev-only 영향. |
+| L4 | `apps/web/src/mocks/issue-handlers.ts:89,124` + `apps/web/src/mocks/auth-handlers.ts:17` | `request.clone()` 패턴 3곳 중복 — `readJsonBody<T>(request)` 헬퍼 1개로 DRY 가능. MSW upstream fix 후 단일 지점 revert. |
+| L5 | `apps/web/src/test/setup.ts:11` | BC 추가 시 `setup.ts` 가 각 BC 의 reset 함수 import 누적 — `registerResetHook(fn)` registry 패턴이 응집도 ↑. 본 PR scope 외. |
+| L6 | undici 본문 stream | `request.clone().json()` 가 원본 ReadableStream 미소비 — Node 22+ undici 에서 unread stream warning 가능성 (현재 stderr 0건, MSW v3/undici 6 upgrade 시 재발 surface). |
+| L7 | E2E-5 spec | 단일 test 안 4단계 직렬 — split 무가치 (login + create 2회 반복 비용). 본 PR 그대로 통과. |
+
+### Cross-model 검증
+
+- **agent 1 (correctness)** + **agent 2 (cleanup)** 의 발견이 중첩 (C1=F1 i18n / C4=F2 sentinel / L4=F3 readJsonBody / L5=F4 reset registry) — 일관 신호 신뢰도 ↑.
+- 각 agent 가 독립적으로 동일 위치 발견 → 본 PR 의 advisory 카탈로그 신뢰 가능.
+
+### Skip 정당화
+
+- `/plan-ceo-review` — type=qa, classify.type 분기 외.
+- `/code-review --comment` — 본 PR fast-track, advisory 7건 follow-up PR 위임 명시로 충분.
+
+### PRE_EXISTING (본 PR 책임 외)
+
+- **PE2** (신규 식별). `useUpdateIssueSummary.ts:73` 의 toast 메시지 hardcoded — PR #26 도입 시점 부터 i18n 부재. PR #22 §F4 학습 위반 누적. 별 i18n cleanup PR 후보 (C1 와 동일 항목 — source + spec 동시 i18n 이전).
+
 
