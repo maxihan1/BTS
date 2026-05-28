@@ -55,6 +55,23 @@ class WorkflowRepository(private val dsl: DSLContext) {
     }
 
     /**
+     * key 로 workflows.id(UUID) 를 조회한다.
+     *
+     * Mapping 추가 시 workflowKey → workflowId(UUID) 변환에 사용한다.
+     * aggregate 전체를 조회하지 않아 효율적이다.
+     *
+     * @param key 워크플로우 식별 키.
+     * @return workflows.id(UUID), 부재 시 null.
+     */
+    fun findIdByKey(key: String): UUID? =
+        dsl
+            .select(WORKFLOWS.ID)
+            .from(WORKFLOWS)
+            .where(WORKFLOWS.KEY.eq(key))
+            .fetchOne()
+            ?.get(WORKFLOWS.ID) as UUID?
+
+    /**
      * 저장된 모든 [Workflow] aggregate 를 반환한다.
      *
      * @return [Workflow] 목록 (비어 있을 수 있음)

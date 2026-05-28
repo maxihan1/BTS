@@ -21,6 +21,7 @@ import com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermission
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermissionResolver
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemeScope
+import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
@@ -49,6 +50,7 @@ class WorkflowSchemeApplicationServiceTest {
     private val mappingRepo: SchemeIssueTypeMappingRepository = mockk()
     private val eventPublisher: WorkflowSchemeEventPublisher = mockk()
     private val permissionResolver = AlwaysAllowWorkflowSchemePermissionResolver()
+    private val workflowRepo: WorkflowRepository = mockk()
 
     private lateinit var service: WorkflowSchemeApplicationService
 
@@ -56,7 +58,7 @@ class WorkflowSchemeApplicationServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = WorkflowSchemeApplicationService(schemeRepo, assignmentRepo, mappingRepo, eventPublisher, permissionResolver)
+        service = WorkflowSchemeApplicationService(schemeRepo, assignmentRepo, mappingRepo, eventPublisher, permissionResolver, workflowRepo)
     }
 
     // ── create ────────────────────────────────────────────────────────────────
@@ -344,7 +346,7 @@ class WorkflowSchemeApplicationServiceTest {
             denyingResolver.requirePermission(actor, WorkflowSchemePermission.ASSIGN_SCHEME, any<WorkflowSchemeScope.Project>())
         } throws RuntimeException("WORKFLOW_PERMISSION_DENIED")
 
-        val svcWithDeny = WorkflowSchemeApplicationService(schemeRepo, assignmentRepo, mappingRepo, eventPublisher, denyingResolver)
+        val svcWithDeny = WorkflowSchemeApplicationService(schemeRepo, assignmentRepo, mappingRepo, eventPublisher, denyingResolver, workflowRepo)
 
         assertThatThrownBy {
             svcWithDeny.assignToProject(actor, UUID.randomUUID(), "PROJ", WorkflowSchemeKey("software-scheme"))

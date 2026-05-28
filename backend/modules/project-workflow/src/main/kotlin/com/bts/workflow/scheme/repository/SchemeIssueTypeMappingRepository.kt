@@ -236,6 +236,32 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
     }
 
     /**
+     * 이슈 타입 키로 [IssueTypeId] 를 조회한다.
+     *
+     * project-workflow BC 가 issue-tracking BC 의 내부 Repository 를 직접 import 하지 않도록
+     * `issue_types` 테이블을 이 Repository 에서 읽기 전용으로 접근한다 (NFR-7 BC 격리 준수).
+     *
+     * @param issueTypeKey 조회할 이슈 타입 키 (예: "bug", "story").
+     * @return 해당 키의 [IssueTypeId], 존재하지 않으면 null.
+     */
+    @Transactional(readOnly = true)
+    fun findIssueTypeIdByKey(issueTypeKey: String): IssueTypeId? {
+        val ISSUE_TYPES = DSL.table("issue_types")
+        val IT_ID = DSL.field("issue_types.id", Long::class.java)
+        val IT_KEY = DSL.field("issue_types.key", String::class.java)
+
+        return dsl
+            .select(IT_ID)
+            .from(ISSUE_TYPES)
+            .where(IT_KEY.eq(issueTypeKey))
+            .fetchOne()
+            ?.let { rec ->
+                val rawId = rec.get(IT_ID) ?: return null
+                IssueTypeId(rawId)
+            }
+    }
+
+    /**
      * 매핑을 삭제한다.
      *
      * 존재하지 않는 id 에 대해 예외 없이 no-op 으로 처리한다.

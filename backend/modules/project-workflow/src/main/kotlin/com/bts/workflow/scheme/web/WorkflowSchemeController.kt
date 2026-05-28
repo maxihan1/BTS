@@ -1,4 +1,4 @@
-// WorkflowSchemeController — Scheme CRUD 5 endpoint REST 컨트롤러 (spec §4.1)
+// WorkflowSchemeController — Scheme CRUD 5 endpoint + Mapping CRUD 2 endpoint REST 컨트롤러 (spec §4.1, §4.2)
 
 package com.bts.workflow.scheme.web
 
@@ -9,6 +9,8 @@ import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermission
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermissionResolver
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemeScope
 import com.bts.workflow.scheme.web.dto.CreateWorkflowSchemeRequest
+import com.bts.workflow.scheme.web.dto.MappingRequestDto
+import com.bts.workflow.scheme.web.dto.MappingResponse
 import com.bts.workflow.scheme.web.dto.UpdateWorkflowSchemeRequest
 import com.bts.workflow.scheme.web.dto.WorkflowSchemeResponse
 import org.slf4j.LoggerFactory
@@ -153,6 +155,61 @@ class WorkflowSchemeController(
         permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
         log.info("WorkflowSchemeController.delete schemeKey={}", schemeKey)
         applicationService.softDelete(actor, WorkflowSchemeKey(schemeKey))
+    }
+
+    /**
+     * 스킴에 이슈타입-워크플로우 매핑을 추가한다.
+     *
+     * spec §4.2 POST /api/v1/workflow-schemes/{schemeKey}/mappings.
+     * [MappingRequestDto.issueTypeKey] null = default mapping (issue_type_id IS NULL).
+     * G6 Jira align — PUT update endpoint 없음.
+     *
+     * @param schemeKey 매핑을 추가할 스킴 키 (경로 변수).
+     * @param request 매핑 추가 요청 바디.
+     * @return 200 OK + 저장된 [MappingResponse].
+     */
+    @PostMapping("/{schemeKey}/mappings")
+    fun addMapping(
+        @PathVariable schemeKey: String,
+        @RequestBody request: MappingRequestDto,
+    ): ResponseEntity<DataEnvelope<MappingResponse>> {
+        val actor = systemActor()
+        permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        log.info(
+            "WorkflowSchemeController.addMapping schemeKey={} issueTypeKey={} workflowKey={}",
+            schemeKey,
+            request.issueTypeKey,
+            request.workflowKey,
+        )
+        val mapping = applicationService.addMappingByKeys(
+            actor = actor,
+            schemeKey = WorkflowSchemeKey(schemeKey),
+            issueTypeKey = request.issueTypeKey,
+            workflowKey = request.workflowKey,
+        )
+        return ResponseEntity.ok(DataEnvelope(MappingResponse.from(mapping)))
+    }
+
+    /**
+     * 스킴에서 매핑을 삭제한다.
+     *
+     * spec §4.2 DELETE /api/v1/workflow-schemes/{schemeKey}/mappings/{mappingId}.
+     * G8 mapping_id BIGINT REST path 노출.
+     * 존재하지 않는 mappingId 에 대해서는 no-op (204 반환).
+     *
+     * @param schemeKey 매핑이 속한 스킴 키 (경로 변수, 권한 범위 결정용).
+     * @param mappingId 삭제할 매핑 PK (경로 변수).
+     */
+    @DeleteMapping("/{schemeKey}/mappings/{mappingId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deleteMapping(
+        @PathVariable schemeKey: String,
+        @PathVariable mappingId: Long,
+    ) {
+        val actor = systemActor()
+        permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        log.info("WorkflowSchemeController.deleteMapping schemeKey={} mappingId={}", schemeKey, mappingId)
+        applicationService.deleteMapping(actor, mappingId)
     }
 
     // ── private helpers ────────────────────────────────────────────────────────

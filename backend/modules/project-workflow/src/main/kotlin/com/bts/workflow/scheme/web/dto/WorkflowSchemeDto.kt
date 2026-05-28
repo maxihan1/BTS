@@ -1,8 +1,56 @@
-// WorkflowSchemeController 요청/응답 DTO — Scheme CRUD 5 endpoint 입출력 타입 정의
+// WorkflowSchemeController 요청/응답 DTO — Scheme CRUD 5 endpoint + Mapping CRUD 2 endpoint 입출력 타입 정의
 
 package com.bts.workflow.scheme.web.dto
 
+import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowScheme
+/**
+ * 매핑 추가 요청 DTO.
+ *
+ * spec §4.2 POST /api/v1/workflow-schemes/{schemeKey}/mappings body.
+ *
+ * @property issueTypeKey 매핑 대상 이슈 타입 키. null = default mapping (issueTypeId IS NULL).
+ * @property workflowKey 사용할 워크플로우 키.
+ */
+data class MappingRequestDto(
+    val issueTypeKey: String?,
+    val workflowKey: String,
+)
+
+/**
+ * 매핑 응답 DTO.
+ *
+ * @property id DB PK.
+ * @property schemeId 소속 스킴 PK.
+ * @property issueTypeId 매핑 대상 이슈 타입 PK. null = default mapping.
+ * @property workflowId 사용할 워크플로우 UUID.
+ * @property createdAt 생성 시각 (ISO-8601).
+ */
+data class MappingResponse(
+    val id: Long,
+    val schemeId: Long,
+    val issueTypeId: Long?,
+    val workflowId: String,
+    val createdAt: String,
+) {
+    companion object {
+        /**
+         * 도메인 [SchemeIssueTypeMapping] 을 응답 DTO 로 변환한다.
+         *
+         * @param mapping 변환할 도메인 객체. id 가 null 이면 예외가 발생한다.
+         * @return 응답 DTO 인스턴스.
+         */
+        fun from(mapping: SchemeIssueTypeMapping): MappingResponse =
+            MappingResponse(
+                id = requireNotNull(mapping.id) { "SchemeIssueTypeMapping.id must not be null" },
+                schemeId = mapping.schemeId.value,
+                issueTypeId = mapping.issueTypeId?.value,
+                workflowId = mapping.workflowId.toString(),
+                createdAt = mapping.createdAt.toString(),
+            )
+    }
+}
+
 /**
  * 워크플로우 스킴 생성 요청 DTO.
  *

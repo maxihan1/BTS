@@ -3,6 +3,7 @@
 package com.bts.workflow.scheme.web
 
 import com.bts.workflow.port.outbound.ActorId
+import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.domain.ProjectKey
 import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
@@ -98,6 +99,7 @@ class ProjectWorkflowSchemeControllerTest {
         permissionResolver = object : WorkflowSchemePermissionResolver {
             override fun requirePermission(actor: ActorId, permission: WorkflowSchemePermission, scope: WorkflowSchemeScope) = Unit
         },
+        workflowRepo = mockk(),
     ) {
         var assignToProjectResponse: ProjectWorkflowSchemeAssignment? = null
         var findAssignedSchemeResponse: WorkflowScheme? = null

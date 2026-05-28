@@ -4,12 +4,15 @@ package com.bts.workflow.scheme.application
 
 import com.bts.shared.issue.IssueTypeId
 import com.bts.workflow.port.outbound.ActorId
+import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
 import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowScheme
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
 import com.bts.workflow.scheme.event.WorkflowSchemeAssignedEvent
+import com.bts.workflow.domain.exception.WorkflowNotFoundException
+import com.bts.workflow.scheme.exception.IssueTypeNotFoundException
 import com.bts.workflow.scheme.exception.SchemeInUseException
 import com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException
 import com.bts.workflow.scheme.exception.SchemeStandardNotDeletableException
@@ -55,6 +58,7 @@ class WorkflowSchemeApplicationService(
     private val mappingRepo: SchemeIssueTypeMappingRepository,
     private val eventPublisher: WorkflowSchemeEventPublisher,
     private val permissionResolver: WorkflowSchemePermissionResolver,
+    private val workflowRepo: WorkflowRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -224,6 +228,46 @@ class WorkflowSchemeApplicationService(
                 createdAt = Instant.now(),
             )
         return mappingRepo.addMapping(mapping)
+    }
+
+    /**
+     * 스킴에 이슈타입-워크플로우 매핑을 key 기반으로 추가한다.
+     *
+     * 컨트롤러 레이어에서 받은 [issueTypeKey] / [workflowKey] 문자열을 DB ID 로 변환한 뒤
+     * [addMapping] 에 위임한다.
+     *
+     * - [issueTypeKey] null → default mapping (issue_type_id IS NULL).
+     * - [workflowKey] 미존재 → [WorkflowNotFoundException] (404).
+     * - [issueTypeKey] 미존재 → [IssueTypeNotFoundException] (404).
+     *
+     * @param actor 작업 수행 행위자. MANAGE_SCHEME 권한이 필요하다.
+     * @param schemeKey 매핑을 추가할 스킴 키.
+     * @param issueTypeKey 매핑 대상 이슈 타입 키. null = default mapping.
+     * @param workflowKey 사용할 워크플로우 키.
+     * @return 저장된 매핑 (DB 생성 id 포함).
+     * @throws WorkflowSchemeNotFoundException 스킴이 없을 때.
+     * @throws WorkflowNotFoundException workflowKey 에 해당하는 워크플로우가 없을 때.
+     * @throws IssueTypeNotFoundException issueTypeKey 에 해당하는 이슈 타입이 없을 때.
+     */
+    fun addMappingByKeys(
+        actor: ActorId,
+        schemeKey: WorkflowSchemeKey,
+        issueTypeKey: String?,
+        workflowKey: String,
+    ): SchemeIssueTypeMapping {
+        val workflowId =
+            workflowRepo.findIdByKey(workflowKey)
+                ?: throw WorkflowNotFoundException(workflowKey)
+
+        val issueTypeId: IssueTypeId? =
+            if (issueTypeKey != null) {
+                mappingRepo.findIssueTypeIdByKey(issueTypeKey)
+                    ?: throw IssueTypeNotFoundException(issueTypeKey)
+            } else {
+                null
+            }
+
+        return addMapping(actor, schemeKey, issueTypeId, workflowId)
     }
 
     /**
