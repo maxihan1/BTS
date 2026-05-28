@@ -65,10 +65,6 @@ export class WorkflowSchemeApiError extends Error {
 // 내부 유틸리티
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** backend `{ data: T }` 래퍼 파싱 헬퍼 */
-const dataOf = <T>(innerSchema: z.ZodSchema<T>) =>
-  z.object({ data: innerSchema })
-
 /** RFC 7807 에러 응답 Zod 스키마 — code 필드 보존 */
 const rfc7807ErrorSchema = z.object({
   code: z.string().default('UNKNOWN'),
