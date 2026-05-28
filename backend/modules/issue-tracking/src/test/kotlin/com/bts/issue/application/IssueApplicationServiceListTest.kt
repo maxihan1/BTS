@@ -48,7 +48,7 @@ class IssueApplicationServiceListTest : DescribeSpec({
             projectId = UUID.randomUUID(),
             summary = "Issue $seq",
             reporterId = actor,
-            currentStateKey = "OPEN",
+            currentStateKey = "open",
             version = 1L,
             deletedAt = null,
             createdAt = Instant.parse("2026-05-24T00:00:00Z"),

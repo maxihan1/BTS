@@ -53,7 +53,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
         projectId = UUID.randomUUID(),
         summary = summary,
         reporterId = actor,
-        currentStateKey = "OPEN",
+        currentStateKey = "open",
         version = version,
         deletedAt = null,
         createdAt = Instant.parse("2026-05-24T00:00:00Z"),

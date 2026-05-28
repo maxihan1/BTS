@@ -162,7 +162,7 @@ class IssueEventPublisherTest : DescribeSpec({
                 val event =
                     IssueTransitioned(
                         issueKey = IssueKey("ATLAS-2"),
-                        fromState = "OPEN",
+                        fromState = "open",
                         toState = "IN_PROGRESS",
                         occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
                     )
@@ -183,7 +183,7 @@ class IssueEventPublisherTest : DescribeSpec({
 
                 json.get("type").asText() shouldBe "issue.transitioned"
                 json.get("issueKey").asText() shouldBe "ATLAS-2"
-                json.get("fromState").asText() shouldBe "OPEN"
+                json.get("fromState").asText() shouldBe "open"
                 json.get("toState").asText() shouldBe "IN_PROGRESS"
             }
         }

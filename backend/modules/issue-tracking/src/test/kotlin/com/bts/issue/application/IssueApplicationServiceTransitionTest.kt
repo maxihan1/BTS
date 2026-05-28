@@ -52,7 +52,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
     val existingVersion = 1L
 
     fun makeIssue(
-        state: String = "OPEN",
+        state: String = "open",
         version: Long = existingVersion,
     ) = Issue(
         id = IssueId(UUID.randomUUID()),
@@ -101,7 +101,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
                 every {
                     workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
-                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "OPEN")
+                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "open")
                 every { workflowPort.plan(any()) } returns TransitionResult.Success(plan)
                 every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion) } returns 1
                 every { repo.findByKey(issueKey) } returns updatedIssue
@@ -118,7 +118,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                 sut.transitionIssue(actor, issueKey, request)
                 verify {
                     eventPublisher.publish(
-                        match { it is IssueTransitioned && it.fromState == "OPEN" && it.toState == "IN_PROGRESS" },
+                        match { it is IssueTransitioned && it.fromState == "open" && it.toState == "IN_PROGRESS" },
                     )
                 }
             }
@@ -129,7 +129,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                     workflowPort.plan(
                         match { req ->
                             req.issueKey == issueKey.value &&
-                                req.fromStateKey == "OPEN" &&
+                                req.fromStateKey == "open" &&
                                 req.toStateKey == "IN_PROGRESS" &&
                                 req.workflowKey == "DEFAULT"
                         },
@@ -155,7 +155,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
                 every {
                     workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
-                } returns WorkflowStartState(workflowKey = "RESOLVED-WF", startStateKey = "OPEN")
+                } returns WorkflowStartState(workflowKey = "RESOLVED-WF", startStateKey = "open")
                 every { workflowPort.plan(any()) } returns TransitionResult.Success(plan)
                 every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion) } returns 1
                 every { repo.findByKey(issueKey) } returns updatedIssue
@@ -233,7 +233,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
                 every {
                     workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
-                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "OPEN")
+                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "open")
                 every { workflowPort.plan(any()) } returns TransitionResult.ValidatorFailure("조건 X 위반")
             }
 
@@ -243,7 +243,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                         sut.transitionIssue(actor, issueKey, request)
                     }
                 ex.issueKey shouldBe issueKey
-                ex.fromStatus shouldBe "OPEN"
+                ex.fromStatus shouldBe "open"
                 ex.toStatus shouldBe "IN_PROGRESS"
             }
 
@@ -276,7 +276,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
                 every {
                     workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
-                } returns WorkflowStartState(workflowKey = "ATLAS", startStateKey = "OPEN")
+                } returns WorkflowStartState(workflowKey = "ATLAS", startStateKey = "open")
                 every { workflowPort.plan(any()) } returns TransitionResult.WorkflowNotFound("ATLAS")
             }
 
@@ -286,7 +286,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                         sut.transitionIssue(actor, issueKey, request)
                     }
                 ex.issueKey shouldBe issueKey
-                ex.fromStatus shouldBe "OPEN"
+                ex.fromStatus shouldBe "open"
                 ex.toStatus shouldBe "IN_PROGRESS"
             }
 
@@ -311,7 +311,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
                 every {
                     workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
-                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "OPEN")
+                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "open")
                 every { workflowPort.plan(any()) } returns TransitionResult.ExpressionTimeout("SpEL timeout")
             }
 
@@ -321,7 +321,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                         sut.transitionIssue(actor, issueKey, request)
                     }
                 ex.issueKey shouldBe issueKey
-                ex.fromStatus shouldBe "OPEN"
+                ex.fromStatus shouldBe "open"
                 ex.toStatus shouldBe "IN_PROGRESS"
             }
 
@@ -347,7 +347,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
                 every {
                     workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
-                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "OPEN")
+                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "open")
                 every { workflowPort.plan(any()) } returns TransitionResult.Success(plan)
                 every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion) } returns 0
             }

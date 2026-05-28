@@ -103,7 +103,7 @@ class IssueExceptionHandlerTest {
 
         @GetMapping("/transition-not-allowed")
         fun throwTransitionNotAllowed(): Nothing {
-            throw IssueTransitionNotAllowedException(sampleKey, "OPEN", "IN_PROGRESS")
+            throw IssueTransitionNotAllowedException(sampleKey, "open", "IN_PROGRESS")
         }
 
         @GetMapping("/unauthenticated")

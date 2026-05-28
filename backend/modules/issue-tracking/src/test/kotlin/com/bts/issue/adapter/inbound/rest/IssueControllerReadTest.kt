@@ -85,7 +85,7 @@ class IssueControllerReadTest {
             id = issueId,
             projectKey = "ATLAS",
             summary = "샘플 이슈 요약",
-            currentStateKey = "OPEN",
+            currentStateKey = "open",
             reporterId = actorId.value,
             version = 1L,
             createdAt = fixedNow,
@@ -111,7 +111,7 @@ class IssueControllerReadTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.key").value("ATLAS-1"))
             .andExpect(jsonPath("$.data.summary").value("샘플 이슈 요약"))
-            .andExpect(jsonPath("$.data.currentStateKey").value("OPEN"))
+            .andExpect(jsonPath("$.data.currentStateKey").value("open"))
             .andExpect(jsonPath("$.data.projectKey").value("ATLAS"))
     }
 

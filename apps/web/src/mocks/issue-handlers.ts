@@ -13,7 +13,7 @@ export const createdIssueFixture = {
   id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
   projectKey: 'ATLAS',
   summary: '새 이슈 제목',
-  currentStateKey: 'OPEN',
+  currentStateKey: 'open',
   reporterId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
   version: 0,
   createdAt: '2026-05-27T00:00:00Z',

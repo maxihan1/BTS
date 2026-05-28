@@ -17,7 +17,7 @@ import java.util.UUID
  * @property id 이슈 내부 식별자 UUID.
  * @property projectKey 이슈가 속한 프로젝트 키. 예: `"ATLAS"`
  * @property summary 이슈 제목.
- * @property currentStateKey 현재 워크플로우 상태 키. 예: `"OPEN"`
+ * @property currentStateKey 현재 워크플로우 상태 키. 예: `"open"`
  * @property reporterId 이슈를 생성한 행위자의 UUID.
  * @property version 낙관적 잠금 버전.
  * @property createdAt 이슈 생성 시각.

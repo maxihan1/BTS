@@ -57,7 +57,7 @@ class IssueApplicationServiceFindTest : DescribeSpec({
                     projectId = UUID.randomUUID(),
                     summary = "Test issue",
                     reporterId = actor,
-                    currentStateKey = "OPEN",
+                    currentStateKey = "open",
                     version = 1L,
                     deletedAt = null,
                     createdAt = fixedNow,

@@ -58,7 +58,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 projectId = testProjectId,
                 summary = "Fix login bug",
                 reporterId = ActorId(UUID.randomUUID()),
-                currentStateKey = "OPEN",
+                currentStateKey = "open",
             )
 
         val inserted = repository.insert(issue)
@@ -89,7 +89,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 projectId = testProjectId,
                 summary = "Find by key test",
                 reporterId = ActorId(UUID.randomUUID()),
-                currentStateKey = "OPEN",
+                currentStateKey = "open",
             )
         repository.insert(issue)
 
@@ -132,7 +132,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 projectId = testProjectId,
                 summary = "For update test",
                 reporterId = ActorId(UUID.randomUUID()),
-                currentStateKey = "OPEN",
+                currentStateKey = "open",
             )
         repository.insert(issue)
 
@@ -160,7 +160,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 projectId = testProjectId,
                 summary = "Transition test",
                 reporterId = ActorId(UUID.randomUUID()),
-                currentStateKey = "OPEN",
+                currentStateKey = "open",
             )
         repository.insert(issue)
 
@@ -190,7 +190,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 projectId = testProjectId,
                 summary = "Stale version test",
                 reporterId = ActorId(UUID.randomUUID()),
-                currentStateKey = "OPEN",
+                currentStateKey = "open",
             )
         repository.insert(issue)
 
@@ -199,7 +199,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
         assertThat(updated).isEqualTo(0)
         // 상태 변경 없음 확인
         val found = repository.findByKey(key)
-        assertThat(found!!.currentStateKey).isEqualTo("OPEN")
+        assertThat(found!!.currentStateKey).isEqualTo("open")
     }
 
     // ── T6. softDelete ───────────────────────────────────────────────────────────
@@ -220,7 +220,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 projectId = testProjectId,
                 summary = "Soft delete test",
                 reporterId = ActorId(UUID.randomUUID()),
-                currentStateKey = "OPEN",
+                currentStateKey = "open",
             )
         repository.insert(issue)
 
@@ -249,7 +249,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                     projectId = testProjectId,
                     summary = "Issue $i",
                     reporterId = reporterId,
-                    currentStateKey = "OPEN",
+                    currentStateKey = "open",
                 ),
             )
         }
@@ -261,7 +261,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 projectId = testProjectId,
                 summary = "Deleted issue",
                 reporterId = reporterId,
-                currentStateKey = "OPEN",
+                currentStateKey = "open",
             ),
         )
         repository.softDelete(IssueKey.of("TPRJ", 4L))
@@ -297,8 +297,8 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
      * When   findByKey 로 조회
      * Then   currentStateKey 가 "open" (소문자) 로 반환된다.
      *
-     * Task 9 회귀 가드: V007 이 기존 "OPEN" → "open" 으로 변환했으므로, 신규 저장 시
-     * 소문자 키를 그대로 유지해야 함. "OPEN" 대문자가 코드에 남아있으면 이 테스트가 RED.
+     * Task 9 회귀 가드: V007 이 기존 OPEN(대문자) → open(소문자) 으로 변환했으므로, 신규 저장 시
+     * 소문자 키를 그대로 유지해야 함. 대문자 상태키가 코드에 남아있으면 이 테스트가 RED.
      */
     @Test
     @Order(10)
@@ -343,7 +343,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 projectId = testProjectId,
                 summary = "원래",
                 reporterId = ActorId(UUID.randomUUID()),
-                currentStateKey = "OPEN",
+                currentStateKey = "open",
             )
         repository.insert(original)
         repository.softDelete(key)
@@ -355,7 +355,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 projectId = testProjectId,
                 summary = "중복 시도",
                 reporterId = ActorId(UUID.randomUUID()),
-                currentStateKey = "OPEN",
+                currentStateKey = "open",
             )
 
         assertThatThrownBy { repository.insert(duplicate) }
