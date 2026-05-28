@@ -4,22 +4,17 @@ package com.bts.workflow.scheme.web
 
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
+import com.bts.workflow.scheme.domain.ProjectKey
 import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
 import com.bts.workflow.scheme.domain.WorkflowScheme
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
-import com.bts.workflow.scheme.domain.ProjectKey
 import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermission
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermissionResolver
 import com.bts.workflow.scheme.port.outbound.WorkflowSchemeScope
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
-import io.mockk.justRun
 import io.mockk.mockk
-import io.mockk.slot
-import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -51,23 +46,88 @@ import java.util.UUID
  * - Case 3. PUT 시 ASSIGN_SCHEME 권한 검증 호출 확인
  * - Case 4. GET 시 ASSIGN_SCHEME 권한 검증 호출 확인
  * - Case 5. projectKey 에 해당하는 project 없으면 404
+ *
+ * ### ActorId inline value class MockK 우회 (JvmSignatureValueGenerator 제한)
+ * MockK 1.13.x 는 @JvmInline value class 파라미터를 가진 함수의 서명 값 생성 시 init 검증에 실패한다.
+ * 이 문제를 피하기 위해 [WorkflowSchemePermissionResolver] 와 [WorkflowSchemeApplicationService] 를
+ * MockK mock 대신 직접 구현한 stub 클래스로 교체한다.
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [ProjectWorkflowSchemeControllerTest.TestMvcConfig::class])
 @WebAppConfiguration
 class ProjectWorkflowSchemeControllerTest {
 
+    /**
+     * ActorId inline value class MockK 우회용 권한 resolver stub.
+     *
+     * 마지막으로 호출된 [permission] 과 [scope] 를 캡처한다.
+     */
+    class CapturingPermissionResolverStub : WorkflowSchemePermissionResolver {
+        var capturedPermission: WorkflowSchemePermission? = null
+        var capturedScope: WorkflowSchemeScope? = null
+        var callCount = 0
+
+        override fun requirePermission(
+            actor: ActorId,
+            permission: WorkflowSchemePermission,
+            scope: WorkflowSchemeScope,
+        ) {
+            capturedPermission = permission
+            capturedScope = scope
+            callCount++
+        }
+
+        fun reset() {
+            capturedPermission = null
+            capturedScope = null
+            callCount = 0
+        }
+    }
+
+    /**
+     * ActorId inline value class MockK 우회용 application service stub.
+     *
+     * [assignToProjectResponse] 와 [findAssignedSchemeResponse] 를 설정해 응답을 제어한다.
+     * 나머지 메서드는 UnsupportedOperationException 을 던진다 (호출되지 않아야 함).
+     */
+    class StubWorkflowSchemeApplicationService : WorkflowSchemeApplicationService(
+        schemeRepo = mockk(),
+        assignmentRepo = mockk(),
+        mappingRepo = mockk(),
+        eventPublisher = mockk(),
+        permissionResolver = object : WorkflowSchemePermissionResolver {
+            override fun requirePermission(actor: ActorId, permission: WorkflowSchemePermission, scope: WorkflowSchemeScope) = Unit
+        },
+    ) {
+        var assignToProjectResponse: ProjectWorkflowSchemeAssignment? = null
+        var findAssignedSchemeResponse: WorkflowScheme? = null
+
+        override fun assignToProject(
+            actor: ActorId,
+            projectId: UUID,
+            projectKey: String,
+            schemeKey: WorkflowSchemeKey,
+        ): ProjectWorkflowSchemeAssignment =
+            assignToProjectResponse ?: throw IllegalStateException("assignToProjectResponse not configured")
+
+        override fun findAssignedScheme(
+            projectId: UUID,
+            projectKey: String,
+        ): WorkflowScheme =
+            findAssignedSchemeResponse ?: throw IllegalStateException("findAssignedSchemeResponse not configured")
+    }
+
     @Configuration
     @EnableWebMvc
     open class TestMvcConfig {
-        @Bean
-        open fun objectMapper(): ObjectMapper = ObjectMapper().registerKotlinModule()
+        val permResolverStub = CapturingPermissionResolverStub()
+        val appServiceStub = StubWorkflowSchemeApplicationService()
 
         @Bean
-        open fun workflowSchemeApplicationService(): WorkflowSchemeApplicationService = mockk(relaxed = true)
+        open fun workflowSchemeApplicationService(): WorkflowSchemeApplicationService = appServiceStub
 
         @Bean
-        open fun workflowSchemePermissionResolver(): WorkflowSchemePermissionResolver = mockk(relaxed = true)
+        open fun workflowSchemePermissionResolver(): WorkflowSchemePermissionResolver = permResolverStub
 
         @Bean
         open fun projectLookupPort(): ProjectLookupPort = mockk(relaxed = true)
@@ -88,16 +148,12 @@ class ProjectWorkflowSchemeControllerTest {
     private lateinit var wac: WebApplicationContext
 
     @Autowired
-    private lateinit var appService: WorkflowSchemeApplicationService
-
-    @Autowired
-    private lateinit var permissionResolver: WorkflowSchemePermissionResolver
-
-    @Autowired
     private lateinit var projectLookupPort: ProjectLookupPort
 
+    @Autowired
+    private lateinit var config: TestMvcConfig
+
     private lateinit var mockMvc: MockMvc
-    private lateinit var objectMapper: ObjectMapper
 
     private val projectId = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
     private val schemeId = WorkflowSchemeId(1L)
@@ -106,7 +162,9 @@ class ProjectWorkflowSchemeControllerTest {
     @BeforeEach
     fun setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(wac).build()
-        objectMapper = ObjectMapper().registerKotlinModule()
+        config.permResolverStub.reset()
+        config.appServiceStub.assignToProjectResponse = null
+        config.appServiceStub.findAssignedSchemeResponse = null
     }
 
     // ── Case 1. PUT /api/v1/projects/{projectKey}/workflow-scheme — 200 ───────
@@ -121,8 +179,7 @@ class ProjectWorkflowSchemeControllerTest {
         )
 
         every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
-        justRun { permissionResolver.requirePermission(any(), any(), any()) }
-        every { appService.assignToProject(any(), projectId, "ATLAS", schemeKey) } returns assignment
+        config.appServiceStub.assignToProjectResponse = assignment
 
         val body = """{"schemeKey":"software-scheme"}"""
 
@@ -152,8 +209,7 @@ class ProjectWorkflowSchemeControllerTest {
         )
 
         every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
-        justRun { permissionResolver.requirePermission(any(), any(), any()) }
-        every { appService.findAssignedScheme(projectId, "ATLAS") } returns scheme
+        config.appServiceStub.findAssignedSchemeResponse = scheme
 
         mockMvc.perform(get("/api/v1/projects/ATLAS/workflow-scheme"))
             .andExpect(status().isOk)
@@ -171,12 +227,9 @@ class ProjectWorkflowSchemeControllerTest {
             assignedAt = Instant.now(),
             assignedBy = UUID.fromString("00000000-0000-0000-0000-000000000000"),
         )
-        val permSlot = slot<WorkflowSchemePermission>()
-        val scopeSlot = slot<WorkflowSchemeScope>()
 
         every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
-        justRun { permissionResolver.requirePermission(any(), capture(permSlot), capture(scopeSlot)) }
-        every { appService.assignToProject(any(), any(), any(), any()) } returns assignment
+        config.appServiceStub.assignToProjectResponse = assignment
 
         val body = """{"schemeKey":"software-scheme"}"""
 
@@ -187,8 +240,9 @@ class ProjectWorkflowSchemeControllerTest {
         )
             .andExpect(status().isOk)
 
-        assertThat(permSlot.captured).isEqualTo(WorkflowSchemePermission.ASSIGN_SCHEME)
-        assertThat(scopeSlot.captured).isEqualTo(WorkflowSchemeScope.Project("ATLAS"))
+        assertThat(config.permResolverStub.callCount).isEqualTo(1)
+        assertThat(config.permResolverStub.capturedPermission).isEqualTo(WorkflowSchemePermission.ASSIGN_SCHEME)
+        assertThat(config.permResolverStub.capturedScope).isEqualTo(WorkflowSchemeScope.Project("ATLAS"))
     }
 
     // ── Case 4. GET — ASSIGN_SCHEME 권한 검증 호출 확인 ──────────────────────
@@ -205,18 +259,16 @@ class ProjectWorkflowSchemeControllerTest {
             updatedAt = Instant.now(),
             deletedAt = null,
         )
-        val permSlot = slot<WorkflowSchemePermission>()
-        val scopeSlot = slot<WorkflowSchemeScope>()
 
         every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
-        justRun { permissionResolver.requirePermission(any(), capture(permSlot), capture(scopeSlot)) }
-        every { appService.findAssignedScheme(any(), any()) } returns scheme
+        config.appServiceStub.findAssignedSchemeResponse = scheme
 
         mockMvc.perform(get("/api/v1/projects/ATLAS/workflow-scheme"))
             .andExpect(status().isOk)
 
-        assertThat(permSlot.captured).isEqualTo(WorkflowSchemePermission.ASSIGN_SCHEME)
-        assertThat(scopeSlot.captured).isEqualTo(WorkflowSchemeScope.Project("ATLAS"))
+        assertThat(config.permResolverStub.callCount).isEqualTo(1)
+        assertThat(config.permResolverStub.capturedPermission).isEqualTo(WorkflowSchemePermission.ASSIGN_SCHEME)
+        assertThat(config.permResolverStub.capturedScope).isEqualTo(WorkflowSchemeScope.Project("ATLAS"))
     }
 
     // ── Case 5. projectKey 에 해당하는 project 없으면 404 ─────────────────────
