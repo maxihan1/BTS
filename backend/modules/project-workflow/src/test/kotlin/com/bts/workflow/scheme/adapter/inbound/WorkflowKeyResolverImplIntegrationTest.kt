@@ -18,6 +18,7 @@ import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
+import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
@@ -128,6 +129,7 @@ class WorkflowKeyResolverImplIntegrationTest {
                     eventPublisher,
                     permissionResolver,
                     workflowRepo,
+                    issueTypeLookupPort = mockk(relaxed = true),
                 )
 
             val workflowResolver =

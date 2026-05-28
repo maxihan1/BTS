@@ -12,6 +12,7 @@ import com.bts.workflow.scheme.web.dto.CreateWorkflowSchemeRequest
 import com.bts.workflow.scheme.web.dto.MappingRequestDto
 import com.bts.workflow.scheme.web.dto.MappingResponse
 import com.bts.workflow.scheme.web.dto.UpdateWorkflowSchemeRequest
+import com.bts.workflow.scheme.web.dto.WorkflowSchemeDetailResponse
 import com.bts.workflow.scheme.web.dto.WorkflowSchemeResponse
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -88,31 +89,35 @@ class WorkflowSchemeController(
     }
 
     /**
-     * 활성 스킴 전체 목록을 반환한다.
+     * 활성 스킴 전체 목록을 카운트와 함께 반환한다.
      *
-     * @return 200 OK + [WorkflowSchemeResponse] 목록.
+     * usedByProjectsCount + mappingsCount 카운트를 동봉한다. mappings 는 빈 리스트.
+     *
+     * @return 200 OK + [WorkflowSchemeDetailResponse] 목록.
      */
     @GetMapping
-    fun list(): ResponseEntity<DataEnvelope<List<WorkflowSchemeResponse>>> {
+    fun list(): ResponseEntity<DataEnvelope<List<WorkflowSchemeDetailResponse>>> {
         log.debug("WorkflowSchemeController.list")
-        val schemes = applicationService.list().map { WorkflowSchemeResponse.from(it) }
+        val schemes = applicationService.listWithCounts()
         return ResponseEntity.ok(DataEnvelope(schemes))
     }
 
     /**
-     * 지정된 key 의 스킴을 단건 조회한다.
+     * 지정된 key 의 스킴을 매핑 + 카운트와 함께 단건 조회한다.
+     *
+     * mappings 리스트, usedByProjectsCount, mappingsCount 를 동봉한다 (PR #18 잠재 결함 정상화).
      *
      * @param schemeKey 조회할 스킴 키 (경로 변수).
-     * @return 200 OK + [WorkflowSchemeResponse] body.
+     * @return 200 OK + [WorkflowSchemeDetailResponse] body.
      * @throws com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException 스킴이 없을 때 → 404.
      */
     @GetMapping("/{schemeKey}")
     fun get(
         @PathVariable schemeKey: String,
-    ): ResponseEntity<DataEnvelope<WorkflowSchemeResponse>> {
+    ): ResponseEntity<DataEnvelope<WorkflowSchemeDetailResponse>> {
         log.debug("WorkflowSchemeController.get schemeKey={}", schemeKey)
-        val scheme = applicationService.find(WorkflowSchemeKey(schemeKey))
-        return ResponseEntity.ok(DataEnvelope(WorkflowSchemeResponse.from(scheme)))
+        val detail = applicationService.findDetail(WorkflowSchemeKey(schemeKey))
+        return ResponseEntity.ok(DataEnvelope(detail))
     }
 
     /**

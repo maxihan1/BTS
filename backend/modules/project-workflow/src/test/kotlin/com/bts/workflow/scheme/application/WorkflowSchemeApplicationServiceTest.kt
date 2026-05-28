@@ -438,7 +438,7 @@ class WorkflowSchemeApplicationServiceTest {
         } throws RuntimeException("WORKFLOW_PERMISSION_DENIED")
 
         val svcWithDeny =
-            WorkflowSchemeApplicationService(schemeRepo, assignmentRepo, mappingRepo, eventPublisher, denyingResolver, workflowRepo)
+            WorkflowSchemeApplicationService(schemeRepo, assignmentRepo, mappingRepo, eventPublisher, denyingResolver, workflowRepo, issueTypeLookupPort)
 
         assertThatThrownBy {
             svcWithDeny.assignToProject(actor, UUID.randomUUID(), "PROJ", WorkflowSchemeKey("software-scheme"))

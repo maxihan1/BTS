@@ -148,10 +148,10 @@ class WorkflowSchemeControllerTest {
     fun `GET 스킴 목록 — 200 + data 배열`() {
         val schemes =
             listOf(
-                buildScheme("software-scheme", "Software 스킴"),
-                buildScheme("simple-scheme", "단순 스킴"),
+                buildSchemeDetail(key = "software-scheme", name = "Software 스킴"),
+                buildSchemeDetail(key = "simple-scheme", name = "단순 스킴"),
             )
-        every { applicationService.list() } returns schemes
+        every { applicationService.listWithCounts() } returns schemes
 
         mockMvc.perform(get("/api/v1/workflow-schemes").accept(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk)
@@ -164,8 +164,9 @@ class WorkflowSchemeControllerTest {
 
     @Test
     fun `GET 스킴 단건 — 200 + key 포함`() {
-        val scheme = buildScheme("software-scheme", "Software 스킴")
-        every { applicationService.find(WorkflowSchemeKey("software-scheme")) } returns scheme
+        val schemeDetail =
+            buildSchemeDetail(key = "software-scheme", name = "Software 스킴")
+        every { applicationService.findDetail(WorkflowSchemeKey("software-scheme")) } returns schemeDetail
 
         mockMvc.perform(get("/api/v1/workflow-schemes/software-scheme").accept(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk)
@@ -237,7 +238,7 @@ class WorkflowSchemeControllerTest {
 
     @Test
     fun `GET 스킴 단건 — 없는 키 404 SCHEME_NOT_FOUND`() {
-        every { applicationService.find(WorkflowSchemeKey("missing-scheme")) } throws
+        every { applicationService.findDetail(WorkflowSchemeKey("missing-scheme")) } throws
             WorkflowSchemeNotFoundException(key = "missing-scheme")
 
         mockMvc.perform(get("/api/v1/workflow-schemes/missing-scheme").accept(MediaType.APPLICATION_JSON))
