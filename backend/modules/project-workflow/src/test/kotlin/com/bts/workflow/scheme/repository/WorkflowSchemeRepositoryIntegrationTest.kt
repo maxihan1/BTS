@@ -388,14 +388,41 @@ class WorkflowSchemeRepositoryIntegrationTest {
                 )
             }
 
-            // 할당 2건: project_id 9001, 9002 (cross-BC stub; FK 없음)
+            // projects 스텁 — V202 FK (project_id → projects.id) 통과용 (V001 있으면 no-op)
+            conn.createStatement().use { stmt ->
+                    stmt.execute(
+                        "CREATE TABLE IF NOT EXISTS projects (" +
+                            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), " +
+                            "key VARCHAR(10) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL, " +
+                            "key_sequence BIGINT NOT NULL DEFAULT 0, " +
+                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
+                            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
+                    )
+                }
+
+            // 할당 2건용 project fixture UUID (FK 통과용)
+            val projectUuid1 = "cccccccc-0000-0000-0000-000000000001"
+            val projectUuid2 = "cccccccc-0000-0000-0000-000000000002"
+            conn.createStatement().use { stmt ->
+                stmt.execute(
+                    """
+                    INSERT INTO projects (id, key, name)
+                    VALUES
+                        ('$projectUuid1', 'CGP1', 'Count Guard Project 1'),
+                        ('$projectUuid2', 'CGP2', 'Count Guard Project 2')
+                    ON CONFLICT DO NOTHING
+                    """.trimIndent(),
+                )
+            }
+
+            // 할당 2건: project_id UUID (V202 FK 준수)
             conn.createStatement().use { stmt ->
                 stmt.execute(
                     """
                     INSERT INTO project_workflow_scheme_assignments (project_id, workflow_scheme_id, assigned_by)
                     VALUES
-                        (9001, $schemeId, '00000000-0000-0000-0000-000000000001'),
-                        (9002, $schemeId, '00000000-0000-0000-0000-000000000002')
+                        ('$projectUuid1'::uuid, $schemeId, '00000000-0000-0000-0000-000000000001'),
+                        ('$projectUuid2'::uuid, $schemeId, '00000000-0000-0000-0000-000000000002')
                     ON CONFLICT (project_id) DO NOTHING
                     """.trimIndent(),
                 )
