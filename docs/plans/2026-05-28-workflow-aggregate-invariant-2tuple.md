@@ -267,6 +267,35 @@ raw grep 결과 (`grep -RIn "Workflow\.of" backend/modules/project-workflow/src/
 
 = 모두 `Workflow.of(...)` 통과 → invariant 정정 시 자동 적용. 기존 test 의 transition 정의가 같은 `(from, to)` 에 다른 `name` 을 보유한 경우는 invariant 강화 후 fail 가능 — 그러나 정책 정합 의도 본질이라 fail 발생 시 test 도 정합 정정 대상 (가능성 낮음, GREEN 후 grep 으로 확인).
 
+## verification 결과 (2026-05-28)
+
+### PASS
+
+- ✅ `./gradlew :modules:project-workflow:test` — BUILD SUCCESSFUL (4m 16s). `WorkflowAggregateTest` 8 case + `WorkflowPropertyTest` 모두 통과 (C1 dedup fix 효과).
+- ✅ `./gradlew :modules:issue-tracking:test` — BUILD SUCCESSFUL (1m 44s). cross-BC 회귀 0.
+- ✅ `./gradlew :modules:project-workflow:ktlintMainSourceSetCheck` — BUILD SUCCESSFUL. 본 PR 변경 영역 (Workflow.kt) 린트 통과.
+
+### PRE_EXISTING (본 PR 변경 무관, cleanup PR 위임)
+
+- ❌ `./gradlew :modules:project-workflow:ktlintTestSourceSetCheck` — 3 violations.
+  - `WorkflowKeyResolverImplIntegrationTest.kt:27` Unused import
+  - `WorkflowKeyResolverImplIntegrationTest.kt:396:26, :396:77` parameter-list-wrapping
+  - `git diff main..HEAD -- WorkflowKeyResolverImplIntegrationTest.kt` = 0 → main 동일 결함 → PRE_EXISTING 확정.
+- ❌ `./gradlew :modules:project-workflow:detekt` — 64 weighted issues. implementer 보고 + 본 PR 변경 영역 무관.
+
+### D5 옵션 C — cleanup PR 위임 (PR #29 패턴 일관)
+
+PR #29 의 learnings `PRE_EXISTING hot-fix D5 옵션 C 재확인` 패턴 적용.
+
+판별 절차 (5 초).
+- `git diff main..HEAD -- <file>` = 0 → PRE_EXISTING 확정
+- main 머지 차단 사유 = `ktlintMainSourceSetCheck` 만 (PR #29 시 관측). 본 PR `Main` 통과 → 머지 차단 사유 0
+- 본 PR 변경 영역 0 (모두 다른 파일) → hot-fix 자연스럽지 않음
+
+결정 = 본 PR 안 hot-fix 안 함. PR #29 §Remaining Work #2 의 cleanup PR 후보와 동일 항목으로 위임. 본 PR 머지 가능.
+
+> 추후 cleanup PR 시 본 PR 의 detekt 64 + ktlintTest 3 violations 일괄 해소 권장. detekt baseline 도입도 옵션.
+
 ## 리뷰 결과
 
 - **fast-track 사유**. `type=bugfix` → 분기표 §"bugfix/chore/qa = skip". 외부 plan-eng-review / plan-ceo-review / plan-design-review / autoplan 호출 없음. controller inline self-review 1단락 (PR #21~#29 일관 패턴).
