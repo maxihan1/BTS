@@ -9,14 +9,18 @@ import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
+import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
+import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.TransitionPlan
 import com.bts.shared.workflow.TransitionResult
+import com.bts.shared.workflow.WorkflowKeyResolver
+import com.bts.shared.workflow.WorkflowStartState
 import com.bts.shared.workflow.WorkflowTransitionPort
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
@@ -38,9 +42,10 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
     val eventPublisher = mockk<IssueEventPublisher>()
     val permissionResolver = mockk<IssuePermissionResolver>()
     val workflowPort = mockk<WorkflowTransitionPort>()
+    val workflowKeyResolver = mockk<WorkflowKeyResolver>()
     val clock = Clock.fixed(Instant.parse("2026-05-24T00:00:00Z"), ZoneOffset.UTC)
 
-    val sut = IssueApplicationService(repo, eventPublisher, permissionResolver, workflowPort, clock)
+    val sut = IssueApplicationService(repo, eventPublisher, permissionResolver, workflowPort, workflowKeyResolver, clock)
 
     val actor = ActorId(UUID.randomUUID())
     val issueKey = IssueKey("BTS-1")
@@ -63,7 +68,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
     )
 
     beforeEach {
-        clearMocks(repo, eventPublisher, permissionResolver, workflowPort, answers = false)
+        clearMocks(repo, eventPublisher, permissionResolver, workflowPort, workflowKeyResolver, answers = false)
     }
 
     describe("transitionIssue") {
@@ -95,6 +100,9 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                     permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
+                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "OPEN")
                 every { workflowPort.plan(any()) } returns TransitionResult.Success(plan)
                 every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion) } returns 1
                 every { repo.findByKey(issueKey) } returns updatedIssue
@@ -131,6 +139,88 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             }
         }
 
+        context("S5 — WorkflowKeyResolver 호출 계약") {
+            val request =
+                TransitionIssueRequest(
+                    workflowKey = "IGNORED",
+                    toStateKey = "IN_PROGRESS",
+                    transitionName = "start",
+                    expectedVersion = existingVersion,
+                )
+            val plan = TransitionPlan(toStateKey = "IN_PROGRESS", fieldChanges = emptyList(), emitEvents = emptyList())
+            val updatedIssue = makeIssue(state = "IN_PROGRESS", version = existingVersion + 1)
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
+                } returns true
+                every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
+                } returns WorkflowStartState(workflowKey = "RESOLVED-WF", startStateKey = "OPEN")
+                every { workflowPort.plan(any()) } returns TransitionResult.Success(plan)
+                every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion) } returns 1
+                every { repo.findByKey(issueKey) } returns updatedIssue
+                every { eventPublisher.publish(any()) } returns Unit
+            }
+
+            it("workflowKeyResolver.resolveStart 를 issueKey.projectPrefix 로 호출한다") {
+                sut.transitionIssue(actor, issueKey, request)
+                verify {
+                    workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
+                }
+            }
+
+            it("resolver 가 반환한 workflowKey 를 workflowPort.plan 에 전달한다 (request.workflowKey 하드코딩 아님)") {
+                sut.transitionIssue(actor, issueKey, request)
+                verify {
+                    workflowPort.plan(match { req -> req.workflowKey == "RESOLVED-WF" })
+                }
+            }
+        }
+
+        context("S6 — WorkflowSchemeNoDefaultException → IssueWorkflowNotConfiguredException 변환") {
+            val request =
+                TransitionIssueRequest(
+                    workflowKey = "DEFAULT",
+                    toStateKey = "IN_PROGRESS",
+                    transitionName = "start",
+                    expectedVersion = existingVersion,
+                )
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
+                } returns true
+                every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
+                // WorkflowSchemeNoDefaultException 을 직접 import 하면 BC 격리 위반이므로
+                // GREEN 구현체가 javaClass.simpleName 으로 감지하는 것을 시뮬레이션하기 위해
+                // simpleName 이 "WorkflowSchemeNoDefaultException" 인 named class 를 테스트 companion 에 정의한다.
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
+                } throws WorkflowSchemeNoDefaultException("software-default")
+            }
+
+            it("IssueWorkflowNotConfiguredException 을 던진다") {
+                shouldThrow<IssueWorkflowNotConfiguredException> {
+                    sut.transitionIssue(actor, issueKey, request)
+                }
+            }
+
+            it("예외에 projectKey 가 포함된다") {
+                val ex =
+                    shouldThrow<IssueWorkflowNotConfiguredException> {
+                        sut.transitionIssue(actor, issueKey, request)
+                    }
+                ex.message shouldContain "BTS"
+            }
+
+            it("이벤트가 발행되지 않는다") {
+                runCatching { sut.transitionIssue(actor, issueKey, request) }
+                verify(exactly = 0) { eventPublisher.publish(any()) }
+            }
+        }
+
         context("S2 — TransitionResult.ValidatorFailure 반환 시 IssueTransitionNotAllowedException") {
             val request =
                 TransitionIssueRequest(
@@ -145,6 +235,9 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                     permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
+                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "OPEN")
                 every { workflowPort.plan(any()) } returns TransitionResult.ValidatorFailure("조건 X 위반")
             }
 
@@ -186,6 +279,9 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                     permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
+                } returns WorkflowStartState(workflowKey = "ATLAS", startStateKey = "OPEN")
                 every { workflowPort.plan(any()) } returns TransitionResult.WorkflowNotFound("ATLAS")
             }
 
@@ -219,6 +315,9 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                     permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
+                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "OPEN")
                 every { workflowPort.plan(any()) } returns TransitionResult.ExpressionTimeout("SpEL timeout")
             }
 
@@ -253,6 +352,9 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                     permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
+                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "OPEN")
                 every { workflowPort.plan(any()) } returns TransitionResult.Success(plan)
                 every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion) } returns 0
             }
@@ -292,3 +394,13 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         }
     }
 })
+
+/**
+ * project-workflow BC 의 WorkflowSchemeNoDefaultException 을 issue-tracking 테스트에서
+ * BC 격리 위반 없이 시뮬레이션하기 위한 스텁 예외.
+ *
+ * GREEN 구현체는 javaClass.simpleName == "WorkflowSchemeNoDefaultException" 으로 감지한다.
+ * 이 클래스의 simpleName 이 동일하므로 단위 테스트에서 동일한 감지 경로가 활성화된다.
+ */
+private class WorkflowSchemeNoDefaultException(schemeKey: String) :
+    RuntimeException("No default mapping for: $schemeKey")
