@@ -1,0 +1,373 @@
+// 워크플로우 스킴 + 이슈 타입 MSW 핸들러 단위 테스트 — happy + error 시나리오 검증
+import { setupServer } from 'msw/node'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { schemeHandlers } from '../scheme-handlers'
+import { issueTypeHandlers } from '../issue-type-handlers'
+
+const server = setupServer(...schemeHandlers, ...issueTypeHandlers)
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+afterEach(() => server.resetHandlers())
+afterAll(() => server.close())
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/workflow-schemes — 목록 조회
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/v1/workflow-schemes — 목록 조회', () => {
+  it('S1-1 happy: 6개 스킴 배열을 { data: [...] } 형태로 반환한다', async () => {
+    const res = await fetch('/api/v1/workflow-schemes')
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: unknown[] }
+    expect(Array.isArray(body.data)).toBe(true)
+    expect((body.data as unknown[]).length).toBeGreaterThanOrEqual(6)
+  })
+
+  it('S1-2 happy: 각 스킴은 schemeKey, name, usedByProjectsCount, mappingsCount 필드를 가진다', async () => {
+    const res = await fetch('/api/v1/workflow-schemes')
+    const body = await res.json() as { data: Array<{ schemeKey: string; name: string; usedByProjectsCount: number; mappingsCount: number }> }
+
+    for (const scheme of body.data) {
+      expect(typeof scheme.schemeKey).toBe('string')
+      expect(typeof scheme.name).toBe('string')
+      expect(typeof scheme.usedByProjectsCount).toBe('number')
+      expect(typeof scheme.mappingsCount).toBe('number')
+    }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/workflow-schemes/:schemeKey — 단건 조회
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/v1/workflow-schemes/:schemeKey — 단건 조회', () => {
+  it('S2-1 happy: 존재하는 schemeKey로 조회하면 200 + mappings 포함 상세를 반환한다', async () => {
+    const res = await fetch('/api/v1/workflow-schemes/software-default-scheme')
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { schemeKey: string; mappings: unknown[] } }
+    expect(body.data.schemeKey).toBe('software-default-scheme')
+    expect(Array.isArray(body.data.mappings)).toBe(true)
+    expect((body.data.mappings as unknown[]).length).toBeGreaterThan(0)
+  })
+
+  it('S2-2 error-404: 존재하지 않는 schemeKey는 404를 반환한다', async () => {
+    const res = await fetch('/api/v1/workflow-schemes/not-exist-scheme')
+
+    expect(res.status).toBe(404)
+    const body = await res.json() as { errorCode: string }
+    expect(body.errorCode).toBe('SCHEME_NOT_FOUND')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/workflow-schemes — 스킴 생성
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('POST /api/v1/workflow-schemes — 스킴 생성', () => {
+  it('S3-1 happy: 유효한 body로 생성하면 201 + 생성된 스킴을 반환한다', async () => {
+    const res = await fetch('/api/v1/workflow-schemes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '신규 스킴', description: '테스트용 스킴' }),
+    })
+
+    expect(res.status).toBe(201)
+    const body = await res.json() as { data: { schemeKey: string; name: string } }
+    expect(body.data.name).toBe('신규 스킴')
+    expect(typeof body.data.schemeKey).toBe('string')
+  })
+
+  it('S3-2 error-403: X-Mock-Forbidden 헤더가 있으면 403을 반환한다', async () => {
+    const res = await fetch('/api/v1/workflow-schemes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Mock-Forbidden': 'true' },
+      body: JSON.stringify({ name: '신규 스킴' }),
+    })
+
+    expect(res.status).toBe(403)
+    const body = await res.json() as { errorCode: string }
+    expect(body.errorCode).toBe('FORBIDDEN')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUT /api/v1/workflow-schemes/:schemeKey — 스킴 수정
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PUT /api/v1/workflow-schemes/:schemeKey — 스킴 수정', () => {
+  it('S4-1 happy: 커스텀 스킴 이름 수정 → 200 + 갱신된 스킴 반환', async () => {
+    const res = await fetch('/api/v1/workflow-schemes/custom-scheme-alpha', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '수정된 이름' }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { schemeKey: string; name: string } }
+    expect(body.data.schemeKey).toBe('custom-scheme-alpha')
+    expect(body.data.name).toBe('수정된 이름')
+  })
+
+  it('S4-2 error-404: 존재하지 않는 스킴 수정 시 404를 반환한다', async () => {
+    const res = await fetch('/api/v1/workflow-schemes/not-exist-scheme', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '수정' }),
+    })
+
+    expect(res.status).toBe(404)
+    const body = await res.json() as { errorCode: string }
+    expect(body.errorCode).toBe('SCHEME_NOT_FOUND')
+  })
+
+  it('S4-3 error-409 SCHEME_STANDARD_FIELD_LOCKED: 표준 스킴의 name 수정 시 409를 반환한다', async () => {
+    const res = await fetch('/api/v1/workflow-schemes/software-default-scheme', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '바꾸려는 표준 이름' }),
+    })
+
+    expect(res.status).toBe(409)
+    const body = await res.json() as { errorCode: string }
+    expect(body.errorCode).toBe('SCHEME_STANDARD_FIELD_LOCKED')
+  })
+
+  it('S4-4 happy: 표준 스킴의 description 수정은 허용된다 (200)', async () => {
+    const res = await fetch('/api/v1/workflow-schemes/software-default-scheme', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: '설명만 변경' }),
+    })
+
+    expect(res.status).toBe(200)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/v1/workflow-schemes/:schemeKey — 스킴 삭제
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('DELETE /api/v1/workflow-schemes/:schemeKey — 스킴 삭제', () => {
+  it('S5-1 happy: 사용되지 않는 커스텀 스킴 삭제 → 204', async () => {
+    const res = await fetch('/api/v1/workflow-schemes/custom-scheme-beta', {
+      method: 'DELETE',
+    })
+
+    expect(res.status).toBe(204)
+  })
+
+  it('S5-2 error-409 SCHEME_IN_USE: usedByProjectsCount > 0 인 스킴 삭제 시 409를 반환한다', async () => {
+    const res = await fetch('/api/v1/workflow-schemes/custom-scheme-alpha', {
+      method: 'DELETE',
+    })
+
+    expect(res.status).toBe(409)
+    const body = await res.json() as { errorCode: string }
+    expect(body.errorCode).toBe('SCHEME_IN_USE')
+  })
+
+  it('S5-3 error-409 SCHEME_STANDARD_NOT_DELETABLE: 표준 스킴 삭제 시 409를 반환한다', async () => {
+    const res = await fetch('/api/v1/workflow-schemes/software-default-scheme', {
+      method: 'DELETE',
+    })
+
+    expect(res.status).toBe(409)
+    const body = await res.json() as { errorCode: string }
+    expect(body.errorCode).toBe('SCHEME_STANDARD_NOT_DELETABLE')
+  })
+
+  it('S5-4 error-404: 존재하지 않는 스킴 삭제 시 404를 반환한다', async () => {
+    const res = await fetch('/api/v1/workflow-schemes/not-exist-scheme', {
+      method: 'DELETE',
+    })
+
+    expect(res.status).toBe(404)
+    const body = await res.json() as { errorCode: string }
+    expect(body.errorCode).toBe('SCHEME_NOT_FOUND')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/workflow-schemes/:schemeKey/mappings — 매핑 추가
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('POST /api/v1/workflow-schemes/:schemeKey/mappings — 매핑 추가', () => {
+  it('S6-1 happy: 새 매핑 추가 → 201 + 생성된 매핑 반환', async () => {
+    const res = await fetch('/api/v1/workflow-schemes/custom-scheme-beta/mappings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ issueTypeKey: 'epic', workflowKey: 'kanban-basic' }),
+    })
+
+    expect(res.status).toBe(201)
+    const body = await res.json() as { data: { issueTypeKey: string; workflowKey: string } }
+    expect(body.data.issueTypeKey).toBe('epic')
+    expect(body.data.workflowKey).toBe('kanban-basic')
+  })
+
+  it('S6-2 error-409 MAPPING_DUPLICATE: 이미 존재하는 issueTypeKey 매핑 추가 시 409를 반환한다', async () => {
+    const res = await fetch('/api/v1/workflow-schemes/software-default-scheme/mappings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ issueTypeKey: 'bug', workflowKey: 'software-default' }),
+    })
+
+    expect(res.status).toBe(409)
+    const body = await res.json() as { errorCode: string }
+    expect(body.errorCode).toBe('MAPPING_DUPLICATE')
+  })
+
+  it('S6-3 error-409 MAPPING_DEFAULT_DUPLICATE: default 매핑(issueTypeKey: null)이 이미 있을 때 409를 반환한다', async () => {
+    const res = await fetch('/api/v1/workflow-schemes/software-default-scheme/mappings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ issueTypeKey: null, workflowKey: 'software-default' }),
+    })
+
+    expect(res.status).toBe(409)
+    const body = await res.json() as { errorCode: string }
+    expect(body.errorCode).toBe('MAPPING_DEFAULT_DUPLICATE')
+  })
+
+  it('S6-4 error-404: 존재하지 않는 스킴에 매핑 추가 시 404를 반환한다', async () => {
+    const res = await fetch('/api/v1/workflow-schemes/not-exist-scheme/mappings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ issueTypeKey: 'bug', workflowKey: 'software-default' }),
+    })
+
+    expect(res.status).toBe(404)
+    const body = await res.json() as { errorCode: string }
+    expect(body.errorCode).toBe('SCHEME_NOT_FOUND')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/v1/workflow-schemes/:schemeKey/mappings/:mappingId — 매핑 삭제
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('DELETE /api/v1/workflow-schemes/:schemeKey/mappings/:mappingId — 매핑 삭제', () => {
+  it('S7-1 happy: 존재하는 mappingId 삭제 → 204', async () => {
+    const res = await fetch('/api/v1/workflow-schemes/software-default-scheme/mappings/10', {
+      method: 'DELETE',
+    })
+
+    expect(res.status).toBe(204)
+  })
+
+  it('S7-2 error-404 (스킴 미존재): 존재하지 않는 스킴의 매핑 삭제 → 404', async () => {
+    const res = await fetch('/api/v1/workflow-schemes/not-exist-scheme/mappings/1', {
+      method: 'DELETE',
+    })
+
+    expect(res.status).toBe(404)
+    const body = await res.json() as { errorCode: string }
+    expect(body.errorCode).toBe('SCHEME_NOT_FOUND')
+  })
+
+  it('S7-3 error-404 (매핑 미존재): 존재하지 않는 mappingId 삭제 → 404', async () => {
+    const res = await fetch('/api/v1/workflow-schemes/software-default-scheme/mappings/9999', {
+      method: 'DELETE',
+    })
+
+    expect(res.status).toBe(404)
+    const body = await res.json() as { errorCode: string }
+    expect(body.errorCode).toBe('MAPPING_NOT_FOUND')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/projects/:projectKey/workflow-scheme — 프로젝트 스킴 할당 조회
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/v1/projects/:projectKey/workflow-scheme — 프로젝트 스킴 할당 조회', () => {
+  it('S8-1 happy: 할당된 프로젝트 조회 → 200 + AssignmentResponse', async () => {
+    const res = await fetch('/api/v1/projects/ATLAS/workflow-scheme')
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { projectKey: string; schemeKey: string; schemeName: string } }
+    expect(body.data.projectKey).toBe('ATLAS')
+    expect(typeof body.data.schemeKey).toBe('string')
+    expect(typeof body.data.schemeName).toBe('string')
+  })
+
+  it('S8-2 error-404: 할당 미존재 프로젝트 조회 → 404', async () => {
+    const res = await fetch('/api/v1/projects/UNASSIGNED/workflow-scheme')
+
+    expect(res.status).toBe(404)
+    const body = await res.json() as { errorCode: string }
+    expect(body.errorCode).toBe('ASSIGNMENT_NOT_FOUND')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUT /api/v1/projects/:projectKey/workflow-scheme — 프로젝트 스킴 할당 갱신 (UPSERT)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PUT /api/v1/projects/:projectKey/workflow-scheme — 프로젝트 스킴 할당 갱신', () => {
+  it('S9-1 happy: 유효한 schemeKey로 UPSERT → 200 + AssignmentResponse', async () => {
+    const res = await fetch('/api/v1/projects/ATLAS/workflow-scheme', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schemeKey: 'service-management-scheme' }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { projectKey: string; schemeKey: string } }
+    expect(body.data.projectKey).toBe('ATLAS')
+    expect(body.data.schemeKey).toBe('service-management-scheme')
+  })
+
+  it('S9-2 error-404: 존재하지 않는 schemeKey로 할당 시 404를 반환한다', async () => {
+    const res = await fetch('/api/v1/projects/ATLAS/workflow-scheme', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schemeKey: 'not-exist-scheme' }),
+    })
+
+    expect(res.status).toBe(404)
+    const body = await res.json() as { errorCode: string }
+    expect(body.errorCode).toBe('SCHEME_NOT_FOUND')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/issue-types — 이슈 타입 목록 조회
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/v1/issue-types — 이슈 타입 목록 조회', () => {
+  it('S10-1 happy: 5 표준 이슈 타입을 { data: [...] } 형태로 반환한다', async () => {
+    const res = await fetch('/api/v1/issue-types')
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: Array<{ key: string; name: string }> }
+    expect(Array.isArray(body.data)).toBe(true)
+    expect(body.data).toHaveLength(5)
+  })
+
+  it('S10-2 happy: 각 이슈 타입은 key, name, description, iconUrl 필드를 가진다', async () => {
+    const res = await fetch('/api/v1/issue-types')
+    const body = await res.json() as { data: Array<{ key: string; name: string; description: string; iconUrl: string | null }> }
+
+    for (const issueType of body.data) {
+      expect(typeof issueType.key).toBe('string')
+      expect(typeof issueType.name).toBe('string')
+      expect(typeof issueType.description).toBe('string')
+      expect(issueType.iconUrl === null || typeof issueType.iconUrl === 'string').toBe(true)
+    }
+  })
+
+  it('S10-3 happy: bug, story, task, epic, subtask key를 모두 포함한다', async () => {
+    const res = await fetch('/api/v1/issue-types')
+    const body = await res.json() as { data: Array<{ key: string }> }
+    const keys = body.data.map((t) => t.key)
+
+    expect(keys).toContain('bug')
+    expect(keys).toContain('story')
+    expect(keys).toContain('task')
+    expect(keys).toContain('epic')
+    expect(keys).toContain('subtask')
+  })
+})
