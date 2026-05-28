@@ -118,6 +118,11 @@ dependencies {
     jooqGenerator("org.postgresql:postgresql:42.7.3")
 
     // ── 테스트 ─────────────────────────────────────────────────────────────────
+    // project-workflow — 통합 테스트(IssueControllerTransitionIntegrationTest)에서 실제 wire 필요.
+    // production code 의존 아님 (ArchUnit IssueBcArchTest 가 DoNotIncludeTests() 로 테스트 클래스 제외하므로 룰 위반 아님).
+    // shared-kernel SPI 경계를 넘어 두 BC 전체 스택을 E2E 검증하기 위한 testImplementation 선언.
+    testImplementation(project(":modules:project-workflow"))
+
     // Spring Boot 테스트 슬라이스 (JUnit Vintage 제외 — Kotest runner 사용)
     testImplementation("org.springframework.boot:spring-boot-starter-test") {
         exclude(group = "org.junit.vintage", module = "junit-vintage-engine")
