@@ -121,17 +121,22 @@ const projectWorkflowSchemeSettingsRoute = createRoute({
  * requireAuth 라우트: /dashboard · /issues · /issues/* · /admin/* · /projects/*\/settings/*
  */
 export const routeTree = rootRoute.addChildren([
+  // 공통 — 인증/진입점
   indexRoute,
   loginRoute,
   dashboardRoute,
-  workflowsKeyRoute,
+  // issue-tracking BC
   issuesIndexRoute,
   issuesNewRoute,
   issuesKeyRoute,
+  // project-workflow BC — 관리자 스킴 관리 (/admin/workflow-schemes/new은 /:schemeKey보다 먼저 등록)
   adminWorkflowSchemesRoute,
   adminWorkflowSchemesNewRoute,
   adminWorkflowSchemesDetailRoute,
+  // project-workflow BC — 프로젝트별 스킴 할당
   projectWorkflowSchemeSettingsRoute,
+  // workflows (레거시 workflow 상세 — 향후 마이그레이션 예정)
+  workflowsKeyRoute,
 ])
 
 /** 앱 전역 라우터 인스턴스 — Register 모듈 증강으로 전체 타입 안전 navigate 보장 */
