@@ -1,5 +1,5 @@
-// IssueController POST /issues/{key}/transition 통합 테스트 — Task 6 RED
-// workflowKey 자동 결정 E2E + IssueWorkflowNotConfiguredException → 422 매핑 검증
+// IssueController POST /issues/{key}/transition 통합 테스트 — production 시나리오 회귀 가드
+// 우회 seed(transitionName=toStateKey) 해제 + software-default.yaml 정렬 (Task 5)
 
 package com.bts.issue.adapter.inbound.rest
 
@@ -71,10 +71,17 @@ import java.util.UUID
  * 실제 Testcontainers PostgreSQL + 두 BC(issue-tracking, project-workflow) 전체 스택 wire.
  * Spring AOP @Transactional 이 실제로 동작하도록 @EnableTransactionManagement 포함 컨텍스트 사용.
  *
- * ## 검증 시나리오 (Task 6 명세 3건)
- * - IT-1. 정상 전이 — open → in_progress, workflowKey 자동 결정 (하드코딩 "DEFAULT" 아님)
+ * ## 검증 시나리오 (Task 5 — production 시나리오 회귀 가드)
+ * - S1. happy path — open → in_progress 200 OK, software-default.yaml 정렬 시드
+ * - S3. invalid transition — open → in_review 미정의 → 409 TRANSITION_NOT_ALLOWED
+ * - S4. version conflict — expectedVersion=1 / DB version=2 → 409 VERSION_CONFLICT
  * - IT-2. 프로젝트에 기본 워크플로우 배정 없음 → 422 WORKFLOW_NOT_CONFIGURED
  * - IT-3. 전이 후 IssueResponse.currentStateKey 소문자 확인
+ *
+ * ## 우회 seed 해제 (Task 5 변형 TDD)
+ * PR #27 시점의 통합 테스트는 transitionName=toStateKey 우회 seed 로 production 함정을 가렸음.
+ * 본 파일은 그 우회를 제거하고 software-default.yaml 실제 transition name ("Start Work" 등) 으로 정렬.
+ * Task 1~4 GREEN (f1e99d9, 2392cd7, 9d77156, 9c35c1f) 이 이미 적용된 상태에서 PASS = BLOCKER 1 fix 완료 증거.
  *
  * ## 마이그레이션 전략
  * issue-tracking V001~V004 + project-workflow V200~V202 를 같은 컨테이너에 순차 적용.
@@ -332,13 +339,16 @@ class IssueControllerTransitionIntegrationTest {
         }
     }
 
-    // ── IT-1. 정상 전이 — open → in_progress, workflowKey 자동 결정 ─────────────
+    // ── S1. happy path — open → in_progress, software-default.yaml 정렬 시드 ────
 
     /**
+     * S1 production 시나리오 회귀 가드.
+     *
      * Given  TRANSITION 프로젝트에 이슈 1건 삽입 (currentStateKey = "open")
-     * When   POST /api/v1/issues/TRANSITION-1/transition { toStatusKey: "in_progress" }
-     * Then   200 OK + data.currentStateKey == "in_progress"
-     *        workflowKey 는 service 가 WorkflowKeyResolver 로 자동 결정 ("DEFAULT" 하드코딩 아님)
+     * When   POST /api/v1/issues/TRANSITION-1/transition { toStatusKey: "in_progress", expectedVersion: 1 }
+     * Then   200 OK + data.currentStateKey == "in_progress", version == 2
+     *        software-default.yaml 의 "Start Work" 전이 name 과 (from,to) 2-tuple 매칭으로 성공.
+     *        우회 seed (transitionName=toStateKey) 없이도 정상 동작함을 검증.
      */
     @Test
     fun `POST issues key transition succeeds open to in_progress with auto-resolved workflow`() {
@@ -397,6 +407,70 @@ class IssueControllerTransitionIntegrationTest {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.currentStateKey").value("in_progress"))
+    }
+
+    // ── S3. invalid transition — open → in_review 미정의 → 409 ──────────────────
+
+    /**
+     * S3 production 시나리오 회귀 가드.
+     *
+     * Given  TRANSITION 프로젝트에 이슈 1건 삽입 (currentStateKey = "open")
+     * When   POST /api/v1/issues/TRANSITION-1/transition { toStatusKey: "in_review", expectedVersion: 1 }
+     * Then   409 Conflict + errorCode == "TRANSITION_NOT_ALLOWED"
+     *        software-default.yaml 에 from=open, to=in_review 전이가 정의되지 않음.
+     *        (from,to) 2-tuple 매칭이 실패하여 전이 거부됨을 검증.
+     */
+    @Test
+    fun `POST issues key transition returns 409 when transition is not defined in workflow`() {
+        val issueKey = insertIssue(NORMAL_PROJECT_KEY, "전이 미정의 검증용 이슈", "open")
+
+        val body = mapOf("toStatusKey" to "in_review", "expectedVersion" to 1)
+
+        mockMvc.perform(
+            post("/api/v1/issues/$issueKey/transition")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("TRANSITION_NOT_ALLOWED"))
+    }
+
+    // ── S4. version conflict — expectedVersion 불일치 → 409 ───────────────────
+
+    /**
+     * S4 production 시나리오 회귀 가드.
+     *
+     * Given  TRANSITION 프로젝트에 이슈 1건 삽입 (currentStateKey = "open", version=1)
+     *        DB 버전을 2로 직접 업데이트 (낙관락 충돌 시뮬레이션)
+     * When   POST /api/v1/issues/TRANSITION-1/transition { toStatusKey: "in_progress", expectedVersion: 1 }
+     * Then   409 Conflict + errorCode == "VERSION_CONFLICT"
+     *        DB version=2 / client expectedVersion=1 불일치로 낙관락 충돌.
+     */
+    @Test
+    fun `POST issues key transition returns 409 when version conflict occurs`() {
+        val issueKey = insertIssue(NORMAL_PROJECT_KEY, "버전 충돌 검증용 이슈", "open")
+
+        // DB 버전을 2로 강제 업데이트 — 낙관락 충돌 유발
+        DriverManager.getConnection(
+            TestConfig.postgres.jdbcUrl,
+            TestConfig.postgres.username,
+            TestConfig.postgres.password,
+        ).use { conn ->
+            conn.prepareStatement("UPDATE issues SET version = 2 WHERE key = ?").use { stmt ->
+                stmt.setString(1, issueKey)
+                stmt.executeUpdate()
+            }
+        }
+
+        val body = mapOf("toStatusKey" to "in_progress", "expectedVersion" to 1)
+
+        mockMvc.perform(
+            post("/api/v1/issues/$issueKey/transition")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("VERSION_CONFLICT"))
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
@@ -468,11 +542,12 @@ class IssueControllerTransitionIntegrationTest {
             val inReviewId = insertState(conn, wfId, "in_review", "In Review", "IN_PROGRESS", 2)
             val doneId = insertState(conn, wfId, "done", "Done", "DONE", 3)
 
-            // transitionName = toStateKey 로 일치시켜 WorkflowEngine.resolveTransition 검색 가능하게 설정.
-            // IssueController 가 transitionName = request.toStatusKey 를 전달하므로 seed 도 이에 맞춤.
-            insertTransition(conn, wfId, openId, inProgressId, "in_progress")
-            insertTransition(conn, wfId, inProgressId, inReviewId, "in_review")
-            insertTransition(conn, wfId, inReviewId, doneId, "done")
+            // software-default.yaml 실제 transition name 사용 — 우회 seed 해제 (Task 5)
+            // WorkflowEngine 이 (from, to) 2-tuple 로 매칭하므로 name 은 사람 친화 라벨.
+            // 우회: transitionName=toStateKey 인위 맞춤 제거됨 (PR #17 c040e2d 함정 해소).
+            insertTransition(conn, wfId, openId, inProgressId, "Start Work")
+            insertTransition(conn, wfId, inProgressId, inReviewId, "Submit for Review")
+            insertTransition(conn, wfId, inReviewId, doneId, "Approve")
 
             // 3. software-scheme + default mapping → software-default
             conn.createStatement().use { stmt ->
