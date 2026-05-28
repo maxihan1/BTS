@@ -52,8 +52,8 @@ export function SchemeInUseModal({
             'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
           )}
         />
+        {/* Radix AlertDialog.Content는 기본적으로 role="alertdialog"를 제공한다 */}
         <AlertDialog.Content
-          role="alertdialog"
           aria-describedby={MODAL_DESCRIPTION_ID}
           className={cn(
             'fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2',

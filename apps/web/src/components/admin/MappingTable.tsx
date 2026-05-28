@@ -29,6 +29,16 @@ const WORKFLOW_KEYS = {
   list: ['workflows'] as const,
 }
 
+/** default 매핑 row 강조 CSS 클래스 */
+const DEFAULT_ROW_CLASS = 'bg-amber-50/50 dark:bg-amber-950/10'
+
+/** default 매핑 텍스트 강조 CSS 클래스 */
+const DEFAULT_TEXT_CLASS = 'font-medium text-amber-700 dark:text-amber-400'
+
+/** default 매핑 badge CSS 클래스 */
+const DEFAULT_BADGE_CLASS =
+  'inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Props 인터페이스
 // ─────────────────────────────────────────────────────────────────────────────
@@ -116,24 +126,18 @@ function MappingRow({
     <tr
       className={cn(
         'border-b border-border text-sm transition-colors',
-        mapping.isDefault && 'bg-amber-50/50 dark:bg-amber-950/10',
+        mapping.isDefault && DEFAULT_ROW_CLASS,
       )}
     >
       <td className="px-4 py-2.5">
-        <span
-          className={cn(
-            mapping.isDefault && 'font-medium text-amber-700 dark:text-amber-400',
-          )}
-        >
+        <span className={cn(mapping.isDefault && DEFAULT_TEXT_CLASS)}>
           {issueTypeDisplay}
         </span>
       </td>
       <td className="px-4 py-2.5 text-muted-foreground">{mapping.workflowName}</td>
       <td className="px-4 py-2.5 text-center">
         {mapping.isDefault && (
-          <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
-            기본
-          </span>
+          <span className={DEFAULT_BADGE_CLASS}>기본</span>
         )}
       </td>
       <td className="px-4 py-2.5">
