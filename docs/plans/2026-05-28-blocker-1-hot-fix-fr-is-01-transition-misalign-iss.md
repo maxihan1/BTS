@@ -76,9 +76,37 @@ PR #27 (FR-IS-01 transition wiring) 머지 직전 `/review` adversarial subagent
 
 
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-05-28-blocker-1-hot-fix-fr-is-01-transition-misalign-iss.md](../specs/2026-05-28-blocker-1-hot-fix-fr-is-01-transition-misalign-iss.md)
+
+### 결정 (Maxi 게이트1 확정 2026-05-28)
+
+**옵션 (b) — (from, to) 2 튜플 채택**. `WorkflowEngine.resolveTransition` 매칭 = `(fromStateKey, toStateKey)`. `WorkflowTransition.name` = 사람 친화 표시 라벨로 강등. `TransitionRequest.transitionName` 필드 제거. `WorkflowTransition.kt` KDoc 정정.
+
+### 핵심 시나리오 3줄 요약
+
+- happy path. `POST /api/v1/issues/{key}/transition body={toStatusKey, expectedVersion}` 200 OK + IssueTransitioned 이벤트 발행 (외부 contract 변경 0).
+- production 회귀 검증. `IssueControllerTransitionIntegrationTest` 우회 seed 제거 + 표준 software-default.yaml 시드 사용 → 사람 친화 라벨 ("Start Work") 과 클라이언트 입력 ("in_progress") mismatch 더 이상 발생 안 함.
+- yaml fail-fast. 같은 워크플로우 내 같은 `(from, to)` 중복 시 부팅 차단 (FR-6).
+
+### 변경 모듈
+
+- `backend/modules/shared-kernel/` — `TransitionRequest.kt` (필드 + Konform 제거)
+- `backend/modules/project-workflow/` — `WorkflowEngine.kt` (매칭 단순화), `WorkflowTransition.kt` (KDoc 정정), `YamlSeedService.kt` (검증 추가)
+- `backend/modules/issue-tracking/` — `IssueController.kt`, `IssueApplicationRequests.kt`, `IssueApplicationService.kt`, `IssueControllerTransitionIntegrationTest.kt` (우회 seed 제거)
+- `docs/adr/` — 신규 ADR 1건
+- `docs/plans/`, `docs/specs/` — 본 PR 산출물
+
+### ADR 신규
+
+`docs/adr/2026-05-28-workflow-transition-identity-policy.md`.
+
+## Brainstorming Check
+
+✅ 통과 — gap 0건 (1 iteration, fast-track inline 모드).
+
+상세. `docs/specs/2026-05-28-<slug>.md §Brainstorming Check`.
 
 ## Plan (← /bts-plan 채움)
 
