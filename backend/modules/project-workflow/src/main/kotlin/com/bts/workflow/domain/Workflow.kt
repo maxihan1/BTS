@@ -30,7 +30,7 @@ data class Workflow private constructor(
          * 2. [states] 내 key 중복이 0건이어야 한다.
          * 3. 모든 [transitions]의 [WorkflowTransition.fromStateKey] 가 [states] 키 집합 안에 있어야 한다.
          * 4. 모든 [transitions]의 [WorkflowTransition.toStateKey] 가 [states] 키 집합 안에 있어야 한다.
-         * 5. [transitions] 내 (fromStateKey, toStateKey, name) 조합 중복이 0건이어야 한다.
+         * 5. [transitions] 내 (fromStateKey, toStateKey) 조합 중복이 0건이어야 한다.
          *
          * @throws IllegalArgumentException 위 invariant 중 하나라도 위반 시
          */
