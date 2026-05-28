@@ -190,7 +190,6 @@ class IssueController(
         val appRequest =
             AppTransitionIssueRequest(
                 toStateKey = request.toStatusKey,
-                transitionName = request.toStatusKey,
                 expectedVersion = request.expectedVersion,
             )
         val response = service.transitionIssue(actor, issueKey, appRequest)
