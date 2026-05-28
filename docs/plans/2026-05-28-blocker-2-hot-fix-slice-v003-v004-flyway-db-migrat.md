@@ -316,7 +316,7 @@ Flyway `locations(...)` 가 replace 동작이므로 양쪽 path 모두 명시 �
 
 - **CONCERN-1**. `WorkflowSchemesMigrationIntegrationTest.kt:101` 의 주석 _"테스트. project-workflow Flyway 는 자체 classpath:db/migration 만 실행하므로 issue_types 없음"_ 은 의도된 분기 시나리오일 수 있음. Task 3 verifier 단계에서 _"단순 일괄 변경 대상인지 / 의도된 분기 보존 대상인지"_ 명시 확인. 분기 보존 대상이면 해당 IT 만 변경 제외.
 - **CONCERN-2**. `IssueControllerTransitionIntegrationTest.kt:500` 의 3행 locations 중 `classpath:db/migration` 행 제거 — 그 라인의 원 의도는 V003 (issue_types) 의 직접 적용. V003 이 `db/migration/issue-tracking/` 하위로 이동되면 같은 BC 폴더 location 으로 자동 적용 가능. Task 2 verifier 가 통합테스트 통과 (회귀 0) 확인.
-- **CONCERN-3**. `MigrationFileLayoutTest` 의 classpath 검증 범위 — `PathMatchingResourcePatternResolver` 가 issue-tracking 모듈 단독 실행 시 `:modules:issue-tracking` 의 main resources 만 검사. project-workflow IT 실행 시에는 cross-BC classpath 에 issue-tracking 의 resources 포함되므로 issue-tracking 의 V*.sql 도 검출. 의도된 동작 — 두 모듈 모두에서 회귀 가드 효과.
+- **CONCERN-3**. `MigrationFileLayoutTest` 의 classpath 검증 범위 — `PathMatchingResourcePatternResolver` 가 issue-tracking 모듈 단독 실행 시 `:modules:issue-tracking` 의 main resources 만 검사. project-workflow IT 실행 시에는 cross-BC classpath 에 issue-tracking 의 resources 포함되므로 issue-tracking 의 V*.sql 도 검출 가능. **정확 효과**. issue-tracking 모듈 단위 테스트 범위에서 회귀 가드 작동. project-workflow / identity-access 의 BC 폴더 정합성은 본 가드의 직접 효과 외 — 동일 패턴 ArchUnit 또는 모듈별 가드 별도 추가 검토 필요 (별 cleanup PR 또는 후속 patch).
 
 #### BLOCKER
 
