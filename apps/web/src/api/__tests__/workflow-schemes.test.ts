@@ -45,6 +45,7 @@ const schemeFixture: SchemeResponse = {
   schemeKey: 'scheme-atlas',
   name: 'Atlas 기본 스킴',
   description: 'Atlas 프로젝트 워크플로우 스킴',
+  isStandard: false,
   usedByProjectsCount: 2,
   mappingsCount: 3,
 }
@@ -53,6 +54,7 @@ const schemeDetailFixture: SchemeDetailResponse = {
   schemeKey: 'scheme-atlas',
   name: 'Atlas 기본 스킴',
   description: 'Atlas 프로젝트 워크플로우 스킴',
+  isStandard: false,
   usedByProjectsCount: 2,
   mappingsCount: 3,
   mappings: [mappingFixture, defaultMappingFixture],
@@ -68,12 +70,13 @@ const assignmentFixture: AssignmentResponse = {
 // T2-1. schemeResponseSchema — 5 필드 파싱
 // ─────────────────────────────────────────────────────────────────────────────
 describe('schemeResponseSchema', () => {
-  it('T2-1a: 5 필드가 모두 있는 SchemeResponse를 파싱한다', () => {
+  it('T2-1a: 6 필드가 모두 있는 SchemeResponse를 파싱한다', () => {
     const result = schemeResponseSchema.parse(schemeFixture)
 
     expect(result.schemeKey).toBe('scheme-atlas')
     expect(result.name).toBe('Atlas 기본 스킴')
     expect(result.description).toBe('Atlas 프로젝트 워크플로우 스킴')
+    expect(result.isStandard).toBe(false)
     expect(result.usedByProjectsCount).toBe(2)
     expect(result.mappingsCount).toBe(3)
   })
@@ -175,8 +178,9 @@ describe('toNullableIssueTypeKey', () => {
 // T2-6. 타입 컴파일 가드 — Input 인터페이스가 올바른 형태인지 컴파일 시 검증
 // ─────────────────────────────────────────────────────────────────────────────
 describe('Input 인터페이스 컴파일 가드', () => {
-  it('T2-6a: CreateSchemeInput 인터페이스가 name 필드를 가진다', () => {
-    const input: CreateSchemeInput = { name: '새 스킴', description: '설명' }
+  it('T2-6a: CreateSchemeInput 인터페이스가 schemeKey와 name 필드를 가진다', () => {
+    const input: CreateSchemeInput = { schemeKey: 'new-scheme', name: '새 스킴', description: '설명' }
+    expect(input.schemeKey).toBe('new-scheme')
     expect(input.name).toBe('새 스킴')
   })
 

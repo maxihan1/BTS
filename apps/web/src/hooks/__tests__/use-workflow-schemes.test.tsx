@@ -32,6 +32,7 @@ describe('useWorkflowSchemes', () => {
         schemeKey: 'software-default-scheme',
         name: '소프트웨어 개발 기본 스킴',
         description: '',
+        isStandard: true,
         usedByProjectsCount: 3,
         mappingsCount: 5,
       },
@@ -74,6 +75,7 @@ describe('useWorkflowSchemeDetail', () => {
       schemeKey: 'software-default-scheme',
       name: '소프트웨어 개발 기본 스킴',
       description: '설명',
+      isStandard: true,
       usedByProjectsCount: 1,
       mappingsCount: 1,
       mappings: [
@@ -111,6 +113,7 @@ describe('useCreateWorkflowScheme', () => {
       schemeKey: 'new-scheme',
       name: '새 스킴',
       description: '',
+      isStandard: false,
       usedByProjectsCount: 0,
       mappingsCount: 0,
     }
@@ -127,7 +130,7 @@ describe('useCreateWorkflowScheme', () => {
     })
 
     act(() => {
-      result.current.mutate({ name: '새 스킴' }, { onSuccess })
+      result.current.mutate({ schemeKey: 'new-scheme', name: '새 스킴' }, { onSuccess })
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
@@ -141,6 +144,7 @@ describe('useUpdateWorkflowScheme', () => {
       schemeKey: 'custom-scheme-beta',
       name: '수정된 스킴 이름',
       description: '수정된 설명',
+      isStandard: false,
       usedByProjectsCount: 0,
       mappingsCount: 1,
     }
@@ -215,6 +219,7 @@ describe('useAddMapping', () => {
       schemeKey: 'custom-scheme-beta',
       name: '파일럿',
       description: '',
+      isStandard: false,
       usedByProjectsCount: 0,
       mappingsCount: 1,
       mappings: [
@@ -272,6 +277,7 @@ describe('useAddMapping', () => {
       schemeKey: 'software-default-scheme',
       name: '소프트웨어',
       description: '',
+      isStandard: true,
       usedByProjectsCount: 3,
       mappingsCount: 1,
       mappings: [
@@ -336,6 +342,7 @@ describe('useAddMapping', () => {
       schemeKey: 'custom-scheme-beta',
       name: '파일럿',
       description: '',
+      isStandard: false,
       usedByProjectsCount: 0,
       mappingsCount: 1,
       mappings: [
@@ -400,6 +407,7 @@ describe('useRemoveMapping', () => {
       schemeKey: 'software-default-scheme',
       name: '소프트웨어',
       description: '',
+      isStandard: true,
       usedByProjectsCount: 3,
       mappingsCount: 2,
       mappings: [

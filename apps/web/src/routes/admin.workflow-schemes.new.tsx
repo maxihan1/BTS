@@ -71,7 +71,7 @@ export function WorkflowSchemeNewForm({ onSuccess }: WorkflowSchemeNewFormProps 
     const description = values.description?.trim() === '' ? undefined : values.description?.trim()
 
     mutate(
-      { name: values.name, description },
+      { schemeKey: values.schemeKey, name: values.name, description },
       {
         onSuccess: (created) => {
           onSuccess?.(created.schemeKey)

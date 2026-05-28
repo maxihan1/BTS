@@ -1,8 +1,8 @@
 // 워크플로우 스킴 좌 사이드바 — 표준/커스텀 group + ＋ 새 스킴 버튼 + 키보드 접근성
 import type { JSX, KeyboardEvent } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { SCHEME_KEYS } from '@/hooks/use-workflow-schemes'
+import { useWorkflowSchemes } from '@/hooks/use-workflow-schemes'
+import type { SchemeResponse } from '@/api/workflow-schemes'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 및 내부 타입
@@ -15,37 +15,8 @@ const GROUP_LABEL_CUSTOM = '커스텀'
 /** 로딩 스켈레톤 행 수 */
 const SKELETON_ROW_COUNT = 6
 
-/**
- * 사이드바 표시에 필요한 스킴 필드.
- * isStandard는 Zod SchemeResponse에 없으나 backend/MSW가 실제로 반환한다.
- * raw fetch 응답에서 직접 파싱해 보존한다.
- */
-interface SchemeSummary {
-  schemeKey: string
-  name: string
-  description: string
-  isStandard: boolean
-  usedByProjectsCount: number
-  mappingsCount: number
-}
-
-/** GET /api/v1/workflow-schemes 응답 래퍼 */
-interface SchemesListResponse {
-  data: SchemeSummary[]
-}
-
-/**
- * raw fetch로 스킴 목록을 조회한다.
- * isStandard 필드를 보존하기 위해 Zod 파싱을 거치지 않는다.
- */
-async function fetchSchemeSummaries(): Promise<SchemeSummary[]> {
-  const res = await fetch('/api/v1/workflow-schemes')
-  if (!res.ok) {
-    throw new Error(`스킴 목록 조회 실패: ${res.status}`)
-  }
-  const body = (await res.json()) as SchemesListResponse
-  return body.data
-}
+/** 사이드바 표시에 필요한 스킴 필드 — SchemeResponse 별칭 */
+type SchemeSummary = SchemeResponse
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props 인터페이스
@@ -205,7 +176,7 @@ function SidebarSkeleton(): JSX.Element {
 /**
  * 워크플로우 스킴 관리 admin 페이지 좌 사이드바.
  *
- * - raw fetch로 스킴 목록을 조회하며, isStandard 필드를 보존한다.
+ * - useWorkflowSchemes()로 스킴 목록을 조회한다.
  * - isStandard 기준으로 표준/커스텀 그룹을 분리 렌더한다.
  * - 커스텀 그룹 아래 「+ 새 스킴」 버튼을 표시한다.
  * - 선택된 스킴은 aria-current="true"로 강조한다.
@@ -216,11 +187,7 @@ export function WorkflowSchemeSidebar({
   onSelect,
   onAddNew,
 }: WorkflowSchemeSidebarProps): JSX.Element {
-  const { data: schemes, isPending } = useQuery({
-    queryKey: SCHEME_KEYS.list,
-    queryFn: fetchSchemeSummaries,
-    staleTime: 30_000,
-  })
+  const { data: schemes, isPending } = useWorkflowSchemes()
 
   if (isPending) {
     return (

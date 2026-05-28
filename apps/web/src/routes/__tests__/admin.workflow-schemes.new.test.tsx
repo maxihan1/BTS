@@ -33,6 +33,7 @@ const createdSchemeFixture: SchemeResponse = {
   schemeKey: 'my-new-scheme',
   name: '새 스킴',
   description: '설명',
+  isStandard: false,
   usedByProjectsCount: 0,
   mappingsCount: 0,
 }

@@ -152,7 +152,7 @@ export async function fetchWorkflowScheme(schemeKey: string): Promise<SchemeDeta
  * 워크플로우 스킴을 생성한다.
  * POST /api/v1/workflow-schemes → { data: SchemeResponse }
  *
- * @param input name(필수) + description(선택)
+ * @param input schemeKey(필수) + name(필수) + description(선택)
  * @returns 생성된 SchemeResponse
  */
 export async function createWorkflowScheme(input: CreateSchemeInput): Promise<SchemeResponse> {
