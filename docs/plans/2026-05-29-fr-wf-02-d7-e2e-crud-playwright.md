@@ -79,9 +79,41 @@ bts-domain SKILL.md §Fast-track 스킵 조건은 명시적으로 `chore/bugfix`
 - 기존 결정 충돌. 없음
 - glossary 갱신. 본 PR 영역 아님 (Drift-1 의 후속 PR 대상)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-05-29-fr-wf-02-d7-e2e-crud-playwright.md](../specs/2026-05-29-fr-wf-02-d7-e2e-crud-playwright.md)
+
+핵심 5 시나리오 (D6 spec S1~S10 매핑).
+
+- E2E-1 **스킴 CRUD** (D6 S1+S2+S3+PUT). 목록 → 생성 → 상세 진입 → name 수정 → 좌 네비 카운트 +1 갱신
+- E2E-2 **매핑 편집** (D6 S4+S5+S6). 매핑 추가 (낙관적) → 삭제 → default mapping sentinel `__default__` → POST body `null` 변환
+- E2E-3 **표준 스킴 보호** (D6 S7). 삭제 disabled + tooltip / key·is_default read-only / name·description 편집 자유 (D11 결정 반영)
+- E2E-4 **사용 중 삭제 차단 모달** (D6 S8). 409 SCHEME_IN_USE → SchemeInUseModal `usedByProjects` link → 프로젝트 스킴 할당 화면 navigate
+- E2E-5 **프로젝트 스킴 할당** (D6 S9+S10). PUT UPSERT 첫 할당 / GET 404 → 자동 할당 안내 카드
+
+**모드**. MSW-based (`pnpm dev` + scheme-handlers 9개 + scheme-fixtures). 백엔드 기동 무관.
+**fixture 1 신규**. `e2e/fixtures/workflow-scheme-fixtures.ts` (loginAsAdmin + navigate helpers + i18nLabels 재노출).
+
+## Brainstorming Check
+
+controller inline brainstorming (D6 spec line 156 패턴 따름).
+
+### 🚨 BLOCKER 1건 (게이트 1 결정)
+
+- **G-BLOCKER-1. 셀렉터 정본화 정책 (FR3) 결정 필요**. workflow-scheme UI 의 한국어 strings 가 모두 hardcoded (PR #22 §F4 학습과 어긋남). 옵션 3안 — (A) 본 PR 에서 i18n 추출 동반 task 3~5 추가, (B) E2E 가 hardcoded literal 직접 사용 + 후속 i18n migration PR 위임, (C) 셀렉터 영역만 const file export (최소 추출). spec §FR3 + §제약 조건 + §Brainstorming Check 명시.
+
+### gap 6건 (BLOCKER 아님, plan 단계 흡수)
+
+- G1. `/api/v1/issue-types` MSW handler 위치 확인 (scheme-handlers 외)
+- G2. scheme-fixtures 의 현재 카운트 (표준 4 + 커스텀 2) 가 시나리오 가정과 일치 확인
+- G3. SchemeInUseModal 의 `usedByProjects` link (체크포인트 C4) — fixture 빈 list 검증
+- G4. TDD 변형 — UI 사전 존재로 "RED 자연 발생" 가설, plan §Task 본문에 사유 명시 (learnings 2026-05-28 Flyway recursive 사례 패턴)
+- G5. loginAsAlice 의 admin 권한 가정 확인 (AlwaysAllow stub 단계 추정)
+- G6. `pnpm test:e2e` 전체 duration baseline 측정 (PR #32 머지 후)
+
+### Final
+
+✅ 통과 (1 iteration, BLOCKER 1 + gap 6 plan 흡수).
 
 ## Plan (← /bts-plan 채움)
 
