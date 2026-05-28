@@ -169,6 +169,15 @@ class YamlSeedService(
             error("워크플로우 YAML '$key' 검증 실패: ${result.errors}")
         }
 
+        val duplicates =
+            dto.transitions
+                .groupBy { it.from to it.to }
+                .filter { it.value.size > 1 }
+        if (duplicates.isNotEmpty()) {
+            val dup = duplicates.keys.first().let { (f, t) -> "($f,$t)" }
+            error("Workflow '${dto.key}' has duplicate (from, to)=$dup")
+        }
+
         return dto
     }
 
