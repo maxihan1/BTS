@@ -49,7 +49,13 @@ import java.util.UUID
  * @param mappingRepo 스킴-이슈타입 매핑 Repository.
  * @param eventPublisher 워크플로우 스킴 도메인 이벤트 pgmq publisher (Propagation.MANDATORY).
  * @param permissionResolver 스킴 권한 평가 outbound port.
+ *
+ * @suppress TooManyFunctions — Scheme CRUD(create/find/update/softDelete/list) 5 +
+ * Mapping 관리(addMapping/addMappingByKeys/deleteMapping) 3 + Assignment(assignToProject/findAssignedScheme) 2
+ * + private helper(validateStandardFieldNotChanged) 1 = 11개. 스킴 Application Service 의 본질적 use case 범위.
+ * 별도 서비스로 분리하면 하나의 트랜잭션 경계가 깨지거나 순환 의존이 발생한다.
  */
+@Suppress("TooManyFunctions")
 @Service
 @Transactional
 class WorkflowSchemeApplicationService(

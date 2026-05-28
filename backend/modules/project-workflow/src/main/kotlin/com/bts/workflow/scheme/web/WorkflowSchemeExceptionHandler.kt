@@ -42,7 +42,11 @@ import java.time.Instant
  * - [TypeStandardNotDeletableException]     → 403 + TYPE_STANDARD_NOT_DELETABLE
  * - [WorkflowSchemeNoDefaultException]      → 500 + WORKFLOW_SCHEME_NO_DEFAULT (server invariant 위반)
  * - [SchemeStandardFieldLockedException]    → 403 + SCHEME_STANDARD_FIELD_LOCKED
+ *
+ * @suppress TooManyFunctions — spec §4.5 의 11건 예외 errorCode 에 @ExceptionHandler 1:1 대응.
+ * 각 핸들러는 서로 다른 도메인 예외를 처리하므로 통합 불가. 예외 핸들러 클래스의 본질적 구조.
  */
+@Suppress("TooManyFunctions")
 @RestControllerAdvice(basePackages = ["com.bts.workflow.scheme"])
 class WorkflowSchemeExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -277,7 +281,11 @@ class WorkflowSchemeExceptionHandler {
      * @param detail 이 특정 발생에 대한 상세 설명. null 이면 생략.
      * @param additionalFields ProblemDetail 에 추가할 커스텀 필드. 기본값 빈 맵.
      * @return 완성된 [ProblemDetail] 인스턴스.
+     * @suppress LongParameterList — RFC 7807 ProblemDetail 의 표준 필드(status/type/title/errorCode/detail)
+     * 에 additionalFields 하나를 더한 6개 파라미터. 각 파라미터는 독립적 의미를 가지므로
+     * 파라미터 객체화 시 불필요한 레이어가 추가된다.
      */
+    @Suppress("LongParameterList")
     private fun problem(
         status: HttpStatus,
         type: String,
