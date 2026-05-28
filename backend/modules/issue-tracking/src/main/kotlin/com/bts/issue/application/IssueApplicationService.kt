@@ -21,9 +21,12 @@ import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.domain.IssueWorkflowNotConfiguredException
+import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.TransitionPlan
 import com.bts.shared.workflow.TransitionRequest
 import com.bts.shared.workflow.TransitionResult
+import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowTransitionPort
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
@@ -52,6 +55,7 @@ class IssueApplicationService(
     private val eventPublisher: IssueEventPublisher,
     private val permissionResolver: IssuePermissionResolver,
     private val workflowPort: WorkflowTransitionPort,
+    private val workflowKeyResolver: WorkflowKeyResolver,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -201,9 +205,18 @@ class IssueApplicationService(
     ): IssueResponse {
         assertPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(key.value))
         val issue = repo.findByKeyForUpdate(key) ?: throw IssueNotFoundException(key)
+        val resolvedWorkflow =
+            try {
+                workflowKeyResolver.resolveStart(ProjectKey.of(key.projectPrefix), null)
+            } catch (e: RuntimeException) {
+                if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") {
+                    throw IssueWorkflowNotConfiguredException(key.projectPrefix, null)
+                }
+                throw e
+            }
         val transitionReq =
             TransitionRequest(
-                workflowKey = request.workflowKey,
+                workflowKey = resolvedWorkflow.workflowKey,
                 issueKey = key.value,
                 fromStateKey = issue.currentStateKey,
                 toStateKey = request.toStateKey,
