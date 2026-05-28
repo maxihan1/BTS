@@ -137,7 +137,7 @@
 - [~] D4. 백엔드 — JWT 발급/검증 + Redis 세션 + PAT 발급 API (책임. security-engineer)
 - [x] D5. 백엔드 테스트 — 토큰 만료/회전/취소 (책임. security-engineer)
 - [~] D6. 프론트 UI — 활성 세션 목록 + 강제 로그아웃 (책임. designer → frontend-engineer). **DEVELOPMENT.md §1.17 — 토큰 localStorage 금지 (sessionStorage 강제)**
-- [x] D7. E2E (책임. qa-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
 
 ### §2.10 FR-AU-10 — 인증 감사 로그
 
