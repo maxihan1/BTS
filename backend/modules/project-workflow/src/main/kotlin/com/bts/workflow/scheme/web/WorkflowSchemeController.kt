@@ -27,14 +27,18 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 /**
- * 워크플로우 스킴 CRUD REST 컨트롤러.
+ * 워크플로우 스킴 CRUD + Mapping CRUD REST 컨트롤러.
  *
  * spec §4.1 의 5 endpoint 를 담당한다.
- * - POST   /api/v1/workflow-schemes                 — 스킴 생성
- * - GET    /api/v1/workflow-schemes                 — 스킴 목록
- * - GET    /api/v1/workflow-schemes/{schemeKey}     — 스킴 단건 (mappings 동봉)
- * - PUT    /api/v1/workflow-schemes/{schemeKey}     — 스킴 수정 (name/description 만)
- * - DELETE /api/v1/workflow-schemes/{schemeKey}     — 스킴 삭제 (S6/S7 차단)
+ * - POST   /api/v1/workflow-schemes                                  — 스킴 생성
+ * - GET    /api/v1/workflow-schemes                                  — 스킴 목록
+ * - GET    /api/v1/workflow-schemes/{schemeKey}                      — 스킴 단건 (mappings 동봉)
+ * - PUT    /api/v1/workflow-schemes/{schemeKey}                      — 스킴 수정 (name/description 만)
+ * - DELETE /api/v1/workflow-schemes/{schemeKey}                      — 스킴 삭제 (S6/S7 차단)
+ *
+ * spec §4.2 의 2 endpoint 를 담당한다 (Jira align — PUT update 없음, G6).
+ * - POST   /api/v1/workflow-schemes/{schemeKey}/mappings             — 매핑 추가
+ * - DELETE /api/v1/workflow-schemes/{schemeKey}/mappings/{mappingId} — 매핑 삭제 (G8 BIGINT path)
  *
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다 (learning #91).
