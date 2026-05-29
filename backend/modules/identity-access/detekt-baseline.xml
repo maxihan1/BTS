@@ -1,0 +1,46 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues></ManuallySuppressedIssues>
+  <CurrentIssues>
+    <ID>ConstructorParameterNaming:FakeLdapProvider.kt$FakeLdapProvider$private val _available: Boolean = true</ID>
+    <ID>EmptyFunctionBlock:LocalAuthFlowIntegrationTest.kt$LocalAuthFlowIntegrationTest.&lt;no name provided&gt;${}</ID>
+    <ID>FunctionOnlyReturningConstant:SecurityConfigTest.kt$SecurityConfigTest.ProbeController$@GetMapping("/.well-known/jwks.json") fun jwks()</ID>
+    <ID>FunctionOnlyReturningConstant:SecurityConfigTest.kt$SecurityConfigTest.ProbeController$@GetMapping("/actuator/health") fun health()</ID>
+    <ID>FunctionOnlyReturningConstant:SecurityConfigTest.kt$SecurityConfigTest.ProbeController$@GetMapping("/api/v1/auth/login") fun login()</ID>
+    <ID>FunctionOnlyReturningConstant:SecurityConfigTest.kt$SecurityConfigTest.ProbeController$@GetMapping("/api/v1/auth/providers") fun providers()</ID>
+    <ID>FunctionOnlyReturningConstant:SecurityConfigTest.kt$SecurityConfigTest.ProbeController$@GetMapping("/api/v1/protected") fun protected()</ID>
+    <ID>LongParameterList:PatAndConcurrencyIntegrationTest.kt$PatAndConcurrencyIntegrationTest$( id: UUID, sessionId: UUID, tokenHash: String, expiresAt: Instant, usedAt: Instant?, replacedBy: UUID?, )</ID>
+    <ID>MagicNumber:DevMemoryKeyProvider.kt$DevMemoryKeyProvider$2048</ID>
+    <ID>MagicNumber:JwksController.kt$JwksController$86400</ID>
+    <ID>MagicNumber:ProviderType.kt$ProviderType.LDAP$80</ID>
+    <ID>MagicNumber:ProviderType.kt$ProviderType.LOCAL$70</ID>
+    <ID>MagicNumber:ProviderType.kt$ProviderType.OAUTH$30</ID>
+    <ID>MagicNumber:ProviderType.kt$ProviderType.OIDC$50</ID>
+    <ID>MagicNumber:ProviderType.kt$ProviderType.PAT$60</ID>
+    <ID>MagicNumber:ProviderType.kt$ProviderType.SAML$40</ID>
+    <ID>MaxLineLength:LocalAuthFlowIntegrationTest.kt$LocalAuthFlowIntegrationTest$"spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration"</ID>
+    <ID>MaxLineLength:PatAndConcurrencyIntegrationTest.kt$PatAndConcurrencyIntegrationTest.Companion$"org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration,"</ID>
+    <ID>MaxLineLength:PatAndConcurrencyIntegrationTest.kt$PatAndConcurrencyIntegrationTest.Companion$"org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration,"</ID>
+    <ID>MaxLineLength:PersonalAccessTokenRepository.kt$// personal_access_tokens 테이블 접근 Repository — findByTokenHash / findActiveByUserId / updateLastUsed / revoke (EC-26/EC-27)</ID>
+    <ID>MaxLineLength:RefreshTokenServiceTest.kt$RefreshTokenServiceTest$assertThat(result).isEqualTo(RefreshTokenService.RotateResult.Failure(RefreshTokenService.FailureReason.Expired))</ID>
+    <ID>MaxLineLength:RefreshTokenServiceTest.kt$RefreshTokenServiceTest$assertThat(result).isEqualTo(RefreshTokenService.RotateResult.Failure(RefreshTokenService.FailureReason.NotFound))</ID>
+    <ID>MaxLineLength:RefreshTokenServiceTest.kt$RefreshTokenServiceTest$assertThat(result).isEqualTo(RefreshTokenService.RotateResult.Failure(RefreshTokenService.FailureReason.Revoked))</ID>
+    <ID>MaxLineLength:V005MigrationTest.kt$// V005 Flyway 마이그레이션 검증 — refresh_tokens 7 컬럼 + sessions FK ON DELETE CASCADE + self FK replaced_by + token_hash UNIQUE + idx_refresh_session 인덱스 확인</ID>
+    <ID>MaxLineLength:V006MigrationTest.kt$// V006 Flyway 마이그레이션 검증 — personal_access_tokens 9 컬럼 + scopes JSONB DEFAULT + token_hash UNIQUE + idx_pat_user_active 부분 인덱스 확인</ID>
+    <ID>NestedBlockDepth:V006MigrationTest.kt$V006MigrationTest$private fun columnDefault( tableName: String, columnName: String, ): String?</ID>
+    <ID>ReturnCount:LocalAuthFlowIntegrationTest.kt$LocalAuthFlowIntegrationTest$private fun extractRefreshCookieValue(response: ResponseEntity&lt;*&gt;): String</ID>
+    <ID>ReturnCount:LocalProvider.kt$LocalProvider$@Transactional(propagation = Propagation.REQUIRES_NEW) override fun authenticate(credential: Credential): AuthnResult</ID>
+    <ID>ReturnCount:PatAuthenticationFilter.kt$PatAuthenticationFilter$private fun extractPatToken(request: HttpServletRequest): String?</ID>
+    <ID>ReturnCount:PatProvider.kt$PatProvider$@Transactional(propagation = Propagation.REQUIRES_NEW) override fun authenticate(credential: Credential): AuthnResult</ID>
+    <ID>ReturnCount:PersonalAccessTokenService.kt$PersonalAccessTokenService$fun verify(rawToken: String): Result&lt;PersonalAccessToken&gt;</ID>
+    <ID>ReturnCount:RefreshTokenService.kt$RefreshTokenService$@Transactional fun rotate(oldTokenHash: String): RotateResult</ID>
+    <ID>ReturnCount:WhoamiController.kt$WhoamiController$private fun extractBearerToken(request: HttpServletRequest): String?</ID>
+    <ID>SwallowedException:LocalAuthFlowIntegrationTest.kt$LocalAuthFlowIntegrationTest$e: Exception</ID>
+    <ID>SwallowedException:SidRevokeJwtConverter.kt$SidRevokeJwtConverter$e: IllegalArgumentException</ID>
+    <ID>ThrowsCount:PemFileKeyProvider.kt$PemFileKeyProvider$fun load()</ID>
+    <ID>ThrowsCount:WhoamiController.kt$WhoamiController$@GetMapping("/api/v1/users/me/whoami") fun whoami( request: HttpServletRequest, @AuthenticationPrincipal jwt: Jwt?, ): WhoamiResponse</ID>
+    <ID>UnusedPrivateProperty:LdapAuthFlowIntegrationTest.kt$LdapAuthFlowIntegrationTest$@Autowired private lateinit var externalAccountRepo: ExternalAccountRepository</ID>
+    <ID>UnusedPrivateProperty:PersonalAccessTokenServiceTest.kt$PersonalAccessTokenServiceTest$/** 테스트 환경에서 SHA-256 계산 없이 고정 hash 를 사용하기 위한 raw token. * PersonalAccessTokenService 내부의 sha256Hex(raw) 결과가 아래 KNOWN_HASH 와 일치해야 통과. */ private val rawToken = "pat_testbody000000000000000000000000000000000000" // "pat_" + 44자 (≠ 48자, 검증용)</ID>
+    <ID>UseCheckOrError:PemFileKeyProvider.kt$PemFileKeyProvider$throw IllegalStateException( "PEM 파일이 RSA CRT 키 형식이 아닙니다: $pemPath. RSA CRT 형식(PKCS#1)을 사용하세요.", )</ID>
+  </CurrentIssues>
+</SmellBaseline>

@@ -25,6 +25,12 @@ repositories {
     mavenCentral()
 }
 
+// detekt — PR #8 잔재 PRE_EXISTING 위반을 detekt-baseline.xml 로 동결 (FR-AU-09 마무리 PR).
+// 신규 코드는 baseline 에 포함하지 않고 코드/@Suppress 로 해소한다. baseline 의 점진적 축소는 후속.
+detekt {
+    baseline = file("detekt-baseline.xml")
+}
+
 dependencies {
     // 핵심 프레임워크 (의존성 카탈로그 §2.1)
     implementation("org.springframework.boot:spring-boot-starter-web")

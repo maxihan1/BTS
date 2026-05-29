@@ -13,6 +13,7 @@ import { AdminWorkflowSchemesRouteAdapter } from './routes/admin.workflow-scheme
 import { WorkflowSchemeNewRouteAdapter } from './routes/admin.workflow-schemes.new'
 import { WorkflowSchemeDetailRouteAdapter } from './routes/admin.workflow-schemes.$schemeKey'
 import { ProjectWorkflowSchemeSettingsRouteAdapter } from './routes/projects.$projectKey.settings.workflow-scheme'
+import { SessionsSettingsRouteAdapter } from './routes/settings.sessions'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -113,12 +114,21 @@ const projectWorkflowSchemeSettingsRoute = createRoute({
   beforeLoad: requireAuth,
 })
 
+/** 내 활성 세션 관리 라우트 — /settings/sessions, requireAuth */
+const settingsSessionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/sessions',
+  component: SessionsSettingsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuth,
+})
+
 /**
  * 전체 라우트 트리.
- * 11개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 12개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
- *   · /projects/:projectKey/settings/workflow-scheme
- * requireAuth 라우트: /dashboard · /issues · /issues/* · /admin/* · /projects/*\/settings/*
+ *   · /projects/:projectKey/settings/workflow-scheme · /settings/sessions
+ * requireAuth 라우트: /dashboard · /issues · /issues/* · /admin/* · /projects/*\/settings/* · /settings/*
  */
 export const routeTree = rootRoute.addChildren([
   // 공통 — 인증/진입점
@@ -135,6 +145,8 @@ export const routeTree = rootRoute.addChildren([
   adminWorkflowSchemesDetailRoute,
   // project-workflow BC — 프로젝트별 스킴 할당
   projectWorkflowSchemeSettingsRoute,
+  // identity-access BC — 내 활성 세션 관리
+  settingsSessionsRoute,
   // workflows (레거시 workflow 상세 — 향후 마이그레이션 예정)
   workflowsKeyRoute,
 ])
