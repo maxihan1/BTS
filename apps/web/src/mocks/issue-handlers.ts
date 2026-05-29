@@ -220,6 +220,15 @@ const deleteIssueHandler = http.delete('/api/v1/issues/:key', ({ params }) => {
 })
 
 /**
+ * 이슈 키로 현재 상태 조회 helper — transitionOverrides → createdIssues → issueFixtureMap 순서.
+ * 소프트 삭제된 키는 undefined 반환.
+ */
+function resolveIssue(key: string): IssueResponse | undefined {
+  if (deletedKeys.has(key)) return undefined
+  return transitionOverrides.get(key) ?? createdIssues.get(key) ?? issueFixtureMap[key]
+}
+
+/**
  * 현재 이슈 상태 기준 가용전이 반환 helper.
  * softwareDefaultFixture 가 단일 출처 — 전이 직접 정의 금지.
  */
@@ -237,13 +246,7 @@ function getAvailableTransitions(
  */
 const getTransitionsHandler = http.get('/api/v1/issues/:key/transitions', ({ params }) => {
   const key = params['key'] as string
-  if (deletedKeys.has(key)) {
-    return HttpResponse.json(
-      { message: `이슈를 찾을 수 없습니다: ${key}` },
-      { status: 404 },
-    )
-  }
-  const found = transitionOverrides.get(key) ?? createdIssues.get(key) ?? issueFixtureMap[key]
+  const found = resolveIssue(key)
   if (found === undefined) {
     return HttpResponse.json(
       { message: `이슈를 찾을 수 없습니다: ${key}` },
@@ -265,13 +268,7 @@ const getTransitionsHandler = http.get('/api/v1/issues/:key/transitions', ({ par
  */
 const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ params, request }) => {
   const key = params['key'] as string
-  if (deletedKeys.has(key)) {
-    return HttpResponse.json(
-      { message: `이슈를 찾을 수 없습니다: ${key}` },
-      { status: 404 },
-    )
-  }
-  const found = transitionOverrides.get(key) ?? createdIssues.get(key) ?? issueFixtureMap[key]
+  const found = resolveIssue(key)
   if (found === undefined) {
     return HttpResponse.json(
       { message: `이슈를 찾을 수 없습니다: ${key}` },
