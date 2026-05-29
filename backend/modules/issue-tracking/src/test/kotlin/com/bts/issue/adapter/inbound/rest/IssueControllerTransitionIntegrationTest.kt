@@ -21,6 +21,7 @@ import com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermiss
 import com.bts.workflow.scheme.adapter.outbound.JdbcProjectLookupAdapter
 import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
+import com.bts.workflow.scheme.application.port.IssueTypeLookupPort
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
@@ -217,6 +218,9 @@ class IssueControllerTransitionIntegrationTest {
             JdbcProjectLookupAdapter(dsl)
 
         @Bean
+        open fun issueTypeLookupPort(): IssueTypeLookupPort = mockk(relaxed = true)
+
+        @Bean
         open fun workflowSchemeApplicationService(
             schemeRepo: WorkflowSchemeRepository,
             assignmentRepo: ProjectWorkflowSchemeAssignmentRepository,
@@ -224,6 +228,7 @@ class IssueControllerTransitionIntegrationTest {
             eventPublisher: WorkflowSchemeEventPublisher,
             permissionResolver: AlwaysAllowWorkflowSchemePermissionResolver,
             workflowRepo: WorkflowRepository,
+            issueTypeLookupPort: IssueTypeLookupPort,
         ): WorkflowSchemeApplicationService =
             WorkflowSchemeApplicationService(
                 schemeRepo = schemeRepo,
@@ -232,6 +237,7 @@ class IssueControllerTransitionIntegrationTest {
                 eventPublisher = eventPublisher,
                 permissionResolver = permissionResolver,
                 workflowRepo = workflowRepo,
+                issueTypeLookupPort = issueTypeLookupPort,
             )
 
         @Bean

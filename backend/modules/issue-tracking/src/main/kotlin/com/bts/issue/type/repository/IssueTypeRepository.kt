@@ -46,6 +46,7 @@ class IssueTypeRepository(
     private val descriptionField = field(name("description"), String::class.java)
     private val iconNameField = field(name("icon_name"), String::class.java)
     private val isStandardField = field(name("is_standard"), Boolean::class.java)
+    private val hierarchyLevelField = field(name("hierarchy_level"), Int::class.java)
     private val createdAtField = field(name("created_at"), OffsetDateTime::class.java)
     private val updatedAtField = field(name("updated_at"), OffsetDateTime::class.java)
     private val deletedAtField = field(name("deleted_at"), OffsetDateTime::class.java)
@@ -67,6 +68,7 @@ class IssueTypeRepository(
             descriptionField,
             iconNameField,
             isStandardField,
+            hierarchyLevelField,
             createdAtField,
             updatedAtField,
             deletedAtField,
@@ -91,6 +93,7 @@ class IssueTypeRepository(
             descriptionField,
             iconNameField,
             isStandardField,
+            hierarchyLevelField,
             createdAtField,
             updatedAtField,
             deletedAtField,
@@ -116,6 +119,7 @@ class IssueTypeRepository(
             descriptionField,
             iconNameField,
             isStandardField,
+            hierarchyLevelField,
             createdAtField,
             updatedAtField,
             deletedAtField,
@@ -134,6 +138,7 @@ class IssueTypeRepository(
             description = record.get(descriptionField),
             iconName = record.get(iconNameField),
             isStandard = record.get(isStandardField),
+            hierarchyLevel = record.get(hierarchyLevelField),
             createdAt = record.get(createdAtField).toInstant(),
             updatedAt = record.get(updatedAtField).toInstant(),
             deletedAt = record.get(deletedAtField)?.toInstant(),

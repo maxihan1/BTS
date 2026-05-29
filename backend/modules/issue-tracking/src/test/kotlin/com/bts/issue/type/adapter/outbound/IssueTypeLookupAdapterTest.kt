@@ -91,6 +91,7 @@ class IssueTypeLookupAdapterTest {
             description = null,
             iconName = null,
             isStandard = true,
+            hierarchyLevel = 0,
             createdAt = now,
             updatedAt = now,
             deletedAt = null,

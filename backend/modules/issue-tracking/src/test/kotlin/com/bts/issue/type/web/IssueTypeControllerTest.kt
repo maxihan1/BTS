@@ -166,6 +166,7 @@ class IssueTypeControllerTest {
             description = description,
             iconName = iconName,
             isStandard = true,
+            hierarchyLevel = 0,
             createdAt = fixedNow,
             updatedAt = fixedNow,
             deletedAt = null,
