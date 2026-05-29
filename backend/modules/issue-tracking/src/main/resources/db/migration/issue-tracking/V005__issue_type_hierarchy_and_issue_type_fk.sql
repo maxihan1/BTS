@@ -1,12 +1,18 @@
 -- issue-tracking V005 — issue_types.hierarchy_level 컬럼 추가 + issues.type_id FK + 부분 unique 인덱스 교체
+--
+-- 이 마이그레이션이 해결하는 두 문제.
+--   1. FR-IS-02 요구: IssueType 에 계층 깊이(hierarchyLevel) 도입.
+--      epic(최상위)/task·story·bug(기본)/subtask(하위) 를 숫자로 구분 → 이슈 생성·전이 검증에 활용.
+--   2. B1 BLOCKER: V003 의 전체 UNIQUE 제약(issue_types_key_key) 은 소프트 삭제 후 key 재사용을
+--      막는다. 부분 unique 인덱스(ux_issue_types_key_active, deleted_at IS NULL) 로 교체하여
+--      논리 삭제 후 같은 key 의 새 row 를 허용한다. 중복된 비고유 부분 인덱스(ix_issue_types_key_active)
+--      는 쓰기 오버헤드·플래너 혼란을 일으키므로 함께 제거한다.
 
 -- ============================================================
 -- 1. issue_types.hierarchy_level 컬럼 추가
 -- ============================================================
--- hierarchy_level: 이슈 유형 계층 깊이.
---   epic=1 (최상위), task/story/bug=0 (기본), subtask=-1 (하위)
--- DEFAULT 0 으로 기존 row(5 표준 타입)가 자동으로 0을 가짐.
--- 이후 UPDATE로 epic=1, subtask=-1 로 교정.
+-- DEFAULT 0: 기존 5종 표준 row 가 자동으로 0(기본 레벨)을 갖도록 backfill 없이 추가.
+-- epic/subtask 는 아래 UPDATE 로 교정한다.
 ALTER TABLE issue_types
     ADD COLUMN hierarchy_level INT NOT NULL DEFAULT 0;
 
@@ -30,26 +36,26 @@ UPDATE issue_types
 -- ============================================================
 -- V003 에서 `key VARCHAR(30) NOT NULL UNIQUE` 로 선언된 제약은
 -- PostgreSQL 이 자동 부여한 이름 issue_types_key_key 로 존재한다.
--- 소프트 삭제 후 같은 key 를 재활성화(재INSERT)할 수 있도록
+-- 소프트 삭제 후 같은 key 로 새 IssueType 을 재등록(재INSERT)할 수 있도록
 -- 전체 unique 제약을 DROP 하고 deleted_at IS NULL 조건의 부분 unique 로 교체한다.
--- 이유: deleted_at NOT NULL(삭제) row 는 unique 검사 대상에서 제외되어야
---       같은 key 가 여러 역사적 row 를 가질 수 있다 (이름 재사용 허용).
 ALTER TABLE issue_types
     DROP CONSTRAINT IF EXISTS issue_types_key_key;
 
--- 부분 unique 인덱스 생성 (활성 row 에만 적용)
--- 이름 ux_<table>_<column>_<modifier>: ux 접두사로 unique 임을 명시.
+-- 부분 unique 인덱스: 활성(deleted_at IS NULL) row 에만 key unique 강제.
+-- ux_ 접두사 = unique index 명명 규칙.
 CREATE UNIQUE INDEX ux_issue_types_key_active
     ON issue_types (key)
     WHERE deleted_at IS NULL;
 
--- V003 에서 생성된 비고유 부분 인덱스는 ux_issue_types_key_active 로 대체되므로 제거.
--- (같은 컬럼의 중복 인덱스는 플래너 혼란 + 쓰기 오버헤드)
+-- V003 에서 생성된 비고유 부분 인덱스(ix_issue_types_key_active)는 위 unique 인덱스로 대체.
+-- 같은 컬럼에 두 인덱스가 공존하면 플래너 혼란 + 쓰기 오버헤드가 증가하므로 제거한다.
 DROP INDEX IF EXISTS ix_issue_types_key_active;
 
 -- ============================================================
 -- 3. issues.type_id 컬럼 추가 + backfill + NOT NULL + FK
 -- ============================================================
+-- NOT NULL 을 바로 추가할 수 없는 이유: 이미 존재하는 row 가 type_id 를 모르기 때문.
+-- 패턴: NULL 허용으로 추가 → backfill → NOT NULL 제약 추가 (DATA.md §6 순서).
 
 -- 3-1. NULL 허용으로 먼저 추가 (기존 row 때문에 NOT NULL 바로 불가)
 ALTER TABLE issues
@@ -62,7 +68,7 @@ COMMENT ON COLUMN issues.type_id IS
 -- 사유: V005 이전에는 type_id 컬럼이 없었으므로 모든 기존 이슈는
 --       "기본 이슈(task)" 로 간주한다. task 는 is_standard=true 이며
 --       hierarchy_level=0 인 가장 범용적인 유형이다.
--- deleted_at IS NULL 조건: 활성 task 타입 row 만 선택 (V005 이후 soft-delete 방어).
+-- deleted_at IS NULL 조건: 활성 task 타입 row 만 선택 (소프트 삭제 방어).
 UPDATE issues
    SET type_id = (
        SELECT id
@@ -78,13 +84,13 @@ ALTER TABLE issues
     ALTER COLUMN type_id SET NOT NULL;
 
 -- 3-4. FK 제약 — issues.type_id → issue_types.id
--- 이름 fk_<table>_<column> 패턴 (DEVELOPMENT.md 명명 규칙).
+-- fk_<table>_<column> 명명 규칙 (DEVELOPMENT.md).
 ALTER TABLE issues
     ADD CONSTRAINT fk_issues_type_id
         FOREIGN KEY (type_id)
         REFERENCES issue_types (id);
 
--- 3-5. FK 인덱스 (DATA.md §7 — PostgreSQL 은 FK 에 인덱스 자동 생성 안 함)
--- ix_<table>_<column> 패턴.
+-- 3-5. FK 인덱스 (PostgreSQL 은 FK 에 인덱스 자동 생성 안 함 — DATA.md §5).
+-- ix_<table>_<column> 명명 규칙.
 CREATE INDEX ix_issues_type_id
     ON issues (type_id);
