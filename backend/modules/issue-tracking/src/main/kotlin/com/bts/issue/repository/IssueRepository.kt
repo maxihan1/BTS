@@ -155,14 +155,12 @@ class IssueRepository(
         typeId: IssueTypeId?,
         expectedVersion: Long,
     ): Int {
-        log.debug("updateFields key={} summary={} typeId={} expectedVersion={}", key.value, summary, typeId, expectedVersion)
-        var step =
-            dsl.update(ISSUES)
-                .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
-                .set(ISSUES.VERSION, expectedVersion + 1)
-        if (summary != null) step = step.set(ISSUES.SUMMARY, summary)
-        if (typeId != null) step = step.set(ISSUES.TYPE_ID, typeId.value)
-        return step
+        log.debug("updateFields key={} typeId={} expectedVersion={}", key.value, typeId?.value, expectedVersion)
+        return dsl.update(ISSUES)
+            .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+            .set(ISSUES.VERSION, expectedVersion + 1)
+            .apply { if (summary != null) set(ISSUES.SUMMARY, summary) }
+            .apply { if (typeId != null) set(ISSUES.TYPE_ID, typeId.value) }
             .where(ISSUES.KEY.eq(key.value))
             .and(ISSUES.VERSION.eq(expectedVersion))
             .and(ISSUES.DELETED_AT.isNull)
