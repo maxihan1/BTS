@@ -152,8 +152,7 @@ class IssueApplicationService(
         key: IssueKey,
     ): IssueResponse {
         assertPermission(actor, IssuePermission.VIEW, IssueScope.Issue(key.value))
-        val issue = repo.findByKey(key) ?: throw IssueNotFoundException(key)
-        return IssueResponse.from(issue, key.projectPrefix)
+        return repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)
     }
 
     /**
@@ -184,14 +183,13 @@ class IssueApplicationService(
         val changedFields = buildChangedFields(existing, request)
         if (changedFields.isEmpty()) {
             log.info("issue_update_noop key={} actor={}", key.value, actor.value)
-            return IssueResponse.from(existing, key.projectPrefix)
+            return repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)
         }
         val newSummary = requireNotNull(request.summary) { "summary must be non-null when changedFields is non-empty" }
         val updatedRows = repo.updateSummary(key, newSummary, request.expectedVersion)
         if (updatedRows == 0) {
             throw IssueVersionConflictException(key, existing.version)
         }
-        val updated = repo.findByKey(key) ?: throw IssueNotFoundException(key)
         eventPublisher.publish(
             IssueUpdated(
                 issueKey = key,
@@ -200,7 +198,7 @@ class IssueApplicationService(
             ),
         )
         log.info("issue_updated key={} fields={} actor={}", key.value, changedFields, actor.value)
-        return IssueResponse.from(updated, key.projectPrefix)
+        return repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)
     }
 
     /**
@@ -277,8 +275,7 @@ class IssueApplicationService(
             ),
         )
         log.info("issue_transitioned key={} from={} to={} actor={}", key.value, issue.currentStateKey, plan.toStateKey, actor.value)
-        val updated = repo.findByKey(key) ?: throw IssueNotFoundException(key)
-        return IssueResponse.from(updated, key.projectPrefix)
+        return repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)
     }
 
     /**
@@ -332,9 +329,7 @@ class IssueApplicationService(
             "pageSize must be 100 or fewer, but was ${pageable.pageSize}"
         }
         assertPermission(actor, IssuePermission.VIEW, IssueScope.Project(projectKey))
-        val page = repo.list(projectKey, pageable)
-        val responses = page.content.map { IssueResponse.from(it, projectKey) }
-        return PageImpl(responses, pageable, page.totalElements)
+        return repo.listWithType(projectKey, pageable)
     }
 
     // ── private helpers ────────────────────────────────────────────────────────

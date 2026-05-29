@@ -62,32 +62,33 @@ class IssueApplicationServiceFindTest : DescribeSpec({
 
         context("권한이 있고 이슈가 존재할 때") {
             val fixedNow = Instant.parse("2026-05-24T00:00:00Z")
-            val issue =
-                Issue(
-                    id = IssueId(UUID.randomUUID()),
-                    key = issueKey,
-                    projectId = UUID.randomUUID(),
+            val issueResponse =
+                com.bts.issue.adapter.inbound.rest.IssueResponse(
+                    key = issueKey.value,
+                    id = UUID.randomUUID(),
+                    projectKey = issueKey.projectPrefix,
                     summary = "Test issue",
-                    reporterId = actor,
+                    reporterId = actor.value,
                     currentStateKey = "open",
                     version = 1L,
-                    deletedAt = null,
                     createdAt = fixedNow,
                     updatedAt = fixedNow,
-                    typeId = IssueTypeId(3L),
+                    typeId = 3L,
+                    typeKey = "task",
+                    typeName = "Task",
                 )
 
             beforeEach {
                 every {
                     permissionResolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
                 } returns true
-                every { repo.findByKey(issueKey) } returns issue
+                every { repo.findByKeyWithType(issueKey) } returns issueResponse
             }
 
             it("IssueResponse 를 반환한다") {
                 val result = sut.findByKey(actor, issueKey)
 
-                result shouldBe IssueResponse.from(issue, issueKey.projectPrefix)
+                result shouldBe issueResponse
             }
 
             it("반환된 응답의 key 가 이슈 키와 일치한다") {
@@ -113,7 +114,7 @@ class IssueApplicationServiceFindTest : DescribeSpec({
             it("repo 가 호출되지 않는다") {
                 runCatching { sut.findByKey(actor, issueKey) }
 
-                verify(exactly = 0) { repo.findByKey(issueKey) }
+                verify(exactly = 0) { repo.findByKeyWithType(issueKey) }
             }
         }
 
@@ -122,7 +123,7 @@ class IssueApplicationServiceFindTest : DescribeSpec({
                 every {
                     permissionResolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
                 } returns true
-                every { repo.findByKey(issueKey) } returns null
+                every { repo.findByKeyWithType(issueKey) } returns null
             }
 
             it("IssueNotFoundException 을 던진다") {
