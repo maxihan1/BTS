@@ -245,21 +245,10 @@ class AuthController(
     fun listSessions(
         @AuthenticationPrincipal jwt: Jwt?,
     ): ResponseEntity<*> {
-        if (jwt == null) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(mapOf("error" to "session_management_requires_interactive_login"))
-        }
+        val claims = resolveJwtClaims(jwt) ?: return PAT_FORBIDDEN_RESPONSE
 
-        val userId = runCatching { UUID.fromString(jwt.subject) }.getOrElse {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(mapOf("error" to "invalid_token"))
-        }
-        val currentSid = jwt.getClaimAsString("sid")?.let {
-            runCatching { UUID.fromString(it) }.getOrNull()
-        }
-
-        val sessions = sessionService.findActiveByUser(userId)
-        val sessionResponses = sessions.map { toSessionResponse(it, currentSid) }
+        val sessions = sessionService.findActiveByUser(claims.userId)
+        val sessionResponses = sessions.map { toSessionResponse(it, claims.currentSid) }
 
         return ResponseEntity.ok(mapOf("sessions" to sessionResponses))
     }
@@ -294,25 +283,14 @@ class AuthController(
         @AuthenticationPrincipal jwt: Jwt?,
         @PathVariable sid: UUID,
     ): ResponseEntity<*> {
-        if (jwt == null) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(mapOf("error" to "session_management_requires_interactive_login"))
-        }
-
-        val userId = runCatching { UUID.fromString(jwt.subject) }.getOrElse {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(mapOf("error" to "invalid_token"))
-        }
-        val currentSid = jwt.getClaimAsString("sid")?.let {
-            runCatching { UUID.fromString(it) }.getOrNull()
-        }
+        val claims = resolveJwtClaims(jwt) ?: return PAT_FORBIDDEN_RESPONSE
 
         val session = sessionService.lookup(sid)
-        if (session == null || session.userId != userId) {
+        if (session == null || session.userId != claims.userId) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build<Void>()
         }
 
-        if (sid == currentSid) {
+        if (sid == claims.currentSid) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(mapOf("error" to "cannot_revoke_current_session"))
         }
@@ -324,6 +302,25 @@ class AuthController(
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * JWT principal 에서 userId(subject) 와 currentSid(sid 클레임) 를 추출한다.
+     *
+     * PAT 인증 시 [jwt] 가 null 이므로 null 을 반환한다 (호출 측에서 403 반환).
+     * JWT 의 subject 가 유효한 UUID 가 아닌 경우에도 null 을 반환한다.
+     * sid 클레임이 없거나 UUID 파싱 실패인 경우 [JwtClaims.currentSid] 는 null 이다.
+     *
+     * @param jwt nullable JWT principal ([Jwt] 타입 아니면 PAT)
+     * @return [JwtClaims] 또는 null (PAT/invalid_token)
+     */
+    private fun resolveJwtClaims(jwt: Jwt?): JwtClaims? {
+        if (jwt == null) return null
+        val userId = runCatching { UUID.fromString(jwt.subject) }.getOrNull() ?: return null
+        val currentSid = jwt.getClaimAsString("sid")?.let {
+            runCatching { UUID.fromString(it) }.getOrNull()
+        }
+        return JwtClaims(userId = userId, currentSid = currentSid)
+    }
 
     /**
      * [Session] 도메인 엔티티를 [SessionResponse] DTO 로 변환한다.
@@ -390,8 +387,21 @@ class AuthController(
 
         /** 사용자 강제종료 세션 폐기 사유 — 감사 로그 검색 키 (spec §EC 소문자 snake 관례) */
         const val REVOKE_REASON_USER = "user_revoke"
+
+        /** PAT 인증 시 세션 관리 불가 응답 — listSessions / revokeSession 공용 (FR-6b / EC-8) */
+        val PAT_FORBIDDEN_RESPONSE: ResponseEntity<Map<String, String>> =
+            ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(mapOf("error" to "session_management_requires_interactive_login"))
     }
 }
+
+/**
+ * JWT 로부터 추출된 인증 클레임 (listSessions / revokeSession 공용).
+ *
+ * @param userId JWT subject UUID — 인증 사용자 ID
+ * @param currentSid JWT sid 클레임 UUID — 현재 요청 세션 ID. 클레임 부재/파싱 실패 시 null
+ */
+private data class JwtClaims(val userId: UUID, val currentSid: UUID?)
 
 /** refresh_token_reused / refresh_token_expired / refresh_token_invalid 매핑 */
 private fun FailureReason.toErrorCode(): String = when (this) {
