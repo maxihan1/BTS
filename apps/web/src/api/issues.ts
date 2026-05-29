@@ -186,11 +186,9 @@ export async function deleteIssue(key: string): Promise<void> {
   }
 }
 
-/** backend `{ data: { transitions: [...] } }` 응답 파싱 헬퍼 */
+/** backend `{ data: { transitions: [...] } }` 전이 목록 응답 파싱 헬퍼 (내부 전용) */
 const transitionsResponseSchema = z.object({
-  data: z.object({
-    transitions: z.array(issueTransitionSchema),
-  }),
+  data: z.object({ transitions: z.array(issueTransitionSchema) }),
 })
 
 /**
