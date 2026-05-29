@@ -1,4 +1,4 @@
-// AuthController 슬라이스 테스트 — login/logout/refresh 3 엔드포인트 (FR-AU-09 Task 21)
+// AuthController 슬라이스 테스트 — login/logout/refresh/sessions 엔드포인트 (FR-AU-09 Task 21/Task 2)
 
 package com.atlas.bts.identity.web
 
@@ -36,6 +36,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
@@ -59,6 +60,11 @@ import java.util.UUID
  * - refresh replay — 401 + {"error": "refresh_token_reused"}
  * - refresh 만료 — 401 + {"error": "refresh_token_expired"}
  * - refresh cookie 없음 — 401 + {"error": "refresh_token_invalid"}
+ * - GET /sessions 성공 — 200 + 세션 목록 (sid/providerId/userAgent/ipAddress/lastSeenAt/createdAt/current)
+ * - GET /sessions — 요청 JWT sid 와 일치 세션 current=true
+ * - GET /sessions — deviceFingerprint 응답 미포함
+ * - GET /sessions — 미인증 401
+ * - GET /sessions — PAT 인증 403 + session_management_requires_interactive_login (FR-6b/EC-8)
  *
  * ## 의존성 모킹 전략
  * - SecurityConfig 필수 Bean (SidRevokeJwtConverter, JwtDecoder, CorsConfigurationSource, PersonalAccessTokenService):
@@ -314,6 +320,132 @@ class AuthControllerTest {
         )
             .andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.error").value("refresh_token_invalid"))
+    }
+
+    // ── GET /sessions 200 — 목록 반환 + 필드 정합 ────────────────────────────────
+
+    @Test
+    fun `GET sessions returns 200 with session list and correct fields`() {
+        val userId = UUID.fromString("11111111-1111-1111-1111-111111111111")
+        val currentSid = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        val otherSid = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+        val now = Instant.parse("2026-05-29T10:00:00Z")
+        val created = Instant.parse("2026-05-20T09:00:00Z")
+
+        val currentSession = Session(
+            id = currentSid,
+            userId = userId,
+            providerId = "local",
+            deviceFingerprint = "fp-secret-12",
+            ipAddress = "10.0.0.1",
+            userAgent = "Mozilla/5.0",
+            createdAt = created,
+            expiresAt = now.plusSeconds(86400),
+            lastSeenAt = now,
+            revokedAt = null,
+            revokeReason = null,
+        )
+        val otherSession = Session(
+            id = otherSid,
+            userId = userId,
+            providerId = "ldap",
+            deviceFingerprint = null,
+            ipAddress = null,
+            userAgent = null,
+            createdAt = created,
+            expiresAt = now.plusSeconds(86400),
+            lastSeenAt = now.minusSeconds(3600),
+            revokedAt = null,
+            revokeReason = null,
+        )
+
+        `when`(sessionService.findActiveByUser(userId)).thenReturn(listOf(currentSession, otherSession))
+
+        mockMvc.perform(
+            get("/api/v1/auth/sessions")
+                .with(
+                    jwt().jwt { builder ->
+                        builder
+                            .subject(userId.toString())
+                            .claim("sid", currentSid.toString())
+                    },
+                ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.sessions").isArray)
+            .andExpect(jsonPath("$.sessions.length()").value(2))
+            .andExpect(jsonPath("$.sessions[0].sid").value(currentSid.toString()))
+            .andExpect(jsonPath("$.sessions[0].providerId").value("local"))
+            .andExpect(jsonPath("$.sessions[0].userAgent").value("Mozilla/5.0"))
+            .andExpect(jsonPath("$.sessions[0].ipAddress").value("10.0.0.1"))
+            .andExpect(jsonPath("$.sessions[0].lastSeenAt").exists())
+            .andExpect(jsonPath("$.sessions[0].createdAt").exists())
+            .andExpect(jsonPath("$.sessions[0].current").value(true))
+            .andExpect(jsonPath("$.sessions[1].sid").value(otherSid.toString()))
+            .andExpect(jsonPath("$.sessions[1].current").value(false))
+    }
+
+    // ── GET /sessions — deviceFingerprint 응답 미포함 (NFR-2) ─────────────────
+
+    @Test
+    fun `GET sessions does not expose deviceFingerprint in response`() {
+        val userId = UUID.fromString("11111111-1111-1111-1111-111111111111")
+        val sid = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        val now = Instant.parse("2026-05-29T10:00:00Z")
+
+        val session = Session(
+            id = sid,
+            userId = userId,
+            providerId = "local",
+            deviceFingerprint = "should-not-appear",
+            ipAddress = "10.0.0.1",
+            userAgent = "Mozilla/5.0",
+            createdAt = now,
+            expiresAt = now.plusSeconds(86400),
+            lastSeenAt = now,
+            revokedAt = null,
+            revokeReason = null,
+        )
+
+        `when`(sessionService.findActiveByUser(userId)).thenReturn(listOf(session))
+
+        mockMvc.perform(
+            get("/api/v1/auth/sessions")
+                .with(
+                    jwt().jwt { builder ->
+                        builder
+                            .subject(userId.toString())
+                            .claim("sid", sid.toString())
+                    },
+                ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.sessions[0].deviceFingerprint").doesNotExist())
+    }
+
+    // ── GET /sessions — 미인증 401 ─────────────────────────────────────────────
+
+    @Test
+    fun `GET sessions without authentication returns 401`() {
+        mockMvc.perform(get("/api/v1/auth/sessions"))
+            .andExpect(status().isUnauthorized)
+    }
+
+    // ── GET /sessions — PAT 인증 시 403 (FR-6b / EC-8) ───────────────────────
+
+    @Test
+    fun `GET sessions with PAT authentication returns 403 with session_management_requires_interactive_login`() {
+        // PAT 인증 시 principal 은 UsernamePasswordAuthenticationToken(userId String) 이며 Jwt 타입이 아님.
+        // Spring Security Test 의 user() 포스트 프로세서가 UsernamePasswordAuthenticationToken 을 설정한다.
+        mockMvc.perform(
+            get("/api/v1/auth/sessions")
+                .with(
+                    org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                        .user("pat-user-id"),
+                ),
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.error").value("session_management_requires_interactive_login"))
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
