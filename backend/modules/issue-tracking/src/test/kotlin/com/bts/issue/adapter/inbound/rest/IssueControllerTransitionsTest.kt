@@ -41,7 +41,6 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc
 @ContextConfiguration(classes = [IssueControllerTransitionsTest.TestMvcConfig::class])
 @WebAppConfiguration
 class IssueControllerTransitionsTest {
-
     /**
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
@@ -77,10 +76,11 @@ class IssueControllerTransitionsTest {
 
     @Test
     fun `GET transitions — service 가 2건 반환하면 200 과 transitions 배열 2건을 반환한다`() {
-        val stubTransitions = listOf(
-            AvailableTransitionView(fromStateKey = "open", toStateKey = "in_progress", name = "시작"),
-            AvailableTransitionView(fromStateKey = "open", toStateKey = "closed", name = "닫기"),
-        )
+        val stubTransitions =
+            listOf(
+                AvailableTransitionView(fromStateKey = "open", toStateKey = "in_progress", name = "시작"),
+                AvailableTransitionView(fromStateKey = "open", toStateKey = "closed", name = "닫기"),
+            )
 
         every {
             issueApplicationService.availableTransitions(any(), IssueKey("ATLAS-1"))

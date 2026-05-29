@@ -45,7 +45,8 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
     val workflowKeyResolver = mockk<WorkflowKeyResolver>()
     val clock = Clock.fixed(Instant.parse("2026-05-24T00:00:00Z"), ZoneOffset.UTC)
 
-    val sut = IssueApplicationService(repo, eventPublisher, permissionResolver, workflowPort, workflowKeyResolver, clock)
+    val sut =
+        IssueApplicationService(repo, eventPublisher, permissionResolver, workflowPort, workflowKeyResolver, clock)
 
     val actor = ActorId(UUID.randomUUID())
     val issueKey = IssueKey("BTS-1")

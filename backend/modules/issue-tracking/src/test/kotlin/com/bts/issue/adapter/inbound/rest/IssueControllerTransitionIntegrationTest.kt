@@ -38,6 +38,7 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
+import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -60,7 +61,6 @@ import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
-import org.junit.jupiter.api.extension.ExtendWith
 import java.sql.Connection
 import java.sql.DriverManager
 import java.time.Clock
@@ -99,13 +99,11 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueControllerTransitionIntegrationTest {
-
     // ── Spring Bean 구성 — 최소 필요 컴포넌트만 명시적 등록 ───────────────────────
     @Configuration
     @EnableWebMvc
     @EnableTransactionManagement(proxyTargetClass = true)
     open class TestConfig {
-
         companion object {
             /** JVM 단위 singleton Testcontainers — singleton pattern (learnings 2026-05-21) */
             @JvmStatic
@@ -121,16 +119,14 @@ class IssueControllerTransitionIntegrationTest {
         }
 
         @Bean
-        open fun dataSource(): DriverManagerDataSource =
-            DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+        open fun dataSource(): DriverManagerDataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
 
         @Bean
         open fun transactionManager(dataSource: DriverManagerDataSource): PlatformTransactionManager =
             DataSourceTransactionManager(dataSource)
 
         @Bean
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext =
-            DSL.using(dataSource, SQLDialect.POSTGRES)
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext = DSL.using(dataSource, SQLDialect.POSTGRES)
 
         @Bean
         open fun objectMapper(): ObjectMapper =
@@ -172,12 +168,10 @@ class IssueControllerTransitionIntegrationTest {
             }
 
         @Bean
-        open fun workflowValidatorFactory(): WorkflowValidatorFactory =
-            mockk(relaxed = true)
+        open fun workflowValidatorFactory(): WorkflowValidatorFactory = mockk(relaxed = true)
 
         @Bean
-        open fun workflowPostActionFactory(): WorkflowPostActionFactory =
-            mockk(relaxed = true)
+        open fun workflowPostActionFactory(): WorkflowPostActionFactory = mockk(relaxed = true)
 
         @Bean
         open fun workflowEngine(
@@ -188,20 +182,17 @@ class IssueControllerTransitionIntegrationTest {
         ): WorkflowEngine = WorkflowEngine(cache, validatorFactory, postActionFactory, definitionRepo)
 
         @Bean
-        open fun workflowTransitionAdapter(engine: WorkflowEngine): WorkflowTransitionAdapter =
-            WorkflowTransitionAdapter(engine)
+        open fun workflowTransitionAdapter(engine: WorkflowEngine): WorkflowTransitionAdapter = WorkflowTransitionAdapter(engine)
 
         @Bean
-        open fun workflowSchemeRepository(dsl: DSLContext): WorkflowSchemeRepository =
-            WorkflowSchemeRepository(dsl)
+        open fun workflowSchemeRepository(dsl: DSLContext): WorkflowSchemeRepository = WorkflowSchemeRepository(dsl)
 
         @Bean
         open fun projectWorkflowSchemeAssignmentRepository(dsl: DSLContext): ProjectWorkflowSchemeAssignmentRepository =
             ProjectWorkflowSchemeAssignmentRepository(dsl)
 
         @Bean
-        open fun schemeIssueTypeMappingRepository(dsl: DSLContext): SchemeIssueTypeMappingRepository =
-            SchemeIssueTypeMappingRepository(dsl)
+        open fun schemeIssueTypeMappingRepository(dsl: DSLContext): SchemeIssueTypeMappingRepository = SchemeIssueTypeMappingRepository(dsl)
 
         @Bean
         open fun workflowSchemeEventPublisher(
@@ -214,8 +205,7 @@ class IssueControllerTransitionIntegrationTest {
             AlwaysAllowWorkflowSchemePermissionResolver()
 
         @Bean
-        open fun jdbcProjectLookupAdapter(dsl: DSLContext): JdbcProjectLookupAdapter =
-            JdbcProjectLookupAdapter(dsl)
+        open fun jdbcProjectLookupAdapter(dsl: DSLContext): JdbcProjectLookupAdapter = JdbcProjectLookupAdapter(dsl)
 
         /**
          * PRE_EXISTING: FR-WF-02 issueTypeLookupPort 도입 시 이 TestConfiguration 갱신 누락.
@@ -225,6 +215,9 @@ class IssueControllerTransitionIntegrationTest {
         @Bean
         open fun issueTypeLookupPort(): IssueTypeLookupPort = mockk(relaxed = true)
 
+        // WorkflowSchemeApplicationService 생성자 파라미터 수 == 7 (FR-WF-02 issueTypeLookupPort 추가).
+        // @TestConfiguration Bean 메서드는 분리 불가한 단일 구성 단위이므로 Suppress 처리.
+        @Suppress("LongParameterList")
         @Bean
         open fun workflowSchemeApplicationService(
             schemeRepo: WorkflowSchemeRepository,
@@ -270,6 +263,8 @@ class IssueControllerTransitionIntegrationTest {
         @Bean
         open fun clock(): Clock = Clock.systemUTC()
 
+        // IssueApplicationService 생성자 파라미터 수 == 6. @TestConfiguration Bean 메서드이므로 Suppress 처리.
+        @Suppress("LongParameterList")
         @Bean
         open fun issueApplicationService(
             repo: IssueRepository,
@@ -522,7 +517,10 @@ class IssueControllerTransitionIntegrationTest {
      * 2. software-default workflow + states + transitions
      * 3. software-scheme default mapping → software-default workflow
      * 4. NODEFAULT 프로젝트 — no-default-scheme 배정 (default mapping 없음)
+     *
+     * LongMethod: 워크플로우·스킴·프로젝트 픽스처 삽입 순서를 한 곳에서 관리해야 하므로 함수 분리보다 인라인이 적합하다.
      */
+    @Suppress("LongMethod")
     private fun seedWorkflowsAndSchemes() {
         val url = TestConfig.postgres.jdbcUrl
         val user = TestConfig.postgres.username
@@ -536,15 +534,16 @@ class IssueControllerTransitionIntegrationTest {
             insertProject(conn, NO_DEFAULT_PROJECT_KEY, "No Default Project")
 
             // 2. software-default workflow
-            val wfId = conn.prepareStatement(
-                "INSERT INTO workflows (key, name) VALUES ('software-default', '소프트웨어 개발 기본 워크플로우') " +
-                    "ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
-            ).use { stmt ->
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getObject(1) as UUID
+            val wfId =
+                conn.prepareStatement(
+                    "INSERT INTO workflows (key, name) VALUES ('software-default', '소프트웨어 개발 기본 워크플로우') " +
+                        "ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as UUID
+                    }
                 }
-            }
 
             val openId = insertState(conn, wfId, "open", "Open", "TODO", 0)
             val inProgressId = insertState(conn, wfId, "in_progress", "In Progress", "IN_PROGRESS", 1)
@@ -614,6 +613,9 @@ class IssueControllerTransitionIntegrationTest {
         }
     }
 
+    // 워크플로우 상태 INSERT helper: wfId + key + name + category + displayOrder = 6 파라미터 필수.
+    // 테스트 헬퍼 함수이므로 분리보다 인라인 유지가 더 명확하다. Suppress 처리.
+    @Suppress("LongParameterList")
     private fun insertState(
         conn: Connection,
         wfId: UUID,
@@ -624,7 +626,8 @@ class IssueControllerTransitionIntegrationTest {
     ): UUID =
         conn.prepareStatement(
             "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) " +
-                "VALUES (?, ?, ?, ?, ?) ON CONFLICT (workflow_id, key) DO UPDATE SET display_order = EXCLUDED.display_order RETURNING id",
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT (workflow_id, key) " +
+                "DO UPDATE SET display_order = EXCLUDED.display_order RETURNING id",
         ).use { stmt ->
             stmt.setObject(1, wfId)
             stmt.setString(2, key)
@@ -675,28 +678,30 @@ class IssueControllerTransitionIntegrationTest {
             conn.autoCommit = false
 
             // key_sequence 증가 후 새 번호 획득
-            val seq = conn.prepareStatement(
-                "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
-            ).use { stmt ->
-                stmt.setString(1, projectKey)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getLong(1)
+            val seq =
+                conn.prepareStatement(
+                    "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
+                ).use { stmt ->
+                    stmt.setString(1, projectKey)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getLong(1)
+                    }
                 }
-            }
 
             val issueKey = "$projectKey-$seq"
 
             // projects.id 조회
-            val projectId = conn.prepareStatement(
-                "SELECT id FROM projects WHERE key = ?",
-            ).use { stmt ->
-                stmt.setString(1, projectKey)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getObject(1) as UUID
+            val projectId =
+                conn.prepareStatement(
+                    "SELECT id FROM projects WHERE key = ?",
+                ).use { stmt ->
+                    stmt.setString(1, projectKey)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as UUID
+                    }
                 }
-            }
 
             conn.prepareStatement(
                 "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version) " +

@@ -2,8 +2,8 @@
 
 package com.bts.issue.integration
 
-import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest
+import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -71,7 +71,6 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueTransitionRuntimeIntegrationTest {
-
     @Autowired
     lateinit var webApplicationContext: WebApplicationContext
 
@@ -147,12 +146,13 @@ class IssueTransitionRuntimeIntegrationTest {
         val issueKey = insertIssue(PROJECT_KEY, "전이 흐름 통합 검증 이슈", "open")
 
         // Step 1: 가용 전이 조회
-        val transitionsResult = mockMvc.perform(
-            get("/api/v1/issues/$issueKey/transitions"),
-        )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.transitions").isArray)
-            .andReturn()
+        val transitionsResult =
+            mockMvc.perform(
+                get("/api/v1/issues/$issueKey/transitions"),
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.transitions").isArray)
+                .andReturn()
 
         val responseBody = transitionsResult.response.contentAsString
         val root = mapper.readTree(responseBody)
@@ -180,12 +180,13 @@ class IssueTransitionRuntimeIntegrationTest {
             .andExpect(jsonPath("$.data.currentStateKey").value(targetStateKey))
 
         // Step 3: 전이 후 가용 전이 재조회 — 새 상태 기준 전이 배열 반환
-        val reQueryResult = mockMvc.perform(
-            get("/api/v1/issues/$issueKey/transitions"),
-        )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.transitions").isArray)
-            .andReturn()
+        val reQueryResult =
+            mockMvc.perform(
+                get("/api/v1/issues/$issueKey/transitions"),
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.transitions").isArray)
+                .andReturn()
 
         val reQueryBody = reQueryResult.response.contentAsString
         val reQueryRoot = mapper.readTree(reQueryBody)
@@ -196,7 +197,7 @@ class IssueTransitionRuntimeIntegrationTest {
         for (i in 0 until reQueryTransitions.size()) {
             val fromStateKey = reQueryTransitions.get(i).path("fromStateKey").asText()
             assert(fromStateKey == targetStateKey) {
-                "전이 후 transitions[${i}].fromStateKey 가 '$targetStateKey' 여야 하지만 '$fromStateKey' 입니다. " +
+                "전이 후 transitions[$i].fromStateKey 가 '$targetStateKey' 여야 하지만 '$fromStateKey' 입니다. " +
                     "response=$reQueryBody"
             }
         }
@@ -255,7 +256,10 @@ class IssueTransitionRuntimeIntegrationTest {
      * 동일 JVM 세션에서 먼저 실행됨).
      *
      * 단, 실행 순서 보장이 불가능한 경우에 대비해 ON CONFLICT DO NOTHING 을 사용한다.
+     *
+     * LongMethod: 프로젝트·스킴 배정 픽스처를 순서대로 삽입해야 하므로 함수 분리보다 인라인이 적합하다. PRE_EXISTING.
      */
+    @Suppress("LongMethod")
     private fun seedProjectAndScheme() {
         DriverManager.getConnection(
             TestConfig.postgres.jdbcUrl,
@@ -287,17 +291,23 @@ class IssueTransitionRuntimeIntegrationTest {
             }
 
             // software-default workflow id 조회
-            val wfId: UUID = conn.prepareStatement(
-                "SELECT id FROM workflows WHERE key = 'software-default'",
-            ).use { stmt ->
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getObject(1) as UUID
+            val wfId: UUID =
+                conn.prepareStatement(
+                    "SELECT id FROM workflows WHERE key = 'software-default'",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as UUID
+                    }
                 }
-            }
 
             // workflow_states 가 없으면 시드 (open, in_progress, in_review, done)
-            fun insertStateIfAbsent(key: String, name: String, category: String, displayOrder: Int): UUID {
+            fun insertStateIfAbsent(
+                key: String,
+                name: String,
+                category: String,
+                displayOrder: Int,
+            ): UUID {
                 conn.prepareStatement(
                     "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) " +
                         "VALUES (?, ?, ?, ?, ?) ON CONFLICT (workflow_id, key) DO UPDATE " +
@@ -321,7 +331,11 @@ class IssueTransitionRuntimeIntegrationTest {
             val doneId = insertStateIfAbsent("done", "Done", "DONE", 3)
 
             // workflow_transitions 가 없으면 시드
-            fun insertTransitionIfAbsent(fromId: UUID, toId: UUID, name: String) {
+            fun insertTransitionIfAbsent(
+                fromId: UUID,
+                toId: UUID,
+                name: String,
+            ) {
                 conn.prepareStatement(
                     "INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name) " +
                         "VALUES (?, ?, ?, ?) ON CONFLICT (workflow_id, from_state_id, to_state_id) DO NOTHING",
@@ -399,27 +413,29 @@ class IssueTransitionRuntimeIntegrationTest {
         ).use { conn ->
             conn.autoCommit = false
 
-            val seq = conn.prepareStatement(
-                "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
-            ).use { stmt ->
-                stmt.setString(1, projectKey)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getLong(1)
+            val seq =
+                conn.prepareStatement(
+                    "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
+                ).use { stmt ->
+                    stmt.setString(1, projectKey)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getLong(1)
+                    }
                 }
-            }
 
             val issueKey = "$projectKey-$seq"
 
-            val projectId = conn.prepareStatement(
-                "SELECT id FROM projects WHERE key = ?",
-            ).use { stmt ->
-                stmt.setString(1, projectKey)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getObject(1) as UUID
+            val projectId =
+                conn.prepareStatement(
+                    "SELECT id FROM projects WHERE key = ?",
+                ).use { stmt ->
+                    stmt.setString(1, projectKey)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as UUID
+                    }
                 }
-            }
 
             conn.prepareStatement(
                 "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version) " +

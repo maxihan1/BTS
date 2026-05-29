@@ -43,23 +43,25 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
     val workflowKeyResolver = mockk<WorkflowKeyResolver>()
     val clock = Clock.fixed(Instant.parse("2026-05-29T00:00:00Z"), ZoneOffset.UTC)
 
-    val sut = IssueApplicationService(repo, eventPublisher, permissionResolver, workflowPort, workflowKeyResolver, clock)
+    val sut =
+        IssueApplicationService(repo, eventPublisher, permissionResolver, workflowPort, workflowKeyResolver, clock)
 
     val actor = ActorId(UUID.randomUUID())
     val issueKey = IssueKey("BTS-1")
 
-    fun makeIssue(state: String = "TODO") = Issue(
-        id = IssueId(UUID.randomUUID()),
-        key = issueKey,
-        projectId = UUID.randomUUID(),
-        summary = "테스트 이슈",
-        reporterId = actor,
-        currentStateKey = state,
-        version = 1L,
-        deletedAt = null,
-        createdAt = Instant.parse("2026-05-29T00:00:00Z"),
-        updatedAt = Instant.parse("2026-05-29T00:00:00Z"),
-    )
+    fun makeIssue(state: String = "TODO") =
+        Issue(
+            id = IssueId(UUID.randomUUID()),
+            key = issueKey,
+            projectId = UUID.randomUUID(),
+            summary = "테스트 이슈",
+            reporterId = actor,
+            currentStateKey = state,
+            version = 1L,
+            deletedAt = null,
+            createdAt = Instant.parse("2026-05-29T00:00:00Z"),
+            updatedAt = Instant.parse("2026-05-29T00:00:00Z"),
+        )
 
     beforeEach {
         clearMocks(repo, eventPublisher, permissionResolver, workflowPort, workflowKeyResolver, answers = false)
@@ -69,29 +71,37 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
 
         it("IssueApplicationService.availableTransitions 는 @Transactional(readOnly=true) 을 선언한다") {
             val classAnnotation = IssueApplicationService::class.java.getAnnotation(Transactional::class.java)
-            val methodAnnotation = runCatching {
-                IssueApplicationService::class.java
-                    .getMethod("availableTransitions", ActorId::class.java, IssueKey::class.java)
-                    .getAnnotation(Transactional::class.java)
-            }.getOrNull()
+            val methodAnnotation =
+                runCatching {
+                    IssueApplicationService::class.java
+                        .getMethod("availableTransitions", ActorId::class.java, IssueKey::class.java)
+                        .getAnnotation(Transactional::class.java)
+                }.getOrNull()
             // 클래스 또는 메서드 중 하나에 선언되어 있어야 한다.
-            // 메서드 레벨 @Transactional(readOnly=true) 가 있으면 그것을, 없으면 클래스 레벨 확인.
+            // 메서드 레벨 @Transactional(readOnly=true) 가 있으면 그것을,
+            // 없으면 클래스 레벨 확인.
             (classAnnotation != null || methodAnnotation != null) shouldBe true
         }
 
         it("메서드 레벨에 @Transactional(readOnly=true) 가 선언된다") {
             // IssueKey 는 value class 라 JVM 메서드명이 mangling 된다(availableTransitions-<hash>).
-            // getMethod(name, paramTypes) 로는 못 찾으므로 @Transactional 이 붙은 메서드를 이름 prefix 로 조회한다.
-            val method = IssueApplicationService::class.java.methods
-                .first { it.name.startsWith("availableTransitions") && it.isAnnotationPresent(Transactional::class.java) }
+            // getMethod(name, paramTypes) 로는 못 찾으므로 @Transactional 이 붙은 메서드를
+            // 이름 prefix 로 조회한다.
+            val method =
+                IssueApplicationService::class.java.methods
+                    .first {
+                        it.name.startsWith("availableTransitions") &&
+                            it.isAnnotationPresent(Transactional::class.java)
+                    }
             method.getAnnotation(Transactional::class.java).readOnly shouldBe true
         }
 
         context("S1 — 정상: port.availableTransitions 가 Success(2건) 반환 시 2건 매핑") {
-            val transitions = listOf(
-                AvailableTransitionView(fromStateKey = "TODO", toStateKey = "IN_PROGRESS", name = "시작"),
-                AvailableTransitionView(fromStateKey = "TODO", toStateKey = "DONE", name = "완료"),
-            )
+            val transitions =
+                listOf(
+                    AvailableTransitionView(fromStateKey = "TODO", toStateKey = "IN_PROGRESS", name = "시작"),
+                    AvailableTransitionView(fromStateKey = "TODO", toStateKey = "DONE", name = "완료"),
+                )
 
             beforeEach {
                 every {
@@ -101,7 +111,8 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
                 every {
                     workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
                 } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "TODO")
-                every { workflowPort.availableTransitions(any()) } returns AvailableTransitionsResult.Success(transitions)
+                every { workflowPort.availableTransitions(any()) } returns
+                    AvailableTransitionsResult.Success(transitions)
             }
 
             it("2건의 AvailableTransitionView 를 반환한다") {
@@ -149,7 +160,8 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
             }
         }
 
-        context("S3 — resolveStart 가 WorkflowSchemeNoDefaultException 던짐 → IssueWorkflowNotConfiguredException") {
+        // S3: resolveStart 가 WorkflowSchemeNoDefaultException 던짐 → IssueWorkflowNotConfiguredException
+        context("S3 — WorkflowSchemeNoDefaultException → IssueWorkflowNotConfiguredException") {
             beforeEach {
                 every {
                     permissionResolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
@@ -167,9 +179,10 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
             }
 
             it("예외 메시지에 projectKey 가 포함된다") {
-                val ex = shouldThrow<IssueWorkflowNotConfiguredException> {
-                    sut.availableTransitions(actor, issueKey)
-                }
+                val ex =
+                    shouldThrow<IssueWorkflowNotConfiguredException> {
+                        sut.availableTransitions(actor, issueKey)
+                    }
                 ex.message shouldContain "BTS"
             }
         }
@@ -183,7 +196,8 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
                 every {
                     workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
                 } returns WorkflowStartState(workflowKey = "MISSING-WF", startStateKey = "TODO")
-                every { workflowPort.availableTransitions(any()) } returns AvailableTransitionsResult.WorkflowNotFound("MISSING-WF")
+                every { workflowPort.availableTransitions(any()) } returns
+                    AvailableTransitionsResult.WorkflowNotFound("MISSING-WF")
             }
 
             it("IssueWorkflowNotConfiguredException 을 던진다") {
@@ -193,9 +207,10 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
             }
 
             it("예외 메시지에 projectKey 가 포함된다") {
-                val ex = shouldThrow<IssueWorkflowNotConfiguredException> {
-                    sut.availableTransitions(actor, issueKey)
-                }
+                val ex =
+                    shouldThrow<IssueWorkflowNotConfiguredException> {
+                        sut.availableTransitions(actor, issueKey)
+                    }
                 ex.message shouldContain "BTS"
             }
         }

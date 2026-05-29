@@ -10,6 +10,7 @@ import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueRepository
 import com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter
 import com.bts.workflow.cache.WorkflowCache
+import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.domain.spi.ValidatorResult
 import com.bts.workflow.domain.spi.WorkflowValidator
 import com.bts.workflow.engine.PostActionConfig
@@ -17,7 +18,6 @@ import com.bts.workflow.engine.ValidatorConfig
 import com.bts.workflow.engine.WorkflowDefinitionRepository
 import com.bts.workflow.engine.WorkflowEngine
 import com.bts.workflow.engine.WorkflowPostActionFactory
-import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.adapter.inbound.WorkflowKeyResolverImpl
@@ -101,7 +101,6 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueTransitionGuardFilterIntegrationTest {
-
     /**
      * 테스트 전용 Spring MVC 컨텍스트.
      *
@@ -116,7 +115,6 @@ class IssueTransitionGuardFilterIntegrationTest {
     @EnableWebMvc
     @EnableTransactionManagement(proxyTargetClass = true)
     open class GuardTestConfig {
-
         companion object {
             /**
              * JVM 단위 singleton Testcontainers.
@@ -150,16 +148,14 @@ class IssueTransitionGuardFilterIntegrationTest {
         }
 
         @Bean
-        open fun dataSource(): DriverManagerDataSource =
-            DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+        open fun dataSource(): DriverManagerDataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
 
         @Bean
         open fun transactionManager(dataSource: DriverManagerDataSource): PlatformTransactionManager =
             DataSourceTransactionManager(dataSource)
 
         @Bean
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext =
-            DSL.using(dataSource, SQLDialect.POSTGRES)
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext = DSL.using(dataSource, SQLDialect.POSTGRES)
 
         @Bean
         open fun objectMapper(): ObjectMapper =
@@ -204,11 +200,15 @@ class IssueTransitionGuardFilterIntegrationTest {
         @Bean
         open fun workflowValidatorFactory(): WorkflowValidatorFactory =
             object : WorkflowValidatorFactory {
-                override fun create(type: String, config: Map<String, Any?>): WorkflowValidator =
+                override fun create(
+                    type: String,
+                    config: Map<String, Any?>,
+                ): WorkflowValidator =
                     when (type) {
                         "permission-check" ->
                             object : WorkflowValidator {
                                 override val type: String = "permission-check"
+
                                 override fun validate(ctx: com.bts.workflow.domain.dto.TransitionContext): ValidatorResult =
                                     // IssueController 는 SYSTEM_ACTOR_UUID 를 actor 로 전달한다.
                                     // GUARD 프로젝트 이슈 조회 시 SYSTEM_ACTOR_UUID 는 PRIVILEGED 로 판별.
@@ -224,6 +224,7 @@ class IssueTransitionGuardFilterIntegrationTest {
                         "always-fail" ->
                             object : WorkflowValidator {
                                 override val type: String = "always-fail"
+
                                 override fun validate(ctx: com.bts.workflow.domain.dto.TransitionContext): ValidatorResult =
                                     ValidatorResult.Fail(field = null, reason = "always blocked")
                             }
@@ -232,8 +233,7 @@ class IssueTransitionGuardFilterIntegrationTest {
             }
 
         @Bean
-        open fun workflowPostActionFactory(): WorkflowPostActionFactory =
-            mockk(relaxed = true)
+        open fun workflowPostActionFactory(): WorkflowPostActionFactory = mockk(relaxed = true)
 
         /**
          * guard / always-blocked 워크플로우 전용 WorkflowDefinitionRepository stub.
@@ -254,8 +254,7 @@ class IssueTransitionGuardFilterIntegrationTest {
                         else -> emptyList()
                     }
 
-                override fun findPostActions(transition: WorkflowTransition): List<PostActionConfig> =
-                    emptyList()
+                override fun findPostActions(transition: WorkflowTransition): List<PostActionConfig> = emptyList()
             }
 
         @Bean
@@ -267,20 +266,17 @@ class IssueTransitionGuardFilterIntegrationTest {
         ): WorkflowEngine = WorkflowEngine(cache, validatorFactory, postActionFactory, definitionRepo)
 
         @Bean
-        open fun workflowTransitionAdapter(engine: WorkflowEngine): WorkflowTransitionAdapter =
-            WorkflowTransitionAdapter(engine)
+        open fun workflowTransitionAdapter(engine: WorkflowEngine): WorkflowTransitionAdapter = WorkflowTransitionAdapter(engine)
 
         @Bean
-        open fun workflowSchemeRepository(dsl: DSLContext): WorkflowSchemeRepository =
-            WorkflowSchemeRepository(dsl)
+        open fun workflowSchemeRepository(dsl: DSLContext): WorkflowSchemeRepository = WorkflowSchemeRepository(dsl)
 
         @Bean
         open fun projectWorkflowSchemeAssignmentRepository(dsl: DSLContext): ProjectWorkflowSchemeAssignmentRepository =
             ProjectWorkflowSchemeAssignmentRepository(dsl)
 
         @Bean
-        open fun schemeIssueTypeMappingRepository(dsl: DSLContext): SchemeIssueTypeMappingRepository =
-            SchemeIssueTypeMappingRepository(dsl)
+        open fun schemeIssueTypeMappingRepository(dsl: DSLContext): SchemeIssueTypeMappingRepository = SchemeIssueTypeMappingRepository(dsl)
 
         @Bean
         open fun workflowSchemeEventPublisher(
@@ -293,12 +289,14 @@ class IssueTransitionGuardFilterIntegrationTest {
             AlwaysAllowWorkflowSchemePermissionResolver()
 
         @Bean
-        open fun jdbcProjectLookupAdapter(dsl: DSLContext): JdbcProjectLookupAdapter =
-            JdbcProjectLookupAdapter(dsl)
+        open fun jdbcProjectLookupAdapter(dsl: DSLContext): JdbcProjectLookupAdapter = JdbcProjectLookupAdapter(dsl)
 
         @Bean
         open fun issueTypeLookupPort(): IssueTypeLookupPort = mockk(relaxed = true)
 
+        // WorkflowSchemeApplicationService 생성자 파라미터 수 == 7 (FR-WF-02 issueTypeLookupPort 추가).
+        // @TestConfiguration Bean 메서드는 분리 불가한 단일 구성 단위이므로 Suppress 처리.
+        @Suppress("LongParameterList")
         @Bean
         open fun workflowSchemeApplicationService(
             schemeRepo: WorkflowSchemeRepository,
@@ -344,6 +342,8 @@ class IssueTransitionGuardFilterIntegrationTest {
         @Bean
         open fun clock(): Clock = Clock.systemUTC()
 
+        // IssueApplicationService 생성자 파라미터 수 == 6. @TestConfiguration Bean 메서드이므로 Suppress 처리.
+        @Suppress("LongParameterList")
         @Bean
         open fun issueApplicationService(
             repo: IssueRepository,
@@ -363,12 +363,10 @@ class IssueTransitionGuardFilterIntegrationTest {
             )
 
         @Bean
-        open fun issueController(service: IssueApplicationService): IssueController =
-            IssueController(service)
+        open fun issueController(service: IssueApplicationService): IssueController = IssueController(service)
 
         @Bean
-        open fun issueExceptionHandler(): IssueExceptionHandler =
-            IssueExceptionHandler()
+        open fun issueExceptionHandler(): IssueExceptionHandler = IssueExceptionHandler()
     }
 
     @Autowired
@@ -426,7 +424,12 @@ class IssueTransitionGuardFilterIntegrationTest {
         mockMvc.perform(get("/api/v1/issues/$issueKey/transitions"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.transitions.length()").value(2))
-            .andExpect(jsonPath("$.data.transitions[*].toStateKey", org.hamcrest.Matchers.hasItems("always_allowed", "actor_gated")))
+            .andExpect(
+                jsonPath(
+                    "$.data.transitions[*].toStateKey",
+                    org.hamcrest.Matchers.hasItems("always_allowed", "actor_gated"),
+                ),
+            )
     }
 
     // ── S2. always_blocked 전이는 어떤 actor 도 볼 수 없음 ────────────────────────
@@ -544,7 +547,8 @@ class IssueTransitionGuardFilterIntegrationTest {
             assignSchemeToProject(conn, GuardTestConfig.GUARD_PROJECT_KEY, "guard-scheme")
 
             // 5. always-blocked-scheme — always-blocked-workflow 를 default 매핑으로 배정
-            val blockedSchemeId = insertScheme(conn, "always-blocked-scheme", "Always Blocked Scheme", isDefault = false)
+            val blockedSchemeId =
+                insertScheme(conn, "always-blocked-scheme", "Always Blocked Scheme", isDefault = false)
             conn.prepareStatement(
                 "INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id) " +
                     "VALUES (?, NULL, ?) ON CONFLICT ON CONSTRAINT uq_scheme_issue_type DO NOTHING",
@@ -590,6 +594,9 @@ class IssueTransitionGuardFilterIntegrationTest {
             }
         }
 
+    // 워크플로우 상태 INSERT helper: wfId + key + name + category + displayOrder = 6 파라미터 필수.
+    // 테스트 헬퍼 함수이므로 분리보다 인라인 유지가 더 명확하다. Suppress 처리.
+    @Suppress("LongParameterList")
     private fun insertState(
         conn: java.sql.Connection,
         wfId: UUID,
@@ -683,26 +690,28 @@ class IssueTransitionGuardFilterIntegrationTest {
         ).use { conn ->
             conn.autoCommit = false
 
-            val seq = conn.prepareStatement(
-                "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
-            ).use { stmt ->
-                stmt.setString(1, projectKey)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getLong(1)
+            val seq =
+                conn.prepareStatement(
+                    "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
+                ).use { stmt ->
+                    stmt.setString(1, projectKey)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getLong(1)
+                    }
                 }
-            }
             val issueKey = "$projectKey-$seq"
 
-            val projectId = conn.prepareStatement(
-                "SELECT id FROM projects WHERE key = ?",
-            ).use { stmt ->
-                stmt.setString(1, projectKey)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getObject(1) as UUID
+            val projectId =
+                conn.prepareStatement(
+                    "SELECT id FROM projects WHERE key = ?",
+                ).use { stmt ->
+                    stmt.setString(1, projectKey)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as UUID
+                    }
                 }
-            }
 
             conn.prepareStatement(
                 "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version) " +

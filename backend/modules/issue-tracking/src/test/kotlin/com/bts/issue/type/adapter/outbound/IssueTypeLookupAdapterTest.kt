@@ -28,7 +28,6 @@ import java.time.Instant
  * 결정 근거: docs/adr/2026-05-28-workflow-scheme-frontend-view-layer-cross-bc-lookup.md
  */
 class IssueTypeLookupAdapterTest {
-
     private val repository: IssueTypeRepository = mockk()
     private val adapter = IssueTypeLookupAdapter(repository)
 

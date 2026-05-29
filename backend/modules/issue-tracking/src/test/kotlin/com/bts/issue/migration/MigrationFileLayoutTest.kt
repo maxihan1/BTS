@@ -22,7 +22,6 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver
  * 참조. ADR 2026-05-26-bc-migration-prefix-policy.md / DATA.md §4.1.
  */
 class MigrationFileLayoutTest {
-
     @Test
     fun `db_migration 루트에 V SQL 파일이 잔존하지 않아야 한다 (BC prefix 정책)`() {
         val resolver = PathMatchingResourcePatternResolver(javaClass.classLoader)
