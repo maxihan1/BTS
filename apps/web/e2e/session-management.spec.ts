@@ -1,18 +1,22 @@
 // FR-AU-09 D7 E2E — 세션 관리 시나리오 (목록 조회 + 강제 종료 + IDOR 방어 + 현재 세션 보호)
+//
+// MSW session-handlers.ts 가 GET /api/v1/auth/sessions + DELETE /api/v1/auth/sessions/:sid 를
+// 처리한다. serviceWorkers:'block' 없이 MSW 위에서 동작한다 (기존 E2E 패턴과 일치).
 import { test, expect } from '@playwright/test'
 import {
   loginAsAlice,
-  mockAuthRoutes,
-  mockSessionsRoute,
-  mockRevokeSessionRoute,
+  resetSessionHandlerState,
   bobSessionSid,
 } from './fixtures/session-fixtures'
 
-// MSW Service Worker 를 차단하고 page.route 로 모든 API 를 직접 처리한다.
-// 이유: MSW Service Worker 는 CDP 레벨의 page.route 보다 먼저 실행되므로,
-//       GET /api/v1/auth/sessions (MSW 핸들러 없음) 이 bypass 되어 500 반환.
-//       serviceWorkers: 'block' 으로 MSW 를 비활성화하면 page.route 가 단독 처리.
-test.use({ serviceWorkers: 'block' })
+test.beforeEach(async ({ page }) => {
+  // MSW session-handlers 의 stateful revokedSids 를 초기화해 테스트 격리 보장.
+  // 로그인 전에는 /api/v1/auth/sessions 에 인증 없이 접근하므로
+  // 페이지 로드 후 reset 을 실행한다.
+  await page.goto('/login')
+  await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
+  await resetSessionHandlerState(page)
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Happy Path — S-1 + S-2
@@ -24,11 +28,6 @@ test.use({ serviceWorkers: 'block' })
 // Then   해당 세션 카드가 목록에서 사라짐 (TanStack Query 재조회 반영)
 // ─────────────────────────────────────────────────────────────────────────────
 test('S-1/S-2 happy path — 세션 목록 조회 → 다른 세션 강제 종료 → 목록에서 사라짐', async ({ page }) => {
-  // ── Given. API mock 설정 ──────────────────────────────────────────────────
-  await mockAuthRoutes(page)
-  const revokedSids = await mockSessionsRoute(page)
-  await mockRevokeSessionRoute(page, revokedSids)
-
   // ── Given. alice 로그인 ────────────────────────────────────────────────────
   await loginAsAlice(page)
 
@@ -48,10 +47,8 @@ test('S-1/S-2 happy path — 세션 목록 조회 → 다른 세션 강제 종�
 
   // ── When. 다른 기기 세션의 "세션 종료" 버튼 클릭 ─────────────────────────
   // SessionCard 의 강제 종료 버튼은 aria-label="세션 종료" 이다.
-  // 현재 세션 버튼은 disabled → enabled 버튼이 다른 세션의 것.
-  const enabledRevokeButton = page
-    .getByRole('button', { name: '세션 종료' })
-    .filter({ has: page.locator(':not([disabled])') })
+  // 현재 세션 버튼은 disabled=true → enabled 버튼이 다른 세션의 것.
+  const enabledRevokeButton = page.getByRole('button', { name: '세션 종료', disabled: false })
   await expect(enabledRevokeButton).toHaveCount(1)
   await enabledRevokeButton.click()
 
@@ -72,11 +69,6 @@ test('S-1/S-2 happy path — 세션 목록 조회 → 다른 세션 강제 종�
 //        해당 카드의 "세션 종료" 버튼이 disabled
 // ─────────────────────────────────────────────────────────────────────────────
 test('S-4 edge — 현재 세션 카드의 강제 종료 버튼이 disabled + "현재 세션" 배지 표시', async ({ page }) => {
-  // ── Given. API mock 설정 ──────────────────────────────────────────────────
-  await mockAuthRoutes(page)
-  const revokedSids = await mockSessionsRoute(page)
-  await mockRevokeSessionRoute(page, revokedSids)
-
   await loginAsAlice(page)
   await page.goto('/settings/sessions')
 
@@ -107,15 +99,10 @@ test('S-4 edge — 현재 세션 카드의 강제 종료 버튼이 disabled + "�
 // IDOR 는 직접 HTTP 호출로만 재현 가능.
 // ─────────────────────────────────────────────────────────────────────────────
 test('S-3 edge — 타인 sid 직접 DELETE API 호출 시 404 (IDOR 방어)', async ({ page }) => {
-  // ── Given. API mock 설정 ──────────────────────────────────────────────────
-  await mockAuthRoutes(page)
-  const revokedSids = await mockSessionsRoute(page)
-  await mockRevokeSessionRoute(page, revokedSids)
-
   await loginAsAlice(page)
 
   // ── When. 타인(bob) sid 로 직접 DELETE API 호출 ───────────────────────────
-  // page.evaluate 로 브라우저 컨텍스트에서 fetch 실행 → page.route 인터셉트 적용됨.
+  // page.evaluate 로 브라우저 컨텍스트에서 fetch 실행 → MSW 인터셉트 적용됨.
   const response = await page.evaluate(async (sid: string) => {
     const res = await fetch(`/api/v1/auth/sessions/${sid}`, {
       method: 'DELETE',
@@ -134,11 +121,11 @@ test('S-3 edge — 타인 sid 직접 DELETE API 호출 시 404 (IDOR 방어)', a
 // 강제 종료 직후 그 세션의 access token 이 최대 5초간 유효할 수 있다.
 // (SidRevokeJwtConverter EC-29 Caffeine 5s TTL 캐시 — spec §EC-4)
 //
-// E2E 에서 이 5초 윈도우를 실시간 대기로 검증하는 것은 비현실적이다:
+// E2E 에서 이 5초 윈도우를 실시간 대기로 검증하는 것은 비현실적이다.
 //   - page.waitForTimeout(5000) 은 BTS E2E 절대 금지 패턴 (qa-engineer.md §절대 금지).
 //   - 5초 sleep 은 CI 시간을 크게 증가시키고 flaky 요인이 된다.
 //
-// 대신 검증 전략:
+// 대신 검증 전략.
 //   - revoke API 성공(204) → TanStack Query invalidate → 목록 재조회 → 카드 제거를
 //     S-2 happy path 에서 확인한다 (세션 데이터 레벨 즉시 반영).
 //   - access token 의 실제 차단은 refresh chain 즉시 무효화
