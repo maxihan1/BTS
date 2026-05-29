@@ -128,7 +128,9 @@ export const MOCK_CONFLICT_TRIGGER = '__TRIGGER_409__'
  * 분기 순서 (backend 일치):
  *   (1) 이슈 not-found → 404
  *   (2) typeId 검증 실패 → 404
- *   (3) VERSION_CONFLICT 트리거 → 409
+ *   (3) VERSION_CONFLICT → 409 (두 가지 트리거):
+ *       (a) summary === MOCK_CONFLICT_TRIGGER (E2E-5 회귀 가드, 기존 동작 유지)
+ *       (b) expectedVersion !== fixture 현재 version (OCC 시맨틱 — typeId 변경 409 재현용)
  *   (4) 성공 → 200 + { data: 수정된 IssueResponse(version+1) }
  *
  * body.expectedVersion 은 낙관적 잠금(OCC) 필드 — updateIssue API 함수 전송 형태와 일치.
@@ -165,8 +167,13 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     resolvedTypeName = matched.name
   }
 
-  // (3) VERSION_CONFLICT 회귀 가드 — E2E-5 트리거
-  if (body.summary === MOCK_CONFLICT_TRIGGER) {
+  // (3) VERSION_CONFLICT — 두 가지 트리거:
+  //   (a) E2E-5 회귀 가드: summary === MOCK_CONFLICT_TRIGGER (기존 동작 유지)
+  //   (b) OCC 시맨틱: expectedVersion 이 fixture 현재 version 과 불일치
+  const isConflictTrigger = body.summary === MOCK_CONFLICT_TRIGGER
+  const isVersionMismatch =
+    body.expectedVersion !== undefined && body.expectedVersion !== found.version
+  if (isConflictTrigger || isVersionMismatch) {
     return HttpResponse.json(
       { errorCode: 'VERSION_CONFLICT', message: '버전 충돌이 발생했습니다.' },
       { status: 409 },

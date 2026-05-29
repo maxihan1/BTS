@@ -15,7 +15,7 @@ export const bugIssueTypeFixture: IssueTypeFixture = {
   key: 'bug',
   name: '버그',
   description: '예상치 못한 동작 또는 결함',
-  iconName: null,
+  iconName: 'bug',
 }
 
 /** Story — 사용자 스토리 */
@@ -24,7 +24,7 @@ export const storyIssueTypeFixture: IssueTypeFixture = {
   key: 'story',
   name: '스토리',
   description: '사용자 스토리',
-  iconName: null,
+  iconName: 'story',
 }
 
 /** Task — 일반 작업 */
@@ -33,7 +33,7 @@ export const taskIssueTypeFixture: IssueTypeFixture = {
   key: 'task',
   name: '작업',
   description: '일반 작업',
-  iconName: null,
+  iconName: 'task',
 }
 
 /** Epic — 대형 작업 묶음 */
@@ -42,7 +42,7 @@ export const epicIssueTypeFixture: IssueTypeFixture = {
   key: 'epic',
   name: '에픽',
   description: '대형 작업 묶음',
-  iconName: null,
+  iconName: 'epic',
 }
 
 /** Sub-task — 다른 이슈의 하위 작업 */
@@ -51,7 +51,7 @@ export const subtaskIssueTypeFixture: IssueTypeFixture = {
   key: 'subtask',
   name: '하위 작업',
   description: '다른 이슈의 하위 작업',
-  iconName: null,
+  iconName: 'subtask',
 }
 
 /** 5 표준 이슈 타입 전체 목록 */
