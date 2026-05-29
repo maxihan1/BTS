@@ -379,11 +379,6 @@ class IssueTransitionGuardFilterIntegrationTest {
 
     lateinit var mockMvc: MockMvc
 
-    companion object {
-        private var migrated = false
-        private var seeded = false
-    }
-
     @BeforeAll
     fun setUpAll() {
         if (!migrated) {
@@ -542,11 +537,11 @@ class IssueTransitionGuardFilterIntegrationTest {
                 "INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id) " +
                     "VALUES (?, NULL, ?) ON CONFLICT ON CONSTRAINT uq_scheme_issue_type DO NOTHING",
             ).use { stmt ->
-                stmt.setObject(1, guardSchemeId)
+                stmt.setLong(1, guardSchemeId)
                 stmt.setObject(2, guardWfId)
                 stmt.executeUpdate()
             }
-            assignSchemeToProject(conn, GuardTestConfig.GUARD_PROJECT_KEY, guardSchemeId)
+            assignSchemeToProject(conn, GuardTestConfig.GUARD_PROJECT_KEY, "guard-scheme")
 
             // 5. always-blocked-scheme — always-blocked-workflow 를 default 매핑으로 배정
             val blockedSchemeId = insertScheme(conn, "always-blocked-scheme", "Always Blocked Scheme", isDefault = false)
@@ -554,11 +549,11 @@ class IssueTransitionGuardFilterIntegrationTest {
                 "INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id) " +
                     "VALUES (?, NULL, ?) ON CONFLICT ON CONSTRAINT uq_scheme_issue_type DO NOTHING",
             ).use { stmt ->
-                stmt.setObject(1, blockedSchemeId)
+                stmt.setLong(1, blockedSchemeId)
                 stmt.setObject(2, blockedWfId)
                 stmt.executeUpdate()
             }
-            assignSchemeToProject(conn, BLOCKED_PROJECT_KEY, blockedSchemeId)
+            assignSchemeToProject(conn, BLOCKED_PROJECT_KEY, "always-blocked-scheme")
 
             conn.commit()
         }
@@ -643,7 +638,7 @@ class IssueTransitionGuardFilterIntegrationTest {
         key: String,
         name: String,
         isDefault: Boolean,
-    ): UUID =
+    ): Long =
         conn.prepareStatement(
             "INSERT INTO workflow_schemes (key, name, is_default) VALUES (?, ?, ?) " +
                 "ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
@@ -653,22 +648,23 @@ class IssueTransitionGuardFilterIntegrationTest {
             stmt.setBoolean(3, isDefault)
             stmt.executeQuery().use { rs ->
                 rs.next()
-                rs.getObject(1) as UUID
+                rs.getLong(1)
             }
         }
 
     private fun assignSchemeToProject(
         conn: java.sql.Connection,
         projectKey: String,
-        schemeId: UUID,
+        schemeKey: String,
     ) {
         conn.createStatement().use { stmt ->
             stmt.execute(
                 """
                 INSERT INTO project_workflow_scheme_assignments (project_id, workflow_scheme_id, assigned_at, assigned_by)
-                SELECT p.id, '$schemeId', NOW(), '00000000-0000-0000-0000-000000000000'::uuid
-                FROM projects p
+                SELECT p.id, s.id, NOW(), '00000000-0000-0000-0000-000000000000'::uuid
+                FROM projects p, workflow_schemes s
                 WHERE p.key = '$projectKey'
+                  AND s.key = '$schemeKey'
                 ON CONFLICT (project_id) DO NOTHING
                 """.trimIndent(),
             )
@@ -728,5 +724,7 @@ class IssueTransitionGuardFilterIntegrationTest {
     companion object {
         /** BLOCKED 프로젝트 키 — always-blocked-workflow 배정. */
         private const val BLOCKED_PROJECT_KEY = "BLOCKED"
+        private var migrated = false
+        private var seeded = false
     }
 }
