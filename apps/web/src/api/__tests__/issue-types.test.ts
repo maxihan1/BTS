@@ -9,63 +9,69 @@ import type { IssueTypeResponse } from '../issue-types'
 // ─────────────────────────────────────────────────────────────────────────────
 
 const bugFixture: IssueTypeResponse = {
+  id: 1,
   key: 'bug',
   name: '버그',
   description: '예상치 못한 동작 또는 결함',
-  iconUrl: null,
+  iconName: null,
 }
 
 const taskFixture: IssueTypeResponse = {
+  id: 2,
   key: 'task',
   name: '작업',
   description: '일반 작업',
-  iconUrl: null,
+  iconName: null,
 }
 
 const storyFixture: IssueTypeResponse = {
+  id: 3,
   key: 'story',
   name: '스토리',
   description: '사용자 스토리',
-  iconUrl: null,
+  iconName: null,
 }
 
 const epicFixture: IssueTypeResponse = {
+  id: 4,
   key: 'epic',
   name: '에픽',
   description: '대형 작업 묶음',
-  iconUrl: null,
+  iconName: null,
 }
 
 const subtaskFixture: IssueTypeResponse = {
+  id: 5,
   key: 'subtask',
   name: '하위 작업',
   description: '다른 이슈의 하위 작업',
-  iconUrl: null,
+  iconName: null,
 }
 
 const allFiveTypes = [bugFixture, taskFixture, storyFixture, epicFixture, subtaskFixture]
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T3-1. issueTypeResponseSchema — 4 필드 파싱 + iconUrl nullable
+// T3-1. issueTypeResponseSchema — 5 필드 파싱 + iconName nullable
 // ─────────────────────────────────────────────────────────────────────────────
 describe('issueTypeResponseSchema', () => {
-  it('T3-1a: 4 필드가 모두 있는 IssueTypeResponse를 파싱한다', () => {
+  it('T3-1a: 5 필드가 모두 있는 IssueTypeResponse를 파싱한다', () => {
     const result = issueTypeResponseSchema.parse(bugFixture)
 
+    expect(result.id).toBe(1)
     expect(result.key).toBe('bug')
     expect(result.name).toBe('버그')
     expect(result.description).toBe('예상치 못한 동작 또는 결함')
-    expect(result.iconUrl).toBeNull()
+    expect(result.iconName).toBeNull()
   })
 
-  it('T3-1b: iconUrl이 URL 문자열일 때도 파싱 성공한다', () => {
-    const withIcon = { ...bugFixture, iconUrl: 'https://cdn.example.com/icons/bug.svg' }
+  it('T3-1b: iconName이 아이콘 식별자 문자열일 때도 파싱 성공한다', () => {
+    const withIcon = { ...bugFixture, iconName: 'bug-icon' }
     const result = issueTypeResponseSchema.parse(withIcon)
-    expect(result.iconUrl).toBe('https://cdn.example.com/icons/bug.svg')
+    expect(result.iconName).toBe('bug-icon')
   })
 
   it('T3-1c: key 필드 누락 시 ZodError를 throw한다', () => {
-    expect(() => issueTypeResponseSchema.parse({ name: '버그' })).toThrow(ZodError)
+    expect(() => issueTypeResponseSchema.parse({ id: 1, name: '버그' })).toThrow(ZodError)
   })
 
   it('T3-1d: 5 표준 이슈 타입 모두 스키마를 통과한다', () => {
@@ -76,6 +82,16 @@ describe('issueTypeResponseSchema', () => {
 
   it('T3-1e: key가 빈 문자열이면 ZodError를 throw한다', () => {
     expect(() => issueTypeResponseSchema.parse({ ...bugFixture, key: '' })).toThrow(ZodError)
+  })
+
+  it('T3-1f: id 필드가 없으면 ZodError를 throw한다', () => {
+    const withoutId = { ...bugFixture, id: undefined }
+    expect(() => issueTypeResponseSchema.parse(withoutId)).toThrow(ZodError)
+  })
+
+  it('T3-1g: id가 양수 정수가 아니면 ZodError를 throw한다', () => {
+    expect(() => issueTypeResponseSchema.parse({ ...bugFixture, id: 0 })).toThrow(ZodError)
+    expect(() => issueTypeResponseSchema.parse({ ...bugFixture, id: -1 })).toThrow(ZodError)
   })
 })
 
@@ -88,11 +104,12 @@ describe('IssueTypeResponse 타입 컴파일 가드', () => {
     expect(types).toHaveLength(5)
 
     for (const issueType of types) {
+      expect(typeof issueType.id).toBe('number')
       expect(typeof issueType.key).toBe('string')
       expect(typeof issueType.name).toBe('string')
       expect(typeof issueType.description).toBe('string')
-      // iconUrl은 string | null
-      expect(issueType.iconUrl === null || typeof issueType.iconUrl === 'string').toBe(true)
+      // iconName은 string | null
+      expect(issueType.iconName === null || typeof issueType.iconName === 'string').toBe(true)
     }
   })
 })
