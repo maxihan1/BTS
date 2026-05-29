@@ -620,6 +620,50 @@ class AuthControllerTest {
     }
 
     /**
+     * (d-2) 이미 revoke 된(비활성, revoked_at 채워진) 본인 세션을 DELETE 하면 404 를 반환한다 (EC-2).
+     * lookup 이 null 이 아닌 revoked Session 을 반환하는 경우 — isActive=false 가드로 404 (멱등 재폐기 방지).
+     */
+    @Test
+    fun `DELETE sessions - already revoked own session returns 404`() {
+        val userId = UUID.fromString("11111111-1111-1111-1111-111111111111")
+        val currentSid = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        val revokedSid = UUID.fromString("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
+        val now = Instant.now()
+        val revokedSession =
+            Session(
+                id = revokedSid,
+                userId = userId,
+                providerId = "local",
+                deviceFingerprint = null,
+                ipAddress = null,
+                userAgent = null,
+                createdAt = now.minusSeconds(86400),
+                expiresAt = now.plusSeconds(86400),
+                lastSeenAt = now.minusSeconds(3600),
+                revokedAt = now.minusSeconds(60),
+                revokeReason = "logout",
+            )
+
+        `when`(sessionService.lookup(revokedSid)).thenReturn(revokedSession)
+
+        mockMvc.perform(
+            delete("/api/v1/auth/sessions/$revokedSid")
+                .with(csrf())
+                .with(
+                    jwt().jwt { builder ->
+                        builder
+                            .subject(userId.toString())
+                            .claim("sid", currentSid.toString())
+                    },
+                ),
+        )
+            .andExpect(status().isNotFound)
+
+        verify(sessionService, never()).revoke(anyUuid(), org.mockito.ArgumentMatchers.anyString())
+        verify(refreshTokenRepository, never()).revokeChainFromSession(anyUuid())
+    }
+
+    /**
      * (e) PAT 인증으로 DELETE 를 호출하면 403 + session_management_requires_interactive_login 을 반환한다
      * (FR-6b / EC-8). GET /sessions 의 PAT 분기와 동일 패턴.
      */
