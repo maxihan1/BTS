@@ -119,10 +119,12 @@ class LowercaseCurrentStateKeyMigrationTest {
                 .migrate()
         }
 
-        private fun conn(): Connection {
-            val url = postgres.jdbcUrl
-            return DriverManager.getConnection(url, postgres.username, postgres.password)
-        }
+        private fun conn(): Connection =
+            DriverManager.getConnection(
+                postgres.jdbcUrl,
+                postgres.username,
+                postgres.password,
+            )
     }
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────

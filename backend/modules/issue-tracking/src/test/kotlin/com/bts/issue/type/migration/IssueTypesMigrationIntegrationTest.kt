@@ -89,6 +89,7 @@ class IssueTypesMigrationIntegrationTest {
             }
         }
 
+    // Connection → prepareStatement → executeQuery 3중 use 블록 중첩. SQL 헬퍼의 관용적 패턴이므로 Suppress 처리. PRE_EXISTING.
     @Suppress("NestedBlockDepth")
     private fun columnDataType(
         tableName: String,

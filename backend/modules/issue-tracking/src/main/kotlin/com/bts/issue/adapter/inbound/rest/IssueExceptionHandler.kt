@@ -37,10 +37,10 @@ import java.time.Instant
  * - [IssueWorkflowNotConfiguredException] → 422 + [IssueErrorCodes.WORKFLOW_NOT_CONFIGURED]
  * - [Exception] (fallback) → 500 + [IssueErrorCodes.INTERNAL_ERROR]
  *
- * `@RestControllerAdvice` 는 예외 → HTTP 응답 매핑을 한곳에 모으는 응집된 패턴이라 도메인 예외가
- * 늘수록 핸들러 수가 자연히 증가한다. FR-IS-02 D6 에서 [IssueTypeNotFoundException] 핸들러가 추가되며
- * 12개가 되어 detekt TooManyFunctions(11) 를 넘는데, 분리하면 예외-응답 매핑이 파편화되므로
- * 클래스 단위로 억제한다.
+ * TooManyFunctions: 도메인 예외 종류(400/401/403/404/409/422/500) 각각에 @ExceptionHandler 가 필요하므로
+ * 함수 수가 임계치(11)를 넘는다. RestControllerAdvice 의 책임(예외→HTTP 변환)은 분리 불가한 단일 관심사라
+ * 클래스 단위로 억제한다. FR-IS-02 D6 에서 [IssueTypeNotFoundException] 핸들러가 추가됐다
+ * (type.web 패키지 한정 핸들러가 못 잡는 예외를 rest 패키지에서 404 로 매핑).
  */
 @Suppress("TooManyFunctions")
 @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])

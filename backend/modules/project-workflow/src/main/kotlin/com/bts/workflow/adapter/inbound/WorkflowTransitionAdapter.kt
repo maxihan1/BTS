@@ -2,6 +2,8 @@
 
 package com.bts.workflow.adapter.inbound
 
+import com.bts.shared.workflow.AvailableTransitionsRequest
+import com.bts.shared.workflow.AvailableTransitionsResult
 import com.bts.shared.workflow.TransitionRequest
 import com.bts.shared.workflow.TransitionResult
 import com.bts.shared.workflow.WorkflowTransitionPort
@@ -18,11 +20,17 @@ import org.springframework.transaction.annotation.Transactional
  * [WorkflowTransitionPort] 구현체.
  *
  * [WorkflowEngine] 을 호출하고 내부 예외를 [TransitionResult] 케이스로 매핑한다.
- * 호출자 BC (issue-tracking / automation) 는 이 adapter 를 통해 전이를 요청하며,
+ * 호출자 BC (바운디드 컨텍스트 — 책임 범위로 나눈 도메인 단위) 인 issue-tracking / automation 은
+ * 이 adapter 를 통해 전이를 요청하며,
  * `com.bts.workflow.domain.exception.*` 를 직접 import 하지 않아도 된다 (BC 격리 보장).
  *
  * ### 트랜잭션 계약
- * [Propagation.MANDATORY] — 호출자가 반드시 활성 트랜잭션 안에서 이 포트를 호출해야 한다.
+ * - [plan]: [Propagation.MANDATORY] — 쓰기 트랜잭션 컨텍스트에서 호출해야 한다.
+ * - [availableTransitions]: [Propagation.MANDATORY] + readOnly=true — 읽기 전용 트랜잭션.
+ *
+ * ### post-action 미실행 보장
+ * [availableTransitions] 는 [WorkflowEngine.availableTransitions] 에 위임하며,
+ * 해당 메서드는 Validator 평가만 수행한다. SetField/Notify 등 PostAction 은 절대 실행되지 않는다.
  *
  * ### 관련 ADR
  * docs/adr/2026-05-26-workflow-transition-port-result-sealed.md
@@ -53,7 +61,24 @@ class WorkflowTransitionAdapter(
             mapException(req, e)
         }
 
-    // ── private helper ────────────────────────────────────────────────────────
+    /**
+     * 현재 상태에서 validator 를 통과하는 가용 전이 목록 조회를 [WorkflowEngine] 에 위임한다.
+     *
+     * post-action (SetField/Notify 등) 은 절대 실행하지 않는다.
+     * 실질 로직은 [WorkflowEngine.availableTransitions] 가 담당한다.
+     *
+     * @param req 가용 전이 열거 요청 DTO
+     * @return 2 케이스 반환 계약은 [WorkflowTransitionPort] KDoc 참조
+     */
+    @Transactional(readOnly = true, propagation = Propagation.MANDATORY)
+    override fun availableTransitions(req: AvailableTransitionsRequest): AvailableTransitionsResult {
+        log.debug(
+            "WorkflowTransitionAdapter.availableTransitions: workflowKey={} fromStateKey={}",
+            req.workflowKey,
+            req.fromStateKey,
+        )
+        return workflowEngine.availableTransitions(req)
+    }
 
     private fun mapException(
         req: TransitionRequest,
