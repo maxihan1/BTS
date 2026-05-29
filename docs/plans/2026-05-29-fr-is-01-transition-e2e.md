@@ -159,4 +159,21 @@ PR1 머지 후 진행 — 전이 UI(frontend). 대략 task.
 - Playwright E2E(`issue-transition.spec.ts`) — happy + 가용전이 필터 + 에러
 
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+> classify type=qa(스테일)였으나 실제 scope=backend+api(신규 공개 엔드포인트 + SPI 계약). fast-track skip 부적절 판단 → eng + devex 관점 리뷰 적용.
+
+### plan-eng-review (2026-05-29)
+- ✅ TDD 순서 — 각 task RED→GREEN→REFACTOR, test 커밋 feat 선행 가능.
+- ✅ BC 격리 — cross-BC지만 SPI 확장(sanctioned 채널) + Maxi 승인. T3가 port mock로 단위 격리 유지(depends-on [1]만).
+- ✅ 트랜잭션 — SPI `availableTransitions`가 `MANDATORY`, 서비스 T3가 `readOnly=true` tx로 호출. `resolveStart`(MANDATORY)+port 호출이 **동일 트랜잭션**임을 impl에서 보장.
+- ⚠️ 주의 1 (impl 필수 해소) — **enumeration은 validator만 평가, `WorkflowPostAction`은 절대 실행 금지.** GET(읽기)에서 post-action(상태변경/부수효과) 트리거되면 안 됨. T2 GREEN에서 `plan` 경로 재사용 시 post-action 분기 제외 명시.
+- ⚠️ 주의 2 (impl 필수 해소) — **`WorkflowNotFound` HTTP 매핑 미정.** workflowKey resolve됐으나 워크플로우 row 부재 시. 422(미설정)로 통일 권장. T4에서 `IssueExceptionHandler` 매핑 확정.
+- ⚠️ 주의 3 — T5/T6 통합테스트는 impl(T2,T4) 후 작성이라 엄밀한 red-first 아님(검증 지향). BTS E2E 관례상 허용이나, wiring 끊어 fail 재현 1회로 "진짜 검증함" 확인 권장.
+- BLOCKER: 없음.
+
+### plan-devex-review (2026-05-29)
+- ✅ 응답 형태 — `{ data: { transitions: [{fromStateKey,toStateKey,name,key}] } }`. 기존 `DataResponse<T>` + frontend `workflowTransitionViewSchema`와 정합(PR2 Zod 재사용 가능).
+- ✅ 에러 코드 — GET은 404/422만(409 비해당). /api/v1 버전 일관.
+- ⚠️ 경미 — `GET .../transitions`(복수, 목록) vs 기존 `POST .../transition`(단수, 실행) 명명 혼재. 기존 POST 명명 유지가 제약이라 수용. impl에서 KDoc로 의도 명시.
+- BLOCKER: 없음.
