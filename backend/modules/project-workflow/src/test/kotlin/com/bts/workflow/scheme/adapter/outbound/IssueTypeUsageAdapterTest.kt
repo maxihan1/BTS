@@ -57,24 +57,37 @@ class IssueTypeUsageAdapterTest : DescribeSpec({
     }
 
     /**
-     * 테스트용 workflow_scheme + mapping INSERT 헬퍼.
+     * 테스트용 workflow INSERT 헬퍼.
+     *
+     * Testcontainers 환경에서는 YamlSeedService(ApplicationReadyEvent)가 실행되지 않아
+     * workflows 테이블이 비어있다. 직접 INSERT 해 FK 를 만족시킨다.
+     */
+    fun insertWorkflow(dsl: DSLContext): UUID {
+        val workflowId = UUID.randomUUID()
+        dsl
+            .insertInto(DSL.table("workflows"))
+            .columns(
+                DSL.field("id", UUID::class.java),
+                DSL.field("key", String::class.java),
+                DSL.field("name", String::class.java),
+            )
+            .values(workflowId, "test-workflow-${workflowId.toString().take(8)}", "테스트 워크플로우")
+            .execute()
+        return workflowId
+    }
+
+    /**
+     * 테스트용 workflow_scheme mapping INSERT 헬퍼.
      *
      * V201 seed 로 삽입된 표준 스킴(id=1~4) 이 존재하므로 schemeId=1 을 재활용한다.
-     * workflows 테이블에서 임의 workflow_id 를 하나 조회해 FK 를 만족시킨다.
+     * [insertWorkflow] 로 생성한 workflow_id 를 FK 로 사용한다.
      */
     fun insertMapping(
         dsl: DSLContext,
         schemeId: Long,
         issueTypeId: Long,
     ) {
-        val workflowId =
-            dsl
-                .select(DSL.field("id", UUID::class.java))
-                .from(DSL.table("workflows"))
-                .limit(1)
-                .fetchOne()
-                ?.get(DSL.field("id", UUID::class.java))
-                ?: error("workflows 테이블에 seed 레코드 없음 — 마이그레이션 확인 필요")
+        val workflowId = insertWorkflow(dsl)
 
         dsl
             .insertInto(DSL.table("workflow_scheme_issue_type_mappings"))
@@ -102,7 +115,8 @@ class IssueTypeUsageAdapterTest : DescribeSpec({
         it("매핑 3건 INSERT 후 countSchemeMappings 는 3 을 반환한다") {
             val (conn, dsl) = newDsl()
             conn.use {
-                // 테스트용 issue_type 3개 삽입 (중복 방지를 위해 고유 key 사용)
+                // 테스트용 issue_type 삽입 — key는 VARCHAR(30) 제약으로 UUID 짧게 사용 (8자 hex)
+                val shortId = UUID.randomUUID().toString().replace("-", "").take(8)
                 val issueTypeId =
                     dsl
                         .insertInto(DSL.table("issue_types"))
@@ -110,7 +124,7 @@ class IssueTypeUsageAdapterTest : DescribeSpec({
                             DSL.field("key", String::class.java),
                             DSL.field("name", String::class.java),
                         )
-                        .values("test-count-type-${UUID.randomUUID()}", "테스트 카운트 타입")
+                        .values("t-cnt-$shortId", "테스트 카운트 타입")
                         .returningResult(DSL.field("id", Long::class.java))
                         .fetchOne()
                         ?.get(DSL.field("id", Long::class.java))
@@ -137,6 +151,7 @@ class IssueTypeUsageAdapterTest : DescribeSpec({
         it("매핑 0건이면 countSchemeMappings 는 0 을 반환한다") {
             val (conn, dsl) = newDsl()
             conn.use {
+                val shortId = UUID.randomUUID().toString().replace("-", "").take(8)
                 val issueTypeId =
                     dsl
                         .insertInto(DSL.table("issue_types"))
@@ -144,7 +159,7 @@ class IssueTypeUsageAdapterTest : DescribeSpec({
                             DSL.field("key", String::class.java),
                             DSL.field("name", String::class.java),
                         )
-                        .values("test-zero-type-${UUID.randomUUID()}", "테스트 제로 타입")
+                        .values("t-zero-$shortId", "테스트 제로 타입")
                         .returningResult(DSL.field("id", Long::class.java))
                         .fetchOne()
                         ?.get(DSL.field("id", Long::class.java))
