@@ -2,6 +2,7 @@
 
 package com.bts.issue.application
 
+import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
@@ -73,6 +74,24 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
         typeId = IssueTypeId(3L),
     )
 
+    fun makeResponse(
+        summary: String = "원래",
+        version: Long = existingVersion,
+    ) = IssueResponse(
+        key = issueKey.value,
+        id = UUID.randomUUID(),
+        projectKey = issueKey.projectPrefix,
+        summary = summary,
+        currentStateKey = "open",
+        reporterId = actor.value,
+        version = version,
+        createdAt = Instant.parse("2026-05-24T00:00:00Z"),
+        updatedAt = Instant.parse("2026-05-24T00:00:00Z"),
+        typeId = 3L,
+        typeKey = "task",
+        typeName = "Task",
+    )
+
     beforeEach {
         clearMocks(repo, eventPublisher, permissionResolver, answers = false)
     }
@@ -83,12 +102,14 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
         context("T7-1 — summary null (RFC 7396 JSON Merge Patch: 필드 생략)") {
             val request = UpdateIssueRequest(summary = null, expectedVersion = existingVersion)
             val existingIssue = makeIssue(summary = "원래")
+            val existingResponse = makeResponse(summary = "원래")
 
             beforeEach {
                 every {
                     permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
+                every { repo.findByKeyWithType(issueKey) } returns existingResponse
             }
 
             it("updateSummary 가 호출되지 않는다") {
@@ -112,14 +133,15 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
         context("T7-2 — summary 변경 (기존값과 다른 새 값)") {
             val request = UpdateIssueRequest(summary = "새 제목", expectedVersion = existingVersion)
             val existingIssue = makeIssue(summary = "원래")
-            val updatedIssue = makeIssue(summary = "새 제목", version = existingVersion + 1)
+            val updatedResponse = makeResponse(summary = "새 제목", version = existingVersion + 1)
 
             beforeEach {
                 every {
                     permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
-                every { repo.findByKey(issueKey) } returnsMany listOf(existingIssue, updatedIssue)
+                every { repo.findByKey(issueKey) } returns existingIssue
                 every { repo.updateSummary(issueKey, "새 제목", existingVersion) } returns 1
+                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
                 every { eventPublisher.publish(any()) } returns Unit
             }
 
@@ -148,12 +170,14 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
         context("T7-3 — summary 동일값 (변경 없음)") {
             val request = UpdateIssueRequest(summary = "원래", expectedVersion = existingVersion)
             val existingIssue = makeIssue(summary = "원래")
+            val existingResponse = makeResponse(summary = "원래")
 
             beforeEach {
                 every {
                     permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
+                every { repo.findByKeyWithType(issueKey) } returns existingResponse
             }
 
             it("updateSummary 가 호출되지 않는다") {

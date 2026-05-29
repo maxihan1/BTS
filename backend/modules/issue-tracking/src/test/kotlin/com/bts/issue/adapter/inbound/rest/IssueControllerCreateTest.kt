@@ -157,11 +157,25 @@ class IssueControllerCreateTest {
                 typeId = IssueTypeId(3L),
             )
 
-        every {
-            issueApplicationService.createIssue(any(), CreateIssueRequest("ATLAS", "정상 요약", actorId))
-        } returns stubIssue
+        val stubResponse =
+            IssueResponse(
+                key = "ATLAS-1",
+                id = UUID.fromString("00000000-0000-0000-0000-000000000002"),
+                projectKey = "ATLAS",
+                summary = "정상 요약",
+                currentStateKey = "open",
+                reporterId = actorId.value,
+                version = 1L,
+                createdAt = fixedNow,
+                updatedAt = fixedNow,
+                typeId = 3L,
+                typeKey = "task",
+                typeName = "Task",
+            )
 
         every { issueApplicationService.createIssue(any(), any()) } returns stubIssue
+        // 컨트롤러는 createIssue 후 findByKey 를 호출하여 type 요약 포함 응답을 얻는다.
+        every { issueApplicationService.findByKey(any(), issueKey) } returns stubResponse
 
         val body =
             mapOf(
