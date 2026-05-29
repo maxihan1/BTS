@@ -426,4 +426,17 @@ controller inline brainstorming (D6 spec line 156 패턴 따름).
 - controller 통합 검증. wave 종료마다 `pnpm typecheck` 직접 실행 (서브에이전트 scoped 맹점 회피)
 - 파일 충돌 0. T2/T3 disjoint, T4~T8 각 spec 파일 disjoint, T9 docs only
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### bts-review-plan (2026-05-29)
+
+- **fast-track 스킵 적용.** bts-review-plan SKILL.md §Step 2 표 — `TYPE ∈ {bugfix, chore, qa}` 는 리뷰 체인 스킵.
+- 본 task type = qa, 따라서 plan-eng/ceo/design/devex/autoplan 호출 없음.
+- controller inline 자체 검증.
+  - ✅ TDD 강제 변형 사유 plan §Plan 메타 + 각 task RED 단락에 명시 (UI 사전 존재 — RED 자연 발생 안 함, learnings 2026-05-28 Flyway recursive 사례 패턴)
+  - ✅ 파일 충돌 0 확인 (T2/T3 disjoint, T4~T8 spec 파일 disjoint)
+  - ✅ wave 의존성 그래프 — cycle 0, longest path = 4 wave
+  - ✅ controller 통합 검증 명시 (wave 종료마다 `pnpm verify`)
+  - ✅ learnings (2026-05-26 vi.mock worker scope leak / 2026-05-27 lint-staged + scoped typecheck 맹점 / 2026-05-28 PRE_EXISTING D5 옵션 C / `gh pr merge --delete-branch` 5 step 우회) 모두 plan 본문 또는 spec 본문에 인용/반영
+- BLOCKER. 없음 (G-BLOCKER-1 은 spec 단계 결정 완료, 옵션 (C) plan task 흡수).
+- 주의 1건 (BLOCKER 아님). T9 (통합 verify) 에서 `pnpm test:e2e` 전체 duration 측정 — baseline 미존재 시 본 task 수치를 baseline 으로 기록 (PR #32 머지 직후 + D7 추가 후).
