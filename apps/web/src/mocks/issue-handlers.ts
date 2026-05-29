@@ -6,8 +6,11 @@ import {
   issueAtlas1Fixture,
   issueAtlas2Fixture,
   issueAtlas3Fixture,
+  issueAtlas4Fixture,
+  issueAtlasNoWorkflowFixture,
 } from './issue-fixtures'
 import { allIssueTypeFixtures } from './issue-type-fixtures'
+import { softwareDefaultFixture } from './workflow-fixtures'
 import type { IssueResponse, IssuePage } from '@/api/issues'
 
 /**
@@ -33,6 +36,8 @@ const issueFixtureMap: Record<string, IssueResponse> = {
   'ATLAS-1': issueAtlas1Fixture,
   'ATLAS-2': issueAtlas2Fixture,
   'ATLAS-3': issueAtlas3Fixture,
+  'ATLAS-4': issueAtlas4Fixture,
+  'ATLAS-NOWF': issueAtlasNoWorkflowFixture,
 }
 
 /**
@@ -51,10 +56,15 @@ const deletedKeys = new Set<string>()
 // E2E-1 happy path 용 — POST 로 생성된 이슈를 GET 목록/단건 에서 조회 가능하도록 stateful 유지.
 const createdIssues = new Map<string, IssueResponse>()
 
+// 전이 후 상태 오버라이드 — issueFixtureMap 원본 불변 유지 + 전이 결과 반영.
+// key: 이슈 키, value: 전이 후 갱신된 IssueResponse
+const transitionOverrides = new Map<string, IssueResponse>()
+
 /** E2E / 단위 테스트 격리용 — 모듈-스코프 state 초기화. 각 test setup 에서 호출. */
 export function resetIssueState(): void {
   deletedKeys.clear()
   createdIssues.clear()
+  transitionOverrides.clear()
 }
 
 function buildFilteredPage(): IssuePage {
@@ -87,7 +97,8 @@ const getIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
       { status: 404 },
     )
   }
-  const found = createdIssues.get(key) ?? issueFixtureMap[key]
+  // 전이 오버라이드 → 생성된 이슈 → 정적 fixture 순으로 조회
+  const found = transitionOverrides.get(key) ?? createdIssues.get(key) ?? issueFixtureMap[key]
   if (found === undefined) {
     return HttpResponse.json(
       { message: `이슈를 찾을 수 없습니다: ${key}` },
@@ -122,6 +133,9 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
 
 /** E2E-5 회귀 가드 트리거 — summary 값이 이 문자열이면 409 VERSION_CONFLICT 응답. */
 export const MOCK_CONFLICT_TRIGGER = '__TRIGGER_409__'
+
+/** 전이 워크플로우 미설정 트리거 — toStatusKey 값이 이 문자열이면 422 응답. */
+export const MOCK_NO_WORKFLOW_TRIGGER = '__TRIGGER_422_NO_WORKFLOW__'
 
 /**
  * PATCH /api/v1/issues/:key — 이슈 수정 핸들러.
@@ -207,10 +221,123 @@ const deleteIssueHandler = http.delete('/api/v1/issues/:key', ({ params }) => {
   return new HttpResponse(null, { status: 204 })
 })
 
+/**
+ * 이슈 키로 현재 상태 조회 helper — transitionOverrides → createdIssues → issueFixtureMap 순서.
+ * 소프트 삭제된 키는 undefined 반환.
+ */
+function resolveIssue(key: string): IssueResponse | undefined {
+  if (deletedKeys.has(key)) return undefined
+  return transitionOverrides.get(key) ?? createdIssues.get(key) ?? issueFixtureMap[key]
+}
+
+/**
+ * 현재 이슈 상태 기준 가용전이 반환 helper.
+ * softwareDefaultFixture 가 단일 출처 — 전이 직접 정의 금지.
+ */
+function getAvailableTransitions(
+  currentStateKey: string,
+): typeof softwareDefaultFixture.transitions {
+  return softwareDefaultFixture.transitions.filter(
+    (t) => t.fromStateKey === currentStateKey,
+  )
+}
+
+/**
+ * GET /api/v1/issues/:key/transitions — 현재 상태 기준 가용전이 목록 반환.
+ * 분기 순서 (backend 일치):
+ *   (1) 이슈 not-found → 404
+ *   (2) 워크플로우 미설정 이슈(ATLAS-NOWF) → 422 (E2E 미설정 UI 검증용)
+ *   (3) 성공 → 200 + { data: { transitions } }
+ * 응답: { data: { transitions: [{ key, name, fromStateKey, toStateKey }] } }
+ */
+const getTransitionsHandler = http.get('/api/v1/issues/:key/transitions', ({ params }) => {
+  const key = params['key'] as string
+  const found = resolveIssue(key)
+  if (found === undefined) {
+    return HttpResponse.json(
+      { message: `이슈를 찾을 수 없습니다: ${key}` },
+      { status: 404 },
+    )
+  }
+  // (2) 워크플로우 미설정 이슈 → 422
+  if (key === issueAtlasNoWorkflowFixture.key) {
+    return HttpResponse.json(
+      { errorCode: 'workflow_not_configured', message: '이슈에 워크플로우가 설정되지 않았습니다.' },
+      { status: 422 },
+    )
+  }
+  const transitions = getAvailableTransitions(found.currentStateKey)
+  return HttpResponse.json({ data: { transitions } })
+})
+
+/**
+ * POST /api/v1/issues/:key/transition — 이슈 상태 전이 핸들러.
+ * 분기 순서 (backend 일치):
+ *   (1) 이슈 not-found → 404
+ *   (2) MOCK_NO_WORKFLOW_TRIGGER → 422 (워크플로우 미설정 시뮬)
+ *   (3-a) expectedVersion 불일치 → 409 VERSION_CONFLICT (OCC 버전충돌)
+ *   (3-b) MOCK_CONFLICT_TRIGGER → 409 TRANSITION_NOT_ALLOWED (전이거부)
+ *   (4) 성공 → 200 + currentStateKey=toStatusKey + version+1, stateful 보관
+ */
+const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ params, request }) => {
+  const key = params['key'] as string
+  const found = resolveIssue(key)
+  if (found === undefined) {
+    return HttpResponse.json(
+      { message: `이슈를 찾을 수 없습니다: ${key}` },
+      { status: 404 },
+    )
+  }
+
+  const body = await request.clone().json() as {
+    toStatusKey?: string
+    expectedVersion?: number
+  }
+  const toStatusKey = body.toStatusKey ?? ''
+
+  // (2) 워크플로우 미설정 트리거 → 422
+  if (toStatusKey === MOCK_NO_WORKFLOW_TRIGGER) {
+    return HttpResponse.json(
+      { errorCode: 'workflow_not_configured', message: '이슈에 워크플로우가 설정되지 않았습니다.' },
+      { status: 422 },
+    )
+  }
+
+  // (3-a) OCC 버전 충돌 → 409 VERSION_CONFLICT
+  const isVersionMismatch =
+    body.expectedVersion !== undefined && body.expectedVersion !== found.version
+  if (isVersionMismatch) {
+    return HttpResponse.json(
+      { errorCode: 'VERSION_CONFLICT', message: '버전 충돌이 발생했습니다.' },
+      { status: 409 },
+    )
+  }
+
+  // (3-b) 전이거부 트리거 → 409 TRANSITION_NOT_ALLOWED
+  if (toStatusKey === MOCK_CONFLICT_TRIGGER) {
+    return HttpResponse.json(
+      { errorCode: 'TRANSITION_NOT_ALLOWED', message: '허용되지 않는 전이입니다.' },
+      { status: 409 },
+    )
+  }
+
+  // (4) 성공 — currentStateKey 갱신 + version+1, stateful 보관
+  const updated: IssueResponse = {
+    ...found,
+    currentStateKey: toStatusKey,
+    version: found.version + 1,
+    updatedAt: new Date().toISOString(),
+  }
+  transitionOverrides.set(key, updated)
+  return HttpResponse.json({ data: updated })
+})
+
 export const issueHandlers = [
   listIssuesHandler,
   getIssueHandler,
   createIssueHandler,
   updateIssueHandler,
   deleteIssueHandler,
+  getTransitionsHandler,
+  transitionHandler,
 ]

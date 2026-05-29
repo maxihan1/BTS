@@ -44,6 +44,28 @@ const dataResponseSchema = <T>(innerSchema: z.ZodSchema<T>) =>
 // 추론된 타입 (interface 중복 정의 금지)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * 이슈 가용 전이 항목 Zod 스키마.
+ * backend TransitionItem DTO 직렬화 형태와 1:1 대응.
+ * workflows.ts의 workflowTransitionViewSchema와 동일 형태이나
+ * 이슈 전이 API 계약에 특화된 독립 스키마로 관리한다.
+ */
+export const issueTransitionSchema = z.object({
+  key: z.string().min(1),
+  name: z.string().min(1),
+  fromStateKey: z.string().min(1),
+  toStateKey: z.string().min(1),
+})
+
+/** 이슈 전이 항목 타입 */
+export type IssueTransition = z.infer<typeof issueTransitionSchema>
+
+/** 이슈 전이 요청 입력 타입 */
+export interface TransitionIssueInput {
+  toStatusKey: string
+  expectedVersion: number
+}
+
 /** 이슈 단건 응답 타입 */
 export type IssueResponse = z.infer<typeof issueResponseSchema>
 
@@ -162,4 +184,49 @@ export async function deleteIssue(key: string): Promise<void> {
     const errorBody: unknown = await res.json().catch(() => ({}))
     throw new ApiError(res.status, errorBody)
   }
+}
+
+/** backend `{ data: { transitions: [...] } }` 전이 목록 응답 파싱 헬퍼 (내부 전용) */
+const transitionsResponseSchema = z.object({
+  data: z.object({ transitions: z.array(issueTransitionSchema) }),
+})
+
+/**
+ * 이슈의 현재 상태에서 가용한 전이 목록을 조회한다.
+ * GET /api/v1/issues/{key}/transitions → { data: { transitions: IssueTransition[] } }
+ *
+ * @param key 이슈 식별 키 (예: "ATLAS-1")
+ * @returns 전이 항목 배열 — 현재 상태에서 이동 가능한 전이들
+ * @throws ApiError(404) 해당 key의 이슈가 없을 때
+ */
+export async function fetchIssueTransitions(key: string): Promise<IssueTransition[]> {
+  const wrapped = await apiGet(
+    `/api/v1/issues/${key}/transitions`,
+    transitionsResponseSchema,
+  )
+  return wrapped.data.transitions
+}
+
+/**
+ * 이슈 상태를 전이한다.
+ * POST /api/v1/issues/{key}/transition body { toStatusKey, expectedVersion }
+ * 성공 200 시 변경된 IssueResponse를 반환한다.
+ * 낙관적 잠금(OCC) 충돌 시 ApiError(409)를 throw한다.
+ *
+ * @param key 전이할 이슈 식별 키
+ * @param input toStatusKey(목표 상태키) · expectedVersion(현재 버전, OCC용)
+ * @returns 전이 완료된 IssueResponse — currentStateKey와 version이 갱신된 상태
+ * @throws ApiError(404) 이슈가 없을 때
+ * @throws ApiError(409) 낙관적 잠금 충돌 또는 전이 불허 시
+ * @throws ApiError(422) 유효하지 않은 전이 요청 시
+ */
+export async function transitionIssue(key: string, input: TransitionIssueInput): Promise<IssueResponse> {
+  const res = await apiFetch(`/api/v1/issues/${key}/transition`, { method: 'POST', body: input })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const raw: unknown = await res.json()
+  const wrapped = dataResponseSchema(issueResponseSchema).parse(raw)
+  return wrapped.data
 }

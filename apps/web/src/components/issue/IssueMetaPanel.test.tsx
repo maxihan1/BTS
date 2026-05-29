@@ -1,14 +1,21 @@
-// IssueMetaPanel 유형 행 + 셀렉터 단위 테스트 — FR-IS-02 D6 Task-6
+// IssueMetaPanel 유형 행 + 셀렉터 + 상태전이 컨트롤 단위 테스트 — FR-IS-02 D6 + FR-IS-01 Task-4
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { IssueResponse } from '@/api/issues'
+import type { IssueResponse, IssueTransition } from '@/api/issues'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
+import { issueDetailStrings } from '@/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** 테스트용 전이 목록 픽스처 — open 상태에서 2개 */
+const transitionsFixture: IssueTransition[] = [
+  { key: 'open__in_progress', name: 'Start Work', fromStateKey: 'open', toStateKey: 'in_progress' },
+  { key: 'open__closed', name: 'Cancel', fromStateKey: 'open', toStateKey: 'closed' },
+]
 
 /** 테스트용 이슈 픽스처 — typeId=1(bug) */
 const issueFixture: IssueResponse = {
@@ -42,6 +49,9 @@ function renderPanel(
   types: IssueTypeResponse[] = availableTypes,
   onTypeChange = vi.fn(),
   onDeleteClick = vi.fn(),
+  transitions: IssueTransition[] = transitionsFixture,
+  onTransition = vi.fn(),
+  isTransitioning = false,
 ) {
   return render(
     <IssueMetaPanel
@@ -49,6 +59,9 @@ function renderPanel(
       availableTypes={types}
       onTypeChange={onTypeChange}
       onDeleteClick={onDeleteClick}
+      transitions={transitions}
+      onTransition={onTransition}
+      isTransitioning={isTransitioning}
     />,
   )
 }
@@ -132,6 +145,9 @@ describe('IssueMetaPanel — 셀렉터 옵션', () => {
         availableTypes={availableTypes}
         onTypeChange={vi.fn()}
         onDeleteClick={vi.fn()}
+        transitions={transitionsFixture}
+        onTransition={vi.fn()}
+        isTransitioning={false}
       />,
     )
 
@@ -195,6 +211,151 @@ describe('IssueMetaPanel — 접근성', () => {
   it('IMP-10: 셀렉터에 min-h-[44px] 클래스가 있다', () => {
     renderPanel()
     const select = screen.getByRole('combobox', { name: /유형/ })
+    expect(select.className).toMatch(/min-h-\[44px\]/)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IMP-11~17. 상태전이 컨트롤 — FR-IS-01 Task-4
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueMetaPanel — 상태전이 컨트롤 렌더', () => {
+  /**
+   * IMP-11: 가용전이 목록이 있으면 전이 셀렉터가 렌더된다.
+   */
+  it('IMP-11: 가용전이가 있을 때 전이 셀렉터가 렌더된다', () => {
+    renderPanel()
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
+    expect(select).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-12: 전이 셀렉터에 가용전이 name이 옵션으로 노출된다.
+   * options: placeholder + "Start Work" + "Cancel"
+   */
+  it('IMP-12: 전이 셀렉터에 가용전이 name 옵션이 모두 노출된다', () => {
+    renderPanel()
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
+    expect(within(select as HTMLElement).getByRole('option', { name: 'Start Work' })).toBeInTheDocument()
+    expect(within(select as HTMLElement).getByRole('option', { name: 'Cancel' })).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-13: 전이 선택 시 onTransition(toStateKey)이 호출된다.
+   */
+  it('IMP-13: 전이 선택 시 onTransition(toStateKey)이 호출된다', async () => {
+    const onTransition = vi.fn()
+    renderPanel(issueFixture, availableTypes, vi.fn(), vi.fn(), transitionsFixture, onTransition)
+    const user = userEvent.setup()
+
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
+    await user.selectOptions(select, 'in_progress')
+
+    expect(onTransition).toHaveBeenCalledOnce()
+    expect(onTransition).toHaveBeenCalledWith('in_progress')
+  })
+
+  /**
+   * IMP-14: isTransitioning=true 시 전이 셀렉터가 disabled 상태가 된다 (중복클릭 방지, NFR3).
+   */
+  it('IMP-14: isTransitioning=true 시 전이 셀렉터가 disabled가 된다', () => {
+    renderPanel(issueFixture, availableTypes, vi.fn(), vi.fn(), transitionsFixture, vi.fn(), true)
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
+    expect(select).toBeDisabled()
+  })
+})
+
+describe('IssueMetaPanel — 가용전이 0건 (종료상태 S6)', () => {
+  /**
+   * IMP-15: 가용전이 0건이면 전이 셀렉터가 렌더되지 않는다.
+   */
+  it('IMP-15: 가용전이 0건이면 전이 셀렉터가 렌더되지 않는다', () => {
+    renderPanel(issueFixture, availableTypes, vi.fn(), vi.fn(), [])
+    expect(screen.queryByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).not.toBeInTheDocument()
+  })
+
+  /**
+   * IMP-16: 가용전이 0건이면 "더 진행할 전이 없음" 안내 문구가 렌더된다.
+   */
+  it('IMP-16: 가용전이 0건이면 "더 진행할 전이 없음" 안내가 렌더된다', () => {
+    renderPanel(issueFixture, availableTypes, vi.fn(), vi.fn(), [])
+    expect(screen.getByText(issueDetailStrings.noTransitionsAvailable)).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E5 구분 검증 — unavailableReason prop: 'no-workflow' vs 'terminal' vs null
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal) 구분', () => {
+  /**
+   * IMP-18: unavailableReason='no-workflow' 시 미설정 안내문구가 렌더된다.
+   */
+  it('IMP-18: unavailableReason=no-workflow 시 transitionWorkflowNotConfiguredError 문구가 렌더된다', () => {
+    render(
+      <IssueMetaPanel
+        issue={issueFixture}
+        availableTypes={availableTypes}
+        onTypeChange={vi.fn()}
+        onDeleteClick={vi.fn()}
+        transitions={[]}
+        onTransition={vi.fn()}
+        isTransitioning={false}
+        unavailableReason="no-workflow"
+      />,
+    )
+    expect(screen.getByText(issueDetailStrings.transitionWorkflowNotConfiguredError)).toBeInTheDocument()
+    expect(screen.queryByText(issueDetailStrings.noTransitionsAvailable)).not.toBeInTheDocument()
+  })
+
+  /**
+   * IMP-19: unavailableReason='terminal'(또는 null) 시 noTransitionsAvailable 문구가 렌더된다.
+   */
+  it('IMP-19: unavailableReason=terminal 시 noTransitionsAvailable 문구가 렌더된다', () => {
+    render(
+      <IssueMetaPanel
+        issue={issueFixture}
+        availableTypes={availableTypes}
+        onTypeChange={vi.fn()}
+        onDeleteClick={vi.fn()}
+        transitions={[]}
+        onTransition={vi.fn()}
+        isTransitioning={false}
+        unavailableReason="terminal"
+      />,
+    )
+    expect(screen.getByText(issueDetailStrings.noTransitionsAvailable)).toBeInTheDocument()
+    expect(screen.queryByText(issueDetailStrings.transitionWorkflowNotConfiguredError)).not.toBeInTheDocument()
+  })
+
+  /**
+   * IMP-20: 전이가 있으면 unavailableReason과 무관하게 셀렉터가 렌더된다.
+   */
+  it('IMP-20: 전이가 있으면 unavailableReason=no-workflow여도 셀렉터가 렌더된다', () => {
+    render(
+      <IssueMetaPanel
+        issue={issueFixture}
+        availableTypes={availableTypes}
+        onTypeChange={vi.fn()}
+        onDeleteClick={vi.fn()}
+        transitions={transitionsFixture}
+        onTransition={vi.fn()}
+        isTransitioning={false}
+        unavailableReason="no-workflow"
+      />,
+    )
+    expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument()
+  })
+})
+
+describe('IssueMetaPanel — 전이 셀렉터 접근성 (WCAG AA)', () => {
+  /**
+   * IMP-17: 전이 셀렉터에 aria-label이 있고 min-h-[44px] 클래스가 있다.
+   */
+  it('IMP-17: 전이 셀렉터에 aria-label과 min-h-[44px] 클래스가 있다', () => {
+    renderPanel()
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
+    expect(select).toHaveAttribute('aria-label')
     expect(select.className).toMatch(/min-h-\[44px\]/)
   })
 })

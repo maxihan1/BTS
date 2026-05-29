@@ -1,6 +1,7 @@
-// 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
+// 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전이 셀렉터·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
 import type { JSX } from 'react'
-import type { IssueResponse } from '@/api/issues'
+import { useState } from 'react'
+import type { IssueResponse, IssueTransition } from '@/api/issues'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import { Button } from '@/components/ui/button'
 import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
@@ -10,6 +11,14 @@ import { issueDetailStrings } from '@/i18n/ko'
 // ─────────────────────────────────────────────────────────────────────────────
 // IssueMetaPanel
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 전이 컨트롤을 노출할 수 없는 사유.
+ * - 'no-workflow': GET /transitions 422 — 워크플로우 미설정 (스펙 E5 S5)
+ * - 'terminal': 200 + 빈 배열 — 종료상태, 더 이상 전이 없음 (스펙 E5 S6)
+ * - null: 전이 가용 (정상 흐름)
+ */
+export type TransitionUnavailableReason = 'no-workflow' | 'terminal' | null
 
 /** IssueMetaPanel props */
 export interface IssueMetaPanelProps {
@@ -21,12 +30,24 @@ export interface IssueMetaPanelProps {
   onTypeChange: (typeId: number) => void
   /** 삭제 버튼 클릭 핸들러 */
   onDeleteClick: () => void
+  /** 현재 상태에서 가용한 전이 목록 */
+  transitions: IssueTransition[]
+  /** 전이 실행 핸들러 — 선택한 toStateKey를 전달 */
+  onTransition: (toStateKey: string) => void
+  /** 전이 진행 중 여부 — true 시 셀렉터 disabled (NFR3 중복클릭 방지) */
+  isTransitioning: boolean
+  /**
+   * 전이 컨트롤을 노출할 수 없는 사유 (스펙 E5).
+   * 'no-workflow' → 미설정 안내, 'terminal' | null → 종료상태 안내.
+   * transitions.length > 0 이면 이 값과 관계없이 셀렉터가 노출된다.
+   */
+  unavailableReason?: TransitionUnavailableReason
 }
 
 /**
  * 이슈 상세 우측 메타패널 컴포넌트.
  *
- * - 상태: 읽기전용 배지 (전이 UI 없음 — D6 제외)
+ * - 상태: 읽기전용 배지 + IssueStateTransition 전이 셀렉터
  * - 유형: IssueTypeIcon + typeName 표시 + 셀렉터(availableTypes 옵션)
  * - 셀렉터 현재값은 issue.typeId props 파생 (useState 초기화 금지 — stale key prop 회귀 방지)
  * - 보고자 UUID, 프로젝트 키, 버전(낙관락), 생성/수정 날짜 표시
@@ -38,24 +59,48 @@ export function IssueMetaPanel({
   availableTypes,
   onTypeChange,
   onDeleteClick,
+  transitions,
+  onTransition,
+  isTransitioning,
+  unavailableReason = null,
 }: IssueMetaPanelProps): JSX.Element {
   /** issue.typeId에 해당하는 타입 항목 — iconName 해석에 사용 */
   const currentType = availableTypes.find((t) => t.id === issue.typeId)
+
+  /**
+   * 전이 셀렉터 제어값 — 전이 시도 후(성공/실패 모두) placeholder로 리셋.
+   * 실패 후 같은 옵션 재선택 시 onChange 재발화를 보장한다 (C1 회귀 방지).
+   */
+  const [selectedTransition, setSelectedTransition] = useState('')
+
+  function handleTransition(toStateKey: string) {
+    onTransition(toStateKey)
+    // 전이 요청 직후 즉시 리셋 — 성공/실패 모두 placeholder로 복귀
+    setSelectedTransition('')
+  }
 
   return (
     <aside className="flex flex-col gap-3">
       {/* 메타 패널 카드 */}
       <div className="border border-border rounded-xl overflow-hidden">
-        {/* 상태 — 읽기전용 배지 (D6: 전이 드롭다운 없음) */}
+        {/* 상태 — 읽기전용 배지 + 전이 셀렉터 (FR-IS-01) */}
         <div className="px-3.5 py-3 border-b border-border">
           <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.statLabel}</p>
           <span
             data-testid="issue-state-badge"
-            className="inline-flex items-center gap-1.5 text-sm font-medium"
+            className="inline-flex items-center gap-1.5 text-sm font-medium mb-1.5"
           >
             <span className="size-2 rounded-full bg-primary/60 shrink-0" aria-hidden="true" />
             {issue.currentStateKey}
           </span>
+          <IssueStateTransition
+            transitions={transitions}
+            onTransition={handleTransition}
+            isTransitioning={isTransitioning}
+            unavailableReason={unavailableReason}
+            selectedValue={selectedTransition}
+            onSelectedValueChange={setSelectedTransition}
+          />
         </div>
 
         {/* 유형 — 아이콘 + typeName 표시 + 셀렉터 */}
@@ -166,6 +211,88 @@ function IssueTypeSelect({
       {availableTypes.map((type) => (
         <option key={type.id} value={type.id}>
           {type.name}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IssueStateTransition — 상태 전이 셀렉터 서브컴포넌트 (FR-IS-01)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** IssueStateTransition props */
+interface IssueStateTransitionProps {
+  /** 현재 상태에서 가용한 전이 목록 */
+  transitions: IssueTransition[]
+  /** 전이 실행 콜백 — toStateKey 전달 */
+  onTransition: (toStateKey: string) => void
+  /** 전이 진행 중 여부 — true 시 셀렉터 disabled (NFR3) */
+  isTransitioning: boolean
+  /** 전이 컨트롤을 노출할 수 없는 사유 (스펙 E5) */
+  unavailableReason: TransitionUnavailableReason
+  /** 제어값 — 전이 시도 후 리셋에 사용 (C1 회귀 방지) */
+  selectedValue: string
+  /** 제어값 변경 콜백 */
+  onSelectedValueChange: (value: string) => void
+}
+
+/**
+ * 이슈 상태 전이 셀렉터 컴포넌트.
+ *
+ * - 가용전이 0건 + unavailableReason='no-workflow' → 미설정 안내 (스펙 E5 S5)
+ * - 가용전이 0건 + unavailableReason='terminal'|null → "더 진행할 전이 없음" 안내 (스펙 E5 S6)
+ * - 가용전이 있으면 네이티브 select — IssueTypeSelect 동일 패턴
+ * - 첫 옵션은 placeholder(비선택 상태), 전이 선택 시 onTransition(toStateKey) 호출
+ * - isTransitioning=true → disabled (중복클릭 방지, NFR3)
+ * - WCAG AA: min-h-[44px] 터치 타깃, aria-label
+ */
+function IssueStateTransition({
+  transitions,
+  onTransition,
+  isTransitioning,
+  unavailableReason,
+  selectedValue,
+  onSelectedValueChange,
+}: IssueStateTransitionProps): JSX.Element {
+  // 가용전이 0건 → 사유에 따라 안내문구 분기 (스펙 E5)
+  if (transitions.length === 0) {
+    if (unavailableReason === 'no-workflow') {
+      return (
+        <p className="text-xs text-muted-foreground mt-1">
+          {issueDetailStrings.transitionWorkflowNotConfiguredError}
+        </p>
+      )
+    }
+    return (
+      <p className="text-xs text-muted-foreground mt-1">
+        {issueDetailStrings.noTransitionsAvailable}
+      </p>
+    )
+  }
+
+  function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const toStateKey = e.target.value
+    // placeholder 옵션 선택 무시
+    if (toStateKey === '') return
+    onSelectedValueChange(toStateKey)
+    onTransition(toStateKey)
+  }
+
+  return (
+    <select
+      className="w-full rounded-md border border-input bg-background px-2 text-sm min-h-[44px] focus:outline-none focus:ring-2 focus:ring-ring"
+      value={selectedValue}
+      onChange={handleChange}
+      disabled={isTransitioning}
+      aria-label={issueDetailStrings.transitionSelectLabel}
+    >
+      <option value="" disabled>
+        {issueDetailStrings.transitionSelectLabel}
+      </option>
+      {transitions.map((t) => (
+        <option key={t.key} value={t.toStateKey}>
+          {t.name}
         </option>
       ))}
     </select>

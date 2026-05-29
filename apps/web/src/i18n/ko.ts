@@ -70,6 +70,16 @@ export const issueDetailStrings = {
   typeChangeConflictError: '다른 사용자가 이미 이 이슈를 수정했습니다. 새로고침 후 다시 시도해 주세요.',
   /** 타입 변경 실패 기본 에러 메시지 */
   typeChangeError: '이슈 유형 변경 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+  /** 전이 셀렉터 aria-label */
+  transitionSelectLabel: '상태 전이 선택',
+  /** 가용전이 0건일 때 안내 문구 (종료상태 S6) */
+  noTransitionsAvailable: '더 진행할 전이 없음',
+  /** 409 transition_not_allowed 에러 메시지 (S3) */
+  transitionNotAllowedError: '현재 상태에서 허용되지 않는 전이입니다.',
+  /** 409 version_conflict 에러 메시지 (S4) — 최신 데이터 재조회 유도 */
+  transitionVersionConflictError: '다른 사용자가 이미 이 이슈를 수정했습니다. 페이지를 새로고침해 최신 상태를 확인해 주세요.',
+  /** 422 workflow_not_configured 에러 메시지 (S5) */
+  transitionWorkflowNotConfiguredError: '이 이슈에 워크플로우가 설정되지 않아 상태를 변경할 수 없습니다.',
 } as const
 
 /** 이슈 생성 폼 관련 문자열 */

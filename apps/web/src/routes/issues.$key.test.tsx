@@ -1,4 +1,4 @@
-// 이슈 상세 페이지 단위 테스트 — Task 7 (시안 2 사이드 메타패널, 상태 읽기전용)
+// 이슈 상세 페이지 단위 테스트 — Task 7 + FR-IS-01 Task-4 (전이 배선)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -6,8 +6,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { toast } from 'sonner'
 import { server } from '@/test/server'
-import { issueAtlas1Fixture } from '@/mocks/issue-fixtures'
+import { issueAtlas1Fixture, issueAtlasNoWorkflowFixture } from '@/mocks/issue-fixtures'
 import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
+import { MOCK_CONFLICT_TRIGGER, MOCK_NO_WORKFLOW_TRIGGER } from '@/mocks/issue-handlers'
 import { issueDetailStrings } from '@/i18n/ko'
 import { IssueDetailPage } from './issues.$key'
 
@@ -374,6 +375,8 @@ describe('IssueDetailPage — 타입 변경', () => {
     server.use(...issueTypeHandlers)
     // ATLAS-1 이슈 단건 조회 핸들러
     setupIssueFoundHandler()
+    // ATLAS-1 전이 목록 핸들러 — useIssueTransitions hook이 GET /api/v1/issues/ATLAS-1/transitions 호출
+    setupTransitionsHandler()
   })
 
   /**
@@ -476,4 +479,388 @@ describe('IssueDetailPage — 타입 변경', () => {
       )
     })
   })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 상태전이 배선 테스트 (FR-IS-01 Task-4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+
+/** ATLAS-1(open) 가용전이 목록 핸들러 — 전이 테스트 공통 */
+function setupTransitionsHandler() {
+  server.use(
+    http.get('/api/v1/issues/ATLAS-1/transitions', () =>
+      HttpResponse.json({
+        data: {
+          transitions: [
+            { key: 'open__in_progress', name: 'Start Work', fromStateKey: 'open', toStateKey: 'in_progress' },
+            { key: 'open__closed', name: 'Cancel', fromStateKey: 'open', toStateKey: 'closed' },
+          ],
+        },
+      }),
+    ),
+  )
+}
+
+/** POST /api/v1/issues/ATLAS-1/transition 성공 핸들러 — 전이 테스트 공통 */
+function setupTransitionPostHandler() {
+  server.use(
+    http.post('/api/v1/issues/:key/transition', async ({ params, request }) => {
+      const key = params['key'] as string
+      const body = await request.clone().json() as { toStatusKey?: string; expectedVersion?: number }
+      const toStatusKey = body.toStatusKey ?? ''
+
+      if (toStatusKey === MOCK_NO_WORKFLOW_TRIGGER) {
+        return HttpResponse.json(
+          { errorCode: 'workflow_not_configured', message: '워크플로우 미설정' },
+          { status: 422 },
+        )
+      }
+      if (toStatusKey === MOCK_CONFLICT_TRIGGER) {
+        return HttpResponse.json(
+          { errorCode: 'TRANSITION_NOT_ALLOWED', message: '전이 거부' },
+          { status: 409 },
+        )
+      }
+      return HttpResponse.json({
+        data: {
+          key,
+          id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
+          projectKey: 'ATLAS',
+          summary: '첫 번째 이슈 — 로그인 페이지 구현',
+          currentStateKey: toStatusKey,
+          reporterId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
+          version: 1,
+          createdAt: '2026-01-01T09:00:00Z',
+          updatedAt: new Date().toISOString(),
+          typeId: 1,
+          typeKey: 'bug',
+          typeName: '버그',
+        },
+      })
+    }),
+  )
+}
+
+describe('IssueDetailPage — 상태전이', () => {
+  beforeEach(() => {
+    vi.mocked(toast.error).mockClear()
+    vi.mocked(toast.success).mockClear()
+    server.use(...issueTypeHandlers)
+    setupIssueFoundHandler()
+    setupTransitionsHandler()
+    setupTransitionPostHandler()
+  })
+
+  /**
+   * T4-1 (happy): 전이 셀렉터에서 "Start Work" 선택 → POST 요청 발생 + 상태 배지 갱신.
+   * ATLAS-1(open, version=0) → in_progress 전이. stateful override 핸들러 경유.
+   */
+  it('T4-1: 전이 선택 시 POST 요청이 발생하고 상태 배지가 갱신된다', async () => {
+    // stateful override: POST 후 GET이 in_progress 상태를 반환하도록 상태 공유
+    let currentStateKey = 'open'
+    let currentVersion = 0
+
+    server.use(
+      http.get('/api/v1/issues/:key', ({ params }) => {
+        if (params['key'] !== 'ATLAS-1') {
+          return HttpResponse.json({ message: '이슈를 찾을 수 없습니다' }, { status: 404 })
+        }
+        return HttpResponse.json({
+          data: { ...issueAtlas1Fixture, currentStateKey, version: currentVersion },
+        })
+      }),
+      http.post('/api/v1/issues/:key/transition', async ({ request }) => {
+        const body = await request.clone().json() as { toStatusKey?: string; expectedVersion?: number }
+        const toStatusKey = body.toStatusKey ?? ''
+        currentStateKey = toStatusKey
+        currentVersion += 1
+        return HttpResponse.json({
+          data: { ...issueAtlas1Fixture, currentStateKey: toStatusKey, version: currentVersion },
+        })
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+    // 전이 셀렉터가 렌더될 때까지 대기
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument(),
+    )
+
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
+    await user.selectOptions(select, 'in_progress')
+
+    // onSuccess → 캐시 무효화 → GET re-fetch → 상태 배지 갱신
+    await waitFor(() => {
+      expect(screen.getByTestId('issue-state-badge')).toHaveTextContent('in_progress')
+    })
+  })
+
+  /**
+   * T4-2 (S3, 409 transition_not_allowed): MOCK_CONFLICT_TRIGGER 선택 →
+   * 409 transition_not_allowed → transitionNotAllowedError 토스트.
+   */
+  it('T4-2: 409 transition_not_allowed 시 transitionNotAllowedError 토스트가 노출된다', async () => {
+    // MOCK_CONFLICT_TRIGGER를 전이 옵션에 추가하기 위해 transitions 핸들러 override
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/transitions', () =>
+        HttpResponse.json({
+          data: {
+            transitions: [
+              { key: `open__${MOCK_CONFLICT_TRIGGER}`, name: 'Trigger Conflict', fromStateKey: 'open', toStateKey: MOCK_CONFLICT_TRIGGER },
+            ],
+          },
+        }),
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument(),
+    )
+
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
+    await user.selectOptions(select, MOCK_CONFLICT_TRIGGER)
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        issueDetailStrings.transitionNotAllowedError,
+      )
+    })
+  })
+
+  /**
+   * T4-3 (S4, 409 version_conflict): expectedVersion 불일치 →
+   * 409 version_conflict → transitionVersionConflictError 토스트.
+   */
+  it('T4-3: 409 version_conflict 시 transitionVersionConflictError 토스트가 노출된다', async () => {
+    server.use(
+      http.post('/api/v1/issues/ATLAS-1/transition', () =>
+        HttpResponse.json(
+          { errorCode: 'VERSION_CONFLICT', message: '버전 충돌이 발생했습니다.' },
+          { status: 409 },
+        ),
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument(),
+    )
+
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
+    await user.selectOptions(select, 'in_progress')
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        issueDetailStrings.transitionVersionConflictError,
+      )
+    })
+  })
+
+  /**
+   * T4-4 (S5, 422): POST 422 응답 → transitionWorkflowNotConfiguredError 토스트.
+   */
+  it('T4-4: 422 응답 시 transitionWorkflowNotConfiguredError 토스트가 노출된다', async () => {
+    // MOCK_NO_WORKFLOW_TRIGGER를 옵션으로 주입
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/transitions', () =>
+        HttpResponse.json({
+          data: {
+            transitions: [
+              { key: `open__${MOCK_NO_WORKFLOW_TRIGGER}`, name: 'Trigger 422', fromStateKey: 'open', toStateKey: MOCK_NO_WORKFLOW_TRIGGER },
+            ],
+          },
+        }),
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument(),
+    )
+
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
+    await user.selectOptions(select, MOCK_NO_WORKFLOW_TRIGGER)
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        issueDetailStrings.transitionWorkflowNotConfiguredError,
+      )
+    })
+  })
+
+  /**
+   * T4-5 (S6, closed): closed 상태 이슈 로딩 시 전이 셀렉터 미노출 + "더 진행할 전이 없음" 안내.
+   * ATLAS-1 key로 closed 상태를 시뮬 — 전이 목록 빈 배열 override.
+   */
+  it('T4-5: closed 상태(S6) 이슈에서 전이 셀렉터가 없고 "더 진행할 전이 없음" 안내가 보인다', async () => {
+    // 전이 목록만 빈 배열로 override — issue 단건은 beforeEach가 처리
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/transitions', () =>
+        HttpResponse.json({ data: { transitions: [] } }),
+      ),
+    )
+
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    await waitFor(() => {
+      expect(screen.queryByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).not.toBeInTheDocument()
+      expect(screen.getByText(issueDetailStrings.noTransitionsAvailable)).toBeInTheDocument()
+    })
+  })
+
+  // ── E5 구분 검증 ───────────────────────────────────────────────────────────
+
+  /**
+   * T4-6 (E5, S5 미설정): GET /transitions 422 → 미설정 안내문구 노출.
+   * "더 진행할 전이 없음"(종료상태 문구)은 보이지 않아야 한다.
+   */
+  it('T4-6: GET /transitions 422(워크플로우 미설정) 시 미설정 안내문구가 노출된다', async () => {
+    server.use(
+      http.get('/api/v1/issues/ATLAS-NOWF', () =>
+        HttpResponse.json({ data: issueAtlasNoWorkflowFixture }),
+      ),
+      http.get('/api/v1/issues/ATLAS-NOWF/transitions', () =>
+        HttpResponse.json(
+          { errorCode: 'workflow_not_configured', message: '이슈에 워크플로우가 설정되지 않았습니다.' },
+          { status: 422 },
+        ),
+      ),
+      // issue-types도 필요 (useIssueTypes)
+      http.get('/api/v1/issue-types', () =>
+        HttpResponse.json({ data: [] }),
+      ),
+    )
+
+    renderPage('ATLAS-NOWF')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText(issueDetailStrings.transitionWorkflowNotConfiguredError)).toBeInTheDocument()
+      expect(screen.queryByText(issueDetailStrings.noTransitionsAvailable)).not.toBeInTheDocument()
+    })
+  })
+
+  /**
+   * T4-8 (C1 회귀 가드): 전이 실패(409) 후 셀렉터가 placeholder("")로 리셋되어
+   * 같은 옵션을 재선택하면 onChange가 다시 발화되고 두 번째 POST 요청이 발생한다.
+   * defaultValue="" 비제어 패턴이면 이 테스트가 실패한다.
+   */
+  it('T4-8: 전이 실패 후 같은 옵션 재선택 시 POST 요청이 다시 발생한다 (select 리셋 가드)', async () => {
+    let postCallCount = 0
+    server.use(
+      http.post('/api/v1/issues/:key/transition', () => {
+        postCallCount += 1
+        return HttpResponse.json(
+          { errorCode: 'TRANSITION_NOT_ALLOWED', message: '전이 거부' },
+          { status: 409 },
+        )
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument(),
+    )
+
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
+
+    // 1차 선택 — 실패
+    await user.selectOptions(select, 'in_progress')
+    await waitFor(() => expect(postCallCount).toBe(1))
+
+    // 실패 후 셀렉터가 placeholder로 리셋되어 있어야 함
+    await waitFor(() => {
+      expect((select as HTMLSelectElement).value).toBe('')
+    })
+
+    // 2차 — 동일 옵션 재선택해도 onChange 발화 → POST 2회
+    await user.selectOptions(select, 'in_progress')
+    await waitFor(() => expect(postCallCount).toBe(2))
+  })
+
+  /**
+   * T4-7 (E5 구분): 종료상태(S6, 200+빈배열)와 미설정(S5, 422)이 다른 안내문구를 표시한다.
+   * 빈 배열 → noTransitionsAvailable, 422 → transitionWorkflowNotConfiguredError.
+   */
+  it('T4-7: 종료상태(빈 배열)와 워크플로우 미설정(422)이 서로 다른 문구를 표시한다', async () => {
+    // (1) 종료상태 — 빈 배열
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/transitions', () =>
+        HttpResponse.json({ data: { transitions: [] } }),
+      ),
+    )
+
+    const { unmount } = renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+    await waitFor(() => {
+      expect(screen.getByText(issueDetailStrings.noTransitionsAvailable)).toBeInTheDocument()
+    })
+
+    unmount()
+
+    // (2) 미설정 — 422
+    server.use(
+      http.get('/api/v1/issues/ATLAS-NOWF', () =>
+        HttpResponse.json({ data: issueAtlasNoWorkflowFixture }),
+      ),
+      http.get('/api/v1/issues/ATLAS-NOWF/transitions', () =>
+        HttpResponse.json(
+          { errorCode: 'workflow_not_configured', message: '이슈에 워크플로우가 설정되지 않았습니다.' },
+          { status: 422 },
+        ),
+      ),
+      http.get('/api/v1/issue-types', () =>
+        HttpResponse.json({ data: [] }),
+      ),
+    )
+
+    renderPage('ATLAS-NOWF')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+    await waitFor(() => {
+      expect(screen.getByText(issueDetailStrings.transitionWorkflowNotConfiguredError)).toBeInTheDocument()
+      // 종료상태 문구는 노출되지 않아야 한다
+      expect(screen.queryByText(issueDetailStrings.noTransitionsAvailable)).not.toBeInTheDocument()
+    })
+  })
+
 })

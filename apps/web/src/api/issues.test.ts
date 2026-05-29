@@ -4,12 +4,16 @@ import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import {
   issueResponseSchema,
+  issueTransitionSchema,
   fetchIssue,
   fetchIssues,
   createIssue,
   updateIssue,
   deleteIssue,
+  fetchIssueTransitions,
+  transitionIssue,
 } from './issues'
+import { ApiError } from './client'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fixture — IssueResponse 12 필드 + nullable timestamps
@@ -257,5 +261,130 @@ describe('updateIssue', () => {
 describe('deleteIssue', () => {
   it('T1-6a: DELETE 호출 시 에러 없이 완료된다 (204 no content)', async () => {
     await expect(deleteIssue('ATLAS-1')).resolves.toBeUndefined()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-7. issueTransitionSchema — 전이 항목 Zod 스키마 파싱
+// ─────────────────────────────────────────────────────────────────────────────
+describe('issueTransitionSchema', () => {
+  it('T1-7a: 4개 string 필드가 모두 있는 전이 항목을 파싱한다', () => {
+    const raw = { fromStateKey: 'open', toStateKey: 'in_progress', name: '작업 시작', key: 'open__in_progress' }
+    const result = issueTransitionSchema.parse(raw)
+    expect(result.fromStateKey).toBe('open')
+    expect(result.toStateKey).toBe('in_progress')
+    expect(result.name).toBe('작업 시작')
+    expect(result.key).toBe('open__in_progress')
+  })
+
+  it('T1-7b: 빈 문자열 필드가 있으면 ZodError를 throw한다', () => {
+    expect(() => issueTransitionSchema.parse({ fromStateKey: '', toStateKey: 'in_progress', name: '작업 시작', key: 'open__in_progress' })).toThrow()
+  })
+
+  it('T1-7c: 필드 누락 시 ZodError를 throw한다', () => {
+    expect(() => issueTransitionSchema.parse({ fromStateKey: 'open', toStateKey: 'in_progress' })).toThrow()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-8. fetchIssueTransitions — GET /{key}/transitions, { data: { transitions: [...] } }
+// ─────────────────────────────────────────────────────────────────────────────
+describe('fetchIssueTransitions', () => {
+  const transitionsFixture = [
+    { fromStateKey: 'open', toStateKey: 'in_progress', name: '작업 시작', key: 'open__in_progress' },
+    { fromStateKey: 'in_progress', toStateKey: 'done', name: '완료', key: 'in_progress__done' },
+  ]
+
+  beforeEach(() => {
+    server.use(
+      http.get('/api/v1/issues/:key/transitions', ({ params }) => {
+        if (params['key'] === 'ATLAS-1') {
+          return HttpResponse.json({ data: { transitions: transitionsFixture } })
+        }
+        return HttpResponse.json({ message: 'Not Found' }, { status: 404 })
+      }),
+    )
+  })
+
+  it('T1-8a: 존재하는 이슈 key로 전이 목록을 조회해 배열로 반환한다', async () => {
+    const result = await fetchIssueTransitions('ATLAS-1')
+    expect(result).toHaveLength(2)
+    expect(result[0]?.fromStateKey).toBe('open')
+    expect(result[0]?.toStateKey).toBe('in_progress')
+    expect(result[0]?.name).toBe('작업 시작')
+    expect(result[0]?.key).toBe('open__in_progress')
+  })
+
+  it('T1-8b: 없는 key 조회 시 ApiError(404)를 throw한다', async () => {
+    await expect(fetchIssueTransitions('NOT-EXISTS')).rejects.toThrow()
+  })
+
+  it('T1-8c: 전이가 없는 이슈의 경우 빈 배열을 반환한다', async () => {
+    server.use(
+      http.get('/api/v1/issues/:key/transitions', () =>
+        HttpResponse.json({ data: { transitions: [] } }),
+      ),
+    )
+    const result = await fetchIssueTransitions('ATLAS-1')
+    expect(result).toHaveLength(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-9. transitionIssue — POST /{key}/transition body { toStatusKey, expectedVersion }
+// ─────────────────────────────────────────────────────────────────────────────
+describe('transitionIssue', () => {
+  beforeEach(() => {
+    server.use(
+      http.post('/api/v1/issues/:key/transition', async ({ request, params }) => {
+        const body = await request.json() as { toStatusKey?: string; expectedVersion?: number }
+        if (params['key'] === 'ATLAS-1') {
+          return HttpResponse.json({
+            data: {
+              ...issueFixture,
+              currentStateKey: body.toStatusKey ?? issueFixture.currentStateKey,
+              version: (body.expectedVersion ?? issueFixture.version) + 1,
+            },
+          })
+        }
+        return HttpResponse.json({ message: 'Not Found' }, { status: 404 })
+      }),
+    )
+  })
+
+  it('T1-9a: 정상 전이 요청 시 변경된 상태키와 증가된 version을 가진 IssueResponse를 반환한다', async () => {
+    const result = await transitionIssue('ATLAS-1', { toStatusKey: 'in_progress', expectedVersion: 1 })
+    expect(result.currentStateKey).toBe('in_progress')
+    expect(result.version).toBe(2)
+  })
+
+  it('T1-9b: 없는 key로 전이 시 ApiError(404)를 throw한다', async () => {
+    await expect(
+      transitionIssue('NOT-EXISTS', { toStatusKey: 'in_progress', expectedVersion: 1 }),
+    ).rejects.toThrow()
+  })
+
+  it('T1-9c: 409 충돌(낙관적 잠금 실패) 시 ApiError(409)를 throw한다', async () => {
+    server.use(
+      http.post('/api/v1/issues/:key/transition', () =>
+        HttpResponse.json({ message: 'Conflict' }, { status: 409 }),
+      ),
+    )
+    await expect(
+      transitionIssue('ATLAS-1', { toStatusKey: 'in_progress', expectedVersion: 0 }),
+    ).rejects.toSatisfy((e) => e instanceof ApiError && (e as ApiError).status === 409)
+  })
+
+  it('T1-9d: request body에 toStatusKey와 expectedVersion이 포함되어 전달된다', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.post('/api/v1/issues/:key/transition', async ({ request }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json({ data: { ...issueFixture, currentStateKey: 'done', version: 2 } })
+      }),
+    )
+    await transitionIssue('ATLAS-1', { toStatusKey: 'done', expectedVersion: 1 })
+    expect(capturedBody['toStatusKey']).toBe('done')
+    expect(capturedBody['expectedVersion']).toBe(1)
   })
 })

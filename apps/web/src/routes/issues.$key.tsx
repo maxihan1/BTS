@@ -1,18 +1,46 @@
-// 이슈 상세 페이지 라우트 — 시안 2 사이드 메타패널 (좌 본문 / 우 메타패널, 상태 읽기전용 배지)
+// 이슈 상세 페이지 라우트 — 시안 2 사이드 메타패널 (좌 본문 / 우 메타패널, 상태전이 컨트롤 포함)
 import type { JSX } from 'react'
 import { useState } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { fetchIssue, updateIssue } from '@/api/issues'
+import { fetchIssue, updateIssue, transitionIssue } from '@/api/issues'
 import { ApiError } from '@/api/client'
 import { useUpdateIssueSummary, issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { useDeleteIssue } from '@/api/useDeleteIssue'
 import { useIssueTypes } from '@/hooks/use-issue-types'
+import { useIssueTransitions, issueTransitionKeys } from '@/hooks/use-issue-transitions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
+import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
 import { issueDetailStrings } from '@/i18n/ko'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 헬퍼 — 전이 컨트롤 사유 계산 (스펙 E5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /transitions 응답 상태를 바탕으로 전이 불가 사유를 결정한다.
+ * - 에러 + 422 → 'no-workflow' (워크플로우 미설정)
+ * - 정상 + 빈 배열 → 'terminal' (종료상태)
+ * - 정상 + 전이 있음 → null (전이 가능)
+ * - 에러 + 비422 → null (에러는 별도 처리, 전이 불가 사유 없음으로 처리)
+ */
+function resolveTransitionUnavailableReason({
+  isError,
+  error,
+  transitionCount,
+}: {
+  isError: boolean
+  error: unknown
+  transitionCount: number
+}): TransitionUnavailableReason {
+  if (isError) {
+    return error instanceof ApiError && error.status === 422 ? 'no-workflow' : null
+  }
+  return transitionCount === 0 ? 'terminal' : null
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // router.ts 등록 방법 (code-based 패턴 — PR #11 컨벤션).
@@ -59,6 +87,51 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   })
 
   const { data: availableTypes = [] } = useIssueTypes()
+  const {
+    data: transitions = [],
+    isError: isTransitionsError,
+    error: transitionsError,
+  } = useIssueTransitions(issueKey)
+
+  // 스펙 E5: 422(워크플로우 미설정) vs 200+빈 배열(종료상태) 구분
+  const transitionUnavailableReason = resolveTransitionUnavailableReason({
+    isError: isTransitionsError,
+    error: transitionsError,
+    transitionCount: transitions.length,
+  })
+
+  // 전이 실행 mutation — D6 typeChangeMutation과 동일 패턴 (onError 훅 레벨 처리)
+  const transitionMutation = useMutation({
+    mutationFn: (input: { toStatusKey: string; expectedVersion: number }) =>
+      transitionIssue(issueKey, input),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) }),
+        queryClient.invalidateQueries({ queryKey: issueTransitionKeys.list(issueKey) }),
+      ])
+    },
+    onError: (err: unknown) => {
+      if (err instanceof ApiError && err.status === 409) {
+        // errorCode 구분: TRANSITION_NOT_ALLOWED(S3) vs VERSION_CONFLICT(S4)
+        const body = err.body as Record<string, unknown> | undefined
+        const errorCode = typeof body?.['errorCode'] === 'string' ? body['errorCode'] : ''
+        if (errorCode === 'TRANSITION_NOT_ALLOWED') {
+          toast.error(issueDetailStrings.transitionNotAllowedError)
+        } else {
+          // VERSION_CONFLICT(S4) — 최신 데이터 + 전이 목록 재조회 유도
+          void Promise.all([
+            queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) }),
+            queryClient.invalidateQueries({ queryKey: issueTransitionKeys.list(issueKey) }),
+          ])
+          toast.error(issueDetailStrings.transitionVersionConflictError)
+        }
+      } else if (err instanceof ApiError && err.status === 422) {
+        toast.error(issueDetailStrings.transitionWorkflowNotConfiguredError)
+      } else {
+        toast.error(issueDetailStrings.transitionNotAllowedError)
+      }
+    },
+  })
 
   const updateMutation = useUpdateIssueSummary()
   const deleteMutation = useDeleteIssue({
@@ -125,6 +198,12 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   function handleTypeChange(typeId: number) {
     if (issue === undefined) return
     typeChangeMutation.mutate({ typeId, expectedVersion: issue.version })
+  }
+
+  // ── 상태전이 핸들러 ───────────────────────────────────────────────────────
+  function handleTransition(toStateKey: string) {
+    if (issue === undefined) return
+    transitionMutation.mutate({ toStatusKey: toStateKey, expectedVersion: issue.version })
   }
 
   // ── 삭제 핸들러 ───────────────────────────────────────────────────────────
@@ -236,6 +315,10 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
             availableTypes={availableTypes}
             onTypeChange={handleTypeChange}
             onDeleteClick={handleDeleteClick}
+            transitions={transitions}
+            onTransition={handleTransition}
+            isTransitioning={transitionMutation.isPending}
+            unavailableReason={transitionUnavailableReason}
           />
         )}
       </div>
