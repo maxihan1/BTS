@@ -90,8 +90,7 @@ export function SchemeInUseModal({
             id={MODAL_DESCRIPTION_ID}
             className="mt-3 text-sm text-muted-foreground"
           >
-            이 스킴은 사용 중인 프로젝트가 있어 삭제할 수 없습니다.
-            먼저 프로젝트의 스킴을 변경하세요.
+            {workflowSchemeLabels.inUseModal.description}
           </AlertDialog.Description>
 
           {/* 사용 중인 프로젝트 수 */}
