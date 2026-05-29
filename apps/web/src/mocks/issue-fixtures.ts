@@ -61,6 +61,22 @@ export const issuePageFixture: IssuePage = {
   empty: false,
 }
 
+/** 이슈 단건 fixture — ATLAS-4 (S6 검증용 closed 상태) */
+export const issueAtlas4Fixture: IssueResponse = {
+  key: 'ATLAS-4',
+  id: 'f7a8b9c0-d1e2-4f3a-bc4b-6e7f8a9b0c1d',
+  projectKey: 'ATLAS',
+  summary: '네 번째 이슈 — 종료된 이슈 (closed 상태 전이 검증용)',
+  currentStateKey: 'closed',
+  reporterId: 'a8b9c0d1-e2f3-4a4b-cd5c-7f8a9b0c1d2e',
+  version: 3,
+  createdAt: '2026-01-04T07:00:00Z',
+  updatedAt: '2026-01-05T13:00:00Z',
+  typeId: 1,
+  typeKey: 'bug',
+  typeName: '버그',
+}
+
 /** 빈 이슈 목록 fixture */
 export const emptyIssuePageFixture: IssuePage = {
   content: [],
