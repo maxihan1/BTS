@@ -11,6 +11,7 @@ import com.bts.issue.repository.IssueRepository
 import com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.WorkflowTransition
+import com.bts.workflow.domain.dto.TransitionContext
 import com.bts.workflow.domain.spi.ValidatorResult
 import com.bts.workflow.domain.spi.WorkflowValidator
 import com.bts.workflow.engine.PostActionConfig
@@ -148,7 +149,12 @@ class IssueTransitionGuardFilterIntegrationTest {
         }
 
         @Bean
-        open fun dataSource(): DriverManagerDataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+        open fun dataSource(): DriverManagerDataSource =
+            DriverManagerDataSource(
+                postgres.jdbcUrl,
+                postgres.username,
+                postgres.password,
+            )
 
         @Bean
         open fun transactionManager(dataSource: DriverManagerDataSource): PlatformTransactionManager =
@@ -209,7 +215,7 @@ class IssueTransitionGuardFilterIntegrationTest {
                             object : WorkflowValidator {
                                 override val type: String = "permission-check"
 
-                                override fun validate(ctx: com.bts.workflow.domain.dto.TransitionContext): ValidatorResult =
+                                override fun validate(ctx: TransitionContext): ValidatorResult =
                                     // IssueController 는 SYSTEM_ACTOR_UUID 를 actor 로 전달한다.
                                     // GUARD 프로젝트 이슈 조회 시 SYSTEM_ACTOR_UUID 는 PRIVILEGED 로 판별.
                                     if (ctx.request.actorId == "00000000-0000-0000-0000-000000000001") {
@@ -225,7 +231,7 @@ class IssueTransitionGuardFilterIntegrationTest {
                             object : WorkflowValidator {
                                 override val type: String = "always-fail"
 
-                                override fun validate(ctx: com.bts.workflow.domain.dto.TransitionContext): ValidatorResult =
+                                override fun validate(ctx: TransitionContext): ValidatorResult =
                                     ValidatorResult.Fail(field = null, reason = "always blocked")
                             }
                         else -> throw IllegalArgumentException("지원하지 않는 validator type: $type")
