@@ -36,8 +36,8 @@ class IssueTypeUsageAdapter(private val dsl: DSLContext) : IssueTypeUsagePort {
     private val log = LoggerFactory.getLogger(javaClass)
 
     // V004 테이블 — jOOQ codegen 범위 밖. SchemeIssueTypeMappingRepository 와 동일 동적 참조 패턴.
-    private val TABLE = DSL.table("workflow_scheme_issue_type_mappings")
-    private val COL_ISSUE_TYPE_ID = DSL.field("issue_type_id", Long::class.java)
+    private val mappingsTable = DSL.table("workflow_scheme_issue_type_mappings")
+    private val issueTypeIdField = DSL.field("issue_type_id", Long::class.java)
 
     /**
      * `workflow_scheme_issue_type_mappings` 에서 [issueTypeId] 를 참조하는 매핑 수를 반환한다.
@@ -50,8 +50,8 @@ class IssueTypeUsageAdapter(private val dsl: DSLContext) : IssueTypeUsagePort {
         log.debug("countSchemeMappings issueTypeId={}", issueTypeId)
         return dsl
             .selectCount()
-            .from(TABLE)
-            .where(COL_ISSUE_TYPE_ID.eq(issueTypeId))
+            .from(mappingsTable)
+            .where(issueTypeIdField.eq(issueTypeId))
             .fetchOne(0, Long::class.java)
             ?: 0L
     }
