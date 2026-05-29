@@ -116,9 +116,10 @@ describe('WorkflowSchemeNewForm', () => {
 
   /**
    * T8-4. name이 255자 초과이면 길이 제한 에러 메시지가 노출된다.
+   * delay: null — 256자 타이핑을 빠르게 처리해 5초 타임아웃 방지
    */
   it('T8-4: name 255자 초과 → 길이 제한 메시지 노출', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderForm()
 
     await user.type(screen.getByLabelText('스킴 키'), 'valid-key')
