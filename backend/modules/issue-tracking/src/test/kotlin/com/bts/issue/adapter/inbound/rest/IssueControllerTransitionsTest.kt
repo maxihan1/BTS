@@ -7,8 +7,10 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.shared.workflow.AvailableTransitionView
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -70,6 +72,18 @@ class IssueControllerTransitionsTest {
     @BeforeEach
     fun setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+    }
+
+    /**
+     * 매 테스트 후 이 테스트의 mock 만 초기화한다.
+     *
+     * [clearMocks] 는 지정한 mock 만 초기화하므로 다른 Spring ApplicationContext 의 Bean mock 을 오염시키지 않는다.
+     * [io.mockk.clearAllMocks] (JVM 전역 초기화) 대신 이 방식을 사용해야 [IssueControllerTransitionIntegrationTest]
+     * 의 [com.bts.workflow.engine.WorkflowDefinitionRepository] mock stub 이 지워지는 것을 방지한다 (P2 fix).
+     */
+    @AfterEach
+    fun tearDown() {
+        clearMocks(issueApplicationService)
     }
 
     // ── T-1: 정상 — 2건 반환 + 필드 직렬화 ────────────────────────────────────
