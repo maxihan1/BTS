@@ -1,6 +1,5 @@
 // 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
 import type { JSX } from 'react'
-import type React from 'react'
 import type { IssueResponse } from '@/api/issues'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import { Button } from '@/components/ui/button'
@@ -43,13 +42,6 @@ export function IssueMetaPanel({
   /** issue.typeId에 해당하는 타입 항목 — iconName 해석에 사용 */
   const currentType = availableTypes.find((t) => t.id === issue.typeId)
 
-  function handleTypeSelectChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const selectedId = Number(e.target.value)
-    if (selectedId !== issue.typeId) {
-      onTypeChange(selectedId)
-    }
-  }
-
   return (
     <aside className="flex flex-col gap-3">
       {/* 메타 패널 카드 */}
@@ -79,7 +71,8 @@ export function IssueMetaPanel({
           <IssueTypeSelect
             value={issue.typeId}
             availableTypes={availableTypes}
-            onChange={handleTypeSelectChange}
+            onTypeChange={onTypeChange}
+            currentTypeId={issue.typeId}
           />
         </div>
 
@@ -137,22 +130,37 @@ interface IssueTypeSelectProps {
   value: number
   /** 셀렉터에 표시할 타입 목록 */
   availableTypes: IssueTypeResponse[]
-  /** 변경 이벤트 핸들러 */
-  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void
+  /** 현재 typeId — 변경 여부 비교용 */
+  currentTypeId: number
+  /** 타입 변경 콜백 — number typeId 전달 */
+  onTypeChange: (typeId: number) => void
 }
 
 /**
  * 이슈 유형 셀렉터 컴포넌트.
  *
  * - value는 부모 props에서 파생(issue.typeId) — stale key prop 회귀 방지
+ * - 현재 값과 동일한 선택은 onTypeChange를 호출하지 않는다.
  * - WCAG AA: min-h-[44px] 터치 타깃, aria-label
  */
-function IssueTypeSelect({ value, availableTypes, onChange }: IssueTypeSelectProps): JSX.Element {
+function IssueTypeSelect({
+  value,
+  availableTypes,
+  currentTypeId,
+  onTypeChange,
+}: IssueTypeSelectProps): JSX.Element {
+  function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const selectedId = Number(e.target.value)
+    if (selectedId !== currentTypeId) {
+      onTypeChange(selectedId)
+    }
+  }
+
   return (
     <select
       className="w-full rounded-md border border-input bg-background px-2 text-sm min-h-[44px] focus:outline-none focus:ring-2 focus:ring-ring"
       value={value}
-      onChange={onChange}
+      onChange={handleChange}
       aria-label={issueDetailStrings.typeSelectLabel}
     >
       {availableTypes.map((type) => (
