@@ -17,6 +17,32 @@ import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPa
 import { issueDetailStrings } from '@/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 헬퍼 — 전이 컨트롤 사유 계산 (스펙 E5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /transitions 응답 상태를 바탕으로 전이 불가 사유를 결정한다.
+ * - 에러 + 422 → 'no-workflow' (워크플로우 미설정)
+ * - 정상 + 빈 배열 → 'terminal' (종료상태)
+ * - 정상 + 전이 있음 → null (전이 가능)
+ * - 에러 + 비422 → null (에러는 별도 처리, 전이 불가 사유 없음으로 처리)
+ */
+function resolveTransitionUnavailableReason({
+  isError,
+  error,
+  transitionCount,
+}: {
+  isError: boolean
+  error: unknown
+  transitionCount: number
+}): TransitionUnavailableReason {
+  if (isError) {
+    return error instanceof ApiError && error.status === 422 ? 'no-workflow' : null
+  }
+  return transitionCount === 0 ? 'terminal' : null
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // router.ts 등록 방법 (code-based 패턴 — PR #11 컨벤션).
 //
 //   import { IssueDetailRouteAdapter } from './routes/issues.$key'
@@ -68,14 +94,11 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   } = useIssueTransitions(issueKey)
 
   // 스펙 E5: 422(워크플로우 미설정) vs 200+빈 배열(종료상태) 구분
-  const transitionUnavailableReason: TransitionUnavailableReason = (() => {
-    if (isTransitionsError) {
-      const is422 =
-        transitionsError instanceof ApiError && transitionsError.status === 422
-      return is422 ? 'no-workflow' : null
-    }
-    return transitions.length === 0 ? 'terminal' : null
-  })()
+  const transitionUnavailableReason = resolveTransitionUnavailableReason({
+    isError: isTransitionsError,
+    error: transitionsError,
+    transitionCount: transitions.length,
+  })
 
   // 전이 실행 mutation — D6 typeChangeMutation과 동일 패턴 (onError 훅 레벨 처리)
   const transitionMutation = useMutation({
