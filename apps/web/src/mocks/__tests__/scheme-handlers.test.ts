@@ -347,15 +347,16 @@ describe('GET /api/v1/issue-types — 이슈 타입 목록 조회', () => {
     expect(body.data).toHaveLength(5)
   })
 
-  it('S10-2 happy: 각 이슈 타입은 key, name, description, iconUrl 필드를 가진다', async () => {
+  it('S10-2 happy: 각 이슈 타입은 id, key, name, description, iconName 필드를 가진다', async () => {
     const res = await fetch('/api/v1/issue-types')
-    const body = await res.json() as { data: Array<{ key: string; name: string; description: string; iconUrl: string | null }> }
+    const body = await res.json() as { data: Array<{ id: number; key: string; name: string; description: string; iconName: string | null }> }
 
     for (const issueType of body.data) {
+      expect(typeof issueType.id).toBe('number')
       expect(typeof issueType.key).toBe('string')
       expect(typeof issueType.name).toBe('string')
       expect(typeof issueType.description).toBe('string')
-      expect(issueType.iconUrl === null || typeof issueType.iconUrl === 'string').toBe(true)
+      expect(issueType.iconName === null || typeof issueType.iconName === 'string').toBe(true)
     }
   })
 

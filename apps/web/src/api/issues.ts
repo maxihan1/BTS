@@ -7,7 +7,7 @@ import { apiGet, apiPost, apiFetch, ApiError } from './client'
 // backend IssueResponse DTO 직렬화 형태와 1:1 대응.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 이슈 단건 응답 Zod 스키마 — 9 필드, createdAt/updatedAt nullable */
+/** 이슈 단건 응답 Zod 스키마 — 12 필드, createdAt/updatedAt nullable */
 export const issueResponseSchema = z.object({
   key: z.string().min(1),
   id: z.string().uuid(),
@@ -18,6 +18,9 @@ export const issueResponseSchema = z.object({
   version: z.number().int().nonnegative(),
   createdAt: z.string().nullable(),
   updatedAt: z.string().nullable(),
+  typeId: z.number().int().positive(),
+  typeKey: z.string().min(1),
+  typeName: z.string().min(1),
 })
 
 /** Spring Page 응답 Zod 스키마 — 래퍼 없음 (DataResponse 감싸지 않음) */
@@ -53,6 +56,7 @@ export interface CreateIssueInput {
 /** 이슈 수정 입력 타입 */
 export interface UpdateIssueInput {
   summary?: string
+  typeId?: number
   expectedVersion: number
 }
 

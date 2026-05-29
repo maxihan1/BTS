@@ -20,6 +20,9 @@ export const createdIssueFixture = {
   version: 0,
   createdAt: '2026-05-27T00:00:00Z',
   updatedAt: null,
+  typeId: 2,
+  typeKey: 'task',
+  typeName: '작업',
 }
 
 const issueFixtureMap: Record<string, IssueResponse> = {

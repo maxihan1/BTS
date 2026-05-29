@@ -12,6 +12,9 @@ export const issueAtlas1Fixture: IssueResponse = {
   version: 0,
   createdAt: '2026-01-01T09:00:00Z',
   updatedAt: null,
+  typeId: 1,
+  typeKey: 'bug',
+  typeName: '버그',
 }
 
 /** 이슈 단건 fixture — ATLAS-2 */
@@ -25,6 +28,9 @@ export const issueAtlas2Fixture: IssueResponse = {
   version: 1,
   createdAt: '2026-01-02T10:00:00Z',
   updatedAt: '2026-01-03T11:00:00Z',
+  typeId: 2,
+  typeKey: 'task',
+  typeName: '작업',
 }
 
 /** 이슈 단건 fixture — ATLAS-3 */
@@ -38,6 +44,9 @@ export const issueAtlas3Fixture: IssueResponse = {
   version: 2,
   createdAt: '2026-01-03T08:00:00Z',
   updatedAt: '2026-01-04T12:00:00Z',
+  typeId: 3,
+  typeKey: 'story',
+  typeName: '스토리',
 }
 
 /** Spring Page 형태의 이슈 목록 fixture — 3건, 1 페이지 */
