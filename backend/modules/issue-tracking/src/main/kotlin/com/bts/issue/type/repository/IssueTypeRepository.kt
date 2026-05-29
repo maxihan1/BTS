@@ -163,18 +163,7 @@ class IssueTypeRepository(
                 .returning()
                 .fetchOne()
                 ?: error("insert returning() returned null for key=${issueType.key.value}")
-        return IssueType(
-            id = IssueTypeId(record.id ?: error("issue_types.id must not be null after insert")),
-            key = IssueTypeKey(record.key ?: error("issue_types.key must not be null")),
-            name = record.name ?: error("issue_types.name must not be null"),
-            description = record.description,
-            iconName = record.iconName,
-            isStandard = record.isStandard ?: false,
-            hierarchyLevel = record.hierarchyLevel ?: 0,
-            createdAt = (record.createdAt ?: error("issue_types.created_at must not be null")).toInstant(),
-            updatedAt = (record.updatedAt ?: error("issue_types.updated_at must not be null")).toInstant(),
-            deletedAt = record.deletedAt?.toInstant(),
-        )
+        return toIssueTypeFromRecord(record)
     }
 
     /**
@@ -262,6 +251,11 @@ class IssueTypeRepository(
 
     // ── private helpers ───────────────────────────────────────────────────────────
 
+    /**
+     * 동적 DSL.field 참조로 읽은 [Record] 를 [IssueType] 으로 변환한다.
+     *
+     * findAll / findByKey / findById 의 SELECT 결과 변환에 사용한다.
+     */
     private fun toIssueType(record: Record): IssueType =
         IssueType(
             id = IssueTypeId(record.get(idField)),
@@ -274,5 +268,26 @@ class IssueTypeRepository(
             createdAt = record.get(createdAtField).toInstant(),
             updatedAt = record.get(updatedAtField).toInstant(),
             deletedAt = record.get(deletedAtField)?.toInstant(),
+        )
+
+    /**
+     * generated IssueTypesRecord 를 [IssueType] 으로 변환한다.
+     *
+     * insert RETURNING 결과 변환에 사용한다.
+     * 동적 DSL.table() 은 RETURNING 절을 지원하지 않으므로 generated reference 로 INSERT 하고
+     * 이 함수로 결과를 변환한다.
+     */
+    private fun toIssueTypeFromRecord(record: com.bts.issue.jooq.tables.records.IssueTypesRecord): IssueType =
+        IssueType(
+            id = IssueTypeId(record.id ?: error("issue_types.id must not be null after insert")),
+            key = IssueTypeKey(record.key ?: error("issue_types.key must not be null")),
+            name = record.name ?: error("issue_types.name must not be null"),
+            description = record.description,
+            iconName = record.iconName,
+            isStandard = record.isStandard ?: false,
+            hierarchyLevel = record.hierarchyLevel ?: 0,
+            createdAt = (record.createdAt ?: error("issue_types.created_at must not be null")).toInstant(),
+            updatedAt = (record.updatedAt ?: error("issue_types.updated_at must not be null")).toInstant(),
+            deletedAt = record.deletedAt?.toInstant(),
         )
 }
