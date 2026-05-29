@@ -2,6 +2,8 @@
 
 package com.bts.issue.type.web.dto
 
+import jakarta.validation.constraints.Max
+import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 
 /**
@@ -20,6 +22,8 @@ data class UpdateIssueTypeRequest(
     val name: String,
     val description: String? = null,
     val iconName: String? = null,
+    @field:Min(-1, message = "hierarchyLevel은 -1 이상이어야 합니다.")
+    @field:Max(1, message = "hierarchyLevel은 1 이하이어야 합니다.")
     val hierarchyLevel: Int = 0,
 ) {
     /**
