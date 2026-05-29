@@ -6,7 +6,6 @@ import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
-import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.event.IssueEventPublisher
@@ -15,7 +14,6 @@ import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
-import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowTransitionPort
 import io.kotest.assertions.throwables.shouldThrow

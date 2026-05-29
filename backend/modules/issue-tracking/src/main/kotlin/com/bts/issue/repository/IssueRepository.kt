@@ -8,11 +8,11 @@ import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueProjectNotFoundException
-import com.bts.shared.issue.IssueTypeId
 import com.bts.issue.jooq.tables.records.IssuesRecord
-import com.bts.issue.jooq.tables.references.ISSUE_TYPES
 import com.bts.issue.jooq.tables.references.ISSUES
+import com.bts.issue.jooq.tables.references.ISSUE_TYPES
 import com.bts.issue.jooq.tables.references.PROJECTS
+import com.bts.shared.issue.IssueTypeId
 import org.jooq.Condition
 import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
@@ -45,6 +45,7 @@ private const val SQL_ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(hashtext(?))
  * - [incrementKeySequence] — pg_advisory_xact_lock 으로 동시성 제어 후 key_sequence +1 RETURNING.
  */
 @Repository
+@Suppress("TooManyFunctions")
 class IssueRepository(
     private val dsl: DSLContext,
 ) {
@@ -287,12 +288,15 @@ class IssueRepository(
                 IssueResponse.from(
                     issue = issueRecord.toIssue(),
                     projectKey = key.projectPrefix,
-                    typeId = record.get("type_id", Long::class.java)
-                        ?: error("issue_types.id must not be null in join result"),
-                    typeKey = record.get("type_key", String::class.java)
-                        ?: error("issue_types.key must not be null in join result"),
-                    typeName = record.get("type_name", String::class.java)
-                        ?: error("issue_types.name must not be null in join result"),
+                    typeId =
+                        record.get("type_id", Long::class.java)
+                            ?: error("issue_types.id must not be null in join result"),
+                    typeKey =
+                        record.get("type_key", String::class.java)
+                            ?: error("issue_types.key must not be null in join result"),
+                    typeName =
+                        record.get("type_name", String::class.java)
+                            ?: error("issue_types.name must not be null in join result"),
                 )
             }
 
@@ -344,12 +348,15 @@ class IssueRepository(
                     IssueResponse.from(
                         issue = record.into(ISSUES).toIssue(),
                         projectKey = projectKey,
-                        typeId = record.get("type_id", Long::class.java)
-                            ?: error("issue_types.id must not be null in join result"),
-                        typeKey = record.get("type_key", String::class.java)
-                            ?: error("issue_types.key must not be null in join result"),
-                        typeName = record.get("type_name", String::class.java)
-                            ?: error("issue_types.name must not be null in join result"),
+                        typeId =
+                            record.get("type_id", Long::class.java)
+                                ?: error("issue_types.id must not be null in join result"),
+                        typeKey =
+                            record.get("type_key", String::class.java)
+                                ?: error("issue_types.key must not be null in join result"),
+                        typeName =
+                            record.get("type_name", String::class.java)
+                                ?: error("issue_types.name must not be null in join result"),
                     )
                 }
 

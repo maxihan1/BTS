@@ -3,7 +3,6 @@
 package com.bts.issue.type.repository
 
 import com.bts.issue.type.domain.IssueType
-import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeKey
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
@@ -18,8 +17,6 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
-import java.time.OffsetDateTime
-import java.time.ZoneOffset
 import java.util.UUID
 
 /**
@@ -38,7 +35,6 @@ import java.util.UUID
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueTypeRepositoryCrudTest {
-
     companion object {
         /**
          * JVM 단위 singleton PostgreSQL container.
@@ -72,11 +68,12 @@ class IssueTypeRepositoryCrudTest {
             .load()
             .migrate()
 
-        val dataSource = DriverManagerDataSource(
-            postgres.jdbcUrl,
-            postgres.username,
-            postgres.password,
-        )
+        val dataSource =
+            DriverManagerDataSource(
+                postgres.jdbcUrl,
+                postgres.username,
+                postgres.password,
+            )
         dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
         repository = IssueTypeRepository(dsl)
 
@@ -105,14 +102,15 @@ class IssueTypeRepositoryCrudTest {
 
     @Test
     fun `insert - 커스텀 IssueType 삽입 후 findById 조회 일치`() {
-        val newType = IssueType.create(
-            key = IssueTypeKey("feature"),
-            name = "Feature",
-            description = "신규 기능 요청",
-            iconName = "feature-icon",
-            isStandard = false,
-            hierarchyLevel = 0,
-        )
+        val newType =
+            IssueType.create(
+                key = IssueTypeKey("feature"),
+                name = "Feature",
+                description = "신규 기능 요청",
+                iconName = "feature-icon",
+                isStandard = false,
+                hierarchyLevel = 0,
+            )
 
         val inserted = repository.insert(newType)
 
@@ -130,11 +128,12 @@ class IssueTypeRepositoryCrudTest {
 
     @Test
     fun `insert - hierarchyLevel = 1 (epic 계층) 저장 확인`() {
-        val newType = IssueType.create(
-            key = IssueTypeKey("initiative"),
-            name = "Initiative",
-            hierarchyLevel = 1,
-        )
+        val newType =
+            IssueType.create(
+                key = IssueTypeKey("initiative"),
+                name = "Initiative",
+                hierarchyLevel = 1,
+            )
 
         val inserted = repository.insert(newType)
 
@@ -144,11 +143,12 @@ class IssueTypeRepositoryCrudTest {
 
     @Test
     fun `insert - hierarchyLevel = -1 (subtask 계층) 저장 확인`() {
-        val newType = IssueType.create(
-            key = IssueTypeKey("chore"),
-            name = "Chore",
-            hierarchyLevel = -1,
-        )
+        val newType =
+            IssueType.create(
+                key = IssueTypeKey("chore"),
+                name = "Chore",
+                hierarchyLevel = -1,
+            )
 
         val inserted = repository.insert(newType)
 
@@ -160,15 +160,16 @@ class IssueTypeRepositoryCrudTest {
 
     @Test
     fun `update - name description iconName hierarchyLevel 변경 반영 확인`() {
-        val original = repository.insert(
-            IssueType.create(
-                key = IssueTypeKey("improve"),
-                name = "Improvement",
-                description = "원래 설명",
-                iconName = "orig-icon",
-                hierarchyLevel = 0,
-            ),
-        )
+        val original =
+            repository.insert(
+                IssueType.create(
+                    key = IssueTypeKey("improve"),
+                    name = "Improvement",
+                    description = "원래 설명",
+                    iconName = "orig-icon",
+                    hierarchyLevel = 0,
+                ),
+            )
 
         repository.update(
             original.copy(
@@ -190,9 +191,10 @@ class IssueTypeRepositoryCrudTest {
 
     @Test
     fun `softDelete - deleted_at 설정 후 findById null 반환`() {
-        val inserted = repository.insert(
-            IssueType.create(key = IssueTypeKey("remove-me"), name = "Remove Me"),
-        )
+        val inserted =
+            repository.insert(
+                IssueType.create(key = IssueTypeKey("remove-me"), name = "Remove Me"),
+            )
 
         repository.softDelete(inserted.id!!)
 
@@ -267,15 +269,17 @@ class IssueTypeRepositoryCrudTest {
 
     @Test
     fun `B1 - soft-delete된 key 재INSERT 허용 (부분 unique index ux_issue_types_key_active)`() {
-        val first = repository.insert(
-            IssueType.create(key = IssueTypeKey("reusable-key"), name = "First"),
-        )
+        val first =
+            repository.insert(
+                IssueType.create(key = IssueTypeKey("reusable-key"), name = "First"),
+            )
         repository.softDelete(first.id!!)
 
         // 동일 key 재 INSERT — deleted_at IS NULL 조건 부분 unique 이므로 허용
-        val second = repository.insert(
-            IssueType.create(key = IssueTypeKey("reusable-key"), name = "Second"),
-        )
+        val second =
+            repository.insert(
+                IssueType.create(key = IssueTypeKey("reusable-key"), name = "Second"),
+            )
 
         assertThat(second.id).isNotNull
         assertThat(second.id!!.value).isNotEqualTo(first.id!!.value)
@@ -297,7 +301,11 @@ class IssueTypeRepositoryCrudTest {
             }
         }
 
-    private fun insertIssue(projectId: UUID, typeId: Long, key: String) {
+    private fun insertIssue(
+        projectId: UUID,
+        typeId: Long,
+        key: String,
+    ) {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.prepareStatement(
                 """

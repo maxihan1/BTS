@@ -2,8 +2,8 @@
 
 package com.bts.issue.type.repository
 
-import com.bts.issue.jooq.tables.references.ISSUE_TYPES
 import com.bts.issue.jooq.tables.references.ISSUES
+import com.bts.issue.jooq.tables.references.ISSUE_TYPES
 import com.bts.issue.type.domain.IssueType
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeKey
@@ -238,7 +238,10 @@ class IssueTypeRepository(
      * @return 변경된 이슈 수.
      */
     @Transactional
-    fun reassignIssues(fromTypeId: Long, toTypeId: Long): Long {
+    fun reassignIssues(
+        fromTypeId: Long,
+        toTypeId: Long,
+    ): Long {
         log.debug("Reassigning issues fromTypeId={} toTypeId={}", fromTypeId, toTypeId)
         return dsl.update(ISSUES)
             .set(ISSUES.TYPE_ID, toTypeId)

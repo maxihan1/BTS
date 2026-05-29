@@ -89,6 +89,7 @@ class IssueTypesMigrationIntegrationTest {
             }
         }
 
+    @Suppress("NestedBlockDepth")
     private fun columnDataType(
         tableName: String,
         columnName: String,

@@ -56,6 +56,7 @@ import java.util.UUID
  */
 @Service
 @Transactional
+@Suppress("LongParameterList")
 class IssueApplicationService(
     private val repo: IssueRepository,
     private val issueTypeRepository: IssueTypeRepository,
@@ -89,6 +90,7 @@ class IssueApplicationService(
      * @throws IssueTypeNotFoundException request.typeId 가 non-null 이지만 활성 타입이 없을 때.
      * @throws IssueWorkflowNotConfiguredException 프로젝트에 기본 워크플로우 스킴이 없을 때.
      */
+    @Suppress("ThrowsCount", "TooGenericExceptionCaught")
     fun createIssue(
         actor: ActorId,
         request: CreateIssueRequest,
@@ -107,6 +109,7 @@ class IssueApplicationService(
             try {
                 workflowKeyResolver.resolveStart(ProjectKey.of(request.projectKey), null)
             } catch (e: RuntimeException) {
+                // BC 격리: WorkflowSchemeNoDefaultException 직접 import 불가 — 클래스명 비교로 처리
                 if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") {
                     throw IssueWorkflowNotConfiguredException(request.projectKey, null)
                 }
@@ -226,7 +229,7 @@ class IssueApplicationService(
      *   [TransitionResult.WorkflowNotFound], [TransitionResult.ExpressionTimeout] 케이스에서 BC 경계 변환.
      * @throws IssueVersionConflictException 낙관락 충돌 시.
      */
-    @Suppress("ThrowsCount")
+    @Suppress("ThrowsCount", "TooGenericExceptionCaught")
     fun transitionIssue(
         actor: ActorId,
         key: IssueKey,
@@ -238,6 +241,7 @@ class IssueApplicationService(
             try {
                 workflowKeyResolver.resolveStart(ProjectKey.of(key.projectPrefix), null)
             } catch (e: RuntimeException) {
+                // BC 격리: WorkflowSchemeNoDefaultException 직접 import 불가 — 클래스명 비교로 처리
                 if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") {
                     throw IssueWorkflowNotConfiguredException(key.projectPrefix, null)
                 }

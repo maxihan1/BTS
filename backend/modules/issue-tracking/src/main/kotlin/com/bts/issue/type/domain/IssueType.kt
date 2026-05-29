@@ -64,6 +64,7 @@ data class IssueType(
          * @param isStandard 표준 타입 여부. 기본값 false.
          * @param hierarchyLevel 계층 깊이. {-1, 0, 1} 허용. 기본값 0.
          */
+        @Suppress("LongParameterList")
         fun create(
             key: IssueTypeKey,
             name: String,

@@ -32,7 +32,6 @@ import java.sql.DriverManager
  */
 @Testcontainers
 class LowercaseCurrentStateKeyMigrationTest {
-
     companion object {
         // quay.io/tembo/pg16-pgmq:latest — V002 pgmq 확장 요구로 인해 tembo 이미지 사용.
         // asCompatibleSubstituteFor("postgres"): Testcontainers 이미지 호환성 검증 우회.
@@ -80,8 +79,9 @@ class LowercaseCurrentStateKeyMigrationTest {
                     )
                 }
 
-                val projectId = c.prepareStatement("SELECT id FROM projects WHERE key = 'MIGTEST'")
-                    .executeQuery().also { it.next() }.getString(1)
+                val projectId =
+                    c.prepareStatement("SELECT id FROM projects WHERE key = 'MIGTEST'")
+                        .executeQuery().also { it.next() }.getString(1)
 
                 // 대문자 OPEN
                 c.prepareStatement(
@@ -119,8 +119,10 @@ class LowercaseCurrentStateKeyMigrationTest {
                 .migrate()
         }
 
-        private fun conn(): Connection =
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
+        private fun conn(): Connection {
+            val url = postgres.jdbcUrl
+            return DriverManager.getConnection(url, postgres.username, postgres.password)
+        }
     }
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────

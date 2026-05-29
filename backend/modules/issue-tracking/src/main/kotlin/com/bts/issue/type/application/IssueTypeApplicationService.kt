@@ -68,14 +68,15 @@ class IssueTypeApplicationService(
         if (repo.findByKey(key) != null) {
             throw IssueTypeKeyDuplicateException(key)
         }
-        val issueType = IssueType.create(
-            key = key,
-            name = request.name,
-            description = request.description,
-            iconName = request.iconName,
-            isStandard = false,
-            hierarchyLevel = request.hierarchyLevel,
-        )
+        val issueType =
+            IssueType.create(
+                key = key,
+                name = request.name,
+                description = request.description,
+                iconName = request.iconName,
+                isStandard = false,
+                hierarchyLevel = request.hierarchyLevel,
+            )
         val saved = repo.insert(issueType)
         log.info("issue_type_created key={} id={}", key.value, saved.id?.value)
         return saved
@@ -100,12 +101,13 @@ class IssueTypeApplicationService(
         if (existing.isStandard) {
             throw IssueTypeStandardImmutableException(typeId = id, key = null)
         }
-        val updated = existing.copy(
-            name = request.name,
-            description = request.description,
-            iconName = request.iconName,
-            hierarchyLevel = request.hierarchyLevel,
-        )
+        val updated =
+            existing.copy(
+                name = request.name,
+                description = request.description,
+                iconName = request.iconName,
+                hierarchyLevel = request.hierarchyLevel,
+            )
         repo.update(updated)
         log.info("issue_type_updated id={}", id.value)
     }
@@ -194,12 +196,13 @@ class IssueTypeApplicationService(
      * 예외 메시지에 원본 raw 값을 포함해 운영자가 식별할 수 있도록 한다.
      */
     private fun parseKey(raw: String): IssueTypeKey {
-        val key = runCatching { IssueTypeKey(raw) }.getOrElse { e ->
-            log.warn("issue_type_key_invalid raw='{}' cause={}", raw, e.message)
-            // IssueTypeKey VO 는 유효한 형식만 허용하므로 invalid raw 를 직접 담을 수 없다.
-            // sentinel("in") 으로 감싸서 도메인 예외를 올린다. 원본 raw 는 로그에 기록된다.
-            throw IssueTypeKeyInvalidException(IssueTypeKey("in"))
-        }
+        val key =
+            runCatching { IssueTypeKey(raw) }.getOrElse { e ->
+                log.warn("issue_type_key_invalid raw='{}' cause={}", raw, e.message)
+                // IssueTypeKey VO 는 유효한 형식만 허용하므로 invalid raw 를 직접 담을 수 없다.
+                // sentinel("in") 으로 감싸서 도메인 예외를 올린다. 원본 raw 는 로그에 기록된다.
+                throw IssueTypeKeyInvalidException(IssueTypeKey("in"))
+            }
         return key
     }
 }

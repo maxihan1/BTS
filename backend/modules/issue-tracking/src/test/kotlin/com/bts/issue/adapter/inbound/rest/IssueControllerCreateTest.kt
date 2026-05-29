@@ -2,7 +2,6 @@
 
 package com.bts.issue.adapter.inbound.rest
 
-import com.bts.issue.application.CreateIssueRequest
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue

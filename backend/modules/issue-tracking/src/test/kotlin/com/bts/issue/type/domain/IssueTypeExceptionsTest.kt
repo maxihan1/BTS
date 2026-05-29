@@ -108,14 +108,15 @@ class IssueTypeExceptionsTest {
 
     @Test
     fun `모든 서브클래스는 IssueDomainException 과 별개인 sealed 베이스를 상속한다`() {
-        val exceptions: List<IssueTypeDomainException> = listOf(
-            IssueTypeStandardImmutableException(typeId = IssueTypeId(1L), key = null),
-            IssueTypeKeyDuplicateException(IssueTypeKey("bug")),
-            IssueTypeKeyInvalidException(IssueTypeKey("task")),
-            IssueTypeInUseException(usageCount = 1L, schemeMappingCount = 0L),
-            IssueTypeReassignTargetInvalidException(targetId = IssueTypeId(2L), reason = "deleted"),
-            IssueTypeNotFoundException(IssueTypeId(3L)),
-        )
+        val exceptions: List<IssueTypeDomainException> =
+            listOf(
+                IssueTypeStandardImmutableException(typeId = IssueTypeId(1L), key = null),
+                IssueTypeKeyDuplicateException(IssueTypeKey("bug")),
+                IssueTypeKeyInvalidException(IssueTypeKey("task")),
+                IssueTypeInUseException(usageCount = 1L, schemeMappingCount = 0L),
+                IssueTypeReassignTargetInvalidException(targetId = IssueTypeId(2L), reason = "deleted"),
+                IssueTypeNotFoundException(IssueTypeId(3L)),
+            )
 
         exceptions.forEach { ex ->
             ex.shouldBeInstanceOf<IssueTypeDomainException>()

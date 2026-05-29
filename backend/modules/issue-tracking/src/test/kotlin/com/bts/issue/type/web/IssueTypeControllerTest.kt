@@ -430,6 +430,7 @@ class IssueTypeControllerTest {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
+    @Suppress("LongParameterList")
     private fun issueType(
         id: Long,
         key: String,

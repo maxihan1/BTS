@@ -2,7 +2,6 @@
 
 package com.bts.workflow.scheme.adapter.outbound
 
-import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import org.flywaydb.core.Flyway

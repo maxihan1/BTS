@@ -61,6 +61,7 @@ data class Issue(
          * @param currentStateKey 초기 워크플로우 상태 키. 예: `"open"` (소문자, V004 마이그레이션 기준).
          * @return 생성된 [Issue] 인스턴스.
          */
+        @Suppress("LongParameterList")
         fun create(
             id: IssueId,
             key: IssueKey,

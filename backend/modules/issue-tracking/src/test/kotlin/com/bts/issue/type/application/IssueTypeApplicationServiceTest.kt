@@ -77,13 +77,14 @@ class IssueTypeApplicationServiceTest : DescribeSpec({
 
         context("key 중복 — findByKey 가 기존 타입을 반환할 때") {
             it("IssueTypeKeyDuplicateException 을 던진다") {
-                val req = CreateIssueTypeRequest(
-                    key = "feature",
-                    name = "Feature",
-                    description = null,
-                    iconName = null,
-                    hierarchyLevel = 0,
-                )
+                val req =
+                    CreateIssueTypeRequest(
+                        key = "feature",
+                        name = "Feature",
+                        description = null,
+                        iconName = null,
+                        hierarchyLevel = 0,
+                    )
                 every { repo.findByKey(IssueTypeKey("feature")) } returns makeCustomType(key = "feature")
 
                 shouldThrow<IssueTypeKeyDuplicateException> {
@@ -95,13 +96,14 @@ class IssueTypeApplicationServiceTest : DescribeSpec({
 
         context("key 형식 위반 — 대문자 포함 등 IssueTypeKey 생성 실패") {
             it("IssueTypeKeyInvalidException 으로 변환해 던진다") {
-                val req = CreateIssueTypeRequest(
-                    key = "INVALID_KEY",
-                    name = "Bad",
-                    description = null,
-                    iconName = null,
-                    hierarchyLevel = 0,
-                )
+                val req =
+                    CreateIssueTypeRequest(
+                        key = "INVALID_KEY",
+                        name = "Bad",
+                        description = null,
+                        iconName = null,
+                        hierarchyLevel = 0,
+                    )
 
                 shouldThrow<IssueTypeKeyInvalidException> {
                     sut.create(req)
@@ -112,13 +114,14 @@ class IssueTypeApplicationServiceTest : DescribeSpec({
 
         context("정상 생성 — key 미중복, 형식 유효") {
             it("isStandard=false 를 강제하고 repo.insert 를 호출한다") {
-                val req = CreateIssueTypeRequest(
-                    key = "feature",
-                    name = "Feature",
-                    description = "Custom feature type",
-                    iconName = "star",
-                    hierarchyLevel = 0,
-                )
+                val req =
+                    CreateIssueTypeRequest(
+                        key = "feature",
+                        name = "Feature",
+                        description = "Custom feature type",
+                        iconName = "star",
+                        hierarchyLevel = 0,
+                    )
                 val savedType = makeCustomType(id = 99L, key = "feature")
                 every { repo.findByKey(IssueTypeKey("feature")) } returns null
                 every { repo.insert(any()) } returns savedType
@@ -144,12 +147,13 @@ class IssueTypeApplicationServiceTest : DescribeSpec({
                 val id = IssueTypeId(1L)
                 every { repo.findById(id) } returns makeStandardType(id = 1L, key = "task")
 
-                val req = UpdateIssueTypeRequest(
-                    name = "Renamed Task",
-                    description = null,
-                    iconName = null,
-                    hierarchyLevel = 0,
-                )
+                val req =
+                    UpdateIssueTypeRequest(
+                        name = "Renamed Task",
+                        description = null,
+                        iconName = null,
+                        hierarchyLevel = 0,
+                    )
 
                 shouldThrow<IssueTypeStandardImmutableException> {
                     sut.update(id, req)
@@ -165,24 +169,27 @@ class IssueTypeApplicationServiceTest : DescribeSpec({
                 every { repo.findById(id) } returns existing
                 every { repo.update(any()) } returns Unit
 
-                val req = UpdateIssueTypeRequest(
-                    name = "Updated Feature",
-                    description = "Updated desc",
-                    iconName = "new-icon",
-                    hierarchyLevel = 1,
-                )
+                val req =
+                    UpdateIssueTypeRequest(
+                        name = "Updated Feature",
+                        description = "Updated desc",
+                        iconName = "new-icon",
+                        hierarchyLevel = 1,
+                    )
 
                 sut.update(id, req)
 
                 verify {
-                    repo.update(match { updated ->
-                        updated.name == "Updated Feature" &&
-                            updated.description == "Updated desc" &&
-                            updated.iconName == "new-icon" &&
-                            updated.hierarchyLevel == 1 &&
-                            updated.key == IssueTypeKey("feature") &&
-                            updated.isStandard == false
-                    })
+                    repo.update(
+                        match { updated ->
+                            updated.name == "Updated Feature" &&
+                                updated.description == "Updated desc" &&
+                                updated.iconName == "new-icon" &&
+                                updated.hierarchyLevel == 1 &&
+                                updated.key == IssueTypeKey("feature") &&
+                                updated.isStandard == false
+                        },
+                    )
                 }
             }
         }
@@ -192,12 +199,13 @@ class IssueTypeApplicationServiceTest : DescribeSpec({
                 val id = IssueTypeId(999L)
                 every { repo.findById(id) } returns null
 
-                val req = UpdateIssueTypeRequest(
-                    name = "X",
-                    description = null,
-                    iconName = null,
-                    hierarchyLevel = 0,
-                )
+                val req =
+                    UpdateIssueTypeRequest(
+                        name = "X",
+                        description = null,
+                        iconName = null,
+                        hierarchyLevel = 0,
+                    )
 
                 shouldThrow<IssueTypeNotFoundException> {
                     sut.update(id, req)
@@ -245,9 +253,10 @@ class IssueTypeApplicationServiceTest : DescribeSpec({
                 every { repo.countIssuesByTypeId(10L) } returns 5L
                 every { usagePort.countSchemeMappings(10L) } returns 0L
 
-                val ex = shouldThrow<IssueTypeInUseException> {
-                    sut.delete(id, reassignTo = null)
-                }
+                val ex =
+                    shouldThrow<IssueTypeInUseException> {
+                        sut.delete(id, reassignTo = null)
+                    }
                 ex.usageCount shouldBe 5L
                 ex.schemeMappingCount shouldBe 0L
                 // value class 를 any() 로 verify 하면 MockK reflection 이 IssueTypeId(0) 을 생성해 IAE 발생
@@ -264,9 +273,10 @@ class IssueTypeApplicationServiceTest : DescribeSpec({
                 every { repo.countIssuesByTypeId(10L) } returns 0L
                 every { usagePort.countSchemeMappings(10L) } returns 3L
 
-                val ex = shouldThrow<IssueTypeInUseException> {
-                    sut.delete(id, reassignTo = reassignId)
-                }
+                val ex =
+                    shouldThrow<IssueTypeInUseException> {
+                        sut.delete(id, reassignTo = reassignId)
+                    }
                 ex.schemeMappingCount shouldBe 3L
                 verify(exactly = 0) { repo.softDelete(id) }
                 verify(exactly = 0) { repo.reassignIssues(10L, 2L) }

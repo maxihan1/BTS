@@ -2,7 +2,6 @@
 
 package com.bts.issue.repository
 
-import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
@@ -55,7 +54,8 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
     @BeforeAll
     fun resolveTaskTypeId() {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.prepareStatement("SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1").use { stmt ->
+            val sql = "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1"
+            conn.prepareStatement(sql).use { stmt ->
                 stmt.executeQuery().use { rs ->
                     check(rs.next()) { "V003 마이그레이션에서 task 타입이 없습니다." }
                     taskTypeId = IssueTypeId(rs.getLong(1))
@@ -65,8 +65,8 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
     }
 
     /** 각 테스트에서 안전하게 taskTypeId 를 꺼내는 helper. resolveTaskTypeId 이후 항상 non-null. */
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다 — resolveTaskTypeId 실행 확인" }
+    @Suppress("MaxLineLength")
+    private fun requireTaskTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다 — resolveTaskTypeId 실행 확인" }
 
     // ── T1. insert ───────────────────────────────────────────────────────────────
 
