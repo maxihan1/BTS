@@ -17,7 +17,7 @@ export const issueAtlas1Fixture: IssueResponse = {
   typeName: '버그',
 }
 
-/** 이슈 단건 fixture — ATLAS-2 */
+/** 이슈 단건 fixture — ATLAS-2 (typeId=2 → story, issue-type-fixtures id=2: key='story') */
 export const issueAtlas2Fixture: IssueResponse = {
   key: 'ATLAS-2',
   id: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f',
@@ -29,11 +29,11 @@ export const issueAtlas2Fixture: IssueResponse = {
   createdAt: '2026-01-02T10:00:00Z',
   updatedAt: '2026-01-03T11:00:00Z',
   typeId: 2,
-  typeKey: 'task',
-  typeName: '작업',
+  typeKey: 'story',
+  typeName: '스토리',
 }
 
-/** 이슈 단건 fixture — ATLAS-3 */
+/** 이슈 단건 fixture — ATLAS-3 (typeId=3 → task, issue-type-fixtures id=3: key='task') */
 export const issueAtlas3Fixture: IssueResponse = {
   key: 'ATLAS-3',
   id: 'e5f6a7b8-c9d0-4e1f-ab2a-4c5d6e7f8a9b',
@@ -45,8 +45,8 @@ export const issueAtlas3Fixture: IssueResponse = {
   createdAt: '2026-01-03T08:00:00Z',
   updatedAt: '2026-01-04T12:00:00Z',
   typeId: 3,
-  typeKey: 'story',
-  typeName: '스토리',
+  typeKey: 'task',
+  typeName: '작업',
 }
 
 /** Spring Page 형태의 이슈 목록 fixture — 3건, 1 페이지 */

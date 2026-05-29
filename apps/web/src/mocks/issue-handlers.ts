@@ -10,7 +10,10 @@ import {
 import { allIssueTypeFixtures } from './issue-type-fixtures'
 import type { IssueResponse, IssuePage } from '@/api/issues'
 
-/** 이슈 생성 성공 응답 픽스처 */
+/**
+ * 이슈 생성 성공 응답 픽스처.
+ * typeId=3 → task (issue-type-fixtures id=3: key='task', name='작업').
+ */
 export const createdIssueFixture = {
   key: 'ATLAS-42',
   id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
@@ -21,7 +24,7 @@ export const createdIssueFixture = {
   version: 0,
   createdAt: '2026-05-27T00:00:00Z',
   updatedAt: null,
-  typeId: 2,
+  typeId: 3,
   typeKey: 'task',
   typeName: '작업',
 }
