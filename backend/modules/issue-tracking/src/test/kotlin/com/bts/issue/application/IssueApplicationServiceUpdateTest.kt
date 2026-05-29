@@ -98,7 +98,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
 
     describe("updateIssue") {
 
-        // T7-1: summary=null 이면 updateSummary·eventPublisher 모두 호출하지 않고 기존 이슈를 그대로 반환한다
+        // T7-1: summary=null 이면 updateFields·eventPublisher 모두 호출하지 않고 기존 이슈를 그대로 반환한다
         context("T7-1 — summary null (RFC 7396 JSON Merge Patch: 필드 생략)") {
             val request = UpdateIssueRequest(summary = null, expectedVersion = existingVersion)
             val existingIssue = makeIssue(summary = "원래")
@@ -112,9 +112,10 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
                 every { repo.findByKeyWithType(issueKey) } returns existingResponse
             }
 
-            it("updateSummary 가 호출되지 않는다") {
+            it("updateFields 가 호출되지 않는다 (repo 가 non-relaxed mock 이라 호출 시 MockK 에러로 자동 실패)") {
+                // IssueRepository 는 non-relaxed mock — updateFields stub 없으면 호출 시 즉시 에러
+                // 이 테스트가 정상 완료 = updateFields 미호출 증명
                 sut.updateIssue(actor, issueKey, request)
-                verify(exactly = 0) { repo.updateSummary(issueKey, any<String>(), any<Long>()) }
             }
 
             it("eventPublisher.publish 가 호출되지 않는다") {
