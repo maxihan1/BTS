@@ -112,13 +112,13 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
     },
     onError: (err: unknown) => {
       if (err instanceof ApiError && err.status === 409) {
-        // errorCode 구분: transition_not_allowed(S3) vs version_conflict(S4)
+        // errorCode 구분: TRANSITION_NOT_ALLOWED(S3) vs VERSION_CONFLICT(S4)
         const body = err.body as Record<string, unknown> | undefined
         const errorCode = typeof body?.['errorCode'] === 'string' ? body['errorCode'] : ''
-        if (errorCode === 'transition_not_allowed') {
+        if (errorCode === 'TRANSITION_NOT_ALLOWED') {
           toast.error(issueDetailStrings.transitionNotAllowedError)
         } else {
-          // version_conflict(S4) — 최신 데이터 + 전이 목록 재조회 유도
+          // VERSION_CONFLICT(S4) — 최신 데이터 + 전이 목록 재조회 유도
           void Promise.all([
             queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) }),
             queryClient.invalidateQueries({ queryKey: issueTransitionKeys.list(issueKey) }),

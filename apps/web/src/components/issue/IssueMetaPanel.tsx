@@ -1,5 +1,6 @@
 // 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전이 셀렉터·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
 import type { JSX } from 'react'
+import { useState } from 'react'
 import type { IssueResponse, IssueTransition } from '@/api/issues'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import { Button } from '@/components/ui/button'
@@ -66,6 +67,18 @@ export function IssueMetaPanel({
   /** issue.typeId에 해당하는 타입 항목 — iconName 해석에 사용 */
   const currentType = availableTypes.find((t) => t.id === issue.typeId)
 
+  /**
+   * 전이 셀렉터 제어값 — 전이 시도 후(성공/실패 모두) placeholder로 리셋.
+   * 실패 후 같은 옵션 재선택 시 onChange 재발화를 보장한다 (C1 회귀 방지).
+   */
+  const [selectedTransition, setSelectedTransition] = useState('')
+
+  function handleTransition(toStateKey: string) {
+    onTransition(toStateKey)
+    // 전이 요청 직후 즉시 리셋 — 성공/실패 모두 placeholder로 복귀
+    setSelectedTransition('')
+  }
+
   return (
     <aside className="flex flex-col gap-3">
       {/* 메타 패널 카드 */}
@@ -82,9 +95,11 @@ export function IssueMetaPanel({
           </span>
           <IssueStateTransition
             transitions={transitions}
-            onTransition={onTransition}
+            onTransition={handleTransition}
             isTransitioning={isTransitioning}
             unavailableReason={unavailableReason}
+            selectedValue={selectedTransition}
+            onSelectedValueChange={setSelectedTransition}
           />
         </div>
 
@@ -216,6 +231,10 @@ interface IssueStateTransitionProps {
   isTransitioning: boolean
   /** 전이 컨트롤을 노출할 수 없는 사유 (스펙 E5) */
   unavailableReason: TransitionUnavailableReason
+  /** 제어값 — 전이 시도 후 리셋에 사용 (C1 회귀 방지) */
+  selectedValue: string
+  /** 제어값 변경 콜백 */
+  onSelectedValueChange: (value: string) => void
 }
 
 /**
@@ -233,6 +252,8 @@ function IssueStateTransition({
   onTransition,
   isTransitioning,
   unavailableReason,
+  selectedValue,
+  onSelectedValueChange,
 }: IssueStateTransitionProps): JSX.Element {
   // 가용전이 0건 → 사유에 따라 안내문구 분기 (스펙 E5)
   if (transitions.length === 0) {
@@ -254,13 +275,14 @@ function IssueStateTransition({
     const toStateKey = e.target.value
     // placeholder 옵션 선택 무시
     if (toStateKey === '') return
+    onSelectedValueChange(toStateKey)
     onTransition(toStateKey)
   }
 
   return (
     <select
       className="w-full rounded-md border border-input bg-background px-2 text-sm min-h-[44px] focus:outline-none focus:ring-2 focus:ring-ring"
-      defaultValue=""
+      value={selectedValue}
       onChange={handleChange}
       disabled={isTransitioning}
       aria-label={issueDetailStrings.transitionSelectLabel}
