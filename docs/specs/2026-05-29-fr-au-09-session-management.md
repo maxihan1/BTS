@@ -40,13 +40,14 @@
 - **FR-4**. DELETE 시 대상 세션의 `userId != 인증 사용자 id` 또는 세션 미존재 → **404 Not Found** (IDOR 방어, 존재 여부 비노출).
 - **FR-5**. DELETE 대상 sid == 요청 JWT 의 현재 sid → **409 Conflict** + 에러코드 `cannot_revoke_current_session` (자기 세션 종료 차단).
 - **FR-6**. 두 엔드포인트는 Spring Security 인증 필터 통과 필수. 미인증 요청 → 401.
+- **FR-6b (PAT 차단 — Jira 방식)**. 세션 관리는 **인터랙티브 로그인 세션(JWT) 전용**. PAT(Personal Access Token) 로 호출 시 **403 Forbidden** + 에러코드 `session_management_requires_interactive_login`. 근거: PAT 는 stateless 자격증명이라 sid·"현재 세션" 개념이 없음. 구현. Controller 가 `Authentication.principal` 이 `Jwt` 타입인지 확인, 아니면(=PAT `UsernamePasswordAuthenticationToken`) 403. (`WhoamiController.kt` 의 `Jwt?` nullable + PAT 분기 선례 결과 동일.) Atlassian/Jira 도 세션 관리와 API 토큰 관리를 분리 — 세션 목록에 PAT 미노출.
 - **FR-7**. 프론트 — 세션 관리 화면(`/settings/sessions` 라우트). 활성 세션 목록 카드 + 각 항목 강제 로그아웃 버튼. 현재 세션은 배지 표시 + 버튼 비활성.
-- **FR-8**. 프론트 — 강제 종료 성공 시 목록 갱신(TanStack Query invalidate) + toast 피드백. access token 은 sessionStorage 만 사용 (localStorage 금지).
+- **FR-8**. 프론트 — 강제 종료 성공 시 목록 갱신(TanStack Query invalidate) + toast 피드백. access token 은 sessionStorage 만 사용 (localStorage 금지). 강제 종료 영역에 **"세션 종료는 최대 몇 초 내 완전히 적용됩니다" 안내 문구** 표시 (EC-29 5s 캐시 지연 → 사용자 기대 정렬, CEO 리뷰 ⚠️).
 - **FR-9**. E2E — S-1(목록 조회) → S-2(강제 종료) → 종료된 세션의 토큰 차단 확인 시나리오. revoke 캐시 TTL(EC-29 5s) 고려.
 
 ## 비기능 요구사항 (NFR)
 
-- **NFR-1 (보안)**. IDOR 방어 — 본인 세션만 조회/종료. DELETE 권한 검증은 Controller 가 아니라 Service/조회 단계에서 userId 일치로 강제.
+- **NFR-1 (보안)**. IDOR 방어 — 본인 세션만 조회/종료. DELETE 권한 검증은 Controller 가 `sessionService.lookup(sid)` 후 `session.userId == 인증 userId` 단일 지점에서 강제 (`WhoamiController` 선례와 동일 — Controller 가 principal 다룸). 검증 누락 없이 한 곳에서 수행.
 - **NFR-2 (보안)**. 응답 DTO 에 내부 식별자(deviceFingerprint) 미포함. ipAddress/userAgent 는 본인에게만 노출(본인 세션 목록).
 - **NFR-3 (정합)**. 응답 DTO 필드는 frontend Zod 스키마와 1:1 정합 (learnings 2026-05-22 — Zod↔DTO drift 차단). spec 의 FR-2 필드 정의가 단일 진실원천.
 - **NFR-4 (성능)**. 한 사용자 활성 세션 수는 소규모(≤ 수십). 페이지네이션 불필요. `idx_sessions_user_active` partial index 활용.
@@ -79,7 +80,11 @@
 - 204 No Content — 강제 종료 성공.
 - 404 Not Found — 본인 소유가 아니거나 미존재/비활성 sid (IDOR 방어).
 - 409 Conflict — 현재 세션 sid. body `{ "error": "cannot_revoke_current_session" }`.
+- 403 Forbidden — PAT 인증 호출. body `{ "error": "session_management_requires_interactive_login" }` (FR-6b).
+- 400 Bad Request — 잘못된 UUID 형식 sid (EC-7, Spring 자동 변환 실패).
 - 401 미인증.
+
+(GET /sessions 도 PAT 호출 시 동일하게 403 / FR-6b.)
 
 ## 데이터 모델 변경
 
@@ -94,6 +99,7 @@
 - **EC-5**. 만료(expires_at 경과)됐지만 revoked_at IS NULL 인 세션 → 활성 목록에서 제외(findActiveByUserId 가 expires_at > now 조건 포함하는지 검증 필요. 미포함 시 Service/Repository 보강).
 - **EC-6**. userAgent/ipAddress 가 null 인 세션(헤더 부재 로그인) → 응답에 null 그대로. UI 는 "알 수 없는 기기/위치" fallback 표시.
 - **EC-7**. 잘못된 UUID 형식의 sid path → 400 Bad Request (Spring 자동 변환 실패).
+- **EC-8 (PAT 호출)**. GET/DELETE 를 PAT 로 호출 → 403 `session_management_requires_interactive_login` (FR-6b). PAT 는 세션 개념 없음.
 
 ## 제약 조건
 
