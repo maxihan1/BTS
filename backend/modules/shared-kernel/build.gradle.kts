@@ -29,6 +29,19 @@ dependencyManagement {
     }
 }
 
+// detekt 1.23.7 은 Kotlin 2.0.10 으로 컴파일됨. shared-kernel 은 org.springframework.boot 플러그인
+// 대신 Spring BOM 을 직접 import 하므로, BOM 이 detekt 분석 classpath 의 kotlin-compiler-embeddable 을
+// 1.9.25 로 강등시킨다(나머지 3개 모듈은 boot 플러그인 경유로 자동 회피). detekt configuration 에 한해
+// detekt 가 지원하는 Kotlin 버전으로 고정해 "compiled with 2.0.10 but running with 1.9.25" 충돌을 해소.
+// https://detekt.dev/docs/gettingstarted/gradle (Spring dependency-management 충돌 공식 권장 fix)
+configurations.matching { it.name == "detekt" }.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "org.jetbrains.kotlin") {
+            useVersion(io.gitlab.arturbosch.detekt.getSupportedKotlinVersion())
+        }
+    }
+}
+
 dependencies {
     // 도메인 검증 (Konform — Kotlin-native 선언형 검증 라이브러리)
     implementation("io.konform:konform-jvm:0.7.0")

@@ -1,0 +1,57 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues></ManuallySuppressedIssues>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:SchemeIssueTypeMappingRepositoryIntegrationTest.kt$SchemeIssueTypeMappingRepositoryIntegrationTest.Companion$@BeforeAll @JvmStatic fun setup()</ID>
+    <ID>LongMethod:SchemeIssueTypeMappingRepositoryIntegrationTest.kt$SchemeIssueTypeMappingRepositoryIntegrationTest.Companion$@BeforeAll @JvmStatic fun setup()</ID>
+    <ID>LongMethod:WorkflowKeyResolverImplIntegrationTest.kt$WorkflowKeyResolverImplIntegrationTest.Companion$private fun seedWorkflowsAndMappings()</ID>
+    <ID>LongMethod:WorkflowResolverImplIntegrationTest.kt$WorkflowResolverImplIntegrationTest.Companion$private fun seedWorkflowsAndMappings()</ID>
+    <ID>LongMethod:WorkflowSchemeRepositoryIntegrationTest.kt$WorkflowSchemeRepositoryIntegrationTest$@Test @Order(50) fun `findAllWithCounts - cartesian product 없이 정확한 카운트 반환`()</ID>
+    <ID>LongMethod:WorkflowSchemeRepositoryIntegrationTest.kt$WorkflowSchemeRepositoryIntegrationTest.Companion$@BeforeAll @JvmStatic fun setup()</ID>
+    <ID>LongParameterList:WorkflowScheme.kt$WorkflowScheme$( val id: WorkflowSchemeId?, val key: WorkflowSchemeKey, val name: String, val description: String?, val isDefault: Boolean, val createdAt: Instant, val updatedAt: Instant, val deletedAt: Instant?, )</ID>
+    <ID>LongParameterList:WorkflowScheme.kt$WorkflowScheme.Companion$( id: WorkflowSchemeId, key: WorkflowSchemeKey, name: String, description: String?, isDefault: Boolean, createdAt: Instant, updatedAt: Instant, deletedAt: Instant?, )</ID>
+    <ID>MaxLineLength:AlwaysAllowPermissionResolverTest.kt$AlwaysAllowPermissionResolverTest$resolver.hasPermission(ActorId("11111111-1111-1111-1111-111111111111"), "CREATE_ISSUE", Scope.Global)</ID>
+    <ID>MaxLineLength:AlwaysAllowPermissionResolverTest.kt$AlwaysAllowPermissionResolverTest$resolver.hasPermission(ActorId("22222222-2222-2222-2222-222222222222"), "ADMIN_WORKFLOW", Scope.Project("ATLAS"))</ID>
+    <ID>MaxLineLength:AlwaysAllowPermissionResolverTest.kt$AlwaysAllowPermissionResolverTest$resolver.hasPermission(ActorId("33333333-3333-3333-3333-333333333333"), "DELETE_ISSUE", Scope.Issue("ATLAS-99"))</ID>
+    <ID>MaxLineLength:AlwaysAllowWorkflowSchemePermissionResolverTest.kt$AlwaysAllowWorkflowSchemePermissionResolverTest$resolver.requirePermission(actor, WorkflowSchemePermission.ASSIGN_SCHEME, WorkflowSchemeScope.Project("ATLAS"))</ID>
+    <ID>MaxLineLength:JdbcProjectLookupAdapter.kt$JdbcProjectLookupAdapter$@Suppress("PropertyName", "VariableNaming")</ID>
+    <ID>MaxLineLength:ProjectWorkflowArchitectureTest.kt$ProjectWorkflowArchitectureTest.Companion$"(@Service/@Component/@Repository/@Controller/@RestController — 모두 @Component 의 stereotype specialization) "</ID>
+    <ID>MaxLineLength:ProjectWorkflowArchitectureTest.kt$ProjectWorkflowArchitectureTest.Companion$DescribedPredicate</ID>
+    <ID>MaxLineLength:ProjectWorkflowSchemeAssignmentRepository.kt$ProjectWorkflowSchemeAssignmentRepository$@Suppress("PropertyName", "VariableNaming")</ID>
+    <ID>MaxLineLength:ProjectWorkflowSchemeController.kt$ProjectWorkflowSchemeController$permissionResolver.requirePermission(actor, WorkflowSchemePermission.ASSIGN_SCHEME, WorkflowSchemeScope.Project(projectKey))</ID>
+    <ID>MaxLineLength:ProjectWorkflowSchemeControllerTest.kt$ProjectWorkflowSchemeControllerTest.StubWorkflowSchemeApplicationService$)</ID>
+    <ID>MaxLineLength:ProjectWorkflowSchemeControllerTest.kt$ProjectWorkflowSchemeControllerTest.TestMvcConfig$)</ID>
+    <ID>MaxLineLength:SchemeIssueTypeMappingRepository.kt$SchemeIssueTypeMappingRepository$@Suppress("PropertyName", "VariableNaming")</ID>
+    <ID>MaxLineLength:SchemeIssueTypeMappingRepositoryIntegrationTest.kt$// SchemeIssueTypeMappingRepository 통합 테스트 — addMapping / findBySchemeId / findDefaultMapping / findByIssueType / deleteMapping + partial UNIQUE INDEX 검증</ID>
+    <ID>MaxLineLength:SchemeIssueTypeMappingRepositoryIntegrationTest.kt$SchemeIssueTypeMappingRepositoryIntegrationTest$*</ID>
+    <ID>MaxLineLength:V200MigrationTest.kt$// V200 (workflow init) 마이그레이션 검증 — Testcontainers postgres + Flyway migrate 후 information_schema 조회로 5 테이블 + 6 인덱스 존재 확인</ID>
+    <ID>MaxLineLength:WorkflowKeyResolverImpl.kt$WorkflowKeyResolverImpl$*</ID>
+    <ID>MaxLineLength:WorkflowKeyResolverImplIntegrationTest.kt$WorkflowKeyResolverImplIntegrationTest.Companion$"INSERT INTO projects (id, key, name) VALUES (?::uuid, ?, ?) ON CONFLICT DO NOTHING RETURNING id"</ID>
+    <ID>MaxLineLength:WorkflowResolverImpl.kt$WorkflowResolverImpl$*</ID>
+    <ID>MaxLineLength:WorkflowResolverImpl.kt$WorkflowResolverImpl$log.debug("resolveFor projectKey={} projectId={} issueTypeKey={}", projectKey.value, projectId, issueTypeKey?.value)</ID>
+    <ID>MaxLineLength:WorkflowResolverImpl.kt$WorkflowResolverImpl$log.info("resolveFor: no assignment for projectId={}, auto-assigning software-scheme (EC-1 D10)", projectId)</ID>
+    <ID>MaxLineLength:WorkflowResolverImplIntegrationTest.kt$// WorkflowResolverImpl 통합 테스트 — S5 matching mapping / EC-2 default fallback / EC-1 D10 auto-assign / EC-7 ProjectNotFoundException</ID>
+    <ID>MaxLineLength:WorkflowSchemeDomainEventTest.kt$WorkflowSchemeDomainEventTest$// findAndRegisterModules — JavaTimeModule (jsr310) 자동 등록으로 Instant 직렬화 활성화 (운영 Spring autoconfigured ObjectMapper 와 동일)</ID>
+    <ID>MaxLineLength:WorkflowSchemeDomainEventTest.kt$WorkflowSchemeDomainEventTest$WorkflowSchemeUpdatedEvent(schemeId = WorkflowSchemeId(2L), field = "name", occurredAt = Instant.parse("2026-05-26T00:00:00Z"))</ID>
+    <ID>MaxLineLength:WorkflowSchemeDomainEventTest.kt$WorkflowSchemeDomainEventTest$val e1 = WorkflowSchemeDeletedEvent(schemeId = WorkflowSchemeId(3L), occurredAt = Instant.parse("2026-05-26T00:00:00Z"))</ID>
+    <ID>MaxLineLength:WorkflowSchemeDomainEventTest.kt$WorkflowSchemeDomainEventTest$val e2 = WorkflowSchemeDeletedEvent(schemeId = WorkflowSchemeId(3L), occurredAt = Instant.parse("2026-05-26T00:00:00Z"))</ID>
+    <ID>MaxLineLength:WorkflowSchemeEventPublisherIntegrationTest.kt$WorkflowSchemeEventPublisherIntegrationTest$fun newConnection(): Connection</ID>
+    <ID>MaxLineLength:WorkflowSchemeEventPublisherIntegrationTest.kt$WorkflowSchemeEventPublisherIntegrationTest$it</ID>
+    <ID>MaxLineLength:WorkflowSchemeExceptionHandlerTest.kt$WorkflowSchemeExceptionHandlerTest.StubExceptionController$fun</ID>
+    <ID>NestedBlockDepth:WorkflowKeyResolverImplIntegrationTest.kt$WorkflowKeyResolverImplIntegrationTest.Companion$private fun insertProjectFixtures()</ID>
+    <ID>NestedBlockDepth:WorkflowKeyResolverImplIntegrationTest.kt$WorkflowKeyResolverImplIntegrationTest.Companion$private fun seedWorkflowsAndMappings()</ID>
+    <ID>NestedBlockDepth:WorkflowResolverImplIntegrationTest.kt$WorkflowResolverImplIntegrationTest.Companion$private fun insertProjectFixtures()</ID>
+    <ID>NestedBlockDepth:WorkflowResolverImplIntegrationTest.kt$WorkflowResolverImplIntegrationTest.Companion$private fun seedWorkflowsAndMappings()</ID>
+    <ID>NestedBlockDepth:WorkflowSchemeRepositoryIntegrationTest.kt$WorkflowSchemeRepositoryIntegrationTest$@Test @Order(30) fun `softDelete - deleted_at 컬럼이 SET됨`()</ID>
+    <ID>NestedBlockDepth:WorkflowSchemeRepositoryIntegrationTest.kt$WorkflowSchemeRepositoryIntegrationTest$@Test @Order(50) fun `findAllWithCounts - cartesian product 없이 정확한 카운트 반환`()</ID>
+    <ID>NestedBlockDepth:WorkflowSchemesMigrationIntegrationTest.kt$WorkflowSchemesMigrationIntegrationTest$private fun columnDataType( tableName: String, columnName: String, ): String?</ID>
+    <ID>ReturnCount:WorkflowEngine.kt$WorkflowEngine$private fun passesValidators( req: AvailableTransitionsRequest, workflow: Workflow, transition: WorkflowTransition, ): Boolean</ID>
+    <ID>SwallowedException:WorkflowKeyResolverImplIntegrationTest.kt$WorkflowKeyResolverImplIntegrationTest$@Suppress("TooGenericExceptionCaught") e: Exception</ID>
+    <ID>ThrowsCount:SchemeIssueTypeMappingRepository.kt$SchemeIssueTypeMappingRepository$@Suppress("InstanceOfCheckForException") @Transactional fun addMapping(mapping: SchemeIssueTypeMapping): SchemeIssueTypeMapping</ID>
+    <ID>ThrowsCount:WorkflowSchemeApplicationService.kt$WorkflowSchemeApplicationService$fun softDelete( actor: ActorId, key: WorkflowSchemeKey, )</ID>
+    <ID>ThrowsCount:WorkflowSchemeApplicationService.kt$WorkflowSchemeApplicationService$private fun validateStandardFieldNotChanged( existing: WorkflowScheme, newName: String, newDescription: String?, newIsDefault: Boolean, )</ID>
+    <ID>TooManyFunctions:YamlSeedService.kt$YamlSeedService</ID>
+    <ID>UseCheckOrError:ProjectWorkflowSchemeControllerTest.kt$ProjectWorkflowSchemeControllerTest.StubWorkflowSchemeApplicationService$throw IllegalStateException("assignToProjectResponse not configured")</ID>
+    <ID>UseCheckOrError:ProjectWorkflowSchemeControllerTest.kt$ProjectWorkflowSchemeControllerTest.StubWorkflowSchemeApplicationService$throw IllegalStateException("findAssignedSchemeResponse not configured")</ID>
+  </CurrentIssues>
+</SmellBaseline>
