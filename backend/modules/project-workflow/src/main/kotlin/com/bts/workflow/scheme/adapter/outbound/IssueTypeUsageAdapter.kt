@@ -6,7 +6,7 @@ import com.bts.workflow.scheme.application.port.IssueTypeUsagePort
 import org.jooq.DSLContext
 import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
-import org.springframework.stereotype.Service
+import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 
 /**
@@ -31,7 +31,7 @@ import org.springframework.transaction.annotation.Transactional
  * @param dsl jOOQ DSLContext (SQL 을 코드로 안전하게 작성하는 라이브러리의 핵심 진입점).
  * @see IssueTypeUsagePort
  */
-@Service
+@Component
 class IssueTypeUsageAdapter(private val dsl: DSLContext) : IssueTypeUsagePort {
     private val log = LoggerFactory.getLogger(javaClass)
 
