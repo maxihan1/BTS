@@ -15,7 +15,7 @@ package com.bts.shared.workflow
  * when (val result = workflowPort.availableTransitions(req)) {
  *     is AvailableTransitionsResult.Success          -> renderTransitionButtons(result.transitions)
  *     is AvailableTransitionsResult.WorkflowNotFound ->
- *         throw IssueTransitionNotAllowedException("워크플로우를 찾을 수 없습니다: ${result.key}")
+ *         throw IssueWorkflowNotConfiguredException(projectKey, issueTypeKey) // 422
  * }
  * ```
  */
@@ -32,7 +32,8 @@ sealed interface AvailableTransitionsResult {
     /**
      * [AvailableTransitionsRequest.workflowKey] 에 해당하는 워크플로우가 DB 에 없을 때 반환된다.
      *
-     * issue-tracking BC 는 이 케이스를 `IssueTransitionNotAllowedException` 으로 변환해 던져야 한다.
+     * issue-tracking BC 는 이 케이스를 `IssueWorkflowNotConfiguredException`(HTTP 422) 으로 변환해 던져야 한다.
+     * `IssueTransitionNotAllowedException`(409) 이 아님에 주의한다.
      *
      * @param key 조회에 실패한 워크플로우 키.
      */

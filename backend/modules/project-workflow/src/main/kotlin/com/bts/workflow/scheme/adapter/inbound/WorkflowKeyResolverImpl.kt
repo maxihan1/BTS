@@ -49,6 +49,8 @@ class WorkflowKeyResolverImpl(
     /**
      * 프로젝트와 이슈 타입에 적합한 워크플로우 시작 상태를 반환한다.
      *
+     * **쓰기 경로 전용 (auto-assign 포함).** 이슈 생성/전이(write path)에서만 호출한다.
+     *
      * 내부적으로 [WorkflowResolver.resolveFor] 에 위임하고,
      * 반환된 [com.bts.workflow.domain.Workflow] 에서 최소 displayOrder 상태를 시작 상태로 추출한다.
      *
@@ -76,6 +78,46 @@ class WorkflowKeyResolverImpl(
         log.debug("resolveStart projectKey={} issueTypeKey={}", projectKey.value, issueTypeKey?.value)
 
         val workflow = workflowResolver.resolveFor(internalProjectKey, issueTypeKey)
+
+        val startState =
+            workflow.states.minByOrNull { it.displayOrder }
+                ?: error(
+                    "Workflow '${workflow.key}' 에 상태가 없습니다. " +
+                        "Workflow.of() factory invariant 위반 — 데이터 무결성 오류.",
+                )
+
+        return WorkflowStartState(
+            workflowKey = workflow.key,
+            startStateKey = startState.key,
+        )
+    }
+
+    /**
+     * **읽기 전용 경로 전용 — auto-assign 없음.**
+     *
+     * 프로젝트에 워크플로우 스킴이 할당되지 않은 경우 부수 효과 없이 `null` 을 반환한다.
+     * `WorkflowSchemeAssignedEvent` 를 포함한 어떤 이벤트도 발행하지 않는다.
+     * DB 쓰기(INSERT/UPDATE)가 일어나지 않는다.
+     *
+     * @param projectKey shared-kernel [SharedProjectKey].
+     * @param issueTypeKey 이슈 타입 키. null 이면 default mapping 직접 조회.
+     * @return 결정된 [WorkflowStartState], 또는 스킴 할당이 없으면 `null`.
+     * @throws RuntimeException ([com.bts.workflow.scheme.exception.ProjectNotFoundException])
+     *   projectKey 미존재 시 (EC-7).
+     * @throws RuntimeException ([com.bts.workflow.scheme.exception.WorkflowSchemeNoDefaultException])
+     *   스킴은 있지만 mapping 이 없을 때 (EC-2).
+     */
+    @Transactional(readOnly = true, propagation = Propagation.MANDATORY)
+    override fun resolveExisting(
+        projectKey: SharedProjectKey,
+        issueTypeKey: IssueTypeKey?,
+    ): WorkflowStartState? {
+        val internalProjectKey = InternalProjectKey(projectKey.value)
+        log.debug("resolveExisting projectKey={} issueTypeKey={}", projectKey.value, issueTypeKey?.value)
+
+        val workflow =
+            workflowResolver.resolveExistingFor(internalProjectKey, issueTypeKey)
+                ?: return null
 
         val startState =
             workflow.states.minByOrNull { it.displayOrder }

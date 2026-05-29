@@ -39,6 +39,9 @@ interface WorkflowKeyResolver {
     /**
      * 프로젝트와 이슈 타입에 적합한 워크플로우 시작 상태를 반환한다.
      *
+     * **쓰기 경로 전용 (auto-assign 포함).** 이슈 생성/전이(write path)에서만 호출한다.
+     * 읽기 전용 경로(가용 전이 조회 등)에서는 [resolveExisting] 을 사용해야 한다.
+     *
      * 호출자 트랜잭션 강제. Application Service 또는 동등 계층에서만 호출.
      *
      * @param projectKey 워크플로우를 조회할 프로젝트 키. 예: `ProjectKey("ATLAS")`.
@@ -55,4 +58,34 @@ interface WorkflowKeyResolver {
         projectKey: ProjectKey,
         issueTypeKey: IssueTypeKey?,
     ): WorkflowStartState
+
+    /**
+     * **읽기 전용 경로 전용 — auto-assign 없음.**
+     *
+     * 가용 전이 조회(GET read path)처럼 부수 효과가 없어야 하는 경로에서 호출한다.
+     * 프로젝트에 워크플로우 스킴이 할당돼 있지 않으면 auto-assign 을 수행하지 않고
+     * `null` 을 반환한다. 호출자는 `null` 반환 시 미설정으로 판단해 422 로 응답해야 한다.
+     *
+     * ## 부수 효과 없음 보장
+     *
+     * 이 메서드는 DB 쓰기(INSERT/UPDATE)를 일절 수행하지 않는다.
+     * `WorkflowSchemeAssignedEvent` 등 어떤 이벤트도 발행하지 않는다.
+     * `@Transactional(readOnly = true, propagation = MANDATORY)` 로 선언돼 있어
+     * 호출자의 읽기 전용 트랜잭션 안에서만 실행 가능하다.
+     *
+     * 호출자 트랜잭션 강제. Application Service 또는 동등 계층에서만 호출.
+     *
+     * @param projectKey 워크플로우를 조회할 프로젝트 키. 예: `ProjectKey("ATLAS")`.
+     * @param issueTypeKey 워크플로우를 조회할 이슈 타입 키. `null` 이면 default mapping 직접 조회.
+     * @return 결정된 [WorkflowStartState], 또는 프로젝트에 스킴이 할당되지 않은 경우 `null`.
+     * @throws RuntimeException (project-workflow BC 내부 `ProjectNotFoundException`)
+     *   projectKey 에 해당하는 프로젝트가 없을 때 (EC-7).
+     * @throws RuntimeException (project-workflow BC 내부 `WorkflowSchemeNoDefaultException`)
+     *   스킴은 있지만 매칭 mapping 도 default mapping 도 없을 때 (EC-2).
+     */
+    @Transactional(readOnly = true, propagation = Propagation.MANDATORY)
+    fun resolveExisting(
+        projectKey: ProjectKey,
+        issueTypeKey: IssueTypeKey?,
+    ): WorkflowStartState?
 }
