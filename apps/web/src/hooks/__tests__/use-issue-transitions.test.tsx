@@ -87,11 +87,11 @@ describe('useTransitionIssue', () => {
   it('전이 성공 후 issue + issue-transitions 캐시를 무효화한다', async () => {
     const updatedIssue = {
       key: 'ATLAS-1',
-      id: 'uuid-1',
+      id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
       projectKey: 'ATLAS',
       summary: '테스트 이슈',
       currentStateKey: 'in-progress',
-      reporterId: 'uuid-reporter',
+      reporterId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22',
       version: 2,
       createdAt: null,
       updatedAt: null,
