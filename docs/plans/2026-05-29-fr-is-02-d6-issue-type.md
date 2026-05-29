@@ -136,10 +136,11 @@ Maxi 결정: D6 스코프 = 표시 + 변경 (backend 동반). 경량 경로 (off
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/api/issues.ts`, `apps/web/src/api/issue-types.ts`, `apps/web/src/api/issues.test.ts`]
+- files: [`apps/web/src/api/issues.ts`, `apps/web/src/api/issue-types.ts`, `apps/web/src/api/issues.test.ts`, `apps/web/src/api/__tests__/issue-types.test.ts`, `apps/web/src/mocks/issue-type-fixtures.ts`, `apps/web/src/mocks/__tests__/scheme-handlers.test.ts`, `apps/web/src/hooks/__tests__/use-issue-types.test.tsx`]
 - depends-on: []
+- 비고: iconUrl→iconName 정정은 계약 원천이라 모든 참조처를 이 task 에 통합(범위 밖 수정 방지). issue PATCH 핸들러/이슈 픽스처는 Task 5.
 
-**RED**: `issues.test.ts` — issueResponseSchema 가 typeId/typeKey/typeName 파싱(누락 시 reject), issueTypeResponseSchema 가 id + iconName 파싱, updateIssue 가 typeId 를 body 에 포함.
+**RED**: `issues.test.ts` — issueResponseSchema 가 typeId/typeKey/typeName 파싱(누락 시 reject), issueTypeResponseSchema 가 id + iconName 파싱, updateIssue 가 typeId 를 body 에 포함. `issue-types.test.ts` 기존 iconUrl 단언 → iconName 으로 정정.
 **GREEN**: `issueResponseSchema` += `typeId: z.number().int().positive()` / `typeKey: z.string().min(1)` / `typeName: z.string().min(1)` (주석 9→12 필드). `issueTypeResponseSchema` += `id: z.number().int().positive()` + **`iconUrl`→`iconName: z.string().nullable()` 정정**(리뷰 B3, backend 진실). `UpdateIssueInput` += `typeId?: number`. 기존 `iconUrl` 참조처(`MappingTable.tsx` 등) 함께 정정.
 **REFACTOR**: 타입 추론 정리.
 **검증**: `pnpm --filter web test issues.test.ts && pnpm --filter web typecheck`
@@ -160,11 +161,11 @@ Maxi 결정: D6 스코프 = 표시 + 변경 (backend 동반). 경량 경로 (off
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/mocks/issue-handlers.ts`, `apps/web/src/mocks/issue-fixtures.ts`, `apps/web/src/mocks/issue-type-fixtures.ts`, `apps/web/src/mocks/__tests__/issue-handlers.test.ts`]
-- depends-on: []
+- files: [`apps/web/src/mocks/issue-handlers.ts`, `apps/web/src/mocks/issue-fixtures.ts`, `apps/web/src/mocks/__tests__/issue-handlers.test.ts`]
+- depends-on: [3]   # iconName 계약 + 카탈로그(issue-type-fixtures) 확정 후 (rename race 방지)
 
 **RED**: issue-handlers 테스트 — PATCH body 에 typeId 오면 카탈로그(issue-type-fixtures)에서 typeKey/typeName 조회해 응답 반영, 비활성/미존재 typeId → 4xx. **분기 순서 backend 일치: 404 not-found → typeId 검증 4xx → 409 conflict → success**.
-**GREEN**: `issue-handlers` PATCH 가 typeId 처리(+ body `version`→`expectedVersion` 정합). `issue-fixtures` 각 이슈에 typeId/typeKey/typeName 추가. `issue-type-fixtures` 의 `iconUrl`→`iconName` 정정(리뷰 B3).
+**GREEN**: `issue-handlers` PATCH 가 typeId 처리(+ body `version`→`expectedVersion` 정합). `issue-fixtures` 각 이슈에 typeId/typeKey/typeName 추가. (issue-type-fixtures 의 iconName 정정은 Task 3 가 완료.)
 **REFACTOR**: 카탈로그 lookup 헬퍼 추출.
 **검증**: `pnpm --filter web test issue-handlers.test.ts`
 
@@ -183,7 +184,8 @@ Maxi 결정: D6 스코프 = 표시 + 변경 (backend 동반). 경량 경로 (off
 ## Plan 메타
 
 - task 수: 6 (각 TDD 사이클)
-- wave 예상: Wave1 [1, 3, 4, 5] 병렬(backend 1건 + frontend 3건, 파일/모듈 안 겹침) → Wave2 [2(after 1), 6(after 3,4,5)] → Wave3 통합 검증
+- wave 예상: Wave1 [1, 3, 4] 병렬(backend 1 + frontend 2) → Wave2 [2(after 1), 5(after 3)] → Wave3 [6(after 3,4,5)] → 통합 검증
+- 비고: Task 5 가 Task 3 에 depends-on (iconName 타입 rename 결합 → race 방지). Task 3·5 파일 안 겹침
 - 예상 시간: 직렬 약 18분 / wave 병렬 약 8분
 - TDD 강제: yes (test 커밋 먼저)
 - 병렬 dispatch: bts-impl 이 depends-on + files 로 wave 계산. backend task(1,2) 같은 모듈 → 직렬 보장
