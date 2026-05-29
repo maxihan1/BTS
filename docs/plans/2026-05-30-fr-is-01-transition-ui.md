@@ -76,6 +76,7 @@ UX 시나리오는 기존 spec S1~S6 그대로(happy / 가용전이만 노출 / 
 - 실패 메시지(예상): `fetchIssueTransitions`/`transitionIssue` 미존재.
 
 **GREEN** (`issues.ts`).
+- ⚠️ `issues.ts`는 **기존 파일**(fetch/create/update/delete CRUD 보유). 덮어쓰지 말고 **전이 함수/스키마만 추가**.
 - `issueTransitionSchema` 신규 — `workflowTransitionViewSchema`(`api/workflows.ts:24`)와 동일 형태 `{fromStateKey,toStateKey,name,key}`. **backend `TransitionItem` DTO와 grep 정합 유지**(메모 `frontend-zod-backend-dto-contract-gap`).
 - `transitionsResponseSchema` = `z.object({ data: z.object({ transitions: z.array(issueTransitionSchema) }) })`.
 - `fetchIssueTransitions`, `transitionIssue` (기존 `api/client.ts` + `ApiError` 패턴 차용).
@@ -92,12 +93,18 @@ UX 시나리오는 기존 spec S1~S6 그대로(happy / 가용전이만 노출 / 
 - depends-on: []   # 다른 파일군. 고정 백엔드 계약 기준이라 T1과 병렬 가능
 
 **RED** (`issue-handlers.test.ts`).
-- `GET /api/v1/issues/:key/transitions` — 현재 상태(`createdIssueFixture.currentStateKey`) 기준 가용전이 반환. `open` → `[{open→in_progress "시작"},{open→closed "취소"}]`, `in_progress` → `[{in_progress→in_review},{in_progress→closed}]`, `closed` → `[]`(종료, S6).
-- `POST /api/v1/issues/:key/transition` — `{toStatusKey, expectedVersion}` 수신. **분기순서 백엔드 일치(메모 `e2e-msw-serviceworker-block`)**: 404(미존재 key) → 422(`MOCK_NO_WORKFLOW_TRIGGER` 등 미설정) → 409(`expectedVersion`≠현재 version = 버전충돌 / `MOCK_CONFLICT_TRIGGER` = 전이거부) → 200(state 갱신 + version+1). 전이 후 후속 `GET /:key` 및 `/transitions`가 새 상태/새 가용전이 반영(stateful).
+- `GET /api/v1/issues/:key/transitions` — 현재 상태 기준 가용전이 반환. **⚠️ 전이 맵은 `workflow-fixtures.ts`의 `software-default` 정본을 단일 출처로 차용**(전이 invent 금지 — 리뷰 BLOCKER). 정본:
+  - `open` → `[Start Work(open→in_progress), Cancel(open→closed)]`
+  - `in_progress` → `[Submit for Review(in_progress→in_review)]`
+  - `in_review` → `[Approve(in_review→done), Request Changes(in_review→in_progress)]`
+  - `done` → `[Close(done→closed)]`
+  - `closed` → `[]` (종료상태, S6)
+  - **name은 정본 영문 그대로**(`"Start Work"` 등). E2E 셀렉터도 이 영문에 맞춤(언어 단일화).
+- `POST /api/v1/issues/:key/transition` — `{toStatusKey, expectedVersion}` 수신. **분기순서 백엔드 일치(메모 `e2e-msw-serviceworker-block`)**: 404(미존재 key) → 422(`MOCK_NO_WORKFLOW_TRIGGER` 미설정) → 409(`expectedVersion`≠현재 version = **버전충돌**, body `errorCode` 구분 / `MOCK_CONFLICT_TRIGGER` = **전이거부 transition_not_allowed**, body `errorCode` 구분) → 200(state 갱신 + version+1). 전이 후 후속 `GET /:key`·`/transitions`가 새 상태/새 가용전이 반영(stateful).
 
 **GREEN** (`issue-handlers.ts` + `issue-fixtures.ts`).
-- `issue-fixtures.ts`에 상태별 가용전이 맵(`software-default` 기준) 추가.
-- `getTransitionsHandler`, `transitionHandler` 추가 + `issueHandlers` 배열 등록. `resetIssueState()`가 전이 상태도 초기화.
+- `issue-fixtures.ts`에 상태→가용전이 맵 추가 — **`workflow-fixtures.ts` softwareDefault 전이에서 파생**(중복 정의 금지, helper로 from-state 필터). **S6 검증용 `closed` 이슈 fixture 추가**(현재 fixture는 open/in_progress/done뿐, 종료상태 없음).
+- `getTransitionsHandler`, `transitionHandler` 추가 + `issueHandlers` 배열 등록(`...issueHandlers`로 자동 합류, 별도 등록 불필요). 409 응답 body에 `errorCode`(`transition_not_allowed` vs `version_conflict`) 포함 — UI 분기용. `resetIssueState()`가 전이 상태도 초기화.
 
 **REFACTOR**. 가용전이 맵을 fixture helper로(상태→전이 배열), `updateIssueHandler` 409 패턴과 분기 일관.
 
@@ -120,25 +127,29 @@ UX 시나리오는 기존 spec S1~S6 그대로(happy / 가용전이만 노출 / 
 
 **검증**. `pnpm test -- src/hooks/__tests__/use-issue-transitions.test.tsx`.
 
-### Task 4. 전이 컨트롤 UI (IssueMetaPanel) + i18n 에러
+### Task 4. 전이 컨트롤 UI (IssueMetaPanel 표시 + issues.$key 배선) + i18n 에러
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/issue/IssueMetaPanel.tsx`, `apps/web/src/components/issue/IssueMetaPanel.test.tsx`, `apps/web/src/i18n/ko.ts`]
+- files: [`apps/web/src/components/issue/IssueMetaPanel.tsx`, `apps/web/src/components/issue/IssueMetaPanel.test.tsx`, `apps/web/src/routes/issues.$key.tsx`, `apps/web/src/routes/issues.$key.test.tsx`, `apps/web/src/i18n/ko.ts`]
 - depends-on: [3]   # T3 훅 사용
 
-**RED** (`IssueMetaPanel.test.tsx`).
-- 상태 배지(`issue-state-badge`) 영역에 전이 컨트롤(`IssueStateTransition` 서브컴포넌트, `IssueTypeSelect` 패턴) 렌더.
-- 가용전이를 훅에서 받아 노출(드롭다운/버튼). 선택 시 `useTransitionIssue.mutate({toStatusKey: 선택 toStateKey, expectedVersion: issue.version})`.
-- 전이 중 컨트롤 `disabled`(중복클릭 방지, NFR3). 가용전이 0건(종료상태 S6) → 컨트롤 비노출/비활성.
-- 409(전이거부/버전충돌)·422(미설정) → i18n 에러 메시지 표시, 상태 변경 전 유지(S3/S4/S5).
-- WCAG AA: `min-h-[44px]`, `aria-label`, 키보드 접근(NFR1). props 식별값으로 로컬 state 초기화 시 `key` prop 재마운트(메모 `react-usestate-stale-key-prop`).
+**책임 분리 (D6 typeChangeMutation 선례 그대로, spec FR-T-F1)**.
+- **`issues.$key.tsx`(라우트)가 소유** — `useIssueTransitions(key)`(가용전이 조회) + `useTransitionIssue(key)`(전이 mutation) 호출, `expectedVersion=issue.version` 전달, 성공 시 캐시 무효화, 409/422 `ApiError` 분기 처리. `IssueMetaPanel`에 `transitions`/`onTransition`/`isTransitioning`/`transitionError` props로 전달.
+- **`IssueMetaPanel`(표시 컴포넌트)** — 순수 표시. `IssueTypeSelect`(네이티브 `<select>`, IssueMetaPanel.tsx:124+)와 동일 패턴의 `IssueStateTransition` 서브컴포넌트로 가용전이 노출 + 선택 시 `onTransition(toStateKey)` 콜백.
 
-**GREEN**. `IssueStateTransition` 서브컴포넌트 + `ko.ts`에 전이 라벨/409/422 문자열 추가.
+**RED** (`IssueMetaPanel.test.tsx` + `issues.$key.test.tsx`).
+- 상태 배지(`issue-state-badge`) 영역에 전이 컨트롤 렌더, 가용전이 노출, 선택 시 `onTransition(toStateKey)` 호출.
+- 전이 중 컨트롤 `disabled`(중복클릭, NFR3). 가용전이 0건(종료상태 S6, `closed`) → 컨트롤 비노출/비활성 + "더 진행할 전이 없음" 안내.
+- 라우트: 전이 선택 → `transitionIssue({toStatusKey: toStateKey, expectedVersion: issue.version})` 호출 + onSuccess 캐시 무효화.
+- **409 errorCode 분기(리뷰 CONCERN)**: `transition_not_allowed`(S3) → 에러 메시지 + 상태 유지 / `version_conflict`(S4) → 충돌 안내 + **최신 데이터 재조회 유도**(refetch). 422(S5) → 컨트롤 비활성/숨김 + 미설정 안내. 셋 다 i18n `ko` 문자열.
+- WCAG AA: `min-h-[44px]`, `aria-label`, 키보드(NFR1). props 식별값으로 로컬 state 초기화 시 `key` prop 재마운트(메모 `react-usestate-stale-key-prop`).
 
-**REFACTOR**. 컨트롤 접근성/스타일 DESIGN.md 컨벤션 정렬.
+**GREEN**. `IssueStateTransition` 서브컴포넌트(IssueMetaPanel) + 라우트 mutation/에러 배선(issues.$key.tsx) + `ko.ts` 전이 라벨·409(2종)·422 문자열.
 
-**검증**. `pnpm test -- src/components/issue/IssueMetaPanel.test.tsx` + `pnpm typecheck`(교차파일).
+**REFACTOR**. 접근성/스타일 DESIGN.md 정렬, errorCode 분기 상수화.
+
+**검증**. `pnpm test -- src/components/issue/IssueMetaPanel.test.tsx src/routes/issues.$key.test.tsx` + `pnpm typecheck`(교차파일).
 
 ### Task 5. Playwright E2E (전이 시나리오)
 
@@ -148,8 +159,8 @@ UX 시나리오는 기존 spec S1~S6 그대로(happy / 가용전이만 노출 / 
 - depends-on: [2, 4]   # MSW 핸들러(T2) + UI(T4) 필요
 
 **RED→GREEN** (E2E는 spec 작성 = RED, UI/MSW 존재로 PASS = GREEN).
-- **S1 happy**: 이슈 상세 진입(`open`) → 전이 컨트롤에서 "시작(→in_progress)" 선택 → 상태 배지 `in_progress` 갱신 확인.
-- **S2 가용전이 필터**: `open`에서 컨트롤 열면 open 출발 전이만(시작/취소), `in_review` 직행 선택지 없음 확인.
+- **S1 happy**: 이슈 상세 진입(`open`) → 전이 컨트롤에서 "Start Work(→in_progress)" 선택 → 상태 배지 `in_progress` 갱신 확인. (전이 라벨은 정본 영문 — workflow-fixtures 일치.)
+- **S2 가용전이 필터**: `open`에서 컨트롤 열면 open 출발 전이만(Start Work/Cancel), `in_review` 직행 선택지 없음 확인.
 - **에러**: S5(422 미설정) 또는 S3/S4(409) 중 MSW mock 가능 범위 1건 → 에러 메시지 + 상태 미변경 확인.
 - **주의**: `serviceWorkers:'block'` 금지(MSW 부팅 깨짐, 메모 `e2e-msw-serviceworker-block`). 같은 텍스트 버튼 충돌 시 `exact:true`/좁은 컨테이너(메모 `playwright-getbyrole-exact-strict-mode`).
 
@@ -166,4 +177,13 @@ UX 시나리오는 기존 spec S1~S6 그대로(happy / 가용전이만 노출 / 
 - 추가 검증: wave 종료마다 controller `pnpm verify`(lint+typecheck+test+build) 직접 실행 + 최종 E2E.
 - BC 격리: issue-tracking 프론트만. 백엔드 무변경.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### eng plan 리뷰 (Plan agent, 2026-05-30) — 수정 권장, 전부 반영 완료
+계약정합(2)/범위(3)/MSW 분기순서(6) PASS. wave 골격 정상. 발견·반영:
+- **[BLOCKER] T2 전이 맵 권위 불일치** → `software-default` 정본(`workflow-fixtures.ts`)으로 교체. `in_progress→closed` 가짜 전이 제거(in_progress 출구는 in_review 1개), 영문 name 통일, S6용 `closed` 이슈 fixture 추가. ✅ 반영.
+- **[CONCERN] T4 `issues.$key.tsx` 누락** → mutation/에러/무효화는 라우트 소유(D6 선례), IssueMetaPanel은 표시. files에 `issues.$key.tsx`(+test) 추가, 책임 분리 명시. ✅ 반영.
+- **[CONCERN] S3/S4 409 미구분** → errorCode 분기(`transition_not_allowed`=상태유지 / `version_conflict`=재조회 유도) T2 mock + T4 UI 양쪽 명시. ✅ 반영.
+- **[CONCERN] 전이 name 언어** → 정본 영문 통일, E2E 셀렉터 일치. ✅ 반영.
+- **[정정] `issues.ts` "신규 파일" 오인** → 기존 파일에 전이 함수 추가로 정정(CRUD 덮어쓰기 방지). ✅ 반영.
+- design-review skip 사유: 전이 컨트롤이 D6 `IssueTypeSelect`(네이티브 select) 패턴·기존 DESIGN.md 컨벤션 그대로 차용, 새 비주얼 결정 없음(메모 `bts-review-plan-autoplan-overkill` 정신).
