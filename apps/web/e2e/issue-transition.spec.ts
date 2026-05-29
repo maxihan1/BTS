@@ -68,66 +68,44 @@ test.describe('FR-IS-01 이슈 상태 전이 (IssueMetaPanel)', () => {
   })
 
   // ─────────────────────────────────────────────────────────────────────────
-  // S5 에러 — 워크플로우 미설정 422 응답 → 에러 메시지 노출 + 상태 미변경
-  // SKIP 사유: Playwright page.route() 는 MSW Service Worker 보다 후순위라
-  //   POST /transition 을 intercept 할 수 없음. MSW MOCK_NO_WORKFLOW_TRIGGER
-  //   트리거 문자열을 select option 으로 직접 선택하는 방법도 불가
-  //   (option 값은 toStateKey 이며 ATLAS-1 open 출발 선택지에 없음).
-  //   422 에러 분기는 issue-transition-handlers.test.ts 단위 테스트로 커버됨.
-  //   해결 방안: main.tsx 에서 window.__mswWorker__ 노출 후 page.evaluate() 로
-  //   worker.use(http.post(...)) 주입 → 구현 코드 변경 필요, implementer 담당.
+  // S5 워크플로우 미설정 — ATLAS-NOWF 는 GET /transitions 422 반환
+  //   → useIssueTransitions 가 빈 배열로 폴백 → 전이 셀렉터 미노출
+  //   + "더 진행할 전이 없음"(noTransitionsAvailable) 안내 노출.
+  //   이슈 상세 자체(title/badge)는 정상 렌더됨.
+  //   transitionWorkflowNotConfiguredError 문구는 POST /transition 422 시
+  //   toast로 노출되는 별도 경로 — GET 422 처리는 noTransitionsAvailable 과 동일 UI.
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * Given   ATLAS-1(open 상태) 이슈 상세 페이지 진입
-   *         + POST /api/v1/issues/ATLAS-1/transition 을 422 으로 intercept
-   * When    전이 셀렉터에서 "Start Work" 선택
-   * Then    에러 메시지 노출 + 상태 배지는 여전히 "open"
+   * Given   ATLAS-NOWF(open 상태, GET /transitions → 422) 이슈 상세 페이지 진입
+   * When    메타패널 상태 영역 확인
+   * Then    이슈 상세 정상 렌더 + 전이 셀렉터 없음 + "더 진행할 전이 없음" 안내 노출
    */
-  test.skip('S5 에러 — 422 워크플로우 미설정 시 에러 토스트 노출 + 상태 미변경', async ({ page }) => {
-    // Given. POST /transition 을 422 로 intercept
-    await page.route('**/api/v1/issues/ATLAS-1/transition', (route, request) => {
-      if (request.method() === 'POST') {
-        return route.fulfill({
-          status: 422,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            errorCode: 'workflow_not_configured',
-            message: '이슈에 워크플로우가 설정되지 않았습니다.',
-          }),
-        })
-      }
-      return route.continue()
-    })
+  test('S5 워크플로우 미설정 — 전이 셀렉터 없고 안내 문구 노출', async ({ page }) => {
+    // Given. GET /transitions 422 반환 이슈 상세 진입
+    await page.goto('/issues/ATLAS-NOWF')
 
-    // Given. open 상태 이슈 상세 진입
-    await page.goto('/issues/ATLAS-1')
+    // Then. 이슈 상세 정상 렌더 (상태 배지 + 이슈 키 breadcrumb)
     const badge = page.getByTestId('issue-state-badge')
+    await expect(badge).toBeVisible()
     await expect(badge).toContainText('open')
 
-    // When. 전이 셀렉터에서 "Start Work" 선택 (422 응답 유도)
-    const transitionSelect = page.getByRole('combobox', {
-      name: i18nLabels.issueDetail.transitionSelectLabel,
-    })
-    await transitionSelect.selectOption({ label: 'Start Work' })
-
-    // Then. 에러 메시지 노출
+    // Then. 전이 셀렉터 없음 (GET /transitions 422 → transitions=[] 폴백)
     await expect(
-      page.getByText(i18nLabels.issueDetail.transitionWorkflowNotConfiguredError),
-    ).toBeVisible()
+      page.getByRole('combobox', { name: i18nLabels.issueDetail.transitionSelectLabel }),
+    ).toHaveCount(0)
 
-    // Then. 상태 배지는 여전히 open (에러 시 상태 미변경)
-    await expect(badge).toContainText('open')
+    // Then. 종료/미설정 공통 안내 문구 노출
+    await expect(
+      page.getByText(i18nLabels.issueDetail.noTransitionsAvailable),
+    ).toBeVisible()
   })
 
   // ─────────────────────────────────────────────────────────────────────────
   // S6 종료 상태 — closed 이슈는 전이 셀렉터 미노출
-  // SKIP 사유: issueAtlas4Fixture.reporterId = 'a8b9c0d1-e2f3-4a4b-cd5c-7f8a9b0c1d2e' 의
-  //   variant byte 'cd5c' 첫 글자 'c' 가 Zod v4 UUID 패턴 [89abAB] 불일치.
-  //   MSW 가 200 을 반환하지만 Zod 파싱 실패 → fetchIssue ZodError throw →
-  //   useQuery error non-null → role="alert" 노출 (이슈를 찾을 수 없습니다).
-  //   수정 방법: src/mocks/issue-fixtures.ts issueAtlas4Fixture.reporterId 를
-  //   유효한 RFC 4122 UUID 로 교체 → implementer 담당.
+  //   issueAtlas4Fixture.reporterId UUID 버그 수정 완료 (variant byte 'cd5c'→'8d5c').
+  //   closed 상태 출발 전이는 softwareDefaultFixture 에 없음 → transitions=[]
+  //   → IssueStateTransition 이 noTransitionsAvailable 안내 노출, 셀렉터 미노출.
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
@@ -135,13 +113,14 @@ test.describe('FR-IS-01 이슈 상태 전이 (IssueMetaPanel)', () => {
    * When    메타패널 상태 영역 확인
    * Then    전이 셀렉터 없음 + "더 진행할 전이 없음" 안내 문구 노출
    */
-  test.skip('S6 종료 상태 — closed 이슈는 전이 셀렉터 없고 안내 문구 노출', async ({ page }) => {
+  test('S6 종료 상태 — closed 이슈는 전이 셀렉터 없고 안내 문구 노출', async ({ page }) => {
     // Given. closed 상태 이슈 상세 진입
     await page.goto('/issues/ATLAS-4')
     const badge = page.getByTestId('issue-state-badge')
+    await expect(badge).toBeVisible()
     await expect(badge).toContainText('closed')
 
-    // Then. 전이 셀렉터 없음
+    // Then. 전이 셀렉터 없음 (closed 출발 전이 0건)
     await expect(
       page.getByRole('combobox', { name: i18nLabels.issueDetail.transitionSelectLabel }),
     ).toHaveCount(0)
