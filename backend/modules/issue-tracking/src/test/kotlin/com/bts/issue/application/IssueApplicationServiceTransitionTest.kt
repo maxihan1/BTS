@@ -2,6 +2,7 @@
 
 package com.bts.issue.application
 
+import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
@@ -16,6 +17,8 @@ import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.TransitionPlan
 import com.bts.shared.workflow.TransitionResult
@@ -39,13 +42,23 @@ import java.util.UUID
 class IssueApplicationServiceTransitionTest : DescribeSpec({
 
     val repo = mockk<IssueRepository>()
+    val issueTypeRepository = mockk<IssueTypeRepository>(relaxed = true)
     val eventPublisher = mockk<IssueEventPublisher>()
     val permissionResolver = mockk<IssuePermissionResolver>()
     val workflowPort = mockk<WorkflowTransitionPort>()
     val workflowKeyResolver = mockk<WorkflowKeyResolver>()
     val clock = Clock.fixed(Instant.parse("2026-05-24T00:00:00Z"), ZoneOffset.UTC)
 
-    val sut = IssueApplicationService(repo, eventPublisher, permissionResolver, workflowPort, workflowKeyResolver, clock)
+    val sut =
+        IssueApplicationService(
+            repo,
+            issueTypeRepository,
+            eventPublisher,
+            permissionResolver,
+            workflowPort,
+            workflowKeyResolver,
+            clock,
+        )
 
     val actor = ActorId(UUID.randomUUID())
     val issueKey = IssueKey("BTS-1")
@@ -65,6 +78,25 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         deletedAt = null,
         createdAt = Instant.parse("2026-05-24T00:00:00Z"),
         updatedAt = Instant.parse("2026-05-24T00:00:00Z"),
+        typeId = IssueTypeId(3L),
+    )
+
+    fun makeResponse(
+        state: String = "open",
+        version: Long = existingVersion,
+    ) = IssueResponse(
+        key = issueKey.value,
+        id = UUID.randomUUID(),
+        projectKey = issueKey.projectPrefix,
+        summary = "Some summary",
+        currentStateKey = state,
+        reporterId = actor.value,
+        version = version,
+        createdAt = Instant.parse("2026-05-24T00:00:00Z"),
+        updatedAt = Instant.parse("2026-05-24T00:00:00Z"),
+        typeId = 3L,
+        typeKey = "task",
+        typeName = "Task",
     )
 
     beforeEach {
@@ -91,7 +123,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                     expectedVersion = existingVersion,
                 )
             val plan = TransitionPlan(toStateKey = "IN_PROGRESS", fieldChanges = emptyList(), emitEvents = emptyList())
-            val updatedIssue = makeIssue(state = "IN_PROGRESS", version = existingVersion + 1)
+            val updatedResponse = makeResponse(state = "IN_PROGRESS", version = existingVersion + 1)
 
             beforeEach {
                 every {
@@ -103,7 +135,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                 } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "open")
                 every { workflowPort.plan(any()) } returns TransitionResult.Success(plan)
                 every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion) } returns 1
-                every { repo.findByKey(issueKey) } returns updatedIssue
+                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
                 every { eventPublisher.publish(any()) } returns Unit
             }
 
@@ -144,7 +176,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                     expectedVersion = existingVersion,
                 )
             val plan = TransitionPlan(toStateKey = "IN_PROGRESS", fieldChanges = emptyList(), emitEvents = emptyList())
-            val updatedIssue = makeIssue(state = "IN_PROGRESS", version = existingVersion + 1)
+            val updatedResponse = makeResponse(state = "IN_PROGRESS", version = existingVersion + 1)
 
             beforeEach {
                 every {
@@ -156,7 +188,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                 } returns WorkflowStartState(workflowKey = "RESOLVED-WF", startStateKey = "open")
                 every { workflowPort.plan(any()) } returns TransitionResult.Success(plan)
                 every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion) } returns 1
-                every { repo.findByKey(issueKey) } returns updatedIssue
+                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
                 every { eventPublisher.publish(any()) } returns Unit
             }
 

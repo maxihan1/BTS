@@ -35,7 +35,6 @@ import org.springframework.transaction.annotation.Transactional
 class IssueTypeLookupAdapter(
     private val issueTypeRepository: IssueTypeRepository,
 ) : IssueTypeLookupPort {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**

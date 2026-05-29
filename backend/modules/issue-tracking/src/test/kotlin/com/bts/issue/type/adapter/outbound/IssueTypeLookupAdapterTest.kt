@@ -7,9 +7,9 @@ import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.issue.IssueTypeRef
+import io.mockk.confirmVerified
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.Instant
@@ -28,7 +28,6 @@ import java.time.Instant
  * 결정 근거: docs/adr/2026-05-28-workflow-scheme-frontend-view-layer-cross-bc-lookup.md
  */
 class IssueTypeLookupAdapterTest {
-
     private val repository: IssueTypeRepository = mockk()
     private val adapter = IssueTypeLookupAdapter(repository)
 
@@ -39,7 +38,9 @@ class IssueTypeLookupAdapterTest {
         val result = adapter.lookup(emptyList())
 
         assertThat(result).isEmpty()
-        verify(exactly = 0) { repository.findById(any()) }
+        // value class IssueTypeId 는 양수 require — any() 로 verify 하면 MockK 가 IssueTypeId(0) 생성 시도로 IAE 발생.
+        // confirmVerified 로 findById 가 전혀 호출되지 않았음을 안전하게 검증한다.
+        confirmVerified(repository)
     }
 
     // ── 시나리오 2. 존재하는 ID 단건 ───────────────────────────────────────────────
@@ -91,6 +92,7 @@ class IssueTypeLookupAdapterTest {
             description = null,
             iconName = null,
             isStandard = true,
+            hierarchyLevel = 0,
             createdAt = now,
             updatedAt = now,
             deletedAt = null,

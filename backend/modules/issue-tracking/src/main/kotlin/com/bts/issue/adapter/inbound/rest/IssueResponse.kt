@@ -22,6 +22,9 @@ import java.util.UUID
  * @property version 낙관적 잠금 버전.
  * @property createdAt 이슈 생성 시각.
  * @property updatedAt 이슈 마지막 수정 시각.
+ * @property typeId 이슈 타입 내부 식별자 (issue_types.id). FR-IS-02.
+ * @property typeKey 이슈 타입 키 문자열. 예: `"task"`. FR-IS-02.
+ * @property typeName 이슈 타입 표시명. 예: `"Task"`. FR-IS-02.
  */
 data class IssueResponse(
     val key: String,
@@ -33,17 +36,26 @@ data class IssueResponse(
     val version: Long,
     val createdAt: Instant?,
     val updatedAt: Instant?,
+    val typeId: Long,
+    val typeKey: String,
+    val typeName: String,
 ) {
     companion object {
         /**
-         * [Issue] Aggregate와 프로젝트 키를 받아 [IssueResponse] DTO를 생성한다.
+         * [Issue] Aggregate, 프로젝트 키, 이슈 타입 요약 정보를 받아 [IssueResponse] DTO를 생성한다.
          *
          * @param issue 변환할 이슈 Aggregate.
          * @param projectKey 이슈가 속한 프로젝트 키 문자열.
+         * @param typeId 이슈 타입 내부 식별자.
+         * @param typeKey 이슈 타입 키. 예: `"task"`.
+         * @param typeName 이슈 타입 표시명. 예: `"Task"`.
          */
         fun from(
             issue: Issue,
             projectKey: String,
+            typeId: Long,
+            typeKey: String,
+            typeName: String,
         ): IssueResponse =
             IssueResponse(
                 key = issue.key.value,
@@ -55,6 +67,9 @@ data class IssueResponse(
                 version = issue.version,
                 createdAt = issue.createdAt,
                 updatedAt = issue.updatedAt,
+                typeId = typeId,
+                typeKey = typeKey,
+                typeName = typeName,
             )
     }
 }

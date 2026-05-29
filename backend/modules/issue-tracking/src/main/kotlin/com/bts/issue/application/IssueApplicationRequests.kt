@@ -3,11 +3,13 @@
 package com.bts.issue.application
 
 import com.bts.issue.domain.ActorId
+import com.bts.shared.issue.IssueTypeId
 
 /**
  * 이슈 생성 요청 DTO.
  *
  * @param projectKey 이슈를 생성할 프로젝트 키. 예: "BTS".
+ * @param typeId 이슈 유형 식별자 VO. null 이면 서비스가 task 타입으로 fallback 한다 (FR-6).
  * @param summary 이슈 제목. 1~255자.
  * @param reporterId 이슈 생성자 ActorId.
  */
@@ -15,6 +17,7 @@ data class CreateIssueRequest(
     val projectKey: String,
     val summary: String,
     val reporterId: ActorId,
+    val typeId: IssueTypeId? = null,
 )
 
 /**

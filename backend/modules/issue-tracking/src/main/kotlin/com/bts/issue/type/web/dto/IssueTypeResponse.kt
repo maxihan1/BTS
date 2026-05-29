@@ -1,4 +1,4 @@
-// IssueTypeController 응답 DTO — 이슈 타입 단건 표현 (read-only, CRUD 후속 FR-IS-02 PR scope)
+// IssueTypeController 응답 DTO — 이슈 타입 단건 표현 (FR-IS-02 — hierarchyLevel 추가)
 
 package com.bts.issue.type.web.dto
 
@@ -8,11 +8,7 @@ import com.bts.issue.type.domain.IssueType
  * 이슈 타입 단건 응답 DTO.
  *
  * [IssueType] 도메인 객체를 REST 응답용으로 매핑한다.
- * id 는 DB PK (Long). 저장된 이후에만 응답에 포함되므로 null 불가 (findAll 결과는 항상 id 존재).
- *
- * **PR scope (read-only).**
- * 본 PR (FR-WF-02) 에서는 read-only 5 표준 타입 조회 응답에만 사용한다.
- * CRUD 요청/응답 DTO 는 후속 FR-IS-02 PR scope.
+ * id 는 DB PK (Long). 저장된 이후에만 응답에 포함되므로 null 불가 (findAll / findById 결과는 항상 id 존재).
  *
  * @property id DB PK.
  * @property key URL-safe 소문자 슬러그. 예: `"task"`.
@@ -20,6 +16,7 @@ import com.bts.issue.type.domain.IssueType
  * @property description 선택적 설명. null 허용.
  * @property iconName 아이콘 식별자. null 허용.
  * @property isStandard 표준 타입 여부.
+ * @property hierarchyLevel 계층 깊이. epic=1, task/story/bug=0, subtask=-1.
  */
 data class IssueTypeResponse(
     val id: Long,
@@ -28,6 +25,7 @@ data class IssueTypeResponse(
     val description: String?,
     val iconName: String?,
     val isStandard: Boolean,
+    val hierarchyLevel: Int,
 ) {
     companion object {
         /**
@@ -45,6 +43,7 @@ data class IssueTypeResponse(
                 description = issueType.description,
                 iconName = issueType.iconName,
                 isStandard = issueType.isStandard,
+                hierarchyLevel = issueType.hierarchyLevel,
             )
         }
     }

@@ -144,4 +144,72 @@ class IssueTypeTest : DescribeSpec({
             standards.forEach { it.isStandard shouldBe true }
         }
     }
+
+    describe("IssueType.create — hierarchyLevel 파라미터") {
+
+        it("hierarchyLevel 기본값은 0 이다") {
+            val issueType =
+                IssueType.create(
+                    key = IssueTypeKey("task"),
+                    name = "Task",
+                )
+
+            issueType.hierarchyLevel shouldBe 0
+        }
+
+        it("hierarchyLevel 을 명시적으로 지정할 수 있다") {
+            val issueType =
+                IssueType.create(
+                    key = IssueTypeKey("epic"),
+                    name = "Epic",
+                    hierarchyLevel = 1,
+                )
+
+            issueType.hierarchyLevel shouldBe 1
+        }
+
+        it("hierarchyLevel -1 (Subtask 레벨) 을 지정할 수 있다") {
+            val issueType =
+                IssueType.create(
+                    key = IssueTypeKey("subtask"),
+                    name = "Subtask",
+                    hierarchyLevel = -1,
+                )
+
+            issueType.hierarchyLevel shouldBe -1
+        }
+
+        it("hierarchyLevel 이 허용 범위(-1, 0, 1) 밖이면 IllegalArgumentException 을 던진다") {
+            shouldThrow<IllegalArgumentException> {
+                IssueType.create(
+                    key = IssueTypeKey("custom"),
+                    name = "Custom",
+                    hierarchyLevel = 2,
+                )
+            }
+        }
+    }
+
+    describe("IssueType 표준 타입 — hierarchyLevel 검증") {
+
+        it("EPIC 의 hierarchyLevel 은 1 이다") {
+            IssueType.EPIC.hierarchyLevel shouldBe 1
+        }
+
+        it("STORY 의 hierarchyLevel 은 0 이다") {
+            IssueType.STORY.hierarchyLevel shouldBe 0
+        }
+
+        it("TASK 의 hierarchyLevel 은 0 이다") {
+            IssueType.TASK.hierarchyLevel shouldBe 0
+        }
+
+        it("SUBTASK 의 hierarchyLevel 은 -1 이다") {
+            IssueType.SUBTASK.hierarchyLevel shouldBe -1
+        }
+
+        it("BUG 의 hierarchyLevel 은 0 이다") {
+            IssueType.BUG.hierarchyLevel shouldBe 0
+        }
+    }
 })

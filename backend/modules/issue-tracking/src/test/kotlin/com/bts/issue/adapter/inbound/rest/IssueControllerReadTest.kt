@@ -90,6 +90,9 @@ class IssueControllerReadTest {
             version = 1L,
             createdAt = fixedNow,
             updatedAt = fixedNow,
+            typeId = 3L,
+            typeKey = "task",
+            typeName = "Task",
         )
 
     @BeforeEach
