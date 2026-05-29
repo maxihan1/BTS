@@ -63,7 +63,7 @@
 - [x] D4. 백엔드 — Scheme 관리 API — REST 10 endpoint (Scheme CRUD 5 + Mapping 2 + Project assignment 2 + IssueType read 1) + 예외 핸들러 (책임. backend-engineer + security-engineer) — PR #18
 - [x] D5. 백엔드 테스트 — 단위·Controller·Repository 통합 완료 (책임. backend-engineer) — PR #18. *S1~S8 시나리오 통합테스트 + ADR·SDD 정정은 Wave 6 후속*
 - [x] D6. 프론트 UI — 프로젝트 설정 → 워크플로우 (책임. designer → frontend-engineer) — PR #31
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D7. E2E — 워크플로우 스킴 5 시나리오 Playwright (스킴 CRUD + 매핑 편집 + 표준 보호 + 사용 중 차단 모달 + 프로젝트 할당) (책임. qa-engineer) — PR #35, 2026-05-29
 
 ## §NFR project-workflow BC 완료 게이트
 
@@ -81,7 +81,7 @@
 
 ### BC 완료 조건
 
-> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 backend(D1~D5) ✅ 머지 #18 (main 663f1b4) — 후속. D6 프론트 · D7 E2E · Wave 6(S1~S8 통합테스트 + ADR/SDD) · C1 detekt 정합
+> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 (예정) — 후속. Wave 6(S1~S8 통합테스트 + ADR/SDD) · C1 detekt 정합 · §NFR deferred trigger 도달 시 측정
 
 - [ ] §2 (FR-WF 2개) 모두 `[x]` 마킹
 - [ ] §NFR 측정표 모든 항목 임계 통과 (위 deferred trigger 충족 후)

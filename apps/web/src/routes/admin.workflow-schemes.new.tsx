@@ -16,6 +16,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useCreateWorkflowScheme } from '@/hooks/use-workflow-schemes'
+import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zod 폼 스키마
@@ -93,11 +94,11 @@ export function WorkflowSchemeNewForm({ onSuccess }: WorkflowSchemeNewFormProps 
           name="schemeKey"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>스킴 키</FormLabel>
+              <FormLabel>{workflowSchemeLabels.create.keyLabel}</FormLabel>
               <FormControl>
                 <Input
                   placeholder="예: my-scheme-01"
-                  aria-label="스킴 키"
+                  aria-label={workflowSchemeLabels.create.keyLabel}
                   {...field}
                 />
               </FormControl>
@@ -115,11 +116,11 @@ export function WorkflowSchemeNewForm({ onSuccess }: WorkflowSchemeNewFormProps 
           name="name"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>이름</FormLabel>
+              <FormLabel>{workflowSchemeLabels.create.nameLabel}</FormLabel>
               <FormControl>
                 <Input
                   placeholder="스킴 이름을 입력하세요"
-                  aria-label="이름"
+                  aria-label={workflowSchemeLabels.create.nameLabel}
                   {...field}
                 />
               </FormControl>
@@ -134,11 +135,11 @@ export function WorkflowSchemeNewForm({ onSuccess }: WorkflowSchemeNewFormProps 
           name="description"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>설명 (선택)</FormLabel>
+              <FormLabel>{workflowSchemeLabels.create.descriptionLabel}</FormLabel>
               <FormControl>
                 <Input
                   placeholder="스킴 설명을 입력하세요"
-                  aria-label="설명 (선택)"
+                  aria-label={workflowSchemeLabels.create.descriptionLabel}
                   {...field}
                 />
               </FormControl>
@@ -153,7 +154,7 @@ export function WorkflowSchemeNewForm({ onSuccess }: WorkflowSchemeNewFormProps 
             disabled={isPending}
             className="sm:w-auto"
           >
-            스킴 생성
+            {workflowSchemeLabels.create.submitButton}
           </Button>
           <CancelButton />
         </div>
@@ -179,7 +180,7 @@ function CancelButton(): JSX.Element {
       variant="outline"
       onClick={handleCancel}
     >
-      취소
+      {workflowSchemeLabels.create.cancelButton}
     </Button>
   )
 }

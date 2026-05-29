@@ -13,6 +13,7 @@ import { toNullableIssueTypeKey } from '@/api/workflow-schemes'
 import type { MappingResponse } from '@/api/workflow-schemes'
 import type { IssueTypeResponse as IssueTypeHookResponse } from '@/api/issue-types'
 import { cn } from '@/lib/utils'
+import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -22,7 +23,7 @@ import { cn } from '@/lib/utils'
 const DEFAULT_SENTINEL = '__default__'
 
 /** default 매핑 표시 레이블 */
-const DEFAULT_LABEL = '기본값 (모든 이슈 타입)'
+const DEFAULT_LABEL = workflowSchemeLabels.mapping.defaultLabel
 
 /** 워크플로우 목록 queryKey */
 const WORKFLOW_KEYS = {
@@ -71,17 +72,17 @@ function ConfirmDeleteDialog({ mappingId, onConfirm, onCancel }: ConfirmDeleteDi
   return (
     <div
       role="dialog"
-      aria-label="매핑 삭제 확인"
+      aria-label={workflowSchemeLabels.mapping.confirmDeleteDialogAriaLabel}
       className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-1.5"
     >
-      <span className="text-xs text-destructive">삭제하시겠습니까?</span>
+      <span className="text-xs text-destructive">{workflowSchemeLabels.mapping.confirmDeleteText}</span>
       <Button
         variant="destructive"
         size="sm"
         className="h-6 px-2 text-xs"
         onClick={() => onConfirm(mappingId)}
       >
-        확인
+        {workflowSchemeLabels.mapping.confirmDeleteButton}
       </Button>
       <Button
         variant="ghost"
@@ -89,7 +90,7 @@ function ConfirmDeleteDialog({ mappingId, onConfirm, onCancel }: ConfirmDeleteDi
         className="h-6 px-2 text-xs"
         onClick={onCancel}
       >
-        취소
+        {workflowSchemeLabels.mapping.confirmCancelButton}
       </Button>
     </div>
   )
@@ -119,7 +120,7 @@ function MappingRow({
   onCancelDelete,
 }: MappingRowProps): JSX.Element {
   const issueTypeDisplay = mapping.isDefault
-    ? '★ 기본값 (모든 이슈 타입)'
+    ? workflowSchemeLabels.mapping.defaultRowPrefix
     : (mapping.issueTypeName ?? mapping.issueTypeKey ?? '–')
 
   return (
@@ -137,7 +138,7 @@ function MappingRow({
       <td className="px-4 py-2.5 text-muted-foreground">{mapping.workflowName}</td>
       <td className="px-4 py-2.5 text-center">
         {mapping.isDefault && (
-          <span className={DEFAULT_BADGE_CLASS}>기본</span>
+          <span className={DEFAULT_BADGE_CLASS}>{workflowSchemeLabels.mapping.defaultBadge}</span>
         )}
       </td>
       <td className="px-4 py-2.5">
@@ -155,7 +156,7 @@ function MappingRow({
             onClick={() => onDeleteClick(mapping.id)}
             aria-label={`매핑 삭제 (${issueTypeDisplay})`}
           >
-            삭제
+            {workflowSchemeLabels.mapping.deleteButton}
           </Button>
         )}
       </td>
@@ -217,7 +218,7 @@ function AddMappingRow({
           value={selectedIssueType}
           onChange={(e) => setSelectedIssueType(e.target.value)}
           className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
-          aria-label="이슈 타입 선택"
+          aria-label={workflowSchemeLabels.mapping.issueTypeSelectAriaLabel}
         >
           <option value="">이슈 타입 선택...</option>
           {!hasDefaultMapping && (
@@ -243,7 +244,7 @@ function AddMappingRow({
           value={selectedWorkflow}
           onChange={(e) => setSelectedWorkflow(e.target.value)}
           className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
-          aria-label="워크플로우 선택"
+          aria-label={workflowSchemeLabels.mapping.workflowSelectAriaLabel}
         >
           <option value="">워크플로우 선택...</option>
           {workflowOptions.map((wf) => (
@@ -260,9 +261,9 @@ function AddMappingRow({
           className="h-7 px-3 text-xs"
           onClick={handleAdd}
           disabled={selectedWorkflow === '' || addMapping.isPending}
-          aria-label="매핑 추가"
+          aria-label={workflowSchemeLabels.mapping.addMappingAriaLabel}
         >
-          {addMapping.isPending ? '추가 중...' : '추가'}
+          {addMapping.isPending ? '추가 중...' : workflowSchemeLabels.mapping.addMappingButton}
         </Button>
       </td>
     </tr>
@@ -343,16 +344,16 @@ export function MappingTable({ schemeKey, mappings }: MappingTableProps): JSX.El
           <thead className="sticky top-0 z-10 border-b border-border bg-muted/80 backdrop-blur-sm">
             <tr>
               <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                이슈 타입
+                {workflowSchemeLabels.mapping.issueTypeColumn}
               </th>
               <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                워크플로우
+                {workflowSchemeLabels.mapping.workflowColumn}
               </th>
               <th className="px-4 py-2.5 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                기본 여부
+                {workflowSchemeLabels.mapping.isDefaultColumn}
               </th>
               <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                액션
+                {workflowSchemeLabels.mapping.actionColumn}
               </th>
             </tr>
           </thead>

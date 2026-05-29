@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import { AlertDialog } from 'radix-ui'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -81,7 +82,7 @@ export function SchemeInUseModal({
                 />
               </svg>
             </span>
-            스킴을 삭제할 수 없습니다
+            {workflowSchemeLabels.inUseModal.title}
           </AlertDialog.Title>
 
           {/* 본문 설명 */}
@@ -89,13 +90,12 @@ export function SchemeInUseModal({
             id={MODAL_DESCRIPTION_ID}
             className="mt-3 text-sm text-muted-foreground"
           >
-            이 스킴은 사용 중인 프로젝트가 있어 삭제할 수 없습니다.
-            먼저 프로젝트의 스킴을 변경하세요.
+            {workflowSchemeLabels.inUseModal.description}
           </AlertDialog.Description>
 
           {/* 사용 중인 프로젝트 수 */}
           <div className="mt-3 rounded-lg bg-muted px-4 py-3 text-sm">
-            <span className="font-medium">사용 중인 프로젝트</span>
+            <span className="font-medium">{workflowSchemeLabels.inUseModal.usedByProjectsLabel}</span>
             <span className="ml-2 text-muted-foreground">
               {usedByProjectsCount}개 (프로젝트 목록은 후속 버전에서 제공 예정)
             </span>
@@ -104,7 +104,7 @@ export function SchemeInUseModal({
           {/* 액션 버튼 */}
           <div className="mt-5 flex justify-end">
             <AlertDialog.Action asChild>
-              <Button onClick={onClose}>확인</Button>
+              <Button onClick={onClose}>{workflowSchemeLabels.inUseModal.confirmButton}</Button>
             </AlertDialog.Action>
           </div>
         </AlertDialog.Content>
