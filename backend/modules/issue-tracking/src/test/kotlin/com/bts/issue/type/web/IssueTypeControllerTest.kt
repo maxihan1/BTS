@@ -58,11 +58,13 @@ import java.time.Instant
  * - C-3. name blank → 400 VALIDATION_FAILED
  * - C-4. key 중복 → 409 ISSUE_TYPE_KEY_DUPLICATE
  * - C-5. key 형식 위반 → 409 ISSUE_TYPE_KEY_INVALID
+ * - C-6. hierarchyLevel 범위 외(2, -2, 99) → 400 (gate2 C1)
  *
  * ### PATCH 테스트 케이스
  * - U-1. 정상 수정 → 200
  * - U-2. 미존재 id → 404 ISSUE_TYPE_NOT_FOUND
  * - U-3. 표준 타입 수정 시도 → 409 ISSUE_TYPE_STANDARD_IMMUTABLE
+ * - U-4. hierarchyLevel 범위 외(2, -2) → 400 (gate2 C1)
  *
  * ### DELETE 테스트 케이스
  * - D-1. 미사용 타입 삭제 → 204
@@ -426,6 +428,70 @@ class IssueTypeControllerTest {
         mockMvc.perform(delete("/api/v1/issue-types/999"))
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.errorCode").value("ISSUE_TYPE_NOT_FOUND"))
+    }
+
+    // ── POST C-6: hierarchyLevel 범위 외(POST) → 400 ─────────────────────────
+
+    @Test
+    fun `POST issue-types — hierarchyLevel 2이면 400`() {
+        val body = mapOf("key" to "feature", "name" to "Feature", "hierarchyLevel" to 2)
+
+        mockMvc.perform(
+            post("/api/v1/issue-types")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `POST issue-types — hierarchyLevel -2이면 400`() {
+        val body = mapOf("key" to "feature", "name" to "Feature", "hierarchyLevel" to -2)
+
+        mockMvc.perform(
+            post("/api/v1/issue-types")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `POST issue-types — hierarchyLevel 99이면 400`() {
+        val body = mapOf("key" to "feature", "name" to "Feature", "hierarchyLevel" to 99)
+
+        mockMvc.perform(
+            post("/api/v1/issue-types")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+    }
+
+    // ── PATCH U-4: hierarchyLevel 범위 외(PATCH) → 400 ────────────────────────
+
+    @Test
+    fun `PATCH issue-types id — hierarchyLevel 2이면 400`() {
+        val body = mapOf("name" to "Feature", "hierarchyLevel" to 2)
+
+        mockMvc.perform(
+            patch("/api/v1/issue-types/10")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `PATCH issue-types id — hierarchyLevel -2이면 400`() {
+        val body = mapOf("name" to "Feature", "hierarchyLevel" to -2)
+
+        mockMvc.perform(
+            patch("/api/v1/issue-types/10")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
