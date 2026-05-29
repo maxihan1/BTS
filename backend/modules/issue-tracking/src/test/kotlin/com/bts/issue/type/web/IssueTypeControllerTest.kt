@@ -60,7 +60,9 @@ class IssueTypeControllerTest {
         open fun issueTypeRepository(): IssueTypeRepository = mockk(relaxed = true)
 
         @Bean
-        open fun issueTypeController(repository: IssueTypeRepository): IssueTypeController = IssueTypeController(repository)
+        open fun issueTypeController(repository: IssueTypeRepository): IssueTypeController {
+            return IssueTypeController(repository)
+        }
     }
 
     @Autowired

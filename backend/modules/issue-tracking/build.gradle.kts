@@ -361,12 +361,6 @@ sourceSets {
 //
 //   project-workflow BC 는 CI 에서 generateJooq 를 실행하지 않아 이 문제가 노출되지 않았음.
 //   본 PR 은 로컬 검증을 명시적으로 통과해야 하므로 이 패턴을 채택.
-// ── detekt 설정 — ktlint max_line_length(140) 와 동일한 기준으로 MaxLineLength 정렬 ──
-tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
-    config.setFrom(rootProject.file("config/detekt.yml"))
-    buildUponDefaultConfig = true
-}
-
 afterEvaluate {
     tasks.named<org.jlleitschuh.gradle.ktlint.tasks.BaseKtLintCheckTask>("runKtlintCheckOverMainSourceSet") {
         setSource(fileTree("src/main/kotlin"))

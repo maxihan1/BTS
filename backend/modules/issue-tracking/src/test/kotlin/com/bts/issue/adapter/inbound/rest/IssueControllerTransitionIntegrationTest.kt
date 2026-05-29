@@ -131,7 +131,9 @@ class IssueControllerTransitionIntegrationTest {
             DataSourceTransactionManager(dataSource)
 
         @Bean
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext = DSL.using(dataSource, SQLDialect.POSTGRES)
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext {
+            return DSL.using(dataSource, SQLDialect.POSTGRES)
+        }
 
         @Bean
         open fun objectMapper(): ObjectMapper =
@@ -187,7 +189,9 @@ class IssueControllerTransitionIntegrationTest {
         ): WorkflowEngine = WorkflowEngine(cache, validatorFactory, postActionFactory, definitionRepo)
 
         @Bean
-        open fun workflowTransitionAdapter(engine: WorkflowEngine): WorkflowTransitionAdapter = WorkflowTransitionAdapter(engine)
+        open fun workflowTransitionAdapter(engine: WorkflowEngine): WorkflowTransitionAdapter {
+            return WorkflowTransitionAdapter(engine)
+        }
 
         @Bean
         open fun workflowSchemeRepository(dsl: DSLContext): WorkflowSchemeRepository = WorkflowSchemeRepository(dsl)
@@ -197,7 +201,9 @@ class IssueControllerTransitionIntegrationTest {
             ProjectWorkflowSchemeAssignmentRepository(dsl)
 
         @Bean
-        open fun schemeIssueTypeMappingRepository(dsl: DSLContext): SchemeIssueTypeMappingRepository = SchemeIssueTypeMappingRepository(dsl)
+        open fun schemeIssueTypeMappingRepository(dsl: DSLContext): SchemeIssueTypeMappingRepository {
+            return SchemeIssueTypeMappingRepository(dsl)
+        }
 
         @Bean
         open fun workflowSchemeEventPublisher(

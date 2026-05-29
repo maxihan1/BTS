@@ -68,7 +68,12 @@ class IssueEventPublisherTest : DescribeSpec({
 
     // ── 공통 헬퍼 ────────────────────────────────────────────────────────────
 
-    fun newConnection(): Connection = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
+    fun newConnection(): Connection =
+        DriverManager.getConnection(
+            postgres.jdbcUrl,
+            postgres.username,
+            postgres.password,
+        )
 
     fun buildObjectMapper(): ObjectMapper =
         ObjectMapper()
@@ -192,7 +197,10 @@ class IssueEventPublisherTest : DescribeSpec({
             // Spring AOP 프록시 없는 직접 인스턴스화 환경에서는 @Transactional 이 적용되지 않는다.
             // 어노테이션 존재 자체를 리플렉션으로 검증 — 런타임 강제(MANDATORY)는 Spring 컨텍스트 통합 테스트 범위.
             val method = IssueEventPublisher::class.java.getMethod("publish", IssueDomainEvent::class.java)
-            val txAnnotation = method.getAnnotation(org.springframework.transaction.annotation.Transactional::class.java)
+            val txAnnotation =
+                method.getAnnotation(
+                    org.springframework.transaction.annotation.Transactional::class.java,
+                )
 
             txAnnotation shouldNotBe null
             txAnnotation!!.propagation shouldBe org.springframework.transaction.annotation.Propagation.MANDATORY

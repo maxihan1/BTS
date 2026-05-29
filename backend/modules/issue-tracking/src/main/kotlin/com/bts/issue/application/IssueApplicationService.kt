@@ -306,7 +306,13 @@ class IssueApplicationService(
                 occurredAt = Instant.now(clock),
             ),
         )
-        log.info("issue_transitioned key={} from={} to={} actor={}", key.value, issue.currentStateKey, plan.toStateKey, actor.value)
+        log.info(
+            "issue_transitioned key={} from={} to={} actor={}",
+            key.value,
+            issue.currentStateKey,
+            plan.toStateKey,
+            actor.value,
+        )
         val updated = repo.findByKey(key) ?: throw IssueNotFoundException(key)
         return IssueResponse.from(updated, key.projectPrefix)
     }

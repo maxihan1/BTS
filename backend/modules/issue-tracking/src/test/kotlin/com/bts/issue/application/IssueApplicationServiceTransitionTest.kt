@@ -79,7 +79,12 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             val methodAnnotation =
                 runCatching {
                     IssueApplicationService::class.java
-                        .getMethod("transitionIssue", ActorId::class.java, IssueKey::class.java, TransitionIssueRequest::class.java)
+                        .getMethod(
+                            "transitionIssue",
+                            ActorId::class.java,
+                            IssueKey::class.java,
+                            TransitionIssueRequest::class.java,
+                        )
                         .getAnnotation(Transactional::class.java)
                 }.getOrNull()
             (classAnnotation != null || methodAnnotation != null) shouldBe true
