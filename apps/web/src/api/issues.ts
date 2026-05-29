@@ -53,9 +53,13 @@ export interface CreateIssueInput {
   summary: string
 }
 
-/** 이슈 수정 입력 타입 */
+/**
+ * 이슈 수정 입력 타입.
+ * summary · typeId 중 하나 이상을 전달하며, expectedVersion은 낙관적 잠금(OCC)을 위해 필수다.
+ */
 export interface UpdateIssueInput {
   summary?: string
+  /** 변경할 이슈 타입 ID. 미전달 시 타입 유지. */
   typeId?: number
   expectedVersion: number
 }
