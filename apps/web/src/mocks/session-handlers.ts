@@ -61,12 +61,19 @@ const listSessionsHandler = http.get('/api/v1/auth/sessions', ({ request }) => {
 /**
  * DELETE /api/v1/auth/sessions/:sid
  *
- * - 현재 세션 종료 시도 → 409 `cannot_revoke_current_session`
- * - alice 다른 세션 → 204 + revokedSids 에 등록
- * - 그 외 (타인/미존재) → 404 IDOR 방어
+ * 백엔드 AuthController.revokeSession 과 동일한 분기 순서 (정보 비노출 시맨틱 일치):
+ * - 본인 소유 아님(타인/미존재) → 404 IDOR 방어 (먼저)
+ * - 본인 현재 세션 → 409 `cannot_revoke_current_session`
+ * - 본인 다른 세션 → 204 + revokedSids 에 등록
  */
 const revokeSessionHandler = http.delete('/api/v1/auth/sessions/:sid', ({ params }) => {
   const sid = params['sid'] as string
+  const ownSids = [ALICE_CURRENT_SID, ALICE_OTHER_SID]
+
+  // 본인 소유가 아니면 항상 404 먼저 — 타인 세션 존재 여부 비노출 (백엔드와 동일 순서)
+  if (!ownSids.includes(sid)) {
+    return HttpResponse.json({ error: 'not_found' }, { status: 404 })
+  }
 
   if (sid === ALICE_CURRENT_SID) {
     return HttpResponse.json(
@@ -75,13 +82,9 @@ const revokeSessionHandler = http.delete('/api/v1/auth/sessions/:sid', ({ params
     )
   }
 
-  if (sid === ALICE_OTHER_SID) {
-    revokedSids.add(sid)
-    return new HttpResponse(null, { status: 204 })
-  }
-
-  // 타인 sid 또는 미존재 sid — IDOR 방어
-  return HttpResponse.json({ error: 'not_found' }, { status: 404 })
+  // ALICE_OTHER_SID — 본인 다른 세션
+  revokedSids.add(sid)
+  return new HttpResponse(null, { status: 204 })
 })
 
 export const sessionHandlers = [listSessionsHandler, revokeSessionHandler]
