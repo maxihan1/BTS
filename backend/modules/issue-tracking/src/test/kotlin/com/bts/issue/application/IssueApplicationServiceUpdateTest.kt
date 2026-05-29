@@ -252,5 +252,157 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
                 verify(exactly = 0) { eventPublisher.publish(any()) }
             }
         }
+
+        // T7-D6-1: typeId 변경 happy path — 유효 활성 typeId 로 update → version+1, 응답에 변경된 typeKey/typeName 반영
+        context("T7-D6-1 — typeId 변경 (유효 활성 타입으로 변경)") {
+            val newTypeId = IssueTypeId(5L)
+            val request = UpdateIssueRequest(summary = null, typeId = newTypeId, expectedVersion = existingVersion)
+            val existingIssue = makeIssue()
+            val updatedResponse =
+                makeResponse(version = existingVersion + 1).copy(
+                    typeId = newTypeId.value,
+                    typeKey = "bug",
+                    typeName = "Bug",
+                )
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                } returns true
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every { issueTypeRepository.findById(newTypeId) } returns
+                    com.bts.issue.type.domain.IssueType.BUG.copy(
+                        id = newTypeId,
+                    )
+                every { repo.updateFields(issueKey, null, newTypeId, existingVersion) } returns 1
+                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+                every { eventPublisher.publish(any()) } returns Unit
+            }
+
+            it("updateFields 가 1회 호출된다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 1) { repo.updateFields(issueKey, null, newTypeId, existingVersion) }
+            }
+
+            it("IssueUpdated(fields={typeId}) 이벤트가 1회 발행된다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 1) {
+                    eventPublisher.publish(
+                        match { it is IssueUpdated && it.fields == setOf("typeId") },
+                    )
+                }
+            }
+
+            it("응답에 변경된 typeKey='bug', typeName='Bug', version=2 를 반환한다") {
+                val result = sut.updateIssue(actor, issueKey, request)
+                result.typeKey shouldBe "bug"
+                result.typeName shouldBe "Bug"
+                result.version shouldBe existingVersion + 1
+            }
+        }
+
+        // T7-D6-2: 존재하지 않거나 soft-deleted typeId → IssueTypeNotFoundException
+        context("T7-D6-2 — 존재하지 않는 typeId") {
+            val invalidTypeId = IssueTypeId(999L)
+            val request = UpdateIssueRequest(summary = null, typeId = invalidTypeId, expectedVersion = existingVersion)
+            val existingIssue = makeIssue()
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                } returns true
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every { issueTypeRepository.findById(invalidTypeId) } returns null
+            }
+
+            it("IssueTypeNotFoundException 을 던진다") {
+                shouldThrow<com.bts.issue.type.domain.IssueTypeNotFoundException> {
+                    sut.updateIssue(actor, issueKey, request)
+                }
+            }
+
+            it("updateFields 가 호출되지 않는다") {
+                runCatching { sut.updateIssue(actor, issueKey, request) }
+                verify(exactly = 0) { repo.updateFields(any(), any(), any(), any()) }
+            }
+
+            it("이벤트가 발행되지 않는다") {
+                runCatching { sut.updateIssue(actor, issueKey, request) }
+                verify(exactly = 0) { eventPublisher.publish(any()) }
+            }
+        }
+
+        // T7-D6-3: typeId=null + summary 변경 → 타입 변경 없음 (merge-patch 시맨틱)
+        context("T7-D6-3 — typeId=null + summary 변경 (타입 변경 없음)") {
+            val request = UpdateIssueRequest(summary = "새 제목", typeId = null, expectedVersion = existingVersion)
+            val existingIssue = makeIssue(summary = "원래")
+            val updatedResponse = makeResponse(summary = "새 제목", version = existingVersion + 1)
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                } returns true
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every { repo.updateFields(issueKey, "새 제목", null, existingVersion) } returns 1
+                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+                every { eventPublisher.publish(any()) } returns Unit
+            }
+
+            it("issueTypeRepository.findById 가 호출되지 않는다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 0) { issueTypeRepository.findById(any()) }
+            }
+
+            it("IssueUpdated(fields={summary}) 이벤트가 발행된다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 1) {
+                    eventPublisher.publish(
+                        match { it is IssueUpdated && it.fields == setOf("summary") },
+                    )
+                }
+            }
+        }
+
+        // T7-D6-4: summary=null + typeId=non-null → 타입만 변경, no-op 아님 (회귀 가드)
+        context("T7-D6-4 — summary=null + typeId=non-null (타입만 변경)") {
+            val newTypeId = IssueTypeId(5L)
+            val request = UpdateIssueRequest(summary = null, typeId = newTypeId, expectedVersion = existingVersion)
+            // 기존 이슈의 typeId 는 3L (task). newTypeId=5L(bug) 로 변경 요청.
+            val existingIssue = makeIssue()
+            val updatedResponse =
+                makeResponse(version = existingVersion + 1).copy(
+                    typeId = newTypeId.value,
+                    typeKey = "bug",
+                    typeName = "Bug",
+                )
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                } returns true
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every { issueTypeRepository.findById(newTypeId) } returns
+                    com.bts.issue.type.domain.IssueType.BUG.copy(
+                        id = newTypeId,
+                    )
+                every { repo.updateFields(issueKey, null, newTypeId, existingVersion) } returns 1
+                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+                every { eventPublisher.publish(any()) } returns Unit
+            }
+
+            it("updateFields 가 호출된다 (no-op 이 아님)") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 1) { repo.updateFields(issueKey, null, newTypeId, existingVersion) }
+            }
+
+            it("IssueUpdated(fields={typeId}) 이벤트가 발행된다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 1) {
+                    eventPublisher.publish(
+                        match { it is IssueUpdated && it.fields == setOf("typeId") },
+                    )
+                }
+            }
+        }
     }
 })
