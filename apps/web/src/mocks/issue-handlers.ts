@@ -275,8 +275,8 @@ const getTransitionsHandler = http.get('/api/v1/issues/:key/transitions', ({ par
  * 분기 순서 (backend 일치):
  *   (1) 이슈 not-found → 404
  *   (2) MOCK_NO_WORKFLOW_TRIGGER → 422 (워크플로우 미설정 시뮬)
- *   (3-a) expectedVersion 불일치 → 409 version_conflict (OCC 버전충돌)
- *   (3-b) MOCK_CONFLICT_TRIGGER → 409 transition_not_allowed (전이거부)
+ *   (3-a) expectedVersion 불일치 → 409 VERSION_CONFLICT (OCC 버전충돌)
+ *   (3-b) MOCK_CONFLICT_TRIGGER → 409 TRANSITION_NOT_ALLOWED (전이거부)
  *   (4) 성공 → 200 + currentStateKey=toStatusKey + version+1, stateful 보관
  */
 const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ params, request }) => {
@@ -303,20 +303,20 @@ const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ p
     )
   }
 
-  // (3-a) OCC 버전 충돌 → 409 version_conflict
+  // (3-a) OCC 버전 충돌 → 409 VERSION_CONFLICT
   const isVersionMismatch =
     body.expectedVersion !== undefined && body.expectedVersion !== found.version
   if (isVersionMismatch) {
     return HttpResponse.json(
-      { errorCode: 'version_conflict', message: '버전 충돌이 발생했습니다.' },
+      { errorCode: 'VERSION_CONFLICT', message: '버전 충돌이 발생했습니다.' },
       { status: 409 },
     )
   }
 
-  // (3-b) 전이거부 트리거 → 409 transition_not_allowed
+  // (3-b) 전이거부 트리거 → 409 TRANSITION_NOT_ALLOWED
   if (toStatusKey === MOCK_CONFLICT_TRIGGER) {
     return HttpResponse.json(
-      { errorCode: 'transition_not_allowed', message: '허용되지 않는 전이입니다.' },
+      { errorCode: 'TRANSITION_NOT_ALLOWED', message: '허용되지 않는 전이입니다.' },
       { status: 409 },
     )
   }

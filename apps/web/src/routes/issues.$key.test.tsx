@@ -518,7 +518,7 @@ function setupTransitionPostHandler() {
       }
       if (toStatusKey === MOCK_CONFLICT_TRIGGER) {
         return HttpResponse.json(
-          { errorCode: 'transition_not_allowed', message: '전이 거부' },
+          { errorCode: 'TRANSITION_NOT_ALLOWED', message: '전이 거부' },
           { status: 409 },
         )
       }
@@ -647,7 +647,7 @@ describe('IssueDetailPage — 상태전이', () => {
     server.use(
       http.post('/api/v1/issues/ATLAS-1/transition', () =>
         HttpResponse.json(
-          { errorCode: 'version_conflict', message: '버전 충돌이 발생했습니다.' },
+          { errorCode: 'VERSION_CONFLICT', message: '버전 충돌이 발생했습니다.' },
           { status: 409 },
         ),
       ),
@@ -767,6 +767,49 @@ describe('IssueDetailPage — 상태전이', () => {
       expect(screen.getByText(issueDetailStrings.transitionWorkflowNotConfiguredError)).toBeInTheDocument()
       expect(screen.queryByText(issueDetailStrings.noTransitionsAvailable)).not.toBeInTheDocument()
     })
+  })
+
+  /**
+   * T4-8 (C1 회귀 가드): 전이 실패(409) 후 셀렉터가 placeholder("")로 리셋되어
+   * 같은 옵션을 재선택하면 onChange가 다시 발화되고 두 번째 POST 요청이 발생한다.
+   * defaultValue="" 비제어 패턴이면 이 테스트가 실패한다.
+   */
+  it('T4-8: 전이 실패 후 같은 옵션 재선택 시 POST 요청이 다시 발생한다 (select 리셋 가드)', async () => {
+    let postCallCount = 0
+    server.use(
+      http.post('/api/v1/issues/:key/transition', () => {
+        postCallCount += 1
+        return HttpResponse.json(
+          { errorCode: 'TRANSITION_NOT_ALLOWED', message: '전이 거부' },
+          { status: 409 },
+        )
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument(),
+    )
+
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
+
+    // 1차 선택 — 실패
+    await user.selectOptions(select, 'in_progress')
+    await waitFor(() => expect(postCallCount).toBe(1))
+
+    // 실패 후 셀렉터가 placeholder로 리셋되어 있어야 함
+    await waitFor(() => {
+      expect((select as HTMLSelectElement).value).toBe('')
+    })
+
+    // 2차 — 동일 옵션 재선택해도 onChange 발화 → POST 2회
+    await user.selectOptions(select, 'in_progress')
+    await waitFor(() => expect(postCallCount).toBe(2))
   })
 
   /**

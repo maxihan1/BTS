@@ -121,7 +121,7 @@ describe('POST /api/v1/issues/:key/transition — 분기(2) 422 워크플로우 
 })
 
 describe('POST /api/v1/issues/:key/transition — 분기(3) 409', () => {
-  it('expectedVersion 불일치 → 409 version_conflict', async () => {
+  it('expectedVersion 불일치 → 409 VERSION_CONFLICT', async () => {
     // ATLAS-1 현재 version=0, 9999 전달해 불일치 유발
     const res = await postTransition('ATLAS-1', {
       toStatusKey: 'in_progress',
@@ -129,10 +129,10 @@ describe('POST /api/v1/issues/:key/transition — 분기(3) 409', () => {
     })
     expect(res.status).toBe(409)
     const body = await res.json() as { errorCode: string }
-    expect(body.errorCode).toBe('version_conflict')
+    expect(body.errorCode).toBe('VERSION_CONFLICT')
   })
 
-  it('MOCK_CONFLICT_TRIGGER toStatusKey → 409 transition_not_allowed', async () => {
+  it('MOCK_CONFLICT_TRIGGER toStatusKey → 409 TRANSITION_NOT_ALLOWED', async () => {
     const { MOCK_CONFLICT_TRIGGER } = await import('../issue-handlers')
     const res = await postTransition('ATLAS-1', {
       toStatusKey: MOCK_CONFLICT_TRIGGER,
@@ -140,7 +140,7 @@ describe('POST /api/v1/issues/:key/transition — 분기(3) 409', () => {
     })
     expect(res.status).toBe(409)
     const body = await res.json() as { errorCode: string }
-    expect(body.errorCode).toBe('transition_not_allowed')
+    expect(body.errorCode).toBe('TRANSITION_NOT_ALLOWED')
   })
 })
 
