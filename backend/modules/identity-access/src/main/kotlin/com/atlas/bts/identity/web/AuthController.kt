@@ -278,6 +278,9 @@ class AuthController(
      * @param sid 강제 종료할 세션 ID (Spring 이 UUID 바인딩 실패 시 400 자동 반환 — EC-7)
      * @return 204 No Content / 400 UUID 형식 오류 / 403 PAT / 404 IDOR/미존재 / 409 현재 세션
      */
+    // ReturnCount 억제 — HTTP 상태별 guard clause early return(403/404/409/204)이
+    // 중첩 if 보다 가독성 우수 (DEVELOPMENT.md §2.3 Early return 권장).
+    @Suppress("ReturnCount")
     @DeleteMapping("/sessions/{sid}")
     fun revokeSession(
         @AuthenticationPrincipal jwt: Jwt?,
@@ -313,6 +316,8 @@ class AuthController(
      * @param jwt nullable JWT principal ([Jwt] 타입 아니면 PAT)
      * @return [JwtClaims] 또는 null (PAT/invalid_token)
      */
+    // ReturnCount 억제 — null guard early return(PAT/invalid subject)이 가독성 우수.
+    @Suppress("ReturnCount")
     private fun resolveJwtClaims(jwt: Jwt?): JwtClaims? {
         if (jwt == null) return null
         val userId = runCatching { UUID.fromString(jwt.subject) }.getOrNull() ?: return null
