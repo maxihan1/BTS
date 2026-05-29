@@ -150,19 +150,21 @@ class IssueTypeExceptionHandler {
             ex.usageCount,
             ex.schemeMappingCount,
         )
-        val detail = buildString {
-            append("이슈 타입이 사용 중입니다 (이슈 수: ${ex.usageCount}, 스킴 매핑 수: ${ex.schemeMappingCount}).")
-            if (ex.schemeMappingCount > 0) {
-                append(" 워크플로우 스킴 매핑이 존재하므로 reassignTo 지정으로는 해소할 수 없습니다. 스킴 매핑을 먼저 제거해 주세요.")
+        val detail =
+            buildString {
+                append("이슈 타입이 사용 중입니다 (이슈 수: ${ex.usageCount}, 스킴 매핑 수: ${ex.schemeMappingCount}).")
+                if (ex.schemeMappingCount > 0) {
+                    append(" 워크플로우 스킴 매핑이 존재하므로 reassignTo 지정으로는 해소할 수 없습니다. 스킴 매핑을 먼저 제거해 주세요.")
+                }
             }
-        }
-        val pd = problem(
-            status = HttpStatus.CONFLICT,
-            type = "issue-type-in-use",
-            title = "Issue Type In Use",
-            errorCode = IssueTypeErrorCodes.ISSUE_TYPE_IN_USE,
-            detail = detail,
-        )
+        val pd =
+            problem(
+                status = HttpStatus.CONFLICT,
+                type = "issue-type-in-use",
+                title = "Issue Type In Use",
+                errorCode = IssueTypeErrorCodes.ISSUE_TYPE_IN_USE,
+                detail = detail,
+            )
         pd.setProperty("usageCount", ex.usageCount)
         pd.setProperty("schemeMappingCount", ex.schemeMappingCount)
         return pd

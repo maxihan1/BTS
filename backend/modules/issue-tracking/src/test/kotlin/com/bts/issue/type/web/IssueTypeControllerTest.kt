@@ -1,4 +1,4 @@
-// IssueTypeController MockMvc 슬라이스 테스트 — GET + POST/PATCH/DELETE CRUD (FR-IS-02 task-8 RED)
+// IssueTypeController MockMvc 슬라이스 테스트 — GET 목록 조회 + POST/PATCH/DELETE CRUD (FR-IS-02)
 
 package com.bts.issue.type.web
 
@@ -16,7 +16,6 @@ import com.bts.shared.issue.IssueTypeKey
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
-import io.mockk.justRun
 import io.mockk.mockk
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -78,7 +77,6 @@ import java.time.Instant
 @ContextConfiguration(classes = [IssueTypeControllerTest.TestMvcConfig::class])
 @WebAppConfiguration
 class IssueTypeControllerTest {
-
     /**
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
@@ -203,13 +201,14 @@ class IssueTypeControllerTest {
         val created = issueType(10L, "feature", "Feature", "기능 개발 타입", "feature")
         every { issueTypeApplicationService.create(any()) } returns created
 
-        val body = mapOf(
-            "key" to "feature",
-            "name" to "Feature",
-            "description" to "기능 개발 타입",
-            "iconName" to "feature",
-            "hierarchyLevel" to 0,
-        )
+        val body =
+            mapOf(
+                "key" to "feature",
+                "name" to "Feature",
+                "description" to "기능 개발 타입",
+                "iconName" to "feature",
+                "hierarchyLevel" to 0,
+            )
 
         mockMvc.perform(
             post("/api/v1/issue-types")
