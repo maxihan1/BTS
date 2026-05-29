@@ -20,13 +20,15 @@ class AvailableTransitionsRequestTest {
 
     @Test
     fun `정상 입력은 validate 가 Valid 를 반환한다`() {
-        val req = AvailableTransitionsRequest(
-            workflowKey = "DEFAULT",
-            fromStateKey = "TODO",
-            actorId = "user-001",
-            actorRoles = setOf("MEMBER"),
-            issueFields = mapOf("priority" to "HIGH"),
-        )
+        val req =
+            AvailableTransitionsRequest(
+                workflowKey = "DEFAULT",
+                fromStateKey = "TODO",
+                issueKey = "PROJ-1",
+                actorId = "user-001",
+                actorRoles = setOf("MEMBER"),
+                issueFields = mapOf("priority" to "HIGH"),
+            )
 
         val result = req.validate()
 
@@ -35,13 +37,15 @@ class AvailableTransitionsRequestTest {
 
     @Test
     fun `workflowKey 가 빈 문자열이면 Invalid 를 반환한다`() {
-        val req = AvailableTransitionsRequest(
-            workflowKey = "",
-            fromStateKey = "TODO",
-            actorId = "user-001",
-            actorRoles = emptySet(),
-            issueFields = emptyMap(),
-        )
+        val req =
+            AvailableTransitionsRequest(
+                workflowKey = "",
+                fromStateKey = "TODO",
+                issueKey = "PROJ-1",
+                actorId = "user-001",
+                actorRoles = emptySet(),
+                issueFields = emptyMap(),
+            )
 
         val result = req.validate()
 
@@ -50,13 +54,32 @@ class AvailableTransitionsRequestTest {
 
     @Test
     fun `fromStateKey 가 빈 문자열이면 Invalid 를 반환한다`() {
-        val req = AvailableTransitionsRequest(
-            workflowKey = "DEFAULT",
-            fromStateKey = "",
-            actorId = "user-001",
-            actorRoles = emptySet(),
-            issueFields = emptyMap(),
-        )
+        val req =
+            AvailableTransitionsRequest(
+                workflowKey = "DEFAULT",
+                fromStateKey = "",
+                issueKey = "PROJ-1",
+                actorId = "user-001",
+                actorRoles = emptySet(),
+                issueFields = emptyMap(),
+            )
+
+        val result = req.validate()
+
+        assertThat(result).isNotInstanceOf(Valid::class.java)
+    }
+
+    @Test
+    fun `issueKey 가 빈 문자열이면 Invalid 를 반환한다`() {
+        val req =
+            AvailableTransitionsRequest(
+                workflowKey = "DEFAULT",
+                fromStateKey = "TODO",
+                issueKey = "",
+                actorId = "user-001",
+                actorRoles = emptySet(),
+                issueFields = emptyMap(),
+            )
 
         val result = req.validate()
 

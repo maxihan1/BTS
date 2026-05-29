@@ -13,6 +13,7 @@ private val availableTransitionsRequestValidation: Validation<AvailableTransitio
     Validation {
         AvailableTransitionsRequest::workflowKey { minLength(1) }
         AvailableTransitionsRequest::fromStateKey { minLength(1) }
+        AvailableTransitionsRequest::issueKey { minLength(1) }
     }
 
 /**
@@ -26,6 +27,9 @@ private val availableTransitionsRequestValidation: Validation<AvailableTransitio
  *
  * @param workflowKey 적용할 워크플로우의 고유 키. 예: "DEFAULT", "BUGFIX".
  * @param fromStateKey 현재 이슈 상태 키. 예: "TODO".
+ * @param issueKey 전이를 요청하는 이슈의 키. 예: "ATLAS-42".
+ *   CustomExpression validator 의 `issue.key` 평가에 사용한다.
+ *   actorId 와 혼동되어서는 안 된다 — 이 필드는 이슈 식별자이다.
  * @param actorId 전이를 요청하는 사용자 ID.
  * @param actorRoles 실행자의 역할 집합. 권한 기반 필터링에 사용한다.
  * @param issueFields 현재 이슈의 커스텀 필드 스냅샷. 조건부 전이 필터링에 사용한다.
@@ -33,6 +37,7 @@ private val availableTransitionsRequestValidation: Validation<AvailableTransitio
 data class AvailableTransitionsRequest(
     val workflowKey: String,
     val fromStateKey: String,
+    val issueKey: String,
     val actorId: String,
     val actorRoles: Set<String>,
     val issueFields: Map<String, Any?>,

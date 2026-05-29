@@ -207,16 +207,22 @@ class IssueApplicationService(
      * 흐름.
      * 1. VIEW 권한 검증 (Issue 범위)
      * 2. 이슈 조회 — 미존재 시 IssueNotFoundException
-     * 3. [resolveWorkflowKey] 로 workflowKey 결정 —
-     *    WorkflowSchemeNoDefaultException 발생 시 IssueWorkflowNotConfiguredException 변환
+     * 3. [resolveWorkflowKeyReadOnly] 로 workflowKey 결정 (auto-assign 없음) —
+     *    미할당이면 IssueWorkflowNotConfiguredException(422) 변환,
+     *    WorkflowSchemeNoDefaultException 발생 시에도 동일 변환
      * 4. workflowPort.availableTransitions 호출 — [AvailableTransitionsResult] sealed 분기 처리
+     *
+     * 읽기 경로이므로 [WorkflowKeyResolver.resolveExisting] 을 사용한다.
+     * [WorkflowKeyResolver.resolveStart](auto-assign 포함)는 쓰기 경로
+     * (createIssue/transitionIssue)에서만 호출한다.
      *
      * @param actor 조회 행위자.
      * @param key 조회할 이슈 키.
      * @return 현재 상태에서 이동 가능한 [AvailableTransitionView] 목록.
      * @throws IssueAccessDeniedException 권한 없을 때.
      * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우.
-     * @throws IssueWorkflowNotConfiguredException 프로젝트에 기본 워크플로우 스킴이 없거나 워크플로우 row 가 없을 때.
+     * @throws IssueWorkflowNotConfiguredException 프로젝트에 워크플로우 스킴이 미할당이거나
+     *   워크플로우 row 가 없을 때. 부수 효과(DB 쓰기/이벤트)는 발생하지 않는다.
      */
     @Transactional(readOnly = true)
     fun availableTransitions(
@@ -225,11 +231,12 @@ class IssueApplicationService(
     ): List<AvailableTransitionView> {
         assertPermission(actor, IssuePermission.VIEW, IssueScope.Issue(key.value))
         val issue = repo.findByKey(key) ?: throw IssueNotFoundException(key)
-        val resolvedWorkflow = resolveWorkflowKey(key)
+        val resolvedWorkflow = resolveWorkflowKeyReadOnly(key)
         val req =
             AvailableTransitionsRequest(
                 workflowKey = resolvedWorkflow.workflowKey,
                 fromStateKey = issue.currentStateKey,
+                issueKey = key.value,
                 actorId = actor.value.toString(),
                 actorRoles = emptySet(),
                 issueFields = mapOf("summary" to issue.summary),
@@ -422,8 +429,11 @@ class IssueApplicationService(
         }
 
     /**
-     * [WorkflowKeyResolver.resolveStart] 를 호출하고 [WorkflowSchemeNoDefaultException] 을
-     * [IssueWorkflowNotConfiguredException] 으로 변환하는 공통 helper.
+     * 쓰기 경로용 — [WorkflowKeyResolver.resolveStart](auto-assign 포함) 를 호출하고
+     * [WorkflowSchemeNoDefaultException] 을 [IssueWorkflowNotConfiguredException] 으로 변환한다.
+     *
+     * createIssue / transitionIssue 에서만 사용한다.
+     * 읽기 경로에서는 [resolveWorkflowKeyReadOnly] 를 사용해야 한다.
      *
      * issue-tracking BC 는 project-workflow 내부 예외를 직접 import 할 수 없으므로
      * javaClass.simpleName 로 감지한다 (BC 격리, DEVELOPMENT.md §1.1).
@@ -445,6 +455,36 @@ class IssueApplicationService(
             }
             throw e
         }
+
+    /**
+     * 읽기 경로용 — [WorkflowKeyResolver.resolveExisting](auto-assign 없음) 를 호출한다.
+     *
+     * availableTransitions 에서만 사용한다.
+     * null 반환(스킴 미할당) 및 [WorkflowSchemeNoDefaultException] 을 모두
+     * [IssueWorkflowNotConfiguredException](422) 으로 변환한다.
+     *
+     * DB 쓰기 및 이벤트 발행이 일어나지 않는다.
+     *
+     * @param key 워크플로우를 resolve 할 이슈 키.
+     * @return [WorkflowStartState] — workflowKey + startStateKey.
+     * @throws IssueWorkflowNotConfiguredException 스킴 미할당 또는 WorkflowSchemeNoDefaultException 발생 시.
+     *
+     * TooGenericExceptionCaught: project-workflow 내부 예외를 직접 import 할 수 없으므로
+     * RuntimeException 을 catch 하여 simpleName 으로 감지한다. 의도적인 설계 (DEVELOPMENT.md §1.1).
+     */
+    @Suppress("TooGenericExceptionCaught", "ThrowsCount")
+    private fun resolveWorkflowKeyReadOnly(key: IssueKey): WorkflowStartState {
+        val result =
+            try {
+                workflowKeyResolver.resolveExisting(ProjectKey.of(key.projectPrefix), null)
+            } catch (e: RuntimeException) {
+                if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") {
+                    throw IssueWorkflowNotConfiguredException(key.projectPrefix, null)
+                }
+                throw e
+            }
+        return result ?: throw IssueWorkflowNotConfiguredException(key.projectPrefix, null)
+    }
 
     private fun buildChangedFields(
         existing: Issue,

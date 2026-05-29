@@ -282,7 +282,7 @@ class WorkflowEngine(
         val fromState = workflow.states.find { it.key == req.fromStateKey } ?: return false
         val issueView =
             DefaultIssueView(
-                key = req.actorId,
+                key = req.issueKey,
                 priority = req.issueFields["priority"] as? String ?: "",
                 fields = req.issueFields,
             )

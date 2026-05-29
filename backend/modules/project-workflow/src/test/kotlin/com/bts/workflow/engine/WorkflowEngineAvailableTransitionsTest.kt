@@ -74,6 +74,7 @@ class WorkflowEngineAvailableTransitionsTest {
             workflowKey = "software-default",
             fromStateKey = "open",
             actorId = "user-001",
+            issueKey = "ATLAS-42",
             actorRoles = setOf("MEMBER"),
             issueFields = emptyMap(),
         )
@@ -119,6 +120,43 @@ class WorkflowEngineAvailableTransitionsTest {
         assertThat(notFound.key).isEqualTo("UNKNOWN_KEY")
         // validator 조회는 호출되면 안 된다
         verify(exactly = 0) { mockDefinitionRepo.findValidators(any()) }
+    }
+
+    // ── S4. issueKey 오삽입 회귀 가드 — passesValidators 에 actorId 아닌 issueKey 전달 ──
+
+    @Test
+    fun `S4 — validator 가 ctx 의 issue key 를 올바르게 받는다 — actorId 가 아닌 issueKey`() {
+        every { mockCache.findByKey("software-default") } returns softwareDefaultWorkflow
+        every { mockDefinitionRepo.findValidators(txOpenToInProgress) } returns emptyList()
+
+        // open→closed: issueKey 를 검사하는 validator — "ATLAS-42" 이면 통과
+        val keyCheckConfig = ValidatorConfig("CustomExpression", mapOf("expression" to "issue.key == 'ATLAS-42'"))
+        every { mockDefinitionRepo.findValidators(txOpenToClosed) } returns listOf(keyCheckConfig)
+        val keyCheckValidator = mockk<WorkflowValidator>()
+        every { keyCheckValidator.type } returns "CustomExpression"
+        every {
+            keyCheckValidator.validate(
+                match { ctx ->
+                    // ctx.issueView.key 가 actorId("user-001") 가 아닌 issueKey("ATLAS-42") 여야 한다
+                    ctx.issueView.key == "ATLAS-42"
+                },
+            )
+        } returns ValidatorResult.Pass
+        every {
+            keyCheckValidator.validate(
+                match { ctx -> ctx.issueView.key != "ATLAS-42" },
+            )
+        } returns ValidatorResult.Fail(field = null, reason = "issue.key 불일치")
+        every {
+            mockValidatorFactory.create("CustomExpression", mapOf("expression" to "issue.key == 'ATLAS-42'"))
+        } returns keyCheckValidator
+
+        val result = engine.availableTransitions(baseRequest)
+
+        assertThat(result).isInstanceOf(AvailableTransitionsResult.Success::class.java)
+        val success = result as AvailableTransitionsResult.Success
+        // issueKey 가 올바르게 전달됐다면 open→closed validator 를 통과해 2건 반환
+        assertThat(success.transitions).hasSize(2)
     }
 
     // ── S3. 가드 validator 거부 시 해당 전이 제외 ──────────────────────────

@@ -108,8 +108,9 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
                     permissionResolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns makeIssue(state = "TODO")
+                // availableTransitions 는 읽기 경로 — resolveExisting 을 호출한다 (resolveStart 아님)
                 every {
-                    workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
+                    workflowKeyResolver.resolveExisting(ProjectKey.of("BTS"), null)
                 } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "TODO")
                 every { workflowPort.availableTransitions(any()) } returns
                     AvailableTransitionsResult.Success(transitions)
@@ -126,14 +127,15 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
                 result[1].toStateKey shouldBe "DONE"
             }
 
-            it("workflowPort.availableTransitions 에 fromStateKey=issue.currentStateKey 를 전달한다") {
+            it("workflowPort.availableTransitions 에 fromStateKey=issue.currentStateKey 와 issueKey 를 전달한다") {
                 sut.availableTransitions(actor, issueKey)
                 verify {
                     workflowPort.availableTransitions(
                         match { req ->
                             req.fromStateKey == "TODO" &&
                                 req.workflowKey == "DEFAULT" &&
-                                req.actorId == actor.value.toString()
+                                req.actorId == actor.value.toString() &&
+                                req.issueKey == issueKey.value
                         },
                     )
                 }
@@ -160,15 +162,16 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
             }
         }
 
-        // S3: resolveStart 가 WorkflowSchemeNoDefaultException 던짐 → IssueWorkflowNotConfiguredException
+        // S3: resolveExisting 이 WorkflowSchemeNoDefaultException 던짐 → IssueWorkflowNotConfiguredException
         context("S3 — WorkflowSchemeNoDefaultException → IssueWorkflowNotConfiguredException") {
             beforeEach {
                 every {
                     permissionResolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns makeIssue()
+                // availableTransitions 는 resolveExisting 을 호출하므로 resolveExisting 에 stub 한다
                 every {
-                    workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
+                    workflowKeyResolver.resolveExisting(ProjectKey.of("BTS"), null)
                 } throws WorkflowSchemeNoDefaultException("software-default")
             }
 
@@ -193,8 +196,9 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
                     permissionResolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns makeIssue()
+                // availableTransitions 는 resolveExisting 을 호출한다
                 every {
-                    workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
+                    workflowKeyResolver.resolveExisting(ProjectKey.of("BTS"), null)
                 } returns WorkflowStartState(workflowKey = "MISSING-WF", startStateKey = "TODO")
                 every { workflowPort.availableTransitions(any()) } returns
                     AvailableTransitionsResult.WorkflowNotFound("MISSING-WF")

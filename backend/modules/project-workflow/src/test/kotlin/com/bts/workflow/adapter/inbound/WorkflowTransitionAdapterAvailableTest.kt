@@ -33,6 +33,7 @@ class WorkflowTransitionAdapterAvailableTest {
         AvailableTransitionsRequest(
             workflowKey = "software-default",
             fromStateKey = "open",
+            issueKey = "ATLAS-1",
             actorId = "user-001",
             actorRoles = setOf("MEMBER"),
             issueFields = emptyMap(),
