@@ -134,6 +134,7 @@ class WorkflowTransitionAdapterAvailableTest {
         val blockingConfig = ValidatorConfig("Permission", mapOf("role" to "ADMIN"))
         every { mockDefinitionRepo.findValidators(txOpenToClosed) } returns listOf(blockingConfig)
         val blockingValidator = mockk<WorkflowValidator>()
+        every { blockingValidator.type } returns "Permission"
         every { blockingValidator.validate(any()) } returns ValidatorResult.Fail(
             field = null,
             reason = "ADMIN 역할만 취소할 수 있습니다.",

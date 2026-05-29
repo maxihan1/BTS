@@ -31,6 +31,9 @@ import org.junit.jupiter.api.Test
  */
 class WorkflowTransitionAdapterTest {
     private val mockEngine: WorkflowEngine = mockk()
+    private val mockCache: com.bts.workflow.cache.WorkflowCache = mockk()
+    private val mockDefinitionRepo: com.bts.workflow.engine.WorkflowDefinitionRepository = mockk()
+    private val mockValidatorFactory: com.bts.workflow.engine.WorkflowValidatorFactory = mockk()
     private lateinit var adapter: WorkflowTransitionAdapter
 
     private val validReq =
@@ -54,7 +57,7 @@ class WorkflowTransitionAdapterTest {
 
     @BeforeEach
     fun setUp() {
-        adapter = WorkflowTransitionAdapter(mockEngine)
+        adapter = WorkflowTransitionAdapter(mockEngine, mockCache, mockDefinitionRepo, mockValidatorFactory)
     }
 
     // ── S1. Success ──────────────────────────────────────────────────────────
