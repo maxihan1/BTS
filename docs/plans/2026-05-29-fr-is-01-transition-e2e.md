@@ -44,6 +44,119 @@
 
 ✅ 통과. Phase B에서 gap 3건(가용전이 SPI 부재 / 이슈 workflow_key 미영속 / 조건부 전이 미고려) 발견 → Maxi 결정(옵션 A 풀버전)으로 spec 보강. 상세는 spec 파일 ## Brainstorming Check.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> **이 plan은 PR 1/2 (백엔드 기반)만 분해한다.** PR 2/2 (전이 UI + Playwright E2E)는 PR1 머지 후 별도 worktree에서 진행 — 하단 ## PR 2/2 (후속) 참조.
+> 공통 검증: `./gradlew ktlintCheck detekt`, 모듈별 `./gradlew :backend:<module>:test`.
+
+### Task 1. shared-kernel — 가용전이 SPI 타입 + 메서드
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/AvailableTransitionsRequest.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/AvailableTransitionsResult.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/WorkflowTransitionPort.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/workflow/AvailableTransitionsRequestTest.kt`]
+- depends-on: []
+
+**RED**: `AvailableTransitionsRequestTest` — `AvailableTransitionsRequest(workflowKey, fromStateKey, actorId, actorRoles, issueFields)` 의 `validate()` 가 빈 workflowKey/fromStateKey 거부. 타입 미존재로 컴파일 실패.
+
+**GREEN**:
+- `AvailableTransitionsRequest` data class + `validate()` (TransitionRequest 패턴 답습).
+- `AvailableTransitionsResult` sealed — `Success(transitions: List<AvailableTransitionView>)` / `WorkflowNotFound(key)`. `AvailableTransitionView(fromStateKey, toStateKey, name)`.
+- `WorkflowTransitionPort` 에 `@Transactional(readOnly=true, propagation=MANDATORY) fun availableTransitions(req): AvailableTransitionsResult` 추가.
+
+**REFACTOR**: KDoc — 반환 계약 명시 (Success/WorkflowNotFound 2-case, `else` 금지). transition identity=(from,to) ADR 인용.
+
+**검증**: `./gradlew :backend:shared-kernel:test`
+
+### Task 2. project-workflow — availableTransitions 구현 (enumerate + validator 평가)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/adapter/inbound/WorkflowTransitionAdapter.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/adapter/inbound/WorkflowTransitionAdapterAvailableTest.kt`]
+- depends-on: [1]
+
+**RED**: `WorkflowTransitionAdapterAvailableTest` — software-default 로드, `fromStateKey=open` → `Success([open→in_progress, open→closed])` 기대. 가드 있는 워크플로우에서 미충족 actor → 해당 전이 제외 기대. 메서드 미구현으로 실패.
+
+**GREEN**: `availableTransitions` 구현 — 워크플로우 로드(없으면 `WorkflowNotFound`), `transitions.filter { fromStateKey == req.fromStateKey }`, 각 후보를 기존 `WorkflowEngine`/validator 경로로 평가(`plan` 과 동일 검증 재사용, 로직 중복 금지) → 통과 전이만 `Success`.
+
+**REFACTOR**: enumerate+평가 로직을 private helper로. `plan` 과 공유 가능한 검증 부분 추출.
+
+**검증**: `./gradlew :backend:project-workflow:test`
+
+### Task 3. issue-tracking — IssueApplicationService.availableTransitions
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueApplicationServiceAvailableTransitionsTest.kt`]
+- depends-on: [1]
+
+**RED**: 서비스 단위 테스트(port mock) — 이슈 조회 → `resolveStart` → `port.availableTransitions` 호출 → 결과 매핑. 이슈 없음 → `IssueNotFoundException`. `WorkflowSchemeNoDefaultException` → `IssueWorkflowNotConfiguredException`. 메서드 미존재 실패.
+
+**GREEN**: `availableTransitions(actor, key): List<AvailableTransitionView>` (또는 응답 모델) — 기존 `transitionIssue` 의 resolve/예외매핑 패턴 재사용. 읽기 전용 `@Transactional(readOnly=true)`.
+
+**REFACTOR**: resolve+예외매핑 공통부를 private helper로 (transitionIssue 와 공유).
+
+**검증**: `./gradlew :backend:issue-tracking:test --tests *AvailableTransitions*`
+
+### Task 4. issue-tracking — GET /issues/{key}/transitions 엔드포인트 + 응답 DTO
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/AvailableTransitionsResponse.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueControllerTransitionsTest.kt`]
+- depends-on: [3]
+
+**RED**: 컨트롤러 web 테스트(MockMvc 또는 기존 패턴) — `GET /api/v1/issues/{key}/transitions` 200 + `{ data: { transitions: [...] } }`. 404(이슈 없음)·422(미설정) 매핑. 엔드포인트 미존재 실패.
+
+**GREEN**: `@GetMapping("/{key}/transitions")` → service.availableTransitions → `AvailableTransitionsResponse` 래핑. `IssueExceptionHandler` 가 404/422 이미 매핑하는지 확인, 없으면 추가.
+
+**REFACTOR**: 응답 DTO KDoc + transition.key computed(`${from}__${to}`) 명시.
+
+**검증**: `./gradlew :backend:issue-tracking:test --tests *ControllerTransitions*`
+
+### Task 5. 통합 테스트 — 전이 런타임 (Testcontainers, mock 없음)
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/integration/IssueTransitionRuntimeIntegrationTest.kt`]
+- depends-on: [2, 4]
+
+**RED**: 실제 Postgres + 실제 워크플로우 시드(software-default). 이슈 생성 → `GET /transitions` 가 현재상태 출발 전이 반환 → `POST /transition` 실행 → 재조회 시 상태 갱신 + 새 가용전이. **mock 없이** 전 경로 검증. 미구현/wiring 누락 시 실패. cross-BC 마이그레이션 의존(`bts-cross-bc-test-migration`) — issue-tracking + project-workflow 시드 둘 다 testRuntimeOnly 확인.
+
+**GREEN**: (구현은 Task 1~4가 제공) 테스트 그린.
+
+**REFACTOR**: Testcontainers singleton 패턴(`learnings` 2026-05-21 stale port 함정 회피).
+
+**검증**: `./gradlew :backend:issue-tracking:test --tests *RuntimeIntegration*`
+
+### Task 6. 통합 테스트 — validator 가드 가용전이 필터링 실증 (FR-T-Q3)
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/integration/IssueTransitionGuardFilterIntegrationTest.kt`]
+- depends-on: [2, 4]
+
+**RED**: 가드(예: `PermissionValidator`) 적용된 전이가 actor 권한 미충족 시 `GET /transitions` 결과에서 **제외**, 충족 시 포함. 풀버전(조건 평가)의 실증. 가드 워크플로우 시드 방법은 RED 작성 시 확정(기존 검증 자원 vs 테스트 전용 시드).
+
+**GREEN**: (Task 2의 validator 평가가 제공) 테스트 그린.
+
+**REFACTOR**: 시드/컨텍스트 빌더 헬퍼 정리.
+
+**검증**: `./gradlew :backend:issue-tracking:test --tests *GuardFilter*`
+
+## Plan 메타
+
+- task 수: 6 (PR 1/2 백엔드 기반)
+- 예상 wave: 4 (W1: T1 / W2: T2·T3 / W3: T4 / W4: T5·T6)
+- TDD 강제: yes (test 커밋이 feat 커밋 선행)
+- 추가 검증: ktlintCheck, detekt, Testcontainers 통합
+- cross-BC: shared-kernel + project-workflow + issue-tracking (Maxi 승인 예외, SPI 확장 채널)
+
+## PR 2/2 (후속, 별도 worktree)
+
+PR1 머지 후 진행 — 전이 UI(frontend). 대략 task.
+- api 클라이언트(`fetchIssueTransitions`/`transitionIssue`) + Zod (backend DTO grep 정합, `frontend-zod-backend-dto-contract-gap`)
+- MSW stateful 핸들러(GET transitions / POST transition)
+- 전이 UI(`IssueMetaPanel.tsx`/`issues.$key.tsx`, shadcn select) + i18n + 에러(409/422)
+- Playwright E2E(`issue-transition.spec.ts`) — happy + 가용전이 필터 + 에러
+
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
