@@ -1,26 +1,16 @@
-// WorkflowTransitionAdapter — WorkflowTransitionPort 구현체. WorkflowEngine 호출 + try/catch 후 TransitionResult 매핑. availableTransitions는 validator-only 평가.
+// WorkflowTransitionAdapter — WorkflowTransitionPort 구현체. WorkflowEngine 호출 + try/catch 후 TransitionResult 매핑.
 
 package com.bts.workflow.adapter.inbound
 
-import com.bts.shared.workflow.AvailableTransitionView
 import com.bts.shared.workflow.AvailableTransitionsRequest
 import com.bts.shared.workflow.AvailableTransitionsResult
 import com.bts.shared.workflow.TransitionRequest
 import com.bts.shared.workflow.TransitionResult
 import com.bts.shared.workflow.WorkflowTransitionPort
-import com.bts.workflow.cache.WorkflowCache
-import com.bts.workflow.domain.Workflow
-import com.bts.workflow.domain.WorkflowTransition
-import com.bts.workflow.domain.dto.TransitionContext
 import com.bts.workflow.domain.exception.WorkflowExpressionTimeoutException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
-import com.bts.workflow.domain.expression.DefaultActorView
-import com.bts.workflow.domain.expression.DefaultIssueView
-import com.bts.workflow.domain.spi.ValidatorResult
-import com.bts.workflow.engine.WorkflowDefinitionRepository
 import com.bts.workflow.engine.WorkflowEngine
-import com.bts.workflow.engine.WorkflowValidatorFactory
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Propagation
@@ -30,7 +20,8 @@ import org.springframework.transaction.annotation.Transactional
  * [WorkflowTransitionPort] 구현체.
  *
  * [WorkflowEngine] 을 호출하고 내부 예외를 [TransitionResult] 케이스로 매핑한다.
- * 호출자 BC (issue-tracking / automation) 는 이 adapter 를 통해 전이를 요청하며,
+ * 호출자 BC (바운디드 컨텍스트 — 책임 범위로 나눈 도메인 단위) 인 issue-tracking / automation 은
+ * 이 adapter 를 통해 전이를 요청하며,
  * `com.bts.workflow.domain.exception.*` 를 직접 import 하지 않아도 된다 (BC 격리 보장).
  *
  * ### 트랜잭션 계약
@@ -38,8 +29,8 @@ import org.springframework.transaction.annotation.Transactional
  * - [availableTransitions]: [Propagation.MANDATORY] + readOnly=true — 읽기 전용 트랜잭션.
  *
  * ### post-action 미실행 보장
- * [availableTransitions] 는 [WorkflowEngine.plan] 을 호출하지 않는다.
- * WorkflowCache → validator 평가만 수행하므로 SetField/Notify 등 부수 효과는 실행되지 않는다.
+ * [availableTransitions] 는 [WorkflowEngine.availableTransitions] 에 위임하며,
+ * 해당 메서드는 Validator 평가만 수행한다. SetField/Notify 등 PostAction 은 절대 실행되지 않는다.
  *
  * ### 관련 ADR
  * docs/adr/2026-05-26-workflow-transition-port-result-sealed.md
@@ -47,9 +38,6 @@ import org.springframework.transaction.annotation.Transactional
 @Component
 class WorkflowTransitionAdapter(
     private val workflowEngine: WorkflowEngine,
-    private val workflowCache: WorkflowCache,
-    private val definitionRepo: WorkflowDefinitionRepository,
-    private val validatorFactory: WorkflowValidatorFactory,
 ) : WorkflowTransitionPort {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -74,10 +62,10 @@ class WorkflowTransitionAdapter(
         }
 
     /**
-     * 현재 상태에서 validator를 통과하는 가용 전이 목록을 반환한다.
+     * 현재 상태에서 validator 를 통과하는 가용 전이 목록 조회를 [WorkflowEngine] 에 위임한다.
      *
      * post-action (SetField/Notify 등) 은 절대 실행하지 않는다.
-     * [WorkflowEngine.plan] 을 호출하지 않으므로 부수 효과 없이 validator 평가만 수행한다.
+     * 실질 로직은 [WorkflowEngine.availableTransitions] 가 담당한다.
      *
      * @param req 가용 전이 열거 요청 DTO
      * @return 2 케이스 반환 계약은 [WorkflowTransitionPort] KDoc 참조
@@ -89,71 +77,7 @@ class WorkflowTransitionAdapter(
             req.workflowKey,
             req.fromStateKey,
         )
-
-        val workflow = workflowCache.findByKey(req.workflowKey)
-            ?: run {
-                log.info(
-                    "WorkflowTransitionAdapter.availableTransitions: workflow not found key={}",
-                    req.workflowKey,
-                )
-                return AvailableTransitionsResult.WorkflowNotFound(req.workflowKey)
-            }
-
-        val candidates = workflow.transitions.filter { it.fromStateKey == req.fromStateKey }
-        val passed = candidates.filter { transition -> passesValidators(req, workflow, transition) }
-
-        return AvailableTransitionsResult.Success(
-            passed.map { AvailableTransitionView(it.fromStateKey, it.toStateKey, it.name) },
-        )
-    }
-
-    // ── private helper ────────────────────────────────────────────────────────
-
-    /**
-     * 단일 전이에 대해 validator 평가만 수행하고 통과 여부를 반환한다.
-     *
-     * post-action 은 평가하지 않는다 — [availableTransitions] 의 읽기 전용 계약을 유지한다.
-     */
-    private fun passesValidators(
-        req: AvailableTransitionsRequest,
-        workflow: Workflow,
-        transition: WorkflowTransition,
-    ): Boolean {
-        val fromState = workflow.states.find { it.key == req.fromStateKey } ?: return false
-        val issueView = DefaultIssueView(
-            key = req.actorId,
-            priority = req.issueFields["priority"] as? String ?: "",
-            fields = req.issueFields,
-        )
-        val actorView = DefaultActorView(userId = req.actorId, roles = req.actorRoles)
-        // availableTransitions 전용 최소 TransitionRequest — validator 평가에만 사용하며 부수 효과 없음
-        val syntheticRequest = TransitionRequest(
-            workflowKey = req.workflowKey,
-            issueKey = "",
-            fromStateKey = req.fromStateKey,
-            toStateKey = transition.toStateKey,
-            actorId = req.actorId,
-            actorRoles = req.actorRoles,
-            issueFields = req.issueFields,
-            version = 0L,
-        )
-        val ctx = TransitionContext(syntheticRequest, workflow, fromState, transition, issueView, actorView)
-
-        for (cfg in definitionRepo.findValidators(transition)) {
-            val validator = validatorFactory.create(cfg.type, cfg.config)
-            val result = validator.validate(ctx)
-            if (result is ValidatorResult.Fail) {
-                log.debug(
-                    "WorkflowTransitionAdapter.availableTransitions: validator='{}' rejected {}→{} reason='{}'",
-                    validator.type,
-                    transition.fromStateKey,
-                    transition.toStateKey,
-                    result.reason,
-                )
-                return false
-            }
-        }
-        return true
+        return workflowEngine.availableTransitions(req)
     }
 
     private fun mapException(

@@ -1,7 +1,10 @@
-// 워크플로우 엔진 — plan(req) 으로 전이 계획 계산 (Validator 4종 순차 + PostAction 5종 누적, Propagation.MANDATORY)
+// 워크플로우 엔진 — plan(req) 전이 계획 계산 + availableTransitions(req) 가용 전이 열거 (Propagation.MANDATORY)
 
 package com.bts.workflow.engine
 
+import com.bts.shared.workflow.AvailableTransitionView
+import com.bts.shared.workflow.AvailableTransitionsRequest
+import com.bts.shared.workflow.AvailableTransitionsResult
 import com.bts.shared.workflow.DomainEvent
 import com.bts.shared.workflow.FieldChange
 import com.bts.shared.workflow.TransitionPlan
@@ -104,6 +107,8 @@ data class PostActionConfig(val type: String, val config: Map<String, Any?>)
  * 1. **Validator 순차 평가** — 첫 Fail 즉시 [WorkflowValidatorFailureException].
  * 2. **PostAction 누적** — 모든 PostAction 의 [FieldChange] + [DomainEvent] 를 합산해 [TransitionPlan] 반환.
  *
+ * [availableTransitions] 는 Validator 평가만 수행하며 PostAction 을 절대 실행하지 않는다 (GET 읽기 경로 — 부수 효과 없음).
+ *
  * 이 클래스는 상태를 직접 변경하지 않는다.
  * 반환된 [TransitionPlan] 을 호출자 ([com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter]) 가
  * [com.bts.shared.workflow.TransitionResult] 로 래핑하여 상위 BC 에 전달한다.
@@ -152,6 +157,40 @@ class WorkflowEngine(
         val (fieldChanges, emitEvents) = runPostActions(ctx, transition)
 
         return TransitionPlan(transition.toStateKey, fieldChanges, emitEvents)
+    }
+
+    /**
+     * 현재 상태에서 Validator 를 통과하는 가용 전이 목록을 반환한다.
+     *
+     * PostAction 은 절대 실행하지 않는다. GET 읽기 경로이므로 부수 효과 없음.
+     * 반드시 활성 읽기 전용 트랜잭션 안에서 호출해야 한다 ([Propagation.MANDATORY], readOnly=true).
+     *
+     * @param req 가용 전이 열거 요청 DTO
+     * @return [AvailableTransitionsResult.Success] 또는 [AvailableTransitionsResult.WorkflowNotFound]
+     */
+    @Transactional(readOnly = true, propagation = Propagation.MANDATORY)
+    fun availableTransitions(req: AvailableTransitionsRequest): AvailableTransitionsResult {
+        log.debug(
+            "WorkflowEngine.availableTransitions: workflowKey={} fromStateKey={}",
+            req.workflowKey,
+            req.fromStateKey,
+        )
+
+        val workflow = cache.findByKey(req.workflowKey)
+            ?: run {
+                log.info(
+                    "WorkflowEngine.availableTransitions: workflow not found key={}",
+                    req.workflowKey,
+                )
+                return AvailableTransitionsResult.WorkflowNotFound(req.workflowKey)
+            }
+
+        val candidates = workflow.transitions.filter { it.fromStateKey == req.fromStateKey }
+        val passed = candidates.filter { transition -> passesValidators(req, workflow, transition) }
+
+        return AvailableTransitionsResult.Success(
+            passed.map { AvailableTransitionView(it.fromStateKey, it.toStateKey, it.name) },
+        )
     }
 
     // ── private helpers ── //
@@ -226,5 +265,52 @@ class WorkflowEngine(
             emitEvents += plan.emitEvents
         }
         return fieldChanges to emitEvents
+    }
+
+    /**
+     * 단일 전이에 대해 Validator 평가만 수행하고 통과 여부를 반환한다.
+     *
+     * PostAction 은 평가하지 않는다 — [availableTransitions] 의 읽기 전용 계약을 유지한다.
+     * fromState 가 워크플로우에 존재하지 않으면 false 를 반환한다.
+     */
+    private fun passesValidators(
+        req: AvailableTransitionsRequest,
+        workflow: Workflow,
+        transition: WorkflowTransition,
+    ): Boolean {
+        val fromState = workflow.states.find { it.key == req.fromStateKey } ?: return false
+        val issueView = DefaultIssueView(
+            key = req.actorId,
+            priority = req.issueFields["priority"] as? String ?: "",
+            fields = req.issueFields,
+        )
+        val actorView = DefaultActorView(userId = req.actorId, roles = req.actorRoles)
+        val syntheticRequest = TransitionRequest(
+            workflowKey = req.workflowKey,
+            issueKey = "",
+            fromStateKey = req.fromStateKey,
+            toStateKey = transition.toStateKey,
+            actorId = req.actorId,
+            actorRoles = req.actorRoles,
+            issueFields = req.issueFields,
+            version = 0L,
+        )
+        val ctx = TransitionContext(syntheticRequest, workflow, fromState, transition, issueView, actorView)
+
+        for (cfg in definitionRepo.findValidators(transition)) {
+            val validator = validatorFactory.create(cfg.type, cfg.config)
+            val result = validator.validate(ctx)
+            if (result is ValidatorResult.Fail) {
+                log.debug(
+                    "WorkflowEngine.availableTransitions: validator='{}' rejected {}→{} reason='{}'",
+                    validator.type,
+                    transition.fromStateKey,
+                    transition.toStateKey,
+                    result.reason,
+                )
+                return false
+            }
+        }
+        return true
     }
 }
