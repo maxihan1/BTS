@@ -150,6 +150,20 @@
 - 추가 검증: ktlintCheck, detekt, Testcontainers 통합
 - cross-BC: shared-kernel + project-workflow + issue-tracking (Maxi 승인 예외, SPI 확장 채널)
 
+## 구현 노트 (bts-impl 결과)
+
+6 task 전부 TDD 완료 + 그린. 구현 중 **main의 issue-tracking 모듈이 깨진 상태**(테스트 컴파일 실패)였음이 드러나, 모듈을 살리는 과정에서 가려져 있던 PRE_EXISTING 부채들이 노출됨. Maxi 결정으로 모두 hot-fix.
+
+- `a195be6` PRE_EXISTING 컴파일 — `IssueControllerTransitionIntegrationTest`의 `WorkflowSchemeApplicationService(issueTypeLookupPort)` 누락 (FR-WF-02 도입 시 TestConfig 갱신 누락).
+- `6e3f3d4` Task 5 시드 멱등화 — 싱글톤 컨테이너 공유 시 `ix_scheme_default_mapping` 충돌. partial index `ON CONFLICT (scheme_id) WHERE issue_type_id IS NULL`.
+- `94182c3` PRE_EXISTING mock 누수 — `IssueControllerReadTest`의 relaxed mock 미정리 → `IssueTypeId`(value class, require>0) 시그니처 랜덤 음수 → `IssueTypeLookupAdapterTest` 묶음 실패. `clearAllMocks()` @AfterEach + `confirmVerified`.
+- `2b48be3` lint 기준 원복(에이전트가 무단으로 120→140 전역 변경한 것 되돌림) + MaxLineLength 12건 block-body 줄바꿈 (Maxi A안).
+- (마지막) project-workflow 테스트 ktlint 자동정리 (우리 파일 + PRE_EXISTING `WorkflowSchemeRepositoryIntegrationTest`).
+
+**남은 PRE_EXISTING (이 PR 범위 밖, follow-up).** `shared-kernel:detekt` Kotlin 버전충돌(2.0.10 vs 1.9.25) — jOOQ 없는 모듈 detekt 툴링 이슈(메모 `backend-clean-build-broken`). 우리 shared-kernel 신규 파일은 ktlint로 커버됨.
+
+**TDD 커밋 순서 (각 task test→feat 선행 확인됨).** T1 `099271d`→`571d0fc` / T2 `5864412`→`138af99` / T3 `ff3861c`→`16fa883` / T4 `b437178`→`58ea12f` / T5 `4f6c226`(red)→통합 / T6 `b8d57d2`(red)→통합.
+
 ## PR 2/2 (후속, 별도 worktree)
 
 PR1 머지 후 진행 — 전이 UI(frontend). 대략 task.
