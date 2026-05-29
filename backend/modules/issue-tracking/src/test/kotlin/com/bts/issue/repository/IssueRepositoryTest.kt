@@ -1,7 +1,8 @@
-// IssueRepository Testcontainers 통합 테스트 — T1~T9 RED→GREEN 검증 (Task 5 + Task 9, FR-IS-01)
+// IssueRepository Testcontainers 통합 테스트 — T1~T9 RED→GREEN 검증 (Task 5 + Task 9, FR-IS-01, FR-IS-02)
 
 package com.bts.issue.repository
 
+import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
@@ -400,5 +401,69 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 org.springframework.dao.DataIntegrityViolationException::class.java,
                 org.jooq.exception.IntegrityConstraintViolationException::class.java,
             )
+    }
+
+    // ── G4. findByKeyWithType — type 요약 노출 (FR-IS-02 Task 9) ─────────────────
+
+    /**
+     * Given  task 타입으로 생성된 이슈
+     * When   findByKeyWithType 으로 조회
+     * Then   typeId / typeKey = "task" / typeName = "Task" 가 IssueResponse 에 포함된다.
+     */
+    @Test
+    @Order(12)
+    fun `G4-findByKey - task 타입 이슈 조회 시 IssueResponse에 typeKey=task, typeName=Task가 포함된다`() {
+        val key = IssueKey.of("TPRJ", 1L)
+        val issue =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = key,
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "type summary test",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+            )
+        repository.insert(issue)
+
+        val response = repository.findByKeyWithType(key)
+
+        assertThat(response).isNotNull
+        assertThat(response!!.typeId).isEqualTo(requireTaskTypeId().value)
+        assertThat(response.typeKey).isEqualTo("task")
+        assertThat(response.typeName).isEqualTo("Task")
+    }
+
+    /**
+     * Given  task 타입 활성 이슈 2건
+     * When   listWithType 으로 첫 페이지 조회
+     * Then   반환된 IssueResponse 모두 typeKey = "task" 를 포함한다.
+     */
+    @Test
+    @Order(13)
+    fun `G4-list - 목록 조회 시 IssueResponse 각 항목에 typeKey=task가 포함된다`() {
+        val reporterId = ActorId(UUID.randomUUID())
+        for (i in 1..2) {
+            repository.insert(
+                Issue.create(
+                    id = IssueId(UUID.randomUUID()),
+                    key = IssueKey.of("TPRJ", i.toLong()),
+                    projectId = testProjectId,
+                    typeId = requireTaskTypeId(),
+                    summary = "list type test $i",
+                    reporterId = reporterId,
+                    currentStateKey = "open",
+                ),
+            )
+        }
+
+        val page = repository.listWithType("TPRJ", PageRequest.of(0, 10))
+
+        assertThat(page.totalElements).isEqualTo(2L)
+        assertThat(page.content).allSatisfy { response ->
+            assertThat(response.typeKey).isEqualTo("task")
+            assertThat(response.typeName).isEqualTo("Task")
+            assertThat(response.typeId).isEqualTo(requireTaskTypeId().value)
+        }
     }
 }
