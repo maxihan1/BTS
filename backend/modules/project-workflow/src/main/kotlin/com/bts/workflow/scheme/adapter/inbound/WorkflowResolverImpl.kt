@@ -113,4 +113,62 @@ class WorkflowResolverImpl(
         return workflowRepo.findById(mapping.workflowId)
             ?: error("Workflow ${mapping.workflowId} 가 mapping 에 있지만 workflows 에 없음 — 데이터 무결성 위반")
     }
+
+    /**
+     * **읽기 전용 경로 전용 — auto-assign 없음.**
+     *
+     * assignment 가 없으면 [WorkflowSchemeApplicationService.assignToProject] 를 호출하지 않고
+     * `null` 을 반환한다. DB 쓰기 및 이벤트 발행이 일어나지 않는다.
+     *
+     * 결정 순서.
+     * 1. [ProjectLookupPort.findIdByKey] 로 projectId(UUID) 조회 — 없으면 [ProjectNotFoundException] (EC-7).
+     * 2. assignment 조회 — 없으면 `null` 반환 (auto-assign 안 함).
+     * 3. issueTypeKey 명시 시 명시적 매핑 → 없으면 default mapping 조회.
+     * 4. [WorkflowRepository.findById] 로 workflow aggregate 반환.
+     *
+     * @param projectKey 워크플로우를 조회할 프로젝트 키.
+     * @param issueTypeKey 워크플로우를 조회할 이슈 타입 키. null 이면 default mapping 직접 조회.
+     * @return 할당된 [Workflow], 또는 스킴 할당이 없으면 `null`.
+     * @throws ProjectNotFoundException projectKey 에 해당하는 프로젝트가 없을 때 (EC-7).
+     * @throws WorkflowSchemeNoDefaultException 스킴은 있지만 매칭 mapping 도 default mapping 도
+     *   없을 때 (EC-2).
+     */
+    @Transactional(readOnly = true, propagation = Propagation.MANDATORY)
+    override fun resolveExistingFor(
+        projectKey: ProjectKey,
+        issueTypeKey: IssueTypeKey?,
+    ): Workflow? {
+        // 1. projectKey → projectId(UUID) 변환. 없으면 EC-7.
+        val projectId =
+            projectLookup.findIdByKey(projectKey)
+                ?: throw ProjectNotFoundException(projectKey.value)
+
+        log.debug(
+            "resolveExistingFor projectKey={} projectId={} issueTypeKey={}",
+            projectKey.value,
+            projectId,
+            issueTypeKey?.value,
+        )
+
+        // 2. assignment 조회. 없으면 null 반환 — auto-assign 하지 않는다.
+        val assignment = assignmentRepo.findByProjectId(projectId) ?: return null
+
+        val schemeId = assignment.workflowSchemeId
+
+        // 3. 매핑 조회 — S5(명시적) 우선, 없으면 EC-2(default fallback).
+        val mapping =
+            if (issueTypeKey != null) {
+                mappingRepo.findByIssueTypeKey(schemeId, issueTypeKey.value)
+                    ?: mappingRepo.findDefaultMapping(schemeId)
+            } else {
+                mappingRepo.findDefaultMapping(schemeId)
+            } ?: throw WorkflowSchemeNoDefaultException(schemeId.value.toString())
+
+        // 4. workflow aggregate 반환. 매핑에 있는 workflowId 가 없으면 데이터 무결성 위반.
+        return workflowRepo.findById(mapping.workflowId)
+            ?: error(
+                "Workflow ${mapping.workflowId} 가 mapping 에 있지만 " +
+                    "workflows 에 없음 — 데이터 무결성 위반",
+            )
+    }
 }

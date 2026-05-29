@@ -228,7 +228,9 @@ class IssueTypeApplicationServiceTest : DescribeSpec({
                 shouldThrow<IssueTypeStandardImmutableException> {
                     sut.delete(id, reassignTo = null)
                 }
-                verify(exactly = 0) { repo.softDelete(any()) }
+                // IssueTypeId value class 의 require(value > 0) 제약으로 any() 사용 시 MockK 가 음수 long 을 생성해 IAE.
+                // 구체적인 id 값으로 verify 해 안전하게 미호출을 검증한다.
+                verify(exactly = 0) { repo.softDelete(id) }
             }
         }
 

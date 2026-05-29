@@ -121,14 +121,21 @@ class IssueControllerTransitionIntegrationTest {
         }
 
         @Bean
-        open fun dataSource(): DriverManagerDataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+        open fun dataSource(): DriverManagerDataSource =
+            DriverManagerDataSource(
+                postgres.jdbcUrl,
+                postgres.username,
+                postgres.password,
+            )
 
         @Bean
         open fun transactionManager(dataSource: DriverManagerDataSource): PlatformTransactionManager =
             DataSourceTransactionManager(dataSource)
 
         @Bean
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext = DSL.using(dataSource, SQLDialect.POSTGRES)
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext {
+            return DSL.using(dataSource, SQLDialect.POSTGRES)
+        }
 
         @Bean
         open fun objectMapper(): ObjectMapper =
@@ -187,7 +194,9 @@ class IssueControllerTransitionIntegrationTest {
         ): WorkflowEngine = WorkflowEngine(cache, validatorFactory, postActionFactory, definitionRepo)
 
         @Bean
-        open fun workflowTransitionAdapter(engine: WorkflowEngine): WorkflowTransitionAdapter = WorkflowTransitionAdapter(engine)
+        open fun workflowTransitionAdapter(engine: WorkflowEngine): WorkflowTransitionAdapter {
+            return WorkflowTransitionAdapter(engine)
+        }
 
         @Bean
         open fun workflowSchemeRepository(dsl: DSLContext): WorkflowSchemeRepository = WorkflowSchemeRepository(dsl)
@@ -197,7 +206,9 @@ class IssueControllerTransitionIntegrationTest {
             ProjectWorkflowSchemeAssignmentRepository(dsl)
 
         @Bean
-        open fun schemeIssueTypeMappingRepository(dsl: DSLContext): SchemeIssueTypeMappingRepository = SchemeIssueTypeMappingRepository(dsl)
+        open fun schemeIssueTypeMappingRepository(dsl: DSLContext): SchemeIssueTypeMappingRepository {
+            return SchemeIssueTypeMappingRepository(dsl)
+        }
 
         @Bean
         open fun workflowSchemeEventPublisher(
@@ -212,9 +223,16 @@ class IssueControllerTransitionIntegrationTest {
         @Bean
         open fun jdbcProjectLookupAdapter(dsl: DSLContext): JdbcProjectLookupAdapter = JdbcProjectLookupAdapter(dsl)
 
+        /**
+         * PRE_EXISTING: FR-WF-02 issueTypeLookupPort 도입 시 이 TestConfiguration 갱신 누락.
+         * 전이(transition) 통합 테스트는 스킴 매핑 뷰를 조회하지 않으므로
+         * issueTypeLookupPort 는 relaxed mock 으로 대체한다.
+         */
         @Bean
         open fun issueTypeLookupPort(): IssueTypeLookupPort = mockk(relaxed = true)
 
+        // WorkflowSchemeApplicationService 생성자 파라미터 수 == 7 (FR-WF-02 issueTypeLookupPort 추가).
+        // @TestConfiguration Bean 메서드는 분리 불가한 단일 구성 단위이므로 Suppress 처리.
         @Bean
         @Suppress("LongParameterList")
         open fun workflowSchemeApplicationService(
@@ -261,6 +279,7 @@ class IssueControllerTransitionIntegrationTest {
         @Bean
         open fun clock(): Clock = Clock.systemUTC()
 
+        // IssueApplicationService 생성자 파라미터 수 == 7. @TestConfiguration Bean 메서드이므로 Suppress 처리.
         @Bean
         @Suppress("LongParameterList")
         open fun issueApplicationService(
@@ -516,6 +535,8 @@ class IssueControllerTransitionIntegrationTest {
      * 2. software-default workflow + states + transitions
      * 3. software-scheme default mapping → software-default workflow
      * 4. NODEFAULT 프로젝트 — no-default-scheme 배정 (default mapping 없음)
+     *
+     * LongMethod: 워크플로우·스킴·프로젝트 픽스처 삽입 순서를 한 곳에서 관리해야 하므로 함수 분리보다 인라인이 적합하다.
      */
     @Suppress("LongMethod")
     private fun seedWorkflowsAndSchemes() {
@@ -610,6 +631,8 @@ class IssueControllerTransitionIntegrationTest {
         }
     }
 
+    // 워크플로우 상태 INSERT helper: wfId + key + name + category + displayOrder = 6 파라미터 필수.
+    // 테스트 헬퍼 함수이므로 분리보다 인라인 유지가 더 명확하다. Suppress 처리.
     @Suppress("LongParameterList")
     private fun insertState(
         conn: Connection,

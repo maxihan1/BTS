@@ -35,7 +35,11 @@ import java.time.Instant
  * - [IssueTransitionNotAllowedException] → 409 + [IssueErrorCodes.TRANSITION_NOT_ALLOWED]
  * - [IssueWorkflowNotConfiguredException] → 422 + [IssueErrorCodes.WORKFLOW_NOT_CONFIGURED]
  * - [Exception] (fallback) → 500 + [IssueErrorCodes.INTERNAL_ERROR]
+ *
+ * TooManyFunctions: 도메인 예외 종류(400/401/403/404/409/422/500) 각각에 @ExceptionHandler 가 필요하므로
+ * 함수 수가 임계치(11)에 도달한다. RestControllerAdvice 의 책임(예외→HTTP 변환)은 분리 불가한 단일 관심사.
  */
+@Suppress("TooManyFunctions")
 @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
 class IssueExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)

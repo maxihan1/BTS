@@ -35,6 +35,9 @@ interface WorkflowResolver {
     /**
      * 프로젝트와 이슈 타입에 적합한 워크플로우를 반환한다.
      *
+     * **쓰기 경로 전용 (auto-assign 포함).** 이슈 생성/전이(write path)에서만 호출한다.
+     * 읽기 전용 경로에서는 [resolveExistingFor] 를 사용해야 한다.
+     *
      * 호출자 트랜잭션 강제. Application Service 또는 동등 계층에서만 호출.
      *
      * @param projectKey 워크플로우를 조회할 프로젝트 키. 예: `ProjectKey("ATLAS")`.
@@ -48,4 +51,25 @@ interface WorkflowResolver {
         projectKey: ProjectKey,
         issueTypeKey: IssueTypeKey?,
     ): Workflow
+
+    /**
+     * **읽기 전용 경로 전용 — auto-assign 없음.**
+     *
+     * 프로젝트에 워크플로우 스킴이 할당돼 있지 않으면 auto-assign 을 수행하지 않고
+     * `null` 을 반환한다. 이 메서드는 DB 쓰기(INSERT/UPDATE)를 일절 수행하지 않는다.
+     *
+     * 호출자 트랜잭션 강제. Application Service 또는 동등 계층에서만 호출.
+     *
+     * @param projectKey 워크플로우를 조회할 프로젝트 키. 예: `ProjectKey("ATLAS")`.
+     * @param issueTypeKey 워크플로우를 조회할 이슈 타입 키. null 이면 default mapping 직접 조회.
+     * @return 할당된 워크플로우, 또는 스킴 할당이 없으면 `null`.
+     * @throws ProjectNotFoundException projectKey 에 해당하는 프로젝트가 없을 때 (EC-7).
+     * @throws WorkflowSchemeNoDefaultException 스킴은 있지만 매칭 mapping 도 default mapping 도
+     *   없을 때 (EC-2).
+     */
+    @Transactional(readOnly = true, propagation = Propagation.MANDATORY)
+    fun resolveExistingFor(
+        projectKey: ProjectKey,
+        issueTypeKey: IssueTypeKey?,
+    ): Workflow?
 }

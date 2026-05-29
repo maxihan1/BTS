@@ -6,8 +6,10 @@ import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -94,6 +96,21 @@ class IssueControllerReadTest {
             typeKey = "task",
             typeName = "Task",
         )
+
+    /**
+     * PRE_EXISTING: value class + relaxed mock 안티패턴, main 컴파일 실패로 잠복했다가 모듈 컴파일 복구로 노출.
+     *
+     * relaxed mock 이 IssueApplicationService 타입 정보를 MockK 전역 상태에 등록하면,
+     * 이후 동일 JVM 프로세스에서 실행되는 테스트(IssueTypeLookupAdapterTest 등)가
+     * value class(IssueTypeId) 파라미터를 가진 메서드에 `any()` matcher 를 등록할 때
+     * MockK JvmSignatureValueGenerator 가 랜덤 Long 으로 IssueTypeId 를 reflection 생성해
+     * require(value > 0) 를 위반한다.
+     * 매 테스트 후 clearAllMocks() 로 MockK 전역 상태를 초기화하여 누수를 차단한다.
+     */
+    @AfterEach
+    fun tearDown() {
+        clearAllMocks()
+    }
 
     @BeforeEach
     fun setUp() {

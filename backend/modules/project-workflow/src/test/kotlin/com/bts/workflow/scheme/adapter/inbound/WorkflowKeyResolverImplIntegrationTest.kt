@@ -76,6 +76,7 @@ class WorkflowKeyResolverImplIntegrationTest {
 
         private lateinit var resolver: WorkflowKeyResolver
         private lateinit var txTemplate: TransactionTemplate
+        private lateinit var assignmentRepo: ProjectWorkflowSchemeAssignmentRepository
 
         // S5 시나리오 — assignment 있음 + story issueType 명시적 매핑
         private lateinit var projectS5Id: UUID
@@ -92,6 +93,10 @@ class WorkflowKeyResolverImplIntegrationTest {
         // EC-2 시나리오용 — default mapping 이 없는 커스텀 스킴에 배정된 프로젝트
         private lateinit var projectEc2Id: UUID
         private const val PROJECT_EC2_KEY = "KEYRSLVEC2"
+
+        // P1 회귀 가드용 — 스킴 미할당 프로젝트 (resolveExisting null 반환, INSERT 없음 검증)
+        private lateinit var projectUnassignedId: UUID
+        private const val PROJECT_UNASSIGNED_KEY = "RSLVNOASN"
 
         private const val ISSUE_TYPE_STORY_KEY = "story"
         private const val ISSUE_TYPE_UNKNOWN_KEY = "unknown-key-type"
@@ -113,7 +118,7 @@ class WorkflowKeyResolverImplIntegrationTest {
             txTemplate = TransactionTemplate(txManager)
 
             val schemeRepo = WorkflowSchemeRepository(dsl)
-            val assignmentRepo = ProjectWorkflowSchemeAssignmentRepository(dsl)
+            assignmentRepo = ProjectWorkflowSchemeAssignmentRepository(dsl)
             val mappingRepo = SchemeIssueTypeMappingRepository(dsl)
             val eventPublisher = WorkflowSchemeEventPublisher(dsl, ObjectMapper().registerModule(JavaTimeModule()))
             val permissionResolver = AlwaysAllowWorkflowSchemePermissionResolver()
@@ -291,6 +296,12 @@ class WorkflowKeyResolverImplIntegrationTest {
                 projectEc1Id = insertProject("00000000-0000-0000-0011-000000001101", PROJECT_EC1_KEY, "KeyResolver EC1")
                 projectEc8Id = insertProject("00000000-0000-0000-0088-000000008801", PROJECT_EC8_KEY, "KeyResolver EC8")
                 projectEc2Id = insertProject("00000000-0000-0000-0022-000000002201", PROJECT_EC2_KEY, "KeyResolver EC2")
+                projectUnassignedId =
+                    insertProject(
+                        "00000000-0000-0000-0099-000000009901",
+                        PROJECT_UNASSIGNED_KEY,
+                        "KeyResolver Unassigned",
+                    )
             }
         }
 
@@ -409,5 +420,43 @@ class WorkflowKeyResolverImplIntegrationTest {
         // 두 스레드 모두 정상 응답해야 한다 (idempotent — 중복 insert는 ON CONFLICT 처리)
         assertThat(successCount.get()).isEqualTo(threadCount)
         assertThat(errorCount.get()).isEqualTo(0)
+    }
+
+    // ── P1 회귀 가드 — resolveExisting: 미할당 프로젝트 → null, INSERT 없음 ──
+
+    @Test
+    fun `resolveExisting returns null for unassigned project — no INSERT side effect (P1 regression guard)`() {
+        // 사전 조건: 미할당 프로젝트에 스킴 배정이 없어야 한다.
+        val countBefore =
+            txTemplate.execute {
+                assignmentRepo.findByProjectId(projectUnassignedId)
+            }
+        assertThat(countBefore).isNull()
+
+        // resolveExisting 은 부수 효과 없이 null 을 반환해야 한다.
+        val result =
+            txTemplate.execute {
+                resolver.resolveExisting(ProjectKey(PROJECT_UNASSIGNED_KEY), null)
+            }
+        assertThat(result).isNull()
+
+        // 사후 조건: 호출 후에도 스킴 배정이 생기지 않아야 한다 (auto-assign 없음 보장).
+        val countAfter =
+            txTemplate.execute {
+                assignmentRepo.findByProjectId(projectUnassignedId)
+            }
+        assertThat(countAfter).isNull()
+    }
+
+    @Test
+    fun `resolveExisting returns WorkflowStartState for assigned project`() {
+        // S5 프로젝트는 software-scheme 이 미리 할당돼 있으므로 정상 반환되어야 한다.
+        val result =
+            txTemplate.execute {
+                resolver.resolveExisting(ProjectKey(PROJECT_S5_KEY), null)
+            }
+        assertThat(result).isNotNull()
+        assertThat(result!!.workflowKey).isEqualTo("software-default")
+        assertThat(result.startStateKey).isNotBlank()
     }
 }

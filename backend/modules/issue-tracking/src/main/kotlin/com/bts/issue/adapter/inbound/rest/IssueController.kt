@@ -37,7 +37,8 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
  * - GET    /api/v1/issues/{key} — 이슈 단건 조회 (T14)
  * - GET    /api/v1/issues — 이슈 목록 조회 (페이지) (T14)
  * - PATCH  /api/v1/issues/{key} — 이슈 수정 (T15)
- * - POST   /api/v1/issues/{key}/transition — 이슈 상태 전이 (T15, T6)
+ * - POST   /api/v1/issues/{key}/transition — 이슈 상태 전이 실행 (T15, T6)
+ * - GET    /api/v1/issues/{key}/transitions — 가용 전이 목록 조회 (T4)
  * - DELETE /api/v1/issues/{key} — 이슈 소프트 삭제 (T16)
  *
  * ### 트랜잭션 정책
@@ -197,6 +198,31 @@ class IssueController(
             )
         val response = service.transitionIssue(actor, issueKey, appRequest)
         return ResponseEntity.ok(DataResponse(data = response))
+    }
+
+    /**
+     * 현재 이슈 상태에서 이동 가능한 전이 목록을 반환한다.
+     *
+     * ### 복수/단수 명명 의도
+     * - 이 엔드포인트 (`GET /{key}/transitions`) 는 **목록 조회** — 가용 전이 여러 건을 열거한다.
+     * - 기존 엔드포인트 (`POST /{key}/transition`) 는 **단건 실행** — 특정 전이 한 건을 수행한다.
+     * 복수형(`transitions`) vs 단수형(`transition`) 명명은 이 의도 차이를 명시한다.
+     *
+     * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
+     * @return 200 OK + [AvailableTransitionsResponse] body
+     * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우 → 404
+     * @throws com.bts.issue.domain.IssueWorkflowNotConfiguredException 프로젝트에 워크플로우 미설정 → 422
+     */
+    @GetMapping("/{key}/transitions")
+    fun availableTransitions(
+        @PathVariable key: String,
+    ): ResponseEntity<DataResponse<AvailableTransitionsResponse>> {
+        log.info("IssueController.availableTransitions key={}", key)
+
+        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val issueKey = IssueKey(key)
+        val views = service.availableTransitions(actor, issueKey)
+        return ResponseEntity.ok(DataResponse(data = AvailableTransitionsResponse.from(views)))
     }
 
     /**
