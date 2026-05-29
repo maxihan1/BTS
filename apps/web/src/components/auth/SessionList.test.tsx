@@ -82,15 +82,12 @@ describe('SessionList', () => {
     const Wrapper = createWrapper()
     render(<SessionList />, { wrapper: Wrapper })
 
-    // 세션 로드 대기
+    // 기기 정보(userAgent) 렌더 확인 — 데이터 로드 완료까지 대기
     await waitFor(() => {
-      expect(screen.queryByText(/로딩/)).not.toBeInTheDocument()
+      expect(
+        screen.getByText(/Mozilla\/5\.0 \(Macintosh/),
+      ).toBeInTheDocument()
     })
-
-    // 기기 정보(userAgent) 렌더 확인
-    expect(
-      screen.getByText(/Mozilla\/5\.0 \(Macintosh/),
-    ).toBeInTheDocument()
     // IP 주소 렌더 확인
     expect(screen.getByText('192.168.1.1')).toBeInTheDocument()
   })
