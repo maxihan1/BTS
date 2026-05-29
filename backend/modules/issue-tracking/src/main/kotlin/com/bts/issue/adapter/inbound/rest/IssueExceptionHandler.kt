@@ -36,7 +36,13 @@ import java.time.Instant
  * - [IssueTransitionNotAllowedException] → 409 + [IssueErrorCodes.TRANSITION_NOT_ALLOWED]
  * - [IssueWorkflowNotConfiguredException] → 422 + [IssueErrorCodes.WORKFLOW_NOT_CONFIGURED]
  * - [Exception] (fallback) → 500 + [IssueErrorCodes.INTERNAL_ERROR]
+ *
+ * `@RestControllerAdvice` 는 예외 → HTTP 응답 매핑을 한곳에 모으는 응집된 패턴이라 도메인 예외가
+ * 늘수록 핸들러 수가 자연히 증가한다. FR-IS-02 D6 에서 [IssueTypeNotFoundException] 핸들러가 추가되며
+ * 12개가 되어 detekt TooManyFunctions(11) 를 넘는데, 분리하면 예외-응답 매핑이 파편화되므로
+ * 클래스 단위로 억제한다.
  */
+@Suppress("TooManyFunctions")
 @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
 class IssueExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
