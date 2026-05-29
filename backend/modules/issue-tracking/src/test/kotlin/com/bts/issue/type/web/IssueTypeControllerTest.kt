@@ -291,7 +291,7 @@ class IssueTypeControllerTest {
     @Test
     fun `PATCH issue-types id — 정상 수정이면 200`() {
         val updated = issueType(10L, "feature", "Feature Updated", null, null)
-        justRun { issueTypeApplicationService.update(any(), any()) }
+        // relaxed mock — update()는 Unit 반환이므로 별도 stub 불필요
         every { issueTypeRepository.findById(IssueTypeId(10L)) } returns updated
 
         val body = mapOf("name" to "Feature Updated", "hierarchyLevel" to 0)
@@ -309,7 +309,7 @@ class IssueTypeControllerTest {
 
     @Test
     fun `PATCH issue-types id — 미존재 id이면 404 ISSUE_TYPE_NOT_FOUND`() {
-        every { issueTypeApplicationService.update(any(), any()) } throws
+        every { issueTypeApplicationService.update(IssueTypeId(999L), any()) } throws
             IssueTypeNotFoundException(IssueTypeId(999L))
 
         val body = mapOf("name" to "Feature Updated", "hierarchyLevel" to 0)
@@ -327,7 +327,7 @@ class IssueTypeControllerTest {
 
     @Test
     fun `PATCH issue-types id — 표준 타입이면 409 ISSUE_TYPE_STANDARD_IMMUTABLE`() {
-        every { issueTypeApplicationService.update(any(), any()) } throws
+        every { issueTypeApplicationService.update(IssueTypeId(1L), any()) } throws
             IssueTypeStandardImmutableException(typeId = IssueTypeId(1L), key = null)
 
         val body = mapOf("name" to "Epic Modified", "hierarchyLevel" to 1)
@@ -345,7 +345,7 @@ class IssueTypeControllerTest {
 
     @Test
     fun `DELETE issue-types id — 미사용이면 204`() {
-        justRun { issueTypeApplicationService.delete(any(), isNull()) }
+        // relaxed mock — delete()는 Unit 반환이므로 별도 stub 불필요
 
         mockMvc.perform(delete("/api/v1/issue-types/10"))
             .andExpect(status().isNoContent)
@@ -355,7 +355,7 @@ class IssueTypeControllerTest {
 
     @Test
     fun `DELETE issue-types id reassignTo — reassignTo 지정이면 204`() {
-        justRun { issueTypeApplicationService.delete(any(), any()) }
+        // relaxed mock — delete()는 Unit 반환이므로 별도 stub 불필요
 
         mockMvc.perform(delete("/api/v1/issue-types/10").param("reassignTo", "3"))
             .andExpect(status().isNoContent)
@@ -365,7 +365,7 @@ class IssueTypeControllerTest {
 
     @Test
     fun `DELETE issue-types id — 표준 타입이면 409 ISSUE_TYPE_STANDARD_IMMUTABLE`() {
-        every { issueTypeApplicationService.delete(any(), isNull()) } throws
+        every { issueTypeApplicationService.delete(IssueTypeId(1L), null) } throws
             IssueTypeStandardImmutableException(typeId = IssueTypeId(1L), key = null)
 
         mockMvc.perform(delete("/api/v1/issue-types/1"))
@@ -377,7 +377,7 @@ class IssueTypeControllerTest {
 
     @Test
     fun `DELETE issue-types id — 사용중이고 reassignTo 없으면 409 ISSUE_TYPE_IN_USE + usageCount + schemeMappingCount`() {
-        every { issueTypeApplicationService.delete(any(), isNull()) } throws
+        every { issueTypeApplicationService.delete(IssueTypeId(10L), null) } throws
             IssueTypeInUseException(usageCount = 5L, schemeMappingCount = 0L)
 
         mockMvc.perform(delete("/api/v1/issue-types/10"))
@@ -391,7 +391,7 @@ class IssueTypeControllerTest {
 
     @Test
     fun `DELETE issue-types id — schemeMappingCount 가 양수이면 409 ISSUE_TYPE_IN_USE + reassignTo 불가 안내`() {
-        every { issueTypeApplicationService.delete(any(), isNull()) } throws
+        every { issueTypeApplicationService.delete(IssueTypeId(10L), null) } throws
             IssueTypeInUseException(usageCount = 2L, schemeMappingCount = 3L)
 
         mockMvc.perform(delete("/api/v1/issue-types/10"))
@@ -406,7 +406,7 @@ class IssueTypeControllerTest {
 
     @Test
     fun `DELETE issue-types id reassignTo — reassignTo 무효이면 409 ISSUE_TYPE_REASSIGN_TARGET_INVALID`() {
-        every { issueTypeApplicationService.delete(any(), any()) } throws
+        every { issueTypeApplicationService.delete(IssueTypeId(10L), IssueTypeId(999L)) } throws
             IssueTypeReassignTargetInvalidException(
                 targetId = IssueTypeId(999L),
                 reason = "재할당 대상 이슈 타입이 존재하지 않거나 삭제되었습니다",
@@ -421,7 +421,7 @@ class IssueTypeControllerTest {
 
     @Test
     fun `DELETE issue-types id — 미존재 id이면 404 ISSUE_TYPE_NOT_FOUND`() {
-        every { issueTypeApplicationService.delete(any(), isNull()) } throws
+        every { issueTypeApplicationService.delete(IssueTypeId(999L), null) } throws
             IssueTypeNotFoundException(IssueTypeId(999L))
 
         mockMvc.perform(delete("/api/v1/issue-types/999"))
