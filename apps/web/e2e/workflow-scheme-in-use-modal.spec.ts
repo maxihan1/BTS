@@ -27,7 +27,8 @@ test.describe('E2E-4 사용 중 스킴 삭제 차단 — SchemeInUseModal', () =
 
   test('삭제 버튼 클릭 → 409 SCHEME_IN_USE → SchemeInUseModal 노출 + title 검증', async ({ page }) => {
     // When: 메타 패널 「삭제」 버튼 클릭 → DELETE API → 409 응답
-    await page.getByRole('button', { name: labels.metaPanel.deleteButton }).click()
+    // exact: true — 매핑 테이블 "매핑 삭제 (버그)" 등 버튼과 strict mode 충돌 방지
+    await page.getByRole('button', { name: labels.metaPanel.deleteButton, exact: true }).click()
 
     // Then: SchemeInUseModal (role=alertdialog) 노출
     const modal = page.getByRole('alertdialog')
@@ -39,13 +40,13 @@ test.describe('E2E-4 사용 중 스킴 삭제 차단 — SchemeInUseModal', () =
 
   test('SchemeInUseModal — 사용 중 프로젝트 label + count 표시', async ({ page }) => {
     // When
-    await page.getByRole('button', { name: labels.metaPanel.deleteButton }).click()
+    await page.getByRole('button', { name: labels.metaPanel.deleteButton, exact: true }).click()
 
     const modal = page.getByRole('alertdialog')
     await expect(modal).toBeVisible()
 
-    // usedByProjectsLabel 표시
-    await expect(modal.getByText(labels.inUseModal.usedByProjectsLabel)).toBeVisible()
+    // usedByProjectsLabel 표시 — exact: true로 description 내 부분 문자열 오매칭 방지
+    await expect(modal.getByText(labels.inUseModal.usedByProjectsLabel, { exact: true })).toBeVisible()
 
     // 사용 중 프로젝트 수 표시 (fixture 값 2 포함)
     await expect(modal.getByText(new RegExp(String(IN_USE_SCHEME_PROJECTS_COUNT)))).toBeVisible()
@@ -53,7 +54,7 @@ test.describe('E2E-4 사용 중 스킴 삭제 차단 — SchemeInUseModal', () =
 
   test('SchemeInUseModal — 「확인」 버튼 클릭 → 모달 닫힘', async ({ page }) => {
     // When
-    await page.getByRole('button', { name: labels.metaPanel.deleteButton }).click()
+    await page.getByRole('button', { name: labels.metaPanel.deleteButton, exact: true }).click()
 
     const modal = page.getByRole('alertdialog')
     await expect(modal).toBeVisible()
@@ -67,7 +68,7 @@ test.describe('E2E-4 사용 중 스킴 삭제 차단 — SchemeInUseModal', () =
 
   test('G3 — usedByProjects link navigate (현재 버전 skip)', async ({ page }, testInfo) => {
     // When
-    await page.getByRole('button', { name: labels.metaPanel.deleteButton }).click()
+    await page.getByRole('button', { name: labels.metaPanel.deleteButton, exact: true }).click()
 
     const modal = page.getByRole('alertdialog')
     await expect(modal).toBeVisible()

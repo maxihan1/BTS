@@ -35,7 +35,8 @@ test.describe('E2E-3 표준 스킴 보호', () => {
 
   test('삭제 버튼 disabled + title tooltip "표준 스킴은 삭제 불가"', async ({ page }) => {
     // When. 메타패널의 삭제 버튼 확인
-    const deleteButton = page.getByRole('button', { name: labels.metaPanel.deleteButton })
+    // exact: true — 매핑 테이블 "매핑 삭제 (스토리)" 등 버튼과 strict mode 충돌 방지
+    const deleteButton = page.getByRole('button', { name: labels.metaPanel.deleteButton, exact: true })
     await expect(deleteButton).toBeVisible()
 
     // Then. disabled 상태
