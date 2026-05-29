@@ -62,6 +62,14 @@ export const issueDetailStrings = {
   cancelButton: '취소',
   /** 설명 자리표시자 */
   descriptionPlaceholder: '(FR-IS-04 본문 단계에서 추가 예정)',
+  /** 메타패널 — 유형 레이블 */
+  typeLabel: '유형',
+  /** 유형 셀렉터 aria-label */
+  typeSelectLabel: '유형 선택',
+  /** 409 버전 충돌 에러 메시지 */
+  typeChangeConflictError: '다른 사용자가 이미 이 이슈를 수정했습니다. 새로고침 후 다시 시도해 주세요.',
+  /** 타입 변경 실패 기본 에러 메시지 */
+  typeChangeError: '이슈 유형 변경 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
 } as const
 
 /** 이슈 생성 폼 관련 문자열 */

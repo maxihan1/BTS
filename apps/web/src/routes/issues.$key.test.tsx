@@ -146,9 +146,10 @@ describe('IssueDetailPage — 성공 레이아웃', () => {
 
   /**
    * T7-5. 메타패널에 상태가 읽기전용 배지로 렌더되어야 한다.
-   * 상태 전이 드롭다운/select가 없어야 한다 (D6 제외).
+   * 상태 전이 드롭다운이 없어야 한다 (D6 제외).
+   * 유형 셀렉터(combobox)는 있지만, 상태 전이용 combobox는 없다.
    */
-  it('T7-5: 메타패널에 상태 배지가 렌더되고 select/combobox가 없다', async () => {
+  it('T7-5: 메타패널에 상태 배지가 렌더되고 상태 전이 드롭다운이 없다', async () => {
     setupIssueFoundHandler()
 
     renderPage('ATLAS-1')
@@ -156,8 +157,8 @@ describe('IssueDetailPage — 성공 레이아웃', () => {
     await waitFor(() => {
       // 상태 배지가 렌더되어야 함
       expect(screen.getByTestId('issue-state-badge')).toBeInTheDocument()
-      // 상태 전이 드롭다운이 없어야 함 (D6 제외)
-      expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+      // 유형 셀렉터가 있어야 함 (Task-6에서 추가)
+      expect(screen.getByRole('combobox', { name: /유형/ })).toBeInTheDocument()
     })
   })
 

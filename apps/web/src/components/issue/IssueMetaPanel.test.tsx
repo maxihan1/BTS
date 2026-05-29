@@ -68,13 +68,16 @@ describe('IssueMetaPanel — 유형 행 렌더', () => {
   })
 
   /**
-   * IMP-2: 현재 이슈의 typeName이 표시된다.
+   * IMP-2: 현재 이슈의 typeName이 span으로 표시된다.
    * issueFixture.typeId=1 → availableTypes에서 id=1 → name="버그"
+   * 셀렉터 option에도 "버그"가 있으므로 span 요소로 범위를 좁힌다.
    */
   it('IMP-2: 현재 이슈의 typeName을 표시한다', () => {
     renderPanel()
-    const aside = screen.getByRole('complementary')
-    expect(within(aside).getByText('버그')).toBeInTheDocument()
+    // data-testid="issue-type-name" span으로 정확하게 찾음 (option 텍스트와 구분)
+    const typeNameSpan = screen.getByTestId('issue-type-name')
+    expect(typeNameSpan).toBeInTheDocument()
+    expect(typeNameSpan.textContent).toBe('버그')
   })
 
   /**

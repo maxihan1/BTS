@@ -2,10 +2,13 @@
 import type { JSX } from 'react'
 import { useState } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
-import { fetchIssue } from '@/api/issues'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { fetchIssue, updateIssue } from '@/api/issues'
+import { ApiError } from '@/api/client'
 import { useUpdateIssueSummary, issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { useDeleteIssue } from '@/api/useDeleteIssue'
+import { useIssueTypes } from '@/hooks/use-issue-types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
@@ -44,6 +47,7 @@ interface IssueDetailPageProps {
  */
 export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [editSummary, setEditSummary] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -54,11 +58,29 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
     retry: false,
   })
 
+  const { data: availableTypes = [] } = useIssueTypes()
+
   const updateMutation = useUpdateIssueSummary()
   const deleteMutation = useDeleteIssue({
     onSuccess: () => {
       // '/issues' 경로는 router.ts 등록 완료 시 타입 추론됨 — 현재 string cast로 우회
       void navigate({ to: '/issues' as string })
+    },
+  })
+
+  const typeChangeMutation = useMutation({
+    mutationFn: ({ typeId, expectedVersion }: { typeId: number; expectedVersion: number }) =>
+      updateIssue(issueKey, { typeId, expectedVersion }),
+    onSuccess: (updatedIssue) => {
+      queryClient.setQueryData(issueQueryKey(issueKey), updatedIssue)
+      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+    },
+    onError: (err: unknown) => {
+      if (err instanceof ApiError && err.status === 409) {
+        toast.error(issueDetailStrings.typeChangeConflictError)
+      } else {
+        toast.error(issueDetailStrings.typeChangeError)
+      }
     },
   })
 
@@ -97,6 +119,12 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
       { key: issue.key, summary: editSummary, expectedVersion: issue.version },
       { onSuccess: () => setIsEditingTitle(false) },
     )
+  }
+
+  // ── 타입 변경 핸들러 ─────────────────────────────────────────────────────
+  function handleTypeChange(typeId: number) {
+    if (issue === undefined) return
+    typeChangeMutation.mutate({ typeId, expectedVersion: issue.version })
   }
 
   // ── 삭제 핸들러 ───────────────────────────────────────────────────────────
@@ -203,7 +231,12 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
             </div>
           </aside>
         ) : (
-          <IssueMetaPanel issue={issue} onDeleteClick={handleDeleteClick} />
+          <IssueMetaPanel
+            issue={issue}
+            availableTypes={availableTypes}
+            onTypeChange={handleTypeChange}
+            onDeleteClick={handleDeleteClick}
+          />
         )}
       </div>
     </div>
