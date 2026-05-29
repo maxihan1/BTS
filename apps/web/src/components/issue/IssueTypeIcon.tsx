@@ -43,14 +43,8 @@ export interface IssueTypeIconProps {
  * - aria-label={typeName}으로 스크린리더 접근성 보장
  */
 export function IssueTypeIcon({ iconName, typeName }: IssueTypeIconProps): JSX.Element {
-  const resolvedName = iconName ?? ''
-  const Icon: LucideIcon = TYPE_ICON_BY_NAME[resolvedName] ?? FALLBACK_ICON
+  const Icon: LucideIcon =
+    (iconName !== null ? TYPE_ICON_BY_NAME[iconName] : undefined) ?? FALLBACK_ICON
 
-  return (
-    <Icon
-      role="img"
-      aria-label={typeName}
-      className="size-4 shrink-0"
-    />
-  )
+  return <Icon role="img" aria-label={typeName} className="size-4 shrink-0" />
 }
