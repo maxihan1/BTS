@@ -13,6 +13,7 @@ import { useIssueTransitions, issueTransitionKeys } from '@/hooks/use-issue-tran
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
+import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
 import { issueDetailStrings } from '@/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,7 +61,21 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   })
 
   const { data: availableTypes = [] } = useIssueTypes()
-  const { data: transitions = [] } = useIssueTransitions(issueKey)
+  const {
+    data: transitions = [],
+    isError: isTransitionsError,
+    error: transitionsError,
+  } = useIssueTransitions(issueKey)
+
+  // 스펙 E5: 422(워크플로우 미설정) vs 200+빈 배열(종료상태) 구분
+  const transitionUnavailableReason: TransitionUnavailableReason = (() => {
+    if (isTransitionsError) {
+      const is422 =
+        transitionsError instanceof ApiError && transitionsError.status === 422
+      return is422 ? 'no-workflow' : null
+    }
+    return transitions.length === 0 ? 'terminal' : null
+  })()
 
   // 전이 실행 mutation — D6 typeChangeMutation과 동일 패턴 (onError 훅 레벨 처리)
   const transitionMutation = useMutation({
@@ -280,6 +295,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
             transitions={transitions}
             onTransition={handleTransition}
             isTransitioning={transitionMutation.isPending}
+            unavailableReason={transitionUnavailableReason}
           />
         )}
       </div>

@@ -11,6 +11,14 @@ import { issueDetailStrings } from '@/i18n/ko'
 // IssueMetaPanel
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * 전이 컨트롤을 노출할 수 없는 사유.
+ * - 'no-workflow': GET /transitions 422 — 워크플로우 미설정 (스펙 E5 S5)
+ * - 'terminal': 200 + 빈 배열 — 종료상태, 더 이상 전이 없음 (스펙 E5 S6)
+ * - null: 전이 가용 (정상 흐름)
+ */
+export type TransitionUnavailableReason = 'no-workflow' | 'terminal' | null
+
 /** IssueMetaPanel props */
 export interface IssueMetaPanelProps {
   /** 렌더할 이슈 데이터 */
@@ -27,6 +35,12 @@ export interface IssueMetaPanelProps {
   onTransition: (toStateKey: string) => void
   /** 전이 진행 중 여부 — true 시 셀렉터 disabled (NFR3 중복클릭 방지) */
   isTransitioning: boolean
+  /**
+   * 전이 컨트롤을 노출할 수 없는 사유 (스펙 E5).
+   * 'no-workflow' → 미설정 안내, 'terminal' | null → 종료상태 안내.
+   * transitions.length > 0 이면 이 값과 관계없이 셀렉터가 노출된다.
+   */
+  unavailableReason?: TransitionUnavailableReason
 }
 
 /**
@@ -47,6 +61,7 @@ export function IssueMetaPanel({
   transitions,
   onTransition,
   isTransitioning,
+  unavailableReason = null,
 }: IssueMetaPanelProps): JSX.Element {
   /** issue.typeId에 해당하는 타입 항목 — iconName 해석에 사용 */
   const currentType = availableTypes.find((t) => t.id === issue.typeId)
@@ -69,6 +84,7 @@ export function IssueMetaPanel({
             transitions={transitions}
             onTransition={onTransition}
             isTransitioning={isTransitioning}
+            unavailableReason={unavailableReason}
           />
         </div>
 
@@ -198,12 +214,15 @@ interface IssueStateTransitionProps {
   onTransition: (toStateKey: string) => void
   /** 전이 진행 중 여부 — true 시 셀렉터 disabled (NFR3) */
   isTransitioning: boolean
+  /** 전이 컨트롤을 노출할 수 없는 사유 (스펙 E5) */
+  unavailableReason: TransitionUnavailableReason
 }
 
 /**
  * 이슈 상태 전이 셀렉터 컴포넌트.
  *
- * - 가용전이 0건(종료상태 S6) → 셀렉터 비노출 + "더 진행할 전이 없음" 안내
+ * - 가용전이 0건 + unavailableReason='no-workflow' → 미설정 안내 (스펙 E5 S5)
+ * - 가용전이 0건 + unavailableReason='terminal'|null → "더 진행할 전이 없음" 안내 (스펙 E5 S6)
  * - 가용전이 있으면 네이티브 select — IssueTypeSelect 동일 패턴
  * - 첫 옵션은 placeholder(비선택 상태), 전이 선택 시 onTransition(toStateKey) 호출
  * - isTransitioning=true → disabled (중복클릭 방지, NFR3)
@@ -213,9 +232,17 @@ function IssueStateTransition({
   transitions,
   onTransition,
   isTransitioning,
+  unavailableReason,
 }: IssueStateTransitionProps): JSX.Element {
-  // 가용전이 0건 → 종료상태 안내만 노출
+  // 가용전이 0건 → 사유에 따라 안내문구 분기 (스펙 E5)
   if (transitions.length === 0) {
+    if (unavailableReason === 'no-workflow') {
+      return (
+        <p className="text-xs text-muted-foreground mt-1">
+          {issueDetailStrings.transitionWorkflowNotConfiguredError}
+        </p>
+      )
+    }
     return (
       <p className="text-xs text-muted-foreground mt-1">
         {issueDetailStrings.noTransitionsAvailable}
