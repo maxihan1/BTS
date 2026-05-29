@@ -83,6 +83,44 @@ describe('useIssueTransitions', () => {
   })
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// E5 구분 검증 — 422(워크플로우 미설정) vs 200 빈 배열(종료상태)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('useIssueTransitions — E5 분기', () => {
+  it('E5-1: 422 응답 시 isError=true이고 data가 undefined다 (빈 배열 폴백 금지)', async () => {
+    server.use(
+      http.get('/api/v1/issues/ATLAS-NOWF/transitions', () =>
+        HttpResponse.json(
+          { errorCode: 'workflow_not_configured', message: '워크플로우 미설정' },
+          { status: 422 },
+        ),
+      ),
+    )
+
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useIssueTransitions('ATLAS-NOWF'), { wrapper })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    // 422는 에러로 노출돼야 하며 빈 배열로 폴백해선 안 된다
+    expect(result.current.data).toBeUndefined()
+  })
+
+  it('E5-2: 200 + 빈 배열 응답 시 isSuccess=true이고 data가 빈 배열이다 (종료상태 S6)', async () => {
+    server.use(
+      http.get('/api/v1/issues/ATLAS-4/transitions', () =>
+        HttpResponse.json({ data: { transitions: [] } }),
+      ),
+    )
+
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useIssueTransitions('ATLAS-4'), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual([])
+  })
+})
+
 describe('useTransitionIssue', () => {
   it('전이 성공 후 issue + issue-transitions 캐시를 무효화한다', async () => {
     const updatedIssue = {

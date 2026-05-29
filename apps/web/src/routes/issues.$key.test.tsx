@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { toast } from 'sonner'
 import { server } from '@/test/server'
-import { issueAtlas1Fixture } from '@/mocks/issue-fixtures'
+import { issueAtlas1Fixture, issueAtlasNoWorkflowFixture } from '@/mocks/issue-fixtures'
 import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
 import { MOCK_CONFLICT_TRIGGER, MOCK_NO_WORKFLOW_TRIGGER } from '@/mocks/issue-handlers'
 import { issueDetailStrings } from '@/i18n/ko'
@@ -731,6 +731,92 @@ describe('IssueDetailPage — 상태전이', () => {
     await waitFor(() => {
       expect(screen.queryByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).not.toBeInTheDocument()
       expect(screen.getByText(issueDetailStrings.noTransitionsAvailable)).toBeInTheDocument()
+    })
+  })
+
+  // ── E5 구분 검증 ───────────────────────────────────────────────────────────
+
+  /**
+   * T4-6 (E5, S5 미설정): GET /transitions 422 → 미설정 안내문구 노출.
+   * "더 진행할 전이 없음"(종료상태 문구)은 보이지 않아야 한다.
+   */
+  it('T4-6: GET /transitions 422(워크플로우 미설정) 시 미설정 안내문구가 노출된다', async () => {
+    server.use(
+      http.get('/api/v1/issues/ATLAS-NOWF', () =>
+        HttpResponse.json({ data: issueAtlasNoWorkflowFixture }),
+      ),
+      http.get('/api/v1/issues/ATLAS-NOWF/transitions', () =>
+        HttpResponse.json(
+          { errorCode: 'workflow_not_configured', message: '이슈에 워크플로우가 설정되지 않았습니다.' },
+          { status: 422 },
+        ),
+      ),
+      // issue-types도 필요 (useIssueTypes)
+      http.get('/api/v1/issue-types', () =>
+        HttpResponse.json({ data: [] }),
+      ),
+    )
+
+    renderPage('ATLAS-NOWF')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText(issueDetailStrings.transitionWorkflowNotConfiguredError)).toBeInTheDocument()
+      expect(screen.queryByText(issueDetailStrings.noTransitionsAvailable)).not.toBeInTheDocument()
+    })
+  })
+
+  /**
+   * T4-7 (E5 구분): 종료상태(S6, 200+빈배열)와 미설정(S5, 422)이 다른 안내문구를 표시한다.
+   * 빈 배열 → noTransitionsAvailable, 422 → transitionWorkflowNotConfiguredError.
+   */
+  it('T4-7: 종료상태(빈 배열)와 워크플로우 미설정(422)이 서로 다른 문구를 표시한다', async () => {
+    // (1) 종료상태 — 빈 배열
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/transitions', () =>
+        HttpResponse.json({ data: { transitions: [] } }),
+      ),
+    )
+
+    const { unmount } = renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+    await waitFor(() => {
+      expect(screen.getByText(issueDetailStrings.noTransitionsAvailable)).toBeInTheDocument()
+    })
+
+    unmount()
+
+    // (2) 미설정 — 422
+    server.use(
+      http.get('/api/v1/issues/ATLAS-NOWF', () =>
+        HttpResponse.json({ data: issueAtlasNoWorkflowFixture }),
+      ),
+      http.get('/api/v1/issues/ATLAS-NOWF/transitions', () =>
+        HttpResponse.json(
+          { errorCode: 'workflow_not_configured', message: '이슈에 워크플로우가 설정되지 않았습니다.' },
+          { status: 422 },
+        ),
+      ),
+      http.get('/api/v1/issue-types', () =>
+        HttpResponse.json({ data: [] }),
+      ),
+    )
+
+    renderPage('ATLAS-NOWF')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+    await waitFor(() => {
+      expect(screen.getByText(issueDetailStrings.transitionWorkflowNotConfiguredError)).toBeInTheDocument()
+      // 종료상태 문구는 노출되지 않아야 한다
+      expect(screen.queryByText(issueDetailStrings.noTransitionsAvailable)).not.toBeInTheDocument()
     })
   })
 

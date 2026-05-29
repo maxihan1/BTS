@@ -283,6 +283,71 @@ describe('IssueMetaPanel — 가용전이 0건 (종료상태 S6)', () => {
   })
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// E5 구분 검증 — unavailableReason prop: 'no-workflow' vs 'terminal' vs null
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal) 구분', () => {
+  /**
+   * IMP-18: unavailableReason='no-workflow' 시 미설정 안내문구가 렌더된다.
+   */
+  it('IMP-18: unavailableReason=no-workflow 시 transitionWorkflowNotConfiguredError 문구가 렌더된다', () => {
+    render(
+      <IssueMetaPanel
+        issue={issueFixture}
+        availableTypes={availableTypes}
+        onTypeChange={vi.fn()}
+        onDeleteClick={vi.fn()}
+        transitions={[]}
+        onTransition={vi.fn()}
+        isTransitioning={false}
+        unavailableReason="no-workflow"
+      />,
+    )
+    expect(screen.getByText(issueDetailStrings.transitionWorkflowNotConfiguredError)).toBeInTheDocument()
+    expect(screen.queryByText(issueDetailStrings.noTransitionsAvailable)).not.toBeInTheDocument()
+  })
+
+  /**
+   * IMP-19: unavailableReason='terminal'(또는 null) 시 noTransitionsAvailable 문구가 렌더된다.
+   */
+  it('IMP-19: unavailableReason=terminal 시 noTransitionsAvailable 문구가 렌더된다', () => {
+    render(
+      <IssueMetaPanel
+        issue={issueFixture}
+        availableTypes={availableTypes}
+        onTypeChange={vi.fn()}
+        onDeleteClick={vi.fn()}
+        transitions={[]}
+        onTransition={vi.fn()}
+        isTransitioning={false}
+        unavailableReason="terminal"
+      />,
+    )
+    expect(screen.getByText(issueDetailStrings.noTransitionsAvailable)).toBeInTheDocument()
+    expect(screen.queryByText(issueDetailStrings.transitionWorkflowNotConfiguredError)).not.toBeInTheDocument()
+  })
+
+  /**
+   * IMP-20: 전이가 있으면 unavailableReason과 무관하게 셀렉터가 렌더된다.
+   */
+  it('IMP-20: 전이가 있으면 unavailableReason=no-workflow여도 셀렉터가 렌더된다', () => {
+    render(
+      <IssueMetaPanel
+        issue={issueFixture}
+        availableTypes={availableTypes}
+        onTypeChange={vi.fn()}
+        onDeleteClick={vi.fn()}
+        transitions={transitionsFixture}
+        onTransition={vi.fn()}
+        isTransitioning={false}
+        unavailableReason="no-workflow"
+      />,
+    )
+    expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument()
+  })
+})
+
 describe('IssueMetaPanel — 전이 셀렉터 접근성 (WCAG AA)', () => {
   /**
    * IMP-17: 전이 셀렉터에 aria-label이 있고 min-h-[44px] 클래스가 있다.
