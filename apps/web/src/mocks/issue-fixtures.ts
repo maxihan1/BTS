@@ -68,10 +68,26 @@ export const issueAtlas4Fixture: IssueResponse = {
   projectKey: 'ATLAS',
   summary: '네 번째 이슈 — 종료된 이슈 (closed 상태 전이 검증용)',
   currentStateKey: 'closed',
-  reporterId: 'a8b9c0d1-e2f3-4a4b-cd5c-7f8a9b0c1d2e',
+  reporterId: 'a8b9c0d1-e2f3-4a4b-8d5c-7f8a9b0c1d2e',
   version: 3,
   createdAt: '2026-01-04T07:00:00Z',
   updatedAt: '2026-01-05T13:00:00Z',
+  typeId: 1,
+  typeKey: 'bug',
+  typeName: '버그',
+}
+
+/** 이슈 단건 fixture — ATLAS-NOWF (워크플로우 미설정 이슈, 422 E2E 검증용) */
+export const issueAtlasNoWorkflowFixture: IssueResponse = {
+  key: 'ATLAS-NOWF',
+  id: 'b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e',
+  projectKey: 'ATLAS',
+  summary: '워크플로우가 설정되지 않은 이슈 (422 미설정 UI 검증용)',
+  currentStateKey: 'open',
+  reporterId: 'c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f',
+  version: 0,
+  createdAt: '2026-01-06T09:00:00Z',
+  updatedAt: null,
   typeId: 1,
   typeKey: 'bug',
   typeName: '버그',

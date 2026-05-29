@@ -2,6 +2,7 @@
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { issueHandlers, resetIssueState, MOCK_NO_WORKFLOW_TRIGGER } from '../issue-handlers'
+import { issueAtlasNoWorkflowFixture } from '../issue-fixtures'
 
 const server = setupServer(...issueHandlers)
 
@@ -81,6 +82,20 @@ describe('GET /api/v1/issues/:key/transitions', () => {
     expect(res.status).toBe(200)
     const body = await res.json() as { data: { transitions: unknown[] } }
     expect(body.data.transitions).toHaveLength(0)
+  })
+
+  it('ATLAS-NOWF (워크플로우 미설정) → 422 반환 + errorCode=workflow_not_configured', async () => {
+    const res = await getTransitions(issueAtlasNoWorkflowFixture.key)
+    expect(res.status).toBe(422)
+    const body = await res.json() as { errorCode: string; message: string }
+    expect(body.errorCode).toBe('workflow_not_configured')
+  })
+
+  it('ATLAS-NOWF GET 단건 → 200 정상 반환 (상세 진입은 가능)', async () => {
+    const res = await fetch(`/api/v1/issues/${issueAtlasNoWorkflowFixture.key}`)
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { key: string } }
+    expect(body.data.key).toBe(issueAtlasNoWorkflowFixture.key)
   })
 })
 

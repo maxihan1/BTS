@@ -7,6 +7,7 @@ import {
   issueAtlas2Fixture,
   issueAtlas3Fixture,
   issueAtlas4Fixture,
+  issueAtlasNoWorkflowFixture,
 } from './issue-fixtures'
 import { allIssueTypeFixtures } from './issue-type-fixtures'
 import { softwareDefaultFixture } from './workflow-fixtures'
@@ -36,6 +37,7 @@ const issueFixtureMap: Record<string, IssueResponse> = {
   'ATLAS-2': issueAtlas2Fixture,
   'ATLAS-3': issueAtlas3Fixture,
   'ATLAS-4': issueAtlas4Fixture,
+  'ATLAS-NOWF': issueAtlasNoWorkflowFixture,
 }
 
 /**
@@ -242,6 +244,10 @@ function getAvailableTransitions(
 
 /**
  * GET /api/v1/issues/:key/transitions — 현재 상태 기준 가용전이 목록 반환.
+ * 분기 순서 (backend 일치):
+ *   (1) 이슈 not-found → 404
+ *   (2) 워크플로우 미설정 이슈(ATLAS-NOWF) → 422 (E2E 미설정 UI 검증용)
+ *   (3) 성공 → 200 + { data: { transitions } }
  * 응답: { data: { transitions: [{ key, name, fromStateKey, toStateKey }] } }
  */
 const getTransitionsHandler = http.get('/api/v1/issues/:key/transitions', ({ params }) => {
@@ -251,6 +257,13 @@ const getTransitionsHandler = http.get('/api/v1/issues/:key/transitions', ({ par
     return HttpResponse.json(
       { message: `이슈를 찾을 수 없습니다: ${key}` },
       { status: 404 },
+    )
+  }
+  // (2) 워크플로우 미설정 이슈 → 422
+  if (key === issueAtlasNoWorkflowFixture.key) {
+    return HttpResponse.json(
+      { errorCode: 'workflow_not_configured', message: '이슈에 워크플로우가 설정되지 않았습니다.' },
+      { status: 422 },
     )
   }
   const transitions = getAvailableTransitions(found.currentStateKey)
