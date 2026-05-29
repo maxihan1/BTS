@@ -19,7 +19,8 @@ vi.mock('sonner', () => ({
 
 import { toast } from 'sonner'
 
-const TEST_SID = '33333333-3333-3333-3333-333333333333'
+// RFC 4122 표준 UUID — 버전(v4) + 변형(variant 10xx) 비트 정합 필수 (Zod uuid() 검증 통과)
+const TEST_SID = 'c3d4e5f6-a1b2-4c3d-9e8f-a0b1c2d3e4f5'
 
 function createWrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { readonly children: ReactNode }) {
