@@ -350,6 +350,8 @@ class IssueTransitionRuntimeIntegrationTest {
             }
 
             // 4. software-scheme default mapping → software-default workflow
+            // uq_scheme_issue_type 은 NULL != NULL 로 동작해 issue_type_id IS NULL 중복을 감지하지 못함.
+            // ix_scheme_default_mapping partial index (scheme_id WHERE issue_type_id IS NULL) 기준으로 ON CONFLICT 처리.
             conn.createStatement().use { stmt ->
                 stmt.execute(
                     """
@@ -357,7 +359,7 @@ class IssueTransitionRuntimeIntegrationTest {
                     SELECT s.id, NULL, '$wfId'
                     FROM workflow_schemes s
                     WHERE s.key = 'software-scheme'
-                    ON CONFLICT ON CONSTRAINT uq_scheme_issue_type DO NOTHING
+                    ON CONFLICT (scheme_id) WHERE issue_type_id IS NULL DO NOTHING
                     """.trimIndent(),
                 )
             }
