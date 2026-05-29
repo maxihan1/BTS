@@ -80,10 +80,11 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
         }
 
         it("메서드 레벨에 @Transactional(readOnly=true) 가 선언된다") {
-            val method = IssueApplicationService::class.java
-                .getMethod("availableTransitions", ActorId::class.java, IssueKey::class.java)
-            val annotation = method.getAnnotation(Transactional::class.java)
-            annotation?.readOnly shouldBe true
+            // IssueKey 는 value class 라 JVM 메서드명이 mangling 된다(availableTransitions-<hash>).
+            // getMethod(name, paramTypes) 로는 못 찾으므로 @Transactional 이 붙은 메서드를 이름 prefix 로 조회한다.
+            val method = IssueApplicationService::class.java.methods
+                .first { it.name.startsWith("availableTransitions") && it.isAnnotationPresent(Transactional::class.java) }
+            method.getAnnotation(Transactional::class.java).readOnly shouldBe true
         }
 
         context("S1 — 정상: port.availableTransitions 가 Success(2건) 반환 시 2건 매핑") {
