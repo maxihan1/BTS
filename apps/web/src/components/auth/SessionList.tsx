@@ -171,7 +171,7 @@ export function SessionList(): JSX.Element {
           key={session.sid}
           session={session}
           isRevoking={revokeMutation.isPending}
-          onRevoke={(sid) => revokeMutation.mutate(sid)}
+          onRevoke={revokeMutation.mutate}
         />
       ))}
     </div>
