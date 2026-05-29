@@ -8,19 +8,20 @@ import { useUpdateWorkflowScheme, useDeleteWorkflowScheme } from '@/hooks/use-wo
 import { SchemeInUseModal } from './SchemeInUseModal'
 import { WorkflowSchemeApiError } from '@/api/workflow-schemes'
 import type { SchemeDetailResponse } from '@/api/workflow-schemes'
+import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 표준 스킴 안내 메시지 */
-const STANDARD_SCHEME_NOTICE = '표준 스킴 — 키/이름 변경 + 삭제 불가. 매핑만 자유 변경 가능'
+const STANDARD_SCHEME_NOTICE = workflowSchemeLabels.standardProtect.notice
 
 /** 표준 스킴 name/description disabled 이유 tooltip */
-const STANDARD_FIELD_TOOLTIP = '표준 스킴은 키/이름/설명 변경 불가'
+const STANDARD_FIELD_TOOLTIP = workflowSchemeLabels.standardProtect.fieldTooltip
 
 /** 표준 스킴 삭제 disabled 이유 tooltip */
-const STANDARD_DELETE_TOOLTIP = '표준 스킴은 삭제 불가'
+const STANDARD_DELETE_TOOLTIP = workflowSchemeLabels.standardProtect.deleteTooltip
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props 인터페이스
@@ -96,7 +97,7 @@ export function SchemeMetaPanel({ scheme }: SchemeMetaPanelProps): JSX.Element {
 
       {/* 스킴 키 표시 (변경 불가) */}
       <div className="space-y-1">
-        <Label className="text-xs font-medium text-muted-foreground">스킴 키</Label>
+        <Label className="text-xs font-medium text-muted-foreground">{workflowSchemeLabels.metaPanel.schemeKeyLabel}</Label>
         <div className="rounded-md border border-border bg-muted px-3 py-2 font-mono text-sm text-muted-foreground">
           {scheme.schemeKey}
         </div>
@@ -106,7 +107,7 @@ export function SchemeMetaPanel({ scheme }: SchemeMetaPanelProps): JSX.Element {
       <div className="space-y-1.5">
         <div className="flex items-center gap-2">
           <Label htmlFor={nameInputId} className="text-sm font-medium">
-            이름
+            {workflowSchemeLabels.metaPanel.nameLabel}
           </Label>
           {scheme.isStandard && (
             <span
@@ -131,7 +132,7 @@ export function SchemeMetaPanel({ scheme }: SchemeMetaPanelProps): JSX.Element {
       {/* 설명 편집 */}
       <div className="space-y-1.5">
         <Label htmlFor={descInputId} className="text-sm font-medium">
-          설명
+          {workflowSchemeLabels.metaPanel.descriptionLabel}
         </Label>
         <textarea
           id={descInputId}
@@ -148,11 +149,11 @@ export function SchemeMetaPanel({ scheme }: SchemeMetaPanelProps): JSX.Element {
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-lg border border-border bg-muted/50 px-3 py-2 text-center">
           <div className="text-lg font-semibold">{scheme.mappingsCount}</div>
-          <div className="text-[11px] text-muted-foreground">매핑 수</div>
+          <div className="text-[11px] text-muted-foreground">{workflowSchemeLabels.metaPanel.mappingsCountLabel}</div>
         </div>
         <div className="rounded-lg border border-border bg-muted/50 px-3 py-2 text-center">
           <div className="text-lg font-semibold">{scheme.usedByProjectsCount}</div>
-          <div className="text-[11px] text-muted-foreground">사용 중 프로젝트</div>
+          <div className="text-[11px] text-muted-foreground">{workflowSchemeLabels.metaPanel.usedByProjectsLabel}</div>
         </div>
       </div>
 
@@ -164,7 +165,7 @@ export function SchemeMetaPanel({ scheme }: SchemeMetaPanelProps): JSX.Element {
           disabled={scheme.isStandard || updateMutation.isPending}
           onClick={handleSave}
         >
-          {updateMutation.isPending ? '저장 중...' : '저장'}
+          {updateMutation.isPending ? workflowSchemeLabels.metaPanel.savingButton : workflowSchemeLabels.metaPanel.saveButton}
         </Button>
         <Button
           variant="destructive"
@@ -174,7 +175,7 @@ export function SchemeMetaPanel({ scheme }: SchemeMetaPanelProps): JSX.Element {
           aria-describedby={scheme.isStandard ? deleteTooltipId : undefined}
           title={scheme.isStandard ? STANDARD_DELETE_TOOLTIP : undefined}
         >
-          {deleteMutation.isPending ? '삭제 중...' : '삭제'}
+          {deleteMutation.isPending ? workflowSchemeLabels.metaPanel.deletingButton : workflowSchemeLabels.metaPanel.deleteButton}
         </Button>
         {scheme.isStandard && (
           <span id={deleteTooltipId} className="sr-only">

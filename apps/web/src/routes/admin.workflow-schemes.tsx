@@ -2,6 +2,7 @@
 import type { JSX } from 'react'
 import { useState } from 'react'
 import { WorkflowSchemeSidebar } from '@/components/admin/WorkflowSchemeSidebar'
+import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 페이지 컴포넌트
@@ -89,9 +90,9 @@ function EmptyStatePlaceholder({ onAddNew }: EmptyStatePlaceholderProps): JSX.El
         </svg>
       </div>
       <div className="space-y-1">
-        <h2 className="text-base font-semibold">스킴을 선택하세요</h2>
+        <h2 className="text-base font-semibold">{workflowSchemeLabels.emptyState.heading}</h2>
         <p className="text-sm text-muted-foreground">
-          왼쪽 목록에서 워크플로우 스킴을 선택하거나 새 스킴을 생성하세요.
+          {workflowSchemeLabels.emptyState.message}
         </p>
       </div>
       <button
@@ -99,7 +100,7 @@ function EmptyStatePlaceholder({ onAddNew }: EmptyStatePlaceholderProps): JSX.El
         onClick={onAddNew}
         className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
       >
-        + 새 스킴
+        {workflowSchemeLabels.emptyState.addSchemeButton}
       </button>
     </div>
   )

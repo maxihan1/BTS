@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select'
 import { useGetAssignment, useUpdateAssignment } from '@/hooks/use-workflow-scheme-assignment'
 import { useWorkflowSchemes } from '@/hooks/use-workflow-schemes'
+import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Router adapter
@@ -83,9 +84,9 @@ export function ProjectWorkflowSchemeSettingsPage({
   return (
     <div className="p-8 space-y-6 max-w-2xl">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">워크플로우 스킴 설정</h1>
+        <h1 className="text-2xl font-semibold">{workflowSchemeLabels.assignment.pageHeading}</h1>
         <p className="text-muted-foreground text-sm">
-          이 프로젝트에 적용할 워크플로우 스킴을 지정합니다.
+          {workflowSchemeLabels.assignment.pageDescription}
         </p>
       </header>
 
@@ -96,14 +97,14 @@ export function ProjectWorkflowSchemeSettingsPage({
         /* 현재 할당된 스킴 카드 */
         <Card>
           <CardHeader>
-            <CardTitle>현재 할당된 스킴</CardTitle>
+            <CardTitle>{workflowSchemeLabels.assignment.currentSchemeTitle}</CardTitle>
             <CardDescription>현재 이 프로젝트에 적용 중인 워크플로우 스킴입니다.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
               <span className="font-medium">{assignment.schemeName}</span>
               <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                현재 적용
+                {workflowSchemeLabels.assignment.currentSchemeBadge}
               </span>
             </div>
           </CardContent>
@@ -114,7 +115,7 @@ export function ProjectWorkflowSchemeSettingsPage({
       <Card>
         <CardHeader>
           <CardTitle>
-            {assignment === null || assignment === undefined ? '스킴 지정' : '스킴 변경'}
+            {assignment === null || assignment === undefined ? workflowSchemeLabels.assignment.assignTitle : workflowSchemeLabels.assignment.changeTitle}
           </CardTitle>
           <CardDescription>
             {assignment === null || assignment === undefined
@@ -128,7 +129,7 @@ export function ProjectWorkflowSchemeSettingsPage({
               value={selectedSchemeKey !== '' ? selectedSchemeKey : (assignment?.schemeKey ?? '')}
               onValueChange={setSelectedSchemeKey}
             >
-              <SelectTrigger className="w-64" aria-label="워크플로우 스킴 선택">
+              <SelectTrigger className="w-64" aria-label={workflowSchemeLabels.assignment.schemeSelectAriaLabel}>
                 <SelectValue placeholder="스킴 선택..." />
               </SelectTrigger>
               <SelectContent>
@@ -144,7 +145,7 @@ export function ProjectWorkflowSchemeSettingsPage({
               onClick={handleApply}
               disabled={updateAssignment.isPending}
             >
-              적용
+              {workflowSchemeLabels.assignment.applyButton}
             </Button>
           </div>
         </CardContent>
@@ -166,7 +167,7 @@ export function UnassignedSchemeCard(): JSX.Element {
   return (
     <Card className="border-amber-500/40 bg-amber-50/30 dark:bg-amber-950/20">
       <CardHeader>
-        <CardTitle className="text-amber-700 dark:text-amber-400">스킴 미할당</CardTitle>
+        <CardTitle className="text-amber-700 dark:text-amber-400">{workflowSchemeLabels.assignment.unassignedTitle}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-sm text-muted-foreground">
         <p>이 프로젝트는 아직 워크플로우 스킴이 할당되지 않았습니다.</p>

@@ -3,14 +3,15 @@ import type { JSX, KeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { useWorkflowSchemes } from '@/hooks/use-workflow-schemes'
 import type { SchemeResponse } from '@/api/workflow-schemes'
+import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 및 내부 타입
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 그룹 레이블 */
-const GROUP_LABEL_STANDARD = '표준'
-const GROUP_LABEL_CUSTOM = '커스텀'
+const GROUP_LABEL_STANDARD = workflowSchemeLabels.sidebar.standardGroup
+const GROUP_LABEL_CUSTOM = workflowSchemeLabels.sidebar.customGroup
 
 /** 로딩 스켈레톤 행 수 */
 const SKELETON_ROW_COUNT = 6
@@ -158,7 +159,7 @@ function SchemeGroup({ label, schemes, selectedSchemeKey, onSelect }: SchemeGrou
  */
 function SidebarSkeleton(): JSX.Element {
   return (
-    <div role="status" aria-label="로딩 중" className="space-y-2 p-3">
+    <div role="status" aria-label={workflowSchemeLabels.sidebar.loadingStatus} className="space-y-2 p-3">
       {Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
         <div
           key={i}
@@ -191,7 +192,7 @@ export function WorkflowSchemeSidebar({
 
   if (isPending) {
     return (
-      <nav aria-label="워크플로우 스킴 목록" className="w-60 shrink-0 bg-muted border-r border-border">
+      <nav aria-label={workflowSchemeLabels.sidebar.nav} className="w-60 shrink-0 bg-muted border-r border-border">
         <SidebarSkeleton />
       </nav>
     )
@@ -202,11 +203,11 @@ export function WorkflowSchemeSidebar({
   const customSchemes = allSchemes.filter((s) => !s.isStandard)
 
   return (
-    <nav aria-label="워크플로우 스킴 목록" className="flex w-60 shrink-0 flex-col bg-muted border-r border-border">
+    <nav aria-label={workflowSchemeLabels.sidebar.nav} className="flex w-60 shrink-0 flex-col bg-muted border-r border-border">
       {/* 사이드바 헤더 */}
       <div className="px-4 py-5">
         <h2 className="text-[13px] font-medium text-muted-foreground uppercase tracking-[0.05em]">
-          워크플로우 스킴
+          {workflowSchemeLabels.sidebar.header}
         </h2>
       </div>
 
@@ -235,9 +236,9 @@ export function WorkflowSchemeSidebar({
           size="sm"
           className="w-full border-dashed"
           onClick={onAddNew}
-          aria-label="새 스킴 추가"
+          aria-label={workflowSchemeLabels.sidebar.addSchemeAriaLabel}
         >
-          ＋ 새 스킴 생성
+          {workflowSchemeLabels.sidebar.addSchemeButtonText}
         </Button>
       </div>
     </nav>
