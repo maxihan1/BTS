@@ -37,6 +37,9 @@ const issueFixture: IssueResponse = {
   version: 1,
   createdAt: '2024-01-15T09:00:00Z',
   updatedAt: '2024-01-15T10:30:00Z',
+  typeId: 1,
+  typeKey: 'bug',
+  typeName: '버그',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

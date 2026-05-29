@@ -18,11 +18,11 @@ function createWrapper() {
 describe('useIssueTypes', () => {
   it('5 표준 이슈 타입 목록을 반환한다', async () => {
     const issueTypes: IssueTypeResponse[] = [
-      { key: 'bug', name: '버그', description: '버그', iconUrl: null },
-      { key: 'story', name: '스토리', description: '스토리', iconUrl: null },
-      { key: 'task', name: '작업', description: '작업', iconUrl: null },
-      { key: 'epic', name: '에픽', description: '에픽', iconUrl: null },
-      { key: 'subtask', name: '하위 작업', description: '하위 작업', iconUrl: null },
+      { id: 1, key: 'bug', name: '버그', description: '버그', iconName: null },
+      { id: 2, key: 'story', name: '스토리', description: '스토리', iconName: null },
+      { id: 3, key: 'task', name: '작업', description: '작업', iconName: null },
+      { id: 4, key: 'epic', name: '에픽', description: '에픽', iconName: null },
+      { id: 5, key: 'subtask', name: '하위 작업', description: '하위 작업', iconName: null },
     ]
 
     server.use(

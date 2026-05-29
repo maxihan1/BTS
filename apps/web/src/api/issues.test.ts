@@ -12,7 +12,7 @@ import {
 } from './issues'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Fixture — IssueResponse 9 필드 + nullable timestamps
+// Fixture — IssueResponse 12 필드 + nullable timestamps
 // ─────────────────────────────────────────────────────────────────────────────
 const issueFixture = {
   key: 'ATLAS-1',
@@ -24,6 +24,9 @@ const issueFixture = {
   version: 1,
   createdAt: '2024-01-15T09:00:00Z',
   updatedAt: '2024-01-15T10:30:00Z',
+  typeId: 1,
+  typeKey: 'bug',
+  typeName: '버그',
 }
 
 const issueFixtureNullTimestamps = {
@@ -95,10 +98,10 @@ beforeEach(() => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T1-1. issueResponseSchema — 9 필드 파싱 + nullable timestamps
+// T1-1. issueResponseSchema — 12 필드 파싱 + nullable timestamps
 // ─────────────────────────────────────────────────────────────────────────────
 describe('issueResponseSchema', () => {
-  it('T1-1a: 9 필드가 모두 있는 IssueResponse를 파싱한다', () => {
+  it('T1-1a: 12 필드가 모두 있는 IssueResponse를 파싱한다', () => {
     const result = issueResponseSchema.parse(issueFixture)
 
     expect(result.key).toBe('ATLAS-1')
@@ -110,6 +113,9 @@ describe('issueResponseSchema', () => {
     expect(result.version).toBe(1)
     expect(result.createdAt).toBe('2024-01-15T09:00:00Z')
     expect(result.updatedAt).toBe('2024-01-15T10:30:00Z')
+    expect(result.typeId).toBe(1)
+    expect(result.typeKey).toBe('bug')
+    expect(result.typeName).toBe('버그')
   })
 
   it('T1-1b: createdAt/updatedAt이 null인 경우도 파싱 성공', () => {
@@ -121,6 +127,24 @@ describe('issueResponseSchema', () => {
 
   it('T1-1c: 필수 필드 누락 시 ZodError throw', () => {
     expect(() => issueResponseSchema.parse({ key: 'ATLAS-1' })).toThrow()
+  })
+
+  it('T1-1d: typeId가 없으면 ZodError를 throw한다', () => {
+    const withoutTypeId = { ...issueFixture, typeId: undefined }
+    expect(() => issueResponseSchema.parse(withoutTypeId)).toThrow()
+  })
+
+  it('T1-1e: typeKey가 빈 문자열이면 ZodError를 throw한다', () => {
+    expect(() => issueResponseSchema.parse({ ...issueFixture, typeKey: '' })).toThrow()
+  })
+
+  it('T1-1f: typeName이 빈 문자열이면 ZodError를 throw한다', () => {
+    expect(() => issueResponseSchema.parse({ ...issueFixture, typeName: '' })).toThrow()
+  })
+
+  it('T1-1g: typeId가 양수 정수가 아니면 ZodError를 throw한다', () => {
+    expect(() => issueResponseSchema.parse({ ...issueFixture, typeId: 0 })).toThrow()
+    expect(() => issueResponseSchema.parse({ ...issueFixture, typeId: -1 })).toThrow()
   })
 })
 
@@ -185,7 +209,7 @@ describe('createIssue', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T1-5. updateIssue — PATCH /{key} body { summary?, expectedVersion }
+// T1-5. updateIssue — PATCH /{key} body { summary?, typeId?, expectedVersion }
 // ─────────────────────────────────────────────────────────────────────────────
 describe('updateIssue', () => {
   it('T1-5a: summary와 expectedVersion으로 PATCH 호출 시 수정된 IssueResponse를 반환한다', async () => {
@@ -201,6 +225,29 @@ describe('updateIssue', () => {
 
     expect(result.key).toBe('ATLAS-1')
     expect(typeof result.version).toBe('number')
+  })
+
+  it('T1-5c: typeId를 PATCH body에 포함해 전달할 수 있다', async () => {
+    let capturedBody: Record<string, unknown> = {}
+
+    server.use(
+      http.patch('/api/v1/issues/:key', async ({ request, params }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json({
+          data: {
+            ...issueFixture,
+            key: params['key'] as string,
+            typeId: capturedBody['typeId'] ?? issueFixture.typeId,
+            typeKey: capturedBody['typeKey'] ?? issueFixture.typeKey,
+            typeName: capturedBody['typeName'] ?? issueFixture.typeName,
+          },
+        })
+      }),
+    )
+
+    await updateIssue('ATLAS-1', { typeId: 2, expectedVersion: 1 })
+
+    expect(capturedBody['typeId']).toBe(2)
   })
 })
 

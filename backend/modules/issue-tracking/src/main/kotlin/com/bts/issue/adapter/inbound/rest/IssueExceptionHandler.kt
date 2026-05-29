@@ -9,6 +9,7 @@ import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
+import com.bts.issue.type.domain.IssueTypeNotFoundException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -37,7 +38,9 @@ import java.time.Instant
  * - [Exception] (fallback) → 500 + [IssueErrorCodes.INTERNAL_ERROR]
  *
  * TooManyFunctions: 도메인 예외 종류(400/401/403/404/409/422/500) 각각에 @ExceptionHandler 가 필요하므로
- * 함수 수가 임계치(11)에 도달한다. RestControllerAdvice 의 책임(예외→HTTP 변환)은 분리 불가한 단일 관심사.
+ * 함수 수가 임계치(11)를 넘는다. RestControllerAdvice 의 책임(예외→HTTP 변환)은 분리 불가한 단일 관심사라
+ * 클래스 단위로 억제한다. FR-IS-02 D6 에서 [IssueTypeNotFoundException] 핸들러가 추가됐다
+ * (type.web 패키지 한정 핸들러가 못 잡는 예외를 rest 패키지에서 404 로 매핑).
  */
 @Suppress("TooManyFunctions")
 @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
@@ -120,6 +123,29 @@ class IssueExceptionHandler {
             type = "issue-not-found",
             title = "Issue Not Found",
             errorCode = IssueErrorCodes.ISSUE_NOT_FOUND,
+            detail = ex.message,
+        )
+    }
+
+    // ── 404 ISSUE_TYPE_NOT_FOUND ──────────────────────────────────────────────
+
+    /**
+     * [IssueTypeNotFoundException] — 이슈 타입이 존재하지 않거나 비활성 상태 — 404.
+     *
+     * [com.bts.issue.type.web.IssueTypeExceptionHandler] 는 `com.bts.issue.type.web` 패키지에만
+     * 한정되어 있어 이 핸들러가 없으면 500 fallback 으로 떨어진다. PATCH /issues/{key} 에서
+     * typeId 변경 요청 시 service 가 throw 한 예외를 이 핸들러가 잡아 404 로 응답한다.
+     *
+     * @param ex 존재하지 않는 IssueTypeId 를 포함하는 예외.
+     */
+    @ExceptionHandler(IssueTypeNotFoundException::class)
+    fun handleIssueTypeNotFound(ex: IssueTypeNotFoundException): ProblemDetail {
+        log.info("ISSUE_404 issue_type_not_found id='{}'", ex.id.value)
+        return problem(
+            status = HttpStatus.NOT_FOUND,
+            type = "issue-type-not-found",
+            title = "Issue Type Not Found",
+            errorCode = IssueErrorCodes.ISSUE_TYPE_NOT_FOUND,
             detail = ex.message,
         )
     }
@@ -296,6 +322,7 @@ object IssueErrorCodes {
     const val UNAUTHENTICATED = "UNAUTHENTICATED"
     const val ACCESS_DENIED = "ACCESS_DENIED"
     const val ISSUE_NOT_FOUND = "ISSUE_NOT_FOUND"
+    const val ISSUE_TYPE_NOT_FOUND = "ISSUE_TYPE_NOT_FOUND"
     const val PROJECT_NOT_FOUND = "PROJECT_NOT_FOUND"
     const val KEY_PREFIX_RESERVED = "KEY_PREFIX_RESERVED"
     const val VERSION_CONFLICT = "VERSION_CONFLICT"

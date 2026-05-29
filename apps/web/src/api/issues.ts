@@ -7,7 +7,7 @@ import { apiGet, apiPost, apiFetch, ApiError } from './client'
 // backend IssueResponse DTO 직렬화 형태와 1:1 대응.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 이슈 단건 응답 Zod 스키마 — 9 필드, createdAt/updatedAt nullable */
+/** 이슈 단건 응답 Zod 스키마 — 12 필드, createdAt/updatedAt nullable */
 export const issueResponseSchema = z.object({
   key: z.string().min(1),
   id: z.string().uuid(),
@@ -18,6 +18,9 @@ export const issueResponseSchema = z.object({
   version: z.number().int().nonnegative(),
   createdAt: z.string().nullable(),
   updatedAt: z.string().nullable(),
+  typeId: z.number().int().positive(),
+  typeKey: z.string().min(1),
+  typeName: z.string().min(1),
 })
 
 /** Spring Page 응답 Zod 스키마 — 래퍼 없음 (DataResponse 감싸지 않음) */
@@ -50,9 +53,14 @@ export interface CreateIssueInput {
   summary: string
 }
 
-/** 이슈 수정 입력 타입 */
+/**
+ * 이슈 수정 입력 타입.
+ * summary · typeId 중 하나 이상을 전달하며, expectedVersion은 낙관적 잠금(OCC)을 위해 필수다.
+ */
 export interface UpdateIssueInput {
   summary?: string
+  /** 변경할 이슈 타입 ID. 미전달 시 타입 유지. */
+  typeId?: number
   expectedVersion: number
 }
 

@@ -23,11 +23,16 @@ data class CreateIssueRequest(
 /**
  * 이슈 수정 요청 DTO (RFC 7396 JSON Merge Patch 시맨틱).
  *
- * @param summary 새 이슈 제목. null 이면 변경하지 않는다 (RFC 7396 JSON Merge Patch 시맨틱).
+ * 각 필드는 null 이면 "변경하지 않음"을 의미한다.
+ * CREATE 의 typeId=null → task fallback 과 달리, PATCH 의 typeId=null 은 타입 유지를 의미한다.
+ *
+ * @param summary 새 이슈 제목. null 이면 변경하지 않는다.
+ * @param typeId 새 이슈 유형 식별자 VO. null 이면 변경하지 않는다. non-null 이면 활성 타입 존재 검증.
  * @param expectedVersion 낙관적 잠금 버전. 읽은 version 값과 일치해야 업데이트가 성공한다.
  */
 data class UpdateIssueRequest(
     val summary: String?,
+    val typeId: IssueTypeId? = null,
     val expectedVersion: Long,
 )
 

@@ -10,13 +10,14 @@ import { dataOf } from './workflow-schemes.types'
 
 /**
  * 이슈 타입 단건 응답 Zod 스키마.
- * iconUrl은 backend T4 cross-BC lookup으로 채워지며, 미설정 시 null.
+ * iconName은 아이콘 식별자 문자열(URL 아님)이며, 미설정 시 null.
  */
 export const issueTypeResponseSchema = z.object({
+  id: z.number().int().positive(),
   key: z.string().min(1),
   name: z.string().min(1),
   description: z.string(),
-  iconUrl: z.string().nullable(),
+  iconName: z.string().nullable(),
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

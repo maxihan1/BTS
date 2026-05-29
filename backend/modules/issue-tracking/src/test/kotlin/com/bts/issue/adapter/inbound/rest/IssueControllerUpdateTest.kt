@@ -7,6 +7,8 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
+import com.bts.issue.type.domain.IssueTypeNotFoundException
+import com.bts.shared.issue.IssueTypeId
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
@@ -387,5 +389,90 @@ class IssueControllerUpdateTest {
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+    }
+
+    // ── D6-1: PATCH typeId 포함 → 200 + 변경된 타입 반영 ─────────────────────
+
+    /**
+     * D6-1. PATCH body 에 typeId 를 포함한 경우 200 OK 응답과 함께 변경된 타입이 반영된다.
+     *
+     * controller 가 typeId 를 IssueTypeId VO 로 변환하여 AppUpdateIssueRequest 에 전달하고,
+     * service 가 반환한 IssueResponse 의 typeId/typeKey/typeName 이 응답 body 에 포함된다.
+     */
+    @Test
+    fun `PATCH typeId 포함 — 200 OK + 변경된 타입 응답`() {
+        val responseWithNewType =
+            sampleResponse.copy(
+                typeId = 5L,
+                typeKey = "bug",
+                typeName = "Bug",
+            )
+
+        val capturedRequest = slot<AppUpdateIssueRequest>()
+        every {
+            issueApplicationService.updateIssue(any(), IssueKey("ATLAS-1"), capture(capturedRequest))
+        } returns responseWithNewType
+
+        val body = """{"typeId": 5, "expectedVersion": 1}"""
+
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.typeId").value(5))
+            .andExpect(jsonPath("$.data.typeKey").value("bug"))
+            .andExpect(jsonPath("$.data.typeName").value("Bug"))
+
+        assert(capturedRequest.captured.typeId == IssueTypeId(5L)) {
+            "controller 가 typeId=IssueTypeId(5) 를 전달해야 하지만 '${capturedRequest.captured.typeId}' 를 전달함"
+        }
+    }
+
+    // ── D6-2: PATCH 음수 typeId → 400 VALIDATION_FAILED ──────────────────────
+
+    /**
+     * D6-2. PATCH body 에 음수 typeId 를 전송한 경우 Bean Validation 이 거부한다.
+     *
+     * `@Positive` 제약으로 0 이하 값은 400 + VALIDATION_FAILED errorCode 응답.
+     */
+    @Test
+    fun `PATCH 음수 typeId — 400 VALIDATION_FAILED`() {
+        val body = """{"typeId": -1, "expectedVersion": 1}"""
+
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+    }
+
+    // ── D6-3: PATCH 존재하지 않는 typeId → 404 ISSUE_TYPE_NOT_FOUND ──────────
+
+    /**
+     * D6-3. service 가 IssueTypeNotFoundException 을 throw 한 경우 404 + RFC 7807 ProblemDetail.
+     *
+     * IssueExceptionHandler 에 IssueTypeNotFoundException 핸들러가 없으면 500 fallback 으로 떨어지므로
+     * 핸들러 추가가 필수다. errorCode 는 ISSUE_TYPE_NOT_FOUND.
+     */
+    @Test
+    fun `PATCH 존재하지 않는 typeId — 404 ProblemDetail ISSUE_TYPE_NOT_FOUND`() {
+        every {
+            issueApplicationService.updateIssue(any(), IssueKey("ATLAS-1"), any())
+        } throws IssueTypeNotFoundException(IssueTypeId(999L))
+
+        val body = """{"typeId": 999, "expectedVersion": 1}"""
+
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.status").value(404))
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_TYPE_NOT_FOUND"))
     }
 }

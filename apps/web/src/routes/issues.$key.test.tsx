@@ -1,11 +1,14 @@
 // 이슈 상세 페이지 단위 테스트 — Task 7 (시안 2 사이드 메타패널, 상태 읽기전용)
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
+import { toast } from 'sonner'
 import { server } from '@/test/server'
 import { issueAtlas1Fixture } from '@/mocks/issue-fixtures'
+import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
+import { issueDetailStrings } from '@/i18n/ko'
 import { IssueDetailPage } from './issues.$key'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -32,6 +35,14 @@ function renderPage(issueKey: string) {
     ),
   }
 }
+
+// sonner toast mock — DOM 없이 호출 여부로 검증 (기존 프로젝트 패턴 일치)
+vi.mock('sonner', () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+  },
+}))
 
 // navigate mock — useDeleteIssue onSuccess에서 호출
 const mockNavigate = vi.fn()
@@ -146,9 +157,10 @@ describe('IssueDetailPage — 성공 레이아웃', () => {
 
   /**
    * T7-5. 메타패널에 상태가 읽기전용 배지로 렌더되어야 한다.
-   * 상태 전이 드롭다운/select가 없어야 한다 (D6 제외).
+   * 상태 전이 드롭다운이 없어야 한다 (D6 제외).
+   * 유형 셀렉터(combobox)는 있지만, 상태 전이용 combobox는 없다.
    */
-  it('T7-5: 메타패널에 상태 배지가 렌더되고 select/combobox가 없다', async () => {
+  it('T7-5: 메타패널에 상태 배지가 렌더되고 상태 전이 드롭다운이 없다', async () => {
     setupIssueFoundHandler()
 
     renderPage('ATLAS-1')
@@ -156,8 +168,8 @@ describe('IssueDetailPage — 성공 레이아웃', () => {
     await waitFor(() => {
       // 상태 배지가 렌더되어야 함
       expect(screen.getByTestId('issue-state-badge')).toBeInTheDocument()
-      // 상태 전이 드롭다운이 없어야 함 (D6 제외)
-      expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+      // 유형 셀렉터가 있어야 함 (Task-6에서 추가)
+      expect(screen.getByRole('combobox', { name: /유형/ })).toBeInTheDocument()
     })
   })
 
@@ -346,6 +358,122 @@ describe('IssueDetailPage — 삭제', () => {
     await waitFor(() => {
       expect(deleteCalled).toBe(true)
       expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues' })
+    })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 타입 변경 테스트 (C-2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDetailPage — 타입 변경', () => {
+  beforeEach(() => {
+    vi.mocked(toast.error).mockClear()
+    vi.mocked(toast.success).mockClear()
+    // issue-types 핸들러 등록 — useIssueTypes hook이 GET /api/v1/issue-types 호출
+    server.use(...issueTypeHandlers)
+    // ATLAS-1 이슈 단건 조회 핸들러
+    setupIssueFoundHandler()
+  })
+
+  /**
+   * T7-13 (happy). 유형 셀렉터에서 다른 타입을 선택하면 PATCH 요청이 발생하고
+   * 성공 후 메타패널의 타입 이름이 갱신된다.
+   *
+   * MSW 실제 핸들러 경유 — ATLAS-1(version=0, typeId=1/bug) → typeId=3(task) 변경.
+   */
+  it('T7-13: 유형 셀렉터 변경 시 PATCH 요청이 발생하고 타입 이름이 갱신된다', async () => {
+    const updatedFixture = {
+      ...issueAtlas1Fixture,
+      typeId: 3,
+      typeKey: 'task',
+      typeName: '작업',
+      version: 1,
+    }
+
+    // GET 핸들러를 상태 있는 형태로 override — PATCH 성공 이후 re-fetch 시 updatedFixture 반환
+    let currentFixture = issueAtlas1Fixture as typeof issueAtlas1Fixture
+    let patchBody: Record<string, unknown> | undefined
+    server.use(
+      http.get('/api/v1/issues/:key', ({ params }) => {
+        if (params['key'] === 'ATLAS-1') {
+          return HttpResponse.json({ data: currentFixture })
+        }
+        return HttpResponse.json({ message: '이슈를 찾을 수 없습니다' }, { status: 404 })
+      }),
+      http.patch('/api/v1/issues/:key', async ({ request }) => {
+        patchBody = await request.clone().json() as Record<string, unknown>
+        // PATCH 성공 이후 GET re-fetch가 업데이트된 데이터를 반환하도록 상태 전환
+        currentFixture = updatedFixture
+        return HttpResponse.json({ data: updatedFixture })
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    // 이슈 로딩 대기 — typeKey='bug' 초기 상태
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+    // 이슈 타입 목록 로딩 대기 — 셀렉터에 옵션이 채워질 때까지
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: issueDetailStrings.typeSelectLabel })).toBeInTheDocument(),
+    )
+    // 초기 타입 이름이 '버그'임을 확인
+    expect(screen.getByTestId('issue-type-name')).toHaveTextContent('버그')
+
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.typeSelectLabel })
+    // '작업'(typeId=3, task) 선택 — 현재값 '버그'(typeId=1)와 달라 onTypeChange 호출됨
+    await user.selectOptions(select, '작업')
+
+    // PATCH 요청 발생 및 body 검증
+    await waitFor(() => {
+      expect(patchBody).toBeDefined()
+    })
+    expect(patchBody?.['typeId']).toBe(3)
+    expect(patchBody?.['expectedVersion']).toBe(0)
+
+    // onSuccess → setQueryData(즉시) + invalidateQueries(re-fetch) 이후 타입 이름 '작업' 갱신
+    await waitFor(() => {
+      expect(screen.getByTestId('issue-type-name')).toHaveTextContent('작업')
+    })
+  })
+
+  /**
+   * T7-14 (409). 타입 변경 시 낙관락 버전 충돌(409 VERSION_CONFLICT)이 발생하면
+   * typeChangeConflictError 한국어 토스트가 노출된다.
+   *
+   * PATCH → 409 응답은 MSW override로 직접 제어.
+   */
+  it('T7-14: 타입 변경 409 충돌 시 typeChangeConflictError 토스트가 노출된다', async () => {
+    server.use(
+      http.patch('/api/v1/issues/:key', () =>
+        HttpResponse.json(
+          { errorCode: 'VERSION_CONFLICT', message: '버전 충돌이 발생했습니다.' },
+          { status: 409 },
+        ),
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: issueDetailStrings.typeSelectLabel })).toBeInTheDocument(),
+    )
+
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.typeSelectLabel })
+    // '작업'(typeId=3, task) 선택 → PATCH → 409 → onError
+    await user.selectOptions(select, '작업')
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        issueDetailStrings.typeChangeConflictError,
+      )
     })
   })
 })

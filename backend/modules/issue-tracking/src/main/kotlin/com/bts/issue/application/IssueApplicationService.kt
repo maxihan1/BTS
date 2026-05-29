@@ -173,16 +173,20 @@ class IssueApplicationService(
      * 흐름.
      * 1. UPDATE 권한 검증 (Issue 범위)
      * 2. 이슈 조회 — 미존재 시 IssueNotFoundException
-     * 3. updateSummary 호출 — 0 row 반환 시 IssueVersionConflictException
-     * 4. 변경 후 이슈 재조회
-     * 5. IssueUpdated 이벤트 발행 (변경 필드 목록 포함)
+     * 3. typeId non-null 이면 활성 타입 존재 검증 — 없으면 IssueTypeNotFoundException
+     *    (CREATE 의 null=task fallback 과 달리 PATCH 의 null=변경없음 시맨틱)
+     * 4. changedFields 계산 — empty 이면 no-op 반환
+     * 5. [IssueRepository.updateFields] 호출 — 0 row 반환 시 IssueVersionConflictException
+     * 6. 변경 후 이슈 재조회
+     * 7. IssueUpdated 이벤트 발행 (변경 필드 목록 포함)
      *
      * @param actor 수정 행위자.
      * @param key 수정할 이슈 키.
-     * @param request 수정 요청 DTO.
+     * @param request 수정 요청 DTO. summary/typeId 각 null 이면 해당 필드 변경 없음 (RFC 7396 JSON Merge Patch).
      * @return 수정된 이슈의 [IssueResponse].
      * @throws IssueAccessDeniedException 권한 없을 때.
      * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우.
+     * @throws IssueTypeNotFoundException request.typeId 가 non-null 이지만 활성 타입이 없을 때.
      * @throws IssueVersionConflictException 낙관락 충돌 시.
      */
     fun updateIssue(
@@ -192,13 +196,18 @@ class IssueApplicationService(
     ): IssueResponse {
         assertPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(key.value))
         val existing = repo.findByKey(key) ?: throw IssueNotFoundException(key)
+
+        // typeId non-null 이면 활성 타입 존재 검증. null=변경없음 (resolveTypeId 의 null=fallback 과 다른 시맨틱).
+        if (request.typeId != null) {
+            issueTypeRepository.findById(request.typeId) ?: throw IssueTypeNotFoundException(request.typeId)
+        }
+
         val changedFields = buildChangedFields(existing, request)
         if (changedFields.isEmpty()) {
             log.info("issue_update_noop key={} actor={}", key.value, actor.value)
             return repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)
         }
-        val newSummary = requireNotNull(request.summary) { "summary must be non-null when changedFields is non-empty" }
-        val updatedRows = repo.updateSummary(key, newSummary, request.expectedVersion)
+        val updatedRows = repo.updateFields(key, request.summary, request.typeId, request.expectedVersion)
         if (updatedRows == 0) {
             throw IssueVersionConflictException(key, existing.version)
         }
@@ -522,6 +531,7 @@ class IssueApplicationService(
     ): Set<String> {
         val fields = mutableSetOf<String>()
         if (request.summary != null && existing.summary != request.summary) fields.add("summary")
+        if (request.typeId != null && existing.typeId != request.typeId) fields.add("typeId")
         return fields
     }
 
