@@ -22,11 +22,15 @@ import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
+import com.bts.shared.workflow.AvailableTransitionView
+import com.bts.shared.workflow.AvailableTransitionsRequest
+import com.bts.shared.workflow.AvailableTransitionsResult
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.TransitionPlan
 import com.bts.shared.workflow.TransitionRequest
 import com.bts.shared.workflow.TransitionResult
 import com.bts.shared.workflow.WorkflowKeyResolver
+import com.bts.shared.workflow.WorkflowStartState
 import com.bts.shared.workflow.WorkflowTransitionPort
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
@@ -215,6 +219,44 @@ class IssueApplicationService(
      *   [TransitionResult.WorkflowNotFound], [TransitionResult.ExpressionTimeout] 케이스에서 BC 경계 변환.
      * @throws IssueVersionConflictException 낙관락 충돌 시.
      */
+    /**
+     * 이슈의 현재 상태에서 이동 가능한 전이 목록을 조회한다.
+     *
+     * 흐름.
+     * 1. VIEW 권한 검증 (Issue 범위)
+     * 2. 이슈 조회 — 미존재 시 IssueNotFoundException
+     * 3. [resolveWorkflowKey] 로 workflowKey 결정 — WorkflowSchemeNoDefaultException 발생 시 IssueWorkflowNotConfiguredException 변환
+     * 4. workflowPort.availableTransitions 호출 — [AvailableTransitionsResult] sealed 분기 처리
+     *
+     * @param actor 조회 행위자.
+     * @param key 조회할 이슈 키.
+     * @return 현재 상태에서 이동 가능한 [AvailableTransitionView] 목록.
+     * @throws IssueAccessDeniedException 권한 없을 때.
+     * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우.
+     * @throws IssueWorkflowNotConfiguredException 프로젝트에 기본 워크플로우 스킴이 없거나 워크플로우 row 가 없을 때.
+     */
+    @Transactional(readOnly = true)
+    fun availableTransitions(
+        actor: ActorId,
+        key: IssueKey,
+    ): List<AvailableTransitionView> {
+        assertPermission(actor, IssuePermission.VIEW, IssueScope.Issue(key.value))
+        val issue = repo.findByKey(key) ?: throw IssueNotFoundException(key)
+        val resolvedWorkflow = resolveWorkflowKey(key)
+        val req = AvailableTransitionsRequest(
+            workflowKey = resolvedWorkflow.workflowKey,
+            fromStateKey = issue.currentStateKey,
+            actorId = actor.value.toString(),
+            actorRoles = emptySet(),
+            issueFields = mapOf("summary" to issue.summary),
+        )
+        return when (val result = workflowPort.availableTransitions(req)) {
+            is AvailableTransitionsResult.Success -> result.transitions
+            is AvailableTransitionsResult.WorkflowNotFound ->
+                throw IssueWorkflowNotConfiguredException(key.projectPrefix, null)
+        }
+    }
+
     @Suppress("ThrowsCount")
     fun transitionIssue(
         actor: ActorId,
@@ -223,15 +265,7 @@ class IssueApplicationService(
     ): IssueResponse {
         assertPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(key.value))
         val issue = repo.findByKeyForUpdate(key) ?: throw IssueNotFoundException(key)
-        val resolvedWorkflow =
-            try {
-                workflowKeyResolver.resolveStart(ProjectKey.of(key.projectPrefix), null)
-            } catch (e: RuntimeException) {
-                if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") {
-                    throw IssueWorkflowNotConfiguredException(key.projectPrefix, null)
-                }
-                throw e
-            }
+        val resolvedWorkflow = resolveWorkflowKey(key)
         val transitionReq =
             TransitionRequest(
                 workflowKey = resolvedWorkflow.workflowKey,
@@ -369,6 +403,27 @@ class IssueApplicationService(
                     toStatus = toStatus,
                     reason = result.message,
                 )
+        }
+
+    /**
+     * [WorkflowKeyResolver.resolveStart] 를 호출하고 [WorkflowSchemeNoDefaultException] 을
+     * [IssueWorkflowNotConfiguredException] 으로 변환하는 공통 helper.
+     *
+     * issue-tracking BC 는 project-workflow 내부 예외를 직접 import 할 수 없으므로
+     * javaClass.simpleName 로 감지한다 (BC 격리, DEVELOPMENT.md §1.1).
+     *
+     * @param key 워크플로우를 resolve 할 이슈 키.
+     * @return [WorkflowStartState] — workflowKey + startStateKey.
+     * @throws IssueWorkflowNotConfiguredException WorkflowSchemeNoDefaultException 발생 시.
+     */
+    private fun resolveWorkflowKey(key: IssueKey): WorkflowStartState =
+        try {
+            workflowKeyResolver.resolveStart(ProjectKey.of(key.projectPrefix), null)
+        } catch (e: RuntimeException) {
+            if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") {
+                throw IssueWorkflowNotConfiguredException(key.projectPrefix, null)
+            }
+            throw e
         }
 
     private fun buildChangedFields(
