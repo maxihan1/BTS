@@ -7,6 +7,7 @@ import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueProjectNotFoundException
+import com.bts.shared.issue.IssueTypeId
 import com.bts.issue.jooq.tables.records.IssuesRecord
 import com.bts.issue.jooq.tables.references.ISSUES
 import com.bts.issue.jooq.tables.references.PROJECTS
@@ -279,7 +280,7 @@ private fun Issue.toInsertRecord(): IssuesRecord =
         reporterId = reporterId.value,
         currentStateKey = currentStateKey,
         version = version,
-        typeId = typeId,
+        typeId = typeId.value,
     )
 
 /**
@@ -301,6 +302,6 @@ private fun IssuesRecord.toIssue(): Issue {
         deletedAt = deletedAt?.toInstant(),
         createdAt = createdAt?.toInstant() ?: error("issues.created_at must not be null"),
         updatedAt = updatedAt?.toInstant() ?: error("issues.updated_at must not be null"),
-        typeId = typeId ?: error("issues.type_id must not be null"),
+        typeId = IssueTypeId(typeId ?: error("issues.type_id must not be null")),
     )
 }

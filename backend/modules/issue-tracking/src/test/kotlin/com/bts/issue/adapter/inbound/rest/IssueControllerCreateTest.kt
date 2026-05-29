@@ -8,6 +8,7 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
+import com.bts.shared.issue.IssueTypeId
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
@@ -153,6 +154,7 @@ class IssueControllerCreateTest {
                 deletedAt = null,
                 createdAt = fixedNow,
                 updatedAt = fixedNow,
+                typeId = IssueTypeId(3L),
             )
 
         every {

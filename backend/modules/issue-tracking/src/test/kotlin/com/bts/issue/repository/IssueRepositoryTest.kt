@@ -6,13 +6,16 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
+import com.bts.shared.issue.IssueTypeId
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.MethodOrderer
 import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
 import org.springframework.data.domain.PageRequest
+import java.sql.DriverManager
 import java.util.UUID
 
 /**
@@ -41,6 +44,29 @@ import java.util.UUID
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class IssueRepositoryTest : IssueTestcontainersBase() {
+    /**
+     * V003 seed 에서 task 타입의 id 를 DB 에서 직접 조회한다.
+     * BIGSERIAL 이므로 명시적 id 가 없어 bootstrap 후 조회가 가장 안전하다.
+     * IssueTypeId 는 value class 이므로 lateinit 불가 — var + null 허용으로 초기화.
+     */
+    private var taskTypeId: IssueTypeId? = null
+
+    @BeforeAll
+    fun resolveTaskTypeId() {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement("SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1").use { stmt ->
+                stmt.executeQuery().use { rs ->
+                    check(rs.next()) { "V003 마이그레이션에서 task 타입이 없습니다." }
+                    taskTypeId = IssueTypeId(rs.getLong(1))
+                }
+            }
+        }
+    }
+
+    /** 각 테스트에서 안전하게 taskTypeId 를 꺼내는 helper. resolveTaskTypeId 이후 항상 non-null. */
+    private fun requireTaskTypeId(): IssueTypeId =
+        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다 — resolveTaskTypeId 실행 확인" }
+
     // ── T1. insert ───────────────────────────────────────────────────────────────
 
     /**
@@ -56,6 +82,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = IssueKey.of("TPRJ", 1L),
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "Fix login bug",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
@@ -87,6 +114,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = IssueKey.of("TPRJ", 1L),
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "Find by key test",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
@@ -130,6 +158,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = key,
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "For update test",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
@@ -158,6 +187,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = key,
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "Transition test",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
@@ -188,6 +218,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = key,
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "Stale version test",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
@@ -218,6 +249,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = key,
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "Soft delete test",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
@@ -247,6 +279,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                     id = IssueId(UUID.randomUUID()),
                     key = IssueKey.of("TPRJ", i.toLong()),
                     projectId = testProjectId,
+                    typeId = requireTaskTypeId(),
                     summary = "Issue $i",
                     reporterId = reporterId,
                     currentStateKey = "open",
@@ -259,6 +292,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = IssueKey.of("TPRJ", 4L),
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "Deleted issue",
                 reporterId = reporterId,
                 currentStateKey = "open",
@@ -309,6 +343,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = key,
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "소문자 상태키 회귀 가드",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
@@ -341,6 +376,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = key,
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "원래",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
@@ -353,6 +389,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = key,
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "중복 시도",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",

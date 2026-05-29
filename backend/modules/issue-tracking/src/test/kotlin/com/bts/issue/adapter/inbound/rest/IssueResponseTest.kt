@@ -6,6 +6,7 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
+import com.bts.shared.issue.IssueTypeId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import java.time.Instant
@@ -26,6 +27,7 @@ class IssueResponseTest {
             deletedAt = null,
             createdAt = fixedNow,
             updatedAt = fixedNow,
+            typeId = IssueTypeId(3L),
         )
 
     @Test

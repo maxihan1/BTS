@@ -5,6 +5,7 @@ package com.bts.issue.adapter.inbound.rest
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
+import com.bts.shared.issue.IssueTypeId
 import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
@@ -80,7 +81,7 @@ class IssueController(
                 projectKey = request.projectKey,
                 summary = request.summary,
                 reporterId = actor,
-                typeId = request.typeId,
+                typeId = request.typeId?.let { IssueTypeId(it) },
             )
         val issue = service.createIssue(actor, appRequest)
         val response = IssueResponse.from(issue, issue.key.projectPrefix)

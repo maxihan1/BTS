@@ -22,6 +22,10 @@ import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.type.domain.IssueTypeNotFoundException
+import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.TransitionPlan
 import com.bts.shared.workflow.TransitionRequest
@@ -53,6 +57,7 @@ import java.util.UUID
 @Transactional
 class IssueApplicationService(
     private val repo: IssueRepository,
+    private val issueTypeRepository: IssueTypeRepository,
     private val eventPublisher: IssueEventPublisher,
     private val permissionResolver: IssuePermissionResolver,
     private val workflowPort: WorkflowTransitionPort,
@@ -68,16 +73,19 @@ class IssueApplicationService(
      * 1. CREATE 권한 검증 (Project 범위)
      * 2. pg_advisory_xact_lock 으로 보호된 key_sequence 증가
      * 3. IssueKey 발급
-     * 4. [WorkflowKeyResolver.resolveStart] 로 초기 상태 키 결정 (issueTypeKey = null, FR-IS-02 이전)
+     * 4. typeId 결정 — request.typeId 가 null 이면 task fallback (FR-6: 모든 이슈는 유효 타입 보유)
+     *    non-null 이면 해당 타입 존재/활성 검증. 없으면 IssueTypeNotFoundException.
+     * 5. [WorkflowKeyResolver.resolveStart] 로 초기 상태 키 결정
      *    — WorkflowSchemeNoDefaultException 발생 시 [IssueWorkflowNotConfiguredException] 으로 변환 (BC 격리)
-     * 5. Issue.create
-     * 6. DB INSERT
-     * 7. IssueCreated 이벤트 발행
+     * 6. Issue.create
+     * 7. DB INSERT
+     * 8. IssueCreated 이벤트 발행
      *
      * @param actor 이슈를 생성하는 행위자.
-     * @param request 생성 요청 DTO.
+     * @param request 생성 요청 DTO. typeId null 이면 task 타입으로 fallback.
      * @return 삽입된 [Issue].
      * @throws IssueAccessDeniedException 권한 없을 때.
+     * @throws IssueTypeNotFoundException request.typeId 가 non-null 이지만 활성 타입이 없을 때.
      * @throws IssueWorkflowNotConfiguredException 프로젝트에 기본 워크플로우 스킴이 없을 때.
      */
     fun createIssue(
@@ -91,6 +99,9 @@ class IssueApplicationService(
         val projectId =
             repo.findProjectIdByKey(request.projectKey)
                 ?: throw IssueProjectNotFoundException(request.projectKey)
+
+        val resolvedTypeId = resolveTypeId(request.typeId)
+
         val startState =
             try {
                 workflowKeyResolver.resolveStart(ProjectKey.of(request.projectKey), null)
@@ -105,8 +116,7 @@ class IssueApplicationService(
                 id = IssueId(UUID.randomUUID()),
                 key = key,
                 projectId = projectId,
-                // TODO FR-IS-02 서비스 레이어 Task — request.typeId 로 교체 예정
-                typeId = request.typeId,
+                typeId = resolvedTypeId,
                 summary = request.summary,
                 reporterId = request.reporterId,
                 currentStateKey = startState.startStateKey,
@@ -121,7 +131,7 @@ class IssueApplicationService(
                 occurredAt = Instant.now(clock),
             ),
         )
-        log.info("issue_created key={} actor={}", saved.key.value, actor.value)
+        log.info("issue_created key={} typeId={} actor={}", saved.key.value, resolvedTypeId.value, actor.value)
         return saved
     }
 
@@ -326,6 +336,27 @@ class IssueApplicationService(
     }
 
     // ── private helpers ────────────────────────────────────────────────────────
+
+    /**
+     * request.typeId 로부터 유효한 [IssueTypeId] 를 결정한다.
+     *
+     * FR-6 — 모든 이슈는 유효한 타입을 보유해야 한다.
+     * - null 이면 표준 task 타입으로 fallback (issue_types.key = "task").
+     * - non-null 이면 활성 타입 존재 여부 검증 후 그 id 반환. 없으면 [IssueTypeNotFoundException].
+     *
+     * @param requestedTypeId 컨트롤러에서 전달된 typeId. null 허용.
+     * @return 유효성이 보장된 [IssueTypeId].
+     * @throws IssueTypeNotFoundException requestedTypeId 가 non-null 이지만 활성 타입이 없을 때.
+     */
+    private fun resolveTypeId(requestedTypeId: IssueTypeId?): IssueTypeId {
+        if (requestedTypeId == null) {
+            val taskType = issueTypeRepository.findByKey(IssueTypeKey("task"))
+            return taskType?.id ?: error("표준 task 타입이 DB에 없습니다. V003 마이그레이션 확인 필요.")
+        }
+        issueTypeRepository.findById(requestedTypeId)
+            ?: throw IssueTypeNotFoundException(requestedTypeId)
+        return requestedTypeId
+    }
 
     /**
      * [TransitionResult] sealed 분기를 [TransitionPlan] 으로 매핑하거나 BC 경계 예외로 변환한다.

@@ -3,6 +3,7 @@
 
 package com.bts.issue.domain
 
+import com.bts.shared.issue.IssueTypeId
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
@@ -160,6 +161,7 @@ class IssueInvariantPropertyTest : FunSpec({
                     id = IssueId(UUID.randomUUID()),
                     key = IssueKey.of("PROP", 1L),
                     projectId = UUID.randomUUID(),
+                    typeId = IssueTypeId(1L),
                     summary = "initial",
                     reporterId = ActorId(UUID.randomUUID()),
                     currentStateKey = "open",
@@ -202,6 +204,7 @@ class IssueInvariantPropertyTest : FunSpec({
                     id = IssueId(UUID.randomUUID()),
                     key = IssueKey.of("PROP", 1L),
                     projectId = UUID.randomUUID(),
+                    typeId = IssueTypeId(1L),
                     summary = "state transition test",
                     reporterId = ActorId(UUID.randomUUID()),
                     currentStateKey = "open",
