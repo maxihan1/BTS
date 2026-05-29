@@ -29,6 +29,13 @@ repositories {
     mavenCentral()
 }
 
+// detekt — PRE_EXISTING 위반 57건을 detekt-baseline.xml 로 동결 (PR #38 deferral 정리 PR).
+// 신규 코드는 baseline 에 포함하지 않고 코드/@Suppress 로 해소한다. baseline 의 점진적 축소는 후속.
+// (identity-access / issue-tracking 동일 패턴.)
+detekt {
+    baseline = file("detekt-baseline.xml")
+}
+
 dependencies {
     // shared-kernel — WorkflowTransitionPort + TransitionRequest/Result/Plan/FieldChange/DomainEvent (PR #25 Task 3)
     //   + IssueTypeId/IssueTypeKey 공유 VO. issue-tracking 직접 의존을 제거해 순환(issue-tracking ↔ project-workflow) 회피.
