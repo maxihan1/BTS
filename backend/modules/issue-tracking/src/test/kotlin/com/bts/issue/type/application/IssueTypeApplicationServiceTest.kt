@@ -250,7 +250,9 @@ class IssueTypeApplicationServiceTest : DescribeSpec({
                 }
                 ex.usageCount shouldBe 5L
                 ex.schemeMappingCount shouldBe 0L
-                verify(exactly = 0) { repo.softDelete(any()) }
+                // value class 를 any() 로 verify 하면 MockK reflection 이 IssueTypeId(0) 을 생성해 IAE 발생
+                // — 구체 id 값으로 verify 한다
+                verify(exactly = 0) { repo.softDelete(id) }
             }
         }
 
@@ -266,8 +268,8 @@ class IssueTypeApplicationServiceTest : DescribeSpec({
                     sut.delete(id, reassignTo = reassignId)
                 }
                 ex.schemeMappingCount shouldBe 3L
-                verify(exactly = 0) { repo.softDelete(any()) }
-                verify(exactly = 0) { repo.reassignIssues(any(), any()) }
+                verify(exactly = 0) { repo.softDelete(id) }
+                verify(exactly = 0) { repo.reassignIssues(10L, 2L) }
             }
         }
 
@@ -303,8 +305,8 @@ class IssueTypeApplicationServiceTest : DescribeSpec({
                 shouldThrow<IssueTypeReassignTargetInvalidException> {
                     sut.delete(id, reassignTo = id)
                 }
-                verify(exactly = 0) { repo.softDelete(any()) }
-                verify(exactly = 0) { repo.reassignIssues(any(), any()) }
+                verify(exactly = 0) { repo.softDelete(id) }
+                verify(exactly = 0) { repo.reassignIssues(10L, 10L) }
             }
         }
 
@@ -320,7 +322,7 @@ class IssueTypeApplicationServiceTest : DescribeSpec({
                 shouldThrow<IssueTypeReassignTargetInvalidException> {
                     sut.delete(id, reassignTo = targetId)
                 }
-                verify(exactly = 0) { repo.softDelete(any()) }
+                verify(exactly = 0) { repo.softDelete(id) }
             }
         }
 
@@ -334,7 +336,7 @@ class IssueTypeApplicationServiceTest : DescribeSpec({
                 shouldThrow<RuntimeException> {
                     sut.delete(id, reassignTo = null)
                 }
-                verify(exactly = 0) { repo.softDelete(any()) }
+                verify(exactly = 0) { repo.softDelete(id) }
             }
         }
 
