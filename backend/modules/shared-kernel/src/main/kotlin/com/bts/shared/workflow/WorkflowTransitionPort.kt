@@ -28,10 +28,12 @@ import org.springframework.transaction.annotation.Transactional
  */
 interface WorkflowTransitionPort {
     /**
-     * 전이 요청을 검증하고 결과를 반환한다.
+     * 전이 요청을 검증하고 실행 계획을 반환한다.
      *
-     * project-workflow 는 이 메서드에서 상태를 직접 변경하지 않는다.
+     * project-workflow 는 이 메서드에서 이슈 상태를 직접 변경하지 않는다.
      * [TransitionResult.Success.plan] 을 호출자 BC 가 자신의 트랜잭션 안에서 적용해야 한다.
+     * 이 메서드는 쓰기 트랜잭션 컨텍스트에서 실행되며, [availableTransitions] 와 달리 post-action
+     * 이벤트 발행을 위한 부수 효과를 허용한다.
      *
      * @param req 전이 요청 DTO. [TransitionRequest.validate] 를 통과한 상태여야 한다.
      * @return 전이 검증 결과. 4 케이스 반환 계약은 [WorkflowTransitionPort] KDoc 참조.
