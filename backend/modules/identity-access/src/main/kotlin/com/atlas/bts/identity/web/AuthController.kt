@@ -1,4 +1,4 @@
-// 인증 엔드포인트 — login / logout / refresh / sessions (FR-AU-09 Task 21 / Task 2)
+// 인증 엔드포인트 — login / logout / refresh / sessions / revokeSession (FR-AU-09 Task 21 / Task 2 / Task 3)
 
 package com.atlas.bts.identity.web
 
@@ -21,7 +21,9 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.oauth2.jwt.Jwt
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -40,6 +42,7 @@ import java.util.UUID
  * - [logout]: POST /api/v1/auth/logout — sid 로 Session revoke + refresh chain revoke + Cookie 만료
  * - [refresh]: POST /api/v1/auth/refresh — Cookie 의 refresh_token → RefreshTokenService.rotate
  * - [listSessions]: GET /api/v1/auth/sessions — 본인 활성 세션 목록 조회 (JWT 전용, PAT 403)
+ * - [revokeSession]: DELETE /api/v1/auth/sessions/{sid} — 본인 다른 활성 세션 강제 종료 (JWT 전용, PAT 403)
  *
  * ## 트랜잭션 경계
  * @Transactional 없음 — service layer(SessionService, RefreshTokenService) 가 각자 @Transactional 보장.
@@ -261,6 +264,65 @@ class AuthController(
         return ResponseEntity.ok(mapOf("sessions" to sessionResponses))
     }
 
+    /**
+     * DELETE /api/v1/auth/sessions/{sid} — 본인 다른 활성 세션 강제 종료 (FR-AU-09 Task 3 / spec §FR-3/S-2).
+     *
+     * ## PAT 차단 (FR-6b / EC-8)
+     * [listSessions] 와 동일 원칙 — PAT principal 은 [Jwt] 타입이 아니므로 **403 Forbidden** 반환.
+     *
+     * ## IDOR 방어 (NFR-1 / FR-4 / S-3)
+     * `sessionService.lookup(sid)` 로 세션을 조회한 뒤 `session.userId == 인증 userId` 를 검증한다.
+     * 조회 결과가 null 이거나 userId 불일치인 경우 **모두 404 Not Found** 로 응답한다.
+     * 타인 세션의 존재 여부를 노출하지 않기 위해 404 를 단일 응답코드로 사용한다 (OWASP IDOR 권고).
+     * 검증은 이 메서드 단일 지점에서만 수행한다 (NFR-1 — 분산 방지).
+     *
+     * ## 현재 세션 차단 (FR-5 / S-4)
+     * sid == 요청 JWT 의 `sid` 클레임인 경우 **409 Conflict** + `cannot_revoke_current_session`.
+     * 자기 세션 종료는 기존 POST /logout 로 유도한다.
+     *
+     * ## revoke 처리 (FR-3)
+     * logout 선례(`AuthController.kt:169-170`)와 동일하게:
+     * 1. `sessionService.revoke(sid, "user_revoke")` — sessions 테이블 UPDATE
+     * 2. `refreshTokenRepository.revokeChainFromSession(sid)` — 귀속 refresh chain 즉시 무효화
+     *
+     * @param jwt Spring Security 가 주입한 JWT principal. PAT 인증 시 null (nullable 선언)
+     * @param sid 강제 종료할 세션 ID (Spring 이 UUID 바인딩 실패 시 400 자동 반환 — EC-7)
+     * @return 204 No Content / 400 UUID 형식 오류 / 403 PAT / 404 IDOR/미존재 / 409 현재 세션
+     */
+    @DeleteMapping("/sessions/{sid}")
+    fun revokeSession(
+        @AuthenticationPrincipal jwt: Jwt?,
+        @PathVariable sid: UUID,
+    ): ResponseEntity<*> {
+        if (jwt == null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(mapOf("error" to "session_management_requires_interactive_login"))
+        }
+
+        val userId = runCatching { UUID.fromString(jwt.subject) }.getOrElse {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(mapOf("error" to "invalid_token"))
+        }
+        val currentSid = jwt.getClaimAsString("sid")?.let {
+            runCatching { UUID.fromString(it) }.getOrNull()
+        }
+
+        val session = sessionService.lookup(sid)
+        if (session == null || session.userId != userId) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build<Void>()
+        }
+
+        if (sid == currentSid) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(mapOf("error" to "cannot_revoke_current_session"))
+        }
+
+        sessionService.revoke(sid, REVOKE_REASON_USER)
+        refreshTokenRepository.revokeChainFromSession(sid)
+
+        return ResponseEntity.noContent().build<Void>()
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     /**
@@ -325,6 +387,9 @@ class AuthController(
 
         /** logout 세션 폐기 사유 — 감사 로그 검색 키 */
         const val REVOKE_REASON_LOGOUT = "logout"
+
+        /** 사용자 강제종료 세션 폐기 사유 — 감사 로그 검색 키 (spec §EC 소문자 snake 관례) */
+        const val REVOKE_REASON_USER = "user_revoke"
     }
 }
 
