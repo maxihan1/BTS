@@ -13,6 +13,8 @@ import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.workflow.AvailableTransitionView
 import com.bts.shared.workflow.AvailableTransitionsResult
 import com.bts.shared.workflow.ProjectKey
@@ -37,6 +39,7 @@ import java.util.UUID
 class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
 
     val repo = mockk<IssueRepository>()
+    val issueTypeRepository = mockk<IssueTypeRepository>(relaxed = true)
     val eventPublisher = mockk<IssueEventPublisher>()
     val permissionResolver = mockk<IssuePermissionResolver>()
     val workflowPort = mockk<WorkflowTransitionPort>()
@@ -44,7 +47,15 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
     val clock = Clock.fixed(Instant.parse("2026-05-29T00:00:00Z"), ZoneOffset.UTC)
 
     val sut =
-        IssueApplicationService(repo, eventPublisher, permissionResolver, workflowPort, workflowKeyResolver, clock)
+        IssueApplicationService(
+            repo,
+            issueTypeRepository,
+            eventPublisher,
+            permissionResolver,
+            workflowPort,
+            workflowKeyResolver,
+            clock,
+        )
 
     val actor = ActorId(UUID.randomUUID())
     val issueKey = IssueKey("BTS-1")
@@ -61,6 +72,7 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
             deletedAt = null,
             createdAt = Instant.parse("2026-05-29T00:00:00Z"),
             updatedAt = Instant.parse("2026-05-29T00:00:00Z"),
+            typeId = IssueTypeId(3L),
         )
 
     beforeEach {

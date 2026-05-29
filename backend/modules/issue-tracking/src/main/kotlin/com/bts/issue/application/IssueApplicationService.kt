@@ -61,10 +61,9 @@ import java.util.UUID
  * TooManyFunctions: 이슈 CRUD + 전이 유스케이스 전반을 단일 Application Service 가 담당하므로 함수 수 임계치(11)를 초과한다.
  * availableTransitions 추가로 11개가 됐으나 책임 분리보다 응집이 더 적합한 구조이므로 Suppress 처리.
  */
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LongParameterList")
 @Service
 @Transactional
-@Suppress("LongParameterList")
 class IssueApplicationService(
     private val repo: IssueRepository,
     private val issueTypeRepository: IssueTypeRepository,

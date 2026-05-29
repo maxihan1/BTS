@@ -437,15 +437,27 @@ class IssueTransitionRuntimeIntegrationTest {
                     }
                 }
 
+            // task 타입 id 조회 — V003 seed 에 의해 항상 존재, V005에서 type_id NOT NULL 추가됨
+            val taskTypeId =
+                conn.prepareStatement(
+                    "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        check(rs.next()) { "task 타입이 없습니다. V003 마이그레이션 확인 필요." }
+                        rs.getLong(1)
+                    }
+                }
+
             conn.prepareStatement(
-                "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version) " +
-                    "VALUES (?, ?, ?, ?, ?, 1)",
+                "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version, type_id) " +
+                    "VALUES (?, ?, ?, ?, ?, 1, ?)",
             ).use { stmt ->
                 stmt.setString(1, issueKey)
                 stmt.setObject(2, projectId)
                 stmt.setString(3, summary)
                 stmt.setObject(4, UUID.fromString("00000000-0000-0000-0000-000000000001"))
                 stmt.setString(5, currentStateKey)
+                stmt.setLong(6, taskTypeId)
                 stmt.executeUpdate()
             }
 
