@@ -228,6 +228,44 @@ class SessionServiceTest {
         service.markLastSeen(sid)
     }
 
+    // ── findActiveByUser ──────────────────────────────────────────────────────
+
+    @Test
+    fun `findActiveByUser — repo findActiveByUserId 를 위임하고 lastSeenAt DESC 로 정렬해 반환한다`() {
+        val older = buildActiveSession().copy(lastSeenAt = fixedNow.minusSeconds(300))
+        val newer = buildActiveSession().copy(lastSeenAt = fixedNow.minusSeconds(60))
+        val oldest = buildActiveSession().copy(lastSeenAt = fixedNow.minusSeconds(600))
+        every { repo.findActiveByUserId(userId) } returns listOf(older, newer, oldest)
+
+        val result = service.findActiveByUser(userId)
+
+        assertThat(result).containsExactly(newer, older, oldest)
+        verify(exactly = 1) { repo.findActiveByUserId(userId) }
+    }
+
+    @Test
+    fun `findActiveByUser — 활성 세션이 없으면 빈 리스트를 반환한다 (EC-1)`() {
+        every { repo.findActiveByUserId(userId) } returns emptyList()
+
+        val result = service.findActiveByUser(userId)
+
+        assertThat(result).isEmpty()
+    }
+
+    @Test
+    fun `findActiveByUser — 만료·폐기 세션은 repo 필터에서 이미 제외되어 반환되지 않는다 (EC-5)`() {
+        // repo.findActiveByUserId 는 revoked_at IS NULL AND expires_at > now 조건을 적용하므로
+        // 활성 세션만 반환해야 한다. 단위 테스트에서는 repo 가 활성 세션만 반환한다고 가정.
+        val activeSession = buildActiveSession()
+        every { repo.findActiveByUserId(userId) } returns listOf(activeSession)
+
+        val result = service.findActiveByUser(userId)
+
+        assertThat(result).containsExactly(activeSession)
+        assertThat(result).noneMatch { it.isRevoked() }
+        assertThat(result).noneMatch { it.isExpired(fixedNow) }
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private fun buildActiveSession(id: UUID = UUID.randomUUID()): Session =
