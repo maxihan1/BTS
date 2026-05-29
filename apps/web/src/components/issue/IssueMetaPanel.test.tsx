@@ -145,6 +145,9 @@ describe('IssueMetaPanel — 셀렉터 옵션', () => {
         availableTypes={availableTypes}
         onTypeChange={vi.fn()}
         onDeleteClick={vi.fn()}
+        transitions={transitionsFixture}
+        onTransition={vi.fn()}
+        isTransitioning={false}
       />,
     )
 

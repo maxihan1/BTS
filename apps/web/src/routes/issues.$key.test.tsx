@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { toast } from 'sonner'
 import { server } from '@/test/server'
-import { issueAtlas1Fixture, issueAtlas4Fixture } from '@/mocks/issue-fixtures'
+import { issueAtlas1Fixture } from '@/mocks/issue-fixtures'
 import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
 import { MOCK_CONFLICT_TRIGGER, MOCK_NO_WORKFLOW_TRIGGER } from '@/mocks/issue-handlers'
 import { issueDetailStrings } from '@/i18n/ko'
@@ -375,6 +375,8 @@ describe('IssueDetailPage — 타입 변경', () => {
     server.use(...issueTypeHandlers)
     // ATLAS-1 이슈 단건 조회 핸들러
     setupIssueFoundHandler()
+    // ATLAS-1 전이 목록 핸들러 — useIssueTransitions hook이 GET /api/v1/issues/ATLAS-1/transitions 호출
+    setupTransitionsHandler()
   })
 
   /**
@@ -483,19 +485,102 @@ describe('IssueDetailPage — 타입 변경', () => {
 // 상태전이 배선 테스트 (FR-IS-01 Task-4)
 // ─────────────────────────────────────────────────────────────────────────────
 
+
+/** ATLAS-1(open) 가용전이 목록 핸들러 — 전이 테스트 공통 */
+function setupTransitionsHandler() {
+  server.use(
+    http.get('/api/v1/issues/ATLAS-1/transitions', () =>
+      HttpResponse.json({
+        data: {
+          transitions: [
+            { key: 'open__in_progress', name: 'Start Work', fromStateKey: 'open', toStateKey: 'in_progress' },
+            { key: 'open__closed', name: 'Cancel', fromStateKey: 'open', toStateKey: 'closed' },
+          ],
+        },
+      }),
+    ),
+  )
+}
+
+/** POST /api/v1/issues/ATLAS-1/transition 성공 핸들러 — 전이 테스트 공통 */
+function setupTransitionPostHandler() {
+  server.use(
+    http.post('/api/v1/issues/:key/transition', async ({ params, request }) => {
+      const key = params['key'] as string
+      const body = await request.clone().json() as { toStatusKey?: string; expectedVersion?: number }
+      const toStatusKey = body.toStatusKey ?? ''
+
+      if (toStatusKey === MOCK_NO_WORKFLOW_TRIGGER) {
+        return HttpResponse.json(
+          { errorCode: 'workflow_not_configured', message: '워크플로우 미설정' },
+          { status: 422 },
+        )
+      }
+      if (toStatusKey === MOCK_CONFLICT_TRIGGER) {
+        return HttpResponse.json(
+          { errorCode: 'transition_not_allowed', message: '전이 거부' },
+          { status: 409 },
+        )
+      }
+      return HttpResponse.json({
+        data: {
+          key,
+          id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
+          projectKey: 'ATLAS',
+          summary: '첫 번째 이슈 — 로그인 페이지 구현',
+          currentStateKey: toStatusKey,
+          reporterId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
+          version: 1,
+          createdAt: '2026-01-01T09:00:00Z',
+          updatedAt: new Date().toISOString(),
+          typeId: 1,
+          typeKey: 'bug',
+          typeName: '버그',
+        },
+      })
+    }),
+  )
+}
+
 describe('IssueDetailPage — 상태전이', () => {
   beforeEach(() => {
     vi.mocked(toast.error).mockClear()
     vi.mocked(toast.success).mockClear()
     server.use(...issueTypeHandlers)
     setupIssueFoundHandler()
+    setupTransitionsHandler()
+    setupTransitionPostHandler()
   })
 
   /**
    * T4-1 (happy): 전이 셀렉터에서 "Start Work" 선택 → POST 요청 발생 + 상태 배지 갱신.
-   * ATLAS-1(open, version=0) → in_progress 전이. MSW stateful 핸들러 경유.
+   * ATLAS-1(open, version=0) → in_progress 전이. stateful override 핸들러 경유.
    */
   it('T4-1: 전이 선택 시 POST 요청이 발생하고 상태 배지가 갱신된다', async () => {
+    // stateful override: POST 후 GET이 in_progress 상태를 반환하도록 상태 공유
+    let currentStateKey = 'open'
+    let currentVersion = 0
+
+    server.use(
+      http.get('/api/v1/issues/:key', ({ params }) => {
+        if (params['key'] !== 'ATLAS-1') {
+          return HttpResponse.json({ message: '이슈를 찾을 수 없습니다' }, { status: 404 })
+        }
+        return HttpResponse.json({
+          data: { ...issueAtlas1Fixture, currentStateKey, version: currentVersion },
+        })
+      }),
+      http.post('/api/v1/issues/:key/transition', async ({ request }) => {
+        const body = await request.clone().json() as { toStatusKey?: string; expectedVersion?: number }
+        const toStatusKey = body.toStatusKey ?? ''
+        currentStateKey = toStatusKey
+        currentVersion += 1
+        return HttpResponse.json({
+          data: { ...issueAtlas1Fixture, currentStateKey: toStatusKey, version: currentVersion },
+        })
+      }),
+    )
+
     const user = userEvent.setup()
     renderPage('ATLAS-1')
 
@@ -626,12 +711,18 @@ describe('IssueDetailPage — 상태전이', () => {
   })
 
   /**
-   * T4-5 (S6, closed): ATLAS-4(closed 상태) 로딩 시 전이 셀렉터 미노출 + "더 진행할 전이 없음" 안내.
+   * T4-5 (S6, closed): closed 상태 이슈 로딩 시 전이 셀렉터 미노출 + "더 진행할 전이 없음" 안내.
+   * ATLAS-1 key로 closed 상태를 시뮬 — 전이 목록 빈 배열 override.
    */
   it('T4-5: closed 상태(S6) 이슈에서 전이 셀렉터가 없고 "더 진행할 전이 없음" 안내가 보인다', async () => {
-    setupIssueFoundHandler(issueAtlas4Fixture)
+    // 전이 목록만 빈 배열로 override — issue 단건은 beforeEach가 처리
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/transitions', () =>
+        HttpResponse.json({ data: { transitions: [] } }),
+      ),
+    )
 
-    renderPage('ATLAS-4')
+    renderPage('ATLAS-1')
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
@@ -642,4 +733,5 @@ describe('IssueDetailPage — 상태전이', () => {
       expect(screen.getByText(issueDetailStrings.noTransitionsAvailable)).toBeInTheDocument()
     })
   })
+
 })

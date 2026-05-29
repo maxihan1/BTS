@@ -1,14 +1,15 @@
-// 이슈 상세 페이지 라우트 — 시안 2 사이드 메타패널 (좌 본문 / 우 메타패널, 상태 읽기전용 배지)
+// 이슈 상세 페이지 라우트 — 시안 2 사이드 메타패널 (좌 본문 / 우 메타패널, 상태전이 컨트롤 포함)
 import type { JSX } from 'react'
 import { useState } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { fetchIssue, updateIssue } from '@/api/issues'
+import { fetchIssue, updateIssue, transitionIssue } from '@/api/issues'
 import { ApiError } from '@/api/client'
 import { useUpdateIssueSummary, issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { useDeleteIssue } from '@/api/useDeleteIssue'
 import { useIssueTypes } from '@/hooks/use-issue-types'
+import { useIssueTransitions } from '@/hooks/use-issue-transitions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
@@ -59,6 +60,37 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   })
 
   const { data: availableTypes = [] } = useIssueTypes()
+  const { data: transitions = [] } = useIssueTransitions(issueKey)
+
+  // 전이 실행 mutation — D6 typeChangeMutation과 동일 패턴 (onError 훅 레벨 처리)
+  const transitionMutation = useMutation({
+    mutationFn: (input: { toStatusKey: string; expectedVersion: number }) =>
+      transitionIssue(issueKey, input),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) }),
+        queryClient.invalidateQueries({ queryKey: ['issue-transitions', issueKey] }),
+      ])
+    },
+    onError: (err: unknown) => {
+      if (err instanceof ApiError && err.status === 409) {
+        // errorCode 구분: transition_not_allowed(S3) vs version_conflict(S4)
+        const body = err.body as Record<string, unknown> | undefined
+        const errorCode = typeof body?.['errorCode'] === 'string' ? body['errorCode'] : ''
+        if (errorCode === 'transition_not_allowed') {
+          toast.error(issueDetailStrings.transitionNotAllowedError)
+        } else {
+          // version_conflict(S4) — 최신 데이터 재조회 유도
+          void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+          toast.error(issueDetailStrings.transitionVersionConflictError)
+        }
+      } else if (err instanceof ApiError && err.status === 422) {
+        toast.error(issueDetailStrings.transitionWorkflowNotConfiguredError)
+      } else {
+        toast.error(issueDetailStrings.transitionNotAllowedError)
+      }
+    },
+  })
 
   const updateMutation = useUpdateIssueSummary()
   const deleteMutation = useDeleteIssue({
@@ -125,6 +157,12 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   function handleTypeChange(typeId: number) {
     if (issue === undefined) return
     typeChangeMutation.mutate({ typeId, expectedVersion: issue.version })
+  }
+
+  // ── 상태전이 핸들러 ───────────────────────────────────────────────────────
+  function handleTransition(toStateKey: string) {
+    if (issue === undefined) return
+    transitionMutation.mutate({ toStatusKey: toStateKey, expectedVersion: issue.version })
   }
 
   // ── 삭제 핸들러 ───────────────────────────────────────────────────────────
@@ -236,6 +274,9 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
             availableTypes={availableTypes}
             onTypeChange={handleTypeChange}
             onDeleteClick={handleDeleteClick}
+            transitions={transitions}
+            onTransition={handleTransition}
+            isTransitioning={transitionMutation.isPending}
           />
         )}
       </div>
