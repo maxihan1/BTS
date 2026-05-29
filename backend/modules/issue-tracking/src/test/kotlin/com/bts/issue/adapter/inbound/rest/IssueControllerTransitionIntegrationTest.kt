@@ -21,6 +21,7 @@ import com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermiss
 import com.bts.workflow.scheme.adapter.outbound.JdbcProjectLookupAdapter
 import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
+import com.bts.workflow.scheme.application.port.IssueTypeLookupPort
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
@@ -216,6 +217,14 @@ class IssueControllerTransitionIntegrationTest {
         open fun jdbcProjectLookupAdapter(dsl: DSLContext): JdbcProjectLookupAdapter =
             JdbcProjectLookupAdapter(dsl)
 
+        /**
+         * PRE_EXISTING: FR-WF-02 issueTypeLookupPort 도입 시 이 TestConfiguration 갱신 누락.
+         * 전이(transition) 통합 테스트는 스킴 매핑 뷰를 조회하지 않으므로
+         * issueTypeLookupPort 는 relaxed mock 으로 대체한다.
+         */
+        @Bean
+        open fun issueTypeLookupPort(): IssueTypeLookupPort = mockk(relaxed = true)
+
         @Bean
         open fun workflowSchemeApplicationService(
             schemeRepo: WorkflowSchemeRepository,
@@ -224,6 +233,7 @@ class IssueControllerTransitionIntegrationTest {
             eventPublisher: WorkflowSchemeEventPublisher,
             permissionResolver: AlwaysAllowWorkflowSchemePermissionResolver,
             workflowRepo: WorkflowRepository,
+            issueTypeLookupPort: IssueTypeLookupPort,
         ): WorkflowSchemeApplicationService =
             WorkflowSchemeApplicationService(
                 schemeRepo = schemeRepo,
@@ -232,6 +242,7 @@ class IssueControllerTransitionIntegrationTest {
                 eventPublisher = eventPublisher,
                 permissionResolver = permissionResolver,
                 workflowRepo = workflowRepo,
+                issueTypeLookupPort = issueTypeLookupPort,
             )
 
         @Bean
