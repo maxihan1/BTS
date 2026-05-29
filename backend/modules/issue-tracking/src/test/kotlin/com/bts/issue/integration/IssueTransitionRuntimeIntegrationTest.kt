@@ -7,6 +7,7 @@ import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTe
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -82,14 +83,25 @@ class IssueTransitionRuntimeIntegrationTest {
     private val mapper: ObjectMapper = ObjectMapper().registerKotlinModule().registerModule(JavaTimeModule())
 
     companion object {
-        /** 이 통합 테스트 전용 프로젝트 키 — IssueControllerTransitionIntegrationTest 와 충돌 없음 */
-        private const val PROJECT_KEY = "RUNTIME_IT"
+        /** 이 통합 테스트 전용 프로젝트 키 — IssueControllerTransitionIntegrationTest 와 충돌 없음. 정규식 ^[A-Z][A-Z0-9]{1,9}$ 준수. */
+        private const val PROJECT_KEY = "RUNTIMEIT"
         private var bootstrapped = false
     }
 
     @BeforeAll
     fun setUpAll() {
         if (!bootstrapped) {
+            // Flyway 마이그레이션 — TestConfig 의 @BeforeAll 실행 순서 보장 불가 시에도 안전하게 동작하도록
+            // 이 테스트가 자체적으로 마이그레이션을 실행한다. Flyway 의 repeatability 덕분에 중복 실행 무해.
+            Flyway.configure()
+                .dataSource(TestConfig.postgres.jdbcUrl, TestConfig.postgres.username, TestConfig.postgres.password)
+                .placeholderReplacement(false)
+                .locations(
+                    "classpath:db/migration/issue-tracking",
+                    "classpath:db/migration/project-workflow",
+                )
+                .load()
+                .migrate()
             seedProjectAndScheme()
             bootstrapped = true
         }
