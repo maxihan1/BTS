@@ -105,6 +105,8 @@ class IssueApplicationService(
                 id = IssueId(UUID.randomUUID()),
                 key = key,
                 projectId = projectId,
+                // TODO FR-IS-02 서비스 레이어 Task — request.typeId 로 교체 예정
+                typeId = request.typeId,
                 summary = request.summary,
                 reporterId = request.reporterId,
                 currentStateKey = startState.startStateKey,

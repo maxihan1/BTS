@@ -80,6 +80,7 @@ class IssueController(
                 projectKey = request.projectKey,
                 summary = request.summary,
                 reporterId = actor,
+                typeId = request.typeId,
             )
         val issue = service.createIssue(actor, appRequest)
         val response = IssueResponse.from(issue, issue.key.projectPrefix)

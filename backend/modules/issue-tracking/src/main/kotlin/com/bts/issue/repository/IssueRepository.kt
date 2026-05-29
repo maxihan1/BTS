@@ -279,6 +279,7 @@ private fun Issue.toInsertRecord(): IssuesRecord =
         reporterId = reporterId.value,
         currentStateKey = currentStateKey,
         version = version,
+        typeId = typeId,
     )
 
 /**
@@ -300,5 +301,6 @@ private fun IssuesRecord.toIssue(): Issue {
         deletedAt = deletedAt?.toInstant(),
         createdAt = createdAt?.toInstant() ?: error("issues.created_at must not be null"),
         updatedAt = updatedAt?.toInstant() ?: error("issues.updated_at must not be null"),
+        typeId = typeId ?: error("issues.type_id must not be null"),
     )
 }

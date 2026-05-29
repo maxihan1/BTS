@@ -19,6 +19,7 @@ import java.util.UUID
  * @property id 불변 내부 식별자. [IssueKey] 가 바뀌어도 변하지 않는다.
  * @property key `<PROJECT_KEY>-<NUMBER>` 형식의 이슈 키. 영구 보존 (DATA.md §1.1).
  * @property projectId 이슈가 속한 프로젝트의 UUID.
+ * @property typeId 이슈 유형 id (issue_types.id FK). V005 이후 NOT NULL.
  * @property summary 이슈 제목. 1~255자.
  * @property reporterId 이슈를 생성한 행위자.
  * @property currentStateKey 현재 워크플로우 상태 키. 예: `"open"`.
@@ -38,6 +39,7 @@ data class Issue(
     val deletedAt: Instant?,
     val createdAt: Instant,
     val updatedAt: Instant,
+    val typeId: Long = 0L,
 ) {
     companion object {
         /**
@@ -48,6 +50,7 @@ data class Issue(
          * @param id 이슈 내부 식별자.
          * @param key 발급된 이슈 키.
          * @param projectId 이슈가 속한 프로젝트 UUID.
+         * @param typeId 이슈 유형 id (issue_types.id FK). NOT NULL.
          * @param summary 이슈 제목. 1~255자, 공백만으로 구성 불가.
          * @param reporterId 이슈를 생성하는 행위자.
          * @param currentStateKey 초기 워크플로우 상태 키. 예: `"open"` (소문자, V004 마이그레이션 기준).
@@ -60,6 +63,7 @@ data class Issue(
             summary: String,
             reporterId: ActorId,
             currentStateKey: String,
+            typeId: Long = 0L,
         ): Issue {
             validateSummary(summary)
             val now = Instant.now()
@@ -74,6 +78,7 @@ data class Issue(
                 deletedAt = null,
                 createdAt = now,
                 updatedAt = now,
+                typeId = typeId,
             )
         }
     }

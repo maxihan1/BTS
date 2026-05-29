@@ -2,7 +2,6 @@
 
 package com.bts.issue.type.repository
 
-import com.bts.issue.jooq.tables.references.ISSUES
 import com.bts.issue.type.domain.IssueType
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeKey

@@ -11,11 +11,13 @@ import jakarta.validation.constraints.Size
  * Jakarta Bean Validation 으로 입력값을 검증한다 (DEVELOPMENT.md — Kotlin prefix 어노테이션 필수).
  *
  * @property projectKey 이슈를 생성할 프로젝트 키. 공백 불가.
+ * @property typeId 이슈 유형 id (issue_types.id FK). V005 이후 필수.
  * @property summary 이슈 제목. 공백 불가, 최대 200자.
  */
 data class CreateIssueRequest(
     @field:NotBlank(message = "projectKey는 비어 있을 수 없습니다.")
     val projectKey: String,
+    val typeId: Long = 0L,
     @field:NotBlank(message = "summary는 비어 있을 수 없습니다.")
     @field:Size(max = 200, message = "summary는 200자 이하여야 합니다.")
     val summary: String,
