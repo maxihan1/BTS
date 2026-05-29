@@ -283,8 +283,6 @@ class AuthController(
             current = session.id == currentSid,
         )
 
-
-
     /**
      * refresh_token Set-Cookie 헤더 값을 생성한다.
      *
