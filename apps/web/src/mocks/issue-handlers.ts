@@ -7,6 +7,7 @@ import {
   issueAtlas2Fixture,
   issueAtlas3Fixture,
 } from './issue-fixtures'
+import { allIssueTypeFixtures } from './issue-type-fixtures'
 import type { IssueResponse, IssuePage } from '@/api/issues'
 
 /** 이슈 생성 성공 응답 픽스처 */
@@ -29,6 +30,16 @@ const issueFixtureMap: Record<string, IssueResponse> = {
   'ATLAS-1': issueAtlas1Fixture,
   'ATLAS-2': issueAtlas2Fixture,
   'ATLAS-3': issueAtlas3Fixture,
+}
+
+/**
+ * 이슈 타입 카탈로그 lookup — id 로 활성 타입 조회.
+ * 존재하지 않으면 undefined 반환.
+ */
+function lookupIssueType(
+  id: number,
+): { id: number; key: string; name: string } | undefined {
+  return allIssueTypeFixtures.find((t) => t.id === id)
 }
 
 // 소프트 삭제된 이슈 키 집합 — DELETE 핸들러가 add, GET 목록/단건이 필터링 (gap-H).
@@ -111,9 +122,13 @@ export const MOCK_CONFLICT_TRIGGER = '__TRIGGER_409__'
 
 /**
  * PATCH /api/v1/issues/:key — 이슈 수정 핸들러.
- * 존재하는 key면 200 + { data: 수정된 IssueResponse(version+1) } 반환.
- * 존재하지 않는 key면 404 반환.
- * summary 가 MOCK_CONFLICT_TRIGGER 이면 409 VERSION_CONFLICT — E2E-5 동시 편집 회귀 가드용.
+ * 분기 순서 (backend 일치):
+ *   (1) 이슈 not-found → 404
+ *   (2) typeId 검증 실패 → 404
+ *   (3) VERSION_CONFLICT 트리거 → 409
+ *   (4) 성공 → 200 + { data: 수정된 IssueResponse(version+1) }
+ *
+ * body.expectedVersion 은 낙관적 잠금(OCC) 필드 — updateIssue API 함수 전송 형태와 일치.
  */
 const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, request }) => {
   const key = params['key'] as string
@@ -124,16 +139,44 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
       { status: 404 },
     )
   }
-  const body = await request.clone().json() as { summary?: string; version?: number }
+  const body = await request.clone().json() as {
+    summary?: string
+    typeId?: number
+    expectedVersion?: number
+  }
+
+  // (2) typeId 검증 — 카탈로그에 없는 id 는 404
+  let resolvedTypeId = found.typeId
+  let resolvedTypeKey = found.typeKey
+  let resolvedTypeName = found.typeName
+  if (body.typeId !== undefined) {
+    const matched = lookupIssueType(body.typeId)
+    if (matched === undefined) {
+      return HttpResponse.json(
+        { message: `이슈 타입을 찾을 수 없습니다: ${body.typeId}` },
+        { status: 404 },
+      )
+    }
+    resolvedTypeId = matched.id
+    resolvedTypeKey = matched.key
+    resolvedTypeName = matched.name
+  }
+
+  // (3) VERSION_CONFLICT 회귀 가드 — E2E-5 트리거
   if (body.summary === MOCK_CONFLICT_TRIGGER) {
     return HttpResponse.json(
       { errorCode: 'VERSION_CONFLICT', message: '버전 충돌이 발생했습니다.' },
       { status: 409 },
     )
   }
+
+  // (4) 성공
   const updated: IssueResponse = {
     ...found,
     summary: body.summary ?? found.summary,
+    typeId: resolvedTypeId,
+    typeKey: resolvedTypeKey,
+    typeName: resolvedTypeName,
     version: found.version + 1,
     updatedAt: new Date().toISOString(),
   }
