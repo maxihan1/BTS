@@ -47,6 +47,8 @@ import java.util.UUID
  *
  * - 권한 검증: [IssuePermissionResolver] 를 통해 각 메서드 진입 직후 체크
  * - 이슈 키 발급: [IssueRepository.incrementKeySequence] (pg_advisory_xact_lock 포함)
+ * - 이슈 타입 결정: [IssueTypeRepository.findByKey] (task fallback) / [IssueTypeRepository.findById] (지정 타입 검증)
+ *   FR-6 — 모든 이슈는 유효한 타입을 보유해야 한다. typeId 미지정 시 표준 task 타입으로 자동 fallback.
  * - 이벤트 발행: [IssueEventPublisher] (Propagation.MANDATORY — 같은 트랜잭션)
  * - 워크플로우 전이: [WorkflowTransitionPort] (inbound port — BC 격리 준수)
  * - 워크플로우 키 결정: [WorkflowKeyResolver] (shared-kernel SPI — project-workflow BC 내부 직접 import 금지)
