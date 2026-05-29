@@ -288,8 +288,9 @@ class AuthController(
     ): ResponseEntity<*> {
         val claims = resolveJwtClaims(jwt) ?: return PAT_FORBIDDEN_RESPONSE
 
+        // 미존재 / 타인 소유(IDOR) / 이미 비활성(revoked·만료, EC-2) 세션은 모두 404 (존재 비노출 + 멱등 재폐기 방지).
         val session = sessionService.lookup(sid)
-        if (session == null || session.userId != claims.userId) {
+        if (session == null || session.userId != claims.userId || !session.isActive(Instant.now())) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build<Void>()
         }
 
