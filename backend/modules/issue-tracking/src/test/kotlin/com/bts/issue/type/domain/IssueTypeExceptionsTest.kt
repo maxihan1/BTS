@@ -4,11 +4,11 @@ package com.bts.issue.type.domain
 
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeKey
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.types.shouldBeInstanceOf
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
-import kotlin.test.assertNotNull
 
 /**
  * IssueTypeDomainException 계층 단위 테스트.
@@ -24,10 +24,9 @@ class IssueTypeExceptionsTest {
             val id = IssueTypeId(1L)
             val ex = IssueTypeStandardImmutableException(typeId = id, key = null)
 
-            assertIs<IssueTypeDomainException>(ex)
-            assertIs<RuntimeException>(ex)
-            assertNotNull(ex.message)
-            assert(ex.message!!.contains("1")) { "message should contain typeId value" }
+            ex.shouldBeInstanceOf<IssueTypeDomainException>()
+            ex.shouldBeInstanceOf<RuntimeException>()
+            ex.message.shouldContain("1")
         }
 
         @Test
@@ -35,8 +34,8 @@ class IssueTypeExceptionsTest {
             val key = IssueTypeKey("bug")
             val ex = IssueTypeStandardImmutableException(typeId = null, key = key)
 
-            assertIs<IssueTypeDomainException>(ex)
-            assert(ex.message!!.contains("bug")) { "message should contain key value" }
+            ex.shouldBeInstanceOf<IssueTypeDomainException>()
+            ex.message.shouldContain("bug")
         }
     }
 
@@ -47,9 +46,9 @@ class IssueTypeExceptionsTest {
             val key = IssueTypeKey("task")
             val ex = IssueTypeKeyDuplicateException(key)
 
-            assertIs<IssueTypeDomainException>(ex)
-            assertIs<RuntimeException>(ex)
-            assert(ex.message!!.contains("task")) { "message should contain key value" }
+            ex.shouldBeInstanceOf<IssueTypeDomainException>()
+            ex.shouldBeInstanceOf<RuntimeException>()
+            ex.message.shouldContain("task")
         }
     }
 
@@ -60,9 +59,9 @@ class IssueTypeExceptionsTest {
             val key = IssueTypeKey("story")
             val ex = IssueTypeKeyInvalidException(key)
 
-            assertIs<IssueTypeDomainException>(ex)
-            assertIs<RuntimeException>(ex)
-            assert(ex.message!!.contains("story")) { "message should contain key value" }
+            ex.shouldBeInstanceOf<IssueTypeDomainException>()
+            ex.shouldBeInstanceOf<RuntimeException>()
+            ex.message.shouldContain("story")
         }
     }
 
@@ -72,12 +71,12 @@ class IssueTypeExceptionsTest {
         fun `usageCount 와 schemeMappingCount 필드를 보유하며 message 에 두 값이 포함된다`() {
             val ex = IssueTypeInUseException(usageCount = 42L, schemeMappingCount = 3L)
 
-            assertIs<IssueTypeDomainException>(ex)
-            assertIs<RuntimeException>(ex)
-            assertEquals(42L, ex.usageCount)
-            assertEquals(3L, ex.schemeMappingCount)
-            assert(ex.message!!.contains("42")) { "message should contain usageCount" }
-            assert(ex.message!!.contains("3")) { "message should contain schemeMappingCount" }
+            ex.shouldBeInstanceOf<IssueTypeDomainException>()
+            ex.shouldBeInstanceOf<RuntimeException>()
+            ex.usageCount shouldBe 42L
+            ex.schemeMappingCount shouldBe 3L
+            ex.message.shouldContain("42")
+            ex.message.shouldContain("3")
         }
     }
 
@@ -88,9 +87,9 @@ class IssueTypeExceptionsTest {
             val targetId = IssueTypeId(7L)
             val ex = IssueTypeReassignTargetInvalidException(targetId = targetId, reason = "삭제된 타입")
 
-            assertIs<IssueTypeDomainException>(ex)
-            assertIs<RuntimeException>(ex)
-            assert(ex.message!!.contains("7")) { "message should contain targetId value" }
+            ex.shouldBeInstanceOf<IssueTypeDomainException>()
+            ex.shouldBeInstanceOf<RuntimeException>()
+            ex.message.shouldContain("7")
         }
     }
 
@@ -101,9 +100,9 @@ class IssueTypeExceptionsTest {
             val id = IssueTypeId(99L)
             val ex = IssueTypeNotFoundException(id)
 
-            assertIs<IssueTypeDomainException>(ex)
-            assertIs<RuntimeException>(ex)
-            assert(ex.message!!.contains("99")) { "message should contain id value" }
+            ex.shouldBeInstanceOf<IssueTypeDomainException>()
+            ex.shouldBeInstanceOf<RuntimeException>()
+            ex.message.shouldContain("99")
         }
     }
 
@@ -119,8 +118,8 @@ class IssueTypeExceptionsTest {
         )
 
         exceptions.forEach { ex ->
-            assertIs<IssueTypeDomainException>(ex)
-            assertIs<RuntimeException>(ex)
+            ex.shouldBeInstanceOf<IssueTypeDomainException>()
+            ex.shouldBeInstanceOf<RuntimeException>()
         }
     }
 }
