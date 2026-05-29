@@ -73,10 +73,14 @@ class IssueTypeHierarchyAndFkMigrationIntegrationTest {
             ).use { stmt ->
                 stmt.setString(1, tableName)
                 stmt.setString(2, columnName)
-                stmt.executeQuery().use { rs -> rs.next(); rs.getInt(1) > 0 }
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getInt(1) > 0
+                }
             }
         }
 
+    @Suppress("NestedBlockDepth")
     private fun columnDataType(
         tableName: String,
         columnName: String,
@@ -99,7 +103,10 @@ class IssueTypeHierarchyAndFkMigrationIntegrationTest {
                     " WHERE schemaname = 'public' AND indexname = ?",
             ).use { stmt ->
                 stmt.setString(1, indexName)
-                stmt.executeQuery().use { rs -> rs.next(); rs.getInt(1) > 0 }
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getInt(1) > 0
+                }
             }
         }
 
@@ -114,7 +121,10 @@ class IssueTypeHierarchyAndFkMigrationIntegrationTest {
             ).use { stmt ->
                 stmt.setString(1, tableName)
                 stmt.setString(2, constraintName)
-                stmt.executeQuery().use { rs -> rs.next(); rs.getInt(1) > 0 }
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getInt(1) > 0
+                }
             }
         }
 
@@ -128,38 +138,6 @@ class IssueTypeHierarchyAndFkMigrationIntegrationTest {
                     check(rs.next()) { "issue_type key=$key 없음" }
                     rs.getInt(1)
                 }
-            }
-        }
-
-    /** 테스트용 project + issue row 를 삽입하고 issue id(UUID 문자열)를 반환한다. */
-    private fun insertTestIssue(issueKey: String): String =
-        conn().use { c ->
-            // project 삽입 (아직 없으면)
-            c.prepareStatement(
-                "INSERT INTO projects(key, name) VALUES('TST', 'Test Project')" +
-                    " ON CONFLICT(key) DO NOTHING",
-            ).use { it.executeUpdate() }
-
-            val projectId = c.prepareStatement(
-                "SELECT id FROM projects WHERE key = 'TST'",
-            ).use { stmt ->
-                stmt.executeQuery().use { rs -> rs.next(); rs.getString(1) }
-            }
-
-            val taskTypeId = c.prepareStatement(
-                "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL",
-            ).use { stmt ->
-                stmt.executeQuery().use { rs -> rs.next(); rs.getLong(1) }
-            }
-
-            c.prepareStatement(
-                "INSERT INTO issues(key, project_id, summary, reporter_id, current_state_key, type_id)" +
-                    " VALUES(?, ?::uuid, 'Test Issue', gen_random_uuid(), 'open', ?) RETURNING id",
-            ).use { stmt ->
-                stmt.setString(1, issueKey)
-                stmt.setString(2, projectId)
-                stmt.setLong(3, taskTypeId)
-                stmt.executeQuery().use { rs -> rs.next(); rs.getString(1) }
             }
         }
 
@@ -210,14 +188,18 @@ class IssueTypeHierarchyAndFkMigrationIntegrationTest {
     @Test
     fun `V005 issues type_id 컬럼은 NOT NULL`() {
         // IS_NULLABLE = 'NO' 인지 확인
-        val isNullable = conn().use { c ->
-            c.prepareStatement(
-                "SELECT is_nullable FROM information_schema.columns" +
-                    " WHERE table_schema = 'public' AND table_name = 'issues' AND column_name = 'type_id'",
-            ).use { stmt ->
-                stmt.executeQuery().use { rs -> rs.next(); rs.getString(1) }
+        val isNullable =
+            conn().use { c ->
+                c.prepareStatement(
+                    "SELECT is_nullable FROM information_schema.columns" +
+                        " WHERE table_schema = 'public' AND table_name = 'issues' AND column_name = 'type_id'",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getString(1)
+                    }
+                }
             }
-        }
         assertThat(isNullable).isEqualTo("NO")
     }
 
@@ -230,11 +212,15 @@ class IssueTypeHierarchyAndFkMigrationIntegrationTest {
                     " ON CONFLICT(key) DO NOTHING",
             ).use { it.executeUpdate() }
         }
-        val projectId = conn().use { c ->
-            c.prepareStatement("SELECT id FROM projects WHERE key = 'TST'").use { stmt ->
-                stmt.executeQuery().use { rs -> rs.next(); rs.getString(1) }
+        val projectId =
+            conn().use { c ->
+                c.prepareStatement("SELECT id FROM projects WHERE key = 'TST'").use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getString(1)
+                    }
+                }
             }
-        }
 
         assertThatThrownBy {
             conn().use { c ->
@@ -264,11 +250,15 @@ class IssueTypeHierarchyAndFkMigrationIntegrationTest {
                     " ON CONFLICT(key) DO NOTHING",
             ).use { it.executeUpdate() }
         }
-        val projectId = conn().use { c ->
-            c.prepareStatement("SELECT id FROM projects WHERE key = 'TST'").use { stmt ->
-                stmt.executeQuery().use { rs -> rs.next(); rs.getString(1) }
+        val projectId =
+            conn().use { c ->
+                c.prepareStatement("SELECT id FROM projects WHERE key = 'TST'").use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getString(1)
+                    }
+                }
             }
-        }
 
         assertThatThrownBy {
             conn().use { c ->
@@ -332,13 +322,17 @@ class IssueTypeHierarchyAndFkMigrationIntegrationTest {
         }
 
         // 재INSERT 된 활성 row 확인
-        val activeCount = conn().use { c ->
-            c.prepareStatement(
-                "SELECT COUNT(*) FROM issue_types WHERE key = 'test-only-type' AND deleted_at IS NULL",
-            ).use { stmt ->
-                stmt.executeQuery().use { rs -> rs.next(); rs.getInt(1) }
+        val activeCount =
+            conn().use { c ->
+                c.prepareStatement(
+                    "SELECT COUNT(*) FROM issue_types WHERE key = 'test-only-type' AND deleted_at IS NULL",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getInt(1)
+                    }
+                }
             }
-        }
         assertThat(activeCount).isEqualTo(1)
     }
 }
