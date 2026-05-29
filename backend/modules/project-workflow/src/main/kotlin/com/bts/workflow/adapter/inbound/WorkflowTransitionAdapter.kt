@@ -9,6 +9,7 @@ import com.bts.shared.workflow.TransitionRequest
 import com.bts.shared.workflow.TransitionResult
 import com.bts.shared.workflow.WorkflowTransitionPort
 import com.bts.workflow.cache.WorkflowCache
+import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.domain.dto.TransitionContext
 import com.bts.workflow.domain.exception.WorkflowExpressionTimeoutException
@@ -115,7 +116,7 @@ class WorkflowTransitionAdapter(
      */
     private fun passesValidators(
         req: AvailableTransitionsRequest,
-        workflow: com.bts.workflow.domain.Workflow,
+        workflow: Workflow,
         transition: WorkflowTransition,
     ): Boolean {
         val fromState = workflow.states.find { it.key == req.fromStateKey } ?: return false
@@ -125,8 +126,8 @@ class WorkflowTransitionAdapter(
             fields = req.issueFields,
         )
         val actorView = DefaultActorView(userId = req.actorId, roles = req.actorRoles)
-        // availableTransitions용 최소 TransitionRequest — validator 평가에만 사용
-        val syntheticRequest = com.bts.shared.workflow.TransitionRequest(
+        // availableTransitions 전용 최소 TransitionRequest — validator 평가에만 사용하며 부수 효과 없음
+        val syntheticRequest = TransitionRequest(
             workflowKey = req.workflowKey,
             issueKey = "",
             fromStateKey = req.fromStateKey,
