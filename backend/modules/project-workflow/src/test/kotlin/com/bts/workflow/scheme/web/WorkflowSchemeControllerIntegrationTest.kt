@@ -97,7 +97,7 @@ class WorkflowSchemeControllerIntegrationTest {
                             ('task',     '태스크',    TRUE),
                             ('epic',     '에픽',      TRUE),
                             ('subtask',  '서브태스크', TRUE)
-                        ON CONFLICT (key) DO NOTHING
+                        ON CONFLICT DO NOTHING
                         """.trimIndent(),
                     )
                 }

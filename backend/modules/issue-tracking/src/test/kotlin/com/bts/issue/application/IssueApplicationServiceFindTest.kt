@@ -6,7 +6,6 @@ import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
-import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.event.IssueEventPublisher
@@ -14,6 +13,7 @@ import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowTransitionPort
 import io.kotest.assertions.throwables.shouldThrow
@@ -31,6 +31,7 @@ import java.util.UUID
 class IssueApplicationServiceFindTest : DescribeSpec({
 
     val repo = mockk<IssueRepository>()
+    val issueTypeRepository = mockk<IssueTypeRepository>(relaxed = true)
     val eventPublisher = mockk<IssueEventPublisher>()
     val permissionResolver = mockk<IssuePermissionResolver>()
     val workflowPort = mockk<WorkflowTransitionPort>()
@@ -38,7 +39,15 @@ class IssueApplicationServiceFindTest : DescribeSpec({
     val clock = Clock.fixed(Instant.parse("2026-05-24T00:00:00Z"), ZoneOffset.UTC)
 
     val sut =
-        IssueApplicationService(repo, eventPublisher, permissionResolver, workflowPort, workflowKeyResolver, clock)
+        IssueApplicationService(
+            repo,
+            issueTypeRepository,
+            eventPublisher,
+            permissionResolver,
+            workflowPort,
+            workflowKeyResolver,
+            clock,
+        )
 
     val actor = ActorId(UUID.randomUUID())
     val issueKey = IssueKey("BTS-1")
@@ -51,31 +60,33 @@ class IssueApplicationServiceFindTest : DescribeSpec({
 
         context("권한이 있고 이슈가 존재할 때") {
             val fixedNow = Instant.parse("2026-05-24T00:00:00Z")
-            val issue =
-                Issue(
-                    id = IssueId(UUID.randomUUID()),
-                    key = issueKey,
-                    projectId = UUID.randomUUID(),
+            val issueResponse =
+                com.bts.issue.adapter.inbound.rest.IssueResponse(
+                    key = issueKey.value,
+                    id = UUID.randomUUID(),
+                    projectKey = issueKey.projectPrefix,
                     summary = "Test issue",
-                    reporterId = actor,
+                    reporterId = actor.value,
                     currentStateKey = "open",
                     version = 1L,
-                    deletedAt = null,
                     createdAt = fixedNow,
                     updatedAt = fixedNow,
+                    typeId = 3L,
+                    typeKey = "task",
+                    typeName = "Task",
                 )
 
             beforeEach {
                 every {
                     permissionResolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
                 } returns true
-                every { repo.findByKey(issueKey) } returns issue
+                every { repo.findByKeyWithType(issueKey) } returns issueResponse
             }
 
             it("IssueResponse 를 반환한다") {
                 val result = sut.findByKey(actor, issueKey)
 
-                result shouldBe IssueResponse.from(issue, issueKey.projectPrefix)
+                result shouldBe issueResponse
             }
 
             it("반환된 응답의 key 가 이슈 키와 일치한다") {
@@ -101,7 +112,7 @@ class IssueApplicationServiceFindTest : DescribeSpec({
             it("repo 가 호출되지 않는다") {
                 runCatching { sut.findByKey(actor, issueKey) }
 
-                verify(exactly = 0) { repo.findByKey(issueKey) }
+                verify(exactly = 0) { repo.findByKeyWithType(issueKey) }
             }
         }
 
@@ -110,7 +121,7 @@ class IssueApplicationServiceFindTest : DescribeSpec({
                 every {
                     permissionResolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
                 } returns true
-                every { repo.findByKey(issueKey) } returns null
+                every { repo.findByKeyWithType(issueKey) } returns null
             }
 
             it("IssueNotFoundException 을 던진다") {

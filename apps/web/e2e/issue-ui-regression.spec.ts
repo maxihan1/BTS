@@ -1,6 +1,7 @@
 // FR-IS-01 D7 E2E-4 회귀 가드 — 인라인 편집 취소 / 다이얼로그 취소 / 빈 summary Zod 검증
 import { test, expect } from '@playwright/test'
 import { loginAsAlice, createIssueViaUI, i18nLabels } from './fixtures/issue-fixtures'
+import { createdIssueFixture } from '../src/mocks/issue-handlers'
 
 test.describe('E2E-4 UI 회귀 가드', () => {
   test('5-1 인라인 편집 취소 버튼 → 원본 summary 유지', async ({ page }) => {
@@ -19,7 +20,7 @@ test.describe('E2E-4 UI 회귀 가드', () => {
     // 편집 모드 종료 + 원본 summary 유지 검증
     await expect(titleInput).not.toBeVisible()
     await expect(page.getByRole('heading', { level: 1, name: 'E2E-4-1 원본 제목' })).toBeVisible()
-    expect(key).toBe('ATLAS-42')
+    expect(key).toBe(createdIssueFixture.key)
   })
 
   test('5-2 삭제 다이얼로그 취소 → 이슈 보존', async ({ page }) => {

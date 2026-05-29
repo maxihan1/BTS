@@ -53,13 +53,13 @@
 
 **우선순위**. 필수 | **선행**. §2.1.1 | **Plan slug**. `issue/types`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — Epic-Subtask 계층 제약 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `issue_types`, `issues.type_id` (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/issue-types` + 생성 시 검증 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 타입 셀렉터 + 아이콘 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — IssueType.hierarchyLevel + Issue.typeId (PR #36)
+- [x] D2. 명세 — Epic-Subtask 계층은 hierarchyLevel 메타데이터로 (parent_id 강제는 후속 FR) (PR #36)
+- [x] D3. 데이터 모델 — `issue_types.hierarchy_level` + `issues.type_id` FK + key 부분 unique (V005, PR #36)
+- [x] D4. 백엔드 — 커스텀 IssueType CRUD (POST/PATCH/DELETE+reassignTo) + 표준 불변 + RFC 7807 (PR #36)
+- [x] D5. 백엔드 테스트 — MockK 단위 + Testcontainers 통합 (PR #36)
+- [ ] D6. 프론트 UI — 타입 셀렉터 + 아이콘 (책임. designer → frontend-engineer) — transition-e2e(PR #34) 정리 후 별 PR
+- [ ] D7. E2E (책임. qa-engineer) — D6와 함께
 
 #### §2.1.3 FR-IS-03 — 담당자 (Reporter 1 / Assignee 1 / Watchers N)
 

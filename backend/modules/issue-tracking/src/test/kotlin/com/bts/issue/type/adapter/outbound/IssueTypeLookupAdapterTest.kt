@@ -46,6 +46,8 @@ class IssueTypeLookupAdapterTest {
         val result = adapter.lookup(emptyList())
 
         assertThat(result).isEmpty()
+        // value class IssueTypeId 는 양수 require — any() 로 verify 하면 MockK 가 IssueTypeId(0) 생성 시도로 IAE 발생.
+        // confirmVerified 로 findById 가 전혀 호출되지 않았음을 안전하게 검증한다.
         confirmVerified(repository)
     }
 
@@ -98,6 +100,7 @@ class IssueTypeLookupAdapterTest {
             description = null,
             iconName = null,
             isStandard = true,
+            hierarchyLevel = 0,
             createdAt = now,
             updatedAt = now,
             deletedAt = null,

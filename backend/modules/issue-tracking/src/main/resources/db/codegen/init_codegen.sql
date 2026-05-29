@@ -102,3 +102,66 @@ INSERT INTO issue_types (key, name, description, icon_name, is_standard) VALUES
     ('task',    'Task',    '일반 작업',                     'task',    true),
     ('subtask', 'Subtask', '하위 작업',       'subtask', true),
     ('bug',     'Bug',     '결함',            'bug',     true);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V004: issues.current_state_key 소문자 정규화 (데이터 변경만 — 스키마 DDL 없음)
+-- 원본: db/migration/issue-tracking/V004__lowercase_current_state_key.sql
+-- jOOQ codegen 에 영향 없음. 완전성을 위해 주석으로만 포함.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- (스키마 변경 없음 — codegen init 에 DDL 추가 불필요)
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V005: issue_types.hierarchy_level 컬럼 + issues.type_id FK + 부분 unique 인덱스 교체
+-- 원본: db/migration/issue-tracking/V005__issue_type_hierarchy_and_issue_type_fk.sql
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- 1. issue_types.hierarchy_level 컬럼 추가 (jOOQ: IssueTypes.HIERARCHY_LEVEL 생성 대상)
+ALTER TABLE issue_types
+    ADD COLUMN hierarchy_level INT NOT NULL DEFAULT 0;
+
+COMMENT ON COLUMN issue_types.hierarchy_level IS
+    '이슈 유형 계층 깊이. epic=1(최상위), task/story/bug=0(기본), subtask=-1(하위 작업).';
+
+-- epic: 하위 이슈를 묶는 최상위 컨테이너 → level 1
+UPDATE issue_types SET hierarchy_level = 1  WHERE key = 'epic';
+-- subtask: 다른 이슈의 하위 작업 → level -1
+UPDATE issue_types SET hierarchy_level = -1 WHERE key = 'subtask';
+
+-- 2. (B1) key UNIQUE 제약 교체 — 전체 unique → 부분 unique (활성 row 만)
+ALTER TABLE issue_types
+    DROP CONSTRAINT IF EXISTS issue_types_key_key;
+
+CREATE UNIQUE INDEX ux_issue_types_key_active
+    ON issue_types (key)
+    WHERE deleted_at IS NULL;
+
+DROP INDEX IF EXISTS ix_issue_types_key_active;
+
+-- 3. issues.type_id 컬럼 추가 (jOOQ: Issues.TYPE_ID 생성 대상)
+ALTER TABLE issues
+    ADD COLUMN type_id BIGINT;
+
+COMMENT ON COLUMN issues.type_id IS
+    'issue_types.id FK. 이슈 유형 식별자. NOT NULL — 이슈는 반드시 유형을 가진다.';
+
+-- 기존 row backfill — task 타입으로 채운다 (V005 이전 이슈는 기본 task 유형으로 간주)
+UPDATE issues
+   SET type_id = (
+       SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1
+   )
+ WHERE type_id IS NULL;
+
+-- backfill 완료 후 NOT NULL 제약 적용
+ALTER TABLE issues
+    ALTER COLUMN type_id SET NOT NULL;
+
+-- FK 제약
+ALTER TABLE issues
+    ADD CONSTRAINT fk_issues_type_id
+        FOREIGN KEY (type_id)
+        REFERENCES issue_types (id);
+
+-- FK 인덱스 (PostgreSQL 은 FK 에 인덱스 자동 생성 안 함)
+CREATE INDEX ix_issues_type_id
+    ON issues (type_id);

@@ -14,7 +14,7 @@ import { AUTH_USERS, LDAP_VALID_PASSWORDS, VALID_PASSWORDS, mockAccessToken } fr
  * 에러 schema: `{ error: "invalid_credentials" | "unknown_provider" }` — useLoginMutation 의 resolveLoginErrorMessage 가 한국어 매핑
  */
 const loginHandler = http.post('/api/v1/auth/login', async ({ request }) => {
-  const body = await request.json() as { provider?: string; username?: string; password?: string }
+  const body = await request.clone().json() as { provider?: string; username?: string; password?: string }
   const provider = body.provider
   const username = body.username ?? ''
   const password = body.password ?? ''

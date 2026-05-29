@@ -1,4 +1,4 @@
-// IssueRepository Testcontainers 통합 테스트 — T1~T9 RED→GREEN 검증 (Task 5 + Task 9, FR-IS-01)
+// IssueRepository Testcontainers 통합 테스트 — T1~T9 RED→GREEN 검증 (Task 5 + Task 9, FR-IS-01, FR-IS-02)
 
 package com.bts.issue.repository
 
@@ -6,13 +6,16 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
+import com.bts.shared.issue.IssueTypeId
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.MethodOrderer
 import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
 import org.springframework.data.domain.PageRequest
+import java.sql.DriverManager
 import java.util.UUID
 
 /**
@@ -41,6 +44,30 @@ import java.util.UUID
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class IssueRepositoryTest : IssueTestcontainersBase() {
+    /**
+     * V003 seed 에서 task 타입의 id 를 DB 에서 직접 조회한다.
+     * BIGSERIAL 이므로 명시적 id 가 없어 bootstrap 후 조회가 가장 안전하다.
+     * IssueTypeId 는 value class 이므로 lateinit 불가 — var + null 허용으로 초기화.
+     */
+    private var taskTypeId: IssueTypeId? = null
+
+    @BeforeAll
+    fun resolveTaskTypeId() {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            val sql = "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1"
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.executeQuery().use { rs ->
+                    check(rs.next()) { "V003 마이그레이션에서 task 타입이 없습니다." }
+                    taskTypeId = IssueTypeId(rs.getLong(1))
+                }
+            }
+        }
+    }
+
+    /** 각 테스트에서 안전하게 taskTypeId 를 꺼내는 helper. resolveTaskTypeId 이후 항상 non-null. */
+    @Suppress("MaxLineLength")
+    private fun requireTaskTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다 — resolveTaskTypeId 실행 확인" }
+
     // ── T1. insert ───────────────────────────────────────────────────────────────
 
     /**
@@ -56,6 +83,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = IssueKey.of("TPRJ", 1L),
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "Fix login bug",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
@@ -87,6 +115,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = IssueKey.of("TPRJ", 1L),
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "Find by key test",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
@@ -130,6 +159,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = key,
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "For update test",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
@@ -158,6 +188,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = key,
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "Transition test",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
@@ -188,6 +219,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = key,
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "Stale version test",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
@@ -218,6 +250,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = key,
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "Soft delete test",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
@@ -247,6 +280,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                     id = IssueId(UUID.randomUUID()),
                     key = IssueKey.of("TPRJ", i.toLong()),
                     projectId = testProjectId,
+                    typeId = requireTaskTypeId(),
                     summary = "Issue $i",
                     reporterId = reporterId,
                     currentStateKey = "open",
@@ -259,6 +293,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = IssueKey.of("TPRJ", 4L),
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "Deleted issue",
                 reporterId = reporterId,
                 currentStateKey = "open",
@@ -309,6 +344,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = key,
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "소문자 상태키 회귀 가드",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
@@ -341,6 +377,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = key,
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "원래",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
@@ -353,6 +390,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 id = IssueId(UUID.randomUUID()),
                 key = key,
                 projectId = testProjectId,
+                typeId = requireTaskTypeId(),
                 summary = "중복 시도",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
@@ -363,5 +401,69 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 org.springframework.dao.DataIntegrityViolationException::class.java,
                 org.jooq.exception.IntegrityConstraintViolationException::class.java,
             )
+    }
+
+    // ── G4. findByKeyWithType — type 요약 노출 (FR-IS-02 Task 9) ─────────────────
+
+    /**
+     * Given  task 타입으로 생성된 이슈
+     * When   findByKeyWithType 으로 조회
+     * Then   typeId / typeKey = "task" / typeName = "Task" 가 IssueResponse 에 포함된다.
+     */
+    @Test
+    @Order(12)
+    fun `G4-findByKey - task 타입 이슈 조회 시 IssueResponse에 typeKey=task, typeName=Task가 포함된다`() {
+        val key = IssueKey.of("TPRJ", 1L)
+        val issue =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = key,
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "type summary test",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+            )
+        repository.insert(issue)
+
+        val response = repository.findByKeyWithType(key)
+
+        assertThat(response).isNotNull
+        assertThat(response!!.typeId).isEqualTo(requireTaskTypeId().value)
+        assertThat(response.typeKey).isEqualTo("task")
+        assertThat(response.typeName).isEqualTo("Task")
+    }
+
+    /**
+     * Given  task 타입 활성 이슈 2건
+     * When   listWithType 으로 첫 페이지 조회
+     * Then   반환된 IssueResponse 모두 typeKey = "task" 를 포함한다.
+     */
+    @Test
+    @Order(13)
+    fun `G4-list - 목록 조회 시 IssueResponse 각 항목에 typeKey=task가 포함된다`() {
+        val reporterId = ActorId(UUID.randomUUID())
+        for (i in 1..2) {
+            repository.insert(
+                Issue.create(
+                    id = IssueId(UUID.randomUUID()),
+                    key = IssueKey.of("TPRJ", i.toLong()),
+                    projectId = testProjectId,
+                    typeId = requireTaskTypeId(),
+                    summary = "list type test $i",
+                    reporterId = reporterId,
+                    currentStateKey = "open",
+                ),
+            )
+        }
+
+        val page = repository.listWithType("TPRJ", PageRequest.of(0, 10))
+
+        assertThat(page.totalElements).isEqualTo(2L)
+        assertThat(page.content).allSatisfy { response ->
+            assertThat(response.typeKey).isEqualTo("task")
+            assertThat(response.typeName).isEqualTo("Task")
+            assertThat(response.typeId).isEqualTo(requireTaskTypeId().value)
+        }
     }
 }

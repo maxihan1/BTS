@@ -5,6 +5,7 @@ import { WorkflowSchemeSidebar } from '@/components/admin/WorkflowSchemeSidebar'
 import { MappingTable } from '@/components/admin/MappingTable'
 import { SchemeMetaPanel } from '@/components/admin/SchemeMetaPanel'
 import { useWorkflowSchemeDetail } from '@/hooks/use-workflow-schemes'
+import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 스켈레톤 컴포넌트
@@ -17,7 +18,7 @@ function SchemeDetailSkeleton(): JSX.Element {
   return (
     <div
       role="status"
-      aria-label="로딩 중"
+      aria-label={workflowSchemeLabels.detail.loadingStatus}
       data-testid="detail-skeleton"
       className="flex flex-1 flex-col gap-4 p-6"
     >
@@ -51,7 +52,7 @@ function SchemeNotFoundCard({ schemeKey }: SchemeNotFoundCardProps): JSX.Element
       className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center"
     >
       <div className="text-base font-semibold text-foreground">
-        스킴을 찾을 수 없습니다
+        {workflowSchemeLabels.detail.notFoundHeading}
       </div>
       <p className="text-sm text-muted-foreground">
         스킴 키 &quot;{schemeKey}&quot;에 해당하는 워크플로우 스킴이 없습니다.

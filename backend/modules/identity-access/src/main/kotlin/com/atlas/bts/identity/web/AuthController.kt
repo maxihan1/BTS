@@ -1,4 +1,4 @@
-// 인증 엔드포인트 — login / logout / refresh (FR-AU-09 Task 21)
+// 인증 엔드포인트 — login / logout / refresh / sessions / revokeSession (FR-AU-09 Task 21 / Task 2 / Task 3)
 
 package com.atlas.bts.identity.web
 
@@ -8,10 +8,12 @@ import com.atlas.bts.identity.session.RefreshTokenRepository
 import com.atlas.bts.identity.session.RefreshTokenService
 import com.atlas.bts.identity.session.RefreshTokenService.FailureReason
 import com.atlas.bts.identity.session.RefreshTokenService.RotateResult
+import com.atlas.bts.identity.session.Session
 import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.spi.AuthnResult
 import com.atlas.bts.identity.spi.Credential
 import com.atlas.bts.identity.spi.ProviderRegistry
+import com.atlas.bts.identity.web.dto.SessionResponse
 import com.fasterxml.jackson.annotation.JsonProperty
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.HttpHeaders
@@ -19,6 +21,9 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.oauth2.jwt.Jwt
+import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -36,6 +41,8 @@ import java.util.UUID
  * - [login]: POST /api/v1/auth/login — ProviderRegistry 로 인증 → Session 생성 → RefreshToken 발급 → JWT 발급
  * - [logout]: POST /api/v1/auth/logout — sid 로 Session revoke + refresh chain revoke + Cookie 만료
  * - [refresh]: POST /api/v1/auth/refresh — Cookie 의 refresh_token → RefreshTokenService.rotate
+ * - [listSessions]: GET /api/v1/auth/sessions — 본인 활성 세션 목록 조회 (JWT 전용, PAT 403)
+ * - [revokeSession]: DELETE /api/v1/auth/sessions/{sid} — 본인 다른 활성 세션 강제 종료 (JWT 전용, PAT 403)
  *
  * ## 트랜잭션 경계
  * @Transactional 없음 — service layer(SessionService, RefreshTokenService) 가 각자 @Transactional 보장.
@@ -215,7 +222,131 @@ class AuthController(
         }
     }
 
+    /**
+     * GET /api/v1/auth/sessions — 본인 활성 세션 목록 조회 (FR-AU-09 Task 2 / spec §FR-1/FR-2/FR-6b).
+     *
+     * ## PAT 차단 (FR-6b / EC-8)
+     * PAT 인증 시 principal 이 [Jwt] 타입이 아닌 `UsernamePasswordAuthenticationToken` 이다.
+     * PAT 는 stateless 자격증명이므로 `sid` ("현재 세션") 개념이 없어 세션 관리가 불가하다.
+     * [Jwt] 타입이 아니면 **403 Forbidden** + `session_management_requires_interactive_login` 반환.
+     * ([WhoamiController] 의 `Jwt?` nullable + PAT 분기 선례와 동일 원칙.)
+     *
+     * ## current 플래그 (spec §FR-2)
+     * JWT 의 `sid` 클레임과 세션 ID 가 일치하는 세션만 `current = true`.
+     * 현재 세션을 사용자에게 명시적으로 표시해 강제종료 버튼을 비활성화할 수 있게 한다.
+     *
+     * ## 미인증
+     * Spring Security 필터가 401 반환. Controller 미도달.
+     *
+     * @param jwt Spring Security 가 주입한 JWT principal. PAT 인증 시 null (nullable 선언)
+     * @return 200 + `{ "sessions": [SessionResponse, ...] }` / 403 PAT / 401 미인증
+     */
+    @GetMapping("/sessions")
+    fun listSessions(
+        @AuthenticationPrincipal jwt: Jwt?,
+    ): ResponseEntity<*> {
+        val claims = resolveJwtClaims(jwt) ?: return PAT_FORBIDDEN_RESPONSE
+
+        val sessions = sessionService.findActiveByUser(claims.userId)
+        val sessionResponses = sessions.map { toSessionResponse(it, claims.currentSid) }
+
+        return ResponseEntity.ok(mapOf("sessions" to sessionResponses))
+    }
+
+    /**
+     * DELETE /api/v1/auth/sessions/{sid} — 본인 다른 활성 세션 강제 종료 (FR-AU-09 Task 3 / spec §FR-3/S-2).
+     *
+     * ## PAT 차단 (FR-6b / EC-8)
+     * [listSessions] 와 동일 원칙 — PAT principal 은 [Jwt] 타입이 아니므로 **403 Forbidden** 반환.
+     *
+     * ## IDOR 방어 (NFR-1 / FR-4 / S-3)
+     * `sessionService.lookup(sid)` 로 세션을 조회한 뒤 `session.userId == 인증 userId` 를 검증한다.
+     * 조회 결과가 null 이거나 userId 불일치인 경우 **모두 404 Not Found** 로 응답한다.
+     * 타인 세션의 존재 여부를 노출하지 않기 위해 404 를 단일 응답코드로 사용한다 (OWASP IDOR 권고).
+     * 검증은 이 메서드 단일 지점에서만 수행한다 (NFR-1 — 분산 방지).
+     *
+     * ## 현재 세션 차단 (FR-5 / S-4)
+     * sid == 요청 JWT 의 `sid` 클레임인 경우 **409 Conflict** + `cannot_revoke_current_session`.
+     * 자기 세션 종료는 기존 POST /logout 로 유도한다.
+     *
+     * ## revoke 처리 (FR-3)
+     * logout 선례(`AuthController.kt:169-170`)와 동일하게:
+     * 1. `sessionService.revoke(sid, "user_revoke")` — sessions 테이블 UPDATE
+     * 2. `refreshTokenRepository.revokeChainFromSession(sid)` — 귀속 refresh chain 즉시 무효화
+     *
+     * @param jwt Spring Security 가 주입한 JWT principal. PAT 인증 시 null (nullable 선언)
+     * @param sid 강제 종료할 세션 ID (Spring 이 UUID 바인딩 실패 시 400 자동 반환 — EC-7)
+     * @return 204 No Content / 400 UUID 형식 오류 / 403 PAT / 404 IDOR/미존재 / 409 현재 세션
+     */
+    // ReturnCount 억제 — HTTP 상태별 guard clause early return(403/404/409/204)이
+    // 중첩 if 보다 가독성 우수 (DEVELOPMENT.md §2.3 Early return 권장).
+    @Suppress("ReturnCount")
+    @DeleteMapping("/sessions/{sid}")
+    fun revokeSession(
+        @AuthenticationPrincipal jwt: Jwt?,
+        @PathVariable sid: UUID,
+    ): ResponseEntity<*> {
+        val claims = resolveJwtClaims(jwt) ?: return PAT_FORBIDDEN_RESPONSE
+
+        // 미존재 / 타인 소유(IDOR) / 이미 비활성(revoked·만료, EC-2) 세션은 모두 404 (존재 비노출 + 멱등 재폐기 방지).
+        val session = sessionService.lookup(sid)
+        if (session == null || session.userId != claims.userId || !session.isActive(Instant.now())) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build<Void>()
+        }
+
+        if (sid == claims.currentSid) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(mapOf("error" to "cannot_revoke_current_session"))
+        }
+
+        sessionService.revoke(sid, REVOKE_REASON_USER)
+        refreshTokenRepository.revokeChainFromSession(sid)
+
+        return ResponseEntity.noContent().build<Void>()
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * JWT principal 에서 userId(subject) 와 currentSid(sid 클레임) 를 추출한다.
+     *
+     * PAT 인증 시 [jwt] 가 null 이므로 null 을 반환한다 (호출 측에서 403 반환).
+     * JWT 의 subject 가 유효한 UUID 가 아닌 경우에도 null 을 반환한다.
+     * sid 클레임이 없거나 UUID 파싱 실패인 경우 [JwtClaims.currentSid] 는 null 이다.
+     *
+     * @param jwt nullable JWT principal ([Jwt] 타입 아니면 PAT)
+     * @return [JwtClaims] 또는 null (PAT/invalid_token)
+     */
+    // ReturnCount 억제 — null guard early return(PAT/invalid subject)이 가독성 우수.
+    @Suppress("ReturnCount")
+    private fun resolveJwtClaims(jwt: Jwt?): JwtClaims? {
+        if (jwt == null) return null
+        val userId = runCatching { UUID.fromString(jwt.subject) }.getOrNull() ?: return null
+        val currentSid = jwt.getClaimAsString("sid")?.let {
+            runCatching { UUID.fromString(it) }.getOrNull()
+        }
+        return JwtClaims(userId = userId, currentSid = currentSid)
+    }
+
+    /**
+     * [Session] 도메인 엔티티를 [SessionResponse] DTO 로 변환한다.
+     *
+     * `deviceFingerprint` 는 의도적으로 제외한다 (NFR-2 — 내부 식별자 비노출).
+     *
+     * @param session 변환할 세션 엔티티
+     * @param currentSid 요청 JWT 의 `sid` 클레임 값. null 이면 current = false
+     * @return [SessionResponse]
+     */
+    private fun toSessionResponse(session: Session, currentSid: UUID?): SessionResponse =
+        SessionResponse(
+            sid = session.id,
+            providerId = session.providerId,
+            userAgent = session.userAgent,
+            ipAddress = session.ipAddress,
+            lastSeenAt = session.lastSeenAt,
+            createdAt = session.createdAt,
+            current = session.id == currentSid,
+        )
 
     /**
      * refresh_token Set-Cookie 헤더 값을 생성한다.
@@ -259,8 +390,24 @@ class AuthController(
 
         /** logout 세션 폐기 사유 — 감사 로그 검색 키 */
         const val REVOKE_REASON_LOGOUT = "logout"
+
+        /** 사용자 강제종료 세션 폐기 사유 — 감사 로그 검색 키 (spec §EC 소문자 snake 관례) */
+        const val REVOKE_REASON_USER = "user_revoke"
+
+        /** PAT 인증 시 세션 관리 불가 응답 — listSessions / revokeSession 공용 (FR-6b / EC-8) */
+        val PAT_FORBIDDEN_RESPONSE: ResponseEntity<Map<String, String>> =
+            ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(mapOf("error" to "session_management_requires_interactive_login"))
     }
 }
+
+/**
+ * JWT 로부터 추출된 인증 클레임 (listSessions / revokeSession 공용).
+ *
+ * @param userId JWT subject UUID — 인증 사용자 ID
+ * @param currentSid JWT sid 클레임 UUID — 현재 요청 세션 ID. 클레임 부재/파싱 실패 시 null
+ */
+private data class JwtClaims(val userId: UUID, val currentSid: UUID?)
 
 /** refresh_token_reused / refresh_token_expired / refresh_token_invalid 매핑 */
 private fun FailureReason.toErrorCode(): String = when (this) {

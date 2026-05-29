@@ -1,4 +1,4 @@
-// IssueApplicationService.createIssue 단위 테스트 — MockK, TDD RED 단계
+// IssueApplicationService.createIssue 단위 테스트 — MockK, TDD RED 단계 (typeId + task fallback 포함)
 
 package com.bts.issue.application
 
@@ -13,6 +13,10 @@ import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.type.domain.IssueType
+import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowStartState
@@ -37,6 +41,7 @@ import java.util.UUID
 class IssueApplicationServiceCreateTest : DescribeSpec({
 
     val repo = mockk<IssueRepository>()
+    val issueTypeRepository = mockk<IssueTypeRepository>()
     val eventPublisher = mockk<IssueEventPublisher>()
     val permissionResolver = mockk<IssuePermissionResolver>()
     val workflowPort = mockk<WorkflowTransitionPort>()
@@ -44,19 +49,45 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
     val clock = Clock.fixed(Instant.parse("2026-05-24T00:00:00Z"), ZoneOffset.UTC)
 
     val sut =
-        IssueApplicationService(repo, eventPublisher, permissionResolver, workflowPort, workflowKeyResolver, clock)
+        IssueApplicationService(
+            repo,
+            issueTypeRepository,
+            eventPublisher,
+            permissionResolver,
+            workflowPort,
+            workflowKeyResolver,
+            clock,
+        )
 
     val actor = ActorId(UUID.randomUUID())
     val projectKey = "BTS"
+
+    /** task fallback 에 사용할 표준 task 타입 stub. */
+    val taskTypeId = IssueTypeId(3L)
+    val taskIssueType =
+        IssueType(
+            id = taskTypeId,
+            key = IssueTypeKey("task"),
+            name = "Task",
+            description = null,
+            iconName = null,
+            isStandard = true,
+            hierarchyLevel = 0,
+            createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            deletedAt = null,
+        )
+
     val request =
         CreateIssueRequest(
             projectKey = projectKey,
             summary = "Test summary",
             reporterId = actor,
+            typeId = null,
         )
 
     beforeEach {
-        clearMocks(repo, eventPublisher, permissionResolver, answers = false)
+        clearMocks(repo, issueTypeRepository, eventPublisher, permissionResolver, answers = false)
     }
 
     describe("createIssue") {
@@ -75,6 +106,7 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 every {
                     workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
                 } returns WorkflowStartState(workflowKey = "software-default", startStateKey = "open")
+                every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
             }
 
             it("권한 체크 → incrementKeySequence → insert → publish 순서로 호출한다") {
@@ -132,6 +164,73 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
 
                 issueSlot.captured.currentStateKey shouldBe "open"
             }
+
+            // T7-A: typeId null → task fallback — FR-6 모든 이슈는 타입 보유
+            it("typeId 가 null 이면 task 타입으로 fallback 해 Issue.typeId 에 task 타입 id 가 저장된다") {
+                val issueSlot: CapturingSlot<com.bts.issue.domain.Issue> = slot()
+                every { repo.insert(capture(issueSlot)) } answers { issueSlot.captured }
+
+                val requestWithoutType =
+                    CreateIssueRequest(
+                        projectKey = projectKey,
+                        summary = "Test summary",
+                        reporterId = actor,
+                        typeId = null,
+                    )
+                sut.createIssue(actor, requestWithoutType)
+
+                issueSlot.captured.typeId shouldBe taskTypeId
+            }
+
+            // T7-B: typeId 지정 → 지정된 typeId 가 그대로 사용된다
+            it("typeId 를 지정하면 지정된 IssueTypeId 가 Issue.typeId 에 저장된다") {
+                val specifiedTypeId = IssueTypeId(7L)
+                val specifiedIssueType =
+                    IssueType(
+                        id = specifiedTypeId,
+                        key = IssueTypeKey("bug"),
+                        name = "Bug",
+                        description = null,
+                        iconName = null,
+                        isStandard = true,
+                        hierarchyLevel = 0,
+                        createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+                        updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
+                        deletedAt = null,
+                    )
+                every { issueTypeRepository.findById(specifiedTypeId) } returns specifiedIssueType
+
+                val issueSlot: CapturingSlot<com.bts.issue.domain.Issue> = slot()
+                every { repo.insert(capture(issueSlot)) } answers { issueSlot.captured }
+
+                val requestWithType =
+                    CreateIssueRequest(
+                        projectKey = projectKey,
+                        summary = "Test summary",
+                        reporterId = actor,
+                        typeId = specifiedTypeId,
+                    )
+                sut.createIssue(actor, requestWithType)
+
+                issueSlot.captured.typeId shouldBe specifiedTypeId
+            }
+
+            // T7-C: typeId 지정 + 해당 타입이 존재하지 않으면 예외
+            it("typeId 를 지정했으나 해당 이슈 타입이 없으면 IssueTypeNotFoundException 을 던진다") {
+                val nonExistentTypeId = IssueTypeId(999L)
+                every { issueTypeRepository.findById(nonExistentTypeId) } returns null
+
+                val requestWithType =
+                    CreateIssueRequest(
+                        projectKey = projectKey,
+                        summary = "Test summary",
+                        reporterId = actor,
+                        typeId = nonExistentTypeId,
+                    )
+                shouldThrow<com.bts.issue.type.domain.IssueTypeNotFoundException> {
+                    sut.createIssue(actor, requestWithType)
+                }
+            }
         }
 
         // C-3: WorkflowSchemeNoDefaultException → IssueWorkflowNotConfiguredException 변환
@@ -144,6 +243,7 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 } returns true
                 every { repo.incrementKeySequence(projectKey) } returns 1L
                 every { repo.findProjectIdByKey(projectKey) } returns fixedProjectId
+                every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
                 every {
                     workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
                 } throws WorkflowSchemeNoDefaultException(projectKey)
@@ -164,6 +264,7 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 } returns true
                 every { repo.incrementKeySequence("UNKNOWN") } returns 1L
                 every { repo.findProjectIdByKey("UNKNOWN") } returns null
+                every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
             }
 
             it("IssueProjectNotFoundException 을 던진다") {
@@ -172,6 +273,7 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                         projectKey = "UNKNOWN",
                         summary = "Test summary",
                         reporterId = actor,
+                        typeId = null,
                     )
                 io.kotest.assertions.throwables.shouldThrow<IssueProjectNotFoundException> {
                     sut.createIssue(actor, unknownRequest)

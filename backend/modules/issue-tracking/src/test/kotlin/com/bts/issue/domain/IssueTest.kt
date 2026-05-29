@@ -1,7 +1,8 @@
-// Issue Aggregate Root 단위 테스트 — factory, invariants, version, deletedAt
+// Issue Aggregate Root 단위 테스트 — factory, invariants, version, deletedAt, typeId 필수
 
 package com.bts.issue.domain
 
+import com.bts.shared.issue.IssueTypeId
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -15,6 +16,7 @@ import java.util.UUID
  * - create_returns_issue — 유효한 인자로 Issue 를 생성하면 모든 필드가 기대 값과 일치한다.
  * - create_sets_version_to_one — 생성 직후 version 은 항상 1 이다.
  * - create_sets_deletedAt_null — 생성 직후 deletedAt 은 항상 null 이다.
+ * - create_requires_typeId — typeId 를 IssueTypeId VO 로 받아 issue.typeId 에 반영한다.
  * - reject_blank_summary — summary 가 빈 문자열이면 IllegalArgumentException 을 던진다.
  * - reject_whitespace_only_summary — summary 가 공백만이면 IllegalArgumentException 을 던진다.
  * - reject_summary_over_255 — summary 가 256자 이상이면 IllegalArgumentException 을 던진다.
@@ -27,6 +29,7 @@ class IssueTest {
     private val validSummary = "Fix login bug"
     private val validReporterId = ActorId(UUID.randomUUID())
     private val validStateKey = "open"
+    private val validTypeId = IssueTypeId(1L)
 
     @Test
     fun `create_returns_issue — 유효한 인자로 Issue 를 생성하면 모든 필드가 기대 값과 일치한다`() {
@@ -38,6 +41,7 @@ class IssueTest {
                 summary = validSummary,
                 reporterId = validReporterId,
                 currentStateKey = validStateKey,
+                typeId = validTypeId,
             )
 
         assertThat(issue.id).isEqualTo(validId)
@@ -58,6 +62,7 @@ class IssueTest {
                 summary = validSummary,
                 reporterId = validReporterId,
                 currentStateKey = validStateKey,
+                typeId = validTypeId,
             )
 
         assertThat(issue.version).isEqualTo(1L)
@@ -73,9 +78,27 @@ class IssueTest {
                 summary = validSummary,
                 reporterId = validReporterId,
                 currentStateKey = validStateKey,
+                typeId = validTypeId,
             )
 
         assertThat(issue.deletedAt).isNull()
+    }
+
+    @Test
+    fun `create_requires_typeId — typeId 를 IssueTypeId VO 로 받아 issue 의 typeId 에 반영한다`() {
+        val typeId = IssueTypeId(42L)
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = typeId,
+            )
+
+        assertThat(issue.typeId).isEqualTo(typeId)
     }
 
     @Test
@@ -88,6 +111,7 @@ class IssueTest {
                 summary = "",
                 reporterId = validReporterId,
                 currentStateKey = validStateKey,
+                typeId = validTypeId,
             )
         }.isInstanceOf(IllegalArgumentException::class.java)
     }
@@ -102,6 +126,7 @@ class IssueTest {
                 summary = "   ",
                 reporterId = validReporterId,
                 currentStateKey = validStateKey,
+                typeId = validTypeId,
             )
         }.isInstanceOf(IllegalArgumentException::class.java)
     }
@@ -118,6 +143,7 @@ class IssueTest {
                 summary = tooLong,
                 reporterId = validReporterId,
                 currentStateKey = validStateKey,
+                typeId = validTypeId,
             )
         }.isInstanceOf(IllegalArgumentException::class.java)
     }
@@ -134,6 +160,7 @@ class IssueTest {
                 summary = exactly255,
                 reporterId = validReporterId,
                 currentStateKey = validStateKey,
+                typeId = validTypeId,
             )
 
         assertThat(issue.summary).hasSize(255)

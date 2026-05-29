@@ -2,6 +2,7 @@
 
 package com.bts.issue.repository
 
+import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
@@ -9,7 +10,9 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.jooq.tables.records.IssuesRecord
 import com.bts.issue.jooq.tables.references.ISSUES
+import com.bts.issue.jooq.tables.references.ISSUE_TYPES
 import com.bts.issue.jooq.tables.references.PROJECTS
+import com.bts.shared.issue.IssueTypeId
 import org.jooq.Condition
 import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
@@ -42,6 +45,7 @@ private const val SQL_ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(hashtext(?))
  * - [incrementKeySequence] — pg_advisory_xact_lock 으로 동시성 제어 후 key_sequence +1 RETURNING.
  */
 @Repository
+@Suppress("TooManyFunctions")
 class IssueRepository(
     private val dsl: DSLContext,
 ) {
@@ -66,6 +70,7 @@ class IssueRepository(
                         .set(ISSUES.REPORTER_ID, r.reporterId)
                         .set(ISSUES.CURRENT_STATE_KEY, r.currentStateKey)
                         .set(ISSUES.VERSION, r.version)
+                        .set(ISSUES.TYPE_ID, r.typeId)
                         .returning()
                         .fetchOne()
                 }
@@ -256,6 +261,108 @@ class IssueRepository(
             ?: throw IssueProjectNotFoundException(projectKey)
     }
 
+    /**
+     * 활성 이슈를 key 로 조회하고, issue_types 와 1:1 JOIN 하여 type 요약을 포함한 [IssueResponse] 를 반환한다.
+     *
+     * issues.type_id = issue_types.id 단건 JOIN — cartesian product 위험 없음 (learnings PR#31).
+     *
+     * @param key 조회할 이슈 키.
+     * @return type 요약(typeId/typeKey/typeName) 이 포함된 [IssueResponse]. 이슈가 없으면 null.
+     */
+    @Transactional(readOnly = true)
+    fun findByKeyWithType(key: IssueKey): IssueResponse? =
+        dsl.select(
+            ISSUES.fields().toList() +
+                listOf(
+                    ISSUE_TYPES.ID.`as`("type_id"),
+                    ISSUE_TYPES.KEY.`as`("type_key"),
+                    ISSUE_TYPES.NAME.`as`("type_name"),
+                ),
+        )
+            .from(ISSUES)
+            .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
+            .where(activeByKey(key))
+            .fetchOne()
+            ?.let { record ->
+                val issueRecord = record.into(ISSUES)
+                IssueResponse.from(
+                    issue = issueRecord.toIssue(),
+                    projectKey = key.projectPrefix,
+                    typeId =
+                        record.get("type_id", Long::class.java)
+                            ?: error("issue_types.id must not be null in join result"),
+                    typeKey =
+                        record.get("type_key", String::class.java)
+                            ?: error("issue_types.key must not be null in join result"),
+                    typeName =
+                        record.get("type_name", String::class.java)
+                            ?: error("issue_types.name must not be null in join result"),
+                )
+            }
+
+    /**
+     * 프로젝트별 활성 이슈 목록을 페이지 단위로 조회하고, issue_types JOIN 으로 type 요약을 포함한다.
+     *
+     * count 쿼리는 ISSUES × PROJECTS join 만 사용 (ISSUE_TYPES join 은 count에 불필요).
+     * content 쿼리는 ISSUES × PROJECTS × ISSUE_TYPES — 단일 이슈 당 타입이 1건이므로 cartesian 없음.
+     *
+     * @param projectKey 프로젝트 접두사. 예: `"BTS"`.
+     * @param pageable 페이지 정보.
+     * @return [Page]<[IssueResponse]> — type 요약 포함.
+     */
+    @Transactional(readOnly = true)
+    fun listWithType(
+        projectKey: String,
+        pageable: Pageable,
+    ): Page<IssueResponse> {
+        val activeInProject =
+            PROJECTS.KEY.eq(projectKey)
+                .and(ISSUES.DELETED_AT.isNull)
+
+        // count 쿼리: ISSUE_TYPES join 제외 — 불필요한 join 으로 count 왜곡 방지
+        val total =
+            dsl.selectCount()
+                .from(ISSUES)
+                .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+                .where(activeInProject)
+                .fetchOne(0, Long::class.java) ?: 0L
+
+        // content 쿼리: ISSUE_TYPES join 으로 type 요약 포함
+        val content =
+            dsl.select(
+                ISSUES.fields().toList() +
+                    listOf(
+                        ISSUE_TYPES.ID.`as`("type_id"),
+                        ISSUE_TYPES.KEY.`as`("type_key"),
+                        ISSUE_TYPES.NAME.`as`("type_name"),
+                    ),
+            )
+                .from(ISSUES)
+                .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+                .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
+                .where(activeInProject)
+                .orderBy(ISSUES.CREATED_AT.desc())
+                .limit(pageable.pageSize)
+                .offset(pageable.offset)
+                .fetch { record ->
+                    IssueResponse.from(
+                        issue = record.into(ISSUES).toIssue(),
+                        projectKey = projectKey,
+                        typeId =
+                            record.get("type_id", Long::class.java)
+                                ?: error("issue_types.id must not be null in join result"),
+                        typeKey =
+                            record.get("type_key", String::class.java)
+                                ?: error("issue_types.key must not be null in join result"),
+                        typeName =
+                            record.get("type_name", String::class.java)
+                                ?: error("issue_types.name must not be null in join result"),
+                    )
+                }
+
+        return PageImpl(content, pageable, total)
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     /** 활성 이슈를 key 로 필터하는 jOOQ Condition. */
@@ -279,6 +386,7 @@ private fun Issue.toInsertRecord(): IssuesRecord =
         reporterId = reporterId.value,
         currentStateKey = currentStateKey,
         version = version,
+        typeId = typeId.value,
     )
 
 /**
@@ -300,5 +408,6 @@ private fun IssuesRecord.toIssue(): Issue {
         deletedAt = deletedAt?.toInstant(),
         createdAt = createdAt?.toInstant() ?: error("issues.created_at must not be null"),
         updatedAt = updatedAt?.toInstant() ?: error("issues.updated_at must not be null"),
+        typeId = IssueTypeId(typeId ?: error("issues.type_id must not be null")),
     )
 }

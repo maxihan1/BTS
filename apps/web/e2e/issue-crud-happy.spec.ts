@@ -10,7 +10,7 @@ test('E2E-1 이슈 생명주기 — 생성 → 조회 → 수정 → 소프트 �
   const summary = 'E2E 테스트용 이슈'
   const key = await createIssueViaUI(page, summary)
 
-  // ── Then 1. 자동 발급 키 (ATLAS-42) 로 상세 페이지 진입, summary 노출 ──────
+  // ── Then 1. 자동 발급 키로 상세 페이지 진입, summary 노출 ──────────────────
   await expect(page).toHaveURL(new RegExp(`/issues/${key}$`))
   await expect(page.getByRole('heading', { level: 1, name: summary })).toBeVisible()
 

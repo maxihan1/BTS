@@ -1,4 +1,4 @@
-// 세션 생명주기 관리 서비스 — create/lookup/revoke/revokeAllOfUser/markLastSeen (FR-AU-09 Task 16)
+// 세션 생명주기 관리 서비스 — create/lookup/findActiveByUser/revoke/revokeAllOfUser/markLastSeen (FR-AU-09)
 
 package com.atlas.bts.identity.session
 
@@ -20,6 +20,7 @@ import java.util.UUID
  * - [revoke]: `@Transactional` (REQUIRED) — UPDATE 단일 경계
  * - [revokeAllOfUser]: `@Transactional` (REQUIRED) — bulk UPDATE 단일 경계
  * - [lookup]: `@Transactional(readOnly = true)` — 조회 전용
+ * - [findActiveByUser]: `@Transactional(readOnly = true)` — self-service 세션 목록 조회
  * - [markLastSeen]: 트랜잭션 없음 (best-effort, SDD §3 lost update 허용)
  *
  * ## 디바이스 핑거프린트 (FR-09-23)
@@ -122,6 +123,20 @@ class SessionService(
         userId: UUID,
         reason: String,
     ): Int = repo.revokeAllByUserId(userId, reason)
+
+    /**
+     * 사용자의 활성 세션 목록을 조회한다.
+     *
+     * `GET /api/v1/auth/sessions` 엔드포인트가 호출하는 self-service 세션 목록 조회 메서드.
+     * [SessionRepository.findActiveByUserId] 에 위임한 뒤 [Session.lastSeenAt] 내림차순으로 정렬하여 반환한다.
+     * 정렬은 Service 레이어에서 수행한다 — repo SQL 에 ORDER BY 가 없으며 세션 수가 수십 개 이하라 성능 무관 (NFR-4).
+     *
+     * @param userId 조회할 사용자 ID
+     * @return 활성 세션 목록 (lastSeenAt DESC). 없으면 빈 리스트
+     */
+    @Transactional(readOnly = true)
+    fun findActiveByUser(userId: UUID): List<Session> =
+        repo.findActiveByUserId(userId).sortedByDescending { it.lastSeenAt }
 
     /**
      * 세션의 마지막 활동 시각을 현재 시각으로 갱신한다 (best-effort).

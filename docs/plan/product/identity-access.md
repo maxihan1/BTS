@@ -132,12 +132,14 @@
 **우선순위**. 필수 | **선행**. §2.1 | **Plan slug**. `identity/sessions`
 
 - [x] D1. 도메인 — Session/AccessToken/RefreshToken/PAT 분리 (책임. security-engineer)
-- [~] D2. 명세 — TTL, 회전 정책, 세션 강제 종료 (책임. security-engineer)
+- [x] D2. 명세 — TTL, 회전 정책, 세션 강제 종료 (책임. security-engineer)
 - [x] D3. 데이터 모델 — `sessions`, `refresh_tokens`, `pats(scope, revoked_at)` (책임. db-engineer)
-- [~] D4. 백엔드 — JWT 발급/검증 + Redis 세션 + PAT 발급 API (책임. security-engineer)
+- [x] D4. 백엔드 — JWT 발급/검증 + 세션 + PAT API + 세션 목록 조회/강제 종료 API (책임. security-engineer)
 - [x] D5. 백엔드 테스트 — 토큰 만료/회전/취소 (책임. security-engineer)
-- [~] D6. 프론트 UI — 활성 세션 목록 + 강제 로그아웃 (책임. designer → frontend-engineer). **DEVELOPMENT.md §1.17 — 토큰 localStorage 금지 (sessionStorage 강제)**
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 활성 세션 목록 + 강제 로그아웃 (책임. frontend-engineer). **DEVELOPMENT.md §1.17 — 토큰 localStorage 금지 (sessionStorage 강제)**
+- [x] D7. E2E (책임. qa-engineer)
+
+> **FR-AU-09 완료 (2026-05-29, PR #37)**. self-service 세션 관리 (목록 조회 + 강제 종료) 추가로 D2/D4/D6/D7 마무리. PAT 는 세션 API 에서 403 (Jira 방식 — 세션/API토큰 분리). admin 세션 관리는 별도 후속. audit emit 은 FR-AU-10 위임.
 
 ### §2.10 FR-AU-10 — 인증 감사 로그
 

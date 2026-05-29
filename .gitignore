@@ -33,6 +33,7 @@ apps/web/dist/
 .turbo/
 coverage/
 *.tsbuildinfo
+.eslintcache
 
 # 환경 변수
 .env

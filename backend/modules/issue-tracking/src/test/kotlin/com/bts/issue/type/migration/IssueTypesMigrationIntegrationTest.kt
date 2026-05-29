@@ -188,8 +188,15 @@ class IssueTypesMigrationIntegrationTest {
     // ── 인덱스 존재 검증 ─────────────────────────────────────────────────────
 
     @Test
-    fun `V003 ix_issue_types_key_active 부분 인덱스 존재`() {
-        assertThat(indexExists("ix_issue_types_key_active")).isTrue()
+    fun `V005 ux_issue_types_key_active 부분 unique 인덱스 존재`() {
+        // V003 에서 생성된 ix_issue_types_key_active 는 V005 에서
+        // ux_issue_types_key_active (partial unique) 로 교체되었다 (B1 BLOCKER 해소).
+        assertThat(indexExists("ux_issue_types_key_active")).isTrue()
+    }
+
+    @Test
+    fun `V005 ix_issue_types_key_active 는 ux 로 교체되어 존재하지 않는다`() {
+        assertThat(indexExists("ix_issue_types_key_active")).isFalse()
     }
 
     // ── TIMESTAMPTZ 타입 검증 (DATA.md §4) ───────────────────────────────────

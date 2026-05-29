@@ -1,5 +1,6 @@
 // IssueController POST /issues/{key}/transition 통합 테스트 — production 시나리오 회귀 가드
 // 우회 seed(transitionName=toStateKey) 해제 + software-default.yaml 정렬 (Task 5)
+@file:Suppress("MaxLineLength")
 
 package com.bts.issue.adapter.inbound.rest
 
@@ -8,6 +9,7 @@ import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.engine.WorkflowDefinitionRepository
@@ -147,6 +149,9 @@ class IssueControllerTransitionIntegrationTest {
         open fun issueRepository(dsl: DSLContext): IssueRepository = IssueRepository(dsl)
 
         @Bean
+        open fun issueTypeRepository(dsl: DSLContext): IssueTypeRepository = IssueTypeRepository(dsl)
+
+        @Bean
         open fun issueEventPublisher(
             dsl: DSLContext,
             objectMapper: ObjectMapper,
@@ -228,8 +233,8 @@ class IssueControllerTransitionIntegrationTest {
 
         // WorkflowSchemeApplicationService 생성자 파라미터 수 == 7 (FR-WF-02 issueTypeLookupPort 추가).
         // @TestConfiguration Bean 메서드는 분리 불가한 단일 구성 단위이므로 Suppress 처리.
-        @Suppress("LongParameterList")
         @Bean
+        @Suppress("LongParameterList")
         open fun workflowSchemeApplicationService(
             schemeRepo: WorkflowSchemeRepository,
             assignmentRepo: ProjectWorkflowSchemeAssignmentRepository,
@@ -274,11 +279,12 @@ class IssueControllerTransitionIntegrationTest {
         @Bean
         open fun clock(): Clock = Clock.systemUTC()
 
-        // IssueApplicationService 생성자 파라미터 수 == 6. @TestConfiguration Bean 메서드이므로 Suppress 처리.
-        @Suppress("LongParameterList")
+        // IssueApplicationService 생성자 파라미터 수 == 7. @TestConfiguration Bean 메서드이므로 Suppress 처리.
         @Bean
+        @Suppress("LongParameterList")
         open fun issueApplicationService(
             repo: IssueRepository,
+            issueTypeRepository: IssueTypeRepository,
             eventPublisher: IssueEventPublisher,
             permissionResolver: AlwaysAllowIssuePermissionResolver,
             workflowTransitionAdapter: WorkflowTransitionAdapter,
@@ -287,6 +293,7 @@ class IssueControllerTransitionIntegrationTest {
         ): IssueApplicationService =
             IssueApplicationService(
                 repo = repo,
+                issueTypeRepository = issueTypeRepository,
                 eventPublisher = eventPublisher,
                 permissionResolver = permissionResolver,
                 workflowPort = workflowTransitionAdapter,
@@ -714,15 +721,27 @@ class IssueControllerTransitionIntegrationTest {
                     }
                 }
 
+            // task 타입 id 조회 — V003 seed 에 의해 항상 존재, type_id NOT NULL 충족 필요
+            val taskTypeId =
+                conn.prepareStatement(
+                    "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        check(rs.next()) { "task 타입이 없습니다. V003 마이그레이션 확인 필요." }
+                        rs.getLong(1)
+                    }
+                }
+
             conn.prepareStatement(
-                "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version) " +
-                    "VALUES (?, ?, ?, ?, ?, 1)",
+                "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version, type_id) " +
+                    "VALUES (?, ?, ?, ?, ?, 1, ?)",
             ).use { stmt ->
                 stmt.setString(1, issueKey)
                 stmt.setObject(2, projectId)
                 stmt.setString(3, summary)
                 stmt.setObject(4, UUID.fromString("00000000-0000-0000-0000-000000000001"))
                 stmt.setString(5, currentStateKey)
+                stmt.setLong(6, taskTypeId)
                 stmt.executeUpdate()
             }
 
