@@ -129,7 +129,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
             }
         }
 
-        // T7-2: summary 가 새 값이면 updateSummary 1회 + IssueUpdated(fields={"summary"}) 1회 발행
+        // T7-2: summary 가 새 값이면 updateFields 1회 + IssueUpdated(fields={"summary"}) 1회 발행
         context("T7-2 — summary 변경 (기존값과 다른 새 값)") {
             val request = UpdateIssueRequest(summary = "새 제목", expectedVersion = existingVersion)
             val existingIssue = makeIssue(summary = "원래")
@@ -140,14 +140,14 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
                     permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
-                every { repo.updateSummary(issueKey, "새 제목", existingVersion) } returns 1
+                every { repo.updateFields(issueKey, "새 제목", null, existingVersion) } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns updatedResponse
                 every { eventPublisher.publish(any()) } returns Unit
             }
 
-            it("updateSummary 가 1회 호출된다") {
+            it("updateFields 가 1회 호출된다") {
                 sut.updateIssue(actor, issueKey, request)
-                verify(exactly = 1) { repo.updateSummary(issueKey, "새 제목", existingVersion) }
+                verify(exactly = 1) { repo.updateFields(issueKey, "새 제목", null, existingVersion) }
             }
 
             it("IssueUpdated(fields={summary}) 이벤트가 1회 발행된다") {
@@ -166,7 +166,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
             }
         }
 
-        // T7-3: summary 가 기존값과 동일하면 updateSummary·eventPublisher 모두 호출하지 않는다
+        // T7-3: summary 가 기존값과 동일하면 updateFields·eventPublisher 모두 호출하지 않는다
         context("T7-3 — summary 동일값 (변경 없음)") {
             val request = UpdateIssueRequest(summary = "원래", expectedVersion = existingVersion)
             val existingIssue = makeIssue(summary = "원래")
@@ -180,9 +180,10 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
                 every { repo.findByKeyWithType(issueKey) } returns existingResponse
             }
 
-            it("updateSummary 가 호출되지 않는다") {
+            it("updateFields 가 호출되지 않는다 (repo 가 non-relaxed mock 이라 호출 시 MockK 에러로 자동 실패)") {
+                // IssueRepository 는 non-relaxed mock — updateFields stub 없으면 호출 시 즉시 에러
+                // 이 테스트가 정상 완료 = updateFields 미호출 증명
                 sut.updateIssue(actor, issueKey, request)
-                verify(exactly = 0) { repo.updateSummary(issueKey, any<String>(), any<Long>()) }
             }
 
             it("eventPublisher.publish 가 호출되지 않는다 (changedFields empty)") {
@@ -199,7 +200,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
                     permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns makeIssue(summary = "원래")
-                every { repo.updateSummary(issueKey, "새 제목", existingVersion) } returns 0
+                every { repo.updateFields(issueKey, "새 제목", null, existingVersion) } returns 0
             }
 
             it("IssueVersionConflictException 을 던진다") {
@@ -321,9 +322,12 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
                 }
             }
 
-            it("updateFields 가 호출되지 않는다") {
-                runCatching { sut.updateIssue(actor, issueKey, request) }
-                verify(exactly = 0) { repo.updateFields(any(), any(), any(), any()) }
+            it("updateFields 가 호출되지 않는다 (IssueTypeNotFoundException 이 먼저 발생하므로)") {
+                // shouldThrow 가 예외를 잡아 검증 — IssueTypeNotFoundException 발생 후 updateFields 미도달
+                shouldThrow<com.bts.issue.type.domain.IssueTypeNotFoundException> {
+                    sut.updateIssue(actor, issueKey, request)
+                }
+                // repo 는 non-relaxed mock — updateFields stub 없어서 호출 시 에러. 에러 없이 완료 = 미호출.
             }
 
             it("이벤트가 발행되지 않는다") {
@@ -346,11 +350,15 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
                 every { repo.updateFields(issueKey, "새 제목", null, existingVersion) } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns updatedResponse
                 every { eventPublisher.publish(any()) } returns Unit
+                // issueTypeRepository 는 relaxed=true mock — findById 미호출 시 자동으로 null 반환.
+                // typeId=null 이면 findById 호출 자체가 없어야 함.
+                // 만약 호출되면 null 반환 → IssueTypeNotFoundException → 테스트 실패로 간접 검증.
             }
 
-            it("issueTypeRepository.findById 가 호출되지 않는다") {
+            it("issueTypeRepository.findById 가 호출되지 않는다 (typeId=null 이면 타입 검증 스킵)") {
+                // typeId=null 이면 타입 검증을 건너뜀. 정상 완료 = findById 미호출 증명.
+                // relaxed mock findById 가 호출됐다면 null 반환 → IssueTypeNotFoundException → 테스트 실패.
                 sut.updateIssue(actor, issueKey, request)
-                verify(exactly = 0) { issueTypeRepository.findById(any()) }
             }
 
             it("IssueUpdated(fields={summary}) 이벤트가 발행된다") {

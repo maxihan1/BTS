@@ -136,6 +136,40 @@ class IssueRepository(
     }
 
     /**
+     * 이슈 필드(summary, type_id)를 수정한다 (낙관락).
+     *
+     * summary / typeId 중 non-null 인 필드만 SET 절에 포함한다.
+     * WHERE key=? AND version=? AND deleted_at IS NULL 조건으로 업데이트.
+     * version 불일치(stale read) 시 영향 행 0 반환.
+     *
+     * @param key 이슈 키.
+     * @param summary 새 이슈 제목. null 이면 변경하지 않는다.
+     * @param typeId 새 이슈 유형 식별자 VO. null 이면 변경하지 않는다.
+     * @param expectedVersion 현재 버전. DB 버전과 일치해야 업데이트가 실행된다.
+     * @return 업데이트된 행 수 (성공=1, 낙관락 충돌=0).
+     */
+    @Transactional
+    fun updateFields(
+        key: IssueKey,
+        summary: String?,
+        typeId: IssueTypeId?,
+        expectedVersion: Long,
+    ): Int {
+        log.debug("updateFields key={} summary={} typeId={} expectedVersion={}", key.value, summary, typeId, expectedVersion)
+        var step =
+            dsl.update(ISSUES)
+                .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+                .set(ISSUES.VERSION, expectedVersion + 1)
+        if (summary != null) step = step.set(ISSUES.SUMMARY, summary)
+        if (typeId != null) step = step.set(ISSUES.TYPE_ID, typeId.value)
+        return step
+            .where(ISSUES.KEY.eq(key.value))
+            .and(ISSUES.VERSION.eq(expectedVersion))
+            .and(ISSUES.DELETED_AT.isNull)
+            .execute()
+    }
+
+    /**
      * 이슈 상태를 전이한다 (낙관락).
      *
      * WHERE key=? AND version=? AND deleted_at IS NULL 조건으로 업데이트.
