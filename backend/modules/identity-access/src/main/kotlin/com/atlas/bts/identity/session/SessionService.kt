@@ -1,4 +1,4 @@
-// 세션 생명주기 관리 서비스 — create/lookup/revoke/revokeAllOfUser/markLastSeen (FR-AU-09 Task 16)
+// 세션 생명주기 관리 서비스 — create/lookup/findActiveByUser/revoke/revokeAllOfUser/markLastSeen (FR-AU-09)
 
 package com.atlas.bts.identity.session
 
@@ -20,6 +20,7 @@ import java.util.UUID
  * - [revoke]: `@Transactional` (REQUIRED) — UPDATE 단일 경계
  * - [revokeAllOfUser]: `@Transactional` (REQUIRED) — bulk UPDATE 단일 경계
  * - [lookup]: `@Transactional(readOnly = true)` — 조회 전용
+ * - [findActiveByUser]: `@Transactional(readOnly = true)` — self-service 세션 목록 조회
  * - [markLastSeen]: 트랜잭션 없음 (best-effort, SDD §3 lost update 허용)
  *
  * ## 디바이스 핑거프린트 (FR-09-23)
