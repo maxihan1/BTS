@@ -390,15 +390,15 @@ class WorkflowSchemeRepositoryIntegrationTest {
 
             // projects 스텁 — V202 FK (project_id → projects.id) 통과용 (V001 있으면 no-op)
             conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        "CREATE TABLE IF NOT EXISTS projects (" +
-                            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), " +
-                            "key VARCHAR(10) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL, " +
-                            "key_sequence BIGINT NOT NULL DEFAULT 0, " +
-                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
-                            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
-                    )
-                }
+                stmt.execute(
+                    "CREATE TABLE IF NOT EXISTS projects (" +
+                        "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), " +
+                        "key VARCHAR(10) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL, " +
+                        "key_sequence BIGINT NOT NULL DEFAULT 0, " +
+                        "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
+                        "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
+                )
+            }
 
             // 할당 2건용 project fixture UUID (FK 통과용)
             val projectUuid1 = "cccccccc-0000-0000-0000-000000000001"
@@ -431,8 +431,9 @@ class WorkflowSchemeRepositoryIntegrationTest {
 
         // findAllWithCounts 실행
         val rows = repository.findAllWithCounts()
-        val row = rows.firstOrNull { it.scheme.key.value == "count-guard-scheme" }
-            ?: error("count-guard-scheme 이 findAllWithCounts 결과에 없음")
+        val row =
+            rows.firstOrNull { it.scheme.key.value == "count-guard-scheme" }
+                ?: error("count-guard-scheme 이 findAllWithCounts 결과에 없음")
 
         // cartesian product 버그 시: mappingsCount = 6, usedByProjectsCount = 6
         // 서브쿼리 수정 후: mappingsCount = 3, usedByProjectsCount = 2

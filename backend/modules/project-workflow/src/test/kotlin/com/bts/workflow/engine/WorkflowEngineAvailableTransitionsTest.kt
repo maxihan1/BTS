@@ -31,7 +31,6 @@ import org.junit.jupiter.api.Test
  * - S3. validator 가 특정 전이를 거부하면 해당 전이는 결과에서 제외된다.
  */
 class WorkflowEngineAvailableTransitionsTest {
-
     private val mockCache: WorkflowCache = mockk()
     private val mockValidatorFactory: WorkflowValidatorFactory = mockk()
     private val mockPostActionFactory: WorkflowPostActionFactory = mockk()
@@ -54,27 +53,30 @@ class WorkflowEngineAvailableTransitionsTest {
     private val txInReviewToInProgress = WorkflowTransition("in_review", "in_progress", "Request Changes")
     private val txDoneToClosed = WorkflowTransition("done", "closed", "Close")
 
-    private val softwareDefaultWorkflow = Workflow.of(
-        key = "software-default",
-        name = "소프트웨어 개발 기본 워크플로우",
-        states = listOf(openState, inProgressState, inReviewState, doneState, closedState),
-        transitions = listOf(
-            txOpenToInProgress,
-            txInProgressToInReview,
-            txInReviewToDone,
-            txInReviewToInProgress,
-            txDoneToClosed,
-            txOpenToClosed,
-        ),
-    )
+    private val softwareDefaultWorkflow =
+        Workflow.of(
+            key = "software-default",
+            name = "소프트웨어 개발 기본 워크플로우",
+            states = listOf(openState, inProgressState, inReviewState, doneState, closedState),
+            transitions =
+                listOf(
+                    txOpenToInProgress,
+                    txInProgressToInReview,
+                    txInReviewToDone,
+                    txInReviewToInProgress,
+                    txDoneToClosed,
+                    txOpenToClosed,
+                ),
+        )
 
-    private val baseRequest = AvailableTransitionsRequest(
-        workflowKey = "software-default",
-        fromStateKey = "open",
-        actorId = "user-001",
-        actorRoles = setOf("MEMBER"),
-        issueFields = emptyMap(),
-    )
+    private val baseRequest =
+        AvailableTransitionsRequest(
+            workflowKey = "software-default",
+            fromStateKey = "open",
+            actorId = "user-001",
+            actorRoles = setOf("MEMBER"),
+            issueFields = emptyMap(),
+        )
 
     @BeforeEach
     fun setUp() {
@@ -131,10 +133,11 @@ class WorkflowEngineAvailableTransitionsTest {
         every { mockDefinitionRepo.findValidators(txOpenToClosed) } returns listOf(blockingConfig)
         val blockingValidator = mockk<WorkflowValidator>()
         every { blockingValidator.type } returns "Permission"
-        every { blockingValidator.validate(any()) } returns ValidatorResult.Fail(
-            field = null,
-            reason = "ADMIN 역할만 취소할 수 있습니다.",
-        )
+        every { blockingValidator.validate(any()) } returns
+            ValidatorResult.Fail(
+                field = null,
+                reason = "ADMIN 역할만 취소할 수 있습니다.",
+            )
         every { mockValidatorFactory.create("Permission", mapOf("role" to "ADMIN")) } returns blockingValidator
 
         val result = engine.availableTransitions(baseRequest)

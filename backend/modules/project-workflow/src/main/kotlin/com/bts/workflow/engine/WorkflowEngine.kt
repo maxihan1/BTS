@@ -176,14 +176,15 @@ class WorkflowEngine(
             req.fromStateKey,
         )
 
-        val workflow = cache.findByKey(req.workflowKey)
-            ?: run {
-                log.info(
-                    "WorkflowEngine.availableTransitions: workflow not found key={}",
-                    req.workflowKey,
-                )
-                return AvailableTransitionsResult.WorkflowNotFound(req.workflowKey)
-            }
+        val workflow =
+            cache.findByKey(req.workflowKey)
+                ?: run {
+                    log.info(
+                        "WorkflowEngine.availableTransitions: workflow not found key={}",
+                        req.workflowKey,
+                    )
+                    return AvailableTransitionsResult.WorkflowNotFound(req.workflowKey)
+                }
 
         val candidates = workflow.transitions.filter { it.fromStateKey == req.fromStateKey }
         val passed = candidates.filter { transition -> passesValidators(req, workflow, transition) }
@@ -279,22 +280,24 @@ class WorkflowEngine(
         transition: WorkflowTransition,
     ): Boolean {
         val fromState = workflow.states.find { it.key == req.fromStateKey } ?: return false
-        val issueView = DefaultIssueView(
-            key = req.actorId,
-            priority = req.issueFields["priority"] as? String ?: "",
-            fields = req.issueFields,
-        )
+        val issueView =
+            DefaultIssueView(
+                key = req.actorId,
+                priority = req.issueFields["priority"] as? String ?: "",
+                fields = req.issueFields,
+            )
         val actorView = DefaultActorView(userId = req.actorId, roles = req.actorRoles)
-        val syntheticRequest = TransitionRequest(
-            workflowKey = req.workflowKey,
-            issueKey = "",
-            fromStateKey = req.fromStateKey,
-            toStateKey = transition.toStateKey,
-            actorId = req.actorId,
-            actorRoles = req.actorRoles,
-            issueFields = req.issueFields,
-            version = 0L,
-        )
+        val syntheticRequest =
+            TransitionRequest(
+                workflowKey = req.workflowKey,
+                issueKey = "",
+                fromStateKey = req.fromStateKey,
+                toStateKey = transition.toStateKey,
+                actorId = req.actorId,
+                actorRoles = req.actorRoles,
+                issueFields = req.issueFields,
+                version = 0L,
+            )
         val ctx = TransitionContext(syntheticRequest, workflow, fromState, transition, issueView, actorView)
 
         for (cfg in definitionRepo.findValidators(transition)) {

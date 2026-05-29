@@ -26,17 +26,17 @@ import org.junit.jupiter.api.Test
  * - S3. 어댑터는 엔진 호출만 하며 직접 캐시/레포/팩토리를 사용하지 않는다 (위임 계약 검증).
  */
 class WorkflowTransitionAdapterAvailableTest {
-
     private val mockEngine: WorkflowEngine = mockk()
     private lateinit var adapter: WorkflowTransitionAdapter
 
-    private val baseRequest = AvailableTransitionsRequest(
-        workflowKey = "software-default",
-        fromStateKey = "open",
-        actorId = "user-001",
-        actorRoles = setOf("MEMBER"),
-        issueFields = emptyMap(),
-    )
+    private val baseRequest =
+        AvailableTransitionsRequest(
+            workflowKey = "software-default",
+            fromStateKey = "open",
+            actorId = "user-001",
+            actorRoles = setOf("MEMBER"),
+            issueFields = emptyMap(),
+        )
 
     @BeforeEach
     fun setUp() {
@@ -47,12 +47,13 @@ class WorkflowTransitionAdapterAvailableTest {
 
     @Test
     fun `S1 — 엔진이 Success 를 반환하면 어댑터는 동일한 Success 를 반환한다`() {
-        val engineResult = AvailableTransitionsResult.Success(
-            listOf(
-                AvailableTransitionView("open", "in_progress", "Start Work"),
-                AvailableTransitionView("open", "closed", "Cancel"),
-            ),
-        )
+        val engineResult =
+            AvailableTransitionsResult.Success(
+                listOf(
+                    AvailableTransitionView("open", "in_progress", "Start Work"),
+                    AvailableTransitionView("open", "closed", "Cancel"),
+                ),
+            )
         every { mockEngine.availableTransitions(baseRequest) } returns engineResult
 
         val result = adapter.availableTransitions(baseRequest)
