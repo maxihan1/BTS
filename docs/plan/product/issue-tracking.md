@@ -36,13 +36,12 @@
 - [x] D5. 백엔드 테스트 — MockK 단위 + Testcontainers 통합. TDD red→green→refactor (책임. backend-engineer) (완료. PR #17 단위 + PR #23 ArchUnit 2룰 + Testcontainers singleton base + Kotest property × 3 + PR #24 Flyway namespace 격리로 IssueRepositoryTest `@Disabled` 해제 + NFR-3 2회 연속 BUILD SUCCESSFUL 24s × 2 측정 통과)
 - [x] D6. 프론트 UI — `IssueDetail.tsx`. TanStack Query 캐싱 + 낙관적 업데이트 (책임. designer → frontend-engineer) (완료. PR #26 — 목록(issues.index)+생성(issues.new)+상세(issues.$key, 시안2 사이드 메타패널)+요약 인라인 수정(완전 낙관적 onMutate/onError/onSettled+409 토스트)+소프트 삭제. sonner toast 도입. router 3라우트 requireAuth. 상태 전이 UI는 별 slice로 분리 → D6.5(PR #41)에서 완료. 8 TDD task / 173 테스트 통과)
 - [x] D6.5. 상태 전이 UI + 전이 E2E — 가용전이 드롭다운(서버 권위 `GET /transitions`) + `POST /transition`(409 errorCode 2종 TRANSITION_NOT_ALLOWED/VERSION_CONFLICT, 422 미설정 분기) + Zod(backend DTO 정합) + MSW stateful + i18n + Playwright E2E 4(happy/가용전이 필터/미설정/종료상태) (책임. backend-engineer→frontend-engineer→qa-engineer) (완료. PR #38 백엔드 가용전이 SPI+런타임 + PR #41 프론트 UI+E2E)
-- [ ] D7. E2E + NFR — 생성→조회→수정→상태 전이→소프트 삭제→키 영속성 (이동 후 옛 키 redirect) (책임. qa-engineer)
+- [x] D7. E2E — FR-IS-01 고유 lifecycle 생성→조회→수정→상태 전이→소프트 삭제 (책임. qa-engineer) (완료. PR #32 E2E-1~4(생성/조회/인라인수정/소프트삭제/목록제외 + 비로그인 가드 + 미존재 키 404 + UI 회귀 가드 3) + PR #41 상태 전이 E2E 4(happy/가용전이 필터/미설정/종료상태). MSW mock 환경. **범위 재정의(2026-05-30)** — 아래 cross-FR/deferred 항목을 각 FR로 이관해 FR-IS-01 고유 E2E만 D7로 한정)
 
-> **D7 부분 통과 (PR #32, 2026-05-28)**. E2E-1~4 적용 — 생성/조회/인라인 수정/소프트 삭제/목록 제외 + 비로그인 가드 + 미존재 키 404 + UI 회귀 가드 3건 (인라인 편집 취소 / 다이얼로그 취소 / 빈 summary Zod 검증). MSW mock 환경 (backend dev 불필요). full 통과 후속 의존:
-> - ✅ **상태 전이 E2E** (D6.5) — PR #38(백엔드 가용전이) + PR #41(전이 UI + Playwright E2E 4 시나리오) 완료. shadcn select(IssueTypeSelect 패턴) + useTransitionIssue. 남은 D7 항목(아래)은 별 FR/deferred.
-> - **이슈 이동 + 키 redirect E2E** ← FR-IS-12 move 별 FR (백엔드 IssueKeyRedirect + Flyway + jOOQ + frontend 이동 다이얼로그 + redirect 라우트).
-> - **NFR p95 측정 3건 (조회 200ms / 목록 500ms / POST 300ms)** Deferred trigger — (a) k6-load-testing + Playwright NFR 계층 도구 도입 + (b) 실 backend 환경 사전 구축, Maxi 선언으로 trigger 조정 (PR #21 §F4 패턴).
-> - **권한 모델 E2E** ← 실 RBAC 가드 구현 (현재 dev/test = `AlwaysAllowIssuePermissionResolver`) 별 FR 후.
+> **D7 잔여 이관 (2026-05-30)**. 아래 3건은 FR-IS-01 고유 범위가 아니라 각 FR/deferred로 이관 — D7 완료 판정에서 제외:
+> - **이슈 이동 + 키 redirect E2E** → **FR-MV-01**(§6.1.1 프로젝트 간 이슈 이동)의 E2E 범위. 이미 FR-MV-01 D2(옛 키 redirect 명세)/D5(옛 키 308 redirect 테스트)로 추적 중.
+> - **NFR p95 측정 3건 (조회 200ms / 목록 500ms / POST 300ms)** → Deferred(아래 NFR 표). trigger — (a) k6-load-testing + Playwright NFR 계층 도구 + (b) 실 backend 환경, Maxi 선언으로 조정 (PR #21 §F4 패턴). checkbox 아님(표).
+> - **권한 모델 E2E** → 실 RBAC 가드 구현(현재 dev/test = `AlwaysAllowIssuePermissionResolver`) 별 FR 후속.
 
 | 항목 | 임계 | 실측 (p95) |
 |---|---|---|
@@ -400,7 +399,7 @@
 - [ ] D4. 백엔드 — `POST /api/v1/issues/{key}/move` 트랜잭션 (책임. backend-engineer)
 - [ ] D5. 백엔드 테스트 — 옛 키로 조회 시 308 redirect (책임. backend-engineer)
 - [ ] D6. 프론트 UI — 이동 다이얼로그 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [ ] D7. E2E — 이동 + **옛 키 redirect E2E** (FR-IS-01 D7에서 이관, 2026-05-30) (책임. qa-engineer)
 
 ### §6.1.2 FR-MV-02 — 이동 시 히스토리 보존 + 링크 유지
 
