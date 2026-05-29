@@ -155,6 +155,7 @@ class IssueController(
         val appRequest =
             AppUpdateIssueRequest(
                 summary = request.summary,
+                typeId = request.typeId?.let { IssueTypeId(it) },
                 expectedVersion = request.expectedVersion,
             )
         val response = service.updateIssue(actor, issueKey, appRequest)
