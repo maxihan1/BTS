@@ -85,6 +85,26 @@ describe('PATCH /api/v1/issues/:key — version 충돌', () => {
     const body = await res.json() as { errorCode: string }
     expect(body.errorCode).toBe('VERSION_CONFLICT')
   })
+
+  it('typeId 변경 시 stale expectedVersion → 409 VERSION_CONFLICT (OCC 시맨틱)', async () => {
+    // ATLAS-1 현재 version=0, 9999 를 전달해 불일치 유발
+    const res = await patchIssue('ATLAS-1', {
+      typeId: 3,
+      expectedVersion: 9999,
+    })
+    expect(res.status).toBe(409)
+    const body = await res.json() as { errorCode: string }
+    expect(body.errorCode).toBe('VERSION_CONFLICT')
+  })
+
+  it('typeId 변경 시 정확한 expectedVersion → 409 아님(200)', async () => {
+    // ATLAS-1 현재 version=0 — 정확히 일치하면 409 가 발생하지 않아야 함
+    const res = await patchIssue('ATLAS-1', {
+      typeId: 3,
+      expectedVersion: 0,
+    })
+    expect(res.status).toBe(200)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
