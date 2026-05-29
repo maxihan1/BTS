@@ -1,4 +1,4 @@
-// 인증 엔드포인트 — login / logout / refresh (FR-AU-09 Task 21)
+// 인증 엔드포인트 — login / logout / refresh / sessions (FR-AU-09 Task 21 / Task 2)
 
 package com.atlas.bts.identity.web
 
@@ -8,10 +8,12 @@ import com.atlas.bts.identity.session.RefreshTokenRepository
 import com.atlas.bts.identity.session.RefreshTokenService
 import com.atlas.bts.identity.session.RefreshTokenService.FailureReason
 import com.atlas.bts.identity.session.RefreshTokenService.RotateResult
+import com.atlas.bts.identity.session.Session
 import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.spi.AuthnResult
 import com.atlas.bts.identity.spi.Credential
 import com.atlas.bts.identity.spi.ProviderRegistry
+import com.atlas.bts.identity.web.dto.SessionResponse
 import com.fasterxml.jackson.annotation.JsonProperty
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.HttpHeaders
@@ -19,6 +21,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.oauth2.jwt.Jwt
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -36,6 +39,7 @@ import java.util.UUID
  * - [login]: POST /api/v1/auth/login — ProviderRegistry 로 인증 → Session 생성 → RefreshToken 발급 → JWT 발급
  * - [logout]: POST /api/v1/auth/logout — sid 로 Session revoke + refresh chain revoke + Cookie 만료
  * - [refresh]: POST /api/v1/auth/refresh — Cookie 의 refresh_token → RefreshTokenService.rotate
+ * - [listSessions]: GET /api/v1/auth/sessions — 본인 활성 세션 목록 조회 (JWT 전용, PAT 403)
  *
  * ## 트랜잭션 경계
  * @Transactional 없음 — service layer(SessionService, RefreshTokenService) 가 각자 @Transactional 보장.
@@ -215,7 +219,71 @@ class AuthController(
         }
     }
 
+    /**
+     * GET /api/v1/auth/sessions — 본인 활성 세션 목록 조회 (FR-AU-09 Task 2 / spec §FR-1/FR-2/FR-6b).
+     *
+     * ## PAT 차단 (FR-6b / EC-8)
+     * PAT 인증 시 principal 이 [Jwt] 타입이 아닌 `UsernamePasswordAuthenticationToken` 이다.
+     * PAT 는 stateless 자격증명이므로 `sid` ("현재 세션") 개념이 없어 세션 관리가 불가하다.
+     * [Jwt] 타입이 아니면 **403 Forbidden** + `session_management_requires_interactive_login` 반환.
+     * ([WhoamiController] 의 `Jwt?` nullable + PAT 분기 선례와 동일 원칙.)
+     *
+     * ## current 플래그 (spec §FR-2)
+     * JWT 의 `sid` 클레임과 세션 ID 가 일치하는 세션만 `current = true`.
+     * 현재 세션을 사용자에게 명시적으로 표시해 강제종료 버튼을 비활성화할 수 있게 한다.
+     *
+     * ## 미인증
+     * Spring Security 필터가 401 반환. Controller 미도달.
+     *
+     * @param jwt Spring Security 가 주입한 JWT principal. PAT 인증 시 null (nullable 선언)
+     * @return 200 + `{ "sessions": [SessionResponse, ...] }` / 403 PAT / 401 미인증
+     */
+    @GetMapping("/sessions")
+    fun listSessions(
+        @AuthenticationPrincipal jwt: Jwt?,
+    ): ResponseEntity<*> {
+        if (jwt == null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(mapOf("error" to "session_management_requires_interactive_login"))
+        }
+
+        val userId = runCatching { UUID.fromString(jwt.subject) }.getOrElse {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(mapOf("error" to "invalid_token"))
+        }
+        val currentSid = jwt.getClaimAsString("sid")?.let {
+            runCatching { UUID.fromString(it) }.getOrNull()
+        }
+
+        val sessions = sessionService.findActiveByUser(userId)
+        val sessionResponses = sessions.map { toSessionResponse(it, currentSid) }
+
+        return ResponseEntity.ok(mapOf("sessions" to sessionResponses))
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * [Session] 도메인 엔티티를 [SessionResponse] DTO 로 변환한다.
+     *
+     * `deviceFingerprint` 는 의도적으로 제외한다 (NFR-2 — 내부 식별자 비노출).
+     *
+     * @param session 변환할 세션 엔티티
+     * @param currentSid 요청 JWT 의 `sid` 클레임 값. null 이면 current = false
+     * @return [SessionResponse]
+     */
+    private fun toSessionResponse(session: Session, currentSid: UUID?): SessionResponse =
+        SessionResponse(
+            sid = session.id,
+            providerId = session.providerId,
+            userAgent = session.userAgent,
+            ipAddress = session.ipAddress,
+            lastSeenAt = session.lastSeenAt,
+            createdAt = session.createdAt,
+            current = session.id == currentSid,
+        )
+
+
 
     /**
      * refresh_token Set-Cookie 헤더 값을 생성한다.
