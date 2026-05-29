@@ -9,7 +9,7 @@ import { ApiError } from '@/api/client'
 import { useUpdateIssueSummary, issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { useDeleteIssue } from '@/api/useDeleteIssue'
 import { useIssueTypes } from '@/hooks/use-issue-types'
-import { useIssueTransitions } from '@/hooks/use-issue-transitions'
+import { useIssueTransitions, issueTransitionKeys } from '@/hooks/use-issue-transitions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
@@ -69,7 +69,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) }),
-        queryClient.invalidateQueries({ queryKey: ['issue-transitions', issueKey] }),
+        queryClient.invalidateQueries({ queryKey: issueTransitionKeys.list(issueKey) }),
       ])
     },
     onError: (err: unknown) => {
@@ -80,8 +80,11 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
         if (errorCode === 'transition_not_allowed') {
           toast.error(issueDetailStrings.transitionNotAllowedError)
         } else {
-          // version_conflict(S4) — 최신 데이터 재조회 유도
-          void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+          // version_conflict(S4) — 최신 데이터 + 전이 목록 재조회 유도
+          void Promise.all([
+            queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) }),
+            queryClient.invalidateQueries({ queryKey: issueTransitionKeys.list(issueKey) }),
+          ])
           toast.error(issueDetailStrings.transitionVersionConflictError)
         }
       } else if (err instanceof ApiError && err.status === 422) {
