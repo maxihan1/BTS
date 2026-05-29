@@ -148,30 +148,29 @@ class IssueTypeApplicationService(
         }
 
         val issueCount = repo.countIssuesByTypeId(id.value)
-        // fail-closed: usagePort 예외 시 그대로 전파
+        // fail-closed: usagePort 장애 시 예외를 그대로 전파해 삭제를 거부한다
         val schemeMappingCount = usagePort.countSchemeMappings(id.value)
 
-        // 가드 2: 스킴 매핑 참조 — reassignTo 로도 해소 불가
+        // 가드 2: 스킴 매핑 참조 — reassignTo 지정 여부와 무관하게 해소 불가
+        // project-workflow BC 소유 데이터이므로 issue-tracking 이 직접 수정할 수 없다.
         if (schemeMappingCount > 0) {
             throw IssueTypeInUseException(usageCount = issueCount, schemeMappingCount = schemeMappingCount)
         }
 
         if (reassignTo != null) {
-            // 가드 3: 재할당 대상 유효성
+            // 가드 3: 재할당 대상 유효성 — 자기 자신이거나 미존재/삭제된 타입
             if (reassignTo == id) {
                 throw IssueTypeReassignTargetInvalidException(
                     targetId = reassignTo,
                     reason = "재할당 대상이 삭제 대상과 동일합니다",
                 )
             }
-            val target = repo.findById(reassignTo)
-            if (target == null) {
-                throw IssueTypeReassignTargetInvalidException(
+            repo.findById(reassignTo)
+                ?: throw IssueTypeReassignTargetInvalidException(
                     targetId = reassignTo,
                     reason = "재할당 대상 이슈 타입이 존재하지 않거나 삭제되었습니다",
                 )
-            }
-            // 이슈가 있을 때만 재배정 (없으면 불필요한 UPDATE 스킵)
+            // 이슈가 있을 때만 재배정 — 없으면 불필요한 UPDATE 를 스킵한다
             if (issueCount > 0) {
                 repo.reassignIssues(fromTypeId = id.value, toTypeId = reassignTo.value)
             }
