@@ -69,19 +69,20 @@ test.describe('FR-IS-01 이슈 상태 전이 (IssueMetaPanel)', () => {
 
   // ─────────────────────────────────────────────────────────────────────────
   // S5 워크플로우 미설정 — ATLAS-NOWF 는 GET /transitions 422 반환
-  //   → useIssueTransitions 가 빈 배열로 폴백 → 전이 셀렉터 미노출
-  //   + "더 진행할 전이 없음"(noTransitionsAvailable) 안내 노출.
+  //   → useIssueTransitions 가 워크플로우 미설정 에러로 처리 → 전이 셀렉터 미노출
+  //   + "이 이슈에 워크플로우가 설정되지 않아 상태를 변경할 수 없습니다."
+  //     (transitionWorkflowNotConfiguredError) 안내 노출.
   //   이슈 상세 자체(title/badge)는 정상 렌더됨.
-  //   transitionWorkflowNotConfiguredError 문구는 POST /transition 422 시
-  //   toast로 노출되는 별도 경로 — GET 422 처리는 noTransitionsAvailable 과 동일 UI.
+  //   S6(종료 상태 빈 배열) 와 구별되는 별도 문구 — 두 문구 동시 노출 없음.
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
    * Given   ATLAS-NOWF(open 상태, GET /transitions → 422) 이슈 상세 페이지 진입
    * When    메타패널 상태 영역 확인
-   * Then    이슈 상세 정상 렌더 + 전이 셀렉터 없음 + "더 진행할 전이 없음" 안내 노출
+   * Then    이슈 상세 정상 렌더 + 전이 셀렉터 없음 + 워크플로우 미설정 안내 문구 노출
+   *         + "더 진행할 전이 없음" 문구는 노출되지 않음 (S6 와 구별)
    */
-  test('S5 워크플로우 미설정 — 전이 셀렉터 없고 안내 문구 노출', async ({ page }) => {
+  test('S5 워크플로우 미설정 — 전이 셀렉터 없고 미설정 안내 문구 노출', async ({ page }) => {
     // Given. GET /transitions 422 반환 이슈 상세 진입
     await page.goto('/issues/ATLAS-NOWF')
 
@@ -90,15 +91,20 @@ test.describe('FR-IS-01 이슈 상태 전이 (IssueMetaPanel)', () => {
     await expect(badge).toBeVisible()
     await expect(badge).toContainText('open')
 
-    // Then. 전이 셀렉터 없음 (GET /transitions 422 → transitions=[] 폴백)
+    // Then. 전이 셀렉터 없음 (GET /transitions 422 → 워크플로우 미설정 처리)
     await expect(
       page.getByRole('combobox', { name: i18nLabels.issueDetail.transitionSelectLabel }),
     ).toHaveCount(0)
 
-    // Then. 종료/미설정 공통 안내 문구 노출
+    // Then. 워크플로우 미설정 전용 안내 문구 노출
     await expect(
-      page.getByText(i18nLabels.issueDetail.noTransitionsAvailable),
+      page.getByText(i18nLabels.issueDetail.transitionWorkflowNotConfiguredError, { exact: true }),
     ).toBeVisible()
+
+    // Then. S6 종료 상태 문구는 노출되지 않음 (두 문구 동시 노출 없음)
+    await expect(
+      page.getByText(i18nLabels.issueDetail.noTransitionsAvailable, { exact: true }),
+    ).toHaveCount(0)
   })
 
   // ─────────────────────────────────────────────────────────────────────────
