@@ -29,23 +29,35 @@ enum class PasswordPolicyViolation {
  * [plain] 내용은 어떠한 형태로도 로그·저장하지 않는다.
  */
 object PasswordPolicy {
+    const val MIN_LENGTH = 12
+    const val MIN_CHARACTER_CLASSES = 3
+
+    /**
+     * 비밀번호 정책을 검증하고 위반 항목 목록을 반환한다.
+     *
+     * @param plain 검증할 평문 비밀번호. **이 함수는 배열을 읽기만 하며 수정하지 않는다.**
+     *              wipe(0으로 덮어쓰기)는 호출자 책임이다.
+     * @return 위반 항목 목록. 정책을 모두 만족하면 빈 리스트.
+     */
     fun validate(plain: CharArray): List<PasswordPolicyViolation> {
         val violations = mutableListOf<PasswordPolicyViolation>()
 
-        if (plain.size < 12) {
+        if (plain.size < MIN_LENGTH) {
             violations += PasswordPolicyViolation.MIN_LENGTH
         }
 
-        val hasUpper = plain.any { it.isUpperCase() }
-        val hasLower = plain.any { it.isLowerCase() }
-        val hasDigit = plain.any { it.isDigit() }
-        val hasSpecial = plain.any { !it.isLetterOrDigit() }
-
-        val classCount = listOf(hasUpper, hasLower, hasDigit, hasSpecial).count { it }
-        if (classCount < 3) {
+        if (countCharacterClasses(plain) < MIN_CHARACTER_CLASSES) {
             violations += PasswordPolicyViolation.COMPLEXITY
         }
 
         return violations
+    }
+
+    private fun countCharacterClasses(plain: CharArray): Int {
+        val hasUpper = plain.any { it.isUpperCase() }
+        val hasLower = plain.any { it.isLowerCase() }
+        val hasDigit = plain.any { it.isDigit() }
+        val hasSpecial = plain.any { !it.isLetterOrDigit() }
+        return listOf(hasUpper, hasLower, hasDigit, hasSpecial).count { it }
     }
 }
