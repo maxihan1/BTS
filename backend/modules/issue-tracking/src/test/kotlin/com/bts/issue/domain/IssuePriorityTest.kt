@@ -28,11 +28,11 @@ class IssuePriorityTest {
 
     @Test
     fun `priority_number_to_name — 1은 Highest, 2는 High, 3는 Medium, 4는 Low, 5는 Lowest`() {
-        assertThat(IssuePriority.fromNumber(1).name).isEqualTo("Highest")
-        assertThat(IssuePriority.fromNumber(2).name).isEqualTo("High")
-        assertThat(IssuePriority.fromNumber(3).name).isEqualTo("Medium")
-        assertThat(IssuePriority.fromNumber(4).name).isEqualTo("Low")
-        assertThat(IssuePriority.fromNumber(5).name).isEqualTo("Lowest")
+        assertThat(IssuePriority.fromNumber(1).displayName).isEqualTo("Highest")
+        assertThat(IssuePriority.fromNumber(2).displayName).isEqualTo("High")
+        assertThat(IssuePriority.fromNumber(3).displayName).isEqualTo("Medium")
+        assertThat(IssuePriority.fromNumber(4).displayName).isEqualTo("Low")
+        assertThat(IssuePriority.fromNumber(5).displayName).isEqualTo("Lowest")
     }
 
     @Test
@@ -66,9 +66,9 @@ class IssuePriorityTest {
 
     @Test
     fun `impact_number_to_name — 1은 High, 2는 Medium, 3는 Low`() {
-        assertThat(IssueImpact.fromNumber(1).name).isEqualTo("High")
-        assertThat(IssueImpact.fromNumber(2).name).isEqualTo("Medium")
-        assertThat(IssueImpact.fromNumber(3).name).isEqualTo("Low")
+        assertThat(IssueImpact.fromNumber(1).displayName).isEqualTo("High")
+        assertThat(IssueImpact.fromNumber(2).displayName).isEqualTo("Medium")
+        assertThat(IssueImpact.fromNumber(3).displayName).isEqualTo("Low")
     }
 
     @Test
