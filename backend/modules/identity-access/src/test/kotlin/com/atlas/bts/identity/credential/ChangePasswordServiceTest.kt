@@ -24,16 +24,16 @@ import java.util.UUID
  * - CharArray wipe: early-return 경로(policy 위반·same)에서도 finally 가 wipe 를 보장해야 한다.
  */
 class ChangePasswordServiceTest {
-
     private val localCredentialService = mockk<LocalCredentialService>(relaxed = true)
     private val sessionService = mockk<SessionService>(relaxed = true)
     private val refreshTokenRepository = mockk<RefreshTokenRepository>(relaxed = true)
 
-    private val sut = ChangePasswordService(
-        localCredentialService = localCredentialService,
-        sessionService = sessionService,
-        refreshTokenRepository = refreshTokenRepository,
-    )
+    private val sut =
+        ChangePasswordService(
+            localCredentialService = localCredentialService,
+            sessionService = sessionService,
+            refreshTokenRepository = refreshTokenRepository,
+        )
 
     private val userId = UUID.randomUUID()
     private val currentSid = UUID.randomUUID()
@@ -68,7 +68,7 @@ class ChangePasswordServiceTest {
 
     @Test
     fun `정책 위반 시 PolicyViolation 반환, rotate·세션무효화 미호출`() {
-        val tooShort = "short".toCharArray()   // MIN_LENGTH 미달
+        val tooShort = "short".toCharArray() // MIN_LENGTH 미달
 
         val result = sut.change(userId, currentSid, currentPw(), tooShort)
 
@@ -86,7 +86,7 @@ class ChangePasswordServiceTest {
     @Test
     fun `new와 current 평문이 동일하면 SameAsCurrent 반환, rotate 미호출`() {
         val pw = "OldP@ssw0rd!1".toCharArray()
-        val pwCopy = "OldP@ssw0rd!1".toCharArray()   // 내용 동일, 별도 배열
+        val pwCopy = "OldP@ssw0rd!1".toCharArray() // 내용 동일, 별도 배열
 
         val result = sut.change(userId, currentSid, pw, pwCopy)
 
@@ -174,7 +174,7 @@ class ChangePasswordServiceTest {
     @Test
     fun `policy 위반 early-return 경로에서도 current와 new CharArray가 wipe됨`() {
         val currentArr = "OldP@ssw0rd!1".toCharArray()
-        val newArr = "short".toCharArray()   // 정책 위반
+        val newArr = "short".toCharArray() // 정책 위반
 
         sut.change(userId, currentSid, currentArr, newArr)
 

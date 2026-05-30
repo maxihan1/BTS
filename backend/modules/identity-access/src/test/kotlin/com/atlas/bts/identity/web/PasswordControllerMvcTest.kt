@@ -40,7 +40,6 @@ import java.util.UUID
 )
 @Import(SecurityConfig::class, PasswordControllerMvcTest.MockSecurityBeans::class)
 class PasswordControllerMvcTest {
-
     companion object {
         private val USER_ID: UUID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
         private val SESSION_ID: UUID = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
@@ -65,8 +64,7 @@ class PasswordControllerMvcTest {
         }
 
         @Bean
-        fun corsConfigurationSource(): CorsConfigurationSource =
-            CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        fun corsConfigurationSource(): CorsConfigurationSource = CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
 
         @Bean
         fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)

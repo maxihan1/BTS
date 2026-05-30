@@ -59,7 +59,6 @@ class ChangePasswordService(
     private val sessionService: SessionService,
     private val refreshTokenRepository: RefreshTokenRepository,
 ) {
-
     /**
      * 비밀번호를 변경하고 현재 세션 외 다른 세션을 무효화한다.
      *
@@ -68,9 +67,10 @@ class ChangePasswordService(
      * @param current    현재 비밀번호 평문 — 반환 후 wipe
      * @param new        새 비밀번호 평문 — 반환 후 wipe
      * @return [ChangePasswordResult] 변경 결과
+     *
+     * `@Suppress("ReturnCount")` 사유 — policy·same·rotate 각 단계 guard clause early-return이
+     * 검증 순서를 명확히 표현한다. 단일 return 리팩터링은 단계 간 흐름을 오히려 불명확하게 만든다.
      */
-    // ReturnCount 억제 — policy·same·rotate 각 단계별 guard clause early-return이 검증 순서를 명확히 표현.
-    // 단일 return 으로 리팩터링하면 검증 단계 간 흐름이 오히려 불명확해짐.
     @Suppress("ReturnCount")
     @Transactional
     fun change(

@@ -23,7 +23,6 @@ import java.util.UUID
 class PasswordController(
     private val changePasswordService: ChangePasswordService,
 ) {
-
     // POST /api/v1/users/me/password: JWT subject -> userId, sid claim -> currentSid.
     // CharArray 변환 후 ChangePasswordService.change 위임. wipe 는 서비스 내부 finally 처리.
     // 반환: 200 changed=true / 400 에러코드+메시지 / 403 미인증+CSRF없음 / 401 미인증(필터 체인)
@@ -36,12 +35,13 @@ class PasswordController(
         val currentSid = UUID.fromString(jwt.getClaimAsString("sid"))
 
         return when (
-            val result = changePasswordService.change(
-                userId = userId,
-                currentSid = currentSid,
-                current = req.currentPassword.toCharArray(),
-                new = req.newPassword.toCharArray(),
-            )
+            val result =
+                changePasswordService.change(
+                    userId = userId,
+                    currentSid = currentSid,
+                    current = req.currentPassword.toCharArray(),
+                    new = req.newPassword.toCharArray(),
+                )
         ) {
             is ChangePasswordResult.Success ->
                 ResponseEntity.ok(mapOf("changed" to true))
@@ -81,10 +81,11 @@ private fun errorResponse(
     message: String,
     violations: List<String>? = null,
 ): ResponseEntity<Map<String, Any>> {
-    val body = mutableMapOf<String, Any>(
-        "code" to code.name,
-        "message" to message,
-    )
+    val body =
+        mutableMapOf<String, Any>(
+            "code" to code.name,
+            "message" to message,
+        )
     if (violations != null) {
         body["violations"] = violations
     }

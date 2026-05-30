@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class PasswordPolicyTest {
-
     @Test
     fun `11자는 MIN_LENGTH 위반`() {
         val violations = PasswordPolicy.validate("Abcdefg1234".toCharArray())

@@ -65,7 +65,6 @@ import java.util.UUID
 )
 @Testcontainers
 class ChangePasswordIntegrationTest {
-
     companion object {
         /** Testcontainers PostgreSQL 16 — Flyway V001~V006 자동 마이그레이션 적용 */
         @Container
@@ -146,11 +145,12 @@ class ChangePasswordIntegrationTest {
     fun prepareTestUser() {
         // 테스트 격리: 각 테스트마다 유일한 username 으로 신규 사용자 생성
         val uniqueSuffix = UUID.randomUUID().toString().take(8)
-        val user = userRepository.save(
-            username = "change-pw-test-$uniqueSuffix",
-            email = "changepw-$uniqueSuffix@example.com",
-            displayName = "ChangePasswordTestUser",
-        )
+        val user =
+            userRepository.save(
+                username = "change-pw-test-$uniqueSuffix",
+                email = "changepw-$uniqueSuffix@example.com",
+                displayName = "ChangePasswordTestUser",
+            )
         testUserId = user.id
         // 초기 비밀번호 설정
         localCredentialService.store(testUserId, initialPassword.toCharArray())
@@ -179,12 +179,13 @@ class ChangePasswordIntegrationTest {
         val currentSid = UUID.randomUUID()
 
         // 비밀번호 변경 실행
-        val result = changePasswordService.change(
-            userId = testUserId,
-            currentSid = currentSid,
-            current = initialPassword.toCharArray(),
-            new = newValidPassword.toCharArray(),
-        )
+        val result =
+            changePasswordService.change(
+                userId = testUserId,
+                currentSid = currentSid,
+                current = initialPassword.toCharArray(),
+                new = newValidPassword.toCharArray(),
+            )
 
         assertThat(result)
             .withFailMessage("비밀번호 변경이 Success 를 반환해야 하나 실제: $result")
@@ -234,12 +235,13 @@ class ChangePasswordIntegrationTest {
         val rawTokenB = fixture.rawTokenB
 
         // 세션 A 의 sid 로 비밀번호 변경 실행
-        val result = changePasswordService.change(
-            userId = testUserId,
-            currentSid = sessionA.id,
-            current = initialPassword.toCharArray(),
-            new = newValidPassword.toCharArray(),
-        )
+        val result =
+            changePasswordService.change(
+                userId = testUserId,
+                currentSid = sessionA.id,
+                current = initialPassword.toCharArray(),
+                new = newValidPassword.toCharArray(),
+            )
 
         assertThat(result)
             .withFailMessage("비밀번호 변경이 Success 를 반환해야 하나 실제: $result")
@@ -306,12 +308,13 @@ class ChangePasswordIntegrationTest {
         val hashBefore = credBefore!!.passwordHash
 
         // 정책 위반 비밀번호(11자)로 변경 시도
-        val result = changePasswordService.change(
-            userId = testUserId,
-            currentSid = currentSid,
-            current = initialPassword.toCharArray(),
-            new = policyViolatingPassword.toCharArray(),
-        )
+        val result =
+            changePasswordService.change(
+                userId = testUserId,
+                currentSid = currentSid,
+                current = initialPassword.toCharArray(),
+                new = policyViolatingPassword.toCharArray(),
+            )
 
         // PolicyViolation 을 반환해야 한다
         assertThat(result)
@@ -331,10 +334,11 @@ class ChangePasswordIntegrationTest {
             .isEqualTo(hashBefore)
 
         // 초기 비밀번호가 여전히 유효해야 한다 (hash 불변 간접 검증)
-        val originalPwStillValid = localCredentialService.verifyForUser(
-            testUserId,
-            initialPassword.toCharArray(),
-        )
+        val originalPwStillValid =
+            localCredentialService.verifyForUser(
+                testUserId,
+                initialPassword.toCharArray(),
+            )
         assertThat(originalPwStillValid)
             .withFailMessage("정책 위반 거부 후 초기 비밀번호가 여전히 유효해야 합니다.")
             .isTrue()
@@ -356,18 +360,20 @@ class ChangePasswordIntegrationTest {
     private fun createTwoSessionsWithTokens(): TwoSessionFixture {
         val now = Instant.now()
 
-        val sessionA = sessionService.create(
-            userId = testUserId,
-            providerId = "local",
-            ipAddress = "127.0.0.1",
-            userAgent = "TestAgent/1.0",
-        )
-        val sessionB = sessionService.create(
-            userId = testUserId,
-            providerId = "local",
-            ipAddress = "192.168.1.2",
-            userAgent = "TestAgent/2.0",
-        )
+        val sessionA =
+            sessionService.create(
+                userId = testUserId,
+                providerId = "local",
+                ipAddress = "127.0.0.1",
+                userAgent = "TestAgent/1.0",
+            )
+        val sessionB =
+            sessionService.create(
+                userId = testUserId,
+                providerId = "local",
+                ipAddress = "192.168.1.2",
+                userAgent = "TestAgent/2.0",
+            )
 
         val rawTokenA = "token-a-${UUID.randomUUID()}"
         refreshTokenRepository.save(
