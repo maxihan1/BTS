@@ -105,7 +105,12 @@ const getIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
       { status: 404 },
     )
   }
-  return HttpResponse.json({ data: found })
+  // 단건 GET — descriptionHtml 을 description 기반으로 채워 반환 (목록 API는 null 그대로)
+  const withHtml: IssueResponse = {
+    ...found,
+    descriptionHtml: renderDescriptionHtml(found.description),
+  }
+  return HttpResponse.json({ data: withHtml })
 })
 
 /**
@@ -163,6 +168,11 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     summary?: string
     typeId?: number
     expectedVersion?: number
+    description?: string | null
+    priority?: number | null
+    labels?: string[] | null
+    environment?: string | null
+    impact?: number | null
   }
 
   // (2) typeId 검증 — 카탈로그에 없는 id 는 404
@@ -195,17 +205,33 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     )
   }
 
-  // (4) 성공
+  // (4) 성공 — 5필드 merge-patch 적용
+  const resolvedDescription = applyDescriptionPatch(found.description, body.description)
+  const resolvedPriority = body.priority ?? found.priority
+  const resolvedLabels = body.labels !== undefined && body.labels !== null
+    ? body.labels
+    : found.labels
+  const resolvedEnvironment = applyEnvironmentPatch(found.environment, body.environment)
+  const resolvedImpact = body.impact !== undefined ? (body.impact ?? found.impact) : found.impact
+
   const updated: IssueResponse = {
     ...found,
     summary: body.summary ?? found.summary,
     typeId: resolvedTypeId,
     typeKey: resolvedTypeKey,
     typeName: resolvedTypeName,
+    description: resolvedDescription,
+    descriptionHtml: null, // PATCH 응답은 목록과 동일 — 단건 GET 에서만 채워짐
+    priority: resolvedPriority,
+    priorityName: priorityName(resolvedPriority),
+    labels: resolvedLabels,
+    environment: resolvedEnvironment,
+    impact: resolvedImpact,
+    impactName: impactNameOf(resolvedImpact),
     version: found.version + 1,
     updatedAt: new Date().toISOString(),
   }
-  // 수정 결과를 오버라이드에 보관 — invalidateQueries 후 GET 단건이 최신 타입/요약 반영 (refetch 롤백 방지).
+  // 수정 결과를 오버라이드에 보관 — invalidateQueries 후 GET 단건이 최신 타입/요약/5필드 반영 (refetch 롤백 방지).
   issueOverrides.set(key, updated)
   // POST 로 생성된 이슈는 목록(buildFilteredPage) 일관성을 위해 createdIssues 도 갱신.
   if (createdIssues.has(key)) {
@@ -231,6 +257,62 @@ const deleteIssueHandler = http.delete('/api/v1/issues/:key', ({ params }) => {
 function resolveIssue(key: string): IssueResponse | undefined {
   if (deletedKeys.has(key)) return undefined
   return issueOverrides.get(key) ?? createdIssues.get(key) ?? issueFixtureMap[key]
+}
+
+/** priority 숫자 → 표시 이름 변환 (1=Highest ~ 5=Lowest, backend 기본값 3=Medium). */
+function priorityName(priority: number): string {
+  const map: Record<number, string> = {
+    1: 'Highest',
+    2: 'High',
+    3: 'Medium',
+    4: 'Low',
+    5: 'Lowest',
+  }
+  return map[priority] ?? 'Medium'
+}
+
+/** impact 숫자 → 표시 이름 변환 (1=High, 2=Medium, 3=Low). null 허용. */
+function impactNameOf(impact: number | null): string | null {
+  if (impact === null) return null
+  const map: Record<number, string> = { 1: 'High', 2: 'Medium', 3: 'Low' }
+  return map[impact] ?? null
+}
+
+/**
+ * description merge-patch 3-state 처리.
+ * - undefined(미전달) → 기존값 유지
+ * - "" → null (DB NULL 클리어)
+ * - 값 → 그대로 설정
+ */
+function applyDescriptionPatch(
+  current: string | null,
+  incoming: string | null | undefined,
+): string | null {
+  if (incoming === undefined) return current
+  if (incoming === '') return null
+  return incoming
+}
+
+/**
+ * environment merge-patch 3-state 처리.
+ * description과 동일한 규칙 — "" → null, 미전달 → 유지, 값 → 설정.
+ */
+function applyEnvironmentPatch(
+  current: string | null,
+  incoming: string | null | undefined,
+): string | null {
+  if (incoming === undefined) return current
+  if (incoming === '') return null
+  return incoming
+}
+
+/**
+ * description 값에서 간단한 descriptionHtml 생성 — 단건 GET 모킹용.
+ * 실제 Markdown 렌더링 대신 텍스트를 <p> 로 래핑.
+ */
+function renderDescriptionHtml(description: string | null): string | null {
+  if (description === null) return null
+  return `<p>${description}</p>`
 }
 
 /**
