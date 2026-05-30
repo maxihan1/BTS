@@ -50,12 +50,14 @@ async function fillAndSubmit(
   newPassword: string,
   confirmPassword: string,
 ) {
-  const user = userEvent.setup()
   // delay:null — 긴 비번 타이핑 timeout 방지 (vitest-usertype-long-string-timeout 선례)
-  await user.type(screen.getByLabelText('현재 비밀번호'), currentPassword, { delay: null })
-  await user.type(screen.getByLabelText('새 비밀번호'), newPassword, { delay: null })
-  await user.type(screen.getByLabelText('새 비밀번호 확인'), confirmPassword, { delay: null })
-  await user.click(screen.getByRole('button', { name: '비밀번호 변경', exact: true }))
+  // setup({ delay: null }) 방식 사용 — user.type 세 번째 인자 delay 는 타입 미지원
+  const user = userEvent.setup({ delay: null })
+  await user.type(screen.getByLabelText('현재 비밀번호'), currentPassword)
+  await user.type(screen.getByLabelText('새 비밀번호'), newPassword)
+  await user.type(screen.getByLabelText('새 비밀번호 확인'), confirmPassword)
+  // exact 는 getByRole ByRoleOptions 에 없음 — 정확한 이름 문자열로 매칭
+  await user.click(screen.getByRole('button', { name: '비밀번호 변경' }))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -220,7 +222,7 @@ describe('ChangePasswordForm — EC-1 빈 필드 제출', () => {
     renderForm()
 
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: '비밀번호 변경', exact: true }))
+    await user.click(screen.getByRole('button', { name: '비밀번호 변경' }))
 
     // 잠깐 기다린 후 API 미호출 확인
     await new Promise((resolve) => setTimeout(resolve, 100))
@@ -244,11 +246,11 @@ describe('ChangePasswordForm — EC-7 isPending 중 버튼 비활성', () => {
 
     renderForm()
 
-    const user = userEvent.setup()
-    await user.type(screen.getByLabelText('현재 비밀번호'), SEED_CURRENT_PASSWORD, { delay: null })
-    await user.type(screen.getByLabelText('새 비밀번호'), VALID_NEW_PASSWORD, { delay: null })
-    await user.type(screen.getByLabelText('새 비밀번호 확인'), VALID_NEW_PASSWORD, { delay: null })
-    await user.click(screen.getByRole('button', { name: '비밀번호 변경', exact: true }))
+    const user = userEvent.setup({ delay: null })
+    await user.type(screen.getByLabelText('현재 비밀번호'), SEED_CURRENT_PASSWORD)
+    await user.type(screen.getByLabelText('새 비밀번호'), VALID_NEW_PASSWORD)
+    await user.type(screen.getByLabelText('새 비밀번호 확인'), VALID_NEW_PASSWORD)
+    await user.click(screen.getByRole('button', { name: '비밀번호 변경' }))
 
     // 즉시 확인 — 응답 지연 중이므로 버튼이 disabled여야 함
     // isPending 시 버튼 텍스트가 "변경 중..."으로 바뀌므로 type=submit 으로 조회
