@@ -158,6 +158,13 @@ dependencies {
 
     // ArchUnit — 아키텍처 규칙(BC 격리 등) 자동 검증
     testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
+
+    // ── Markdown 렌더링 + XSS sanitization ────────────────────────────────────
+    // flexmark — Markdown → HTML 변환 (SDD 03-tech-stack 명시)
+    implementation("com.vladsch.flexmark:flexmark:0.64.8")
+    // OWASP Java HTML Sanitizer — allowlist 기반 HTML 정화 (Maxi 게이트1 승인)
+    // 출처: https://github.com/owasp/java-html-sanitizer
+    implementation("com.googlecode.owasp-java-html-sanitizer:owasp-java-html-sanitizer:20240325.1")
 }
 
 // ── jOOQ 코드 생성 설정 ───────────────────────────────────────────────────────
