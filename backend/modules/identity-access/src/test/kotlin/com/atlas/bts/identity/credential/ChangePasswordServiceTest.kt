@@ -193,4 +193,21 @@ class ChangePasswordServiceTest {
         assertThat(pw1).doesNotContain('O', 'l', 'd')
         assertThat(pw2).doesNotContain('O', 'l', 'd')
     }
+
+    // ── 8. 성공 경로에서도 CharArray wipe (C-b 회귀 가드) ────────────────────
+
+    @Test
+    fun `성공 경로에서도 current와 new CharArray가 wipe됨`() {
+        every { localCredentialService.rotate(userId, any(), any()) } returns true
+        every { sessionService.findActiveByUser(userId) } returns listOf(makeSession(currentSid))
+
+        val currentArr = currentPw()
+        val newArr = validNew()
+
+        sut.change(userId, currentSid, currentArr, newArr)
+
+        // finally 블록이 성공 경로에서도 배열을 fill(' ')로 wipe해야 한다
+        assertThat(currentArr).doesNotContain('O', 'l', 'd')
+        assertThat(newArr).doesNotContain('N', 'e', 'w')
+    }
 }
