@@ -1,4 +1,4 @@
-// PATCH /api/v1/issues/:key — typeId 처리 + expectedVersion 필드 정합 단위 테스트
+// PATCH /api/v1/issues/:key — typeId 처리 + expectedVersion 필드 정합 + description/priority/labels/environment/impact merge-patch 단위 테스트
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { issueHandlers, resetIssueState } from '../issue-handlers'
@@ -142,5 +142,176 @@ describe('PATCH /api/v1/issues/:key — 성공', () => {
     expect(res.status).toBe(200)
     const body = await res.json() as { data: { version: number } }
     expect(body.data.version).toBe(3) // ATLAS-3 초기 version=2, +1
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 3 — description/priority/labels/environment/impact merge-patch 5필드
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function getIssue(key: string): Promise<Response> {
+  return fetch(`/api/v1/issues/${key}`)
+}
+
+describe('PATCH /api/v1/issues/:key — description merge-patch 3-state', () => {
+  it('description 값 전달 → 200 + description 갱신 + stateful 영속(GET 후 동일값)', async () => {
+    const res = await patchIssue('ATLAS-1', { description: '## 새 본문\n내용', expectedVersion: 0 })
+    expect(res.status).toBe(200)
+    const patchBody = await res.json() as { data: { description: string | null } }
+    expect(patchBody.data.description).toBe('## 새 본문\n내용')
+
+    // stateful 영속 — 후속 GET 이 갱신값 반환
+    const getRes = await getIssue('ATLAS-1')
+    expect(getRes.status).toBe(200)
+    const getBody = await getRes.json() as { data: { description: string | null; descriptionHtml: string | null } }
+    expect(getBody.data.description).toBe('## 새 본문\n내용')
+    // 단건 GET 에서 descriptionHtml 이 채워짐
+    expect(getBody.data.descriptionHtml).not.toBeNull()
+  })
+
+  it('description "" 전달 → DB NULL 클리어(null 반환)', async () => {
+    // 먼저 값 설정
+    await patchIssue('ATLAS-1', { description: '기존 본문', expectedVersion: 0 })
+    // "" 로 클리어
+    const res = await patchIssue('ATLAS-1', { description: '', expectedVersion: 1 })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { description: string | null } }
+    expect(body.data.description).toBeNull()
+  })
+
+  it('description 미전달 → 기존값 그대로 유지(무변경)', async () => {
+    // description 포함하지 않고 summary 만 수정
+    const res = await patchIssue('ATLAS-1', { summary: '요약만 변경', expectedVersion: 0 })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { description: string | null } }
+    // ATLAS-1 초기 description 은 null (기본값)
+    expect(body.data.description).toBeNull()
+  })
+})
+
+describe('PATCH /api/v1/issues/:key — priority 처리', () => {
+  it('priority 값 전달 → 200 + priority/priorityName 갱신 + stateful 영속', async () => {
+    const res = await patchIssue('ATLAS-1', { priority: 1, expectedVersion: 0 })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { priority: number; priorityName: string } }
+    expect(body.data.priority).toBe(1)
+    expect(body.data.priorityName).toBe('Highest')
+
+    // stateful 영속
+    const getRes = await getIssue('ATLAS-1')
+    const getBody = await getRes.json() as { data: { priority: number } }
+    expect(getBody.data.priority).toBe(1)
+  })
+
+  it('priority 미전달 → 기존 priority 유지', async () => {
+    const res = await patchIssue('ATLAS-1', { summary: '요약만', expectedVersion: 0 })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { priority: number } }
+    // ATLAS-1 초기 priority=3 (Medium, 기본값)
+    expect(body.data.priority).toBe(3)
+  })
+})
+
+describe('PATCH /api/v1/issues/:key — labels merge-patch 3-state', () => {
+  it('labels 값 전달 → 200 + labels 교체 + stateful 영속', async () => {
+    const res = await patchIssue('ATLAS-1', { labels: ['frontend', 'urgent'], expectedVersion: 0 })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { labels: string[] } }
+    expect(body.data.labels).toEqual(['frontend', 'urgent'])
+
+    // stateful 영속
+    const getRes = await getIssue('ATLAS-1')
+    const getBody = await getRes.json() as { data: { labels: string[] } }
+    expect(getBody.data.labels).toEqual(['frontend', 'urgent'])
+  })
+
+  it('labels [] 전달 → 전체 제거(빈 배열)', async () => {
+    // 먼저 레이블 설정
+    await patchIssue('ATLAS-1', { labels: ['label-a'], expectedVersion: 0 })
+    // [] 로 제거
+    const res = await patchIssue('ATLAS-1', { labels: [], expectedVersion: 1 })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { labels: string[] } }
+    expect(body.data.labels).toEqual([])
+  })
+
+  it('labels 미전달 → 기존값 유지', async () => {
+    const res = await patchIssue('ATLAS-1', { summary: '요약만', expectedVersion: 0 })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { labels: string[] } }
+    // ATLAS-1 초기 labels=[] (기본값)
+    expect(body.data.labels).toEqual([])
+  })
+})
+
+describe('PATCH /api/v1/issues/:key — environment merge-patch 3-state', () => {
+  it('environment 값 전달 → 200 + environment 갱신 + stateful 영속', async () => {
+    const res = await patchIssue('ATLAS-1', { environment: 'macOS 14, Chrome 124', expectedVersion: 0 })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { environment: string | null } }
+    expect(body.data.environment).toBe('macOS 14, Chrome 124')
+
+    const getRes = await getIssue('ATLAS-1')
+    const getBody = await getRes.json() as { data: { environment: string | null } }
+    expect(getBody.data.environment).toBe('macOS 14, Chrome 124')
+  })
+
+  it('environment "" 전달 → null 클리어', async () => {
+    await patchIssue('ATLAS-1', { environment: '기존 환경', expectedVersion: 0 })
+    const res = await patchIssue('ATLAS-1', { environment: '', expectedVersion: 1 })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { environment: string | null } }
+    expect(body.data.environment).toBeNull()
+  })
+
+  it('environment 미전달 → 기존값 유지', async () => {
+    const res = await patchIssue('ATLAS-1', { summary: '요약만', expectedVersion: 0 })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { environment: string | null } }
+    // ATLAS-1 초기 environment=null
+    expect(body.data.environment).toBeNull()
+  })
+})
+
+describe('PATCH /api/v1/issues/:key — impact 처리', () => {
+  it('impact 값 전달 → 200 + impact/impactName 갱신 + stateful 영속', async () => {
+    const res = await patchIssue('ATLAS-1', { impact: 1, expectedVersion: 0 })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { impact: number | null; impactName: string | null } }
+    expect(body.data.impact).toBe(1)
+    expect(body.data.impactName).toBe('High')
+
+    const getRes = await getIssue('ATLAS-1')
+    const getBody = await getRes.json() as { data: { impact: number | null } }
+    expect(getBody.data.impact).toBe(1)
+  })
+
+  it('impact 미전달 → 기존 impact 유지', async () => {
+    const res = await patchIssue('ATLAS-1', { summary: '요약만', expectedVersion: 0 })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { impact: number | null } }
+    // ATLAS-1 초기 impact=null
+    expect(body.data.impact).toBeNull()
+  })
+})
+
+describe('GET /api/v1/issues/:key — descriptionHtml 단건 GET 모킹', () => {
+  it('description 있는 이슈 단건 GET → descriptionHtml 이 채워짐(null 아님)', async () => {
+    // description 설정 후 GET 으로 descriptionHtml 확인
+    await patchIssue('ATLAS-1', { description: '본문 텍스트', expectedVersion: 0 })
+    const res = await getIssue('ATLAS-1')
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { descriptionHtml: string | null } }
+    expect(body.data.descriptionHtml).not.toBeNull()
+    // 간단 <p> 래핑 — 내용이 담겨있어야 함
+    expect(body.data.descriptionHtml).toContain('본문 텍스트')
+  })
+
+  it('description null 인 이슈 단건 GET → descriptionHtml 도 null', async () => {
+    // ATLAS-1 초기 description=null
+    const res = await getIssue('ATLAS-1')
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { descriptionHtml: string | null } }
+    expect(body.data.descriptionHtml).toBeNull()
   })
 })
