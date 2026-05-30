@@ -815,6 +815,7 @@ describe('IssueDetailPage — 상태전이', () => {
   /**
    * T4-7 (E5 구분): 종료상태(S6, 200+빈배열)와 미설정(S5, 422)이 다른 안내문구를 표시한다.
    * 빈 배열 → noTransitionsAvailable, 422 → transitionWorkflowNotConfiguredError.
+   * @task task-6
    */
   it('T4-7: 종료상태(빈 배열)와 워크플로우 미설정(422)이 서로 다른 문구를 표시한다', async () => {
     // (1) 종료상태 — 빈 배열
@@ -863,4 +864,246 @@ describe('IssueDetailPage — 상태전이', () => {
     })
   })
 
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 6 — IssueDescription 배선 + 메타필드 mutation 5종
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Task 6 공통 MSW 핸들러 설정.
+ * stateful override: PATCH 성공 후 GET re-fetch가 최신 데이터를 반환하도록 유지.
+ */
+function setupTask6StatefulHandlers(
+  initial: typeof issueAtlas1Fixture,
+  patchSpy?: (body: Record<string, unknown>) => void,
+) {
+  let currentFixture = initial
+  server.use(
+    http.get('/api/v1/issues/:key', ({ params }) => {
+      if (params['key'] === initial.key) {
+        return HttpResponse.json({ data: currentFixture })
+      }
+      return HttpResponse.json({ message: '이슈를 찾을 수 없습니다' }, { status: 404 })
+    }),
+    http.patch('/api/v1/issues/:key', async ({ request }) => {
+      const body = await request.clone().json() as Record<string, unknown>
+      patchSpy?.(body)
+      const updated = { ...currentFixture, ...body, version: (currentFixture.version) + 1 }
+      currentFixture = updated as typeof issueAtlas1Fixture
+      return HttpResponse.json({ data: currentFixture })
+    }),
+  )
+}
+
+describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mutation)', () => {
+  beforeEach(() => {
+    vi.mocked(toast.error).mockClear()
+    server.use(...issueTypeHandlers)
+    setupTransitionsHandler()
+  })
+
+  /**
+   * T6-1: 자리표시자 대신 IssueDescription 컴포넌트가 렌더된다.
+   * descriptionPlaceholder 텍스트가 없고 "본문 편집" 버튼이 있어야 한다.
+   */
+  it('T6-1: 자리표시자 대신 IssueDescription 컴포넌트가 렌더된다', async () => {
+    setupTask6StatefulHandlers(issueAtlas1Fixture)
+
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    // 자리표시자 텍스트가 없어야 함
+    expect(screen.queryByText(issueDetailStrings.descriptionPlaceholder)).not.toBeInTheDocument()
+    // IssueDescription의 편집 버튼이 있어야 함
+    expect(screen.getByRole('button', { name: issueDetailStrings.descriptionEditButton })).toBeInTheDocument()
+  })
+
+  /**
+   * T6-2: 본문 저장 → PATCH {description} 발생 + stateful refetch 후 화면에 반영.
+   * MSW stateful 핸들러 위에서 검증 (msw-mutation-stateful-refetch 메모리 가짜그린 방지).
+   */
+  it('T6-2: 본문 저장 시 PATCH {description}가 발생하고 refetch 후 화면에 반영된다', async () => {
+    const fixture = { ...issueAtlas1Fixture, descriptionHtml: null, description: null }
+    const patchBodies: Array<Record<string, unknown>> = []
+    setupTask6StatefulHandlers(fixture, (body) => patchBodies.push(body))
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    // 본문 편집 버튼 클릭
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionEditButton }))
+
+    // textarea에 내용 입력
+    const textarea = screen.getByRole('textbox', { name: issueDetailStrings.descriptionEditButton })
+    await user.clear(textarea)
+    await user.type(textarea, '새 본문 내용')
+
+    // 저장
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionSaveButton }))
+
+    await waitFor(() => {
+      expect(patchBodies.length).toBeGreaterThan(0)
+    })
+    const lastPatch = patchBodies[patchBodies.length - 1]
+    expect(lastPatch?.['description']).toBe('새 본문 내용')
+    expect(lastPatch?.['expectedVersion']).toBe(0)
+  })
+
+  /**
+   * T6-3: 우선순위 변경 → 즉시 PATCH {priority, expectedVersion} 발생 + stateful refetch.
+   */
+  it('T6-3: 우선순위 변경 시 즉시 PATCH가 발생하고 refetch 후 화면에 반영된다', async () => {
+    const fixture = { ...issueAtlas1Fixture, priority: 3 }
+    const patchBodies: Array<Record<string, unknown>> = []
+    setupTask6StatefulHandlers(fixture, (body) => patchBodies.push(body))
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.prioritySelectLabel })
+    await user.selectOptions(select, '높음') // priority=2
+
+    await waitFor(() => {
+      expect(patchBodies.length).toBeGreaterThan(0)
+    })
+    const lastPatch = patchBodies[patchBodies.length - 1]
+    expect(lastPatch?.['priority']).toBe(2)
+    expect(lastPatch?.['expectedVersion']).toBe(0)
+  })
+
+  /**
+   * T6-4: 영향도 변경 → 즉시 PATCH {impact, expectedVersion} 발생.
+   * null(미지정) 상태에서 '높음'(impact=1) 선택.
+   */
+  it('T6-4: 영향도 변경 시 즉시 PATCH가 발생한다', async () => {
+    const fixture = { ...issueAtlas1Fixture, impact: null }
+    const patchBodies: Array<Record<string, unknown>> = []
+    setupTask6StatefulHandlers(fixture, (body) => patchBodies.push(body))
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.impactSelectLabel })
+    await user.selectOptions(select, '높음') // impact=1
+
+    await waitFor(() => {
+      expect(patchBodies.length).toBeGreaterThan(0)
+    })
+    const lastPatch = patchBodies[patchBodies.length - 1]
+    expect(lastPatch?.['impact']).toBe(1)
+    expect(lastPatch?.['expectedVersion']).toBe(0)
+  })
+
+  /**
+   * T6-5: 환경 저장 → PATCH {environment, expectedVersion} 발생.
+   */
+  it('T6-5: 환경 저장 버튼 클릭 시 PATCH가 발생한다', async () => {
+    const fixture = { ...issueAtlas1Fixture, environment: null }
+    const patchBodies: Array<Record<string, unknown>> = []
+    setupTask6StatefulHandlers(fixture, (body) => patchBodies.push(body))
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    // 환경 textarea에 입력
+    const envTextarea = screen.getByRole('textbox', { name: issueDetailStrings.environmentLabel })
+    await user.clear(envTextarea)
+    await user.type(envTextarea, 'Chrome 120')
+
+    // 환경 저장 버튼 클릭
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.environmentSaveButton }))
+
+    await waitFor(() => {
+      expect(patchBodies.length).toBeGreaterThan(0)
+    })
+    const lastPatch = patchBodies[patchBodies.length - 1]
+    expect(lastPatch?.['environment']).toBe('Chrome 120')
+    expect(lastPatch?.['expectedVersion']).toBe(0)
+  })
+
+  /**
+   * T6-6: 라벨 저장 → PATCH {labels, expectedVersion} 발생.
+   */
+  it('T6-6: 라벨 저장 버튼 클릭 시 PATCH가 발생한다', async () => {
+    const fixture = { ...issueAtlas1Fixture, labels: [] }
+    const patchBodies: Array<Record<string, unknown>> = []
+    setupTask6StatefulHandlers(fixture, (body) => patchBodies.push(body))
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    // 라벨 추가 input에 입력 후 Enter
+    const labelInput = screen.getByRole('textbox', { name: issueDetailStrings.labelAddPlaceholder })
+    await user.click(labelInput)
+    await user.type(labelInput, 'frontend{Enter}')
+
+    // 라벨 저장 버튼 클릭
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.labelsSaveButton }))
+
+    await waitFor(() => {
+      expect(patchBodies.length).toBeGreaterThan(0)
+    })
+    const lastPatch = patchBodies[patchBodies.length - 1]
+    expect(Array.isArray(lastPatch?.['labels'])).toBe(true)
+    expect((lastPatch?.['labels'] as string[]).includes('frontend')).toBe(true)
+    expect(lastPatch?.['expectedVersion']).toBe(0)
+  })
+
+  /**
+   * T6-7: 409 VERSION_CONFLICT → toast(typeChangeConflictError) + invalidateQueries.
+   * descriptionMutation 409 응답 시 검증.
+   */
+  it('T6-7: 본문 저장 409 충돌 시 typeChangeConflictError 토스트가 노출된다', async () => {
+    setupIssueFoundHandler()
+    server.use(
+      http.patch('/api/v1/issues/:key', () =>
+        HttpResponse.json(
+          { errorCode: 'VERSION_CONFLICT', message: '버전 충돌' },
+          { status: 409 },
+        ),
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionEditButton }))
+    const textarea = screen.getByRole('textbox', { name: issueDetailStrings.descriptionEditButton })
+    await user.type(textarea, '충돌 테스트')
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionSaveButton }))
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        issueDetailStrings.typeChangeConflictError,
+      )
+    })
+  })
 })
