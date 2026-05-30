@@ -7,6 +7,7 @@ import { http, HttpResponse } from 'msw'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
 import { server } from '@/test/server'
+import { passwordHandlers } from '@/mocks/password-handlers'
 import { ChangePasswordForm } from './ChangePasswordForm'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -250,7 +251,9 @@ describe('ChangePasswordForm — EC-7 isPending 중 버튼 비활성', () => {
     await user.click(screen.getByRole('button', { name: '비밀번호 변경', exact: true }))
 
     // 즉시 확인 — 응답 지연 중이므로 버튼이 disabled여야 함
-    expect(screen.getByRole('button', { name: /비밀번호 변경/, exact: false })).toBeDisabled()
+    // isPending 시 버튼 텍스트가 "변경 중..."으로 바뀌므로 type=submit 으로 조회
+    const submitButton = document.querySelector('button[type="submit"]')
+    expect(submitButton).toBeDisabled()
   })
 })
 
@@ -268,11 +271,14 @@ describe('ChangePasswordForm — 정적 정책 안내문', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S4 핸들러 테스트 후 리셋 (server.use 오버라이드 정리)
+// MSW 핸들러 등록 및 정리
+// test/server.ts 는 test/handlers.ts (빈 배열)를 초기 핸들러로 사용하므로
+// passwordHandlers 를 각 테스트 전에 server.use() 로 명시 등록한다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
-  server.resetHandlers()
+  // 기본 password 핸들러 등록 — S4 등에서 server.use() 오버라이드 전 기본값
+  server.use(...passwordHandlers)
 })
 
 afterEach(() => {
