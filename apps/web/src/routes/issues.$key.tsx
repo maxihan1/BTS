@@ -159,8 +159,9 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   const typeChangeMutation = useMutation({
     mutationFn: ({ typeId, expectedVersion }: { typeId: number; expectedVersion: number }) =>
       updateIssue(issueKey, { typeId, expectedVersion }),
-    onSuccess: (updatedIssue) => {
-      queryClient.setQueryData(issueQueryKey(issueKey), updatedIssue)
+    onSuccess: () => {
+      // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
+      // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
       void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
     },
     onError: (err: unknown) => {
@@ -171,8 +172,9 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   const descriptionMutation = useMutation({
     mutationFn: ({ description, expectedVersion }: { description: string; expectedVersion: number }) =>
       updateIssue(issueKey, { description, expectedVersion }),
-    onSuccess: (updatedIssue) => {
-      queryClient.setQueryData(issueQueryKey(issueKey), updatedIssue)
+    onSuccess: () => {
+      // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
+      // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
       void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
     },
     onError: (err: unknown) => {
@@ -183,8 +185,9 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   const priorityMutation = useMutation({
     mutationFn: ({ priority, expectedVersion }: { priority: number; expectedVersion: number }) =>
       updateIssue(issueKey, { priority, expectedVersion }),
-    onSuccess: (updatedIssue) => {
-      queryClient.setQueryData(issueQueryKey(issueKey), updatedIssue)
+    onSuccess: () => {
+      // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
+      // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
       void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
     },
     onError: (err: unknown) => {
@@ -195,8 +198,9 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   const impactMutation = useMutation({
     mutationFn: ({ impact, expectedVersion }: { impact: number; expectedVersion: number }) =>
       updateIssue(issueKey, { impact, expectedVersion }),
-    onSuccess: (updatedIssue) => {
-      queryClient.setQueryData(issueQueryKey(issueKey), updatedIssue)
+    onSuccess: () => {
+      // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
+      // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
       void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
     },
     onError: (err: unknown) => {
@@ -207,8 +211,9 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   const environmentMutation = useMutation({
     mutationFn: ({ environment, expectedVersion }: { environment: string; expectedVersion: number }) =>
       updateIssue(issueKey, { environment, expectedVersion }),
-    onSuccess: (updatedIssue) => {
-      queryClient.setQueryData(issueQueryKey(issueKey), updatedIssue)
+    onSuccess: () => {
+      // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
+      // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
       void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
     },
     onError: (err: unknown) => {
@@ -219,8 +224,9 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   const labelsMutation = useMutation({
     mutationFn: ({ labels, expectedVersion }: { labels: string[]; expectedVersion: number }) =>
       updateIssue(issueKey, { labels, expectedVersion }),
-    onSuccess: (updatedIssue) => {
-      queryClient.setQueryData(issueQueryKey(issueKey), updatedIssue)
+    onSuccess: () => {
+      // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
+      // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
       void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
     },
     onError: (err: unknown) => {

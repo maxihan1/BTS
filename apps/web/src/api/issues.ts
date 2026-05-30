@@ -98,9 +98,10 @@ export interface CreateIssueInput {
  * 이슈 수정 입력 타입.
  * summary · typeId 중 하나 이상을 전달하며, expectedVersion은 낙관적 잠금(OCC)을 위해 필수다.
  *
- * ### FR-IS-04 신규 필드 — merge-patch 3-state 규칙
- * - `undefined` (필드 미포함) → 해당 필드 변경 없음
- * - `null` → DB NULL로 클리어 (description · environment만 해당)
+ * ### FR-IS-04 신규 필드 — merge-patch 3-state 규칙 (백엔드 UpdateIssueRequest 정본)
+ * - `undefined` (필드 미포함) 또는 `null` (JSON null) → 해당 필드 변경 없음
+ * - `""` (빈 문자열) → DB NULL로 클리어 (description · environment만 해당)
+ * - `[]` (빈 배열) → 전체 제거 (labels만 해당)
  * - 값 전달 → 해당 값으로 설정
  *
  * 예외: `impact`는 클리어 sentinel이 없어 한 번 설정하면 비울 수 없음.
@@ -111,7 +112,7 @@ export interface UpdateIssueInput {
   typeId?: number
   /**
    * 본문 Markdown 텍스트.
-   * null = DB NULL 클리어, "" = 빈 본문 설정, 미전달 = 변경 없음. max 65535자.
+   * "" = DB NULL 클리어, null/미전달 = 변경 없음, 값 = 설정. max 65535자.
    */
   description?: string | null
   /**
@@ -126,7 +127,7 @@ export interface UpdateIssueInput {
   labels?: string[] | null
   /**
    * 재현 환경 메모.
-   * null = DB NULL 클리어, "" = 빈 값 설정, 미전달 = 변경 없음. max 1000자.
+   * "" = DB NULL 클리어, null/미전달 = 변경 없음, 값 = 설정. max 1000자.
    */
   environment?: string | null
   /**
