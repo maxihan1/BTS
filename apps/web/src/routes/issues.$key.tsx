@@ -142,22 +142,6 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
     },
   })
 
-  const typeChangeMutation = useMutation({
-    mutationFn: ({ typeId, expectedVersion }: { typeId: number; expectedVersion: number }) =>
-      updateIssue(issueKey, { typeId, expectedVersion }),
-    onSuccess: (updatedIssue) => {
-      queryClient.setQueryData(issueQueryKey(issueKey), updatedIssue)
-      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
-    },
-    onError: (err: unknown) => {
-      if (err instanceof ApiError && err.status === 409) {
-        toast.error(issueDetailStrings.typeChangeConflictError)
-      } else {
-        toast.error(issueDetailStrings.typeChangeError)
-      }
-    },
-  })
-
   /**
    * 메타필드 mutation 공통 onError 처리기.
    * - 409 → typeChangeConflictError toast + invalidate (최신 데이터 재조회 유도)
@@ -171,6 +155,18 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
       toast.error(fallbackMsg)
     }
   }
+
+  const typeChangeMutation = useMutation({
+    mutationFn: ({ typeId, expectedVersion }: { typeId: number; expectedVersion: number }) =>
+      updateIssue(issueKey, { typeId, expectedVersion }),
+    onSuccess: (updatedIssue) => {
+      queryClient.setQueryData(issueQueryKey(issueKey), updatedIssue)
+      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+    },
+    onError: (err: unknown) => {
+      handleMetaMutationError(err, issueDetailStrings.typeChangeError)
+    },
+  })
 
   const descriptionMutation = useMutation({
     mutationFn: ({ description, expectedVersion }: { description: string; expectedVersion: number }) =>
