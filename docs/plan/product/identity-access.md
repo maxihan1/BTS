@@ -90,8 +90,10 @@
 - [x] D3. 데이터 모델 — `local_credentials(password_hash, last_changed_at)` (책임. db-engineer)
 - [~] D4. 백엔드 — 가입/비밀번호 변경/리셋 (책임. security-engineer) — **변경 완료(PR #44), 가입·리셋 후속**
 - [x] D5. 백엔드 테스트 — 비밀번호 정책 위반 케이스 (책임. security-engineer) (PR #44)
-- [ ] D6. 프론트 UI — 가입/비밀번호 변경 폼 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [~] D6. 프론트 UI — 가입/비밀번호 변경 폼 (책임. designer → frontend-engineer) — **비밀번호 변경 폼 완료(PR #45), 가입 폼 후속**
+- [~] D7. E2E (책임. qa-engineer) — **비밀번호 변경 E2E 완료(PR #45), 가입 E2E 후속**
+
+> **FR-AU-05 비밀번호 변경 프론트 완료 (2026-05-31, PR #45)**. D6/D7 중 **비밀번호 변경 폼** 슬라이스 완료 — `/settings/password`(requireAuth) 라우트 + `ChangePasswordForm`(현재/새/확인 3입력) + `changePassword` API(POST + X-XSRF-TOKEN) + `useChangePassword` 훅 + MSW 핸들러 + Playwright E2E 4시나리오(정상/현재불일치/정책위반/확인불일치). 클라이언트 검증은 required+새≠확인만, 정책(12자/3종)은 정적 안내+서버 권위(D1 결정, drift 차단). 에러코드 대문자 정합(frontend-zod-backend-dto-contract-gap PR #41 선례 회피), POLICY_VIOLATION 문구는 violations(MIN_LENGTH/COMPLEXITY)로 프론트 생성. **가입 폼/가입 E2E는 후속** — 가입 API(전역 admin 권한 FR-PM-01 선행)와 함께. 검증 — lint/typecheck/단위443/E2E49 그린. 백엔드 무변경, 마이그레이션 0건.
 
 > **FR-AU-05 비밀번호 변경 완료 (2026-05-30, PR #44)**. D4 중 **비밀번호 변경** API(`POST /api/v1/users/me/password` + `PasswordPolicy` 12자/3종 복잡도 + 변경 성공 시 현재 세션 제외 다른 세션 무효화 — `revoke`+`revokeChainFromSession` 쌍) + D5(정책 위반 테스트) 완료. 기존 `LocalCredentialService.rotate`/`SessionService`/`RefreshTokenRepository` 재사용, 마이그레이션 0건. **가입(관리자+임시비번)·리셋은 후속** — 가입은 전역 admin 권한 체계(FR-PM-01) 선행 필요, 리셋은 이메일 발송 인프라 도입 후 (현재 `JavaMailSender`/notification BC 부재). D6(프론트 폼)·D7(E2E)은 PR-2. PRE_EXISTING ktlint debt(identity-access 모듈 285건)는 별도 cleanup PR 위임.
 
