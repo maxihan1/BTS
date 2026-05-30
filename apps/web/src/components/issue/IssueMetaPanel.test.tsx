@@ -1,4 +1,4 @@
-// IssueMetaPanel 유형 행 + 셀렉터 + 상태전이 컨트롤 단위 테스트 — FR-IS-02 D6 + FR-IS-01 Task-4
+// IssueMetaPanel 유형 행 + 셀렉터 + 상태전이 + 우선순위/영향도/환경/라벨 단위 테스트 — FR-IS-04 D6 Task-5
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -17,7 +17,7 @@ const transitionsFixture: IssueTransition[] = [
   { key: 'open__closed', name: 'Cancel', fromStateKey: 'open', toStateKey: 'closed' },
 ]
 
-/** 테스트용 이슈 픽스처 — typeId=1(bug) */
+/** 테스트용 이슈 픽스처 — typeId=1(bug), priority=3, impact=null, labels=[], environment=null */
 const issueFixture: IssueResponse = {
   key: 'ATLAS-1',
   id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
@@ -31,6 +31,14 @@ const issueFixture: IssueResponse = {
   typeId: 1,
   typeKey: 'bug',
   typeName: '버그',
+  description: null,
+  descriptionHtml: null,
+  priority: 3,
+  priorityName: 'Medium',
+  labels: [],
+  environment: null,
+  impact: null,
+  impactName: null,
 }
 
 /** 테스트용 이슈 타입 목록 픽스처 */
@@ -52,6 +60,10 @@ function renderPanel(
   transitions: IssueTransition[] = transitionsFixture,
   onTransition = vi.fn(),
   isTransitioning = false,
+  onPriorityChange = vi.fn(),
+  onImpactChange = vi.fn(),
+  onEnvironmentSave = vi.fn(),
+  onLabelsSave = vi.fn(),
 ) {
   return render(
     <IssueMetaPanel
@@ -62,6 +74,10 @@ function renderPanel(
       transitions={transitions}
       onTransition={onTransition}
       isTransitioning={isTransitioning}
+      onPriorityChange={onPriorityChange}
+      onImpactChange={onImpactChange}
+      onEnvironmentSave={onEnvironmentSave}
+      onLabelsSave={onLabelsSave}
     />,
   )
 }
@@ -148,6 +164,10 @@ describe('IssueMetaPanel — 셀렉터 옵션', () => {
         transitions={transitionsFixture}
         onTransition={vi.fn()}
         isTransitioning={false}
+        onPriorityChange={vi.fn()}
+        onImpactChange={vi.fn()}
+        onEnvironmentSave={vi.fn()}
+        onLabelsSave={vi.fn()}
       />,
     )
 
@@ -302,6 +322,10 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
         onTransition={vi.fn()}
         isTransitioning={false}
         unavailableReason="no-workflow"
+        onPriorityChange={vi.fn()}
+        onImpactChange={vi.fn()}
+        onEnvironmentSave={vi.fn()}
+        onLabelsSave={vi.fn()}
       />,
     )
     expect(screen.getByText(issueDetailStrings.transitionWorkflowNotConfiguredError)).toBeInTheDocument()
@@ -322,6 +346,10 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
         onTransition={vi.fn()}
         isTransitioning={false}
         unavailableReason="terminal"
+        onPriorityChange={vi.fn()}
+        onImpactChange={vi.fn()}
+        onEnvironmentSave={vi.fn()}
+        onLabelsSave={vi.fn()}
       />,
     )
     expect(screen.getByText(issueDetailStrings.noTransitionsAvailable)).toBeInTheDocument()
@@ -342,6 +370,10 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
         onTransition={vi.fn()}
         isTransitioning={false}
         unavailableReason="no-workflow"
+        onPriorityChange={vi.fn()}
+        onImpactChange={vi.fn()}
+        onEnvironmentSave={vi.fn()}
+        onLabelsSave={vi.fn()}
       />,
     )
     expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument()
@@ -357,5 +389,453 @@ describe('IssueMetaPanel — 전이 셀렉터 접근성 (WCAG AA)', () => {
     const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
     expect(select).toHaveAttribute('aria-label')
     expect(select.className).toMatch(/min-h-\[44px\]/)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 5 — 우선순위 셀렉터 (IMP-21~26)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueMetaPanel — 우선순위 셀렉터', () => {
+  /**
+   * IMP-21: 우선순위 레이블이 렌더된다.
+   */
+  it('IMP-21: 우선순위 레이블이 렌더된다', () => {
+    renderPanel()
+    expect(screen.getByText(issueDetailStrings.priorityLabel)).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-22: 우선순위 셀렉터에 1~5 옵션이 모두 있다.
+   */
+  it('IMP-22: 우선순위 셀렉터에 1~5 옵션이 모두 노출된다', () => {
+    renderPanel()
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.prioritySelectLabel })
+    expect(within(select as HTMLElement).getByRole('option', { name: issueDetailStrings.priorityNames[1] })).toBeInTheDocument()
+    expect(within(select as HTMLElement).getByRole('option', { name: issueDetailStrings.priorityNames[2] })).toBeInTheDocument()
+    expect(within(select as HTMLElement).getByRole('option', { name: issueDetailStrings.priorityNames[3] })).toBeInTheDocument()
+    expect(within(select as HTMLElement).getByRole('option', { name: issueDetailStrings.priorityNames[4] })).toBeInTheDocument()
+    expect(within(select as HTMLElement).getByRole('option', { name: issueDetailStrings.priorityNames[5] })).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-23: 셀렉터 현재값이 issue.priority props에서 파생된다 (priority=3 → '3').
+   */
+  it('IMP-23: 셀렉터 현재값이 issue.priority와 일치한다', () => {
+    renderPanel()
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.prioritySelectLabel }) as HTMLSelectElement
+    expect(select.value).toBe('3')
+  })
+
+  /**
+   * IMP-24: issue.priority가 바뀌면 셀렉터 값도 따라 바뀐다 (stale 회귀 가드).
+   */
+  it('IMP-24: issue.priority props가 바뀌면 셀렉터 값도 따라 바뀐다', () => {
+    const { rerender } = renderPanel()
+    const issuePriorityChanged: IssueResponse = { ...issueFixture, priority: 1, priorityName: 'Highest' }
+    rerender(
+      <IssueMetaPanel
+        issue={issuePriorityChanged}
+        availableTypes={availableTypes}
+        onTypeChange={vi.fn()}
+        onDeleteClick={vi.fn()}
+        transitions={transitionsFixture}
+        onTransition={vi.fn()}
+        isTransitioning={false}
+        onPriorityChange={vi.fn()}
+        onImpactChange={vi.fn()}
+        onEnvironmentSave={vi.fn()}
+        onLabelsSave={vi.fn()}
+      />,
+    )
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.prioritySelectLabel }) as HTMLSelectElement
+    expect(select.value).toBe('1')
+  })
+
+  /**
+   * IMP-25: 다른 우선순위 선택 시 onPriorityChange(number)가 호출된다.
+   */
+  it('IMP-25: 우선순위 변경 시 onPriorityChange가 number로 호출된다', async () => {
+    const onPriorityChange = vi.fn()
+    renderPanel(issueFixture, availableTypes, vi.fn(), vi.fn(), transitionsFixture, vi.fn(), false, onPriorityChange)
+    const user = userEvent.setup()
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.prioritySelectLabel })
+    await user.selectOptions(select, '1')
+    expect(onPriorityChange).toHaveBeenCalledOnce()
+    expect(onPriorityChange).toHaveBeenCalledWith(1)
+  })
+
+  /**
+   * IMP-26: 우선순위 셀렉터에 aria-label과 min-h-[44px] 클래스가 있다 (WCAG AA).
+   */
+  it('IMP-26: 우선순위 셀렉터에 aria-label과 min-h-[44px] 클래스가 있다', () => {
+    renderPanel()
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.prioritySelectLabel })
+    expect(select).toHaveAttribute('aria-label')
+    expect(select.className).toMatch(/min-h-\[44px\]/)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 5 — 영향도 셀렉터 (IMP-27~34)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueMetaPanel — 영향도 셀렉터', () => {
+  /**
+   * IMP-27: 영향도 레이블이 렌더된다.
+   */
+  it('IMP-27: 영향도 레이블이 렌더된다', () => {
+    renderPanel()
+    expect(screen.getByText(issueDetailStrings.impactLabel)).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-28: impact=null이면 "미지정" 옵션이 활성화(enabled) 상태로 있다.
+   */
+  it('IMP-28: impact=null이면 미지정 옵션이 enabled 상태로 있다', () => {
+    renderPanel()
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.impactSelectLabel })
+    const unsetOption = within(select as HTMLElement).getByRole('option', { name: issueDetailStrings.impactUnset })
+    expect(unsetOption).toBeInTheDocument()
+    expect(unsetOption).not.toBeDisabled()
+  })
+
+  /**
+   * IMP-29: impact=null이면 셀렉터 현재값이 '' (미지정 선택됨).
+   */
+  it('IMP-29: impact=null이면 셀렉터가 미지정을 표시한다', () => {
+    renderPanel()
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.impactSelectLabel }) as HTMLSelectElement
+    expect(select.value).toBe('')
+  })
+
+  /**
+   * IMP-30: impact가 설정된 상태(impact=2)이면 "미지정" 옵션이 disabled이다 (클리어 불가 제약).
+   */
+  it('IMP-30: impact가 설정된 상태이면 미지정 옵션이 disabled이다', () => {
+    const issueWithImpact: IssueResponse = { ...issueFixture, impact: 2, impactName: 'Medium' }
+    renderPanel(issueWithImpact)
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.impactSelectLabel })
+    const unsetOption = within(select as HTMLElement).getByRole('option', { name: issueDetailStrings.impactUnset })
+    expect(unsetOption).toBeDisabled()
+  })
+
+  /**
+   * IMP-31: 영향도 셀렉터에 1~3 옵션이 모두 있다.
+   */
+  it('IMP-31: 영향도 셀렉터에 1~3 옵션이 모두 노출된다', () => {
+    renderPanel()
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.impactSelectLabel })
+    expect(within(select as HTMLElement).getByRole('option', { name: issueDetailStrings.impactNames[1] })).toBeInTheDocument()
+    expect(within(select as HTMLElement).getByRole('option', { name: issueDetailStrings.impactNames[2] })).toBeInTheDocument()
+    expect(within(select as HTMLElement).getByRole('option', { name: issueDetailStrings.impactNames[3] })).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-32: impact=2이면 셀렉터 현재값이 '2'이다.
+   */
+  it('IMP-32: impact=2이면 셀렉터 현재값이 "2"이다', () => {
+    const issueWithImpact: IssueResponse = { ...issueFixture, impact: 2, impactName: 'Medium' }
+    renderPanel(issueWithImpact)
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.impactSelectLabel }) as HTMLSelectElement
+    expect(select.value).toBe('2')
+  })
+
+  /**
+   * IMP-33: 영향도 선택 시 onImpactChange(number)가 호출된다.
+   */
+  it('IMP-33: 영향도 변경 시 onImpactChange가 number로 호출된다', async () => {
+    const onImpactChange = vi.fn()
+    renderPanel(
+      issueFixture,
+      availableTypes,
+      vi.fn(),
+      vi.fn(),
+      transitionsFixture,
+      vi.fn(),
+      false,
+      vi.fn(),
+      onImpactChange,
+    )
+    const user = userEvent.setup()
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.impactSelectLabel })
+    await user.selectOptions(select, '1')
+    expect(onImpactChange).toHaveBeenCalledOnce()
+    expect(onImpactChange).toHaveBeenCalledWith(1)
+  })
+
+  /**
+   * IMP-34: 영향도 셀렉터에 aria-label과 min-h-[44px] 클래스가 있다 (WCAG AA).
+   */
+  it('IMP-34: 영향도 셀렉터에 aria-label과 min-h-[44px] 클래스가 있다', () => {
+    renderPanel()
+    const select = screen.getByRole('combobox', { name: issueDetailStrings.impactSelectLabel })
+    expect(select).toHaveAttribute('aria-label')
+    expect(select.className).toMatch(/min-h-\[44px\]/)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 5 — 환경(environment) 편집 (IMP-35~39)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueMetaPanel — 환경 편집', () => {
+  /**
+   * IMP-35: 환경 레이블이 렌더된다.
+   */
+  it('IMP-35: 환경 레이블이 렌더된다', () => {
+    renderPanel()
+    expect(screen.getByText(issueDetailStrings.environmentLabel)).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-36: environment=null이면 textarea가 비어 있다.
+   */
+  it('IMP-36: environment=null이면 textarea가 비어 있다', () => {
+    renderPanel()
+    const textarea = screen.getByPlaceholderText(issueDetailStrings.environmentPlaceholder) as HTMLTextAreaElement
+    expect(textarea.value).toBe('')
+  })
+
+  /**
+   * IMP-37: issue.environment가 설정된 경우 textarea에 현재값이 표시된다.
+   */
+  it('IMP-37: environment 값이 있으면 textarea에 표시된다', () => {
+    const issueWithEnv: IssueResponse = { ...issueFixture, environment: 'Chrome 125 / macOS 14' }
+    renderPanel(issueWithEnv)
+    const textarea = screen.getByPlaceholderText(issueDetailStrings.environmentPlaceholder) as HTMLTextAreaElement
+    expect(textarea.value).toBe('Chrome 125 / macOS 14')
+  })
+
+  /**
+   * IMP-38: 환경 편집 후 저장 버튼 클릭 시 onEnvironmentSave가 호출된다.
+   */
+  it('IMP-38: 저장 버튼 클릭 시 onEnvironmentSave가 편집값으로 호출된다', async () => {
+    const onEnvironmentSave = vi.fn()
+    renderPanel(
+      issueFixture,
+      availableTypes,
+      vi.fn(),
+      vi.fn(),
+      transitionsFixture,
+      vi.fn(),
+      false,
+      vi.fn(),
+      vi.fn(),
+      onEnvironmentSave,
+    )
+    const user = userEvent.setup()
+    const textarea = screen.getByPlaceholderText(issueDetailStrings.environmentPlaceholder)
+    await user.clear(textarea)
+    await user.type(textarea, 'Firefox 126', { delay: null })
+    const saveBtn = screen.getByRole('button', { name: issueDetailStrings.environmentSaveButton })
+    await user.click(saveBtn)
+    expect(onEnvironmentSave).toHaveBeenCalledOnce()
+    expect(onEnvironmentSave).toHaveBeenCalledWith('Firefox 126')
+  })
+
+  /**
+   * IMP-39: issue.environment props가 바뀌면 textarea 값도 따라 바뀐다 (stale 회귀 가드).
+   */
+  it('IMP-39: issue.environment props가 바뀌면 textarea 값이 따라 바뀐다', () => {
+    const { rerender } = renderPanel()
+    const issueEnvChanged: IssueResponse = { ...issueFixture, environment: 'Safari 17' }
+    rerender(
+      <IssueMetaPanel
+        issue={issueEnvChanged}
+        availableTypes={availableTypes}
+        onTypeChange={vi.fn()}
+        onDeleteClick={vi.fn()}
+        transitions={transitionsFixture}
+        onTransition={vi.fn()}
+        isTransitioning={false}
+        onPriorityChange={vi.fn()}
+        onImpactChange={vi.fn()}
+        onEnvironmentSave={vi.fn()}
+        onLabelsSave={vi.fn()}
+      />,
+    )
+    const textarea = screen.getByPlaceholderText(issueDetailStrings.environmentPlaceholder) as HTMLTextAreaElement
+    expect(textarea.value).toBe('Safari 17')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 5 — 라벨(labels) 칩 (IMP-40~48)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueMetaPanel — 라벨 칩', () => {
+  /**
+   * IMP-40: 라벨 레이블이 렌더된다.
+   */
+  it('IMP-40: 라벨 레이블이 렌더된다', () => {
+    renderPanel()
+    expect(screen.getByText(issueDetailStrings.labelsLabel)).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-41: issue.labels에 있는 칩이 렌더된다.
+   */
+  it('IMP-41: issue.labels의 각 라벨이 칩으로 렌더된다', () => {
+    const issueWithLabels: IssueResponse = { ...issueFixture, labels: ['bug', 'urgent'] }
+    renderPanel(issueWithLabels)
+    expect(screen.getByText('bug')).toBeInTheDocument()
+    expect(screen.getByText('urgent')).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-42: 라벨 추가 입력 필드가 있다.
+   */
+  it('IMP-42: 라벨 추가 입력 필드가 있다', () => {
+    renderPanel()
+    expect(screen.getByPlaceholderText(issueDetailStrings.labelAddPlaceholder)).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-43: 라벨 추가 후 저장 시 onLabelsSave가 새 라벨 배열로 호출된다.
+   */
+  it('IMP-43: 라벨 추가 후 저장 시 onLabelsSave가 새 배열로 호출된다', async () => {
+    const onLabelsSave = vi.fn()
+    renderPanel(
+      issueFixture,
+      availableTypes,
+      vi.fn(),
+      vi.fn(),
+      transitionsFixture,
+      vi.fn(),
+      false,
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      onLabelsSave,
+    )
+    const user = userEvent.setup()
+    const input = screen.getByPlaceholderText(issueDetailStrings.labelAddPlaceholder)
+    await user.type(input, 'new-label', { delay: null })
+    await user.keyboard('{Enter}')
+    const saveBtn = screen.getByRole('button', { name: issueDetailStrings.labelsSaveButton })
+    await user.click(saveBtn)
+    expect(onLabelsSave).toHaveBeenCalledOnce()
+    expect(onLabelsSave).toHaveBeenCalledWith(['new-label'])
+  })
+
+  /**
+   * IMP-44: 라벨 제거 버튼 클릭 후 저장 시 해당 라벨이 제거된 배열로 onLabelsSave가 호출된다.
+   */
+  it('IMP-44: 라벨 제거 후 저장 시 해당 라벨이 빠진 배열로 onLabelsSave가 호출된다', async () => {
+    const onLabelsSave = vi.fn()
+    const issueWithLabels: IssueResponse = { ...issueFixture, labels: ['bug', 'urgent'] }
+    renderPanel(
+      issueWithLabels,
+      availableTypes,
+      vi.fn(),
+      vi.fn(),
+      transitionsFixture,
+      vi.fn(),
+      false,
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      onLabelsSave,
+    )
+    const user = userEvent.setup()
+    // 'bug' 라벨 제거 버튼 클릭 (aria-label='라벨 제거' 버튼 중 첫 번째)
+    const removeBtns = screen.getAllByRole('button', { name: issueDetailStrings.labelRemoveLabel })
+    await user.click(removeBtns[0] as HTMLElement)
+    const saveBtn = screen.getByRole('button', { name: issueDetailStrings.labelsSaveButton })
+    await user.click(saveBtn)
+    expect(onLabelsSave).toHaveBeenCalledOnce()
+    expect(onLabelsSave).toHaveBeenCalledWith(['urgent'])
+  })
+
+  /**
+   * IMP-45: 라벨이 50자를 초과하면 추가되지 않는다 (클라이언트 검증).
+   */
+  it('IMP-45: 50자 초과 라벨은 추가되지 않는다', async () => {
+    const onLabelsSave = vi.fn()
+    renderPanel(
+      issueFixture,
+      availableTypes,
+      vi.fn(),
+      vi.fn(),
+      transitionsFixture,
+      vi.fn(),
+      false,
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      onLabelsSave,
+    )
+    const user = userEvent.setup()
+    const input = screen.getByPlaceholderText(issueDetailStrings.labelAddPlaceholder)
+    const longLabel = 'a'.repeat(51)
+    await user.type(input, longLabel, { delay: null })
+    await user.keyboard('{Enter}')
+    // 저장해도 onLabelsSave 호출 안 됨 (또는 []로 호출됨 — 칩이 추가 안 됐으므로)
+    const saveBtn = screen.getByRole('button', { name: issueDetailStrings.labelsSaveButton })
+    await user.click(saveBtn)
+    expect(onLabelsSave).toHaveBeenCalledWith([])
+  })
+
+  /**
+   * IMP-46: 이미 20개 라벨이 있으면 추가 입력 필드가 disabled이다.
+   */
+  it('IMP-46: 라벨이 20개이면 추가 입력 필드가 disabled이다', () => {
+    const labels = Array.from({ length: 20 }, (_, i) => `label-${i}`)
+    const issueMaxLabels: IssueResponse = { ...issueFixture, labels }
+    renderPanel(issueMaxLabels)
+    const input = screen.getByPlaceholderText(issueDetailStrings.labelAddPlaceholder)
+    expect(input).toBeDisabled()
+  })
+
+  /**
+   * IMP-47: 공백만인 라벨은 추가되지 않는다 (trim 검증).
+   */
+  it('IMP-47: 공백만인 라벨은 추가되지 않는다', async () => {
+    const onLabelsSave = vi.fn()
+    renderPanel(
+      issueFixture,
+      availableTypes,
+      vi.fn(),
+      vi.fn(),
+      transitionsFixture,
+      vi.fn(),
+      false,
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      onLabelsSave,
+    )
+    const user = userEvent.setup()
+    const input = screen.getByPlaceholderText(issueDetailStrings.labelAddPlaceholder)
+    await user.type(input, '   ', { delay: null })
+    await user.keyboard('{Enter}')
+    const saveBtn = screen.getByRole('button', { name: issueDetailStrings.labelsSaveButton })
+    await user.click(saveBtn)
+    expect(onLabelsSave).toHaveBeenCalledWith([])
+  })
+
+  /**
+   * IMP-48: issue.labels props가 바뀌면 표시 라벨도 따라 바뀐다 (stale 회귀 가드).
+   */
+  it('IMP-48: issue.labels props가 바뀌면 표시 라벨도 따라 바뀐다', () => {
+    const { rerender } = renderPanel()
+    const issueLabelsChanged: IssueResponse = { ...issueFixture, labels: ['refactored'] }
+    rerender(
+      <IssueMetaPanel
+        issue={issueLabelsChanged}
+        availableTypes={availableTypes}
+        onTypeChange={vi.fn()}
+        onDeleteClick={vi.fn()}
+        transitions={transitionsFixture}
+        onTransition={vi.fn()}
+        isTransitioning={false}
+        onPriorityChange={vi.fn()}
+        onImpactChange={vi.fn()}
+        onEnvironmentSave={vi.fn()}
+        onLabelsSave={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('refactored')).toBeInTheDocument()
   })
 })
