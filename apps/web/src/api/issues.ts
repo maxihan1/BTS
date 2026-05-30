@@ -7,7 +7,7 @@ import { apiGet, apiPost, apiFetch, ApiError } from './client'
 // backend IssueResponse DTO 직렬화 형태와 1:1 대응.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 이슈 단건 응답 Zod 스키마 — 12 필드, createdAt/updatedAt nullable */
+/** 이슈 단건 응답 Zod 스키마 — 20 필드 (12 기존 + 8 FR-IS-04 신규), createdAt/updatedAt nullable */
 export const issueResponseSchema = z.object({
   key: z.string().min(1),
   id: z.string().uuid(),
@@ -21,6 +21,25 @@ export const issueResponseSchema = z.object({
   typeId: z.number().int().positive(),
   typeKey: z.string().min(1),
   typeName: z.string().min(1),
+  /** raw Markdown 본문. nullable — DB에 본문이 없으면 null */
+  description: z.string().nullable(),
+  /**
+   * 렌더+정화된 HTML 본문.
+   * nullable — 목록 API는 성능상 null 반환, 단건 GET만 채워짐.
+   */
+  descriptionHtml: z.string().nullable(),
+  /** 우선순위 1(Highest)~5(Lowest). non-null, 기본값 3(Medium) */
+  priority: z.number().int().min(1).max(5),
+  /** 우선순위 표시 이름 (Highest/High/Medium/Low/Lowest) */
+  priorityName: z.string(),
+  /** 레이블 목록. 없으면 빈 배열 [] */
+  labels: z.array(z.string()),
+  /** 재현 환경 메모. nullable */
+  environment: z.string().nullable(),
+  /** 영향도 1(High)~3(Low). nullable — 설정 전 null */
+  impact: z.number().int().min(1).max(3).nullable(),
+  /** 영향도 표시 이름 (High/Medium/Low). nullable */
+  impactName: z.string().nullable(),
 })
 
 /** Spring Page 응답 Zod 스키마 — 래퍼 없음 (DataResponse 감싸지 않음) */
@@ -78,11 +97,44 @@ export interface CreateIssueInput {
 /**
  * 이슈 수정 입력 타입.
  * summary · typeId 중 하나 이상을 전달하며, expectedVersion은 낙관적 잠금(OCC)을 위해 필수다.
+ *
+ * ### FR-IS-04 신규 필드 — merge-patch 3-state 규칙 (백엔드 UpdateIssueRequest 정본)
+ * - `undefined` (필드 미포함) 또는 `null` (JSON null) → 해당 필드 변경 없음
+ * - `""` (빈 문자열) → DB NULL로 클리어 (description · environment만 해당)
+ * - `[]` (빈 배열) → 전체 제거 (labels만 해당)
+ * - 값 전달 → 해당 값으로 설정
+ *
+ * 예외: `impact`는 클리어 sentinel이 없어 한 번 설정하면 비울 수 없음.
  */
 export interface UpdateIssueInput {
   summary?: string
   /** 변경할 이슈 타입 ID. 미전달 시 타입 유지. */
   typeId?: number
+  /**
+   * 본문 Markdown 텍스트.
+   * "" = DB NULL 클리어, null/미전달 = 변경 없음, 값 = 설정. max 65535자.
+   */
+  description?: string | null
+  /**
+   * 우선순위 1~5. null = 무변경. 미전달 = 무변경.
+   * (서버는 null과 미전달을 동일하게 처리한다.)
+   */
+  priority?: number | null
+  /**
+   * 레이블 배열. null = 무변경, [] = 전체 제거, 값 = 교체.
+   * 각 레이블 최대 50자, 최대 20개.
+   */
+  labels?: string[] | null
+  /**
+   * 재현 환경 메모.
+   * "" = DB NULL 클리어, null/미전달 = 변경 없음, 값 = 설정. max 1000자.
+   */
+  environment?: string | null
+  /**
+   * 영향도 1~3. null = 무변경. 미전달 = 무변경.
+   * 클리어 sentinel 없음 — 한 번 설정 후 비울 수 없음.
+   */
+  impact?: number | null
   expectedVersion: number
 }
 

@@ -40,6 +40,14 @@ const issueFixture: IssueResponse = {
   typeId: 1,
   typeKey: 'bug',
   typeName: '버그',
+  description: null,
+  descriptionHtml: null,
+  priority: 3,
+  priorityName: 'Medium',
+  labels: [],
+  environment: null,
+  impact: null,
+  impactName: null,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

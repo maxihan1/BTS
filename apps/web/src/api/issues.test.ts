@@ -16,7 +16,7 @@ import {
 import { ApiError } from './client'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Fixture — IssueResponse 12 필드 + nullable timestamps
+// Fixture — IssueResponse 20 필드 (12 기존 + 8 신규) + nullable timestamps
 // ─────────────────────────────────────────────────────────────────────────────
 const issueFixture = {
   key: 'ATLAS-1',
@@ -31,6 +31,15 @@ const issueFixture = {
   typeId: 1,
   typeKey: 'bug',
   typeName: '버그',
+  // FR-IS-04 신규 8필드
+  description: '## 재현 방법\n1. 로그인 페이지 접속\n2. 버튼 클릭',
+  descriptionHtml: '<h2>재현 방법</h2><ol><li>로그인 페이지 접속</li><li>버튼 클릭</li></ol>',
+  priority: 3,
+  priorityName: 'Medium',
+  labels: ['frontend', 'ux'],
+  environment: 'Chrome 125, macOS 14',
+  impact: 2,
+  impactName: 'Medium',
 }
 
 const issueFixtureNullTimestamps = {
@@ -149,6 +158,74 @@ describe('issueResponseSchema', () => {
   it('T1-1g: typeId가 양수 정수가 아니면 ZodError를 throw한다', () => {
     expect(() => issueResponseSchema.parse({ ...issueFixture, typeId: 0 })).toThrow()
     expect(() => issueResponseSchema.parse({ ...issueFixture, typeId: -1 })).toThrow()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-10. issueResponseSchema — FR-IS-04 신규 8필드 파싱 + backend DTO 계약 회귀가드
+// ─────────────────────────────────────────────────────────────────────────────
+describe('issueResponseSchema — FR-IS-04 신규 8필드', () => {
+  it('T1-10a: 신규 8필드가 모두 있는 IssueResponse를 파싱한다', () => {
+    const result = issueResponseSchema.parse(issueFixture)
+
+    expect(result.description).toBe('## 재현 방법\n1. 로그인 페이지 접속\n2. 버튼 클릭')
+    expect(result.descriptionHtml).toBe(
+      '<h2>재현 방법</h2><ol><li>로그인 페이지 접속</li><li>버튼 클릭</li></ol>',
+    )
+    expect(result.priority).toBe(3)
+    expect(result.priorityName).toBe('Medium')
+    expect(result.labels).toEqual(['frontend', 'ux'])
+    expect(result.environment).toBe('Chrome 125, macOS 14')
+    expect(result.impact).toBe(2)
+    expect(result.impactName).toBe('Medium')
+  })
+
+  it('T1-10b: description/descriptionHtml/environment/impact/impactName이 null이어도 파싱 성공', () => {
+    const result = issueResponseSchema.parse({
+      ...issueFixture,
+      description: null,
+      descriptionHtml: null,
+      environment: null,
+      impact: null,
+      impactName: null,
+    })
+
+    expect(result.description).toBeNull()
+    expect(result.descriptionHtml).toBeNull()
+    expect(result.environment).toBeNull()
+    expect(result.impact).toBeNull()
+    expect(result.impactName).toBeNull()
+  })
+
+  it('T1-10c: labels가 빈 배열이어도 파싱 성공', () => {
+    const result = issueResponseSchema.parse({ ...issueFixture, labels: [] })
+    expect(result.labels).toEqual([])
+  })
+
+  it('T1-10d: priority가 1~5 범위를 벗어나면 ZodError를 throw한다', () => {
+    expect(() => issueResponseSchema.parse({ ...issueFixture, priority: 0 })).toThrow()
+    expect(() => issueResponseSchema.parse({ ...issueFixture, priority: 6 })).toThrow()
+  })
+
+  it('T1-10e: priority가 정수가 아니면 ZodError를 throw한다', () => {
+    expect(() => issueResponseSchema.parse({ ...issueFixture, priority: 2.5 })).toThrow()
+  })
+
+  it('T1-10f: impact가 1~3 범위를 벗어나면 ZodError를 throw한다', () => {
+    expect(() => issueResponseSchema.parse({ ...issueFixture, impact: 0 })).toThrow()
+    expect(() => issueResponseSchema.parse({ ...issueFixture, impact: 4 })).toThrow()
+  })
+
+  it('T1-10g: priority 필드가 누락되면 ZodError를 throw한다 — backend non-null 계약 회귀가드', () => {
+    const withoutPriority: Record<string, unknown> = { ...issueFixture }
+    delete withoutPriority.priority
+    expect(() => issueResponseSchema.parse(withoutPriority)).toThrow()
+  })
+
+  it('T1-10h: labels 필드가 누락되면 ZodError를 throw한다 — backend List<String> 계약 회귀가드', () => {
+    const withoutLabels: Record<string, unknown> = { ...issueFixture }
+    delete withoutLabels.labels
+    expect(() => issueResponseSchema.parse(withoutLabels)).toThrow()
   })
 })
 

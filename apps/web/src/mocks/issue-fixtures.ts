@@ -15,6 +15,14 @@ export const issueAtlas1Fixture: IssueResponse = {
   typeId: 1,
   typeKey: 'bug',
   typeName: '버그',
+  description: null,
+  descriptionHtml: null,
+  priority: 3,
+  priorityName: 'Medium',
+  labels: [],
+  environment: null,
+  impact: null,
+  impactName: null,
 }
 
 /** 이슈 단건 fixture — ATLAS-2 (typeId=2 → story, issue-type-fixtures id=2: key='story') */
@@ -31,6 +39,14 @@ export const issueAtlas2Fixture: IssueResponse = {
   typeId: 2,
   typeKey: 'story',
   typeName: '스토리',
+  description: null,
+  descriptionHtml: null,
+  priority: 3,
+  priorityName: 'Medium',
+  labels: [],
+  environment: null,
+  impact: null,
+  impactName: null,
 }
 
 /** 이슈 단건 fixture — ATLAS-3 (typeId=3 → task, issue-type-fixtures id=3: key='task') */
@@ -47,6 +63,14 @@ export const issueAtlas3Fixture: IssueResponse = {
   typeId: 3,
   typeKey: 'task',
   typeName: '작업',
+  description: null,
+  descriptionHtml: null,
+  priority: 3,
+  priorityName: 'Medium',
+  labels: [],
+  environment: null,
+  impact: null,
+  impactName: null,
 }
 
 /** Spring Page 형태의 이슈 목록 fixture — 3건, 1 페이지 */
@@ -75,6 +99,14 @@ export const issueAtlas4Fixture: IssueResponse = {
   typeId: 1,
   typeKey: 'bug',
   typeName: '버그',
+  description: null,
+  descriptionHtml: null,
+  priority: 3,
+  priorityName: 'Medium',
+  labels: [],
+  environment: null,
+  impact: null,
+  impactName: null,
 }
 
 /** 이슈 단건 fixture — ATLAS-NOWF (워크플로우 미설정 이슈, 422 E2E 검증용) */
@@ -91,6 +123,14 @@ export const issueAtlasNoWorkflowFixture: IssueResponse = {
   typeId: 1,
   typeKey: 'bug',
   typeName: '버그',
+  description: null,
+  descriptionHtml: null,
+  priority: 3,
+  priorityName: 'Medium',
+  labels: [],
+  environment: null,
+  impact: null,
+  impactName: null,
 }
 
 /** 빈 이슈 목록 fixture */

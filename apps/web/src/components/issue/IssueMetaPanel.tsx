@@ -1,6 +1,6 @@
-// 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전이 셀렉터·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
+// 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전이 셀렉터·우선순위·영향도·환경·라벨·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
 import type { JSX } from 'react'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { IssueResponse, IssueTransition } from '@/api/issues'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import { Button } from '@/components/ui/button'
@@ -42,6 +42,14 @@ export interface IssueMetaPanelProps {
    * transitions.length > 0 이면 이 값과 관계없이 셀렉터가 노출된다.
    */
   unavailableReason?: TransitionUnavailableReason
+  /** 우선순위 변경 핸들러 — 선택한 priority(1~5, number)를 전달 */
+  onPriorityChange: (priority: number) => void
+  /** 영향도 변경 핸들러 — 선택한 impact(1~3, number)를 전달 */
+  onImpactChange: (impact: number) => void
+  /** 환경 저장 핸들러 — 편집된 environment 문자열을 전달 */
+  onEnvironmentSave: (environment: string) => void
+  /** 라벨 저장 핸들러 — 편집된 labels 배열을 전달 */
+  onLabelsSave: (labels: string[]) => void
 }
 
 /**
@@ -50,6 +58,10 @@ export interface IssueMetaPanelProps {
  * - 상태: 읽기전용 배지 + IssueStateTransition 전이 셀렉터
  * - 유형: IssueTypeIcon + typeName 표시 + 셀렉터(availableTypes 옵션)
  * - 셀렉터 현재값은 issue.typeId props 파생 (useState 초기화 금지 — stale key prop 회귀 방지)
+ * - 우선순위: IssuePrioritySelect — 1~5 즉시 콜백
+ * - 영향도: IssueImpactSelect — 1~3 즉시 콜백, impact null이면 미지정 활성, 설정 후 미지정 disabled
+ * - 환경: IssueEnvironmentEdit — 로컬상태 + 저장 버튼 (refetch 시 props로 seed)
+ * - 라벨: IssueLabelsEdit — 칩 추가/삭제 + 저장 버튼 (refetch 시 props로 seed)
  * - 보고자 UUID, 프로젝트 키, 버전(낙관락), 생성/수정 날짜 표시
  * - 생성/수정 날짜 null → "—" 표기
  * - 하단 "이슈 삭제" 버튼 → onDeleteClick 호출 (WCAG AA: min-h-[44px])
@@ -63,6 +75,10 @@ export function IssueMetaPanel({
   onTransition,
   isTransitioning,
   unavailableReason = null,
+  onPriorityChange,
+  onImpactChange,
+  onEnvironmentSave,
+  onLabelsSave,
 }: IssueMetaPanelProps): JSX.Element {
   /** issue.typeId에 해당하는 타입 항목 — iconName 해석에 사용 */
   const currentType = availableTypes.find((t) => t.id === issue.typeId)
@@ -121,6 +137,30 @@ export function IssueMetaPanel({
           />
         </div>
 
+        {/* 우선순위 — IssuePrioritySelect (FR-IS-04) */}
+        <div className="px-3.5 py-3 border-b border-border">
+          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.priorityLabel}</p>
+          <IssuePrioritySelect value={issue.priority} onPriorityChange={onPriorityChange} />
+        </div>
+
+        {/* 영향도 — IssueImpactSelect (FR-IS-04) */}
+        <div className="px-3.5 py-3 border-b border-border">
+          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.impactLabel}</p>
+          <IssueImpactSelect value={issue.impact} onImpactChange={onImpactChange} />
+        </div>
+
+        {/* 환경 — IssueEnvironmentEdit (FR-IS-04) */}
+        <div className="px-3.5 py-3 border-b border-border" data-testid="environment-section">
+          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.environmentLabel}</p>
+          <IssueEnvironmentEdit value={issue.environment} onSave={onEnvironmentSave} />
+        </div>
+
+        {/* 라벨 — IssueLabelsEdit (FR-IS-04) */}
+        <div className="px-3.5 py-3 border-b border-border" data-testid="labels-section">
+          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.labelsLabel}</p>
+          <IssueLabelsEdit value={issue.labels} onSave={onLabelsSave} />
+        </div>
+
         {/* 보고자 */}
         <div className="px-3.5 py-3 border-b border-border">
           <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.reporterLabel}</p>
@@ -162,6 +202,287 @@ export function IssueMetaPanel({
         {issueDetailStrings.deleteButton}
       </Button>
     </aside>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IssuePrioritySelect — 우선순위 셀렉터 서브 컴포넌트 (FR-IS-04)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** IssuePrioritySelect props */
+interface IssuePrioritySelectProps {
+  /** 현재 우선순위 — issue.priority props 파생, useState 초기화 금지 */
+  value: number
+  /** 우선순위 변경 콜백 — number 전달 */
+  onPriorityChange: (priority: number) => void
+}
+
+/**
+ * 이슈 우선순위 셀렉터.
+ *
+ * - value는 부모 props에서 파생(issue.priority) — stale key prop 회귀 방지
+ * - 1(가장 높음) ~ 5(가장 낮음) 옵션
+ * - 변경 즉시 onPriorityChange 호출
+ * - WCAG AA: min-h-[44px], aria-label
+ */
+function IssuePrioritySelect({ value, onPriorityChange }: IssuePrioritySelectProps): JSX.Element {
+  const PRIORITIES = [1, 2, 3, 4, 5] as const
+
+  function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    onPriorityChange(Number(e.target.value))
+  }
+
+  return (
+    <select
+      className="w-full rounded-md border border-input bg-background px-2 text-sm min-h-[44px] focus:outline-none focus:ring-2 focus:ring-ring"
+      value={value}
+      onChange={handleChange}
+      aria-label={issueDetailStrings.prioritySelectLabel}
+    >
+      {PRIORITIES.map((p) => (
+        <option key={p} value={p}>
+          {issueDetailStrings.priorityNames[p]}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IssueImpactSelect — 영향도 셀렉터 서브 컴포넌트 (FR-IS-04)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** IssueImpactSelect props */
+interface IssueImpactSelectProps {
+  /** 현재 영향도 — null이면 미지정. issue.impact props 파생, useState 초기화 금지 */
+  value: number | null
+  /** 영향도 변경 콜백 — number 전달 */
+  onImpactChange: (impact: number) => void
+}
+
+/**
+ * 이슈 영향도 셀렉터.
+ *
+ * - value=null → 미지정 옵션 활성, 셀렉터 value=''
+ * - value 설정 후 → 미지정 옵션 disabled (클리어 불가 백엔드 제약)
+ * - 1(높음) ~ 3(낮음) 옵션
+ * - 변경 즉시 onImpactChange 호출
+ * - WCAG AA: min-h-[44px], aria-label
+ */
+function IssueImpactSelect({ value, onImpactChange }: IssueImpactSelectProps): JSX.Element {
+  const IMPACTS = [1, 2, 3] as const
+  const isUnset = value === null
+
+  function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const selected = e.target.value
+    if (selected === '') return
+    onImpactChange(Number(selected))
+  }
+
+  return (
+    <select
+      className="w-full rounded-md border border-input bg-background px-2 text-sm min-h-[44px] focus:outline-none focus:ring-2 focus:ring-ring"
+      value={isUnset ? '' : value}
+      onChange={handleChange}
+      aria-label={issueDetailStrings.impactSelectLabel}
+    >
+      <option value="" disabled={!isUnset}>
+        {issueDetailStrings.impactUnset}
+      </option>
+      {IMPACTS.map((i) => (
+        <option key={i} value={i}>
+          {issueDetailStrings.impactNames[i]}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IssueEnvironmentEdit — 환경 편집 서브 컴포넌트 (FR-IS-04)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** IssueEnvironmentEdit props */
+interface IssueEnvironmentEditProps {
+  /** 현재 환경 값 — null이면 빈 문자열로 표시 */
+  value: string | null
+  /** 저장 콜백 — 편집된 문자열 전달 */
+  onSave: (environment: string) => void
+}
+
+/**
+ * 이슈 환경 편집 컴포넌트.
+ *
+ * - 로컬 상태로 편집, 저장 버튼 클릭 시 onSave 호출
+ * - issue.environment props가 바뀌면(refetch) 로컬 상태도 동기화 (stale 방지)
+ * - WCAG AA: aria-label
+ */
+function IssueEnvironmentEdit({ value, onSave }: IssueEnvironmentEditProps): JSX.Element {
+  const [draft, setDraft] = useState(value ?? '')
+
+  // props가 바뀌면(refetch 후) 로컬 편집 상태를 동기화한다 — stale 방지
+  const prevValueRef = useRef(value)
+  useEffect(() => {
+    if (prevValueRef.current !== value) {
+      prevValueRef.current = value
+      setDraft(value ?? '')
+    }
+  }, [value])
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <textarea
+        className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+        rows={3}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder={issueDetailStrings.environmentPlaceholder}
+        aria-label={issueDetailStrings.environmentLabel}
+        maxLength={1000}
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        className="self-end min-h-[44px]"
+        onClick={() => onSave(draft)}
+        aria-label={issueDetailStrings.environmentSaveButton}
+      >
+        {issueDetailStrings.environmentSaveButton}
+      </Button>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IssueLabelsEdit — 라벨 칩 편집 서브 컴포넌트 (FR-IS-04)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 라벨 최대 개수 */
+const MAX_LABELS = 20
+/** 라벨 최대 길이 */
+const MAX_LABEL_LENGTH = 50
+
+/** IssueLabelsEdit props */
+interface IssueLabelsEditProps {
+  /** 현재 라벨 목록 — issue.labels props 파생 */
+  value: string[]
+  /** 저장 콜백 — 편집된 labels 배열 전달 */
+  onSave: (labels: string[]) => void
+}
+
+/**
+ * 이슈 라벨 칩 편집 컴포넌트.
+ *
+ * - 로컬 상태로 편집(추가/삭제), 저장 버튼 클릭 시 onSave 호출
+ * - issue.labels props가 바뀌면(refetch) 로컬 상태도 동기화 (stale 방지)
+ * - 추가 시 클라이언트 검증: 공백 trim, 50자 초과 거부, 20개 초과 거부, 중복 거부
+ * - WCAG AA: aria-label
+ */
+function IssueLabelsEdit({ value, onSave }: IssueLabelsEditProps): JSX.Element {
+  const [chips, setChips] = useState<string[]>(value)
+  const [inputValue, setInputValue] = useState('')
+
+  // props가 바뀌면(refetch 후) 로컬 편집 상태를 동기화한다 — stale 방지
+  const prevValueRef = useRef(value)
+  useEffect(() => {
+    if (prevValueRef.current !== value) {
+      prevValueRef.current = value
+      setChips(value)
+    }
+  }, [value])
+
+  /** 라벨 추가 — trim, 길이, 개수, 중복 검증 */
+  function addLabel() {
+    const trimmed = inputValue.trim()
+    if (trimmed === '') return
+    if (trimmed.length > MAX_LABEL_LENGTH) return
+    if (chips.length >= MAX_LABELS) return
+    if (chips.includes(trimmed)) return
+    setChips((prev) => [...prev, trimmed])
+    setInputValue('')
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      addLabel()
+    }
+  }
+
+  function removeLabel(label: string) {
+    setChips((prev) => prev.filter((c) => c !== label))
+  }
+
+  const isAtMax = chips.length >= MAX_LABELS
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {/* 현재 라벨 칩 목록 */}
+      {chips.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {chips.map((chip) => (
+            <LabelChip key={chip} label={chip} onRemove={() => removeLabel(chip)} />
+          ))}
+        </div>
+      )}
+
+      {/* 라벨 추가 입력 */}
+      <input
+        type="text"
+        className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={issueDetailStrings.labelAddPlaceholder}
+        aria-label={issueDetailStrings.labelAddPlaceholder}
+        disabled={isAtMax}
+        maxLength={MAX_LABEL_LENGTH + 1}
+      />
+
+      {/* 저장 버튼 */}
+      <Button
+        variant="outline"
+        size="sm"
+        className="self-end min-h-[44px]"
+        onClick={() => onSave(chips)}
+        aria-label={issueDetailStrings.labelsSaveButton}
+      >
+        {issueDetailStrings.labelsSaveButton}
+      </Button>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LabelChip — 라벨 칩 개별 아이템
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** LabelChip props */
+interface LabelChipProps {
+  /** 라벨 텍스트 */
+  label: string
+  /** 제거 콜백 */
+  onRemove: () => void
+}
+
+/**
+ * 라벨 칩 컴포넌트.
+ * - 라벨 텍스트 + 제거 버튼
+ * - WCAG AA: aria-label on remove button
+ */
+function LabelChip({ label, onRemove }: LabelChipProps): JSX.Element {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
+      {label}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={issueDetailStrings.labelRemoveLabel}
+        className="ml-0.5 rounded-full hover:bg-muted-foreground/20 focus:outline-none focus:ring-1 focus:ring-ring"
+      >
+        ×
+      </button>
+    </span>
   )
 }
 

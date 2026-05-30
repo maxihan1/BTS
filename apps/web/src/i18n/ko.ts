@@ -80,6 +80,74 @@ export const issueDetailStrings = {
   transitionVersionConflictError: '다른 사용자가 이미 이 이슈를 수정했습니다. 페이지를 새로고침해 최신 상태를 확인해 주세요.',
   /** 422 workflow_not_configured 에러 메시지 (S5) */
   transitionWorkflowNotConfiguredError: '이 이슈에 워크플로우가 설정되지 않아 상태를 변경할 수 없습니다.',
+
+  // ── 본문(description) 탭/버튼 ──────────────────────────────────────
+  /** 본문 편집 탭 레이블 */
+  descriptionWriteTab: '편집',
+  /** 본문 미리보기 탭 레이블 */
+  descriptionPreviewTab: '미리보기',
+  /** 본문이 비어 있을 때 안내 문구 */
+  descriptionEmpty: '본문이 없습니다.',
+  /** 본문 편집 시작 버튼 */
+  descriptionEditButton: '본문 편집',
+  /** 본문 저장 버튼 */
+  descriptionSaveButton: '저장',
+  /** 본문 편집 취소 버튼 */
+  descriptionCancelButton: '취소',
+
+  // ── 우선순위(priority) ──────────────────────────────────────────────
+  /** 메타패널 — 우선순위 레이블 */
+  priorityLabel: '우선순위',
+  /** 우선순위 셀렉터 aria-label */
+  prioritySelectLabel: '우선순위 선택',
+  /** 우선순위 1~5 한글 이름 매핑 (1=가장 높음 … 5=가장 낮음) */
+  priorityNames: {
+    1: '가장 높음',
+    2: '높음',
+    3: '보통',
+    4: '낮음',
+    5: '가장 낮음',
+  } as Record<1 | 2 | 3 | 4 | 5, string>,
+  /** 우선순위 변경 실패 에러 메시지 */
+  priorityChangeError: '우선순위 변경 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+
+  // ── 영향도(impact) ─────────────────────────────────────────────────
+  /** 메타패널 — 영향도 레이블 */
+  impactLabel: '영향도',
+  /** 영향도 셀렉터 aria-label */
+  impactSelectLabel: '영향도 선택',
+  /** 영향도 1~3 한글 이름 매핑 (1=높음, 2=보통, 3=낮음) */
+  impactNames: {
+    1: '높음',
+    2: '보통',
+    3: '낮음',
+  } as Record<1 | 2 | 3, string>,
+  /** 영향도 미지정 상태 표시 */
+  impactUnset: '미지정',
+  /** 영향도 변경 실패 에러 메시지 */
+  impactChangeError: '영향도 변경 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+
+  // ── 환경(environment) ──────────────────────────────────────────────
+  /** 메타패널 — 환경 레이블 */
+  environmentLabel: '환경',
+  /** 환경 입력 필드 자리표시자 */
+  environmentPlaceholder: '재현 환경을 입력하세요.',
+  /** 환경 저장 버튼 */
+  environmentSaveButton: '저장',
+  /** 환경 저장 실패 에러 메시지 */
+  environmentSaveError: '환경 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+
+  // ── 라벨(labels) ───────────────────────────────────────────────────
+  /** 메타패널 — 라벨 레이블 */
+  labelsLabel: '라벨',
+  /** 라벨 추가 입력 필드 자리표시자 */
+  labelAddPlaceholder: '라벨 추가',
+  /** 라벨 제거 버튼 aria-label */
+  labelRemoveLabel: '라벨 제거',
+  /** 라벨 저장 버튼 */
+  labelsSaveButton: '저장',
+  /** 라벨 저장 실패 에러 메시지 */
+  labelsSaveError: '라벨 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
 } as const
 
 /** 이슈 생성 폼 관련 문자열 */

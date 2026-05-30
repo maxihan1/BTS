@@ -12,6 +12,7 @@ import { useIssueTypes } from '@/hooks/use-issue-types'
 import { useIssueTransitions, issueTransitionKeys } from '@/hooks/use-issue-transitions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { IssueDescription } from '@/components/issue/IssueDescription'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
 import { issueDetailStrings } from '@/i18n/ko'
@@ -141,19 +142,95 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
     },
   })
 
+  /**
+   * 메타필드 mutation 공통 onError 처리기.
+   * - 409 → typeChangeConflictError toast + invalidate (최신 데이터 재조회 유도)
+   * - 그 외 → 호출자가 전달한 fallbackMsg toast
+   */
+  function handleMetaMutationError(err: unknown, fallbackMsg: string) {
+    if (err instanceof ApiError && err.status === 409) {
+      toast.error(issueDetailStrings.typeChangeConflictError)
+      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+    } else {
+      toast.error(fallbackMsg)
+    }
+  }
+
   const typeChangeMutation = useMutation({
     mutationFn: ({ typeId, expectedVersion }: { typeId: number; expectedVersion: number }) =>
       updateIssue(issueKey, { typeId, expectedVersion }),
-    onSuccess: (updatedIssue) => {
-      queryClient.setQueryData(issueQueryKey(issueKey), updatedIssue)
+    onSuccess: () => {
+      // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
+      // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
       void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
     },
     onError: (err: unknown) => {
-      if (err instanceof ApiError && err.status === 409) {
-        toast.error(issueDetailStrings.typeChangeConflictError)
-      } else {
-        toast.error(issueDetailStrings.typeChangeError)
-      }
+      handleMetaMutationError(err, issueDetailStrings.typeChangeError)
+    },
+  })
+
+  const descriptionMutation = useMutation({
+    mutationFn: ({ description, expectedVersion }: { description: string; expectedVersion: number }) =>
+      updateIssue(issueKey, { description, expectedVersion }),
+    onSuccess: () => {
+      // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
+      // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
+      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+    },
+    onError: (err: unknown) => {
+      handleMetaMutationError(err, issueDetailStrings.typeChangeError)
+    },
+  })
+
+  const priorityMutation = useMutation({
+    mutationFn: ({ priority, expectedVersion }: { priority: number; expectedVersion: number }) =>
+      updateIssue(issueKey, { priority, expectedVersion }),
+    onSuccess: () => {
+      // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
+      // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
+      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+    },
+    onError: (err: unknown) => {
+      handleMetaMutationError(err, issueDetailStrings.priorityChangeError)
+    },
+  })
+
+  const impactMutation = useMutation({
+    mutationFn: ({ impact, expectedVersion }: { impact: number; expectedVersion: number }) =>
+      updateIssue(issueKey, { impact, expectedVersion }),
+    onSuccess: () => {
+      // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
+      // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
+      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+    },
+    onError: (err: unknown) => {
+      handleMetaMutationError(err, issueDetailStrings.impactChangeError)
+    },
+  })
+
+  const environmentMutation = useMutation({
+    mutationFn: ({ environment, expectedVersion }: { environment: string; expectedVersion: number }) =>
+      updateIssue(issueKey, { environment, expectedVersion }),
+    onSuccess: () => {
+      // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
+      // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
+      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+    },
+    onError: (err: unknown) => {
+      handleMetaMutationError(err, issueDetailStrings.environmentSaveError)
+    },
+  })
+
+  const labelsMutation = useMutation({
+    mutationFn: ({ labels, expectedVersion }: { labels: string[]; expectedVersion: number }) =>
+      updateIssue(issueKey, { labels, expectedVersion }),
+    onSuccess: () => {
+      // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
+      // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
+      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+    },
+    onError: (err: unknown) => {
+      handleMetaMutationError(err, issueDetailStrings.labelsSaveError)
     },
   })
 
@@ -198,6 +275,36 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   function handleTypeChange(typeId: number) {
     if (issue === undefined) return
     typeChangeMutation.mutate({ typeId, expectedVersion: issue.version })
+  }
+
+  // ── 본문 저장 핸들러 ─────────────────────────────────────────────────────
+  function handleDescriptionSave(markdown: string) {
+    if (issue === undefined) return
+    descriptionMutation.mutate({ description: markdown, expectedVersion: issue.version })
+  }
+
+  // ── 우선순위 변경 핸들러 ─────────────────────────────────────────────────
+  function handlePriorityChange(priority: number) {
+    if (issue === undefined) return
+    priorityMutation.mutate({ priority, expectedVersion: issue.version })
+  }
+
+  // ── 영향도 변경 핸들러 ───────────────────────────────────────────────────
+  function handleImpactChange(impact: number) {
+    if (issue === undefined) return
+    impactMutation.mutate({ impact, expectedVersion: issue.version })
+  }
+
+  // ── 환경 저장 핸들러 ─────────────────────────────────────────────────────
+  function handleEnvironmentSave(environment: string) {
+    if (issue === undefined) return
+    environmentMutation.mutate({ environment, expectedVersion: issue.version })
+  }
+
+  // ── 라벨 저장 핸들러 ─────────────────────────────────────────────────────
+  function handleLabelsSave(labels: string[]) {
+    if (issue === undefined) return
+    labelsMutation.mutate({ labels, expectedVersion: issue.version })
   }
 
   // ── 상태전이 핸들러 ───────────────────────────────────────────────────────
@@ -276,9 +383,14 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
             </>
           )}
 
-          {/* 설명 자리표시자 — FR-IS-04 본문 단계에서 추가 예정 */}
-          <div className="mt-6 text-sm text-muted-foreground rounded-xl bg-muted p-3">
-            {issueDetailStrings.descriptionPlaceholder}
+          {/* 본문 — IssueDescription 컴포넌트 (FR-IS-04 Task 6) */}
+          <div className="mt-6">
+            <IssueDescription
+              descriptionHtml={issue.descriptionHtml}
+              description={issue.description}
+              onSave={handleDescriptionSave}
+              isSaving={descriptionMutation.isPending}
+            />
           </div>
         </main>
 
@@ -319,6 +431,10 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
             onTransition={handleTransition}
             isTransitioning={transitionMutation.isPending}
             unavailableReason={transitionUnavailableReason}
+            onPriorityChange={handlePriorityChange}
+            onImpactChange={handleImpactChange}
+            onEnvironmentSave={handleEnvironmentSave}
+            onLabelsSave={handleLabelsSave}
           />
         )}
       </div>
