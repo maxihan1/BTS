@@ -64,6 +64,8 @@ test.describe('FR-IS-04 이슈 본문/메타 필드 편집 (E1~E6)', () => {
     // Then. description-preview-content 에 본문 노출 (ReadMode 전환 + refetch 후 descriptionHtml 반영)
     const previewContent = page.getByTestId('description-preview-content')
     await expect(previewContent).toBeVisible()
+    // 입력한 본문 내용이 실제로 반영됐는지 검증 (refetch 후 descriptionHtml 정합 — 가짜 그린 방지)
+    await expect(previewContent).toContainText('테스트 본문')
     // placeholder 는 사라져야 함
     await expect(page.getByText(i18nLabels.issueDetail.descriptionEmpty)).not.toBeVisible()
   })
@@ -110,14 +112,17 @@ test.describe('FR-IS-04 이슈 본문/메타 필드 편집 (E1~E6)', () => {
     })
     await expect(impactSelect).toBeVisible()
 
+    // Given. 설정 전 — 미지정(impactUnset) 옵션은 enabled (impact=null 초기 상태)
+    const unsetOption = impactSelect.locator(`option:has-text("${i18nLabels.issueDetail.impactUnset}")`)
+    await expect(unsetOption).toBeEnabled()
+
     // When. 영향도 1(높음) 선택
     await impactSelect.selectOption({ value: '1' })
 
     // Then. 셀렉터 현재값이 '1' 로 갱신
     await expect(impactSelect).toHaveValue('1')
 
-    // Then. 미지정(impactUnset) 옵션이 disabled — 한 번 설정 후 되돌리기 불가
-    const unsetOption = impactSelect.locator(`option:has-text("${i18nLabels.issueDetail.impactUnset}")`)
+    // Then. 미지정 옵션이 disabled 로 전이 — 한 번 설정 후 되돌리기 불가 (enabled→disabled 토글 검증)
     await expect(unsetOption).toBeDisabled()
   })
 
