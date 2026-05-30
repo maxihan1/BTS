@@ -82,7 +82,7 @@
 - [x] D3. 데이터 모델 — `issues.description`(TEXT, Markdown) + priority SMALLINT(1~5) + labels TEXT[]+GIN + environment TEXT + impact SMALLINT(1~3) (V006, PR #43)
 - [x] D4. 백엔드 — flexmark 렌더링 + OWASP Java HTML Sanitizer + PATCH merge-patch 확장 (PR #43)
 - [x] D5. 백엔드 테스트 — XSS 17벡터 차단 + merge-patch/backfill/OCC 통합 (MockK + Testcontainers, PR #43)
-- [ ] D6. 프론트 UI — TipTap Atlas Editor (`issue-body` variant). 50블록 함께 검증 (§A.3 #7) (책임. designer → frontend-engineer) ← PR 2/3 후속
+- [x] D6. 프론트 UI — GitHub 스타일 Write/Preview 본문 에디터(TipTap 폐기, 의존성 0 — 백엔드 Markdown 정본과 정합) + 우선순위/영향도 셀렉터 + 환경/라벨 칩 + Zod 계약 동기 (PR #46)
 - [ ] D7. E2E (책임. qa-engineer) ← PR 3/3 후속
 
 #### §2.1.5 FR-IS-07 — Resolution 필드 (Fixed/Won't Fix/Duplicate)
