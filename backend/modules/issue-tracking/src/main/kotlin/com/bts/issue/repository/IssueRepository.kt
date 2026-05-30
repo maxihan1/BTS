@@ -60,25 +60,10 @@ class IssueRepository(
     fun insert(issue: Issue): Issue {
         log.debug("Inserting issue key={}", issue.key.value)
         val record =
-            issue.toInsertRecord()
-                .let { r ->
-                    dsl.insertInto(ISSUES)
-                        .set(ISSUES.ID, r.id)
-                        .set(ISSUES.KEY, r.key)
-                        .set(ISSUES.PROJECT_ID, r.projectId)
-                        .set(ISSUES.SUMMARY, r.summary)
-                        .set(ISSUES.REPORTER_ID, r.reporterId)
-                        .set(ISSUES.CURRENT_STATE_KEY, r.currentStateKey)
-                        .set(ISSUES.VERSION, r.version)
-                        .set(ISSUES.TYPE_ID, r.typeId)
-                        .set(ISSUES.DESCRIPTION, r.description)
-                        .set(ISSUES.PRIORITY, r.priority)
-                        .set(ISSUES.LABELS, r.labels)
-                        .set(ISSUES.ENVIRONMENT, r.environment)
-                        .set(ISSUES.IMPACT, r.impact)
-                        .returning()
-                        .fetchOne()
-                }
+            dsl.insertInto(ISSUES)
+                .set(issue.toInsertRecord())
+                .returning()
+                .fetchOne()
                 ?: error("insert returning() returned null for key=${issue.key.value}")
 
         return record.toIssue()
