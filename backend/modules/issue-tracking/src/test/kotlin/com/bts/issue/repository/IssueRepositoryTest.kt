@@ -501,17 +501,19 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
             )
         repository.insert(issue)
 
-        val updateCount = repository.updateFields(
-            key = key,
-            summary = null,
-            typeId = null,
-            expectedVersion = 1L,
-            description = "업데이트된 설명",
-            priority = 1,
-            labels = listOf("updated", "label2"),
-            environment = "production",
-            impact = 3,
-        )
+        val updateCount =
+            repository.updateFields(
+                key = key,
+                patch =
+                    IssueFieldPatch(
+                        description = "업데이트된 설명",
+                        priority = 1,
+                        labels = listOf("updated", "label2"),
+                        environment = "production",
+                        impact = 3,
+                    ),
+                expectedVersion = 1L,
+            )
 
         assertThat(updateCount).isEqualTo(1)
         val found = requireNotNull(repository.findByKey(key)) { "업데이트 후 이슈 조회 불가" }

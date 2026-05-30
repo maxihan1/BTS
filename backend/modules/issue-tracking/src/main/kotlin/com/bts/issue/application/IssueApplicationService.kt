@@ -4,15 +4,14 @@ package com.bts.issue.application
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.domain.ActorId
-import com.bts.issue.markdown.MarkdownRenderer
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueImpact
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
-import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssuePriority
+import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
@@ -21,9 +20,11 @@ import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueSoftDeleted
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.event.IssueUpdated
+import com.bts.issue.markdown.MarkdownRenderer
 import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
+import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.domain.IssueTypeNotFoundException
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -155,15 +156,6 @@ class IssueApplicationService(
     /**
      * 이슈 단건을 조회한다.
      *
-     * @param actor 조회 행위자.
-     * @param key 조회할 이슈 키.
-     * @return [IssueResponse] DTO.
-     * @throws IssueAccessDeniedException 권한 없을 때.
-     * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우.
-     */
-    /**
-     * 이슈 단건을 조회한다.
-     *
      * 단건 경로이므로 description 을 HTML 로 렌더하여 descriptionHtml 에 채운다 (C3).
      * 목록 경로([listIssues])는 N건 렌더 비용 방지를 위해 descriptionHtml=null 유지.
      *
@@ -235,14 +227,17 @@ class IssueApplicationService(
         val updatedRows =
             repo.updateFields(
                 key = key,
-                summary = request.summary,
-                typeId = request.typeId,
+                patch =
+                    IssueFieldPatch(
+                        summary = request.summary,
+                        typeId = request.typeId,
+                        description = request.description,
+                        priority = request.priority,
+                        labels = request.labels,
+                        environment = request.environment,
+                        impact = request.impact,
+                    ),
                 expectedVersion = request.expectedVersion,
-                description = request.description,
-                priority = request.priority,
-                labels = request.labels,
-                environment = request.environment,
-                impact = request.impact,
             )
         if (updatedRows == 0) {
             throw IssueVersionConflictException(key, existing.version)
@@ -572,7 +567,10 @@ class IssueApplicationService(
      * @param impact 검증할 영향도 값. null 이면 스킵.
      * @throws IllegalArgumentException priority 가 1..5 밖이거나 impact 가 1..3 밖일 때.
      */
-    private fun validatePriorityImpactRanges(priority: Int?, impact: Int?) {
+    private fun validatePriorityImpactRanges(
+        priority: Int?,
+        impact: Int?,
+    ) {
         if (priority != null) IssuePriority.fromNumber(priority)
         if (impact != null) IssueImpact.fromNumber(impact)
     }
@@ -621,7 +619,10 @@ class IssueApplicationService(
      * - requestValue="" → 클리어 → 기존값이 non-null 이면 true
      * - requestValue=값 → 기존값과 다르면 true
      */
-    private fun isTextFieldChanged(existingValue: String?, requestValue: String?): Boolean {
+    private fun isTextFieldChanged(
+        existingValue: String?,
+        requestValue: String?,
+    ): Boolean {
         if (requestValue == null) return false
         return existingValue != requestValue
     }

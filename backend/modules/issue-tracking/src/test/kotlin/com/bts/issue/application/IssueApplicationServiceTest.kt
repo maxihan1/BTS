@@ -12,6 +12,7 @@ import com.bts.issue.event.IssueUpdated
 import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
+import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
@@ -19,9 +20,9 @@ import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowTransitionPort
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.shouldBe
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -44,7 +45,9 @@ import java.util.UUID
  *
  * C3: 목록(listWithType) 경로에서는 descriptionHtml 미포함(null).
  * C5: 기존 updateIssue 확장 — @Transactional 클래스 레벨 상속.
+ * LargeClass: 5필드 merge-patch 전체 케이스 + IssueResponse 필드 — 의도적으로 한 클래스에 집결.
  */
+@Suppress("LargeClass")
 class IssueApplicationServiceTest : DescribeSpec({
 
     val repo = mockk<IssueRepository>()
@@ -71,6 +74,7 @@ class IssueApplicationServiceTest : DescribeSpec({
     val existingVersion = 1L
 
     /** 기존 이슈 — 5개 신규 필드를 원하는 값으로 세팅 가능. */
+    @Suppress("LongParameterList") // 테스트 픽스처 헬퍼 — Issue 도메인 필드 수를 반영
     fun makeIssue(
         summary: String = "기존 제목",
         description: String? = null,
@@ -102,6 +106,7 @@ class IssueApplicationServiceTest : DescribeSpec({
      * IssueResponse 헬퍼 — 신규 필드 포함.
      * descriptionHtml 은 단건 경로에서만 채워진다 (C3).
      */
+    @Suppress("LongParameterList") // 테스트 픽스처 헬퍼 — IssueResponse 신규 필드 수를 반영
     fun makeResponse(
         summary: String = "기존 제목",
         version: Long = existingVersion,
@@ -206,11 +211,12 @@ class IssueApplicationServiceTest : DescribeSpec({
         // ── description ──────────────────────────────────────────────────────
 
         context("description — null(부재) → 무변경") {
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                description = null,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    description = null,
+                )
             val existingIssue = makeIssue(description = "기존 설명")
             val existingResponse = makeResponse(description = "기존 설명")
 
@@ -232,11 +238,12 @@ class IssueApplicationServiceTest : DescribeSpec({
         }
 
         context("description — \"\"(빈문자열) → DB NULL 클리어") {
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                description = "",
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    description = "",
+                )
             val existingIssue = makeIssue(description = "기존 설명")
             val clearedResponse = makeResponse(description = null)
 
@@ -246,14 +253,17 @@ class IssueApplicationServiceTest : DescribeSpec({
                 every {
                     repo.updateFields(
                         key = issueKey,
-                        summary = null,
-                        typeId = null,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = "",
+                                priority = null,
+                                labels = null,
+                                environment = null,
+                                impact = null,
+                            ),
                         expectedVersion = existingVersion,
-                        description = "",
-                        priority = null,
-                        labels = null,
-                        environment = null,
-                        impact = null,
                     )
                 } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns clearedResponse
@@ -265,14 +275,17 @@ class IssueApplicationServiceTest : DescribeSpec({
                 verify(exactly = 1) {
                     repo.updateFields(
                         key = issueKey,
-                        summary = null,
-                        typeId = null,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = "",
+                                priority = null,
+                                labels = null,
+                                environment = null,
+                                impact = null,
+                            ),
                         expectedVersion = existingVersion,
-                        description = "",
-                        priority = null,
-                        labels = null,
-                        environment = null,
-                        impact = null,
                     )
                 }
             }
@@ -289,13 +302,18 @@ class IssueApplicationServiceTest : DescribeSpec({
 
         context("description — 값 설정") {
             val newDescription = "## 재현 방법\n1. 로그인"
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                description = newDescription,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    description = newDescription,
+                )
             val existingIssue = makeIssue(description = null)
-            val updatedResponse = makeResponse(description = newDescription, descriptionHtml = "<h2>재현 방법</h2>\n<ol>\n<li>로그인</li>\n</ol>\n")
+            val updatedResponse =
+                makeResponse(
+                    description = newDescription,
+                    descriptionHtml = "<h2>재현 방법</h2>\n<ol>\n<li>로그인</li>\n</ol>\n",
+                )
 
             beforeEach {
                 stubPermissionGranted()
@@ -303,14 +321,17 @@ class IssueApplicationServiceTest : DescribeSpec({
                 every {
                     repo.updateFields(
                         key = issueKey,
-                        summary = null,
-                        typeId = null,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = newDescription,
+                                priority = null,
+                                labels = null,
+                                environment = null,
+                                impact = null,
+                            ),
                         expectedVersion = existingVersion,
-                        description = newDescription,
-                        priority = null,
-                        labels = null,
-                        environment = null,
-                        impact = null,
                     )
                 } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns updatedResponse
@@ -322,14 +343,17 @@ class IssueApplicationServiceTest : DescribeSpec({
                 verify(exactly = 1) {
                     repo.updateFields(
                         key = issueKey,
-                        summary = null,
-                        typeId = null,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = newDescription,
+                                priority = null,
+                                labels = null,
+                                environment = null,
+                                impact = null,
+                            ),
                         expectedVersion = existingVersion,
-                        description = newDescription,
-                        priority = null,
-                        labels = null,
-                        environment = null,
-                        impact = null,
                     )
                 }
             }
@@ -338,11 +362,12 @@ class IssueApplicationServiceTest : DescribeSpec({
         // ── environment ───────────────────────────────────────────────────────
 
         context("environment — null(부재) → 무변경") {
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                environment = null,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    environment = null,
+                )
             val existingIssue = makeIssue(environment = "Chrome 125")
             val existingResponse = makeResponse(environment = "Chrome 125")
 
@@ -359,11 +384,12 @@ class IssueApplicationServiceTest : DescribeSpec({
         }
 
         context("environment — \"\"(빈문자열) → DB NULL 클리어") {
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                environment = "",
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    environment = "",
+                )
             val existingIssue = makeIssue(environment = "Chrome 125")
             val clearedResponse = makeResponse(environment = null)
 
@@ -373,14 +399,17 @@ class IssueApplicationServiceTest : DescribeSpec({
                 every {
                     repo.updateFields(
                         key = issueKey,
-                        summary = null,
-                        typeId = null,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = null,
+                                priority = null,
+                                labels = null,
+                                environment = "",
+                                impact = null,
+                            ),
                         expectedVersion = existingVersion,
-                        description = null,
-                        priority = null,
-                        labels = null,
-                        environment = "",
-                        impact = null,
                     )
                 } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns clearedResponse
@@ -392,14 +421,17 @@ class IssueApplicationServiceTest : DescribeSpec({
                 verify(exactly = 1) {
                     repo.updateFields(
                         key = issueKey,
-                        summary = null,
-                        typeId = null,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = null,
+                                priority = null,
+                                labels = null,
+                                environment = "",
+                                impact = null,
+                            ),
                         expectedVersion = existingVersion,
-                        description = null,
-                        priority = null,
-                        labels = null,
-                        environment = "",
-                        impact = null,
                     )
                 }
             }
@@ -408,11 +440,12 @@ class IssueApplicationServiceTest : DescribeSpec({
         // ── labels ────────────────────────────────────────────────────────────
 
         context("labels — null(부재) → 무변경") {
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                labels = null,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    labels = null,
+                )
             val existingIssue = makeIssue(labels = listOf("bug"))
             val existingResponse = makeResponse(labels = listOf("bug"))
 
@@ -429,11 +462,12 @@ class IssueApplicationServiceTest : DescribeSpec({
         }
 
         context("labels — [](빈배열) → 전체 제거") {
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                labels = emptyList(),
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    labels = emptyList(),
+                )
             val existingIssue = makeIssue(labels = listOf("bug", "frontend"))
             val clearedResponse = makeResponse(labels = emptyList())
 
@@ -443,14 +477,17 @@ class IssueApplicationServiceTest : DescribeSpec({
                 every {
                     repo.updateFields(
                         key = issueKey,
-                        summary = null,
-                        typeId = null,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = null,
+                                priority = null,
+                                labels = emptyList(),
+                                environment = null,
+                                impact = null,
+                            ),
                         expectedVersion = existingVersion,
-                        description = null,
-                        priority = null,
-                        labels = emptyList(),
-                        environment = null,
-                        impact = null,
                     )
                 } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns clearedResponse
@@ -462,14 +499,17 @@ class IssueApplicationServiceTest : DescribeSpec({
                 verify(exactly = 1) {
                     repo.updateFields(
                         key = issueKey,
-                        summary = null,
-                        typeId = null,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = null,
+                                priority = null,
+                                labels = emptyList(),
+                                environment = null,
+                                impact = null,
+                            ),
                         expectedVersion = existingVersion,
-                        description = null,
-                        priority = null,
-                        labels = emptyList(),
-                        environment = null,
-                        impact = null,
                     )
                 }
             }
@@ -477,11 +517,12 @@ class IssueApplicationServiceTest : DescribeSpec({
 
         context("labels — 값 설정 → 교체") {
             val newLabels = listOf("performance", "backend")
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                labels = newLabels,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    labels = newLabels,
+                )
             val existingIssue = makeIssue(labels = listOf("bug"))
             val updatedResponse = makeResponse(labels = newLabels)
 
@@ -491,14 +532,17 @@ class IssueApplicationServiceTest : DescribeSpec({
                 every {
                     repo.updateFields(
                         key = issueKey,
-                        summary = null,
-                        typeId = null,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = null,
+                                priority = null,
+                                labels = newLabels,
+                                environment = null,
+                                impact = null,
+                            ),
                         expectedVersion = existingVersion,
-                        description = null,
-                        priority = null,
-                        labels = newLabels,
-                        environment = null,
-                        impact = null,
                     )
                 } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns updatedResponse
@@ -510,14 +554,17 @@ class IssueApplicationServiceTest : DescribeSpec({
                 verify(exactly = 1) {
                     repo.updateFields(
                         key = issueKey,
-                        summary = null,
-                        typeId = null,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = null,
+                                priority = null,
+                                labels = newLabels,
+                                environment = null,
+                                impact = null,
+                            ),
                         expectedVersion = existingVersion,
-                        description = null,
-                        priority = null,
-                        labels = newLabels,
-                        environment = null,
-                        impact = null,
                     )
                 }
             }
@@ -526,11 +573,12 @@ class IssueApplicationServiceTest : DescribeSpec({
         // ── priority ──────────────────────────────────────────────────────────
 
         context("priority — null(부재) → 무변경") {
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                priority = null,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    priority = null,
+                )
             val existingIssue = makeIssue(priority = 2)
             val existingResponse = makeResponse(priority = 2, priorityName = "High")
 
@@ -547,11 +595,12 @@ class IssueApplicationServiceTest : DescribeSpec({
         }
 
         context("priority — 1 설정") {
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                priority = 1,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    priority = 1,
+                )
             val existingIssue = makeIssue(priority = 3)
             val updatedResponse = makeResponse(priority = 1, priorityName = "Highest")
 
@@ -561,14 +610,17 @@ class IssueApplicationServiceTest : DescribeSpec({
                 every {
                     repo.updateFields(
                         key = issueKey,
-                        summary = null,
-                        typeId = null,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = null,
+                                priority = 1,
+                                labels = null,
+                                environment = null,
+                                impact = null,
+                            ),
                         expectedVersion = existingVersion,
-                        description = null,
-                        priority = 1,
-                        labels = null,
-                        environment = null,
-                        impact = null,
                     )
                 } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns updatedResponse
@@ -580,14 +632,17 @@ class IssueApplicationServiceTest : DescribeSpec({
                 verify(exactly = 1) {
                     repo.updateFields(
                         key = issueKey,
-                        summary = null,
-                        typeId = null,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = null,
+                                priority = 1,
+                                labels = null,
+                                environment = null,
+                                impact = null,
+                            ),
                         expectedVersion = existingVersion,
-                        description = null,
-                        priority = 1,
-                        labels = null,
-                        environment = null,
-                        impact = null,
                     )
                 }
             }
@@ -599,11 +654,12 @@ class IssueApplicationServiceTest : DescribeSpec({
         }
 
         context("priority — 범위 초과 (0 → 검증 실패)") {
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                priority = 0,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    priority = 0,
+                )
             val existingIssue = makeIssue(priority = 3)
 
             beforeEach {
@@ -619,11 +675,12 @@ class IssueApplicationServiceTest : DescribeSpec({
         }
 
         context("priority — 범위 초과 (6 → 검증 실패)") {
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                priority = 6,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    priority = 6,
+                )
             val existingIssue = makeIssue(priority = 3)
 
             beforeEach {
@@ -641,11 +698,12 @@ class IssueApplicationServiceTest : DescribeSpec({
         // ── impact ────────────────────────────────────────────────────────────
 
         context("impact — null(부재) → 무변경") {
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                impact = null,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    impact = null,
+                )
             val existingIssue = makeIssue(impact = 2)
             val existingResponse = makeResponse(impact = 2, impactName = "Medium")
 
@@ -662,11 +720,12 @@ class IssueApplicationServiceTest : DescribeSpec({
         }
 
         context("impact — 1(High) 설정") {
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                impact = 1,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    impact = 1,
+                )
             val existingIssue = makeIssue(impact = null)
             val updatedResponse = makeResponse(impact = 1, impactName = "High")
 
@@ -676,14 +735,17 @@ class IssueApplicationServiceTest : DescribeSpec({
                 every {
                     repo.updateFields(
                         key = issueKey,
-                        summary = null,
-                        typeId = null,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = null,
+                                priority = null,
+                                labels = null,
+                                environment = null,
+                                impact = 1,
+                            ),
                         expectedVersion = existingVersion,
-                        description = null,
-                        priority = null,
-                        labels = null,
-                        environment = null,
-                        impact = 1,
                     )
                 } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns updatedResponse
@@ -695,14 +757,17 @@ class IssueApplicationServiceTest : DescribeSpec({
                 verify(exactly = 1) {
                     repo.updateFields(
                         key = issueKey,
-                        summary = null,
-                        typeId = null,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = null,
+                                priority = null,
+                                labels = null,
+                                environment = null,
+                                impact = 1,
+                            ),
                         expectedVersion = existingVersion,
-                        description = null,
-                        priority = null,
-                        labels = null,
-                        environment = null,
-                        impact = 1,
                     )
                 }
             }
@@ -714,11 +779,12 @@ class IssueApplicationServiceTest : DescribeSpec({
         }
 
         context("impact — 범위 초과 (0 → 검증 실패)") {
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                impact = 0,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    impact = 0,
+                )
             val existingIssue = makeIssue(impact = null)
 
             beforeEach {
@@ -734,11 +800,12 @@ class IssueApplicationServiceTest : DescribeSpec({
         }
 
         context("impact — 범위 초과 (4 → 검증 실패)") {
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                impact = 4,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    impact = 4,
+                )
             val existingIssue = makeIssue(impact = null)
 
             beforeEach {
@@ -756,20 +823,22 @@ class IssueApplicationServiceTest : DescribeSpec({
         // ── 복합 변경 ──────────────────────────────────────────────────────────
 
         context("복합 — summary + description + priority 동시 변경") {
-            val request = UpdateIssueRequest(
-                summary = "새 제목",
-                expectedVersion = existingVersion,
-                description = "## 요약",
-                priority = 1,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = "새 제목",
+                    expectedVersion = existingVersion,
+                    description = "## 요약",
+                    priority = 1,
+                )
             val existingIssue = makeIssue(summary = "기존 제목", description = null, priority = 3)
-            val updatedResponse = makeResponse(
-                summary = "새 제목",
-                version = existingVersion + 1,
-                description = "## 요약",
-                priority = 1,
-                priorityName = "Highest",
-            )
+            val updatedResponse =
+                makeResponse(
+                    summary = "새 제목",
+                    version = existingVersion + 1,
+                    description = "## 요약",
+                    priority = 1,
+                    priorityName = "Highest",
+                )
 
             beforeEach {
                 stubPermissionGranted()
@@ -777,14 +846,17 @@ class IssueApplicationServiceTest : DescribeSpec({
                 every {
                     repo.updateFields(
                         key = issueKey,
-                        summary = "새 제목",
-                        typeId = null,
+                        patch =
+                            IssueFieldPatch(
+                                summary = "새 제목",
+                                typeId = null,
+                                description = "## 요약",
+                                priority = 1,
+                                labels = null,
+                                environment = null,
+                                impact = null,
+                            ),
                         expectedVersion = existingVersion,
-                        description = "## 요약",
-                        priority = 1,
-                        labels = null,
-                        environment = null,
-                        impact = null,
                     )
                 } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns updatedResponse
@@ -796,14 +868,17 @@ class IssueApplicationServiceTest : DescribeSpec({
                 verify(exactly = 1) {
                     repo.updateFields(
                         key = issueKey,
-                        summary = "새 제목",
-                        typeId = null,
+                        patch =
+                            IssueFieldPatch(
+                                summary = "새 제목",
+                                typeId = null,
+                                description = "## 요약",
+                                priority = 1,
+                                labels = null,
+                                environment = null,
+                                impact = null,
+                            ),
                         expectedVersion = existingVersion,
-                        description = "## 요약",
-                        priority = 1,
-                        labels = null,
-                        environment = null,
-                        impact = null,
                     )
                 }
             }

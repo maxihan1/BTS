@@ -59,6 +59,15 @@ data class IssueResponse(
     val impact: Int? = null,
     val impactName: String? = null,
 ) {
+    /**
+     * 이슈 타입 요약 정보. [from] 파라미터 그룹화용.
+     *
+     * @property id 이슈 타입 내부 식별자 (issue_types.id).
+     * @property key 이슈 타입 키 문자열. 예: `"task"`.
+     * @property name 이슈 타입 표시명. 예: `"Task"`.
+     */
+    data class IssueTypeInfo(val id: Long, val key: String, val name: String)
+
     companion object {
         /** DB DEFAULT 3 (Medium) 과 동기화. */
         private const val DEFAULT_PRIORITY = 3
@@ -72,17 +81,13 @@ data class IssueResponse(
          *
          * @param issue 변환할 이슈 Aggregate.
          * @param projectKey 이슈가 속한 프로젝트 키 문자열.
-         * @param typeId 이슈 타입 내부 식별자.
-         * @param typeKey 이슈 타입 키. 예: `"task"`.
-         * @param typeName 이슈 타입 표시명. 예: `"Task"`.
+         * @param typeInfo 이슈 타입 요약 (id, key, name).
          * @param renderHtml true 이면 descriptionHtml 을 렌더. 단건 경로에서만 true 로 호출한다. 기본값 false.
          */
         fun from(
             issue: Issue,
             projectKey: String,
-            typeId: Long,
-            typeKey: String,
-            typeName: String,
+            typeInfo: IssueTypeInfo,
             renderHtml: Boolean = false,
         ): IssueResponse =
             IssueResponse(
@@ -95,9 +100,9 @@ data class IssueResponse(
                 version = issue.version,
                 createdAt = issue.createdAt,
                 updatedAt = issue.updatedAt,
-                typeId = typeId,
-                typeKey = typeKey,
-                typeName = typeName,
+                typeId = typeInfo.id,
+                typeKey = typeInfo.key,
+                typeName = typeInfo.name,
                 description = issue.description,
                 descriptionHtml = if (renderHtml) issue.description?.let { MarkdownRenderer.renderSafe(it) } else null,
                 priority = issue.priority,

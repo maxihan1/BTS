@@ -15,6 +15,7 @@ import com.bts.issue.event.IssueUpdated
 import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
+import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
@@ -141,14 +142,14 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
                     permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
-                every { repo.updateFields(issueKey, "새 제목", null, existingVersion) } returns 1
+                every { repo.updateFields(issueKey, IssueFieldPatch(summary = "새 제목"), existingVersion) } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns updatedResponse
                 every { eventPublisher.publish(any()) } returns Unit
             }
 
             it("updateFields 가 1회 호출된다") {
                 sut.updateIssue(actor, issueKey, request)
-                verify(exactly = 1) { repo.updateFields(issueKey, "새 제목", null, existingVersion) }
+                verify(exactly = 1) { repo.updateFields(issueKey, IssueFieldPatch(summary = "새 제목"), existingVersion) }
             }
 
             it("IssueUpdated(fields={summary}) 이벤트가 1회 발행된다") {
@@ -201,7 +202,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
                     permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns makeIssue(summary = "원래")
-                every { repo.updateFields(issueKey, "새 제목", null, existingVersion) } returns 0
+                every { repo.updateFields(issueKey, IssueFieldPatch(summary = "새 제목"), existingVersion) } returns 0
             }
 
             it("IssueVersionConflictException 을 던진다") {
@@ -276,14 +277,16 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
                     com.bts.issue.type.domain.IssueType.BUG.copy(
                         id = newTypeId,
                     )
-                every { repo.updateFields(issueKey, null, newTypeId, existingVersion) } returns 1
+                every { repo.updateFields(issueKey, IssueFieldPatch(typeId = newTypeId), existingVersion) } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns updatedResponse
                 every { eventPublisher.publish(any()) } returns Unit
             }
 
             it("updateFields 가 1회 호출된다") {
                 sut.updateIssue(actor, issueKey, request)
-                verify(exactly = 1) { repo.updateFields(issueKey, null, newTypeId, existingVersion) }
+                verify(exactly = 1) {
+                    repo.updateFields(issueKey, IssueFieldPatch(typeId = newTypeId), existingVersion)
+                }
             }
 
             it("IssueUpdated(fields={typeId}) 이벤트가 1회 발행된다") {
@@ -348,7 +351,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
                     permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
-                every { repo.updateFields(issueKey, "새 제목", null, existingVersion) } returns 1
+                every { repo.updateFields(issueKey, IssueFieldPatch(summary = "새 제목"), existingVersion) } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns updatedResponse
                 every { eventPublisher.publish(any()) } returns Unit
                 // issueTypeRepository 는 relaxed=true mock — findById 미호출 시 자동으로 null 반환.
@@ -394,14 +397,16 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
                     com.bts.issue.type.domain.IssueType.BUG.copy(
                         id = newTypeId,
                     )
-                every { repo.updateFields(issueKey, null, newTypeId, existingVersion) } returns 1
+                every { repo.updateFields(issueKey, IssueFieldPatch(typeId = newTypeId), existingVersion) } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns updatedResponse
                 every { eventPublisher.publish(any()) } returns Unit
             }
 
             it("updateFields 가 호출된다 (no-op 이 아님)") {
                 sut.updateIssue(actor, issueKey, request)
-                verify(exactly = 1) { repo.updateFields(issueKey, null, newTypeId, existingVersion) }
+                verify(exactly = 1) {
+                    repo.updateFields(issueKey, IssueFieldPatch(typeId = newTypeId), existingVersion)
+                }
             }
 
             it("IssueUpdated(fields={typeId}) 이벤트가 발행된다") {

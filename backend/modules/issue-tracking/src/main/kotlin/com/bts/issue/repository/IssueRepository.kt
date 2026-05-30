@@ -31,6 +31,21 @@ import java.util.UUID
 private const val SQL_ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(hashtext(?))"
 
 /**
+ * 이슈 필드 부분 업데이트 요청. [IssueRepository.updateFields] 파라미터 그룹화용.
+ *
+ * null 필드는 변경하지 않는다. 빈 문자열("")은 DB NULL 로 클리어.
+ */
+data class IssueFieldPatch(
+    val summary: String? = null,
+    val typeId: IssueTypeId? = null,
+    val description: String? = null,
+    val priority: Int? = null,
+    val labels: List<String>? = null,
+    val environment: String? = null,
+    val impact: Int? = null,
+)
+
+/**
  * 이슈 Repository.
  *
  * jOOQ DSLContext 를 통해 issues / projects 테이블에 접근한다.
@@ -44,6 +59,7 @@ private const val SQL_ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(hashtext(?))
  * - [list] — 프로젝트별 활성 이슈 페이지 조회.
  * - [incrementKeySequence] — pg_advisory_xact_lock 으로 동시성 제어 후 key_sequence +1 RETURNING.
  */
+
 @Repository
 @Suppress("TooManyFunctions")
 class IssueRepository(
@@ -116,28 +132,23 @@ class IssueRepository(
      * @return 업데이트된 행 수 (성공=1, 낙관락 충돌=0).
      */
     @Transactional
+    @Suppress("CyclomaticComplexMethod") // jOOQ 선택적 SET 패턴 — null 필드 skip, 조건 분기가 불가피
     fun updateFields(
         key: IssueKey,
-        summary: String?,
-        typeId: IssueTypeId?,
+        patch: IssueFieldPatch,
         expectedVersion: Long,
-        description: String? = null,
-        priority: Int? = null,
-        labels: List<String>? = null,
-        environment: String? = null,
-        impact: Int? = null,
     ): Int {
-        log.debug("updateFields key={} typeId={} expectedVersion={}", key.value, typeId?.value, expectedVersion)
+        log.debug("updateFields key={} typeId={} expectedVersion={}", key.value, patch.typeId?.value, expectedVersion)
         return dsl.update(ISSUES)
             .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
             .set(ISSUES.VERSION, expectedVersion + 1)
-            .apply { if (summary != null) set(ISSUES.SUMMARY, summary) }
-            .apply { if (typeId != null) set(ISSUES.TYPE_ID, typeId.value) }
-            .apply { if (description != null) set(ISSUES.DESCRIPTION, description.ifEmpty { null }) }
-            .apply { if (priority != null) set(ISSUES.PRIORITY, priority.toShort()) }
-            .apply { if (labels != null) set(ISSUES.LABELS, labels.toDbArray()) }
-            .apply { if (environment != null) set(ISSUES.ENVIRONMENT, environment.ifEmpty { null }) }
-            .apply { if (impact != null) set(ISSUES.IMPACT, impact.toShort()) }
+            .apply { if (patch.summary != null) set(ISSUES.SUMMARY, patch.summary) }
+            .apply { if (patch.typeId != null) set(ISSUES.TYPE_ID, patch.typeId.value) }
+            .apply { if (patch.description != null) set(ISSUES.DESCRIPTION, patch.description.ifEmpty { null }) }
+            .apply { if (patch.priority != null) set(ISSUES.PRIORITY, patch.priority.toShort()) }
+            .apply { if (patch.labels != null) set(ISSUES.LABELS, patch.labels.toDbArray()) }
+            .apply { if (patch.environment != null) set(ISSUES.ENVIRONMENT, patch.environment.ifEmpty { null }) }
+            .apply { if (patch.impact != null) set(ISSUES.IMPACT, patch.impact.toShort()) }
             .where(ISSUES.KEY.eq(key.value))
             .and(ISSUES.VERSION.eq(expectedVersion))
             .and(ISSUES.DELETED_AT.isNull)
@@ -297,15 +308,18 @@ class IssueRepository(
                 IssueResponse.from(
                     issue = issueRecord.toIssue(),
                     projectKey = key.projectPrefix,
-                    typeId =
-                        record.get("type_id", Long::class.java)
-                            ?: error("issue_types.id must not be null in join result"),
-                    typeKey =
-                        record.get("type_key", String::class.java)
-                            ?: error("issue_types.key must not be null in join result"),
-                    typeName =
-                        record.get("type_name", String::class.java)
-                            ?: error("issue_types.name must not be null in join result"),
+                    typeInfo =
+                        IssueResponse.IssueTypeInfo(
+                            id =
+                                record.get("type_id", Long::class.java)
+                                    ?: error("issue_types.id must not be null in join result"),
+                            key =
+                                record.get("type_key", String::class.java)
+                                    ?: error("issue_types.key must not be null in join result"),
+                            name =
+                                record.get("type_name", String::class.java)
+                                    ?: error("issue_types.name must not be null in join result"),
+                        ),
                 )
             }
 
@@ -357,15 +371,18 @@ class IssueRepository(
                     IssueResponse.from(
                         issue = record.into(ISSUES).toIssue(),
                         projectKey = projectKey,
-                        typeId =
-                            record.get("type_id", Long::class.java)
-                                ?: error("issue_types.id must not be null in join result"),
-                        typeKey =
-                            record.get("type_key", String::class.java)
-                                ?: error("issue_types.key must not be null in join result"),
-                        typeName =
-                            record.get("type_name", String::class.java)
-                                ?: error("issue_types.name must not be null in join result"),
+                        typeInfo =
+                            IssueResponse.IssueTypeInfo(
+                                id =
+                                    record.get("type_id", Long::class.java)
+                                        ?: error("issue_types.id must not be null in join result"),
+                                key =
+                                    record.get("type_key", String::class.java)
+                                        ?: error("issue_types.key must not be null in join result"),
+                                name =
+                                    record.get("type_name", String::class.java)
+                                        ?: error("issue_types.name must not be null in join result"),
+                            ),
                     )
                 }
 

@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.flywaydb.core.Flyway
+import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.not
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -53,7 +55,6 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueControllerIntegrationTest {
-
     @Autowired
     lateinit var webApplicationContext: WebApplicationContext
 
@@ -128,10 +129,11 @@ class IssueControllerIntegrationTest {
         val key = insertIssue("XSS 차단 검증 이슈")
 
         val markdownInput = "## 재현\n<script>alert(1)</script>"
-        val patchBody = mapOf(
-            "description" to markdownInput,
-            "expectedVersion" to 1L,
-        )
+        val patchBody =
+            mapOf(
+                "description" to markdownInput,
+                "expectedVersion" to 1L,
+            )
 
         mockMvc.perform(
             patch("/api/v1/issues/$key")
@@ -146,11 +148,11 @@ class IssueControllerIntegrationTest {
             // 원본 Markdown 보존
             .andExpect(jsonPath("$.data.description").value(markdownInput))
             // <h2> 태그 존재
-            .andExpect(jsonPath("$.data.descriptionHtml").value(org.hamcrest.Matchers.containsString("<h2>")))
+            .andExpect(jsonPath("$.data.descriptionHtml").value(containsString("<h2>")))
             // <script 태그 부재 — XSS 차단
-            .andExpect(jsonPath("$.data.descriptionHtml").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("<script"))))
+            .andExpect(jsonPath("$.data.descriptionHtml").value(not(containsString("<script"))))
             // alert( 코드 부재
-            .andExpect(jsonPath("$.data.descriptionHtml").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("alert("))))
+            .andExpect(jsonPath("$.data.descriptionHtml").value(not(containsString("alert("))))
     }
 
     // ── (c) merge-patch 개별 필드 — 부재=무변경, ""=클리어, []=전체제거 ─────────
@@ -162,10 +164,11 @@ class IssueControllerIntegrationTest {
     fun `c1 PATCH priority 단독 변경 — 나머지 필드 무변경`() {
         val key = insertIssue("priority PATCH 검증 이슈")
 
-        val patchBody = mapOf(
-            "priority" to 1,
-            "expectedVersion" to 1L,
-        )
+        val patchBody =
+            mapOf(
+                "priority" to 1,
+                "expectedVersion" to 1L,
+            )
 
         mockMvc.perform(
             patch("/api/v1/issues/$key")
@@ -189,10 +192,11 @@ class IssueControllerIntegrationTest {
         val key = insertIssue("labels PATCH 검증 이슈")
 
         // labels 설정
-        val setBody = mapOf(
-            "labels" to listOf("bug", "urgent"),
-            "expectedVersion" to 1L,
-        )
+        val setBody =
+            mapOf(
+                "labels" to listOf("bug", "urgent"),
+                "expectedVersion" to 1L,
+            )
         mockMvc.perform(
             patch("/api/v1/issues/$key")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -202,10 +206,11 @@ class IssueControllerIntegrationTest {
             .andExpect(jsonPath("$.data.labels.length()").value(2))
 
         // [] 로 전체 제거
-        val clearBody = mapOf(
-            "labels" to emptyList<String>(),
-            "expectedVersion" to 2L,
-        )
+        val clearBody =
+            mapOf(
+                "labels" to emptyList<String>(),
+                "expectedVersion" to 2L,
+            )
         mockMvc.perform(
             patch("/api/v1/issues/$key")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -223,10 +228,11 @@ class IssueControllerIntegrationTest {
         val key = insertIssue("environment PATCH 검증 이슈")
 
         // environment 설정
-        val setBody = mapOf(
-            "environment" to "macOS 14 + Chrome 124",
-            "expectedVersion" to 1L,
-        )
+        val setBody =
+            mapOf(
+                "environment" to "macOS 14 + Chrome 124",
+                "expectedVersion" to 1L,
+            )
         mockMvc.perform(
             patch("/api/v1/issues/$key")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -236,10 +242,11 @@ class IssueControllerIntegrationTest {
             .andExpect(jsonPath("$.data.environment").value("macOS 14 + Chrome 124"))
 
         // "" 로 클리어
-        val clearBody = mapOf(
-            "environment" to "",
-            "expectedVersion" to 2L,
-        )
+        val clearBody =
+            mapOf(
+                "environment" to "",
+                "expectedVersion" to 2L,
+            )
         mockMvc.perform(
             patch("/api/v1/issues/$key")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -257,10 +264,11 @@ class IssueControllerIntegrationTest {
         val key = insertIssue("description 클리어 검증 이슈")
 
         // description 설정
-        val setBody = mapOf(
-            "description" to "# 초기 설명",
-            "expectedVersion" to 1L,
-        )
+        val setBody =
+            mapOf(
+                "description" to "# 초기 설명",
+                "expectedVersion" to 1L,
+            )
         mockMvc.perform(
             patch("/api/v1/issues/$key")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -270,10 +278,11 @@ class IssueControllerIntegrationTest {
             .andExpect(jsonPath("$.data.description").value("# 초기 설명"))
 
         // "" 로 클리어
-        val clearBody = mapOf(
-            "description" to "",
-            "expectedVersion" to 2L,
-        )
+        val clearBody =
+            mapOf(
+                "description" to "",
+                "expectedVersion" to 2L,
+            )
         mockMvc.perform(
             patch("/api/v1/issues/$key")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -290,10 +299,11 @@ class IssueControllerIntegrationTest {
     fun `c5 PATCH impact 단독 변경 — priorityName 무변경`() {
         val key = insertIssue("impact PATCH 검증 이슈")
 
-        val patchBody = mapOf(
-            "impact" to 2,
-            "expectedVersion" to 1L,
-        )
+        val patchBody =
+            mapOf(
+                "impact" to 2,
+                "expectedVersion" to 1L,
+            )
         mockMvc.perform(
             patch("/api/v1/issues/$key")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -316,10 +326,11 @@ class IssueControllerIntegrationTest {
     fun `d1 PATCH priority 6 은 400 반환`() {
         val key = insertIssue("priority 상한 초과 검증 이슈")
 
-        val patchBody = mapOf(
-            "priority" to 6,
-            "expectedVersion" to 1L,
-        )
+        val patchBody =
+            mapOf(
+                "priority" to 6,
+                "expectedVersion" to 1L,
+            )
         mockMvc.perform(
             patch("/api/v1/issues/$key")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -336,10 +347,11 @@ class IssueControllerIntegrationTest {
     fun `d2 PATCH priority 0 은 400 반환`() {
         val key = insertIssue("priority 하한 미달 검증 이슈")
 
-        val patchBody = mapOf(
-            "priority" to 0,
-            "expectedVersion" to 1L,
-        )
+        val patchBody =
+            mapOf(
+                "priority" to 0,
+                "expectedVersion" to 1L,
+            )
         mockMvc.perform(
             patch("/api/v1/issues/$key")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -356,10 +368,11 @@ class IssueControllerIntegrationTest {
     fun `d3 PATCH impact 0 은 400 반환`() {
         val key = insertIssue("impact 하한 미달 검증 이슈")
 
-        val patchBody = mapOf(
-            "impact" to 0,
-            "expectedVersion" to 1L,
-        )
+        val patchBody =
+            mapOf(
+                "impact" to 0,
+                "expectedVersion" to 1L,
+            )
         mockMvc.perform(
             patch("/api/v1/issues/$key")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -376,10 +389,11 @@ class IssueControllerIntegrationTest {
     fun `d4 PATCH impact 4 는 400 반환`() {
         val key = insertIssue("impact 상한 초과 검증 이슈")
 
-        val patchBody = mapOf(
-            "impact" to 4,
-            "expectedVersion" to 1L,
-        )
+        val patchBody =
+            mapOf(
+                "impact" to 4,
+                "expectedVersion" to 1L,
+            )
         mockMvc.perform(
             patch("/api/v1/issues/$key")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -401,10 +415,11 @@ class IssueControllerIntegrationTest {
     fun `e PATCH expectedVersion 불일치 시 409 VERSION_CONFLICT`() {
         val key = insertIssue("OCC 충돌 검증 이슈")
 
-        val patchBody = mapOf(
-            "priority" to 2,
-            "expectedVersion" to 99L,
-        )
+        val patchBody =
+            mapOf(
+                "priority" to 2,
+                "expectedVersion" to 99L,
+            )
         mockMvc.perform(
             patch("/api/v1/issues/$key")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -427,11 +442,12 @@ class IssueControllerIntegrationTest {
     fun `f GET 응답에 priorityName 및 impactName 노출`() {
         val key = insertIssue("priorityName impactName 응답 검증 이슈")
 
-        val patchBody = mapOf(
-            "priority" to 1,
-            "impact" to 3,
-            "expectedVersion" to 1L,
-        )
+        val patchBody =
+            mapOf(
+                "priority" to 1,
+                "impact" to 3,
+                "expectedVersion" to 1L,
+            )
         mockMvc.perform(
             patch("/api/v1/issues/$key")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -501,35 +517,38 @@ class IssueControllerIntegrationTest {
         conn().use { conn ->
             conn.autoCommit = false
 
-            val seq = conn.prepareStatement(
-                "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
-            ).use { stmt ->
-                stmt.setString(1, PROJECT_KEY)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getLong(1)
+            val seq =
+                conn.prepareStatement(
+                    "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
+                ).use { stmt ->
+                    stmt.setString(1, PROJECT_KEY)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getLong(1)
+                    }
                 }
-            }
             val issueKey = "$PROJECT_KEY-$seq"
 
-            val projectId = conn.prepareStatement(
-                "SELECT id FROM projects WHERE key = ?",
-            ).use { stmt ->
-                stmt.setString(1, PROJECT_KEY)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getObject(1) as UUID
+            val projectId =
+                conn.prepareStatement(
+                    "SELECT id FROM projects WHERE key = ?",
+                ).use { stmt ->
+                    stmt.setString(1, PROJECT_KEY)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as UUID
+                    }
                 }
-            }
 
-            val taskTypeId = conn.prepareStatement(
-                "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1",
-            ).use { stmt ->
-                stmt.executeQuery().use { rs ->
-                    check(rs.next()) { "task 타입 없음 — V003 마이그레이션 확인 필요." }
-                    rs.getLong(1)
+            val taskTypeId =
+                conn.prepareStatement(
+                    "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        check(rs.next()) { "task 타입 없음 — V003 마이그레이션 확인 필요." }
+                        rs.getLong(1)
+                    }
                 }
-            }
 
             conn.prepareStatement(
                 "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version, type_id) " +
@@ -549,9 +568,10 @@ class IssueControllerIntegrationTest {
         }
     }
 
-    private fun conn() = DriverManager.getConnection(
-        TestConfig.postgres.jdbcUrl,
-        TestConfig.postgres.username,
-        TestConfig.postgres.password,
-    )
+    private fun conn() =
+        DriverManager.getConnection(
+            TestConfig.postgres.jdbcUrl,
+            TestConfig.postgres.username,
+            TestConfig.postgres.password,
+        )
 }

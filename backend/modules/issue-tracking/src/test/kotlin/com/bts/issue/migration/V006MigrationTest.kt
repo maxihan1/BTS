@@ -110,8 +110,7 @@ class V006MigrationTest {
                 .migrate()
         }
 
-        private fun conn() =
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
+        private fun conn() = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
     }
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
@@ -136,6 +135,7 @@ class V006MigrationTest {
             }
         }
 
+    @Suppress("NestedBlockDepth") // JDBC use {} 3중 중첩 — Connection/PreparedStatement/ResultSet 생명주기 관리 패턴
     private fun columnDataType(
         tableName: String,
         columnName: String,
@@ -257,6 +257,7 @@ class V006MigrationTest {
     }
 
     @Test
+    @Suppress("NestedBlockDepth") // JDBC use {} 3중 중첩 — Connection/PreparedStatement/ResultSet 생명주기 관리 패턴
     fun `V006 ix_issues_labels_gin 인덱스 타입이 gin`() {
         val indexType =
             conn().use { c ->
@@ -277,6 +278,7 @@ class V006MigrationTest {
     // ── (d) CHECK 제약 검증 ───────────────────────────────────────────────────
 
     @Test
+    @Suppress("SwallowedException") // DB CHECK constraint 위반 확인 — 예외 발생 여부 자체가 검증 대상
     fun `V006 priority 6 입력 시 CHECK 위반`() {
         conn().use { c ->
             c.prepareStatement(
@@ -327,6 +329,7 @@ class V006MigrationTest {
     }
 
     @Test
+    @Suppress("SwallowedException") // DB CHECK constraint 위반 확인 — 예외 발생 여부 자체가 검증 대상
     fun `V006 impact 4 입력 시 CHECK 위반`() {
         conn().use { c ->
             c.prepareStatement(

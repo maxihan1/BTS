@@ -23,7 +23,6 @@ import org.junit.jupiter.api.Test
  * - impact_fromName_unknown — 미정의 이름을 fromName 에 넘기면 IllegalArgumentException 을 던진다.
  */
 class IssuePriorityTest {
-
     // ─── IssuePriority: number → name ───────────────────────────────────────
 
     @Test
