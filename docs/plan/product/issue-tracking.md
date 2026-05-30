@@ -77,13 +77,13 @@
 
 **우선순위**. 필수 | **선행**. §2.1.1 | **Plan slug**. `issue/body`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — Markdown XSS sanitization (책임. backend-engineer + security-engineer)
-- [ ] D3. 데이터 모델 — `issues.body` (TEXT) + priority/environment/impact (책임. db-engineer)
-- [ ] D4. 백엔드 — flexmark 렌더링 + sanitize (책임. backend-engineer + security-engineer)
-- [ ] D5. 백엔드 테스트 — XSS 페이로드 10종 차단 (책임. backend-engineer + security-engineer)
-- [ ] D6. 프론트 UI — TipTap Atlas Editor (`issue-body` variant). 50블록 PoC 함께 검증 (§A.3 #7) (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — Issue Aggregate에 description/priority/labels/environment/impact 5필드 + 라벨 불변식(중복/공백/50자/20개) + priority/impact 이름매핑 (PR #43)
+- [x] D2. 명세 — Markdown XSS sanitization (CSRF ADR "서버측 sanitization" 준수, merge-patch 3-state) (PR #43)
+- [x] D3. 데이터 모델 — `issues.description`(TEXT, Markdown) + priority SMALLINT(1~5) + labels TEXT[]+GIN + environment TEXT + impact SMALLINT(1~3) (V006, PR #43)
+- [x] D4. 백엔드 — flexmark 렌더링 + OWASP Java HTML Sanitizer + PATCH merge-patch 확장 (PR #43)
+- [x] D5. 백엔드 테스트 — XSS 17벡터 차단 + merge-patch/backfill/OCC 통합 (MockK + Testcontainers, PR #43)
+- [ ] D6. 프론트 UI — TipTap Atlas Editor (`issue-body` variant). 50블록 함께 검증 (§A.3 #7) (책임. designer → frontend-engineer) ← PR 2/3 후속
+- [ ] D7. E2E (책임. qa-engineer) ← PR 3/3 후속
 
 #### §2.1.5 FR-IS-07 — Resolution 필드 (Fixed/Won't Fix/Duplicate)
 
