@@ -108,10 +108,10 @@ class IssueRepository(
      * @param summary 새 이슈 제목. null 이면 변경하지 않는다.
      * @param typeId 새 이슈 유형 식별자 VO. null 이면 변경하지 않는다.
      * @param expectedVersion 현재 버전. DB 버전과 일치해야 업데이트가 실행된다.
-     * @param description Markdown 설명. null 이면 변경하지 않는다.
+     * @param description Markdown 설명. null 이면 변경하지 않는다. 빈 문자열("")은 DB NULL 로 클리어한다.
      * @param priority 우선순위 1..5. null 이면 변경하지 않는다.
      * @param labels 라벨 목록. null 이면 변경하지 않는다.
-     * @param environment 재현 환경 설명. null 이면 변경하지 않는다.
+     * @param environment 재현 환경 설명. null 이면 변경하지 않는다. 빈 문자열("")은 DB NULL 로 클리어한다.
      * @param impact 영향도 1..3. null 이면 변경하지 않는다.
      * @return 업데이트된 행 수 (성공=1, 낙관락 충돌=0).
      */
@@ -133,10 +133,10 @@ class IssueRepository(
             .set(ISSUES.VERSION, expectedVersion + 1)
             .apply { if (summary != null) set(ISSUES.SUMMARY, summary) }
             .apply { if (typeId != null) set(ISSUES.TYPE_ID, typeId.value) }
-            .apply { if (description != null) set(ISSUES.DESCRIPTION, description) }
+            .apply { if (description != null) set(ISSUES.DESCRIPTION, description.ifEmpty { null }) }
             .apply { if (priority != null) set(ISSUES.PRIORITY, priority.toShort()) }
             .apply { if (labels != null) set(ISSUES.LABELS, labels.toDbArray()) }
-            .apply { if (environment != null) set(ISSUES.ENVIRONMENT, environment) }
+            .apply { if (environment != null) set(ISSUES.ENVIRONMENT, environment.ifEmpty { null }) }
             .apply { if (impact != null) set(ISSUES.IMPACT, impact.toShort()) }
             .where(ISSUES.KEY.eq(key.value))
             .and(ISSUES.VERSION.eq(expectedVersion))
