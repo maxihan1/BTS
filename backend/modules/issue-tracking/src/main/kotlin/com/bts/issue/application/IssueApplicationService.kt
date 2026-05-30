@@ -225,13 +225,7 @@ class IssueApplicationService(
             issueTypeRepository.findById(request.typeId) ?: throw IssueTypeNotFoundException(request.typeId)
         }
 
-        // priority/impact non-null 이면 범위 검증. IssuePriority/IssueImpact.fromNumber 이 범위 밖 → IllegalArgumentException.
-        if (request.priority != null) {
-            IssuePriority.fromNumber(request.priority)
-        }
-        if (request.impact != null) {
-            IssueImpact.fromNumber(request.impact)
-        }
+        validatePriorityImpactRanges(request.priority, request.impact)
 
         val changedFields = buildChangedFields(existing, request)
         if (changedFields.isEmpty()) {
@@ -565,6 +559,22 @@ class IssueApplicationService(
                 throw e
             }
         return result ?: throw IssueWorkflowNotConfiguredException(key.projectPrefix, null)
+    }
+
+    /**
+     * priority/impact 범위를 검증한다.
+     *
+     * non-null 인 값에 대해 [IssuePriority.fromNumber] / [IssueImpact.fromNumber] 를 호출한다.
+     * 범위 밖이면 해당 함수 내부에서 [IllegalArgumentException] 을 던진다.
+     * null 이면 무변경이므로 검증 대상 아님.
+     *
+     * @param priority 검증할 우선순위 값. null 이면 스킵.
+     * @param impact 검증할 영향도 값. null 이면 스킵.
+     * @throws IllegalArgumentException priority 가 1..5 밖이거나 impact 가 1..3 밖일 때.
+     */
+    private fun validatePriorityImpactRanges(priority: Int?, impact: Int?) {
+        if (priority != null) IssuePriority.fromNumber(priority)
+        if (impact != null) IssueImpact.fromNumber(impact)
     }
 
     /**
