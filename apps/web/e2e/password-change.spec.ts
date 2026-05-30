@@ -32,7 +32,7 @@ test.describe('FR-AU-05 비밀번호 변경 흐름 (/settings/password)', () => 
   test('S1 happy — 정상 변경 시 성공 메시지와 세션 로그아웃 안내 노출', async ({ page }) => {
     // When. 3 필드 입력
     await page.getByLabel('현재 비밀번호').fill('CurrentPass123!')
-    await page.getByLabel('새 비밀번호').fill('NewPass4567!@')
+    await page.getByLabel('새 비밀번호', { exact: true }).fill('NewPass4567!@')
     await page.getByLabel('새 비밀번호 확인').fill('NewPass4567!@')
 
     // When. 제출
@@ -44,7 +44,7 @@ test.describe('FR-AU-05 비밀번호 변경 흐름 (/settings/password)', () => 
 
     // Then. 3 필드 초기화 (value 빈 문자열)
     await expect(page.getByLabel('현재 비밀번호')).toHaveValue('')
-    await expect(page.getByLabel('새 비밀번호')).toHaveValue('')
+    await expect(page.getByLabel('새 비밀번호', { exact: true })).toHaveValue('')
     await expect(page.getByLabel('새 비밀번호 확인')).toHaveValue('')
   })
 
@@ -61,7 +61,7 @@ test.describe('FR-AU-05 비밀번호 변경 흐름 (/settings/password)', () => 
   test('S2 현재 비밀번호 불일치 — 에러 메시지 노출, 폼 유지', async ({ page }) => {
     // When. 현재 비번을 틀리게 입력
     await page.getByLabel('현재 비밀번호').fill('WrongPass999!')
-    await page.getByLabel('새 비밀번호').fill('NewPass4567!@')
+    await page.getByLabel('새 비밀번호', { exact: true }).fill('NewPass4567!@')
     await page.getByLabel('새 비밀번호 확인').fill('NewPass4567!@')
 
     await page.getByRole('button', { name: '비밀번호 변경', exact: true }).click()
@@ -85,7 +85,7 @@ test.describe('FR-AU-05 비밀번호 변경 흐름 (/settings/password)', () => 
   test('S3/S4 정책 위반 — 약한 새 비밀번호 시 POLICY_VIOLATION 메시지 노출', async ({ page }) => {
     // When. 정책 위반 비밀번호 입력 ("short" = 5자, 소문자만 → MIN_LENGTH + COMPLEXITY 위반)
     await page.getByLabel('현재 비밀번호').fill('CurrentPass123!')
-    await page.getByLabel('새 비밀번호').fill('short')
+    await page.getByLabel('새 비밀번호', { exact: true }).fill('short')
     await page.getByLabel('새 비밀번호 확인').fill('short')
 
     await page.getByRole('button', { name: '비밀번호 변경', exact: true }).click()
@@ -118,7 +118,7 @@ test.describe('FR-AU-05 비밀번호 변경 흐름 (/settings/password)', () => 
 
     // When. 확인 비번을 다르게 입력
     await page.getByLabel('현재 비밀번호').fill('CurrentPass123!')
-    await page.getByLabel('새 비밀번호').fill('NewPass4567!@')
+    await page.getByLabel('새 비밀번호', { exact: true }).fill('NewPass4567!@')
     await page.getByLabel('새 비밀번호 확인').fill('Different123!')
 
     await page.getByRole('button', { name: '비밀번호 변경', exact: true }).click()
