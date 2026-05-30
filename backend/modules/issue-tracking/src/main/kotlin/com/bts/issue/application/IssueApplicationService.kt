@@ -184,10 +184,12 @@ class IssueApplicationService(
      * 3. typeId non-null 이면 활성 타입 존재 검증 — 없으면 IssueTypeNotFoundException
      *    (CREATE 의 null=task fallback 과 달리 PATCH 의 null=변경없음 시맨틱)
      * 4. priority/impact non-null 이면 범위 검증 — 위반 시 IllegalArgumentException
-     * 5. changedFields 계산 — empty 이면 no-op 반환
-     * 6. [IssueRepository.updateFields] 호출 — 0 row 반환 시 IssueVersionConflictException
-     * 7. 변경 후 이슈 재조회
-     * 8. IssueUpdated 이벤트 발행 (변경 필드 목록 포함)
+     * 5. labels non-null 이면 [Issue.normalizeLabels] 로 도메인 검증 + 정규화 —
+     *    공백-only/50자 초과/21개 초과 시 IllegalArgumentException
+     * 6. changedFields 계산 — empty 이면 no-op 반환
+     * 7. [IssueRepository.updateFields] 호출 — 0 row 반환 시 IssueVersionConflictException
+     * 8. 변경 후 이슈 재조회
+     * 9. IssueUpdated 이벤트 발행 (변경 필드 목록 포함)
      *
      * ### merge-patch 3-상태 sentinel 규칙 (B1)
      * - description/environment: null=무변경, ""=DB NULL 클리어, 값=설정.
@@ -219,7 +221,11 @@ class IssueApplicationService(
 
         validatePriorityImpactRanges(request.priority, request.impact)
 
-        val changedFields = buildChangedFields(existing, request)
+        // 라벨 도메인 검증 + 정규화 — null=무변경(스킵), non-null=도메인 권위 검증 필수.
+        // BLOCKER 1: PATCH 경로에서 도메인 validateAndNormalizeLabels 를 우회하는 경로를 차단한다.
+        val normalizedLabels: List<String>? = request.labels?.let { Issue.normalizeLabels(it) }
+
+        val changedFields = buildChangedFields(existing, request, normalizedLabels)
         if (changedFields.isEmpty()) {
             log.info("issue_update_noop key={} actor={}", key.value, actor.value)
             return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withRenderedHtml()
@@ -233,7 +239,7 @@ class IssueApplicationService(
                         typeId = request.typeId,
                         description = request.description,
                         priority = request.priority,
-                        labels = request.labels,
+                        labels = normalizedLabels,
                         environment = request.environment,
                         impact = request.impact,
                     ),
@@ -581,14 +587,17 @@ class IssueApplicationService(
      * ### 3-상태 sentinel 규칙 (B1)
      * - summary/typeId: null=무변경, 값=변경(기존값과 다를 때만 changedFields 포함).
      * - description/environment: null=무변경, ""=클리어(기존 non-null 이면 변경), 값=변경(기존값과 다를 때).
-     * - labels: null=무변경, []=전체 제거(기존 비어있지 않으면 변경), 값=교체(기존값과 다를 때).
+     * - labels: null=무변경, []=전체 제거(기존 비어있지 않으면 변경), 값=교체(기존과 다를 때).
+     *   [normalizedLabels] 는 [Issue.normalizeLabels] 를 거친 정규화 값이어야 한다.
      * - priority/impact: null=무변경, 값=변경(기존값과 다를 때).
      *
+     * @param normalizedLabels labels 를 [Issue.normalizeLabels] 로 정규화한 결과. null=무변경.
      * @return 변경된 필드 이름 집합. 비어있으면 no-op.
      */
     private fun buildChangedFields(
         existing: Issue,
         request: UpdateIssueRequest,
+        normalizedLabels: List<String>?,
     ): Set<String> {
         val fields = mutableSetOf<String>()
         if (request.summary != null && existing.summary != request.summary) fields.add("summary")
@@ -600,8 +609,9 @@ class IssueApplicationService(
         // environment: null=무변경, ""=클리어(기존 non-null 이면 변경), 값=설정(기존과 다를 때)
         if (isTextFieldChanged(existing.environment, request.environment)) fields.add("environment")
 
-        // labels: null=무변경, []=전체 제거(기존 비어있지 않으면 변경), 값=교체(기존과 다를 때)
-        if (request.labels != null && existing.labels != request.labels) fields.add("labels")
+        // labels: null=무변경, []=전체 제거(기존 비어있지 않으면 변경), 값=교체(기존 정규화값과 다를 때)
+        // normalizedLabels 는 도메인 정규화(dedup/trim) 후의 최종값과 비교한다.
+        if (normalizedLabels != null && existing.labels != normalizedLabels) fields.add("labels")
 
         // priority: null=무변경, 값=변경(기존과 다를 때)
         if (request.priority != null && existing.priority != request.priority) fields.add("priority")

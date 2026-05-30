@@ -55,6 +55,7 @@ data class UpdateIssueRequest(
     @field:Min(value = 1, message = "priority는 1 이상이어야 합니다.")
     @field:Max(value = 5, message = "priority는 5 이하여야 합니다.")
     val priority: Int? = null,
+    @field:Size(max = 20, message = "라벨은 최대 20개까지 허용합니다.")
     val labels: List<
         @Size(max = 50, message = "라벨 하나는 50자 이하여야 합니다.")
         String,

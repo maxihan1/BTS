@@ -80,6 +80,24 @@ data class Issue(
 ) {
     companion object {
         /**
+         * 라벨 목록을 정규화하고 도메인 불변식을 검증한다.
+         *
+         * IssueApplicationService 의 PATCH 경로에서 repository 에 전달하기 전에 호출하여,
+         * 라벨 도메인 검증이 생성(create) 경로뿐 아니라 수정(update) 경로에도 적용되도록 보장한다.
+         *
+         * 규칙.
+         * - 빈 문자열("")은 자동 제거.
+         * - 공백-only 라벨은 [IllegalArgumentException].
+         * - [LABEL_MAX_LENGTH]자 초과 라벨은 [IllegalArgumentException].
+         * - 대소문자 구분 exact match 기준 중복 제거 후 [LABEL_MAX_COUNT] 초과 시 [IllegalArgumentException].
+         *
+         * @param raw 정규화 전 라벨 목록.
+         * @return 정규화·검증된 라벨 목록 (불변).
+         * @throws IllegalArgumentException 불변식 위반 시.
+         */
+        fun normalizeLabels(raw: List<String>): List<String> = validateAndNormalizeLabels(raw)
+
+        /**
          * 새 이슈를 생성한다.
          *
          * [summary] invariant 위반 시 [IllegalArgumentException] 을 던진다.

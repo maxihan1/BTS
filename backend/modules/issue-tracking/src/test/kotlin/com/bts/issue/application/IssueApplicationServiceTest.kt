@@ -820,6 +820,242 @@ class IssueApplicationServiceTest : DescribeSpec({
             }
         }
 
+        // ── labels 도메인 검증 (BLOCKER 1 회귀 가드) ─────────────────────────────
+
+        context("labels — 21개(초과) PATCH → IllegalArgumentException (도메인 검증 우회 불가)") {
+            val tooManyLabels = (1..21).map { "label-$it" }
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    labels = tooManyLabels,
+                )
+            val existingIssue = makeIssue(labels = emptyList())
+
+            beforeEach {
+                stubPermissionGranted()
+                every { repo.findByKey(issueKey) } returns existingIssue
+            }
+
+            it("21개 라벨 PATCH 는 도메인 검증에서 IllegalArgumentException 이 발생한다") {
+                // repo 는 non-relaxed mock — updateFields stub 없이 호출 시 MockKException.
+                // 예외가 IllegalArgumentException 이면 updateFields 미도달 증명 (domain 검증이 먼저 실행).
+                shouldThrow<IllegalArgumentException> {
+                    sut.updateIssue(actor, issueKey, request)
+                }
+            }
+        }
+
+        context("labels — 중복 라벨 PATCH → 정규화되어 dedup 후 repository 전달") {
+            val rawLabels = listOf("bug", "backend", "bug") // "bug" 중복
+            val deduped = listOf("bug", "backend")
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    labels = rawLabels,
+                )
+            val existingIssue = makeIssue(labels = emptyList())
+            val updatedResponse = makeResponse(labels = deduped)
+
+            beforeEach {
+                stubPermissionGranted()
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every {
+                    repo.updateFields(
+                        key = issueKey,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = null,
+                                priority = null,
+                                labels = deduped,
+                                environment = null,
+                                impact = null,
+                            ),
+                        expectedVersion = existingVersion,
+                    )
+                } returns 1
+                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+                every { eventPublisher.publish(any()) } returns Unit
+            }
+
+            it("updateFields 에 dedup 된 labels 로 호출된다 (중복 제거)") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 1) {
+                    repo.updateFields(
+                        key = issueKey,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = null,
+                                priority = null,
+                                labels = deduped,
+                                environment = null,
+                                impact = null,
+                            ),
+                        expectedVersion = existingVersion,
+                    )
+                }
+            }
+        }
+
+        context("labels — 공백-only 라벨 PATCH → IllegalArgumentException (도메인 검증)") {
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    // "   " 는 공백-only 라벨 — 도메인 검증에서 IllegalArgumentException
+                    labels = listOf("bug", "   "),
+                )
+            val existingIssue = makeIssue(labels = emptyList())
+
+            beforeEach {
+                stubPermissionGranted()
+                every { repo.findByKey(issueKey) } returns existingIssue
+            }
+
+            it("공백-only 라벨은 IllegalArgumentException 이 발생한다") {
+                shouldThrow<IllegalArgumentException> {
+                    sut.updateIssue(actor, issueKey, request)
+                }
+            }
+        }
+
+        context("labels — 51자 라벨 PATCH → IllegalArgumentException (도메인 검증)") {
+            val longLabel = "a".repeat(51)
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    labels = listOf(longLabel),
+                )
+            val existingIssue = makeIssue(labels = emptyList())
+
+            beforeEach {
+                stubPermissionGranted()
+                every { repo.findByKey(issueKey) } returns existingIssue
+            }
+
+            it("51자 라벨은 IllegalArgumentException 이 발생한다") {
+                shouldThrow<IllegalArgumentException> {
+                    sut.updateIssue(actor, issueKey, request)
+                }
+            }
+        }
+
+        context("labels — 빈 문자열 포함 PATCH → 자동 제거 후 정상 저장") {
+            val rawLabels = listOf("bug", "", "backend") // "" 자동 제거
+            val filtered = listOf("bug", "backend")
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    labels = rawLabels,
+                )
+            val existingIssue = makeIssue(labels = emptyList())
+            val updatedResponse = makeResponse(labels = filtered)
+
+            beforeEach {
+                stubPermissionGranted()
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every {
+                    repo.updateFields(
+                        key = issueKey,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = null,
+                                priority = null,
+                                labels = filtered,
+                                environment = null,
+                                impact = null,
+                            ),
+                        expectedVersion = existingVersion,
+                    )
+                } returns 1
+                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+                every { eventPublisher.publish(any()) } returns Unit
+            }
+
+            it("updateFields 에 빈 문자열이 제거된 labels 로 호출된다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 1) {
+                    repo.updateFields(
+                        key = issueKey,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = null,
+                                priority = null,
+                                labels = filtered,
+                                environment = null,
+                                impact = null,
+                            ),
+                        expectedVersion = existingVersion,
+                    )
+                }
+            }
+        }
+
+        context("labels — [](빈배열) PATCH → 도메인 정규화 통과 후 전체 제거") {
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    labels = emptyList(),
+                )
+            val existingIssue = makeIssue(labels = listOf("bug"))
+            val clearedResponse = makeResponse(labels = emptyList())
+
+            beforeEach {
+                stubPermissionGranted()
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every {
+                    repo.updateFields(
+                        key = issueKey,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = null,
+                                priority = null,
+                                labels = emptyList(),
+                                environment = null,
+                                impact = null,
+                            ),
+                        expectedVersion = existingVersion,
+                    )
+                } returns 1
+                every { repo.findByKeyWithType(issueKey) } returns clearedResponse
+                every { eventPublisher.publish(any()) } returns Unit
+            }
+
+            it("빈 배열 PATCH 는 정규화 후에도 빈 배열이므로 updateFields 가 labels=emptyList 로 호출된다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 1) {
+                    repo.updateFields(
+                        key = issueKey,
+                        patch =
+                            IssueFieldPatch(
+                                summary = null,
+                                typeId = null,
+                                description = null,
+                                priority = null,
+                                labels = emptyList(),
+                                environment = null,
+                                impact = null,
+                            ),
+                        expectedVersion = existingVersion,
+                    )
+                }
+            }
+        }
+
         // ── 복합 변경 ──────────────────────────────────────────────────────────
 
         context("복합 — summary + description + priority 동시 변경") {
