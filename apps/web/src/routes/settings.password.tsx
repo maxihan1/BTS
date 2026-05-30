@@ -9,9 +9,10 @@ import { ChangePasswordForm } from '@/components/auth/ChangePasswordForm'
 /**
  * 비밀번호 변경 설정 페이지.
  *
+ * @remarks
  * - 현재 비밀번호 확인 후 새 비밀번호로 변경한다.
- * - 변경 성공 시 현재 세션 외 다른 세션은 자동 무효화된다(백엔드 처리).
- * - requireAuth 가드 적용 — 미인증 접근 시 /login 리다이렉트.
+ * - 변경 성공 시 현재 세션 외 다른 세션은 자동 무효화된다(백엔드 처리, FR-AU-05).
+ * - requireAuth 가드 적용 — 미인증 접근 시 /login 리다이렉트(spec S7).
  * - code-based 패턴 (PR #26 컨벤션):
  *   ```ts
  *   import { PasswordSettingsRouteAdapter } from './routes/settings.password'
@@ -23,6 +24,9 @@ import { ChangePasswordForm } from '@/components/auth/ChangePasswordForm'
  *     beforeLoad: requireAuth,
  *   })
  *   ```
+ *
+ * @see ChangePasswordForm 실제 폼 렌더링 컴포넌트
+ * @see requireAuth 라우트 가드 함수 (auth/routeGuard)
  */
 export function PasswordSettingsPage(): JSX.Element {
   return (
