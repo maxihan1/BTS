@@ -128,7 +128,7 @@ FR-IS-04 — 이슈에 본문(Markdown)과 메타 필드(우선순위/라벨/환
 - files: [`backend/modules/issue-tracking/build.gradle.kts`, `gradle/libs.versions.toml`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/markdown/MarkdownRenderer.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/markdown/MarkdownRendererTest.kt`]
 - depends-on: []
 
-> **B2 — Maxi 승인 필요(§1.4.17)**. flexmark는 SDD 03-tech-stack 명시라 자동 사용 OK. **OWASP Java HTML Sanitizer는 SDD 미명시 신규 의존성** → 게이트1에서 Maxi 승인 후 추가. 대안 — jsoup `Cleaner`(역시 신규 의존성). 승인 전 Task 4 착수 보류.
+> **B2 — Maxi 승인 완료(§1.4.17, 게이트1 2026-05-30)**. flexmark는 SDD 03-tech-stack 명시. **OWASP Java HTML Sanitizer 의존성 = Maxi 승인됨**(게이트1 AskUserQuestion). libs.versions.toml에 추가 진행. SDD 03-tech-stack에도 sanitizer 라이브러리 반영 권장(후속).
 
 **RED**: MarkdownRendererTest — XSS 페이로드 10종(`<script>`, `<img onerror>`, `[x](javascript:...)`, `<iframe>`, `data:` 이미지, on* 핸들러, `<style>`, HTML 엔티티 우회, 중첩 태그, svg/onload) 전부 결과 HTML에 실행 코드 0건 + 정상 Markdown(헤더/리스트/코드블록/링크)은 보존 단언.
 
