@@ -22,6 +22,12 @@ ALTER TABLE issues
     ADD COLUMN environment  TEXT,
     ADD COLUMN impact       SMALLINT CHECK (impact BETWEEN 1 AND 3);
 
+COMMENT ON COLUMN issues.description IS '이슈 본문 (마크다운). FTS 인덱싱은 search BC 담당 — 이 컬럼에 tsvector 인덱스 추가 금지.';
+COMMENT ON COLUMN issues.priority    IS '우선순위. 1=가장 높음, 5=가장 낮음. DEFAULT 3=보통. CHECK (1~5).';
+COMMENT ON COLUMN issues.labels      IS '레이블 배열. GIN 인덱스(ix_issues_labels_gin) 로 배열 원소 포함 검색(@>) 지원.';
+COMMENT ON COLUMN issues.environment IS '재현 환경 설명 (예: "Chrome 124 / macOS 14"). 자유 텍스트, NULL 허용.';
+COMMENT ON COLUMN issues.impact      IS '영향도. 1=높음, 2=보통, 3=낮음. NULL 허용. CHECK (1~3).';
+
 -- ============================================================
 -- 2. GIN 인덱스 — labels 배열 원소 검색용
 -- ============================================================
