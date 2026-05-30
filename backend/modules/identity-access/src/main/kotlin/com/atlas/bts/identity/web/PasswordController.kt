@@ -26,7 +26,7 @@ class PasswordController(
 
     // POST /api/v1/users/me/password: JWT subject -> userId, sid claim -> currentSid.
     // CharArray 변환 후 ChangePasswordService.change 위임. wipe 는 서비스 내부 finally 처리.
-    // 반환: 200 changed=true / 400 에러코드+메시지 / 401 미인증(필터 체인)
+    // 반환: 200 changed=true / 400 에러코드+메시지 / 403 미인증+CSRF없음 / 401 미인증(필터 체인)
     @PostMapping("/api/v1/users/me/password")
     fun changePassword(
         @AuthenticationPrincipal jwt: Jwt,
@@ -47,29 +47,46 @@ class PasswordController(
                 ResponseEntity.ok(mapOf("changed" to true))
 
             is ChangePasswordResult.PolicyViolation ->
-                ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
-                    mapOf(
-                        "code" to "POLICY_VIOLATION",
-                        "violations" to result.violations.map { it.name },
-                        "message" to "비밀번호가 정책을 위반합니다.",
-                    ),
+                errorResponse(
+                    PasswordChangeErrorCode.POLICY_VIOLATION,
+                    "비밀번호가 정책을 위반합니다.",
+                    result.violations.map { it.name },
                 )
 
             is ChangePasswordResult.CurrentMismatch ->
-                ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
-                    mapOf(
-                        "code" to "CURRENT_PASSWORD_MISMATCH",
-                        "message" to "현재 비밀번호가 일치하지 않습니다.",
-                    ),
+                errorResponse(
+                    PasswordChangeErrorCode.CURRENT_PASSWORD_MISMATCH,
+                    "현재 비밀번호가 일치하지 않습니다.",
                 )
 
             is ChangePasswordResult.SameAsCurrent ->
-                ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
-                    mapOf(
-                        "code" to "SAME_AS_CURRENT",
-                        "message" to "새 비밀번호가 현재 비밀번호와 같습니다.",
-                    ),
+                errorResponse(
+                    PasswordChangeErrorCode.SAME_AS_CURRENT,
+                    "새 비밀번호가 현재 비밀번호와 같습니다.",
                 )
         }
     }
+}
+
+// 비밀번호 변경 실패 에러 코드 — HTTP 응답 code 필드 값으로 사용
+private enum class PasswordChangeErrorCode {
+    POLICY_VIOLATION,
+    CURRENT_PASSWORD_MISMATCH,
+    SAME_AS_CURRENT,
+}
+
+// 400 에러 응답 헬퍼 — code + message + 선택적 violations 배열
+private fun errorResponse(
+    code: PasswordChangeErrorCode,
+    message: String,
+    violations: List<String>? = null,
+): ResponseEntity<Map<String, Any>> {
+    val body = mutableMapOf<String, Any>(
+        "code" to code.name,
+        "message" to message,
+    )
+    if (violations != null) {
+        body["violations"] = violations
+    }
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body)
 }
