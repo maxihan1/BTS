@@ -268,7 +268,12 @@ describe('IssueDetailPage — 제목 인라인 편집', () => {
     await user.clear(input)
     await user.type(input, '수정된 제목')
 
-    const saveButton = screen.getByRole('button', { name: /저장/ })
+    // 제목 편집 input 주변의 저장 버튼을 input의 부모 컨테이너로 좁혀 선택
+    const saveButton = screen.getAllByRole('button', { name: /저장/ }).find(
+      (btn) => btn.getAttribute('aria-label') === issueDetailStrings.saveButton,
+    )
+    expect(saveButton).toBeDefined()
+    if (saveButton === undefined) return
     await user.click(saveButton)
 
     await waitFor(() => {
@@ -932,22 +937,27 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
     setupTask6StatefulHandlers(fixture, (body) => patchBodies.push(body))
 
     const user = userEvent.setup()
-    renderPage('ATLAS-1')
+    const { container } = renderPage('ATLAS-1')
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
 
+    // 본문 편집 버튼은 <main> 안에 있으므로 within(main)으로 범위 좁힘
+    const main = container.querySelector('main')
+    expect(main).not.toBeNull()
+    if (main === null) return
+
     // 본문 편집 버튼 클릭
-    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionEditButton }))
+    await user.click(within(main).getByRole('button', { name: issueDetailStrings.descriptionEditButton }))
 
     // textarea에 내용 입력
-    const textarea = screen.getByRole('textbox', { name: issueDetailStrings.descriptionEditButton })
+    const textarea = within(main).getByRole('textbox', { name: issueDetailStrings.descriptionEditButton })
     await user.clear(textarea)
     await user.type(textarea, '새 본문 내용')
 
-    // 저장
-    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionSaveButton }))
+    // 저장 — 편집 모드에서의 저장 버튼은 main 안에 있음
+    await user.click(within(main).getByRole('button', { name: issueDetailStrings.descriptionSaveButton }))
 
     await waitFor(() => {
       expect(patchBodies.length).toBeGreaterThan(0)
@@ -1019,19 +1029,22 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
     setupTask6StatefulHandlers(fixture, (body) => patchBodies.push(body))
 
     const user = userEvent.setup()
-    renderPage('ATLAS-1')
+    const { container } = renderPage('ATLAS-1')
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
 
-    // 환경 textarea에 입력
-    const envTextarea = screen.getByRole('textbox', { name: issueDetailStrings.environmentLabel })
+    // 환경 섹션은 data-testid="environment-section"으로 범위 좁힘
+    const envSection = container.querySelector('[data-testid="environment-section"]')
+    expect(envSection).not.toBeNull()
+    if (envSection === null) return
+
+    const envTextarea = within(envSection as HTMLElement).getByRole('textbox', { name: issueDetailStrings.environmentLabel })
     await user.clear(envTextarea)
     await user.type(envTextarea, 'Chrome 120')
 
-    // 환경 저장 버튼 클릭
-    await user.click(screen.getByRole('button', { name: issueDetailStrings.environmentSaveButton }))
+    await user.click(within(envSection as HTMLElement).getByRole('button', { name: issueDetailStrings.environmentSaveButton }))
 
     await waitFor(() => {
       expect(patchBodies.length).toBeGreaterThan(0)
@@ -1050,19 +1063,22 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
     setupTask6StatefulHandlers(fixture, (body) => patchBodies.push(body))
 
     const user = userEvent.setup()
-    renderPage('ATLAS-1')
+    const { container } = renderPage('ATLAS-1')
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
 
-    // 라벨 추가 input에 입력 후 Enter
-    const labelInput = screen.getByRole('textbox', { name: issueDetailStrings.labelAddPlaceholder })
+    // 라벨 섹션은 data-testid="labels-section"으로 범위 좁힘
+    const labelsSection = container.querySelector('[data-testid="labels-section"]')
+    expect(labelsSection).not.toBeNull()
+    if (labelsSection === null) return
+
+    const labelInput = within(labelsSection as HTMLElement).getByRole('textbox', { name: issueDetailStrings.labelAddPlaceholder })
     await user.click(labelInput)
     await user.type(labelInput, 'frontend{Enter}')
 
-    // 라벨 저장 버튼 클릭
-    await user.click(screen.getByRole('button', { name: issueDetailStrings.labelsSaveButton }))
+    await user.click(within(labelsSection as HTMLElement).getByRole('button', { name: issueDetailStrings.labelsSaveButton }))
 
     await waitFor(() => {
       expect(patchBodies.length).toBeGreaterThan(0)
@@ -1089,16 +1105,21 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
     )
 
     const user = userEvent.setup()
-    renderPage('ATLAS-1')
+    const { container } = renderPage('ATLAS-1')
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
 
-    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionEditButton }))
-    const textarea = screen.getByRole('textbox', { name: issueDetailStrings.descriptionEditButton })
+    // 본문 영역은 <main> 안에 있으므로 within(main)으로 범위 좁힘
+    const main = container.querySelector('main')
+    expect(main).not.toBeNull()
+    if (main === null) return
+
+    await user.click(within(main).getByRole('button', { name: issueDetailStrings.descriptionEditButton }))
+    const textarea = within(main).getByRole('textbox', { name: issueDetailStrings.descriptionEditButton })
     await user.type(textarea, '충돌 테스트')
-    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionSaveButton }))
+    await user.click(within(main).getByRole('button', { name: issueDetailStrings.descriptionSaveButton }))
 
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
