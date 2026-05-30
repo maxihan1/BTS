@@ -173,16 +173,16 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <svg viewBox="0 0 260 260" class="donut">
     <circle cx="130" cy="130" r="116" fill="none" stroke="#e5e7eb" stroke-width="28" />
     <circle cx="130" cy="130" r="116" fill="none" stroke="#22c55e" stroke-width="28"
-      stroke-dasharray="728.849495632832" stroke-dashoffset="699.6955158075187"
+      stroke-dasharray="728.849495632832" stroke-dashoffset="692.4070208511904"
       transform="rotate(-90 130 130)" stroke-linecap="round" />
-    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">4%</text>
+    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">5%</text>
   </svg>
       <div class="overview-numbers">
-        <div class="big-num">5 / 117</div>
+        <div class="big-num">6 / 117</div>
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
-          <div><span class="dot dot-done"></span> 완료 <b>5</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>5</b></div>
+          <div><span class="dot dot-done"></span> 완료 <b>6</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>4</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
           <div><span class="dot dot-wait"></span> 대기 <b>107</b></div>
         </div>
@@ -191,9 +191,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h2>업무 영역별 진척</h2>
     <div class="bc-grid"><div class="bc-card" data-nav="bc-issue-tracking">
       <div class="bc-card-head">📌 이슈 관리</div>
-      <div class="bc-card-stats">1 / 29 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:3%"></div></div>
-      <div class="bc-card-pct">3%</div>
+      <div class="bc-card-stats">2 / 29 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:7%"></div></div>
+      <div class="bc-card-pct">7%</div>
     </div><div class="bc-card" data-nav="bc-project-workflow">
       <div class="bc-card-head">🔄 워크플로우</div>
       <div class="bc-card-stats">2 / 2 완료</div>
@@ -470,24 +470,24 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h1>📌 이슈 관리</h1>
     <p class="bc-desc">이슈를 만들고, 상태를 바꾸고, 댓글/첨부/링크를 관리하는 영역.</p>
     <div class="bc-detail-stats">
-      <div class="big-pct">3%</div>
-      <div>1 / 29 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:3%"></div></div>
+      <div class="big-pct">7%</div>
+      <div>2 / 29 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:7%"></div></div>
       <div class="status-grid">
-        <div>✅ 완료 1</div>
-        <div>🔄 진행중 3</div>
+        <div>✅ 완료 2</div>
+        <div>🔄 진행중 2</div>
         <div>⛔ 차단 0</div>
         <div>⬜ 대기 25</div>
       </div>
     </div>
     <h2>세부 기능 (29개)</h2>
-    <div class="fr-list"><details class="fr-item fr-진행중">
+    <div class="fr-list"><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">🔄</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-IS-01</span>
         <span class="fr-desc"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> CRUD, 상태 변경 시 <span class="term" data-def="이슈의 상태 전이 FSM. YAML로 정의">워크플로우</span> 검증 + 알림</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span> Aggregate Root, IssueKey VO</li><li><span class="step-icon">✅</span> D2 — 명세 — Given/When/Then. 7 엣지 케이스 (중복 키/권한/<span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span> 위반/대용량/동시 편집/소프트 삭제/키 보존)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — <span class="term" data-def="&quot;DB 도면 버전 관리자 / 안전한 번역기&quot; DB 구조의 변경 이력을 꼼꼼히 기록하고(Flyway), 오타 없이 안전하게 DB 언어로 번역해 주는 도구(jOOQ)입니다.">Flyway</span>. `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s`, `issue_key_redirects`. DATA.md 영속성</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `POST/GET/<span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>CH/DELETE /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s`. `@Trans<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">action</span>al`. <span class="term" data-def="PostgreSQL 기반 메시지 큐 (Kafka 대체)">pgmq</span> 이벤트 발행 동일 트랜잭션</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;마네킹 / 가짜 부품&quot; 테스트를 할 때 실제 결제 시스템이나 외부 서버를 연결하면 돈이 나가거나 느려지므로, 진짜처럼 행동하는 가짜 부품을 끼워놓는 것입니다.">Mock</span>K 단위 + <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> 통합. <span class="term" data-def="&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.">TDD</span> red→green→refactor</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>Detail.tsx`. TanStack Query 캐싱 + 낙관적 업데이트</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> + <span class="term" data-def="&quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.">NFR</span> — 생성→조회→수정→상태 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span>→소프트 삭제→키 영속성 (이동 후 옛 키 redirect)</li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span> Aggregate Root, IssueKey VO</li><li><span class="step-icon">✅</span> D2 — 명세 — Given/When/Then. 7 엣지 케이스 (중복 키/권한/<span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span> 위반/대용량/동시 편집/소프트 삭제/키 보존)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — <span class="term" data-def="&quot;DB 도면 버전 관리자 / 안전한 번역기&quot; DB 구조의 변경 이력을 꼼꼼히 기록하고(Flyway), 오타 없이 안전하게 DB 언어로 번역해 주는 도구(jOOQ)입니다.">Flyway</span>. `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s`, `issue_key_redirects`. DATA.md 영속성</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `POST/GET/<span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>CH/DELETE /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s`. `@Trans<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">action</span>al`. <span class="term" data-def="PostgreSQL 기반 메시지 큐 (Kafka 대체)">pgmq</span> 이벤트 발행 동일 트랜잭션</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;마네킹 / 가짜 부품&quot; 테스트를 할 때 실제 결제 시스템이나 외부 서버를 연결하면 돈이 나가거나 느려지므로, 진짜처럼 행동하는 가짜 부품을 끼워놓는 것입니다.">Mock</span>K 단위 + <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> 통합. <span class="term" data-def="&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.">TDD</span> red→green→refactor</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>Detail.tsx`. TanStack Query 캐싱 + 낙관적 업데이트</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — FR-IS-01 고유 lifecycle 생성→조회→수정→상태 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span>→소프트 삭제</li></ol>
     </details><details class="fr-item fr-완료">
       <summary>
         <span class="fr-status">✅</span>
@@ -676,7 +676,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-id">FR-MV-01</span>
         <span class="fr-desc"><span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">프로젝트</span> 간 이슈 이동</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>MoveOperation</li><li><span class="step-icon">⬜</span> D2 — 명세 — 새 <span class="term" data-def="`&lt;PROJECT_KEY&gt;-&lt;NUMBER&gt;` 형식. 한 번 발급되면 절대 재사용 불가"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 키</span> 생성 + 옛 키 redirect (DATA.md §이슈키 영속성)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_key_redirects(old_key, new_key, moved_at)`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `POST /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s/{key}/move` 트랜잭션</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — 옛 키로 조회 시 308 redirect</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 이동 다이얼로그</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>MoveOperation</li><li><span class="step-icon">⬜</span> D2 — 명세 — 새 <span class="term" data-def="`&lt;PROJECT_KEY&gt;-&lt;NUMBER&gt;` 형식. 한 번 발급되면 절대 재사용 불가"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 키</span> 생성 + 옛 키 redirect (DATA.md §이슈키 영속성)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_key_redirects(old_key, new_key, moved_at)`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `POST /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s/{key}/move` 트랜잭션</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — 옛 키로 조회 시 308 redirect</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 이동 다이얼로그</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 이동 + **옛 키 redirect E2E** (FR-IS-01 D7에서 이관, 2026-05-30)</li></ol>
     </details><details class="fr-item fr-진행중">
       <summary>
         <span class="fr-status">🔄</span>
