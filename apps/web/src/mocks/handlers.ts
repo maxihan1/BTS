@@ -2,6 +2,7 @@
 import { authHandlers } from './auth-handlers'
 import { issueHandlers } from './issue-handlers'
 import { issueTypeHandlers } from './issue-type-handlers'
+import { passwordHandlers } from './password-handlers'
 import { schemeHandlers } from './scheme-handlers'
 import { sessionHandlers } from './session-handlers'
 import { workflowHandlers } from './workflow-handlers'
@@ -16,6 +17,7 @@ export const handlers = [
   ...authHandlers,
   ...issueHandlers,
   ...issueTypeHandlers,
+  ...passwordHandlers,
   ...schemeHandlers,
   ...sessionHandlers,
   ...workflowHandlers,

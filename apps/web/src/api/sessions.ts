@@ -48,7 +48,7 @@ export type Session = z.infer<typeof sessionSchema>
  * Spring Security가 Set-Cookie로 발급한 XSRF-TOKEN을 읽어
  * X-XSRF-TOKEN 헤더로 재전송하는 double submit cookie 패턴.
  */
-function readXsrfToken(): string {
+export function readXsrfToken(): string {
   const match = document.cookie
     .split('; ')
     .find((row) => row.startsWith('XSRF-TOKEN='))

@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 11개 라우트 (이슈 7 + 워크플로우 스킴 4)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 13개 라우트 (이슈 7 + 워크플로우 스킴 4 + settings 2)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth } from './auth/routeGuard'
 import { RootLayout } from './routes/__root'
@@ -14,6 +14,7 @@ import { WorkflowSchemeNewRouteAdapter } from './routes/admin.workflow-schemes.n
 import { WorkflowSchemeDetailRouteAdapter } from './routes/admin.workflow-schemes.$schemeKey'
 import { ProjectWorkflowSchemeSettingsRouteAdapter } from './routes/projects.$projectKey.settings.workflow-scheme'
 import { SessionsSettingsRouteAdapter } from './routes/settings.sessions'
+import { PasswordSettingsRouteAdapter } from './routes/settings.password'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -123,11 +124,20 @@ const settingsSessionsRoute = createRoute({
   beforeLoad: requireAuth,
 })
 
+/** 비밀번호 변경 라우트 — /settings/password, requireAuth */
+const settingsPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/password',
+  component: PasswordSettingsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuth,
+})
+
 /**
  * 전체 라우트 트리.
- * 12개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 13개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
- *   · /projects/:projectKey/settings/workflow-scheme · /settings/sessions
+ *   · /projects/:projectKey/settings/workflow-scheme · /settings/sessions · /settings/password
  * requireAuth 라우트: /dashboard · /issues · /issues/* · /admin/* · /projects/*\/settings/* · /settings/*
  */
 export const routeTree = rootRoute.addChildren([
@@ -147,6 +157,8 @@ export const routeTree = rootRoute.addChildren([
   projectWorkflowSchemeSettingsRoute,
   // identity-access BC — 내 활성 세션 관리
   settingsSessionsRoute,
+  // identity-access BC — 비밀번호 변경
+  settingsPasswordRoute,
   // workflows (레거시 workflow 상세 — 향후 마이그레이션 예정)
   workflowsKeyRoute,
 ])
