@@ -20,7 +20,8 @@ test('E2E-1 이슈 생명주기 — 생성 → 조회 → 수정 → 소프트 �
   const titleInput = page.getByLabel(i18nLabels.issueDetail.titleEditLabel)
   await expect(titleInput).toBeVisible()
   await titleInput.fill(updatedSummary)
-  await page.getByRole('button', { name: i18nLabels.issueDetail.saveButton }).click()
+  // FR-IS-04 D6 이후 본문/환경/라벨 저장 버튼도 '저장' → 제목 편집 폼 컨테이너로 한정 (strict mode)
+  await titleInput.locator('..').getByRole('button', { name: i18nLabels.issueDetail.saveButton }).click()
 
   // ── Then 2. 새 값으로 상세 헤딩 동기 (서버 응답 후) ─────────────────────────
   await expect(page.getByRole('heading', { level: 1, name: updatedSummary })).toBeVisible()
