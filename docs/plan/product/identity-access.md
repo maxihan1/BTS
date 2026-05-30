@@ -88,10 +88,12 @@
 - [x] D1. 도메인 — LocalCredential VO (책임. security-engineer)
 - [x] D2. 명세 — 비밀번호 정책 (길이/복잡도/이력) + Argon2id (책임. security-engineer)
 - [x] D3. 데이터 모델 — `local_credentials(password_hash, last_changed_at)` (책임. db-engineer)
-- [~] D4. 백엔드 — 가입/비밀번호 변경/리셋 (책임. security-engineer)
-- [~] D5. 백엔드 테스트 — 비밀번호 정책 위반 케이스 (책임. security-engineer)
+- [~] D4. 백엔드 — 가입/비밀번호 변경/리셋 (책임. security-engineer) — **변경 완료(PR #44), 가입·리셋 후속**
+- [x] D5. 백엔드 테스트 — 비밀번호 정책 위반 케이스 (책임. security-engineer) (PR #44)
 - [ ] D6. 프론트 UI — 가입/비밀번호 변경 폼 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
+
+> **FR-AU-05 비밀번호 변경 완료 (2026-05-30, PR #44)**. D4 중 **비밀번호 변경** API(`POST /api/v1/users/me/password` + `PasswordPolicy` 12자/3종 복잡도 + 변경 성공 시 현재 세션 제외 다른 세션 무효화 — `revoke`+`revokeChainFromSession` 쌍) + D5(정책 위반 테스트) 완료. 기존 `LocalCredentialService.rotate`/`SessionService`/`RefreshTokenRepository` 재사용, 마이그레이션 0건. **가입(관리자+임시비번)·리셋은 후속** — 가입은 전역 admin 권한 체계(FR-PM-01) 선행 필요, 리셋은 이메일 발송 인프라 도입 후 (현재 `JavaMailSender`/notification BC 부재). D6(프론트 폼)·D7(E2E)은 PR-2. PRE_EXISTING ktlint debt(identity-access 모듈 285건)는 별도 cleanup PR 위임.
 
 ### §2.6 FR-AU-06 — 다중 Provider 동시 활성화
 
