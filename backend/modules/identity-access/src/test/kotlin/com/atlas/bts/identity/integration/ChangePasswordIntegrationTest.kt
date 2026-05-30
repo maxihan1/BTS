@@ -5,6 +5,7 @@ package com.atlas.bts.identity.integration
 import com.atlas.bts.identity.credential.ChangePasswordResult
 import com.atlas.bts.identity.credential.ChangePasswordService
 import com.atlas.bts.identity.credential.LocalCredentialService
+import com.atlas.bts.identity.credential.PasswordPolicy
 import com.atlas.bts.identity.credential.StoredPasswordCredentialRepository
 import com.atlas.bts.identity.provider.ldap.AutoProvisionService
 import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
@@ -133,8 +134,11 @@ class ChangePasswordIntegrationTest {
     /** 정책을 통과하는 새 비밀번호 */
     private val newValidPassword = "NewValid@Pass2"
 
-    /** 정책 위반 비밀번호 — 11자 (PasswordPolicy MIN_LENGTH 미달) */
-    private val policyViolatingPassword = "Short@123ab"
+    /**
+     * 정책 위반 비밀번호 — [PasswordPolicy.MIN_LENGTH] - 1 자 (길이 미달).
+     * MIN_LENGTH = 12 이므로 11자 비밀번호를 사용한다.
+     */
+    private val policyViolatingPassword = "Short@123ab" // 11자 — MIN_LENGTH(12) 미달
 
     @BeforeEach
     fun prepareTestUser() {
@@ -321,7 +325,7 @@ class ChangePasswordIntegrationTest {
     // ── 정책 위반 변경 거부 ───────────────────────────────────────────────────
 
     /**
-     * 정책 위반 변경 거부: change(현재 비번, 11자 비번) → PolicyViolation, DB password_hash 불변
+     * 정책 위반 변경 거부: change(현재 비번, MIN_LENGTH 미달 비번) → PolicyViolation, DB password_hash 불변
      *
      * ## 검증 방법
      * change 호출 전 [StoredPasswordCredentialRepository.findByUserId] 로 password_hash 를 캡처한다.
