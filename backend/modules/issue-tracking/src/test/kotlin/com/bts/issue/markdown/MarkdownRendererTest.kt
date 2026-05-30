@@ -106,6 +106,51 @@ class MarkdownRendererTest : DescribeSpec({
             }
         }
 
+        // ── 회귀 벡터 5종 (CONCERN 보강) ──────────────────────────────────────────
+
+        context("회귀 벡터 — 우회 공격 패턴 차단") {
+
+            it("11. 탭/개행 삽입 스킴 (java\\tscript:) 을 차단한다") {
+                // 탭 문자를 삽입해 URI 파서를 혼동시키는 시도
+                val input = "[x](java\tscript:alert(1))"
+                val result = MarkdownRenderer.renderSafe(input)
+                // href 에 실행 가능한 javascript: 또는 java\tscript: 가 없어야 한다
+                result shouldNotContain "href=\"java"
+                result shouldNotContain "javascript:"
+            }
+
+            it("12. 대소문자 혼합 스킴 (JaVaScRiPt:) 을 차단한다") {
+                val input = """<a href="JaVaScRiPt:alert(1)">x</a>"""
+                val result = MarkdownRenderer.renderSafe(input)
+                // 대소문자 무관하게 javascript 스킴이 href 에 없어야 한다
+                result shouldNotContain "JaVaScRiPt:"
+                result shouldNotContain "javascript:"
+            }
+
+            it("13. HTML 엔티티 인코딩 스킴 (&#106;avascript:) 을 차단한다") {
+                val input = """<a href="&#106;avascript:alert(1)">x</a>"""
+                val result = MarkdownRenderer.renderSafe(input)
+                // 엔티티 우회 후 실행 가능한 스킴이 없어야 한다
+                result shouldNotContain "href=\"&#106;"
+                result shouldNotContain "javascript:"
+            }
+
+            it("14. reference-style 링크 javascript: 스킴을 차단한다") {
+                val input = "[x][ref]\n\n[ref]: javascript:alert(1)"
+                val result = MarkdownRenderer.renderSafe(input)
+                result shouldNotContain "href=\"javascript:"
+                result shouldNotContain "javascript:"
+            }
+
+            it("15. math/template 태그를 차단한다") {
+                val input = "<math><mtext><!-- --></mtext></math><template>evil</template>"
+                val result = MarkdownRenderer.renderSafe(input)
+                // math/template 은 XSS 벡터로 허용 목록에 없으므로 제거되어야 한다
+                result shouldNotContain "<math"
+                result shouldNotContain "<template"
+            }
+        }
+
         // ── 정상 Markdown 보존 ─────────────────────────────────────────────────
 
         context("정상 Markdown 보존") {

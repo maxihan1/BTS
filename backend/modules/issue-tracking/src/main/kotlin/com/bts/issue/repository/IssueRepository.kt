@@ -33,7 +33,8 @@ private const val SQL_ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(hashtext(?))
 /**
  * 이슈 필드 부분 업데이트 요청. [IssueRepository.updateFields] 파라미터 그룹화용.
  *
- * null 필드는 변경하지 않는다. 빈 문자열("")은 DB NULL 로 클리어.
+ * null 필드는 변경하지 않는다.
+ * description/environment 는 빈/공백 문자열이면 DB NULL 로 클리어한다 (ifBlank).
  */
 data class IssueFieldPatch(
     val summary: String? = null,
@@ -124,10 +125,10 @@ class IssueRepository(
      * @param summary 새 이슈 제목. null 이면 변경하지 않는다.
      * @param typeId 새 이슈 유형 식별자 VO. null 이면 변경하지 않는다.
      * @param expectedVersion 현재 버전. DB 버전과 일치해야 업데이트가 실행된다.
-     * @param description Markdown 설명. null 이면 변경하지 않는다. 빈 문자열("")은 DB NULL 로 클리어한다.
+     * @param description Markdown 설명. null 이면 변경하지 않는다. 빈/공백 문자열은 DB NULL 로 클리어한다.
      * @param priority 우선순위 1..5. null 이면 변경하지 않는다.
      * @param labels 라벨 목록. null 이면 변경하지 않는다.
-     * @param environment 재현 환경 설명. null 이면 변경하지 않는다. 빈 문자열("")은 DB NULL 로 클리어한다.
+     * @param environment 재현 환경 설명. null 이면 변경하지 않는다. 빈/공백 문자열은 DB NULL 로 클리어한다.
      * @param impact 영향도 1..3. null 이면 변경하지 않는다.
      * @return 업데이트된 행 수 (성공=1, 낙관락 충돌=0).
      */
@@ -144,10 +145,10 @@ class IssueRepository(
             .set(ISSUES.VERSION, expectedVersion + 1)
             .apply { if (patch.summary != null) set(ISSUES.SUMMARY, patch.summary) }
             .apply { if (patch.typeId != null) set(ISSUES.TYPE_ID, patch.typeId.value) }
-            .apply { if (patch.description != null) set(ISSUES.DESCRIPTION, patch.description.ifEmpty { null }) }
+            .apply { if (patch.description != null) set(ISSUES.DESCRIPTION, patch.description.ifBlank { null }) }
             .apply { if (patch.priority != null) set(ISSUES.PRIORITY, patch.priority.toShort()) }
             .apply { if (patch.labels != null) set(ISSUES.LABELS, patch.labels.toDbArray()) }
-            .apply { if (patch.environment != null) set(ISSUES.ENVIRONMENT, patch.environment.ifEmpty { null }) }
+            .apply { if (patch.environment != null) set(ISSUES.ENVIRONMENT, patch.environment.ifBlank { null }) }
             .apply { if (patch.impact != null) set(ISSUES.IMPACT, patch.impact.toShort()) }
             .where(ISSUES.KEY.eq(key.value))
             .and(ISSUES.VERSION.eq(expectedVersion))

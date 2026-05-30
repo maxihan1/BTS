@@ -525,6 +525,51 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
         assertThat(found.impact).isEqualTo(3)
     }
 
+    // ── T10d. ifBlank → NULL 클리어 round-trip (CONCERN 회귀 가드) ─────────────────
+
+    /**
+     * Given  description/environment 가 각각 실제 값으로 저장된 이슈
+     * When   updateFields 에 공백-only 문자열("\n\t  ")로 클리어 시도
+     * Then   DB 에 NULL 로 저장되어 findByKey 조회 시 null 로 반환된다.
+     *
+     * CONCERN: repository 의 `ifEmpty { null }` 을 `ifBlank { null }` 로 교체한 결과를 검증한다.
+     * `ifEmpty` 는 "" 만 처리하고 "  "같은 공백-only 는 통과시킨다.
+     * `ifBlank` 는 공백-only 도 NULL 로 클리어하여 "보이지 않는 본문" 저장을 방지한다.
+     */
+    @Test
+    @Order(17)
+    fun `T10d - updateFields - 공백only 문자열은 NULL 로 클리어된다 (ifBlank 회귀 가드)`() {
+        val key = IssueKey.of("TPRJ", 1L)
+        val issue =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = key,
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "공백 NULL 클리어 테스트",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+                description = "초기 설명",
+                environment = "staging",
+            )
+        repository.insert(issue)
+
+        repository.updateFields(
+            key = key,
+            patch =
+                IssueFieldPatch(
+                    // 공백-only 문자열 → ifBlank 에 의해 DB NULL 클리어
+                    description = "\n\t  ",
+                    environment = "   ",
+                ),
+            expectedVersion = 1L,
+        )
+
+        val found = requireNotNull(repository.findByKey(key)) { "업데이트 후 이슈 조회 불가" }
+        assertThat(found.description).isNull()
+        assertThat(found.environment).isNull()
+    }
+
     // ── G4. findByKeyWithType — type 요약 노출 (FR-IS-02 Task 9) ─────────────────
 
     /**
