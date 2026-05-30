@@ -1,6 +1,9 @@
 // useChangePassword 훅 테스트 — MSW 핸들러 위에서 성공/실패 시나리오 + isPending 전이 검증
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { http, HttpResponse } from 'msw'
+import { server } from '@/test/server'
+import { passwordHandlers } from '@/mocks/password-handlers'
 import { useChangePassword } from '../use-change-password'
 import { ApiError } from '@/api/client'
 
@@ -15,11 +18,14 @@ function createWrapper() {
   }
 }
 
-// MSW 핸들러(passwordHandlers)는 @/test/server를 통해 전역 등록돼 있음.
+// passwordHandlers 를 각 테스트 직전에 등록
+// (setup.ts afterEach → server.resetHandlers()로 초기화되므로 beforeEach가 필요)
 // seed currentPassword = 'CurrentPass123!'
 // 정상 new = 'NewSecurePass99!' (12자+, 대소문자+숫자+특수 충족)
 const VALID_NEW_PASSWORD = 'NewSecurePass99!'
 const SEED_CURRENT = 'CurrentPass123!'
+
+beforeEach(() => server.use(...passwordHandlers))
 
 describe('useChangePassword', () => {
   it('성공 시 isSuccess가 true가 된다', async () => {
@@ -39,11 +45,21 @@ describe('useChangePassword', () => {
     expect(result.current.isError).toBe(false)
   })
 
-  it('mutate 직후 isPending이 true가 된다', async () => {
+  it('mutate 직후 isPending이 true가 된다 (delay 핸들러로 검증)', async () => {
+    // MSW 응답을 지연시켜 isPending 상태를 포착한다
+    let resolveResponse!: () => void
+    const deferred = new Promise<void>((res) => { resolveResponse = res })
+
+    server.use(
+      http.post('/api/v1/users/me/password', async () => {
+        await deferred
+        return HttpResponse.json({ changed: true })
+      }),
+    )
+
     const { wrapper } = createWrapper()
     const { result } = renderHook(() => useChangePassword(), { wrapper })
 
-    // 비동기 완료를 기다리지 않고 pending 상태를 즉시 확인
     act(() => {
       result.current.mutate({
         currentPassword: SEED_CURRENT,
@@ -51,10 +67,11 @@ describe('useChangePassword', () => {
       })
     })
 
-    // mutate 직후 isPending이 true여야 한다
-    expect(result.current.isPending).toBe(true)
+    // mutate 직후 응답이 아직 안 왔으므로 isPending이 true여야 한다
+    await waitFor(() => expect(result.current.isPending).toBe(true))
 
-    // 완료까지 대기 (다음 테스트 격리를 위해)
+    // 응답 해제 후 성공 상태로 전이
+    resolveResponse()
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
   })
 
@@ -97,7 +114,9 @@ describe('useChangePassword', () => {
       result.current.reset()
     })
 
-    expect(result.current.isError).toBe(false)
-    expect(result.current.error).toBeNull()
+    await waitFor(() => {
+      expect(result.current.isError).toBe(false)
+      expect(result.current.error).toBeNull()
+    })
   })
 })
