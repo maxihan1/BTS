@@ -56,15 +56,15 @@ const deletedKeys = new Set<string>()
 // E2E-1 happy path 용 — POST 로 생성된 이슈를 GET 목록/단건 에서 조회 가능하도록 stateful 유지.
 const createdIssues = new Map<string, IssueResponse>()
 
-// 전이 후 상태 오버라이드 — issueFixtureMap 원본 불변 유지 + 전이 결과 반영.
-// key: 이슈 키, value: 전이 후 갱신된 IssueResponse
-const transitionOverrides = new Map<string, IssueResponse>()
+// 이슈 현재 상태 오버라이드 — issueFixtureMap 원본 불변 유지 + 전이/수정(PATCH) 결과 반영.
+// key: 이슈 키, value: 갱신된 IssueResponse (전이 또는 타입/요약 수정 후)
+const issueOverrides = new Map<string, IssueResponse>()
 
 /** E2E / 단위 테스트 격리용 — 모듈-스코프 state 초기화. 각 test setup 에서 호출. */
 export function resetIssueState(): void {
   deletedKeys.clear()
   createdIssues.clear()
-  transitionOverrides.clear()
+  issueOverrides.clear()
 }
 
 function buildFilteredPage(): IssuePage {
@@ -97,8 +97,8 @@ const getIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
       { status: 404 },
     )
   }
-  // 전이 오버라이드 → 생성된 이슈 → 정적 fixture 순으로 조회
-  const found = transitionOverrides.get(key) ?? createdIssues.get(key) ?? issueFixtureMap[key]
+  // 상태 오버라이드 → 생성된 이슈 → 정적 fixture 순으로 조회
+  const found = issueOverrides.get(key) ?? createdIssues.get(key) ?? issueFixtureMap[key]
   if (found === undefined) {
     return HttpResponse.json(
       { message: `이슈를 찾을 수 없습니다: ${key}` },
@@ -151,7 +151,8 @@ export const MOCK_NO_WORKFLOW_TRIGGER = '__TRIGGER_422_NO_WORKFLOW__'
  */
 const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, request }) => {
   const key = params['key'] as string
-  const found = createdIssues.get(key) ?? issueFixtureMap[key]
+  // 오버라이드 → 생성된 이슈 → 정적 fixture 순서 (전이 핸들러와 동일). 반복 수정/전이 후 수정 시 최신 version 기준.
+  const found = resolveIssue(key)
   if (found === undefined) {
     return HttpResponse.json(
       { message: `이슈를 찾을 수 없습니다: ${key}` },
@@ -204,7 +205,9 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     version: found.version + 1,
     updatedAt: new Date().toISOString(),
   }
-  // POST 로 생성된 이슈가 수정되면 stateful 보관도 갱신.
+  // 수정 결과를 오버라이드에 보관 — invalidateQueries 후 GET 단건이 최신 타입/요약 반영 (refetch 롤백 방지).
+  issueOverrides.set(key, updated)
+  // POST 로 생성된 이슈는 목록(buildFilteredPage) 일관성을 위해 createdIssues 도 갱신.
   if (createdIssues.has(key)) {
     createdIssues.set(key, updated)
   }
@@ -222,12 +225,12 @@ const deleteIssueHandler = http.delete('/api/v1/issues/:key', ({ params }) => {
 })
 
 /**
- * 이슈 키로 현재 상태 조회 helper — transitionOverrides → createdIssues → issueFixtureMap 순서.
+ * 이슈 키로 현재 상태 조회 helper — issueOverrides → createdIssues → issueFixtureMap 순서.
  * 소프트 삭제된 키는 undefined 반환.
  */
 function resolveIssue(key: string): IssueResponse | undefined {
   if (deletedKeys.has(key)) return undefined
-  return transitionOverrides.get(key) ?? createdIssues.get(key) ?? issueFixtureMap[key]
+  return issueOverrides.get(key) ?? createdIssues.get(key) ?? issueFixtureMap[key]
 }
 
 /**
@@ -328,7 +331,7 @@ const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ p
     version: found.version + 1,
     updatedAt: new Date().toISOString(),
   }
-  transitionOverrides.set(key, updated)
+  issueOverrides.set(key, updated)
   return HttpResponse.json({ data: updated })
 })
 
