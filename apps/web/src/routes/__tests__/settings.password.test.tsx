@@ -77,7 +77,7 @@ describe('PasswordSettingsPage', () => {
    */
   it('T5-P3: 페이지 설명 문구가 렌더된다', () => {
     renderPage()
-    expect(screen.getByText(/비밀번호를 변경하세요/)).toBeInTheDocument()
+    expect(screen.getByText(/새 비밀번호로 변경하세요/)).toBeInTheDocument()
   })
 })
 
