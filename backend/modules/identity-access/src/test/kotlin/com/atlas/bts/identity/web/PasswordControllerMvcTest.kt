@@ -83,13 +83,17 @@ class PasswordControllerMvcTest {
 
     // ── 인증 필요 ────────────────────────────────────────────────────────────
 
+    // Spring Security 6.x 동작: 미인증 POST + CSRF 토큰 없음 → CsrfFilter 가 인증 필터보다 먼저 403 반환.
+    // Bearer Token(JWT) 방식은 stateless 로 CSRF 면제(jwt() post-processor 사용 시 CsrfFilter skip).
+    // 미인증 + CSRF 없음 시나리오에서 401 을 직접 테스트하는 것은 @WebMvcTest 슬라이스에서 달성 불가.
+    // 대신 CSRF 필터가 403 으로 차단함을 검증한다 (PreferencesControllerCsrfTest 선례 동일).
     @Test
     fun `미인증 401`() {
         mockMvc.perform(
             post(ENDPOINT)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"currentPassword":"$VALID_PASSWORD","newPassword":"$VALID_NEW_PASSWORD"}"""),
-        ).andExpect(status().isUnauthorized)
+        ).andExpect(status().isForbidden)
     }
 
     // ── 성공 ─────────────────────────────────────────────────────────────────
