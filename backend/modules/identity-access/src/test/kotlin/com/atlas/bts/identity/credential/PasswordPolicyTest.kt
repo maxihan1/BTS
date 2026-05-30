@@ -17,7 +17,7 @@ class PasswordPolicyTest {
     @Test
     fun `12자 3종이상은 통과`() {
         val violations = PasswordPolicy.validate("Abcdefgh1234".toCharArray())
-        assertTrue(violations.isEmpty(), "위반 없이 통과해야 한다. 실제 위반: $violations")
+        assertEquals(emptyList<PasswordPolicyViolation>(), violations, "위반 없이 통과해야 한다.")
     }
 
     @Test
@@ -44,7 +44,7 @@ class PasswordPolicyTest {
     fun `특수문자 포함 3종 통과`() {
         // 소문자 + 숫자 + 특수문자 — 3종, 12자
         val violations = PasswordPolicy.validate("abcdefgh12!@".toCharArray())
-        assertTrue(violations.isEmpty(), "위반 없이 통과해야 한다. 실제 위반: $violations")
+        assertEquals(emptyList<PasswordPolicyViolation>(), violations, "위반 없이 통과해야 한다.")
     }
 
     @Test
