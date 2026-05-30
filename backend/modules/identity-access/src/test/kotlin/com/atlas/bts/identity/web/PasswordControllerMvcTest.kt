@@ -86,7 +86,7 @@ class PasswordControllerMvcTest {
     // 미인증 + CSRF 없음 시나리오에서 401 을 직접 테스트하는 것은 @WebMvcTest 슬라이스에서 달성 불가.
     // 대신 CSRF 필터가 403 으로 차단함을 검증한다 (PreferencesControllerCsrfTest 선례 동일).
     @Test
-    fun `미인증 401`() {
+    fun `미인증·CSRF 없는 POST 는 403 차단`() {
         mockMvc.perform(
             post(ENDPOINT)
                 .contentType(MediaType.APPLICATION_JSON)
