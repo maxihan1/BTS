@@ -11,11 +11,11 @@ import org.owasp.html.PolicyFactory
  * Markdown → HTML 변환 후 OWASP HTML Sanitizer allowlist로 2차 정화하는 렌더러.
  *
  * ## 보안 계층 설계
- * 1. **flexmark 1차 방어** — `escapeHtml(true)` + raw HTML 비활성(disableHtmlInput)으로
- *    `<svg onload>`, 중첩 태그 등 사용자 raw HTML을 flexmark 단계에서 텍스트로 escape.
+ * 1. **flexmark 1차 방어** — `ESCAPE_HTML_BLOCKS=true` + `HTML_BLOCK_PARSER=false` 설정.
+ *    블록 수준 raw HTML을 엔티티로 escape하여 2차 sanitizer 도달 전에 무력화.
  * 2. **OWASP Java HTML Sanitizer 2차 방어** — allowlist에 없는 태그·속성 전부 제거.
- *    on* 이벤트 핸들러, style, script, iframe, svg 차단.
- *    `a[href]`는 http/https/mailto 스킴만 허용 (javascript:/data: 거부).
+ *    on* 이벤트 핸들러, style, script, iframe, svg 등 공격 태그 차단.
+ *    `a[href]`는 `allowUrlProtocols("http","https","mailto")` — javascript:/data: 거부.
  *    `code[class]`는 `language-*` 패턴만 허용 (코드 하이라이팅 보존).
  *
  * CSRF ADR `docs/decisions/2026-05-20-csrf-cookie-mode.md` §서버 측 입력 sanitization 규정 준수.
