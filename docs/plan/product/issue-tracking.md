@@ -59,7 +59,7 @@
 - [x] D4. 백엔드 — 커스텀 IssueType CRUD (POST/PATCH/DELETE+reassignTo) + 표준 불변 + RFC 7807 (PR #36)
 - [x] D5. 백엔드 테스트 — MockK 단위 + Testcontainers 통합 (PR #36)
 - [x] D6. 프론트 UI — 타입 셀렉터 + 아이콘 + 이슈 타입 변경 backend(PATCH typeId + 활성 검증 + OCC) (PR #39)
-- [ ] D7. E2E (책임. qa-engineer) — 타입 변경 Playwright 시나리오 (D6 단위/컴포넌트/MSW 완료, E2E 후속)
+- [x] D7. E2E — 타입 변경 Playwright 시나리오 (PR #42 — S1 버그→스토리 타입/아이콘 갱신 + S2 표준 5종 셀렉터 옵션. MSW PATCH stateful 오버라이드 영속화로 refetch 롤백 방지. 회귀 E2E 12/12, unit 410/410 그린)
 
 #### §2.1.3 FR-IS-03 — 담당자 (Reporter 1 / Assignee 1 / Watchers N)
 

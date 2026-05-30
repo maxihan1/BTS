@@ -152,7 +152,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 <aside class="sidebar">
     <div class="sidebar-head">
       <div class="logo">🏢 BTS Dashboard</div>
-      <div class="updated">2026-05-29 갱신</div>
+      <div class="updated">2026-05-30 갱신</div>
     </div>
     <nav>
       <ul class="nav-top">
@@ -173,16 +173,16 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <svg viewBox="0 0 260 260" class="donut">
     <circle cx="130" cy="130" r="116" fill="none" stroke="#e5e7eb" stroke-width="28" />
     <circle cx="130" cy="130" r="116" fill="none" stroke="#22c55e" stroke-width="28"
-      stroke-dasharray="728.849495632832" stroke-dashoffset="706.9840107638471"
+      stroke-dasharray="728.849495632832" stroke-dashoffset="699.6955158075187"
       transform="rotate(-90 130 130)" stroke-linecap="round" />
-    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">3%</text>
+    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">4%</text>
   </svg>
       <div class="overview-numbers">
-        <div class="big-num">4 / 117</div>
+        <div class="big-num">5 / 117</div>
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
-          <div><span class="dot dot-done"></span> 완료 <b>4</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>6</b></div>
+          <div><span class="dot dot-done"></span> 완료 <b>5</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>5</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
           <div><span class="dot dot-wait"></span> 대기 <b>107</b></div>
         </div>
@@ -191,9 +191,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h2>업무 영역별 진척</h2>
     <div class="bc-grid"><div class="bc-card" data-nav="bc-issue-tracking">
       <div class="bc-card-head">📌 이슈 관리</div>
-      <div class="bc-card-stats">0 / 29 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:0%"></div></div>
-      <div class="bc-card-pct">0%</div>
+      <div class="bc-card-stats">1 / 29 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:3%"></div></div>
+      <div class="bc-card-pct">3%</div>
     </div><div class="bc-card" data-nav="bc-project-workflow">
       <div class="bc-card-head">🔄 워크플로우</div>
       <div class="bc-card-stats">2 / 2 완료</div>
@@ -470,12 +470,12 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h1>📌 이슈 관리</h1>
     <p class="bc-desc">이슈를 만들고, 상태를 바꾸고, 댓글/첨부/링크를 관리하는 영역.</p>
     <div class="bc-detail-stats">
-      <div class="big-pct">0%</div>
-      <div>0 / 29 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:0%"></div></div>
+      <div class="big-pct">3%</div>
+      <div>1 / 29 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:3%"></div></div>
       <div class="status-grid">
-        <div>✅ 완료 0</div>
-        <div>🔄 진행중 4</div>
+        <div>✅ 완료 1</div>
+        <div>🔄 진행중 3</div>
         <div>⛔ 차단 0</div>
         <div>⬜ 대기 25</div>
       </div>
@@ -488,13 +488,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> CRUD, 상태 변경 시 <span class="term" data-def="이슈의 상태 전이 FSM. YAML로 정의">워크플로우</span> 검증 + 알림</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span> Aggregate Root, IssueKey VO</li><li><span class="step-icon">✅</span> D2 — 명세 — Given/When/Then. 7 엣지 케이스 (중복 키/권한/<span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span> 위반/대용량/동시 편집/소프트 삭제/키 보존)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — <span class="term" data-def="&quot;DB 도면 버전 관리자 / 안전한 번역기&quot; DB 구조의 변경 이력을 꼼꼼히 기록하고(Flyway), 오타 없이 안전하게 DB 언어로 번역해 주는 도구(jOOQ)입니다.">Flyway</span>. `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s`, `issue_key_redirects`. DATA.md 영속성</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `POST/GET/<span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>CH/DELETE /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s`. `@Trans<span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">action</span>al`. <span class="term" data-def="PostgreSQL 기반 메시지 큐 (Kafka 대체)">pgmq</span> 이벤트 발행 동일 트랜잭션</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;마네킹 / 가짜 부품&quot; 테스트를 할 때 실제 결제 시스템이나 외부 서버를 연결하면 돈이 나가거나 느려지므로, 진짜처럼 행동하는 가짜 부품을 끼워놓는 것입니다.">Mock</span>K 단위 + <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> 통합. <span class="term" data-def="&quot;정답 먼저 쓰기 (테스트 주도 개발)&quot; 코드를 짜기 전에 &#39;이 코드가 통과해야 할 채점 기준&#39;을 먼저 만들고, 그 기준을 통과하기 위해 코드를 짜는 개발 방식입니다.">TDD</span> red→green→refactor</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>Detail.tsx`. TanStack Query 캐싱 + 낙관적 업데이트</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> + <span class="term" data-def="&quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.">NFR</span> — 생성→조회→수정→상태 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span>→소프트 삭제→키 영속성 (이동 후 옛 키 redirect)</li></ol>
-    </details><details class="fr-item fr-진행중">
+    </details><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">🔄</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-IS-02</span>
         <span class="fr-desc"><span class="term" data-def="이슈의 분류 (Epic/Story/Task/Subtask/Bug + 커스텀). 모든 이슈는 정확히 하나의 타입 보유. `hierarchylevel` 로 계층 위계 표현. 표준 5종(`isstandard=true`)은 불변">이슈 타입</span> (Epic/Story/Task/Subtask/Bug + 커스텀)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="이슈의 분류 (Epic/Story/Task/Subtask/Bug + 커스텀). 모든 이슈는 정확히 하나의 타입 보유. `hierarchylevel` 로 계층 위계 표현. 표준 5종(`isstandard=true`)은 불변"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>Type</span>.hierarchyLevel + Issue.typeId (PR #36)</li><li><span class="step-icon">✅</span> D2 — 명세 — <span class="term" data-def="이슈 타입의 하나 (최상위 `hierarchy_level=1`). 큰 작업을 묶는 상위 이슈로, 여러 Story 로 분해된다. agile-planning 의 &quot;에픽&quot;과 같은 개념의 두 측면 — issue-tracking 에선 이슈 타입, agile-planning 에선 묶음 단위">Epic</span>-Sub<span class="term" data-def="&quot;작업 쪼개기 단위&quot; 큰 프로젝트(에픽) → 사용자 기능(스토리) → 개발자 작업(태스크).">task</span> 계층은 hierarchyLevel 메타데이터로 (parent_id 강제는 후속 FR) (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #36)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_types.hierarchy_level` + `issues.type_id` FK + key 부분 unique (V005, PR #36)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — 커스텀 <span class="term" data-def="이슈의 분류 (Epic/Story/Task/Subtask/Bug + 커스텀). 모든 이슈는 정확히 하나의 타입 보유. `hierarchylevel` 로 계층 위계 표현. 표준 5종(`isstandard=true`)은 불변"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>Type</span> CRUD (POST/<span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>CH/DELETE+reassignTo) + 표준 불변 + RFC 7807 (PR #36)</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;마네킹 / 가짜 부품&quot; 테스트를 할 때 실제 결제 시스템이나 외부 서버를 연결하면 돈이 나가거나 느려지므로, 진짜처럼 행동하는 가짜 부품을 끼워놓는 것입니다.">Mock</span>K 단위 + <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> 통합 (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #36)</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 타입 셀렉터 + 아이콘 + <span class="term" data-def="이슈의 분류 (Epic/Story/Task/Subtask/Bug + 커스텀). 모든 이슈는 정확히 하나의 타입 보유. `hierarchylevel` 로 계층 위계 표현. 표준 5종(`isstandard=true`)은 불변">이슈 타입</span> 변경 backend(<span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>CH typeId + 활성 검증 + OCC) (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #39)</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="이슈의 분류 (Epic/Story/Task/Subtask/Bug + 커스텀). 모든 이슈는 정확히 하나의 타입 보유. `hierarchylevel` 로 계층 위계 표현. 표준 5종(`isstandard=true`)은 불변"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>Type</span>.hierarchyLevel + Issue.typeId (PR #36)</li><li><span class="step-icon">✅</span> D2 — 명세 — <span class="term" data-def="이슈 타입의 하나 (최상위 `hierarchy_level=1`). 큰 작업을 묶는 상위 이슈로, 여러 Story 로 분해된다. agile-planning 의 &quot;에픽&quot;과 같은 개념의 두 측면 — issue-tracking 에선 이슈 타입, agile-planning 에선 묶음 단위">Epic</span>-Sub<span class="term" data-def="&quot;작업 쪼개기 단위&quot; 큰 프로젝트(에픽) → 사용자 기능(스토리) → 개발자 작업(태스크).">task</span> 계층은 hierarchyLevel 메타데이터로 (parent_id 강제는 후속 FR) (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #36)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_types.hierarchy_level` + `issues.type_id` FK + key 부분 unique (V005, PR #36)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — 커스텀 <span class="term" data-def="이슈의 분류 (Epic/Story/Task/Subtask/Bug + 커스텀). 모든 이슈는 정확히 하나의 타입 보유. `hierarchylevel` 로 계층 위계 표현. 표준 5종(`isstandard=true`)은 불변"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>Type</span> CRUD (POST/<span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>CH/DELETE+reassignTo) + 표준 불변 + RFC 7807 (PR #36)</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;마네킹 / 가짜 부품&quot; 테스트를 할 때 실제 결제 시스템이나 외부 서버를 연결하면 돈이 나가거나 느려지므로, 진짜처럼 행동하는 가짜 부품을 끼워놓는 것입니다.">Mock</span>K 단위 + <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> 통합 (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #36)</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 타입 셀렉터 + 아이콘 + <span class="term" data-def="이슈의 분류 (Epic/Story/Task/Subtask/Bug + 커스텀). 모든 이슈는 정확히 하나의 타입 보유. `hierarchylevel` 로 계층 위계 표현. 표준 5종(`isstandard=true`)은 불변">이슈 타입</span> 변경 backend(<span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>CH typeId + 활성 검증 + OCC) (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #39)</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 타입 변경 <span class="term" data-def="&quot;가상 브라우저 자동 조종 로봇&quot; 사람을 대신해서 가상의 크롬 브라우저를 띄운 뒤, 버튼도 눌러보고 글자도 입력하며 화면이 잘 도는지 검사하는 매크로 로봇입니다.">Playwright</span> 시나리오 (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #42 — S1 버그→스토리 타입/아이콘 갱신 + S2 표준 5종 셀렉터 옵션. MSW <span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>CH stateful 오버라이드 영속화로 refetch <span class="term" data-def="&quot;타임머신&quot; 데이터를 저장하다가 중간에 에러가 났을 때, 데이터가 꼬이지 않게 &#39;작업하기 전 상태&#39;로 시간을 되돌리는 기능입니다.">롤백</span> 방지. 회귀 E2E 12/12, unit 410/410 그린)</li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
