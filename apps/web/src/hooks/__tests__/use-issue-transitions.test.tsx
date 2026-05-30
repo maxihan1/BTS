@@ -136,6 +136,14 @@ describe('useTransitionIssue', () => {
       typeId: 1,
       typeKey: 'task',
       typeName: '작업',
+      description: null,
+      descriptionHtml: null,
+      priority: 3,
+      priorityName: 'Medium',
+      labels: [],
+      environment: null,
+      impact: null,
+      impactName: null,
     }
 
     server.use(

@@ -217,12 +217,14 @@ describe('issueResponseSchema — FR-IS-04 신규 8필드', () => {
   })
 
   it('T1-10g: priority 필드가 누락되면 ZodError를 throw한다 — backend non-null 계약 회귀가드', () => {
-    const { priority: _p, ...withoutPriority } = issueFixture
+    const withoutPriority: Record<string, unknown> = { ...issueFixture }
+    delete withoutPriority.priority
     expect(() => issueResponseSchema.parse(withoutPriority)).toThrow()
   })
 
   it('T1-10h: labels 필드가 누락되면 ZodError를 throw한다 — backend List<String> 계약 회귀가드', () => {
-    const { labels: _l, ...withoutLabels } = issueFixture
+    const withoutLabels: Record<string, unknown> = { ...issueFixture }
+    delete withoutLabels.labels
     expect(() => issueResponseSchema.parse(withoutLabels)).toThrow()
   })
 })
