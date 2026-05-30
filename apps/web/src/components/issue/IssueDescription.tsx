@@ -29,6 +29,13 @@ export interface IssueDescriptionProps {
 /** Write/Preview 탭 상태 */
 type ActiveTab = 'write' | 'preview'
 
+/** 탭 버튼 활성/비활성 공통 className */
+const TAB_BASE_CLS =
+  'px-3 py-2 text-sm font-medium min-h-[44px] border-b-2 transition-colors'
+const TAB_ACTIVE_CLS = 'border-primary text-primary'
+const TAB_INACTIVE_CLS =
+  'border-transparent text-muted-foreground hover:text-foreground'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // IssueDescription
 // ─────────────────────────────────────────────────────────────────────────────
@@ -176,11 +183,7 @@ function EditMode({
           role="tab"
           aria-selected={activeTab === 'write'}
           aria-label={issueDetailStrings.descriptionWriteTab}
-          className={`px-3 py-2 text-sm font-medium min-h-[44px] border-b-2 transition-colors ${
-            activeTab === 'write'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
+          className={`${TAB_BASE_CLS} ${activeTab === 'write' ? TAB_ACTIVE_CLS : TAB_INACTIVE_CLS}`}
           onClick={() => onTabChange('write')}
         >
           {issueDetailStrings.descriptionWriteTab}
@@ -190,11 +193,7 @@ function EditMode({
           role="tab"
           aria-selected={activeTab === 'preview'}
           aria-label={issueDetailStrings.descriptionPreviewTab}
-          className={`px-3 py-2 text-sm font-medium min-h-[44px] border-b-2 transition-colors ${
-            activeTab === 'preview'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
+          className={`${TAB_BASE_CLS} ${activeTab === 'preview' ? TAB_ACTIVE_CLS : TAB_INACTIVE_CLS}`}
           onClick={() => onTabChange('preview')}
         >
           {issueDetailStrings.descriptionPreviewTab}
