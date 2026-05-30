@@ -32,7 +32,8 @@ class IssueResponseTest {
 
     @Test
     fun `from — Issue 의 모든 필드가 IssueResponse 에 올바르게 매핑된다`() {
-        val response = IssueResponse.from(sampleIssue, "ATLAS", typeId = 3L, typeKey = "task", typeName = "Task")
+        val response =
+            IssueResponse.from(sampleIssue, "ATLAS", IssueResponse.IssueTypeInfo(id = 3L, key = "task", name = "Task"))
 
         assertEquals("ATLAS-1", response.key)
         assertEquals(UUID.fromString("00000000-0000-0000-0000-000000000001"), response.id)
@@ -50,7 +51,8 @@ class IssueResponseTest {
 
     @Test
     fun `from — 다른 projectKey 를 주면 그 값이 그대로 반영된다`() {
-        val response = IssueResponse.from(sampleIssue, "BETA", typeId = 3L, typeKey = "task", typeName = "Task")
+        val response =
+            IssueResponse.from(sampleIssue, "BETA", IssueResponse.IssueTypeInfo(id = 3L, key = "task", name = "Task"))
 
         assertEquals("BETA", response.projectKey)
     }

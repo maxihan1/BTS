@@ -403,6 +403,173 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
             )
     }
 
+    // ── T10. 5필드 round-trip (FR-IS-04 Task 5) ──────────────────────────────────
+
+    /**
+     * Given  description/priority/labels/environment/impact 5필드가 모두 채워진 Issue
+     * When   insert 후 findByKey 로 조회
+     * Then   5필드가 모두 정확히 일치한다.
+     */
+    @Test
+    @Order(14)
+    fun `T10 - 5필드 round-trip - 다중 라벨, null 없음`() {
+        val key = IssueKey.of("TPRJ", 1L)
+        val issue =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = key,
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "5필드 round-trip 테스트",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+                description = "## 재현 방법\n1. 로그인\n2. 클릭",
+                priority = 2,
+                labels = listOf("backend", "urgent", "special-char:테스트"),
+                environment = "production",
+                impact = 1,
+            )
+        repository.insert(issue)
+
+        val found = requireNotNull(repository.findByKey(key)) { "이슈가 없어서 round-trip 검증 불가" }
+
+        assertThat(found.description).isEqualTo("## 재현 방법\n1. 로그인\n2. 클릭")
+        assertThat(found.priority).isEqualTo(2)
+        assertThat(found.labels).containsExactly("backend", "urgent", "special-char:테스트")
+        assertThat(found.environment).isEqualTo("production")
+        assertThat(found.impact).isEqualTo(1)
+    }
+
+    /**
+     * Given  description/environment/impact 를 null 로 지정하고 labels 를 빈 리스트로 지정한 Issue
+     * When   insert 후 findByKey 로 조회
+     * Then   null 필드는 null, labels 는 빈 리스트로 반환된다.
+     */
+    @Test
+    @Order(15)
+    fun `T10b - 5필드 round-trip - null 필드 및 빈 labels`() {
+        val key = IssueKey.of("TPRJ", 2L)
+        val issue =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = key,
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "null 필드 round-trip 테스트",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+                description = null,
+                priority = 3,
+                labels = emptyList(),
+                environment = null,
+                impact = null,
+            )
+        repository.insert(issue)
+
+        val found = requireNotNull(repository.findByKey(key)) { "이슈가 없어서 round-trip 검증 불가" }
+
+        assertThat(found.description).isNull()
+        assertThat(found.priority).isEqualTo(3)
+        assertThat(found.labels).isEmpty()
+        assertThat(found.environment).isNull()
+        assertThat(found.impact).isNull()
+    }
+
+    /**
+     * Given  version=1 로 삽입된 이슈
+     * When   updateFields 로 description/priority/labels/environment/impact 변경 (expectedVersion=1)
+     * Then   반환값 1, findByKey 로 조회 시 5필드 및 version+1 이 반영된다.
+     */
+    @Test
+    @Order(16)
+    fun `T10c - updateFields - 5필드 부분 업데이트 + OCC version+1`() {
+        val key = IssueKey.of("TPRJ", 1L)
+        val issue =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = key,
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "updateFields 5필드 테스트",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+                description = "초기 설명",
+                priority = 3,
+                labels = listOf("initial"),
+                environment = "staging",
+                impact = 2,
+            )
+        repository.insert(issue)
+
+        val updateCount =
+            repository.updateFields(
+                key = key,
+                patch =
+                    IssueFieldPatch(
+                        description = "업데이트된 설명",
+                        priority = 1,
+                        labels = listOf("updated", "label2"),
+                        environment = "production",
+                        impact = 3,
+                    ),
+                expectedVersion = 1L,
+            )
+
+        assertThat(updateCount).isEqualTo(1)
+        val found = requireNotNull(repository.findByKey(key)) { "업데이트 후 이슈 조회 불가" }
+        assertThat(found.version).isEqualTo(2L)
+        assertThat(found.description).isEqualTo("업데이트된 설명")
+        assertThat(found.priority).isEqualTo(1)
+        assertThat(found.labels).containsExactly("updated", "label2")
+        assertThat(found.environment).isEqualTo("production")
+        assertThat(found.impact).isEqualTo(3)
+    }
+
+    // ── T10d. ifBlank → NULL 클리어 round-trip (CONCERN 회귀 가드) ─────────────────
+
+    /**
+     * Given  description/environment 가 각각 실제 값으로 저장된 이슈
+     * When   updateFields 에 공백-only 문자열("\n\t  ")로 클리어 시도
+     * Then   DB 에 NULL 로 저장되어 findByKey 조회 시 null 로 반환된다.
+     *
+     * CONCERN: repository 의 `ifEmpty { null }` 을 `ifBlank { null }` 로 교체한 결과를 검증한다.
+     * `ifEmpty` 는 "" 만 처리하고 "  "같은 공백-only 는 통과시킨다.
+     * `ifBlank` 는 공백-only 도 NULL 로 클리어하여 "보이지 않는 본문" 저장을 방지한다.
+     */
+    @Test
+    @Order(17)
+    fun `T10d - updateFields - 공백only 문자열은 NULL 로 클리어된다 (ifBlank 회귀 가드)`() {
+        val key = IssueKey.of("TPRJ", 1L)
+        val issue =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = key,
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "공백 NULL 클리어 테스트",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+                description = "초기 설명",
+                environment = "staging",
+            )
+        repository.insert(issue)
+
+        repository.updateFields(
+            key = key,
+            patch =
+                IssueFieldPatch(
+                    // 공백-only 문자열 → ifBlank 에 의해 DB NULL 클리어
+                    description = "\n\t  ",
+                    environment = "   ",
+                ),
+            expectedVersion = 1L,
+        )
+
+        val found = requireNotNull(repository.findByKey(key)) { "업데이트 후 이슈 조회 불가" }
+        assertThat(found.description).isNull()
+        assertThat(found.environment).isNull()
+    }
+
     // ── G4. findByKeyWithType — type 요약 노출 (FR-IS-02 Task 9) ─────────────────
 
     /**

@@ -31,6 +31,22 @@ import java.util.UUID
 private const val SQL_ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(hashtext(?))"
 
 /**
+ * 이슈 필드 부분 업데이트 요청. [IssueRepository.updateFields] 파라미터 그룹화용.
+ *
+ * null 필드는 변경하지 않는다.
+ * description/environment 는 빈/공백 문자열이면 DB NULL 로 클리어한다 (ifBlank).
+ */
+data class IssueFieldPatch(
+    val summary: String? = null,
+    val typeId: IssueTypeId? = null,
+    val description: String? = null,
+    val priority: Int? = null,
+    val labels: List<String>? = null,
+    val environment: String? = null,
+    val impact: Int? = null,
+)
+
+/**
  * 이슈 Repository.
  *
  * jOOQ DSLContext 를 통해 issues / projects 테이블에 접근한다.
@@ -44,6 +60,7 @@ private const val SQL_ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(hashtext(?))
  * - [list] — 프로젝트별 활성 이슈 페이지 조회.
  * - [incrementKeySequence] — pg_advisory_xact_lock 으로 동시성 제어 후 key_sequence +1 RETURNING.
  */
+
 @Repository
 @Suppress("TooManyFunctions")
 class IssueRepository(
@@ -60,20 +77,10 @@ class IssueRepository(
     fun insert(issue: Issue): Issue {
         log.debug("Inserting issue key={}", issue.key.value)
         val record =
-            issue.toInsertRecord()
-                .let { r ->
-                    dsl.insertInto(ISSUES)
-                        .set(ISSUES.ID, r.id)
-                        .set(ISSUES.KEY, r.key)
-                        .set(ISSUES.PROJECT_ID, r.projectId)
-                        .set(ISSUES.SUMMARY, r.summary)
-                        .set(ISSUES.REPORTER_ID, r.reporterId)
-                        .set(ISSUES.CURRENT_STATE_KEY, r.currentStateKey)
-                        .set(ISSUES.VERSION, r.version)
-                        .set(ISSUES.TYPE_ID, r.typeId)
-                        .returning()
-                        .fetchOne()
-                }
+            dsl.insertInto(ISSUES)
+                .set(issue.toInsertRecord())
+                .returning()
+                .fetchOne()
                 ?: error("insert returning() returned null for key=${issue.key.value}")
 
         return record.toIssue()
@@ -108,9 +115,9 @@ class IssueRepository(
             ?.toIssue()
 
     /**
-     * 이슈 필드(summary, type_id)를 수정한다 (낙관락).
+     * 이슈 필드(summary, typeId, description, priority, labels, environment, impact)를 수정한다 (낙관락).
      *
-     * summary / typeId 중 non-null 인 필드만 SET 절에 포함한다.
+     * non-null 인 필드만 SET 절에 포함한다. null 전달 시 해당 필드는 변경하지 않는다.
      * WHERE key=? AND version=? AND deleted_at IS NULL 조건으로 업데이트.
      * version 불일치(stale read) 시 영향 행 0 반환.
      *
@@ -118,21 +125,31 @@ class IssueRepository(
      * @param summary 새 이슈 제목. null 이면 변경하지 않는다.
      * @param typeId 새 이슈 유형 식별자 VO. null 이면 변경하지 않는다.
      * @param expectedVersion 현재 버전. DB 버전과 일치해야 업데이트가 실행된다.
+     * @param description Markdown 설명. null 이면 변경하지 않는다. 빈/공백 문자열은 DB NULL 로 클리어한다.
+     * @param priority 우선순위 1..5. null 이면 변경하지 않는다.
+     * @param labels 라벨 목록. null 이면 변경하지 않는다.
+     * @param environment 재현 환경 설명. null 이면 변경하지 않는다. 빈/공백 문자열은 DB NULL 로 클리어한다.
+     * @param impact 영향도 1..3. null 이면 변경하지 않는다.
      * @return 업데이트된 행 수 (성공=1, 낙관락 충돌=0).
      */
     @Transactional
+    @Suppress("CyclomaticComplexMethod") // jOOQ 선택적 SET 패턴 — null 필드 skip, 조건 분기가 불가피
     fun updateFields(
         key: IssueKey,
-        summary: String?,
-        typeId: IssueTypeId?,
+        patch: IssueFieldPatch,
         expectedVersion: Long,
     ): Int {
-        log.debug("updateFields key={} typeId={} expectedVersion={}", key.value, typeId?.value, expectedVersion)
+        log.debug("updateFields key={} typeId={} expectedVersion={}", key.value, patch.typeId?.value, expectedVersion)
         return dsl.update(ISSUES)
             .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
             .set(ISSUES.VERSION, expectedVersion + 1)
-            .apply { if (summary != null) set(ISSUES.SUMMARY, summary) }
-            .apply { if (typeId != null) set(ISSUES.TYPE_ID, typeId.value) }
+            .apply { if (patch.summary != null) set(ISSUES.SUMMARY, patch.summary) }
+            .apply { if (patch.typeId != null) set(ISSUES.TYPE_ID, patch.typeId.value) }
+            .apply { if (patch.description != null) set(ISSUES.DESCRIPTION, patch.description.ifBlank { null }) }
+            .apply { if (patch.priority != null) set(ISSUES.PRIORITY, patch.priority.toShort()) }
+            .apply { if (patch.labels != null) set(ISSUES.LABELS, patch.labels.toDbArray()) }
+            .apply { if (patch.environment != null) set(ISSUES.ENVIRONMENT, patch.environment.ifBlank { null }) }
+            .apply { if (patch.impact != null) set(ISSUES.IMPACT, patch.impact.toShort()) }
             .where(ISSUES.KEY.eq(key.value))
             .and(ISSUES.VERSION.eq(expectedVersion))
             .and(ISSUES.DELETED_AT.isNull)
@@ -292,15 +309,18 @@ class IssueRepository(
                 IssueResponse.from(
                     issue = issueRecord.toIssue(),
                     projectKey = key.projectPrefix,
-                    typeId =
-                        record.get("type_id", Long::class.java)
-                            ?: error("issue_types.id must not be null in join result"),
-                    typeKey =
-                        record.get("type_key", String::class.java)
-                            ?: error("issue_types.key must not be null in join result"),
-                    typeName =
-                        record.get("type_name", String::class.java)
-                            ?: error("issue_types.name must not be null in join result"),
+                    typeInfo =
+                        IssueResponse.IssueTypeInfo(
+                            id =
+                                record.get("type_id", Long::class.java)
+                                    ?: error("issue_types.id must not be null in join result"),
+                            key =
+                                record.get("type_key", String::class.java)
+                                    ?: error("issue_types.key must not be null in join result"),
+                            name =
+                                record.get("type_name", String::class.java)
+                                    ?: error("issue_types.name must not be null in join result"),
+                        ),
                 )
             }
 
@@ -352,15 +372,18 @@ class IssueRepository(
                     IssueResponse.from(
                         issue = record.into(ISSUES).toIssue(),
                         projectKey = projectKey,
-                        typeId =
-                            record.get("type_id", Long::class.java)
-                                ?: error("issue_types.id must not be null in join result"),
-                        typeKey =
-                            record.get("type_key", String::class.java)
-                                ?: error("issue_types.key must not be null in join result"),
-                        typeName =
-                            record.get("type_name", String::class.java)
-                                ?: error("issue_types.name must not be null in join result"),
+                        typeInfo =
+                            IssueResponse.IssueTypeInfo(
+                                id =
+                                    record.get("type_id", Long::class.java)
+                                        ?: error("issue_types.id must not be null in join result"),
+                                key =
+                                    record.get("type_key", String::class.java)
+                                        ?: error("issue_types.key must not be null in join result"),
+                                name =
+                                    record.get("type_name", String::class.java)
+                                        ?: error("issue_types.name must not be null in join result"),
+                            ),
                     )
                 }
 
@@ -391,6 +414,11 @@ private fun Issue.toInsertRecord(): IssuesRecord =
         currentStateKey = currentStateKey,
         version = version,
         typeId = typeId.value,
+        description = description,
+        priority = priority.toShort(),
+        labels = labels.toDbArray(),
+        environment = environment,
+        impact = impact?.toShort(),
     )
 
 /**
@@ -398,6 +426,9 @@ private fun Issue.toInsertRecord(): IssuesRecord =
  *
  * DB 는 TIMESTAMPTZ 를 OffsetDateTime 으로 반환한다.
  * Instant 로 변환해 도메인 타입과 일치시킨다.
+ *
+ * labels: PostgreSQL text[] → Array<String?>? — null 요소는 filterNotNull 로 방어.
+ * priority/impact: DB Short → 도메인 Int 타입 변환.
  */
 private fun IssuesRecord.toIssue(): Issue {
     val recordId = id ?: error("issues.id must not be null after insert/select")
@@ -413,5 +444,21 @@ private fun IssuesRecord.toIssue(): Issue {
         createdAt = createdAt?.toInstant() ?: error("issues.created_at must not be null"),
         updatedAt = updatedAt?.toInstant() ?: error("issues.updated_at must not be null"),
         typeId = IssueTypeId(typeId ?: error("issues.type_id must not be null")),
+        description = description,
+        priority = (priority ?: DEFAULT_PRIORITY_SHORT).toInt(),
+        labels = labels?.filterNotNull() ?: emptyList(),
+        environment = environment,
+        impact = impact?.toInt(),
     )
 }
+
+/** DB DEFAULT 3 과 동기화된 priority Short 기본값 상수. DB NOT NULL DEFAULT 3 보장 방어용. */
+private const val DEFAULT_PRIORITY_SHORT: Short = 3
+
+/**
+ * 도메인 [List]<[String]> 을 PostgreSQL text[] 에 저장하기 위한 [Array]<[String]?> 로 변환한다.
+ *
+ * 빈 리스트는 빈 배열로 변환한다 (DB DEFAULT '{}' 와 동일).
+ * null 요소 없이 String 만 포함하므로 typed null-array 사용.
+ */
+private fun List<String>.toDbArray(): Array<String?> = map { it as String? }.toTypedArray()

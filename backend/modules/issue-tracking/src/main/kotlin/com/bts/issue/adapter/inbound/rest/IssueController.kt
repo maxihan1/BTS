@@ -160,6 +160,11 @@ class IssueController(
                 summary = request.summary,
                 typeId = request.typeId?.let { IssueTypeId(it) },
                 expectedVersion = request.expectedVersion,
+                description = request.description,
+                priority = request.priority,
+                labels = request.labels,
+                environment = request.environment,
+                impact = request.impact,
             )
         val response = service.updateIssue(actor, issueKey, appRequest)
         return ResponseEntity.ok(DataResponse(data = response))

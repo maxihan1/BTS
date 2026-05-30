@@ -6,7 +6,7 @@ import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
-import io.mockk.clearAllMocks
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.AfterEach
@@ -98,18 +98,18 @@ class IssueControllerReadTest {
         )
 
     /**
-     * PRE_EXISTING: value class + relaxed mock 안티패턴, main 컴파일 실패로 잠복했다가 모듈 컴파일 복구로 노출.
+     * 매 테스트 후 이 테스트의 mock 만 초기화한다.
      *
-     * relaxed mock 이 IssueApplicationService 타입 정보를 MockK 전역 상태에 등록하면,
-     * 이후 동일 JVM 프로세스에서 실행되는 테스트(IssueTypeLookupAdapterTest 등)가
-     * value class(IssueTypeId) 파라미터를 가진 메서드에 `any()` matcher 를 등록할 때
-     * MockK JvmSignatureValueGenerator 가 랜덤 Long 으로 IssueTypeId 를 reflection 생성해
-     * require(value > 0) 를 위반한다.
-     * 매 테스트 후 clearAllMocks() 로 MockK 전역 상태를 초기화하여 누수를 차단한다.
+     * [clearMocks] 는 지정한 mock 만 초기화하므로 다른 Spring ApplicationContext 의 Bean mock 을 오염시키지 않는다.
+     * [io.mockk.clearAllMocks] (JVM 전역 초기화) 대신 이 방식을 사용해야 [IssueControllerTransitionIntegrationTest]
+     * 의 [com.bts.workflow.engine.WorkflowDefinitionRepository] mock stub 이 지워지는 것을 방지한다 (BLOCKER 2 fix).
+     *
+     * PRE_EXISTING context: value class + relaxed mock 안티패턴으로 MockK 전역 누수가 발생했던 이슈는
+     * clearMocks(issueApplicationService) 로도 동일하게 차단된다 — 이 mock 이 등록한 타입 정보를 지우기 때문.
      */
     @AfterEach
     fun tearDown() {
-        clearAllMocks()
+        clearMocks(issueApplicationService)
     }
 
     @BeforeEach

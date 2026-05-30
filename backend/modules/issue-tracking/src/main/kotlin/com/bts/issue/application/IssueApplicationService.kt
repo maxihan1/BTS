@@ -7,8 +7,10 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
+import com.bts.issue.domain.IssueImpact
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.issue.domain.IssuePriority
 import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
@@ -18,9 +20,11 @@ import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueSoftDeleted
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.event.IssueUpdated
+import com.bts.issue.markdown.MarkdownRenderer
 import com.bts.issue.port.outbound.IssuePermission
 import com.bts.issue.port.outbound.IssuePermissionResolver
 import com.bts.issue.port.outbound.IssueScope
+import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.domain.IssueTypeNotFoundException
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -152,9 +156,12 @@ class IssueApplicationService(
     /**
      * 이슈 단건을 조회한다.
      *
+     * 단건 경로이므로 description 을 HTML 로 렌더하여 descriptionHtml 에 채운다 (C3).
+     * 목록 경로([listIssues])는 N건 렌더 비용 방지를 위해 descriptionHtml=null 유지.
+     *
      * @param actor 조회 행위자.
      * @param key 조회할 이슈 키.
-     * @return [IssueResponse] DTO.
+     * @return [IssueResponse] DTO. descriptionHtml 이 채워져 있다.
      * @throws IssueAccessDeniedException 권한 없을 때.
      * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우.
      */
@@ -164,7 +171,8 @@ class IssueApplicationService(
         key: IssueKey,
     ): IssueResponse {
         assertPermission(actor, IssuePermission.VIEW, IssueScope.Issue(key.value))
-        return repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)
+        val response = repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)
+        return response.withRenderedHtml()
     }
 
     /**
@@ -175,19 +183,28 @@ class IssueApplicationService(
      * 2. 이슈 조회 — 미존재 시 IssueNotFoundException
      * 3. typeId non-null 이면 활성 타입 존재 검증 — 없으면 IssueTypeNotFoundException
      *    (CREATE 의 null=task fallback 과 달리 PATCH 의 null=변경없음 시맨틱)
-     * 4. changedFields 계산 — empty 이면 no-op 반환
-     * 5. [IssueRepository.updateFields] 호출 — 0 row 반환 시 IssueVersionConflictException
-     * 6. 변경 후 이슈 재조회
-     * 7. IssueUpdated 이벤트 발행 (변경 필드 목록 포함)
+     * 4. priority/impact non-null 이면 범위 검증 — 위반 시 IllegalArgumentException
+     * 5. labels non-null 이면 [Issue.normalizeLabels] 로 도메인 검증 + 정규화 —
+     *    공백-only/50자 초과/21개 초과 시 IllegalArgumentException
+     * 6. changedFields 계산 — empty 이면 no-op 반환
+     * 7. [IssueRepository.updateFields] 호출 — 0 row 반환 시 IssueVersionConflictException
+     * 8. 변경 후 이슈 재조회
+     * 9. IssueUpdated 이벤트 발행 (변경 필드 목록 포함)
+     *
+     * ### merge-patch 3-상태 sentinel 규칙 (B1)
+     * - description/environment: null=무변경, ""=DB NULL 클리어, 값=설정.
+     * - labels: null=무변경, []=전체 제거, 값=교체.
+     * - priority/impact: null=무변경, 값=설정.
      *
      * @param actor 수정 행위자.
      * @param key 수정할 이슈 키.
-     * @param request 수정 요청 DTO. summary/typeId 각 null 이면 해당 필드 변경 없음 (RFC 7396 JSON Merge Patch).
+     * @param request 수정 요청 DTO. 각 필드 null=무변경 (RFC 7396 JSON Merge Patch).
      * @return 수정된 이슈의 [IssueResponse].
      * @throws IssueAccessDeniedException 권한 없을 때.
      * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우.
      * @throws IssueTypeNotFoundException request.typeId 가 non-null 이지만 활성 타입이 없을 때.
      * @throws IssueVersionConflictException 낙관락 충돌 시.
+     * @throws IllegalArgumentException priority 가 1..5 범위 밖이거나 impact 가 1..3 범위 밖일 때.
      */
     fun updateIssue(
         actor: ActorId,
@@ -202,12 +219,32 @@ class IssueApplicationService(
             issueTypeRepository.findById(request.typeId) ?: throw IssueTypeNotFoundException(request.typeId)
         }
 
-        val changedFields = buildChangedFields(existing, request)
+        validatePriorityImpactRanges(request.priority, request.impact)
+
+        // 라벨 도메인 검증 + 정규화 — null=무변경(스킵), non-null=도메인 권위 검증 필수.
+        // BLOCKER 1: PATCH 경로에서 도메인 validateAndNormalizeLabels 를 우회하는 경로를 차단한다.
+        val normalizedLabels: List<String>? = request.labels?.let { Issue.normalizeLabels(it) }
+
+        val changedFields = buildChangedFields(existing, request, normalizedLabels)
         if (changedFields.isEmpty()) {
             log.info("issue_update_noop key={} actor={}", key.value, actor.value)
-            return repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)
+            return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withRenderedHtml()
         }
-        val updatedRows = repo.updateFields(key, request.summary, request.typeId, request.expectedVersion)
+        val updatedRows =
+            repo.updateFields(
+                key = key,
+                patch =
+                    IssueFieldPatch(
+                        summary = request.summary,
+                        typeId = request.typeId,
+                        description = request.description,
+                        priority = request.priority,
+                        labels = normalizedLabels,
+                        environment = request.environment,
+                        impact = request.impact,
+                    ),
+                expectedVersion = request.expectedVersion,
+            )
         if (updatedRows == 0) {
             throw IssueVersionConflictException(key, existing.version)
         }
@@ -219,7 +256,7 @@ class IssueApplicationService(
             ),
         )
         log.info("issue_updated key={} fields={} actor={}", key.value, changedFields, actor.value)
-        return repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)
+        return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withRenderedHtml()
     }
 
     /**
@@ -341,7 +378,7 @@ class IssueApplicationService(
             plan.toStateKey,
             actor.value,
         )
-        return repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)
+        return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withRenderedHtml()
     }
 
     /**
@@ -525,14 +562,79 @@ class IssueApplicationService(
         return result ?: throw IssueWorkflowNotConfiguredException(key.projectPrefix, null)
     }
 
+    /**
+     * priority/impact 범위를 검증한다.
+     *
+     * non-null 인 값에 대해 [IssuePriority.fromNumber] / [IssueImpact.fromNumber] 를 호출한다.
+     * 범위 밖이면 해당 함수 내부에서 [IllegalArgumentException] 을 던진다.
+     * null 이면 무변경이므로 검증 대상 아님.
+     *
+     * @param priority 검증할 우선순위 값. null 이면 스킵.
+     * @param impact 검증할 영향도 값. null 이면 스킵.
+     * @throws IllegalArgumentException priority 가 1..5 밖이거나 impact 가 1..3 밖일 때.
+     */
+    private fun validatePriorityImpactRanges(
+        priority: Int?,
+        impact: Int?,
+    ) {
+        if (priority != null) IssuePriority.fromNumber(priority)
+        if (impact != null) IssueImpact.fromNumber(impact)
+    }
+
+    /**
+     * 수정 요청에서 실제로 값이 달라지는 필드 이름 집합을 계산한다.
+     *
+     * ### 3-상태 sentinel 규칙 (B1)
+     * - summary/typeId: null=무변경, 값=변경(기존값과 다를 때만 changedFields 포함).
+     * - description/environment: null=무변경, ""=클리어(기존 non-null 이면 변경), 값=변경(기존값과 다를 때).
+     * - labels: null=무변경, []=전체 제거(기존 비어있지 않으면 변경), 값=교체(기존과 다를 때).
+     *   [normalizedLabels] 는 [Issue.normalizeLabels] 를 거친 정규화 값이어야 한다.
+     * - priority/impact: null=무변경, 값=변경(기존값과 다를 때).
+     *
+     * @param normalizedLabels labels 를 [Issue.normalizeLabels] 로 정규화한 결과. null=무변경.
+     * @return 변경된 필드 이름 집합. 비어있으면 no-op.
+     */
     private fun buildChangedFields(
         existing: Issue,
         request: UpdateIssueRequest,
+        normalizedLabels: List<String>?,
     ): Set<String> {
         val fields = mutableSetOf<String>()
         if (request.summary != null && existing.summary != request.summary) fields.add("summary")
         if (request.typeId != null && existing.typeId != request.typeId) fields.add("typeId")
+
+        // description: null=무변경, ""=클리어(기존 non-null 이면 변경), 값=설정(기존과 다를 때)
+        if (isTextFieldChanged(existing.description, request.description)) fields.add("description")
+
+        // environment: null=무변경, ""=클리어(기존 non-null 이면 변경), 값=설정(기존과 다를 때)
+        if (isTextFieldChanged(existing.environment, request.environment)) fields.add("environment")
+
+        // labels: null=무변경, []=전체 제거(기존 비어있지 않으면 변경), 값=교체(기존 정규화값과 다를 때)
+        // normalizedLabels 는 도메인 정규화(dedup/trim) 후의 최종값과 비교한다.
+        if (normalizedLabels != null && existing.labels != normalizedLabels) fields.add("labels")
+
+        // priority: null=무변경, 값=변경(기존과 다를 때)
+        if (request.priority != null && existing.priority != request.priority) fields.add("priority")
+
+        // impact: null=무변경, 값=변경(기존과 다를 때)
+        if (request.impact != null && existing.impact != request.impact) fields.add("impact")
+
         return fields
+    }
+
+    /**
+     * Nullable 텍스트 필드(description, environment)의 3-상태 변경 여부를 판정한다.
+     *
+     * - requestValue=null → 무변경 → false
+     * - requestValue="" → 클리어 → 기존값이 non-null 이면 true
+     * - requestValue=값 → 기존값과 다르면 true
+     */
+    private fun isTextFieldChanged(
+        existingValue: String?,
+        requestValue: String?,
+    ): Boolean {
+        if (requestValue == null) return false
+        return existingValue != requestValue
     }
 
     private fun assertPermission(
@@ -544,4 +646,15 @@ class IssueApplicationService(
             throw IssueAccessDeniedException(actor, permission, scope)
         }
     }
+
+    /**
+     * 단건 조회 응답에 descriptionHtml 을 채운다 (C3).
+     *
+     * description 이 null 이면 descriptionHtml 도 null 유지.
+     * non-null 이면 [MarkdownRenderer.renderSafe] 로 렌더하여 채운다.
+     *
+     * 목록 경로([listIssues])는 N건 렌더 비용 방지를 위해 이 함수를 호출하지 않는다.
+     */
+    private fun IssueResponse.withRenderedHtml(): IssueResponse =
+        copy(descriptionHtml = description?.let { MarkdownRenderer.renderSafe(it) })
 }
