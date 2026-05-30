@@ -206,12 +206,12 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
   }
 
   // (4) 성공 — 5필드 merge-patch 적용
-  const resolvedDescription = applyDescriptionPatch(found.description, body.description)
+  const resolvedDescription = applyNullableStringPatch(found.description, body.description)
   const resolvedPriority = body.priority ?? found.priority
   const resolvedLabels = body.labels !== undefined && body.labels !== null
     ? body.labels
     : found.labels
-  const resolvedEnvironment = applyEnvironmentPatch(found.environment, body.environment)
+  const resolvedEnvironment = applyNullableStringPatch(found.environment, body.environment)
   const resolvedImpact = body.impact !== undefined ? (body.impact ?? found.impact) : found.impact
 
   const updated: IssueResponse = {
@@ -279,25 +279,14 @@ function impactNameOf(impact: number | null): string | null {
 }
 
 /**
- * description merge-patch 3-state 처리.
+ * nullable 문자열 필드의 merge-patch 3-state 처리.
  * - undefined(미전달) → 기존값 유지
  * - "" → null (DB NULL 클리어)
  * - 값 → 그대로 설정
+ *
+ * description, environment 두 필드가 동일 규칙이므로 공유.
  */
-function applyDescriptionPatch(
-  current: string | null,
-  incoming: string | null | undefined,
-): string | null {
-  if (incoming === undefined) return current
-  if (incoming === '') return null
-  return incoming
-}
-
-/**
- * environment merge-patch 3-state 처리.
- * description과 동일한 규칙 — "" → null, 미전달 → 유지, 값 → 설정.
- */
-function applyEnvironmentPatch(
+function applyNullableStringPatch(
   current: string | null,
   incoming: string | null | undefined,
 ): string | null {
