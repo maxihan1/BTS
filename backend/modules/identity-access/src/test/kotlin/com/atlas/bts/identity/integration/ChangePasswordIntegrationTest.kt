@@ -13,6 +13,7 @@ import com.atlas.bts.identity.provider.ldap.LdapProvider
 import com.atlas.bts.identity.provider.ldap.LdapProviderConfigService
 import com.atlas.bts.identity.session.RefreshToken
 import com.atlas.bts.identity.session.RefreshTokenRepository
+import com.atlas.bts.identity.session.Session
 import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.user.UserRepository
 import org.assertj.core.api.Assertions.assertThat
@@ -58,7 +59,8 @@ import java.util.UUID
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = [
-        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration",
+        "spring.autoconfigure.exclude=" +
+            "org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration",
     ],
 )
 @Testcontainers
@@ -225,49 +227,11 @@ class ChangePasswordIntegrationTest {
      */
     @Test
     fun `S7 다른 세션 무효화 — 세션 B revoked + refresh chain revoked, 현재 세션 A active 유지`() {
-        val now = Instant.now()
-
-        // 세션 A (현재 요청 세션)
-        val sessionA = sessionService.create(
-            userId = testUserId,
-            providerId = "local",
-            ipAddress = "127.0.0.1",
-            userAgent = "TestAgent/1.0",
-        )
-
-        // 세션 B (다른 세션 — 비밀번호 변경 시 무효화 대상)
-        val sessionB = sessionService.create(
-            userId = testUserId,
-            providerId = "local",
-            ipAddress = "192.168.1.2",
-            userAgent = "TestAgent/2.0",
-        )
-
-        // 세션 A의 refresh token (미사용 상태)
-        val rawTokenA = "token-a-${UUID.randomUUID()}"
-        val refreshTokenA = RefreshToken(
-            id = UUID.randomUUID(),
-            sessionId = sessionA.id,
-            tokenHash = sha256Hex(rawTokenA),
-            issuedAt = now,
-            expiresAt = now.plus(14, ChronoUnit.DAYS),
-            usedAt = null,
-            replacedBy = null,
-        )
-        refreshTokenRepository.save(refreshTokenA)
-
-        // 세션 B의 refresh token (미사용 상태)
-        val rawTokenB = "token-b-${UUID.randomUUID()}"
-        val refreshTokenB = RefreshToken(
-            id = UUID.randomUUID(),
-            sessionId = sessionB.id,
-            tokenHash = sha256Hex(rawTokenB),
-            issuedAt = now,
-            expiresAt = now.plus(14, ChronoUnit.DAYS),
-            usedAt = null,
-            replacedBy = null,
-        )
-        refreshTokenRepository.save(refreshTokenB)
+        val fixture = createTwoSessionsWithTokens()
+        val sessionA = fixture.sessionA
+        val sessionB = fixture.sessionB
+        val rawTokenA = fixture.rawTokenA
+        val rawTokenB = fixture.rawTokenB
 
         // 세션 A 의 sid 로 비밀번호 변경 실행
         val result = changePasswordService.change(
@@ -374,5 +338,63 @@ class ChangePasswordIntegrationTest {
         assertThat(originalPwStillValid)
             .withFailMessage("정책 위반 거부 후 초기 비밀번호가 여전히 유효해야 합니다.")
             .isTrue()
+    }
+
+    // ── Private Helpers ──────────────────────────────────────────────────────
+
+    /**
+     * S7 시나리오용 fixture — 세션 A(현재) + 세션 B(다른 기기) 각각 미사용 refresh token 포함 생성.
+     * raw token 문자열은 반환하여 호출부에서 hash 재계산에 사용한다.
+     */
+    private data class TwoSessionFixture(
+        val sessionA: Session,
+        val sessionB: Session,
+        val rawTokenA: String,
+        val rawTokenB: String,
+    )
+
+    private fun createTwoSessionsWithTokens(): TwoSessionFixture {
+        val now = Instant.now()
+
+        val sessionA = sessionService.create(
+            userId = testUserId,
+            providerId = "local",
+            ipAddress = "127.0.0.1",
+            userAgent = "TestAgent/1.0",
+        )
+        val sessionB = sessionService.create(
+            userId = testUserId,
+            providerId = "local",
+            ipAddress = "192.168.1.2",
+            userAgent = "TestAgent/2.0",
+        )
+
+        val rawTokenA = "token-a-${UUID.randomUUID()}"
+        refreshTokenRepository.save(
+            RefreshToken(
+                id = UUID.randomUUID(),
+                sessionId = sessionA.id,
+                tokenHash = sha256Hex(rawTokenA),
+                issuedAt = now,
+                expiresAt = now.plus(14, ChronoUnit.DAYS),
+                usedAt = null,
+                replacedBy = null,
+            ),
+        )
+
+        val rawTokenB = "token-b-${UUID.randomUUID()}"
+        refreshTokenRepository.save(
+            RefreshToken(
+                id = UUID.randomUUID(),
+                sessionId = sessionB.id,
+                tokenHash = sha256Hex(rawTokenB),
+                issuedAt = now,
+                expiresAt = now.plus(14, ChronoUnit.DAYS),
+                usedAt = null,
+                replacedBy = null,
+            ),
+        )
+
+        return TwoSessionFixture(sessionA, sessionB, rawTokenA, rawTokenB)
     }
 }
