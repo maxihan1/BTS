@@ -15,7 +15,8 @@ test.describe('E2E-5 동시 편집 409 회귀 가드', () => {
     const titleInput = page.getByLabel(i18nLabels.issueDetail.titleEditLabel)
     await expect(titleInput).toBeVisible()
     await titleInput.fill(MOCK_CONFLICT_TRIGGER)
-    await page.getByRole('button', { name: i18nLabels.issueDetail.saveButton }).click()
+    // FR-IS-04 D6 이후 본문/환경/라벨 저장 버튼도 '저장' → 제목 편집 폼 컨테이너로 한정 (strict mode)
+    await titleInput.locator('..').getByRole('button', { name: i18nLabels.issueDetail.saveButton }).click()
 
     // ── Then 1. sonner toast 노출 (useUpdateIssueSummary onError 409 분기) ─────
     // useUpdateIssueSummary.ts:73 의 toast.error 메시지 정합 검증
