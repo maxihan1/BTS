@@ -1,4 +1,4 @@
-// Issue Aggregate Root 단위 테스트 — factory, invariants, version, deletedAt, typeId 필수
+// Issue Aggregate Root 단위 테스트 — factory, invariants, version, deletedAt, typeId 필수, 5필드 불변식
 
 package com.bts.issue.domain
 
@@ -21,6 +21,21 @@ import java.util.UUID
  * - reject_whitespace_only_summary — summary 가 공백만이면 IllegalArgumentException 을 던진다.
  * - reject_summary_over_255 — summary 가 256자 이상이면 IllegalArgumentException 을 던진다.
  * - accept_summary_exactly_255 — summary 가 정확히 255자이면 정상 생성한다.
+ * - create_default_priority_is_3 — priority 기본값은 3 이다.
+ * - create_default_labels_is_empty — labels 기본값은 빈 리스트다.
+ * - create_default_optional_fields_null — description/environment/impact 기본값은 null 이다.
+ * - labels_dedup_exact_match — 중복 라벨은 exact match(대소문자 구분) 기준으로 제거된다.
+ * - labels_reject_blank — 빈 문자열 라벨은 제거된다.
+ * - labels_reject_whitespace — 공백만으로 구성된 라벨은 예외를 던진다.
+ * - labels_reject_over_50_chars — 51자 이상 라벨은 예외를 던진다.
+ * - labels_reject_over_20_per_issue — 이슈당 21개 이상 라벨은 예외를 던진다.
+ * - priority_reject_below_1 — priority 가 1 미만이면 예외를 던진다.
+ * - priority_reject_above_5 — priority 가 5 초과이면 예외를 던진다.
+ * - priority_accept_boundary_values — priority 1과 5는 정상 생성한다.
+ * - impact_reject_below_1 — impact 가 1 미만이면 예외를 던진다.
+ * - impact_reject_above_3 — impact 가 3 초과이면 예외를 던진다.
+ * - impact_accept_boundary_values — impact 1과 3은 정상 생성한다.
+ * - impact_accept_null — impact null 은 정상 생성한다.
  */
 class IssueTest {
     private val validId = IssueId(UUID.randomUUID())
@@ -164,5 +179,289 @@ class IssueTest {
             )
 
         assertThat(issue.summary).hasSize(255)
+    }
+
+    // ─── Task 2: 5필드 기본값 불변식 ───────────────────────────────────────────
+
+    @Test
+    fun `create_default_priority_is_3 — priority 기본값은 3 이다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+
+        assertThat(issue.priority).isEqualTo(3)
+    }
+
+    @Test
+    fun `create_default_labels_is_empty — labels 기본값은 빈 리스트다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+
+        assertThat(issue.labels).isEmpty()
+    }
+
+    @Test
+    fun `create_default_optional_fields_null — description, environment, impact 기본값은 null 이다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+
+        assertThat(issue.description).isNull()
+        assertThat(issue.environment).isNull()
+        assertThat(issue.impact).isNull()
+    }
+
+    // ─── 라벨 불변식 ──────────────────────────────────────────────────────────
+
+    @Test
+    fun `labels_dedup_exact_match — 중복 라벨은 대소문자 구분 exact match 기준으로 제거된다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                labels = listOf("regression", "regression", "Regression"),
+            )
+
+        // "regression"과 "Regression"은 서로 다른 라벨 — 대소문자 보존
+        assertThat(issue.labels).containsExactlyInAnyOrder("regression", "Regression")
+    }
+
+    @Test
+    fun `labels_reject_blank — 빈 문자열 라벨은 제거된다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                labels = listOf("bug", "", "feature"),
+            )
+
+        assertThat(issue.labels).containsExactlyInAnyOrder("bug", "feature")
+    }
+
+    @Test
+    fun `labels_reject_whitespace — 공백만으로 구성된 라벨은 예외를 던진다`() {
+        assertThatThrownBy {
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                labels = listOf("bug", "   "),
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
+    fun `labels_reject_over_50_chars — 51자 이상 라벨은 예외를 던진다`() {
+        val tooLong = "a".repeat(51)
+
+        assertThatThrownBy {
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                labels = listOf(tooLong),
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
+    fun `labels_reject_over_20_per_issue — 이슈당 21개 이상 라벨은 예외를 던진다`() {
+        val tooMany = (1..21).map { "label-$it" }
+
+        assertThatThrownBy {
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                labels = tooMany,
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    // ─── priority 범위 불변식 ──────────────────────────────────────────────────
+
+    @Test
+    fun `priority_reject_below_1 — priority 가 1 미만이면 예외를 던진다`() {
+        assertThatThrownBy {
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                priority = 0,
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
+    fun `priority_reject_above_5 — priority 가 5 초과이면 예외를 던진다`() {
+        assertThatThrownBy {
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                priority = 6,
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
+    fun `priority_accept_boundary_values — priority 1과 5는 정상 생성한다`() {
+        val issueMin =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                priority = 1,
+            )
+        val issueMax =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = IssueKey.of("PROJ", 2L),
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                priority = 5,
+            )
+
+        assertThat(issueMin.priority).isEqualTo(1)
+        assertThat(issueMax.priority).isEqualTo(5)
+    }
+
+    // ─── impact 범위 불변식 ────────────────────────────────────────────────────
+
+    @Test
+    fun `impact_reject_below_1 — impact 가 1 미만이면 예외를 던진다`() {
+        assertThatThrownBy {
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                impact = 0,
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
+    fun `impact_reject_above_3 — impact 가 3 초과이면 예외를 던진다`() {
+        assertThatThrownBy {
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                impact = 4,
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
+    fun `impact_accept_boundary_values — impact 1과 3은 정상 생성한다`() {
+        val issueMin =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                impact = 1,
+            )
+        val issueMax =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = IssueKey.of("PROJ", 3L),
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                impact = 3,
+            )
+
+        assertThat(issueMin.impact).isEqualTo(1)
+        assertThat(issueMax.impact).isEqualTo(3)
+    }
+
+    @Test
+    fun `impact_accept_null — impact null 은 정상 생성한다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                impact = null,
+            )
+
+        assertThat(issue.impact).isNull()
     }
 }
