@@ -26,14 +26,29 @@ data class CreateIssueRequest(
  * 각 필드는 null 이면 "변경하지 않음"을 의미한다.
  * CREATE 의 typeId=null → task fallback 과 달리, PATCH 의 typeId=null 은 타입 유지를 의미한다.
  *
+ * ### 3-상태 sentinel 규칙 (B1)
+ * - description/environment: null=무변경, ""=DB NULL 클리어, 값=설정.
+ * - labels: null=무변경, []=전체 제거, 값=교체.
+ * - priority/impact: null=무변경, 값=설정. (범위 위반 시 서비스에서 IllegalArgumentException)
+ *
  * @param summary 새 이슈 제목. null 이면 변경하지 않는다.
  * @param typeId 새 이슈 유형 식별자 VO. null 이면 변경하지 않는다. non-null 이면 활성 타입 존재 검증.
  * @param expectedVersion 낙관적 잠금 버전. 읽은 version 값과 일치해야 업데이트가 성공한다.
+ * @param description Markdown 설명. null=무변경, ""=클리어, 값=설정.
+ * @param priority 우선순위 1..5. null=무변경.
+ * @param labels 라벨 목록. null=무변경, []=전체 제거, 값=교체.
+ * @param environment 재현 환경 설명. null=무변경, ""=클리어, 값=설정.
+ * @param impact 영향도 1..3. null=무변경.
  */
 data class UpdateIssueRequest(
     val summary: String?,
     val typeId: IssueTypeId? = null,
     val expectedVersion: Long,
+    val description: String? = null,
+    val priority: Int? = null,
+    val labels: List<String>? = null,
+    val environment: String? = null,
+    val impact: Int? = null,
 )
 
 /**

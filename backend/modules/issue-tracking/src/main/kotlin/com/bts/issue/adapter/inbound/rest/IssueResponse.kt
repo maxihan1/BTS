@@ -3,6 +3,9 @@
 package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.domain.Issue
+import com.bts.issue.domain.IssueImpact
+import com.bts.issue.domain.IssuePriority
+import com.bts.issue.markdown.MarkdownRenderer
 import java.time.Instant
 import java.util.UUID
 
@@ -25,6 +28,14 @@ import java.util.UUID
  * @property typeId 이슈 타입 내부 식별자 (issue_types.id). FR-IS-02.
  * @property typeKey 이슈 타입 키 문자열. 예: `"task"`. FR-IS-02.
  * @property typeName 이슈 타입 표시명. 예: `"Task"`. FR-IS-02.
+ * @property description 이슈 상세 설명 원본 Markdown. null 허용.
+ * @property descriptionHtml [description] 을 렌더·sanitize한 HTML. 단건 경로만 채워지며, 목록 경로는 null. C3.
+ * @property priority 우선순위 숫자 1(Highest)..5(Lowest). 기본값 3.
+ * @property priorityName [IssuePriority.displayName]. 예: `"Highest"`.
+ * @property labels 라벨 목록.
+ * @property environment 재현 환경 설명. null 허용.
+ * @property impact 영향도 숫자 1(High)..3(Low). null 허용.
+ * @property impactName [IssueImpact.displayName]. null 허용 (impact=null 일 때).
  */
 data class IssueResponse(
     val key: String,
@@ -39,16 +50,32 @@ data class IssueResponse(
     val typeId: Long,
     val typeKey: String,
     val typeName: String,
+    val description: String? = null,
+    val descriptionHtml: String? = null,
+    val priority: Int = DEFAULT_PRIORITY,
+    val priorityName: String = IssuePriority.MEDIUM.displayName,
+    val labels: List<String> = emptyList(),
+    val environment: String? = null,
+    val impact: Int? = null,
+    val impactName: String? = null,
 ) {
     companion object {
+        /** DB DEFAULT 3 (Medium) 과 동기화. */
+        private const val DEFAULT_PRIORITY = 3
+
         /**
          * [Issue] Aggregate, 프로젝트 키, 이슈 타입 요약 정보를 받아 [IssueResponse] DTO를 생성한다.
+         *
+         * C3 — [renderHtml] = true 이면 [Issue.description] 을 [MarkdownRenderer.renderSafe] 로 렌더하여
+         * [IssueResponse.descriptionHtml] 에 채운다. false(기본값)이면 null 을 유지한다.
+         * 목록(listWithType) 경로에서는 N건 렌더 비용 방지를 위해 renderHtml=false 로 호출한다.
          *
          * @param issue 변환할 이슈 Aggregate.
          * @param projectKey 이슈가 속한 프로젝트 키 문자열.
          * @param typeId 이슈 타입 내부 식별자.
          * @param typeKey 이슈 타입 키. 예: `"task"`.
          * @param typeName 이슈 타입 표시명. 예: `"Task"`.
+         * @param renderHtml true 이면 descriptionHtml 을 렌더. 단건 경로에서만 true 로 호출한다. 기본값 false.
          */
         fun from(
             issue: Issue,
@@ -56,6 +83,7 @@ data class IssueResponse(
             typeId: Long,
             typeKey: String,
             typeName: String,
+            renderHtml: Boolean = false,
         ): IssueResponse =
             IssueResponse(
                 key = issue.key.value,
@@ -70,6 +98,14 @@ data class IssueResponse(
                 typeId = typeId,
                 typeKey = typeKey,
                 typeName = typeName,
+                description = issue.description,
+                descriptionHtml = if (renderHtml) issue.description?.let { MarkdownRenderer.renderSafe(it) } else null,
+                priority = issue.priority,
+                priorityName = IssuePriority.fromNumber(issue.priority).displayName,
+                labels = issue.labels,
+                environment = issue.environment,
+                impact = issue.impact,
+                impactName = issue.impact?.let { IssueImpact.fromNumber(it).displayName },
             )
     }
 }
