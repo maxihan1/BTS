@@ -36,8 +36,10 @@
 - [x] D3. 데이터 모델 — `authn_providers` (provider_type, config) (책임. db-engineer)
 - [x] D4. 백엔드 — `ProviderRegistry` + `AuthenticationManager` Spring Bean (책임. security-engineer)
 - [x] D5. 백엔드 테스트 — 가짜 Provider 2개로 등록/조회 (책임. security-engineer)
-- [~] D6. 프론트 UI — Provider 선택 화면 (책임. designer → frontend-engineer)
-- [~] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — Provider 선택 화면 (책임. designer → frontend-engineer) (FR-AU-02 PR #11 흡수)
+- [x] D7. E2E (책임. qa-engineer) (FR-AU-02 PR #22 흡수)
+
+> **FR-AU-01 D6/D7 완료 (2026-05-30, 마커 정정)**. D6(Provider 선택 화면)·D7(E2E)는 plan(`docs/plans/2026-05-20-identity-authn-provider.md` §스코프)이 "별도 PR" 로 위임했으나, 실제로는 별도 PR 대신 후속 FR-AU-02(LDAP) 작업에서 흡수 구현됨. D6 = `apps/web/src/auth/LoginForm.tsx` 의 provider 드롭다운(local/ldap-corp, PR #11), D7 = `apps/web/e2e/login-ldap.spec.ts` 의 provider 선택 E2E(S1/S2-ldap, PR #22). 코드 변경 없이 stale 마커만 정정. 활성 Provider 목록을 백엔드에서 받아 동적 렌더(하드코딩 enum 제거)하는 작업은 FR-AU-06(다중 Provider 선택 화면) 범위로 분리.
 
 ### §2.2 FR-AU-02 — LDAP/AD 연동
 
