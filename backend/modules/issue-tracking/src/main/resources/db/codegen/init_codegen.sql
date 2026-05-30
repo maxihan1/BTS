@@ -165,3 +165,19 @@ ALTER TABLE issues
 -- FK 인덱스 (PostgreSQL 은 FK 에 인덱스 자동 생성 안 함)
 CREATE INDEX ix_issues_type_id
     ON issues (type_id);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V006: issues 5컬럼 추가 (description, priority, labels, environment, impact) + GIN 인덱스
+-- 원본: db/migration/issue-tracking/V006__issue_body_priority_labels.sql
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- 5컬럼 추가 (jOOQ: Issues.DESCRIPTION/PRIORITY/LABELS/ENVIRONMENT/IMPACT 생성 대상)
+ALTER TABLE issues
+    ADD COLUMN description  TEXT,
+    ADD COLUMN priority     SMALLINT NOT NULL DEFAULT 3 CHECK (priority BETWEEN 1 AND 5),
+    ADD COLUMN labels       TEXT[]   NOT NULL DEFAULT '{}',
+    ADD COLUMN environment  TEXT,
+    ADD COLUMN impact       SMALLINT CHECK (impact BETWEEN 1 AND 3);
+
+-- GIN 인덱스 — labels 배열 원소 검색용
+CREATE INDEX ix_issues_labels_gin ON issues USING GIN (labels);
