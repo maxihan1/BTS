@@ -69,6 +69,9 @@ class ChangePasswordService(
      * @param new        새 비밀번호 평문 — 반환 후 wipe
      * @return [ChangePasswordResult] 변경 결과
      */
+    // ReturnCount 억제 — policy·same·rotate 각 단계별 guard clause early-return이 검증 순서를 명확히 표현.
+    // 단일 return 으로 리팩터링하면 검증 단계 간 흐름이 오히려 불명확해짐.
+    @Suppress("ReturnCount")
     @Transactional
     fun change(
         userId: UUID,
