@@ -67,7 +67,7 @@ export const issueDetailStrings = {
   /** 유형 셀렉터 aria-label */
   typeSelectLabel: '유형 선택',
   /** 409 버전 충돌 에러 메시지 */
-  typeChangeConflictError: '다른 사용자가 이미 이 이슈를 수정했습니다. 새로고침 후 다시 시도해 주세요.',
+  versionConflictError: '다른 사용자가 이미 이 이슈를 수정했습니다. 새로고침 후 다시 시도해 주세요.',
   /** 타입 변경 실패 기본 에러 메시지 */
   typeChangeError: '이슈 유형 변경 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
   /** 전이 셀렉터 aria-label */

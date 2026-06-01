@@ -41,7 +41,7 @@ export function useChangeAssignee() {
     onError: (error) => {
       if (error instanceof ApiError) {
         if (error.status === 409) {
-          toast.error(issueDetailStrings.typeChangeConflictError)
+          toast.error(issueDetailStrings.versionConflictError)
         } else if (error.status === 422) {
           toast.error(issueDetailStrings.assigneeNotFoundError)
         } else {

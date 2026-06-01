@@ -467,11 +467,11 @@ describe('IssueDetailPage — 타입 변경', () => {
 
   /**
    * T7-14 (409). 타입 변경 시 낙관락 버전 충돌(409 VERSION_CONFLICT)이 발생하면
-   * typeChangeConflictError 한국어 토스트가 노출된다.
+   * versionConflictError 한국어 토스트가 노출된다.
    *
    * PATCH → 409 응답은 MSW override로 직접 제어.
    */
-  it('T7-14: 타입 변경 409 충돌 시 typeChangeConflictError 토스트가 노출된다', async () => {
+  it('T7-14: 타입 변경 409 충돌 시 versionConflictError 토스트가 노출된다', async () => {
     server.use(
       http.patch('/api/v1/issues/:key', () =>
         HttpResponse.json(
@@ -497,7 +497,7 @@ describe('IssueDetailPage — 타입 변경', () => {
 
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
-        issueDetailStrings.typeChangeConflictError,
+        issueDetailStrings.versionConflictError,
       )
     })
   })
@@ -1109,11 +1109,11 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
   })
 
   /**
-   * T6-7: 409 VERSION_CONFLICT → toast(typeChangeConflictError) + invalidateQueries.
+   * T6-7: 409 VERSION_CONFLICT → toast(versionConflictError) + invalidateQueries.
    * descriptionMutation 409 응답 시 검증.
    * 주의: beforeEach에 /api/v1/users 핸들러가 필요하나 Task 4 GREEN 전까지 setupUsersHandler가 없음.
    */
-  it('T6-7: 본문 저장 409 충돌 시 typeChangeConflictError 토스트가 노출된다', async () => {
+  it('T6-7: 본문 저장 409 충돌 시 versionConflictError 토스트가 노출된다', async () => {
     setupIssueFoundHandler()
     server.use(
       http.patch('/api/v1/issues/:key', () =>
@@ -1143,7 +1143,7 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
 
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
-        issueDetailStrings.typeChangeConflictError,
+        issueDetailStrings.versionConflictError,
       )
     })
   })

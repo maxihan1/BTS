@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { ApiError } from '@/api/client'
 import { updateIssue } from '@/api/issues'
 import type { IssueResponse } from '@/api/issues'
+import { issueDetailStrings } from '@/i18n/ko'
 
 /** 이슈 쿼리키 팩토리 — ['issue', key] 형태로 일관성 있게 생성 */
 export const issueQueryKey = (key: string): [string, string] => ['issue', key]
@@ -70,7 +71,7 @@ export function useUpdateIssueSummary() {
 
       // 409 VERSION_CONFLICT: 다른 사람이 먼저 수정한 경우 안내
       if (error instanceof ApiError && error.status === 409) {
-        toast.error('다른 사용자가 이미 이 이슈를 수정했습니다. 새로고침 후 다시 시도해 주세요.')
+        toast.error(issueDetailStrings.versionConflictError)
       }
     },
 

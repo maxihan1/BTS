@@ -164,12 +164,12 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
 
   /**
    * 메타필드 mutation 공통 onError 처리기.
-   * - 409 → typeChangeConflictError toast + invalidate (최신 데이터 재조회 유도)
+   * - 409 → versionConflictError toast + invalidate (최신 데이터 재조회 유도)
    * - 그 외 → 호출자가 전달한 fallbackMsg toast
    */
   function handleMetaMutationError(err: unknown, fallbackMsg: string) {
     if (err instanceof ApiError && err.status === 409) {
-      toast.error(issueDetailStrings.typeChangeConflictError)
+      toast.error(issueDetailStrings.versionConflictError)
       void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
     } else {
       toast.error(fallbackMsg)

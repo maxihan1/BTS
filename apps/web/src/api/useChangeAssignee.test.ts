@@ -215,7 +215,7 @@ describe('useChangeAssignee — S1 i18n 문자열 참조', () => {
     expect(toast.error).toHaveBeenCalledWith(issueDetailStrings.assigneeNotFoundError)
   })
 
-  it('T-CA-5b: 409 응답 시 toast.error가 issueDetailStrings.typeChangeConflictError 값으로 호출된다', async () => {
+  it('T-CA-5b: 409 응답 시 toast.error가 issueDetailStrings.versionConflictError 값으로 호출된다', async () => {
     server.use(
       http.patch('/api/v1/issues/:key/assignee', () =>
         HttpResponse.json({ errorCode: 'VERSION_CONFLICT' }, { status: 409 }),
@@ -231,7 +231,7 @@ describe('useChangeAssignee — S1 i18n 문자열 참조', () => {
     })
     await waitFor(() => expect(result.current.isError).toBe(true))
 
-    expect(toast.error).toHaveBeenCalledWith(issueDetailStrings.typeChangeConflictError)
+    expect(toast.error).toHaveBeenCalledWith(issueDetailStrings.versionConflictError)
   })
 
   it('T-CA-5c: 기타 에러 시 toast.error가 issueDetailStrings.assigneeChangeError 값으로 호출된다', async () => {
