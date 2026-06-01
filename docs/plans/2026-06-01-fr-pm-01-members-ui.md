@@ -78,8 +78,9 @@ FR-PM-01 남은 작업. 백엔드 D1~D5는 PR #48 완료(ProjectMembership/Proje
 - files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/project/ProjectMembershipRepository.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/project/ProjectMembershipRepositoryIntegrationTest.kt`]
 - depends-on: []
 
-**RED**. 통합테스트 추가 — `listMemberViewsByProject(projectId)`가 멤버십 + `users.display_name`/`users.username`을 조인해 반환(`ProjectMemberView` 읽기 모델: 멤버십 필드 + displayName? + username). FK CASCADE라 orphan 없음 가정 검증. 단건 resolve(`findMemberView(projectId,userId)`)도 추가 — POST/PATCH 응답용.
-**GREEN**. 새 read 모델 `ProjectMemberView` + 리포지토리 메서드 2개(`project_memberships m JOIN users u ON m.user_id = u.id`). 도메인 `ProjectMembership`은 불변·표시필드 미오염(읽기 전용 view 분리).
+**RED**. 통합테스트 추가 — `listMemberViewsByProject(projectId)`가 멤버십 + `users.display_name`/`users.username`을 조인해 반환(`ProjectMemberView` 읽기 모델: 멤버십 필드 + displayName? + username). 단건 resolve(`findMemberView(projectId,userId)`)도 추가 — POST/PATCH 응답용.
+- **(리뷰 C-3) user 행 없음/비활성 멤버십도 목록에 노출** — INNER JOIN으로 조용히 누락시키지 않고 **LEFT JOIN + username null 폴백**("(알 수 없는 사용자)" 표시, EC-1과 동일 결). 1,000명 규모 퇴사자 멤버십 잔존 시에도 admin 카운트·목록이 어긋나지 않게. 이 케이스 1건 테스트로 고정.
+**GREEN**. 새 read 모델 `ProjectMemberView` + 리포지토리 메서드 2개(`project_memberships m LEFT JOIN users u ON m.user_id = u.id`). 도메인 `ProjectMembership`은 불변·표시필드 미오염(읽기 전용 view 분리).
 **REFACTOR**. RowMapper object 분리, SQL 상수.
 **검증**. `--tests ProjectMembershipRepositoryIntegrationTest`
 
@@ -91,10 +92,12 @@ FR-PM-01 남은 작업. 백엔드 D1~D5는 PR #48 완료(ProjectMembership/Proje
 - depends-on: [B1, B2]
 
 **RED**.
-- ControllerTest — path가 projectKey('ATLAS')일 때 정상 동작(resolveKeyToId 경유), 잘못된 key → 404 `project_not_found`(존재숨김), 기존 UUID 경로 회귀 없음. 응답 JSON에 `displayName`/`username` 포함(GET 목록·POST·PATCH).
+- ControllerTest — path가 projectKey('ATLAS')일 때 정상 동작(resolveKeyToId 경유), 기존 UUID 경로 회귀 없음. 응답 JSON에 `displayName`/`username` 포함(GET 목록·POST·PATCH).
+- **(리뷰 B-1) 입력 3종 모두 404 `{error:"project_not_found"}` 동일 봉투 회귀 핀** — ① 형식상 valid key이나 미존재(`ZZZZ`), ② UUID 형식이나 미존재, ③ key도 UUID도 아닌 쓰레기(빈 문자열·특수문자·초장문). path가 String 바인딩으로 넓어져 임의 입력이 본문까지 들어오므로, 어떤 입력도 400/500/기본봉투로 새지 않고 404 단일봉투로 수렴함을 고정.
 - FlowIntegrationTest — projectKey 경로 end-to-end 1건 + 응답 displayName 검증 추가.
-**GREEN**. 컨트롤러 `@RequestMapping(".../{projectIdOrKey}/members")`, `resolveProjectId(raw)` 헬퍼(UUID 파싱 시도→실패 시 `resolveKeyToId`, 둘 다 실패=ProjectNotFound). `ProjectMemberResponse`에 `displayName:String?`+`username:String` 추가, `from(view)` 오버로드. 서비스 `listMembers`/add/changeRole 반환을 view 기반으로(또는 컨트롤러가 단건 resolve). 에러 평가순서 유지(C6).
-**REFACTOR**. resolveProjectId 헬퍼 KDoc(key 정규식·UUID 형식 비교집합), 응답 매핑 정리.
+**GREEN**. 컨트롤러 `@RequestMapping(".../{projectIdOrKey}/members")` (`@PathVariable projectIdOrKey: String`), `resolveProjectId(raw)` 헬퍼(UUID 파싱 시도→실패 시 무조건 key로 간주→`resolveKeyToId`, null이면 `ProjectNotFound`). **정규식 사전거부 금지** — 모든 비매칭 입력은 DB 미스→404로 수렴(B-1). `ProjectMemberResponse`에 `displayName:String?`+`username:String` 추가, `from(view)` 오버로드.
+- **(리뷰 C-2) service 도메인 반환은 불변 유지** — service `ProjectMembership` 반환·audit·불변식 경로 0회귀. **컨트롤러가 응답 직전 view를 resolve해 displayName/username만 덧입힘**. GET 목록은 B2 `listMemberViewsByProject` **한 방 조인**(N+1 회피), POST/PATCH 단건만 `findMemberView`. 에러 평가순서 유지(C6).
+**REFACTOR**. resolveProjectId 헬퍼 KDoc(검증은 DB 조회 결과로, 정규식은 문서용 — N-2), 응답 매핑 정리.
 **검증**. `--tests ProjectMemberControllerTest --tests ProjectMemberFlowIntegrationTest` + `./gradlew :modules:identity-access:detekt`
 
 ### Task F1. 프론트 API 레이어 + Zod (members + users 디렉토리)
@@ -107,7 +110,8 @@ FR-PM-01 남은 작업. 백엔드 D1~D5는 PR #48 완료(ProjectMembership/Proje
 **RED**. vitest(MSW inline) — `fetchProjectMembers(projectKey)`가 `{members:[...]}`를 파싱해 `displayName`/`username`/`role` 보유, 에러코드(`not_project_admin` 등) 보존 throw. `addMember`/`changeRole`/`removeMember`가 X-XSRF-TOKEN 포함 + 상태/응답 검증. `searchUsers(query)`가 `[{id,username,displayName?,email?}]` 배열 파싱. **Zod 스키마는 B3 실DTO 1:1**(grep 대조).
 **GREEN**. `project-members.types.ts`(Zod: ProjectMemberResponse+role enum, 에러), `project-members.ts`(CRUD, ProjectMemberApiError), `users.ts`(검색). 기존 `client.ts`(apiGet/apiFetch/readXsrfToken) 재사용.
 **REFACTOR**. 에러코드→class 매핑 정리, 타입 z.infer.
-**검증**. `pnpm --filter web typecheck && pnpm --filter web test -- project-members users`
+- **(리뷰 C-4) PII** — 응답·에러 객체를 `console`에 출력 금지(NFR-3, DEVELOPMENT.md §1.2 절대규칙). users 검색 응답의 email은 화면 표시에만, 로그 금지.
+**검증**. `pnpm --filter web typecheck && pnpm --filter web test -- project-members users` + **(N-3) DTO↔Zod 대조 grep** — `grep -E "displayName|username|role|projectId|userId" backend/.../dto/ProjectMemberResponse.kt` 와 Zod 키 1:1 육안 대조.
 
 ### Task F2. MSW 핸들러 + fixtures (stateful CRUD + 디렉토리)
 
@@ -116,7 +120,7 @@ FR-PM-01 남은 작업. 백엔드 D1~D5는 PR #48 완료(ProjectMembership/Proje
 - files: [`apps/web/src/mocks/project-member-handlers.ts`, `apps/web/src/mocks/project-member-fixtures.ts`, `apps/web/src/mocks/users-handlers.ts`, `apps/web/src/mocks/handlers.ts`]
 - depends-on: [F1]
 
-**RED**. 핸들러 단위 검증(또는 F3에서 소비) — GET 멤버 목록, POST 추가→목록 반영, PATCH 역할변경→반영, DELETE→제거. **stateful 오버라이드 영속**(invalidate refetch 후 화면 반영, `msw-mutation-stateful-refetch` 교훈). 에러 분기는 백엔드 순서와 동일(비멤버 404 먼저, 마지막admin 409). `X-MSW-Reset-*` 헤더로 상태 초기화. users-handlers는 query substring 검색.
+**RED**. 핸들러 단위 검증(또는 F3에서 소비) — GET 멤버 목록(displayName/username 포함, B3 응답 형태), POST 추가→목록 반영, PATCH 역할변경→반영, DELETE→제거. **stateful 오버라이드 영속**(invalidate refetch 후 화면 반영, `msw-mutation-stateful-refetch` 교훈). 에러 분기는 백엔드 순서와 동일(비멤버 404 먼저, 마지막admin 409). `X-MSW-Reset-*` 헤더로 상태 초기화. users-handlers는 query substring 검색. **(리뷰 C-4) fixtures email/이름은 example.com 더미 PII**.
 **GREEN**. stateful Map/Set 기반 핸들러 + fixtures(프로젝트 'ATLAS' + 멤버 2~3 + 디렉토리 사용자), `handlers.ts`에 등록.
 **REFACTOR**. fixtures 상수화, reset 헬퍼.
 **검증**. `pnpm --filter web test -- mocks` (또는 F3 통과로 간접)
@@ -140,7 +144,7 @@ FR-PM-01 남은 작업. 백엔드 D1~D5는 PR #48 완료(ProjectMembership/Proje
 - files: [`apps/web/src/components/admin/MemberList.tsx`, `apps/web/src/components/admin/MemberRow.tsx`, `apps/web/src/components/admin/RoleSelect.tsx`, `apps/web/src/components/admin/AddMemberDialog.tsx`, `apps/web/src/i18n/project-member-labels.ts`, `apps/web/src/components/admin/MemberList.test.tsx`, `apps/web/src/components/admin/AddMemberDialog.test.tsx`]
 - depends-on: [F3]
 
-**RED**. vitest+RTL — MemberList 로딩/에러/빈/목록 4분기, displayName 표시(null→username 폴백, EC-1), 역할 배지. RoleSelect 변경→mutation. AddMemberDialog typeahead 검색→선택→역할→추가. 액션 컨트롤은 PROJECT_ADMIN(현재 사용자 whoami userId가 목록에서 ADMIN)일 때만 노출(FR-F9). 텍스트 중복 버튼은 컨테이너 한정(`playwright-getbyrole-exact-strict-mode` 교훈 — 단위에서도 셀렉터 위생).
+**RED**. vitest+RTL — MemberList 로딩/에러/빈/목록 4분기, displayName 표시(null→username 폴백→"(알 수 없는 사용자)", EC-1/C-3), 역할 배지. RoleSelect 변경→mutation. AddMemberDialog typeahead 검색→선택→역할→추가. 액션 컨트롤은 PROJECT_ADMIN(현재 사용자 whoami userId가 목록에서 ADMIN)일 때만 노출(FR-F9). **(리뷰 C-1) `whoami.userId`는 nullable+JWT만 채움** — null이거나 목록에 없으면 액션 컨트롤 비노출(조용한 false로 ADMIN 버튼 사라지는 UX 결함 방지, 서버 권위는 최종 방어). 매칭 키는 응답 `userId`(UUID). 텍스트 중복 버튼은 컨테이너 한정(`playwright-getbyrole-exact-strict-mode` 교훈 — 단위에서도 셀렉터 위생).
 **GREEN**. shadcn Card/Select/Dialog/Button(기존 settings 페이지 패턴), 라벨 i18n 파일(E2E 셀렉터 정본).
 **REFACTOR**. 컴포넌트 분리 정리, aria-label.
 **검증**. `pnpm --filter web typecheck && pnpm --filter web test -- MemberList AddMemberDialog`
@@ -167,6 +171,7 @@ FR-PM-01 남은 작업. 백엔드 D1~D5는 PR #48 완료(ProjectMembership/Proje
 **RED**(실패하는 새 E2E). Playwright — S1 목록조회(displayName/역할배지), S2 추가(검색→선택→역할→추가, 목록반영), S3 역할변경(배지갱신), S4 제거(사라짐), S5 마지막admin 보호(에러토스트+롤백), S6 비멤버 404→접근권한없음. `beforeEach` MSW 상태 리셋(`X-MSW-Reset-*`). 텍스트 중복 버튼은 컨테이너/exact 한정(strict mode 교훈). 기존 E2E 동반 실행(UI 추가가 전역 셀렉터 안 깨는지, `ui-pr-defer-e2e-regression-latent` 교훈).
 **GREEN**. (단위는 F1~F5 test-first 완료. E1은 통합 시나리오 + MSW stateful 검증이 처음 드러내는 새 검증.)
 **REFACTOR**. 시나리오 헬퍼(loginAsAlice 재사용).
+**사전조건(N-4)**. vite dev 5173 정상 부팅 확인(`e2e-orphan-vite-after-worktree-remove`/`worktree-node-modules-partial-install` 교훈 — orphan vite·부분설치가 E2E 가짜 실패 유발 전례).
 **검증**. `pnpm --filter web test:e2e -- project-member-management` + 기존 E2E 회귀 그린
 
 ## Plan 메타
@@ -191,4 +196,21 @@ FR-PM-01 남은 작업. 백엔드 D1~D5는 PR #48 완료(ProjectMembership/Proje
   4. **기존 E2E 회귀** — 새 라우트/요소가 전역 셀렉터 깨는지 E1에서 기존 E2E 동반 실행.
   5. **백엔드 merged 코드 수정** — B3가 PR #48 DTO/서비스 확장. 같은 BC·순수 추가(기존 필드 유지)로 UUID 경로 회귀 0 보장(FlowIntegrationTest).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### code-reviewer 독립 eng/보안 plan 리뷰 (2026-06-01)
+
+전반 — 잘 짜인 plan. 과거 교훈(contract gap, MSW stateful, strict-mode, 부분응답 플리커, advisory-lock)이 task RED에 선반영, F1←B3 의존으로 가짜 그린 구조적 차단. BLOCKER 1건은 plan 보강으로 닫힘.
+
+**BLOCKER (보강 완료)**
+- **B-1 비UUID·비key 입력의 404 봉투 회귀 핀 누락** — path가 String 바인딩으로 넓어지면 임의 입력(빈문자열/특수문자/초장문)이 본문까지 유입. 현재 UUID 바인딩은 비UUID를 400 기본봉투로 떨굼 → 입력 형식 채널로 존재숨김이 샘. → **B3 RED에 입력 3종(valid-key-미존재/UUID-미존재/쓰레기) 모두 404 단일봉투 회귀 핀 추가 + 정규식 사전거부 금지(DB 미스→404 수렴) GREEN 명시.**
+
+**CONCERN (RED/GREEN에 반영 완료)**
+- **C-1 `whoami.userId` nullable+JWT만** — null/목록부재 시 액션 컨트롤 비노출(UX 결함 방지). → F4 RED 반영.
+- **C-2 B3 service 반환 view OR 갈래 모호** — service 도메인 반환 불변(audit/불변식 0회귀), 컨트롤러가 응답 직전 view 덧입힘, GET 목록은 조인 한 방·단건만 findMemberView. → B3 GREEN 한 갈래로 좁힘.
+- **C-3 INNER JOIN orphan 누락** — LEFT JOIN + username null 폴백으로 퇴사자/비활성 멤버십도 노출(admin 카운트 정합). → B2 RED/GREEN 반영.
+- **C-4 PII** — users 검색 email 응답 로그 금지, fixtures 더미. → F1/F2 반영.
+
+**NIT (반영)**: N-2(KDoc 검증은 DB결과로), N-3(DTO↔Zod grep 검증 명령), N-4(E1 vite 부팅 사전조건). N-1(S6 문구 인지)은 변경 불요.
+
+→ BLOCKER 0 잔존. 구현 착수 가능.
