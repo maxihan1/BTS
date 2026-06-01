@@ -23,5 +23,5 @@ import java.util.UUID
 data class ChangeAssigneeRequest(
     val assigneeId: UUID?,
     @field:NotNull(message = "expectedVersion은 필수입니다.")
-    val expectedVersion: Long,
+    val expectedVersion: Long?,
 )

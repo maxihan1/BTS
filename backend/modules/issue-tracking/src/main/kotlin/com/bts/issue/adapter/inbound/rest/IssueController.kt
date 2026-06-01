@@ -261,9 +261,13 @@ class IssueController(
 
         val actor = ActorId(SYSTEM_ACTOR_UUID)
         val issueKey = IssueKey(key)
+        // @NotNull 검증이 통과한 뒤 호출되므로 expectedVersion 은 null 이 아님.
+        // !! 금지 규칙에 따라 명시적 체크로 처리한다.
+        val expectedVersion = request.expectedVersion
+            ?: error("expectedVersion 은 @NotNull 검증 통과 후 null 일 수 없습니다.")
         val appRequest = AppChangeAssigneeRequest(
             assigneeId = request.assigneeId,
-            expectedVersion = request.expectedVersion,
+            expectedVersion = expectedVersion,
         )
         val response = service.changeAssignee(actor, issueKey, appRequest)
         return ResponseEntity.ok(DataResponse(data = response))
