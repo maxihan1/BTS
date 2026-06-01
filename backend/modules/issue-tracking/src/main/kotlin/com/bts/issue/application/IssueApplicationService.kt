@@ -4,6 +4,7 @@ package com.bts.issue.application
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.AssigneeNotFoundException
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
@@ -30,6 +31,7 @@ import com.bts.issue.type.domain.IssueTypeNotFoundException
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeKey
+import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.AvailableTransitionView
 import com.bts.shared.workflow.AvailableTransitionsRequest
 import com.bts.shared.workflow.AvailableTransitionsResult
@@ -63,7 +65,7 @@ import java.util.UUID
  * 모든 public 메서드는 @Transactional 을 명시한다 (DEVELOPMENT.md §절대규칙).
  *
  * TooManyFunctions: 이슈 CRUD + 전이 유스케이스 전반을 단일 Application Service 가 담당하므로 함수 수 임계치(11)를 초과한다.
- * availableTransitions 추가로 11개가 됐으나 책임 분리보다 응집이 더 적합한 구조이므로 Suppress 처리.
+ * availableTransitions 추가로 11개, changeAssignee 추가로 12개가 됐으나 책임 분리보다 응집이 더 적합한 구조이므로 Suppress 처리.
  */
 @Suppress("TooManyFunctions", "LongParameterList")
 @Service
@@ -75,6 +77,7 @@ class IssueApplicationService(
     private val permissionResolver: IssuePermissionResolver,
     private val workflowPort: WorkflowTransitionPort,
     private val workflowKeyResolver: WorkflowKeyResolver,
+    private val userLookupPort: UserLookupPort,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -410,6 +413,53 @@ class IssueApplicationService(
             ),
         )
         log.info("issue_soft_deleted key={} actor={}", key.value, actor.value)
+    }
+
+    /**
+     * 이슈 담당자를 변경하거나 해제한다 (낙관락).
+     *
+     * 흐름.
+     * 1. UPDATE 권한 검증 (Issue 범위) — 기존 updateIssue 패턴과 동일.
+     * 2. 이슈 조회 — 미존재 시 IssueNotFoundException.
+     * 3. assigneeId non-null 이면 [userLookupPort.exists] 로 사용자 실재 검증.
+     *    false 이면 [AssigneeNotFoundException]. null 이면 exists 호출 생략.
+     * 4. 도메인 경유 — [Issue.assignTo] 또는 [Issue.unassign] 호출(불변식 일관성).
+     * 5. [IssueRepository.updateAssignee] 호출 — 0 row 이면 [IssueVersionConflictException].
+     * 6. 재조회 → [IssueResponse] 반환.
+     *
+     * @param actor 변경 행위자.
+     * @param key 변경할 이슈 키.
+     * @param request assigneeId(null=해제) + expectedVersion.
+     * @return 변경된 이슈의 [IssueResponse].
+     * @throws IssueAccessDeniedException 권한 없을 때.
+     * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우.
+     * @throws AssigneeNotFoundException assigneeId non-null 이지만 사용자가 존재하지 않을 때.
+     * @throws IssueVersionConflictException 낙관락 충돌 시.
+     */
+    fun changeAssignee(
+        actor: ActorId,
+        key: IssueKey,
+        request: AppChangeAssigneeRequest,
+    ): IssueResponse {
+        assertPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(key.value))
+        val existing = repo.findByKey(key) ?: throw IssueNotFoundException(key)
+
+        val assigneeId = request.assigneeId
+        if (assigneeId != null) {
+            if (!userLookupPort.exists(assigneeId)) {
+                throw AssigneeNotFoundException(assigneeId)
+            }
+            existing.assignTo(ActorId(assigneeId))
+        } else {
+            existing.unassign()
+        }
+
+        val updatedRows = repo.updateAssignee(key, assigneeId, request.expectedVersion)
+        if (updatedRows == 0) {
+            throw IssueVersionConflictException(key, existing.version)
+        }
+        log.info("issue_assignee_changed key={} assigneeId={} actor={}", key.value, assigneeId, actor.value)
+        return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withRenderedHtml()
     }
 
     /**

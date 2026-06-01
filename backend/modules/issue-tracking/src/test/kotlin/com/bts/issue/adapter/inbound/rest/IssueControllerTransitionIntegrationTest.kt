@@ -63,6 +63,7 @@ import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
+import com.bts.shared.user.UserLookupPort
 import java.sql.Connection
 import java.sql.DriverManager
 import java.time.Clock
@@ -279,7 +280,12 @@ class IssueControllerTransitionIntegrationTest {
         @Bean
         open fun clock(): Clock = Clock.systemUTC()
 
-        // IssueApplicationService 생성자 파라미터 수 == 7. @TestConfiguration Bean 메서드이므로 Suppress 처리.
+        @Bean
+        open fun userLookupPort(): UserLookupPort = object : UserLookupPort {
+            override fun exists(userId: java.util.UUID): Boolean = true
+        }
+
+        // IssueApplicationService 생성자 파라미터 수 == 8(userLookupPort 포함). @TestConfiguration Bean 메서드이므로 Suppress 처리.
         @Bean
         @Suppress("LongParameterList")
         open fun issueApplicationService(
@@ -289,6 +295,7 @@ class IssueControllerTransitionIntegrationTest {
             permissionResolver: AlwaysAllowIssuePermissionResolver,
             workflowTransitionAdapter: WorkflowTransitionAdapter,
             workflowKeyResolver: WorkflowKeyResolverImpl,
+            userLookupPort: UserLookupPort,
             clock: Clock,
         ): IssueApplicationService =
             IssueApplicationService(
@@ -298,6 +305,7 @@ class IssueControllerTransitionIntegrationTest {
                 permissionResolver = permissionResolver,
                 workflowPort = workflowTransitionAdapter,
                 workflowKeyResolver = workflowKeyResolver,
+                userLookupPort = userLookupPort,
                 clock = clock,
             )
 

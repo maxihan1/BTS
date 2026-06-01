@@ -153,7 +153,7 @@ class IssueApplicationServiceTest : DescribeSpec({
     }
 
     beforeEach {
-        clearMocks(repo, eventPublisher, permissionResolver, answers = false)
+        clearMocks(repo, eventPublisher, permissionResolver, userLookupPort, answers = false)
     }
 
     // ── IssueResponse 신규 필드 노출 ──────────────────────────────────────────
@@ -1197,7 +1197,8 @@ class IssueApplicationServiceTest : DescribeSpec({
 
             it("repo.updateAssignee 가 호출되지 않는다") {
                 runCatching { sut.changeAssignee(actor, issueKey, request) }
-                verify(exactly = 0) { repo.updateAssignee(any(), any(), any()) }
+                // exists=false 이면 AssigneeNotFoundException 으로 조기 종료 — updateAssignee 는 도달 불가
+                verify(exactly = 0) { repo.updateAssignee(issueKey, assigneeUuid, expectedVersion) }
             }
         }
 
