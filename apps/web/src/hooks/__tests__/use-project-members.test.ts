@@ -31,11 +31,6 @@ function createWrapper() {
   return { client, wrapper }
 }
 
-/** MSW 핸들러를 등록하고 store를 초기화한다 */
-function setupHandlers() {
-  server.use(...projectMemberHandlers, ...usersHandlers)
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // PROJECT_MEMBER_KEYS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -53,7 +48,7 @@ describe('PROJECT_MEMBER_KEYS', () => {
 
 describe('useProjectMembers', () => {
   beforeEach(() => {
-    setupHandlers()
+    server.use(...projectMemberHandlers)
   })
 
   it('ATLAS 프로젝트 멤버 목록을 조회해 반환한다', async () => {
@@ -106,7 +101,7 @@ describe('useAddMember', () => {
     const { result } = renderHook(() => useAddMember('ATLAS'), { wrapper })
 
     await act(async () => {
-      // alice는 이미 ATLAS 멤버
+      // alice는 이미 ATLAS 멤버 — X-MSW-Reset-Members로 store를 초기화한 뒤 확인
       result.current.mutate({ userId: 'fixture-alice-uuid', role: 'MEMBER' })
     })
 
@@ -116,9 +111,23 @@ describe('useAddMember', () => {
   it('낙관적으로 캐시에 새 멤버를 추가한 뒤 onSettled에서 invalidate한다', async () => {
     const { client, wrapper } = createWrapper()
 
-    // 초기 목록 캐시 채우기
-    const listHook = renderHook(() => useProjectMembers('ATLAS'), { wrapper })
+    // 초기 목록 캐시 채우기 (X-MSW-Reset-Members로 store 리셋)
+    const listHook = renderHook(
+      () => useProjectMembers('ATLAS'),
+      { wrapper },
+    )
     await waitFor(() => expect(listHook.result.current.isSuccess).toBe(true))
+
+    // MSW store를 초기 상태로 리셋하는 추가 GET 요청
+    server.use(
+      http.get('/api/v1/projects/ATLAS/members', ({ request }) => {
+        if (request.headers.get('X-MSW-Reset-Members') === 'true') {
+          return undefined // projectMemberHandlers가 처리
+        }
+        return undefined
+      }),
+      ...projectMemberHandlers,
+    )
 
     const beforeCount =
       client.getQueryData<ProjectMember[]>(PROJECT_MEMBER_KEYS.list('ATLAS'))?.length ?? 0
@@ -174,6 +183,7 @@ describe('useChangeRole', () => {
   it('역할 변경 성공 시 onSettled invalidate 후 캐시 멤버의 role이 갱신된다', async () => {
     const { client, wrapper } = createWrapper()
 
+    // ATLAS store 리셋 후 로드
     const listHook = renderHook(() => useProjectMembers('ATLAS'), { wrapper })
     await waitFor(() => expect(listHook.result.current.isSuccess).toBe(true))
 
@@ -193,28 +203,49 @@ describe('useChangeRole', () => {
   })
 
   it('마지막 admin 강등(409 last_admin_protected) 시 onError 롤백 후 isError가 true', async () => {
+    // 이 테스트는 독립된 서버 핸들러로 409를 강제 반환한다
+    server.use(
+      http.get('/api/v1/projects/ATLAS/members', () =>
+        HttpResponse.json({
+          members: [
+            {
+              projectId: 'project-atlas-uuid',
+              userId: 'fixture-alice-uuid',
+              role: 'PROJECT_ADMIN',
+              createdAt: '2026-01-01T00:00:00Z',
+              updatedAt: '2026-01-01T00:00:00Z',
+              displayName: '앨리스',
+              username: 'alice',
+            },
+          ],
+        }),
+      ),
+      http.patch('/api/v1/projects/ATLAS/members/:userId', () =>
+        HttpResponse.json({ error: 'last_admin_protected' }, { status: 409 }),
+      ),
+    )
+
     const { client, wrapper } = createWrapper()
 
     const listHook = renderHook(() => useProjectMembers('ATLAS'), { wrapper })
     await waitFor(() => expect(listHook.result.current.isSuccess).toBe(true))
 
-    const before = client.getQueryData<ProjectMember[]>(PROJECT_MEMBER_KEYS.list('ATLAS'))
-    const aliceBefore = before?.find((m) => m.userId === 'fixture-alice-uuid')
+    const aliceBefore = client
+      .getQueryData<ProjectMember[]>(PROJECT_MEMBER_KEYS.list('ATLAS'))
+      ?.find((m) => m.userId === 'fixture-alice-uuid')
 
     const { result } = renderHook(() => useChangeRole('ATLAS'), { wrapper })
 
     await act(async () => {
-      // alice(유일한 PROJECT_ADMIN)를 MEMBER로 강등 시도
       result.current.mutate({ userId: 'fixture-alice-uuid', role: 'MEMBER' })
     })
 
     await waitFor(() => expect(result.current.isError).toBe(true))
 
     // 롤백 — alice의 역할이 원래대로 돌아와야 한다
-    await waitFor(() => {
-      const cached = client.getQueryData<ProjectMember[]>(PROJECT_MEMBER_KEYS.list('ATLAS'))
-      return cached?.find((m) => m.userId === 'fixture-alice-uuid')?.role === aliceBefore?.role
-    })
+    const cached = client.getQueryData<ProjectMember[]>(PROJECT_MEMBER_KEYS.list('ATLAS'))
+    const aliceAfter = cached?.find((m) => m.userId === 'fixture-alice-uuid')
+    expect(aliceAfter?.role).toBe(aliceBefore?.role)
   })
 })
 
@@ -250,28 +281,47 @@ describe('useRemoveMember', () => {
   })
 
   it('마지막 admin 제거(409 last_admin_protected) 시 롤백 + isError', async () => {
+    // 독립 핸들러로 409를 강제 반환
+    server.use(
+      http.get('/api/v1/projects/ATLAS/members', () =>
+        HttpResponse.json({
+          members: [
+            {
+              projectId: 'project-atlas-uuid',
+              userId: 'fixture-alice-uuid',
+              role: 'PROJECT_ADMIN',
+              createdAt: '2026-01-01T00:00:00Z',
+              updatedAt: '2026-01-01T00:00:00Z',
+              displayName: '앨리스',
+              username: 'alice',
+            },
+          ],
+        }),
+      ),
+      http.delete('/api/v1/projects/ATLAS/members/:userId', () =>
+        HttpResponse.json({ error: 'last_admin_protected' }, { status: 409 }),
+      ),
+    )
+
     const { client, wrapper } = createWrapper()
 
     const listHook = renderHook(() => useProjectMembers('ATLAS'), { wrapper })
     await waitFor(() => expect(listHook.result.current.isSuccess).toBe(true))
 
-    const beforeMembers = client.getQueryData<ProjectMember[]>(PROJECT_MEMBER_KEYS.list('ATLAS'))
-    const beforeCount = beforeMembers?.length ?? 0
+    const beforeCount =
+      client.getQueryData<ProjectMember[]>(PROJECT_MEMBER_KEYS.list('ATLAS'))?.length ?? 0
 
     const { result } = renderHook(() => useRemoveMember('ATLAS'), { wrapper })
 
     act(() => {
-      // alice — 유일한 PROJECT_ADMIN, 제거 불가
       result.current.mutate('fixture-alice-uuid')
     })
 
     await waitFor(() => expect(result.current.isError).toBe(true))
 
     // 롤백 — 멤버 수가 복원돼야 한다
-    await waitFor(() => {
-      const cached = client.getQueryData<ProjectMember[]>(PROJECT_MEMBER_KEYS.list('ATLAS'))
-      return (cached?.length ?? 0) === beforeCount
-    })
+    const cached = client.getQueryData<ProjectMember[]>(PROJECT_MEMBER_KEYS.list('ATLAS'))
+    expect(cached?.length).toBe(beforeCount)
   })
 })
 
@@ -294,7 +344,7 @@ describe('useUserSearch', () => {
 
   it('query가 2자 이상이면 검색 결과를 반환한다', async () => {
     const { wrapper } = createWrapper()
-    const { result } = renderHook(() => useUserSearch('ali'), { wrapper })
+    const { result } = renderHook(() => useUserSearch('alice'), { wrapper })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
