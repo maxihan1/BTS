@@ -1,4 +1,4 @@
-// ProjectMembershipRepository 통합 테스트 — CRUD + 카운트 + 역할갱신 + 중복제약 검증 (FR-PM-01 Task 3)
+// ProjectMembershipRepository 통합 테스트 — CRUD + 카운트 + 역할갱신 + 중복제약 + MemberView 조인 검증 (FR-PM-01 Task 3/B2)
 
 package com.atlas.bts.identity.project
 
@@ -277,5 +277,111 @@ class ProjectMembershipRepositoryIntegrationTest {
         val result = repo.deleteByProjectAndUser(projectId, UUID.randomUUID())
 
         assertThat(result).isFalse()
+    }
+
+    // ── listMemberViewsByProject ──────────────────────────────────────────────
+
+    @Test
+    fun `listMemberViewsByProject — users JOIN으로 displayName과 username을 포함한 뷰 목록을 반환한다`() {
+        repo.save(ProjectMembership(projectId, userId1, ProjectRole.PROJECT_ADMIN,
+            java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(ProjectMembership(projectId, userId2, ProjectRole.MEMBER,
+            java.time.Instant.now(), java.time.Instant.now()))
+
+        val views = repo.listMemberViewsByProject(projectId)
+
+        assertThat(views).hasSize(2)
+
+        val admin = views.first { it.userId == userId1 }
+        assertThat(admin.role).isEqualTo(ProjectRole.PROJECT_ADMIN)
+        assertThat(admin.displayName).isEqualTo("User One")
+        assertThat(admin.username).isEqualTo("user1")
+
+        val member = views.first { it.userId == userId2 }
+        assertThat(member.role).isEqualTo(ProjectRole.MEMBER)
+        assertThat(member.displayName).isEqualTo("User Two")
+        assertThat(member.username).isEqualTo("user2")
+    }
+
+    @Test
+    fun `listMemberViewsByProject — 멤버가 없는 프로젝트는 빈 목록을 반환한다`() {
+        val views = repo.listMemberViewsByProject(UUID.randomUUID())
+
+        assertThat(views).isEmpty()
+    }
+
+    @Test
+    fun `listMemberViewsByProject — LEFT JOIN으로 users에 행이 없는 orphan 멤버십도 목록에 포함하고 displayName과 username은 null이다`() {
+        // FK를 세션 수준에서 비활성화해 orphan user_id로 멤버십 직접 삽입 (LEFT JOIN null 케이스 검증)
+        val orphanUserId = UUID.randomUUID()
+        jdbc.jdbcTemplate.execute("SET session_replication_role = replica")
+        jdbc.update(
+            """
+            INSERT INTO project_memberships (project_id, user_id, role)
+            VALUES (:projectId, :userId, :role)
+            """,
+            mapOf("projectId" to projectId, "userId" to orphanUserId, "role" to "MEMBER"),
+        )
+        jdbc.jdbcTemplate.execute("SET session_replication_role = DEFAULT")
+
+        // 정상 사용자 멤버십도 함께 삽입해 INNER JOIN 방어 검증 (정상 행은 non-null이어야 함)
+        repo.save(ProjectMembership(projectId, userId1, ProjectRole.PROJECT_ADMIN,
+            java.time.Instant.now(), java.time.Instant.now()))
+
+        val views = repo.listMemberViewsByProject(projectId)
+
+        assertThat(views).hasSize(2)
+
+        val orphan = views.first { it.userId == orphanUserId }
+        assertThat(orphan.displayName).isNull()
+        assertThat(orphan.username).isNull()
+
+        val normal = views.first { it.userId == userId1 }
+        assertThat(normal.displayName).isEqualTo("User One")
+    }
+
+    // ── findMemberView ────────────────────────────────────────────────────────
+
+    @Test
+    fun `findMemberView — 존재하는 멤버십 조회 시 displayName과 username을 포함한 뷰를 반환한다`() {
+        repo.save(ProjectMembership(projectId, userId1, ProjectRole.PROJECT_ADMIN,
+            java.time.Instant.now(), java.time.Instant.now()))
+
+        val view = repo.findMemberView(projectId, userId1)
+
+        assertThat(view).isNotNull()
+        assertThat(view!!.projectId).isEqualTo(projectId)
+        assertThat(view.userId).isEqualTo(userId1)
+        assertThat(view.role).isEqualTo(ProjectRole.PROJECT_ADMIN)
+        assertThat(view.displayName).isEqualTo("User One")
+        assertThat(view.username).isEqualTo("user1")
+    }
+
+    @Test
+    fun `findMemberView — 존재하지 않는 멤버십 조회 시 null을 반환한다`() {
+        val view = repo.findMemberView(projectId, UUID.randomUUID())
+
+        assertThat(view).isNull()
+    }
+
+    @Test
+    fun `findMemberView — LEFT JOIN으로 users에 행이 없는 orphan 멤버십도 뷰를 반환하고 displayName과 username은 null이다`() {
+        val orphanUserId = UUID.randomUUID()
+        jdbc.jdbcTemplate.execute("SET session_replication_role = replica")
+        jdbc.update(
+            """
+            INSERT INTO project_memberships (project_id, user_id, role)
+            VALUES (:projectId, :userId, :role)
+            """,
+            mapOf("projectId" to projectId, "userId" to orphanUserId, "role" to "MEMBER"),
+        )
+        jdbc.jdbcTemplate.execute("SET session_replication_role = DEFAULT")
+
+        val view = repo.findMemberView(projectId, orphanUserId)
+
+        assertThat(view).isNotNull()
+        assertThat(view!!.userId).isEqualTo(orphanUserId)
+        assertThat(view.displayName).isNull()
+        assertThat(view.username).isNull()
     }
 }
