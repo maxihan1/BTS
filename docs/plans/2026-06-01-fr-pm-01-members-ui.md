@@ -214,3 +214,10 @@ FR-PM-01 남은 작업. 백엔드 D1~D5는 PR #48 완료(ProjectMembership/Proje
 **NIT (반영)**: N-2(KDoc 검증은 DB결과로), N-3(DTO↔Zod grep 검증 명령), N-4(E1 vite 부팅 사전조건). N-1(S6 문구 인지)은 변경 불요.
 
 → BLOCKER 0 잔존. 구현 착수 가능.
+
+### PR 단위 리뷰 (2026-06-01, 게이트 2)
+
+- **code-reviewer agent ✅ PASS** — 6 고유 리스크 코드+실행 검증 안전(B-1 입력봉투 4종 회귀핀, C-2 service 불변, SQL named param, contract 1:1, PII 0, 권한 UX 서버권위). 비차단 제안 3건.
+- **/review 구조적 lens ✅ PASS** — enum 완결성(FALLBACK 폴백), 신뢰경계(N/A), 조건부 부수효과 이슈 0.
+- 검증: 백엔드 identity-access+detekt 그린, 프론트 단위 646+typecheck+build 그린, E2E 멤버6+기존60 그린. (AuthControllerTest 2건·mockServiceWorker lint은 pre-existing 무관.)
+- **BLOCKER 0 — 머지 가능.**
