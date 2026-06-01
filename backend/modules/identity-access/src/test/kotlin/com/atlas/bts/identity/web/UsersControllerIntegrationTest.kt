@@ -200,6 +200,164 @@ class UsersControllerIntegrationTest {
         assertThat(usernames).doesNotContain(otherUsername)
     }
 
+    // ── TC-04. ids 파라미터 다건 조회 ────────────────────────────────────────────
+
+    /**
+     * TC-04: 인증된 사용자가 GET /api/v1/users?ids=<uuid1>,<uuid2> 호출 시
+     * 해당 id 들의 사용자만 반환한다.
+     *
+     * bob(미인증 테스트 사용자)는 BeforeEach 에서 저장되므로 alice 만 ids 에 포함해 검증한다.
+     */
+    @Test
+    fun `TC-04 ids 파라미터로 특정 사용자 다건 조회`() {
+        val accessToken = login()
+
+        // alice id 조회 (전체 목록에서)
+        val listHeaders =
+            HttpHeaders().apply {
+                set(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
+            }
+        val listResponse =
+            restTemplate.exchange(
+                "http://localhost:$port/api/v1/users",
+                HttpMethod.GET,
+                HttpEntity<Void>(listHeaders),
+                List::class.java,
+            )
+        @Suppress("UNCHECKED_CAST")
+        val allUsers = listResponse.body as List<Map<String, Any>>
+        val aliceId = allUsers.first { it["username"] == testUsername }["id"] as String
+
+        val headers =
+            HttpHeaders().apply {
+                set(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
+            }
+        val response =
+            restTemplate.exchange(
+                "http://localhost:$port/api/v1/users?ids=$aliceId",
+                HttpMethod.GET,
+                HttpEntity<Void>(headers),
+                List::class.java,
+            )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
+
+        @Suppress("UNCHECKED_CAST")
+        val users = response.body as List<Map<String, Any>>
+        assertThat(users).hasSize(1)
+        assertThat(users.first()["id"]).isEqualTo(aliceId)
+        assertThat(users.first()["username"]).isEqualTo(testUsername)
+        assertThat(users.first()["displayName"]).isEqualTo(testDisplayName)
+    }
+
+    /**
+     * TC-05: ids 파라미터에 존재하지 않는 UUID 포함 시 해당 항목은 조용히 제외.
+     */
+    @Test
+    fun `TC-05 ids 에 존재하지 않는 UUID 포함 시 해당 항목 제외`() {
+        val accessToken = login()
+
+        val listHeaders =
+            HttpHeaders().apply {
+                set(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
+            }
+        val listResponse =
+            restTemplate.exchange(
+                "http://localhost:$port/api/v1/users",
+                HttpMethod.GET,
+                HttpEntity<Void>(listHeaders),
+                List::class.java,
+            )
+        @Suppress("UNCHECKED_CAST")
+        val allUsers = listResponse.body as List<Map<String, Any>>
+        val aliceId = allUsers.first { it["username"] == testUsername }["id"] as String
+        val missingId = java.util.UUID.randomUUID().toString()
+
+        val headers =
+            HttpHeaders().apply {
+                set(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
+            }
+        val response =
+            restTemplate.exchange(
+                "http://localhost:$port/api/v1/users?ids=$aliceId,$missingId",
+                HttpMethod.GET,
+                HttpEntity<Void>(headers),
+                List::class.java,
+            )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
+
+        @Suppress("UNCHECKED_CAST")
+        val users = response.body as List<Map<String, Any>>
+        assertThat(users).hasSize(1)
+        assertThat(users.first()["id"]).isEqualTo(aliceId)
+    }
+
+    /**
+     * TC-06: ids 와 query 를 동시에 전달할 때 ids 모드가 우선한다.
+     */
+    @Test
+    fun `TC-06 ids 와 query 동시 전달 시 ids 모드 우선`() {
+        val accessToken = login()
+
+        val listHeaders =
+            HttpHeaders().apply {
+                set(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
+            }
+        val listResponse =
+            restTemplate.exchange(
+                "http://localhost:$port/api/v1/users",
+                HttpMethod.GET,
+                HttpEntity<Void>(listHeaders),
+                List::class.java,
+            )
+        @Suppress("UNCHECKED_CAST")
+        val allUsers = listResponse.body as List<Map<String, Any>>
+        val aliceId = allUsers.first { it["username"] == testUsername }["id"] as String
+
+        val headers =
+            HttpHeaders().apply {
+                set(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
+            }
+        // query=bob 으로 하면 alice 는 query 모드에서 안 나오지만, ids 모드 우선이면 alice 반환
+        val response =
+            restTemplate.exchange(
+                "http://localhost:$port/api/v1/users?ids=$aliceId&query=$otherUsername",
+                HttpMethod.GET,
+                HttpEntity<Void>(headers),
+                List::class.java,
+            )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
+
+        @Suppress("UNCHECKED_CAST")
+        val users = response.body as List<Map<String, Any>>
+        assertThat(users.map { it["id"] }).contains(aliceId)
+    }
+
+    /**
+     * TC-07: ids 개수가 MAX_RESULTS(50) 초과 시 400 반환.
+     */
+    @Test
+    fun `TC-07 ids 개수가 MAX_RESULTS 초과 시 400 반환`() {
+        val accessToken = login()
+        val tooManyIds = (1..51).map { java.util.UUID.randomUUID().toString() }.joinToString(",")
+
+        val headers =
+            HttpHeaders().apply {
+                set(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
+            }
+        val response =
+            restTemplate.exchange(
+                "http://localhost:$port/api/v1/users?ids=$tooManyIds",
+                HttpMethod.GET,
+                HttpEntity<Void>(headers),
+                Map::class.java,
+            )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+    }
+
     // ── TC-03. 미인증 요청 → 401 ──────────────────────────────────────────────
 
     /**
