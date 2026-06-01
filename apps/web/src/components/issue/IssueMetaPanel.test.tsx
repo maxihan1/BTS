@@ -75,6 +75,7 @@ function renderPanel(
   users: UserSummary[] = [],
   onAssigneeSearch = vi.fn(),
   onAssigneeChange = vi.fn(),
+  currentAssignee: UserSummary | null = null,
 ) {
   return render(
     <IssueMetaPanel
@@ -92,6 +93,7 @@ function renderPanel(
       users={users}
       onAssigneeSearch={onAssigneeSearch}
       onAssigneeChange={onAssigneeChange}
+      currentAssignee={currentAssignee}
     />,
   )
 }
@@ -904,10 +906,13 @@ describe('IssueMetaPanel — 담당자 셀렉터', () => {
   })
 
   /**
-   * IMP-52: assigneeId가 설정된 경우 users에서 id 매핑해 displayName을 표시한다.
+   * IMP-52: currentAssignee prop이 주어지면 displayName을 표시한다.
+   * C1 수정: 검색결과(users)가 아니라 currentAssignee prop에서 이름을 읽는다.
    */
-  it('IMP-52: assigneeId가 users에 있으면 displayName을 표시한다', () => {
-    const issueWithAssignee: IssueResponse = { ...issueFixture, assigneeId: usersFixture[0]?.id ?? null }
+  it('IMP-52: currentAssignee prop이 있으면 displayName을 표시한다', () => {
+    const alice = usersFixture[0]
+    if (!alice) return
+    const issueWithAssignee: IssueResponse = { ...issueFixture, assigneeId: alice.id }
     renderPanel(
       issueWithAssignee,
       availableTypes,
@@ -920,7 +925,10 @@ describe('IssueMetaPanel — 담당자 셀렉터', () => {
       vi.fn(),
       vi.fn(),
       vi.fn(),
-      usersFixture,
+      [], // users는 빈 배열 — 검색결과에 담당자가 없어도 currentAssignee로 표시돼야 한다 (C1 회귀가드)
+      vi.fn(),
+      vi.fn(),
+      alice, // currentAssignee prop
     )
     // data-testid="assignee-current-name" span으로 정확히 확인 (목록 버튼과 중복 방지)
     const currentNameEl = screen.getByTestId('assignee-current-name')
@@ -928,9 +936,9 @@ describe('IssueMetaPanel — 담당자 셀렉터', () => {
   })
 
   /**
-   * IMP-53: assigneeId가 users에 있고 displayName이 null이면 username을 표시한다.
+   * IMP-53: currentAssignee prop이 있고 displayName이 null이면 username을 표시한다.
    */
-  it('IMP-53: assigneeId가 있고 displayName=null이면 username을 표시한다', () => {
+  it('IMP-53: currentAssignee가 있고 displayName=null이면 username을 표시한다', () => {
     const bob = usersFixture[1]
     if (!bob) return
     const issueWithAssignee: IssueResponse = { ...issueFixture, assigneeId: bob.id }
@@ -946,11 +954,47 @@ describe('IssueMetaPanel — 담당자 셀렉터', () => {
       vi.fn(),
       vi.fn(),
       vi.fn(),
-      usersFixture,
+      [], // users 빈 배열 — C1 회귀가드
+      vi.fn(),
+      vi.fn(),
+      bob, // currentAssignee prop
     )
     // data-testid="assignee-current-name" span으로 정확히 확인 (목록 버튼과 중복 방지)
     const currentNameEl = screen.getByTestId('assignee-current-name')
     expect(currentNameEl.textContent).toBe('bob')
+  })
+
+  /**
+   * IMP-58: C1 회귀가드 — 현재 담당자가 검색결과 목록(users)에 없어도
+   * currentAssignee prop으로 이름이 표시된다.
+   * 이것이 핵심 버그 수정 검증이다: 검색어를 바꾸거나 초기 로드 시
+   * 담당자가 50건(MAX_RESULTS) 밖에 있어도 미지정으로 잘못 표시되지 않는다.
+   */
+  it('IMP-58: C1 회귀가드 — users에 없어도 currentAssignee prop으로 이름이 표시된다', () => {
+    const alice = usersFixture[0]
+    if (!alice) return
+    const issueWithAssignee: IssueResponse = { ...issueFixture, assigneeId: alice.id }
+    renderPanel(
+      issueWithAssignee,
+      availableTypes,
+      vi.fn(),
+      vi.fn(),
+      transitionsFixture,
+      vi.fn(),
+      false,
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      [], // users 완전히 비어 있음 (검색결과 없음)
+      vi.fn(),
+      vi.fn(),
+      alice, // currentAssignee prop으로 이름 제공
+    )
+    const currentNameEl = screen.getByTestId('assignee-current-name')
+    expect(currentNameEl.textContent).toBe('김앨리스')
+    // "미지정"이 표시되면 안 된다
+    expect(currentNameEl.textContent).not.toBe(issueDetailStrings.assigneeUnassigned)
   })
 
   /**
@@ -1014,7 +1058,9 @@ describe('IssueMetaPanel — 담당자 셀렉터', () => {
    */
   it('IMP-56: 담당자 해제 버튼 클릭 시 onAssigneeChange(null)이 호출된다', async () => {
     const onAssigneeChange = vi.fn()
-    const issueWithAssignee: IssueResponse = { ...issueFixture, assigneeId: usersFixture[0]?.id ?? null }
+    const alice = usersFixture[0]
+    if (!alice) return
+    const issueWithAssignee: IssueResponse = { ...issueFixture, assigneeId: alice.id }
     renderPanel(
       issueWithAssignee,
       availableTypes,
@@ -1030,6 +1076,7 @@ describe('IssueMetaPanel — 담당자 셀렉터', () => {
       usersFixture,
       vi.fn(),
       onAssigneeChange,
+      alice, // currentAssignee prop
     )
     const user = userEvent.setup()
     const assigneeSection = screen.getByTestId('assignee-section')

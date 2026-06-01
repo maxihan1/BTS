@@ -108,3 +108,50 @@ describe('fetchUsers', () => {
     await expect(fetchUsers()).rejects.toBeInstanceOf(ApiError)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-US-3. fetchUsersByIds — GET /api/v1/users?ids=, id 다건 조회
+// ─────────────────────────────────────────────────────────────────────────────
+describe('fetchUsersByIds', () => {
+  it('T-US-3a: ids 배열 전달 시 ids 쿼리스트링이 쉼표로 결합돼 URL에 포함된다', async () => {
+    let capturedUrl = ''
+    server.use(
+      http.get('/api/v1/users', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json([userFixtureFull])
+      }),
+    )
+    const { fetchUsersByIds } = await import('./users')
+    await fetchUsersByIds([
+      'a1b2c3d4-e5f6-4890-abcd-ef1234567890',
+      'b2c3d4e5-f6a7-4891-bcde-ef2345678901',
+    ])
+    expect(capturedUrl).toContain('ids=')
+    expect(capturedUrl).toContain('a1b2c3d4-e5f6-4890-abcd-ef1234567890')
+    expect(capturedUrl).toContain('b2c3d4e5-f6a7-4891-bcde-ef2345678901')
+  })
+
+  it('T-US-3b: ids가 빈 배열이면 네트워크 호출 없이 [] 반환한다', async () => {
+    let fetchCalled = false
+    server.use(
+      http.get('/api/v1/users', () => {
+        fetchCalled = true
+        return HttpResponse.json([userFixtureFull])
+      }),
+    )
+    const { fetchUsersByIds } = await import('./users')
+    const result = await fetchUsersByIds([])
+    expect(fetchCalled).toBe(false)
+    expect(result).toEqual([])
+  })
+
+  it('T-US-3c: 응답을 UserSummary[] 타입으로 파싱한다', async () => {
+    server.use(
+      http.get('/api/v1/users', () => HttpResponse.json([userFixtureFull])),
+    )
+    const { fetchUsersByIds } = await import('./users')
+    const result = await fetchUsersByIds(['a1b2c3d4-e5f6-4890-abcd-ef1234567890'])
+    expect(result).toHaveLength(1)
+    expect(result[0]?.username).toBe('alice')
+  })
+})

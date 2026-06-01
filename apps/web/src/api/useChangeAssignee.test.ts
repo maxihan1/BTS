@@ -8,6 +8,7 @@ import { server } from '@/test/server'
 import { ApiError } from '@/api/client'
 import type { IssueResponse } from '@/api/issues'
 import { useChangeAssignee } from './useChangeAssignee'
+import { issueDetailStrings } from '@/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // sonner toast 모킹
@@ -188,6 +189,68 @@ describe('useChangeAssignee — 422 ASSIGNEE_NOT_FOUND', () => {
     await waitFor(() => expect(result.current.isError).toBe(true))
 
     expect(toast.error).toHaveBeenCalledOnce()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-CA-5. S1 — toast 메시지가 ko.ts issueDetailStrings 상수를 참조한다
+// ─────────────────────────────────────────────────────────────────────────────
+describe('useChangeAssignee — S1 i18n 문자열 참조', () => {
+  it('T-CA-5a: 422 응답 시 toast.error가 issueDetailStrings.assigneeNotFoundError 값으로 호출된다', async () => {
+    server.use(
+      http.patch('/api/v1/issues/:key/assignee', () =>
+        HttpResponse.json({ errorCode: 'ASSIGNEE_NOT_FOUND' }, { status: 422 }),
+      ),
+    )
+    const { toast } = await import('sonner')
+    const { queryClient, Wrapper } = createWrapper()
+    queryClient.setQueryData(['issue', 'ATLAS-1'], issueFixture)
+
+    const { result } = renderHook(() => useChangeAssignee(), { wrapper: Wrapper })
+    act(() => {
+      result.current.mutate({ key: 'ATLAS-1', assigneeId: 'nonexistent-0000-0000-0000-000000000000', expectedVersion: 1 })
+    })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+
+    expect(toast.error).toHaveBeenCalledWith(issueDetailStrings.assigneeNotFoundError)
+  })
+
+  it('T-CA-5b: 409 응답 시 toast.error가 issueDetailStrings.typeChangeConflictError 값으로 호출된다', async () => {
+    server.use(
+      http.patch('/api/v1/issues/:key/assignee', () =>
+        HttpResponse.json({ errorCode: 'VERSION_CONFLICT' }, { status: 409 }),
+      ),
+    )
+    const { toast } = await import('sonner')
+    const { queryClient, Wrapper } = createWrapper()
+    queryClient.setQueryData(['issue', 'ATLAS-1'], issueFixture)
+
+    const { result } = renderHook(() => useChangeAssignee(), { wrapper: Wrapper })
+    act(() => {
+      result.current.mutate({ key: 'ATLAS-1', assigneeId, expectedVersion: 0 })
+    })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+
+    expect(toast.error).toHaveBeenCalledWith(issueDetailStrings.typeChangeConflictError)
+  })
+
+  it('T-CA-5c: 기타 에러 시 toast.error가 issueDetailStrings.assigneeChangeError 값으로 호출된다', async () => {
+    server.use(
+      http.patch('/api/v1/issues/:key/assignee', () =>
+        HttpResponse.json({ message: 'Internal Server Error' }, { status: 500 }),
+      ),
+    )
+    const { toast } = await import('sonner')
+    const { queryClient, Wrapper } = createWrapper()
+    queryClient.setQueryData(['issue', 'ATLAS-1'], issueFixture)
+
+    const { result } = renderHook(() => useChangeAssignee(), { wrapper: Wrapper })
+    act(() => {
+      result.current.mutate({ key: 'ATLAS-1', assigneeId, expectedVersion: 1 })
+    })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+
+    expect(toast.error).toHaveBeenCalledWith(issueDetailStrings.assigneeChangeError)
   })
 })
 
