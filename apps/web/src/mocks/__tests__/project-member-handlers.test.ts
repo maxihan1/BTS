@@ -2,10 +2,10 @@
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-// 아직 미존재 — RED 단계에서 import 실패가 예상됨
 import { projectMemberHandlers } from '../project-member-handlers'
+import { usersHandlers } from '../users-handlers'
 
-const server = setupServer(...projectMemberHandlers)
+const server = setupServer(...projectMemberHandlers, ...usersHandlers)
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
