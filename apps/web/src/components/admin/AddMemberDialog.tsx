@@ -78,7 +78,7 @@ function SearchResultList({ query, selectedUser, onSelect }: SearchResultListPro
               onClick={() => { onSelect(user) }}
             >
               {resolveUserLabel(user)}
-              {user.username !== (user.displayName ?? '') && (
+              {user.displayName !== null && (
                 <span className="ml-1 text-xs text-muted-foreground">@{user.username}</span>
               )}
             </button>
@@ -100,7 +100,6 @@ interface AddMemberDialogProps {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 컴포넌트
-// ─────────────────────────────────────────────────────────────────명
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
