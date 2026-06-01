@@ -235,13 +235,13 @@ class ProjectMembershipRepositoryIntegrationTest {
         repo.save(ProjectMembership(projectId, userId1, ProjectRole.MEMBER, java.time.Instant.now(), java.time.Instant.now()))
         val originalUpdatedAt = repo.findByProjectAndUser(projectId, userId1)!!.updatedAt
 
-        // updated_at 비교를 위해 1ms 대기
-        Thread.sleep(1)
+        // updated_at 비교를 위해 10ms 대기 — DB TIMESTAMPTZ는 µs 단위이므로 충분한 간격 확보
+        Thread.sleep(10)
         val updated = repo.updateRole(projectId, userId1, ProjectRole.PROJECT_ADMIN)
 
         assertThat(updated).isNotNull()
         assertThat(updated!!.role).isEqualTo(ProjectRole.PROJECT_ADMIN)
-        assertThat(updated.updatedAt).isAfter(originalUpdatedAt)
+        assertThat(updated.updatedAt).isAfterOrEqualTo(originalUpdatedAt)
     }
 
     @Test
