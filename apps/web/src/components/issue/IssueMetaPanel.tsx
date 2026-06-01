@@ -1,8 +1,9 @@
-// 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전이 셀렉터·우선순위·영향도·환경·라벨·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
+// 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전이 셀렉터·우선순위·영향도·환경·라벨·담당자·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
 import type { JSX } from 'react'
 import { useState, useEffect, useRef } from 'react'
 import type { IssueResponse, IssueTransition } from '@/api/issues'
 import type { IssueTypeResponse } from '@/api/issue-types'
+import type { UserSummary } from '@/api/users'
 import { Button } from '@/components/ui/button'
 import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
 import { formatDate } from '@/lib/date-format'
@@ -50,6 +51,18 @@ export interface IssueMetaPanelProps {
   onEnvironmentSave: (environment: string) => void
   /** 라벨 저장 핸들러 — 편집된 labels 배열을 전달 */
   onLabelsSave: (labels: string[]) => void
+  /** 사용자 검색 결과 목록 — 담당자 셀렉터에 노출 (routes에서 useUsers 결과 전달) */
+  users: UserSummary[]
+  /** 담당자 검색어 변경 핸들러 — 검색 input의 onChange 값을 전달 */
+  onAssigneeSearch: (query: string) => void
+  /** 담당자 변경 핸들러 — 선택한 사용자 UUID 또는 null(해제)을 전달 */
+  onAssigneeChange: (userId: string | null) => void
+  /**
+   * 현재 담당자 UserSummary — useUsersByIds로 별도 조회한 값 (C1 버그 수정).
+   * 검색결과(users)와 분리해 현재 담당자 이름을 안정적으로 표시한다.
+   * null이면 "미지정" 표시.
+   */
+  currentAssignee: UserSummary | null
 }
 
 /**
@@ -79,6 +92,10 @@ export function IssueMetaPanel({
   onImpactChange,
   onEnvironmentSave,
   onLabelsSave,
+  users,
+  onAssigneeSearch,
+  onAssigneeChange,
+  currentAssignee,
 }: IssueMetaPanelProps): JSX.Element {
   /** issue.typeId에 해당하는 타입 항목 — iconName 해석에 사용 */
   const currentType = availableTypes.find((t) => t.id === issue.typeId)
@@ -159,6 +176,18 @@ export function IssueMetaPanel({
         <div className="px-3.5 py-3 border-b border-border" data-testid="labels-section">
           <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.labelsLabel}</p>
           <IssueLabelsEdit value={issue.labels} onSave={onLabelsSave} />
+        </div>
+
+        {/* 담당자 — IssueAssigneeSelect (FR-IS-03) */}
+        <div className="px-3.5 py-3 border-b border-border" data-testid="assignee-section">
+          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.assigneeLabel}</p>
+          <IssueAssigneeSelect
+            value={issue.assigneeId ?? null}
+            currentAssignee={currentAssignee}
+            users={users}
+            onSearch={onAssigneeSearch}
+            onAssigneeChange={onAssigneeChange}
+          />
         </div>
 
         {/* 보고자 */}
@@ -535,6 +564,134 @@ function IssueTypeSelect({
         </option>
       ))}
     </select>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IssueAssigneeSelect — 담당자 셀렉터 서브컴포넌트 (FR-IS-03)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** IssueAssigneeSelect props */
+interface IssueAssigneeSelectProps {
+  /**
+   * 현재 담당자 UUID — issue.assigneeId props 파생, useState 초기화 금지 (stale key prop 회귀 방지).
+   * null이면 미할당.
+   */
+  value: string | null
+  /**
+   * 현재 담당자 UserSummary — useUsersByIds로 별도 조회한 값 (C1 버그 수정).
+   * 검색결과(users)와 분리해 담당자 이름을 안정적으로 표시한다.
+   * null이면 "미지정" 표시.
+   */
+  currentAssignee: UserSummary | null
+  /** 사용자 검색 결과 목록 — 드롭다운 후보 전용 */
+  users: UserSummary[]
+  /** 검색어 변경 콜백 */
+  onSearch: (query: string) => void
+  /** 담당자 변경 콜백 — UUID 또는 null(해제) */
+  onAssigneeChange: (userId: string | null) => void
+}
+
+/**
+ * 이슈 담당자 셀렉터 컴포넌트.
+ *
+ * - value는 부모 props에서 파생(issue.assigneeId) — stale key prop 회귀 방지
+ * - currentAssignee prop으로 현재 담당자 이름 표시 (C1 버그 수정)
+ *   users(검색결과)가 아닌 별도 id 조회 결과를 사용해 50건 한도 이외 담당자도 정확히 표시
+ * - 미할당 시 "미지정" 텍스트 표시
+ * - 검색 input: native input, onChange 시 onSearch 호출
+ * - 사용자 목록(users): 드롭다운 후보 전용 — 선택 시 onAssigneeChange(id)
+ * - 담당자 해제 버튼: value !== null이면 노출, 클릭 시 onAssigneeChange(null)
+ * - WCAG AA: min-h-[44px], aria-label
+ */
+function IssueAssigneeSelect({
+  value,
+  currentAssignee,
+  users,
+  onSearch,
+  onAssigneeChange,
+}: IssueAssigneeSelectProps): JSX.Element {
+  /** 현재 담당자 표시 이름 — displayName 우선, 없으면 username */
+  function getDisplayName(user: UserSummary): string {
+    return user.displayName ?? user.username
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {/* 현재 담당자 표시 — currentAssignee prop 기반 (C1 수정: users 검색결과 의존 제거) */}
+      <div className="flex items-center justify-between gap-1">
+        <span className="text-sm font-medium truncate" data-testid="assignee-current-name">
+          {currentAssignee !== null
+            ? getDisplayName(currentAssignee)
+            : issueDetailStrings.assigneeUnassigned}
+        </span>
+        {/* 담당자 해제 버튼 — 할당된 경우에만 노출 */}
+        {value !== null && (
+          <button
+            type="button"
+            onClick={() => onAssigneeChange(null)}
+            className="text-xs text-muted-foreground hover:text-destructive focus:outline-none focus:ring-1 focus:ring-ring min-h-[44px] px-1 shrink-0"
+            aria-label={issueDetailStrings.assigneeUnassignButton}
+          >
+            {issueDetailStrings.assigneeUnassignButton}
+          </button>
+        )}
+      </div>
+
+      {/* 검색 input */}
+      <input
+        type="text"
+        className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        placeholder={issueDetailStrings.assigneeSearchPlaceholder}
+        aria-label={issueDetailStrings.assigneeSearchPlaceholder}
+        onChange={(e) => onSearch(e.target.value)}
+      />
+
+      {/* 검색 결과 사용자 목록 */}
+      {users.length > 0 && (
+        <AssigneeUserList users={users} onSelect={onAssigneeChange} />
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AssigneeUserList — 담당자 검색 결과 목록 서브컴포넌트
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** AssigneeUserList props */
+interface AssigneeUserListProps {
+  /** 사용자 목록 */
+  users: UserSummary[]
+  /** 선택 콜백 */
+  onSelect: (userId: string) => void
+}
+
+/**
+ * 담당자 검색 결과 사용자 목록 컴포넌트.
+ * - 각 사용자를 버튼으로 렌더
+ * - displayName 우선, 없으면 username 표시
+ * - WCAG AA: min-h-[44px]
+ */
+function AssigneeUserList({ users, onSelect }: AssigneeUserListProps): JSX.Element {
+  return (
+    <ul className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
+      {users.map((user) => {
+        const displayName = user.displayName ?? user.username
+        return (
+          <li key={user.id}>
+            <button
+              type="button"
+              onClick={() => onSelect(user.id)}
+              className="w-full text-left text-sm px-2 py-1.5 rounded-md hover:bg-muted focus:outline-none focus:ring-1 focus:ring-ring min-h-[44px]"
+              aria-label={displayName}
+            >
+              {displayName}
+            </button>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 

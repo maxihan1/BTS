@@ -130,6 +130,7 @@ describe('useTransitionIssue', () => {
       summary: '테스트 이슈',
       currentStateKey: 'in-progress',
       reporterId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22',
+      assigneeId: null,
       version: 2,
       createdAt: null,
       updatedAt: null,

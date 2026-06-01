@@ -69,6 +69,19 @@ interface UserRepository {
     fun updateLastLogin(id: UUID)
 
     /**
+     * id 목록으로 사용자 다건 조회 (FR-IS-03 Task 6 — 현재 담당자 이름 안정 해소).
+     *
+     * 존재하지 않는 id 는 결과에서 조용히 제외한다 (404 아님 — 부분 결과 허용).
+     * 빈 리스트 입력 시 빈 리스트 반환 (DB 호출 없음).
+     *
+     * SQL 인젝션 방어: `WHERE id IN (:ids)` named parameter 바인딩 (DEVELOPMENT.md §1.3).
+     *
+     * @param ids 조회할 사용자 UUID 목록
+     * @return 존재하는 사용자 목록 (순서 미보장)
+     */
+    fun findByIds(ids: List<UUID>): List<User>
+
+    /**
      * 활성 사용자 목록 조회 (FR-IS-03 Task 4 — 담당자 셀렉터 typeahead 용).
      *
      * [query] 가 null 이면 전체 사용자를 반환한다.
@@ -138,6 +151,24 @@ class JdbcUserRepository(
         jdbc.update(
             SQL_UPDATE_LAST_LOGIN,
             mapOf("id" to id, "now" to Timestamp.from(Instant.now())),
+        )
+    }
+
+    /**
+     * id 목록으로 사용자 다건 조회 (FR-IS-03 Task 6).
+     *
+     * 빈 리스트 입력 시 DB 호출 없이 빈 리스트를 즉시 반환한다.
+     * 존재하지 않는 id 는 조용히 제외된다 (WHERE id IN (:ids) 결과에 포함 안 됨).
+     *
+     * @param ids 조회할 사용자 UUID 목록
+     */
+    @Transactional(readOnly = true)
+    override fun findByIds(ids: List<UUID>): List<User> {
+        if (ids.isEmpty()) return emptyList()
+        return jdbc.query(
+            SQL_FIND_BY_IDS,
+            mapOf("ids" to ids),
+            UserRowMapper,
         )
     }
 
@@ -224,6 +255,18 @@ class JdbcUserRepository(
             UPDATE users
             SET updated_at = :now
             WHERE id = :id
+        """
+
+        /**
+         * id 목록으로 사용자 다건 조회 — `IN (:ids)` named parameter 바인딩.
+         * NamedParameterJdbcTemplate 이 List<UUID> 를 자동으로 IN 절 플레이스홀더로 확장한다.
+         * SQL 문자열 결합 없음 (DEVELOPMENT.md §1.3).
+         */
+        const val SQL_FIND_BY_IDS = """
+            SELECT id, username, email, display_name, created_at, updated_at
+            FROM users
+            WHERE id IN (:ids)
+            ORDER BY username
         """
 
         /**

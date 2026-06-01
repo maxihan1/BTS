@@ -7,9 +7,12 @@ import { toast } from 'sonner'
 import { fetchIssue, updateIssue, transitionIssue } from '@/api/issues'
 import { ApiError } from '@/api/client'
 import { useUpdateIssueSummary, issueQueryKey } from '@/api/useUpdateIssueSummary'
+import { useChangeAssignee } from '@/api/useChangeAssignee'
 import { useDeleteIssue } from '@/api/useDeleteIssue'
 import { useIssueTypes } from '@/hooks/use-issue-types'
 import { useIssueTransitions, issueTransitionKeys } from '@/hooks/use-issue-transitions'
+import { useUsers, useUsersByIds } from '@/hooks/use-users'
+import { useDebounce } from '@/hooks/use-debounce'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { IssueDescription } from '@/components/issue/IssueDescription'
@@ -69,7 +72,7 @@ interface IssueDetailPageProps {
  * - useQuery로 fetchIssue(issueKey)를 호출한다.
  * - 3 상태 분기: 로딩 → 에러/미존재 → 성공.
  * - 성공 레이아웃: 좌측 본문(breadcrumb + 제목 인라인 편집) + 우측 메타패널.
- * - 상태는 읽기전용 배지만 (전이 UI 없음 — D6 제외).
+ * - 상태 전이 셀렉터 + 담당자 셀렉터(useUsersByIds 별도 조회) + debounce 검색 포함.
  * - 삭제: 확인 UI → useDeleteIssue → 목록으로 navigate.
  *
  * 라우터 의존 없이 props로 issueKey를 받아 단위 테스트가 가능하다.
@@ -80,6 +83,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [editSummary, setEditSummary] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('')
 
   const { data: issue, isLoading, error } = useQuery({
     queryKey: issueQueryKey(issueKey),
@@ -88,6 +92,22 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   })
 
   const { data: availableTypes = [] } = useIssueTypes()
+  /** S2: debounce 적용 — 1000명 규모 매 키스트로크 요청 방지 (250ms) */
+  const debouncedAssigneeSearchQuery = useDebounce(assigneeSearchQuery, 250)
+  const { data: users = [] } = useUsers(debouncedAssigneeSearchQuery)
+
+  /**
+   * C1 버그 수정: 현재 담당자를 id 조회로 별도 확보.
+   * useUsers(검색결과)에서 find()하면 검색어 변경 시 / 50건 한도 이외 담당자가 "미지정"으로 오표시됨.
+   * assigneeId가 있을 때만 enabled — issue가 로드되기 전에는 빈 배열로 호출하지 않음.
+   */
+  const assigneeIdForLookup = issue?.assigneeId ?? null
+  const { data: assigneeList = [] } = useUsersByIds(
+    assigneeIdForLookup !== null ? [assigneeIdForLookup] : [],
+  )
+  const currentAssignee = assigneeList[0] ?? null
+
+  const changeAssigneeMutation = useChangeAssignee()
   const {
     data: transitions = [],
     isError: isTransitionsError,
@@ -144,12 +164,12 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
 
   /**
    * 메타필드 mutation 공통 onError 처리기.
-   * - 409 → typeChangeConflictError toast + invalidate (최신 데이터 재조회 유도)
+   * - 409 → versionConflictError toast + invalidate (최신 데이터 재조회 유도)
    * - 그 외 → 호출자가 전달한 fallbackMsg toast
    */
   function handleMetaMutationError(err: unknown, fallbackMsg: string) {
     if (err instanceof ApiError && err.status === 409) {
-      toast.error(issueDetailStrings.typeChangeConflictError)
+      toast.error(issueDetailStrings.versionConflictError)
       void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
     } else {
       toast.error(fallbackMsg)
@@ -307,6 +327,12 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
     labelsMutation.mutate({ labels, expectedVersion: issue.version })
   }
 
+  // ── 담당자 변경 핸들러 ───────────────────────────────────────────────────
+  function handleAssigneeChange(userId: string | null) {
+    if (issue === undefined) return
+    changeAssigneeMutation.mutate({ key: issue.key, assigneeId: userId, expectedVersion: issue.version })
+  }
+
   // ── 상태전이 핸들러 ───────────────────────────────────────────────────────
   function handleTransition(toStateKey: string) {
     if (issue === undefined) return
@@ -435,6 +461,10 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
             onImpactChange={handleImpactChange}
             onEnvironmentSave={handleEnvironmentSave}
             onLabelsSave={handleLabelsSave}
+            users={users}
+            onAssigneeSearch={setAssigneeSearchQuery}
+            onAssigneeChange={handleAssigneeChange}
+            currentAssignee={currentAssignee}
           />
         )}
       </div>

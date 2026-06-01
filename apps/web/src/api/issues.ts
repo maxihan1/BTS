@@ -7,7 +7,7 @@ import { apiGet, apiPost, apiFetch, ApiError } from './client'
 // backend IssueResponse DTO 직렬화 형태와 1:1 대응.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 이슈 단건 응답 Zod 스키마 — 20 필드 (12 기존 + 8 FR-IS-04 신규), createdAt/updatedAt nullable */
+/** 이슈 단건 응답 Zod 스키마 — 21 필드 (12 기존 + 8 FR-IS-04 + 1 FR-IS-03 assigneeId), createdAt/updatedAt nullable */
 export const issueResponseSchema = z.object({
   key: z.string().min(1),
   id: z.string().uuid(),
@@ -15,6 +15,13 @@ export const issueResponseSchema = z.object({
   summary: z.string().min(1),
   currentStateKey: z.string().min(1),
   reporterId: z.string().uuid(),
+  /**
+   * 담당자 UUID. null이면 미할당.
+   * 백엔드 IssueResponse(assigneeId: UUID? = null)는 null이라도 항상 직렬화하므로
+   * nullable로 충분하다 — optional은 백엔드가 보내지 않는 형태(키 부재)까지 허용해
+   * 계약을 느슨하게 만들어 회귀 감지를 약화시키므로 사용하지 않는다.
+   */
+  assigneeId: z.string().uuid().nullable(),
   version: z.number().int().nonnegative(),
   createdAt: z.string().nullable(),
   updatedAt: z.string().nullable(),
@@ -143,6 +150,19 @@ export interface FetchIssuesParams {
   projectKey: string
   page: number
   size: number
+}
+
+/**
+ * 담당자 변경 입력 타입.
+ * PATCH /api/v1/issues/{key}/assignee body 형태.
+ * - assigneeId=null → 담당자 해제 (3-state null 시맨틱)
+ * - expectedVersion 필수 (낙관적 잠금 OCC)
+ */
+export interface ChangeAssigneeInput {
+  /** 담당자 UUID. null이면 해제. */
+  assigneeId: string | null
+  /** 낙관적 잠금(OCC)을 위한 현재 버전 번호 */
+  expectedVersion: number
 }
 
 /** Spring Page<IssueResponse> 타입 */
@@ -274,6 +294,27 @@ export async function fetchIssueTransitions(key: string): Promise<IssueTransitio
  */
 export async function transitionIssue(key: string, input: TransitionIssueInput): Promise<IssueResponse> {
   const res = await apiFetch(`/api/v1/issues/${key}/transition`, { method: 'POST', body: input })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const raw: unknown = await res.json()
+  const wrapped = dataResponseSchema(issueResponseSchema).parse(raw)
+  return wrapped.data
+}
+
+/**
+ * 이슈 담당자를 변경하거나 해제한다.
+ * PATCH /api/v1/issues/{key}/assignee body { assigneeId: UUID|null, expectedVersion: Long }
+ *
+ * @param key 이슈 식별 키 (예: "ATLAS-1")
+ * @param input assigneeId(UUID 또는 null) · expectedVersion(OCC 버전)
+ * @returns 변경된 IssueResponse — assigneeId와 version이 갱신된 상태
+ * @throws ApiError(409) 낙관적 잠금 충돌 시
+ * @throws ApiError(422) assigneeId가 실재하지 않는 사용자일 때 (ASSIGNEE_NOT_FOUND)
+ */
+export async function changeAssignee(key: string, input: ChangeAssigneeInput): Promise<IssueResponse> {
+  const res = await apiFetch(`/api/v1/issues/${key}/assignee`, { method: 'PATCH', body: input })
   if (!res.ok) {
     const errorBody: unknown = await res.json().catch(() => ({}))
     throw new ApiError(res.status, errorBody)
