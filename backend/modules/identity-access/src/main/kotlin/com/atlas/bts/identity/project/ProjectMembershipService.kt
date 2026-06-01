@@ -168,6 +168,39 @@ class ProjectMembershipService(
         return membershipRepo.listByProject(projectId)
     }
 
+    /**
+     * 프로젝트 멤버 목록을 [ProjectMemberView]로 반환한다 (N+1 없는 단일 조인 조회).
+     *
+     * actor가 해당 프로젝트의 멤버여야 한다 (비멤버는 존재숨김 404).
+     * users 테이블과 LEFT JOIN해 displayName / username을 동봉한다.
+     * GET 목록 응답에 사용한다 (B3 C-2).
+     *
+     * @param projectId 대상 프로젝트 ID
+     * @param actorId 요청자 사용자 ID — 비멤버 존재숨김 검사에 사용
+     * @return displayName / username 포함 멤버 뷰 목록
+     * @throws ProjectNotFound 프로젝트 미존재 / actor 비멤버
+     */
+    @Transactional(readOnly = true, isolation = Isolation.READ_COMMITTED)
+    fun listMemberViewsByProject(projectId: UUID, actorId: UUID): List<ProjectMemberView> {
+        requireProjectExists(projectId)
+        resolveMembershipOr404(actorId, projectId) // 비멤버 존재숨김
+        return membershipRepo.listMemberViewsByProject(projectId)
+    }
+
+    /**
+     * 특정 프로젝트+사용자 조합을 [ProjectMemberView]로 반환한다.
+     *
+     * POST/PATCH 응답 직전 단건 view 조회에 사용한다 (B3 C-2).
+     * 멤버십이 존재하면 반드시 view가 존재하므로 null 반환은 서비스 로직 버그를 의미한다.
+     *
+     * @param projectId 대상 프로젝트 ID
+     * @param userId 대상 사용자 ID
+     * @return [ProjectMemberView] — 멤버십이 존재하지 않으면 null
+     */
+    @Transactional(readOnly = true, isolation = Isolation.READ_COMMITTED)
+    fun findMemberView(projectId: UUID, userId: UUID): ProjectMemberView? =
+        membershipRepo.findMemberView(projectId, userId)
+
     // ── 내부 헬퍼 ────────────────────────────────────────────────────────────
 
     /**
