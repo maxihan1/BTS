@@ -263,8 +263,14 @@ class JdbcProjectMembershipRepository(
          * 프로젝트 UUID를 상위/하위 64bit으로 분리하여 advisory 트랜잭션 락을 획득한다.
          * :hi = mostSignificantBits, :lo = leastSignificantBits — 두 파라미터 모두 bigint.
          * SELECT pg_advisory_xact_lock 은 행을 반환하지 않으므로 jdbc.update 로 실행한다.
+         *
+         * CAST(:hi AS bigint) / CAST(:lo AS bigint):
+         * NamedParameterJdbcTemplate 이 Long 파라미터를 PreparedStatement ?로 바인딩할 때
+         * PostgreSQL 타입 추론이 실패하는 문제를 명시적 캐스팅으로 해소한다.
+         * 문자열 결합 없이 named parameter 바인딩을 유지한다 (DEVELOPMENT.md §1.3).
          */
-        const val SQL_ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(:hi, :lo)"
+        const val SQL_ADVISORY_LOCK =
+            "SELECT pg_advisory_xact_lock(CAST(:hi AS bigint), CAST(:lo AS bigint))"
     }
 }
 
