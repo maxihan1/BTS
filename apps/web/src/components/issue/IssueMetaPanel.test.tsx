@@ -922,8 +922,9 @@ describe('IssueMetaPanel — 담당자 셀렉터', () => {
       vi.fn(),
       usersFixture,
     )
-    const assigneeSection = screen.getByTestId('assignee-section')
-    expect(within(assigneeSection).getByText('김앨리스')).toBeInTheDocument()
+    // data-testid="assignee-current-name" span으로 정확히 확인 (목록 버튼과 중복 방지)
+    const currentNameEl = screen.getByTestId('assignee-current-name')
+    expect(currentNameEl.textContent).toBe('김앨리스')
   })
 
   /**
@@ -947,8 +948,9 @@ describe('IssueMetaPanel — 담당자 셀렉터', () => {
       vi.fn(),
       usersFixture,
     )
-    const assigneeSection = screen.getByTestId('assignee-section')
-    expect(within(assigneeSection).getByText('bob')).toBeInTheDocument()
+    // data-testid="assignee-current-name" span으로 정확히 확인 (목록 버튼과 중복 방지)
+    const currentNameEl = screen.getByTestId('assignee-current-name')
+    expect(currentNameEl.textContent).toBe('bob')
   })
 
   /**

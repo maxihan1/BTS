@@ -148,6 +148,20 @@ export const issueDetailStrings = {
   labelsSaveButton: '저장',
   /** 라벨 저장 실패 에러 메시지 */
   labelsSaveError: '라벨 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+
+  // ── 담당자(assignee) — FR-IS-03 ─────────────────────────────────
+  /** 메타패널 — 담당자 레이블 */
+  assigneeLabel: '담당자',
+  /** 담당자 미할당 상태 표시 */
+  assigneeUnassigned: '미지정',
+  /** 담당자 검색 input 자리표시자 */
+  assigneeSearchPlaceholder: '사용자 검색',
+  /** 담당자 해제 버튼 텍스트 */
+  assigneeUnassignButton: '담당자 해제',
+  /** 422 ASSIGNEE_NOT_FOUND 에러 메시지 */
+  assigneeNotFoundError: '선택한 사용자를 찾을 수 없습니다. 다시 검색 후 선택해 주세요.',
+  /** 담당자 변경 실패 에러 메시지 */
+  assigneeChangeError: '담당자 변경 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
 } as const
 
 /** 이슈 생성 폼 관련 문자열 */
