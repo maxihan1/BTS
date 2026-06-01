@@ -68,6 +68,22 @@ interface UserRepository {
      * 존재하지 않는 id 는 조용히 무시한다 (0 행 영향).
      */
     fun updateLastLogin(id: UUID)
+
+    /**
+     * 활성 사용자 목록 조회 (FR-IS-03 Task 4 — 담당자 셀렉터 typeahead 용).
+     *
+     * [query] 가 null 이면 전체 사용자를 반환한다.
+     * [query] 가 있으면 username 또는 display_name 에 대해 ILIKE 부분일치 필터를 적용한다.
+     * 결과는 최대 [limit] 건으로 제한한다.
+     *
+     * SQL 인젝션 방어: query 값은 named parameter 바인딩 + ILIKE 패턴 조합으로 처리한다.
+     * 문자열 결합 없음 (DEVELOPMENT.md §1.3).
+     *
+     * @param query username/display_name 부분일치 검색어 (null 이면 전체)
+     * @param limit 반환 상한 건수
+     * @return 사용자 목록 (최대 [limit] 건)
+     */
+    fun findAll(query: String?, limit: Int): List<User>
 }
 
 /**
@@ -124,6 +140,24 @@ class JdbcUserRepository(
             mapOf("id" to id, "now" to Timestamp.from(Instant.now())),
         )
     }
+
+    /**
+     * 활성 사용자 목록 조회 (FR-IS-03 Task 4).
+     *
+     * [query] null 이면 [SQL_FIND_ALL] 전체 조회, 있으면 [SQL_FIND_ALL_FILTERED] ILIKE 필터.
+     * ILIKE 패턴은 named parameter 바인딩으로 처리한다 — 문자열 결합 없음.
+     *
+     * @param query 부분일치 검색어 (null 이면 전체)
+     * @param limit 반환 상한 건수
+     */
+    @Transactional(readOnly = true)
+    override fun findAll(query: String?, limit: Int): List<User> =
+        if (query == null) {
+            jdbc.query(SQL_FIND_ALL, mapOf("limit" to limit), UserRowMapper)
+        } else {
+            val pattern = "%${query}%"
+            jdbc.query(SQL_FIND_ALL_FILTERED, mapOf("pattern" to pattern, "limit" to limit), UserRowMapper)
+        }
 
     /**
      * users UPSERT 공통 로직.
@@ -187,6 +221,31 @@ class JdbcUserRepository(
             UPDATE users
             SET updated_at = :now
             WHERE id = :id
+        """
+
+        /**
+         * 전체 사용자 조회 — username 오름차순, 상한 :limit 건.
+         * V001 스키마 기준: is_active / deleted_at 컬럼 없음 → 모든 행 조회.
+         */
+        const val SQL_FIND_ALL = """
+            SELECT id, username, email, display_name, created_at, updated_at
+            FROM users
+            ORDER BY username
+            LIMIT :limit
+        """
+
+        /**
+         * 부분일치 필터 조회 — username 또는 display_name ILIKE :pattern, 상한 :limit 건.
+         * :pattern 은 호출 측에서 '%query%' 형식으로 조합하여 named parameter 로 바인딩한다.
+         * SQL 문자열 결합 없음 (DEVELOPMENT.md §1.3).
+         */
+        const val SQL_FIND_ALL_FILTERED = """
+            SELECT id, username, email, display_name, created_at, updated_at
+            FROM users
+            WHERE username ILIKE :pattern
+               OR display_name ILIKE :pattern
+            ORDER BY username
+            LIMIT :limit
         """
     }
 }
