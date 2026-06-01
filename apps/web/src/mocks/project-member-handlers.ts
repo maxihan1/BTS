@@ -6,6 +6,7 @@ import {
   btsInitialMembers,
   KNOWN_PROJECT_KEYS,
   makeMember,
+  userDirectoryFixtures,
 } from './project-member-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -110,6 +111,9 @@ const addMemberHandler = http.post(
       return HttpResponse.json({ error: 'membership_already_exists' }, { status: 409 })
     }
 
+    // 실 백엔드는 응답에 users 조인으로 displayName/username을 동봉한다(B3).
+    // 디렉토리에 있는 사용자면 이름을 채워 mock 충실도를 맞추고, 없으면 null(미상 사용자).
+    const dirEntry = userDirectoryFixtures.find((u) => u.id === body.userId)
     const now = new Date().toISOString()
     const newMember = makeMember({
       projectId: PROJECT_ID_MAP[projectKey] ?? `project-${projectKey.toLowerCase()}-uuid`,
@@ -117,8 +121,8 @@ const addMemberHandler = http.post(
       role: body.role as ProjectRole,
       createdAt: now,
       updatedAt: now,
-      displayName: null,
-      username: null,
+      displayName: dirEntry?.displayName ?? null,
+      username: dirEntry?.username ?? null,
     })
 
     memberStore.set(projectKey, [...members, newMember])
