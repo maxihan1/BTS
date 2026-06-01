@@ -1,4 +1,4 @@
-// project_memberships 테이블 접근 인터페이스 + JdbcTemplate 구현체 (FR-PM-01 Task 3)
+// project_memberships 테이블 접근 인터페이스 + JdbcTemplate 구현체 (FR-PM-01 Task 3/B2)
 
 package com.atlas.bts.identity.project
 
@@ -329,12 +329,15 @@ class JdbcProjectMembershipRepository(
         const val SQL_ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(?)"
 
         /**
-         * 프로젝트 멤버 전체를 users LEFT JOIN으로 조회한다.
+         * MemberView 조회에 공통으로 사용하는 SELECT + FROM + LEFT JOIN 절.
+         *
+         * [SQL_LIST_MEMBER_VIEWS_BY_PROJECT]와 [SQL_FIND_MEMBER_VIEW]가 컬럼 목록을 공유하므로
+         * 중복을 제거한다. 구체적인 WHERE 조건은 각 상수에서 이어붙인다.
          *
          * LEFT JOIN — users 행이 없는 orphan 멤버십도 결과에 포함.
          * u.display_name / u.username 은 users 행이 없을 경우 null.
          */
-        const val SQL_LIST_MEMBER_VIEWS_BY_PROJECT = """
+        const val SQL_MEMBER_VIEW_BASE = """
             SELECT m.project_id,
                    m.user_id,
                    m.role,
@@ -344,28 +347,13 @@ class JdbcProjectMembershipRepository(
                    u.username
             FROM   project_memberships m
             LEFT JOIN users u ON m.user_id = u.id
-            WHERE  m.project_id = :projectId
         """
 
-        /**
-         * 특정 프로젝트+사용자 멤버십을 users LEFT JOIN으로 단건 조회한다.
-         *
-         * LEFT JOIN — users 행이 없어도 멤버십이 존재하면 반환.
-         * u.display_name / u.username 은 users 행이 없을 경우 null.
-         */
-        const val SQL_FIND_MEMBER_VIEW = """
-            SELECT m.project_id,
-                   m.user_id,
-                   m.role,
-                   m.created_at,
-                   m.updated_at,
-                   u.display_name,
-                   u.username
-            FROM   project_memberships m
-            LEFT JOIN users u ON m.user_id = u.id
-            WHERE  m.project_id = :projectId
-              AND  m.user_id    = :userId
-        """
+        /** 프로젝트 멤버 전체 MemberView 목록 조회. */
+        const val SQL_LIST_MEMBER_VIEWS_BY_PROJECT = "$SQL_MEMBER_VIEW_BASE WHERE m.project_id = :projectId"
+
+        /** 특정 프로젝트+사용자 MemberView 단건 조회. */
+        const val SQL_FIND_MEMBER_VIEW = "$SQL_MEMBER_VIEW_BASE WHERE m.project_id = :projectId AND m.user_id = :userId"
     }
 }
 
