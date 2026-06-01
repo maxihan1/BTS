@@ -1,4 +1,4 @@
-// issue-tracking BC 도메인 예외 계층 — sealed 베이스 + 6 서브클래스
+// issue-tracking BC 도메인 예외 계층 — sealed 베이스 + 7 서브클래스
 
 package com.bts.issue.domain
 
@@ -79,6 +79,16 @@ class IssueKeyPrefixReservedException(prefix: String) :
  */
 class IssueWorkflowNotConfiguredException(projectKey: String, issueTypeKey: String?) :
     IssueDomainException("Workflow not configured for project=$projectKey, issueType=${issueTypeKey ?: "<default>"}")
+
+/**
+ * assignee 로 지정한 사용자가 시스템에 존재하지 않을 때.
+ *
+ * HTTP 422 매핑은 IssueExceptionHandler 에서 처리한다.
+ *
+ * @param assigneeId 존재하지 않는 assignee 의 사용자 ID
+ */
+class AssigneeNotFoundException(assigneeId: java.util.UUID) :
+    IssueDomainException("assignee not found: $assigneeId")
 
 /**
  * 워크플로우 전이가 허용되지 않을 때.
