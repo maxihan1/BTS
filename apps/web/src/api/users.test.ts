@@ -99,10 +99,10 @@ describe('fetchUsers', () => {
     }
   })
 
-  it('T-US-2d: 서버 에러 시 ApiError를 throw한다', async () => {
+  it('T-US-2d: 500 서버 에러 시 ApiError를 throw한다', async () => {
     server.use(
       http.get('/api/v1/users', () =>
-        HttpResponse.json({ message: 'Unauthorized' }, { status: 401 }),
+        HttpResponse.json({ message: 'Internal Server Error' }, { status: 500 }),
       ),
     )
     await expect(fetchUsers()).rejects.toBeInstanceOf(ApiError)
