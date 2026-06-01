@@ -446,16 +446,19 @@ class IssueApplicationService(
         val existing = repo.findByKey(key) ?: throw IssueNotFoundException(key)
 
         val assigneeId = request.assigneeId
-        if (assigneeId != null) {
-            if (!userLookupPort.exists(assigneeId)) {
-                throw AssigneeNotFoundException(assigneeId)
+        val updated =
+            if (assigneeId != null) {
+                if (!userLookupPort.exists(assigneeId)) {
+                    throw AssigneeNotFoundException(assigneeId)
+                }
+                existing.assignTo(ActorId(assigneeId))
+            } else {
+                existing.unassign()
             }
-            existing.assignTo(ActorId(assigneeId))
-        } else {
-            existing.unassign()
-        }
 
-        val updatedRows = repo.updateAssignee(key, assigneeId, request.expectedVersion)
+        // 영속 값은 도메인 Aggregate 산출물에서 가져온다 — assignTo/unassign 에 향후 불변식/정규화가
+        // 추가돼도 repository 가 raw 입력을 독립적으로 써서 우회하지 않도록(메모리 patch-merge-도메인-우회).
+        val updatedRows = repo.updateAssignee(key, updated.assigneeId?.value, request.expectedVersion)
         if (updatedRows == 0) {
             throw IssueVersionConflictException(key, existing.version)
         }

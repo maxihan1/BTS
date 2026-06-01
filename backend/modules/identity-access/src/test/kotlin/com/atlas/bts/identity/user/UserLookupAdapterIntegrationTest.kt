@@ -42,7 +42,6 @@ import java.util.UUID
 )
 @Testcontainers
 class UserLookupAdapterIntegrationTest {
-
     companion object {
         /** Testcontainers PostgreSQL 16 — Flyway V001 이상 마이그레이션 적용 대상 */
         @Container
@@ -80,11 +79,12 @@ class UserLookupAdapterIntegrationTest {
 
     @BeforeEach
     fun prepareSeedUser() {
-        val user = userRepository.save(
-            username = "lookup-test-user-${UUID.randomUUID()}",
-            email = "lookup@example.com",
-            displayName = "Lookup Test User",
-        )
+        val user =
+            userRepository.save(
+                username = "lookup-test-user-${UUID.randomUUID()}",
+                email = "lookup@example.com",
+                displayName = "Lookup Test User",
+            )
         seededUserId = user.id
     }
 

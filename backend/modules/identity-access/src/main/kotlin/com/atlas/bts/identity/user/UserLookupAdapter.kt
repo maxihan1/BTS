@@ -30,7 +30,6 @@ import java.util.UUID
 class UserLookupAdapter(
     private val jdbc: NamedParameterJdbcTemplate,
 ) : UserLookupPort {
-
     /**
      * users 테이블에 주어진 UUID 행이 존재하는지 확인한다.
      *
