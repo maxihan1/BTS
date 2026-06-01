@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 13개 라우트 (이슈 7 + 워크플로우 스킴 4 + settings 2)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 14개 라우트 (이슈 7 + 워크플로우 스킴 4 + settings 2 + 멤버 1)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth } from './auth/routeGuard'
 import { RootLayout } from './routes/__root'
@@ -13,6 +13,7 @@ import { AdminWorkflowSchemesRouteAdapter } from './routes/admin.workflow-scheme
 import { WorkflowSchemeNewRouteAdapter } from './routes/admin.workflow-schemes.new'
 import { WorkflowSchemeDetailRouteAdapter } from './routes/admin.workflow-schemes.$schemeKey'
 import { ProjectWorkflowSchemeSettingsRouteAdapter } from './routes/projects.$projectKey.settings.workflow-scheme'
+import { ProjectMembersSettingsRouteAdapter } from './routes/projects.$projectKey.settings.members'
 import { SessionsSettingsRouteAdapter } from './routes/settings.sessions'
 import { PasswordSettingsRouteAdapter } from './routes/settings.password'
 
@@ -115,6 +116,15 @@ const projectWorkflowSchemeSettingsRoute = createRoute({
   beforeLoad: requireAuth,
 })
 
+/** 프로젝트 멤버 설정 라우트 — /projects/$projectKey/settings/members, requireAuth */
+const projectMembersSettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects/$projectKey/settings/members',
+  component: ProjectMembersSettingsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuth,
+})
+
 /** 내 활성 세션 관리 라우트 — /settings/sessions, requireAuth */
 const settingsSessionsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -135,9 +145,10 @@ const settingsPasswordRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 13개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 14개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
- *   · /projects/:projectKey/settings/workflow-scheme · /settings/sessions · /settings/password
+ *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
+ *   · /settings/sessions · /settings/password
  * requireAuth 라우트: /dashboard · /issues · /issues/* · /admin/* · /projects/*\/settings/* · /settings/*
  */
 export const routeTree = rootRoute.addChildren([
@@ -155,6 +166,8 @@ export const routeTree = rootRoute.addChildren([
   adminWorkflowSchemesDetailRoute,
   // project-workflow BC — 프로젝트별 스킴 할당
   projectWorkflowSchemeSettingsRoute,
+  // project-membership BC — 프로젝트 멤버 관리
+  projectMembersSettingsRoute,
   // identity-access BC — 내 활성 세션 관리
   settingsSessionsRoute,
   // identity-access BC — 비밀번호 변경
