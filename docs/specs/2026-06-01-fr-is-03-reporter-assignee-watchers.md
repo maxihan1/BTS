@@ -125,7 +125,7 @@ POST /api/v1/issues          → 생성 응답 assigneeId=null
 
 - [ ] `issues.assignee_id` 컬럼 + init_codegen 미러 + V007 마이그레이션 통합 테스트(Testcontainers)
 - [ ] `Issue.assignTo(ActorId)` / `Issue.unassign()` 도메인 메서드 + 단위 테스트
-- [ ] `UserLookupPort` + `AlwaysExistsUserLookup` stub(`@Profile("!prod")`) + ArchUnit BC 격리 가드
+- [ ] `UserLookupPort`(shared-kernel) + identity-access `UserLookupAdapter`(실 구현) + ArchUnit BC 격리 가드(issue-tracking → identity 직접 import 금지). issue-tracking 격리 테스트는 mockk test double
 - [ ] `PATCH /assignee` 엔드포인트 — S1~S6 통합 테스트(MockK + Testcontainers), assignee 검증 false 케이스 포함
 - [ ] `IssueResponse.assigneeId` 노출 — 단건/목록/생성 모두
 - [ ] 프론트: 담당자 셀렉터(미할당 포함) + assigneeId Zod 계약 동기 + E2E(D6/D7)

@@ -33,15 +33,15 @@ FR-IS-03 은 이슈에 **Assignee(담당자) 1명**을 지정하는 기능을 �
 package com.bts.shared.user
 
 interface UserLookupPort {
-    /** 주어진 사용자 UUID 가 실재하며 활성 상태인지. */
+    /** 주어진 사용자 UUID 가 실재하는지(users 테이블 행 존재). */
     fun exists(userId: java.util.UUID): Boolean
 }
 ```
 
 - **정의**: shared-kernel (모든 모듈이 의존, 순환 회피). UUID 사용 — shared-kernel 은 issue-tracking 의 `ActorId` VO 를 알지 못함.
-- **구현**: identity-access 가 `UserLookupAdapter`(in-process `users` 조회, `deleted_at IS NULL`/`is_active`) 제공. identity-access → shared-kernel 의존 추가.
+- **구현**: identity-access 가 `UserLookupAdapter`(in-process `users` 조회) 제공. **현 `users` 스키마에 `is_active`/`deleted_at` 컬럼 없음**(V001 — id/username/email/display_name) → "실재" = 행 존재로 정의. 비활성/탈퇴 판정은 해당 컬럼 도입 후속 FR. identity-access 는 jOOQ 미사용이므로 기존 `UserRepository` 의 `NamedParameterJdbcTemplate` + SQL 상수 패턴으로 `SELECT EXISTS(...)`. identity-access → shared-kernel 의존 추가.
 - **소비**: `IssueApplicationService` 가 `userLookupPort.exists(assignee.value)` 호출. false → `AssigneeNotFoundException` → 422.
-- **issue-tracking 격리 테스트**: identity-access 가 classpath 에 없으므로 test double(MockK 또는 `@TestConfiguration` 스텁) 사용. 전체 앱 컨텍스트(`backend/build.gradle.kts` 조립)에서는 실 adapter 가 동작.
+- **issue-tracking 격리 테스트**: identity-access 가 classpath 에 없으므로 test double(MockK `@Bean` in `@TestConfiguration`) 사용. issue-tracking 에는 production `@SpringBootApplication` 이 없어(앱 조립은 별도 후속) `@Profile` 운영 stub 은 불필요 — 실 검증은 identity-access 단위/통합 + 향후 E2E 에서 확인.
 
 ### 2. 선택 UI — `GET /api/v1/users` (identity-access)
 

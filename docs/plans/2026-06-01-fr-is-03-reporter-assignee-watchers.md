@@ -18,7 +18,7 @@ classify: type=backend, agent=backend-engineer, slug=fr-is-03-reporter-assignee-
 
 - **BC**: issue-tracking
 - **영향 엔티티**: Issue (assigneeId 신규 필드 추가). Reporter 는 기존 `Issue.reporterId: ActorId` 재사용.
-- **신규 cross-BC 포트**: `UserLookupPort` (assignee 사용자 존재 검증). stub = `AlwaysExistsUserLookup` (`@Profile("!prod")`). 실 사용자 디렉터리 연동 시 identity-access adapter 로 교체.
+- **신규 cross-BC 포트**: `UserLookupPort` (shared-kernel 정의, identity-access 가 실 `UserLookupAdapter` 로 구현). issue-tracking 격리 테스트는 test double(mockk) 사용 — 별도 `@Profile` stub 불필요(issue-tracking 에 production Spring Boot 앱 컨텍스트 없음, C2).
 - **데이터 모델**: `issues.assignee_id UUID NULL` 추가 (reporter_id 와 동일하게 FK 미적용, BC 격리). `init_codegen.sql` 미러 필수(jOOQ 상수 생성, V005/V006 선례).
 - **사용자 ID 타입**: UUID (SDD 05 의 BIGINT 표기는 구버전 — 코드가 정본).
 
@@ -101,23 +101,26 @@ classify: type=backend, agent=backend-engineer, slug=fr-is-03-reporter-assignee-
 
 **검증**: `./gradlew :modules:issue-tracking:test --tests "*IssueTest" --rerun-tasks`
 
-### Task 3. shared-kernel UserLookupPort + identity-access 어댑터
+### Task 3. shared-kernel UserLookupPort + identity-access 어댑터 + ArchUnit 격리 규칙
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/user/UserLookupPort.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/user/UserLookupAdapter.kt`, `backend/modules/identity-access/build.gradle.kts`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/user/UserLookupAdapterIntegrationTest.kt`]
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/user/UserLookupPort.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/user/UserLookupAdapter.kt`, `backend/modules/identity-access/build.gradle.kts`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/user/UserLookupAdapterIntegrationTest.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/architecture/IssueBcArchTest.kt`]
 - depends-on: []
 
-**RED**: identity-access Testcontainers 통합 테스트 — 시드 사용자 UUID 로 `adapter.exists(uuid)` = true, 랜덤 UUID = false. 어댑터 없음 → fail.
+**RED**:
+- identity-access Testcontainers 통합 테스트 — 시드 사용자 UUID 로 `adapter.exists(uuid)` = true, 랜덤 UUID = false. 어댑터 없음 → fail.
+- (B3) `IssueBcArchTest` 에 issue-tracking 이 `com.atlas.bts.identity..` 직접 import 금지 규칙 추가. 현재 Rule 1은 `com.bts.workflow..` 만 금지(IssueBcArchTest.kt:80-88) → identity 패키지 추가하면 규칙 자체가 산출물(현재 import 0건이라 GREEN 통과 = 회귀 가드 확립).
 
 **GREEN**:
 - shared-kernel `interface UserLookupPort { fun exists(userId: UUID): Boolean }` (WorkflowTransitionPort 선례, UUID 사용 — issue-tracking VO 비의존).
-- identity-access build.gradle 에 `implementation(project(":modules:shared-kernel"))` 추가.
-- `@Component class UserLookupAdapter(...) : UserLookupPort` — `users` 테이블 `SELECT EXISTS(... WHERE id=?)` (jOOQ 또는 JdbcTemplate, identity-access 기존 조회 패턴 따름).
+- identity-access build.gradle 에 `implementation(project(":modules:shared-kernel"))` 추가(현재 미의존, 신규).
+- `@Component class UserLookupAdapter(...) : UserLookupPort` — `users` 테이블 `SELECT EXISTS(SELECT 1 FROM users WHERE id=:id)` (B2 — **identity-access 는 jOOQ 미사용. 기존 `UserRepository` 의 `NamedParameterJdbcTemplate` + SQL 상수 패턴** 따름). users 에 active/deleted 컬럼 없음 → "실재" = 행 존재(활성 판정은 후속, ADR 참조).
+- `IssueBcArchTest` Rule 1 금지 패키지에 `"com.atlas.bts.identity.."` 추가.
 
 **REFACTOR**: KDoc — 실 검증 어댑터, ADR 2026-06-01 링크.
 
-**검증**: `./gradlew :modules:identity-access:test --tests "*UserLookupAdapterIntegrationTest" --rerun-tasks`
+**검증**: `./gradlew :modules:identity-access:test --tests "*UserLookupAdapterIntegrationTest" :modules:issue-tracking:test --tests "*IssueBcArchTest" --rerun-tasks`
 
 ### Task 4. GET /api/v1/users — 활성 사용자 목록/검색
 
@@ -167,9 +170,11 @@ classify: type=backend, agent=backend-engineer, slug=fr-is-03-reporter-assignee-
 **GREEN**:
 - `IssueRepository.updateAssignee(key, assigneeId: UUID?, expectedVersion): Int` — `UPDATE issues SET assignee_id=?, version=version+1, updated_at=now() WHERE key=? AND version=? AND deleted_at IS NULL` (updateFields OCC 패턴 미러).
 - toIssue row mapper 에 `assigneeId = record.assigneeId?.let { ActorId(it) }`.
-- `IssueResponse.assigneeId: UUID? = null` + `from(...)` 에 `assigneeId = issue.assigneeId?.value`.
+- `IssueResponse.assigneeId: UUID? = null` + `from(...)` 2개 호출부(IssueRepository.kt:309,372 영향) 에 `assigneeId = issue.assigneeId?.value`.
 
 **REFACTOR**: KDoc — assignee_id OCC UPDATE.
+
+(C5) `IssueResponse(...)` 직접 생성/동등비교 테스트 회귀 점검 — `grep -rl "IssueResponse(" backend/modules/issue-tracking/src/test` 전수 후 assertEquals 깨짐 확인. `assigneeId: UUID? = null` 기본값으로 컴파일 파급은 최소.
 
 **검증**: `./gradlew :modules:issue-tracking:test --tests "*IssueRepositoryIntegrationTest" --rerun-tasks`
 
@@ -187,6 +192,8 @@ classify: type=backend, agent=backend-engineer, slug=fr-is-03-reporter-assignee-
 - `fun changeAssignee(actor: ActorId, key: IssueKey, request): IssueResponse` — 권한 `IssuePermissionResolver.UPDATE` 가드 → 이슈 조회(미존재 404) → assignee non-null 이면 `userLookupPort.exists` (false→AssigneeNotFound) → 도메인 `assignTo`/`unassign`(도메인 우회 금지, 메모리 `patch-merge-도메인-우회`) → `repo.updateAssignee` (0 row→VersionConflict) → 재조회 응답.
 - `IssueApplicationService` 생성자에 `userLookupPort: UserLookupPort` 주입.
 
+**(B1) 생성자 fanout 필수 처리** — `IssueApplicationService(...)` 를 위치 인자로 new 하는 sibling 테스트 10개(IssueApplicationServiceTest 및 *UpdateTest/*SoftDeleteTest/*FindTest/*CreateTest/*ListTest/*TransitionTest/*AvailableTransitionsTest + 통합테스트 IssueControllerTransitionIntegrationTest·IssueTransitionGuardFilterIntegrationTest)의 호출부에 `userLookupPort = mockk(relaxed = true)`(명명 인자) 추가. issue-tracking 은 단일 test source set 공유라 한 곳이라도 인자 불일치 시 **모듈 전체 test 컴파일 실패** → T1·T2·T5·T6·T8 검증 명령도 전부 죽음. files 에 이 10개 포함 또는 GREEN 에서 일괄 수정.
+
 **REFACTOR**: KDoc — assignee 변경 유스케이스 흐름.
 
 **검증**: `./gradlew :modules:issue-tracking:test --tests "*IssueApplicationServiceTest" --rerun-tasks`
@@ -202,7 +209,8 @@ classify: type=backend, agent=backend-engineer, slug=fr-is-03-reporter-assignee-
 
 **GREEN**:
 - `ChangeAssigneeRequest(assigneeId: UUID?, @field:NotNull expectedVersion: Long)`.
-- `@PatchMapping("/{key}/assignee")` → `service.changeAssignee(actor, IssueKey.of(key), AppChangeAssigneeRequest(...))` → 200 + IssueResponse. actor 는 기존 SYSTEM_ACTOR_UUID 임시 패턴 따름.
+- `@PatchMapping("/{key}/assignee")` → `service.changeAssignee(actor, IssueKey.of(key), AppChangeAssigneeRequest(...))` → (C4) **`ResponseEntity<DataResponse<IssueResponse>>` 래핑**(기존 update/transition 엔드포인트 IssueController.kt:75,105,153,197 와 동일). actor 는 기존 SYSTEM_ACTOR_UUID 임시 패턴 따름.
+- (C3) 통합테스트 TestConfig(`@ContextConfiguration`)에 `UserLookupPort` test double 공급 — identity-access 가 classpath 에 없으므로 `@Bean fun userLookupPort() = mockk<UserLookupPort>()` (기본 `exists`=true, **S4 케이스만 false** 로 422 재현). 기존 IssueControllerTransitionIntegrationTest 의 TestConfig Bean 조립 패턴(...IntegrationTest.kt:99-236) 미러.
 
 **REFACTOR**: KDoc — 전용 서브리소스 엔드포인트(merge-patch 3-state 회피 사유).
 
@@ -218,4 +226,19 @@ classify: type=backend, agent=backend-engineer, slug=fr-is-03-reporter-assignee-
 - 추가 검증: ktlint + detekt(--rerun-tasks, 캐시 false-green 회피) + 전체 모듈 test
 - cross-BC 가드: ArchUnit — issue-tracking 이 `com.atlas.bts.identity.*` 직접 import 금지(UserLookupPort 는 shared-kernel 경유)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### code-reviewer 독립 plan 리뷰 (2026-06-01, eng+security 관점, ground truth 대조)
+
+autoplan 4종 대신 eng 집중 독립 리뷰(메모리 `bts-review-plan-autoplan-overkill`). BLOCKER 3 + CONCERN 5 발견, **전부 사전 반영**.
+
+- **B1 (반영)** — Task 7 생성자 인자 추가가 `IssueApplicationService(...)` 를 new 하는 sibling 테스트 10개 컴파일 차단(단일 test source set). → Task 7 GREEN 에 일괄 `userLookupPort = mockk(relaxed=true)` 명시.
+- **B2 (반영)** — identity-access 는 jOOQ 미사용(빌드에 jOOQ 플러그인 없음, UserRepository 는 NamedParameterJdbcTemplate). → Task 3 "jOOQ 또는" 삭제, JdbcTemplate 확정.
+- **B3 (반영)** — ArchUnit `IssueBcArchTest` Rule 1이 `com.bts.workflow..` 만 금지, identity 패키지 누락 + 만드는 task 없음. → Task 3 에 `com.atlas.bts.identity..` 금지 규칙 추가 산출물화.
+- **C1 (반영)** — ADR 의 `is_active`/`deleted_at`/"활성" 환각(users 스키마에 해당 컬럼 없음). → ADR "실재=행 존재" 로 교정, plan 과 일치.
+- **C2 (반영)** — `@Profile("!prod")` AlwaysExists stub 의 소속 모듈 불명 + issue-tracking 에 production 앱 컨텍스트 없음. → stub 요구 삭제, test double(mockk)로 통일.
+- **C3 (반영)** — Task 8 통합테스트 TestConfig 에 `UserLookupPort` test double 공급 명시(S4 false 분기로 422 재현).
+- **C4 (반영)** — Task 8 응답을 기존 패턴대로 `DataResponse<IssueResponse>` 래핑 명시(프론트 계약 정합).
+- **C5 (반영)** — Task 6 `IssueResponse(` 직접 생성 테스트 회귀 grep 점검 추가.
+
+PASS 확인 — ground truth 핵심 경로(Issue/IssueExceptions/IssueRepository updateFields OCC/IssueResponse.from/toIssue/SYSTEM_ACTOR_UUID/IssuePermission.UPDATE), cross-BC 의존 방향(shared-kernel WorkflowTransitionPort 동형), assignee_id FK 미적용(reporter_id 선례), 단일 트랜잭션/OCC, 시나리오 커버리지(S1~S7/EC) 모두 일관. EC-4(assignee=reporter 동일인) 회귀 1줄만 경미 권장.
