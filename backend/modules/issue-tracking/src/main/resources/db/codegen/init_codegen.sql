@@ -181,3 +181,11 @@ ALTER TABLE issues
 
 -- GIN 인덱스 — labels 배열 원소 검색용
 CREATE INDEX ix_issues_labels_gin ON issues USING GIN (labels);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V007: issues.assignee_id UUID NULL 컬럼 추가
+-- 원본: db/migration/issue-tracking/V007__issue_assignee.sql
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- assignee_id 추가 (jOOQ: Issues.ASSIGNEE_ID 생성 대상)
+ALTER TABLE issues ADD COLUMN assignee_id UUID NULL;
