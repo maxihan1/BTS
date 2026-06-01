@@ -70,8 +70,8 @@
 - [x] D3. 데이터 모델 — `issues.assignee_id`(UUID NULL, FK 미적용 BC격리, V007 + init_codegen 미러). `reporter_id` 기존. **`issue_watchers`는 FR-WT-01로 이관** (PR #49)
 - [x] D4. 백엔드 — `PATCH /api/v1/issues/{key}/assignee` + 422 ASSIGNEE_NOT_FOUND + OCC + 도메인 경유 + `GET /api/v1/users`(셀렉터 재료, identity-access, 인증가드) + shared-kernel UserLookupPort (PR #49)
 - [x] D5. 백엔드 테스트 — MockK 단위 + Testcontainers 통합(S1~S6) + ArchUnit BC격리 + UserLookupAdapter 통합 (PR #49)
-- [ ] D6. 프론트 UI — 담당자 셀렉터(GET /api/v1/users 사용) (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 담당자 셀렉터(GET /api/v1/users 사용) + 현재 담당자 id 조회(`GET /api/v1/users?ids=` 신규, "미지정" 오표시 C1 수정) + invalidate-only mutation + 검색 debounce (PR #51)
+- [x] D7. E2E — 담당자 할당/해제 Playwright 2종 (S3 422/409는 UI 트리거 불가로 단위 커버) (PR #51)
 
 #### §2.1.4 FR-IS-04 — 본문(Markdown) + 우선순위/라벨/환경/영향도
 
