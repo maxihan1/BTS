@@ -1,4 +1,4 @@
-// issue-tracking BC MSW mock handlers — GET 목록/단건 + POST 생성 + PATCH 수정 + DELETE 삭제
+// issue-tracking BC MSW mock handlers — GET 목록/단건 + POST 생성 + PATCH 수정 + PATCH /assignee + DELETE 삭제
 // 소프트 삭제 stateful: deletedKeys 와 createdIssues 로 모듈-스코프 상태 유지 (E2E 검증 gap-H + E2E-1 happy path).
 import { http, HttpResponse } from 'msw'
 import {
@@ -11,6 +11,7 @@ import {
 } from './issue-fixtures'
 import { allIssueTypeFixtures } from './issue-type-fixtures'
 import { softwareDefaultFixture } from './workflow-fixtures'
+import { userListFixture } from './user-fixtures'
 import type { IssueResponse, IssuePage } from '@/api/issues'
 
 /**
@@ -24,6 +25,7 @@ export const createdIssueFixture = {
   summary: '새 이슈 제목',
   currentStateKey: 'open',
   reporterId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
+  assigneeId: null,
   version: 0,
   createdAt: '2026-05-27T00:00:00Z',
   updatedAt: null,
@@ -249,6 +251,63 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
 })
 
 /**
+ * PATCH /api/v1/issues/:key/assignee — 담당자 변경 핸들러 (FR-IS-03).
+ * 분기 순서 (backend 일치):
+ *   (1) 이슈 not-found → 404
+ *   (2) expectedVersion 불일치 → 409 VERSION_CONFLICT
+ *   (3) assigneeId가 실재하지 않는 사용자 → 422 ASSIGNEE_NOT_FOUND
+ *   (4) 성공 → 200 + { data: 수정된 IssueResponse(assigneeId+version+1) }
+ *       stateful: issueOverrides에 assigneeId 영속 (invalidate refetch 후 롤백 방지 — 교훈 2)
+ */
+const changeAssigneeHandler = http.patch('/api/v1/issues/:key/assignee', async ({ params, request }) => {
+  const key = params['key'] as string
+  const found = resolveIssue(key)
+  if (found === undefined) {
+    return HttpResponse.json(
+      { message: `이슈를 찾을 수 없습니다: ${key}` },
+      { status: 404 },
+    )
+  }
+  const body = await request.clone().json() as {
+    assigneeId: string | null
+    expectedVersion?: number
+  }
+
+  // (2) VERSION_CONFLICT — expectedVersion 불일치
+  if (body.expectedVersion !== undefined && body.expectedVersion !== found.version) {
+    return HttpResponse.json(
+      { errorCode: 'VERSION_CONFLICT', message: '버전 충돌이 발생했습니다.' },
+      { status: 409 },
+    )
+  }
+
+  // (3) ASSIGNEE_NOT_FOUND — assigneeId가 null이 아니고 userListFixture에 없음
+  if (body.assigneeId !== null) {
+    const userExists = userListFixture.some((u) => u.id === body.assigneeId)
+    if (!userExists) {
+      return HttpResponse.json(
+        { errorCode: 'ASSIGNEE_NOT_FOUND', message: '담당자를 찾을 수 없습니다.' },
+        { status: 422 },
+      )
+    }
+  }
+
+  // (4) 성공 — assigneeId 영속 (stateful, 교훈 2)
+  const updated: IssueResponse = {
+    ...found,
+    assigneeId: body.assigneeId,
+    descriptionHtml: null, // PATCH 응답은 목록과 동일 — 단건 GET에서만 채워짐
+    version: found.version + 1,
+    updatedAt: new Date().toISOString(),
+  }
+  issueOverrides.set(key, updated)
+  if (createdIssues.has(key)) {
+    createdIssues.set(key, updated)
+  }
+  return HttpResponse.json({ data: updated })
+})
+
+/**
  * DELETE /api/v1/issues/:key — 이슈 삭제 핸들러.
  * 소프트 삭제: deletedKeys add + 204 No Content. 이후 GET 목록/단건 모두 제외 (gap-H).
  */
@@ -419,6 +478,7 @@ export const issueHandlers = [
   getIssueHandler,
   createIssueHandler,
   updateIssueHandler,
+  changeAssigneeHandler,
   deleteIssueHandler,
   getTransitionsHandler,
   transitionHandler,
