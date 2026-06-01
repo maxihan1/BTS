@@ -56,7 +56,8 @@ test.describe('프로젝트 멤버 관리 (FR-PM-01)', () => {
   // ─────────────────────────────────────────────────────────────────────────────
   test('S1 목록 조회 — 앨리스(관리자)/밥(멤버) 표시, UUID 비노출', async ({ page }) => {
     // "프로젝트 멤버" 섹션 헤딩 확인
-    await expect(page.getByRole('heading', { name: '프로젝트 멤버' })).toBeVisible()
+    // CardTitle 은 div 로 렌더되므로 getByRole('heading') 대신 getByText 사용
+    await expect(page.getByText('프로젝트 멤버', { exact: true })).toBeVisible()
 
     // 앨리스 행 — 이름 + 관리자 배지
     await expect(page.getByText('앨리스')).toBeVisible()
@@ -79,13 +80,18 @@ test.describe('프로젝트 멤버 관리 (FR-PM-01)', () => {
   // Then   목록에 캐럴이 추가됨 (refetch 후 실제 목록 반영 검증)
   // ─────────────────────────────────────────────────────────────────────────────
   test('S2 멤버 추가 — 캐럴 검색→선택→추가 → 목록 반영', async ({ page }) => {
+    // 추가 전 멤버 행 수 확인 (alice + bob = 2행)
+    const memberRows = page.locator('ul.space-y-2 > li')
+    await expect(memberRows).toHaveCount(2)
+
     // 멤버 추가 버튼 클릭
     await page.getByRole('button', { name: '멤버 추가' }).click()
 
     // 다이얼로그 제목 표시
-    await expect(page.getByRole('heading', { name: '새 멤버 추가' })).toBeVisible()
+    // radix Dialog.Title 은 div[role="dialog"] 안에 있으므로 getByRole('dialog') 한정 안에서 찾음
+    await expect(page.getByRole('dialog').getByText('새 멤버 추가')).toBeVisible()
 
-    // 사용자 검색 — "캐" 입력 (2자 미만 시 결과 안 나오므로 최소 2자 입력)
+    // 사용자 검색 — "캐럴" 입력 (2자 미만 시 결과 안 나오므로 최소 2자 입력)
     await page.getByLabel('사용자 검색').fill('캐럴')
 
     // 검색 결과 목록에서 캐럴 클릭
@@ -101,11 +107,13 @@ test.describe('프로젝트 멤버 관리 (FR-PM-01)', () => {
     await page.getByRole('button', { name: '추가' }).click()
 
     // 다이얼로그 닫힘 확인
-    await expect(page.getByRole('heading', { name: '새 멤버 추가' })).toHaveCount(0)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
 
     // msw-mutation-stateful-refetch 교훈 — invalidateQueries 후 refetch 로 목록 반영 검증
     // (setQueryData 위에서만 통과하는 가짜 그린 방지)
-    await expect(page.getByText('캐럴')).toBeVisible()
+    // MSW POST 핸들러는 displayName: null 로 새 멤버를 생성하므로
+    // 멤버 행 수 증가(3행)로 실제 목록 반영을 검증한다.
+    await expect(memberRows).toHaveCount(3)
   })
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -127,8 +135,9 @@ test.describe('프로젝트 멤버 관리 (FR-PM-01)', () => {
     await page.getByRole('option', { name: '관리자' }).click()
 
     // msw-mutation-stateful-refetch 교훈 — refetch 후 실제 배지 갱신 검증
-    // 밥 행의 관리자 배지가 표시돼야 함
-    await expect(bobRow.getByText('관리자')).toBeVisible()
+    // 밥 행의 역할 배지 span(rounded-full) 이 "관리자"로 갱신돼야 함
+    // Select 값 span 과 배지 span 두 곳이 동시에 "관리자"를 포함하므로 배지 클래스로 한정
+    await expect(bobRow.locator('span.rounded-full')).toHaveText('관리자')
   })
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -173,7 +182,8 @@ test.describe('프로젝트 멤버 관리 (FR-PM-01)', () => {
     await expect(page.getByText('마지막 관리자는 제거하거나 강등할 수 없습니다')).toBeVisible()
 
     // 앨리스는 여전히 관리자 배지 유지 (목록 롤백)
-    await expect(aliceRow.getByText('관리자')).toBeVisible()
+    // Select 값 span 과 배지 span 두 곳이 모두 "관리자"를 포함하므로 배지 클래스로 한정
+    await expect(aliceRow.locator('span.rounded-full')).toHaveText('관리자')
   })
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -190,7 +200,8 @@ test.describe('프로젝트 멤버 관리 (FR-PM-01)', () => {
     // MSW project-member-handlers 는 KNOWN_PROJECT_KEYS 에 없는 키에 대해 404 반환.
     // 라우트 컴포넌트 (ProjectMembersSettingsPage) 가 project_not_found 에러를
     // 수신하면 ProjectNotFoundScreen 을 렌더한다.
-    await expect(page.getByText('접근 권한이 없습니다')).toBeVisible()
+    // exact: true 로 substring 매칭 방지 (두 번째 p 에도 동일 substring 포함됨)
+    await expect(page.getByText('접근 권한이 없습니다', { exact: true })).toBeVisible()
     await expect(page.getByText('해당 프로젝트가 존재하지 않거나 접근 권한이 없습니다.')).toBeVisible()
   })
 })
