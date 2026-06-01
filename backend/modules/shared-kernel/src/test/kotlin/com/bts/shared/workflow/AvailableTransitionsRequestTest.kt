@@ -17,7 +17,6 @@ import org.junit.jupiter.api.Test
  * - 정상 입력은 Valid 를 반환한다.
  */
 class AvailableTransitionsRequestTest {
-
     @Test
     fun `정상 입력은 validate 가 Valid 를 반환한다`() {
         val req =

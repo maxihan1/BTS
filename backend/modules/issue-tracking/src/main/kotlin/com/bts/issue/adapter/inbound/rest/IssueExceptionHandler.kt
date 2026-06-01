@@ -2,6 +2,7 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.domain.AssigneeNotFoundException
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKeyPrefixReservedException
 import com.bts.issue.domain.IssueNotFoundException
@@ -35,12 +36,14 @@ import java.time.Instant
  * - [IssueVersionConflictException] → 409 + [IssueErrorCodes.VERSION_CONFLICT]
  * - [IssueTransitionNotAllowedException] → 409 + [IssueErrorCodes.TRANSITION_NOT_ALLOWED]
  * - [IssueWorkflowNotConfiguredException] → 422 + [IssueErrorCodes.WORKFLOW_NOT_CONFIGURED]
+ * - [AssigneeNotFoundException] → 422 + [IssueErrorCodes.ASSIGNEE_NOT_FOUND]
  * - [Exception] (fallback) → 500 + [IssueErrorCodes.INTERNAL_ERROR]
  *
  * TooManyFunctions: 도메인 예외 종류(400/401/403/404/409/422/500) 각각에 @ExceptionHandler 가 필요하므로
  * 함수 수가 임계치(11)를 넘는다. RestControllerAdvice 의 책임(예외→HTTP 변환)은 분리 불가한 단일 관심사라
  * 클래스 단위로 억제한다. FR-IS-02 D6 에서 [IssueTypeNotFoundException] 핸들러가 추가됐다
  * (type.web 패키지 한정 핸들러가 못 잡는 예외를 rest 패키지에서 404 로 매핑).
+ * FR-IS-03 Task 5 에서 [AssigneeNotFoundException] 핸들러가 추가됐다 (422 + ASSIGNEE_NOT_FOUND).
  */
 @Suppress("TooManyFunctions")
 @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
@@ -258,6 +261,25 @@ class IssueExceptionHandler {
         )
     }
 
+    // ── 422 ASSIGNEE_NOT_FOUND ────────────────────────────────────────────────
+
+    /**
+     * [AssigneeNotFoundException] — assignee 로 지정한 사용자가 존재하지 않음 — 422.
+     *
+     * @param ex 존재하지 않는 assignee 의 사용자 ID 를 포함하는 예외.
+     */
+    @ExceptionHandler(AssigneeNotFoundException::class)
+    fun handleAssigneeNotFound(ex: AssigneeNotFoundException): ProblemDetail {
+        log.info("ISSUE_422 assignee_not_found message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.UNPROCESSABLE_ENTITY,
+            type = "assignee-not-found",
+            title = "Assignee Not Found",
+            errorCode = IssueErrorCodes.ASSIGNEE_NOT_FOUND,
+            detail = ex.message,
+        )
+    }
+
     // ── 500 INTERNAL_ERROR (fallback) ─────────────────────────────────────────
 
     /**
@@ -313,7 +335,7 @@ class IssueExceptionHandler {
 /**
  * issue-tracking BC 에러 코드 상수.
  *
- * spec §6.1 의 9건 errorCode 를 한 곳에서 관리한다.
+ * spec §6.1 의 10건 errorCode 를 한 곳에서 관리한다.
  * 모든 에러 코드는 `ISSUE_` 접두사 없이 정의되어 있으며,
  * 로그/응답에서는 그대로 사용한다.
  */
@@ -328,5 +350,6 @@ object IssueErrorCodes {
     const val VERSION_CONFLICT = "VERSION_CONFLICT"
     const val TRANSITION_NOT_ALLOWED = "TRANSITION_NOT_ALLOWED"
     const val WORKFLOW_NOT_CONFIGURED = "WORKFLOW_NOT_CONFIGURED"
+    const val ASSIGNEE_NOT_FOUND = "ASSIGNEE_NOT_FOUND"
     const val INTERNAL_ERROR = "INTERNAL_ERROR"
 }

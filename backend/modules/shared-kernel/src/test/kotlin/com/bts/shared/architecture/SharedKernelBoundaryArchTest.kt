@@ -27,7 +27,6 @@ import org.junit.jupiter.api.Test
  * 이동시켜 해결한다.
  */
 class SharedKernelBoundaryArchTest {
-
     private val classes =
         ClassFileImporter()
             .withImportOption(ImportOption.DoNotIncludeTests())

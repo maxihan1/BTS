@@ -4,9 +4,11 @@ package com.bts.issue.application
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.AssigneeNotFoundException
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueUpdated
 import com.bts.issue.port.outbound.IssuePermission
@@ -16,6 +18,7 @@ import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowTransitionPort
 import io.kotest.assertions.throwables.shouldThrow
@@ -56,17 +59,19 @@ class IssueApplicationServiceTest : DescribeSpec({
     val permissionResolver = mockk<IssuePermissionResolver>()
     val workflowPort = mockk<WorkflowTransitionPort>()
     val workflowKeyResolver = mockk<WorkflowKeyResolver>()
+    val userLookupPort = mockk<UserLookupPort>(relaxed = true)
     val clock = Clock.fixed(Instant.parse("2026-05-30T00:00:00Z"), ZoneOffset.UTC)
 
     val sut =
         IssueApplicationService(
-            repo,
-            issueTypeRepository,
-            eventPublisher,
-            permissionResolver,
-            workflowPort,
-            workflowKeyResolver,
-            clock,
+            repo = repo,
+            issueTypeRepository = issueTypeRepository,
+            eventPublisher = eventPublisher,
+            permissionResolver = permissionResolver,
+            workflowPort = workflowPort,
+            workflowKeyResolver = workflowKeyResolver,
+            userLookupPort = userLookupPort,
+            clock = clock,
         )
 
     val actor = ActorId(UUID.randomUUID())
@@ -148,7 +153,7 @@ class IssueApplicationServiceTest : DescribeSpec({
     }
 
     beforeEach {
-        clearMocks(repo, eventPublisher, permissionResolver, answers = false)
+        clearMocks(repo, eventPublisher, permissionResolver, userLookupPort, answers = false)
     }
 
     // ── IssueResponse 신규 필드 노출 ──────────────────────────────────────────
@@ -1130,6 +1135,112 @@ class IssueApplicationServiceTest : DescribeSpec({
                                 "priority" in it.fields
                         },
                     )
+                }
+            }
+        }
+    }
+
+    // ── changeAssignee ────────────────────────────────────────────────────────
+
+    describe("changeAssignee") {
+
+        val assigneeUuid = UUID.randomUUID()
+        val expectedVersion = existingVersion
+
+        fun stubUpdatePermissionGranted() {
+            every {
+                permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+            } returns true
+        }
+
+        // (a) assignee non-null + exists=true → assignTo 호출 + repo.updateAssignee 호출
+        context("(a) assigneeId non-null + userLookupPort.exists=true → assignTo 경유, updateAssignee 호출") {
+            val request = AppChangeAssigneeRequest(assigneeId = assigneeUuid, expectedVersion = expectedVersion)
+            val existingIssue = makeIssue()
+            val updatedResponse = makeResponse()
+
+            beforeEach {
+                stubUpdatePermissionGranted()
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every { userLookupPort.exists(assigneeUuid) } returns true
+                every { repo.updateAssignee(issueKey, assigneeUuid, expectedVersion) } returns 1
+                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+            }
+
+            it("repo.updateAssignee 가 assigneeId 와 함께 호출된다") {
+                sut.changeAssignee(actor, issueKey, request)
+                verify(exactly = 1) { repo.updateAssignee(issueKey, assigneeUuid, expectedVersion) }
+            }
+
+            it("IssueResponse 를 반환한다") {
+                val result = sut.changeAssignee(actor, issueKey, request)
+                result.key shouldBe issueKey.value
+            }
+        }
+
+        // (b) exists=false → AssigneeNotFoundException, repo.updateAssignee 미호출
+        context("(b) assigneeId non-null + userLookupPort.exists=false → AssigneeNotFoundException") {
+            val request = AppChangeAssigneeRequest(assigneeId = assigneeUuid, expectedVersion = expectedVersion)
+            val existingIssue = makeIssue()
+
+            beforeEach {
+                stubUpdatePermissionGranted()
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every { userLookupPort.exists(assigneeUuid) } returns false
+            }
+
+            it("AssigneeNotFoundException 을 던진다") {
+                shouldThrow<AssigneeNotFoundException> {
+                    sut.changeAssignee(actor, issueKey, request)
+                }
+            }
+
+            it("repo.updateAssignee 가 호출되지 않는다") {
+                runCatching { sut.changeAssignee(actor, issueKey, request) }
+                // exists=false 이면 AssigneeNotFoundException 으로 조기 종료 — updateAssignee 는 도달 불가
+                verify(exactly = 0) { repo.updateAssignee(issueKey, assigneeUuid, expectedVersion) }
+            }
+        }
+
+        // (c) assigneeId=null(해제) → exists 미호출, unassign 경로, updateAssignee(null,...)
+        context("(c) assigneeId=null → exists 미호출, unassign 경유, updateAssignee(null) 호출") {
+            val request = AppChangeAssigneeRequest(assigneeId = null, expectedVersion = expectedVersion)
+            val existingIssue = makeIssue()
+            val updatedResponse = makeResponse()
+
+            beforeEach {
+                stubUpdatePermissionGranted()
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every { repo.updateAssignee(issueKey, null, expectedVersion) } returns 1
+                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+            }
+
+            it("userLookupPort.exists 가 전혀 호출되지 않는다") {
+                sut.changeAssignee(actor, issueKey, request)
+                verify(exactly = 0) { userLookupPort.exists(any()) }
+            }
+
+            it("repo.updateAssignee 가 assigneeId=null 로 호출된다") {
+                sut.changeAssignee(actor, issueKey, request)
+                verify(exactly = 1) { repo.updateAssignee(issueKey, null, expectedVersion) }
+            }
+        }
+
+        // (d) repo.updateAssignee 0 row → IssueVersionConflictException
+        context("(d) repo.updateAssignee 가 0 row 반환 → IssueVersionConflictException") {
+            val request = AppChangeAssigneeRequest(assigneeId = assigneeUuid, expectedVersion = expectedVersion)
+            val existingIssue = makeIssue()
+
+            beforeEach {
+                stubUpdatePermissionGranted()
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every { userLookupPort.exists(assigneeUuid) } returns true
+                every { repo.updateAssignee(issueKey, assigneeUuid, expectedVersion) } returns 0
+            }
+
+            it("IssueVersionConflictException 을 던진다") {
+                shouldThrow<IssueVersionConflictException> {
+                    sut.changeAssignee(actor, issueKey, request)
                 }
             }
         }

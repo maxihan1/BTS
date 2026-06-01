@@ -157,6 +157,34 @@ class IssueRepository(
     }
 
     /**
+     * 이슈 담당자를 갱신한다 (낙관락 OCC UPDATE).
+     *
+     * WHERE key=? AND version=? AND deleted_at IS NULL 조건으로 UPDATE.
+     * version 불일치(stale read) 시 영향 행 0 반환.
+     *
+     * @param key 이슈 키.
+     * @param assigneeId 새 담당자 UUID. null 이면 담당자 해제.
+     * @param expectedVersion 현재 버전. DB 버전과 일치해야 업데이트가 실행된다.
+     * @return 업데이트된 행 수 (성공=1, 낙관락 충돌=0).
+     */
+    @Transactional
+    fun updateAssignee(
+        key: IssueKey,
+        assigneeId: UUID?,
+        expectedVersion: Long,
+    ): Int {
+        log.debug("updateAssignee key={} assigneeId={} expectedVersion={}", key.value, assigneeId, expectedVersion)
+        return dsl.update(ISSUES)
+            .set(ISSUES.ASSIGNEE_ID, assigneeId)
+            .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+            .set(ISSUES.VERSION, expectedVersion + 1)
+            .where(ISSUES.KEY.eq(key.value))
+            .and(ISSUES.VERSION.eq(expectedVersion))
+            .and(ISSUES.DELETED_AT.isNull)
+            .execute()
+    }
+
+    /**
      * 이슈 상태를 전이한다 (낙관락).
      *
      * WHERE key=? AND version=? AND deleted_at IS NULL 조건으로 업데이트.
@@ -419,6 +447,7 @@ private fun Issue.toInsertRecord(): IssuesRecord =
         labels = labels.toDbArray(),
         environment = environment,
         impact = impact?.toShort(),
+        assigneeId = assigneeId?.value,
     )
 
 /**
@@ -449,6 +478,7 @@ private fun IssuesRecord.toIssue(): Issue {
         labels = labels?.filterNotNull() ?: emptyList(),
         environment = environment,
         impact = impact?.toInt(),
+        assigneeId = assigneeId?.let { ActorId(it) },
     )
 }
 

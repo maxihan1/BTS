@@ -19,6 +19,8 @@
     <ID>MagicNumber:ProviderType.kt$ProviderType.PAT$60</ID>
     <ID>MagicNumber:ProviderType.kt$ProviderType.SAML$40</ID>
     <ID>MaxLineLength:LocalAuthFlowIntegrationTest.kt$LocalAuthFlowIntegrationTest$"spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration"</ID>
+    <ID>MaxLineLength:UsersControllerIntegrationTest.kt$UsersControllerIntegrationTest$"spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration"</ID>
+    <ID>MaxLineLength:UserLookupAdapterIntegrationTest.kt$UserLookupAdapterIntegrationTest$"spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration"</ID>
     <ID>MaxLineLength:PatAndConcurrencyIntegrationTest.kt$PatAndConcurrencyIntegrationTest.Companion$"org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration,"</ID>
     <ID>MaxLineLength:PatAndConcurrencyIntegrationTest.kt$PatAndConcurrencyIntegrationTest.Companion$"org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration,"</ID>
     <ID>MaxLineLength:PersonalAccessTokenRepository.kt$// personal_access_tokens 테이블 접근 Repository — findByTokenHash / findActiveByUserId / updateLastUsed / revoke (EC-26/EC-27)</ID>
