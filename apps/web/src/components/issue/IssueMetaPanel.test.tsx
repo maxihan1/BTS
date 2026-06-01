@@ -1,9 +1,10 @@
-// IssueMetaPanel 유형 행 + 셀렉터 + 상태전이 + 우선순위/영향도/환경/라벨 단위 테스트 — FR-IS-04 D6 Task-5
+// IssueMetaPanel 유형 행 + 셀렉터 + 상태전이 + 우선순위/영향도/환경/라벨 + 담당자 단위 테스트 — FR-IS-04 D6 Task-5, FR-IS-03 D6 Task-3
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { IssueResponse, IssueTransition } from '@/api/issues'
 import type { IssueTypeResponse } from '@/api/issue-types'
+import type { UserSummary } from '@/api/users'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import { issueDetailStrings } from '@/i18n/ko'
 
@@ -17,7 +18,7 @@ const transitionsFixture: IssueTransition[] = [
   { key: 'open__closed', name: 'Cancel', fromStateKey: 'open', toStateKey: 'closed' },
 ]
 
-/** 테스트용 이슈 픽스처 — typeId=1(bug), priority=3, impact=null, labels=[], environment=null */
+/** 테스트용 이슈 픽스처 — typeId=1(bug), priority=3, impact=null, labels=[], environment=null, assigneeId=null */
 const issueFixture: IssueResponse = {
   key: 'ATLAS-1',
   id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
@@ -25,6 +26,7 @@ const issueFixture: IssueResponse = {
   summary: '테스트 이슈',
   currentStateKey: 'open',
   reporterId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
+  assigneeId: null,
   version: 0,
   createdAt: '2026-01-01T09:00:00Z',
   updatedAt: null,
@@ -40,6 +42,12 @@ const issueFixture: IssueResponse = {
   impact: null,
   impactName: null,
 }
+
+/** 테스트용 사용자 목록 픽스처 */
+const usersFixture: UserSummary[] = [
+  { id: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f', username: 'alice', displayName: '김앨리스', email: null },
+  { id: 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a', username: 'bob', displayName: null, email: null },
+]
 
 /** 테스트용 이슈 타입 목록 픽스처 */
 const availableTypes: IssueTypeResponse[] = [
@@ -64,6 +72,9 @@ function renderPanel(
   onImpactChange = vi.fn(),
   onEnvironmentSave = vi.fn(),
   onLabelsSave = vi.fn(),
+  users: UserSummary[] = [],
+  onAssigneeSearch = vi.fn(),
+  onAssigneeChange = vi.fn(),
 ) {
   return render(
     <IssueMetaPanel
@@ -78,6 +89,9 @@ function renderPanel(
       onImpactChange={onImpactChange}
       onEnvironmentSave={onEnvironmentSave}
       onLabelsSave={onLabelsSave}
+      users={users}
+      onAssigneeSearch={onAssigneeSearch}
+      onAssigneeChange={onAssigneeChange}
     />,
   )
 }
@@ -168,6 +182,9 @@ describe('IssueMetaPanel — 셀렉터 옵션', () => {
         onImpactChange={vi.fn()}
         onEnvironmentSave={vi.fn()}
         onLabelsSave={vi.fn()}
+        users={[]}
+        onAssigneeSearch={vi.fn()}
+        onAssigneeChange={vi.fn()}
       />,
     )
 
@@ -326,6 +343,9 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
         onImpactChange={vi.fn()}
         onEnvironmentSave={vi.fn()}
         onLabelsSave={vi.fn()}
+        users={[]}
+        onAssigneeSearch={vi.fn()}
+        onAssigneeChange={vi.fn()}
       />,
     )
     expect(screen.getByText(issueDetailStrings.transitionWorkflowNotConfiguredError)).toBeInTheDocument()
@@ -350,6 +370,9 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
         onImpactChange={vi.fn()}
         onEnvironmentSave={vi.fn()}
         onLabelsSave={vi.fn()}
+        users={[]}
+        onAssigneeSearch={vi.fn()}
+        onAssigneeChange={vi.fn()}
       />,
     )
     expect(screen.getByText(issueDetailStrings.noTransitionsAvailable)).toBeInTheDocument()
@@ -374,6 +397,9 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
         onImpactChange={vi.fn()}
         onEnvironmentSave={vi.fn()}
         onLabelsSave={vi.fn()}
+        users={[]}
+        onAssigneeSearch={vi.fn()}
+        onAssigneeChange={vi.fn()}
       />,
     )
     expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument()
@@ -446,6 +472,9 @@ describe('IssueMetaPanel — 우선순위 셀렉터', () => {
         onImpactChange={vi.fn()}
         onEnvironmentSave={vi.fn()}
         onLabelsSave={vi.fn()}
+        users={[]}
+        onAssigneeSearch={vi.fn()}
+        onAssigneeChange={vi.fn()}
       />,
     )
     const select = screen.getByRole('combobox', { name: issueDetailStrings.prioritySelectLabel }) as HTMLSelectElement
@@ -654,6 +683,9 @@ describe('IssueMetaPanel — 환경 편집', () => {
         onImpactChange={vi.fn()}
         onEnvironmentSave={vi.fn()}
         onLabelsSave={vi.fn()}
+        users={[]}
+        onAssigneeSearch={vi.fn()}
+        onAssigneeChange={vi.fn()}
       />,
     )
     const textarea = screen.getByPlaceholderText(issueDetailStrings.environmentPlaceholder) as HTMLTextAreaElement
@@ -839,8 +871,178 @@ describe('IssueMetaPanel — 라벨 칩', () => {
         onImpactChange={vi.fn()}
         onEnvironmentSave={vi.fn()}
         onLabelsSave={vi.fn()}
+        users={[]}
+        onAssigneeSearch={vi.fn()}
+        onAssigneeChange={vi.fn()}
       />,
     )
     expect(screen.getByText('refactored')).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-IS-03 Task 3 — 담당자 셀렉터 (IMP-50~57)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueMetaPanel — 담당자 셀렉터', () => {
+  /**
+   * IMP-50: 담당자 레이블이 렌더된다.
+   */
+  it('IMP-50: 담당자 레이블이 렌더된다', () => {
+    renderPanel()
+    const assigneeSection = screen.getByTestId('assignee-section')
+    expect(within(assigneeSection).getByText(issueDetailStrings.assigneeLabel)).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-51: assigneeId=null이면 "미지정" 텍스트가 표시된다.
+   */
+  it('IMP-51: assigneeId=null이면 미지정 텍스트가 표시된다', () => {
+    renderPanel()
+    const assigneeSection = screen.getByTestId('assignee-section')
+    expect(within(assigneeSection).getByText(issueDetailStrings.assigneeUnassigned)).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-52: assigneeId가 설정된 경우 users에서 id 매핑해 displayName을 표시한다.
+   */
+  it('IMP-52: assigneeId가 users에 있으면 displayName을 표시한다', () => {
+    const issueWithAssignee: IssueResponse = { ...issueFixture, assigneeId: usersFixture[0]?.id ?? null }
+    renderPanel(
+      issueWithAssignee,
+      availableTypes,
+      vi.fn(),
+      vi.fn(),
+      transitionsFixture,
+      vi.fn(),
+      false,
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      usersFixture,
+    )
+    const assigneeSection = screen.getByTestId('assignee-section')
+    expect(within(assigneeSection).getByText('김앨리스')).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-53: assigneeId가 users에 있고 displayName이 null이면 username을 표시한다.
+   */
+  it('IMP-53: assigneeId가 있고 displayName=null이면 username을 표시한다', () => {
+    const bob = usersFixture[1]
+    if (!bob) return
+    const issueWithAssignee: IssueResponse = { ...issueFixture, assigneeId: bob.id }
+    renderPanel(
+      issueWithAssignee,
+      availableTypes,
+      vi.fn(),
+      vi.fn(),
+      transitionsFixture,
+      vi.fn(),
+      false,
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      usersFixture,
+    )
+    const assigneeSection = screen.getByTestId('assignee-section')
+    expect(within(assigneeSection).getByText('bob')).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-54: 검색 input에 입력 시 onAssigneeSearch 콜백이 호출된다.
+   */
+  it('IMP-54: 검색 input 입력 시 onAssigneeSearch가 호출된다', async () => {
+    const onAssigneeSearch = vi.fn()
+    renderPanel(
+      issueFixture,
+      availableTypes,
+      vi.fn(),
+      vi.fn(),
+      transitionsFixture,
+      vi.fn(),
+      false,
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      [],
+      onAssigneeSearch,
+    )
+    const user = userEvent.setup()
+    const assigneeSection = screen.getByTestId('assignee-section')
+    const searchInput = within(assigneeSection).getByPlaceholderText(issueDetailStrings.assigneeSearchPlaceholder)
+    await user.type(searchInput, 'ali')
+    expect(onAssigneeSearch).toHaveBeenCalled()
+  })
+
+  /**
+   * IMP-55: 사용자 목록에서 항목 선택 시 onAssigneeChange(userId)가 호출된다.
+   */
+  it('IMP-55: 사용자 선택 시 onAssigneeChange(userId)가 호출된다', async () => {
+    const onAssigneeChange = vi.fn()
+    renderPanel(
+      issueFixture,
+      availableTypes,
+      vi.fn(),
+      vi.fn(),
+      transitionsFixture,
+      vi.fn(),
+      false,
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      usersFixture,
+      vi.fn(),
+      onAssigneeChange,
+    )
+    const user = userEvent.setup()
+    const assigneeSection = screen.getByTestId('assignee-section')
+    const aliceBtn = within(assigneeSection).getByRole('button', { name: '김앨리스' })
+    await user.click(aliceBtn)
+    expect(onAssigneeChange).toHaveBeenCalledOnce()
+    expect(onAssigneeChange).toHaveBeenCalledWith(usersFixture[0]?.id)
+  })
+
+  /**
+   * IMP-56: 담당자가 있을 때 해제 버튼 클릭 시 onAssigneeChange(null)이 호출된다.
+   */
+  it('IMP-56: 담당자 해제 버튼 클릭 시 onAssigneeChange(null)이 호출된다', async () => {
+    const onAssigneeChange = vi.fn()
+    const issueWithAssignee: IssueResponse = { ...issueFixture, assigneeId: usersFixture[0]?.id ?? null }
+    renderPanel(
+      issueWithAssignee,
+      availableTypes,
+      vi.fn(),
+      vi.fn(),
+      transitionsFixture,
+      vi.fn(),
+      false,
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      usersFixture,
+      vi.fn(),
+      onAssigneeChange,
+    )
+    const user = userEvent.setup()
+    const assigneeSection = screen.getByTestId('assignee-section')
+    const unassignBtn = within(assigneeSection).getByRole('button', { name: issueDetailStrings.assigneeUnassignButton })
+    await user.click(unassignBtn)
+    expect(onAssigneeChange).toHaveBeenCalledOnce()
+    expect(onAssigneeChange).toHaveBeenCalledWith(null)
+  })
+
+  /**
+   * IMP-57: assigneeId=null이면 담당자 해제 버튼이 표시되지 않는다 (미할당 상태).
+   */
+  it('IMP-57: assigneeId=null이면 해제 버튼이 없다', () => {
+    renderPanel()
+    const assigneeSection = screen.getByTestId('assignee-section')
+    expect(within(assigneeSection).queryByRole('button', { name: issueDetailStrings.assigneeUnassignButton })).not.toBeInTheDocument()
   })
 })
