@@ -234,8 +234,10 @@
 - [x] D3. 데이터 모델 — `project_memberships(project_id, user_id, role)` (책임. db-engineer)
 - [x] D4. 백엔드 — CRUD API + 가드 (책임. security-engineer)
 - [x] D5. 백엔드 테스트 (책임. security-engineer)
-- [ ] D6. 프론트 UI — 프로젝트 설정 → 멤버 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 프로젝트 설정 → 멤버 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
+
+> **FR-PM-01 D6 프론트/D7 E2E 완료 (2026-06-01, PR #50)**. `/projects/$projectKey/settings/members` 멤버 관리 화면 — 목록(displayName 표시 + 역할 배지) + 추가(typeahead 검색→선택→역할) + 역할변경(낙관적) + 제거 + 비멤버 404 "접근 권한 없음", 에러 8종→한국어 토스트, MSW stateful refetch + Playwright S1~S6. **백엔드 슬라이스 동반** — 멤버 API path를 Jira식 `{projectIdOrKey}`로 확장(`ProjectDirectory.resolveKeyToId`, 비UUID·비key 입력도 404 단일봉투 존재숨김), 멤버 응답에 `displayName`/`username` 동봉(users LEFT JOIN, 같은 BC). **핵심 결정**(ADR `2026-06-01-project-member-projectidorkey`) — projectIdOrKey 수용(workflow-scheme projectKey 관례 정합), 이름은 멤버 응답 동봉(decision C, 50건 검색 상한 회피), 부트스트랩/생성자-자동admin UI는 프로젝트 생성 FR으로 이연. 머지 중 PR #51(FR-IS-03)의 사용자 디렉토리 인프라(`api/users.ts`·`use-users`·`user-handlers`)와 통합(중복 제거). 검증 — 백엔드 identity-access+detekt 그린, 프론트 단위 691+typecheck+build 그린, E2E 멤버6+기존 회귀0.
 
 ### §4.2 FR-PM-02 — 이슈 등록/수정/삭제 권한 분리
 
