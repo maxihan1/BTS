@@ -57,6 +57,12 @@ export interface IssueMetaPanelProps {
   onAssigneeSearch: (query: string) => void
   /** 담당자 변경 핸들러 — 선택한 사용자 UUID 또는 null(해제)을 전달 */
   onAssigneeChange: (userId: string | null) => void
+  /**
+   * 현재 담당자 UserSummary — useUsersByIds로 별도 조회한 값 (C1 버그 수정).
+   * 검색결과(users)와 분리해 현재 담당자 이름을 안정적으로 표시한다.
+   * null이면 "미지정" 표시.
+   */
+  currentAssignee: UserSummary | null
 }
 
 /**
@@ -89,6 +95,7 @@ export function IssueMetaPanel({
   users,
   onAssigneeSearch,
   onAssigneeChange,
+  currentAssignee,
 }: IssueMetaPanelProps): JSX.Element {
   /** issue.typeId에 해당하는 타입 항목 — iconName 해석에 사용 */
   const currentType = availableTypes.find((t) => t.id === issue.typeId)
@@ -176,6 +183,7 @@ export function IssueMetaPanel({
           <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.assigneeLabel}</p>
           <IssueAssigneeSelect
             value={issue.assigneeId ?? null}
+            currentAssignee={currentAssignee}
             users={users}
             onSearch={onAssigneeSearch}
             onAssigneeChange={onAssigneeChange}
@@ -570,7 +578,13 @@ interface IssueAssigneeSelectProps {
    * null이면 미할당.
    */
   value: string | null
-  /** 사용자 검색 결과 목록 */
+  /**
+   * 현재 담당자 UserSummary — useUsersByIds로 별도 조회한 값 (C1 버그 수정).
+   * 검색결과(users)와 분리해 담당자 이름을 안정적으로 표시한다.
+   * null이면 "미지정" 표시.
+   */
+  currentAssignee: UserSummary | null
+  /** 사용자 검색 결과 목록 — 드롭다운 후보 전용 */
   users: UserSummary[]
   /** 검색어 변경 콜백 */
   onSearch: (query: string) => void
@@ -582,22 +596,21 @@ interface IssueAssigneeSelectProps {
  * 이슈 담당자 셀렉터 컴포넌트.
  *
  * - value는 부모 props에서 파생(issue.assigneeId) — stale key prop 회귀 방지
+ * - currentAssignee prop으로 현재 담당자 이름 표시 (C1 버그 수정)
+ *   users(검색결과)가 아닌 별도 id 조회 결과를 사용해 50건 한도 이외 담당자도 정확히 표시
  * - 미할당 시 "미지정" 텍스트 표시
  * - 검색 input: native input, onChange 시 onSearch 호출
- * - 사용자 목록: users 배열로 버튼 리스트 렌더, 선택 시 onAssigneeChange(id)
- * - 현재 담당자: users에서 id 매핑해 displayName(없으면 username) 표시
+ * - 사용자 목록(users): 드롭다운 후보 전용 — 선택 시 onAssigneeChange(id)
  * - 담당자 해제 버튼: value !== null이면 노출, 클릭 시 onAssigneeChange(null)
  * - WCAG AA: min-h-[44px], aria-label
  */
 function IssueAssigneeSelect({
   value,
+  currentAssignee,
   users,
   onSearch,
   onAssigneeChange,
 }: IssueAssigneeSelectProps): JSX.Element {
-  /** 현재 담당자 UserSummary — users 배열에서 id 매핑 */
-  const currentAssignee = value !== null ? users.find((u) => u.id === value) : undefined
-
   /** 현재 담당자 표시 이름 — displayName 우선, 없으면 username */
   function getDisplayName(user: UserSummary): string {
     return user.displayName ?? user.username
@@ -605,10 +618,10 @@ function IssueAssigneeSelect({
 
   return (
     <div className="flex flex-col gap-1.5">
-      {/* 현재 담당자 표시 */}
+      {/* 현재 담당자 표시 — currentAssignee prop 기반 (C1 수정: users 검색결과 의존 제거) */}
       <div className="flex items-center justify-between gap-1">
         <span className="text-sm font-medium truncate" data-testid="assignee-current-name">
-          {currentAssignee !== undefined
+          {currentAssignee !== null
             ? getDisplayName(currentAssignee)
             : issueDetailStrings.assigneeUnassigned}
         </span>

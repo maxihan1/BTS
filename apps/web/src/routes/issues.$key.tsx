@@ -11,7 +11,8 @@ import { useChangeAssignee } from '@/api/useChangeAssignee'
 import { useDeleteIssue } from '@/api/useDeleteIssue'
 import { useIssueTypes } from '@/hooks/use-issue-types'
 import { useIssueTransitions, issueTransitionKeys } from '@/hooks/use-issue-transitions'
-import { useUsers } from '@/hooks/use-users'
+import { useUsers, useUsersByIds } from '@/hooks/use-users'
+import { useDebounce } from '@/hooks/use-debounce'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { IssueDescription } from '@/components/issue/IssueDescription'
@@ -91,7 +92,21 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   })
 
   const { data: availableTypes = [] } = useIssueTypes()
-  const { data: users = [] } = useUsers(assigneeSearchQuery)
+  /** S2: debounce 적용 — 1000명 규모 매 키스트로크 요청 방지 (250ms) */
+  const debouncedAssigneeSearchQuery = useDebounce(assigneeSearchQuery, 250)
+  const { data: users = [] } = useUsers(debouncedAssigneeSearchQuery)
+
+  /**
+   * C1 버그 수정: 현재 담당자를 id 조회로 별도 확보.
+   * useUsers(검색결과)에서 find()하면 검색어 변경 시 / 50건 한도 이외 담당자가 "미지정"으로 오표시됨.
+   * assigneeId가 있을 때만 enabled — issue가 로드되기 전에는 빈 배열로 호출하지 않음.
+   */
+  const assigneeIdForLookup = issue?.assigneeId ?? null
+  const { data: assigneeList = [] } = useUsersByIds(
+    assigneeIdForLookup !== null ? [assigneeIdForLookup] : [],
+  )
+  const currentAssignee = assigneeList[0] ?? null
+
   const changeAssigneeMutation = useChangeAssignee()
   const {
     data: transitions = [],
@@ -449,6 +464,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
             users={users}
             onAssigneeSearch={setAssigneeSearchQuery}
             onAssigneeChange={handleAssigneeChange}
+            currentAssignee={currentAssignee}
           />
         )}
       </div>

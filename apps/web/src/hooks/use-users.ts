@@ -1,6 +1,6 @@
-// 사용자 목록 TanStack Query 훅 — GET /api/v1/users?query= 검색 결과
+// 사용자 목록 TanStack Query 훅 — GET /api/v1/users?query= 검색 결과 + id 다건 조회
 import { useQuery } from '@tanstack/react-query'
-import { fetchUsers } from '@/api/users'
+import { fetchUsers, fetchUsersByIds } from '@/api/users'
 import type { UserSummary } from '@/api/users'
 
 /**
@@ -17,6 +17,26 @@ export function useUsers(query: string) {
   return useQuery<UserSummary[]>({
     queryKey: ['users', query],
     queryFn: () => fetchUsers(query),
+    staleTime: 30_000,
+  })
+}
+
+/**
+ * 사용자 id 다건 조회 훅.
+ * 현재 담당자 이름을 안정적으로 표시하기 위해 사용한다 (C1 버그 수정).
+ *
+ * - queryKey: ['users', 'byIds', ids] — 검색결과 캐시와 분리
+ * - ids가 빈 배열이면 쿼리 실행 안 함 (enabled: false)
+ * - staleTime: 30s (사용자 정보는 자주 바뀌지 않음)
+ *
+ * @param ids UUID 문자열 배열
+ * @returns UseQueryResult<UserSummary[]>
+ */
+export function useUsersByIds(ids: string[]) {
+  return useQuery<UserSummary[]>({
+    queryKey: ['users', 'byIds', ids],
+    queryFn: () => fetchUsersByIds(ids),
+    enabled: ids.length > 0,
     staleTime: 30_000,
   })
 }

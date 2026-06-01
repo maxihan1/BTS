@@ -187,6 +187,7 @@ describe('IssueMetaPanel — 셀렉터 옵션', () => {
         users={[]}
         onAssigneeSearch={vi.fn()}
         onAssigneeChange={vi.fn()}
+        currentAssignee={null}
       />,
     )
 
@@ -348,6 +349,7 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
         users={[]}
         onAssigneeSearch={vi.fn()}
         onAssigneeChange={vi.fn()}
+        currentAssignee={null}
       />,
     )
     expect(screen.getByText(issueDetailStrings.transitionWorkflowNotConfiguredError)).toBeInTheDocument()
@@ -375,6 +377,7 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
         users={[]}
         onAssigneeSearch={vi.fn()}
         onAssigneeChange={vi.fn()}
+        currentAssignee={null}
       />,
     )
     expect(screen.getByText(issueDetailStrings.noTransitionsAvailable)).toBeInTheDocument()
@@ -402,6 +405,7 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
         users={[]}
         onAssigneeSearch={vi.fn()}
         onAssigneeChange={vi.fn()}
+        currentAssignee={null}
       />,
     )
     expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument()
@@ -477,6 +481,7 @@ describe('IssueMetaPanel — 우선순위 셀렉터', () => {
         users={[]}
         onAssigneeSearch={vi.fn()}
         onAssigneeChange={vi.fn()}
+        currentAssignee={null}
       />,
     )
     const select = screen.getByRole('combobox', { name: issueDetailStrings.prioritySelectLabel }) as HTMLSelectElement
@@ -688,6 +693,7 @@ describe('IssueMetaPanel — 환경 편집', () => {
         users={[]}
         onAssigneeSearch={vi.fn()}
         onAssigneeChange={vi.fn()}
+        currentAssignee={null}
       />,
     )
     const textarea = screen.getByPlaceholderText(issueDetailStrings.environmentPlaceholder) as HTMLTextAreaElement
@@ -876,6 +882,7 @@ describe('IssueMetaPanel — 라벨 칩', () => {
         users={[]}
         onAssigneeSearch={vi.fn()}
         onAssigneeChange={vi.fn()}
+        currentAssignee={null}
       />,
     )
     expect(screen.getByText('refactored')).toBeInTheDocument()

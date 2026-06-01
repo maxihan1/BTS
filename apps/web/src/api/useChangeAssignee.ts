@@ -5,6 +5,7 @@ import { ApiError } from '@/api/client'
 import { changeAssignee } from '@/api/issues'
 import type { IssueResponse } from '@/api/issues'
 import { issueQueryKey } from './useUpdateIssueSummary'
+import { issueDetailStrings } from '@/i18n/ko'
 
 /** useChangeAssignee mutate 입력 타입 */
 export interface ChangeAssigneeInput {
@@ -40,11 +41,11 @@ export function useChangeAssignee() {
     onError: (error) => {
       if (error instanceof ApiError) {
         if (error.status === 409) {
-          toast.error('다른 사용자가 이미 이 이슈를 수정했습니다. 새로고침 후 다시 시도해 주세요.')
+          toast.error(issueDetailStrings.typeChangeConflictError)
         } else if (error.status === 422) {
-          toast.error('선택한 사용자를 찾을 수 없습니다. 다시 검색 후 선택해 주세요.')
+          toast.error(issueDetailStrings.assigneeNotFoundError)
         } else {
-          toast.error('담당자 변경 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.')
+          toast.error(issueDetailStrings.assigneeChangeError)
         }
       }
     },

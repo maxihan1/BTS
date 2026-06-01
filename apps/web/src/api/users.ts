@@ -44,3 +44,20 @@ export async function fetchUsers(query?: string): Promise<UserSummary[]> {
   const path = queryString !== '' ? `/api/v1/users?${queryString}` : '/api/v1/users'
   return apiGet(path, z.array(userSummarySchema))
 }
+
+/**
+ * 사용자 id 다건 조회.
+ * 현재 담당자 이름을 안정적으로 표시하기 위해 사용한다 (C1 버그 수정).
+ * GET /api/v1/users?ids=<uuid>,<uuid>,... — ids 우선 모드.
+ *
+ * @param ids UUID 문자열 배열 — 빈 배열이면 네트워크 호출 없이 [] 반환.
+ * @returns UserSummary[] — 미존재 id는 결과에서 조용히 제외.
+ * @throws ApiError(401) 인증 실패 시
+ */
+export async function fetchUsersByIds(ids: string[]): Promise<UserSummary[]> {
+  if (ids.length === 0) {
+    return []
+  }
+  const path = `/api/v1/users?ids=${ids.join(',')}`
+  return apiGet(path, z.array(userSummarySchema))
+}
