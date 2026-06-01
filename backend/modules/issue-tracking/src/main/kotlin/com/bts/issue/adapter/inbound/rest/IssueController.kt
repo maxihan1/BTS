@@ -2,6 +2,7 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.application.AppChangeAssigneeRequest
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
@@ -25,7 +26,6 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.net.URI
 import java.util.UUID
-import com.bts.issue.application.AppChangeAssigneeRequest
 import com.bts.issue.application.CreateIssueRequest as AppCreateIssueRequest
 import com.bts.issue.application.TransitionIssueRequest as AppTransitionIssueRequest
 import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
@@ -263,12 +263,14 @@ class IssueController(
         val issueKey = IssueKey(key)
         // @NotNull 검증이 통과한 뒤 호출되므로 expectedVersion 은 null 이 아님.
         // !! 금지 규칙에 따라 명시적 체크로 처리한다.
-        val expectedVersion = request.expectedVersion
-            ?: error("expectedVersion 은 @NotNull 검증 통과 후 null 일 수 없습니다.")
-        val appRequest = AppChangeAssigneeRequest(
-            assigneeId = request.assigneeId,
-            expectedVersion = expectedVersion,
-        )
+        val expectedVersion =
+            request.expectedVersion
+                ?: error("expectedVersion 은 @NotNull 검증 통과 후 null 일 수 없습니다.")
+        val appRequest =
+            AppChangeAssigneeRequest(
+                assigneeId = request.assigneeId,
+                expectedVersion = expectedVersion,
+            )
         val response = service.changeAssignee(actor, issueKey, appRequest)
         return ResponseEntity.ok(DataResponse(data = response))
     }

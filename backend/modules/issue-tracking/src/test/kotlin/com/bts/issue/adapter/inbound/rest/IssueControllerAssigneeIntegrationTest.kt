@@ -3,10 +3,10 @@
 package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
+import com.bts.shared.user.UserLookupPort
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import com.bts.shared.user.UserLookupPort
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
@@ -57,7 +57,6 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueControllerAssigneeIntegrationTest {
-
     /**
      * UserLookupPort 오버라이드 설정.
      *
@@ -72,6 +71,7 @@ class IssueControllerAssigneeIntegrationTest {
         open fun userLookupPortForAssigneeTest(): UserLookupPort =
             object : UserLookupPort {
                 private val knownIds = setOf(KNOWN_USER_ID, ANOTHER_KNOWN_USER_ID)
+
                 override fun exists(userId: UUID): Boolean = userId in knownIds
             }
     }
@@ -134,10 +134,11 @@ class IssueControllerAssigneeIntegrationTest {
     fun `S1 미할당 이슈에 assignee 지정 - 200 및 assigneeId와 version 증가 확인`() {
         val key = insertIssue("S1 담당자 지정 이슈")
 
-        val body = mapOf(
-            "assigneeId" to KNOWN_USER_ID.toString(),
-            "expectedVersion" to 1L,
-        )
+        val body =
+            mapOf(
+                "assigneeId" to KNOWN_USER_ID.toString(),
+                "expectedVersion" to 1L,
+            )
 
         mockMvc.perform(
             patch("/api/v1/issues/$key/assignee")
@@ -162,10 +163,11 @@ class IssueControllerAssigneeIntegrationTest {
         val key = insertIssue("S2 담당자 해제 이슈")
 
         // 먼저 assignee 지정
-        val assignBody = mapOf(
-            "assigneeId" to KNOWN_USER_ID.toString(),
-            "expectedVersion" to 1L,
-        )
+        val assignBody =
+            mapOf(
+                "assigneeId" to KNOWN_USER_ID.toString(),
+                "expectedVersion" to 1L,
+            )
         mockMvc.perform(
             patch("/api/v1/issues/$key/assignee")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -173,10 +175,11 @@ class IssueControllerAssigneeIntegrationTest {
         ).andExpect(status().isOk)
 
         // null 로 해제
-        val releaseBody = mapOf(
-            "assigneeId" to null,
-            "expectedVersion" to 2L,
-        )
+        val releaseBody =
+            mapOf(
+                "assigneeId" to null,
+                "expectedVersion" to 2L,
+            )
         mockMvc.perform(
             patch("/api/v1/issues/$key/assignee")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -200,10 +203,11 @@ class IssueControllerAssigneeIntegrationTest {
         val key = insertIssue("S3 담당자 변경 이슈")
 
         // 초기 assignee 지정
-        val firstBody = mapOf(
-            "assigneeId" to KNOWN_USER_ID.toString(),
-            "expectedVersion" to 1L,
-        )
+        val firstBody =
+            mapOf(
+                "assigneeId" to KNOWN_USER_ID.toString(),
+                "expectedVersion" to 1L,
+            )
         mockMvc.perform(
             patch("/api/v1/issues/$key/assignee")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -211,10 +215,11 @@ class IssueControllerAssigneeIntegrationTest {
         ).andExpect(status().isOk)
 
         // 다른 사용자로 변경
-        val changeBody = mapOf(
-            "assigneeId" to ANOTHER_KNOWN_USER_ID.toString(),
-            "expectedVersion" to 2L,
-        )
+        val changeBody =
+            mapOf(
+                "assigneeId" to ANOTHER_KNOWN_USER_ID.toString(),
+                "expectedVersion" to 2L,
+            )
         mockMvc.perform(
             patch("/api/v1/issues/$key/assignee")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -237,10 +242,11 @@ class IssueControllerAssigneeIntegrationTest {
     fun `S4 존재하지 않는 사용자 assignee 지정 - 422 ASSIGNEE_NOT_FOUND`() {
         val key = insertIssue("S4 미존재 사용자 검증 이슈")
 
-        val body = mapOf(
-            "assigneeId" to UNKNOWN_USER_ID.toString(),
-            "expectedVersion" to 1L,
-        )
+        val body =
+            mapOf(
+                "assigneeId" to UNKNOWN_USER_ID.toString(),
+                "expectedVersion" to 1L,
+            )
 
         mockMvc.perform(
             patch("/api/v1/issues/$key/assignee")
@@ -263,10 +269,11 @@ class IssueControllerAssigneeIntegrationTest {
     fun `S5 expectedVersion 불일치 - 409 VERSION_CONFLICT`() {
         val key = insertIssue("S5 OCC 충돌 검증 이슈")
 
-        val body = mapOf(
-            "assigneeId" to KNOWN_USER_ID.toString(),
-            "expectedVersion" to 99L,
-        )
+        val body =
+            mapOf(
+                "assigneeId" to KNOWN_USER_ID.toString(),
+                "expectedVersion" to 99L,
+            )
 
         mockMvc.perform(
             patch("/api/v1/issues/$key/assignee")
@@ -288,10 +295,11 @@ class IssueControllerAssigneeIntegrationTest {
      */
     @Test
     fun `S6 존재하지 않는 이슈 - 404 ISSUE_NOT_FOUND`() {
-        val body = mapOf(
-            "assigneeId" to KNOWN_USER_ID.toString(),
-            "expectedVersion" to 1L,
-        )
+        val body =
+            mapOf(
+                "assigneeId" to KNOWN_USER_ID.toString(),
+                "expectedVersion" to 1L,
+            )
 
         mockMvc.perform(
             patch("/api/v1/issues/ASSIGN-99999/assignee")
@@ -314,10 +322,11 @@ class IssueControllerAssigneeIntegrationTest {
     fun `expectedVersion 누락 시 400 VALIDATION_FAILED`() {
         val key = insertIssue("expectedVersion 누락 검증 이슈")
 
-        val body = mapOf(
-            "assigneeId" to KNOWN_USER_ID.toString(),
-            // expectedVersion 누락
-        )
+        val body =
+            mapOf(
+                "assigneeId" to KNOWN_USER_ID.toString(),
+                // expectedVersion 누락
+            )
 
         mockMvc.perform(
             patch("/api/v1/issues/$key/assignee")
@@ -362,35 +371,38 @@ class IssueControllerAssigneeIntegrationTest {
         conn().use { conn ->
             conn.autoCommit = false
 
-            val seq = conn.prepareStatement(
-                "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
-            ).use { stmt ->
-                stmt.setString(1, PROJECT_KEY)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getLong(1)
+            val seq =
+                conn.prepareStatement(
+                    "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
+                ).use { stmt ->
+                    stmt.setString(1, PROJECT_KEY)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getLong(1)
+                    }
                 }
-            }
             val issueKey = "$PROJECT_KEY-$seq"
 
-            val projectId = conn.prepareStatement(
-                "SELECT id FROM projects WHERE key = ?",
-            ).use { stmt ->
-                stmt.setString(1, PROJECT_KEY)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getObject(1) as UUID
+            val projectId =
+                conn.prepareStatement(
+                    "SELECT id FROM projects WHERE key = ?",
+                ).use { stmt ->
+                    stmt.setString(1, PROJECT_KEY)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as UUID
+                    }
                 }
-            }
 
-            val taskTypeId = conn.prepareStatement(
-                "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1",
-            ).use { stmt ->
-                stmt.executeQuery().use { rs ->
-                    check(rs.next()) { "task 타입 없음 — V003 마이그레이션 확인 필요." }
-                    rs.getLong(1)
+            val taskTypeId =
+                conn.prepareStatement(
+                    "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        check(rs.next()) { "task 타입 없음 — V003 마이그레이션 확인 필요." }
+                        rs.getLong(1)
+                    }
                 }
-            }
 
             conn.prepareStatement(
                 "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version, type_id) " +
@@ -410,9 +422,10 @@ class IssueControllerAssigneeIntegrationTest {
         }
     }
 
-    private fun conn() = DriverManager.getConnection(
-        TestConfig.postgres.jdbcUrl,
-        TestConfig.postgres.username,
-        TestConfig.postgres.password,
-    )
+    private fun conn() =
+        DriverManager.getConnection(
+            TestConfig.postgres.jdbcUrl,
+            TestConfig.postgres.username,
+            TestConfig.postgres.password,
+        )
 }
