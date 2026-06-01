@@ -3,9 +3,9 @@ import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { projectMemberHandlers } from '../project-member-handlers'
-import { usersHandlers } from '../users-handlers'
+import { userHandlers } from '../user-handlers'
 
-const server = setupServer(...projectMemberHandlers, ...usersHandlers)
+const server = setupServer(...projectMemberHandlers, ...userHandlers)
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())

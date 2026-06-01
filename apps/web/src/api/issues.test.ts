@@ -12,11 +12,12 @@ import {
   deleteIssue,
   fetchIssueTransitions,
   transitionIssue,
+  changeAssignee,
 } from './issues'
 import { ApiError } from './client'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Fixture — IssueResponse 20 필드 (12 기존 + 8 신규) + nullable timestamps
+// Fixture — IssueResponse 21 필드 (12 기존 + 8 FR-IS-04 + 1 FR-IS-03 assigneeId) + nullable timestamps
 // ─────────────────────────────────────────────────────────────────────────────
 const issueFixture = {
   key: 'ATLAS-1',
@@ -25,6 +26,7 @@ const issueFixture = {
   summary: '로그인 버튼이 클릭되지 않는 버그',
   currentStateKey: 'open',
   reporterId: 'f0e9d8c7-b6a5-4321-8edc-ba9876543210',
+  assigneeId: null,
   version: 1,
   createdAt: '2024-01-15T09:00:00Z',
   updatedAt: '2024-01-15T10:30:00Z',
@@ -463,5 +465,107 @@ describe('transitionIssue', () => {
     await transitionIssue('ATLAS-1', { toStatusKey: 'done', expectedVersion: 1 })
     expect(capturedBody['toStatusKey']).toBe('done')
     expect(capturedBody['expectedVersion']).toBe(1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-11. issueResponseSchema — FR-IS-03 assigneeId nullable 필드 회귀가드
+// ─────────────────────────────────────────────────────────────────────────────
+describe('issueResponseSchema — FR-IS-03 assigneeId 필드', () => {
+  it('T1-11a: assigneeId가 null이어도 파싱 성공한다', () => {
+    const result = issueResponseSchema.parse({ ...issueFixture, assigneeId: null })
+    expect(result.assigneeId).toBeNull()
+  })
+
+  it('T1-11b: assigneeId가 유효한 UUID이면 파싱 성공한다', () => {
+    const uuid = 'a1b2c3d4-e5f6-4890-abcd-ef1234567890'
+    const result = issueResponseSchema.parse({ ...issueFixture, assigneeId: uuid })
+    expect(result.assigneeId).toBe(uuid)
+  })
+
+  it('T1-11c: assigneeId가 UUID 형식이 아닌 문자열이면 ZodError를 throw한다', () => {
+    expect(() =>
+      issueResponseSchema.parse({ ...issueFixture, assigneeId: 'not-a-uuid' }),
+    ).toThrow()
+  })
+
+  it('T1-11d: assigneeId 필드가 누락되면 ZodError를 throw한다 (계약 엄격성 회귀가드)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { assigneeId: _assigneeId, ...withoutAssigneeId } = issueFixture
+    // 백엔드 IssueResponse는 assigneeId를 null이라도 항상 직렬화한다.
+    // 따라서 nullable()만 사용하고 optional()은 쓰지 않는다 — 키 부재는 계약 위반이므로 실패해야 한다.
+    // 미래에 누가 .optional()을 다시 추가하면 이 테스트가 회귀를 잡는다.
+    expect(() => issueResponseSchema.parse(withoutAssigneeId)).toThrow()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-12. changeAssignee — PATCH /issues/{key}/assignee
+// ─────────────────────────────────────────────────────────────────────────────
+describe('changeAssignee', () => {
+  const assigneeId = 'a1b2c3d4-e5f6-4890-abcd-ef1234567890'
+
+  beforeEach(() => {
+    server.use(
+      http.patch('/api/v1/issues/:key/assignee', async ({ request, params }) => {
+        const body = await request.json() as { assigneeId: string | null; expectedVersion: number }
+        return HttpResponse.json({
+          data: {
+            ...issueFixture,
+            key: params['key'] as string,
+            assigneeId: body.assigneeId,
+            version: body.expectedVersion + 1,
+          },
+        })
+      }),
+    )
+  })
+
+  it('T1-12a: assigneeId(UUID) 전달 시 PATCH 호출 후 IssueResponse를 반환한다', async () => {
+    const result = await changeAssignee('ATLAS-1', { assigneeId, expectedVersion: 1 })
+    expect(result.assigneeId).toBe(assigneeId)
+    expect(result.version).toBe(2)
+  })
+
+  it('T1-12b: assigneeId=null 전달 시 담당자 해제 응답을 반환한다', async () => {
+    const result = await changeAssignee('ATLAS-1', { assigneeId: null, expectedVersion: 1 })
+    expect(result.assigneeId).toBeNull()
+  })
+
+  it('T1-12c: request body에 assigneeId와 expectedVersion이 포함되어 전달된다', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.patch('/api/v1/issues/:key/assignee', async ({ request }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json({ data: { ...issueFixture, assigneeId, version: 2 } })
+      }),
+    )
+    await changeAssignee('ATLAS-1', { assigneeId, expectedVersion: 1 })
+    expect(capturedBody['assigneeId']).toBe(assigneeId)
+    expect(capturedBody['expectedVersion']).toBe(1)
+  })
+
+  it('T1-12d: 409 버전 충돌 시 ApiError(409)를 throw한다', async () => {
+    server.use(
+      http.patch('/api/v1/issues/:key/assignee', () =>
+        HttpResponse.json({ errorCode: 'VERSION_CONFLICT' }, { status: 409 }),
+      ),
+    )
+    await expect(changeAssignee('ATLAS-1', { assigneeId, expectedVersion: 0 })).rejects.toSatisfy(
+      (e) => e instanceof ApiError && (e as ApiError).status === 409,
+    )
+  })
+
+  it('T1-12e: 422 ASSIGNEE_NOT_FOUND 시 ApiError(422)를 throw한다', async () => {
+    server.use(
+      http.patch('/api/v1/issues/:key/assignee', () =>
+        HttpResponse.json({ errorCode: 'ASSIGNEE_NOT_FOUND' }, { status: 422 }),
+      ),
+    )
+    await expect(
+      changeAssignee('ATLAS-1', { assigneeId: 'nonexistent-uuid-0000-000000000000', expectedVersion: 1 }),
+    ).rejects.toSatisfy(
+      (e) => e instanceof ApiError && (e as ApiError).status === 422,
+    )
   })
 })

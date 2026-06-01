@@ -1,40 +1,26 @@
-// 사용자 검색 API 클라이언트 — GET /api/v1/users?query= + Zod 파싱 (FR-PM-01 Task F1)
+// identity-access BC 사용자 목록 조회 REST API client + Zod 스키마
 import { z } from 'zod'
-import { apiFetch, ApiError } from './client'
+import { apiGet } from './client'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Zod 스키마 — backend UserSummaryResponse DTO와 1:1 대응
-// 필드: id / username / displayName / email
+// Zod 스키마 정의
+// backend UserSummaryResponse DTO 직렬화 형태와 1:1 대응.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 사용자 요약 단건 응답 Zod 스키마.
- * backend `UserSummaryResponse`: id(UUID) / username / displayName(nullable) / email(nullable).
- * PII 포함(email) — 로그 출력 금지.
- *
- * id 필드는 `z.string()`을 사용한다.
- * Zod v4의 `z.string().uuid()` 정규식이 테스트 픽스처와 충돌하기 때문이다.
- * 프로덕션 값은 PostgreSQL `gen_random_uuid()` v4 형식이어서 항상 유효하다.
+ * 사용자 요약 응답 Zod 스키마.
+ * GET /api/v1/users 배열 응답 항목 형태 — { data: } 래퍼 없음.
  */
 export const userSummarySchema = z.object({
-  /** 사용자 내부 식별자 UUID */
-  id: z.string(),
-  /** 로그인 식별자 (LDAP uid, 이메일 등) */
-  username: z.string(),
-  /** 화면 표시 이름 — 외부 IdP 미제공 시 null */
+  id: z.string().uuid(),
+  username: z.string().min(1),
+  /** 표시 이름 — 미설정 시 null */
   displayName: z.string().nullable(),
-  /** 이메일 — 외부 IdP 미제공 시 null */
+  /** 이메일 — 미노출 설정 또는 없을 때 null */
   email: z.string().nullable(),
 })
 
-/** 사용자 요약 응답 배열 Zod 스키마 — 래핑 없는 배열 */
-const userSummaryArraySchema = z.array(userSummarySchema)
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 추론된 타입 (interface 중복 정의 금지)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** 사용자 요약 응답 타입 — z.infer로 자동 추론 */
+/** 사용자 요약 타입 */
 export type UserSummary = z.infer<typeof userSummarySchema>
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,23 +28,36 @@ export type UserSummary = z.infer<typeof userSummarySchema>
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 사용자를 검색한다.
+ * 사용자 목록을 조회한다.
  *
- * GET /api/v1/users?query={query} → 래핑 없는 UserSummary 배열.
- * 담당자 셀렉터 typeahead 용도로 사용된다.
- * PII(email) 포함 — 응답 내용을 로그에 출력하지 말 것.
- *
- * @param query 검색 질의 문자열
- * @returns UserSummary 배열 — 결과 없으면 빈 배열
- * @throws ApiError(401, "unauthorized") 미인증
+ * @param query 검색 문자열 — 미전달 시 전체 목록(최대 MAX_RESULTS건) 반환.
+ *              username/displayName 부분일치 검색.
+ * @returns UserSummary[] — 배열 직접 응답 (래퍼 없음)
+ * @throws ApiError(401) 인증 실패 시
  */
-export async function searchUsers(query: string): Promise<UserSummary[]> {
-  const params = new URLSearchParams({ query })
-  const res = await apiFetch(`/api/v1/users?${params.toString()}`, { method: 'GET' })
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
+export async function fetchUsers(query?: string): Promise<UserSummary[]> {
+  const params = new URLSearchParams()
+  if (query !== undefined && query !== '') {
+    params.set('query', query)
   }
-  const raw: unknown = await res.json()
-  return userSummaryArraySchema.parse(raw)
+  const queryString = params.toString()
+  const path = queryString !== '' ? `/api/v1/users?${queryString}` : '/api/v1/users'
+  return apiGet(path, z.array(userSummarySchema))
+}
+
+/**
+ * 사용자 id 다건 조회.
+ * 현재 담당자 이름을 안정적으로 표시하기 위해 사용한다 (C1 버그 수정).
+ * GET /api/v1/users?ids=<uuid>,<uuid>,... — ids 우선 모드.
+ *
+ * @param ids UUID 문자열 배열 — 빈 배열이면 네트워크 호출 없이 [] 반환.
+ * @returns UserSummary[] — 미존재 id는 결과에서 조용히 제외.
+ * @throws ApiError(401) 인증 실패 시
+ */
+export async function fetchUsersByIds(ids: string[]): Promise<UserSummary[]> {
+  if (ids.length === 0) {
+    return []
+  }
+  const path = `/api/v1/users?ids=${ids.join(',')}`
+  return apiGet(path, z.array(userSummarySchema))
 }

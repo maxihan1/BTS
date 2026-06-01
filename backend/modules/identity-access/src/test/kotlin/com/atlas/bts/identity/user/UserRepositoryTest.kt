@@ -174,6 +174,40 @@ class UserRepositoryTest {
         assertThat(second.displayName).isEqualTo("Ivy Updated")
     }
 
+    // ── findByIds ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `findByIds — 주어진 id 목록에 해당하는 사용자만 반환`() {
+        val alice = repo.save("findbyids-alice", "alice@bts.local", "Alice Kim")
+        val bob = repo.save("findbyids-bob", "bob@bts.local", "Bob Lee")
+        repo.save("findbyids-charlie", "charlie@bts.local", "Charlie Park")
+
+        val result = repo.findByIds(listOf(alice.id, bob.id))
+
+        assertThat(result).hasSize(2)
+        assertThat(result.map { it.id }).containsExactlyInAnyOrder(alice.id, bob.id)
+    }
+
+    @Test
+    fun `findByIds — 존재하지 않는 id 는 결과에서 조용히 제외`() {
+        val alice = repo.save("findbyids-alice2", "alice2@bts.local", "Alice2")
+        val missingId = UUID.randomUUID()
+
+        val result = repo.findByIds(listOf(alice.id, missingId))
+
+        assertThat(result).hasSize(1)
+        assertThat(result.first().id).isEqualTo(alice.id)
+    }
+
+    @Test
+    fun `findByIds — 빈 리스트 입력 시 빈 결과 반환`() {
+        repo.save("findbyids-alice3", "alice3@bts.local", "Alice3")
+
+        val result: List<User> = repo.findByIds(emptyList())
+
+        assertThat(result).hasSize(0)
+    }
+
     // ── updateLastLogin ───────────────────────────────────────────────────────
 
     @Test

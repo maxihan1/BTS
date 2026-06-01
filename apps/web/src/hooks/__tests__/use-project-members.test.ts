@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { projectMemberHandlers } from '@/mocks/project-member-handlers'
-import { usersHandlers } from '@/mocks/users-handlers'
+import { userHandlers } from '@/mocks/user-handlers'
 import type { ProjectMember } from '@/api/project-members'
 import {
   useProjectMembers,
@@ -124,7 +124,7 @@ describe('useAddMember', () => {
     const { result: addResult } = renderHook(() => useAddMember('ATLAS'), { wrapper })
 
     act(() => {
-      addResult.current.mutate({ userId: 'fixture-eve-uuid', role: 'MEMBER' })
+      addResult.current.mutate({ userId: '9cd2d4a3-c3a8-49fb-bc8b-03521f94e55c', role: 'MEMBER' })
     })
 
     // onMutate에서 낙관적 업데이트 — 캐시가 즉시 늘어야 한다
@@ -148,7 +148,7 @@ describe('useAddMember', () => {
     const { result } = renderHook(() => useAddMember('ATLAS'), { wrapper })
 
     await act(async () => {
-      result.current.mutate({ userId: 'fixture-carol-uuid', role: 'MEMBER' })
+      result.current.mutate({ userId: '961fb10c-6317-47c8-b377-d8fc5594db82', role: 'MEMBER' })
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
@@ -257,13 +257,13 @@ describe('useRemoveMember', () => {
     const { result } = renderHook(() => useRemoveMember('BTS'), { wrapper })
 
     act(() => {
-      result.current.mutate('fixture-dave-uuid')
+      result.current.mutate('e745adab-f152-44cb-987e-aff965d3db4f')
     })
 
     // 낙관적 업데이트 — dave가 즉시 사라져야 한다
     await waitFor(() => {
       const cached = client.getQueryData<ProjectMember[]>(PROJECT_MEMBER_KEYS.list('BTS'))
-      return cached?.every((m) => m.userId !== 'fixture-dave-uuid') === true
+      return cached?.every((m) => m.userId !== 'e745adab-f152-44cb-987e-aff965d3db4f') === true
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
@@ -320,7 +320,7 @@ describe('useRemoveMember', () => {
 
 describe('useUserSearch', () => {
   beforeEach(() => {
-    server.use(...usersHandlers)
+    server.use(...userHandlers)
   })
 
   it('query가 2자 미만이면 enabled:false여서 조회하지 않는다', () => {

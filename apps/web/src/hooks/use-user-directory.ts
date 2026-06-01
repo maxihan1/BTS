@@ -1,6 +1,6 @@
 // 사용자 디렉토리 검색 TanStack Query 훅 — typeahead 용 enabled 가드 (FR-PM-01)
 import { useQuery } from '@tanstack/react-query'
-import { searchUsers } from '@/api/users'
+import { fetchUsers } from '@/api/users'
 import type { UserSummary } from '@/api/users'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,7 +38,7 @@ export function useUserSearch(query: string) {
 
   return useQuery<UserSummary[]>({
     queryKey: USER_SEARCH_KEYS.search(query),
-    queryFn: () => searchUsers(query),
+    queryFn: () => fetchUsers(query),
     enabled,
     staleTime: 10_000,
   })

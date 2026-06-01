@@ -369,6 +369,21 @@ describe('IssueDetailPage — 삭제', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 공통 사용자 목록 핸들러 헬퍼 (Task 4 — useUsers hook이 GET /api/v1/users 호출)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function setupUsersHandler() {
+  server.use(
+    http.get('/api/v1/users', () =>
+      HttpResponse.json([
+        { id: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f', username: 'alice', displayName: '김앨리스', email: null },
+        { id: 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a', username: 'bob', displayName: null, email: null },
+      ]),
+    ),
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 타입 변경 테스트 (C-2)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -382,6 +397,8 @@ describe('IssueDetailPage — 타입 변경', () => {
     setupIssueFoundHandler()
     // ATLAS-1 전이 목록 핸들러 — useIssueTransitions hook이 GET /api/v1/issues/ATLAS-1/transitions 호출
     setupTransitionsHandler()
+    // 사용자 목록 핸들러 — useUsers hook이 GET /api/v1/users 호출
+    setupUsersHandler()
   })
 
   /**
@@ -450,11 +467,11 @@ describe('IssueDetailPage — 타입 변경', () => {
 
   /**
    * T7-14 (409). 타입 변경 시 낙관락 버전 충돌(409 VERSION_CONFLICT)이 발생하면
-   * typeChangeConflictError 한국어 토스트가 노출된다.
+   * versionConflictError 한국어 토스트가 노출된다.
    *
    * PATCH → 409 응답은 MSW override로 직접 제어.
    */
-  it('T7-14: 타입 변경 409 충돌 시 typeChangeConflictError 토스트가 노출된다', async () => {
+  it('T7-14: 타입 변경 409 충돌 시 versionConflictError 토스트가 노출된다', async () => {
     server.use(
       http.patch('/api/v1/issues/:key', () =>
         HttpResponse.json(
@@ -480,7 +497,7 @@ describe('IssueDetailPage — 타입 변경', () => {
 
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
-        issueDetailStrings.typeChangeConflictError,
+        issueDetailStrings.versionConflictError,
       )
     })
   })
@@ -555,6 +572,7 @@ describe('IssueDetailPage — 상태전이', () => {
     setupIssueFoundHandler()
     setupTransitionsHandler()
     setupTransitionPostHandler()
+    setupUsersHandler()
   })
 
   /**
@@ -906,6 +924,7 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
     vi.mocked(toast.error).mockClear()
     server.use(...issueTypeHandlers)
     setupTransitionsHandler()
+    setupUsersHandler()
   })
 
   /**
@@ -1090,10 +1109,11 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
   })
 
   /**
-   * T6-7: 409 VERSION_CONFLICT → toast(typeChangeConflictError) + invalidateQueries.
+   * T6-7: 409 VERSION_CONFLICT → toast(versionConflictError) + invalidateQueries.
    * descriptionMutation 409 응답 시 검증.
+   * 주의: beforeEach에 /api/v1/users 핸들러가 필요하나 Task 4 GREEN 전까지 setupUsersHandler가 없음.
    */
-  it('T6-7: 본문 저장 409 충돌 시 typeChangeConflictError 토스트가 노출된다', async () => {
+  it('T6-7: 본문 저장 409 충돌 시 versionConflictError 토스트가 노출된다', async () => {
     setupIssueFoundHandler()
     server.use(
       http.patch('/api/v1/issues/:key', () =>
@@ -1123,8 +1143,122 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
 
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
-        issueDetailStrings.typeChangeConflictError,
+        issueDetailStrings.versionConflictError,
       )
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 4 — 담당자 배선 (FR-IS-03 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 담당자 변경 MSW stateful 핸들러.
+ * PATCH /assignee 성공 → issueOverrides에 영속 → GET refetch 시 최신 데이터 반환.
+ * (msw-mutation-stateful-refetch 교훈 — setQueryData 위 가짜그린 방지)
+ */
+function setupAssigneeStatefulHandlers(initial: typeof issueAtlas1Fixture & { assigneeId?: string | null }) {
+  let currentFixture = { ...initial }
+  server.use(
+    http.get('/api/v1/issues/:key', ({ params }) => {
+      if (params['key'] === initial.key) {
+        return HttpResponse.json({ data: currentFixture })
+      }
+      return HttpResponse.json({ message: '이슈를 찾을 수 없습니다' }, { status: 404 })
+    }),
+    http.patch('/api/v1/issues/:key/assignee', async ({ request }) => {
+      const body = await request.clone().json() as { assigneeId: string | null; expectedVersion: number }
+      // 성공 — stateful 영속 (교훈 2: invalidate refetch 후 롤백 방지)
+      currentFixture = {
+        ...currentFixture,
+        assigneeId: body.assigneeId,
+        version: currentFixture.version + 1,
+      }
+      return HttpResponse.json({ data: currentFixture })
+    }),
+  )
+}
+
+describe('IssueDetailPage — 담당자 배선 (Task 4)', () => {
+  const aliceId = 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f'
+
+  beforeEach(() => {
+    vi.mocked(toast.error).mockClear()
+    server.use(...issueTypeHandlers)
+    setupTransitionsHandler()
+    setupUsersHandler()
+  })
+
+  it('T4-A1: 담당자 섹션(assignee-section)이 메타패널에 렌더된다', async () => {
+    setupAssigneeStatefulHandlers(issueAtlas1Fixture)
+    const { container } = renderPage('ATLAS-1')
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument())
+    const aside = container.querySelector('aside')
+    if (aside === null) throw new Error('aside not found')
+    expect(within(aside).getByTestId('assignee-section')).toBeInTheDocument()
+  })
+
+  it('T4-A2: assigneeId=null이면 미지정 텍스트가 표시된다', async () => {
+    const fixture = { ...issueAtlas1Fixture, assigneeId: null }
+    setupAssigneeStatefulHandlers(fixture)
+    renderPage('ATLAS-1')
+    await waitFor(() => {
+      const assigneeSection = screen.getByTestId('assignee-section')
+      expect(within(assigneeSection).getByText(issueDetailStrings.assigneeUnassigned)).toBeInTheDocument()
+    })
+  })
+
+  it('T4-A3: 사용자 선택 시 PATCH /assignee가 발생하고 refetch 후 담당자 이름이 표시된다', async () => {
+    const fixture = { ...issueAtlas1Fixture, assigneeId: null }
+    setupAssigneeStatefulHandlers(fixture)
+    const user = userEvent.setup()
+    const { container } = renderPage('ATLAS-1')
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument())
+    const aside = container.querySelector('aside')
+    if (aside === null) throw new Error('aside not found')
+    const assigneeSection = within(aside).getByTestId('assignee-section')
+    await waitFor(() => expect(within(assigneeSection).queryByRole('button', { name: '김앨리스' })).toBeInTheDocument())
+    await user.click(within(assigneeSection).getByRole('button', { name: '김앨리스' }))
+    await waitFor(() => {
+      const currentNameEl = within(assigneeSection).getByTestId('assignee-current-name')
+      expect(currentNameEl.textContent).toBe('김앨리스')
+    })
+  })
+
+  it('T4-A4: 담당자 해제 시 PATCH /assignee(null)가 발생하고 refetch 후 미지정이 표시된다', async () => {
+    const fixture = { ...issueAtlas1Fixture, assigneeId: aliceId }
+    setupAssigneeStatefulHandlers(fixture)
+    const user = userEvent.setup()
+    const { container } = renderPage('ATLAS-1')
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument())
+    const aside = container.querySelector('aside')
+    if (aside === null) throw new Error('aside not found')
+    const assigneeSection = within(aside).getByTestId('assignee-section')
+    await waitFor(() => expect(within(assigneeSection).queryByRole('button', { name: issueDetailStrings.assigneeUnassignButton })).toBeInTheDocument())
+    await user.click(within(assigneeSection).getByRole('button', { name: issueDetailStrings.assigneeUnassignButton }))
+    await waitFor(() => {
+      const currentNameEl = within(assigneeSection).getByTestId('assignee-current-name')
+      expect(currentNameEl.textContent).toBe(issueDetailStrings.assigneeUnassigned)
+    })
+  })
+
+  it('T4-A5: 담당자 변경 409 충돌 시 toast.error가 호출된다', async () => {
+    const fixture = { ...issueAtlas1Fixture, assigneeId: null }
+    setupAssigneeStatefulHandlers(fixture)
+    server.use(
+      http.patch('/api/v1/issues/:key/assignee', () =>
+        HttpResponse.json({ errorCode: 'VERSION_CONFLICT' }, { status: 409 }),
+      ),
+    )
+    const user = userEvent.setup()
+    const { container } = renderPage('ATLAS-1')
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument())
+    const aside = container.querySelector('aside')
+    if (aside === null) throw new Error('aside not found')
+    const assigneeSection = within(aside).getByTestId('assignee-section')
+    await waitFor(() => expect(within(assigneeSection).queryByRole('button', { name: '김앨리스' })).toBeInTheDocument())
+    await user.click(within(assigneeSection).getByRole('button', { name: '김앨리스' }))
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled())
   })
 })

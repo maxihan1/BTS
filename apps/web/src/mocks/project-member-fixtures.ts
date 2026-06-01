@@ -1,40 +1,8 @@
-// FR-PM-01 프로젝트 멤버 MSW fixture 데이터 — ATLAS/BTS 두 프로젝트 + 사용자 디렉토리
+// FR-PM-01 프로젝트 멤버 MSW fixture 데이터 — ATLAS/BTS 두 프로젝트 초기 상태
 import type { ProjectMember } from '../api/project-members.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 사용자 디렉토리 fixture — email은 @example.com 더미 (PII 금지)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** 사용자 디렉토리 단건 타입 */
-export interface UserDirectoryEntry {
-  id: string
-  username: string
-  displayName: string
-  email: string
-}
-
-/** 사용자 디렉토리 헬퍼 */
-export const makeUserEntry = (overrides: Partial<UserDirectoryEntry>): UserDirectoryEntry => ({
-  id: 'user-uuid-placeholder',
-  username: 'user',
-  displayName: '사용자',
-  email: 'user@example.com',
-  ...overrides,
-})
-
-// alice/bob의 id는 auth-fixtures.ts의 whoami 정규 UUID(00000000-…-001/002)와 일치시킨다.
-// E2E에서 로그인한 alice(whoami userId)가 ATLAS의 PROJECT_ADMIN으로 인식돼야 액션 컨트롤이 노출된다.
-/** 전체 사용자 pool — 프로젝트 멤버 추가 검색에 쓰이는 디렉토리 */
-export const userDirectoryFixtures: UserDirectoryEntry[] = [
-  makeUserEntry({ id: '00000000-0000-0000-0000-000000000001', username: 'alice', displayName: '앨리스', email: 'alice@example.com' }),
-  makeUserEntry({ id: '00000000-0000-0000-0000-000000000002', username: 'bob', displayName: '밥', email: 'bob@example.com' }),
-  makeUserEntry({ id: 'fixture-carol-uuid', username: 'carol', displayName: '캐럴', email: 'carol@example.com' }),
-  makeUserEntry({ id: 'fixture-dave-uuid', username: 'dave', displayName: '데이브', email: 'dave@example.com' }),
-  makeUserEntry({ id: 'fixture-eve-uuid', username: 'eve', displayName: '이브', email: 'eve@example.com' }),
-]
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 프로젝트 멤버 fixture — ATLAS 프로젝트
+// 멤버 fixture 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 멤버 단건 fixture 헬퍼 */
@@ -48,6 +16,13 @@ export const makeMember = (overrides: Partial<ProjectMember>): ProjectMember => 
   username: 'user',
   ...overrides,
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ATLAS 프로젝트 초기 멤버 목록
+// alice = PROJECT_ADMIN (유일한 admin), bob = MEMBER.
+// userId는 auth-fixtures.ts whoami UUID(00000000-…-001/002)와 동일.
+// user-fixtures.ts userAliceFixture/userBobFixture와도 동일.
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * ATLAS 프로젝트 초기 멤버 목록.
@@ -71,6 +46,12 @@ export const atlasInitialMembers: ProjectMember[] = [
   }),
 ]
 
+// ─────────────────────────────────────────────────────────────────────────────
+// BTS 프로젝트 초기 멤버 목록
+// carol = PROJECT_ADMIN, dave = MEMBER.
+// userId는 user-fixtures.ts userCarolFixture/userDaveFixture UUID와 동일.
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * BTS 프로젝트 초기 멤버 목록.
  * carol = PROJECT_ADMIN, dave = MEMBER.
@@ -78,14 +59,16 @@ export const atlasInitialMembers: ProjectMember[] = [
 export const btsInitialMembers: ProjectMember[] = [
   makeMember({
     projectId: 'project-bts-uuid',
-    userId: 'fixture-carol-uuid',
+    // user-fixtures.ts userCarolFixture.id 와 동일
+    userId: '961fb10c-6317-47c8-b377-d8fc5594db82',
     role: 'PROJECT_ADMIN',
     displayName: '캐럴',
     username: 'carol',
   }),
   makeMember({
     projectId: 'project-bts-uuid',
-    userId: 'fixture-dave-uuid',
+    // user-fixtures.ts userDaveFixture.id 와 동일
+    userId: 'e745adab-f152-44cb-987e-aff965d3db4f',
     role: 'MEMBER',
     displayName: '데이브',
     username: 'dave',

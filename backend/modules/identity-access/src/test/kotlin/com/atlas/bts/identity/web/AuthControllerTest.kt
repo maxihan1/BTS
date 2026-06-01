@@ -97,13 +97,19 @@ class AuthControllerTest {
         @Bean
         fun jwtDecoder(): JwtDecoder = mockk(relaxed = true)
 
+        /**
+         * 테스트 고정 Clock — 세션 테스트의 now(2026-05-29T10:00:00Z)와 expiresAt(+1일) 구간 안에 있어야
+         * isActive=true 판정이 맞다. AuthController 와 SidRevokeJwtConverter 양쪽에 동일 Bean 주입.
+         */
         @Bean
-        fun sidRevokeJwtConverter(): SidRevokeJwtConverter {
+        fun clock(): Clock = Clock.fixed(Instant.parse("2026-05-29T10:00:00Z"), ZoneOffset.UTC)
+
+        @Bean
+        fun sidRevokeJwtConverter(clock: Clock): SidRevokeJwtConverter {
             // SidRevokeJwtConverter 생성용 SessionService 는 지역 mock — Bean 등록 없음.
             // @MockBean SessionService 와는 별개 인스턴스이나, SidRevokeJwtConverter 는
             // jwt() 포스트 프로세서 사용 시 실제로 호출되지 않으므로 무방.
             val sessionService: SessionService = mockk(relaxed = true)
-            val clock = Clock.fixed(Instant.parse("2026-05-21T10:00:00Z"), ZoneOffset.UTC)
             return SidRevokeJwtConverter(sessionService, clock)
         }
 
