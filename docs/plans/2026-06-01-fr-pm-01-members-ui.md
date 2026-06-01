@@ -38,9 +38,19 @@ FR-PM-01 남은 작업. 백엔드 D1~D5는 PR #48 완료(ProjectMembership/Proje
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-01-fr-pm-01-members-ui.md](../specs/2026-06-01-fr-pm-01-members-ui.md)
+
+핵심 요약.
+- **백엔드 슬라이스(security-engineer)** — ① 멤버 API path `{projectIdOrKey}` 수용(`ProjectDirectory.resolveKeyToId`, key 해석 실패=404 존재숨김) ② `ProjectMemberResponse`에 `displayName?`+`username` 동봉(users 같은-BC 조인). 마이그레이션 0건, UUID 경로 회귀 0.
+- **프론트(frontend-engineer)** — `/projects/$projectKey/settings/members`(requireAuth) 라우트. 목록(displayName 표시 + 역할 배지) + 추가(typeahead `/users?query=` 검색→선택→역할) + 역할변경(낙관적) + 제거(확인). 에러코드 8종→한국어 토스트, 비멤버 404→접근권한없음 화면. 라벨은 i18n 파일(E2E 셀렉터 정본). Zod 1:1.
+- **E2E(qa-engineer)** — S1~S6 Playwright, MSW stateful refetch(가짜 그린 방지).
+- 범위 밖: 부트스트랩/생성자-자동admin UI(생성 FR), 전체 페이지네이션.
+
+## Brainstorming Check
+
+✅ 통과 (adversarial self-review 1회). gap2건 해소 — currentUserId는 WhoamiResponse로 확보(검증), 멤버 이름변환은 결정 C(응답 displayName 동봉, Jira식)로 해소. BLOCKER 0.
 
 ## Plan (← /bts-plan 채움)
 

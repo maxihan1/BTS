@@ -42,6 +42,19 @@ FR-PM-01 백엔드(PR #48)는 멤버 API path를 `/api/v1/projects/{projectId}/m
 - **B. projectKey→id 변환 전용 엔드포인트 추가**. 자원 의미가 멤버 API와 중복되고 왕복 1회 증가. 기각.
 - **C. 채택 — 멤버 API가 projectIdOrKey 수용**. Jira/BTS 정합 + 1왕복. 채택.
 
+## 추가 결정 — 멤버 이름 표시 (displayName 동봉, Jira식)
+
+`ProjectMemberResponse`는 `userId`(UUID)만 담아, 멤버 목록을 사람 이름으로 표시하려면 별도 이름 변환이 필요하다. 그런데 `GET /api/v1/users`(FR-IS-03)는 **이름 substring 검색(최대 50건)** 만 제공하고 **id로 사용자를 조회하는 경로가 없다** — 1,000명 규모에서 멤버가 무필터 검색 첫 50건 밖이면 이름을 못 찾는다.
+
+**결정(C)**. `ProjectMemberResponse`에 `displayName:String?` + `username:String`을 추가하고, 멤버 조회 시 `users` 테이블을 조인해 동봉한다. `users`는 멤버십과 **같은 identity-access BC** 안에 있어 BC 격리를 깨지 않는다(같은-BC 조인). Jira가 프로젝트 역할 actor 응답에 `displayName`을 inline으로 담는 방식과 동일하다. 추가(typeahead)는 기존 `/users?query=` 검색을 그대로 쓴다.
+
+**대안**.
+- A. `GET /api/v1/users?ids=...` 배치 조회 신설(Jira `/user/bulk`식). PR #48 무변경 + 재사용성 높으나 프론트 2왕복. 기각(이번 화면은 C가 단순·정확).
+- B. best-effort 검색 매칭 + username 폴백. 백엔드 무변경이나 대규모에서 일부 이름 미표시. 기각(정확성 미달).
+- **C. 멤버 응답에 displayName 동봉. 채택.**
+
+email은 동봉하지 않는다(목록 표시 불필요, PII 최소화). 멤버 엔드포인트는 인증 + 멤버 전용(비멤버 404)이라 멤버 간 displayName/username 노출은 의도된 범위.
+
 ## 범위 밖 (이연)
 
 - **부트스트랩/생성자-자동admin UI**. 멤버 0명 프로젝트의 첫 ADMIN 시동은 백엔드 부트스트랩 규칙(PR #48)으로 존재하나, 프론트에는 노출하지 않는다. 프로젝트 생성 FR 도입 시 생성자=자동 admin으로 연결. 이번 화면은 "이미 PROJECT_ADMIN인 사용자의 멤버 CRUD"만 다루고, 비멤버는 404→접근 권한 없음 화면.
