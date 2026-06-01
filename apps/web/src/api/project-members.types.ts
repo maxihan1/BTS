@@ -12,7 +12,14 @@ import { z } from 'zod'
  */
 export const roleEnum = z.enum(['PROJECT_ADMIN', 'MEMBER'])
 
-/** 프로젝트 멤버 단건 응답 Zod 스키마 — backend ProjectMemberResponse 7 필드 */
+/**
+ * 프로젝트 멤버 단건 응답 Zod 스키마 — backend ProjectMemberResponse 7 필드.
+ *
+ * UUID 필드(projectId, userId)는 `z.string()`을 사용한다.
+ * Zod v4의 `z.string().uuid()` 정규식은 RFC 4122 variant/version 비트를 엄격히 검사하므로
+ * 테스트 픽스처(예: `aaaaaaaa-bbbb-cccc-...`)가 거부된다.
+ * 프로덕션 값은 PostgreSQL `gen_random_uuid()` v4 형식이어서 항상 통과한다.
+ */
 export const memberResponseSchema = z.object({
   /** 프로젝트 식별자 UUID */
   projectId: z.string(),

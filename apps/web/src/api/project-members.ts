@@ -6,6 +6,9 @@ import {
   memberResponseSchema,
   membersListSchema,
   memberErrorResponseSchema,
+  type ProjectMember,
+  type ProjectRole,
+  type AddMemberInput,
 } from './project-members.types'
 
 export {
@@ -92,7 +95,7 @@ async function parseMemberResponse<T>(res: Response, schema: z.ZodSchema<T>): Pr
  * @throws ProjectMemberApiError(404, "project_not_found") 프로젝트 미존재 또는 비멤버
  * @throws ProjectMemberApiError(401, "unauthorized") 미인증
  */
-export async function fetchProjectMembers(projectKey: string): Promise<import('./project-members.types').ProjectMember[]> {
+export async function fetchProjectMembers(projectKey: string): Promise<ProjectMember[]> {
   const res = await apiFetch(`/api/v1/projects/${projectKey}/members`, { method: 'GET' })
   const wrapped = await parseMemberResponse(res, membersListSchema)
   return wrapped.members
@@ -114,8 +117,8 @@ export async function fetchProjectMembers(projectKey: string): Promise<import('.
  */
 export async function addMember(
   projectKey: string,
-  input: import('./project-members.types').AddMemberInput,
-): Promise<import('./project-members.types').ProjectMember> {
+  input: AddMemberInput,
+): Promise<ProjectMember> {
   const res = await apiFetch(`/api/v1/projects/${projectKey}/members`, {
     method: 'POST',
     body: input,
@@ -145,8 +148,8 @@ export async function addMember(
 export async function changeRole(
   projectKey: string,
   userId: string,
-  role: import('./project-members.types').ProjectRole,
-): Promise<import('./project-members.types').ProjectMember> {
+  role: ProjectRole,
+): Promise<ProjectMember> {
   const res = await apiFetch(`/api/v1/projects/${projectKey}/members/${userId}`, {
     method: 'PATCH',
     body: { role },

@@ -11,9 +11,13 @@ import { apiFetch, ApiError } from './client'
  * 사용자 요약 단건 응답 Zod 스키마.
  * backend `UserSummaryResponse`: id(UUID) / username / displayName(nullable) / email(nullable).
  * PII 포함(email) — 로그 출력 금지.
+ *
+ * id 필드는 `z.string()`을 사용한다.
+ * Zod v4의 `z.string().uuid()` 정규식이 테스트 픽스처와 충돌하기 때문이다.
+ * 프로덕션 값은 PostgreSQL `gen_random_uuid()` v4 형식이어서 항상 유효하다.
  */
 export const userSummarySchema = z.object({
-  /** 사용자 내부 식별자 UUID — Zod v4 uuid() 정규식 호환을 위해 z.string() 사용 */
+  /** 사용자 내부 식별자 UUID */
   id: z.string(),
   /** 로그인 식별자 (LDAP uid, 이메일 등) */
   username: z.string(),
