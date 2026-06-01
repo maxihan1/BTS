@@ -19,6 +19,7 @@ import org.springframework.security.oauth2.server.resource.web.DefaultBearerToke
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler
+import org.springframework.security.web.util.matcher.RequestMatcher
 import org.springframework.web.cors.CorsConfigurationSource
 
 /**
@@ -97,6 +98,16 @@ class SecurityConfig(
             .csrf { csrf ->
                 csrf.csrfTokenRepository(csrfRepo)
                 csrf.csrfTokenRequestHandler(CsrfTokenRequestAttributeHandler())
+                // PAT Bearer 요청: Authorization 헤더에 pat_ prefix 토큰이 있으면 CSRF skip.
+                // PAT는 stateless 자격증명이며 CSRF 공격 벡터(쿠키 기반 세션)가 없다.
+                // JWT Bearer 요청은 oauth2ResourceServer가 자동으로 CSRF를 skip한다.
+                val patBearerMatcher = RequestMatcher { req: HttpServletRequest ->
+                    val header = req.getHeader("Authorization") ?: return@RequestMatcher false
+                    header.startsWith("Bearer ${PersonalAccessToken.TOKEN_PREFIX}")
+                }
+                csrf.ignoringRequestMatchers(
+                    patBearerMatcher,
+                )
                 csrf.ignoringRequestMatchers(
                     "/api/v1/auth/login",
                     "/api/v1/auth/refresh",

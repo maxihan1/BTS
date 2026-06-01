@@ -5,6 +5,7 @@ package com.atlas.bts.identity.web
 import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
+import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.project.ProjectMembership
 import com.atlas.bts.identity.project.ProjectMembershipService
@@ -21,10 +22,7 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.oauth2.jwt.JwtDecoder
-import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
@@ -66,6 +64,9 @@ class ProjectMemberControllerTest {
 
         private val NOW: Instant = Instant.parse("2026-06-01T10:00:00Z")
 
+        /** EC-26: "pat_" prefix 포함 PAT raw token */
+        private const val RAW_PAT = "pat_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
         private fun membership(userId: UUID = TARGET_ID, role: ProjectRole = ProjectRole.MEMBER) = ProjectMembership(
             projectId = PROJECT_ID,
             userId = userId,
@@ -74,11 +75,17 @@ class ProjectMemberControllerTest {
             updatedAt = NOW,
         )
 
-        /** PAT SecurityContext: UsernamePasswordAuthenticationToken(principal=userId.toString) */
-        private fun patAuthentication(userId: UUID = ACTOR_ID) = UsernamePasswordAuthenticationToken(
-            userId.toString(),
-            null,
-            listOf(SimpleGrantedAuthority("ROLE_PAT")),
+        /** 성공한 PAT 검증 결과를 반환하는 mock PAT 객체 */
+        private fun activePat(userId: UUID = ACTOR_ID) = PersonalAccessToken(
+            id = UUID.fromString("dddddddd-dddd-dddd-dddd-dddddddddddd"),
+            userId = userId,
+            name = "ci-token",
+            tokenHash = "irrelevant-hash",
+            scopes = listOf("*"),
+            expiresAt = null,
+            lastUsedAt = null,
+            revokedAt = null,
+            createdAt = NOW,
         )
     }
 
@@ -111,6 +118,9 @@ class ProjectMemberControllerTest {
     @Autowired
     lateinit var projectMembershipService: ProjectMembershipService
 
+    @Autowired
+    lateinit var personalAccessTokenService: PersonalAccessTokenService
+
     // ── POST / — addMember ────────────────────────────────────────────────────
 
     @Test
@@ -133,13 +143,14 @@ class ProjectMemberControllerTest {
 
     @Test
     fun `POST members PAT actor 201 반환 — SecurityContext principal 추출`() {
+        every { personalAccessTokenService.verify(RAW_PAT) } returns Result.success(activePat())
         every {
             projectMembershipService.addMember(ACTOR_ID, true, PROJECT_ID, TARGET_ID, ProjectRole.MEMBER)
         } returns membership()
 
         mockMvc.perform(
             post("/api/v1/projects/$PROJECT_ID/members")
-                .with(authentication(patAuthentication()))
+                .header("Authorization", "Bearer $RAW_PAT")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"userId":"$TARGET_ID","role":"MEMBER"}"""),
         )
@@ -149,13 +160,14 @@ class ProjectMemberControllerTest {
 
     @Test
     fun `POST members BootstrapRequiresJwt 403 bootstrap_requires_jwt`() {
+        every { personalAccessTokenService.verify(RAW_PAT) } returns Result.success(activePat())
         every {
             projectMembershipService.addMember(any(), true, PROJECT_ID, any(), any())
         } throws ProjectMembershipService.BootstrapRequiresJwt(PROJECT_ID)
 
         mockMvc.perform(
             post("/api/v1/projects/$PROJECT_ID/members")
-                .with(authentication(patAuthentication()))
+                .header("Authorization", "Bearer $RAW_PAT")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"userId":"$ACTOR_ID","role":"MEMBER"}"""),
         )
@@ -349,13 +361,14 @@ class ProjectMemberControllerTest {
 
     @Test
     fun `DELETE members PAT actor 204 반환`() {
+        every { personalAccessTokenService.verify(RAW_PAT) } returns Result.success(activePat())
         every {
             projectMembershipService.removeMember(ACTOR_ID, true, PROJECT_ID, TARGET_ID)
         } returns Unit
 
         mockMvc.perform(
             delete("/api/v1/projects/$PROJECT_ID/members/$TARGET_ID")
-                .with(authentication(patAuthentication())),
+                .header("Authorization", "Bearer $RAW_PAT"),
         )
             .andExpect(status().isNoContent)
     }
@@ -430,13 +443,14 @@ class ProjectMemberControllerTest {
 
     @Test
     fun `PAT actor isPat=true 로 서비스 호출`() {
+        every { personalAccessTokenService.verify(RAW_PAT) } returns Result.success(activePat())
         every {
             projectMembershipService.addMember(ACTOR_ID, true, PROJECT_ID, TARGET_ID, ProjectRole.MEMBER)
         } returns membership()
 
         mockMvc.perform(
             post("/api/v1/projects/$PROJECT_ID/members")
-                .with(authentication(patAuthentication()))
+                .header("Authorization", "Bearer $RAW_PAT")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"userId":"$TARGET_ID","role":"MEMBER"}"""),
         ).andExpect(status().isCreated)
