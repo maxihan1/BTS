@@ -10,6 +10,11 @@ CREATE TABLE project_memberships (
     UNIQUE (project_id, user_id)
 );
 
+COMMENT ON TABLE  project_memberships              IS '프로젝트 멤버십 — 사용자와 프로젝트의 역할 관계를 저장한다. hard delete 정책 (ADR D6).';
+COMMENT ON COLUMN project_memberships.project_id   IS 'issue-tracking BC의 projects.id를 참조. cross-BC이므로 DB 수준 FK 없음 (ADR D2).';
+COMMENT ON COLUMN project_memberships.user_id      IS 'identity-access BC의 users.id. 사용자 삭제 시 멤버십도 CASCADE 삭제.';
+COMMENT ON COLUMN project_memberships.role         IS '프로젝트 내 역할. PROJECT_ADMIN(관리자) 또는 MEMBER(일반 멤버).';
+
 CREATE INDEX idx_project_memberships_project ON project_memberships(project_id);
 CREATE INDEX idx_project_memberships_user    ON project_memberships(user_id);
 CREATE INDEX idx_project_memberships_admins  ON project_memberships(project_id) WHERE role = 'PROJECT_ADMIN';
