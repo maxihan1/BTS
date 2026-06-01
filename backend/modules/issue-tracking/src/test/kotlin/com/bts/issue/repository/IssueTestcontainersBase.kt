@@ -112,11 +112,15 @@ abstract class IssueTestcontainersBase {
         dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
         repository = IssueRepository(dsl)
 
-        // 테스트용 프로젝트 1건 삽입 — key_sequence = 0 으로 시작
+        // 테스트용 프로젝트 1건 삽입 — key_sequence = 0 으로 시작.
+        // ON CONFLICT DO NOTHING: 다른 테스트 클래스(IssueRepositoryIntegrationTest 등)가 같은
+        // JVM singleton 컨테이너에 TPRJ 를 먼저 삽입한 경우 중복 INSERT 없이 기존 id 를 조회한다.
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.prepareStatement(
-                "INSERT INTO projects (key, name) VALUES ('TPRJ', 'Test Project') RETURNING id",
-            ).use { stmt ->
+                "INSERT INTO projects (key, name) VALUES ('TPRJ', 'Test Project') ON CONFLICT (key) DO NOTHING",
+            ).use { it.executeUpdate() }
+
+            conn.prepareStatement("SELECT id FROM projects WHERE key = 'TPRJ'").use { stmt ->
                 stmt.executeQuery().use { rs ->
                     rs.next()
                     testProjectId = rs.getObject(1) as UUID

@@ -8,10 +8,15 @@ import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.shared.issue.IssueTypeId
 import org.assertj.core.api.Assertions.assertThat
+import org.flywaydb.core.Flyway
+import org.jooq.SQLDialect
+import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.MethodOrderer
 import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.TestMethodOrder
 import java.sql.DriverManager
 import java.util.UUID
@@ -19,7 +24,10 @@ import java.util.UUID
 /**
  * IssueRepository.updateAssignee OCC UPDATE 통합 테스트.
  *
- * [IssueTestcontainersBase] 상속으로 Testcontainers + Flyway 환경을 구성한다.
+ * [IssueTestcontainersBase] 의 JVM singleton PostgreSQL 컨테이너를 재사용하되, 이 클래스는
+ * 독립적으로 초기화를 수행하여 bootstrap 중복 실행에 따른 TPRJ INSERT 충돌을 방지한다.
+ * [IssueTestcontainersBase.postgres] companion object 로 컨테이너에 접근한다.
+ *
  * Spring ApplicationContext 없이 DSLContext 를 직접 조합한다.
  *
  * 테스트 시나리오.
@@ -29,30 +37,85 @@ import java.util.UUID
  * - T6-D. toIssue assigneeId 매핑 — insert 시 assigneeId 를 포함하면 findByKey 로 ActorId? 로 반환.
  * - T6-E. toIssue assigneeId null 매핑 — assigneeId 없는 이슈는 findByKey 결과 assigneeId=null.
  */
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
-class IssueRepositoryIntegrationTest : IssueTestcontainersBase() {
+class IssueRepositoryIntegrationTest {
+    private lateinit var repository: IssueRepository
+    private lateinit var testProjectId: UUID
+
     /**
      * V003 seed 에서 task 타입 id 를 DB 에서 직접 조회한다.
      * IssueTypeId 는 value class 이므로 lateinit 불가 — var + null 허용으로 초기화.
      */
     private var taskTypeId: IssueTypeId? = null
 
+    /**
+     * JVM 당 1회 실행 — Flyway migrate(멱등) + DSLContext 초기화 + TPRJ 프로젝트 upsert + task 타입 id 조회.
+     *
+     * [IssueTestcontainersBase.postgres] JVM singleton 컨테이너를 재사용한다.
+     * TPRJ INSERT 는 `ON CONFLICT (key) DO NOTHING` 으로 중복 실행에 안전하다.
+     */
     @BeforeAll
-    fun resolveTaskTypeId() {
+    fun setup() {
+        val postgres = IssueTestcontainersBase.postgres
+
+        // Flyway migrate (멱등 — 이미 최신이면 아무 것도 하지 않음)
+        Flyway.configure()
+            .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+            .placeholderReplacement(false)
+            .locations("classpath:db/migration/issue-tracking")
+            .load()
+            .migrate()
+
+        val dataSource =
+            org.springframework.jdbc.datasource.DriverManagerDataSource(
+                postgres.jdbcUrl,
+                postgres.username,
+                postgres.password,
+            )
+        repository = IssueRepository(DSL.using(dataSource, SQLDialect.POSTGRES))
+
+        // TPRJ 프로젝트 upsert — 다른 테스트 클래스가 먼저 삽입했어도 충돌 없이 id 조회
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            val sql = "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1"
-            conn.prepareStatement(sql).use { stmt ->
+            conn.prepareStatement(
+                "INSERT INTO projects (key, name) VALUES ('TPRJ', 'Test Project') ON CONFLICT (key) DO NOTHING",
+            ).use { it.executeUpdate() }
+
+            conn.prepareStatement("SELECT id FROM projects WHERE key = 'TPRJ'").use { stmt ->
                 stmt.executeQuery().use { rs ->
-                    check(rs.next()) { "V003 마이그레이션에서 task 타입이 없습니다." }
-                    taskTypeId = IssueTypeId(rs.getLong(1))
+                    check(rs.next()) { "TPRJ 프로젝트를 찾을 수 없습니다." }
+                    testProjectId = rs.getObject(1) as UUID
                 }
+            }
+        }
+
+        // V003 seed 에서 task 타입 id 조회
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement("SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1")
+                .use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        check(rs.next()) { "V003 마이그레이션에서 task 타입이 없습니다." }
+                        taskTypeId = IssueTypeId(rs.getLong(1))
+                    }
+                }
+        }
+    }
+
+    /** 각 테스트가 독립적으로 실행되도록 테스트마다 issues 행을 삭제하고 key_sequence 를 초기화한다. */
+    @BeforeEach
+    fun cleanIssues() {
+        val postgres = IssueTestcontainersBase.postgres
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.createStatement().use { stmt ->
+                stmt.execute("DELETE FROM issues")
+                stmt.execute("UPDATE projects SET key_sequence = 0 WHERE key = 'TPRJ'")
             }
         }
     }
 
     /** resolveTaskTypeId 이후 항상 non-null 임을 보장하는 helper. */
     private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다 — resolveTaskTypeId 실행 확인" }
+        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다 — setup 실행 확인" }
 
     // ── T6-A. updateAssignee — assigneeId UUID 설정 ───────────────────────────────
 
