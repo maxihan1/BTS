@@ -91,6 +91,30 @@ interface ProjectMembershipRepository {
      * @param projectId 락을 획득할 프로젝트 UUID
      */
     fun acquireProjectLock(projectId: UUID)
+
+    /**
+     * 프로젝트에 속한 모든 멤버를 users 테이블과 LEFT JOIN해 [ProjectMemberView] 목록으로 반환한다.
+     *
+     * LEFT JOIN을 사용하므로 users 행이 없는 orphan 멤버십도 포함되며,
+     * 해당 멤버의 [ProjectMemberView.displayName]과 [ProjectMemberView.username]은 null이다.
+     *
+     * @param projectId 조회할 프로젝트 ID
+     * @return 멤버가 없으면 빈 목록
+     */
+    fun listMemberViewsByProject(projectId: UUID): List<ProjectMemberView>
+
+    /**
+     * 특정 프로젝트+사용자 조합을 users 테이블과 LEFT JOIN해 [ProjectMemberView]로 반환한다.
+     *
+     * POST/PATCH 응답용 단건 조회에 사용한다.
+     * LEFT JOIN을 사용하므로 users 행이 없어도 멤버십이 있으면 반환하며,
+     * [ProjectMemberView.displayName]과 [ProjectMemberView.username]은 null이다.
+     *
+     * @param projectId 대상 프로젝트 ID
+     * @param userId 대상 사용자 ID
+     * @return 멤버십이 존재하면 [ProjectMemberView], 없으면 null
+     */
+    fun findMemberView(projectId: UUID, userId: UUID): ProjectMemberView?
 }
 
 /**
@@ -207,6 +231,32 @@ class JdbcProjectMembershipRepository(
         }
     }
 
+    /**
+     * 프로젝트 멤버 전체를 users LEFT JOIN으로 [ProjectMemberView] 목록으로 반환한다.
+     *
+     * LEFT JOIN이므로 users 행이 없는 orphan 멤버십도 포함된다.
+     */
+    @Transactional(readOnly = true)
+    override fun listMemberViewsByProject(projectId: UUID): List<ProjectMemberView> =
+        jdbc.query(
+            SQL_LIST_MEMBER_VIEWS_BY_PROJECT,
+            mapOf("projectId" to projectId),
+            MemberViewRowMapper,
+        )
+
+    /**
+     * 특정 프로젝트+사용자 조합을 users LEFT JOIN으로 [ProjectMemberView]로 반환한다.
+     *
+     * LEFT JOIN이므로 users 행이 없어도 멤버십이 존재하면 반환한다.
+     */
+    @Transactional(readOnly = true)
+    override fun findMemberView(projectId: UUID, userId: UUID): ProjectMemberView? =
+        jdbc.query(
+            SQL_FIND_MEMBER_VIEW,
+            mapOf("projectId" to projectId, "userId" to userId),
+            MemberViewRowMapper,
+        ).firstOrNull()
+
     // ── SQL 상수 ─────────────────────────────────────────────────────────────
 
     private companion object {
@@ -277,6 +327,45 @@ class JdbcProjectMembershipRepository(
          * NamedParameterJdbcTemplate.update() 는 "A result was returned when none was expected" 오류를 낸다.
          */
         const val SQL_ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(?)"
+
+        /**
+         * 프로젝트 멤버 전체를 users LEFT JOIN으로 조회한다.
+         *
+         * LEFT JOIN — users 행이 없는 orphan 멤버십도 결과에 포함.
+         * u.display_name / u.username 은 users 행이 없을 경우 null.
+         */
+        const val SQL_LIST_MEMBER_VIEWS_BY_PROJECT = """
+            SELECT m.project_id,
+                   m.user_id,
+                   m.role,
+                   m.created_at,
+                   m.updated_at,
+                   u.display_name,
+                   u.username
+            FROM   project_memberships m
+            LEFT JOIN users u ON m.user_id = u.id
+            WHERE  m.project_id = :projectId
+        """
+
+        /**
+         * 특정 프로젝트+사용자 멤버십을 users LEFT JOIN으로 단건 조회한다.
+         *
+         * LEFT JOIN — users 행이 없어도 멤버십이 존재하면 반환.
+         * u.display_name / u.username 은 users 행이 없을 경우 null.
+         */
+        const val SQL_FIND_MEMBER_VIEW = """
+            SELECT m.project_id,
+                   m.user_id,
+                   m.role,
+                   m.created_at,
+                   m.updated_at,
+                   u.display_name,
+                   u.username
+            FROM   project_memberships m
+            LEFT JOIN users u ON m.user_id = u.id
+            WHERE  m.project_id = :projectId
+              AND  m.user_id    = :userId
+        """
     }
 }
 
@@ -290,5 +379,24 @@ private object MembershipRowMapper : RowMapper<ProjectMembership> {
             role = ProjectRole.from(rs.getString("role")),
             createdAt = rs.getTimestamp("created_at").toInstant(),
             updatedAt = rs.getTimestamp("updated_at").toInstant(),
+        )
+}
+
+/**
+ * project_memberships LEFT JOIN users RowMapper — ResultSet → ProjectMemberView 변환.
+ *
+ * users 컬럼(display_name, username)은 LEFT JOIN 결과이므로 null 가능.
+ * getString 반환값이 null이면 Kotlin nullable String?에 그대로 저장된다.
+ */
+private object MemberViewRowMapper : RowMapper<ProjectMemberView> {
+    override fun mapRow(rs: ResultSet, rowNum: Int): ProjectMemberView =
+        ProjectMemberView(
+            projectId = rs.getObject("project_id", UUID::class.java),
+            userId = rs.getObject("user_id", UUID::class.java),
+            role = ProjectRole.from(rs.getString("role")),
+            createdAt = rs.getTimestamp("created_at").toInstant(),
+            updatedAt = rs.getTimestamp("updated_at").toInstant(),
+            displayName = rs.getString("display_name"),
+            username = rs.getString("username"),
         )
 }
