@@ -30,7 +30,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.security.MessageDigest
 import java.security.SecureRandom
-import java.time.Instant
+import java.time.Clock
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 
@@ -71,6 +71,7 @@ class AuthController(
     private val refreshTokenRepository: RefreshTokenRepository,
     private val refreshTokenService: RefreshTokenService,
     private val jwtIssuer: JwtIssuer,
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     /**
      * POST /api/v1/auth/login — username/password 자격증명 인증 후 토큰 발급.
@@ -118,7 +119,7 @@ class AuthController(
 
                 val rawToken = generateRawToken()
                 val tokenHash = sha256Hex(rawToken)
-                val now = Instant.now()
+                val now = clock.instant()
                 val refreshToken = RefreshToken(
                     id = UUID.randomUUID(),
                     sessionId = session.id,
@@ -290,7 +291,7 @@ class AuthController(
 
         // 미존재 / 타인 소유(IDOR) / 이미 비활성(revoked·만료, EC-2) 세션은 모두 404 (존재 비노출 + 멱등 재폐기 방지).
         val session = sessionService.lookup(sid)
-        if (session == null || session.userId != claims.userId || !session.isActive(Instant.now())) {
+        if (session == null || session.userId != claims.userId || !session.isActive(clock.instant())) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build<Void>()
         }
 
