@@ -54,7 +54,6 @@ import org.testcontainers.junit.jupiter.Testcontainers
 )
 @Testcontainers
 class UsersControllerIntegrationTest {
-
     companion object {
         /** Testcontainers PostgreSQL 16 — Flyway V001~V006 적용 대상 */
         @Container
@@ -114,11 +113,12 @@ class UsersControllerIntegrationTest {
 
     @BeforeEach
     fun prepareUsers() {
-        val alice = userRepository.save(
-            username = testUsername,
-            email = testEmail,
-            displayName = testDisplayName,
-        )
+        val alice =
+            userRepository.save(
+                username = testUsername,
+                email = testEmail,
+                displayName = testDisplayName,
+            )
         localCredentialService.store(alice.id, testPassword.toCharArray())
 
         userRepository.save(
@@ -139,15 +139,17 @@ class UsersControllerIntegrationTest {
     fun `TC-01 인증된 사용자가 GET users 호출 시 200과 사용자 목록 반환`() {
         val accessToken = login()
 
-        val headers = HttpHeaders().apply {
-            set(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
-        }
-        val response = restTemplate.exchange(
-            "http://localhost:$port/api/v1/users",
-            HttpMethod.GET,
-            HttpEntity<Void>(headers),
-            List::class.java,
-        )
+        val headers =
+            HttpHeaders().apply {
+                set(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
+            }
+        val response =
+            restTemplate.exchange(
+                "http://localhost:$port/api/v1/users",
+                HttpMethod.GET,
+                HttpEntity<Void>(headers),
+                List::class.java,
+            )
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
 
@@ -175,15 +177,17 @@ class UsersControllerIntegrationTest {
     fun `TC-02 query 필터로 username 또는 displayName 부분일치 항목만 반환`() {
         val accessToken = login()
 
-        val headers = HttpHeaders().apply {
-            set(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
-        }
-        val response = restTemplate.exchange(
-            "http://localhost:$port/api/v1/users?query=alice",
-            HttpMethod.GET,
-            HttpEntity<Void>(headers),
-            List::class.java,
-        )
+        val headers =
+            HttpHeaders().apply {
+                set(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
+            }
+        val response =
+            restTemplate.exchange(
+                "http://localhost:$port/api/v1/users?query=alice",
+                HttpMethod.GET,
+                HttpEntity<Void>(headers),
+                List::class.java,
+            )
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
 
@@ -205,12 +209,13 @@ class UsersControllerIntegrationTest {
      */
     @Test
     fun `TC-03 미인증 요청은 401 반환`() {
-        val response = restTemplate.exchange(
-            "http://localhost:$port/api/v1/users",
-            HttpMethod.GET,
-            HttpEntity<Void>(HttpHeaders()),
-            Map::class.java,
-        )
+        val response =
+            restTemplate.exchange(
+                "http://localhost:$port/api/v1/users",
+                HttpMethod.GET,
+                HttpEntity<Void>(HttpHeaders()),
+                Map::class.java,
+            )
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
     }
@@ -223,16 +228,18 @@ class UsersControllerIntegrationTest {
      * @return raw JWT access_token 문자열
      */
     private fun login(): String {
-        val headers = HttpHeaders().apply {
-            contentType = MediaType.APPLICATION_JSON
-        }
+        val headers =
+            HttpHeaders().apply {
+                contentType = MediaType.APPLICATION_JSON
+            }
         val body = """{"provider":"local","username":"$testUsername","password":"$testPassword"}"""
-        val response = restTemplate.exchange(
-            "http://localhost:$port/api/v1/auth/login",
-            HttpMethod.POST,
-            HttpEntity(body, headers),
-            Map::class.java,
-        )
+        val response =
+            restTemplate.exchange(
+                "http://localhost:$port/api/v1/auth/login",
+                HttpMethod.POST,
+                HttpEntity(body, headers),
+                Map::class.java,
+            )
         assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
         return (response.body as Map<*, *>)["access_token"] as String
     }

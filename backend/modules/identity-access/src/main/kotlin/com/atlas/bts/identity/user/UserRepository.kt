@@ -20,7 +20,6 @@ import java.util.UUID
  * 구현체: [JdbcUserRepository].
  */
 interface UserRepository {
-
     /**
      * 내부 id 로 사용자 조회.
      *
@@ -83,7 +82,10 @@ interface UserRepository {
      * @param limit 반환 상한 건수
      * @return 사용자 목록 (최대 [limit] 건)
      */
-    fun findAll(query: String?, limit: Int): List<User>
+    fun findAll(
+        query: String?,
+        limit: Int,
+    ): List<User>
 }
 
 /**
@@ -107,10 +109,8 @@ interface UserRepository {
 class JdbcUserRepository(
     private val jdbc: NamedParameterJdbcTemplate,
 ) : UserRepository {
-
     @Transactional(readOnly = true)
-    override fun findById(id: UUID): User? =
-        jdbc.query(SQL_FIND_BY_ID, mapOf("id" to id), UserRowMapper).firstOrNull()
+    override fun findById(id: UUID): User? = jdbc.query(SQL_FIND_BY_ID, mapOf("id" to id), UserRowMapper).firstOrNull()
 
     @Transactional(readOnly = true)
     override fun findByUsername(username: String): User? =
@@ -151,11 +151,14 @@ class JdbcUserRepository(
      * @param limit 반환 상한 건수
      */
     @Transactional(readOnly = true)
-    override fun findAll(query: String?, limit: Int): List<User> =
+    override fun findAll(
+        query: String?,
+        limit: Int,
+    ): List<User> =
         if (query == null) {
             jdbc.query(SQL_FIND_ALL, mapOf("limit" to limit), UserRowMapper)
         } else {
-            val pattern = "%${query}%"
+            val pattern = "%$query%"
             jdbc.query(SQL_FIND_ALL_FILTERED, mapOf("pattern" to pattern, "limit" to limit), UserRowMapper)
         }
 
