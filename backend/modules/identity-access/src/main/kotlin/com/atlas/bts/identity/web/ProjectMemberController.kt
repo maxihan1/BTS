@@ -183,10 +183,10 @@ class ProjectMemberController(
             return ActorContext(userId = userId, isPat = false)
         }
 
-        val principal = SecurityContextHolder.getContext().authentication?.principal
+        // PAT 경로: PatAuthenticationFilter가 principal에 userId.toString()을 설정한다.
+        val rawPrincipal = SecurityContextHolder.getContext().authentication?.principal as? String
             ?: return null
-        val userId = runCatching { UUID.fromString(principal as? String ?: return null) }.getOrNull()
-            ?: return null
+        val userId = runCatching { UUID.fromString(rawPrincipal) }.getOrNull() ?: return null
         return ActorContext(userId = userId, isPat = true)
     }
 
