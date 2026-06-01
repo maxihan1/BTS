@@ -72,7 +72,7 @@ interface IssueDetailPageProps {
  * - useQuery로 fetchIssue(issueKey)를 호출한다.
  * - 3 상태 분기: 로딩 → 에러/미존재 → 성공.
  * - 성공 레이아웃: 좌측 본문(breadcrumb + 제목 인라인 편집) + 우측 메타패널.
- * - 상태는 읽기전용 배지만 (전이 UI 없음 — D6 제외).
+ * - 상태 전이 셀렉터 + 담당자 셀렉터(useUsersByIds 별도 조회) + debounce 검색 포함.
  * - 삭제: 확인 UI → useDeleteIssue → 목록으로 navigate.
  *
  * 라우터 의존 없이 props로 issueKey를 받아 단위 테스트가 가능하다.
