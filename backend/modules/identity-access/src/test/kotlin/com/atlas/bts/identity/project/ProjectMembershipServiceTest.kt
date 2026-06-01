@@ -169,7 +169,8 @@ class ProjectMembershipServiceTest {
         stubAuditRecord()
         stubUser(targetId)
         every { membershipRepo.countByProject(projectId) } returns 1
-        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
+        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns
+            membership(actorId, ProjectRole.PROJECT_ADMIN)
         every { membershipRepo.findByProjectAndUser(projectId, targetId) } returns null
         val saved = membership(targetId, ProjectRole.MEMBER)
         every { membershipRepo.save(any()) } returns saved
@@ -177,7 +178,9 @@ class ProjectMembershipServiceTest {
         val result = service.addMember(actorId, false, projectId, targetId, ProjectRole.MEMBER)
 
         assertThat(result.userId).isEqualTo(targetId)
-        verify(exactly = 1) { auditLogService.record(match { it.eventType == AuthEventType.PROJECT_MEMBER_ADDED }) }
+        verify(exactly = 1) {
+            auditLogService.record(match { it.eventType == AuthEventType.PROJECT_MEMBER_ADDED })
+        }
     }
 
     // ── S3: 권한 가드 ─────────────────────────────────────────────────────────
@@ -187,7 +190,8 @@ class ProjectMembershipServiceTest {
         stubProjectExists()
         stubAcquireLock()
         every { membershipRepo.countByProject(projectId) } returns 2
-        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.MEMBER)
+        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns
+            membership(actorId, ProjectRole.MEMBER)
 
         assertThatThrownBy {
             service.addMember(actorId, false, projectId, targetId, ProjectRole.MEMBER)
@@ -213,22 +217,27 @@ class ProjectMembershipServiceTest {
         stubProjectExists()
         stubAuditRecord()
         every { membershipRepo.countByProject(projectId) } returns 2
-        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
-        every { membershipRepo.findByProjectAndUser(projectId, targetId) } returns membership(targetId, ProjectRole.MEMBER)
+        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns
+            membership(actorId, ProjectRole.PROJECT_ADMIN)
+        every { membershipRepo.findByProjectAndUser(projectId, targetId) } returns
+            membership(targetId, ProjectRole.MEMBER)
         val updated = membership(targetId, ProjectRole.PROJECT_ADMIN)
         every { membershipRepo.updateRole(projectId, targetId, ProjectRole.PROJECT_ADMIN) } returns updated
 
         val result = service.changeRole(actorId, false, projectId, targetId, ProjectRole.PROJECT_ADMIN)
 
         assertThat(result.role).isEqualTo(ProjectRole.PROJECT_ADMIN)
-        verify(exactly = 1) { auditLogService.record(match { it.eventType == AuthEventType.PROJECT_ROLE_CHANGED }) }
+        verify(exactly = 1) {
+            auditLogService.record(match { it.eventType == AuthEventType.PROJECT_ROLE_CHANGED })
+        }
     }
 
     @Test
     fun `S4b changeRole 대상이 멤버 아님 → MemberNotFound`() {
         stubProjectExists()
         every { membershipRepo.countByProject(projectId) } returns 1
-        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
+        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns
+            membership(actorId, ProjectRole.PROJECT_ADMIN)
         every { membershipRepo.findByProjectAndUser(projectId, targetId) } returns null
 
         assertThatThrownBy {
@@ -243,22 +252,27 @@ class ProjectMembershipServiceTest {
         stubProjectExists()
         stubAuditRecord()
         every { membershipRepo.countByProject(projectId) } returns 2
-        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
-        every { membershipRepo.findByProjectAndUser(projectId, targetId) } returns membership(targetId, ProjectRole.MEMBER)
+        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns
+            membership(actorId, ProjectRole.PROJECT_ADMIN)
+        every { membershipRepo.findByProjectAndUser(projectId, targetId) } returns
+            membership(targetId, ProjectRole.MEMBER)
         every { membershipRepo.countAdminsByProject(projectId) } returns 1
         every { membershipRepo.deleteByProjectAndUser(projectId, targetId) } returns true
 
         service.removeMember(actorId, false, projectId, targetId)
 
         verify(exactly = 1) { membershipRepo.deleteByProjectAndUser(projectId, targetId) }
-        verify(exactly = 1) { auditLogService.record(match { it.eventType == AuthEventType.PROJECT_MEMBER_REMOVED }) }
+        verify(exactly = 1) {
+            auditLogService.record(match { it.eventType == AuthEventType.PROJECT_MEMBER_REMOVED })
+        }
     }
 
     @Test
     fun `S5b removeMember 대상이 멤버 아님 → MemberNotFound`() {
         stubProjectExists()
         every { membershipRepo.countByProject(projectId) } returns 1
-        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
+        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns
+            membership(actorId, ProjectRole.PROJECT_ADMIN)
         every { membershipRepo.findByProjectAndUser(projectId, targetId) } returns null
 
         assertThatThrownBy {
@@ -273,7 +287,8 @@ class ProjectMembershipServiceTest {
         stubProjectExists()
         stubAcquireLock()
         every { membershipRepo.countByProject(projectId) } returns 1
-        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
+        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns
+            membership(actorId, ProjectRole.PROJECT_ADMIN)
         every { membershipRepo.countAdminsByProject(projectId) } returns 1
 
         assertThatThrownBy {
@@ -286,7 +301,8 @@ class ProjectMembershipServiceTest {
         stubProjectExists()
         stubAcquireLock()
         every { membershipRepo.countByProject(projectId) } returns 2
-        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
+        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns
+            membership(actorId, ProjectRole.PROJECT_ADMIN)
         every { membershipRepo.countAdminsByProject(projectId) } returns 1
 
         assertThatThrownBy {
@@ -339,7 +355,8 @@ class ProjectMembershipServiceTest {
         stubProjectExists()
         stubAcquireLock()
         every { membershipRepo.countByProject(projectId) } returns 1
-        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
+        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns
+            membership(actorId, ProjectRole.PROJECT_ADMIN)
         every { membershipRepo.findByProjectAndUser(projectId, targetId) } returns null
         every { userRepository.findById(targetId) } returns null
 
@@ -356,8 +373,10 @@ class ProjectMembershipServiceTest {
         stubAcquireLock()
         stubUser(targetId)
         every { membershipRepo.countByProject(projectId) } returns 2
-        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
-        every { membershipRepo.findByProjectAndUser(projectId, targetId) } returns membership(targetId, ProjectRole.MEMBER)
+        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns
+            membership(actorId, ProjectRole.PROJECT_ADMIN)
+        every { membershipRepo.findByProjectAndUser(projectId, targetId) } returns
+            membership(targetId, ProjectRole.MEMBER)
 
         assertThatThrownBy {
             service.addMember(actorId, false, projectId, targetId, ProjectRole.MEMBER)
@@ -370,8 +389,12 @@ class ProjectMembershipServiceTest {
     fun `listMembers — 프로젝트 멤버 목록 반환`() {
         stubProjectExists()
         every { membershipRepo.countByProject(projectId) } returns 2
-        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
-        val members = listOf(membership(actorId, ProjectRole.PROJECT_ADMIN), membership(targetId, ProjectRole.MEMBER))
+        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns
+            membership(actorId, ProjectRole.PROJECT_ADMIN)
+        val members = listOf(
+            membership(actorId, ProjectRole.PROJECT_ADMIN),
+            membership(targetId, ProjectRole.MEMBER),
+        )
         every { membershipRepo.listByProject(projectId) } returns members
 
         val result = service.listMembers(actorId, projectId)
@@ -425,7 +448,8 @@ class ProjectMembershipServiceTest {
         stubAuditRecord()
         stubUser(targetId)
         every { membershipRepo.countByProject(projectId) } returns 1
-        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
+        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns
+            membership(actorId, ProjectRole.PROJECT_ADMIN)
         every { membershipRepo.findByProjectAndUser(projectId, targetId) } returns null
         val saved = membership(targetId, ProjectRole.MEMBER)
         every { membershipRepo.save(any()) } returns saved

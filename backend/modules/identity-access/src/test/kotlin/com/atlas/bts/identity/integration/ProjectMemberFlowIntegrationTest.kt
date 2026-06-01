@@ -214,7 +214,7 @@ class ProjectMemberFlowIntegrationTest {
     @Test
     fun `S3 MEMBER가 추가 시도 — 403 not_project_admin`() {
         bootstrapAdmin(aliceId, alicePassword)
-        seedMember(aliceId, bobId, "MEMBER")
+        seedMember(bobId, "MEMBER")
         val token = loginJwt("bob", bobPassword)
 
         val resp = postMember(token, activeProjectId, carolId, "MEMBER")
@@ -275,7 +275,7 @@ class ProjectMemberFlowIntegrationTest {
     @Test
     fun `S4 역할 변경 ADMIN to MEMBER — 200`() {
         bootstrapAdmin(aliceId, alicePassword)
-        seedMember(aliceId, bobId, "PROJECT_ADMIN")
+        seedMember(bobId, "PROJECT_ADMIN")
         val token = loginJwt("alice", alicePassword)
 
         val resp = patchRole(token, activeProjectId, bobId, "MEMBER")
@@ -293,7 +293,7 @@ class ProjectMemberFlowIntegrationTest {
     @Test
     fun `S5 멤버 제거 — 204`() {
         bootstrapAdmin(aliceId, alicePassword)
-        seedMember(aliceId, bobId, "MEMBER")
+        seedMember(bobId, "MEMBER")
         val token = loginJwt("alice", alicePassword)
 
         val resp = deleteMember(token, activeProjectId, bobId)
@@ -426,7 +426,7 @@ class ProjectMemberFlowIntegrationTest {
     @Test
     fun `EC-2b 두 ADMIN 동시 상호제거 — admin 최소 1명 유지`() {
         bootstrapAdmin(aliceId, alicePassword)
-        seedMember(aliceId, bobId, "PROJECT_ADMIN")
+        seedMember(bobId, "PROJECT_ADMIN")
         val tokenAlice = loginJwt("alice", alicePassword)
         val tokenBob = loginJwt("bob", bobPassword)
 
@@ -558,8 +558,8 @@ class ProjectMemberFlowIntegrationTest {
      *
      * S3·S4·S5·EC-2b 시나리오에서 ADMIN 권한 없이 멤버를 추가해야 할 때 사용한다.
      */
-    private fun seedMember(actorAdminId: UUID, targetUserId: UUID, role: String) {
-        // actor가 이미 ADMIN인 상태에서 direct INSERT — 서비스 레이어 우회로 시드
+    private fun seedMember(targetUserId: UUID, role: String) {
+        // direct INSERT — 서비스 레이어 우회로 시드 (actor 파라미터 불필요, activeProjectId 직접 참조)
         jdbc.update(
             """
             INSERT INTO project_memberships (project_id, user_id, role)

@@ -180,8 +180,10 @@ class ProjectMembershipRepositoryIntegrationTest {
 
     @Test
     fun `listByProject — 프로젝트 멤버 전체 목록을 반환한다`() {
-        repo.save(ProjectMembership(projectId, userId1, ProjectRole.PROJECT_ADMIN, java.time.Instant.now(), java.time.Instant.now()))
-        repo.save(ProjectMembership(projectId, userId2, ProjectRole.MEMBER, java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(ProjectMembership(projectId, userId1, ProjectRole.PROJECT_ADMIN,
+            java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(ProjectMembership(projectId, userId2, ProjectRole.MEMBER,
+            java.time.Instant.now(), java.time.Instant.now()))
 
         val list = repo.listByProject(projectId)
 
@@ -200,8 +202,10 @@ class ProjectMembershipRepositoryIntegrationTest {
 
     @Test
     fun `countByProject — 프로젝트 전체 멤버 수를 반환한다`() {
-        repo.save(ProjectMembership(projectId, userId1, ProjectRole.PROJECT_ADMIN, java.time.Instant.now(), java.time.Instant.now()))
-        repo.save(ProjectMembership(projectId, userId2, ProjectRole.MEMBER, java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(ProjectMembership(projectId, userId1, ProjectRole.PROJECT_ADMIN,
+            java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(ProjectMembership(projectId, userId2, ProjectRole.MEMBER,
+            java.time.Instant.now(), java.time.Instant.now()))
 
         assertThat(repo.countByProject(projectId)).isEqualTo(2)
     }
@@ -215,15 +219,18 @@ class ProjectMembershipRepositoryIntegrationTest {
 
     @Test
     fun `countAdminsByProject — PROJECT_ADMIN 역할 수만 반환한다`() {
-        repo.save(ProjectMembership(projectId, userId1, ProjectRole.PROJECT_ADMIN, java.time.Instant.now(), java.time.Instant.now()))
-        repo.save(ProjectMembership(projectId, userId2, ProjectRole.MEMBER, java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(ProjectMembership(projectId, userId1, ProjectRole.PROJECT_ADMIN,
+            java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(ProjectMembership(projectId, userId2, ProjectRole.MEMBER,
+            java.time.Instant.now(), java.time.Instant.now()))
 
         assertThat(repo.countAdminsByProject(projectId)).isEqualTo(1)
     }
 
     @Test
     fun `countAdminsByProject — 어드민이 없으면 0을 반환한다`() {
-        repo.save(ProjectMembership(projectId, userId1, ProjectRole.MEMBER, java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(ProjectMembership(projectId, userId1, ProjectRole.MEMBER,
+            java.time.Instant.now(), java.time.Instant.now()))
 
         assertThat(repo.countAdminsByProject(projectId)).isEqualTo(0)
     }
@@ -232,7 +239,8 @@ class ProjectMembershipRepositoryIntegrationTest {
 
     @Test
     fun `updateRole — 역할 변경 시 변경된 ProjectMembership을 반환하고 updated_at이 갱신된다`() {
-        repo.save(ProjectMembership(projectId, userId1, ProjectRole.MEMBER, java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(ProjectMembership(projectId, userId1, ProjectRole.MEMBER,
+            java.time.Instant.now(), java.time.Instant.now()))
         val originalUpdatedAt = repo.findByProjectAndUser(projectId, userId1)!!.updatedAt
 
         // updated_at 비교를 위해 10ms 대기 — DB TIMESTAMPTZ는 µs 단위이므로 충분한 간격 확보
@@ -255,7 +263,8 @@ class ProjectMembershipRepositoryIntegrationTest {
 
     @Test
     fun `deleteByProjectAndUser — 존재하는 멤버십 삭제 시 true 반환`() {
-        repo.save(ProjectMembership(projectId, userId1, ProjectRole.MEMBER, java.time.Instant.now(), java.time.Instant.now()))
+        repo.save(ProjectMembership(projectId, userId1, ProjectRole.MEMBER,
+            java.time.Instant.now(), java.time.Instant.now()))
 
         val deleted = repo.deleteByProjectAndUser(projectId, userId1)
 
