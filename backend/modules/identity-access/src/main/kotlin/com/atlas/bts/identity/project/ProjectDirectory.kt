@@ -14,8 +14,9 @@ import java.util.UUID
  * 동일 PostgreSQL·동일 public 스키마를 공유하므로 DB read-only 쿼리로 대체한다.
  * 분리 배포 시 SPI(Service Provider Interface)로 교체한다.
  *
- * **의존 컬럼**: `id UUID`, `deleted_at TIMESTAMPTZ` 두 컬럼만.
- * projects DDL 변경 시 이 두 컬럼 유지 여부를 반드시 확인할 것.
+ * **의존 컬럼**: `id UUID`, `key VARCHAR(10)`, `deleted_at TIMESTAMPTZ`.
+ * projects DDL 변경 시 세 컬럼 유지 여부를 반드시 확인할 것.
+ * `key` 컬럼 소유권은 issue-tracking BC — 정규식(`^[A-Z][A-Z0-9]{1,9}$`) 검증은 호출 측이 완료한 것으로 신뢰한다.
  *
  * 구현체: [JdbcProjectDirectory].
  */
