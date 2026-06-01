@@ -267,8 +267,8 @@ class ProjectMembershipServiceTest {
     @Test
     fun `S6 마지막 ADMIN 제거 시도 → LastAdminProtected`() {
         stubProjectExists()
+        stubAcquireLock()
         every { membershipRepo.countByProject(projectId) } returns 1
-        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
         every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
         every { membershipRepo.countAdminsByProject(projectId) } returns 1
 
@@ -280,8 +280,8 @@ class ProjectMembershipServiceTest {
     @Test
     fun `S8 마지막 ADMIN 강등 시도 — ADMIN→MEMBER 변경 → LastAdminProtected`() {
         stubProjectExists()
+        stubAcquireLock()
         every { membershipRepo.countByProject(projectId) } returns 2
-        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
         every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
         every { membershipRepo.countAdminsByProject(projectId) } returns 1
 
