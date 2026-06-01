@@ -78,6 +78,19 @@ interface ProjectMembershipRepository {
      * @return 삭제가 실제로 발생했으면 true, 해당 멤버십이 없었으면 false
      */
     fun deleteByProjectAndUser(projectId: UUID, userId: UUID): Boolean
+
+    /**
+     * 프로젝트 단위 PostgreSQL advisory 트랜잭션 락을 획득한다 (EC-1/EC-2b 동시성 보호).
+     *
+     * `pg_advisory_xact_lock(hi, lo)` — 트랜잭션 종료 시 자동 해제.
+     * 부트스트랩(count→insert)과 마지막 admin 검사(count→delete/update)를
+     * 직렬화하는 데 사용한다. 반드시 `@Transactional` 내에서 호출해야 한다.
+     *
+     * UUID를 상위 64bit([hi])와 하위 64bit([lo])로 분리하여 두 bigint 파라미터에 바인딩한다.
+     *
+     * @param projectId 락을 획득할 프로젝트 UUID
+     */
+    fun acquireProjectLock(projectId: UUID)
 }
 
 /**
@@ -173,6 +186,19 @@ class JdbcProjectMembershipRepository(
             mapOf("projectId" to projectId, "userId" to userId),
         ) > 0
 
+    /**
+     * 프로젝트 단위 advisory 트랜잭션 락을 획득한다.
+     *
+     * UUID를 상위 64bit(hi)와 하위 64bit(lo)로 분리하여 두 bigint 파라미터에 바인딩한다.
+     * 문자열 결합 없이 named parameter 바인딩으로 SQL 인젝션을 원천 차단한다 (DEVELOPMENT.md §1.3).
+     * 트랜잭션 커밋/롤백 시 PostgreSQL이 자동으로 락을 해제한다.
+     */
+    override fun acquireProjectLock(projectId: UUID) {
+        val hi = projectId.mostSignificantBits
+        val lo = projectId.leastSignificantBits
+        jdbc.update(SQL_ADVISORY_LOCK, mapOf("hi" to hi, "lo" to lo))
+    }
+
     // ── SQL 상수 ─────────────────────────────────────────────────────────────
 
     private companion object {
@@ -232,6 +258,13 @@ class JdbcProjectMembershipRepository(
             WHERE project_id = :projectId
               AND user_id    = :userId
         """
+
+        /**
+         * 프로젝트 UUID를 상위/하위 64bit으로 분리하여 advisory 트랜잭션 락을 획득한다.
+         * :hi = mostSignificantBits, :lo = leastSignificantBits — 두 파라미터 모두 bigint.
+         * SELECT pg_advisory_xact_lock 은 행을 반환하지 않으므로 jdbc.update 로 실행한다.
+         */
+        const val SQL_ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(:hi, :lo)"
     }
 }
 
