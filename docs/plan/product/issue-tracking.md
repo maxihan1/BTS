@@ -65,12 +65,12 @@
 
 **우선순위**. 필수 | **선행**. §2.1.1, §4.3.1 (Watcher) | **Plan slug**. `issue/assignees`
 
-- [ ] D1. 도메인 — R/A/W 역할 분리 (책임. backend-engineer)
-- [ ] D2. 명세 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `issues.reporter_id/assignee_id`, `issue_watchers` (책임. db-engineer)
-- [ ] D4. 백엔드 — `PATCH /api/v1/issues/{key}/assignee` 등 (책임. backend-engineer + security-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 담당자 셀렉터 + Watcher 버튼 (책임. designer → frontend-engineer)
+- [x] D1. 도메인 — Reporter(기존 재사용)/Assignee(신규 `Issue.assigneeId: ActorId?` + assignTo/unassign). **Watcher(W)는 FR-WT-01(§4.3.1)로 분리** (PR #49)
+- [x] D2. 명세 — 전용 엔드포인트 merge-patch 3-state 회피 + UserLookupPort 사용자 실재 검증(cross-BC) (PR #49)
+- [x] D3. 데이터 모델 — `issues.assignee_id`(UUID NULL, FK 미적용 BC격리, V007 + init_codegen 미러). `reporter_id` 기존. **`issue_watchers`는 FR-WT-01로 이관** (PR #49)
+- [x] D4. 백엔드 — `PATCH /api/v1/issues/{key}/assignee` + 422 ASSIGNEE_NOT_FOUND + OCC + 도메인 경유 + `GET /api/v1/users`(셀렉터 재료, identity-access, 인증가드) + shared-kernel UserLookupPort (PR #49)
+- [x] D5. 백엔드 테스트 — MockK 단위 + Testcontainers 통합(S1~S6) + ArchUnit BC격리 + UserLookupAdapter 통합 (PR #49)
+- [ ] D6. 프론트 UI — 담당자 셀렉터(GET /api/v1/users 사용) (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
 #### §2.1.4 FR-IS-04 — 본문(Markdown) + 우선순위/라벨/환경/영향도
