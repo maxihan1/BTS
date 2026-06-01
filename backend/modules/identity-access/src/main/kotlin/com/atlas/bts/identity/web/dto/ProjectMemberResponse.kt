@@ -36,9 +36,9 @@ data class ProjectMemberResponse(
         /**
          * [ProjectMembership] 도메인 객체를 DTO로 변환한다.
          *
-         * displayName / username 정보를 갖지 않으므로 두 필드는 null이다.
-         * POST/PATCH 직후 도메인 반환값만 있는 경우의 내부 사용을 위해 유지한다.
-         * 컨트롤러는 이 overload 대신 [from(ProjectMemberView)]를 사용해 null을 피한다.
+         * displayName / username 정보를 갖지 않으므로 두 필드는 `null`이다.
+         * 컨트롤러는 응답 직전 [from(ProjectMemberView)]를 사용해 표시 정보를 포함한다.
+         * 이 overload는 단위 테스트·내부 변환이 필요한 경우를 위해 보존한다.
          */
         fun from(membership: ProjectMembership): ProjectMemberResponse = ProjectMemberResponse(
             projectId = membership.projectId,

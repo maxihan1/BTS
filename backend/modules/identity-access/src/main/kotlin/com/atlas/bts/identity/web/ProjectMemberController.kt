@@ -203,17 +203,19 @@ class ProjectMemberController(
     /**
      * projectIdOrKey 문자열을 활성 프로젝트 UUID로 해석한다 (B3 B-1).
      *
-     * 해석 순서.
-     * 1. UUID 파싱 시도 → 성공하면 [ProjectDirectory.exists] 로 활성 여부 확인.
-     *    exists = false → null 반환 → 호출 측에서 404 수렴.
+     * ## 해석 순서
+     * 1. UUID 파싱 시도 — [UUID.fromString] 성공 시 [ProjectDirectory.exists] 로 활성 여부 확인.
+     *    `exists = false` → `null` 반환 → 호출 측에서 404 단일봉투로 응답.
      * 2. UUID 파싱 실패 → key로 간주 → [ProjectDirectory.resolveKeyToId] 호출.
-     *    resolveKeyToId = null → null 반환 → 호출 측에서 404 수렴.
+     *    결과 `null` → `null` 반환 → 호출 측에서 404 단일봉투로 응답.
      *
-     * 정규식 사전거부는 하지 않는다. 빈문자열·특수문자·초장문·소문자 등 모든 입력이
-     * key 경로로 흘러가 DB에서 null을 반환하며, 호출 측이 404 단일봉투로 응답한다 (B-1).
+     * ## 입력 봉투 보장 (B-1)
+     * 정규식 사전거부는 하지 않는다. 검증은 DB 조회 결과(`exists`/`resolveKeyToId`)로만 수행한다.
+     * 빈문자열·특수문자·초장문·소문자 등 UUID 파싱이 실패하는 모든 입력은 key 경로로 흘러가
+     * DB에서 `null`을 반환하며, 호출 측이 `404 {error:"project_not_found"}` 단일봉투로 응답한다.
      *
-     * @param raw path variable 원본 문자열
-     * @return 활성 프로젝트 UUID, 미존재·soft-deleted이면 null
+     * @param raw path variable 원본 문자열 — 신뢰할 수 없는 외부 입력
+     * @return 활성 프로젝트 UUID, 미존재·soft-deleted·키 미존재이면 `null`
      */
     private fun resolveProjectId(raw: String): UUID? {
         val asUuid = runCatching { UUID.fromString(raw) }.getOrNull()
