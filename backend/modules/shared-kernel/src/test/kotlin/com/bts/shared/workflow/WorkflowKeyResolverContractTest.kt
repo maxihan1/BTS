@@ -27,14 +27,14 @@ import kotlin.reflect.full.memberFunctions
  * JVM reflection 대신 Kotlin reflection (`KClass.memberFunctions`) 을 사용해야 한다.
  */
 class WorkflowKeyResolverContractTest {
-
     @Test
     fun `WorkflowKeyResolver has resolveStart returning WorkflowStartState`() {
         // Kotlin reflection 으로 resolveStart 메서드가 선언되어 있고 반환 타입이 WorkflowStartState 인지 검증한다.
         // @JvmInline value class 파라미터가 있으면 JVM 메서드 이름이 mangled 되므로 Kotlin reflection 필수.
-        val method = WorkflowKeyResolver::class.memberFunctions
-            .firstOrNull { it.name == "resolveStart" }
-            ?: error("WorkflowKeyResolver 에 resolveStart 메서드가 없습니다.")
+        val method =
+            WorkflowKeyResolver::class.memberFunctions
+                .firstOrNull { it.name == "resolveStart" }
+                ?: error("WorkflowKeyResolver 에 resolveStart 메서드가 없습니다.")
 
         assertThat(method.returnType.classifier).isEqualTo(WorkflowStartState::class)
     }
@@ -44,17 +44,20 @@ class WorkflowKeyResolverContractTest {
         // @Transactional(propagation = MANDATORY, readOnly = true) 어노테이션이 정확히 선언됐는지 검증한다.
         // 호출자가 활성 트랜잭션 없이 이 메서드를 호출하면 Spring 이 IllegalTransactionStateException 을 던진다.
         // JVM mangling 때문에 Kotlin reflection 으로 메서드를 찾되, 어노테이션은 Java reflection 으로 읽는다.
-        val kMethod = WorkflowKeyResolver::class.memberFunctions
-            .firstOrNull { it.name == "resolveStart" }
-            ?: error("WorkflowKeyResolver 에 resolveStart 메서드가 없습니다.")
+        val kMethod =
+            WorkflowKeyResolver::class.memberFunctions
+                .firstOrNull { it.name == "resolveStart" }
+                ?: error("WorkflowKeyResolver 에 resolveStart 메서드가 없습니다.")
 
         // Kotlin KFunction → JVM Method 변환 후 어노테이션 조회
-        val jvmMethod = WorkflowKeyResolver::class.java.declaredMethods
-            .firstOrNull { it.name.startsWith("resolveStart") }
-            ?: error("JVM 에서 resolveStart 메서드를 찾을 수 없습니다.")
+        val jvmMethod =
+            WorkflowKeyResolver::class.java.declaredMethods
+                .firstOrNull { it.name.startsWith("resolveStart") }
+                ?: error("JVM 에서 resolveStart 메서드를 찾을 수 없습니다.")
 
-        val tx = jvmMethod.getAnnotation(Transactional::class.java)
-            ?: error("resolveStart 에 @Transactional 어노테이션이 없습니다. (kMethod=$kMethod)")
+        val tx =
+            jvmMethod.getAnnotation(Transactional::class.java)
+                ?: error("resolveStart 에 @Transactional 어노테이션이 없습니다. (kMethod=$kMethod)")
 
         assertThat(tx.propagation).isEqualTo(Propagation.MANDATORY)
         assertThat(tx.readOnly).isTrue()
