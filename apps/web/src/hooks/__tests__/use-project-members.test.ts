@@ -102,7 +102,7 @@ describe('useAddMember', () => {
 
     await act(async () => {
       // alice는 이미 ATLAS 멤버 — X-MSW-Reset-Members로 store를 초기화한 뒤 확인
-      result.current.mutate({ userId: 'fixture-alice-uuid', role: 'MEMBER' })
+      result.current.mutate({ userId: '00000000-0000-0000-0000-000000000001', role: 'MEMBER' })
     })
 
     await waitFor(() => expect(result.current.isError).toBe(true))
@@ -180,14 +180,14 @@ describe('useChangeRole', () => {
 
     await act(async () => {
       // bob(MEMBER)을 PROJECT_ADMIN으로 변경
-      result.current.mutate({ userId: 'fixture-bob-uuid', role: 'PROJECT_ADMIN' })
+      result.current.mutate({ userId: '00000000-0000-0000-0000-000000000002', role: 'PROJECT_ADMIN' })
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     await waitFor(() => {
       const cached = client.getQueryData<ProjectMember[]>(PROJECT_MEMBER_KEYS.list('ATLAS'))
-      return cached?.find((m) => m.userId === 'fixture-bob-uuid')?.role === 'PROJECT_ADMIN'
+      return cached?.find((m) => m.userId === '00000000-0000-0000-0000-000000000002')?.role === 'PROJECT_ADMIN'
     })
   })
 
@@ -199,7 +199,7 @@ describe('useChangeRole', () => {
           members: [
             {
               projectId: 'project-atlas-uuid',
-              userId: 'fixture-alice-uuid',
+              userId: '00000000-0000-0000-0000-000000000001',
               role: 'PROJECT_ADMIN',
               createdAt: '2026-01-01T00:00:00Z',
               updatedAt: '2026-01-01T00:00:00Z',
@@ -221,19 +221,19 @@ describe('useChangeRole', () => {
 
     const aliceBefore = client
       .getQueryData<ProjectMember[]>(PROJECT_MEMBER_KEYS.list('ATLAS'))
-      ?.find((m) => m.userId === 'fixture-alice-uuid')
+      ?.find((m) => m.userId === '00000000-0000-0000-0000-000000000001')
 
     const { result } = renderHook(() => useChangeRole('ATLAS'), { wrapper })
 
     await act(async () => {
-      result.current.mutate({ userId: 'fixture-alice-uuid', role: 'MEMBER' })
+      result.current.mutate({ userId: '00000000-0000-0000-0000-000000000001', role: 'MEMBER' })
     })
 
     await waitFor(() => expect(result.current.isError).toBe(true))
 
     // 롤백 — alice의 역할이 원래대로 돌아와야 한다
     const cached = client.getQueryData<ProjectMember[]>(PROJECT_MEMBER_KEYS.list('ATLAS'))
-    const aliceAfter = cached?.find((m) => m.userId === 'fixture-alice-uuid')
+    const aliceAfter = cached?.find((m) => m.userId === '00000000-0000-0000-0000-000000000001')
     expect(aliceAfter?.role).toBe(aliceBefore?.role)
   })
 })
@@ -277,7 +277,7 @@ describe('useRemoveMember', () => {
           members: [
             {
               projectId: 'project-atlas-uuid',
-              userId: 'fixture-alice-uuid',
+              userId: '00000000-0000-0000-0000-000000000001',
               role: 'PROJECT_ADMIN',
               createdAt: '2026-01-01T00:00:00Z',
               updatedAt: '2026-01-01T00:00:00Z',
@@ -303,7 +303,7 @@ describe('useRemoveMember', () => {
     const { result } = renderHook(() => useRemoveMember('ATLAS'), { wrapper })
 
     act(() => {
-      result.current.mutate('fixture-alice-uuid')
+      result.current.mutate('00000000-0000-0000-0000-000000000001')
     })
 
     await waitFor(() => expect(result.current.isError).toBe(true))
