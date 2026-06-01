@@ -287,7 +287,7 @@ class ProjectMemberControllerTest {
     @Test
     fun `PATCH members userId JWT actor 200 반환`() {
         every {
-            projectMembershipService.changeRole(ACTOR_ID, false, PROJECT_ID, TARGET_ID, ProjectRole.PROJECT_ADMIN)
+            projectMembershipService.changeRole(ACTOR_ID, PROJECT_ID, TARGET_ID, ProjectRole.PROJECT_ADMIN)
         } returns membership(TARGET_ID, ProjectRole.PROJECT_ADMIN)
 
         mockMvc.perform(
@@ -303,7 +303,7 @@ class ProjectMemberControllerTest {
     @Test
     fun `PATCH members MemberNotFound 404 member_not_found`() {
         every {
-            projectMembershipService.changeRole(any(), any(), PROJECT_ID, TARGET_ID, any())
+            projectMembershipService.changeRole(any(), PROJECT_ID, TARGET_ID, any())
         } throws ProjectMembershipService.MemberNotFound(PROJECT_ID, TARGET_ID)
 
         mockMvc.perform(
@@ -319,7 +319,7 @@ class ProjectMemberControllerTest {
     @Test
     fun `PATCH members LastAdminProtected 409 last_admin_protected`() {
         every {
-            projectMembershipService.changeRole(any(), any(), PROJECT_ID, TARGET_ID, any())
+            projectMembershipService.changeRole(any(), PROJECT_ID, TARGET_ID, any())
         } throws ProjectMembershipService.LastAdminProtected(PROJECT_ID)
 
         mockMvc.perform(
@@ -349,7 +349,7 @@ class ProjectMemberControllerTest {
     @Test
     fun `DELETE members userId JWT actor 204 반환`() {
         every {
-            projectMembershipService.removeMember(ACTOR_ID, false, PROJECT_ID, TARGET_ID)
+            projectMembershipService.removeMember(ACTOR_ID, PROJECT_ID, TARGET_ID)
         } returns Unit
 
         mockMvc.perform(
@@ -363,7 +363,7 @@ class ProjectMemberControllerTest {
     fun `DELETE members PAT actor 204 반환`() {
         every { personalAccessTokenService.verify(RAW_PAT) } returns Result.success(activePat())
         every {
-            projectMembershipService.removeMember(ACTOR_ID, true, PROJECT_ID, TARGET_ID)
+            projectMembershipService.removeMember(ACTOR_ID, PROJECT_ID, TARGET_ID)
         } returns Unit
 
         mockMvc.perform(
@@ -376,7 +376,7 @@ class ProjectMemberControllerTest {
     @Test
     fun `DELETE members LastAdminProtected 409 last_admin_protected`() {
         every {
-            projectMembershipService.removeMember(any(), any(), PROJECT_ID, TARGET_ID)
+            projectMembershipService.removeMember(any(), PROJECT_ID, TARGET_ID)
         } throws ProjectMembershipService.LastAdminProtected(PROJECT_ID)
 
         mockMvc.perform(
@@ -390,7 +390,7 @@ class ProjectMemberControllerTest {
     @Test
     fun `DELETE members MemberNotFound 404 member_not_found`() {
         every {
-            projectMembershipService.removeMember(any(), any(), PROJECT_ID, TARGET_ID)
+            projectMembershipService.removeMember(any(), PROJECT_ID, TARGET_ID)
         } throws ProjectMembershipService.MemberNotFound(PROJECT_ID, TARGET_ID)
 
         mockMvc.perform(

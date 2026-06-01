@@ -42,33 +42,36 @@ class ProjectMembershipService(
 
     // ── 서비스 전용 예외 (sealed class) ─────────────────────────────────────
 
+    /** 프로젝트 멤버십 서비스의 모든 도메인 예외 기반 타입. */
+    sealed class ProjectMembershipException(message: String) : RuntimeException(message)
+
     /** 프로젝트가 존재하지 않거나 actor가 해당 프로젝트의 멤버가 아님 (존재숨김 404). */
     class ProjectNotFound(projectId: UUID) :
-        RuntimeException("project not found: $projectId")
+        ProjectMembershipException("project not found: $projectId")
 
     /** 부트스트랩 경로에서 PAT으로 시도함 — JWT 전용 경로 (→ 403 또는 400). */
     class BootstrapRequiresJwt(projectId: UUID) :
-        RuntimeException("bootstrap requires JWT session, not PAT: project=$projectId")
+        ProjectMembershipException("bootstrap requires JWT session, not PAT: project=$projectId")
 
     /** actor가 해당 프로젝트의 PROJECT_ADMIN이 아님 (→ 403). */
     class NotProjectAdmin(projectId: UUID, actorId: UUID) :
-        RuntimeException("actor $actorId is not PROJECT_ADMIN in project $projectId")
+        ProjectMembershipException("actor $actorId is not PROJECT_ADMIN in project $projectId")
 
     /** 마지막 admin 제거·강등 시도 (→ 409). */
     class LastAdminProtected(projectId: UUID) :
-        RuntimeException("cannot remove or demote the last PROJECT_ADMIN in project $projectId")
+        ProjectMembershipException("cannot remove or demote the last PROJECT_ADMIN in project $projectId")
 
     /** 이미 멤버인 사용자를 추가 시도 (→ 409). */
     class AlreadyMember(projectId: UUID, userId: UUID) :
-        RuntimeException("user $userId is already a member of project $projectId")
+        ProjectMembershipException("user $userId is already a member of project $projectId")
 
     /** 변경/제거 대상 사용자가 프로젝트 멤버가 아님 (→ 404). */
     class MemberNotFound(projectId: UUID, userId: UUID) :
-        RuntimeException("user $userId is not a member of project $projectId")
+        ProjectMembershipException("user $userId is not a member of project $projectId")
 
     /** 초대 대상 사용자 ID가 BTS 시스템에 존재하지 않음 (→ 404). */
     class UserNotFound(userId: UUID) :
-        RuntimeException("user not found: $userId")
+        ProjectMembershipException("user not found: $userId")
 
     // ── 공개 서비스 메서드 ───────────────────────────────────────────────────
 
@@ -118,6 +121,10 @@ class ProjectMembershipService(
      *
      * actor는 PROJECT_ADMIN이어야 한다. 마지막 admin을 MEMBER로 강등하는 것을 차단한다.
      *
+     * @param actorId 요청자 BTS 사용자 ID
+     * @param projectId 대상 프로젝트 ID
+     * @param targetUserId 역할을 변경할 사용자 ID
+     * @param newRole 변경할 역할
      * @throws ProjectNotFound 프로젝트 미존재 / actor 비멤버
      * @throws NotProjectAdmin actor가 ADMIN이 아님
      * @throws MemberNotFound target이 멤버 아님
@@ -125,7 +132,6 @@ class ProjectMembershipService(
      */
     fun changeRole(
         actorId: UUID,
-        isPat: Boolean,
         projectId: UUID,
         targetUserId: UUID,
         newRole: ProjectRole,
@@ -159,7 +165,6 @@ class ProjectMembershipService(
      */
     fun removeMember(
         actorId: UUID,
-        isPat: Boolean,
         projectId: UUID,
         targetUserId: UUID,
     ) {

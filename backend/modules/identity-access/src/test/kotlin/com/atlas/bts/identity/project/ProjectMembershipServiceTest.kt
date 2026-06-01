@@ -224,7 +224,7 @@ class ProjectMembershipServiceTest {
         val updated = membership(targetId, ProjectRole.PROJECT_ADMIN)
         every { membershipRepo.updateRole(projectId, targetId, ProjectRole.PROJECT_ADMIN) } returns updated
 
-        val result = service.changeRole(actorId, false, projectId, targetId, ProjectRole.PROJECT_ADMIN)
+        val result = service.changeRole(actorId, projectId, targetId, ProjectRole.PROJECT_ADMIN)
 
         assertThat(result.role).isEqualTo(ProjectRole.PROJECT_ADMIN)
         verify(exactly = 1) {
@@ -241,7 +241,7 @@ class ProjectMembershipServiceTest {
         every { membershipRepo.findByProjectAndUser(projectId, targetId) } returns null
 
         assertThatThrownBy {
-            service.changeRole(actorId, false, projectId, targetId, ProjectRole.MEMBER)
+            service.changeRole(actorId, projectId, targetId, ProjectRole.MEMBER)
         }.isInstanceOf(ProjectMembershipService.MemberNotFound::class.java)
     }
 
@@ -259,7 +259,7 @@ class ProjectMembershipServiceTest {
         every { membershipRepo.countAdminsByProject(projectId) } returns 1
         every { membershipRepo.deleteByProjectAndUser(projectId, targetId) } returns true
 
-        service.removeMember(actorId, false, projectId, targetId)
+        service.removeMember(actorId, projectId, targetId)
 
         verify(exactly = 1) { membershipRepo.deleteByProjectAndUser(projectId, targetId) }
         verify(exactly = 1) {
@@ -276,7 +276,7 @@ class ProjectMembershipServiceTest {
         every { membershipRepo.findByProjectAndUser(projectId, targetId) } returns null
 
         assertThatThrownBy {
-            service.removeMember(actorId, false, projectId, targetId)
+            service.removeMember(actorId, projectId, targetId)
         }.isInstanceOf(ProjectMembershipService.MemberNotFound::class.java)
     }
 
@@ -292,7 +292,7 @@ class ProjectMembershipServiceTest {
         every { membershipRepo.countAdminsByProject(projectId) } returns 1
 
         assertThatThrownBy {
-            service.removeMember(actorId, false, projectId, actorId)
+            service.removeMember(actorId, projectId, actorId)
         }.isInstanceOf(ProjectMembershipService.LastAdminProtected::class.java)
     }
 
@@ -306,7 +306,7 @@ class ProjectMembershipServiceTest {
         every { membershipRepo.countAdminsByProject(projectId) } returns 1
 
         assertThatThrownBy {
-            service.changeRole(actorId, false, projectId, actorId, ProjectRole.MEMBER)
+            service.changeRole(actorId, projectId, actorId, ProjectRole.MEMBER)
         }.isInstanceOf(ProjectMembershipService.LastAdminProtected::class.java)
     }
 
@@ -326,7 +326,7 @@ class ProjectMembershipServiceTest {
         stubProjectMissing()
 
         assertThatThrownBy {
-            service.changeRole(actorId, false, projectId, targetId, ProjectRole.MEMBER)
+            service.changeRole(actorId, projectId, targetId, ProjectRole.MEMBER)
         }.isInstanceOf(ProjectMembershipService.ProjectNotFound::class.java)
     }
 
@@ -335,7 +335,7 @@ class ProjectMembershipServiceTest {
         stubProjectMissing()
 
         assertThatThrownBy {
-            service.removeMember(actorId, false, projectId, targetId)
+            service.removeMember(actorId, projectId, targetId)
         }.isInstanceOf(ProjectMembershipService.ProjectNotFound::class.java)
     }
 

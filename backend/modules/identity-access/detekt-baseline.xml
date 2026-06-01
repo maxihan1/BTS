@@ -43,9 +43,7 @@
     <ID>SwallowedException:SidRevokeJwtConverter.kt$SidRevokeJwtConverter$e: IllegalArgumentException</ID>
     <ID>ThrowsCount:PemFileKeyProvider.kt$PemFileKeyProvider$fun load()</ID>
     <ID>ThrowsCount:WhoamiController.kt$WhoamiController$@GetMapping("/api/v1/users/me/whoami") fun whoami( request: HttpServletRequest, @AuthenticationPrincipal jwt: Jwt?, ): WhoamiResponse</ID>
-    <ID>TooGenericExceptionCaught:ProjectMemberController.kt$ProjectMemberController$ex: RuntimeException</ID>
     <ID>TooManyFunctions:ProjectMembershipService.kt$ProjectMembershipService</ID>
-    <ID>UnusedParameter:ProjectMembershipService.kt$ProjectMembershipService$isPat: Boolean</ID>
     <ID>UnusedPrivateProperty:LdapAuthFlowIntegrationTest.kt$LdapAuthFlowIntegrationTest$@Autowired private lateinit var externalAccountRepo: ExternalAccountRepository</ID>
     <ID>UnusedPrivateProperty:PersonalAccessTokenServiceTest.kt$PersonalAccessTokenServiceTest$/** 테스트 환경에서 SHA-256 계산 없이 고정 hash 를 사용하기 위한 raw token. * PersonalAccessTokenService 내부의 sha256Hex(raw) 결과가 아래 KNOWN_HASH 와 일치해야 통과. */ private val rawToken = "pat_testbody000000000000000000000000000000000000" // "pat_" + 44자 (≠ 48자, 검증용)</ID>
     <ID>UseCheckOrError:PemFileKeyProvider.kt$PemFileKeyProvider$throw IllegalStateException( "PEM 파일이 RSA CRT 키 형식이 아닙니다: $pemPath. RSA CRT 형식(PKCS#1)을 사용하세요.", )</ID>

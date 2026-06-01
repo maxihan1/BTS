@@ -81,7 +81,7 @@ class ProjectMemberController(
                 requestedRole = role,
             )
             ResponseEntity.status(HttpStatus.CREATED).body(ProjectMemberResponse.from(membership))
-        } catch (ex: RuntimeException) {
+        } catch (ex: ProjectMembershipService.ProjectMembershipException) {
             mapServiceException(ex)
         }
     }
@@ -105,7 +105,7 @@ class ProjectMemberController(
                 projectId = projectId,
             )
             ResponseEntity.ok(mapOf("members" to members.map { ProjectMemberResponse.from(it) }))
-        } catch (ex: RuntimeException) {
+        } catch (ex: ProjectMembershipService.ProjectMembershipException) {
             mapServiceException(ex)
         }
     }
@@ -130,13 +130,12 @@ class ProjectMemberController(
         return try {
             val membership = membershipService.changeRole(
                 actorId = actor.userId,
-                isPat = actor.isPat,
                 projectId = projectId,
                 targetUserId = userId,
                 newRole = role,
             )
             ResponseEntity.ok(ProjectMemberResponse.from(membership))
-        } catch (ex: RuntimeException) {
+        } catch (ex: ProjectMembershipService.ProjectMembershipException) {
             mapServiceException(ex)
         }
     }
@@ -158,12 +157,11 @@ class ProjectMemberController(
         return try {
             membershipService.removeMember(
                 actorId = actor.userId,
-                isPat = actor.isPat,
                 projectId = projectId,
                 targetUserId = userId,
             )
             ResponseEntity.noContent().build<Void>()
-        } catch (ex: RuntimeException) {
+        } catch (ex: ProjectMembershipService.ProjectMembershipException) {
             mapServiceException(ex)
         }
     }
@@ -204,7 +202,9 @@ class ProjectMemberController(
      *
      * 명세에 없는 예외는 500으로 재발생시킨다 (silently swallow 금지).
      */
-    private fun mapServiceException(ex: RuntimeException): ResponseEntity<Map<String, String>> =
+    private fun mapServiceException(
+        ex: ProjectMembershipService.ProjectMembershipException,
+    ): ResponseEntity<Map<String, String>> =
         when (ex) {
             is ProjectMembershipService.ProjectNotFound ->
                 errorResponse(HttpStatus.NOT_FOUND, "project_not_found")
@@ -226,8 +226,6 @@ class ProjectMemberController(
 
             is ProjectMembershipService.BootstrapRequiresJwt ->
                 errorResponse(HttpStatus.FORBIDDEN, "bootstrap_requires_jwt")
-
-            else -> throw ex
         }
 
     private companion object {
