@@ -1,9 +1,9 @@
-// 인증 감사 이벤트 유형 enum — 9종 (FR-09-31)
+// 인증 감사 이벤트 유형 enum — 12종 (FR-09-31 + FR-PM-01)
 
 package com.atlas.bts.identity.audit
 
 /**
- * BTS 인증 감사 로그에 기록되는 이벤트 유형 9종 (FR-09-31).
+ * BTS 인증 감사 로그에 기록되는 이벤트 유형 12종 (FR-09-31 + FR-PM-01).
  *
  * - [LOGIN_SUCCESS]: 로그인 성공
  * - [LOGIN_FAILURE]: 로그인 실패 (잘못된 자격증명, 계정 잠금 등)
@@ -14,6 +14,9 @@ package com.atlas.bts.identity.audit
  * - [USER_PROVISIONED]: 신규 사용자 프로비저닝 (LDAP/OIDC 최초 로그인 등)
  * - [PAT_USED]: Personal Access Token 사용
  * - [LDAP_UNAVAILABLE]: LDAP 서버 연결 불가
+ * - [PROJECT_MEMBER_ADDED]: 프로젝트 멤버 추가 (부트스트랩 포함)
+ * - [PROJECT_ROLE_CHANGED]: 프로젝트 멤버 역할 변경
+ * - [PROJECT_MEMBER_REMOVED]: 프로젝트 멤버 제거
  */
 enum class AuthEventType {
     LOGIN_SUCCESS,
@@ -25,4 +28,7 @@ enum class AuthEventType {
     USER_PROVISIONED,
     PAT_USED,
     LDAP_UNAVAILABLE,
+    PROJECT_MEMBER_ADDED,
+    PROJECT_ROLE_CHANGED,
+    PROJECT_MEMBER_REMOVED,
 }
