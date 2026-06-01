@@ -72,12 +72,14 @@ export function ProjectMembersSettingsPage({
 
 /**
  * S6 — 비멤버 또는 미존재 프로젝트 접근 시 표시되는 안내 화면.
+ *
  * project_not_found(404) 에러코드를 수신한 경우 페이지 레벨에서 렌더된다.
- * named export로 다른 페이지에서도 재사용 가능하다.
+ * 비멤버 접근과 프로젝트 미존재를 동일하게 처리해 프로젝트 존재 여부를 노출하지 않는다.
+ * named export로 다른 설정 페이지에서도 재사용 가능하다.
  */
 export function ProjectNotFoundScreen(): JSX.Element {
   return (
-    <div className="p-8 flex flex-col items-center justify-center gap-4 text-center">
+    <div className="p-8 flex flex-col items-center justify-center min-h-48 gap-4 text-center">
       <p className="text-lg font-medium">접근 권한이 없습니다</p>
       <p className="text-sm text-muted-foreground">
         해당 프로젝트가 존재하지 않거나 접근 권한이 없습니다.
