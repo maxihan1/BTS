@@ -32,6 +32,9 @@ detekt {
 }
 
 dependencies {
+    // shared-kernel — cross-BC 포트 (UserLookupPort 등)
+    implementation(project(":modules:shared-kernel"))
+
     // 핵심 프레임워크 (의존성 카탈로그 §2.1)
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
