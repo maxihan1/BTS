@@ -1,4 +1,4 @@
-// Issue Aggregate Root 단위 테스트 — factory, invariants, version, deletedAt, typeId 필수, 5필드 불변식
+// Issue Aggregate Root 단위 테스트 — factory, invariants, version, deletedAt, typeId 필수, 5필드 불변식, assigneeId
 
 package com.bts.issue.domain
 
@@ -36,6 +36,9 @@ import java.util.UUID
  * - impact_reject_above_3 — impact 가 3 초과이면 예외를 던진다.
  * - impact_accept_boundary_values — impact 1과 3은 정상 생성한다.
  * - impact_accept_null — impact null 은 정상 생성한다.
+ * - create_default_assigneeId_null — assigneeId 기본값은 null 이다.
+ * - assignTo_sets_assigneeId — assignTo(actorId) 호출 후 반환된 Issue 의 assigneeId 가 그 actorId 와 일치한다.
+ * - unassign_clears_assigneeId — unassign() 호출 후 반환된 Issue 의 assigneeId 는 null 이다.
  */
 class IssueTest {
     private val validId = IssueId(UUID.randomUUID())
@@ -463,5 +466,61 @@ class IssueTest {
             )
 
         assertThat(issue.impact).isNull()
+    }
+
+    // ─── Task 2: assigneeId 불변식 ────────────────────────────────────────────
+
+    @Test
+    fun `create_default_assigneeId_null — assigneeId 기본값은 null 이다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+
+        assertThat(issue.assigneeId).isNull()
+    }
+
+    @Test
+    fun `assignTo_sets_assigneeId — assignTo(actorId) 호출 후 반환된 Issue 의 assigneeId 가 그 actorId 와 일치한다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+        val assignee = ActorId(UUID.randomUUID())
+
+        val assigned = issue.assignTo(assignee)
+
+        assertThat(assigned.assigneeId).isEqualTo(assignee)
+    }
+
+    @Test
+    fun `unassign_clears_assigneeId — unassign() 호출 후 반환된 Issue 의 assigneeId 는 null 이다`() {
+        val assignee = ActorId(UUID.randomUUID())
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            ).assignTo(assignee)
+
+        val unassigned = issue.unassign()
+
+        assertThat(unassigned.assigneeId).isNull()
     }
 }

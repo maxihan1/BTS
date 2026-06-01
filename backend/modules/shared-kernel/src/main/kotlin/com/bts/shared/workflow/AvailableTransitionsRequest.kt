@@ -49,6 +49,5 @@ data class AvailableTransitionsRequest(
      *
      * @return [io.konform.validation.Valid] 또는 [io.konform.validation.Invalid].
      */
-    fun validate(): ValidationResult<AvailableTransitionsRequest> =
-        availableTransitionsRequestValidation(this)
+    fun validate(): ValidationResult<AvailableTransitionsRequest> = availableTransitionsRequestValidation(this)
 }

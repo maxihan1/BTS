@@ -64,7 +64,8 @@ class PasswordControllerMvcTest {
         }
 
         @Bean
-        fun corsConfigurationSource(): CorsConfigurationSource = CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        fun corsConfigurationSource(): CorsConfigurationSource =
+            CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
 
         @Bean
         fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)

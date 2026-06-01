@@ -59,6 +59,7 @@ private const val IMPACT_MAX = 3
  * @property labels 라벨 목록. 대소문자 보존, 중복 제거 후 저장.
  * @property environment 재현 환경 설명. null 허용.
  * @property impact 영향도. 1(치명)~3(낮음), null 허용.
+ * @property assigneeId 담당자. 0~1명, null 이면 미할당.
  */
 data class Issue(
     val id: IssueId,
@@ -77,6 +78,7 @@ data class Issue(
     val labels: List<String> = emptyList(),
     val environment: String? = null,
     val impact: Int? = null,
+    val assigneeId: ActorId? = null,
 ) {
     companion object {
         /**
@@ -133,6 +135,7 @@ data class Issue(
             labels: List<String> = emptyList(),
             environment: String? = null,
             impact: Int? = null,
+            assigneeId: ActorId? = null,
         ): Issue {
             validateSummary(summary)
             validatePriority(priority)
@@ -156,9 +159,30 @@ data class Issue(
                 labels = normalizedLabels,
                 environment = environment,
                 impact = impact,
+                assigneeId = assigneeId,
             )
         }
     }
+
+    /**
+     * 이 이슈에 담당자를 지정한다.
+     *
+     * 0~1명 제약 — 기존 담당자가 있으면 교체된다.
+     * 버전 증가는 영속 계층(repository) 책임이므로 이 메서드에서 [version] 을 올리지 않는다.
+     *
+     * @param assignee 담당자 식별자.
+     * @return [assigneeId] 가 [assignee] 로 설정된 새 [Issue] 인스턴스.
+     */
+    fun assignTo(assignee: ActorId): Issue = copy(assigneeId = assignee)
+
+    /**
+     * 이 이슈의 담당자 지정을 해제한다.
+     *
+     * 버전 증가는 영속 계층(repository) 책임이므로 이 메서드에서 [version] 을 올리지 않는다.
+     *
+     * @return [assigneeId] 가 null 로 설정된 새 [Issue] 인스턴스.
+     */
+    fun unassign(): Issue = copy(assigneeId = null)
 }
 
 /**

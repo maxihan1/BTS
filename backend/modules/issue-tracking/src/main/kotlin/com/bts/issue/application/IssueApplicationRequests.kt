@@ -4,6 +4,7 @@ package com.bts.issue.application
 
 import com.bts.issue.domain.ActorId
 import com.bts.shared.issue.IssueTypeId
+import java.util.UUID
 
 /**
  * 이슈 생성 요청 DTO.
@@ -65,5 +66,19 @@ data class UpdateIssueRequest(
  */
 data class TransitionIssueRequest(
     val toStateKey: String,
+    val expectedVersion: Long,
+)
+
+/**
+ * 이슈 담당자 변경 요청 DTO (FR-IS-03).
+ *
+ * assigneeId=null 은 담당자 해제(unassign)를 의미한다.
+ * non-null 이면 [com.bts.shared.user.UserLookupPort] 로 사용자 실재를 검증한다.
+ *
+ * @param assigneeId 새 담당자 UUID. null 이면 해제.
+ * @param expectedVersion 낙관적 잠금 버전. 읽은 version 값과 일치해야 업데이트가 성공한다.
+ */
+data class AppChangeAssigneeRequest(
+    val assigneeId: UUID?,
     val expectedVersion: Long,
 )

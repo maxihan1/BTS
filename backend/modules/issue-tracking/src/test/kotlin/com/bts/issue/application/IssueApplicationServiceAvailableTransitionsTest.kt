@@ -15,6 +15,7 @@ import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.AvailableTransitionView
 import com.bts.shared.workflow.AvailableTransitionsResult
 import com.bts.shared.workflow.ProjectKey
@@ -44,17 +45,19 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
     val permissionResolver = mockk<IssuePermissionResolver>()
     val workflowPort = mockk<WorkflowTransitionPort>()
     val workflowKeyResolver = mockk<WorkflowKeyResolver>()
+    val userLookupPort = mockk<UserLookupPort>(relaxed = true)
     val clock = Clock.fixed(Instant.parse("2026-05-29T00:00:00Z"), ZoneOffset.UTC)
 
     val sut =
         IssueApplicationService(
-            repo,
-            issueTypeRepository,
-            eventPublisher,
-            permissionResolver,
-            workflowPort,
-            workflowKeyResolver,
-            clock,
+            repo = repo,
+            issueTypeRepository = issueTypeRepository,
+            eventPublisher = eventPublisher,
+            permissionResolver = permissionResolver,
+            workflowPort = workflowPort,
+            workflowKeyResolver = workflowKeyResolver,
+            userLookupPort = userLookupPort,
+            clock = clock,
         )
 
     val actor = ActorId(UUID.randomUUID())

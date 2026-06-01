@@ -1,8 +1,9 @@
-// IssueExceptionHandler MockMvc 슬라이스 테스트 — task-17 RED
+// IssueExceptionHandler MockMvc 슬라이스 테스트 — task-17 RED + task-5 RED
 
 package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.AssigneeNotFoundException
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueKeyPrefixReservedException
@@ -40,7 +41,7 @@ import java.util.UUID
  * 더미 컨트롤러에서 각 exception 을 throw → IssueExceptionHandler 가 ProblemDetail 로 변환.
  * spec §6.1 의 9 errorCode 를 전수 검증한다.
  *
- * 테스트 케이스 (9건).
+ * 테스트 케이스 (10건).
  * - H-1. `MethodArgumentNotValidException` → 400 + `VALIDATION_FAILED`
  * - H-2. `AuthenticationException` → 401 + `UNAUTHENTICATED`
  * - H-3. `IssueAccessDeniedException` → 403 + `ACCESS_DENIED`
@@ -50,6 +51,7 @@ import java.util.UUID
  * - H-7. `IssueVersionConflictException` → 409 + `VERSION_CONFLICT`
  * - H-8. `IssueTransitionNotAllowedException` → 409 + `TRANSITION_NOT_ALLOWED`
  * - H-9. generic `RuntimeException` → 500 + `INTERNAL_ERROR`
+ * - H-10. `AssigneeNotFoundException` → 422 + `ASSIGNEE_NOT_FOUND`
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [IssueExceptionHandlerTest.TestConfig::class])
@@ -108,6 +110,10 @@ class IssueExceptionHandlerTest {
 
         @GetMapping("/unauthenticated")
         fun throwUnauthenticated(): Nothing = throw BadCredentialsException("세션 만료")
+
+        @GetMapping("/assignee-not-found")
+        fun throwAssigneeNotFound(): Nothing =
+            throw AssigneeNotFoundException(UUID.fromString("00000000-0000-0000-0000-000000000099"))
 
         @Suppress("TooGenericExceptionThrown")
         @GetMapping("/internal-error")
@@ -192,5 +198,13 @@ class IssueExceptionHandlerTest {
             .andExpect(status().isInternalServerError)
             .andExpect(jsonPath("$.status").value(500))
             .andExpect(jsonPath("$.errorCode").value("INTERNAL_ERROR"))
+    }
+
+    @Test
+    fun `H-10 AssigneeNotFoundException 발생 시 422 + ASSIGNEE_NOT_FOUND`() {
+        mockMvc.perform(get("/exceptions/assignee-not-found").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isUnprocessableEntity)
+            .andExpect(jsonPath("$.status").value(422))
+            .andExpect(jsonPath("$.errorCode").value("ASSIGNEE_NOT_FOUND"))
     }
 }

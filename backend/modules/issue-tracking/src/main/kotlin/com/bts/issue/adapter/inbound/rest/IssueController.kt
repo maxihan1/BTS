@@ -2,6 +2,7 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.application.AppChangeAssigneeRequest
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
@@ -39,6 +40,7 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
  * - PATCH  /api/v1/issues/{key} — 이슈 수정 (T15)
  * - POST   /api/v1/issues/{key}/transition — 이슈 상태 전이 실행 (T15, T6)
  * - GET    /api/v1/issues/{key}/transitions — 가용 전이 목록 조회 (T4)
+ * - PATCH  /api/v1/issues/{key}/assignee — 담당자 변경/해제 (FR-IS-03 T8)
  * - DELETE /api/v1/issues/{key} — 이슈 소프트 삭제 (T16)
  *
  * ### 트랜잭션 정책
@@ -231,6 +233,46 @@ class IssueController(
         val issueKey = IssueKey(key)
         val views = service.availableTransitions(actor, issueKey)
         return ResponseEntity.ok(DataResponse(data = AvailableTransitionsResponse.from(views)))
+    }
+
+    /**
+     * 이슈 담당자를 변경하거나 해제한다.
+     *
+     * ### 전용 서브리소스 설계 사유
+     * RFC 7396 JSON Merge Patch 에서 null 은 "필드 삭제" 를 의미하나,
+     * PATCH /{key} 는 null 을 "변경 없음" 으로 사용하는 partial-update 시맨틱을 따른다.
+     * assignee 의 null=해제(3-state) 시맨틱과 충돌하므로 전용 서브리소스로 분리한다.
+     *
+     * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
+     * @param request 담당자 변경 요청 바디 (Jakarta Validation 적용).
+     *   [ChangeAssigneeRequest.assigneeId] null 이면 담당자 해제.
+     *   non-null 이면 해당 사용자를 담당자로 지정한다.
+     * @return 200 OK + 변경된 [IssueResponse] body
+     * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우 → 404
+     * @throws com.bts.issue.domain.AssigneeNotFoundException assigneeId 가 non-null 이지만 사용자가 존재하지 않을 때 → 422
+     * @throws com.bts.issue.domain.IssueVersionConflictException 낙관락 충돌 → 409
+     */
+    @PatchMapping("/{key}/assignee")
+    fun changeAssignee(
+        @PathVariable key: String,
+        @Valid @RequestBody request: ChangeAssigneeRequest,
+    ): ResponseEntity<DataResponse<IssueResponse>> {
+        log.info("IssueController.changeAssignee key={} assigneeId={}", key, request.assigneeId)
+
+        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val issueKey = IssueKey(key)
+        // @NotNull 검증이 통과한 뒤 호출되므로 expectedVersion 은 null 이 아님.
+        // !! 금지 규칙에 따라 명시적 체크로 처리한다.
+        val expectedVersion =
+            request.expectedVersion
+                ?: error("expectedVersion 은 @NotNull 검증 통과 후 null 일 수 없습니다.")
+        val appRequest =
+            AppChangeAssigneeRequest(
+                assigneeId = request.assigneeId,
+                expectedVersion = expectedVersion,
+            )
+        val response = service.changeAssignee(actor, issueKey, appRequest)
+        return ResponseEntity.ok(DataResponse(data = response))
     }
 
     /**
