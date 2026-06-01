@@ -13,6 +13,7 @@ import io.mockk.mockk
 import io.mockk.runs
 import io.mockk.slot
 import io.mockk.verify
+import io.mockk.verifyOrder
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -164,6 +165,7 @@ class ProjectMembershipServiceTest {
     @Test
     fun `S2 ADMIN 초대 — 기존 멤버 1명, actor=ADMIN, 새 타깃 초대`() {
         stubProjectExists()
+        stubAcquireLock()
         stubAuditRecord()
         stubUser(targetId)
         every { membershipRepo.countByProject(projectId) } returns 1
@@ -183,6 +185,7 @@ class ProjectMembershipServiceTest {
     @Test
     fun `S3 비ADMIN 멤버가 초대 시도 → NotProjectAdmin`() {
         stubProjectExists()
+        stubAcquireLock()
         every { membershipRepo.countByProject(projectId) } returns 2
         every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.MEMBER)
 
@@ -194,6 +197,7 @@ class ProjectMembershipServiceTest {
     @Test
     fun `S3b 비멤버가 초대 시도 → ProjectNotFound (B3 존재숨김)`() {
         stubProjectExists()
+        stubAcquireLock()
         every { membershipRepo.countByProject(projectId) } returns 1
         every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns null
 
@@ -333,6 +337,7 @@ class ProjectMembershipServiceTest {
     @Test
     fun `FR9 존재하지 않는 targetUserId 초대 → UserNotFound`() {
         stubProjectExists()
+        stubAcquireLock()
         every { membershipRepo.countByProject(projectId) } returns 1
         every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
         every { membershipRepo.findByProjectAndUser(projectId, targetId) } returns null
@@ -348,6 +353,7 @@ class ProjectMembershipServiceTest {
     @Test
     fun `FR10 이미 멤버인 사용자 추가 → AlreadyMember`() {
         stubProjectExists()
+        stubAcquireLock()
         stubUser(targetId)
         every { membershipRepo.countByProject(projectId) } returns 2
         every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
@@ -382,6 +388,54 @@ class ProjectMembershipServiceTest {
         assertThatThrownBy {
             service.listMembers(actorId, projectId)
         }.isInstanceOf(ProjectMembershipService.ProjectNotFound::class.java)
+    }
+
+    // ── EC-1 동시성 가드: lock 획득 순서 검증 ────────────────────────────────
+
+    /**
+     * EC-1 회귀 가드: acquireProjectLock이 countByProject보다 먼저 호출되어야 한다.
+     *
+     * lock 밖에서 count를 읽으면 두 요청이 동시에 count==0을 읽어 둘 다 부트스트랩
+     * 경로로 진입하는 TOCTOU race가 발생한다. verifyOrder로 순서를 고정한다.
+     */
+    @Test
+    fun `EC-1 회귀 가드 — acquireProjectLock이 countByProject보다 먼저 호출됨`() {
+        stubProjectExists()
+        stubAcquireLock()
+        stubAuditRecord()
+        every { membershipRepo.countByProject(projectId) } returns 0
+        val saved = membership(actorId, ProjectRole.PROJECT_ADMIN)
+        every { membershipRepo.save(any()) } returns saved
+
+        service.addMember(actorId, false, projectId, actorId, ProjectRole.PROJECT_ADMIN)
+
+        verifyOrder {
+            membershipRepo.acquireProjectLock(projectId)
+            membershipRepo.countByProject(projectId)
+        }
+    }
+
+    /**
+     * EC-1 회귀 가드 — 일반 초대(count>0) 경로에서도 acquireProjectLock이 먼저 호출됨.
+     */
+    @Test
+    fun `EC-1 회귀 가드 — 일반 초대 경로에서도 acquireProjectLock이 countByProject보다 먼저 호출됨`() {
+        stubProjectExists()
+        stubAcquireLock()
+        stubAuditRecord()
+        stubUser(targetId)
+        every { membershipRepo.countByProject(projectId) } returns 1
+        every { membershipRepo.findByProjectAndUser(projectId, actorId) } returns membership(actorId, ProjectRole.PROJECT_ADMIN)
+        every { membershipRepo.findByProjectAndUser(projectId, targetId) } returns null
+        val saved = membership(targetId, ProjectRole.MEMBER)
+        every { membershipRepo.save(any()) } returns saved
+
+        service.addMember(actorId, false, projectId, targetId, ProjectRole.MEMBER)
+
+        verifyOrder {
+            membershipRepo.acquireProjectLock(projectId)
+            membershipRepo.countByProject(projectId)
+        }
     }
 
     // ── Annotation 회귀 가드 ─────────────────────────────────────────────────

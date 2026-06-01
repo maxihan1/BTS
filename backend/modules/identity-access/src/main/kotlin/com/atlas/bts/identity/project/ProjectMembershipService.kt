@@ -97,8 +97,13 @@ class ProjectMembershipService(
         targetUserId: UUID,
         requestedRole: ProjectRole,
     ): ProjectMembership {
+        // 1. 프로젝트 존재 확인 — lock 불필요하므로 먼저 검사
         requireProjectExists(projectId)
 
+        // 2. advisory lock 획득 — count 판단이 반드시 lock 이후여야 EC-1 race 차단
+        membershipRepo.acquireProjectLock(projectId)
+
+        // 3. lock 안에서 count 재조회 — lock 밖에서 읽은 값은 신뢰할 수 없음
         val memberCount = membershipRepo.countByProject(projectId)
 
         return if (memberCount == 0) {
@@ -195,7 +200,8 @@ class ProjectMembershipService(
     /**
      * 부트스트랩 경로 — 멤버 0명일 때만 호출.
      *
-     * advisory lock을 먼저 획득하여 동시 부트스트랩(EC-1)을 직렬화한다.
+     * lock 획득 및 count 재조회는 호출자(addMember)에서 이미 완료된 상태.
+     * 이 메서드는 lock 안에서 실행되므로 중복 acquireProjectLock 호출 금지.
      * 조건 위반 시 ProjectNotFound/BootstrapRequiresJwt를 던진다.
      * 조건 충족 시 requestedRole 무관 PROJECT_ADMIN 강제 저장.
      */
@@ -205,8 +211,7 @@ class ProjectMembershipService(
         projectId: UUID,
         targetUserId: UUID,
     ): ProjectMembership {
-        // advisory lock 획득 → count→insert 직렬화 (EC-1)
-        membershipRepo.acquireProjectLock(projectId)
+        // lock 및 count 재조회는 addMember에서 완료됨 — 여기서 재획득 금지 (EC-1)
 
         if (isPat) throw BootstrapRequiresJwt(projectId)
 
