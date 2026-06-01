@@ -2,15 +2,11 @@
 <SmellBaseline>
   <ManuallySuppressedIssues></ManuallySuppressedIssues>
   <CurrentIssues>
-    <ID>LongParameterList:Issue.kt$Issue.Companion$( id: IssueId, key: IssueKey, projectId: UUID, summary: String, reporterId: ActorId, currentStateKey: String, )</ID>
     <ID>MagicNumber:Issue.kt$255</ID>
     <ID>MagicNumber:IssueApplicationService.kt$IssueApplicationService$100</ID>
-    <ID>MaxLineLength:IssueApplicationService.kt$IssueApplicationService$log.info("issue_transitioned key={} from={} to={} actor={}", key.value, issue.currentStateKey, plan.toStateKey, actor.value)</ID>
     <ID>MaxLineLength:IssueApplicationServiceSoftDeleteTest.kt$IssueApplicationServiceSoftDeleteTest$permissionResolver.hasPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Issue(issueKey.value))</ID>
-    <ID>MaxLineLength:IssueApplicationServiceTransitionTest.kt$IssueApplicationServiceTransitionTest$.</ID>
     <ID>MaxLineLength:IssueApplicationServiceTransitionTest.kt$IssueApplicationServiceTransitionTest$permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))</ID>
-    <ID>MaxLineLength:IssueEventPublisherTest.kt$IssueEventPublisherTest$fun newConnection(): Connection</ID>
-    <ID>MaxLineLength:IssueEventPublisherTest.kt$IssueEventPublisherTest$val txAnnotation = method.getAnnotation(org.springframework.transaction.annotation.Transactional::class.java)</ID>
+    <ID>NestedBlockDepth:V007MigrationIntegrationTest.kt$V007MigrationIntegrationTest$private fun columnInfo( tableName: String, columnName: String, ): Pair&lt;String?, String?&gt;</ID>
     <ID>ThrowsCount:IssueApplicationService.kt$IssueApplicationService$fun updateIssue( actor: ActorId, key: IssueKey, request: UpdateIssueRequest, ): IssueResponse</ID>
   </CurrentIssues>
 </SmellBaseline>

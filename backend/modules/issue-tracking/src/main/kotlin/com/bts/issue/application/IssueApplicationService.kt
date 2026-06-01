@@ -436,6 +436,7 @@ class IssueApplicationService(
      * @throws AssigneeNotFoundException assigneeId non-null 이지만 사용자가 존재하지 않을 때.
      * @throws IssueVersionConflictException 낙관락 충돌 시.
      */
+    @Suppress("ThrowsCount")
     fun changeAssignee(
         actor: ActorId,
         key: IssueKey,
