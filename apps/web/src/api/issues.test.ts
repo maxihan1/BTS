@@ -489,13 +489,13 @@ describe('issueResponseSchema — FR-IS-03 assigneeId 필드', () => {
     ).toThrow()
   })
 
-  it('T1-11d: assigneeId 필드가 누락되어도 파싱 성공한다 (기존 fixture 호환)', () => {
+  it('T1-11d: assigneeId 필드가 누락되면 ZodError를 throw한다 (계약 엄격성 회귀가드)', () => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { assigneeId: _assigneeId, ...withoutAssigneeId } = issueFixture
-    // nullable 이므로 undefined는 파싱 실패해야 함 — optional이 아닌 nullable
-    // assigneeId가 없으면 ZodError (nullable는 null은 허용하나 미전달은 허용하지 않음)
-    // 기존 fixture는 assigneeId 필드 자체가 없었으므로 optional().nullable() 패턴 확인
-    expect(() => issueResponseSchema.parse(withoutAssigneeId)).not.toThrow()
+    // 백엔드 IssueResponse는 assigneeId를 null이라도 항상 직렬화한다.
+    // 따라서 nullable()만 사용하고 optional()은 쓰지 않는다 — 키 부재는 계약 위반이므로 실패해야 한다.
+    // 미래에 누가 .optional()을 다시 추가하면 이 테스트가 회귀를 잡는다.
+    expect(() => issueResponseSchema.parse(withoutAssigneeId)).toThrow()
   })
 })
 

@@ -34,6 +34,7 @@ const issueFixture: IssueResponse = {
   summary: '원본 요약',
   currentStateKey: 'open',
   reporterId: 'f0e9d8c7-b6a5-4321-8edc-ba9876543210',
+  assigneeId: null,
   version: 1,
   createdAt: '2024-01-15T09:00:00Z',
   updatedAt: '2024-01-15T10:30:00Z',

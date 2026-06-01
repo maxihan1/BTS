@@ -16,10 +16,12 @@ export const issueResponseSchema = z.object({
   currentStateKey: z.string().min(1),
   reporterId: z.string().uuid(),
   /**
-   * 담당자 UUID. nullable — 미할당 시 null.
-   * optional: 기존 fixture에서 필드가 없는 경우 undefined → null로 처리.
+   * 담당자 UUID. null이면 미할당.
+   * 백엔드 IssueResponse(assigneeId: UUID? = null)는 null이라도 항상 직렬화하므로
+   * nullable로 충분하다 — optional은 백엔드가 보내지 않는 형태(키 부재)까지 허용해
+   * 계약을 느슨하게 만들어 회귀 감지를 약화시키므로 사용하지 않는다.
    */
-  assigneeId: z.string().uuid().nullable().optional(),
+  assigneeId: z.string().uuid().nullable(),
   version: z.number().int().nonnegative(),
   createdAt: z.string().nullable(),
   updatedAt: z.string().nullable(),
