@@ -227,11 +227,13 @@
 
 **우선순위**. 필수 | **선행**. §2.1 | **Plan slug**. `identity/project-admin`
 
-- [ ] D1. 도메인 — ProjectRole (책임. security-engineer)
-- [ ] D2. 명세 — 관리자 멤버 초대/제거 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `project_memberships(project_id, user_id, role)` (책임. db-engineer)
-- [ ] D4. 백엔드 — CRUD API + 가드 (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 (책임. security-engineer)
+> **FR-PM-01 백엔드 D1~D5 완료 (2026-06-01, PR #48)**. ProjectMembership/ProjectRole(PROJECT_ADMIN/MEMBER 2종) identity-access 모듈 도입 — V007 `project_memberships`(project_id는 issue-tracking projects를 FK 없이 cross-BC 참조, user_id FK, UNIQUE+admin 부분 인덱스), `JdbcProjectMembershipRepository`, `ProjectDirectory` read-only 포트(projects 존재검증), `ProjectMembershipService`(부트스트랩 + 멤버십 자기참조 가드 + 마지막 admin 보호 + audit), `ProjectMemberController`(`/api/v1/projects/{projectId}/members` CRUD). **핵심 결정**(ADR `2026-06-01-project-membership-model`) — 부트스트랩은 멤버 0명 프로젝트에 JWT+자기자신만 자동 ADMIN(타인/PAT 거부, B2), CRUD는 PAT 허용(B1), 비멤버 404 존재숨김(B3, 세션 IDOR 선례), 부트스트랩·마지막admin은 `pg_advisory_xact_lock` 하 count 재조회로 TOCTOU 차단(C1/C2), 권한변경 audit emit(AuthEventType 3종). 검증 — detekt/단위/Testcontainers 통합(EC-1/EC-2b 동시성 포함) 그린. **D6 프론트/D7 E2E는 후속 PR** — 이 백엔드가 미뤄둔 회원가입(전역 admin 권한 FR-PM-01 선행)의 토대. PRE_EXISTING(우리 무관) — AuthControllerTest 2건(main 재현 확정)·identity-access ktlint debt는 별도 cleanup.
+
+- [x] D1. 도메인 — ProjectRole (책임. security-engineer)
+- [x] D2. 명세 — 관리자 멤버 초대/제거 (책임. security-engineer)
+- [x] D3. 데이터 모델 — `project_memberships(project_id, user_id, role)` (책임. db-engineer)
+- [x] D4. 백엔드 — CRUD API + 가드 (책임. security-engineer)
+- [x] D5. 백엔드 테스트 (책임. security-engineer)
 - [ ] D6. 프론트 UI — 프로젝트 설정 → 멤버 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
