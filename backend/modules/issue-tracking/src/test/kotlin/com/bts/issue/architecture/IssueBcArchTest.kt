@@ -1,4 +1,4 @@
-// issue-tracking BC 아키텍처 규칙 테스트 — Rule 1 BC 격리 + Rule 2 jOOQ 화이트리스트
+// issue-tracking BC 아키텍처 규칙 테스트 — Rule 1 BC 격리(workflow + identity) + Rule 2 jOOQ 화이트리스트
 
 package com.bts.issue.architecture
 
@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test
  * 다음 2개 규칙을 테스트 시점에 강제한다.
  *
  * - 룰 1 (BC 격리) — [issueBcMustNotDependOnForbiddenWorkflowPackages]
+ * - 룰 1b (BC 격리) — [issueBcMustNotDependOnIdentityAccessInternals]
  * - 룰 2 (jOOQ 화이트리스트) — [jooqGeneratedMustOnlyBeUsedInRepositoryLayer]
  *
  * ### 룰 1 — project-workflow 의존 제거 (PR #25 com.bts.shared.workflow 이동)
@@ -23,6 +24,12 @@ import org.junit.jupiter.api.Test
  * 따라서 `com.bts.workflow.*` 패키지 전체가 이슈 BC 에서 사용 불가여야 한다.
  * 근거. CLAUDE.md §BC 격리 + ADR 2026-05-21-workflow-bc-cross-bc-port +
  * ADR 2026-05-26-workflow-transition-port-result-sealed.
+ *
+ * ### 룰 1b — identity-access 내부 직접 참조 금지 (FR-IS-03 Task 3)
+ * 사용자 존재 확인은 [com.bts.shared.user.UserLookupPort] (shared-kernel) 를 통해서만 접근한다.
+ * issue-tracking 은 identity-access 모듈을 gradle 의존으로 선언하지 않으며,
+ * `com.atlas.bts.identity.*` 패키지를 직접 import 해서는 안 된다.
+ * 근거. ADR 2026-06-01-issue-assignee-user-lookup-port + CLAUDE.md §BC 격리.
  *
  * ### 룰 2 — jOOQ 화이트리스트
  * `com.bts.issue.jooq.generated..` (jOOQ 코드 생성 결과물) 는 `com.bts.issue.repository..` 에서만
@@ -91,6 +98,51 @@ class IssueBcArchTest {
                         "(CLAUDE.md §BC 격리 + ADR workflow-bc-cross-bc-port + " +
                         "ADR workflow-transition-port-result-sealed). " +
                         "jOOQ generated 코드 (com.bts.issue.jooq..) 는 검사 대상 제외 (self-eng-review P5 보강).",
+                )
+
+        rule.check(importedClasses)
+    }
+
+    /**
+     * 룰 1b — issue-tracking BC 는 identity-access 내부 패키지를 직접 참조하지 않는다.
+     *
+     * 사용자 존재 확인은 [com.bts.shared.user.UserLookupPort] (shared-kernel) 를 경유해야 하며,
+     * `com.atlas.bts.identity.*` 패키지를 직접 import 하는 것은 BC 경계 위반이다.
+     * 현재 위반 0건 — 이 룰은 미래 회귀를 방지하는 가드로 작동한다.
+     *
+     * **금지 패키지 (위반 시 fail).**
+     * - `com.atlas.bts.identity.user..` — UserRepository, User 엔티티 등 내부 사용자 도메인
+     * - `com.atlas.bts.identity.credential..` — 인증 자격증명 내부
+     * - `com.atlas.bts.identity.session..` — 세션/토큰 내부
+     * - `com.atlas.bts.identity.provider..` — 인증 공급자 내부
+     * - `com.atlas.bts.identity.jwt..` — JWT 발급 내부
+     * - `com.atlas.bts.identity.pat..` — PAT 내부
+     * - `com.atlas.bts.identity.web..` — identity 웹 레이어 내부
+     * - `com.atlas.bts.identity.application..` — identity 애플리케이션 서비스 내부
+     *
+     * 근거. ADR 2026-06-01-issue-assignee-user-lookup-port + CLAUDE.md §BC 격리.
+     */
+    @Test
+    fun issueBcMustNotDependOnIdentityAccessInternals() {
+        val rule =
+            noClasses()
+                .that().resideInAPackage("com.bts.issue..")
+                .and().resideOutsideOfPackage("com.bts.issue.jooq..")
+                .should().dependOnClassesThat()
+                .resideInAnyPackage(
+                    "com.atlas.bts.identity.user..",
+                    "com.atlas.bts.identity.credential..",
+                    "com.atlas.bts.identity.session..",
+                    "com.atlas.bts.identity.provider..",
+                    "com.atlas.bts.identity.jwt..",
+                    "com.atlas.bts.identity.pat..",
+                    "com.atlas.bts.identity.web..",
+                    "com.atlas.bts.identity.application..",
+                )
+                .because(
+                    "issue-tracking BC 는 identity-access 내부를 직접 참조할 수 없다. " +
+                        "사용자 존재 확인은 com.bts.shared.user.UserLookupPort (shared-kernel) 를 경유해야 한다 " +
+                        "(ADR 2026-06-01-issue-assignee-user-lookup-port + CLAUDE.md §BC 격리).",
                 )
 
         rule.check(importedClasses)
