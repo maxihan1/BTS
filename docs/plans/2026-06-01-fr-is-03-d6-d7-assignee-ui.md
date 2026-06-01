@@ -148,7 +148,62 @@ FR-IS-03(이슈 담당자 — Reporter 1 / Assignee 1 / Watchers N)의 프론트
 
 → 파일 의존이 선형(같은 화면 파일 연쇄)이라 사실상 직렬. frontend-engineer 1명이 Task 1~4를 순차 TDD, qa-engineer가 Task 5. (병렬 이점 없음 — bts-plan-wave-gradle-module-compile 교훈: 같은 모듈/파일은 직렬화.)
 
+## 코드리뷰 후속 — C1 수정 + S1/S2/S3 (Maxi 결정 2026-06-01)
+
+code-reviewer가 CONCERNS 1(C1) + SUGGESTIONS 3(S1/S2/S3) 보고. Maxi 결정: C1=백엔드 id 조회 추가(완제품), S1/S2/S3=이번 PR에서 함께 처리.
+
+**C1 (버그)**: 현재 담당자 이름을 검색결과 목록(`useUsers(query)`)에서만 해소 → 검색어 변경/초기 로드 시 담당자가 그 50건(MAX_RESULTS) 밖이면 "미지정"으로 잘못 표시. 1000명 규모 현실 위험.
+**근본 원인**: 프론트가 담당자 UUID로 이름을 조회할 API 없음(GET /users는 prefix 검색 + 50건 상한). 백엔드 D4 갭.
+
+### Task 6. 백엔드 — 사용자 id 다건 조회 (identity-access)
+
+**메타.**
+- agent: security-engineer (identity-access = PII/디렉터리 노출 BC)
+- files: backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/user/UserRepository.kt, backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/UsersController.kt, backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/user/UserRepository*Test.kt, backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/UsersControllerIntegrationTest.kt
+- depends-on: []
+
+**계약 결정.** 기존 `GET /api/v1/users` 엔드포인트에 `ids` 파라미터 추가.
+- `GET /api/v1/users?ids=<uuid>[,<uuid>...]` → 해당 id들의 `UserSummaryResponse[]` 반환.
+- 인증 필수(기존 `@PreAuthorize("isAuthenticated()")` 유지). PII 로그 금지(§1.2).
+- 존재하지 않는 id는 결과에서 **조용히 제외**(404 아님 — 부분 결과 허용).
+- `query`와 `ids` 동시 전달 시: **ids 우선**(또는 400 — security-engineer 판단, 단순한 쪽). 권장: ids 있으면 ids 모드.
+- id 개수 상한 = MAX_RESULTS(50)로 동일 가드(과도 조회 방지).
+- `UserRepository.findById(id)` 이미 존재 → `findByIds(ids: List<UUID>): List<User>` 추가(`WHERE id = ANY(:ids)`, named parameter 바인딩, SQL 인젝션 방어 §1.3).
+
+**RED.** UserRepository 통합테스트 — findByIds가 주어진 id들만 반환, 미존재 id 제외, 빈 리스트 입력 시 빈 결과. UsersController 통합테스트 — `?ids=uuid1,uuid2` 200 + 해당 사용자만, 미인증 401, 미존재 id 제외.
+**GREEN.** findByIds SQL 상수 + 구현, Controller ids 파라미터 분기.
+**REFACTOR.** KDoc, 매직넘버 상수화.
+
+### Task 7. 프론트 — C1 수정(현재 담당자 id 조회) + S1/S2/S3
+
+**메타.**
+- agent: frontend-engineer
+- files: apps/web/src/api/users.ts, apps/web/src/api/users.test.ts, apps/web/src/hooks/use-users.ts, apps/web/src/hooks/__tests__/use-users.test.tsx, apps/web/src/api/useChangeAssignee.ts, apps/web/src/components/issue/IssueMetaPanel.tsx, apps/web/src/components/issue/IssueMetaPanel.test.tsx, apps/web/src/routes/issues.$key.tsx, apps/web/src/routes/issues.$key.test.tsx, apps/web/src/mocks/user-handlers.ts, docs/plans/2026-06-01-fr-is-03-d6-d7-assignee-ui.md
+- depends-on: [6]
+
+**C1 수정.** 현재 담당자 이름을 검색결과가 아닌 **id 조회로 안정 해소**.
+- `users.ts` — `fetchUsersByIds(ids: string[]): Promise<UserSummary[]>` (`GET /api/v1/users?ids=`). ids 빈 배열이면 호출 생략(빈 배열 반환).
+- `use-users.ts` — `useUsersByIds(ids: string[])` useQuery(queryKey `['users','byIds',ids]`, enabled: ids.length>0).
+- `issues.$key.tsx` — 현재 담당자 표시명을 `useUsersByIds([issue.assigneeId].filter(Boolean))`로 별도 조회해 IssueMetaPanel에 `currentAssignee`(또는 currentAssigneeName) prop으로 전달. 검색결과 `users`는 **드롭다운 후보 전용**으로 역할 분리.
+- `IssueMetaPanel.tsx` — 현재 담당자 이름을 검색결과(`users`)가 아니라 새 prop에서 읽도록 변경. 검색 목록은 후보 선택용으로만.
+
+**S1.** `useChangeAssignee.ts`의 인라인 한글 문자열(422/기타) → `issueDetailStrings.assigneeNotFoundError`/`assigneeChangeError` 참조로 치환. 409는 useUpdateIssueSummary와 동일 문자열 → 공통 상수화 여지(과하면 ko.ts 키 참조만).
+**S2.** 검색 input에 debounce 추가(간단한 useDebounce 훅 또는 setTimeout). plan에 명시됐던 누락 보완. 1000명 규모 과도 요청 방지.
+**S3.** E2E S3 skip 결정을 이 plan에 기록(아래 Context Notes). + C1 수정으로 "검색어 바꿔도 현재 담당자 이름 유지" E2E 시나리오 1개 추가 가능하면 추가(qa 영역이나 frontend가 회귀 단위테스트로 커버: IssueMetaPanel.test에 "검색결과에 없는 담당자도 currentAssignee prop으로 이름 표시").
+
+**RED/GREEN/REFACTOR.** 각 변경에 테스트 선행. 특히 C1 회귀가드: "현재 담당자가 검색결과 목록(users)에 없어도 이름이 표시된다" 단위테스트 필수.
+
+## Wave 계산 (갱신)
+
+- wave 1~5: 완료(D6 Task1~4 + D7 Task5).
+- wave 6 = [Task 6] (백엔드, security-engineer, 독립)
+- wave 7 = [Task 7] (프론트 C1+S1/S2/S3, depends-on 6)
+→ 백엔드 계약(Task6) 먼저 → 프론트 연결(Task7). 직렬.
+
 ## Context Notes (작업 중 결정 누적)
 
 - 2026-06-01 시작. 백엔드 계약 grep 검증 완료(위 표). 담당자 셀렉터는 native 요소(cmdk 미도입, §1.17).
 - mutation은 invalidate-only 확정(descriptionHtml 플리커 회피).
+- 2026-06-01 D6 계약 타이트닝: assigneeId를 `.optional()` 제거하고 `nullable()`로(백엔드가 항상 직렬화 → contract-gap 회귀가드).
+- 2026-06-01 E2E S3(422/409 toast) skip: UI에서 미존재 UUID·버전충돌을 트리거할 경로 부재. 단위 T-CA-2/T-CA-3 + 라우트 T4-A5가 toast 경로 커버. (code-reviewer S3 권고 반영 기록.)
+- 2026-06-01 C1 결정(Maxi): 담당자 id 조회 백엔드 추가로 완제품 해결. `GET /api/v1/users?ids=` 다건. 2BC PR(기존 ADR 2026-06-01-issue-assignee-user-lookup-port의 2BC 예외 연장).
