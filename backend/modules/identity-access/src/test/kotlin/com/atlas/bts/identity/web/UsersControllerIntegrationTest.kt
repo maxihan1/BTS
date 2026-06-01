@@ -224,6 +224,7 @@ class UsersControllerIntegrationTest {
                 HttpEntity<Void>(listHeaders),
                 List::class.java,
             )
+
         @Suppress("UNCHECKED_CAST")
         val allUsers = listResponse.body as List<Map<String, Any>>
         val aliceId = allUsers.first { it["username"] == testUsername }["id"] as String
@@ -268,6 +269,7 @@ class UsersControllerIntegrationTest {
                 HttpEntity<Void>(listHeaders),
                 List::class.java,
             )
+
         @Suppress("UNCHECKED_CAST")
         val allUsers = listResponse.body as List<Map<String, Any>>
         val aliceId = allUsers.first { it["username"] == testUsername }["id"] as String
@@ -311,6 +313,7 @@ class UsersControllerIntegrationTest {
                 HttpEntity<Void>(listHeaders),
                 List::class.java,
             )
+
         @Suppress("UNCHECKED_CAST")
         val allUsers = listResponse.body as List<Map<String, Any>>
         val aliceId = allUsers.first { it["username"] == testUsername }["id"] as String

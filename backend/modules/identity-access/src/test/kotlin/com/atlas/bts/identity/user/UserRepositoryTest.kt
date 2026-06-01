@@ -203,9 +203,9 @@ class UserRepositoryTest {
     fun `findByIds — 빈 리스트 입력 시 빈 결과 반환`() {
         repo.save("findbyids-alice3", "alice3@bts.local", "Alice3")
 
-        val result = repo.findByIds(emptyList())
+        val result: List<User> = repo.findByIds(emptyList())
 
-        assertThat(result).isEmpty()
+        assertThat(result).hasSize(0)
     }
 
     // ── updateLastLogin ───────────────────────────────────────────────────────
