@@ -22,7 +22,6 @@ import java.util.UUID
  * (V001 스키마 기준 — id / username / email / display_name / created_at / updated_at).
  */
 interface UserLookupPort {
-
     /**
      * 주어진 사용자 UUID 가 실재하는지(users 테이블 행 존재) 확인한다.
      *
