@@ -36,6 +36,7 @@ import java.util.UUID
  * @property environment 재현 환경 설명. null 허용.
  * @property impact 영향도 숫자 1(High)..3(Low). null 허용.
  * @property impactName [IssueImpact.displayName]. null 허용 (impact=null 일 때).
+ * @property assigneeId 담당자 UUID. null 이면 미할당.
  */
 data class IssueResponse(
     val key: String,
@@ -58,6 +59,7 @@ data class IssueResponse(
     val environment: String? = null,
     val impact: Int? = null,
     val impactName: String? = null,
+    val assigneeId: UUID? = null,
 ) {
     /**
      * 이슈 타입 요약 정보. [from] 파라미터 그룹화용.
@@ -111,6 +113,7 @@ data class IssueResponse(
                 environment = issue.environment,
                 impact = issue.impact,
                 impactName = issue.impact?.let { IssueImpact.fromNumber(it).displayName },
+                assigneeId = issue.assigneeId?.value,
             )
     }
 }
