@@ -113,12 +113,6 @@ class ProjectMembershipService(
      *
      * actor는 PROJECT_ADMIN이어야 한다. 마지막 admin을 MEMBER로 강등하는 것을 차단한다.
      *
-     * @param actorId 요청자 사용자 ID
-     * @param isPat PAT 인증 여부 (변경 시 PAT도 허용)
-     * @param projectId 대상 프로젝트 ID
-     * @param targetUserId 역할을 변경할 사용자 ID
-     * @param newRole 새 역할
-     * @return 갱신된 [ProjectMembership]
      * @throws ProjectNotFound 프로젝트 미존재 / actor 비멤버
      * @throws NotProjectAdmin actor가 ADMIN이 아님
      * @throws MemberNotFound target이 멤버 아님
@@ -137,12 +131,8 @@ class ProjectMembershipService(
         val target = membershipRepo.findByProjectAndUser(projectId, targetUserId)
             ?: throw MemberNotFound(projectId, targetUserId)
 
-        // 마지막 ADMIN 강등 보호 — advisory lock으로 직렬화
         if (target.role == ProjectRole.PROJECT_ADMIN && newRole == ProjectRole.MEMBER) {
-            membershipRepo.acquireProjectLock(projectId)
-            if (membershipRepo.countAdminsByProject(projectId) <= 1) {
-                throw LastAdminProtected(projectId)
-            }
+            guardLastAdmin(projectId)
         }
 
         val updated = membershipRepo.updateRole(projectId, targetUserId, newRole)
@@ -157,10 +147,6 @@ class ProjectMembershipService(
      *
      * actor는 PROJECT_ADMIN이어야 한다. 마지막 admin 제거를 차단한다.
      *
-     * @param actorId 요청자 사용자 ID
-     * @param isPat PAT 인증 여부
-     * @param projectId 대상 프로젝트 ID
-     * @param targetUserId 제거할 사용자 ID
      * @throws ProjectNotFound 프로젝트 미존재 / actor 비멤버
      * @throws NotProjectAdmin actor가 ADMIN이 아님
      * @throws MemberNotFound target이 멤버 아님
@@ -178,12 +164,8 @@ class ProjectMembershipService(
         val target = membershipRepo.findByProjectAndUser(projectId, targetUserId)
             ?: throw MemberNotFound(projectId, targetUserId)
 
-        // 마지막 ADMIN 제거 보호 — advisory lock으로 직렬화
         if (target.role == ProjectRole.PROJECT_ADMIN) {
-            membershipRepo.acquireProjectLock(projectId)
-            if (membershipRepo.countAdminsByProject(projectId) <= 1) {
-                throw LastAdminProtected(projectId)
-            }
+            guardLastAdmin(projectId)
         }
 
         membershipRepo.deleteByProjectAndUser(projectId, targetUserId)
@@ -273,6 +255,20 @@ class ProjectMembershipService(
         val saved = membershipRepo.save(membership)
         emitAudit(actorId, AuthEventType.PROJECT_MEMBER_ADDED, projectId, targetUserId)
         return saved
+    }
+
+    /**
+     * 마지막 ADMIN 제거·강등을 방지한다.
+     *
+     * advisory lock으로 count→throw를 직렬화하여 동시 요청(EC-2b)을 차단한다.
+     *
+     * @throws LastAdminProtected admin이 1명 이하인 경우
+     */
+    private fun guardLastAdmin(projectId: UUID) {
+        membershipRepo.acquireProjectLock(projectId)
+        if (membershipRepo.countAdminsByProject(projectId) <= 1) {
+            throw LastAdminProtected(projectId)
+        }
     }
 
     /**
