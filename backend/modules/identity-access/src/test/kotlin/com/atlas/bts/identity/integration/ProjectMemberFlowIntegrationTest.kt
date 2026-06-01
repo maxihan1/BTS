@@ -573,10 +573,15 @@ class ProjectMemberFlowIntegrationTest {
     /**
      * personal_access_tokens에 유효한 PAT를 직접 INSERT한다.
      *
+     * PatAndConcurrencyIntegrationTest.buildRawPat / insertActivePat 패턴과 동일하게 유지한다.
+     * - rawPat = "pat_" + "a".repeat(48)  (TOKEN_PREFIX + 48자 body, EC-26)
+     * - tokenHash = sha256Hex(rawPat)      ("pat_" prefix 포함 전체 raw token 해시)
+     * - scopes = '["*"]'::jsonb            (와일드카드 전 권한)
+     *
      * @return Pair(rawToken, patId)
      */
     private fun insertPat(userId: UUID): Pair<String, UUID> {
-        val rawPat = "pat_${"x".repeat(48)}"
+        val rawPat = "pat_" + "a".repeat(48)
         val tokenHash = sha256Hex(rawPat)
         val patId = UUID.randomUUID()
         jdbc.update(

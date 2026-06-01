@@ -82,11 +82,11 @@ interface ProjectMembershipRepository {
     /**
      * 프로젝트 단위 PostgreSQL advisory 트랜잭션 락을 획득한다 (EC-1/EC-2b 동시성 보호).
      *
-     * `pg_advisory_xact_lock(hi, lo)` — 트랜잭션 종료 시 자동 해제.
+     * `pg_advisory_xact_lock(bigint)` — 트랜잭션 종료 시 자동 해제.
      * 부트스트랩(count→insert)과 마지막 admin 검사(count→delete/update)를
      * 직렬화하는 데 사용한다. 반드시 `@Transactional` 내에서 호출해야 한다.
      *
-     * UUID를 상위 64bit([hi])와 하위 64bit([lo])로 분리하여 두 bigint 파라미터에 바인딩한다.
+     * UUID의 mostSignificantBits xor leastSignificantBits로 단일 bigint 락 키를 생성한다.
      *
      * @param projectId 락을 획득할 프로젝트 UUID
      */
@@ -189,14 +189,22 @@ class JdbcProjectMembershipRepository(
     /**
      * 프로젝트 단위 advisory 트랜잭션 락을 획득한다.
      *
-     * UUID를 상위 64bit(hi)와 하위 64bit(lo)로 분리하여 두 bigint 파라미터에 바인딩한다.
-     * 문자열 결합 없이 named parameter 바인딩으로 SQL 인젝션을 원천 차단한다 (DEVELOPMENT.md §1.3).
+     * UUID의 mostSignificantBits xor leastSignificantBits로 단일 bigint 키를 생성한다.
+     * PostgreSQL `pg_advisory_xact_lock(bigint)` 단일-bigint 시그니처를 사용한다.
+     * 2-bigint 버전(`pg_advisory_xact_lock(bigint, bigint)`)은 존재하지 않는다.
+     *
+     * `SELECT pg_advisory_xact_lock(...)` 는 void를 반환하지 않고 행을 반환하므로
+     * jdbc.update()가 "A result was returned when none was expected" 오류를 낸다.
+     * jdbcTemplate.execute(PreparedStatementCallback)으로 실행하여 결과를 무시한다.
+     * 문자열 결합 없이 PreparedStatement ? 바인딩으로 SQL 인젝션을 원천 차단한다 (DEVELOPMENT.md §1.3).
      * 트랜잭션 커밋/롤백 시 PostgreSQL이 자동으로 락을 해제한다.
      */
     override fun acquireProjectLock(projectId: UUID) {
-        val hi = projectId.mostSignificantBits
-        val lo = projectId.leastSignificantBits
-        jdbc.update(SQL_ADVISORY_LOCK, mapOf("hi" to hi, "lo" to lo))
+        val key = projectId.mostSignificantBits xor projectId.leastSignificantBits
+        jdbc.jdbcTemplate.execute(SQL_ADVISORY_LOCK) { ps ->
+            ps.setLong(1, key)
+            ps.execute()
+        }
     }
 
     // ── SQL 상수 ─────────────────────────────────────────────────────────────
@@ -260,17 +268,15 @@ class JdbcProjectMembershipRepository(
         """
 
         /**
-         * 프로젝트 UUID를 상위/하위 64bit으로 분리하여 advisory 트랜잭션 락을 획득한다.
-         * :hi = mostSignificantBits, :lo = leastSignificantBits — 두 파라미터 모두 bigint.
-         * SELECT pg_advisory_xact_lock 은 행을 반환하지 않으므로 jdbc.update 로 실행한다.
+         * 프로젝트 UUID를 단일 bigint 키로 변환하여 advisory 트랜잭션 락을 획득한다.
+         * ? = mostSignificantBits xor leastSignificantBits — bigint 단일 파라미터.
          *
-         * CAST(:hi AS bigint) / CAST(:lo AS bigint):
-         * NamedParameterJdbcTemplate 이 Long 파라미터를 PreparedStatement ?로 바인딩할 때
-         * PostgreSQL 타입 추론이 실패하는 문제를 명시적 캐스팅으로 해소한다.
-         * 문자열 결합 없이 named parameter 바인딩을 유지한다 (DEVELOPMENT.md §1.3).
+         * PostgreSQL pg_advisory_xact_lock 은 단일 bigint 또는 두 int4 시그니처만 존재한다.
+         * 두 bigint 시그니처는 없으므로 hi xor lo 로 단일 bigint 키를 생성한다.
+         * SELECT 가 결과를 반환하므로 jdbcTemplate.execute(PreparedStatementCallback) 으로 실행한다.
+         * NamedParameterJdbcTemplate.update() 는 "A result was returned when none was expected" 오류를 낸다.
          */
-        const val SQL_ADVISORY_LOCK =
-            "SELECT pg_advisory_xact_lock(CAST(:hi AS bigint), CAST(:lo AS bigint))"
+        const val SQL_ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(?)"
     }
 }
 
