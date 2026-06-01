@@ -1,4 +1,4 @@
-// 프로젝트 멤버 관리 엔드포인트 — 추가/목록/역할변경/제거 (FR-PM-01 Task 6)
+// 프로젝트 멤버 관리 엔드포인트 — projectIdOrKey 수용·displayName 동봉 (FR-PM-01 Task B3)
 
 package com.atlas.bts.identity.web
 
@@ -7,6 +7,7 @@ import com.atlas.bts.identity.project.BootstrapRequiresJwt
 import com.atlas.bts.identity.project.LastAdminProtected
 import com.atlas.bts.identity.project.MemberNotFound
 import com.atlas.bts.identity.project.NotProjectAdmin
+import com.atlas.bts.identity.project.ProjectDirectory
 import com.atlas.bts.identity.project.ProjectMembershipException
 import com.atlas.bts.identity.project.ProjectMembershipService
 import com.atlas.bts.identity.project.ProjectNotFound
@@ -31,71 +32,86 @@ import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 /**
- * 프로젝트 멤버 관리 컨트롤러 (FR-PM-01 Task 6).
+ * 프로젝트 멤버 관리 컨트롤러 (FR-PM-01 Task B3).
  *
  * ## 엔드포인트
- * - [addMember]: POST /api/v1/projects/{projectId}/members → 201
- * - [listMembers]: GET /api/v1/projects/{projectId}/members → 200
- * - [changeRole]: PATCH /api/v1/projects/{projectId}/members/{userId} → 200
- * - [removeMember]: DELETE /api/v1/projects/{projectId}/members/{userId} → 204
+ * - [addMember]: POST /api/v1/projects/{projectIdOrKey}/members → 201
+ * - [listMembers]: GET /api/v1/projects/{projectIdOrKey}/members → 200
+ * - [changeRole]: PATCH /api/v1/projects/{projectIdOrKey}/members/{userId} → 200
+ * - [removeMember]: DELETE /api/v1/projects/{projectIdOrKey}/members/{userId} → 204
+ *
+ * ## projectIdOrKey 해석 ([resolveProjectId])
+ * path variable을 `String`으로 받아 두 단계로 UUID를 확정한다.
+ * 1. UUID 파싱 시도 → 성공하면 [ProjectDirectory.exists] 확인 → false면 null → 404.
+ * 2. UUID 파싱 실패 → key로 간주 → [ProjectDirectory.resolveKeyToId] 호출.
+ * 3. 결과 null → 404.
+ * 정규식 사전거부 없음. 빈문자열·특수문자·초장문도 key 경로로 흘러가 DB에서 null 반환 후 404 수렴 (B-1).
+ *
+ * ## displayName / username 동봉 (B3 C-2)
+ * GET 목록: [ProjectMembershipService.listMemberViewsByProject] — users LEFT JOIN 단일 쿼리.
+ * POST / PATCH: service 호출 후 [ProjectMembershipService.findMemberView] 단건 조회.
+ * DELETE: 응답 바디 없음(204) — view 조회 불필요.
  *
  * ## Actor 추출 ([resolveActor])
  * PAT 요청에서 `@AuthenticationPrincipal jwt: Jwt?`는 null이다.
  * - jwt != null → userId=UUID.fromString(jwt.subject), isPat=false
  * - jwt == null → SecurityContext.authentication.principal as String → UUID, isPat=true
- *   ([PatAuthenticationFilter]가 principal에 userId.toString()을 설정한 선례)
  * - 둘 다 실패 → 401
  *
  * ## 에러 매핑 ([mapServiceException])
  * service 예외를 snake_case 에러코드 + HTTP 상태로 인라인 매핑한다.
  * RestControllerAdvice 없음 (PasswordController 선례와 동일).
  *
- * ## role 파싱
- * [ProjectRole.from]으로 파싱하며 IllegalArgumentException → 422 invalid_role.
- *
  * ## 보안
  * SecurityConfig.authorizeHttpRequests 에서 /api 하위 전체 인증 요구.
- * 이 컨트롤러의 경로(/api/v1/projects) 는 기존 필터 체인이 인증을 강제한다.
+ * 이 컨트롤러의 경로(/api/v1/projects)는 기존 필터 체인이 인증을 강제한다.
  */
 @RestController
-@RequestMapping("/api/v1/projects/{projectId}/members")
+@RequestMapping("/api/v1/projects/{projectIdOrKey}/members")
 class ProjectMemberController(
     private val membershipService: ProjectMembershipService,
+    private val projectDirectory: ProjectDirectory,
 ) {
 
     /**
-     * POST /api/v1/projects/{projectId}/members — 프로젝트에 멤버 추가.
+     * POST /api/v1/projects/{projectIdOrKey}/members — 프로젝트에 멤버 추가.
      *
-     * @return 201 [ProjectMemberResponse] 또는 에러 응답
+     * @return 201 [ProjectMemberResponse](displayName/username 포함) 또는 에러 응답
      */
-    // ReturnCount 억제 — HTTP 상태별 guard clause early return이 중첩 try-catch보다 가독성 우수.
     @Suppress("ReturnCount")
     @PostMapping
     fun addMember(
         @AuthenticationPrincipal jwt: Jwt?,
-        @PathVariable projectId: UUID,
+        @PathVariable projectIdOrKey: String,
         @RequestBody body: AddMemberRequest,
     ): ResponseEntity<*> {
         val actor = resolveActor(jwt) ?: return UNAUTHORIZED_RESPONSE
 
+        val projectId = resolveProjectId(projectIdOrKey)
+            ?: return errorResponse(HttpStatus.NOT_FOUND, "project_not_found")
+
         val role = parseRole(body.role) ?: return INVALID_ROLE_RESPONSE
 
         return try {
-            val membership = membershipService.addMember(
+            membershipService.addMember(
                 actorId = actor.userId,
                 isPat = actor.isPat,
                 projectId = projectId,
                 targetUserId = body.userId,
                 requestedRole = role,
             )
-            ResponseEntity.status(HttpStatus.CREATED).body(ProjectMemberResponse.from(membership))
+            val view = membershipService.findMemberView(projectId, body.userId)
+                ?: return errorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "member_view_missing")
+            ResponseEntity.status(HttpStatus.CREATED).body(ProjectMemberResponse.from(view))
         } catch (ex: ProjectMembershipException) {
             mapServiceException(ex)
         }
     }
 
     /**
-     * GET /api/v1/projects/{projectId}/members — 프로젝트 멤버 목록 조회.
+     * GET /api/v1/projects/{projectIdOrKey}/members — 프로젝트 멤버 목록 조회.
+     *
+     * users LEFT JOIN 단일 쿼리로 N+1 없이 displayName / username 동봉.
      *
      * @return 200 `{ "members": [...] }` 또는 에러 응답
      */
@@ -103,53 +119,58 @@ class ProjectMemberController(
     @GetMapping
     fun listMembers(
         @AuthenticationPrincipal jwt: Jwt?,
-        @PathVariable projectId: UUID,
+        @PathVariable projectIdOrKey: String,
     ): ResponseEntity<*> {
         val actor = resolveActor(jwt) ?: return UNAUTHORIZED_RESPONSE
 
+        val projectId = resolveProjectId(projectIdOrKey)
+            ?: return errorResponse(HttpStatus.NOT_FOUND, "project_not_found")
+
         return try {
-            val members = membershipService.listMembers(
-                actorId = actor.userId,
-                projectId = projectId,
-            )
-            ResponseEntity.ok(mapOf("members" to members.map { ProjectMemberResponse.from(it) }))
+            val views = membershipService.listMemberViewsByProject(projectId, actor.userId)
+            ResponseEntity.ok(mapOf("members" to views.map { ProjectMemberResponse.from(it) }))
         } catch (ex: ProjectMembershipException) {
             mapServiceException(ex)
         }
     }
 
     /**
-     * PATCH /api/v1/projects/{projectId}/members/{userId} — 프로젝트 멤버 역할 변경.
+     * PATCH /api/v1/projects/{projectIdOrKey}/members/{userId} — 프로젝트 멤버 역할 변경.
      *
-     * @return 200 [ProjectMemberResponse] 또는 에러 응답
+     * @return 200 [ProjectMemberResponse](displayName/username 포함) 또는 에러 응답
      */
     @Suppress("ReturnCount")
     @PatchMapping("/{userId}")
     fun changeRole(
         @AuthenticationPrincipal jwt: Jwt?,
-        @PathVariable projectId: UUID,
+        @PathVariable projectIdOrKey: String,
         @PathVariable userId: UUID,
         @RequestBody body: ChangeRoleRequest,
     ): ResponseEntity<*> {
         val actor = resolveActor(jwt) ?: return UNAUTHORIZED_RESPONSE
 
+        val projectId = resolveProjectId(projectIdOrKey)
+            ?: return errorResponse(HttpStatus.NOT_FOUND, "project_not_found")
+
         val role = parseRole(body.role) ?: return INVALID_ROLE_RESPONSE
 
         return try {
-            val membership = membershipService.changeRole(
+            membershipService.changeRole(
                 actorId = actor.userId,
                 projectId = projectId,
                 targetUserId = userId,
                 newRole = role,
             )
-            ResponseEntity.ok(ProjectMemberResponse.from(membership))
+            val view = membershipService.findMemberView(projectId, userId)
+                ?: return errorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "member_view_missing")
+            ResponseEntity.ok(ProjectMemberResponse.from(view))
         } catch (ex: ProjectMembershipException) {
             mapServiceException(ex)
         }
     }
 
     /**
-     * DELETE /api/v1/projects/{projectId}/members/{userId} — 프로젝트 멤버 제거.
+     * DELETE /api/v1/projects/{projectIdOrKey}/members/{userId} — 프로젝트 멤버 제거.
      *
      * @return 204 No Content 또는 에러 응답
      */
@@ -157,10 +178,13 @@ class ProjectMemberController(
     @DeleteMapping("/{userId}")
     fun removeMember(
         @AuthenticationPrincipal jwt: Jwt?,
-        @PathVariable projectId: UUID,
+        @PathVariable projectIdOrKey: String,
         @PathVariable userId: UUID,
     ): ResponseEntity<*> {
         val actor = resolveActor(jwt) ?: return UNAUTHORIZED_RESPONSE
+
+        val projectId = resolveProjectId(projectIdOrKey)
+            ?: return errorResponse(HttpStatus.NOT_FOUND, "project_not_found")
 
         return try {
             membershipService.removeMember(
@@ -175,6 +199,31 @@ class ProjectMemberController(
     }
 
     // ── 내부 헬퍼 ────────────────────────────────────────────────────────────
+
+    /**
+     * projectIdOrKey 문자열을 활성 프로젝트 UUID로 해석한다 (B3 B-1).
+     *
+     * ## 해석 순서
+     * 1. UUID 파싱 시도 — [UUID.fromString] 성공 시 [ProjectDirectory.exists] 로 활성 여부 확인.
+     *    `exists = false` → `null` 반환 → 호출 측에서 404 단일봉투로 응답.
+     * 2. UUID 파싱 실패 → key로 간주 → [ProjectDirectory.resolveKeyToId] 호출.
+     *    결과 `null` → `null` 반환 → 호출 측에서 404 단일봉투로 응답.
+     *
+     * ## 입력 봉투 보장 (B-1)
+     * 정규식 사전거부는 하지 않는다. 검증은 DB 조회 결과(`exists`/`resolveKeyToId`)로만 수행한다.
+     * 빈문자열·특수문자·초장문·소문자 등 UUID 파싱이 실패하는 모든 입력은 key 경로로 흘러가
+     * DB에서 `null`을 반환하며, 호출 측이 `404 {error:"project_not_found"}` 단일봉투로 응답한다.
+     *
+     * @param raw path variable 원본 문자열 — 신뢰할 수 없는 외부 입력
+     * @return 활성 프로젝트 UUID, 미존재·soft-deleted·키 미존재이면 `null`
+     */
+    private fun resolveProjectId(raw: String): UUID? {
+        val asUuid = runCatching { UUID.fromString(raw) }.getOrNull()
+        if (asUuid != null) {
+            return if (projectDirectory.exists(asUuid)) asUuid else null
+        }
+        return projectDirectory.resolveKeyToId(raw)
+    }
 
     /**
      * JWT 또는 PAT SecurityContext에서 actor를 추출한다.

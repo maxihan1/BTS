@@ -14,8 +14,9 @@ import java.util.UUID
  * 동일 PostgreSQL·동일 public 스키마를 공유하므로 DB read-only 쿼리로 대체한다.
  * 분리 배포 시 SPI(Service Provider Interface)로 교체한다.
  *
- * **의존 컬럼**: `id UUID`, `deleted_at TIMESTAMPTZ` 두 컬럼만.
- * projects DDL 변경 시 이 두 컬럼 유지 여부를 반드시 확인할 것.
+ * **의존 컬럼**: `id UUID`, `key VARCHAR(10)`, `deleted_at TIMESTAMPTZ`.
+ * projects DDL 변경 시 세 컬럼 유지 여부를 반드시 확인할 것.
+ * `key` 컬럼 소유권은 issue-tracking BC — 정규식(`^[A-Z][A-Z0-9]{1,9}$`) 검증은 호출 측이 완료한 것으로 신뢰한다.
  *
  * 구현체: [JdbcProjectDirectory].
  */
@@ -28,6 +29,18 @@ interface ProjectDirectory {
      * @return 행이 존재하고 `deleted_at IS NULL`이면 `true`, 소프트삭제 또는 미존재이면 `false`
      */
     fun exists(projectId: UUID): Boolean
+
+    /**
+     * 프로젝트 키를 UUID로 변환한다.
+     *
+     * **cross-BC 격리**: key 컬럼 소유권은 issue-tracking BC.
+     * key 정규식(`^[A-Z][A-Z0-9]{1,9}$`) 검증은 issue-tracking 소유이므로 이 포트는 신뢰하고 그대로 전달한다.
+     * projects DDL drift 발생 시 key 컬럼 유지 여부를 반드시 확인할 것.
+     *
+     * @param key 변환할 프로젝트 키 (예: "ATLAS")
+     * @return 활성 프로젝트의 UUID, 소프트삭제 또는 미존재이면 `null`
+     */
+    fun resolveKeyToId(key: String): UUID?
 }
 
 /**
@@ -57,6 +70,13 @@ class JdbcProjectDirectory(
             Boolean::class.java,
         ) ?: false
 
+    override fun resolveKeyToId(key: String): UUID? =
+        jdbc.query(
+            SQL_RESOLVE_KEY,
+            mapOf("key" to key),
+        ) { rs, _ -> rs.getObject("id", UUID::class.java) }
+            .firstOrNull()
+
     private companion object {
         /**
          * projects 행 존재 + 소프트삭제 미적용 여부를 단일 EXISTS 쿼리로 확인한다.
@@ -69,6 +89,17 @@ class JdbcProjectDirectory(
                 WHERE id = :id
                   AND deleted_at IS NULL
             )
+        """
+
+        /**
+         * projectKey → UUID 변환. 소프트삭제 행은 제외한다.
+         * key 컬럼은 issue-tracking BC 소유 (UNIQUE, NOT NULL 보장).
+         */
+        const val SQL_RESOLVE_KEY = """
+            SELECT id
+            FROM projects
+            WHERE key = :key
+              AND deleted_at IS NULL
         """
     }
 }

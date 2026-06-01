@@ -1,4 +1,4 @@
-// ProjectDirectory 포트 통합 테스트 — exists() 존재·소프트삭제·미존재 3케이스 검증
+// ProjectDirectory 포트 통합 테스트 — exists() 존재·소프트삭제·미존재 + resolveKeyToId() 3케이스 검증
 
 package com.atlas.bts.identity.project
 
@@ -32,11 +32,14 @@ import java.util.UUID
  *   를 직접 생성하고 테스트 종료 후 DROP.
  *
  * ## 검증 시나리오
- * | 케이스 | 조건 | 기대값 |
- * |---|---|---|
- * | 존재 | projects 행 있음 + deleted_at IS NULL | true |
- * | 소프트삭제 | deleted_at 설정됨 | false |
- * | 미존재 | 해당 UUID 행 없음 | false |
+ * | 케이스 | 메서드 | 조건 | 기대값 |
+ * |---|---|---|---|
+ * | 존재 | exists | projects 행 있음 + deleted_at IS NULL | true |
+ * | 소프트삭제 | exists | deleted_at 설정됨 | false |
+ * | 미존재 | exists | 해당 UUID 행 없음 | false |
+ * | key 조회 성공 | resolveKeyToId | key 행 있음 + deleted_at IS NULL | 해당 UUID |
+ * | key 소프트삭제 | resolveKeyToId | deleted_at 설정됨 | null |
+ * | key 미존재 | resolveKeyToId | 해당 key 행 없음 | null |
  */
 @JdbcTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -77,6 +80,7 @@ class JdbcProjectDirectoryIntegrationTest {
             """
             CREATE TABLE IF NOT EXISTS projects (
                 id UUID PRIMARY KEY,
+                key VARCHAR(10) UNIQUE,
                 deleted_at TIMESTAMPTZ
             )
             """.trimIndent(),
@@ -111,5 +115,32 @@ class JdbcProjectDirectoryIntegrationTest {
         val absentId = UUID.randomUUID()
 
         assertThat(projectDirectory.exists(absentId)).isFalse()
+    }
+
+    @Test
+    fun `resolveKeyToId — key 행이 존재하고 deleted_at IS NULL이면 해당 UUID를 반환한다`() {
+        val projectId = UUID.randomUUID()
+        jdbc.update(
+            "INSERT INTO projects (id, key, deleted_at) VALUES (:id, :key, NULL)",
+            mapOf("id" to projectId, "key" to "ATLAS"),
+        )
+
+        assertThat(projectDirectory.resolveKeyToId("ATLAS")).isEqualTo(projectId)
+    }
+
+    @Test
+    fun `resolveKeyToId — deleted_at이 설정된 소프트삭제 key이면 null을 반환한다`() {
+        val projectId = UUID.randomUUID()
+        jdbc.update(
+            "INSERT INTO projects (id, key, deleted_at) VALUES (:id, :key, NOW())",
+            mapOf("id" to projectId, "key" to "DELETED"),
+        )
+
+        assertThat(projectDirectory.resolveKeyToId("DELETED")).isNull()
+    }
+
+    @Test
+    fun `resolveKeyToId — 존재하지 않는 key이면 null을 반환한다`() {
+        assertThat(projectDirectory.resolveKeyToId("GHOST")).isNull()
     }
 }

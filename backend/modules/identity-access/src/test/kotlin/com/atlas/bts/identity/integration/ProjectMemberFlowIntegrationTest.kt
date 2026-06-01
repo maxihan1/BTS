@@ -1,4 +1,4 @@
-// 프로젝트 멤버 관리 전 흐름 통합 테스트 — 부트스트랩·초대·역할변경·제거·동시성 (FR-PM-01 Task 7)
+// 프로젝트 멤버 관리 전 흐름 통합 테스트 — 부트스트랩·초대·역할변경·제거·동시성 (FR-PM-01 Task 7·B3)
 
 package com.atlas.bts.identity.integration
 
@@ -452,6 +452,29 @@ class ProjectMemberFlowIntegrationTest {
             .isGreaterThanOrEqualTo(1)
     }
 
+    // ── B3. projectKey 경로 end-to-end + displayName 검증 ─────────────────────
+
+    /**
+     * B3-KEY: GET /api/v1/projects/INTG/members 에서 key="INTG" 경로로 UUID 해석 후 멤버 목록 반환.
+     * 응답에 displayName / username 포함 여부 검증.
+     */
+    @Test
+    fun `B3-KEY projectKey 경로 GET 멤버 목록 — displayName username 포함`() {
+        bootstrapAdmin(aliceId, alicePassword)
+        val token = loginJwt("alice", alicePassword)
+
+        val resp = getMembers(token, "INTG")
+
+        assertThat(resp.statusCode).isEqualTo(HttpStatus.OK)
+        val body = resp.body as Map<*, *>
+        @Suppress("UNCHECKED_CAST")
+        val members = body["members"] as List<Map<*, *>>
+        assertThat(members).hasSize(1)
+        // displayName은 seedUsers에서 "Alice"로 설정됨
+        assertThat(members[0]["displayName"]).isEqualTo("Alice")
+        assertThat(members[0]["username"]).isEqualTo("alice")
+    }
+
     // ── SOFT-DEL. soft-deleted 프로젝트 → 404 ─────────────────────────────────
 
     /**
@@ -474,13 +497,15 @@ class ProjectMemberFlowIntegrationTest {
      * projects 테이블을 생성한다.
      *
      * identity-access Flyway에 없는 cross-BC 테이블이므로 테스트 DB에 직접 생성한다.
-     * ProjectDirectory.exists()가 이 테이블을 쿼리한다.
+     * ProjectDirectory.exists()가 id + deleted_at 컬럼을 쿼리한다.
+     * ProjectDirectory.resolveKeyToId()가 key 컬럼을 쿼리한다 (B3 신규).
      */
     private fun ensureProjectsTableExists() {
         jdbc.jdbcTemplate.execute(
             """
             CREATE TABLE IF NOT EXISTS projects (
                 id         UUID PRIMARY KEY,
+                key        VARCHAR(10) UNIQUE,
                 deleted_at TIMESTAMPTZ
             )
             """.trimIndent(),
@@ -517,20 +542,21 @@ class ProjectMemberFlowIntegrationTest {
     private fun seedProjects() {
         activeProjectId = UUID.randomUUID()
         deletedProjectId = UUID.randomUUID()
-        insertActiveProject(activeProjectId)
+        // B3: 활성 프로젝트에 key 부여 — projectKey 경로 통합 테스트에서 사용
+        insertActiveProject(activeProjectId, key = "INTG")
         insertDeletedProject(deletedProjectId)
     }
 
-    private fun insertActiveProject(id: UUID) {
+    private fun insertActiveProject(id: UUID, key: String? = null) {
         jdbc.update(
-            "INSERT INTO projects (id, deleted_at) VALUES (:id, NULL)",
-            mapOf("id" to id),
+            "INSERT INTO projects (id, key, deleted_at) VALUES (:id, :key, NULL)",
+            mapOf("id" to id, "key" to key),
         )
     }
 
     private fun insertDeletedProject(id: UUID) {
         jdbc.update(
-            "INSERT INTO projects (id, deleted_at) VALUES (:id, :deletedAt)",
+            "INSERT INTO projects (id, key, deleted_at) VALUES (:id, NULL, :deletedAt)",
             mapOf("id" to id, "deletedAt" to Timestamp.from(Instant.now())),
         )
     }
@@ -656,9 +682,17 @@ class ProjectMemberFlowIntegrationTest {
         Map::class.java,
     )
 
-    /** JWT Bearer로 GET /api/v1/projects/{projectId}/members 요청을 보낸다. */
+    /** JWT Bearer로 GET /api/v1/projects/{projectId}/members 요청을 보낸다 (UUID 경로). */
     private fun getMembers(jwt: String, projectId: UUID) = restTemplate.exchange(
         "http://localhost:$port/api/v1/projects/$projectId/members",
+        HttpMethod.GET,
+        HttpEntity<Void>(bearerHeaders(jwt)),
+        Map::class.java,
+    )
+
+    /** JWT Bearer로 GET /api/v1/projects/{projectIdOrKey}/members 요청을 보낸다 (key 경로, B3). */
+    private fun getMembers(jwt: String, projectKey: String) = restTemplate.exchange(
+        "http://localhost:$port/api/v1/projects/$projectKey/members",
         HttpMethod.GET,
         HttpEntity<Void>(bearerHeaders(jwt)),
         Map::class.java,
