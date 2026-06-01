@@ -111,23 +111,12 @@ describe('useAddMember', () => {
   it('낙관적으로 캐시에 새 멤버를 추가한 뒤 onSettled에서 invalidate한다', async () => {
     const { client, wrapper } = createWrapper()
 
-    // 초기 목록 캐시 채우기 (X-MSW-Reset-Members로 store 리셋)
+    // 초기 목록 캐시 채우기
     const listHook = renderHook(
       () => useProjectMembers('ATLAS'),
       { wrapper },
     )
     await waitFor(() => expect(listHook.result.current.isSuccess).toBe(true))
-
-    // MSW store를 초기 상태로 리셋하는 추가 GET 요청
-    server.use(
-      http.get('/api/v1/projects/ATLAS/members', ({ request }) => {
-        if (request.headers.get('X-MSW-Reset-Members') === 'true') {
-          return undefined // projectMemberHandlers가 처리
-        }
-        return undefined
-      }),
-      ...projectMemberHandlers,
-    )
 
     const beforeCount =
       client.getQueryData<ProjectMember[]>(PROJECT_MEMBER_KEYS.list('ATLAS'))?.length ?? 0
