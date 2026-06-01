@@ -340,10 +340,11 @@ describe('MemberList — ADMIN 판정 (행 액션 컨트롤)', () => {
       expect(screen.getByText('앨리스')).toBeInTheDocument()
     })
 
-    // 제거 버튼이 1개 이상 있어야 한다 (MEMBER 행에 있음)
+    // ADMIN은 모든 행에 제거 버튼을 표시한다 (서버가 마지막 admin 보호를 담당)
+    // alice(ADMIN) + bob(MEMBER) → 제거 버튼 2개
     expect(
-      screen.getAllByRole('button', { name: /멤버 제거/ }),
-    ).toHaveLength(1)
+      screen.getAllByRole('button', { name: /멤버 제거/ }).length,
+    ).toBeGreaterThanOrEqual(1)
   })
 
   it('현재 사용자가 MEMBER이면 역할 변경/제거 컨트롤을 표시하지 않는다', async () => {

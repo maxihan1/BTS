@@ -95,7 +95,7 @@ describe('AddMemberDialog — 기본 렌더', () => {
     const user = userEvent.setup()
     await openDialog(user)
 
-    expect(screen.getByText(projectMemberLabels.addDialog.title)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: projectMemberLabels.addDialog.title })).toBeInTheDocument()
   })
 
   it('Dialog에 취소 버튼이 있다', async () => {

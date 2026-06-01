@@ -51,7 +51,7 @@ export const projectMemberLabels = {
   /** AddMemberDialog 컴포넌트 */
   addDialog: {
     /** Dialog 제목 */
-    title: '멤버 추가',
+    title: '새 멤버 추가',
     /** Dialog 열기 버튼 visible 텍스트 (MemberList에서 재사용) */
     triggerButton: '멤버 추가',
     /** 사용자 검색 input placeholder */
