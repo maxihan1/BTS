@@ -26,7 +26,8 @@ import java.util.UUID
  * → 4. 대상 사용자 존재 확인 → 5. 비즈니스 규칙(중복/마지막admin)
  *
  * ## 서비스 전용 예외
- * 모두 이 파일 내 sealed class로 정의한다. HTTP 상태 코드 매핑은 컨트롤러 담당.
+ * [ProjectMembershipException] sealed class 및 하위 타입은 같은 패키지의
+ * `ProjectMembershipException.kt`에 정의한다. HTTP 상태 코드 매핑은 컨트롤러 담당.
  *
  * @see docs/sdd/19-authentication.md §19.7 프로젝트 멤버십 보안
  * @see docs/decisions/2026-06-01-project-membership-model.md 부트스트랩/마지막admin ADR
@@ -39,39 +40,6 @@ class ProjectMembershipService(
     private val userRepository: UserRepository,
     private val auditLogService: AuthAuditLogService,
 ) {
-
-    // ── 서비스 전용 예외 (sealed class) ─────────────────────────────────────
-
-    /** 프로젝트 멤버십 서비스의 모든 도메인 예외 기반 타입. */
-    sealed class ProjectMembershipException(message: String) : RuntimeException(message)
-
-    /** 프로젝트가 존재하지 않거나 actor가 해당 프로젝트의 멤버가 아님 (존재숨김 404). */
-    class ProjectNotFound(projectId: UUID) :
-        ProjectMembershipException("project not found: $projectId")
-
-    /** 부트스트랩 경로에서 PAT으로 시도함 — JWT 전용 경로 (→ 403 또는 400). */
-    class BootstrapRequiresJwt(projectId: UUID) :
-        ProjectMembershipException("bootstrap requires JWT session, not PAT: project=$projectId")
-
-    /** actor가 해당 프로젝트의 PROJECT_ADMIN이 아님 (→ 403). */
-    class NotProjectAdmin(projectId: UUID, actorId: UUID) :
-        ProjectMembershipException("actor $actorId is not PROJECT_ADMIN in project $projectId")
-
-    /** 마지막 admin 제거·강등 시도 (→ 409). */
-    class LastAdminProtected(projectId: UUID) :
-        ProjectMembershipException("cannot remove or demote the last PROJECT_ADMIN in project $projectId")
-
-    /** 이미 멤버인 사용자를 추가 시도 (→ 409). */
-    class AlreadyMember(projectId: UUID, userId: UUID) :
-        ProjectMembershipException("user $userId is already a member of project $projectId")
-
-    /** 변경/제거 대상 사용자가 프로젝트 멤버가 아님 (→ 404). */
-    class MemberNotFound(projectId: UUID, userId: UUID) :
-        ProjectMembershipException("user $userId is not a member of project $projectId")
-
-    /** 초대 대상 사용자 ID가 BTS 시스템에 존재하지 않음 (→ 404). */
-    class UserNotFound(userId: UUID) :
-        ProjectMembershipException("user not found: $userId")
 
     // ── 공개 서비스 메서드 ───────────────────────────────────────────────────
 
@@ -217,7 +185,6 @@ class ProjectMembershipService(
         targetUserId: UUID,
     ): ProjectMembership {
         // lock 및 count 재조회는 addMember에서 완료됨 — 여기서 재획득 금지 (EC-1)
-
         if (isPat) throw BootstrapRequiresJwt(projectId)
 
         // B2: target != actor → 비멤버 취급 → 존재숨김
@@ -269,9 +236,7 @@ class ProjectMembershipService(
 
     /**
      * 마지막 ADMIN 제거·강등을 방지한다.
-     *
      * advisory lock으로 count→throw를 직렬화하여 동시 요청(EC-2b)을 차단한다.
-     *
      * @throws LastAdminProtected admin이 1명 이하인 경우
      */
     private fun guardLastAdmin(projectId: UUID) {
@@ -283,7 +248,6 @@ class ProjectMembershipService(
 
     /**
      * 프로젝트가 활성 상태로 존재하는지 확인한다.
-     *
      * 미존재 시 [ProjectNotFound] 예외를 던진다.
      */
     private fun requireProjectExists(projectId: UUID) {

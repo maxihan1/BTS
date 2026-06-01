@@ -7,6 +7,13 @@ import com.atlas.bts.identity.audit.AuthAuditLogService
 import com.atlas.bts.identity.audit.AuthEventType
 import com.atlas.bts.identity.user.UserRepository
 import com.atlas.bts.identity.user.User
+import com.atlas.bts.identity.project.AlreadyMember
+import com.atlas.bts.identity.project.BootstrapRequiresJwt
+import com.atlas.bts.identity.project.LastAdminProtected
+import com.atlas.bts.identity.project.MemberNotFound
+import com.atlas.bts.identity.project.NotProjectAdmin
+import com.atlas.bts.identity.project.ProjectNotFound
+import com.atlas.bts.identity.project.UserNotFound
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -146,7 +153,7 @@ class ProjectMembershipServiceTest {
 
         assertThatThrownBy {
             service.addMember(actorId, true, projectId, actorId, ProjectRole.PROJECT_ADMIN)
-        }.isInstanceOf(ProjectMembershipService.BootstrapRequiresJwt::class.java)
+        }.isInstanceOf(BootstrapRequiresJwt::class.java)
     }
 
     @Test
@@ -157,7 +164,7 @@ class ProjectMembershipServiceTest {
 
         assertThatThrownBy {
             service.addMember(actorId, false, projectId, targetId, ProjectRole.PROJECT_ADMIN)
-        }.isInstanceOf(ProjectMembershipService.ProjectNotFound::class.java)
+        }.isInstanceOf(ProjectNotFound::class.java)
     }
 
     // ── S2: ADMIN이 다른 사용자 초대 ─────────────────────────────────────────
@@ -195,7 +202,7 @@ class ProjectMembershipServiceTest {
 
         assertThatThrownBy {
             service.addMember(actorId, false, projectId, targetId, ProjectRole.MEMBER)
-        }.isInstanceOf(ProjectMembershipService.NotProjectAdmin::class.java)
+        }.isInstanceOf(NotProjectAdmin::class.java)
     }
 
     @Test
@@ -207,7 +214,7 @@ class ProjectMembershipServiceTest {
 
         assertThatThrownBy {
             service.addMember(actorId, false, projectId, targetId, ProjectRole.MEMBER)
-        }.isInstanceOf(ProjectMembershipService.ProjectNotFound::class.java)
+        }.isInstanceOf(ProjectNotFound::class.java)
     }
 
     // ── S4: 역할 변경 ─────────────────────────────────────────────────────────
@@ -242,7 +249,7 @@ class ProjectMembershipServiceTest {
 
         assertThatThrownBy {
             service.changeRole(actorId, projectId, targetId, ProjectRole.MEMBER)
-        }.isInstanceOf(ProjectMembershipService.MemberNotFound::class.java)
+        }.isInstanceOf(MemberNotFound::class.java)
     }
 
     // ── S5: 멤버 제거 ─────────────────────────────────────────────────────────
@@ -277,7 +284,7 @@ class ProjectMembershipServiceTest {
 
         assertThatThrownBy {
             service.removeMember(actorId, projectId, targetId)
-        }.isInstanceOf(ProjectMembershipService.MemberNotFound::class.java)
+        }.isInstanceOf(MemberNotFound::class.java)
     }
 
     // ── S6/S8: 마지막 ADMIN 보호 ─────────────────────────────────────────────
@@ -293,7 +300,7 @@ class ProjectMembershipServiceTest {
 
         assertThatThrownBy {
             service.removeMember(actorId, projectId, actorId)
-        }.isInstanceOf(ProjectMembershipService.LastAdminProtected::class.java)
+        }.isInstanceOf(LastAdminProtected::class.java)
     }
 
     @Test
@@ -307,7 +314,7 @@ class ProjectMembershipServiceTest {
 
         assertThatThrownBy {
             service.changeRole(actorId, projectId, actorId, ProjectRole.MEMBER)
-        }.isInstanceOf(ProjectMembershipService.LastAdminProtected::class.java)
+        }.isInstanceOf(LastAdminProtected::class.java)
     }
 
     // ── FR8: 프로젝트 미존재 ──────────────────────────────────────────────────
@@ -318,7 +325,7 @@ class ProjectMembershipServiceTest {
 
         assertThatThrownBy {
             service.addMember(actorId, false, projectId, targetId, ProjectRole.MEMBER)
-        }.isInstanceOf(ProjectMembershipService.ProjectNotFound::class.java)
+        }.isInstanceOf(ProjectNotFound::class.java)
     }
 
     @Test
@@ -327,7 +334,7 @@ class ProjectMembershipServiceTest {
 
         assertThatThrownBy {
             service.changeRole(actorId, projectId, targetId, ProjectRole.MEMBER)
-        }.isInstanceOf(ProjectMembershipService.ProjectNotFound::class.java)
+        }.isInstanceOf(ProjectNotFound::class.java)
     }
 
     @Test
@@ -336,7 +343,7 @@ class ProjectMembershipServiceTest {
 
         assertThatThrownBy {
             service.removeMember(actorId, projectId, targetId)
-        }.isInstanceOf(ProjectMembershipService.ProjectNotFound::class.java)
+        }.isInstanceOf(ProjectNotFound::class.java)
     }
 
     @Test
@@ -345,7 +352,7 @@ class ProjectMembershipServiceTest {
 
         assertThatThrownBy {
             service.listMembers(actorId, projectId)
-        }.isInstanceOf(ProjectMembershipService.ProjectNotFound::class.java)
+        }.isInstanceOf(ProjectNotFound::class.java)
     }
 
     // ── FR9: 초대 대상 사용자 미존재 ─────────────────────────────────────────
@@ -362,7 +369,7 @@ class ProjectMembershipServiceTest {
 
         assertThatThrownBy {
             service.addMember(actorId, false, projectId, targetId, ProjectRole.MEMBER)
-        }.isInstanceOf(ProjectMembershipService.UserNotFound::class.java)
+        }.isInstanceOf(UserNotFound::class.java)
     }
 
     // ── FR10: 중복 멤버 추가 ─────────────────────────────────────────────────
@@ -380,7 +387,7 @@ class ProjectMembershipServiceTest {
 
         assertThatThrownBy {
             service.addMember(actorId, false, projectId, targetId, ProjectRole.MEMBER)
-        }.isInstanceOf(ProjectMembershipService.AlreadyMember::class.java)
+        }.isInstanceOf(AlreadyMember::class.java)
     }
 
     // ── listMembers ──────────────────────────────────────────────────────────
@@ -410,7 +417,7 @@ class ProjectMembershipServiceTest {
 
         assertThatThrownBy {
             service.listMembers(actorId, projectId)
-        }.isInstanceOf(ProjectMembershipService.ProjectNotFound::class.java)
+        }.isInstanceOf(ProjectNotFound::class.java)
     }
 
     // ── EC-1 동시성 가드: lock 획득 순서 검증 ────────────────────────────────

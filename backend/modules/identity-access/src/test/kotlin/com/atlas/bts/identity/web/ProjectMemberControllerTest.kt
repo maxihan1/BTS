@@ -7,9 +7,16 @@ import com.atlas.bts.identity.config.SecurityConfig
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
+import com.atlas.bts.identity.project.AlreadyMember
+import com.atlas.bts.identity.project.BootstrapRequiresJwt
+import com.atlas.bts.identity.project.LastAdminProtected
+import com.atlas.bts.identity.project.MemberNotFound
+import com.atlas.bts.identity.project.NotProjectAdmin
 import com.atlas.bts.identity.project.ProjectMembership
 import com.atlas.bts.identity.project.ProjectMembershipService
+import com.atlas.bts.identity.project.ProjectNotFound
 import com.atlas.bts.identity.project.ProjectRole
+import com.atlas.bts.identity.project.UserNotFound
 import com.atlas.bts.identity.session.SessionService
 import io.mockk.every
 import io.mockk.mockk
@@ -163,7 +170,7 @@ class ProjectMemberControllerTest {
         every { personalAccessTokenService.verify(RAW_PAT) } returns Result.success(activePat())
         every {
             projectMembershipService.addMember(any(), true, PROJECT_ID, any(), any())
-        } throws ProjectMembershipService.BootstrapRequiresJwt(PROJECT_ID)
+        } throws BootstrapRequiresJwt(PROJECT_ID)
 
         mockMvc.perform(
             post("/api/v1/projects/$PROJECT_ID/members")
@@ -179,7 +186,7 @@ class ProjectMemberControllerTest {
     fun `POST members ProjectNotFound 404 project_not_found`() {
         every {
             projectMembershipService.addMember(any(), any(), PROJECT_ID, any(), any())
-        } throws ProjectMembershipService.ProjectNotFound(PROJECT_ID)
+        } throws ProjectNotFound(PROJECT_ID)
 
         mockMvc.perform(
             post("/api/v1/projects/$PROJECT_ID/members")
@@ -195,7 +202,7 @@ class ProjectMemberControllerTest {
     fun `POST members UserNotFound 404 user_not_found`() {
         every {
             projectMembershipService.addMember(any(), any(), PROJECT_ID, TARGET_ID, any())
-        } throws ProjectMembershipService.UserNotFound(TARGET_ID)
+        } throws UserNotFound(TARGET_ID)
 
         mockMvc.perform(
             post("/api/v1/projects/$PROJECT_ID/members")
@@ -211,7 +218,7 @@ class ProjectMemberControllerTest {
     fun `POST members AlreadyMember 409 membership_already_exists`() {
         every {
             projectMembershipService.addMember(any(), any(), PROJECT_ID, any(), any())
-        } throws ProjectMembershipService.AlreadyMember(PROJECT_ID, TARGET_ID)
+        } throws AlreadyMember(PROJECT_ID, TARGET_ID)
 
         mockMvc.perform(
             post("/api/v1/projects/$PROJECT_ID/members")
@@ -227,7 +234,7 @@ class ProjectMemberControllerTest {
     fun `POST members NotProjectAdmin 403 not_project_admin`() {
         every {
             projectMembershipService.addMember(any(), any(), PROJECT_ID, any(), any())
-        } throws ProjectMembershipService.NotProjectAdmin(PROJECT_ID, ACTOR_ID)
+        } throws NotProjectAdmin(PROJECT_ID, ACTOR_ID)
 
         mockMvc.perform(
             post("/api/v1/projects/$PROJECT_ID/members")
@@ -272,7 +279,7 @@ class ProjectMemberControllerTest {
     fun `GET members ProjectNotFound 404 project_not_found`() {
         every {
             projectMembershipService.listMembers(any(), PROJECT_ID)
-        } throws ProjectMembershipService.ProjectNotFound(PROJECT_ID)
+        } throws ProjectNotFound(PROJECT_ID)
 
         mockMvc.perform(
             get("/api/v1/projects/$PROJECT_ID/members")
@@ -304,7 +311,7 @@ class ProjectMemberControllerTest {
     fun `PATCH members MemberNotFound 404 member_not_found`() {
         every {
             projectMembershipService.changeRole(any(), PROJECT_ID, TARGET_ID, any())
-        } throws ProjectMembershipService.MemberNotFound(PROJECT_ID, TARGET_ID)
+        } throws MemberNotFound(PROJECT_ID, TARGET_ID)
 
         mockMvc.perform(
             patch("/api/v1/projects/$PROJECT_ID/members/$TARGET_ID")
@@ -320,7 +327,7 @@ class ProjectMemberControllerTest {
     fun `PATCH members LastAdminProtected 409 last_admin_protected`() {
         every {
             projectMembershipService.changeRole(any(), PROJECT_ID, TARGET_ID, any())
-        } throws ProjectMembershipService.LastAdminProtected(PROJECT_ID)
+        } throws LastAdminProtected(PROJECT_ID)
 
         mockMvc.perform(
             patch("/api/v1/projects/$PROJECT_ID/members/$TARGET_ID")
@@ -377,7 +384,7 @@ class ProjectMemberControllerTest {
     fun `DELETE members LastAdminProtected 409 last_admin_protected`() {
         every {
             projectMembershipService.removeMember(any(), PROJECT_ID, TARGET_ID)
-        } throws ProjectMembershipService.LastAdminProtected(PROJECT_ID)
+        } throws LastAdminProtected(PROJECT_ID)
 
         mockMvc.perform(
             delete("/api/v1/projects/$PROJECT_ID/members/$TARGET_ID")
@@ -391,7 +398,7 @@ class ProjectMemberControllerTest {
     fun `DELETE members MemberNotFound 404 member_not_found`() {
         every {
             projectMembershipService.removeMember(any(), PROJECT_ID, TARGET_ID)
-        } throws ProjectMembershipService.MemberNotFound(PROJECT_ID, TARGET_ID)
+        } throws MemberNotFound(PROJECT_ID, TARGET_ID)
 
         mockMvc.perform(
             delete("/api/v1/projects/$PROJECT_ID/members/$TARGET_ID")

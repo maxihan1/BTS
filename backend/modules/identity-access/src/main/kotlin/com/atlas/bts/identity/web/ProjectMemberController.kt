@@ -2,8 +2,16 @@
 
 package com.atlas.bts.identity.web
 
+import com.atlas.bts.identity.project.AlreadyMember
+import com.atlas.bts.identity.project.BootstrapRequiresJwt
+import com.atlas.bts.identity.project.LastAdminProtected
+import com.atlas.bts.identity.project.MemberNotFound
+import com.atlas.bts.identity.project.NotProjectAdmin
+import com.atlas.bts.identity.project.ProjectMembershipException
 import com.atlas.bts.identity.project.ProjectMembershipService
+import com.atlas.bts.identity.project.ProjectNotFound
 import com.atlas.bts.identity.project.ProjectRole
+import com.atlas.bts.identity.project.UserNotFound
 import com.atlas.bts.identity.web.dto.AddMemberRequest
 import com.atlas.bts.identity.web.dto.ChangeRoleRequest
 import com.atlas.bts.identity.web.dto.ProjectMemberResponse
@@ -81,7 +89,7 @@ class ProjectMemberController(
                 requestedRole = role,
             )
             ResponseEntity.status(HttpStatus.CREATED).body(ProjectMemberResponse.from(membership))
-        } catch (ex: ProjectMembershipService.ProjectMembershipException) {
+        } catch (ex: ProjectMembershipException) {
             mapServiceException(ex)
         }
     }
@@ -105,7 +113,7 @@ class ProjectMemberController(
                 projectId = projectId,
             )
             ResponseEntity.ok(mapOf("members" to members.map { ProjectMemberResponse.from(it) }))
-        } catch (ex: ProjectMembershipService.ProjectMembershipException) {
+        } catch (ex: ProjectMembershipException) {
             mapServiceException(ex)
         }
     }
@@ -135,7 +143,7 @@ class ProjectMemberController(
                 newRole = role,
             )
             ResponseEntity.ok(ProjectMemberResponse.from(membership))
-        } catch (ex: ProjectMembershipService.ProjectMembershipException) {
+        } catch (ex: ProjectMembershipException) {
             mapServiceException(ex)
         }
     }
@@ -161,7 +169,7 @@ class ProjectMemberController(
                 targetUserId = userId,
             )
             ResponseEntity.noContent().build<Void>()
-        } catch (ex: ProjectMembershipService.ProjectMembershipException) {
+        } catch (ex: ProjectMembershipException) {
             mapServiceException(ex)
         }
     }
@@ -203,28 +211,28 @@ class ProjectMemberController(
      * 명세에 없는 예외는 500으로 재발생시킨다 (silently swallow 금지).
      */
     private fun mapServiceException(
-        ex: ProjectMembershipService.ProjectMembershipException,
+        ex: ProjectMembershipException,
     ): ResponseEntity<Map<String, String>> =
         when (ex) {
-            is ProjectMembershipService.ProjectNotFound ->
+            is ProjectNotFound ->
                 errorResponse(HttpStatus.NOT_FOUND, "project_not_found")
 
-            is ProjectMembershipService.UserNotFound ->
+            is UserNotFound ->
                 errorResponse(HttpStatus.NOT_FOUND, "user_not_found")
 
-            is ProjectMembershipService.MemberNotFound ->
+            is MemberNotFound ->
                 errorResponse(HttpStatus.NOT_FOUND, "member_not_found")
 
-            is ProjectMembershipService.AlreadyMember ->
+            is AlreadyMember ->
                 errorResponse(HttpStatus.CONFLICT, "membership_already_exists")
 
-            is ProjectMembershipService.NotProjectAdmin ->
+            is NotProjectAdmin ->
                 errorResponse(HttpStatus.FORBIDDEN, "not_project_admin")
 
-            is ProjectMembershipService.LastAdminProtected ->
+            is LastAdminProtected ->
                 errorResponse(HttpStatus.CONFLICT, "last_admin_protected")
 
-            is ProjectMembershipService.BootstrapRequiresJwt ->
+            is BootstrapRequiresJwt ->
                 errorResponse(HttpStatus.FORBIDDEN, "bootstrap_requires_jwt")
         }
 
