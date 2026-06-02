@@ -27,13 +27,6 @@ async function mountApp(root: HTMLElement) {
     await worker.start({
       onUnhandledRequest: 'bypass', // API 외 정적 자산 요청은 그대로 통과
     })
-    // E2E 테스트용 dev 훅 — dev 전용(import.meta.env.DEV 게이트 내부). production 미포함.
-    // __msw: MSW worker + http + HttpResponse (per-test 핸들러 오버라이드용)
-    // __queryClient: TanStack QueryClient (오버라이드 후 invalidateQueries 강제 refetch용)
-    const mswModule = await import('msw')
-    const devWindow = window as unknown as { __msw?: unknown; __queryClient?: unknown }
-    devWindow.__msw = { worker, http: mswModule.http, HttpResponse: mswModule.HttpResponse }
-    devWindow.__queryClient = queryClient
   }
 
   createRoot(root).render(

@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw'
 import {
   adminProjectPermissions,
   memberProjectPermissions,
+  nonMemberProjectPermissions,
   type ProjectPermissions,
 } from './project-permission-fixtures'
 import { AUTH_USERS } from './auth-fixtures'
@@ -12,6 +13,15 @@ export {
   memberProjectPermissions,
   nonMemberProjectPermissions,
 } from './project-permission-fixtures'
+
+/**
+ * E2E 테스트 전용 localStorage 플래그 키 — 이 키가 'true'이면 인증 통과 후에도 CREATE:false 반환.
+ *
+ * MSW 핸들러는 페이지 메인 스레드에서 실행되므로 localStorage 접근이 가능하다.
+ * Playwright addInitScript 로 goto 전에 플래그를 설정하면 첫 권한 fetch 시점부터
+ * CREATE:false 가 반환된다. dev/test 빌드 전용(production 미포함).
+ */
+export const E2E_FORCE_CREATE_FALSE_KEY = '__bts_e2e_force_create_false'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // username → 권한 매핑
@@ -86,6 +96,12 @@ const getProjectPermissionsHandler = http.get(
         { error: 'projectKey_required' },
         { status: 400 },
       )
+    }
+
+    // E2E 테스트 전용: localStorage 플래그가 'true'이면 CREATE:false 반환.
+    // addInitScript 로 goto 전에 플래그를 설정하면 첫 fetch 시점부터 적용된다.
+    if (globalThis.localStorage?.getItem(E2E_FORCE_CREATE_FALSE_KEY) === 'true') {
+      return HttpResponse.json({ projectKey, permissions: nonMemberProjectPermissions })
     }
 
     const permissions = PERMISSION_BY_USERNAME[username] ?? adminProjectPermissions

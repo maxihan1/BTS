@@ -3,7 +3,10 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
-import { projectPermissionHandlers } from '../project-permission-handlers'
+import {
+  projectPermissionHandlers,
+  E2E_FORCE_CREATE_FALSE_KEY,
+} from '../project-permission-handlers'
 import {
   adminProjectPermissions,
   nonMemberProjectPermissions,
@@ -153,5 +156,44 @@ describe('비멤버 fixture — nonMemberProjectPermissions', () => {
     expect(res.status).toBe(200)
     const body = await res.json() as { permissions: { CREATE: boolean } }
     expect(body.permissions.CREATE).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S6. E2E_FORCE_CREATE_FALSE_KEY localStorage 플래그 분기
+//
+// 플래그가 'true'이면 인증된 alice 토큰이어도 CREATE:false 가 반환된다.
+// Playwright addInitScript 패턴으로 goto 전에 플래그를 설정하는 E2E S2 시나리오의
+// 단위 검증. 각 케이스 후 removeItem 으로 격리한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('E2E_FORCE_CREATE_FALSE_KEY 플래그 분기', () => {
+  afterEach(() => {
+    localStorage.removeItem(E2E_FORCE_CREATE_FALSE_KEY)
+  })
+
+  it('S6-1: 플래그 미설정 시 alice 토큰 → CREATE:true (기본 동작 유지)', async () => {
+    const res = await getProjectPermissions('ATLAS', mockAccessToken('alice'))
+    const body = await res.json() as { permissions: { CREATE: boolean } }
+
+    expect(body.permissions.CREATE).toBe(true)
+  })
+
+  it('S6-2: 플래그 set 시 alice 토큰이어도 → 200 + CREATE:false', async () => {
+    localStorage.setItem(E2E_FORCE_CREATE_FALSE_KEY, 'true')
+
+    const res = await getProjectPermissions('ATLAS', mockAccessToken('alice'))
+    expect(res.status).toBe(200)
+    const body = await res.json() as { permissions: { CREATE: boolean } }
+    expect(body.permissions.CREATE).toBe(false)
+  })
+
+  it('S6-3: 플래그 set 후 remove 시 alice 토큰 → CREATE:true (격리 확인)', async () => {
+    localStorage.setItem(E2E_FORCE_CREATE_FALSE_KEY, 'true')
+    localStorage.removeItem(E2E_FORCE_CREATE_FALSE_KEY)
+
+    const res = await getProjectPermissions('ATLAS', mockAccessToken('alice'))
+    const body = await res.json() as { permissions: { CREATE: boolean } }
+    expect(body.permissions.CREATE).toBe(true)
   })
 })
