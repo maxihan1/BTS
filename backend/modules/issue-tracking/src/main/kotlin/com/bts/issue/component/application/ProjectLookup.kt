@@ -53,7 +53,8 @@ class ProjectLookup(
     private fun tryParseUuid(value: String): UUID? =
         try {
             UUID.fromString(value)
-        } catch (e: IllegalArgumentException) {
+        } catch (_: IllegalArgumentException) {
+            // 형식 불일치는 정상 흐름 — null 반환으로 projectKey 분기로 위임
             null
         }
 
