@@ -32,6 +32,11 @@ import java.util.UUID
  * HARD_DELETE — DATA.md §3 하드 삭제 ADR 결정 후 별도 확장.
  * 이관 시 [IssuePermission.toCodeOrNull] 매핑 추가 + 이 KDoc 정책 메모 제거.
  *
+ * ## @Profile 배타성
+ * `@Profile("prod")` — `AlwaysAllowIssuePermissionResolver`는 `@Profile("!prod")`이므로
+ * 두 Bean이 동시에 활성화되지 않는다. prod 외 환경에서는 stub이 자동 선택된다.
+ * (결정 G1 — FR-AU-12 stub 교체를 본 PR이 흡수)
+ *
  * @see IssuePermissionResolver
  * @see PermissionSchemeRepository
  */
