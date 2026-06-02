@@ -61,7 +61,7 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
 
     private fun makeOperation(
         id: BulkOperationId = BulkOperationId(UUID.randomUUID()),
-        keys: List<String> = listOf("PRJ-1", "PRJ-2"),
+        keys: List<String> = listOf("TPRJ-1", "TPRJ-2"),
     ): BulkOperation =
         BulkOperation.create(
             id = id,
@@ -86,12 +86,12 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
 
     @Test
     fun `insert 후 findItemsByOperationId 로 항목 목록 조회 가능`() {
-        val op = makeOperation(keys = listOf("A-1", "A-2", "A-3"))
+        val op = makeOperation(keys = listOf("AB-1", "AB-2", "AB-3"))
         bulkRepo.insert(op)
 
         val items = bulkRepo.findItemsByOperationId(op.id)
         assertThat(items).hasSize(3)
-        assertThat(items.map { it.issueKey.value }).containsExactlyInAnyOrder("A-1", "A-2", "A-3")
+        assertThat(items.map { it.issueKey.value }).containsExactlyInAnyOrder("AB-1", "AB-2", "AB-3")
         assertThat(items).allMatch { it.status == ItemStatus.PENDING }
     }
 
@@ -176,17 +176,19 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
         assertThat(item.failureReasonCode).isEqualTo(FailureReasonCode.FORBIDDEN)
     }
 
+    // NOTE: PRJ prefix 는 최소 2자 (^[A-Z][A-Z0-9]{1,9}-) 규칙 준수. 단일 문자 prefix 사용 불가
+
     // ── recomputeAndPersistCounts ──────────────────────────────────────────────
 
     @Test
     fun `recomputeAndPersistCounts 는 항목 집계 결과를 bulk_operations 에 저장`() {
-        val op = makeOperation(keys = listOf("C-1", "C-2", "C-3"))
+        val op = makeOperation(keys = listOf("CA-1", "CA-2", "CA-3"))
         bulkRepo.insert(op)
         bulkRepo.claimForRun(op.id)
 
-        bulkRepo.updateItemResult(op.id, IssueKey("C-1"), ItemStatus.SUCCEEDED, null)
-        bulkRepo.updateItemResult(op.id, IssueKey("C-2"), ItemStatus.FAILED, FailureReasonCode.NOT_FOUND)
-        // C-3 은 PENDING 유지
+        bulkRepo.updateItemResult(op.id, IssueKey("CA-1"), ItemStatus.SUCCEEDED, null)
+        bulkRepo.updateItemResult(op.id, IssueKey("CA-2"), ItemStatus.FAILED, FailureReasonCode.NOT_FOUND)
+        // CA-3 은 PENDING 유지
 
         bulkRepo.recomputeAndPersistCounts(op.id)
 
@@ -198,9 +200,9 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
 
     @Test
     fun `recomputeAndPersistCounts 멱등 — 같은 상태로 두 번 호출해도 결과 동일`() {
-        val op = makeOperation(keys = listOf("D-1", "D-2"))
+        val op = makeOperation(keys = listOf("DA-1", "DA-2"))
         bulkRepo.insert(op)
-        bulkRepo.updateItemResult(op.id, IssueKey("D-1"), ItemStatus.SUCCEEDED, null)
+        bulkRepo.updateItemResult(op.id, IssueKey("DA-1"), ItemStatus.SUCCEEDED, null)
 
         bulkRepo.recomputeAndPersistCounts(op.id)
         bulkRepo.recomputeAndPersistCounts(op.id) // 두 번째 호출
@@ -269,6 +271,7 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
         bulkRepo.insert(op) // PENDING — completed_at = NULL
 
         val result = bulkRepo.findCompletedBefore(Instant.now().plusSeconds(3600))
-        assertThat(result.map { it.id }).doesNotContain(op.id)
+        val ids: List<BulkOperationId> = result.map { it.id }
+        assertThat(ids).doesNotContain(op.id)
     }
 }
