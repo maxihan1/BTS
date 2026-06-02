@@ -185,4 +185,26 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 - 추가 검증: ktlint, detekt(baseline 동결만), Testcontainers 통합
 - review-plan 중점: security(조회 권한·접수 권한), pgmq consumer 운영(워커 단일성/vt), 도메인 우회 금지 재확인
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### code-reviewer 적대적 plan 리뷰 (2026-06-02) — 🛑 BLOCKER 3건
+
+사실 검증 완료(추측 아님, 코드 근거 확인).
+
+**BLOCKER**
+- **B1. 워커가 actor를 모름 + 권한 인프라 부재** — `IssueApplicationService.updateIssue/transitionIssue`는 첫 인자 `actor: ActorId`로 진입 즉시 `assertPermission`. 워커는 HTTP 밖 스레드라 SecurityContext 없음 → 큐/`bulk_operations.actor_id`에서 actor 복원 경로가 plan에 없음. 더 근본: prod 권한 resolver는 `IdentityAccessIssuePermissionResolver`(@Profile("prod"))가 **FR-AU-12까지 미구현**, 현재는 `AlwaysAllowIssuePermissionResolver`(@Profile("!prod")) always-true. 즉 권한 검증이 dev/test 가짜 그린 + prod 미동작. 게다가 `IssueController` actor가 8곳 `SYSTEM_ACTOR_UUID` 하드코딩 — 실제 인증 연동 자체가 미완(security-engineer wave 대기).
+- **B2. 워커 실행 인프라 통째 누락** — issue-tracking main에 `@SpringBootApplication`/`@EnableScheduling` 없음. 부팅 가능한 boot app은 identity-access뿐. `@Scheduled`/pgmq.read prod 0건. 워커가 런타임에 안 돎 → 단위는 그린, 통합서 막힘.
+- **B3. pgmq vt 미정의 + 작업레벨 동시성 제어 없음** — vt 만료 중 처리 지연 시 같은 작업 2워커 동시 처리 → 이슈 2회 변경 위험. 항목 상태 가드는 "결과 기록" 멱등일 뿐 "도메인 변경" 멱등 아님. 작업레벨 advisory lock/CAS 필요(learnings advisory lock TOCTOU).
+
+**CONCERN**
+- C1. NFR5 트랜잭션 분리 vs 부분실패 창 — 이슈변경(A) 커밋 후 항목상태(B) 전 크래시 시 항목 PENDING 잔존 → 재처리가 이미 전이된 이슈 재전이→FAILED로 성공을 덮음. 이슈변경+항목상태 동일 트랜잭션 여부 결정 필요.
+- C2. 멀티 프로젝트 혼합 → cross-BC plan() 수천회, 성능 예산(처리시간 SLA) 없음 → vt 산정 근거 부재.
+- C3. TTL cleanup task 누락(NFR4 미구현) — Task에 cleanup 컴포넌트 없음.
+- C4. BulkOperationCompleted 큐/스키마 미정의 + 중복 발행 가능.
+- C5. PAT vs JWT 모호 + 실제 인증 연동 미완(B1 연결).
+
+**NIT**: N1 Task5 과대(processor/worker 분리), N2 pgmq codegen 제외 확인, N3 findById N+1/직렬화.
+
+### 리뷰 종합 — 핵심 발견
+
+비동기(B)는 BTS에 **아직 없는 인프라**(워커 부팅 프로세스, @EnableScheduling, pgmq consumer 패턴, prod 권한 resolver, 인증→actor 연동)를 다수 요구. 이번 PR 범위(issue-tracking 백엔드 D1~D5)를 크게 초과. B1·B2는 "컴파일/단위 그린이나 런타임 미동작" 가짜 그린 패턴. **게이트 1에서 Maxi 재검토 필수.**
