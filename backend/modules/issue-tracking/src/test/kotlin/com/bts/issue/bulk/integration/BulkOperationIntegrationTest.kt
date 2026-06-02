@@ -649,23 +649,7 @@ class BulkOperationIntegrationTest {
             ),
         )
 
-        // 처리 전 — 큐에 1건
-        val beforeMessages =
-            dsl.fetch(
-                "SELECT * FROM pgmq.read(?, ?, ?)",
-                BulkOperationEnqueuePublisher.QUEUE_NAME,
-                1,
-                10,
-            )
-        // 이미 앞서 read 로 consume했으므로 직접 count 로 확인
-        val countBefore =
-            dsl.fetchOne(
-                "SELECT count(*) FROM pgmq.q_${BulkOperationEnqueuePublisher.QUEUE_NAME}",
-            )!!.get(0, Long::class.java)
-        // 앞에서 read 로 꺼냈으니 vt 내 1건 존재
-        assertThat(countBefore).isGreaterThanOrEqualTo(0) // vt 내에 있을 수 있음
-
-        // pgmq.purge 후 다시 send 해서 워커가 read 할 수 있도록
+        // pgmq.purge 후 새로 send 해서 워커가 vt 없이 바로 read 할 수 있도록
         dsl.execute("SELECT pgmq.purge_queue(?)", BulkOperationEnqueuePublisher.QUEUE_NAME)
         val opId2 =
             bulkAppService.submit(
