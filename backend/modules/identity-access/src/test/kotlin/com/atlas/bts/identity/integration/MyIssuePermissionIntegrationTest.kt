@@ -68,7 +68,6 @@ import java.util.UUID
 @ActiveProfiles("prod")
 @Testcontainers
 class MyIssuePermissionIntegrationTest {
-
     companion object {
         @Container
         @JvmStatic
