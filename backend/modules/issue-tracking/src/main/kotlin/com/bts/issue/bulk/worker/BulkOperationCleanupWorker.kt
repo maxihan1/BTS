@@ -3,8 +3,6 @@
 package com.bts.issue.bulk.worker
 
 import com.bts.issue.bulk.repository.BulkOperationRepository
-import com.bts.issue.jooq.tables.references.BULK_OPERATION_ITEMS
-import com.bts.issue.jooq.tables.references.BULK_OPERATIONS
 import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled

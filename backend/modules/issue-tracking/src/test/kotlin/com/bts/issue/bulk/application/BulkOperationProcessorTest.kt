@@ -101,10 +101,11 @@ class BulkOperationProcessorTest : DescribeSpec({
 
         describe("멱등 스킵") {
             it("이미 SUCCEEDED 인 항목은 itemExecutor.executeItem 을 호출하지 않는다") {
-                val alreadySucceeded = BulkOperationItem(
-                    issueKey = issueKey(1),
-                    status = ItemStatus.SUCCEEDED,
-                )
+                val alreadySucceeded =
+                    BulkOperationItem(
+                        issueKey = issueKey(1),
+                        status = ItemStatus.SUCCEEDED,
+                    )
                 val operation = makeOperation(items = listOf(alreadySucceeded))
 
                 every { bulkRepo.findById(operationId) } returns operation
@@ -116,11 +117,12 @@ class BulkOperationProcessorTest : DescribeSpec({
             }
 
             it("이미 FAILED 인 항목도 itemExecutor.executeItem 을 호출하지 않는다") {
-                val alreadyFailed = BulkOperationItem(
-                    issueKey = issueKey(1),
-                    status = ItemStatus.FAILED,
-                    failureReasonCode = FailureReasonCode.NOT_FOUND,
-                )
+                val alreadyFailed =
+                    BulkOperationItem(
+                        issueKey = issueKey(1),
+                        status = ItemStatus.FAILED,
+                        failureReasonCode = FailureReasonCode.NOT_FOUND,
+                    )
                 val operation = makeOperation(items = listOf(alreadyFailed))
 
                 every { bulkRepo.findById(operationId) } returns operation
@@ -155,9 +157,10 @@ class BulkOperationProcessorTest : DescribeSpec({
 
         describe("카운트 재집계") {
             it("모든 항목 처리 후 recomputeAndPersistCounts 가 1회 호출된다") {
-                val items = (1..3).map { n ->
-                    BulkOperationItem(issueKey = issueKey(n), status = ItemStatus.PENDING)
-                }
+                val items =
+                    (1..3).map { n ->
+                        BulkOperationItem(issueKey = issueKey(n), status = ItemStatus.PENDING)
+                    }
                 val operation = makeOperation(items = items)
 
                 every { bulkRepo.findById(operationId) } returns operation

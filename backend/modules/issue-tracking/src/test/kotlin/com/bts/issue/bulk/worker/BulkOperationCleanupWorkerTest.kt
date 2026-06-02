@@ -60,8 +60,10 @@ class BulkOperationCleanupWorkerTest : DescribeSpec({
             processedCount = 1,
             succeededCount = 1,
             failedCount = 0,
-            createdAt = fixedNow.minusSeconds(60 * 60 * 24 * 40L), // 40일 전 생성
-            updatedAt = fixedNow.minusSeconds(60 * 60 * 24 * 31L), // 31일 전 완료
+            // 40일 전 생성
+            createdAt = fixedNow.minusSeconds(60 * 60 * 24 * 40L),
+            // 31일 전 완료
+            updatedAt = fixedNow.minusSeconds(60 * 60 * 24 * 31L),
         )
 
     // ── 테스트 ─────────────────────────────────────────────────────────────────
@@ -70,9 +72,10 @@ class BulkOperationCleanupWorkerTest : DescribeSpec({
 
         context("30일 경과 완료 작업이 있을 때") {
             it("findCompletedBefore 를 threshold(현재 - 30일)로 호출한다") {
-                val expectedThreshold = fixedNow.minusSeconds(
-                    BulkOperationCleanupWorker.CLEANUP_RETENTION_SECONDS,
-                )
+                val expectedThreshold =
+                    fixedNow.minusSeconds(
+                        BulkOperationCleanupWorker.CLEANUP_RETENTION_SECONDS,
+                    )
                 val capturedInstant = slot<Instant>()
                 every { bulkRepo.findCompletedBefore(capture(capturedInstant)) } returns emptyList()
 

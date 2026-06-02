@@ -5,26 +5,24 @@ package com.bts.issue.bulk.integration
 
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.application.IssueApplicationService
-import com.bts.issue.bulk.application.BulkOperationApplicationService
 import com.bts.issue.bulk.application.BulkEditPayload
+import com.bts.issue.bulk.application.BulkItemApplier
+import com.bts.issue.bulk.application.BulkItemExecutor
+import com.bts.issue.bulk.application.BulkItemFailureRecorder
+import com.bts.issue.bulk.application.BulkOperationApplicationService
+import com.bts.issue.bulk.application.BulkOperationProcessor
 import com.bts.issue.bulk.application.BulkTransitionPayload
 import com.bts.issue.bulk.application.BulkUpdateRequest
-import com.bts.issue.bulk.domain.BulkOperationId
+import com.bts.issue.bulk.domain.BULK_OPERATION_MAX_SIZE
 import com.bts.issue.bulk.domain.BulkOperationStatus
 import com.bts.issue.bulk.domain.BulkOperationType
-import com.bts.issue.bulk.domain.BULK_OPERATION_MAX_SIZE
 import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.bulk.event.BulkOperationEnqueuePublisher
 import com.bts.issue.bulk.event.BulkOperationEventPublisher
 import com.bts.issue.bulk.repository.BulkOperationRepository
-import com.bts.issue.bulk.worker.BulkOperationWorker
-import com.bts.issue.bulk.application.BulkItemApplier
-import com.bts.issue.bulk.application.BulkItemExecutor
-import com.bts.issue.bulk.application.BulkItemFailureRecorder
-import com.bts.issue.bulk.application.BulkOperationProcessor
 import com.bts.issue.bulk.worker.BulkOperationCompleter
+import com.bts.issue.bulk.worker.BulkOperationWorker
 import com.bts.issue.domain.ActorId
-import com.bts.issue.domain.IssueKey
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -105,7 +103,6 @@ import java.util.concurrent.Executors
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class BulkOperationIntegrationTest {
-
     // ── Spring Bean 구성 ────────────────────────────────────────────────────────
 
     @Configuration
@@ -138,8 +135,7 @@ class BulkOperationIntegrationTest {
             DataSourceTransactionManager(dataSource)
 
         @Bean
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext =
-            DSL.using(dataSource, SQLDialect.POSTGRES)
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext = DSL.using(dataSource, SQLDialect.POSTGRES)
 
         @Bean
         open fun objectMapper(): ObjectMapper =
@@ -207,8 +203,7 @@ class BulkOperationIntegrationTest {
         ): WorkflowEngine = WorkflowEngine(cache, validatorFactory, postActionFactory, definitionRepo)
 
         @Bean
-        open fun workflowTransitionAdapter(engine: WorkflowEngine): WorkflowTransitionAdapter =
-            WorkflowTransitionAdapter(engine)
+        open fun workflowTransitionAdapter(engine: WorkflowEngine): WorkflowTransitionAdapter = WorkflowTransitionAdapter(engine)
 
         @Bean
         open fun workflowSchemeRepository(dsl: DSLContext): WorkflowSchemeRepository = WorkflowSchemeRepository(dsl)
@@ -218,8 +213,7 @@ class BulkOperationIntegrationTest {
             ProjectWorkflowSchemeAssignmentRepository(dsl)
 
         @Bean
-        open fun schemeIssueTypeMappingRepository(dsl: DSLContext): SchemeIssueTypeMappingRepository =
-            SchemeIssueTypeMappingRepository(dsl)
+        open fun schemeIssueTypeMappingRepository(dsl: DSLContext): SchemeIssueTypeMappingRepository = SchemeIssueTypeMappingRepository(dsl)
 
         @Bean
         open fun workflowSchemeEventPublisher(
@@ -313,12 +307,10 @@ class BulkOperationIntegrationTest {
         ): BulkOperationRepository = BulkOperationRepository(dsl, objectMapper, clock)
 
         @Bean
-        open fun bulkOperationEnqueuePublisher(dsl: DSLContext): BulkOperationEnqueuePublisher =
-            BulkOperationEnqueuePublisher(dsl)
+        open fun bulkOperationEnqueuePublisher(dsl: DSLContext): BulkOperationEnqueuePublisher = BulkOperationEnqueuePublisher(dsl)
 
         @Bean
-        open fun bulkOperationEventPublisher(dsl: DSLContext): BulkOperationEventPublisher =
-            BulkOperationEventPublisher(dsl)
+        open fun bulkOperationEventPublisher(dsl: DSLContext): BulkOperationEventPublisher = BulkOperationEventPublisher(dsl)
 
         @Bean
         open fun bulkOperationApplicationService(
@@ -333,8 +325,7 @@ class BulkOperationIntegrationTest {
         ): BulkItemApplier = BulkItemApplier(issueService, bulkRepo)
 
         @Bean
-        open fun bulkItemFailureRecorder(bulkRepo: BulkOperationRepository): BulkItemFailureRecorder =
-            BulkItemFailureRecorder(bulkRepo)
+        open fun bulkItemFailureRecorder(bulkRepo: BulkOperationRepository): BulkItemFailureRecorder = BulkItemFailureRecorder(bulkRepo)
 
         @Bean
         open fun bulkItemExecutor(
@@ -431,15 +422,16 @@ class BulkOperationIntegrationTest {
         val key1 = insertIssue("이슈1", "open")
         val key2 = insertIssue("이슈2", "open")
 
-        val opId = bulkAppService.submit(
-            ACTOR_ID,
-            BulkUpdateRequest(
-                issueKeys = listOf(key1, key2),
-                operationType = BulkOperationType.BULK_EDIT,
-                editPayload = BulkEditPayload(priority = 3, impact = null),
-                transitionPayload = null,
-            ),
-        )
+        val opId =
+            bulkAppService.submit(
+                ACTOR_ID,
+                BulkUpdateRequest(
+                    issueKeys = listOf(key1, key2),
+                    operationType = BulkOperationType.BULK_EDIT,
+                    editPayload = BulkEditPayload(priority = 3, impact = null),
+                    transitionPayload = null,
+                ),
+            )
 
         worker.pollAndProcess()
 
@@ -472,15 +464,16 @@ class BulkOperationIntegrationTest {
         val key1 = insertIssue("멱등 이슈1", "open")
         val key2 = insertIssue("멱등 이슈2", "open")
 
-        val opId = bulkAppService.submit(
-            ACTOR_ID,
-            BulkUpdateRequest(
-                issueKeys = listOf(key1, key2),
-                operationType = BulkOperationType.BULK_EDIT,
-                editPayload = BulkEditPayload(priority = 2, impact = null),
-                transitionPayload = null,
-            ),
-        )
+        val opId =
+            bulkAppService.submit(
+                ACTOR_ID,
+                BulkUpdateRequest(
+                    issueKeys = listOf(key1, key2),
+                    operationType = BulkOperationType.BULK_EDIT,
+                    editPayload = BulkEditPayload(priority = 2, impact = null),
+                    transitionPayload = null,
+                ),
+            )
 
         // 1차 처리
         worker.pollAndProcess()
@@ -499,7 +492,7 @@ class BulkOperationIntegrationTest {
         val afterSecond = requireNotNull(bulkRepo.findById(opId))
         assertThat(afterSecond.status).isEqualTo(BulkOperationStatus.COMPLETED)
         assertThat(afterSecond.succeededCount).isEqualTo(2) // 불변
-        assertThat(afterSecond.failedCount).isEqualTo(0)   // 불변
+        assertThat(afterSecond.failedCount).isEqualTo(0) // 불변
     }
 
     // ── S3. CAS 동시성 ─────────────────────────────────────────────────────────
@@ -518,25 +511,27 @@ class BulkOperationIntegrationTest {
     fun `S3 - CAS 동시성 - 동시 2워커가 같은 작업 단일 처리`() {
         val key1 = insertIssue("동시성 이슈1", "open")
 
-        val opId = bulkAppService.submit(
-            ACTOR_ID,
-            BulkUpdateRequest(
-                issueKeys = listOf(key1),
-                operationType = BulkOperationType.BULK_EDIT,
-                editPayload = BulkEditPayload(priority = 1, impact = null),
-                transitionPayload = null,
-            ),
-        )
+        val opId =
+            bulkAppService.submit(
+                ACTOR_ID,
+                BulkUpdateRequest(
+                    issueKeys = listOf(key1),
+                    operationType = BulkOperationType.BULK_EDIT,
+                    editPayload = BulkEditPayload(priority = 1, impact = null),
+                    transitionPayload = null,
+                ),
+            )
 
         // 동시 2스레드 실행 — CountDownLatch 로 동시 진입 보장
         val latch = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(2)
-        val futures = (1..2).map {
-            executor.submit {
-                latch.await() // 동시 진입 대기
-                worker.pollAndProcess()
+        val futures =
+            (1..2).map {
+                executor.submit {
+                    latch.await() // 동시 진입 대기
+                    worker.pollAndProcess()
+                }
             }
-        }
         latch.countDown() // 동시 출발
         futures.forEach { it.get() }
         executor.shutdown()
@@ -568,15 +563,16 @@ class BulkOperationIntegrationTest {
         val key2 = insertIssue("전이가능2", "open")
         val key3 = insertIssue("전이불가", "done") // done→in_progress 전이 없음
 
-        val opId = bulkAppService.submit(
-            ACTOR_ID,
-            BulkUpdateRequest(
-                issueKeys = listOf(key1, key2, key3),
-                operationType = BulkOperationType.BULK_TRANSITION,
-                editPayload = null,
-                transitionPayload = BulkTransitionPayload(toStateKey = "in_progress"),
-            ),
-        )
+        val opId =
+            bulkAppService.submit(
+                ACTOR_ID,
+                BulkUpdateRequest(
+                    issueKeys = listOf(key1, key2, key3),
+                    operationType = BulkOperationType.BULK_TRANSITION,
+                    editPayload = null,
+                    transitionPayload = BulkTransitionPayload(toStateKey = "in_progress"),
+                ),
+            )
 
         worker.pollAndProcess()
 
@@ -608,15 +604,16 @@ class BulkOperationIntegrationTest {
     fun `S5 - 1000건 상한 - BULK_OPERATION_MAX_SIZE 이슈 처리 완료`() {
         val issueKeys = (1..BULK_OPERATION_MAX_SIZE).map { insertIssue("상한이슈$it", "open") }
 
-        val opId = bulkAppService.submit(
-            ACTOR_ID,
-            BulkUpdateRequest(
-                issueKeys = issueKeys,
-                operationType = BulkOperationType.BULK_EDIT,
-                editPayload = BulkEditPayload(priority = 1, impact = null),
-                transitionPayload = null,
-            ),
-        )
+        val opId =
+            bulkAppService.submit(
+                ACTOR_ID,
+                BulkUpdateRequest(
+                    issueKeys = issueKeys,
+                    operationType = BulkOperationType.BULK_EDIT,
+                    editPayload = BulkEditPayload(priority = 1, impact = null),
+                    transitionPayload = null,
+                ),
+            )
 
         worker.pollAndProcess()
 
@@ -641,25 +638,27 @@ class BulkOperationIntegrationTest {
     fun `S6 - 완료 이벤트 발행 - q_bulk_operation_events 큐에 bulkOperationId 포함된 메시지 발행`() {
         val key1 = insertIssue("이벤트이슈", "open")
 
-        val opId = bulkAppService.submit(
-            ACTOR_ID,
-            BulkUpdateRequest(
-                issueKeys = listOf(key1),
-                operationType = BulkOperationType.BULK_EDIT,
-                editPayload = BulkEditPayload(priority = 2, impact = null),
-                transitionPayload = null,
-            ),
-        )
+        val opId =
+            bulkAppService.submit(
+                ACTOR_ID,
+                BulkUpdateRequest(
+                    issueKeys = listOf(key1),
+                    operationType = BulkOperationType.BULK_EDIT,
+                    editPayload = BulkEditPayload(priority = 2, impact = null),
+                    transitionPayload = null,
+                ),
+            )
 
         worker.pollAndProcess()
 
         // q_bulk_operation_events 에서 메시지 조회 (vt=1초 — 즉시 읽기)
-        val messages = dsl.fetch(
-            "SELECT * FROM pgmq.read(?, ?, ?)",
-            BulkOperationEventPublisher.QUEUE_NAME,
-            1,
-            10,
-        )
+        val messages =
+            dsl.fetch(
+                "SELECT * FROM pgmq.read(?, ?, ?)",
+                BulkOperationEventPublisher.QUEUE_NAME,
+                1,
+                10,
+            )
         assertThat(messages).isNotEmpty
         val firstMessage = messages.first().get("message", String::class.java)
         assertThat(firstMessage).contains(opId.value.toString())

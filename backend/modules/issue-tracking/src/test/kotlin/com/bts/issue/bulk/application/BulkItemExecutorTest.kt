@@ -56,10 +56,9 @@ class BulkItemExecutorTest : DescribeSpec({
     val actorId = ActorId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
     val operationId = BulkOperationId(UUID.fromString("00000000-0000-0000-0000-000000000002"))
     val issueKey = IssueKey("ATLAS-1")
+    val defaultEditPayload = BulkOperationPayload.Edit(priority = 2, impact = null)
 
-    fun makeOperation(
-        payload: BulkOperationPayload = BulkOperationPayload.Edit(priority = 2, impact = null),
-    ): BulkOperation =
+    fun makeOperation(payload: BulkOperationPayload = defaultEditPayload): BulkOperation =
         BulkOperation(
             id = operationId,
             actorId = actorId.value,
@@ -134,11 +133,12 @@ class BulkItemExecutorTest : DescribeSpec({
                 val item = pendingItem()
                 every {
                     applier.applyAndRecordSuccess(actorId, operationId, issueKey, operation.payload)
-                } throws IssueAccessDeniedException(
-                    actorId,
-                    IssuePermission.UPDATE,
-                    IssueScope.Issue(issueKey.value),
-                )
+                } throws
+                    IssueAccessDeniedException(
+                        actorId,
+                        IssuePermission.UPDATE,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 justRun { failureRecorder.recordFailure(operationId, issueKey, any()) }
 
                 sut.executeItem(actorId, operation, item)
@@ -154,12 +154,13 @@ class BulkItemExecutorTest : DescribeSpec({
                 val item = pendingItem()
                 every {
                     applier.applyAndRecordSuccess(actorId, operationId, issueKey, payload)
-                } throws IssueTransitionNotAllowedException(
-                    issueKey = issueKey,
-                    fromStatus = "IN_PROGRESS",
-                    toStatus = "DONE",
-                    reason = "only lead can close",
-                )
+                } throws
+                    IssueTransitionNotAllowedException(
+                        issueKey = issueKey,
+                        fromStatus = "IN_PROGRESS",
+                        toStatus = "DONE",
+                        reason = "only lead can close",
+                    )
                 justRun { failureRecorder.recordFailure(operationId, issueKey, any()) }
 
                 sut.executeItem(actorId, operation, item)
