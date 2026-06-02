@@ -78,11 +78,15 @@ class MyIssuePermissionController(
      * PAT → JWT → 미인증 순서로 판정한다.
      * WhoamiController와 동일한 분기 패턴을 따른다.
      *
+     * @Suppress ThrowsCount: PAT 실패, JWT 파싱 실패, 미인증 3경로가 모두 독립적인 401 거부 이유이므로
+     * 단일 throw로 합치면 분기 의도가 사라진다. WhoamiController 기존 패턴과 일관성을 유지한다.
+     *
      * @param request HTTP 요청 (Authorization 헤더 파싱용)
      * @param jwt Spring Security 필터 주입 JWT Principal (PAT 요청 시 null)
      * @return 인증된 사용자 UUID
      * @throws ResponseStatusException 미인증 시 401
      */
+    @Suppress("ThrowsCount")
     private fun resolveActorId(
         request: HttpServletRequest,
         jwt: Jwt?,
@@ -106,8 +110,12 @@ class MyIssuePermissionController(
     /**
      * `Authorization: Bearer <token>` 헤더에서 raw token을 추출한다.
      *
+     * @Suppress ReturnCount: header null 조기 반환, prefix 불일치 조기 반환, 정상 추출 반환의
+     * 3-return 구조가 WhoamiController 기존 패턴과 동일하며 early-return이 가독성을 높인다.
+     *
      * WhoamiController와 동일한 헬퍼 패턴.
      */
+    @Suppress("ReturnCount")
     private fun extractBearerToken(request: HttpServletRequest): String? {
         val header = request.getHeader("Authorization") ?: return null
         if (!header.startsWith("Bearer ")) return null
