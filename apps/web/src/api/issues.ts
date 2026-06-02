@@ -86,6 +86,17 @@ export const issueTransitionSchema = z.object({
 /** 이슈 전이 항목 타입 */
 export type IssueTransition = z.infer<typeof issueTransitionSchema>
 
+/**
+ * 일괄 가용 전이 조회 응답 Zod 스키마.
+ * backend BulkAvailableTransitionsResponse DTO 직렬화 형태와 1:1 대응.
+ * - transitions: 모든 대상 이슈에 공통으로 존재하는 전이 교집합
+ * - unresolvedIssueKeys: 미존재·워크플로우 미설정·접근 불가로 조회 실패한 이슈 키 목록
+ */
+export const bulkAvailableTransitionsSchema = z.object({
+  transitions: z.array(issueTransitionSchema),
+  unresolvedIssueKeys: z.array(z.string()),
+})
+
 /** 이슈 전이 요청 입력 타입 */
 export interface TransitionIssueInput {
   toStatusKey: string
@@ -300,6 +311,32 @@ export async function transitionIssue(key: string, input: TransitionIssueInput):
   }
   const raw: unknown = await res.json()
   const wrapped = dataResponseSchema(issueResponseSchema).parse(raw)
+  return wrapped.data
+}
+
+/**
+ * 여러 이슈에 공통으로 적용 가능한 전이 교집합을 조회한다.
+ * POST /api/v1/issues/bulk-transitions/available body { issueKeys }
+ * 성공 200 시 { transitions, unresolvedIssueKeys }를 반환한다.
+ * 미존재·워크플로우 미설정 이슈는 unresolvedIssueKeys에 포함되고 교집합에서 제외된다.
+ *
+ * @param issueKeys 가용 전이를 조회할 이슈 키 목록
+ * @returns transitions(공통 전이 교집합) + unresolvedIssueKeys(조회 실패 키 목록)
+ * @throws ApiError(400) issueKeys가 빈 배열이거나 1000 초과 시 (ISSUE_BULK_VALIDATION_FAILED)
+ */
+export async function fetchBulkAvailableTransitions(
+  issueKeys: string[],
+): Promise<{ transitions: IssueTransition[]; unresolvedIssueKeys: string[] }> {
+  const res = await apiFetch('/api/v1/issues/bulk-transitions/available', {
+    method: 'POST',
+    body: { issueKeys },
+  })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const raw: unknown = await res.json()
+  const wrapped = dataResponseSchema(bulkAvailableTransitionsSchema).parse(raw)
   return wrapped.data
 }
 

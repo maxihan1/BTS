@@ -473,6 +473,65 @@ const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ p
   return HttpResponse.json({ data: updated })
 })
 
+/**
+ * 전이 항목의 toStateKey 기준으로 두 전이 배열의 교집합을 반환한다.
+ * 첫 번째 배열 항목 기준을 유지한다 (fromStateKey·name·key 등은 첫 이슈 기준 보존).
+ * backend BulkAvailableTransitionsService.intersect 시맨틱과 동일.
+ */
+function intersectByToStateKey(
+  base: typeof softwareDefaultFixture.transitions,
+  other: typeof softwareDefaultFixture.transitions,
+): typeof softwareDefaultFixture.transitions {
+  const otherToKeys = new Set(other.map((t) => t.toStateKey))
+  return base.filter((t) => otherToKeys.has(t.toStateKey))
+}
+
+/**
+ * POST /api/v1/issues/bulk-transitions/available — 일괄 가용 전이 교집합 조회 핸들러.
+ * 각 이슈의 가용전이를 구한 뒤 toStateKey 기준으로 교집합 계산.
+ * 분기 순서 (backend 일치):
+ *   (1) 미존재·소프트삭제·ATLAS-NOWF 이슈 → unresolvedIssueKeys에 추가
+ *   (2) 성공분의 가용전이 교집합 계산
+ *   (3) 성공 → 200 + { data: { transitions, unresolvedIssueKeys } }
+ * 응답: { data: { transitions: [...], unresolvedIssueKeys: [...] } }
+ */
+const bulkAvailableTransitionsHandler = http.post(
+  '/api/v1/issues/bulk-transitions/available',
+  async ({ request }) => {
+    const body = await request.clone().json() as { issueKeys?: string[] }
+    const issueKeys = body.issueKeys ?? []
+
+    const unresolvedIssueKeys: string[] = []
+    const transitionSets: (typeof softwareDefaultFixture.transitions)[] = []
+
+    for (const key of issueKeys) {
+      const found = resolveIssue(key)
+      if (found === undefined) {
+        unresolvedIssueKeys.push(key)
+        continue
+      }
+      // 워크플로우 미설정 이슈 (ATLAS-NOWF) → unresolved
+      if (key === issueAtlasNoWorkflowFixture.key) {
+        unresolvedIssueKeys.push(key)
+        continue
+      }
+      transitionSets.push(getAvailableTransitions(found.currentStateKey))
+    }
+
+    // 성공 분이 없으면 빈 교집합
+    let transitions: typeof softwareDefaultFixture.transitions = []
+    if (transitionSets.length > 0) {
+      const [first, ...rest] = transitionSets
+      transitions = rest.reduce(
+        (acc, cur) => intersectByToStateKey(acc, cur),
+        first ?? [],
+      )
+    }
+
+    return HttpResponse.json({ data: { transitions, unresolvedIssueKeys } })
+  },
+)
+
 export const issueHandlers = [
   listIssuesHandler,
   getIssueHandler,
@@ -482,4 +541,5 @@ export const issueHandlers = [
   deleteIssueHandler,
   getTransitionsHandler,
   transitionHandler,
+  bulkAvailableTransitionsHandler,
 ]
