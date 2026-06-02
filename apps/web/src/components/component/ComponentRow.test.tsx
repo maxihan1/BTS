@@ -62,8 +62,11 @@ function createWrapper() {
 beforeEach(() => {
   resetComponentStore()
   vi.clearAllMocks()
-  // componentHandlers를 server에 등록
-  server.use(...componentHandlers)
+  // componentHandlers + 기본 users 핸들러 등록 (빈 쿼리 MSW 매칭 없음 방지)
+  server.use(
+    ...componentHandlers,
+    http.get('/api/v1/users', () => HttpResponse.json([])),
+  )
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
