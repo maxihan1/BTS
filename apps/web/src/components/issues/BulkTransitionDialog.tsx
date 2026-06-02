@@ -1,6 +1,6 @@
 // 일괄 상태 전이 Dialog — 선택 이슈 가용 전이 교집합 노출 + BULK_TRANSITION 접수 (FR-IS-05)
 import type { JSX } from 'react'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { Button } from '@/components/ui/button'
 import {
@@ -10,9 +10,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { fetchIssueTransitions } from '@/api/issues'
+import { fetchBulkAvailableTransitions } from '@/api/issues'
 import type { IssueTransition } from '@/api/issues'
-import { intersectTransitions } from '@/lib/transition-intersection'
 import { useSubmitBulkOperation } from '@/hooks/use-bulk-operation'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -37,14 +36,14 @@ interface BulkTransitionDialogProps {
 /**
  * 일괄 상태 전이 Dialog.
  *
- * 1. open 시 모든 issueKey에 대해 `fetchIssueTransitions`를 병렬 호출한다.
- *    (`Promise.allSettled`로 부분 실패를 격리한다.)
- * 2. fulfilled 결과만 모아 `intersectTransitions`로 교집합을 계산해 드롭다운에 노출한다.
- * 3. rejected가 1건 이상이면 경고 메시지를 표시한다.
- * 4. 교집합이 0건이면 안내 메시지를 표시하고 적용 버튼을 비활성화한다.
- * 5. 전이 선택 후 적용 시 issueKeys 전체(조회 실패 포함)를 백엔드에 전송한다.
+ * 1. open 시 `fetchBulkAvailableTransitions(issueKeys)` 단일 호출로 서버가 계산한 교집합 전이를 받는다.
+ * 2. transitions를 드롭다운에 노출한다.
+ * 3. unresolvedIssueKeys가 1건 이상이면 경고 메시지를 표시한다.
+ * 4. transitions가 0건이고 unresolvedIssueKeys도 없으면 교집합 없음 안내를 표시한다.
+ * 5. transitions가 0건이고 unresolvedIssueKeys === issueKeys 전량이면 전량 실패 에러를 표시한다.
+ * 6. 전이 선택 후 적용 시 issueKeys 전체를 백엔드에 전송한다.
  *    — 백엔드 best-effort가 개별 처리하므로 전체 목록을 그대로 보낸다.
- * 6. 성공 시 onSubmitted(bulkOperationId)와 onOpenChange(false)를 호출한다.
+ * 7. 성공 시 onSubmitted(bulkOperationId)와 onOpenChange(false)를 호출한다.
  *
  * @param issueKeys 일괄 전이 대상 이슈 키 목록
  * @param open Dialog 열림 여부
@@ -57,8 +56,8 @@ export function BulkTransitionDialog({
   onOpenChange,
   onSubmitted,
 }: BulkTransitionDialogProps): JSX.Element {
-  /** 이슈별 가용 전이 목록 (fulfilled 결과만) */
-  const [perIssueTransitions, setPerIssueTransitions] = useState<IssueTransition[][]>([])
+  /** 서버가 계산한 공통 전이 목록 */
+  const [transitions, setTransitions] = useState<IssueTransition[]>([])
   /** 조회 실패한 issueKey가 1건 이상이면 true */
   const [hasPartialFailure, setHasPartialFailure] = useState(false)
   /** 모든 issueKey 조회가 실패했으면 true (전량 실패) */
@@ -69,8 +68,8 @@ export function BulkTransitionDialog({
   const submitBulkOperation = useSubmitBulkOperation()
 
   /**
-   * Dialog가 열릴 때 모든 issueKey의 가용 전이를 병렬 조회한다.
-   * Promise.allSettled로 부분 실패를 격리하고 fulfilled 결과만 수집한다.
+   * Dialog가 열릴 때 fetchBulkAvailableTransitions를 단일 호출한다.
+   * 서버가 교집합을 계산해 transitions + unresolvedIssueKeys를 반환한다.
    * cleanup 플래그로 stale in-flight 결과가 새 상태를 덮지 않도록 방어한다.
    */
   useEffect(() => {
@@ -78,28 +77,20 @@ export function BulkTransitionDialog({
 
     let cancelled = false
 
-    setPerIssueTransitions([])
+    setTransitions([])
     setHasPartialFailure(false)
     setHasTotalFailure(false)
     setSelectedStateKey('')
 
-    void Promise.allSettled(issueKeys.map((key) => fetchIssueTransitions(key))).then((results) => {
+    void fetchBulkAvailableTransitions(issueKeys).then((result) => {
       if (cancelled) return
 
-      const fulfilled: IssueTransition[][] = []
-      let failureCount = 0
-
-      for (const result of results) {
-        if (result.status === 'fulfilled') {
-          fulfilled.push(result.value)
-        } else {
-          failureCount++
-        }
-      }
-
-      setPerIssueTransitions(fulfilled)
-      setHasPartialFailure(failureCount > 0)
-      setHasTotalFailure(fulfilled.length === 0 && failureCount > 0)
+      setTransitions(result.transitions)
+      setHasPartialFailure(result.unresolvedIssueKeys.length > 0)
+      setHasTotalFailure(
+        result.transitions.length === 0 &&
+        result.unresolvedIssueKeys.length === issueKeys.length,
+      )
     })
 
     return () => {
@@ -107,19 +98,16 @@ export function BulkTransitionDialog({
     }
   }, [open, issueKeys])
 
-  /** 교집합 전이 목록 — fulfilled 결과 기반 */
-  const intersected = useMemo(() => intersectTransitions(perIssueTransitions), [perIssueTransitions])
+  /** 교집합이 0건이고 전량 실패도 아닌 경우 — 공통 전이 없음 안내 */
+  const hasNoCommonTransitions = !hasTotalFailure && transitions.length === 0 && !hasPartialFailure
 
-  /** 교집합이 0건인지 여부 */
-  const hasNoCommonTransitions = perIssueTransitions.length > 0 && intersected.length === 0
-
-  /** 적용 버튼 활성 조건: 전량 실패 없고 교집합이 있으며 전이가 선택된 경우 */
-  const canSubmit = !hasTotalFailure && selectedStateKey !== '' && intersected.length > 0
+  /** 적용 버튼 활성 조건: 전량 실패 없고 전이가 있으며 선택된 경우 */
+  const canSubmit = !hasTotalFailure && selectedStateKey !== '' && transitions.length > 0
 
   function handleOpenChange(next: boolean): void {
     if (!next) {
       setSelectedStateKey('')
-      setPerIssueTransitions([])
+      setTransitions([])
       setHasPartialFailure(false)
       setHasTotalFailure(false)
     }
@@ -188,7 +176,7 @@ export function BulkTransitionDialog({
                         <SelectValue placeholder="상태를 선택하세요" />
                       </SelectTrigger>
                       <SelectContent>
-                        {intersected.map((transition) => (
+                        {transitions.map((transition) => (
                           <SelectItem key={transition.toStateKey} value={transition.toStateKey}>
                             {transition.name}
                           </SelectItem>
