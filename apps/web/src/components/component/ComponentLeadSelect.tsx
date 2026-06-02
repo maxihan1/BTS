@@ -21,6 +21,13 @@ interface ComponentLeadSelectProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 상수
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 검색 input placeholder / aria-label 공용 문자열 */
+const SEARCH_LABEL = '리드 검색'
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -81,8 +88,8 @@ export const ComponentLeadSelect = ({
       <input
         type="text"
         className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed"
-        placeholder="리드 검색"
-        aria-label="리드 검색"
+        placeholder={SEARCH_LABEL}
+        aria-label={SEARCH_LABEL}
         disabled={disabled}
         onChange={(e) => onSearch(e.target.value)}
       />
