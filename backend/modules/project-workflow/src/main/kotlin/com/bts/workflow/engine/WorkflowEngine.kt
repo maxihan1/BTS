@@ -18,6 +18,7 @@ import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.workflow.domain.expression.DefaultActorView
 import com.bts.workflow.domain.expression.DefaultIssueView
+import com.bts.workflow.domain.spi.ValidatorPhase
 import com.bts.workflow.domain.spi.ValidatorResult
 import com.bts.workflow.domain.spi.WorkflowPostAction
 import com.bts.workflow.domain.spi.WorkflowValidator
@@ -104,8 +105,17 @@ interface WorkflowDefinitionRepository {
     ): List<PostActionConfig>
 }
 
-/** Validator 한 건의 type + config 쌍. */
-data class ValidatorConfig(val type: String, val config: Map<String, Any?>)
+/**
+ * Validator 한 건의 type + config + phase 쌍.
+ *
+ * phase 기본값은 AVAILABILITY. EXECUTION 게이트가 필요한 validator(RequiredField 등)는
+ * repository 구현에서 phase 를 명시해 반환해야 한다.
+ */
+data class ValidatorConfig(
+    val type: String,
+    val config: Map<String, Any?>,
+    val phase: ValidatorPhase = ValidatorPhase.AVAILABILITY,
+)
 
 /** PostAction 한 건의 type + config 쌍. */
 data class PostActionConfig(val type: String, val config: Map<String, Any?>)
@@ -328,7 +338,12 @@ class WorkflowEngine(
             )
         val ctx = TransitionContext(syntheticRequest, workflow, fromState, transition, issueView, actorView)
 
+        // availableTransitions 는 AVAILABILITY 페이즈 validator 만 평가한다.
+        // EXECUTION 페이즈(RequiredField 등)는 전이 실행 시(plan 경로)에만 평가되므로 건너뛴다.
+        // phase 는 ValidatorConfig 에 담겨 오므로 validator 인스턴스를 생성하기 전에 확인한다.
+        // 이렇게 해야 "입력이 필요한 전이"도 목록에는 노출되고(버튼 보임), 실행 시점에만 차단된다.
         for (cfg in definitionRepo.findValidators(req.workflowKey, transition)) {
+            if (cfg.phase == ValidatorPhase.EXECUTION) continue
             val validator = validatorFactory.create(cfg.type, cfg.config)
             val result = validator.validate(ctx)
             if (result is ValidatorResult.Fail) {

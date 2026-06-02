@@ -12,6 +12,7 @@ import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
+import com.bts.workflow.domain.spi.ValidatorPhase
 import com.bts.workflow.domain.spi.ValidatorResult
 import com.bts.workflow.validator.RequiredFieldValidator
 import io.mockk.every
@@ -59,9 +60,9 @@ class WorkflowEngineAvailabilityPhaseTest {
             transitions = listOf(txOpenToClosed),
         )
 
-    /** RequiredField(field="resolution") validator 설정 — EXECUTION 페이즈 */
+    /** RequiredField(field="resolution") validator 설정 — EXECUTION 페이즈로 명시 */
     private val requiredResolutionConfig =
-        ValidatorConfig("RequiredField", mapOf("field" to "resolution"))
+        ValidatorConfig("RequiredField", mapOf("field" to "resolution"), ValidatorPhase.EXECUTION)
 
     /** resolution 없는 가용 전이 조회 요청 */
     private val availReqWithoutResolution =
