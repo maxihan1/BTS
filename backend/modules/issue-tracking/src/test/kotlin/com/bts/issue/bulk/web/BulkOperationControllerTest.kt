@@ -44,10 +44,12 @@ import java.util.UUID
  * `@SpringBootApplication` 없이 `@ContextConfiguration` 으로 최소 컨텍스트를 직접 구성한다.
  * [BulkOperationApplicationService], [BulkOperationRepository] 는 MockK stub 으로 대체한다.
  *
- * 테스트 케이스 6건.
+ * 테스트 케이스 8건.
  * - P-1. POST 정상(BULK_EDIT) → 202 + {bulkOperationId, status:"PENDING", totalCount}
  * - P-2. POST issueKeys 빈 목록 → service가 IllegalArgumentException → 400
  * - P-3. POST issueKeys 1000 초과 → service가 IllegalArgumentException → 400
+ * - P-4. POST operationType 미허용 enum 문자열 → HttpMessageNotReadableException → 400 + 계약 형태
+ * - P-5. POST 빈 본문 {} (필수 필드 누락) → MethodArgumentNotValidException → 400 + 계약 형태
  * - G-1. GET 작업 본인 actor → 200 + BulkOperationResponse
  * - G-2. GET 타인 actor → 403
  * - G-3. GET 없는 id → 404
@@ -180,6 +182,42 @@ class BulkOperationControllerTest {
                 .content(mapper.writeValueAsString(body)),
         )
             .andExpect(status().isBadRequest)
+    }
+
+    // ── P-4: POST operationType 미허용 enum 문자열 → 400 ─────────────────────
+
+    @Test
+    fun `POST bulk-update — operationType이 미허용 enum 문자열이면 400 + 계약 형태 응답`() {
+        val body =
+            mapOf(
+                "operationType" to "GARBAGE",
+                "issueKeys" to listOf("ATLAS-1"),
+                "editPayload" to null,
+                "transitionPayload" to null,
+            )
+
+        mockMvc.perform(
+            post("/api/v1/issues/bulk-update")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(BulkErrorCodes.VALIDATION_FAILED))
+            .andExpect(jsonPath("$.timestamp").exists())
+    }
+
+    // ── P-5: POST 빈 본문 {} (필수 필드 누락) → 400 ──────────────────────────
+
+    @Test
+    fun `POST bulk-update — 빈 본문 이면 MethodArgumentNotValidException → 400 + 계약 형태 응답`() {
+        mockMvc.perform(
+            post("/api/v1/issues/bulk-update")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(BulkErrorCodes.VALIDATION_FAILED))
+            .andExpect(jsonPath("$.timestamp").exists())
     }
 
     // ── G-1: GET 작업 본인 actor → 200 + BulkOperationResponse ───────────────
