@@ -32,14 +32,14 @@ import org.junit.jupiter.api.Test
  * - CustomExpression config["expression"] 누락 → [IllegalArgumentException]
  */
 class DefaultWorkflowValidatorFactoryTest {
-
     private val permissionResolver: PermissionResolver = mockk()
     private val spelEvaluator: SpelEvaluator = mockk()
 
-    private val factory = DefaultWorkflowValidatorFactory(
-        permissionResolver = permissionResolver,
-        spelEvaluator = spelEvaluator,
-    )
+    private val factory =
+        DefaultWorkflowValidatorFactory(
+            permissionResolver = permissionResolver,
+            spelEvaluator = spelEvaluator,
+        )
 
     // ─────────────────────────────────────────────────────────────────────────
     // 정상 생성 케이스
