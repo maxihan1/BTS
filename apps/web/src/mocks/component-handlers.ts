@@ -168,7 +168,7 @@ const createComponentHandler = http.post(
 
     const newComponent: StoredComponent = {
       id: generateUuidV4(),
-      projectId: `project-${projectIdOrKey.toLowerCase()}`,
+      projectId: generateUuidV4(),
       name: body.name,
       description: body.description ?? null,
       leadUserId: body.leadUserId ?? null,
