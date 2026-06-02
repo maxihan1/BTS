@@ -32,6 +32,11 @@ import java.util.UUID
  * - **PAT**: `pat_` prefix Bearer 토큰을 [PersonalAccessTokenService.verify]로 검증한다.
  * - 미인증: 401 [ResponseStatusException]을 던진다.
  *
+ * ## 상태 코드 경계
+ * - 미인증 → 401, projectKey 공백/빈 문자열 → 400.
+ * - 인증된 비멤버 → 200 + `false` (401 아님 — 인증은 성공, 권한만 부재).
+ * - 미존재 projectKey → 200 + `false` (404 아님 — resolver가 미존재를 거부로 판정).
+ *
  * ## UI 권한 목록
  * [UI_PROJECT_PERMISSIONS] — 프론트엔드 이슈 생성 버튼 노출에 사용하는 권한.
  *
