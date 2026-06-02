@@ -66,7 +66,10 @@ class BulkOperationProcessorTest : DescribeSpec({
 
     fun issueKey(n: Int) = IssueKey("ATLAS-$n")
 
-    fun makeIssueResponse(key: String, version: Long = 1L): IssueResponse =
+    fun makeIssueResponse(
+        key: String,
+        version: Long = 1L,
+    ): IssueResponse =
         IssueResponse(
             key = key,
             id = UUID.randomUUID(),
@@ -290,10 +293,11 @@ class BulkOperationProcessorTest : DescribeSpec({
 
         describe("멱등 스킵") {
             it("이미 SUCCEEDED 인 항목은 issueService 를 호출하지 않고 건너뛴다") {
-                val alreadySucceeded = BulkOperationItem(
-                    issueKey = issueKey(1),
-                    status = ItemStatus.SUCCEEDED,
-                )
+                val alreadySucceeded =
+                    BulkOperationItem(
+                        issueKey = issueKey(1),
+                        status = ItemStatus.SUCCEEDED,
+                    )
                 val operation = makeOperation(items = listOf(alreadySucceeded))
 
                 every { bulkRepo.findById(operationId) } returns operation
@@ -306,11 +310,12 @@ class BulkOperationProcessorTest : DescribeSpec({
             }
 
             it("이미 FAILED 인 항목도 건너뛴다") {
-                val alreadyFailed = BulkOperationItem(
-                    issueKey = issueKey(1),
-                    status = ItemStatus.FAILED,
-                    failureReasonCode = FailureReasonCode.NOT_FOUND,
-                )
+                val alreadyFailed =
+                    BulkOperationItem(
+                        issueKey = issueKey(1),
+                        status = ItemStatus.FAILED,
+                        failureReasonCode = FailureReasonCode.NOT_FOUND,
+                    )
                 val operation = makeOperation(items = listOf(alreadyFailed))
 
                 every { bulkRepo.findById(operationId) } returns operation
@@ -368,7 +373,8 @@ class BulkOperationProcessorTest : DescribeSpec({
                 every { bulkRepo.findById(operationId) } returns operation
                 every { bulkRepo.findItemsByOperationId(operationId) } returns items
                 items.forEach { item ->
-                    every { issueService.findByKey(any(), item.issueKey) } returns makeIssueResponse(item.issueKey.value)
+                    every { issueService.findByKey(any(), item.issueKey) } returns
+                        makeIssueResponse(item.issueKey.value)
                     every { issueService.updateIssue(any(), item.issueKey, any()) } returns
                         makeIssueResponse(item.issueKey.value)
                 }

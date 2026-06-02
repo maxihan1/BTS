@@ -77,8 +77,9 @@ class BulkOperationProcessor(
      */
     @Transactional
     fun process(bulkOperationId: BulkOperationId) {
-        val operation = bulkRepo.findById(bulkOperationId)
-            ?: error("BulkOperation not found: ${bulkOperationId.value}")
+        val operation =
+            bulkRepo.findById(bulkOperationId)
+                ?: error("BulkOperation not found: ${bulkOperationId.value}")
         val items = bulkRepo.findItemsByOperationId(bulkOperationId)
 
         // actor 복원 — HTTP SecurityContext 없이 DB에 저장된 actorId 로 복원
