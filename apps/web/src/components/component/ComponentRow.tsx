@@ -1,10 +1,9 @@
 // 컴포넌트 단일 행 — 이름/설명/리드 표시 + 인라인 리드 변경 + 수정/삭제 액션 (FR-CM-01)
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import type { JSX } from 'react'
 import { Button } from '@/components/ui/button'
 import { ComponentLeadSelect } from './ComponentLeadSelect'
-import { useUsersByIds } from '@/hooks/use-users'
-import { useUsers } from '@/hooks/use-users'
+import { useUsersByIds, useUsers } from '@/hooks/use-users'
 import { useDeleteComponent, useChangeComponentLead } from '@/hooks/use-components'
 import { componentLabels } from '@/i18n/component-labels'
 import type { Component } from '@/api/components.types'
@@ -33,24 +32,29 @@ interface ComponentRowProps {
 // useSearchUsers — 검색어 상태 + debounce + useUsers 조합 내부 훅
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * 리드 검색 상태를 관리하는 내부 훅.
+ *
+ * - handleSearch 호출 시 이전 타이머를 취소하고 새 타이머를 시작한다.
+ *   (useRef로 타이머 id 보관 — Strict Mode 2회 실행에서도 안전)
+ * - debouncedQuery가 안정되면 useUsers가 실제 API 요청을 보낸다.
+ */
 function useSearchUsers() {
-  const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
+  const timerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null)
 
-  function handleSearch(query: string): void {
-    setSearchQuery(query)
-    // 단순 setTimeout debounce — useEffect cleanup으로 정리
-    const id = window.setTimeout(() => {
+  const handleSearch = useCallback((query: string): void => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current)
+    }
+    timerRef.current = window.setTimeout(() => {
       setDebouncedQuery(query)
     }, SEARCH_DEBOUNCE_MS)
-    // 이전 타이머 취소를 위해 별도 상태가 필요하지만,
-    // 단일 행 수준에서는 입력 직후 취소 패턴이 overhead → 마지막 결과만 사용
-    return () => window.clearTimeout(id)
-  }
+  }, [])
 
   const { data: searchResults = [] } = useUsers(debouncedQuery)
 
-  return { searchQuery, handleSearch, searchResults }
+  return { handleSearch, searchResults }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
