@@ -91,13 +91,9 @@ describe('BulkEditDialog', () => {
 
     const user = userEvent.setup()
 
-    // priority select 클릭 후 옵션 선택
-    const priorityTrigger = screen.getByRole('combobox', { name: /priority/i })
-    await user.click(priorityTrigger)
-
-    // "Highest" 또는 "1" 레이블 옵션 선택
-    const option = await screen.findByRole('option', { name: /highest/i })
-    await user.click(option)
+    // priority select에서 1(Highest) 선택
+    const prioritySelect = screen.getByRole('combobox', { name: /priority/i })
+    await user.selectOptions(prioritySelect, '1')
 
     // 적용 버튼 활성화 확인 후 클릭
     const applyButton = screen.getByRole('button', { name: /적용/i })
