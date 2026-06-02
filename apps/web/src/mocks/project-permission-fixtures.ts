@@ -1,9 +1,8 @@
 // FR-PM-02 프로젝트 권한 MSW fixture 데이터 — ADMIN/MEMBER/비멤버 세 역할 응답 초기값
+import type { ProjectPermissions as ProjectPermissionsResponse } from '@/api/project-permissions'
 
-/** 프로젝트 권한 응답 구조 */
-export interface ProjectPermissions {
-  CREATE: boolean
-}
+/** 프로젝트 권한 맵 — api의 Zod 파생 타입에서 도출(단일 진실원, C-2). */
+export type ProjectPermissions = ProjectPermissionsResponse['permissions']
 
 /** 프로젝트 권한 전체 응답 구조 */
 export interface ProjectPermissionResponse {
