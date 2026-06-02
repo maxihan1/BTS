@@ -319,20 +319,23 @@ class ComponentApplicationService(
      * [DataIntegrityViolationException] 대신 [org.jooq.exception.IntegrityConstraintViolationException]
      * 을 직접 던진다. 두 케이스를 모두 처리한다.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun tryInsert(
         component: Component,
         name: String,
     ): Component =
         try {
             repo.insert(component)
-        } catch (ex: RuntimeException) {
+        } catch (ex: DataIntegrityViolationException) {
+            // Spring PersistenceExceptionTranslator 가 개입한 경우
+            translateUniqueViolation(ex, name)
+        } catch (ex: org.jooq.exception.IntegrityConstraintViolationException) {
+            // translator 미개입 시 jOOQ 가 직접 던지는 제약 위반
             translateUniqueViolation(ex, name)
         }
 
     /**
-     * 런타임 예외가 23505 unique_violation 에서 비롯됐으면 [DuplicateComponentNameException] 으로 변환한다.
-     * 그렇지 않으면 원 예외를 그대로 re-throw 한다.
+     * 제약 위반 예외가 23505 unique_violation 에서 비롯됐으면 [DuplicateComponentNameException] 으로
+     * 변환한다. 그렇지 않으면 원 예외를 그대로 re-throw 한다.
      */
     @Suppress("ThrowsCount")
     private fun translateUniqueViolation(
