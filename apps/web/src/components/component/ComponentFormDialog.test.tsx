@@ -100,9 +100,9 @@ describe('ComponentFormDialog — 생성 모드', () => {
     await user.click(saveButton)
 
     expect(handleSubmit).not.toHaveBeenCalled()
-    // 이름 필수 검증 오류 표시
+    // 이름 필수 검증 오류 표시 — role="alert" 로 정확히 탐색
     await waitFor(() => {
-      expect(screen.getByText(/이름/)).toBeInTheDocument()
+      expect(screen.getByRole('alert')).toBeInTheDocument()
     })
   })
 
