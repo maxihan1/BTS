@@ -4,6 +4,7 @@ package com.bts.issue.bulk.application
 
 import com.bts.issue.bulk.domain.BulkOperation
 import com.bts.issue.bulk.domain.BulkOperationId
+import com.bts.issue.bulk.domain.BulkOperationPayload
 import com.bts.issue.bulk.domain.BulkOperationType
 import com.bts.issue.bulk.event.BulkOperationEnqueuePublisher
 import com.bts.issue.bulk.repository.BulkOperationRepository
@@ -117,6 +118,36 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
                         operationType = BulkOperationType.BULK_EDIT,
                         issueKeys = listOf("ATLAS-1"),
                         editPayload = null,
+                        transitionPayload = BulkTransitionPayload(toStateKey = "DONE"),
+                    )
+                shouldThrow<IllegalArgumentException> {
+                    sut.submit(actor, req)
+                }
+            }
+        }
+
+        describe("BULK_EDIT 인데 editPayload 와 transitionPayload 둘 다 있을 때") {
+            it("transitionPayload 가 non-null 이므로 IllegalArgumentException 을 던진다") {
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_EDIT,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = BulkEditPayload(priority = 3, impact = null),
+                        transitionPayload = BulkTransitionPayload(toStateKey = "DONE"),
+                    )
+                shouldThrow<IllegalArgumentException> {
+                    sut.submit(actor, req)
+                }
+            }
+        }
+
+        describe("BULK_TRANSITION 인데 transitionPayload 와 editPayload 둘 다 있을 때") {
+            it("editPayload 가 non-null 이므로 IllegalArgumentException 을 던진다") {
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_TRANSITION,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = BulkEditPayload(priority = 3, impact = null),
                         transitionPayload = BulkTransitionPayload(toStateKey = "DONE"),
                     )
                 shouldThrow<IllegalArgumentException> {
@@ -314,6 +345,45 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
                 verify { repo.insert(capture(opCaptured)) }
                 verify { enqueuePublisher.enqueue(capture(enqCaptured)) }
                 enqCaptured.captured.value shouldBe opCaptured.captured.id.value
+            }
+        }
+    }
+
+    describe("payload round-trip — submit 후 repo.insert 에 전달된 BulkOperation 에 payload 보존") {
+
+        describe("BULK_EDIT 요청 시") {
+            it("insert 에 전달된 BulkOperation 의 payload 가 Edit(priority=2, impact=1) 이다") {
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_EDIT,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = BulkEditPayload(priority = 2, impact = 1),
+                        transitionPayload = null,
+                    )
+                sut.submit(actor, req)
+
+                val captured = slot<BulkOperation>()
+                verify { repo.insert(capture(captured)) }
+                val payload = captured.captured.payload
+                payload shouldBe BulkOperationPayload.Edit(priority = 2, impact = 1)
+            }
+        }
+
+        describe("BULK_TRANSITION 요청 시") {
+            it("insert 에 전달된 BulkOperation 의 payload 가 Transition(toStateKey='DONE') 이다") {
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_TRANSITION,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = null,
+                        transitionPayload = BulkTransitionPayload(toStateKey = "DONE"),
+                    )
+                sut.submit(actor, req)
+
+                val captured = slot<BulkOperation>()
+                verify { repo.insert(capture(captured)) }
+                val payload = captured.captured.payload
+                payload shouldBe BulkOperationPayload.Transition(toStateKey = "DONE")
             }
         }
     }

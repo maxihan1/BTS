@@ -1,10 +1,11 @@
-// BulkOperationRepository 통합 테스트 — insert/find/CAS(claimForRun, markCompleted)/멱등/TTL 조회
+// BulkOperationRepository 통합 테스트 — insert/find/CAS(claimForRun, markCompleted)/멱등/TTL 조회/payload round-trip/Clock
 
 package com.bts.issue.bulk.repository
 
 import com.bts.issue.bulk.domain.BulkOperation
 import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.domain.BulkOperationItem
+import com.bts.issue.bulk.domain.BulkOperationPayload
 import com.bts.issue.bulk.domain.BulkOperationStatus
 import com.bts.issue.bulk.domain.BulkOperationType
 import com.bts.issue.bulk.domain.FailureReasonCode
@@ -18,7 +19,9 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.TestMethodOrder
 import java.sql.DriverManager
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneOffset
 import java.util.UUID
 
 /**
@@ -46,6 +49,10 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
         bulkRepo = BulkOperationRepository(dsl)
     }
 
+    // helper — ObjectMapper 는 Spring context 없이 직접 생성하여 사용
+    private val objectMapper = com.fasterxml.jackson.databind.ObjectMapper()
+        .registerModule(com.fasterxml.jackson.module.kotlin.KotlinModule.Builder().build())
+
     @BeforeEach
     fun cleanBulkTables() {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
@@ -61,12 +68,14 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
     private fun makeOperation(
         id: BulkOperationId = BulkOperationId(UUID.randomUUID()),
         keys: List<String> = listOf("TPRJ-1", "TPRJ-2"),
+        payload: BulkOperationPayload = BulkOperationPayload.Edit(priority = 3, impact = null),
     ): BulkOperation =
         BulkOperation.create(
             id = id,
             actorId = UUID.randomUUID(),
             type = BulkOperationType.BULK_EDIT,
             items = keys.map { BulkOperationItem(issueKey = IssueKey(it), status = ItemStatus.PENDING) },
+            payload = payload,
         )
 
     // ── insert + find (별쿼리 2개) ──────────────────────────────────────────────
@@ -265,6 +274,87 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
         // 방금 완료됐으므로 now+1s 기준으로 조회하면 포함
         val result = bulkRepo.findCompletedBefore(Instant.now().plusSeconds(1))
         assertThat(result.map { it.id }).contains(op.id)
+    }
+
+    // ── payload round-trip ─────────────────────────────────────────────────
+
+    @Test
+    fun `insert 후 findById 에서 BULK_EDIT payload 가 동일하게 복원된다`() {
+        val payload = BulkOperationPayload.Edit(priority = 2, impact = 1)
+        val op = makeOperation(payload = payload)
+        bulkRepo = BulkOperationRepository(dsl, objectMapper)
+        bulkRepo.insert(op)
+
+        val found = bulkRepo.findById(op.id)
+        assertThat(found).isNotNull
+        assertThat(found!!.payload).isEqualTo(BulkOperationPayload.Edit(priority = 2, impact = 1))
+    }
+
+    @Test
+    fun `insert 후 findById 에서 BULK_TRANSITION payload 가 동일하게 복원된다`() {
+        val payload = BulkOperationPayload.Transition(toStateKey = "DONE")
+        val op =
+            BulkOperation.create(
+                id = BulkOperationId(UUID.randomUUID()),
+                actorId = UUID.randomUUID(),
+                type = BulkOperationType.BULK_TRANSITION,
+                items = listOf(BulkOperationItem(issueKey = IssueKey("TPRJ-1"), status = ItemStatus.PENDING)),
+                payload = payload,
+            )
+        bulkRepo = BulkOperationRepository(dsl, objectMapper)
+        bulkRepo.insert(op)
+
+        val found = bulkRepo.findById(op.id)
+        assertThat(found).isNotNull
+        assertThat(found!!.payload).isEqualTo(BulkOperationPayload.Transition(toStateKey = "DONE"))
+    }
+
+    // ── Clock 주입 ─────────────────────────────────────────────────────────
+
+    @Test
+    fun `claimForRun 은 Clock fixed 로 주입된 시각을 started_at 에 기록한다`() {
+        val fixedInstant = Instant.parse("2026-06-02T12:00:00Z")
+        val fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
+        val repoWithClock = BulkOperationRepository(dsl, objectMapper, fixedClock)
+
+        val op = makeOperation()
+        bulkRepo.insert(op)
+        repoWithClock.claimForRun(op.id)
+
+        // started_at 이 fixedInstant 와 동일한지 DB에서 직접 확인
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement("SELECT started_at FROM bulk_operations WHERE id = ?").use { ps ->
+                ps.setObject(1, op.id.value)
+                val rs = ps.executeQuery()
+                assertThat(rs.next()).isTrue()
+                val startedAt = rs.getTimestamp(1)
+                assertThat(startedAt).isNotNull
+                assertThat(startedAt.toInstant()).isEqualTo(fixedInstant)
+            }
+        }
+    }
+
+    @Test
+    fun `markCompleted 는 Clock fixed 로 주입된 시각을 completed_at 에 기록한다`() {
+        val fixedInstant = Instant.parse("2026-06-02T18:00:00Z")
+        val fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
+        val repoWithClock = BulkOperationRepository(dsl, objectMapper, fixedClock)
+
+        val op = makeOperation()
+        bulkRepo.insert(op)
+        bulkRepo.claimForRun(op.id)
+        repoWithClock.markCompleted(op.id)
+
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement("SELECT completed_at FROM bulk_operations WHERE id = ?").use { ps ->
+                ps.setObject(1, op.id.value)
+                val rs = ps.executeQuery()
+                assertThat(rs.next()).isTrue()
+                val completedAt = rs.getTimestamp(1)
+                assertThat(completedAt).isNotNull
+                assertThat(completedAt.toInstant()).isEqualTo(fixedInstant)
+            }
+        }
     }
 
     @Test

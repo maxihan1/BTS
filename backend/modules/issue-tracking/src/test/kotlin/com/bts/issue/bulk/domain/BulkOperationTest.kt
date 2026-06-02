@@ -1,7 +1,9 @@
-// BulkOperation Aggregate Root 단위 테스트 — 상태 전이, 카운트 집계 멱등, markItem, isTerminal
+// BulkOperation Aggregate Root 단위 테스트 — 상태 전이, 카운트 집계 멱등, markItem, isTerminal, payload 보유
 
 package com.bts.issue.bulk.domain
 
+import com.bts.issue.bulk.application.BulkEditPayload
+import com.bts.issue.bulk.application.BulkTransitionPayload
 import com.bts.issue.domain.IssueKey
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -39,12 +41,16 @@ class BulkOperationTest {
     private fun makeItems(keys: List<IssueKey>): List<BulkOperationItem> =
         keys.map { BulkOperationItem(issueKey = it, status = ItemStatus.PENDING) }
 
-    private fun pendingOp(keys: List<IssueKey> = listOf(key1, key2, key3)): BulkOperation =
+    private fun pendingOp(
+        keys: List<IssueKey> = listOf(key1, key2, key3),
+        payload: BulkOperationPayload = BulkOperationPayload.Edit(priority = 3, impact = null),
+    ): BulkOperation =
         BulkOperation.create(
             id = operationId,
             actorId = actorId,
             type = BulkOperationType.BULK_EDIT,
             items = makeItems(keys),
+            payload = payload,
         )
 
     // ── 상태 전이 ──────────────────────────────────────────────────────────
@@ -178,6 +184,41 @@ class BulkOperationTest {
 
         assertThatThrownBy { op.markItem(unknownKey, ItemStatus.SUCCEEDED) }
             .isInstanceOf(NoSuchElementException::class.java)
+    }
+
+    // ── payload 보유 ───────────────────────────────────────────────────────
+
+    @Test
+    fun `create_with_edit_payload — BULK_EDIT 로 생성하면 payload 가 Edit 타입으로 보유된다`() {
+        val payload = BulkOperationPayload.Edit(priority = 2, impact = 1)
+        val op =
+            BulkOperation.create(
+                id = operationId,
+                actorId = actorId,
+                type = BulkOperationType.BULK_EDIT,
+                items = makeItems(listOf(key1)),
+                payload = payload,
+            )
+        assertThat(op.payload).isInstanceOf(BulkOperationPayload.Edit::class.java)
+        val editPayload = op.payload as BulkOperationPayload.Edit
+        assertThat(editPayload.priority).isEqualTo(2)
+        assertThat(editPayload.impact).isEqualTo(1)
+    }
+
+    @Test
+    fun `create_with_transition_payload — BULK_TRANSITION 으로 생성하면 payload 가 Transition 타입으로 보유된다`() {
+        val payload = BulkOperationPayload.Transition(toStateKey = "IN_PROGRESS")
+        val op =
+            BulkOperation.create(
+                id = operationId,
+                actorId = actorId,
+                type = BulkOperationType.BULK_TRANSITION,
+                items = makeItems(listOf(key1)),
+                payload = payload,
+            )
+        assertThat(op.payload).isInstanceOf(BulkOperationPayload.Transition::class.java)
+        val transPayload = op.payload as BulkOperationPayload.Transition
+        assertThat(transPayload.toStateKey).isEqualTo("IN_PROGRESS")
     }
 
     // ── isTerminal ─────────────────────────────────────────────────────────

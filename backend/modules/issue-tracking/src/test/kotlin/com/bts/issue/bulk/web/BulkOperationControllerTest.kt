@@ -7,6 +7,7 @@ import com.bts.issue.bulk.application.BulkUpdateRequest
 import com.bts.issue.bulk.domain.BulkOperation
 import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.domain.BulkOperationItem
+import com.bts.issue.bulk.domain.BulkOperationPayload
 import com.bts.issue.bulk.domain.BulkOperationStatus
 import com.bts.issue.bulk.domain.BulkOperationType
 import com.bts.issue.bulk.domain.ItemStatus
@@ -192,6 +193,7 @@ class BulkOperationControllerTest {
                 actorId = actorUuid,
                 type = BulkOperationType.BULK_EDIT,
                 status = BulkOperationStatus.PENDING,
+                payload = BulkOperationPayload.Edit(priority = 3, impact = null),
                 items = emptyList(),
                 totalCount = 2,
                 processedCount = 0,
@@ -223,6 +225,7 @@ class BulkOperationControllerTest {
             .andExpect(jsonPath("$.data.items.length()").value(2))
             .andExpect(jsonPath("$.data.items[0].issueKey").value("ATLAS-1"))
             .andExpect(jsonPath("$.data.items[0].status").value("PENDING"))
+            .andExpect(jsonPath("$.data.payload.priority").value(3))
     }
 
     // ── G-2: GET 타인 actor → 403 ────────────────────────────────────────────
@@ -237,6 +240,7 @@ class BulkOperationControllerTest {
                 actorId = otherActorUuid,
                 type = BulkOperationType.BULK_EDIT,
                 status = BulkOperationStatus.PENDING,
+                payload = BulkOperationPayload.Edit(priority = 3, impact = null),
                 items = emptyList(),
                 totalCount = 2,
                 processedCount = 0,
