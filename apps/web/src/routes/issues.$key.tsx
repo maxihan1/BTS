@@ -13,6 +13,7 @@ import { useIssueTypes } from '@/hooks/use-issue-types'
 import { useIssueTransitions, issueTransitionKeys } from '@/hooks/use-issue-transitions'
 import { useUsers, useUsersByIds } from '@/hooks/use-users'
 import { useDebounce } from '@/hooks/use-debounce'
+import { useIssuePermissions } from '@/hooks/use-issue-permissions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { IssueDescription } from '@/components/issue/IssueDescription'
@@ -90,6 +91,15 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
     queryFn: () => fetchIssue(issueKey),
     retry: false,
   })
+
+  // 권한 조회 — fail-closed: 로딩 중·에러·미확정이면 false(비활성)
+  const {
+    data: permissionsData,
+    isLoading: isPermissionsLoading,
+    isError: isPermissionsError,
+  } = useIssuePermissions(issueKey)
+  const canEdit =
+    !isPermissionsLoading && !isPermissionsError && permissionsData?.permissions.UPDATE === true
 
   const { data: availableTypes = [] } = useIssueTypes()
   /** S2: debounce 적용 — 1000명 규모 매 키스트로크 요청 방지 (250ms) */
@@ -380,8 +390,9 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
                 <Button
                   size="sm"
                   onClick={handleEditSave}
-                  disabled={updateMutation.isPending}
+                  disabled={updateMutation.isPending || !canEdit}
                   aria-label={issueDetailStrings.saveButton}
+                  data-testid="issue-title-save"
                 >
                   {issueDetailStrings.saveButton}
                 </Button>
@@ -401,7 +412,8 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
               <button
                 type="button"
                 onClick={handleEditStart}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                disabled={!canEdit}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 aria-label={issueDetailStrings.editTitleButton}
               >
                 {issueDetailStrings.editTitleButton}

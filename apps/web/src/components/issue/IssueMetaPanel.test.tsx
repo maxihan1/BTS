@@ -8,6 +8,12 @@ import type { UserSummary } from '@/api/users'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import { issueDetailStrings } from '@/i18n/ko'
 
+// useIssuePermissions를 mock — 기존 테스트는 권한 관련 동작을 검증하지 않으므로 UPDATE/SOFT_DELETE=true로 고정
+vi.mock('@/hooks/use-issue-permissions', () => ({
+  useIssuePermissions: vi.fn(),
+}))
+import { useIssuePermissions } from '@/hooks/use-issue-permissions'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,6 +66,37 @@ const availableTypes: IssueTypeResponse[] = [
 // 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 기존 테스트 기본값 — 모든 권한 true (UPDATE/SOFT_DELETE/TRANSITION) */
+function setupFullPermissions() {
+  vi.mocked(useIssuePermissions).mockReturnValue({
+    data: {
+      issueKey: 'ATLAS-1',
+      permissions: { UPDATE: true, SOFT_DELETE: true, TRANSITION: true },
+    },
+    isLoading: false,
+    isError: false,
+    isPending: false,
+    isSuccess: true,
+    error: null,
+    status: 'success',
+    fetchStatus: 'idle',
+    dataUpdatedAt: 0,
+    errorUpdatedAt: 0,
+    failureCount: 0,
+    failureReason: null,
+    isFetched: true,
+    isFetchedAfterMount: true,
+    isFetching: false,
+    isInitialLoading: false,
+    isLoadingError: false,
+    isPlaceholderData: false,
+    isRefetchError: false,
+    isRefetching: false,
+    isStale: false,
+    refetch: vi.fn(),
+  } as ReturnType<typeof useIssuePermissions>)
+}
+
 function renderPanel(
   issue: IssueResponse = issueFixture,
   types: IssueTypeResponse[] = availableTypes,
@@ -77,6 +114,8 @@ function renderPanel(
   onAssigneeChange = vi.fn(),
   currentAssignee: UserSummary | null = null,
 ) {
+  // 기존 테스트는 권한 제어를 검증하지 않으므로 모든 권한 true로 세팅
+  setupFullPermissions()
   return render(
     <IssueMetaPanel
       issue={issue}
