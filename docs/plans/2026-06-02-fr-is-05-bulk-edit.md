@@ -87,6 +87,18 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 
 ✅ 통과 (1회 iteration). gap 7건 처리 — 수정가능 5건 인라인 보강 + Maxi 결정 2건(취소 제외 / 완료 이벤트 발행만).
 
+## PR 분할 (게이트1 결정 2026-06-02)
+
+10 task를 두 PR로 분할. 각 PR은 완결적 수직 슬라이스.
+
+- **PR1 (이 worktree / PR #54) — 접수/조회 슬라이스**: T1 V008 마이그레이션 + T2 도메인 + T3 repo + T4 접수 service + T5 부팅 진입점 + T8 REST(접수/조회).
+  - PR1 wave: Wave0 [T1, T2, T5] → Wave1 [T3] → Wave2 [T4] → Wave3 [T8].
+  - 머지 후 상태: 일괄 요청이 영속(PENDING)되고 `GET`으로 조회 가능. 워커 미탑재라 처리는 안 됨(PR2에서).
+- **PR2 (후속 worktree) — 처리 슬라이스**: T6 processor + T7 worker + T9 TTL cleanup + T10 통합테스트.
+  - depends-on: PR1 머지(부팅 진입점 T5, repo CAS T3, 접수 T4 필요).
+
+> 주의: PR1 단독 prod 배포 시 접수된 작업이 처리 안 됨 → PR1·PR2 묶음 배포 또는 PR2까지 대기 후 배포.
+
 ## Plan
 
 > 코드 배치: 기존 `type/` 서브패키지 응집 패턴을 따라 `com/bts/issue/bulk/` 하위에 도메인/리포지토리/application/worker/web 응집.
