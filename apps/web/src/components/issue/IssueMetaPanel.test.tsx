@@ -8,6 +8,12 @@ import type { UserSummary } from '@/api/users'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import { issueDetailStrings } from '@/i18n/ko'
 
+// useIssuePermissions를 mock — 기존 테스트는 권한 관련 동작을 검증하지 않으므로 UPDATE/SOFT_DELETE=true로 고정
+vi.mock('@/hooks/use-issue-permissions', () => ({
+  useIssuePermissions: vi.fn(),
+}))
+import { useIssuePermissions } from '@/hooks/use-issue-permissions'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,6 +66,37 @@ const availableTypes: IssueTypeResponse[] = [
 // 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 기존 테스트 기본값 — 모든 권한 true (UPDATE/SOFT_DELETE/TRANSITION) */
+function setupFullPermissions() {
+  vi.mocked(useIssuePermissions).mockReturnValue({
+    data: {
+      issueKey: 'ATLAS-1',
+      permissions: { UPDATE: true, SOFT_DELETE: true, TRANSITION: true },
+    },
+    isLoading: false,
+    isError: false,
+    isPending: false,
+    isSuccess: true,
+    error: null,
+    status: 'success',
+    fetchStatus: 'idle',
+    dataUpdatedAt: 0,
+    errorUpdatedAt: 0,
+    failureCount: 0,
+    failureReason: null,
+    isFetched: true,
+    isFetchedAfterMount: true,
+    isFetching: false,
+    isInitialLoading: false,
+    isLoadingError: false,
+    isPlaceholderData: false,
+    isRefetchError: false,
+    isRefetching: false,
+    isStale: false,
+    refetch: vi.fn(),
+  } as unknown as ReturnType<typeof useIssuePermissions>)
+}
+
 function renderPanel(
   issue: IssueResponse = issueFixture,
   types: IssueTypeResponse[] = availableTypes,
@@ -77,6 +114,8 @@ function renderPanel(
   onAssigneeChange = vi.fn(),
   currentAssignee: UserSummary | null = null,
 ) {
+  // 기존 테스트는 권한 제어를 검증하지 않으므로 모든 권한 true로 세팅
+  setupFullPermissions()
   return render(
     <IssueMetaPanel
       issue={issue}
@@ -1100,5 +1139,103 @@ describe('IssueMetaPanel — 담당자 셀렉터', () => {
     renderPanel()
     const assigneeSection = screen.getByTestId('assignee-section')
     expect(within(assigneeSection).queryByRole('button', { name: issueDetailStrings.assigneeUnassignButton })).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-PM-02 C1 — 담당자 canEdit 게이트
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueMetaPanel — 담당자 canEdit 게이트 (FR-PM-02 C1)', () => {
+  /** UPDATE=false 권한 mock 설정 헬퍼 */
+  function setupNoEditPermissions() {
+    vi.mocked(useIssuePermissions).mockReturnValue({
+      data: {
+        issueKey: 'ATLAS-1',
+        permissions: { UPDATE: false, SOFT_DELETE: false, TRANSITION: false },
+      },
+      isLoading: false,
+      isError: false,
+      isPending: false,
+      isSuccess: true,
+      error: null,
+      status: 'success',
+      fetchStatus: 'idle',
+      dataUpdatedAt: 0,
+      errorUpdatedAt: 0,
+      failureCount: 0,
+      failureReason: null,
+      isFetched: true,
+      isFetchedAfterMount: true,
+      isFetching: false,
+      isInitialLoading: false,
+      isLoadingError: false,
+      isPlaceholderData: false,
+      isRefetchError: false,
+      isRefetching: false,
+      isStale: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useIssuePermissions>)
+  }
+
+  /**
+   * IMP-58: UPDATE=false이면 담당자 검색 input이 disabled된다.
+   */
+  it('IMP-58: UPDATE=false이면 담당자 검색 input이 disabled된다', () => {
+    setupNoEditPermissions()
+    render(
+      <IssueMetaPanel
+        issue={issueFixture}
+        availableTypes={availableTypes}
+        onTypeChange={vi.fn()}
+        onDeleteClick={vi.fn()}
+        transitions={transitionsFixture}
+        onTransition={vi.fn()}
+        isTransitioning={false}
+        onPriorityChange={vi.fn()}
+        onImpactChange={vi.fn()}
+        onEnvironmentSave={vi.fn()}
+        onLabelsSave={vi.fn()}
+        users={[]}
+        onAssigneeSearch={vi.fn()}
+        onAssigneeChange={vi.fn()}
+        currentAssignee={null}
+      />,
+    )
+    const assigneeSection = screen.getByTestId('assignee-section')
+    const searchInput = within(assigneeSection).getByRole('textbox', { name: issueDetailStrings.assigneeSearchPlaceholder })
+    expect(searchInput).toBeDisabled()
+  })
+
+  /**
+   * IMP-59: UPDATE=false이고 담당자가 있을 때 해제 버튼이 disabled된다.
+   */
+  it('IMP-59: UPDATE=false이면 담당자 해제 버튼이 disabled된다', () => {
+    setupNoEditPermissions()
+    const alice = usersFixture[0]
+    if (!alice) return
+    const issueWithAssignee: IssueResponse = { ...issueFixture, assigneeId: alice.id }
+    render(
+      <IssueMetaPanel
+        issue={issueWithAssignee}
+        availableTypes={availableTypes}
+        onTypeChange={vi.fn()}
+        onDeleteClick={vi.fn()}
+        transitions={transitionsFixture}
+        onTransition={vi.fn()}
+        isTransitioning={false}
+        onPriorityChange={vi.fn()}
+        onImpactChange={vi.fn()}
+        onEnvironmentSave={vi.fn()}
+        onLabelsSave={vi.fn()}
+        users={[]}
+        onAssigneeSearch={vi.fn()}
+        onAssigneeChange={vi.fn()}
+        currentAssignee={alice}
+      />,
+    )
+    const assigneeSection = screen.getByTestId('assignee-section')
+    const unassignBtn = within(assigneeSection).getByRole('button', { name: issueDetailStrings.assigneeUnassignButton })
+    expect(unassignBtn).toBeDisabled()
   })
 })

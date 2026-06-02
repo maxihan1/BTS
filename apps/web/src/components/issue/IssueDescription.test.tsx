@@ -117,4 +117,24 @@ describe('IssueDescription', () => {
     // 편집 모드가 아닌 상태에서 raw 텍스트가 DOM에 없어야 함
     expect(screen.queryByText('raw_마크다운_절대_노출금지')).not.toBeInTheDocument()
   })
+
+  // ── canEdit 게이트 (FR-PM-02 C1) ─────────────────────────────────────────
+
+  it('canEdit=false이면 편집 버튼이 disabled된다', () => {
+    render(<IssueDescription {...defaultProps} canEdit={false} />)
+    const editBtn = screen.getByRole('button', { name: '본문 편집' })
+    expect(editBtn).toBeDisabled()
+  })
+
+  it('canEdit=false이면 편집 버튼에 수정 권한 없음 title이 붙는다', () => {
+    render(<IssueDescription {...defaultProps} canEdit={false} />)
+    const editBtn = screen.getByRole('button', { name: '본문 편집' })
+    expect(editBtn).toHaveAttribute('title', '수정 권한이 없습니다')
+  })
+
+  it('canEdit=true(기본값)이면 편집 버튼이 활성화된다', () => {
+    render(<IssueDescription {...defaultProps} canEdit={true} />)
+    const editBtn = screen.getByRole('button', { name: '본문 편집' })
+    expect(editBtn).not.toBeDisabled()
+  })
 })

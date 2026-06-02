@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
 import { formatDate } from '@/lib/date-format'
 import { issueDetailStrings } from '@/i18n/ko'
+import { useIssuePermissions } from '@/hooks/use-issue-permissions'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // IssueMetaPanel
@@ -97,6 +98,14 @@ export function IssueMetaPanel({
   onAssigneeChange,
   currentAssignee,
 }: IssueMetaPanelProps): JSX.Element {
+  // 권한 조회 — fail-closed: 로딩 중·에러·미확정이면 false(비활성)
+  const { data: permissionsData, isLoading: isPermissionsLoading, isError: isPermissionsError } =
+    useIssuePermissions(issue.key)
+  const canEdit =
+    !isPermissionsLoading && !isPermissionsError && permissionsData?.permissions.UPDATE === true
+  const canDelete =
+    !isPermissionsLoading && !isPermissionsError && permissionsData?.permissions.SOFT_DELETE === true
+
   /** issue.typeId에 해당하는 타입 항목 — iconName 해석에 사용 */
   const currentType = availableTypes.find((t) => t.id === issue.typeId)
 
@@ -169,13 +178,13 @@ export function IssueMetaPanel({
         {/* 환경 — IssueEnvironmentEdit (FR-IS-04) */}
         <div className="px-3.5 py-3 border-b border-border" data-testid="environment-section">
           <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.environmentLabel}</p>
-          <IssueEnvironmentEdit value={issue.environment} onSave={onEnvironmentSave} />
+          <IssueEnvironmentEdit value={issue.environment} onSave={onEnvironmentSave} canEdit={canEdit} />
         </div>
 
         {/* 라벨 — IssueLabelsEdit (FR-IS-04) */}
         <div className="px-3.5 py-3 border-b border-border" data-testid="labels-section">
           <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.labelsLabel}</p>
-          <IssueLabelsEdit value={issue.labels} onSave={onLabelsSave} />
+          <IssueLabelsEdit value={issue.labels} onSave={onLabelsSave} canEdit={canEdit} />
         </div>
 
         {/* 담당자 — IssueAssigneeSelect (FR-IS-03) */}
@@ -187,6 +196,7 @@ export function IssueMetaPanel({
             users={users}
             onSearch={onAssigneeSearch}
             onAssigneeChange={onAssigneeChange}
+            canEdit={canEdit}
           />
         </div>
 
@@ -221,12 +231,15 @@ export function IssueMetaPanel({
         </div>
       </div>
 
-      {/* 삭제 버튼 — WCAG AA 44px 터치 타깃 */}
+      {/* 삭제 버튼 — WCAG AA 44px 터치 타깃, 권한 없으면 disabled + 사유 표시 */}
       <Button
         variant="destructive"
         className="w-full min-h-[44px]"
         onClick={onDeleteClick}
-        aria-label={issueDetailStrings.deleteButton}
+        disabled={!canDelete}
+        aria-label={canDelete ? issueDetailStrings.deleteButton : issueDetailStrings.deleteButtonNoPermission}
+        title={canDelete ? undefined : issueDetailStrings.deleteButtonNoPermission}
+        data-testid="issue-delete"
       >
         {issueDetailStrings.deleteButton}
       </Button>
@@ -337,6 +350,8 @@ interface IssueEnvironmentEditProps {
   value: string | null
   /** 저장 콜백 — 편집된 문자열 전달 */
   onSave: (environment: string) => void
+  /** 수정 권한 — false이면 저장 버튼 disabled (fail-closed) */
+  canEdit: boolean
 }
 
 /**
@@ -346,7 +361,7 @@ interface IssueEnvironmentEditProps {
  * - issue.environment props가 바뀌면(refetch) 로컬 상태도 동기화 (stale 방지)
  * - WCAG AA: aria-label
  */
-function IssueEnvironmentEdit({ value, onSave }: IssueEnvironmentEditProps): JSX.Element {
+function IssueEnvironmentEdit({ value, onSave, canEdit }: IssueEnvironmentEditProps): JSX.Element {
   const [draft, setDraft] = useState(value ?? '')
 
   // props가 바뀌면(refetch 후) 로컬 편집 상태를 동기화한다 — stale 방지
@@ -374,7 +389,9 @@ function IssueEnvironmentEdit({ value, onSave }: IssueEnvironmentEditProps): JSX
         size="sm"
         className="self-end min-h-[44px]"
         onClick={() => onSave(draft)}
+        disabled={!canEdit}
         aria-label={issueDetailStrings.environmentSaveButton}
+        data-testid="environment-save"
       >
         {issueDetailStrings.environmentSaveButton}
       </Button>
@@ -397,6 +414,8 @@ interface IssueLabelsEditProps {
   value: string[]
   /** 저장 콜백 — 편집된 labels 배열 전달 */
   onSave: (labels: string[]) => void
+  /** 수정 권한 — false이면 저장 버튼 disabled (fail-closed) */
+  canEdit: boolean
 }
 
 /**
@@ -407,7 +426,7 @@ interface IssueLabelsEditProps {
  * - 추가 시 클라이언트 검증: 공백 trim, 50자 초과 거부, 20개 초과 거부, 중복 거부
  * - WCAG AA: aria-label
  */
-function IssueLabelsEdit({ value, onSave }: IssueLabelsEditProps): JSX.Element {
+function IssueLabelsEdit({ value, onSave, canEdit }: IssueLabelsEditProps): JSX.Element {
   const [chips, setChips] = useState<string[]>(value)
   const [inputValue, setInputValue] = useState('')
 
@@ -474,7 +493,9 @@ function IssueLabelsEdit({ value, onSave }: IssueLabelsEditProps): JSX.Element {
         size="sm"
         className="self-end min-h-[44px]"
         onClick={() => onSave(chips)}
+        disabled={!canEdit}
         aria-label={issueDetailStrings.labelsSaveButton}
+        data-testid="labels-save"
       >
         {issueDetailStrings.labelsSaveButton}
       </Button>
@@ -590,6 +611,11 @@ interface IssueAssigneeSelectProps {
   onSearch: (query: string) => void
   /** 담당자 변경 콜백 — UUID 또는 null(해제) */
   onAssigneeChange: (userId: string | null) => void
+  /**
+   * 수정 권한 여부 — false이면 검색 input·해제 버튼 disabled (FR-PM-02).
+   * fail-closed: 권한 미확정 시 false 전달 권장.
+   */
+  canEdit: boolean
 }
 
 /**
@@ -610,6 +636,7 @@ function IssueAssigneeSelect({
   users,
   onSearch,
   onAssigneeChange,
+  canEdit,
 }: IssueAssigneeSelectProps): JSX.Element {
   /** 현재 담당자 표시 이름 — displayName 우선, 없으면 username */
   function getDisplayName(user: UserSummary): string {
@@ -625,12 +652,13 @@ function IssueAssigneeSelect({
             ? getDisplayName(currentAssignee)
             : issueDetailStrings.assigneeUnassigned}
         </span>
-        {/* 담당자 해제 버튼 — 할당된 경우에만 노출 */}
+        {/* 담당자 해제 버튼 — 할당된 경우에만 노출, canEdit=false이면 disabled (FR-PM-02) */}
         {value !== null && (
           <button
             type="button"
             onClick={() => onAssigneeChange(null)}
-            className="text-xs text-muted-foreground hover:text-destructive focus:outline-none focus:ring-1 focus:ring-ring min-h-[44px] px-1 shrink-0"
+            disabled={!canEdit}
+            className="text-xs text-muted-foreground hover:text-destructive focus:outline-none focus:ring-1 focus:ring-ring min-h-[44px] px-1 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
             aria-label={issueDetailStrings.assigneeUnassignButton}
           >
             {issueDetailStrings.assigneeUnassignButton}
@@ -638,12 +666,13 @@ function IssueAssigneeSelect({
         )}
       </div>
 
-      {/* 검색 input */}
+      {/* 검색 input — canEdit=false이면 disabled (FR-PM-02) */}
       <input
         type="text"
-        className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed"
         placeholder={issueDetailStrings.assigneeSearchPlaceholder}
         aria-label={issueDetailStrings.assigneeSearchPlaceholder}
+        disabled={!canEdit}
         onChange={(e) => onSearch(e.target.value)}
       />
 

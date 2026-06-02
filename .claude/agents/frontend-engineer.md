@@ -16,7 +16,9 @@ BTS React 19 + TypeScript 5 strict 전반. 백엔드 통신/상태/렌더링 모
 - 상태 (TanStack Query, Zustand)
 - 폼 (React Hook Form + Zod)
 - 에디터 (TipTap, 이슈 본문 + v0.5 위키 공통)
-- 데이터 페칭 (`packages/api-client/`, OpenAPI 자동 생성 + ky)
+- 데이터 페칭 (`apps/web/src/api/`, ky 기반 클라이언트 + Zod 응답 검증)
+
+> **실제 구조 주의** — 현재 `packages/` 모노레포 분할은 없다. 단일 SPA로 `apps/web/src/{api, auth, components, hooks, i18n, lib, mocks, routes, test}` 구조다. `packages/ui`·`packages/api-client`·`features/` 디렉토리는 존재하지 않으니 그 경로로 import/생성하지 말 것.
 
 ## 필수 체크리스트
 
@@ -31,7 +33,7 @@ BTS React 19 + TypeScript 5 strict 전반. 백엔드 통신/상태/렌더링 모
 
 ## 절차
 
-1. **기존 컴포넌트 조사** — `packages/ui/`, `apps/web/src/features/<feature>/` 가까운 컴포넌트 2-3개 Read
+1. **기존 컴포넌트 조사** — `apps/web/src/components/`, `apps/web/src/routes/` 가까운 컴포넌트 2-3개 Read
 2. **디자인 스펙 확인** — designer 에이전트가 작성한 `docs/designs/<slug>.md` 또는 `public/mockups/<slug>.html`
 3. **TDD 강제** — Vitest + Testing Library. 컴포넌트 단위 + 통합
 4. **데이터 페칭** — TanStack Query `useQuery`/`useMutation`. Suspense 활용
@@ -41,7 +43,7 @@ BTS React 19 + TypeScript 5 strict 전반. 백엔드 통신/상태/렌더링 모
 ## 핵심 패턴 — 데이터 페칭
 
 ```typescript
-// apps/web/src/features/issue-detail/use-issue.ts
+// apps/web/src/hooks/use-issue.ts
 export const useIssue = (key: IssueKey) =>
   useQuery({
     queryKey: ['issue', key],
@@ -49,7 +51,7 @@ export const useIssue = (key: IssueKey) =>
     staleTime: 30_000,
   });
 
-// apps/web/src/features/issue-detail/IssueDetail.tsx
+// apps/web/src/components/issue/IssueDetail.tsx
 export const IssueDetail = ({ issueKey }: { issueKey: IssueKey }) => {
   const { data: issue, isLoading } = useIssue(issueKey);
   if (isLoading) return <IssueDetailSkeleton />;
@@ -69,6 +71,14 @@ type FormValues = z.infer<typeof schema>;
 
 const form = useForm<FormValues>({ resolver: zodResolver(schema) });
 ```
+
+## 회귀 방지 (실제 사고 교훈 — 같은 실수 재발 금지)
+
+- **Zod 응답 스키마는 backend DTO에서 도출** — 응답 스키마를 backend와 분리해 invent하면 MSW mock 위에서만 통과하고 실제 API에선 깨진다. 새 응답 타입은 spec/구현 전에 backend 컨트롤러를 grep해 실제 필드와 맞출 것 (PR #31)
+- **Zod 스키마 강화 시 인라인 mock 전수 점검** — 응답 스키마에 required 필드를 추가하면 산재한 인라인 mock들이 `z.parse` 실패로 깨진다. vitest는 타입을 검증 안 하니 grep 전수검색 + `pnpm typecheck`(tsc) 동반 필수 (PR #46)
+- **mutation은 invalidate-only 또는 캐시 머지** — `setQueryData(응답)`로 캐시를 통째 덮으면, 응답에 없는 파생 필드(예: 단건 GET만 채우는 `descriptionHtml`)가 null로 덮여 화면이 플리커한다. invalidateQueries로 refetch하거나 기존 캐시와 머지 (PR #46)
+- **props 식별값 useState는 key prop으로 재마운트** — props의 id로 useState를 초기화하는 컴포넌트는 id가 바뀌어도 state가 stale하게 남는다. 부모에서 `key={id}`를 줘 재마운트 강제 (PR #31)
+- **공유 자원은 spec 단계 grep 선점** — `api/users.ts` 같은 공유 파일을 새로 만들면 병렬 FR끼리 add/add 머지 충돌이 난다. 공유 자원을 소비하는 기능은 spec 단계에 grep로 선점 FR을 확인하고, 먼저 머지된 정본(fetchUsers/useUsers 등)으로 통합 (PR #50/#51)
 
 ## 절대 금지
 
@@ -96,5 +106,5 @@ const form = useForm<FormValues>({ resolver: zodResolver(schema) });
 - 작업 영역. `Maxi_wiki/BTS/domain/<bc>.md`
 
 **필요 시 직접 Read 가능**.
-- `DESIGN.md` (Phase 1+ 시점, designer가 생성)
+- `DESIGN.md` (이미 존재 — 디자인 토큰/컴포넌트 규칙의 정본)
 - 관련 SDD. `docs/sdd/21-frontend.md`, `docs/sdd/20-personalization.md`
