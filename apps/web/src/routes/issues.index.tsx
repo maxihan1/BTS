@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchIssues } from '@/api/issues'
 import type { IssueResponse, IssuePage } from '@/api/issues'
 import { Button } from '@/components/ui/button'
+import { useProjectPermissions } from '@/hooks/use-project-permissions'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // router.ts 등록 방법 (code-based 패턴 — PR #11 컨벤션).
@@ -211,13 +212,26 @@ interface IssueListPageProps {
   onNavigate: (key: string) => void
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 공통 className — 활성/비활성 버튼 모두 동일 헤더 스타일 적용
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** "새 이슈" 버튼의 공통 시각 스타일 */
+const NEW_ISSUE_CLASS =
+  'inline-flex items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors'
+
+/** 비활성 상태 추가 스타일 — opacity + cursor 표현 */
+const NEW_ISSUE_DISABLED_CLASS = `${NEW_ISSUE_CLASS} disabled:opacity-50 disabled:cursor-not-allowed`
+
 /**
  * 이슈 목록 페이지 컴포넌트.
  *
  * - useQuery로 fetchIssues를 호출한다.
  * - 3 상태 분기: 로딩("로딩 중...") → 에러(role="alert") → 성공(IssueListContent).
  * - 에러 시 role="alert"로 스크린 리더 접근성 보장 (WCAG AA).
- * - "새 이슈" 링크(/issues/new)가 상단에 항상 노출된다.
+ * - "새 이슈" 진입점: CREATE 권한 기반 게이트. fail-closed(로딩/에러/undefined → 비활성).
+ *   - canCreate=true  → `<a href="/issues/new">` (role=link, 동일 className)
+ *   - canCreate=false → `<button type="button" disabled>` (동일 시각 스타일)
  *
  * 라우터 의존 없이 props로 동작해 단위 테스트가 가능하다.
  */
@@ -227,6 +241,11 @@ export function IssueListPage({ projectKey, page, onPageChange, onNavigate }: Is
     queryFn: () => fetchIssues({ projectKey, page, size: DEFAULT_PAGE_SIZE }),
     retry: false,
   })
+
+  const { data: permData, isLoading: isPermLoading } = useProjectPermissions(projectKey)
+
+  // fail-closed: 로딩/에러/undefined → false
+  const canCreate = !isPermLoading && permData?.permissions.CREATE === true
 
   if (isLoading) {
     return (
@@ -246,15 +265,28 @@ export function IssueListPage({ projectKey, page, onPageChange, onNavigate }: Is
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-4">
-      {/* 페이지 헤더 — 타이틀 + 새 이슈 링크 */}
+      {/* 페이지 헤더 — 타이틀 + 새 이슈 진입점 (CREATE 권한 게이트) */}
       <header className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">이슈 목록</h1>
-        <a
-          href="/issues/new"
-          className="inline-flex items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
-        >
-          새 이슈
-        </a>
+        {canCreate ? (
+          <a
+            href="/issues/new"
+            data-testid="new-issue-button"
+            className={NEW_ISSUE_CLASS}
+          >
+            새 이슈
+          </a>
+        ) : (
+          <button
+            type="button"
+            disabled
+            data-testid="new-issue-button"
+            className={NEW_ISSUE_DISABLED_CLASS}
+            aria-label="새 이슈 (권한 없음)"
+          >
+            새 이슈
+          </button>
+        )}
       </header>
 
       <IssueListContent
