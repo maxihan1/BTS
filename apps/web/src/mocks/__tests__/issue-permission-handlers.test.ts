@@ -1,9 +1,10 @@
-// FR-PM-02 이슈 권한 MSW 핸들러 stateful 동작 검증
+// FR-PM-02 이슈 권한 MSW 핸들러 Authorization 토큰 기반 동작 검증
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { issuePermissionHandlers } from '../issue-permission-handlers'
 import { adminPermissionsFixture, memberPermissionsFixture } from '../issue-permission-fixtures'
+import { mockAccessToken } from '../auth-fixtures'
 
 const server = setupServer(...issuePermissionHandlers)
 
@@ -15,20 +16,11 @@ afterAll(() => server.close())
 // 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function getPermissions(issueKey: string): Promise<Response> {
-  return fetch(`/api/v1/users/me/issue-permissions?issueKey=${issueKey}`)
-}
-
-async function resetToAdmin(issueKey: string): Promise<Response> {
-  return fetch(`/api/v1/users/me/issue-permissions?issueKey=${issueKey}`, {
-    headers: { 'X-MSW-Reset-Permissions': 'admin' },
-  })
-}
-
-async function resetToMember(issueKey: string): Promise<Response> {
-  return fetch(`/api/v1/users/me/issue-permissions?issueKey=${issueKey}`, {
-    headers: { 'X-MSW-Reset-Permissions': 'member' },
-  })
+async function getPermissions(issueKey: string, token?: string): Promise<Response> {
+  const headers: HeadersInit = token !== undefined
+    ? { Authorization: `Bearer ${token}` }
+    : {}
+  return fetch(`/api/v1/users/me/issue-permissions?issueKey=${issueKey}`, { headers })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -36,8 +28,8 @@ async function resetToMember(issueKey: string): Promise<Response> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('GET /api/v1/users/me/issue-permissions', () => {
-  it('S1-1: issueKey 포함 요청 → 200 + { issueKey, permissions } 구조', async () => {
-    const res = await getPermissions('ATLAS-1')
+  it('S1-1: alice 토큰 + issueKey 포함 요청 → 200 + { issueKey, permissions } 구조', async () => {
+    const res = await getPermissions('ATLAS-1', mockAccessToken('alice'))
 
     expect(res.status).toBe(200)
     const body = await res.json() as { issueKey: string; permissions: Record<string, boolean> }
@@ -47,7 +39,7 @@ describe('GET /api/v1/users/me/issue-permissions', () => {
   })
 
   it('S1-2: permissions 객체에 UPDATE/SOFT_DELETE/TRANSITION 필드 모두 존재', async () => {
-    const res = await getPermissions('ATLAS-1')
+    const res = await getPermissions('ATLAS-1', mockAccessToken('alice'))
     const body = await res.json() as { permissions: Record<string, unknown> }
 
     expect(body.permissions).toHaveProperty('UPDATE')
@@ -56,7 +48,7 @@ describe('GET /api/v1/users/me/issue-permissions', () => {
   })
 
   it('S1-3: 응답 issueKey가 요청한 issueKey와 일치', async () => {
-    const res = await getPermissions('BTS-42')
+    const res = await getPermissions('BTS-42', mockAccessToken('alice'))
     const body = await res.json() as { issueKey: string }
 
     expect(body.issueKey).toBe('BTS-42')
@@ -64,12 +56,12 @@ describe('GET /api/v1/users/me/issue-permissions', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S2. 기본값 (ADMIN) 권한 확인
+// S2. alice (ADMIN) 권한 확인
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('기본 ADMIN 권한 fixture', () => {
-  it('S2-1: 기본 응답은 ADMIN fixture — UPDATE/SOFT_DELETE/TRANSITION 모두 true', async () => {
-    const res = await getPermissions('ATLAS-1')
+describe('alice 토큰 → ADMIN 권한 fixture', () => {
+  it('S2-1: alice 토큰 → UPDATE/SOFT_DELETE/TRANSITION 모두 true', async () => {
+    const res = await getPermissions('ATLAS-1', mockAccessToken('alice'))
     const body = await res.json() as { permissions: { UPDATE: boolean; SOFT_DELETE: boolean; TRANSITION: boolean } }
 
     expect(body.permissions.UPDATE).toBe(adminPermissionsFixture.UPDATE)
@@ -79,40 +71,62 @@ describe('기본 ADMIN 권한 fixture', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S3. stateful 역할 전환 — X-MSW-Reset-Permissions 헤더
+// S3. bob (MEMBER) 권한 확인
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('X-MSW-Reset-Permissions 헤더 — stateful 역할 전환', () => {
-  it('S3-1: X-MSW-Reset-Permissions: member → SOFT_DELETE=false 응답', async () => {
-    const res = await resetToMember('ATLAS-1')
+describe('bob 토큰 → MEMBER 권한 fixture', () => {
+  it('S3-1: bob 토큰 → SOFT_DELETE=false', async () => {
+    const res = await getPermissions('ATLAS-1', mockAccessToken('bob'))
     const body = await res.json() as { permissions: { SOFT_DELETE: boolean } }
 
     expect(body.permissions.SOFT_DELETE).toBe(memberPermissionsFixture.SOFT_DELETE)
   })
 
-  it('S3-2: member 전환 후 일반 GET도 MEMBER 권한 유지 (stateful)', async () => {
-    await resetToMember('ATLAS-1')
-    const res = await getPermissions('ATLAS-1')
-    const body = await res.json() as { permissions: { SOFT_DELETE: boolean } }
-
-    expect(body.permissions.SOFT_DELETE).toBe(false)
-  })
-
-  it('S3-3: admin으로 복원 후 SOFT_DELETE=true 반환', async () => {
-    await resetToMember('ATLAS-1')
-    await resetToAdmin('ATLAS-1')
-    const res = await getPermissions('ATLAS-1')
-    const body = await res.json() as { permissions: { SOFT_DELETE: boolean } }
-
-    expect(body.permissions.SOFT_DELETE).toBe(true)
-  })
-
-  it('S3-4: MEMBER 전환 시 UPDATE/TRANSITION은 여전히 true (MEMBER도 허용)', async () => {
-    await resetToMember('ATLAS-1')
-    const res = await getPermissions('ATLAS-1')
+  it('S3-2: bob 토큰 → UPDATE/TRANSITION은 여전히 true (MEMBER도 허용)', async () => {
+    const res = await getPermissions('ATLAS-1', mockAccessToken('bob'))
     const body = await res.json() as { permissions: { UPDATE: boolean; TRANSITION: boolean } }
 
     expect(body.permissions.UPDATE).toBe(memberPermissionsFixture.UPDATE)
     expect(body.permissions.TRANSITION).toBe(memberPermissionsFixture.TRANSITION)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S4. 에러 분기
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('에러 분기', () => {
+  it('S4-1: Authorization 헤더 없음 → 401', async () => {
+    const res = await getPermissions('ATLAS-1')
+
+    expect(res.status).toBe(401)
+  })
+
+  it('S4-2: mock-access-token- prefix 아닌 토큰 → 401', async () => {
+    const res = await getPermissions('ATLAS-1', 'some-random-token')
+
+    expect(res.status).toBe(401)
+  })
+
+  it('S4-3: 알려지지 않은 사용자 토큰 → 401', async () => {
+    const res = await getPermissions('ATLAS-1', mockAccessToken('unknown-user'))
+
+    expect(res.status).toBe(401)
+  })
+
+  it('S4-4: issueKey 쿼리 없음 → 400', async () => {
+    const res = await fetch('/api/v1/users/me/issue-permissions', {
+      headers: { Authorization: `Bearer ${mockAccessToken('alice')}` },
+    })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('S4-5: issueKey 빈 문자열 → 400', async () => {
+    const res = await fetch('/api/v1/users/me/issue-permissions?issueKey=', {
+      headers: { Authorization: `Bearer ${mockAccessToken('alice')}` },
+    })
+
+    expect(res.status).toBe(400)
   })
 })
