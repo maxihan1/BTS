@@ -41,7 +41,7 @@ interface ComponentRowProps {
  */
 function useSearchUsers() {
   const [debouncedQuery, setDebouncedQuery] = useState('')
-  const timerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null)
+  const timerRef = useRef<number | null>(null)
 
   const handleSearch = useCallback((query: string): void => {
     if (timerRef.current !== null) {

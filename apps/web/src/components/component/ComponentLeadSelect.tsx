@@ -1,4 +1,5 @@
 // 컴포넌트 리드 셀렉터 — 순수 props 표현 컴포넌트 (검색/선택/미지정 지원)
+import type { JSX } from 'react'
 import type { UserSummary } from '../../api/users'
 import { componentLabels } from '../../i18n/component-labels'
 

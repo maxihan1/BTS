@@ -124,7 +124,7 @@ describe('ComponentFormDialog — 생성 모드', () => {
 
     const user = userEvent.setup()
     const nameInput = screen.getByRole('textbox', { name: /이름/ })
-    await user.type(nameInput, '새 컴포넌트', { delay: null })
+    await user.type(nameInput, '새 컴포넌트')
 
     const saveButton = screen.getByRole('button', { name: '저장' })
     await user.click(saveButton)
@@ -184,7 +184,7 @@ describe('ComponentFormDialog — 수정 모드', () => {
     // 이름 변경
     const nameInput = screen.getByRole('textbox', { name: /이름/ })
     await user.clear(nameInput)
-    await user.type(nameInput, '수정된 컴포넌트', { delay: null })
+    await user.type(nameInput, '수정된 컴포넌트')
 
     const saveButton = screen.getByRole('button', { name: '저장' })
     await user.click(saveButton)

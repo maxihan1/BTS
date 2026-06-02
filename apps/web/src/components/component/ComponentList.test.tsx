@@ -202,7 +202,7 @@ describe('ComponentList — "컴포넌트 추가" 버튼', () => {
 
     // 이름 입력
     const nameInput = screen.getByRole('textbox', { name: /이름/ })
-    await user.type(nameInput, '새 컴포넌트', { delay: null })
+    await user.type(nameInput, '새 컴포넌트')
 
     // 저장
     const saveButton = screen.getByRole('button', { name: '저장' })
@@ -307,7 +307,7 @@ describe('ComponentList — 행 수정 버튼', () => {
 
     const nameInput = screen.getByRole('textbox', { name: /이름/ })
     await user.clear(nameInput)
-    await user.type(nameInput, 'Backend v2', { delay: null })
+    await user.type(nameInput, 'Backend v2')
 
     const saveButton = screen.getByRole('button', { name: '저장' })
     await user.click(saveButton)
