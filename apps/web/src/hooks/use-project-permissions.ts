@@ -17,6 +17,17 @@ export const PROJECT_PERMISSION_KEYS = {
 // useProjectPermissions
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * 현재 로그인 사용자의 프로젝트별 권한을 조회한다.
+ *
+ * GET /api/v1/users/me/project-permissions?projectKey={projectKey}
+ * queryKey: ['project-permissions', projectKey]
+ * staleTime 30초 — 화면 내 중복 호출을 방지한다.
+ * enabled: projectKey가 있을 때만 실행한다.
+ *
+ * @param projectKey 프로젝트 식별 키 (예: ATLAS). 빈 문자열이면 쿼리가 비활성화된다.
+ * @returns TanStack Query 결과 — data(ProjectPermissions), isLoading, isError 포함
+ */
 export function useProjectPermissions(projectKey: string) {
   return useQuery<ProjectPermissions>({
     queryKey: PROJECT_PERMISSION_KEYS.detail(projectKey),
