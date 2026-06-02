@@ -31,9 +31,25 @@
 - **관련 ADR**: docs/adr/2026-06-03-resolution-required-on-done-transition.md (옵션 A, 채택).
 - **grill-with-docs 스킵**: 백엔드 구조 직접 grep으로 엔티티·게이트 프레임워크·StateCategory 확인. 핵심 결정은 갈림길 AskUserQuestion으로.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-03-fr-is-07-resolution-resolutions-e2e.md](../specs/2026-06-03-fr-is-07-resolution-resolutions-e2e.md)
+
+핵심 시나리오.
+- 종료(DONE) 전이 선택 시 Resolution 모달 → 선택 후 전이(미선택 시 거부, RequiredField validator).
+- 재오픈(DONE→비DONE) 시 resolution_id 자동 clear(모든 전이가 resolution_id=request.resolutionId 영속, 비DONE은 null).
+- 표준 5종 seed(Fixed/Won't Fix/Duplicate/Cannot Reproduce/Done) + `GET /api/v1/resolutions`. 커스텀 CRUD는 후속(IssueType 선례).
+
+확정 결정.
+- 결정 1: 가용 전이 응답에 `toCategory` additive 노출(프론트가 DONE 판별 → 모달 트리거). "서버가 정답지" ADR 일관.
+- 결정 2: 커스텀 Resolution CRUD는 이번 범위 제외(후속).
+- 결정 3 [Brainstorming BLOCKER]: **옵션 A — validator 단계(availability/execution) 구분 채택**. RequiredField=execution-only, availableTransitions는 availability만 평가(안 그러면 DONE 전이가 목록에서 사라져 이슈를 못 닫는 critical 버그). project-workflow SPI 변경 동반.
+- 결정 4: 재오픈 clear는 카테고리 불필요(resolutionId 영속만으로 충족).
+- 마이그레이션 = **V010**(V009는 components 선점). init_codegen 미러 필수.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). Critical gap 1건 발견·해소 — availableTransitions가 RequiredField로 DONE 전이를 숨겨 이슈를 못 닫는 버그(결정 3, 옵션 A로 해결). 부수 발견 — 재오픈 clear는 카테고리 불필요(결정 4), 마이그레이션 V009→V010 정정.
 
 ## Plan (← /bts-plan 채움)
 
