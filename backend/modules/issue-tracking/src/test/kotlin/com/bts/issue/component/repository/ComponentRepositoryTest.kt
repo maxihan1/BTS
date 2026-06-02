@@ -15,7 +15,6 @@ import java.util.UUID
 
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class ComponentRepositoryTest : IssueTestcontainersBase() {
-
     private lateinit var componentRepository: ComponentRepository
 
     @BeforeEach
@@ -30,12 +29,13 @@ class ComponentRepositoryTest : IssueTestcontainersBase() {
     @Test
     @Order(1)
     fun `insert 후 findById 로 조회되어야 한다`() {
-        val component = Component.create(
-            projectId = testProjectId,
-            name = "Auth",
-            description = "인증 모듈",
-            leadUserId = UUID.randomUUID(),
-        )
+        val component =
+            Component.create(
+                projectId = testProjectId,
+                name = "Auth",
+                description = "인증 모듈",
+                leadUserId = UUID.randomUUID(),
+            )
 
         val saved = componentRepository.insert(component)
 
@@ -82,12 +82,13 @@ class ComponentRepositoryTest : IssueTestcontainersBase() {
     @Order(4)
     fun `findByProject 는 다른 프로젝트의 컴포넌트를 포함하지 않아야 한다`() {
         // 두 번째 프로젝트를 DB에 먼저 삽입해야 FK 제약을 만족한다
+        val upsertSql =
+            "INSERT INTO projects (key, name) VALUES (?, ?)" +
+                " ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id"
         val otherProjectId: UUID =
-            dsl.resultQuery(
-                "INSERT INTO projects (key, name) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
-                "TPRJ2",
-                "Test Project 2",
-            ).fetchOne()?.get(0) as UUID
+            dsl.resultQuery(upsertSql, "TPRJ2", "Test Project 2")
+                .fetchOne()
+                ?.get(0) as UUID
 
         componentRepository.insert(Component.create(projectId = testProjectId, name = "Mine"))
         componentRepository.insert(Component.create(projectId = otherProjectId, name = "Other"))
