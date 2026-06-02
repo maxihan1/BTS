@@ -149,19 +149,3 @@ data class BulkUpdateWebRequest(
     val transitionPayload: BulkTransitionPayload?,
 )
 
-/**
- * 일괄 작업이 존재하지 않을 때 발생하는 예외.
- *
- * @property operationId 조회한 작업 UUID.
- */
-class BulkOperationNotFoundException(val operationId: UUID) :
-    RuntimeException("BulkOperation not found: id=$operationId")
-
-/**
- * 일괄 작업 조회 권한이 없을 때 발생하는 예외.
- *
- * @property operationId 조회한 작업 UUID.
- * @property actorId 권한이 없는 행위자 UUID.
- */
-class BulkOperationForbiddenException(val operationId: UUID, val actorId: UUID) :
-    RuntimeException("Access denied: actor=$actorId is not owner of operationId=$operationId")
