@@ -107,10 +107,10 @@ Base path: `/api/v1/projects/{projectIdOrKey}/components` (projectIdOrKey = UUID
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/mocks/component-handlers.ts`, `apps/web/src/mocks/handlers.ts`]
+- files: [`apps/web/src/mocks/component-handlers.ts`, `apps/web/src/mocks/component-handlers.test.ts`, `apps/web/src/mocks/handlers.ts`]
 - depends-on: [1]
 
-**RED**: (핸들러는 테스트 인프라라 자체 테스트 없음 — 대신 handlers.ts에 componentHandlers spread 추가가 기존 handlers.test.ts 통과 유지하는지 + 후속 hook 테스트의 GREEN 근거) component-handlers의 stateful CRUD가 다음 task 테스트에서 RED→GREEN 작동.
+**RED**: `component-handlers.test.ts` — MSW server(setupServer + componentHandlers)로 GET 목록/POST 201/POST 중복 409(errorCode COMPONENT_NAME_DUPLICATE)/DELETE 204 응답을 직접 단언(핸들러 인프라 자체 검증으로 TDD 성립).
 **GREEN**: `component-handlers.ts` — stateful in-memory map. GET 목록(name 정렬)/POST(201, 이름중복 409 COMPONENT_NAME_DUPLICATE)/GET단건/PATCH(name·desc)/PATCH lead(422 토글 localStorage 플래그)/DELETE 204. **에러 바디 = RFC 7807 ProblemDetail `{ type, title, status, detail, errorCode, timestamp }`(백엔드 ComponentExceptionHandler 1:1). `message` 필드 금지**(issue/scheme-handlers의 invent 답습 금지 — 리뷰 B2, 메모리 frontend-zod-backend-dto-contract-gap). 분기순서 백엔드 일치(메모리 e2e-msw-serviceworker-block). fixture UUID는 v4 형식(메모리 zod-v4-uuid-fixture-strictness). handlers.ts에 `...componentHandlers` 알파벳 위치 추가.
 **REFACTOR**: 리셋 헬퍼 + 시드 fixture 분리.
 **검증**: `pnpm --filter @bts/web test handlers.test`
@@ -222,3 +222,25 @@ BLOCKER 3건 + CONCERN 4건. 모두 백엔드 PR #59 + 프론트 선례 코드 �
 ✅ 통과: API 계약(경로/메서드/상태/errorCode 7종), ComponentResponse Zod 1:1, DataResponse 언래핑, user 인프라 재사용, 알려진 함정 5종, ProjectNotFoundScreen/RouteAdapter 패턴, 스코프 적정성, TDD 메타 완전성.
 
 **BLOCKER**: 없음 (3건 모두 반영 완료).
+
+## 구현 결과 (bts-impl, 2026-06-03)
+
+10 TDD task 전부 완료 (T1~T9 frontend-engineer, T10 qa-engineer). wave 7개 직렬 레이어로 dispatch.
+
+- **T1** api/components.ts + types + test — DataResponse 언래핑, X-XSRF-TOKEN, extractComponentErrorCode 헬퍼 (커밋 4aa15e0→7a3674e→70af03d)
+- **T2** i18n/component-labels + componentErrorMessage (5af5ede→76c56de→1c07f40)
+- **T3** MSW component-handlers (RFC7807, message 금지) + handlers.ts 등록 (40742ad→0c8f552→c1a3c61)
+- **T4** use-components 훅 (invalidate-only, onError 토스트 hook 레이어) (706d42b→4ba052d)
+- **T5** ComponentLeadSelect 순수 props 컴포넌트 (40742ad→2b4ed57→d481d44)
+- **T6** ComponentFormDialog (key 재마운트, useUsers 상위 호출) (745c251→1fe1018→1d638d0)
+- **T7** ComponentRow (행 컨테이너 한정 aria-label) (f37eaab→f358474→8640b13)
+- **T8** ComponentList 4분기 (45eec08→4332cbe→a8cf495)
+- **T9** route 페이지 + router.ts 등록 (PROJECT_NOT_FOUND → ProjectNotFoundScreen 재사용) (b9949db→34f8ba5)
+- **T10** E2E 5종 (S1/S2/S4/S5/S6) (f790afb)
+- **typecheck hot-fix** 6건 — vitest 통과/tsconfig.app 실패 (JSX import, setTimeout number, userEvent delay 제거) (9415c02)
+
+**검증**: typecheck PASS, lint PASS, 단위 971 통과(93 파일), E2E 77 실행 76통과/1skip(기존 의도)/회귀 0.
+
+**병렬 race 메모**: wave 2에서 lint-staged race로 T3 RED 테스트가 40742ad(라벨 task-5 red)에 섞임. TDD 순서(test→feat)는 내용상 보존, squash 머지로 메시지 평탄화. (메모리 parallel-dispatch-precommit-hook-race 재현)
+
+**codereview 확인 이관**: ComponentFormDialog가 빈 description을 undefined로 보내 수정 모드에서 기존 설명 비우기 불가 (시나리오 없는 minor edge — 확인 필요).
