@@ -32,9 +32,10 @@ import org.testcontainers.utility.DockerImageName
  * [com.bts.issue.repository.IssueTestcontainersBase] 와 동일한 quay.io/tembo/pg16-pgmq:latest 이미지로
  * 격리된 테스트 컨테이너를 기동한다.
  *
- * ## 왜 MockBean 이 세 개 필요한가
- * [com.bts.issue.application.IssueApplicationService] 생성자가 [WorkflowTransitionPort],
- * [WorkflowKeyResolver], [UserLookupPort] 를 주입받는다. 이 빈들은 issue-tracking BC 밖
+ * ## 왜 MockBean 이 네 개 필요한가
+ * [com.bts.issue.application.IssueApplicationService] 가 [WorkflowTransitionPort], [WorkflowKeyResolver],
+ * [UserLookupPort] 를 주입받고, [com.bts.issue.type.application.IssueTypeApplicationService] 가
+ * [IssueTypeUsagePort] 를 주입받는다. 이 빈들은 모두 issue-tracking BC 밖
  * (project-workflow BC / identity-access BC) 에서 구현 빈이 제공되는 outbound port 이므로
  * issue-tracking 단독 부팅 시에는 존재하지 않는다. MockBean 으로 자리채우기(stub)를 제공한다.
  *
