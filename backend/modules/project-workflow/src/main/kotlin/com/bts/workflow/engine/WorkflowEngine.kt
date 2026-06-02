@@ -77,16 +77,31 @@ interface WorkflowDefinitionRepository {
      * 주어진 전이에 설정된 Validator 설정 목록을 반환한다.
      * 순서는 YAML 정의 순서를 따른다 (순차 평가를 위해 보존해야 한다).
      *
+     * [workflowKey] 는 workflow_id 해석을 위한 1급 식별자로, 같은 (from, to) 쌍을 사용하는
+     * 여러 워크플로우가 존재할 때 올바른 validator 행을 선택하기 위해 필수로 전달해야 한다.
+     * 이 인자 없이 transition 만으로 조회하면 오매칭(silent 결함)이 발생한다.
+     *
+     * @param workflowKey 워크플로우 식별자 (workflow 테이블 key 컬럼 값)
      * @param transition 조회 대상 전이 정의
      */
-    fun findValidators(transition: WorkflowTransition): List<ValidatorConfig>
+    fun findValidators(
+        workflowKey: String,
+        transition: WorkflowTransition,
+    ): List<ValidatorConfig>
 
     /**
      * 주어진 전이에 설정된 PostAction 설정 목록을 반환한다.
      *
+     * [workflowKey] 는 workflow_id 해석을 위한 1급 식별자로, 같은 (from, to) 쌍을 사용하는
+     * 여러 워크플로우가 존재할 때 올바른 post_action 행을 선택하기 위해 필수로 전달해야 한다.
+     *
+     * @param workflowKey 워크플로우 식별자 (workflow 테이블 key 컬럼 값)
      * @param transition 조회 대상 전이 정의
      */
-    fun findPostActions(transition: WorkflowTransition): List<PostActionConfig>
+    fun findPostActions(
+        workflowKey: String,
+        transition: WorkflowTransition,
+    ): List<PostActionConfig>
 }
 
 /** Validator 한 건의 type + config 쌍. */
@@ -237,7 +252,7 @@ class WorkflowEngine(
         ctx: TransitionContext,
         transition: WorkflowTransition,
     ) {
-        for (cfg in definitionRepo.findValidators(transition)) {
+        for (cfg in definitionRepo.findValidators(ctx.request.workflowKey, transition)) {
             val validator = validatorFactory.create(cfg.type, cfg.config)
             val result = validator.validate(ctx)
             if (result is ValidatorResult.Fail) {
@@ -259,7 +274,7 @@ class WorkflowEngine(
     ): Pair<List<FieldChange>, List<DomainEvent>> {
         val fieldChanges = mutableListOf<FieldChange>()
         val emitEvents = mutableListOf<DomainEvent>()
-        for (cfg in definitionRepo.findPostActions(transition)) {
+        for (cfg in definitionRepo.findPostActions(ctx.request.workflowKey, transition)) {
             val postAction = postActionFactory.create(cfg.type, cfg.config)
             val plan = postAction.evaluate(ctx)
             fieldChanges += plan.fieldChanges
@@ -300,7 +315,7 @@ class WorkflowEngine(
             )
         val ctx = TransitionContext(syntheticRequest, workflow, fromState, transition, issueView, actorView)
 
-        for (cfg in definitionRepo.findValidators(transition)) {
+        for (cfg in definitionRepo.findValidators(req.workflowKey, transition)) {
             val validator = validatorFactory.create(cfg.type, cfg.config)
             val result = validator.validate(ctx)
             if (result is ValidatorResult.Fail) {

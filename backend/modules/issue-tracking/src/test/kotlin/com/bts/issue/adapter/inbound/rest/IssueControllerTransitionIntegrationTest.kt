@@ -176,8 +176,8 @@ class IssueControllerTransitionIntegrationTest {
         @Bean
         open fun workflowDefinitionRepository(): WorkflowDefinitionRepository =
             mockk<WorkflowDefinitionRepository> {
-                every { findValidators(any()) } returns emptyList()
-                every { findPostActions(any()) } returns emptyList()
+                every { findValidators(any(), any()) } returns emptyList()
+                every { findPostActions(any(), any()) } returns emptyList()
             }
 
         @Bean
