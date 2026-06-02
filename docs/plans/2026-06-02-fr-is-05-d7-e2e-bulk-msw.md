@@ -154,4 +154,18 @@ stateful 모듈 상태 + 폴링 진행 시뮬레이션(메모리 msw-mutation-st
 - 추가 검증: typecheck, lint, vitest, playwright (qa-engineer)
 - 회귀 함정 반영: msw-mutation-stateful-refetch, zod-v4-uuid-fixture-strictness, e2e-fixture-whoami-userid-alignment, playwright-getbyrole-exact-strict-mode, e2e-msw-scenario-toggle-localstorage-flag, ui-pr-defer-e2e-regression-latent, e2e-orphan-vite-after-worktree-remove
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### eng 자체 점검 (2026-06-02, qa fast-track — autoplan skip)
+
+- ✅ **계약 invent 0** — 모든 엔드포인트/스키마/셀렉터가 D1~D6 머지 코드에서 직접 확인됨. plan files 경로 실재 검증 완료.
+- ✅ **TDD 형식** — T1 핸들러 RED/GREEN/REFACTOR 명시. T2/T3는 산출물=테스트(qa 특성).
+- ✅ **회귀 함정 반영** — 7종 메모리 task별 인용.
+- ⚠️ **W1 (폴링 타이밍 flakiness)** — 1건/폴 진행 + 1.5s 간격이면 3건 작업은 종단까지 ~4.5s로 Playwright 기본 expect 5s에 근접 → flaky 위험. **반영**: T1 핸들러는 종단까지 **최대 2폴(~3s)** 안에 도달하도록 진행 step을 조정(예 첫 GET에서 RUNNING 부분처리, 둘째 GET에서 COMPLETED). 또는 T2에서 `완료` 단언에 명시 timeout(예 `{ timeout: 8000 }`). 핵심 단언(`완료`+카운트)이 우선, `처리 중` 중간 단언은 best-effort.
+- ⚠️ **W2 (접수 실패 시 편집 Dialog 잔존)** — S4에서 `mutateAsync` reject → `handleApply`의 후속(onSubmitted/onOpenChange(false)) 미실행 → 편집/전이 Dialog는 **열린 채 유지**되고 toast만 뜸. **반영**: S4 단언은 "toast.error(detail) 노출 + 결과 Dialog 미오픈"으로 한정(편집 Dialog 잔존은 허용 동작, 단언하지 않음).
+- ⚠️ **W3 (5173 orphan Vite)** — worktree에서 E2E 실행 후 worktree 제거 시 Vite dev 서버가 5173에 orphan으로 남을 수 있음(메모리). **반영**: T3/머지 후 5173 정리 확인.
+- BLOCKER: 없음.
+
+### 게이트 1 직전 상태
+
+- 산출물 3종 plan 반영 완료(도메인/스펙/plan). 리뷰 BLOCKER 0, 주의 3건(전부 plan 반영).
