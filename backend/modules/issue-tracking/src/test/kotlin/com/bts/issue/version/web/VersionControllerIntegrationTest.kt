@@ -10,6 +10,7 @@ import com.bts.issue.project.ProjectLookup
 import com.bts.issue.project.repository.ProjectLookupRepository
 import com.bts.shared.permission.VersionPermissionResolver
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.flywaydb.core.Flyway
@@ -120,6 +121,7 @@ class VersionControllerIntegrationTest {
             ObjectMapper()
                 .registerKotlinModule()
                 .registerModule(JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 
         // ── 버전 BC 빈 ─────────────────────────────────────────────────────────
 
