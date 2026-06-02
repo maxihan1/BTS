@@ -260,6 +260,10 @@ class WorkflowEngine(
     /**
      * Validator 를 순차 평가한다. 첫 Fail 즉시 예외를 던진다.
      *
+     * plan 경로(전이 실행)에서만 호출된다. AVAILABILITY / EXECUTION 구분 없이 모든 phase 의
+     * validator 를 평가한다. EXECUTION 페이즈 게이트(RequiredField 등)도 이 경로에서 차단한다.
+     * availableTransitions 경로에서는 이 함수를 호출하지 않고 passesValidators 를 사용한다.
+     *
      * ctx.request.workflowKey 를 definitionRepo 에 전달해 같은 (from, to) 를 공유하는
      * 다른 워크플로우의 validator 가 오매칭되지 않도록 한다.
      */
@@ -304,7 +308,11 @@ class WorkflowEngine(
     }
 
     /**
-     * 단일 전이에 대해 Validator 평가만 수행하고 통과 여부를 반환한다.
+     * 단일 전이에 대해 AVAILABILITY 페이즈 Validator 만 평가하고 통과 여부를 반환한다.
+     *
+     * availableTransitions 경로(읽기, 버튼 노출 결정)에서만 호출된다.
+     * EXECUTION 페이즈 validator(RequiredField 등)는 건너뛴다 — 버튼 노출과 실행 차단이
+     * 분리되어야 하기 때문이다(Jira transition screen 시맨틱). 실행 차단은 runValidators 에서 담당.
      *
      * PostAction 은 평가하지 않는다 — [availableTransitions] 의 읽기 전용 계약을 유지한다.
      * fromState 가 워크플로우에 존재하지 않으면 false 를 반환한다.

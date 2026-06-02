@@ -11,9 +11,11 @@ import com.bts.workflow.domain.StateCategory
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition
+import com.bts.workflow.domain.dto.TransitionContext
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.workflow.domain.spi.ValidatorPhase
 import com.bts.workflow.domain.spi.ValidatorResult
+import com.bts.workflow.domain.spi.WorkflowValidator
 import com.bts.workflow.validator.RequiredFieldValidator
 import io.mockk.every
 import io.mockk.mockk
@@ -72,7 +74,8 @@ class WorkflowEngineAvailabilityPhaseTest {
             actorId = "user-001",
             issueKey = "ATLAS-10",
             actorRoles = setOf("MEMBER"),
-            issueFields = emptyMap(), // resolution 없음
+            // resolution 없음
+            issueFields = emptyMap(),
         )
 
     @BeforeEach
@@ -128,7 +131,8 @@ class WorkflowEngineAvailabilityPhaseTest {
                 toStateKey = "closed",
                 actorId = "user-001",
                 actorRoles = setOf("MEMBER"),
-                issueFields = emptyMap(), // resolution 없음 → EXECUTION 차단
+                // resolution 없음 — EXECUTION 차단
+                issueFields = emptyMap(),
                 version = 1L,
             )
 
@@ -147,13 +151,13 @@ class WorkflowEngineAvailabilityPhaseTest {
         } returns listOf(permissionConfig)
         // AVAILABILITY 페이즈 validator — Fail 반환
         val blockingValidator =
-            object : com.bts.workflow.domain.spi.WorkflowValidator {
+            object : WorkflowValidator {
                 override val type: String = "Permission"
-                override val phase = com.bts.workflow.domain.spi.ValidatorPhase.AVAILABILITY
+                override val phase = ValidatorPhase.AVAILABILITY
 
-                override fun validate(
-                    ctx: com.bts.workflow.domain.dto.TransitionContext,
-                ): ValidatorResult = ValidatorResult.Fail(field = null, reason = "ADMIN 역할 필요")
+                override fun validate(ctx: TransitionContext): ValidatorResult {
+                    return ValidatorResult.Fail(field = null, reason = "ADMIN 역할 필요")
+                }
             }
         every {
             mockValidatorFactory.create("Permission", mapOf("role" to "ADMIN"))
