@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { issuePermissionHandlers } from '@/mocks/issue-permission-handlers'
+import { aliceUser, mockAccessToken } from '@/mocks/auth-fixtures'
+import { useAuthStore } from '@/auth/authStore'
 import { useIssuePermissions } from '../use-issue-permissions'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -27,7 +29,13 @@ function createWrapper() {
 
 describe('useIssuePermissions', () => {
   beforeEach(() => {
+    // 핸들러가 Authorization 토큰을 검증하므로 alice 세션을 미리 설정한다
+    useAuthStore.getState().setSession({ accessToken: mockAccessToken('alice'), user: aliceUser })
     server.use(...issuePermissionHandlers)
+  })
+
+  afterEach(() => {
+    useAuthStore.getState().clearSession()
   })
 
   it('issueKey를 전달하면 권한 데이터를 반환한다', async () => {
