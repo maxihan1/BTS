@@ -39,10 +39,15 @@
 - When: `GET /api/v1/projects/ATLAS/components`
 - Then: 200 + 활성 N개만(`deleted_at IS NULL`). name 정렬.
 
-### S4 — 수정 (이름/설명/리드 변경·해제)
+### S4 — 수정 (이름/설명)
 - Given: 기존 컴포넌트
-- When: `PATCH .../components/{id} { name: "결제V2", leadUserId: null }`
-- Then: 200 + 변경 반영. `leadUserId: null` = 리드 해제, 필드 생략 = 무변경(3-state, FR-IS-03 assignee 선례).
+- When: `PATCH .../components/{id} { name: "결제V2", description: "..." }`
+- Then: 200 + 변경 반영. 결합 PATCH는 name/description만. 문자열 sentinel 규약(필드 생략/null=무변경, description은 ""=클리어) — UpdateIssueRequest 선례 동형.
+
+### S4b — 리드 지정·해제 (전용 서브리소스)
+- Given: 기존 컴포넌트
+- When: `PATCH .../components/{id}/lead { leadUserId: <UUID 또는 null> }`
+- Then: 200 + 리드 반영. `leadUserId: null` = 리드 해제, UUID = 지정. **FR-IS-03 assignee 전용 서브리소스(`PATCH /issues/{key}/assignee`) 선례 동형** — 결합 PATCH의 3-state 모호성(생략 vs null 구분)을 전용 단일필드 엔드포인트로 제거. 코드베이스에 presence-detection(JsonNullable) 없음을 회피.
 
 ### S5 — 소프트 삭제
 - Given: 기존 컴포넌트
@@ -78,7 +83,7 @@
 
 - **FR-1 도메인(D1)**: `Component` Aggregate Root — id(UUID), projectId, name, description?, leadUserId?. 불변식: name 비어있지 않음, name 길이 제한, 정규화(trim). `rename`/`changeLead`/`changeDescription`/`softDelete` 도메인 메서드.
 - **FR-2 데이터(D3)**: `components` 테이블 — `id UUID PK`, `project_id UUID NOT NULL FK→projects(id)`, `name VARCHAR(255) NOT NULL`, `description TEXT NULL`, `lead_user_id UUID NULL`(FK 없음, BC 격리), `created_at`/`updated_at`/`deleted_at`. 부분 유니크 인덱스 `(project_id, name) WHERE deleted_at IS NULL`. jOOQ init_codegen 미러(메모리 jooq-init-codegen-mirror).
-- **FR-3 CRUD API(D4)**: POST(201)/GET 목록(200)/GET 단건(200)/PATCH(200)/DELETE(204). DataResponse 래퍼. PATCH는 3-state 부분 수정(생략=무변경, null=해제).
+- **FR-3 CRUD API(D4)**: POST(201)/GET 목록(200)/GET 단건(200)/PATCH name·description(200)/PATCH lead 전용 서브리소스(200)/DELETE(204). DataResponse 래퍼. **리드는 전용 `/lead` 서브리소스(FR-IS-03 assignee 선례)** — 결합 PATCH 3-state 모호성 회피. 결합 PATCH는 name/description만 문자열 sentinel.
 - **FR-4 검증(D4)**: 프로젝트 존재(404), 컴포넌트 존재+소속(404), 이름 중복(409, 활성 기준), 리드 실재(422, UserLookupPort). 도메인 정규화는 service가 도메인 메서드 경유(메모리 patch-merge-domain-bypass — DTO 검증은 1차방어만).
 - **FR-4b 프로젝트 조회(D3/D4, sanity check 발견)**: issue-tracking에 프로젝트 조회(존재 + projectKey→id) 컴포넌트 신규 추가. projects는 issue-tracking 소유라 자체 repository(in-BC, 위반 아님). 현재 issue-tracking엔 프로젝트 단건 조회 컴포넌트 부재 → 신규. 동시 생성 race는 부분 유니크 인덱스 제약 위반 catch→409로 처리(pre-check만으로 TOCTOU 미방지).
 - **FR-5 권한 리졸버(D4)**: `ComponentPermissionResolver` 포트 + AlwaysAllow(비prod) 구현 + !prod fallback 빈 + 부팅 가드(메모리 profile-scoped-bean-boot-failure). **인증 자체(401)는 SecurityConfig 필터가 보장**. actor 추출 + 실 권한판정은 FR-PM-03 이연(AlwaysAllow는 actor 무시) — IssueController가 actor를 SYSTEM 하드코딩하고 실추출을 미룬 선례 동형. PAT→userId 추출은 identity-access 서비스 필요(cross-BC)라 FR-PM-03 범위.
@@ -98,17 +103,19 @@
 ## API 인터페이스 (REST)
 
 ```
-POST   /api/v1/projects/{projectIdOrKey}/components        → 201 {data:{id,projectId,name,description,leadUserId,createdAt,updatedAt}}
-GET    /api/v1/projects/{projectIdOrKey}/components        → 200 {data:[...]}  (활성만, name 정렬)
-GET    /api/v1/projects/{projectIdOrKey}/components/{id}   → 200 {data:{...}}
-PATCH  /api/v1/projects/{projectIdOrKey}/components/{id}   → 200 {data:{...}}  (3-state 부분수정)
-DELETE /api/v1/projects/{projectIdOrKey}/components/{id}   → 204
+POST   /api/v1/projects/{projectIdOrKey}/components          → 201 {data:{id,projectId,name,description,leadUserId,createdAt,updatedAt}}
+GET    /api/v1/projects/{projectIdOrKey}/components          → 200 {data:[...]}  (활성만, name 정렬)
+GET    /api/v1/projects/{projectIdOrKey}/components/{id}     → 200 {data:{...}}
+PATCH  /api/v1/projects/{projectIdOrKey}/components/{id}     → 200 {data:{...}}  (name/description, 문자열 sentinel)
+PATCH  /api/v1/projects/{projectIdOrKey}/components/{id}/lead → 200 {data:{...}}  (리드 지정/해제 전용)
+DELETE /api/v1/projects/{projectIdOrKey}/components/{id}     → 204
 Authorization: Bearer <JWT 또는 PAT>
 ```
 
 요청 바디:
-- POST `{ name: String(필수,1~255), description: String?(≤?), leadUserId: UUID? }`
-- PATCH `{ name?: String, description?: String?, leadUserId?: UUID? }` (3-state)
+- POST `{ name: String(필수,1~255), description: String?(≤1000), leadUserId: UUID? }`
+- PATCH (결합) `{ name?: String, description?: String? }` — name 생략=무변경, description null/생략=무변경·""=클리어 (UpdateIssueRequest sentinel 규약).
+- PATCH /lead `{ leadUserId: UUID? }` — null=해제, UUID=지정. leadUserId 키는 항상 존재(2-state, 모호성 없음).
 
 에러 코드:
 - 401 (미인증)
@@ -127,7 +134,7 @@ projectIdOrKey 해석: issue-tracking이 projects 소유 → 자체 조회로 ke
 
 ## 엣지 케이스
 
-- EC-1: PATCH 3-state 모호성 — leadUserId 생략(무변경) vs null(해제) 구분. FR-IS-03 assignee 전용 PATCH 선례 동형.
+- EC-1: 리드 변경은 전용 `PATCH .../components/{id}/lead { leadUserId: UUID? }` — leadUserId 키 항상 존재(null=해제/UUID=지정), 결합 PATCH의 생략 vs null 모호성 원천 제거. FR-IS-03 assignee 서브리소스 선례 동형(eng 리뷰 B1 반영, 결합 PATCH로는 UUID 해제/무변경 구분 불가).
 - EC-2: 이름 중복은 활성 기준 — 소프트 삭제된 동명 컴포넌트는 충돌 아님(부분 유니크 인덱스).
 - EC-3: 리드 검증 — leadUserId 생략/null은 검증 스킵, non-null만 UserLookupPort.exists. 도메인 우회 금지(patch-merge-domain-bypass).
 - EC-4: projectIdOrKey가 소프트 삭제된 프로젝트 → 404 PROJECT_NOT_FOUND(활성만).

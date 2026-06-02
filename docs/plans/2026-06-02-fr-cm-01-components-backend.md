@@ -90,7 +90,7 @@ FR-PM-03(버전/컴포넌트 등록 권한)의 **기능 선행**. 권한을 얹�
 - depends-on: [2]
 
 **RED**: 통합 — projectKey→id 해석, UUID 직접 수용, 소프트 삭제·미존재 프로젝트는 미해석(404 신호). 실패: lookup 없음.
-**GREEN**: issue-tracking 소유 projects 테이블 자체 조회(in-BC). `resolve(projectIdOrKey): UUID?`(활성만).
+**GREEN**: issue-tracking 소유 projects 테이블 자체 조회(in-BC). `resolve(projectIdOrKey): UUID?`(활성만). **C1 반영: key→id 쿼리는 기존 `IssueRepository.findProjectIdByKey`(soft-delete 제외) 패턴 재사용/추출, UUID 직접 분기만 신규.** (참고: ProjectMemberController.resolveProjectId는 identity-access BC라 import 불가 — 경로 규약만 참고.)
 **REFACTOR**: 정규식(UUID 판별)·쿼리 정리.
 **검증**: `cd backend && ./gradlew :modules:issue-tracking:test --tests "*ProjectLookupTest"`
 
@@ -101,8 +101,8 @@ FR-PM-03(버전/컴포넌트 등록 권한)의 **기능 선행**. 권한을 얹�
 - files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/permission/ComponentPermissionResolver.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/component/adapter/AlwaysAllowComponentPermissionResolver.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/component/ComponentPermissionResolverBootTest.kt`]
 - depends-on: []
 
-**RED**: 부팅 가드 통합테스트 — 비prod 컨텍스트에서 resolver 빈 주입 성공(메모리 profile-scoped-bean-boot-failure: prod 단독이면 부팅 실패). 실패: 포트/빈 없음.
-**GREEN**: `ComponentPermissionResolver` 포트(shared-kernel, IssuePermissionResolver 동형 시그니처) + `AlwaysAllowComponentPermissionResolver`(@Profile !prod fallback). prod impl은 FR-PM-03.
+**RED**: 부팅 가드 통합테스트 — 비prod 컨텍스트에서 resolver 빈 1개 주입 성공. **C2 반영: 소비자(ComponentController)·구현(AlwaysAllow) 모두 issue-tracking 同모듈이라 FR-PM-02의 cross-BC 스캔 누락은 구조적으로 발생 안 함. 이 가드의 의도는 "비prod 빈 존재 + prod-impl 부재 시 부팅 차단"(prod에서 BeanCreationException)** — FR-PM-02 복붙 아님. 실패: 포트/빈 없음.
+**GREEN**: `ComponentPermissionResolver` 포트(shared-kernel, IssuePermissionResolver `hasPermission(actorId, permission, scope)` 동형 시그니처) + `AlwaysAllowComponentPermissionResolver`(@Profile !prod). prod impl은 FR-PM-03.
 **REFACTOR**: 포트 KDoc(FR-PM-03 prod impl 이연 명시).
 **검증**: `cd backend && ./gradlew :modules:issue-tracking:test --tests "*ComponentPermissionResolverBootTest"`
 
@@ -113,8 +113,8 @@ FR-PM-03(버전/컴포넌트 등록 권한)의 **기능 선행**. 권한을 얹�
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/component/application/ComponentApplicationService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/component/domain/ComponentExceptions.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/component/application/ComponentApplicationServiceTest.kt`]
 - depends-on: [1, 3, 4, 5]
 
-**RED**: MockK 단위 — 생성(리드有/無)/수정(3-state)/삭제, 프로젝트 미존재→ProjectNotFound, 컴포넌트 미존재→ComponentNotFound, 이름 중복→DuplicateName(활성), 리드 미실재→ComponentLeadNotFound(UserLookupPort.exists=false). 도메인 정규화 메서드 호출 검증(우회 금지, patch-merge-domain-bypass). 실패: service 없음.
-**GREEN**: `@Transactional` service — ProjectLookup·ComponentRepository·UserLookupPort·resolver 조율. 3-state PATCH. 도메인 메서드 경유. sealed 예외.
+**RED**: MockK 단위 — 생성(리드有/無)/수정(name·description)/리드변경(지정·해제, 별 메서드)/삭제, 프로젝트 미존재→ProjectNotFound, 컴포넌트 미존재→ComponentNotFound, 이름 중복→DuplicateName(활성), 리드 미실재→ComponentLeadNotFound(UserLookupPort.exists=false). 도메인 정규화 메서드 호출 검증(우회 금지, patch-merge-domain-bypass). 실패: service 없음.
+**GREEN**: `@Transactional` service — ProjectLookup·ComponentRepository·UserLookupPort·resolver 조율. `update(name,description)`와 `changeLead(leadUserId?)` **별 메서드**(B1: 리드 전용 서브리소스 대응). 도메인 메서드 경유(changeLead/rename/changeDescription/softDelete). sealed 예외.
 **REFACTOR**: 예외 파일 분리·메서드 추출.
 **검증**: `cd backend && ./gradlew :modules:issue-tracking:test --tests "*ComponentApplicationServiceTest"`
 
@@ -122,11 +122,11 @@ FR-PM-03(버전/컴포넌트 등록 권한)의 **기능 선행**. 권한을 얹�
 
 **메타**.
 - agent: `backend-engineer` (권한 가드 부분 security-engineer 검토)
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/component/web/ComponentController.kt`, `.../web/dto/CreateComponentRequest.kt`, `.../web/dto/UpdateComponentRequest.kt`, `.../web/dto/ComponentResponse.kt`, `.../web/ComponentExceptionHandler.kt`, `.../web/ComponentErrorCodes.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/component/web/ComponentControllerIntegrationTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/component/web/ComponentController.kt`, `.../web/dto/CreateComponentRequest.kt`, `.../web/dto/UpdateComponentRequest.kt`, `.../web/dto/ChangeComponentLeadRequest.kt`, `.../web/dto/ComponentResponse.kt`, `.../web/ComponentExceptionHandler.kt`, `.../web/ComponentErrorCodes.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/component/web/ComponentControllerIntegrationTest.kt`]
 - depends-on: [6]
 
-**RED**: Testcontainers 통합 — S1~S10: POST 201(리드有/無)/GET 목록(삭제 제외)/GET 단건/PATCH 200(3-state)/DELETE 204/404 PROJECT·COMPONENT/409 중복/422 리드/401 미인증. 실패: 컨트롤러 없음.
-**GREEN**: `ComponentController`(`/api/v1/projects/{projectIdOrKey}/components`, DataResponse 래퍼) + DTO(Jakarta Validation, toAppRequest/from) + `@RestControllerAdvice` ExceptionHandler(ProblemDetail+errorCode) + ErrorCodes 상수. 동시 생성 race → 유니크 제약 위반 catch→409.
+**RED**: Testcontainers 통합 — S1~S10: POST 201(리드有/無)/GET 목록(삭제 제외)/GET 단건/PATCH name·description 200/**PATCH /lead 200(지정·해제)**/DELETE 204/404 PROJECT·COMPONENT/409 중복/422 리드/401 미인증. 401 검증은 기존 Issue 통합테스트 Security 셋업 재사용(C1 NIT). 실패: 컨트롤러 없음.
+**GREEN**: `ComponentController`(`/api/v1/projects/{projectIdOrKey}/components`, DataResponse 래퍼) — POST/GET목록/GET단건/PATCH(name·description, 문자열 sentinel)/**PATCH `/{id}/lead`(ChangeComponentLeadRequest{leadUserId:UUID?}, 2-state, B1 반영)**/DELETE. DTO(Jakarta Validation, toAppRequest/from) + `@RestControllerAdvice` ExceptionHandler(ProblemDetail+errorCode) + ErrorCodes 상수. 동시 생성 race → 유니크 제약(SQLState 23505) 위반 catch→409.
 **REFACTOR**: KDoc·엔드포인트 주석·import 정렬(ktlint 파일단위, 모듈 ktlintFormat 금지).
 **검증**: `cd backend && ./gradlew :modules:issue-tracking:test --tests "*ComponentControllerIntegrationTest" :modules:issue-tracking:ktlintMainSourceSetCheck :modules:issue-tracking:detekt`
 
@@ -137,4 +137,14 @@ FR-PM-03(버전/컴포넌트 등록 권한)의 **기능 선행**. 권한을 얹�
 - TDD 강제: yes (test→feat 커밋 순서, bts-impl 자동 검증)
 - 추가 검증: jOOQ codegen, ktlint(파일단위)·detekt, Testcontainers 통합. 머지 전 controller가 `:test :ktlintMainSourceSetCheck :ktlintTestSourceSetCheck :detekt` 직접 실행(메모리 subagent-ktlint-false-green).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-02, code-reviewer 독립 dispatch, ground-truth 대조)
+
+- **BLOCKER 1건 → 해소(plan 수정 완료)**:
+  - **B1** — leadUserId 결합 PATCH 3-state가 "FR-IS-03 동형" 오기. 실제 FR-IS-03(ChangeAssigneeRequest)은 모호성 때문에 전용 `/assignee` 서브리소스로 분리했고, 코드베이스에 presence-detection(JsonNullable) 없음 + UUID는 빈문자열 sentinel 불가 → 결합 PATCH로 해제/무변경 구분 불가. **해소: 전용 `PATCH .../components/{id}/lead` 서브리소스 도입(2-state), 결합 PATCH는 name/description만(문자열 sentinel). S4/S4b·API·FR-3·EC-1·Task6·Task7 전부 정정.**
+- **CONCERN 2건 → 반영**:
+  - **C1** — Task 4 프로젝트 조회: 기존 `IssueRepository.findProjectIdByKey`(soft-delete 제외) 부분 존재 → 쿼리 패턴 재사용/추출, UUID 직접 분기만 신규로 정정. 경로 선례 출처(ProjectMember=identity-access, in-BC 아님) 주석 정정.
+  - **C2** — Task 5 부팅가드: 소비자·구현 모두 issue-tracking 同모듈이라 FR-PM-02 cross-BC 스캔 누락은 미발생. 가드 의도를 "비prod 빈 존재 + prod-impl 부재 부팅차단"으로 재명시.
+- **PASS (ground-truth 확인)**: 포트 위치(shared-kernel `com.bts.shared.permission`)·시그니처, UserLookupPort.exists 422 동형, init_codegen V009 미러, DataResponse·ExceptionHandler·ErrorCodes 규약, 도메인 우회 차단, 직렬 dispatch + depends-on 그래프(순환·누락 0), 부분 유니크 23505 catch→409, TDD 형식, BC 격리(ArchUnit 1b 준수). 스펙↔plan 누락 0.
+- **NIT**: SQLState 23505 명시(반영), 401 검증은 기존 Issue 통합테스트 Security 셋업 재사용(반영).
