@@ -60,6 +60,121 @@ FR-WF-01(PR #10)이 워크플로우 전이 검증 프레임워크의 SPI 인터�
 - (확인2) validator/postaction 구현체가 생성자 인자를 받아 factory가 타입별 생성 필요(config Map→인자). CustomExpression은 SpelEvaluator 주입. 구현 가능, 스펙 FR1/FR2 반영.
 - 미결 Q1(phase)/Q2(PostAction 범위)는 Maxi D8=A/D9=A로 해소. Q3(YAML 스키마)/Q4(시드 범위)는 스펙에서 확정(전이별 validators/post_actions 리스트, 표준 워크플로우는 시드 비움).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> **단일 PR (project-workflow 단일 BC).** 7 TDD task. 모두 같은 Gradle 모듈이라 test 컴파일 공유 → wave 대체로 직렬(메모리 bts-plan-wave-gradle-module-compile).
+
+### Task 1. WorkflowValidator에 적용 단계(phase) 추가 + 4종 분류
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/spi/WorkflowValidator.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/RequiredFieldValidator.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/PermissionValidator.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/NotStatusCategoryValidator.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/CustomExpressionValidator.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/validator/ValidatorPhaseTest.kt`]
+- depends-on: []
+
+**RED**: `ValidatorPhaseTest` — RequiredField.phase==EXECUTION, Permission/NotStatusCategory/CustomExpression.phase==AVAILABILITY. 컴파일 실패(phase 없음).
+
+**GREEN**: `WorkflowValidator`에 `val phase: ValidatorPhase`(enum AVAILABILITY/EXECUTION). 각 구현체 override.
+
+**REFACTOR**: ValidatorPhase KDoc(availability=목록 게이트, execution=실행 게이트, Jira transition screen 시맨틱). ktlint KDoc 특수문자 주의(메모리 ktlint-kdoc-brace-parse-failure).
+
+**검증**: `./gradlew :modules:project-workflow:test --tests "*ValidatorPhaseTest"`
+
+### Task 2. availableTransitions가 EXECUTION validator 건너뜀
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/WorkflowEngine.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineAvailabilityPhaseTest.kt`]
+- depends-on: [1]
+
+**RED**: `WorkflowEngineAvailabilityPhaseTest`(MockK factory/repo) — RequiredField(EXECUTION) 걸린 전이가 availableTransitions에 포함, 동시에 plan은 resolution 없으면 WorkflowValidatorFailureException. 현재 availableTransitions가 제거 → 실패.
+
+**GREEN**: WorkflowEngine.availableTransitions validator 루프(line ~303)에서 `phase==AVAILABILITY`만 평가. plan(line ~241) 전부 평가(불변).
+
+**REFACTOR**: 두 루프 phase 분기 명료화. 과도 추상화 금지.
+
+**검증**: `./gradlew :modules:project-workflow:test --tests "*WorkflowEngineAvailabilityPhaseTest"`
+
+### Task 3. WorkflowValidatorFactory production 구현
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/DefaultWorkflowValidatorFactory.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/DefaultWorkflowValidatorFactoryTest.kt`]
+- depends-on: [1]
+
+**RED**: `DefaultWorkflowValidatorFactoryTest` — create("RequiredField", {"field":"resolution"}) → RequiredFieldValidator(field=resolution). 4종 각각 + 미지원 type → IllegalArgumentException + 필수 config 누락 → 예외. 실패(클래스 없음).
+
+**GREEN**: `@Component DefaultWorkflowValidatorFactory(spelEvaluator: SpelEvaluator) : WorkflowValidatorFactory`. type별 when 분기로 config Map에서 인자 추출해 기존 validator 생성. CustomExpression은 spelEvaluator 주입.
+
+**REFACTOR**: config 추출 헬퍼(required key 검증), KDoc.
+
+**검증**: `./gradlew :modules:project-workflow:test --tests "*DefaultWorkflowValidatorFactoryTest"`
+
+### Task 4. WorkflowPostActionFactory production 구현
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/DefaultWorkflowPostActionFactory.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/DefaultWorkflowPostActionFactoryTest.kt`]
+- depends-on: []
+
+**RED**: `DefaultWorkflowPostActionFactoryTest` — create("SetField", {...}) → SetFieldPostAction, 5종 각각 + 미지원 type → 예외. 실패.
+
+**GREEN**: `@Component DefaultWorkflowPostActionFactory : WorkflowPostActionFactory`. type별 생성(config에서 인자 추출). 계산만(적용 X).
+
+**REFACTOR**: config 추출 공통화(T3과 중복 시 공유 헬퍼 검토), KDoc.
+
+**검증**: `./gradlew :modules:project-workflow:test --tests "*DefaultWorkflowPostActionFactoryTest"`
+
+### Task 5. WorkflowDefinitionRepository production 구현 (jOOQ)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/repository/DefaultWorkflowDefinitionRepository.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/repository/DefaultWorkflowDefinitionRepositoryTest.kt`]
+- depends-on: []
+
+**RED**: Testcontainers `DefaultWorkflowDefinitionRepositoryTest` — workflow_validators/workflow_post_actions에 row 삽입 후 findValidators/findPostActions(transition)가 display_order asc로 ValidatorConfig/PostActionConfig 반환, config jsonb→Map 역직렬화. 실패.
+
+**GREEN**: `@Repository DefaultWorkflowDefinitionRepository(dsl: DSLContext)`. jOOQ 상수 WORKFLOW_VALIDATORS/WORKFLOW_POST_ACTIONS(V200 직접 codegen 자동 생성) 사용. jsonb→Map 파싱.
+
+**REFACTOR**: 매핑/파싱 헬퍼, transition_id 조회 경로 KDoc.
+
+**검증**: `./gradlew :modules:project-workflow:test --tests "*DefaultWorkflowDefinitionRepositoryTest"`
+
+### Task 6. YAML validators/post_actions 스키마 확장 + YamlSeedService 시드
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/seed/YamlSeedService.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/seed/YamlSeedValidatorPostActionTest.kt`, `backend/modules/project-workflow/src/test/resources/workflows/test-validator-seed.yaml`]
+- depends-on: [5]
+
+**RED**: Testcontainers `YamlSeedValidatorPostActionTest` — validators/post_actions 정의된 테스트 YAML 시드 후 두 테이블에 type/config/display_order/transition_id 삽입 확인(DefinitionRepository로 조회). idempotency(재시드 중복 없음). 실패.
+
+**GREEN**: WorkflowYamlDto/TransitionYamlDto에 optional `validators`/`postActions`(또는 `post_actions`) 필드 + YamlSeedService가 transition 시드 후 두 테이블 INSERT. config Map→jsonb.
+
+**REFACTOR**: 시드 로직 분리, 기존 3테이블 시드 흐름과 일관.
+
+**검증**: `./gradlew :modules:project-workflow:test --tests "*YamlSeedValidatorPostActionTest"`
+
+### Task 7. WorkflowEngine production 부팅 + end-to-end 통합 검증
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineWiringIntegrationTest.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/ProjectWorkflowContextBootTest.kt`]
+- depends-on: [2, 3, 4, 5, 6]
+
+**RED**: (a) `ProjectWorkflowContextBootTest`(@SpringBootTest) — 전체 컨텍스트 기동(WorkflowEngine 4빈 결선) 성공. (b) `WorkflowEngineWiringIntegrationTest`(Testcontainers, 실제 factory/repo) — validator 설정 전이를 plan 시 거부 + availableTransitions 시 포함, SetField/Notify PostAction plan 결과 TransitionPlan 누적. 실패(현재 production 빈 부재).
+
+**GREEN**: T3/T4/T5 빈으로 결선 완료 상태에서 통과. 부팅 가드 필요 시 보강(메모리 profile-scoped-bean-boot-failure — 전 프로파일 부팅).
+
+**REFACTOR**: 통합 테스트 픽스처 정리.
+
+**검증**: `./gradlew :modules:project-workflow:test --tests "*ProjectWorkflowContextBootTest" --tests "*WorkflowEngineWiringIntegrationTest"` + 모듈 전체 test(회귀 0).
+
+## Plan 메타
+
+- task 수: 7 (단일 PR, project-workflow 단일 BC)
+- 예상 wave: wave1=[T1, T4, T5] → wave2=[T2, T3](T1 의존, validator 파일 겹침으로 T2/T3 직렬 가능) → wave3=[T6](T5 의존) → wave4=[T7](전부 의존). 같은 모듈 test 컴파일 공유로 실제 직렬 경향(메모리 bts-plan-wave-gradle-module-compile).
+- TDD 강제: yes (test→feat 순서, controller가 git log 검증 — 메모리 subagent-ktlint-false-green / parallel-dispatch-precommit-hook-race)
+- 추가 검증: ktlintMain+TestSourceSetCheck + detekt(4모듈) + @SpringBootTest 부팅
+- 마이그레이션 신규 없음, jOOQ 상수 V200 자동 생성(미러 불필요)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
