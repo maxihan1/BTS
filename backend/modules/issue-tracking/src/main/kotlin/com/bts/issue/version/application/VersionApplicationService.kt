@@ -67,8 +67,9 @@ class VersionApplicationService(
      * @throws VersionProjectNotFoundException 프로젝트가 존재하지 않을 때.
      * @throws VersionAccessDeniedException 권한이 없을 때.
      * @throws DuplicateVersionNameException 동일 프로젝트 내 이름이 중복될 때.
+     *
+     * 6개 파라미터(이름·설명·시작일·릴리스일·프로젝트·행위자)는 명세 요구사항으로 축소 불가 — LongParameterList Suppress.
      */
-    // 버전 생성에 필요한 6개 필드(이름·설명·시작일·릴리스일·프로젝트·행위자)는 명세 요구사항으로 축소 불가.
     @Suppress("LongParameterList")
     fun create(
         actorId: UUID,

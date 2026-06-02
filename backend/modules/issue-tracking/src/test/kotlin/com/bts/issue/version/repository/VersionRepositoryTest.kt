@@ -164,7 +164,7 @@ class VersionRepositoryTest : IssueTestcontainersBase() {
                     projectId = testProjectId,
                     name = "v4.0.0",
                     startDate = LocalDate.of(2024, 6, 1),
-                    releaseDate = LocalDate.of(2024, 3, 1), // 의도적 역순 — 도메인은 강제 안 함
+                    releaseDate = LocalDate.of(2024, 3, 1),
                 ),
             )
 
