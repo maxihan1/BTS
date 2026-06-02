@@ -9,6 +9,7 @@ import com.bts.issue.bulk.domain.BulkOperationStatus
 import com.bts.issue.bulk.domain.FailureReasonCode
 import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.jooq.tables.records.BulkOperationsRecord
 import com.bts.issue.jooq.tables.references.BULK_OPERATION_ITEMS
 import com.bts.issue.jooq.tables.references.BULK_OPERATIONS
 import org.jooq.DSLContext
@@ -33,7 +34,8 @@ import java.util.UUID
  * 경쟁조건을 방지한다 (learnings: advisory-lock-bigint-TOCTOU).
  *
  * **별쿼리 2개 조회** — 작업과 항목을 JOIN 으로 한 번에 조회하면 N개 항목 × 1 작업 조합으로
- * cartesian product 위험이 있다. findById + findItemsByOperationId 분리로 해소 (learnings: jOOQ-cartesian-product).
+ * cartesian product 위험이 있다. [findById] + [findItemsByOperationId] 분리로 해소
+ * (learnings: jOOQ-cartesian-product).
  */
 @Repository
 @Suppress("TooManyFunctions")
@@ -58,7 +60,7 @@ class BulkOperationRepository(
             .set(BULK_OPERATIONS.OPERATION_TYPE, operation.type.name)
             .set(BULK_OPERATIONS.STATUS, operation.status.name)
             .set(BULK_OPERATIONS.ACTOR_ID, operation.actorId)
-            .set(BULK_OPERATIONS.PAYLOAD, JSONB.valueOf("{}"))
+            .set(BULK_OPERATIONS.PAYLOAD, EMPTY_PAYLOAD)
             .set(BULK_OPERATIONS.TOTAL_COUNT, operation.totalCount)
             .set(BULK_OPERATIONS.PROCESSED_COUNT, operation.processedCount)
             .set(BULK_OPERATIONS.SUCCEEDED_COUNT, operation.succeededCount)
@@ -66,19 +68,7 @@ class BulkOperationRepository(
             .set(BULK_OPERATIONS.CREATED_AT, operation.createdAt.toOffsetDateTime())
             .execute()
 
-        val batch = dsl.batch(
-            dsl.insertInto(
-                BULK_OPERATION_ITEMS,
-                BULK_OPERATION_ITEMS.ID,
-                BULK_OPERATION_ITEMS.BULK_OPERATION_ID,
-                BULK_OPERATION_ITEMS.ISSUE_KEY,
-                BULK_OPERATION_ITEMS.STATUS,
-            ).values(null as UUID?, null, null, null),
-        )
-        operation.items.forEach { item ->
-            batch.bind(UUID.randomUUID(), operation.id.value, item.issueKey.value, item.status.name)
-        }
-        batch.execute()
+        insertItemsBatch(operation)
     }
 
     /**
@@ -94,21 +84,7 @@ class BulkOperationRepository(
         dsl.selectFrom(BULK_OPERATIONS)
             .where(BULK_OPERATIONS.ID.eq(id.value))
             .fetchOne()
-            ?.let { record ->
-                BulkOperation(
-                    id = BulkOperationId(record.id ?: error("bulk_operations.id must not be null")),
-                    actorId = record.actorId,
-                    type = enumValueOf(record.operationType),
-                    status = enumValueOf(record.status),
-                    items = emptyList(), // 별쿼리 패턴 — findItemsByOperationId 로 별도 조회
-                    totalCount = record.totalCount,
-                    processedCount = record.processedCount ?: 0,
-                    succeededCount = record.succeededCount ?: 0,
-                    failedCount = record.failedCount ?: 0,
-                    createdAt = record.createdAt.toInstant(),
-                    updatedAt = record.completedAt?.toInstant() ?: record.createdAt.toInstant(),
-                )
-            }
+            ?.toOperation()
 
     /**
      * 작업 id 에 속한 항목 목록을 조회한다.
@@ -224,6 +200,9 @@ class BulkOperationRepository(
      *
      * `WHERE id=? AND status='RUNNING'` 조건으로 이미 COMPLETED 인 경우 0 row 반환.
      *
+     * **CAS 의도** — "내가 RUNNING 으로 claimForRun 한 워커만 COMPLETED 로 전환 가능"을
+     * DB 레벨에서 보장한다. affected rows 1 = 성공, 0 = 이미 다른 경로로 상태 변경 완료.
+     *
      * @param id 완료할 작업 식별자.
      * @return 완료 전환 성공이면 true, 이미 완료됐으면 false.
      */
@@ -253,24 +232,58 @@ class BulkOperationRepository(
         dsl.selectFrom(BULK_OPERATIONS)
             .where(BULK_OPERATIONS.COMPLETED_AT.lt(before.toOffsetDateTime()))
             .fetch()
-            .map { record ->
-                BulkOperation(
-                    id = BulkOperationId(record.id ?: error("bulk_operations.id must not be null")),
-                    actorId = record.actorId,
-                    type = enumValueOf(record.operationType),
-                    status = enumValueOf(record.status),
-                    items = emptyList(),
-                    totalCount = record.totalCount,
-                    processedCount = record.processedCount ?: 0,
-                    succeededCount = record.succeededCount ?: 0,
-                    failedCount = record.failedCount ?: 0,
-                    createdAt = record.createdAt.toInstant(),
-                    updatedAt = record.completedAt?.toInstant() ?: record.createdAt.toInstant(),
-                )
-            }
+            .map { it.toOperation() }
+
+    // ── private helpers ────────────────────────────────────────────────────────
+
+    /**
+     * 항목 목록을 배치 INSERT 한다.
+     *
+     * jOOQ batch 를 이용해 단일 PreparedStatement 로 N건을 한 번에 전송하여
+     * 1건씩 INSERT 하는 것 대비 DB 왕복(round-trip)을 최소화한다.
+     */
+    private fun insertItemsBatch(operation: BulkOperation) {
+        val batch = dsl.batch(
+            dsl.insertInto(
+                BULK_OPERATION_ITEMS,
+                BULK_OPERATION_ITEMS.ID,
+                BULK_OPERATION_ITEMS.BULK_OPERATION_ID,
+                BULK_OPERATION_ITEMS.ISSUE_KEY,
+                BULK_OPERATION_ITEMS.STATUS,
+            ).values(null as UUID?, null, null, null),
+        )
+        operation.items.forEach { item ->
+            batch.bind(UUID.randomUUID(), operation.id.value, item.issueKey.value, item.status.name)
+        }
+        batch.execute()
+    }
+
+    /**
+     * [BulkOperationsRecord] 를 도메인 [BulkOperation] 으로 변환한다.
+     *
+     * items 는 빈 리스트로 초기화 — 별쿼리 패턴으로 [findItemsByOperationId] 가 채운다.
+     * updatedAt 은 completed_at 이 있으면 그 값을, 없으면 created_at 으로 대체한다.
+     */
+    private fun BulkOperationsRecord.toOperation(): BulkOperation =
+        BulkOperation(
+            id = BulkOperationId(id ?: error("bulk_operations.id must not be null")),
+            actorId = actorId,
+            type = enumValueOf(operationType),
+            status = enumValueOf(status),
+            items = emptyList(),
+            totalCount = totalCount,
+            processedCount = processedCount ?: 0,
+            succeededCount = succeededCount ?: 0,
+            failedCount = failedCount ?: 0,
+            createdAt = createdAt.toInstant(),
+            updatedAt = completedAt?.toInstant() ?: createdAt.toInstant(),
+        )
 }
 
-// ── private helpers ────────────────────────────────────────────────────────────
+// ── file-level helpers ─────────────────────────────────────────────────────────
+
+/** payload 컬럼 기본값 — operation_type 별 파라미터가 없는 경우 빈 JSON 오브젝트로 삽입. */
+private val EMPTY_PAYLOAD: JSONB = JSONB.valueOf("{}")
 
 /** [Instant] 를 UTC [OffsetDateTime] 으로 변환한다. */
 private fun Instant.toOffsetDateTime(): OffsetDateTime = OffsetDateTime.ofInstant(this, ZoneOffset.UTC)
