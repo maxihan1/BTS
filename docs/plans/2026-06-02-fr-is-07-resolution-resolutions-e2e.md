@@ -51,6 +51,236 @@
 
 ✅ 통과 (1회 iteration). Critical gap 1건 발견·해소 — availableTransitions가 RequiredField로 DONE 전이를 숨겨 이슈를 못 닫는 버그(결정 3, 옵션 A로 해결). 부수 발견 — 재오픈 clear는 카테고리 불필요(결정 4), 마이그레이션 V009→V010 정정.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> **PR 전략 (2 PR, 2026-06-03 Maxi 결정).**
+> - **PR-A** (project-workflow + shared-kernel): validator 단계(availability/execution) 구분 + 가용전이 toCategory 노출. 순수 인프라, 동작 변화 없음, 독립 머지. Task A1~A4.
+> - **PR-B** (issue-tracking + project-workflow DONE seed + frontend + E2E): Resolution 데이터/전이/모달/E2E + DONE 필수 seed. 기능 원자적 활성화, PR-A 의존. Task B1~B10.
+> - 회귀 윈도우 방지: DONE 필수 seed(B7)는 issue-tracking이 resolution을 보내는 변경(B6)과 같은 PR-B에 묶임.
+> - depends-on의 `A*`는 PR-A 머지 선행을 의미(cross-PR). PR-B 내부 의존은 `B*`.
+
+### ── PR-A: validator 단계 구분 + toCategory (project-workflow + shared-kernel) ──
+
+### Task A1. shared-kernel AvailableTransitionView에 toCategory 추가
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/AvailableTransitionsResult.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/workflow/AvailableTransitionViewTest.kt`]
+- depends-on: []
+
+**RED**: `AvailableTransitionViewTest` — `AvailableTransitionView`가 `toCategory: String`(DONE/IN_PROGRESS/TODO) 필드를 보유하고 생성 가능한지. 컴파일 실패(필드 없음).
+
+**GREEN**: `AvailableTransitionView`에 `val toCategory: String` additive 추가. published language 최소 표면 유지(enum 직접 노출 대신 string — BC 격리).
+
+**REFACTOR**: KDoc에 toCategory 의미(목표 상태 카테고리, 프론트 종료 판별용) 명시.
+
+**검증**: `./gradlew :modules:shared-kernel:test --tests "*AvailableTransitionViewTest"`
+
+### Task A2. WorkflowValidator SPI에 적용 단계(phase) 속성 추가 + 기존 4종 분류
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/domain/spi/WorkflowValidator.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/RequiredFieldValidator.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/validator/*Validator.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/validator/ValidatorPhaseTest.kt`]
+- depends-on: []
+
+**RED**: `ValidatorPhaseTest` — `RequiredFieldValidator.phase == EXECUTION`, `PermissionValidator.phase == AVAILABILITY`, `NotStatusCategoryValidator.phase == AVAILABILITY`, `CustomExpressionValidator.phase == AVAILABILITY`(보수적 기본). 컴파일 실패(phase 없음).
+
+**GREEN**: `WorkflowValidator`에 `val phase: ValidatorPhase`(enum AVAILABILITY/EXECUTION) 추가. 각 구현체 분류. RequiredField=EXECUTION(필드는 실행 시 채워짐), 나머지=AVAILABILITY.
+
+**REFACTOR**: `ValidatorPhase` enum KDoc — availability=목록 노출 게이트, execution=실행 시점 게이트(Jira transition screen 시맨틱).
+
+**검증**: `./gradlew :modules:project-workflow:test --tests "*ValidatorPhaseTest"`
+
+### Task A3. availableTransitions가 EXECUTION 단계 validator를 건너뜀
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/WorkflowEngine.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineAvailabilityPhaseTest.kt`]
+- depends-on: [A2]
+
+**RED**: `WorkflowEngineAvailabilityPhaseTest` — RequiredField(resolution) validator가 걸린 DONE 전이가, issueFields에 resolution 없어도 `availableTransitions` 결과에 **포함**됨. 동시에 `plan`(실행)은 resolution 없으면 여전히 `WorkflowValidatorFailureException`. 현재는 availableTransitions가 제거 → 테스트 실패.
+
+**GREEN**: `WorkflowEngine.availableTransitions`의 validator 루프(line 303~)에서 `validator.phase == AVAILABILITY`인 것만 평가. `plan`(line 241~)은 전부 평가(변경 없음).
+
+**REFACTOR**: 두 루프의 validator 평가 공통 부분 추출 검토(phase 필터만 차이). 과도 추상화 금지 — 작으면 그대로.
+
+**검증**: `./gradlew :modules:project-workflow:test --tests "*WorkflowEngineAvailabilityPhaseTest"`
+
+### Task A4. availableTransitions/plan 결과에 toCategory 채움
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/WorkflowEngine.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/engine/WorkflowEngineToCategoryTest.kt`]
+- depends-on: [A1, A3]
+
+**RED**: `WorkflowEngineToCategoryTest` — `availableTransitions` 결과의 각 `AvailableTransitionView.toCategory`가 목표 상태(toStateKey)의 StateCategory와 일치(DONE 전이는 "DONE"). 실패(현재 미설정).
+
+**GREEN**: WorkflowEngine이 transition.toStateKey로 workflow.states에서 목표 상태를 찾아 그 category를 AvailableTransitionView.toCategory에 매핑.
+
+**REFACTOR**: 상태 조회 헬퍼 정리(이미 있으면 재사용).
+
+**검증**: `./gradlew :modules:project-workflow:test --tests "*WorkflowEngineToCategoryTest"`
+
+### ── PR-B: issue-tracking Resolution + DONE seed + frontend + E2E ──
+
+### Task B1. V010 마이그레이션 — resolutions 테이블 + issues.resolution_id + init_codegen 미러
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/issue-tracking/src/main/resources/db/migration/issue-tracking/V010__resolutions.sql`, `backend/modules/issue-tracking/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/resolution/repository/ResolutionMigrationTest.kt`]
+- depends-on: []
+
+**RED**: Testcontainers 통합 — `resolutions` 테이블 + 표준 5종 seed row 존재, `issues.resolution_id` 컬럼 존재. 마이그레이션 미작성 → 실패.
+
+**GREEN**: V010 작성 — `resolutions(id uuid pk, key text unique not null, name text not null, description text null, display_order int not null, is_standard boolean not null default false, created_at timestamptz, updated_at timestamptz, deleted_at timestamptz null)` + 표준 5종 INSERT(fixed/wontfix/duplicate/cannotreproduce/done) + `ALTER TABLE issues ADD COLUMN resolution_id uuid null`. **init_codegen.sql에 동일 미러**(메모리 jooq-init-codegen-mirror — 누락 시 jOOQ 상수 미생성, repository 컴파일 불가).
+
+**REFACTOR**: seed display_order 정렬값 정리, 주석으로 FK 미적용(BC 격리) 명시.
+
+**검증**: `./gradlew :modules:issue-tracking:test --tests "*ResolutionMigrationTest"` + jOOQ codegen 성공.
+
+### Task B2. Resolution 도메인 엔티티 (표준 5종 불변 + factory)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/resolution/domain/Resolution.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/resolution/domain/ResolutionTest.kt`]
+- depends-on: []
+
+**RED**: `ResolutionTest` — `Resolution.create`가 빈 name 거부, 표준 5종 companion 상수(FIXED/WONT_FIX/DUPLICATE/CANNOT_REPRODUCE/DONE) isStandard=true. 컴파일 실패.
+
+**GREEN**: IssueType.kt 패턴 동형 — data class + companion factory + 표준 5종 상수.
+
+**REFACTOR**: KDoc, key 슬러그 규칙 명시.
+
+**검증**: `./gradlew :modules:issue-tracking:test --tests "*ResolutionTest"`
+
+### Task B3. Resolution 리포지토리 (jOOQ, 활성 목록 조회)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/resolution/repository/ResolutionRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/resolution/repository/ResolutionRepositoryTest.kt`]
+- depends-on: [B1, B2]
+
+**RED**: Testcontainers — `findAllActive()`가 표준 5종을 display_order asc로 반환, deletedAt 있는 건 제외. 실패.
+
+**GREEN**: jOOQ 기반 repository. RESOLUTIONS 테이블 상수 사용(B1 codegen 산출).
+
+**REFACTOR**: 매핑 함수 추출.
+
+**검증**: `./gradlew :modules:issue-tracking:test --tests "*ResolutionRepositoryTest"`
+
+### Task B4. GET /api/v1/resolutions 엔드포인트
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/resolution/web/ResolutionController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/resolution/application/ResolutionApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/resolution/web/ResolutionControllerTest.kt`]
+- depends-on: [B3]
+
+**RED**: `ResolutionControllerTest`(MockMvc) — `GET /api/v1/resolutions`가 200 + `{ data: [ {id,key,name,description,displayOrder,isStandard} x5 ] }`. 실패(컨트롤러 없음).
+
+**GREEN**: 컨트롤러 + 서비스. 인증 필요(JWT/PAT — 일반 조회). 새 빈 추가 시 모듈 전체 test로 부팅 확인(메모리 profile-scoped-bean-boot-failure).
+
+**REFACTOR**: DTO 매핑, 에러코드 컨벤션 정렬.
+
+**검증**: `./gradlew :modules:issue-tracking:test --tests "*ResolutionControllerTest"` + 모듈 전체 test(부팅 확인).
+
+### Task B5. 전이 요청 DTO에 resolutionId 추가 (transport + application)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/TransitionIssueRequest.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationRequests.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/TransitionIssueRequestTest.kt`]
+- depends-on: []
+
+**RED**: `TransitionIssueRequestTest` — transport DTO가 `resolutionId: UUID?`(nullable) 보유 + application DTO로 매핑. 실패.
+
+**GREEN**: 두 DTO에 `resolutionId: UUID?` 추가(nullable, 비DONE 전이는 null). transport→application 매핑 갱신.
+
+**REFACTOR**: KDoc — resolutionId 의미(DONE 전이 시 필수, 비DONE은 무시/clear).
+
+**검증**: `./gradlew :modules:issue-tracking:test --tests "*TransitionIssueRequestTest"`
+
+### Task B6. transitionIssue — resolution을 issueFields 전달 + resolution_id 영속 + 재오픈 clear
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/domain/Issue.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/*Repository*.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueTransitionResolutionIntegrationTest.kt`]
+- depends-on: [B1, B5]
+
+**RED**: Testcontainers 통합 `IssueTransitionResolutionIntegrationTest` — (1) DONE 전이 + resolutionId → resolution_id 영속, (2) DONE 전이 + resolutionId 누락 → 422(validator reject, B7 seed 전제), (3) DONE→비DONE 재전이 → resolution_id null. 단위 mock 아닌 통합으로(메모리 advisory-lock/transaction self-invocation류 — 통합만 표면화).
+
+**GREEN**: `IssueApplicationService.transitionIssue`(line 354)와 `availableTransitions`(line 303) `issueFields`에 `"resolution" to request.resolutionId?.toString()` 추가. 전이 성공 시 `issue.resolution_id = request.resolutionId` 영속(모든 전이 — 비DONE은 null이라 자동 clear, 결정 4). 영속은 Issue Aggregate 경유(메모리 patch-merge-domain-bypass — service가 도메인 함수 호출, repository 직행 금지).
+
+**REFACTOR**: resolution 전달/영속 로직 명료화, KDoc 흐름 갱신.
+
+**검증**: `./gradlew :modules:issue-tracking:test --tests "*IssueTransitionResolutionIntegrationTest"` + 모듈 전체 test.
+
+### Task B7. DONE 전이에 RequiredField(resolution) seed 설정 (project-workflow)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/resources/db/migration/project-workflow/V0XX__done_transition_required_resolution.sql`, `backend/modules/project-workflow/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/.../DoneResolutionValidatorSeedTest.kt`]
+- depends-on: [A2, A3, B6]
+
+**RED**: Testcontainers — 기본 워크플로우의 DONE 카테고리 전이에 `RequiredField` validator(config `{"field":"resolution"}`)가 설정돼 있음. plan(실행) 시 resolution 없으면 거부, availableTransitions엔 노출(A3 전제). 실패(seed 없음).
+
+**GREEN**: project-workflow seed 마이그레이션 — workflow_validators에 DONE 전이 + RequiredField(resolution) INSERT. init_codegen 미러(해당 시). 버전번호는 project-workflow 마이그레이션 최신+1로 확정(작성 시 ls 확인).
+
+**REFACTOR**: seed 주석 — FR-IS-07 resolution 강제 근거(ADR 링크).
+
+**검증**: `./gradlew :modules:project-workflow:test --tests "*DoneResolutionValidatorSeedTest"`
+
+### Task B8. 프론트 — resolutions API + useResolutions 훅 + MSW 핸들러
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/resolutions.ts`, `apps/web/src/hooks/use-resolutions.ts`, `apps/web/src/mocks/handlers/resolution-handlers.ts`, `apps/web/src/api/__tests__/resolutions.test.ts`]
+- depends-on: [B4]
+
+**RED**: `resolutions.test.ts` — `fetchResolutions()`가 Zod 스키마(id/key/name/description?/displayOrder/isStandard)로 파싱. Zod 스키마는 백엔드 DTO(B4)와 정합(메모리 frontend-zod-backend-dto-contract-gap). MSW 핸들러는 백엔드 응답 형태 그대로. 실패.
+
+**GREEN**: api + 훅 + MSW 핸들러. Zod UUID는 v4 형식 fixture(메모리 zod-v4-uuid-fixture-strictness).
+
+**REFACTOR**: 쿼리키 컨벤션 정렬.
+
+**검증**: `pnpm --filter @bts/web test resolutions` + `pnpm --filter @bts/web typecheck`
+
+### Task B9. 프론트 — 종료 모달 (toCategory===DONE 트리거 + resolution 드롭다운 + 전이 resolutionId)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/issue/ResolutionModal.tsx`, `apps/web/src/routes/issues.$key.tsx`, `apps/web/src/api/issues.ts`, `apps/web/src/hooks/use-issue-transitions.ts`, `apps/web/src/components/issue/__tests__/ResolutionModal.test.tsx`]
+- depends-on: [A1, A4, B8]
+
+**RED**: `ResolutionModal.test.tsx` — 전이 셀렉터에서 `toCategory === 'DONE'`인 전이 선택 시 모달 표시, resolution 미선택 시 확인 비활성, 선택 후 transitionMutation이 `{toStatusKey, expectedVersion, resolutionId}` 전송. 비DONE 전이는 모달 없이 즉시 전이. 실패.
+
+**GREEN**: ResolutionModal 컴포넌트 + issues.$key.tsx 전이 흐름 연결. useIssueTransitions의 TransitionItem에 toCategory 반영(A1 응답). transitionIssue api에 resolutionId 추가.
+
+**REFACTOR**: 모달 접근성(aria), 셀렉터 strict mode 회피(메모리 playwright-getbyrole-exact / ui-pr-defer-e2e).
+
+**검증**: `pnpm --filter @bts/web test ResolutionModal` + `pnpm --filter @bts/web typecheck` + 기존 issues.$key E2E 동반 실행(메모리 ui-pr-defer-e2e-regression-latent).
+
+### Task B10. E2E — 종료 시 Resolution 필수 흐름 (S1/S2/S4)
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/issue-resolution.spec.ts`, `apps/web/src/mocks/handlers/resolution-handlers.ts`, `apps/web/src/mocks/handlers/issue-transition-handlers.ts`]
+- depends-on: [B9]
+
+**RED**: Playwright `issue-resolution.spec.ts` — S1(종료 전이→모달→resolution 선택→성공), S2(미선택 시 확인 비활성/거부), S4(재오픈 시 resolution clear). MSW 핸들러 stateful(메모리 msw-mutation-stateful-refetch — PATCH 결과 영속). 실패.
+
+**GREEN**: E2E + MSW stateful 핸들러. localStorage 토글로 시나리오 분기(메모리 e2e-msw-scenario-toggle). serviceWorker block 금지(메모리 e2e-msw-serviceworker-block).
+
+**REFACTOR**: 셀렉터 컨테이너 한정, fixture UUID v4 형식.
+
+**검증**: `pnpm --filter @bts/web test:e2e issue-resolution` + 전체 E2E 회귀 0. worktree E2E 후 5173 정리(메모리 e2e-orphan-vite).
+
+## Plan 메타
+
+- task 수: 14 (PR-A 4 + PR-B 10)
+- PR 전략: 2 PR (PR-A 인프라 선행 → PR-B 기능). PR-B의 A* depends-on은 PR-A 머지 선행.
+- 모듈 분포: shared-kernel(A1) · project-workflow(A2/A3/A4/B7) · issue-tracking(B1~B6) · frontend(B8/B9) · E2E(B10)
+- 예상 wave (PR-A): wave1=[A1, A2] → wave2=[A3] → wave3=[A4]. project-workflow 같은 모듈(A2/A3/A4)은 test 컴파일 공유로 직렬 경향(메모리 bts-plan-wave-gradle-module-compile).
+- 예상 wave (PR-B): wave1=[B1, B2, B5] → wave2=[B3] → wave3=[B4, B6] → wave4=[B7, B8] → wave5=[B9] → wave6=[B10]
+- TDD 강제: yes (모든 task test→feat 순서, controller가 git log 검증 — 메모리 subagent-ktlint-false-green / parallel-dispatch-precommit-hook-race)
+- 추가 검증: ktlintMain+TestSourceSetCheck + detekt(4모듈) + typecheck(tsconfig.app) + vitest + playwright
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
