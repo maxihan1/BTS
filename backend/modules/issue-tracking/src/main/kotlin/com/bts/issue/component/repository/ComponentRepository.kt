@@ -127,7 +127,8 @@ class ComponentRepository(
      * [component.id] 가 null 이면 [IllegalArgumentException] 을 던진다.
      *
      * @param component 갱신할 값이 채워진 [Component]. [Component.id] 는 non-null 이어야 한다.
-     * @return 갱신 후 DB 에서 재조회한 [Component].
+     * @return 전달받은 [component] 를 그대로 반환한다(DB 재조회 안 함). 서비스가 도메인 메서드로
+     *   만든 객체와 영속 상태가 일치하므로 추가 조회는 불필요하다.
      */
     @Transactional
     fun update(component: Component): Component {

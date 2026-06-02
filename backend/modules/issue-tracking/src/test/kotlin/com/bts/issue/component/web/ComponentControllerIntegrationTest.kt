@@ -67,12 +67,13 @@ import java.util.UUID
  * - S9. 404 — 존재하지 않는 프로젝트 / 컴포넌트
  * - S10. 409 중복 이름
  * - S11. 422 미존재 리드
- * - S12. 401 미인증 — ExceptionHandler AuthenticationException 핸들러 검증
+ * - S12. 400 — name 공백 (Jakarta @NotBlank 검증 실패)
  *
- * ## 401 검증 전략
- * 통합 컨텍스트는 Spring Security 필터 없는 경량 WebMvc 스택이다.
- * 401 은 독립 MockMvc(standaloneSetup) 에서 ComponentExceptionHandler 에 직접
- * AuthenticationException 을 던지는 더미 컨트롤러 방식으로 검증한다 (IssueExceptionHandlerTest 선례).
+ * ## 401 미인증 (이 통합테스트 범위 외)
+ * 통합 컨텍스트는 Spring Security 필터 없는 경량 WebMvc 스택이라 401 을 재현할 수 없다.
+ * 미인증 401 은 SecurityConfig 가 /api 하위 경로를 authenticated 로 묶어 컴포넌트
+ * 엔드포인트까지 런타임 보장하며(스펙 S10/FR-5), 필터 체인 동작은 identity-access
+ * 모듈 테스트가 검증한다. 실 권한 판정은 FR-PM-03 이연.
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [ComponentControllerIntegrationTest.TestConfig::class])
