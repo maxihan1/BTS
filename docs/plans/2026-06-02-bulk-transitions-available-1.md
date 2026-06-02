@@ -93,7 +93,7 @@ fetchIssueTransitions를 최대 1000건 동시 fan-out + 클라이언트 interse
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/TransitionIntersection.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/application/TransitionIntersectionTest.kt`]
 - depends-on: []
 
-**RED**: 여러 이슈의 `List<AvailableTransitionView>`를 받아 toStateKey 기준 교집합(첫 이슈 항목 보존)을 반환하는 `intersectAvailableTransitions(perIssue)` 테스트. 케이스 — 공통 있음/없음, 한 이슈 빈 목록이면 [], 단일 이슈=자기자신, 빈 입력=[].
+**RED**: 여러 이슈의 `List<AvailableTransitionView>`를 받아 toStateKey 기준 교집합(첫 이슈 항목 보존)을 반환하는 `intersectAvailableTransitions(perIssue)` 테스트. 케이스 — 공통 있음/없음, 한 이슈 빈 목록이면 [], 단일 이슈=자기자신, 빈 입력=[], **동일 toStateKey에 이슈마다 name이 다를 때 첫 이슈 name 채택**(C4, 프론트 intersectTransitions 시맨틱 1:1 보존).
 **GREEN**: 프론트 `intersectTransitions` 시맨틱을 Kotlin으로 포팅(toStateKey Set 교집합, 첫 이슈 순서 보존).
 **REFACTOR**: KDoc(한국어 헤더) + 함수 추출.
 **검증**: `cd backend && ./gradlew :modules:issue-tracking:test --tests '*TransitionIntersectionTest'`
@@ -105,8 +105,9 @@ fetchIssueTransitions를 최대 1000건 동시 fan-out + 클라이언트 interse
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/BulkAvailableTransitionsService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/application/BulkAvailableTransitionsServiceTest.kt`]
 - depends-on: [1]
 
-**RED**: issueKeys 목록을 받아 키별 `IssueApplicationService.availableTransitions(actor,key)` 호출(mock), `IssueNotFoundException`/`IssueWorkflowNotConfiguredException`은 unresolved로 수집, 성공분은 Task1 교집합. 반환 `BulkAvailableTransitionsResult(transitions, unresolvedIssueKeys)`. 케이스 — 전부 성공/일부 unresolved/전부 unresolved/교집합 0.
-**GREEN**: try/catch best-effort + Task1 함수 호출. actor 주입은 호출측(컨트롤러)에서 전달.
+**RED**: issueKeys 목록을 받아 키별 `IssueApplicationService.availableTransitions(actor,key)` 호출(mock), `IssueNotFoundException`/`IssueWorkflowNotConfiguredException`/**`IssueAccessDeniedException`(C1)**은 unresolved로 수집, 성공분은 Task1 교집합. 반환 `BulkAvailableTransitionsResult(transitions, unresolvedIssueKeys)`. 케이스 — 전부 성공/일부 unresolved/전부 unresolved/교집합 0/**권한 거부 키 unresolved**.
+**GREEN**: try/catch best-effort(3개 예외 모두) + Task1 함수 호출. actor 주입은 호출측(컨트롤러)에서 전달.
+- **C1 반영**: `IssueAccessDeniedException`도 catch에 포함. 이유 — prod `IdentityAccessIssuePermissionResolver`가 SYSTEM_ACTOR에 VIEW 거부 시 한 키만으로 전체 요청이 깨지는 누출 차단(non-prod AlwaysAllow resolver가 테스트에서 가림). 실사용자 actor 연동은 FR-PM-02 후속 범위(현 컨트롤러 SYSTEM_ACTOR 패턴 유지).
 **REFACTOR**: 결과 타입 분리 + KDoc.
 **검증**: `./gradlew :modules:issue-tracking:test --tests '*BulkAvailableTransitionsServiceTest'`
 
@@ -117,8 +118,9 @@ fetchIssueTransitions를 최대 1000건 동시 fan-out + 클라이언트 interse
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/web/BulkOperationController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/web/BulkAvailableTransitionsRequest.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/web/BulkAvailableTransitionsResponse.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/web/BulkOperationControllerTest.kt`]
 - depends-on: [2]
 
-**RED**: MockMvc 테스트 — `POST /api/v1/issues/bulk-transitions/available` body `{issueKeys}` → 200 `{data:{transitions,unresolvedIssueKeys}}`. 빈 배열/1000초과 → 400. 응답 transitions가 TransitionItem 형태.
-**GREEN**: Request DTO(`issueKeys` @Size(1..1000)) + Response DTO(`transitions: List<TransitionItem>`(기존 `com.bts.issue.adapter.inbound.rest.TransitionItem` 재사용), `unresolvedIssueKeys: List<String>`) + 컨트롤러 핸들러(actor=SYSTEM_ACTOR_UUID, Task2 서비스 호출).
+**RED**: MockMvc 테스트 — `POST /api/v1/issues/bulk-transitions/available` body `{issueKeys}` → 200 `{data:{transitions,unresolvedIssueKeys}}`. 빈 배열/1000초과 → 400 **`ISSUE_BULK_VALIDATION_FAILED`**(기존 bulk-update와 **동일 에러 code/형태** 단언). 응답 transitions가 TransitionItem 형태.
+**GREEN**: Request DTO(`issueKeys`) + Response DTO(`transitions: List<TransitionItem>`(기존 `com.bts.issue.adapter.inbound.rest.TransitionItem` 재사용), `unresolvedIssueKeys: List<String>`) + 컨트롤러 핸들러(actor=SYSTEM_ACTOR_UUID, Task2 서비스 호출).
+- **C2 반영**: 길이 검증은 `@Size`(MethodArgumentNotValidException 경로) 대신 **서비스 계층 `require`(IllegalArgumentException → `BulkOperationExceptionHandler.handleIllegalArgument` → 400 `ISSUE_BULK_VALIDATION_FAILED`)**로 통일 — 기존 bulk-update와 동일 에러 응답 보장. RED에서 code 일치 명시 단언.
 **REFACTOR**: KDoc + 검증 메시지.
 **검증**: `./gradlew :modules:issue-tracking:test --tests '*BulkOperationControllerTest'` + `./gradlew :modules:issue-tracking:ktlintMainSourceSetCheck :modules:issue-tracking:ktlintTestSourceSetCheck detekt`
 
@@ -164,4 +166,19 @@ fetchIssueTransitions를 최대 1000건 동시 fan-out + 클라이언트 interse
 - 회귀 함정 반영: frontend-zod-backend-dto-contract-gap(Zod=백엔드DTO), ui-pr-defer-e2e-regression-latent(기존 E2E 동반), subagent-ktlint-false-green(controller 직접 ktlint검증), e2e-orphan-vite-after-worktree-remove, advisory-lock류 아님(읽기 전용).
 - PR 범위: 백엔드+프론트 same BC view layer 단일 PR(learning 2026-05-22 옵션 C).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### eng + devex 리뷰 (2026-06-02, code-reviewer dispatch — autoplan overkill 회피)
+
+**판정: CONCERNS (BLOCKER 0). 머지 가능, 3건 plan 반영 완료.**
+
+PASS 확인 — BC 격리(경로·심볼 전수 실재), DTO 재사용(TransitionItem 같은 모듈), TDD 분해 직렬 타당, dead code 제거 안전(intersectTransitions 호출처 2곳뿐), Zod 계약 이미 1:1, POST/URL 컨벤션 일관(body 대량전송 정당).
+
+- **C1 (CONCERN→반영)** — `IssueApplicationService.availableTransitions`가 진입 시 `assertPermission`→실패 시 `IssueAccessDeniedException` 던짐. plan catch가 2개만 잡아, prod resolver가 SYSTEM_ACTOR에 VIEW 거부 시 누출 위험(non-prod AlwaysAllow가 테스트에서 가림). → **Task2 catch에 IssueAccessDeniedException 추가**, prod actor는 FR-PM-02 후속 명시.
+- **C2 (CONCERN→반영)** — `@Size`(MethodArgumentNotValid)와 기존 bulk-update의 서비스 `require`(IllegalArgument)가 다른 핸들러 분기라 에러 code 형태 갈릴 수 있음. → **Task3 검증을 서비스 require로 통일** + RED에서 code 일치 단언.
+- **C4 (CONCERN→반영)** — 교집합 포팅 시 동일 toStateKey에 name 다를 때 첫 이슈 채택 시맨틱 명시 필요. → **Task1 RED에 name 충돌 케이스 추가**.
+- **C3 (PASS)** — POST 메서드/URL 명명 정당(1000건 body 전송). 조치 불필요.
+- BLOCKER: 없음.
+
+### 게이트 1 직전 상태
+- 산출물 4종(도메인/스펙/plan/ADR) + glossary 2용어. 리뷰 BLOCKER 0, CONCERN 3건 전부 plan 반영.
