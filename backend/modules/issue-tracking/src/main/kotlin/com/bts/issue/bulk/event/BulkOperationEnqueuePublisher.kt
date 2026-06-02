@@ -42,7 +42,7 @@ class BulkOperationEnqueuePublisher(
     }
 
     companion object {
-        /** pgmq 큐 이름 — V007 마이그레이션에서 생성된 큐와 일치해야 한다. */
+        /** pgmq 큐 이름 — V008 마이그레이션에서 생성된 큐와 일치해야 한다. */
         const val QUEUE_NAME = "q_bulk_operations"
     }
 }

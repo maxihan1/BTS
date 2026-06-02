@@ -6,6 +6,7 @@ import com.bts.issue.bulk.domain.BULK_OPERATION_MAX_SIZE
 import com.bts.issue.bulk.domain.BulkOperation
 import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.domain.BulkOperationItem
+import com.bts.issue.bulk.domain.BulkOperationPayload
 import com.bts.issue.bulk.domain.BulkOperationType
 import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.bulk.event.BulkOperationEnqueuePublisher
@@ -69,7 +70,7 @@ class BulkOperationApplicationService(
         actor: ActorId,
         request: BulkUpdateRequest,
     ): BulkOperationId {
-        validateRequest(request)
+        val payload = validateRequest(request)
 
         val uniqueKeys = request.issueKeys.distinct()
         val items =
@@ -87,6 +88,7 @@ class BulkOperationApplicationService(
                 actorId = actor.value,
                 type = request.operationType,
                 items = items,
+                payload = payload,
             )
 
         repo.insert(operation)
@@ -105,18 +107,19 @@ class BulkOperationApplicationService(
     // ── private helpers ────────────────────────────────────────────────────────
 
     /**
-     * 접수 요청의 유효성을 검증한다.
+     * 접수 요청의 유효성을 검증하고 검증된 [BulkOperationPayload] 를 반환한다.
      *
      * 검증 항목.
      * - issueKeys 비어있지 않음
      * - issueKeys [BULK_OPERATION_MAX_SIZE] 이하
-     * - operationType ↔ payload 정합성
-     * - BULK_EDIT: editPayload non-null, 변경 필드 1개 이상, priority/impact 범위
-     * - BULK_TRANSITION: transitionPayload non-null, toStateKey 비어있지 않음
+     * - operationType ↔ payload 정합성 (반대편 payload 는 null 이어야 한다)
+     * - BULK_EDIT: editPayload non-null, transitionPayload null, 변경 필드 1개 이상, priority/impact 범위
+     * - BULK_TRANSITION: transitionPayload non-null, editPayload null, toStateKey 비어있지 않음
      *
      * @throws IllegalArgumentException 검증 위반 시.
+     * @return 검증된 도메인 [BulkOperationPayload].
      */
-    private fun validateRequest(request: BulkUpdateRequest) {
+    private fun validateRequest(request: BulkUpdateRequest): BulkOperationPayload {
         require(request.issueKeys.isNotEmpty()) {
             "issueKeys must not be empty"
         }
@@ -124,18 +127,28 @@ class BulkOperationApplicationService(
             "issueKeys must not exceed $BULK_OPERATION_MAX_SIZE, but was ${request.issueKeys.size}"
         }
 
-        when (request.operationType) {
-            BulkOperationType.BULK_EDIT -> validateEditPayload(request.editPayload)
-            BulkOperationType.BULK_TRANSITION -> validateTransitionPayload(request.transitionPayload)
+        return when (request.operationType) {
+            BulkOperationType.BULK_EDIT -> {
+                require(request.transitionPayload == null) {
+                    "transitionPayload must be null for BULK_EDIT operation"
+                }
+                validateEditPayload(request.editPayload)
+            }
+            BulkOperationType.BULK_TRANSITION -> {
+                require(request.editPayload == null) {
+                    "editPayload must be null for BULK_TRANSITION operation"
+                }
+                validateTransitionPayload(request.transitionPayload)
+            }
         }
     }
 
     /**
-     * BULK_EDIT 페이로드를 검증한다.
+     * BULK_EDIT 페이로드를 검증하고 [BulkOperationPayload.Edit] 를 반환한다.
      *
      * @throws IllegalArgumentException editPayload null, 변경 필드 없음, 범위 위반 시.
      */
-    private fun validateEditPayload(payload: BulkEditPayload?) {
+    private fun validateEditPayload(payload: BulkEditPayload?): BulkOperationPayload.Edit {
         require(payload != null) {
             "editPayload must not be null for BULK_EDIT operation"
         }
@@ -152,19 +165,21 @@ class BulkOperationApplicationService(
                 "impact must be in $VALID_IMPACT_RANGE, but was ${payload.impact}"
             }
         }
+        return BulkOperationPayload.Edit(priority = payload.priority, impact = payload.impact)
     }
 
     /**
-     * BULK_TRANSITION 페이로드를 검증한다.
+     * BULK_TRANSITION 페이로드를 검증하고 [BulkOperationPayload.Transition] 를 반환한다.
      *
      * @throws IllegalArgumentException transitionPayload null, toStateKey 공백/빈 문자열 시.
      */
-    private fun validateTransitionPayload(payload: BulkTransitionPayload?) {
+    private fun validateTransitionPayload(payload: BulkTransitionPayload?): BulkOperationPayload.Transition {
         require(payload != null) {
             "transitionPayload must not be null for BULK_TRANSITION operation"
         }
         require(payload.toStateKey.isNotBlank()) {
             "transitionPayload.toStateKey must not be blank"
         }
+        return BulkOperationPayload.Transition(toStateKey = payload.toStateKey)
     }
 }

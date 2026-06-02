@@ -1,4 +1,4 @@
-// BulkOperation Aggregate Root — 일괄 작업 전체 상태 머신, 카운트 집계, 항목 상태 갱신
+// BulkOperation Aggregate Root — 일괄 작업 전체 상태 머신, 카운트 집계, 항목 상태 갱신, payload 보유
 
 package com.bts.issue.bulk.domain
 
@@ -40,6 +40,8 @@ value class BulkOperationId(val value: UUID)
  * @property actorId 작업을 요청한 사용자 UUID.
  * @property type 작업 유형.
  * @property status 현재 상태.
+ * @property payload 타입별 파라미터. BULK_EDIT → [BulkOperationPayload.Edit],
+ *   BULK_TRANSITION → [BulkOperationPayload.Transition].
  * @property items 처리 대상 이슈 항목 목록.
  * @property totalCount 총 항목 수. 생성 후 불변.
  * @property processedCount 처리 완료(성공+실패) 항목 수. recomputeCounts 로 갱신.
@@ -53,6 +55,7 @@ data class BulkOperation(
     val actorId: UUID,
     val type: BulkOperationType,
     val status: BulkOperationStatus,
+    val payload: BulkOperationPayload,
     val items: List<BulkOperationItem>,
     val totalCount: Int,
     val processedCount: Int,
@@ -69,6 +72,8 @@ data class BulkOperation(
          * @param actorId 작업 요청자 UUID.
          * @param type 작업 유형.
          * @param items 처리 대상 항목 목록. 1개 이상, [BULK_OPERATION_MAX_SIZE] 이하.
+         * @param payload 타입별 파라미터. BULK_EDIT → [BulkOperationPayload.Edit],
+         *   BULK_TRANSITION → [BulkOperationPayload.Transition].
          * @return PENDING 상태의 새 [BulkOperation] 인스턴스.
          * @throws IllegalArgumentException 항목 수 불변식 위반 시.
          */
@@ -77,6 +82,7 @@ data class BulkOperation(
             actorId: UUID,
             type: BulkOperationType,
             items: List<BulkOperationItem>,
+            payload: BulkOperationPayload,
         ): BulkOperation {
             require(items.isNotEmpty()) { "items must not be empty" }
             require(items.size <= BULK_OPERATION_MAX_SIZE) {
@@ -88,6 +94,7 @@ data class BulkOperation(
                 actorId = actorId,
                 type = type,
                 status = BulkOperationStatus.PENDING,
+                payload = payload,
                 items = items,
                 totalCount = items.size,
                 processedCount = 0,

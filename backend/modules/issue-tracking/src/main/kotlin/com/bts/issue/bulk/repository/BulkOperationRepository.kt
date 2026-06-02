@@ -5,18 +5,22 @@ package com.bts.issue.bulk.repository
 import com.bts.issue.bulk.domain.BulkOperation
 import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.domain.BulkOperationItem
+import com.bts.issue.bulk.domain.BulkOperationPayload
 import com.bts.issue.bulk.domain.BulkOperationStatus
+import com.bts.issue.bulk.domain.BulkOperationType
 import com.bts.issue.bulk.domain.FailureReasonCode
 import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.jooq.tables.records.BulkOperationsRecord
 import com.bts.issue.jooq.tables.references.BULK_OPERATIONS
 import com.bts.issue.jooq.tables.references.BULK_OPERATION_ITEMS
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.jooq.DSLContext
 import org.jooq.JSONB
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
+import java.time.Clock
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -41,6 +45,8 @@ import java.util.UUID
 @Suppress("TooManyFunctions")
 class BulkOperationRepository(
     private val dsl: DSLContext,
+    private val objectMapper: ObjectMapper,
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -65,7 +71,7 @@ class BulkOperationRepository(
             .set(BULK_OPERATIONS.OPERATION_TYPE, operation.type.name)
             .set(BULK_OPERATIONS.STATUS, operation.status.name)
             .set(BULK_OPERATIONS.ACTOR_ID, operation.actorId)
-            .set(BULK_OPERATIONS.PAYLOAD, EMPTY_PAYLOAD)
+            .set(BULK_OPERATIONS.PAYLOAD, operation.payload.toJsonb())
             .set(BULK_OPERATIONS.TOTAL_COUNT, operation.totalCount)
             .set(BULK_OPERATIONS.PROCESSED_COUNT, operation.processedCount)
             .set(BULK_OPERATIONS.SUCCEEDED_COUNT, operation.succeededCount)
@@ -130,7 +136,7 @@ class BulkOperationRepository(
         val affected =
             dsl.update(BULK_OPERATIONS)
                 .set(BULK_OPERATIONS.STATUS, BulkOperationStatus.RUNNING.name)
-                .set(BULK_OPERATIONS.STARTED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+                .set(BULK_OPERATIONS.STARTED_AT, OffsetDateTime.now(clock))
                 .where(BULK_OPERATIONS.ID.eq(id.value))
                 .and(BULK_OPERATIONS.STATUS.eq(BulkOperationStatus.PENDING.name))
                 .execute()
@@ -161,7 +167,7 @@ class BulkOperationRepository(
         return dsl.update(BULK_OPERATION_ITEMS)
             .set(BULK_OPERATION_ITEMS.STATUS, status.name)
             .set(BULK_OPERATION_ITEMS.FAILURE_REASON, reasonCode?.name)
-            .set(BULK_OPERATION_ITEMS.PROCESSED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+            .set(BULK_OPERATION_ITEMS.PROCESSED_AT, OffsetDateTime.now(clock))
             .where(BULK_OPERATION_ITEMS.BULK_OPERATION_ID.eq(operationId.value))
             .and(BULK_OPERATION_ITEMS.ISSUE_KEY.eq(issueKey.value))
             .and(BULK_OPERATION_ITEMS.STATUS.eq(ItemStatus.PENDING.name))
@@ -220,7 +226,7 @@ class BulkOperationRepository(
         val affected =
             dsl.update(BULK_OPERATIONS)
                 .set(BULK_OPERATIONS.STATUS, BulkOperationStatus.COMPLETED.name)
-                .set(BULK_OPERATIONS.COMPLETED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+                .set(BULK_OPERATIONS.COMPLETED_AT, OffsetDateTime.now(clock))
                 .where(BULK_OPERATIONS.ID.eq(id.value))
                 .and(BULK_OPERATIONS.STATUS.eq(BulkOperationStatus.RUNNING.name))
                 .execute()
@@ -273,6 +279,7 @@ class BulkOperationRepository(
      *
      * items 는 빈 리스트로 초기화 — 별쿼리 패턴으로 [findItemsByOperationId] 가 채운다.
      * updatedAt 은 completed_at 이 있으면 그 값을, 없으면 created_at 으로 대체한다.
+     * payload 는 JSONB 에서 operationType 에 따라 역직렬화한다.
      */
     private fun BulkOperationsRecord.toOperation(): BulkOperation =
         BulkOperation(
@@ -280,6 +287,7 @@ class BulkOperationRepository(
             actorId = actorId,
             type = enumValueOf(operationType),
             status = enumValueOf(status),
+            payload = payload.toPayload(enumValueOf(operationType)),
             items = emptyList(),
             totalCount = totalCount,
             processedCount = processedCount ?: 0,
@@ -288,12 +296,34 @@ class BulkOperationRepository(
             createdAt = createdAt.toInstant(),
             updatedAt = completedAt?.toInstant() ?: createdAt.toInstant(),
         )
+
+    /** [BulkOperationPayload] 를 JSONB 로 직렬화한다. */
+    private fun BulkOperationPayload.toJsonb(): JSONB =
+        JSONB.valueOf(objectMapper.writeValueAsString(this))
+
+    /**
+     * JSONB 컬럼 값을 [BulkOperationType] 에 따라 [BulkOperationPayload] 로 역직렬화한다.
+     *
+     * payload 컬럼이 null 이거나 빈 JSON 인 경우 — 이전 데이터 호환성을 위해 기본값을 반환한다.
+     */
+    private fun JSONB?.toPayload(type: BulkOperationType): BulkOperationPayload {
+        val json = this?.data()
+        if (json.isNullOrBlank() || json == "{}") {
+            return when (type) {
+                BulkOperationType.BULK_EDIT -> BulkOperationPayload.Edit(priority = null, impact = null)
+                BulkOperationType.BULK_TRANSITION -> BulkOperationPayload.Transition(toStateKey = "")
+            }
+        }
+        return when (type) {
+            BulkOperationType.BULK_EDIT ->
+                objectMapper.readValue(json, BulkOperationPayload.Edit::class.java)
+            BulkOperationType.BULK_TRANSITION ->
+                objectMapper.readValue(json, BulkOperationPayload.Transition::class.java)
+        }
+    }
 }
 
 // ── file-level helpers ─────────────────────────────────────────────────────────
-
-/** payload 컬럼 기본값 — operation_type 별 파라미터가 없는 경우 빈 JSON 오브젝트로 삽입. */
-private val EMPTY_PAYLOAD: JSONB = JSONB.valueOf("{}")
 
 /** [Instant] 를 UTC [OffsetDateTime] 으로 변환한다. */
 private fun Instant.toOffsetDateTime(): OffsetDateTime = OffsetDateTime.ofInstant(this, ZoneOffset.UTC)

@@ -44,14 +44,15 @@ import java.util.UUID
 class BulkOperationRepositoryTest : IssueTestcontainersBase() {
     private lateinit var bulkRepo: BulkOperationRepository
 
+    // helper — ObjectMapper 는 Spring context 없이 직접 생성하여 사용
+    private val objectMapper =
+        com.fasterxml.jackson.databind.ObjectMapper()
+            .registerModule(com.fasterxml.jackson.module.kotlin.KotlinModule.Builder().build())
+
     @BeforeEach
     fun initRepo() {
-        bulkRepo = BulkOperationRepository(dsl)
+        bulkRepo = BulkOperationRepository(dsl, objectMapper)
     }
-
-    // helper — ObjectMapper 는 Spring context 없이 직접 생성하여 사용
-    private val objectMapper = com.fasterxml.jackson.databind.ObjectMapper()
-        .registerModule(com.fasterxml.jackson.module.kotlin.KotlinModule.Builder().build())
 
     @BeforeEach
     fun cleanBulkTables() {

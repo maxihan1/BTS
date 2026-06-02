@@ -4,6 +4,7 @@ package com.bts.issue.bulk.web
 
 import com.bts.issue.bulk.domain.BulkOperation
 import com.bts.issue.bulk.domain.BulkOperationItem
+import com.bts.issue.bulk.domain.BulkOperationPayload
 import java.util.UUID
 
 /**
@@ -54,6 +55,7 @@ data class BulkOperationItemResponse(
  * @property id 작업 UUID.
  * @property operationType 작업 유형 문자열 (BULK_EDIT / BULK_TRANSITION).
  * @property status 현재 작업 상태 문자열.
+ * @property payload 접수 시 요청한 파라미터. 사용자가 자신이 요청한 내용을 조회로 확인 가능.
  * @property totalCount 총 이슈 수.
  * @property processedCount 처리 완료(성공+실패) 수.
  * @property succeededCount 성공 수.
@@ -64,6 +66,7 @@ data class BulkOperationResponse(
     val id: UUID,
     val operationType: String,
     val status: String,
+    val payload: BulkOperationPayload,
     val totalCount: Int,
     val processedCount: Int,
     val succeededCount: Int,
@@ -85,6 +88,7 @@ data class BulkOperationResponse(
                 id = operation.id.value,
                 operationType = operation.type.name,
                 status = operation.status.name,
+                payload = operation.payload,
                 totalCount = operation.totalCount,
                 processedCount = operation.processedCount,
                 succeededCount = operation.succeededCount,
