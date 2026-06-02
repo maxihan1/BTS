@@ -527,9 +527,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <summary>
         <span class="fr-status">⬜</span>
         <span class="fr-id">FR-IS-07</span>
-        <span class="fr-desc">Resolution 필드 (Fixed/Won&#39;t Fix/Duplicate)</span>
+        <span class="fr-desc"><span class="term" data-def="이슈가 &quot;어떻게 끝났는지&quot;를 나타내는 값(Fixed/Won&#39;t Fix/Duplicate/Cannot Reproduce/Done 등). 종료(DONE 카테고리) 상태로 전이할 때 필수. 상태(열림/닫힘)와 별개 축 — Jira와 동일하게 &quot;닫힘 + 해결결과 없음(재오픈됨)&quot; 같은 조합을 표현. 표준 세트는 불변, 커스텀 추가 가능 (FR-IS-07)">Resolution</span> 필드 (Fixed/Won&#39;t Fix/Duplicate)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인</li><li><span class="step-icon">⬜</span> D2 — 명세 — 종료 상태 진입 시 Resolution 필수</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `resolutions`, `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s.resolution_id`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — 상태 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span> 가드 (Resolution 미설정 시 reject)</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 종료 모달</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인</li><li><span class="step-icon">⬜</span> D2 — 명세 — 종료 상태 진입 시 <span class="term" data-def="이슈가 &quot;어떻게 끝났는지&quot;를 나타내는 값(Fixed/Won&#39;t Fix/Duplicate/Cannot Reproduce/Done 등). 종료(DONE 카테고리) 상태로 전이할 때 필수. 상태(열림/닫힘)와 별개 축 — Jira와 동일하게 &quot;닫힘 + 해결결과 없음(재오픈됨)&quot; 같은 조합을 표현. 표준 세트는 불변, 커스텀 추가 가능 (FR-IS-07)">Resolution</span> 필수</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `<span class="term" data-def="이슈가 &quot;어떻게 끝났는지&quot;를 나타내는 값(Fixed/Won&#39;t Fix/Duplicate/Cannot Reproduce/Done 등). 종료(DONE 카테고리) 상태로 전이할 때 필수. 상태(열림/닫힘)와 별개 축 — Jira와 동일하게 &quot;닫힘 + 해결결과 없음(재오픈됨)&quot; 같은 조합을 표현. 표준 세트는 불변, 커스텀 추가 가능 (FR-IS-07)">resolution</span>s`, `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s.resolution_id`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — 상태 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span> 가드 (<span class="term" data-def="이슈가 &quot;어떻게 끝났는지&quot;를 나타내는 값(Fixed/Won&#39;t Fix/Duplicate/Cannot Reproduce/Done 등). 종료(DONE 카테고리) 상태로 전이할 때 필수. 상태(열림/닫힘)와 별개 축 — Jira와 동일하게 &quot;닫힘 + 해결결과 없음(재오픈됨)&quot; 같은 조합을 표현. 표준 세트는 불변, 커스텀 추가 가능 (FR-IS-07)">Resolution</span> 미설정 시 reject)</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 종료 모달</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
@@ -1510,6 +1510,14 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">Bulk Operation Item</div>
       <div class="term-cat">도메인 — 핵심 엔티티</div>
       <div class="term-def">일괄 작업이 처리하는 개별 이슈 단위. 상태(PENDING/SUCCEEDED/FAILED)와 실패사유 코드(NOTFOUND/FORBIDDEN/TRANSITIONNOTALLOWED/VERSIONCONFLICT/WORKFLOWNOTCONFIGURED/TYPENOTFOUND/UNKNOWN 7종)를 가진다</div>
+    </div><div class="term-item" data-cat="도메인 — 핵심 엔티티" data-search="해결 결과 이슈가 &quot;어떻게 끝났는지&quot;를 나타내는 값(fixed/won&#39;t fix/duplicate/cannot reproduce/done 등). 종료(done 카테고리) 상태로 전이할 때 필수. 상태(열림/닫힘)와 별개 축 — jira와 동일하게 &quot;닫힘 + 해결결과 없음(재오픈됨)&quot; 같은 조합을 표현. 표준 세트는 불변, 커스텀 추가 가능 (fr-is-07)">
+      <div class="term-name">해결 결과</div>
+      <div class="term-cat">도메인 — 핵심 엔티티</div>
+      <div class="term-def">이슈가 &quot;어떻게 끝났는지&quot;를 나타내는 값(Fixed/Won&#39;t Fix/Duplicate/Cannot Reproduce/Done 등). 종료(DONE 카테고리) 상태로 전이할 때 필수. 상태(열림/닫힘)와 별개 축 — Jira와 동일하게 &quot;닫힘 + 해결결과 없음(재오픈됨)&quot; 같은 조합을 표현. 표준 세트는 불변, 커스텀 추가 가능 (FR-IS-07)</div>
+    </div><div class="term-item" data-cat="도메인 — 핵심 엔티티" data-search="resolution 이슈가 &quot;어떻게 끝났는지&quot;를 나타내는 값(fixed/won&#39;t fix/duplicate/cannot reproduce/done 등). 종료(done 카테고리) 상태로 전이할 때 필수. 상태(열림/닫힘)와 별개 축 — jira와 동일하게 &quot;닫힘 + 해결결과 없음(재오픈됨)&quot; 같은 조합을 표현. 표준 세트는 불변, 커스텀 추가 가능 (fr-is-07)">
+      <div class="term-name">Resolution</div>
+      <div class="term-cat">도메인 — 핵심 엔티티</div>
+      <div class="term-def">이슈가 &quot;어떻게 끝났는지&quot;를 나타내는 값(Fixed/Won&#39;t Fix/Duplicate/Cannot Reproduce/Done 등). 종료(DONE 카테고리) 상태로 전이할 때 필수. 상태(열림/닫힘)와 별개 축 — Jira와 동일하게 &quot;닫힘 + 해결결과 없음(재오픈됨)&quot; 같은 조합을 표현. 표준 세트는 불변, 커스텀 추가 가능 (FR-IS-07)</div>
     </div><div class="term-item" data-cat="도메인 — 관계 / 연결" data-search="링크 link. 이슈 간 의존/연관 (blocks, relates to, duplicates 등)">
       <div class="term-name">링크</div>
       <div class="term-cat">도메인 — 관계 / 연결</div>
