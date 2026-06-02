@@ -80,7 +80,6 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ComponentControllerIntegrationTest {
-
     // ── Spring Bean 구성 — 최소 필요 컴포넌트만 명시적 등록 ─────────────────────
     @Configuration
     @EnableWebMvc
@@ -113,8 +112,7 @@ class ComponentControllerIntegrationTest {
             DataSourceTransactionManager(dataSource)
 
         @Bean
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext =
-            DSL.using(dataSource, SQLDialect.POSTGRES)
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext = DSL.using(dataSource, SQLDialect.POSTGRES)
 
         @Bean
         open fun objectMapper(): ObjectMapper =
@@ -125,12 +123,10 @@ class ComponentControllerIntegrationTest {
         // ── 컴포넌트 BC 빈 ─────────────────────────────────────────────────────
 
         @Bean
-        open fun componentRepository(dsl: DSLContext): ComponentRepository =
-            ComponentRepository(dsl)
+        open fun componentRepository(dsl: DSLContext): ComponentRepository = ComponentRepository(dsl)
 
         @Bean
-        open fun projectLookup(dsl: DSLContext): ProjectLookup =
-            ProjectLookup(dsl)
+        open fun projectLookup(dsl: DSLContext): ProjectLookup = ProjectLookup(dsl)
 
         /**
          * 테스트 환경 UserLookupPort — [KNOWN_LEAD_ID] 만 exists=true.
@@ -140,13 +136,13 @@ class ComponentControllerIntegrationTest {
         open fun userLookupPort(): UserLookupPort =
             object : UserLookupPort {
                 private val known = setOf(KNOWN_LEAD_ID)
+
                 override fun exists(userId: UUID): Boolean = userId in known
             }
 
         @Bean
         @Profile("test")
-        open fun componentPermissionResolver(): ComponentPermissionResolver =
-            AlwaysAllowComponentPermissionResolver()
+        open fun componentPermissionResolver(): ComponentPermissionResolver = AlwaysAllowComponentPermissionResolver()
 
         @Bean
         open fun componentApplicationService(
@@ -163,12 +159,10 @@ class ComponentControllerIntegrationTest {
             )
 
         @Bean
-        open fun componentController(service: ComponentApplicationService): ComponentController =
-            ComponentController(service)
+        open fun componentController(service: ComponentApplicationService): ComponentController = ComponentController(service)
 
         @Bean
-        open fun componentExceptionHandler(): ComponentExceptionHandler =
-            ComponentExceptionHandler()
+        open fun componentExceptionHandler(): ComponentExceptionHandler = ComponentExceptionHandler()
     }
 
     @Autowired
@@ -551,18 +545,20 @@ class ComponentControllerIntegrationTest {
         description: String? = null,
         leadUserId: UUID? = null,
     ): UUID {
-        val body = buildMap<String, Any?> {
-            put("name", name)
-            if (description != null) put("description", description)
-            if (leadUserId != null) put("leadUserId", leadUserId.toString())
-        }
+        val body =
+            buildMap<String, Any?> {
+                put("name", name)
+                if (description != null) put("description", description)
+                if (leadUserId != null) put("leadUserId", leadUserId.toString())
+            }
 
         val result =
-            mockMvc.perform(
-                post("/api/v1/projects/$PROJECT_KEY/components")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(mapper.writeValueAsString(body)),
-            )
+            mockMvc
+                .perform(
+                    post("/api/v1/projects/$PROJECT_KEY/components")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(body)),
+                )
                 .andExpect(status().isCreated)
                 .andReturn()
 
