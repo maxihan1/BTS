@@ -248,8 +248,8 @@
 - [x] D3. 데이터 모델 — `permission_schemes` + `role_permissions` (+ `project_permission_scheme`) (책임. db-engineer) — V008, PR #53
 - [x] D4. 백엔드 — 권한 가드 (명시 호출 `hasPermission`, `@PreAuthorize` 미도입 G4) (책임. security-engineer) — PR #53
 - [x] D5. 백엔드 테스트 — 권한 매트릭스 전수 13케이스 (책임. security-engineer) — PR #53
-- [ ] D6. 프론트 UI — 권한 없는 액션 버튼 비활성화 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 권한 없는 액션 버튼 비활성화 (책임. designer → frontend-engineer) — PR #55
+- [x] D7. E2E (책임. qa-engineer) — PR #55
 
 ### §4.3 FR-PM-03 — 버전/컴포넌트 등록 권한
 
