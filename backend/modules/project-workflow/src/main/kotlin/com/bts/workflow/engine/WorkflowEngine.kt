@@ -247,7 +247,12 @@ class WorkflowEngine(
         return TransitionContext(req, workflow, fromState, transition, issueView, actorView)
     }
 
-    /** Validator 를 순차 평가한다. 첫 Fail 즉시 예외를 던진다. */
+    /**
+     * Validator 를 순차 평가한다. 첫 Fail 즉시 예외를 던진다.
+     *
+     * ctx.request.workflowKey 를 definitionRepo 에 전달해 같은 (from, to) 를 공유하는
+     * 다른 워크플로우의 validator 가 오매칭되지 않도록 한다.
+     */
     private fun runValidators(
         ctx: TransitionContext,
         transition: WorkflowTransition,
@@ -267,7 +272,12 @@ class WorkflowEngine(
         }
     }
 
-    /** PostAction 을 모두 평가하고 fieldChanges 와 emitEvents 를 누적해 반환한다. */
+    /**
+     * PostAction 을 모두 평가하고 fieldChanges 와 emitEvents 를 누적해 반환한다.
+     *
+     * ctx.request.workflowKey 를 definitionRepo 에 전달해 같은 (from, to) 를 공유하는
+     * 다른 워크플로우의 post_action 이 오매칭되지 않도록 한다.
+     */
     private fun runPostActions(
         ctx: TransitionContext,
         transition: WorkflowTransition,
@@ -288,6 +298,9 @@ class WorkflowEngine(
      *
      * PostAction 은 평가하지 않는다 — [availableTransitions] 의 읽기 전용 계약을 유지한다.
      * fromState 가 워크플로우에 존재하지 않으면 false 를 반환한다.
+     *
+     * req.workflowKey 를 definitionRepo 에 전달해 같은 (from, to) 를 공유하는
+     * 다른 워크플로우의 validator 가 오매칭되지 않도록 한다.
      */
     private fun passesValidators(
         req: AvailableTransitionsRequest,
