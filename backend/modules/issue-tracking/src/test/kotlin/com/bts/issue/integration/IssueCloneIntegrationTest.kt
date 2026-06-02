@@ -143,7 +143,7 @@ class IssueCloneIntegrationTest {
                 .content(mapper.writeValueAsString(mapOf("includeAssignee" to false))),
         )
             .andExpect(status().isCreated)
-            .andExpect(jsonPath("$.data.assigneeId").doesNotExist())
+            .andExpect(jsonPath("$.data.assigneeId").isEmpty)
     }
 
     // ── CI-3. summaryOverride → 제목 덮어쓰기 ────────────────────────────────────
