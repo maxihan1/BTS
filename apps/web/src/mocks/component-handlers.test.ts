@@ -9,6 +9,7 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   resetComponentStore()
+  localStorage.clear()
 })
 afterAll(() => server.close())
 
@@ -83,6 +84,40 @@ describe('POST /api/v1/projects/:projectIdOrKey/components', () => {
     // RFC 7807 ProblemDetail: message 필드 절대 금지, detail을 사용한다
     expect(Object.prototype.hasOwnProperty.call(body, 'message')).toBe(false)
     expect(typeof body['detail']).toBe('string')
+  })
+
+  it('리드 422 플래그가 켜진 상태에서 leadUserId로 생성하면 422 + COMPONENT_LEAD_NOT_FOUND를 반환한다', async () => {
+    // 백엔드 create는 leadUserId 실재 검증 → 미존재 시 422 (PATCH /lead와 동일 토글)
+    localStorage.setItem('msw-component-lead-422', 'true')
+    const res = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Lead Missing Component',
+        leadUserId: '00000000-0000-4000-8000-000000000099',
+      }),
+    })
+
+    expect(res.status).toBe(422)
+    const body = await res.json() as Record<string, unknown>
+    expect(body['errorCode']).toBe('COMPONENT_LEAD_NOT_FOUND')
+    // RFC 7807 ProblemDetail: message 필드 금지, detail 사용
+    expect(Object.prototype.hasOwnProperty.call(body, 'message')).toBe(false)
+    expect(typeof body['detail']).toBe('string')
+  })
+
+  it('리드 422 플래그가 꺼진 상태에서는 leadUserId로 정상 생성한다(201)', async () => {
+    const res = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Lead OK Component',
+        leadUserId: '00000000-0000-4000-8000-000000000001',
+      }),
+    })
+    expect(res.status).toBe(201)
+    const body = await res.json() as { data: { leadUserId: string | null } }
+    expect(body.data.leadUserId).toBe('00000000-0000-4000-8000-000000000001')
   })
 })
 
