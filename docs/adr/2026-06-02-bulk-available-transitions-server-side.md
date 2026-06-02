@@ -17,8 +17,8 @@ FR-IS-05 D6에서 일괄 상태 전이 Dialog는 선택한 이슈마다 `GET /ap
 
 - 신규 엔드포인트: `POST /api/v1/issues/bulk-transitions/available` body `{ issueKeys: string[] }` → `{ data: { transitions: TransitionItem[], unresolvedIssueKeys: string[] } }`.
 - 서버는 issueKey별 `availableTransitions(actor, key)`(기존 application 서비스 재사용)를 호출해 toStateKey 기준 교집합을 계산한다. 교집합 항목의 표시 정보(name/key)는 입력 순서상 첫 이슈 기준으로 보존한다(프론트 `intersectTransitions`와 동일 시맨틱).
-- **부분 실패 허용(best-effort)** — not-found / 워크플로우 미설정 이슈는 교집합에서 제외하고 `unresolvedIssueKeys`로 돌려준다. 프론트는 이 값으로 기존 "일부 이슈의 전이 정보를 불러오지 못했습니다" 경고를 유지한다.
-- 가용 전이 조회는 **권한 비의존**(워크플로우 FSM 기준) — 기존 `GET /{key}/transitions`와 동일 시맨틱. 권한 강제는 일괄 작업 실행 시점의 항목별 best-effort(FORBIDDEN 항목 실패)로 유지된다.
+- **부분 실패 허용(best-effort)** — not-found / 워크플로우 미설정 / **VIEW 권한 거부** 이슈는 교집합에서 제외하고 `unresolvedIssueKeys`로 돌려준다. 프론트는 이 값으로 기존 "일부 이슈의 전이 정보를 불러오지 못했습니다" 경고를 유지한다.
+- 가용 전이 **가능 여부 자체**는 워크플로우 FSM 기준으로 계산된다(기존 `GET /{key}/transitions`와 동일 시맨틱). 단 기존 `availableTransitions` 서비스는 진입 시 `assertPermission(VIEW)`를 강제하므로, VIEW 권한이 거부된 이슈는 unresolved로 분류된다(코드가 best-effort로 흡수 — 한 키의 권한 거부가 전체 요청을 깨뜨리지 않음). 전이 실행 권한 강제는 일괄 작업 실행 시점의 항목별 best-effort(FORBIDDEN 항목 실패)로 별도 유지된다.
 
 ## 대안 (기각)
 
