@@ -5,6 +5,7 @@ import { server } from '@/test/server'
 import {
   issueResponseSchema,
   issueTransitionSchema,
+  bulkAvailableTransitionsSchema,
   fetchIssue,
   fetchIssues,
   createIssue,
@@ -13,6 +14,7 @@ import {
   fetchIssueTransitions,
   transitionIssue,
   changeAssignee,
+  fetchBulkAvailableTransitions,
 } from './issues'
 import { ApiError } from './client'
 
@@ -566,6 +568,133 @@ describe('changeAssignee', () => {
       changeAssignee('ATLAS-1', { assigneeId: 'nonexistent-uuid-0000-000000000000', expectedVersion: 1 }),
     ).rejects.toSatisfy(
       (e) => e instanceof ApiError && (e as ApiError).status === 422,
+    )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-13. bulkAvailableTransitionsSchema — Zod 스키마 파싱
+// ─────────────────────────────────────────────────────────────────────────────
+describe('bulkAvailableTransitionsSchema', () => {
+  const validPayload = {
+    transitions: [
+      { fromStateKey: 'open', toStateKey: 'closed', name: 'Cancel', key: 'open__closed' },
+    ],
+    unresolvedIssueKeys: [],
+  }
+
+  it('T1-13a: transitions + unresolvedIssueKeys가 모두 있는 응답을 파싱한다', () => {
+    const result = bulkAvailableTransitionsSchema.parse(validPayload)
+    expect(result.transitions).toHaveLength(1)
+    expect(result.transitions[0]?.fromStateKey).toBe('open')
+    expect(result.transitions[0]?.toStateKey).toBe('closed')
+    expect(result.unresolvedIssueKeys).toEqual([])
+  })
+
+  it('T1-13b: transitions이 빈 배열이어도 파싱 성공한다', () => {
+    const result = bulkAvailableTransitionsSchema.parse({
+      transitions: [],
+      unresolvedIssueKeys: ['ATLAS-9'],
+    })
+    expect(result.transitions).toHaveLength(0)
+    expect(result.unresolvedIssueKeys).toEqual(['ATLAS-9'])
+  })
+
+  it('T1-13c: transitions 필드 누락 시 ZodError를 throw한다', () => {
+    expect(() =>
+      bulkAvailableTransitionsSchema.parse({ unresolvedIssueKeys: [] }),
+    ).toThrow()
+  })
+
+  it('T1-13d: unresolvedIssueKeys 필드 누락 시 ZodError를 throw한다', () => {
+    expect(() =>
+      bulkAvailableTransitionsSchema.parse({ transitions: [] }),
+    ).toThrow()
+  })
+
+  it('T1-13e: transitions 항목에 빈 문자열 필드가 있으면 ZodError를 throw한다', () => {
+    expect(() =>
+      bulkAvailableTransitionsSchema.parse({
+        transitions: [{ fromStateKey: '', toStateKey: 'closed', name: 'Cancel', key: 'open__closed' }],
+        unresolvedIssueKeys: [],
+      }),
+    ).toThrow()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-14. fetchBulkAvailableTransitions — POST /bulk-transitions/available
+// ─────────────────────────────────────────────────────────────────────────────
+describe('fetchBulkAvailableTransitions', () => {
+  const transitionFixture = {
+    fromStateKey: 'open',
+    toStateKey: 'closed',
+    name: 'Cancel',
+    key: 'open__closed',
+  }
+
+  beforeEach(() => {
+    server.use(
+      http.post('/api/v1/issues/bulk-transitions/available', async ({ request }) => {
+        const body = await request.json() as { issueKeys?: string[] }
+        const keys = body.issueKeys ?? []
+        // 빈 배열 → 400
+        if (keys.length === 0) {
+          return HttpResponse.json(
+            { errorCode: 'ISSUE_BULK_VALIDATION_FAILED', message: 'issueKeys must not be empty' },
+            { status: 400 },
+          )
+        }
+        return HttpResponse.json({
+          data: {
+            transitions: [transitionFixture],
+            unresolvedIssueKeys: [],
+          },
+        })
+      }),
+    )
+  })
+
+  it('T1-14a: issueKeys 배열로 POST 호출 시 { transitions, unresolvedIssueKeys }를 반환한다', async () => {
+    const result = await fetchBulkAvailableTransitions(['ATLAS-1', 'ATLAS-3'])
+    expect(result.transitions).toHaveLength(1)
+    expect(result.transitions[0]?.toStateKey).toBe('closed')
+    expect(result.unresolvedIssueKeys).toEqual([])
+  })
+
+  it('T1-14b: request body에 issueKeys 배열이 포함되어 전달된다', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.post('/api/v1/issues/bulk-transitions/available', async ({ request }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json({ data: { transitions: [], unresolvedIssueKeys: [] } })
+      }),
+    )
+    await fetchBulkAvailableTransitions(['ATLAS-1', 'ATLAS-3'])
+    expect(capturedBody['issueKeys']).toEqual(['ATLAS-1', 'ATLAS-3'])
+  })
+
+  it('T1-14c: unresolvedIssueKeys가 있는 응답도 파싱해 반환한다', async () => {
+    server.use(
+      http.post('/api/v1/issues/bulk-transitions/available', () =>
+        HttpResponse.json({
+          data: {
+            transitions: [],
+            unresolvedIssueKeys: ['ATLAS-9', 'ATLAS-99'],
+          },
+        }),
+      ),
+    )
+    const result = await fetchBulkAvailableTransitions(['ATLAS-1', 'ATLAS-9', 'ATLAS-99'])
+    expect(result.unresolvedIssueKeys).toEqual(['ATLAS-9', 'ATLAS-99'])
+    expect(result.transitions).toHaveLength(0)
+  })
+
+  it('T1-14d: 400 응답 시 ApiError(400)를 throw한다', async () => {
+    await expect(
+      fetchBulkAvailableTransitions([]),
+    ).rejects.toSatisfy(
+      (e) => e instanceof ApiError && (e as ApiError).status === 400,
     )
   })
 })

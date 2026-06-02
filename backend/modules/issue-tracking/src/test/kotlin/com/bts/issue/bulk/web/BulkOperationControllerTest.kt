@@ -1,7 +1,9 @@
-// BulkOperationController MockMvc 슬라이스 테스트 — POST 접수 202 / GET 조회 200·403·404
+// BulkOperationController MockMvc 슬라이스 테스트 — POST 접수 202 / GET 조회 200·403·404 / POST 가용 전이 200·400
 
 package com.bts.issue.bulk.web
 
+import com.bts.issue.bulk.application.BulkAvailableTransitionsResult
+import com.bts.issue.bulk.application.BulkAvailableTransitionsService
 import com.bts.issue.bulk.application.BulkOperationApplicationService
 import com.bts.issue.bulk.application.BulkUpdateRequest
 import com.bts.issue.bulk.domain.BulkOperation
@@ -13,6 +15,7 @@ import com.bts.issue.bulk.domain.BulkOperationType
 import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.bulk.repository.BulkOperationRepository
 import com.bts.issue.domain.IssueKey
+import com.bts.shared.workflow.AvailableTransitionView
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
@@ -42,9 +45,9 @@ import java.util.UUID
  * BulkOperationController MockMvc 슬라이스 테스트.
  *
  * `@SpringBootApplication` 없이 `@ContextConfiguration` 으로 최소 컨텍스트를 직접 구성한다.
- * [BulkOperationApplicationService], [BulkOperationRepository] 는 MockK stub 으로 대체한다.
+ * [BulkOperationApplicationService], [BulkOperationRepository], [BulkAvailableTransitionsService] 는 MockK stub 으로 대체한다.
  *
- * 테스트 케이스 8건.
+ * 테스트 케이스 12건.
  * - P-1. POST 정상(BULK_EDIT) → 202 + {bulkOperationId, status:"PENDING", totalCount}
  * - P-2. POST issueKeys 빈 목록 → service가 IllegalArgumentException → 400
  * - P-3. POST issueKeys 1000 초과 → service가 IllegalArgumentException → 400
@@ -53,6 +56,10 @@ import java.util.UUID
  * - G-1. GET 작업 본인 actor → 200 + BulkOperationResponse
  * - G-2. GET 타인 actor → 403
  * - G-3. GET 없는 id → 404
+ * - AT-1. POST bulk-transitions/available 정상 → 200 + data.transitions(TransitionItem 형태) + data.unresolvedIssueKeys
+ * - AT-2. POST bulk-transitions/available 교집합 전이 없음 → 200 + data.transitions 빈 배열
+ * - AT-3. POST bulk-transitions/available issueKeys 빈 배열 → 400 + ISSUE_BULK_VALIDATION_FAILED
+ * - AT-4. POST bulk-transitions/available issueKeys 1000 초과 → 400 + ISSUE_BULK_VALIDATION_FAILED
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [BulkOperationControllerTest.TestMvcConfig::class])
@@ -74,10 +81,14 @@ class BulkOperationControllerTest {
         open fun bulkOperationRepository(): BulkOperationRepository = mockk(relaxed = true)
 
         @Bean
+        open fun bulkAvailableTransitionsService(): BulkAvailableTransitionsService = mockk(relaxed = true)
+
+        @Bean
         open fun bulkOperationController(
             service: BulkOperationApplicationService,
             repo: BulkOperationRepository,
-        ): BulkOperationController = BulkOperationController(service, repo)
+            bulkAvailableTransitionsService: BulkAvailableTransitionsService,
+        ): BulkOperationController = BulkOperationController(service, repo, bulkAvailableTransitionsService)
 
         @Bean
         open fun bulkOperationExceptionHandler(): BulkOperationExceptionHandler = BulkOperationExceptionHandler()
@@ -91,6 +102,9 @@ class BulkOperationControllerTest {
 
     @Autowired
     lateinit var bulkOperationRepository: BulkOperationRepository
+
+    @Autowired
+    lateinit var bulkAvailableTransitionsService: BulkAvailableTransitionsService
 
     lateinit var mockMvc: MockMvc
 
@@ -307,5 +321,92 @@ class BulkOperationControllerTest {
             get("/api/v1/bulk-operations/$missingUuid"),
         )
             .andExpect(status().isNotFound)
+    }
+
+    // ── AT-1: POST bulk-transitions/available 정상 → 200 + data.transitions + unresolvedIssueKeys ──
+
+    @Test
+    fun `POST bulk-transitions available — 정상 요청이면 200 + 교집합 전이 목록과 unresolved 반환`() {
+        val transitionView =
+            AvailableTransitionView(
+                fromStateKey = "open",
+                toStateKey = "in_progress",
+                name = "시작",
+            )
+        val result =
+            BulkAvailableTransitionsResult(
+                transitions = listOf(transitionView),
+                unresolvedIssueKeys = listOf("ATLAS-99"),
+            )
+        every { bulkAvailableTransitionsService.availableCommonTransitions(any(), any()) } returns result
+
+        val body = mapOf("issueKeys" to listOf("ATLAS-1", "ATLAS-3", "ATLAS-99"))
+
+        mockMvc.perform(
+            post("/api/v1/issues/bulk-transitions/available")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.transitions.length()").value(1))
+            .andExpect(jsonPath("$.data.transitions[0].fromStateKey").value("open"))
+            .andExpect(jsonPath("$.data.transitions[0].toStateKey").value("in_progress"))
+            .andExpect(jsonPath("$.data.transitions[0].name").value("시작"))
+            .andExpect(jsonPath("$.data.transitions[0].key").value("open__in_progress"))
+            .andExpect(jsonPath("$.data.unresolvedIssueKeys.length()").value(1))
+            .andExpect(jsonPath("$.data.unresolvedIssueKeys[0]").value("ATLAS-99"))
+    }
+
+    // ── AT-2: POST bulk-transitions/available 교집합 없음 → 200 + 빈 transitions ───────────────
+
+    @Test
+    fun `POST bulk-transitions available — 교집합 전이 없으면 200 + 빈 transitions`() {
+        val result =
+            BulkAvailableTransitionsResult(
+                transitions = emptyList(),
+                unresolvedIssueKeys = emptyList(),
+            )
+        every { bulkAvailableTransitionsService.availableCommonTransitions(any(), any()) } returns result
+
+        val body = mapOf("issueKeys" to listOf("ATLAS-1", "ATLAS-3"))
+
+        mockMvc.perform(
+            post("/api/v1/issues/bulk-transitions/available")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.transitions.length()").value(0))
+            .andExpect(jsonPath("$.data.unresolvedIssueKeys.length()").value(0))
+    }
+
+    // ── AT-3: POST bulk-transitions/available issueKeys 빈 배열 → 400 + ISSUE_BULK_VALIDATION_FAILED ──
+
+    @Test
+    fun `POST bulk-transitions available — issueKeys 빈 배열이면 400 + ISSUE_BULK_VALIDATION_FAILED`() {
+        val body = mapOf("issueKeys" to emptyList<String>())
+
+        mockMvc.perform(
+            post("/api/v1/issues/bulk-transitions/available")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(BulkErrorCodes.VALIDATION_FAILED))
+    }
+
+    // ── AT-4: POST bulk-transitions/available issueKeys 1000 초과 → 400 + ISSUE_BULK_VALIDATION_FAILED ──
+
+    @Test
+    fun `POST bulk-transitions available — issueKeys 1000 초과이면 400 + ISSUE_BULK_VALIDATION_FAILED`() {
+        val body = mapOf("issueKeys" to (1..1001).map { "ATLAS-$it" })
+
+        mockMvc.perform(
+            post("/api/v1/issues/bulk-transitions/available")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(BulkErrorCodes.VALIDATION_FAILED))
     }
 }

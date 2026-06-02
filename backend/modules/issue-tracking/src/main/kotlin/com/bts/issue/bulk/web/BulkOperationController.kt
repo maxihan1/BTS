@@ -1,12 +1,14 @@
-// BulkOperationController — POST 일괄 작업 접수(202) + GET 조회(200) REST 엔드포인트
+// BulkOperationController — POST 일괄 작업 접수(202) + GET 조회(200) + POST 가용 전이 조회(200) REST 엔드포인트
 
 package com.bts.issue.bulk.web
 
 import com.bts.issue.adapter.inbound.rest.DataResponse
+import com.bts.issue.bulk.application.BulkAvailableTransitionsService
 import com.bts.issue.bulk.application.BulkEditPayload
 import com.bts.issue.bulk.application.BulkOperationApplicationService
 import com.bts.issue.bulk.application.BulkTransitionPayload
 import com.bts.issue.bulk.application.BulkUpdateRequest
+import com.bts.issue.bulk.domain.BULK_OPERATION_MAX_SIZE
 import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.domain.BulkOperationType
 import com.bts.issue.bulk.repository.BulkOperationRepository
@@ -29,6 +31,7 @@ import java.util.UUID
  * 엔드포인트 목록.
  * - POST  /api/v1/issues/bulk-update — 일괄 작업 접수 (PR1 Task 8)
  * - GET   /api/v1/bulk-operations/{id} — 일괄 작업 조회 (PR1 Task 8)
+ * - POST  /api/v1/issues/bulk-transitions/available — 일괄 가용 전이 조회 (FR-IS-05 Task 3)
  *
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다.
@@ -43,11 +46,13 @@ import java.util.UUID
  *
  * @param service 일괄 작업 접수 유스케이스 서비스.
  * @param repo 일괄 작업 Repository (조회 전용).
+ * @param bulkAvailableTransitionsService 일괄 가용 전이 조회 서비스.
  */
 @RestController
 class BulkOperationController(
     private val service: BulkOperationApplicationService,
     private val repo: BulkOperationRepository,
+    private val bulkAvailableTransitionsService: BulkAvailableTransitionsService,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -124,6 +129,38 @@ class BulkOperationController(
 
         val items = repo.findItemsByOperationId(operationId)
         val response = BulkOperationResponse.from(operation, items)
+        return ResponseEntity.ok(DataResponse(data = response))
+    }
+
+    /**
+     * 여러 이슈에 공통으로 적용 가능한 전이 목록을 조회한다.
+     *
+     * issueKeys 의 각 이슈에 대해 best-effort 로 가용 전이를 조회한 후 교집합을 반환한다.
+     * 조회에 실패한 이슈(미존재·워크플로우 미설정·접근 불가)는 unresolvedIssueKeys 에 포함한다.
+     *
+     * @param request 조회 대상 이슈 키 목록.
+     * @return 200 OK + [BulkAvailableTransitionsResponse] body
+     * @throws IllegalArgumentException issueKeys 비어있음 또는 1000 초과 시 → 400 (핸들러 처리)
+     */
+    @PostMapping("/api/v1/issues/bulk-transitions/available")
+    fun availableTransitions(
+        @RequestBody request: BulkAvailableTransitionsRequest,
+    ): ResponseEntity<DataResponse<BulkAvailableTransitionsResponse>> {
+        require(request.issueKeys.isNotEmpty()) {
+            "issueKeys must not be empty"
+        }
+        require(request.issueKeys.size <= BULK_OPERATION_MAX_SIZE) {
+            "issueKeys must not exceed $BULK_OPERATION_MAX_SIZE, but was ${request.issueKeys.size}"
+        }
+
+        log.info(
+            "BulkOperationController.availableTransitions issueKeysSize={}",
+            request.issueKeys.size,
+        )
+
+        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val result = bulkAvailableTransitionsService.availableCommonTransitions(actor, request.issueKeys)
+        val response = BulkAvailableTransitionsResponse.from(result)
         return ResponseEntity.ok(DataResponse(data = response))
     }
 
