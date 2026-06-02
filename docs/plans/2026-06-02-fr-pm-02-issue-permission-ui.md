@@ -74,6 +74,7 @@ classify 원결과: type=qa(오분류, E2E 키워드) → FR-PM-01 선례로 typ
 
 **RED**:
 - 파일: `MyIssuePermissionIntegrationTest.kt` (Testcontainers, @ActiveProfiles("prod") — IdentityAccessIssuePermissionResolverIntegrationTest 부팅 패턴 참조: JWT PEM/BC provider/LDAP @MockBean)
+- **(리뷰 C1)** 이 테스트는 resolver 직접 호출이 아니라 **컨트롤러 HTTP 레이어 + JWT 인증 흐름**을 검증한다. 실제 JWT를 발급해 `Authorization: Bearer` 헤더로 넣고 MockMvc로 호출 → @AuthenticationPrincipal 주입까지 태운다. **WhoamiControllerTest의 JWT 발급/주입 패턴을 참조**(매트릭스 정확성은 기존 13케이스 통합테스트가 이미 커버하므로, 여기선 ADMIN/MEMBER/비멤버 HTTP 응답 스모크 + actor 추출 + 401에 집중).
 - 테스트:
   ```kotlin
   // 기본 스킴 V008 시드 기준
@@ -85,7 +86,8 @@ classify 원결과: type=qa(오분류, E2E 키워드) → FR-PM-01 선례로 typ
 - 실패 메시지(예상): `MyIssuePermissionController` 없음 → 404/빈 컨텍스트
 
 **GREEN**:
-- `MyIssuePermissionController`: `@GetMapping("/api/v1/users/me/issue-permissions")`, `@AuthenticationPrincipal jwt: Jwt?` + (PAT는 WhoamiController extractBearerToken 패턴 — 필요 시 재사용), `@RequestParam issueKey: String`.
+- `MyIssuePermissionController`: `@GetMapping("/api/v1/users/me/issue-permissions")`, `@AuthenticationPrincipal jwt: Jwt?` + `@RequestParam issueKey: String`.
+  - **(리뷰 C2)** actor 추출 = WhoamiController와 동일하게 **JWT 필수 + PAT 지원**(extractBearerToken→handlePat로 pat.userId). 둘 다 본인 userId만. 미인증 → 401. UI는 JWT를 쓰지만 스펙이 JWT/PAT 둘 다라 whoami 패턴 그대로 재사용해 일관성 유지.
   - userId 추출(jwt.subject UUID / pat.userId) → `IdentityAccessIssuePermissionResolver.hasPermission(userId, IssuePermission.UPDATE/SOFT_DELETE/TRANSITION, IssueScope.Issue(issueKey))` 3회.
   - `IssuePermissionsResponse(issueKey, permissions = mapOf 또는 named fields)`.
 - 컨트롤러 @Transactional 0(조회). resolver 직접 주입.
@@ -208,4 +210,26 @@ classify 원결과: type=qa(오분류, E2E 키워드) → FR-PM-01 선례로 typ
 - 추가 검증: tsc --noEmit, ktlint(신규 파일 수동, 모듈 ktlintFormat 금지), detekt, vitest, playwright(기존 이슈 E2E 동반)
 - 백엔드 슬라이스 포함 사유: 권한 조회 API 부재(스펙 FR-1). UI PR이지만 same-FR 보조 백엔드 포함.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### eng/보안 집중 리뷰 (2026-06-02, code-reviewer dispatch → 세션한도로 직접 검증 완료)
+
+타입 ui지만 권한/보안 백엔드 슬라이스가 핵심이라 design-review 대신 eng/보안 관점 적용(메모리 [[bts-review-plan-autoplan-overkill]]). 실제 코드 grep/read로 plan 가정 검증.
+
+**검증 통과 ✅**
+- resolver 시그니처 `hasPermission(actorId: UUID, permission: IssuePermission, scope: IssueScope): Boolean` — plan 호출과 일치.
+- enum 값 UPDATE/SOFT_DELETE/TRANSITION 정확(IssuePermission.kt:27/33/30). IssueScope.Issue(key: String) 정확.
+- **BC 격리 검증**: `IssueScope.Issue -> resolveKeyToId(key.substringBefore('-'))` — issueKey prefix만으로 projectId 해석, 이슈 데이터 미접근(IdentityAccessIssuePermissionResolver.kt:79). identity-access 단독 처리 정당.
+- 통합테스트 부팅: `@SpringBootTest @ActiveProfiles("prod") @Testcontainers` + PEM/BouncyCastle + LDAP @MockBean + V001~V008 시드(기존 13케이스 매트릭스 테스트와 동일) — Task 1 RED 가정 정확.
+- 존재하지 않는 issueKey → resolveKeyToId null → 권한 false(fail-safe).
+- WhoamiController actor 추출(JWT @AuthenticationPrincipal Jwt → jwt.subject UUID, PAT extractBearerToken→handlePat) 실재 확인.
+
+**BLOCKER: 없음**
+
+**CONCERN (plan 반영 완료)**
+- C1: Task 1 통합테스트는 resolver 직접 호출이 아니라 컨트롤러+JWT 인증 흐름 검증 필요 → Task 1 RED에 WhoamiControllerTest JWT 주입 패턴 참조 + HTTP 스모크 집중 명시(매트릭스 정확성은 기존 13케이스가 커버).
+- C2: actor 추출 JWT/PAT 범위 → Task 1 GREEN에 JWT 필수 + PAT whoami 패턴 재사용 명시.
+
+**SUGGESTION**
+- 프론트 권한→불리언 매핑(canEdit/canDelete)을 단일 헬퍼로 두면 fail-closed 기본값 일관(Task 5 REFACTOR 반영됨).
+- "저장" 4중복 버튼은 Task 5에서 미리 data-testid 부여 → Task 6 E2E 셀렉터 견고(EC-2).
