@@ -213,15 +213,50 @@ interface IssueListPageProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 공통 className — 활성/비활성 버튼 모두 동일 헤더 스타일 적용
+// NewIssueButton — "새 이슈" 진입점. CREATE 권한 게이트(fail-closed).
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** "새 이슈" 버튼의 공통 시각 스타일 */
+/** "새 이슈" 버튼/링크의 공통 시각 스타일 */
 const NEW_ISSUE_CLASS =
   'inline-flex items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors'
 
-/** 비활성 상태 추가 스타일 — opacity + cursor 표현 */
-const NEW_ISSUE_DISABLED_CLASS = `${NEW_ISSUE_CLASS} disabled:opacity-50 disabled:cursor-not-allowed`
+interface NewIssueButtonProps {
+  /** CREATE 권한 보유 여부. false(로딩/에러/권한없음) → disabled 버튼. */
+  canCreate: boolean
+}
+
+/**
+ * "새 이슈" 진입점 컴포넌트.
+ *
+ * - canCreate=true  → `<a href="/issues/new">` (role=link, 기존 스타일 동일).
+ * - canCreate=false → `<button type="button" disabled>` (동일 시각 스타일, fail-closed).
+ * - 양쪽 모두 `data-testid="new-issue-button"` 부여.
+ */
+function NewIssueButton({ canCreate }: NewIssueButtonProps): JSX.Element {
+  if (canCreate) {
+    return (
+      <a
+        href="/issues/new"
+        data-testid="new-issue-button"
+        className={NEW_ISSUE_CLASS}
+      >
+        새 이슈
+      </a>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      disabled
+      data-testid="new-issue-button"
+      className={`${NEW_ISSUE_CLASS} disabled:opacity-50 disabled:cursor-not-allowed`}
+      aria-label="새 이슈 (권한 없음)"
+    >
+      새 이슈
+    </button>
+  )
+}
 
 /**
  * 이슈 목록 페이지 컴포넌트.
@@ -230,8 +265,6 @@ const NEW_ISSUE_DISABLED_CLASS = `${NEW_ISSUE_CLASS} disabled:opacity-50 disable
  * - 3 상태 분기: 로딩("로딩 중...") → 에러(role="alert") → 성공(IssueListContent).
  * - 에러 시 role="alert"로 스크린 리더 접근성 보장 (WCAG AA).
  * - "새 이슈" 진입점: CREATE 권한 기반 게이트. fail-closed(로딩/에러/undefined → 비활성).
- *   - canCreate=true  → `<a href="/issues/new">` (role=link, 동일 className)
- *   - canCreate=false → `<button type="button" disabled>` (동일 시각 스타일)
  *
  * 라우터 의존 없이 props로 동작해 단위 테스트가 가능하다.
  */
@@ -244,7 +277,7 @@ export function IssueListPage({ projectKey, page, onPageChange, onNavigate }: Is
 
   const { data: permData, isLoading: isPermLoading } = useProjectPermissions(projectKey)
 
-  // fail-closed: 로딩/에러/undefined → false
+  // fail-closed: 권한 로딩 중이거나 응답이 없으면 false
   const canCreate = !isPermLoading && permData?.permissions.CREATE === true
 
   if (isLoading) {
@@ -268,25 +301,7 @@ export function IssueListPage({ projectKey, page, onPageChange, onNavigate }: Is
       {/* 페이지 헤더 — 타이틀 + 새 이슈 진입점 (CREATE 권한 게이트) */}
       <header className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">이슈 목록</h1>
-        {canCreate ? (
-          <a
-            href="/issues/new"
-            data-testid="new-issue-button"
-            className={NEW_ISSUE_CLASS}
-          >
-            새 이슈
-          </a>
-        ) : (
-          <button
-            type="button"
-            disabled
-            data-testid="new-issue-button"
-            className={NEW_ISSUE_DISABLED_CLASS}
-            aria-label="새 이슈 (권한 없음)"
-          >
-            새 이슈
-          </button>
-        )}
+        <NewIssueButton canCreate={canCreate} />
       </header>
 
       <IssueListContent
