@@ -6,6 +6,51 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BulkTransitionDialog } from './BulkTransitionDialog'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// shadcn Select mock — jsdom에서 Radix Select Portal의 pointer-capture 미지원
+// 문제를 우회한다. 네이티브 <select>로 교체해 option 선택을 DOM-level로 처리한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+vi.mock('@/components/ui/select', async () => {
+  const React = (await vi.importActual<typeof import('react')>('react'))
+
+  interface SelectContextValue {
+    value: string
+    onValueChange: (v: string) => void
+  }
+  const SelectContext = React.createContext<SelectContextValue>({ value: '', onValueChange: () => undefined })
+
+  return {
+    Select: ({ value, onValueChange, children }: { value: string; onValueChange: (v: string) => void; children: React.ReactNode }) =>
+      React.createElement(SelectContext.Provider, { value: { value, onValueChange } }, children),
+    SelectTrigger: ({ children, 'aria-label': ariaLabel, id }: { children: React.ReactNode; 'aria-label'?: string; id?: string }) => {
+      const ctx = React.useContext(SelectContext)
+      return React.createElement('button', { role: 'combobox', 'aria-label': ariaLabel, id, onClick: () => ctx.onValueChange('__open__') }, children)
+    },
+    SelectValue: ({ placeholder }: { placeholder?: string }) => {
+      const ctx = React.useContext(SelectContext)
+      return React.createElement('span', null, ctx.value || placeholder || '')
+    },
+    SelectContent: ({ children }: { children: React.ReactNode }) => {
+      const ctx = React.useContext(SelectContext)
+      return React.createElement('ul', { role: 'listbox' },
+        React.Children.map(children, (child) => {
+          if (!React.isValidElement(child)) return child
+          const props = child.props as unknown as { value?: string; children?: React.ReactNode }
+          return React.createElement('li', {
+            role: 'option',
+            key: props.value,
+            onClick: () => { if (props.value !== undefined) ctx.onValueChange(props.value) },
+            'data-value': props.value,
+          }, props.children)
+        }),
+      )
+    },
+    SelectItem: ({ value, children }: { value: string; children: React.ReactNode }) =>
+      React.createElement('span', { 'data-value': value }, children),
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // fetchIssueTransitions mock
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -110,10 +155,7 @@ describe('BulkTransitionDialog', () => {
     const select = await screen.findByRole('combobox', { name: /전이 상태/i })
     expect(select).toBeInTheDocument()
 
-    // 드롭다운 열어서 교집합 옵션 확인
-    const user = userEvent.setup()
-    await user.click(select)
-
+    // 교집합 옵션 확인 (mock SelectContent는 항상 DOM에 노출)
     expect(await screen.findByRole('option', { name: /진행 중/i })).toBeInTheDocument()
     expect(await screen.findByRole('option', { name: /완료/i })).toBeInTheDocument()
   })
