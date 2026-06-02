@@ -117,8 +117,8 @@ class WorkflowEngineUnitTest {
         val postActionConfigB = PostActionConfig("Notify", emptyMap())
 
         every { cache.findByKey("DEFAULT") } returns workflow
-        every { definitionRepo.findValidators(transition) } returns listOf(validatorConfigA, validatorConfigB)
-        every { definitionRepo.findPostActions(transition) } returns listOf(postActionConfigA, postActionConfigB)
+        every { definitionRepo.findValidators("DEFAULT", transition) } returns listOf(validatorConfigA, validatorConfigB)
+        every { definitionRepo.findPostActions("DEFAULT", transition) } returns listOf(postActionConfigA, postActionConfigB)
         every { validatorFactory.create("RequiredField", validatorConfigA.config) } returns validatorA
         every { validatorFactory.create("Permission", validatorConfigB.config) } returns validatorB
         every { postActionFactory.create("SetField", postActionConfigA.config) } returns postActionA
@@ -147,7 +147,7 @@ class WorkflowEngineUnitTest {
             }
 
         every { cache.findByKey("DEFAULT") } returns workflow
-        every { definitionRepo.findValidators(transition) } returns listOf(validatorConfigA)
+        every { definitionRepo.findValidators("DEFAULT", transition) } returns listOf(validatorConfigA)
         every { validatorFactory.create("RequiredField", validatorConfigA.config) } returns failValidator
 
         assertThatThrownBy { engine.plan(baseRequest) }
@@ -213,8 +213,8 @@ class WorkflowEngineUnitTest {
         val postActionCfg = PostActionConfig("SetField", emptyMap())
 
         every { cache.findByKey("SEED") } returns seedWorkflow
-        every { definitionRepo.findValidators(yamlTransition) } returns emptyList()
-        every { definitionRepo.findPostActions(yamlTransition) } returns listOf(postActionCfg)
+        every { definitionRepo.findValidators("SEED", yamlTransition) } returns emptyList()
+        every { definitionRepo.findPostActions("SEED", yamlTransition) } returns listOf(postActionCfg)
         every { postActionFactory.create("SetField", postActionCfg.config) } returns postAction
 
         // (from, to) 2튜플 매칭 — transitionName 이 없어도 open→in_progress 전이가 매칭된다

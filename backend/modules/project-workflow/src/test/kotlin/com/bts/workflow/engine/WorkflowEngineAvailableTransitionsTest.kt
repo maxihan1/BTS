@@ -90,8 +90,8 @@ class WorkflowEngineAvailableTransitionsTest {
     fun `S1 — open 상태에서 가용 전이 2건 반환 — 다른 fromState 전이는 제외된다`() {
         every { mockCache.findByKey("software-default") } returns softwareDefaultWorkflow
         // validator 없음 → 모두 통과
-        every { mockDefinitionRepo.findValidators(txOpenToInProgress) } returns emptyList()
-        every { mockDefinitionRepo.findValidators(txOpenToClosed) } returns emptyList()
+        every { mockDefinitionRepo.findValidators("software-default", txOpenToInProgress) } returns emptyList()
+        every { mockDefinitionRepo.findValidators("software-default", txOpenToClosed) } returns emptyList()
 
         val result = engine.availableTransitions(baseRequest)
 
@@ -119,7 +119,7 @@ class WorkflowEngineAvailableTransitionsTest {
         val notFound = result as AvailableTransitionsResult.WorkflowNotFound
         assertThat(notFound.key).isEqualTo("UNKNOWN_KEY")
         // validator 조회는 호출되면 안 된다
-        verify(exactly = 0) { mockDefinitionRepo.findValidators(any()) }
+        verify(exactly = 0) { mockDefinitionRepo.findValidators(any(), any()) }
     }
 
     // ── S4. issueKey 오삽입 회귀 가드 — passesValidators 에 actorId 아닌 issueKey 전달 ──
@@ -127,11 +127,11 @@ class WorkflowEngineAvailableTransitionsTest {
     @Test
     fun `S4 — validator 가 ctx 의 issue key 를 올바르게 받는다 — actorId 가 아닌 issueKey`() {
         every { mockCache.findByKey("software-default") } returns softwareDefaultWorkflow
-        every { mockDefinitionRepo.findValidators(txOpenToInProgress) } returns emptyList()
+        every { mockDefinitionRepo.findValidators("software-default", txOpenToInProgress) } returns emptyList()
 
         // open→closed: issueKey 를 검사하는 validator — "ATLAS-42" 이면 통과
         val keyCheckConfig = ValidatorConfig("CustomExpression", mapOf("expression" to "issue.key == 'ATLAS-42'"))
-        every { mockDefinitionRepo.findValidators(txOpenToClosed) } returns listOf(keyCheckConfig)
+        every { mockDefinitionRepo.findValidators("software-default", txOpenToClosed) } returns listOf(keyCheckConfig)
         val keyCheckValidator = mockk<WorkflowValidator>()
         every { keyCheckValidator.type } returns "CustomExpression"
         every {
@@ -165,10 +165,10 @@ class WorkflowEngineAvailableTransitionsTest {
     fun `S3 — validator 가 open→closed 전이를 거부하면 결과에서 제외된다`() {
         every { mockCache.findByKey("software-default") } returns softwareDefaultWorkflow
         // open→in_progress: validator 없음 → 통과
-        every { mockDefinitionRepo.findValidators(txOpenToInProgress) } returns emptyList()
+        every { mockDefinitionRepo.findValidators("software-default", txOpenToInProgress) } returns emptyList()
         // open→closed: validator 1개 → Fail 반환
         val blockingConfig = ValidatorConfig("Permission", mapOf("role" to "ADMIN"))
-        every { mockDefinitionRepo.findValidators(txOpenToClosed) } returns listOf(blockingConfig)
+        every { mockDefinitionRepo.findValidators("software-default", txOpenToClosed) } returns listOf(blockingConfig)
         val blockingValidator = mockk<WorkflowValidator>()
         every { blockingValidator.type } returns "Permission"
         every { blockingValidator.validate(any()) } returns
