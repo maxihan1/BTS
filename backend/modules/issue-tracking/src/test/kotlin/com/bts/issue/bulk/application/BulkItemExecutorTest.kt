@@ -208,7 +208,7 @@ class BulkItemExecutorTest : DescribeSpec({
                 }
             }
 
-            it("매핑 안 된 예외(RuntimeException) → NOT_FOUND fallback 으로 failureRecorder 호출") {
+            it("매핑 안 된 예외(RuntimeException) → UNKNOWN 으로 failureRecorder 호출") {
                 val operation = makeOperation()
                 val item = pendingItem()
                 every {
@@ -219,7 +219,7 @@ class BulkItemExecutorTest : DescribeSpec({
                 sut.executeItem(actorId, operation, item)
 
                 verify(exactly = 1) {
-                    failureRecorder.recordFailure(operationId, issueKey, FailureReasonCode.NOT_FOUND)
+                    failureRecorder.recordFailure(operationId, issueKey, FailureReasonCode.UNKNOWN)
                 }
             }
         }

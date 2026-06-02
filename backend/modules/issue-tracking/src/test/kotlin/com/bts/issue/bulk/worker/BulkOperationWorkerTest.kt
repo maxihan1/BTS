@@ -4,6 +4,7 @@ package com.bts.issue.bulk.worker
 
 import com.bts.issue.bulk.application.BulkOperationProcessor
 import com.bts.issue.bulk.domain.BulkOperationId
+import com.bts.issue.bulk.domain.BulkOperationStatus
 import com.bts.issue.bulk.repository.BulkOperationRepository
 import io.kotest.core.spec.style.DescribeSpec
 import io.mockk.clearMocks
@@ -97,21 +98,137 @@ class BulkOperationWorkerTest : DescribeSpec({
             }
         }
 
-        context("claimForRun 이 false 를 반환할 때 (동시 2워커 — 타 워커가 이미 선점)") {
+        context("claimForRun 이 false 를 반환할 때 — 작업이 COMPLETED 종단 상태") {
             val operationId = BulkOperationId(UUID.randomUUID())
             val msgId = 99L
 
             beforeEach {
                 stubReadOneMessage(dsl, operationId, msgId)
                 every { bulkRepo.claimForRun(operationId) } returns false
+                every { bulkRepo.findStatus(operationId) } returns BulkOperationStatus.COMPLETED
+                every {
+                    dsl.execute(any<String>(), BulkOperationWorker.QUEUE_NAME, msgId)
+                } returns 1
             }
 
-            it("processor, completeAndPublish, delete 를 호출하지 않는다") {
+            it("processor, completeAndPublish 는 호출하지 않고 메시지는 삭제한다 (무한 재전달 차단)") {
                 worker.pollAndProcess()
 
                 verify(exactly = 0) { processor.process(any()) }
                 verify(exactly = 0) { completer.completeAndPublish(any(), any()) }
-                verify(exactly = 0) { dsl.execute(any<String>(), any(), any<Long>()) }
+                verify(exactly = 1) { dsl.execute(any<String>(), BulkOperationWorker.QUEUE_NAME, msgId) }
+            }
+        }
+
+        context("claimForRun 이 false 를 반환할 때 — 작업이 FAILED 종단 상태") {
+            val operationId = BulkOperationId(UUID.randomUUID())
+            val msgId = 100L
+
+            beforeEach {
+                stubReadOneMessage(dsl, operationId, msgId)
+                every { bulkRepo.claimForRun(operationId) } returns false
+                every { bulkRepo.findStatus(operationId) } returns BulkOperationStatus.FAILED
+                every {
+                    dsl.execute(any<String>(), BulkOperationWorker.QUEUE_NAME, msgId)
+                } returns 1
+            }
+
+            it("FAILED 종단 작업도 메시지를 삭제한다") {
+                worker.pollAndProcess()
+
+                verify(exactly = 0) { processor.process(any()) }
+                verify(exactly = 1) { dsl.execute(any<String>(), BulkOperationWorker.QUEUE_NAME, msgId) }
+            }
+        }
+
+        context("claimForRun 이 false 를 반환할 때 — 작업이 RUNNING (아직 stale 아님)") {
+            val operationId = BulkOperationId(UUID.randomUUID())
+            val msgId = 101L
+
+            beforeEach {
+                stubReadOneMessage(dsl, operationId, msgId)
+                every { bulkRepo.claimForRun(operationId) } returns false
+                every { bulkRepo.findStatus(operationId) } returns BulkOperationStatus.RUNNING
+            }
+
+            it("다른 워커가 처리 중이므로 메시지를 삭제하지 않는다 (정상 재전달 허용)") {
+                worker.pollAndProcess()
+
+                verify(exactly = 0) { processor.process(any()) }
+                verify(exactly = 0) { dsl.execute(any<String>(), BulkOperationWorker.QUEUE_NAME, msgId) }
+            }
+        }
+
+        context("claimForRun 이 false 를 반환할 때 — 작업을 찾을 수 없음 (null, poison)") {
+            val operationId = BulkOperationId(UUID.randomUUID())
+            val msgId = 102L
+
+            beforeEach {
+                stubReadOneMessage(dsl, operationId, msgId, readCt = BulkOperationWorker.MAX_RECEIVE_COUNT + 1)
+                every { bulkRepo.claimForRun(operationId) } returns false
+                every { bulkRepo.findStatus(operationId) } returns null
+                every {
+                    dsl.execute(any<String>(), BulkOperationWorker.QUEUE_NAME, msgId)
+                } returns 1
+            }
+
+            it("read_ct 초과 시 archive 를 호출한다 (dead-letter)") {
+                worker.pollAndProcess()
+
+                verify(exactly = 0) { processor.process(any()) }
+                // archive 는 pgmq.archive 를 별도 SQL 로 호출
+                verify(exactly = 1) {
+                    dsl.execute(
+                        match<String> { it.contains("pgmq.archive") },
+                        BulkOperationWorker.QUEUE_NAME,
+                        msgId,
+                    )
+                }
+            }
+        }
+
+        context("parseOperationId 가 null 을 반환할 때 (poison 메시지, read_ct 초과)") {
+            val msgId = 200L
+
+            beforeEach {
+                stubReadPoisonMessage(dsl, msgId, readCt = BulkOperationWorker.MAX_RECEIVE_COUNT + 1)
+                every {
+                    dsl.execute(any<String>(), BulkOperationWorker.QUEUE_NAME, msgId)
+                } returns 1
+            }
+
+            it("read_ct 초과 시 archive 를 호출한다") {
+                worker.pollAndProcess()
+
+                verify(exactly = 0) { processor.process(any()) }
+                verify(exactly = 1) {
+                    dsl.execute(
+                        match<String> { it.contains("pgmq.archive") },
+                        BulkOperationWorker.QUEUE_NAME,
+                        msgId,
+                    )
+                }
+            }
+        }
+
+        context("parseOperationId 가 null 을 반환할 때 (poison 메시지, read_ct 미만)") {
+            val msgId = 201L
+
+            beforeEach {
+                stubReadPoisonMessage(dsl, msgId, readCt = 1)
+            }
+
+            it("read_ct 미초과 시 archive 를 호출하지 않는다 (재전달 대기)") {
+                worker.pollAndProcess()
+
+                verify(exactly = 0) { processor.process(any()) }
+                verify(exactly = 0) {
+                    dsl.execute(
+                        match<String> { it.contains("pgmq.archive") },
+                        any(),
+                        any<Long>(),
+                    )
+                }
             }
         }
 
@@ -141,18 +258,51 @@ class BulkOperationWorkerTest : DescribeSpec({
 /**
  * dsl.fetch("SELECT * FROM pgmq.read(…)") 가 단일 메시지 1건을 반환하도록 스텁한다.
  *
- * pgmq.read 결과는 msg_id(bigint), message(jsonb) 컬럼을 가진다.
+ * pgmq.read 결과는 msg_id(bigint), message(jsonb), read_ct(int) 컬럼을 가진다.
  * MockK Result 모의 객체로 단순화한다.
  */
 private fun stubReadOneMessage(
     dsl: DSLContext,
     operationId: BulkOperationId,
     msgId: Long,
+    readCt: Int = 1,
 ) {
     val row =
         mockk<org.jooq.Record>(relaxed = true) {
             every { get("msg_id", Long::class.java) } returns msgId
             every { get("message", String::class.java) } returns """{"bulkOperationId":"${operationId.value}"}"""
+            every { get("read_ct", Int::class.java) } returns readCt
+        }
+    val result =
+        mockk<org.jooq.Result<org.jooq.Record>>(relaxed = true) {
+            every { isEmpty() } returns false
+            every { iterator() } answers { mutableListOf(row).iterator() }
+        }
+    every {
+        dsl.fetch(
+            any<String>(),
+            BulkOperationWorker.QUEUE_NAME,
+            BulkOperationWorker.VISIBILITY_TIMEOUT_SECONDS,
+            BulkOperationWorker.POLL_BATCH_SIZE,
+        )
+    } returns result
+}
+
+/**
+ * 유효하지 않은 JSON (poison 메시지)을 반환하도록 스텁한다.
+ *
+ * bulkOperationId 가 없는 메시지로 parseOperationId 가 null 을 반환하게 한다.
+ */
+private fun stubReadPoisonMessage(
+    dsl: DSLContext,
+    msgId: Long,
+    readCt: Int = 1,
+) {
+    val row =
+        mockk<org.jooq.Record>(relaxed = true) {
+            every { get("msg_id", Long::class.java) } returns msgId
+            every { get("message", String::class.java) } returns """{"not_an_operation":"garbage"}"""
+            every { get("read_ct", Int::class.java) } returns readCt
         }
     val result =
         mockk<org.jooq.Result<org.jooq.Record>>(relaxed = true) {

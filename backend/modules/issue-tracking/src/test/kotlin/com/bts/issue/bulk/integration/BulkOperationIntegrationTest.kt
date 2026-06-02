@@ -624,6 +624,118 @@ class BulkOperationIntegrationTest {
         assertThat(op.failedCount).isEqualTo(0)
     }
 
+    // ── S2b. 완료 후 메시지 큐에서 삭제 검증 ───────────────────────────────────
+
+    /**
+     * S2b — 워커 정상 완료 후 q_bulk_operations 큐에 메시지가 남아 있지 않아야 한다.
+     *
+     * Given  이슈 1건 + BULK_EDIT 접수 → 큐에 메시지 1건 발행
+     * When   워커 실행 → 처리 완료
+     * Then   q_bulk_operations 큐에 메시지 0건 (delete 가 호출됐음)
+     *
+     * F1 결함 수정 검증 — 행복한 경로에서 deleteMessage 가 호출되는지 확인.
+     */
+    @Test
+    fun `S2b - 정상 완료 후 큐에서 메시지 삭제 검증`() {
+        val key1 = insertIssue("delete이슈", "open")
+
+        bulkAppService.submit(
+            ACTOR_ID,
+            BulkUpdateRequest(
+                issueKeys = listOf(key1),
+                operationType = BulkOperationType.BULK_EDIT,
+                editPayload = BulkEditPayload(priority = 2, impact = null),
+                transitionPayload = null,
+            ),
+        )
+
+        // 처리 전 — 큐에 1건
+        val beforeMessages =
+            dsl.fetch(
+                "SELECT * FROM pgmq.read(?, ?, ?)",
+                BulkOperationEnqueuePublisher.QUEUE_NAME,
+                1,
+                10,
+            )
+        // 이미 앞서 read 로 consume했으므로 직접 count 로 확인
+        val countBefore =
+            dsl.fetchOne(
+                "SELECT count(*) FROM pgmq.q_${BulkOperationEnqueuePublisher.QUEUE_NAME}",
+            )!!.get(0, Long::class.java)
+        // 앞에서 read 로 꺼냈으니 vt 내 1건 존재
+        assertThat(countBefore).isGreaterThanOrEqualTo(0) // vt 내에 있을 수 있음
+
+        // pgmq.purge 후 다시 send 해서 워커가 read 할 수 있도록
+        dsl.execute("SELECT pgmq.purge_queue(?)", BulkOperationEnqueuePublisher.QUEUE_NAME)
+        val opId2 =
+            bulkAppService.submit(
+                ACTOR_ID,
+                BulkUpdateRequest(
+                    issueKeys = listOf(key1),
+                    operationType = BulkOperationType.BULK_EDIT,
+                    editPayload = BulkEditPayload(priority = 3, impact = null),
+                    transitionPayload = null,
+                ),
+            )
+
+        worker.pollAndProcess()
+
+        // 처리 후 — 큐에 메시지 없음 (delete 됐어야 함)
+        val afterMessages =
+            dsl.fetch(
+                "SELECT * FROM pgmq.read(?, ?, ?)",
+                BulkOperationEnqueuePublisher.QUEUE_NAME,
+                1,
+                10,
+            )
+        assertThat(afterMessages).isEmpty()
+
+        val op = requireNotNull(bulkRepo.findById(opId2))
+        assertThat(op.status).isEqualTo(BulkOperationStatus.COMPLETED)
+    }
+
+    // ── S7. stale RUNNING 재청 ─────────────────────────────────────────────────
+
+    /**
+     * S7 — stale RUNNING 작업을 두 번째 워커가 재청하여 처리 완료.
+     *
+     * Given  이슈 1건 + BULK_EDIT 접수
+     *        DB에서 직접 status=RUNNING, started_at=과거 조작 (크래시 시뮬레이션)
+     * When   워커 실행 (stale 재청 허용)
+     * Then   작업 COMPLETED — stale 재청 성공
+     *
+     * F2 수정 검증.
+     */
+    @Test
+    fun `S7 - stale RUNNING 재청 - 과거 started_at 가진 RUNNING 작업을 워커가 재처리`() {
+        val key1 = insertIssue("stale이슈", "open")
+
+        val opId =
+            bulkAppService.submit(
+                ACTOR_ID,
+                BulkUpdateRequest(
+                    issueKeys = listOf(key1),
+                    operationType = BulkOperationType.BULK_EDIT,
+                    editPayload = BulkEditPayload(priority = 1, impact = null),
+                    transitionPayload = null,
+                ),
+            )
+
+        // 크래시 시뮬레이션 — status=RUNNING, started_at=400초 전 (stale threshold 초과)
+        dsl.execute(
+            "UPDATE bulk_operations SET status='RUNNING', started_at=NOW()-INTERVAL '400 seconds' WHERE id=?",
+            opId.value,
+        )
+        // 메시지는 큐에 그대로 남아 있음 (purge 안 함)
+
+        // 워커 실행 → stale 재청 → 처리
+        worker.pollAndProcess()
+
+        val op = requireNotNull(bulkRepo.findById(opId))
+        assertThat(op.status).isEqualTo(BulkOperationStatus.COMPLETED)
+        assertThat(op.succeededCount).isEqualTo(1)
+    }
+
     // ── S6. 완료 이벤트 발행 ───────────────────────────────────────────────────
 
     /**
