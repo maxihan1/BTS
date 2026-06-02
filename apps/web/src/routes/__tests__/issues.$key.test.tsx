@@ -107,7 +107,7 @@ describe('IssueDetailPage — 권한별 제목/편집 버튼 제어 (FR-PM-02 Ta
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByLabelText('제목 수정')).not.toBeDisabled()
+      expect(screen.getByLabelText('✎ 제목 수정')).not.toBeDisabled()
     })
   })
 
@@ -116,7 +116,7 @@ describe('IssueDetailPage — 권한별 제목/편집 버튼 제어 (FR-PM-02 Ta
     renderPage()
 
     await waitFor(() => {
-      const editButton = screen.getByLabelText('제목 수정')
+      const editButton = screen.getByLabelText('✎ 제목 수정')
       expect(editButton).toBeDisabled()
     })
   })
@@ -127,8 +127,8 @@ describe('IssueDetailPage — 권한별 제목/편집 버튼 제어 (FR-PM-02 Ta
     renderPage()
 
     // 제목 수정 버튼 클릭 → 편집 모드 진입
-    await waitFor(() => screen.getByLabelText('제목 수정'))
-    await user.click(screen.getByLabelText('제목 수정'))
+    await waitFor(() => screen.getByLabelText('✎ 제목 수정'))
+    await user.click(screen.getByLabelText('✎ 제목 수정'))
 
     const saveButton = screen.getByTestId('issue-title-save')
     expect(saveButton).not.toBeDisabled()
@@ -139,7 +139,7 @@ describe('IssueDetailPage — 권한별 제목/편집 버튼 제어 (FR-PM-02 Ta
     renderPage()
 
     await waitFor(() => {
-      const editButton = screen.getByLabelText('제목 수정')
+      const editButton = screen.getByLabelText('✎ 제목 수정')
       expect(editButton).toBeDisabled()
     })
   })
@@ -149,7 +149,7 @@ describe('IssueDetailPage — 권한별 제목/편집 버튼 제어 (FR-PM-02 Ta
     renderPage()
 
     await waitFor(() => {
-      const editButton = screen.getByLabelText('제목 수정')
+      const editButton = screen.getByLabelText('✎ 제목 수정')
       expect(editButton).toBeDisabled()
     })
   })
