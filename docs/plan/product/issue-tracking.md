@@ -103,11 +103,11 @@
 
 **우선순위**. 높음 | **선행**. §2.1.1 | **Plan slug**. `issue/bulk-edit`
 
-- [ ] D1. 도메인 — BulkOp (책임. backend-engineer)
-- [ ] D2. 명세 — 트랜잭션 정책, 부분 실패 처리 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (FR-IS-01 활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST /api/v1/issues/bulk-update`. 청크 처리 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — 부분 실패 시 트랜잭션 동작 (책임. backend-engineer)
+- [x] D1. 도메인 — BulkOp (책임. backend-engineer)
+- [x] D2. 명세 — 트랜잭션 정책, 부분 실패 처리 (책임. backend-engineer)
+- [x] D3. 데이터 모델 — (FR-IS-01 활용) (책임. db-engineer)
+- [x] D4. 백엔드 — `POST /api/v1/issues/bulk-update`. 청크 처리 (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — 부분 실패 시 트랜잭션 동작 (책임. backend-engineer)
 - [ ] D6. 프론트 UI — 다중 선택 + 액션 바 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
