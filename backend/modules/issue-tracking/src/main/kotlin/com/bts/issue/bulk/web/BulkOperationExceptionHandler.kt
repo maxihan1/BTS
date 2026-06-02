@@ -5,6 +5,8 @@ package com.bts.issue.bulk.web
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
+import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import java.net.URI
@@ -43,6 +45,49 @@ class BulkOperationExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
 
     // ── 400 VALIDATION_FAILED ─────────────────────────────────────────────────
+
+    /**
+     * [MethodArgumentNotValidException] — `@Valid` Bean Validation 실패 — 400.
+     *
+     * 필수 필드 누락 등 Jakarta Validation 위반 시 Spring MVC 가 발생시킨다.
+     * IssueExceptionHandler 와 동일한 ProblemDetail 계약 형태를 사용한다.
+     *
+     * @param ex 필드별 오류 목록을 포함하는 Spring MVC 예외.
+     */
+    @ExceptionHandler(MethodArgumentNotValidException::class)
+    fun handleMethodArgumentNotValid(ex: MethodArgumentNotValidException): ProblemDetail {
+        val fieldErrors =
+            ex.bindingResult.fieldErrors.joinToString("; ") {
+                "${it.field}: ${it.defaultMessage}"
+            }
+        log.info("ISSUE_BULK_400 validation_failed fields='{}'", fieldErrors)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "bulk-validation-failed",
+            title = "Bulk Validation Failed",
+            errorCode = BulkErrorCodes.VALIDATION_FAILED,
+            detail = fieldErrors.ifBlank { "요청 값 검증에 실패했습니다." },
+        )
+    }
+
+    /**
+     * [HttpMessageNotReadableException] — 요청 본문 역직렬화 실패 — 400.
+     *
+     * 미허용 enum 값(`operationType:"GARBAGE"`) 또는 JSON 파싱 불가 시 발생한다.
+     *
+     * @param ex 역직렬화 실패를 나타내는 예외. 원인 메시지만 로그에 기록하고 상세 내용은 응답에 포함하지 않는다.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleHttpMessageNotReadable(ex: HttpMessageNotReadableException): ProblemDetail {
+        log.info("ISSUE_BULK_400 message_not_readable cause='{}'", ex.cause?.message ?: ex.message)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "bulk-validation-failed",
+            title = "Bulk Validation Failed",
+            errorCode = BulkErrorCodes.VALIDATION_FAILED,
+            detail = "요청 본문을 읽을 수 없습니다. JSON 형식 또는 필드 값을 확인해 주세요.",
+        )
+    }
 
     /**
      * [IllegalArgumentException] — 서비스 계층 검증 실패 — 400.
@@ -105,6 +150,30 @@ class BulkOperationExceptionHandler {
         )
     }
 
+    // ── 500 INTERNAL_ERROR (catch-all) ────────────────────────────────────────
+
+    /**
+     * 분류되지 않은 모든 예외 — 500.
+     *
+     * 더 구체적인 핸들러([MethodArgumentNotValidException], [HttpMessageNotReadableException],
+     * [IllegalArgumentException], [BulkOperationForbiddenException], [BulkOperationNotFoundException])
+     * 가 먼저 처리하고, 여기에 도달한 예외는 내부 오류로 간주한다.
+     * 스택트레이스는 서버 로그에만 기록하고 응답에는 포함하지 않는다.
+     *
+     * @param ex 처리되지 않은 예외.
+     */
+    @ExceptionHandler(Exception::class)
+    fun handleInternalError(ex: Exception): ProblemDetail {
+        log.error("ISSUE_BULK_500 internal_error", ex)
+        return problem(
+            status = HttpStatus.INTERNAL_SERVER_ERROR,
+            type = "bulk-internal-error",
+            title = "Internal Server Error",
+            errorCode = BulkErrorCodes.INTERNAL_ERROR,
+            detail = "서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+        )
+    }
+
     // ── private helper ────────────────────────────────────────────────────────
 
     /**
@@ -145,4 +214,5 @@ object BulkErrorCodes {
     const val VALIDATION_FAILED = "ISSUE_BULK_VALIDATION_FAILED"
     const val BULK_FORBIDDEN = "ISSUE_BULK_FORBIDDEN"
     const val BULK_NOT_FOUND = "ISSUE_BULK_NOT_FOUND"
+    const val INTERNAL_ERROR = "ISSUE_BULK_INTERNAL_ERROR"
 }
