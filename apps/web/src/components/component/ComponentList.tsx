@@ -88,36 +88,28 @@ export function ComponentList({ projectKey }: ComponentListProps): JSX.Element {
     }
   }
 
+  // ── mutation 공통 콜백 헬퍼
+  const mutationCallbacks = {
+    onSuccess: () => {
+      setDialogState({ open: false })
+      setSubmitError(null)
+    },
+    onError: (err: unknown) => {
+      const code = extractComponentErrorCode(err)
+      setSubmitError(componentErrorMessage(code))
+    },
+  }
+
   // ── 저장 콜백 — create/edit 분기
   function handleSubmit(input: CreateComponentInput): void {
     if (!dialogState.open) return
 
     if (dialogState.mode === 'create') {
-      createComponent.mutate(input, {
-        onSuccess: () => {
-          setDialogState({ open: false })
-          setSubmitError(null)
-        },
-        onError: (err) => {
-          const code = extractComponentErrorCode(err)
-          setSubmitError(componentErrorMessage(code))
-        },
-      })
+      createComponent.mutate(input, mutationCallbacks)
     } else {
-      // edit 모드 — dialogState.component.id로 updateComponent 호출
-      const targetId = dialogState.component.id
       updateComponent.mutate(
-        { id: targetId, input },
-        {
-          onSuccess: () => {
-            setDialogState({ open: false })
-            setSubmitError(null)
-          },
-          onError: (err) => {
-            const code = extractComponentErrorCode(err)
-            setSubmitError(componentErrorMessage(code))
-          },
-        },
+        { id: dialogState.component.id, input },
+        mutationCallbacks,
       )
     }
   }
