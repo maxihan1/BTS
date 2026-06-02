@@ -52,9 +52,9 @@ EDIT/CREATE는 항상 O. 멤버끼리 갈리는 유일한 권한이 DELETE(ADMIN
 
 ## 기능 요구사항 (FR)
 
-- **FR-1 (백엔드)**: 이슈 스코프 권한 조회 엔드포인트 신설. 현재 인증 사용자가 특정 이슈에 대해 가진
-  IssuePermission(UPDATE/SOFT_DELETE [+TRANSITION 참고])을 boolean 맵으로 반환. IssuePermissionResolver
-  포트 재사용(issue-tracking BC).
+- **FR-1 (백엔드)**: 이슈 스코프 권한 조회 엔드포인트 신설(**identity-access BC**). 현재 인증 사용자가
+  특정 이슈에 대해 가진 IssuePermission(UPDATE/SOFT_DELETE [+TRANSITION 참고])을 boolean 맵으로 반환.
+  WhoamiController의 JWT/PAT actor 추출 패턴 재사용 + IdentityAccessIssuePermissionResolver 직접 호출.
 - **FR-2 (프론트)**: 권한 조회 API client + Zod 스키마 + TanStack Query 훅(`useIssuePermissions(issueKey)`).
 - **FR-3 (프론트)**: 이슈 상세 화면의 수정(UPDATE) 버튼들과 삭제(SOFT_DELETE) 버튼을 권한 응답으로 disabled 분기.
 - **FR-4 (프론트)**: 비활성 버튼에 사유 안내(tooltip/aria-disabled + 접근성 라벨).
@@ -74,11 +74,11 @@ EDIT/CREATE는 항상 O. 멤버끼리 갈리는 유일한 권한이 DELETE(ADMIN
 
 ## API 인터페이스 (REST)
 
-권장안(plan에서 IssueController 컨벤션과 최종 확정):
+identity-access BC, whoami와 같은 "me" 네임스페이스:
 
 ```
-GET /api/v1/issues/{issueKey}/my-permissions
-Authorization: Bearer <JWT>
+GET /api/v1/users/me/issue-permissions?issueKey={issueKey}
+Authorization: Bearer <JWT 또는 PAT>
 
 200 OK
 {
@@ -92,8 +92,9 @@ Authorization: Bearer <JWT>
 ```
 
 - 이슈 단위(scope=Issue) 권한만 반환. CREATE(프로젝트 스코프)는 후속 엔드포인트.
-- 비멤버(VIEW 없음)는 어차피 상세 화면 진입 불가. 이 엔드포인트는 인증된 사용자에 대해 200 + 권한 boolean 반환(조회는 본인 권한 확인용, 403 아님). 단 존재/접근 정책은 plan에서 IssueController 기존 404/403 패턴과 정합.
-- 경로형(`/issues/{key}/my-permissions`) vs 쿼리형(`/issue-permissions/mine?issueKey=`)은 plan에서 확정. 경로형이 IssueController 소속·BC 격리에 자연스러움.
+- actor = 인증 사용자(JWT `jwt.subject` UUID 또는 PAT `pat.userId`), WhoamiController 패턴 재사용.
+- 비멤버(VIEW 없음)는 어차피 상세 화면 진입 불가. 이 엔드포인트는 인증된 사용자에 대해 200 + 권한 boolean 반환(조회는 본인 권한 확인용, 403 아님).
+- 권한 평가: IdentityAccessIssuePermissionResolver.hasPermission(userId, UPDATE/SOFT_DELETE/TRANSITION, IssueScope.Issue(issueKey)) 3회 호출 → boolean 맵.
 
 ## 데이터 모델 변경
 
@@ -110,10 +111,10 @@ Authorization: Bearer <JWT>
 
 ## 제약 조건
 
-- BC 격리: 권한 조회 엔드포인트는 issue-tracking. identity-access 직접 import 금지(shared-kernel 포트 경유).
+- BC: 권한 조회 엔드포인트는 identity-access(인증 사용자 추출 + 권한 평가 응집). resolver는 issueKey prefix로 projectKey 해석 → 이슈 데이터 미접근, BC 격리 유지.
 - 프론트 권한 표시는 UX 힌트. 보안 경계는 백엔드 enforcement(변경 없음).
 - 새 외부 의존성 없음(기존 TanStack Query/Zod/shadcn).
-- UI PR이지만 권한 조회 엔드포인트(백엔드) 포함 — same-FR view layer 확장(FR-WF-01 옵션 C 선례). PR 제목 [ui] 유지하되 백엔드 슬라이스 포함 사유 plan 명시.
+- UI PR이지만 권한 조회 엔드포인트(identity-access 백엔드) 포함 — same-FR 보조 슬라이스. PR 제목 [ui] 유지하되 백엔드 슬라이스 포함 사유 plan 명시.
 
 ## 측정 가능한 완료 기준
 

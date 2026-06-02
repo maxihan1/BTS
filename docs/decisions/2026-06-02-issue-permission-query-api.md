@@ -27,11 +27,13 @@ FR-PM-02 D6/D7은 "권한 없는 이슈 액션(등록/수정/삭제) 버튼을 �
 백엔드에 권한 조회 엔드포인트를 신설하고, 프론트는 그 응답으로만 버튼을 켜고 끈다.
 프론트는 "역할→권한" 매트릭스를 하드코딩하지 않는다.
 
-- 엔드포인트(형태는 spec에서 확정): 현재 인증 사용자가 특정 프로젝트/이슈에 대해 가진
-  IssuePermission 집합을 boolean 맵으로 반환. 예: `{ CREATE: true, UPDATE: true, SOFT_DELETE: false }`.
-- 위치: **issue-tracking BC**. 이미 enforcement에 쓰는 shared-kernel 포트 `IssuePermissionResolver`를
-  재사용해 권한을 평가한다(identity-access 직접 import 없음 → BC 격리 유지).
-- 보안: JWT 인증 필수, 본인 권한만 조회(actorId = 인증 사용자).
+- 엔드포인트: `GET /api/v1/users/me/issue-permissions?issueKey={key}` — 현재 인증 사용자가 특정 이슈에
+  대해 가진 IssuePermission(UPDATE/SOFT_DELETE [+TRANSITION])을 boolean 맵으로 반환.
+  whoami(`/api/v1/users/me/whoami`)와 같은 "me" 네임스페이스.
+- 위치: **identity-access BC** (정정 — 아래 비고 참조). 인증 사용자 식별(WhoamiController의 JWT/PAT actor
+  추출 패턴)과 권한 평가(`IdentityAccessIssuePermissionResolver`)가 모두 identity-access의 핵심 역량이라
+  여기에 응집한다. resolver는 issueKey prefix로 projectKey를 해석하므로 이슈 데이터에 접근하지 않는다 → BC 격리 유지.
+- 보안: JWT/PAT 인증 필수, 본인 권한만 조회(actorId = 인증 사용자, 바디로 actor 안 받음).
 
 이는 상위 ADR이 채택한 "풀 Jira식 권한 스킴 구조"와 일관된다. 스킴이 Jira식이면 권한 조회도
 Jira식(`mypermissions`)으로 통일하는 것이 도메인 일관성에 맞다.
@@ -47,6 +49,12 @@ Jira식(`mypermissions`)으로 통일하는 것이 도메인 일관성에 맞다
 
 2. **낙관적 UI (버튼 항상 노출 + 403 토스트)**
    - 기각 사유: "권한 없는 버튼 비활성화"라는 요구사항 자체를 충족하지 못한다.
+
+3. **issue-tracking BC에 배치 (도메인 단계 1차 결정)**
+   - 기각 사유: IssueController는 현재 actor를 `ActorId(SYSTEM_ACTOR_UUID)`로 하드코딩(임시)해 실제
+     인증 사용자를 모른다. 권한 조회는 실제 사용자 권한을 반환해야 하므로 IssueController에 JWT/PAT
+     principal 추출(인증 관심사)을 새로 들여야 한다. 인증 사용자 추출 + 권한 평가는 identity-access의
+     핵심 역량이므로 거기에 응집하는 것이 자연스럽다(Maxi 결정 2026-06-02).
 
 ## 영향
 
