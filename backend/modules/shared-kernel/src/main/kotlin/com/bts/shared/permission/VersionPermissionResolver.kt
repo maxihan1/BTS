@@ -11,7 +11,7 @@ import java.util.UUID
  * 권한 판정을 요청한다. 개발/스테이징 환경에서는 issue-tracking 내부의
  * `AlwaysAllowVersionPermissionResolver` (`@Profile("!prod")`) stub 이 활성화된다.
  *
- * prod 실판정 adapter 는 FR-PM-03 으로 이연한다. 그 전까지 prod 프로파일에는
+ * prod 실판정 adapter(prod impl)는 FR-PM-03 이 채운다. 그 전까지 prod 프로파일에는
  * 이 포트를 채우는 구현이 없으므로, 운영 부팅 시 실제 adapter 없이는
  * `BeanCreationException` 으로 부팅이 차단된다(임시 우회 stub 금지).
  *
