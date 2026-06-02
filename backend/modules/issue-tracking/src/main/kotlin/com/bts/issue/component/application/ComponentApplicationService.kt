@@ -35,6 +35,9 @@ private const val SQL_STATE_UNIQUE_VIOLATION = "23505"
  * 클래스 레벨 `@Transactional` 이 기본(읽기/쓰기 모두). 읽기 전용 메서드는
  * `@Transactional(readOnly = true)` 를 오버라이드한다.
  */
+// 공개 메서드 6개 + private 헬퍼 6개 = 12개. TooManyFunctions 임계값 11 초과이나
+// 명세 요구 메서드 수로 파일 분리는 과도 — Suppress 처리.
+@Suppress("TooManyFunctions")
 @Service
 @Transactional
 class ComponentApplicationService(
@@ -78,12 +81,13 @@ class ComponentApplicationService(
         assertPermission(actorId, ComponentPermission.CREATE, projectId)
         validateLead(leadUserId)
 
-        val domain = Component.create(
-            projectId = projectId,
-            name = name,
-            description = description,
-            leadUserId = leadUserId,
-        )
+        val domain =
+            Component.create(
+                projectId = projectId,
+                name = name,
+                description = description,
+                leadUserId = leadUserId,
+            )
         return tryInsert(domain, name)
     }
 
@@ -162,7 +166,10 @@ class ComponentApplicationService(
         validateLead(leadUserId)
 
         val updated = existing.changeLead(leadUserId)
-        log.info("component_lead_changed id={} projectId={} leadUserId={} actor={}", componentId, projectId, leadUserId, actorId)
+        log.info(
+            "component_lead_changed id={} projectId={} leadUserId={} actor={}",
+            componentId, projectId, leadUserId, actorId,
+        )
         return repo.update(updated)
     }
 
@@ -213,6 +220,7 @@ class ComponentApplicationService(
         componentId: UUID,
     ): Component {
         val projectId = resolveProject(projectIdOrKey)
+        log.debug("component_get_by_id id={} projectId={} actor={}", componentId, projectId, actorId)
         return findActiveComponent(componentId, projectId)
     }
 
@@ -232,6 +240,7 @@ class ComponentApplicationService(
         projectIdOrKey: String,
     ): List<Component> {
         val projectId = resolveProject(projectIdOrKey)
+        log.debug("component_list_by_project projectId={} actor={}", projectId, actorId)
         return repo.findByProject(projectId)
     }
 
@@ -309,9 +318,10 @@ class ComponentApplicationService(
         try {
             repo.insert(component)
         } catch (ex: DataIntegrityViolationException) {
-            val sqlState = ex.cause?.let { cause ->
-                if (cause is java.sql.SQLException) cause.sqlState else null
-            }
+            val sqlState =
+                ex.cause?.let { cause ->
+                    if (cause is java.sql.SQLException) cause.sqlState else null
+                }
             if (sqlState == SQL_STATE_UNIQUE_VIOLATION) {
                 log.warn("Duplicate component name={} projectId={}", name, component.projectId)
                 throw DuplicateComponentNameException(name)

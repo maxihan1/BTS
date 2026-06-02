@@ -384,7 +384,10 @@ class ComponentApplicationServiceTest : DescribeSpec({
     describe("listByProject") {
         context("정상 경로") {
             it("프로젝트 resolve → findByProject 반환") {
-                val components = listOf(activeComponent, activeComponent.copy(id = UUID.randomUUID(), name = "Frontend"))
+                val components = listOf(
+                    activeComponent,
+                    activeComponent.copy(id = UUID.randomUUID(), name = "Frontend"),
+                )
                 every { projectLookup.resolve(projectIdOrKey) } returns projectId
                 every { repo.findByProject(projectId) } returns components
 
