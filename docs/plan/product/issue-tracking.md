@@ -109,7 +109,7 @@
 - [x] D4. 백엔드 — `POST /api/v1/issues/bulk-update`. 청크 처리 (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 — 부분 실패 시 트랜잭션 동작 (책임. backend-engineer)
 - [x] D6. 프론트 UI — 다중 선택 + 액션 바 (책임. designer → frontend-engineer) (완료. PR #58 — 이슈 목록 체크박스 다중선택(페이지 교차 누적) + 일괄 액션바 + 일괄 편집/전이 Dialog + 결과 패널(폴링 1.5s 종단중지). 전이 대상=가용전이 교집합만(Promise.allSettled N회). 계약 정합(payload operationType union/DataResponse/errorCode4·failureReasonCode7). B1 BLOCKER(체크박스 행 형제구조+키 비포함 aria-label, getByLabel 회귀0) + 적대적리뷰 결함4건(폴링 에러 무한루프/전량실패 빈드롭다운/stale 덮어쓰기/Dialog 잔상) 수정. 9 TDD task. 프론트 854 단위+typecheck+lint+기존 E2E 24 green. FR-PM-02 #57과 issues.index 충돌→NewIssueButton+일괄UI 공존 통합머지)
-- [ ] D7. E2E — 일괄 편집/전이 + 진행률 폴링 시나리오 + bulk MSW 핸들러 정본 (책임. qa-engineer)
+- [x] D7. E2E — 일괄 편집/전이 + 진행률 폴링 시나리오 + bulk MSW 핸들러 정본 (책임. qa-engineer) (완료. PR #60 — bulk 작업 공용 MSW 핸들러 정본(bulk-operation-handlers.ts, stateful 폴링 2폴내 종단 + partial-fail/reject localStorage 토글) + 단위 11 + E2E 5(S1 편집happy/S2 전이happy 교집합closed/S3 부분실패 성공2실패1/S4 접수실패 토스트/S5 교집합0). 코드리뷰 PASS, CONCERNS 2건(payload union 가드+격리주석) 반영. typecheck/lint/단위 865/전체 E2E 71 passed 1 skipped 회귀0)
 
 #### §2.2.2 FR-IS-09 — 라벨 자동완성
 
