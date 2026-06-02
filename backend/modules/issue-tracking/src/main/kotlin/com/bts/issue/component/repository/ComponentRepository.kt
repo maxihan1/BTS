@@ -121,6 +121,31 @@ class ComponentRepository(
             .execute()
     }
 
+    /**
+     * 컴포넌트 정보(name, description, leadUserId)를 갱신하고 갱신된 [Component]를 반환한다.
+     *
+     * [component.id] 가 null 이면 [IllegalArgumentException] 을 던진다.
+     *
+     * @param component 갱신할 값이 채워진 [Component]. [Component.id] 는 non-null 이어야 한다.
+     * @return 갱신 후 DB 에서 재조회한 [Component].
+     */
+    @Transactional
+    fun update(component: Component): Component {
+        val id = requireNotNull(component.id) { "component.id must not be null for update" }
+        log.debug("Updating component id={} projectId={}", id, component.projectId)
+        val now = OffsetDateTime.now(ZoneOffset.UTC)
+        dsl.update(COMPONENTS)
+            .set(COMPONENTS.NAME, component.name)
+            .set(COMPONENTS.DESCRIPTION, component.description)
+            .set(COMPONENTS.LEAD_USER_ID, component.leadUserId)
+            .set(COMPONENTS.UPDATED_AT, now)
+            .where(COMPONENTS.ID.eq(id))
+            .and(COMPONENTS.PROJECT_ID.eq(component.projectId))
+            .and(COMPONENTS.DELETED_AT.isNull)
+            .execute()
+        return component
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     /**
