@@ -1,4 +1,5 @@
 // 이슈 일괄 액션 바 컴포넌트 — 선택된 이슈에 대한 일괄 편집/전이/선택 해제 액션 제공
+import type { JSX } from 'react'
 import { Button } from '@/components/ui/button'
 
 /** IssueBulkActionBar props */
@@ -23,7 +24,7 @@ export const IssueBulkActionBar = ({
   onEdit,
   onTransition,
   onClear,
-}: IssueBulkActionBarProps): React.ReactElement | null => {
+}: IssueBulkActionBarProps): JSX.Element | null => {
   if (count === 0) {
     return null
   }
