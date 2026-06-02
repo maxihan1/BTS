@@ -9,6 +9,7 @@ import com.bts.issue.component.domain.ComponentNotFoundException
 import com.bts.issue.component.domain.ComponentProjectNotFoundException
 import com.bts.issue.component.domain.DuplicateComponentNameException
 import com.bts.issue.component.repository.ComponentRepository
+import com.bts.issue.project.ProjectLookup
 import com.bts.shared.permission.ComponentPermission
 import com.bts.shared.permission.ComponentPermissionResolver
 import com.bts.shared.user.UserLookupPort
