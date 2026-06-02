@@ -1,4 +1,4 @@
-// 일괄 상태 전이 Dialog 컴포넌트 단위 테스트 — 교집합 전이 선택 + submit 검증
+// 일괄 상태 전이 Dialog 컴포넌트 단위 테스트 — 단일 bulk API 기반 전이 선택 + submit 검증
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -51,13 +51,13 @@ vi.mock('@/components/ui/select', async () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// fetchIssueTransitions mock
+// fetchBulkAvailableTransitions mock
 // ─────────────────────────────────────────────────────────────────────────────
 
-const mockFetchIssueTransitions = vi.fn()
+const mockFetchBulkAvailableTransitions = vi.fn()
 
 vi.mock('@/api/issues', () => ({
-  fetchIssueTransitions: (key: string) => mockFetchIssueTransitions(key),
+  fetchBulkAvailableTransitions: (issueKeys: string[]) => mockFetchBulkAvailableTransitions(issueKeys),
 }))
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -118,65 +118,41 @@ function renderDialog(opts: RenderOptions = {}) {
 
 describe('BulkTransitionDialog', () => {
   beforeEach(() => {
-    mockFetchIssueTransitions.mockReset()
+    mockFetchBulkAvailableTransitions.mockReset()
     mockMutateAsync.mockReset()
   })
 
-  // (a) 교집합 전이가 드롭다운에 노출된다
-  it('(a) 각 issueKey별로 fetchIssueTransitions를 호출하고 교집합 전이를 드롭다운에 노출한다', async () => {
-    // PROJ-1: IN_PROGRESS, DONE 전이 가능
-    // PROJ-2: IN_PROGRESS, DONE 전이 가능
-    // 교집합: IN_PROGRESS, DONE
-    mockFetchIssueTransitions.mockImplementation((key: string) => {
-      if (key === 'PROJ-1') {
-        return Promise.resolve([
-          { key: 't1', name: '진행 중', fromStateKey: 'TODO', toStateKey: 'IN_PROGRESS' },
-          { key: 't2', name: '완료', fromStateKey: 'TODO', toStateKey: 'DONE' },
-        ])
-      }
-      if (key === 'PROJ-2') {
-        return Promise.resolve([
-          { key: 't3', name: '진행 중', fromStateKey: 'REVIEW', toStateKey: 'IN_PROGRESS' },
-          { key: 't4', name: '완료', fromStateKey: 'REVIEW', toStateKey: 'DONE' },
-        ])
-      }
-      return Promise.resolve([])
+  // (a) 서버가 반환한 공통 전이가 드롭다운에 노출된다
+  it('(a) fetchBulkAvailableTransitions를 단일 호출하고 반환된 transitions를 드롭다운에 노출한다', async () => {
+    mockFetchBulkAvailableTransitions.mockResolvedValueOnce({
+      transitions: [
+        { key: 't1', name: '진행 중', fromStateKey: 'TODO', toStateKey: 'IN_PROGRESS' },
+        { key: 't2', name: '완료', fromStateKey: 'TODO', toStateKey: 'DONE' },
+      ],
+      unresolvedIssueKeys: [],
     })
 
     renderDialog({ issueKeys: ['PROJ-1', 'PROJ-2'] })
 
-    // fetchIssueTransitions가 각 이슈 키에 대해 호출되어야 한다
+    // fetchBulkAvailableTransitions가 issueKeys 배열로 단일 호출되어야 한다
     await waitFor(() => {
-      expect(mockFetchIssueTransitions).toHaveBeenCalledWith('PROJ-1')
-      expect(mockFetchIssueTransitions).toHaveBeenCalledWith('PROJ-2')
+      expect(mockFetchBulkAvailableTransitions).toHaveBeenCalledWith(['PROJ-1', 'PROJ-2'])
     })
 
-    // 교집합 전이 드롭다운이 노출된다
+    // 전이 드롭다운이 노출된다
     const select = await screen.findByRole('combobox', { name: /전이 상태/i })
     expect(select).toBeInTheDocument()
 
-    // 교집합 옵션 확인 (mock SelectContent는 항상 DOM에 노출)
+    // 서버가 반환한 옵션 확인 (mock SelectContent는 항상 DOM에 노출)
     expect(await screen.findByRole('option', { name: /진행 중/i })).toBeInTheDocument()
     expect(await screen.findByRole('option', { name: /완료/i })).toBeInTheDocument()
   })
 
-  // (b) 교집합 0건이면 안내 메시지 + 적용 비활성
-  it('(b) 교집합이 0건이면 안내 메시지가 표시되고 적용 버튼이 비활성화된다', async () => {
-    // PROJ-1: IN_PROGRESS만 가능
-    // PROJ-2: DONE만 가능
-    // 교집합: 없음
-    mockFetchIssueTransitions.mockImplementation((key: string) => {
-      if (key === 'PROJ-1') {
-        return Promise.resolve([
-          { key: 't1', name: '진행 중', fromStateKey: 'TODO', toStateKey: 'IN_PROGRESS' },
-        ])
-      }
-      if (key === 'PROJ-2') {
-        return Promise.resolve([
-          { key: 't2', name: '완료', fromStateKey: 'REVIEW', toStateKey: 'DONE' },
-        ])
-      }
-      return Promise.resolve([])
+  // (b) transitions 0건 + unresolvedIssueKeys 0건이면 교집합 없음 안내 + 적용 비활성
+  it('(b) transitions가 0건이고 unresolvedIssueKeys가 없으면 안내 메시지가 표시되고 적용 버튼이 비활성화된다', async () => {
+    mockFetchBulkAvailableTransitions.mockResolvedValueOnce({
+      transitions: [],
+      unresolvedIssueKeys: [],
     })
 
     renderDialog({ issueKeys: ['PROJ-1', 'PROJ-2'] })
@@ -187,24 +163,16 @@ describe('BulkTransitionDialog', () => {
     expect(applyButton).toBeDisabled()
   })
 
-  // (c) 일부 조회 실패 시 경고 표시 + 성공분만으로 교집합 계산 + 적용 시 전체 issueKeys 전송
-  it('(c) 일부 조회 실패 시 경고를 표시하고 성공분만으로 교집합을 계산하며 적용 시 전체 issueKeys를 전송한다', async () => {
-    const bulkOperationId = 'aabbccdd-0000-0000-0000-000000000002'
+  // (c) unresolvedIssueKeys > 0 이면 경고 표시 + 나머지 transitions로 드롭다운 구성 + 적용 시 전체 issueKeys 전송
+  it('(c) unresolvedIssueKeys가 있으면 경고를 표시하고 나머지 transitions를 드롭다운에 노출하며 적용 시 전체 issueKeys를 전송한다', async () => {
+    const bulkOperationId = 'aabbccdd-4000-4000-8000-000000000002'
     mockMutateAsync.mockResolvedValueOnce({ bulkOperationId, status: 'PENDING', totalCount: 2 })
 
-    // PROJ-1: 조회 성공
-    // PROJ-2: 조회 실패
-    // 성공분(PROJ-1)만으로 교집합 계산 → PROJ-1의 전이 목록 그대로 노출
-    mockFetchIssueTransitions.mockImplementation((key: string) => {
-      if (key === 'PROJ-1') {
-        return Promise.resolve([
-          { key: 't1', name: '진행 중', fromStateKey: 'TODO', toStateKey: 'IN_PROGRESS' },
-        ])
-      }
-      if (key === 'PROJ-2') {
-        return Promise.reject(new Error('fetch failed'))
-      }
-      return Promise.resolve([])
+    mockFetchBulkAvailableTransitions.mockResolvedValueOnce({
+      transitions: [
+        { key: 't1', name: '진행 중', fromStateKey: 'TODO', toStateKey: 'IN_PROGRESS' },
+      ],
+      unresolvedIssueKeys: ['PROJ-2'],
     })
 
     const { onSubmitted, onOpenChange } = renderDialog({ issueKeys: ['PROJ-1', 'PROJ-2'] })
@@ -212,7 +180,7 @@ describe('BulkTransitionDialog', () => {
     // 경고 메시지가 표시된다
     await screen.findByText(/일부 이슈의 전이 정보를 불러오지 못했습니다/i)
 
-    // 드롭다운에 성공분 교집합 옵션이 노출된다
+    // 드롭다운에 transitions 옵션이 노출된다
     const select = screen.getByRole('combobox', { name: /전이 상태/i })
     const user = userEvent.setup()
     await user.click(select)
@@ -243,17 +211,18 @@ describe('BulkTransitionDialog', () => {
     })
   })
 
-  // (d) 교집합 선택 후 적용 → 올바른 payload로 mutateAsync 호출 + 콜백 실행
-  it('(d) 교집합 전이 선택 후 적용 시 올바른 payload로 mutateAsync를 호출하고 콜백을 실행한다', async () => {
-    const bulkOperationId = 'aabbccdd-0000-0000-0000-000000000003'
+  // (d) 전이 선택 후 적용 → 올바른 payload로 mutateAsync 호출 + 콜백 실행
+  it('(d) 전이 선택 후 적용 시 올바른 payload로 mutateAsync를 호출하고 콜백을 실행한다', async () => {
+    const bulkOperationId = 'aabbccdd-4000-4000-8000-000000000003'
     mockMutateAsync.mockResolvedValueOnce({ bulkOperationId, status: 'PENDING', totalCount: 3 })
 
-    mockFetchIssueTransitions.mockImplementation(() =>
-      Promise.resolve([
+    mockFetchBulkAvailableTransitions.mockResolvedValueOnce({
+      transitions: [
         { key: 't1', name: '진행 중', fromStateKey: 'TODO', toStateKey: 'IN_PROGRESS' },
         { key: 't2', name: '완료', fromStateKey: 'TODO', toStateKey: 'DONE' },
-      ]),
-    )
+      ],
+      unresolvedIssueKeys: [],
+    })
 
     const { onSubmitted, onOpenChange } = renderDialog({ issueKeys: ['PROJ-1', 'PROJ-2', 'PROJ-3'] })
 
@@ -288,9 +257,12 @@ describe('BulkTransitionDialog', () => {
     })
   })
 
-  // (e) 전량 조회 실패 시 에러 안내 + Select 숨김 + 적용 비활성
-  it('(e) 모든 fetchIssueTransitions가 reject되면 에러 안내가 표시되고 적용 버튼이 비활성화된다', async () => {
-    mockFetchIssueTransitions.mockRejectedValue(new Error('network error'))
+  // (e) transitions 0건 + unresolvedIssueKeys === issueKeys 전량이면 에러 안내 + Select 숨김 + 적용 비활성
+  it('(e) transitions가 0건이고 unresolvedIssueKeys가 issueKeys 전체이면 에러 안내가 표시되고 적용 버튼이 비활성화된다', async () => {
+    mockFetchBulkAvailableTransitions.mockResolvedValueOnce({
+      transitions: [],
+      unresolvedIssueKeys: ['PROJ-1', 'PROJ-2'],
+    })
 
     renderDialog({ issueKeys: ['PROJ-1', 'PROJ-2'] })
 
@@ -305,21 +277,24 @@ describe('BulkTransitionDialog', () => {
     expect(applyButton).toBeDisabled()
   })
 
-  // (f) open 토글 시 stale allSettled 결과가 무시된다 (cleanup 플래그)
-  it('(f) open이 false → true로 변경될 때 stale allSettled 결과가 새 상태를 덮어쓰지 않는다', async () => {
+  // (f) open 토글 시 stale fetch 결과가 새 상태를 덮어쓰지 않는다 (cleanup 플래그)
+  it('(f) open이 false → true로 변경될 때 stale fetch 결과가 새 상태를 덮어쓰지 않는다', async () => {
     // 첫 open: 느린 resolve (stale)
     // 두 번째 open: 즉시 resolve (새 결과)
-    let resolveFirst: (value: unknown[]) => void = () => undefined
-    const firstCall = new Promise<unknown[]>((resolve) => { resolveFirst = resolve })
+    let resolveFirst: (value: { transitions: unknown[]; unresolvedIssueKeys: string[] }) => void = () => undefined
+    const firstCall = new Promise<{ transitions: unknown[]; unresolvedIssueKeys: string[] }>((resolve) => { resolveFirst = resolve })
 
     let callIndex = 0
-    mockFetchIssueTransitions.mockImplementation(() => {
+    mockFetchBulkAvailableTransitions.mockImplementation(() => {
       callIndex++
       if (callIndex === 1) return firstCall
       // 두 번째 열림에서 즉시 다른 결과 반환
-      return Promise.resolve([
-        { key: 't-new', name: '새 상태', fromStateKey: 'TODO', toStateKey: 'NEW_STATE' },
-      ])
+      return Promise.resolve({
+        transitions: [
+          { key: 't-new', name: '새 상태', fromStateKey: 'TODO', toStateKey: 'NEW_STATE' },
+        ],
+        unresolvedIssueKeys: [],
+      })
     })
 
     const { rerender } = render(
@@ -359,9 +334,10 @@ describe('BulkTransitionDialog', () => {
     await screen.findByRole('option', { name: /새 상태/i })
 
     // 이제 첫 번째 stale 결과를 늦게 resolve — 새 상태가 덮이지 않아야 한다
-    resolveFirst([
-      { key: 't-stale', name: '낡은 상태', fromStateKey: 'TODO', toStateKey: 'STALE_STATE' },
-    ])
+    resolveFirst({
+      transitions: [{ key: 't-stale', name: '낡은 상태', fromStateKey: 'TODO', toStateKey: 'STALE_STATE' }],
+      unresolvedIssueKeys: [],
+    })
 
     // 잠시 대기 후 stale 결과가 반영되지 않아야 한다
     await new Promise((resolve) => setTimeout(resolve, 50))
@@ -371,7 +347,10 @@ describe('BulkTransitionDialog', () => {
 
   // 취소 버튼 클릭 시 onOpenChange(false) 호출
   it('취소 버튼 클릭 시 onOpenChange(false)가 호출된다', async () => {
-    mockFetchIssueTransitions.mockResolvedValue([])
+    mockFetchBulkAvailableTransitions.mockResolvedValue({
+      transitions: [],
+      unresolvedIssueKeys: [],
+    })
 
     const { onOpenChange } = renderDialog()
 
