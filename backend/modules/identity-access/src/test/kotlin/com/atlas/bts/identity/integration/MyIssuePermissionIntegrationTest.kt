@@ -143,10 +143,16 @@ class MyIssuePermissionIntegrationTest {
     private val memberId: UUID = UUID.fromString("00000000-2222-0000-0000-000000000001")
     private val nonMemberId: UUID = UUID.fromString("00000000-3333-0000-0000-000000000001")
 
+    /** 각 사용자 JWT에 포함할 sid — sessions 테이블 행을 setUp에서 삽입한다. */
+    private val adminSessionId: UUID = UUID.fromString("eeeeeeee-1111-0000-0000-000000000001")
+    private val memberSessionId: UUID = UUID.fromString("eeeeeeee-2222-0000-0000-000000000001")
+    private val nonMemberSessionId: UUID = UUID.fromString("eeeeeeee-3333-0000-0000-000000000001")
+
     private val projectId: UUID = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000002")
     private val projectKey = "PERMTEST"
     private val issueKey = "PERMTEST-1"
 
+    @Suppress("UnusedPrivateProperty")
     private val defaultSchemeId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
 
     // ── 설정 ──────────────────────────────────────────────────────────────────
@@ -156,6 +162,7 @@ class MyIssuePermissionIntegrationTest {
         ensureProjectsTableExists()
         cleanTestData()
         seedUsers()
+        seedSessions()
         seedProject()
         seedMemberships()
     }
@@ -164,7 +171,7 @@ class MyIssuePermissionIntegrationTest {
 
     @Test
     fun `ADMIN JWT — UPDATE true, SOFT_DELETE true`() {
-        val token = issueJwt(adminId)
+        val token = issueJwt(adminId, adminSessionId)
         mockMvc.perform(
             get("/api/v1/users/me/issue-permissions")
                 .param("issueKey", issueKey)
@@ -179,7 +186,7 @@ class MyIssuePermissionIntegrationTest {
 
     @Test
     fun `MEMBER JWT — UPDATE true, SOFT_DELETE false`() {
-        val token = issueJwt(memberId)
+        val token = issueJwt(memberId, memberSessionId)
         mockMvc.perform(
             get("/api/v1/users/me/issue-permissions")
                 .param("issueKey", issueKey)
@@ -194,7 +201,7 @@ class MyIssuePermissionIntegrationTest {
 
     @Test
     fun `비멤버 JWT — UPDATE false, SOFT_DELETE false, TRANSITION false`() {
-        val token = issueJwt(nonMemberId)
+        val token = issueJwt(nonMemberId, nonMemberSessionId)
         mockMvc.perform(
             get("/api/v1/users/me/issue-permissions")
                 .param("issueKey", issueKey)
@@ -221,12 +228,19 @@ class MyIssuePermissionIntegrationTest {
     // ── 픽스처 헬퍼 ───────────────────────────────────────────────────────────
 
     /**
-     * 주어진 userId를 subject로 하는 JWT를 발급한다.
+     * 주어진 userId를 subject로, sessionId를 sid claim으로 하는 JWT를 발급한다.
      *
      * JwtEncoder는 SpringBootTest 컨텍스트에서 pemFilePath의 RSA 키로 자동 배선된다.
-     * issuer는 컨텍스트 프로퍼티와 일치시켜 SidRevokeJwtConverter 검증을 통과한다.
+     * issuer는 컨텍스트 프로퍼티와 일치시켜 JwtDecoder 검증을 통과한다.
+     * sid claim은 SidRevokeJwtConverter가 sessions 테이블에서 활성 세션을 조회하는 데 필요하다.
+     *
+     * @param userId JWT sub(subject) — actorId 추출에 사용
+     * @param sessionId JWT sid claim — SidRevokeJwtConverter 세션 revoke 검증에 사용
      */
-    private fun issueJwt(userId: UUID): String {
+    private fun issueJwt(
+        userId: UUID,
+        sessionId: UUID,
+    ): String {
         val now = Instant.now()
         val claims =
             JwtClaimsSet.builder()
@@ -234,6 +248,7 @@ class MyIssuePermissionIntegrationTest {
                 .issuer("http://localhost:8090")
                 .issuedAt(now)
                 .expiresAt(now.plusSeconds(3600))
+                .claim("sid", sessionId.toString())
                 .build()
         return jwtEncoder.encode(JwtEncoderParameters.from(claims)).tokenValue
     }
@@ -254,10 +269,46 @@ class MyIssuePermissionIntegrationTest {
         jdbc.update("DELETE FROM project_permission_scheme WHERE project_id = :id", mapOf("id" to projectId))
         jdbc.update("DELETE FROM project_memberships WHERE project_id = :id", mapOf("id" to projectId))
         jdbc.update(
+            "DELETE FROM sessions WHERE id IN (:ids)",
+            mapOf("ids" to listOf(adminSessionId, memberSessionId, nonMemberSessionId)),
+        )
+        jdbc.update(
             "DELETE FROM users WHERE id IN (:ids)",
             mapOf("ids" to listOf(adminId, memberId, nonMemberId)),
         )
         jdbc.update("DELETE FROM projects WHERE id = :id", mapOf("id" to projectId))
+    }
+
+    /**
+     * 테스트용 활성 세션을 삽입한다.
+     *
+     * SidRevokeJwtConverter가 JWT sid claim으로 sessions 테이블에서 세션을 조회하므로,
+     * 각 사용자에 대응하는 활성 세션(revoked_at IS NULL + expires_at 미래)을 사전에 심는다.
+     */
+    private fun seedSessions() {
+        val now = Instant.now()
+        val expiresAt = now.plusSeconds(3600)
+        listOf(
+            Pair(adminSessionId, adminId),
+            Pair(memberSessionId, memberId),
+            Pair(nonMemberSessionId, nonMemberId),
+        ).forEach { (sessionId, userId) ->
+            jdbc.update(
+                """
+                INSERT INTO sessions (id, user_id, provider_id, created_at, expires_at, last_seen_at)
+                VALUES (:id, :userId, :providerId, :createdAt, :expiresAt, :lastSeenAt)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                mapOf(
+                    "id" to sessionId,
+                    "userId" to userId,
+                    "providerId" to "local",
+                    "createdAt" to java.sql.Timestamp.from(now),
+                    "expiresAt" to java.sql.Timestamp.from(expiresAt),
+                    "lastSeenAt" to java.sql.Timestamp.from(now),
+                ),
+            )
+        }
     }
 
     private fun seedUsers() {
