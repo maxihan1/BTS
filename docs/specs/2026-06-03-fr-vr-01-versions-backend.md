@@ -54,7 +54,7 @@
 ### S4 — 수정 (이름/설명)
 - Given: 기존 버전
 - When: `PATCH .../versions/{id} { name: "v1.0.1", description: "..." }`
-- Then: 200 + 변경 반영. 결합 PATCH는 name/description만. 문자열 sentinel 규약(필드 생략/null=무변경, description은 ""=클리어) — UpdateComponentRequest 선례 동형.
+- Then: 200 + 변경 반영. 결합 PATCH는 name/description만. 문자열 sentinel 규약(필드 생략/null=무변경, non-null은 해당 값으로 저장 — 빈 문자열이면 빈 설명) — UpdateComponentRequest 선례 동형.
 
 ### S4b — 날짜 지정·해제 (전용 서브리소스)
 - Given: 기존 버전
@@ -121,7 +121,7 @@ Authorization: Bearer <JWT 또는 PAT>
 
 요청 바디:
 - POST `{ name: String(필수,1~255), description: String?(≤1000), startDate: LocalDate?, releaseDate: LocalDate? }`
-- PATCH (결합) `{ name?: String, description?: String? }` — name 생략=무변경, description null/생략=무변경·""=클리어 (UpdateComponentRequest sentinel 규약).
+- PATCH (결합) `{ name?: String, description?: String? }` — name/description 생략·null=무변경, non-null은 해당 값으로 저장(빈 문자열이면 빈 설명) (UpdateComponentRequest sentinel 규약).
 - PATCH /dates `{ startDate: LocalDate?, releaseDate: LocalDate? }` — 두 키 항상 존재(2-state each), null=해제, 날짜=설정.
 
 에러 코드:

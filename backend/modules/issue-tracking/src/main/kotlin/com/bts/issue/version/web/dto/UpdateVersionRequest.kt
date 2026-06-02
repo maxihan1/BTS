@@ -9,10 +9,10 @@ import jakarta.validation.constraints.Size
  *
  * name / description 만 변경 가능하다. 날짜 변경은 [ChangeVersionDatesRequest] 전용 엔드포인트를 사용한다.
  *
- * **문자열 sentinel 정책.** null / 생략 = 무변경. description 은 빈 문자열("")을 클리어로 허용한다.
+ * **문자열 sentinel 정책.** null / 생략 = 무변경. non-null 값은 그대로 반영된다(빈 문자열이면 빈 설명으로 저장).
  *
  * @property name 새 이름. null 이면 기존 값 유지.
- * @property description 새 설명. null 이면 기존 값 유지. 빈 문자열이면 클리어.
+ * @property description 새 설명. null 이면 기존 값 유지. non-null 이면 해당 값으로 저장.
  */
 data class UpdateVersionRequest(
     @field:Size(max = 255, message = "name은 255자 이하이어야 합니다.")
