@@ -484,6 +484,31 @@ class VersionControllerIntegrationTest {
             .andExpect(jsonPath("$.errorCode").value("VERSION_NAME_DUPLICATE"))
     }
 
+    // ── S13. 409 — 활성 동명으로 PATCH rename ────────────────────────────────
+
+    /**
+     * S13 409 VERSION_NAME_DUPLICATE — PATCH rename 중복.
+     *
+     * Given  "v-alpha" 버전과 "v-beta" 버전이 각각 존재
+     * When   PATCH "v-beta" 의 name 을 "v-alpha" 로 rename
+     * Then   409 + errorCode = VERSION_NAME_DUPLICATE
+     */
+    @Test
+    fun `S13 활성 동명으로 PATCH rename - 409 VERSION_NAME_DUPLICATE`() {
+        createVersion("v-alpha")
+        val betaId = createVersion("v-beta")
+
+        val body = mapOf("name" to "v-alpha")
+
+        mockMvc.perform(
+            patch("/api/v1/projects/$PROJECT_KEY/versions/$betaId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("VERSION_NAME_DUPLICATE"))
+    }
+
     // ── S12. 400 — name @NotBlank 검증 실패 ──────────────────────────────────
 
     /**

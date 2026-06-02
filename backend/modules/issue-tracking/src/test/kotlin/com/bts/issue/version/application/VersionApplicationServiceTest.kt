@@ -237,6 +237,20 @@ class VersionApplicationServiceTest : DescribeSpec({
                 }
             }
         }
+
+        context("오류 경로 — 활성 동명으로 rename 시 23505 위반") {
+            it("DataIntegrityViolationException(23505) → DuplicateVersionNameException(409 parity)") {
+                every { permissionResolver.hasPermission(actorId, VersionPermission.UPDATE, projectId) } returns true
+                every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                every { repo.findById(versionId, projectId) } returns activeVersion
+                val cause = SQLException("unique_violation", "23505")
+                every { repo.update(any()) } throws DataIntegrityViolationException("dup", cause)
+
+                shouldThrow<DuplicateVersionNameException> {
+                    sut.update(actorId, projectIdOrKey, versionId, "v-existing", null)
+                }
+            }
+        }
     }
 
     // ── changeDates ───────────────────────────────────────────────────────────
