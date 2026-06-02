@@ -3,6 +3,28 @@ import { http, HttpResponse } from 'msw'
 import type { BulkUpdateInput } from '@/api/bulk-operations'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// E2E 시나리오 토글용 localStorage 키 상수
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 에러 시나리오 강제 플래그. 'validation' | 'forbidden' | null */
+const LS_KEY_BULK_REJECT = '__bts_e2e_bulk_reject'
+
+/** partial-fail 시나리오 강제 플래그. 'true' | null */
+const LS_KEY_BULK_PARTIAL_FAIL = '__bts_e2e_bulk_partial_fail'
+
+/** issueKeys 최소 개수 */
+const ISSUE_KEYS_MIN = 1
+
+/** issueKeys 최대 개수 */
+const ISSUE_KEYS_MAX = 1000
+
+/**
+ * 최대 폴링 횟수 — 이 횟수에 도달하면 반드시 COMPLETED.
+ * (Math.ceil(total * pollCount / 2) 공식으로 2회 폴에 전량 처리)
+ */
+const MAX_POLLS_TO_COMPLETE = 2
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 내부 상태 타입
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -51,11 +73,7 @@ function generateUuidV4(): string {
 // 에러 응답 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
-function problemDetail(
-  status: number,
-  errorCode: string,
-  detail: string,
-): HttpResponse {
+function problemDetail(status: number, errorCode: string, detail: string) {
   return HttpResponse.json({ errorCode, detail }, { status })
 }
 
@@ -65,7 +83,7 @@ function problemDetail(
 
 const handleBulkUpdate = http.post('/api/v1/issues/bulk-update', async ({ request }) => {
   // 1. localStorage E2E 플래그 분기
-  const rejectFlag = globalThis.localStorage?.getItem('__bts_e2e_bulk_reject')
+  const rejectFlag = globalThis.localStorage?.getItem(LS_KEY_BULK_REJECT)
   if (rejectFlag === 'validation') {
     return problemDetail(400, 'ISSUE_BULK_VALIDATION_FAILED', '선택한 이슈가 없거나 너무 많습니다.')
   }
@@ -77,7 +95,7 @@ const handleBulkUpdate = http.post('/api/v1/issues/bulk-update', async ({ reques
 
   // 2. issueKeys 길이 유효성 검증
   const { operationType, issueKeys, editPayload, transitionPayload } = body
-  if (!issueKeys || issueKeys.length < 1 || issueKeys.length > 1000) {
+  if (!issueKeys || issueKeys.length < ISSUE_KEYS_MIN || issueKeys.length > ISSUE_KEYS_MAX) {
     return problemDetail(400, 'ISSUE_BULK_VALIDATION_FAILED', '선택한 이슈가 없거나 너무 많습니다.')
   }
 
@@ -89,7 +107,7 @@ const handleBulkUpdate = http.post('/api/v1/issues/bulk-update', async ({ reques
 
   // 4. partial-fail 플래그 처리
   const failKeys = new Set<string>()
-  const partialFail = globalThis.localStorage?.getItem('__bts_e2e_bulk_partial_fail')
+  const partialFail = globalThis.localStorage?.getItem(LS_KEY_BULK_PARTIAL_FAIL)
   if (partialFail === 'true' && issueKeys.length > 0) {
     failKeys.add(issueKeys[issueKeys.length - 1]!)
   }
@@ -131,9 +149,9 @@ const handleGetBulkOperation = http.get('/api/v1/bulk-operations/:id', ({ params
   // pollCount 증가
   op.pollCount += 1
 
-  // 처리 진행: 첫 폴 절반, 둘째 폴 전량 → 최대 2폴로 COMPLETED 도달
+  // 처리 진행: 첫 폴 절반, 둘째 폴 전량 → MAX_POLLS_TO_COMPLETE 이내에 COMPLETED 도달
   const processed = Math.min(
-    Math.ceil((op.totalCount * op.pollCount) / 2),
+    Math.ceil((op.totalCount * op.pollCount) / MAX_POLLS_TO_COMPLETE),
     op.totalCount,
   )
 
