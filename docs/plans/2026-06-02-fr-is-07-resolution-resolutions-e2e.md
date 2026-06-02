@@ -283,4 +283,25 @@
 - TDD 강제: yes (모든 task test→feat 순서, controller가 git log 검증 — 메모리 subagent-ktlint-false-green / parallel-dispatch-precommit-hook-race)
 - 추가 검증: ktlintMain+TestSourceSetCheck + detekt(4모듈) + typecheck(tsconfig.app) + vitest + playwright
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### code-reviewer 적대적 리뷰 (2026-06-03) — 🛑 BLOCKER, ADR 무효화
+
+**검증 방식**: plan/spec/ADR 주장된 코드 경로를 직접 grep/read.
+
+**BLOCKER (진행 불가, 직접 재검증 완료)**.
+- **B-1. validator 프레임워크가 production에 결선돼 있지 않음.** `WorkflowEngine`(@Service)이 요구하는 `WorkflowValidatorFactory`/`WorkflowDefinitionRepository` 구현체가 main에 **0개**. 유일 구현은 테스트 익명 object(`IssueTransitionGuardFilterIntegrationTest.kt:212,257`). 옵션 A의 "기존 프레임워크 재사용" 전제 붕괴.
+- **B-2. validator는 YAML로 시드 불가.** `YamlSeedService`는 workflows/states/transitions 3테이블만 시드, validator 언급 0건. `Workflow` aggregate에 validator 필드 없음. `workflow_validators` 테이블(V200)은 정의만 있고 런타임에 아무도 안 읽음. B7 seed INSERT는 무력.
+- **B-3. 핵심 FR(종료 시 resolution 필수 강제)이 plan 전체 구현해도 동작 안 함** (B-1+B-2 귀결).
+- **B-4. 전이 영속이 도메인 우회(raw jOOQ UPDATE, IssueRepository.applyTransition:209).** 결정4/FR5의 "도메인 경유" 문구와 모순. resolution_id 영속 경로 재설계 필요.
+
+**CONCERN**.
+- C-1. bulk 교집합 응답 toCategory 전파 task 누락(스펙 결정1은 동반 명시).
+- C-3. **IssueResponse에 resolution 노출 task 누락** — 프론트(B9)가 표시할 필드를 backend가 안 줌(frontend-zod-backend-dto-contract-gap 재발 위험).
+- C-5. project-workflow 마이그레이션은 V010이 아니라 **V203**(별도 시퀀스, V200~V202 존재).
+
+**OK (검증 통과)**: issue-tracking V010 + init_codegen 미러 정확 / toCategory string 노출 BC격리 타당 / transport DTO `toStatusKey` 필드명 정확 / issue-tracking→project-workflow는 이미 의존 존재(포트 경유라 추가 위반 없음).
+
+**리뷰어 권고**: ADR이 옵션 B를 기각한 사유("프레임워크 재사용")가 사실은 존재하지 않는 프레임워크였음 → **옵션 B(issue-tracking 하드코딩 가드) 재검토 권장**. toCategory를 이미 노출하므로 issue-tracking이 category==DONE && resolutionId==null → 거부하면 단일 BC로 닫힘.
+
+**→ 게이트 1 진입 불가. Maxi 방향 결정 필요(아래 D5).**
