@@ -7,12 +7,10 @@ import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.event.BulkOperationEventPublisher
 import com.bts.issue.bulk.repository.BulkOperationRepository
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
-import io.mockk.slot
 import io.mockk.verify
 import io.mockk.verifyOrder
 import org.jooq.DSLContext
@@ -51,7 +49,12 @@ class BulkOperationWorkerTest : DescribeSpec({
         context("큐에 메시지가 없을 때") {
             it("아무 처리도 하지 않는다") {
                 every {
-                    dsl.fetch(any<String>(), BulkOperationWorker.QUEUE_NAME, BulkOperationWorker.VISIBILITY_TIMEOUT_SECONDS, BulkOperationWorker.POLL_BATCH_SIZE)
+                    dsl.fetch(
+                        any<String>(),
+                        BulkOperationWorker.QUEUE_NAME,
+                        BulkOperationWorker.VISIBILITY_TIMEOUT_SECONDS,
+                        BulkOperationWorker.POLL_BATCH_SIZE,
+                    )
                 } returns mockk(relaxed = true) { every { isEmpty() } returns true }
 
                 worker.pollAndProcess()
@@ -176,15 +179,22 @@ private fun stubReadOneMessage(
     operationId: BulkOperationId,
     msgId: Long,
 ) {
-    val row = mockk<org.jooq.Record>(relaxed = true) {
-        every { get("msg_id", Long::class.java) } returns msgId
-        every { get("message", String::class.java) } returns """{"bulkOperationId":"${operationId.value}"}"""
-    }
-    val result = mockk<org.jooq.Result<org.jooq.Record>>(relaxed = true) {
-        every { isEmpty() } returns false
-        every { iterator() } answers { mutableListOf(row).iterator() }
-    }
+    val row =
+        mockk<org.jooq.Record>(relaxed = true) {
+            every { get("msg_id", Long::class.java) } returns msgId
+            every { get("message", String::class.java) } returns """{"bulkOperationId":"${operationId.value}"}"""
+        }
+    val result =
+        mockk<org.jooq.Result<org.jooq.Record>>(relaxed = true) {
+            every { isEmpty() } returns false
+            every { iterator() } answers { mutableListOf(row).iterator() }
+        }
     every {
-        dsl.fetch(any<String>(), BulkOperationWorker.QUEUE_NAME, BulkOperationWorker.VISIBILITY_TIMEOUT_SECONDS, BulkOperationWorker.POLL_BATCH_SIZE)
+        dsl.fetch(
+            any<String>(),
+            BulkOperationWorker.QUEUE_NAME,
+            BulkOperationWorker.VISIBILITY_TIMEOUT_SECONDS,
+            BulkOperationWorker.POLL_BATCH_SIZE,
+        )
     } returns result
 }

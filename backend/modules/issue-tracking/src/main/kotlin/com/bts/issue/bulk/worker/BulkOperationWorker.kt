@@ -4,8 +4,8 @@ package com.bts.issue.bulk.worker
 
 import com.bts.issue.bulk.application.BulkOperationProcessor
 import com.bts.issue.bulk.domain.BulkOperationId
-import com.bts.issue.bulk.event.BulkOperationEventPublisher
 import com.bts.issue.bulk.event.BulkOperationEnqueuePublisher
+import com.bts.issue.bulk.event.BulkOperationEventPublisher
 import com.bts.issue.bulk.repository.BulkOperationRepository
 import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
@@ -66,12 +66,13 @@ class BulkOperationWorker(
     @Scheduled(fixedDelayString = "\${bts.bulk.worker.poll-interval-ms:1000}")
     @Transactional
     fun pollAndProcess() {
-        val messages = dsl.fetch(
-            "SELECT * FROM pgmq.read(?, ?, ?)",
-            QUEUE_NAME,
-            VISIBILITY_TIMEOUT_SECONDS,
-            POLL_BATCH_SIZE,
-        )
+        val messages =
+            dsl.fetch(
+                "SELECT * FROM pgmq.read(?, ?, ?)",
+                QUEUE_NAME,
+                VISIBILITY_TIMEOUT_SECONDS,
+                POLL_BATCH_SIZE,
+            )
 
         if (messages.isEmpty()) return
 
@@ -94,11 +95,15 @@ class BulkOperationWorker(
      * @param messageJson pgmq 메시지 JSON. `{"bulkOperationId":"<UUID>"}` 형식.
      */
     @Suppress("TooGenericExceptionCaught")
-    private fun processMessage(msgId: Long, messageJson: String) {
-        val operationId = parseOperationId(messageJson) ?: run {
-            log.error("bulk_worker_invalid_message msgId={} message={}", msgId, messageJson)
-            return
-        }
+    private fun processMessage(
+        msgId: Long,
+        messageJson: String,
+    ) {
+        val operationId =
+            parseOperationId(messageJson) ?: run {
+                log.error("bulk_worker_invalid_message msgId={} message={}", msgId, messageJson)
+                return
+            }
 
         log.info("bulk_worker_received msgId={} bulkOperationId={}", msgId, operationId.value)
 
