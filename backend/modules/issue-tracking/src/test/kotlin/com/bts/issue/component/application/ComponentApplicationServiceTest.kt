@@ -3,6 +3,7 @@
 package com.bts.issue.component.application
 
 import com.bts.issue.component.domain.Component
+import com.bts.issue.component.domain.ComponentAccessDeniedException
 import com.bts.issue.component.domain.ComponentLeadNotFoundException
 import com.bts.issue.component.domain.ComponentNotFoundException
 import com.bts.issue.component.domain.ComponentProjectNotFoundException

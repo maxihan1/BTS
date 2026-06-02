@@ -40,6 +40,23 @@ class DuplicateComponentNameException(name: String) :
     ComponentDomainException("Component name already exists in this project: $name")
 
 /**
+ * 행위자가 컴포넌트 작업에 필요한 권한을 보유하지 않을 때.
+ *
+ * HTTP 403 매핑은 예외 핸들러에서 처리한다.
+ *
+ * @param actorId 권한 검사 대상 행위자 UUID.
+ * @param permission 요청한 권한.
+ * @param projectId 컴포넌트가 속한 프로젝트 UUID.
+ */
+class ComponentAccessDeniedException(
+    actorId: java.util.UUID,
+    permission: com.bts.shared.permission.ComponentPermission,
+    projectId: java.util.UUID,
+) : ComponentDomainException(
+        "Access denied: actor=$actorId, permission=${permission.name}, projectId=$projectId",
+    )
+
+/**
  * 리드로 지정한 사용자가 시스템에 존재하지 않을 때.
  *
  * HTTP 422 매핑은 예외 핸들러에서 처리한다.
