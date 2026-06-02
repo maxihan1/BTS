@@ -35,7 +35,7 @@ private const val SQL_STATE_UNIQUE_VIOLATION = "23505"
  * 클래스 레벨 `@Transactional` 이 기본(읽기/쓰기 모두). 읽기 전용 메서드는
  * `@Transactional(readOnly = true)` 를 오버라이드한다.
  *
- * 공개 메서드 6개 + private 헬퍼 5개 = 11개. TooManyFunctions 임계값 11 해당이나
+ * 공개 메서드 6개 + private 헬퍼 6개 = 12개. TooManyFunctions 임계값 11 초과이나
  * 명세 요구 메서드 수로 파일 분리는 과도 — Suppress 처리.
  */
 @Suppress("TooManyFunctions")
@@ -115,6 +115,7 @@ class VersionApplicationService(
      * @throws VersionProjectNotFoundException 프로젝트가 존재하지 않을 때.
      * @throws VersionAccessDeniedException 권한이 없을 때.
      * @throws VersionNotFoundException 버전이 존재하지 않을 때.
+     * @throws DuplicateVersionNameException 동일 프로젝트 내 이름이 중복될 때 (rename 시에만 발생 가능).
      */
     fun update(
         actorId: UUID,
@@ -129,7 +130,7 @@ class VersionApplicationService(
 
         val updated = applyNameAndDescription(existing, name, description)
         log.info("version_updated id={} projectId={} actor={}", versionId, projectId, actorId)
-        return repo.update(updated)
+        return tryUpdate(updated, name ?: existing.name)
     }
 
     /**
@@ -309,6 +310,25 @@ class VersionApplicationService(
     ): Version =
         try {
             repo.insert(version)
+        } catch (ex: DataIntegrityViolationException) {
+            translateUniqueViolation(ex, name)
+        } catch (ex: org.jooq.exception.IntegrityConstraintViolationException) {
+            translateUniqueViolation(ex, name)
+        }
+
+    /**
+     * [VersionRepository.update] 를 호출하고, 23505 SQLState 위반은
+     * [DuplicateVersionNameException] 으로 변환한다.
+     *
+     * rename 없이 update 하는 경우에는 유니크 충돌이 발생할 수 없지만,
+     * 방어적으로 동일한 변환 로직을 적용해 create 와 대칭성을 보장한다.
+     */
+    private fun tryUpdate(
+        version: Version,
+        name: String,
+    ): Version =
+        try {
+            repo.update(version)
         } catch (ex: DataIntegrityViolationException) {
             translateUniqueViolation(ex, name)
         } catch (ex: org.jooq.exception.IntegrityConstraintViolationException) {
