@@ -39,8 +39,8 @@ CREATE TABLE bulk_operations (
 );
 
 COMMENT ON TABLE  bulk_operations                IS '일괄작업 단건. actor_id 가 요청한 operation_type 작업의 전체 진행 상태를 추적한다. FR-IS-05.';
-COMMENT ON COLUMN bulk_operations.operation_type IS '일괄작업 종류. 예: BULK_TRANSITION, BULK_ASSIGN, BULK_LABEL_ADD.';
-COMMENT ON COLUMN bulk_operations.status         IS '일괄작업 상태. 예: PENDING, RUNNING, COMPLETED, FAILED.';
+COMMENT ON COLUMN bulk_operations.operation_type IS '일괄작업 종류. 허용값: BULK_EDIT, BULK_TRANSITION (chk_bulk_operations_operation_type).';
+COMMENT ON COLUMN bulk_operations.status         IS '일괄작업 상태. 허용값: PENDING, RUNNING, COMPLETED, FAILED (chk_bulk_operations_status).';
 COMMENT ON COLUMN bulk_operations.actor_id       IS '작업을 요청한 사용자 ID. identity-access BC users.id 대응. BC 격리로 FK 미적용.';
 COMMENT ON COLUMN bulk_operations.payload        IS '작업 파라미터 JSON. operation_type 별 구조 상이. 예: { "targetState": "done" }.';
 COMMENT ON COLUMN bulk_operations.total_count    IS '처리 대상 이슈 총 개수.';
@@ -79,9 +79,9 @@ CREATE TABLE bulk_operation_items (
 
 COMMENT ON TABLE  bulk_operation_items                   IS '일괄작업 대상 이슈 단건. bulk_operations 1건에 N개.';
 COMMENT ON COLUMN bulk_operation_items.bulk_operation_id IS 'bulk_operations.id FK.';
-COMMENT ON COLUMN bulk_operation_items.issue_key         IS '대상 이슈 키. 예: BTS-42. UNIQUE(bulk_operation_id, issue_key) — 동일 작업 내 중복 처리 방지.';
-COMMENT ON COLUMN bulk_operation_items.status            IS '단건 처리 상태. 예: PENDING, SUCCESS, FAILED.';
-COMMENT ON COLUMN bulk_operation_items.failure_reason    IS '실패 시 사유 메시지. NULL=성공 또는 미처리.';
+COMMENT ON COLUMN bulk_operation_items.issue_key         IS '대상 이슈 키. 예: BTS-42. 정규식 CHECK (chk_bulk_operation_items_issue_key). UNIQUE(bulk_operation_id, issue_key) — 동일 작업 내 중복 처리 방지.';
+COMMENT ON COLUMN bulk_operation_items.status            IS '단건 처리 상태. 허용값: PENDING, SUCCEEDED, FAILED (chk_bulk_operation_items_status).';
+COMMENT ON COLUMN bulk_operation_items.failure_reason    IS '실패 시 사유 코드(FailureReasonCode). status=FAILED 이면 NOT NULL 강제 (chk_bulk_operation_items_failed_reason). NULL=성공 또는 미처리.';
 COMMENT ON COLUMN bulk_operation_items.processed_at      IS '단건 처리 완료 시각. NULL=미처리.';
 
 -- FK 인덱스 (PostgreSQL 은 FK 에 자동 인덱스 생성 안 함)
