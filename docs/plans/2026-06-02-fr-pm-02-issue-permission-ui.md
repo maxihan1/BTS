@@ -48,9 +48,19 @@ classify 원결과: type=qa(오분류, E2E 키워드) → FR-PM-01 선례로 typ
 - 기존: [docs/decisions/2026-06-02-issue-permission-scheme-model.md](../decisions/2026-06-02-issue-permission-scheme-model.md)
 - 신규: [docs/decisions/2026-06-02-issue-permission-query-api.md](../decisions/2026-06-02-issue-permission-query-api.md)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-02-fr-pm-02-issue-permission-ui.md](../specs/2026-06-02-fr-pm-02-issue-permission-ui.md)
+
+핵심 3줄 요약.
+- 백엔드: 이슈 스코프 권한 조회 엔드포인트(`GET /api/v1/issues/{key}/my-permissions` → UPDATE/SOFT_DELETE boolean) 신설. IssuePermissionResolver 포트 재사용(issue-tracking BC).
+- 프론트: `useIssuePermissions(issueKey)` 훅으로 받아 상세 화면 수정/삭제 버튼 disabled 분기. fail-closed(로딩/실패 시 비활성). 매트릭스 하드코딩 안 함.
+- E2E: S1(ADMIN 수정·삭제 활성) + S2(MEMBER 삭제 비활성). 게이트 범위 = 상세 수정+삭제만(CREATE는 후속).
+
+## Brainstorming Check
+
+✅ 통과 (직접 adversarial sanity check, office-hours 스킵 — 정의된 FR + 도메인 grill 완료).
+핵심 발견: 현재 매트릭스 실효는 "MEMBER 삭제 비활성" 하나 → 게이트 범위를 상세 수정+삭제로 한정(Maxi 결정). fail-closed 기본값 + "저장" 4중복 셀렉터/ fixture userId 정합/ MSW stateful 교훈 선반영.
 
 ## Plan (← /bts-plan 채움)
 
