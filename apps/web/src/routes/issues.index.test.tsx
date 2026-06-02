@@ -1,5 +1,5 @@
-// 이슈 목록 페이지 단위 테스트 — 3-상태 + 빈 상태 + 페이지네이션
-import { describe, it, expect } from 'vitest'
+// 이슈 목록 페이지 단위 테스트 — 3-상태 + 빈 상태 + 페이지네이션 + CREATE 권한 게이트
+import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -12,7 +12,28 @@ import {
   issuePageFirstFixture,
   issuePageLastFixture,
 } from '@/mocks/issue-fixtures'
+import { nonMemberProjectPermissions } from '@/mocks/project-permission-handlers'
 import { IssueListPage } from './issues.index'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 공통 권한 핸들러 — 토큰 없이도 CREATE:true를 반환해 기존 테스트 호환 유지
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 모든 요청에 대해 CREATE:true를 반환하는 기본 권한 핸들러 */
+const createTruePermissionHandler = http.get(
+  '/api/v1/users/me/project-permissions',
+  () => HttpResponse.json({ projectKey: 'ATLAS', permissions: { CREATE: true } }),
+)
+
+/** 모든 요청에 대해 CREATE:false를 반환하는 권한 핸들러 (비멤버 시나리오) */
+const createFalsePermissionHandler = http.get(
+  '/api/v1/users/me/project-permissions',
+  () =>
+    HttpResponse.json({
+      projectKey: 'ATLAS',
+      permissions: nonMemberProjectPermissions,
+    }),
+)
 
 // IssueListPage는 props 기반 — 라우터 없이 단위 테스트 가능
 
@@ -36,6 +57,11 @@ function renderPage(page = 0, onPageChange?: (page: number) => void, onNavigate?
 }
 
 describe('IssueListPage', () => {
+  // B1: IssueListPage가 렌더될 때 권한 API를 발사하므로 모든 테스트에 공통 등록
+  beforeEach(() => {
+    server.use(createTruePermissionHandler)
+  })
+
   /**
    * T1. 로딩 상태 — "로딩 중..." 텍스트가 즉시 렌더되어야 한다.
    */
@@ -108,6 +134,76 @@ describe('IssueListPage', () => {
       expect(screen.getByRole('link', { name: /새 이슈/ })).toBeInTheDocument(),
     )
     expect(screen.getByRole('link', { name: /새 이슈/ })).toHaveAttribute('href', '/issues/new')
+  })
+
+  /**
+   * T5-A. CREATE:true → "새 이슈" 버튼이 활성 링크(role=link, href=/issues/new)로 렌더된다.
+   * data-testid="new-issue-button" 부여 확인.
+   */
+  it('T5-A: CREATE:true 일 때 "새 이슈"는 활성 링크로 렌더된다', async () => {
+    server.use(...issueHandlers)
+    renderPage()
+
+    const button = await screen.findByTestId('new-issue-button')
+    expect(button.tagName).toBe('A')
+    expect(button).toHaveAttribute('href', '/issues/new')
+    expect(button).not.toBeDisabled()
+  })
+
+  /**
+   * T5-B. CREATE:false → "새 이슈" 버튼이 비활성 버튼(role=button, disabled)으로 렌더된다.
+   * 클릭해도 이동하지 않는다(href 없음).
+   */
+  it('T5-B: CREATE:false 일 때 "새 이슈"는 disabled 버튼으로 렌더된다', async () => {
+    server.use(createFalsePermissionHandler, ...issueHandlers)
+    renderPage()
+
+    const button = await screen.findByTestId('new-issue-button')
+    expect(button.tagName).toBe('BUTTON')
+    expect(button).toBeDisabled()
+    expect(button).not.toHaveAttribute('href')
+  })
+
+  /**
+   * T5-C. 권한 로딩 중 → fail-closed: 비활성 버튼으로 렌더된다.
+   */
+  it('T5-C: 권한 로딩 중일 때 "새 이슈"는 disabled 버튼으로 렌더된다 (fail-closed)', async () => {
+    // 권한 응답을 지연시켜 로딩 상태를 강제 — issueHandlers는 즉시 응답
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', async () => {
+        // 응답을 반환하지 않아 pending 상태 유지
+        await new Promise<never>(() => undefined)
+        return undefined as never
+      }),
+      ...issueHandlers,
+    )
+    renderPage()
+
+    // 이슈 목록이 렌더되어도 권한이 아직 로딩 중이면 비활성 버튼이어야 한다
+    await waitFor(() =>
+      expect(screen.getByTestId('new-issue-button')).toBeInTheDocument(),
+    )
+    expect(screen.getByTestId('new-issue-button').tagName).toBe('BUTTON')
+    expect(screen.getByTestId('new-issue-button')).toBeDisabled()
+  })
+
+  /**
+   * T5-D. 권한 API 에러 → fail-closed: 비활성 버튼으로 렌더된다.
+   */
+  it('T5-D: 권한 API 에러 시 "새 이슈"는 disabled 버튼으로 렌더된다 (fail-closed)', async () => {
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ error: 'server_error' }, { status: 500 }),
+      ),
+      ...issueHandlers,
+    )
+    renderPage()
+
+    await waitFor(() =>
+      expect(screen.getByTestId('new-issue-button')).toBeInTheDocument(),
+    )
+    expect(screen.getByTestId('new-issue-button').tagName).toBe('BUTTON')
+    expect(screen.getByTestId('new-issue-button')).toBeDisabled()
   })
 
   /**
