@@ -255,7 +255,7 @@
 
 **우선순위**. 필수 | **선행**. §4.2(권한 매트릭스) + **기능 선행 FR-CM-01(§3.1.1, 컴포넌트 CRUD) / FR-VR-01(§3.2.1, 버전 CRUD)** | **Plan slug**. `identity/version-component-permissions`
 
-> 기능 선행 메모(2026-06-02). FR-PM-03은 "버전/컴포넌트 엔드포인트에 @PreAuthorize 추가"라 대상 기능이 먼저 있어야 한다. FR-CM-01(컴포넌트)은 PR #59로 구현 완료(권한은 ComponentPermissionResolver 포트로 추상화, prod 실판정을 FR-PM-03이 채움 — ADR docs/adr/2026-06-02-component-model-and-permission-deferral.md). FR-VR-01(버전)은 미착수. FR-PM-03 착수 전 FR-VR-01 필요.
+> 기능 선행 메모(2026-06-02, 갱신 2026-06-03). FR-PM-03은 "버전/컴포넌트 엔드포인트에 @PreAuthorize 추가"라 대상 기능이 먼저 있어야 한다. FR-CM-01(컴포넌트)은 PR #59로 구현 완료(권한은 ComponentPermissionResolver 포트로 추상화, prod 실판정을 FR-PM-03이 채움 — ADR docs/adr/2026-06-02-component-model-and-permission-deferral.md). **FR-VR-01(버전) 백엔드 D1~D5도 PR #67로 완료**(VersionPermissionResolver 포트 추상화, prod 실판정 FR-PM-03 이연 — ADR docs/adr/2026-06-03-version-model-and-permission-deferral.md). **→ FR-PM-03 기능 선행(컴포넌트·버전 CRUD) 모두 충족, 착수 가능.** FR-PM-03은 두 리졸버(ComponentPermissionResolver, VersionPermissionResolver)의 prod 구현 + permission_schemes 매트릭스를 채운다.
 
 - [ ] D1. 도메인 (책임. security-engineer)
 - [ ] D2. 명세 (책임. security-engineer)
