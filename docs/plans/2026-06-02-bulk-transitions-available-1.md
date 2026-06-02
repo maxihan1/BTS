@@ -81,6 +81,87 @@ fetchIssueTransitions를 최대 1000건 동시 fan-out + 클라이언트 interse
 - **회귀 경계** — 기존 issue-bulk-operations E2E S2/S5가 새 단일 엔드포인트로 동작하도록 MSW 핸들러 교체. 기존 per-issue transitions 핸들러(상세 화면 전이용)는 유지.
 - **PR 범위** — 백엔드(엔드포인트) + 프론트(same BC view layer 소비) 한 PR. 리뷰가 크다고 판단하면 백엔드/프론트 분리 가능(단 프론트가 백엔드 머지 의존 → 순서 비용). 기본 단일 PR.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 경로는 worktree 루트 기준. 백엔드 gradlew는 `backend/`, task 경로 `:modules:issue-tracking`.
+> 계약 의존으로 직렬(백엔드 DTO 확정 후 프론트 Zod — 메모리 frontend-zod-backend-dto-contract-gap).
+
+### Task 1. 전이 교집합 순수 함수 (서버) + 단위 테스트
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/TransitionIntersection.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/application/TransitionIntersectionTest.kt`]
+- depends-on: []
+
+**RED**: 여러 이슈의 `List<AvailableTransitionView>`를 받아 toStateKey 기준 교집합(첫 이슈 항목 보존)을 반환하는 `intersectAvailableTransitions(perIssue)` 테스트. 케이스 — 공통 있음/없음, 한 이슈 빈 목록이면 [], 단일 이슈=자기자신, 빈 입력=[].
+**GREEN**: 프론트 `intersectTransitions` 시맨틱을 Kotlin으로 포팅(toStateKey Set 교집합, 첫 이슈 순서 보존).
+**REFACTOR**: KDoc(한국어 헤더) + 함수 추출.
+**검증**: `cd backend && ./gradlew :modules:issue-tracking:test --tests '*TransitionIntersectionTest'`
+
+### Task 2. 일괄 가용 전이 서비스 (best-effort per-key + 교집합)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/BulkAvailableTransitionsService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/application/BulkAvailableTransitionsServiceTest.kt`]
+- depends-on: [1]
+
+**RED**: issueKeys 목록을 받아 키별 `IssueApplicationService.availableTransitions(actor,key)` 호출(mock), `IssueNotFoundException`/`IssueWorkflowNotConfiguredException`은 unresolved로 수집, 성공분은 Task1 교집합. 반환 `BulkAvailableTransitionsResult(transitions, unresolvedIssueKeys)`. 케이스 — 전부 성공/일부 unresolved/전부 unresolved/교집합 0.
+**GREEN**: try/catch best-effort + Task1 함수 호출. actor 주입은 호출측(컨트롤러)에서 전달.
+**REFACTOR**: 결과 타입 분리 + KDoc.
+**검증**: `./gradlew :modules:issue-tracking:test --tests '*BulkAvailableTransitionsServiceTest'`
+
+### Task 3. 엔드포인트 + 요청/응답 DTO + 통합 테스트
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/web/BulkOperationController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/web/BulkAvailableTransitionsRequest.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/web/BulkAvailableTransitionsResponse.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/web/BulkOperationControllerTest.kt`]
+- depends-on: [2]
+
+**RED**: MockMvc 테스트 — `POST /api/v1/issues/bulk-transitions/available` body `{issueKeys}` → 200 `{data:{transitions,unresolvedIssueKeys}}`. 빈 배열/1000초과 → 400. 응답 transitions가 TransitionItem 형태.
+**GREEN**: Request DTO(`issueKeys` @Size(1..1000)) + Response DTO(`transitions: List<TransitionItem>`(기존 `com.bts.issue.adapter.inbound.rest.TransitionItem` 재사용), `unresolvedIssueKeys: List<String>`) + 컨트롤러 핸들러(actor=SYSTEM_ACTOR_UUID, Task2 서비스 호출).
+**REFACTOR**: KDoc + 검증 메시지.
+**검증**: `./gradlew :modules:issue-tracking:test --tests '*BulkOperationControllerTest'` + `./gradlew :modules:issue-tracking:ktlintMainSourceSetCheck :modules:issue-tracking:ktlintTestSourceSetCheck detekt`
+
+### Task 4. 프론트 API client + Zod + MSW 핸들러 + 단위 테스트
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/issues.ts`, `apps/web/src/api/issues.test.ts`, `apps/web/src/mocks/issue-handlers.ts`, `apps/web/src/mocks/__tests__/bulk-available-transitions-handler.test.ts`]
+- depends-on: [3]
+
+**RED**: `fetchBulkAvailableTransitions(issueKeys)` 단위테스트 — 응답 Zod parse(`{transitions:[{fromStateKey,toStateKey,name,key}], unresolvedIssueKeys:[]}`), `{data:T}` 언래핑. MSW 핸들러 단위테스트(교집합/unresolved).
+**GREEN**: api 함수 + Zod 스키마(**백엔드 T3 DTO 필드명과 1:1** — 메모리 frontend-zod-backend-dto-contract-gap). MSW `POST /api/v1/issues/bulk-transitions/available` 핸들러(softwareDefaultFixture + issueFixtureMap 기반 교집합 + 없는키 unresolved).
+**REFACTOR**: 스키마/타입 export 정리.
+**검증**: `pnpm --filter @bts/web test bulk-available-transitions issues` + `pnpm --filter @bts/web typecheck`
+
+### Task 5. BulkTransitionDialog 단일 호출 전환 + intersectTransitions 제거
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/issues/BulkTransitionDialog.tsx`, `apps/web/src/components/issues/BulkTransitionDialog.test.tsx`, `apps/web/src/lib/transition-intersection.ts`, `apps/web/src/lib/transition-intersection.test.ts`]
+- depends-on: [4]
+
+**RED/변경**: 단위테스트를 단일 `fetchBulkAvailableTransitions` mock 기반으로 갱신(기존 allSettled/intersect mock 제거). unresolvedIssueKeys → hasPartialFailure/hasTotalFailure 분기 검증.
+**GREEN**: Dialog의 `Promise.allSettled(map(fetchIssueTransitions))` + `intersectTransitions` 제거 → 단일 `fetchBulkAvailableTransitions(issueKeys)` 호출. 응답 transitions/unresolvedIssueKeys로 드롭다운·경고·에러 구성(기존 UX 보존).
+**REFACTOR(제거)**: `lib/transition-intersection.ts` + `.test.ts` **삭제**(서버 이전으로 dead code). import 정리.
+**검증**: `pnpm --filter @bts/web test BulkTransitionDialog` + `pnpm --filter @bts/web typecheck lint`
+
+### Task 6. 기존 E2E 회귀 확인 + 전체 검증
+
+**메타**.
+- agent: `qa-engineer`
+- files: []   # 검증 전용(회귀 발견 시 hot-fix는 별 task)
+- depends-on: [5]
+
+**내용**: 기존 `e2e/issue-bulk-operations.spec.ts` S2(전이 happy)/S5(교집합 0)가 새 단일 엔드포인트 + MSW 핸들러로 통과하는지 확인. 전체 단위(`pnpm --filter @bts/web test`) + 전체 E2E(`test:e2e`) + typecheck/lint. 백엔드 `:modules:issue-tracking:test` + ktlint/detekt. 회귀 0 확인. 5173 orphan 정리(메모리 e2e-orphan-vite-after-worktree-remove).
+**검증**: 위 전부 그린.
+
+## Plan 메타
+
+- task 수: 6
+- wave 예상: 6 (계약 의존 직렬: 백엔드 T1→T2→T3, 프론트 T4→T5, 검증 T6). 백엔드 backend-engineer / 프론트 frontend-engineer / 검증 qa-engineer.
+- TDD 강제: yes (T1~T5 test→feat→refactor). T6 검증.
+- 회귀 함정 반영: frontend-zod-backend-dto-contract-gap(Zod=백엔드DTO), ui-pr-defer-e2e-regression-latent(기존 E2E 동반), subagent-ktlint-false-green(controller 직접 ktlint검증), e2e-orphan-vite-after-worktree-remove, advisory-lock류 아님(읽기 전용).
+- PR 범위: 백엔드+프론트 same BC view layer 단일 PR(learning 2026-05-22 옵션 C).
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
