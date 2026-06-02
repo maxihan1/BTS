@@ -53,12 +53,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
 
         describe("issueKeys 비어있을 때") {
             it("IllegalArgumentException 을 던진다") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_EDIT,
-                    issueKeys = emptyList(),
-                    editPayload = BulkEditPayload(priority = 3, impact = null),
-                    transitionPayload = null,
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_EDIT,
+                        issueKeys = emptyList(),
+                        editPayload = BulkEditPayload(priority = 3, impact = null),
+                        transitionPayload = null,
+                    )
                 shouldThrow<IllegalArgumentException> {
                     sut.submit(actor, req)
                 }
@@ -67,12 +68,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
 
         describe("issueKeys 가 1000 초과일 때") {
             it("IllegalArgumentException 을 던진다") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_EDIT,
-                    issueKeys = issueKeys(1001),
-                    editPayload = BulkEditPayload(priority = 3, impact = null),
-                    transitionPayload = null,
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_EDIT,
+                        issueKeys = issueKeys(1001),
+                        editPayload = BulkEditPayload(priority = 3, impact = null),
+                        transitionPayload = null,
+                    )
                 shouldThrow<IllegalArgumentException> {
                     sut.submit(actor, req)
                 }
@@ -81,12 +83,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
 
         describe("issueKeys 가 정확히 1000개일 때") {
             it("정상 접수된다") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_EDIT,
-                    issueKeys = issueKeys(1000),
-                    editPayload = BulkEditPayload(priority = 3, impact = null),
-                    transitionPayload = null,
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_EDIT,
+                        issueKeys = issueKeys(1000),
+                        editPayload = BulkEditPayload(priority = 3, impact = null),
+                        transitionPayload = null,
+                    )
                 val result = sut.submit(actor, req)
                 result.value shouldBe result.value // BulkOperationId 타입 반환 확인
             }
@@ -94,12 +97,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
 
         describe("BULK_EDIT 인데 editPayload 가 null 일 때") {
             it("IllegalArgumentException 을 던진다") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_EDIT,
-                    issueKeys = listOf("ATLAS-1"),
-                    editPayload = null,
-                    transitionPayload = null,
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_EDIT,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = null,
+                        transitionPayload = null,
+                    )
                 shouldThrow<IllegalArgumentException> {
                     sut.submit(actor, req)
                 }
@@ -108,12 +112,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
 
         describe("BULK_EDIT 인데 transitionPayload 만 있을 때") {
             it("IllegalArgumentException 을 던진다") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_EDIT,
-                    issueKeys = listOf("ATLAS-1"),
-                    editPayload = null,
-                    transitionPayload = BulkTransitionPayload(toStateKey = "DONE"),
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_EDIT,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = null,
+                        transitionPayload = BulkTransitionPayload(toStateKey = "DONE"),
+                    )
                 shouldThrow<IllegalArgumentException> {
                     sut.submit(actor, req)
                 }
@@ -122,12 +127,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
 
         describe("BULK_TRANSITION 인데 transitionPayload 가 null 일 때") {
             it("IllegalArgumentException 을 던진다") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_TRANSITION,
-                    issueKeys = listOf("ATLAS-1"),
-                    editPayload = null,
-                    transitionPayload = null,
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_TRANSITION,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = null,
+                        transitionPayload = null,
+                    )
                 shouldThrow<IllegalArgumentException> {
                     sut.submit(actor, req)
                 }
@@ -136,12 +142,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
 
         describe("BULK_TRANSITION 인데 toStateKey 가 빈 문자열일 때") {
             it("IllegalArgumentException 을 던진다") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_TRANSITION,
-                    issueKeys = listOf("ATLAS-1"),
-                    editPayload = null,
-                    transitionPayload = BulkTransitionPayload(toStateKey = ""),
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_TRANSITION,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = null,
+                        transitionPayload = BulkTransitionPayload(toStateKey = ""),
+                    )
                 shouldThrow<IllegalArgumentException> {
                     sut.submit(actor, req)
                 }
@@ -150,12 +157,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
 
         describe("BULK_TRANSITION 인데 toStateKey 가 공백만 있을 때") {
             it("IllegalArgumentException 을 던진다") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_TRANSITION,
-                    issueKeys = listOf("ATLAS-1"),
-                    editPayload = null,
-                    transitionPayload = BulkTransitionPayload(toStateKey = "   "),
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_TRANSITION,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = null,
+                        transitionPayload = BulkTransitionPayload(toStateKey = "   "),
+                    )
                 shouldThrow<IllegalArgumentException> {
                     sut.submit(actor, req)
                 }
@@ -164,12 +172,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
 
         describe("BULK_EDIT priority 범위 위반 — 6") {
             it("IllegalArgumentException 을 던진다") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_EDIT,
-                    issueKeys = listOf("ATLAS-1"),
-                    editPayload = BulkEditPayload(priority = 6, impact = null),
-                    transitionPayload = null,
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_EDIT,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = BulkEditPayload(priority = 6, impact = null),
+                        transitionPayload = null,
+                    )
                 shouldThrow<IllegalArgumentException> {
                     sut.submit(actor, req)
                 }
@@ -178,12 +187,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
 
         describe("BULK_EDIT priority 범위 위반 — 0") {
             it("IllegalArgumentException 을 던진다") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_EDIT,
-                    issueKeys = listOf("ATLAS-1"),
-                    editPayload = BulkEditPayload(priority = 0, impact = null),
-                    transitionPayload = null,
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_EDIT,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = BulkEditPayload(priority = 0, impact = null),
+                        transitionPayload = null,
+                    )
                 shouldThrow<IllegalArgumentException> {
                     sut.submit(actor, req)
                 }
@@ -192,12 +202,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
 
         describe("BULK_EDIT impact 범위 위반 — 4") {
             it("IllegalArgumentException 을 던진다") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_EDIT,
-                    issueKeys = listOf("ATLAS-1"),
-                    editPayload = BulkEditPayload(priority = null, impact = 4),
-                    transitionPayload = null,
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_EDIT,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = BulkEditPayload(priority = null, impact = 4),
+                        transitionPayload = null,
+                    )
                 shouldThrow<IllegalArgumentException> {
                     sut.submit(actor, req)
                 }
@@ -206,12 +217,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
 
         describe("BULK_EDIT impact 범위 위반 — 0") {
             it("IllegalArgumentException 을 던진다") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_EDIT,
-                    issueKeys = listOf("ATLAS-1"),
-                    editPayload = BulkEditPayload(priority = null, impact = 0),
-                    transitionPayload = null,
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_EDIT,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = BulkEditPayload(priority = null, impact = 0),
+                        transitionPayload = null,
+                    )
                 shouldThrow<IllegalArgumentException> {
                     sut.submit(actor, req)
                 }
@@ -220,12 +232,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
 
         describe("BULK_EDIT editPayload 필드 모두 null — 변경할 것이 없을 때") {
             it("IllegalArgumentException 을 던진다") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_EDIT,
-                    issueKeys = listOf("ATLAS-1"),
-                    editPayload = BulkEditPayload(priority = null, impact = null),
-                    transitionPayload = null,
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_EDIT,
+                        issueKeys = listOf("ATLAS-1"),
+                        editPayload = BulkEditPayload(priority = null, impact = null),
+                        transitionPayload = null,
+                    )
                 shouldThrow<IllegalArgumentException> {
                     sut.submit(actor, req)
                 }
@@ -239,12 +252,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
 
         describe("중복 issueKeys 가 포함될 때") {
             it("dedup 후 고유 항목만 repo.insert 호출") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_EDIT,
-                    issueKeys = listOf("ATLAS-1", "ATLAS-2", "ATLAS-1"),
-                    editPayload = BulkEditPayload(priority = 3, impact = null),
-                    transitionPayload = null,
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_EDIT,
+                        issueKeys = listOf("ATLAS-1", "ATLAS-2", "ATLAS-1"),
+                        editPayload = BulkEditPayload(priority = 3, impact = null),
+                        transitionPayload = null,
+                    )
                 sut.submit(actor, req)
 
                 val captured = slot<BulkOperation>()
@@ -256,12 +270,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
 
         describe("유효한 요청일 때") {
             it("repo.insert 와 enqueuePublisher.enqueue 를 각 1회 호출하고 BulkOperationId 를 반환한다") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_EDIT,
-                    issueKeys = listOf("ATLAS-1", "ATLAS-2"),
-                    editPayload = BulkEditPayload(priority = 2, impact = 1),
-                    transitionPayload = null,
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_EDIT,
+                        issueKeys = listOf("ATLAS-1", "ATLAS-2"),
+                        editPayload = BulkEditPayload(priority = 2, impact = 1),
+                        transitionPayload = null,
+                    )
                 val result = sut.submit(actor, req)
 
                 verify(exactly = 1) { repo.insert(any()) }
@@ -270,12 +285,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
             }
 
             it("BulkOperation 이 actor.value 를 actorId 로 저장한다") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_EDIT,
-                    issueKeys = listOf("ATLAS-3"),
-                    editPayload = BulkEditPayload(priority = 5, impact = null),
-                    transitionPayload = null,
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_EDIT,
+                        issueKeys = listOf("ATLAS-3"),
+                        editPayload = BulkEditPayload(priority = 5, impact = null),
+                        transitionPayload = null,
+                    )
                 sut.submit(actor, req)
 
                 val captured = slot<BulkOperation>()
@@ -284,12 +300,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
             }
 
             it("enqueue 에 전달된 ID 가 repo.insert 에 전달된 ID 와 동일하다") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_EDIT,
-                    issueKeys = listOf("ATLAS-4"),
-                    editPayload = BulkEditPayload(priority = 1, impact = 2),
-                    transitionPayload = null,
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_EDIT,
+                        issueKeys = listOf("ATLAS-4"),
+                        editPayload = BulkEditPayload(priority = 1, impact = 2),
+                        transitionPayload = null,
+                    )
                 sut.submit(actor, req)
 
                 val opCaptured = slot<BulkOperation>()
@@ -305,12 +322,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
 
         describe("유효한 요청일 때") {
             it("repo.insert 와 enqueuePublisher.enqueue 를 각 1회 호출한다") {
-                val req = BulkUpdateRequest(
-                    operationType = BulkOperationType.BULK_TRANSITION,
-                    issueKeys = listOf("ATLAS-10", "ATLAS-11"),
-                    editPayload = null,
-                    transitionPayload = BulkTransitionPayload(toStateKey = "IN_PROGRESS"),
-                )
+                val req =
+                    BulkUpdateRequest(
+                        operationType = BulkOperationType.BULK_TRANSITION,
+                        issueKeys = listOf("ATLAS-10", "ATLAS-11"),
+                        editPayload = null,
+                        transitionPayload = BulkTransitionPayload(toStateKey = "IN_PROGRESS"),
+                    )
                 sut.submit(actor, req)
 
                 verify(exactly = 1) { repo.insert(any()) }
@@ -324,12 +342,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
         listOf(1, 5).forEach { p ->
             describe("priority=$p 는 유효 범위") {
                 it("정상 접수된다") {
-                    val req = BulkUpdateRequest(
-                        operationType = BulkOperationType.BULK_EDIT,
-                        issueKeys = listOf("ATLAS-1"),
-                        editPayload = BulkEditPayload(priority = p, impact = null),
-                        transitionPayload = null,
-                    )
+                    val req =
+                        BulkUpdateRequest(
+                            operationType = BulkOperationType.BULK_EDIT,
+                            issueKeys = listOf("ATLAS-1"),
+                            editPayload = BulkEditPayload(priority = p, impact = null),
+                            transitionPayload = null,
+                        )
                     sut.submit(actor, req)
                     verify(exactly = 1) { repo.insert(any()) }
                 }
@@ -339,12 +358,13 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
         listOf(1, 3).forEach { i ->
             describe("impact=$i 는 유효 범위") {
                 it("정상 접수된다") {
-                    val req = BulkUpdateRequest(
-                        operationType = BulkOperationType.BULK_EDIT,
-                        issueKeys = listOf("ATLAS-1"),
-                        editPayload = BulkEditPayload(priority = null, impact = i),
-                        transitionPayload = null,
-                    )
+                    val req =
+                        BulkUpdateRequest(
+                            operationType = BulkOperationType.BULK_EDIT,
+                            issueKeys = listOf("ATLAS-1"),
+                            editPayload = BulkEditPayload(priority = null, impact = i),
+                            transitionPayload = null,
+                        )
                     sut.submit(actor, req)
                     verify(exactly = 1) { repo.insert(any()) }
                 }

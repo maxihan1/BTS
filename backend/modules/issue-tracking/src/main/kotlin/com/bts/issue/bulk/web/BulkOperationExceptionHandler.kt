@@ -2,7 +2,6 @@
 
 package com.bts.issue.bulk.web
 
-import java.util.UUID
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -10,6 +9,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import java.net.URI
 import java.time.Instant
+import java.util.UUID
 
 /**
  * 일괄 작업이 존재하지 않을 때 발생하는 예외.

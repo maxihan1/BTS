@@ -2,7 +2,6 @@
 
 package com.bts.issue.bulk.web
 
-import com.bts.issue.bulk.application.BulkEditPayload
 import com.bts.issue.bulk.application.BulkOperationApplicationService
 import com.bts.issue.bulk.application.BulkUpdateRequest
 import com.bts.issue.bulk.domain.BulkOperation
@@ -56,7 +55,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [BulkOperationControllerTest.TestMvcConfig::class])
 @WebAppConfiguration
 class BulkOperationControllerTest {
-
     /**
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
@@ -116,12 +114,13 @@ class BulkOperationControllerTest {
         val returnedId = BulkOperationId(operationUuid)
         every { bulkOperationApplicationService.submit(any(), any<BulkUpdateRequest>()) } returns returnedId
 
-        val body = mapOf(
-            "operationType" to "BULK_EDIT",
-            "issueKeys" to listOf("ATLAS-1", "ATLAS-2"),
-            "editPayload" to mapOf("priority" to 3),
-            "transitionPayload" to null,
-        )
+        val body =
+            mapOf(
+                "operationType" to "BULK_EDIT",
+                "issueKeys" to listOf("ATLAS-1", "ATLAS-2"),
+                "editPayload" to mapOf("priority" to 3),
+                "transitionPayload" to null,
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/bulk-update")
@@ -142,12 +141,13 @@ class BulkOperationControllerTest {
             bulkOperationApplicationService.submit(any(), any<BulkUpdateRequest>())
         } throws IllegalArgumentException("issueKeys must not be empty")
 
-        val body = mapOf(
-            "operationType" to "BULK_EDIT",
-            "issueKeys" to emptyList<String>(),
-            "editPayload" to mapOf("priority" to 3),
-            "transitionPayload" to null,
-        )
+        val body =
+            mapOf(
+                "operationType" to "BULK_EDIT",
+                "issueKeys" to emptyList<String>(),
+                "editPayload" to mapOf("priority" to 3),
+                "transitionPayload" to null,
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/bulk-update")
@@ -165,12 +165,13 @@ class BulkOperationControllerTest {
             bulkOperationApplicationService.submit(any(), any<BulkUpdateRequest>())
         } throws IllegalArgumentException("issueKeys must not exceed 1000")
 
-        val body = mapOf(
-            "operationType" to "BULK_EDIT",
-            "issueKeys" to (1..1001).map { "ATLAS-$it" },
-            "editPayload" to mapOf("priority" to 3),
-            "transitionPayload" to null,
-        )
+        val body =
+            mapOf(
+                "operationType" to "BULK_EDIT",
+                "issueKeys" to (1..1001).map { "ATLAS-$it" },
+                "editPayload" to mapOf("priority" to 3),
+                "transitionPayload" to null,
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/bulk-update")
@@ -185,23 +186,25 @@ class BulkOperationControllerTest {
     @Test
     fun `GET bulk-operations 작업 id — 본인 actor이면 200 + BulkOperationResponse`() {
         val fixedNow = Instant.parse("2026-06-02T00:00:00Z")
-        val operation = BulkOperation(
-            id = BulkOperationId(operationUuid),
-            actorId = actorUuid,
-            type = BulkOperationType.BULK_EDIT,
-            status = BulkOperationStatus.PENDING,
-            items = emptyList(),
-            totalCount = 2,
-            processedCount = 0,
-            succeededCount = 0,
-            failedCount = 0,
-            createdAt = fixedNow,
-            updatedAt = fixedNow,
-        )
-        val items = listOf(
-            BulkOperationItem(issueKey = IssueKey("ATLAS-1"), status = ItemStatus.PENDING),
-            BulkOperationItem(issueKey = IssueKey("ATLAS-2"), status = ItemStatus.PENDING),
-        )
+        val operation =
+            BulkOperation(
+                id = BulkOperationId(operationUuid),
+                actorId = actorUuid,
+                type = BulkOperationType.BULK_EDIT,
+                status = BulkOperationStatus.PENDING,
+                items = emptyList(),
+                totalCount = 2,
+                processedCount = 0,
+                succeededCount = 0,
+                failedCount = 0,
+                createdAt = fixedNow,
+                updatedAt = fixedNow,
+            )
+        val items =
+            listOf(
+                BulkOperationItem(issueKey = IssueKey("ATLAS-1"), status = ItemStatus.PENDING),
+                BulkOperationItem(issueKey = IssueKey("ATLAS-2"), status = ItemStatus.PENDING),
+            )
 
         every { bulkOperationRepository.findById(BulkOperationId(operationUuid)) } returns operation
         every { bulkOperationRepository.findItemsByOperationId(BulkOperationId(operationUuid)) } returns items
@@ -228,19 +231,20 @@ class BulkOperationControllerTest {
     fun `GET bulk-operations 작업 id — 타인 actor이면 403`() {
         val fixedNow = Instant.parse("2026-06-02T00:00:00Z")
         // operation.actorId 는 otherActorUuid — SYSTEM_ACTOR_UUID(actorUuid) 와 다름.
-        val operation = BulkOperation(
-            id = BulkOperationId(operationUuid),
-            actorId = otherActorUuid,
-            type = BulkOperationType.BULK_EDIT,
-            status = BulkOperationStatus.PENDING,
-            items = emptyList(),
-            totalCount = 2,
-            processedCount = 0,
-            succeededCount = 0,
-            failedCount = 0,
-            createdAt = fixedNow,
-            updatedAt = fixedNow,
-        )
+        val operation =
+            BulkOperation(
+                id = BulkOperationId(operationUuid),
+                actorId = otherActorUuid,
+                type = BulkOperationType.BULK_EDIT,
+                status = BulkOperationStatus.PENDING,
+                items = emptyList(),
+                totalCount = 2,
+                processedCount = 0,
+                succeededCount = 0,
+                failedCount = 0,
+                createdAt = fixedNow,
+                updatedAt = fixedNow,
+            )
 
         every { bulkOperationRepository.findById(BulkOperationId(operationUuid)) } returns operation
 

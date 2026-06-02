@@ -39,7 +39,6 @@ import java.util.UUID
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class BulkOperationRepositoryTest : IssueTestcontainersBase() {
-
     private lateinit var bulkRepo: BulkOperationRepository
 
     @BeforeEach
@@ -135,12 +134,13 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
         val op = makeOperation(keys = listOf("PRJ-10"))
         bulkRepo.insert(op)
 
-        val affected = bulkRepo.updateItemResult(
-            operationId = op.id,
-            issueKey = IssueKey("PRJ-10"),
-            status = ItemStatus.SUCCEEDED,
-            reasonCode = null,
-        )
+        val affected =
+            bulkRepo.updateItemResult(
+                operationId = op.id,
+                issueKey = IssueKey("PRJ-10"),
+                status = ItemStatus.SUCCEEDED,
+                reasonCode = null,
+            )
         assertThat(affected).isEqualTo(1)
 
         val items = bulkRepo.findItemsByOperationId(op.id)
@@ -155,7 +155,8 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
         bulkRepo.updateItemResult(op.id, IssueKey("PRJ-20"), ItemStatus.SUCCEEDED, null)
 
         // 동일 항목 재갱신 시도 — PENDING 가드로 0 rows 반환해야 함
-        val affected = bulkRepo.updateItemResult(op.id, IssueKey("PRJ-20"), ItemStatus.FAILED, FailureReasonCode.NOT_FOUND)
+        val affected =
+            bulkRepo.updateItemResult(op.id, IssueKey("PRJ-20"), ItemStatus.FAILED, FailureReasonCode.NOT_FOUND)
         assertThat(affected).isEqualTo(0)
 
         // 상태가 SUCCEEDED 그대로 유지되어야 함
@@ -168,7 +169,8 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
         val op = makeOperation(keys = listOf("PRJ-30"))
         bulkRepo.insert(op)
 
-        val affected = bulkRepo.updateItemResult(op.id, IssueKey("PRJ-30"), ItemStatus.FAILED, FailureReasonCode.FORBIDDEN)
+        val affected =
+            bulkRepo.updateItemResult(op.id, IssueKey("PRJ-30"), ItemStatus.FAILED, FailureReasonCode.FORBIDDEN)
         assertThat(affected).isEqualTo(1)
 
         val item = bulkRepo.findItemsByOperationId(op.id).first()

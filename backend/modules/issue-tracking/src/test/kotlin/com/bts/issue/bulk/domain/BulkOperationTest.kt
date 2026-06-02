@@ -30,7 +30,6 @@ import java.util.UUID
  * - isTerminal_returns_false_for_pending — PENDING 항목은 isTerminal 이 false 다.
  */
 class BulkOperationTest {
-
     private val operationId = BulkOperationId(UUID.randomUUID())
     private val actorId = UUID.randomUUID()
     private val key1 = IssueKey.of("PROJ", 1L)
@@ -98,11 +97,16 @@ class BulkOperationTest {
 
     @Test
     fun `recomputeCounts_aggregates_item_statuses — 항목 상태에 따라 processed succeeded failed 를 재계산한다`() {
-        val items = listOf(
-            BulkOperationItem(issueKey = key1, status = ItemStatus.SUCCEEDED),
-            BulkOperationItem(issueKey = key2, status = ItemStatus.FAILED, failureReasonCode = FailureReasonCode.NOT_FOUND),
-            BulkOperationItem(issueKey = key3, status = ItemStatus.PENDING),
-        )
+        val items =
+            listOf(
+                BulkOperationItem(issueKey = key1, status = ItemStatus.SUCCEEDED),
+                BulkOperationItem(
+                    issueKey = key2,
+                    status = ItemStatus.FAILED,
+                    failureReasonCode = FailureReasonCode.NOT_FOUND,
+                ),
+                BulkOperationItem(issueKey = key3, status = ItemStatus.PENDING),
+            )
         val op = pendingOp()
         val result = op.recomputeCounts(items)
 
@@ -113,10 +117,15 @@ class BulkOperationTest {
 
     @Test
     fun `recomputeCounts_is_idempotent — 같은 항목 집합으로 2회 호출해도 동일 결과를 반환한다`() {
-        val items = listOf(
-            BulkOperationItem(issueKey = key1, status = ItemStatus.SUCCEEDED),
-            BulkOperationItem(issueKey = key2, status = ItemStatus.FAILED, failureReasonCode = FailureReasonCode.FORBIDDEN),
-        )
+        val items =
+            listOf(
+                BulkOperationItem(issueKey = key1, status = ItemStatus.SUCCEEDED),
+                BulkOperationItem(
+                    issueKey = key2,
+                    status = ItemStatus.FAILED,
+                    failureReasonCode = FailureReasonCode.FORBIDDEN,
+                ),
+            )
         val op = pendingOp()
         val first = op.recomputeCounts(items)
         val second = op.recomputeCounts(items)
@@ -128,10 +137,11 @@ class BulkOperationTest {
 
     @Test
     fun `recomputeCounts_counts_only_non_pending — PENDING 항목은 processed 에 포함되지 않는다`() {
-        val items = listOf(
-            BulkOperationItem(issueKey = key1, status = ItemStatus.PENDING),
-            BulkOperationItem(issueKey = key2, status = ItemStatus.PENDING),
-        )
+        val items =
+            listOf(
+                BulkOperationItem(issueKey = key1, status = ItemStatus.PENDING),
+                BulkOperationItem(issueKey = key2, status = ItemStatus.PENDING),
+            )
         val op = pendingOp()
         val result = op.recomputeCounts(items)
 
@@ -180,11 +190,12 @@ class BulkOperationTest {
 
     @Test
     fun `isTerminal_returns_true_for_failed — FAILED 항목은 isTerminal 이 true 다`() {
-        val item = BulkOperationItem(
-            issueKey = key1,
-            status = ItemStatus.FAILED,
-            failureReasonCode = FailureReasonCode.NOT_FOUND,
-        )
+        val item =
+            BulkOperationItem(
+                issueKey = key1,
+                status = ItemStatus.FAILED,
+                failureReasonCode = FailureReasonCode.NOT_FOUND,
+            )
         assertThat(BulkOperation.isTerminal(item)).isTrue()
     }
 

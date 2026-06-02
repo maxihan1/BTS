@@ -73,19 +73,21 @@ class BulkOperationController(
 
         // 임시 fallback — security-engineer wave 에서 SecurityContextHolder 의 인증된 UUID 로 교체 예정.
         val actor = ActorId(SYSTEM_ACTOR_UUID)
-        val appRequest = BulkUpdateRequest(
-            operationType = request.operationType,
-            issueKeys = request.issueKeys,
-            editPayload = request.editPayload,
-            transitionPayload = request.transitionPayload,
-        )
+        val appRequest =
+            BulkUpdateRequest(
+                operationType = request.operationType,
+                issueKeys = request.issueKeys,
+                editPayload = request.editPayload,
+                transitionPayload = request.transitionPayload,
+            )
         val operationId = service.submit(actor, appRequest)
 
-        val response = BulkOperationAcceptedResponse(
-            bulkOperationId = operationId.value,
-            status = "PENDING",
-            totalCount = request.issueKeys.distinct().size,
-        )
+        val response =
+            BulkOperationAcceptedResponse(
+                bulkOperationId = operationId.value,
+                status = "PENDING",
+                totalCount = request.issueKeys.distinct().size,
+            )
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(DataResponse(data = response))
     }
 
@@ -112,8 +114,9 @@ class BulkOperationController(
         val actor = ActorId(SYSTEM_ACTOR_UUID)
         val operationId = BulkOperationId(id)
 
-        val operation = repo.findById(operationId)
-            ?: throw BulkOperationNotFoundException(id)
+        val operation =
+            repo.findById(operationId)
+                ?: throw BulkOperationNotFoundException(id)
 
         if (operation.actorId != actor.value) {
             throw BulkOperationForbiddenException(id, actor.value)
@@ -148,4 +151,3 @@ data class BulkUpdateWebRequest(
     val editPayload: BulkEditPayload?,
     val transitionPayload: BulkTransitionPayload?,
 )
-

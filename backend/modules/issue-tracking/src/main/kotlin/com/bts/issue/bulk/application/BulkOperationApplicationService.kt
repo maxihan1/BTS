@@ -2,11 +2,11 @@
 
 package com.bts.issue.bulk.application
 
+import com.bts.issue.bulk.domain.BULK_OPERATION_MAX_SIZE
 import com.bts.issue.bulk.domain.BulkOperation
 import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.domain.BulkOperationItem
 import com.bts.issue.bulk.domain.BulkOperationType
-import com.bts.issue.bulk.domain.BULK_OPERATION_MAX_SIZE
 import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.bulk.event.BulkOperationEnqueuePublisher
 import com.bts.issue.bulk.repository.BulkOperationRepository
@@ -72,20 +72,22 @@ class BulkOperationApplicationService(
         validateRequest(request)
 
         val uniqueKeys = request.issueKeys.distinct()
-        val items = uniqueKeys.map { key ->
-            BulkOperationItem(
-                issueKey = IssueKey(key),
-                status = ItemStatus.PENDING,
-            )
-        }
+        val items =
+            uniqueKeys.map { key ->
+                BulkOperationItem(
+                    issueKey = IssueKey(key),
+                    status = ItemStatus.PENDING,
+                )
+            }
 
         val operationId = BulkOperationId(UUID.randomUUID())
-        val operation = BulkOperation.create(
-            id = operationId,
-            actorId = actor.value,
-            type = request.operationType,
-            items = items,
-        )
+        val operation =
+            BulkOperation.create(
+                id = operationId,
+                actorId = actor.value,
+                type = request.operationType,
+                items = items,
+            )
 
         repo.insert(operation)
         enqueuePublisher.enqueue(operationId)

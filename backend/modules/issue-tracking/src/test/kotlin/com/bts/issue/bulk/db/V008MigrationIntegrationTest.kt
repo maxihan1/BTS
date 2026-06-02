@@ -72,6 +72,8 @@ class V008MigrationIntegrationTest {
             }
         }
 
+    // JDBC use{} 표준 중첩(conn→stmt→rs) — 테스트 헬퍼라 분해 이득 없음
+    @Suppress("NestedBlockDepth")
     private fun columnInfo(
         tableName: String,
         columnName: String,

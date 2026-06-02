@@ -45,7 +45,6 @@ import org.testcontainers.utility.DockerImageName
 @SpringBootTest(classes = [IssueTrackingApplication::class])
 @ActiveProfiles("test")
 class IssueTrackingApplicationContextTest {
-
     // 다른 BC 가 구현 빈을 제공하는 outbound port — issue-tracking 단독 부팅 시 Mockito stub 으로 채움
     @MockBean
     lateinit var workflowTransitionPort: WorkflowTransitionPort

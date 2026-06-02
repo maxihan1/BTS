@@ -10,8 +10,8 @@ import com.bts.issue.bulk.domain.FailureReasonCode
 import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.jooq.tables.records.BulkOperationsRecord
-import com.bts.issue.jooq.tables.references.BULK_OPERATION_ITEMS
 import com.bts.issue.jooq.tables.references.BULK_OPERATIONS
+import com.bts.issue.jooq.tables.references.BULK_OPERATION_ITEMS
 import org.jooq.DSLContext
 import org.jooq.JSONB
 import org.slf4j.LoggerFactory
@@ -53,7 +53,12 @@ class BulkOperationRepository(
      */
     @Transactional
     fun insert(operation: BulkOperation) {
-        log.debug("Inserting BulkOperation id={} type={} items={}", operation.id.value, operation.type, operation.items.size)
+        log.debug(
+            "Inserting BulkOperation id={} type={} items={}",
+            operation.id.value,
+            operation.type,
+            operation.items.size,
+        )
 
         dsl.insertInto(BULK_OPERATIONS)
             .set(BULK_OPERATIONS.ID, operation.id.value)
@@ -122,12 +127,13 @@ class BulkOperationRepository(
     @Transactional
     fun claimForRun(id: BulkOperationId): Boolean {
         log.debug("claimForRun id={}", id.value)
-        val affected = dsl.update(BULK_OPERATIONS)
-            .set(BULK_OPERATIONS.STATUS, BulkOperationStatus.RUNNING.name)
-            .set(BULK_OPERATIONS.STARTED_AT, OffsetDateTime.now(ZoneOffset.UTC))
-            .where(BULK_OPERATIONS.ID.eq(id.value))
-            .and(BULK_OPERATIONS.STATUS.eq(BulkOperationStatus.PENDING.name))
-            .execute()
+        val affected =
+            dsl.update(BULK_OPERATIONS)
+                .set(BULK_OPERATIONS.STATUS, BulkOperationStatus.RUNNING.name)
+                .set(BULK_OPERATIONS.STARTED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+                .where(BULK_OPERATIONS.ID.eq(id.value))
+                .and(BULK_OPERATIONS.STATUS.eq(BulkOperationStatus.PENDING.name))
+                .execute()
         return affected == 1
     }
 
@@ -174,15 +180,17 @@ class BulkOperationRepository(
     fun recomputeAndPersistCounts(operationId: BulkOperationId) {
         log.debug("recomputeAndPersistCounts operationId={}", operationId.value)
 
-        val succeededSub = dsl.selectCount()
-            .from(BULK_OPERATION_ITEMS)
-            .where(BULK_OPERATION_ITEMS.BULK_OPERATION_ID.eq(operationId.value))
-            .and(BULK_OPERATION_ITEMS.STATUS.eq(ItemStatus.SUCCEEDED.name))
+        val succeededSub =
+            dsl.selectCount()
+                .from(BULK_OPERATION_ITEMS)
+                .where(BULK_OPERATION_ITEMS.BULK_OPERATION_ID.eq(operationId.value))
+                .and(BULK_OPERATION_ITEMS.STATUS.eq(ItemStatus.SUCCEEDED.name))
 
-        val failedSub = dsl.selectCount()
-            .from(BULK_OPERATION_ITEMS)
-            .where(BULK_OPERATION_ITEMS.BULK_OPERATION_ID.eq(operationId.value))
-            .and(BULK_OPERATION_ITEMS.STATUS.eq(ItemStatus.FAILED.name))
+        val failedSub =
+            dsl.selectCount()
+                .from(BULK_OPERATION_ITEMS)
+                .where(BULK_OPERATION_ITEMS.BULK_OPERATION_ID.eq(operationId.value))
+                .and(BULK_OPERATION_ITEMS.STATUS.eq(ItemStatus.FAILED.name))
 
         dsl.update(BULK_OPERATIONS)
             .set(BULK_OPERATIONS.SUCCEEDED_COUNT, succeededSub.asField<Int>())
@@ -209,12 +217,13 @@ class BulkOperationRepository(
     @Transactional
     fun markCompleted(id: BulkOperationId): Boolean {
         log.debug("markCompleted id={}", id.value)
-        val affected = dsl.update(BULK_OPERATIONS)
-            .set(BULK_OPERATIONS.STATUS, BulkOperationStatus.COMPLETED.name)
-            .set(BULK_OPERATIONS.COMPLETED_AT, OffsetDateTime.now(ZoneOffset.UTC))
-            .where(BULK_OPERATIONS.ID.eq(id.value))
-            .and(BULK_OPERATIONS.STATUS.eq(BulkOperationStatus.RUNNING.name))
-            .execute()
+        val affected =
+            dsl.update(BULK_OPERATIONS)
+                .set(BULK_OPERATIONS.STATUS, BulkOperationStatus.COMPLETED.name)
+                .set(BULK_OPERATIONS.COMPLETED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+                .where(BULK_OPERATIONS.ID.eq(id.value))
+                .and(BULK_OPERATIONS.STATUS.eq(BulkOperationStatus.RUNNING.name))
+                .execute()
         return affected == 1
     }
 
@@ -243,15 +252,16 @@ class BulkOperationRepository(
      * 1건씩 INSERT 하는 것 대비 DB 왕복(round-trip)을 최소화한다.
      */
     private fun insertItemsBatch(operation: BulkOperation) {
-        val batch = dsl.batch(
-            dsl.insertInto(
-                BULK_OPERATION_ITEMS,
-                BULK_OPERATION_ITEMS.ID,
-                BULK_OPERATION_ITEMS.BULK_OPERATION_ID,
-                BULK_OPERATION_ITEMS.ISSUE_KEY,
-                BULK_OPERATION_ITEMS.STATUS,
-            ).values(null as UUID?, null, null, null),
-        )
+        val batch =
+            dsl.batch(
+                dsl.insertInto(
+                    BULK_OPERATION_ITEMS,
+                    BULK_OPERATION_ITEMS.ID,
+                    BULK_OPERATION_ITEMS.BULK_OPERATION_ID,
+                    BULK_OPERATION_ITEMS.ISSUE_KEY,
+                    BULK_OPERATION_ITEMS.STATUS,
+                ).values(null as UUID?, null, null, null),
+            )
         operation.items.forEach { item ->
             batch.bind(UUID.randomUUID(), operation.id.value, item.issueKey.value, item.status.name)
         }

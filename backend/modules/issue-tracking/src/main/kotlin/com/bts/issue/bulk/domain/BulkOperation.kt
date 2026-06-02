@@ -98,6 +98,9 @@ data class BulkOperation(
             )
         }
 
+        /** 종단(terminal) 항목 상태 집합 — 멱등 스킵 판정 기준. */
+        private val TERMINAL_ITEM_STATUSES = setOf(ItemStatus.SUCCEEDED, ItemStatus.FAILED)
+
         /**
          * 항목의 상태가 종단(terminal)인지 판정한다.
          *
@@ -107,8 +110,7 @@ data class BulkOperation(
          * @param item 판정 대상 항목.
          * @return 종단 상태면 true.
          */
-        fun isTerminal(item: BulkOperationItem): Boolean =
-            item.status == ItemStatus.SUCCEEDED || item.status == ItemStatus.FAILED
+        fun isTerminal(item: BulkOperationItem): Boolean = item.status in TERMINAL_ITEM_STATUSES
     }
 
     /**
