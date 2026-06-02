@@ -138,6 +138,7 @@ class IssueBcArchTest {
                     "com.atlas.bts.identity.pat..",
                     "com.atlas.bts.identity.web..",
                     "com.atlas.bts.identity.application..",
+                    "com.atlas.bts.identity.permission..",
                 )
                 .because(
                     "issue-tracking BC 는 identity-access 내부를 직접 참조할 수 없다. " +

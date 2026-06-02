@@ -1,6 +1,6 @@
 // IssuePermission enum + IssueScope sealed interface 단위 테스트 — enum 6종, 3 scope 인스턴스/equality 검증
 
-package com.bts.issue.port.outbound
+package com.bts.shared.permission
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test

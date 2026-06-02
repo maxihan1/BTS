@@ -22,15 +22,15 @@ import com.bts.issue.event.IssueSoftDeleted
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.event.IssueUpdated
 import com.bts.issue.markdown.MarkdownRenderer
-import com.bts.issue.port.outbound.IssuePermission
-import com.bts.issue.port.outbound.IssuePermissionResolver
-import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.domain.IssueTypeNotFoundException
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeKey
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssuePermissionResolver
+import com.bts.shared.permission.IssueScope
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.AvailableTransitionView
 import com.bts.shared.workflow.AvailableTransitionsRequest
@@ -696,7 +696,7 @@ class IssueApplicationService(
         permission: IssuePermission,
         scope: IssueScope,
     ) {
-        if (!permissionResolver.hasPermission(actor, permission, scope)) {
+        if (!permissionResolver.hasPermission(actor.value, permission, scope)) {
             throw IssueAccessDeniedException(actor, permission, scope)
         }
     }

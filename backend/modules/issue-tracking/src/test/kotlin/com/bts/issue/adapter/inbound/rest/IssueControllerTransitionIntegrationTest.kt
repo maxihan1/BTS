@@ -10,6 +10,7 @@ import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.shared.user.UserLookupPort
 import com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.engine.WorkflowDefinitionRepository
@@ -63,7 +64,6 @@ import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
-import com.bts.shared.user.UserLookupPort
 import java.sql.Connection
 import java.sql.DriverManager
 import java.time.Clock
@@ -281,9 +281,10 @@ class IssueControllerTransitionIntegrationTest {
         open fun clock(): Clock = Clock.systemUTC()
 
         @Bean
-        open fun userLookupPort(): UserLookupPort = object : UserLookupPort {
-            override fun exists(userId: java.util.UUID): Boolean = true
-        }
+        open fun userLookupPort(): UserLookupPort =
+            object : UserLookupPort {
+                override fun exists(userId: java.util.UUID): Boolean = true
+            }
 
         // IssueApplicationService 생성자 파라미터 수 == 8(userLookupPort 포함). @TestConfiguration Bean 메서드이므로 Suppress 처리.
         @Bean

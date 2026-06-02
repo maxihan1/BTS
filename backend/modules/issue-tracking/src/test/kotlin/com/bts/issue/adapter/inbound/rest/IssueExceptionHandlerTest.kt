@@ -11,8 +11,8 @@ import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
-import com.bts.issue.port.outbound.IssuePermission
-import com.bts.issue.port.outbound.IssueScope
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssueScope
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -111,9 +111,9 @@ class IssueExceptionHandlerTest {
         @GetMapping("/unauthenticated")
         fun throwUnauthenticated(): Nothing = throw BadCredentialsException("세션 만료")
 
+        @Suppress("MaxLineLength")
         @GetMapping("/assignee-not-found")
-        fun throwAssigneeNotFound(): Nothing =
-            throw AssigneeNotFoundException(UUID.fromString("00000000-0000-0000-0000-000000000099"))
+        fun throwAssigneeNotFound(): Nothing = throw AssigneeNotFoundException(UUID.fromString("00000000-0000-0000-0000-000000000099"))
 
         @Suppress("TooGenericExceptionThrown")
         @GetMapping("/internal-error")

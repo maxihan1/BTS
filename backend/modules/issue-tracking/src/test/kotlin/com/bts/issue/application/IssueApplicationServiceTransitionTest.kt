@@ -13,12 +13,12 @@ import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueTransitioned
-import com.bts.issue.port.outbound.IssuePermission
-import com.bts.issue.port.outbound.IssuePermissionResolver
-import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssuePermissionResolver
+import com.bts.shared.permission.IssueScope
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.TransitionPlan
@@ -135,7 +135,11 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.TRANSITION,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
                 every {
@@ -188,7 +192,11 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.TRANSITION,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
                 every {
@@ -224,7 +232,11 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.TRANSITION,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
                 // WorkflowSchemeNoDefaultException 을 직접 import 하면 BC 격리 위반이므로
@@ -264,7 +276,11 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.TRANSITION,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
                 every {
@@ -306,7 +322,11 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.TRANSITION,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
                 every {
@@ -340,7 +360,11 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.TRANSITION,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
                 every {
@@ -375,7 +399,11 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.TRANSITION,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
                 every {
@@ -401,7 +429,11 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.TRANSITION,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns false
             }
 

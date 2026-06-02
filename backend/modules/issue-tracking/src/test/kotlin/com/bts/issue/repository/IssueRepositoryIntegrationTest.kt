@@ -114,8 +114,9 @@ class IssueRepositoryIntegrationTest {
     }
 
     /** resolveTaskTypeId 이후 항상 non-null 임을 보장하는 helper. */
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다 — setup 실행 확인" }
+    private fun requireTaskTypeId(): IssueTypeId {
+        return requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다 — setup 실행 확인" }
+    }
 
     // ── T6-A. updateAssignee — assigneeId UUID 설정 ───────────────────────────────
 

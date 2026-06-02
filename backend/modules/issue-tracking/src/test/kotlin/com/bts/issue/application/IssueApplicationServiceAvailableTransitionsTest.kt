@@ -9,12 +9,12 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.event.IssueEventPublisher
-import com.bts.issue.port.outbound.IssuePermission
-import com.bts.issue.port.outbound.IssuePermissionResolver
-import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssuePermissionResolver
+import com.bts.shared.permission.IssueScope
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.AvailableTransitionView
 import com.bts.shared.workflow.AvailableTransitionsResult
@@ -120,7 +120,11 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.VIEW,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKey(issueKey) } returns makeIssue(state = "TODO")
                 // availableTransitions 는 읽기 경로 — resolveExisting 을 호출한다 (resolveStart 아님)
@@ -160,7 +164,11 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
         context("S2 — 이슈 없음 → IssueNotFoundException") {
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.VIEW,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKey(issueKey) } returns null
             }
@@ -181,7 +189,11 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
         context("S3 — WorkflowSchemeNoDefaultException → IssueWorkflowNotConfiguredException") {
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.VIEW,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKey(issueKey) } returns makeIssue()
                 // availableTransitions 는 resolveExisting 을 호출하므로 resolveExisting 에 stub 한다
@@ -208,7 +220,11 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
         context("S4 — port 가 WorkflowNotFound 반환 → IssueWorkflowNotConfiguredException (리뷰 주의 2)") {
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.VIEW,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKey(issueKey) } returns makeIssue()
                 // availableTransitions 는 resolveExisting 을 호출한다

@@ -2,8 +2,8 @@
 
 package com.bts.issue.domain
 
-import com.bts.issue.port.outbound.IssuePermission
-import com.bts.issue.port.outbound.IssueScope
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssueScope
 
 /**
  * issue-tracking BC 에서 발생하는 모든 도메인 예외의 베이스.
