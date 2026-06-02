@@ -8,7 +8,7 @@ import java.util.UUID
  * 이슈 권한 평가 outbound port — 전 BC 공용.
  *
  * issue-tracking BC 가 이 interface 를 통해 권한 판정을 요청하고,
- * identity-access BC 가 [com.bts.identity.permission.IdentityAccessIssuePermissionResolver]
+ * identity-access BC 가 [com.atlas.bts.identity.permission.IdentityAccessIssuePermissionResolver]
  * (`@Profile("prod")`) 로 adapter 를 제공한다 (FR-PM-02).
  * 개발/스테이징 환경에서는 `AlwaysAllowIssuePermissionResolver` stub 이 활성화된다.
  *
@@ -28,7 +28,7 @@ import java.util.UUID
  *
  * ## ArchUnit 강제
  * - `IssueApplicationService` (Service 계층) 는 이 interface 만 의존한다. 구체 구현체 직접 import 금지.
- * - `com.bts.identity.*` 의 클래스를 issue-tracking 에서 직접 import 하면 빌드 실패 (BC 격리 룰).
+ * - `com.atlas.bts.identity.*` 의 클래스를 issue-tracking 에서 직접 import 하면 빌드 실패 (BC 격리 룰).
  *
  * @see IssuePermission
  * @see IssueScope

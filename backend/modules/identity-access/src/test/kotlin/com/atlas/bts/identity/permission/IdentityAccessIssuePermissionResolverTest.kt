@@ -99,4 +99,13 @@ class IdentityAccessIssuePermissionResolverTest {
             resolver.hasPermission(actor, IssuePermission.CREATE, IssueScope.Project("GHOST")),
         ).isFalse()
     }
+
+    // ── (e) Global scope → 거부 (본 FR 미사용, resolveProjectId null) ─────────
+
+    @Test
+    fun `Global scope 는 거부 — 본 FR 미사용`() {
+        assertThat(
+            resolver.hasPermission(actor, IssuePermission.CREATE, IssueScope.Global),
+        ).isFalse()
+    }
 }
