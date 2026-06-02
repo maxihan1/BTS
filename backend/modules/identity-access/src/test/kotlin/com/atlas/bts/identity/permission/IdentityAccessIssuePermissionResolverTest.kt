@@ -1,0 +1,102 @@
+// IdentityAccessIssuePermissionResolver 단위테스트 — 멤버 게이트 + 매트릭스 판정 (FR-PM-02 Task 4)
+
+package com.atlas.bts.identity.permission
+
+import com.atlas.bts.identity.project.ProjectDirectory
+import com.atlas.bts.identity.project.ProjectMembership
+import com.atlas.bts.identity.project.ProjectMembershipRepository
+import com.atlas.bts.identity.project.ProjectRole
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssueScope
+import io.mockk.every
+import io.mockk.mockk
+import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.Test
+import java.time.Instant
+import java.util.UUID
+
+/**
+ * [IdentityAccessIssuePermissionResolver] 단위테스트.
+ *
+ * ## 검증 시나리오 (plan Step 1 4 케이스)
+ * (a) MEMBER는 SOFT_DELETE 거부 — 매트릭스 DELETE_ISSUE 미보유
+ * (b) 비멤버는 모든 권한 거부 — 멤버 게이트
+ * (c) 멤버는 범위 밖 VIEW 허용 — 임시 멤버 통과 정책 (FR-PM-05 이관 예정)
+ * (d) 프로젝트 없음(resolveKeyToId null) → CREATE 거부 — EC-2
+ *
+ * MockK로 의존성을 격리하여 adapter 로직만 검증한다.
+ */
+class IdentityAccessIssuePermissionResolverTest {
+
+    private val projectDirectory: ProjectDirectory = mockk()
+    private val membershipRepo: ProjectMembershipRepository = mockk()
+    private val schemeRepo: PermissionSchemeRepository = mockk()
+
+    private val resolver = IdentityAccessIssuePermissionResolver(
+        projectDirectory = projectDirectory,
+        membershipRepo = membershipRepo,
+        schemeRepo = schemeRepo,
+    )
+
+    private val actor: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
+    private val projectId: UUID = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000001")
+
+    // ── 헬퍼 ──────────────────────────────────────────────────────────────────
+
+    private fun membership(role: ProjectRole): ProjectMembership =
+        ProjectMembership(
+            projectId = projectId,
+            userId = actor,
+            role = role,
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+
+    // ── (a) MEMBER + SOFT_DELETE → 거부 ──────────────────────────────────────
+
+    @Test
+    fun `MEMBER는 SOFT_DELETE 거부 — 매트릭스 DELETE_ISSUE 미보유`() {
+        every { projectDirectory.resolveKeyToId("ATLAS") } returns projectId
+        every { membershipRepo.findByProjectAndUser(projectId, actor) } returns membership(ProjectRole.MEMBER)
+        every { schemeRepo.roleHasPermission(projectId, "MEMBER", "DELETE_ISSUE") } returns false
+
+        assertThat(
+            resolver.hasPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Issue("ATLAS-1"))
+        ).isFalse()
+    }
+
+    // ── (b) 비멤버 → 거부 (멤버 게이트) ──────────────────────────────────────
+
+    @Test
+    fun `비멤버는 모든 권한 거부 — 멤버 게이트`() {
+        every { projectDirectory.resolveKeyToId("ATLAS") } returns projectId
+        every { membershipRepo.findByProjectAndUser(projectId, actor) } returns null
+
+        assertThat(
+            resolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue("ATLAS-1"))
+        ).isFalse()
+    }
+
+    // ── (c) 멤버 + 범위 밖 VIEW → 허용 (임시 정책) ───────────────────────────
+
+    @Test
+    fun `멤버는 범위 밖 VIEW 허용 — 임시 멤버 통과 (FR-PM-05 이관 예정)`() {
+        every { projectDirectory.resolveKeyToId("ATLAS") } returns projectId
+        every { membershipRepo.findByProjectAndUser(projectId, actor) } returns membership(ProjectRole.MEMBER)
+
+        assertThat(
+            resolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue("ATLAS-1"))
+        ).isTrue()
+    }
+
+    // ── (d) 프로젝트 없음 → 거부 (EC-2) ──────────────────────────────────────
+
+    @Test
+    fun `프로젝트 없음(resolveKeyToId null)이면 CREATE 거부 — EC-2`() {
+        every { projectDirectory.resolveKeyToId("GHOST") } returns null
+
+        assertThat(
+            resolver.hasPermission(actor, IssuePermission.CREATE, IssueScope.Project("GHOST"))
+        ).isFalse()
+    }
+}
