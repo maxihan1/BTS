@@ -8,9 +8,9 @@ import com.bts.issue.bulk.application.BulkEditPayload
 import com.bts.issue.bulk.application.BulkOperationApplicationService
 import com.bts.issue.bulk.application.BulkTransitionPayload
 import com.bts.issue.bulk.application.BulkUpdateRequest
+import com.bts.issue.bulk.domain.BULK_OPERATION_MAX_SIZE
 import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.domain.BulkOperationType
-import com.bts.issue.bulk.domain.BULK_OPERATION_MAX_SIZE
 import com.bts.issue.bulk.repository.BulkOperationRepository
 import com.bts.issue.domain.ActorId
 import jakarta.validation.Valid
