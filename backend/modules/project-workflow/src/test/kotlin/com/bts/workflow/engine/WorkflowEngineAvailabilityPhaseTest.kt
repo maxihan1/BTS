@@ -62,9 +62,9 @@ class WorkflowEngineAvailabilityPhaseTest {
             transitions = listOf(txOpenToClosed),
         )
 
-    /** RequiredField(field="resolution") validator 설정 — EXECUTION 페이즈로 명시 */
+    /** RequiredField(field="resolution") validator 설정 — phase 는 validator 인스턴스(RequiredFieldValidator)에서 읽는다 */
     private val requiredResolutionConfig =
-        ValidatorConfig("RequiredField", mapOf("field" to "resolution"), ValidatorPhase.EXECUTION)
+        ValidatorConfig("RequiredField", mapOf("field" to "resolution"))
 
     /** resolution 없는 가용 전이 조회 요청 */
     private val availReqWithoutResolution =

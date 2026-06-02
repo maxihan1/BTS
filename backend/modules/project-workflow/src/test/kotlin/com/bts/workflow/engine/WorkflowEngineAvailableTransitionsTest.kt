@@ -10,6 +10,7 @@ import com.bts.workflow.domain.StateCategory
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition
+import com.bts.workflow.domain.spi.ValidatorPhase
 import com.bts.workflow.domain.spi.ValidatorResult
 import com.bts.workflow.domain.spi.WorkflowValidator
 import io.mockk.every
@@ -134,6 +135,7 @@ class WorkflowEngineAvailableTransitionsTest {
         every { mockDefinitionRepo.findValidators("software-default", txOpenToClosed) } returns listOf(keyCheckConfig)
         val keyCheckValidator = mockk<WorkflowValidator>()
         every { keyCheckValidator.type } returns "CustomExpression"
+        every { keyCheckValidator.phase } returns ValidatorPhase.AVAILABILITY
         every {
             keyCheckValidator.validate(
                 match { ctx ->
@@ -171,6 +173,7 @@ class WorkflowEngineAvailableTransitionsTest {
         every { mockDefinitionRepo.findValidators("software-default", txOpenToClosed) } returns listOf(blockingConfig)
         val blockingValidator = mockk<WorkflowValidator>()
         every { blockingValidator.type } returns "Permission"
+        every { blockingValidator.phase } returns ValidatorPhase.AVAILABILITY
         every { blockingValidator.validate(any()) } returns
             ValidatorResult.Fail(
                 field = null,
