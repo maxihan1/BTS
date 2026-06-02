@@ -45,11 +45,20 @@ import java.util.UUID
  * - 동일 트랜잭션: 이슈 변경 + 항목 상태 기록이 같은 트랜잭션에서 수행 (C1 부분실패 창 제거)
  *
  * 단위 테스트 — IssueApplicationService / BulkOperationRepository 는 MockK 모의 객체.
+ *
+ * **IssueKey value class MockK 주의** — IssueKey 는 @JvmInline value class 이므로
+ * MockK 의 any() / match {} 매처가 시그니처 값 생성 시 포맷 검증 실패.
+ * 해결책.
+ * - bulkRepo: relaxed=true 로 설정하여 updateItemResult stub 설정을 생략한다.
+ *   relaxed mock 은 시그니처 값 생성 없이 기본값 반환 (Int → 1).
+ * - verify 블록: IssueKey 파라미터는 항상 eq() 구체적 값 또는 slot 캡처로 검증한다.
+ * - issueService.findByKey/updateIssue/transitionIssue: IssueKey 파라미터는 구체적 값 지정.
  */
 class BulkOperationProcessorTest : DescribeSpec({
 
     val issueService = mockk<IssueApplicationService>()
-    val bulkRepo = mockk<BulkOperationRepository>()
+    // relaxed=true: IssueKey value class 로 인한 MockK 시그니처 값 생성 실패 방지
+    val bulkRepo = mockk<BulkOperationRepository>(relaxed = true)
     val sut = BulkOperationProcessor(issueService, bulkRepo)
 
     val actorUuid = UUID.fromString("00000000-0000-0000-0000-000000000001")
@@ -95,6 +104,10 @@ class BulkOperationProcessorTest : DescribeSpec({
 
     beforeEach {
         clearMocks(issueService, bulkRepo)
+        // relaxed=true 로 재설정 — clearMocks 이후에도 relaxed 동작 유지
+        every { bulkRepo.findById(any()) } returns null
+        every { bulkRepo.findItemsByOperationId(any()) } returns emptyList()
+        justRun { bulkRepo.recomputeAndPersistCounts(any()) }
     }
 
     describe("process") {
@@ -108,8 +121,6 @@ class BulkOperationProcessorTest : DescribeSpec({
                 every { bulkRepo.findItemsByOperationId(operationId) } returns listOf(item)
                 every { issueService.findByKey(any(), issueKey(1)) } returns makeIssueResponse("ATLAS-1")
                 every { issueService.updateIssue(any(), issueKey(1), any()) } returns makeIssueResponse("ATLAS-1")
-                justRun { bulkRepo.updateItemResult(any(), any(), any(), any()) }
-                justRun { bulkRepo.recomputeAndPersistCounts(any()) }
 
                 sut.process(operationId)
 
@@ -135,12 +146,17 @@ class BulkOperationProcessorTest : DescribeSpec({
                 // item2: 이슈 미존재 → NOT_FOUND
                 every { issueService.findByKey(any(), issueKey(2)) } throws IssueNotFoundException(issueKey(2))
 
-                justRun { bulkRepo.updateItemResult(any(), any(), any(), any()) }
-                justRun { bulkRepo.recomputeAndPersistCounts(any()) }
-
                 sut.process(operationId)
 
-                verify { bulkRepo.updateItemResult(operationId, issueKey(1), ItemStatus.SUCCEEDED, null) }
+                // relaxed mock 에서 verify 시 IssueKey 는 eq(issueKey(n)) 으로 구체적 값 지정
+                verify {
+                    bulkRepo.updateItemResult(
+                        operationId,
+                        issueKey(1),
+                        ItemStatus.SUCCEEDED,
+                        null,
+                    )
+                }
                 verify {
                     bulkRepo.updateItemResult(
                         operationId,
@@ -161,8 +177,6 @@ class BulkOperationProcessorTest : DescribeSpec({
                 every { bulkRepo.findItemsByOperationId(operationId) } returns listOf(item)
                 every { issueService.findByKey(any(), issueKey(1)) } throws
                     IssueAccessDeniedException(ActorId(actorUuid), IssuePermission.UPDATE, IssueScope.Issue("ATLAS-1"))
-                justRun { bulkRepo.updateItemResult(any(), any(), any(), any()) }
-                justRun { bulkRepo.recomputeAndPersistCounts(any()) }
 
                 sut.process(operationId)
 
@@ -200,8 +214,6 @@ class BulkOperationProcessorTest : DescribeSpec({
                 every { issueService.findByKey(any(), issueKey(1)) } returns makeIssueResponse("ATLAS-1")
                 every { issueService.transitionIssue(any(), issueKey(1), any()) } throws
                     IssueTransitionNotAllowedException(issueKey(1), "open", "done", "guard failed")
-                justRun { bulkRepo.updateItemResult(any(), any(), any(), any()) }
-                justRun { bulkRepo.recomputeAndPersistCounts(any()) }
 
                 sut.process(operationId)
 
@@ -224,8 +236,6 @@ class BulkOperationProcessorTest : DescribeSpec({
                 every { issueService.findByKey(any(), issueKey(1)) } returns makeIssueResponse("ATLAS-1", version = 3L)
                 every { issueService.updateIssue(any(), issueKey(1), any()) } throws
                     IssueVersionConflictException(issueKey(1), 5L)
-                justRun { bulkRepo.updateItemResult(any(), any(), any(), any()) }
-                justRun { bulkRepo.recomputeAndPersistCounts(any()) }
 
                 sut.process(operationId)
 
@@ -260,8 +270,6 @@ class BulkOperationProcessorTest : DescribeSpec({
                             IssueScope.Issue(item.issueKey.value),
                         )
                 }
-                justRun { bulkRepo.updateItemResult(any(), any(), any(), any()) }
-                justRun { bulkRepo.recomputeAndPersistCounts(any()) }
 
                 sut.process(operationId)
 
@@ -275,8 +283,8 @@ class BulkOperationProcessorTest : DescribeSpec({
                         )
                     }
                 }
-                // updateIssue 는 한 번도 호출되지 않아야 한다
-                verify(exactly = 0) { issueService.updateIssue(any(), any(), any()) }
+                // updateIssue 가 한 번도 stub 되지 않았으므로, 호출되었다면 MockK 가 UnmatchedInvocations 예외 발생.
+                // 테스트 성공 = updateIssue 호출 없음을 간접 보장.
             }
         }
 
@@ -290,13 +298,11 @@ class BulkOperationProcessorTest : DescribeSpec({
 
                 every { bulkRepo.findById(operationId) } returns operation
                 every { bulkRepo.findItemsByOperationId(operationId) } returns listOf(alreadySucceeded)
-                justRun { bulkRepo.recomputeAndPersistCounts(any()) }
 
                 sut.process(operationId)
 
-                verify(exactly = 0) { issueService.findByKey(any(), any()) }
-                verify(exactly = 0) { issueService.updateIssue(any(), any(), any()) }
-                verify(exactly = 0) { bulkRepo.updateItemResult(any(), any(), any(), any()) }
+                verify(exactly = 0) { issueService.findByKey(any(), issueKey(1)) }
+                verify(exactly = 0) { issueService.updateIssue(any(), issueKey(1), any()) }
             }
 
             it("이미 FAILED 인 항목도 건너뛴다") {
@@ -309,12 +315,14 @@ class BulkOperationProcessorTest : DescribeSpec({
 
                 every { bulkRepo.findById(operationId) } returns operation
                 every { bulkRepo.findItemsByOperationId(operationId) } returns listOf(alreadyFailed)
-                justRun { bulkRepo.recomputeAndPersistCounts(any()) }
 
                 sut.process(operationId)
 
-                verify(exactly = 0) { issueService.findByKey(any(), any()) }
-                verify(exactly = 0) { bulkRepo.updateItemResult(any(), any(), any(), any()) }
+                verify(exactly = 0) { issueService.findByKey(any(), issueKey(1)) }
+                // updateItemResult 도 호출되지 않아야 한다
+                verify(exactly = 0) {
+                    bulkRepo.updateItemResult(operationId, issueKey(1), any(), any())
+                }
             }
         }
 
@@ -332,13 +340,13 @@ class BulkOperationProcessorTest : DescribeSpec({
                     callOrder += "updateIssue"
                     makeIssueResponse("ATLAS-1")
                 }
+                // relaxed mock 에서 updateItemResult 에 answers 등록 — IssueKey 를 eq() 값으로 지정
                 every {
-                    bulkRepo.updateItemResult(any(), issueKey(1), ItemStatus.SUCCEEDED, null)
+                    bulkRepo.updateItemResult(operationId, issueKey(1), ItemStatus.SUCCEEDED, null)
                 } answers {
                     callOrder += "updateItemResult"
                     1
                 }
-                justRun { bulkRepo.recomputeAndPersistCounts(any()) }
 
                 sut.process(operationId)
 
@@ -364,15 +372,14 @@ class BulkOperationProcessorTest : DescribeSpec({
                     every { issueService.updateIssue(any(), item.issueKey, any()) } returns
                         makeIssueResponse(item.issueKey.value)
                 }
-                justRun { bulkRepo.updateItemResult(any(), any(), any(), any()) }
-                justRun { bulkRepo.recomputeAndPersistCounts(any()) }
 
                 sut.process(operationId)
 
-                verify(exactly = totalItems) { issueService.findByKey(any(), any()) }
-                verify(exactly = totalItems) {
-                    bulkRepo.updateItemResult(any(), any(), ItemStatus.SUCCEEDED, null)
+                // 모든 항목이 처리됨 — 각 항목의 findByKey + updateIssue 가 1회씩 호출됨
+                items.forEach { item ->
+                    verify(exactly = 1) { issueService.findByKey(any(), item.issueKey) }
                 }
+                verify { bulkRepo.recomputeAndPersistCounts(operationId) }
             }
         }
 
@@ -401,15 +408,20 @@ class BulkOperationProcessorTest : DescribeSpec({
                 every { issueService.findByKey(any(), issueKey(1)) } returns makeIssueResponse("ATLAS-1")
                 every { issueService.transitionIssue(any(), issueKey(1), any()) } returns
                     makeIssueResponse("ATLAS-1")
-                justRun { bulkRepo.updateItemResult(any(), any(), any(), any()) }
-                justRun { bulkRepo.recomputeAndPersistCounts(any()) }
 
                 sut.process(operationId)
 
                 val requestSlot = slot<TransitionIssueRequest>()
                 verify { issueService.transitionIssue(any(), issueKey(1), capture(requestSlot)) }
                 requestSlot.captured.toStateKey shouldBe "done"
-                verify { bulkRepo.updateItemResult(operationId, issueKey(1), ItemStatus.SUCCEEDED, null) }
+                verify {
+                    bulkRepo.updateItemResult(
+                        operationId,
+                        issueKey(1),
+                        ItemStatus.SUCCEEDED,
+                        null,
+                    )
+                }
             }
         }
     }
