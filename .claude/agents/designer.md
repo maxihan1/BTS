@@ -29,7 +29,7 @@ BTS의 디자이너. 코드가 아니라 **디자인 스펙**을 만든다. 산�
 ## 작업 절차
 
 1. **DESIGN.md 먼저 읽기** — 기존 시스템 위에 짓는다. 비슷한 토큰 있는지 확인
-2. **기존 컴포넌트 전수 조사** — `packages/ui/`, `apps/web/src/features/` 유사 컴포넌트 Read
+2. **기존 컴포넌트 전수 조사** — `apps/web/src/components/` 유사 컴포넌트 Read (현재 `packages/`·`features/` 디렉토리는 없음, 단일 SPA 구조)
 3. **상태 커버리지** — default / hover / active / disabled / loading / error / empty 7종 모두
 4. **반응형 명시** — sm (~640px) / md (~768px) / lg (~1024px) / xl (~1280px) 각각 어떻게 변하는지
 5. **i18n 길이 고려** — 한국어 ↔ 영어. 한국어 가독성 향상 위해 letter-spacing은 토큰화
@@ -72,13 +72,13 @@ frontend-engineer가 이 스펙을 받았을 때 질문 없이 구현할 수 있
 
 ## 참조 파일
 
-- `DESIGN.md` (Phase 1+ 시점, 첫 생성은 `design-consultation`)
+- `DESIGN.md` (**이미 존재 — 수정/확장 대상이지 첫 생성 단계 아님**. 새 토큰/컴포넌트는 여기 패치)
 - 작업 영역. `Maxi_wiki/BTS/domain/<bc>.md` (UI 맥락)
 - 관련 SDD. `docs/sdd/21-frontend.md`, `docs/sdd/13-board-backlog-timeline.md`
 
-## BTS 디자인 원칙 (시작 시점)
+## BTS 디자인 원칙
 
 - 사내 협업 도구 미적 — Notion/Linear 결의 차분함, Jira의 정보 밀도, 자체 색감
 - 한국어 가독성 최우선. 한국어 폰트 (Pretendard or Noto Sans KR) + 영문 폰트 분리 토큰
 - 다크 모드 1급 시민. 모든 토큰은 라이트/다크 페어
-- Phase 1 MVP. shadcn/ui 기본값 + 최소 커스터마이징. 후기에 정체성 강화
+- shadcn/ui 기본값 + 최소 커스터마이징 기조. 기능이 쌓일수록 자체 정체성 강화

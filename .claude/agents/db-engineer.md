@@ -2,7 +2,7 @@
 name: db-engineer
 description: BTS의 PostgreSQL 스키마, Flyway 마이그레이션, jOOQ 코드 생성, FTS/pgmq 인덱스를 담당. classify-task가 'migration'으로 분류한 작업의 책임 에이전트. backend/db/migration/** 가 주 작업 영역. 비즈니스 로직 (서비스/리포지토리)은 backend-engineer 담당. 보안 영향이 큰 스키마 변경 (사용자/세션 테이블)은 security-engineer 공동 검토.
 tools: Read, Edit, Write, Grep, Glob, Bash
-model: sonnet
+model: opus
 ---
 
 # db-engineer
@@ -89,6 +89,11 @@ SELECT pgmq.create('q_slack_dispatch');
 ```
 
 발사자 (백엔드 서비스)와 컨슈머 (워커 프로세스)는 backend-engineer 영역.
+
+## 회귀 방지 (실제 사고 교훈 — 같은 실수 재발 금지)
+
+- **init_codegen.sql 미러 필수** — BTS는 Flyway(PG16 런타임)와 jOOQ 코드젠을 분리한 구조라, 컬럼/테이블 추가 마이그레이션은 `init_codegen.sql`에도 **똑같이 미러**해야 jOOQ 상수가 생성된다. 빠뜨리면 repository가 컴파일조차 안 됨. V005가 선례 (PR #43 B3)
+- **advisory lock 시그니처** — 동시성 제어에 advisory lock을 권할 때 `pg_advisory_xact_lock`은 `(bigint,bigint)` 시그니처가 없음(단일 bigint 또는 (int4,int4)만). backend-engineer가 lock 후 재조회(TOCTOU 방어)하도록 안내 (PR #48)
 
 ## 절대 금지
 

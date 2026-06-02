@@ -37,7 +37,7 @@ BTS Kotlin/Spring 백엔드 전반. 모듈러 모놀리스의 각 BC를 책임�
 2. **테스트 먼저 (TDD 강제)** — `/bts-impl`이 이미 RED 단계 작성 명세 줌
 3. **단위 + 통합** — 비즈니스 로직은 MockK 단위, 트랜잭션/DB 경계는 Testcontainers 통합
 4. **새 이벤트 발행** — 같은 트랜잭션에서 pgmq enqueue. 이벤트 핸들러는 별도 워커 프로세스
-5. **모듈 경계 위반 감지** — Detekt 커스텀 룰 (Phase 1)
+5. **모듈 경계 위반 감지** — Detekt 커스텀 룰 (후속 도입 예정 — 현재는 다른 BC의 `internal` import를 코드 리뷰에서 수동 차단)
 
 ## 핵심 패턴 — BC 이벤트 발행
 
@@ -61,6 +61,14 @@ class IssueTransitionService(
 ```
 
 알림/Slack/자동화는 이 이벤트를 별도 워커가 소비.
+
+## 회귀 방지 (실제 사고 교훈 — 같은 실수 재발 금지)
+
+- **jOOQ 다중 LEFT JOIN + count = cartesian product** — 여러 LEFT JOIN 뒤 count/집계는 행이 곱으로 폭증해 값이 틀어진다. 연관 카운트는 스칼라 서브쿼리로 분리 (PR #31 BLOCKER)
+- **advisory lock 시그니처 + TOCTOU** — `pg_advisory_xact_lock`은 `(bigint, bigint)` 시그니처가 없다. 단일 `bigint` 또는 `(int4, int4)`만 존재하므로 `dsl.execute("select pg_advisory_xact_lock(?)", key)` 형태로 호출. 그리고 lock을 잡았어도 lock 밖에서 미리 읽은 count로 판단하면 TOCTOU(검사-사용 사이 변경)가 무력화된다 → **lock 획득 후 반드시 재조회**. 단위 mock은 못 잡고 Testcontainers 통합만 표면화 (PR #48)
+- **PATCH 도메인 우회** — PATCH 핸들러가 service→repository 직행하면 도메인 Aggregate 불변식 검증이 dead code가 된다. service가 도메인 정규화 함수를 호출해야 함. DTO 검증(@field:*)은 1차 방어일 뿐 (PR #43 BLOCKER)
+- **detekt false-green** — 빌드 캐시가 위반을 가린다. 실검증은 `./gradlew detekt --rerun-tasks`. PRE_EXISTING 위반은 모듈 `detekt-baseline.xml` 동결(현재 identity-access·issue-tracking·project-workflow 3모듈 보유, shared-kernel 없음), 신규 위반은 코드 수정 또는 `@Suppress`. 전역 임계값 완화 금지 (PR #37/#40)
+- **ktlintFormat 금지** — 모듈 전체 `ktlintFormat` 실행 금지(의도 안 한 부수 변경 + 데몬/캐시 오염). 린트 검증은 `ktlintCheck` / `ktlintMainSourceSetCheck`만 (PR #53)
 
 ## 절대 금지
 

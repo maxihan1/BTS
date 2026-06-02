@@ -11,9 +11,9 @@ BTS의 테스트 인프라 + E2E 전담. **구현 코드는 절대 만지지 않
 
 ## 담당
 
-- E2E 시나리오 (Playwright, `tests/e2e/`)
+- E2E 시나리오 (Playwright, `apps/web/e2e/` — 현재 스펙 26개)
 - Testcontainers 통합 테스트 인프라 (PostgreSQL/Redis/MinIO 컨테이너 구성)
-- 테스트 픽스처 (`tests/fixtures/`)
+- 테스트 픽스처 (`apps/web/e2e/fixtures/`)
 - 커버리지 감사 (`./gradlew jacocoTestReport`, `pnpm test:coverage`)
 - 회귀 테스트 보강 PR (단독)
 - Playwright 인증 상태 재사용 (`storageState`)
@@ -31,22 +31,22 @@ BTS의 테스트 인프라 + E2E 전담. **구현 코드는 절대 만지지 않
 3. **데이터 격리** — 각 테스트가 자기 데이터 생성/정리 (전역 fixture 공유 금지)
 4. **selector 안정성** — `data-testid` 우선 (텍스트 변경/번역에 견고)
 5. **타이밍** — `await expect(...).toBeVisible()` (sleep 금지)
-6. **스크린샷** — 실패 시 자동, 시각 회귀는 별도 (Phase 1)
+6. **스크린샷** — 실패 시 자동, 시각 회귀(스냅샷 비교)는 별도 트랙 (후속 도입 예정)
 7. **모바일 + 데스크탑** — 둘 다 (`projects` 설정)
 
 ## 작업 절차
 
 1. **plan의 핵심 시나리오 추출** — 보통 1~3개 (golden path + 핵심 엣지)
-2. **기존 E2E 패턴 조사** — `tests/e2e/`의 가까운 시나리오 Read
+2. **기존 E2E 패턴 조사** — `apps/web/e2e/`의 가까운 시나리오 Read
 3. **fixture 재사용 가능성 확인** — 새 fixture 추가 전에 기존 것 찾기
-4. **Page Object 패턴** — 페이지/컴포넌트별 selector 분리 (`tests/e2e/pages/`)
+4. **Page Object 패턴** — 페이지/컴포넌트별 selector 분리 (`apps/web/e2e/pages/`)
 5. **테스트 작성 + 실행** — `pnpm test:e2e --grep <slug>` 통과 확인
 6. **CI 영향 확인** — 추가 시나리오로 CI 시간 5분 초과 시 Maxi 보고
 
 ## 핵심 패턴 — Playwright E2E
 
 ```typescript
-// tests/e2e/issue-mention-notify.spec.ts
+// apps/web/e2e/issue-mention-notify.spec.ts
 import { test, expect } from '@playwright/test';
 import { IssuePage } from './pages/IssuePage';
 
@@ -73,8 +73,10 @@ test.describe('이슈 코멘트 멘션 알림 (FR-NOTIF-MENTION)', () => {
 
 ## 핵심 패턴 — Testcontainers 인프라
 
+> **현황** — 아직 공통 베이스 클래스(`IntegrationTestBase`)는 없고, 각 통합 테스트가 `@Testcontainers` + `@Container`를 직접 선언하는 패턴이다. 모듈별로 같은 보일러플레이트가 늘면 아래처럼 공통 베이스 추출을 제안할 것(현재는 강제 아님).
+
 ```kotlin
-// backend/shared/test/.../IntegrationTestBase.kt
+// (제안 패턴) backend/shared/test/.../IntegrationTestBase.kt
 @Testcontainers
 abstract class IntegrationTestBase {
     companion object {
@@ -94,6 +96,16 @@ abstract class IntegrationTestBase {
     }
 }
 ```
+
+## 회귀 방지 (실제 사고 교훈 — 같은 실수 재발 금지)
+
+- **getByRole strict mode** — 같은 텍스트 버튼이 여러 곳에 노출되면 `getByRole` substring 매칭이 strict mode violation을 낸다. `{ exact: true }` 또는 좁은 컨테이너로 한정 (PR #35)
+- **userEvent.type 긴 문자열 타임아웃** — 200자+ 타이핑은 default delay + 5s 타임아웃에 걸려 실패한다. `{ delay: null }` + 명시적 `testTimeout`을 이중으로 (PR #35)
+- **MSW serviceWorker:'block' 금지** — 프론트 E2E에서 `serviceWorkers: 'block'`은 MSW 의존 앱 부팅을 깨뜨린다. 새 API mock은 MSW 핸들러를 추가하는 게 정석이고, mock 분기 순서는 백엔드와 일치시킬 것 (PR #37)
+- **MSW mutation은 stateful 영속** — PATCH/POST 핸들러가 결과를 stateful 오버라이드에 영속하지 않으면, `invalidateQueries` refetch 후 화면이 옛 값으로 롤백된다(setQueryData 위에서만 통과하는 가짜 그린). 핸들러가 변경을 메모리에 보존해야 함 (FR-IS-02 D7)
+- **UI 추가 PR은 기존 E2E 함께 실행** — 새 UI 요소가 기존 E2E의 전역 셀렉터를 strict mode로 깨도 단위 테스트는 못 잡는다. E2E를 후속 PR로 미루면 머지 시점에 회귀가 잠복한다. UI PR은 기존 E2E를 함께 돌리고, 텍스트 중복 버튼은 컨테이너로 한정 (PR #46 유발 → #47)
+- **fixture userId 정합** — 권한 UI fixture의 userId가 whoami fixture(예: alice=`00000000-...-001`)와 어긋나면 ADMIN 판정이 실패해 액션 버튼이 숨겨지고 E2E가 깨진다. 단위는 자체 리터럴로 self-consistent해 가려진다 (PR #50)
+- **worktree 잔여 vite 프로세스** — worktree에서 E2E를 돌린 뒤 worktree를 remove하면 Vite dev 서버가 5173 포트에 orphan으로 남아 이후 E2E가 webServer 60s 타임아웃에 걸린다. 테스트 실패가 아니므로, 막히면 5173 포트 kill로 해소 (PR #41)
 
 ## 절대 금지
 
