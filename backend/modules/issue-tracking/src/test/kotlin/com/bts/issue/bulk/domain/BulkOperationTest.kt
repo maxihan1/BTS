@@ -94,7 +94,6 @@ class BulkOperationTest {
             .isInstanceOf(IllegalStateException::class.java)
     }
 
-
     // ── 카운트 집계 ────────────────────────────────────────────────────────
 
     @Test

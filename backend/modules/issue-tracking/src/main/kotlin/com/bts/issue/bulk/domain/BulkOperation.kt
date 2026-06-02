@@ -194,8 +194,8 @@ data class BulkOperation(
     ): Pair<BulkOperation, BulkOperationItem> {
         val idx = items.indexOfFirst { it.issueKey == issueKey }
         if (idx < 0) throw NoSuchElementException("Item not found for issueKey=${issueKey.value}")
-        val updated = items[idx].copy(status = newStatus, failureReasonCode = reasonCode)
-        val newItems = items.toMutableList().also { it[idx] = updated }
-        return copy(items = newItems, updatedAt = Instant.now()) to updated
+        val updatedItem = items[idx].copy(status = newStatus, failureReasonCode = reasonCode)
+        val newItems = items.mapIndexed { i, item -> if (i == idx) updatedItem else item }
+        return copy(items = newItems, updatedAt = Instant.now()) to updatedItem
     }
 }
