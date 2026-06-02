@@ -140,6 +140,7 @@ const listComponentsHandler = http.get(
  *
  * 에러 분기 순서 (백엔드와 동일).
  * 1. 같은 프로젝트 내 이름 중복 → 409 COMPONENT_NAME_DUPLICATE
+ * 2. leadUserId 지정 + localStorage 플래그(msw-component-lead-422) → 422 COMPONENT_LEAD_NOT_FOUND (E2E 토글)
  * 성공 → 201 { data: Component }
  */
 const createComponentHandler = http.post(
@@ -163,6 +164,19 @@ const createComponentHandler = http.post(
         'Component Name Duplicate',
         'COMPONENT_NAME_DUPLICATE',
         `같은 프로젝트에 동일한 이름의 컴포넌트가 이미 존재합니다: ${body.name}`,
+      )
+    }
+
+    // 백엔드 create는 leadUserId 실재를 검증한다(미존재 → 422).
+    // PATCH /lead와 동일한 localStorage 토글로 E2E에서 시뮬레이션한다.
+    const leadFlag = globalThis.localStorage?.getItem(LS_KEY_COMPONENT_LEAD_422)
+    if (body.leadUserId != null && leadFlag === 'true') {
+      return problemDetail(
+        422,
+        'component-lead-not-found',
+        'Component Lead Not Found',
+        'COMPONENT_LEAD_NOT_FOUND',
+        '리드로 지정한 사용자를 찾을 수 없습니다.',
       )
     }
 
