@@ -12,6 +12,10 @@
 //   - playwright-getbyrole-exact-strict-mode: Dialog 컨테이너로 한정
 //   - e2e-msw-scenario-toggle-localstorage-flag: addInitScript 순서 (loginAsAlice 이후, goto 이전)
 //   - msw-mutation-stateful-refetch: 핸들러 stateful 영속으로 폴링 롤백 방지
+//
+// 격리 가정. bulk MSW 핸들러의 모듈 상태(bulkOpsStore)는 Playwright per-test
+// 브라우저 컨텍스트 격리(테스트마다 새 페이지 = 새 MSW worker = 새 모듈 상태)에
+// 의존한다. resetBulkOperationState()를 E2E에서 호출하지 않는 이유.
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
 import { statusLabels, failureReasonLabels } from '../src/i18n/bulk-operation-labels'

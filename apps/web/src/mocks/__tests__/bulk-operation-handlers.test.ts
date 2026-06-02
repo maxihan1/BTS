@@ -117,6 +117,22 @@ describe('POST 후 GET 연속 폴링 — RUNNING→COMPLETED 진행', () => {
     // payload가 editPayload 형태
     expect(parsed.payload).toMatchObject({ priority: 1, impact: 2 })
   })
+
+  // bulkOperationPayloadSchema는 z.union([edit, transition])이고 union은 첫 매칭을 쓴다.
+  // BULK_TRANSITION payload({toStateKey})가 edit 스키마(priority/impact required)에 잘못
+  // 매칭되어 toStateKey가 유실되지 않는지 봉인한다 (edit 스키마가 optional로 약화되면 회귀).
+  it('BULK_TRANSITION payload가 응답에 toStateKey로 보존됨', async () => {
+    const postRes = await postBulkUpdate(validBulkTransitionBody)
+    const postJson = await postRes.json() as { data: { bulkOperationId: string } }
+    const id = postJson.data.bulkOperationId
+
+    await getBulkOperation(id)
+    const poll2 = await getBulkOperation(id)
+    const body = await poll2.json() as { data: unknown }
+    const parsed = bulkOperationResponseSchema.parse(body.data)
+    expect(parsed.operationType).toBe('BULK_TRANSITION')
+    expect(parsed.payload).toMatchObject({ toStateKey: 'in_progress' })
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
