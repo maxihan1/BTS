@@ -160,6 +160,89 @@ class IssueApplicationService(
     }
 
     /**
+     * 기존 이슈를 복제하여 같은 프로젝트에 새 이슈를 생성한다 (FR-IS-06).
+     *
+     * 흐름.
+     * 1. VIEW 권한 검증 (원본 Issue 범위) + CREATE 권한 검증 (대상 Project 범위) — 둘 중 하나라도 없으면 부수효과 없이 거부
+     * 2. 원본 조회 — 미존재/소프트삭제 시 IssueNotFoundException
+     * 3. pg_advisory_xact_lock 으로 보호된 key_sequence 증가 → 새 IssueKey 발급
+     * 4. [WorkflowKeyResolver.resolveStart] 로 초기 상태 키 결정 (원본 상태는 복사하지 않음)
+     * 5. Issue.create — 복사 대상 필드는 원본에서, reporterId 는 actor, currentStateKey 는 초기상태로 새로 시작
+     * 6. DB INSERT
+     * 7. IssueCreated 이벤트 발행 (신규 이슈이므로 별도 클론 이벤트를 두지 않는다)
+     *
+     * ### 복사 vs 새로 시작 (ADR 2026-06-02-issue-clone-semantics)
+     * - 복사: summary(옵션 override), description, typeId, priority, labels, environment, impact, assigneeId(옵션)
+     * - 새로 시작: id, key, reporterId, currentStateKey, version=1, createdAt/updatedAt
+     * - typeId 는 원본 값을 그대로 복사하며 활성 재검증을 하지 않는다 (기존 이슈의 타입 보존, EC-8).
+     * - 첨부/Watcher/댓글은 미구현이므로 복사 대상이 아니다.
+     *
+     * @param actor 클론을 수행하는 행위자. 클론본의 reporterId 가 된다.
+     * @param sourceKey 복제할 원본 이슈 키.
+     * @param request 클론 옵션 (includeAssignee, summaryOverride).
+     * @return 생성된 클론본 [Issue].
+     * @throws IssueAccessDeniedException 원본 VIEW 또는 대상 프로젝트 CREATE 권한이 없을 때.
+     * @throws IssueNotFoundException 원본 이슈가 없거나 소프트 삭제된 경우.
+     * @throws IssueWorkflowNotConfiguredException 프로젝트에 기본 워크플로우 스킴이 없을 때.
+     */
+    fun cloneIssue(
+        actor: ActorId,
+        sourceKey: IssueKey,
+        request: CloneIssueRequest,
+    ): Issue {
+        val projectKey = sourceKey.projectPrefix
+        assertPermission(actor, IssuePermission.VIEW, IssueScope.Issue(sourceKey.value))
+        assertPermission(actor, IssuePermission.CREATE, IssueScope.Project(projectKey))
+
+        val source = repo.findByKey(sourceKey) ?: throw IssueNotFoundException(sourceKey)
+
+        val seq = repo.incrementKeySequence(projectKey)
+        val newKey = IssueKey.of(projectKey, seq)
+        val startState = resolveWorkflowKey(newKey)
+
+        val clone =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = newKey,
+                projectId = source.projectId,
+                typeId = source.typeId,
+                summary = resolveCloneSummary(request, source),
+                reporterId = actor,
+                currentStateKey = startState.startStateKey,
+                description = source.description,
+                priority = source.priority,
+                labels = source.labels,
+                environment = source.environment,
+                impact = source.impact,
+                assigneeId = if (request.includeAssignee) source.assigneeId else null,
+            )
+        val saved = repo.insert(clone)
+        eventPublisher.publish(
+            IssueCreated(
+                issueKey = saved.key,
+                projectKey = projectKey,
+                summary = saved.summary,
+                reporterId = saved.reporterId,
+                occurredAt = Instant.now(clock),
+            ),
+        )
+        log.info("issue_cloned source={} clone={} actor={}", sourceKey.value, saved.key.value, actor.value)
+        return saved
+    }
+
+    /**
+     * 클론본의 제목을 결정한다. [CloneIssueRequest.summaryOverride] 가 공백이 아니면 그 값을, 아니면 원본 summary 를 사용한다.
+     *
+     * @param request 클론 옵션.
+     * @param source 원본 이슈.
+     * @return 클론본에 사용할 제목.
+     */
+    private fun resolveCloneSummary(
+        request: CloneIssueRequest,
+        source: Issue,
+    ): String = request.summaryOverride?.takeIf { it.isNotBlank() } ?: source.summary
+
+    /**
      * 이슈 단건을 조회한다.
      *
      * 단건 경로이므로 description 을 HTML 로 렌더하여 descriptionHtml 에 채운다 (C3).
