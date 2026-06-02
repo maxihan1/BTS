@@ -2,8 +2,6 @@
 
 package com.bts.issue.bulk.domain
 
-import com.bts.issue.bulk.application.BulkEditPayload
-import com.bts.issue.bulk.application.BulkTransitionPayload
 import com.bts.issue.domain.IssueKey
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
