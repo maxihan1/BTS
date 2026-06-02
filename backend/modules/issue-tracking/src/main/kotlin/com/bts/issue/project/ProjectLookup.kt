@@ -1,8 +1,8 @@
 // projectIdOrKey(UUID 문자열 또는 projectKey) 를 활성 프로젝트 UUID 로 해석하는 애플리케이션 서비스
 
-package com.bts.issue.component.application
+package com.bts.issue.project
 
-import com.bts.issue.component.repository.ProjectLookupRepository
+import com.bts.issue.project.repository.ProjectLookupRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.util.UUID
