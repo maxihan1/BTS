@@ -51,10 +51,13 @@ Base path: `/api/v1/projects/{projectIdOrKey}/components` (projectIdOrKey = UUID
 
 ### 프론트 관례 채택 (선례 grep 확정)
 
-- **issue-tracking BC 관례 채택** = `apps/web/src/api/issues.ts` 패턴: 공유 `ApiError`(from `./client`) + `DataResponse` `wrapped.data` 언래핑 + `errorCode` 대문자. **project-members.ts 패턴(커스텀 ApiError + `{error: 소문자}`) 아님** — 계약갭 방지.
+- **issue-tracking BC 관례 채택** = `apps/web/src/api/issues.ts` 패턴: 공유 `ApiError`(from `./client`, 필드 `{status, body}`) + `DataResponse` `wrapped.data` 언래핑. **project-members.ts 패턴(커스텀 ApiError 클래스 + `{error: 소문자}`) 아님** — 계약갭 방지.
+- **errorCode 추출 (리뷰 B1/B3 정정)**: 공유 `ApiError`에는 `errorCode` 프로퍼티가 **없다**. errorCode는 `error.body.errorCode`(RFC 7807 ProblemDetail 프로퍼티, 대문자 스네이크)에 들어온다. → 순수 헬퍼 `extractComponentErrorCode(error): string | null`로 `body.errorCode`를 읽는다(선례 `use-bulk-operation.ts:31`). **커스텀 에러 클래스 신규 생성 금지**. 헬퍼는 `components.ts`(T1)에 위치.
+- **에러 메시지 단일 출처 (리뷰 B2)**: errorCode→사용자 메시지 매핑은 `component-labels.ts`(T2) i18n 라벨이 단일 출처. 백엔드 ProblemDetail `detail` 필드는 표시에 쓰지 않는다.
 - **페이지 위치**: `/projects/$projectKey/settings/components` (선례 `projects.$projectKey.settings.members.tsx` / `.workflow-scheme.tsx` 동형). RouteAdapter + props 기반 Page 패턴(라우터 비의존 단위 테스트).
 - **user 인프라 재사용**: `fetchUsers/useUsers`(검색) + `fetchUsersByIds/useUsersByIds`(현재 리드 이름 표시) 정본 재사용. **중복 생성 금지**(parallel-fr-overlapping-frontend-infra-collision).
-- CSRF: mutation은 `readXsrfToken()` → `X-XSRF-TOKEN` 헤더(members/issues 선례).
+- **CSRF (리뷰 C2 정정)**: CSRF 전역 활성(SecurityConfig CookieCsrfTokenRepository, login/jwks/actuator만 면제) + `apiFetch`는 XSRF 자동 주입 안 함 → 컴포넌트 mutation(POST/PATCH/DELETE)은 **반드시** `X-XSRF-TOKEN` 헤더 필요. 선례 = **project-members/password/sessions**(`readXsrfToken()` from `./sessions`, 중복 구현 금지). issues.ts는 XSRF 미전송(잠재 버그, 본 작업 범위 밖) — 따르지 말 것.
+- **description 비우기 sentinel (검증 해소)**: 백엔드 `update`는 `description=null`이면 기존 유지, `description=""`이면 `changeDescription("")`로 실제 비움. → 수정 Dialog는 현재값 prefill 후 폼 값 그대로 전송(name 필수 + description 문자열). null=무변경 분기 불필요(현재 상태 전체 전송으로 단순화).
 
 ## 스펙
 
@@ -83,9 +86,9 @@ Base path: `/api/v1/projects/{projectIdOrKey}/components` (projectIdOrKey = UUID
 - files: [`apps/web/src/api/components.types.ts`, `apps/web/src/api/components.ts`, `apps/web/src/api/components.test.ts`]
 - depends-on: []
 
-**RED**: `components.test.ts` — fetchComponents가 `{data:[...]}`를 언래핑해 `Component[]` 반환, createComponent 201 파싱, errorCode 추출(409 COMPONENT_NAME_DUPLICATE → ApiError.status/errorCode), DELETE 204 무바디. (MSW server.use 인라인 또는 fetch mock)
-**GREEN**: `components.types.ts`(componentResponseSchema = `z.object({id:uuid, projectId:uuid, name:min(1), description:nullable, leadUserId:uuid.nullable()})` + dataResponse 래퍼 + Create/Update/Lead 입력 타입). `components.ts`(issues.ts 관례 — apiGet/apiPost/apiFetch + 공유 ApiError, wrapped.data 추출, X-XSRF-TOKEN). 함수: fetchComponents/fetchComponent/createComponent/updateComponent/changeComponentLead/deleteComponent.
-**REFACTOR**: 에러 파싱 헬퍼 + KDoc + null=무변경 sentinel 주석.
+**RED**: `components.test.ts` — fetchComponents가 `{data:[...]}`를 언래핑해 `Component[]` 반환, createComponent 201 파싱, **`extractComponentErrorCode(error)`가 `error.body.errorCode`에서 "COMPONENT_NAME_DUPLICATE" 추출**(공유 ApiError는 `{status, body}`만 가짐 — `ApiError.errorCode` 없음, 리뷰 B1), DELETE 204 무바디. (MSW server.use 인라인 또는 fetch mock)
+**GREEN**: `components.types.ts`(componentResponseSchema = `z.object({id:uuid, projectId:uuid, name:min(1), description:nullable, leadUserId:uuid.nullable()})` + dataResponse 래퍼 + Create/Update/Lead 입력 타입). `components.ts`(공유 `ApiError` from `./client`, wrapped.data 추출. **mutation은 `apiFetch(path, {method, body, headers: {'X-XSRF-TOKEN': readXsrfToken()}})`** — readXsrfToken from `./sessions`, members 선례, 리뷰 C2). 함수: fetchComponents/fetchComponent/createComponent/updateComponent/changeComponentLead/deleteComponent + **순수 헬퍼 `extractComponentErrorCode(error): string | null`**(`(error.body as Record<string,unknown>)?.errorCode`, use-bulk-operation.ts:31 선례, 커스텀 에러 클래스 금지).
+**REFACTOR**: errorCode 헬퍼 + KDoc. update는 현재상태 전체 전송(null=무변경 분기 불필요).
 **검증**: `pnpm --filter @bts/web test components.test`
 
 ### Task 2. i18n 라벨 + 에러 메시지
@@ -108,7 +111,7 @@ Base path: `/api/v1/projects/{projectIdOrKey}/components` (projectIdOrKey = UUID
 - depends-on: [1]
 
 **RED**: (핸들러는 테스트 인프라라 자체 테스트 없음 — 대신 handlers.ts에 componentHandlers spread 추가가 기존 handlers.test.ts 통과 유지하는지 + 후속 hook 테스트의 GREEN 근거) component-handlers의 stateful CRUD가 다음 task 테스트에서 RED→GREEN 작동.
-**GREEN**: `component-handlers.ts` — stateful in-memory map. GET 목록(name 정렬)/POST(201, 이름중복 409 COMPONENT_NAME_DUPLICATE)/GET단건/PATCH(name·desc)/PATCH lead(422 토글 localStorage 플래그)/DELETE 204. errorCode는 ProblemDetail `{errorCode, ...}` 형태(백엔드 일치). 분기순서 백엔드 일치(메모리 e2e-msw-serviceworker-block). fixture UUID는 v4 형식(메모리 zod-v4-uuid-fixture-strictness). handlers.ts에 `...componentHandlers` 알파벳 위치 추가.
+**GREEN**: `component-handlers.ts` — stateful in-memory map. GET 목록(name 정렬)/POST(201, 이름중복 409 COMPONENT_NAME_DUPLICATE)/GET단건/PATCH(name·desc)/PATCH lead(422 토글 localStorage 플래그)/DELETE 204. **에러 바디 = RFC 7807 ProblemDetail `{ type, title, status, detail, errorCode, timestamp }`(백엔드 ComponentExceptionHandler 1:1). `message` 필드 금지**(issue/scheme-handlers의 invent 답습 금지 — 리뷰 B2, 메모리 frontend-zod-backend-dto-contract-gap). 분기순서 백엔드 일치(메모리 e2e-msw-serviceworker-block). fixture UUID는 v4 형식(메모리 zod-v4-uuid-fixture-strictness). handlers.ts에 `...componentHandlers` 알파벳 위치 추가.
 **REFACTOR**: 리셋 헬퍼 + 시드 fixture 분리.
 **검증**: `pnpm --filter @bts/web test handlers.test`
 
@@ -119,9 +122,9 @@ Base path: `/api/v1/projects/{projectIdOrKey}/components` (projectIdOrKey = UUID
 - files: [`apps/web/src/hooks/use-components.ts`, `apps/web/src/hooks/__tests__/use-components.test.tsx`]
 - depends-on: [1, 3]
 
-**RED**: useComponents(projectKey) 목록 캐싱, useCreate/useUpdate/useChangeLead/useDelete mutation이 성공 시 `['components', projectKey]` invalidate(invalidate-only, 메모리 mutation-setquerydata-partial-response-flicker), 409/422 에러 전파.
-**GREEN**: `use-components.ts` — queryKey `['components', projectKey]`. mutation onSuccess invalidateQueries.
-**REFACTOR**: queryKey 팩토리 + KDoc.
+**RED**: useComponents(projectKey) 목록 캐싱, useCreate/useUpdate/useChangeLead/useDelete mutation이 성공 시 `['components', projectKey]` invalidate(invalidate-only, 메모리 mutation-setquerydata-partial-response-flicker), **onError → `extractComponentErrorCode` → `component-labels` 매핑 토스트(409/422/404/400)를 hook 레이어에서 단일 발사**(리뷰 C3). invalidate-only라 별도 롤백 로직 불필요(refetch가 원복).
+**GREEN**: `use-components.ts` — queryKey `['components', projectKey]`. mutation onSuccess invalidateQueries, onError toast(sonner).
+**REFACTOR**: queryKey 팩토리 + 토스트 헬퍼 + KDoc.
 **검증**: `pnpm --filter @bts/web test use-components`
 
 ### Task 5. 리드 셀렉터 (ComponentLeadSelect)
@@ -131,9 +134,9 @@ Base path: `/api/v1/projects/{projectIdOrKey}/components` (projectIdOrKey = UUID
 - files: [`apps/web/src/components/component/ComponentLeadSelect.tsx`, `apps/web/src/components/component/ComponentLeadSelect.test.tsx`]
 - depends-on: [2]
 
-**RED**: 검색 입력(debounce) → useUsers 결과 옵션 렌더 + "미지정" 옵션 + onChange(userId|null) 호출. 현재 리드 표시명은 useUsersByIds.
-**GREEN**: `ComponentLeadSelect.tsx` — IssueMetaPanel assignee 인라인 패턴 차용(useUsers/useUsersByIds 재사용, 신규 user API 금지).
-**REFACTOR**: debounce 상수 + aria-label.
+**RED**: **순수 props 기반 표현 컴포넌트**(리뷰 C1, IssueAssigneeSelect 선례 IssueMetaPanel.tsx:608 동형) — props `{ users, currentLead, onSearch, onChange(userId|null) }`. 검색 입력 → onSearch 호출, 옵션 렌더 + "미지정" 옵션. **hook(useUsers/useUsersByIds) + debounce는 내부 호출 안 함, 상위(ComponentFormDialog/ComponentRow)가 호출해 props로 주입**(QueryClient 비의존 단위 테스트).
+**GREEN**: `ComponentLeadSelect.tsx` — 순수 표현 컴포넌트. user 데이터 페칭은 상위 책임(useUsers/useUsersByIds 재사용, 신규 user API 금지).
+**REFACTOR**: debounce는 상위에 + aria-label.
 **검증**: `pnpm --filter @bts/web test ComponentLeadSelect`
 
 ### Task 6. 생성/수정 Dialog (ComponentFormDialog)
@@ -143,8 +146,8 @@ Base path: `/api/v1/projects/{projectIdOrKey}/components` (projectIdOrKey = UUID
 - files: [`apps/web/src/components/component/ComponentFormDialog.tsx`, `apps/web/src/components/component/ComponentFormDialog.test.tsx`]
 - depends-on: [2, 5]
 
-**RED**: 생성 모드(빈 폼)·수정 모드(기존값 prefill) 토글. 이름 필수 검증, 저장 시 onSubmit payload(수정은 변경 필드만 — null=무변경 sentinel 준수). 409 중복 시 폼 내 에러 표시, Dialog 유지. props 식별값으로 초기화 시 key prop 재마운트(메모리 react-usestate-stale-key-prop).
-**GREEN**: `ComponentFormDialog.tsx`(shadcn Dialog + Input + ComponentLeadSelect, AddMemberDialog 선례).
+**RED**: 생성 모드(빈 폼)·수정 모드(기존값 prefill) 토글. 이름 필수 검증, 저장 시 onSubmit payload(수정은 현재값 전체 전송 — name 필수+description 문자열, sentinel 분기 불필요). 409 중복 시 폼 내 에러 표시, Dialog 유지. props 식별값으로 초기화 시 key prop 재마운트(메모리 react-usestate-stale-key-prop). **리드 검색용 useUsers + debounce + useUsersByIds(현재 리드)를 이 Dialog가 호출해 ComponentLeadSelect에 props 주입**(C1 — 셀렉터는 순수).
+**GREEN**: `ComponentFormDialog.tsx`(shadcn Dialog + Input + ComponentLeadSelect, AddMemberDialog 선례). QueryClient 의존 → 테스트 wrapper 필요.
 **REFACTOR**: 폼 상태 훅 분리 + i18n.
 **검증**: `pnpm --filter @bts/web test ComponentFormDialog`
 
@@ -155,7 +158,7 @@ Base path: `/api/v1/projects/{projectIdOrKey}/components` (projectIdOrKey = UUID
 - files: [`apps/web/src/components/component/ComponentRow.tsx`, `apps/web/src/components/component/ComponentRow.test.tsx`]
 - depends-on: [2, 4]
 
-**RED**: 이름·설명·리드표시명(useUsersByIds) 렌더 + 수정/삭제 액션(행 컨테이너 한정 aria-label, 메모리 ui-pr-defer-e2e-regression-latent). 삭제 확인 → useDelete. 리드 변경 → useChangeLead.
+**RED**: 이름·설명·리드표시명(useUsersByIds — 행이 호출) 렌더 + 수정/삭제 액션(행 컨테이너 한정 aria-label, 메모리 ui-pr-defer-e2e-regression-latent). 삭제 확인 → useDelete. 리드 인라인 변경 시 useUsers 검색 + ComponentLeadSelect(props 주입) → useChangeLead. (토스트는 hook 레이어 — C3, 행에서 중복 발사 금지)
 **GREEN**: `ComponentRow.tsx`(MemberRow 선례).
 **REFACTOR**: 액션 핸들러 분리.
 **검증**: `pnpm --filter @bts/web test ComponentRow`
@@ -202,4 +205,20 @@ Base path: `/api/v1/projects/{projectIdOrKey}/components` (projectIdOrKey = UUID
 - 추가 검증: `tsc -p tsconfig.app.json`(메모리 ci-typecheck-tsconfig-app-vs-local) + `pnpm --filter @bts/web lint` + vitest 전체 + playwright(T10) + 기존 E2E 회귀 0
 - plan 검증 이관 항목: description 빈 문자열 PATCH 시 백엔드 도메인 update 동작(빈→유지 vs 빈 허용) — T1/T6 구현 전 백엔드 ComponentApplicationService.update grep 확인
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### code-reviewer 독립 리뷰 (2026-06-03, eng 집중)
+
+BLOCKER 3건 + CONCERN 4건. 모두 백엔드 PR #59 + 프론트 선례 코드 대조 기반. **전부 plan에 반영 완료**.
+
+- **B1/B3 (errorCode 추출 레이어/필드)** ✅ 해소 — 공유 `ApiError`는 `{status, body}`만 가짐(`errorCode` 프로퍼티 없음). T1에 순수 헬퍼 `extractComponentErrorCode(error)`가 `body.errorCode` 읽도록 명시(use-bulk-operation.ts:31 선례). 커스텀 에러 클래스 금지.
+- **B2 (MSW ProblemDetail 필드)** ✅ 해소 — T3 에러 바디를 RFC 7807 `{type,title,status,detail,errorCode,timestamp}`로 명시. `message` 필드 금지(issue/scheme-handlers invent 답습 차단). 메시지 단일 출처 = component-labels i18n.
+- **C1 (ComponentLeadSelect 데이터 경계)** ✅ 해소 — 순수 props 컴포넌트로 정정(IssueAssigneeSelect 선례). hook은 상위(T6/T7)가 호출.
+- **C2 (CSRF 선례 오기)** ✅ 해소 — CSRF 전역 활성 + apiFetch 미주입 확인 → 컴포넌트 mutation X-XSRF-TOKEN 필수. 선례 members/password/sessions(readXsrfToken from ./sessions)로 정정. issues.ts 아님.
+- **C3 (토스트/롤백 책임)** ✅ 해소 — T4 onError 토스트를 hook 레이어 단일 발사. invalidate-only라 롤백 로직 불필요(spec S7 "행 롤백"→"refetch 원복" 정정).
+- **C4** 정보성 — 조치 불필요(파일 격리·순환 없음 확인됨).
+- **description 빈문자열 sentinel** ✅ 해소 — 백엔드 `""`→실제 비움 확인. 현재상태 전체 전송으로 단순화.
+
+✅ 통과: API 계약(경로/메서드/상태/errorCode 7종), ComponentResponse Zod 1:1, DataResponse 언래핑, user 인프라 재사용, 알려진 함정 5종, ProjectNotFoundScreen/RouteAdapter 패턴, 스코프 적정성, TDD 메타 완전성.
+
+**BLOCKER**: 없음 (3건 모두 반영 완료).

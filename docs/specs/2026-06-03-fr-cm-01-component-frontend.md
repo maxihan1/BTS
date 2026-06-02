@@ -38,7 +38,7 @@
 
 **S7. 리드 미존재(422)**
 - Given 리드로 지정하려는 userId가 실재하지 않을 때(이론상 셀렉터는 실재 user만 노출하므로 방어적)
-- Then 422 `COMPONENT_LEAD_NOT_FOUND` → 토스트 에러, 행 롤백.
+- Then 422 `COMPONENT_LEAD_NOT_FOUND` → 토스트 에러(hook 레이어 단일 발사). invalidate-only라 낙관적 업데이트 없음 → refetch로 원상 복구(별도 롤백 로직 불필요).
 
 **S8. 프로젝트 미존재/접근불가(404)**
 - Given 미존재 projectKey 또는 접근불가
