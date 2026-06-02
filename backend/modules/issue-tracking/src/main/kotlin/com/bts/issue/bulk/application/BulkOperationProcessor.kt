@@ -10,7 +10,6 @@ import com.bts.issue.bulk.repository.BulkOperationRepository
 import com.bts.issue.domain.ActorId
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
-import org.springframework.transaction.annotation.Transactional
 
 /**
  * 일괄 작업 처리 핵심 로직.
@@ -56,14 +55,15 @@ class BulkOperationProcessor(
      * **actor 복원** — HTTP 요청 밖(pgmq 워커)이므로 SecurityContext 가 없다.
      * bulk_operations.actor_id 를 [ActorId] 로 복원하여 [IssueApplicationService] 에 전달한다.
      *
-     * **동일 트랜잭션** — 이슈 변경([IssueApplicationService]) 과 항목 상태 기록
-     * ([BulkOperationRepository.updateItemResult]) 이 같은 @Transactional 경계 안에서 수행된다.
-     * 이슈 변경 커밋 후 항목 상태 기록 전 크래시로 PENDING 항목이 잔존하는 C1 부분실패 창을 제거한다.
+     * **@Transactional 없음 — 의도적 설계 (F5)**.
+     * 각 항목은 [com.bts.issue.bulk.application.BulkItemExecutor.executeItem] 의 REQUIRES_NEW 트랜잭션이 담당한다.
+     * process() 에 @Transactional 을 걸면 REQUIRES_NEW 의 외부 트랜잭션이 생겨
+     * 항목 실패 시 rollback-only 마킹이 다른 항목 커밋을 방해하는 전파 문제가 발생한다.
+     * recomputeAndPersistCounts 는 자체 @Transactional 을 가진 repository 메서드가 처리한다.
      *
      * @param bulkOperationId 처리할 일괄 작업 식별자.
      * @throws IllegalStateException 작업을 찾을 수 없을 때.
      */
-    @Transactional
     fun process(bulkOperationId: BulkOperationId) {
         val operation =
             bulkRepo.findById(bulkOperationId)

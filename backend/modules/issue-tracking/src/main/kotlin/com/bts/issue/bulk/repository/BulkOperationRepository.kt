@@ -119,26 +119,69 @@ class BulkOperationRepository(
             }
 
     /**
-     * PENDING 상태 작업을 RUNNING 으로 전환한다 (CAS).
+     * 작업 1건의 현재 상태를 조회한다 (경량 조회 — id + status 만 읽음).
      *
-     * `UPDATE bulk_operations SET status='RUNNING', started_at=now() WHERE id=? AND status='PENDING'`
-     * — affected rows 1 이면 true(선점 성공), 0 이면 false(타 워커가 이미 선점).
+     * claim-false 후 메시지 처리 방법을 결정하는 데 사용한다.
+     * 종단 상태이면 delete, RUNNING 이면 재전달 대기, null 이면 poison 처리.
      *
-     * **TOCTOU 방지** — 상태 조회 후 별도 UPDATE 가 아니라 WHERE status='PENDING' 조건을
-     * UPDATE 에 포함하여 CAS 를 원자적으로 수행한다 (learnings: advisory-lock-bigint-TOCTOU).
+     * @param id 조회할 작업 식별자.
+     * @return 현재 상태. 작업이 없으면 null.
+     */
+    @Transactional(readOnly = true)
+    fun findStatus(id: BulkOperationId): BulkOperationStatus? =
+        dsl.select(BULK_OPERATIONS.STATUS)
+            .from(BULK_OPERATIONS)
+            .where(BULK_OPERATIONS.ID.eq(id.value))
+            .fetchOne()
+            ?.let { record ->
+                val statusStr = record.get(BULK_OPERATIONS.STATUS) ?: return@let null
+                enumValueOf<BulkOperationStatus>(statusStr)
+            }
+
+    /**
+     * PENDING 상태 작업 또는 stale RUNNING 작업을 RUNNING 으로 전환한다 (CAS).
+     *
+     * 단일 UPDATE affected rows 로 원자적 단일 진입을 보장한다 (TOCTOU 방지).
+     *
+     * ### 선점 조건
+     * ```sql
+     * WHERE id = ?
+     *   AND (
+     *     status = 'PENDING'
+     *     OR (status = 'RUNNING' AND started_at < ?staleThreshold)
+     *   )
+     * ```
+     * - PENDING → 신규 처리 선점.
+     * - RUNNING + started_at < staleThreshold → 크래시 후 방치된 stale 작업 재청.
+     *
+     * ### stale threshold 산정 근거
+     * - 최대 처리 예산: (1000/50) × 200ms = 4초.
+     * - vt = 60초. threshold = vt × 5 = **300초** — 정상 처리 중(4초)을 뺏지 않도록 충분히 큰 값.
+     * - 300초 경과 후에도 RUNNING 이면 크래시로 확정하여 재청 허용.
+     *
+     * **TOCTOU 방지** — 상태 조회 후 별도 UPDATE 방식은 경쟁조건 유발 (learnings: advisory-lock-bigint-TOCTOU).
+     * affected rows 가 유일한 단일성 근거.
      *
      * @param id 전환할 작업 식별자.
-     * @return 선점 성공이면 true, 타 워커 선점이면 false.
+     * @return 선점 성공이면 true, 타 워커 활성 선점이면 false.
      */
     @Transactional
     fun claimForRun(id: BulkOperationId): Boolean {
         log.debug("claimForRun id={}", id.value)
+        val now = OffsetDateTime.now(clock)
+        val staleThreshold = now.minusSeconds(STALE_RUNNING_THRESHOLD_SECONDS)
         val affected =
             dsl.update(BULK_OPERATIONS)
                 .set(BULK_OPERATIONS.STATUS, BulkOperationStatus.RUNNING.name)
-                .set(BULK_OPERATIONS.STARTED_AT, OffsetDateTime.now(clock))
+                .set(BULK_OPERATIONS.STARTED_AT, now)
                 .where(BULK_OPERATIONS.ID.eq(id.value))
-                .and(BULK_OPERATIONS.STATUS.eq(BulkOperationStatus.PENDING.name))
+                .and(
+                    BULK_OPERATIONS.STATUS.eq(BulkOperationStatus.PENDING.name)
+                        .or(
+                            BULK_OPERATIONS.STATUS.eq(BulkOperationStatus.RUNNING.name)
+                                .and(BULK_OPERATIONS.STARTED_AT.lt(staleThreshold)),
+                        ),
+                )
                 .execute()
         return affected == 1
     }
@@ -236,16 +279,28 @@ class BulkOperationRepository(
     /**
      * 지정 시각 이전에 completed_at 이 설정된 작업 목록을 반환한다.
      *
-     * TTL 기반 cleanup 용 — PR2 워커 프로세스가 소비한다.
+     * TTL 기반 cleanup 용 — [com.bts.issue.bulk.worker.BulkOperationCleanupWorker] 가 소비한다.
      * 항목은 포함하지 않는다 (필요 시 [findItemsByOperationId] 로 별도 조회).
      *
-     * @param before 기준 시각. 이 시각보다 이전에 완료된 작업만 반환.
-     * @return 완료된 작업 목록. 없으면 빈 리스트.
+     * ### 설계 노트 — operation-level FAILED 현황
+     * 현재 코드에서 BulkOperation 전체를 FAILED 로 set 하는 경로가 없다.
+     * (항목 개별 실패는 BulkOperationItem.status=FAILED 로 기록, 작업 전체는 COMPLETED 로 종료.)
+     * 따라서 cleanup 대상은 사실상 COMPLETED 작업뿐이다.
+     * 향후 작업레벨 FAILED 가 도입되면 completed_at 대신 별도 종단시각 컬럼 또는
+     * `status IN (COMPLETED, FAILED) AND updated_at < before` 쿼리로 전환한다.
+     *
+     * ### LIMIT 추가 이유
+     * 장시간 서비스 후 만료 작업이 대량 누적될 때 단일 트랜잭션 락이 길어지는 것을 방지한다.
+     * [CLEANUP_BATCH_LIMIT] 건씩 배치 삭제하며 다음 cron 실행 시 나머지를 처리한다.
+     *
+     * @param before 기준 시각. 이 시각보다 이전에 completed_at 이 찍힌 작업만 반환.
+     * @return 완료된 작업 목록. 없으면 빈 리스트. 최대 [CLEANUP_BATCH_LIMIT] 건.
      */
     @Transactional(readOnly = true)
     fun findCompletedBefore(before: Instant): List<BulkOperation> =
         dsl.selectFrom(BULK_OPERATIONS)
             .where(BULK_OPERATIONS.COMPLETED_AT.lt(before.toOffsetDateTime()))
+            .limit(CLEANUP_BATCH_LIMIT)
             .fetch()
             .map { it.toOperation() }
 
@@ -319,6 +374,29 @@ class BulkOperationRepository(
             BulkOperationType.BULK_TRANSITION ->
                 objectMapper.readValue(json, BulkOperationPayload.Transition::class.java)
         }
+    }
+
+    companion object {
+        /**
+         * stale RUNNING 작업 재청 기준 (초).
+         *
+         * 이 시간이 경과했음에도 status=RUNNING 인 작업은 크래시로 방치된 것으로 간주하여
+         * [claimForRun] 이 재선점을 허용한다.
+         *
+         * **산정 근거**.
+         * - 최대 처리 예산: (1000/50) × 200ms = 4초.
+         * - vt(visibility timeout) = 60초.
+         * - threshold = vt × 5 = 300초 — 정상 처리 중(최대 4초)을 뺏지 않도록 충분히 큰 값.
+         */
+        const val STALE_RUNNING_THRESHOLD_SECONDS: Long = 300L
+
+        /**
+         * cleanup 1회 배치 최대 처리 건수.
+         *
+         * 장기간 누적된 만료 작업을 한 번에 전부 삭제하면 단일 트랜잭션 락이 길어진다.
+         * 한 번에 최대 이 건수만 처리하고, 나머지는 다음 cron 실행에 위임한다.
+         */
+        const val CLEANUP_BATCH_LIMIT: Int = 1000
     }
 }
 

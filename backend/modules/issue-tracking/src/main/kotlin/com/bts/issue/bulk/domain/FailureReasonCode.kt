@@ -10,7 +10,8 @@ package com.bts.issue.bulk.domain
  * - [TRANSITION_NOT_ALLOWED]: 현재 상태에서 요청한 전이가 허용되지 않는다.
  * - [VERSION_CONFLICT]: 낙관적 잠금 충돌 — 다른 요청이 먼저 수정했다.
  * - [WORKFLOW_NOT_CONFIGURED]: 이슈에 워크플로우가 구성되어 있지 않다.
- * - [TYPE_NOT_FOUND]: 지정한 이슈 유형을 찾을 수 없다.
+ * - [TYPE_NOT_FOUND]: 지정한 이슈 유형을 찾을 수 없다 (dead value — 현재 applier 미사용).
+ * - [UNKNOWN]: 예상치 못한 내부 오류. 매핑되지 않는 예외의 fallback.
  */
 enum class FailureReasonCode {
     NOT_FOUND,
@@ -19,4 +20,5 @@ enum class FailureReasonCode {
     VERSION_CONFLICT,
     WORKFLOW_NOT_CONFIGURED,
     TYPE_NOT_FOUND,
+    UNKNOWN,
 }

@@ -77,8 +77,9 @@ class BulkItemExecutor(
     /**
      * 예외를 [FailureReasonCode] 로 매핑한다.
      *
-     * 매핑되지 않는 예외는 [FailureReasonCode.NOT_FOUND] 로 안전하게 처리하고
-     * 경고 로그를 남긴다. 빈 catch 금지 원칙(DEVELOPMENT.md §절대규칙) — 모든 예외는 로깅+처리.
+     * 매핑되지 않는 예외는 [FailureReasonCode.UNKNOWN] 으로 기록하여 오진단을 방지한다.
+     * NOT_FOUND 로 오기록하면 실제 이슈가 없는 경우와 구분할 수 없으므로 별도 코드를 사용한다.
+     * 빈 catch 금지 원칙(DEVELOPMENT.md §절대규칙) — 모든 예외는 로깅+처리.
      */
     private fun mapToReasonCode(e: Exception): FailureReasonCode =
         when (e) {
@@ -93,7 +94,7 @@ class BulkItemExecutor(
                     e::class.simpleName,
                     e.message,
                 )
-                FailureReasonCode.NOT_FOUND
+                FailureReasonCode.UNKNOWN
             }
         }
 }
