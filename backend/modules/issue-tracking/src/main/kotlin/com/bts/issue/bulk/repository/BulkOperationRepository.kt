@@ -298,8 +298,7 @@ class BulkOperationRepository(
         )
 
     /** [BulkOperationPayload] 를 JSONB 로 직렬화한다. */
-    private fun BulkOperationPayload.toJsonb(): JSONB =
-        JSONB.valueOf(objectMapper.writeValueAsString(this))
+    private fun BulkOperationPayload.toJsonb(): JSONB = JSONB.valueOf(objectMapper.writeValueAsString(this))
 
     /**
      * JSONB 컬럼 값을 [BulkOperationType] 에 따라 [BulkOperationPayload] 로 역직렬화한다.
