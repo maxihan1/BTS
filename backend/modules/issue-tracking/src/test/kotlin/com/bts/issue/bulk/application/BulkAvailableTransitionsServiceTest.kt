@@ -43,8 +43,11 @@ class BulkAvailableTransitionsServiceTest : DescribeSpec({
     val actor = ActorId(UUID.fromString("11111111-1111-4111-8111-111111111111"))
 
     /** 테스트용 AvailableTransitionView 생성 헬퍼. */
-    fun transition(from: String, to: String, name: String = to) =
-        AvailableTransitionView(fromStateKey = from, toStateKey = to, name = name)
+    fun transition(
+        from: String,
+        to: String,
+        name: String = to,
+    ) = AvailableTransitionView(fromStateKey = from, toStateKey = to, name = name)
 
     fun accessDenied() =
         IssueAccessDeniedException(
@@ -85,14 +88,14 @@ class BulkAvailableTransitionsServiceTest : DescribeSpec({
         it("해당 키를 unresolvedIssueKeys 에 담고 나머지 교집합을 계산한다") {
             every { issueService.availableTransitions(actor, IssueKey("ATLAS-1")) } returns
                 listOf(transition("OPEN", "IN_PROGRESS"))
-            every { issueService.availableTransitions(actor, IssueKey("ATLAS-MISSING")) } throws
-                IssueNotFoundException(IssueKey("ATLAS-MISSING"))
+            every { issueService.availableTransitions(actor, IssueKey("ATLAS-99")) } throws
+                IssueNotFoundException(IssueKey("ATLAS-99"))
 
-            val result = sut.availableCommonTransitions(actor, listOf("ATLAS-1", "ATLAS-MISSING"))
+            val result = sut.availableCommonTransitions(actor, listOf("ATLAS-1", "ATLAS-99"))
 
             result.transitions shouldHaveSize 1
             result.transitions.first().toStateKey shouldBe "IN_PROGRESS"
-            result.unresolvedIssueKeys shouldContainExactly listOf("ATLAS-MISSING")
+            result.unresolvedIssueKeys shouldContainExactly listOf("ATLAS-99")
         }
     }
 
@@ -119,14 +122,14 @@ class BulkAvailableTransitionsServiceTest : DescribeSpec({
         it("해당 키를 unresolvedIssueKeys 에 담고 전체를 중단시키지 않는다") {
             every { issueService.availableTransitions(actor, IssueKey("ATLAS-1")) } returns
                 listOf(transition("OPEN", "IN_PROGRESS"))
-            every { issueService.availableTransitions(actor, IssueKey("ATLAS-DENIED")) } throws
+            every { issueService.availableTransitions(actor, IssueKey("ATLAS-98")) } throws
                 accessDenied()
 
-            val result = sut.availableCommonTransitions(actor, listOf("ATLAS-1", "ATLAS-DENIED"))
+            val result = sut.availableCommonTransitions(actor, listOf("ATLAS-1", "ATLAS-98"))
 
             result.transitions shouldHaveSize 1
             result.transitions.first().toStateKey shouldBe "IN_PROGRESS"
-            result.unresolvedIssueKeys shouldContainExactly listOf("ATLAS-DENIED")
+            result.unresolvedIssueKeys shouldContainExactly listOf("ATLAS-98")
         }
     }
 
