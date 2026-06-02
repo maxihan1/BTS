@@ -144,6 +144,20 @@ init_codegen.sql 미러 필수 (learnings "jOOQ init_codegen 미러" — 안 하
 - 통합 테스트(Testcontainers): pgmq enqueue→consume→처리→결과 기록 e2e, 워커 재전달 멱등(SUCCEEDED 스킵), 1000건 상한, 혼합 from-state 전이 부분 성공.
 - best-effort: 100건 중 일부 권한/전이 실패 시 나머지 SUCCEEDED + 정확한 카운트.
 
+## 비동기 인프라 보강 (게이트1 리뷰 BLOCKER 해소 — Maxi 비동기(B) 확정 2026-06-02)
+
+code-reviewer 적대적 리뷰 BLOCKER/CONCERN 반영. 비동기(B) 유지 + 워커 인프라 떠안기 결정.
+
+- **B1 권한·actor**: 워커는 HTTP 밖 스레드 → `bulk_operations.actor_id`를 읽어 `ActorId` 복원 후 기존 `updateIssue/transitionIssue(actor, …)`에 전달. 권한 검증 실효성은 FR-PM-02(PR #53)가 운영용 `IdentityAccessIssuePermissionResolver`를 배선하면 **포트 재사용으로 자동 적용**(FR-IS-05는 포트 계약만 의존, hard-block 아님). dev/test는 **deny stub 주입**으로 "권한 없는 이슈 → FAILED(FORBIDDEN)" 경로 검증(AlwaysAllow always-true 가짜그린 회피).
+- **B2 워커 부팅 인프라**: issue-tracking에 부팅 진입점(`@SpringBootApplication` + `@EnableScheduling`)이 **부재**(현재 identity-access만 존재). 본 작업이 issue-tracking 부팅 진입점 + 스케줄링을 신설. 워커는 그 컨텍스트에서 구동. **이는 FR-IS-05 범위를 넘는 아키텍처 작업임을 명시.**
+- **B3 작업레벨 동시성**: vt 만료 중 동시 2워커 처리 방지 위해 **작업레벨 CAS** — `UPDATE bulk_operations SET status='RUNNING' WHERE id=? AND status='PENDING'`로 단일 워커만 진입(0 row면 타 워커 처리 중 → skip). vt는 "최대 청크 처리시간 + 여유"로 산정(성능예산 기반). learnings advisory lock TOCTOU대로 lock/CAS 후 재조회.
+- **C1 부분실패 창 제거 (NFR5 수정)**: 이슈 변경과 **해당 항목 상태 기록(SUCCEEDED/FAILED)을 동일 트랜잭션**으로 묶는다(같은 모듈·DB라 가능). 워커 크래시 시 이슈도 항목도 함께 롤백 → 재처리 시 PENDING이라 안전. 작업 카운트(processed/succeeded/failed)는 항목 상태 집계 재계산(멱등). → 기존 NFR5의 "이슈 변경 ≠ 항목 트랜잭션 분리"를 **폐기**.
+- **C2 성능 예산**: 1,000건 처리 목표시간 명시(NFR 추가). 이슈별 cross-BC `WorkflowTransitionPort.plan()` 호출 횟수(최대 1,000회) 인지 → vt 산정 근거.
+- **C4 완료 이벤트 큐 확정**: 별도 큐 `q_bulk_operation_events`(issue 이벤트 큐 `q_issue_events`와 분리, BulkOperation은 IssueDomainEvent 아님). 스키마: `{bulkOperationId, actorId, total, succeeded, failed, completedAt}`. **COMPLETED 전이는 1회만**(CAS RUNNING→COMPLETED) → 이벤트 1회 발행 보장.
+- **C5 PAT/JWT**: 기존 이슈 API 인증 정책 그대로(JWT/PAT 모두 허용). 일괄도 동일 — 별도 제외 안 함(기존 이슈 단건 편집과 동일 권한면 일괄도 허용이 일관).
+- **C3 TTL cleanup**: `@Scheduled` cleanup 컴포넌트로 완료 30일 경과 BulkOperation 삭제. 별도 task로 분해.
+- **N1**: 워커(폴링/큐 I/O)와 processor(순수 처리)를 별 task로 분리 — 멱등·동시성을 타이밍 의존 없이 단위 검증.
+
 ## Brainstorming Check
 
 ✅ 통과 (1회 iteration). 발견 gap 7건 처리.

@@ -99,8 +99,8 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 - files: [`backend/modules/issue-tracking/src/main/resources/db/migration/issue-tracking/V008__bulk_operations.sql`, `backend/modules/issue-tracking/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/db/V008MigrationIntegrationTest.kt`]
 - depends-on: []
 
-**RED**: `V008MigrationIntegrationTest`(Testcontainers) — `bulk_operations`/`bulk_operation_items` 테이블 + `q_bulk_operations` pgmq 큐 존재, UNIQUE(bulk_operation_id, issue_key) 검증. 실패: 테이블 없음.
-**GREEN**: V008 sql — 두 테이블 + `SELECT pgmq.create('q_bulk_operations')`. init_codegen.sql에 동일 DDL 미러(jOOQ 상수 생성, learnings "jOOQ init_codegen 미러").
+**RED**: `V008MigrationIntegrationTest`(Testcontainers) — `bulk_operations`(actor_id 포함)/`bulk_operation_items` 테이블 + `q_bulk_operations`(작업 큐) + `q_bulk_operation_events`(완료 이벤트 큐) pgmq 큐 존재, UNIQUE(bulk_operation_id, issue_key) 검증. 실패: 테이블 없음.
+**GREEN**: V008 sql — 두 테이블 + `SELECT pgmq.create('q_bulk_operations')` + `SELECT pgmq.create('q_bulk_operation_events')`. init_codegen.sql에 동일 DDL 미러(jOOQ 상수 생성, learnings "jOOQ init_codegen 미러"). pgmq 내부 테이블 codegen 제외 확인(N2).
 **REFACTOR**: 인덱스(bulk_operation_id, status) + 컬럼 코멘트.
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*V008MigrationIntegrationTest"`
 
@@ -123,8 +123,8 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/repository/BulkOperationRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/repository/BulkOperationRepositoryTest.kt`]
 - depends-on: [1, 2]
 
-**RED**: `BulkOperationRepositoryTest`(Testcontainers) — insert(작업+항목 배치), findById(items 포함), updateItemResult, recomputeAndPersistCounts, findCompletedBefore(TTL). 실패: 클래스 없음.
-**GREEN**: jOOQ 기반 CRUD. 항목 결과 갱신은 status=PENDING WHERE 가드(멱등).
+**RED**: `BulkOperationRepositoryTest`(Testcontainers) — insert(작업+항목 배치), find(작업/항목 별쿼리 2개 — N3 cartesian 회피), **claimForRun CAS**(`UPDATE … SET status='RUNNING' WHERE id=? AND status='PENDING'` → 0 row면 false), updateItemResult(status=PENDING WHERE 가드, 멱등), recomputeAndPersistCounts, **markCompleted CAS**(RUNNING→COMPLETED 1회), findCompletedBefore(TTL). 실패: 클래스 없음.
+**GREEN**: jOOQ 기반. CAS는 affected-rows로 단일 진입 판정(B3 작업레벨 동시성).
 **REFACTOR**: 배치 insert + 쿼리 상수화.
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*BulkOperationRepositoryTest"`
 
@@ -140,19 +140,43 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 **REFACTOR**: 검증 로직 분리 + 예외→400 매핑.
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*BulkOperationApplicationServiceTest"`
 
-### Task 5. pgmq consumer 워커 + 처리 로직 + 완료 이벤트 (BTS 최초 consumer)
+### Task 5. 워커 부팅 진입점 + 스케줄링 (B2 — issue-tracking 부팅 인프라 신설)
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/worker/BulkOperationWorker.kt`, `.../bulk/application/BulkOperationProcessor.kt`, `.../bulk/event/BulkOperationCompleted.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/worker/BulkOperationProcessorTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/IssueTrackingApplication.kt`, `backend/modules/issue-tracking/src/main/resources/application.yml`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/IssueTrackingApplicationContextTest.kt`]
+- depends-on: []
+
+**RED**: `IssueTrackingApplicationContextTest` — `@SpringBootApplication` 컨텍스트 로드 + `@EnableScheduling` 활성 검증. 실패: 부팅 클래스 없음.
+**GREEN**: `IssueTrackingApplication`(@SpringBootApplication @EnableScheduling) 신설 — identity-access 패턴 답습. **FR-IS-05 범위 초과 아키텍처 작업**(issue-tracking 최초 부팅 진입점). build.gradle bootJar 설정 확인.
+**REFACTOR**: 컨텍스트 분리(@Configuration로 스케줄링 격리) + KDoc(왜 신설하는지 ADR 링크).
+**검증**: `./gradlew :backend:issue-tracking:test --tests "*IssueTrackingApplicationContextTest"`
+
+### Task 6. 처리 로직 processor (best-effort + 멱등 + 동일 트랜잭션)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/BulkOperationProcessor.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/application/BulkOperationProcessorTest.kt`]
 - depends-on: [4]
 
-**RED**: `BulkOperationProcessorTest` — 청크 처리(상한/청크50), **best-effort 부분 성공**(권한·전이 실패는 항목 FAILED+reasonCode, 나머지 SUCCEEDED), **멱등 스킵**(이미 SUCCEEDED 항목 재처리 안 함), 완료 시 `BulkOperationCompleted` 이벤트 발행. 실패: 클래스 없음.
-**GREEN**: `BulkOperationWorker`(@Scheduled 폴링 → `pgmq.read(vt, qty)` → process → `pgmq.delete`). `BulkOperationProcessor`: 항목별 기존 `IssueApplicationService.updateIssue`/`transitionIssue` 재사용(도메인 우회 금지), reasonCode 매핑, 카운트 집계 영속, 완료 이벤트 발행.
-**REFACTOR**: vt/qty/청크 상수화 + 워커 단일성 KDoc(pgmq vt 단일처리).
+**RED**: `BulkOperationProcessorTest`(단위, 워커 타이밍 무관) — **actor 복원**(bulk_operations.actor_id→ActorId), 청크 처리(상한1000/청크50), **best-effort 부분 성공**(권한·전이 실패→항목 FAILED+reasonCode, 나머지 SUCCEEDED), **deny stub 주입**으로 권한 없는 이슈→FAILED(FORBIDDEN) 검증(B1 가짜그린 회피), **멱등 스킵**(종료 항목 재처리 안 함), **이슈 변경+항목 상태 동일 트랜잭션**(C1 부분실패 창 제거). 실패: 클래스 없음.
+**GREEN**: `BulkOperationProcessor.process(bulkOperationId)` — actor 복원 → 항목별 기존 `IssueApplicationService.updateIssue`/`transitionIssue` 재사용(도메인 우회 금지) → 변경+항목기록 한 트랜잭션 → reasonCode 매핑 → 카운트 집계 재계산.
+**REFACTOR**: reasonCode 매핑 분리 + 청크 상수화.
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*BulkOperationProcessorTest"`
 
-### Task 6. REST 엔드포인트 (POST 접수 / GET 조회)
+### Task 7. pgmq consumer 워커 + 완료 이벤트 (BTS 최초 consumer)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/worker/BulkOperationWorker.kt`, `.../bulk/event/BulkOperationCompleted.kt`, `.../bulk/event/BulkOperationEventPublisher.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/worker/BulkOperationWorkerTest.kt`]
+- depends-on: [5, 6]
+
+**RED**: `BulkOperationWorkerTest` — `@Scheduled` 폴링 → `pgmq.read(vt,qty)` → **작업레벨 CAS claimForRun**(동시 2워커 단일 진입, 0 row면 skip) → processor 호출 → markCompleted CAS → `BulkOperationCompleted` 1회 발행(q_bulk_operation_events) → `pgmq.delete`. 실패: 클래스 없음.
+**GREEN**: 워커 폴링/큐 I/O + CAS 동시성 + 완료 이벤트 발행(C4). vt는 성능예산 기반 산정.
+**REFACTOR**: vt/qty 상수화 + 워커 단일성/CAS KDoc(learnings advisory lock TOCTOU 링크).
+**검증**: `./gradlew :backend:issue-tracking:test --tests "*BulkOperationWorkerTest"`
+
+### Task 8. REST 엔드포인트 (POST 접수 / GET 조회)
 
 **메타**.
 - agent: `backend-engineer` (권한 가드는 review-plan에서 security-engineer 검토)
@@ -160,30 +184,44 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 - depends-on: [4]
 
 **RED**: `BulkOperationControllerTest`(MockMvc/slice) — `POST /api/v1/issues/bulk-update` → 202 + bulkOperationId, 검증 실패 400. `GET /api/v1/bulk-operations/{id}` → 200(작업 actor), 403(타인), 404(없음). 실패: 클래스 없음.
-**GREEN**: 컨트롤러 2개 엔드포인트 + 조회 권한(actor 본인) 가드 + 응답 DTO 매핑.
+**GREEN**: 컨트롤러 2개 엔드포인트 + 조회 권한(actor 본인) 가드 + 응답 DTO 매핑(items 별쿼리 조회, N3).
 **REFACTOR**: 예외 핸들러 정렬(기존 IssueExceptionHandler 패턴) + 응답 매핑 분리.
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*BulkOperationControllerTest"`
 
-### Task 7. 통합 테스트 (Testcontainers e2e)
+### Task 9. TTL cleanup (@Scheduled, NFR4)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/worker/BulkOperationCleanupWorker.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/worker/BulkOperationCleanupWorkerTest.kt`]
+- depends-on: [3, 5]
+
+**RED**: `BulkOperationCleanupWorkerTest` — 완료 30일 경과 BulkOperation + 항목 삭제(findCompletedBefore 활용), 미경과 보존. 실패: 클래스 없음.
+**GREEN**: `@Scheduled` 일배치 cleanup. depends-on T5(@EnableScheduling 인프라).
+**REFACTOR**: TTL/주기 상수화 + KDoc.
+**검증**: `./gradlew :backend:issue-tracking:test --tests "*BulkOperationCleanupWorkerTest"`
+
+### Task 10. 통합 테스트 (Testcontainers e2e)
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/integration/BulkOperationIntegrationTest.kt`]
-- depends-on: [5, 6]
+- depends-on: [7, 8]
 
-**RED**: enqueue→consume→처리→결과 기록 e2e, **워커 재전달 멱등**(같은 메시지 2회 read 시 SUCCEEDED 스킵·카운트 불변), 혼합 from-state 일괄 전이 부분 성공, 1000건 상한, 완료 이벤트 발행 확인. 실패: 동작 미구현.
+**RED**: enqueue→consume→처리→결과 기록 e2e, **워커 재전달 멱등**(같은 메시지 2회 read 시 SUCCEEDED 스킵·카운트 불변), **CAS 동시성**(동시 2워커 단일 처리), 혼합 from-state 일괄 전이 부분 성공, 1000건 상한, 완료 이벤트 발행 확인. 실패: 동작 미구현.
 **GREEN**: 위 task들로 통과. 필요한 미세 보강만.
 **REFACTOR**: 픽스처 헬퍼 정리.
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*BulkOperationIntegrationTest"`
 
 ## Plan 메타
 
-- task 수: 7
-- 예상 wave: Wave0 [T1,T2] → Wave1 [T3] → Wave2 [T4] → Wave3 [T5,T6] → Wave4 [T7] (단일 모듈 test 컴파일 직렬화 감안)
+- task 수: 10 (게이트1 리뷰 BLOCKER 해소로 7→10 확장)
+- 예상 wave: Wave0 [T1,T2,T5] → Wave1 [T3] → Wave2 [T4,T6] → Wave3 [T7,T8] → Wave4 [T9,T10] (단일 모듈 test 컴파일 직렬화 감안, T5 부팅 인프라는 독립)
 - TDD 강제: yes (test 커밋 선행 검증)
 - 병렬 dispatch: bts-impl이 depends-on + files로 wave 계산
 - 추가 검증: ktlint, detekt(baseline 동결만), Testcontainers 통합
-- review-plan 중점: security(조회 권한·접수 권한), pgmq consumer 운영(워커 단일성/vt), 도메인 우회 금지 재확인
+- 리뷰 BLOCKER 반영: B1(actor 복원+deny stub, T6), B2(부팅 진입점, T5), B3(작업레벨 CAS, T3/T7), C1(동일 트랜잭션, T6), C3(TTL, T9), C4(이벤트 큐, T1/T7), N1(processor/worker 분리, T6/T7)
+- 잔존 의존: 권한 실효성은 FR-PM-02(PR #53) 머지 후 운영 resolver 자동 연동 (FR-IS-05는 포트 계약만 의존, hard-block 아님)
+- ⚠️ 규모 경고: 10 task + 부팅 진입점 아키텍처 작업 + BTS 최초 pgmq consumer. 단일 PR로는 큰 편 — 게이트1에서 PR 분할(예: 인프라 T1/T5 선행 PR + 기능 PR) 검토 가치.
 
 ## 리뷰 결과
 
