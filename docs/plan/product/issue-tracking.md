@@ -162,8 +162,8 @@
 - [x] D3. 데이터 모델 — `components(lead_user_id)` (책임. db-engineer) — V009, PR #59
 - [x] D4. 백엔드 — CRUD API (책임. backend-engineer + security-engineer) — PR #59 (권한 가드는 ComponentPermissionResolver 포트로 추상화, prod 실판정은 FR-PM-03 이연)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #59
-- [ ] D6. 프론트 UI — 컴포넌트 관리 페이지 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 컴포넌트 관리 페이지 (책임. designer → frontend-engineer) (완료. PR #64 — `/projects/$projectKey/settings/components` 멤버 설정 패턴 재사용(목록 4분기+추가/수정 Dialog+행별 리드 지정/해제+소프트 삭제). issues.ts 관례(공유 ApiError+DataResponse, errorCode는 body.errorCode 헬퍼 추출), mutation invalidate-only+토스트 hook 단일, X-XSRF-TOKEN. 기존 useUsers/useUsersByIds 재사용, ComponentLeadSelect 순수 props. plan리뷰 BLOCKER 3(errorCode/RFC7807 MSW/CSRF)+코드리뷰 BLOCKER 1(수정모드 설명 비우기) 해소. 9 TDD task)
+- [x] D7. E2E (책임. qa-engineer) (완료. PR #64 — component-management.spec.ts 5종(S1 목록/S2 생성/S4 수정/S5 리드 지정·해제/S6 삭제). 행 컨테이너 한정 셀렉터로 strict mode 회피. 전체 E2E 76통과/1skip(기존 의도)/회귀 0)
 
 #### §3.1.2 FR-CM-02 — 이슈에 다중 컴포넌트 할당
 
