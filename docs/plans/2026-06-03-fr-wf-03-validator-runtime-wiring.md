@@ -177,4 +177,24 @@ FR-WF-01(PR #10)이 워크플로우 전이 검증 프레임워크의 SPI 인터�
 - 추가 검증: ktlintMain+TestSourceSetCheck + detekt(4모듈) + @SpringBootTest 부팅
 - 마이그레이션 신규 없음, jOOQ 상수 V200 자동 생성(미러 불필요)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### code-reviewer 적대적 리뷰 (2026-06-03) — 🛑 BLOCKER + 더 깊은 아키텍처 갭
+
+**BLOCKER (plan 수정으로 해소 가능)**.
+- **B1. validator/postaction `type` 문자열 불일치.** 실제 구현체 type은 `permission-check`/`not-status-category`(kebab), PostAction은 `SET_FIELD`/`NOTIFY`/…(SCREAMING_SNAKE). plan/spec의 PascalCase 가정 틀림. V200 주석은 또 다른 표기. → factory dispatch 키 = 구현체 `type` 프로퍼티 값으로 단일 계약 명시 + plan 예시 키 교체.
+- **B2. WorkflowDefinitionRepository.findValidators(transition)가 transition_id 해석 불가.** `WorkflowTransition`엔 id도 workflow 식별자도 없음(fromStateKey/toStateKey/name뿐). (from,to)만으로 join하면 같은 from/to를 쓰는 여러 워크플로우 validator를 오매칭(silent 결함). → SPI 시그니처에 workflow 식별자/transition id 추가(WorkflowEngine 호출부 동반 수정) 선행 task 필요.
+- **B3. phase 추가(T1)의 cross-BC 컴파일 회귀.** 구현체가 더 있음 — WorkflowPropertyTest StubValidator(project-workflow test) + IssueTransitionGuardFilterIntegrationTest 익명 object(**issue-tracking BC**). phase 추상 멤버면 `:modules:issue-tracking:compileTestKotlin` 깨짐(plan 검증이 project-workflow만 돌려 못 잡음). → phase에 기본값(`get() = AVAILABILITY`) 부여로 회귀 0 권장.
+
+**CONCERN**.
+- C1. SpelEvaluator가 production @Bean 미등록(ExecutorService 필요) → T3가 빈 정의 추가.
+- C2. PermissionValidator의 PermissionResolver 주입 경로 미명시, prod 프로파일 resolver 부재.
+- C4. YamlSeedService가 transition INSERT의 id를 버림(.execute) + isDirty가 validator/post_action 미비교 → T6 보강.
+
+**🛑 C3 (더 깊은 갭 — Maxi 아키텍처 결정 필요)**.
+- **어떤 배포 앱도 project-workflow를 스캔하지 않음.** `IssueTrackingApplication`(@SpringBootApplication, com.bts.issue)는 `com.bts.issue.**`만 스캔. project-workflow 빈(WorkflowEngine/Adapter/factory/repo)은 production에서 **0개 결선**. cross-BC workflow 결선은 **테스트 TestConfig가 수동 조립할 때만** 존재(IssueControllerTransitionIntegrationTest 등).
+- 즉 FR-WF-03이 project-workflow 내부를 완벽히 결선해도, **그걸 실행하는 배포 앱이 없어** "production 부팅 검증"(T7)이 성립 불가.
+- **3단계 의존 발견**: FR-IS-07 → FR-WF-03 → **BC 배포 조립 모듈(부재)**.
+- 해석: Phase 1 중반(92/117 FR)이라 BC별 모듈만 만들고 전체 조립(bootstrap 앱이 com.bts.* + com.atlas.bts.* 스캔)은 아직 미구축. 모든 검증이 test-assembled 컨텍스트로 이뤄짐(현 BTS 표준).
+
+**→ 게이트 1 진입 불가. Maxi 방향 결정 필요(D10).** 옵션: (A) FR-WF-03을 project-workflow 내부 결선 + 통합테스트(test-assembled, 현 표준과 동일) 검증으로 한정, "실배포 조립"은 후속 프로젝트 차원 마일스톤으로 분리. (B) BC 배포 조립 모듈을 먼저 구축 후 FR-WF-03. (C) 전체 재검토.
