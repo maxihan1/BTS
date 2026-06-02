@@ -9,10 +9,12 @@ import org.junit.jupiter.api.Test
 
 @DisplayName("TransitionIntersection.intersect")
 class TransitionIntersectionTest {
-
     /** 테스트용 뷰 생성 헬퍼. */
-    private fun view(from: String, to: String, name: String = "전이-$to") =
-        AvailableTransitionView(fromStateKey = from, toStateKey = to, name = name)
+    private fun view(
+        from: String,
+        to: String,
+        name: String = "전이-$to",
+    ) = AvailableTransitionView(fromStateKey = from, toStateKey = to, name = name)
 
     // ────────────────────────────────────────────────
     // 공통 있음
@@ -24,7 +26,8 @@ class TransitionIntersectionTest {
         val issue1 = listOf(view("open", "in-progress"), view("open", "done"))
         val issue2 = listOf(view("open", "in-progress"), view("open", "closed"))
 
-        val result: List<AvailableTransitionView> = TransitionIntersection.intersect(listOf(issue1, issue2))
+        val result: List<AvailableTransitionView> =
+            TransitionIntersection.intersect(listOf(issue1, issue2))
 
         assertEquals(1, result.size)
         assertEquals("in-progress", result[0].toStateKey)
@@ -40,7 +43,8 @@ class TransitionIntersectionTest {
         val issue1 = listOf(view("open", "done"))
         val issue2 = listOf(view("open", "closed"))
 
-        val result: List<AvailableTransitionView> = TransitionIntersection.intersect(listOf(issue1, issue2))
+        val result: List<AvailableTransitionView> =
+            TransitionIntersection.intersect(listOf(issue1, issue2))
 
         assertEquals(emptyList<AvailableTransitionView>(), result)
     }
@@ -55,7 +59,8 @@ class TransitionIntersectionTest {
         val issue1 = listOf(view("open", "done"))
         val issue2 = emptyList<AvailableTransitionView>()
 
-        val result: List<AvailableTransitionView> = TransitionIntersection.intersect(listOf(issue1, issue2))
+        val result: List<AvailableTransitionView> =
+            TransitionIntersection.intersect(listOf(issue1, issue2))
 
         assertEquals(emptyList<AvailableTransitionView>(), result)
     }
@@ -67,17 +72,20 @@ class TransitionIntersectionTest {
     @Test
     @DisplayName("이슈가 하나이면 dedup 을 적용한 자기 자신 목록을 반환한다")
     fun `단일 이슈 dedup 적용`() {
-        val issue1 = listOf(
-            view("open", "done", "완료"),
-            view("open", "done", "중복완료"),  // 동일 toStateKey — 첫 번째만 남아야 함
-            view("open", "in-progress"),
-        )
+        val issue1 =
+            listOf(
+                view("open", "done", "완료"),
+                // 동일 toStateKey — 첫 번째만 남아야 함
+                view("open", "done", "중복완료"),
+                view("open", "in-progress"),
+            )
 
-        val result: List<AvailableTransitionView> = TransitionIntersection.intersect(listOf(issue1))
+        val result: List<AvailableTransitionView> =
+            TransitionIntersection.intersect(listOf(issue1))
 
         assertEquals(2, result.size)
         assertEquals("done", result[0].toStateKey)
-        assertEquals("완료", result[0].name)           // 첫 이슈의 name 채택
+        assertEquals("완료", result[0].name) // 첫 이슈의 name 채택
         assertEquals("in-progress", result[1].toStateKey)
     }
 
@@ -88,7 +96,8 @@ class TransitionIntersectionTest {
     @Test
     @DisplayName("perIssue 가 빈 리스트이면 빈 목록을 반환한다")
     fun `빈 입력이면 빈 목록`() {
-        val result: List<AvailableTransitionView> = TransitionIntersection.intersect(emptyList())
+        val result: List<AvailableTransitionView> =
+            TransitionIntersection.intersect(emptyList())
 
         assertEquals(emptyList<AvailableTransitionView>(), result)
     }
@@ -103,12 +112,15 @@ class TransitionIntersectionTest {
         val issue1 = listOf(view("open", "done", "완료처리"))
         val issue2 = listOf(view("reviewing", "done", "검토완료"))
 
-        val result: List<AvailableTransitionView> = TransitionIntersection.intersect(listOf(issue1, issue2))
+        val result: List<AvailableTransitionView> =
+            TransitionIntersection.intersect(listOf(issue1, issue2))
 
         assertEquals(1, result.size)
         assertEquals("done", result[0].toStateKey)
-        assertEquals("open", result[0].fromStateKey)   // 첫 이슈 기준
-        assertEquals("완료처리", result[0].name)         // 첫 이슈 기준
+        // 첫 이슈 기준
+        assertEquals("open", result[0].fromStateKey)
+        // 첫 이슈 기준
+        assertEquals("완료처리", result[0].name)
     }
 
     // ────────────────────────────────────────────────
@@ -118,18 +130,21 @@ class TransitionIntersectionTest {
     @Test
     @DisplayName("교집합 결과 순서는 첫 이슈에 등장한 순서를 따른다")
     fun `결과 순서는 첫 이슈 순서`() {
-        val issue1 = listOf(
-            view("open", "done"),
-            view("open", "in-progress"),
-            view("open", "closed"),
-        )
-        val issue2 = listOf(
-            view("open", "closed"),
-            view("open", "in-progress"),
-            view("open", "done"),
-        )
+        val issue1 =
+            listOf(
+                view("open", "done"),
+                view("open", "in-progress"),
+                view("open", "closed"),
+            )
+        val issue2 =
+            listOf(
+                view("open", "closed"),
+                view("open", "in-progress"),
+                view("open", "done"),
+            )
 
-        val result: List<AvailableTransitionView> = TransitionIntersection.intersect(listOf(issue1, issue2))
+        val result: List<AvailableTransitionView> =
+            TransitionIntersection.intersect(listOf(issue1, issue2))
 
         assertEquals(listOf("done", "in-progress", "closed"), result.map { it.toStateKey })
     }
