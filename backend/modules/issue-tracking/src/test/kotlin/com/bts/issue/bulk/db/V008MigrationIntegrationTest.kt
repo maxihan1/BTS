@@ -187,4 +187,136 @@ class V008MigrationIntegrationTest {
             .describedAs("q_bulk_operation_events pgmq 큐가 존재해야 한다")
             .isTrue()
     }
+
+    // ── (f) CHECK 제약 — 잘못된 값 거부 ──────────────────────────────────────
+
+    // 공통 INSERT 헬퍼: bulk_operations 에 최소 유효 row 하나를 삽입하고 UUID 반환.
+    private fun insertValidBulkOperation(): String =
+        conn().use { c ->
+            c.prepareStatement(
+                """
+                INSERT INTO bulk_operations
+                    (operation_type, status, actor_id, payload, total_count, created_at)
+                VALUES
+                    ('BULK_EDIT', 'PENDING', gen_random_uuid(), '{}', 1, now())
+                RETURNING id::text
+                """.trimIndent(),
+            ).use { stmt ->
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getString(1)
+                }
+            }
+        }
+
+    @Test
+    fun `V008 bulk_operations operation_type 에 허용되지 않는 값을 삽입하면 CHECK 위반 예외가 발생한다`() {
+        org.junit.jupiter.api.assertThrows<java.sql.SQLException> {
+            conn().use { c ->
+                c.prepareStatement(
+                    """
+                    INSERT INTO bulk_operations
+                        (operation_type, status, actor_id, payload, total_count, created_at)
+                    VALUES
+                        ('INVALID_TYPE', 'PENDING', gen_random_uuid(), '{}', 1, now())
+                    """.trimIndent(),
+                ).use { it.executeUpdate() }
+            }
+        }.also { ex ->
+            assertThat(ex.message).containsIgnoringCase("check")
+        }
+    }
+
+    @Test
+    fun `V008 bulk_operations status 에 허용되지 않는 값을 삽입하면 CHECK 위반 예외가 발생한다`() {
+        org.junit.jupiter.api.assertThrows<java.sql.SQLException> {
+            conn().use { c ->
+                c.prepareStatement(
+                    """
+                    INSERT INTO bulk_operations
+                        (operation_type, status, actor_id, payload, total_count, created_at)
+                    VALUES
+                        ('BULK_EDIT', 'garbage', gen_random_uuid(), '{}', 1, now())
+                    """.trimIndent(),
+                ).use { it.executeUpdate() }
+            }
+        }.also { ex ->
+            assertThat(ex.message).containsIgnoringCase("check")
+        }
+    }
+
+    @Test
+    fun `V008 bulk_operations 카운터에 음수를 삽입하면 CHECK 위반 예외가 발생한다`() {
+        org.junit.jupiter.api.assertThrows<java.sql.SQLException> {
+            conn().use { c ->
+                c.prepareStatement(
+                    """
+                    INSERT INTO bulk_operations
+                        (operation_type, status, actor_id, payload, total_count, created_at)
+                    VALUES
+                        ('BULK_EDIT', 'PENDING', gen_random_uuid(), '{}', -1, now())
+                    """.trimIndent(),
+                ).use { it.executeUpdate() }
+            }
+        }.also { ex ->
+            assertThat(ex.message).containsIgnoringCase("check")
+        }
+    }
+
+    @Test
+    fun `V008 bulk_operation_items status 에 허용되지 않는 값을 삽입하면 CHECK 위반 예외가 발생한다`() {
+        val bulkOpId = insertValidBulkOperation()
+        org.junit.jupiter.api.assertThrows<java.sql.SQLException> {
+            conn().use { c ->
+                c.prepareStatement(
+                    """
+                    INSERT INTO bulk_operation_items
+                        (bulk_operation_id, issue_key, status)
+                    VALUES
+                        ('$bulkOpId', 'BTS-1', 'garbage')
+                    """.trimIndent(),
+                ).use { it.executeUpdate() }
+            }
+        }.also { ex ->
+            assertThat(ex.message).containsIgnoringCase("check")
+        }
+    }
+
+    @Test
+    fun `V008 bulk_operation_items issue_key 가 정규식 패턴을 위반하면 CHECK 위반 예외가 발생한다`() {
+        val bulkOpId = insertValidBulkOperation()
+        org.junit.jupiter.api.assertThrows<java.sql.SQLException> {
+            conn().use { c ->
+                c.prepareStatement(
+                    """
+                    INSERT INTO bulk_operation_items
+                        (bulk_operation_id, issue_key, status)
+                    VALUES
+                        ('$bulkOpId', 'invalid-key', 'PENDING')
+                    """.trimIndent(),
+                ).use { it.executeUpdate() }
+            }
+        }.also { ex ->
+            assertThat(ex.message).containsIgnoringCase("check")
+        }
+    }
+
+    @Test
+    fun `V008 bulk_operation_items status 가 FAILED 이고 failure_reason 이 NULL 이면 CHECK 위반 예외가 발생한다`() {
+        val bulkOpId = insertValidBulkOperation()
+        org.junit.jupiter.api.assertThrows<java.sql.SQLException> {
+            conn().use { c ->
+                c.prepareStatement(
+                    """
+                    INSERT INTO bulk_operation_items
+                        (bulk_operation_id, issue_key, status, failure_reason)
+                    VALUES
+                        ('$bulkOpId', 'BTS-2', 'FAILED', NULL)
+                    """.trimIndent(),
+                ).use { it.executeUpdate() }
+            }
+        }.also { ex ->
+            assertThat(ex.message).containsIgnoringCase("check")
+        }
+    }
 }
