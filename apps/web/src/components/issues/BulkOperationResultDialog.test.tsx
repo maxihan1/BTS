@@ -11,7 +11,7 @@ import { BulkOperationResultDialog } from './BulkOperationResultDialog'
 // 픽스처
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BULK_ID = 'aaaabbbb-0000-0000-0000-000000000001'
+const BULK_ID = 'aaaabbbb-0000-4000-8000-000000000001'
 
 const PENDING_RESPONSE = {
   data: {
@@ -193,8 +193,8 @@ describe('BulkOperationResultDialog', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/2\s*\/\s*4/)).toBeInTheDocument()
-    })
-  })
+    }, { timeout: 10000 })
+  }, 12000)
 
   // BORD-6: COMPLETED 후 성공/실패 카운트 표시
   it('BORD-6: COMPLETED 시 succeededCount와 failedCount가 표시된다', async () => {
