@@ -52,7 +52,7 @@ class BulkOperationWorkerTest : DescribeSpec({
             it("아무 처리도 하지 않는다") {
                 every {
                     dsl.fetch(any<String>(), BulkOperationWorker.QUEUE_NAME, BulkOperationWorker.VISIBILITY_TIMEOUT_SECONDS, BulkOperationWorker.POLL_BATCH_SIZE)
-                } returns mockk(relaxed = true) { every { isEmpty } returns true; every { iterator() } returns emptyList<Any>().iterator() }
+                } returns mockk(relaxed = true) { every { isEmpty() } returns true }
 
                 worker.pollAndProcess()
 
@@ -181,8 +181,8 @@ private fun stubReadOneMessage(
         every { get("message", String::class.java) } returns """{"bulkOperationId":"${operationId.value}"}"""
     }
     val result = mockk<org.jooq.Result<org.jooq.Record>>(relaxed = true) {
-        every { isEmpty } returns false
-        every { iterator() } answers { (mutableListOf(row) as MutableList<org.jooq.Record>).iterator() }
+        every { isEmpty() } returns false
+        every { iterator() } answers { mutableListOf(row).iterator() }
     }
     every {
         dsl.fetch(any<String>(), BulkOperationWorker.QUEUE_NAME, BulkOperationWorker.VISIBILITY_TIMEOUT_SECONDS, BulkOperationWorker.POLL_BATCH_SIZE)
