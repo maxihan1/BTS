@@ -157,11 +157,11 @@
 
 **우선순위**. 필수 | **선행**. §2.1.1 | **Plan slug**. `issue/components`
 
-- [ ] D1. 도메인 — Component Aggregate (책임. backend-engineer)
-- [ ] D2. 명세 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `components(lead_user_id)` (책임. db-engineer)
-- [ ] D4. 백엔드 — CRUD API (책임. backend-engineer + security-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 — Component Aggregate (책임. backend-engineer) — PR #59
+- [x] D2. 명세 (책임. backend-engineer) — PR #59
+- [x] D3. 데이터 모델 — `components(lead_user_id)` (책임. db-engineer) — V009, PR #59
+- [x] D4. 백엔드 — CRUD API (책임. backend-engineer + security-engineer) — PR #59 (권한 가드는 ComponentPermissionResolver 포트로 추상화, prod 실판정은 FR-PM-03 이연)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #59
 - [ ] D6. 프론트 UI — 컴포넌트 관리 페이지 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
