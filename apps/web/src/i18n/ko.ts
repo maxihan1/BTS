@@ -92,6 +92,8 @@ export const issueDetailStrings = {
   descriptionEmpty: '본문이 없습니다.',
   /** 본문 편집 시작 버튼 */
   descriptionEditButton: '본문 편집',
+  /** 본문 편집 권한 없을 때 사유 메시지 (title/aria) */
+  descriptionEditButtonNoPermission: '수정 권한이 없습니다',
   /** 본문 저장 버튼 */
   descriptionSaveButton: '저장',
   /** 본문 편집 취소 버튼 */

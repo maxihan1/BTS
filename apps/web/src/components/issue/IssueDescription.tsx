@@ -24,6 +24,11 @@ export interface IssueDescriptionProps {
   onSave: (markdown: string) => void
   /** 저장 진행 중 여부 — true 시 저장/취소 버튼 disabled */
   isSaving: boolean
+  /**
+   * 수정 권한 여부 — false(기본값 true)이면 편집 버튼 disabled (FR-PM-02).
+   * fail-closed: 권한 미확정 시 false 전달 권장.
+   */
+  canEdit?: boolean
 }
 
 /** Write/Preview 탭 상태 */
@@ -54,6 +59,7 @@ export function IssueDescription({
   description,
   onSave,
   isSaving,
+  canEdit = true,
 }: IssueDescriptionProps): JSX.Element {
   const [isEditing, setIsEditing] = useState(false)
   const [activeTab, setActiveTab] = useState<ActiveTab>('write')
@@ -93,6 +99,7 @@ export function IssueDescription({
     <ReadMode
       descriptionHtml={descriptionHtml}
       onEditClick={handleEditClick}
+      canEdit={canEdit}
     />
   )
 }
@@ -104,13 +111,14 @@ export function IssueDescription({
 interface ReadModeProps {
   descriptionHtml: string | null
   onEditClick: () => void
+  canEdit: boolean
 }
 
 /**
  * 본문 읽기 모드 — descriptionHtml 렌더 또는 placeholder.
  * raw description은 이 컴포넌트에서 절대 사용하지 않는다 (NFR2).
  */
-function ReadMode({ descriptionHtml, onEditClick }: ReadModeProps): JSX.Element {
+function ReadMode({ descriptionHtml, onEditClick, canEdit }: ReadModeProps): JSX.Element {
   return (
     <div className="flex flex-col gap-2">
       {/* 본문 영역 — HTML 렌더 또는 placeholder */}
@@ -130,12 +138,14 @@ function ReadMode({ descriptionHtml, onEditClick }: ReadModeProps): JSX.Element 
         )}
       </div>
 
-      {/* 편집 시작 버튼 */}
+      {/* 편집 시작 버튼 — canEdit=false이면 disabled (FR-PM-02) */}
       <Button
         variant="outline"
         size="sm"
         className="self-start min-h-[44px]"
         onClick={onEditClick}
+        disabled={!canEdit}
+        title={!canEdit ? issueDetailStrings.descriptionEditButtonNoPermission : undefined}
         aria-label={issueDetailStrings.descriptionEditButton}
       >
         {issueDetailStrings.descriptionEditButton}

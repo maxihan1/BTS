@@ -196,6 +196,7 @@ export function IssueMetaPanel({
             users={users}
             onSearch={onAssigneeSearch}
             onAssigneeChange={onAssigneeChange}
+            canEdit={canEdit}
           />
         </div>
 
@@ -610,6 +611,11 @@ interface IssueAssigneeSelectProps {
   onSearch: (query: string) => void
   /** 담당자 변경 콜백 — UUID 또는 null(해제) */
   onAssigneeChange: (userId: string | null) => void
+  /**
+   * 수정 권한 여부 — false이면 검색 input·해제 버튼 disabled (FR-PM-02).
+   * fail-closed: 권한 미확정 시 false 전달 권장.
+   */
+  canEdit: boolean
 }
 
 /**
@@ -630,6 +636,7 @@ function IssueAssigneeSelect({
   users,
   onSearch,
   onAssigneeChange,
+  canEdit,
 }: IssueAssigneeSelectProps): JSX.Element {
   /** 현재 담당자 표시 이름 — displayName 우선, 없으면 username */
   function getDisplayName(user: UserSummary): string {
@@ -645,12 +652,13 @@ function IssueAssigneeSelect({
             ? getDisplayName(currentAssignee)
             : issueDetailStrings.assigneeUnassigned}
         </span>
-        {/* 담당자 해제 버튼 — 할당된 경우에만 노출 */}
+        {/* 담당자 해제 버튼 — 할당된 경우에만 노출, canEdit=false이면 disabled (FR-PM-02) */}
         {value !== null && (
           <button
             type="button"
             onClick={() => onAssigneeChange(null)}
-            className="text-xs text-muted-foreground hover:text-destructive focus:outline-none focus:ring-1 focus:ring-ring min-h-[44px] px-1 shrink-0"
+            disabled={!canEdit}
+            className="text-xs text-muted-foreground hover:text-destructive focus:outline-none focus:ring-1 focus:ring-ring min-h-[44px] px-1 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
             aria-label={issueDetailStrings.assigneeUnassignButton}
           >
             {issueDetailStrings.assigneeUnassignButton}
@@ -658,12 +666,13 @@ function IssueAssigneeSelect({
         )}
       </div>
 
-      {/* 검색 input */}
+      {/* 검색 input — canEdit=false이면 disabled (FR-PM-02) */}
       <input
         type="text"
-        className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed"
         placeholder={issueDetailStrings.assigneeSearchPlaceholder}
         aria-label={issueDetailStrings.assigneeSearchPlaceholder}
+        disabled={!canEdit}
         onChange={(e) => onSearch(e.target.value)}
       />
 

@@ -428,6 +428,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
               description={issue.description}
               onSave={handleDescriptionSave}
               isSaving={descriptionMutation.isPending}
+              canEdit={canEdit}
             />
           </div>
         </main>
