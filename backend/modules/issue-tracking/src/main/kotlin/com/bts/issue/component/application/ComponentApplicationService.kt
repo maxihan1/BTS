@@ -34,9 +34,10 @@ private const val SQL_STATE_UNIQUE_VIOLATION = "23505"
  * **트랜잭션 경계.**
  * 클래스 레벨 `@Transactional` 이 기본(읽기/쓰기 모두). 읽기 전용 메서드는
  * `@Transactional(readOnly = true)` 를 오버라이드한다.
+ *
+ * 공개 메서드 6개 + private 헬퍼 6개 = 12개. TooManyFunctions 임계값 11 초과이나
+ * 명세 요구 메서드 수로 파일 분리는 과도 — Suppress 처리.
  */
-// 공개 메서드 6개 + private 헬퍼 6개 = 12개. TooManyFunctions 임계값 11 초과이나
-// 명세 요구 메서드 수로 파일 분리는 과도 — Suppress 처리.
 @Suppress("TooManyFunctions")
 @Service
 @Transactional
@@ -168,7 +169,10 @@ class ComponentApplicationService(
         val updated = existing.changeLead(leadUserId)
         log.info(
             "component_lead_changed id={} projectId={} leadUserId={} actor={}",
-            componentId, projectId, leadUserId, actorId,
+            componentId,
+            projectId,
+            leadUserId,
+            actorId,
         )
         return repo.update(updated)
     }
@@ -310,22 +314,39 @@ class ComponentApplicationService(
     /**
      * [ComponentRepository.insert] 를 호출하고, 23505 SQLState 위반은
      * [DuplicateComponentNameException] 으로 변환한다.
+     *
+     * jOOQ 는 Spring PersistenceExceptionTranslator 가 개입하지 않을 경우
+     * [DataIntegrityViolationException] 대신 [org.jooq.exception.IntegrityConstraintViolationException]
+     * 을 직접 던진다. 두 케이스를 모두 처리한다.
      */
+    @Suppress("TooGenericExceptionCaught")
     private fun tryInsert(
         component: Component,
         name: String,
     ): Component =
         try {
             repo.insert(component)
-        } catch (ex: DataIntegrityViolationException) {
-            val sqlState =
-                ex.cause?.let { cause ->
-                    if (cause is java.sql.SQLException) cause.sqlState else null
-                }
-            if (sqlState == SQL_STATE_UNIQUE_VIOLATION) {
-                log.warn("Duplicate component name={} projectId={}", name, component.projectId)
-                throw DuplicateComponentNameException(name)
-            }
-            throw ex
+        } catch (ex: RuntimeException) {
+            translateUniqueViolation(ex, name)
         }
+
+    /**
+     * 런타임 예외가 23505 unique_violation 에서 비롯됐으면 [DuplicateComponentNameException] 으로 변환한다.
+     * 그렇지 않으면 원 예외를 그대로 re-throw 한다.
+     */
+    @Suppress("ThrowsCount")
+    private fun translateUniqueViolation(
+        ex: RuntimeException,
+        name: String,
+    ): Nothing {
+        val sqlEx =
+            generateSequence(ex.cause) { it.cause }
+                .filterIsInstance<java.sql.SQLException>()
+                .firstOrNull()
+        if (sqlEx?.sqlState == SQL_STATE_UNIQUE_VIOLATION) {
+            log.warn("Duplicate component name={} projectId={}", name, ex.message)
+            throw DuplicateComponentNameException(name)
+        }
+        throw ex
+    }
 }
