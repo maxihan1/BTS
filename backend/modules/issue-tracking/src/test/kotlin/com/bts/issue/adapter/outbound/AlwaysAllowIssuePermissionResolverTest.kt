@@ -6,10 +6,9 @@ import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
-import com.bts.issue.domain.ActorId
-import com.bts.issue.port.outbound.IssuePermission
-import com.bts.issue.port.outbound.IssuePermissionResolver
-import com.bts.issue.port.outbound.IssueScope
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssuePermissionResolver
+import com.bts.shared.permission.IssueScope
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
@@ -28,7 +27,7 @@ import java.util.UUID
  * 6. prod profile 에서 Bean 이 등록되지 않는다 (stub 운영 노출 차단).
  */
 class AlwaysAllowIssuePermissionResolverTest {
-    private val actor = ActorId(UUID.randomUUID())
+    private val actorId = UUID.randomUUID()
 
     // ── ApplicationContextRunner 픽스처 ─────────────────────────────────────
     private val contextRunner =
@@ -41,7 +40,7 @@ class AlwaysAllowIssuePermissionResolverTest {
     fun `CREATE 권한 + Project scope 에서 hasPermission 은 true 를 반환한다`() {
         val resolver = AlwaysAllowIssuePermissionResolver()
 
-        val result = resolver.hasPermission(actor, IssuePermission.CREATE, IssueScope.Project("ATLAS"))
+        val result = resolver.hasPermission(actorId, IssuePermission.CREATE, IssueScope.Project("ATLAS"))
 
         assertThat(result).isTrue()
     }
@@ -52,7 +51,7 @@ class AlwaysAllowIssuePermissionResolverTest {
     fun `SOFT_DELETE 권한 + Issue scope 에서 hasPermission 은 true 를 반환한다`() {
         val resolver = AlwaysAllowIssuePermissionResolver()
 
-        val result = resolver.hasPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Issue("ATLAS-1"))
+        val result = resolver.hasPermission(actorId, IssuePermission.SOFT_DELETE, IssueScope.Issue("ATLAS-1"))
 
         assertThat(result).isTrue()
     }
@@ -63,7 +62,7 @@ class AlwaysAllowIssuePermissionResolverTest {
     fun `VIEW 권한 + Global scope 에서 hasPermission 은 true 를 반환한다`() {
         val resolver = AlwaysAllowIssuePermissionResolver()
 
-        val result = resolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Global)
+        val result = resolver.hasPermission(actorId, IssuePermission.VIEW, IssueScope.Global)
 
         assertThat(result).isTrue()
     }
@@ -79,7 +78,7 @@ class AlwaysAllowIssuePermissionResolverTest {
         logger.addAppender(appender)
 
         try {
-            resolver.hasPermission(actor, IssuePermission.CREATE, IssueScope.Project("ATLAS"))
+            resolver.hasPermission(actorId, IssuePermission.CREATE, IssueScope.Project("ATLAS"))
 
             assertThat(appender.list)
                 .filteredOn { it.level == Level.WARN }
@@ -108,7 +107,7 @@ class AlwaysAllowIssuePermissionResolverTest {
         logger.addAppender(appender)
 
         try {
-            resolver.hasPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Issue("ATLAS-1"))
+            resolver.hasPermission(actorId, IssuePermission.SOFT_DELETE, IssueScope.Issue("ATLAS-1"))
 
             val warnLogs = appender.list.filter { it.level == Level.WARN }
             assertThat(warnLogs).isNotEmpty()

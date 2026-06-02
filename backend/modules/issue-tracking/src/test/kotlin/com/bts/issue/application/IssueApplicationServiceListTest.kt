@@ -6,11 +6,11 @@ import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.event.IssueEventPublisher
-import com.bts.issue.port.outbound.IssuePermission
-import com.bts.issue.port.outbound.IssuePermissionResolver
-import com.bts.issue.port.outbound.IssueScope
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssuePermissionResolver
+import com.bts.shared.permission.IssueScope
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowTransitionPort
@@ -82,7 +82,7 @@ class IssueApplicationServiceListTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Project(projectKey))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Project(projectKey))
                 } returns true
                 every { repo.listWithType(projectKey, pageable) } returns page
             }
@@ -104,7 +104,7 @@ class IssueApplicationServiceListTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Project(projectKey))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Project(projectKey))
                 } returns true
             }
 
@@ -120,7 +120,7 @@ class IssueApplicationServiceListTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Project(projectKey))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Project(projectKey))
                 } returns true
                 every { repo.listWithType(projectKey, pageable) } returns PageImpl(emptyList(), pageable, 0L)
             }
@@ -136,7 +136,7 @@ class IssueApplicationServiceListTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Project(projectKey))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Project(projectKey))
                 } returns false
             }
 

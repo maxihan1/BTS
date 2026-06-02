@@ -243,11 +243,11 @@
 
 **우선순위**. 필수 | **선행**. §4.1 | **Plan slug**. `identity/issue-permissions`
 
-- [ ] D1. 도메인 — Permission (CREATE_ISSUE/EDIT_ISSUE/DELETE_ISSUE) (책임. security-engineer)
-- [ ] D2. 명세 — 역할 × 권한 매트릭스 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `permission_schemes` + `role_permissions` (책임. db-engineer)
-- [ ] D4. 백엔드 — `@PreAuthorize("hasPermission(...)")` (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 — 권한 매트릭스 전수 (책임. security-engineer)
+- [x] D1. 도메인 — Permission (CREATE_ISSUE/EDIT_ISSUE/DELETE_ISSUE) (책임. security-engineer) — PR #53
+- [x] D2. 명세 — 역할 × 권한 매트릭스 (책임. security-engineer) — PR #53
+- [x] D3. 데이터 모델 — `permission_schemes` + `role_permissions` (+ `project_permission_scheme`) (책임. db-engineer) — V008, PR #53
+- [x] D4. 백엔드 — 권한 가드 (명시 호출 `hasPermission`, `@PreAuthorize` 미도입 G4) (책임. security-engineer) — PR #53
+- [x] D5. 백엔드 테스트 — 권한 매트릭스 전수 13케이스 (책임. security-engineer) — PR #53
 - [ ] D6. 프론트 UI — 권한 없는 액션 버튼 비활성화 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 

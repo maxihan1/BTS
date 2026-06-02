@@ -1,14 +1,14 @@
-// AlwaysAllow stub — FR-AU-12 까지 임시. @Profile("!prod") 로 운영 차단. ADR issue-permission-resolver-port
+// AlwaysAllow stub — FR-PM-02 stub 교체 전까지 dev/staging 활성. @Profile("!prod") 로 운영 차단.
 
 package com.bts.issue.adapter.outbound
 
-import com.bts.issue.domain.ActorId
-import com.bts.issue.port.outbound.IssuePermission
-import com.bts.issue.port.outbound.IssuePermissionResolver
-import com.bts.issue.port.outbound.IssueScope
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssuePermissionResolver
+import com.bts.shared.permission.IssueScope
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
+import java.util.UUID
 
 /**
  * issue-tracking BC stub permission resolver.
@@ -23,13 +23,11 @@ import org.springframework.stereotype.Component
  * 즉, stub 없이 운영 배포 시 반드시 실제 adapter 가 존재해야 부팅이 성공한다.
  *
  * ## 대체 시점
- * FR-AU-12 에서 identity-access BC 가 `IdentityAccessIssuePermissionResolver`
+ * FR-PM-02 에서 identity-access BC 가 `IdentityAccessIssuePermissionResolver`
  * (`@Component @Profile("prod")`) 를 구현하면 두 resolver 는 profile 로
  * 상호 배타적(mutually exclusive)으로 동작한다.
  * - `AlwaysAllowIssuePermissionResolver` — `@Profile("!prod")` (개발/테스트/스테이징)
  * - `IdentityAccessIssuePermissionResolver` — `@Profile("prod")` (운영)
- *
- * 이 클래스는 실제 adapter 검증 완료 + 1주 대기 후 제거한다.
  *
  * ## ArchUnit 강제
  * [com.bts.issue.application.IssueApplicationService] (Service 계층) 는
@@ -53,13 +51,13 @@ class AlwaysAllowIssuePermissionResolver : IssuePermissionResolver {
      * [scope] (sealed class — PII 아님) 를 기록해 개발/스테이징 환경에서 권한 우회
      * 빈도를 모니터링할 수 있게 한다.
      *
-     * @param actorId 권한 평가 대상 행위자. UUID 식별자.
+     * @param actorId 권한 평가 대상 행위자 UUID.
      * @param permission 검증 요청 권한. [IssuePermission] enum 값.
      * @param scope 권한 적용 범위. [IssueScope] sealed 계층.
      * @return 항상 `true`.
      */
     override fun hasPermission(
-        actorId: ActorId,
+        actorId: UUID,
         permission: IssuePermission,
         scope: IssueScope,
     ): Boolean {
