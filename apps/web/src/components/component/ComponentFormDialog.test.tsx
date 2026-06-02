@@ -195,6 +195,37 @@ describe('ComponentFormDialog — 수정 모드', () => {
       )
     })
   })
+
+  it('수정 모드에서 설명을 비우면 빈 문자열을 전송한다 (설명 비우기 허용)', async () => {
+    const handleSubmit = vi.fn()
+    const Wrapper = createWrapper()
+    render(
+      <ComponentFormDialog
+        open={true}
+        mode="edit"
+        initial={EXISTING_COMPONENT}
+        onSubmit={handleSubmit}
+        onOpenChange={vi.fn()}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    const user = userEvent.setup()
+
+    // 기존 설명('기존 설명')을 지운다
+    const descriptionInput = screen.getByRole('textbox', { name: /설명/ })
+    await user.clear(descriptionInput)
+
+    const saveButton = screen.getByRole('button', { name: '저장' })
+    await user.click(saveButton)
+
+    // null/undefined가 아니라 ''를 보내야 백엔드가 설명을 실제로 비운다
+    await waitFor(() => {
+      expect(handleSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ description: '' }),
+      )
+    })
+  })
 })
 
 describe('ComponentFormDialog — submitError 표시', () => {

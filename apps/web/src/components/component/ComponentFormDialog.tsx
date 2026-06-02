@@ -86,10 +86,17 @@ function FormBody({ initial, onSubmit, onOpenChange, submitError }: FormBodyProp
   })
 
   function onValid(values: FormValues): void {
+    const isEdit = initial != null
     const payload: CreateComponentInput = {
       name: values.name,
-      // 빈 문자열은 undefined로 — 서버에 불필요한 빈 description 전송 방지
-      description: values.description !== '' ? values.description : undefined,
+      // 수정 모드: 빈 문자열도 그대로 전송해 기존 설명 비우기를 허용한다
+      //   (백엔드 update는 null=무변경, ""=changeDescription("")로 실제 비움).
+      // 생성 모드: 빈 값은 undefined로 — 서버에 불필요한 빈 description 전송 방지.
+      description: isEdit
+        ? values.description
+        : values.description !== ''
+          ? values.description
+          : undefined,
       leadUserId: leadUserId ?? undefined,
     }
     onSubmit(payload)
