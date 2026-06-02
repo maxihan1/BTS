@@ -3,11 +3,11 @@
 
 package com.bts.issue.version.web
 
+import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.repository.ProjectLookupRepository
 import com.bts.issue.version.adapter.AlwaysAllowVersionPermissionResolver
 import com.bts.issue.version.application.VersionApplicationService
 import com.bts.issue.version.repository.VersionRepository
-import com.bts.issue.project.ProjectLookup
-import com.bts.issue.project.repository.ProjectLookupRepository
 import com.bts.shared.permission.VersionPermissionResolver
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
