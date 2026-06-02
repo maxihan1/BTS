@@ -24,6 +24,10 @@ import java.util.UUID
  * 공용 포트 시그니처는 `java.util.UUID` 를 사용해 BC 간 타입 결합을 제거한다.
  * 호출자는 `actor.value` 로 UUID 를 추출하여 전달한다.
  *
+ * ## 호출 위치
+ * ComponentApplicationService 의 각 mutation(CREATE/UPDATE/DELETE) 메서드 진입 직후.
+ * `@PreAuthorize` SpEL 표현식 대신 명시적 메서드 호출로 권한을 검증한다(IssuePermissionResolver 동형).
+ *
  * ## ArchUnit 강제
  * - 소비자(Service/Controller 계층)는 이 interface 만 의존한다. 구체 구현체 직접 import 금지.
  * - `com.atlas.bts.identity.*` 의 클래스를 issue-tracking 에서 직접 import 하면 빌드 실패 (BC 격리 룰).
