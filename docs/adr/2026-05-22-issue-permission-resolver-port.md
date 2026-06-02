@@ -104,6 +104,10 @@ class IssueApplicationService(
 }
 ```
 
+### 정정 (2026-06-02, FR-PM-02 / PR #53)
+
+본 ADR은 stub 교체 시점을 "FR-AU-12"로 적었으나, **FR-PM-02(이슈 등록/수정/삭제 권한 분리)가 권한 스킴 인프라(`permission_schemes` + `role_permissions` + `project_permission_scheme`)를 구축하면서 그 stub 교체를 흡수**했다. 즉 실무상 FR-AU-12 ≡ FR-PM-02. 교체 adapter는 `users.roles`가 아니라 **FR-PM-01 `project_memberships`(ProjectRole 2종) 멤버 게이트 + `role_permissions` 매트릭스**로 평가한다. 계약 타입(IssuePermissionResolver/IssuePermission/IssueScope)은 shared-kernel `com.bts.shared.permission`으로 이전됐고(배선 B) 시그니처는 `hasPermission(actorId: UUID, …)`로 변경됐다. 상세는 [issue-permission-scheme-model](../decisions/2026-06-02-issue-permission-scheme-model.md). 아래 "FR-AU-12 도입 시 교체 흐름"의 `users.roles` 표기는 stale — 실제는 멤버십 기반.
+
 ### FR-AU-12 도입 시 교체 흐름
 
 1. identity-access BC 가 `IdentityAccessIssuePermissionResolver` (`@Component @Profile("prod")`) 구현 — `users.roles` + `role_permissions` 테이블 조회 후 평가
