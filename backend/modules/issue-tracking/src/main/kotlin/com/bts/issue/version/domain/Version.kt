@@ -106,8 +106,10 @@ data class Version(
      * @param newReleaseDate 새 릴리스 예정일. null 이면 미지정 상태로 전환.
      * @return [startDate] 와 [releaseDate] 가 갱신된 새 [Version] 인스턴스.
      */
-    fun changeDates(newStartDate: LocalDate?, newReleaseDate: LocalDate?): Version =
-        copy(startDate = newStartDate, releaseDate = newReleaseDate)
+    fun changeDates(
+        newStartDate: LocalDate?,
+        newReleaseDate: LocalDate?,
+    ): Version = copy(startDate = newStartDate, releaseDate = newReleaseDate)
 
     /**
      * 이 버전을 소프트 삭제한다.
