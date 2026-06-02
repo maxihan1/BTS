@@ -34,7 +34,6 @@ import java.util.UUID
 @Testcontainers
 @Import(JdbcPermissionSchemeRepository::class)
 class JdbcPermissionSchemeRepositoryTest {
-
     companion object {
         @Container
         @JvmStatic

@@ -27,16 +27,16 @@ import java.util.UUID
  * MockK로 의존성을 격리하여 adapter 로직만 검증한다.
  */
 class IdentityAccessIssuePermissionResolverTest {
-
     private val projectDirectory: ProjectDirectory = mockk()
     private val membershipRepo: ProjectMembershipRepository = mockk()
     private val schemeRepo: PermissionSchemeRepository = mockk()
 
-    private val resolver = IdentityAccessIssuePermissionResolver(
-        projectDirectory = projectDirectory,
-        membershipRepo = membershipRepo,
-        schemeRepo = schemeRepo,
-    )
+    private val resolver =
+        IdentityAccessIssuePermissionResolver(
+            projectDirectory = projectDirectory,
+            membershipRepo = membershipRepo,
+            schemeRepo = schemeRepo,
+        )
 
     private val actor: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
     private val projectId: UUID = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000001")
@@ -61,7 +61,7 @@ class IdentityAccessIssuePermissionResolverTest {
         every { schemeRepo.roleHasPermission(projectId, "MEMBER", "DELETE_ISSUE") } returns false
 
         assertThat(
-            resolver.hasPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Issue("ATLAS-1"))
+            resolver.hasPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Issue("ATLAS-1")),
         ).isFalse()
     }
 
@@ -73,7 +73,7 @@ class IdentityAccessIssuePermissionResolverTest {
         every { membershipRepo.findByProjectAndUser(projectId, actor) } returns null
 
         assertThat(
-            resolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue("ATLAS-1"))
+            resolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue("ATLAS-1")),
         ).isFalse()
     }
 
@@ -85,7 +85,7 @@ class IdentityAccessIssuePermissionResolverTest {
         every { membershipRepo.findByProjectAndUser(projectId, actor) } returns membership(ProjectRole.MEMBER)
 
         assertThat(
-            resolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue("ATLAS-1"))
+            resolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue("ATLAS-1")),
         ).isTrue()
     }
 
@@ -96,7 +96,7 @@ class IdentityAccessIssuePermissionResolverTest {
         every { projectDirectory.resolveKeyToId("GHOST") } returns null
 
         assertThat(
-            resolver.hasPermission(actor, IssuePermission.CREATE, IssueScope.Project("GHOST"))
+            resolver.hasPermission(actor, IssuePermission.CREATE, IssueScope.Project("GHOST")),
         ).isFalse()
     }
 }

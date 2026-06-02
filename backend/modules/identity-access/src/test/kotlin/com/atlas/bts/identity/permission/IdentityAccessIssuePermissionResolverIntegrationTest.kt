@@ -10,6 +10,7 @@ import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import org.assertj.core.api.Assertions.assertThat
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.DynamicTest.dynamicTest
@@ -23,7 +24,6 @@ import org.springframework.ldap.core.LdapTemplate
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
@@ -75,7 +75,6 @@ import java.util.UUID
 @ActiveProfiles("prod")
 @Testcontainers
 class IdentityAccessIssuePermissionResolverIntegrationTest {
-
     companion object {
         @Container
         @JvmStatic
@@ -109,31 +108,37 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
          * PemFileKeyProvider가 BouncyCastle PEMParser를 사용하므로 BC provider를 먼저 등록한다.
          * PKCS#8(PRIVATE KEY) 형식으로 PEM 파일을 생성한다.
          */
-        val pemFilePath: String = run {
-            // BouncyCastle provider 등록 — PemFileKeyProvider의 JcaPEMKeyConverter.setProvider("BC")에 필요
-            if (Security.getProvider("BC") == null) {
-                Security.addProvider(BouncyCastleProvider())
+        val pemFilePath: String =
+            run {
+                // BouncyCastle provider 등록 — PemFileKeyProvider의 JcaPEMKeyConverter.setProvider("BC")에 필요
+                if (Security.getProvider("BC") == null) {
+                    Security.addProvider(BouncyCastleProvider())
+                }
+                val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+                val privKey = keyPair.private
+                // PKCS#8 DER bytes → Base64 PEM 형식 (64자 줄바꿈, MIME encoding)
+                val pemContent =
+                    buildString {
+                        appendLine("-----BEGIN PRIVATE KEY-----")
+                        val mimeEncoder = java.util.Base64.getMimeEncoder(64, "\n".toByteArray())
+                        appendLine(mimeEncoder.encodeToString(privKey.encoded))
+                        append("-----END PRIVATE KEY-----")
+                    }
+                val tmpFile = Files.createTempFile("bts-test-key-", ".pem")
+                Files.writeString(tmpFile, pemContent)
+                tmpFile.toAbsolutePath().toString()
             }
-            val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
-            val privKey = keyPair.private
-            // PKCS#8 DER bytes → Base64 PEM 형식 (64자 줄바꿈, MIME encoding)
-            val pemContent = buildString {
-                appendLine("-----BEGIN PRIVATE KEY-----")
-                val encoded = java.util.Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(privKey.encoded)
-                appendLine(encoded)
-                append("-----END PRIVATE KEY-----")
-            }
-            val tmpFile = Files.createTempFile("bts-test-key-", ".pem")
-            Files.writeString(tmpFile, pemContent)
-            tmpFile.toAbsolutePath().toString()
-        }
     }
 
     // LDAP Bean 목킹 — 실제 LDAP 서버 없이 컨텍스트 부팅 (ProjectMemberFlowIntegrationTest 선례)
     @MockBean lateinit var ldapProvider: LdapProvider
+
     @MockBean lateinit var ldapProviderConfigService: LdapProviderConfigService
+
     @MockBean lateinit var externalAccountRepository: ExternalAccountRepository
+
     @MockBean lateinit var autoProvisionService: AutoProvisionService
+
     @MockBean lateinit var ldapTemplate: LdapTemplate
 
     /** prod 프로파일에서 IdentityAccessIssuePermissionResolver가 주입되어야 한다. */
@@ -187,6 +192,8 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
 
     // ── 13케이스 매트릭스 (@TestFactory) ─────────────────────────────────────
 
+    // LongMethod: 13케이스 데이터 테이블을 한 @TestFactory에 모으는 것이 의도(전수 매트릭스 가독성).
+    @Suppress("LongMethod")
     @TestFactory
     fun `권한 매트릭스 — 역할 × 권한 13케이스 전수 검증`(): List<DynamicTest> {
         data class Case(
@@ -197,77 +204,104 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
             val expected: Boolean,
         )
 
-        val cases = listOf(
-            // ── PROJECT_ADMIN × 범위 내 3종 → 전부 허용 ─────────────────────
-            Case(
-                "PROJECT_ADMIN + CREATE → 허용",
-                adminId, IssuePermission.CREATE,
-                IssueScope.Issue(issueKey), true,
-            ),
-            Case(
-                "PROJECT_ADMIN + UPDATE → 허용",
-                adminId, IssuePermission.UPDATE,
-                IssueScope.Issue(issueKey), true,
-            ),
-            Case(
-                "PROJECT_ADMIN + SOFT_DELETE → 허용",
-                adminId, IssuePermission.SOFT_DELETE,
-                IssueScope.Issue(issueKey), true,
-            ),
-            // ── MEMBER × 범위 내 3종 → CREATE/UPDATE 허용, SOFT_DELETE 거부 ─
-            Case(
-                "MEMBER + CREATE → 허용",
-                memberId, IssuePermission.CREATE,
-                IssueScope.Issue(issueKey), true,
-            ),
-            Case(
-                "MEMBER + UPDATE → 허용",
-                memberId, IssuePermission.UPDATE,
-                IssueScope.Issue(issueKey), true,
-            ),
-            Case(
-                "MEMBER + SOFT_DELETE → 거부 (DELETE_ISSUE 미보유)",
-                memberId, IssuePermission.SOFT_DELETE,
-                IssueScope.Issue(issueKey), false,
-            ),
-            // ── 비멤버 × 범위 내 3종 → 전부 거부 (멤버 게이트) ────────────
-            Case(
-                "비멤버 + CREATE → 거부",
-                nonMemberId, IssuePermission.CREATE,
-                IssueScope.Issue(issueKey), false,
-            ),
-            Case(
-                "비멤버 + UPDATE → 거부",
-                nonMemberId, IssuePermission.UPDATE,
-                IssueScope.Issue(issueKey), false,
-            ),
-            Case(
-                "비멤버 + SOFT_DELETE → 거부",
-                nonMemberId, IssuePermission.SOFT_DELETE,
-                IssueScope.Issue(issueKey), false,
-            ),
-            // ── 범위 밖 × {멤버, 비멤버} — VIEW + TRANSITION ─────────────
-            Case(
-                "MEMBER + VIEW(범위 밖) → 멤버 통과 허용",
-                memberId, IssuePermission.VIEW,
-                IssueScope.Issue(issueKey), true,
-            ),
-            Case(
-                "MEMBER + TRANSITION(범위 밖) → 멤버 통과 허용",
-                memberId, IssuePermission.TRANSITION,
-                IssueScope.Issue(issueKey), true,
-            ),
-            Case(
-                "비멤버 + VIEW(범위 밖) → 거부",
-                nonMemberId, IssuePermission.VIEW,
-                IssueScope.Issue(issueKey), false,
-            ),
-            Case(
-                "비멤버 + TRANSITION(범위 밖) → 거부",
-                nonMemberId, IssuePermission.TRANSITION,
-                IssueScope.Issue(issueKey), false,
-            ),
-        )
+        val cases =
+            listOf(
+                // ── PROJECT_ADMIN × 범위 내 3종 → 전부 허용 ─────────────────────
+                Case(
+                    "PROJECT_ADMIN + CREATE → 허용",
+                    adminId,
+                    IssuePermission.CREATE,
+                    IssueScope.Issue(issueKey),
+                    true,
+                ),
+                Case(
+                    "PROJECT_ADMIN + UPDATE → 허용",
+                    adminId,
+                    IssuePermission.UPDATE,
+                    IssueScope.Issue(issueKey),
+                    true,
+                ),
+                Case(
+                    "PROJECT_ADMIN + SOFT_DELETE → 허용",
+                    adminId,
+                    IssuePermission.SOFT_DELETE,
+                    IssueScope.Issue(issueKey),
+                    true,
+                ),
+                // ── MEMBER × 범위 내 3종 → CREATE/UPDATE 허용, SOFT_DELETE 거부 ─
+                Case(
+                    "MEMBER + CREATE → 허용",
+                    memberId,
+                    IssuePermission.CREATE,
+                    IssueScope.Issue(issueKey),
+                    true,
+                ),
+                Case(
+                    "MEMBER + UPDATE → 허용",
+                    memberId,
+                    IssuePermission.UPDATE,
+                    IssueScope.Issue(issueKey),
+                    true,
+                ),
+                Case(
+                    "MEMBER + SOFT_DELETE → 거부 (DELETE_ISSUE 미보유)",
+                    memberId,
+                    IssuePermission.SOFT_DELETE,
+                    IssueScope.Issue(issueKey),
+                    false,
+                ),
+                // ── 비멤버 × 범위 내 3종 → 전부 거부 (멤버 게이트) ────────────
+                Case(
+                    "비멤버 + CREATE → 거부",
+                    nonMemberId,
+                    IssuePermission.CREATE,
+                    IssueScope.Issue(issueKey),
+                    false,
+                ),
+                Case(
+                    "비멤버 + UPDATE → 거부",
+                    nonMemberId,
+                    IssuePermission.UPDATE,
+                    IssueScope.Issue(issueKey),
+                    false,
+                ),
+                Case(
+                    "비멤버 + SOFT_DELETE → 거부",
+                    nonMemberId,
+                    IssuePermission.SOFT_DELETE,
+                    IssueScope.Issue(issueKey),
+                    false,
+                ),
+                // ── 범위 밖 × {멤버, 비멤버} — VIEW + TRANSITION ─────────────
+                Case(
+                    "MEMBER + VIEW(범위 밖) → 멤버 통과 허용",
+                    memberId,
+                    IssuePermission.VIEW,
+                    IssueScope.Issue(issueKey),
+                    true,
+                ),
+                Case(
+                    "MEMBER + TRANSITION(범위 밖) → 멤버 통과 허용",
+                    memberId,
+                    IssuePermission.TRANSITION,
+                    IssueScope.Issue(issueKey),
+                    true,
+                ),
+                Case(
+                    "비멤버 + VIEW(범위 밖) → 거부",
+                    nonMemberId,
+                    IssuePermission.VIEW,
+                    IssueScope.Issue(issueKey),
+                    false,
+                ),
+                Case(
+                    "비멤버 + TRANSITION(범위 밖) → 거부",
+                    nonMemberId,
+                    IssuePermission.TRANSITION,
+                    IssueScope.Issue(issueKey),
+                    false,
+                ),
+            )
 
         return cases.map { c ->
             dynamicTest(c.label) {
@@ -291,13 +325,19 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
     @Test
     fun `스킴 공유 — 같은 scheme_id 매핑 시 동일 판정 반환`() {
         // projectId: fallback 경로 (매핑 없음)
-        val unmappedResult = resolver.hasPermission(
-            adminId, IssuePermission.SOFT_DELETE, IssueScope.Issue(issueKey),
-        )
+        val unmappedResult =
+            resolver.hasPermission(
+                adminId,
+                IssuePermission.SOFT_DELETE,
+                IssueScope.Issue(issueKey),
+            )
         // sharedProjectId: 명시적 매핑 경로 (defaultSchemeId 직접 매핑)
-        val mappedResult = resolver.hasPermission(
-            adminId, IssuePermission.SOFT_DELETE, IssueScope.Issue(sharedIssueKey),
-        )
+        val mappedResult =
+            resolver.hasPermission(
+                adminId,
+                IssuePermission.SOFT_DELETE,
+                IssueScope.Issue(sharedIssueKey),
+            )
 
         assertThat(unmappedResult).isTrue()
         assertThat(mappedResult).isTrue()
@@ -306,12 +346,18 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
 
     @Test
     fun `스킴 공유 — MEMBER SOFT_DELETE 거부도 두 프로젝트에서 동일`() {
-        val unmappedResult = resolver.hasPermission(
-            memberId, IssuePermission.SOFT_DELETE, IssueScope.Issue(issueKey),
-        )
-        val mappedResult = resolver.hasPermission(
-            memberId, IssuePermission.SOFT_DELETE, IssueScope.Issue(sharedIssueKey),
-        )
+        val unmappedResult =
+            resolver.hasPermission(
+                memberId,
+                IssuePermission.SOFT_DELETE,
+                IssueScope.Issue(issueKey),
+            )
+        val mappedResult =
+            resolver.hasPermission(
+                memberId,
+                IssuePermission.SOFT_DELETE,
+                IssueScope.Issue(sharedIssueKey),
+            )
 
         assertThat(unmappedResult).isFalse()
         assertThat(mappedResult).isFalse()

@@ -47,12 +47,19 @@ class IdentityAccessIssuePermissionResolver(
     private val membershipRepo: ProjectMembershipRepository,
     private val schemeRepo: PermissionSchemeRepository,
 ) : IssuePermissionResolver {
-
-    override fun hasPermission(actorId: UUID, permission: IssuePermission, scope: IssueScope): Boolean {
-        val projectId = resolveProjectId(scope) ?: return false          // 프로젝트 없음 → 거부
-        val membership = membershipRepo.findByProjectAndUser(projectId, actorId)
-            ?: return false                                               // 비멤버 → 거부
-        val code = permission.toCodeOrNull() ?: return true              // 범위 밖 → 멤버 통과
+    // ReturnCount: guard-clause early return 4개(프로젝트·멤버·범위밖·매트릭스 단계별 거부/허용).
+    // DEVELOPMENT.md §2.3 Early return 권장 정책에 부합 — 전역 임계 완화 대신 국소 Suppress.
+    @Suppress("ReturnCount")
+    override fun hasPermission(
+        actorId: UUID,
+        permission: IssuePermission,
+        scope: IssueScope,
+    ): Boolean {
+        val projectId = resolveProjectId(scope) ?: return false // 프로젝트 없음 → 거부
+        val membership =
+            membershipRepo.findByProjectAndUser(projectId, actorId)
+                ?: return false // 비멤버 → 거부
+        val code = permission.toCodeOrNull() ?: return true // 범위 밖 → 멤버 통과
         return schemeRepo.roleHasPermission(projectId, membership.role.name, code)
     }
 
@@ -65,11 +72,12 @@ class IdentityAccessIssuePermissionResolver(
      *   issueKey prefix == projectKey 불변식은 issue-tracking BC 보장
      *   (DATA.md §1.1 이슈 키 영속성 + IssueKeyPolicy).
      */
-    private fun resolveProjectId(scope: IssueScope): UUID? = when (scope) {
-        is IssueScope.Global -> null
-        is IssueScope.Project -> projectDirectory.resolveKeyToId(scope.key)
-        is IssueScope.Issue -> projectDirectory.resolveKeyToId(scope.key.substringBefore('-'))
-    }
+    private fun resolveProjectId(scope: IssueScope): UUID? =
+        when (scope) {
+            is IssueScope.Global -> null
+            is IssueScope.Project -> projectDirectory.resolveKeyToId(scope.key)
+            is IssueScope.Issue -> projectDirectory.resolveKeyToId(scope.key.substringBefore('-'))
+        }
 }
 
 /**
@@ -86,9 +94,10 @@ class IdentityAccessIssuePermissionResolver(
  *
  * `when` else 없이 6종 전부 명시 — enum 값 추가/리네임 시 컴파일 에러로 drift 차단.
  */
-private fun IssuePermission.toCodeOrNull(): String? = when (this) {
-    IssuePermission.CREATE -> "CREATE_ISSUE"
-    IssuePermission.UPDATE -> "EDIT_ISSUE"
-    IssuePermission.SOFT_DELETE -> "DELETE_ISSUE"
-    IssuePermission.VIEW, IssuePermission.TRANSITION, IssuePermission.HARD_DELETE -> null
-}
+private fun IssuePermission.toCodeOrNull(): String? =
+    when (this) {
+        IssuePermission.CREATE -> "CREATE_ISSUE"
+        IssuePermission.UPDATE -> "EDIT_ISSUE"
+        IssuePermission.SOFT_DELETE -> "DELETE_ISSUE"
+        IssuePermission.VIEW, IssuePermission.TRANSITION, IssuePermission.HARD_DELETE -> null
+    }

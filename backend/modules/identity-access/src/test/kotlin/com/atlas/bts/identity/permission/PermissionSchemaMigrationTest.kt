@@ -28,7 +28,6 @@ import org.testcontainers.junit.jupiter.Testcontainers
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Testcontainers
 class PermissionSchemaMigrationTest {
-
     companion object {
         @Container
         @JvmStatic
@@ -56,43 +55,46 @@ class PermissionSchemaMigrationTest {
         // role_permissions × permission_schemes(is_default=TRUE) JOIN 결과 5행 기대
         // PROJECT_ADMIN: CREATE_ISSUE, EDIT_ISSUE, DELETE_ISSUE (3행)
         // MEMBER:        CREATE_ISSUE, EDIT_ISSUE                (2행)
-        val count = jdbc.queryForObject(
-            """
+        val count =
+            jdbc.queryForObject(
+                """
             SELECT count(*)
             FROM role_permissions rp
             JOIN permission_schemes ps ON rp.scheme_id = ps.id
             WHERE ps.is_default = TRUE
             """,
-            mapOf<String, Any>(),
-            Int::class.java,
-        )
+                mapOf<String, Any>(),
+                Int::class.java,
+            )
         assertThat(count).isEqualTo(5)
     }
 
     @Test
     fun `기본 스킴은 단 하나만 존재한다`() {
         // uq_permission_schemes_default 부분 유니크 인덱스로 보장
-        val defaultCount = jdbc.queryForObject(
-            "SELECT count(*) FROM permission_schemes WHERE is_default = TRUE",
-            mapOf<String, Any>(),
-            Int::class.java,
-        )
+        val defaultCount =
+            jdbc.queryForObject(
+                "SELECT count(*) FROM permission_schemes WHERE is_default = TRUE",
+                mapOf<String, Any>(),
+                Int::class.java,
+            )
         assertThat(defaultCount).isEqualTo(1)
     }
 
     @Test
     fun `project_permission_scheme 테이블이 존재한다`() {
         // 시드는 없고 테이블만 존재 — 미매핑 프로젝트는 기본 스킴 fallback 동작
-        val tableCount = jdbc.queryForObject(
-            """
+        val tableCount =
+            jdbc.queryForObject(
+                """
             SELECT count(*)
             FROM information_schema.tables
             WHERE table_schema = 'public'
               AND table_name = 'project_permission_scheme'
             """,
-            mapOf<String, Any>(),
-            Int::class.java,
-        )
+                mapOf<String, Any>(),
+                Int::class.java,
+            )
         assertThat(tableCount).isEqualTo(1)
     }
 }

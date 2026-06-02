@@ -10,7 +10,6 @@ import java.util.UUID
  * 구현체: [JdbcPermissionSchemeRepository].
  */
 interface PermissionSchemeRepository {
-
     /**
      * 프로젝트의 유효 스킴에서 지정된 role이 permissionCode를 보유하는지 판정한다.
      *
@@ -23,5 +22,9 @@ interface PermissionSchemeRepository {
      * @param permissionCode 권한 코드 (예: "CREATE_ISSUE", "EDIT_ISSUE", "DELETE_ISSUE")
      * @return 유효 스킴의 role_permissions 행이 존재하면 true, 아니면 false
      */
-    fun roleHasPermission(projectId: UUID, role: String, permissionCode: String): Boolean
+    fun roleHasPermission(
+        projectId: UUID,
+        role: String,
+        permissionCode: String,
+    ): Boolean
 }

@@ -27,7 +27,6 @@ import java.util.UUID
 class JdbcPermissionSchemeRepository(
     private val jdbc: NamedParameterJdbcTemplate,
 ) : PermissionSchemeRepository {
-
     /**
      * 프로젝트의 유효 스킴에서 지정된 role이 permissionCode를 보유하는지 판정한다.
      *
@@ -38,7 +37,11 @@ class JdbcPermissionSchemeRepository(
      * @param permissionCode 권한 코드 (예: "CREATE_ISSUE", "EDIT_ISSUE", "DELETE_ISSUE")
      * @return role_permissions 에 해당 행이 존재하면 true, 아니면 false
      */
-    override fun roleHasPermission(projectId: UUID, role: String, permissionCode: String): Boolean =
+    override fun roleHasPermission(
+        projectId: UUID,
+        role: String,
+        permissionCode: String,
+    ): Boolean =
         jdbc.queryForObject(
             SQL_ROLE_HAS_PERMISSION,
             mapOf(
@@ -50,7 +53,6 @@ class JdbcPermissionSchemeRepository(
         ) ?: false
 
     private companion object {
-
         /**
          * 유효 스킴 fallback + EXISTS 권한 판정 단일 SQL.
          *
