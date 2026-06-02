@@ -17,7 +17,6 @@ import org.junit.jupiter.api.Test
  * - EXECUTION 페이즈. 실제 전이 실행 시 평가(transition 실행 게이트).
  */
 class ValidatorPhaseTest {
-
     @Test
     fun `RequiredFieldValidator 는 EXECUTION phase 를 반환한다`() {
         val validator = RequiredFieldValidator(field = "resolution")
@@ -40,10 +39,11 @@ class ValidatorPhaseTest {
     @Test
     fun `CustomExpressionValidator 는 기본값 AVAILABILITY phase 를 반환한다`() {
         val evaluator = mockk<SpelEvaluator>()
-        val validator = CustomExpressionValidator(
-            evaluator = evaluator,
-            expression = "issue.priority == 'HIGH'",
-        )
+        val validator =
+            CustomExpressionValidator(
+                evaluator = evaluator,
+                expression = "issue.priority == 'HIGH'",
+            )
         assertThat(validator.phase).isEqualTo(ValidatorPhase.AVAILABILITY)
     }
 }
