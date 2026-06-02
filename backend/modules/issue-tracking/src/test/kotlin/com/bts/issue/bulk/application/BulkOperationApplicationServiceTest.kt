@@ -3,6 +3,7 @@
 package com.bts.issue.bulk.application
 
 import com.bts.issue.bulk.domain.BulkOperation
+import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.domain.BulkOperationType
 import com.bts.issue.bulk.event.BulkOperationEnqueuePublisher
 import com.bts.issue.bulk.repository.BulkOperationRepository
@@ -10,7 +11,7 @@ import com.bts.issue.domain.ActorId
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
-import io.mockk.every
+import io.mockk.clearMocks
 import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.slot
@@ -41,6 +42,7 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
     fun issueKeys(count: Int) = (1..count).map { "ATLAS-$it" }
 
     beforeEach {
+        clearMocks(repo, enqueuePublisher)
         justRun { repo.insert(any()) }
         justRun { enqueuePublisher.enqueue(any()) }
     }
@@ -86,7 +88,7 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
                     transitionPayload = null,
                 )
                 val result = sut.submit(actor, req)
-                result.value shouldBe result.value // UUID 타입 확인
+                result.value shouldBe result.value // BulkOperationId 타입 반환 확인
             }
         }
 
@@ -245,15 +247,15 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
                 )
                 sut.submit(actor, req)
 
-                val slot = slot<BulkOperation>()
-                verify(exactly = 1) { repo.insert(capture(slot)) }
-                slot.captured.items.size shouldBe 2
-                slot.captured.totalCount shouldBe 2
+                val captured = slot<BulkOperation>()
+                verify(exactly = 1) { repo.insert(capture(captured)) }
+                captured.captured.items.size shouldBe 2
+                captured.captured.totalCount shouldBe 2
             }
         }
 
         describe("유효한 요청일 때") {
-            it("repo.insert 와 enqueuePublisher.enqueue 를 각 1회 호출하고 UUID 를 반환한다") {
+            it("repo.insert 와 enqueuePublisher.enqueue 를 각 1회 호출하고 BulkOperationId 를 반환한다") {
                 val req = BulkUpdateRequest(
                     operationType = BulkOperationType.BULK_EDIT,
                     issueKeys = listOf("ATLAS-1", "ATLAS-2"),
@@ -264,7 +266,7 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
 
                 verify(exactly = 1) { repo.insert(any()) }
                 verify(exactly = 1) { enqueuePublisher.enqueue(any()) }
-                result.value shouldBe result.value // BulkOperationId 타입 반환
+                result.value shouldBe result.value // BulkOperationId 반환 타입 확인
             }
 
             it("BulkOperation 이 actor.value 를 actorId 로 저장한다") {
@@ -276,9 +278,9 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
                 )
                 sut.submit(actor, req)
 
-                val slot = slot<BulkOperation>()
-                verify { repo.insert(capture(slot)) }
-                slot.captured.actorId shouldBe actor.value
+                val captured = slot<BulkOperation>()
+                verify { repo.insert(capture(captured)) }
+                captured.captured.actorId shouldBe actor.value
             }
 
             it("enqueue 에 전달된 ID 가 repo.insert 에 전달된 ID 와 동일하다") {
@@ -290,11 +292,11 @@ class BulkOperationApplicationServiceTest : DescribeSpec({
                 )
                 sut.submit(actor, req)
 
-                val opSlot = slot<BulkOperation>()
-                val enqSlot = slot<com.bts.issue.bulk.domain.BulkOperationId>()
-                verify { repo.insert(capture(opSlot)) }
-                verify { enqueuePublisher.enqueue(capture(enqSlot)) }
-                enqSlot.captured.value shouldBe opSlot.captured.id.value
+                val opCaptured = slot<BulkOperation>()
+                val enqCaptured = slot<BulkOperationId>()
+                verify { repo.insert(capture(opCaptured)) }
+                verify { enqueuePublisher.enqueue(capture(enqCaptured)) }
+                enqCaptured.captured.value shouldBe opCaptured.captured.id.value
             }
         }
     }
