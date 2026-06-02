@@ -305,3 +305,9 @@
 **리뷰어 권고**: ADR이 옵션 B를 기각한 사유("프레임워크 재사용")가 사실은 존재하지 않는 프레임워크였음 → **옵션 B(issue-tracking 하드코딩 가드) 재검토 권장**. toCategory를 이미 노출하므로 issue-tracking이 category==DONE && resolutionId==null → 거부하면 단일 BC로 닫힘.
 
 **→ 게이트 1 진입 불가. Maxi 방향 결정 필요(아래 D5).**
+
+### Maxi 방향 결정 (2026-06-03) — 선행 FR 먼저
+
+옵션 B(issue-tracking 하드코딩 가드)로 우회하지 않고, **선행으로 "워크플로우 validator 런타임 결선" project-workflow FR을 먼저 완성**한다. 그 FR이 끝나면 FR-IS-07은 옵션 A(이 plan의 A1/A4 toCategory + DONE seed RequiredField + issueFields resolution 전달)로 재개하며, 그 시점엔 B-1/B-2/B-3가 해소돼 사소해진다.
+
+**FR-IS-07 현재 상태: 보류.** worktree `.worktrees/fr-is-07-resolution-resolutions-e2e` + draft PR #62 유지. 재개 조건 = 선행 FR(validator 런타임 결선) 머지. 재개 시 본 plan을 옵션 A 기준으로 갱신(C-3 IssueResponse resolution 노출, B-4 영속 경로, C-5 V203 반영).

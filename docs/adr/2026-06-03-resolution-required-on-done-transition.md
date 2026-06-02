@@ -1,8 +1,10 @@
 # ADR — 종료(DONE) 전이 시 Resolution 필수 강제는 워크플로우 게이트로 한다 (Jira 방식)
 
 > 날짜: 2026-06-03
-> 상태: 채택
+> 상태: 보류 (옵션 A는 최종 목표로 유지하되, 선행 FR "워크플로우 validator 런타임 결선" 완료에 의존)
 > BC: issue-tracking (데이터) + project-workflow (게이트 설정)
+>
+> **2026-06-03 갱신 (plan 리뷰 BLOCKER).** 옵션 A의 전제였던 "기존 validator 프레임워크 재사용"이 성립하지 않음이 plan 리뷰에서 드러남 — `WorkflowValidatorFactory`/`WorkflowDefinitionRepository` production 구현이 없고(테스트 익명 object만), validator는 YAML로 시드 불가하며 `workflow_validators` 테이블은 런타임에 미사용. FR-WF-01이 남긴 미완성 비계. Maxi 결정(2026-06-03): 옵션 B로 우회하지 않고, **선행으로 "워크플로우 validator 런타임 결선" FR을 먼저 완성한 뒤 그 위에 옵션 A로 FR-IS-07을 재개**한다. 본 ADR의 옵션 A 설계는 그 선행 FR 완료 시점에 그대로 유효해진다.
 > 관련: [[2026-05-29-issue-type-cross-bc-introduction]] (표준 세트 불변 + 커스텀 패턴) · [[2026-05-28-workflow-transition-identity-policy]] · [[2026-06-02-bulk-available-transitions-server-side]] (서버가 정답지 선례)
 
 ## 맥락
