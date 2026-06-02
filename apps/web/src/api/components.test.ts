@@ -24,7 +24,7 @@ const componentFixture = {
 
 const componentFixtureNullFields = {
   ...componentFixture,
-  id: 'c3d4e5f6-a7b8-4901-cdef-012345678902',
+  id: 'c3d4e5f6-a7b8-4901-9def-012345678902',
   description: null,
   leadUserId: null,
 }
