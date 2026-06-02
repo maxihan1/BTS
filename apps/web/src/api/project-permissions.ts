@@ -6,10 +6,15 @@ import { apiGet } from './client'
 // 스키마
 // ─────────────────────────────────────────────────────────────────────────────
 
-// (C4) 백엔드 응답 계약 근거:
-// MyProjectPermissionController (Task 1)는 IssuePermission.CREATE.name = "CREATE"를
-// permissions 맵의 키로 사용한다. IssuePermissionsResponse 패턴과 동일하게
-// Map<String, Boolean> 직렬화 → { "CREATE": true/false }.
+/**
+ * `GET /api/v1/users/me/project-permissions` 응답 Zod 스키마.
+ *
+ * (C4) 백엔드 응답 계약 근거.
+ * MyProjectPermissionController (Task 1)는 IssuePermission.CREATE.name = "CREATE"를
+ * permissions 맵의 키로 사용한다. IssuePermissionsResponse 패턴과 동일하게
+ * Map<String, Boolean> 직렬화 → `{ "CREATE": true/false }`.
+ * 이 스키마의 `CREATE` 키는 백엔드 enum 이름과 1:1 대응한다.
+ */
 export const projectPermissionsSchema = z.object({
   projectKey: z.string(),
   permissions: z.object({
