@@ -61,6 +61,8 @@ export function BulkTransitionDialog({
   const [perIssueTransitions, setPerIssueTransitions] = useState<IssueTransition[][]>([])
   /** 조회 실패한 issueKey가 1건 이상이면 true */
   const [hasPartialFailure, setHasPartialFailure] = useState(false)
+  /** 모든 issueKey 조회가 실패했으면 true (전량 실패) */
+  const [hasTotalFailure, setHasTotalFailure] = useState(false)
   /** 선택된 toStateKey */
   const [selectedStateKey, setSelectedStateKey] = useState<string>('')
 
@@ -69,15 +71,21 @@ export function BulkTransitionDialog({
   /**
    * Dialog가 열릴 때 모든 issueKey의 가용 전이를 병렬 조회한다.
    * Promise.allSettled로 부분 실패를 격리하고 fulfilled 결과만 수집한다.
+   * cleanup 플래그로 stale in-flight 결과가 새 상태를 덮지 않도록 방어한다.
    */
   useEffect(() => {
     if (!open || issueKeys.length === 0) return
 
+    let cancelled = false
+
     setPerIssueTransitions([])
     setHasPartialFailure(false)
+    setHasTotalFailure(false)
     setSelectedStateKey('')
 
     void Promise.allSettled(issueKeys.map((key) => fetchIssueTransitions(key))).then((results) => {
+      if (cancelled) return
+
       const fulfilled: IssueTransition[][] = []
       let failureCount = 0
 
@@ -91,7 +99,12 @@ export function BulkTransitionDialog({
 
       setPerIssueTransitions(fulfilled)
       setHasPartialFailure(failureCount > 0)
+      setHasTotalFailure(fulfilled.length === 0 && failureCount > 0)
     })
+
+    return () => {
+      cancelled = true
+    }
   }, [open, issueKeys])
 
   /** 교집합 전이 목록 — fulfilled 결과 기반 */
@@ -100,14 +113,15 @@ export function BulkTransitionDialog({
   /** 교집합이 0건인지 여부 */
   const hasNoCommonTransitions = perIssueTransitions.length > 0 && intersected.length === 0
 
-  /** 적용 버튼 활성 조건: 교집합이 있고 전이가 선택된 경우 */
-  const canSubmit = selectedStateKey !== '' && intersected.length > 0
+  /** 적용 버튼 활성 조건: 전량 실패 없고 교집합이 있으며 전이가 선택된 경우 */
+  const canSubmit = !hasTotalFailure && selectedStateKey !== '' && intersected.length > 0
 
   function handleOpenChange(next: boolean): void {
     if (!next) {
       setSelectedStateKey('')
       setPerIssueTransitions([])
       setHasPartialFailure(false)
+      setHasTotalFailure(false)
     }
     onOpenChange(next)
   }
@@ -141,40 +155,49 @@ export function BulkTransitionDialog({
           </DialogPrimitive.Title>
 
           <div className="space-y-4">
-            {/* 일부 조회 실패 경고 */}
-            {hasPartialFailure && (
-              <p className="text-sm text-amber-600 bg-amber-50 rounded-md px-3 py-2">
-                일부 이슈의 전이 정보를 불러오지 못했습니다. 조회에 성공한 이슈 기준으로 공통 전이를 표시합니다.
-              </p>
-            )}
-
-            {/* 교집합 0건 안내 */}
-            {hasNoCommonTransitions ? (
-              <p className="text-sm text-muted-foreground">
-                선택한 이슈들이 공통으로 이동할 수 있는 상태가 없습니다.
+            {/* 전량 조회 실패 에러 — Select 숨김 + 적용 비활성 */}
+            {hasTotalFailure ? (
+              <p className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
+                전이 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
               </p>
             ) : (
-              <div>
-                <label htmlFor="bulk-transition-state" className="text-sm font-medium mb-1 block">
-                  전이 상태
-                </label>
-                <Select value={selectedStateKey} onValueChange={handleTransitionChange}>
-                  <SelectTrigger
-                    id="bulk-transition-state"
-                    className="w-full"
-                    aria-label="전이 상태"
-                  >
-                    <SelectValue placeholder="상태를 선택하세요" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {intersected.map((transition) => (
-                      <SelectItem key={transition.toStateKey} value={transition.toStateKey}>
-                        {transition.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <>
+                {/* 일부 조회 실패 경고 */}
+                {hasPartialFailure && (
+                  <p className="text-sm text-amber-600 bg-amber-50 rounded-md px-3 py-2">
+                    일부 이슈의 전이 정보를 불러오지 못했습니다. 조회에 성공한 이슈 기준으로 공통 전이를 표시합니다.
+                  </p>
+                )}
+
+                {/* 교집합 0건 안내 */}
+                {hasNoCommonTransitions ? (
+                  <p className="text-sm text-muted-foreground">
+                    선택한 이슈들이 공통으로 이동할 수 있는 상태가 없습니다.
+                  </p>
+                ) : (
+                  <div>
+                    <label htmlFor="bulk-transition-state" className="text-sm font-medium mb-1 block">
+                      전이 상태
+                    </label>
+                    <Select value={selectedStateKey} onValueChange={handleTransitionChange}>
+                      <SelectTrigger
+                        id="bulk-transition-state"
+                        className="w-full"
+                        aria-label="전이 상태"
+                      >
+                        <SelectValue placeholder="상태를 선택하세요" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {intersected.map((transition) => (
+                          <SelectItem key={transition.toStateKey} value={transition.toStateKey}>
+                            {transition.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </>
             )}
           </div>
 

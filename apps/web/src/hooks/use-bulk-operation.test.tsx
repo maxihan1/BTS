@@ -185,6 +185,8 @@ describe('useBulkOperationPolling', () => {
   afterEach(() => {
     useAuthStore.setState({ accessToken: null, user: null })
     queryClient.clear()
+    // fake timer를 사용한 테스트가 다음 테스트에 영향을 주지 않도록 복구한다.
+    vi.useRealTimers()
   })
 
   it('T-BULK-POLL-1: enabled=false이면 fetchBulkOperation을 호출하지 않는다', async () => {
@@ -229,8 +231,6 @@ describe('useBulkOperationPolling', () => {
   })
 
   it('T-BULK-POLL-4: 폴링 중 HTTP 에러(403)가 발생하면 폴링이 즉시 중단되고 추가 요청이 없다', async () => {
-    vi.useFakeTimers()
-
     let callCount = 0
     server.use(
       http.get(`/api/v1/bulk-operations/${BULK_OPERATION_ID}`, () => {
@@ -248,13 +248,9 @@ describe('useBulkOperationPolling', () => {
     await waitFor(() => expect(result.current.status).toBe('error'))
 
     const callCountAfterError = callCount
-    // POLL_INTERVAL_MS(1500ms) × 3 경과시켜도 추가 재요청 없어야 함
-    await act(async () => {
-      vi.advanceTimersByTime(5000)
-    })
+    // POLL_INTERVAL_MS(1500ms)보다 짧은 대기 후에도 추가 요청이 없어야 한다
+    await new Promise((resolve) => setTimeout(resolve, 500))
     expect(callCount).toBe(callCountAfterError)
-
-    vi.useRealTimers()
   })
 
   it('T-BULK-POLL-3: PENDING → COMPLETED 전환 시 폴링이 종료 상태에서 멈춘다', async () => {

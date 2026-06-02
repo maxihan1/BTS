@@ -79,6 +79,11 @@ export function useBulkOperationPolling(id: string | null, enabled: boolean) {
     queryFn: () => fetchBulkOperation(id as string),
     enabled: enabled && id !== null,
     refetchInterval: (query) => {
+      // 에러 상태에서는 무한 재시도를 방지하기 위해 폴링을 중단한다.
+      // (403 / 404 / 네트워크 에러 등)
+      if (query.state.status === 'error') {
+        return false
+      }
       const status = query.state.data?.status
       if (status !== undefined && TERMINAL_STATUSES.has(status)) {
         return false

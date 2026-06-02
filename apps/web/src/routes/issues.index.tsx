@@ -405,7 +405,11 @@ export function IssueListPage({ projectKey, page, onPageChange, onNavigate }: Is
       <BulkOperationResultDialog
         bulkOperationId={bulkOperationId}
         open={resultOpen}
-        onOpenChange={setResultOpen}
+        onOpenChange={(next) => {
+          setResultOpen(next)
+          // 닫힐 때 id를 null로 리셋해 재오픈 시 이전 작업 데이터 잔상을 방지한다.
+          if (!next) setBulkOperationId(null)
+        }}
       />
     </div>
   )
