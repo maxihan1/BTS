@@ -5,6 +5,7 @@ import { issuePermissionHandlers } from './issue-permission-handlers'
 import { issueTypeHandlers } from './issue-type-handlers'
 import { passwordHandlers } from './password-handlers'
 import { projectMemberHandlers } from './project-member-handlers'
+import { projectPermissionHandlers } from './project-permission-handlers'
 import { schemeHandlers } from './scheme-handlers'
 import { sessionHandlers } from './session-handlers'
 import { userHandlers } from './user-handlers'
@@ -23,6 +24,7 @@ export const handlers = [
   ...issueTypeHandlers,
   ...passwordHandlers,
   ...projectMemberHandlers,
+  ...projectPermissionHandlers,
   ...schemeHandlers,
   ...sessionHandlers,
   ...userHandlers,
