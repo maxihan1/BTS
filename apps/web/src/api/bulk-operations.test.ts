@@ -12,7 +12,7 @@ import {
 // Fixture — BulkOperationResponse (BULK_EDIT 케이스)
 // ─────────────────────────────────────────────────────────────────────────────
 const bulkEditResponseFixture = {
-  id: '11111111-1111-1111-1111-111111111111',
+  id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
   operationType: 'BULK_EDIT' as const,
   status: 'COMPLETED' as const,
   payload: { priority: 3, impact: null },
@@ -30,7 +30,7 @@ const bulkEditResponseFixture = {
 // Fixture — BulkOperationResponse (BULK_TRANSITION 케이스)
 // ─────────────────────────────────────────────────────────────────────────────
 const bulkTransitionResponseFixture = {
-  id: '22222222-2222-2222-2222-222222222222',
+  id: 'b1ffbc99-9c0b-4ef8-bb6d-6bb9bd380b22',
   operationType: 'BULK_TRANSITION' as const,
   status: 'RUNNING' as const,
   payload: { toStateKey: 'done' },
@@ -53,7 +53,7 @@ const bulkTransitionResponseFixture = {
 // Fixture — 접수(accepted) 응답
 // ─────────────────────────────────────────────────────────────────────────────
 const bulkAcceptedFixture = {
-  bulkOperationId: '33333333-3333-3333-3333-333333333333',
+  bulkOperationId: 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380c33',
   status: 'PENDING' as const,
   totalCount: 5,
 }
@@ -65,11 +65,11 @@ beforeEach(() => {
       HttpResponse.json({ data: bulkAcceptedFixture }, { status: 202 }),
     ),
     // GET /api/v1/bulk-operations/:id — BULK_EDIT 케이스
-    http.get('/api/v1/bulk-operations/11111111-1111-1111-1111-111111111111', () =>
+    http.get('/api/v1/bulk-operations/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', () =>
       HttpResponse.json({ data: bulkEditResponseFixture }, { status: 200 }),
     ),
     // GET /api/v1/bulk-operations/:id — BULK_TRANSITION 케이스
-    http.get('/api/v1/bulk-operations/22222222-2222-2222-2222-222222222222', () =>
+    http.get('/api/v1/bulk-operations/b1ffbc99-9c0b-4ef8-bb6d-6bb9bd380b22', () =>
       HttpResponse.json({ data: bulkTransitionResponseFixture }, { status: 200 }),
     ),
   )
@@ -149,7 +149,7 @@ describe('submitBulkOperation', () => {
       editPayload: { priority: 3, impact: null },
       transitionPayload: null,
     })
-    expect(result.bulkOperationId).toBe('33333333-3333-3333-3333-333333333333')
+    expect(result.bulkOperationId).toBe('c2eebc99-9c0b-4ef8-bb6d-6bb9bd380c33')
     expect(result.status).toBe('PENDING')
     expect(result.totalCount).toBe(5)
   })
@@ -160,15 +160,15 @@ describe('submitBulkOperation', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('fetchBulkOperation', () => {
   it('BULK_EDIT 작업을 조회해 BulkOperationResponse를 반환한다', async () => {
-    const result = await fetchBulkOperation('11111111-1111-1111-1111-111111111111')
-    expect(result.id).toBe('11111111-1111-1111-1111-111111111111')
+    const result = await fetchBulkOperation('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11')
+    expect(result.id).toBe('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11')
     expect(result.operationType).toBe('BULK_EDIT')
     expect(result.payload).toEqual({ priority: 3, impact: null })
   })
 
   it('BULK_TRANSITION 작업을 조회해 BulkOperationResponse를 반환한다', async () => {
-    const result = await fetchBulkOperation('22222222-2222-2222-2222-222222222222')
-    expect(result.id).toBe('22222222-2222-2222-2222-222222222222')
+    const result = await fetchBulkOperation('b1ffbc99-9c0b-4ef8-bb6d-6bb9bd380b22')
+    expect(result.id).toBe('b1ffbc99-9c0b-4ef8-bb6d-6bb9bd380b22')
     expect(result.operationType).toBe('BULK_TRANSITION')
     expect(result.payload).toEqual({ toStateKey: 'done' })
     expect(result.items).toHaveLength(3)
