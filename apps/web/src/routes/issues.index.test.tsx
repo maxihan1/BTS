@@ -354,6 +354,69 @@ describe('IssueListPage — 일괄 선택 및 액션 바 (Task 9)', () => {
   })
 
   /**
+   * T17. 결과 Dialog 닫힘 시 bulkOperationId가 null로 리셋된다 (잔상 방지).
+   * 결과 Dialog 닫기 후 폴링이 완전히 비활성화(bulkOperationId=null로 인해 enabled=false)됨을
+   * GET 호출 횟수로 검증한다. 닫힘 이후에는 추가 GET이 없어야 한다.
+   */
+  it('T17: 결과 Dialog 닫힘 시 bulkOperationId가 null로 리셋되어 폴링이 비활성화된다', async () => {
+    let getCallCount = 0
+
+    server.use(
+      ...issueHandlers,
+      http.post('/api/v1/issues/bulk-update', () =>
+        HttpResponse.json(bulkAcceptedFixture, { status: 202 }),
+      ),
+      http.get('/api/v1/bulk-operations/:id', () => {
+        getCallCount++
+        // PENDING을 계속 반환 — 폴링이 계속되는 상태를 유지
+        return HttpResponse.json({
+          data: {
+            ...bulkOperationCompletedFixture.data,
+            status: 'PENDING',
+            processedCount: 0,
+          },
+        })
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    // 1건 선택 후 일괄 편집 → 적용
+    await user.click(screen.getByTestId('select-ATLAS-1'))
+    await waitFor(() => expect(screen.getByTestId('bulk-action-bar')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: '일괄 편집' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: '일괄 편집' })).toBeInTheDocument(),
+    )
+    const dialog = screen.getByRole('dialog')
+    const prioritySelect = within(dialog).getByLabelText('priority')
+    await user.selectOptions(prioritySelect, '2')
+    await user.click(within(dialog).getByRole('button', { name: '적용' }))
+
+    // 결과 Dialog 열림 + 폴링 시작 → GET 호출 1회 이상 확인
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: '일괄 작업 결과' })).toBeInTheDocument(),
+    )
+    await waitFor(() => expect(getCallCount).toBeGreaterThanOrEqual(1))
+
+    // 결과 Dialog 닫기
+    const closeBtn = screen.getByRole('button', { name: /닫기/i })
+    await user.click(closeBtn)
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: '일괄 작업 결과' })).not.toBeInTheDocument(),
+    )
+
+    // 닫힘 이후 폴링 호출 횟수가 고정돼야 한다
+    // bulkOperationId=null → enabled=false → POLL_INTERVAL_MS 경과해도 추가 GET 없음
+    const callCountAtClose = getCallCount
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(getCallCount).toBe(callCountAtClose)
+  })
+
+  /**
    * T16. Dialog onSubmitted → BulkOperationResultDialog 열림 + 이슈 목록 invalidate(refetch) + 선택 해제.
    */
   it('T16: BulkEditDialog onSubmitted 시 결과 Dialog 열림, 선택 해제, 목록 refetch가 발생한다', async () => {

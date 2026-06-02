@@ -228,6 +228,35 @@ describe('useBulkOperationPolling', () => {
     expect(callCount).toBe(0)
   })
 
+  it('T-BULK-POLL-4: 폴링 중 HTTP 에러(403)가 발생하면 폴링이 즉시 중단되고 추가 요청이 없다', async () => {
+    vi.useFakeTimers()
+
+    let callCount = 0
+    server.use(
+      http.get(`/api/v1/bulk-operations/${BULK_OPERATION_ID}`, () => {
+        callCount++
+        return HttpResponse.json({ type: 'about:blank', status: 403 }, { status: 403 })
+      }),
+    )
+
+    const { result } = renderHook(
+      () => useBulkOperationPolling(BULK_OPERATION_ID, true),
+      { wrapper: createWrapper(queryClient) },
+    )
+
+    // 첫 번째 요청이 에러 상태로 정착할 때까지 대기
+    await waitFor(() => expect(result.current.status).toBe('error'))
+
+    const callCountAfterError = callCount
+    // POLL_INTERVAL_MS(1500ms) × 3 경과시켜도 추가 재요청 없어야 함
+    await act(async () => {
+      vi.advanceTimersByTime(5000)
+    })
+    expect(callCount).toBe(callCountAfterError)
+
+    vi.useRealTimers()
+  })
+
   it('T-BULK-POLL-3: PENDING → COMPLETED 전환 시 폴링이 종료 상태에서 멈춘다', async () => {
     // 상태 저장소 — 첫 호출 PENDING, 이후 COMPLETED
     let callCount = 0

@@ -288,6 +288,87 @@ describe('BulkTransitionDialog', () => {
     })
   })
 
+  // (e) 전량 조회 실패 시 에러 안내 + Select 숨김 + 적용 비활성
+  it('(e) 모든 fetchIssueTransitions가 reject되면 에러 안내가 표시되고 적용 버튼이 비활성화된다', async () => {
+    mockFetchIssueTransitions.mockRejectedValue(new Error('network error'))
+
+    renderDialog({ issueKeys: ['PROJ-1', 'PROJ-2'] })
+
+    // 에러 안내 메시지가 표시되어야 한다
+    await screen.findByText(/전이 정보를 불러오지 못했습니다/i)
+
+    // Select(combobox)가 DOM에 없어야 한다
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+
+    // 적용 버튼이 비활성화되어야 한다
+    const applyButton = screen.getByRole('button', { name: /적용/i })
+    expect(applyButton).toBeDisabled()
+  })
+
+  // (f) open 토글 시 stale allSettled 결과가 무시된다 (cleanup 플래그)
+  it('(f) open이 false → true로 변경될 때 stale allSettled 결과가 새 상태를 덮어쓰지 않는다', async () => {
+    // 첫 open: 느린 resolve (stale)
+    // 두 번째 open: 즉시 resolve (새 결과)
+    let resolveFirst: (value: unknown[]) => void = () => undefined
+    const firstCall = new Promise<unknown[]>((resolve) => { resolveFirst = resolve })
+
+    let callIndex = 0
+    mockFetchIssueTransitions.mockImplementation(() => {
+      callIndex++
+      if (callIndex === 1) return firstCall
+      // 두 번째 열림에서 즉시 다른 결과 반환
+      return Promise.resolve([
+        { key: 't-new', name: '새 상태', fromStateKey: 'TODO', toStateKey: 'NEW_STATE' },
+      ])
+    })
+
+    const { rerender } = render(
+      <QueryClientProvider client={makeQueryClient()}>
+        <BulkTransitionDialog
+          issueKeys={['PROJ-1']}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSubmitted={vi.fn()}
+        />
+      </QueryClientProvider>,
+    )
+
+    // close → open (새 issueKeys로 재오픈 시뮬레이션)
+    rerender(
+      <QueryClientProvider client={makeQueryClient()}>
+        <BulkTransitionDialog
+          issueKeys={['PROJ-2']}
+          open={false}
+          onOpenChange={vi.fn()}
+          onSubmitted={vi.fn()}
+        />
+      </QueryClientProvider>,
+    )
+    rerender(
+      <QueryClientProvider client={makeQueryClient()}>
+        <BulkTransitionDialog
+          issueKeys={['PROJ-2']}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSubmitted={vi.fn()}
+        />
+      </QueryClientProvider>,
+    )
+
+    // 두 번째 open의 결과(새 상태)가 드롭다운에 나타나야 한다
+    await screen.findByRole('option', { name: /새 상태/i })
+
+    // 이제 첫 번째 stale 결과를 늦게 resolve — 새 상태가 덮이지 않아야 한다
+    resolveFirst([
+      { key: 't-stale', name: '낡은 상태', fromStateKey: 'TODO', toStateKey: 'STALE_STATE' },
+    ])
+
+    // 잠시 대기 후 stale 결과가 반영되지 않아야 한다
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.queryByRole('option', { name: /낡은 상태/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /새 상태/i })).toBeInTheDocument()
+  })
+
   // 취소 버튼 클릭 시 onOpenChange(false) 호출
   it('취소 버튼 클릭 시 onOpenChange(false)가 호출된다', async () => {
     mockFetchIssueTransitions.mockResolvedValue([])
