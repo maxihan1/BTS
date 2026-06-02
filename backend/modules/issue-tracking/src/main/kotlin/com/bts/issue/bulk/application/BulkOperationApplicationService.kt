@@ -17,12 +17,6 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
-/** BULK_EDIT priority 허용 범위. */
-private val VALID_PRIORITY_RANGE = 1..5
-
-/** BULK_EDIT impact 허용 범위. */
-private val VALID_IMPACT_RANGE = 1..3
-
 /**
  * 일괄 작업 접수 유스케이스를 담당하는 Application Service.
  *
@@ -52,6 +46,14 @@ class BulkOperationApplicationService(
     private val enqueuePublisher: BulkOperationEnqueuePublisher,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+
+    companion object {
+        /** BULK_EDIT priority 허용 범위. */
+        val VALID_PRIORITY_RANGE = 1..5
+
+        /** BULK_EDIT impact 허용 범위. */
+        val VALID_IMPACT_RANGE = 1..3
+    }
 
     /**
      * 일괄 작업을 접수한다.
