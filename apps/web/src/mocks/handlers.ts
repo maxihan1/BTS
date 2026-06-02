@@ -1,6 +1,7 @@
 // MSW 핸들러 통합 인덱스 — BC별 handlers를 spread해서 내보낸다
 import { authHandlers } from './auth-handlers'
 import { issueHandlers } from './issue-handlers'
+import { issuePermissionHandlers } from './issue-permission-handlers'
 import { issueTypeHandlers } from './issue-type-handlers'
 import { passwordHandlers } from './password-handlers'
 import { projectMemberHandlers } from './project-member-handlers'
@@ -18,6 +19,7 @@ import { workflowHandlers } from './workflow-handlers'
 export const handlers = [
   ...authHandlers,
   ...issueHandlers,
+  ...issuePermissionHandlers,
   ...issueTypeHandlers,
   ...passwordHandlers,
   ...projectMemberHandlers,

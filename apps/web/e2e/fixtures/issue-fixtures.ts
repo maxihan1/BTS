@@ -33,6 +33,23 @@ export async function loginAsAlice(page: Page): Promise<void> {
 }
 
 /**
+ * Bob (dev seed LOCAL provider) 으로 로그인하고 /dashboard 진입까지 완료한다.
+ *
+ * MSW dev mock 환경 가정 — auth-handlers.ts 의 loginHandler/whoamiHandler 가 처리.
+ * bob 은 MEMBER 역할 — SOFT_DELETE 권한 없음, UPDATE 권한 있음.
+ *
+ * @param page Playwright Page 객체
+ */
+export async function loginAsBob(page: Page): Promise<void> {
+  await page.goto('/login')
+  await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
+  await page.getByLabel(loginStrings.usernameLabel).fill('bob')
+  await page.getByLabel(loginStrings.passwordLabel).fill('password')
+  await page.getByRole('button', { name: loginStrings.submitButton }).click()
+  await page.waitForURL('**/dashboard')
+}
+
+/**
  * /issues/new 폼을 통해 새 이슈를 생성하고 상세 페이지로 이동한 상태로 끝낸다.
  *
  * MSW mock 의 createIssueHandler 는 createdIssueFixture 응답을 stateful 보관한다.

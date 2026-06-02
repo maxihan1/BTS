@@ -48,6 +48,8 @@ export const issueDetailStrings = {
   updatedAtLabel: '수정',
   /** 삭제 버튼 텍스트 */
   deleteButton: '이슈 삭제',
+  /** 삭제 권한 없을 때 사유 메시지 (aria-label / title) */
+  deleteButtonNoPermission: '삭제 권한이 없습니다',
   /** 삭제 확인 메시지 */
   deleteConfirmMessage: '이 이슈를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
   /** 삭제 확인 버튼 */
@@ -90,6 +92,8 @@ export const issueDetailStrings = {
   descriptionEmpty: '본문이 없습니다.',
   /** 본문 편집 시작 버튼 */
   descriptionEditButton: '본문 편집',
+  /** 본문 편집 권한 없을 때 사유 메시지 (title/aria) */
+  descriptionEditButtonNoPermission: '수정 권한이 없습니다',
   /** 본문 저장 버튼 */
   descriptionSaveButton: '저장',
   /** 본문 편집 취소 버튼 */
