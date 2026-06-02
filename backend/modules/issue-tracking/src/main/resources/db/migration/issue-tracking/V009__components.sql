@@ -14,6 +14,12 @@ CREATE TABLE components (
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     deleted_at    TIMESTAMPTZ  NULL
 );
+COMMENT ON TABLE  components              IS '프로젝트별 컴포넌트(하위 영역 분류). 같은 BC 라 projects 실 FK 적용 (FR-CM-01).';
+COMMENT ON COLUMN components.project_id   IS '소속 프로젝트 (projects.id). 같은 BC(issue-tracking) 이므로 실 FK 적용.';
+COMMENT ON COLUMN components.name         IS '컴포넌트 이름. 활성(deleted_at IS NULL) 기준 프로젝트 내 유일 (부분 유니크 인덱스).';
+COMMENT ON COLUMN components.description  IS '컴포넌트 설명 (선택).';
+COMMENT ON COLUMN components.lead_user_id IS 'identity-access BC users.id 대응 컴포넌트 리드. BC 격리로 FK 미적용 — ApplicationService 가 존재 guard.';
+COMMENT ON COLUMN components.deleted_at   IS 'NULL=활성, NOT NULL=삭제됨. 소프트 삭제 (DATA.md §3). 삭제 후 동명 재생성 허용.';
 
 -- FK 인덱스 (DATA.md §7 — PostgreSQL 은 FK 에 인덱스 자동 생성 안 함)
 CREATE INDEX idx_components_project_id ON components(project_id);
