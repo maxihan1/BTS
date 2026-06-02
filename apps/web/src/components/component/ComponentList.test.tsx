@@ -114,14 +114,16 @@ describe('ComponentList — 4분기 렌더', () => {
     ).toBeInTheDocument()
   })
 
-  it('컴포넌트 목록을 name 오름차순으로 렌더한다', async () => {
-    // Z→A 순으로 Mock Store에 삽입해 정렬 확인
+  it('서버가 name 오름차순으로 내려준 목록을 그대로 렌더한다', async () => {
+    // 서버(componentHandlers)가 정렬된 순서로 응답 — [Backend, Frontend] 순
     server.use(
       http.get('/api/v1/projects/:projectKey/components', () =>
         HttpResponse.json({
-          data: [COMPONENT_B, COMPONENT_A], // Frontend, Backend → 정렬 후 Backend, Frontend
+          data: [COMPONENT_A, COMPONENT_B], // Backend, Frontend (오름차순)
         }),
       ),
+      http.get('/api/v1/users', () => HttpResponse.json({ data: [] })),
+      http.get('/api/v1/users/batch', () => HttpResponse.json({ data: [] })),
     )
 
     const Wrapper = createWrapper()
@@ -132,12 +134,12 @@ describe('ComponentList — 4분기 렌더', () => {
     })
     expect(screen.getByText('Frontend')).toBeInTheDocument()
 
-    // name 오름차순 정렬 검증
-    const items = screen.getAllByRole('listitem')
-    const names = items.map((li) => li.textContent ?? '')
-    const backendIndex = names.findIndex((t) => t.includes('Backend'))
-    const frontendIndex = names.findIndex((t) => t.includes('Frontend'))
-    expect(backendIndex).toBeLessThan(frontendIndex)
+    // Backend가 Frontend보다 DOM 앞에 위치하는지 확인
+    const backendEl = screen.getByText('Backend')
+    const frontendEl = screen.getByText('Frontend')
+    const position = backendEl.compareDocumentPosition(frontendEl)
+    // DOCUMENT_POSITION_FOLLOWING(4): frontendEl이 backendEl 뒤에 있음
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
   })
 })
 
