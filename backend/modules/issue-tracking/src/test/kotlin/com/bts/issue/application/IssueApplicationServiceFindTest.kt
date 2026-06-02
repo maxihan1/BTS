@@ -9,11 +9,11 @@ import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.repository.IssueRepository
+import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
-import com.bts.issue.repository.IssueRepository
-import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowTransitionPort
@@ -81,7 +81,11 @@ class IssueApplicationServiceFindTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.VIEW,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKeyWithType(issueKey) } returns issueResponse
             }
@@ -102,7 +106,11 @@ class IssueApplicationServiceFindTest : DescribeSpec({
         context("권한이 없을 때") {
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.VIEW,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns false
             }
 
@@ -122,7 +130,11 @@ class IssueApplicationServiceFindTest : DescribeSpec({
         context("권한은 있지만 이슈가 존재하지 않을 때") {
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.VIEW,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKeyWithType(issueKey) } returns null
             }

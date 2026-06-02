@@ -8,11 +8,11 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueSoftDeleted
+import com.bts.issue.repository.IssueRepository
+import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
-import com.bts.issue.repository.IssueRepository
-import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowTransitionPort
@@ -62,7 +62,11 @@ class IssueApplicationServiceSoftDeleteTest : DescribeSpec({
         context("정상 — 권한 있고 삭제 성공") {
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.SOFT_DELETE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.SOFT_DELETE,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.softDelete(issueKey) } returns 1
                 every { eventPublisher.publish(any()) } returns Unit
@@ -85,7 +89,11 @@ class IssueApplicationServiceSoftDeleteTest : DescribeSpec({
         context("미존재 또는 이미 삭제된 이슈 — softDelete 0 row 반환") {
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.SOFT_DELETE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.SOFT_DELETE,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.softDelete(issueKey) } returns 0
             }
@@ -105,7 +113,11 @@ class IssueApplicationServiceSoftDeleteTest : DescribeSpec({
         context("권한 없을 때") {
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.SOFT_DELETE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.SOFT_DELETE,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns false
             }
 

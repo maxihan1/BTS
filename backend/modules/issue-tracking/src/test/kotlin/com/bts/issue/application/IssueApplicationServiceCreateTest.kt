@@ -9,14 +9,14 @@ import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
-import com.bts.shared.permission.IssuePermission
-import com.bts.shared.permission.IssuePermissionResolver
-import com.bts.shared.permission.IssueScope
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.domain.IssueType
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeKey
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssuePermissionResolver
+import com.bts.shared.permission.IssueScope
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.WorkflowKeyResolver
@@ -100,7 +100,11 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.CREATE,
+                        IssueScope.Project(projectKey),
+                    )
                 } returns true
                 every { repo.incrementKeySequence(projectKey) } returns 1L
                 every { repo.findProjectIdByKey(projectKey) } returns fixedProjectId
@@ -116,7 +120,11 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 sut.createIssue(actor, request)
 
                 verifyOrder {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.CREATE,
+                        IssueScope.Project(projectKey),
+                    )
                     repo.incrementKeySequence(projectKey)
                     repo.insert(any())
                     eventPublisher.publish(any())
@@ -242,7 +250,11 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.CREATE,
+                        IssueScope.Project(projectKey),
+                    )
                 } returns true
                 every { repo.incrementKeySequence(projectKey) } returns 1L
                 every { repo.findProjectIdByKey(projectKey) } returns fixedProjectId
@@ -263,7 +275,11 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
         context("프로젝트가 존재하지 않을 때") {
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project("UNKNOWN"))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.CREATE,
+                        IssueScope.Project("UNKNOWN"),
+                    )
                 } returns true
                 every { repo.incrementKeySequence("UNKNOWN") } returns 1L
                 every { repo.findProjectIdByKey("UNKNOWN") } returns null
@@ -287,7 +303,11 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
         context("권한이 없을 때") {
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.CREATE,
+                        IssueScope.Project(projectKey),
+                    )
                 } returns false
             }
 
