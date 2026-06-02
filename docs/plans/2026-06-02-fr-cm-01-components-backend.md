@@ -27,9 +27,18 @@ FR-PM-03(버전/컴포넌트 등록 권한)의 **기능 선행**. 권한을 얹�
 - **관련 ADR**: [docs/adr/2026-06-02-component-model-and-permission-deferral.md](../adr/2026-06-02-component-model-and-permission-deferral.md) (생성됨)
 - **선행 충족**: FR-IS-01(이슈 CRUD) ✅, FR-PM-02(권한 인프라) ✅.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-02-fr-cm-01-components-backend.md](../specs/2026-06-02-fr-cm-01-components-backend.md)
+
+핵심 시나리오 요약.
+- `POST/GET/PATCH/DELETE /api/v1/projects/{projectIdOrKey}/components` — 컴포넌트 CRUD, 리드(lead) 선택값.
+- 검증: 프로젝트 존재(404 PROJECT_NOT_FOUND)·컴포넌트 소속(404 COMPONENT_NOT_FOUND)·이름 중복(409, 활성 기준)·리드 실재(422 COMPONENT_LEAD_NOT_FOUND, UserLookupPort).
+- 권한: 인증(401)은 Security 필터, 실 판정은 ComponentPermissionResolver(비prod AlwaysAllow)로 FR-PM-03 이연. soft delete. 3-state PATCH.
+
+## Brainstorming Check
+
+✅ 통과 (직접 적대적 sanity check, office-hours 스킵). 발견 2건 반영 — (1) issue-tracking 프로젝트 조회 컴포넌트 신규 필요(FR-4b), (2) actor 추출 cross-BC 경계 → FR-PM-03 이연. EC/메모리 교훈(3-state, 활성 유니크, 도메인 우회, init_codegen, profile bean) 선반영. 미해소 결정 0.
 
 ## Plan (← /bts-plan 채움)
 
