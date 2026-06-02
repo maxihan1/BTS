@@ -46,7 +46,7 @@ beforeEach(() => {
     isRefetching: false,
     isStale: false,
     refetch: vi.fn(),
-  } as ReturnType<typeof useIssuePermissions>)
+  } as unknown as ReturnType<typeof useIssuePermissions>)
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

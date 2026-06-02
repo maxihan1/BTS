@@ -89,7 +89,7 @@ describe('fetchIssuePermissions', () => {
     await fetchIssuePermissions(ISSUE_KEY)
 
     expect(capturedUrl).not.toBeNull()
-    const url = new URL(capturedUrl as string)
+    const url = new URL(capturedUrl as unknown as string)
     expect(url.pathname).toBe(ENDPOINT)
     expect(url.searchParams.get('issueKey')).toBe(ISSUE_KEY)
   })

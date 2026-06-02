@@ -44,6 +44,7 @@ const typeFixture: IssueTypeResponse = {
   id: 1,
   key: 'bug',
   name: '버그',
+  description: '버그',
   iconName: null,
 }
 
@@ -86,7 +87,7 @@ function renderPanel(overrides: {
     isRefetching: false,
     isStale: false,
     refetch: vi.fn(),
-  } as ReturnType<typeof useIssuePermissions>)
+  } as unknown as ReturnType<typeof useIssuePermissions>)
 
   return render(
     <IssueMetaPanel

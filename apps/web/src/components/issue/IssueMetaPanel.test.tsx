@@ -94,7 +94,7 @@ function setupFullPermissions() {
     isRefetching: false,
     isStale: false,
     refetch: vi.fn(),
-  } as ReturnType<typeof useIssuePermissions>)
+  } as unknown as ReturnType<typeof useIssuePermissions>)
 }
 
 function renderPanel(
@@ -1175,7 +1175,7 @@ describe('IssueMetaPanel — 담당자 canEdit 게이트 (FR-PM-02 C1)', () => {
       isRefetching: false,
       isStale: false,
       refetch: vi.fn(),
-    } as ReturnType<typeof useIssuePermissions>)
+    } as unknown as ReturnType<typeof useIssuePermissions>)
   }
 
   /**
