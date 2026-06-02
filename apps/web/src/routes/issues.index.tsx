@@ -1,10 +1,16 @@
 // 이슈 목록 페이지 — IssueListPage(props 기반) + IssueCard + IssueListRouteAdapter(라우터 연결)
 import type { JSX } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchIssues } from '@/api/issues'
 import type { IssueResponse, IssuePage } from '@/api/issues'
 import { Button } from '@/components/ui/button'
+import { useIssueSelection } from '@/hooks/use-issue-selection'
+import { IssueBulkActionBar } from '@/components/issues/IssueBulkActionBar'
+import { BulkEditDialog } from '@/components/issues/BulkEditDialog'
+import { BulkTransitionDialog } from '@/components/issues/BulkTransitionDialog'
+import { BulkOperationResultDialog } from '@/components/issues/BulkOperationResultDialog'
 import { useProjectPermissions } from '@/hooks/use-project-permissions'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -30,7 +36,7 @@ const DEFAULT_PROJECT_KEY = 'ATLAS'
 const DEFAULT_PAGE_SIZE = 20
 
 // ─────────────────────────────────────────────────────────────────────────────
-// IssueCard — 이슈 목록 단일 항목 컴포넌트
+// IssueCard — 이슈 목록 단일 항목 컴포넌트 (행 재구조화: 체크박스 + 링크 형제)
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface IssueCardProps {
@@ -38,47 +44,70 @@ interface IssueCardProps {
   issue: IssueResponse
   /** 항목 클릭 시 호출되는 콜백 (key 전달) */
   onNavigate: (key: string) => void
+  /** 현재 이슈가 선택됐는지 여부 */
+  checked: boolean
+  /** 체크박스 클릭 시 선택 토글 콜백 */
+  onToggle: (key: string) => void
 }
 
 /**
  * 이슈 목록의 단일 항목을 렌더하는 카드 컴포넌트.
  *
- * - 이슈 키, 요약(truncate), 현재 상태 배지를 표시한다.
- * - 항목 전체가 클릭 가능한 링크(`<a>`)이며, onNavigate 콜백도 함께 호출한다.
- * - 키보드 포커스 시 ring 스타일로 WCAG AA 접근성을 보장한다.
+ * B1 BLOCKER 대응 — 체크박스를 `<a>` 내부에 중첩하지 않고 형제 요소로 구성한다.
+ * - `<li>` 안에 체크박스(`<input type="checkbox">`)와 링크(`<a>`) 를 형제로 배치.
+ * - 체크박스 aria-label에 이슈 키를 포함하지 않아 E2E `getByLabel(key)` strict mode를 지킨다.
+ * - `data-testid={`select-${key}`}` 로 체크박스를 테스트에서 특정한다.
+ *
+ * @param issue 렌더할 이슈 데이터
+ * @param onNavigate 항목 링크 클릭 시 호출되는 네비게이션 콜백
+ * @param checked 체크박스 선택 여부
+ * @param onToggle 체크박스 토글 콜백
  */
-export function IssueCard({ issue, onNavigate }: IssueCardProps): JSX.Element {
+export function IssueCard({ issue, onNavigate, checked, onToggle }: IssueCardProps): JSX.Element {
   return (
-    <a
-      href={`/issues/${issue.key}`}
-      aria-label={issue.key}
-      onClick={(e) => {
-        e.preventDefault()
-        onNavigate(issue.key)
-      }}
-      className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 text-sm hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
-    >
-      {/* 이슈 키 — 고정 너비로 정렬 */}
-      <span className="shrink-0 font-mono text-xs font-medium text-muted-foreground w-20">
-        {issue.key}
-      </span>
+    <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-3 text-sm hover:bg-muted/50 transition-colors">
+      {/* 체크박스 — <a> 외부 형제 요소. aria-label에 이슈 키 미포함 (E2E strict mode 보호) */}
+      <input
+        type="checkbox"
+        aria-label="이슈 선택"
+        data-testid={`select-${issue.key}`}
+        checked={checked}
+        onChange={() => onToggle(issue.key)}
+        className="h-4 w-4 shrink-0 cursor-pointer accent-primary"
+      />
 
-      {/* 요약 — 긴 텍스트 말줄임 처리 (overflow: hidden + text-overflow: ellipsis) */}
-      <span
-        data-testid={`issue-summary-${issue.key}`}
-        className="flex-1 truncate text-foreground"
+      {/* 링크 — aria-label에 이슈 키만 사용해 getByLabel(key)가 링크 1개만 매칭되도록 보장 */}
+      <a
+        href={`/issues/${issue.key}`}
+        aria-label={issue.key}
+        onClick={(e) => {
+          e.preventDefault()
+          onNavigate(issue.key)
+        }}
+        className="flex flex-1 items-center gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
       >
-        {issue.summary}
-      </span>
+        {/* 이슈 키 — 고정 너비로 정렬 */}
+        <span className="shrink-0 font-mono text-xs font-medium text-muted-foreground w-20">
+          {issue.key}
+        </span>
 
-      {/* 현재 상태 배지 */}
-      <span
-        role="status"
-        className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
-      >
-        {issue.currentStateKey}
-      </span>
-    </a>
+        {/* 요약 — 긴 텍스트 말줄임 처리 (overflow: hidden + text-overflow: ellipsis) */}
+        <span
+          data-testid={`issue-summary-${issue.key}`}
+          className="flex-1 truncate text-foreground"
+        >
+          {issue.summary}
+        </span>
+
+        {/* 현재 상태 배지 */}
+        <span
+          role="status"
+          className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+        >
+          {issue.currentStateKey}
+        </span>
+      </a>
+    </div>
   )
 }
 
@@ -165,23 +194,58 @@ interface IssueListContentProps {
   onPageChange: (page: number) => void
   /** 항목 클릭 콜백 */
   onNavigate: (key: string) => void
+  /** 선택 상태 체크 함수 */
+  isSelected: (key: string) => boolean
+  /** 개별 토글 콜백 */
+  onToggle: (key: string) => void
+  /** 전체 선택 토글 콜백 (현재 페이지 기준) */
+  onSelectAllPage: () => void
+  /** 현재 페이지 전체 선택 여부 */
+  isAllPageSelected: boolean
 }
 
 /**
  * 이슈 목록 성공 상태 렌더 컴포넌트.
  * 빈 목록이면 IssueEmptyState, 아니면 IssueCard 목록 + IssuePagination을 렌더한다.
  */
-function IssueListContent({ data, page, onPageChange, onNavigate }: IssueListContentProps): JSX.Element {
+function IssueListContent({
+  data,
+  page,
+  onPageChange,
+  onNavigate,
+  isSelected,
+  onToggle,
+  onSelectAllPage,
+  isAllPageSelected,
+}: IssueListContentProps): JSX.Element {
   if (data.empty) {
     return <IssueEmptyState />
   }
 
   return (
     <>
+      {/* 전체 선택 행 */}
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-border">
+        <input
+          type="checkbox"
+          aria-label="현재 페이지 전체 선택"
+          data-testid="select-all-page"
+          checked={isAllPageSelected}
+          onChange={onSelectAllPage}
+          className="h-4 w-4 cursor-pointer accent-primary"
+        />
+        <span className="text-xs text-muted-foreground">전체 선택</span>
+      </div>
+
       <ul className="space-y-2" aria-label="이슈 목록">
         {data.content.map((issue) => (
           <li key={issue.key}>
-            <IssueCard issue={issue} onNavigate={onNavigate} />
+            <IssueCard
+              issue={issue}
+              onNavigate={onNavigate}
+              checked={isSelected(issue.key)}
+              onToggle={onToggle}
+            />
           </li>
         ))}
       </ul>
@@ -265,21 +329,67 @@ function NewIssueButton({ canCreate }: NewIssueButtonProps): JSX.Element {
  * - 3 상태 분기: 로딩("로딩 중...") → 에러(role="alert") → 성공(IssueListContent).
  * - 에러 시 role="alert"로 스크린 리더 접근성 보장 (WCAG AA).
  * - "새 이슈" 진입점: CREATE 권한 기반 게이트. fail-closed(로딩/에러/undefined → 비활성).
+ * - useIssueSelection으로 페이지 교차 누적 선택 상태를 관리한다.
+ * - IssueBulkActionBar, BulkEditDialog, BulkTransitionDialog, BulkOperationResultDialog를 결선한다.
  *
  * 라우터 의존 없이 props로 동작해 단위 테스트가 가능하다.
  */
 export function IssueListPage({ projectKey, page, onPageChange, onNavigate }: IssueListPageProps): JSX.Element {
+  const queryClient = useQueryClient()
   const { data, isLoading, error } = useQuery({
     queryKey: ['issues', projectKey, page],
     queryFn: () => fetchIssues({ projectKey, page, size: DEFAULT_PAGE_SIZE }),
     retry: false,
   })
 
+  // ── CREATE 권한 게이트 (PR #57) ────────────────────────────────────────────
   const { data: permData, isLoading: isPermLoading } = useProjectPermissions(projectKey)
 
   // fail-closed: 권한 로딩 중이거나 응답이 없으면 false
   const canCreate = !isPermLoading && permData?.permissions.CREATE === true
 
+  // ── 선택 상태 ──────────────────────────────────────────────────────────────
+  const { selectedKeys, count, isSelected, toggle, selectAllOnPage, clearPageSelection, clearAll } =
+    useIssueSelection()
+
+  // ── Dialog 열림 상태 ───────────────────────────────────────────────────────
+  const [editOpen, setEditOpen] = useState(false)
+  const [transitionOpen, setTransitionOpen] = useState(false)
+  const [resultOpen, setResultOpen] = useState(false)
+  const [bulkOperationId, setBulkOperationId] = useState<string | null>(null)
+
+  // ── 전체 선택 토글 ─────────────────────────────────────────────────────────
+  const pageKeys = useMemo(
+    () => data?.content.map((i) => i.key) ?? [],
+    [data],
+  )
+  const isAllPageSelected =
+    pageKeys.length > 0 && pageKeys.every((k) => isSelected(k))
+
+  const handleSelectAllPage = useCallback(() => {
+    if (isAllPageSelected) {
+      clearPageSelection(pageKeys)
+    } else {
+      selectAllOnPage(pageKeys)
+    }
+  }, [isAllPageSelected, pageKeys, clearPageSelection, selectAllOnPage])
+
+  // ── Dialog onSubmitted 결선 ────────────────────────────────────────────────
+  /**
+   * BulkEditDialog / BulkTransitionDialog 에서 접수 성공 시 호출.
+   * - 결과 Dialog를 열고 이슈 목록을 invalidate(refetch)하며 선택을 해제한다.
+   */
+  const handleBulkSubmitted = useCallback(
+    (id: string) => {
+      setBulkOperationId(id)
+      setResultOpen(true)
+      void queryClient.invalidateQueries({ queryKey: ['issues', projectKey] })
+      clearAll()
+    },
+    [queryClient, projectKey, clearAll],
+  )
+
+  // ── 로딩 / 에러 분기 ───────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8 text-muted-foreground">
@@ -304,11 +414,50 @@ export function IssueListPage({ projectKey, page, onPageChange, onNavigate }: Is
         <NewIssueButton canCreate={canCreate} />
       </header>
 
+      {/* 일괄 액션 바 — count > 0 일 때만 렌더 */}
+      <IssueBulkActionBar
+        count={count}
+        onEdit={() => setEditOpen(true)}
+        onTransition={() => setTransitionOpen(true)}
+        onClear={clearAll}
+      />
+
       <IssueListContent
         data={data}
         page={page}
         onPageChange={onPageChange}
         onNavigate={onNavigate}
+        isSelected={isSelected}
+        onToggle={toggle}
+        onSelectAllPage={handleSelectAllPage}
+        isAllPageSelected={isAllPageSelected}
+      />
+
+      {/* 일괄 편집 Dialog */}
+      <BulkEditDialog
+        issueKeys={selectedKeys}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSubmitted={handleBulkSubmitted}
+      />
+
+      {/* 일괄 전이 Dialog */}
+      <BulkTransitionDialog
+        issueKeys={selectedKeys}
+        open={transitionOpen}
+        onOpenChange={setTransitionOpen}
+        onSubmitted={handleBulkSubmitted}
+      />
+
+      {/* 일괄 작업 결과 Dialog */}
+      <BulkOperationResultDialog
+        bulkOperationId={bulkOperationId}
+        open={resultOpen}
+        onOpenChange={(next) => {
+          setResultOpen(next)
+          // 닫힐 때 id를 null로 리셋해 재오픈 시 이전 작업 데이터 잔상을 방지한다.
+          if (!next) setBulkOperationId(null)
+        }}
       />
     </div>
   )
