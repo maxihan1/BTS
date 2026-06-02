@@ -189,3 +189,40 @@ CREATE INDEX ix_issues_labels_gin ON issues USING GIN (labels);
 
 -- assignee_id 추가 (jOOQ: Issues.ASSIGNEE_ID 생성 대상)
 ALTER TABLE issues ADD COLUMN assignee_id UUID NULL;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V008: bulk_operations / bulk_operation_items 테이블 (FR-IS-05 일괄작업)
+-- 원본: db/migration/issue-tracking/V008__bulk_operations.sql
+-- pgmq 큐 생성(pgmq.create)은 jOOQ codegen 대상 외 — V002 선례 동일.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE bulk_operations (
+    id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    operation_type   TEXT         NOT NULL,
+    status           TEXT         NOT NULL,
+    actor_id         UUID         NOT NULL,
+    payload          JSONB        NOT NULL,
+    total_count      INT          NOT NULL,
+    processed_count  INT          NOT NULL DEFAULT 0,
+    succeeded_count  INT          NOT NULL DEFAULT 0,
+    failed_count     INT          NOT NULL DEFAULT 0,
+    created_at       TIMESTAMPTZ  NOT NULL,
+    started_at       TIMESTAMPTZ,
+    completed_at     TIMESTAMPTZ
+);
+
+CREATE INDEX idx_bulk_operations_actor_id ON bulk_operations (actor_id);
+CREATE INDEX idx_bulk_operations_status ON bulk_operations (status);
+
+CREATE TABLE bulk_operation_items (
+    id                 UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    bulk_operation_id  UUID         NOT NULL REFERENCES bulk_operations (id),
+    issue_key          TEXT         NOT NULL,
+    status             TEXT         NOT NULL,
+    failure_reason     TEXT,
+    processed_at       TIMESTAMPTZ,
+    UNIQUE (bulk_operation_id, issue_key)
+);
+
+CREATE INDEX idx_bulk_operation_items_bulk_operation_id ON bulk_operation_items (bulk_operation_id);
+CREATE INDEX idx_bulk_operation_items_operation_status ON bulk_operation_items (bulk_operation_id, status);

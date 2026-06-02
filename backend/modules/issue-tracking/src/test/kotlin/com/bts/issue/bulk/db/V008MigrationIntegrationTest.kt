@@ -94,7 +94,8 @@ class V008MigrationIntegrationTest {
         columnNames: List<String>,
     ): Boolean =
         conn().use { c ->
-            // pg_constraint + pg_attribute 조인으로 정확한 컬럼 조합 검증
+            // pg_constraint + pg_attribute 조인으로 정확한 컬럼 조합 검증.
+            // attname 은 name 타입 — text 로 캐스트하여 비교.
             c.prepareStatement(
                 """
                 SELECT 1
@@ -105,7 +106,7 @@ class V008MigrationIntegrationTest {
                    AND rel.relname = ?
                    AND con.contype = 'u'
                    AND ARRAY(
-                         SELECT attname
+                         SELECT attname::text
                            FROM pg_attribute
                           WHERE attrelid = con.conrelid
                             AND attnum = ANY(con.conkey)
