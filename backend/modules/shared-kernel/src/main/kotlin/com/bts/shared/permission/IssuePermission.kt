@@ -1,6 +1,6 @@
-// 이슈 권한 enum + 권한 적용 범위 sealed — ADR 2026-05-22-issue-permission-resolver-port
+// 이슈 권한 enum + 권한 적용 범위 sealed — 전 BC 공용. issue-tracking이 묻고 identity-access가 판정.
 
-package com.bts.issue.port.outbound
+package com.bts.shared.permission
 
 /**
  * 이슈 도메인에서 검증하는 권한 목록.
@@ -44,8 +44,8 @@ enum class IssuePermission {
 /**
  * 이슈 권한 평가의 적용 범위.
  *
- * project-workflow BC 의 [com.bts.workflow.port.outbound.Scope] 와 동일한 패턴이나,
- * BC 격리 원칙에 따라 issue-tracking BC 가 독자적으로 정의한다.
+ * project-workflow BC 의 Scope 와 동일한 패턴이나,
+ * BC 격리 원칙에 따라 shared-kernel 이 독자적으로 정의한다.
  * 다른 BC 의 내부 타입을 직접 import 하지 않는다.
  *
  * when 식에서 else 분기 없이 컴파일러가 완전성(exhaustiveness)을 보장한다.

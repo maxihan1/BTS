@@ -2,8 +2,8 @@
 
 package com.bts.issue.domain
 
-import com.bts.issue.port.outbound.IssuePermission
-import com.bts.issue.port.outbound.IssueScope
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssueScope
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf

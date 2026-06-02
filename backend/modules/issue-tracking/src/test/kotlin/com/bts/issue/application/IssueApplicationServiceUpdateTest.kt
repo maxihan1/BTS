@@ -12,9 +12,9 @@ import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueUpdated
-import com.bts.issue.port.outbound.IssuePermission
-import com.bts.issue.port.outbound.IssuePermissionResolver
-import com.bts.issue.port.outbound.IssueScope
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssuePermissionResolver
+import com.bts.shared.permission.IssueScope
 import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -110,7 +110,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { repo.findByKeyWithType(issueKey) } returns existingResponse
@@ -142,7 +142,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { repo.updateFields(issueKey, IssueFieldPatch(summary = "새 제목"), existingVersion) } returns 1
@@ -179,7 +179,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { repo.findByKeyWithType(issueKey) } returns existingResponse
@@ -202,7 +202,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns makeIssue(summary = "원래")
                 every { repo.updateFields(issueKey, IssueFieldPatch(summary = "새 제목"), existingVersion) } returns 0
@@ -225,7 +225,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns null
             }
@@ -242,7 +242,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns false
             }
 
@@ -273,7 +273,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { issueTypeRepository.findById(newTypeId) } returns
@@ -317,7 +317,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { issueTypeRepository.findById(invalidTypeId) } returns null
@@ -351,7 +351,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { repo.updateFields(issueKey, IssueFieldPatch(summary = "새 제목"), existingVersion) } returns 1
@@ -393,7 +393,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { issueTypeRepository.findById(newTypeId) } returns
