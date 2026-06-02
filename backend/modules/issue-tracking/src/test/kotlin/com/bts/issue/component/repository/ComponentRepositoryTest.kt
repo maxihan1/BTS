@@ -81,14 +81,16 @@ class ComponentRepositoryTest : IssueTestcontainersBase() {
     @Test
     @Order(4)
     fun `findByProject 는 다른 프로젝트의 컴포넌트를 포함하지 않아야 한다`() {
-        val otherProjectId = UUID.randomUUID()
+        // 두 번째 프로젝트를 DB에 먼저 삽입해야 FK 제약을 만족한다
+        val otherProjectId: UUID =
+            dsl.resultQuery(
+                "INSERT INTO projects (key, name) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                "TPRJ2",
+                "Test Project 2",
+            ).fetchOne()?.get(0) as UUID
+
         componentRepository.insert(Component.create(projectId = testProjectId, name = "Mine"))
-        // 다른 프로젝트 직접 삽입 (FK 없으므로 UUID만 다르게 사용)
-        dsl.execute(
-            "INSERT INTO components (project_id, name) VALUES (?, ?)",
-            otherProjectId,
-            "Other",
-        )
+        componentRepository.insert(Component.create(projectId = otherProjectId, name = "Other"))
 
         val result = componentRepository.findByProject(testProjectId)
 
@@ -147,6 +149,6 @@ class ComponentRepositoryTest : IssueTestcontainersBase() {
         assertThat(second.id).isNotNull()
         assertThat(second.id).isNotEqualTo(first.id)
         assertThat(second.name).isEqualTo("Reborn")
-        assertThat(second.deletedAt).isNull()
+        assertThat(second.deletedAt as Any?).isNull()
     }
 }
