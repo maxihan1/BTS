@@ -37,15 +37,15 @@ class BulkOperationTest {
     private val key2 = IssueKey.of("PROJ", 2L)
     private val key3 = IssueKey.of("PROJ", 3L)
 
-    private fun makeItems(vararg keys: IssueKey): List<BulkOperationItem> =
+    private fun makeItems(keys: List<IssueKey>): List<BulkOperationItem> =
         keys.map { BulkOperationItem(issueKey = it, status = ItemStatus.PENDING) }
 
-    private fun pendingOp(vararg keys: IssueKey = arrayOf(key1, key2, key3)): BulkOperation =
+    private fun pendingOp(keys: List<IssueKey> = listOf(key1, key2, key3)): BulkOperation =
         BulkOperation.create(
             id = operationId,
             actorId = actorId,
             type = BulkOperationType.BULK_EDIT,
-            items = makeItems(*keys),
+            items = makeItems(keys),
         )
 
     // ── 상태 전이 ──────────────────────────────────────────────────────────
@@ -93,6 +93,7 @@ class BulkOperationTest {
         assertThatThrownBy { failed.fail() }
             .isInstanceOf(IllegalStateException::class.java)
     }
+
 
     // ── 카운트 집계 ────────────────────────────────────────────────────────
 
@@ -144,7 +145,7 @@ class BulkOperationTest {
 
     @Test
     fun `markItem_updates_item_to_succeeded — markItem 으로 SUCCEEDED 로 변경하면 해당 항목 상태가 갱신된다`() {
-        val op = pendingOp(key1, key2)
+        val op = pendingOp(listOf(key1, key2))
         val (updated, item) = op.markItem(key1, ItemStatus.SUCCEEDED)
 
         assertThat(item.status).isEqualTo(ItemStatus.SUCCEEDED)
@@ -154,7 +155,7 @@ class BulkOperationTest {
 
     @Test
     fun `markItem_updates_item_to_failed_with_reason — markItem 으로 FAILED 로 변경하면 reasonCode 가 저장된다`() {
-        val op = pendingOp(key1)
+        val op = pendingOp(listOf(key1))
         val (_, item) = op.markItem(key1, ItemStatus.FAILED, FailureReasonCode.TRANSITION_NOT_ALLOWED)
 
         assertThat(item.status).isEqualTo(ItemStatus.FAILED)
@@ -163,7 +164,7 @@ class BulkOperationTest {
 
     @Test
     fun `markItem_rejects_unknown_key — 존재하지 않는 IssueKey 로 markItem 호출 시 예외를 던진다`() {
-        val op = pendingOp(key1)
+        val op = pendingOp(listOf(key1))
         val unknownKey = IssueKey.of("PROJ", 99L)
 
         assertThatThrownBy { op.markItem(unknownKey, ItemStatus.SUCCEEDED) }
