@@ -38,9 +38,27 @@ FR-WF-01(PR #10)이 워크플로우 전이 검증 프레임워크의 SPI 인터�
   - Q4. 시드 범위 — 기존 4종 표준 워크플로우 YAML에 실제 validator/postaction을 넣을지, 스키마/배선만 하고 시드는 비울지.
 - **grill-with-docs 스킵**: 새 용어 0건, FR-WF-01 도메인 완비. 기술 배선 작업이라 직접 분석으로 충분(메모리 bts-spec-office-hours-mismatch 동일 논리).
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-03-fr-wf-03-validator-runtime-wiring.md](../specs/2026-06-03-fr-wf-03-validator-runtime-wiring.md)
+
+핵심.
+- WorkflowValidatorFactory/PostActionFactory/DefinitionRepository production 결선(@Component/@Repository) — 기존 validator 4종/postaction 5종은 이미 구현됨, factory가 타입별 생성(생성자 인자 config에서 추출, CustomExpression은 SpelEvaluator 주입).
+- validator 단계 구분(D8=A): WorkflowValidator.phase(AVAILABILITY/EXECUTION). RequiredField=EXECUTION. availableTransitions는 AVAILABILITY만, plan은 전부.
+- PostAction 계산까지만(D9=A): PostActionPlan 반환, 적용은 GAP-2 호출자 후속. 단일 BC.
+- YAML validators/post_actions 스키마 확장 + YamlSeedService 시드(두 테이블). 기존 4종 워크플로우는 validator-free 유지(회귀 0).
+- @SpringBootTest 전체 컨텍스트 부팅 검증(현재 production 빈 부재).
+
+확정 결정.
+- D8=A validator phase 구분 포함. D9=A PostAction 계산 배선까지(단일 BC).
+- 마이그레이션 신규 없음(두 테이블 V200 기존). jOOQ 상수는 V200 직접 codegen이라 자동 생성 — init_codegen 미러 불필요(issue-tracking과 구조 다름).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). gap 아님 — 오히려 함정 회피 2건 확인.
+- (확인1) jOOQ 상수 WORKFLOW_VALIDATORS/POST_ACTIONS는 V200 직접 codegen으로 자동 생성. init_codegen 미러 트랩(jooq-init-codegen-mirror) 여긴 해당 없음.
+- (확인2) validator/postaction 구현체가 생성자 인자를 받아 factory가 타입별 생성 필요(config Map→인자). CustomExpression은 SpelEvaluator 주입. 구현 가능, 스펙 FR1/FR2 반영.
+- 미결 Q1(phase)/Q2(PostAction 범위)는 Maxi D8=A/D9=A로 해소. Q3(YAML 스키마)/Q4(시드 범위)는 스펙에서 확정(전이별 validators/post_actions 리스트, 표준 워크플로우는 시드 비움).
 
 ## Plan (← /bts-plan 채움)
 
