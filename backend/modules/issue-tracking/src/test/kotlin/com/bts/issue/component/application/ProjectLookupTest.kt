@@ -29,7 +29,6 @@ import java.util.UUID
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class ProjectLookupTest : IssueTestcontainersBase() {
-
     private lateinit var projectLookup: ProjectLookup
 
     /** 소프트 삭제 검증용 별도 프로젝트 id. */

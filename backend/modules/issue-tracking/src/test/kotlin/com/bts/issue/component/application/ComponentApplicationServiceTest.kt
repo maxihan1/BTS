@@ -21,7 +21,6 @@ import io.mockk.mockk
 import io.mockk.verify
 import org.springframework.dao.DataIntegrityViolationException
 import java.sql.SQLException
-import java.time.Instant
 import java.util.UUID
 
 /**
@@ -46,26 +45,28 @@ class ComponentApplicationServiceTest : DescribeSpec({
     val userLookupPort = mockk<UserLookupPort>()
     val repo = mockk<ComponentRepository>()
 
-    val sut = ComponentApplicationService(
-        permissionResolver = permissionResolver,
-        projectLookup = projectLookup,
-        userLookupPort = userLookupPort,
-        repo = repo,
-    )
+    val sut =
+        ComponentApplicationService(
+            permissionResolver = permissionResolver,
+            projectLookup = projectLookup,
+            userLookupPort = userLookupPort,
+            repo = repo,
+        )
 
     val actorId = UUID.randomUUID()
     val projectIdOrKey = "BTS"
     val projectId = UUID.randomUUID()
     val componentId = UUID.randomUUID()
 
-    val activeComponent = Component(
-        id = componentId,
-        projectId = projectId,
-        name = "Backend",
-        description = "백엔드 컴포넌트",
-        leadUserId = null,
-        deletedAt = null,
-    )
+    val activeComponent =
+        Component(
+            id = componentId,
+            projectId = projectId,
+            name = "Backend",
+            description = "백엔드 컴포넌트",
+            leadUserId = null,
+            deletedAt = null,
+        )
 
     afterEach { clearMocks(permissionResolver, projectLookup, userLookupPort, repo) }
 
@@ -79,13 +80,14 @@ class ComponentApplicationServiceTest : DescribeSpec({
                 val inserted = activeComponent.copy(id = UUID.randomUUID())
                 every { repo.insert(any()) } returns inserted
 
-                val result = sut.create(
-                    actorId = actorId,
-                    projectIdOrKey = projectIdOrKey,
-                    name = "Backend",
-                    description = "백엔드 컴포넌트",
-                    leadUserId = null,
-                )
+                val result =
+                    sut.create(
+                        actorId = actorId,
+                        projectIdOrKey = projectIdOrKey,
+                        name = "Backend",
+                        description = "백엔드 컴포넌트",
+                        leadUserId = null,
+                    )
 
                 result shouldBe inserted
                 verify(exactly = 1) { repo.insert(any()) }
@@ -102,13 +104,14 @@ class ComponentApplicationServiceTest : DescribeSpec({
                 val inserted = activeComponent.copy(leadUserId = leadId)
                 every { repo.insert(any()) } returns inserted
 
-                val result = sut.create(
-                    actorId = actorId,
-                    projectIdOrKey = projectIdOrKey,
-                    name = "Backend",
-                    description = null,
-                    leadUserId = leadId,
-                )
+                val result =
+                    sut.create(
+                        actorId = actorId,
+                        projectIdOrKey = projectIdOrKey,
+                        name = "Backend",
+                        description = null,
+                        leadUserId = leadId,
+                    )
 
                 result.leadUserId shouldBe leadId
                 verify(exactly = 1) { userLookupPort.exists(leadId) }
@@ -177,13 +180,14 @@ class ComponentApplicationServiceTest : DescribeSpec({
                 val updated = activeComponent.copy(name = "Frontend", description = "프론트")
                 every { repo.update(any()) } returns updated
 
-                val result = sut.update(
-                    actorId = actorId,
-                    projectIdOrKey = projectIdOrKey,
-                    componentId = componentId,
-                    name = "Frontend",
-                    description = "프론트",
-                )
+                val result =
+                    sut.update(
+                        actorId = actorId,
+                        projectIdOrKey = projectIdOrKey,
+                        componentId = componentId,
+                        name = "Frontend",
+                        description = "프론트",
+                    )
 
                 result.name shouldBe "Frontend"
                 result.description shouldBe "프론트"
@@ -199,13 +203,14 @@ class ComponentApplicationServiceTest : DescribeSpec({
                 val updated = activeComponent.copy(name = "NewName")
                 every { repo.update(any()) } returns updated
 
-                val result = sut.update(
-                    actorId = actorId,
-                    projectIdOrKey = projectIdOrKey,
-                    componentId = componentId,
-                    name = "NewName",
-                    description = null,
-                )
+                val result =
+                    sut.update(
+                        actorId = actorId,
+                        projectIdOrKey = projectIdOrKey,
+                        componentId = componentId,
+                        name = "NewName",
+                        description = null,
+                    )
 
                 result.name shouldBe "NewName"
                 verify(exactly = 1) { repo.update(any()) }
@@ -384,10 +389,11 @@ class ComponentApplicationServiceTest : DescribeSpec({
     describe("listByProject") {
         context("정상 경로") {
             it("프로젝트 resolve → findByProject 반환") {
-                val components = listOf(
-                    activeComponent,
-                    activeComponent.copy(id = UUID.randomUUID(), name = "Frontend"),
-                )
+                val components =
+                    listOf(
+                        activeComponent,
+                        activeComponent.copy(id = UUID.randomUUID(), name = "Frontend"),
+                    )
                 every { projectLookup.resolve(projectIdOrKey) } returns projectId
                 every { repo.findByProject(projectId) } returns components
 

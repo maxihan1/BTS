@@ -29,67 +29,74 @@ class ComponentTest : DescribeSpec({
 
         context("유효한 입력") {
             it("projectId + name 입력 시 Component 인스턴스를 반환한다") {
-                val component = Component.create(
-                    projectId = projectId,
-                    name = "Backend",
-                )
+                val component =
+                    Component.create(
+                        projectId = projectId,
+                        name = "Backend",
+                    )
 
                 component.projectId shouldBe projectId
                 component.name shouldBe "Backend"
             }
 
             it("id 는 null 이다 (DB 저장 전 미확정 상태)") {
-                val component = Component.create(
-                    projectId = projectId,
-                    name = "Backend",
-                )
+                val component =
+                    Component.create(
+                        projectId = projectId,
+                        name = "Backend",
+                    )
 
                 component.id.shouldBeNull()
             }
 
             it("description 기본값은 null 이다") {
-                val component = Component.create(
-                    projectId = projectId,
-                    name = "Backend",
-                )
+                val component =
+                    Component.create(
+                        projectId = projectId,
+                        name = "Backend",
+                    )
 
                 component.description.shouldBeNull()
             }
 
             it("leadUserId 기본값은 null 이다") {
-                val component = Component.create(
-                    projectId = projectId,
-                    name = "Backend",
-                )
+                val component =
+                    Component.create(
+                        projectId = projectId,
+                        name = "Backend",
+                    )
 
                 component.leadUserId.shouldBeNull()
             }
 
             it("deletedAt 기본값은 null 이다") {
-                val component = Component.create(
-                    projectId = projectId,
-                    name = "Backend",
-                )
+                val component =
+                    Component.create(
+                        projectId = projectId,
+                        name = "Backend",
+                    )
 
                 component.deletedAt.shouldBeNull()
             }
 
             it("leadUserId 를 지정할 수 있다") {
-                val component = Component.create(
-                    projectId = projectId,
-                    name = "Backend",
-                    leadUserId = leadId,
-                )
+                val component =
+                    Component.create(
+                        projectId = projectId,
+                        name = "Backend",
+                        leadUserId = leadId,
+                    )
 
                 component.leadUserId shouldBe leadId
             }
 
             it("description 을 지정할 수 있다") {
-                val component = Component.create(
-                    projectId = projectId,
-                    name = "Backend",
-                    description = "백엔드 관련 이슈",
-                )
+                val component =
+                    Component.create(
+                        projectId = projectId,
+                        name = "Backend",
+                        description = "백엔드 관련 이슈",
+                    )
 
                 component.description shouldBe "백엔드 관련 이슈"
             }
@@ -111,10 +118,11 @@ class ComponentTest : DescribeSpec({
 
         context("name trim 정규화") {
             it("name 양쪽 공백을 trim 한다") {
-                val component = Component.create(
-                    projectId = projectId,
-                    name = "  Backend  ",
-                )
+                val component =
+                    Component.create(
+                        projectId = projectId,
+                        name = "  Backend  ",
+                    )
 
                 component.name shouldBe "Backend"
             }
@@ -128,10 +136,11 @@ class ComponentTest : DescribeSpec({
 
         context("name 길이 불변식") {
             it("name 이 정확히 255자면 정상 생성된다") {
-                val component = Component.create(
-                    projectId = projectId,
-                    name = "A".repeat(255),
-                )
+                val component =
+                    Component.create(
+                        projectId = projectId,
+                        name = "A".repeat(255),
+                    )
 
                 component.name.length shouldBe 255
             }
@@ -202,22 +211,24 @@ class ComponentTest : DescribeSpec({
         }
 
         it("null 을 전달하면 리드를 해제한다") {
-            val original = Component.create(
-                projectId = projectId,
-                name = "Backend",
-                leadUserId = leadId,
-            )
+            val original =
+                Component.create(
+                    projectId = projectId,
+                    name = "Backend",
+                    leadUserId = leadId,
+                )
             val updated = original.changeLead(null)
 
             updated.leadUserId.shouldBeNull()
         }
 
         it("원본 인스턴스는 변경되지 않는다") {
-            val original = Component.create(
-                projectId = projectId,
-                name = "Backend",
-                leadUserId = leadId,
-            )
+            val original =
+                Component.create(
+                    projectId = projectId,
+                    name = "Backend",
+                    leadUserId = leadId,
+                )
             original.changeLead(null)
 
             original.leadUserId shouldBe leadId
@@ -234,22 +245,24 @@ class ComponentTest : DescribeSpec({
         }
 
         it("null 을 전달하면 설명을 클리어한다") {
-            val original = Component.create(
-                projectId = projectId,
-                name = "Backend",
-                description = "기존 설명",
-            )
+            val original =
+                Component.create(
+                    projectId = projectId,
+                    name = "Backend",
+                    description = "기존 설명",
+                )
             val updated = original.changeDescription(null)
 
             updated.description.shouldBeNull()
         }
 
         it("원본 인스턴스는 변경되지 않는다") {
-            val original = Component.create(
-                projectId = projectId,
-                name = "Backend",
-                description = "기존 설명",
-            )
+            val original =
+                Component.create(
+                    projectId = projectId,
+                    name = "Backend",
+                    description = "기존 설명",
+                )
             original.changeDescription("새 설명")
 
             original.description shouldBe "기존 설명"
