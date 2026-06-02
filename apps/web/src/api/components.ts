@@ -10,8 +10,7 @@ import {
   type UpdateComponentInput,
 } from './components.types'
 
-export type { Component, CreateComponentInput, UpdateComponentInput } from './components.types'
-export type { ChangeLeadInput } from './components.types'
+export type { Component, CreateComponentInput, UpdateComponentInput, ChangeLeadInput } from './components.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 상수
