@@ -7,6 +7,7 @@ import com.bts.issue.component.adapter.AlwaysAllowComponentPermissionResolver
 import com.bts.issue.component.application.ComponentApplicationService
 import com.bts.issue.component.application.ProjectLookup
 import com.bts.issue.component.repository.ComponentRepository
+import com.bts.issue.component.repository.ProjectLookupRepository
 import com.bts.shared.permission.ComponentPermissionResolver
 import com.bts.shared.user.UserLookupPort
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -127,7 +128,10 @@ class ComponentControllerIntegrationTest {
         open fun componentRepository(dsl: DSLContext): ComponentRepository = ComponentRepository(dsl)
 
         @Bean
-        open fun projectLookup(dsl: DSLContext): ProjectLookup = ProjectLookup(dsl)
+        open fun projectLookupRepository(dsl: DSLContext): ProjectLookupRepository = ProjectLookupRepository(dsl)
+
+        @Bean
+        open fun projectLookup(repository: ProjectLookupRepository): ProjectLookup = ProjectLookup(repository)
 
         /**
          * 테스트 환경 UserLookupPort — [KNOWN_LEAD_ID] 만 exists=true.

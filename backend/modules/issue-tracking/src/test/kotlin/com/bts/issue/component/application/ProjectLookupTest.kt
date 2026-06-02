@@ -2,6 +2,7 @@
 
 package com.bts.issue.component.application
 
+import com.bts.issue.component.repository.ProjectLookupRepository
 import com.bts.issue.repository.IssueTestcontainersBase
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -36,7 +37,7 @@ class ProjectLookupTest : IssueTestcontainersBase() {
 
     @BeforeEach
     fun setUp() {
-        projectLookup = ProjectLookup(dsl)
+        projectLookup = ProjectLookup(ProjectLookupRepository(dsl))
 
         // 소프트 삭제 프로젝트를 매 테스트 전에 재생성 + 삭제 (idempotent)
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
