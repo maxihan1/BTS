@@ -1,10 +1,9 @@
-// BulkOperationWorker 단위 테스트 — pgmq 폴링, CAS 단일 진입, processor 호출, 완료 이벤트 1회 발행, delete (Task 7 TDD RED)
+// BulkOperationWorker 단위 테스트 — pgmq 폴링, CAS 단일 진입, processor 호출, 완료 이벤트 1회 발행, delete (Task 7 TDD)
 
 package com.bts.issue.bulk.worker
 
 import com.bts.issue.bulk.application.BulkOperationProcessor
 import com.bts.issue.bulk.domain.BulkOperationId
-import com.bts.issue.bulk.event.BulkOperationEventPublisher
 import com.bts.issue.bulk.repository.BulkOperationRepository
 import io.kotest.core.spec.style.DescribeSpec
 import io.mockk.clearMocks
@@ -24,25 +23,27 @@ import java.util.UUID
  * - claimForRun CAS: claim 성공(true) → processor 호출, claim 실패(false) → skip
  * - 동시 2워커 단일 진입: 두 번째 claim 이 false 를 반환하면 processor 호출 안 함
  * - processor.process() 호출 확인
- * - markCompleted CAS: 완료 처리
- * - BulkOperationCompleted 이벤트 1회 발행 (C4 중복 발행 금지)
- * - markCompleted false(이미 완료) → 이벤트 발행 안 함
+ * - completer.completeAndPublish(): 완료 처리 + 이벤트 발행 위임 확인
+ * - completeAndPublish true(완료) → delete 호출
  * - pgmq.delete: 성공 처리 후 메시지 삭제 호출 확인
  * - 예외 발생 시: delete 호출 안 함 (at-least-once, vt 만료 후 재전달)
  *
  * 단위 테스트 — DSLContext / BulkOperationRepository / BulkOperationProcessor /
- * BulkOperationEventPublisher 는 MockK 모의 객체.
+ * BulkOperationCompleter 는 MockK 모의 객체.
+ *
+ * markCompleted + publishCompleted 는 BulkOperationCompleter 로 위임됐으므로
+ * 워커 단위 테스트에서는 completer.completeAndPublish 호출만 검증한다.
  */
 class BulkOperationWorkerTest : DescribeSpec({
 
     val dsl = mockk<DSLContext>()
     val bulkRepo = mockk<BulkOperationRepository>()
     val processor = mockk<BulkOperationProcessor>()
-    val eventPublisher = mockk<BulkOperationEventPublisher>()
+    val completer = mockk<BulkOperationCompleter>()
 
-    val worker = BulkOperationWorker(dsl, bulkRepo, processor, eventPublisher)
+    val worker = BulkOperationWorker(dsl, bulkRepo, processor, completer)
 
-    afterEach { clearMocks(dsl, bulkRepo, processor, eventPublisher) }
+    afterEach { clearMocks(dsl, bulkRepo, processor, completer) }
 
     describe("pollAndProcess") {
 
@@ -64,7 +65,7 @@ class BulkOperationWorkerTest : DescribeSpec({
             }
         }
 
-        context("큐에 메시지 1건, claimForRun 성공, markCompleted 성공") {
+        context("큐에 메시지 1건, claimForRun 성공, completeAndPublish 성공") {
             val operationId = BulkOperationId(UUID.randomUUID())
             val msgId = 42L
 
@@ -72,29 +73,27 @@ class BulkOperationWorkerTest : DescribeSpec({
                 stubReadOneMessage(dsl, operationId, msgId)
                 every { bulkRepo.claimForRun(operationId) } returns true
                 justRun { processor.process(operationId) }
-                every { bulkRepo.markCompleted(operationId) } returns true
-                justRun { eventPublisher.publishCompleted(operationId) }
+                every { completer.completeAndPublish(operationId, msgId) } returns true
                 every {
                     dsl.execute(any<String>(), BulkOperationWorker.QUEUE_NAME, msgId)
                 } returns 1
             }
 
-            it("claimForRun → processor.process → markCompleted → 이벤트 발행 → delete 순으로 실행한다") {
+            it("claimForRun → processor.process → completeAndPublish → delete 순으로 실행한다") {
                 worker.pollAndProcess()
 
                 verifyOrder {
                     bulkRepo.claimForRun(operationId)
                     processor.process(operationId)
-                    bulkRepo.markCompleted(operationId)
-                    eventPublisher.publishCompleted(operationId)
+                    completer.completeAndPublish(operationId, msgId)
                     dsl.execute(any<String>(), BulkOperationWorker.QUEUE_NAME, msgId)
                 }
             }
 
-            it("이벤트는 정확히 1회 발행된다 (C4 중복 발행 금지)") {
+            it("completeAndPublish 는 정확히 1회 호출된다 (C4 중복 발행 금지)") {
                 worker.pollAndProcess()
 
-                verify(exactly = 1) { eventPublisher.publishCompleted(operationId) }
+                verify(exactly = 1) { completer.completeAndPublish(operationId, msgId) }
             }
         }
 
@@ -107,41 +106,12 @@ class BulkOperationWorkerTest : DescribeSpec({
                 every { bulkRepo.claimForRun(operationId) } returns false
             }
 
-            it("processor, markCompleted, 이벤트 발행, delete 를 호출하지 않는다") {
+            it("processor, completeAndPublish, delete 를 호출하지 않는다") {
                 worker.pollAndProcess()
 
                 verify(exactly = 0) { processor.process(any()) }
-                verify(exactly = 0) { bulkRepo.markCompleted(any()) }
-                verify(exactly = 0) { eventPublisher.publishCompleted(any()) }
+                verify(exactly = 0) { completer.completeAndPublish(any(), any()) }
                 verify(exactly = 0) { dsl.execute(any<String>(), any(), any<Long>()) }
-            }
-        }
-
-        context("markCompleted 가 false 를 반환할 때 (이미 다른 경로로 완료됨)") {
-            val operationId = BulkOperationId(UUID.randomUUID())
-            val msgId = 77L
-
-            beforeEach {
-                stubReadOneMessage(dsl, operationId, msgId)
-                every { bulkRepo.claimForRun(operationId) } returns true
-                justRun { processor.process(operationId) }
-                every { bulkRepo.markCompleted(operationId) } returns false
-                // delete 는 멱등하게 호출 — 중복 처리 방지를 위해 메시지는 제거
-                every {
-                    dsl.execute(any<String>(), BulkOperationWorker.QUEUE_NAME, msgId)
-                } returns 1
-            }
-
-            it("이벤트를 발행하지 않는다 (중복 완료 이벤트 금지)") {
-                worker.pollAndProcess()
-
-                verify(exactly = 0) { eventPublisher.publishCompleted(any()) }
-            }
-
-            it("메시지는 삭제한다 (재전달 차단 — 이미 처리됐으므로)") {
-                worker.pollAndProcess()
-
-                verify(exactly = 1) { dsl.execute(any<String>(), BulkOperationWorker.QUEUE_NAME, msgId) }
             }
         }
 
@@ -160,7 +130,7 @@ class BulkOperationWorkerTest : DescribeSpec({
                 worker.pollAndProcess()
 
                 verify(exactly = 0) { dsl.execute(any<String>(), BulkOperationWorker.QUEUE_NAME, msgId) }
-                verify(exactly = 0) { eventPublisher.publishCompleted(any()) }
+                verify(exactly = 0) { completer.completeAndPublish(any(), any()) }
             }
         }
     }
