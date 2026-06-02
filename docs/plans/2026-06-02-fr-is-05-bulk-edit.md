@@ -72,9 +72,20 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 
 - [docs/adr/2026-06-02-bulk-operation-async-architecture.md](../adr/2026-06-02-bulk-operation-async-architecture.md) (생성됨, 아래)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-02-fr-is-05-bulk-edit.md](../specs/2026-06-02-fr-is-05-bulk-edit.md)
+
+핵심 요약.
+- `POST /api/v1/issues/bulk-update` 접수 → `202` + bulkOperationId. 백그라운드 pgmq 워커가 이슈별 처리.
+- best-effort 부분 성공. 항목별 SUCCEEDED/FAILED(reasonCode). 기존 updateIssue/transitionIssue 재사용, 전이는 WorkflowTransitionPort 위임.
+- `GET /api/v1/bulk-operations/{id}` 진행률/결과 조회(작업 actor 한정). 완료 시 BulkOperationCompleted 이벤트 발행(FR8).
+- 상한 1000건/청크 50, 멱등(항목 상태 기반), 결과 30일 TTL. 취소 API 없음(범위 제외).
+- 신규 테이블 V008: bulk_operations, bulk_operation_items + pgmq 큐 q_bulk_operations(BTS 최초 consumer).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). gap 7건 처리 — 수정가능 5건 인라인 보강 + Maxi 결정 2건(취소 제외 / 완료 이벤트 발행만).
 
 ## Plan (← /bts-plan 채움)
 
