@@ -367,4 +367,81 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
         val ids: List<BulkOperationId> = result.map { it.id }
         assertThat(ids).doesNotContain(op.id)
     }
+
+    // ── findStatus ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `findStatus 는 존재하는 작업의 현재 상태를 반환한다`() {
+        val op = makeOperation()
+        bulkRepo.insert(op)
+
+        val status = bulkRepo.findStatus(op.id)
+        assertThat(status).isEqualTo(BulkOperationStatus.PENDING)
+    }
+
+    @Test
+    fun `findStatus 는 RUNNING 상태인 작업의 상태를 반환한다`() {
+        val op = makeOperation()
+        bulkRepo.insert(op)
+        bulkRepo.claimForRun(op.id)
+
+        val status = bulkRepo.findStatus(op.id)
+        assertThat(status).isEqualTo(BulkOperationStatus.RUNNING)
+    }
+
+    @Test
+    fun `findStatus 는 존재하지 않는 작업에 대해 null 을 반환한다`() {
+        val status = bulkRepo.findStatus(BulkOperationId(UUID.randomUUID()))
+        assertThat(status).isNull()
+    }
+
+    // ── claimForRun stale RUNNING 재청 ──────────────────────────────────────────
+
+    @Test
+    fun `claimForRun 은 stale RUNNING 작업을 재청할 수 있다`() {
+        // stale threshold 를 넘기도록 started_at 을 과거로 강제 설정
+        val fixedPast = Instant.parse("2020-01-01T00:00:00Z")
+        val pastClock = Clock.fixed(fixedPast, ZoneOffset.UTC)
+        val repoWithPastClock = BulkOperationRepository(dsl, objectMapper, pastClock)
+
+        val op = makeOperation()
+        bulkRepo.insert(op)
+        repoWithPastClock.claimForRun(op.id) // started_at = 과거 → stale
+
+        // 현재 시각 기준 repo 로 재청 → stale이므로 true 반환
+        val reclaimed = bulkRepo.claimForRun(op.id)
+        assertThat(reclaimed).isTrue()
+
+        val found = bulkRepo.findById(op.id)
+        assertThat(found!!.status).isEqualTo(BulkOperationStatus.RUNNING)
+    }
+
+    @Test
+    fun `claimForRun 은 최근 started_at 을 가진 RUNNING 작업은 재청하지 않는다`() {
+        val op = makeOperation()
+        bulkRepo.insert(op)
+        bulkRepo.claimForRun(op.id) // started_at = 방금 현재 시각 → NOT stale
+
+        // 두 번째 claim — 최근에 시작됐으므로 false 반환
+        val second = bulkRepo.claimForRun(op.id)
+        assertThat(second).isFalse()
+    }
+
+    // ── findCompletedBefore LIMIT ──────────────────────────────────────────────
+
+    @Test
+    fun `findCompletedBefore 는 최대 CLEANUP_BATCH_LIMIT 건만 반환한다`() {
+        // CLEANUP_BATCH_LIMIT + 1 건을 완료 상태로 삽입
+        val total = BulkOperationRepository.CLEANUP_BATCH_LIMIT + 1
+        repeat(total) {
+            val op = makeOperation(keys = listOf("LM-${it + 1}"))
+            bulkRepo.insert(op)
+            bulkRepo.claimForRun(op.id)
+            bulkRepo.markCompleted(op.id)
+        }
+
+        val result = bulkRepo.findCompletedBefore(Instant.now().plusSeconds(1))
+        // LIMIT 가 걸려 있으므로 CLEANUP_BATCH_LIMIT 건 이하
+        assertThat(result.size).isLessThanOrEqualTo(BulkOperationRepository.CLEANUP_BATCH_LIMIT)
+    }
 }
