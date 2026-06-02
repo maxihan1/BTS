@@ -13,14 +13,26 @@
 
 CREATE TABLE bulk_operations (
     id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    operation_type   TEXT         NOT NULL,
-    status           TEXT         NOT NULL,
+    operation_type   TEXT         NOT NULL
+                         CONSTRAINT chk_bulk_operations_operation_type
+                             CHECK (operation_type IN ('BULK_EDIT', 'BULK_TRANSITION')),
+    status           TEXT         NOT NULL
+                         CONSTRAINT chk_bulk_operations_status
+                             CHECK (status IN ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED')),
     actor_id         UUID         NOT NULL,
     payload          JSONB        NOT NULL,
-    total_count      INT          NOT NULL,
-    processed_count  INT          NOT NULL DEFAULT 0,
-    succeeded_count  INT          NOT NULL DEFAULT 0,
-    failed_count     INT          NOT NULL DEFAULT 0,
+    total_count      INT          NOT NULL
+                         CONSTRAINT chk_bulk_operations_total_count_gte0
+                             CHECK (total_count >= 0),
+    processed_count  INT          NOT NULL DEFAULT 0
+                         CONSTRAINT chk_bulk_operations_processed_count_gte0
+                             CHECK (processed_count >= 0),
+    succeeded_count  INT          NOT NULL DEFAULT 0
+                         CONSTRAINT chk_bulk_operations_succeeded_count_gte0
+                             CHECK (succeeded_count >= 0),
+    failed_count     INT          NOT NULL DEFAULT 0
+                         CONSTRAINT chk_bulk_operations_failed_count_gte0
+                             CHECK (failed_count >= 0),
     created_at       TIMESTAMPTZ  NOT NULL,
     started_at       TIMESTAMPTZ,
     completed_at     TIMESTAMPTZ
@@ -52,11 +64,17 @@ CREATE INDEX idx_bulk_operations_status ON bulk_operations (status);
 CREATE TABLE bulk_operation_items (
     id                 UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     bulk_operation_id  UUID         NOT NULL REFERENCES bulk_operations (id),
-    issue_key          TEXT         NOT NULL,
-    status             TEXT         NOT NULL,
+    issue_key          TEXT         NOT NULL
+                           CONSTRAINT chk_bulk_operation_items_issue_key
+                               CHECK (issue_key ~ '^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]*$'),
+    status             TEXT         NOT NULL
+                           CONSTRAINT chk_bulk_operation_items_status
+                               CHECK (status IN ('PENDING', 'SUCCEEDED', 'FAILED')),
     failure_reason     TEXT,
     processed_at       TIMESTAMPTZ,
-    UNIQUE (bulk_operation_id, issue_key)
+    UNIQUE (bulk_operation_id, issue_key),
+    CONSTRAINT chk_bulk_operation_items_failed_reason
+        CHECK (status <> 'FAILED' OR failure_reason IS NOT NULL)
 );
 
 COMMENT ON TABLE  bulk_operation_items                   IS '일괄작업 대상 이슈 단건. bulk_operations 1건에 N개.';
