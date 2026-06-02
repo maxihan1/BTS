@@ -198,3 +198,18 @@ FR-WF-01(PR #10)이 워크플로우 전이 검증 프레임워크의 SPI 인터�
 - 해석: Phase 1 중반(92/117 FR)이라 BC별 모듈만 만들고 전체 조립(bootstrap 앱이 com.bts.* + com.atlas.bts.* 스캔)은 아직 미구축. 모든 검증이 test-assembled 컨텍스트로 이뤄짐(현 BTS 표준).
 
 **→ 게이트 1 진입 불가. Maxi 방향 결정 필요(D10).** 옵션: (A) FR-WF-03을 project-workflow 내부 결선 + 통합테스트(test-assembled, 현 표준과 동일) 검증으로 한정, "실배포 조립"은 후속 프로젝트 차원 마일스톤으로 분리. (B) BC 배포 조립 모듈을 먼저 구축 후 FR-WF-03. (C) 전체 재검토.
+
+### Maxi 방향 결정 (2026-06-03) — 옵션 B 속행 (test-assembled 검증)
+
+FR-WF-03 속행. 검증은 **test-assembled 통합 컨텍스트**(현 BTS 표준 — IssueControllerTransitionIntegrationTest의 TestConfig 수동조립 방식과 동일)로 한정한다. 실배포 조립(bootstrap 앱이 전 BC 스캔)은 별도 후속 마일스톤. 이후 FR-IS-07 옵션 A를 이 위에 얹는다.
+
+### Plan 개정 (리뷰 BLOCKER/CONCERN 반영) — 위 §Plan의 task에 적용
+
+- **T1 개정 (B3)**: `WorkflowValidator.phase`는 **기본값 부여** — `val phase: ValidatorPhase get() = ValidatorPhase.AVAILABILITY`. RequiredFieldValidator만 EXECUTION override. 나머지 구현체(+테스트 StubValidator/익명 object) 무수정 → cross-BC 컴파일 회귀 0. T1 files에서 Permission/NotStatusCategory/CustomExpression 수정 제거(RequiredField만).
+- **T3·T4 개정 (B1)**: factory dispatch 키 = **구현체 `type` 프로퍼티 실제 값**. validator = `RequiredField`/`permission-check`/`not-status-category`/`CustomExpression`. postaction = `SET_FIELD`/`NOTIFY`/`ADD_WATCHER`/`RUN_AUTOMATION`/`CALL_WEBHOOK`. (plan/spec의 PascalCase 예시 폐기.) 각 validator의 `type` 상수를 단일 출처로 참조.
+- **T3 개정 (C1·C2)**: DefaultWorkflowValidatorFactory가 의존하는 `SpelEvaluator`는 production @Bean 미존재 → ExecutorService + SpelEvaluator @Bean을 @Configuration으로 추가(T3 files에 WorkflowEngineConfig.kt 포함). PermissionValidator의 `PermissionResolver`는 빈 주입(prod 프로파일 resolver 부재 — !prod AlwaysAllow만 존재, prod fallback 또는 부팅가드 명시, 메모리 best-effort-loop-permission-exception-nonprod-mask 계열).
+- **신규 Task 5a (B2) — WorkflowDefinitionRepository SPI 시그니처 변경**: `WorkflowTransition`엔 id/workflow 식별자 없음 → `findValidators(workflowKey, transition)`/`findPostActions(workflowKey, transition)`로 변경(또는 transition에 id 도입). WorkflowEngine 호출부(plan line~240/262, availableTransitions line~303) 동반 수정. files: [WorkflowEngine.kt, 관련 테스트]. depends-on: []. T6(repo 구현)·T2가 이에 의존. repo는 workflowKey→workflow_id→(from,to)로 transition_id 해석 후 validators 조회(cross-workflow 오매칭 방지).
+- **T5(repo) 개정**: 위 5a 시그니처 사용. depends-on: [5a]. jsonb→Map 매핑은 jOOQ 실제 반환타입(JSONB/Object) 실측 후 파싱.
+- **T6(seed) 개정 (C4)**: YamlSeedService transition INSERT를 `.returningResult(WORKFLOW_TRANSITIONS.ID)`로 바꿔 id 캡처 → validators/post_actions에 transition_id FK 세팅. `isDirty`에 validator/post_action 비교 추가(안 하면 재시드 누락·가짜 그린).
+- **T7 개정 (C3)**: "production @SpringBootApplication 부팅"이 아니라 **test-assembled 통합 검증**으로 재정의. @ContextConfiguration으로 WorkflowEngine + 신규 factory/repo 빈을 조립(기존 IssueControllerTransitionIntegrationTest.TestConfig 패턴)해, validator plan 거부 + availableTransitions 포함(phase), PostAction plan 누적, YAML seed→repo 조회를 검증. **실배포 앱 결선은 본 FR 비범위**(BC 조립 모듈 후속). 성공기준의 "@SpringBootTest 전체 컨텍스트 부팅" 항목은 "test-assembled 컨텍스트 부팅"으로 대체.
+- 개정 후 task 수: 8 (T1~T7 + T5a). 전부 project-workflow 단일 BC(B3 기본값으로 issue-tracking 무영향).
