@@ -2,24 +2,12 @@
 
 package com.bts.issue.bulk.application
 
-import com.bts.issue.application.IssueApplicationService
-import com.bts.issue.application.TransitionIssueRequest
-import com.bts.issue.application.UpdateIssueRequest
 import com.bts.issue.bulk.domain.BULK_OPERATION_CHUNK_SIZE
 import com.bts.issue.bulk.domain.BulkOperation
 import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.domain.BulkOperationItem
-import com.bts.issue.bulk.domain.BulkOperationPayload
-import com.bts.issue.bulk.domain.FailureReasonCode
-import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.bulk.repository.BulkOperationRepository
 import com.bts.issue.domain.ActorId
-import com.bts.issue.domain.IssueAccessDeniedException
-import com.bts.issue.domain.IssueKey
-import com.bts.issue.domain.IssueNotFoundException
-import com.bts.issue.domain.IssueTransitionNotAllowedException
-import com.bts.issue.domain.IssueVersionConflictException
-import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -49,13 +37,13 @@ import org.springframework.transaction.annotation.Transactional
  * - [IssueVersionConflictException] → [FailureReasonCode.VERSION_CONFLICT]
  * - [IssueWorkflowNotConfiguredException] → [FailureReasonCode.WORKFLOW_NOT_CONFIGURED]
  *
- * @param issueService 이슈 변경 유스케이스. 도메인 검증·권한 검증·전이 위임을 포함한다.
  * @param bulkRepo 일괄 작업 Repository.
+ * @param itemExecutor 항목 1건 처리를 조율하는 실행기.
  */
 @Component
 class BulkOperationProcessor(
-    private val issueService: IssueApplicationService,
     private val bulkRepo: BulkOperationRepository,
+    private val itemExecutor: BulkItemExecutor,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -128,116 +116,9 @@ class BulkOperationProcessor(
                 return@forEach
             }
 
-            processItem(actor, operation, item)
+            // REQUIRES_NEW 독립 트랜잭션으로 위임 — 한 항목 실패가 전체 트랜잭션을
+            // rollback-only 로 마킹하지 않도록 격리한다 (BulkItemExecutor KDoc 참조)
+            itemExecutor.executeItem(actor, operation, item)
         }
     }
-
-    /**
-     * 단일 이슈 항목을 처리한다.
-     *
-     * 이슈 변경과 항목 상태 기록이 같은 트랜잭션에서 수행된다.
-     * 예외 발생 시 [FailureReasonCode] 로 매핑하고 FAILED 로 기록한다.
-     */
-    @Suppress("TooGenericExceptionCaught")
-    private fun processItem(
-        actor: ActorId,
-        operation: BulkOperation,
-        item: BulkOperationItem,
-    ) {
-        try {
-            // 이슈 조회 — version 추출 (낙관적 잠금용)
-            val existing = issueService.findByKey(actor, item.issueKey)
-
-            // payload 적용 — 이슈 변경과 항목 상태 기록을 같은 트랜잭션에서 수행 (C1)
-            applyPayload(actor, item.issueKey, operation.payload, existing.version)
-
-            bulkRepo.updateItemResult(operation.id, item.issueKey, ItemStatus.SUCCEEDED, null)
-
-            log.debug(
-                "bulk_op_item_succeeded id={} issueKey={}",
-                operation.id.value,
-                item.issueKey.value,
-            )
-        } catch (e: Exception) {
-            val reasonCode = mapToReasonCode(e)
-            bulkRepo.updateItemResult(operation.id, item.issueKey, ItemStatus.FAILED, reasonCode)
-
-            log.warn(
-                "bulk_op_item_failed id={} issueKey={} reason={} message={}",
-                operation.id.value,
-                item.issueKey.value,
-                reasonCode,
-                e.message,
-            )
-        }
-    }
-
-    /**
-     * payload 타입에 따라 이슈 변경을 위임한다.
-     *
-     * repository 직행 금지 — 도메인 정규화·검증·권한 검증·전이 위임은
-     * [IssueApplicationService] 를 통해 수행한다 (learnings: PATCH-merge-domain-bypass).
-     *
-     * @param actor 행위자.
-     * @param issueKey 처리 대상 이슈 키.
-     * @param payload 일괄 작업 payload.
-     * @param version 낙관적 잠금 버전 (IssueApplicationService.findByKey 에서 읽어온 현재 버전).
-     */
-    private fun applyPayload(
-        actor: ActorId,
-        issueKey: IssueKey,
-        payload: BulkOperationPayload,
-        version: Long,
-    ) {
-        when (payload) {
-            is BulkOperationPayload.Edit -> {
-                issueService.updateIssue(
-                    actor,
-                    issueKey,
-                    UpdateIssueRequest(
-                        summary = null,
-                        priority = payload.priority,
-                        impact = payload.impact,
-                        expectedVersion = version,
-                    ),
-                )
-            }
-            is BulkOperationPayload.Transition -> {
-                issueService.transitionIssue(
-                    actor,
-                    issueKey,
-                    TransitionIssueRequest(
-                        toStateKey = payload.toStateKey,
-                        expectedVersion = version,
-                    ),
-                )
-            }
-        }
-    }
-
-    /**
-     * 예외를 [FailureReasonCode] 로 매핑한다.
-     *
-     * 매핑되지 않는 예외는 [FailureReasonCode.NOT_FOUND] 로 안전하게 처리하고
-     * 경고 로그를 남긴다. 빈 catch 금지 원칙(DEVELOPMENT.md §절대규칙) — 모든 예외는 로깅+처리.
-     *
-     * @param e 처리할 예외.
-     * @return 매핑된 [FailureReasonCode].
-     */
-    private fun mapToReasonCode(e: Exception): FailureReasonCode =
-        when (e) {
-            is IssueNotFoundException -> FailureReasonCode.NOT_FOUND
-            is IssueAccessDeniedException -> FailureReasonCode.FORBIDDEN
-            is IssueTransitionNotAllowedException -> FailureReasonCode.TRANSITION_NOT_ALLOWED
-            is IssueVersionConflictException -> FailureReasonCode.VERSION_CONFLICT
-            is IssueWorkflowNotConfiguredException -> FailureReasonCode.WORKFLOW_NOT_CONFIGURED
-            else -> {
-                log.warn(
-                    "bulk_op_item_unexpected_exception type={} message={}",
-                    e::class.simpleName,
-                    e.message,
-                )
-                FailureReasonCode.NOT_FOUND
-            }
-        }
 }

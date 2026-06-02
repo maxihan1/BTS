@@ -5,13 +5,11 @@ package com.bts.issue.bulk.worker
 import com.bts.issue.bulk.application.BulkOperationProcessor
 import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.event.BulkOperationEnqueuePublisher
-import com.bts.issue.bulk.event.BulkOperationEventPublisher
 import com.bts.issue.bulk.repository.BulkOperationRepository
 import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
-import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
@@ -29,6 +27,12 @@ import java.util.UUID
  *    - 예외 발생 시 delete 안 함 → vt 만료 후 재전달 (at-least-once)
  *    - 멱등은 claimForRun + 항목 종료 스킵으로 보장
  *
+ * ## @Transactional 없음 — 의도적 설계
+ * pollAndProcess 자체에는 @Transactional 을 걸지 않는다.
+ * 항목별 처리는 [com.bts.issue.bulk.application.BulkItemExecutor.executeItem] 의
+ * REQUIRES_NEW 독립 트랜잭션이 담당한다. pollAndProcess 에 외부 트랜잭션이 있으면
+ * REQUIRES_NEW executeItem 이 외부 트랜잭션을 rollback-only 로 마킹하는 전파 문제가 발생한다.
+ *
  * ## CAS 단일성 보장 (learnings: advisory-lock-bigint-TOCTOU)
  * [BulkOperationRepository.claimForRun] 은 `WHERE status='PENDING'` 을 포함한 UPDATE 의
  * affected rows 로 단일 진입을 원자적으로 보장한다.
@@ -44,16 +48,16 @@ import java.util.UUID
  * - 채택: [VISIBILITY_TIMEOUT_SECONDS] = **60초** (처리 중 크래시 시 최대 60초 후 재전달)
  *
  * @param dsl jOOQ [DSLContext]. pgmq.read / pgmq.delete raw SQL 실행. 문자열 결합 금지.
- * @param bulkRepo [BulkOperationRepository]. CAS claim/complete 담당.
+ * @param bulkRepo [BulkOperationRepository]. CAS claim 담당.
  * @param processor [BulkOperationProcessor]. 이슈 항목 실제 처리 담당.
- * @param eventPublisher [BulkOperationEventPublisher]. 완료 이벤트 발행 담당.
+ * @param completer [BulkOperationCompleter]. markCompleted CAS + 이벤트 발행 단일 트랜잭션 담당.
  */
 @Component
 class BulkOperationWorker(
     private val dsl: DSLContext,
     private val bulkRepo: BulkOperationRepository,
     private val processor: BulkOperationProcessor,
-    private val eventPublisher: BulkOperationEventPublisher,
+    private val completer: BulkOperationCompleter,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -62,9 +66,15 @@ class BulkOperationWorker(
      *
      * 메시지가 없으면 즉시 반환한다.
      * 예외가 발생한 메시지는 delete 하지 않아 vt 만료 후 재전달된다 (at-least-once).
+     *
+     * **@Transactional 없음 — 의도적 설계.**
+     * pgmq.read 는 트랜잭션 범위 밖에서 호출해도 pgmq 내부 상태(vt)가 atomic 하게 갱신된다.
+     * 항목별 처리([com.bts.issue.bulk.application.BulkItemExecutor.executeItem]) 는
+     * REQUIRES_NEW 로 독립 트랜잭션을 열어 처리한다.
+     * pollAndProcess 에 @Transactional 을 걸면 REQUIRES_NEW executeItem 이 정지시키는
+     * 외부 트랜잭션이 생겨 항목 실패 시 rollback-only 전파 문제가 발생한다.
      */
     @Scheduled(fixedDelayString = "\${bts.bulk.worker.poll-interval-ms:1000}")
-    @Transactional
     fun pollAndProcess() {
         val messages =
             dsl.fetch(
@@ -121,19 +131,8 @@ class BulkOperationWorker(
 
             processor.process(operationId)
 
-            val completed = bulkRepo.markCompleted(operationId)
-            if (completed) {
-                // markCompleted CAS 성공(1회) → 완료 이벤트 단 1회 발행 (C4 중복 발행 금지)
-                eventPublisher.publishCompleted(operationId)
-                log.info("bulk_worker_completed msgId={} bulkOperationId={}", msgId, operationId.value)
-            } else {
-                // 이미 다른 경로로 완료됨 → 이벤트 발행 없이 메시지만 제거
-                log.warn(
-                    "bulk_worker_already_completed msgId={} bulkOperationId={}",
-                    msgId,
-                    operationId.value,
-                )
-            }
+            // markCompleted CAS + publishCompleted 를 단일 트랜잭션으로 처리 (outbox 패턴)
+            completer.completeAndPublish(operationId, msgId)
 
             deleteMessage(msgId)
         } catch (e: Exception) {
