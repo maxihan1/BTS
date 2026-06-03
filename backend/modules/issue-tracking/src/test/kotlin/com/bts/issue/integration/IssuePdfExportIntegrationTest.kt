@@ -1,4 +1,5 @@
 // FR-IS-08 PDF 내보내기 엔드투엔드 통합 테스트 — HTTP 레벨 PDF 바이너리 + 한글 텍스트 추출 + XSS 케이스
+@file:Suppress("MaxLineLength")
 
 package com.bts.issue.integration
 
@@ -47,7 +48,6 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssuePdfExportIntegrationTest {
-
     @Autowired
     lateinit var webApplicationContext: WebApplicationContext
 
@@ -103,16 +103,17 @@ class IssuePdfExportIntegrationTest {
         val koreanDescription = "한글 본문 내용입니다. 렌더링 검증을 위한 텍스트."
         val issueKey = insertIssue(summary = koreanSummary, description = koreanDescription)
 
-        val result = mockMvc.perform(get("/api/v1/issues/$issueKey/pdf"))
-            .andExpect(status().isOk)
-            .andExpect(header().string(HttpHeaders.CONTENT_TYPE, "application/pdf"))
-            .andExpect(
-                header().string(
-                    HttpHeaders.CONTENT_DISPOSITION,
-                    "attachment; filename=\"$issueKey.pdf\"",
-                ),
-            )
-            .andReturn()
+        val result =
+            mockMvc.perform(get("/api/v1/issues/$issueKey/pdf"))
+                .andExpect(status().isOk)
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, "application/pdf"))
+                .andExpect(
+                    header().string(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"$issueKey.pdf\"",
+                    ),
+                )
+                .andReturn()
 
         val pdfBytes = result.response.contentAsByteArray
         assertPdfSignature(pdfBytes)
@@ -145,9 +146,10 @@ class IssuePdfExportIntegrationTest {
         val xssDescription = "<script>alert(1)</script>악성 스크립트 삽입 시도"
         val issueKey = insertIssue(summary = "XSS 검증 이슈", description = xssDescription)
 
-        val result = mockMvc.perform(get("/api/v1/issues/$issueKey/pdf"))
-            .andExpect(status().isOk)
-            .andReturn()
+        val result =
+            mockMvc.perform(get("/api/v1/issues/$issueKey/pdf"))
+                .andExpect(status().isOk)
+                .andReturn()
 
         val pdfBytes = result.response.contentAsByteArray
         assertPdfSignature(pdfBytes)
@@ -217,8 +219,10 @@ class IssuePdfExportIntegrationTest {
     /**
      * 테스트용 이슈를 DB에 직접 삽입하고 이슈 키를 반환한다.
      *
+     * key_sequence를 수동 증가해 이슈 키를 생성한다. description은 null 허용(DB NULL).
+     *
      * @param summary 이슈 제목 (한글 가능)
-     * @param description Markdown 본문 — null이면 미삽입 (DB NULL)
+     * @param description Markdown 본문. null이면 DB NULL로 삽입.
      * @return 생성된 이슈 키 (예: "PDF-1")
      */
     private fun insertIssue(
@@ -228,72 +232,61 @@ class IssuePdfExportIntegrationTest {
         conn().use { conn ->
             conn.autoCommit = false
 
-            val seq =
-                conn.prepareStatement(
-                    "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
-                ).use { stmt ->
-                    stmt.setString(1, PROJECT_KEY)
-                    stmt.executeQuery().use { rs ->
-                        rs.next()
-                        rs.getLong(1)
-                    }
-                }
+            val seq = nextSequence(conn)
             val issueKey = "$PROJECT_KEY-$seq"
+            val projectId = fetchProjectId(conn)
+            val taskTypeId = fetchTaskTypeId(conn)
 
-            val projectId =
-                conn.prepareStatement(
-                    "SELECT id FROM projects WHERE key = ?",
-                ).use { stmt ->
-                    stmt.setString(1, PROJECT_KEY)
-                    stmt.executeQuery().use { rs ->
-                        rs.next()
-                        rs.getObject(1) as UUID
-                    }
-                }
-
-            val taskTypeId =
-                conn.prepareStatement(
-                    "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1",
-                ).use { stmt ->
-                    stmt.executeQuery().use { rs ->
-                        check(rs.next()) { "task 타입 없음 — V003 마이그레이션 확인 필요." }
-                        rs.getLong(1)
-                    }
-                }
-
-            if (description != null) {
-                conn.prepareStatement(
-                    "INSERT INTO issues (key, project_id, summary, description, reporter_id, current_state_key, version, type_id) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
-                ).use { stmt ->
-                    stmt.setString(1, issueKey)
-                    stmt.setObject(2, projectId)
-                    stmt.setString(3, summary)
-                    stmt.setString(4, description)
-                    stmt.setObject(5, UUID.fromString("00000000-0000-0000-0000-000000000001"))
-                    stmt.setString(6, "open")
-                    stmt.setLong(7, taskTypeId)
-                    stmt.executeUpdate()
-                }
-            } else {
-                conn.prepareStatement(
-                    "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version, type_id) " +
-                        "VALUES (?, ?, ?, ?, ?, 1, ?)",
-                ).use { stmt ->
-                    stmt.setString(1, issueKey)
-                    stmt.setObject(2, projectId)
-                    stmt.setString(3, summary)
-                    stmt.setObject(4, UUID.fromString("00000000-0000-0000-0000-000000000001"))
-                    stmt.setString(5, "open")
-                    stmt.setLong(6, taskTypeId)
-                    stmt.executeUpdate()
-                }
+            conn.prepareStatement(
+                "INSERT INTO issues (key, project_id, summary, description, reporter_id, current_state_key, version, type_id) " +
+                    "VALUES (?, ?, ?, ?, ?, 'open', 1, ?)",
+            ).use { stmt ->
+                stmt.setString(1, issueKey)
+                stmt.setObject(2, projectId)
+                stmt.setString(3, summary)
+                stmt.setString(4, description) // null → JDBC setString → DB NULL
+                stmt.setObject(5, UUID.fromString("00000000-0000-0000-0000-000000000001"))
+                stmt.setLong(6, taskTypeId)
+                stmt.executeUpdate()
             }
 
             conn.commit()
             return issueKey
         }
     }
+
+    /** key_sequence 증가 후 새 번호를 반환한다. */
+    private fun nextSequence(conn: java.sql.Connection): Long =
+        conn.prepareStatement(
+            "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
+        ).use { stmt ->
+            stmt.setString(1, PROJECT_KEY)
+            stmt.executeQuery().use { rs ->
+                rs.next()
+                rs.getLong(1)
+            }
+        }
+
+    /** projects 테이블에서 PDF 프로젝트 UUID를 조회한다. */
+    private fun fetchProjectId(conn: java.sql.Connection): UUID =
+        conn.prepareStatement("SELECT id FROM projects WHERE key = ?").use { stmt ->
+            stmt.setString(1, PROJECT_KEY)
+            stmt.executeQuery().use { rs ->
+                rs.next()
+                rs.getObject(1) as UUID
+            }
+        }
+
+    /** V003 마이그레이션으로 시드된 task 타입 ID를 조회한다. */
+    private fun fetchTaskTypeId(conn: java.sql.Connection): Long =
+        conn.prepareStatement(
+            "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1",
+        ).use { stmt ->
+            stmt.executeQuery().use { rs ->
+                check(rs.next()) { "task 타입 없음 — V003 마이그레이션 확인 필요." }
+                rs.getLong(1)
+            }
+        }
 
     /**
      * PDF 바이너리가 `%PDF-` 시그니처로 시작하는지 검증한다.
