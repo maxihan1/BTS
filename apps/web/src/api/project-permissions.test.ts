@@ -13,6 +13,8 @@ const projectPermissionsFixture = {
   projectKey: 'ATLAS',
   permissions: {
     CREATE: true,
+    MANAGE_COMPONENTS: true,
+    MANAGE_VERSIONS: true,
   },
 }
 
@@ -20,6 +22,8 @@ const projectPermissionsFixtureFalse = {
   projectKey: 'ATLAS',
   permissions: {
     CREATE: false,
+    MANAGE_COMPONENTS: false,
+    MANAGE_VERSIONS: false,
   },
 }
 
