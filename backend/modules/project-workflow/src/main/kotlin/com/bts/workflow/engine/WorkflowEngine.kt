@@ -209,7 +209,14 @@ class WorkflowEngine(
         val passed = candidates.filter { transition -> passesValidators(req, workflow, transition) }
 
         return AvailableTransitionsResult.Success(
-            passed.map { AvailableTransitionView(it.fromStateKey, it.toStateKey, it.name) },
+            passed.map { transition ->
+                AvailableTransitionView(
+                    fromStateKey = transition.fromStateKey,
+                    toStateKey = transition.toStateKey,
+                    name = transition.name,
+                    toCategory = workflow.states.find { it.key == transition.toStateKey }?.category?.name,
+                )
+            },
         )
     }
 
