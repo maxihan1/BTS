@@ -736,15 +736,16 @@ class IssueApplicationService(
      * 목록 경로([listIssues])는 N건 비용 방지를 위해 이 함수를 호출하지 않는다.
      */
     private fun IssueResponse.withSingleDetail(): IssueResponse {
-        val resolvedResolution = resolutionId?.let { resId ->
-            resolutionRepository.findById(resId)?.let { r ->
-                IssueResponse.ResolutionSummary(
-                    id = r.id ?: error("resolution.id must not be null after DB fetch"),
-                    key = r.key,
-                    name = r.name,
-                )
+        val resolvedResolution =
+            resolutionId?.let { resId ->
+                resolutionRepository.findById(resId)?.let { r ->
+                    IssueResponse.ResolutionSummary(
+                        id = r.id ?: error("resolution.id must not be null after DB fetch"),
+                        key = r.key,
+                        name = r.name,
+                    )
+                }
             }
-        }
         return copy(
             descriptionHtml = description?.let { MarkdownRenderer.renderSafe(it) },
             resolution = resolvedResolution,

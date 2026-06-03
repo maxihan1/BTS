@@ -25,7 +25,6 @@ import java.util.UUID
  * - B11-3. resolution 이 채워진 응답의 id/key/name 이 주입값과 일치한다.
  */
 class IssueResponseResolutionTest {
-
     private val fixedNow: Instant = Instant.parse("2026-05-24T00:00:00Z")
 
     private val sampleIssue =
@@ -51,11 +50,12 @@ class IssueResponseResolutionTest {
 
     @Test
     fun `B11-1 — from에 ResolutionSummary 주입 시 resolution 필드가 채워진다`() {
-        val summary = IssueResponse.ResolutionSummary(
-            id = resolutionId,
-            key = "fixed",
-            name = "Fixed",
-        )
+        val summary =
+            IssueResponse.ResolutionSummary(
+                id = resolutionId,
+                key = "fixed",
+                name = "Fixed",
+            )
 
         val response = IssueResponse.from(sampleIssue, "ATLAS", typeInfo, resolution = summary)
 
@@ -75,11 +75,12 @@ class IssueResponseResolutionTest {
 
     @Test
     fun `B11-3 — from에 주입한 ResolutionSummary 의 id, key, name 이 응답에 그대로 반영된다`() {
-        val summary = IssueResponse.ResolutionSummary(
-            id = resolutionId,
-            key = "fixed",
-            name = "Fixed",
-        )
+        val summary =
+            IssueResponse.ResolutionSummary(
+                id = resolutionId,
+                key = "fixed",
+                name = "Fixed",
+            )
 
         val response = IssueResponse.from(sampleIssue, "ATLAS", typeInfo, resolution = summary)
 
