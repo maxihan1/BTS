@@ -326,38 +326,124 @@ describe('VersionFormDialog — 수정 모드 변경 감지', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 409 에러 표시
+// 409 에러 표시 — mutation reject → 인라인 에러 (H3 수정)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('VersionFormDialog — 409 에러 표시', () => {
-  it('submitError prop이 있으면 폼 내 에러 메시지를 표시한다', () => {
+describe('VersionFormDialog — 409 에러 인라인 표시', () => {
+  it('생성 실패(VERSION_NAME_DUPLICATE) → 폼 내 인라인 에러 메시지가 표시되고 Dialog가 닫히지 않는다', async () => {
+    const mockClose = vi.fn()
+    // ApiError를 흉내내는 에러 객체: extractVersionErrorCode가 body.errorCode를 읽는다
+    const dupError = Object.assign(new Error('API 409'), {
+      name: 'ApiError',
+      status: 409,
+      body: { errorCode: 'VERSION_NAME_DUPLICATE' },
+    })
+    const mockCreate = vi.fn().mockRejectedValue(dupError) as unknown as (
+      input: CreateVersionInput,
+    ) => Promise<void>
     const Wrapper = createWrapper()
     render(
       <VersionFormDialog
         open={true}
         mode="create"
         projectKey={PROJECT_KEY}
-        onClose={vi.fn()}
-        submitError="이미 같은 이름의 버전이 있습니다."
+        onClose={mockClose}
+        _testCreateMutate={mockCreate}
       />,
       { wrapper: Wrapper },
     )
-    expect(screen.getByText('이미 같은 이름의 버전이 있습니다.')).toBeInTheDocument()
+
+    const user = userEvent.setup()
+    await user.type(screen.getByRole('textbox', { name: /이름/ }), '기존버전')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+
+    // 인라인 에러 메시지가 폼 내에 표시되어야 한다
+    await waitFor(() => {
+      expect(screen.getByText('이미 같은 이름의 버전이 있습니다.')).toBeInTheDocument()
+    })
+    // Dialog는 닫히지 않아야 한다
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(mockClose).not.toHaveBeenCalled()
   })
 
-  it('submitError가 있어도 Dialog가 열린 채로 유지된다', () => {
+  it('수정 실패(meta reject, VERSION_NAME_DUPLICATE) → 폼 내 인라인 에러 메시지가 표시되고 Dialog가 닫히지 않는다', async () => {
+    const mockClose = vi.fn()
+    const dupError = Object.assign(new Error('API 409'), {
+      name: 'ApiError',
+      status: 409,
+      body: { errorCode: 'VERSION_NAME_DUPLICATE' },
+    })
+    const mockUpdate = vi.fn().mockRejectedValue(dupError) as unknown as (
+      input: UpdateVersionMutationInput,
+    ) => Promise<void>
+    const mockChangeDates = vi.fn() as unknown as (
+      input: ChangeVersionDatesMutationInput,
+    ) => Promise<void>
+    const Wrapper = createWrapper()
+    render(
+      <VersionFormDialog
+        open={true}
+        mode="edit"
+        projectKey={PROJECT_KEY}
+        initial={EXISTING_VERSION}
+        onClose={mockClose}
+        _testUpdateMutate={mockUpdate}
+        _testChangeDatesMutate={mockChangeDates}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    const user = userEvent.setup()
+    const nameInput = screen.getByRole('textbox', { name: /이름/ })
+    await user.clear(nameInput)
+    await user.type(nameInput, '중복버전')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('이미 같은 이름의 버전이 있습니다.')).toBeInTheDocument()
+    })
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(mockClose).not.toHaveBeenCalled()
+  })
+
+  it('이전 에러 표시 후 새 저장 시도 시작 시 에러 메시지가 초기화된다', async () => {
+    const mockClose = vi.fn()
+    const dupError = Object.assign(new Error('API 409'), {
+      name: 'ApiError',
+      status: 409,
+      body: { errorCode: 'VERSION_NAME_DUPLICATE' },
+    })
+    // 첫 번째는 실패, 두 번째는 성공
+    const mockCreate = vi
+      .fn()
+      .mockRejectedValueOnce(dupError)
+      .mockResolvedValueOnce(undefined) as unknown as (input: CreateVersionInput) => Promise<void>
     const Wrapper = createWrapper()
     render(
       <VersionFormDialog
         open={true}
         mode="create"
         projectKey={PROJECT_KEY}
-        onClose={vi.fn()}
-        submitError="이미 같은 이름의 버전이 있습니다."
+        onClose={mockClose}
+        _testCreateMutate={mockCreate}
       />,
       { wrapper: Wrapper },
     )
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    const user = userEvent.setup()
+    await user.type(screen.getByRole('textbox', { name: /이름/ }), '기존버전')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+
+    // 첫 번째 실패 후 에러 표시 확인
+    await waitFor(() => {
+      expect(screen.getByText('이미 같은 이름의 버전이 있습니다.')).toBeInTheDocument()
+    })
+
+    // 두 번째 저장 클릭 → onClose 호출됨
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    await waitFor(() => {
+      expect(mockClose).toHaveBeenCalledTimes(1)
+    })
   })
 })
 
