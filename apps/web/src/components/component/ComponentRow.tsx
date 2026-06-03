@@ -26,6 +26,11 @@ interface ComponentRowProps {
   readonly projectKey: string
   /** 수정 버튼 클릭 시 상위에서 Dialog를 열기 위한 콜백 */
   readonly onEdit: (component: Component) => void
+  /**
+   * MANAGE_COMPONENTS 권한 여부 — ComponentList가 useProjectPermissions로 계산해 전달.
+   * false(로딩/에러/미인가)이면 수정·삭제·리드변경 버튼을 disabled로 게이팅(fail-closed).
+   */
+  readonly canManage: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -111,6 +116,7 @@ export function ComponentRow({
   component,
   projectKey,
   onEdit,
+  canManage,
 }: ComponentRowProps): JSX.Element {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
@@ -172,7 +178,7 @@ export function ComponentRow({
           currentLead={currentLead}
           onSearch={handleSearch}
           onChange={handleLeadChange}
-          disabled={changeLeadMutation.isPending}
+          disabled={!canManage || changeLeadMutation.isPending}
         />
       </div>
 
@@ -190,6 +196,7 @@ export function ComponentRow({
               variant="outline"
               size="sm"
               aria-label={`${component.name} ${actions.editButton}`}
+              disabled={!canManage}
               onClick={handleEditClick}
             >
               {actions.editButton}
@@ -198,6 +205,7 @@ export function ComponentRow({
               variant="destructive"
               size="sm"
               aria-label={`${component.name} ${actions.deleteButton}`}
+              disabled={!canManage}
               onClick={handleDeleteClick}
             >
               {actions.deleteButton}
