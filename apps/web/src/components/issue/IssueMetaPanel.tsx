@@ -145,6 +145,14 @@ export function IssueMetaPanel({
           />
         </div>
 
+        {/* 해결 결과 — DONE 전이 후 resolution이 있을 때만 표시 (FR-IS-07) */}
+        {issue.resolution != null && (
+          <div className="px-3.5 py-3 border-b border-border">
+            <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.resolutionLabel}</p>
+            <p className="text-sm font-medium" data-testid="issue-resolution">{issue.resolution.name}</p>
+          </div>
+        )}
+
         {/* 유형 — 아이콘 + typeName 표시 + 셀렉터 */}
         <div className="px-3.5 py-3 border-b border-border">
           <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.typeLabel}</p>
