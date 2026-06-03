@@ -1,4 +1,4 @@
-// 일괄 상태 전이 Dialog — 선택 이슈 가용 전이 교집합 노출 + BULK_TRANSITION 접수 (FR-IS-05)
+// 일괄 상태 전이 Dialog — 선택 이슈 가용 전이 교집합 노출 + BULK_TRANSITION 접수 (FR-IS-05, B14)
 import type { JSX } from 'react'
 import { useState, useEffect } from 'react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
@@ -13,6 +13,7 @@ import {
 import { fetchBulkAvailableTransitions } from '@/api/issues'
 import type { IssueTransition } from '@/api/issues'
 import { useSubmitBulkOperation } from '@/hooks/use-bulk-operation'
+import { useResolutions } from '@/hooks/use-resolutions'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -64,8 +65,15 @@ export function BulkTransitionDialog({
   const [hasTotalFailure, setHasTotalFailure] = useState(false)
   /** 선택된 toStateKey */
   const [selectedStateKey, setSelectedStateKey] = useState<string>('')
+  /** DONE 전이 시 선택된 결의안 ID */
+  const [selectedResolutionId, setSelectedResolutionId] = useState<string>('')
 
   const submitBulkOperation = useSubmitBulkOperation()
+  const { data: resolutions = [] } = useResolutions()
+
+  /** 현재 선택된 전이가 DONE 카테고리인지 여부 */
+  const selectedTransition = transitions.find((t) => t.toStateKey === selectedStateKey)
+  const isDoneTransition = selectedTransition?.toCategory === 'DONE'
 
   /**
    * Dialog가 열릴 때 fetchBulkAvailableTransitions를 단일 호출한다.
@@ -101,12 +109,22 @@ export function BulkTransitionDialog({
   /** 교집합이 0건이고 전량 실패도 아닌 경우 — 공통 전이 없음 안내 */
   const hasNoCommonTransitions = !hasTotalFailure && transitions.length === 0 && !hasPartialFailure
 
-  /** 적용 버튼 활성 조건: 전량 실패 없고 전이가 있으며 선택된 경우 */
-  const canSubmit = !hasTotalFailure && selectedStateKey !== '' && transitions.length > 0
+  /**
+   * 적용 버튼 활성 조건.
+   * - 전량 실패 없음
+   * - 전이가 있고 선택됨
+   * - DONE 전이이면 resolution도 선택됨
+   */
+  const canSubmit =
+    !hasTotalFailure &&
+    selectedStateKey !== '' &&
+    transitions.length > 0 &&
+    (!isDoneTransition || selectedResolutionId !== '')
 
   function handleOpenChange(next: boolean): void {
     if (!next) {
       setSelectedStateKey('')
+      setSelectedResolutionId('')
       setTransitions([])
       setHasPartialFailure(false)
       setHasTotalFailure(false)
@@ -116,14 +134,22 @@ export function BulkTransitionDialog({
 
   function handleTransitionChange(value: string): void {
     setSelectedStateKey(value)
+    // 전이 변경 시 resolution 선택 초기화
+    setSelectedResolutionId('')
   }
 
   async function handleApply(): Promise<void> {
+    const transitionPayload: { toStateKey: string; resolutionId?: string } = {
+      toStateKey: selectedStateKey,
+    }
+    if (isDoneTransition && selectedResolutionId !== '') {
+      transitionPayload.resolutionId = selectedResolutionId
+    }
     const result = await submitBulkOperation.mutateAsync({
       operationType: 'BULK_TRANSITION',
       issueKeys,
       editPayload: null,
-      transitionPayload: { toStateKey: selectedStateKey },
+      transitionPayload,
     })
     onSubmitted(result.bulkOperationId)
     onOpenChange(false)
@@ -163,26 +189,53 @@ export function BulkTransitionDialog({
                     선택한 이슈들이 공통으로 이동할 수 있는 상태가 없습니다.
                   </p>
                 ) : (
-                  <div>
-                    <label htmlFor="bulk-transition-state" className="text-sm font-medium mb-1 block">
-                      전이 상태
-                    </label>
-                    <Select value={selectedStateKey} onValueChange={handleTransitionChange}>
-                      <SelectTrigger
-                        id="bulk-transition-state"
-                        className="w-full"
-                        aria-label="전이 상태"
-                      >
-                        <SelectValue placeholder="상태를 선택하세요" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {transitions.map((transition) => (
-                          <SelectItem key={transition.toStateKey} value={transition.toStateKey}>
-                            {transition.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div className="space-y-3">
+                    <div>
+                      <label htmlFor="bulk-transition-state" className="text-sm font-medium mb-1 block">
+                        전이 상태
+                      </label>
+                      <Select value={selectedStateKey} onValueChange={handleTransitionChange}>
+                        <SelectTrigger
+                          id="bulk-transition-state"
+                          className="w-full"
+                          aria-label="전이 상태"
+                        >
+                          <SelectValue placeholder="상태를 선택하세요" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {transitions.map((transition) => (
+                            <SelectItem key={transition.toStateKey} value={transition.toStateKey}>
+                              {transition.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* DONE 전이 선택 시 resolution 드롭다운 (B14) */}
+                    {isDoneTransition && (
+                      <div>
+                        <label htmlFor="bulk-transition-resolution" className="text-sm font-medium mb-1 block">
+                          결의안
+                        </label>
+                        <Select value={selectedResolutionId} onValueChange={setSelectedResolutionId}>
+                          <SelectTrigger
+                            id="bulk-transition-resolution"
+                            className="w-full"
+                            aria-label="결의안"
+                          >
+                            <SelectValue placeholder="결의안을 선택하세요" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {resolutions.map((resolution) => (
+                              <SelectItem key={resolution.id} value={resolution.id}>
+                                {resolution.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
                 )}
               </>
