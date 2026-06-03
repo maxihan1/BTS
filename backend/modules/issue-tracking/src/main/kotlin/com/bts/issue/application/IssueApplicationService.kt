@@ -178,7 +178,7 @@ class IssueApplicationService(
     ): IssueResponse {
         assertPermission(actor, IssuePermission.VIEW, IssueScope.Issue(key.value))
         val response = repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)
-        return response.withRenderedHtml()
+        return response.withSingleDetail()
     }
 
     /**
@@ -234,7 +234,7 @@ class IssueApplicationService(
         val changedFields = buildChangedFields(existing, request, normalizedLabels)
         if (changedFields.isEmpty()) {
             log.info("issue_update_noop key={} actor={}", key.value, actor.value)
-            return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withRenderedHtml()
+            return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
         }
         val updatedRows =
             repo.updateFields(
@@ -262,7 +262,7 @@ class IssueApplicationService(
             ),
         )
         log.info("issue_updated key={} fields={} actor={}", key.value, changedFields, actor.value)
-        return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withRenderedHtml()
+        return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
     }
 
     /**
@@ -405,7 +405,7 @@ class IssueApplicationService(
             plan.toStateKey,
             actor.value,
         )
-        return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withRenderedHtml()
+        return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
     }
 
     /**
@@ -487,7 +487,7 @@ class IssueApplicationService(
             throw IssueVersionConflictException(key, existing.version)
         }
         log.info("issue_assignee_changed key={} assigneeId={} actor={}", key.value, assigneeId, actor.value)
-        return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withRenderedHtml()
+        return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
     }
 
     /**
@@ -726,13 +726,28 @@ class IssueApplicationService(
     }
 
     /**
-     * 단건 조회 응답에 descriptionHtml 을 채운다 (C3).
+     * 단건 조회 응답에 descriptionHtml 과 resolution 을 채운다 (C3 + FR-IS-07 B11).
      *
-     * description 이 null 이면 descriptionHtml 도 null 유지.
-     * non-null 이면 [MarkdownRenderer.renderSafe] 로 렌더하여 채운다.
+     * - description 이 null 이면 descriptionHtml 도 null 유지.
+     * - non-null 이면 [MarkdownRenderer.renderSafe] 로 렌더하여 채운다.
+     * - resolutionId 가 non-null 이면 [ResolutionRepository.findById] 로 단건 조회하여
+     *   [IssueResponse.ResolutionSummary] 를 생성한다. 단건 GET 이므로 추가 쿼리 1회 허용.
      *
-     * 목록 경로([listIssues])는 N건 렌더 비용 방지를 위해 이 함수를 호출하지 않는다.
+     * 목록 경로([listIssues])는 N건 비용 방지를 위해 이 함수를 호출하지 않는다.
      */
-    private fun IssueResponse.withRenderedHtml(): IssueResponse =
-        copy(descriptionHtml = description?.let { MarkdownRenderer.renderSafe(it) })
+    private fun IssueResponse.withSingleDetail(): IssueResponse {
+        val resolvedResolution = resolutionId?.let { resId ->
+            resolutionRepository.findById(resId)?.let { r ->
+                IssueResponse.ResolutionSummary(
+                    id = r.id ?: error("resolution.id must not be null after DB fetch"),
+                    key = r.key,
+                    name = r.name,
+                )
+            }
+        }
+        return copy(
+            descriptionHtml = description?.let { MarkdownRenderer.renderSafe(it) },
+            resolution = resolvedResolution,
+        )
+    }
 }
