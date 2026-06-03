@@ -85,7 +85,7 @@ data class PostActionYamlDto(
  * @property to 도착 상태 키
  * @property name 전이 이름
  * @property validators 전이 전 검증 게이트 목록. 미정의 시 빈 리스트.
- * @property postActions 전이 후 자동 처리 목록. YAML 키는 post_actions (snake_case). 미정의 시 빈 리스트.
+ * @property postActions 전이 후 자동 처리 목록. YAML 키는 postActions (camelCase). 미정의 시 빈 리스트.
  */
 data class TransitionYamlDto(
     val from: String = "",
@@ -213,6 +213,7 @@ class YamlSeedService(
      * - workflows.name 변경 여부
      * - states 키/이름/카테고리/displayOrder 변경 여부
      * - transitions from/to/name 변경 여부
+     * - 전이별 validators/post_actions type 목록 변경 여부
      *
      * 변경 감지 시 CASCADE DELETE 후 전체 재삽입 한다.
      */
@@ -253,7 +254,8 @@ class YamlSeedService(
      * 기존 [Workflow] aggregate 와 [WorkflowYamlDto] 를 비교해 dirty 여부를 반환한다.
      *
      * validator/post_action 변경도 dirty 판정에 포함된다.
-     * 판정 기준은 DB 에 저장된 validator/post_action 총 수와 YAML 정의 총 수 비교다.
+     * 전이별 (fromStateKey, toStateKey) 기준으로 DB validators/post_actions type 목록과 YAML 정의를 비교하며,
+     * cascade 재삽입이 필요한 경우 true 를 반환한다.
      *
      * @return 변경이 있으면 true, 없으면 false
      */
@@ -347,9 +349,7 @@ class YamlSeedService(
      *
      * FROM / TO state 는 fetchTransitionStateKeys 로 별도 조회해 cartesian product 를 피한다.
      */
-    private fun fetchValidatorTypesByTransition(
-        workflowKey: String,
-    ): Map<Pair<String, String>, List<String>> {
+    private fun fetchValidatorTypesByTransition(workflowKey: String): Map<Pair<String, String>, List<String>> {
         val rows =
             dsl.select(
                 WORKFLOW_TRANSITIONS.ID,
@@ -379,9 +379,7 @@ class YamlSeedService(
      * 워크플로우 키에 속한 모든 전이의 post_action type 목록을 (fromStateKey, toStateKey) 기준으로
      * 그루핑해 반환한다. display_order ASC 정렬.
      */
-    private fun fetchPostActionTypesByTransition(
-        workflowKey: String,
-    ): Map<Pair<String, String>, List<String>> {
+    private fun fetchPostActionTypesByTransition(workflowKey: String): Map<Pair<String, String>, List<String>> {
         val rows =
             dsl.select(
                 WORKFLOW_TRANSITIONS.ID,
@@ -412,9 +410,7 @@ class YamlSeedService(
      *
      * FROM / TO state 를 별칭 JOIN 으로 조회해 cartesian product 없이 확보한다.
      */
-    private fun fetchTransitionStateKeys(
-        workflowKey: String,
-    ): Map<java.util.UUID?, Pair<String, String>> {
+    private fun fetchTransitionStateKeys(workflowKey: String): Map<java.util.UUID?, Pair<String, String>> {
         val fromState = WORKFLOW_STATES.`as`("from_state")
         val toState = WORKFLOW_STATES.`as`("to_state")
         return dsl.select(
@@ -453,12 +449,13 @@ class YamlSeedService(
     }
 
     /**
-     * [WorkflowYamlDto] 를 workflows / workflow_states / workflow_transitions 에 삽입한다.
+     * [WorkflowYamlDto] 를 workflows / workflow_states / workflow_transitions /
+     * workflow_validators / workflow_post_actions 에 삽입한다.
      *
      * 삽입 순서.
      * 1. workflows 행 삽입 → workflow UUID 획득
      * 2. workflow_states 행 삽입 → state key → UUID 매핑 구성
-     * 3. workflow_transitions 행 삽입 (from/to UUID FK 사용)
+     * 3. workflow_transitions 행 삽입 → transition UUID 획득 후 validators/post_actions 삽입
      */
     private fun insertWorkflow(dto: WorkflowYamlDto) {
         // 1. workflows 삽입
