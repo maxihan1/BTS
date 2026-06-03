@@ -8,6 +8,7 @@ import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.user.UserLookupPort
 import com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter
@@ -366,17 +367,21 @@ class IssueTransitionGuardFilterIntegrationTest {
         open fun issueTypeRepository(dsl: DSLContext): IssueTypeRepository = IssueTypeRepository(dsl)
 
         @Bean
+        open fun resolutionRepository(dsl: DSLContext): ResolutionRepository = ResolutionRepository(dsl)
+
+        @Bean
         open fun userLookupPort(): UserLookupPort =
             object : UserLookupPort {
                 override fun exists(userId: java.util.UUID): Boolean = true
             }
 
-        // IssueApplicationService 생성자 파라미터 수 == 8(userLookupPort 포함). @TestConfiguration Bean 메서드이므로 Suppress 처리.
+        // IssueApplicationService 생성자 파라미터 수 == 9(resolutionRepository 포함). @TestConfiguration Bean 메서드이므로 Suppress 처리.
         @Bean
         @Suppress("LongParameterList")
         open fun issueApplicationService(
             repo: IssueRepository,
             issueTypeRepository: IssueTypeRepository,
+            resolutionRepository: ResolutionRepository,
             eventPublisher: IssueEventPublisher,
             permissionResolver: AlwaysAllowIssuePermissionResolver,
             workflowTransitionAdapter: WorkflowTransitionAdapter,
@@ -387,6 +392,7 @@ class IssueTransitionGuardFilterIntegrationTest {
             IssueApplicationService(
                 repo = repo,
                 issueTypeRepository = issueTypeRepository,
+                resolutionRepository = resolutionRepository,
                 eventPublisher = eventPublisher,
                 permissionResolver = permissionResolver,
                 workflowPort = workflowTransitionAdapter,

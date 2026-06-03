@@ -185,7 +185,7 @@ class IssueRepository(
     }
 
     /**
-     * 이슈 상태를 전이한다 (낙관락).
+     * 이슈 상태를 전이하고 resolution_id 를 함께 업데이트한다 (낙관락).
      *
      * WHERE key=? AND version=? AND deleted_at IS NULL 조건으로 업데이트.
      * version 불일치(stale read) 시 영향 행 0 반환.
@@ -194,9 +194,16 @@ class IssueRepository(
      * BC 격리 원칙 (CLAUDE.md §BC 격리). 호출자 ApplicationService (T10) 가 TransitionPlan 을
      * 이 메서드 파라미터로 분해해서 전달한다.
      *
+     * resolution_id 영속 정책 (B-4 근거).
+     * - DONE 전이 시 non-null resolutionId 를 그대로 SET 한다.
+     * - 비DONE 전이(resolutionId=null) 시 RESOLUTION_ID 를 NULL 로 clear 한다.
+     * - 워크플로우 validator 가 DONE 진입 시 resolution 필수 불변식을 강제하므로(B7)
+     *   이 메서드가 null 을 허용하는 것은 patch-merge-domain-bypass 위배 아님.
+     *
      * @param key 이슈 키.
      * @param toState 전이할 목표 워크플로우 상태 키.
      * @param expectedVersion 현재 버전. DB 버전과 일치해야 업데이트가 실행된다.
+     * @param resolutionId DONE 전이 시 설정할 Resolution UUID. null 이면 DB NULL 로 clear.
      * @return 업데이트된 행 수 (성공=1, 낙관락 충돌=0).
      */
     @Transactional
@@ -204,10 +211,18 @@ class IssueRepository(
         key: IssueKey,
         toState: String,
         expectedVersion: Long,
+        resolutionId: UUID?,
     ): Int {
-        log.debug("applyTransition key={} toState={} expectedVersion={}", key.value, toState, expectedVersion)
+        log.debug(
+            "applyTransition key={} toState={} expectedVersion={} resolutionId={}",
+            key.value,
+            toState,
+            expectedVersion,
+            resolutionId,
+        )
         return dsl.update(ISSUES)
             .set(ISSUES.CURRENT_STATE_KEY, toState)
+            .set(ISSUES.RESOLUTION_ID, resolutionId)
             .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
             .set(ISSUES.VERSION, expectedVersion + 1)
             .where(ISSUES.KEY.eq(key.value))
@@ -479,6 +494,7 @@ private fun IssuesRecord.toIssue(): Issue {
         environment = environment,
         impact = impact?.toInt(),
         assigneeId = assigneeId?.let { ActorId(it) },
+        resolutionId = resolutionId,
     )
 }
 

@@ -554,7 +554,7 @@ class IssueTransitionResolutionIntegrationTest {
             insertTransition(conn, wfId, doneId, openId, "Reopen")
 
             // workflow_scheme + default mapping
-            val schemeId =
+            val schemeId: Long =
                 conn.prepareStatement(
                     "INSERT INTO workflow_schemes (key, name, is_default) " +
                         "VALUES ('resolution-test-scheme', 'resolution 테스트 스킴', false) " +
@@ -562,7 +562,7 @@ class IssueTransitionResolutionIntegrationTest {
                 ).use { stmt ->
                     stmt.executeQuery().use { rs ->
                         rs.next()
-                        rs.getObject(1) as UUID
+                        rs.getLong(1)
                     }
                 }
 
@@ -570,7 +570,7 @@ class IssueTransitionResolutionIntegrationTest {
                 "INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id) " +
                     "VALUES (?, NULL, ?) ON CONFLICT ON CONSTRAINT uq_scheme_issue_type DO NOTHING",
             ).use { stmt ->
-                stmt.setObject(1, schemeId)
+                stmt.setLong(1, schemeId)
                 stmt.setObject(2, wfId)
                 stmt.executeUpdate()
             }
@@ -582,7 +582,7 @@ class IssueTransitionResolutionIntegrationTest {
                     "FROM projects p WHERE p.key = ? " +
                     "ON CONFLICT (project_id) DO NOTHING",
             ).use { stmt ->
-                stmt.setObject(1, schemeId)
+                stmt.setLong(1, schemeId)
                 stmt.setString(2, PROJECT_KEY)
                 stmt.executeUpdate()
             }

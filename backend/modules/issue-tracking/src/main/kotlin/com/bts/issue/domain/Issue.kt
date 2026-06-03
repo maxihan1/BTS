@@ -60,6 +60,8 @@ private const val IMPACT_MAX = 3
  * @property environment 재현 환경 설명. null 허용.
  * @property impact 영향도. 1(치명)~3(낮음), null 허용.
  * @property assigneeId 담당자. 0~1명, null 이면 미할당.
+ * @property resolutionId 종결 시 설정되는 Resolution UUID. null 이면 미설정.
+ *   DONE 전이 시 서비스 계층이 설정하며, 비DONE 재전이 시 null 로 clear 된다 (FR-IS-07 B6).
  */
 data class Issue(
     val id: IssueId,
@@ -79,6 +81,7 @@ data class Issue(
     val environment: String? = null,
     val impact: Int? = null,
     val assigneeId: ActorId? = null,
+    val resolutionId: UUID? = null,
 ) {
     companion object {
         /**

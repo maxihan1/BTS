@@ -24,6 +24,8 @@ import com.bts.issue.event.IssueUpdated
 import com.bts.issue.markdown.MarkdownRenderer
 import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.resolution.domain.ResolutionNotFoundException
+import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.domain.IssueTypeNotFoundException
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
@@ -73,6 +75,7 @@ import java.util.UUID
 class IssueApplicationService(
     private val repo: IssueRepository,
     private val issueTypeRepository: IssueTypeRepository,
+    private val resolutionRepository: ResolutionRepository,
     private val eventPublisher: IssueEventPublisher,
     private val permissionResolver: IssuePermissionResolver,
     private val workflowPort: WorkflowTransitionPort,
@@ -300,7 +303,11 @@ class IssueApplicationService(
                 issueKey = key.value,
                 actorId = actor.value.toString(),
                 actorRoles = emptySet(),
-                issueFields = mapOf("summary" to issue.summary),
+                // resolution 필드 포함 — EXECUTION phase RequiredField validator 입력 (B7 에서 활성화).
+                issueFields = mapOf(
+                    "summary" to issue.summary,
+                    "resolution" to issue.resolutionId?.toString(),
+                ),
             )
         return when (val result = workflowPort.availableTransitions(req)) {
             is AvailableTransitionsResult.Success -> result.transitions
@@ -342,6 +349,14 @@ class IssueApplicationService(
         request: TransitionIssueRequest,
     ): IssueResponse {
         assertPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(key.value))
+
+        // [Q3] resolutionId 존재성 검증 — plan() 호출 전에 수행하여 영속 전에 거부한다.
+        // non-null 인 경우에만 조회하며, 없으면 ResolutionNotFoundException (404).
+        val validatedResolutionId = request.resolutionId?.let { id ->
+            resolutionRepository.findById(id) ?: throw ResolutionNotFoundException(id)
+            id
+        }
+
         val issue = repo.findByKeyForUpdate(key) ?: throw IssueNotFoundException(key)
         val resolvedWorkflow = resolveWorkflowKey(key)
         val transitionReq =
@@ -351,7 +366,11 @@ class IssueApplicationService(
                 fromStateKey = issue.currentStateKey,
                 toStateKey = request.toStateKey,
                 actorId = actor.value.toString(),
-                issueFields = mapOf("summary" to issue.summary),
+                // resolution 필드 포함 — EXECUTION phase RequiredField validator 입력 (B7 에서 활성화).
+                issueFields = mapOf(
+                    "summary" to issue.summary,
+                    "resolution" to validatedResolutionId?.toString(),
+                ),
                 actorRoles = emptySet(),
                 version = request.expectedVersion,
             )
@@ -362,7 +381,8 @@ class IssueApplicationService(
                 issue.currentStateKey,
                 request.toStateKey,
             )
-        val updatedRows = repo.applyTransition(key, plan.toStateKey, request.expectedVersion)
+        // resolution_id 영속: validatedResolutionId non-null 이면 SET, null 이면 NULL 로 clear.
+        val updatedRows = repo.applyTransition(key, plan.toStateKey, request.expectedVersion, validatedResolutionId)
         if (updatedRows == 0) {
             throw IssueVersionConflictException(key, issue.version)
         }
