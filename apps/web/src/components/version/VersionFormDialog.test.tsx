@@ -354,6 +354,202 @@ describe('VersionFormDialog — 409 에러 표시', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// mutation 성공/실패 → onClose 여부 (C1 코드리뷰 결함)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('VersionFormDialog — mutation 성공/실패 후 onClose', () => {
+  it('생성 성공(Promise resolve) → onClose 호출', async () => {
+    const mockClose = vi.fn()
+    const mockCreate = vi.fn().mockResolvedValue(undefined) as unknown as (
+      input: CreateVersionInput,
+    ) => Promise<void>
+    const Wrapper = createWrapper()
+    render(
+      <VersionFormDialog
+        open={true}
+        mode="create"
+        projectKey={PROJECT_KEY}
+        onClose={mockClose}
+        _testCreateMutate={mockCreate}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    const user = userEvent.setup()
+    await user.type(screen.getByRole('textbox', { name: /이름/ }), '2.0.0')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => {
+      expect(mockClose).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('생성 실패(Promise reject) → onClose 미호출', async () => {
+    const mockClose = vi.fn()
+    const mockCreate = vi
+      .fn()
+      .mockRejectedValue(new Error('VERSION_NAME_DUPLICATE')) as unknown as (
+      input: CreateVersionInput,
+    ) => Promise<void>
+    const Wrapper = createWrapper()
+    render(
+      <VersionFormDialog
+        open={true}
+        mode="create"
+        projectKey={PROJECT_KEY}
+        onClose={mockClose}
+        _testCreateMutate={mockCreate}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    const user = userEvent.setup()
+    await user.type(screen.getByRole('textbox', { name: /이름/ }), '기존버전')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+
+    // reject 처리 완료 후에도 onClose 미호출
+    await waitFor(() => {
+      expect(mockCreate).toHaveBeenCalledTimes(1)
+    })
+    expect(mockClose).not.toHaveBeenCalled()
+  })
+
+  it('수정 성공(meta only, Promise resolve) → onClose 호출', async () => {
+    const mockClose = vi.fn()
+    const mockUpdate = vi.fn().mockResolvedValue(undefined) as unknown as (
+      input: UpdateVersionMutationInput,
+    ) => Promise<void>
+    const mockChangeDates = vi.fn() as unknown as (
+      input: ChangeVersionDatesMutationInput,
+    ) => Promise<void>
+    const Wrapper = createWrapper()
+    render(
+      <VersionFormDialog
+        open={true}
+        mode="edit"
+        projectKey={PROJECT_KEY}
+        initial={EXISTING_VERSION}
+        onClose={mockClose}
+        _testUpdateMutate={mockUpdate}
+        _testChangeDatesMutate={mockChangeDates}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    const user = userEvent.setup()
+    const nameInput = screen.getByRole('textbox', { name: /이름/ })
+    await user.clear(nameInput)
+    await user.type(nameInput, '1.1.0')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => {
+      expect(mockClose).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('수정 성공(dates only, Promise resolve) → onClose 호출', async () => {
+    const mockClose = vi.fn()
+    const mockUpdate = vi.fn() as unknown as (
+      input: UpdateVersionMutationInput,
+    ) => Promise<void>
+    const mockChangeDates = vi.fn().mockResolvedValue(undefined) as unknown as (
+      input: ChangeVersionDatesMutationInput,
+    ) => Promise<void>
+    const Wrapper = createWrapper()
+    render(
+      <VersionFormDialog
+        open={true}
+        mode="edit"
+        projectKey={PROJECT_KEY}
+        initial={EXISTING_VERSION}
+        onClose={mockClose}
+        _testUpdateMutate={mockUpdate}
+        _testChangeDatesMutate={mockChangeDates}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    const user = userEvent.setup()
+    await user.clear(screen.getByLabelText('릴리즈 예정일'))
+    await user.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => {
+      expect(mockClose).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('수정 성공(meta+dates 둘 다, Promise resolve) → onClose 호출', async () => {
+    const mockClose = vi.fn()
+    const mockUpdate = vi.fn().mockResolvedValue(undefined) as unknown as (
+      input: UpdateVersionMutationInput,
+    ) => Promise<void>
+    const mockChangeDates = vi.fn().mockResolvedValue(undefined) as unknown as (
+      input: ChangeVersionDatesMutationInput,
+    ) => Promise<void>
+    const Wrapper = createWrapper()
+    render(
+      <VersionFormDialog
+        open={true}
+        mode="edit"
+        projectKey={PROJECT_KEY}
+        initial={EXISTING_VERSION}
+        onClose={mockClose}
+        _testUpdateMutate={mockUpdate}
+        _testChangeDatesMutate={mockChangeDates}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    const user = userEvent.setup()
+    const nameInput = screen.getByRole('textbox', { name: /이름/ })
+    await user.clear(nameInput)
+    await user.type(nameInput, '1.1.0')
+    await user.clear(screen.getByLabelText('릴리즈 예정일'))
+    await user.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => {
+      expect(mockClose).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('수정 실패(meta reject) → onClose 미호출', async () => {
+    const mockClose = vi.fn()
+    const mockUpdate = vi
+      .fn()
+      .mockRejectedValue(new Error('VERSION_NAME_DUPLICATE')) as unknown as (
+      input: UpdateVersionMutationInput,
+    ) => Promise<void>
+    const mockChangeDates = vi.fn() as unknown as (
+      input: ChangeVersionDatesMutationInput,
+    ) => Promise<void>
+    const Wrapper = createWrapper()
+    render(
+      <VersionFormDialog
+        open={true}
+        mode="edit"
+        projectKey={PROJECT_KEY}
+        initial={EXISTING_VERSION}
+        onClose={mockClose}
+        _testUpdateMutate={mockUpdate}
+        _testChangeDatesMutate={mockChangeDates}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    const user = userEvent.setup()
+    const nameInput = screen.getByRole('textbox', { name: /이름/ })
+    await user.clear(nameInput)
+    await user.type(nameInput, '기존버전')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => {
+      expect(mockUpdate).toHaveBeenCalledTimes(1)
+    })
+    expect(mockClose).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 취소 버튼
 // ─────────────────────────────────────────────────────────────────────────────
 
