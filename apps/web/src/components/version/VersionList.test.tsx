@@ -202,7 +202,7 @@ describe('VersionList — "버전 추가" 버튼', () => {
 
     // 이름 입력
     const nameInput = screen.getByRole('textbox', { name: /이름/ })
-    await user.type(nameInput, '새 버전', { delay: null })
+    await user.type(nameInput, '새 버전')
 
     // 저장
     const saveButton = screen.getByRole('button', { name: '저장' })
@@ -297,7 +297,7 @@ describe('VersionList — 행 수정 버튼', () => {
 
     const nameInput = screen.getByRole('textbox', { name: /이름/ })
     await user.clear(nameInput)
-    await user.type(nameInput, 'v1.1', { delay: null })
+    await user.type(nameInput, 'v1.1')
 
     const saveButton = screen.getByRole('button', { name: '저장' })
     await user.click(saveButton)
@@ -310,24 +310,50 @@ describe('VersionList — 행 수정 버튼', () => {
 
 describe('VersionList — 행 삭제 버튼', () => {
   it('삭제 버튼 클릭 후 확인 시 목록에서 제거된다', async () => {
-    server.use(
-      http.get('/api/v1/projects/:projectKey/versions', () =>
-        HttpResponse.json({ data: [VERSION_A] }),
-      ),
-    )
-
+    // stateful versionHandlers 사용 — POST로 버전 생성 후 DELETE로 제거
+    // 고정 GET 오버라이드 대신 MSW 저장소 기반 핸들러가 자연스럽게 작동
     const Wrapper = createWrapper()
     render(<VersionList projectKey={PROJECT_KEY} />, { wrapper: Wrapper })
 
+    // 빈 상태 확인
+    await waitFor(() => {
+      expect(screen.getByText(versionLabels.page.emptyMessage)).toBeInTheDocument()
+    })
+
+    const user = userEvent.setup()
+
+    // 버전 추가
+    const addButton = screen.getByRole('button', { name: versionLabels.actions.addButton })
+    await user.click(addButton)
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    const nameInput = screen.getByRole('textbox', { name: /이름/ })
+    await user.type(nameInput, 'v1.0')
+
+    const saveButton = screen.getByRole('button', { name: '저장' })
+    await user.click(saveButton)
+
+    // 목록에 v1.0 반영 확인
     await waitFor(() => {
       expect(screen.getByText('v1.0')).toBeInTheDocument()
     })
 
-    const user = userEvent.setup()
+    // VersionFormDialog는 내부 훅에서 onClose를 직접 호출하지 않으므로
+    // 취소 버튼으로 Dialog를 닫은 뒤 삭제 테스트 진행
+    const cancelButton = screen.getByRole('button', { name: '취소' })
+    await user.click(cancelButton)
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    // 삭제 버튼 클릭 — 인라인 확인 UI 표시
     const v1Row = screen.getByText('v1.0').closest('li')
     if (v1Row === null) throw new Error('v1.0 행을 찾을 수 없습니다')
 
-    // 삭제 버튼 클릭 — 인라인 확인 UI 표시
     const deleteButton = within(v1Row).getByRole('button', {
       name: `v1.0 ${versionLabels.actions.deleteButton}`,
     })
@@ -338,7 +364,6 @@ describe('VersionList — 행 삭제 버튼', () => {
       expect(screen.getByText(versionLabels.actions.deleteConfirm)).toBeInTheDocument()
     })
 
-    // 확인 버튼(삭제) 클릭
     // 인라인 확인 영역에서 "삭제" 버튼 클릭
     const confirmRow = screen.getByText(versionLabels.actions.deleteConfirm).closest('div')
     if (confirmRow === null) throw new Error('확인 영역을 찾을 수 없습니다')
@@ -347,9 +372,9 @@ describe('VersionList — 행 삭제 버튼', () => {
     })
     await user.click(confirmDeleteButton)
 
-    // GET 재조회 후 목록에서 제거 확인
+    // GET 재조회 후 목록에서 제거 — 빈 상태 메시지 표시
     await waitFor(() => {
-      expect(screen.queryByText('v1.0')).not.toBeInTheDocument()
+      expect(screen.getByText(versionLabels.page.emptyMessage)).toBeInTheDocument()
     })
   })
 })
