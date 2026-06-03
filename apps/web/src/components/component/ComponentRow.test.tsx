@@ -82,6 +82,7 @@ describe('ComponentRow — 렌더', () => {
         component={componentWithLead}
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -116,6 +117,7 @@ describe('ComponentRow — 렌더', () => {
         component={componentWithLead}
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -133,6 +135,7 @@ describe('ComponentRow — 렌더', () => {
         component={componentNoLead}
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -148,6 +151,7 @@ describe('ComponentRow — 렌더', () => {
         component={componentNoLead}
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -166,6 +170,7 @@ describe('ComponentRow — 수정 버튼', () => {
         component={componentWithLead}
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -200,6 +205,7 @@ describe('ComponentRow — 삭제 액션', () => {
         component={componentWithLead}
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -245,6 +251,7 @@ describe('ComponentRow — 삭제 액션', () => {
         component={componentWithLead}
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -277,6 +284,7 @@ describe('ComponentRow — aria-label', () => {
         component={componentWithLead}
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -294,6 +302,7 @@ describe('ComponentRow — aria-label', () => {
         component={componentWithLead}
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -350,6 +359,7 @@ describe('ComponentRow — 인라인 리드 변경', () => {
         component={componentWithLead}
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -371,5 +381,64 @@ describe('ComponentRow — 인라인 리드 변경', () => {
         leadUserId: 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a',
       })
     })
+  })
+
+  it('canManage=false이면 리드 검색 input이 비활성화된다(fail-closed)', () => {
+    const onEdit = vi.fn()
+    const Wrapper = createWrapper()
+    render(
+      <ComponentRow
+        component={componentWithLead}
+        projectKey={PROJECT_KEY}
+        onEdit={onEdit}
+        canManage={false}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    const searchInput = screen.getByRole('textbox', { name: '리드 검색' })
+    expect(searchInput).toBeDisabled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ComponentRow — 권한 게이팅 (FR-PM-03 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ComponentRow — 권한 게이팅', () => {
+  it('canManage=true이면 수정/삭제 버튼이 활성화된다', () => {
+    const onEdit = vi.fn()
+    const Wrapper = createWrapper()
+    render(
+      <ComponentRow
+        component={componentWithLead}
+        projectKey={PROJECT_KEY}
+        onEdit={onEdit}
+        canManage={true}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    const row = screen.getByRole('listitem')
+    expect(within(row).getByRole('button', { name: `${componentWithLead.name} 수정` })).not.toBeDisabled()
+    expect(within(row).getByRole('button', { name: `${componentWithLead.name} 삭제` })).not.toBeDisabled()
+  })
+
+  it('canManage=false이면 수정/삭제 버튼이 비활성화된다(fail-closed)', () => {
+    const onEdit = vi.fn()
+    const Wrapper = createWrapper()
+    render(
+      <ComponentRow
+        component={componentWithLead}
+        projectKey={PROJECT_KEY}
+        onEdit={onEdit}
+        canManage={false}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    const row = screen.getByRole('listitem')
+    expect(within(row).getByRole('button', { name: `${componentWithLead.name} 수정` })).toBeDisabled()
+    expect(within(row).getByRole('button', { name: `${componentWithLead.name} 삭제` })).toBeDisabled()
   })
 })

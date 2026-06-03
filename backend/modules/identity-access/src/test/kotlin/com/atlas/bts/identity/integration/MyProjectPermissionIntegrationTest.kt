@@ -43,7 +43,7 @@ import java.util.UUID
  * - 미인증 요청은 401, projectKey 누락/공백은 400을 반환함을 확인한다.
  * - 존재하지 않는 projectKey는 404가 아니라 200 + CREATE:false 임을 확인한다.
  *
- * ## 검증 시나리오
+ * ## 검증 시나리오 (CREATE — FR-PM-02)
  * | 행위자   | projectKey | 기대 CREATE | 기대 status |
  * |----------|------------|-------------|-------------|
  * | MEMBER   | PERMTEST   | true        | 200         |
@@ -51,6 +51,16 @@ import java.util.UUID
  * | 미인증   | PERMTEST   | -           | 401         |
  * | MEMBER   | (공백)     | -           | 400         |
  * | MEMBER   | ZZZZ(미존재)| false      | 200         |
+ *
+ * ## 검증 시나리오 (MANAGE_COMPONENTS/MANAGE_VERSIONS — FR-PM-03 D6/D7)
+ * | 행위자        | projectKey  | 기대 MANAGE_* | 기대 status |
+ * |---------------|-------------|---------------|-------------|
+ * | PROJECT_ADMIN | PERMTEST    | true          | 200         |
+ * | 비멤버        | PERMTEST    | false         | 200         |
+ * | PROJECT_ADMIN | ZZZZ(미존재)| false         | 200         |
+ *
+ * PROJECT_ADMIN→true 근거는 V009 기본 스킴 시드(PROJECT_ADMIN × MANAGE_*). 미존재 projectKey는
+ * ProjectDirectory.resolveKeyToId가 null → MANAGE_* false(기존 미존재 정책 일관, 404 아님).
  *
  * ## 부팅 패턴
  * [MyIssuePermissionIntegrationTest] 동일.
@@ -140,10 +150,12 @@ class MyProjectPermissionIntegrationTest {
     private lateinit var jdbc: NamedParameterJdbcTemplate
 
     // ── 픽스처 식별값 ──────────────────────────────────────────────────────────
+    private val adminId: UUID = UUID.fromString("00000000-1111-0000-0000-000000000002")
     private val memberId: UUID = UUID.fromString("00000000-2222-0000-0000-000000000002")
     private val nonMemberId: UUID = UUID.fromString("00000000-3333-0000-0000-000000000002")
 
     /** 각 사용자 JWT에 포함할 sid — sessions 테이블 행을 setUp에서 삽입한다. */
+    private val adminSessionId: UUID = UUID.fromString("eeeeeeee-1111-0000-0000-000000000002")
     private val memberSessionId: UUID = UUID.fromString("eeeeeeee-2222-0000-0000-000000000002")
     private val nonMemberSessionId: UUID = UUID.fromString("eeeeeeee-3333-0000-0000-000000000002")
 
@@ -190,6 +202,50 @@ class MyProjectPermissionIntegrationTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.projectKey").value(projectKey))
             .andExpect(jsonPath("$.permissions.CREATE").value(false))
+    }
+
+    @Test
+    fun `PROJECT_ADMIN JWT — MANAGE_COMPONENTS_VERSIONS true`() {
+        val token = issueJwt(adminId, adminSessionId)
+        mockMvc.perform(
+            get("/api/v1/users/me/project-permissions")
+                .param("projectKey", projectKey)
+                .header("Authorization", "Bearer $token")
+                .accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.projectKey").value(projectKey))
+            .andExpect(jsonPath("$.permissions.MANAGE_COMPONENTS").value(true))
+            .andExpect(jsonPath("$.permissions.MANAGE_VERSIONS").value(true))
+    }
+
+    @Test
+    fun `비멤버 JWT — MANAGE_COMPONENTS_VERSIONS false (401 아님)`() {
+        val token = issueJwt(nonMemberId, nonMemberSessionId)
+        mockMvc.perform(
+            get("/api/v1/users/me/project-permissions")
+                .param("projectKey", projectKey)
+                .header("Authorization", "Bearer $token")
+                .accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.permissions.MANAGE_COMPONENTS").value(false))
+            .andExpect(jsonPath("$.permissions.MANAGE_VERSIONS").value(false))
+    }
+
+    @Test
+    fun `존재하지 않는 projectKey — MANAGE_COMPONENTS_VERSIONS false (200, 404 아님)`() {
+        val token = issueJwt(adminId, adminSessionId)
+        mockMvc.perform(
+            get("/api/v1/users/me/project-permissions")
+                .param("projectKey", "ZZZZ")
+                .header("Authorization", "Bearer $token")
+                .accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.projectKey").value("ZZZZ"))
+            .andExpect(jsonPath("$.permissions.MANAGE_COMPONENTS").value(false))
+            .andExpect(jsonPath("$.permissions.MANAGE_VERSIONS").value(false))
     }
 
     @Test
@@ -273,11 +329,11 @@ class MyProjectPermissionIntegrationTest {
         jdbc.update("DELETE FROM project_memberships WHERE project_id = :id", mapOf("id" to projectId))
         jdbc.update(
             "DELETE FROM sessions WHERE id IN (:ids)",
-            mapOf("ids" to listOf(memberSessionId, nonMemberSessionId)),
+            mapOf("ids" to listOf(adminSessionId, memberSessionId, nonMemberSessionId)),
         )
         jdbc.update(
             "DELETE FROM users WHERE id IN (:ids)",
-            mapOf("ids" to listOf(memberId, nonMemberId)),
+            mapOf("ids" to listOf(adminId, memberId, nonMemberId)),
         )
         jdbc.update("DELETE FROM projects WHERE id = :id", mapOf("id" to projectId))
     }
@@ -292,6 +348,7 @@ class MyProjectPermissionIntegrationTest {
         val now = Instant.now()
         val expiresAt = now.plusSeconds(3600)
         listOf(
+            Pair(adminSessionId, adminId),
             Pair(memberSessionId, memberId),
             Pair(nonMemberSessionId, nonMemberId),
         ).forEach { (sessionId, userId) ->
@@ -315,6 +372,7 @@ class MyProjectPermissionIntegrationTest {
 
     private fun seedUsers() {
         listOf(
+            Triple(adminId, "projperm_admin", "ProjPerm Admin"),
             Triple(memberId, "projperm_member", "ProjPerm Member"),
             Triple(nonMemberId, "projperm_nonmember", "ProjPerm NonMember"),
         ).forEach { (id, username, displayName) ->
@@ -333,20 +391,33 @@ class MyProjectPermissionIntegrationTest {
         )
     }
 
+    /**
+     * adminId=PROJECT_ADMIN, memberId=MEMBER. 비멤버(nonMemberId)는 시드하지 않는다.
+     *
+     * PROJECT_ADMIN 멤버십은 MANAGE_COMPONENTS/MANAGE_VERSIONS true 케이스의 근거다.
+     * project_permission_scheme 매핑은 추가하지 않아 기본 스킴(V008) fallback이 V009 시드
+     * (PROJECT_ADMIN × MANAGE_*)를 그대로 사용한다.
+     * 선례: IdentityAccessComponentPermissionResolverIntegrationTest.seedMemberships().
+     */
     private fun seedMemberships() {
         val now = Instant.now()
-        jdbc.update(
-            """
-            INSERT INTO project_memberships (project_id, user_id, role, created_at, updated_at)
-            VALUES (:projectId, :userId, :role, :createdAt, :updatedAt)
-            """,
-            mapOf(
-                "projectId" to projectId,
-                "userId" to memberId,
-                "role" to "MEMBER",
-                "createdAt" to java.sql.Timestamp.from(now),
-                "updatedAt" to java.sql.Timestamp.from(now),
-            ),
-        )
+        listOf(
+            Pair(adminId, "PROJECT_ADMIN"),
+            Pair(memberId, "MEMBER"),
+        ).forEach { (userId, role) ->
+            jdbc.update(
+                """
+                INSERT INTO project_memberships (project_id, user_id, role, created_at, updated_at)
+                VALUES (:projectId, :userId, :role, :createdAt, :updatedAt)
+                """,
+                mapOf(
+                    "projectId" to projectId,
+                    "userId" to userId,
+                    "role" to role,
+                    "createdAt" to java.sql.Timestamp.from(now),
+                    "updatedAt" to java.sql.Timestamp.from(now),
+                ),
+            )
+        }
     }
 }

@@ -116,7 +116,7 @@ describe('useProjectPermissions', () => {
         fetchCount++
         return HttpResponse.json({
           projectKey: 'ATLAS',
-          permissions: { CREATE: true },
+          permissions: { CREATE: true, MANAGE_COMPONENTS: false, MANAGE_VERSIONS: false },
         })
       }),
     )

@@ -82,6 +82,7 @@ describe('VersionRow — 렌더', () => {
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
         onDelete={onDelete}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -100,6 +101,7 @@ describe('VersionRow — 렌더', () => {
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
         onDelete={onDelete}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -117,6 +119,7 @@ describe('VersionRow — 렌더', () => {
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
         onDelete={onDelete}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -135,6 +138,7 @@ describe('VersionRow — 렌더', () => {
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
         onDelete={onDelete}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -156,6 +160,7 @@ describe('VersionRow — 수정 버튼', () => {
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
         onDelete={onDelete}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -190,6 +195,7 @@ describe('VersionRow — 삭제 액션', () => {
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
         onDelete={onDelete}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -224,6 +230,7 @@ describe('VersionRow — 삭제 액션', () => {
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
         onDelete={onDelete}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -256,6 +263,7 @@ describe('VersionRow — 삭제 액션', () => {
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
         onDelete={onDelete}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -292,6 +300,7 @@ describe('VersionRow — aria-label', () => {
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
         onDelete={onDelete}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -311,6 +320,7 @@ describe('VersionRow — aria-label', () => {
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
         onDelete={onDelete}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -343,6 +353,7 @@ describe('VersionRow — http.delete 통합', () => {
         projectKey={PROJECT_KEY}
         onEdit={onEdit}
         onDelete={onDelete}
+        canManage={true}
       />,
       { wrapper: Wrapper },
     )
@@ -364,5 +375,51 @@ describe('VersionRow — http.delete 통합', () => {
     await waitFor(() => {
       expect(deleteSpy).toHaveBeenCalled()
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VersionRow — 권한 게이팅 (FR-PM-03 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('VersionRow — 권한 게이팅', () => {
+  it('canManage=true이면 수정/삭제 버튼이 활성화된다', () => {
+    const onEdit = vi.fn()
+    const onDelete = vi.fn()
+    const Wrapper = createWrapper()
+    render(
+      <VersionRow
+        version={versionWithDates}
+        projectKey={PROJECT_KEY}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        canManage={true}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    const row = screen.getByRole('listitem')
+    expect(within(row).getByRole('button', { name: `${versionWithDates.name} 수정` })).not.toBeDisabled()
+    expect(within(row).getByRole('button', { name: `${versionWithDates.name} 삭제` })).not.toBeDisabled()
+  })
+
+  it('canManage=false이면 수정/삭제 버튼이 비활성화된다(fail-closed)', () => {
+    const onEdit = vi.fn()
+    const onDelete = vi.fn()
+    const Wrapper = createWrapper()
+    render(
+      <VersionRow
+        version={versionWithDates}
+        projectKey={PROJECT_KEY}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        canManage={false}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    const row = screen.getByRole('listitem')
+    expect(within(row).getByRole('button', { name: `${versionWithDates.name} 수정` })).toBeDisabled()
+    expect(within(row).getByRole('button', { name: `${versionWithDates.name} 삭제` })).toBeDisabled()
   })
 })

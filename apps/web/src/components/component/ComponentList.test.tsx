@@ -1,4 +1,4 @@
-// ComponentList 단위 테스트 — 4분기(로딩/에러/빈/목록) + 생성/수정 Dialog 연동 (FR-CM-01)
+// ComponentList 단위 테스트 — 4분기(로딩/에러/빈/목록) + 생성/수정 Dialog 연동 + 권한 게이팅 (FR-CM-01, FR-PM-03)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -8,6 +8,8 @@ import { createElement } from 'react'
 import type { ReactNode } from 'react'
 import { server } from '@/test/server'
 import { componentHandlers, resetComponentStore } from '@/mocks/component-handlers'
+import { projectPermissionHandlers } from '@/mocks/project-permission-handlers'
+import { adminProjectPermissions, nonMemberProjectPermissions } from '@/mocks/project-permission-fixtures'
 import { componentLabels } from '@/i18n/component-labels'
 import { ComponentList } from './ComponentList'
 
@@ -58,10 +60,19 @@ function createWrapper() {
   }
 }
 
+// admin 권한 핸들러 헬퍼 — 기존 테스트 회귀 방지용 (EC7)
+function withAdminPermissions() {
+  server.use(
+    http.get('/api/v1/users/me/project-permissions', () =>
+      HttpResponse.json({ projectKey: PROJECT_KEY, permissions: adminProjectPermissions }),
+    ),
+  )
+}
+
 beforeEach(() => {
   resetComponentStore()
   vi.clearAllMocks()
-  server.use(...componentHandlers)
+  server.use(...componentHandlers, ...projectPermissionHandlers)
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -145,6 +156,7 @@ describe('ComponentList — 4분기 렌더', () => {
 
 describe('ComponentList — "컴포넌트 추가" 버튼', () => {
   it('목록 있을 때도 "컴포넌트 추가" 버튼을 표시한다', async () => {
+    withAdminPermissions()
     server.use(
       http.get('/api/v1/projects/:projectKey/components', () =>
         HttpResponse.json({ data: [COMPONENT_A] }),
@@ -164,6 +176,7 @@ describe('ComponentList — "컴포넌트 추가" 버튼', () => {
   })
 
   it('"컴포넌트 추가" 클릭 시 create 모드 Dialog가 열린다', async () => {
+    withAdminPermissions()
     const Wrapper = createWrapper()
     render(<ComponentList projectKey={PROJECT_KEY} />, { wrapper: Wrapper })
 
@@ -184,6 +197,7 @@ describe('ComponentList — "컴포넌트 추가" 버튼', () => {
   })
 
   it('생성 Dialog에서 저장 후 목록에 새 컴포넌트가 반영된다', async () => {
+    withAdminPermissions()
     const Wrapper = createWrapper()
     render(<ComponentList projectKey={PROJECT_KEY} />, { wrapper: Wrapper })
 
@@ -217,6 +231,7 @@ describe('ComponentList — "컴포넌트 추가" 버튼', () => {
 
 describe('ComponentList — 행 수정 버튼', () => {
   it('수정 버튼 클릭 시 edit 모드 Dialog가 열리고 initial 값이 prefill된다', async () => {
+    withAdminPermissions()
     server.use(
       http.get('/api/v1/projects/:projectKey/components', () =>
         HttpResponse.json({ data: [COMPONENT_A] }),
@@ -256,6 +271,7 @@ describe('ComponentList — 행 수정 버튼', () => {
   })
 
   it('수정 Dialog에서 저장 시 컴포넌트 이름이 갱신된다', async () => {
+    withAdminPermissions()
     // componentHandlers stateful 저장소에 컴포넌트 추가
     server.use(
       http.get('/api/v1/projects/:projectKey/components', () =>
@@ -315,5 +331,124 @@ describe('ComponentList — 행 수정 버튼', () => {
     await waitFor(() => {
       expect(screen.getByText('Backend v2')).toBeInTheDocument()
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ComponentList — 권한 게이팅 (FR-PM-03 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ComponentList — 권한 게이팅', () => {
+  it('MANAGE_COMPONENTS=true(admin)이면 "컴포넌트 추가" 버튼이 활성화된다', async () => {
+    withAdminPermissions()
+    const Wrapper = createWrapper()
+    render(<ComponentList projectKey={PROJECT_KEY} />, { wrapper: Wrapper })
+
+    await waitFor(() => {
+      const btn = screen.getByRole('button', { name: componentLabels.actions.addButton })
+      expect(btn).not.toBeDisabled()
+    })
+  })
+
+  it('MANAGE_COMPONENTS=false(비멤버)이면 "컴포넌트 추가" 버튼이 비활성화된다(fail-closed)', async () => {
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ projectKey: PROJECT_KEY, permissions: nonMemberProjectPermissions }),
+      ),
+    )
+    const Wrapper = createWrapper()
+    render(<ComponentList projectKey={PROJECT_KEY} />, { wrapper: Wrapper })
+
+    await waitFor(() => {
+      const btn = screen.getByRole('button', { name: componentLabels.actions.addButton })
+      expect(btn).toBeDisabled()
+    })
+  })
+
+  it('권한 로딩 중에는 "컴포넌트 추가" 버튼이 비활성화된다(fail-closed)', async () => {
+    // 권한 쿼리를 영구 pending 상태로 만든다
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', async () => {
+        await new Promise(() => { /* pending forever */ })
+        return HttpResponse.json({})
+      }),
+    )
+    const Wrapper = createWrapper()
+    render(<ComponentList projectKey={PROJECT_KEY} />, { wrapper: Wrapper })
+
+    // 컴포넌트 목록은 즉시 로드, 권한은 계속 pending
+    await waitFor(() => {
+      expect(screen.getByText(componentLabels.page.emptyMessage)).toBeInTheDocument()
+    })
+
+    const btn = screen.getByRole('button', { name: componentLabels.actions.addButton })
+    expect(btn).toBeDisabled()
+  })
+
+  it('권한 조회 에러 시 "컴포넌트 추가" 버튼이 비활성화된다(fail-closed)', async () => {
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ error: 'server_error' }, { status: 500 }),
+      ),
+    )
+    const Wrapper = createWrapper()
+    render(<ComponentList projectKey={PROJECT_KEY} />, { wrapper: Wrapper })
+
+    await waitFor(() => {
+      expect(screen.getByText(componentLabels.page.emptyMessage)).toBeInTheDocument()
+    })
+
+    const btn = screen.getByRole('button', { name: componentLabels.actions.addButton })
+    expect(btn).toBeDisabled()
+  })
+
+  it('MANAGE_COMPONENTS=true(admin)이면 행 수정/삭제 버튼이 활성화된다', async () => {
+    withAdminPermissions()
+    server.use(
+      http.get('/api/v1/projects/:projectKey/components', () =>
+        HttpResponse.json({ data: [COMPONENT_A] }),
+      ),
+      http.get('/api/v1/users', () => HttpResponse.json({ data: [] })),
+      http.get('/api/v1/users/batch', () => HttpResponse.json({ data: [] })),
+    )
+
+    const Wrapper = createWrapper()
+    render(<ComponentList projectKey={PROJECT_KEY} />, { wrapper: Wrapper })
+
+    await waitFor(() => {
+      expect(screen.getByText('Backend')).toBeInTheDocument()
+    })
+
+    const backendRow = screen.getByText('Backend').closest('li')
+    if (backendRow === null) throw new Error('Backend 행을 찾을 수 없습니다')
+
+    expect(within(backendRow).getByRole('button', { name: `Backend ${componentLabels.actions.editButton}` })).not.toBeDisabled()
+    expect(within(backendRow).getByRole('button', { name: `Backend ${componentLabels.actions.deleteButton}` })).not.toBeDisabled()
+  })
+
+  it('MANAGE_COMPONENTS=false(비멤버)이면 행 수정/삭제 버튼이 비활성화된다(fail-closed)', async () => {
+    server.use(
+      http.get('/api/v1/users/me/project-permissions', () =>
+        HttpResponse.json({ projectKey: PROJECT_KEY, permissions: nonMemberProjectPermissions }),
+      ),
+      http.get('/api/v1/projects/:projectKey/components', () =>
+        HttpResponse.json({ data: [COMPONENT_A] }),
+      ),
+      http.get('/api/v1/users', () => HttpResponse.json({ data: [] })),
+      http.get('/api/v1/users/batch', () => HttpResponse.json({ data: [] })),
+    )
+
+    const Wrapper = createWrapper()
+    render(<ComponentList projectKey={PROJECT_KEY} />, { wrapper: Wrapper })
+
+    await waitFor(() => {
+      expect(screen.getByText('Backend')).toBeInTheDocument()
+    })
+
+    const backendRow = screen.getByText('Backend').closest('li')
+    if (backendRow === null) throw new Error('Backend 행을 찾을 수 없습니다')
+
+    expect(within(backendRow).getByRole('button', { name: `Backend ${componentLabels.actions.editButton}` })).toBeDisabled()
+    expect(within(backendRow).getByRole('button', { name: `Backend ${componentLabels.actions.deleteButton}` })).toBeDisabled()
   })
 })

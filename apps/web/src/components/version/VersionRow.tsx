@@ -1,4 +1,4 @@
-// 버전 단일 행 — 이름/설명/날짜 표시 + 수정/삭제 인라인 확인 액션 (FR-VR-01)
+// 버전 단일 행 — 이름/설명/날짜 표시 + 수정/삭제 인라인 확인 액션 + 권한 게이팅 (FR-VR-01, FR-PM-03)
 import { useState } from 'react'
 import type { JSX } from 'react'
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,11 @@ interface VersionRowProps {
   readonly onEdit: (version: Version) => void
   /** 삭제 완료 후 상위에 알리는 콜백 */
   readonly onDelete: (id: string) => void
+  /**
+   * MANAGE_VERSIONS 권한 여부 — VersionList가 useProjectPermissions로 계산해 전달.
+   * false(로딩/에러/미인가)이면 수정·삭제 버튼을 disabled로 게이팅(fail-closed).
+   */
+  readonly canManage: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,6 +96,7 @@ export function VersionRow({
   projectKey,
   onEdit,
   onDelete,
+  canManage,
 }: VersionRowProps): JSX.Element {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
@@ -160,6 +166,8 @@ export function VersionRow({
               variant="outline"
               size="sm"
               aria-label={`${version.name} ${actions.editButton}`}
+              disabled={!canManage}
+              title={!canManage ? versionLabels.actions.noPermission : undefined}
               onClick={handleEditClick}
             >
               {actions.editButton}
@@ -168,6 +176,8 @@ export function VersionRow({
               variant="destructive"
               size="sm"
               aria-label={`${version.name} ${actions.deleteButton}`}
+              disabled={!canManage}
+              title={!canManage ? versionLabels.actions.noPermission : undefined}
               onClick={handleDeleteClick}
             >
               {actions.deleteButton}

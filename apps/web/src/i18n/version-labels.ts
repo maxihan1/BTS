@@ -36,6 +36,8 @@ export const versionLabels = {
     cancelButton: '취소',
     /** 삭제 확인 dialog 본문 텍스트 */
     deleteConfirm: '정말 삭제하시겠습니까?',
+    /** 권한 없음 tooltip 텍스트 (disabled 버튼 title) */
+    noPermission: '이 작업을 수행할 권한이 없습니다.',
   },
 
   /** 폼 필드 라벨 / placeholder */

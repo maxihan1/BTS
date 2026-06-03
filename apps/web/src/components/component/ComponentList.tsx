@@ -1,9 +1,10 @@
-// 프로젝트 컴포넌트 목록 — 4분기(로딩/에러/빈/목록) + 생성/수정 Dialog 연동 (FR-CM-01)
+// 프로젝트 컴포넌트 목록 — 4분기(로딩/에러/빈/목록) + 생성/수정 Dialog 연동 + 권한 게이팅 (FR-CM-01, FR-PM-03)
 import { useState } from 'react'
 import type { JSX } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useComponents, useCreateComponent, useUpdateComponent } from '@/hooks/use-components'
+import { useProjectPermissions } from '@/hooks/use-project-permissions'
 import { componentLabels, componentErrorMessage } from '@/i18n/component-labels'
 import { ComponentRow } from './ComponentRow'
 import { ComponentFormDialog } from './ComponentFormDialog'
@@ -65,6 +66,17 @@ export function ComponentList({ projectKey }: ComponentListProps): JSX.Element {
   const { data: components, isLoading, isError, error } = useComponents(projectKey)
   const createComponent = useCreateComponent(projectKey)
   const updateComponent = useUpdateComponent(projectKey)
+
+  // 권한 게이팅 — fail-closed: 로딩/에러/미인가이면 false (FR-PM-03 D6)
+  const {
+    data: permissionsData,
+    isLoading: isPermissionsLoading,
+    isError: isPermissionsError,
+  } = useProjectPermissions(projectKey)
+  const canManage =
+    !isPermissionsLoading &&
+    !isPermissionsError &&
+    permissionsData?.permissions.MANAGE_COMPONENTS === true
 
   const [dialogState, setDialogState] = useState<DialogState>({ open: false })
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -156,6 +168,9 @@ export function ComponentList({ projectKey }: ComponentListProps): JSX.Element {
           <CardTitle>{componentLabels.page.heading}</CardTitle>
           <Button
             size="sm"
+            disabled={!canManage}
+            aria-disabled={!canManage}
+            title={!canManage ? componentLabels.actions.noPermission : undefined}
             onClick={openCreateDialog}
           >
             {componentLabels.actions.addButton}
@@ -172,6 +187,7 @@ export function ComponentList({ projectKey }: ComponentListProps): JSX.Element {
                   component={component}
                   projectKey={projectKey}
                   onEdit={openEditDialog}
+                  canManage={canManage}
                 />
               ))}
             </ul>

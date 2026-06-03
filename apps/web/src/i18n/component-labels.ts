@@ -36,6 +36,8 @@ export const componentLabels = {
     cancelButton: '취소',
     /** 삭제 확인 dialog 본문 텍스트 */
     deleteConfirm: '정말 삭제하시겠습니까?',
+    /** 권한 없음 tooltip/title 텍스트 (FR-PM-03 D6) */
+    noPermission: '프로젝트 관리자만 수정할 수 있습니다.',
   },
 
   /** 폼 필드 라벨 / placeholder */
