@@ -161,6 +161,10 @@ class IssuePdfExportIntegrationTest {
         assert(!extractedText.contains("alert(")) {
             "PDF 텍스트에 alert( 코드가 포함됨 — sanitize 미경유 의심. 추출: $extractedText"
         }
+        // script 태그는 제거되되 본문 평문은 살아남아야 한다 — 본문이 통째로 누락된 게 아니라 정화만 됐음을 확인.
+        assert(extractedText.contains("악성 스크립트 삽입 시도")) {
+            "sanitize 후 본문 평문이 누락됨 — 본문 전체가 사라지면 안 됨. 추출: $extractedText"
+        }
     }
 
     // ── S3. 존재하지 않는 키 → 404 ──────────────────────────────────────────
