@@ -6,6 +6,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
 import type { Version } from '@/api/versions.types'
+import type {
+  UpdateVersionMutationInput,
+  ChangeVersionDatesMutationInput,
+} from '@/hooks/use-versions'
+import type { CreateVersionInput } from '@/api/versions.types'
 import { VersionFormDialog } from './VersionFormDialog'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -58,7 +63,7 @@ describe('VersionFormDialog — 생성 모드', () => {
   })
 
   it('이름을 비운 채 저장 시 onSubmit이 호출되지 않고 오류 메시지가 표시된다', async () => {
-    const mockCreate = vi.fn()
+    const mockCreate = vi.fn() as unknown as (input: CreateVersionInput) => void
     const Wrapper = createWrapper()
     render(
       <VersionFormDialog
@@ -81,7 +86,7 @@ describe('VersionFormDialog — 생성 모드', () => {
   })
 
   it('생성 모드: name/desc/startDate/releaseDate 입력 후 저장 시 createVersion 호출', async () => {
-    const mockCreate = vi.fn()
+    const mockCreate = vi.fn() as unknown as (input: CreateVersionInput) => void
     const Wrapper = createWrapper()
     render(
       <VersionFormDialog
@@ -118,12 +123,12 @@ describe('VersionFormDialog — 생성 모드', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('VersionFormDialog — 수정 모드 변경 감지', () => {
-  let mockUpdate: ReturnType<typeof vi.fn>
-  let mockChangeDates: ReturnType<typeof vi.fn>
+  let mockUpdate: (input: UpdateVersionMutationInput) => void
+  let mockChangeDates: (input: ChangeVersionDatesMutationInput) => void
 
   beforeEach(() => {
-    mockUpdate = vi.fn()
-    mockChangeDates = vi.fn()
+    mockUpdate = vi.fn() as unknown as (input: UpdateVersionMutationInput) => void
+    mockChangeDates = vi.fn() as unknown as (input: ChangeVersionDatesMutationInput) => void
   })
 
   it('(a) 둘 다 미변경 저장 → 0 mutation 호출', async () => {
