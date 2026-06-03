@@ -1,6 +1,6 @@
 // 종료 전이 시 결의안 선택 모달 (FR-IS-07 Task B9)
 import type { JSX } from 'react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { Button } from '@/components/ui/button'
 import {
@@ -85,6 +85,16 @@ export function ResolutionModal({
     prefilledResolution?.id ?? '',
   )
 
+  /**
+   * 모달이 열릴 때(open=true)마다 선택 상태를 pre-fill 값으로 리셋한다.
+   * 동일 컴포넌트 인스턴스가 재사용될 때 이전 선택값이 남지 않도록 방어한다.
+   */
+  useEffect(() => {
+    if (open) {
+      setSelectedId(prefilledResolution?.id ?? '')
+    }
+  }, [open, prefilledResolution])
+
   /** 확인 버튼 활성 조건: 결의안이 선택되어 있어야 한다 */
   const canConfirm = selectedId !== ''
 
@@ -121,28 +131,28 @@ export function ResolutionModal({
             <label htmlFor="resolution-select" className="text-sm font-medium mb-1 block">
               결의안
             </label>
-            <Select value={selectedId} onValueChange={setSelectedId}>
-              <SelectTrigger
-                id="resolution-select"
-                className="w-full"
-                aria-label="결의안 선택"
-              >
-                <SelectValue placeholder="결의안을 선택하세요" />
-              </SelectTrigger>
-              <SelectContent>
-                {isLoading ? (
-                  <SelectItem value="__loading__" disabled>
-                    불러오는 중...
-                  </SelectItem>
-                ) : (
-                  resolutions.map((resolution) => (
+            {isLoading ? (
+              <p className="text-sm text-muted-foreground py-2" aria-live="polite">
+                결의안 목록을 불러오는 중...
+              </p>
+            ) : (
+              <Select value={selectedId} onValueChange={setSelectedId}>
+                <SelectTrigger
+                  id="resolution-select"
+                  className="w-full"
+                  aria-label="결의안 선택"
+                >
+                  <SelectValue placeholder="결의안을 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  {resolutions.map((resolution) => (
                     <SelectItem key={resolution.id} value={resolution.id}>
                       {resolution.name}
                     </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           {/* 액션 버튼 */}
