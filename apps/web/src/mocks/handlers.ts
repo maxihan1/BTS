@@ -11,6 +11,7 @@ import { projectPermissionHandlers } from './project-permission-handlers'
 import { schemeHandlers } from './scheme-handlers'
 import { sessionHandlers } from './session-handlers'
 import { userHandlers } from './user-handlers'
+import { versionHandlers } from './version-handlers'
 import { workflowHandlers } from './workflow-handlers'
 
 /**
@@ -32,5 +33,6 @@ export const handlers = [
   ...schemeHandlers,
   ...sessionHandlers,
   ...userHandlers,
+  ...versionHandlers,
   ...workflowHandlers,
 ]
