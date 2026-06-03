@@ -50,9 +50,15 @@ sealed interface AvailableTransitionsResult {
  * @param fromStateKey 전이 출발 상태 키.
  * @param toStateKey 전이 도착 상태 키.
  * @param name 전이 표시 이름. UI 버튼 레이블 용도로만 사용하며 식별자가 아니다.
+ * @param toCategory 전이 목표 상태의 카테고리 문자열(예: "DONE", "IN_PROGRESS", "TODO").
+ *   프론트엔드가 종료(DONE) 전이를 판별할 때 사용한다.
+ *   null 은 미계산 상태를 의미하며 테스트 픽스처에서만 허용된다.
+ *   실 API 응답은 항상 non-null 값이 채워진다(후속 task A4 에서 보장).
+ *   BC 격리 원칙에 따라 내부 enum(StateCategory) 대신 문자열로 노출한다.
  */
 data class AvailableTransitionView(
     val fromStateKey: String,
     val toStateKey: String,
     val name: String,
+    val toCategory: String? = null,
 )
