@@ -2,8 +2,8 @@
 
 package com.bts.issue.application
 
-import com.bts.issue.adapter.inbound.rest.IssueExceptionHandler
 import com.bts.issue.adapter.inbound.rest.IssueController
+import com.bts.issue.adapter.inbound.rest.IssueExceptionHandler
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueRepository
@@ -106,14 +106,12 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueTransitionResolutionIntegrationTest {
-
     // ── Spring Bean 구성 ────────────────────────────────────────────────────────
 
     @Configuration
     @EnableWebMvc
     @EnableTransactionManagement(proxyTargetClass = true)
     open class TestConfig {
-
         companion object {
             /** JVM 단위 singleton Testcontainers — singleton pattern */
             @JvmStatic
@@ -141,8 +139,7 @@ class IssueTransitionResolutionIntegrationTest {
             DataSourceTransactionManager(dataSource)
 
         @Bean
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext =
-            DSL.using(dataSource, SQLDialect.POSTGRES)
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext = DSL.using(dataSource, SQLDialect.POSTGRES)
 
         @Bean
         open fun objectMapper(): ObjectMapper =
@@ -204,22 +201,17 @@ class IssueTransitionResolutionIntegrationTest {
         ): WorkflowEngine = WorkflowEngine(cache, validatorFactory, postActionFactory, definitionRepo)
 
         @Bean
-        open fun workflowTransitionAdapter(engine: WorkflowEngine): WorkflowTransitionAdapter =
-            WorkflowTransitionAdapter(engine)
+        open fun workflowTransitionAdapter(engine: WorkflowEngine): WorkflowTransitionAdapter = WorkflowTransitionAdapter(engine)
 
         @Bean
-        open fun workflowSchemeRepository(dsl: DSLContext): WorkflowSchemeRepository =
-            WorkflowSchemeRepository(dsl)
+        open fun workflowSchemeRepository(dsl: DSLContext): WorkflowSchemeRepository = WorkflowSchemeRepository(dsl)
 
         @Bean
-        open fun projectWorkflowSchemeAssignmentRepository(
-            dsl: DSLContext,
-        ): ProjectWorkflowSchemeAssignmentRepository =
+        open fun projectWorkflowSchemeAssignmentRepository(dsl: DSLContext): ProjectWorkflowSchemeAssignmentRepository =
             ProjectWorkflowSchemeAssignmentRepository(dsl)
 
         @Bean
-        open fun schemeIssueTypeMappingRepository(dsl: DSLContext): SchemeIssueTypeMappingRepository =
-            SchemeIssueTypeMappingRepository(dsl)
+        open fun schemeIssueTypeMappingRepository(dsl: DSLContext): SchemeIssueTypeMappingRepository = SchemeIssueTypeMappingRepository(dsl)
 
         @Bean
         open fun workflowSchemeEventPublisher(
@@ -232,8 +224,7 @@ class IssueTransitionResolutionIntegrationTest {
             AlwaysAllowWorkflowSchemePermissionResolver()
 
         @Bean
-        open fun jdbcProjectLookupAdapter(dsl: DSLContext): JdbcProjectLookupAdapter =
-            JdbcProjectLookupAdapter(dsl)
+        open fun jdbcProjectLookupAdapter(dsl: DSLContext): JdbcProjectLookupAdapter = JdbcProjectLookupAdapter(dsl)
 
         @Bean
         open fun issueTypeLookupPort(): IssueTypeLookupPort = mockk(relaxed = true)
@@ -321,8 +312,7 @@ class IssueTransitionResolutionIntegrationTest {
             )
 
         @Bean
-        open fun issueController(service: IssueApplicationService): IssueController =
-            IssueController(service)
+        open fun issueController(service: IssueApplicationService): IssueController = IssueController(service)
 
         @Bean
         open fun issueExceptionHandler(): IssueExceptionHandler = IssueExceptionHandler()
@@ -410,11 +400,12 @@ class IssueTransitionResolutionIntegrationTest {
         ).andExpect(status().isOk)
 
         // 2단계: in_progress → done (resolutionId 제공)
-        val step2Body = mapOf(
-            "toStatusKey" to "done",
-            "expectedVersion" to 2,
-            "resolutionId" to FIXED_RESOLUTION_ID.toString(),
-        )
+        val step2Body =
+            mapOf(
+                "toStatusKey" to "done",
+                "expectedVersion" to 2,
+                "resolutionId" to FIXED_RESOLUTION_ID.toString(),
+            )
         mockMvc.perform(
             post("/api/v1/issues/$issueKey/transition")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -472,11 +463,12 @@ class IssueTransitionResolutionIntegrationTest {
     fun `존재하지 않는 resolutionId 제공 시 404 RESOLUTION_NOT_FOUND 반환`() {
         val issueKey = insertIssue(PROJECT_KEY, "존재성 검증 이슈", "open")
 
-        val body = mapOf(
-            "toStatusKey" to "in_progress",
-            "expectedVersion" to 1,
-            "resolutionId" to NONEXISTENT_RESOLUTION_ID.toString(),
-        )
+        val body =
+            mapOf(
+                "toStatusKey" to "in_progress",
+                "expectedVersion" to 1,
+                "resolutionId" to NONEXISTENT_RESOLUTION_ID.toString(),
+            )
         mockMvc.perform(
             post("/api/v1/issues/$issueKey/transition")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -591,7 +583,11 @@ class IssueTransitionResolutionIntegrationTest {
         }
     }
 
-    private fun insertProject(conn: Connection, key: String, name: String) {
+    private fun insertProject(
+        conn: Connection,
+        key: String,
+        name: String,
+    ) {
         conn.prepareStatement(
             "INSERT INTO projects (key, name) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
         ).use { stmt ->

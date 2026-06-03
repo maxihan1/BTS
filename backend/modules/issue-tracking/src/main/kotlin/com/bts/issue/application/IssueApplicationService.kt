@@ -296,6 +296,8 @@ class IssueApplicationService(
         assertPermission(actor, IssuePermission.VIEW, IssueScope.Issue(key.value))
         val issue = repo.findByKey(key) ?: throw IssueNotFoundException(key)
         val resolvedWorkflow = resolveWorkflowKeyReadOnly(key)
+        // resolution 필드 포함 — EXECUTION phase RequiredField validator 입력 (B7 에서 활성화).
+        val issueFieldsForAvailable = mapOf("summary" to issue.summary, "resolution" to issue.resolutionId?.toString())
         val req =
             AvailableTransitionsRequest(
                 workflowKey = resolvedWorkflow.workflowKey,
@@ -303,11 +305,7 @@ class IssueApplicationService(
                 issueKey = key.value,
                 actorId = actor.value.toString(),
                 actorRoles = emptySet(),
-                // resolution 필드 포함 — EXECUTION phase RequiredField validator 입력 (B7 에서 활성화).
-                issueFields = mapOf(
-                    "summary" to issue.summary,
-                    "resolution" to issue.resolutionId?.toString(),
-                ),
+                issueFields = issueFieldsForAvailable,
             )
         return when (val result = workflowPort.availableTransitions(req)) {
             is AvailableTransitionsResult.Success -> result.transitions
@@ -317,25 +315,32 @@ class IssueApplicationService(
     }
 
     /**
-     * 이슈 상태를 전이한다 (WorkflowKeyResolver → workflowPort.plan() 호출 + 낙관락).
+     * 이슈 상태를 전이하고 resolution_id 를 영속한다 (WorkflowKeyResolver → workflowPort.plan() + 낙관락).
      *
-     * 흐름.
+     * 흐름 (FR-IS-07 B6 포함).
      * 1. TRANSITION 권한 검증 (Issue 범위)
-     * 2. SELECT FOR UPDATE 로 이슈 조회 (비관락) — 미존재 시 IssueNotFoundException
-     * 3. [WorkflowKeyResolver.resolveStart] 로 workflowKey 결정 (issueTypeKey = null, FR-IS-02 이전)
+     * 2. [Q3] resolutionId non-null 이면 [ResolutionRepository.findById] 로 존재성 검증 —
+     *    없으면 [ResolutionNotFoundException](404). 영속 전에 수행하여 DB 오염을 차단한다.
+     * 3. SELECT FOR UPDATE 로 이슈 조회 (비관락) — 미존재 시 IssueNotFoundException
+     * 4. [WorkflowKeyResolver.resolveStart] 로 workflowKey 결정 (issueTypeKey = null, FR-IS-02 이전)
      *    — WorkflowSchemeNoDefaultException 발생 시 [IssueWorkflowNotConfiguredException] 으로 변환 (BC 격리)
-     * 4. workflowPort.plan() 호출 — [TransitionResult] sealed 분기 처리
-     * 5. applyTransition 호출 — 0 row 면 IssueVersionConflictException
-     * 6. IssueTransitioned 이벤트 발행
+     * 5. workflowPort.plan() 호출 — [TransitionResult] sealed 분기 처리.
+     *    issueFields 에 resolution 포함 — EXECUTION phase RequiredField validator 입력 (B7 에서 활성화).
+     * 6. [IssueRepository.applyTransition] 호출 — resolutionId 함께 UPDATE.
+     *    null 이면 DB NULL(비DONE 재전이 clear), non-null 이면 지정값 SET.
+     *    0 row 면 IssueVersionConflictException.
+     * 7. IssueTransitioned 이벤트 발행
      *
      * 클래스 레벨 @Transactional(REQUIRED) 이 적용되므로 workflowKeyResolver.resolveStart (MANDATORY),
      * workflowPort.plan (MANDATORY) 호출 모두 만족한다.
      *
      * @param actor 전이 행위자.
      * @param key 전이할 이슈 키.
-     * @param request 전이 요청 DTO.
+     * @param request 전이 요청 DTO. resolutionId=null 이면 resolution_id clear.
      * @return 전이된 이슈의 [IssueResponse].
      * @throws IssueAccessDeniedException 권한 없을 때.
+     * @throws com.bts.issue.resolution.domain.ResolutionNotFoundException resolutionId non-null 이지만
+     *   resolutions 테이블에 존재하지 않을 때 (404, 영속 전 검증).
      * @throws IssueNotFoundException 이슈가 없는 경우.
      * @throws IssueWorkflowNotConfiguredException 프로젝트에 기본 워크플로우 스킴이 없을 때.
      * @throws IssueTransitionNotAllowedException [TransitionResult.ValidatorFailure],
@@ -352,13 +357,16 @@ class IssueApplicationService(
 
         // [Q3] resolutionId 존재성 검증 — plan() 호출 전에 수행하여 영속 전에 거부한다.
         // non-null 인 경우에만 조회하며, 없으면 ResolutionNotFoundException (404).
-        val validatedResolutionId = request.resolutionId?.let { id ->
-            resolutionRepository.findById(id) ?: throw ResolutionNotFoundException(id)
-            id
+        val reqResolutionId = request.resolutionId
+        if (reqResolutionId != null) {
+            resolutionRepository.findById(reqResolutionId) ?: throw ResolutionNotFoundException(reqResolutionId)
         }
+        val validatedResolutionId = reqResolutionId
 
         val issue = repo.findByKeyForUpdate(key) ?: throw IssueNotFoundException(key)
         val resolvedWorkflow = resolveWorkflowKey(key)
+        // resolution 필드 포함 — EXECUTION phase RequiredField validator 입력 (B7 에서 활성화).
+        val issueFieldsForTransition = mapOf("summary" to issue.summary, "resolution" to validatedResolutionId?.toString())
         val transitionReq =
             TransitionRequest(
                 workflowKey = resolvedWorkflow.workflowKey,
@@ -366,11 +374,7 @@ class IssueApplicationService(
                 fromStateKey = issue.currentStateKey,
                 toStateKey = request.toStateKey,
                 actorId = actor.value.toString(),
-                // resolution 필드 포함 — EXECUTION phase RequiredField validator 입력 (B7 에서 활성화).
-                issueFields = mapOf(
-                    "summary" to issue.summary,
-                    "resolution" to validatedResolutionId?.toString(),
-                ),
+                issueFields = issueFieldsForTransition,
                 actorRoles = emptySet(),
                 version = request.expectedVersion,
             )
