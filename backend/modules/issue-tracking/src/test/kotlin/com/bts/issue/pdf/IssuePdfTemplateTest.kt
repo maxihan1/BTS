@@ -27,6 +27,13 @@ class IssuePdfTemplateTest : DescribeSpec({
 
     val template = IssuePdfTemplate()
 
+    val sampleResolution =
+        IssueResponse.ResolutionSummary(
+            id = UUID.fromString("00000000-0000-4000-8000-000000000010"),
+            key = "fixed",
+            name = "Fixed",
+        )
+
     /** 테스트용 기본 픽스처 — 모든 필드가 채워진 이슈. */
     fun fullIssue(descriptionHtml: String? = "<p>본문입니다.</p>") =
         IssueResponse(
@@ -50,11 +57,7 @@ class IssuePdfTemplateTest : DescribeSpec({
             impact = 1,
             impactName = "High",
             assigneeId = UUID.fromString("00000000-0000-4000-8000-000000000002"),
-            resolution = IssueResponse.ResolutionSummary(
-                id = UUID.fromString("00000000-0000-4000-8000-000000000010"),
-                key = "fixed",
-                name = "Fixed",
-            ),
+            resolution = sampleResolution,
         )
 
     describe("IssuePdfTemplate.render — 메타 표") {
@@ -114,25 +117,26 @@ class IssuePdfTemplateTest : DescribeSpec({
     describe("IssuePdfTemplate.render — null 필드 처리") {
 
         it("assignee·impact·resolution이 null이면 '-' 표기, NPE 없음") {
-            val issue = IssueResponse(
-                key = "ATLAS-1",
-                id = UUID.fromString("00000000-0000-4000-8000-000000000001"),
-                projectKey = "ATLAS",
-                summary = "null 필드 테스트",
-                currentStateKey = "open",
-                reporterId = UUID.fromString("00000000-0000-4000-8000-000000000001"),
-                version = 1L,
-                createdAt = null,
-                updatedAt = null,
-                typeId = 1L,
-                typeKey = "task",
-                typeName = "Task",
-                descriptionHtml = "<p>본문</p>",
-                assigneeId = null,
-                impact = null,
-                impactName = null,
-                resolution = null,
-            )
+            val issue =
+                IssueResponse(
+                    key = "ATLAS-1",
+                    id = UUID.fromString("00000000-0000-4000-8000-000000000001"),
+                    projectKey = "ATLAS",
+                    summary = "null 필드 테스트",
+                    currentStateKey = "open",
+                    reporterId = UUID.fromString("00000000-0000-4000-8000-000000000001"),
+                    version = 1L,
+                    createdAt = null,
+                    updatedAt = null,
+                    typeId = 1L,
+                    typeKey = "task",
+                    typeName = "Task",
+                    descriptionHtml = "<p>본문</p>",
+                    assigneeId = null,
+                    impact = null,
+                    impactName = null,
+                    resolution = null,
+                )
 
             val result = template.render(issue)
 
@@ -153,39 +157,31 @@ class IssuePdfTemplateTest : DescribeSpec({
     describe("IssuePdfTemplate.render — C2: 실제 MarkdownRenderer 출력 well-formed XML 파싱") {
 
         it("한글+코드블록+중첩리스트+mailto 링크 포함 renderSafe 출력을 본문으로 넣어도 DocumentBuilder.parse 성공") {
-            val complexMarkdown = """
-                # 한글 제목
-
-                본문에 **굵은 글씨**와 *기울임*이 포함됩니다.
-
-                코드 블록 예시:
-
-                ```kotlin
-                fun hello() = println("안녕하세요")
-                ```
-
-                중첩 목록:
-                - 상위 항목 1
-                  - 하위 항목 1-1
-                  - 하위 항목 1-2
-                - 상위 항목 2
-
-                메일 링크: [담당자에게](mailto:user@example.com)
-
-                <script>alert(1)</script>
-            """.trimIndent()
+            val complexMarkdown =
+                "# 한글 제목\n\n" +
+                    "본문에 **굵은 글씨**와 *기울임*이 포함됩니다.\n\n" +
+                    "코드 블록 예시:\n\n" +
+                    "```kotlin\nfun hello() = println(\"안녕하세요\")\n```\n\n" +
+                    "중첩 목록:\n" +
+                    "- 상위 항목 1\n" +
+                    "  - 하위 항목 1-1\n" +
+                    "  - 하위 항목 1-2\n" +
+                    "- 상위 항목 2\n\n" +
+                    "메일 링크: [담당자에게](mailto:user@example.com)\n\n" +
+                    "<script>alert(1)</script>"
 
             val sanitizedHtml = MarkdownRenderer.renderSafe(complexMarkdown)
             val issue = fullIssue(descriptionHtml = sanitizedHtml)
             val result = template.render(issue)
 
-            // 1) 단일 root <html>로 시작해야 한다.
+            // 1) XML 선언으로 시작해야 한다.
             result.trim() shouldStartWith "<?xml"
 
             // 2) DocumentBuilder.parse로 well-formed XML 파싱 성공 (예외 미발생 = 단언).
-            val factory = DocumentBuilderFactory.newInstance().apply {
-                isNamespaceAware = true
-            }
+            val factory =
+                DocumentBuilderFactory.newInstance().apply {
+                    isNamespaceAware = true
+                }
             val builder = factory.newDocumentBuilder()
             // 파싱 실패 시 SAXParseException을 던짐 — 이 줄에서 예외 없으면 well-formed 확인됨.
             val doc = builder.parse(ByteArrayInputStream(result.toByteArray(Charsets.UTF_8)))
