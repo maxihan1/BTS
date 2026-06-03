@@ -262,7 +262,7 @@ class YamlSeedValidatorPostActionTest {
             "test-validator-seed",
         )
 
-        // 표준 4 워크플로우는 validators/post_actions 없으므로 빈 리스트여야 함
+        // software-default 전이 수 불변 검증 (FR-IS-07 B7 YAML 변경 후에도 6건 유지)
         val swDefault = all.first { it.key == "software-default" }
         assertThat(swDefault.transitions).hasSize(6)
 
