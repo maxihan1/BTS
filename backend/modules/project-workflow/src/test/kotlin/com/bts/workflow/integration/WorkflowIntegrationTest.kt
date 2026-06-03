@@ -172,8 +172,8 @@ class WorkflowIntegrationTest {
         // Given
         val definitionRepo =
             mockk<WorkflowDefinitionRepository> {
-                every { findValidators(any()) } returns emptyList()
-                every { findPostActions(any()) } returns emptyList()
+                every { findValidators(any(), any()) } returns emptyList()
+                every { findPostActions(any(), any()) } returns emptyList()
             }
         val engine = buildEngine(definitionRepo, mockk(), mockk())
 
@@ -212,8 +212,8 @@ class WorkflowIntegrationTest {
 
         val definitionRepo =
             mockk<WorkflowDefinitionRepository> {
-                every { findValidators(any()) } returns listOf(validatorConfig)
-                every { findPostActions(any()) } returns emptyList()
+                every { findValidators(any(), any()) } returns listOf(validatorConfig)
+                every { findPostActions(any(), any()) } returns emptyList()
             }
         val validatorFactory =
             mockk<WorkflowValidatorFactory> {
@@ -254,8 +254,8 @@ class WorkflowIntegrationTest {
 
         val definitionRepo =
             mockk<WorkflowDefinitionRepository> {
-                every { findValidators(any()) } returns listOf(validatorConfig)
-                every { findPostActions(any()) } returns emptyList()
+                every { findValidators(any(), any()) } returns listOf(validatorConfig)
+                every { findPostActions(any(), any()) } returns emptyList()
             }
         val validatorFactory =
             mockk<WorkflowValidatorFactory> {
@@ -307,8 +307,8 @@ class WorkflowIntegrationTest {
 
         val definitionRepo =
             mockk<WorkflowDefinitionRepository> {
-                every { findValidators(any()) } returns listOf(validatorConfig)
-                every { findPostActions(any()) } returns emptyList()
+                every { findValidators(any(), any()) } returns listOf(validatorConfig)
+                every { findPostActions(any(), any()) } returns emptyList()
             }
         val validatorFactory =
             mockk<WorkflowValidatorFactory> {
@@ -365,8 +365,8 @@ class WorkflowIntegrationTest {
 
         val definitionRepo =
             mockk<WorkflowDefinitionRepository> {
-                every { findValidators(any()) } returns emptyList()
-                every { findPostActions(any()) } returns listOf(postActionConfig)
+                every { findValidators(any(), any()) } returns emptyList()
+                every { findPostActions(any(), any()) } returns listOf(postActionConfig)
             }
         val postActionFactory =
             mockk<WorkflowPostActionFactory> {
@@ -400,8 +400,8 @@ class WorkflowIntegrationTest {
         // Given
         val definitionRepo =
             mockk<WorkflowDefinitionRepository> {
-                every { findValidators(any()) } returns emptyList()
-                every { findPostActions(any()) } returns emptyList()
+                every { findValidators(any(), any()) } returns emptyList()
+                every { findPostActions(any(), any()) } returns emptyList()
             }
         val engine = buildEngine(definitionRepo, mockk(), mockk())
 

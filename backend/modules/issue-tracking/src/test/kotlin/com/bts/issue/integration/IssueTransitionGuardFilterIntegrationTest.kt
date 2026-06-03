@@ -255,7 +255,10 @@ class IssueTransitionGuardFilterIntegrationTest {
         @Bean
         open fun workflowDefinitionRepository(): WorkflowDefinitionRepository =
             object : WorkflowDefinitionRepository {
-                override fun findValidators(transition: WorkflowTransition): List<ValidatorConfig> =
+                override fun findValidators(
+                    workflowKey: String,
+                    transition: WorkflowTransition,
+                ): List<ValidatorConfig> =
                     when {
                         transition.toStateKey == "actor_gated" ->
                             listOf(ValidatorConfig("permission-check", mapOf("permission" to "GUARDED_TRANSITION")))
@@ -264,7 +267,10 @@ class IssueTransitionGuardFilterIntegrationTest {
                         else -> emptyList()
                     }
 
-                override fun findPostActions(transition: WorkflowTransition): List<PostActionConfig> = emptyList()
+                override fun findPostActions(
+                    workflowKey: String,
+                    transition: WorkflowTransition,
+                ): List<PostActionConfig> = emptyList()
             }
 
         @Bean

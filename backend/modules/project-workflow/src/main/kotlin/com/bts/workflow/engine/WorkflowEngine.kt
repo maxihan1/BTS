@@ -18,6 +18,7 @@ import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.workflow.domain.expression.DefaultActorView
 import com.bts.workflow.domain.expression.DefaultIssueView
+import com.bts.workflow.domain.spi.ValidatorPhase
 import com.bts.workflow.domain.spi.ValidatorResult
 import com.bts.workflow.domain.spi.WorkflowPostAction
 import com.bts.workflow.domain.spi.WorkflowValidator
@@ -77,20 +78,38 @@ interface WorkflowDefinitionRepository {
      * 주어진 전이에 설정된 Validator 설정 목록을 반환한다.
      * 순서는 YAML 정의 순서를 따른다 (순차 평가를 위해 보존해야 한다).
      *
+     * [workflowKey] 는 workflow_id 해석을 위한 1급 식별자로, 같은 (from, to) 쌍을 사용하는
+     * 여러 워크플로우가 존재할 때 올바른 validator 행을 선택하기 위해 필수로 전달해야 한다.
+     * 이 인자 없이 transition 만으로 조회하면 오매칭(silent 결함)이 발생한다.
+     *
+     * @param workflowKey 워크플로우 식별자 (workflow 테이블 key 컬럼 값)
      * @param transition 조회 대상 전이 정의
      */
-    fun findValidators(transition: WorkflowTransition): List<ValidatorConfig>
+    fun findValidators(
+        workflowKey: String,
+        transition: WorkflowTransition,
+    ): List<ValidatorConfig>
 
     /**
      * 주어진 전이에 설정된 PostAction 설정 목록을 반환한다.
      *
+     * [workflowKey] 는 workflow_id 해석을 위한 1급 식별자로, 같은 (from, to) 쌍을 사용하는
+     * 여러 워크플로우가 존재할 때 올바른 post_action 행을 선택하기 위해 필수로 전달해야 한다.
+     *
+     * @param workflowKey 워크플로우 식별자 (workflow 테이블 key 컬럼 값)
      * @param transition 조회 대상 전이 정의
      */
-    fun findPostActions(transition: WorkflowTransition): List<PostActionConfig>
+    fun findPostActions(
+        workflowKey: String,
+        transition: WorkflowTransition,
+    ): List<PostActionConfig>
 }
 
-/** Validator 한 건의 type + config 쌍. */
-data class ValidatorConfig(val type: String, val config: Map<String, Any?>)
+/** Validator 한 건의 type + config 쌍. phase 는 validator 인스턴스에서 읽는다(단일 출처). */
+data class ValidatorConfig(
+    val type: String,
+    val config: Map<String, Any?>,
+)
 
 /** PostAction 한 건의 type + config 쌍. */
 data class PostActionConfig(val type: String, val config: Map<String, Any?>)
@@ -232,12 +251,21 @@ class WorkflowEngine(
         return TransitionContext(req, workflow, fromState, transition, issueView, actorView)
     }
 
-    /** Validator 를 순차 평가한다. 첫 Fail 즉시 예외를 던진다. */
+    /**
+     * Validator 를 순차 평가한다. 첫 Fail 즉시 예외를 던진다.
+     *
+     * plan 경로(전이 실행)에서만 호출된다. AVAILABILITY / EXECUTION 구분 없이 모든 phase 의
+     * validator 를 평가한다. EXECUTION 페이즈 게이트(RequiredField 등)도 이 경로에서 차단한다.
+     * availableTransitions 경로에서는 이 함수를 호출하지 않고 passesValidators 를 사용한다.
+     *
+     * ctx.request.workflowKey 를 definitionRepo 에 전달해 같은 (from, to) 를 공유하는
+     * 다른 워크플로우의 validator 가 오매칭되지 않도록 한다.
+     */
     private fun runValidators(
         ctx: TransitionContext,
         transition: WorkflowTransition,
     ) {
-        for (cfg in definitionRepo.findValidators(transition)) {
+        for (cfg in definitionRepo.findValidators(ctx.request.workflowKey, transition)) {
             val validator = validatorFactory.create(cfg.type, cfg.config)
             val result = validator.validate(ctx)
             if (result is ValidatorResult.Fail) {
@@ -252,14 +280,19 @@ class WorkflowEngine(
         }
     }
 
-    /** PostAction 을 모두 평가하고 fieldChanges 와 emitEvents 를 누적해 반환한다. */
+    /**
+     * PostAction 을 모두 평가하고 fieldChanges 와 emitEvents 를 누적해 반환한다.
+     *
+     * ctx.request.workflowKey 를 definitionRepo 에 전달해 같은 (from, to) 를 공유하는
+     * 다른 워크플로우의 post_action 이 오매칭되지 않도록 한다.
+     */
     private fun runPostActions(
         ctx: TransitionContext,
         transition: WorkflowTransition,
     ): Pair<List<FieldChange>, List<DomainEvent>> {
         val fieldChanges = mutableListOf<FieldChange>()
         val emitEvents = mutableListOf<DomainEvent>()
-        for (cfg in definitionRepo.findPostActions(transition)) {
+        for (cfg in definitionRepo.findPostActions(ctx.request.workflowKey, transition)) {
             val postAction = postActionFactory.create(cfg.type, cfg.config)
             val plan = postAction.evaluate(ctx)
             fieldChanges += plan.fieldChanges
@@ -269,10 +302,17 @@ class WorkflowEngine(
     }
 
     /**
-     * 단일 전이에 대해 Validator 평가만 수행하고 통과 여부를 반환한다.
+     * 단일 전이에 대해 AVAILABILITY 페이즈 Validator 만 평가하고 통과 여부를 반환한다.
+     *
+     * availableTransitions 경로(읽기, 버튼 노출 결정)에서만 호출된다.
+     * EXECUTION 페이즈 validator(RequiredField 등)는 건너뛴다 — 버튼 노출과 실행 차단이
+     * 분리되어야 하기 때문이다(Jira transition screen 시맨틱). 실행 차단은 runValidators 에서 담당.
      *
      * PostAction 은 평가하지 않는다 — [availableTransitions] 의 읽기 전용 계약을 유지한다.
      * fromState 가 워크플로우에 존재하지 않으면 false 를 반환한다.
+     *
+     * req.workflowKey 를 definitionRepo 에 전달해 같은 (from, to) 를 공유하는
+     * 다른 워크플로우의 validator 가 오매칭되지 않도록 한다.
      */
     private fun passesValidators(
         req: AvailableTransitionsRequest,
@@ -300,8 +340,13 @@ class WorkflowEngine(
             )
         val ctx = TransitionContext(syntheticRequest, workflow, fromState, transition, issueView, actorView)
 
-        for (cfg in definitionRepo.findValidators(transition)) {
+        // availableTransitions 는 AVAILABILITY 페이즈 validator 만 평가한다.
+        // EXECUTION 페이즈(RequiredField 등)는 전이 실행 시(plan 경로)에만 평가되므로 건너뛴다.
+        // phase 의 진실 출처는 validator 인스턴스이므로, 인스턴스 생성 후 phase 를 확인한다.
+        // 이렇게 해야 "입력이 필요한 전이"도 목록에는 노출되고(버튼 보임), 실행 시점에만 차단된다.
+        for (cfg in definitionRepo.findValidators(req.workflowKey, transition)) {
             val validator = validatorFactory.create(cfg.type, cfg.config)
+            if (validator.phase == ValidatorPhase.EXECUTION) continue
             val result = validator.validate(ctx)
             if (result is ValidatorResult.Fail) {
                 log.debug(

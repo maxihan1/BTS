@@ -3,6 +3,7 @@
 package com.bts.workflow.validator
 
 import com.bts.workflow.domain.dto.TransitionContext
+import com.bts.workflow.domain.spi.ValidatorPhase
 import com.bts.workflow.domain.spi.ValidatorResult
 import com.bts.workflow.domain.spi.WorkflowValidator
 
@@ -23,6 +24,12 @@ import com.bts.workflow.domain.spi.WorkflowValidator
  */
 class RequiredFieldValidator(private val field: String) : WorkflowValidator {
     override val type: String = "RequiredField"
+
+    /**
+     * 이 Validator 는 실제 전이 실행 시에만 평가되는 EXECUTION 게이트다.
+     * 필드 입력은 전이 목록 조회가 아니라 전이 실행 화면에서 강제한다.
+     */
+    override val phase: ValidatorPhase get() = ValidatorPhase.EXECUTION
 
     /**
      * [field] 에 해당하는 이슈 필드 값을 확인하고 전이 허용 여부를 반환한다.
