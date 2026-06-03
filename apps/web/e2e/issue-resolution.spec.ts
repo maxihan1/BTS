@@ -70,6 +70,10 @@ test.describe('FR-IS-07 종료 결의안 — 단건 전이', () => {
 
     // Then. 상태 배지가 done으로 갱신 (MSW stateful + invalidateQueries refetch)
     await expect(badge).toContainText('done')
+
+    // Then. 해결 결과(resolution)가 메타패널에 표시됨 (FR-IS-07 FR8 B9b)
+    await expect(page.getByTestId('issue-resolution')).toBeVisible()
+    await expect(page.getByTestId('issue-resolution')).toContainText('Fixed')
   })
 
   // ───────────────────────────────────────────────────────────────────────────
