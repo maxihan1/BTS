@@ -55,6 +55,7 @@ class DefaultWorkflowPostActionFactory : WorkflowPostActionFactory {
 
     private fun createSetField(config: Map<String, Any?>): SetFieldPostAction {
         val field = requireConfigString(config, "field")
+        // "value" 키가 없거나 명시적으로 null 인 경우 모두 null 로 전달 — SetFieldPostAction 설계 의도.
         val value = config["value"]
         return SetFieldPostAction(field = field, value = value)
     }
