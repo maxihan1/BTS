@@ -41,19 +41,19 @@ class IssuePdfRenderer(
     fun render(issue: IssueResponse): ByteArray {
         log.debug("PDF 렌더 시작: issueKey={}", issue.key)
         val xhtml = template.render(issue)
-        val baos = ByteArrayOutputStream()
-
-        PdfRendererBuilder()
-            // OFL 라이선스 NanumGothic — classpath 번들 폰트, 한글 임베딩 필수
-            .useFont(
-                FSSupplier { javaClass.getResourceAsStream(FONT_RESOURCE_PATH) },
-                FONT_FAMILY,
-            )
-            // baseUri=null — 외부 URL 리소스 fetch 비활성 (img allowlist 없음으로 자연 차단)
-            .withHtmlContent(xhtml, null)
-            .toStream(baos)
-            .run()
-
+        val baos =
+            ByteArrayOutputStream().also { out ->
+                PdfRendererBuilder()
+                    // OFL 라이선스 NanumGothic — classpath 번들 폰트, 한글 임베딩 필수
+                    .useFont(
+                        FSSupplier { javaClass.getResourceAsStream(FONT_RESOURCE_PATH) },
+                        FONT_FAMILY,
+                    )
+                    // baseUri=null — 외부 URL 리소스 fetch 비활성 (img allowlist 없음으로 자연 차단)
+                    .withHtmlContent(xhtml, null)
+                    .toStream(out)
+                    .run()
+            }
         log.debug("PDF 렌더 완료: issueKey={}, bytes={}", issue.key, baos.size())
         return baos.toByteArray()
     }
