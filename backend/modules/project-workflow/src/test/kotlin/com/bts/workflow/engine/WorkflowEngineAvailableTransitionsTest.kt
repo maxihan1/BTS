@@ -169,17 +169,17 @@ class WorkflowEngineAvailableTransitionsTest {
         // open→in_progress: validator 없음 → 통과
         every { mockDefinitionRepo.findValidators("software-default", txOpenToInProgress) } returns emptyList()
         // open→closed: validator 1개 → Fail 반환
-        val blockingConfig = ValidatorConfig("Permission", mapOf("role" to "ADMIN"))
+        val blockingConfig = ValidatorConfig("permission-check", mapOf("role" to "ADMIN"))
         every { mockDefinitionRepo.findValidators("software-default", txOpenToClosed) } returns listOf(blockingConfig)
         val blockingValidator = mockk<WorkflowValidator>()
-        every { blockingValidator.type } returns "Permission"
+        every { blockingValidator.type } returns "permission-check"
         every { blockingValidator.phase } returns ValidatorPhase.AVAILABILITY
         every { blockingValidator.validate(any()) } returns
             ValidatorResult.Fail(
                 field = null,
                 reason = "ADMIN 역할만 취소할 수 있습니다.",
             )
-        every { mockValidatorFactory.create("Permission", mapOf("role" to "ADMIN")) } returns blockingValidator
+        every { mockValidatorFactory.create("permission-check", mapOf("role" to "ADMIN")) } returns blockingValidator
 
         val result = engine.availableTransitions(baseRequest)
 
