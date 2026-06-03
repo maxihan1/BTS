@@ -6,13 +6,17 @@ import com.bts.issue.application.AppChangeAssigneeRequest
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.pdf.IssuePdfRenderer
+import com.bts.issue.pdf.IssuePdfTemplate
 import com.bts.shared.issue.IssueTypeId
 import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.web.PageableDefault
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -57,11 +61,13 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
  * 인증 연동은 이후 security-engineer wave 에서 처리한다.
  *
  * @param service 이슈 유스케이스 서비스
+ * @param pdfRenderer 이슈 PDF 바이너리 렌더러
  */
 @RestController
 @RequestMapping("/api/v1/issues")
 class IssueController(
     private val service: IssueApplicationService,
+    private val pdfRenderer: IssuePdfRenderer = IssuePdfRenderer(IssuePdfTemplate()),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
