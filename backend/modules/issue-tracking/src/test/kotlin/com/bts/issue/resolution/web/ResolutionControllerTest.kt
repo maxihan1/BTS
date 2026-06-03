@@ -53,8 +53,7 @@ class ResolutionControllerTest {
         open fun resolutionApplicationService(): ResolutionApplicationService = mockk(relaxed = true)
 
         @Bean
-        open fun resolutionController(service: ResolutionApplicationService): ResolutionController =
-            ResolutionController(service)
+        open fun resolutionController(service: ResolutionApplicationService): ResolutionController = ResolutionController(service)
     }
 
     @Autowired
@@ -72,7 +71,13 @@ class ResolutionControllerTest {
             resolution(UUID.fromString("11111111-1111-4111-8111-111111111111"), "fixed", "Fixed", "이슈가 정상적으로 수정·해결되었다.", 1),
             resolution(UUID.fromString("22222222-2222-4222-8222-222222222222"), "wontfix", "Won't Fix", "의도적으로 수정하지 않기로 결정하였다.", 2),
             resolution(UUID.fromString("33333333-3333-4333-8333-333333333333"), "duplicate", "Duplicate", "동일한 내용의 이슈가 이미 존재한다.", 3),
-            resolution(UUID.fromString("44444444-4444-4444-8444-444444444444"), "cannotreproduce", "Cannot Reproduce", "보고된 현상을 재현할 수 없다.", 4),
+            resolution(
+                UUID.fromString("44444444-4444-4444-8444-444444444444"),
+                "cannotreproduce",
+                "Cannot Reproduce",
+                "보고된 현상을 재현할 수 없다.",
+                4,
+            ),
             resolution(UUID.fromString("55555555-5555-4555-8555-555555555555"), "done", "Done", "작업이 완료되었다.", 5),
         )
 
