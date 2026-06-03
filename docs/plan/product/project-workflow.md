@@ -35,7 +35,7 @@
 - [x] jOOQ routine 래퍼 (pgmq 함수 호출) (PR #10 backend + PR #14 ADR pgmq-postgres-image, 2026-05-22)
 - [x] 트랜잭션 일관성 통합 테스트 — "이슈 생성 ↔ 알림 큐 발행" 동일 트랜잭션 (롤백 시 큐도 롤백) (PR #10 backend + PR #14 ADR pgmq-postgres-image, 2026-05-22)
 
-## §2 워크플로우 (FR-WF, 2개)
+## §2 워크플로우 (FR-WF, 3개)
 
 ### §2.1 FR-WF-01 — FSM 워크플로우 (상태/전이/조건/검증/후처리)
 
@@ -65,6 +65,19 @@
 - [x] D6. 프론트 UI — 프로젝트 설정 → 워크플로우 (책임. designer → frontend-engineer) — PR #31
 - [x] D7. E2E — 워크플로우 스킴 5 시나리오 Playwright (스킴 CRUD + 매핑 편집 + 표준 보호 + 사용 중 차단 모달 + 프로젝트 할당) (책임. qa-engineer) — PR #35, 2026-05-29
 
+### §2.3 FR-WF-03 — 워크플로우 전이 validator/PostAction 런타임 결선
+
+**우선순위**. 필수 | **선행**. §2.1 | **Plan slug**. `workflow/validator-runtime-wiring`
+
+> FR-WF-01(PR #10)이 SPI 인터페이스 + 구현체(validator 4종/PostAction 5종)만 만들고 production 결선은 안 한 비계(테스트 익명 object만, 실동작 FSM invariant뿐)를 완성. FR-IS-07(resolution 종료 전이 필수) 선행. 배포 조립 부재(no-cross-bc-deployment-assembly)로 검증은 test-assembled 컨텍스트 한정 — 실배포 부팅 결선은 BC 조립 모듈 후속.
+
+- [x] D1. 도메인 — validator 적용 단계(phase) 구분 AVAILABILITY/EXECUTION, 결선 범위 확정 (책임. backend-engineer + Maxi) (PR #66, 2026-06-03)
+- [x] D2. 명세 — factory/repo/seed 결선 + test-assembled 검증. 확정 D8=A(phase 구분)/D9=A(PostAction 계산만, GAP-2)/D10=B(test-assembled 검증) (책임. backend-engineer) (PR #66, 2026-06-03)
+- [x] D4. 백엔드 — DefaultWorkflowValidatorFactory/PostActionFactory + DefaultWorkflowDefinitionRepository(jOOQ, workflowKey로 transition_id 해석) + WorkflowEngineConfig(SpelEvaluator·ExecutorService @Bean) + YamlSeedService validators/post_actions 시드(시드 시점 type fail-fast) + WorkflowValidator.phase (책임. backend-engineer) (PR #66, 2026-06-03)
+- [x] D5. 백엔드 테스트 — TDD 8 task(red→green→refactor) + test-assembled @ContextConfiguration 통합검증(B2 cross-workflow 격리, validator plan 거부/availableTransitions 포함, PostAction plan 누적) (책임. backend-engineer) (PR #66 + #69 테스트 토큰 정본화, 2026-06-03)
+
+> **D3/D6/D7 비해당**. 마이그레이션 신규 없음(`workflow_validators`/`workflow_post_actions` V200 기존, jOOQ 상수 자동 생성). UI/E2E 없음(백엔드 기반 인프라). 잔존 비차단 — `YamlSeedService.isDirty`가 validator/post_action config-only 변경 미감지(type만 비교), 프레임워크가 config를 런타임 실소비하는 시점에 확장.
+
 ## §NFR project-workflow BC 완료 게이트
 
 ### 측정값 기록표
@@ -81,9 +94,9 @@
 
 ### BC 완료 조건
 
-> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 (예정) — 후속. Wave 6(S1~S8 통합테스트 + ADR/SDD) · C1 detekt 정합 · §NFR deferred trigger 도달 시 측정
+> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 / FR-WF-03 ✅ 머지 #66 (테스트 토큰 정본화 #69) — 후속. Wave 6(S1~S8 통합테스트 + ADR/SDD) · C1 detekt 정합 · §NFR deferred trigger 도달 시 측정
 
-- [ ] §2 (FR-WF 2개) 모두 `[x]` 마킹
+- [ ] §2 (FR-WF 3개) 모두 `[x]` 마킹
 - [ ] §NFR 측정표 모든 항목 임계 통과 (위 deferred trigger 충족 후)
 - [ ] pgmq ADR (§A.3 #1) 발행 완료
 - [ ] CHANGELOG.md 정리
