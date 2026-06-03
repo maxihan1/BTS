@@ -1,9 +1,10 @@
-// 프로젝트 버전 목록 — 4분기(로딩/에러/빈/목록) + 생성/수정 Dialog 연동 (FR-VR-01)
+// 프로젝트 버전 목록 — 4분기(로딩/에러/빈/목록) + 생성/수정 Dialog 연동 + 권한 게이팅 (FR-VR-01, FR-PM-03)
 import { useState } from 'react'
 import type { JSX } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useVersions } from '@/hooks/use-versions'
+import { useProjectPermissions } from '@/hooks/use-project-permissions'
 import { versionLabels, versionErrorMessage } from '@/i18n/version-labels'
 import { VersionRow } from './VersionRow'
 import { VersionFormDialog } from './VersionFormDialog'
@@ -63,6 +64,17 @@ function VersionListSkeleton(): JSX.Element {
  */
 export function VersionList({ projectKey }: VersionListProps): JSX.Element {
   const { data: versions, isLoading, isError, error } = useVersions(projectKey)
+
+  // 권한 게이팅 — fail-closed: 로딩/에러/미인가이면 false (FR-PM-03 D6)
+  const {
+    data: permissionsData,
+    isLoading: isPermissionsLoading,
+    isError: isPermissionsError,
+  } = useProjectPermissions(projectKey)
+  const canManage =
+    !isPermissionsLoading &&
+    !isPermissionsError &&
+    permissionsData?.permissions.MANAGE_VERSIONS === true
 
   const [dialogState, setDialogState] = useState<DialogState>({ open: false })
 
@@ -125,6 +137,9 @@ export function VersionList({ projectKey }: VersionListProps): JSX.Element {
           <CardTitle>{versionLabels.page.heading}</CardTitle>
           <Button
             size="sm"
+            disabled={!canManage}
+            aria-disabled={!canManage}
+            title={!canManage ? versionLabels.actions.noPermission : undefined}
             onClick={openCreateDialog}
           >
             {versionLabels.actions.addButton}
@@ -142,6 +157,7 @@ export function VersionList({ projectKey }: VersionListProps): JSX.Element {
                   projectKey={projectKey}
                   onEdit={openEditDialog}
                   onDelete={handleDelete}
+                  canManage={canManage}
                 />
               ))}
             </ul>
