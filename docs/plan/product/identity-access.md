@@ -257,13 +257,13 @@
 
 > 기능 선행 메모(2026-06-02, 갱신 2026-06-03). FR-PM-03은 "버전/컴포넌트 엔드포인트에 @PreAuthorize 추가"라 대상 기능이 먼저 있어야 한다. FR-CM-01(컴포넌트)은 PR #59로 구현 완료(권한은 ComponentPermissionResolver 포트로 추상화, prod 실판정을 FR-PM-03이 채움 — ADR docs/adr/2026-06-02-component-model-and-permission-deferral.md). **FR-VR-01(버전) 백엔드 D1~D5도 PR #67로 완료**(VersionPermissionResolver 포트 추상화, prod 실판정 FR-PM-03 이연 — ADR docs/adr/2026-06-03-version-model-and-permission-deferral.md). **→ FR-PM-03 기능 선행(컴포넌트·버전 CRUD) 모두 충족, 착수 가능.** FR-PM-03은 두 리졸버(ComponentPermissionResolver, VersionPermissionResolver)의 prod 구현 + permission_schemes 매트릭스를 채운다.
 
-- [ ] D1. 도메인 (책임. security-engineer)
-- [ ] D2. 명세 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — (FR-PM-02 활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — `@PreAuthorize` 추가 (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 (책임. security-engineer)
-- [ ] D6. 프론트 UI (책임. frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. security-engineer) — PR #70 (ADR docs/decisions/2026-06-03-version-component-permission-prod-resolver.md)
+- [x] D2. 명세 (책임. security-engineer) — PR #70
+- [x] D3. 데이터 모델 — (FR-PM-02 활용) (책임. db-engineer) — PR #70 (V009: 기본 스킴에 MANAGE_COMPONENTS/MANAGE_VERSIONS PROJECT_ADMIN 시드. 신규 테이블 없음)
+- [x] D4. 백엔드 — 권한 가드 prod 구현 (책임. security-engineer) — PR #70 (IdentityAccessComponent/VersionPermissionResolver @Profile prod. @PreAuthorize 대신 명시 호출 — IssuePermissionResolver 동형)
+- [x] D5. 백엔드 테스트 (책임. security-engineer) — PR #70 (단위 MockK 2 + prod 프로파일 통합 매트릭스 각 9케이스. MEMBER/비멤버 거부 ground-truth)
+- [ ] D6. 프론트 UI (책임. frontend-engineer) — 후속 PR (권한 질의 API My*PermissionController 신설 포함)
+- [ ] D7. E2E (책임. qa-engineer) — 후속 PR
 
 ### §4.4 FR-PM-04 — 워크플로우/자동화 관리 권한
 
