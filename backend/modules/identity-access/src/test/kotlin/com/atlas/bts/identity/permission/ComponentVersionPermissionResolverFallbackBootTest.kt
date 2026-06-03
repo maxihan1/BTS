@@ -1,4 +1,4 @@
-// non-prod identity-access 컨텍스트에 Component/Version PermissionResolver fallback 빈이 존재하는지 검증하는 부팅 회귀 가드 (FR-PM-03 task-1).
+// non-prod identity-access 컨텍스트의 Component/Version 권한 리졸버 fallback 빈 부팅 가드 (FR-PM-03 task-1).
 
 package com.atlas.bts.identity.permission
 
