@@ -4,10 +4,15 @@ package com.atlas.bts.identity.web
 
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
+import com.atlas.bts.identity.project.ProjectDirectory
 import com.atlas.bts.identity.web.dto.ProjectPermissionsResponse
+import com.bts.shared.permission.ComponentPermission
+import com.bts.shared.permission.ComponentPermissionResolver
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import com.bts.shared.permission.VersionPermission
+import com.bts.shared.permission.VersionPermissionResolver
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -38,8 +43,15 @@ import java.util.UUID
  * - 미존재 projectKey → 200 + `false` (404 아님 — resolver가 미존재를 거부로 판정).
  *
  * ## UI 권한 목록
- * [UI_PROJECT_PERMISSIONS] — 프론트엔드 이슈 생성 버튼 노출에 사용하는 권한.
+ * 응답 `permissions` 맵에 담기는 권한 키.
+ * - [UI_PROJECT_PERMISSIONS] — 이슈 생성 버튼 노출용 `CREATE` (FR-PM-02).
+ * - `MANAGE_COMPONENTS`/`MANAGE_VERSIONS` — 버전/컴포넌트 관리 버튼 게이팅용 (FR-PM-03 D6/D7).
+ *   [ComponentPermissionResolver]/[VersionPermissionResolver]가 단일 관리 코드(MANAGE_*)로 매핑하므로
+ *   임의 대표값([ComponentPermission.CREATE]/[VersionPermission.CREATE]) 1회 호출로 판정한다.
+ *   projectKey→projectId는 [ProjectDirectory.resolveKeyToId]로 해석하고, null(미존재/소프트삭제)이면
+ *   MANAGE_* 둘 다 false(기존 "미존재 projectKey → 200 + false" 정책 일관).
  *
+ * @see docs/decisions/2026-06-03-version-component-permission-query-and-gating.md
  * @see docs/decisions/2026-06-02-issue-permission-query-api.md
  * @see IssuePermissionResolver
  * @see MyIssuePermissionController
@@ -47,11 +59,20 @@ import java.util.UUID
 @RestController
 class MyProjectPermissionController(
     private val permissionResolver: IssuePermissionResolver,
+    private val componentPermissionResolver: ComponentPermissionResolver,
+    private val versionPermissionResolver: VersionPermissionResolver,
+    private val projectDirectory: ProjectDirectory,
     private val personalAccessTokenService: PersonalAccessTokenService,
 ) {
     companion object {
         /** UI 이슈 생성 버튼 노출에 사용하는 프로젝트 권한 목록 (FR-PM-02 CREATE 게이트). */
         val UI_PROJECT_PERMISSIONS: List<IssuePermission> = listOf(IssuePermission.CREATE)
+
+        /** UI 컴포넌트 관리 버튼 게이팅 권한 키 (FR-PM-03 D6/D7). */
+        const val MANAGE_COMPONENTS_KEY = "MANAGE_COMPONENTS"
+
+        /** UI 버전 관리 버튼 게이팅 권한 키 (FR-PM-03 D6/D7). */
+        const val MANAGE_VERSIONS_KEY = "MANAGE_VERSIONS"
     }
 
     /**
@@ -72,11 +93,42 @@ class MyProjectPermissionController(
         if (projectKey.isBlank()) throw ResponseStatusException(HttpStatus.BAD_REQUEST)
         val actorId = resolveActorId(request, jwt)
         val scope = IssueScope.Project(projectKey)
-        val permissions =
+        val issuePermissions =
             UI_PROJECT_PERMISSIONS.associate { permission ->
                 permission.name to permissionResolver.hasPermission(actorId, permission, scope)
             }
-        return ProjectPermissionsResponse(projectKey = projectKey, permissions = permissions)
+        val managePermissions = resolveManagePermissions(actorId, projectKey)
+        return ProjectPermissionsResponse(
+            projectKey = projectKey,
+            permissions = issuePermissions + managePermissions,
+        )
+    }
+
+    /**
+     * `MANAGE_COMPONENTS`/`MANAGE_VERSIONS` 보유 여부를 판정한다 (FR-PM-03 D6/D7).
+     *
+     * projectKey를 [ProjectDirectory.resolveKeyToId]로 projectId(UUID)로 해석한다.
+     * - null(미존재/소프트삭제) → 두 키 모두 false (기존 미존재 정책 일관, 404 아님).
+     * - 그 외 → Component/VersionPermissionResolver를 각 1회 호출한다. 두 리졸버가 CREATE/UPDATE/DELETE를
+     *   단일 관리 코드(MANAGE_*)로 매핑하므로 임의 대표값 CREATE로 판정해도 결과는 동일하다.
+     *
+     * @param actorId 인증 토큰에서 추출한 행위자 UUID
+     * @param projectKey 권한 조회 대상 프로젝트 키
+     * @return MANAGE_COMPONENTS/MANAGE_VERSIONS → 보유 여부 맵
+     */
+    private fun resolveManagePermissions(
+        actorId: UUID,
+        projectKey: String,
+    ): Map<String, Boolean> {
+        val projectId =
+            projectDirectory.resolveKeyToId(projectKey)
+                ?: return mapOf(MANAGE_COMPONENTS_KEY to false, MANAGE_VERSIONS_KEY to false)
+        return mapOf(
+            MANAGE_COMPONENTS_KEY to
+                componentPermissionResolver.hasPermission(actorId, ComponentPermission.CREATE, projectId),
+            MANAGE_VERSIONS_KEY to
+                versionPermissionResolver.hasPermission(actorId, VersionPermission.CREATE, projectId),
+        )
     }
 
     /**
