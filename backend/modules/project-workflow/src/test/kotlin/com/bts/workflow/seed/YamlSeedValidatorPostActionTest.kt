@@ -2,13 +2,18 @@
 
 package com.bts.workflow.seed
 
+import com.bts.workflow.adapter.AlwaysAllowPermissionResolver
 import com.bts.workflow.domain.WorkflowTransition
+import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
+import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
+import com.bts.workflow.expression.SpelEvaluator
 import com.bts.workflow.repository.DefaultWorkflowDefinitionRepository
 import com.bts.workflow.repository.WorkflowRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -30,6 +35,7 @@ import org.testcontainers.utility.DockerImageName
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.sql.DriverManager
+import java.util.concurrent.Executors
 
 /**
  * YamlSeedService validators/post_actions 시드 통합 테스트.
@@ -67,6 +73,8 @@ class YamlSeedValidatorPostActionTest {
         lateinit var service: YamlSeedService
         lateinit var defRepo: DefaultWorkflowDefinitionRepository
         lateinit var workflowRepo: WorkflowRepository
+        lateinit var validatorFactory: DefaultWorkflowValidatorFactory
+        lateinit var postActionFactory: DefaultWorkflowPostActionFactory
 
         @BeforeAll
         @JvmStatic
@@ -120,9 +128,17 @@ class YamlSeedValidatorPostActionTest {
             val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
             val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
 
+            // 실제 factory — unknown type 에 IllegalArgumentException 을 던져야 fail-fast 가 작동한다.
+            val spelExecutor = Executors.newCachedThreadPool()
+            validatorFactory = DefaultWorkflowValidatorFactory(
+                permissionResolver = AlwaysAllowPermissionResolver(),
+                spelEvaluator = SpelEvaluator(executor = spelExecutor, timeoutMillis = 5000L),
+            )
+            postActionFactory = DefaultWorkflowPostActionFactory()
+
             workflowRepo = WorkflowRepository(dsl)
             defRepo = DefaultWorkflowDefinitionRepository(dsl)
-            service = YamlSeedService(workflowRepo, dsl, DefaultResourceLoader(), yamlMapper)
+            service = YamlSeedService(workflowRepo, dsl, DefaultResourceLoader(), yamlMapper, validatorFactory, postActionFactory)
         }
     }
 
@@ -265,14 +281,14 @@ class YamlSeedValidatorPostActionTest {
                   - type: RequiredField
                     config:
                       field: resolution
-                  - type: Permission
+                  - type: permission-check
                     config:
-                      role: DEVELOPER
-                  - type: NotStatusCategory
+                      permission: TRANSITION_ISSUE
+                  - type: not-status-category
                     config:
                       category: DONE
-                post_actions:
-                  - type: SetField
+                postActions:
+                  - type: SET_FIELD
                     config:
                       field: assignee
                       value: actor
@@ -293,8 +309,19 @@ class YamlSeedValidatorPostActionTest {
         val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
         val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
         val modifiedLoader = SingleOverrideResourceLoader("test-validator-seed.yaml", modifiedYaml)
+        val spelExecutor = Executors.newCachedThreadPool()
         val serviceWithModified =
-            YamlSeedService(WorkflowRepository(dsl), dsl, modifiedLoader, yamlMapper)
+            YamlSeedService(
+                WorkflowRepository(dsl),
+                dsl,
+                modifiedLoader,
+                yamlMapper,
+                DefaultWorkflowValidatorFactory(
+                    permissionResolver = AlwaysAllowPermissionResolver(),
+                    spelEvaluator = SpelEvaluator(executor = spelExecutor, timeoutMillis = 5000L),
+                ),
+                DefaultWorkflowPostActionFactory(),
+            )
 
         // 단건 시드 — parseAndValidate + applyIfChanged 경로
         val dto = yamlMapper.readValue(modifiedYaml, WorkflowYamlDto::class.java)
@@ -306,9 +333,63 @@ class YamlSeedValidatorPostActionTest {
 
         // 재적재 후 3건으로 변경됨
         assertThat(validators).hasSize(3)
-        assertThat(validators.map { it.type }).containsExactly("RequiredField", "Permission", "NotStatusCategory")
+        assertThat(validators.map { it.type }).containsExactly("RequiredField", "permission-check", "not-status-category")
 
         log.info("시나리오 8 통과 — validator 변경 후 재적재 확인, 새 validator 수: {}", validators.size)
+    }
+
+    // ── 시나리오 9. 미지원 validator type → IllegalStateException fail-fast ──────────
+
+    @Test
+    @Order(9)
+    fun `미지원 validator type 이 포함된 YAML 시드 시 IllegalStateException 으로 fail-fast 한다`() {
+        val bogusValidatorYaml =
+            """
+            key: test-validator-seed
+            name: Validator 시드 테스트 워크플로우
+            description: YamlSeedValidatorPostActionTest 전용 — 표준 4 워크플로우와 무관
+            states:
+              - { key: open, name: Open, category: TODO, displayOrder: 1 }
+              - { key: done, name: Done, category: DONE, displayOrder: 2 }
+            transitions:
+              - from: open
+                to: done
+                name: Complete
+                validators:
+                  - type: BogusValidator
+                    config:
+                      field: resolution
+            """.trimIndent().toByteArray()
+
+        val dataSource =
+            DriverManagerDataSource(
+                postgres.jdbcUrl,
+                postgres.username,
+                postgres.password,
+            )
+        val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
+        val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
+        val spelExecutor = Executors.newCachedThreadPool()
+        val svc =
+            YamlSeedService(
+                WorkflowRepository(dsl),
+                dsl,
+                DefaultResourceLoader(),
+                yamlMapper,
+                DefaultWorkflowValidatorFactory(
+                    permissionResolver = AlwaysAllowPermissionResolver(),
+                    spelEvaluator = SpelEvaluator(executor = spelExecutor, timeoutMillis = 5000L),
+                ),
+                DefaultWorkflowPostActionFactory(),
+            )
+
+        val dto = yamlMapper.readValue(bogusValidatorYaml, WorkflowYamlDto::class.java)
+
+        assertThatThrownBy { svc.seedSingle(dto) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("BogusValidator")
+
+        log.info("시나리오 9 통과 — 미지원 validator type fail-fast 확인")
     }
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
@@ -325,7 +406,15 @@ class YamlSeedValidatorPostActionTest {
                 postgres.password,
             )
         val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
-        val svc = YamlSeedService(WorkflowRepository(dsl), dsl, DefaultResourceLoader(), yamlMapper)
+        val svc =
+            YamlSeedService(
+                WorkflowRepository(dsl),
+                dsl,
+                DefaultResourceLoader(),
+                yamlMapper,
+                validatorFactory,
+                postActionFactory,
+            )
         svc.seedSingle(dto)
     }
 
