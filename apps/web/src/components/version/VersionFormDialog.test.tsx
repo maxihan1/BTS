@@ -63,7 +63,9 @@ describe('VersionFormDialog — 생성 모드', () => {
   })
 
   it('이름을 비운 채 저장 시 onSubmit이 호출되지 않고 오류 메시지가 표시된다', async () => {
-    const mockCreate = vi.fn() as unknown as (input: CreateVersionInput) => void
+    const mockCreate = vi.fn().mockResolvedValue(undefined) as unknown as (
+      input: CreateVersionInput,
+    ) => Promise<void>
     const Wrapper = createWrapper()
     render(
       <VersionFormDialog
@@ -86,7 +88,9 @@ describe('VersionFormDialog — 생성 모드', () => {
   })
 
   it('생성 모드: name/desc/startDate/releaseDate 입력 후 저장 시 createVersion 호출', async () => {
-    const mockCreate = vi.fn() as unknown as (input: CreateVersionInput) => void
+    const mockCreate = vi.fn().mockResolvedValue(undefined) as unknown as (
+      input: CreateVersionInput,
+    ) => Promise<void>
     const Wrapper = createWrapper()
     render(
       <VersionFormDialog
@@ -123,12 +127,16 @@ describe('VersionFormDialog — 생성 모드', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('VersionFormDialog — 수정 모드 변경 감지', () => {
-  let mockUpdate: (input: UpdateVersionMutationInput) => void
-  let mockChangeDates: (input: ChangeVersionDatesMutationInput) => void
+  let mockUpdate: (input: UpdateVersionMutationInput) => Promise<void>
+  let mockChangeDates: (input: ChangeVersionDatesMutationInput) => Promise<void>
 
   beforeEach(() => {
-    mockUpdate = vi.fn() as unknown as (input: UpdateVersionMutationInput) => void
-    mockChangeDates = vi.fn() as unknown as (input: ChangeVersionDatesMutationInput) => void
+    mockUpdate = vi.fn().mockResolvedValue(undefined) as unknown as (
+      input: UpdateVersionMutationInput,
+    ) => Promise<void>
+    mockChangeDates = vi.fn().mockResolvedValue(undefined) as unknown as (
+      input: ChangeVersionDatesMutationInput,
+    ) => Promise<void>
   })
 
   it('(a) 둘 다 미변경 저장 → 0 mutation 호출', async () => {

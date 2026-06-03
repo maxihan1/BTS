@@ -336,17 +336,9 @@ describe('VersionList — 행 삭제 버튼', () => {
     const saveButton = screen.getByRole('button', { name: '저장' })
     await user.click(saveButton)
 
-    // 목록에 v1.0 반영 확인
+    // 목록에 v1.0 반영 + Dialog 자동 닫힘 확인 (저장 성공 시 onClose 호출)
     await waitFor(() => {
       expect(screen.getByText('v1.0')).toBeInTheDocument()
-    })
-
-    // VersionFormDialog는 내부 훅에서 onClose를 직접 호출하지 않으므로
-    // 취소 버튼으로 Dialog를 닫은 뒤 삭제 테스트 진행
-    const cancelButton = screen.getByRole('button', { name: '취소' })
-    await user.click(cancelButton)
-
-    await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
 

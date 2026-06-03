@@ -79,21 +79,21 @@ interface VersionFormDialogProps {
   /** 상위 mutation에서 전달된 서버 오류 메시지 — null이면 미표시 */
   readonly submitError?: string | null
   /**
-   * 테스트 주입용 — useCreateVersion의 mutate를 override한다.
+   * 테스트 주입용 — useCreateVersion의 mutateAsync를 override한다.
    * 프로덕션에서는 절대 사용하지 않는다.
    * @internal
    */
-  readonly _testCreateMutate?: (input: CreateVersionInput) => void
+  readonly _testCreateMutate?: (input: CreateVersionInput) => Promise<void>
   /**
-   * 테스트 주입용 — useUpdateVersion의 mutate를 override한다.
+   * 테스트 주입용 — useUpdateVersion의 mutateAsync를 override한다.
    * @internal
    */
-  readonly _testUpdateMutate?: (input: UpdateVersionMutationInput) => void
+  readonly _testUpdateMutate?: (input: UpdateVersionMutationInput) => Promise<void>
   /**
-   * 테스트 주입용 — useChangeVersionDates의 mutate를 override한다.
+   * 테스트 주입용 — useChangeVersionDates의 mutateAsync를 override한다.
    * @internal
    */
-  readonly _testChangeDatesMutate?: (input: ChangeVersionDatesMutationInput) => void
+  readonly _testChangeDatesMutate?: (input: ChangeVersionDatesMutationInput) => Promise<void>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -106,9 +106,9 @@ interface FormBodyProps {
   readonly initial?: Version
   readonly onClose: () => void
   readonly submitError?: string | null
-  readonly _testCreateMutate?: (input: CreateVersionInput) => void
-  readonly _testUpdateMutate?: (input: UpdateVersionMutationInput) => void
-  readonly _testChangeDatesMutate?: (input: ChangeVersionDatesMutationInput) => void
+  readonly _testCreateMutate?: (input: CreateVersionInput) => Promise<void>
+  readonly _testUpdateMutate?: (input: UpdateVersionMutationInput) => Promise<void>
+  readonly _testChangeDatesMutate?: (input: ChangeVersionDatesMutationInput) => Promise<void>
 }
 
 function FormBody({
@@ -127,10 +127,10 @@ function FormBody({
   const updateVersion = useUpdateVersion(projectKey)
   const changeVersionDates = useChangeVersionDates(projectKey)
 
-  // 테스트 주입 우선 — 없으면 실제 hook mutate 사용
-  const doCreate = _testCreateMutate ?? ((input: CreateVersionInput) => { createVersion.mutate(input) })
-  const doUpdate = _testUpdateMutate ?? ((input: UpdateVersionMutationInput) => { updateVersion.mutate(input) })
-  const doChangeDates = _testChangeDatesMutate ?? ((input: ChangeVersionDatesMutationInput) => { changeVersionDates.mutate(input) })
+  // 테스트 주입 우선 — 없으면 실제 hook mutateAsync 사용
+  const doCreate = _testCreateMutate ?? ((input: CreateVersionInput) => createVersion.mutateAsync(input))
+  const doUpdate = _testUpdateMutate ?? ((input: UpdateVersionMutationInput) => updateVersion.mutateAsync(input))
+  const doChangeDates = _testChangeDatesMutate ?? ((input: ChangeVersionDatesMutationInput) => changeVersionDates.mutateAsync(input))
 
   const {
     register,
@@ -146,7 +146,7 @@ function FormBody({
     },
   })
 
-  function onValid(values: FormValues): void {
+  async function onValid(values: FormValues): Promise<void> {
     if (mode === 'create') {
       const input: CreateVersionInput = {
         name: values.name,
@@ -154,7 +154,12 @@ function FormBody({
         startDate: normalizeDateInput(values.startDate) ?? undefined,
         releaseDate: normalizeDateInput(values.releaseDate) ?? undefined,
       }
-      doCreate(input)
+      try {
+        await doCreate(input)
+        onClose()
+      } catch {
+        // 에러 toast는 훅 onError가 담당 — 여기서는 Dialog를 유지한다
+      }
       return
     }
 
@@ -172,22 +177,29 @@ function FormBody({
       return
     }
 
-    if (metaDirty) {
-      doUpdate({
-        id: initial.id,
-        input: {
-          name: values.name,
-          description: values.description,
-        },
-      })
-    }
+    try {
+      // 변경 그룹별 순차 실행 — 하나라도 실패 시 Dialog 유지
+      if (metaDirty) {
+        await doUpdate({
+          id: initial.id,
+          input: {
+            name: values.name,
+            description: values.description,
+          },
+        })
+      }
 
-    if (datesDirty) {
-      doChangeDates({
-        id: initial.id,
-        startDate: normalizeDateInput(values.startDate),
-        releaseDate: normalizeDateInput(values.releaseDate),
-      })
+      if (datesDirty) {
+        await doChangeDates({
+          id: initial.id,
+          startDate: normalizeDateInput(values.startDate),
+          releaseDate: normalizeDateInput(values.releaseDate),
+        })
+      }
+
+      onClose()
+    } catch {
+      // 에러 toast는 훅 onError가 담당 — 여기서는 Dialog를 유지한다
     }
   }
 
