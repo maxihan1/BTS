@@ -262,8 +262,8 @@
 - [x] D3. 데이터 모델 — (FR-PM-02 활용) (책임. db-engineer) — PR #70 (V009: 기본 스킴에 MANAGE_COMPONENTS/MANAGE_VERSIONS PROJECT_ADMIN 시드. 신규 테이블 없음)
 - [x] D4. 백엔드 — 권한 가드 prod 구현 (책임. security-engineer) — PR #70 (IdentityAccessComponent/VersionPermissionResolver @Profile prod. @PreAuthorize 대신 명시 호출 — IssuePermissionResolver 동형)
 - [x] D5. 백엔드 테스트 (책임. security-engineer) — PR #70 (단위 MockK 2 + prod 프로파일 통합 매트릭스 각 9케이스. MEMBER/비멤버 거부 ground-truth)
-- [ ] D6. 프론트 UI (책임. frontend-engineer) — 후속 PR (권한 질의 API My*PermissionController 신설 포함)
-- [ ] D7. E2E (책임. qa-engineer) — 후속 PR
+- [x] D6. 프론트 UI (책임. frontend-engineer) — PR #72 (MyProjectPermissionController 확장으로 MANAGE_* 노출 + DevAllow fallback 2 + ComponentList/Row·VersionList/Row fail-closed 게이팅, 리드변경 포함)
+- [x] D7. E2E (책임. qa-engineer) — PR #72 (권한 게이팅 E2E 4 + 기존 component/version-management 회귀 0)
 
 ### §4.4 FR-PM-04 — 워크플로우/자동화 관리 권한
 
