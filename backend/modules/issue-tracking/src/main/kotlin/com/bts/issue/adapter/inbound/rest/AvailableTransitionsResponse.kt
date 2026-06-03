@@ -53,6 +53,9 @@ data class TransitionItem(
         /**
          * [AvailableTransitionView] 를 [TransitionItem] 으로 변환한다.
          *
+         * [TransitionItem.toCategory] 는 [AvailableTransitionView.toCategory] 를 그대로 전달한다.
+         * 프론트엔드는 이 값으로 DONE 전이 여부를 판별한다.
+         *
          * @param view shared-kernel 의 가용 전이 뷰.
          * @return REST 응답 항목.
          */
