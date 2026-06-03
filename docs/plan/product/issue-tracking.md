@@ -141,11 +141,11 @@
 
 **우선순위**. 중간 | **선행**. §2.1.1 | **Plan slug**. `issue/pdf-export`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — PDF 레이아웃 + 페이지 헤더/푸터 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용만) (책임. db-engineer)
-- [ ] D4. 백엔드 — `openhtmltopdf` + `pdfbox`. `GET /api/v1/issues/{key}/pdf` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — PDF 바이너리 검증 (책임. backend-engineer)
+- [x] D1. 도메인 (책임. backend-engineer) — PR #71 (읽기 전용 출력, 신규 엔티티 0, 기존 MarkdownRenderer sanitized HTML 재사용)
+- [x] D2. 명세 — PDF 레이아웃 + 페이지 헤더/푸터 (책임. backend-engineer) — PR #71 (메타 표 + @page 헤더/푸터, docs/specs/2026-06-03-fr-is-08-pdf.md)
+- [x] D3. 데이터 모델 — (활용만) (책임. db-engineer) — PR #71 (변경 0)
+- [x] D4. 백엔드 — `openhtmltopdf` + `pdfbox`. `GET /api/v1/issues/{key}/pdf` (책임. backend-engineer) — PR #71 (openhtmltopdf-pdfbox:1.0.10, NanumGothic OFL 폰트 번들, IssuePdfTemplate→IssuePdfRenderer→controller. NFR1 descriptionHtml만 신뢰)
+- [x] D5. 백엔드 테스트 — PDF 바이너리 검증 (책임. backend-engineer) — PR #71 (단위+통합. %PDF- 시그니처, PDFTextStripper 한글 추출, XSS sanitize, 404)
 - [ ] D6. 프론트 UI — 인쇄 버튼 + 다운로드 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
