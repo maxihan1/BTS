@@ -117,8 +117,12 @@ class WorkflowEngineUnitTest {
         val postActionConfigB = PostActionConfig("Notify", emptyMap())
 
         every { cache.findByKey("DEFAULT") } returns workflow
-        every { definitionRepo.findValidators("DEFAULT", transition) } returns listOf(validatorConfigA, validatorConfigB)
-        every { definitionRepo.findPostActions("DEFAULT", transition) } returns listOf(postActionConfigA, postActionConfigB)
+        every {
+            definitionRepo.findValidators("DEFAULT", transition)
+        } returns listOf(validatorConfigA, validatorConfigB)
+        every {
+            definitionRepo.findPostActions("DEFAULT", transition)
+        } returns listOf(postActionConfigA, postActionConfigB)
         every { validatorFactory.create("RequiredField", validatorConfigA.config) } returns validatorA
         every { validatorFactory.create("Permission", validatorConfigB.config) } returns validatorB
         every { postActionFactory.create("SetField", postActionConfigA.config) } returns postActionA
