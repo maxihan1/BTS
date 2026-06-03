@@ -204,6 +204,17 @@ FR-PM-03 — 버전/컴포넌트 등록 권한. 두 권한 리졸버 포트(`Com
   BC 조립 부재로 test-assembled까지만 검증(메모리 no-cross-bc-deployment-assembly, 스펙 EC3).
 - 범위: backend D1~D5. D6/D7 프론트는 게이트 1에서 분할 결정(권장: 후속 PR).
 
+## 구현 결과 (bts-impl, 2026-06-03)
+
+- Task 1 (V009 마이그레이션) — ✅ test 5749ae0d → feat fd725678 → refactor b8fe49f5 (db-engineer)
+- Task 2 (컴포넌트 prod 리졸버) — ✅ test ec21d8aa → feat 423b283b (security-engineer, KDoc GREEN 포함→refactor no-op 생략)
+- Task 3 (버전 prod 리졸버) — ✅ test 680ad0df → feat 59f10bcf (security-engineer, 동형)
+- Task 4 (prod 통합테스트) — ✅ test 6e5731cf (security-engineer, 매트릭스 각 10/10, MEMBER/비멤버 거부 ground-truth)
+- hot-fix — 8564c37a: V009가 기본 스킴 카운트를 5→7로 바꿔 기존 PermissionSchemaMigrationTest 단언 갱신
+  (개별 실행 미검출, 모듈 전체 test에서만 표면화 — 메모리 backend-detekt-lint-debt-unmasked 유형).
+- 검증: `:modules:identity-access` test 662통과(0실패, 1 기존 skip) + ktlintMain/Test + detekt 전부 그린(--rerun-tasks).
+- QA(E2E): D6 프론트 UI 부재로 N/A. backend 권한 검증은 prod-프로파일 통합테스트가 E2E 등가. D6/D7 후속 PR(게이트 결정).
+
 ## 리뷰 결과
 
 ### code-reviewer ground-truth 적대적 리뷰 (2026-06-03)
