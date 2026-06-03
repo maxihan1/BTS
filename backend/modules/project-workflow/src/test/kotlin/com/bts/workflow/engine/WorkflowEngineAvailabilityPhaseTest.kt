@@ -145,14 +145,14 @@ class WorkflowEngineAvailabilityPhaseTest {
     @Test
     fun `S3 — AVAILABILITY 페이즈 validator 가 Fail 을 반환하면 전이는 목록에서 제외된다`() {
         every { mockCache.findByKey("test-workflow") } returns workflow
-        val permissionConfig = ValidatorConfig("Permission", mapOf("role" to "ADMIN"))
+        val permissionConfig = ValidatorConfig("permission-check", mapOf("role" to "ADMIN"))
         every {
             mockDefinitionRepo.findValidators("test-workflow", txOpenToClosed)
         } returns listOf(permissionConfig)
         // AVAILABILITY 페이즈 validator — Fail 반환
         val blockingValidator =
             object : WorkflowValidator {
-                override val type: String = "Permission"
+                override val type: String = "permission-check"
                 override val phase = ValidatorPhase.AVAILABILITY
 
                 override fun validate(ctx: TransitionContext): ValidatorResult {
@@ -160,7 +160,7 @@ class WorkflowEngineAvailabilityPhaseTest {
                 }
             }
         every {
-            mockValidatorFactory.create("Permission", mapOf("role" to "ADMIN"))
+            mockValidatorFactory.create("permission-check", mapOf("role" to "ADMIN"))
         } returns blockingValidator
 
         val result = engine.availableTransitions(availReqWithoutResolution)

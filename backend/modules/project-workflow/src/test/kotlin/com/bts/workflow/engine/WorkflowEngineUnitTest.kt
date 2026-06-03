@@ -73,7 +73,7 @@ class WorkflowEngineUnitTest {
         )
 
     private val validatorConfigA = ValidatorConfig("RequiredField", mapOf("field" to "priority"))
-    private val postActionConfigA = PostActionConfig("SetField", mapOf("field" to "assignee", "value" to "user-1"))
+    private val postActionConfigA = PostActionConfig("SET_FIELD", mapOf("field" to "assignee", "value" to "user-1"))
 
     @BeforeEach
     fun setUp() {
@@ -94,7 +94,7 @@ class WorkflowEngineUnitTest {
             }
         val validatorB =
             mockk<WorkflowValidator> {
-                every { type } returns "Permission"
+                every { type } returns "permission-check"
                 every { validate(any()) } returns ValidatorResult.Pass
             }
 
@@ -103,18 +103,18 @@ class WorkflowEngineUnitTest {
         val event1 = DomainEvent("ISSUE_TRANSITIONED", mapOf("issueKey" to "BTS-1"))
         val postActionA =
             mockk<WorkflowPostAction> {
-                every { type } returns "SetField"
+                every { type } returns "SET_FIELD"
                 every { evaluate(any()) } returns PostActionPlan(listOf(fieldChange1), listOf(event1))
             }
         val fieldChange2 = FieldChange("priority", "HIGH", "MEDIUM")
         val postActionB =
             mockk<WorkflowPostAction> {
-                every { type } returns "Notify"
+                every { type } returns "NOTIFY"
                 every { evaluate(any()) } returns PostActionPlan(listOf(fieldChange2), emptyList())
             }
 
-        val validatorConfigB = ValidatorConfig("Permission", emptyMap())
-        val postActionConfigB = PostActionConfig("Notify", emptyMap())
+        val validatorConfigB = ValidatorConfig("permission-check", emptyMap())
+        val postActionConfigB = PostActionConfig("NOTIFY", emptyMap())
 
         every { cache.findByKey("DEFAULT") } returns workflow
         every {
@@ -124,9 +124,9 @@ class WorkflowEngineUnitTest {
             definitionRepo.findPostActions("DEFAULT", transition)
         } returns listOf(postActionConfigA, postActionConfigB)
         every { validatorFactory.create("RequiredField", validatorConfigA.config) } returns validatorA
-        every { validatorFactory.create("Permission", validatorConfigB.config) } returns validatorB
-        every { postActionFactory.create("SetField", postActionConfigA.config) } returns postActionA
-        every { postActionFactory.create("Notify", postActionConfigB.config) } returns postActionB
+        every { validatorFactory.create("permission-check", validatorConfigB.config) } returns validatorB
+        every { postActionFactory.create("SET_FIELD", postActionConfigA.config) } returns postActionA
+        every { postActionFactory.create("NOTIFY", postActionConfigB.config) } returns postActionB
 
         val plan = engine.plan(baseRequest)
 
@@ -211,15 +211,15 @@ class WorkflowEngineUnitTest {
 
         val postAction =
             mockk<WorkflowPostAction> {
-                every { type } returns "SetField"
+                every { type } returns "SET_FIELD"
                 every { evaluate(any()) } returns PostActionPlan(emptyList(), emptyList())
             }
-        val postActionCfg = PostActionConfig("SetField", emptyMap())
+        val postActionCfg = PostActionConfig("SET_FIELD", emptyMap())
 
         every { cache.findByKey("SEED") } returns seedWorkflow
         every { definitionRepo.findValidators("SEED", yamlTransition) } returns emptyList()
         every { definitionRepo.findPostActions("SEED", yamlTransition) } returns listOf(postActionCfg)
-        every { postActionFactory.create("SetField", postActionCfg.config) } returns postAction
+        every { postActionFactory.create("SET_FIELD", postActionCfg.config) } returns postAction
 
         // (from, to) 2튜플 매칭 — transitionName 이 없어도 open→in_progress 전이가 매칭된다
         val request =

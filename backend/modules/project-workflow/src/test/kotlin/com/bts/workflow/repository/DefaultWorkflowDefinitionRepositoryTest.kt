@@ -119,8 +119,8 @@ class DefaultWorkflowDefinitionRepositoryTest {
                 val alphaTransId = insertTransition(conn, alphaId, alphaOpenId, alphaDoneId, "완료")
 
                 insertValidator(conn, alphaTransId, "RequiredField", """{"field":"resolution"}""", 0)
-                insertValidator(conn, alphaTransId, "Permission", """{"role":"DEVELOPER"}""", 1)
-                insertPostAction(conn, alphaTransId, "SetField", """{"field":"assignee","value":"actor"}""", 0)
+                insertValidator(conn, alphaTransId, "permission-check", """{"role":"DEVELOPER"}""", 1)
+                insertPostAction(conn, alphaTransId, "SET_FIELD", """{"field":"assignee","value":"actor"}""", 0)
 
                 // ── workflowBeta: 같은 state key(open→done) 사용, validator 1건(다른 type) ──
                 // B2 오매칭 위험: beta의 (open→done) 조회 시 alpha validator 가 섞이면 안 됨
@@ -129,7 +129,7 @@ class DefaultWorkflowDefinitionRepositoryTest {
                 val betaDoneId = insertState(conn, betaId, StateSpec("done", "완료", "DONE", 1))
                 val betaTransId = insertTransition(conn, betaId, betaOpenId, betaDoneId, "완료")
 
-                insertValidator(conn, betaTransId, "NotStatusCategory", """{"category":"IN_PROGRESS"}""", 0)
+                insertValidator(conn, betaTransId, "not-status-category", """{"category":"IN_PROGRESS"}""", 0)
                 // post_action 없음 — 빈 리스트 반환 검증
 
                 conn.commit()
@@ -247,7 +247,7 @@ class DefaultWorkflowDefinitionRepositoryTest {
 
         assertThat(result).hasSize(2)
         assertThat(result[0].type).isEqualTo("RequiredField")
-        assertThat(result[1].type).isEqualTo("Permission")
+        assertThat(result[1].type).isEqualTo("permission-check")
     }
 
     @Test
@@ -287,7 +287,7 @@ class DefaultWorkflowDefinitionRepositoryTest {
         val result = repository.findPostActions("alpha-workflow", alphaTransition)
 
         assertThat(result).hasSize(1)
-        assertThat(result[0].type).isEqualTo("SetField")
+        assertThat(result[0].type).isEqualTo("SET_FIELD")
     }
 
     @Test
@@ -312,8 +312,8 @@ class DefaultWorkflowDefinitionRepositoryTest {
         // alpha 는 RequiredField + Permission 2건
         val alphaResult = repository.findValidators("alpha-workflow", alphaTransition)
 
-        // beta validator(NotStatusCategory) 가 alpha 결과에 포함돼선 안 됨
-        assertThat(alphaResult.map { it.type }).doesNotContain("NotStatusCategory")
+        // beta validator(not-status-category) 가 alpha 결과에 포함돼선 안 됨
+        assertThat(alphaResult.map { it.type }).doesNotContain("not-status-category")
         assertThat(alphaResult).hasSize(2)
     }
 
@@ -322,10 +322,10 @@ class DefaultWorkflowDefinitionRepositoryTest {
         // beta 는 NotStatusCategory 1건
         val betaResult = repository.findValidators("beta-workflow", betaTransition)
 
-        // alpha validator(RequiredField, Permission) 가 beta 결과에 포함돼선 안 됨
+        // alpha validator(RequiredField, permission-check) 가 beta 결과에 포함돼선 안 됨
         assertThat(betaResult.map { it.type }).doesNotContain("RequiredField")
-        assertThat(betaResult.map { it.type }).doesNotContain("Permission")
+        assertThat(betaResult.map { it.type }).doesNotContain("permission-check")
         assertThat(betaResult).hasSize(1)
-        assertThat(betaResult[0].type).isEqualTo("NotStatusCategory")
+        assertThat(betaResult[0].type).isEqualTo("not-status-category")
     }
 }
