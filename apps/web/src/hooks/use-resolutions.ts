@@ -10,7 +10,7 @@ import { fetchResolutions } from '@/api/resolutions'
 export const RESOLUTION_KEYS = {
   /** 전체 결의안 목록 queryKey */
   all: () => ['resolutions'] as const,
-} as const
+} satisfies Record<string, () => readonly string[]>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // useResolutions — 목록 조회
