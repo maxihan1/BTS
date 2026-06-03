@@ -3,7 +3,6 @@
 package com.bts.workflow.repository
 
 import com.bts.workflow.domain.WorkflowTransition
-import com.bts.workflow.engine.DefaultWorkflowDefinitionRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect

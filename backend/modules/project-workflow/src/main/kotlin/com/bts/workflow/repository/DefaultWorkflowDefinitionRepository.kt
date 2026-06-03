@@ -1,8 +1,11 @@
 // DefaultWorkflowDefinitionRepository — jOOQ 기반 workflow_validators / workflow_post_actions 조회 구현체
 
-package com.bts.workflow.engine
+package com.bts.workflow.repository
 
 import com.bts.workflow.domain.WorkflowTransition
+import com.bts.workflow.engine.PostActionConfig
+import com.bts.workflow.engine.ValidatorConfig
+import com.bts.workflow.engine.WorkflowDefinitionRepository
 import com.bts.workflow.jooq.tables.WorkflowPostActions.Companion.WORKFLOW_POST_ACTIONS
 import com.bts.workflow.jooq.tables.WorkflowStates.Companion.WORKFLOW_STATES
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
