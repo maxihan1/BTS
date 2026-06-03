@@ -78,6 +78,7 @@ class BulkItemApplier(
                     TransitionIssueRequest(
                         toStateKey = payload.toStateKey,
                         expectedVersion = existing.version,
+                        resolutionId = payload.resolutionId,
                     ),
                 )
             }
