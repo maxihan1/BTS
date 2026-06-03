@@ -127,6 +127,10 @@ dependencies {
     implementation(project(":modules:project-workflow"))
     testImplementation(project(":modules:project-workflow"))
 
+    // jackson-dataformat-yaml — IssueTransitionValidatorEndToEndIntegrationTest 에서 YamlSeedService 생성 시 사용
+    // project-workflow 가 runtime 에 이미 제공하지만 컴파일 타임 명시 import 를 위해 testImplementation 추가
+    testImplementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
+
     // Spring Boot 테스트 슬라이스 (JUnit Vintage 제외 — Kotest runner 사용)
     testImplementation("org.springframework.boot:spring-boot-starter-test") {
         exclude(group = "org.junit.vintage", module = "junit-vintage-engine")

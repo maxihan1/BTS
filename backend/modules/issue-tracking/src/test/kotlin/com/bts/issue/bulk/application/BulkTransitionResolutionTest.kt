@@ -100,8 +100,9 @@ import java.util.UUID
  * ## 설계 결정
  * - workflowDefinitionRepository 를 mock (emptyList) 으로 두어 B7 RequiredField validator 비활성화.
  *   이는 B13 명세가 "resolutionId 전달 경로" 검증을 목적으로 하기 때문이다.
- * - B7 validator 활성화 경로는 BulkOperationIntegrationTest 에서 DefaultWorkflowDefinitionRepository
- *   + YamlSeedService 를 wire 한 별도 통합 E2E 에서 검증한다.
+ * - validator 활성화 end-to-end 경로는 [com.bts.issue.integration.IssueTransitionValidatorEndToEndIntegrationTest]
+ *   에서 실 DefaultWorkflowDefinitionRepository + DefaultWorkflowValidatorFactory + YamlSeedService 를 wire해
+ *   "resolution 없는 DONE 전이 → 409 TRANSITION_NOT_ALLOWED" 전체 경로를 검증한다.
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [BulkTransitionResolutionTest.TestConfig::class])
