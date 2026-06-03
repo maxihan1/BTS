@@ -70,15 +70,7 @@ class DefaultWorkflowValidatorFactory(
 
     private fun createPermissionCheck(config: Map<String, Any?>): PermissionValidator {
         val permission = requireConfigString(config, "permission")
-        val scope =
-            config["scope"]
-                ?.let { rawScope ->
-                    requireNotNull(rawScope as? String) {
-                        "permission-check config['scope'] 는 String 이어야 합니다: $rawScope"
-                    }
-                    ValidatorScope.valueOf(rawScope)
-                }
-                ?: ValidatorScope.ISSUE
+        val scope = requireConfigEnumOrDefault(config, "scope", ValidatorScope::valueOf, ValidatorScope.ISSUE)
         return PermissionValidator(resolver = permissionResolver, permission = permission, scope = scope)
     }
 
@@ -116,5 +108,31 @@ class DefaultWorkflowValidatorFactory(
                 ?: throw IllegalArgumentException("validator config 에 필수 키 '$key' 가 없습니다")
         return value as? String
             ?: throw IllegalArgumentException("validator config['$key'] 는 String 이어야 합니다: $value")
+    }
+
+    /**
+     * config 에서 키에 해당하는 선택 Enum 값을 추출한다. 키가 없으면 [default] 를 반환한다.
+     *
+     * @param config validator config 맵.
+     * @param key 추출할 키 이름.
+     * @param valueOf Enum 이름 문자열을 해당 Enum 값으로 변환하는 함수.
+     * @param default 키가 없을 때 반환할 기본값.
+     * @return Enum 값 또는 기본값.
+     * @throws IllegalArgumentException 값이 String 이 아니거나 알 수 없는 Enum 이름인 경우.
+     */
+    private fun <T : Enum<T>> requireConfigEnumOrDefault(
+        config: Map<String, Any?>,
+        key: String,
+        valueOf: (String) -> T,
+        default: T,
+    ): T {
+        val raw = config[key] ?: return default
+        val name =
+            raw as? String
+                ?: throw IllegalArgumentException("validator config['$key'] 는 String 이어야 합니다: $raw")
+        return runCatching { valueOf(name) }
+            .getOrElse {
+                throw IllegalArgumentException("validator config['$key'] 에 알 수 없는 값: '$name'")
+            }
     }
 }
