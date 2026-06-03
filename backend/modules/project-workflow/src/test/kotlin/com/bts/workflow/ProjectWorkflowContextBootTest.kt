@@ -49,7 +49,6 @@ import java.sql.DriverManager
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [ProjectWorkflowContextBootTest.TestConfig::class])
 class ProjectWorkflowContextBootTest {
-
     /**
      * test-assembled TestConfig.
      *
@@ -134,8 +133,9 @@ class ProjectWorkflowContextBootTest {
             DataSourceTransactionManager(dataSource)
 
         @Bean
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext =
-            DSL.using(dataSource, SQLDialect.POSTGRES)
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext {
+            return DSL.using(dataSource, SQLDialect.POSTGRES)
+        }
 
         // ── production 구현체 빈 ─────────────────────────────────────────────────
 
@@ -146,19 +146,18 @@ class ProjectWorkflowContextBootTest {
         open fun workflowEngineConfig(): WorkflowEngineConfig = WorkflowEngineConfig()
 
         @Bean
-        open fun spelEvaluator(config: WorkflowEngineConfig): SpelEvaluator =
-            config.spelEvaluator(config.spelExecutorService())
+        open fun spelEvaluator(config: WorkflowEngineConfig): SpelEvaluator {
+            return config.spelEvaluator(config.spelExecutorService())
+        }
 
         @Bean
         open fun workflowValidatorFactory(
             permissionResolver: PermissionResolver,
             spelEvaluator: SpelEvaluator,
-        ): DefaultWorkflowValidatorFactory =
-            DefaultWorkflowValidatorFactory(permissionResolver, spelEvaluator)
+        ): DefaultWorkflowValidatorFactory = DefaultWorkflowValidatorFactory(permissionResolver, spelEvaluator)
 
         @Bean
-        open fun workflowPostActionFactory(): DefaultWorkflowPostActionFactory =
-            DefaultWorkflowPostActionFactory()
+        open fun workflowPostActionFactory(): DefaultWorkflowPostActionFactory = DefaultWorkflowPostActionFactory()
 
         @Bean
         open fun workflowRepository(dsl: DSLContext): WorkflowRepository = WorkflowRepository(dsl)

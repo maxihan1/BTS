@@ -67,7 +67,6 @@ import java.util.concurrent.Executors
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class WorkflowEngineWiringIntegrationTest {
-
     companion object {
         private val temboImage: DockerImageName =
             DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
