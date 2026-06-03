@@ -366,7 +366,8 @@ class IssueApplicationService(
         val issue = repo.findByKeyForUpdate(key) ?: throw IssueNotFoundException(key)
         val resolvedWorkflow = resolveWorkflowKey(key)
         // resolution 필드 포함 — EXECUTION phase RequiredField validator 입력 (B7 에서 활성화).
-        val issueFieldsForTransition = mapOf("summary" to issue.summary, "resolution" to validatedResolutionId?.toString())
+        val issueFieldsForTransition =
+            mapOf("summary" to issue.summary, "resolution" to validatedResolutionId?.toString())
         val transitionReq =
             TransitionRequest(
                 workflowKey = resolvedWorkflow.workflowKey,

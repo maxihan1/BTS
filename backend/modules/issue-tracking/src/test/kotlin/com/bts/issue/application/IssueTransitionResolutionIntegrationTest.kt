@@ -139,6 +139,7 @@ class IssueTransitionResolutionIntegrationTest {
             DataSourceTransactionManager(dataSource)
 
         @Bean
+        @Suppress("MaxLineLength")
         open fun dslContext(dataSource: DriverManagerDataSource): DSLContext = DSL.using(dataSource, SQLDialect.POSTGRES)
 
         @Bean
@@ -201,6 +202,7 @@ class IssueTransitionResolutionIntegrationTest {
         ): WorkflowEngine = WorkflowEngine(cache, validatorFactory, postActionFactory, definitionRepo)
 
         @Bean
+        @Suppress("MaxLineLength")
         open fun workflowTransitionAdapter(engine: WorkflowEngine): WorkflowTransitionAdapter = WorkflowTransitionAdapter(engine)
 
         @Bean
@@ -211,6 +213,7 @@ class IssueTransitionResolutionIntegrationTest {
             ProjectWorkflowSchemeAssignmentRepository(dsl)
 
         @Bean
+        @Suppress("MaxLineLength")
         open fun schemeIssueTypeMappingRepository(dsl: DSLContext): SchemeIssueTypeMappingRepository = SchemeIssueTypeMappingRepository(dsl)
 
         @Bean
@@ -569,7 +572,8 @@ class IssueTransitionResolutionIntegrationTest {
 
             // 프로젝트에 스킴 배정
             conn.prepareStatement(
-                "INSERT INTO project_workflow_scheme_assignments (project_id, workflow_scheme_id, assigned_at, assigned_by) " +
+                "INSERT INTO project_workflow_scheme_assignments " +
+                    "(project_id, workflow_scheme_id, assigned_at, assigned_by) " +
                     "SELECT p.id, ?, NOW(), '00000000-0000-4000-8000-000000000000'::uuid " +
                     "FROM projects p WHERE p.key = ? " +
                     "ON CONFLICT (project_id) DO NOTHING",
@@ -597,6 +601,7 @@ class IssueTransitionResolutionIntegrationTest {
         }
     }
 
+    @Suppress("LongParameterList") // 테스트 헬퍼 — DB 직접 삽입에 필요한 최소 파라미터
     private fun insertState(
         conn: Connection,
         wfId: UUID,
@@ -765,7 +770,8 @@ class IssueTransitionResolutionIntegrationTest {
                 }
 
             conn.prepareStatement(
-                "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version, type_id, resolution_id) " +
+                "INSERT INTO issues " +
+                    "(key, project_id, summary, reporter_id, current_state_key, version, type_id, resolution_id) " +
                     "VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
             ).use { stmt ->
                 stmt.setString(1, issueKey)
@@ -794,12 +800,16 @@ class IssueTransitionResolutionIntegrationTest {
             TestConfig.postgres.jdbcUrl,
             TestConfig.postgres.username,
             TestConfig.postgres.password,
-        ).use { conn ->
-            conn.prepareStatement("SELECT resolution_id FROM issues WHERE key = ?").use { stmt ->
-                stmt.setString(1, issueKey)
-                stmt.executeQuery().use { rs ->
-                    if (rs.next()) rs.getObject(1) as UUID? else null
-                }
+        ).use { conn -> fetchResolutionId(conn, issueKey) }
+
+    private fun fetchResolutionId(
+        conn: java.sql.Connection,
+        issueKey: String,
+    ): UUID? =
+        conn.prepareStatement("SELECT resolution_id FROM issues WHERE key = ?").use { stmt ->
+            stmt.setString(1, issueKey)
+            stmt.executeQuery().use { rs ->
+                if (rs.next()) rs.getObject(1) as UUID? else null
             }
         }
 }

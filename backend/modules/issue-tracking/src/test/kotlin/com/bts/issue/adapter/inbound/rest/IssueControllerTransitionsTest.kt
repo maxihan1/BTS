@@ -92,7 +92,12 @@ class IssueControllerTransitionsTest {
     fun `GET transitions — service 가 2건 반환하면 200 과 transitions 배열 2건을 반환한다`() {
         val stubTransitions =
             listOf(
-                AvailableTransitionView(fromStateKey = "open", toStateKey = "in_progress", name = "시작", toCategory = "IN_PROGRESS"),
+                AvailableTransitionView(
+                    fromStateKey = "open",
+                    toStateKey = "in_progress",
+                    name = "시작",
+                    toCategory = "IN_PROGRESS",
+                ),
                 AvailableTransitionView(fromStateKey = "open", toStateKey = "closed", name = "닫기", toCategory = "DONE"),
             )
 

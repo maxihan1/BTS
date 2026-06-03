@@ -6,7 +6,6 @@ import com.bts.issue.jooq.tables.records.ResolutionsRecord
 import com.bts.issue.jooq.tables.references.RESOLUTIONS
 import com.bts.issue.resolution.domain.Resolution
 import org.jooq.DSLContext
-import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
@@ -30,8 +29,6 @@ import java.util.UUID
 class ResolutionRepository(
     private val dsl: DSLContext,
 ) {
-    private val log = LoggerFactory.getLogger(javaClass)
-
     /**
      * 활성 Resolution 목록을 display_order ASC 로 반환한다.
      *

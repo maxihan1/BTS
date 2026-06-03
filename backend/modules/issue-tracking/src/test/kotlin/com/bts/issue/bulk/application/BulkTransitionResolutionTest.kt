@@ -140,6 +140,7 @@ class BulkTransitionResolutionTest {
             DataSourceTransactionManager(dataSource)
 
         @Bean
+        @Suppress("MaxLineLength")
         open fun dslContext(dataSource: DriverManagerDataSource): DSLContext = DSL.using(dataSource, SQLDialect.POSTGRES)
 
         @Bean
@@ -211,6 +212,7 @@ class BulkTransitionResolutionTest {
         ): WorkflowEngine = WorkflowEngine(cache, validatorFactory, postActionFactory, definitionRepo)
 
         @Bean
+        @Suppress("MaxLineLength")
         open fun workflowTransitionAdapter(engine: WorkflowEngine): WorkflowTransitionAdapter = WorkflowTransitionAdapter(engine)
 
         @Bean
@@ -221,6 +223,7 @@ class BulkTransitionResolutionTest {
             ProjectWorkflowSchemeAssignmentRepository(dsl)
 
         @Bean
+        @Suppress("MaxLineLength")
         open fun schemeIssueTypeMappingRepository(dsl: DSLContext): SchemeIssueTypeMappingRepository = SchemeIssueTypeMappingRepository(dsl)
 
         @Bean
@@ -317,9 +320,11 @@ class BulkTransitionResolutionTest {
         ): BulkOperationRepository = BulkOperationRepository(dsl, objectMapper, clock)
 
         @Bean
+        @Suppress("MaxLineLength")
         open fun bulkOperationEnqueuePublisher(dsl: DSLContext): BulkOperationEnqueuePublisher = BulkOperationEnqueuePublisher(dsl)
 
         @Bean
+        @Suppress("MaxLineLength")
         open fun bulkOperationEventPublisher(dsl: DSLContext): BulkOperationEventPublisher = BulkOperationEventPublisher(dsl)
 
         @Bean
@@ -335,6 +340,7 @@ class BulkTransitionResolutionTest {
         ): BulkItemApplier = BulkItemApplier(issueService, bulkRepo)
 
         @Bean
+        @Suppress("MaxLineLength")
         open fun bulkItemFailureRecorder(bulkRepo: BulkOperationRepository): BulkItemFailureRecorder = BulkItemFailureRecorder(bulkRepo)
 
         @Bean
@@ -642,7 +648,8 @@ class BulkTransitionResolutionTest {
                 }
 
                 conn.prepareStatement(
-                    "INSERT INTO project_workflow_scheme_assignments (project_id, workflow_scheme_id, assigned_at, assigned_by) " +
+                    "INSERT INTO project_workflow_scheme_assignments " +
+                        "(project_id, workflow_scheme_id, assigned_at, assigned_by) " +
                         "SELECT p.id, ?, NOW(), '00000000-0000-4000-8000-000000000000'::uuid " +
                         "FROM projects p WHERE p.key = ? " +
                         "ON CONFLICT (project_id) DO NOTHING",
@@ -779,12 +786,16 @@ class BulkTransitionResolutionTest {
             TestConfig.postgres.jdbcUrl,
             TestConfig.postgres.username,
             TestConfig.postgres.password,
-        ).use { conn ->
-            conn.prepareStatement("SELECT resolution_id FROM issues WHERE key = ?").use { stmt ->
-                stmt.setString(1, issueKey)
-                stmt.executeQuery().use { rs ->
-                    if (rs.next()) rs.getObject(1) as UUID? else null
-                }
+        ).use { conn -> fetchResolutionId(conn, issueKey) }
+
+    private fun fetchResolutionId(
+        conn: java.sql.Connection,
+        issueKey: String,
+    ): UUID? =
+        conn.prepareStatement("SELECT resolution_id FROM issues WHERE key = ?").use { stmt ->
+            stmt.setString(1, issueKey)
+            stmt.executeQuery().use { rs ->
+                if (rs.next()) rs.getObject(1) as UUID? else null
             }
         }
 }
