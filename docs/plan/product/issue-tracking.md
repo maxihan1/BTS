@@ -200,8 +200,8 @@
 - [x] D3. 데이터 모델 — `versions` (책임. db-engineer) — V010, PR #67
 - [x] D4. 백엔드 — CRUD API (책임. backend-engineer + security-engineer) — PR #67 (권한 가드는 VersionPermissionResolver 포트로 추상화, prod 실판정은 FR-PM-03 이연. /dates 전용 서브리소스, 날짜 순서 미강제. ProjectLookup을 com.bts.issue.project 공용 패키지로 이동)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #67 (도메인 단위 + Testcontainers 통합 S1~S9 + S13 rename 중복 409 + 마이그레이션 + 부팅가드 + ArchUnit. 코드리뷰 P2-1 update rename 23505→409 parity 수정)
-- [ ] D6. 프론트 UI (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI (책임. designer → frontend-engineer) — PR #68 (`/projects/$projectKey/settings/versions` 라우트, VersionList/Row/FormDialog, /dates 분리호출 + ''→null 정규화, FR-CM-01 동형. 코드리뷰 H3 submitError 자체관리 배선 수정)
+- [x] D7. E2E (책임. qa-engineer) — PR #68 (version-management.spec.ts S1/S2/S4/S5/S6 happy path, apps/web/e2e/, 행 컨테이너 한정 셀렉터)
 
 #### §3.2.2 FR-VR-02 — 버전 상태 (Unreleased/Released/Archived)
 
