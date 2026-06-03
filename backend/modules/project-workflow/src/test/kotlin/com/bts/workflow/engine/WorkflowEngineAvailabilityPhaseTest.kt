@@ -103,7 +103,7 @@ class WorkflowEngineAvailabilityPhaseTest {
         // EXECUTION 게이트가 있어도 목록에는 반드시 노출되어야 한다
         assertThat(success.transitions).hasSize(1)
         assertThat(success.transitions.single()).isEqualTo(
-            AvailableTransitionView("open", "closed", "Close"),
+            AvailableTransitionView("open", "closed", "Close", toCategory = "DONE"),
         )
     }
 

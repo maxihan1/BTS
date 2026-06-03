@@ -100,8 +100,8 @@ class WorkflowEngineAvailableTransitionsTest {
         val success = result as AvailableTransitionsResult.Success
         assertThat(success.transitions).hasSize(2)
         assertThat(success.transitions).containsExactlyInAnyOrder(
-            AvailableTransitionView("open", "in_progress", "Start Work"),
-            AvailableTransitionView("open", "closed", "Cancel"),
+            AvailableTransitionView("open", "in_progress", "Start Work", toCategory = "IN_PROGRESS"),
+            AvailableTransitionView("open", "closed", "Cancel", toCategory = "DONE"),
         )
         // in_progress, in_review, done 에서 출발하는 전이는 포함되지 않아야 한다
         assertThat(success.transitions.map { it.fromStateKey }).allMatch { it == "open" }
@@ -187,7 +187,7 @@ class WorkflowEngineAvailableTransitionsTest {
         val success = result as AvailableTransitionsResult.Success
         assertThat(success.transitions).hasSize(1)
         assertThat(success.transitions.single()).isEqualTo(
-            AvailableTransitionView("open", "in_progress", "Start Work"),
+            AvailableTransitionView("open", "in_progress", "Start Work", toCategory = "IN_PROGRESS"),
         )
     }
 }
