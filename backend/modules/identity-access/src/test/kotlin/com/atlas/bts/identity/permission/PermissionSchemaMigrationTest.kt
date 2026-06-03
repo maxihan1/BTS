@@ -52,9 +52,10 @@ class PermissionSchemaMigrationTest {
 
     @Test
     fun `기본 스킴과 매트릭스가 시드된다`() {
-        // role_permissions × permission_schemes(is_default=TRUE) JOIN 결과 5행 기대
-        // PROJECT_ADMIN: CREATE_ISSUE, EDIT_ISSUE, DELETE_ISSUE (3행)
-        // MEMBER:        CREATE_ISSUE, EDIT_ISSUE                (2행)
+        // role_permissions × permission_schemes(is_default=TRUE) JOIN 결과 7행 기대
+        // PROJECT_ADMIN: CREATE_ISSUE, EDIT_ISSUE, DELETE_ISSUE, MANAGE_COMPONENTS, MANAGE_VERSIONS (5행)
+        // MEMBER:        CREATE_ISSUE, EDIT_ISSUE                                                   (2행)
+        // (V009 — FR-PM-03이 PROJECT_ADMIN에 MANAGE_COMPONENTS/MANAGE_VERSIONS 2행 추가)
         val count =
             jdbc.queryForObject(
                 """
@@ -66,7 +67,7 @@ class PermissionSchemaMigrationTest {
                 mapOf<String, Any>(),
                 Int::class.java,
             )
-        assertThat(count).isEqualTo(5)
+        assertThat(count).isEqualTo(7)
     }
 
     @Test
