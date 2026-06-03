@@ -7,9 +7,9 @@ package com.bts.issue.adapter.inbound.rest
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.application.IssueApplicationService
+import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.pdf.IssuePdfRenderer
 import com.bts.issue.pdf.IssuePdfTemplate
-import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -328,8 +328,7 @@ class IssueControllerTransitionIntegrationTest {
         open fun issueController(
             service: IssueApplicationService,
             pdfRenderer: IssuePdfRenderer,
-        ): com.bts.issue.adapter.inbound.rest.IssueController =
-            com.bts.issue.adapter.inbound.rest.IssueController(service, pdfRenderer)
+        ): com.bts.issue.adapter.inbound.rest.IssueController = com.bts.issue.adapter.inbound.rest.IssueController(service, pdfRenderer)
 
         @Bean
         open fun issueExceptionHandler(): com.bts.issue.adapter.inbound.rest.IssueExceptionHandler =

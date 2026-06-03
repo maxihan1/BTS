@@ -283,6 +283,37 @@ class IssueController(
     }
 
     /**
+     * 이슈를 PDF로 내보낸다.
+     *
+     * 이슈 키로 단건을 조회한 뒤 [IssuePdfRenderer]로 PDF 바이너리를 생성하여 반환한다.
+     * 이슈가 없거나 소프트 삭제된 경우 [IssueExceptionHandler]가 [com.bts.issue.domain.IssueNotFoundException]을
+     * 가로채 404로 변환한다.
+     *
+     * ### Content-Disposition filename 안전성
+     * filename 값으로 사용하는 이슈 키(`{projectKey}-{sequence}`)는
+     * [IssueKey] 생성 시 영숫자·하이픈만 허용하도록 검증된 형식이므로
+     * HTTP 헤더 인젝션이나 경로 조작 위험이 없다.
+     *
+     * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
+     * @return 200 OK + PDF 바이너리, Content-Type: application/pdf, Content-Disposition: attachment
+     * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우 → 404
+     */
+    @GetMapping("/{key}/pdf", produces = [MediaType.APPLICATION_PDF_VALUE])
+    fun exportPdf(
+        @PathVariable key: String,
+    ): ResponseEntity<ByteArray> {
+        log.info("IssueController.exportPdf key={}", key)
+
+        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val response = service.findByKey(actor, IssueKey(key))
+        val pdf = pdfRenderer.render(response)
+        return ResponseEntity.ok()
+            .contentType(MediaType.APPLICATION_PDF)
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"${response.key}.pdf\"")
+            .body(pdf)
+    }
+
+    /**
      * 이슈를 소프트 삭제한다.
      *
      * 실제 DB 행을 제거하지 않고 삭제 플래그를 세운다 (soft delete).
