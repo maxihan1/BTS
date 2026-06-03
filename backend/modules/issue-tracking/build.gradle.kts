@@ -169,6 +169,20 @@ dependencies {
     // OWASP Java HTML Sanitizer — allowlist 기반 HTML 정화 (Maxi 게이트1 승인)
     // 출처: https://github.com/owasp/java-html-sanitizer
     implementation("com.googlecode.owasp-java-html-sanitizer:owasp-java-html-sanitizer:20240325.1")
+
+    // ── PDF 출력 (FR-IS-08) ────────────────────────────────────────────────────
+    // openhtmltopdf-pdfbox — flying-saucer(iText 5 기반) 의 후계 오픈소스 라이브러리.
+    //   · XHTML+CSS 3 → PDF 단방향 렌더링 특화. iText/Jasper 대비 라이선스 부담 없음(LGPL).
+    //   · 이 한 줄로 openhtmltopdf-core + Apache PDFBox 2.0.24 가 전이 의존으로 자동 포함된다.
+    //     core 를 별도 명시할 필요 없음 (plan N1 코드리뷰 결정).
+    //   · 버전 1.0.10 — Maven Central 실존 확인 (plan 코드리뷰 N1, 2026-06-03).
+    //   · 도입 결정 문서: docs/plans/2026-06-03-fr-is-08-pdf.md §Plan
+    // NanumGothic-Regular.ttf — 한글 폰트 번들.
+    //   · 라이선스: OFL (SIL Open Font License 1.1) — 상업·내부 사용 무상 허용.
+    //     원본 라이선스 전문: src/main/resources/fonts/OFL.txt
+    //   · 단일 weight(Regular) 번들 — bold/italic 미포함(plan 폰트 결정).
+    //   · IssuePdfRenderer 에서 PdfRendererBuilder.useFont 로 등록, CSS font-family: 'NanumGothic'.
+    implementation("com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10")
 }
 
 // ── jOOQ 코드 생성 설정 ───────────────────────────────────────────────────────

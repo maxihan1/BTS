@@ -6,13 +6,17 @@ import com.bts.issue.application.AppChangeAssigneeRequest
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.pdf.IssuePdfRenderer
+import com.bts.issue.pdf.IssuePdfTemplate
 import com.bts.shared.issue.IssueTypeId
 import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.web.PageableDefault
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -42,6 +46,7 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
  * - GET    /api/v1/issues/{key}/transitions — 가용 전이 목록 조회 (T4)
  * - PATCH  /api/v1/issues/{key}/assignee — 담당자 변경/해제 (FR-IS-03 T8)
  * - DELETE /api/v1/issues/{key} — 이슈 소프트 삭제 (T16)
+ * - GET    /api/v1/issues/{key}/pdf — 이슈 PDF 내보내기 (FR-IS-08)
  *
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다.
@@ -57,11 +62,15 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
  * 인증 연동은 이후 security-engineer wave 에서 처리한다.
  *
  * @param service 이슈 유스케이스 서비스
+ * @param pdfRenderer 이슈 PDF 바이너리 렌더러
  */
 @RestController
 @RequestMapping("/api/v1/issues")
 class IssueController(
     private val service: IssueApplicationService,
+    // 기본값은 Spring이 관리하지 않는 컨텍스트(기존 슬라이스 테스트 호환)를 위한 fallback이다.
+    // Spring production 컨텍스트에서는 항상 @Component Bean이 주입된다.
+    private val pdfRenderer: IssuePdfRenderer = IssuePdfRenderer(IssuePdfTemplate()),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -274,6 +283,37 @@ class IssueController(
             )
         val response = service.changeAssignee(actor, issueKey, appRequest)
         return ResponseEntity.ok(DataResponse(data = response))
+    }
+
+    /**
+     * 이슈를 PDF로 내보낸다.
+     *
+     * 이슈 키로 단건을 조회한 뒤 [IssuePdfRenderer]로 PDF 바이너리를 생성하여 반환한다.
+     * 이슈가 없거나 소프트 삭제된 경우 [IssueExceptionHandler]가 [com.bts.issue.domain.IssueNotFoundException]을
+     * 가로채 404로 변환한다.
+     *
+     * ### Content-Disposition filename 안전성
+     * filename 값으로 사용하는 이슈 키(`{projectKey}-{sequence}`)는
+     * [IssueKey] 생성 시 영숫자·하이픈만 허용하도록 검증된 형식이므로
+     * HTTP 헤더 인젝션이나 경로 조작 위험이 없다.
+     *
+     * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
+     * @return 200 OK + PDF 바이너리, Content-Type: application/pdf, Content-Disposition: attachment
+     * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우 → 404
+     */
+    @GetMapping("/{key}/pdf", produces = [MediaType.APPLICATION_PDF_VALUE])
+    fun exportPdf(
+        @PathVariable key: String,
+    ): ResponseEntity<ByteArray> {
+        log.info("IssueController.exportPdf key={}", key)
+
+        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val response = service.findByKey(actor, IssueKey(key))
+        val pdf = pdfRenderer.render(response)
+        return ResponseEntity.ok()
+            .contentType(MediaType.APPLICATION_PDF)
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"${response.key}.pdf\"")
+            .body(pdf)
     }
 
     /**
