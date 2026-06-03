@@ -1,0 +1,5 @@
+-- 기본 스킴에 버전/컴포넌트 관리 권한 추가 (FR-PM-03, PROJECT_ADMIN 전용)
+INSERT INTO role_permissions (scheme_id, role, permission_code)
+VALUES
+    ('00000000-0000-0000-0000-000000000001', 'PROJECT_ADMIN', 'MANAGE_COMPONENTS'),
+    ('00000000-0000-0000-0000-000000000001', 'PROJECT_ADMIN', 'MANAGE_VERSIONS');
