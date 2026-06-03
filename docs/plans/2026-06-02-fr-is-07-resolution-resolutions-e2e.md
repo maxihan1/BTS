@@ -89,11 +89,11 @@
 - files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/AvailableTransitionsResult.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/workflow/AvailableTransitionViewTest.kt`]
 - depends-on: []
 
-**RED**: `AvailableTransitionViewTest` — `AvailableTransitionView`가 `toCategory: String`(DONE/IN_PROGRESS/TODO) 필드를 보유하고 생성 가능한지. 컴파일 실패(필드 없음).
+**RED**: `AvailableTransitionViewTest` — `AvailableTransitionView`가 `toCategory: String?`(DONE/IN_PROGRESS/TODO, nullable) 필드를 보유하고, **기존 3-인자 생성도 그대로 컴파일**(default null)되는지. 컴파일 실패(필드 없음).
 
-**GREEN**: `AvailableTransitionView`에 `val toCategory: String` additive 추가. published language 최소 표면 유지(enum 직접 노출 대신 string — BC 격리).
+**GREEN**: `AvailableTransitionView`에 `val toCategory: String? = null` **nullable + default** additive 추가. nullable인 이유: 생성지점이 production 1곳(WorkflowEngine:212)+테스트 7파일 — default null이면 테스트 생성지점 무변경, 실데이터는 A4가 항상 채움. published language 최소 표면(enum 직접 노출 대신 string — BC 격리).
 
-**REFACTOR**: KDoc에 toCategory 의미(목표 상태 카테고리, 프론트 종료 판별용) 명시.
+**REFACTOR**: KDoc에 toCategory 의미(목표 상태 카테고리, 프론트 종료 판별용. 실 응답은 항상 non-null, null은 미계산 테스트 픽스처) 명시.
 
 **검증**: `./gradlew :modules:shared-kernel:test --tests "*AvailableTransitionViewTest"`
 
@@ -277,7 +277,8 @@
 **메타**.
 - agent: `frontend-engineer`
 - files: [`apps/web/src/components/issue/ResolutionModal.tsx`, `apps/web/src/routes/issues.$key.tsx`, `apps/web/src/api/issues.ts`, `apps/web/src/hooks/use-issue-transitions.ts`, `apps/web/src/components/issue/__tests__/ResolutionModal.test.tsx`]
-- depends-on: [A1, A4, B8, B11]
+- depends-on: [B8, B11, B12]
+- (toCategory는 shared-kernel(A1)이 아니라 REST TransitionItem(B12)에서 읽음 — 프론트는 REST만 소비)
 
 **RED**: `ResolutionModal.test.tsx` — 전이 셀렉터에서 `toCategory === 'DONE'`인 전이 선택 시 모달 표시, resolution 미선택 시 확인 비활성, 선택 후 transitionMutation이 `{toStatusKey, expectedVersion, resolutionId}` 전송. 비DONE 전이는 모달 없이 즉시 전이. 실패.
 
@@ -287,14 +288,14 @@
 
 **검증**: `pnpm --filter @bts/web test ResolutionModal` + `pnpm --filter @bts/web typecheck` + 기존 issues.$key E2E 동반 실행(메모리 ui-pr-defer-e2e-regression-latent).
 
-### Task B10. E2E — 종료 시 Resolution 필수 흐름 (S1/S2/S4)
+### Task B10. E2E — 종료 시 Resolution 필수 흐름 (S1/S2/S4 + 일괄 S5)
 
 **메타**.
 - agent: `qa-engineer`
-- files: [`apps/web/e2e/issue-resolution.spec.ts`, `apps/web/src/mocks/handlers/resolution-handlers.ts`, `apps/web/src/mocks/handlers/issue-transition-handlers.ts`]
-- depends-on: [B9]
+- files: [`apps/web/e2e/issue-resolution.spec.ts`, `apps/web/src/mocks/handlers/resolution-handlers.ts`, `apps/web/src/mocks/handlers/issue-transition-handlers.ts`, `apps/web/src/mocks/handlers/bulk-operation-handlers.ts`]
+- depends-on: [B9, B14]
 
-**RED**: Playwright `issue-resolution.spec.ts` — S1(종료 전이→모달→resolution 선택→성공), S2(미선택 시 확인 비활성/거부), S4(재오픈 시 resolution clear). MSW 핸들러 stateful(메모리 msw-mutation-stateful-refetch — PATCH 결과 영속). 실패.
+**RED**: Playwright `issue-resolution.spec.ts` — S1(단건 종료 전이→모달→resolution 선택→성공), S2(미선택 시 확인 비활성/거부), S4(재오픈 시 resolution clear), **S5(일괄 종료 전이→일괄 resolution 드롭다운→선택→전체 성공)**. MSW 핸들러 stateful(메모리 msw-mutation-stateful-refetch — PATCH 결과 영속). 실패.
 
 **GREEN**: E2E + MSW stateful 핸들러. localStorage 토글로 시나리오 분기(메모리 e2e-msw-scenario-toggle). serviceWorker block 금지(메모리 e2e-msw-serviceworker-block).
 
@@ -319,11 +320,63 @@
 
 **검증**: `./gradlew :modules:issue-tracking:test --tests "*IssueResponseResolutionTest"` + 모듈 전체 test.
 
+### ── 일괄 전이 연동 (Q4 — 2026-06-03 추가) ──
+
+### Task B12. TransitionItem(REST)에 toCategory 노출 — 단건/일괄 공유 (issue-tracking)
+
+> **C-1 전파.** 단건(`AvailableTransitionsResponse`)·일괄(`BulkAvailableTransitionsResponse`) 둘 다 `TransitionItem.from(AvailableTransitionView)` 경유(AvailableTransitionsResponse.kt:55) → 한 곳 매핑으로 양쪽 노출. 프론트(B9 모달·B14 일괄)가 toCategory로 DONE 판별.
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/AvailableTransitionsResponse.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueControllerTransitionsTest.kt`]
+- depends-on: [A1, A4]
+
+**RED**: 단건 `GET /api/v1/issues/{key}/transitions` 응답 TransitionItem에 `toCategory` 포함(DONE 전이는 "DONE"). 실패(필드 없음).
+
+**GREEN**: `TransitionItem`에 `val toCategory: String?` 추가 + `TransitionItem.from`이 `view.toCategory` 매핑. 일괄 응답은 같은 TransitionItem 재사용이라 자동 전파.
+
+**REFACTOR**: KDoc.
+
+**검증**: `./gradlew :modules:issue-tracking:test --tests "*IssueControllerTransitionsTest"` + bulk available 테스트 회귀 0.
+
+### Task B13. 일괄 전이 payload + Applier에 resolutionId 전달 (issue-tracking bulk)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/BulkUpdateRequest.kt`(BulkTransitionPayload), `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/application/BulkItemApplier.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/bulk/web/*Request*.kt`(일괄 요청 DTO), `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/bulk/application/BulkTransitionResolutionTest.kt`]
+- depends-on: [B5, B6]
+
+**RED**: Testcontainers/통합 — 일괄 전이 payload에 `resolutionId: UUID?` 보유, `BulkItemApplier`가 `transitionIssue`에 resolutionId 전달. DONE 대상 일괄 + resolutionId → 각 이슈 resolution_id 영속. DONE 대상 일괄 + resolutionId 누락 → 각 항목 실패(409, 기존 부분실패 기록 경로). 실패.
+
+**GREEN**: `BulkTransitionPayload`에 `resolutionId: UUID?` 추가 + 웹 요청 DTO 매핑 + `BulkItemApplier.kt:79` `TransitionIssueRequest(toStateKey, expectedVersion, resolutionId = payload.resolutionId)`. 전체 일괄에 동일 resolution 적용.
+
+**REFACTOR**: KDoc — 일괄 resolution 시맨틱(전체 적용).
+
+**검증**: `./gradlew :modules:issue-tracking:test --tests "*BulkTransitionResolutionTest"` + bulk 기존 테스트 회귀 0.
+
+### Task B14. 프론트 일괄 전이 UI — 대상 DONE 시 resolution 드롭다운 (frontend bulk)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/issue/BulkTransitionDialog.tsx`(또는 기존 일괄 액션 Dialog), `apps/web/src/api/bulk.ts`(또는 일괄 api), `apps/web/src/mocks/handlers/bulk-operation-handlers.ts`, `apps/web/src/components/issue/__tests__/*BulkTransition*.test.tsx`]
+- depends-on: [B8, B12, B13]
+
+**RED**: 일괄 전이 Dialog에서 선택 전이의 `toCategory === 'DONE'`이면 resolution 드롭다운 표시 + 미선택 시 확인 비활성, 선택 시 일괄 payload에 resolutionId 포함. 비DONE은 드롭다운 없음. 실패.
+
+**GREEN**: 기존 일괄 전이 Dialog(FR-IS-05 PR #58)에 resolution 드롭다운 조건부 추가 + useResolutions(B8) 재사용 + 일괄 payload resolutionId. MSW bulk 핸들러는 resolutionId 수용.
+
+**REFACTOR**: 단건 모달(B9)과 resolution 드롭다운 컴포넌트 공유 검토(과도 추상화 금지).
+
+**검증**: `pnpm --filter @bts/web test BulkTransition` + typecheck + 기존 일괄 E2E 동반(메모리 ui-pr-defer-e2e-regression-latent).
+
 ## 재개 설계 결정 (게이트1 — 2026-06-03 Maxi 확정 ✅)
 
 > **확정 결과.**
 > - **Q1/Q2 → 권고(A) 채택.** DONE 카테고리 대상 전이 *전부*에 RequiredField(resolution). `done→closed`·`resolved→closed`(DONE→DONE) 포함. 프론트는 toCategory==DONE 전이 시 모달, **기존 resolution이 있으면 pre-fill**(B9 — 기능 정확성 요건: RequiredField가 값 존재만 검사하므로 재전송 필요).
 > - **Q3 → 권고(A) 채택.** B6에서 영속 전 resolutionId 존재성 검증(B3 repository 재사용) → 없으면 거부. 에러코드는 기존 컨벤션 정합(권고 404 RESOLUTION_NOT_FOUND, 구현 시 IssueErrorCodes 확인). E2 테스트로 표면화.
+> - **Q4 → 일괄 전이도 포함(2026-06-03 Maxi).** 일괄 전이(FR-IS-05)는 `BulkItemApplier`가 단건과 동일한 `transitionIssue`→`plan()` 경로를 타므로, B7 RequiredField가 일괄 DONE 전이도 막는다(회귀). 일괄 전이 payload에 resolutionId 추가 + 일괄 UI가 대상=DONE이면 resolution 드롭다운(전체 일괄 적용). toCategory는 단건/일괄 공유 DTO `TransitionItem`로 자동 전파(아래 B12). 신규 task B12~B14 + E2E 확장.
+
+> **코드 근거(재검증).** AvailableTransitionView 생성 production 1곳(WorkflowEngine.kt:212), 테스트 7파일 — non-null 필드 추가 시 컴파일 영향 → **A1은 `toCategory: String?` nullable additive**(테스트 생성지점 무변경, 실데이터는 A4가 항상 채움). 단건/일괄 REST는 둘 다 `TransitionItem.from(AvailableTransitionView)` 경유(AvailableTransitionsResponse.kt:55) → B12 한 곳에서 toCategory 매핑하면 양쪽 노출. 일괄 실행=`BulkItemApplier.kt:79` `transitionIssue` 직호출 → B13에서 resolutionId 전달.
 
 옵션 A(워크플로우 게이트) 방향은 확정·승인됨. 재개하며 코드 정합 과정에서 드러난 **좁은 설계 갈림길 2건**을 게이트1에서 확정했다(위 확정 결과).
 
@@ -340,11 +393,11 @@
 
 ## Plan 메타
 
-- **task 수(재개 갱신): 11 활성** (PR-A 2 = A1·A4 [A2·A3 완료 제거] + PR-B 9 = B1~B11 중 B1~B10 + B11, 단 B7 방식 변경). 원래 14에서 A2/A3 제거 + B11(C-3) 추가.
+- **task 수(재개+Q4 갱신): 16 활성** (PR-A 2 = A1·A4 [A2·A3 완료 제거] + PR-B 14 = B1~B14). 원래 14 → A2/A3 제거 + B11(C-3) + B12~B14(Q4 일괄) 추가.
 - PR 전략: 2 PR (PR-A 인프라 선행 → PR-B 기능). PR-B의 A* depends-on은 PR-A 머지 선행.
-- 모듈 분포: shared-kernel(A1) · project-workflow(A4 · B7 YAML) · issue-tracking(B1~B6, B11) · frontend(B8/B9) · E2E(B10)
+- 모듈 분포: shared-kernel(A1) · project-workflow(A4 · B7 YAML) · issue-tracking(B1~B6, B11, B12, B13) · frontend(B8/B9/B14) · E2E(B10)
 - 예상 wave (PR-A): wave1=[A1] → wave2=[A4]. (A2/A3 FR-WF-03 완료). shared-kernel(A1)→project-workflow(A4) 모듈 경계.
-- 예상 wave (PR-B): wave1=[B1, B2, B5] → wave2=[B3] → wave3=[B4, B6, B11] → wave4=[B7, B8] → wave5=[B9] → wave6=[B10]
+- 예상 wave (PR-B): wave1=[B1, B2, B5] → wave2=[B3] → wave3=[B4, B6, B11] → wave4=[B7, B8, B12, B13] → wave5=[B9, B14] → wave6=[B10]. (issue-tracking 다수 task는 같은 모듈 test 컴파일 공유로 실제론 더 직렬화될 수 있음 — 메모리 bts-plan-wave-gradle-module-compile)
 - TDD 강제: yes (모든 task test→feat 순서, controller가 git log 검증 — 메모리 subagent-ktlint-false-green / parallel-dispatch-precommit-hook-race)
 - 추가 검증: ktlintMain+TestSourceSetCheck + detekt(4모듈) + typecheck(tsconfig.app) + vitest + playwright
 
