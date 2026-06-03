@@ -11,6 +11,7 @@ import type {
   ChangeVersionDatesMutationInput,
 } from '@/hooks/use-versions'
 import type { CreateVersionInput } from '@/api/versions.types'
+import { ApiError } from '@/api/client'
 import { VersionFormDialog } from './VersionFormDialog'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -333,11 +334,7 @@ describe('VersionFormDialog — 409 에러 인라인 표시', () => {
   it('생성 실패(VERSION_NAME_DUPLICATE) → 폼 내 인라인 에러 메시지가 표시되고 Dialog가 닫히지 않는다', async () => {
     const mockClose = vi.fn()
     // ApiError를 흉내내는 에러 객체: extractVersionErrorCode가 body.errorCode를 읽는다
-    const dupError = Object.assign(new Error('API 409'), {
-      name: 'ApiError',
-      status: 409,
-      body: { errorCode: 'VERSION_NAME_DUPLICATE' },
-    })
+    const dupError = new ApiError(409, { errorCode: 'VERSION_NAME_DUPLICATE' })
     const mockCreate = vi.fn().mockRejectedValue(dupError) as unknown as (
       input: CreateVersionInput,
     ) => Promise<void>
@@ -368,11 +365,7 @@ describe('VersionFormDialog — 409 에러 인라인 표시', () => {
 
   it('수정 실패(meta reject, VERSION_NAME_DUPLICATE) → 폼 내 인라인 에러 메시지가 표시되고 Dialog가 닫히지 않는다', async () => {
     const mockClose = vi.fn()
-    const dupError = Object.assign(new Error('API 409'), {
-      name: 'ApiError',
-      status: 409,
-      body: { errorCode: 'VERSION_NAME_DUPLICATE' },
-    })
+    const dupError = new ApiError(409, { errorCode: 'VERSION_NAME_DUPLICATE' })
     const mockUpdate = vi.fn().mockRejectedValue(dupError) as unknown as (
       input: UpdateVersionMutationInput,
     ) => Promise<void>
@@ -408,11 +401,7 @@ describe('VersionFormDialog — 409 에러 인라인 표시', () => {
 
   it('이전 에러 표시 후 새 저장 시도 시작 시 에러 메시지가 초기화된다', async () => {
     const mockClose = vi.fn()
-    const dupError = Object.assign(new Error('API 409'), {
-      name: 'ApiError',
-      status: 409,
-      body: { errorCode: 'VERSION_NAME_DUPLICATE' },
-    })
+    const dupError = new ApiError(409, { errorCode: 'VERSION_NAME_DUPLICATE' })
     // 첫 번째는 실패, 두 번째는 성공
     const mockCreate = vi
       .fn()

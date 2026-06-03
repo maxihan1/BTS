@@ -1,11 +1,13 @@
 // 버전 생성/수정 겸용 Dialog — 변경 그룹 분리 호출(name·desc / startDate·releaseDate)
 import type { JSX } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { Button } from '@/components/ui/button'
-import { versionLabels } from '@/i18n/version-labels'
+import { versionLabels, versionErrorMessage } from '@/i18n/version-labels'
+import { extractVersionErrorCode } from '@/api/versions'
 import type { Version } from '@/api/versions.types'
 import {
   useCreateVersion,
@@ -76,8 +78,6 @@ interface VersionFormDialogProps {
   readonly initial?: Version
   /** 다이얼로그 닫기 콜백 */
   readonly onClose: () => void
-  /** 상위 mutation에서 전달된 서버 오류 메시지 — null이면 미표시 */
-  readonly submitError?: string | null
   /**
    * 테스트 주입용 — useCreateVersion의 mutateAsync를 override한다.
    * 프로덕션에서는 절대 사용하지 않는다.
@@ -105,7 +105,6 @@ interface FormBodyProps {
   readonly projectKey: string
   readonly initial?: Version
   readonly onClose: () => void
-  readonly submitError?: string | null
   readonly _testCreateMutate?: (input: CreateVersionInput) => Promise<void>
   readonly _testUpdateMutate?: (input: UpdateVersionMutationInput) => Promise<void>
   readonly _testChangeDatesMutate?: (input: ChangeVersionDatesMutationInput) => Promise<void>
@@ -116,12 +115,13 @@ function FormBody({
   projectKey,
   initial,
   onClose,
-  submitError,
   _testCreateMutate,
   _testUpdateMutate,
   _testChangeDatesMutate,
 }: FormBodyProps): JSX.Element {
   const { form: formLabels, actions } = versionLabels
+
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const createVersion = useCreateVersion(projectKey)
   const updateVersion = useUpdateVersion(projectKey)
@@ -147,6 +147,8 @@ function FormBody({
   })
 
   async function onValid(values: FormValues): Promise<void> {
+    setSubmitError(null)
+
     if (mode === 'create') {
       const input: CreateVersionInput = {
         name: values.name,
@@ -157,8 +159,9 @@ function FormBody({
       try {
         await doCreate(input)
         onClose()
-      } catch {
-        // 에러 toast는 훅 onError가 담당 — 여기서는 Dialog를 유지한다
+      } catch (err) {
+        // 에러 toast는 훅 onError가 담당 — 인라인 에러도 함께 표시한다
+        setSubmitError(versionErrorMessage(extractVersionErrorCode(err)))
       }
       return
     }
@@ -198,8 +201,9 @@ function FormBody({
       }
 
       onClose()
-    } catch {
-      // 에러 toast는 훅 onError가 담당 — 여기서는 Dialog를 유지한다
+    } catch (err) {
+      // 에러 toast는 훅 onError가 담당 — 인라인 에러도 함께 표시한다
+      setSubmitError(versionErrorMessage(extractVersionErrorCode(err)))
     }
   }
 
@@ -317,7 +321,6 @@ export const VersionFormDialog = ({
   projectKey,
   initial,
   onClose,
-  submitError,
   _testCreateMutate,
   _testUpdateMutate,
   _testChangeDatesMutate,
@@ -345,7 +348,6 @@ export const VersionFormDialog = ({
             projectKey={projectKey}
             initial={initial}
             onClose={onClose}
-            submitError={submitError}
             _testCreateMutate={_testCreateMutate}
             _testUpdateMutate={_testUpdateMutate}
             _testChangeDatesMutate={_testChangeDatesMutate}
