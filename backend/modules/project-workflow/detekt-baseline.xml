@@ -25,6 +25,8 @@
     <ID>MaxLineLength:SchemeIssueTypeMappingRepositoryIntegrationTest.kt$// SchemeIssueTypeMappingRepository 통합 테스트 — addMapping / findBySchemeId / findDefaultMapping / findByIssueType / deleteMapping + partial UNIQUE INDEX 검증</ID>
     <ID>MaxLineLength:SchemeIssueTypeMappingRepositoryIntegrationTest.kt$SchemeIssueTypeMappingRepositoryIntegrationTest$*</ID>
     <ID>MaxLineLength:V200MigrationTest.kt$// V200 (workflow init) 마이그레이션 검증 — Testcontainers postgres + Flyway migrate 후 information_schema 조회로 5 테이블 + 6 인덱스 존재 확인</ID>
+    <ID>MaxLineLength:WorkflowEngineUnitTest.kt$WorkflowEngineUnitTest$every { definitionRepo.findValidators("DEFAULT", transition) } returns listOf(validatorConfigA, validatorConfigB)</ID>
+    <ID>MaxLineLength:WorkflowEngineUnitTest.kt$WorkflowEngineUnitTest$every { definitionRepo.findPostActions("DEFAULT", transition) } returns listOf(postActionConfigA, postActionConfigB)</ID>
     <ID>MaxLineLength:WorkflowKeyResolverImpl.kt$WorkflowKeyResolverImpl$*</ID>
     <ID>MaxLineLength:WorkflowKeyResolverImplIntegrationTest.kt$WorkflowKeyResolverImplIntegrationTest.Companion$"INSERT INTO projects (id, key, name) VALUES (?::uuid, ?, ?) ON CONFLICT DO NOTHING RETURNING id"</ID>
     <ID>MaxLineLength:WorkflowResolverImpl.kt$WorkflowResolverImpl$*</ID>

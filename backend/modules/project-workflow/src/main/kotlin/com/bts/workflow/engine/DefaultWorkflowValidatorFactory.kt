@@ -30,7 +30,8 @@ import org.springframework.stereotype.Component
  * FR-PM-04 에서 IdentityAccessPermissionResolver(@Profile("prod")) 구현 필요.
  * 현 단계 검증은 test-assembled(!prod) 환경 기준이다.
  *
- * @param permissionResolver 권한 평가 outbound port. !prod 환경에서 [com.bts.workflow.adapter.AlwaysAllowPermissionResolver] 가 주입된다.
+ * @param permissionResolver 권한 평가 outbound port.
+ *   !prod 환경에서 [com.bts.workflow.adapter.AlwaysAllowPermissionResolver] 가 주입된다.
  * @param spelEvaluator SpEL 표현식 평가기. [WorkflowEngineConfig] 에서 @Bean 으로 등록된다.
  */
 @Component
