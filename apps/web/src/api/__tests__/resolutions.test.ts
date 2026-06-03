@@ -83,12 +83,14 @@ describe('resolutionSchema', () => {
   })
 
   it('displayOrder가 없으면 파싱 실패한다', () => {
-    const { displayOrder: _omit, ...withoutOrder } = resolutionFixtures[0] as typeof resolutionFixtures[0] & { displayOrder?: number }
+    const withoutOrder = { ...resolutionFixtures[0] } as { displayOrder?: number }
+    delete withoutOrder.displayOrder
     expect(() => resolutionSchema.parse(withoutOrder)).toThrow()
   })
 
   it('isStandard가 없으면 파싱 실패한다', () => {
-    const { isStandard: _omit, ...withoutStandard } = resolutionFixtures[0] as typeof resolutionFixtures[0] & { isStandard?: boolean }
+    const withoutStandard = { ...resolutionFixtures[0] } as { isStandard?: boolean }
+    delete withoutStandard.isStandard
     expect(() => resolutionSchema.parse(withoutStandard)).toThrow()
   })
 })
