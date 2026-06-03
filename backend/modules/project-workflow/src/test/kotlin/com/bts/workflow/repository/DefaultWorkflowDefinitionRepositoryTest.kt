@@ -115,8 +115,8 @@ class DefaultWorkflowDefinitionRepositoryTest {
 
                 // ── workflowAlpha: validator 2건(display_order 0,1) + post_action 1건 ──
                 val alphaId = insertWorkflow(conn, "alpha-workflow", "알파 워크플로우")
-                val alphaOpenId = insertState(conn, alphaId, "open", "열림", "TODO", 0)
-                val alphaDoneId = insertState(conn, alphaId, "done", "완료", "DONE", 1)
+                val alphaOpenId = insertState(conn, alphaId, StateSpec("open", "열림", "TODO", 0))
+                val alphaDoneId = insertState(conn, alphaId, StateSpec("done", "완료", "DONE", 1))
                 val alphaTransId = insertTransition(conn, alphaId, alphaOpenId, alphaDoneId, "완료")
 
                 insertValidator(conn, alphaTransId, "RequiredField", """{"field":"resolution"}""", 0)
@@ -126,8 +126,8 @@ class DefaultWorkflowDefinitionRepositoryTest {
                 // ── workflowBeta: 같은 state key(open→done) 사용, validator 1건(다른 type) ──
                 // B2 오매칭 위험: beta의 (open→done) 조회 시 alpha validator 가 섞이면 안 됨
                 val betaId = insertWorkflow(conn, "beta-workflow", "베타 워크플로우")
-                val betaOpenId = insertState(conn, betaId, "open", "열림", "TODO", 0)
-                val betaDoneId = insertState(conn, betaId, "done", "완료", "DONE", 1)
+                val betaOpenId = insertState(conn, betaId, StateSpec("open", "열림", "TODO", 0))
+                val betaDoneId = insertState(conn, betaId, StateSpec("done", "완료", "DONE", 1))
                 val betaTransId = insertTransition(conn, betaId, betaOpenId, betaDoneId, "완료")
 
                 insertValidator(conn, betaTransId, "NotStatusCategory", """{"category":"IN_PROGRESS"}""", 0)
@@ -153,23 +153,27 @@ class DefaultWorkflowDefinitionRepositoryTest {
                 }
             }
 
+        private data class StateSpec(
+            val key: String,
+            val name: String,
+            val category: String,
+            val displayOrder: Int,
+        )
+
         private fun insertState(
             conn: java.sql.Connection,
             workflowId: UUID,
-            key: String,
-            name: String,
-            category: String,
-            displayOrder: Int,
+            spec: StateSpec,
         ): UUID =
             conn.prepareStatement(
                 "INSERT INTO workflow_states (workflow_id, key, name, category, display_order)" +
                     " VALUES (?, ?, ?, ?, ?) RETURNING id",
             ).use { stmt ->
                 stmt.setObject(1, workflowId)
-                stmt.setString(2, key)
-                stmt.setString(3, name)
-                stmt.setString(4, category)
-                stmt.setInt(5, displayOrder)
+                stmt.setString(2, spec.key)
+                stmt.setString(3, spec.name)
+                stmt.setString(4, spec.category)
+                stmt.setInt(5, spec.displayOrder)
                 stmt.executeQuery().use { rs ->
                     rs.next()
                     rs.getObject(1) as UUID

@@ -3,11 +3,12 @@
 package com.bts.workflow.engine
 
 import com.bts.workflow.domain.WorkflowTransition
+import com.bts.workflow.jooq.tables.WorkflowPostActions.Companion.WORKFLOW_POST_ACTIONS
 import com.bts.workflow.jooq.tables.WorkflowStates.Companion.WORKFLOW_STATES
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.WorkflowValidators.Companion.WORKFLOW_VALIDATORS
-import com.bts.workflow.jooq.tables.WorkflowPostActions.Companion.WORKFLOW_POST_ACTIONS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.jooq.DSLContext
@@ -21,8 +22,8 @@ import java.util.UUID
  * [WorkflowDefinitionRepository] jOOQ 구현체.
  *
  * transition_id 해석 단계.
- * 1. workflowKey → workflows.key → workflows.id 조회.
- * 2. transition.fromStateKey, transition.toStateKey → workflow_states.key (해당 workflow_id 범위) →
+ * 1. workflowKey to workflows.key to workflows.id 조회.
+ * 2. transition.fromStateKey, transition.toStateKey to workflow_states.key (해당 workflow_id 범위) to
  *    from_state_id, to_state_id 조회.
  * 3. workflow_transitions 에서 (workflow_id, from_state_id, to_state_id) 로 transition_id 조회.
  * 4. workflow_validators / workflow_post_actions 에서 transition_id = ? 행을 display_order ASC 정렬 조회.
@@ -34,7 +35,6 @@ import java.util.UUID
 class DefaultWorkflowDefinitionRepository(
     private val dsl: DSLContext,
 ) : WorkflowDefinitionRepository {
-
     private val log = LoggerFactory.getLogger(javaClass)
     private val objectMapper = ObjectMapper()
     private val mapTypeRef = object : TypeReference<Map<String, Any?>>() {}
@@ -66,8 +66,9 @@ class DefaultWorkflowDefinitionRepository(
             .fetch()
             .map { record ->
                 ValidatorConfig(
-                    type = record.get(WORKFLOW_VALIDATORS.TYPE)
-                        ?: error("workflow_validators.type 이 null — transition_id=$transitionId"),
+                    type =
+                        record.get(WORKFLOW_VALIDATORS.TYPE)
+                            ?: error("workflow_validators.type 이 null — transition_id=$transitionId"),
                     config = parseJsonbToMap(record.get(WORKFLOW_VALIDATORS.CONFIG), transitionId),
                 )
             }
@@ -100,8 +101,9 @@ class DefaultWorkflowDefinitionRepository(
             .fetch()
             .map { record ->
                 PostActionConfig(
-                    type = record.get(WORKFLOW_POST_ACTIONS.TYPE)
-                        ?: error("workflow_post_actions.type 이 null — transition_id=$transitionId"),
+                    type =
+                        record.get(WORKFLOW_POST_ACTIONS.TYPE)
+                            ?: error("workflow_post_actions.type 이 null — transition_id=$transitionId"),
                     config = parseJsonbToMap(record.get(WORKFLOW_POST_ACTIONS.CONFIG), transitionId),
                 )
             }
@@ -113,9 +115,9 @@ class DefaultWorkflowDefinitionRepository(
      * workflowKey + transition 정의로부터 workflow_transitions.id 를 단계적으로 해석한다.
      *
      * 단계.
-     * 1. workflowKey → workflows.id
-     * 2. fromStateKey, toStateKey → workflow_states.id (workflow_id 범위 한정)
-     * 3. (workflow_id, from_state_id, to_state_id) → workflow_transitions.id
+     * 1. workflowKey to workflows.id
+     * 2. fromStateKey, toStateKey to workflow_states.id (workflow_id 범위 한정)
+     * 3. (workflow_id, from_state_id, to_state_id) to workflow_transitions.id
      *
      * 어느 단계에서든 미존재 시 null 반환 (예외 아님).
      */
@@ -123,46 +125,44 @@ class DefaultWorkflowDefinitionRepository(
         workflowKey: String,
         transition: WorkflowTransition,
     ): UUID? {
-        val workflowId = resolveWorkflowId(workflowKey) ?: run {
-            log.debug(
-                "DefaultWorkflowDefinitionRepository: workflow 미존재 key={}",
-                workflowKey,
-            )
-            return null
+        val workflowId = resolveWorkflowId(workflowKey)
+        if (workflowId == null) {
+            log.debug("DefaultWorkflowDefinitionRepository: workflow 미존재 key={}", workflowKey)
         }
-
-        val fromStateId = resolveStateId(workflowId, transition.fromStateKey) ?: run {
+        val fromStateId = workflowId?.let { resolveStateId(it, transition.fromStateKey) }
+        if (workflowId != null && fromStateId == null) {
             log.debug(
                 "DefaultWorkflowDefinitionRepository: fromState 미존재 workflowKey={} fromStateKey={}",
                 workflowKey,
                 transition.fromStateKey,
             )
-            return null
         }
-
-        val toStateId = resolveStateId(workflowId, transition.toStateKey) ?: run {
+        val toStateId = workflowId?.let { wfId -> fromStateId?.let { resolveStateId(wfId, transition.toStateKey) } }
+        if (workflowId != null && fromStateId != null && toStateId == null) {
             log.debug(
                 "DefaultWorkflowDefinitionRepository: toState 미존재 workflowKey={} toStateKey={}",
                 workflowKey,
                 transition.toStateKey,
             )
-            return null
         }
-
-        return dsl
-            .select(WORKFLOW_TRANSITIONS.ID)
-            .from(WORKFLOW_TRANSITIONS)
-            .where(
-                WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(workflowId)
-                    .and(WORKFLOW_TRANSITIONS.FROM_STATE_ID.eq(fromStateId))
-                    .and(WORKFLOW_TRANSITIONS.TO_STATE_ID.eq(toStateId)),
-            )
-            .fetchOne()
-            ?.get(WORKFLOW_TRANSITIONS.ID) as UUID?
+        return if (workflowId != null && fromStateId != null && toStateId != null) {
+            dsl
+                .select(WORKFLOW_TRANSITIONS.ID)
+                .from(WORKFLOW_TRANSITIONS)
+                .where(
+                    WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(workflowId)
+                        .and(WORKFLOW_TRANSITIONS.FROM_STATE_ID.eq(fromStateId))
+                        .and(WORKFLOW_TRANSITIONS.TO_STATE_ID.eq(toStateId)),
+                )
+                .fetchOne()
+                ?.get(WORKFLOW_TRANSITIONS.ID) as UUID?
+        } else {
+            null
+        }
     }
 
     /**
-     * workflows.key → workflows.id 조회.
+     * workflows.key to workflows.id 조회.
      *
      * @param workflowKey 워크플로우 식별 키
      * @return workflows.id, 미존재 시 null
@@ -176,7 +176,7 @@ class DefaultWorkflowDefinitionRepository(
             ?.get(WORKFLOWS.ID) as UUID?
 
     /**
-     * (workflow_id, stateKey) → workflow_states.id 조회.
+     * (workflow_id, stateKey) to workflow_states.id 조회.
      *
      * workflow_id 범위를 한정해 cross-workflow 동명 state 오매칭을 방지한다.
      *
@@ -202,7 +202,8 @@ class DefaultWorkflowDefinitionRepository(
      * jOOQ JSONB 값을 Map 으로 역직렬화한다.
      *
      * JSONB null 이거나 data() 가 빈 문자열이면 빈 Map 을 반환한다.
-     * Jackson ObjectMapper 로 역직렬화하며, 파싱 실패 시 빈 Map 을 반환하고 경고 로그를 남긴다.
+     * Jackson ObjectMapper 로 역직렬화하며, [JsonProcessingException] 발생 시
+     * 빈 Map 을 반환하고 경고 로그를 남긴다.
      *
      * @param jsonb jOOQ JSONB 컬럼 값
      * @param transitionId 로그 컨텍스트용 transition_id
@@ -211,12 +212,10 @@ class DefaultWorkflowDefinitionRepository(
         jsonb: JSONB?,
         transitionId: UUID,
     ): Map<String, Any?> {
-        if (jsonb == null) return emptyMap()
-        val raw = jsonb.data()
-        if (raw.isBlank() || raw == "{}") return emptyMap()
+        val raw = jsonb?.data()?.takeIf { it.isNotBlank() && it != "{}" } ?: return emptyMap()
         return try {
             objectMapper.readValue(raw, mapTypeRef)
-        } catch (ex: Exception) {
+        } catch (ex: JsonProcessingException) {
             log.warn(
                 "DefaultWorkflowDefinitionRepository: JSONB 파싱 실패 transition_id={} raw='{}' error={}",
                 transitionId,
