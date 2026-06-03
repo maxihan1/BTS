@@ -46,6 +46,7 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
  * - GET    /api/v1/issues/{key}/transitions — 가용 전이 목록 조회 (T4)
  * - PATCH  /api/v1/issues/{key}/assignee — 담당자 변경/해제 (FR-IS-03 T8)
  * - DELETE /api/v1/issues/{key} — 이슈 소프트 삭제 (T16)
+ * - GET    /api/v1/issues/{key}/pdf — 이슈 PDF 내보내기 (FR-IS-08)
  *
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다.
@@ -67,6 +68,8 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
 @RequestMapping("/api/v1/issues")
 class IssueController(
     private val service: IssueApplicationService,
+    // 기본값은 Spring이 관리하지 않는 컨텍스트(기존 슬라이스 테스트 호환)를 위한 fallback이다.
+    // Spring production 컨텍스트에서는 항상 @Component Bean이 주입된다.
     private val pdfRenderer: IssuePdfRenderer = IssuePdfRenderer(IssuePdfTemplate()),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
