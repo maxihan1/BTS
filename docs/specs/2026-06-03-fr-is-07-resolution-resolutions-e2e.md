@@ -23,7 +23,7 @@ Resolution은 이슈의 상태(open/closed)와 **별개의 축**이다. "왜 닫
 ### S2. Resolution 미선택 시 종료 거부 (guard)
 - **Given** 종료 모달이 떠 있다.
 - **When** Resolution을 고르지 않고 확인하려 한다.
-- **Then** 확인 버튼이 비활성(클라이언트 1차 방어)이거나, 우회 시 서버가 전이를 거부한다(422, RequiredFieldValidator Fail → resolution 누락).
+- **Then** 확인 버튼이 비활성(클라이언트 1차 방어)이거나, 우회 시 서버가 전이를 거부한다(409 TRANSITION_NOT_ALLOWED, RequiredFieldValidator Fail → resolution 누락. 코드 확인: IssueExceptionHandler.kt:37/224).
 - **And** 이슈 상태는 변하지 않는다.
 
 ### S3. 비종료 전이는 Resolution 불필요
@@ -47,7 +47,7 @@ Resolution은 이슈의 상태(open/closed)와 **별개의 축**이다. "왜 닫
 - **FR2** `issues.resolution_id`(nullable, FK 미적용 — BC 격리). 이슈가 Resolution을 참조.
 - **FR3** 종료(DONE) 전이 가드: project-workflow DONE 전이에 `RequiredField` validator(config `{ "field": "resolution" }`) 설정. issue-tracking은 전이 시 `issueFields`에 resolution 전달.
 - **FR4** 전이 요청 DTO에 `resolutionId` 추가. transport `TransitionIssueRequest`(toStatusKey/expectedVersion → + resolutionId nullable), application `TransitionIssueRequest`(toStateKey/expectedVersion → + resolutionId nullable).
-- **FR5** 전이 성공 시 issue.resolution_id 영속. DONE→비DONE 전이 시 resolution_id = null(clear). 영속 전 도메인 Aggregate 경유 필수(메모리 patch-merge-domain-bypass — service가 도메인 정규화 호출).
+- **FR5** 전이 성공 시 issue.resolution_id 영속. DONE→비DONE 전이 시 resolution_id = null(clear). **영속은 기존 전이 영속 경로(raw jOOQ `IssueRepository.applyTransition`, 낙관락 UPDATE)를 확장**(resolutionId 파라미터 추가) — 전이 영속이 raw jOOQ인 게 이 BC의 정본 설계다. resolution 필수 불변식은 Issue Aggregate가 아니라 **워크플로우 RequiredField validator가 `plan()`(EXECUTION phase)에서 강제**하므로 patch-merge-domain-bypass(도메인 검증 우회)에 해당하지 않는다. (plan B6 갱신과 일치 — 2026-06-03 재개 시 정정.)
 - **FR6** `GET /api/v1/resolutions` — 활성 Resolution 목록(id/key/name/description/displayOrder/isStandard). 종료 모달 드롭다운 소스.
 - **FR7** 가용 전이 응답에 목표 카테고리 노출(아래 §결정 1). 프론트가 어떤 전이가 종료인지 판별해 모달 트리거.
 - **FR8** 종료 모달(프론트): DONE 카테고리 전이 선택 시 Resolution 드롭다운 표시. 미선택 시 확인 비활성. IssueResponse에 resolution 표시.
@@ -58,7 +58,7 @@ Resolution은 이슈의 상태(open/closed)와 **별개의 축**이다. "왜 닫
 `AvailableTransitionView`(shared-kernel published language)와 REST `TransitionItem`에 `toCategory: StateCategory`(또는 string "DONE"/"IN_PROGRESS"/"TODO") **additive 추가**. 프론트는 `toCategory === 'DONE'`인 전이 선택 시 모달을 띄운다.
 - 장점: "서버가 정답지" 원칙 일관(메모리/ADR bulk-available-transitions-server-side), 1회 호출로 판별, UX 매�끄러움.
 - 단점: 가용 전이 published DTO 변경(bulk 교집합 응답도 동반). 단 additive라 회귀 위험 낮음.
-- **대안(기각 후보)**: 프론트가 모달 없이 전이 시도 → 서버 422(resolution 누락) → 그때 모달 표시 후 재시도. 2회 왕복·UX 저하. 기각 권장.
+- **대안(기각 후보)**: 프론트가 모달 없이 전이 시도 → 서버 409(resolution 누락) → 그때 모달 표시 후 재시도. 2회 왕복·UX 저하. 기각 권장.
 
 ### 결정 2. 커스텀 Resolution CRUD 범위
 이번 FR 범위 = 표준 5종 seed + `GET /api/v1/resolutions`(목록)만. 커스텀 생성/수정/삭제 admin CRUD는 **후속**(IssueType이 FR-WF-02에서 표준 seed만, 커스텀 CRUD는 FR-IS-02로 분리한 선례와 동형).
@@ -66,7 +66,7 @@ Resolution은 이슈의 상태(open/closed)와 **별개의 축**이다. "왜 닫
 ## API 인터페이스 (REST)
 
 - `GET /api/v1/resolutions` → `{ data: ResolutionItem[] }`, `ResolutionItem { id, key, name, description?, displayOrder, isStandard }`. 활성(미삭제)만, displayOrder asc.
-- `POST /api/v1/issues/{key}/transition` body: `{ toStatusKey, expectedVersion, resolutionId? }`. DONE 전이인데 resolutionId 누락 → 422(전이 거부). 비DONE 전이에 resolutionId 무시(또는 검증 없음).
+- `POST /api/v1/issues/{key}/transition` body: `{ toStatusKey, expectedVersion, resolutionId? }`. DONE 전이인데 resolutionId 누락 → **409 TRANSITION_NOT_ALLOWED**(전이 거부 — 기존 전이거부 계약 재사용, IssueExceptionHandler.kt:37/224). 비DONE 전이에 resolutionId 무시(또는 검증 없음).
 - `GET /api/v1/issues/{key}/transitions` 응답 TransitionItem에 `toCategory` 추가(결정 1).
 
 ### 결정 3. [BLOCKER — Brainstorming 발견] availableTransitions가 RequiredField로 DONE 전이를 숨기는 문제
@@ -75,14 +75,14 @@ Resolution은 이슈의 상태(open/closed)와 **별개의 축**이다. "왜 닫
 
 - **→ 결정: 옵션 A 채택 (2026-06-03 Maxi).** `WorkflowValidator`에 적용 시점 속성(availability/execution) 추가. RequiredField는 execution-only로 분류. `availableTransitions`(WorkflowEngine line 303~)는 availability validator(Permission/NotStatusCategory)만 평가하고 execution validator는 건너뛴다. `plan`(실행, line 241~)은 전부 평가. 프레임워크 일반화 — 향후 필드류 validator 확장에 견고.
 - 기각: 옵션 C(화이트리스트 최소 변경) — "어떤 validator가 execution-only인지"가 코드 한 곳에 암묵적으로 박혀 확장 시 누락 위험.
-- ⚠️ project-workflow 변경: WorkflowValidator SPI에 phase 속성 추가 + 기존 validator 4종(RequiredField/Permission/NotStatusCategory/CustomExpression) 분류 + availableTransitions가 phase 필터. 이 변경이 plan에서 별도 task(또는 PR)로 분리될 수 있음(2 BC 걸침과 함께 고려).
+- ✅ project-workflow phase 프레임워크(WorkflowValidator SPI phase 속성 + validator 분류 + availableTransitions phase 필터): **FR-WF-03(PR #66)에서 이미 구현 완료**. 본 FR은 toCategory 노출(A1/A4)만 project-workflow에 추가. (2026-06-03 재개 시 정정 — 원래 A2/A3 task는 제거됨.)
 
 ### 결정 4. 재오픈 clear는 카테고리 불필요 (확정)
-모든 전이에서 `issue.resolution_id = request.resolutionId`로 영속한다. 비DONE 전이는 종료 모달이 없어 resolutionId=null → resolution_id 자동 clear. issue-tracking이 목표 카테고리를 알 필요 없다(S4/FR5 충족). 단 도메인 Aggregate 경유(patch-merge-domain-bypass).
+모든 전이에서 `issue.resolution_id = request.resolutionId`로 영속한다. 비DONE 전이는 종료 모달이 없어 resolutionId=null → resolution_id 자동 clear. issue-tracking이 목표 카테고리를 알 필요 없다(S4/FR5 충족). 영속 경로는 FR5 참조(raw jOOQ applyTransition 확장, 도메인 우회 아님 — 불변식은 validator가 강제).
 
 ## 데이터 모델 변경
 
-- **V010__resolutions.sql** (issue-tracking) — 마이그레이션. ⚠️ V009는 components 선점, FR-IS-07은 **V010**.
+- **V011__resolutions.sql** (issue-tracking) — 마이그레이션. ⚠️ V010은 versions(FR-VR-01) 선점, FR-IS-07은 **V011**.
   - `resolutions(id uuid pk, key text unique, name text not null, description text null, display_order int not null, is_standard boolean not null default false, created_at, updated_at, deleted_at null)`
   - 표준 5종 seed INSERT(Fixed/Won't Fix/Duplicate/Cannot Reproduce/Done).
   - `issues` 테이블에 `resolution_id uuid null` 컬럼 추가(FK 미적용, BC 격리).
@@ -91,7 +91,7 @@ Resolution은 이슈의 상태(open/closed)와 **별개의 축**이다. "왜 닫
 ## 엣지 케이스
 
 - E1. DONE→비DONE 재오픈 시 resolution_id clear(S4).
-- E2. resolutionId가 존재하지 않는 UUID(위조) → 검증 후 거부(404/422).
+- E2. resolutionId가 존재하지 않는 UUID(위조) → 검증 후 거부. ⚠️ RequiredFieldValidator는 값 존재만 검사(존재성 미검증) → 존재성 검증 책임/에러코드 미확정 = plan 재개 설계 결정 Q3(게이트1). 채택 시 코드 확정.
 - E3. 표준 Resolution 수정/삭제 시도 → 거부(is_standard 불변). 단 이번 범위에 CRUD 없으므로 seed 불변만 보장.
 - E4. 동일 전이를 두 사용자가 동시에(낙관락) → 기존 IssueVersionConflictException 경로 유지(resolution 추가가 락 시맨틱 변경 안 함).
 - E5. 여러 DONE 상태가 있는 워크플로우 → 모든 DONE 전이에 validator 설정돼야 함(seed/설정 책임, plan에서 다룸).
@@ -101,7 +101,7 @@ Resolution은 이슈의 상태(open/closed)와 **별개의 축**이다. "왜 닫
 
 - BC 격리: issue-tracking↔project-workflow 직접 import 금지. resolution 전달은 기존 workflowPort(issueFields) 경유.
 - 2 BC 걸침 → PR 분리 또는 learning 2026-05-22 선례(plan에서 결정).
-- 도메인 우회 금지(메모리 patch-merge-domain-bypass): resolution 영속은 Issue Aggregate 경유.
+- resolution 영속은 기존 전이 영속 경로(raw jOOQ applyTransition) 확장. 필수 불변식은 워크플로우 validator가 plan()에서 강제하므로 patch-merge-domain-bypass 비해당(FR5 참조).
 - 프로파일 한정 빈 부팅(메모리 profile-scoped-bean-boot-failure): 새 컨트롤러/빈 추가 시 모듈 전체 test로 부팅 확인.
 
 ## 측정 가능한 완료 기준

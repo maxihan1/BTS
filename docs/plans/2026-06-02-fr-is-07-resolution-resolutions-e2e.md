@@ -232,7 +232,7 @@
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/domain/Issue.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/*Repository*.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueTransitionResolutionIntegrationTest.kt`]
 - depends-on: [B1, B5]
 
-**RED**: Testcontainers 통합 `IssueTransitionResolutionIntegrationTest` — (1) DONE 전이 + resolutionId → resolution_id 영속, (2) DONE 전이 + resolutionId 누락 → 422(validator reject, B7 seed 전제), (3) DONE→비DONE 재전이 → resolution_id null. 단위 mock 아닌 통합으로(메모리 advisory-lock/transaction self-invocation류 — 통합만 표면화).
+**RED**: Testcontainers 통합 `IssueTransitionResolutionIntegrationTest` — (1) DONE 전이 + resolutionId → resolution_id 영속, (2) DONE 전이 + resolutionId 누락 → **409 TRANSITION_NOT_ALLOWED**(validator reject, B7 seed 전제 — `WorkflowValidatorFailureException`→`IssueTransitionNotAllowedException`→409, 코드 확인: IssueExceptionHandler.kt:37/224. 422 아님), (3) DONE→비DONE 재전이 → resolution_id null. 단위 mock 아닌 통합으로(메모리 advisory-lock/transaction self-invocation류 — 통합만 표면화).
 
 **GREEN**: `IssueApplicationService.transitionIssue`(현 line 354)와 `availableTransitions`(현 line 303) `issueFields`에 `"resolution" to request.resolutionId?.toString()` 추가 — 이게 EXECUTION phase RequiredField validator의 검사 입력(`plan()` 호출 시점). 전이 성공 시 `resolution_id = request.resolutionId` 영속: **`IssueRepository.applyTransition`(현 line 203)에 `resolutionId: UUID?` 파라미터 추가해 같은 낙관락 UPDATE에서 `ISSUES.RESOLUTION_ID` set**(null이면 clear). **B-4 해소 근거**: 전이 영속은 원래부터 raw jOOQ(도메인 우회)가 정본 설계 — resolution 필수 불변식은 Issue Aggregate가 아니라 워크플로우 RequiredField validator가 `plan()`에서 강제하므로 patch-merge-domain-bypass(도메인 검증 우회) 위배 아님. applyTransition은 current_state_key/version/resolution_id를 한 트랜잭션·한 UPDATE로 원자 영속.
 
@@ -326,7 +326,11 @@
 - **Q1. resolution 필수를 거는 전이 범위.** "DONE 카테고리 상태로 들어가는 모든 전이"가 자연스러운 해석. software-default 기준 = `in_review→done`(완료), `open→closed`(취소), `done→closed`(이미 DONE→DONE). RequiredField는 전이별 무조건 게이트라 fromCategory 조건 분기 불가.
   - **권고(A)**: DONE 대상 전이 전부에 RequiredField. `done→closed`는 프론트 모달이 기존 resolution을 pre-fill해 재확인. 단순·일관.
   - 대안(B): 비DONE→DONE 진입 전이에만(첫 해결 시점). `done→closed`는 resolution 미요구(기존 resolution_id 유지). RequiredField로는 표현 불가 → done→closed 전이에 validator 미부착으로 근사하나, 프론트는 toCategory==DONE이라 여전히 모달 띄움 → 불일치 소지.
-- **Q2. `done→closed` 재프롬프트 UX.** 권고(A) 채택 시 이미 해결된 이슈를 closed로 옮길 때 모달이 다시 뜸. pre-fill로 마찰 최소화하되, "이미 resolution 있으면 모달 skip하고 그대로 전송"도 가능. → Q1과 묶어 결정.
+- **Q2. `done→closed` 재프롬프트 UX.** 권고(A) 채택 시 이미 해결된 이슈를 closed로 옮길 때 모달이 다시 뜸. pre-fill로 마찰 최소화하되, "이미 resolution 있으면 모달 skip하고 그대로 전송"도 가능. → Q1과 묶어 결정. **(주의: 재리뷰 B-NEW-3 — RequiredField는 resolution *값 존재*만 검사하므로 done→closed 시 프론트가 기존 resolution_id를 다시 안 보내면 거부됨. B9 pre-fill은 UX가 아니라 기능 정확성 요건.)**
+- **Q3. 위조 resolutionId 존재성 검증 (재리뷰 B-NEW-4).** `RequiredFieldValidator`는 null/blank만 검사 — 존재하지 않는 UUID도 통과시킨다. 존재하지 않는 resolution_id가 그대로 영속될 위험.
+  - **권고(A)**: B6에서 영속 전 issue-tracking이 resolutionId 존재성 확인(B3 repository 재사용) → 없으면 400/404 거부. 책임을 B6에 명시 task로 추가. 단순·단일 BC.
+  - 대안(B): 검증 생략(프론트가 GET /resolutions 목록에서만 고르므로 위조는 악의적 직접 호출뿐). 범위 최소화하나 데이터 무결성 약함.
+  - → 채택 시 spec E2(현재 "404/422")를 확정 코드로 정합.
 
 (범위 밖이라 변경 안 하는 것: 커스텀 Resolution CRUD 제외=결정2 유지, toCategory additive 노출=결정1 유지, 재오픈 clear=결정4 유지.)
 
