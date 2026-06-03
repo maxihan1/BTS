@@ -7,6 +7,7 @@ import {
   issueAtlas2Fixture,
   issueAtlas3Fixture,
   issueAtlas4Fixture,
+  issueAtlas5Fixture,
   issueAtlasNoWorkflowFixture,
 } from './issue-fixtures'
 import { allIssueTypeFixtures } from './issue-type-fixtures'
@@ -47,8 +48,12 @@ const issueFixtureMap: Record<string, IssueResponse> = {
   'ATLAS-2': issueAtlas2Fixture,
   'ATLAS-3': issueAtlas3Fixture,
   'ATLAS-4': issueAtlas4Fixture,
+  'ATLAS-5': issueAtlas5Fixture,
   'ATLAS-NOWF': issueAtlasNoWorkflowFixture,
 }
+
+/** E2E 시나리오용 localStorage 키 — S4 재오픈 검증 시 done+resolution 이슈로 응답 분기 */
+const LS_KEY_RESOLUTION_ISSUE = '__bts_e2e_resolution_issue'
 
 /**
  * 이슈 타입 카탈로그 lookup — id 로 활성 타입 조회.
@@ -108,13 +113,29 @@ const getIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
     )
   }
   // 상태 오버라이드 → 생성된 이슈 → 정적 fixture 순으로 조회
-  const found = issueOverrides.get(key) ?? createdIssues.get(key) ?? issueFixtureMap[key]
+  let found = issueOverrides.get(key) ?? createdIssues.get(key) ?? issueFixtureMap[key]
   if (found === undefined) {
     return HttpResponse.json(
       { message: `이슈를 찾을 수 없습니다: ${key}` },
       { status: 404 },
     )
   }
+
+  // S4 E2E 플래그: done+resolution(Fixed) 이슈로 응답 분기 (오버라이드가 없는 경우만)
+  // 오버라이드가 있으면(전이 후 refetch) 플래그 무시 — stateful 결과 우선
+  if (
+    key === 'ATLAS-5' &&
+    !issueOverrides.has(key) &&
+    globalThis.localStorage?.getItem(LS_KEY_RESOLUTION_ISSUE) === 'done-with-resolution'
+  ) {
+    found = {
+      ...found,
+      currentStateKey: 'done',
+      resolution: { id: '00000000-0000-4000-8000-000000000001', key: 'fixed', name: 'Fixed' },
+      version: found.version,
+    }
+  }
+
   // 단건 GET — descriptionHtml 을 description 기반으로 채워 반환 (목록 API는 null 그대로)
   const withHtml: IssueResponse = {
     ...found,
@@ -374,13 +395,18 @@ function renderDescriptionHtml(description: string | null): string | null {
 /**
  * 현재 이슈 상태 기준 가용전이 반환 helper.
  * softwareDefaultFixture 가 단일 출처 — 전이 직접 정의 금지.
+ * toCategory를 toStateKey → states category lookup으로 enrichment.
  */
 function getAvailableTransitions(
   currentStateKey: string,
-): typeof softwareDefaultFixture.transitions {
-  return softwareDefaultFixture.transitions.filter(
-    (t) => t.fromStateKey === currentStateKey,
-  )
+): (typeof softwareDefaultFixture.transitions[0] & { toCategory: string | null })[] {
+  const stateMap = new Map(softwareDefaultFixture.states.map((s) => [s.key, s.category]))
+  return softwareDefaultFixture.transitions
+    .filter((t) => t.fromStateKey === currentStateKey)
+    .map((t) => ({
+      ...t,
+      toCategory: stateMap.get(t.toStateKey) ?? null,
+    }))
 }
 
 /**
@@ -433,6 +459,7 @@ const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ p
   const body = await request.clone().json() as {
     toStatusKey?: string
     expectedVersion?: number
+    resolutionId?: string
   }
   const toStatusKey = body.toStatusKey ?? ''
 
@@ -462,10 +489,31 @@ const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ p
     )
   }
 
-  // (4) 성공 — currentStateKey 갱신 + version+1, stateful 보관
+  // (4) 성공 — currentStateKey 갱신 + version+1 + resolutionId stateful 보관
+  // resolutionId가 있으면 resolution 객체를 찾아 채움 (invalidateQueries refetch 롤백 방지).
+  const stateMap = new Map(softwareDefaultFixture.states.map((s) => [s.key, s.category]))
+  const toCategory = stateMap.get(toStatusKey) ?? null
+  // DONE 전이 시 resolution 영속, 비DONE 전이 시 resolution clear
+  let updatedResolution: IssueResponse['resolution'] = found.resolution
+  if (toCategory === 'DONE' && body.resolutionId) {
+    // resolution-handlers.ts의 표준 5종 seed UUID → name 매핑
+    const resolutionSeedMap: Record<string, { id: string; key: string; name: string }> = {
+      '00000000-0000-4000-8000-000000000001': { id: '00000000-0000-4000-8000-000000000001', key: 'fixed', name: 'Fixed' },
+      '00000000-0000-4000-8000-000000000002': { id: '00000000-0000-4000-8000-000000000002', key: 'wontfix', name: "Won't Fix" },
+      '00000000-0000-4000-8000-000000000003': { id: '00000000-0000-4000-8000-000000000003', key: 'duplicate', name: 'Duplicate' },
+      '00000000-0000-4000-8000-000000000004': { id: '00000000-0000-4000-8000-000000000004', key: 'cannotreproduce', name: 'Cannot Reproduce' },
+      '00000000-0000-4000-8000-000000000005': { id: '00000000-0000-4000-8000-000000000005', key: 'done', name: 'Done' },
+    }
+    updatedResolution = resolutionSeedMap[body.resolutionId] ?? null
+  } else if (toCategory !== 'DONE') {
+    // 비DONE 전이 시 resolution clear
+    updatedResolution = null
+  }
+
   const updated: IssueResponse = {
     ...found,
     currentStateKey: toStatusKey,
+    resolution: updatedResolution,
     version: found.version + 1,
     updatedAt: new Date().toISOString(),
   }

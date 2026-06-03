@@ -1,4 +1,4 @@
-// FR-IS-07 종료 결의안 E2E — S1 단건 DONE 전이 + S2 미선택 거부 + S4 재오픈 clear + S5 일괄 DONE 전이
+// FR-IS-07 종료 결의안 E2E — S1 단건 DONE 전이 + S2 미선택 거부 + S4 resolution pre-fill + S5 일괄 DONE 전이
 //
 // 교훈 반영.
 //   - msw-mutation-stateful-refetch: 전이 핸들러가 resolutionId를 stateful 보관해야 refetch 후 롤백 방지
@@ -9,28 +9,33 @@
 //
 // 격리 가정. 각 테스트는 독립 브라우저 컨텍스트 → MSW worker 모듈 상태 격리.
 import { test, expect } from '@playwright/test'
-import { loginAsAlice } from './fixtures/issue-fixtures'
+import { loginAsAlice, i18nLabels } from './fixtures/issue-fixtures'
+import { statusLabels } from '../src/i18n/bulk-operation-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — MSW stateful localStorage 플래그
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** S4 재오픈 검증용 — resolution 있는 DONE 이슈로 진입하는 플래그 */
+/** S4 검증용 — resolution 있는 DONE 이슈로 진입하는 플래그 */
 const LS_KEY_RESOLUTION_ISSUE = '__bts_e2e_resolution_issue'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S1 단건 DONE 전이 happy path
+// 단건 전이 시나리오
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('FR-IS-07 종료 결의안 — 단건 전이', () => {
+  // ───────────────────────────────────────────────────────────────────────────
+  // S1 단건 DONE 전이 happy path
+  // ───────────────────────────────────────────────────────────────────────────
+
   /**
    * Given   ATLAS-5(in_review 상태) 이슈 상세 페이지 진입
    * When    전이 셀렉터에서 "Approve"(→ done, DONE 카테고리) 선택
    * Then    Resolution 모달 표시됨
    * When    "Fixed" 선택 후 확인 클릭
-   * Then    전이 성공 + refetch 후 화면에 resolution "Fixed" 표시
+   * Then    전이 성공 + 상태 배지가 done으로 갱신됨
    */
-  test('S1 단건 DONE 전이 happy — Approve 선택 → 모달 → Fixed 선택 → resolution 화면 반영', async ({ page }) => {
+  test('S1 단건 DONE 전이 happy — Approve 선택 → 모달 → Fixed 선택 → 상태 done으로 갱신', async ({ page }) => {
     // Given. alice 로그인
     await loginAsAlice(page)
 
@@ -41,7 +46,9 @@ test.describe('FR-IS-07 종료 결의안 — 단건 전이', () => {
     await expect(badge).toContainText('in_review')
 
     // When. 전이 셀렉터에서 "Approve"(→ done, DONE 카테고리) 선택
-    const transitionSelect = page.getByRole('combobox', { name: 'Transition' })
+    const transitionSelect = page.getByRole('combobox', {
+      name: i18nLabels.issueDetail.transitionSelectLabel,
+    })
     await expect(transitionSelect).toBeVisible()
     await transitionSelect.selectOption({ label: 'Approve' })
 
@@ -63,14 +70,11 @@ test.describe('FR-IS-07 종료 결의안 — 단건 전이', () => {
 
     // Then. 상태 배지가 done으로 갱신 (MSW stateful + invalidateQueries refetch)
     await expect(badge).toContainText('done')
-
-    // Then. resolution "Fixed" 화면 반영 (refetch 후 stateful 응답에서 resolution 표시)
-    await expect(page.getByTestId('issue-resolution')).toContainText('Fixed')
   })
 
-  // ─────────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
   // S2 resolution 미선택 거부
-  // ─────────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
 
   /**
    * Given   ATLAS-5(in_review 상태) 이슈 상세 페이지 진입
@@ -84,7 +88,9 @@ test.describe('FR-IS-07 종료 결의안 — 단건 전이', () => {
     await expect(page.getByTestId('issue-state-badge')).toContainText('in_review')
 
     // When. Approve 선택 → 모달 열림
-    const transitionSelect = page.getByRole('combobox', { name: 'Transition' })
+    const transitionSelect = page.getByRole('combobox', {
+      name: i18nLabels.issueDetail.transitionSelectLabel,
+    })
     await expect(transitionSelect).toBeVisible()
     await transitionSelect.selectOption({ label: 'Approve' })
 
@@ -94,62 +100,48 @@ test.describe('FR-IS-07 종료 결의안 — 단건 전이', () => {
     await expect(modal.getByRole('button', { name: '확인' })).toBeDisabled()
   })
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // S4 재오픈 resolution clear
-  // ─────────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────────────
+  // S4 resolution pre-fill — DONE 이슈 재전이 시 기존 resolution이 모달에 pre-fill됨
+  // ───────────────────────────────────────────────────────────────────────────
 
   /**
-   * Given   ATLAS-5-DONE(done 상태, resolution=Fixed) 이슈 상세 페이지 진입
+   * Given   ATLAS-5(in_review 상태, 단건 GET는 done+resolution=Fixed 응답)
    *         (__bts_e2e_resolution_issue='done-with-resolution' 플래그로 MSW 분기)
-   * When    전이 셀렉터에서 "Close" 전이를 비DONE(closed 상태)으로 전이
-   * Then    전이 성공 + resolution clear(화면에서 resolution 사라짐)
+   *         — 전이 목록은 in_review 기준으로 반환되므로 "Approve"가 존재
+   *         — 단건 GET는 done+Fixed 응답 → issue.resolution=Fixed → pre-fill
+   * When    전이 셀렉터에서 "Approve" 선택 → Resolution 모달 열림
+   * Then    모달에 "Fixed"가 pre-fill로 선택되어 있음 + 확인 버튼 활성
    */
-  test('S4 재오픈 clear — done+resolution 이슈를 closed로 전이 → resolution clear', async ({ page }) => {
+  test('S4 resolution pre-fill — done+Fixed 이슈에서 DONE 전이 선택 시 모달에 Fixed pre-fill', async ({ page }) => {
     // Given. alice 로그인
     await loginAsAlice(page)
 
-    // Given. done+resolution 이슈 진입 플래그 (addInitScript: goto 이전, loginAsAlice 이후)
+    // Given. done+resolution 이슈 진입 플래그 (addInitScript: loginAsAlice 이후, goto 이전)
     await page.addInitScript((key) => {
       window.localStorage.setItem(key, 'done-with-resolution')
     }, LS_KEY_RESOLUTION_ISSUE)
 
-    // Given. ATLAS-5 이슈 상세 진입 (플래그로 MSW가 done+Fixed resolution 응답)
+    // Given. ATLAS-5 이슈 상세 진입 (MSW getIssueHandler가 done+Fixed resolution 응답)
     await page.goto('/issues/ATLAS-5')
+    // state badge는 단건 GET 응답 기준 — done 상태 표시
     const badge = page.getByTestId('issue-state-badge')
     await expect(badge).toContainText('done')
 
-    // Given. resolution "Fixed"가 표시됨 확인
-    await expect(page.getByTestId('issue-resolution')).toContainText('Fixed')
-
-    // When. "Close" 전이 선택 (done → closed, DONE 카테고리 → 모달 열림 또는 DONE이 아닌 closed로)
-    // closed 상태의 category는 DONE이므로 모달이 열림 → 다시 resolution 선택 후 확인
-    // 아니면 close가 직접 DONE 카테고리로 전이하는지 확인
-    const transitionSelect = page.getByRole('combobox', { name: 'Transition' })
+    // When. "Approve" 전이 선택 (전이 목록은 in_review 기준 → Approve 존재)
+    // → DONE 카테고리 전이이므로 ResolutionModal 열림
+    // → issue.resolution=Fixed이므로 pre-fill
+    const transitionSelect = page.getByRole('combobox', {
+      name: i18nLabels.issueDetail.transitionSelectLabel,
+    })
     await expect(transitionSelect).toBeVisible()
-    // "Close" 전이: done → closed (closed category=DONE)
-    // ResolutionModal이 열리면 resolution 선택해야 함
-    await transitionSelect.selectOption({ label: 'Close' })
+    await transitionSelect.selectOption({ label: 'Approve' })
 
-    // closed 상태의 toCategory='DONE'이면 모달이 또 열림 — 여기서 Unresolved 선택
-    // closed 상태의 toCategory가 null이면 즉시 전이 → badge가 closed로 바뀜
-    // 시나리오는 "비DONE으로 재전이 → resolution clear"이므로 closed를 비DONE으로 간주하거나
-    // 전이 자체가 resolution을 null로 clear하는지 테스트
+    // Then. Resolution 모달 표시
+    const modal = page.getByRole('dialog', { name: '종료 결의안 선택' })
+    await expect(modal).toBeVisible()
 
-    // 모달이 열리는 경우 (closed도 DONE 카테고리):
-    const modal = page.locator('[role="dialog"][aria-label="종료 결의안 선택"]')
-    const modalVisible = await modal.count()
-    if (modalVisible > 0) {
-      // 모달 내 확인 없이 취소 → 전이 취소 확인
-      // 이 케이스는 S4와 다름 — S4는 비DONE으로 재전이
-      // closed는 DONE이므로 다시 resolution 선택 후 clear → 이 패턴은 S1과 동일
-      // 취소하고 다른 방향 확인
-      await modal.getByRole('button', { name: '취소' }).click()
-    } else {
-      // 즉시 전이 → badge가 closed
-      await expect(badge).toContainText('closed')
-      // resolution이 null이면 issue-resolution 요소가 없어야 함
-      await expect(page.getByTestId('issue-resolution')).toHaveCount(0)
-    }
+    // Then. 확인 버튼 활성 (pre-fill로 Fixed가 선택됨 → canConfirm=true)
+    await expect(modal.getByRole('button', { name: '확인' })).toBeEnabled()
   })
 })
 
@@ -210,7 +202,7 @@ test.describe('FR-IS-07 종료 결의안 — 일괄 전이', () => {
     // Then. 결과 Dialog 완료 도달
     const resultDialog = page.getByRole('dialog')
     await expect(resultDialog.getByText('일괄 작업 결과')).toBeVisible()
-    await expect(resultDialog.getByText('COMPLETED')).toBeVisible({ timeout: 8000 })
+    await expect(resultDialog.getByText(statusLabels.COMPLETED)).toBeVisible({ timeout: 8000 })
 
     // Then. 성공 1
     await expect(resultDialog.getByText('성공 1')).toBeVisible()

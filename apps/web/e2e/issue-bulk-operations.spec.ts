@@ -24,10 +24,10 @@ test.describe('FR-IS-05 이슈 일괄 작업 (BulkEdit / BulkTransition / BulkRe
   // ───────────────────────────────────────────────────────────────────────────
   // S1 일괄 편집 happy path
   //   Given  alice 로그인 + /issues 진입
-  //   When   전체 선택(3건) → 일괄 편집 Dialog → priority High(2) 선택 → 적용
-  //   Then   접수 toast 노출 → 결과 Dialog 완료 + 성공 3/실패 0 → 닫기 → 액션바 사라짐
+  //   When   전체 선택(4건) → 일괄 편집 Dialog → priority High(2) 선택 → 적용
+  //   Then   접수 toast 노출 → 결과 Dialog 완료 + 성공 4/실패 0 → 닫기 → 액션바 사라짐
   // ───────────────────────────────────────────────────────────────────────────
-  test('S1 일괄 편집 happy — 전체 선택 후 편집 접수 → 결과 Dialog 완료 + 성공 3', async ({ page }) => {
+  test('S1 일괄 편집 happy — 전체 선택 후 편집 접수 → 결과 Dialog 완료 + 성공 4', async ({ page }) => {
     // Given. alice 로그인
     await loginAsAlice(page)
 
@@ -39,10 +39,10 @@ test.describe('FR-IS-05 이슈 일괄 작업 (BulkEdit / BulkTransition / BulkRe
     await expect(selectAll).toBeVisible()
     await selectAll.click()
 
-    // Then. 액션바 "3건 선택됨" 확인
+    // Then. 액션바 "4건 선택됨" 확인
     const actionBar = page.getByTestId('bulk-action-bar')
     await expect(actionBar).toBeVisible()
-    await expect(actionBar).toContainText('3건 선택됨')
+    await expect(actionBar).toContainText('4건 선택됨')
 
     // When. 일괄 편집 버튼 클릭 — 액션바 컨테이너 내로 한정
     await actionBar.getByRole('button', { name: '일괄 편집' }).click()
@@ -66,8 +66,8 @@ test.describe('FR-IS-05 이슈 일괄 작업 (BulkEdit / BulkTransition / BulkRe
     // Then. 완료(statusLabels.COMPLETED) 상태 도달 대기
     await expect(resultDialog.getByText(statusLabels.COMPLETED)).toBeVisible({ timeout: 8000 })
 
-    // Then. 성공 3 / 실패 0
-    await expect(resultDialog.getByText('성공 3')).toBeVisible()
+    // Then. 성공 4 / 실패 0
+    await expect(resultDialog.getByText('성공 4')).toBeVisible()
     await expect(resultDialog.getByText('실패 0')).toBeVisible()
 
     // When. 닫기 버튼 클릭
@@ -80,11 +80,12 @@ test.describe('FR-IS-05 이슈 일괄 작업 (BulkEdit / BulkTransition / BulkRe
   // ───────────────────────────────────────────────────────────────────────────
   // S2 일괄 전이 happy path
   //   Given  alice 로그인 + /issues 진입
-  //   When   ATLAS-1(open) + ATLAS-3(done) 선택 → 일괄 전이 Dialog → Cancel 선택 → 적용
+  //   When   ATLAS-1(open) + ATLAS-3(done) 선택 → 일괄 전이 Dialog → Cancel 선택 → resolution 선택 → 적용
   //   Then   결과 Dialog 완료 + 성공 2
   //   주의: ATLAS-1(open→closed: Cancel), ATLAS-3(done→closed: Close)
   //         intersectTransitions는 첫 이슈(ATLAS-1) 전이 기준 — closed toStateKey 공통 항목 유지
   //         → 실제 노출 옵션 이름은 ATLAS-1 기준 'Cancel' (open→closed)
+  //         → closed 상태의 category='DONE' → resolution 드롭다운 표시 (FR-IS-07 B14)
   // ───────────────────────────────────────────────────────────────────────────
   test('S2 일괄 전이 happy — ATLAS-1+ATLAS-3 선택 후 전이 접수 → 결과 Dialog 완료 + 성공 2', async ({ page }) => {
     // Given. alice 로그인
@@ -116,6 +117,11 @@ test.describe('FR-IS-05 이슈 일괄 작업 (BulkEdit / BulkTransition / BulkRe
     // 드롭다운 팝업에서 'Cancel' 옵션 선택 (Radix SelectContent는 portal로 렌더됨)
     await page.getByRole('option', { name: 'Cancel' }).click()
 
+    // When. resolution 드롭다운 표시(closed 상태 category='DONE') → "Fixed" 선택
+    await expect(transitionDialog.getByRole('combobox', { name: '결의안' })).toBeVisible()
+    await transitionDialog.getByRole('combobox', { name: '결의안' }).click()
+    await page.getByRole('option', { name: 'Fixed' }).click()
+
     // When. 적용 버튼 클릭
     await transitionDialog.getByRole('button', { name: '적용' }).click()
 
@@ -130,11 +136,11 @@ test.describe('FR-IS-05 이슈 일괄 작업 (BulkEdit / BulkTransition / BulkRe
 
   // ───────────────────────────────────────────────────────────────────────────
   // S3 부분 실패
-  //   Given  __bts_e2e_bulk_partial_fail='true' → 마지막 이슈(ATLAS-3) FAILED(VERSION_CONFLICT)
-  //   When   전체 선택(3건) → 일괄 편집 → priority 변경 → 적용
-  //   Then   결과 Dialog 완료 + 성공 2/실패 1 + 실패 목록 ATLAS-3 + 사유 VERSION_CONFLICT 라벨
+  //   Given  __bts_e2e_bulk_partial_fail='true' → 마지막 이슈(ATLAS-5) FAILED(VERSION_CONFLICT)
+  //   When   전체 선택(4건) → 일괄 편집 → priority 변경 → 적용
+  //   Then   결과 Dialog 완료 + 성공 3/실패 1 + 실패 목록 ATLAS-5 + 사유 VERSION_CONFLICT 라벨
   // ───────────────────────────────────────────────────────────────────────────
-  test('S3 부분 실패 — 마지막 이슈 FAILED → 결과 Dialog 성공 2/실패 1 + 실패 목록', async ({ page }) => {
+  test('S3 부분 실패 — 마지막 이슈 FAILED → 결과 Dialog 성공 3/실패 1 + 실패 목록', async ({ page }) => {
     // Given. alice 로그인
     await loginAsAlice(page)
 
@@ -163,14 +169,14 @@ test.describe('FR-IS-05 이슈 일괄 작업 (BulkEdit / BulkTransition / BulkRe
     await expect(resultDialog.getByText('일괄 작업 결과')).toBeVisible()
     await expect(resultDialog.getByText(statusLabels.COMPLETED)).toBeVisible({ timeout: 8000 })
 
-    // Then. 성공 2 / 실패 1
-    await expect(resultDialog.getByText('성공 2')).toBeVisible()
+    // Then. 성공 3 / 실패 1
+    await expect(resultDialog.getByText('성공 3')).toBeVisible()
     await expect(resultDialog.getByText('실패 1')).toBeVisible()
 
-    // Then. 실패 목록에 ATLAS-3 노출
+    // Then. 실패 목록에 ATLAS-5 노출 (전체 4건 중 마지막 이슈)
     const failureSection = resultDialog.getByText('실패 목록')
     await expect(failureSection).toBeVisible()
-    await expect(resultDialog.getByText('ATLAS-3')).toBeVisible()
+    await expect(resultDialog.getByText('ATLAS-5')).toBeVisible()
 
     // Then. 실패 사유 한국어 라벨 노출
     await expect(resultDialog.getByText(failureReasonLabels.VERSION_CONFLICT)).toBeVisible()
@@ -228,12 +234,12 @@ test.describe('FR-IS-05 이슈 일괄 작업 (BulkEdit / BulkTransition / BulkRe
     // When. /issues 진입
     await page.goto('/issues')
 
-    // When. 전체 선택 (3건: open/in_progress/done → 공통 전이 없음)
+    // When. 전체 선택 (4건: open/in_progress/done/in_review → 공통 전이 없음)
     await page.getByTestId('select-all-page').click()
 
     // When. 일괄 전이 Dialog 열기
     const actionBar = page.getByTestId('bulk-action-bar')
-    await expect(actionBar).toContainText('3건 선택됨')
+    await expect(actionBar).toContainText('4건 선택됨')
     await actionBar.getByRole('button', { name: '일괄 전이' }).click()
 
     // Then. 전이 Dialog 열림
