@@ -8,6 +8,7 @@ import { issueTypeHandlers } from './issue-type-handlers'
 import { passwordHandlers } from './password-handlers'
 import { projectMemberHandlers } from './project-member-handlers'
 import { projectPermissionHandlers } from './project-permission-handlers'
+import { resolutionHandlers } from './resolution-handlers'
 import { schemeHandlers } from './scheme-handlers'
 import { sessionHandlers } from './session-handlers'
 import { userHandlers } from './user-handlers'
@@ -29,6 +30,7 @@ export const handlers = [
   ...passwordHandlers,
   ...projectMemberHandlers,
   ...projectPermissionHandlers,
+  ...resolutionHandlers,
   ...schemeHandlers,
   ...sessionHandlers,
   ...userHandlers,
