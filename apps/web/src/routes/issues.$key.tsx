@@ -5,6 +5,7 @@ import { useParams, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { fetchIssue, updateIssue, transitionIssue } from '@/api/issues'
+import type { IssueTransition } from '@/api/issues'
 import { ApiError } from '@/api/client'
 import { useUpdateIssueSummary, issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { useChangeAssignee } from '@/api/useChangeAssignee'
@@ -19,6 +20,7 @@ import { Input } from '@/components/ui/input'
 import { IssueDescription } from '@/components/issue/IssueDescription'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
+import { ResolutionModal } from '@/components/issue/ResolutionModal'
 import { issueDetailStrings } from '@/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -86,6 +88,10 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('')
 
+  // ── Resolution 모달 상태 ──────────────────────────────────────────────────
+  /** 현재 DONE 전이 대기 중인 전이 항목. null이면 모달 닫힘. */
+  const [pendingDoneTransition, setPendingDoneTransition] = useState<IssueTransition | null>(null)
+
   const { data: issue, isLoading, error } = useQuery({
     queryKey: issueQueryKey(issueKey),
     queryFn: () => fetchIssue(issueKey),
@@ -133,7 +139,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
 
   // 전이 실행 mutation — D6 typeChangeMutation과 동일 패턴 (onError 훅 레벨 처리)
   const transitionMutation = useMutation({
-    mutationFn: (input: { toStatusKey: string; expectedVersion: number }) =>
+    mutationFn: (input: { toStatusKey: string; expectedVersion: number; resolutionId?: string }) =>
       transitionIssue(issueKey, input),
     onSuccess: async () => {
       await Promise.all([
@@ -344,9 +350,49 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   }
 
   // ── 상태전이 핸들러 ───────────────────────────────────────────────────────
+
+  /**
+   * 전이 선택 핸들러.
+   * - toCategory === 'DONE': Resolution 모달을 오픈하고 전이를 대기한다.
+   * - 그 외: 즉시 전이 실행 (resolutionId 없음).
+   *
+   * IssueMetaPanel.onTransition 시그니처가 toStateKey만 넘기므로,
+   * transitions 배열에서 해당 전이 항목을 찾아 toCategory를 판단한다.
+   *
+   * @param toStateKey 목표 상태 키
+   */
   function handleTransition(toStateKey: string) {
     if (issue === undefined) return
-    transitionMutation.mutate({ toStatusKey: toStateKey, expectedVersion: issue.version })
+    const transition = transitions.find((t) => t.toStateKey === toStateKey)
+    if (transition?.toCategory === 'DONE') {
+      // DONE 전이 → 모달 오픈 후 resolution 선택 대기
+      setPendingDoneTransition(transition)
+    } else {
+      // 비DONE 전이 → 즉시 실행
+      transitionMutation.mutate({ toStatusKey: toStateKey, expectedVersion: issue.version })
+    }
+  }
+
+  /**
+   * Resolution 모달 확인 핸들러.
+   * 모달에서 선택된 resolutionId를 포함해 전이를 실행한다.
+   */
+  function handleResolutionConfirm(resolutionId: string) {
+    if (issue === undefined || pendingDoneTransition === null) return
+    transitionMutation.mutate({
+      toStatusKey: pendingDoneTransition.toStateKey,
+      expectedVersion: issue.version,
+      resolutionId,
+    })
+    setPendingDoneTransition(null)
+  }
+
+  /**
+   * Resolution 모달 취소 핸들러.
+   * 대기 중인 전이를 취소하고 모달을 닫는다.
+   */
+  function handleResolutionCancel() {
+    setPendingDoneTransition(null)
   }
 
   // ── 삭제 핸들러 ───────────────────────────────────────────────────────────
@@ -481,6 +527,14 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
           />
         )}
       </div>
+
+      {/* DONE 전이 시 Resolution 선택 모달 (B9) */}
+      <ResolutionModal
+        open={pendingDoneTransition !== null}
+        prefilledResolution={issue.resolution ?? null}
+        onConfirm={handleResolutionConfirm}
+        onCancel={handleResolutionCancel}
+      />
     </div>
   )
 }
