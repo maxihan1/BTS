@@ -6,6 +6,7 @@ import com.openhtmltopdf.extend.FSSupplier
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 
 /**
@@ -44,9 +45,11 @@ class IssuePdfRenderer(
         val baos =
             ByteArrayOutputStream().also { out ->
                 PdfRendererBuilder()
-                    // OFL 라이선스 NanumGothic — classpath 번들 폰트, 한글 임베딩 필수
+                    // OFL 라이선스 NanumGothic — classpath 번들 폰트, 한글 임베딩 필수.
+                    // 폰트 바이트는 1회만 읽어 캐싱(FONT_BYTES)하고 렌더마다 ByteArrayInputStream을 공급한다.
+                    // ByteArrayInputStream은 OS 리소스를 잡지 않아 close 누락 위험이 없다.
                     .useFont(
-                        FSSupplier { javaClass.getResourceAsStream(FONT_RESOURCE_PATH) },
+                        FSSupplier { ByteArrayInputStream(FONT_BYTES) },
                         FONT_FAMILY,
                     )
                     // baseUri=null — 외부 URL 리소스 fetch 비활성 (img allowlist 없음으로 자연 차단)
@@ -64,5 +67,16 @@ class IssuePdfRenderer(
 
         /** CSS `font-family`에 등록되는 폰트 패밀리명. IssuePdfTemplate의 CSS와 일치해야 한다. */
         private const val FONT_FAMILY = "NanumGothic"
+
+        /**
+         * 번들 폰트 바이트 캐시. classpath 리소스를 클래스 로드 시 1회만 읽는다.
+         *
+         * 렌더마다 2MB 폰트를 재읽지 않도록 캐싱하며, 공급 시 [ByteArrayInputStream]으로 감싸
+         * openhtmltopdf에 전달한다. 폰트 리소스 부재는 [PdfDependencyAvailabilityTest]가 가드한다.
+         */
+        private val FONT_BYTES: ByteArray =
+            requireNotNull(IssuePdfRenderer::class.java.getResourceAsStream(FONT_RESOURCE_PATH)) {
+                "번들 폰트 리소스를 찾을 수 없음: $FONT_RESOURCE_PATH"
+            }.use { it.readBytes() }
     }
 }
