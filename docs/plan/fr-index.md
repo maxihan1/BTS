@@ -33,12 +33,13 @@
 | FR-VR-03 | Affects/Fix Version 연결 | 필수 | issue-tracking | §3.2.3 |
 | FR-VR-04 | 버전 릴리즈 노트 자동 생성 | 중간 | issue-tracking | §3.2.4 |
 
-### 워크플로우 / 자동화 (FR-WF, FR-AT, 9개)
+### 워크플로우 / 자동화 (FR-WF, FR-AT, 10개)
 
 | FR ID | 한 줄 | 우선순위 | BC | 본문 위치 |
 |---|---|---|---|---|
 | FR-WF-01 | FSM 워크플로우 (상태/전이/조건/검증/후처리) | 필수 | project-workflow | §2.1 |
 | FR-WF-02 | 프로젝트별 워크플로우 스킴 + 타입별 매핑 | 필수 | project-workflow | §2.2 |
+| FR-WF-03 | 워크플로우 전이 validator/PostAction 런타임 결선 | 필수 | project-workflow | §2.3 |
 | FR-AT-01 | 트리거 (생성/변경/댓글/스케줄/Webhook) | 필수 | automation | §2.1 |
 | FR-AT-02 | 액션 (필드 변경/담당자/댓글/API 호출) | 필수 | automation | §2.2 |
 | FR-AT-03 | 조건 분기 (if-else, 표현식) | 필수 | automation | §2.3 |

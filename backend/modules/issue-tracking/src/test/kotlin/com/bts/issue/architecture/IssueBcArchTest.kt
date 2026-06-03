@@ -152,39 +152,34 @@ class IssueBcArchTest {
     /**
      * 룰 2 — jOOQ 생성 코드는 repository 레이어에서만 접촉한다.
      *
-     * `com.bts.issue.jooq.generated..` 는 DB 테이블/컬럼을 Kotlin 타입으로 표현한 생성 코드다.
+     * `com.bts.issue.jooq..` 는 DB 테이블/컬럼을 Kotlin 타입으로 표현한 jOOQ 생성 코드다
+     * (실제 생성 패키지: `com.bts.issue.jooq.tables..`, `.references..`, `.keys..` 등).
      * 이를 repository 외 레이어에서 직접 참조하면 도메인/애플리케이션 로직이 DB 스키마에 결합된다.
      *
-     * **금지 대상 레이어 (위반 시 fail).**
-     * - `com.bts.issue.application..` — 애플리케이션 서비스
-     * - `com.bts.issue.domain..` — 도메인 모델
-     * - `com.bts.issue.adapter..` — 인바운드/아웃바운드 어댑터
-     * - `com.bts.issue.event..` — 도메인 이벤트
-     * - `com.bts.issue.port..` — 포트 계약
-     * - `com.bts.issue.web..` — 웹 레이어 (미래 확장 포함)
+     * **금지 대상.** `com.bts.issue..` 전 패키지에서 jOOQ 직접 참조 금지.
+     * 단, jOOQ 생성 코드 자체(`com.bts.issue.jooq..`)와 모든 repository 패키지
+     * (`..repository..` — 예: `com.bts.issue.repository`, `com.bts.issue.component.repository`)는 제외.
+     * 서브패키지 레이어(예: `com.bts.issue.component.application`)까지 포함한다.
      *
-     * **허용.** `com.bts.issue.repository..` 만.
-     *
-     * 위반 시 fail 메시지에 어느 파일이 jOOQ generated 클래스를 import 했는지 명시된다.
-     * 수정 방법. jOOQ generated 코드 참조를 IssueRepository 를 통하도록 리팩토링.
+     * 위반 시 fail 메시지에 어느 파일이 jOOQ 클래스를 import 했는지 명시된다.
+     * 수정 방법. jOOQ 참조를 repository 레이어(예: ProjectLookupRepository, ComponentRepository)로 이동.
      * 근거. ADR 2026-05-21-workflow-bc-cross-bc-port 와 동일 hexagonal 경계 정신.
+     *
+     * 주의(2026-06-02). 기존 룰은 대상 패키지가 `com.bts.issue.jooq.generated..`(실제 경로와 불일치)
+     * + `.that()` 레이어 목록이 `com.bts.issue.application..`만 열거해 서브패키지를 못 봐, 사실상
+     * 아무것도 검사하지 못했다(FR-CM-01 코드리뷰 NIT-2). 패키지 경로 + 검사 범위를 모두 정정한다.
      */
     @Test
     fun jooqGeneratedMustOnlyBeUsedInRepositoryLayer() {
         val rule =
             noClasses()
-                .that().resideInAnyPackage(
-                    "com.bts.issue.application..",
-                    "com.bts.issue.domain..",
-                    "com.bts.issue.adapter..",
-                    "com.bts.issue.event..",
-                    "com.bts.issue.port..",
-                    "com.bts.issue.web..",
-                )
+                .that().resideInAPackage("com.bts.issue..")
+                .and().resideOutsideOfPackage("com.bts.issue.jooq..")
+                .and().resideOutsideOfPackage("..repository..")
                 .should().dependOnClassesThat()
-                .resideInAnyPackage("com.bts.issue.jooq.generated..")
+                .resideInAnyPackage("com.bts.issue.jooq..")
                 .because(
-                    "jOOQ generated 코드는 repository layer 만 접촉 가능 " +
+                    "jOOQ 생성 코드는 repository layer 만 접촉 가능 " +
                         "(hexagonal 경계, ADR workflow-bc-cross-bc-port 와 동일 정신).",
                 )
 

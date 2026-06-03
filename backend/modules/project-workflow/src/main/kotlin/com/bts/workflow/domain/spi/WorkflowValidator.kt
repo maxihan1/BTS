@@ -5,6 +5,28 @@ package com.bts.workflow.domain.spi
 import com.bts.workflow.domain.dto.TransitionContext
 
 /**
+ * Validator 가 평가되는 시점을 구분하는 열거형.
+ *
+ * AVAILABILITY 는 전이 목록 조회 단계에서 평가되는 게이트다. 사용자에게 어떤 전이 버튼을
+ * 노출할지 결정할 때 사용한다.
+ *
+ * EXECUTION 은 실제 전이를 실행하는 단계에서만 평가되는 게이트다. 전이 화면(Jira 의
+ * transition screen)에서 필수 입력을 강제하는 시맨틱에 해당한다. 목록 조회 시에는
+ * 평가하지 않으므로 버튼은 보이되, 실행 시점에 조건이 충족되지 않으면 전이가 차단된다.
+ */
+enum class ValidatorPhase {
+    /**
+     * 전이 목록 조회 시 평가. availableTransitions 게이트.
+     */
+    AVAILABILITY,
+
+    /**
+     * 전이 실행 시 평가. transition 실행 게이트. Jira transition screen 시맨틱.
+     */
+    EXECUTION,
+}
+
+/**
  * 워크플로우 전이(transition) 허용 여부를 판정하는 SPI(Service Provider Interface).
  *
  * SPI 란 외부 구현체가 플러그인처럼 꽂힐 수 있는 인터페이스다. 예를 들어 특정 필드 값 조건,
@@ -20,6 +42,14 @@ interface WorkflowValidator {
      * YAML 워크플로우 정의의 `validators[].type` 값과 매칭된다.
      */
     val type: String
+
+    /**
+     * 이 Validator 가 평가되는 시점. 기본값은 [ValidatorPhase.AVAILABILITY].
+     *
+     * 기본값을 AVAILABILITY 로 설정해 기존 구현체와 다른 BC 의 익명 object 가
+     * 무수정으로 컴파일되도록 한다. EXECUTION 페이즈가 필요한 구현체만 override 한다.
+     */
+    val phase: ValidatorPhase get() = ValidatorPhase.AVAILABILITY
 
     /**
      * 전이 허용 여부를 판정한다.
