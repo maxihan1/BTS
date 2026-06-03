@@ -44,7 +44,9 @@ interface BulkTransitionDialogProps {
  * 5. transitions가 0건이고 unresolvedIssueKeys === issueKeys 전량이면 전량 실패 에러를 표시한다.
  * 6. 전이 선택 후 적용 시 issueKeys 전체를 백엔드에 전송한다.
  *    — 백엔드 best-effort가 개별 처리하므로 전체 목록을 그대로 보낸다.
- * 7. 성공 시 onSubmitted(bulkOperationId)와 onOpenChange(false)를 호출한다.
+ * 7. 선택한 전이의 toCategory가 'DONE'이면 resolution 드롭다운을 표시한다 (B14).
+ *    — resolution 미선택 시 적용 버튼 비활성. 선택 시 transitionPayload.resolutionId 포함.
+ * 8. 성공 시 onSubmitted(bulkOperationId)와 onOpenChange(false)를 호출한다.
  *
  * @param issueKeys 일괄 전이 대상 이슈 키 목록
  * @param open Dialog 열림 여부
@@ -89,6 +91,7 @@ export function BulkTransitionDialog({
     setHasPartialFailure(false)
     setHasTotalFailure(false)
     setSelectedStateKey('')
+    setSelectedResolutionId('')
 
     void fetchBulkAvailableTransitions(issueKeys).then((result) => {
       if (cancelled) return
