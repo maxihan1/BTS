@@ -1,4 +1,4 @@
-# validators/post_actions 시드 검증용 테스트 워크플로우 YAML
+# validators/postActions 시드 검증용 테스트 워크플로우 YAML
 key: test-validator-seed
 name: Validator 시드 테스트 워크플로우
 description: YamlSeedValidatorPostActionTest 전용 — 표준 4 워크플로우와 무관
@@ -14,11 +14,11 @@ transitions:
       - type: RequiredField
         config:
           field: resolution
-      - type: Permission
+      - type: permission-check
         config:
-          role: DEVELOPER
-    post_actions:
-      - type: SetField
+          permission: TRANSITION_ISSUE
+    postActions:
+      - type: SET_FIELD
         config:
           field: assignee
           value: actor
@@ -29,7 +29,7 @@ transitions:
       - type: RequiredField
         config:
           field: resolution
-    post_actions: []
+    postActions: []
   - from: done
     to: open
     name: Reopen

@@ -160,8 +160,8 @@ class YamlSeedValidatorPostActionTest {
         assertThat(validators).hasSize(2)
         assertThat(validators[0].type).isEqualTo("RequiredField")
         assertThat(validators[0].config).containsEntry("field", "resolution")
-        assertThat(validators[1].type).isEqualTo("Permission")
-        assertThat(validators[1].config).containsEntry("role", "DEVELOPER")
+        assertThat(validators[1].type).isEqualTo("permission-check")
+        assertThat(validators[1].config).containsEntry("permission", "TRANSITION_ISSUE")
 
         log.info("시나리오 1 통과 — validators 2건 삽입 확인: {}", validators.map { it.type })
     }
@@ -173,7 +173,7 @@ class YamlSeedValidatorPostActionTest {
         val postActions = defRepo.findPostActions("test-validator-seed", transition)
 
         assertThat(postActions).hasSize(1)
-        assertThat(postActions[0].type).isEqualTo("SetField")
+        assertThat(postActions[0].type).isEqualTo("SET_FIELD")
         assertThat(postActions[0].config).containsEntry("field", "assignee")
         assertThat(postActions[0].config).containsEntry("value", "actor")
 
@@ -186,9 +186,9 @@ class YamlSeedValidatorPostActionTest {
         val transition = WorkflowTransition(fromStateKey = "open", toStateKey = "in_progress", name = "Start Work")
         val validators = defRepo.findValidators("test-validator-seed", transition)
 
-        // display_order ASC 정렬 — 0=RequiredField, 1=Permission
+        // display_order ASC 정렬 — 0=RequiredField, 1=permission-check
         assertThat(validators[0].type).isEqualTo("RequiredField")
-        assertThat(validators[1].type).isEqualTo("Permission")
+        assertThat(validators[1].type).isEqualTo("permission-check")
 
         log.info("시나리오 3 통과 — display_order 순서 확인")
     }

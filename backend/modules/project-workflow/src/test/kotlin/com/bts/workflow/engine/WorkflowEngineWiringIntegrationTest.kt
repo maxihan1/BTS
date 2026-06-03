@@ -161,7 +161,8 @@ class WorkflowEngineWiringIntegrationTest {
             txTemplate = TransactionTemplate(txManager)
 
             val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
-            seedService = YamlSeedService(workflowRepository, dsl, DefaultResourceLoader(), yamlMapper)
+            // TestConfig 에 이미 factory 빈 있음 — 동일 인스턴스를 시드 서비스에 주입
+            seedService = YamlSeedService(workflowRepository, dsl, DefaultResourceLoader(), yamlMapper, validatorFactory, postActionFactory)
 
             // 테스트용 워크플로우 시드
             // open → done: RequiredField("resolution") + SET_FIELD("assignee") + NOTIFY

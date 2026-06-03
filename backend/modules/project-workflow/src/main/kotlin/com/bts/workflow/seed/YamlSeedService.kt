@@ -3,6 +3,8 @@
 package com.bts.workflow.seed
 
 import com.bts.workflow.domain.Workflow
+import com.bts.workflow.engine.WorkflowPostActionFactory
+import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.jooq.tables.WorkflowPostActions.Companion.WORKFLOW_POST_ACTIONS
 import com.bts.workflow.jooq.tables.WorkflowStates.Companion.WORKFLOW_STATES
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
@@ -135,6 +137,8 @@ class YamlSeedService(
     private val dsl: DSLContext,
     private val resourceLoader: ResourceLoader,
     private val yamlMapper: ObjectMapper,
+    private val validatorFactory: WorkflowValidatorFactory,
+    private val postActionFactory: WorkflowPostActionFactory,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -179,9 +183,10 @@ class YamlSeedService(
     }
 
     /**
-     * YAML 바이트를 파싱하고 Konform 검증을 수행한다.
+     * YAML 바이트를 파싱하고 Konform 검증 및 validator/postAction type dry-run 검증을 수행한다.
      *
-     * 파싱 실패 또는 검증 실패 시 [IllegalStateException] 을 던진다.
+     * 파싱 실패, Konform 검증 실패, 또는 미지원 validator/postAction type 감지 시
+     * [IllegalStateException] 을 던져 부팅을 차단한다 (fail-fast).
      */
     private fun parseAndValidate(
         key: String,
@@ -202,8 +207,43 @@ class YamlSeedService(
         }
 
         validateTransitionUniqueness(dto.key, dto.transitions)
+        dryRunValidatorAndPostActionTypes(dto)
 
         return dto
+    }
+
+    /**
+     * 워크플로우 YAML 의 모든 validator/postAction type 에 대해 factory dry-run 을 수행한다.
+     *
+     * 미지원 type 이나 필수 config 키 누락 시 [IllegalStateException] 을 던진다.
+     * 생성된 인스턴스는 버린다 — DB INSERT 는 기존 로직에서 별도 수행한다.
+     *
+     * @param dto 파싱된 워크플로우 YAML DTO
+     * @throws IllegalStateException 미지원 type 또는 필수 config 키 누락 시
+     */
+    private fun dryRunValidatorAndPostActionTypes(dto: WorkflowYamlDto) {
+        for (transition in dto.transitions) {
+            for (validator in transition.validators) {
+                try {
+                    validatorFactory.create(validator.type, validator.config)
+                } catch (ex: IllegalArgumentException) {
+                    throw IllegalStateException(
+                        "워크플로우 '${dto.key}' 시드 실패: validator type '${validator.type}' — ${ex.message}",
+                        ex,
+                    )
+                }
+            }
+            for (postAction in transition.postActions) {
+                try {
+                    postActionFactory.create(postAction.type, postAction.config)
+                } catch (ex: IllegalArgumentException) {
+                    throw IllegalStateException(
+                        "워크플로우 '${dto.key}' 시드 실패: postAction type '${postAction.type}' — ${ex.message}",
+                        ex,
+                    )
+                }
+            }
+        }
     }
 
     /**
@@ -578,6 +618,7 @@ class YamlSeedService(
     @Transactional
     fun seedSingle(dto: WorkflowYamlDto) {
         validateTransitionUniqueness(dto.key, dto.transitions)
+        dryRunValidatorAndPostActionTypes(dto)
         applyIfChanged(dto)
     }
 }
