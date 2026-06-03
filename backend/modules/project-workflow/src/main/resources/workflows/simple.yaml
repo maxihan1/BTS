@@ -1,4 +1,4 @@
-# 단순 워크플로우 (3 상태 + 3 전이 — TODO/DOING/DONE)
+# 단순 워크플로우 (3 상태 + 3 전이 — TODO/DOING/DONE) — FR-IS-07: DONE 카테고리 진입 전이에 resolution 필수
 key: simple
 name: 단순 워크플로우 (TODO/DOING/DONE)
 description: "To Do → Doing → Done 3단계 단순 워크플로우"
@@ -8,5 +8,11 @@ states:
   - { key: done, name: Done, category: DONE, displayOrder: 3 }
 transitions:
   - { from: todo, to: doing, name: Start }
-  - { from: doing, to: done, name: Complete }
+  - from: doing
+    to: done
+    name: Complete
+    validators:
+      - type: RequiredField
+        config:
+          field: resolution
   - { from: done, to: doing, name: Reopen }
