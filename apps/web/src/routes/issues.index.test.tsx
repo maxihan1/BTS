@@ -368,8 +368,8 @@ describe('IssueListPage — 일괄 선택 및 액션 바 (Task 9)', () => {
       expect(screen.getByTestId('bulk-action-bar')).toBeInTheDocument(),
     )
 
-    // fixture 3건 모두 선택됨 — "3건 선택됨"
-    expect(screen.getByTestId('bulk-action-bar')).toHaveTextContent('3건 선택됨')
+    // fixture 4건 모두 선택됨 — "4건 선택됨" (FR-IS-07 E2E용 ATLAS-5 추가로 페이지 4건)
+    expect(screen.getByTestId('bulk-action-bar')).toHaveTextContent('4건 선택됨')
   })
 
   /**
