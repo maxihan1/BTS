@@ -448,10 +448,11 @@ class BulkTransitionResolutionTest {
                     issueKeys = listOf(key1, key2),
                     operationType = BulkOperationType.BULK_TRANSITION,
                     editPayload = null,
-                    transitionPayload = BulkTransitionPayload(
-                        toStateKey = "done",
-                        resolutionId = FIXED_RESOLUTION_ID,
-                    ),
+                    transitionPayload =
+                        BulkTransitionPayload(
+                            toStateKey = "done",
+                            resolutionId = FIXED_RESOLUTION_ID,
+                        ),
                 ),
             )
 
@@ -494,10 +495,11 @@ class BulkTransitionResolutionTest {
                     issueKeys = listOf(key1),
                     operationType = BulkOperationType.BULK_TRANSITION,
                     editPayload = null,
-                    transitionPayload = BulkTransitionPayload(
-                        toStateKey = "done",
-                        resolutionId = null,
-                    ),
+                    transitionPayload =
+                        BulkTransitionPayload(
+                            toStateKey = "done",
+                            resolutionId = null,
+                        ),
                 ),
             )
 
@@ -536,10 +538,11 @@ class BulkTransitionResolutionTest {
                     issueKeys = listOf(key1),
                     operationType = BulkOperationType.BULK_TRANSITION,
                     editPayload = null,
-                    transitionPayload = BulkTransitionPayload(
-                        toStateKey = "done",
-                        resolutionId = NONEXISTENT_RESOLUTION_ID,
-                    ),
+                    transitionPayload =
+                        BulkTransitionPayload(
+                            toStateKey = "done",
+                            resolutionId = NONEXISTENT_RESOLUTION_ID,
+                        ),
                 ),
             )
 
