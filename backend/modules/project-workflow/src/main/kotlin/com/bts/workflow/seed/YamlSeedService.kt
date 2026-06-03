@@ -3,8 +3,10 @@
 package com.bts.workflow.seed
 
 import com.bts.workflow.domain.Workflow
+import com.bts.workflow.jooq.tables.WorkflowPostActions.Companion.WORKFLOW_POST_ACTIONS
 import com.bts.workflow.jooq.tables.WorkflowStates.Companion.WORKFLOW_STATES
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
+import com.bts.workflow.jooq.tables.WorkflowValidators.Companion.WORKFLOW_VALIDATORS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
 import com.bts.workflow.repository.WorkflowRepository
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -12,6 +14,7 @@ import io.konform.validation.Validation
 import io.konform.validation.jsonschema.minItems
 import io.konform.validation.jsonschema.minLength
 import org.jooq.DSLContext
+import org.jooq.JSONB
 import org.slf4j.LoggerFactory
 import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.context.event.EventListener
@@ -54,16 +57,42 @@ data class StateYamlDto(
 )
 
 /**
+ * YAML validator 항목 DTO.
+ *
+ * @property type validator 구현 타입 식별자 (예: RequiredField, Permission, CustomExpression)
+ * @property config 타입별 파라미터 맵 (예: mapOf("field" to "resolution"))
+ */
+data class ValidatorYamlDto(
+    val type: String = "",
+    val config: Map<String, Any?> = emptyMap(),
+)
+
+/**
+ * YAML post_action 항목 DTO.
+ *
+ * @property type post_action 구현 타입 식별자 (예: SetField, AddWatcher, Notify)
+ * @property config 타입별 파라미터 맵 (예: mapOf("field" to "assignee", "value" to "actor"))
+ */
+data class PostActionYamlDto(
+    val type: String = "",
+    val config: Map<String, Any?> = emptyMap(),
+)
+
+/**
  * YAML 전이 항목 DTO.
  *
  * @property from 출발 상태 키
  * @property to 도착 상태 키
  * @property name 전이 이름
+ * @property validators 전이 전 검증 게이트 목록. 미정의 시 빈 리스트.
+ * @property postActions 전이 후 자동 처리 목록. YAML 키는 post_actions (snake_case). 미정의 시 빈 리스트.
  */
 data class TransitionYamlDto(
     val from: String = "",
     val to: String = "",
     val name: String = "",
+    val validators: List<ValidatorYamlDto> = emptyList(),
+    val postActions: List<PostActionYamlDto> = emptyList(),
 )
 
 // ── Konform 검증 규칙 ────────────────────────────────────────────────────────
@@ -108,6 +137,9 @@ class YamlSeedService(
     private val yamlMapper: ObjectMapper,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+
+    /** config Map → JSON 직렬화 전용. yamlMapper 는 YAMLFactory 기반이므로 별도 JSON ObjectMapper 필요. */
+    private val jsonMapper = ObjectMapper()
 
     /** 표준 4 워크플로우 YAML 키 목록 (classpath:workflows/<key>.yaml). */
     private val standardWorkflowKeys =
@@ -220,6 +252,9 @@ class YamlSeedService(
     /**
      * 기존 [Workflow] aggregate 와 [WorkflowYamlDto] 를 비교해 dirty 여부를 반환한다.
      *
+     * validator/post_action 변경도 dirty 판정에 포함된다.
+     * 판정 기준은 DB 에 저장된 validator/post_action 총 수와 YAML 정의 총 수 비교다.
+     *
      * @return 변경이 있으면 true, 없으면 false
      */
     private fun isDirty(
@@ -230,7 +265,9 @@ class YamlSeedService(
             existing.description != dto.description ||
             differsInStateSet(existing, dto) ||
             differsInStateDetails(existing, dto) ||
-            differsInTransitions(existing, dto)
+            differsInTransitions(existing, dto) ||
+            differsInValidators(existing, dto) ||
+            differsInPostActions(existing, dto)
 
     private fun differsInName(
         existing: Workflow,
@@ -267,6 +304,140 @@ class YamlSeedService(
                 .map { Triple(it.from, it.to, it.name) }
                 .toSet()
         return existingTransitions != dtoTransitions
+    }
+
+    /**
+     * DB 에 저장된 workflow_validators 와 YAML 정의를 전이별로 비교해 변경 여부를 반환한다.
+     *
+     * 전이별 (fromStateKey, toStateKey) 를 키로 DB validators type 목록과 YAML validators type 목록을
+     * 비교한다. 총 count 비교만으로는 전이별 분포 변경을 감지하지 못하므로 전이별 비교를 사용한다.
+     */
+    private fun differsInValidators(
+        existing: Workflow,
+        dto: WorkflowYamlDto,
+    ): Boolean {
+        val dbValidatorsByTransition = fetchValidatorTypesByTransition(existing.key)
+        return dto.transitions.any { transition ->
+            val key = transition.from to transition.to
+            val dbTypes = dbValidatorsByTransition[key] ?: emptyList()
+            val dtoTypes = transition.validators.map { it.type }
+            dbTypes != dtoTypes
+        }
+    }
+
+    /**
+     * DB 에 저장된 workflow_post_actions 와 YAML 정의를 전이별로 비교해 변경 여부를 반환한다.
+     */
+    private fun differsInPostActions(
+        existing: Workflow,
+        dto: WorkflowYamlDto,
+    ): Boolean {
+        val dbPostActionsByTransition = fetchPostActionTypesByTransition(existing.key)
+        return dto.transitions.any { transition ->
+            val key = transition.from to transition.to
+            val dbTypes = dbPostActionsByTransition[key] ?: emptyList()
+            val dtoTypes = transition.postActions.map { it.type }
+            dbTypes != dtoTypes
+        }
+    }
+
+    /**
+     * 워크플로우 키에 속한 모든 전이의 validator type 목록을 (fromStateKey, toStateKey) 기준으로
+     * 그루핑해 반환한다. display_order ASC 정렬.
+     *
+     * FROM / TO state 는 fetchTransitionStateKeys 로 별도 조회해 cartesian product 를 피한다.
+     */
+    private fun fetchValidatorTypesByTransition(
+        workflowKey: String,
+    ): Map<Pair<String, String>, List<String>> {
+        val rows =
+            dsl.select(
+                WORKFLOW_TRANSITIONS.ID,
+                WORKFLOW_VALIDATORS.TYPE,
+                WORKFLOW_VALIDATORS.DISPLAY_ORDER,
+            )
+                .from(WORKFLOW_VALIDATORS)
+                .join(WORKFLOW_TRANSITIONS)
+                .on(WORKFLOW_VALIDATORS.TRANSITION_ID.eq(WORKFLOW_TRANSITIONS.ID))
+                .join(WORKFLOWS)
+                .on(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(WORKFLOWS.ID))
+                .where(WORKFLOWS.KEY.eq(workflowKey))
+                .orderBy(WORKFLOW_VALIDATORS.DISPLAY_ORDER.asc())
+                .fetch()
+
+        val transitionKeyMap = fetchTransitionStateKeys(workflowKey)
+        return rows
+            .groupBy { it.get(WORKFLOW_TRANSITIONS.ID) }
+            .mapNotNull { (transitionId, records) ->
+                val stateKeys = transitionKeyMap[transitionId] ?: return@mapNotNull null
+                stateKeys to records.map { it.get(WORKFLOW_VALIDATORS.TYPE) ?: "" }
+            }
+            .toMap()
+    }
+
+    /**
+     * 워크플로우 키에 속한 모든 전이의 post_action type 목록을 (fromStateKey, toStateKey) 기준으로
+     * 그루핑해 반환한다. display_order ASC 정렬.
+     */
+    private fun fetchPostActionTypesByTransition(
+        workflowKey: String,
+    ): Map<Pair<String, String>, List<String>> {
+        val rows =
+            dsl.select(
+                WORKFLOW_TRANSITIONS.ID,
+                WORKFLOW_POST_ACTIONS.TYPE,
+                WORKFLOW_POST_ACTIONS.DISPLAY_ORDER,
+            )
+                .from(WORKFLOW_POST_ACTIONS)
+                .join(WORKFLOW_TRANSITIONS)
+                .on(WORKFLOW_POST_ACTIONS.TRANSITION_ID.eq(WORKFLOW_TRANSITIONS.ID))
+                .join(WORKFLOWS)
+                .on(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(WORKFLOWS.ID))
+                .where(WORKFLOWS.KEY.eq(workflowKey))
+                .orderBy(WORKFLOW_POST_ACTIONS.DISPLAY_ORDER.asc())
+                .fetch()
+
+        val transitionKeyMap = fetchTransitionStateKeys(workflowKey)
+        return rows
+            .groupBy { it.get(WORKFLOW_TRANSITIONS.ID) }
+            .mapNotNull { (transitionId, records) ->
+                val stateKeys = transitionKeyMap[transitionId] ?: return@mapNotNull null
+                stateKeys to records.map { it.get(WORKFLOW_POST_ACTIONS.TYPE) ?: "" }
+            }
+            .toMap()
+    }
+
+    /**
+     * 워크플로우 키에 속한 모든 전이의 (transition_id to (fromStateKey, toStateKey)) 매핑을 반환한다.
+     *
+     * FROM / TO state 를 별칭 JOIN 으로 조회해 cartesian product 없이 확보한다.
+     */
+    private fun fetchTransitionStateKeys(
+        workflowKey: String,
+    ): Map<java.util.UUID?, Pair<String, String>> {
+        val fromState = WORKFLOW_STATES.`as`("from_state")
+        val toState = WORKFLOW_STATES.`as`("to_state")
+        return dsl.select(
+            WORKFLOW_TRANSITIONS.ID,
+            fromState.KEY,
+            toState.KEY,
+        )
+            .from(WORKFLOW_TRANSITIONS)
+            .join(WORKFLOWS)
+            .on(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(WORKFLOWS.ID))
+            .join(fromState)
+            .on(WORKFLOW_TRANSITIONS.FROM_STATE_ID.eq(fromState.ID))
+            .join(toState)
+            .on(WORKFLOW_TRANSITIONS.TO_STATE_ID.eq(toState.ID))
+            .where(WORKFLOWS.KEY.eq(workflowKey))
+            .fetch()
+            .associate { record ->
+                record.get(WORKFLOW_TRANSITIONS.ID) to
+                    (
+                        (record.get(fromState.KEY) ?: "") to
+                            (record.get(toState.KEY) ?: "")
+                    )
+            }
     }
 
     /**
@@ -318,7 +489,7 @@ class YamlSeedService(
             stateKeyToId[state.key] = stateId
         }
 
-        // 3. workflow_transitions 삽입
+        // 3. workflow_transitions 삽입 + validators/post_actions 삽입
         for (transition in dto.transitions) {
             val fromStateId =
                 stateKeyToId[transition.from]
@@ -327,19 +498,89 @@ class YamlSeedService(
                 stateKeyToId[transition.to]
                     ?: error("전이 to 상태 키 '${transition.to}' 가 states 에 없음: ${dto.key}")
 
-            dsl.insertInto(WORKFLOW_TRANSITIONS)
-                .set(WORKFLOW_TRANSITIONS.WORKFLOW_ID, workflowId)
-                .set(WORKFLOW_TRANSITIONS.FROM_STATE_ID, fromStateId)
-                .set(WORKFLOW_TRANSITIONS.TO_STATE_ID, toStateId)
-                .set(WORKFLOW_TRANSITIONS.NAME, transition.name)
-                .execute()
+            val transitionId =
+                dsl.insertInto(WORKFLOW_TRANSITIONS)
+                    .set(WORKFLOW_TRANSITIONS.WORKFLOW_ID, workflowId)
+                    .set(WORKFLOW_TRANSITIONS.FROM_STATE_ID, fromStateId)
+                    .set(WORKFLOW_TRANSITIONS.TO_STATE_ID, toStateId)
+                    .set(WORKFLOW_TRANSITIONS.NAME, transition.name)
+                    .returningResult(WORKFLOW_TRANSITIONS.ID)
+                    .fetchOne()
+                    ?.value1()
+                    ?: error("workflow_transitions 삽입 실패: ${dto.key}/${transition.from}->${transition.to}")
+
+            insertValidators(transitionId, transition.validators)
+            insertPostActions(transitionId, transition.postActions)
         }
 
         log.info(
-            "워크플로우 '{}' 적재 완료 — states: {}, transitions: {}",
+            "워크플로우 '{}' 적재 완료 — states: {}, transitions: {}, validators: {}, postActions: {}",
             dto.key,
             dto.states.size,
             dto.transitions.size,
+            dto.transitions.sumOf { it.validators.size },
+            dto.transitions.sumOf { it.postActions.size },
         )
+    }
+
+    /**
+     * workflow_validators 에 validator 목록을 삽입한다.
+     *
+     * config Map 은 Jackson ObjectMapper 로 JSON 직렬화 후 JSONB.valueOf 로 변환한다.
+     *
+     * @param transitionId workflow_transitions.id
+     * @param validators YAML 에서 파싱된 validator DTO 목록
+     */
+    private fun insertValidators(
+        transitionId: java.util.UUID,
+        validators: List<ValidatorYamlDto>,
+    ) {
+        validators.forEachIndexed { index, validator ->
+            val configJson = jsonMapper.writeValueAsString(validator.config)
+            dsl.insertInto(WORKFLOW_VALIDATORS)
+                .set(WORKFLOW_VALIDATORS.TRANSITION_ID, transitionId)
+                .set(WORKFLOW_VALIDATORS.TYPE, validator.type)
+                .set(WORKFLOW_VALIDATORS.CONFIG, JSONB.valueOf(configJson))
+                .set(WORKFLOW_VALIDATORS.DISPLAY_ORDER, index)
+                .execute()
+        }
+    }
+
+    /**
+     * workflow_post_actions 에 post_action 목록을 삽입한다.
+     *
+     * config Map 은 Jackson ObjectMapper 로 JSON 직렬화 후 JSONB.valueOf 로 변환한다.
+     *
+     * @param transitionId workflow_transitions.id
+     * @param postActions YAML 에서 파싱된 post_action DTO 목록
+     */
+    private fun insertPostActions(
+        transitionId: java.util.UUID,
+        postActions: List<PostActionYamlDto>,
+    ) {
+        postActions.forEachIndexed { index, postAction ->
+            val configJson = jsonMapper.writeValueAsString(postAction.config)
+            dsl.insertInto(WORKFLOW_POST_ACTIONS)
+                .set(WORKFLOW_POST_ACTIONS.TRANSITION_ID, transitionId)
+                .set(WORKFLOW_POST_ACTIONS.TYPE, postAction.type)
+                .set(WORKFLOW_POST_ACTIONS.CONFIG, JSONB.valueOf(configJson))
+                .set(WORKFLOW_POST_ACTIONS.DISPLAY_ORDER, index)
+                .execute()
+        }
+    }
+
+    /**
+     * 단건 [WorkflowYamlDto] 를 파싱 없이 직접 시드한다.
+     *
+     * 테스트에서 표준 4 YAML 목록 밖의 테스트 픽스처를 시드할 때 사용한다.
+     * Konform 검증 및 transition 중복 검증은 [parseAndValidate] 에서 수행하므로 호출 전 검증이
+     * 완료된 DTO 를 전달해야 한다.
+     *
+     * @param dto 파싱 및 검증이 완료된 [WorkflowYamlDto]
+     */
+    @Transactional
+    fun seedSingle(dto: WorkflowYamlDto) {
+        validateTransitionUniqueness(dto.key, dto.transitions)
+        applyIfChanged(dto)
     }
 }
