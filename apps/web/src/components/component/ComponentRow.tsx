@@ -197,6 +197,7 @@ export function ComponentRow({
               size="sm"
               aria-label={`${component.name} ${actions.editButton}`}
               disabled={!canManage}
+              title={!canManage ? actions.noPermission : undefined}
               onClick={handleEditClick}
             >
               {actions.editButton}
@@ -206,6 +207,7 @@ export function ComponentRow({
               size="sm"
               aria-label={`${component.name} ${actions.deleteButton}`}
               disabled={!canManage}
+              title={!canManage ? actions.noPermission : undefined}
               onClick={handleDeleteClick}
             >
               {actions.deleteButton}

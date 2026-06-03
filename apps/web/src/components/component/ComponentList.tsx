@@ -170,6 +170,7 @@ export function ComponentList({ projectKey }: ComponentListProps): JSX.Element {
             size="sm"
             disabled={!canManage}
             aria-disabled={!canManage}
+            title={!canManage ? componentLabels.actions.noPermission : undefined}
             onClick={openCreateDialog}
           >
             {componentLabels.actions.addButton}
