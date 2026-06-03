@@ -2,8 +2,6 @@
 
 package com.bts.workflow.seed
 
-import com.bts.workflow.engine.WorkflowPostActionFactory
-import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.repository.WorkflowRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
@@ -130,7 +128,15 @@ class YamlSeedServiceTest {
 
             repository = WorkflowRepository(dsl)
             // 표준 4 워크플로우는 validator/postAction 이 없어 factory 미호출 → relaxed mock 으로 충분
-            service = YamlSeedService(repository, dsl, DefaultResourceLoader(), yamlMapper, mockk(relaxed = true), mockk(relaxed = true))
+            service =
+                YamlSeedService(
+                    repository,
+                    dsl,
+                    DefaultResourceLoader(),
+                    yamlMapper,
+                    mockk(relaxed = true),
+                    mockk(relaxed = true),
+                )
         }
     }
 
@@ -211,7 +217,15 @@ class YamlSeedServiceTest {
         // "simple" 워크플로우의 name 을 변경한 버전으로 재적재를 검증한다.
         // 표준 4 YAML 중 simple 만 수정된 ResourceLoader 를 주입한다.
         val modifiedResourceLoader = ModifiedSimpleWorkflowResourceLoader()
-        val serviceWithModified = YamlSeedService(WorkflowRepository(dsl), dsl, modifiedResourceLoader, yamlMapper, mockk(relaxed = true), mockk(relaxed = true))
+        val serviceWithModified =
+            YamlSeedService(
+                WorkflowRepository(dsl),
+                dsl,
+                modifiedResourceLoader,
+                yamlMapper,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+            )
 
         serviceWithModified.seedAll()
 
@@ -239,7 +253,15 @@ class YamlSeedServiceTest {
 
         // states 가 비어 있는 잘못된 YAML 을 제공하는 ResourceLoader
         val invalidResourceLoader = InvalidWorkflowResourceLoader()
-        val serviceWithInvalid = YamlSeedService(WorkflowRepository(dsl), dsl, invalidResourceLoader, yamlMapper, mockk(relaxed = true), mockk(relaxed = true))
+        val serviceWithInvalid =
+            YamlSeedService(
+                WorkflowRepository(dsl),
+                dsl,
+                invalidResourceLoader,
+                yamlMapper,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+            )
 
         assertThatThrownBy { serviceWithInvalid.seedAll() }
             .isInstanceOf(IllegalStateException::class.java)
@@ -264,7 +286,14 @@ class YamlSeedServiceTest {
         // (from: open, to: done) 이 name 만 다르게 두 번 정의된 중복 YAML
         val duplicateTransitionResourceLoader = DuplicateTransitionResourceLoader()
         val serviceWithDuplicate =
-            YamlSeedService(WorkflowRepository(dsl), dsl, duplicateTransitionResourceLoader, yamlMapper, mockk(relaxed = true), mockk(relaxed = true))
+            YamlSeedService(
+                WorkflowRepository(dsl),
+                dsl,
+                duplicateTransitionResourceLoader,
+                yamlMapper,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+            )
 
         assertThatThrownBy { serviceWithDuplicate.seedAll() }
             .isInstanceOf(IllegalStateException::class.java)

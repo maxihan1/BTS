@@ -101,6 +101,7 @@ class WorkflowEngineWiringIntegrationTest {
         /** 테스트용 워크플로우 키 */
         private const val WIRING_WF_KEY = "wiring-test"
 
+        @Suppress("LongMethod")
         @BeforeAll
         @JvmStatic
         fun setup() {
@@ -162,7 +163,15 @@ class WorkflowEngineWiringIntegrationTest {
 
             val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
             // TestConfig 에 이미 factory 빈 있음 — 동일 인스턴스를 시드 서비스에 주입
-            seedService = YamlSeedService(workflowRepository, dsl, DefaultResourceLoader(), yamlMapper, validatorFactory, postActionFactory)
+            seedService =
+                YamlSeedService(
+                    workflowRepository,
+                    dsl,
+                    DefaultResourceLoader(),
+                    yamlMapper,
+                    validatorFactory,
+                    postActionFactory,
+                )
 
             // 테스트용 워크플로우 시드
             // open → done: RequiredField("resolution") + SET_FIELD("assignee") + NOTIFY

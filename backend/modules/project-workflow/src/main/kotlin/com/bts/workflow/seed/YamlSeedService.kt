@@ -126,10 +126,21 @@ val workflowYamlValidation: Validation<WorkflowYamlDto> =
  * 부팅 완료 후 [ApplicationReadyEvent] 를 통해 classpath:workflows/ 아래 4개 YAML 파일을 읽고
  * 현재 DB 상태와 dirty-diff 비교해 변경이 있는 경우만 재적재한다.
  *
- * YAML 파싱/검증 실패 시 [IllegalStateException] 을 던져 부팅을 차단한다 (fail-fast).
+ * YAML 파싱/검증 실패, 또는 미지원 validator/postAction type 감지 시
+ * [IllegalStateException] 을 던져 부팅을 차단한다 (fail-fast).
+ *
+ * validator/postAction type 검증은 DB INSERT 전에 factory dry-run 으로 수행한다.
+ * dry-run 으로 생성된 인스턴스는 버리며, 실제 적재는 INSERT 경로에서 별도로 처리한다.
  *
  * 해시 저장 테이블 없이 dirty-diff (DB row vs YAML 내용 비교) 를 사용하므로
  * 별도 마이그레이션 추가가 필요 없다. 표준 4 워크플로우 한정이므로 성능 영향 미미.
+ *
+ * @param workflowRepository 워크플로우 aggregate 조회/저장 리포지토리.
+ * @param dsl jOOQ DSLContext. 전이/상태/validator/postAction 직접 INSERT 에 사용한다.
+ * @param resourceLoader classpath YAML 파일 접근용 Spring ResourceLoader.
+ * @param yamlMapper YAML 파일 역직렬화용 Jackson ObjectMapper (YAMLFactory 기반).
+ * @param validatorFactory validator type dry-run 검증용 팩토리. 미지원 type 에 [IllegalArgumentException] 을 던진다.
+ * @param postActionFactory postAction type dry-run 검증용 팩토리. 미지원 type 에 [IllegalArgumentException] 을 던진다.
  */
 @Service
 class YamlSeedService(

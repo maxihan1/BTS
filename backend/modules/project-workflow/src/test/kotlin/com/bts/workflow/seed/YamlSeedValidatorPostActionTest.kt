@@ -76,6 +76,7 @@ class YamlSeedValidatorPostActionTest {
         lateinit var validatorFactory: DefaultWorkflowValidatorFactory
         lateinit var postActionFactory: DefaultWorkflowPostActionFactory
 
+        @Suppress("LongMethod")
         @BeforeAll
         @JvmStatic
         fun setup() {
@@ -130,15 +131,24 @@ class YamlSeedValidatorPostActionTest {
 
             // 실제 factory — unknown type 에 IllegalArgumentException 을 던져야 fail-fast 가 작동한다.
             val spelExecutor = Executors.newCachedThreadPool()
-            validatorFactory = DefaultWorkflowValidatorFactory(
-                permissionResolver = AlwaysAllowPermissionResolver(),
-                spelEvaluator = SpelEvaluator(executor = spelExecutor, timeoutMillis = 5000L),
-            )
+            validatorFactory =
+                DefaultWorkflowValidatorFactory(
+                    permissionResolver = AlwaysAllowPermissionResolver(),
+                    spelEvaluator = SpelEvaluator(executor = spelExecutor, timeoutMillis = 5000L),
+                )
             postActionFactory = DefaultWorkflowPostActionFactory()
 
             workflowRepo = WorkflowRepository(dsl)
             defRepo = DefaultWorkflowDefinitionRepository(dsl)
-            service = YamlSeedService(workflowRepo, dsl, DefaultResourceLoader(), yamlMapper, validatorFactory, postActionFactory)
+            service =
+                YamlSeedService(
+                    workflowRepo,
+                    dsl,
+                    DefaultResourceLoader(),
+                    yamlMapper,
+                    validatorFactory,
+                    postActionFactory,
+                )
         }
     }
 
@@ -261,6 +271,7 @@ class YamlSeedValidatorPostActionTest {
 
     // ── 시나리오 8. validator 변경 시 isDirty true — 재적재 발생 ──────────────────────
 
+    @Suppress("LongMethod")
     @Test
     @Order(8)
     fun `validator 가 변경된 YAML 재시드 시 isDirty 가 true 여서 재적재가 발생한다`() {
@@ -333,7 +344,8 @@ class YamlSeedValidatorPostActionTest {
 
         // 재적재 후 3건으로 변경됨
         assertThat(validators).hasSize(3)
-        assertThat(validators.map { it.type }).containsExactly("RequiredField", "permission-check", "not-status-category")
+        assertThat(validators.map { it.type })
+            .containsExactly("RequiredField", "permission-check", "not-status-category")
 
         log.info("시나리오 8 통과 — validator 변경 후 재적재 확인, 새 validator 수: {}", validators.size)
     }
