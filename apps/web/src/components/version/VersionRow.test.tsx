@@ -174,6 +174,13 @@ describe('VersionRow — 수정 버튼', () => {
 
 describe('VersionRow — 삭제 액션', () => {
   it('삭제 버튼 클릭 후 확인 시 onDelete를 호출한다', async () => {
+    server.use(
+      http.delete(
+        `/api/v1/projects/${PROJECT_KEY}/versions/${versionWithDates.id}`,
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    )
+
     const onEdit = vi.fn()
     const onDelete = vi.fn()
     const Wrapper = createWrapper()
