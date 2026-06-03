@@ -23,9 +23,9 @@ COMMENT ON COLUMN resolutions.display_order IS '목록 정렬 순서. 표준 5�
 COMMENT ON COLUMN resolutions.is_standard   IS 'true = 시스템 표준 해결 상태 — 삭제/변경 비권장.';
 COMMENT ON COLUMN resolutions.deleted_at    IS 'NULL=활성, NOT NULL=삭제됨. 소프트 삭제 (DATA.md §3).';
 
--- 표준 5종 seed (display_order 오름차순).
+-- 표준 5종 seed — display_order 오름차순(1→5)으로 정렬해 나열한다.
 -- id 는 Zod v4 UUID 형식 고정값 — 프론트 픽스처/E2E 가 재사용하는 결정적 식별자 (메모리 zod-v4-uuid-fixture-strictness).
--- 3번째 그룹 4로 시작, 4번째 그룹 8~b 로 시작.
+-- Zod v4 형식 규칙: 3번째 그룹은 4로 시작, 4번째 그룹은 8~b 로 시작.
 INSERT INTO resolutions (id, key, name, description, display_order, is_standard) VALUES
     ('00000000-0000-4000-8000-000000000001', 'fixed',           'Fixed',            '수정 완료',              1, true),
     ('00000000-0000-4000-8000-000000000002', 'wontfix',         'Won''t Fix',       '수정하지 않기로 결정',   2, true),
