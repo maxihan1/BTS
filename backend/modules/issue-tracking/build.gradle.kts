@@ -169,6 +169,12 @@ dependencies {
     // OWASP Java HTML Sanitizer — allowlist 기반 HTML 정화 (Maxi 게이트1 승인)
     // 출처: https://github.com/owasp/java-html-sanitizer
     implementation("com.googlecode.owasp-java-html-sanitizer:owasp-java-html-sanitizer:20240325.1")
+
+    // ── PDF 출력 (FR-IS-08) ────────────────────────────────────────────────────
+    // openhtmltopdf-pdfbox — flying-saucer 후계 라이브러리. XHTML+CSS → PDF 변환.
+    // 이 한 줄로 openhtmltopdf-core + Apache PDFBox 2.0.24 가 전이 의존으로 따라온다.
+    // 한글 폰트(NanumGothic-Regular.ttf)는 OFL 라이선스로 src/main/resources/fonts/ 에 번들.
+    implementation("com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10")
 }
 
 // ── jOOQ 코드 생성 설정 ───────────────────────────────────────────────────────
