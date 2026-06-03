@@ -33,7 +33,33 @@ FR-PM-04 워크플로우/자동화 관리 권한 (identity-access §4.4). 선행
 - **선례 ADR**: 2026-06-03-version-component-permission-prod-resolver (FR-PM-03 동형) · 2026-05-22-issue-permission-resolver-port
 - **기존 결정 충돌**: 없음. WorkflowSchemePermissionResolver KDoc이 FR-PM-04를 명시적으로 예약함.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙 — ⏸️ 보류 (전역 admin FR 선행 필요, Maxi 2026-06-04)
+
+### 보류 사유 — spec 단계에서 발견한 구조적 공백
+
+워크플로우 스킴 생성/수정/삭제(`MANAGE_SCHEME`)는 `WorkflowSchemeScope.Global`(시스템 전역) 권한이다.
+그런데 조사 결과 **전역(시스템/조직) 관리자 역할을 판정할 데이터가 시스템에 전혀 없다**.
+
+- 현재 권한 모델은 전부 프로젝트 단위 — `ProjectRole(PROJECT_ADMIN, MEMBER)`, `role_permissions(scheme_id, role, permission_code)`는 프로젝트 스킴에 종속.
+- users 테이블에 전역 역할 컬럼 없음. 별도 시스템 역할 테이블 없음. JWT 토큰에 역할 클레임 없음(userId만).
+- SDD 12.3 시스템 권한(`ADMIN_SYSTEM`/`MANAGE_USERS`) + 12.6 `OrgAdmin` 역할은 **문서로만** 존재, 구현 FR 부재.
+- 과거 FR-AU-05/FR-PM-01 노트가 "회원가입=전역 admin(FR-PM-01) 선행"을 기대했으나 FR-PM-01은 프로젝트 단위로만 구현됨 → 전역 admin은 미구현 공백.
+
+### 결정 (Maxi 2026-06-04)
+
+**Jira Cloud 모델**(워크플로우 스킴 = 사이트/전역 관리자 관리)을 따르기로 함.
+이를 위해 **"시스템/조직 관리자 역할 + 전역 권한" 신규 FR을 먼저 정의·구현**하고, FR-PM-04는 그 위에서 재개한다.
+
+신규 선행 FR이 갖춰야 할 것:
+1. 사용자 전역 역할 저장 (users.system_role 또는 system_role_assignments — SDD 12.6 OrgAdmin 구현)
+2. JWT 클레임에 전역 역할/권한 추가
+3. 시스템 권한코드(`ADMIN_SYSTEM`/전역 `MANAGE_WORKFLOW` 등) 판정 인프라
+4. 최초 시스템 관리자 부트스트랩
+
+→ FR-PM-04 worktree/draft PR #73은 유지. 선행 FR 완료 후 본 spec 재개.
+도메인 정리 + ADR(D1/D2 포트 이동, 범위 결정)은 유효하게 보존됨.
+
+## (이하 보류 — 선행 FR 완료 후 재개) 스펙 (← /bts-spec Phase A 채움)
 
 ## Brainstorming Check (← /bts-spec Phase B 채움)
 
