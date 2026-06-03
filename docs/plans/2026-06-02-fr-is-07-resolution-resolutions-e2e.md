@@ -74,7 +74,10 @@
 
 ## Plan
 
-> **PR 전략 (2 PR, 2026-06-03 Maxi 결정).**
+> **PR 전략 갱신 (2026-06-03 재개 — 단일 PR #62로 통합).**
+> 원래 2-PR(PR-A 인프라 → PR-B 기능) 계획이었으나, PR-A의 핵심이던 validator phase 프레임워크(A2/A3)가 FR-WF-03 PR #66에 흡수되어 PR-A가 toCategory 추가(A1·A4)로 축소됨. toCategory는 B9/B14 전엔 미사용이라 단독 머지 가치 없고, 이 기능은 본래 shared-kernel·project-workflow·issue-tracking·frontend를 걸쳐 분리해도 한 PR=한 BC 달성 불가. → **draft PR #62 단일 PR로 A1·A4·B1~B14 전부 진행.** 아래 PR-A/PR-B 구분은 wave 순서(같은 브랜치 내 의존)로만 유지, depends-on의 A*는 같은 브랜치 선행 의미.
+>
+> **(원안 — 이력 보존) 2 PR, 2026-06-03 Maxi 결정.**
 > - **PR-A** (project-workflow + shared-kernel): validator 단계(availability/execution) 구분 + 가용전이 toCategory 노출. 순수 인프라, 동작 변화 없음, 독립 머지. Task A1~A4.
 > - **PR-B** (issue-tracking + project-workflow DONE seed + frontend + E2E): Resolution 데이터/전이/모달/E2E + DONE 필수 seed. 기능 원자적 활성화, PR-A 의존. Task B1~B10.
 > - 회귀 윈도우 방지: DONE 필수 seed(B7)는 issue-tracking이 resolution을 보내는 변경(B6)과 같은 PR-B에 묶임.
