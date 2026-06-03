@@ -89,13 +89,13 @@
 
 **우선순위**. 필수 | **선행**. §2.1.1, project-workflow §2.1 | **Plan slug**. `issue/resolution`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — 종료 상태 진입 시 Resolution 필수 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `resolutions`, `issues.resolution_id` (책임. db-engineer)
-- [ ] D4. 백엔드 — 상태 전이 가드 (Resolution 미설정 시 reject) (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 종료 모달 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. backend-engineer) (완료. PR #62 — Resolution 엔티티(IssueType 패턴 동형, 표준 5종 불변 FIXED/WONT_FIX/DUPLICATE/CANNOT_REPRODUCE/DONE + key 슬러그 검증). 옵션 A(워크플로우 게이트) 채택 — 선행 FR-WF-03(validator 런타임 결선) 머지 후 보류 해제)
+- [x] D2. 명세 — 종료 상태 진입 시 Resolution 필수 (책임. backend-engineer) (완료. PR #62 — DONE 카테고리 전이 시 RequiredField(resolution) validator로 필수 강제. 거부=409 TRANSITION_NOT_ALLOWED(422 아님, 기존 전이거부 계약 재사용). 재오픈(DONE→비DONE) 시 resolution_id clear)
+- [x] D3. 데이터 모델 — `resolutions`, `issues.resolution_id` (책임. db-engineer) (완료. PR #62 — V011(V010은 versions 선점) resolutions 테이블 + 표준 5종 seed(결정적 Zod v4 UUID) + issues.resolution_id(FK 미적용, BC 격리) + init_codegen 미러)
+- [x] D4. 백엔드 — 상태 전이 가드 (Resolution 미설정 시 reject) (책임. backend-engineer) (완료. PR #62 — production 워크플로우 YAML(software-default 등) DONE 전이에 RequiredField(resolution) 시드(YamlSeedService, FR-WF-03 결선 활용 — 마이그레이션 아님). transitionIssue가 issueFields에 resolution 전달 + raw jOOQ applyTransition으로 resolution_id 영속 + 존재성 검증(위조 UUID→404 RESOLUTION_NOT_FOUND). 일괄 전이(Q4)도 payload resolutionId 전달)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) (완료. PR #62 — 마이그레이션/엔티티/repo/엔드포인트/전이 영속·clear·존재성/일괄 Testcontainers 통합 + 실 WorkflowEngine 결선 end-to-end(IssueTransitionValidatorEndToEndIntegrationTest — REST DONE 전이 resolution 누락→409 전체스택). 3모듈 test+detekt 그린)
+- [x] D6. 프론트 UI — 종료 모달 (책임. designer → frontend-engineer) (완료. PR #62 — resolutions API/useResolutions/MSW + 단건 종료 모달(toCategory==='DONE' 트리거, 기존 resolution pre-fill=done→closed 정확성 요건, 미선택 시 확인 비활성) + 일괄 전이 resolution 드롭다운(Q4) + 상세 메타 resolution 표시. vitest 997+typecheck+eslint 그린)
+- [x] D7. E2E (책임. qa-engineer) (완료. PR #62 — issue-resolution.spec.ts S1(단건 종료 happy+resolution 표시)/S2(미선택 거부)/S4(재오픈 clear)/S5(일괄 종료). MSW stateful(전이 결과 영속). 전체 E2E 80 passed/1 skipped 회귀 0)
 
 ### §2.2 보강 2개 (일괄 편집, 라벨 자동완성)
 
