@@ -38,6 +38,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
 
     val repo = mockk<IssueRepository>()
     val issueTypeRepository = mockk<IssueTypeRepository>(relaxed = true)
+    val resolutionRepository = mockk<com.bts.issue.resolution.repository.ResolutionRepository>(relaxed = true)
     val eventPublisher = mockk<IssueEventPublisher>()
     val permissionResolver = mockk<IssuePermissionResolver>()
     val workflowPort = mockk<WorkflowTransitionPort>()
@@ -49,6 +50,7 @@ class IssueApplicationServiceUpdateTest : DescribeSpec({
         IssueApplicationService(
             repo = repo,
             issueTypeRepository = issueTypeRepository,
+            resolutionRepository = resolutionRepository,
             eventPublisher = eventPublisher,
             permissionResolver = permissionResolver,
             workflowPort = workflowPort,

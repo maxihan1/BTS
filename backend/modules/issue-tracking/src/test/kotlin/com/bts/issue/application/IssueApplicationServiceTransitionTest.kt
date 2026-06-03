@@ -44,6 +44,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
 
     val repo = mockk<IssueRepository>()
     val issueTypeRepository = mockk<IssueTypeRepository>(relaxed = true)
+    val resolutionRepository = mockk<com.bts.issue.resolution.repository.ResolutionRepository>(relaxed = true)
     val eventPublisher = mockk<IssueEventPublisher>()
     val permissionResolver = mockk<IssuePermissionResolver>()
     val workflowPort = mockk<WorkflowTransitionPort>()
@@ -55,6 +56,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         IssueApplicationService(
             repo = repo,
             issueTypeRepository = issueTypeRepository,
+            resolutionRepository = resolutionRepository,
             eventPublisher = eventPublisher,
             permissionResolver = permissionResolver,
             workflowPort = workflowPort,
@@ -146,7 +148,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                     workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
                 } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "open")
                 every { workflowPort.plan(any()) } returns TransitionResult.Success(plan)
-                every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion) } returns 1
+                every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion, null) } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns updatedResponse
                 every { eventPublisher.publish(any()) } returns Unit
             }
@@ -203,7 +205,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                     workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
                 } returns WorkflowStartState(workflowKey = "RESOLVED-WF", startStateKey = "open")
                 every { workflowPort.plan(any()) } returns TransitionResult.Success(plan)
-                every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion) } returns 1
+                every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion, null) } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns updatedResponse
                 every { eventPublisher.publish(any()) } returns Unit
             }
@@ -410,7 +412,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                     workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
                 } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "open")
                 every { workflowPort.plan(any()) } returns TransitionResult.Success(plan)
-                every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion) } returns 0
+                every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion, null) } returns 0
             }
 
             it("IssueVersionConflictException 을 던진다") {

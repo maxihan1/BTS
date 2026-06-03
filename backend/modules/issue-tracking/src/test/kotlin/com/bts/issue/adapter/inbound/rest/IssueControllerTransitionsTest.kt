@@ -92,8 +92,13 @@ class IssueControllerTransitionsTest {
     fun `GET transitions — service 가 2건 반환하면 200 과 transitions 배열 2건을 반환한다`() {
         val stubTransitions =
             listOf(
-                AvailableTransitionView(fromStateKey = "open", toStateKey = "in_progress", name = "시작"),
-                AvailableTransitionView(fromStateKey = "open", toStateKey = "closed", name = "닫기"),
+                AvailableTransitionView(
+                    fromStateKey = "open",
+                    toStateKey = "in_progress",
+                    name = "시작",
+                    toCategory = "IN_PROGRESS",
+                ),
+                AvailableTransitionView(fromStateKey = "open", toStateKey = "closed", name = "닫기", toCategory = "DONE"),
             )
 
         every {
@@ -107,10 +112,12 @@ class IssueControllerTransitionsTest {
             .andExpect(jsonPath("$.data.transitions[0].toStateKey").value("in_progress"))
             .andExpect(jsonPath("$.data.transitions[0].name").value("시작"))
             .andExpect(jsonPath("$.data.transitions[0].key").value("open__in_progress"))
+            .andExpect(jsonPath("$.data.transitions[0].toCategory").value("IN_PROGRESS"))
             .andExpect(jsonPath("$.data.transitions[1].fromStateKey").value("open"))
             .andExpect(jsonPath("$.data.transitions[1].toStateKey").value("closed"))
             .andExpect(jsonPath("$.data.transitions[1].name").value("닫기"))
             .andExpect(jsonPath("$.data.transitions[1].key").value("open__closed"))
+            .andExpect(jsonPath("$.data.transitions[1].toCategory").value("DONE"))
     }
 
     // ── T-2: IssueNotFoundException → 404 ────────────────────────────────────

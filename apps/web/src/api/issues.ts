@@ -47,6 +47,15 @@ export const issueResponseSchema = z.object({
   impact: z.number().int().min(1).max(3).nullable(),
   /** 영향도 표시 이름 (High/Medium/Low). nullable */
   impactName: z.string().nullable(),
+  /**
+   * 현재 결의안 (B11). 이슈가 종료(DONE)된 경우에만 채워짐.
+   * nullable — 미종료·결의안 미설정 이슈는 null.
+   */
+  resolution: z.object({
+    id: z.string().uuid(),
+    key: z.string().min(1),
+    name: z.string().min(1),
+  }).nullable().optional(),
 })
 
 /** Spring Page 응답 Zod 스키마 — 래퍼 없음 (DataResponse 감싸지 않음) */
@@ -75,12 +84,17 @@ const dataResponseSchema = <T>(innerSchema: z.ZodSchema<T>) =>
  * backend TransitionItem DTO 직렬화 형태와 1:1 대응.
  * workflows.ts의 workflowTransitionViewSchema와 동일 형태이나
  * 이슈 전이 API 계약에 특화된 독립 스키마로 관리한다.
+ *
+ * - `toCategory`: 목표 상태 카테고리 (B12). "DONE" 이면 종료 전이.
+ *   백엔드가 DONE 전이에만 값을 채우고 나머지는 null 반환할 수 있으므로 nullable.
  */
 export const issueTransitionSchema = z.object({
   key: z.string().min(1),
   name: z.string().min(1),
   fromStateKey: z.string().min(1),
   toStateKey: z.string().min(1),
+  /** 목표 상태 카테고리 (B12). "DONE"이면 종료 전이. */
+  toCategory: z.string().nullable().optional(),
 })
 
 /** 이슈 전이 항목 타입 */
@@ -101,6 +115,8 @@ export const bulkAvailableTransitionsSchema = z.object({
 export interface TransitionIssueInput {
   toStatusKey: string
   expectedVersion: number
+  /** 종료(DONE) 전이 시 선택된 결의안 UUID (B9). 비DONE 전이 시 미전달. */
+  resolutionId?: string
 }
 
 /** 이슈 단건 응답 타입 */

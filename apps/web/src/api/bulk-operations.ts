@@ -36,9 +36,11 @@ export const bulkEditPayloadSchema = z.object({
   impact: z.number().int().nullable(),
 })
 
-/** BULK_TRANSITION payload — 목표 상태 키 */
+/** BULK_TRANSITION payload — 목표 상태 키 + 선택적 결의안 ID */
 export const bulkTransitionPayloadSchema = z.object({
   toStateKey: z.string().min(1),
+  /** DONE 전이 시 결의안 UUID. 비DONE 전이는 undefined. */
+  resolutionId: z.string().uuid().optional(),
 })
 
 /**
@@ -108,6 +110,8 @@ export interface BulkEditPayloadInput {
 export interface BulkTransitionPayloadInput {
   /** 전이할 목표 상태 키 */
   toStateKey: string
+  /** DONE 전이 시 결의안 UUID. 비DONE 전이는 생략 가능. */
+  resolutionId?: string
 }
 
 /**

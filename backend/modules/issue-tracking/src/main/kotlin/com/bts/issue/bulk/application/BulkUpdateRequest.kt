@@ -3,6 +3,7 @@
 package com.bts.issue.bulk.application
 
 import com.bts.issue.bulk.domain.BulkOperationType
+import java.util.UUID
 
 /**
  * 일괄 작업 접수 요청 커맨드 DTO.
@@ -43,8 +44,14 @@ data class BulkEditPayload(
 /**
  * BULK_TRANSITION 작업의 페이로드.
  *
+ * 일괄 전이 대상 전체에 동일한 resolutionId 를 적용한다.
+ * null 이면 각 이슈의 resolution_id 를 clear (비DONE 전이 시맨틱과 동일).
+ *
  * @property toStateKey 전이할 대상 상태 키. 비어 있으면 [BulkOperationApplicationService] 에서 거부.
+ * @property resolutionId DONE 상태로 전이할 때 지정하는 해결책 UUID.
+ *   null 이면 resolution_id clear. 전체 일괄에 동일하게 적용된다.
  */
 data class BulkTransitionPayload(
     val toStateKey: String,
+    val resolutionId: UUID? = null,
 )

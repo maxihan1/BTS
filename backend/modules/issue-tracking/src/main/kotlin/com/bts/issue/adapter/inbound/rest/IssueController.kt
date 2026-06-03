@@ -205,6 +205,7 @@ class IssueController(
             AppTransitionIssueRequest(
                 toStateKey = request.toStatusKey,
                 expectedVersion = request.expectedVersion,
+                resolutionId = request.resolutionId,
             )
         val response = service.transitionIssue(actor, issueKey, appRequest)
         return ResponseEntity.ok(DataResponse(data = response))

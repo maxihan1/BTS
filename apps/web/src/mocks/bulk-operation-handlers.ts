@@ -103,7 +103,12 @@ const handleBulkUpdate = http.post('/api/v1/issues/bulk-update', async ({ reques
   const payload: Record<string, unknown> =
     operationType === 'BULK_EDIT'
       ? { priority: editPayload?.priority ?? null, impact: editPayload?.impact ?? null }
-      : { toStateKey: transitionPayload?.toStateKey ?? '' }
+      : {
+          toStateKey: transitionPayload?.toStateKey ?? '',
+          ...(transitionPayload?.resolutionId !== undefined
+            ? { resolutionId: transitionPayload.resolutionId }
+            : {}),
+        }
 
   // 4. partial-fail 플래그 처리
   const failKeys = new Set<string>()

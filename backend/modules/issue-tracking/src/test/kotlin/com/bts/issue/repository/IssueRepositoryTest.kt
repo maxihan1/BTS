@@ -195,7 +195,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
             )
         repository.insert(issue)
 
-        val updated = repository.applyTransition(key, "IN_PROGRESS", expectedVersion = 1L)
+        val updated = repository.applyTransition(key, "IN_PROGRESS", expectedVersion = 1L, resolutionId = null)
 
         assertThat(updated).isEqualTo(1)
         val found = repository.findByKey(key)
@@ -226,7 +226,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
             )
         repository.insert(issue)
 
-        val updated = repository.applyTransition(key, "IN_PROGRESS", expectedVersion = 99L)
+        val updated = repository.applyTransition(key, "IN_PROGRESS", expectedVersion = 99L, resolutionId = null)
 
         assertThat(updated).isEqualTo(0)
         // 상태 변경 없음 확인

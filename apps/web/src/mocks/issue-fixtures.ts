@@ -76,10 +76,35 @@ export const issueAtlas3Fixture: IssueResponse = {
   impactName: null,
 }
 
-/** Spring Page 형태의 이슈 목록 fixture — 3건, 1 페이지 */
+/** 이슈 단건 fixture — ATLAS-5 (FR-IS-07 E2E용, in_review 상태 → Approve → done 전이 검증) */
+export const issueAtlas5Fixture: IssueResponse = {
+  key: 'ATLAS-5',
+  id: 'a5b6c7d8-e9f0-4a1b-8c2d-3e4f5a6b7c8d',
+  projectKey: 'ATLAS',
+  summary: '다섯 번째 이슈 — 리뷰 중 (FR-IS-07 종료 결의안 E2E 검증용)',
+  currentStateKey: 'in_review',
+  reporterId: 'b6c7d8e9-f0a1-4b2c-9d3e-4f5a6b7c8d9e',
+  assigneeId: null,
+  version: 1,
+  createdAt: '2026-01-05T10:00:00Z',
+  updatedAt: '2026-01-06T08:00:00Z',
+  typeId: 1,
+  typeKey: 'bug',
+  typeName: '버그',
+  description: null,
+  descriptionHtml: null,
+  priority: 3,
+  priorityName: 'Medium',
+  labels: [],
+  environment: null,
+  impact: null,
+  impactName: null,
+}
+
+/** Spring Page 형태의 이슈 목록 fixture — 4건(ATLAS-5 포함), 1 페이지 */
 export const issuePageFixture: IssuePage = {
-  content: [issueAtlas1Fixture, issueAtlas2Fixture, issueAtlas3Fixture],
-  totalElements: 3,
+  content: [issueAtlas1Fixture, issueAtlas2Fixture, issueAtlas3Fixture, issueAtlas5Fixture],
+  totalElements: 4,
   totalPages: 1,
   size: 20,
   number: 0,

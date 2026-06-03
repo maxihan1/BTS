@@ -10,6 +10,7 @@ import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
+import com.bts.issue.resolution.domain.ResolutionNotFoundException
 import com.bts.issue.type.domain.IssueTypeNotFoundException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -32,6 +33,7 @@ import java.time.Instant
  * - [IssueAccessDeniedException] → 403 + [IssueErrorCodes.ACCESS_DENIED]
  * - [IssueNotFoundException] → 404 + [IssueErrorCodes.ISSUE_NOT_FOUND]
  * - [IssueProjectNotFoundException] → 404 + [IssueErrorCodes.PROJECT_NOT_FOUND]
+ * - [ResolutionNotFoundException] → 404 + [IssueErrorCodes.RESOLUTION_NOT_FOUND]
  * - [IssueKeyPrefixReservedException] → 409 + [IssueErrorCodes.KEY_PREFIX_RESERVED]
  * - [IssueVersionConflictException] → 409 + [IssueErrorCodes.VERSION_CONFLICT]
  * - [IssueTransitionNotAllowedException] → 409 + [IssueErrorCodes.TRANSITION_NOT_ALLOWED]
@@ -44,6 +46,7 @@ import java.time.Instant
  * 클래스 단위로 억제한다. FR-IS-02 D6 에서 [IssueTypeNotFoundException] 핸들러가 추가됐다
  * (type.web 패키지 한정 핸들러가 못 잡는 예외를 rest 패키지에서 404 로 매핑).
  * FR-IS-03 Task 5 에서 [AssigneeNotFoundException] 핸들러가 추가됐다 (422 + ASSIGNEE_NOT_FOUND).
+ * FR-IS-07 Task B6 에서 [ResolutionNotFoundException] 핸들러가 추가됐다 (404 + RESOLUTION_NOT_FOUND).
  */
 @Suppress("TooManyFunctions")
 @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
@@ -280,6 +283,28 @@ class IssueExceptionHandler {
         )
     }
 
+    // ── 404 RESOLUTION_NOT_FOUND ──────────────────────────────────────────────
+
+    /**
+     * [ResolutionNotFoundException] — 전이 요청에 포함된 resolutionId 가 존재하지 않음 — 404.
+     *
+     * [com.bts.issue.application.IssueApplicationService.transitionIssue] 에서
+     * resolutionId 존재성 검증 실패 시 발생한다. 영속(applyTransition) 이전에 검증한다.
+     *
+     * @param ex 존재하지 않는 Resolution UUID 를 포함하는 예외.
+     */
+    @ExceptionHandler(ResolutionNotFoundException::class)
+    fun handleResolutionNotFound(ex: ResolutionNotFoundException): ProblemDetail {
+        log.info("ISSUE_404 resolution_not_found message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.NOT_FOUND,
+            type = "resolution-not-found",
+            title = "Resolution Not Found",
+            errorCode = IssueErrorCodes.RESOLUTION_NOT_FOUND,
+            detail = ex.message,
+        )
+    }
+
     // ── 500 INTERNAL_ERROR (fallback) ─────────────────────────────────────────
 
     /**
@@ -351,5 +376,6 @@ object IssueErrorCodes {
     const val TRANSITION_NOT_ALLOWED = "TRANSITION_NOT_ALLOWED"
     const val WORKFLOW_NOT_CONFIGURED = "WORKFLOW_NOT_CONFIGURED"
     const val ASSIGNEE_NOT_FOUND = "ASSIGNEE_NOT_FOUND"
+    const val RESOLUTION_NOT_FOUND = "RESOLUTION_NOT_FOUND"
     const val INTERNAL_ERROR = "INTERNAL_ERROR"
 }

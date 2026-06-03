@@ -155,6 +155,10 @@ class BulkOperationIntegrationTest {
         open fun issueTypeRepository(dsl: DSLContext): IssueTypeRepository = IssueTypeRepository(dsl)
 
         @Bean
+        open fun resolutionRepository(dsl: DSLContext): com.bts.issue.resolution.repository.ResolutionRepository =
+            com.bts.issue.resolution.repository.ResolutionRepository(dsl)
+
+        @Bean
         open fun issueEventPublisher(
             dsl: DSLContext,
             objectMapper: ObjectMapper,
@@ -279,6 +283,7 @@ class BulkOperationIntegrationTest {
         open fun issueApplicationService(
             repo: IssueRepository,
             issueTypeRepository: IssueTypeRepository,
+            resolutionRepository: com.bts.issue.resolution.repository.ResolutionRepository,
             eventPublisher: IssueEventPublisher,
             permissionResolver: AlwaysAllowIssuePermissionResolver,
             workflowTransitionAdapter: WorkflowTransitionAdapter,
@@ -289,6 +294,7 @@ class BulkOperationIntegrationTest {
             IssueApplicationService(
                 repo = repo,
                 issueTypeRepository = issueTypeRepository,
+                resolutionRepository = resolutionRepository,
                 eventPublisher = eventPublisher,
                 permissionResolver = permissionResolver,
                 workflowPort = workflowTransitionAdapter,

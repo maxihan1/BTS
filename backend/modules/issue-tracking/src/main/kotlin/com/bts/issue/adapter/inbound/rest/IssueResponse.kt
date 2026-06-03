@@ -37,6 +37,8 @@ import java.util.UUID
  * @property impact 영향도 숫자 1(High)..3(Low). null 허용.
  * @property impactName [IssueImpact.displayName]. null 허용 (impact=null 일 때).
  * @property assigneeId 담당자 UUID. null 이면 미할당.
+ * @property resolution 이슈에 할당된 Resolution 요약. null 이면 미설정. FR-IS-07 B11.
+ * @property resolutionId 이슈에 설정된 Resolution UUID. ApplicationService 내부 전달용. JSON 직렬화 제외.
  */
 data class IssueResponse(
     val key: String,
@@ -60,6 +62,9 @@ data class IssueResponse(
     val impact: Int? = null,
     val impactName: String? = null,
     val assigneeId: UUID? = null,
+    val resolution: ResolutionSummary? = null,
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    val resolutionId: UUID? = null,
 ) {
     /**
      * 이슈 타입 요약 정보. [from] 파라미터 그룹화용.
@@ -69,6 +74,15 @@ data class IssueResponse(
      * @property name 이슈 타입 표시명. 예: `"Task"`.
      */
     data class IssueTypeInfo(val id: Long, val key: String, val name: String)
+
+    /**
+     * Resolution 요약 정보. 단건 조회 응답에서 현재 할당된 Resolution 을 노출한다.
+     *
+     * @property id Resolution DB PK(UUID).
+     * @property key Resolution 슬러그 키. 예: `"fixed"`.
+     * @property name Resolution 표시명. 예: `"Fixed"`.
+     */
+    data class ResolutionSummary(val id: UUID, val key: String, val name: String)
 
     companion object {
         /** DB DEFAULT 3 (Medium) 과 동기화. */
@@ -81,16 +95,21 @@ data class IssueResponse(
          * [IssueResponse.descriptionHtml] 에 채운다. false(기본값)이면 null 을 유지한다.
          * 목록(listWithType) 경로에서는 N건 렌더 비용 방지를 위해 renderHtml=false 로 호출한다.
          *
+         * FR-IS-07 B11 — [resolution] 은 단건 경로에서 ApplicationService 가 채워 주입한다.
+         * 목록 경로(listWithType)는 null 로 호출한다.
+         *
          * @param issue 변환할 이슈 Aggregate.
          * @param projectKey 이슈가 속한 프로젝트 키 문자열.
          * @param typeInfo 이슈 타입 요약 (id, key, name).
          * @param renderHtml true 이면 descriptionHtml 을 렌더. 단건 경로에서만 true 로 호출한다. 기본값 false.
+         * @param resolution 현재 할당된 Resolution 요약. null 이면 미설정. 기본값 null.
          */
         fun from(
             issue: Issue,
             projectKey: String,
             typeInfo: IssueTypeInfo,
             renderHtml: Boolean = false,
+            resolution: ResolutionSummary? = null,
         ): IssueResponse =
             IssueResponse(
                 key = issue.key.value,
@@ -114,6 +133,8 @@ data class IssueResponse(
                 impact = issue.impact,
                 impactName = issue.impact?.let { IssueImpact.fromNumber(it).displayName },
                 assigneeId = issue.assigneeId?.value,
+                resolution = resolution,
+                resolutionId = issue.resolutionId,
             )
     }
 }

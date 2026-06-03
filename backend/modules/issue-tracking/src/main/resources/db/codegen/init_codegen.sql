@@ -302,3 +302,32 @@ CREATE INDEX idx_versions_project_id ON versions(project_id);
 
 CREATE UNIQUE INDEX ux_versions_project_id_name_active
     ON versions(project_id, name) WHERE deleted_at IS NULL;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V011: resolutions 테이블 + 표준 5종 seed + issues.resolution_id 컬럼 (FR-IS-07)
+-- 원본: db/migration/issue-tracking/V011__resolutions.sql
+-- jOOQ: Resolutions.ID/KEY/NAME/DESCRIPTION/DISPLAY_ORDER/IS_STANDARD/CREATED_AT/UPDATED_AT/DELETED_AT
+--       + Issues.RESOLUTION_ID 생성 대상
+-- ═══════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE resolutions (
+    id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    key            TEXT         NOT NULL UNIQUE,
+    name           TEXT         NOT NULL,
+    description    TEXT         NULL,
+    display_order  INT          NOT NULL,
+    is_standard    BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    deleted_at     TIMESTAMPTZ  NULL
+);
+
+INSERT INTO resolutions (id, key, name, description, display_order, is_standard) VALUES
+    ('00000000-0000-4000-8000-000000000001', 'fixed',           'Fixed',            '수정 완료',              1, true),
+    ('00000000-0000-4000-8000-000000000002', 'wontfix',         'Won''t Fix',       '수정하지 않기로 결정',   2, true),
+    ('00000000-0000-4000-8000-000000000003', 'duplicate',       'Duplicate',        '중복 이슈',              3, true),
+    ('00000000-0000-4000-8000-000000000004', 'cannotreproduce', 'Cannot Reproduce', '재현 불가',              4, true),
+    ('00000000-0000-4000-8000-000000000005', 'done',            'Done',             '완료',                   5, true);
+
+-- BC 격리로 FK 미적용 — ApplicationService 가 존재 guard (V011 마이그레이션과 동일).
+ALTER TABLE issues ADD COLUMN resolution_id UUID NULL;

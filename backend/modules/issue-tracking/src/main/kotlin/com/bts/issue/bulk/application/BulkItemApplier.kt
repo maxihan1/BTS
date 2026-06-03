@@ -44,6 +44,13 @@ class BulkItemApplier(
      * repository 직행 금지 — 도메인 정규화·검증·권한 검증·전이 위임은
      * [IssueApplicationService] 를 통해 수행한다 (learnings: PATCH-merge-domain-bypass).
      *
+     * ## BULK_TRANSITION + resolutionId
+     * [BulkOperationPayload.Transition.resolutionId] 를 [TransitionIssueRequest.resolutionId] 에 그대로 전달한다.
+     * 전체 일괄 항목에 동일한 resolutionId 가 적용된다.
+     * null 이면 단건 전이와 동일하게 issues.resolution_id 를 clear 한다.
+     * 존재하지 않는 resolutionId 는 [IssueApplicationService.transitionIssue] 에서 거부되어
+     * 해당 항목이 FAILED 로 기록된다.
+     *
      * @param actor 행위자.
      * @param operationId 부모 작업 식별자.
      * @param issueKey 처리 대상 이슈 키.
@@ -78,6 +85,7 @@ class BulkItemApplier(
                     TransitionIssueRequest(
                         toStateKey = payload.toStateKey,
                         expectedVersion = existing.version,
+                        resolutionId = payload.resolutionId,
                     ),
                 )
             }
