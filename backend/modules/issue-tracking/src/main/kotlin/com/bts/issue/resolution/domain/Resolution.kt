@@ -45,14 +45,23 @@ data class Resolution(
         private const val DISPLAY_ORDER_DONE = 5
 
         /**
+         * key 슬러그 허용 패턴.
+         *
+         * 소문자 알파벳과 숫자만 허용한다. 공백·특수문자·하이픈 불가.
+         * 예: `"fixed"`, `"wontfix"`, `"cannotreproduce"`.
+         */
+        private val KEY_REGEX = Regex("^[a-z][a-z0-9]{0,29}\$")
+
+        /**
          * Resolution 인스턴스를 생성하는 factory 메서드.
          *
+         * - [key] 가 [KEY_REGEX] 패턴을 위반하면 [IllegalArgumentException] 을 던진다.
          * - [name] 이 빈 문자열이거나 공백만으로 구성된 경우 [IllegalArgumentException] 을 던진다.
          * - [id] 는 DB 저장 전이므로 null 로 초기화된다.
          * - [createdAt], [updatedAt] 은 현재 시각으로 초기화된다.
          * - [deletedAt] 은 null 로 초기화된다 (활성 상태).
          *
-         * @param key URL-safe 소문자 슬러그 키. 소문자 알파벳·숫자만 허용.
+         * @param key URL-safe 소문자 슬러그 키. 소문자 알파벳·숫자만 허용, 1~30자.
          * @param name 표시 이름. 공백 트림 후 빈 문자열이면 예외.
          * @param description 선택적 설명. 기본값 null.
          * @param displayOrder 목록 표시 순서. 기본값 1.
@@ -65,6 +74,9 @@ data class Resolution(
             displayOrder: Int = DISPLAY_ORDER_FIXED,
             isStandard: Boolean = false,
         ): Resolution {
+            require(KEY_REGEX.matches(key)) {
+                "Resolution key must match ${KEY_REGEX.pattern}, got: '$key'"
+            }
             require(name.isNotBlank()) { "Resolution name must not be blank" }
             val now = Instant.now()
             return Resolution(
