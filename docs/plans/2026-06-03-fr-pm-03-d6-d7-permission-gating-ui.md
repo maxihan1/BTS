@@ -155,6 +155,17 @@ project-permission-handlers MSW.
 - TDD 강제: yes.
 - 머지 전 검증(controller 직접): :modules:identity-access 전체 test+ktlint+detekt / apps/web vitest+typecheck(tsconfig.app)+해당 E2E.
 
+## 구현 결과 (bts-impl, 2026-06-03)
+
+- T1 (backend DevAllow fallback 2 + 부팅테스트) — ✅ test 911c1124 → feat 77a40f5a (security-engineer)
+- T2 (MyProjectPermissionController 확장 + B1 admin 시드) — ✅ test 37f5c384 → feat bfcdee80. 모듈 전체 667 test(0 fail, 부팅 회귀 0)
+- T3 (스키마 MANAGE_* + B2 fan-out) — ✅ test 9959dd6f → feat 278a8a2c. use-project-permissions.test/issues.index.test 누락 2곳 반영
+- T4 (컴포넌트 게이팅 + C3 리드변경) — ✅ test 0f187619 → feat 5eeed18b → refactor 9a240f31
+- T5 (버전 게이팅) — ✅ test 5a03c3eb → feat a91e6fc9
+- T6 (E2E, C1 기존 플래그 재사용) — ✅ 9e94ea36. 신규 4/4 + 기존 component/version-management E2E 10/10(회귀 0)
+- 최종 검증: 백엔드 :modules:identity-access 667 test + ktlint + detekt 그린 / 프론트 vitest 1132 + typecheck(tsconfig.app) 그린.
+- 잔존(코드리뷰 후보): T3 agent가 project-permissions.test.ts 신규/기존 둘 다 손댄 경미 중복(둘 다 그린).
+
 ## 리뷰 결과
 
 ### code-reviewer ground-truth 적대적 plan 리뷰 (2026-06-03)
