@@ -1143,6 +1143,45 @@ describe('IssueMetaPanel — 담당자 셀렉터', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// FR-IS-07 B9b — 해결 결과(resolution) 표시 (IMP-60~62)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueMetaPanel — 해결 결과(resolution) 표시 (FR-IS-07 B9b)', () => {
+  /**
+   * IMP-60: issue.resolution이 있으면 data-testid="issue-resolution"이 렌더되고
+   * resolution.name이 표시된다.
+   */
+  it('IMP-60: resolution이 있으면 issue-resolution 요소에 resolution.name이 표시된다', () => {
+    const issueWithResolution: IssueResponse = {
+      ...issueFixture,
+      currentStateKey: 'done',
+      resolution: { id: '00000000-0000-4000-8000-000000000001', key: 'fixed', name: 'Fixed' },
+    }
+    renderPanel(issueWithResolution)
+    const resolutionEl = screen.getByTestId('issue-resolution')
+    expect(resolutionEl).toBeInTheDocument()
+    expect(resolutionEl).toHaveTextContent('Fixed')
+  })
+
+  /**
+   * IMP-61: issue.resolution이 null이면 data-testid="issue-resolution"이 렌더되지 않는다.
+   */
+  it('IMP-61: resolution이 null이면 issue-resolution 요소가 렌더되지 않는다', () => {
+    renderPanel(issueFixture) // issueFixture.resolution은 undefined (미설정)
+    expect(screen.queryByTestId('issue-resolution')).not.toBeInTheDocument()
+  })
+
+  /**
+   * IMP-62: issue.resolution이 undefined이면 data-testid="issue-resolution"이 렌더되지 않는다.
+   */
+  it('IMP-62: resolution이 undefined이면 issue-resolution 요소가 렌더되지 않는다', () => {
+    const issueNoResolution: IssueResponse = { ...issueFixture, resolution: undefined }
+    renderPanel(issueNoResolution)
+    expect(screen.queryByTestId('issue-resolution')).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // FR-PM-02 C1 — 담당자 canEdit 게이트
 // ─────────────────────────────────────────────────────────────────────────────
 

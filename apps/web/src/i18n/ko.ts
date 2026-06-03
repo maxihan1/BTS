@@ -166,6 +166,10 @@ export const issueDetailStrings = {
   assigneeNotFoundError: '선택한 사용자를 찾을 수 없습니다. 다시 검색 후 선택해 주세요.',
   /** 담당자 변경 실패 에러 메시지 */
   assigneeChangeError: '담당자 변경 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+
+  // ── 해결 결과(resolution) — FR-IS-07 ────────────────────────────────
+  /** 메타패널 — 해결 결과 레이블 */
+  resolutionLabel: '해결 결과',
 } as const
 
 /** 이슈 생성 폼 관련 문자열 */
