@@ -9,6 +9,8 @@ import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.jooq.tables.records.IssuesRecord
+import com.bts.issue.jooq.tables.references.COMPONENTS
+import com.bts.issue.jooq.tables.references.ISSUE_COMPONENTS
 import com.bts.issue.jooq.tables.references.ISSUES
 import com.bts.issue.jooq.tables.references.ISSUE_TYPES
 import com.bts.issue.jooq.tables.references.PROJECTS
@@ -462,6 +464,94 @@ class IssueRepository(
                 }
 
         return PageImpl(content, pageable, total)
+    }
+
+    /**
+     * 이슈의 컴포넌트 연결 목록을 원자적으로 교체한다 (낙관락 OCC).
+     *
+     * version bump 를 먼저 시도하는 이유 — 낙관락(Optimistic Concurrency Control)으로
+     * 동시 편집 충돌을 직렬화한다. bump 실패(stale version) 시 DELETE/INSERT 를 건너뛰어
+     * partial update 없이 즉시 0 을 반환한다.
+     *
+     * 실행 순서.
+     * ① `UPDATE issues SET version=version+1, updated_at=now() WHERE key=? AND deleted_at IS NULL AND version=?`
+     *    → rowcount 0 이면 낙관락 충돌 — 즉시 0 반환.
+     * ② `DELETE FROM issue_components WHERE issue_id=?`
+     * ③ componentIds 가 비어 있지 않으면 batch INSERT (issue_id, component_id).
+     *
+     * 이 메서드 자체에는 @Transactional 을 붙이지 않는다.
+     * 호출하는 ApplicationService 가 트랜잭션을 보유하며, 같은 트랜잭션 컨텍스트에서 실행된다.
+     *
+     * @param key 이슈 키 (낙관락 WHERE 조건).
+     * @param issueId DELETE / INSERT 에 사용할 이슈 UUID.
+     * @param componentIds 교체 후 최종 컴포넌트 UUID 목록. 빈 리스트면 전부 삭제.
+     * @param expectedVersion 현재 버전. DB 버전과 일치해야 업데이트가 실행된다.
+     * @return 성공=1, 낙관락 충돌(stale version)=0.
+     */
+    @Transactional
+    fun replaceComponents(
+        key: IssueKey,
+        issueId: UUID,
+        componentIds: List<UUID>,
+        expectedVersion: Long,
+    ): Int {
+        log.debug(
+            "replaceComponents key={} issueId={} componentCount={} expectedVersion={}",
+            key.value,
+            issueId,
+            componentIds.size,
+            expectedVersion,
+        )
+
+        // ① version bump — 실패 시 즉시 0 반환 (DELETE/INSERT 생략)
+        val bumped =
+            dsl.update(ISSUES)
+                .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+                .set(ISSUES.VERSION, expectedVersion + 1)
+                .where(ISSUES.KEY.eq(key.value))
+                .and(ISSUES.VERSION.eq(expectedVersion))
+                .and(ISSUES.DELETED_AT.isNull)
+                .execute()
+
+        if (bumped == 0) return 0
+
+        // ② 기존 연결 전부 삭제
+        dsl.deleteFrom(ISSUE_COMPONENTS)
+            .where(ISSUE_COMPONENTS.ISSUE_ID.eq(issueId))
+            .execute()
+
+        // ③ 새 연결 batch INSERT (빈 목록이면 생략)
+        if (componentIds.isNotEmpty()) {
+            val insert = dsl.insertInto(ISSUE_COMPONENTS, ISSUE_COMPONENTS.ISSUE_ID, ISSUE_COMPONENTS.COMPONENT_ID)
+            componentIds.forEach { componentId ->
+                insert.values(issueId, componentId)
+            }
+            insert.execute()
+        }
+
+        return 1
+    }
+
+    /**
+     * 이슈에 연결된 활성 컴포넌트 UUID 목록을 반환한다.
+     *
+     * `components.deleted_at IS NULL` 필터로 소프트삭제된 컴포넌트를 제외한다.
+     * ISSUE_COMPONENTS × COMPONENTS 단순 JOIN — 이슈당 단일 컬렉션이라 cartesian product 없음.
+     * 여러 컬렉션(예: 버전 목록)과 동시 JOIN 하면 cartesian product 위험이 생기므로 금지.
+     *
+     * @param issueId 조회할 이슈 UUID.
+     * @return 활성 컴포넌트 UUID 목록. 없으면 빈 리스트.
+     */
+    @Transactional(readOnly = true)
+    fun findActiveComponentIdsByIssue(issueId: UUID): List<UUID> {
+        log.debug("findActiveComponentIdsByIssue issueId={}", issueId)
+        return dsl.select(ISSUE_COMPONENTS.COMPONENT_ID)
+            .from(ISSUE_COMPONENTS)
+            .join(COMPONENTS).on(ISSUE_COMPONENTS.COMPONENT_ID.eq(COMPONENTS.ID))
+            .where(ISSUE_COMPONENTS.ISSUE_ID.eq(issueId))
+            .and(COMPONENTS.DELETED_AT.isNull)
+            .fetch(ISSUE_COMPONENTS.COMPONENT_ID)
+            .filterNotNull()
     }
 
     /**
