@@ -34,6 +34,8 @@ interface LabelAutocompleteInputProps {
   disabled?: boolean
   /** 이미 추가된 라벨 목록 — 후보에서 제외(선택사항) */
   existingLabels?: string[]
+  /** 입력창 placeholder 텍스트 (선택사항, 기본값: '라벨 입력 또는 검색...') */
+  placeholder?: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -61,6 +63,7 @@ export function LabelAutocompleteInput({
   onCommit,
   disabled = false,
   existingLabels = [],
+  placeholder = '라벨 입력 또는 검색...',
 }: LabelAutocompleteInputProps) {
   const [open, setOpen] = React.useState(false)
   const [activeIndex, setActiveIndex] = React.useState(-1)
@@ -146,7 +149,7 @@ export function LabelAutocompleteInput({
           }}
           onKeyDown={handleKeyDown}
           disabled={disabled}
-          placeholder="라벨 입력 또는 검색..."
+          placeholder={placeholder}
           className={cn(
             'h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none',
             'placeholder:text-muted-foreground',

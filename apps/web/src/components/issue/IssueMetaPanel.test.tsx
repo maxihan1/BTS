@@ -15,8 +15,32 @@ vi.mock('@/hooks/use-issue-permissions', () => ({
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
 
 // useLabels를 mock — LabelAutocompleteInput 내부에서 호출, 자동완성 후보 제어
+// 기본값: 빈 후보 배열(후보 없음) — 자동완성 테스트에서 setupLabelsMock으로 오버라이드
 vi.mock('@/hooks/use-labels', () => ({
-  useLabels: vi.fn(),
+  useLabels: vi.fn().mockReturnValue({
+    data: [],
+    isLoading: false,
+    isError: false,
+    isPending: false,
+    isSuccess: true,
+    error: null,
+    status: 'success',
+    fetchStatus: 'idle',
+    dataUpdatedAt: 0,
+    errorUpdatedAt: 0,
+    failureCount: 0,
+    failureReason: null,
+    isFetched: true,
+    isFetchedAfterMount: true,
+    isFetching: false,
+    isInitialLoading: false,
+    isLoadingError: false,
+    isPlaceholderData: false,
+    isRefetchError: false,
+    isRefetching: false,
+    isStale: false,
+    refetch: vi.fn(),
+  }),
 }))
 import { useLabels } from '@/hooks/use-labels'
 
