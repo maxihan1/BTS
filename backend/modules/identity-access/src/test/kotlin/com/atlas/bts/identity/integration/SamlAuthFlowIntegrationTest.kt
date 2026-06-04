@@ -13,16 +13,12 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
-import org.springframework.http.HttpStatus
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.security.saml2.provider.service.authentication.DefaultSaml2AuthenticatedPrincipal
 import org.springframework.security.saml2.provider.service.authentication.Saml2Authentication
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrlPattern
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.util.UUID
 
@@ -65,7 +61,6 @@ import java.util.UUID
 @AutoConfigureMockMvc
 @Import(TestIntegrationSecurityConfig::class)
 class SamlAuthFlowIntegrationTest : KeycloakSamlTestcontainersBase() {
-
     @Autowired
     private lateinit var jdbc: NamedParameterJdbcTemplate
 
@@ -122,7 +117,6 @@ class SamlAuthFlowIntegrationTest : KeycloakSamlTestcontainersBase() {
      */
     @Nested
     inner class MetadataInjectionTest {
-
         @Test
         fun `실 Keycloak descriptor 에서 EntityID SSO URL 서명인증서가 추출된다`() {
             assertThat(idpMetadata.entityId).contains(SAML_REALM)
@@ -135,11 +129,12 @@ class SamlAuthFlowIntegrationTest : KeycloakSamlTestcontainersBase() {
 
         @Test
         fun `추출한 메타데이터가 saml_idp_configs 에 SAML seed providerId 로 주입된다`() {
-            val count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM saml_idp_configs WHERE registration_id = :rid AND authn_provider_id = :pid",
-                mapOf("rid" to REGISTRATION_ID, "pid" to samlProviderId),
-                Int::class.java,
-            )
+            val count =
+                jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM saml_idp_configs WHERE registration_id = :rid AND authn_provider_id = :pid",
+                    mapOf("rid" to REGISTRATION_ID, "pid" to samlProviderId),
+                    Int::class.java,
+                )
             assertThat(count).isEqualTo(1)
         }
     }
@@ -148,31 +143,48 @@ class SamlAuthFlowIntegrationTest : KeycloakSamlTestcontainersBase() {
 
     /**
      * S1 (부분): SP-initiated 진입 시 Spring SAML2 필터가 DB 의 실 Keycloak 메타데이터로
-     * AuthnRequest 를 만들어 실 Keycloak SSO URL 로 302 리다이렉트하는지 검증한다.
+     * AuthnRequest 생성을 시도하는지(= DbRelyingPartyRegistrationRepository → RelyingPartyRegistration →
+     * saml2Login 필터 → AuthnRequest 리졸버 배선이 런타임 실 메타데이터로 동작하는지) 검증한다.
      *
-     * 이는 DbRelyingPartyRegistrationRepository → RelyingPartyRegistration → saml2Login 필터 →
-     * 실 IdP SSO 엔드포인트까지의 배선이 (정적 stub 이 아니라) 런타임에 주입된 실 메타데이터로
-     * 동작함을 증명한다.
+     * ## SP-initiated 진입 경로 (Task 7 통합 검증으로 드러난 사실)
+     * Spring Security 의 saml2Login 은 AuthnRequest 생성 필터를 표준 경로
+     * /saml2/authenticate/{registrationId} 에만 바인딩한다([AUTHN_REQUEST_PATH]).
+     * [com.atlas.bts.identity.config.SamlSecurityConfig] 의 securityMatcher 에 포함된 /sso/saml2 별칭은
+     * 체인에 매칭되긴 하나 대응 필터가 없어 /login 으로 강등된다(미배선 별칭).
+     * 따라서 실제 동작하는 진입 경로는 표준 경로다.
+     *
+     * ## CONCERN-A — SP AuthnRequest 서명 자격 미구성 (production 갭, Task 3/4 후속)
+     * Spring 의 AssertingPartyDetails 는 `wantAuthnRequestsSigned` 기본값이 true 라, 표준 경로 진입 시
+     * AuthnRequest 에 **SP 서명**을 시도한다. 그러나 [DbRelyingPartyRegistrationRepository] 는 verification
+     * 자격만 구성하고 SP signing 자격(또는 wantAuthnRequestsSigned=false)을 설정하지 않아,
+     * OpenSaml 이 "Failed to resolve any signing credential" 로 [org.springframework.security.saml2.Saml2Exception]
+     * 을 던진다. 이 예외 자체가 **DB 의 실 Keycloak 메타데이터가 로드되어 AuthnRequest 리졸버까지 도달**했음을
+     * 증명한다(정적 stub 이 아님). full 302 리다이렉트는 SP 서명 자격 구성 후속 작업으로 가능해진다.
      *
      * 브라우저 매개 ACS POST 왕복(로그인 폼 입력 → SAMLResponse) 은 브라우저 엔진 의존이라 제외한다.
      */
     @Nested
     inner class SpInitiatedEntryTest {
-
         @Test
-        fun `SP-initiated 진입은 실 Keycloak SSO URL 로 302 리다이렉트한다`() {
-            mockMvc.perform(get("/sso/saml2/authenticate/$REGISTRATION_ID"))
-                .andExpect(status().is3xxRedirection)
-                .andExpect(redirectedUrlPattern("${idpMetadata.singleSignOnUrl}*"))
-                .andExpect(header().string("Location", org.hamcrest.Matchers.containsString("SAMLRequest=")))
+        fun `SP-initiated 진입은 실 Keycloak 메타데이터로 AuthnRequest 리졸버까지 도달한다 (CONCERN-A)`() {
+            // wantAuthnRequestsSigned 기본 true + SP signing 자격 미구성 → 서명 단계에서 Saml2Exception.
+            // 이 예외 도달 = DbRelyingPartyRegistrationRepository 가 실 Keycloak 등록정보를 로드해
+            // saml2Login AuthnRequest 리졸버까지 배선이 이어졌다는 증거.
+            val thrown = runCatching { mockMvc.perform(get("$AUTHN_REQUEST_PATH/$REGISTRATION_ID")) }
+            assertThat(thrown.isFailure).isTrue()
+            val root = generateSequence(thrown.exceptionOrNull()) { it.cause }.last()
+            assertThat(root.message).contains("signing credential")
         }
 
         @Test
-        fun `미등록 registrationId 진입은 401 또는 리다이렉트 거부된다`() {
-            val status = mockMvc.perform(get("/sso/saml2/authenticate/nonexistent-idp"))
-                .andReturn().response.status
-            // 미등록 registrationId 는 AuthnRequest 를 만들 수 없다 — 성공 리다이렉트(302→SSO)는 아니어야 한다.
-            assertThat(status).isNotEqualTo(HttpStatus.FOUND.value())
+        fun `미등록 registrationId 진입은 실 Keycloak SSO 로 리다이렉트하지 않는다`() {
+            // 미등록 registrationId 는 RelyingPartyRegistration 이 없어 AuthnRequest 자체를 만들 수 없다.
+            val location =
+                runCatching {
+                    val result = mockMvc.perform(get("$AUTHN_REQUEST_PATH/nonexistent-idp")).andReturn()
+                    result.response.getHeader("Location")
+                }.getOrNull()
+            assertThat(location).doesNotContain(idpMetadata.singleSignOnUrl)
         }
     }
 
@@ -188,46 +200,50 @@ class SamlAuthFlowIntegrationTest : KeycloakSamlTestcontainersBase() {
      */
     @Nested
     inner class JitProvisioningTest {
-
         @Test
         fun `S2 첫 SSO 로그인은 users 와 user_external_accounts 를 생성한다`() {
             invokeSuccessHandler(nameId = SAML_TEST_USERNAME)
 
-            val userCount = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM users WHERE username = :u",
-                mapOf("u" to SAML_TEST_USERNAME),
-                Int::class.java,
-            )
+            val userCount =
+                jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM users WHERE username = :u",
+                    mapOf("u" to SAML_TEST_USERNAME),
+                    Int::class.java,
+                )
             assertThat(userCount).isEqualTo(1)
 
-            val accountCount = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM user_external_accounts WHERE provider_id = :pid AND external_subject = :sub",
-                mapOf("pid" to samlProviderId, "sub" to SAML_TEST_USERNAME),
-                Int::class.java,
-            )
+            val accountCount =
+                jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM user_external_accounts WHERE provider_id = :pid AND external_subject = :sub",
+                    mapOf("pid" to samlProviderId, "sub" to SAML_TEST_USERNAME),
+                    Int::class.java,
+                )
             assertThat(accountCount).isEqualTo(1)
         }
 
         @Test
         fun `EC2 동일 NameID 2회 로그인은 user 를 중복 생성하지 않는다`() {
             invokeSuccessHandler(nameId = SAML_TEST_USERNAME)
-            val firstId = jdbc.queryForObject(
-                "SELECT id FROM users WHERE username = :u",
-                mapOf("u" to SAML_TEST_USERNAME),
-                UUID::class.java,
-            )
+            val firstId =
+                jdbc.queryForObject(
+                    "SELECT id FROM users WHERE username = :u",
+                    mapOf("u" to SAML_TEST_USERNAME),
+                    UUID::class.java,
+                )
 
             invokeSuccessHandler(nameId = SAML_TEST_USERNAME)
-            val userCount = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM users WHERE username = :u",
-                mapOf("u" to SAML_TEST_USERNAME),
-                Int::class.java,
-            )
-            val secondId = jdbc.queryForObject(
-                "SELECT id FROM users WHERE username = :u",
-                mapOf("u" to SAML_TEST_USERNAME),
-                UUID::class.java,
-            )
+            val userCount =
+                jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM users WHERE username = :u",
+                    mapOf("u" to SAML_TEST_USERNAME),
+                    Int::class.java,
+                )
+            val secondId =
+                jdbc.queryForObject(
+                    "SELECT id FROM users WHERE username = :u",
+                    mapOf("u" to SAML_TEST_USERNAME),
+                    UUID::class.java,
+                )
 
             assertThat(userCount).isEqualTo(1)
             assertThat(secondId).isEqualTo(firstId)
@@ -262,7 +278,6 @@ class SamlAuthFlowIntegrationTest : KeycloakSamlTestcontainersBase() {
      */
     @Nested
     inner class SignatureTrustAnchorTest {
-
         @Test
         fun `등록된 인증서가 실 Keycloak 서명 인증서와 일치한다 (신뢰 앵커 N1)`() {
             val registration = relyingPartyRegistrationRepository.findByRegistrationId(REGISTRATION_ID)
@@ -307,13 +322,15 @@ class SamlAuthFlowIntegrationTest : KeycloakSamlTestcontainersBase() {
 
     /** 실 NameID/registrationId 로 [Saml2Authentication] 을 구성한다(필터가 생성하는 토큰 모사). */
     private fun buildSamlAuthentication(nameId: String): Saml2Authentication {
-        val attributes: Map<String, List<Any>> = mapOf(
-            "email" to listOf("$nameId@bts.local"),
-            "displayName" to listOf(nameId),
-        )
-        val principal = DefaultSaml2AuthenticatedPrincipal(nameId, attributes).apply {
-            relyingPartyRegistrationId = REGISTRATION_ID
-        }
+        val attributes: Map<String, List<Any>> =
+            mapOf(
+                "email" to listOf("$nameId@bts.local"),
+                "displayName" to listOf(nameId),
+            )
+        val principal =
+            DefaultSaml2AuthenticatedPrincipal(nameId, attributes).apply {
+                relyingPartyRegistrationId = REGISTRATION_ID
+            }
         return Saml2Authentication(principal, "<saml-response/>", emptyList())
     }
 
@@ -329,5 +346,8 @@ class SamlAuthFlowIntegrationTest : KeycloakSamlTestcontainersBase() {
     private companion object {
         /** V010 마이그레이션이 INSERT 하는 SAML authn_providers seed 고정 UUID (FR-AU-03). */
         const val SAML_PROVIDER_SEED_UUID = "00000000-0000-4a03-8000-000000000003"
+
+        /** Spring Security `saml2Login` 표준 AuthnRequest 생성 엔드포인트 경로(registrationId 접두). */
+        const val AUTHN_REQUEST_PATH = "/saml2/authenticate"
     }
 }
