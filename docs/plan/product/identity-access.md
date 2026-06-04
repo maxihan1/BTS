@@ -75,13 +75,15 @@
 
 **우선순위**. 필수 | **선행**. §2.1 | **Plan slug**. `identity/oidc`
 
-- [ ] D1. 도메인 (책임. security-engineer)
-- [ ] D2. 명세 — Authorization Code + PKCE. JWT 검증 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `oidc_provider_configs` (책임. db-engineer)
-- [ ] D4. 백엔드 — `spring-boot-starter-oauth2-client` + `-resource-server` (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 — Testcontainers Keycloak OIDC (책임. security-engineer)
-- [ ] D6. 프론트 UI — OIDC 진입 버튼 + 리다이렉트 처리 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. security-engineer) — PR #80 (OidcProvider thin SPI + OidcProviderConfig, ADR docs/decisions/2026-06-04-oidc-sso-provider.md)
+- [x] D2. 명세 — Authorization Code + PKCE. ID Token 검증 (책임. security-engineer) — PR #80 (SP-initiated 표준, PKCE S256 강제)
+- [x] D3. 데이터 모델 — `oidc_provider_configs`(authn_provider_id FK + client_secret 암호화) (책임. db-engineer) — PR #80 (V011)
+- [x] D4. 백엔드 — `oauth2-client`(기존재 재사용, 의존성 신규 0). OIDC 전용 @Order(2) SecurityFilterChain(IF_REQUIRED), DB기반 ClientRegistrationRepository(issuer discovery), JIT(AutoProvisionService 재사용) (책임. security-engineer) — PR #80
+- [x] D5. 백엔드 테스트 — Testcontainers Keycloak OIDC (책임. security-engineer) — PR #80 (실 Keycloak 302 진입 + code_challenge/S256 + secret 암호화 round-trip)
+- [x] D6. 프론트 UI — OIDC 진입 버튼 + 리다이렉트 (책임. frontend-engineer) — PR #80 (활성 IdP 동적 OidcIdpButtons, GET /api/v1/auth/oidc/providers)
+- [x] D7. E2E (책임. qa-engineer) — PR #80 (login-oidc.spec S1/S5, SAML E2E 회귀 0)
+
+> **FR-AU-04 완료 (2026-06-04, PR #80)**. OIDC SSO end-to-end 완성(실 Keycloak Testcontainers 302 진입 + PKCE S256 검증). SAML(FR-AU-03 PR #76) 동형 구조 재사용 — SSO 전용 @Order 체인 분리, JIT 프로비저닝(AutoProvisionService) 재사용. **의존성 신규 0**(oauth2-client/resource-server 기존재, FR-AU-09 맥락). **client_secret 암호화 저장**(AES-256-GCM, app key 환경변수, DATA.md §8 준수). 구현 중 부팅 결함(`@ConditionalOnProperty` 가드가 항상 스캔 의존성 깸 → SecretEncryptor 항상등록+사용시점 검증으로 정정, 메모리 `profile-scoped-bean-boot-failure` 재현·해소) + PKCE 보강(confidential client에도 S256 강제, spec N2). code-reviewer 게이트2 PASS(BLOCKER 0/CONCERN 2). **후속** — username=preferred_username 승격(현재 sub, FR-AU-06/08), full callback 왕복 E2E(현재 302 진입까지, SAML 동형). IdP 셀프서비스 관리 UI는 FR-AU-06.
 
 ### §2.5 FR-AU-05 — 로컬 계정 (외부 협력사용)
 

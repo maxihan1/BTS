@@ -173,18 +173,18 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <svg viewBox="0 0 260 260" class="donut">
     <circle cx="130" cy="130" r="116" fill="none" stroke="#e5e7eb" stroke-width="28" />
     <circle cx="130" cy="130" r="116" fill="none" stroke="#22c55e" stroke-width="28"
-      stroke-dasharray="728.849495632832" stroke-dashoffset="597.6565864189223"
+      stroke-dasharray="728.849495632832" stroke-dashoffset="590.368091462594"
       transform="rotate(-90 130 130)" stroke-linecap="round" />
-    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">18%</text>
+    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">19%</text>
   </svg>
       <div class="overview-numbers">
-        <div class="big-num">21 / 118</div>
+        <div class="big-num">22 / 118</div>
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
-          <div><span class="dot dot-done"></span> 완료 <b>21</b></div>
+          <div><span class="dot dot-done"></span> 완료 <b>22</b></div>
           <div><span class="dot dot-prog"></span> 진행중 <b>3</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>94</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>93</b></div>
         </div>
       </div>
     </div>
@@ -231,9 +231,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bc-card-pct">0%</div>
     </div><div class="bc-card" data-nav="bc-identity-access">
       <div class="bc-card-head">🔐 계정/권한</div>
-      <div class="bc-card-stats">7 / 22 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:32%"></div></div>
-      <div class="bc-card-pct">32%</div>
+      <div class="bc-card-stats">8 / 22 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:36%"></div></div>
+      <div class="bc-card-pct">36%</div>
     </div></div>
   </section>
 <section id="harness" class="page">
@@ -1270,14 +1270,14 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h1>🔐 계정/권한</h1>
     <p class="bc-desc">로그인, 2단계 인증, SSO, 권한 검사 영역.</p>
     <div class="bc-detail-stats">
-      <div class="big-pct">32%</div>
-      <div>7 / 22 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:32%"></div></div>
+      <div class="big-pct">36%</div>
+      <div>8 / 22 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:36%"></div></div>
       <div class="status-grid">
-        <div>✅ 완료 7</div>
+        <div>✅ 완료 8</div>
         <div>🔄 진행중 1</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 14</div>
+        <div>⬜ 대기 13</div>
       </div>
     </div>
     <h2>세부 기능 (22개)</h2>
@@ -1351,13 +1351,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc">SAML 2.0 <span class="term" data-def="&quot;통합 로그인&quot; 회사 아이디 하나로 여러 사내 시스템을 전부 로그인할 수 있는 기술입니다. (예: LDAP, SAML, OIDC)">SSO</span></span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — **<span class="term" data-def="Service Provider — IdP의 보증을 받아 로그인시키는 쪽. BTS 자신">SP</span>-initiated 흐름**</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `saml_<span class="term" data-def="Identity Provider — 신원을 보증하는 외부 통합 로그인 서버 (Okta/Azure AD/Keycloak 등)">idp</span>_configs`(authn_provider_id FK + SAML authn_providers seed)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `<span class="term" data-def="Service Provider — IdP의 보증을 받아 로그인시키는 쪽. BTS 자신">sp</span>ring-security-saml2-service-provider`. 표준 `/saml2/authenticate/{registrationId}` + ACS `/lo<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>/saml2/<span class="term" data-def="&quot;통합 로그인&quot; 회사 아이디 하나로 여러 사내 시스템을 전부 로그인할 수 있는 기술입니다. (예: LDAP, SAML, OIDC)">sso</span>/{registrationId}`, SAML 전용 @Order(1) SecurityFilterChain(IF_REQ<span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span>RED, STATELESS 분리), JIT 프로비저닝(AutoProvisionService 재사용), wantAuthnRequestsSigned(false) (책임. security-engineer) — PR #76</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> <span class="term" data-def="&quot;통합 경비실 / 디지털 신분증 발급처&quot; 우리 시스템이 직접 검사하지 않고 외부의 &#39;로그인 전문 솔루션(구글, 카카오 등)&#39;에 확인을 맡길 때 씁니다.">Keycloak</span> SAML 모드</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="Identity Provider — 신원을 보증하는 외부 통합 로그인 서버 (Okta/Azure AD/Keycloak 등)">IdP</span> 선택 + SP-initiated 진입점</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-AU-04</span>
         <span class="fr-desc">OIDC <span class="term" data-def="&quot;통합 로그인&quot; 회사 아이디 하나로 여러 사내 시스템을 전부 로그인할 수 있는 기술입니다. (예: LDAP, SAML, OIDC)">SSO</span></span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인</li><li><span class="step-icon">⬜</span> D2 — 명세 — Authorization Code + PKCE. <span class="term" data-def="&quot;디지털 출입증&quot; 로그인 성공 시 발급받는 암호화된 방문증. 이거 하나면 매번 비밀번호를 안 쳐도 됩니다.">JWT</span> 검증</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `oidc_<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>ovider_configs`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `<span class="term" data-def="Service Provider — IdP의 보증을 받아 로그인시키는 쪽. BTS 자신">sp</span>ring-boot-starter-oauth2-client` + `-resource-server`</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> <span class="term" data-def="&quot;통합 경비실 / 디지털 신분증 발급처&quot; 우리 시스템이 직접 검사하지 않고 외부의 &#39;로그인 전문 솔루션(구글, 카카오 등)&#39;에 확인을 맡길 때 씁니다.">Keycloak</span> OIDC</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — OIDC 진입 버튼 + 리다이렉트 처리</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — Authorization Code + PKCE. ID Token 검증</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `oidc_<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>ovider_configs`(authn_provider_id FK + client_secret 암호화)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `oauth2-client`(기존재 재사용, 의존성 신규 0). OIDC 전용 @Order(2) SecurityFilterChain(IF_REQ<span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span>RED), DB기반 ClientRegistrationRepository(<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>r discovery), JIT(AutoProvisionService 재사용) (책임. security-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — PR #80</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> <span class="term" data-def="&quot;통합 경비실 / 디지털 신분증 발급처&quot; 우리 시스템이 직접 검사하지 않고 외부의 &#39;로그인 전문 솔루션(구글, 카카오 등)&#39;에 확인을 맡길 때 씁니다.">Keycloak</span> OIDC</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — OIDC 진입 버튼 + 리다이렉트</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-진행중">
       <summary>
         <span class="fr-status">🔄</span>
