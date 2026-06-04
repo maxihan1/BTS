@@ -2,6 +2,7 @@
 
 package com.bts.workflow.scheme.web
 
+import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.scheme.exception.IssueTypeNotFoundException
 import com.bts.workflow.scheme.exception.MappingDefaultDuplicateException
@@ -186,6 +187,29 @@ class WorkflowSchemeExceptionHandler {
         )
     }
 
+    // ── 403 WORKFLOW_SCHEME_ACCESS_DENIED ─────────────────────────────────────
+
+    /**
+     * 워크플로우 스킴 작업 권한 부족 — 403.
+     *
+     * prod adapter(identity-access)가 BC 를 가로질러 던지는 shared-kernel 예외를
+     * 이 핸들러가 catch 한다(FR-PM-04 EC7). actorId 등 민감 정보는 로그에만 남기고
+     * 응답 body 에는 errorCode 만 노출한다.
+     *
+     * @param ex 거부된 행위자·권한·범위 정보를 담은 예외.
+     */
+    @ExceptionHandler(WorkflowSchemeAccessDeniedException::class)
+    fun handleWorkflowSchemeAccessDenied(ex: WorkflowSchemeAccessDeniedException): ProblemDetail {
+        log.info("SCHEME_403 workflow_scheme_access_denied detail='{}'", ex.message)
+        return problem(
+            status = HttpStatus.FORBIDDEN,
+            type = "workflow-scheme-access-denied",
+            title = "Workflow Scheme Access Denied",
+            errorCode = SchemeErrorCodes.WORKFLOW_SCHEME_ACCESS_DENIED,
+            detail = ex.message,
+        )
+    }
+
     // ── 409 SCHEME_IN_USE ─────────────────────────────────────────────────────
 
     /**
@@ -322,4 +346,7 @@ object SchemeErrorCodes {
     const val TYPE_STANDARD_NOT_DELETABLE = "TYPE_STANDARD_NOT_DELETABLE"
     const val WORKFLOW_SCHEME_NO_DEFAULT = "WORKFLOW_SCHEME_NO_DEFAULT"
     const val SCHEME_STANDARD_FIELD_LOCKED = "SCHEME_STANDARD_FIELD_LOCKED"
+
+    /** 워크플로우 스킴 권한 거부(FR-PM-04). shared-kernel [WorkflowSchemeAccessDeniedException] 와 동일 문자열. */
+    const val WORKFLOW_SCHEME_ACCESS_DENIED = "WORKFLOW_SCHEME_ACCESS_DENIED"
 }
