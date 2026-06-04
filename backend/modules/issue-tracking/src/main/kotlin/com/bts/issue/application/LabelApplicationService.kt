@@ -42,7 +42,10 @@ class LabelApplicationService(
      * @return 빈도 내림차순 라벨 목록. 최대 [LABEL_COMPLETION_LIMIT]개.
      * @throws IssueAccessDeniedException VIEW 권한 없을 때.
      */
-    fun completeLabels(actor: ActorId, q: String?): List<String> {
+    fun completeLabels(
+        actor: ActorId,
+        q: String?,
+    ): List<String> {
         if (!permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Global)) {
             throw IssueAccessDeniedException(actor, IssuePermission.VIEW, IssueScope.Global)
         }
