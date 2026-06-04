@@ -81,6 +81,150 @@ FR-PM-08이 `system_role_assignments` + `SystemRole.SYSTEM_ADMIN` + `SystemPermi
 
 ## Brainstorming Check (← /bts-spec Phase B 채움)
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 모든 task agent: `security-engineer` (auth FR). 검증 경로: `./gradlew :modules:<module>:test`.
+> TDD red→green→refactor 강제. 포트 이동(T1)이 3모듈 컴파일 가로지름 → 사실상 직렬 선행.
+
+### Task 1. 포트 계약을 shared-kernel로 이동 (actor→UUID) + 예외 정의 + 참조 전수 갱신
+
+**메타**.
+- agent: `security-engineer`
+- files: [
+  `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/permission/WorkflowSchemePermissionResolver.kt`,
+  `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/permission/WorkflowSchemePermission.kt`,
+  `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/permission/WorkflowSchemeScope.kt`,
+  `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/permission/WorkflowSchemeAccessDeniedException.kt`,
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/port/outbound/WorkflowSchemePermissionResolver.kt` (삭제),
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/port/outbound/WorkflowSchemePermission.kt` (삭제),
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/port/outbound/WorkflowSchemeScope.kt` (삭제),
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/adapter/outbound/AlwaysAllowWorkflowSchemePermissionResolver.kt` (import+actor 타입 갱신),
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/web/WorkflowSchemeController.kt` (호출부 actor→UUID, 4곳),
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/web/ProjectWorkflowSchemeController.kt` (2곳),
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/application/WorkflowSchemeApplicationService.kt` (호출부),
+  project-workflow 측 기존 테스트(WorkflowSchemeControllerTest / ProjectWorkflowSchemeControllerTest / AlwaysAllow…Test / ApplicationServiceTest — import+actor 갱신),
+  shared-kernel ArchUnit 룰 테스트(있으면)
+  ]
+- depends-on: []
+
+**RED**:
+- shared-kernel 신규 테스트 `WorkflowSchemePermissionContractTest` — 포트/enum/scope/예외가 `com.bts.shared.permission`에 존재하고 `requirePermission(actorId: UUID, …)` 시그니처임을 단언. (이동 전 → 컴파일 실패)
+- 기존 project-workflow scheme 테스트는 import 미갱신 상태에서 RED.
+
+**GREEN**:
+- 4개 계약 타입을 shared-kernel로 생성(이동), 시그니처 `actor: ActorId` → `actorId: UUID`.
+- `WorkflowSchemeAccessDeniedException`(Guard 예외, errorCode 상수 보유) shared-kernel 정의.
+- project-workflow 원본 3파일 삭제, AlwaysAllow stub import+actor 타입 갱신.
+- 호출부 8곳 `requirePermission(actor, …)` → `requirePermission(UUID.fromString(actor.raw), …)` (permission/scope 무변경).
+- 기존 테스트 import/actor 인자 갱신.
+
+**REFACTOR**:
+- actor.raw→UUID 변환을 컨트롤러 공통 헬퍼로 추출(중복 제거). KDoc에 BC 격리/이동 사유.
+
+**검증**: `./gradlew :modules:shared-kernel:test :modules:project-workflow:test` + ArchUnit BC 격리 그린. **회귀 0**(거부 동작은 stub이라 non-prod 무변경).
+
+---
+
+### Task 2. V013 — `MANAGE_WORKFLOW` permission_code를 PROJECT_ADMIN에 시드
+
+**메타**.
+- agent: `security-engineer`
+- files: [
+  `backend/modules/identity-access/src/main/resources/db/migration/V013__manage_workflow_permission.sql`,
+  `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/permission/PermissionSchemaMigrationTest.kt` (카운트 +1 갱신)
+  ]
+- depends-on: []
+
+**RED**:
+- `PermissionSchemaMigrationTest`에 기본 스킴 PROJECT_ADMIN이 `MANAGE_WORKFLOW`를 보유한다는 단언 추가 → V013 부재로 RED. (기존 정확-카운트 단언도 +1 — 메모리 `fr-pm-permission-seed-migration-test-coupling`)
+
+**GREEN**:
+- V013 마이그레이션 1행 INSERT (V009 `MANAGE_COMPONENTS` 미러). 기본 스킴 `00000000-…-001`, role `PROJECT_ADMIN`, code `MANAGE_WORKFLOW`.
+
+**REFACTOR**:
+- 마이그레이션 헤더 주석에 FR-PM-04/SDD 12.3 근거. (DDL 없음 → init_codegen.sql 미러 불요)
+
+**검증**: `./gradlew :modules:identity-access:test --tests *PermissionSchemaMigrationTest` (Testcontainers) 그린.
+
+---
+
+### Task 3. `IdentityAccessWorkflowSchemePermissionResolver` (@Profile prod) 구현 + Testcontainers 통합테스트
+
+**메타**.
+- agent: `security-engineer`
+- files: [
+  `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/permission/IdentityAccessWorkflowSchemePermissionResolver.kt`,
+  `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/permission/IdentityAccessWorkflowSchemePermissionResolverIntegrationTest.kt`
+  ]
+- depends-on: [1, 2]
+
+**RED** (Testcontainers 통합, prod 판정 ground-truth):
+- Global/MANAGE_SCHEME — SYSTEM_ADMIN 보유 actor → 통과(예외 없음, S1) / 미보유 → `WorkflowSchemeAccessDeniedException`(S2).
+- Project/ASSIGN_SCHEME — PROJECT_ADMIN 멤버+MANAGE_WORKFLOW → 통과(S3) / MEMBER → 거부(S4) / 비멤버 → 거부(S5) / 미해석 키 → 거부(S6).
+- → 구현 부재로 RED.
+
+**GREEN**:
+- `@Component @Profile("prod")` 구현. 생성자: `SystemRoleAssignmentRepository` + `ProjectMembershipRepository` + `PermissionSchemeRepository`(+ key→id 해석은 기존 `ProjectLookupPort`/Jdbc 어댑터 또는 identity-access 내 projects 조회 — 선례 grep 후 결정, EC5).
+- Global → `repo.findRolesByUser(actorId).contains(SYSTEM_ADMIN)` 아니면 throw.
+- Project(key) → key→id 해석 실패 throw, 멤버십 null throw, `roleHasPermission(projectId, role, "MANAGE_WORKFLOW")` false throw.
+
+**REFACTOR**:
+- `WorkflowSchemePermission`→permission_code 매핑을 `when`(else 없이) 헬퍼로(FR-PM-03 `toPermissionCode` 선례). deny-by-default 주석.
+
+**검증**: `./gradlew :modules:identity-access:test --tests *IdentityAccessWorkflowSchemePermissionResolver*` 그린.
+
+---
+
+### Task 4. project-workflow 예외 핸들러 — shared-kernel 예외 → 403 매핑
+
+**메타**.
+- agent: `security-engineer`
+- files: [
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/web/WorkflowSchemeExceptionHandler.kt` (핸들러 1건 추가),
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/exception/SchemeErrorCodes.kt` (WORKFLOW_SCHEME_ACCESS_DENIED 상수, 위치 확인),
+  `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/scheme/web/WorkflowSchemeExceptionHandlerTest.kt` (또는 컨트롤러 테스트)
+  ]
+- depends-on: [1]
+
+**RED**:
+- 핸들러 테스트 — `WorkflowSchemeAccessDeniedException` throw 시 403 + errorCode `WORKFLOW_SCHEME_ACCESS_DENIED` 단언 → 핸들러 부재로 RED.
+
+**GREEN**:
+- `@ExceptionHandler(WorkflowSchemeAccessDeniedException)` → `ResponseEntity.status(FORBIDDEN)` + errorCode.
+
+**REFACTOR**:
+- 핸들러 KDoc 표에 신규 errorCode 1행 추가.
+
+**검증**: `./gradlew :modules:project-workflow:test --tests *WorkflowSchemeExceptionHandler*` 그린.
+
+---
+
+### Task 5. prod 부팅 가드 테스트 — prod에서 prod resolver 해소 + AlwaysAllow 비활성
+
+**메타**.
+- agent: `security-engineer`
+- files: [
+  `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/permission/WorkflowSchemePermissionResolverBootTest.kt`
+  ]
+- depends-on: [3]
+
+**RED**:
+- prod 프로파일 부팅 컨텍스트에서 `WorkflowSchemePermissionResolver` 빈이 `IdentityAccessWorkflowSchemePermissionResolver`로 해소되고 AlwaysAllow는 미등록임을 단언 → RED. (선례 `IssuePermissionResolverBootTest` / `ComponentVersionPermissionResolverFallbackBootTest`)
+
+**GREEN**:
+- T3에서 @Profile prod 빈 등록으로 대체로 충족. 부팅 가드 통과 확인 + 누락 시 컴포넌트 스캔 보완.
+
+**REFACTOR**:
+- 부팅 테스트 주석에 @Profile 배타성(prod↔!prod) 설명.
+
+**검증**: `./gradlew :modules:identity-access:test --tests *WorkflowSchemePermissionResolverBootTest` 그린.
+
+## Plan 메타
+
+- task 수: 5
+- 예상 시간: 직렬 기준 약 30~40분(통합테스트 Testcontainers 포함). T1 포트 이동이 3모듈 컴파일 직렬화 요인 → 병렬성 낮음.
+- 예상 wave: Wave1 {T1, T2}(T2는 코드의존 없으나 identity-access 모듈 test 컴파일 공유로 사실상 직렬) → Wave2 {T3, T4} → Wave3 {T5}.
+- TDD 강제: yes (T3/T5는 prod-프로파일 통합테스트가 ground-truth, non-prod AlwaysAllow가 거부경로 가림 — 메모리 `issue-scope-global-prod-hard-deny`).
+- 리스크: ① 포트 이동 참조 누락(테스트 @Bean 포함 전수 grep 필수 — 메모리 `archunit-shared-class-move-repository-package`) ② key→id 해석 포트 cross-BC 회색지대(EC5, 기존 stub 유지) ③ project-workflow가 shared-kernel 의존하는지 build.gradle 확인 ④ identity-access 통합테스트가 prod 판정 ground-truth인지(non-prod 마스킹 주의).
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
