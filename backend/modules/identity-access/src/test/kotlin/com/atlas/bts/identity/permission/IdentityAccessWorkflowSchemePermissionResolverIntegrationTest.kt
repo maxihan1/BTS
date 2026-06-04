@@ -173,7 +173,11 @@ class IdentityAccessWorkflowSchemePermissionResolverIntegrationTest {
     @Test
     fun `S2 — 전역 역할 없는 사용자의 MANAGE_SCHEME Global은 거부`() {
         assertThatThrownBy {
-            resolver.requirePermission(projectAdminId, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+            resolver.requirePermission(
+                projectAdminId,
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
         }.isInstanceOf(WorkflowSchemeAccessDeniedException::class.java)
     }
 
