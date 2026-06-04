@@ -31,3 +31,9 @@ bts:
       allowed-origins: "http://localhost:5173"
   auth:
     issuer-uri: "http://localhost:8090"
+  # FR-AU-04 OIDC 통합 테스트 전용 client_secret 암호화 키/salt (SecretEncryptor 동작용)
+  # salt 는 Encryptors.stronger 가 hex 문자열일 것을 요구한다(SecretEncryptorTest 와 동일 형식)
+  oidc:
+    encryption:
+      key: "test-app-encryption-key-for-oidc"
+      salt: "deadbeefcafef00d"

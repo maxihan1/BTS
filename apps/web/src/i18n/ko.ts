@@ -25,6 +25,10 @@ export const loginStrings = {
   /** SAML SSO 버튼 */
   samlLoginButtonLabel: (displayName: string) => `${displayName} 로 로그인`,
   samlDividerText: '또는',
+
+  /** OIDC SSO 버튼 */
+  oidcLoginButtonLabel: (displayName: string) => `${displayName} 로 로그인`,
+  oidcDividerText: '또는',
 } as const
 
 /** /login 페이지 헤딩 */

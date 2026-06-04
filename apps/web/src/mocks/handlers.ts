@@ -16,6 +16,7 @@ import { userHandlers } from './user-handlers'
 import { versionHandlers } from './version-handlers'
 import { workflowHandlers } from './workflow-handlers'
 import { samlHandlers } from './saml-handlers'
+import { oidcHandlers } from './oidc-handlers'
 
 /**
  * 애플리케이션 전체 MSW 핸들러 집합.
@@ -35,6 +36,7 @@ export const handlers = [
   ...projectMemberHandlers,
   ...projectPermissionHandlers,
   ...resolutionHandlers,
+  ...oidcHandlers,
   ...samlHandlers,
   ...schemeHandlers,
   ...sessionHandlers,
