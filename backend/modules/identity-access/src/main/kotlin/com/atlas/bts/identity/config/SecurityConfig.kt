@@ -1,4 +1,4 @@
-// Spring Security 필터 체인 — SAML(Order 1) + OIDC(Order 2) + STATELESS(Order 3) 3체인, JWT/PAT/CSRF/CORS (FR-09-26/27/30, FR-AU-03/04)
+// Spring Security 필터 체인 — SAML(1)+OIDC(2)+STATELESS(3) 3체인, JWT/PAT/CSRF/CORS (FR-09-26/27/30, FR-AU-03/04)
 
 package com.atlas.bts.identity.config
 
