@@ -386,6 +386,13 @@ sourceSets {
 //
 //   project-workflow BC 는 CI 에서 generateJooq 를 실행하지 않아 이 문제가 노출되지 않았음.
 //   본 PR 은 로컬 검증을 명시적으로 통과해야 하므로 이 패턴을 채택.
+
+// detekt — PRE_EXISTING 위반을 detekt-baseline.xml 로 동결.
+// 신규 코드는 baseline 에 포함하지 않고 코드/@Suppress 로 해소한다.
+detekt {
+    baseline = file("detekt-baseline.xml")
+}
+
 afterEvaluate {
     tasks.named<org.jlleitschuh.gradle.ktlint.tasks.BaseKtLintCheckTask>("runKtlintCheckOverMainSourceSet") {
         setSource(fileTree("src/main/kotlin"))

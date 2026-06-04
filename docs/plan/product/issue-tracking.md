@@ -129,13 +129,15 @@
 
 **우선순위**. 중간 | **선행**. §2.1.1, §4.2.1, §4.3.1 | **Plan slug**. `issue/clone`
 
-- [ ] D1. 도메인 — CloneOptions (책임. backend-engineer)
-- [ ] D2. 명세 — 무엇이 복사되고 무엇이 새로 시작되는지 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용만) (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST /api/v1/issues/{key}/clone` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 옵션 다이얼로그 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — CloneOptions (책임. backend-engineer) — Issue 애그리거트 재사용, 신규 엔티티 없음. ADR `2026-06-02-issue-clone-semantics`.
+- [x] D2. 명세 — 무엇이 복사되고 무엇이 새로 시작되는지 (책임. backend-engineer) — `docs/specs/2026-06-02-issue-clone.md`. 복사(summary/description/type/priority/labels/env/impact/assignee) vs 새로 시작(key/reporter/상태/version/시각).
+- [x] D3. 데이터 모델 — (활용만) (책임. db-engineer) — 신규 테이블/마이그레이션 없음. 기존 `issues` INSERT.
+- [x] D4. 백엔드 — `POST /api/v1/issues/{key}/clone` (책임. backend-engineer) — `CloneIssueRequest(includeAssignee, summaryOverride)`. 같은 프로젝트 한정. 권한 VIEW(원본)+CREATE(프로젝트).
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — application 단위(MockK) + 컨트롤러 슬라이스(@WebMvc) + 런타임 통합(Testcontainers).
+- [ ] D6. 프론트 UI — 옵션 다이얼로그 (책임. designer → frontend-engineer) — 후속.
+- [ ] D7. E2E (책임. qa-engineer) — 후속.
+
+> **이연 (deferred)**. FR 제목의 "옵션: 첨부/Watcher/댓글 포함"은 해당 하위 시스템(Attachment/Watcher/IssueComment)이 미구현이라 이번 범위에서 제외. 해당 기능 도입 후 `CloneOptions` 확장으로 충족 (ADR §3). 다른 프로젝트로의 클론은 FR-MV(이슈 이동)와 함께 다룸 (ADR §4).
 
 #### §2.3.2 FR-IS-08 — 이슈 인쇄 + PDF 출력
 
