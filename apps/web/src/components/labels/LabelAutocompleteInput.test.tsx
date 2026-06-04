@@ -139,6 +139,35 @@ describe('LabelAutocompleteInput', () => {
     expect(input).toBeDisabled()
   })
 
+  it('ArrowDown으로 후보 하이라이트 후 Enter → 하이라이트된 후보로 onCommit 호출', async () => {
+    mockUseLabels(B_LABELS)
+    const user = userEvent.setup()
+    const { onCommit } = renderControlled()
+
+    const input = screen.getByRole('combobox', { name: /라벨 자동완성/i })
+    await user.click(input)
+    await user.type(input, 'b')
+
+    // 후보 목록이 렌더될 때까지 대기
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: 'bug' })).toBeInTheDocument()
+    })
+
+    // ArrowDown 2회 → index 0(bug) → index 1(backend) 하이라이트
+    await user.keyboard('{ArrowDown}')
+    await user.keyboard('{ArrowDown}')
+
+    // index 1 후보(backend)가 aria-selected=true
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: 'backend' })).toHaveAttribute('aria-selected', 'true')
+    })
+
+    // Enter → 입력값(b)이 아닌 하이라이트된 후보(backend)로 확정
+    await user.keyboard('{Enter}')
+    expect(onCommit).toHaveBeenCalledWith('backend')
+    expect(onCommit).not.toHaveBeenCalledWith('b')
+  })
+
   it('빈 입력 포커스 시 인기 라벨이 표시된다', async () => {
     mockUseLabels(POPULAR_LABELS)
     const user = userEvent.setup()
