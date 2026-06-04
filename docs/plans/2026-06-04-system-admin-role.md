@@ -41,9 +41,23 @@ SDD 12.6 OrgAdmin/시스템 권한(12.3 ADMIN_SYSTEM 등)의 실제 구현. 현�
   - D5 부트스트랩 = 설정값(`bts.bootstrap.admin-username`) 기반 멱등 승격 (마이그레이션 고정 INSERT 기각)
   - D6 범위 = 순수 토대 + 통합테스트 검증 (IssueScope.Global 실결선은 FR-PM-04)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-04-system-admin-role.md](../specs/2026-06-04-system-admin-role.md)
+
+핵심 시나리오 4줄 요약.
+- 앱 기동 시 `bts.bootstrap.admin-username` 설정값의 사용자를 SYSTEM_ADMIN으로 멱등 승격 (이미 있으면 skip)
+- SYSTEM_ADMIN 보유자 로그인 시 JWT에 `roles=["SYSTEM_ADMIN"]` 클레임 + `ROLE_SYSTEM_ADMIN` authority
+- 전역 판정기(shared-kernel 포트)가 시스템 관리자 여부 판정 — FR-PM-04 등 후행이 소비
+- 신규 REST 엔드포인트 없음(토대만), 실 동작은 FR-PM-04·FR-AU-05
+
+산출물. V010 마이그레이션 · `SystemRole`/`SystemRoleAssignment` · Repository · `SystemPermissionResolver`(포트+구현) · `JwtIssuer` 클레임 확장 · 부트스트랩 `ApplicationRunner` · 통합테스트.
+
+## Brainstorming Check
+
+✅ 통과 (적대적 self-review, office-hours 스킵 — 정의된 FR 작업이라 부적합, 메모리 `bts-spec-office-hours-mismatch`).
+- 보강: 감사 로그(audit FR-AU-10 후속, 현재 로그만) · PAT 전역역할 제외(EC7) · 부여 경로 부트스트랩 한정.
+- plan-review 위임 갈림길: 전역 판정기 시그니처(`isSystemAdmin` vs 권한코드 기반 `hasSystemPermission`) — FR-PM-04 사용성과 직결.
 
 ## Plan (← /bts-plan 채움)
 
