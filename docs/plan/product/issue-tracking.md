@@ -146,8 +146,8 @@
 - [x] D3. 데이터 모델 — (활용만) (책임. db-engineer) — PR #71 (변경 0)
 - [x] D4. 백엔드 — `openhtmltopdf` + `pdfbox`. `GET /api/v1/issues/{key}/pdf` (책임. backend-engineer) — PR #71 (openhtmltopdf-pdfbox:1.0.10, NanumGothic OFL 폰트 번들, IssuePdfTemplate→IssuePdfRenderer→controller. NFR1 descriptionHtml만 신뢰)
 - [x] D5. 백엔드 테스트 — PDF 바이너리 검증 (책임. backend-engineer) — PR #71 (단위+통합. %PDF- 시그니처, PDFTextStripper 한글 추출, XSS sanitize, 404)
-- [ ] D6. 프론트 UI — 인쇄 버튼 + 다운로드 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 인쇄 버튼 + 다운로드 (책임. designer → frontend-engineer) — PR #74 (이슈 상세 breadcrumb 우측 PDF 다운로드 버튼. downloadIssuePdf(apiFetch→blob, 코드베이스 첫 바이너리 다운로드) + triggerBlobDownload 헬퍼(createObjectURL→앵커 click→revokeObjectURL finally 누수방지) + MSW 핸들러. 로딩 disabled+sonner 에러토스트, i18n issueDetailStrings. "인쇄"는 서버 PDF 다운로드로 해석(브라우저 print 별도 미추가). 부분 mock으로 기존 30+ 라우트 테스트 생존)
+- [x] D7. E2E (책임. qa-engineer) — PR #74 (issue-pdf.spec.ts — waitForEvent('download') 선셋업→버튼 클릭→suggestedFilename ATLAS-1.pdf 검증. 전체 E2E 90 passed/1 skip 회귀 0)
 
 ## §3 컴포넌트 / 버전 (7개)
 
