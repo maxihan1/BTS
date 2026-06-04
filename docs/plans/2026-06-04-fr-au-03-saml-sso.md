@@ -77,9 +77,9 @@ SAML Provider 등록(`ProviderRegistry`/`authn_providers`)·`SecurityContext`/Se
 | 옵션 | 내용 | trade-off |
 |---|---|---|
 | A. `provider/provisioning/` 이동 | 의미 중립 패키지로 이동, LDAP+SAML 공유 | 도메인 청결. import 17참조 수정(기계적, 로직 0). 통합테스트 @Bean 명시 import라 회귀위험 中 |
-| **C. 이동 없이 재사용(권장)** | SAML이 `provider.ldap.AutoProvisionService` 그대로 import | 회귀위험 0. 단 SAML→ldap 패키지 의존(의미 약간 부자연). KDoc로 "LDAP 전용 아님, 외부 프로비저닝 공통" 명시 |
+| **C. 이동 없이 재사용(권장)** | SAML이 `provider.ldap.AutoProvisionService` 그대로 import | 회귀위험 0. 단 SAML→ldap 패키지 의존 + **LDAP 전용 `LdapProvisionAttrs` VO까지 의존(C2 의미 오염)**. KDoc로 "외부 프로비저닝 공통" 명시 |
 
-**→ 권장 C** (17파일 이동 회귀 > 청결성 이득). Maxi가 A 선택 시 별도 선행 refactor 커밋 + LDAP 회귀 전수 통과 후 진행. **게이트1 결정 반영**.
+**→ 권장 C** (17파일 이동 회귀 > 청결성 이득). 단 C2 — 옵션 C도 `provision()`이 받는 `LdapProvisionAttrs`(LDAP 전용 VO)를 SAML이 채워야 함. 완전 청결을 원하면 옵션 A에서 VO명도 중립화(`ExternalProvisionAttrs`). Maxi가 A 선택 시 별도 선행 refactor 커밋 + LDAP 회귀 전수 통과 후 진행. **게이트1 결정 D2 반영** (spec §6 옵션A와의 모순 C1도 여기서 통일).
 
 **RED/GREEN/REFACTOR**: 옵션 C면 코드 변경 0(KDoc만) → 기존 LDAP 테스트가 회귀 가드. 옵션 A면 이동 후 `:modules:identity-access:test` 전체 그린이 검증.
 
@@ -89,11 +89,11 @@ SAML Provider 등록(`ProviderRegistry`/`authn_providers`)·`SecurityContext`/Se
 
 **메타**.
 - agent: `db-engineer` (스키마) + `security-engineer` (의존성)
-- files: [`backend/modules/identity-access/build.gradle.kts`, `gradle/libs.versions.toml`, `backend/modules/identity-access/src/main/resources/db/migration/V010__saml_idp_configs.sql`, `.../test/.../SamlIdpConfigsSchemaTest.kt`]
+- files: [`backend/modules/identity-access/build.gradle.kts`, `backend/modules/identity-access/src/main/resources/db/migration/V010__saml_idp_configs.sql`, `.../test/.../SamlIdpConfigsSchemaTest.kt`]
 - depends-on: []
 
-**RED**: V010 적용 후 `saml_idp_configs` 테이블 존재 + 컬럼/UNIQUE(registration_id) 단언하는 schema 테스트(Testcontainers).
-**GREEN**: V010 마이그레이션(spec §5 컬럼) + libs.versions.toml에 spring-security-saml2 버전 + build.gradle.kts 의존성.
+**RED**: V010 적용 후 `saml_idp_configs` 테이블 존재 + 컬럼/UNIQUE(registration_id) + `authn_provider_id` FK(→authn_providers) 단언하는 schema 테스트(Testcontainers).
+**GREEN**: V010 마이그레이션 — spec §5 컬럼 + **`authn_provider_id uuid NOT NULL REFERENCES authn_providers(id)`**(C9 FK 갭 해소) + **SAML `authn_providers` seed row INSERT**(JIT가 providerId 필요). 의존성은 **`identity-access/build.gradle.kts`에 직접 인라인** 추가(C8 — libs.versions.toml 없음): `org.springframework.security:spring-security-saml2-service-provider`(Spring Boot 3.3.5 BOM이 6.3.x 관리, 버전 명시 불요).
 **REFACTOR**: 인덱스(enabled 부분) 정리, KDoc.
 **주의**: 권한 코드 시드 아님 → `PermissionSchemaMigrationTest` 영향 0. jOOQ 코드젠 비대상이면 `init_codegen.sql` 미러 불요(plain JDBC repo) — 확인 후 결정.
 **검증**: `./gradlew :modules:identity-access:test --tests *SamlIdpConfigsSchemaTest`
@@ -114,11 +114,14 @@ SAML Provider 등록(`ProviderRegistry`/`authn_providers`)·`SecurityContext`/Se
 
 **메타**.
 - agent: `security-engineer`
-- files: [`.../provider/saml/SamlProvider.kt`, `.../provider/saml/Saml2AuthenticationSuccessHandler.kt`, `.../test/.../SamlProviderUnitTest.kt`, `.../test/.../Saml2SuccessHandlerTest.kt`]
+- files: [`.../spi/Credential.kt`(SamlAssertion 추가 — C3), `.../provider/saml/SamlProvider.kt`, `.../provider/saml/Saml2AuthenticationSuccessHandler.kt`, `.../test/.../SamlProviderUnitTest.kt`, `.../test/.../Saml2SuccessHandlerTest.kt`]
 - depends-on: [1, 3]
 
-**RED**: `Saml2Authentication` → `Principal`(NameID=externalSubject) 변환 + AutoProvisionService 호출 + RelayState 화이트리스트(open-redirect 차단 N2) 단위 테스트(mock).
-**GREEN**: 성공 핸들러 — Principal 변환 → AutoProvision(JIT) → 기존 세션/JWT 발급 재사용 → RelayState 복귀. SamlProvider는 SPI 일관성 표현(spec §6b).
+**RED**: `Saml2Authentication` → `Principal`(NameID=externalSubject) 변환 + registrationId→authn_providers.id 매핑(C9) + AutoProvisionService.provision(providerId,...) 호출 + RelayState 화이트리스트(open-redirect 차단 N2) 단위 테스트(mock).
+**GREEN**:
+- `Credential.kt`에 `data class SamlAssertion(...)` 추가(C3 — 실제 없으므로 신규). 단 **검증은 Spring 필터가 수행**하므로 SamlAssertion은 SPI 표현용 최소 형태
+- 성공 핸들러 — Principal 변환 → registrationId로 SAML authn_providers.id 해소 → AutoProvision(JIT) → 기존 세션/JWT 발급 재사용 → RelayState 복귀
+- **SamlProvider 역할 재정의(C4)** — `authenticate()` dead-path 방지. SamlProvider는 ProviderType.SAML 등록/메타 노출 목적의 thin 구현(또는 SPI 강제 구현 제거하고 성공 핸들러만). plan-review 반영: SPI `authenticate()` 강제하지 않음
 **REFACTOR**: RelayState 검증 로직 분리 + Clock 주입(replay 시각, 메모리 `authcontroller-revokesession-timebomb`).
 **검증**: `./gradlew :modules:identity-access:test --tests *SamlProvider* --tests *Saml2Success*`
 
@@ -129,10 +132,13 @@ SAML Provider 등록(`ProviderRegistry`/`authn_providers`)·`SecurityContext`/Se
 - files: [`.../config/SecurityConfig.kt`(또는 SAML 전용 config), `.../test/.../SamlSecurityConfigTest.kt`]
 - depends-on: [4]
 
-**RED**: `/login/saml2/sso/{registrationId}`(ACS) + `/sso/saml2/authenticate/{registrationId}` 라우트가 SAML2 필터에 연결되고 성공 핸들러가 wiring됐는지 슬라이스 테스트.
-**GREEN**: `saml2Login {}` DSL + DbRelyingPartyRegistrationRepository 빈 + 성공 핸들러 연결. **#75(system-admin-role)와 SecurityFilterChain 충돌 주의** — 머지 순서 확인.
+**RED**: `/login/saml2/sso/{registrationId}`(ACS) + `/sso/saml2/authenticate/{registrationId}` 라우트가 SAML2 필터에 연결되고 성공 핸들러가 wiring됐는지 슬라이스 테스트 + **SAML 경로 미인증 접근(permitAll) 통과 + 세션 정책 동작** 단언.
+**GREEN**:
+- **세션 정책(BLOCKER 해소, 게이트1 D1 결정 반영)** — (a) SAML 경로 별도 `@Order` SecurityFilterChain `IF_REQUIRED` 또는 (b) `Saml2AuthenticationRequestRepository` 쿠키/DB 교체
+- `saml2Login {}` DSL + DbRelyingPartyRegistrationRepository 빈 + 성공 핸들러 연결
+- **permitAll 추가(C6)** — `/sso/saml2/authenticate/**`, `/login/saml2/sso/**`, `/api/v1/auth/saml/idps`(미인증 호출). **ACS는 IdP가 POST → CSRF skip 목록(SecurityConfig.kt:108-116)에 `/login/saml2/sso/**` 추가**
 **REFACTOR**: 경로 상수화.
-**주의**: `@Profile` 한정 빈 부팅 실패 회피(메모리 `profile-scoped-bean-boot-failure`) — non-prod 통합테스트 컨텍스트 부팅 가드.
+**주의**: `@Profile` 한정 빈 부팅 실패 회피(메모리 `profile-scoped-bean-boot-failure`). #75는 머지 순서만 인지(C7 — 진짜 충돌은 자기 체인 세션 정책).
 **검증**: `./gradlew :modules:identity-access:test`
 
 ### Task 6. 활성 SAML IdP 목록 API
@@ -155,7 +161,7 @@ SAML Provider 등록(`ProviderRegistry`/`authn_providers`)·`SecurityContext`/Se
 - depends-on: [5]
 
 **RED→GREEN**: Keycloak 컨테이너 SAML 모드 — SP-initiated(ACS→세션), IdP-initiated(Unsolicited 수용+replay 거부 S3), 서명검증 실패 401(S4), JIT 프로비저닝 멱등(S2/EC2). Testcontainers singleton 패턴(메모리 stale port 회피).
-**주의**: Keycloak SAML 컨테이너 직접 선례 없음 — 인프라 신규. 의존 클래스가 stale RUNNING/orphan 안 남게.
+**주의(C5 교정)**: Keycloak은 OIDC 용도로 이미 존재(`infra/docker-compose.dev.yml`, `realm-bts.json`)하나 **Testcontainers/SAML 모드 선례는 없음** — 컨테이너 통합테스트 선례는 OpenLDAP/Postgres뿐. realm에 SAML 클라이언트 추가 + 부팅 후 SAML 메타데이터(EntityID/SSO URL/cert)를 saml_idp_configs에 동적 주입하는 비자명 배선 필요. 단일 모듈 직렬 끝단이라 여기서 막히면 전체 지연 → **qa-engineer 인프라 검토를 게이트1에서 미리 당김**. Testcontainers singleton(stale port 회피) + orphan 방지.
 **검증**: `./gradlew :modules:identity-access:test --tests *SamlAuthFlow*`
 
 ### Task 8. 프론트 — IdP 선택 동적 버튼 (D6)
@@ -190,4 +196,33 @@ SAML Provider 등록(`ProviderRegistry`/`authn_providers`)·`SecurityContext`/Se
 - 추가 검증: ktlint/detekt/ArchUnit(이동 옵션 시) + vitest/typecheck + playwright
 - 게이트1 Maxi 확인: 외부 의존성 승인 + 공유 자산 위치 전략(권장 C)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### code-reviewer ground-truth 리뷰 (2026-06-04) — BLOCKER 1 / CONCERN 9
+
+직접 검증 완료(Credential.kt, SecurityConfig.kt:91, libs.versions.toml find). 모두 사실 확인.
+
+**🛑 BLOCKER 1 — SecurityConfig STATELESS ↔ saml2Login 세션 충돌**
+- `SecurityConfig.kt:91`은 단일 `SecurityFilterChain` + `SessionCreationPolicy.STATELESS`. SAML SP-initiated는 AuthnRequest 상관관계(inResponseTo/replay 방어 N3)를 HttpSession에 저장 → STATELESS면 깨지거나 replay 무력화.
+- 해소 택1 → **게이트1 Maxi 결정 D1**:
+  - (a) SAML 경로(`/sso/saml2/**`,`/login/saml2/**`) 한정 별도 SecurityFilterChain `@Order` 분리 + `IF_REQUIRED`. 단 현재 "단일 체인 통합"(SecurityConfig.kt:32-33) 정책 폐기 → ADR 갱신 필요
+  - (b) `Saml2AuthenticationRequestRepository`를 세션 대신 쿠키/DB로 교체, STATELESS 유지
+
+**사실 오류 3건 (교정 완료)**
+- C3 — `Credential.SamlAssertion` "이미 정의됨" 오류 → 실제 없음. **Task 4에 `spi/Credential.kt`에 SamlAssertion 추가 포함**으로 교정
+- C8 — `gradle/libs.versions.toml` 환각(프로젝트에 없음) → Task 2를 `identity-access/build.gradle.kts` 인라인 의존성 추가로 교정
+- C5 — Keycloak "선례 없음" 오류 → OIDC 용도로는 이미 존재(`docker-compose.dev.yml`), 단 Testcontainers/SAML 모드는 신규(리스크 유효)
+
+**모델 갭 (교정 완료)**
+- C9 — `saml_idp_configs`↔`authn_providers` 연결 부재 → JIT `AutoProvisionService.provision(providerId=authn_providers.id FK)` FK 위반 잠재. **Task 2에 SAML `authn_providers` seed row + `saml_idp_configs.authn_provider_id` FK 컬럼 추가, Task 4에 registrationId→providerId 매핑 명세** 교정
+
+**방향 교정**
+- C4 — SamlProvider SPI `authenticate()` dead-path 위험. F1 수정 → SamlProvider는 ProviderType 등록/메타 노출용, 인증 검증은 Spring 필터+성공 핸들러. SPI 강제 구현 제거
+- C7 — "#75 충돌" 경고 방향 오류(진짜는 자기 체인 STATELESS). #75는 머지 순서만 인지
+
+**Maxi 결정 필요 (게이트1)**
+- C1 — 공유자산 전략 plan(옵션C)↔spec(옵션A) 모순 → **D2로 통일**
+- C2 — 옵션 C 시 SAML이 LDAP 전용 `LdapProvisionAttrs` VO 의존(의미 오염) → D2와 함께 고려
+
+**permitAll/CSRF (Task 5 교정 완료)**
+- C6 — SAML ACS/시작/IdP목록 경로 permitAll + ACS는 IdP가 POST하므로 CSRF skip 목록 추가 명시

@@ -10,7 +10,7 @@
 
 SAML 2.0 기반 SSO(Single Sign-On)를 identity-access BC에 추가한다. 사내 IdP(Okta/Azure AD/Keycloak 등)가
 서명한 SAML Assertion을 검증해 BTS 세션을 발급한다. FR-AU-01에서 확립된 SPI(`AuthenticationProvider` + Spring 어댑터)
-패턴 위에 SAML 구현체를 끼우는 작업이다. `ProviderType.SAML(40)`, `Credential.SamlAssertion`은 이미 SPI에 선반영됨.
+패턴 위에 SAML 구현체를 끼우는 작업이다. `ProviderType.SAML(40)`은 이미 enum에 실재하나, **`Credential.SamlAssertion`은 ADR 설계 예시일 뿐 실제 `Credential.kt`에 없음 → Task 4에서 신규 추가**(plan-review C3 교정, 2026-06-04).
 
 **범위 포함**: SP-initiated + IdP-initiated 흐름, `saml_idp_configs` 데이터 모델, `/sso/saml2/**` 엔드포인트,
 JIT 자동 프로비저닝(LDAP 패턴 재사용), IdP 선택 프론트 UI, Keycloak SAML Testcontainers 통합 테스트.
@@ -51,7 +51,7 @@ JIT 자동 프로비저닝(LDAP 패턴 재사용), IdP 선택 프론트 UI, Keyc
 
 | ID | 요구사항 |
 |---|---|
-| F1 | `SamlProvider`(`provider/saml/`)가 도메인 SPI `AuthenticationProvider` 구현. `type=SAML`, `Credential.SamlAssertion` 소비 |
+| F1 | `SamlProvider`(`provider/saml/`)는 `ProviderType.SAML` 등록/메타 노출 목적. **인증 검증은 Spring SAML2 필터+성공 핸들러가 수행**(C4 — SPI `authenticate()` dead-path 방지). `Credential.SamlAssertion`은 Task 4 신규 추가(C3) |
 | F2 | Spring Security `spring-security-saml2-service-provider`로 SP-initiated AuthnRequest 생성 + ACS(Assertion Consumer Service) 처리 |
 | F3 | IdP-initiated(Unsolicited) Assertion 수용. replay/만료/audience 검증 |
 | F4 | `saml_idp_configs` CRUD는 **본 FR 범위에서 read + seed만**(관리 UI는 FR-AU-06 다중 Provider 관리로 이연). enabled IdP 목록 조회 API |
@@ -154,7 +154,9 @@ F4가 관리 UI를 FR-AU-06으로 이연하므로, 본 FR에서 IdP가 시스템
 - C3. **병행 충돌 선점**(grep 완료):
   - `apps/web/src/router.ts`(단일 라우트 등록) + `apps/web/src/mocks/handlers.ts`(단일 핸들러 인덱스)는 #74(FR-IS-08 프론트)와 공용. SAML은 `/login`·`/sso` 영역, FR-IS-08은 `/issues/$key` 버튼 → 라인 분리로 실제 충돌 위험 낮음. 머지 시 add/add 충돌 가능성만 인지, rebase로 해소
   - #75(system-admin-role)는 SecurityFilterChain 건드릴 수 있음 → SAML 필터 체인 추가 시 머지 순서 확인
-- C4. Keycloak SAML Testcontainers 인프라 신규(LDAP은 OpenLDAP, Keycloak 직접 선례 없음). `realm-bts.json`에 SAML 클라이언트 추가 또는 별도 realm
+- C4. Keycloak SAML Testcontainers 인프라 신규. **Keycloak은 OIDC 용도로 이미 존재**(`infra/docker-compose.dev.yml`, `realm-bts.json`)하나 **Testcontainers/SAML 모드 선례는 없음**(컨테이너 통합테스트는 OpenLDAP/Postgres뿐). `realm-bts.json`에 SAML 클라이언트 추가 또는 별도 realm + 메타데이터 동적 주입(plan-review C5 교정)
+- C5. **세션 정책 BLOCKER** — 현재 SecurityConfig 단일 체인 STATELESS(`SecurityConfig.kt:91`)는 saml2Login SP-initiated 상관관계/replay(N3)와 충돌. 게이트1 D1 결정 필요(별도 @Order 체인 IF_REQUIRED vs Saml2AuthenticationRequestRepository 쿠키/DB)
+- C6. 외부 의존성은 `gradle/libs.versions.toml`이 아니라 `identity-access/build.gradle.kts` 인라인 추가(프로젝트에 libs.versions.toml 없음, plan-review C8 교정)
 
 ## 9. 측정 가능한 완료 기준
 
