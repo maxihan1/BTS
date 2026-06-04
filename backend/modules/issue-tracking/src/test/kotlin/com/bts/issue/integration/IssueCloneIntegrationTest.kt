@@ -28,6 +28,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import java.sql.DriverManager
+import java.sql.Types
 import java.util.UUID
 
 /**
@@ -249,8 +250,8 @@ class IssueCloneIntegrationTest {
                 stmt.setInt(7, priority)
                 stmt.setArray(8, labelsArray)
                 stmt.setString(9, environment)
-                if (impact != null) stmt.setInt(10, impact) else stmt.setNull(10, java.sql.Types.SMALLINT)
-                if (assigneeId != null) stmt.setObject(11, UUID.fromString(assigneeId)) else stmt.setNull(11, java.sql.Types.OTHER)
+                if (impact != null) stmt.setInt(10, impact) else stmt.setNull(10, Types.SMALLINT)
+                stmt.setObject(11, assigneeId?.let { UUID.fromString(it) }, Types.OTHER)
                 stmt.executeUpdate()
             }
 

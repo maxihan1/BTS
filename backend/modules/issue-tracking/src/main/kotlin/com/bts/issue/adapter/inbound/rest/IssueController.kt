@@ -62,9 +62,13 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
  * security context 연동 전까지 고정 UUID 를 사용한다.
  * 인증 연동은 이후 security-engineer wave 에서 처리한다.
  *
+ * TooManyFunctions: 이슈 CRUD + 전이 + 클론 REST 엔드포인트를 단일 컨트롤러가 담당하므로 함수 수 임계치(11)를 초과한다.
+ * 책임 분리보다 이슈 리소스 응집이 더 적합한 구조이므로 Suppress 처리.
+ *
  * @param service 이슈 유스케이스 서비스
  * @param pdfRenderer 이슈 PDF 바이너리 렌더러
  */
+@Suppress("TooManyFunctions")
 @RestController
 @RequestMapping("/api/v1/issues")
 class IssueController(

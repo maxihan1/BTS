@@ -105,10 +105,14 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
         context("권한이 있고 원본이 존재할 때") {
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(sourceKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value, IssuePermission.VIEW, IssueScope.Issue(sourceKey.value),
+                    )
                 } returns true
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey))
+                    permissionResolver.hasPermission(
+                        actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey),
+                    )
                 } returns true
                 every { repo.findByKey(sourceKey) } returns source
                 every { repo.incrementKeySequence(projectKey) } returns 2L
@@ -211,8 +215,16 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
                 sut.cloneIssue(actor, sourceKey, CloneIssueRequest())
 
                 verifyOrder {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(sourceKey.value))
-                    permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.VIEW,
+                        IssueScope.Issue(sourceKey.value),
+                    )
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.CREATE,
+                        IssueScope.Project(projectKey),
+                    )
                     repo.findByKey(sourceKey)
                     repo.incrementKeySequence(projectKey)
                     repo.insert(any())
@@ -224,10 +236,14 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
         context("원본이 존재하지 않을 때") {
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(sourceKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value, IssuePermission.VIEW, IssueScope.Issue(sourceKey.value),
+                    )
                 } returns true
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey))
+                    permissionResolver.hasPermission(
+                        actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey),
+                    )
                 } returns true
                 every { repo.findByKey(sourceKey) } returns null
             }
@@ -249,7 +265,9 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
         context("원본 VIEW 권한이 없을 때") {
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(sourceKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value, IssuePermission.VIEW, IssueScope.Issue(sourceKey.value),
+                    )
                 } returns false
             }
 
@@ -266,10 +284,14 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
         context("대상 프로젝트 CREATE 권한이 없을 때") {
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(sourceKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value, IssuePermission.VIEW, IssueScope.Issue(sourceKey.value),
+                    )
                 } returns true
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey))
+                    permissionResolver.hasPermission(
+                        actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey),
+                    )
                 } returns false
             }
 
