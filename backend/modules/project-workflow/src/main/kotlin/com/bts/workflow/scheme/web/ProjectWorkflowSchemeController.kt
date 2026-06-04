@@ -81,7 +81,11 @@ class ProjectWorkflowSchemeController(
             projectLookupPort.findIdByKey(key)
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
         val actor = ActorId(SYSTEM_ACTOR_UUID)
-        permissionResolver.requirePermission(actor.toUuid(), WorkflowSchemePermission.ASSIGN_SCHEME, WorkflowSchemeScope.Project(projectKey))
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.ASSIGN_SCHEME,
+            WorkflowSchemeScope.Project(projectKey),
+        )
         val assignment = appService.assignToProject(actor, projectId, projectKey, WorkflowSchemeKey(body.schemeKey))
         return ResponseEntity.ok(DataResponse(data = assignment.toResponse()))
     }
@@ -105,7 +109,11 @@ class ProjectWorkflowSchemeController(
             projectLookupPort.findIdByKey(key)
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
         val actor = ActorId(SYSTEM_ACTOR_UUID)
-        permissionResolver.requirePermission(actor.toUuid(), WorkflowSchemePermission.ASSIGN_SCHEME, WorkflowSchemeScope.Project(projectKey))
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.ASSIGN_SCHEME,
+            WorkflowSchemeScope.Project(projectKey),
+        )
         val scheme = appService.findAssignedScheme(projectId, projectKey)
         return ResponseEntity.ok(DataResponse(data = scheme.toResponse()))
     }

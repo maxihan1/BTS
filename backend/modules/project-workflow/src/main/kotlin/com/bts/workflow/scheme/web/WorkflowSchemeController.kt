@@ -77,7 +77,11 @@ class WorkflowSchemeController(
         @RequestBody request: CreateWorkflowSchemeRequest,
     ): ResponseEntity<DataEnvelope<WorkflowSchemeResponse>> {
         val actor = systemActor()
-        permissionResolver.requirePermission(actor.toUuid(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.MANAGE_SCHEME,
+            WorkflowSchemeScope.Global,
+        )
         log.info("WorkflowSchemeController.create key={}", request.key)
         val scheme =
             applicationService.create(
@@ -137,7 +141,11 @@ class WorkflowSchemeController(
         @RequestBody request: UpdateWorkflowSchemeRequest,
     ): ResponseEntity<DataEnvelope<WorkflowSchemeResponse>> {
         val actor = systemActor()
-        permissionResolver.requirePermission(actor.toUuid(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.MANAGE_SCHEME,
+            WorkflowSchemeScope.Global,
+        )
         log.info("WorkflowSchemeController.update schemeKey={}", schemeKey)
         val scheme =
             applicationService.update(
@@ -164,7 +172,11 @@ class WorkflowSchemeController(
         @PathVariable schemeKey: String,
     ) {
         val actor = systemActor()
-        permissionResolver.requirePermission(actor.toUuid(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.MANAGE_SCHEME,
+            WorkflowSchemeScope.Global,
+        )
         log.info("WorkflowSchemeController.delete schemeKey={}", schemeKey)
         applicationService.softDelete(actor, WorkflowSchemeKey(schemeKey))
     }
@@ -186,7 +198,11 @@ class WorkflowSchemeController(
         @RequestBody request: MappingRequestDto,
     ): ResponseEntity<DataEnvelope<MappingResponse>> {
         val actor = systemActor()
-        permissionResolver.requirePermission(actor.toUuid(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.MANAGE_SCHEME,
+            WorkflowSchemeScope.Global,
+        )
         log.info(
             "WorkflowSchemeController.addMapping schemeKey={} issueTypeKey={} workflowKey={}",
             schemeKey,
@@ -220,7 +236,11 @@ class WorkflowSchemeController(
         @PathVariable mappingId: Long,
     ) {
         val actor = systemActor()
-        permissionResolver.requirePermission(actor.toUuid(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.MANAGE_SCHEME,
+            WorkflowSchemeScope.Global,
+        )
         log.info("WorkflowSchemeController.deleteMapping schemeKey={} mappingId={}", schemeKey, mappingId)
         applicationService.deleteMapping(actor, mappingId)
     }
