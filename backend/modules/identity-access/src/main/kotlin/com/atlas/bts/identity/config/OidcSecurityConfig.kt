@@ -10,6 +10,9 @@ import org.springframework.core.annotation.Order
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository
+import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestCustomizers
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher
 import org.springframework.security.web.util.matcher.OrRequestMatcher
@@ -80,10 +83,30 @@ class OidcSecurityConfig(
             .authorizeHttpRequests { auth -> auth.anyRequest().authenticated() }
             .oauth2Login { oauth2 ->
                 oauth2.clientRegistrationRepository(clientRegistrationRepository)
+                // PKCE 강제(spec N2) — confidential client 여도 code_challenge+S256 부착(아래 헬퍼 참고).
+                oauth2.authorizationEndpoint { ep ->
+                    ep.authorizationRequestResolver(pkceAuthorizationRequestResolver(clientRegistrationRepository))
+                }
                 oauth2.successHandler(oidcAuthenticationSuccessHandler)
             }
             .build()
     }
+
+    /**
+     * PKCE(S256)를 강제하는 [OAuth2AuthorizationRequestResolver] (spec N2 — Authorization Code 가로채기 방어).
+     *
+     * Spring Security 6.x 기본 [DefaultOAuth2AuthorizationRequestResolver] 는 public client 이거나
+     * requireProofKey=true 일 때만 code_challenge 를 부착한다. BTS 의 OIDC client 는 client_secret 을
+     * 가진 **confidential client** 라 기본 동작으로는 PKCE 가 빠진다. OAuth 2.1 은 confidential client 에도
+     * PKCE 를 권장(defense in depth)하므로, [OAuth2AuthorizationRequestCustomizers.withPkce] 로
+     * code_challenge + code_challenge_method=S256 을 진입 요청에 강제 부착한다.
+     */
+    private fun pkceAuthorizationRequestResolver(
+        clientRegistrationRepository: ClientRegistrationRepository,
+    ): OAuth2AuthorizationRequestResolver =
+        DefaultOAuth2AuthorizationRequestResolver(clientRegistrationRepository, AUTHORIZATION_BASE_URI).apply {
+            setAuthorizationRequestCustomizer(OAuth2AuthorizationRequestCustomizers.withPkce())
+        }
 
     /** OIDC 경로([OIDC_PATHS])를 MVC 비의존 [AntPathRequestMatcher] 로 매칭하는 [RequestMatcher]. */
     private fun oidcPathMatcher(): RequestMatcher = OrRequestMatcher(OIDC_PATHS.map { AntPathRequestMatcher(it) })
@@ -91,6 +114,9 @@ class OidcSecurityConfig(
     private companion object {
         /** OIDC 전용 체인 우선순위 — SAML(1) 다음, STATELESS(3) 보다 먼저 (C1 distinct order). */
         const val OIDC_CHAIN_ORDER = 2
+
+        /** Spring 표준 authorization request 진입 base URI (/oauth2/authorization/{registrationId}). */
+        const val AUTHORIZATION_BASE_URI = "/oauth2/authorization"
 
         /**
          * OIDC 전용 체인이 securityMatcher 로 잡는 경로 (Spring 표준 경로).
