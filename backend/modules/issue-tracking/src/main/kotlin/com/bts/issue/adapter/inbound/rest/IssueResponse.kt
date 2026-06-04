@@ -37,6 +37,7 @@ import java.util.UUID
  * @property impact 영향도 숫자 1(High)..3(Low). null 허용.
  * @property impactName [IssueImpact.displayName]. null 허용 (impact=null 일 때).
  * @property assigneeId 담당자 UUID. null 이면 미할당.
+ * @property componentIds 이슈에 연결된 컴포넌트 UUID 목록. 단건 경로에서만 채워지며, 목록 경로는 빈 목록. FR-CM-02.
  * @property resolution 이슈에 할당된 Resolution 요약. null 이면 미설정. FR-IS-07 B11.
  * @property resolutionId 이슈에 설정된 Resolution UUID. ApplicationService 내부 전달용. JSON 직렬화 제외.
  */
@@ -62,6 +63,7 @@ data class IssueResponse(
     val impact: Int? = null,
     val impactName: String? = null,
     val assigneeId: UUID? = null,
+    val componentIds: List<UUID> = emptyList(),
     val resolution: ResolutionSummary? = null,
     @com.fasterxml.jackson.annotation.JsonIgnore
     val resolutionId: UUID? = null,

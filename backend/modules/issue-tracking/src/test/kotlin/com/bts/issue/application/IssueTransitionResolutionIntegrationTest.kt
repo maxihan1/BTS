@@ -311,6 +311,7 @@ class IssueTransitionResolutionIntegrationTest {
                 workflowPort = workflowTransitionAdapter,
                 workflowKeyResolver = workflowKeyResolver,
                 userLookupPort = userLookupPort,
+                componentRepository = mockk(relaxed = true),
                 clock = clock,
             )
 

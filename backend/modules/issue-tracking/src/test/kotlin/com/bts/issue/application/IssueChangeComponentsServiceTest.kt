@@ -111,10 +111,11 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
     describe("changeComponents") {
 
         context("happy path — 모든 컴포넌트 활성, 권한 OK") {
-            val request = AppChangeComponentsRequest(
-                componentIds = listOf(c1, c2),
-                expectedVersion = existingVersion,
-            )
+            val request =
+                AppChangeComponentsRequest(
+                    componentIds = listOf(c1, c2),
+                    expectedVersion = existingVersion,
+                )
             val existingIssue = makeIssue()
             val responseWithComponents = makeResponse(componentIds = listOf(c1, c2))
 
@@ -155,10 +156,11 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
         }
 
         context("중복 ID 정규화 — [C1, C1, C2] 입력이 도메인 assignComponents 경유로 distinct됨") {
-            val request = AppChangeComponentsRequest(
-                componentIds = listOf(c1, c1, c2),
-                expectedVersion = existingVersion,
-            )
+            val request =
+                AppChangeComponentsRequest(
+                    componentIds = listOf(c1, c1, c2),
+                    expectedVersion = existingVersion,
+                )
             val existingIssue = makeIssue()
             val responseWithComponents = makeResponse(componentIds = listOf(c1, c2))
 
@@ -191,10 +193,11 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
 
         context("422 — 비활성/타 프로젝트 컴포넌트 포함") {
             val unknownId = UUID.fromString("00000000-0000-4000-8000-000000000099")
-            val request = AppChangeComponentsRequest(
-                componentIds = listOf(c1, unknownId),
-                expectedVersion = existingVersion,
-            )
+            val request =
+                AppChangeComponentsRequest(
+                    componentIds = listOf(c1, unknownId),
+                    expectedVersion = existingVersion,
+                )
             val existingIssue = makeIssue()
 
             beforeEach {
@@ -218,15 +221,19 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
 
             it("replaceComponents 가 호출되지 않는다") {
                 runCatching { sut.changeComponents(actor, issueKey, request) }
-                verify(exactly = 0) { repo.replaceComponents(any(), any(), any(), any()) }
+                // IssueKey 는 value class — any() 시그니처 생성 함정 회피를 위해 구체값 사용
+                verify(exactly = 0) {
+                    repo.replaceComponents(issueKey, issueId, any(), any())
+                }
             }
         }
 
         context("404 — 이슈 미존재") {
-            val request = AppChangeComponentsRequest(
-                componentIds = listOf(c1),
-                expectedVersion = existingVersion,
-            )
+            val request =
+                AppChangeComponentsRequest(
+                    componentIds = listOf(c1),
+                    expectedVersion = existingVersion,
+                )
 
             beforeEach {
                 every {
@@ -247,10 +254,11 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
         }
 
         context("409 — 낙관락 충돌 (replaceComponents 0 반환)") {
-            val request = AppChangeComponentsRequest(
-                componentIds = listOf(c1),
-                expectedVersion = existingVersion,
-            )
+            val request =
+                AppChangeComponentsRequest(
+                    componentIds = listOf(c1),
+                    expectedVersion = existingVersion,
+                )
             val existingIssue = makeIssue()
 
             beforeEach {
@@ -276,10 +284,11 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
         }
 
         context("403 — 권한 없음") {
-            val request = AppChangeComponentsRequest(
-                componentIds = listOf(c1),
-                expectedVersion = existingVersion,
-            )
+            val request =
+                AppChangeComponentsRequest(
+                    componentIds = listOf(c1),
+                    expectedVersion = existingVersion,
+                )
 
             beforeEach {
                 every {
@@ -299,7 +308,8 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
 
             it("repo 가 호출되지 않는다") {
                 runCatching { sut.changeComponents(actor, issueKey, request) }
-                verify(exactly = 0) { repo.findByKey(any()) }
+                // IssueKey 는 value class — any() 시그니처 생성 함정 회피를 위해 구체값 사용
+                verify(exactly = 0) { repo.findByKey(issueKey) }
             }
         }
     }

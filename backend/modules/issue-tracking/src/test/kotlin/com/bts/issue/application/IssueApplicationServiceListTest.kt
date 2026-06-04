@@ -49,6 +49,7 @@ class IssueApplicationServiceListTest : DescribeSpec({
             workflowPort = workflowPort,
             workflowKeyResolver = workflowKeyResolver,
             userLookupPort = userLookupPort,
+            componentRepository = mockk(relaxed = true),
             clock = clock,
         )
 

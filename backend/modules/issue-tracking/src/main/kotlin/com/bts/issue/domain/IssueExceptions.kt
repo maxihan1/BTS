@@ -91,6 +91,17 @@ class AssigneeNotFoundException(assigneeId: java.util.UUID) :
     IssueDomainException("assignee not found: $assigneeId")
 
 /**
+ * 컴포넌트 id 에 해당하는 활성 컴포넌트가 프로젝트 내에 존재하지 않을 때.
+ *
+ * 소프트 삭제된 컴포넌트나 다른 프로젝트 소속 컴포넌트도 이 예외를 발생시킨다.
+ * HTTP 422 매핑은 IssueExceptionHandler 에서 처리한다.
+ *
+ * @param componentId 존재하지 않는 컴포넌트의 UUID
+ */
+class ComponentNotFoundException(componentId: java.util.UUID) :
+    IssueDomainException("component not found: $componentId")
+
+/**
  * 워크플로우 전이가 허용되지 않을 때.
  *
  * project-workflow BC 의 [TransitionResult] 실패 케이스를 issue-tracking BC 경계 내부에서

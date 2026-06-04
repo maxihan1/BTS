@@ -3,8 +3,10 @@
 package com.bts.issue.application
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
+import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.AssigneeNotFoundException
+import com.bts.issue.domain.ComponentNotFoundException
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
@@ -67,7 +69,8 @@ import java.util.UUID
  * 모든 public 메서드는 @Transactional 을 명시한다 (DEVELOPMENT.md §절대규칙).
  *
  * TooManyFunctions: 이슈 CRUD + 전이 유스케이스 전반을 단일 Application Service 가 담당하므로 함수 수 임계치(11)를 초과한다.
- * availableTransitions 추가로 11개, changeAssignee 추가로 12개가 됐으나 책임 분리보다 응집이 더 적합한 구조이므로 Suppress 처리.
+ * availableTransitions 추가로 11개, changeAssignee 추가로 12개, changeComponents 추가로 13개가 됐으나
+ * 책임 분리보다 응집이 더 적합한 구조이므로 Suppress 처리.
  */
 @Suppress("TooManyFunctions", "LongParameterList")
 @Service
@@ -81,6 +84,7 @@ class IssueApplicationService(
     private val workflowPort: WorkflowTransitionPort,
     private val workflowKeyResolver: WorkflowKeyResolver,
     private val userLookupPort: UserLookupPort,
+    private val componentRepository: ComponentRepository,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -575,6 +579,43 @@ class IssueApplicationService(
     }
 
     /**
+     * 이슈에 연결된 컴포넌트 목록을 교체한다 (FR-CM-02).
+     *
+     * 도메인 [Issue.assignComponents] 를 경유하여 distinct 정규화 후 영속한다.
+     * repository 에 raw 입력을 직행시키지 않아 도메인 불변식 검증이 우회되지 않는다
+     * (메모리 patch-merge-도메인-우회).
+     *
+     * @param actor 변경 행위자.
+     * @param key 대상 이슈 키.
+     * @param request 새 컴포넌트 UUID 목록 + expectedVersion.
+     * @return 변경된 이슈의 [IssueResponse] (componentIds 채워짐).
+     * @throws IssueAccessDeniedException 권한 없을 때.
+     * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우.
+     * @throws ComponentNotFoundException 비활성 또는 타 프로젝트 컴포넌트 포함 시.
+     * @throws IssueVersionConflictException 낙관락 충돌 시.
+     */
+    @Suppress("ThrowsCount")
+    fun changeComponents(
+        actor: ActorId,
+        key: IssueKey,
+        request: AppChangeComponentsRequest,
+    ): IssueResponse {
+        assertPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(key.value))
+        val existing = repo.findByKey(key) ?: throw IssueNotFoundException(key)
+        val normalized = existing.assignComponents(request.componentIds)
+        validateComponents(normalized.componentIds, existing.projectId)
+        val rows = repo.replaceComponents(key, existing.id.value, normalized.componentIds, request.expectedVersion)
+        if (rows == 0) throw IssueVersionConflictException(key, existing.version)
+        log.info(
+            "issue_components_changed key={} count={} actor={}",
+            key.value,
+            normalized.componentIds.size,
+            actor.value,
+        )
+        return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
+    }
+
+    /**
      * 프로젝트의 활성 이슈 목록을 페이지로 조회한다.
      *
      * @param actor 조회 행위자.
@@ -810,14 +851,33 @@ class IssueApplicationService(
     }
 
     /**
-     * 단건 조회 응답에 descriptionHtml 과 resolution 을 채운다 (C3 + FR-IS-07 B11).
+     * 컴포넌트 UUID 목록이 모두 프로젝트 내 활성 컴포넌트인지 검증한다.
+     *
+     * 하나라도 null(비활성 또는 타 프로젝트) 이면 [ComponentNotFoundException] 을 던진다.
+     *
+     * @param componentIds 검증할 컴포넌트 UUID 목록 (distinct 정규화 완료 상태).
+     * @param projectId 소속 프로젝트 UUID.
+     * @throws ComponentNotFoundException 비활성 또는 타 프로젝트 컴포넌트가 포함된 경우.
+     */
+    private fun validateComponents(
+        componentIds: List<UUID>,
+        projectId: UUID,
+    ) {
+        componentIds.forEach { id ->
+            componentRepository.findById(id, projectId) ?: throw ComponentNotFoundException(id)
+        }
+    }
+
+    /**
+     * 단건 조회 응답에 descriptionHtml, resolution, componentIds 를 채운다
+     * (C3 + FR-IS-07 B11 + FR-CM-02).
      *
      * - description 이 null 이면 descriptionHtml 도 null 유지.
      * - non-null 이면 [MarkdownRenderer.renderSafe] 로 렌더하여 채운다.
      * - resolutionId 가 non-null 이면 [ResolutionRepository.findById] 로 단건 조회하여
      *   [IssueResponse.ResolutionSummary] 를 생성한다. 단건 GET 이므로 추가 쿼리 1회 허용.
-     *
-     * 목록 경로([listIssues])는 N건 비용 방지를 위해 이 함수를 호출하지 않는다.
+     * - componentIds 는 [IssueRepository.findActiveComponentIdsByIssue] 로 단건 경로에서만 채운다.
+     *   목록 경로([listIssues])는 N건 비용 방지를 위해 이 함수를 호출하지 않는다.
      */
     private fun IssueResponse.withSingleDetail(): IssueResponse {
         val resolvedResolution =
@@ -833,6 +893,7 @@ class IssueApplicationService(
         return copy(
             descriptionHtml = description?.let { MarkdownRenderer.renderSafe(it) },
             resolution = resolvedResolution,
+            componentIds = repo.findActiveComponentIdsByIssue(this.id),
         )
     }
 }
