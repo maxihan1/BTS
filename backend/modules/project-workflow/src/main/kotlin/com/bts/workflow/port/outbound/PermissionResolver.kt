@@ -2,6 +2,8 @@
 
 package com.bts.workflow.port.outbound
 
+import java.util.UUID
+
 /**
  * 권한 평가 요청자(Actor)를 식별하는 타입 안전 값 래퍼(Value Object).
  *
@@ -26,6 +28,19 @@ value class ActorId(val raw: String) {
             Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
     }
 }
+
+/**
+ * [ActorId] 를 [java.util.UUID] 로 변환한다.
+ *
+ * shared-kernel 의 공용 권한 포트(예. `com.bts.shared.permission.WorkflowSchemePermissionResolver`)는
+ * BC 공통 분모로 `UUID` 시그니처를 사용한다(FR-PM-04 D2). project-workflow 호출부가
+ * `UUID.fromString(actor.raw)` 를 곳곳에서 중복하지 않도록 변환을 한 곳으로 모은다.
+ *
+ * [ActorId] 의 init 검증이 raw 가 UUID 형식임을 이미 보장하므로 변환은 항상 안전하다.
+ *
+ * @return raw UUID 문자열을 파싱한 [UUID].
+ */
+fun ActorId.toUuid(): UUID = UUID.fromString(raw)
 
 /**
  * 권한 평가 outbound port.

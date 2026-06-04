@@ -2,6 +2,9 @@
 
 package com.bts.workflow.scheme.web
 
+import com.bts.shared.permission.WorkflowSchemePermission
+import com.bts.shared.permission.WorkflowSchemePermissionResolver
+import com.bts.shared.permission.WorkflowSchemeScope
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.domain.ProjectKey
@@ -10,9 +13,6 @@ import com.bts.workflow.scheme.domain.WorkflowScheme
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
 import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermission
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermissionResolver
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemeScope
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
@@ -67,7 +67,7 @@ class ProjectWorkflowSchemeControllerTest {
         var callCount = 0
 
         override fun requirePermission(
-            actor: ActorId,
+            actorId: UUID,
             permission: WorkflowSchemePermission,
             scope: WorkflowSchemeScope,
         ) {
@@ -97,7 +97,7 @@ class ProjectWorkflowSchemeControllerTest {
         permissionResolver =
             object : WorkflowSchemePermissionResolver {
                 override fun requirePermission(
-                    actor: ActorId,
+                    actorId: UUID,
                     permission: WorkflowSchemePermission,
                     scope: WorkflowSchemeScope,
                 ) = Unit

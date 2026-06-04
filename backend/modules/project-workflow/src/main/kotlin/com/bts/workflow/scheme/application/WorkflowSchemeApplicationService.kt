@@ -4,8 +4,12 @@
 package com.bts.workflow.scheme.application
 
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.permission.WorkflowSchemePermission
+import com.bts.shared.permission.WorkflowSchemePermissionResolver
+import com.bts.shared.permission.WorkflowSchemeScope
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.port.outbound.ActorId
+import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
 import com.bts.workflow.scheme.application.port.IssueTypeLookupPort
@@ -19,9 +23,6 @@ import com.bts.workflow.scheme.exception.SchemeInUseException
 import com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException
 import com.bts.workflow.scheme.exception.SchemeStandardNotDeletableException
 import com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermission
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermissionResolver
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemeScope
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.scheme.repository.SchemeCountRow
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
@@ -93,7 +94,7 @@ class WorkflowSchemeApplicationService(
         description: String?,
         isDefault: Boolean = false,
     ): WorkflowScheme {
-        permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        permissionResolver.requirePermission(actor.toUuid(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
         log.info("create scheme: actor={} key={}", actor.raw, key.value)
         val scheme = WorkflowScheme.create(key = key, name = name, description = description, isDefault = isDefault)
         return schemeRepo.save(scheme)
@@ -167,7 +168,7 @@ class WorkflowSchemeApplicationService(
         newDescription: String?,
         newIsDefault: Boolean,
     ): WorkflowScheme {
-        permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        permissionResolver.requirePermission(actor.toUuid(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
         val existing = schemeRepo.findByKey(key) ?: throw WorkflowSchemeNotFoundException(key.value)
 
         if (existing.isDefault) {
@@ -205,7 +206,7 @@ class WorkflowSchemeApplicationService(
         actor: ActorId,
         key: WorkflowSchemeKey,
     ) {
-        permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        permissionResolver.requirePermission(actor.toUuid(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
         val scheme = schemeRepo.findByKey(key) ?: throw WorkflowSchemeNotFoundException(key.value)
 
         // S6 — 표준 스킴 삭제 불가
@@ -265,7 +266,7 @@ class WorkflowSchemeApplicationService(
         issueTypeId: IssueTypeId?,
         workflowId: UUID,
     ): SchemeIssueTypeMapping {
-        permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        permissionResolver.requirePermission(actor.toUuid(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
         val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
         val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
         log.info("addMapping: actor={} schemeKey={} issueTypeId={}", actor.raw, schemeKey.value, issueTypeId?.value)
@@ -332,7 +333,7 @@ class WorkflowSchemeApplicationService(
         actor: ActorId,
         mappingId: Long,
     ) {
-        permissionResolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        permissionResolver.requirePermission(actor.toUuid(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
         log.info("deleteMapping: actor={} mappingId={}", actor.raw, mappingId)
         mappingRepo.deleteMapping(mappingId)
     }
@@ -366,15 +367,15 @@ class WorkflowSchemeApplicationService(
         projectKey: String,
         schemeKey: WorkflowSchemeKey,
     ): ProjectWorkflowSchemeAssignment {
+        val actorUuid = actor.toUuid()
         permissionResolver.requirePermission(
-            actor,
+            actorUuid,
             WorkflowSchemePermission.ASSIGN_SCHEME,
             WorkflowSchemeScope.Project(projectKey),
         )
         val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
         val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
 
-        val actorUuid = UUID.fromString(actor.raw) // ActorId VO 가 UUID 형식을 이미 보장 — 안전 변환.
         val now = Instant.now()
         val assignment =
             ProjectWorkflowSchemeAssignment(

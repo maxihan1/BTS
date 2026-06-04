@@ -2,13 +2,13 @@
 
 package com.bts.workflow.scheme.adapter.outbound
 
-import com.bts.workflow.port.outbound.ActorId
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermission
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermissionResolver
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowSchemePermission
+import com.bts.shared.permission.WorkflowSchemePermissionResolver
+import com.bts.shared.permission.WorkflowSchemeScope
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
+import java.util.UUID
 
 /**
  * 워크플로우 스킴 권한 평가 stub.
@@ -49,22 +49,22 @@ class AlwaysAllowWorkflowSchemePermissionResolver : WorkflowSchemePermissionReso
      * 개발/테스트 환경에서 권한 검사 없이 스킴 CRUD 와 배정을 테스트할 수 있도록
      * 모든 요청을 허용한다. 운영 환경에서는 이 메서드가 절대 호출되지 않는다.
      *
-     * WARN 로그에 [actor] (raw ID 문자열 — PII 아님), [permission] (enum — PII 아님),
+     * WARN 로그에 [actorId] (UUID — PII 아님), [permission] (enum — PII 아님),
      * [scope] (sealed class — PII 아님) 를 기록해 개발/스테이징 환경에서 권한 우회
      * 빈도를 모니터링할 수 있게 한다.
      *
-     * @param actor 권한 평가 대상 행위자. raw ID 식별자.
+     * @param actorId 권한 평가 대상 행위자 UUID.
      * @param permission 검증 요청 권한. [WorkflowSchemePermission] enum 값.
      * @param scope 권한 적용 범위. [WorkflowSchemeScope] sealed 계층.
      */
     override fun requirePermission(
-        actor: ActorId,
+        actorId: UUID,
         permission: WorkflowSchemePermission,
         scope: WorkflowSchemeScope,
     ) {
         log.warn(
             "AlwaysAllow stub 사용 중: actor={} permission={} scope={} — 정식 RBAC 미구현. FR-PM-04 후속 PR 필요",
-            actor.raw,
+            actorId,
             permission,
             scope,
         )
