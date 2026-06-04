@@ -37,23 +37,41 @@ function mockUseLabels(labels: string[]) {
 // 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
-function renderComponent(props: Partial<React.ComponentProps<typeof LabelAutocompleteInput>> = {}) {
+/**
+ * 상태를 갖는 래퍼 컴포넌트 — controlled LabelAutocompleteInput 을 감싸 실제 사용 패턴 재현.
+ * value/onChange 를 wrapper 내부 state로 관리하고, onCommit 호출을 기록한다.
+ */
+function ControlledWrapper({
+  onCommit,
+  disabled = false,
+}: {
+  onCommit: (label: string) => void
+  disabled?: boolean
+}) {
+  const [value, setValue] = React.useState('')
+  return (
+    <LabelAutocompleteInput
+      value={value}
+      onChange={setValue}
+      onCommit={onCommit}
+      disabled={disabled}
+    />
+  )
+}
+
+import * as React from 'react'
+
+function renderControlled(props: { disabled?: boolean } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const onChange = vi.fn()
   const onCommit = vi.fn()
 
   const result = render(
     <QueryClientProvider client={qc}>
-      <LabelAutocompleteInput
-        value={props.value ?? ''}
-        onChange={props.onChange ?? onChange}
-        onCommit={props.onCommit ?? onCommit}
-        disabled={props.disabled ?? false}
-      />
+      <ControlledWrapper onCommit={onCommit} disabled={props.disabled} />
     </QueryClientProvider>,
   )
 
-  return { ...result, onChange, onCommit }
+  return { ...result, onCommit }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,14 +84,20 @@ describe('LabelAutocompleteInput', () => {
   })
 
   it('입력 "b" 후 후보 드롭다운이 빈도순으로 렌더된다', async () => {
+    // debounce 때문에 타이핑 직후 바로 B_LABELS를 반환하도록 mock
     mockUseLabels(B_LABELS)
-    renderComponent({ value: 'b' })
+    const user = userEvent.setup()
+    renderControlled()
 
-    const listbox = screen.getByRole('listbox', { name: /라벨 자동완성/i })
+    const input = screen.getByRole('combobox', { name: /라벨 자동완성/i })
+    await user.click(input)
+    await user.type(input, 'b')
+
+    // 드롭다운에 후보가 빈도순으로 렌더됨
+    await waitFor(() => {
+      expect(screen.getByRole('listbox', { name: /라벨 자동완성/i })).toBeInTheDocument()
+    })
     const items = screen.getAllByRole('option')
-
-    expect(listbox).toBeInTheDocument()
-    // 빈도순 — bug가 첫번째
     expect(items[0]).toHaveTextContent('bug')
     expect(items[1]).toHaveTextContent('backend')
   })
@@ -81,40 +105,46 @@ describe('LabelAutocompleteInput', () => {
   it('후보 클릭 시 onCommit이 해당 라벨로 호출된다', async () => {
     mockUseLabels(B_LABELS)
     const user = userEvent.setup()
-    const { onCommit } = renderComponent({ value: 'b' })
-    // onCommit 검증에만 집중 — onChange는 외부 controlled 컴포넌트가 처리
+    const { onCommit } = renderControlled()
 
-    const bugOption = screen.getByRole('option', { name: 'bug' })
-    await user.click(bugOption)
+    const input = screen.getByRole('combobox', { name: /라벨 자동완성/i })
+    await user.click(input)
+    await user.type(input, 'b')
 
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: 'bug' })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('option', { name: 'bug' }))
     expect(onCommit).toHaveBeenCalledWith('bug')
   })
 
   it('신규 라벨 입력 후 Enter 키 → onCommit이 현재 입력값으로 호출된다', async () => {
     mockUseLabels([]) // 후보 없음 — free-form 신규 라벨
     const user = userEvent.setup()
-    const { onCommit } = renderComponent({ value: 'my-new-label' })
+    const { onCommit } = renderControlled()
 
-    const input = screen.getByRole('combobox', { name: /라벨 검색/i })
+    const input = screen.getByRole('combobox', { name: /라벨 자동완성/i })
     await user.click(input)
+    await user.type(input, 'my-new-label')
     await user.keyboard('{Enter}')
 
     expect(onCommit).toHaveBeenCalledWith('my-new-label')
   })
 
   it('disabled=true 시 입력이 비활성화된다', () => {
-    renderComponent({ disabled: true })
+    renderControlled({ disabled: true })
 
-    const input = screen.getByRole('combobox', { name: /라벨 검색/i })
+    const input = screen.getByRole('combobox', { name: /라벨 자동완성/i })
     expect(input).toBeDisabled()
   })
 
   it('빈 입력 포커스 시 인기 라벨이 표시된다', async () => {
     mockUseLabels(POPULAR_LABELS)
     const user = userEvent.setup()
-    renderComponent({ value: '' })
+    renderControlled()
 
-    const input = screen.getByRole('combobox', { name: /라벨 검색/i })
+    const input = screen.getByRole('combobox', { name: /라벨 자동완성/i })
     await user.click(input)
 
     await waitFor(() => {
