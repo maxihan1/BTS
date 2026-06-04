@@ -115,13 +115,14 @@ FR-PM-08이 `system_role_assignments` + `SystemRole.SYSTEM_ADMIN` + `SystemPermi
 - 4개 계약 타입을 shared-kernel로 생성(이동), 시그니처 `actor: ActorId` → `actorId: UUID`.
 - `WorkflowSchemeAccessDeniedException`(Guard 예외, errorCode 상수 보유) shared-kernel 정의.
 - project-workflow 원본 3파일 삭제, AlwaysAllow stub import+actor 타입 갱신.
-- 호출부 8곳 `requirePermission(actor, …)` → `requirePermission(UUID.fromString(actor.raw), …)` (permission/scope 무변경).
-- 기존 테스트 import/actor 인자 갱신.
+- 호출부 **13곳** `requirePermission(actor, …)` → `requirePermission(UUID.fromString(actor.raw), …)` (permission/scope 무변경). 내역: `WorkflowSchemeController` 5곳(`:79,139,166,188,222`) + `ProjectWorkflowSchemeController` 2곳(`:83,107`) + `WorkflowSchemeApplicationService` 6곳(`:96,170,208,268,335,369`). (W1: spec의 "8곳"은 카운트 오류 — 실제 13곳.)
+- 기존 테스트 import/actor 인자 갱신. **특히 `ProjectWorkflowSchemeControllerTest`의 포트 직접 구현 2곳** — `CapturingPermissionResolverStub`(`:64`, override `:69`) + 익명 `object`(`:98`, override `:99`) — 의 `requirePermission(actor: ActorId…)` override를 `actorId: UUID`로 갱신(B3). `WorkflowSchemeControllerTest`는 `mockk(relaxed=true)`라 자동 적응.
+- **AlwaysAllow stub은 project-workflow 패키지에 그대로 둠**(이동 안 함) → issue-tracking 6개 테스트의 import 경로 무변경. 단 override 시그니처 변경이 issue-tracking 컴파일을 가로지름(B2).
 
 **REFACTOR**:
 - actor.raw→UUID 변환을 컨트롤러 공통 헬퍼로 추출(중복 제거). KDoc에 BC 격리/이동 사유.
 
-**검증**: `./gradlew :modules:shared-kernel:test :modules:project-workflow:test` + ArchUnit BC 격리 그린. **회귀 0**(거부 동작은 stub이라 non-prod 무변경).
+**검증**: `./gradlew :modules:shared-kernel:test :modules:project-workflow:test :modules:issue-tracking:test` + ArchUnit BC 격리 그린. **issue-tracking test 컴파일 필수 포함**(B2 — AlwaysAllow override 시그니처 변경이 issue-tracking 테스트 컴파일 가로지름). **회귀 0**(거부 동작은 stub이라 non-prod 무변경).
 
 ---
 
@@ -164,9 +165,9 @@ FR-PM-08이 `system_role_assignments` + `SystemRole.SYSTEM_ADMIN` + `SystemPermi
 - → 구현 부재로 RED.
 
 **GREEN**:
-- `@Component @Profile("prod")` 구현. 생성자: `SystemRoleAssignmentRepository` + `ProjectMembershipRepository` + `PermissionSchemeRepository`(+ key→id 해석은 기존 `ProjectLookupPort`/Jdbc 어댑터 또는 identity-access 내 projects 조회 — 선례 grep 후 결정, EC5).
-- Global → `repo.findRolesByUser(actorId).contains(SYSTEM_ADMIN)` 아니면 throw.
-- Project(key) → key→id 해석 실패 throw, 멤버십 null throw, `roleHasPermission(projectId, role, "MANAGE_WORKFLOW")` false throw.
+- `@Component @Profile("prod")` 구현. 생성자: `SystemPermissionResolver`(shared-kernel, Global 판정 캡슐화) + `ProjectDirectory`(key→id, FR-PM-02 선례) + `ProjectMembershipRepository` + `PermissionSchemeRepository`.
+- Global → `systemPermissionResolver.isSystemAdmin(actorId)` false면 throw. (B1/W4: `SystemRoleAssignmentRepository` 직접 호출 금지, spec FR-2와 합치.)
+- Project(key) → `projectDirectory.resolveKeyToId(key)` null이면 throw, `membershipRepo.findByProjectAndUser(projectId, actorId)` null이면 throw, `permissionSchemeRepo.roleHasPermission(projectId, membership.role.name, "MANAGE_WORKFLOW")` false면 throw. (FR-PM-03 `IdentityAccessComponentPermissionResolver` 패턴, `roleHasPermission`은 projectId(UUID) 인자.)
 
 **REFACTOR**:
 - `WorkflowSchemePermission`→permission_code 매핑을 `when`(else 없이) 헬퍼로(FR-PM-03 `toPermissionCode` 선례). deny-by-default 주석.
@@ -180,8 +181,7 @@ FR-PM-08이 `system_role_assignments` + `SystemRole.SYSTEM_ADMIN` + `SystemPermi
 **메타**.
 - agent: `security-engineer`
 - files: [
-  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/web/WorkflowSchemeExceptionHandler.kt` (핸들러 1건 추가),
-  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/exception/SchemeErrorCodes.kt` (WORKFLOW_SCHEME_ACCESS_DENIED 상수, 위치 확인),
+  `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/web/WorkflowSchemeExceptionHandler.kt` (핸들러 1건 추가 + 인라인 `SchemeErrorCodes` object(`:313`)에 `WORKFLOW_SCHEME_ACCESS_DENIED` 상수 추가 — W3: 별도 파일 아님),
   `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/scheme/web/WorkflowSchemeExceptionHandlerTest.kt` (또는 컨트롤러 테스트)
   ]
 - depends-on: [1]
@@ -199,25 +199,29 @@ FR-PM-08이 `system_role_assignments` + `SystemRole.SYSTEM_ADMIN` + `SystemPermi
 
 ---
 
-### Task 5. prod 부팅 가드 테스트 — prod에서 prod resolver 해소 + AlwaysAllow 비활성
+### Task 5. prod 프로파일 빈 해소 검증 (W2 재정의)
+
+> **W2 정정**: identity-access는 `WorkflowSchemePermissionResolver`를 어디서도 주입하지 않고(소비자 0), AlwaysAllow는 project-workflow 패키지라 identity-access가 스캔도 안 함 → "AlwaysAllow 미등록" 단언은 identity-access 컨텍스트에서 vacuous(항상참, 검증력 0). 의미 있는 검증은 **prod 프로파일에서 `IdentityAccessWorkflowSchemePermissionResolver` 빈이 `@Profile("prod")`로 실제 등록되는지**뿐이다.
 
 **메타**.
 - agent: `security-engineer`
 - files: [
-  `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/permission/WorkflowSchemePermissionResolverBootTest.kt`
+  `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/permission/IdentityAccessWorkflowSchemePermissionResolverBootTest.kt`
   ]
 - depends-on: [3]
 
 **RED**:
-- prod 프로파일 부팅 컨텍스트에서 `WorkflowSchemePermissionResolver` 빈이 `IdentityAccessWorkflowSchemePermissionResolver`로 해소되고 AlwaysAllow는 미등록임을 단언 → RED. (선례 `IssuePermissionResolverBootTest` / `ComponentVersionPermissionResolverFallbackBootTest`)
+- prod 프로파일 컨텍스트에서 `IdentityAccessWorkflowSchemePermissionResolver` 빈이 1개 존재(`@Profile("prod")` 활성)함을 단언. 비-prod 프로파일에선 그 빈이 미등록임을 단언(profile 배타성 검증 — vacuous 아님, 실제 분기). → 빈 부재로 RED.
 
 **GREEN**:
-- T3에서 @Profile prod 빈 등록으로 대체로 충족. 부팅 가드 통과 확인 + 누락 시 컴포넌트 스캔 보완.
+- T3의 `@Profile("prod")` 등록으로 충족. 누락 시 컴포넌트 스캔 경로 보완.
 
 **REFACTOR**:
-- 부팅 테스트 주석에 @Profile 배타성(prod↔!prod) 설명.
+- 테스트 주석에 "이 포트는 project-workflow가 소비, identity-access는 prod adapter만 제공" 명시.
 
-**검증**: `./gradlew :modules:identity-access:test --tests *WorkflowSchemePermissionResolverBootTest` 그린.
+**검증**: `./gradlew :modules:identity-access:test --tests *IdentityAccessWorkflowSchemePermissionResolverBootTest` 그린.
+
+> **참고**: 거부(403) end-to-end 검증은 Task3의 prod-프로파일 Testcontainers 통합테스트(S1~S6)가 ground-truth. Task5는 빈 등록/배타성만 가볍게 검증(Task3에 흡수 가능하나 부팅 관심사 분리 위해 유지).
 
 ## Plan 메타
 
@@ -227,4 +231,22 @@ FR-PM-08이 `system_role_assignments` + `SystemRole.SYSTEM_ADMIN` + `SystemPermi
 - TDD 강제: yes (T3/T5는 prod-프로파일 통합테스트가 ground-truth, non-prod AlwaysAllow가 거부경로 가림 — 메모리 `issue-scope-global-prod-hard-deny`).
 - 리스크: ① 포트 이동 참조 누락(테스트 @Bean 포함 전수 grep 필수 — 메모리 `archunit-shared-class-move-repository-package`) ② key→id 해석 포트 cross-BC 회색지대(EC5, 기존 stub 유지) ③ project-workflow가 shared-kernel 의존하는지 build.gradle 확인 ④ identity-access 통합테스트가 prod 판정 ground-truth인지(non-prod 마스킹 주의).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### code-reviewer ground-truth 리뷰 (2026-06-05)
+
+auth FR → eng 집중 ground-truth 리뷰(autoplan 대신, 메모리 `bts-review-plan-autoplan-overkill`). BLOCKER 3 + WARN 4 발견, **전부 plan/spec에 반영 완료**.
+
+- **B1 (BLOCKER, 해소)** key→id 해석이 project-workflow `JdbcProjectLookupAdapter`(BC 격리 위반·컴파일 불가) 대신 identity-access `ProjectDirectory.resolveKeyToId`(FR-PM-02 선례)여야 함 → spec EC5 + Task3 GREEN 정정.
+- **B2 (BLOCKER, 해소)** AlwaysAllow override 시그니처 변경이 issue-tracking 6개 테스트 컴파일을 가로지름 → Task1 검증에 `:modules:issue-tracking:test` 추가.
+- **B3 (BLOCKER, 해소)** `ProjectWorkflowSchemeControllerTest`의 포트 직접 구현 2곳(`:64`,`:98`) override 갱신 → Task1 files 명시.
+- **W1 (해소)** 호출부 "8곳" → 실제 13곳(5+2+6) 정정.
+- **W2 (해소)** Task5 부팅 테스트가 선례(non-prod fallback) 오인용 + 비소비 포트라 vacuous → prod 빈 해소/배타성 검증으로 재정의.
+- **W3 (해소)** `SchemeErrorCodes`는 별도 파일 아님 → `WorkflowSchemeExceptionHandler.kt:313` 인라인 object에 상수 추가.
+- **W4 (해소)** Global 판정은 `SystemPermissionResolver.isSystemAdmin` 경유(spec 합치), repo 직접 호출 X.
+
+**OK 확인됨**: actor.raw→UUID 변환 안전(value class, 선례 존재), `roleHasPermission(projectId:UUID,…)`/`findByProjectAndUser` 재사용 가능, Guard 예외 shared-kernel 배치 시 양 BC 참조 가능(둘 다 shared-kernel 의존)+ArchUnit 통과, V013 전모듈 미사용, DDL 없어 init_codegen 미러 불요, depends-on DAG 순환 없음.
+
+**머지 직전 주의**: 동시 진행 브랜치(`origin/feat/fr-cm-02-issue-components` 등) 있으므로 identity-access V013 번호 머지 전 재확인(메모리 `migration-vnumber-concurrent-branch-collision`).
+
+- **BLOCKER: 없음** (3건 전부 해소).

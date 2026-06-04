@@ -90,7 +90,7 @@ FR-PM-04는 그 prod 구현체를 제공해 **운영 환경에서 실제 권한 
 - **EC2** `ActorId.raw`(UUID String) → `java.util.UUID` 변환 — 포트 시그니처가 `ActorId`이므로 prod 구현 내부에서 `UUID.fromString(actor.raw)` 변환. (ActorId가 이미 UUID 형식 강제하므로 안전)
 - **EC3** PAT(개인 액세스 토큰) actor — PAT는 전역 역할 제외(FR-PM-08 EC7). PAT로 스킴 CRUD 시도 시 `isSystemAdmin==false`로 거부됨(의도된 동작).
 - **EC4** 표준 스킴(is_default) 핵심 필드 변경도 `MANAGE_SCHEME` 요구 — 기존 서비스 로직 유지, 권한 게이트는 동일.
-- **EC5** key→id 해석은 현재 임시 `JdbcProjectLookupAdapter`(회색지대). 본 FR 범위에서는 이 stub을 **그대로 사용**(정식 cross-BC port 도입은 별도 범위). 단 prod 판정 경로가 이 해석에 의존함을 ADR에 명시.
+- **EC5** key→id 해석은 **identity-access의 `ProjectDirectory.resolveKeyToId(key): UUID?`를 사용**한다(FR-PM-02 `IdentityAccessIssuePermissionResolver`가 `IssueScope.Project`에서 동일 사용). project-workflow의 `JdbcProjectLookupAdapter`는 그 BC 전용이라 identity-access가 import 불가(BC 격리) — 사용 금지. 해석 실패(null)는 거부(403).
 - **EC6** non-prod 통합테스트가 AlwaysAllow로 거부 경로를 가린다 — 거부(403) 검증은 **prod 프로파일 통합테스트**가 ground-truth (메모리 `issue-scope-global-prod-hard-deny` · `fr-pm-permission-seed-migration-test-coupling`).
 - **EC7** Guard 예외가 BC를 가로지름 — identity-access prod resolver가 throw, project-workflow handler가 catch. 예외 타입이 shared-kernel에 없으면 컴파일 불가/매핑 누락(403이 아닌 500). 포트 이동 PR에서 예외 타입 + 핸들러를 함께 결선해야 함(부분 구현 시 dead path).
 
