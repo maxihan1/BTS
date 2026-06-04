@@ -7,7 +7,6 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
 class SystemRoleTest {
-
     @Test
     fun `from은 정확한 enum name SYSTEM_ADMIN을 SYSTEM_ADMIN으로 변환한다`() {
         assertThat(SystemRole.from("SYSTEM_ADMIN")).isEqualTo(SystemRole.SYSTEM_ADMIN)

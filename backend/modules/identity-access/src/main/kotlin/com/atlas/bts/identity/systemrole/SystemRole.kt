@@ -20,12 +20,11 @@ package com.atlas.bts.identity.systemrole
  * @see docs/decisions/2026-06-04-system-admin-role.md 전역 관리자 역할 확정 ADR (D1/D2)
  */
 enum class SystemRole {
-
     /** 시스템 전역 관리자 역할. 프로젝트에 종속되지 않는 시스템 수준 권한을 가진다. */
-    SYSTEM_ADMIN;
+    SYSTEM_ADMIN,
+    ;
 
     companion object {
-
         /**
          * 문자열 [raw]를 [SystemRole]로 변환한다.
          *
@@ -39,7 +38,7 @@ enum class SystemRole {
         fun from(raw: String): SystemRole =
             entries.find { it.name == raw }
                 ?: throw IllegalArgumentException(
-                    "알 수 없는 SystemRole: '$raw'. 허용값: ${entries.map { it.name }}"
+                    "알 수 없는 SystemRole: '$raw'. 허용값: ${entries.map { it.name }}",
                 )
     }
 }
