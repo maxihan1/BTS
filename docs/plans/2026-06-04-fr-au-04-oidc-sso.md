@@ -18,7 +18,26 @@ FR-AU-04 OIDC SSO (OpenID Connect 기반 Single Sign-On). identity-access BC.
 
 product plan: docs/plan/product/identity-access.md §2.4 (D1~D7)
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**: identity-access (security-engineer)
+- **영향 엔티티**: `OidcProvider`(신규, thin SPI), `OidcProviderConfig`(신규), `User`/`UserExternalAccount`(재사용), `AutoProvisionService`(재사용)
+- **ProviderType.OIDC**: 이미 존재 (priority 50, SAML 40보다 우선). enum 변경 불필요
+- **SAML(PR #76) 동형 매핑**:
+  - `spring-security-saml2-service-provider` → `spring-boot-starter-oauth2-client`
+  - `SamlSecurityConfig`(@Order(1), IF_REQUIRED, saml2Login) → `OidcSecurityConfig`(@Order(1), IF_REQUIRED, oauth2Login)
+  - `RelyingPartyRegistrationRepository` → `ClientRegistrationRepository`
+  - `/saml2/authenticate/{id}`·`/login/saml2/sso/{id}` → `/oauth2/authorization/{id}`·`/login/oauth2/code/{id}` (Spring 표준)
+  - `Saml2AuthenticationSuccessHandler`(JIT) → `OidcAuthenticationSuccessHandler`(JIT, AutoProvisionService 재사용)
+  - `SamlProvider`(thin) → `OidcProvider`(thin)
+  - `saml_idp_configs` + SAML seed → `oidc_provider_configs` + OIDC seed
+- **핵심 결정 (Maxi 확인 2026-06-04)**:
+  - D3. `-resource-server` **제외** — oauth2-client 단독. BTS 자체 JWT 발급(jwt-issuer-strategy), 외부 access token 미소비
+  - D4. `client_secret` **암호화 저장** — 비밀값. AesBytesEncryptor + app key(환경변수). 기존 암호화 유틸 부재 → 신규 도입. SAML x509_cert(공개값 평문)와 구분
+- **새 용어(glossary 인증 섹션 추가 후보, Maxi 승인 대기)**: OIDC, ID Token, Authorization Code + PKCE, ClientRegistration, issuer/discovery(.well-known), client_id/client_secret, nonce
+- **기존 결정 충돌**: 없음. `jwt-issuer-strategy`(자체 JWT)와 정합, SAML 체인과 배타 경로로 공존
+- **관련 ADR**: [docs/decisions/2026-06-04-oidc-sso-provider.md](../decisions/2026-06-04-oidc-sso-provider.md) (생성됨, D1~D5)
+- **관련 learnings**: `saml-spring-security-integration`(STATELESS↔oauth2Login 충돌·@Order 분리·JIT 재사용), `profile-scoped-bean-boot-failure`(@ConditionalOnBean 부팅가드)
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
