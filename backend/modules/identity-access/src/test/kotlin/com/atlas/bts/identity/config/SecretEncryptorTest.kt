@@ -49,6 +49,30 @@ class SecretEncryptorTest {
             .isInstanceOf(IllegalStateException::class.java)
     }
 
+    @Test
+    fun `키 미설정으로 생성해도 생성 자체는 성공한다 (부팅 안전 — 빈 항상 등록)`() {
+        // 키/salt 가 비어도 생성자에서 예외를 던지지 않아야 빈이 항상 등록되어 부팅이 안전하다.
+        SecretEncryptor("", "")
+    }
+
+    @Test
+    fun `키 미설정 encryptor 로 암호화하면 사용 시점에 예외를 던진다`() {
+        val encryptor = SecretEncryptor("", "")
+
+        assertThatThrownBy { encryptor.encrypt("any-secret") }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("encryption key not configured")
+    }
+
+    @Test
+    fun `키 미설정 encryptor 로 복호화하면 사용 시점에 예외를 던진다`() {
+        val encryptor = SecretEncryptor("", "")
+
+        assertThatThrownBy { encryptor.decrypt("deadbeef") }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("encryption key not configured")
+    }
+
     private companion object {
         const val TEST_KEY = "test-app-encryption-key-for-oidc"
         const val OTHER_KEY = "completely-different-app-key-1234"
