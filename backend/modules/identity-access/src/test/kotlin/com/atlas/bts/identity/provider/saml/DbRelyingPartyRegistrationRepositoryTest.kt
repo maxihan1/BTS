@@ -27,7 +27,7 @@ class DbRelyingPartyRegistrationRepositoryTest {
         BQAwEzERMA8GA1UEAwwIdGVzdC1pZHAwHhcNMjYwNjA0MDA0ODM5WhcNMzYwNjAx
         MDA0ODM5WjATMREwDwYDVQQDDAh0ZXN0LWlkcDCCASIwDQYJKoZIhvcNAQEBBQAD
         ggEPADCCAQoCggEBALSprleUH2lVcARLIBrsj5hpcHtKB1dtq7b/aAyCHuRyMGgE
-        ntbfQWsV9vnY7eho8Ca0b3LALKnv/ThiJg7R0WD9jeevW0IRkHAGO7sLlO0a4er
+        entbfQWsV9vnY7eho8Ca0b3LALKnv/ThiJg7R0WD9jeevW0IRkHAGO7sLlO0a4er
         M3ngLZIKPJGq0dw3I29QwOeLnTukyDx7C+BXNFeBGiloALuMTXXeUnjtPN2xgg9h
         fjFXVqj9OFHMiSyKvJ4jowbmnhL78vmzetmKZEDbo4nBUmS/XEtmLLpbvHXPo5qN
         1c6dYg3kXN8A8/gQzUCpcO0SkasfXwBuMJs4UavjCDkG07rFwN4V3l8GSJNBHXcx
