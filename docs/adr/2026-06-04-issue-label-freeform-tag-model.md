@@ -41,7 +41,20 @@ FR-IS-09(라벨 자동완성) 착수 시점에 데이터 모델 drift를 발견�
 - plan 문서 §2.2.2 D3의 "`labels`, `issue_labels`" 표기는 본 ADR에 맞춰 정정한다
   (정규화 테이블이 아니라 기존 `issues.labels TEXT[]` 활용).
 
+## 권한 (B1 — 코드리뷰 발견, 2026-06-04 Maxi 결정)
+
+라벨은 글로벌 자원이라 자동완성 조회에 `IssueScope.Global` 권한을 적용하려 했으나, 현 prod
+권한 판정기(`IdentityAccessIssuePermissionResolver`)는 `IssueScope.Global`을 무조건 거부한다
+(전역 역할 인프라 부재 — FR-PM-04 보류, MEMORY fr-pm-04-blocked-global-admin-gap). 즉 Global
+권한 가드를 두면 prod에서 전 사용자가 403을 받는다(non-prod AlwaysAllow가 가려 테스트는 통과).
+
+**결정.** 라벨 자동완성은 **인증된 사용자 공통 접근**으로 두고, 별도 권한 가드를 적용하지
+않는다. 라벨은 비민감 데이터(이미 이슈에 노출된 태그)이고, issue 조회 권한(VIEW)도 현재 어떤
+프로젝트에도 결선되지 않은 전반 미결선 상태다. 권한 정교화는 전역 권한 인프라가 들어오는
+**FR-PM-05에서 재도입**한다(이때 Global VIEW 또는 인증 기반 정책을 함께 정의).
+
 ## 관련
 
 - SDD 05-data-model.md (라벨 TEXT[] 정본)
 - learnings 2026-05-20 (phantom 엔티티), 2026-05-22 (plan/spec drift 시 정본 우선)
+- B1 권한 후속: FR-PM-05 (라벨 조회 권한 정교화)
