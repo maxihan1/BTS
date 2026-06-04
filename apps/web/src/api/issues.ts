@@ -377,6 +377,36 @@ export async function changeAssignee(key: string, input: ChangeAssigneeInput): P
   return wrapped.data
 }
 
+/** 이슈 클론 입력 타입 — 모든 필드 선택 */
+export interface CloneIssueInput {
+  /** 담당자 포함 여부. 미전달 시 백엔드 기본값(true) 사용. */
+  includeAssignee?: boolean
+  /** 새 이슈 제목. 최대 255자. 미전달 시 원본 제목 사용. */
+  summaryOverride?: string
+}
+
+/**
+ * 이슈를 클론한다.
+ * POST /api/v1/issues/{key}/clone → 201 Created + { data: IssueResponse }
+ *
+ * @param key 클론할 원본 이슈 식별 키 (예: "ATLAS-1")
+ * @param input 클론 옵션 (모두 선택 사항)
+ * @returns 생성된 클론 IssueResponse — 백엔드 201 `{ data: IssueResponse }` 언래핑
+ * @throws ApiError(404) 원본 이슈가 없을 때
+ * @throws ApiError(403) 권한 없을 때
+ * @throws ApiError(400) summaryOverride 255자 초과 등 유효성 오류
+ */
+export async function cloneIssue(key: string, input?: CloneIssueInput): Promise<IssueResponse> {
+  const res = await apiFetch(`/api/v1/issues/${key}/clone`, { method: 'POST', body: input ?? {} })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const raw: unknown = await res.json()
+  const wrapped = dataResponseSchema(issueResponseSchema).parse(raw)
+  return wrapped.data
+}
+
 /**
  * 이슈 PDF를 다운로드한다.
  * GET /api/v1/issues/{key}/pdf → application/pdf 바이너리 스트림

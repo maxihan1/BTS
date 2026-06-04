@@ -32,6 +32,8 @@ export interface IssueMetaPanelProps {
   onTypeChange: (typeId: number) => void
   /** 삭제 버튼 클릭 핸들러 */
   onDeleteClick: () => void
+  /** 클론 버튼 클릭 핸들러 */
+  onCloneClick: () => void
   /** 현재 상태에서 가용한 전이 목록 */
   transitions: IssueTransition[]
   /** 전이 실행 핸들러 — 선택한 toStateKey를 전달 */
@@ -85,6 +87,7 @@ export function IssueMetaPanel({
   availableTypes,
   onTypeChange,
   onDeleteClick,
+  onCloneClick,
   transitions,
   onTransition,
   isTransitioning,
@@ -238,6 +241,17 @@ export function IssueMetaPanel({
           <p className="text-sm font-medium">{formatDate(issue.updatedAt)}</p>
         </div>
       </div>
+
+      {/* 클론 버튼 — 삭제 버튼 바로 위 배치 */}
+      <Button
+        variant="secondary"
+        className="w-full min-h-[44px]"
+        onClick={onCloneClick}
+        aria-label={issueDetailStrings.cloneButton}
+        data-testid="issue-clone"
+      >
+        {issueDetailStrings.cloneButton}
+      </Button>
 
       {/* 삭제 버튼 — WCAG AA 44px 터치 타깃, 권한 없으면 disabled + 사유 표시 */}
       <Button

@@ -95,6 +95,7 @@ function renderPanel(overrides: {
       availableTypes={[typeFixture]}
       onTypeChange={vi.fn()}
       onDeleteClick={vi.fn()}
+      onCloneClick={vi.fn()}
       transitions={[]}
       onTransition={vi.fn()}
       isTransitioning={false}
