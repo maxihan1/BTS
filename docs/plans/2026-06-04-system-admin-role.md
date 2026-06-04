@@ -24,6 +24,23 @@ SDD 12.6 OrgAdmin/시스템 권한(12.3 ADMIN_SYSTEM 등)의 실제 구현. 현�
 
 ## 도메인 정리 (← /bts-domain 채움)
 
+- **BC**: identity-access (전역 역할/권한은 인증 BC 소유, 프로젝트 권한과 동일)
+- **새 엔티티**: `SystemRoleAssignment` (사용자↔전역 역할, project_id 없음 — 프로젝트 멤버십과의 핵심 차이)
+- **새 enum**: `SystemRole`(현재 `SYSTEM_ADMIN` 1종). `ProjectRole`과 **분리** — 프로젝트 역할과 전역 역할은 다른 축.
+- **새 포트**: 전역 권한 판정기 (shared-kernel `com.bts.shared.permission`). 여러 BC가 의존할 공용 기반.
+- **영향 기존 코드**: `JwtIssuer`(전역 역할 클레임 추가) · JWT converter(authority 변환) · `users` 테이블(V001, FK 대상).
+- **새 용어** (glossary 추가 대기, Maxi 승인 필요):
+  - **전역 역할 / 시스템 역할** (System Role) — 프로젝트와 무관하게 시스템 전체에 적용되는 역할. 현재 `SYSTEM_ADMIN` 1종.
+  - **시스템 관리자** (System Admin) — `SYSTEM_ADMIN` 전역 역할 보유자. SDD 12.6 OrgAdmin의 단일 역할 구현.
+- **기존 결정 관계**:
+  - FR-PM-01 ADR이 stale 폐기한 SDD 12.6 8종 역할 중 OrgAdmin을 `SYSTEM_ADMIN`으로 부분 복원.
+  - 메모리 `issue-scope-global-prod-hard-deny`(IssueScope.Global prod 무조건 거부)의 정공 해소 토대 — 단 실결선은 FR-PM-04.
+- **관련 ADR**: [docs/decisions/2026-06-04-system-admin-role.md](../decisions/2026-06-04-system-admin-role.md) (생성됨, D1~D6)
+- **Maxi 결정 (2026-06-04, AskUserQuestion)**:
+  - D1 저장 = 별도 테이블 `system_role_assignments` (users 컬럼 기각)
+  - D5 부트스트랩 = 설정값(`bts.bootstrap.admin-username`) 기반 멱등 승격 (마이그레이션 고정 INSERT 기각)
+  - D6 범위 = 순수 토대 + 통합테스트 검증 (IssueScope.Global 실결선은 FR-PM-04)
+
 ## 스펙 (← /bts-spec Phase A 채움)
 
 ## Brainstorming Check (← /bts-spec Phase B 채움)
