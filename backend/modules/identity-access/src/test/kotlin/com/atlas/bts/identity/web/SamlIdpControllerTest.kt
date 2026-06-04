@@ -52,7 +52,6 @@ import java.util.UUID
     SamlIdpControllerTest.MockBeans::class,
 )
 class SamlIdpControllerTest {
-
     @TestConfiguration
     class MockBeans {
         @Bean
@@ -66,8 +65,10 @@ class SamlIdpControllerTest {
         }
 
         @Bean
-        fun corsConfigurationSource(): CorsConfigurationSource =
-            CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        fun corsConfigurationSource(): CorsConfigurationSource {
+            val allowedOrigins = listOf("http://localhost:5173")
+            return CorsConfig().corsConfigurationSource(allowedOrigins)
+        }
 
         // SecurityConfig 가 PatAuthenticationFilter 생성을 위해 요구하는 Bean(컨트롤러는 PAT 미사용).
         @Bean
@@ -86,8 +87,8 @@ class SamlIdpControllerTest {
     private fun config(
         registrationId: String,
         displayName: String,
-    ): SamlIdpConfig =
-        SamlIdpConfig(
+    ): SamlIdpConfig {
+        return SamlIdpConfig(
             id = UUID.randomUUID(),
             registrationId = registrationId,
             displayName = displayName,
@@ -97,6 +98,7 @@ class SamlIdpControllerTest {
             authnProviderId = UUID.fromString("00000000-0000-4a03-8000-000000000003"),
             enabled = true,
         )
+    }
 
     @Test
     fun `idps 목록은 활성 IdP 의 registrationId 와 displayName 을 반환한다`() {
