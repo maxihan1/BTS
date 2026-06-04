@@ -23,6 +23,8 @@ import java.security.cert.X509Certificate
  * - idp_entity_id → assertingPartyDetails.entityId
  * - idp_sso_url → assertingPartyDetails.singleSignOnServiceLocation
  * - idp_x509_cert(PEM) → [Saml2X509Credential.verification] (IdP 서명 검증용)
+ * - wantAuthnRequestsSigned=false — SP signing 자격 미구성(CONCERN-A 결정 = 서명 끄기). SP 서명 없이
+ *   표준 경로 /saml2/authenticate/{registrationId} 진입 시 IdP 로 302 리다이렉트가 성공한다.
  *
  * assertionConsumerServiceLocation 은 Spring 표준 placeholder 템플릿을 사용한다
  * (빌더의 build() 가 ACS 위치를 요구). 실제 URL 은 런타임에 요청 baseUrl 로 치환된다.
@@ -42,6 +44,11 @@ class DbRelyingPartyRegistrationRepository(
             .assertingPartyDetails { idp ->
                 idp.entityId(config.idpEntityId)
                 idp.singleSignOnServiceLocation(config.idpSsoUrl)
+                // SP AuthnRequest 서명 비활성화 (CONCERN-A 결정 = 서명 끄기).
+                // SP signing 자격을 구성하지 않으므로 서명을 켜면 표준 경로 진입 시 OpenSaml 이
+                // "Failed to resolve any signing credential" 로 깨진다. 끄면 서명 없는 AuthnRequest 가
+                // 생성되어 IdP SSO URL 로 302 리다이렉트된다(Keycloak 은 미서명 AuthnRequest 허용).
+                idp.wantAuthnRequestsSigned(false)
                 idp.verificationX509Credentials { creds ->
                     creds.add(Saml2X509Credential.verification(cert))
                 }

@@ -82,11 +82,13 @@ class SamlSecurityConfig(
         const val SAML_CHAIN_ORDER = 1
 
         /**
-         * SAML 전용 체인이 securityMatcher 로 잡는 경로.
+         * SAML 전용 체인이 securityMatcher 로 잡는 경로 (BLOCKER 1 — 표준 경로로 통일).
          * - /saml2 — Spring 표준 AuthnRequest 진입 (/saml2/authenticate/REGISTRATION_ID)
-         * - /sso/saml2 — SP-initiated 진입 별칭 (게이트1 D1 명시 경로)
          * - /login/saml2 — ACS 콜백 (/login/saml2/sso/REGISTRATION_ID, IdP POST 수신)
+         *
+         * 과거 /sso/saml2 별칭은 saml2Login 이 바인딩하는 대응 필터가 없는 미배선 별칭이라 제거했다.
+         * 프론트/백 모두 표준 경로(/saml2/authenticate/{registrationId})로 통일한다.
          */
-        val SAML_PATHS = listOf("/saml2/**", "/sso/saml2/**", "/login/saml2/**")
+        val SAML_PATHS = listOf("/saml2/**", "/login/saml2/**")
     }
 }
