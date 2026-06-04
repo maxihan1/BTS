@@ -12,7 +12,10 @@ import java.util.UUID
  * [SystemPermissionResolver] 구현체 (FR-PM-08).
  *
  * [SystemRoleAssignmentRepository.findRolesByUser] 로 사용자의 전역 역할을 조회하여
- * [SystemRole.SYSTEM_ADMIN] 보유 여부로 판정한다.
+ * [SystemRole.SYSTEM_ADMIN] 보유 여부로 판정한다. 역할이 없으면 빈 집합이 반환되어
+ * `false` 로 귀결된다(deny-by-default).
+ *
+ * 이 포트는 FR-PM-04(전역 관리자 전용 기능)가 소비한다.
  *
  * ## @Profile 분리 없음 (ADR D4 정정)
  * [IdentityAccessIssuePermissionResolver] 는 `@Profile("prod")` + 개발용 AlwaysAllow stub
