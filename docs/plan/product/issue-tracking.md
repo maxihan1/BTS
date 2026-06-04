@@ -115,13 +115,13 @@
 
 **우선순위**. 높음 | **선행**. §2.1.1 | **Plan slug**. `issue/labels-autocomplete`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — prefix 매칭 + 사용 빈도 정렬 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `labels`, `issue_labels` (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/labels?q=<prefix>` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — cmdk 콤보박스 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. backend-engineer) (완료. PR #79 — 라벨=free-form 텍스트 태그 모델 확정(Jira 정합), 신규 엔티티 0. 기존 Issue.labels(TEXT[]) + normalizeLabels 도메인검증 재사용. ADR `2026-06-04-issue-label-freeform-tag-model`)
+- [x] D2. 명세 — prefix 매칭 + 사용 빈도 정렬 (책임. backend-engineer) (완료. PR #79 — prefix 대소문자무시(ILIKE) + 사용 빈도순(COUNT DISTINCT 이슈 수, 동률 시 라벨 알파벳 ASC tiebreak) 최대 10. q 빈값→전체 인기 top-10, 매칭0→빈배열200. ILIKE 와일드카드(%/_/\) ESCAPE 이스케이프)
+- [x] D3. 데이터 모델 — 기존 `issues.labels TEXT[]` 활용 (책임. backend-engineer) (완료. PR #79 — **정규화 테이블(labels/issue_labels) 미도입**. 기존 `issues.labels TEXT[]` + `ix_issues_labels_gin` 그대로 사용. 마이그레이션/init_codegen 변경 0. plan 원표기 "labels, issue_labels"는 SDD 05 정본(labels TEXT[])과 drift였음을 ADR로 정정)
+- [x] D4. 백엔드 — `GET /api/v1/labels?q=<prefix>` (책임. backend-engineer) (완료. PR #79 — LabelController→LabelApplicationService→IssueRepository.findLabelsByPrefix. raw SQL(dsl.fetch, DATA.md §5 예외 — prefix/limit 바인드파라미터, UNNEST+COUNT DISTINCT 집계, deleted_at 제외). **권한 가드는 코드리뷰 B1(prod resolver가 IssueScope.Global 하드거부→전 사용자 403, non-prod AlwaysAllow 마스킹) 발견으로 제거→인증 공통 접근, 권한 정교화는 FR-PM-05 위임**)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) (완료. PR #79 — repository 통합(Testcontainers — 빈도순/삭제이슈 제외/ILIKE 이스케이프 리터럴매칭/동률 tiebreak) + service 단위(MockK q정규화) + controller 슬라이스(@WebMvcTest). 모듈 전체 test 그린, 신규 빈 컨텍스트 부팅 OK)
+- [x] D6. 프론트 UI — cmdk 콤보박스 (책임. frontend-engineer) (완료. PR #79 — cmdk(1.1.1, 게이트1 승인) `LabelAutocompleteInput`이 기존 `IssueLabelsEdit`의 plain input을 **in-place 교체**(칩/검증/저장 경로 보존, 신규 컴포넌트 중복 회피). 키보드 네비(↓↑Enter) 자체구현, free-form 신규라벨 입력 허용. api/labels+use-labels(react-query)+use-debounce 재사용+MSW label-handlers. dead code command.tsx 정리(C1))
+- [x] D7. E2E (책임. qa-engineer) (완료. PR #79 — `label-autocomplete.spec.ts` 3시나리오(S1 자동완성happy→칩→저장 / S2 free-form 신규라벨 / S3 빈포커스 인기라벨). MSW 이슈 PATCH stateful로 저장 후 반영 일관. 화살표키 네비 단위테스트 추가(C2). 전체 프론트 1184 통과)
 
 ### §2.3 정리 2개 (클론, PDF)
 
