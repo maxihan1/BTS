@@ -420,11 +420,11 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
    * 진행 중 버튼 disabled, 실패 시 toast.error.
    * GET 요청이므로 CSRF 토큰 불요.
    */
-  async function handlePdfDownload() {
+  async function handlePdfDownload(issueKey: string) {
     setIsPdfDownloading(true)
     try {
-      const blob = await downloadIssuePdf(issue.key)
-      triggerBlobDownload(blob, `${issue.key}.pdf`)
+      const blob = await downloadIssuePdf(issueKey)
+      triggerBlobDownload(blob, `${issueKey}.pdf`)
     } catch (err: unknown) {
       console.error('PDF download failed', err)
       toast.error(issueDetailStrings.pdfDownloadError)
@@ -448,7 +448,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
           size="sm"
           disabled={isPdfDownloading}
           aria-label={issueDetailStrings.pdfDownloadAriaLabel}
-          onClick={() => { void handlePdfDownload() }}
+          onClick={() => { void handlePdfDownload(issue.key) }}
         >
           <FileDown className="size-4 mr-1.5" aria-hidden="true" />
           {issueDetailStrings.pdfDownloadButton}
