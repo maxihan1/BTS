@@ -19,7 +19,28 @@ FR-CM-02 이슈에 다중 컴포넌트 할당. 한 이슈에 여러 컴포넌트
 
 분류 메모: classify-task 키워드 휴리스틱이 qa/migration으로 오분류 → Maxi 확인 후 feature 전체체인으로 override.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- BC: issue-tracking
+- 영향 엔티티: Issue(componentIds 추가), Component(기존 FR-CM-01), issue_components(신규 조인 테이블)
+- 새 용어: 없음 (컴포넌트는 glossary 기존 항목). 관계 "이슈↔컴포넌트 다대다"만 명확화.
+- 기존 결정 충돌: 없음. 라벨 ADR이 "컴포넌트=정규화 엔티티"로 구분 설계 → 조인 테이블 정합.
+
+### 핵심 결정 (ADR로 기록)
+- **D1 저장**: `issue_components` 정규화 조인 테이블(둘 다 issue-tracking 소유 → 실 FK). 복합 PK `(issue_id, component_id)` 멱등성. 관계라 소프트삭제 불요(연결 해제=행 DELETE). jOOQ init_codegen 미러 필수.
+- **D2 API**: 전체교체(set) 의미론. `PATCH /api/v1/issues/{key}/components` 전용 서브리소스(FR-IS-03 담당자 동형) + expectedVersion 낙관락. 빈 배열=전부 해제.
+- **D3 권한**: `IssuePermission.UPDATE` + `IssueScope.Project`(이슈 편집권). ComponentPermissionResolver(CRUD 관리권)와 구분. Global 사용 금지(prod 무조건 거부 함정).
+- **D4 검증**: 같은 프로젝트 + 활성 컴포넌트만(ComponentRepository.findById(id, projectId) 활용). 위반 422 COMPONENT_NOT_FOUND. 요청 중복 ID distinct 정규화(도메인).
+- **D5 읽기**: IssueResponse.componentIds 노출(초기엔 ID 목록만, 셀렉터가 이름 해소).
+
+### 복제 선례 (ground-truth 확인됨)
+- 도메인: `Issue.kt:62` assigneeId 옆 componentIds 추가, assignComponents()/clearComponents() 메서드.
+- API: `IssueController.changeAssignee()` / `ChangeAssigneeRequest.kt` / `IssueApplicationService.changeAssignee()` / `IssueRepository.updateAssignee()`.
+- 검증: UserLookupPort 422 패턴 → ComponentRepository.findById 422.
+- 마이그레이션: 최신 V011 → 신규 **V012**. init_codegen.sql 미러. 조인 테이블 선례 bulk_operation_items(V008).
+- 프론트: `IssueMetaPanel.tsx`(담당자 셀렉터 옆 다중 컴포넌트 셀렉터), `useChangeAssignee.ts` 복제, `components.ts`(fetchComponents).
+
+- 관련 ADR: [docs/adr/2026-06-04-issue-component-assignment-model.md](../adr/2026-06-04-issue-component-assignment-model.md) (생성됨)
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
