@@ -1,4 +1,4 @@
-// Spring Security 필터 체인 — SAML 전용(Order 1) + 기존 STATELESS(Order 2) 2체인, JWT/PAT/CSRF/CORS (FR-09-26/27/30, FR-AU-03)
+// Spring Security 필터 체인 — SAML(Order 1) + OIDC(Order 2) + STATELESS(Order 3) 3체인, JWT/PAT/CSRF/CORS (FR-09-26/27/30, FR-AU-03/04)
 
 package com.atlas.bts.identity.config
 
@@ -135,6 +135,9 @@ class SecurityConfig(
                     // FR-AU-03: 활성 SAML IdP 목록은 로그인 전 호출되므로 permitAll
                     // (민감정보 미노출 — registrationId/displayName 만, SamlIdpController KDoc 참조).
                     SAML_IDPS_PATH,
+                    // FR-AU-04: 활성 OIDC Provider 목록도 로그인 전 호출되므로 permitAll
+                    // (민감정보 미노출 — registrationId/displayName 만, OidcProviderController KDoc 참조).
+                    OIDC_PROVIDERS_PATH,
                     "/.well-known/jwks.json",
                     "/actuator/health",
                 ).permitAll()
@@ -156,10 +159,17 @@ class SecurityConfig(
     }
 
     private companion object {
-        /** 기존 STATELESS API 체인 우선순위 — SAML 경로 외 모든 요청을 처리한다 (SAML 체인보다 후순위). */
-        const val API_CHAIN_ORDER = 2
+        /**
+         * 기존 STATELESS API 체인 우선순위 — SAML(1)/OIDC(2) 경로 외 모든 요청을 처리한다.
+         * SAML 체인(Order=1)·OIDC 체인(Order=2)보다 후순위로, 세 체인 모두 distinct order 를 갖도록
+         * 2→3 으로 1칸 밀었다 (FR-AU-04 C1 — @Order 동률 회피, OidcSecurityConfig KDoc 참조).
+         */
+        const val API_CHAIN_ORDER = 3
 
         /** 로그인 전 호출되는 활성 SAML IdP 목록 엔드포인트 (permitAll, [com.atlas.bts.identity.web.SamlIdpController]). */
         const val SAML_IDPS_PATH = "/api/v1/auth/saml/idps"
+
+        /** 로그인 전 호출되는 활성 OIDC Provider 목록 엔드포인트 (permitAll, [com.atlas.bts.identity.web.OidcProviderController]). */
+        const val OIDC_PROVIDERS_PATH = "/api/v1/auth/oidc/providers"
     }
 }
