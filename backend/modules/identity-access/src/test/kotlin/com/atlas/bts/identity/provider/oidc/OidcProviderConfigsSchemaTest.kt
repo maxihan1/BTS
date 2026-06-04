@@ -197,6 +197,21 @@ class OidcProviderConfigsSchemaTest {
         }
     }
 
+    // OIDC seed 의 고정 UUID — SAML(...-4a03-...-003)과 반드시 다른 값이어야 한다 (C4).
+    private fun oidcSeedHasFixedUuid(uuid: String): Boolean {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "SELECT COUNT(*) FROM authn_providers WHERE type = 'OIDC' AND id = ?::uuid",
+            ).use { stmt ->
+                stmt.setString(1, uuid)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    return rs.getInt(1) > 0
+                }
+            }
+        }
+    }
+
     @Test
     fun `V011 creates oidc_provider_configs table`() {
         assertThat(tableExists("oidc_provider_configs")).isTrue()
@@ -253,5 +268,10 @@ class OidcProviderConfigsSchemaTest {
     @Test
     fun `V011 seeds an OIDC authn_providers row for JIT provisioning`() {
         assertThat(oidcAuthnProviderSeedCount()).isEqualTo(1)
+    }
+
+    @Test
+    fun `V011 OIDC seed uses FR-AU-04 fixed UUID distinct from SAML`() {
+        assertThat(oidcSeedHasFixedUuid("00000000-0000-4a04-8000-000000000004")).isTrue()
     }
 }
