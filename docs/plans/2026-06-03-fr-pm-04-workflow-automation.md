@@ -33,7 +33,25 @@ FR-PM-04 워크플로우/자동화 관리 권한 (identity-access §4.4). 선행
 - **선례 ADR**: 2026-06-03-version-component-permission-prod-resolver (FR-PM-03 동형) · 2026-05-22-issue-permission-resolver-port
 - **기존 결정 충돌**: 없음. WorkflowSchemePermissionResolver KDoc이 FR-PM-04를 명시적으로 예약함.
 
-## 스펙 — ⏸️ 보류 (전역 admin FR 선행 필요, Maxi 2026-06-04)
+## 스펙 — ✅ 재개 완료 (FR-PM-08 인프라로 보류 해소, 2026-06-05)
+
+전체 스펙. [docs/specs/2026-06-05-fr-pm-04-workflow-automation.md](../specs/2026-06-05-fr-pm-04-workflow-automation.md)
+
+핵심 3줄 요약.
+- 워크플로우 스킴 CRUD(`MANAGE_SCHEME`/Global)는 시스템 관리자 전용 → FR-PM-08 `SystemPermissionResolver.isSystemAdmin` 소비.
+- 프로젝트 스킴 배정(`ASSIGN_SCHEME`/Project)은 프로젝트 관리자 → 멤버십+`role_permissions`의 `MANAGE_WORKFLOW`(Maxi 2026-06-05 확정), V013 시드 신규.
+- 포트(+enum+scope) project-workflow→shared-kernel 이동(actor→UUID), Guard 예외는 shared-kernel 배치(BC 가로지름), identity-access `@Profile(prod)` 구현. non-prod AlwaysAllow 유지.
+
+### D3 해소 (전역 scope 판정 모델 — 보류 당시 미정)
+FR-PM-08이 `system_role_assignments` + `SystemRole.SYSTEM_ADMIN` + `SystemPermissionResolver.isSystemAdmin`를 제공 → Global scope는 isSystemAdmin로 판정. D3는 이로써 확정.
+
+## Brainstorming Check
+
+✅ 통과 (1회). 갭2건(actor 시그니처 변경 / Guard 예외 BC 가로지름) 보강 — 스펙 FR-4·FR-7·EC7 참조.
+
+---
+
+## (구) 스펙 보류 기록 — 전역 admin FR 선행 필요 (Maxi 2026-06-04, FR-PM-08로 해소됨)
 
 ### 보류 사유 — spec 단계에서 발견한 구조적 공백
 
