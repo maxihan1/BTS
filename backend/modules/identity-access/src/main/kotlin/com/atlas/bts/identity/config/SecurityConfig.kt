@@ -1,14 +1,16 @@
-// Spring Security 필터 체인 — 단일 chain, JWT Resource Server + sid revoke wiring + CSRF Cookie + CORS (FR-09-26/27/30)
+// Spring Security 필터 체인 — SAML 전용(@Order(1)) + 기존 STATELESS(@Order(2)) 2체인, JWT Resource Server + sid revoke + CSRF Cookie + CORS (FR-09-26/27/30, FR-AU-03)
 
 package com.atlas.bts.identity.config
 
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
+import com.atlas.bts.identity.provider.saml.Saml2AuthenticationSuccessHandler
 import com.atlas.bts.identity.web.PatAuthenticationFilter
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.annotation.Order
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
@@ -16,6 +18,7 @@ import org.springframework.security.config.http.SessionCreationPolicy
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter
 import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver
 import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver
+import org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistrationRepository
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler
@@ -54,6 +57,17 @@ import org.springframework.web.cors.CorsConfigurationSource
  * ## @EnableMethodSecurity
  * 엔드포인트별 @PreAuthorize 이중 가드 (DEVELOPMENT.md §1.4 Spring Security 주의사항).
  * SecurityConfig 필터 체인 + @PreAuthorize 두 레이어로 우회를 방지한다.
+ *
+ * ## SAML 전용 체인 분리 (FR-AU-03 / 게이트1 D1 — BLOCKER 해소)
+ * SAML SP-initiated 로그인은 AuthnRequest 상관관계/replay 방어 상태를 [jakarta.servlet.http.HttpSession]
+ * 에 저장하므로 STATELESS 정책과 충돌한다. 따라서 SAML 경로([SAML_PATHS])만 [samlSecurityFilterChain]
+ * (Order=1) 이 securityMatcher 로 잡아 [SessionCreationPolicy.IF_REQUIRED] 를 허용하고,
+ * 그 외 모든 경로는 기존 [securityFilterChain] (Order=2) 이 STATELESS 로 처리한다.
+ * SAML 체인의 세션 허용이 일반 API 의 STATELESS/JWT/CSRF 동작에 영향을 주지 않는다.
+ *
+ * ## RelyingPartyRegistrationRepository 부팅 안전성 (profile-scoped boot 회귀 방지)
+ * SAML 체인은 [RelyingPartyRegistrationRepository] 빈을 결선한다. DB(saml_idp_configs) 가 비어도
+ * 부팅 시점에 조회하지 않으므로(요청 시 lazy 조회) non-prod 통합 테스트 컨텍스트 부팅을 깨지 않는다.
  */
 @Configuration
 @EnableWebSecurity
@@ -63,7 +77,43 @@ class SecurityConfig(
     private val corsConfigurationSource: CorsConfigurationSource,
     private val personalAccessTokenService: PersonalAccessTokenService,
 ) {
+    /**
+     * SAML 전용 SecurityFilterChain (Order=1 — 일반 체인보다 우선 매칭, FR-AU-03 / 게이트1 D1).
+     *
+     * [SAML_PATHS] (AuthnRequest 진입 /saml2, /sso/saml2 + ACS 콜백 /login/saml2) 만
+     * securityMatcher 로 잡는다. 그 외 경로는 이 체인이 처리하지 않으므로 [securityFilterChain] 으로 넘어간다.
+     *
+     * - 세션 정책 IF_REQUIRED — saml2Login 필터가 AuthnRequest 상관관계 상태를 HttpSession 에 저장한다.
+     * - saml2Login 결선 — DB 기반 [RelyingPartyRegistrationRepository] + SAML 성공 핸들러
+     *   [Saml2AuthenticationSuccessHandler] (JIT 프로비저닝 + BTS 세션/JWT 발급).
+     * - CSRF skip (ACS 한정) — ACS(/login/saml2/sso) 는 IdP 가 외부에서 POST 하므로 CSRF 토큰을
+     *   가질 수 없어 SAML 경로 한정으로 CSRF 를 비활성화한다. 이 체인은 SAML 경로만 처리하므로
+     *   일반 API 의 CSRF 검증(기존 [securityFilterChain]) 에는 영향이 없다.
+     * - SAML 경로 authenticated — SAML 흐름 자체가 인증 절차이므로 anyRequest authenticated.
+     */
     @Bean
+    @Order(SAML_CHAIN_ORDER)
+    fun samlSecurityFilterChain(
+        http: HttpSecurity,
+        relyingPartyRegistrationRepository: RelyingPartyRegistrationRepository,
+        saml2AuthenticationSuccessHandler: Saml2AuthenticationSuccessHandler,
+    ): SecurityFilterChain =
+        http
+            .securityMatcher(*SAML_PATHS)
+            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED) }
+            .cors { it.configurationSource(corsConfigurationSource) }
+            // ACS(/login/saml2/sso/**) 는 외부 IdP POST 이므로 CSRF 토큰 부재 — SAML 경로 한정 CSRF skip.
+            // 이 체인은 SAML 경로만 처리하므로 일반 API CSRF 검증(기존 체인)에 영향 없음.
+            .csrf { it.disable() }
+            .authorizeHttpRequests { auth -> auth.anyRequest().authenticated() }
+            .saml2Login { saml2 ->
+                saml2.relyingPartyRegistrationRepository(relyingPartyRegistrationRepository)
+                saml2.successHandler(saml2AuthenticationSuccessHandler)
+            }
+            .build()
+
+    @Bean
+    @Order(API_CHAIN_ORDER)
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         // CookieCsrfTokenRepository 설정
         // withHttpOnlyFalse(): SPA가 Cookie 토큰 읽어 X-XSRF-TOKEN 헤더로 전송하므로 JS 접근 허용.
@@ -121,6 +171,9 @@ class SecurityConfig(
                     "/api/v1/auth/login",
                     "/api/v1/auth/refresh",
                     "/api/v1/auth/providers",
+                    // FR-AU-03: 활성 SAML IdP 목록은 로그인 전 호출되므로 permitAll
+                    // (민감정보 미노출 — registrationId/displayName 만, SamlIdpController KDoc 참조).
+                    SAML_IDPS_PATH,
                     "/.well-known/jwks.json",
                     "/actuator/health",
                 ).permitAll()
@@ -139,5 +192,24 @@ class SecurityConfig(
                 rs.jwt { jwt -> jwt.jwtAuthenticationConverter(sidRevokeJwtConverter) }
             }
             .build()
+    }
+
+    private companion object {
+        /** SAML 전용 체인 우선순위 — 일반 API 체인보다 먼저 매칭한다 (낮을수록 우선). */
+        const val SAML_CHAIN_ORDER = 1
+
+        /** 기존 STATELESS API 체인 우선순위 — SAML 경로 외 모든 요청을 처리한다. */
+        const val API_CHAIN_ORDER = 2
+
+        /** 로그인 전 호출되는 활성 SAML IdP 목록 엔드포인트 (permitAll, [com.atlas.bts.identity.web.SamlIdpController]). */
+        const val SAML_IDPS_PATH = "/api/v1/auth/saml/idps"
+
+        /**
+         * SAML 전용 체인이 securityMatcher 로 잡는 경로.
+         * - /saml2 — Spring 표준 AuthnRequest 진입 (/saml2/authenticate/REGISTRATION_ID)
+         * - /sso/saml2 — SP-initiated 진입 별칭 (게이트1 D1 명시 경로)
+         * - /login/saml2 — ACS 콜백 (/login/saml2/sso/REGISTRATION_ID, IdP POST 수신)
+         */
+        val SAML_PATHS = arrayOf("/saml2/**", "/sso/saml2/**", "/login/saml2/**")
     }
 }
