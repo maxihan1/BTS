@@ -205,7 +205,20 @@ SAML Provider 등록(`ProviderRegistry`/`authn_providers`)·`SecurityContext`/Se
 
 ## 리뷰 결과
 
-### code-reviewer ground-truth 리뷰 (2026-06-04) — BLOCKER 1 / CONCERN 9
+### 게이트2 PR 코드리뷰 (2026-06-04, code-reviewer) — BLOCKER 2 / CONCERN 3 → 전부 해소
+
+자동 테스트(test/lint/typecheck/E2E)는 그린이었으나 mock 위 false-green. ground-truth 검증으로 진짜 결함 적발.
+
+- **🛑 BLOCKER 1 (경로 불일치)** — 프론트 `/sso/saml2/authenticate/` ↔ Spring 표준 `/saml2/authenticate/`. 미배선 별칭이라 클릭 시 로그인 미시작. → **해소**: 양쪽 표준 통일. fix-gate2/fix-gate2-fe 커밋. `SpInitiatedEntryTest`가 실 Keycloak 302+SAMLRequest 검증.
+- **🛑 BLOCKER 2 (IdP-initiated 미구현)** — spec 범위 포함인데 전무. → **해소**: Maxi 결정으로 후속 FR 축소. spec/ADR 반영.
+- **⚠️ CONCERN-A (SP signing)** — wantAuthnRequestsSigned 기본 true 충돌. → **해소**: Maxi 결정 `wantAuthnRequestsSigned(false)`.
+- **⚠️ CONCERN 2 (RelayState 백슬래시)** — 코드 방어 있으나 테스트 미커버. → **해소**: 테스트 추가.
+- **⚠️ CONCERN 3 (ADR XML 문구)** — production 위임/테스트 자체파싱 정합. → **해소**: ADR "production 한정" 명시.
+- PASS: SecurityConfig 체인 분리 안전(STATELESS/JWT/CSRF/PAT 무손상), JIT FK 정합, PII 미로깅, open-redirect, XXE, dead-path 방지.
+
+재검증: 백엔드 모듈 전체 test(SAML 통합 포함) + 프론트 1133 + E2E 회귀 0 그린.
+
+### plan-review ground-truth 리뷰 (2026-06-04, 사전) — BLOCKER 1 / CONCERN 9
 
 직접 검증 완료(Credential.kt, SecurityConfig.kt:91, libs.versions.toml find). 모두 사실 확인.
 

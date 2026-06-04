@@ -12,18 +12,22 @@ SAML 2.0 기반 SSO(Single Sign-On)를 identity-access BC에 추가한다. 사�
 서명한 SAML Assertion을 검증해 BTS 세션을 발급한다. FR-AU-01에서 확립된 SPI(`AuthenticationProvider` + Spring 어댑터)
 패턴 위에 SAML 구현체를 끼우는 작업이다. `ProviderType.SAML(40)`은 이미 enum에 실재하나, **`Credential.SamlAssertion`은 ADR 설계 예시일 뿐 실제 `Credential.kt`에 없음 → Task 4에서 신규 추가**(plan-review C3 교정, 2026-06-04).
 
-**범위 포함**: SP-initiated + IdP-initiated 흐름, `saml_idp_configs` 데이터 모델, `/sso/saml2/**` 엔드포인트,
+**범위 포함**: **SP-initiated 흐름**, `saml_idp_configs` 데이터 모델, **표준 `/saml2/authenticate/{registrationId}`(진입) + `/login/saml2/sso/{registrationId}`(ACS) 엔드포인트**(Spring Security SAML2 기본 경로),
 JIT 자동 프로비저닝(LDAP 패턴 재사용), IdP 선택 프론트 UI, Keycloak SAML Testcontainers 통합 테스트.
 
-**범위 제외**: 다중 IdP 우선순위/도메인 라우팅(FR-AU-06/07), SAML SLO(Single Logout) — 후속 검토, MFA 연동(FR-MF).
+**범위 제외**: **IdP-initiated(Unsolicited Assertion) 흐름 → 후속 FR**(게이트2 Maxi 결정 2026-06-04 — replay 방어·Unsolicited 수용이 복잡·보안위험 커 별도 FR로 분리), 다중 IdP 우선순위/도메인 라우팅(FR-AU-06/07), SAML SLO(Single Logout) — 후속, MFA 연동(FR-MF).
+
+> **경로 정정(게이트2 2026-06-04)**: 초안의 `/sso/saml2/...`는 Spring Security SAML2 기본 엔드포인트가 아님(대응 필터 없는 미배선 별칭). 실제 표준은 진입 `/saml2/authenticate/{registrationId}`, ACS `/login/saml2/sso/{registrationId}`. 프론트/백엔드 모두 표준으로 통일.
+> **SP 서명(CONCERN-A, 게이트2 결정)**: `wantAuthnRequestsSigned(false)` — SP가 AuthnRequest에 서명하지 않음(본 FR 단일 IdP 범위, IdP가 서명 요구 시 SP 키 구성은 후속).
 
 ## 1. 사용자 시나리오 (Given-When-Then)
 
 ### S1. SP-initiated 로그인 (정상)
 - **Given** 관리자가 `saml_idp_configs`에 사내 IdP를 enabled로 등록했고, 사용자는 로그인 화면에 있다
 - **When** 사용자가 IdP 선택 화면에서 "사내 SSO" 버튼을 클릭한다
-- **Then** BTS가 SAML AuthnRequest를 만들어 IdP로 리다이렉트하고, IdP 인증 성공 후 BTS `/sso/saml2/acs`로
-  Assertion이 POST되며, 서명 검증 통과 시 BTS 세션(JWT)이 발급되고 RelayState에 담긴 복귀 경로로 이동한다
+- **Then** BTS가 `/saml2/authenticate/{registrationId}` 진입 시 SAML AuthnRequest(서명 안 함)를 만들어 IdP로 302 리다이렉트하고,
+  IdP 인증 성공 후 BTS ACS `/login/saml2/sso/{registrationId}`로 Assertion이 POST되며, 서명 검증 통과 시 BTS 세션(JWT)이 발급되고 RelayState 복귀 경로로 이동한다
+  (통합테스트 `SpInitiatedEntryTest`가 실 Keycloak으로 302+SAMLRequest 검증)
 
 ### S2. JIT 자동 프로비저닝 (첫 SSO 로그인)
 - **Given** IdP는 사용자를 알지만 BTS `user_external_accounts`에는 매핑이 없다
@@ -31,9 +35,10 @@ JIT 자동 프로비저닝(LDAP 패턴 재사용), IdP 선택 프론트 UI, Keyc
 - **Then** `AutoProvisionService`가 `users` + `user_external_accounts`(provider_id, external_subject=NameID)를
   단일 트랜잭션으로 UPSERT하고 세션을 발급한다 (LDAP과 동일 멱등 UPSERT)
 
-### S3. IdP-initiated 로그인
+### S3. IdP-initiated 로그인 — ⏭️ 후속 FR로 분리 (게이트2 2026-06-04, 본 FR 범위 외)
+> 아래는 후속 FR 명세 보존용. 본 PR #76 미구현.
 - **Given** 사용자가 IdP 포털에서 BTS 앱 타일을 클릭한다 (BTS를 거치지 않고 IdP가 먼저 Assertion 발행)
-- **When** IdP가 `/sso/saml2/acs`로 Unsolicited Assertion을 POST한다
+- **When** IdP가 ACS로 Unsolicited Assertion을 POST한다
 - **Then** RelayState가 없거나 신뢰 목록 밖이면 기본 랜딩(`/dashboard`)으로만 보내고(open-redirect 차단),
   Assertion replay(중복 ID/만료 시각)를 검증해 거부한다
 
@@ -53,7 +58,7 @@ JIT 자동 프로비저닝(LDAP 패턴 재사용), IdP 선택 프론트 UI, Keyc
 |---|---|
 | F1 | `SamlProvider`(`provider/saml/`)는 `ProviderType.SAML` 등록/메타 노출 목적. **인증 검증은 Spring SAML2 필터+성공 핸들러가 수행**(C4 — SPI `authenticate()` dead-path 방지). `Credential.SamlAssertion`은 Task 4 신규 추가(C3) |
 | F2 | Spring Security `spring-security-saml2-service-provider`로 SP-initiated AuthnRequest 생성 + ACS(Assertion Consumer Service) 처리 |
-| F3 | IdP-initiated(Unsolicited) Assertion 수용. replay/만료/audience 검증 |
+| ~~F3~~ | ~~IdP-initiated(Unsolicited) Assertion 수용. replay/만료/audience 검증~~ → **후속 FR**(게이트2 2026-06-04) |
 | F4 | `saml_idp_configs` CRUD는 **본 FR 범위에서 read + seed만**(관리 UI는 FR-AU-06 다중 Provider 관리로 이연). enabled IdP 목록 조회 API |
 | F5 | JIT 자동 프로비저닝 — 인증 성공 시 `AutoProvisionService` 재사용(users + user_external_accounts UPSERT) |
 | F6 | NameID → `user_external_accounts.external_subject` 매핑. SAML 속성(email/displayName)으로 users 갱신 |
@@ -161,7 +166,8 @@ F4가 관리 UI를 FR-AU-06으로 이연하므로, 본 FR에서 IdP가 시스템
 ## 9. 측정 가능한 완료 기준
 
 - [ ] SP-initiated E2E: 버튼 클릭 → IdP(Keycloak) → ACS → BTS 세션 발급 통과
-- [ ] IdP-initiated 통합 테스트: Unsolicited Assertion 수용 + replay 거부
+- [x] SP-initiated 진입 통합 테스트: `/saml2/authenticate/{registrationId}` → 실 Keycloak SSO URL로 302 + SAMLRequest (SpInitiatedEntryTest)
+- ⏭️ ~~IdP-initiated 통합 테스트: Unsolicited Assertion 수용 + replay 거부~~ → 후속 FR (게이트2 2026-06-04)
 - [ ] 서명 검증 실패 Assertion 401 거부 (Testcontainers Keycloak)
 - [ ] JIT 프로비저닝: 첫 SSO 로그인 시 users + user_external_accounts 생성, 2회차 멱등
 - [ ] 활성 IdP 목록 API + 프론트 동적 버튼 렌더 + E2E

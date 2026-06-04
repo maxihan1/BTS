@@ -62,6 +62,15 @@ SAML `authn_providers` seed row를 함께 INSERT한다. 성공 핸들러는 `Sam
 - 서명 검증 필수(N1), open-redirect 차단(RelayState 화이트리스트 N2), replay 방지(Clock 주입 N3), XXE 차단(N6, 자체 XML 파싱 금지), PII 미로깅(N4).
 - ACS는 IdP가 POST → CSRF skip 목록에 `/login/saml2/sso/**` 추가.
 
+## 게이트2 코드리뷰 보강 (2026-06-04)
+
+code-reviewer ground-truth 리뷰가 BLOCKER 2 + CONCERN 3을 발견, Maxi 결정 후 반영.
+
+- **D5. 엔드포인트 경로 = Spring Security SAML2 표준** — 초안의 `/sso/saml2/...`는 saml2Login이 바인딩하지 않는 미배선 별칭이었음(클릭 시 로그인 미시작 BLOCKER). 진입 `/saml2/authenticate/{registrationId}`, ACS `/login/saml2/sso/{registrationId}`로 통일. 프론트(SamlIdpButtons)·securityMatcher 모두 표준만 유지.
+- **D6. SP AuthnRequest 서명 = 안 함(`wantAuthnRequestsSigned(false)`)** — CONCERN-A 해소. SP signing 자격 없이 표준 경로 302 리다이렉트 성공(SpInitiatedEntryTest가 실 Keycloak으로 검증). IdP가 서명을 요구하는 환경의 SP 키 구성은 후속.
+- **D7. IdP-initiated(S3/F3) = 후속 FR로 분리** — Unsolicited Assertion 수용 + replay 방어가 복잡·보안위험 커 본 FR(SP-initiated)에서 제외. spec §0/S3/F3/완료기준 축소 반영.
+- **자체 XML 파싱 금지 문구 정합** — production은 Spring OpenSAML에 위임(자체 파싱 0). 테스트 인프라(KeycloakSamlMetadataExtractor)의 Keycloak descriptor 파싱만 자체 DOM이며 `disallow-doctype-decl`+외부엔티티 비활성으로 XXE 하드닝. "자체 XML 파싱 금지"는 production 한정 규칙으로 해석.
+
 ## 관련
 
 - 마스터플랜 §2.3 (`docs/plan/product/identity-access.md`)
