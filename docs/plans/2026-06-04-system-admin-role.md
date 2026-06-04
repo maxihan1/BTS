@@ -132,8 +132,8 @@ SDD 12.6 OrgAdmin/시스템 권한(12.3 ADMIN_SYSTEM 등)의 실제 구현. 현�
 
 **RED**:
 - `JwtIssuer` 발급 시 `roles` 인자가 `["SYSTEM_ADMIN"]`이면 claim에 포함, 빈 리스트면 미포함(또는 빈 배열) — S3.
-- converter가 `roles` 클레임을 `ROLE_SYSTEM_ADMIN` authority로 변환(JwtGrantedAuthoritiesConverter 커스텀, scopes의 SCOPE_ 변환과 공존).
-- PAT 경로는 roles 미전달(EC7) — `PersonalAccessTokenService`는 호출부 변경 없음 확인.
+- converter가 `roles` 클레임을 `ROLE_SYSTEM_ADMIN` authority로 변환 — 커스텀 `JwtGrantedAuthoritiesConverter`(authoritiesClaimName="roles", prefix="ROLE_")를 delegate에 set. **ground-truth 정정**: 현재 `scopes` claim은 authority로 변환되지 않음(기본 converter는 "scope"/"scp"를 찾는데 BTS claim 키는 "scopes"). 따라서 "공존"이 아니라 roles 변환 신규 추가이며, 기존 scopes 관련 동작 회귀 0을 테스트로 확인.
+- PAT 경로는 roles 미전달(EC7) — **확인됨**: `JwtIssuer.issue()` 호출부는 `AuthController`·`RefreshTokenService` 2곳뿐, PAT는 별도 발급 경로라 무접촉. roles 기본값 `emptyList`로 자동 제외.
 - 실패 메시지(예상): `issue()`에 roles 파라미터 없음.
 
 **GREEN**:
@@ -192,4 +192,22 @@ SDD 12.6 OrgAdmin/시스템 권한(12.3 ADMIN_SYSTEM 등)의 실제 구현. 현�
 - 프론트/E2E: 없음 (인프라만, D6/D7 부재)
 - 머지 전: detekt baseline 결선 확인, V번호 충돌 재확인(현재 최신 V009 → V010)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### ground-truth 독립 리뷰 (2026-06-05, code-reviewer 대신 직접 — auth 작업)
+
+메모리 `bts-review-plan-autoplan-overkill`에 따라 대화형 autoplan 대신 실제 코드 대조 리뷰. auth라 BLOCKER 무시 옵션 없음.
+
+**✅ 통과 (ground-truth 확인)**
+- **PAT 전역역할 제외(EC7)** — `JwtIssuer.issue()` 호출부는 `AuthController`(L134)·`RefreshTokenService`(L119) 2곳뿐. `PersonalAccessTokenService`는 JwtIssuer 미호출(자체 PAT 발급). `roles` 기본값 `emptyList`로 PAT 자동 제외. **시스템 관리 권한 PAT 우회 불가**.
+- **전역 판정기 프로파일 무관 단일 빈** — DB 조회라 `AlwaysAllow` stub 불필요 → 메모리 `profile-scoped-bean-boot-failure`(prod 한정 빈이 non-prod 부팅 깸) 원천 회피. 기존 `IssuePermissionResolver`의 @Profile 분리와 다르지만, 이유(DB 직접 판정 vs Issue scope 해석)가 정당.
+- **부트스트랩 race-free** — `ON CONFLICT (user_id, role) DO NOTHING` + `existsByRole` 멱등. 단일 호스트(docker compose)라 인스턴스 1개. 탈취된 설정으로도 보유자 존재 시 skip(2번째 admin 강제 생성 불가).
+- **ApplicationRunner ↔ Flyway 순서** — Spring Boot는 `FlywayMigrationInitializer`(DataSource 초기화 단계)를 `ApplicationRunner`보다 먼저 실행 → V010 테이블 보장. BTS 첫 ApplicationRunner지만 표준 패턴.
+- **V번호** — 최신 V009 확인, V010 충돌 없음(구현 직전 동시 브랜치 재확인은 Plan 메타에 명시).
+- **TDD 형식** — 6 task 전부 RED/GREEN/REFACTOR + 메타(agent/files/depends-on) 완비. 의존 그래프 1→2→{3,4,5}→6 순환 없음.
+
+**⚠️ 주의 (권장, 반영함)**
+- **T4 converter 문구 정정** — 현재 `scopes` claim은 authority로 변환 안 됨(delegate 기본 converter는 "scope"/"scp" 탐색, BTS는 "scopes"). roles→ROLE_는 커스텀 `JwtGrantedAuthoritiesConverter` **신규 추가**. 기존 scopes 동작 회귀 0 테스트 필수. → T4에 반영 완료.
+- **JWT stale 15분(EC6)** — 시스템 관리자 권한이라 민감. 단 `SystemPermissionResolver`(DB 조회)는 즉시 정확 → FR-PM-04는 **DB 판정기 경로 사용 권장**(authority/@PreAuthorize 경로만 stale). 현재 PR 수용 OK, FR-PM-04 plan에 메모.
+
+**🛑 BLOCKER: 없음**
