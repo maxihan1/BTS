@@ -134,8 +134,8 @@
 - [x] D3. 데이터 모델 — (활용만) (책임. db-engineer) — 신규 테이블/마이그레이션 없음. 기존 `issues` INSERT.
 - [x] D4. 백엔드 — `POST /api/v1/issues/{key}/clone` (책임. backend-engineer) — `CloneIssueRequest(includeAssignee, summaryOverride)`. 같은 프로젝트 한정. 권한 VIEW(원본)+CREATE(프로젝트).
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) — application 단위(MockK) + 컨트롤러 슬라이스(@WebMvc) + 런타임 통합(Testcontainers).
-- [ ] D6. 프론트 UI — 옵션 다이얼로그 (책임. designer → frontend-engineer) — 후속.
-- [ ] D7. E2E (책임. qa-engineer) — 후속.
+- [x] D6. 프론트 UI — 옵션 다이얼로그 (책임. designer → frontend-engineer) — PR #78. 메타패널 클론 버튼 + `CloneIssueDialog`(includeAssignee 체크박스 기본 true + summaryOverride 입력 ≤255) + `useCloneIssue`(성공 시 새 이슈 navigate + 토스트, 404/403/400 분기) + `cloneIssueHandler`(stateful MSW). 클론 버튼 권한 게이트는 프론트 권한 API에 CREATE 미노출로 서버 403+토스트 처리(FR-PM 후속).
+- [x] D7. E2E (책임. qa-engineer) — PR #78. `issue-clone.spec.ts` 4시나리오(happy 새이슈 이동/includeAssignee 토글/취소/maxLength 255). data-testid+dialog 컨테이너 한정 strict mode 안전. 전체 E2E 94 통과/회귀 0.
 
 > **이연 (deferred)**. FR 제목의 "옵션: 첨부/Watcher/댓글 포함"은 해당 하위 시스템(Attachment/Watcher/IssueComment)이 미구현이라 이번 범위에서 제외. 해당 기능 도입 후 `CloneOptions` 확장으로 충족 (ADR §3). 다른 프로젝트로의 클론은 FR-MV(이슈 이동)와 함께 다룸 (ADR §4).
 
