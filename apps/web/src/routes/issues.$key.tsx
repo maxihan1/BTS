@@ -373,6 +373,9 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
    * useChangeComponents mutation을 통해 PATCH /api/v1/issues/{key}/components 호출.
    * expectedVersion은 현재 issue.version을 사용한다 (OCC 낙관락).
    *
+   * IssueMetaPanel에 전달하는 componentIds는 `(issue as { componentIds?: string[] }).componentIds ?? []`로
+   * 안전 캐스팅한다. 백엔드 IssueResponse에 아직 없는 필드이며, FR-CM-02 backend Task 3 이후 추가 예정.
+   *
    * @param ids 새로 할당할 컴포넌트 UUID 배열
    */
   function handleComponentsChange(ids: string[]) {

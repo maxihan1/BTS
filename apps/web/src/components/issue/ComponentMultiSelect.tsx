@@ -71,10 +71,9 @@ export function ComponentMultiSelect({
       {/* 선택된 컴포넌트 칩 목록 */}
       <ComponentChipList components={selectedComponents} />
 
-      {/* 검색 input */}
+      {/* 검색 input — type="text" 기본 role은 textbox */}
       <input
         type="text"
-        role="textbox"
         className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed"
         placeholder={`${issueDetailStrings.componentsLabel} 검색`}
         aria-label={`${issueDetailStrings.componentsLabel} 검색`}
