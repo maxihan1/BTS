@@ -14,6 +14,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import org.springframework.mock.web.MockHttpServletRequest
+import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.security.saml2.provider.service.authentication.DefaultSaml2AuthenticatedPrincipal
 import org.springframework.security.saml2.provider.service.authentication.Saml2Authentication
 import org.springframework.test.context.ActiveProfiles
@@ -251,10 +253,10 @@ class SamlAuthFlowIntegrationTest : KeycloakSamlTestcontainersBase() {
 
         @Test
         fun `S2 JIT 성공 후 refresh_token HttpOnly Secure Cookie 가 설정된다`() {
-            val mockResponse = org.springframework.mock.web.MockHttpServletResponse()
+            val mockResponse = MockHttpServletResponse()
 
             samlSuccessHandler.onAuthenticationSuccess(
-                org.springframework.mock.web.MockHttpServletRequest(),
+                MockHttpServletRequest(),
                 mockResponse,
                 buildSamlAuthentication(SAML_TEST_USERNAME),
             )
@@ -337,8 +339,8 @@ class SamlAuthFlowIntegrationTest : KeycloakSamlTestcontainersBase() {
     /** 성공 핸들러를 mock 요청/응답으로 호출한다(JIT 프로비저닝 트리거). */
     private fun invokeSuccessHandler(nameId: String) {
         samlSuccessHandler.onAuthenticationSuccess(
-            org.springframework.mock.web.MockHttpServletRequest(),
-            org.springframework.mock.web.MockHttpServletResponse(),
+            MockHttpServletRequest(),
+            MockHttpServletResponse(),
             buildSamlAuthentication(nameId),
         )
     }
