@@ -120,6 +120,7 @@ class IdentityAccessWorkflowSchemePermissionResolverBootTest {
 
     @Test
     fun `prod 컨텍스트에 WorkflowScheme prod adapter 빈이 정확히 1개 등록된다`() {
+        // 이 포트는 project-workflow 가 소비하고, identity-access 는 prod adapter 만 제공한다.
         val beans = context.getBeansOfType(IdentityAccessWorkflowSchemePermissionResolver::class.java)
 
         assertThat(beans).hasSize(1)
@@ -163,6 +164,7 @@ class WorkflowSchemePermissionResolverNonProdBootTest {
 
     @Test
     fun `비-prod 컨텍스트에 WorkflowScheme prod adapter 빈이 등록되지 않는다`() {
+        // 이 포트는 project-workflow 가 소비하고, identity-access 는 prod adapter 만 제공한다(비-prod 미등록).
         val beans = context.getBeansOfType(IdentityAccessWorkflowSchemePermissionResolver::class.java)
 
         assertThat(beans).isEmpty()
