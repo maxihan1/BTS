@@ -25,8 +25,8 @@ test('S1-ldap LDAP-corp 정상 로그인 — alice/Test1234! → /dashboard 환�
   await page.getByLabel(loginStrings.usernameLabel).fill('alice')
   await page.getByLabel(loginStrings.passwordLabel).fill('Test1234!')
 
-  // 로그인 버튼 클릭 → 제출
-  await page.getByRole('button', { name: loginStrings.submitButton }).click()
+  // 로그인 버튼 클릭 → 제출 (exact:true — "Okta SSO 로 로그인" 버튼과 구분)
+  await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
 
   // /dashboard 리다이렉트 대기
   await page.waitForURL('**/dashboard')
@@ -58,8 +58,8 @@ test('S2-ldap LDAP-corp 잘못된 비밀번호 — alice/wrong → 401 한국어
   // 잘못된 비밀번호 입력
   await page.getByLabel(loginStrings.passwordLabel).fill('wrong')
 
-  // 로그인 버튼 클릭
-  await page.getByRole('button', { name: loginStrings.submitButton }).click()
+  // 로그인 버튼 클릭 (exact:true — "Okta SSO 로 로그인" 버튼과 구분)
+  await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
 
   // 에러 메시지가 나타날 때까지 대기 (API 응답 소요 시간 감안)
   const errorAlert = page.getByRole('alert')

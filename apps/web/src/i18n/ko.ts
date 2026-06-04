@@ -21,6 +21,10 @@ export const loginStrings = {
   errorMfaRequired: '추가 인증이 필요합니다. 관리자에게 문의하세요.',
   errorUnknownProvider: '지원하지 않는 로그인 방식입니다. 다시 시도해 주세요.',
   errorDefault: '로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+
+  /** SAML SSO 버튼 */
+  samlLoginButtonLabel: (displayName: string) => `${displayName} 로 로그인`,
+  samlDividerText: '또는',
 } as const
 
 /** /login 페이지 헤딩 */

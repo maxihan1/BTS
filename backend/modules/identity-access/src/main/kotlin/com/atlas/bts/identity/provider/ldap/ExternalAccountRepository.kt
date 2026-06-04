@@ -18,6 +18,11 @@ import java.util.UUID
 /**
  * user_external_accounts + users 테이블 접근 Repository (FR-AU-02).
  *
+ * **공통 컴포넌트 (LDAP 전용 아님)**:
+ * LDAP 전용이 아니라 외부 IdP(Identity Provider) 프로비저닝 공통 컴포넌트다.
+ * SAML SSO(FR-AU-03)도 이 Repository 를 이동·복제 없이 그대로 import 해 재사용한다
+ * (게이트1 옵션 C — 이동 없이 재사용).
+ *
  * **트랜잭션 경계 (DATA.md §6)**:
  * [provisionUser] 는 users UPSERT + user_external_accounts UPSERT 를 단일 트랜잭션으로 처리한다.
  * 어느 한 쪽이 실패하면 양쪽 모두 rollback 된다 (부분 성공 금지).
