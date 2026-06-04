@@ -6,7 +6,7 @@
 // S1 — IdP 버튼 노출 + 클릭 시 SP-initiated 인증 경로로 네비게이션 시도.
 //   Given  /login 진입 (MSW 기본 핸들러가 Okta SSO 1개 반환)
 //   When   "Okta SSO 로 로그인" 버튼 클릭
-//   Then   /sso/saml2/authenticate/okta 로 네비게이션 시도 (page.route 인터셉트로 검증)
+//   Then   /saml2/authenticate/okta 로 네비게이션 시도 (page.route 인터셉트로 검증)
 //
 // S5 — IdP 0개이면 SAML 버튼 영역 미노출.
 //   Given  /login 진입 + addInitScript 로 localStorage '__bts_e2e_saml_no_idps' = 'true' 설정
@@ -27,12 +27,13 @@ test.describe('SAML SSO 로그인 진입 (FR-AU-03)', () => {
   // ───────────────────────────────────────────────────────────────────────────
   // S1 — IdP 버튼 노출 + 클릭 시 SP-initiated 인증 경로로 네비게이션 시도
   // ───────────────────────────────────────────────────────────────────────────
-  test('S1 IdP 버튼 노출 — "Okta SSO 로 로그인" 표시 + 클릭 시 /sso/saml2/authenticate/okta 네비게이션 시도', async ({ page }) => {
-    // Given. /sso/saml2/** 로 실제 HTTP 요청이 나가기 전에 인터셉트한다.
+  test('S1 IdP 버튼 노출 — "Okta SSO 로 로그인" 표시 + 클릭 시 /saml2/authenticate/okta 네비게이션 시도', async ({ page }) => {
+    // Given. /saml2/authenticate/** 로 실제 HTTP 요청이 나가기 전에 인터셉트한다.
     // SamlIdpButtons 는 window.location.assign 으로 풀 네비게이션을 일으키므로
     // page.route 로 경로를 잡아 응답 대신 navigated URL 을 검증한다.
+    // Spring Security 표준 SP-initiated 엔드포인트: /saml2/authenticate/{registrationId}
     let capturedSamlUrl: string | null = null
-    await page.route('**/sso/saml2/**', (route) => {
+    await page.route('**/saml2/authenticate/**', (route) => {
       capturedSamlUrl = route.request().url()
       // 실제 백엔드가 없으므로 빈 200 으로 이행 — 리다이렉트 루프 방지
       void route.fulfill({ status: 200, body: '' })
@@ -52,10 +53,10 @@ test.describe('SAML SSO 로그인 진입 (FR-AU-03)', () => {
     // When. IdP 버튼 클릭
     await idpButton.click()
 
-    // Then. /sso/saml2/authenticate/okta 경로로 네비게이션 시도가 발생했는지 확인
+    // Then. /saml2/authenticate/okta 경로로 네비게이션 시도가 발생했는지 확인
     // page.route 가 요청을 잡았으므로 capturedSamlUrl 이 설정되어 있어야 한다.
     expect(capturedSamlUrl).not.toBeNull()
-    expect(capturedSamlUrl).toMatch(/\/sso\/saml2\/authenticate\/okta$/)
+    expect(capturedSamlUrl).toMatch(/\/saml2\/authenticate\/okta$/)
   })
 
   // ───────────────────────────────────────────────────────────────────────────
