@@ -157,8 +157,9 @@ Maxi 결정 3건: 목록=단건전용, 고아행=읽기시 활성필터, 개수�
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/AppChangeComponentsRequest.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueChangeComponentsServiceTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationRequests.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/domain/IssueExceptions.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueChangeComponentsServiceTest.kt`]
 - depends-on: [1, 3]   # Issue 도메인 메서드 + repo 메서드
+- 리뷰정정(C3/C5): AppChangeComponentsRequest는 **별도 파일 아님** → 선례 `AppChangeAssigneeRequest`처럼 `IssueApplicationRequests.kt`에 추가. ComponentNotFoundException(422)은 `IssueExceptions.kt`(AssigneeNotFoundException 동형 위치)에 추가.
 
 **RED**.
 - 파일: `IssueChangeComponentsServiceTest.kt` (MockK 단위)
@@ -180,8 +181,8 @@ Maxi 결정 3건: 목록=단건전용, 고아행=읽기시 활성필터, 개수�
   - `updated = existing.assignComponents(request.componentIds)` (도메인 정규화).
   - `rows = repo.replaceComponents(key, existing.id.value, updated.componentIds, request.expectedVersion)`; 0이면 `IssueVersionConflictException`.
   - `log.info("issue_components_changed ...")`.
-  - `repo.findByKeyWithType(key)?.withSingleDetail()` 반환(componentIds 포함).
-- `ComponentNotFoundException`(422) 신설 — `AssigneeNotFoundException` 동형.
+  - 반환: `repo.findByKeyWithType(key)?.withSingleDetail()` — **`withSingleDetail`은 service의 private 확장함수**(`IssueApplicationService.kt`, repo 메서드 아님). 리뷰정정(N1/N2): componentIds 단건전용 노출의 구현 지점이 바로 여기 → `withSingleDetail` 안에서 `repo.findActiveComponentIdsByIssue(id)` 호출 후 `copy(componentIds = ...)` 추가(resolution `copy(resolution=...)` 선례 동형). `IssueResponse.from` 시그니처는 손대지 말 것 — `componentIds: List<UUID> = emptyList()` 필드 기본값만 두고 목록경로는 빈 목록 유지.
+- `ComponentNotFoundException`(422) 신설 — `IssueExceptions.kt`의 `AssigneeNotFoundException` 동형 위치.
 
 **REFACTOR**. KDoc, 검증 루프 추출.
 
@@ -193,8 +194,9 @@ Maxi 결정 3건: 목록=단건전용, 고아행=읽기시 활성필터, 개수�
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/ChangeComponentsRequest.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueResponse.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueComponentsControllerTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/ChangeComponentsRequest.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueResponse.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueExceptionHandler.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueComponentsControllerTest.kt`]
 - depends-on: [4]
+- 리뷰정정(C4): 422 매핑은 GlobalExceptionHandler 아님 → `IssueExceptionHandler.kt`(package-scoped @RestControllerAdvice)에 `@ExceptionHandler(ComponentNotFoundException)` 추가 + 같은 파일 `object IssueErrorCodes`에 `COMPONENT_NOT_FOUND` 상수. 이 클래스는 이미 `@Suppress("TooManyFunctions")`라 핸들러 추가 detekt 무탈.
 
 **RED**.
 - 파일: `IssueComponentsControllerTest.kt` (WebMvc 슬라이스 또는 MockMvc, service mock)
@@ -204,8 +206,8 @@ Maxi 결정 3건: 목록=단건전용, 고아행=읽기시 활성필터, 개수�
 **GREEN**.
 - `ChangeComponentsRequest(componentIds: List<UUID> = emptyList(), expectedVersion: Long?)` + `@field:NotNull expectedVersion`(담당자 ChangeAssigneeRequest 동형).
 - `IssueController.changeComponents(@PathVariable key, @Valid @RequestBody req)`: `service.changeComponents(actor, IssueKey(key), AppChangeComponentsRequest(...))`. actor는 `ActorId(SYSTEM_ACTOR_UUID)`(선례 동형, 실추출 후속).
-- `IssueResponse`에 `componentIds: List<UUID> = emptyList()` 추가. `from(...)` 단건 경로(`withSingleDetail`)에서 채움, 목록 경로는 빈 목록(Maxi 결정: 단건전용).
-- 예외→상태 매핑: `ComponentNotFoundException`→422(GlobalExceptionHandler 또는 기존 핸들러에 추가).
+- `IssueResponse`에 `componentIds: List<UUID> = emptyList()` 필드만 추가(from 파라미터화 금지, N2). 실제 주입은 service의 `withSingleDetail` copy(T4). 목록 경로는 빈 목록(Maxi 결정: 단건전용).
+- 예외→상태 매핑: `ComponentNotFoundException`→422 — `IssueExceptionHandler.kt`에 `@ExceptionHandler` + `IssueErrorCodes.COMPONENT_NOT_FOUND`.
 
 **REFACTOR**. KDoc, errorCode 상수.
 
@@ -233,7 +235,7 @@ Maxi 결정 3건: 목록=단건전용, 고아행=읽기시 활성필터, 개수�
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/api/issues.ts`, `apps/web/src/api/useChangeComponents.ts`, `apps/web/src/test/api/useChangeComponents.test.tsx`, `apps/web/src/mocks/handlers/issue-handlers.ts`]
+- files: [`apps/web/src/api/issues.ts`, `apps/web/src/api/useChangeComponents.ts`, `apps/web/src/test/api/useChangeComponents.test.tsx`, `apps/web/src/mocks/issue-handlers.ts`]
 - depends-on: []   # MSW 위에서 독립, 백엔드 컴파일 무관
 
 **RED**.
@@ -256,17 +258,19 @@ Maxi 결정 3건: 목록=단건전용, 고아행=읽기시 활성필터, 개수�
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/issue/IssueMetaPanel.tsx`, `apps/web/src/components/issue/ComponentMultiSelect.tsx`, `apps/web/src/components/issue/ComponentMultiSelect.test.tsx`, `apps/web/src/api/components.ts`]
-- depends-on: [7]   # useChangeComponents 사용
+- files: [`apps/web/src/routes/issues.$key.tsx`, `apps/web/src/components/issue/IssueMetaPanel.tsx`, `apps/web/src/components/issue/ComponentMultiSelect.tsx`, `apps/web/src/components/issue/ComponentMultiSelect.test.tsx`]
+- depends-on: [7]   # useChangeComponents 사용 (사용처는 route)
+- 리뷰정정(C2): **mutation 소유 = route 컴포넌트**. 선례 `issues.$key.tsx`가 `useChangeAssignee()` 호출하고 IssueMetaPanel/셀렉터는 순수 presentational(value+onChange+canEdit props만). 따라서 useChangeComponents 사용처 = `issues.$key.tsx`, ComponentMultiSelect/IssueMetaPanel은 props만(메모리 dialog-submiterror-ownership-dead-path 정신). components.ts는 fetchComponents 기존재라 수정 불요(issue.projectKey 전달만).
 
 **RED**.
 - 파일: `ComponentMultiSelect.test.tsx` (vitest + RTL)
-- 테스트: 현재 할당 컴포넌트 칩 렌더 / 체크·해제 → onChange(componentIds) / 권한 없으면 비활성(fail-closed) / 검색 필터.
+- 테스트: 현재 할당 컴포넌트 칩 렌더 / 체크·해제 → onChange(componentIds) / disabled(canEdit=false) 비활성(fail-closed) / 검색 필터. 순수 props 단위 테스트(mutation 무관).
 - 실패(예상): 컴포넌트 미존재.
 
 **GREEN**.
-- `ComponentMultiSelect.tsx`: 프로젝트 컴포넌트 목록(fetchComponents) 로드 + 다중선택(체크박스/칩). 순수 props(선택값+onChange+disabled). Zod fixture UUID v4 형식 주의(메모리 zod-v4-uuid-fixture-strictness).
-- `IssueMetaPanel.tsx`: 담당자 셀렉터 인근에 컴포넌트 섹션 추가. canEdit(권한)로 disabled 게이팅(FR-PM-03 ComponentList 게이팅 선례). 현재 componentIds → 이름 해소(컴포넌트 목록 매핑).
+- `ComponentMultiSelect.tsx`: 순수 presentational — props(value: UUID[], options: Component[], onChange, disabled). 다중선택(체크박스/칩). Zod fixture UUID v4 형식 주의(메모리 zod-v4-uuid-fixture-strictness).
+- `IssueMetaPanel.tsx`: 담당자 셀렉터 인근에 컴포넌트 섹션 추가. `componentIds`+`components`+`onComponentsChange`+`canEdit` props 받아 ComponentMultiSelect에 전달(IssueAssigneeSelect 선례 동형). 현재 componentIds → 이름 해소(컴포넌트 목록 매핑).
+- `issues.$key.tsx`: `useChangeComponents()` 호출 + 프로젝트 컴포넌트 목록(fetchComponents(issue.projectKey)) 로드 + `handleComponentsChange` 콜백 → IssueMetaPanel에 props 주입. canEdit=permissions.UPDATE 게이팅(FR-PM-03 게이팅 선례).
 - 텍스트 중복 버튼은 컨테이너 한정 셀렉터(메모리 playwright-getbyrole-exact / ui-pr-defer-e2e — 기존 이슈 상세 E2E 함께 실행).
 
 **REFACTOR**. 칩 컴포넌트 분리, i18n 문자열.
@@ -279,7 +283,7 @@ Maxi 결정 3건: 목록=단건전용, 고아행=읽기시 활성필터, 개수�
 
 **메타**.
 - agent: `qa-engineer`
-- files: [`apps/web/e2e/issue-components.spec.ts`, `apps/web/src/mocks/handlers/issue-handlers.ts`]
+- files: [`apps/web/e2e/issue-components.spec.ts`, `apps/web/src/mocks/issue-handlers.ts`]
 - depends-on: [8]
 
 **RED→GREEN**(E2E happy path).
@@ -300,4 +304,20 @@ Maxi 결정 3건: 목록=단건전용, 고아행=읽기시 활성필터, 개수�
 - 추가 검증: ktlintMainSourceSetCheck + detekt(issue-tracking baseline) + typecheck(tsconfig.app) + vitest + playwright.
 - 핵심 함정(메모리): jooq-init-codegen-mirror(T2), patch-merge-도메인-우회(T4), msw-mutation-stateful-refetch(T7/T9), issue-scope-global-prod-hard-deny(T6), subagent-ktlint-false-green(머지 전 controller 직접 검증).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### code-reviewer ground-truth 리뷰 (2026-06-04)
+
+메모리 bts-review-plan-autoplan-overkill에 따라 autoplan 4종 대신 code-reviewer가 실제 코드에 대조하는 집중 독립 리뷰.
+
+- **BLOCKER: 없음.** 설계 결정(저장모델·API·권한·검증) 모두 ground-truth 정합.
+- **CONCERN 5건(파일경로/배치, 모두 plan에 반영 완료)**:
+  - C1: MSW 핸들러 경로 `mocks/issue-handlers.ts`(handlers/ 하위 아님) → T7/T9 정정.
+  - C2: 프론트 mutation 소유=route(`issues.$key.tsx`), 셀렉터는 presentational → T8 정정(route 파일 추가).
+  - C3: ComponentNotFoundException은 `IssueExceptions.kt`에 → T4 files 추가.
+  - C4: 422 매핑은 `IssueExceptionHandler.kt`+IssueErrorCodes(GlobalHandler 아님) → T5 정정.
+  - C5: App DTO는 별도파일 아니라 `IssueApplicationRequests.kt`에 → T4 단순화.
+- **NIT 2건(반영)**: N1/N2 componentIds 단건전용 주입 지점 = service `withSingleDetail` copy(resolution 선례), IssueResponse.from 비파라미터화.
+- **견고 확인**: 권한 scope IssueScope.Issue(Global 함정 회피), V012 다음번호, init_codegen jOOQ 소스, ComponentRepository.findById(id,projectId) 소프트삭제 null, 도메인 우회 방지 패턴, 낙관락, MSW stateful, invalidate-only, canEdit 게이팅 — 모두 실제 코드와 일치.
+
+→ 5 CONCERN + 2 NIT 전부 plan 반영 완료. 머지 차단 요인 없음. 구현 착수 가능.
