@@ -1,7 +1,8 @@
-// 로그인 폼 컴포넌트 — RHF + Zod 검증 + shadcn/ui Form + provider 드롭다운
+// 로그인 폼 컴포넌트 — RHF + Zod 검증 + shadcn/ui Form + provider 드롭다운 + SAML IdP 버튼
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,6 +23,8 @@ import {
 } from '@/components/ui/select'
 import { useLoginMutation } from './useLoginMutation'
 import { loginStrings } from '@/i18n/ko'
+import { fetchSamlIdps } from '@/api/saml'
+import type { SamlIdp } from '@/api/saml'
 
 /**
  * onError 콜백에서 받은 에러를 사용자 노출 한국어 메시지로 변환한다.
@@ -50,6 +53,12 @@ interface LoginFormProps {
 export const LoginForm = ({ onSuccess }: LoginFormProps) => {
   const [serverError, setServerError] = useState<string | null>(null)
   const mutation = useLoginMutation()
+
+  const { data: samlIdps } = useQuery<SamlIdp[]>({
+    queryKey: ['saml', 'idps'],
+    queryFn: fetchSamlIdps,
+    staleTime: 60_000,
+  })
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginFormSchema),
@@ -158,6 +167,31 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
         <Button type="submit" className="w-full" disabled={mutation.isPending}>
           {loginStrings.submitButton}
         </Button>
+
+        {samlIdps !== undefined && samlIdps.length > 0 && (
+          <div className="space-y-2">
+            <div className="relative flex items-center py-1">
+              <div className="flex-grow border-t border-border" />
+              <span className="mx-3 flex-shrink text-xs text-muted-foreground">
+                {loginStrings.samlDividerText}
+              </span>
+              <div className="flex-grow border-t border-border" />
+            </div>
+            {samlIdps.map((idp) => (
+              <Button
+                key={idp.registrationId}
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  window.location.assign(`/sso/saml2/authenticate/${idp.registrationId}`)
+                }}
+              >
+                {loginStrings.samlLoginButtonLabel(idp.displayName)}
+              </Button>
+            ))}
+          </div>
+        )}
       </form>
     </Form>
   )
