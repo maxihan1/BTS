@@ -51,7 +51,7 @@ SDD 12.6 OrgAdmin/시스템 권한(12.3 ADMIN_SYSTEM 등)의 실제 구현. 현�
 - 전역 판정기(shared-kernel 포트)가 시스템 관리자 여부 판정 — FR-PM-04 등 후행이 소비
 - 신규 REST 엔드포인트 없음(토대만), 실 동작은 FR-PM-04·FR-AU-05
 
-산출물. V010 마이그레이션 · `SystemRole`/`SystemRoleAssignment` · Repository · `SystemPermissionResolver`(포트+구현) · `JwtIssuer` 클레임 확장 · 부트스트랩 `ApplicationRunner` · 통합테스트.
+산출물. V012 마이그레이션 · `SystemRole`/`SystemRoleAssignment` · Repository · `SystemPermissionResolver`(포트+구현) · `JwtIssuer` 클레임 확장 · 부트스트랩 `ApplicationRunner` · 통합테스트.
 
 ## Brainstorming Check
 
@@ -68,7 +68,7 @@ SDD 12.6 OrgAdmin/시스템 권한(12.3 ADMIN_SYSTEM 등)의 실제 구현. 현�
 
 **메타**.
 - agent: `db-engineer` (마이그레이션) — 도메인 타입은 security-engineer 협업, 단일 task로 묶음
-- files: [`backend/modules/identity-access/src/main/resources/db/migration/V010__system_role_assignments.sql`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/systemrole/SystemRole.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/systemrole/SystemRoleAssignment.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/systemrole/SystemRoleTest.kt`]
+- files: [`backend/modules/identity-access/src/main/resources/db/migration/V012__system_role_assignments.sql`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/systemrole/SystemRole.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/systemrole/SystemRoleAssignment.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/systemrole/SystemRoleTest.kt`]
 - depends-on: []
 
 **RED**:
@@ -78,7 +78,7 @@ SDD 12.6 OrgAdmin/시스템 권한(12.3 ADMIN_SYSTEM 등)의 실제 구현. 현�
 **GREEN**:
 - `SystemRole` enum (`SYSTEM_ADMIN` 단일) + `from(raw)` (ProjectRole.from 선례).
 - `SystemRoleAssignment`(userId, role, createdAt) 값 객체.
-- `V010__system_role_assignments.sql` — 테이블(id/user_id FK CASCADE/role CHECK('SYSTEM_ADMIN')/created_at, UNIQUE(user_id, role)), user_id 인덱스.
+- `V012__system_role_assignments.sql` — 테이블(id/user_id FK CASCADE/role CHECK('SYSTEM_ADMIN')/created_at, UNIQUE(user_id, role)), user_id 인덱스.
 
 **REFACTOR**: KDoc(한 줄 한국어 헤더), ProjectRole과의 축 차이 주석.
 
@@ -191,7 +191,7 @@ SDD 12.6 OrgAdmin/시스템 권한(12.3 ADMIN_SYSTEM 등)의 실제 구현. 현�
 - TDD 강제: yes (test 커밋이 feat보다 먼저, controller가 git log 검증)
 - 추가 검증: ktlintMain+TestSourceSetCheck + detekt (sub-agent "통과" 보고 불신, controller 직접 실행 — 메모리 `subagent-ktlint-false-green`)
 - 프론트/E2E: 없음 (인프라만, D6/D7 부재)
-- 머지 전: detekt baseline 결선 확인, V번호 충돌 재확인(현재 최신 V009 → V010)
+- 머지 전: detekt baseline 결선 확인, V번호 충돌 재확인(현재 최신 V009 → V012)
 
 ## 리뷰 결과
 
@@ -203,8 +203,8 @@ SDD 12.6 OrgAdmin/시스템 권한(12.3 ADMIN_SYSTEM 등)의 실제 구현. 현�
 - **PAT 전역역할 제외(EC7)** — `JwtIssuer.issue()` 호출부는 `AuthController`(L134)·`RefreshTokenService`(L119) 2곳뿐. `PersonalAccessTokenService`는 JwtIssuer 미호출(자체 PAT 발급). `roles` 기본값 `emptyList`로 PAT 자동 제외. **시스템 관리 권한 PAT 우회 불가**.
 - **전역 판정기 프로파일 무관 단일 빈** — DB 조회라 `AlwaysAllow` stub 불필요 → 메모리 `profile-scoped-bean-boot-failure`(prod 한정 빈이 non-prod 부팅 깸) 원천 회피. 기존 `IssuePermissionResolver`의 @Profile 분리와 다르지만, 이유(DB 직접 판정 vs Issue scope 해석)가 정당.
 - **부트스트랩 race-free** — `ON CONFLICT (user_id, role) DO NOTHING` + `existsByRole` 멱등. 단일 호스트(docker compose)라 인스턴스 1개. 탈취된 설정으로도 보유자 존재 시 skip(2번째 admin 강제 생성 불가).
-- **ApplicationRunner ↔ Flyway 순서** — Spring Boot는 `FlywayMigrationInitializer`(DataSource 초기화 단계)를 `ApplicationRunner`보다 먼저 실행 → V010 테이블 보장. BTS 첫 ApplicationRunner지만 표준 패턴.
-- **V번호** — 최신 V009 확인, V010 충돌 없음(구현 직전 동시 브랜치 재확인은 Plan 메타에 명시).
+- **ApplicationRunner ↔ Flyway 순서** — Spring Boot는 `FlywayMigrationInitializer`(DataSource 초기화 단계)를 `ApplicationRunner`보다 먼저 실행 → V012 테이블 보장. BTS 첫 ApplicationRunner지만 표준 패턴.
+- **V번호** — 착수 시 최신 V009 → V010 배정했으나, 머지 시점 main이 FR-AU-03(V010 saml_idp_configs)·FR-AU-04(V011 oidc_provider_configs)를 먼저 머지해 **V010 충돌 발생**(Flyway "more than one migration"). 머지 후 **V012로 재배정**해 해소. 동시 진행 브랜치가 같은 V번호를 소비하는 전형적 충돌(DATA.md §4.1).
 - **TDD 형식** — 6 task 전부 RED/GREEN/REFACTOR + 메타(agent/files/depends-on) 완비. 의존 그래프 1→2→{3,4,5}→6 순환 없음.
 
 **⚠️ 주의 (권장, 반영함)**

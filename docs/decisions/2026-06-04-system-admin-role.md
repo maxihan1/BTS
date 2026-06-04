@@ -81,7 +81,7 @@ SDD 12.6의 `OrgAdmin`을 `SYSTEM_ADMIN`으로 명명해 도입한다(Jira "Syst
 
 ## 결과 / 트레이드오프
 
-- **산출물**: `system_role_assignments` 마이그레이션(V010) + `SystemRole` enum + Repository + 전역 판정기 포트(shared-kernel) + identity-access 판정기 구현 + `JwtIssuer` 클레임 확장 + 부트스트랩 `ApplicationRunner` + 통합테스트.
+- **산출물**: `system_role_assignments` 마이그레이션(V012) + `SystemRole` enum + Repository + 전역 판정기 포트(shared-kernel) + identity-access 판정기 구현 + `JwtIssuer` 클레임 확장 + 부트스트랩 `ApplicationRunner` + 통합테스트.
 - **장점**: FR-PM-04·FR-AU-05의 공통 선행 해소. 프로젝트 권한과 독립된 깨끗한 전역 축. 미래 역할/권한 확장 여지(행 추가).
 - **비용**: JWT 클레임 stale(15분). 전역 판정기가 본 PR에서 실 엔드포인트 소비자 없이 통합테스트로만 검증됨(FR-PM-04에서 실사용).
 - **무효화**: FR-PM-01 ADR이 stale 폐기한 SDD 12.6 8종 역할 중 OrgAdmin을 `SYSTEM_ADMIN` 단일 역할로 부분 복원(8종 전체 복원 아님).

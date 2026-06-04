@@ -325,7 +325,7 @@
 
 - [ ] D1. 도메인 — `SystemRole`(SYSTEM_ADMIN 단일), `ProjectRole`과 분리, 전역 판정기 포트 (책임. security-engineer)
 - [ ] D2. 명세 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `system_role_assignments` 테이블 (V010, project_id 없음) (책임. db-engineer)
+- [ ] D3. 데이터 모델 — `system_role_assignments` 테이블 (V012, project_id 없음) (책임. db-engineer)
 - [ ] D4. 백엔드 — Repository + 전역 판정기(shared-kernel 포트 + identity 구현) + `JwtIssuer` 전역 역할 클레임 + 설정값 기반 멱등 부트스트랩 `ApplicationRunner` (책임. security-engineer)
 - [ ] D5. 백엔드 테스트 — 통합테스트(@ActiveProfiles prod): SYSTEM_ADMIN→전역 판정 true, 일반 사용자→false, 부트스트랩 멱등성 (책임. security-engineer)
 

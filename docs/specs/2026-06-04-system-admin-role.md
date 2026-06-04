@@ -60,7 +60,7 @@ interface SystemPermissionResolver {
 
 ## 데이터 모델 변경
 
-- **신규 마이그레이션 V010** (identity-access) — `system_role_assignments` 생성. V번호는 구현 직전 동시 진행 브랜치와 충돌 재확인(현재 최신 V009).
+- **신규 마이그레이션 V012** (identity-access) — `system_role_assignments` 생성. V번호는 구현 직전 동시 진행 브랜치와 충돌 재확인(현재 최신 V009).
 - 컬럼 추가가 아닌 새 테이블이므로 jOOQ 미러(`init_codegen.sql`) 무관 — identity-access는 jOOQ 미사용(JdbcTemplate). (메모리 `jooq-init-codegen-mirror`는 issue-tracking 한정.)
 - 시드 INSERT 없음 — 부트스트랩이 런타임에 처리(마이그레이션 고정 INSERT 기각, ADR D5).
 
@@ -87,7 +87,7 @@ interface SystemPermissionResolver {
 
 ## 측정 가능한 완료 기준
 
-- [ ] V010 마이그레이션 적용 + Testcontainers 통합테스트 그린
+- [ ] V012 마이그레이션 적용 + Testcontainers 통합테스트 그린
 - [ ] 통합테스트(@ActiveProfiles "prod"): SYSTEM_ADMIN 사용자 → 판정기 `true`, 일반 사용자 → `false`
 - [ ] 부트스트랩 테스트: S1(승격) + S2(멱등 skip) + EC2(대상 부재 경고)
 - [ ] JWT 발급 테스트: SYSTEM_ADMIN 토큰에 `roles=["SYSTEM_ADMIN"]` 클레임 + `ROLE_SYSTEM_ADMIN` authority, 일반 사용자 부재
