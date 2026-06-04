@@ -2,7 +2,6 @@
 
 package com.bts.issue.adapter.inbound.rest
 
-import com.bts.issue.application.CloneIssueRequest as AppCloneIssueRequest
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
@@ -40,6 +39,7 @@ import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import java.time.Instant
 import java.util.UUID
+import com.bts.issue.application.CloneIssueRequest as AppCloneIssueRequest
 
 /**
  * IssueController POST /api/v1/issues/{key}/clone MockMvc 슬라이스 테스트.
@@ -125,7 +125,7 @@ class IssueControllerCloneTest {
     fun setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
         clearMocks(issueApplicationService, answers = false)
-        every { issueApplicationService.cloneIssue(any(), any(), any()) } returns clonedIssue
+        every { issueApplicationService.cloneIssue(any(), sourceKey, any()) } returns clonedIssue
         every { issueApplicationService.findByKey(any(), cloneKey) } returns cloneResponse
     }
 
@@ -159,7 +159,7 @@ class IssueControllerCloneTest {
     @Test
     fun `POST clone — includeAssignee=false 가 서비스에 전달된다`() {
         val reqSlot: CapturingSlot<AppCloneIssueRequest> = slot()
-        every { issueApplicationService.cloneIssue(any(), any(), capture(reqSlot)) } returns clonedIssue
+        every { issueApplicationService.cloneIssue(any(), sourceKey, capture(reqSlot)) } returns clonedIssue
 
         mockMvc.perform(
             post("/api/v1/issues/BTS-1/clone")
@@ -176,7 +176,7 @@ class IssueControllerCloneTest {
     @Test
     fun `POST clone — summaryOverride 가 서비스에 전달된다`() {
         val reqSlot: CapturingSlot<AppCloneIssueRequest> = slot()
-        every { issueApplicationService.cloneIssue(any(), any(), capture(reqSlot)) } returns clonedIssue
+        every { issueApplicationService.cloneIssue(any(), sourceKey, capture(reqSlot)) } returns clonedIssue
 
         mockMvc.perform(
             post("/api/v1/issues/BTS-1/clone")
@@ -192,7 +192,7 @@ class IssueControllerCloneTest {
 
     @Test
     fun `POST clone — 원본 미존재면 404 ISSUE_NOT_FOUND`() {
-        every { issueApplicationService.cloneIssue(any(), any(), any()) } throws IssueNotFoundException(sourceKey)
+        every { issueApplicationService.cloneIssue(any(), sourceKey, any()) } throws IssueNotFoundException(sourceKey)
 
         mockMvc.perform(
             post("/api/v1/issues/BTS-1/clone")
@@ -208,7 +208,7 @@ class IssueControllerCloneTest {
     @Test
     fun `POST clone — 권한 없으면 403 ACCESS_DENIED`() {
         every {
-            issueApplicationService.cloneIssue(any(), any(), any())
+            issueApplicationService.cloneIssue(any(), sourceKey, any())
         } throws IssueAccessDeniedException(actorId, IssuePermission.CREATE, IssueScope.Project("BTS"))
 
         mockMvc.perform(

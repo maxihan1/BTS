@@ -25,6 +25,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.mockk.Called
 import io.mockk.CapturingSlot
 import io.mockk.clearMocks
 import io.mockk.every
@@ -48,6 +49,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
 
     val repo = mockk<IssueRepository>()
     val issueTypeRepository = mockk<IssueTypeRepository>()
+    val resolutionRepository = mockk<com.bts.issue.resolution.repository.ResolutionRepository>(relaxed = true)
     val eventPublisher = mockk<IssueEventPublisher>()
     val permissionResolver = mockk<IssuePermissionResolver>()
     val workflowPort = mockk<WorkflowTransitionPort>()
@@ -59,6 +61,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
         IssueApplicationService(
             repo = repo,
             issueTypeRepository = issueTypeRepository,
+            resolutionRepository = resolutionRepository,
             eventPublisher = eventPublisher,
             permissionResolver = permissionResolver,
             workflowPort = workflowPort,
@@ -201,8 +204,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
                 sut.cloneIssue(actor, sourceKey, CloneIssueRequest())
 
                 slot.captured.typeId shouldBe sourceTypeId
-                verify(exactly = 0) { issueTypeRepository.findById(any()) }
-                verify(exactly = 0) { issueTypeRepository.findByKey(any()) }
+                verify { issueTypeRepository wasNot Called }
             }
 
             it("권한체크 → findByKey → incrementKeySequence → insert → publish 순서로 호출한다") {
@@ -255,7 +257,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
                 shouldThrow<IssueAccessDeniedException> {
                     sut.cloneIssue(actor, sourceKey, CloneIssueRequest())
                 }
-                verify(exactly = 0) { repo.findByKey(any()) }
+                verify(exactly = 0) { repo.findByKey(sourceKey) }
                 verify(exactly = 0) { repo.incrementKeySequence(any()) }
                 verify(exactly = 0) { repo.insert(any()) }
             }

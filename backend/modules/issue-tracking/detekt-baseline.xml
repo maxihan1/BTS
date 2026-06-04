@@ -4,9 +4,11 @@
   <CurrentIssues>
     <ID>MagicNumber:Issue.kt$255</ID>
     <ID>MagicNumber:IssueApplicationService.kt$IssueApplicationService$100</ID>
-    <ID>MaxLineLength:IssueApplicationServiceSoftDeleteTest.kt$IssueApplicationServiceSoftDeleteTest$permissionResolver.hasPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Issue(issueKey.value))</ID>
-    <ID>MaxLineLength:IssueApplicationServiceTransitionTest.kt$IssueApplicationServiceTransitionTest$permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))</ID>
+    <ID>MaxLineLength:IssueApplicationServiceCloneTest.kt$IssueApplicationServiceCloneTest$permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey))</ID>
+    <ID>MaxLineLength:IssueApplicationServiceCloneTest.kt$IssueApplicationServiceCloneTest$permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(sourceKey.value))</ID>
+    <ID>MaxLineLength:IssueCloneIntegrationTest.kt$IssueCloneIntegrationTest$if (assigneeId != null) stmt.setObject(11, UUID.fromString(assigneeId)) else stmt.setNull(11, java.sql.Types.OTHER)</ID>
     <ID>NestedBlockDepth:V007MigrationIntegrationTest.kt$V007MigrationIntegrationTest$private fun columnInfo( tableName: String, columnName: String, ): Pair&lt;String?, String?&gt;</ID>
     <ID>ThrowsCount:IssueApplicationService.kt$IssueApplicationService$fun updateIssue( actor: ActorId, key: IssueKey, request: UpdateIssueRequest, ): IssueResponse</ID>
+    <ID>TooManyFunctions:IssueController.kt$IssueController</ID>
   </CurrentIssues>
 </SmellBaseline>
