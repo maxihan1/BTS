@@ -52,10 +52,11 @@ class PermissionSchemaMigrationTest {
 
     @Test
     fun `기본 스킴과 매트릭스가 시드된다`() {
-        // role_permissions × permission_schemes(is_default=TRUE) JOIN 결과 7행 기대
-        // PROJECT_ADMIN: CREATE_ISSUE, EDIT_ISSUE, DELETE_ISSUE, MANAGE_COMPONENTS, MANAGE_VERSIONS (5행)
-        // MEMBER:        CREATE_ISSUE, EDIT_ISSUE                                                   (2행)
+        // role_permissions × permission_schemes(is_default=TRUE) JOIN 결과 8행 기대
+        // PROJECT_ADMIN: CREATE_ISSUE, EDIT_ISSUE, DELETE_ISSUE, MANAGE_COMPONENTS, MANAGE_VERSIONS, MANAGE_WORKFLOW (6행)
+        // MEMBER:        CREATE_ISSUE, EDIT_ISSUE                                                                    (2행)
         // (V009 — FR-PM-03이 PROJECT_ADMIN에 MANAGE_COMPONENTS/MANAGE_VERSIONS 2행 추가)
+        // (V013 — FR-PM-04가 PROJECT_ADMIN에 MANAGE_WORKFLOW 1행 추가)
         val count =
             jdbc.queryForObject(
                 """
@@ -67,7 +68,27 @@ class PermissionSchemaMigrationTest {
                 mapOf<String, Any>(),
                 Int::class.java,
             )
-        assertThat(count).isEqualTo(7)
+        assertThat(count).isEqualTo(8)
+    }
+
+    @Test
+    fun `기본 스킴 PROJECT_ADMIN이 MANAGE_WORKFLOW를 보유한다`() {
+        // V013 — FR-PM-04: 워크플로우 스킴 배정(ASSIGN_SCHEME/Project) 권한 판정의 정본 코드.
+        // 기본 스킴(00000000-…-001) PROJECT_ADMIN 역할에 MANAGE_WORKFLOW(SDD 12.3) 1행이 시드되어야 한다.
+        val count =
+            jdbc.queryForObject(
+                """
+            SELECT count(*)
+            FROM role_permissions rp
+            JOIN permission_schemes ps ON rp.scheme_id = ps.id
+            WHERE ps.is_default = TRUE
+              AND rp.role = 'PROJECT_ADMIN'
+              AND rp.permission_code = 'MANAGE_WORKFLOW'
+            """,
+                mapOf<String, Any>(),
+                Int::class.java,
+            )
+        assertThat(count).isEqualTo(1)
     }
 
     @Test
