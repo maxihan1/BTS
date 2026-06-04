@@ -47,8 +47,7 @@ class IssueLabelAutocompleteRepositoryTest : IssueTestcontainersBase() {
         }
     }
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
+    private fun requireTaskTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
 
     // ── seed helpers ─────────────────────────────────────────────────────────────
 
@@ -179,7 +178,7 @@ class IssueLabelAutocompleteRepositoryTest : IssueTestcontainersBase() {
      * Then   빈 리스트 반환 — "b%"가 와일드카드가 아닌 리터럴로 처리됨
      */
     @Test
-    fun `S4 - prefix b% - 와일드카드 이스케이프로 리터럴 매칭, 결과 없음`() {
+    fun `S4 - prefix b-percent - 와일드카드 이스케이프로 리터럴 매칭, 결과 없음`() {
         seedData()
 
         val result = repository.findLabelsByPrefix("b%", 10)
