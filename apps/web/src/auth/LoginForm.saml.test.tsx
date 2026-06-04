@@ -89,7 +89,7 @@ describe('LoginForm — SAML IdP 버튼', () => {
     await user.click(btn)
 
     await waitFor(() => {
-      expect(assignMock).toHaveBeenCalledWith('/sso/saml2/authenticate/okta')
+      expect(assignMock).toHaveBeenCalledWith('/saml2/authenticate/okta')
     })
   })
 })
