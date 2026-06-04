@@ -9,23 +9,23 @@ import java.time.Instant
 import java.util.UUID
 
 class IssueComponentsTest {
-
     private val c1 = UUID.fromString("00000000-0000-4000-8000-000000000001")
     private val c2 = UUID.fromString("00000000-0000-4000-8000-000000000002")
 
-    private fun baseIssue(): Issue = Issue(
-        id = IssueId(UUID.fromString("00000000-0000-4000-8000-000000000010")),
-        key = IssueKey.of("PROJ", 1L),
-        projectId = UUID.fromString("00000000-0000-4000-8000-000000000020"),
-        summary = "test issue",
-        reporterId = ActorId(UUID.fromString("00000000-0000-4000-8000-000000000030")),
-        currentStateKey = "open",
-        version = 1L,
-        deletedAt = null,
-        createdAt = Instant.EPOCH,
-        updatedAt = Instant.EPOCH,
-        typeId = IssueTypeId(1L),
-    )
+    private fun baseIssue(): Issue =
+        Issue(
+            id = IssueId(UUID.fromString("00000000-0000-4000-8000-000000000010")),
+            key = IssueKey.of("PROJ", 1L),
+            projectId = UUID.fromString("00000000-0000-4000-8000-000000000020"),
+            summary = "test issue",
+            reporterId = ActorId(UUID.fromString("00000000-0000-4000-8000-000000000030")),
+            currentStateKey = "open",
+            version = 1L,
+            deletedAt = null,
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+            typeId = IssueTypeId(1L),
+        )
 
     @Test
     fun `기본값은 빈 목록`() {
@@ -51,9 +51,10 @@ class IssueComponentsTest {
 
     @Test
     fun `clearComponents 빈 목록으로 비움`() {
-        val issue = baseIssue()
-            .assignComponents(listOf(c1, c2))
-            .clearComponents()
+        val issue =
+            baseIssue()
+                .assignComponents(listOf(c1, c2))
+                .clearComponents()
         assertThat(issue.componentIds).isEmpty()
     }
 }
