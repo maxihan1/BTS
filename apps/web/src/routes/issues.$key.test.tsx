@@ -18,6 +18,40 @@ vi.mock('@/hooks/use-issue-permissions', () => ({
 }))
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
 
+// useLabels를 mock — LabelAutocompleteInput 내부 react-query 호출 차단 (IssueMetaPanel.test.tsx와 동일 방식)
+// 기본값: 빈 후보 배열 — 라벨 저장 테스트(T6-6)는 free-form 입력을 사용하므로 후보 불필요
+vi.mock('@/hooks/use-labels', () => ({
+  useLabels: vi.fn().mockReturnValue({
+    data: [],
+    isLoading: false,
+    isError: false,
+    isPending: false,
+    isSuccess: true,
+    error: null,
+    status: 'success',
+    fetchStatus: 'idle',
+    dataUpdatedAt: 0,
+    errorUpdatedAt: 0,
+    failureCount: 0,
+    failureReason: null,
+    isFetched: true,
+    isFetchedAfterMount: true,
+    isFetching: false,
+    isInitialLoading: false,
+    isLoadingError: false,
+    isPlaceholderData: false,
+    isRefetchError: false,
+    isRefetching: false,
+    isStale: false,
+    refetch: vi.fn(),
+  }),
+}))
+
+// useDebounce를 mock — debounce 없이 즉시 반환해 테스트 단순화 (IssueMetaPanel.test.tsx와 동일 방식)
+vi.mock('@/hooks/use-debounce', () => ({
+  useDebounce: (value: string) => value,
+}))
+
 /** 기존 테스트 전체에서 모든 권한 true — 기존 테스트는 권한 제어를 검증하지 않는다 */
 beforeEach(() => {
   vi.mocked(useIssuePermissions).mockReturnValue({
@@ -1130,7 +1164,8 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
     expect(labelsSection).not.toBeNull()
     if (labelsSection === null) return
 
-    const labelInput = within(labelsSection as HTMLElement).getByRole('textbox', { name: issueDetailStrings.labelAddPlaceholder })
+    // LabelAutocompleteInput은 cmdk CommandPrimitive.Input — data-testid로 접근 (IssueMetaPanel.test.tsx와 동일 방식)
+    const labelInput = within(labelsSection as HTMLElement).getByTestId('label-autocomplete-input')
     await user.click(labelInput)
     await user.type(labelInput, 'frontend{Enter}')
 
