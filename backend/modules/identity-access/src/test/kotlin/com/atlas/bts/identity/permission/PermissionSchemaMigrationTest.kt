@@ -53,8 +53,9 @@ class PermissionSchemaMigrationTest {
     @Test
     fun `기본 스킴과 매트릭스가 시드된다`() {
         // role_permissions × permission_schemes(is_default=TRUE) JOIN 결과 8행 기대
-        // PROJECT_ADMIN: CREATE_ISSUE, EDIT_ISSUE, DELETE_ISSUE, MANAGE_COMPONENTS, MANAGE_VERSIONS, MANAGE_WORKFLOW (6행)
-        // MEMBER:        CREATE_ISSUE, EDIT_ISSUE                                                                    (2행)
+        // PROJECT_ADMIN(6행): CREATE_ISSUE, EDIT_ISSUE, DELETE_ISSUE,
+        //   MANAGE_COMPONENTS, MANAGE_VERSIONS, MANAGE_WORKFLOW
+        // MEMBER(2행): CREATE_ISSUE, EDIT_ISSUE
         // (V009 — FR-PM-03이 PROJECT_ADMIN에 MANAGE_COMPONENTS/MANAGE_VERSIONS 2행 추가)
         // (V013 — FR-PM-04가 PROJECT_ADMIN에 MANAGE_WORKFLOW 1행 추가)
         val count =
