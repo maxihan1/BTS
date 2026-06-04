@@ -61,13 +61,15 @@
 
 **우선순위**. 필수 | **선행**. §2.1 | **Plan slug**. `identity/saml`
 
-- [ ] D1. 도메인 (책임. security-engineer)
-- [ ] D2. 명세 — IdP-initiated + SP-initiated 흐름 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `saml_idp_configs` (책임. db-engineer)
-- [ ] D4. 백엔드 — `spring-security-saml2-service-provider`. `/sso/saml2/...` (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 — Testcontainers Keycloak SAML 모드 (책임. security-engineer)
-- [ ] D6. 프론트 UI — IdP 선택 + SP-initiated 진입점 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. security-engineer) — PR #76 (SamlIdpConfig + Credential.SamlAssertion + SPI thin SamlProvider, ADR docs/decisions/2026-06-04-saml-sso-provider.md)
+- [x] D2. 명세 — **SP-initiated 흐름** (책임. security-engineer) — PR #76 (IdP-initiated는 후속 FR로 축소, 게이트2 결정)
+- [x] D3. 데이터 모델 — `saml_idp_configs`(authn_provider_id FK + SAML authn_providers seed) (책임. db-engineer) — PR #76 (V010)
+- [x] D4. 백엔드 — `spring-security-saml2-service-provider`. 표준 `/saml2/authenticate/{registrationId}` + ACS `/login/saml2/sso/{registrationId}`, SAML 전용 @Order(1) SecurityFilterChain(IF_REQUIRED, STATELESS 분리), JIT 프로비저닝(AutoProvisionService 재사용), wantAuthnRequestsSigned(false) (책임. security-engineer) — PR #76
+- [x] D5. 백엔드 테스트 — Testcontainers Keycloak SAML 모드 (책임. security-engineer) — PR #76 (SpInitiatedEntryTest 실 Keycloak 302+SAMLRequest, JIT 멱등, 서명검증)
+- [x] D6. 프론트 UI — IdP 선택 + SP-initiated 진입점 (책임. frontend-engineer) — PR #76 (활성 IdP 동적 버튼 SamlIdpButtons, GET /api/v1/auth/saml/idps)
+- [x] D7. E2E (책임. qa-engineer) — PR #76 (login-saml.spec S1/S5, 기존 login E2E 회귀 0)
+
+> **FR-AU-03 SP-initiated 완료 (2026-06-04, PR #76)**. SP-initiated SAML SSO end-to-end 완성(실 Keycloak Testcontainers 302 검증). **IdP-initiated(Unsolicited Assertion + replay 방어)는 후속 FR로 분리**(게이트2 Maxi 결정 — 복잡·보안위험). SP가 IdP 서명 요구 시 SP 키 구성도 후속(현재 wantAuthnRequestsSigned=false). code-reviewer ground-truth가 plan 환각 3건(Credential.SamlAssertion 부재 등) + PR BLOCKER 2건(경로 불일치/IdP-initiated 갭) 적발·해소.
 
 ### §2.4 FR-AU-04 — OIDC SSO
 
