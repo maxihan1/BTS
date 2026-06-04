@@ -68,6 +68,29 @@ sealed interface Credential {
     ) : Credential
 
     /**
+     * OIDC(OpenID Connect) 토큰 자격증명 (FR-AU-04 OIDC SSO).
+     *
+     * **검증 주체**:
+     * OIDC ID Token 의 서명·issuer·audience·만료 검증과 인증 흐름 자체는
+     * Spring Security OAuth2/OIDC 필터가 수행한다. 이 VO 는 검증 책임을 지지 않으며,
+     * 필터가 검증을 완료한 뒤 추출한 식별 정보를 BTS SPI 계층으로 표현하기 위한 최소 형태일 뿐이다.
+     * 따라서 일반 로그인(POST /login)의 [UsernamePassword]/[Pat] 와 달리
+     * [com.atlas.bts.identity.spi.AuthenticationProvider.authenticate] 진입점으로 흐르지 않는 dead-path 다.
+     *
+     * **PII 주의 (DEVELOPMENT.md §1.2)**:
+     * [sub] 와 [claims] 값은 PII 를 포함할 수 있다. 로그에 직접 출력 금지.
+     *
+     * @param sub OIDC ID Token 의 subject 클레임 — user_external_accounts.external_subject 로 매핑
+     * @param registrationId ClientRegistration 식별자 — authn_providers.id 해소에 사용
+     * @param claims IdP 가 보낸 OIDC 클레임 맵 (email/name 추출용)
+     */
+    data class OidcToken(
+        val sub: String,
+        val registrationId: String,
+        val claims: Map<String, Any>,
+    ) : Credential
+
+    /**
      * LDAP/AD bind 자격증명 (FR-AU-02).
      *
      * Contract: 인증 완료 후 반드시 [password] 배열을 즉시 초기화해야 한다.

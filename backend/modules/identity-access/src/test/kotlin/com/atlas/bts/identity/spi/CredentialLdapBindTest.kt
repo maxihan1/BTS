@@ -48,6 +48,7 @@ class CredentialLdapBindTest {
                 is Credential.Pat -> "pat"
                 is Credential.LdapBind -> "ldap-bind"
                 is Credential.SamlAssertion -> "saml-assertion"
+                is Credential.OidcToken -> "oidc-token"
             }
         assertThat(result).isEqualTo("ldap-bind")
     }
