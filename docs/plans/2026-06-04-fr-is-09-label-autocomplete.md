@@ -56,7 +56,7 @@ FR-IS-09 라벨 자동완성 (issue-tracking BC). spec 위치: `docs/plan/produc
 
 **RED**: Testcontainers 통합테스트. 활성 이슈 여러 개(라벨 분포: "bug"×3, "backend"×1, "billing"×1) + 삭제 이슈 1개("deleted-only" 라벨) seed 후 `findLabelsByPrefix("b", 10)` → `["bug","backend","billing"]`(빈도순). 삭제 이슈 라벨 제외 단언. `findLabelsByPrefix("", 10)` → 전체 top-N. `findLabelsByPrefix("b%", 10)` → ILIKE 이스케이프로 0건(리터럴 "b%" 라벨 없음). 메서드 미존재로 컴파일 실패.
 
-**GREEN**: `findLabelsByPrefix(prefix: String, limit: Int): List<String>`. jOOQ raw SQL 또는 DSL로 `SELECT label, COUNT(*) FROM (SELECT UNNEST(labels) label FROM issues WHERE deleted_at IS NULL) GROUP BY label [WHERE label ILIKE :p || '%' ESCAPE '\\'] ORDER BY COUNT(*) DESC, label ASC LIMIT :limit`. prefix 빈 문자열이면 ILIKE 절 생략. 와일드카드(`%`/`_`/`\`) 이스케이프 헬퍼.
+**GREEN**: `findLabelsByPrefix(prefix: String, limit: Int): List<String>`. **raw SQL 디폴트**(C3, 선례 `BulkOperationWorker.kt:88` `dsl.fetch(sql, ?, ?)`) — `SELECT label, COUNT(DISTINCT id) AS freq FROM (SELECT id, UNNEST(labels) label FROM issues WHERE deleted_at IS NULL) t [WHERE label ILIKE ? ESCAPE '\\'] GROUP BY label ORDER BY freq DESC, label ASC LIMIT ?`. **prefix는 반드시 바인드 파라미터**(문자열 concat 금지 — injection). 앱단에서 `%`/`_`/`\` 이스케이프 후 `escaped || '%'`를 바인드. prefix 빈 문자열이면 ILIKE 절 생략 분기. cartesian 위험 없음(JOIN 아닌 unnest fan-out).
 
 **REFACTOR**: SQL 상수/이스케이프 헬퍼 추출 + KDoc(왜 GIN 미활용·집계 방식인지).
 
@@ -69,9 +69,9 @@ FR-IS-09 라벨 자동완성 (issue-tracking BC). spec 위치: `docs/plan/produc
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/LabelApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/LabelApplicationServiceTest.kt`]
 - depends-on: [1]
 
-**RED**: MockK 단위테스트. `completeLabels(actor, "  bac ")` → trim 후 repo.findLabelsByPrefix("bac",10) 위임 검증. `completeLabels(actor, null/""/"   ")` → repo.findLabelsByPrefix("",10)(전체). 권한 없으면(resolver false) `IssueAccessDeniedException`. `assertPermission(VIEW, IssueScope.Global)` 호출 검증.
+**RED**: MockK 단위테스트. `completeLabels(actor, "  bac ")` → trim 후 repo.findLabelsByPrefix("bac",10) 위임 검증. `completeLabels(actor, null/""/"   ")` → repo.findLabelsByPrefix("",10)(전체). 권한 없으면(resolver.hasPermission=false) `IssueAccessDeniedException`. resolver.hasPermission(actor, VIEW, IssueScope.Global) 호출 검증.
 
-**GREEN**: `@Service` `LabelApplicationService(repo: IssueRepository, permissionResolver: IssuePermissionResolver)`. `@Transactional(readOnly=true)`. q trim/null→빈문자열 정규화 후 권한 가드 → repo 위임. LIMIT 상수=10.
+**GREEN**: `@Service` `LabelApplicationService(repo: IssueRepository, permissionResolver: IssuePermissionResolver)`. `@Transactional(readOnly=true)`. **권한 가드 자체 작성**(C4 — IssueApplicationService.assertPermission은 private라 재사용 불가): `if(!permissionResolver.hasPermission(actor.value, VIEW, Global)) throw IssueAccessDeniedException`. q trim/null→빈문자열 정규화 후 가드 → repo 위임. LIMIT 상수=10.
 
 **REFACTOR**: LIMIT 상수 추출 + KDoc(글로벌 스코프 사유 ADR 링크).
 
@@ -86,65 +86,69 @@ FR-IS-09 라벨 자동완성 (issue-tracking BC). spec 위치: `docs/plan/produc
 
 **RED**: `@WebMvcTest` 슬라이스. `GET /api/v1/labels?q=bac` → 200 + `{"data":["backend"]}`(service mock). `q` 생략 → service.completeLabels(actor,"") 호출. 매칭 0건 → `{"data":[]}` 200.
 
-**GREEN**: `@RestController` `@RequestMapping("/api/v1/labels")`. `@GetMapping fun complete(@RequestParam q: String?): ResponseEntity<DataResponse<List<String>>>`. ActorId(SYSTEM_ACTOR_UUID) 기존 임시 패턴 재사용. service 위임. DataResponse 래핑.
+**GREEN**: `@RestController` `@RequestMapping("/api/v1/labels")`. `@GetMapping fun complete(@RequestParam q: String?): ResponseEntity<DataResponse<List<String>>>`. SYSTEM_ACTOR_UUID는 IssueController private라 import 불가 → **동일 리터럴 `00000000-0000-0000-0000-000000000001` 재선언**(C5, fixture 정합). service 위임. DataResponse 래핑.
 
 **REFACTOR**: 로깅 패턴(`log.info("label_autocomplete q={}")`) 기존 컨벤션 정렬.
 
 **검증**: `./gradlew :modules:issue-tracking:test --tests "*LabelControllerTest"` + 모듈 전체 `:modules:issue-tracking:test` + `detektMain` + `ktlintMainSourceSetCheck`/`ktlintTestSourceSetCheck`
 
-### Task 4. 프론트 api/labels.ts + useLabels 훅
+### Task 4. 프론트 api/labels.ts + use-labels 훅 + MSW 핸들러
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/api/labels.ts`, `apps/web/src/hooks/useLabels.ts`, `apps/web/src/test/labels.test.ts`, `apps/web/src/mocks/handlers/label-handlers.ts`]
+- files: [`apps/web/src/api/labels.ts`, `apps/web/src/hooks/use-labels.ts`, `apps/web/src/test/labels.test.ts`, `apps/web/src/mocks/label-handlers.ts`, `apps/web/src/mocks/handlers.ts`]
 - depends-on: []
 
-**RED**: vitest. `fetchLabels("bac")` → `GET /api/v1/labels?q=bac`(MSW) → `["backend"]` 파싱(DataResponse 언랩). q 빈값 → 전체. Zod 스키마 `z.object({data: z.array(z.string())})`. useLabels(q) react-query 캐싱 + 빈 q 처리.
+**RED**: vitest. `fetchLabels("bac")` → `GET /api/v1/labels?q=bac`(MSW) → `["backend"]` 파싱. q 빈값 → 전체. use-labels(q) react-query 캐싱 + 빈 q 처리.
 
-**GREEN**: issue-tracking BC api 컨벤션(apiFetch + DataResponse 언랩 헬퍼, learnings frontend-api-convention-per-bc) 따라 `fetchLabels(q: string): Promise<string[]>`. `useLabels(q)` — debounce는 호출처(콤보박스)에서, 훅은 queryKey=['labels',q]. label-handlers.ts(MSW, 고정 라벨셋 prefix 필터 stateless).
+**GREEN**: issue-tracking BC 컨벤션(C2 — `issues.ts`의 인라인 `dataResponseSchema(z.array(z.string())).parse` 패턴 따름, 새 헬퍼 invent 금지) `fetchLabels(q: string): Promise<string[]>`. `use-labels(q)` queryKey=['labels',q](debounce는 호출처). `mocks/label-handlers.ts`(고정 라벨셋 prefix 필터 + 빈도순 stateless) + **`mocks/handlers.ts`에 `labelHandlers` spread 등록**(C1 — 누락 시 E2E MSW 실패).
 
 **REFACTOR**: Zod 스키마 export + queryKey 팩토리.
 
 **검증**: `pnpm --filter @bts/web test labels` + `pnpm --filter @bts/web typecheck`
 
-### Task 5. LabelCombobox 컴포넌트 (cmdk)
+### Task 5. 라벨 자동완성 입력 컴포넌트 (cmdk) — 기존 input 대체용
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/labels/LabelCombobox.tsx`, `apps/web/src/components/labels/LabelCombobox.test.tsx`, `apps/web/package.json`]
+- files: [`apps/web/src/components/labels/LabelAutocompleteInput.tsx`, `apps/web/src/components/labels/LabelAutocompleteInput.test.tsx`, `apps/web/src/components/ui/command.tsx`, `apps/web/package.json`]
 - depends-on: [4]
 
-**RED**: vitest + Testing Library. 입력 "b" → useLabels mock 후보 드롭다운 렌더. 후보 선택 시 onSelect(label) 호출. 자동완성에 없는 신규 라벨 입력+Enter → onSelect(newLabel)(free-form). 이미 선택된 라벨 칩 제거. 빈 입력 포커스 → 인기 라벨 표시.
+> **B1**. 멀티선택 칩/검증/저장은 기존 `IssueLabelsEdit`에 이미 있음. 본 task는 그 컴포넌트의 plain `<input>`(`IssueMetaPanel.tsx:504`)을 대체할 **단일 라벨 입력+자동완성 드롭다운**만 만든다. 칩/검증/저장 로직 재구현 금지.
 
-**GREEN**: cmdk 기반(기존 shadcn `Command` 컴포넌트 있으면 재사용, 없으면 cmdk 추가 — **새 의존성, 게이트에서 확인**) `LabelCombobox({value: string[], onChange})`. 입력 debounce(250ms)→useLabels. 멀티 선택 칩 + 신규 입력 허용. 도메인 제약(최대 20개/50자)은 입력단 가드(서버 PATCH가 최종 방어).
+**RED**: vitest + Testing Library. `LabelAutocompleteInput({value, onChange, onCommit, disabled})` — 입력 "b" → use-labels mock 후보 드롭다운(빈도순) 렌더. 후보 클릭 → onCommit(label). 신규 라벨 입력+Enter → onCommit(newValue)(free-form, 자동완성에 없어도). 빈 입력 포커스 → 인기 라벨. disabled 시 비활성.
 
-**REFACTOR**: debounce 상수/칩 서브컴포넌트 분리 + a11y(role/aria-label, learnings playwright strict mode 대비 컨테이너 한정 셀렉터 고려).
+**GREEN**: cmdk 기반(**신규 의존성** — 게이트1 결정에 따라 cmdk 도입 시 `components/ui/command.tsx`(shadcn Command) 추가, 또는 의존성0 simple `role="listbox"` 대안). 입력 `use-debounce`(기존 `hooks/use-debounce.ts` 재사용, C1) 250ms → use-labels. IssueLabelsEdit의 addLabel/검증 계약(trim/50자/20개/중복)에 맞는 onCommit 시그니처.
 
-**검증**: `pnpm --filter @bts/web test LabelCombobox` + `pnpm --filter @bts/web typecheck`
+**REFACTOR**: debounce 상수 + a11y(role/aria-label) + strict mode 대비 컨테이너 한정 셀렉터(learnings playwright-getbyrole).
 
-### Task 6. 이슈 메타패널 라벨 편집 통합
+**검증**: `pnpm --filter @bts/web test LabelAutocompleteInput` + `pnpm --filter @bts/web typecheck`
+
+### Task 6. IssueLabelsEdit에 자동완성 in-place 통합
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/issue/IssueLabelsField.tsx`, `apps/web/src/components/issue/IssueLabelsField.test.tsx`, `apps/web/src/routes/issues.$key.tsx`]
+- files: [`apps/web/src/components/issue/IssueMetaPanel.tsx`, `apps/web/src/components/issue/IssueMetaPanel.test.tsx`]
 - depends-on: [5]
 
-**RED**: vitest. 이슈 상세 메타패널에 LabelCombobox 마운트 → 라벨 변경 시 기존 `useUpdateIssue`(PATCH labels) 호출. 저장 성공 시 invalidate/refetch로 화면 반영(learnings msw-mutation-stateful-refetch — MSW PATCH 핸들러 stateful). 낙관/롤백 동작.
+> **B1**. 신규 컴포넌트/mutation 생성 금지. 기존 `IssueLabelsEdit`(`:455`)의 `<input>`(:504)을 `LabelAutocompleteInput`으로 교체하고 addLabel(:469)에 onCommit 연결. 저장 경로(`labelsMutation`/`updateIssue` PATCH)는 그대로 재사용.
 
-**GREEN**: `IssueLabelsField`(현재 라벨 표시 + LabelCombobox 편집) — 기존 이슈 PATCH 경로 재사용(신규 mutation 만들지 않음). issues.$key 메타패널에 배치. MSW label-handlers는 T4 정본 재사용, issue PATCH 핸들러 stateful 확인.
+**RED**: vitest. IssueMetaPanel의 라벨 편집 영역에서 입력 → 자동완성 후보 표시 → 후보 선택 → 칩 추가 → 저장(`data-testid="labels-save"`) → 기존 onLabelsSave(PATCH) 호출. 기존 IssueMetaPanel 테스트 회귀 0.
 
-**REFACTOR**: 메타패널 필드 일관 스타일 + 권한 게이트(편집 권한 없으면 읽기 전용, FR-PM 후속이면 서버 403 토스트).
+**GREEN**: `IssueLabelsEdit` 내부 `<input>`→`LabelAutocompleteInput` 교체. addLabel을 onCommit으로 배선. 칩/검증/저장/props 동기화(:459) 로직 유지. 새 UI 문자열은 `issueDetailStrings`에 추가(N2).
 
-**검증**: `pnpm --filter @bts/web test IssueLabelsField` + `typecheck` + `lint` + 기존 라우트 단위테스트 회귀 0(learnings ui-pr-defer-e2e — 기존 E2E 셀렉터 영향 점검)
+**REFACTOR**: 자동완성 드롭다운 위치/스타일 메타패널 정합 + 권한 게이트(canEdit 기존 prop 재사용).
+
+**검증**: `pnpm --filter @bts/web test IssueMetaPanel` + `typecheck` + `lint` + 기존 라우트/E2E 셀렉터 회귀 0(learnings ui-pr-defer-e2e, labels-save testid 유지)
 
 ### Task 7. E2E 라벨 자동완성 시나리오
 
 **메타**.
 - agent: `qa-engineer`
-- files: [`apps/web/e2e/label-autocomplete.spec.ts`, `apps/web/src/mocks/handlers/label-handlers.ts`]
+- files: [`apps/web/e2e/label-autocomplete.spec.ts`]
 - depends-on: [3, 6]
 
-**RED/GREEN**: Playwright. S1 이슈 편집 → 라벨 입력 "b" → 자동완성 드롭다운(빈도순) → 후보 선택 → 저장 → 메타 반영. S4 신규 라벨 입력 → 추가. S3 빈 포커스 → 인기 라벨. MSW label-handlers stateful(선택 후 재조회 일관). strict mode 대비 dialog/컨테이너 한정 셀렉터 + data-testid.
+**RED/GREEN**: Playwright. S1 이슈 편집 → 라벨 입력 "b" → 자동완성 드롭다운(빈도순) → 후보 선택 → 칩 추가 → `labels-save` 클릭 → 메타 반영. S4 신규 라벨 입력 → 추가. S3 빈 포커스 → 인기 라벨. MSW label-handlers(T4 정본 재사용) + issue PATCH stateful(선택 후 재조회 일관). strict mode 대비 컨테이너 한정 셀렉터 + 기존 `data-testid`(labels-save) 활용.
 
 **검증**: `pnpm --filter @bts/web test:e2e label-autocomplete` + 전체 E2E 회귀 0(orphan vite 5173 주의, learnings)
 
@@ -154,7 +158,25 @@ FR-IS-09 라벨 자동완성 (issue-tracking BC). spec 위치: `docs/plan/produc
 - 예상 wave: 4 — W1[T1,T4] · W2[T2,T5] · W3[T3,T6] · W4[T7]. 백엔드 T1~T3는 issue-tracking 모듈 test 컴파일 단위 공유로 실제 병렬은 직렬화되나 의존성으로 어차피 순차. 프론트 T4~T6는 apps/web 별도라 백엔드와 진짜 병렬.
 - TDD 강제: yes (test 커밋이 feat 커밋보다 먼저)
 - 데이터 모델 변경: 0 (마이그레이션/init_codegen 미러 불요)
-- 신규 의존성: cmdk (또는 기존 shadcn Command 재사용) — 게이트1에서 확인
+- 신규 의존성: cmdk — 기존 shadcn Command 재사용 불가(부재 확인). 게이트1에서 cmdk 도입 vs 의존성0 simple listbox 결정
+- 미검증 플래그: prod Global VIEW 권한 결선은 전역역할 부재(FR-PM-04 보류)로 prod 동작 미검증 — non-prod/테스트는 AlwaysAllow로 통과(C4)
 - 추가 검증: detekt, ktlint(Main+Test SourceSetCheck 직접 실행), typecheck(tsconfig.app), vitest, playwright
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### code-reviewer ground-truth 독립 리뷰 (2026-06-04)
+
+**BLOCKER (plan 보정 완료).**
+- **B1**. 라벨 편집 UI가 이미 end-to-end 존재 — `IssueMetaPanel.tsx:455 IssueLabelsEdit`(칩 추가/삭제 + 클라이언트 검증 trim/50자/20개/중복 + 저장버튼 `data-testid="labels-save"`), 라우트 `issues.$key.tsx:266 labelsMutation`(updateIssue PATCH labels), `api/issues.ts:263 updateIssue`. plan이 `LabelCombobox`+`IssueLabelsField` greenfield로 오인 → **기존 `IssueLabelsEdit`의 plain `<input>`(:504)을 자동완성 입력으로 in-place 교체**로 재정의. 중복 컴포넌트 생성 금지. (`useUpdateIssue` 훅은 미존재 — 실제는 라우트 `labelsMutation`.)
+- **B2**. cmdk / shadcn Command 부재(`components/ui/`에 command·popover 없음, package.json에 cmdk 없음). "기존 재사용" 전제 거짓 → 신규 의존성. 게이트1에서 Maxi에게 cmdk 도입 vs 의존성0 simple listbox 선택 받음.
+
+**CONCERN (반영 완료).**
+- **C1**. 파일 컨벤션 — `hooks/use-labels.ts`(kebab), `mocks/label-handlers.ts`(flat), `mocks/handlers.ts`에 spread 등록(누락 시 E2E MSW 실패), 기존 `hooks/use-debounce.ts` 재사용.
+- **C2**. 언랩은 `issues.ts` 인라인 `dataResponseSchema(...).parse` 패턴 따름(같은 BC). 계약 `{data:array(string)}`↔`DataResponse<List<String>>` 정합 확인됨.
+- **C3**. Task 1은 `dsl.fetch(rawSql, boundPrefix, limit)` raw SQL + 앱단 와일드카드 이스케이프 디폴트(선례 `BulkOperationWorker.kt:88`). prefix 바인드 파라미터 필수(concat 금지). cartesian 위험 없음(JOIN 아닌 unnest). `COUNT(DISTINCT id)` 방어적.
+- **C4**. `IssueApplicationService.assertPermission`은 private → `LabelApplicationService`가 권한 가드 자체 작성(resolver.hasPermission + IssueAccessDeniedException). prod Global VIEW 결선은 identity-access(FR-PM) 책임이며 **전역역할 부재로 prod 미검증** — 게이트 노트.
+- **C5**. `SYSTEM_ACTOR_UUID`는 IssueController private → LabelController가 동일 리터럴 `00000000-0000-0000-0000-000000000001` 재선언(fixture 정합).
+
+**NIT.** OpenAPI 산출물 없음(의식적 생략), i18n는 `issueDetailStrings`에 추가, q 길이 상한 50 권장, 인증(Bearer JWT)은 코드 전역 미결선(별도 FR, 본 작업 책임 아님).
+
+**판정.** 백엔드 3 task 정합 → 진행 가능. 프론트 B1/B2 보정 후 승인 권고 → **반영 완료, 게이트1 상정**.
