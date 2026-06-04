@@ -15,6 +15,8 @@ COMMENT ON COLUMN issue_components.issue_id     IS '연결된 이슈 (issues.id)
 COMMENT ON COLUMN issue_components.component_id IS '연결된 컴포넌트 (components.id). 같은 BC 라 실 FK 적용.';
 COMMENT ON COLUMN issue_components.created_at   IS '연결 생성 시각. TIMESTAMPTZ (DATA.md §4).';
 
--- FK 인덱스 (DATA.md §7 — PostgreSQL 은 FK 에 인덱스 자동 생성 안 함)
--- component_id 만 별도 인덱스: 복합 PK 선두 컬럼 issue_id 는 PK 인덱스가 커버하므로 별도 인덱스 불요.
+-- FK 인덱스 (DATA.md §7 — PostgreSQL 은 FK 에 인덱스 자동 생성 안 함).
+-- FK 는 issue_id / component_id 두 개지만 인덱스는 component_id 만 추가한다.
+-- issue_id 는 복합 PK (issue_id, component_id) 의 선두 컬럼이라 PK 인덱스가 이미 커버하므로 중복 불요.
+-- component_id 는 PK 후미 컬럼이라 단독 조회/조인(컴포넌트→이슈 역방향)에 활용 못 해 별도 인덱스가 필요.
 CREATE INDEX idx_issue_components_component_id ON issue_components(component_id);
