@@ -165,7 +165,6 @@ class WorkflowSchemePermissionResolverNonProdBootTest {
     fun `비-prod 컨텍스트에 WorkflowScheme prod adapter 빈이 등록되지 않는다`() {
         val beans = context.getBeansOfType(IdentityAccessWorkflowSchemePermissionResolver::class.java)
 
-        // RED 의도: 실제로는 0개이나, 테스트가 빈 카운트를 실제로 본다는 것을 증명하기 위해 1개를 단언해 실패시킨다.
-        assertThat(beans).hasSize(1)
+        assertThat(beans).isEmpty()
     }
 }
