@@ -3,11 +3,10 @@
 package com.bts.issue.domain
 
 import com.bts.shared.issue.IssueTypeId
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.Instant
 import java.util.UUID
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 class IssueComponentsTest {
 
@@ -16,7 +15,7 @@ class IssueComponentsTest {
 
     private fun baseIssue(): Issue = Issue(
         id = IssueId(UUID.fromString("00000000-0000-4000-8000-000000000010")),
-        key = IssueKey("PROJ", 1),
+        key = IssueKey.of("PROJ", 1L),
         projectId = UUID.fromString("00000000-0000-4000-8000-000000000020"),
         summary = "test issue",
         reporterId = ActorId(UUID.fromString("00000000-0000-4000-8000-000000000030")),
@@ -25,19 +24,19 @@ class IssueComponentsTest {
         deletedAt = null,
         createdAt = Instant.EPOCH,
         updatedAt = Instant.EPOCH,
-        typeId = IssueTypeId(1),
+        typeId = IssueTypeId(1L),
     )
 
     @Test
     fun `기본값은 빈 목록`() {
         val issue = baseIssue()
-        assertTrue(issue.componentIds.isEmpty())
+        assertThat(issue.componentIds).isEmpty()
     }
 
     @Test
     fun `assignComponents distinct로 중복 제거`() {
         val issue = baseIssue().assignComponents(listOf(c1, c1, c2))
-        assertEquals(listOf(c1, c2), issue.componentIds)
+        assertThat(issue.componentIds).containsExactly(c1, c2)
     }
 
     @Test
@@ -47,7 +46,7 @@ class IssueComponentsTest {
         @Suppress("UNCHECKED_CAST")
         val withNull = listOf(c1, null, c2) as List<UUID>
         val issue = baseIssue().assignComponents(withNull)
-        assertEquals(listOf(c1, c2), issue.componentIds)
+        assertThat(issue.componentIds).containsExactly(c1, c2)
     }
 
     @Test
@@ -55,6 +54,6 @@ class IssueComponentsTest {
         val issue = baseIssue()
             .assignComponents(listOf(c1, c2))
             .clearComponents()
-        assertTrue(issue.componentIds.isEmpty())
+        assertThat(issue.componentIds).isEmpty()
     }
 }
