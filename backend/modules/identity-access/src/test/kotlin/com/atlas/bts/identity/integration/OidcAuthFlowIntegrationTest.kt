@@ -20,6 +20,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.net.URI
+import java.net.URLDecoder
 import java.util.UUID
 
 /**
@@ -123,7 +124,8 @@ class OidcAuthFlowIntegrationTest : KeycloakOidcTestcontainersBase() {
         fun `oidc_provider_configs 에 OIDC seed providerId 로 주입된다`() {
             val count =
                 jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM oidc_provider_configs WHERE registration_id = :rid AND authn_provider_id = :pid",
+                    "SELECT COUNT(*) FROM oidc_provider_configs " +
+                        "WHERE registration_id = :rid AND authn_provider_id = :pid",
                     mapOf("rid" to REGISTRATION_ID, "pid" to oidcProviderId),
                     Int::class.java,
                 )
@@ -173,6 +175,14 @@ class OidcAuthFlowIntegrationTest : KeycloakOidcTestcontainersBase() {
      *
      * SAML 의 SpInitiatedEntryTest(302 + SAMLRequest) 와 동형 — OIDC 는 302 + response_type=code + state.
      * 브라우저 매개 code 콜백 왕복(로그인 폼 → token 교환)은 브라우저 엔진 의존이라 제외한다.
+     *
+     * ## PKCE(code_challenge) 단언 제외 사유
+     * Spring Security 6.x 의 DefaultOAuth2AuthorizationRequestResolver 는 **public client** 이거나
+     * ClientRegistration.ClientSettings.requireProofKey=true 일 때만 code_challenge 를 부착한다.
+     * 본 FR 의 [DbClientRegistrationRepository] 는 client_secret 을 가진 **confidential client** 를
+     * requireProofKey 미설정으로 빌드하므로, IdP realm 이 PKCE 를 지원해도 진입 요청에 code_challenge 가
+     * 부착되지 않는다. 따라서 결정적 단언 대상은 response_type=code + state 로 고정한다(SAML 게이트2
+     * 확정 수준과 동형). PKCE 강제는 ClientSettings 변경이 필요한 production 코드(T3) 범위라 후속으로 둔다.
      */
     @Nested
     inner class SpInitiatedEntryTest {
@@ -222,8 +232,8 @@ class OidcAuthFlowIntegrationTest : KeycloakOidcTestcontainersBase() {
             .mapNotNull { pair ->
                 val idx = pair.indexOf('=')
                 if (idx < 0) return@mapNotNull null
-                val key = java.net.URLDecoder.decode(pair.substring(0, idx), Charsets.UTF_8)
-                val value = java.net.URLDecoder.decode(pair.substring(idx + 1), Charsets.UTF_8)
+                val key = URLDecoder.decode(pair.substring(0, idx), Charsets.UTF_8)
+                val value = URLDecoder.decode(pair.substring(idx + 1), Charsets.UTF_8)
                 key to value
             }
             .toMap()
