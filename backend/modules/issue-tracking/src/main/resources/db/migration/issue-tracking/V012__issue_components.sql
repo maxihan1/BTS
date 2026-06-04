@@ -4,9 +4,12 @@
 -- 한 이슈가 여러 컴포넌트에, 한 컴포넌트가 여러 이슈에 속하는 N:M 관계를 표현.
 -- 같은 BC(issue-tracking) 내부 테이블이므로 issues / components 양쪽 실 FK 적용.
 -- 소프트 삭제 미적용: 연결 자체는 도메인 엔티티가 아닌 순수 관계이므로 해제 = 행 DELETE (DATA.md §3 대상 아님).
+-- ON DELETE CASCADE: 연결 행은 양쪽 엔티티가 없으면 존재 의미가 없는 순수 관계다. prod 는 issues/components 를
+-- 소프트 삭제(deleted_at)하므로 cascade 가 발화하지 않는다(동작 변화 0). 엔티티 하드 삭제 경로(테스트 cleanup 등)에서만
+-- 고아 연결 행을 자동 정리해 FK 위반을 막는다(조인 테이블 표준).
 CREATE TABLE issue_components (
-    issue_id     UUID        NOT NULL REFERENCES issues(id),
-    component_id UUID        NOT NULL REFERENCES components(id),
+    issue_id     UUID        NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+    component_id UUID        NOT NULL REFERENCES components(id) ON DELETE CASCADE,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (issue_id, component_id)
 );

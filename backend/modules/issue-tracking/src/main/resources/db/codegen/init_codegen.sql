@@ -338,10 +338,11 @@ ALTER TABLE issues ADD COLUMN resolution_id UUID NULL;
 -- jOOQ: IssueComponents.ISSUE_ID/COMPONENT_ID/CREATED_AT 생성 대상
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- 관계 테이블이라 소프트 삭제 없음(연결 해제 = 행 DELETE). issues / components 양쪽 실 FK.
+-- 관계 테이블이라 소프트 삭제 없음(연결 해제 = 행 DELETE). issues / components 양쪽 실 FK + ON DELETE CASCADE
+-- (순수 관계라 양쪽 엔티티 하드 삭제 시 고아 연결 자동 정리. prod 소프트삭제라 미발화).
 CREATE TABLE issue_components (
-    issue_id     UUID        NOT NULL REFERENCES issues(id),
-    component_id UUID        NOT NULL REFERENCES components(id),
+    issue_id     UUID        NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+    component_id UUID        NOT NULL REFERENCES components(id) ON DELETE CASCADE,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (issue_id, component_id)
 );
