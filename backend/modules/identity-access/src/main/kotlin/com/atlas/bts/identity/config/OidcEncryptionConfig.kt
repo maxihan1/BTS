@@ -29,7 +29,10 @@ class OidcEncryptionConfig(
     /**
      * OIDC client_secret 암호화/복호화에 사용하는 [SecretEncryptor] 빈.
      *
-     * @return 환경변수 주입 키/salt 로 구성된 [SecretEncryptor].
+     * 키/salt 미설정 시에도 빈은 생성된다(부팅 안전). 이 경우 실제 암호화 호출에서
+     * [IllegalStateException] 이 발생한다([SecretEncryptor] 참고).
+     *
+     * @return 환경변수 주입 키/salt 로 구성된 [SecretEncryptor]. 미설정 시 사용 시점 검증 모드.
      */
     @Bean
     fun secretEncryptor(): SecretEncryptor = SecretEncryptor(encryptionKey, encryptionSalt)
