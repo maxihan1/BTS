@@ -64,10 +64,12 @@ class Saml2AuthenticationSuccessHandler(
     private val sessionService: SessionService,
     private val refreshTokenRepository: RefreshTokenRepository,
     private val jwtIssuer: JwtIssuer,
-    private val relayStateValidator: RelayStateValidator = RelayStateValidator(),
     private val clock: Clock = Clock.systemUTC(),
 ) : AuthenticationSuccessHandler {
     private val log = LoggerFactory.getLogger(Saml2AuthenticationSuccessHandler::class.java)
+
+    /** RelayState open-redirect 검증기 — 상태 없는 순수 검증기이므로 내부 보유 (DI 불요). */
+    private val relayStateValidator = RelayStateValidator()
 
     /**
      * SAML2 인증 성공 후 세션/JWT 발급 + RelayState 복귀 리다이렉트.
@@ -222,14 +224,14 @@ class RelayStateValidator {
         return if (isSafeRelativePath(candidate)) candidate else DEFAULT_TARGET
     }
 
-    private fun isSafeRelativePath(value: String): Boolean {
-        if (value.length < MIN_PATH_LENGTH || value[0] != '/') return false
-        // 프로토콜 상대(`//host`) 및 백슬래시 우회(`/\host`) 차단
-        if (value[1] == '/' || value[1] == '\\') return false
-        // scheme 형태(`/javascript:` 등 콜론 포함) 차단
-        if (value.contains(':')) return false
-        return true
-    }
+    private fun isSafeRelativePath(value: String): Boolean =
+        value.length >= MIN_PATH_LENGTH &&
+            value[0] == '/' &&
+            // 프로토콜 상대(`//host`) 및 백슬래시 우회(`/\host`) 차단
+            value[1] != '/' &&
+            value[1] != '\\' &&
+            // scheme 형태(`/javascript:` 등 콜론 포함) 차단
+            !value.contains(':')
 
     private companion object {
         /** RelayState 가 비었거나 안전하지 않을 때의 기본 복귀 경로. */

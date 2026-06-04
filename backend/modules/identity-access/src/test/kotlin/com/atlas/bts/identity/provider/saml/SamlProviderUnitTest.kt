@@ -36,22 +36,24 @@ class SamlProviderUnitTest {
 
     @Test
     fun `supports 는 어떤 자격증명이든 false 를 반환한다 (필터가 처리)`() {
-        val saml = Credential.SamlAssertion(
-            nameId = "alice@corp.example.com",
-            registrationId = "corp-saml",
-            attributes = emptyMap(),
-        )
+        val saml =
+            Credential.SamlAssertion(
+                nameId = "alice@corp.example.com",
+                registrationId = "corp-saml",
+                attributes = emptyMap(),
+            )
         assertThat(provider.supports(saml)).isFalse()
         assertThat(provider.supports(Credential.Pat("pat_x"))).isFalse()
     }
 
     @Test
     fun `authenticate 는 dead-path 이므로 Failure 를 반환한다 (예외 throw 금지)`() {
-        val saml = Credential.SamlAssertion(
-            nameId = "alice@corp.example.com",
-            registrationId = "corp-saml",
-            attributes = emptyMap(),
-        )
+        val saml =
+            Credential.SamlAssertion(
+                nameId = "alice@corp.example.com",
+                registrationId = "corp-saml",
+                attributes = emptyMap(),
+            )
         val result = provider.authenticate(saml)
         assertThat(result).isInstanceOf(AuthnResult.Failure::class.java)
         assertThat((result as AuthnResult.Failure).reason).isEqualTo(FailureReason.PROVIDER_UNAVAILABLE)

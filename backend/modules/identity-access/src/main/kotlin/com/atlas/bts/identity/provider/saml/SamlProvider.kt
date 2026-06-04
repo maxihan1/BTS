@@ -46,8 +46,7 @@ class SamlProvider : AuthenticationProvider {
      *
      * 방어적으로 [AuthnResult.Failure] 를 반환한다(SPI 계약상 예외 throw 금지).
      */
-    override fun authenticate(credential: Credential): AuthnResult =
-        AuthnResult.Failure(SAML_NOT_HANDLED_HERE)
+    override fun authenticate(credential: Credential): AuthnResult = AuthnResult.Failure(SAML_NOT_HANDLED_HERE)
 
     private companion object {
         /** SAML 은 필터가 처리하므로 SPI authenticate 로 인증되지 않음을 나타내는 실패 사유. */
