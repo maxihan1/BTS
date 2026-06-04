@@ -118,7 +118,7 @@ FR-IS-09 라벨 자동완성 (issue-tracking BC). spec 위치: `docs/plan/produc
 
 **RED**: vitest + Testing Library. `LabelAutocompleteInput({value, onChange, onCommit, disabled})` — 입력 "b" → use-labels mock 후보 드롭다운(빈도순) 렌더. 후보 클릭 → onCommit(label). 신규 라벨 입력+Enter → onCommit(newValue)(free-form, 자동완성에 없어도). 빈 입력 포커스 → 인기 라벨. disabled 시 비활성.
 
-**GREEN**: cmdk 기반(**신규 의존성** — 게이트1 결정에 따라 cmdk 도입 시 `components/ui/command.tsx`(shadcn Command) 추가, 또는 의존성0 simple `role="listbox"` 대안). 입력 `use-debounce`(기존 `hooks/use-debounce.ts` 재사용, C1) 250ms → use-labels. IssueLabelsEdit의 addLabel/검증 계약(trim/50자/20개/중복)에 맞는 onCommit 시그니처.
+**GREEN**: cmdk 기반(**cmdk 도입 확정** — 게이트1 Maxi 승인 2026-06-04. `package.json`에 cmdk 추가 + `components/ui/command.tsx`(shadcn Command) 추가). 입력 `use-debounce`(기존 `hooks/use-debounce.ts` 재사용, C1) 250ms → use-labels. IssueLabelsEdit의 addLabel/검증 계약(trim/50자/20개/중복)에 맞는 onCommit 시그니처.
 
 **REFACTOR**: debounce 상수 + a11y(role/aria-label) + strict mode 대비 컨테이너 한정 셀렉터(learnings playwright-getbyrole).
 
@@ -158,7 +158,7 @@ FR-IS-09 라벨 자동완성 (issue-tracking BC). spec 위치: `docs/plan/produc
 - 예상 wave: 4 — W1[T1,T4] · W2[T2,T5] · W3[T3,T6] · W4[T7]. 백엔드 T1~T3는 issue-tracking 모듈 test 컴파일 단위 공유로 실제 병렬은 직렬화되나 의존성으로 어차피 순차. 프론트 T4~T6는 apps/web 별도라 백엔드와 진짜 병렬.
 - TDD 강제: yes (test 커밋이 feat 커밋보다 먼저)
 - 데이터 모델 변경: 0 (마이그레이션/init_codegen 미러 불요)
-- 신규 의존성: cmdk — 기존 shadcn Command 재사용 불가(부재 확인). 게이트1에서 cmdk 도입 vs 의존성0 simple listbox 결정
+- 신규 의존성: **cmdk 도입 확정**(게이트1 Maxi 승인 2026-06-04). shadcn Command 컴포넌트 신규 추가
 - 미검증 플래그: prod Global VIEW 권한 결선은 전역역할 부재(FR-PM-04 보류)로 prod 동작 미검증 — non-prod/테스트는 AlwaysAllow로 통과(C4)
 - 추가 검증: detekt, ktlint(Main+Test SourceSetCheck 직접 실행), typecheck(tsconfig.app), vitest, playwright
 
