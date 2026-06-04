@@ -1,4 +1,4 @@
-// IssueMetaPanel 유형 행 + 셀렉터 + 상태전이 + 우선순위/영향도/환경/라벨 + 담당자 단위 테스트 — FR-IS-04 D6 Task-5, FR-IS-03 D6 Task-3
+// IssueMetaPanel 유형 행 + 셀렉터 + 상태전이 + 우선순위/영향도/환경/라벨 + 담당자 단위 테스트 — FR-IS-04 D6 Task-5, FR-IS-03 D6 Task-3, FR-IS-09 Task-6
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -13,6 +13,41 @@ vi.mock('@/hooks/use-issue-permissions', () => ({
   useIssuePermissions: vi.fn(),
 }))
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
+
+// useLabels를 mock — LabelAutocompleteInput 내부에서 호출, 자동완성 후보 제어
+// 기본값: 빈 후보 배열(후보 없음) — 자동완성 테스트에서 setupLabelsMock으로 오버라이드
+vi.mock('@/hooks/use-labels', () => ({
+  useLabels: vi.fn().mockReturnValue({
+    data: [],
+    isLoading: false,
+    isError: false,
+    isPending: false,
+    isSuccess: true,
+    error: null,
+    status: 'success',
+    fetchStatus: 'idle',
+    dataUpdatedAt: 0,
+    errorUpdatedAt: 0,
+    failureCount: 0,
+    failureReason: null,
+    isFetched: true,
+    isFetchedAfterMount: true,
+    isFetching: false,
+    isInitialLoading: false,
+    isLoadingError: false,
+    isPlaceholderData: false,
+    isRefetchError: false,
+    isRefetching: false,
+    isStale: false,
+    refetch: vi.fn(),
+  }),
+}))
+import { useLabels } from '@/hooks/use-labels'
+
+// useDebounce를 mock — debounce 없이 즉시 반환해 테스트 단순화
+vi.mock('@/hooks/use-debounce', () => ({
+  useDebounce: (value: string) => value,
+}))
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처
@@ -1286,5 +1321,125 @@ describe('IssueMetaPanel — 담당자 canEdit 게이트 (FR-PM-02 C1)', () => {
     const assigneeSection = screen.getByTestId('assignee-section')
     const unassignBtn = within(assigneeSection).getByRole('button', { name: issueDetailStrings.assigneeUnassignButton })
     expect(unassignBtn).toBeDisabled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-IS-09 Task-6 — LabelAutocompleteInput 자동완성 통합 (IMP-70~74)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueMetaPanel — 라벨 자동완성 통합 (FR-IS-09 Task-6)', () => {
+  /** useLabels mock을 자동완성 후보 배열로 설정하는 헬퍼 */
+  function setupLabelsMock(candidates: string[]) {
+    vi.mocked(useLabels).mockReturnValue({
+      data: candidates,
+      isLoading: false,
+      isError: false,
+      isPending: false,
+      isSuccess: true,
+      error: null,
+      status: 'success',
+      fetchStatus: 'idle',
+      dataUpdatedAt: 0,
+      errorUpdatedAt: 0,
+      failureCount: 0,
+      failureReason: null,
+      isFetched: true,
+      isFetchedAfterMount: true,
+      isFetching: false,
+      isInitialLoading: false,
+      isLoadingError: false,
+      isPlaceholderData: false,
+      isRefetchError: false,
+      isRefetching: false,
+      isStale: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useLabels>)
+  }
+
+  /**
+   * IMP-70: 라벨 편집 영역에 LabelAutocompleteInput이 렌더된다.
+   * data-testid="label-autocomplete-input"으로 확인.
+   */
+  it('IMP-70: 라벨 편집 영역에 LabelAutocompleteInput이 렌더된다', () => {
+    setupLabelsMock([])
+    renderPanel()
+    expect(screen.getByTestId('label-autocomplete-input')).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-71: 입력 시 useLabels 후보가 드롭다운으로 표시된다.
+   */
+  it('IMP-71: 입력 시 useLabels 후보가 드롭다운으로 표시된다', async () => {
+    setupLabelsMock(['bug', 'urgent', 'backend'])
+    renderPanel()
+    const user = userEvent.setup()
+    const input = screen.getByTestId('label-autocomplete-input')
+    await user.click(input)
+    await user.type(input, 'bu')
+    // 드롭다운 후보 목록이 나타난다
+    expect(screen.getByTestId('label-autocomplete-dropdown')).toBeInTheDocument()
+    expect(screen.getByTestId('label-option-bug')).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-72: 후보 클릭(onCommit) 시 칩이 추가된다.
+   */
+  it('IMP-72: 자동완성 후보 클릭 시 칩이 추가된다', async () => {
+    setupLabelsMock(['bug', 'urgent'])
+    renderPanel()
+    const user = userEvent.setup()
+    const input = screen.getByTestId('label-autocomplete-input')
+    await user.click(input)
+    await user.type(input, 'b')
+    const option = screen.getByTestId('label-option-bug')
+    await user.click(option)
+    // 칩이 추가됐는지 확인
+    const labelsSection = screen.getByTestId('labels-section')
+    expect(within(labelsSection).getByText('bug')).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-73: 신규 라벨 입력 후 Enter(free-form) 시 칩이 추가된다.
+   */
+  it('IMP-73: 신규 라벨 입력 후 Enter 시 칩이 추가된다 (free-form)', async () => {
+    setupLabelsMock([])
+    renderPanel()
+    const user = userEvent.setup()
+    const input = screen.getByTestId('label-autocomplete-input')
+    await user.type(input, 'new-label')
+    await user.keyboard('{Enter}')
+    const labelsSection = screen.getByTestId('labels-section')
+    expect(within(labelsSection).getByText('new-label')).toBeInTheDocument()
+  })
+
+  /**
+   * IMP-74: 저장 버튼(data-testid="labels-save") 클릭 시 onLabelsSave가 칩 배열로 호출된다.
+   */
+  it('IMP-74: 저장 버튼 클릭 시 onLabelsSave가 추가된 칩 배열로 호출된다', async () => {
+    setupLabelsMock([])
+    const onLabelsSave = vi.fn()
+    renderPanel(
+      issueFixture,
+      availableTypes,
+      vi.fn(),
+      vi.fn(),
+      transitionsFixture,
+      vi.fn(),
+      false,
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      onLabelsSave,
+    )
+    const user = userEvent.setup()
+    const input = screen.getByTestId('label-autocomplete-input')
+    await user.type(input, 'autocomplete-label')
+    await user.keyboard('{Enter}')
+    const labelsSection = screen.getByTestId('labels-section')
+    const saveBtn = within(labelsSection).getByRole('button', { name: issueDetailStrings.labelsSaveButton })
+    await user.click(saveBtn)
+    expect(onLabelsSave).toHaveBeenCalledOnce()
+    expect(onLabelsSave).toHaveBeenCalledWith(['autocomplete-label'])
   })
 })
