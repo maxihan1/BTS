@@ -377,6 +377,40 @@ export async function changeAssignee(key: string, input: ChangeAssigneeInput): P
   return wrapped.data
 }
 
+/**
+ * 컴포넌트 변경 입력 타입.
+ * PATCH /api/v1/issues/{key}/components body 형태.
+ * - componentIds: 할당할 컴포넌트 UUID 목록 (빈 배열이면 전체 제거)
+ * - expectedVersion 필수 (낙관적 잠금 OCC)
+ */
+export interface ChangeComponentsInput {
+  /** 할당할 컴포넌트 UUID 목록. 빈 배열이면 전체 제거. */
+  componentIds: string[]
+  /** 낙관적 잠금(OCC)을 위한 현재 버전 번호 */
+  expectedVersion: number
+}
+
+/**
+ * 이슈 컴포넌트 목록을 변경한다.
+ * PATCH /api/v1/issues/{key}/components body { componentIds: UUID[], expectedVersion: Long }
+ *
+ * @param key 이슈 식별 키 (예: "ATLAS-1")
+ * @param input componentIds(UUID 배열) · expectedVersion(OCC 버전)
+ * @returns 변경된 IssueResponse — componentIds와 version이 갱신된 상태
+ * @throws ApiError(409) 낙관적 잠금 충돌 시
+ * @throws ApiError(422) componentIds 중 실재하지 않는 컴포넌트가 있을 때 (COMPONENT_NOT_FOUND)
+ */
+export async function changeComponents(key: string, input: ChangeComponentsInput): Promise<IssueResponse> {
+  const res = await apiFetch(`/api/v1/issues/${key}/components`, { method: 'PATCH', body: input })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const raw: unknown = await res.json()
+  const wrapped = dataResponseSchema(issueResponseSchema).parse(raw)
+  return wrapped.data
+}
+
 /** 이슈 클론 입력 타입 — 모든 필드 선택 */
 export interface CloneIssueInput {
   /** 담당자 포함 여부. 미전달 시 백엔드 기본값(true) 사용. */
