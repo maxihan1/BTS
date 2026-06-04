@@ -11,6 +11,9 @@ import com.bts.workflow.scheme.exception.SchemeKeyInvalidException
 import com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException
 import com.bts.workflow.scheme.exception.SchemeStandardNotDeletableException
 import com.bts.workflow.scheme.exception.TypeStandardNotDeletableException
+import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
+import com.bts.shared.permission.WorkflowSchemePermission
+import com.bts.shared.permission.WorkflowSchemeScope
 import com.bts.workflow.scheme.exception.WorkflowSchemeNoDefaultException
 import com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException
 import org.junit.jupiter.api.BeforeEach
@@ -209,6 +212,19 @@ class WorkflowSchemeExceptionHandlerTest {
             }
     }
 
+    // ── 403 WORKFLOW_SCHEME_ACCESS_DENIED ─────────────────────────────────────
+
+    @Test
+    fun `WORKFLOW_SCHEME_ACCESS_DENIED — 403 Forbidden + errorCode`() {
+        mockMvc.get("/test/workflow-scheme-access-denied")
+            .andExpect {
+                status { isForbidden() }
+                content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+                jsonPath("$.errorCode") { value("WORKFLOW_SCHEME_ACCESS_DENIED") }
+                jsonPath("$.type") { value("https://bts.example.com/problems/workflow-scheme-access-denied") }
+            }
+    }
+
     // ── Test context configuration ────────────────────────────────────────────
 
     @Configuration(proxyBeanMethods = false)
@@ -258,5 +274,13 @@ class WorkflowSchemeExceptionHandlerTest {
 
         @GetMapping("/test/scheme-standard-field-locked")
         fun schemeStandardFieldLocked(): Nothing = throw SchemeStandardFieldLockedException(key = "software-scheme", field = "name")
+
+        @GetMapping("/test/workflow-scheme-access-denied")
+        fun workflowSchemeAccessDenied(): Nothing =
+            throw WorkflowSchemeAccessDeniedException(
+                actorId = java.util.UUID.fromString("00000000-0000-4000-8000-000000000001"),
+                permission = WorkflowSchemePermission.MANAGE_SCHEME,
+                scope = WorkflowSchemeScope.Global,
+            )
     }
 }
