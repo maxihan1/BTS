@@ -16,7 +16,6 @@ import java.util.UUID
  * 구현체: [JdbcSystemRoleAssignmentRepository].
  */
 interface SystemRoleAssignmentRepository {
-
     /**
      * 사용자에게 전역 [role]을 부여한다.
      *
@@ -26,7 +25,10 @@ interface SystemRoleAssignmentRepository {
      * @param userId 역할을 부여할 사용자 식별자(`users.id`)
      * @param role 부여할 전역 시스템 역할
      */
-    fun assign(userId: UUID, role: SystemRole)
+    fun assign(
+        userId: UUID,
+        role: SystemRole,
+    )
 
     /**
      * 사용자에게 부여된 전역 시스템 역할 집합을 반환한다.

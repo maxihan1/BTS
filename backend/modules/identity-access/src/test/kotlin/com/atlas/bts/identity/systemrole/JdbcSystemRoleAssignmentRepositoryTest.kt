@@ -36,7 +36,6 @@ import java.util.UUID
 @Import(JdbcSystemRoleAssignmentRepository::class)
 @Testcontainers
 class JdbcSystemRoleAssignmentRepositoryTest {
-
     companion object {
         @Container
         @JvmStatic
@@ -108,16 +107,17 @@ class JdbcSystemRoleAssignmentRepositoryTest {
         repo.assign(userId, SystemRole.SYSTEM_ADMIN)
         repo.assign(userId, SystemRole.SYSTEM_ADMIN)
 
-        val count = jdbc.queryForObject(
-            """
-            SELECT COUNT(*)
-            FROM system_role_assignments
-            WHERE user_id = :userId
-              AND role = :role
-            """,
-            mapOf("userId" to userId, "role" to SystemRole.SYSTEM_ADMIN.name),
-            Int::class.java,
-        )
+        val count =
+            jdbc.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM system_role_assignments
+                WHERE user_id = :userId
+                  AND role = :role
+                """,
+                mapOf("userId" to userId, "role" to SystemRole.SYSTEM_ADMIN.name),
+                Int::class.java,
+            )
 
         assertThat(count).isEqualTo(1)
     }
