@@ -116,6 +116,29 @@ saml_idp_configs(
 
 → **A 권장**. 단 이동은 별도 선행 커밋(refactor: 공용 이동)으로 분리하고 LDAP 회귀 테스트 통과 확인 후 SAML 추가.
 
+## 6b. SPI ↔ Spring Security SAML2 필터 역할 경계 (★ Brainstorming 발견)
+
+LDAP은 도메인 SPI(`LdapProvider.authenticate`)가 인증을 주도했지만, SAML은 Spring Security SAML2 필터가
+Assertion 수신·서명검증·파싱을 **프레임워크가 주도**한다. 따라서 둘의 경계를 명확히 한다.
+
+- **Spring SAML2 필터 책임**: AuthnRequest 생성, ACS 수신, 서명/replay/audience 검증, `Saml2Authentication` 생성
+- **BTS 성공 핸들러(`Saml2AuthenticationSuccessHandler` 어댑터) 책임**: `Saml2Authentication` → 도메인 `Principal` 변환
+  → `AutoProvisionService` 호출(JIT) → 기존 BTS 세션/JWT 발급 로직 재사용 → RelayState 복귀
+- **`SamlProvider`(SPI) 위치**: `RelyingPartyRegistrationRepository`를 `saml_idp_configs` 기반으로 구현하는 어댑터 +
+  성공 핸들러가 도메인 진입점. `Credential.SamlAssertion`은 SPI 일관성 유지를 위한 표현이며, 실제 검증은 Spring 필터가 수행
+  (도메인이 raw XML을 직접 파싱하지 않음 — NFR N6 XXE 차단 일관)
+
+→ 핵심 설계는 **plan 단계에서 security-engineer가 RelyingPartyRegistrationRepository 어댑터 + 성공 핸들러 구조로 확정**.
+
+## 6c. 첫 IdP 등록 경로 (★ Brainstorming 발견)
+
+F4가 관리 UI를 FR-AU-06으로 이연하므로, 본 FR에서 IdP가 시스템에 들어오는 경로를 명시한다.
+
+- **dev/test**: Flyway seed 마이그레이션 또는 통합 테스트 setup에서 Keycloak SAML 클라이언트 메타데이터를 `saml_idp_configs`에 INSERT
+- **prod**: 본 FR은 **DB 직접 INSERT(운영 절차)** + enabled 토글까지만. 셀프서비스 관리 UI는 FR-AU-06.
+  운영 절차는 `docs/` 운영 노트에 기록(별도 관리 콘솔 코드 없음)
+- 이 경계를 plan §리스크에 명시해 reviewer가 "관리 UI 누락"을 BLOCKER로 오인하지 않게 함
+
 ## 7. 엣지 케이스
 
 - EC1. RelayState 없는 IdP-initiated → 기본 랜딩(`/dashboard`), open-redirect 차단
@@ -142,3 +165,7 @@ saml_idp_configs(
 - [ ] 활성 IdP 목록 API + 프론트 동적 버튼 렌더 + E2E
 - [ ] open-redirect/RelayState 화이트리스트 단위 테스트
 - [ ] detekt/ktlint/ArchUnit(공용 이동 시 룰) 그린 + identity-access 모듈 전체 test 그린
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). 발견 gap 2건 보강 — §6b(SPI↔Spring SAML2 필터 역할 경계), §6c(첫 IdP 등록 경로). 둘 다 Maxi 결정 불요, 스펙 직접 반영.
