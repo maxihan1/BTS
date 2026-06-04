@@ -45,6 +45,29 @@ sealed interface Credential {
     data class Pat(val token: String) : Credential
 
     /**
+     * SAML Assertion 자격증명 (FR-AU-03 SAML SSO).
+     *
+     * **검증 주체 (게이트1 D4)**:
+     * SAML Assertion의 서명·시각·audience 검증은 Spring Security SAML2 필터가 수행한다.
+     * 이 VO는 검증 책임을 지지 않으며, 필터가 검증을 완료한 뒤 추출한 식별 정보를
+     * BTS SPI 계층으로 표현하기 위한 최소 형태일 뿐이다.
+     * 따라서 일반 로그인(POST /login)의 [UsernamePassword]/[Pat] 와 달리
+     * [com.atlas.bts.identity.spi.AuthenticationProvider.authenticate] 진입점으로 흐르지 않는다.
+     *
+     * **PII 주의 (DEVELOPMENT.md §1.2)**:
+     * [nameId] 와 [attributes] 값은 PII를 포함할 수 있다. 로그에 직접 출력 금지.
+     *
+     * @param nameId IdP가 발급한 NameID — user_external_accounts.external_subject 로 매핑
+     * @param registrationId SP 측 등록 식별자 — authn_providers.id 해소에 사용
+     * @param attributes IdP가 보낸 SAML Attribute 맵 (email/displayName 추출용)
+     */
+    data class SamlAssertion(
+        val nameId: String,
+        val registrationId: String,
+        val attributes: Map<String, List<String>>,
+    ) : Credential
+
+    /**
      * LDAP/AD bind 자격증명 (FR-AU-02).
      *
      * Contract: 인증 완료 후 반드시 [password] 배열을 즉시 초기화해야 한다.

@@ -7,12 +7,13 @@ import org.junit.jupiter.api.Test
 
 class CredentialTest {
     @Test
-    fun `sealed Credential when is exhaustive for UsernamePassword Pat LdapBind`() {
+    fun `sealed Credential when is exhaustive for UsernamePassword Pat LdapBind SamlAssertion`() {
         val credentials: List<Credential> =
             listOf(
                 Credential.UsernamePassword("alice", "p@ssword".toCharArray()),
                 Credential.Pat("token-abc"),
                 Credential.LdapBind("alice", "Test1234!".toCharArray()),
+                Credential.SamlAssertion("alice@corp", "corp-saml", emptyMap()),
             )
         credentials.forEach { cred ->
             // when 식이 모든 분기를 커버해야 컴파일됨 — exhaustive 검증
@@ -21,6 +22,7 @@ class CredentialTest {
                     is Credential.UsernamePassword -> "username-password"
                     is Credential.Pat -> "pat"
                     is Credential.LdapBind -> "ldap-bind"
+                    is Credential.SamlAssertion -> "saml-assertion"
                 }
             assertThat(label).isNotEmpty()
         }
