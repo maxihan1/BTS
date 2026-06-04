@@ -50,6 +50,12 @@ FR-IS-06은 기존 이슈를 복제해 새 이슈를 만드는 기능이다. FR 
 | `version` | **1** | 새 애그리거트 |
 | `createdAt`/`updatedAt` | **now** | 클론 시각 |
 
+> **복사 담당자(`assigneeId`)는 존재성을 재검증하지 않는다.** `changeAssignee` 경로는 `UserLookupPort.exists`로 사용자
+> 실재를 guard하지만, 클론은 "원본 스냅샷 복사" 시맨틱이므로 원본이 가진 `assigneeId`를 그대로 carry-over한다. 원본 담당자가
+> 그새 삭제됐다면 클론본은 원본과 **동일한** stale 참조를 갖는다 — 이는 원본 자신도 이미 가진 상태이며(`assignee_id`는 BC
+> 격리로 FK가 없어 insert가 깨지지 않는다), "삭제된 사용자 정리"는 클론과 무관한 별도 관심사다. `includeAssignee=false`로
+> 명시 미할당하는 선택권은 그대로 제공한다. (코드리뷰 C1 확인, Maxi 결정 2026-06-04 — 현행 유지.)
+
 ### 3. 첨부 / Watcher / 댓글 복사는 이연 (deferred)
 
 해당 하위 시스템이 미구현이므로 클론 대상에 포함하지 않는다. FR 제목의 "옵션: 첨부/Watcher/댓글 포함"은
