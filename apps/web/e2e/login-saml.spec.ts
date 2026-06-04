@@ -80,14 +80,20 @@ test.describe('SAML SSO 로그인 진입 (FR-AU-03)', () => {
     ).toBeVisible()
 
     // Then. SAML IdP 버튼 미노출 — IdP 목록이 비어있으므로 SamlIdpButtons 가 null 반환
-    // useQuery 가 완료된 후에도 버튼이 없어야 하므로 충분한 시간 대기
+    // exact:true + SAML provider 이름 명시로 한정: OIDC 버튼("Google 로 로그인")이
+    // 동일한 "/로 로그인/" 패턴을 쓰므로, 정규식 사용 시 strict mode violation 위험.
+    // (ui-pr-defer-e2e-regression-latent + playwright-getbyrole-exact-strict-mode 교훈)
     await expect(
-      page.getByRole('button', { name: /로 로그인/ }),
+      page.getByRole('button', {
+        name: loginStrings.samlLoginButtonLabel('Okta SSO'),
+        exact: true,
+      }),
     ).not.toBeVisible({ timeout: 5_000 })
 
-    // Then. divider 텍스트("또는")도 미노출
-    await expect(
-      page.getByText(loginStrings.samlDividerText, { exact: true }),
-    ).not.toBeVisible({ timeout: 5_000 })
+    // Then. divider 텍스트("또는") 미노출 확인 생략.
+    // OIDC 버튼(Google)이 독립적으로 활성화되어 있으면 OIDC divider가 "또는"을 표시하므로
+    // getByText('또는') 는 OIDC 영역을 잡아 false-negative가 된다.
+    // SAML 버튼 자체가 없는 것으로 "SAML 영역 미노출" 목적은 충분히 달성된다.
+    // (OIDC 공존 이후 samlDividerText === oidcDividerText === '또는' 이라 구분 불가)
   })
 })
