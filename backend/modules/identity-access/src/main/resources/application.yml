@@ -42,6 +42,12 @@ bts:
     # dev 기본값: http://localhost:8080 (로컬 개발 서버)
     # prod: application-prod.yml 의 BTS_AUTH_ISSUER_URI 환경변수로 override
     issuer-uri: ${BTS_AUTH_ISSUER_URI:http://localhost:8080}
+  bootstrap:
+    # 부트스트랩 시점에 SYSTEM_ADMIN 으로 승격할 사용자명 (FR-PM-08 Task 5).
+    # 기본값은 빈 문자열 — 미설정 시 SystemAdminBootstrapRunner 가 아무 동작도 하지 않는다.
+    # 이미 SYSTEM_ADMIN 보유자가 있으면 멱등 skip 하므로 재기동마다 재부여하지 않는다.
+    # prod: BTS_BOOTSTRAP_ADMIN_USERNAME 환경변수로 주입 (Spring relaxed binding).
+    admin-username: ${BTS_BOOTSTRAP_ADMIN_USERNAME:}
 
 logging:
   level:
