@@ -128,6 +128,8 @@ class Saml2AuthenticationSuccessHandlerTest {
         every { principal.name } returns nameId
         every { principal.relyingPartyRegistrationId } returns registrationId
         every { principal.attributes } returns emptyMap()
+        // SAML Attribute 미제공 케이스 — email/displayName 은 nameId fallback 경로를 탄다
+        every { principal.getFirstAttribute<String>(any()) } returns null
         return Saml2Authentication(principal, "<saml-response/>", emptyList())
     }
 
