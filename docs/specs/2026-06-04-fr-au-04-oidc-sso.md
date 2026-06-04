@@ -150,7 +150,7 @@ F4가 관리 UI를 FR-AU-06으로 이연하므로, 본 FR에서 IdP가 시스템
 
 ## 8. 제약 조건
 
-- C1. **외부 의존성 신규** — `spring-boot-starter-oauth2-client`(전이 nimbus-oauth2-sdk). DEVELOPMENT.md §외부 의존성 → **Maxi 확인 대상**(게이트 1 승인). resource-server는 ADR D3로 제외
+- C1. **외부 의존성 신규 추가 0** — `oauth2-client`(build.gradle.kts:54)·`oauth2-resource-server`(line 58) 모두 기존재(FR-AU-09 맥락, grep 확인). OIDC는 oauth2-client 재사용 → **게이트1 의존성 승인 불요**(SAML C1과 다름). ADR D3 정정 반영
 - C2. **BC 격리** — 한 PR = identity-access only
 - C3. **병행 충돌 선점**(plan 단계 grep 필수):
   - SAML이 추가한 SecurityFilterChain(@Order(1)) 옆에 OIDC 체인 공존 — `securityMatcher` 배타 경로(`/oauth2/**`, `/login/oauth2/**`) 확인

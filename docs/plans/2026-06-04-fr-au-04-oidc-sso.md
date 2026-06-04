@@ -53,6 +53,141 @@ product plan: docs/plan/product/identity-access.md §2.4 (D1~D7)
 
 ✅ 통과 (1회 iteration). SAML PR #76 산출물 ground-truth 점검으로 gap 3건 발견·보강(G1 Keycloak OIDC realm 추가 / G2 LdapProvisionAttrs 재사용 / G3 성공 핸들러 자체 세션발급+Clock). 모두 SAML 선례로 자명, Maxi 결정 불요.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 전체 TDD red→green→refactor. agent 기본값 `security-engineer`(auth BC).
+> **단일 Gradle 모듈(identity-access)** — backend test끼리 컴파일 단위 공유로 wave 병렬 효과 제한(메모리 `bts-plan-wave-gradle-module-compile`). 프론트(apps/web)는 별 모듈로 백엔드와 병행 가능.
+> **SAML(PR #76) 동형** — 대부분 SAML 파일을 OIDC로 1:1 매핑. SAML 산출물을 참조 선례로 활용.
+
+### ★ 게이트1 Maxi 확인 항목
+
+1. **외부 의존성** — **신규 추가 0**(ground-truth: `oauth2-client`/`oauth2-resource-server` build.gradle.kts:54/58 기존재). SAML과 달리 의존성 승인 불요. ADR D3 정정 반영
+2. **client_secret 암호화 키** — app encryption key 환경변수 신규 도입(`infra` dev/prod). 키 관리 방식 확인(아래 Task 1)
+3. **공유 자산** — SAML ADR D2(이동 없이 `provider.ldap.AutoProvisionService` 재사용) 그대로 승계. 추가 결정 불요
+
+### Task 1. client_secret 암호화 유틸 (신규 인프라)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`.../identity/config/SecretEncryptor.kt`, `.../identity/config/OidcEncryptionConfig.kt`, `.../test/.../SecretEncryptorTest.kt`]
+- depends-on: []
+
+**RED**: 평문 → 암호화 → 복호화 round-trip 일치 + 같은 평문이 매번 다른 ciphertext(salt/IV) + 잘못된 키로 복호화 실패 단위 테스트.
+**GREEN**: Spring Security Crypto `AesBytesEncryptor`(또는 `Encryptors.stronger`, AES-256-GCM 계열) 래퍼 `SecretEncryptor`. app key + salt는 환경변수 주입(`@Value`). **OIDC 미설정 환경 부팅 보호** — `@ConditionalOnProperty(oidc.encryption.key)` 또는 키 부재 시 OIDC 협력자 빈만 미구성(메모리 `profile-scoped-bean-boot-failure`).
+**REFACTOR**: 키 부재 진단 메시지 명확화, KDoc(복호화 결과 미로깅 N4).
+**검증**: `./gradlew :modules:identity-access:test --tests *SecretEncryptor*`
+
+### Task 2. oidc_provider_configs 마이그레이션 V011 + OIDC authn_providers seed
+
+**메타**.
+- agent: `db-engineer`
+- files: [`.../resources/db/migration/V011__oidc_provider_configs.sql`, `.../test/.../OidcProviderConfigsSchemaTest.kt`]
+- depends-on: []
+
+**RED**: V011 적용 후 `oidc_provider_configs` 테이블 존재 + 컬럼(spec §5) + UNIQUE(registration_id) + `authn_provider_id` FK(→authn_providers) + OIDC authn_providers seed row 존재 단언(Testcontainers).
+**GREEN**: V011 — spec §5 컬럼(`client_secret_encrypted`, `issuer_uri`, `client_id`, `scopes` 등) + `authn_provider_id uuid NOT NULL REFERENCES authn_providers(id)` + **OIDC `authn_providers` seed**(고정 UUID, type='OIDC', name='OIDC SSO', SAML V010 선례 동형) + enabled 부분 인덱스.
+**REFACTOR**: COMMENT/인덱스 정리.
+**주의**: 권한 코드 시드 아님 → `PermissionSchemaMigrationTest` 영향 0(메모리 `fr-pm-permission-seed-migration-test-coupling`). plain JDBC repo면 `init_codegen.sql` 미러 불요(SAML V010이 미러 안 함 → 동일).
+**검증**: `./gradlew :modules:identity-access:test --tests *OidcProviderConfigsSchema*`
+
+### Task 3. OidcProviderConfig 도메인 + Repository(read) + DB기반 ClientRegistrationRepository 어댑터
+
+**메타**.
+- agent: `security-engineer`
+- files: [`.../provider/oidc/OidcProviderConfig.kt`, `.../provider/oidc/OidcProviderConfigRepository.kt`, `.../provider/oidc/DbClientRegistrationRepository.kt`, `.../test/.../OidcProviderConfigRepositoryTest.kt`, `.../test/.../DbClientRegistrationRepositoryTest.kt`]
+- depends-on: [1, 2]
+
+**RED**: oidc_provider_configs read(enabled만, 비활성 제외 EC5) → `ClientRegistration` 변환(client_secret 복호화 적용) 테스트. issuer-uri discovery로 엔드포인트 해소.
+**GREEN**: plain JDBC repository(SAML `SamlIdpConfigRepository` 패턴) + Spring `ClientRegistrationRepository` 구현 어댑터(`DbClientRegistrationRepository`, SAML `DbRelyingPartyRegistrationRepository` 동형). `ClientRegistrations.fromIssuerLocation(issuerUri)`로 discovery + client_secret은 `SecretEncryptor`로 복호화. discovery 호출 비용 → lazy 생성 + 캐시.
+**REFACTOR**: discovery 캐시(registrationId별), KDoc.
+**주의**: discovery 실패(IdP 다운) 시 부팅 막지 않음(lazy 해소, EC6).
+**검증**: `./gradlew :modules:identity-access:test --tests *OidcProviderConfig* --tests *DbClientRegistration*`
+
+### Task 4. OidcProvider thin + OidcAuthenticationSuccessHandler (Principal 변환 + JIT + JWT)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`.../spi/Credential.kt`(OidcToken 추가), `.../provider/oidc/OidcProvider.kt`, `.../provider/oidc/OidcAuthenticationSuccessHandler.kt`, `.../test/.../OidcProviderUnitTest.kt`, `.../test/.../OidcSuccessHandlerTest.kt`]
+- depends-on: [1, 3]
+
+**RED**: `OAuth2AuthenticationToken`(OidcUser) → `Principal`(sub=externalSubject) 변환 + registrationId→authn_providers.id 매핑 + `AutoProvisionService.provision(providerId, LdapProvisionAttrs)` 호출(claims→attrs) + 복귀 경로 화이트리스트(open-redirect N5) 단위 테스트(mock).
+**GREEN**:
+- `Credential.kt`에 `data class OidcToken(...)` 추가(SPI 일관성 최소 표현, SAML `SamlAssertion` 선례. 검증은 Spring 필터가 수행)
+- `OidcProvider` thin(`ProviderType.OIDC` 등록, `supports()`=false, `authenticate()` dead-path Failure 반환 — SAML `SamlProvider` 동형)
+- `OidcAuthenticationSuccessHandler` — OidcUser claims 변환 → registrationId로 OIDC authn_providers.id 해소 → AutoProvision(JIT) → 세션/JWT 발급(`SessionService`/`RefreshTokenRepository`/`JwtIssuer` 직접 + Clock 주입, SAML 핸들러 동형) → 복귀
+**REFACTOR**: 복귀 경로 검증 분리, KDoc(PII/secret 미로깅 N4).
+**검증**: `./gradlew :modules:identity-access:test --tests *OidcProvider* --tests *OidcSuccess*`
+
+### Task 5. OidcSecurityConfig @Order 체인 + oauth2Login wiring + permitAll/CSRF
+
+**메타**.
+- agent: `security-engineer`
+- files: [`.../config/OidcSecurityConfig.kt`, `.../config/SecurityConfig.kt`(permitAll/CSRF skip 목록 추가), `.../test/.../OidcSecurityConfigTest.kt`]
+- depends-on: [4]
+
+**RED**: `/oauth2/authorization/{registrationId}`(진입) + `/login/oauth2/code/{registrationId}`(콜백)가 oauth2 필터에 연결 + 성공 핸들러 wiring + 세션 정책(IF_REQUIRED) + permitAll 슬라이스 테스트.
+**GREEN**:
+- **OIDC 전용 `@Order(1)` SecurityFilterChain `IF_REQUIRED`**(ADR D1, SAML `SamlSecurityConfig` 동형). `securityMatcher`로 OIDC 경로(`/oauth2/**`, `/login/oauth2/**`)만 배타 매칭 — SAML 체인과 경로 겹침 없음 확인
+- `oauth2Login {}` DSL + `DbClientRegistrationRepository` 빈 + `OidcAuthenticationSuccessHandler` 연결
+- `@ConditionalOnBean(ClientRegistrationRepository::class, OidcAuthenticationSuccessHandler::class)` 부팅 가드(메모리 `profile-scoped-bean-boot-failure`)
+- **permitAll** — `/oauth2/authorization/**`, `/login/oauth2/code/**`, `/api/v1/auth/oidc/providers`(미인증). 콜백은 표준 OAuth2 필터가 처리(자체 토큰교환 코드 금지)
+**REFACTOR**: 경로 상수화(`AntPathRequestMatcher`, MVC 비의존 — SAML 선례).
+**주의**: SAML 체인(@Order(1))과 OIDC 체인 공존 — `@Order` 값/경로 배타 확인. 활성 PR #75(SecurityFilterChain) 머지 순서 인지.
+**검증**: `./gradlew :modules:identity-access:test`
+
+### Task 6. 활성 OIDC IdP 목록 API
+
+**메타**.
+- agent: `security-engineer`
+- files: [`.../web/OidcProviderController.kt`, `.../web/dto/OidcProviderResponse.kt`, `.../test/.../OidcProviderControllerTest.kt`]
+- depends-on: [3]
+
+**RED**: `GET /api/v1/auth/oidc/providers` → enabled IdP만(registrationId, displayName) 반환, 비활성 제외, **client_secret/client_id/issuer 등 민감/내부 정보 미노출**.
+**GREEN**: 컨트롤러 + DTO(민감정보 제외). 미인증 접근 허용(로그인 전 호출, SAML `SamlIdpController` 동형).
+**REFACTOR**: 응답 DTO ↔ 프론트 Zod 1:1(drift 차단, 메모리 `frontend-zod-backend-dto-contract-gap`).
+**검증**: `./gradlew :modules:identity-access:test --tests *OidcProviderController*`
+
+### Task 7. Keycloak OIDC Testcontainers 통합 테스트
+
+**메타**.
+- agent: `security-engineer` (+ qa-engineer 인프라 검토)
+- files: [`.../test/.../integration/OidcAuthFlowIntegrationTest.kt`, `.../test/kotlin/.../integration/KeycloakOidcTestcontainersBase.kt`, `.../test/resources/keycloak/oidc-test-realm.json`]
+- depends-on: [5]
+
+**RED→GREEN**: Keycloak 컨테이너 OIDC 모드 — Authorization Code 진입(`/oauth2/authorization/{id}` → 실 Keycloak authorization endpoint 302 + state/PKCE), 전체 로그인(code 콜백→token 교환→ID Token 검증→세션 발급 S1), ID Token 검증 실패 거부(S3), JIT 멱등(S2/EC2). Testcontainers singleton 패턴(메모리 `Testcontainers 클래스 라이프사이클` stale port 회피).
+**주의(G1)**: SAML PR #76은 `KeycloakSamlTestcontainersBase` + `saml-test-realm.json`(SAML 전용 realm)만 도입 → **OIDC realm/client(`oidc-test-realm.json`) + OIDC base 신규**(컨테이너 이미지·`KeycloakImageSelection` ADR 재사용). 단일 모듈 직렬 끝단이라 막히면 전체 지연 → qa-engineer 인프라 검토 게이트1에서 당김. orphan vite/port 방지.
+**검증**: `./gradlew :modules:identity-access:test --tests *OidcAuthFlow*`
+
+### Task 8. 프론트 — OIDC IdP 선택 동적 버튼 (D6)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/oidc.ts`, `apps/web/src/auth/OidcIdpButtons.tsx`, `apps/web/src/auth/LoginForm.tsx`(OIDC 버튼 영역 추가), `apps/web/src/mocks/oidc-handlers.ts`, `apps/web/src/mocks/handlers.ts`(인덱스 1줄), `apps/web/src/**/*.test.tsx`]
+- depends-on: [6]   # API 계약 의존, MSW로 백엔드와 병행 가능
+
+**RED**: `GET /api/v1/auth/oidc/providers` mock → 활성 IdP 버튼 동적 렌더(0개면 미노출 S5), 클릭 시 `/oauth2/authorization/{registrationId}` 이동.
+**GREEN**: `api/oidc.ts`(같은 BC api 관례 grep — 메모리 `frontend-api-convention-per-bc`, SAML `api/saml.ts` 선례) + `OidcIdpButtons`(SAML `SamlIdpButtons` 동형) + LoginForm 통합 + MSW handler(read-only). 텍스트 중복 버튼 컨테이너 한정(메모리 `playwright-getbyrole-exact-strict-mode`).
+**REFACTOR**: 버튼 컴포넌트 SAML과 공통화 검토(과하면 분리 유지).
+**주의**: `handlers.ts`/`LoginForm.tsx`는 SAML 산출물과 같은 파일 — SAML 버튼 영역 옆에 추가(라인 분리). 활성 PR #74/#79 router/handlers 머지 순서 인지.
+**검증**: `pnpm --filter @bts/web typecheck && pnpm --filter @bts/web test`
+
+### Task 9. E2E (D7)
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/login-oidc.spec.ts`]
+- depends-on: [8]
+
+**RED→GREEN**: MSW 기반 — OIDC 버튼 노출/클릭 리다이렉트(S1 진입), IdP 0개 미노출(S5). 실제 IdP 왕복은 백엔드 통합테스트(T7) 위임. **기존 login/SAML E2E 회귀 0**(컨테이너 한정 셀렉터, 메모리 `playwright-getbyrole-exact-strict-mode` + `ui-pr-defer-e2e-regression-latent`). worktree orphan vite 5173 정리(메모리 `e2e-orphan-vite-after-worktree-remove`).
+**검증**: `pnpm --filter @bts/web test:e2e --grep oidc`
+
+## Plan 메타
+
+- task 수: 9
+- 예상 wave: backend(T1·T2 병렬 → T3 → T4·T6 → T5 → T7)는 단일 모듈이라 대체로 직렬, 프론트(T8·T9)는 T6 계약 후 백엔드와 병행
+- TDD 강제: yes
+- 병렬 dispatch: bts-impl이 depends-on + files로 wave 계산
+- 추가 검증: ktlint/detekt/ArchUnit + vitest/typecheck + playwright(qa-engineer)
+- 게이트1 Maxi 확인: 외부 의존성 0(승인 불요) + client_secret 암호화 키 환경변수 도입
 
 ## 리뷰 결과 (← /bts-review-plan 채움)

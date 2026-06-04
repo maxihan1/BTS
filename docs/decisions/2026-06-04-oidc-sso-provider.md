@@ -34,11 +34,18 @@ SAML 체인(Order=1)과 OIDC 체인이 공존하므로, 두 체인은 `securityM
 SAML의 D5 교훈(`/sso/saml2/...` 미배선 별칭 BLOCKER)을 회피하기 위해 비표준 별칭을 만들지 않는다.
 프론트(OIDC 버튼)·`securityMatcher` 모두 표준 경로만 사용한다.
 
-### D3. 의존성 = oauth2-client 단독 (resource-server 제외)
+### D3. 의존성 = 신규 추가 0 (oauth2-client 이미 존재, resource-server 별목적 존재)
 
-BTS는 IdP로 로그인만 받고 **자체 JWT/세션을 발급**한다(ADR `jwt-issuer-strategy`). 외부 IdP의 access token을
-BTS가 보호 리소스 검증 용도로 소비하지 않으므로 `spring-boot-starter-oauth2-resource-server`는 도입하지 않는다
-(dead 의존성 회피). `oauth2-client`만으로 충분하다. SAML이 `saml2-service-provider`만 쓴 것과 동형.
+**ground-truth 확인(plan 단계)**: `identity-access/build.gradle.kts`에 `spring-boot-starter-oauth2-client`(line 54)와
+`spring-boot-starter-oauth2-resource-server`(line 58)가 **이미 존재**한다. resource-server는 FR-AU-09 자체 JWT
+검증(`JwtDecoder`/nimbus-jose-jwt)용으로 들어와 있고, oauth2-client도 기존재한다.
+
+따라서 OIDC 구현은 **외부 의존성을 신규 추가하지 않는다**(SAML의 `saml2-service-provider` 신규 추가와 다름).
+oauth2-client를 OIDC 로그인(`oauth2Login` DSL)에 그대로 재사용한다. resource-server는 OIDC 목적으로 사용하지 않으나
+FR-AU-09가 쓰고 있어 제거 대상이 아니다. BTS는 IdP로 로그인만 받고 **자체 JWT/세션을 발급**한다
+(ADR `jwt-issuer-strategy`) — 외부 access token을 보호 리소스 검증에 소비하지 않는다.
+
+→ **게이트1 외부 의존성 승인 불요**(Maxi 확인 2026-06-04 "resource-server 제외" 의도는 "OIDC가 새로 도입하지 않음"으로 충족).
 
 ### D4. oidc_provider_configs ↔ authn_providers 연결 + client_secret 암호화 저장
 
@@ -61,7 +68,7 @@ OAuth2 `registrationId` → `oidc_provider_configs` → `authn_provider_id`로 �
 
 ## 결과
 
-- 외부 의존성 1개 추가(`spring-boot-starter-oauth2-client`, Spring Boot 3.x BOM 관리). resource-server 미도입.
+- 외부 의존성 신규 추가 0 — `oauth2-client`/`oauth2-resource-server` 모두 기존재(build.gradle.kts:54/58, FR-AU-09 맥락). OIDC가 oauth2-client 재사용.
 - SecurityFilterChain 3개(SAML IF_REQUIRED @Order(1) + OIDC IF_REQUIRED @Order(1, 배타 경로) + 기존 STATELESS).
 - 신규 테이블 `oidc_provider_configs`(authn_provider_id FK + client_secret 암호화 컬럼). users/user_external_accounts 재사용.
 - 암호화 유틸 신규 도입(키 관리 환경변수). 기존 BC에 암호화 유틸 부재 확인됨.
