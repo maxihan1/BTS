@@ -5,7 +5,9 @@
 -- 프로젝트 관리자(PROJECT_ADMIN)에게만 부여한다 → MEMBER 의 스킴 배정 시 403.
 -- (워크플로우 스킴 CRUD(MANAGE_SCHEME/Global)는 시스템 관리자 전용 — role_permissions 가 아닌 SystemPermissionResolver 판정.)
 --
+-- 근거: FR-PM-04 (워크플로우/자동화 관리 권한) · SDD 12.3 (MANAGE_WORKFLOW — 워크플로우 편집).
 -- 결정: spec docs/specs/2026-06-05-fr-pm-04-workflow-automation.md (FR-4, Maxi 2026-06-05 확정).
+-- 선례: V009__manage_components_versions_permissions.sql (FR-PM-03 동형 시드 구조 미러).
 --
 -- 데이터 시드(INSERT)일 뿐 컬럼/스키마 변경이 아니므로 init_codegen.sql 미러 불요.
 -- identity-access 는 jOOQ 미사용(JdbcTemplate) — jOOQ 상수 생성 대상 아님.
