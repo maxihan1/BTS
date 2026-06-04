@@ -207,6 +207,19 @@ class Saml2AuthenticationSuccessHandlerTest {
     }
 
     @Test
+    fun `백슬래시 우회 RelayState(슬래시 백슬래시)도 차단한다`() {
+        // 브라우저는 `/\evil.example.com` 의 백슬래시를 슬래시로 정규화해 `//evil...` 처럼
+        // 프로토콜 상대 URL 로 해석할 수 있다(open-redirect 우회). 따라서 차단해야 한다 (CONCERN 2).
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        val locationSlot = slot<String>()
+        every { response.sendRedirect(capture(locationSlot)) } returns Unit
+
+        handler.onAuthenticationSuccess(request("/\\evil.example.com"), response, samlAuthentication())
+
+        assertThat(locationSlot.captured).isEqualTo(DEFAULT_REDIRECT)
+    }
+
+    @Test
     fun `RelayState 가 없으면 기본 dashboard 로 보낸다`() {
         val response = mockk<HttpServletResponse>(relaxed = true)
         val locationSlot = slot<String>()

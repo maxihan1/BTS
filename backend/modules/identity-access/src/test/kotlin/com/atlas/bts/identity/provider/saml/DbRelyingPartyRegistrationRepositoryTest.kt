@@ -71,6 +71,18 @@ class DbRelyingPartyRegistrationRepositoryTest {
     }
 
     @Test
+    fun `findByRegistrationId — SP AuthnRequest 서명을 끈다 (wantAuthnRequestsSigned=false)`() {
+        // CONCERN-A 결정: SP signing 자격을 구성하지 않으므로 AuthnRequest 서명을 비활성화한다.
+        // 이래야 표준 경로(/saml2/authenticate/{id}) 진입 시 서명 자격 부재로 깨지지 않고 IdP 로 302 된다.
+        every { configRepo.findEnabledByRegistrationId("okta") } returns config("okta")
+
+        val reg = sut.findByRegistrationId("okta")
+
+        assertThat(reg).isNotNull()
+        assertThat(reg!!.assertingPartyDetails.wantAuthnRequestsSigned).isFalse()
+    }
+
+    @Test
     fun `findByRegistrationId — config 없으면 null (EC5)`() {
         every { configRepo.findEnabledByRegistrationId("missing") } returns null
 

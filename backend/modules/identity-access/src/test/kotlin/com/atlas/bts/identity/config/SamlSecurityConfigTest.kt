@@ -60,11 +60,22 @@ class SamlSecurityConfigTest {
     // --- (c) securityMatcher 동작 ---------------------------------------------------
 
     @Test
-    fun `SAML 체인은 SAML ACS 경로만 매칭하고 일반 api 경로는 매칭하지 않는다`() {
+    fun `SAML 체인은 표준 SAML 경로만 매칭하고 일반 api 경로는 매칭하지 않는다`() {
         runnerWithSamlCollaborators().run { ctx ->
             val chain = ctx.getBean("samlSecurityFilterChain", SecurityFilterChain::class.java)
+            // 표준 AuthnRequest 진입 + ACS 콜백은 매칭한다.
+            assertThat(chain.matches(request("GET", "/saml2/authenticate/okta"))).isTrue()
             assertThat(chain.matches(request("POST", "/login/saml2/sso/okta"))).isTrue()
             assertThat(chain.matches(request("GET", "/api/v1/protected"))).isFalse()
+        }
+    }
+
+    @Test
+    fun `SAML 체인은 미배선 별칭 경로(sso saml2)를 더 이상 매칭하지 않는다 (BLOCKER 1)`() {
+        // /sso/saml2/** 는 대응 필터가 없는 미배선 별칭이었다. 표준 경로(/saml2/**)로 통일하며 제거.
+        runnerWithSamlCollaborators().run { ctx ->
+            val chain = ctx.getBean("samlSecurityFilterChain", SecurityFilterChain::class.java)
+            assertThat(chain.matches(request("GET", "/sso/saml2/authenticate/okta"))).isFalse()
         }
     }
 

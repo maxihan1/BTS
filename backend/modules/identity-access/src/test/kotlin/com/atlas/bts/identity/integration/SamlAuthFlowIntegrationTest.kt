@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
+import org.springframework.http.HttpStatus
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
@@ -144,38 +145,39 @@ class SamlAuthFlowIntegrationTest : KeycloakSamlTestcontainersBase() {
     // ── S1: SP-initiated 진입 — 필터체인 ↔ DB 메타데이터 결선 ────────────────────
 
     /**
-     * S1 (부분): SP-initiated 진입 시 Spring SAML2 필터가 DB 의 실 Keycloak 메타데이터로
-     * AuthnRequest 생성을 시도하는지(= DbRelyingPartyRegistrationRepository → RelyingPartyRegistration →
-     * saml2Login 필터 → AuthnRequest 리졸버 배선이 런타임 실 메타데이터로 동작하는지) 검증한다.
+     * S1: SP-initiated 진입 시 Spring SAML2 필터가 DB 의 실 Keycloak 메타데이터로 AuthnRequest 를 생성하고
+     * IdP SSO URL 로 302 리다이렉트하는지 검증한다(= DbRelyingPartyRegistrationRepository →
+     * RelyingPartyRegistration → saml2Login 필터 → AuthnRequest 리졸버 → IdP 리다이렉트가 런타임 실
+     * 메타데이터로 end-to-end 동작하는지).
      *
-     * ## SP-initiated 진입 경로 (Task 7 통합 검증으로 드러난 사실)
+     * ## SP-initiated 진입 경로 (BLOCKER 1 해소)
      * Spring Security 의 saml2Login 은 AuthnRequest 생성 필터를 표준 경로
      * /saml2/authenticate/{registrationId} 에만 바인딩한다([AUTHN_REQUEST_PATH]).
-     * [com.atlas.bts.identity.config.SamlSecurityConfig] 의 securityMatcher 에 포함된 /sso/saml2 별칭은
-     * 체인에 매칭되긴 하나 대응 필터가 없어 /login 으로 강등된다(미배선 별칭).
-     * 따라서 실제 동작하는 진입 경로는 표준 경로다.
+     * 과거 securityMatcher 에 있던 /sso/saml2 별칭은 대응 필터가 없는 미배선 별칭이라 제거했고,
+     * 프론트/백 모두 표준 경로로 통일했다([com.atlas.bts.identity.config.SamlSecurityConfig]).
      *
-     * ## CONCERN-A — SP AuthnRequest 서명 자격 미구성 (production 갭, Task 3/4 후속)
-     * Spring 의 AssertingPartyDetails 는 `wantAuthnRequestsSigned` 기본값이 true 라, 표준 경로 진입 시
-     * AuthnRequest 에 **SP 서명**을 시도한다. 그러나 [DbRelyingPartyRegistrationRepository] 는 verification
-     * 자격만 구성하고 SP signing 자격(또는 wantAuthnRequestsSigned=false)을 설정하지 않아,
-     * OpenSaml 이 "Failed to resolve any signing credential" 로 [org.springframework.security.saml2.Saml2Exception]
-     * 을 던진다. 이 예외 자체가 **DB 의 실 Keycloak 메타데이터가 로드되어 AuthnRequest 리졸버까지 도달**했음을
-     * 증명한다(정적 stub 이 아님). full 302 리다이렉트는 SP 서명 자격 구성 후속 작업으로 가능해진다.
+     * ## SP AuthnRequest 서명 비활성화 (CONCERN-A 결정 = 서명 끄기)
+     * [DbRelyingPartyRegistrationRepository] 가 `wantAuthnRequestsSigned(false)` 로 구성하므로 SP 서명
+     * 자격 없이 표준 경로 진입 시 AuthnRequest(HTTP-Redirect 바인딩)가 생성되어 IdP SSO URL 로 **302
+     * 리다이렉트**된다. 과거(서명 켜짐)에는 "Failed to resolve any signing credential" 예외가 났으나,
+     * 이제는 실제 302 + SAMLRequest 가 나온다(end-to-end 동작 증거).
      *
      * 브라우저 매개 ACS POST 왕복(로그인 폼 입력 → SAMLResponse) 은 브라우저 엔진 의존이라 제외한다.
      */
     @Nested
     inner class SpInitiatedEntryTest {
         @Test
-        fun `SP-initiated 진입은 실 Keycloak 메타데이터로 AuthnRequest 리졸버까지 도달한다 (CONCERN-A)`() {
-            // wantAuthnRequestsSigned 기본 true + SP signing 자격 미구성 → 서명 단계에서 Saml2Exception.
-            // 이 예외 도달 = DbRelyingPartyRegistrationRepository 가 실 Keycloak 등록정보를 로드해
-            // saml2Login AuthnRequest 리졸버까지 배선이 이어졌다는 증거.
-            val thrown = runCatching { mockMvc.perform(get("$AUTHN_REQUEST_PATH/$REGISTRATION_ID")) }
-            assertThat(thrown.isFailure).isTrue()
-            val root = generateSequence(thrown.exceptionOrNull()) { it.cause }.last()
-            assertThat(root.message).contains("signing credential")
+        fun `SP-initiated 진입은 실 Keycloak SSO URL 로 302 리다이렉트한다 (BLOCKER 1 + CONCERN-A)`() {
+            // wantAuthnRequestsSigned=false → SP 서명 자격 없이 AuthnRequest(HTTP-Redirect) 생성.
+            // 표준 경로 진입 시 실 Keycloak SSO URL 로 302 + SAMLRequest 쿼리가 나와야 한다.
+            val result = mockMvc.perform(get("$AUTHN_REQUEST_PATH/$REGISTRATION_ID")).andReturn()
+
+            assertThat(result.response.status).isEqualTo(HttpStatus.FOUND.value())
+            val location = result.response.getHeader("Location")
+            assertThat(location).isNotNull()
+            // 실 Keycloak SSO URL 로 향하고 AuthnRequest 가 실려 있어야 한다(정적 stub 이 아닌 실 메타데이터 배선).
+            assertThat(location!!).startsWith(idpMetadata.singleSignOnUrl)
+            assertThat(location).contains("SAMLRequest=")
         }
 
         @Test
