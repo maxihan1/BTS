@@ -203,3 +203,10 @@ CONCERN 4건 — **impl 착수 시 반영(못박기)**:
 - **C4 (Task 2, seed UUID)** — OIDC authn_providers seed 고정 UUID는 SAML(`00000000-0000-4a03-8000-000000000003`)과 **반드시 다른 값**(예: `...4a04...`). `ON CONFLICT (name) DO NOTHING` 멱등 유지
 
 전체 리뷰 근거: code-reviewer agent `af0bfe6e407284e1c` (파일:라인 인용 포함).
+
+### 게이트1 Maxi 결정 (2026-06-04, 승인 → 구현 착수)
+
+- **외부 의존성** = 신규 0(oauth2-client/resource-server 기존재) → 승인 불요 확정
+- **client_secret 암호화** = 채택(Task 1, GCM+random-IV C3 반영)
+- **공유 자산** = SAML ADR D2(이동 없이 AutoProvisionService 재사용) 승계
+- **게이트1** = 승인. 9 task TDD 구현 착수. CONCERN 4건(C1~C4) impl 반영 조건
