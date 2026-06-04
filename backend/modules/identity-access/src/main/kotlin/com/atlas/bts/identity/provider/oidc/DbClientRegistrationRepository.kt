@@ -32,7 +32,9 @@ fun interface IssuerLocationDiscovery {
  */
 @Component
 class SpringIssuerLocationDiscovery : IssuerLocationDiscovery {
-    override fun discover(issuerUri: String): ClientRegistration.Builder = ClientRegistrations.fromIssuerLocation(issuerUri)
+    override fun discover(issuerUri: String): ClientRegistration.Builder {
+        return ClientRegistrations.fromIssuerLocation(issuerUri)
+    }
 }
 
 /**
@@ -53,6 +55,12 @@ class SpringIssuerLocationDiscovery : IssuerLocationDiscovery {
  *
  * **EC6 lazy**: discovery 호출은 [findByRegistrationId] 요청 시점에만 발생한다. 생성자/빈 초기화에서
  * 모든 issuer 를 미리 호출하지 않으므로 IdP 다운이 BTS 부팅을 막지 않는다.
+ *
+ * **캐시 결정**: discovery 결과([ClientRegistration.Builder])는 매 호출 mutable 객체이고
+ * 호출자가 clientId/secret 등으로 변형하므로 빌더 자체를 공유 캐시하면 thread-safety/오염 위험이 있다.
+ * 또 enabled 토글·secret 회전 즉시 반영을 위해 config 는 매 호출 재조회가 안전하다. 따라서 영구 캐시는
+ * 두지 않는다(과한 캐시 회피). discovery 네트워크 비용 최적화가 필요해지면 issuer 메타데이터(불변)만
+ * 별도 캐시하는 방식을 [IssuerLocationDiscovery] 구현 내부에서 추가한다(본 클래스 계약 불변).
  */
 @Component
 class DbClientRegistrationRepository(
