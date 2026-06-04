@@ -43,6 +43,17 @@ class SystemAdminBootstrapRunner(
         if (adminUsername.isBlank()) {
             return
         }
+        promoteIfBootstrapNeeded()
+    }
+
+    /**
+     * 부트스트랩 승격이 필요한 경우에만 [SystemRole.SYSTEM_ADMIN] 을 부여한다.
+     *
+     * - 이미 보유자가 있으면 멱등 skip.
+     * - 대상 사용자가 없으면 경고 로그 후 종료(부팅 실패 아님).
+     * - 사용자가 존재하면 역할을 부여한다.
+     */
+    private fun promoteIfBootstrapNeeded() {
         if (systemRoleAssignmentRepository.existsByRole(SystemRole.SYSTEM_ADMIN)) {
             log.info("SYSTEM_ADMIN 보유자가 이미 존재하여 부트스트랩 승격을 건너뜁니다.")
             return
@@ -53,9 +64,9 @@ class SystemAdminBootstrapRunner(
                 "부트스트랩 SYSTEM_ADMIN 대상 사용자를 찾을 수 없습니다 (username={}). 승격을 건너뜁니다.",
                 adminUsername,
             )
-            return
+        } else {
+            systemRoleAssignmentRepository.assign(user.id, SystemRole.SYSTEM_ADMIN)
+            log.info("부트스트랩으로 사용자에게 SYSTEM_ADMIN을 부여했습니다 (username={}).", adminUsername)
         }
-        systemRoleAssignmentRepository.assign(user.id, SystemRole.SYSTEM_ADMIN)
-        log.info("부트스트랩으로 사용자에게 SYSTEM_ADMIN을 부여했습니다 (username={}).", adminUsername)
     }
 }
