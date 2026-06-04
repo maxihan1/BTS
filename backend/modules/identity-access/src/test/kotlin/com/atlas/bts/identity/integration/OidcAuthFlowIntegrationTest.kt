@@ -199,13 +199,17 @@ class OidcAuthFlowIntegrationTest : KeycloakOidcTestcontainersBase() {
 
         @Test
         fun `미등록 registrationId 진입은 실 Keycloak authorization 으로 리다이렉트하지 않는다`() {
-            // 미등록 registrationId 는 ClientRegistration 이 없어 authorization request 를 만들 수 없다.
+            // 미등록 registrationId 는 ClientRegistration 이 없어 authorization request 를 만들 수 없다
+            // (InvalidClientRegistrationIdException → 302 리다이렉트 미발생, Location 헤더 부재).
             val location =
                 runCatching {
                     val result = mockMvc.perform(get("$AUTHORIZATION_PATH/nonexistent-idp")).andReturn()
                     result.response.getHeader("Location")
                 }.getOrNull()
-            assertThat(location).doesNotContain("/realms/$OIDC_REALM/protocol/openid-connect/auth")
+            // 핵심: 실 Keycloak authorization endpoint 로는 절대 향하지 않는다(null 이거나 다른 경로).
+            if (location != null) {
+                assertThat(location).doesNotContain("/realms/$OIDC_REALM/protocol/openid-connect/auth")
+            }
         }
     }
 
