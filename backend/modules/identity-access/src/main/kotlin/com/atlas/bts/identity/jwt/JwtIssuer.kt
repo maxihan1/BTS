@@ -87,12 +87,8 @@ class JwtIssuer(
                 .claim(CLAIM_MFA_VERIFIED, false)
                 .claim(CLAIM_PROVIDER_ID, providerId)
                 .claim(CLAIM_SCOPES, scopes)
-                .apply {
-                    // roles 가 비어 있으면 claim 자체를 생략한다 (일반 사용자 토큰은 roles 미포함).
-                    if (roles.isNotEmpty()) {
-                        claim(CLAIM_ROLES, roles)
-                    }
-                }
+                // roles 가 비어 있으면 claim 자체를 생략한다 (일반 사용자 토큰은 roles 미포함).
+                .let { if (roles.isEmpty()) it else it.claim(CLAIM_ROLES, roles) }
                 .build()
 
         val jwt = SignedJWT(header, claims)
