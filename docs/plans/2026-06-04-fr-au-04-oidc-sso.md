@@ -227,6 +227,24 @@ CONCERN 4건 — **impl 착수 시 반영(못박기)**:
 
 전체 리뷰 근거: code-reviewer agent `af0bfe6e407284e1c` (파일:라인 인용 포함).
 
+### 게이트2 PR 코드리뷰 (2026-06-04, code-reviewer ground-truth) — PASS
+
+**BLOCKER 0 / CONCERN 2.** auth 영역 절대규칙 §1.1 보안 + §1.2 데이터무결성 + 환각/dead-path + 전달 concern을 파일:라인으로 직접 검증. PASS 항목:
+- §1.1.1 client_secret 암호화(통합테스트가 DB 저장값≠평문 단언), §1.1.2 PII/secret 미로깅(로그는 providerId/registrationId만)
+- §1.1.4 3체인 distinct @Order(SAML 1/OIDC 2/API 3)+securityMatcher 배타, permitAll 의도 경로만, §1.1.5 OIDC 체인 csrf.disable이 콜백 한정·API CSRF 무손상
+- §1.2 V011 Flyway·FK 정합(seed 선INSERT)·파라미터 바인딩(SQL인젝션 0)
+- OIDC 보안: ID Token 검증 프레임워크 위임(N1), PKCE S256 강제(실 Keycloak 302 code_challenge 단언), state/nonce, open-redirect(RelayStateValidator 재사용)
+- C2 정정 검증: SecretEncryptor 항상등록+사용시점 fail-fast → 부팅 안전(profile-scoped-bean-boot-failure 회피 확인)
+- 환각 0: OidcProvider thin/dead-path, Credential.OidcToken 정합, JIT 멱등(ON CONFLICT)
+
+CONCERN 2건(머지 비차단, 의도된 후속 이연):
+- C-1 (Task4) username=sub — UX 차원(displayName은 fullName→preferredUsername→sub fallback 정상, username은 ON CONFLICT 키라 sub 안정성 우선). FR-AU-06/08 시 preferred_username 승격 검토
+- C-2 (Task7) full callback 왕복 미자동화 — SAML 게이트2 "302 진입 검증" 동형, spec §9 완료기준 충족. token 교환/ID Token 검증은 프레임워크 책임
+
+리뷰 근거: code-reviewer agent `a2bd3dcff3d0b8709`.
+
+**/review(gstack)·/plan-ceo-review 생략** — code-reviewer가 SQL안전성/CSRF/부수효과/plan약속을 종합 커버, 메모리 `bts-review-plan-autoplan-overkill` 정신(SAML PR #76 동형).
+
 ### 게이트1 Maxi 결정 (2026-06-04, 승인 → 구현 착수)
 
 - **외부 의존성** = 신규 0(oauth2-client/resource-server 기존재) → 승인 불요 확정
