@@ -43,6 +43,7 @@ import java.time.Instant
  * - [TypeStandardNotDeletableException]     → 403 + TYPE_STANDARD_NOT_DELETABLE
  * - [WorkflowSchemeNoDefaultException]      → 500 + WORKFLOW_SCHEME_NO_DEFAULT (server invariant 위반)
  * - [SchemeStandardFieldLockedException]    → 403 + SCHEME_STANDARD_FIELD_LOCKED
+ * - [WorkflowSchemeAccessDeniedException]   → 403 + WORKFLOW_SCHEME_ACCESS_DENIED (BC 가로지름, FR-PM-04 EC7)
  *
  * @suppress TooManyFunctions — spec §4.5 의 11건 예외 errorCode 에 @ExceptionHandler 1:1 대응.
  * 각 핸들러는 서로 다른 도메인 예외를 처리하므로 통합 불가. 예외 핸들러 클래스의 본질적 구조.

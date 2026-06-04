@@ -2,6 +2,9 @@
 
 package com.bts.workflow.scheme.web
 
+import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
+import com.bts.shared.permission.WorkflowSchemePermission
+import com.bts.shared.permission.WorkflowSchemeScope
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.scheme.exception.IssueTypeNotFoundException
 import com.bts.workflow.scheme.exception.MappingDefaultDuplicateException
@@ -11,9 +14,6 @@ import com.bts.workflow.scheme.exception.SchemeKeyInvalidException
 import com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException
 import com.bts.workflow.scheme.exception.SchemeStandardNotDeletableException
 import com.bts.workflow.scheme.exception.TypeStandardNotDeletableException
-import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
-import com.bts.shared.permission.WorkflowSchemePermission
-import com.bts.shared.permission.WorkflowSchemeScope
 import com.bts.workflow.scheme.exception.WorkflowSchemeNoDefaultException
 import com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException
 import org.junit.jupiter.api.BeforeEach
@@ -33,6 +33,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import java.util.UUID
 
 /**
  * [WorkflowSchemeExceptionHandler] RFC 7807 ProblemDetail 매핑 11건 검증.
@@ -278,7 +279,7 @@ class WorkflowSchemeExceptionHandlerTest {
         @GetMapping("/test/workflow-scheme-access-denied")
         fun workflowSchemeAccessDenied(): Nothing =
             throw WorkflowSchemeAccessDeniedException(
-                actorId = java.util.UUID.fromString("00000000-0000-4000-8000-000000000001"),
+                actorId = UUID.fromString("00000000-0000-4000-8000-000000000001"),
                 permission = WorkflowSchemePermission.MANAGE_SCHEME,
                 scope = WorkflowSchemeScope.Global,
             )
