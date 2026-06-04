@@ -7,7 +7,7 @@ describe('triggerBlobDownload', () => {
 
   let createObjectURLSpy: ReturnType<typeof vi.fn>
   let revokeObjectURLSpy: ReturnType<typeof vi.fn>
-  let clickSpy: ReturnType<typeof vi.fn>
+  let originalClick: () => void
 
   beforeEach(() => {
     // jsdom은 URL.createObjectURL / revokeObjectURL을 구현하지 않아 mock 필요
@@ -18,13 +18,14 @@ describe('triggerBlobDownload', () => {
       revokeObjectURL: revokeObjectURLSpy,
     })
 
-    // HTMLAnchorElement.prototype.click을 spy로 교체 — 실제 클릭 방지
-    clickSpy = vi.fn()
-    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(clickSpy)
+    // HTMLAnchorElement.prototype.click을 vi.fn으로 교체 — 실제 클릭 동작 방지
+    originalClick = HTMLAnchorElement.prototype.click
+    HTMLAnchorElement.prototype.click = vi.fn()
   })
 
   afterEach(() => {
-    vi.restoreAllMocks()
+    // 원래 click 복원
+    HTMLAnchorElement.prototype.click = originalClick
     vi.unstubAllGlobals()
   })
 
@@ -52,12 +53,14 @@ describe('triggerBlobDownload', () => {
     expect(anchor).toBeDefined()
     expect(anchor!.href).toBe(MOCK_URL)
     expect(anchor!.download).toBe('ATLAS-1.pdf')
+
+    vi.restoreAllMocks()
   })
 
   it('앵커의 click을 호출한다', () => {
     const blob = new Blob(['%PDF-1.4'], { type: 'application/pdf' })
     triggerBlobDownload(blob, 'ATLAS-1.pdf')
-    expect(clickSpy).toHaveBeenCalledOnce()
+    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce()
   })
 
   it('revokeObjectURL을 mock URL로 호출해 메모리 누수를 방지한다', () => {
