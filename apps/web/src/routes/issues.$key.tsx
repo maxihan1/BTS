@@ -425,8 +425,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
     try {
       const blob = await downloadIssuePdf(issueKey)
       triggerBlobDownload(blob, `${issueKey}.pdf`)
-    } catch (err: unknown) {
-      console.error('PDF download failed', err)
+    } catch {
       toast.error(issueDetailStrings.pdfDownloadError)
     } finally {
       setIsPdfDownloading(false)
