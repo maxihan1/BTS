@@ -127,8 +127,9 @@ SDD 12.6 OrgAdmin/시스템 권한(12.3 ADMIN_SYSTEM 등)의 실제 구현. 현�
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/jwt/JwtIssuer.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/AuthController.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/session/RefreshTokenService.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/jwt/SidRevokeJwtConverter.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/jwt/JwtIssuerTest.kt`]
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/jwt/JwtIssuer.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/AuthController.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/session/RefreshTokenService.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/jwt/SidRevokeJwtConverter.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/jwt/JwtIssuerTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/session/RefreshTokenServiceTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/AuthControllerTest.kt`]
 - depends-on: [1, 2]
+- **(impl 보강 2026-06-05)** 생성자에 `SystemRoleAssignmentRepository` 주입 시 기존 `RefreshTokenServiceTest`·`AuthControllerTest`의 생성자 호출/mock stub arity가 깨짐 → 두 테스트의 동반 수정(회귀 아님, 시그니처 정합) 허용. issue() 호출부 stub을 5-인자(roles)로 갱신 + WebMvc 슬라이스에 `@MockBean SystemRoleAssignmentRepository` 추가.
 
 **RED**:
 - `JwtIssuer` 발급 시 `roles` 인자가 `["SYSTEM_ADMIN"]`이면 claim에 포함, 빈 리스트면 미포함(또는 빈 배열) — S3.
