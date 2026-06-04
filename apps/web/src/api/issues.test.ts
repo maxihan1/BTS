@@ -15,6 +15,7 @@ import {
   transitionIssue,
   changeAssignee,
   fetchBulkAvailableTransitions,
+  downloadIssuePdf,
 } from './issues'
 import { ApiError } from './client'
 
@@ -695,6 +696,60 @@ describe('fetchBulkAvailableTransitions', () => {
       fetchBulkAvailableTransitions([]),
     ).rejects.toSatisfy(
       (e) => e instanceof ApiError && (e as ApiError).status === 400,
+    )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-15. downloadIssuePdf — GET /{key}/pdf → Blob (바이너리, Zod 파싱 없음)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('downloadIssuePdf', () => {
+  const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]) // %PDF-1.4
+
+  beforeEach(() => {
+    server.use(
+      http.get('/api/v1/issues/:key/pdf', ({ params }) => {
+        if (params['key'] === 'ATLAS-1') {
+          return new HttpResponse(pdfBytes, {
+            headers: {
+              'Content-Type': 'application/pdf',
+              'Content-Disposition': 'attachment; filename="ATLAS-1.pdf"',
+            },
+          })
+        }
+        return HttpResponse.json({ message: 'Not Found' }, { status: 404 })
+      }),
+    )
+  })
+
+  it('T1-15a: 존재하는 이슈 key로 GET 호출 시 Blob을 반환한다', async () => {
+    const result = await downloadIssuePdf('ATLAS-1')
+    // jsdom 환경에서 globalThis.Blob과 Response.blob()의 Blob이 다른 클래스일 수 있어
+    // instanceof 대신 Blob 덕 타이핑(size, type, arrayBuffer 메서드)으로 검증한다.
+    expect(typeof result.size).toBe('number')
+    expect(result.size).toBeGreaterThan(0)
+    expect(typeof result.arrayBuffer).toBe('function')
+  })
+
+  it('T1-15b: 반환된 Blob의 type이 application/pdf다', async () => {
+    const result = await downloadIssuePdf('ATLAS-1')
+    expect(result.type).toBe('application/pdf')
+  })
+
+  it('T1-15c: 5xx 서버 오류 시 ApiError(status)를 throw한다', async () => {
+    server.use(
+      http.get('/api/v1/issues/:key/pdf', () =>
+        HttpResponse.json({ message: 'Internal Server Error' }, { status: 500 }),
+      ),
+    )
+    await expect(downloadIssuePdf('ATLAS-1')).rejects.toSatisfy(
+      (e) => e instanceof ApiError && (e as ApiError).status === 500,
+    )
+  })
+
+  it('T1-15d: 404 응답 시 ApiError(404)를 throw한다', async () => {
+    await expect(downloadIssuePdf('NOT-EXISTS')).rejects.toSatisfy(
+      (e) => e instanceof ApiError && (e as ApiError).status === 404,
     )
   })
 })

@@ -1299,3 +1299,117 @@ describe('IssueDetailPage — 담당자 배선 (Task 4)', () => {
     await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled())
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PDF 다운로드 버튼 테스트 (FR-IS-08 Task 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// B1 필수 — @/api/issues 부분 mock: fetchIssue/updateIssue/transitionIssue 등 원본 유지,
+// downloadIssuePdf만 교체. 통째 mock 시 기존 30+ 테스트 전멸.
+vi.mock('@/api/issues', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/issues')>()),
+  downloadIssuePdf: vi.fn(),
+}))
+vi.mock('@/lib/download', () => ({ triggerBlobDownload: vi.fn() }))
+
+import { downloadIssuePdf } from '@/api/issues'
+import { triggerBlobDownload } from '@/lib/download'
+
+describe('IssueDetailPage — PDF 다운로드 버튼 (FR-IS-08)', () => {
+  beforeEach(() => {
+    vi.mocked(toast.error).mockClear()
+    vi.mocked(downloadIssuePdf).mockReset()
+    vi.mocked(triggerBlobDownload).mockReset()
+    server.use(...issueTypeHandlers)
+    setupIssueFoundHandler()
+    setupTransitionsHandler()
+    setupUsersHandler()
+  })
+
+  /**
+   * T8-1: breadcrumb 행 우측에 PDF 다운로드 버튼이 렌더된다.
+   * aria-label로 특정 — nav 컨테이너 범위 안에서 검색해 strict mode 회귀 방지.
+   */
+  it('T8-1: PDF 다운로드 버튼이 aria-label로 렌더된다', async () => {
+    vi.mocked(downloadIssuePdf).mockResolvedValue(new Blob(['%PDF-'], { type: 'application/pdf' }))
+
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    expect(
+      screen.getByRole('button', { name: issueDetailStrings.pdfDownloadAriaLabel }),
+    ).toBeInTheDocument()
+  })
+
+  /**
+   * T8-2: PDF 버튼 클릭 시 downloadIssuePdf(key) 호출 후
+   * 반환된 Blob으로 triggerBlobDownload(blob, "{key}.pdf") 가 호출된다.
+   */
+  it('T8-2: 클릭 시 downloadIssuePdf → triggerBlobDownload가 올바른 인수로 호출된다', async () => {
+    const fakeBlob = new Blob(['%PDF-'], { type: 'application/pdf' })
+    vi.mocked(downloadIssuePdf).mockResolvedValue(fakeBlob)
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    const btn = screen.getByRole('button', { name: issueDetailStrings.pdfDownloadAriaLabel })
+    await user.click(btn)
+
+    await waitFor(() => {
+      expect(vi.mocked(downloadIssuePdf)).toHaveBeenCalledWith('ATLAS-1')
+      expect(vi.mocked(triggerBlobDownload)).toHaveBeenCalledWith(fakeBlob, 'ATLAS-1.pdf')
+    })
+  })
+
+  /**
+   * T8-3: 다운로드 진행 중 버튼이 disabled 상태가 된다.
+   * downloadIssuePdf를 resolve하지 않는 Promise로 로딩 상태를 유지.
+   */
+  it('T8-3: 다운로드 진행 중 버튼이 disabled 상태이다', async () => {
+    // resolve하지 않는 Promise로 로딩 상태 유지
+    vi.mocked(downloadIssuePdf).mockReturnValue(new Promise(() => undefined))
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    const btn = screen.getByRole('button', { name: issueDetailStrings.pdfDownloadAriaLabel })
+    await user.click(btn)
+
+    await waitFor(() => {
+      expect(btn).toBeDisabled()
+    })
+  })
+
+  /**
+   * T8-4: downloadIssuePdf reject 시 toast.error가 호출되고 버튼이 재활성된다.
+   */
+  it('T8-4: downloadIssuePdf 실패 시 toast.error 호출 + 버튼 재활성', async () => {
+    vi.mocked(downloadIssuePdf).mockRejectedValue(new Error('network error'))
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    const btn = screen.getByRole('button', { name: issueDetailStrings.pdfDownloadAriaLabel })
+    await user.click(btn)
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(issueDetailStrings.pdfDownloadError)
+      expect(btn).not.toBeDisabled()
+    })
+  })
+})

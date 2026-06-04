@@ -376,3 +376,24 @@ export async function changeAssignee(key: string, input: ChangeAssigneeInput): P
   const wrapped = dataResponseSchema(issueResponseSchema).parse(raw)
   return wrapped.data
 }
+
+/**
+ * 이슈 PDF를 다운로드한다.
+ * GET /api/v1/issues/{key}/pdf → application/pdf 바이너리 스트림
+ *
+ * 바이너리 응답이므로 Zod 파싱을 수행하지 않는다.
+ * GET 요청이므로 CSRF 토큰이 불필요하다.
+ *
+ * @param key 이슈 식별 키 (예: "ATLAS-1")
+ * @returns PDF 바이너리를 담은 Blob
+ * @throws ApiError(404) 해당 key의 이슈가 없을 때
+ * @throws ApiError(5xx) 서버 오류 시
+ */
+export async function downloadIssuePdf(key: string): Promise<Blob> {
+  const res = await apiFetch(`/api/v1/issues/${key}/pdf`, { method: 'GET' })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  return res.blob()
+}

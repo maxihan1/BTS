@@ -15,8 +15,11 @@ import { useIssueTransitions, issueTransitionKeys } from '@/hooks/use-issue-tran
 import { useUsers, useUsersByIds } from '@/hooks/use-users'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
+import { FileDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { downloadIssuePdf } from '@/api/issues'
+import { triggerBlobDownload } from '@/lib/download'
 import { IssueDescription } from '@/components/issue/IssueDescription'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
@@ -87,6 +90,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   const [editSummary, setEditSummary] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('')
+  const [isPdfDownloading, setIsPdfDownloading] = useState(false)
 
   // ── Resolution 모달 상태 ──────────────────────────────────────────────────
   /** 현재 DONE 전이 대기 중인 전이 항목. null이면 모달 닫힘. */
@@ -409,15 +413,46 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
     setConfirmDelete(false)
   }
 
+  /**
+   * PDF 다운로드 핸들러.
+   *
+   * GET /api/v1/issues/{key}/pdf → Blob → 브라우저 앵커 click 다운로드.
+   * 진행 중 버튼 disabled, 실패 시 toast.error.
+   * GET 요청이므로 CSRF 토큰 불요.
+   */
+  async function handlePdfDownload(issueKey: string) {
+    setIsPdfDownloading(true)
+    try {
+      const blob = await downloadIssuePdf(issueKey)
+      triggerBlobDownload(blob, `${issueKey}.pdf`)
+    } catch {
+      toast.error(issueDetailStrings.pdfDownloadError)
+    } finally {
+      setIsPdfDownloading(false)
+    }
+  }
+
   // ── 성공 레이아웃 ─────────────────────────────────────────────────────────
   return (
     <div className="max-w-[960px] mx-auto px-6 py-10">
-      {/* breadcrumb */}
-      <nav aria-label="이동 경로" className="mb-4 text-sm text-muted-foreground">
-        <span>{issue.projectKey}</span>
-        <span className="mx-1.5">/</span>
-        <span className="font-medium text-foreground">{issue.key}</span>
-      </nav>
+      {/* breadcrumb 행 — 좌측 경로 / 우측 액션 버튼 */}
+      <div className="flex items-center justify-between mb-4">
+        <nav aria-label="이동 경로" className="text-sm text-muted-foreground">
+          <span>{issue.projectKey}</span>
+          <span className="mx-1.5">/</span>
+          <span className="font-medium text-foreground">{issue.key}</span>
+        </nav>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={isPdfDownloading}
+          aria-label={issueDetailStrings.pdfDownloadAriaLabel}
+          onClick={() => { void handlePdfDownload(issue.key) }}
+        >
+          <FileDown className="size-4 mr-1.5" aria-hidden="true" />
+          {issueDetailStrings.pdfDownloadButton}
+        </Button>
+      </div>
 
       {/* 2-컬럼 그리드 — 좌 본문 / 우 메타패널 */}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_280px] lg:items-start">

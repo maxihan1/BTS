@@ -170,6 +170,14 @@ export const issueDetailStrings = {
   // ── 해결 결과(resolution) — FR-IS-07 ────────────────────────────────
   /** 메타패널 — 해결 결과 레이블 */
   resolutionLabel: '해결 결과',
+
+  // ── PDF 다운로드 — FR-IS-08 ──────────────────────────────────────────
+  /** PDF 다운로드 버튼 텍스트 */
+  pdfDownloadButton: 'PDF',
+  /** PDF 다운로드 버튼 aria-label */
+  pdfDownloadAriaLabel: '이슈를 PDF로 다운로드',
+  /** PDF 다운로드 실패 에러 메시지 */
+  pdfDownloadError: 'PDF 다운로드에 실패했습니다.',
 } as const
 
 /** 이슈 생성 폼 관련 문자열 */
