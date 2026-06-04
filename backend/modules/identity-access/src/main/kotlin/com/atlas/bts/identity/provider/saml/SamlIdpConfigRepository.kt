@@ -44,12 +44,33 @@ class SamlIdpConfigRepository(
             rowMapper,
         ).firstOrNull()
 
+    /**
+     * **활성(enabled=true)** SAML IdP 설정 전체를 display_name 오름차순으로 조회한다 (EC5).
+     *
+     * UI 로그인 폼의 SSO 선택지 노출(GET /api/v1/auth/saml/idps)에 사용한다.
+     * 비활성 row 는 결과에서 제외된다. 매핑이 없으면 빈 목록을 반환한다.
+     */
+    fun findAllEnabled(): List<SamlIdpConfig> =
+        jdbc.query(
+            SQL_FIND_ALL_ENABLED,
+            emptyMap<String, Any>(),
+            rowMapper,
+        )
+
     private companion object {
         const val SQL_FIND_ENABLED_BY_REGISTRATION_ID = """
             SELECT id, registration_id, display_name, idp_entity_id, idp_sso_url,
                    idp_x509_cert, authn_provider_id, enabled
             FROM saml_idp_configs
             WHERE registration_id = :registrationId AND enabled = TRUE
+        """
+
+        const val SQL_FIND_ALL_ENABLED = """
+            SELECT id, registration_id, display_name, idp_entity_id, idp_sso_url,
+                   idp_x509_cert, authn_provider_id, enabled
+            FROM saml_idp_configs
+            WHERE enabled = TRUE
+            ORDER BY display_name ASC
         """
     }
 }

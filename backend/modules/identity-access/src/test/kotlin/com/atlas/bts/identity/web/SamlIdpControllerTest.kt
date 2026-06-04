@@ -19,6 +19,7 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.security.oauth2.jwt.JwtDecoder
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
@@ -39,6 +40,8 @@ import java.util.UUID
  * - (c) 응답에 인증서/SSO URL/entityId/authnProviderId/enabled 등 민감·내부 정보가 노출되지 않는다.
  *
  * permitAll(인증 없이 200) 검증은 Task 5(SecurityConfig)에서 다룬다 — 본 슬라이스는 컨트롤러 로직에 집중한다.
+ * `/api/v1/auth/saml/idps` 는 아직 permitAll 미등록(Task 5)이므로, 컨트롤러 로직을 노출하기 위해
+ * 각 요청에 jwt() post-processor 로 인증 컨텍스트를 부여한다(401 회피, WhoamiControllerTest 규약).
  */
 @WebMvcTest(
     controllers = [SamlIdpController::class],
@@ -100,7 +103,7 @@ class SamlIdpControllerTest {
         every { samlIdpConfigRepository.findAllEnabled() } returns
             listOf(config("okta", "Okta SSO"), config("azure", "Azure AD"))
 
-        mockMvc.perform(get("/api/v1/auth/saml/idps"))
+        mockMvc.perform(get("/api/v1/auth/saml/idps").with(jwt()))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.idps").isArray)
             .andExpect(jsonPath("$.idps.length()").value(2))
@@ -114,7 +117,7 @@ class SamlIdpControllerTest {
     fun `활성 IdP 가 없으면 빈 배열을 반환한다`() {
         every { samlIdpConfigRepository.findAllEnabled() } returns emptyList()
 
-        mockMvc.perform(get("/api/v1/auth/saml/idps"))
+        mockMvc.perform(get("/api/v1/auth/saml/idps").with(jwt()))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.idps").isArray)
             .andExpect(jsonPath("$.idps.length()").value(0))
@@ -125,7 +128,7 @@ class SamlIdpControllerTest {
         every { samlIdpConfigRepository.findAllEnabled() } returns listOf(config("okta", "Okta SSO"))
 
         val body =
-            mockMvc.perform(get("/api/v1/auth/saml/idps"))
+            mockMvc.perform(get("/api/v1/auth/saml/idps").with(jwt()))
                 .andExpect(status().isOk)
                 .andExpect(content().contentTypeCompatibleWith("application/json"))
                 // 각 항목에는 registrationId / displayName 만 존재한다.
