@@ -196,6 +196,13 @@ SAML Provider 등록(`ProviderRegistry`/`authn_providers`)·`SecurityContext`/Se
 - 추가 검증: ktlint/detekt/ArchUnit(이동 옵션 시) + vitest/typecheck + playwright
 - 게이트1 Maxi 확인: 외부 의존성 승인 + 공유 자산 위치 전략(권장 C)
 
+## 게이트1 Maxi 결정 (2026-06-04, 승인 → 구현 착수)
+
+- **D1 (BLOCKER 해소)** = **SAML 경로 별도 SecurityFilterChain @Order 분리** + `IF_REQUIRED`. 나머지 API는 STATELESS 유지. → "단일 체인 통합" 정책(`SecurityConfig.kt:32-33`) 폐기 → **ADR 갱신**(`docs/decisions/2026-06-04-saml-sso-provider.md`)
+- **D2 (공유자산)** = **옵션 C** — 이동 없이 `provider.ldap.AutoProvisionService`/`ExternalAccountRepository` 재사용. KDoc로 "외부 프로비저닝 공통" 명시. spec §6 옵션A 권장은 C로 통일(C1 해소)
+- **D3 (외부 의존성)** = **승인** — `spring-security-saml2-service-provider`(Spring Boot 3.3.5 BOM 관리, 버전 명시 불요)
+- **게이트1** = 승인. 9 task TDD 구현 착수
+
 ## 리뷰 결과
 
 ### code-reviewer ground-truth 리뷰 (2026-06-04) — BLOCKER 1 / CONCERN 9
