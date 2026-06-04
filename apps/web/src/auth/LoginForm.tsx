@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useLoginMutation } from './useLoginMutation'
+import { SamlIdpButtons } from './SamlIdpButtons'
 import { loginStrings } from '@/i18n/ko'
 import { fetchSamlIdps } from '@/api/saml'
 import type { SamlIdp } from '@/api/saml'
@@ -168,30 +169,7 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
           {loginStrings.submitButton}
         </Button>
 
-        {samlIdps !== undefined && samlIdps.length > 0 && (
-          <div className="space-y-2">
-            <div className="relative flex items-center py-1">
-              <div className="flex-grow border-t border-border" />
-              <span className="mx-3 flex-shrink text-xs text-muted-foreground">
-                {loginStrings.samlDividerText}
-              </span>
-              <div className="flex-grow border-t border-border" />
-            </div>
-            {samlIdps.map((idp) => (
-              <Button
-                key={idp.registrationId}
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => {
-                  window.location.assign(`/sso/saml2/authenticate/${idp.registrationId}`)
-                }}
-              >
-                {loginStrings.samlLoginButtonLabel(idp.displayName)}
-              </Button>
-            ))}
-          </div>
-        )}
+        <SamlIdpButtons idps={samlIdps ?? []} />
       </form>
     </Form>
   )
