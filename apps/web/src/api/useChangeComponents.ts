@@ -3,18 +3,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ApiError } from '@/api/client'
 import { changeComponents } from '@/api/issues'
-import type { IssueResponse } from '@/api/issues'
+import type { IssueResponse, ChangeComponentsInput as ApiChangeComponentsInput } from '@/api/issues'
 import { issueQueryKey } from './useUpdateIssueSummary'
 import { issueDetailStrings } from '@/i18n/ko'
 
-/** useChangeComponents mutate 입력 타입 */
-export interface ChangeComponentsInput {
+/** useChangeComponents mutate 입력 타입 — 훅 레벨에서 이슈 key를 포함한 확장 형태 */
+export interface ChangeComponentsInput extends ApiChangeComponentsInput {
   /** 이슈 식별 키 (예: "ATLAS-1") */
   key: string
-  /** 할당할 컴포넌트 UUID 목록. 빈 배열이면 전체 제거. */
-  componentIds: string[]
-  /** 낙관적 잠금(OCC)을 위한 현재 버전 번호 */
-  expectedVersion: number
 }
 
 /**
