@@ -30,6 +30,7 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.net.URI
 import java.util.UUID
+import com.bts.issue.application.CloneIssueRequest as AppCloneIssueRequest
 import com.bts.issue.application.CreateIssueRequest as AppCreateIssueRequest
 import com.bts.issue.application.TransitionIssueRequest as AppTransitionIssueRequest
 import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
@@ -61,9 +62,13 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
  * security context 연동 전까지 고정 UUID 를 사용한다.
  * 인증 연동은 이후 security-engineer wave 에서 처리한다.
  *
+ * TooManyFunctions: 이슈 CRUD + 전이 + 클론 REST 엔드포인트를 단일 컨트롤러가 담당하므로 함수 수 임계치(11)를 초과한다.
+ * 책임 분리보다 이슈 리소스 응집이 더 적합한 구조이므로 Suppress 처리.
+ *
  * @param service 이슈 유스케이스 서비스
  * @param pdfRenderer 이슈 PDF 바이너리 렌더러
  */
+@Suppress("TooManyFunctions")
 @RestController
 @RequestMapping("/api/v1/issues")
 class IssueController(
@@ -334,6 +339,40 @@ class IssueController(
 
         val actor = ActorId(SYSTEM_ACTOR_UUID)
         service.softDeleteIssue(actor, IssueKey(key))
+    }
+
+    /**
+     * 기존 이슈를 복제하여 같은 프로젝트에 새 이슈를 생성한다 (FR-IS-06).
+     *
+     * 원본의 필드(summary/description/type/priority/labels/environment/impact/assignee)를 복사하고,
+     * key/reporter/상태/version 은 새로 시작한다. body 는 선택적이며 생략 시 기본 옵션을 적용한다.
+     *
+     * @param key path variable 원본 이슈 키 문자열. 예: `"BTS-1"`
+     * @param request 클론 옵션 (includeAssignee, summaryOverride). 생략 가능.
+     * @return 201 Created + 클론본 [IssueResponse] body + `Location: /api/v1/issues/{newKey}` 헤더
+     * @throws com.bts.issue.domain.IssueNotFoundException 원본이 없거나 삭제된 경우 → 404
+     * @throws com.bts.issue.domain.IssueAccessDeniedException 권한이 없는 경우 → 403
+     */
+    @PostMapping("/{key}/clone")
+    fun clone(
+        @PathVariable key: String,
+        @Valid @RequestBody(required = false) request: CloneIssueRequest?,
+    ): ResponseEntity<DataResponse<IssueResponse>> {
+        log.info("IssueController.clone sourceKey={}", key)
+
+        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val webRequest = request ?: CloneIssueRequest()
+        val appRequest =
+            AppCloneIssueRequest(
+                includeAssignee = webRequest.includeAssignee,
+                summaryOverride = webRequest.summaryOverride,
+            )
+        val cloned = service.cloneIssue(actor, IssueKey(key), appRequest)
+        // 단건 조회와 동일하게 type 요약 + descriptionHtml 포함 응답을 위해 재조회한다.
+        val response = service.findByKey(actor, cloned.key)
+
+        val location = buildLocation(response.key)
+        return ResponseEntity.created(location).body(DataResponse(data = response))
     }
 
     // ── private helpers ───────────────────────────────────────────────────────

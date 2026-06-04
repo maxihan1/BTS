@@ -18,6 +18,40 @@ vi.mock('@/hooks/use-issue-permissions', () => ({
 }))
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
 
+// useLabels를 mock — LabelAutocompleteInput 내부 react-query 호출 차단 (IssueMetaPanel.test.tsx와 동일 방식)
+// 기본값: 빈 후보 배열 — 라벨 저장 테스트(T6-6)는 free-form 입력을 사용하므로 후보 불필요
+vi.mock('@/hooks/use-labels', () => ({
+  useLabels: vi.fn().mockReturnValue({
+    data: [],
+    isLoading: false,
+    isError: false,
+    isPending: false,
+    isSuccess: true,
+    error: null,
+    status: 'success',
+    fetchStatus: 'idle',
+    dataUpdatedAt: 0,
+    errorUpdatedAt: 0,
+    failureCount: 0,
+    failureReason: null,
+    isFetched: true,
+    isFetchedAfterMount: true,
+    isFetching: false,
+    isInitialLoading: false,
+    isLoadingError: false,
+    isPlaceholderData: false,
+    isRefetchError: false,
+    isRefetching: false,
+    isStale: false,
+    refetch: vi.fn(),
+  }),
+}))
+
+// useDebounce를 mock — debounce 없이 즉시 반환해 테스트 단순화 (IssueMetaPanel.test.tsx와 동일 방식)
+vi.mock('@/hooks/use-debounce', () => ({
+  useDebounce: (value: string) => value,
+}))
+
 /** 기존 테스트 전체에서 모든 권한 true — 기존 테스트는 권한 제어를 검증하지 않는다 */
 beforeEach(() => {
   vi.mocked(useIssuePermissions).mockReturnValue({
@@ -1130,7 +1164,8 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
     expect(labelsSection).not.toBeNull()
     if (labelsSection === null) return
 
-    const labelInput = within(labelsSection as HTMLElement).getByRole('textbox', { name: issueDetailStrings.labelAddPlaceholder })
+    // LabelAutocompleteInput은 cmdk CommandPrimitive.Input — data-testid로 접근 (IssueMetaPanel.test.tsx와 동일 방식)
+    const labelInput = within(labelsSection as HTMLElement).getByTestId('label-autocomplete-input')
     await user.click(labelInput)
     await user.type(labelInput, 'frontend{Enter}')
 
@@ -1297,5 +1332,119 @@ describe('IssueDetailPage — 담당자 배선 (Task 4)', () => {
     await waitFor(() => expect(within(assigneeSection).queryByRole('button', { name: '김앨리스' })).toBeInTheDocument())
     await user.click(within(assigneeSection).getByRole('button', { name: '김앨리스' }))
     await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled())
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PDF 다운로드 버튼 테스트 (FR-IS-08 Task 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// B1 필수 — @/api/issues 부분 mock: fetchIssue/updateIssue/transitionIssue 등 원본 유지,
+// downloadIssuePdf만 교체. 통째 mock 시 기존 30+ 테스트 전멸.
+vi.mock('@/api/issues', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/issues')>()),
+  downloadIssuePdf: vi.fn(),
+}))
+vi.mock('@/lib/download', () => ({ triggerBlobDownload: vi.fn() }))
+
+import { downloadIssuePdf } from '@/api/issues'
+import { triggerBlobDownload } from '@/lib/download'
+
+describe('IssueDetailPage — PDF 다운로드 버튼 (FR-IS-08)', () => {
+  beforeEach(() => {
+    vi.mocked(toast.error).mockClear()
+    vi.mocked(downloadIssuePdf).mockReset()
+    vi.mocked(triggerBlobDownload).mockReset()
+    server.use(...issueTypeHandlers)
+    setupIssueFoundHandler()
+    setupTransitionsHandler()
+    setupUsersHandler()
+  })
+
+  /**
+   * T8-1: breadcrumb 행 우측에 PDF 다운로드 버튼이 렌더된다.
+   * aria-label로 특정 — nav 컨테이너 범위 안에서 검색해 strict mode 회귀 방지.
+   */
+  it('T8-1: PDF 다운로드 버튼이 aria-label로 렌더된다', async () => {
+    vi.mocked(downloadIssuePdf).mockResolvedValue(new Blob(['%PDF-'], { type: 'application/pdf' }))
+
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    expect(
+      screen.getByRole('button', { name: issueDetailStrings.pdfDownloadAriaLabel }),
+    ).toBeInTheDocument()
+  })
+
+  /**
+   * T8-2: PDF 버튼 클릭 시 downloadIssuePdf(key) 호출 후
+   * 반환된 Blob으로 triggerBlobDownload(blob, "{key}.pdf") 가 호출된다.
+   */
+  it('T8-2: 클릭 시 downloadIssuePdf → triggerBlobDownload가 올바른 인수로 호출된다', async () => {
+    const fakeBlob = new Blob(['%PDF-'], { type: 'application/pdf' })
+    vi.mocked(downloadIssuePdf).mockResolvedValue(fakeBlob)
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    const btn = screen.getByRole('button', { name: issueDetailStrings.pdfDownloadAriaLabel })
+    await user.click(btn)
+
+    await waitFor(() => {
+      expect(vi.mocked(downloadIssuePdf)).toHaveBeenCalledWith('ATLAS-1')
+      expect(vi.mocked(triggerBlobDownload)).toHaveBeenCalledWith(fakeBlob, 'ATLAS-1.pdf')
+    })
+  })
+
+  /**
+   * T8-3: 다운로드 진행 중 버튼이 disabled 상태가 된다.
+   * downloadIssuePdf를 resolve하지 않는 Promise로 로딩 상태를 유지.
+   */
+  it('T8-3: 다운로드 진행 중 버튼이 disabled 상태이다', async () => {
+    // resolve하지 않는 Promise로 로딩 상태 유지
+    vi.mocked(downloadIssuePdf).mockReturnValue(new Promise(() => undefined))
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    const btn = screen.getByRole('button', { name: issueDetailStrings.pdfDownloadAriaLabel })
+    await user.click(btn)
+
+    await waitFor(() => {
+      expect(btn).toBeDisabled()
+    })
+  })
+
+  /**
+   * T8-4: downloadIssuePdf reject 시 toast.error가 호출되고 버튼이 재활성된다.
+   */
+  it('T8-4: downloadIssuePdf 실패 시 toast.error 호출 + 버튼 재활성', async () => {
+    vi.mocked(downloadIssuePdf).mockRejectedValue(new Error('network error'))
+
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    const btn = screen.getByRole('button', { name: issueDetailStrings.pdfDownloadAriaLabel })
+    await user.click(btn)
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(issueDetailStrings.pdfDownloadError)
+      expect(btn).not.toBeDisabled()
+    })
   })
 })

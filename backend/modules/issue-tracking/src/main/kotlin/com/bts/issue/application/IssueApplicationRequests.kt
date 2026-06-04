@@ -86,3 +86,18 @@ data class AppChangeAssigneeRequest(
     val assigneeId: UUID?,
     val expectedVersion: Long,
 )
+
+/**
+ * 이슈 클론 요청 DTO (FR-IS-06).
+ *
+ * 클론은 원본 이슈의 필드(summary/description/typeId/priority/labels/environment/impact)를 복사한
+ * 새 이슈를 같은 프로젝트에 생성한다. key/reporter/상태/version/시각은 새로 시작한다.
+ * 첨부/Watcher/댓글은 미구현이므로 복사 대상이 아니다 (ADR 2026-06-02-issue-clone-semantics).
+ *
+ * @param includeAssignee true(기본) 면 원본 담당자를 클론본에 복사. false 면 미할당으로 클론.
+ * @param summaryOverride 클론본 제목 덮어쓰기. null 또는 공백만이면 원본 summary 를 그대로 사용한다.
+ */
+data class CloneIssueRequest(
+    val includeAssignee: Boolean = true,
+    val summaryOverride: String? = null,
+)

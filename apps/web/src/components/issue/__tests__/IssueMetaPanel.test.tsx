@@ -10,6 +10,23 @@ vi.mock('@/hooks/use-issue-permissions', () => ({
   useIssuePermissions: vi.fn(),
 }))
 
+// LabelAutocompleteInput 내부 useLabels/useDebounce mock — QueryClient 없이 렌더 가능하게 한다
+vi.mock('@/hooks/use-labels', () => ({
+  useLabels: vi.fn().mockReturnValue({
+    data: [],
+    isLoading: false,
+    isError: false,
+    isPending: false,
+    isSuccess: true,
+    error: null,
+    status: 'success',
+    fetchStatus: 'idle',
+  }),
+}))
+vi.mock('@/hooks/use-debounce', () => ({
+  useDebounce: (value: string) => value,
+}))
+
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,6 +112,7 @@ function renderPanel(overrides: {
       availableTypes={[typeFixture]}
       onTypeChange={vi.fn()}
       onDeleteClick={vi.fn()}
+      onCloneClick={vi.fn()}
       transitions={[]}
       onTransition={vi.fn()}
       isTransitioning={false}

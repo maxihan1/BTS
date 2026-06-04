@@ -173,27 +173,27 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <svg viewBox="0 0 260 260" class="donut">
     <circle cx="130" cy="130" r="116" fill="none" stroke="#e5e7eb" stroke-width="28" />
     <circle cx="130" cy="130" r="116" fill="none" stroke="#22c55e" stroke-width="28"
-      stroke-dasharray="728.849495632832" stroke-dashoffset="626.8105662442356"
+      stroke-dasharray="728.849495632832" stroke-dashoffset="597.6565864189223"
       transform="rotate(-90 130 130)" stroke-linecap="round" />
-    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">14%</text>
+    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">18%</text>
   </svg>
       <div class="overview-numbers">
-        <div class="big-num">17 / 119</div>
+        <div class="big-num">22 / 119</div>
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
-          <div><span class="dot dot-done"></span> 완료 <b>17</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>4</b></div>
+          <div><span class="dot dot-done"></span> 완료 <b>22</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>3</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>98</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>94</b></div>
         </div>
       </div>
     </div>
     <h2>업무 영역별 진척</h2>
     <div class="bc-grid"><div class="bc-card" data-nav="bc-issue-tracking">
       <div class="bc-card-head">📌 이슈 관리</div>
-      <div class="bc-card-stats">8 / 29 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:28%"></div></div>
-      <div class="bc-card-pct">28%</div>
+      <div class="bc-card-stats">11 / 29 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:38%"></div></div>
+      <div class="bc-card-pct">38%</div>
     </div><div class="bc-card" data-nav="bc-project-workflow">
       <div class="bc-card-head">🔄 워크플로우</div>
       <div class="bc-card-stats">3 / 3 완료</div>
@@ -231,9 +231,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bc-card-pct">0%</div>
     </div><div class="bc-card" data-nav="bc-identity-access">
       <div class="bc-card-head">🔐 계정/권한</div>
-      <div class="bc-card-stats">6 / 23 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:26%"></div></div>
-      <div class="bc-card-pct">26%</div>
+      <div class="bc-card-stats">8 / 23 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:35%"></div></div>
+      <div class="bc-card-pct">35%</div>
     </div></div>
   </section>
 <section id="harness" class="page">
@@ -470,14 +470,14 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h1>📌 이슈 관리</h1>
     <p class="bc-desc">이슈를 만들고, 상태를 바꾸고, 댓글/첨부/링크를 관리하는 영역.</p>
     <div class="bc-detail-stats">
-      <div class="big-pct">28%</div>
-      <div>8 / 29 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:28%"></div></div>
+      <div class="big-pct">38%</div>
+      <div>11 / 29 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:38%"></div></div>
       <div class="status-grid">
-        <div>✅ 완료 8</div>
-        <div>🔄 진행중 3</div>
+        <div>✅ 완료 11</div>
+        <div>🔄 진행중 2</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 18</div>
+        <div>⬜ 대기 16</div>
       </div>
     </div>
     <h2>세부 기능 (29개)</h2>
@@ -516,13 +516,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 일괄 편집 + 일괄 상태 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span></span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — BulkOp</li><li><span class="step-icon">✅</span> D2 — 명세 — 트랜잭션 정책, 부분 실패 처리</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — (FR-IS-01 활용)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `POST /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s/bulk-update`. 청크 처리</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 부분 실패 시 트랜잭션 동작</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 다중 선택 + <span class="term" data-def="Action. 자동화 룰의 실행 결과">액션</span> 바</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 일괄 편집/<span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span> + 진행률 폴링 시나리오 + bulk MSW 핸들러 정본</li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-IS-06</span>
         <span class="fr-desc"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 클론 (옵션. 첨부/Watcher/댓글 포함)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — CloneOptions</li><li><span class="step-icon">⬜</span> D2 — 명세 — 무엇이 복사되고 무엇이 새로 시작되는지</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — (활용만)</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `POST /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s/{key}/clone`</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 옵션 다이얼로그</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — CloneOptions (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span> 애그리거트 재사용, 신규 엔티티 없음. <span class="term" data-def="&quot;기술 결정 일기장&quot; &quot;왜 A 대신 B 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.">ADR</span> `2026-06-02-issue-clone-semantics`.</li><li><span class="step-icon">✅</span> D2 — 명세 — 무엇이 복사되고 무엇이 새로 시작되는지 (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — `docs/sp<span class="term" data-def="&quot;서버 관리 필요 없는 자동 서버&quot; 도커 캡슐을 올리기만 하면 AWS(아마존 클라우드)가 알아서 컴퓨터 자원을 켜고 끄면서 관리해 주는 편리한 서비스입니다.">ecs</span>/2026-06-02-<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>-clone.md`. 복사(summary/description/type/priority/labels/env/impact/<span class="term" data-def="&quot;신고자 / 담당자&quot; 버그를 찾아서 올린 사람(Reporter)과, 실제로 고칠 책임이 있는 사람(Assignee)입니다.">assignee</span>) vs 새로 시작(key/<span class="term" data-def="&quot;신고자 / 담당자&quot; 버그를 찾아서 올린 사람(Reporter)과, 실제로 고칠 책임이 있는 사람(Assignee)입니다.">reporter</span>/상태/<span class="term" data-def="릴리스 단위. fix/affects 관계로 이슈에 연결">version</span>/시각).</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — (활용만) (책임. db-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — 신규 테이블/마이그레이션 없음. 기존 `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s` INSERT.</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `POST /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s/{key}/clone` (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — `CloneIssueRequest(include<span class="term" data-def="&quot;신고자 / 담당자&quot; 버그를 찾아서 올린 사람(Reporter)과, 실제로 고칠 책임이 있는 사람(Assignee)입니다.">Assignee</span>, summaryOverride)`. 같은 <span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">프로젝트</span> 한정. 권한 VIEW(원본)+CREATE(프로젝트).</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — application 단위(<span class="term" data-def="&quot;마네킹 / 가짜 부품&quot; 테스트를 할 때 실제 결제 시스템이나 외부 서버를 연결하면 돈이 나가거나 느려지므로, 진짜처럼 행동하는 가짜 부품을 끼워놓는 것입니다.">Mock</span>K) + 컨트롤러 슬라이스(@WebMvc) + 런타임 통합(<span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span>).</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 옵션 다이얼로그 (책임. designer → frontend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #78. 메타패널 클론 버튼 + `Clone<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>Dialog`(include<span class="term" data-def="&quot;신고자 / 담당자&quot; 버그를 찾아서 올린 사람(Reporter)과, 실제로 고칠 책임이 있는 사람(Assignee)입니다.">Assignee</span> 체크박스 기본 true + summaryOverride 입력 ≤255) + `useCloneIssue`(성공 시 새 <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> navigate + 토스트, 404/403/400 분기) + `cloneIssueHandler`(stateful MSW). 클론 버튼 권한 <span class="term" data-def="Gate. 전이에 걸린 조건 (권한/필드/검증)">게이트</span>는 프론트 권한 API에 CREATE 미노출로 서버 403+토스트 처리(FR-PM 후속).</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> (책임. qa-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #78. `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>-clone.spec.ts` 4시나리오(happy 새<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 이동/include<span class="term" data-def="&quot;신고자 / 담당자&quot; 버그를 찾아서 올린 사람(Reporter)과, 실제로 고칠 책임이 있는 사람(Assignee)입니다.">Assignee</span> 토글/취소/maxLength 255). data-testid+dialog 컨테이너 한정 strict mode 안전. 전체 E2E 94 통과/회귀 0.</li></ol>
     </details><details class="fr-item fr-완료">
       <summary>
         <span class="fr-status">✅</span>
@@ -530,20 +530,20 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc"><span class="term" data-def="이슈가 &quot;어떻게 끝났는지&quot;를 나타내는 값(Fixed/Won&#39;t Fix/Duplicate/Cannot Reproduce/Done 등). 종료(DONE 카테고리) 상태로 전이할 때 필수. 상태(열림/닫힘)와 별개 축 — Jira와 동일하게 &quot;닫힘 + 해결결과 없음(재오픈됨)&quot; 같은 조합을 표현. 표준 세트는 불변, 커스텀 추가 가능 (FR-IS-07)">Resolution</span> 필드 (Fixed/Won&#39;t Fix/Duplicate)</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — 종료 상태 진입 시 <span class="term" data-def="이슈가 &quot;어떻게 끝났는지&quot;를 나타내는 값(Fixed/Won&#39;t Fix/Duplicate/Cannot Reproduce/Done 등). 종료(DONE 카테고리) 상태로 전이할 때 필수. 상태(열림/닫힘)와 별개 축 — Jira와 동일하게 &quot;닫힘 + 해결결과 없음(재오픈됨)&quot; 같은 조합을 표현. 표준 세트는 불변, 커스텀 추가 가능 (FR-IS-07)">Resolution</span> 필수</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `<span class="term" data-def="이슈가 &quot;어떻게 끝났는지&quot;를 나타내는 값(Fixed/Won&#39;t Fix/Duplicate/Cannot Reproduce/Done 등). 종료(DONE 카테고리) 상태로 전이할 때 필수. 상태(열림/닫힘)와 별개 축 — Jira와 동일하게 &quot;닫힘 + 해결결과 없음(재오픈됨)&quot; 같은 조합을 표현. 표준 세트는 불변, 커스텀 추가 가능 (FR-IS-07)">resolution</span>s`, `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s.resolution_id`</li><li><span class="step-icon">✅</span> D4 — 백엔드 — 상태 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span> 가드 (<span class="term" data-def="이슈가 &quot;어떻게 끝났는지&quot;를 나타내는 값(Fixed/Won&#39;t Fix/Duplicate/Cannot Reproduce/Done 등). 종료(DONE 카테고리) 상태로 전이할 때 필수. 상태(열림/닫힘)와 별개 축 — Jira와 동일하게 &quot;닫힘 + 해결결과 없음(재오픈됨)&quot; 같은 조합을 표현. 표준 세트는 불변, 커스텀 추가 가능 (FR-IS-07)">Resolution</span> 미설정 시 reject)</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 종료 모달</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-진행중">
+    </details><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">🔄</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-IS-08</span>
         <span class="fr-desc"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 인쇄 + PDF 출력</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — PDF 레이아웃 + 페이지 헤더/푸터</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — (활용만)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `openhtmltopdf` + `pdfbox`. `GET /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s/{key}/pdf`</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — PDF 바이너리 검증</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 인쇄 버튼 + 다운로드</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-미진행">
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — PDF 레이아웃 + 페이지 헤더/푸터</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — (활용만)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `openhtmltopdf` + `pdfbox`. `GET /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s/{key}/pdf`</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — PDF 바이너리 검증</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 인쇄 버튼 + 다운로드</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+    </details><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-IS-09</span>
         <span class="fr-desc">라벨 자동완성</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인</li><li><span class="step-icon">⬜</span> D2 — 명세 — <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>efix 매칭 + 사용 빈도 정렬</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `labels`, `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_labels`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `GET /api/v1/labels?q=&lt;<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>efix&gt;`</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — cmdk 콤보박스</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>efix 매칭 + 사용 빈도 정렬</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — 기존 `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s.labels TEXT[]` 활용</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `GET /api/v1/labels?q=&lt;<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>efix&gt;`</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — cmdk 콤보박스</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-완료">
       <summary>
         <span class="fr-status">✅</span>
@@ -1270,14 +1270,14 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h1>🔐 계정/권한</h1>
     <p class="bc-desc">로그인, 2단계 인증, SSO, 권한 검사 영역.</p>
     <div class="bc-detail-stats">
-      <div class="big-pct">26%</div>
-      <div>6 / 23 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:26%"></div></div>
+      <div class="big-pct">35%</div>
+      <div>8 / 23 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:35%"></div></div>
       <div class="status-grid">
-        <div>✅ 완료 6</div>
+        <div>✅ 완료 8</div>
         <div>🔄 진행중 1</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 16</div>
+        <div>⬜ 대기 14</div>
       </div>
     </div>
     <h2>세부 기능 (23개)</h2>
@@ -1334,7 +1334,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <summary>
         <span class="fr-status">⬜</span>
         <span class="fr-id">FR-PM-08</span>
-        <span class="fr-desc">전역 시스템 관리자 역할/권한 인프라</span>
+        <span class="fr-desc">전역 <span class="term" data-def="System Admin. `SYSTEM_ADMIN` 전역 역할 보유자. SDD 12.6 OrgAdmin의 단일 역할 구현. 전역 자원(워크플로우 스킴 등) 관리 주체 (FR-PM-08, FR-PM-04에서 실사용)">시스템 관리자</span> 역할/권한 인프라</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — `SystemRole`(SYSTEM_ADMIN 단일), `<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">Pr</span>oject</span>Role`과 분리, 전역 판정기 포트</li><li><span class="step-icon">⬜</span> D2 — 명세</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `system_role_assignments` 테이블 (V010, <span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>oject</span>_id 없음)</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — Repository + 전역 판정기(shared-kernel 포트 + identity 구현) + `<span class="term" data-def="&quot;디지털 출입증&quot; 로그인 성공 시 발급받는 암호화된 방문증. 이거 하나면 매번 비밀번호를 안 쳐도 됩니다.">Jwt</span><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>r` 전역 역할 클레임 + 설정값 기반 멱등 부트스트랩 `ApplicationRunner`</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — 통합테스트(@Active<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">Pr</span>ofiles prod): SYSTEM_ADMIN→전역 판정 true, 일반 사용자→false, 부트스트랩 <span class="term" data-def="&quot;몇 번을 눌러도 똑같은 결과&quot; 결제 버튼을 실수로 10번 눌러도 1번만 결제되도록, 여러 번 실행해도 결과가 달라지지 않게 보장하는 특성입니다.">멱등성</span></li></ol>
     </details><details class="fr-item fr-완료">
@@ -1351,20 +1351,20 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc">LDAP/AD 연동</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — baseDN, 사용자/그룹 매핑, <span class="term" data-def="&quot;무차별 자물쇠 따기 / 계정 잠금&quot; 해커가 번호를 무식하게 다 찍어보는 공격(Brute-force)을 막기 위해 5번 틀리면 30분간 정지시키는 것(Lockout)입니다.">lockout</span> 정책</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `users`, `user_external_accounts(<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>ovider, externalId)`</li><li><span class="step-icon">✅</span> D4 — 백엔드 — <span class="term" data-def="Service Provider — IdP의 보증을 받아 로그인시키는 쪽. BTS 자신">Sp</span>ring Security LDAP authenticator + `UserDetailsService`</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> OpenLDAP</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 로그인 폼</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — <span class="term" data-def="&quot;가상 브라우저 자동 조종 로봇&quot; 사람을 대신해서 가상의 크롬 브라우저를 띄운 뒤, 버튼도 눌러보고 글자도 입력하며 화면이 잘 도는지 검사하는 매크로 로봇입니다.">Playwright</span></li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-AU-03</span>
         <span class="fr-desc">SAML 2.0 <span class="term" data-def="&quot;통합 로그인&quot; 회사 아이디 하나로 여러 사내 시스템을 전부 로그인할 수 있는 기술입니다. (예: LDAP, SAML, OIDC)">SSO</span></span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인</li><li><span class="step-icon">⬜</span> D2 — 명세 — <span class="term" data-def="Identity Provider — 신원을 보증하는 외부 통합 로그인 서버 (Okta/Azure AD/Keycloak 등)">IdP</span>-initiated + SP-initiated 흐름</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `saml_<span class="term" data-def="Identity Provider — 신원을 보증하는 외부 통합 로그인 서버 (Okta/Azure AD/Keycloak 등)">idp</span>_configs`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `<span class="term" data-def="Service Provider — IdP의 보증을 받아 로그인시키는 쪽. BTS 자신">sp</span>ring-security-saml2-service-provider`. `/<span class="term" data-def="&quot;통합 로그인&quot; 회사 아이디 하나로 여러 사내 시스템을 전부 로그인할 수 있는 기술입니다. (예: LDAP, SAML, OIDC)">sso</span>/saml2/...`</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> <span class="term" data-def="&quot;통합 경비실 / 디지털 신분증 발급처&quot; 우리 시스템이 직접 검사하지 않고 외부의 &#39;로그인 전문 솔루션(구글, 카카오 등)&#39;에 확인을 맡길 때 씁니다.">Keycloak</span> SAML 모드</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="Identity Provider — 신원을 보증하는 외부 통합 로그인 서버 (Okta/Azure AD/Keycloak 등)">IdP</span> 선택 + SP-initiated 진입점</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-미진행">
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — **<span class="term" data-def="Service Provider — IdP의 보증을 받아 로그인시키는 쪽. BTS 자신">SP</span>-initiated 흐름**</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `saml_<span class="term" data-def="Identity Provider — 신원을 보증하는 외부 통합 로그인 서버 (Okta/Azure AD/Keycloak 등)">idp</span>_configs`(authn_provider_id FK + SAML authn_providers seed)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `<span class="term" data-def="Service Provider — IdP의 보증을 받아 로그인시키는 쪽. BTS 자신">sp</span>ring-security-saml2-service-provider`. 표준 `/saml2/authenticate/{registrationId}` + ACS `/lo<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>/saml2/<span class="term" data-def="&quot;통합 로그인&quot; 회사 아이디 하나로 여러 사내 시스템을 전부 로그인할 수 있는 기술입니다. (예: LDAP, SAML, OIDC)">sso</span>/{registrationId}`, SAML 전용 @Order(1) SecurityFilterChain(IF_REQ<span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span>RED, STATELESS 분리), JIT 프로비저닝(AutoProvisionService 재사용), wantAuthnRequestsSigned(false) (책임. security-engineer) — PR #76</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> <span class="term" data-def="&quot;통합 경비실 / 디지털 신분증 발급처&quot; 우리 시스템이 직접 검사하지 않고 외부의 &#39;로그인 전문 솔루션(구글, 카카오 등)&#39;에 확인을 맡길 때 씁니다.">Keycloak</span> SAML 모드</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="Identity Provider — 신원을 보증하는 외부 통합 로그인 서버 (Okta/Azure AD/Keycloak 등)">IdP</span> 선택 + SP-initiated 진입점</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+    </details><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-AU-04</span>
         <span class="fr-desc">OIDC <span class="term" data-def="&quot;통합 로그인&quot; 회사 아이디 하나로 여러 사내 시스템을 전부 로그인할 수 있는 기술입니다. (예: LDAP, SAML, OIDC)">SSO</span></span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인</li><li><span class="step-icon">⬜</span> D2 — 명세 — Authorization Code + PKCE. <span class="term" data-def="&quot;디지털 출입증&quot; 로그인 성공 시 발급받는 암호화된 방문증. 이거 하나면 매번 비밀번호를 안 쳐도 됩니다.">JWT</span> 검증</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `oidc_<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>ovider_configs`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `<span class="term" data-def="Service Provider — IdP의 보증을 받아 로그인시키는 쪽. BTS 자신">sp</span>ring-boot-starter-oauth2-client` + `-resource-server`</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> <span class="term" data-def="&quot;통합 경비실 / 디지털 신분증 발급처&quot; 우리 시스템이 직접 검사하지 않고 외부의 &#39;로그인 전문 솔루션(구글, 카카오 등)&#39;에 확인을 맡길 때 씁니다.">Keycloak</span> OIDC</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — OIDC 진입 버튼 + 리다이렉트 처리</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — Authorization Code + PKCE. ID Token 검증</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `oidc_<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>ovider_configs`(authn_provider_id FK + client_secret 암호화)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `oauth2-client`(기존재 재사용, 의존성 신규 0). OIDC 전용 @Order(2) SecurityFilterChain(IF_REQ<span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span>RED), DB기반 ClientRegistrationRepository(<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>r discovery), JIT(AutoProvisionService 재사용) (책임. security-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — PR #80</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> <span class="term" data-def="&quot;통합 경비실 / 디지털 신분증 발급처&quot; 우리 시스템이 직접 검사하지 않고 외부의 &#39;로그인 전문 솔루션(구글, 카카오 등)&#39;에 확인을 맡길 때 씁니다.">Keycloak</span> OIDC</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — OIDC 진입 버튼 + 리다이렉트</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-진행중">
       <summary>
         <span class="fr-status">🔄</span>
@@ -1588,6 +1588,14 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">역할-권한 매트릭스</div>
       <div class="term-cat">도메인 — 권한 (두 레이어)</div>
       <div class="term-def">role_permissions. 스킴 안에서 &quot;어떤 역할이 어떤 권한 코드를 갖는가&quot;를 행으로 저장하는 표</div>
+    </div><div class="term-item" data-cat="도메인 — 권한 (두 레이어)" data-search="전역 역할 / 시스템 역할 system role. 프로젝트와 무관하게 시스템 전체에 적용되는 역할. 프로젝트 역할(`projectrole`)과 별개 축. 현재 `systemadmin` 1종, `systemrole_assignments`에 저장 (fr-pm-08)">
+      <div class="term-name">전역 역할 / 시스템 역할</div>
+      <div class="term-cat">도메인 — 권한 (두 레이어)</div>
+      <div class="term-def">System Role. 프로젝트와 무관하게 시스템 전체에 적용되는 역할. 프로젝트 역할(`ProjectRole`)과 별개 축. 현재 `SYSTEMADMIN` 1종, `systemrole_assignments`에 저장 (FR-PM-08)</div>
+    </div><div class="term-item" data-cat="도메인 — 권한 (두 레이어)" data-search="시스템 관리자 system admin. `system_admin` 전역 역할 보유자. sdd 12.6 orgadmin의 단일 역할 구현. 전역 자원(워크플로우 스킴 등) 관리 주체 (fr-pm-08, fr-pm-04에서 실사용)">
+      <div class="term-name">시스템 관리자</div>
+      <div class="term-cat">도메인 — 권한 (두 레이어)</div>
+      <div class="term-def">System Admin. `SYSTEM_ADMIN` 전역 역할 보유자. SDD 12.6 OrgAdmin의 단일 역할 구현. 전역 자원(워크플로우 스킴 등) 관리 주체 (FR-PM-08, FR-PM-04에서 실사용)</div>
     </div><div class="term-item" data-cat="도메인 — 인증" data-search="authenticationprovider 플러그형 인증 백엔드 (ldap/saml/oidc/local/oauth)">
       <div class="term-name">AuthenticationProvider</div>
       <div class="term-cat">도메인 — 인증</div>

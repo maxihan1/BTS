@@ -13,7 +13,7 @@ test('S2 잘못된 비밀번호 — alice/wrong (Local) → 401 한국어 에러
   // provider는 기본값 local 유지 — 별도 조작 없음
 
   // 로그인 버튼 클릭
-  await page.getByRole('button', { name: '로그인' }).click()
+  await page.getByRole('button', { name: '로그인', exact: true }).click()
 
   // 에러 메시지가 나타날 때까지 대기 (API 응답 소요 시간 감안)
   const errorAlert = page.getByRole('alert')

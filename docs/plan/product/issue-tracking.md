@@ -115,13 +115,13 @@
 
 **우선순위**. 높음 | **선행**. §2.1.1 | **Plan slug**. `issue/labels-autocomplete`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — prefix 매칭 + 사용 빈도 정렬 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `labels`, `issue_labels` (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/labels?q=<prefix>` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — cmdk 콤보박스 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. backend-engineer) (완료. PR #79 — 라벨=free-form 텍스트 태그 모델 확정(Jira 정합), 신규 엔티티 0. 기존 Issue.labels(TEXT[]) + normalizeLabels 도메인검증 재사용. ADR `2026-06-04-issue-label-freeform-tag-model`)
+- [x] D2. 명세 — prefix 매칭 + 사용 빈도 정렬 (책임. backend-engineer) (완료. PR #79 — prefix 대소문자무시(ILIKE) + 사용 빈도순(COUNT DISTINCT 이슈 수, 동률 시 라벨 알파벳 ASC tiebreak) 최대 10. q 빈값→전체 인기 top-10, 매칭0→빈배열200. ILIKE 와일드카드(%/_/\) ESCAPE 이스케이프)
+- [x] D3. 데이터 모델 — 기존 `issues.labels TEXT[]` 활용 (책임. backend-engineer) (완료. PR #79 — **정규화 테이블(labels/issue_labels) 미도입**. 기존 `issues.labels TEXT[]` + `ix_issues_labels_gin` 그대로 사용. 마이그레이션/init_codegen 변경 0. plan 원표기 "labels, issue_labels"는 SDD 05 정본(labels TEXT[])과 drift였음을 ADR로 정정)
+- [x] D4. 백엔드 — `GET /api/v1/labels?q=<prefix>` (책임. backend-engineer) (완료. PR #79 — LabelController→LabelApplicationService→IssueRepository.findLabelsByPrefix. raw SQL(dsl.fetch, DATA.md §5 예외 — prefix/limit 바인드파라미터, UNNEST+COUNT DISTINCT 집계, deleted_at 제외). **권한 가드는 코드리뷰 B1(prod resolver가 IssueScope.Global 하드거부→전 사용자 403, non-prod AlwaysAllow 마스킹) 발견으로 제거→인증 공통 접근, 권한 정교화는 FR-PM-05 위임**)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) (완료. PR #79 — repository 통합(Testcontainers — 빈도순/삭제이슈 제외/ILIKE 이스케이프 리터럴매칭/동률 tiebreak) + service 단위(MockK q정규화) + controller 슬라이스(@WebMvcTest). 모듈 전체 test 그린, 신규 빈 컨텍스트 부팅 OK)
+- [x] D6. 프론트 UI — cmdk 콤보박스 (책임. frontend-engineer) (완료. PR #79 — cmdk(1.1.1, 게이트1 승인) `LabelAutocompleteInput`이 기존 `IssueLabelsEdit`의 plain input을 **in-place 교체**(칩/검증/저장 경로 보존, 신규 컴포넌트 중복 회피). 키보드 네비(↓↑Enter) 자체구현, free-form 신규라벨 입력 허용. api/labels+use-labels(react-query)+use-debounce 재사용+MSW label-handlers. dead code command.tsx 정리(C1))
+- [x] D7. E2E (책임. qa-engineer) (완료. PR #79 — `label-autocomplete.spec.ts` 3시나리오(S1 자동완성happy→칩→저장 / S2 free-form 신규라벨 / S3 빈포커스 인기라벨). MSW 이슈 PATCH stateful로 저장 후 반영 일관. 화살표키 네비 단위테스트 추가(C2). 전체 프론트 1184 통과)
 
 ### §2.3 정리 2개 (클론, PDF)
 
@@ -129,13 +129,15 @@
 
 **우선순위**. 중간 | **선행**. §2.1.1, §4.2.1, §4.3.1 | **Plan slug**. `issue/clone`
 
-- [ ] D1. 도메인 — CloneOptions (책임. backend-engineer)
-- [ ] D2. 명세 — 무엇이 복사되고 무엇이 새로 시작되는지 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용만) (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST /api/v1/issues/{key}/clone` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 옵션 다이얼로그 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — CloneOptions (책임. backend-engineer) — Issue 애그리거트 재사용, 신규 엔티티 없음. ADR `2026-06-02-issue-clone-semantics`.
+- [x] D2. 명세 — 무엇이 복사되고 무엇이 새로 시작되는지 (책임. backend-engineer) — `docs/specs/2026-06-02-issue-clone.md`. 복사(summary/description/type/priority/labels/env/impact/assignee) vs 새로 시작(key/reporter/상태/version/시각).
+- [x] D3. 데이터 모델 — (활용만) (책임. db-engineer) — 신규 테이블/마이그레이션 없음. 기존 `issues` INSERT.
+- [x] D4. 백엔드 — `POST /api/v1/issues/{key}/clone` (책임. backend-engineer) — `CloneIssueRequest(includeAssignee, summaryOverride)`. 같은 프로젝트 한정. 권한 VIEW(원본)+CREATE(프로젝트).
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — application 단위(MockK) + 컨트롤러 슬라이스(@WebMvc) + 런타임 통합(Testcontainers).
+- [x] D6. 프론트 UI — 옵션 다이얼로그 (책임. designer → frontend-engineer) — PR #78. 메타패널 클론 버튼 + `CloneIssueDialog`(includeAssignee 체크박스 기본 true + summaryOverride 입력 ≤255) + `useCloneIssue`(성공 시 새 이슈 navigate + 토스트, 404/403/400 분기) + `cloneIssueHandler`(stateful MSW). 클론 버튼 권한 게이트는 프론트 권한 API에 CREATE 미노출로 서버 403+토스트 처리(FR-PM 후속).
+- [x] D7. E2E (책임. qa-engineer) — PR #78. `issue-clone.spec.ts` 4시나리오(happy 새이슈 이동/includeAssignee 토글/취소/maxLength 255). data-testid+dialog 컨테이너 한정 strict mode 안전. 전체 E2E 94 통과/회귀 0.
+
+> **이연 (deferred)**. FR 제목의 "옵션: 첨부/Watcher/댓글 포함"은 해당 하위 시스템(Attachment/Watcher/IssueComment)이 미구현이라 이번 범위에서 제외. 해당 기능 도입 후 `CloneOptions` 확장으로 충족 (ADR §3). 다른 프로젝트로의 클론은 FR-MV(이슈 이동)와 함께 다룸 (ADR §4).
 
 #### §2.3.2 FR-IS-08 — 이슈 인쇄 + PDF 출력
 
@@ -146,8 +148,8 @@
 - [x] D3. 데이터 모델 — (활용만) (책임. db-engineer) — PR #71 (변경 0)
 - [x] D4. 백엔드 — `openhtmltopdf` + `pdfbox`. `GET /api/v1/issues/{key}/pdf` (책임. backend-engineer) — PR #71 (openhtmltopdf-pdfbox:1.0.10, NanumGothic OFL 폰트 번들, IssuePdfTemplate→IssuePdfRenderer→controller. NFR1 descriptionHtml만 신뢰)
 - [x] D5. 백엔드 테스트 — PDF 바이너리 검증 (책임. backend-engineer) — PR #71 (단위+통합. %PDF- 시그니처, PDFTextStripper 한글 추출, XSS sanitize, 404)
-- [ ] D6. 프론트 UI — 인쇄 버튼 + 다운로드 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 인쇄 버튼 + 다운로드 (책임. designer → frontend-engineer) — PR #74 (이슈 상세 breadcrumb 우측 PDF 다운로드 버튼. downloadIssuePdf(apiFetch→blob, 코드베이스 첫 바이너리 다운로드) + triggerBlobDownload 헬퍼(createObjectURL→앵커 click→revokeObjectURL finally 누수방지) + MSW 핸들러. 로딩 disabled+sonner 에러토스트, i18n issueDetailStrings. "인쇄"는 서버 PDF 다운로드로 해석(브라우저 print 별도 미추가). 부분 mock으로 기존 30+ 라우트 테스트 생존)
+- [x] D7. E2E (책임. qa-engineer) — PR #74 (issue-pdf.spec.ts — waitForEvent('download') 선셋업→버튼 클릭→suggestedFilename ATLAS-1.pdf 검증. 전체 E2E 90 passed/1 skip 회귀 0)
 
 ## §3 컴포넌트 / 버전 (7개)
 

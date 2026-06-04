@@ -1,7 +1,8 @@
-// 로그인 폼 컴포넌트 — RHF + Zod 검증 + shadcn/ui Form + provider 드롭다운
+// 로그인 폼 컴포넌트 — RHF + Zod 검증 + shadcn/ui Form + provider 드롭다운 + SAML IdP 버튼 + OIDC provider 버튼
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,7 +22,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useLoginMutation } from './useLoginMutation'
+import { SamlIdpButtons } from './SamlIdpButtons'
+import { OidcIdpButtons } from './OidcIdpButtons'
 import { loginStrings } from '@/i18n/ko'
+import { fetchSamlIdps } from '@/api/saml'
+import { fetchOidcProviders } from '@/api/oidc'
+import type { SamlIdp } from '@/api/saml'
+import type { OidcProvider } from '@/api/oidc'
 
 /**
  * onError 콜백에서 받은 에러를 사용자 노출 한국어 메시지로 변환한다.
@@ -50,6 +57,18 @@ interface LoginFormProps {
 export const LoginForm = ({ onSuccess }: LoginFormProps) => {
   const [serverError, setServerError] = useState<string | null>(null)
   const mutation = useLoginMutation()
+
+  const { data: samlIdps } = useQuery<SamlIdp[]>({
+    queryKey: ['saml', 'idps'],
+    queryFn: fetchSamlIdps,
+    staleTime: 60_000,
+  })
+
+  const { data: oidcProviders } = useQuery<OidcProvider[]>({
+    queryKey: ['oidc', 'providers'],
+    queryFn: fetchOidcProviders,
+    staleTime: 60_000,
+  })
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginFormSchema),
@@ -158,6 +177,9 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
         <Button type="submit" className="w-full" disabled={mutation.isPending}>
           {loginStrings.submitButton}
         </Button>
+
+        <SamlIdpButtons idps={samlIdps ?? []} />
+        <OidcIdpButtons providers={oidcProviders ?? []} />
       </form>
     </Form>
   )

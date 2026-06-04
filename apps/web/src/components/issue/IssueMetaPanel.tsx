@@ -9,6 +9,7 @@ import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
 import { formatDate } from '@/lib/date-format'
 import { issueDetailStrings } from '@/i18n/ko'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
+import { LabelAutocompleteInput } from '@/components/labels/LabelAutocompleteInput'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // IssueMetaPanel
@@ -32,6 +33,8 @@ export interface IssueMetaPanelProps {
   onTypeChange: (typeId: number) => void
   /** 삭제 버튼 클릭 핸들러 */
   onDeleteClick: () => void
+  /** 클론 버튼 클릭 핸들러 */
+  onCloneClick: () => void
   /** 현재 상태에서 가용한 전이 목록 */
   transitions: IssueTransition[]
   /** 전이 실행 핸들러 — 선택한 toStateKey를 전달 */
@@ -85,6 +88,7 @@ export function IssueMetaPanel({
   availableTypes,
   onTypeChange,
   onDeleteClick,
+  onCloneClick,
   transitions,
   onTransition,
   isTransitioning,
@@ -238,6 +242,21 @@ export function IssueMetaPanel({
           <p className="text-sm font-medium">{formatDate(issue.updatedAt)}</p>
         </div>
       </div>
+
+      {/* 클론 버튼 — 삭제 버튼 바로 위 배치.
+          권한 게이트 부재는 의도적: 프론트 권한 API(issue-permissions)가 UPDATE/SOFT_DELETE/TRANSITION만
+          노출하고 CREATE를 안 줘서 클라이언트 게이트가 불가능하다. 클론은 대상 프로젝트 CREATE 권한이
+          필요하므로, 서버가 403(ACCESS_DENIED)으로 최종 enforcement하고 useCloneIssue.onError가 토스트로
+          안내한다(fail-safe). CREATE 권한 노출은 FR-PM 후속에서 추가되면 삭제 버튼처럼 disabled 게이트 가능. */}
+      <Button
+        variant="secondary"
+        className="w-full min-h-[44px]"
+        onClick={onCloneClick}
+        aria-label={issueDetailStrings.cloneButton}
+        data-testid="issue-clone"
+      >
+        {issueDetailStrings.cloneButton}
+      </Button>
 
       {/* 삭제 버튼 — WCAG AA 44px 터치 타깃, 권한 없으면 disabled + 사유 표시 */}
       <Button
@@ -447,22 +466,19 @@ function IssueLabelsEdit({ value, onSave, canEdit }: IssueLabelsEditProps): JSX.
     }
   }, [value])
 
-  /** 라벨 추가 — trim, 길이, 개수, 중복 검증 */
-  function addLabel() {
-    const trimmed = inputValue.trim()
+  /**
+   * 라벨 확정 핸들러 — LabelAutocompleteInput onCommit에서 호출.
+   * trim, 길이, 개수, 중복 검증 후 칩 추가.
+   * label은 LabelAutocompleteInput이 trim 완료한 값이다.
+   */
+  function handleCommitLabel(label: string) {
+    const trimmed = label.trim()
     if (trimmed === '') return
     if (trimmed.length > MAX_LABEL_LENGTH) return
     if (chips.length >= MAX_LABELS) return
     if (chips.includes(trimmed)) return
     setChips((prev) => [...prev, trimmed])
     setInputValue('')
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      addLabel()
-    }
   }
 
   function removeLabel(label: string) {
@@ -482,17 +498,14 @@ function IssueLabelsEdit({ value, onSave, canEdit }: IssueLabelsEditProps): JSX.
         </div>
       )}
 
-      {/* 라벨 추가 입력 */}
-      <input
-        type="text"
-        className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+      {/* 라벨 추가 입력 — LabelAutocompleteInput으로 자동완성 지원 */}
+      <LabelAutocompleteInput
         value={inputValue}
-        onChange={(e) => setInputValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={issueDetailStrings.labelAddPlaceholder}
-        aria-label={issueDetailStrings.labelAddPlaceholder}
+        onChange={setInputValue}
+        onCommit={handleCommitLabel}
         disabled={isAtMax}
-        maxLength={MAX_LABEL_LENGTH + 1}
+        existingLabels={chips}
+        placeholder={issueDetailStrings.labelAddPlaceholder}
       />
 
       {/* 저장 버튼 */}

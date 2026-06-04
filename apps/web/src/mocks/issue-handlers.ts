@@ -535,6 +535,31 @@ function intersectByToStateKey(
 }
 
 /**
+ * GET /api/v1/issues/:key/pdf — 이슈 PDF 다운로드 핸들러 (FR-IS-08).
+ * 분기 순서 (backend 일치):
+ *   (1) 이슈 not-found → 404
+ *   (2) 성공 → 200 + application/pdf 바이너리 (최소 PDF 헤더 포함)
+ */
+const downloadIssuePdfHandler = http.get('/api/v1/issues/:key/pdf', ({ params }) => {
+  const key = params['key'] as string
+  const found = resolveIssue(key)
+  if (found === undefined) {
+    return HttpResponse.json(
+      { message: `이슈를 찾을 수 없습니다: ${key}` },
+      { status: 404 },
+    )
+  }
+  // %PDF-1.4 로 시작하는 최소 PDF 바이트
+  const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34])
+  return new HttpResponse(pdfBytes, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${key}.pdf"`,
+    },
+  })
+})
+
+/**
  * POST /api/v1/issues/bulk-transitions/available — 일괄 가용 전이 교집합 조회 핸들러.
  * 각 이슈의 가용전이를 구한 뒤 toStateKey 기준으로 교집합 계산.
  * 분기 순서 (backend 일치):
@@ -580,6 +605,69 @@ const bulkAvailableTransitionsHandler = http.post(
   },
 )
 
+/**
+ * POST /api/v1/issues/:key/clone — 이슈 클론 핸들러 (FR-IS-06).
+ * 분기 순서 (backend 일치):
+ *   (1) 이슈 not-found → 404 ISSUE_NOT_FOUND
+ *   (2) 성공 → 201 + { data: 클론된 IssueResponse }
+ *       stateful: createdIssues에 영속해야 navigate 후 GET /issues/{newKey} 가 동작.
+ *
+ * 클론 키 생성: 원본 키의 숫자 부분을 최대값+100으로 증가 (fixture 범위 밖 고유 키 보장).
+ */
+const cloneIssueHandler = http.post('/api/v1/issues/:key/clone', async ({ params, request }) => {
+  const key = params['key'] as string
+  const found = resolveIssue(key)
+  if (found === undefined) {
+    return HttpResponse.json(
+      { errorCode: 'ISSUE_NOT_FOUND', message: `이슈를 찾을 수 없습니다: ${key}` },
+      { status: 404 },
+    )
+  }
+
+  const body = await request.clone().json() as {
+    includeAssignee?: boolean
+    summaryOverride?: string
+  }
+
+  // 클론본 키 생성 — 프로젝트 키 접두사 + 기존 최대 번호 + 1
+  const projectPrefix = found.projectKey
+  const existingKeys = [
+    ...Object.keys(issueFixtureMap),
+    ...Array.from(createdIssues.keys()),
+  ]
+  const maxNum = existingKeys
+    .filter((k) => k.startsWith(`${projectPrefix}-`))
+    .map((k) => parseInt(k.slice(projectPrefix.length + 1), 10))
+    .filter((n) => !isNaN(n))
+    .reduce((max, n) => Math.max(max, n), 0)
+  const newKey = `${projectPrefix}-${maxNum + 1}`
+
+  const includeAssignee = body.includeAssignee !== false
+  const newSummary = body.summaryOverride?.trim() !== '' && body.summaryOverride !== undefined
+    ? body.summaryOverride
+    : found.summary
+
+  const cloned: IssueResponse = {
+    ...found,
+    key: newKey,
+    // 클론본은 초기 상태(open)로 시작 — version 0, 날짜 초기화
+    currentStateKey: 'open',
+    assigneeId: includeAssignee ? found.assigneeId : null,
+    summary: newSummary,
+    version: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: null,
+    // resolution은 클론 시 초기화 (DONE 상태에서 복제해도 새 이슈는 open)
+    resolution: undefined,
+    descriptionHtml: null,
+  }
+
+  // stateful 영속 — GET /api/v1/issues/{newKey} 가 즉시 동작하도록
+  createdIssues.set(newKey, cloned)
+
+  return HttpResponse.json({ data: cloned }, { status: 201 })
+})
+
 export const issueHandlers = [
   listIssuesHandler,
   getIssueHandler,
@@ -590,4 +678,6 @@ export const issueHandlers = [
   getTransitionsHandler,
   transitionHandler,
   bulkAvailableTransitionsHandler,
+  downloadIssuePdfHandler,
+  cloneIssueHandler,
 ]

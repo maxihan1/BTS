@@ -1,4 +1,4 @@
-// Spring Security 필터 체인 — 단일 chain, JWT Resource Server + sid revoke wiring + CSRF Cookie + CORS (FR-09-26/27/30)
+// Spring Security 필터 체인 — SAML(1)+OIDC(2)+STATELESS(3) 3체인, JWT/PAT/CSRF/CORS (FR-09-26/27/30, FR-AU-03/04)
 
 package com.atlas.bts.identity.config
 
@@ -9,6 +9,7 @@ import com.atlas.bts.identity.web.PatAuthenticationFilter
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.annotation.Order
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
@@ -54,6 +55,13 @@ import org.springframework.web.cors.CorsConfigurationSource
  * ## @EnableMethodSecurity
  * 엔드포인트별 @PreAuthorize 이중 가드 (DEVELOPMENT.md §1.4 Spring Security 주의사항).
  * SecurityConfig 필터 체인 + @PreAuthorize 두 레이어로 우회를 방지한다.
+ *
+ * ## SAML 전용 체인 분리 (FR-AU-03 / 게이트1 D1 — BLOCKER 해소)
+ * SAML SP-initiated 로그인은 AuthnRequest 상관관계/replay 방어 상태를 HttpSession 에 저장하므로
+ * STATELESS 정책과 충돌한다. 따라서 SAML 경로만 [SamlSecurityConfig] 의 별도 체인(Order=1)이
+ * 잡아 IF_REQUIRED 세션을 허용하고, 그 외 모든 경로는 이 [securityFilterChain] (Order=2)이
+ * STATELESS 로 처리한다. SAML 체인의 세션 허용은 일반 API 의 STATELESS/JWT/CSRF 동작에 영향을 주지 않는다.
+ * 로그인 전 호출되는 [SAML_IDPS_PATH] 만 이 체인에서 permitAll 로 추가 노출한다.
  */
 @Configuration
 @EnableWebSecurity
@@ -64,6 +72,7 @@ class SecurityConfig(
     private val personalAccessTokenService: PersonalAccessTokenService,
 ) {
     @Bean
+    @Order(API_CHAIN_ORDER)
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         // CookieCsrfTokenRepository 설정
         // withHttpOnlyFalse(): SPA가 Cookie 토큰 읽어 X-XSRF-TOKEN 헤더로 전송하므로 JS 접근 허용.
@@ -82,10 +91,11 @@ class SecurityConfig(
         // pat_ prefix 인 경우 null 을 반환하여 JWT 필터가 처리하지 않도록 한다.
         // PAT 요청은 PatAuthenticationFilter 가 JWT 필터보다 먼저 처리하여 SecurityContext 에 인증 정보를 설정한다.
         val delegate = DefaultBearerTokenResolver()
-        val patSkippingBearerTokenResolver = BearerTokenResolver { req: HttpServletRequest ->
-            val token = delegate.resolve(req)
-            if (token != null && token.startsWith(PersonalAccessToken.TOKEN_PREFIX)) null else token
-        }
+        val patSkippingBearerTokenResolver =
+            BearerTokenResolver { req: HttpServletRequest ->
+                val token = delegate.resolve(req)
+                if (token != null && token.startsWith(PersonalAccessToken.TOKEN_PREFIX)) null else token
+            }
 
         return http
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
@@ -101,10 +111,11 @@ class SecurityConfig(
                 // PAT Bearer 요청: Authorization 헤더에 pat_ prefix 토큰이 있으면 CSRF skip.
                 // PAT는 stateless 자격증명이며 CSRF 공격 벡터(쿠키 기반 세션)가 없다.
                 // JWT Bearer 요청은 oauth2ResourceServer가 자동으로 CSRF를 skip한다.
-                val patBearerMatcher = RequestMatcher { req: HttpServletRequest ->
-                    val header = req.getHeader("Authorization") ?: return@RequestMatcher false
-                    header.startsWith("Bearer ${PersonalAccessToken.TOKEN_PREFIX}")
-                }
+                val patBearerMatcher =
+                    RequestMatcher { req: HttpServletRequest ->
+                        val header = req.getHeader("Authorization") ?: return@RequestMatcher false
+                        header.startsWith("Bearer ${PersonalAccessToken.TOKEN_PREFIX}")
+                    }
                 csrf.ignoringRequestMatchers(
                     patBearerMatcher,
                 )
@@ -121,6 +132,12 @@ class SecurityConfig(
                     "/api/v1/auth/login",
                     "/api/v1/auth/refresh",
                     "/api/v1/auth/providers",
+                    // FR-AU-03: 활성 SAML IdP 목록은 로그인 전 호출되므로 permitAll
+                    // (민감정보 미노출 — registrationId/displayName 만, SamlIdpController KDoc 참조).
+                    SAML_IDPS_PATH,
+                    // FR-AU-04: 활성 OIDC Provider 목록도 로그인 전 호출되므로 permitAll
+                    // (민감정보 미노출 — registrationId/displayName 만, OidcProviderController KDoc 참조).
+                    OIDC_PROVIDERS_PATH,
                     "/.well-known/jwks.json",
                     "/actuator/health",
                 ).permitAll()
@@ -139,5 +156,20 @@ class SecurityConfig(
                 rs.jwt { jwt -> jwt.jwtAuthenticationConverter(sidRevokeJwtConverter) }
             }
             .build()
+    }
+
+    private companion object {
+        /**
+         * 기존 STATELESS API 체인 우선순위 — SAML(1)/OIDC(2) 경로 외 모든 요청을 처리한다.
+         * SAML 체인(Order=1)·OIDC 체인(Order=2)보다 후순위로, 세 체인 모두 distinct order 를 갖도록
+         * 2→3 으로 1칸 밀었다 (FR-AU-04 C1 — @Order 동률 회피, OidcSecurityConfig KDoc 참조).
+         */
+        const val API_CHAIN_ORDER = 3
+
+        /** 로그인 전 호출되는 활성 SAML IdP 목록 엔드포인트 (permitAll, [com.atlas.bts.identity.web.SamlIdpController]). */
+        const val SAML_IDPS_PATH = "/api/v1/auth/saml/idps"
+
+        /** 로그인 전 호출되는 활성 OIDC Provider 목록 엔드포인트 (permitAll, [com.atlas.bts.identity.web.OidcProviderController]). */
+        const val OIDC_PROVIDERS_PATH = "/api/v1/auth/oidc/providers"
     }
 }

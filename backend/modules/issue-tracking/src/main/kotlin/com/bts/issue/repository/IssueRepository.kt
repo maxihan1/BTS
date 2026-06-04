@@ -30,6 +30,37 @@ import java.util.UUID
 // 같은 projectKey 에 대한 동시 incrementKeySequence 호출을 직렬화한다.
 private const val SQL_ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(hashtext(?))"
 
+// ── 라벨 자동완성 SQL ─────────────────────────────────────────────────────────
+// UNNEST(labels) 로 배열을 행으로 전개한 뒤 COUNT(DISTINCT id) 로 라벨별 이슈 수를 집계한다.
+// prefix 가 비어 있으면 ILIKE 절 없이 전체 라벨을 집계하고,
+// prefix 가 있으면 앱단 이스케이프 후 ILIKE ? ESCAPE '\' 절을 추가한다.
+// prefix/limit 은 반드시 바인드 파라미터(?)로 전달한다 — 문자열 concat 금지(SQL injection).
+// jOOQ DSL 대신 dsl.fetch(sql, params) 를 사용하는 이유:
+//   UNNEST + derived table + ILIKE ESCAPE + COUNT DISTINCT 조합은 jOOQ DSL 로 표현 시
+//   PostgreSQL 특화 API 를 다수 거쳐야 해 가독성이 크게 저하된다.
+//   BulkOperationWorker.kt:88 선례와 동일하게 prepared statement 바인딩으로 injection 방지.
+private const val SQL_LABELS_BY_PREFIX_ALL =
+    """SELECT label, COUNT(DISTINCT id) AS freq
+       FROM (SELECT id, UNNEST(labels) AS label
+             FROM issues
+             WHERE deleted_at IS NULL) t
+       GROUP BY label
+       ORDER BY freq DESC, label ASC
+       LIMIT ?"""
+
+private const val SQL_LABELS_BY_PREFIX_FILTER =
+    """SELECT label, COUNT(DISTINCT id) AS freq
+       FROM (SELECT id, UNNEST(labels) AS label
+             FROM issues
+             WHERE deleted_at IS NULL) t
+       WHERE label ILIKE ? ESCAPE '\'
+       GROUP BY label
+       ORDER BY freq DESC, label ASC
+       LIMIT ?"""
+
+/** 라벨 자동완성 기본 반환 한도. */
+private const val LABEL_AUTOCOMPLETE_DEFAULT_LIMIT = 20
+
 /**
  * 이슈 필드 부분 업데이트 요청. [IssueRepository.updateFields] 파라미터 그룹화용.
  *
@@ -433,10 +464,52 @@ class IssueRepository(
         return PageImpl(content, pageable, total)
     }
 
+    /**
+     * 활성 이슈(deleted_at IS NULL)의 라벨을 prefix 로 필터해 빈도 순으로 반환한다.
+     *
+     * 라벨 배열(labels TEXT[])을 UNNEST 해 행으로 전개한 뒤 COUNT(DISTINCT id) 로
+     * "라벨이 등장하는 이슈 수"를 집계한다. GIN 인덱스 대신 전체 스캔 기반 집계이므로
+     * 이슈 수가 많아지면 성능을 재검토해야 한다.
+     *
+     * @param prefix 라벨 접두사. 빈 문자열이면 ILIKE 절을 생략해 전체 top-N 을 반환한다.
+     *   '%', '_', '\' 를 ESCAPE 문자로 처리해 리터럴 매칭을 보장한다.
+     * @param limit 반환할 최대 라벨 수. 기본 [LABEL_AUTOCOMPLETE_DEFAULT_LIMIT].
+     * @return 빈도(이슈 수) DESC, 동률 시 라벨 ASC 순으로 정렬된 라벨 목록.
+     */
+    @Transactional(readOnly = true)
+    fun findLabelsByPrefix(
+        prefix: String,
+        limit: Int = LABEL_AUTOCOMPLETE_DEFAULT_LIMIT,
+    ): List<String> {
+        log.debug("findLabelsByPrefix prefix='{}' limit={}", prefix, limit)
+        return if (prefix.isEmpty()) {
+            dsl.fetch(SQL_LABELS_BY_PREFIX_ALL, limit)
+        } else {
+            val escaped = escapeIlikePrefix(prefix)
+            dsl.fetch(SQL_LABELS_BY_PREFIX_FILTER, "$escaped%", limit)
+        }.map { record -> record.get("label", String::class.java) }
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     /** 활성 이슈를 key 로 필터하는 jOOQ Condition. */
     private fun activeByKey(key: IssueKey): Condition = ISSUES.KEY.eq(key.value).and(ISSUES.DELETED_AT.isNull)
+
+    /**
+     * ILIKE ESCAPE '\' 에서 안전하게 사용하기 위해 prefix 의 와일드카드 문자를 이스케이프한다.
+     *
+     * PostgreSQL ILIKE ESCAPE '\' 규칙.
+     * - '\' 자체를 먼저 이스케이프해야 뒤에 오는 '%'/'_' 이스케이프가 이중으로 적용되지 않는다.
+     * - '%' → '\%', '_' → '\_'
+     *
+     * @param prefix 원본 prefix 문자열.
+     * @return 와일드카드가 리터럴화된 문자열 (뒤에 '%' 를 붙이기 전).
+     */
+    private fun escapeIlikePrefix(prefix: String): String =
+        prefix
+            .replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
 }
 
 // ── file-level 확장 함수 ────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import { componentHandlers } from './component-handlers'
 import { issueHandlers } from './issue-handlers'
 import { issuePermissionHandlers } from './issue-permission-handlers'
 import { issueTypeHandlers } from './issue-type-handlers'
+import { labelHandlers } from './label-handlers'
 import { passwordHandlers } from './password-handlers'
 import { projectMemberHandlers } from './project-member-handlers'
 import { projectPermissionHandlers } from './project-permission-handlers'
@@ -14,6 +15,8 @@ import { sessionHandlers } from './session-handlers'
 import { userHandlers } from './user-handlers'
 import { versionHandlers } from './version-handlers'
 import { workflowHandlers } from './workflow-handlers'
+import { samlHandlers } from './saml-handlers'
+import { oidcHandlers } from './oidc-handlers'
 
 /**
  * 애플리케이션 전체 MSW 핸들러 집합.
@@ -28,10 +31,13 @@ export const handlers = [
   ...issueHandlers,
   ...issuePermissionHandlers,
   ...issueTypeHandlers,
+  ...labelHandlers,
   ...passwordHandlers,
   ...projectMemberHandlers,
   ...projectPermissionHandlers,
   ...resolutionHandlers,
+  ...oidcHandlers,
+  ...samlHandlers,
   ...schemeHandlers,
   ...sessionHandlers,
   ...userHandlers,
