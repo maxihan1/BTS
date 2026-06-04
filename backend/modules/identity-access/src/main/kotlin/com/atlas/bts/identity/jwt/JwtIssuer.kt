@@ -32,6 +32,7 @@ import java.util.UUID
  * | mfa_verified | false 더미 (FR-09-15 — MFA Task 완료 후 실제 값으로 교체) |
  * | providerId | 인증 공급자 식별자 (e.g. "local", "ldap") |
  * | scopes | 허용 스코프 목록 |
+ * | roles | 전역 시스템 역할 목록 (e.g. ["SYSTEM_ADMIN"]) — 비어 있으면 claim 생략 (FR-PM-08) |
  *
  * ## 키 교체 (Key Rotation)
  * JWS 헤더에 [JwtKeyProvider.kid] 를 포함하여 다중 키 공존을 지원한다.
@@ -56,6 +57,7 @@ class JwtIssuer(
      * @param sessionId 현재 세션 UUID (sid claim)
      * @param providerId 인증 공급자 식별자 (e.g. "local")
      * @param scopes 허용 스코프 목록
+     * @param roles 전역 시스템 역할 목록 (FR-PM-08). 비어 있으면 [CLAIM_ROLES] claim 을 생략한다.
      * @return 서명된 JWT 문자열 (header.payload.signature)
      */
     fun issue(
@@ -63,6 +65,7 @@ class JwtIssuer(
         sessionId: UUID,
         providerId: String,
         scopes: List<String>,
+        roles: List<String> = emptyList(),
     ): String {
         val now = Instant.now()
         val exp = now.plusSeconds(ACCESS_TOKEN_TTL_SECONDS)
@@ -84,6 +87,12 @@ class JwtIssuer(
                 .claim(CLAIM_MFA_VERIFIED, false)
                 .claim(CLAIM_PROVIDER_ID, providerId)
                 .claim(CLAIM_SCOPES, scopes)
+                .apply {
+                    // roles 가 비어 있으면 claim 자체를 생략한다 (일반 사용자 토큰은 roles 미포함).
+                    if (roles.isNotEmpty()) {
+                        claim(CLAIM_ROLES, roles)
+                    }
+                }
                 .build()
 
         val jwt = SignedJWT(header, claims)
@@ -103,5 +112,8 @@ class JwtIssuer(
         const val CLAIM_MFA_VERIFIED = "mfa_verified"
         const val CLAIM_PROVIDER_ID = "providerId"
         const val CLAIM_SCOPES = "scopes"
+
+        /** 전역 시스템 역할 목록 claim 키 (FR-PM-08) — SidRevokeJwtConverter 가 ROLE_ authority 로 변환 */
+        const val CLAIM_ROLES = "roles"
     }
 }

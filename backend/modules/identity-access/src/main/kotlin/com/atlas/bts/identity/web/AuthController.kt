@@ -13,6 +13,7 @@ import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.spi.AuthnResult
 import com.atlas.bts.identity.spi.Credential
 import com.atlas.bts.identity.spi.ProviderRegistry
+import com.atlas.bts.identity.systemrole.SystemRoleAssignmentRepository
 import com.atlas.bts.identity.web.dto.SessionResponse
 import com.fasterxml.jackson.annotation.JsonProperty
 import jakarta.servlet.http.HttpServletRequest
@@ -65,12 +66,16 @@ import java.util.UUID
  */
 @RestController
 @RequestMapping("/api/v1/auth")
+// LongParameterList 억제 — 모두 생성자 의존성 주입(DI)이며 임의 그룹핑은 응집도를 해친다.
+// FR-PM-08 에서 systemRoleAssignmentRepository 추가로 8개(주입 7 + Clock)가 됐다.
+@Suppress("LongParameterList")
 class AuthController(
     private val providerRegistry: ProviderRegistry,
     private val sessionService: SessionService,
     private val refreshTokenRepository: RefreshTokenRepository,
     private val refreshTokenService: RefreshTokenService,
     private val jwtIssuer: JwtIssuer,
+    private val systemRoleAssignmentRepository: SystemRoleAssignmentRepository,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     /**
@@ -131,11 +136,13 @@ class AuthController(
                 )
                 refreshTokenRepository.save(refreshToken)
 
+                val roles = systemRoleAssignmentRepository.findRolesByUser(session.userId).map { it.name }
                 val accessToken = jwtIssuer.issue(
                     userId = session.userId,
                     sessionId = session.id,
                     providerId = session.providerId,
                     scopes = emptyList(),
+                    roles = roles,
                 )
 
                 ResponseEntity.ok()

@@ -160,7 +160,10 @@ class SidRevokeJwtConverterTest {
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    private fun buildJwt(sid: String?, roles: List<String>? = null): Jwt {
+    private fun buildJwt(
+        sid: String?,
+        roles: List<String>? = null,
+    ): Jwt {
         val claims = mutableMapOf<String, Any>(
             "sub" to "user-001",
             "iss" to "https://bts.example.com",
