@@ -313,6 +313,18 @@
 - [ ] D6. 프론트 UI — 숨김 필드 렌더 차단 (책임. frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
+### §4.8 FR-PM-08 — 전역 시스템 관리자 역할/권한 인프라
+
+**우선순위**. 필수 | **선행**. §4.1 | **후행 해소**. §4.4 FR-PM-04 · FR-AU-05 회원가입 | **Plan slug**. `identity/system-admin-role` | **PR**. #75
+
+전역(시스템) 역할이 데이터·JWT·판정 어디에도 없어 FR-PM-04(전역 워크플로우/자동화 관리)와 FR-AU-05(회원가입)가 막혀 있다. 이 인프라가 공통 선행을 해소한다. **인프라만**(Maxi 2026-06-04) — 실제 관리 엔드포인트/UI는 후행 FR 소관이라 D6/D7(프론트/E2E) 없음. ADR [2026-06-04-system-admin-role](../../decisions/2026-06-04-system-admin-role.md).
+
+- [ ] D1. 도메인 — `SystemRole`(SYSTEM_ADMIN 단일), `ProjectRole`과 분리, 전역 판정기 포트 (책임. security-engineer)
+- [ ] D2. 명세 (책임. security-engineer)
+- [ ] D3. 데이터 모델 — `system_role_assignments` 테이블 (V010, project_id 없음) (책임. db-engineer)
+- [ ] D4. 백엔드 — Repository + 전역 판정기(shared-kernel 포트 + identity 구현) + `JwtIssuer` 전역 역할 클레임 + 설정값 기반 멱등 부트스트랩 `ApplicationRunner` (책임. security-engineer)
+- [ ] D5. 백엔드 테스트 — 통합테스트(@ActiveProfiles prod): SYSTEM_ADMIN→전역 판정 true, 일반 사용자→false, 부트스트랩 멱등성 (책임. security-engineer)
+
 ## §NFR identity-access BC 완료 게이트
 
 ### 측정값 기록표
