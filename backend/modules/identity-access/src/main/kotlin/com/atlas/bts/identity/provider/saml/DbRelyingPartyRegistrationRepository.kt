@@ -7,9 +7,9 @@ import org.springframework.security.saml2.provider.service.registration.RelyingP
 import org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistrationRepository
 import org.springframework.stereotype.Component
 import java.io.ByteArrayInputStream
+import java.nio.charset.StandardCharsets
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
-import java.nio.charset.StandardCharsets
 
 /**
  * Spring Security 의 [RelyingPartyRegistrationRepository] 를 DB(saml_idp_configs) 로 구현한다 (FR-AU-03).
@@ -34,7 +34,7 @@ class DbRelyingPartyRegistrationRepository(
     override fun findByRegistrationId(registrationId: String): RelyingPartyRegistration? {
         val config = configRepo.findEnabledByRegistrationId(registrationId) ?: return null
 
-        val cert = parsePemCertificate(config.idpX509Cert)
+        val cert = PemCertificateParser.parse(config.idpX509Cert)
 
         return RelyingPartyRegistration
             .withRegistrationId(config.registrationId)
@@ -49,17 +49,29 @@ class DbRelyingPartyRegistrationRepository(
             .build()
     }
 
-    private fun parsePemCertificate(pem: String): X509Certificate {
+    private companion object {
+        /** Spring Security 표준 ACS placeholder — 런타임에 baseUrl/registrationId 로 치환 */
+        const val ACS_LOCATION_TEMPLATE = "{baseUrl}/login/saml2/sso/{registrationId}"
+    }
+}
+
+/**
+ * PEM 형식 X.509 인증서 문자열을 [X509Certificate] 로 파싱하는 헬퍼.
+ *
+ * IdP 의 공개 서명 검증 인증서는 DB 에 PEM(Base64 + BEGIN/END 헤더) 으로 저장된다.
+ * 표준 JDK [CertificateFactory] 를 사용하므로 외부 의존성이 없다.
+ */
+private object PemCertificateParser {
+    private const val X509_TYPE = "X.509"
+
+    /**
+     * PEM 인증서 문자열을 파싱한다.
+     * 형식이 잘못되었으면 [java.security.cert.CertificateException] 을 던진다(은폐 금지).
+     */
+    fun parse(pem: String): X509Certificate {
         val factory = CertificateFactory.getInstance(X509_TYPE)
         ByteArrayInputStream(pem.toByteArray(StandardCharsets.UTF_8)).use { stream ->
             return factory.generateCertificate(stream) as X509Certificate
         }
-    }
-
-    private companion object {
-        const val X509_TYPE = "X.509"
-
-        /** Spring Security 표준 ACS placeholder — 런타임에 baseUrl/registrationId 로 치환 */
-        const val ACS_LOCATION_TEMPLATE = "{baseUrl}/login/saml2/sso/{registrationId}"
     }
 }
