@@ -52,6 +52,5 @@ class SecretEncryptor(
      * @return 복호화된 평문 비밀값.
      * @throws IllegalStateException 키 불일치/변조로 복호화에 실패한 경우.
      */
-    fun decrypt(ciphertext: String): String =
-        String(delegate.decrypt(Hex.decode(ciphertext)), Charsets.UTF_8)
+    fun decrypt(ciphertext: String): String = String(delegate.decrypt(Hex.decode(ciphertext)), Charsets.UTF_8)
 }
