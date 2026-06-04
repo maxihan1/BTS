@@ -535,6 +535,31 @@ function intersectByToStateKey(
 }
 
 /**
+ * GET /api/v1/issues/:key/pdf — 이슈 PDF 다운로드 핸들러 (FR-IS-08).
+ * 분기 순서 (backend 일치):
+ *   (1) 이슈 not-found → 404
+ *   (2) 성공 → 200 + application/pdf 바이너리 (최소 PDF 헤더 포함)
+ */
+const downloadIssuePdfHandler = http.get('/api/v1/issues/:key/pdf', ({ params }) => {
+  const key = params['key'] as string
+  const found = resolveIssue(key)
+  if (found === undefined) {
+    return HttpResponse.json(
+      { message: `이슈를 찾을 수 없습니다: ${key}` },
+      { status: 404 },
+    )
+  }
+  // %PDF-1.4 로 시작하는 최소 PDF 바이트
+  const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34])
+  return new HttpResponse(pdfBytes, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${key}.pdf"`,
+    },
+  })
+})
+
+/**
  * POST /api/v1/issues/bulk-transitions/available — 일괄 가용 전이 교집합 조회 핸들러.
  * 각 이슈의 가용전이를 구한 뒤 toStateKey 기준으로 교집합 계산.
  * 분기 순서 (backend 일치):
@@ -590,4 +615,5 @@ export const issueHandlers = [
   getTransitionsHandler,
   transitionHandler,
   bulkAvailableTransitionsHandler,
+  downloadIssuePdfHandler,
 ]

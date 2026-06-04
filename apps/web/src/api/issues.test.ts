@@ -724,8 +724,11 @@ describe('downloadIssuePdf', () => {
 
   it('T1-15a: 존재하는 이슈 key로 GET 호출 시 Blob을 반환한다', async () => {
     const result = await downloadIssuePdf('ATLAS-1')
-    expect(result).toBeInstanceOf(Blob)
+    // jsdom 환경에서 globalThis.Blob과 Response.blob()의 Blob이 다른 클래스일 수 있어
+    // instanceof 대신 Blob 덕 타이핑(size, type, arrayBuffer 메서드)으로 검증한다.
+    expect(typeof result.size).toBe('number')
     expect(result.size).toBeGreaterThan(0)
+    expect(typeof result.arrayBuffer).toBe('function')
   })
 
   it('T1-15b: 반환된 Blob의 type이 application/pdf다', async () => {
