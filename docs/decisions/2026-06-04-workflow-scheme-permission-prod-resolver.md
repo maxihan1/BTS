@@ -84,7 +84,18 @@ Global scope 판정 모델 확정과 함께 spec 단계에서 결정한다(전�
 - 자동화 권한은 명시적으로 연기되어 dead 시드를 회피한다.
 - Global scope 판정 모델은 spec에서 확정 — 본 ADR은 D3/D4를 spec 결정에 의존하는 미완 항목으로 표시한다.
 
-## 미해결 (spec 단계로 이연)
+## spec 단계 확정 (2026-06-05, 보류 해소 — FR-PM-08 인프라 완료 후)
 
-- Global scope 워크플로우 스킴 관리 권한의 판정 주체/기준 (D3 알고리즘).
-- 그에 따른 `role_permissions` 시드의 scheme/role 배치 (D4).
+D3/D4의 이연 항목을 spec(`docs/specs/2026-06-05-fr-pm-04-workflow-automation.md`)에서 다음과 같이 확정했다.
+
+- **D3 (Global scope 판정)**: 워크플로우 스킴 CRUD(`MANAGE_SCHEME`/`Global`)는 **시스템 관리자 전용**.
+  FR-PM-08이 제공한 `com.bts.shared.permission.SystemPermissionResolver.isSystemAdmin(UUID)`를 소비해 판정한다
+  (Jira Cloud 모델 — 스킴은 전역 자원). prod 리졸버는 이 포트를 주입받아 호출(`SystemRoleAssignmentRepository` 직접 호출 아님).
+- **D3 (Project scope 판정)**: 스킴 배정(`ASSIGN_SCHEME`/`Project(key)`)은 **프로젝트 관리자**.
+  `ProjectDirectory.resolveKeyToId`(key→id, FR-PM-02 선례) → 멤버십 게이트 → `role_permissions` 매트릭스
+  `roleHasPermission(projectId, role, "MANAGE_WORKFLOW")`로 판정(FR-PM-03 동형).
+- **D4 (시드 배치)**: `MANAGE_WORKFLOW`를 기본 권한 스킴(`00000000-…-001`)의 `PROJECT_ADMIN` 역할에 1행 시드(V013).
+  Global은 매트릭스를 거치지 않으므로 시드 불요 — 시스템 역할로 판정.
+- **Guard 예외 BC 가로지름**: 포트가 Guard 패턴(throw)이라 prod 리졸버(identity-access)가 던지는
+  `WorkflowSchemeAccessDeniedException`을 shared-kernel에 정의해 project-workflow 핸들러가 403으로 매핑한다
+  (FR-PM-03 Boolean 방식과의 차이).
