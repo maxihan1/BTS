@@ -35,6 +35,11 @@ CREATE TABLE saml_idp_configs (
     updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
+-- 활성 IdP 만 포함하는 부분 인덱스 — 로그인 화면/디스패치 시 enabled=true 행만 조회 (V002 관례와 동일)
+CREATE INDEX idx_saml_idp_configs_enabled
+    ON saml_idp_configs (enabled)
+    WHERE enabled = true;
+
 COMMENT ON TABLE  saml_idp_configs                   IS 'SAML IdP 연결 설정 — FR-AU-03 SAML SSO';
 COMMENT ON COLUMN saml_idp_configs.registration_id   IS 'Spring Security RelyingPartyRegistration 식별자 (URL 경로 포함, UNIQUE)';
 COMMENT ON COLUMN saml_idp_configs.idp_entity_id     IS 'IdP EntityID — SAML 메타데이터 issuer';

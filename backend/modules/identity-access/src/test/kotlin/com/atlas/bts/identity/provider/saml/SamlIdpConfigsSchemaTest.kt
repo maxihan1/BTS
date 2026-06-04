@@ -1,4 +1,4 @@
-// V010 Flyway 마이그레이션 검증 — saml_idp_configs 테이블 + 컬럼 + UNIQUE(registration_id) + authn_provider_id FK + SAML authn_providers seed 확인
+// V010 마이그레이션 검증 — saml_idp_configs 테이블/컬럼/제약/인덱스 + SAML authn_providers seed (FR-AU-03)
 
 package com.atlas.bts.identity.provider.saml
 
@@ -170,6 +170,20 @@ class SamlIdpConfigsSchemaTest {
         }
     }
 
+    private fun indexExists(indexName: String): Boolean {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname = ?",
+            ).use { stmt ->
+                stmt.setString(1, indexName)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    return rs.getInt(1) > 0
+                }
+            }
+        }
+    }
+
     private fun samlAuthnProviderSeedCount(): Int {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.prepareStatement(
@@ -227,6 +241,11 @@ class SamlIdpConfigsSchemaTest {
     @Test
     fun `V010 authn_provider_id FK references authn_providers`() {
         assertThat(fkExistsToTable("saml_idp_configs", "authn_providers", "authn_provider_id")).isTrue()
+    }
+
+    @Test
+    fun `V010 enabled partial index exists`() {
+        assertThat(indexExists("idx_saml_idp_configs_enabled")).isTrue()
     }
 
     @Test
