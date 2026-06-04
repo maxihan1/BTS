@@ -190,6 +190,29 @@ product plan: docs/plan/product/identity-access.md §2.4 (D1~D7)
 - 추가 검증: ktlint/detekt/ArchUnit + vitest/typecheck + playwright(qa-engineer)
 - 게이트1 Maxi 확인: 외부 의존성 0(승인 불요) + client_secret 암호화 키 환경변수 도입
 
+## 구현 결과 (/bts-impl, 2026-06-04)
+
+전 9 task TDD red→green→refactor 완료 + 부팅 fix + PKCE 보강. 백엔드 직렬(단일 모듈), 프론트 병행.
+
+| Task | 상태 | 비고 |
+|---|---|---|
+| T1 client_secret 암호화 유틸 | ✅ | `Encryptors.stronger`(GCM+random IV, C3). 초기 `@ConditionalOnProperty`(C2)가 부팅 결함 유발 |
+| T2 V011 마이그레이션 + OIDC seed | ✅ | seed UUID `...4a04...0004`(C4, SAML과 구분). FK 인덱스 보강 |
+| T3 config repo + ClientRegistration 어댑터 | ✅ | issuer discovery seam(`IssuerLocationDiscovery`), client_secret 복호화 |
+| T4 OidcProvider thin + 성공 핸들러 | ✅ | SAML 동형, JIT 재사용, Clock 주입. `Credential.OidcToken` 추가 |
+| T5 OidcSecurityConfig @Order 체인 | ✅ | OIDC @Order(2), STATELESS 2→3 재배치(C1 동률 회피). 모듈 전체 test로 부팅 결함 표면화 |
+| T6 OIDC IdP 목록 API | ✅ | `GET /api/v1/auth/oidc/providers`, 민감정보 미노출 |
+| T7 Keycloak OIDC 통합테스트 | ✅ | 실 Keycloak 302 진입 검증, discovery, secret 암호화 round-trip |
+| **부팅 fix** | ✅ | `SecretEncryptor` 항상 등록 + 사용 시점 검증(C2 정정). 모듈 전체 test 756 그린(100건 부팅실패 해소) |
+| **PKCE 보강** | ✅ | spec N2 충족 — confidential client에도 PKCE S256 강제(authorizationRequestResolver). 실 Keycloak 302에 code_challenge 부착 검증 |
+| T8 프론트 OIDC 버튼 | ✅ | SAML 동형, `{providers:[...]}` 언래핑. 프론트 test 1169 그린 |
+| T9 E2E | ✅ | OIDC E2E 2개 + SAML E2E 회귀 1건 수정(strict mode, exact:true) |
+
+**게이트2 코드리뷰 전달 항목**:
+- C2 정정 — `@ConditionalOnProperty` 부팅가드가 항상 스캔되는 의존성(`DbClientRegistrationRepository`)을 깸 → "항상 등록 + 사용 시점 검증"으로 정정(메모리 `profile-scoped-bean-boot-failure` 재현·해소)
+- Task 4 concern — `username = sub` 매핑(SAML nameId 동형). OIDC sub는 불투명 식별자라 `preferred_username` 우선 정책 검토 필요(코드리뷰 판단)
+- Task 5 concern — 복귀경로(`returnTo`)는 본 FR에서 기본 랜딩(`/dashboard`) 고정, open-redirect 방어만 유지. state 연동 복귀는 후속
+
 ## 리뷰 결과
 
 ### code-reviewer ground-truth 리뷰 (2026-06-04, plan-eng 대체 — 메모리 `bts-review-plan-autoplan-overkill`)
