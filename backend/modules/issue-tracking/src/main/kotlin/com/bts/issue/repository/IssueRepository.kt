@@ -10,8 +10,8 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.jooq.tables.records.IssuesRecord
 import com.bts.issue.jooq.tables.references.COMPONENTS
-import com.bts.issue.jooq.tables.references.ISSUE_COMPONENTS
 import com.bts.issue.jooq.tables.references.ISSUES
+import com.bts.issue.jooq.tables.references.ISSUE_COMPONENTS
 import com.bts.issue.jooq.tables.references.ISSUE_TYPES
 import com.bts.issue.jooq.tables.references.PROJECTS
 import com.bts.shared.issue.IssueTypeId
@@ -474,13 +474,9 @@ class IssueRepository(
      * partial update 없이 즉시 0 을 반환한다.
      *
      * 실행 순서.
-     * ① `UPDATE issues SET version=version+1, updated_at=now() WHERE key=? AND deleted_at IS NULL AND version=?`
-     *    → rowcount 0 이면 낙관락 충돌 — 즉시 0 반환.
-     * ② `DELETE FROM issue_components WHERE issue_id=?`
+     * ① [bumpVersionOrZero] — version+1 UPDATE. rowcount 0 이면 즉시 0 반환.
+     * ② `DELETE FROM issue_components WHERE issue_id=?` — 기존 연결 전부 삭제.
      * ③ componentIds 가 비어 있지 않으면 batch INSERT (issue_id, component_id).
-     *
-     * 이 메서드 자체에는 @Transactional 을 붙이지 않는다.
-     * 호출하는 ApplicationService 가 트랜잭션을 보유하며, 같은 트랜잭션 컨텍스트에서 실행된다.
      *
      * @param key 이슈 키 (낙관락 WHERE 조건).
      * @param issueId DELETE / INSERT 에 사용할 이슈 UUID.
@@ -502,30 +498,15 @@ class IssueRepository(
             componentIds.size,
             expectedVersion,
         )
+        if (bumpVersionOrZero(key, expectedVersion) == 0) return 0
 
-        // ① version bump — 실패 시 즉시 0 반환 (DELETE/INSERT 생략)
-        val bumped =
-            dsl.update(ISSUES)
-                .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
-                .set(ISSUES.VERSION, expectedVersion + 1)
-                .where(ISSUES.KEY.eq(key.value))
-                .and(ISSUES.VERSION.eq(expectedVersion))
-                .and(ISSUES.DELETED_AT.isNull)
-                .execute()
-
-        if (bumped == 0) return 0
-
-        // ② 기존 연결 전부 삭제
         dsl.deleteFrom(ISSUE_COMPONENTS)
             .where(ISSUE_COMPONENTS.ISSUE_ID.eq(issueId))
             .execute()
 
-        // ③ 새 연결 batch INSERT (빈 목록이면 생략)
         if (componentIds.isNotEmpty()) {
             val insert = dsl.insertInto(ISSUE_COMPONENTS, ISSUE_COMPONENTS.ISSUE_ID, ISSUE_COMPONENTS.COMPONENT_ID)
-            componentIds.forEach { componentId ->
-                insert.values(issueId, componentId)
-            }
+            componentIds.forEach { componentId -> insert.values(issueId, componentId) }
             insert.execute()
         }
 
@@ -584,6 +565,24 @@ class IssueRepository(
 
     /** 활성 이슈를 key 로 필터하는 jOOQ Condition. */
     private fun activeByKey(key: IssueKey): Condition = ISSUES.KEY.eq(key.value).and(ISSUES.DELETED_AT.isNull)
+
+    /**
+     * 낙관락 version bump 를 시도하고 영향 행 수(성공=1, 충돌=0)를 반환한다.
+     *
+     * [replaceComponents] 의 첫 단계로 사용한다.
+     * version 불일치 시 0 을 반환하며, 호출자는 이를 확인해 후속 연산을 생략해야 한다.
+     */
+    private fun bumpVersionOrZero(
+        key: IssueKey,
+        expectedVersion: Long,
+    ): Int =
+        dsl.update(ISSUES)
+            .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+            .set(ISSUES.VERSION, expectedVersion + 1)
+            .where(ISSUES.KEY.eq(key.value))
+            .and(ISSUES.VERSION.eq(expectedVersion))
+            .and(ISSUES.DELETED_AT.isNull)
+            .execute()
 
     /**
      * ILIKE ESCAPE '\' 에서 안전하게 사용하기 위해 prefix 의 와일드카드 문자를 이스케이프한다.

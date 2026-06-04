@@ -8,8 +8,6 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
-import com.bts.issue.jooq.tables.references.COMPONENTS
-import com.bts.issue.jooq.tables.references.ISSUE_COMPONENTS
 import com.bts.shared.issue.IssueTypeId
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
@@ -116,8 +114,9 @@ class IssueComponentsRepositoryTest {
 
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다 — setup 실행 확인" }
+    private fun requireTaskTypeId(): IssueTypeId {
+        return requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다 — setup 실행 확인" }
+    }
 
     /** 이슈 1건을 삽입하고 반환한다. version=1 로 시작. */
     private fun insertIssue(key: IssueKey): Issue =
@@ -150,6 +149,7 @@ class IssueComponentsRepositoryTest {
     }
 
     /** issue_components 테이블에서 issueId 로 component_id 목록을 직접 조회한다. */
+    @Suppress("NestedBlockDepth") // JDBC use{} 중첩 — 리소스 관리를 위한 불가피한 구조
     private fun rawComponentIds(issueId: UUID): Set<UUID> {
         val postgres = IssueTestcontainersBase.postgres
         return DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
