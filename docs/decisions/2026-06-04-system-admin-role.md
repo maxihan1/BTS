@@ -61,7 +61,8 @@ SDD 12.6의 `OrgAdmin`을 `SYSTEM_ADMIN`으로 명명해 도입한다(Jira "Syst
 `JwtIssuer`가 로그인 시 `system_role_assignments`를 조회해 access token에 전역 역할 클레임(`system_roles` 또는 `roles`)을 담는다. JWT converter(`SidRevokeJwtConverter`의 delegate)가 이를 `ROLE_SYSTEM_ADMIN` authority로 변환.
 
 - **트레이드오프 (stale)**: access token TTL이 15분이라, 역할을 박탈해도 최대 15분간 토큰에 잔존한다. 시스템 관리자는 소수이고 역할 변경이 드물어 수용 가능. 즉시 무효화가 필요한 경우는 후속(권한 변경 시 세션 revoke)에서 다룬다.
-- 전역 판정기는 JWT claim(빠름) 또는 DB(정확)를 읽을 수 있게 설계하되, 본 PR은 claim 기반을 기본으로 한다(범위에 "JWT 전역 클레임" 명시).
+- **(2026-06-04 plan 단계 정정)** 전역 판정기(`SystemPermissionResolver`, `actorId` 입력)는 **DB 조회**로 판정한다 — `IssuePermissionResolver`/`ComponentPermissionResolver` 선례와 일관(항상 정확, 임의 사용자 질의 가능). JWT의 `roles` 클레임 → `ROLE_SYSTEM_ADMIN` authority는 **선언적 보안(@PreAuthorize) 경로로 병행**한다. 둘은 독립 경로다. (당초 "판정기는 claim 기반" 구상은 `actorId` 포트 시그니처와 맞지 않아 정정.)
+- 판정기는 단순 DB 조회라 `@Profile` 분리(prod/non-prod stub)가 **불필요** — 모든 프로파일에서 실제 판정한다. `AlwaysAllow*` 같은 stub 없음 → 메모리 `profile-scoped-bean-boot-failure` 함정 원천 회피.
 
 ### D5 — 최초 관리자 부트스트랩 = 설정값 기반 멱등 승격
 
