@@ -19,6 +19,8 @@ import com.atlas.bts.identity.spi.FailureReason.INVALID_CREDENTIALS
 import com.atlas.bts.identity.spi.Principal
 import com.atlas.bts.identity.spi.ProviderRegistry
 import com.atlas.bts.identity.spi.ProviderType
+import com.atlas.bts.identity.systemrole.SystemRole
+import com.atlas.bts.identity.systemrole.SystemRoleAssignmentRepository
 import io.mockk.mockk
 import jakarta.servlet.http.Cookie
 import org.junit.jupiter.api.Test
@@ -140,6 +142,16 @@ class AuthControllerTest {
     @MockBean
     lateinit var jwtIssuer: JwtIssuer
 
+    @MockBean
+    lateinit var systemRoleAssignmentRepository: SystemRoleAssignmentRepository
+
+    /** 기본값: 전역 역할 없음 (일반 사용자). 역할 의존 케이스는 개별 테스트에서 재정의. */
+    @org.junit.jupiter.api.BeforeEach
+    fun stubSystemRoles() {
+        `when`(systemRoleAssignmentRepository.findRolesByUser(anyUuid()))
+            .thenReturn(emptySet<SystemRole>())
+    }
+
     // ── login 성공 ─────────────────────────────────────────────────────────────
 
     @Test
@@ -177,6 +189,7 @@ class AuthControllerTest {
                 anyUuid(),
                 anyUuid(),
                 org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.anyList(),
             ),
         ).thenReturn(accessToken)

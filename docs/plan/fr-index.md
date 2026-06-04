@@ -138,7 +138,7 @@
 | FR-RP-03 | CFD (Cumulative Flow Diagram) | 필수 | notification-dashboard | §4.3 |
 | FR-RP-04 | Cycle Time / Lead Time 분포 | 높음 | notification-dashboard | §4.4 |
 
-### 권한 관리 (FR-PM, 7개)
+### 권한 관리 (FR-PM, 8개)
 
 | FR ID | 한 줄 | 우선순위 | BC | 본문 위치 |
 |---|---|---|---|---|
@@ -149,6 +149,7 @@
 | FR-PM-05 | 이슈 접근 (Browse, View) | 필수 | identity-access | §4.5 |
 | FR-PM-06 | 이슈 보안 수준 | 필수 | identity-access | §4.6 |
 | FR-PM-07 | 필드 수준 권한 | 높음 | identity-access | §4.7 |
+| FR-PM-08 | 전역 시스템 관리자 역할/권한 인프라 (FR-PM-04·FR-AU-05 선행) | 필수 | identity-access | §4.8 |
 
 ### 사용성 (FR-UX, 5개)
 

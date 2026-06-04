@@ -3,6 +3,7 @@
 package com.atlas.bts.identity.session
 
 import com.atlas.bts.identity.jwt.JwtIssuer
+import com.atlas.bts.identity.systemrole.SystemRoleAssignmentRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.security.SecureRandom
@@ -36,6 +37,7 @@ import java.util.UUID
  * @param repo [RefreshTokenRepository] — refresh_tokens 테이블 접근
  * @param sessionService [SessionService] — 세션 조회/폐기
  * @param jwtIssuer [JwtIssuer] — access token 발급
+ * @param systemRoleAssignmentRepository [SystemRoleAssignmentRepository] — 전역 시스템 역할 조회 (FR-PM-08)
  * @param clock 시각 주입 (테스트 가용성)
  */
 @Service
@@ -43,6 +45,7 @@ class RefreshTokenService(
     private val repo: RefreshTokenRepository,
     private val sessionService: SessionService,
     private val jwtIssuer: JwtIssuer,
+    private val systemRoleAssignmentRepository: SystemRoleAssignmentRepository,
     private val clock: Clock = Clock.systemUTC(),
 ) {
 
@@ -115,12 +118,14 @@ class RefreshTokenService(
             return RotateResult.Failure(FailureReason.Race)
         }
 
-        // 7. Access token 발급
+        // 7. Access token 발급 — 전역 시스템 역할(roles)을 함께 주입 (FR-PM-08)
+        val roles = systemRoleAssignmentRepository.findRolesByUser(session.userId).map { it.name }
         val accessToken = jwtIssuer.issue(
             userId = session.userId,
             sessionId = session.id,
             providerId = session.providerId,
             scopes = emptyList(),
+            roles = roles,
         )
 
         return RotateResult.Success(

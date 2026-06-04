@@ -109,6 +109,28 @@ class SidRevokeJwtConverterTest {
             .hasMessageContaining("sid")
     }
 
+    // ── roles → ROLE_ authority (FR-PM-08 Task 4) ───────────────────────────
+
+    @Test
+    fun `roles claim의 SYSTEM_ADMIN은 ROLE_SYSTEM_ADMIN authority로 변환된다`() {
+        every { sessionService.lookup(activeSid) } returns buildActiveSession(activeSid)
+
+        val jwt = buildJwt(sid = activeSid.toString(), roles = listOf("SYSTEM_ADMIN"))
+        val result = converter.convert(jwt)
+
+        assertThat(result.authorities.map { it.authority }).contains("ROLE_SYSTEM_ADMIN")
+    }
+
+    @Test
+    fun `roles claim이 없으면 ROLE_ authority가 부여되지 않는다`() {
+        every { sessionService.lookup(activeSid) } returns buildActiveSession(activeSid)
+
+        val jwt = buildJwt(sid = activeSid.toString())
+        val result = converter.convert(jwt)
+
+        assertThat(result.authorities.map { it.authority }).noneMatch { it.startsWith("ROLE_") }
+    }
+
     // ── (f) EC-29 Caffeine 5s TTL 캐시 ──────────────────────────────────────
 
     @Test
@@ -138,12 +160,16 @@ class SidRevokeJwtConverterTest {
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    private fun buildJwt(sid: String?): Jwt {
+    private fun buildJwt(
+        sid: String?,
+        roles: List<String>? = null,
+    ): Jwt {
         val claims = mutableMapOf<String, Any>(
             "sub" to "user-001",
             "iss" to "https://bts.example.com",
         )
         if (sid != null) claims["sid"] = sid
+        if (roles != null) claims["roles"] = roles
 
         return Jwt.withTokenValue("token")
             .header("alg", "RS256")

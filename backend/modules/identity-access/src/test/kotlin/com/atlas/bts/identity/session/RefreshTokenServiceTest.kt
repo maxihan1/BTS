@@ -3,6 +3,7 @@
 package com.atlas.bts.identity.session
 
 import com.atlas.bts.identity.jwt.JwtIssuer
+import com.atlas.bts.identity.systemrole.SystemRoleAssignmentRepository
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
@@ -35,6 +36,7 @@ class RefreshTokenServiceTest {
     private lateinit var repo: RefreshTokenRepository
     private lateinit var sessionService: SessionService
     private lateinit var jwtIssuer: JwtIssuer
+    private lateinit var systemRoleAssignmentRepository: SystemRoleAssignmentRepository
     private lateinit var service: RefreshTokenService
 
     private val fixedNow: Instant = Instant.parse("2026-05-21T10:00:00Z")
@@ -61,7 +63,10 @@ class RefreshTokenServiceTest {
         repo = mockk()
         sessionService = mockk()
         jwtIssuer = mockk()
-        service = RefreshTokenService(repo, sessionService, jwtIssuer, clock)
+        systemRoleAssignmentRepository = mockk()
+        // 기본값: 전역 역할 없음 (일반 사용자). 역할 의존 케이스는 개별 테스트에서 재정의.
+        every { systemRoleAssignmentRepository.findRolesByUser(any()) } returns emptySet()
+        service = RefreshTokenService(repo, sessionService, jwtIssuer, systemRoleAssignmentRepository, clock)
     }
 
     // ── rotate 성공 ───────────────────────────────────────────────────────────
@@ -75,7 +80,7 @@ class RefreshTokenServiceTest {
         every { sessionService.lookup(sessionId) } returns buildSession()
         every { repo.save(capture(newTokenSlot)) } answers { Unit }
         every { repo.markUsedAndChain(oldId = oldTokenId, newId = any()) } returns oldTokenId
-        every { jwtIssuer.issue(any(), sessionId, any(), any()) } returns "access.jwt.token"
+        every { jwtIssuer.issue(any(), sessionId, any(), any(), any()) } returns "access.jwt.token"
 
         val result = service.rotate("a".repeat(64))
 
@@ -101,7 +106,7 @@ class RefreshTokenServiceTest {
         every { sessionService.lookup(sessionId) } returns buildSession()
         every { repo.save(any()) } answers { Unit }
         every { repo.markUsedAndChain(oldId = oldTokenId, newId = capture(newIdSlot)) } returns oldTokenId
-        every { jwtIssuer.issue(any(), sessionId, any(), any()) } returns "access.jwt.token"
+        every { jwtIssuer.issue(any(), sessionId, any(), any(), any()) } returns "access.jwt.token"
 
         service.rotate("a".repeat(64))
 
@@ -116,7 +121,7 @@ class RefreshTokenServiceTest {
         every { sessionService.lookup(sessionId) } returns buildSession()
         every { repo.save(any()) } answers { Unit }
         every { repo.markUsedAndChain(any(), any()) } returns oldTokenId
-        every { jwtIssuer.issue(any(), sessionId, any(), any()) } returns "jwt"
+        every { jwtIssuer.issue(any(), sessionId, any(), any(), any()) } returns "jwt"
 
         service.rotate("a".repeat(64))
 
@@ -186,7 +191,7 @@ class RefreshTokenServiceTest {
         verify(exactly = 1) { sessionService.revoke(sessionId, "REFRESH_REPLAY") }
         // replay 케이스에서는 새 토큰 발급 없음
         verify(exactly = 0) { repo.save(any()) }
-        verify(exactly = 0) { jwtIssuer.issue(any(), any(), any(), any()) }
+        verify(exactly = 0) { jwtIssuer.issue(any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -227,7 +232,7 @@ class RefreshTokenServiceTest {
         verify(exactly = 1) { repo.revokeChainFromSession(sessionId) }
         verify(exactly = 1) { sessionService.revoke(sessionId, "REFRESH_REPLAY") }
         // access token 미발급
-        verify(exactly = 0) { jwtIssuer.issue(any(), any(), any(), any()) }
+        verify(exactly = 0) { jwtIssuer.issue(any(), any(), any(), any(), any()) }
     }
 
     // ── 존재하지 않는 토큰 ────────────────────────────────────────────────────

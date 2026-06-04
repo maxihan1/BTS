@@ -135,6 +135,25 @@ class JwtIssuerTest {
         assertThat(claimScopes).containsExactlyInAnyOrderElementsOf(scopes)
     }
 
+    // ── roles claim (FR-PM-08 Task 4 — 전역 시스템 역할) ──────────────────────
+
+    @Test
+    fun `roles 가 전달되면 roles claim 에 포함된다`() {
+        val token = jwtIssuer.issue(userId, sessionId, providerId, scopes, roles = listOf("SYSTEM_ADMIN"))
+        val claims = parseClaims(token)
+
+        @Suppress("UNCHECKED_CAST")
+        val claimRoles = claims.getListClaim("roles") as List<String>
+        assertThat(claimRoles).containsExactly("SYSTEM_ADMIN")
+    }
+
+    @Test
+    fun `roles 기본값(미전달) 이면 roles claim 이 없다`() {
+        val claims = parseClaims(jwtIssuer.issue(userId, sessionId, providerId, scopes))
+
+        assertThat(claims.getListClaim("roles")).isNull()
+    }
+
     // ── JWS 헤더 (kid, alg) ─────────────────────────────────────────────────
 
     @Test

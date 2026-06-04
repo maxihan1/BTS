@@ -10,6 +10,7 @@ import org.springframework.security.authentication.AbstractAuthenticationToken
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter
 import org.springframework.stereotype.Component
 import java.time.Clock
 import java.time.Duration
@@ -47,7 +48,7 @@ import java.util.UUID
 class SidRevokeJwtConverter(
     private val sessionService: SessionService,
     private val clock: Clock = Clock.systemUTC(),
-    private val delegate: JwtAuthenticationConverter = JwtAuthenticationConverter(),
+    private val delegate: JwtAuthenticationConverter = defaultDelegate(),
 ) : Converter<Jwt, AbstractAuthenticationToken> {
 
     /** EC-29: Caffeine 5s TTL 캐시 — sid(UUID) → active(Boolean) */
@@ -98,6 +99,26 @@ class SidRevokeJwtConverter(
     }
 
     internal companion object {
+        /**
+         * 기본 [JwtAuthenticationConverter] 를 생성한다.
+         *
+         * BTS 의 전역 시스템 역할은 [JwtIssuer.CLAIM_ROLES] (`roles`) claim 에 담긴다.
+         * 기본 [JwtGrantedAuthoritiesConverter] 는 `scope`/`scp` claim 만 탐색하므로,
+         * `roles` claim 을 `ROLE_` 접두어 authority 로 변환하도록 명시적으로 구성한다 (FR-PM-08).
+         * 예: `roles: ["SYSTEM_ADMIN"]` → authority `ROLE_SYSTEM_ADMIN` →
+         * `@PreAuthorize("hasRole('SYSTEM_ADMIN')")` 매칭.
+         */
+        private fun defaultDelegate(): JwtAuthenticationConverter {
+            val authoritiesConverter =
+                JwtGrantedAuthoritiesConverter().apply {
+                    setAuthoritiesClaimName(JwtIssuer.CLAIM_ROLES)
+                    setAuthorityPrefix("ROLE_")
+                }
+            return JwtAuthenticationConverter().apply {
+                setJwtGrantedAuthoritiesConverter(authoritiesConverter)
+            }
+        }
+
         /**
          * EC-29 캐시 TTL — revoke 후 최대 5초 내 차단 보장.
          *
