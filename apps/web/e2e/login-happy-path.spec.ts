@@ -11,8 +11,8 @@ test('S1 정상 로그인 — alice/password (Local) → /dashboard 환영 메�
   await page.getByLabel('사용자명').fill('alice')
   await page.getByLabel('비밀번호').fill('password')
 
-  // 로그인 버튼 클릭 → 제출
-  await page.getByRole('button', { name: '로그인' }).click()
+  // 로그인 버튼 클릭 → 제출 (exact:true — "Okta SSO 로 로그인" 버튼과 구분)
+  await page.getByRole('button', { name: '로그인', exact: true }).click()
 
   // /dashboard 리다이렉트 대기
   await page.waitForURL('**/dashboard')

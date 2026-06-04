@@ -28,7 +28,7 @@ export async function loginAsAlice(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
   await page.getByLabel(loginStrings.usernameLabel).fill('alice')
   await page.getByLabel(loginStrings.passwordLabel).fill('password')
-  await page.getByRole('button', { name: loginStrings.submitButton }).click()
+  await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
   await page.waitForURL('**/dashboard')
 }
 
@@ -45,7 +45,7 @@ export async function loginAsBob(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
   await page.getByLabel(loginStrings.usernameLabel).fill('bob')
   await page.getByLabel(loginStrings.passwordLabel).fill('password')
-  await page.getByRole('button', { name: loginStrings.submitButton }).click()
+  await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
   await page.waitForURL('**/dashboard')
 }
 

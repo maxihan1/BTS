@@ -58,7 +58,7 @@ export async function loginAsAlice(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
   await page.getByLabel('사용자명').fill('alice')
   await page.getByLabel('비밀번호').fill('password')
-  await page.getByRole('button', { name: '로그인' }).click()
+  await page.getByRole('button', { name: '로그인', exact: true }).click()
   await page.waitForURL('**/dashboard')
 }
 

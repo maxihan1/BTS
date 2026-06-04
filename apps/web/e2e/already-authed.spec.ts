@@ -6,7 +6,7 @@ test('S8 이미 인증된 사용자가 /login 진입 → /dashboard 즉시 리�
   await page.goto('/login')
   await page.getByLabel('사용자명').fill('alice')
   await page.getByLabel('비밀번호').fill('password')
-  await page.getByRole('button', { name: '로그인' }).click()
+  await page.getByRole('button', { name: '로그인', exact: true }).click()
   await page.waitForURL('**/dashboard')
 
   // 2단계. 인증 상태에서 /login 진입 시도
