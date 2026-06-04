@@ -120,8 +120,8 @@
         <error line="45" column="82" source="standard:trailing-comma-on-call-site" />
     </file>
     <file name="src/main/kotlin/com/atlas/bts/identity/provider/ldap/AutoProvisionService.kt">
-        <error line="59" column="20" source="standard:multiline-expression-wrapping" />
-        <error line="66" column="23" source="standard:multiline-expression-wrapping" />
+        <error line="65" column="20" source="standard:multiline-expression-wrapping" />
+        <error line="72" column="23" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="src/main/kotlin/com/atlas/bts/identity/provider/ldap/LdapProvider.kt">
         <error line="177" column="23" source="standard:multiline-expression-wrapping" />

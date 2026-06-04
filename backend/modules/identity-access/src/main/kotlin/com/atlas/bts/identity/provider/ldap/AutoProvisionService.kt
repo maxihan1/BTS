@@ -11,7 +11,13 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
- * LDAP 인증 성공 후 자동 프로비저닝 서비스 (FR-AU-09 Task 15 / SDD §19.2 supportsAutoProvisioning).
+ * 외부 IdP 인증 성공 후 자동 프로비저닝 서비스 (FR-AU-09 Task 15 / SDD §19.2 supportsAutoProvisioning).
+ *
+ * **공통 컴포넌트 (LDAP 전용 아님)**:
+ * 이 서비스는 LDAP 전용이 아니라 외부 IdP(Identity Provider) 프로비저닝 공통 컴포넌트다.
+ * SAML SSO(FR-AU-03)도 이 클래스를 이동·복제 없이 그대로 import 해 재사용한다.
+ * 패키지 위치는 `provider/ldap/` 로 유지하되, 역할은 모든 외부 IdP 의 users +
+ * user_external_accounts UPSERT 진입점이다(게이트1 옵션 C — 이동 없이 재사용).
  *
  * **단일 트랜잭션 원칙 (DATA.md §6)**:
  * [provision] 은 users UPSERT + user_external_accounts UPSERT 를 하나의 @Transactional 경계 안에서 처리한다.
