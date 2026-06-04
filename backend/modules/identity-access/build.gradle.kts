@@ -23,6 +23,15 @@ java {
 
 repositories {
     mavenCentral()
+    // OpenSAML(org.opensaml:*) 은 Maven Central 에 없고 Shibboleth 저장소가 호스팅한다.
+    // spring-security-saml2-service-provider(FR-AU-03) 의 transitive 의존 해소에 필요.
+    maven {
+        url = uri("https://build.shibboleth.net/maven/releases/")
+        content {
+            includeGroup("org.opensaml")
+            includeGroupByRegex("net\\.shibboleth.*")
+        }
+    }
 }
 
 // detekt — PR #8 잔재 PRE_EXISTING 위반을 detekt-baseline.xml 로 동결 (FR-AU-09 마무리 PR).
@@ -55,6 +64,9 @@ dependencies {
     // LDAP 인증 공급자 (FR-AU-02)
     implementation("org.springframework.boot:spring-boot-starter-data-ldap")
     implementation("org.springframework.security:spring-security-ldap")
+
+    // SAML 2.0 SSO 인증 공급자 (FR-AU-03) — 버전은 Spring Boot 3.3.5 BOM 이 관리한다.
+    implementation("org.springframework.security:spring-security-saml2-service-provider")
 
     // JDBC + Flyway (FR-AU-02 DB 마이그레이션 + ExternalAccount Repository)
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
