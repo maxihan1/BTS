@@ -1,6 +1,6 @@
 // ComponentMultiSelect 순수 presentational 컴포넌트 단위 테스트 — FR-CM-02 Task-8
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Component } from '@/api/components'
 import { ComponentMultiSelect } from '@/components/issue/ComponentMultiSelect'
@@ -48,10 +48,11 @@ describe('ComponentMultiSelect — 현재 할당 컴포넌트 칩 렌더', () =>
       />,
     )
 
-    expect(screen.getByText('인증 모듈')).toBeInTheDocument()
-    expect(screen.getByText('API 게이트웨이')).toBeInTheDocument()
+    const chipList = screen.getByTestId('component-chip-list')
+    expect(within(chipList).getByText('인증 모듈')).toBeInTheDocument()
+    expect(within(chipList).getByText('API 게이트웨이')).toBeInTheDocument()
     // value에 없는 항목은 칩으로 표시되지 않는다
-    expect(screen.queryByText('알림 서비스')).not.toBeInTheDocument()
+    expect(within(chipList).queryByText('알림 서비스')).not.toBeInTheDocument()
   })
 
   it('T-CMS-1b: value가 빈 배열이면 칩이 하나도 없다', () => {
@@ -63,7 +64,7 @@ describe('ComponentMultiSelect — 현재 할당 컴포넌트 칩 렌더', () =>
       />,
     )
 
-    expect(screen.queryByText('인증 모듈')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('component-chip-list')).not.toBeInTheDocument()
     // 컴포넌트 섹션 자체는 렌더된다
     expect(container.firstChild).not.toBeNull()
   })
