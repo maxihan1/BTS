@@ -1,9 +1,8 @@
-// LabelController MockMvc 슬라이스 테스트 — GET /api/v1/labels 자동완성 (FR-IS-09 Task 3)
+// LabelController MockMvc 슬라이스 테스트 — GET /api/v1/labels 자동완성 (FR-IS-09 B1 fix)
 
 package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.application.LabelApplicationService
-import com.bts.issue.domain.ActorId
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -33,7 +32,7 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc
  *
  * ### 테스트 케이스
  * - L-1. GET /api/v1/labels?q=bac → service mock ["backend"] → 200 + {"data":["backend"]}
- * - L-2. GET /api/v1/labels (q 생략) → service.completeLabels(actor, null) 호출 검증
+ * - L-2. GET /api/v1/labels (q 생략) → service.completeLabels(null) 호출 검증
  * - L-3. service가 [] 반환 → 200 + {"data":[]}
  */
 @ExtendWith(SpringExtension::class)
@@ -72,7 +71,7 @@ class LabelControllerTest {
 
     @Test
     fun `GET labels q=bac — service가 backend 반환하면 200 + data 배열`() {
-        every { labelApplicationService.completeLabels(any<ActorId>(), "bac") } returns listOf("backend")
+        every { labelApplicationService.completeLabels("bac") } returns listOf("backend")
 
         mockMvc.perform(
             get("/api/v1/labels")
@@ -85,25 +84,25 @@ class LabelControllerTest {
             .andExpect(jsonPath("$.data[0]").value("backend"))
     }
 
-    // ── L-2: q 생략 → service.completeLabels(actor, null) 호출 ───────────────
+    // ── L-2: q 생략 → service.completeLabels(null) 호출 ───────────────────────
 
     @Test
     fun `GET labels q 생략 — service에 null로 위임`() {
-        every { labelApplicationService.completeLabels(any<ActorId>(), null) } returns emptyList()
+        every { labelApplicationService.completeLabels(null) } returns emptyList()
 
         mockMvc.perform(
             get("/api/v1/labels").accept(MediaType.APPLICATION_JSON),
         )
             .andExpect(status().isOk)
 
-        verify(exactly = 1) { labelApplicationService.completeLabels(any<ActorId>(), null) }
+        verify(exactly = 1) { labelApplicationService.completeLabels(null) }
     }
 
     // ── L-3: service가 [] 반환 → 200 + 빈 배열 ──────────────────────────────
 
     @Test
     fun `GET labels — service가 빈 목록 반환하면 200 + 빈 data 배열`() {
-        every { labelApplicationService.completeLabels(any<ActorId>(), any()) } returns emptyList()
+        every { labelApplicationService.completeLabels(any()) } returns emptyList()
 
         mockMvc.perform(
             get("/api/v1/labels")
