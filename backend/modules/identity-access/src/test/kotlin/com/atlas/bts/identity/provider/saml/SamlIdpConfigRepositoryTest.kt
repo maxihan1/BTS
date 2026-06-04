@@ -135,4 +135,22 @@ class SamlIdpConfigRepositoryTest {
 
         assertThat(repo.findEnabledByRegistrationId("disabled-idp")).isNull()
     }
+
+    @Test
+    fun `findAllEnabled — row 가 없으면 빈 목록 반환`() {
+        assertThat(repo.findAllEnabled()).isEmpty()
+    }
+
+    @Test
+    fun `findAllEnabled — enabled row 만 반환하고 disabled 는 제외 (EC5)`() {
+        insertConfig("okta", enabled = true)
+        insertConfig("azure", enabled = true)
+        insertConfig("disabled-idp", enabled = false)
+
+        val configs = repo.findAllEnabled()
+
+        assertThat(configs.map { it.registrationId })
+            .containsExactlyInAnyOrder("okta", "azure")
+        assertThat(configs).allMatch({ it.enabled }, "enabled")
+    }
 }
