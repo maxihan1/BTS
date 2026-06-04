@@ -54,7 +54,8 @@ CREATE INDEX idx_issue_components_component_id ON issue_components(component_id)
 이슈에 컴포넌트를 붙이는 건 **이슈 필드 수정**이므로 이슈 편집권으로 판정한다(IssueController 쓰기경로 동형).
 
 - `ComponentPermissionResolver`(FR-CM-01/PM-03)는 **컴포넌트 자체의 CRUD 관리권**이라 의미가 다름 → 사용 안 함.
-- `IssueScope.Global` 사용 금지(prod 무조건 거부). `IssueScope.Project(projectKey)`로 판정.
+- `IssueScope.Global` 사용 금지(prod 무조건 거부). **`IssueScope.Issue(key.value)`**로 판정 — 담당자 변경
+  선례(`changeAssignee`가 `assertPermission(actor, UPDATE, IssueScope.Issue(key.value))`)와 정확히 일치.
 - 비prod는 기존 `AlwaysAllowIssuePermissionResolver`가 통과, prod 실판정은 FR-PM-02 resolver가 이미 담당.
   (Maxi 결정 2026-06-04.)
 

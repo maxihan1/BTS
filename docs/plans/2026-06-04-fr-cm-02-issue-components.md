@@ -42,9 +42,22 @@ FR-CM-02 이슈에 다중 컴포넌트 할당. 한 이슈에 여러 컴포넌트
 
 - 관련 ADR: [docs/adr/2026-06-04-issue-component-assignment-model.md](../adr/2026-06-04-issue-component-assignment-model.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-04-fr-cm-02-issue-components.md](../specs/2026-06-04-fr-cm-02-issue-components.md)
+
+핵심 시나리오 요약.
+- `PATCH /api/v1/issues/{key}/components`에 컴포넌트 ID 전체 목록 + expectedVersion → 전체교체(set). 빈 배열=전부 해제.
+- 검증 순서: 이슈 404 → 권한 403(UPDATE/Issue scope) → 같은프로젝트+활성 컴포넌트 422 COMPONENT_NOT_FOUND → 낙관락 409.
+- 트랜잭션: version bump(낙관락) → issue_components DELETE → 신규 INSERT, 원자적.
+- 읽기: componentIds는 단건 상세에만 노출(목록 생략), 활성 컴포넌트만 필터.
+- 프론트: IssueMetaPanel 다중 셀렉터 + useChangeComponents(useChangeAssignee 복제) + fail-closed 게이팅.
+
+Maxi 결정 3건: 목록=단건전용, 고아행=읽기시 활성필터, 개수상한=없음. 선례 자동결정 2건: 이력·알림 범위밖.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). gap 6점 점검 후 3개 Maxi 결정 반영 + 2개 선례 자동결정 + 1개 트랜잭션 순서 스펙 보강. 스펙 §Brainstorming Check 참조.
 
 ## Plan (← /bts-plan 채움)
 
