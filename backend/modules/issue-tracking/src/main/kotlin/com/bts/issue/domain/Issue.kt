@@ -62,6 +62,8 @@ private const val IMPACT_MAX = 3
  * @property assigneeId 담당자. 0~1명, null 이면 미할당.
  * @property resolutionId 종결 시 설정되는 Resolution UUID. null 이면 미설정.
  *   DONE 전이 시 서비스 계층이 설정하며, 비DONE 재전이 시 null 로 clear 된다 (FR-IS-07 B6).
+ * @property componentIds 이슈가 속한 컴포넌트 UUID 목록. 중복 없음, 개수 제한 없음.
+ *   [assignComponents]/[clearComponents] 를 통해 변경한다.
  */
 data class Issue(
     val id: IssueId,
@@ -82,6 +84,7 @@ data class Issue(
     val impact: Int? = null,
     val assigneeId: ActorId? = null,
     val resolutionId: UUID? = null,
+    val componentIds: List<UUID> = emptyList(),
 ) {
     companion object {
         /**
@@ -186,6 +189,25 @@ data class Issue(
      * @return [assigneeId] 가 null 로 설정된 새 [Issue] 인스턴스.
      */
     fun unassign(): Issue = copy(assigneeId = null)
+
+    /**
+     * 이 이슈에 컴포넌트 목록을 할당한다.
+     *
+     * 같은 컴포넌트를 두 번 이상 전달해도 중복 없이 저장되도록 [distinct] 를 적용하며,
+     * 플랫폼 경계나 역직렬화 과정에서 null 이 섞여 들어오는 경우를 방어하기 위해
+     * [filterNotNull] 로 null 요소를 제거한다.
+     *
+     * @param ids 할당할 컴포넌트 UUID 목록. 중복·null 은 자동 제거된다.
+     * @return [componentIds] 가 정규화된 목록으로 교체된 새 [Issue] 인스턴스.
+     */
+    fun assignComponents(ids: List<UUID>): Issue = copy(componentIds = ids.filterNotNull().distinct())
+
+    /**
+     * 이 이슈의 컴포넌트 할당을 모두 해제한다.
+     *
+     * @return [componentIds] 가 빈 목록으로 설정된 새 [Issue] 인스턴스.
+     */
+    fun clearComponents(): Issue = copy(componentIds = emptyList())
 }
 
 /**
