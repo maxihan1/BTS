@@ -190,4 +190,16 @@ product plan: docs/plan/product/identity-access.md §2.4 (D1~D7)
 - 추가 검증: ktlint/detekt/ArchUnit + vitest/typecheck + playwright(qa-engineer)
 - 게이트1 Maxi 확인: 외부 의존성 0(승인 불요) + client_secret 암호화 키 환경변수 도입
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### code-reviewer ground-truth 리뷰 (2026-06-04, plan-eng 대체 — 메모리 `bts-review-plan-autoplan-overkill`)
+
+**BLOCKER 0 / CONCERN 4.** SAML plan-review(BLOCKER 1+CONCERN 9) 대비 환각·FK갭·세션충돌·의존성환각 모두 사전 해소. 코드로 검증한 PASS 11건(의존성 line 54/58 정확, ProviderType.OIDC(50), SAML 선례 전부 실재, Spring OAuth2 API 환각 0, `AutoProvisionService.provision(UUID, LdapProvisionAttrs)` 시그니처 일치, V011 정확, FK 갭 없음 등). 게이트1 통과 권장.
+
+CONCERN 4건 — **impl 착수 시 반영(못박기)**:
+- **C1 (Task 5, @Order 동률)** — SAML 체인 `@Order(1)`(`SamlSecurityConfig.kt:56`), STATELESS `@Order(2)`(`SecurityConfig.kt:75`). OIDC도 `@Order(1)`로 두면 SAML과 **동률 → 평가순서 비결정**(경로 배타라 실해는 없으나 fragile). → **OIDC 체인 `@Order(2)` + 기존 STATELESS `@Order(3)`으로 재배치**(SecurityConfig.kt order 값 1칸 밀기). Task 5 files에 `SecurityConfig.kt` order 수정 포함
+- **C2 (Task 1/5, 부팅 가드)** — `@ConditionalOnProperty`는 BC 내 선례 0. SAML 선례 `@ConditionalOnBean`(`SamlSecurityConfig.kt:40`) **우선 채택**. `@ConditionalOnProperty` 신규 도입 시 슬라이스 부팅 영향 별도 검증
+- **C3 (Task 1, 암호화 구성)** — `AesBytesEncryptor` 기본(CBC+고정IV)이면 "매번 다른 ciphertext" RED 깨짐. → **`Encryptors.stronger(password, hexSalt)` 또는 GCM+random-IV 명시 구성** 강제. salt는 hex 문자열
+- **C4 (Task 2, seed UUID)** — OIDC authn_providers seed 고정 UUID는 SAML(`00000000-0000-4a03-8000-000000000003`)과 **반드시 다른 값**(예: `...4a04...`). `ON CONFLICT (name) DO NOTHING` 멱등 유지
+
+전체 리뷰 근거: code-reviewer agent `af0bfe6e407284e1c` (파일:라인 인용 포함).
