@@ -39,9 +39,19 @@ product plan: docs/plan/product/identity-access.md §2.4 (D1~D7)
 - **관련 ADR**: [docs/decisions/2026-06-04-oidc-sso-provider.md](../decisions/2026-06-04-oidc-sso-provider.md) (생성됨, D1~D5)
 - **관련 learnings**: `saml-spring-security-integration`(STATELESS↔oauth2Login 충돌·@Order 분리·JIT 재사용), `profile-scoped-bean-boot-failure`(@ConditionalOnBean 부팅가드)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-04-fr-au-04-oidc-sso.md](../specs/2026-06-04-fr-au-04-oidc-sso.md)
+
+핵심 시나리오 요약.
+- 사용자가 OIDC 버튼 클릭 → `/oauth2/authorization/{id}` → IdP(Authorization Code + PKCE) → 콜백 `/login/oauth2/code/{id}` → token 교환 + ID Token 검증 → BTS 자체 세션/JWT 발급
+- 첫 SSO 로그인 시 JIT 자동 프로비저닝(`AutoProvisionService` 재사용, ID Token `sub` → external_subject)
+- 활성 IdP만 버튼 노출(`oidc_provider_configs` enabled), client_secret 암호화 저장
+- 인증 검증은 Spring OAuth2 필터가 주도(`OidcProvider`는 thin), BTS는 성공 핸들러로 세션 발급(SAML 동형)
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). SAML PR #76 산출물 ground-truth 점검으로 gap 3건 발견·보강(G1 Keycloak OIDC realm 추가 / G2 LdapProvisionAttrs 재사용 / G3 성공 핸들러 자체 세션발급+Clock). 모두 SAML 선례로 자명, Maxi 결정 불요.
 
 ## Plan (← /bts-plan 채움)
 
