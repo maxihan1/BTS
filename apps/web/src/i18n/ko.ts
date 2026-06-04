@@ -178,6 +178,32 @@ export const issueDetailStrings = {
   pdfDownloadAriaLabel: '이슈를 PDF로 다운로드',
   /** PDF 다운로드 실패 에러 메시지 */
   pdfDownloadError: 'PDF 다운로드에 실패했습니다.',
+
+  // ── 이슈 클론 — FR-IS-06 ────────────────────────────────────────────
+  /** 클론 버튼 텍스트 */
+  cloneButton: '이슈 클론',
+  /** 클론 Dialog 제목 */
+  cloneDialogTitle: '이슈 클론',
+  /** 클론 Dialog — 담당자 포함 체크박스 레이블 */
+  cloneIncludeAssigneeLabel: '담당자 포함',
+  /** 클론 Dialog — 제목 재정의 입력 레이블 */
+  cloneSummaryOverrideLabel: '새 이슈 제목 (선택)',
+  /** 클론 Dialog — 제목 재정의 입력 placeholder */
+  cloneSummaryOverridePlaceholder: '비워두면 원본 제목을 사용합니다',
+  /** 클론 Dialog — 실행 버튼 */
+  cloneSubmitButton: '클론 생성',
+  /** 클론 Dialog — 취소 버튼 */
+  cloneCancelButton: '취소',
+  /** 클론 성공 토스트 */
+  cloneSuccessToast: '이슈가 복제되었습니다.',
+  /** 클론 실패 — 이슈 없음 */
+  cloneErrorNotFound: '이슈를 찾을 수 없습니다.',
+  /** 클론 실패 — 권한 없음 */
+  cloneErrorForbidden: '이슈를 클론할 권한이 없습니다.',
+  /** 클론 실패 — 유효성 오류 */
+  cloneErrorValidation: '입력 값이 올바르지 않습니다. 확인 후 다시 시도해 주세요.',
+  /** 클론 실패 — 기본 에러 */
+  cloneErrorDefault: '이슈 클론 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
 } as const
 
 /** 이슈 생성 폼 관련 문자열 */

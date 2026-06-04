@@ -24,6 +24,7 @@ import { IssueDescription } from '@/components/issue/IssueDescription'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
 import { ResolutionModal } from '@/components/issue/ResolutionModal'
+import { CloneIssueDialog } from '@/components/issues/CloneIssueDialog'
 import { issueDetailStrings } from '@/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -89,6 +90,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [editSummary, setEditSummary] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [cloneDialogOpen, setCloneDialogOpen] = useState(false)
   const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('')
   const [isPdfDownloading, setIsPdfDownloading] = useState(false)
 
@@ -547,6 +549,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
             availableTypes={availableTypes}
             onTypeChange={handleTypeChange}
             onDeleteClick={handleDeleteClick}
+            onCloneClick={() => setCloneDialogOpen(true)}
             transitions={transitions}
             onTransition={handleTransition}
             isTransitioning={transitionMutation.isPending}
@@ -569,6 +572,13 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
         prefilledResolution={issue.resolution ?? null}
         onConfirm={handleResolutionConfirm}
         onCancel={handleResolutionCancel}
+      />
+
+      {/* 이슈 클론 Dialog (FR-IS-06) */}
+      <CloneIssueDialog
+        issueKey={issue.key}
+        open={cloneDialogOpen}
+        onOpenChange={setCloneDialogOpen}
       />
     </div>
   )
