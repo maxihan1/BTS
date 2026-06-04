@@ -242,7 +242,11 @@ export function IssueMetaPanel({
         </div>
       </div>
 
-      {/* 클론 버튼 — 삭제 버튼 바로 위 배치 */}
+      {/* 클론 버튼 — 삭제 버튼 바로 위 배치.
+          권한 게이트 부재는 의도적: 프론트 권한 API(issue-permissions)가 UPDATE/SOFT_DELETE/TRANSITION만
+          노출하고 CREATE를 안 줘서 클라이언트 게이트가 불가능하다. 클론은 대상 프로젝트 CREATE 권한이
+          필요하므로, 서버가 403(ACCESS_DENIED)으로 최종 enforcement하고 useCloneIssue.onError가 토스트로
+          안내한다(fail-safe). CREATE 권한 노출은 FR-PM 후속에서 추가되면 삭제 버튼처럼 disabled 게이트 가능. */}
       <Button
         variant="secondary"
         className="w-full min-h-[44px]"

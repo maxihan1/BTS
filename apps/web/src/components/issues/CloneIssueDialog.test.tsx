@@ -1,10 +1,9 @@
 // CloneIssueDialog 컴포넌트 단위 테스트 — 렌더/옵션/submit/상태 초기화 검증
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
-import type { ReactNode } from 'react'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { CloneIssueDialog } from './CloneIssueDialog'
@@ -29,12 +28,6 @@ const clonedIssueFixture = {
   key: 'ATLAS-99',
   id: 'f1e2d3c4-b5a6-4789-8def-0123456789ab',
   version: 0,
-}
-
-function createWrapper(queryClient: QueryClient) {
-  return function Wrapper({ children }: { readonly children: ReactNode }) {
-    return createElement(QueryClientProvider, { client: queryClient }, children)
-  }
 }
 
 function renderDialog(props: {
@@ -138,6 +131,31 @@ describe('CloneIssueDialog', () => {
     await waitFor(() => {
       expect(capturedBody).toMatchObject({ summaryOverride: '복제 이슈 제목' })
     })
+  })
+
+  it('summaryOverride에 공백만 입력하면 body에서 제외된다 (원본 summary 폴백, EC-3)', async () => {
+    const user = userEvent.setup({ delay: null })
+    let capturedBody: Record<string, unknown> | null = null
+    server.use(
+      http.post('/api/v1/issues/ATLAS-1/clone', async ({ request }) => {
+        capturedBody = (await request.clone().json()) as Record<string, unknown>
+        return HttpResponse.json({ data: clonedIssueFixture }, { status: 201 })
+      }),
+    )
+
+    renderDialog({ open: true })
+
+    const input = screen.getByRole('textbox', { name: '새 이슈 제목 (선택)' })
+    await user.type(input, '   ')
+
+    const submitButton = screen.getByRole('button', { name: '클론 생성' })
+    await user.click(submitButton)
+
+    await waitFor(() => {
+      expect(capturedBody).not.toBeNull()
+    })
+    // 공백만이면 summaryOverride 키 자체가 전송되지 않아야 한다 (백엔드가 원본 summary 사용).
+    expect(capturedBody).not.toHaveProperty('summaryOverride')
   })
 
   it('includeAssignee 체크박스 해제 후 클론 생성 시 false가 전달된다', async () => {
