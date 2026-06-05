@@ -201,13 +201,14 @@ class WorkflowSchemeExceptionHandler {
      */
     @ExceptionHandler(WorkflowSchemeAccessDeniedException::class)
     fun handleWorkflowSchemeAccessDenied(ex: WorkflowSchemeAccessDeniedException): ProblemDetail {
+        // actor/permission/scope 등 내부 식별자는 로그에만 남기고, 응답 body 에는 노출하지 않는다(KDoc 계약).
         log.info("SCHEME_403 workflow_scheme_access_denied detail='{}'", ex.message)
         return problem(
             status = HttpStatus.FORBIDDEN,
             type = "workflow-scheme-access-denied",
             title = "Workflow Scheme Access Denied",
             errorCode = SchemeErrorCodes.WORKFLOW_SCHEME_ACCESS_DENIED,
-            detail = ex.message,
+            detail = "워크플로우 스킴 작업 권한이 없습니다.",
         )
     }
 

@@ -223,6 +223,8 @@ class WorkflowSchemeExceptionHandlerTest {
                 content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
                 jsonPath("$.errorCode") { value("WORKFLOW_SCHEME_ACCESS_DENIED") }
                 jsonPath("$.type") { value("https://bts.example.com/problems/workflow-scheme-access-denied") }
+                // detail 이 고정 일반 메시지와 정확히 일치 → actor UUID/scope 등 내부 식별자 미노출 보장(C1 누출 방지).
+                jsonPath("$.detail") { value("워크플로우 스킴 작업 권한이 없습니다.") }
             }
     }
 
