@@ -271,15 +271,17 @@
 
 ### §4.4 FR-PM-04 — 워크플로우/자동화 관리 권한
 
-**우선순위**. 필수 | **선행**. §4.2 | **Plan slug**. `identity/workflow-automation-permissions`
+**우선순위**. 필수 | **선행**. §4.2 + §4.8(FR-PM-08 전역 admin 인프라) | **Plan slug**. `fr-pm-04-workflow-automation` | **PR**. #73
 
-- [ ] D1. 도메인 (책임. security-engineer)
-- [ ] D2. 명세 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — (FR-PM-02 활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — `@PreAuthorize` 추가 (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 (책임. security-engineer)
-- [ ] D6. 프론트 UI (책임. frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. security-engineer)
+- [x] D2. 명세 (책임. security-engineer)
+- [x] D3. 데이터 모델 — V013 `MANAGE_WORKFLOW` 시드(PROJECT_ADMIN) (책임. security-engineer)
+- [x] D4. 백엔드 — 포트 shared-kernel 이동(actor→UUID) + `IdentityAccessWorkflowSchemePermissionResolver`(@Profile prod) (책임. security-engineer)
+- [x] D5. 백엔드 테스트 — prod 프로파일 Testcontainers S1~S6(허용/거부) + 예외 403 + 부팅 빈 해소 (책임. security-engineer)
+- [—] D6. 프론트 UI — **범위 외** (스킴 관리 UI 부재, FR-PM-08과 동일). 후속 스킴관리 UI FR 소관.
+- [—] D7. E2E — **범위 외** (UI 없음, 백엔드 prod 통합테스트가 ground-truth)
+
+> **FR-PM-04 완료 (2026-06-05, PR #73)**. 워크플로우 스킴 권한 prod 결선. **범위**: `MANAGE_SCHEME`/Global=`SystemPermissionResolver.isSystemAdmin`(FR-PM-08 소비), `ASSIGN_SCHEME`/Project=멤버십+`role_permissions` `MANAGE_WORKFLOW` 매트릭스(FR-PM-03 동형). 권한 계약(포트+enum+scope+예외) project-workflow→shared-kernel 이동, `actor: ActorId`→`actorId: UUID`. Guard 예외(`WorkflowSchemeAccessDeniedException`)가 BC 가로질러 project-workflow 핸들러에서 403 매핑. **자동화 권한(`MANAGE_AUTOMATION`)은 automation BC 부재로 범위 제외**(ADR D1, dead 시드 회피). **선행 부채(C2)**: 컨트롤러가 인증 주체 대신 하드코딩 system actor를 넘겨 prod에서 fail-closed(전 스킴 API 403) — 보안 컨텍스트→actor 결선 후속 FR 필요(누출 위험 없음). 검증 — 4모듈 test+ktlint+detekt 그린, 회귀 0. ADR `2026-06-04-workflow-scheme-permission-prod-resolver`(spec 단계 D3/D4 확정 닫음).
 
 ### §4.5 FR-PM-05 — 이슈 접근 (Browse, View)
 

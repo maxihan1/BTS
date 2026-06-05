@@ -9,7 +9,7 @@
 
 ## §0 진입 조건
 
-- [ ] identity-access §4.4 (FR-PM-04 자동화 관리 권한) 완료
+- [ ] identity-access §4.4 (FR-PM-04 자동화 관리 권한) 완료 — **워크플로우 부분은 완료(PR #73)**, `MANAGE_AUTOMATION`은 automation BC 착수 시 동반 결선(ADR D1, dead 시드 회피)
 - [ ] issue-tracking §2~§6 (이슈 변경 이벤트 발행) 완료
 - [ ] project-workflow §2 (상태 전이 이벤트) 완료
 - [ ] notification-dashboard §1 (pgmq consumer 패턴 확립) 완료
