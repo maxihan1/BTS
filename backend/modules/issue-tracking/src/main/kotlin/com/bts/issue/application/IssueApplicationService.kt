@@ -593,11 +593,19 @@ class IssueApplicationService(
     }
 
     /**
-     * 이슈에 연결된 컴포넌트 목록을 교체한다 (FR-CM-02).
+     * 이슈에 연결된 컴포넌트 목록을 교체한다 (FR-CM-02 + FR-CM-03 Task 5).
      *
      * 도메인 [Issue.assignComponents] 를 경유하여 distinct 정규화 후 영속한다.
      * repository 에 raw 입력을 직행시키지 않아 도메인 불변식 검증이 우회되지 않는다
      * (메모리 patch-merge-도메인-우회).
+     *
+     * ### 자동 담당자 배정 (FR-CM-03 Task 5)
+     * 컴포넌트 교체 후 현재 담당자가 null 이면 [resolveDefaultAssignee] 로 후보를 결정한다.
+     * 후보가 있으면 [IssueRepository.setAssignee] 로 영속한다.
+     *
+     * **이중 version bump 금지** — [replaceComponents] 가 이미 version+1 을 수행하므로
+     * 담당자 자동 배정은 [IssueRepository.setAssignee](version bump·OCC 없음)를 사용한다.
+     * [updateAssignee] 를 재사용하면 +2 가 되어 기존 FR-CM-02 version 단언이 회귀한다.
      *
      * @param actor 변경 행위자.
      * @param key 대상 이슈 키.
@@ -620,6 +628,23 @@ class IssueApplicationService(
         validateComponents(normalized.componentIds, existing.projectId)
         val rows = repo.replaceComponents(key, existing.id.value, normalized.componentIds, request.expectedVersion)
         if (rows == 0) throw IssueVersionConflictException(key, existing.version)
+
+        // 자동 담당자 배정 (FR-CM-03 Task 5) — assignee null 일 때만 발동.
+        // replaceComponents 가 이미 version +1 했으므로 setAssignee(no-bump) 를 사용한다.
+        if (existing.assigneeId == null) {
+            val resolved = resolveDefaultAssignee(existing.projectId, normalized.componentIds, current = null)
+            if (resolved != null) {
+                val withAssignee = existing.assignTo(resolved)
+                repo.setAssignee(existing.id.value, withAssignee.assigneeId?.value)
+                log.info(
+                    "issue_components_auto_assigned key={} assigneeId={} actor={}",
+                    key.value,
+                    resolved.value,
+                    actor.value,
+                )
+            }
+        }
+
         log.info(
             "issue_components_changed key={} count={} actor={}",
             key.value,

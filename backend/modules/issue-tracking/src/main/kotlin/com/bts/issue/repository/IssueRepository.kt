@@ -467,6 +467,31 @@ class IssueRepository(
     }
 
     /**
+     * 이슈 담당자를 version bump 없이 갱신한다 (자동 배정 전용).
+     *
+     * `UPDATE issues SET assignee_id=? WHERE id=?` — version·updated_at 변경 없음.
+     * [replaceComponents] 가 이미 version +1 을 수행한 뒤 호출하는 자동 배정 side-effect 전용이다.
+     *
+     * 사용자가 직접 담당자를 변경하는 경로(컨트롤러 → changeAssignee)는
+     * 낙관락(OCC)+version bump 가 포함된 [updateAssignee] 를 사용해야 한다.
+     *
+     * @param issueId 이슈 UUID.
+     * @param assigneeId 자동 배정할 담당자 UUID. null 이면 아무 작업도 하지 않는다.
+     */
+    @Transactional
+    fun setAssignee(
+        issueId: UUID,
+        assigneeId: UUID?,
+    ) {
+        if (assigneeId == null) return
+        log.debug("setAssignee issueId={} assigneeId={}", issueId, assigneeId)
+        dsl.update(ISSUES)
+            .set(ISSUES.ASSIGNEE_ID, assigneeId)
+            .where(ISSUES.ID.eq(issueId))
+            .execute()
+    }
+
+    /**
      * 이슈의 컴포넌트 연결 목록을 원자적으로 교체한다 (낙관락 OCC).
      *
      * version bump 를 먼저 시도하는 이유 — 낙관락(Optimistic Concurrency Control)으로
