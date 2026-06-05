@@ -63,7 +63,8 @@ private const val IMPACT_MAX = 3
  * @property resolutionId 종결 시 설정되는 Resolution UUID. null 이면 미설정.
  *   DONE 전이 시 서비스 계층이 설정하며, 비DONE 재전이 시 null 로 clear 된다 (FR-IS-07 B6).
  * @property componentIds 이슈가 속한 컴포넌트 UUID 목록. 중복 없음, 개수 제한 없음.
- *   [assignComponents]/[clearComponents] 를 통해 변경한다.
+ *   [create] 시 [componentIds] 파라미터로 초기값 설정 가능 (기본값 빈 리스트, distinct 정규화 자동 적용).
+ *   이후 변경은 [assignComponents]/[clearComponents] 를 통해 수행한다.
  */
 data class Issue(
     val id: IssueId,
