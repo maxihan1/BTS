@@ -4,14 +4,16 @@
 // 자동배정 ground-truth는 백엔드 통합테스트(IssueCreateAutoAssignIntegrationTest / ChangeComponentsAutoAssignIntegrationTest).
 //
 // [설계 결정]
-// createIssueHandler(issue-handlers.ts)의 default-assignee resolve는 componentLeadStore(모듈 내부 Map)를
-// 참조한다. 이 Map은 Node.js export 함수 seedComponentLeads()로만 채울 수 있어 브라우저 E2E에서
-// ServiceWorker 내부를 직접 시드하는 경로가 현재 없다.
-// 따라서 이 spec은 아래 두 가지를 검증한다.
-//   S1: 이슈 생성 폼에서 리드 있는 컴포넌트를 선택하고 생성 → 이슈 상세 진입 + componentIds 에코 확인
-//   S2: 생성 폼 컴포넌트 선택 UI — 리드 정보 포함 컴포넌트가 목록에 표시되고 선택 가능
+// createIssueHandler(issue-handlers.ts)는 X-MSW-Seed-Components 헤더로 componentStore에 시드된
+// 컴포넌트의 리드 정보를 읽어 default-assignee를 resolve한다(getStoredComponentsByIds 경유).
+// 시드 → 이슈 생성 → ATLAS-42 상세 진입 → assigneeId=리드UUID → useUsersByIds → 이름 렌더 흐름이 완전 검증 가능.
+// 따라서 이 spec은 아래 시나리오를 검증한다.
+//   S1: 이슈 생성 폼에서 리드 있는 컴포넌트(alice=김앨리스)를 선택하고 생성
+//       → 이슈 상세 assignee-section에 '김앨리스' 이름 표시 (자동배정 담당자 이름 검증)
+//   S2: 생성 폼 컴포넌트 선택 UI — 리드 유무 무관 복수 선택 가능
 //   S3: 기존 미할당 이슈(ATLAS-1) 상세에서 컴포넌트 지정 → components-section 칩 표시
-//       (PATCH assignee 자동배정은 백엔드 통합테스트에서 검증)
+//   S4: 리드 보유 컴포넌트 2개 선택 → 사전순 첫 번째 리드(alice=김앨리스)가 자동배정
+//       (name 오름차순 정렬: CM03-Auth < CM03-Backend → Auth 리드가 배정)
 //
 // [회귀 방지 교훈 반영]
 // - playwright-getbyrole-exact-strict-mode: 컨테이너 한정 셀렉터 사용
@@ -21,7 +23,7 @@
 
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
-import { issueCreateStrings, issueDetailStrings } from '../src/i18n/ko'
+import { issueCreateStrings } from '../src/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — Zod v4 RFC4122 v4 UUID 형식 (3번째 그룹 첫 글자 '4', 4번째 그룹 첫 글자 '8'~'b')
@@ -29,6 +31,9 @@ import { issueCreateStrings, issueDetailStrings } from '../src/i18n/ko'
 
 /** alice 사용자 UUID — userAliceFixture.id (user-fixtures.ts 단일 진실 원천) */
 const ALICE_USER_ID = 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f'
+
+/** bob 사용자 UUID — userBobFixture.id (user-fixtures.ts 단일 진실 원천) */
+const BOB_USER_ID = 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a'
 
 /** 리드(alice)가 지정된 컴포넌트 — 사전순 첫 번째 (자동배정 우선 대상) */
 const COMP_AUTH = {
@@ -44,11 +49,15 @@ const COMP_NO_LEAD = {
   leadUserId: null,
 }
 
-/** 리드(alice)가 지정된 두 번째 컴포넌트 — 사전순으로 COMP_AUTH 다음 */
+/**
+ * 리드(bob)가 지정된 두 번째 컴포넌트 — 사전순으로 COMP_AUTH 다음.
+ * S4 tiebreak 시나리오: 두 컴포넌트 리드가 각각 alice/bob으로 다르며,
+ * name 사전순 정렬 시 CM03-Auth < CM03-Backend이므로 alice(CM03-Auth 리드)가 배정됨.
+ */
 const COMP_BACKEND = {
   id: 'c3d4e5f6-a7b8-4cde-a0f1-2c3d4e5f6a70',
   name: 'CM03-Backend-컴포넌트',
-  leadUserId: ALICE_USER_ID,
+  leadUserId: BOB_USER_ID,
 }
 
 /** ATLAS-1 이슈 URL — 이슈 상세 페이지 */
@@ -104,7 +113,7 @@ test.describe('FR-CM-03 이슈 컴포넌트 기본 담당자 자동배정 (MSW �
   })
 
   // ───────────────────────────────────────────────────────────────────────────
-  // S1 이슈 생성 폼 — 리드 있는 컴포넌트 선택 후 생성, 이슈 상세 진입 + componentIds 에코 확인
+  // S1 이슈 생성 폼 — 리드 있는 컴포넌트 선택 후 생성, 자동배정된 담당자 이름 검증
   //
   // Given   alice 로그인, /issues/new 진입
   //         ATLAS 프로젝트 컴포넌트 목록에 COMP_AUTH(리드=alice) seed
@@ -113,9 +122,9 @@ test.describe('FR-CM-03 이슈 컴포넌트 기본 담당자 자동배정 (MSW �
   //         '이슈 생성' 버튼 클릭
   // Then    이슈 상세 페이지(ATLAS-42)로 이동
   //         components-section에 COMP_AUTH 칩 표시 (componentIds 에코 확인)
-  //         assignee-section 표시됨 (자동배정 ground-truth는 백엔드 통합테스트)
+  //         assignee-section의 assignee-current-name이 '김앨리스' (자동배정 담당자 이름 검증)
   // ───────────────────────────────────────────────────────────────────────────
-  test('S1 생성 폼 — 리드 있는 컴포넌트 선택 후 생성 시 이슈 상세 componentIds 에코', async ({ page }) => {
+  test('S1 생성 폼 — 리드 있는 컴포넌트 선택 후 생성 시 자동배정 담당자 이름(김앨리스) 표시', async ({ page }) => {
     // 이슈 생성 폼 진입 (page.goto로 ServiceWorker 재시작 전 시드하면 리셋됨)
     // — 폼 진입 후 시드하는 순서가 중요하다
     await page.goto('/issues/new')
@@ -162,14 +171,15 @@ test.describe('FR-CM-03 이슈 컴포넌트 기본 담당자 자동배정 (MSW �
     await expect(chip).toHaveCount(1)
     await expect(chip.first()).toHaveText(COMP_AUTH.name)
 
-    // assignee-section 표시 확인 (담당자 UI 존재 검증)
+    // assignee-section — 자동배정된 담당자 이름 검증
+    // createIssueHandler가 componentStore에서 COMP_AUTH.leadUserId(=alice)를 읽어 assigneeId에 반영.
+    // issues.$key.tsx의 useUsersByIds(assigneeId) → userAliceFixture.displayName='김앨리스' 렌더.
     const assigneeSection = page.getByTestId('assignee-section')
     await expect(assigneeSection).toBeVisible()
     const assigneeName = assigneeSection.getByTestId('assignee-current-name')
     await expect(assigneeName).toBeVisible()
-    // 자동배정 ground-truth는 백엔드 통합테스트에서 검증
-    // MSW componentLeadStore 시드 경로 없어 assigneeId=null — '미지정' 표시
-    await expect(assigneeName).toHaveText(issueDetailStrings.assigneeUnassigned)
+    // 자동배정 담당자 이름 — alice의 displayName (user-fixtures.ts: userAliceFixture.displayName='김앨리스')
+    await expect(assigneeName).toHaveText('김앨리스')
   })
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -253,45 +263,63 @@ test.describe('FR-CM-03 이슈 컴포넌트 기본 담당자 자동배정 (MSW �
   })
 
   // ───────────────────────────────────────────────────────────────────────────
-  // S4 자동배정 규칙 UI 검증 — 리드 보유 컴포넌트 2개 중 사전순 첫 번째
+  // S4 이슈 생성 폼 — 리드 다른 두 컴포넌트 선택 시 사전순 첫 번째 리드가 자동배정
   //
-  // Given   alice 로그인, ATLAS-1 이슈 상세 진입
-  //         COMP_AUTH('CM03-Auth-...')와 COMP_BACKEND('CM03-Backend-...') seed
-  //         (사전순: Auth < Backend)
-  // When    COMP_BACKEND, COMP_AUTH 순서로 선택 → PATCH componentIds=[COMP_BACKEND.id, COMP_AUTH.id]
-  // Then    칩 2개 표시 (컴포넌트 변경 성공)
-  //         assignee-section 존재 (담당자 UI 표시)
-  //         백엔드에서는 사전순 첫 번째 리드(COMP_AUTH.leadUserId=alice)가 자동배정되어야 함
-  //         — MSW componentLeadStore 시드 없이는 '미지정' 유지 (ground-truth: 백엔드 통합테스트)
+  // Given   alice 로그인, /issues/new 진입
+  //         COMP_BACKEND(리드=bob, name='CM03-Backend-...')와 COMP_AUTH(리드=alice, name='CM03-Auth-...') seed
+  //         name 사전순: CM03-Auth < CM03-Backend → COMP_AUTH 리드(alice=김앨리스)가 자동배정 대상
+  // When    summary='C2-tiebreak E2E 테스트' 입력
+  //         COMP_BACKEND 먼저 선택, 그 다음 COMP_AUTH 선택 (선택 순서와 무관)
+  //         '이슈 생성' 버튼 클릭
+  // Then    이슈 상세 페이지(ATLAS-42)로 이동
+  //         components-section에 칩 2개 표시
+  //         assignee-section의 assignee-current-name이 '김앨리스'
+  //         (createIssueHandler name 오름차순 정렬 → Auth 리드=alice 우선 배정 검증)
   // ───────────────────────────────────────────────────────────────────────────
-  test('S4 이슈 상세 — 리드 보유 컴포넌트 2개 선택 후 담당자 UI 존재', async ({ page }) => {
-    await seedComponentStore(page, 'ATLAS', [COMP_AUTH, COMP_BACKEND])
+  test('S4 생성 폼 — 리드 다른 컴포넌트 2개 선택 시 사전순 첫 번째 리드(김앨리스) 자동배정', async ({ page }) => {
+    await page.goto('/issues/new')
 
-    await page.evaluate((url: string) => {
-      window.history.pushState({}, '', url)
-      window.dispatchEvent(new PopStateEvent('popstate'))
-    }, ATLAS_1_URL)
+    const projectKeyInput = page.getByLabel(issueCreateStrings.projectKeyLabel)
+    await expect(projectKeyInput).toBeVisible()
 
-    const componentsSection = page.getByTestId('components-section')
-    await expect(componentsSection).toBeVisible()
+    // seed — COMP_AUTH(alice 리드, 사전순 앞), COMP_BACKEND(bob 리드, 사전순 뒤)
+    const seeded = await seedComponentStore(page, 'ATLAS', [COMP_AUTH, COMP_BACKEND])
+    expect(seeded).toBe(2)
 
-    // COMP_BACKEND 먼저 선택 (사전순으로는 Auth 가 앞)
-    const checkboxBackend = componentsSection.getByRole('checkbox', { name: COMP_BACKEND.name })
-    const checkboxAuth = componentsSection.getByRole('checkbox', { name: COMP_AUTH.name })
+    await projectKeyInput.fill('ATLAS')
+
+    const summaryInput = page.getByLabel(issueCreateStrings.summaryLabel)
+    await expect(summaryInput).toBeVisible()
+    await summaryInput.fill('C2-tiebreak E2E 테스트 — FR-CM-03 S4')
+
+    // 두 체크박스 노출 대기
+    const checkboxBackend = page.getByRole('checkbox', { name: COMP_BACKEND.name })
+    const checkboxAuth = page.getByRole('checkbox', { name: COMP_AUTH.name })
     await expect(checkboxBackend).toBeVisible()
     await expect(checkboxAuth).toBeVisible()
 
+    // COMP_BACKEND 먼저 선택 (선택 순서와 무관하게 사전순 첫 번째 리드가 배정됨을 검증)
     await checkboxBackend.click()
-    await expect(componentsSection.getByTestId('component-chip')).toHaveCount(1)
+    await expect(checkboxBackend).toBeChecked()
+    await expect(page.getByTestId('component-chip')).toHaveCount(1)
 
     await checkboxAuth.click()
+    await expect(checkboxAuth).toBeChecked()
+    await expect(page.getByTestId('component-chip')).toHaveCount(2)
 
-    // Then. 칩 2개 표시
+    // 생성
+    await page.getByRole('button', { name: issueCreateStrings.submitButton, exact: true }).click()
+    await page.waitForURL(/\/issues\/ATLAS-42$/)
+
+    // components-section — 칩 2개
+    const componentsSection = page.getByTestId('components-section')
+    await expect(componentsSection).toBeVisible()
     await expect(componentsSection.getByTestId('component-chip')).toHaveCount(2)
 
-    // assignee-section 표시 확인 (담당자 UI 존재)
+    // assignee-section — 사전순 첫 번째 리드(COMP_AUTH.leadUserId=alice)가 배정
+    // createIssueHandler: name 오름차순 정렬 → CM03-Auth < CM03-Backend → alice(김앨리스) 배정
     const assigneeSection = page.getByTestId('assignee-section')
     await expect(assigneeSection).toBeVisible()
-    await expect(assigneeSection.getByTestId('assignee-current-name')).toBeVisible()
+    await expect(assigneeSection.getByTestId('assignee-current-name')).toHaveText('김앨리스')
   })
 })
