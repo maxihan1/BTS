@@ -76,7 +76,7 @@ fi
 # --- 3) 최종 결과 ---
 if [[ "$EXIT_CODE" -eq 0 ]]; then
   echo ""
-  echo "PASS. FR ID 117/117 매핑 완료. 체크박스 마커 정상."
+  echo "PASS. FR ID ${PLAN_COUNT}/${SDD_COUNT} 매핑 완료. 체크박스 마커 정상."
 fi
 
 exit "$EXIT_CODE"

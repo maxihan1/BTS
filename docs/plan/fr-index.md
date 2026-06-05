@@ -1,11 +1,11 @@
-<!-- 117개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
+<!-- 120개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
 
 # FR 역인덱스 + Open Questions
 
-## §A.1 FR 역인덱스 (117개 전수)
+## §A.1 FR 역인덱스 (120개 전수)
 
 > 출처. SDD `docs/sdd/02-requirements.md` §2.2 "기능 요구사항 (FR) 상세".
-> 검증. `scripts/verify-master-plan.sh` — 117개 모두 product/*.md에 등장해야 함.
+> 검증. `scripts/verify-master-plan.sh` — 120개 모두 product/*.md에 등장해야 함.
 
 ### 이슈 관리 (FR-IS, 9개)
 
@@ -216,16 +216,16 @@
 
 | BC | FR 카운트 | 주요 그룹 |
 |---|---|---|
-| identity-access | 22 | AU(10) + MF(5) + PM(7) |
-| issue-tracking | 29 | IS(9) + CM(3) + VR(4) + AC(2) + MN(2) + WT(1) + LK(2) + HS(2) + TM(2) + MV(2) |
-| project-workflow | 2 | WF(2) |
+| identity-access | 23 | AU(10) + MF(5) + PM(8) |
+| issue-tracking | 30 | IS(9) + CM(4) + VR(4) + AC(2) + MN(2) + WT(1) + LK(2) + HS(2) + TM(2) + MV(2) |
+| project-workflow | 3 | WF(3) |
 | agile-planning | 14 | BD(3) + BL(2) + EP(2) + TL(3) + TT(2) + PL(2) |
 | automation | 7 | AT(7) |
 | notification-dashboard | 13 | NT(4) + DB(3) + RP(4) + UX-02,03(2) |
 | slack-integration | 6 | SL(6) |
 | personalization | 12 | PR(4) + PF(3) + CA(2) + UX-01,04,05(3) |
 | search-export-import | 12 | SR(4) + EX(2) + IM(2) + API(4) |
-| **합계** | **117** | |
+| **합계** | **120** | |
 
 ## §A.3 미해결 결정 (Open Questions)
 

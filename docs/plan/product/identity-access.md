@@ -278,8 +278,7 @@
 - [x] D3. 데이터 모델 — V013 `MANAGE_WORKFLOW` 시드(PROJECT_ADMIN) (책임. security-engineer)
 - [x] D4. 백엔드 — 포트 shared-kernel 이동(actor→UUID) + `IdentityAccessWorkflowSchemePermissionResolver`(@Profile prod) (책임. security-engineer)
 - [x] D5. 백엔드 테스트 — prod 프로파일 Testcontainers S1~S6(허용/거부) + 예외 403 + 부팅 빈 해소 (책임. security-engineer)
-- [—] D6. 프론트 UI — **범위 외** (스킴 관리 UI 부재, FR-PM-08과 동일). 후속 스킴관리 UI FR 소관.
-- [—] D7. E2E — **범위 외** (UI 없음, 백엔드 prod 통합테스트가 ground-truth)
+> **D6·D7 (프론트 UI / E2E) — 범위 외**. 스킴 관리 UI 부재(FR-PM-08과 동일), UI 없어 백엔드 prod 통합테스트가 ground-truth. 후속 스킴관리 UI FR 소관. (체크박스 D-task 아님 — 의도적 미수행이라 완료 카운트에서 제외)
 
 > **FR-PM-04 완료 (2026-06-05, PR #73)**. 워크플로우 스킴 권한 prod 결선. **범위**: `MANAGE_SCHEME`/Global=`SystemPermissionResolver.isSystemAdmin`(FR-PM-08 소비), `ASSIGN_SCHEME`/Project=멤버십+`role_permissions` `MANAGE_WORKFLOW` 매트릭스(FR-PM-03 동형). 권한 계약(포트+enum+scope+예외) project-workflow→shared-kernel 이동, `actor: ActorId`→`actorId: UUID`. Guard 예외(`WorkflowSchemeAccessDeniedException`)가 BC 가로질러 project-workflow 핸들러에서 403 매핑. **자동화 권한(`MANAGE_AUTOMATION`)은 automation BC 부재로 범위 제외**(ADR D1, dead 시드 회피). **선행 부채(C2) — ✅ 해소(PR #82, 2026-06-05)**: 스킴 컨트롤러 7곳의 하드코딩 system actor를 `CurrentActor`(SecurityContext 인증 주체→`ActorId`, 미인증/익명/비-UUID→401)로 결선. 결정 A(프레임워크 중립, `Jwt` 미사용, 신규 의존성 0). 단 project-workflow에 prod 앱/BC 배포 조립 부재라 **코드 부채 해소 + test-assembled 검증**까지(prod 활성화는 BC 조립 후). ADR `2026-06-05-workflow-scheme-controller-actor-wiring`. 검증 — 4모듈 test+ktlint+detekt 그린, 회귀 0. ADR `2026-06-04-workflow-scheme-permission-prod-resolver`(spec 단계 D3/D4 확정 닫음).
 
