@@ -48,6 +48,23 @@ export function resetComponentStore(): void {
   componentStore = new Map()
 }
 
+/**
+ * componentStore에서 지정한 id 목록에 해당하는 컴포넌트 정보를 반환한다.
+ * createIssueHandler의 default-assignee resolve 전용 읽기 헬퍼.
+ * store에 없는 id는 제외되며, 기존 componentStore·시드 로직은 변경하지 않는다.
+ *
+ * @param ids 조회할 컴포넌트 id 배열
+ * @returns id, name, leadUserId(null 포함) 배열 — 없으면 빈 배열
+ */
+export function getStoredComponentsByIds(
+  ids: string[],
+): Array<{ id: string; name: string; leadUserId: string | null }> {
+  return ids
+    .map((id) => componentStore.get(id))
+    .filter((c): c is StoredComponent => c !== undefined)
+    .map(({ id, name, leadUserId }) => ({ id, name, leadUserId }))
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 에러 응답 헬퍼 — RFC 7807 ProblemDetail 형태
 // `message` 필드 절대 금지 — 백엔드는 `detail` 필드를 사용한다
