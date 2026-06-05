@@ -105,15 +105,20 @@ FR-CM-03 후속. 이슈 생성 시 컴포넌트 리드를 기본 담당자로 �
 - S8: 유효 user 지정 → `projects.lead_user_id` 저장, 조회 일치.
 - 422: 미존재 user 지정 → `ProjectLeadNotFoundException`(UserLookupPort.exists=false).
 - S9: `leadUserId=null` 해제 → 컬럼 null.
-- 404: 미존재/소프트삭제 프로젝트 → `ProjectNotFoundException`(또는 기존 동형 예외).
+- 404: 미존재/소프트삭제 프로젝트 → `ProjectLeadProjectNotFoundException`(신규, B3).
 - `findProjectLead(projectId)` 조회 — 지정/미지정 반환.
 
 **GREEN**:
 - `ProjectLeadRepository` — `findLeadUserId(projectId): UUID?`, `updateLead(projectId, leadUserId?)` (jOOQ, `@Transactional`).
   활성 프로젝트만(`deleted_at IS NULL`). repository 레이어만 jOOQ 접촉(ArchUnit 룰2).
+  **패키지는 `com.bts.issue.project.repository` 유지**(끝 `.repository` — ArchUnit 룰2, 메모리 archunit-shared-class-move-repository-package).
+  KDoc로 `ProjectLookupRepository`(읽기 전용 id 해석)와 책임 분리 명시(둘 다 projects 접촉, C4).
 - `ProjectLeadApplicationService` — `changeLead(actorId, projectIdOrKey, leadUserId)`.
-  `ProjectLookup.resolve`로 projectId 해석(404) → `validateLead`(leadUserId non-null이면 `UserLookupPort.exists`, 422) → `updateLead`.
-- `ProjectLeadNotFoundException`(422) — `ComponentLeadNotFoundException` 동형.
+  `ProjectLookup.resolve`는 `UUID?`만 반환(throw 안 함, `ProjectLookup.kt:33`) → **서비스가 null이면 직접 `throw ProjectLeadProjectNotFoundException`**
+  (ComponentApplicationService.kt:259-260의 `?: throw ComponentProjectNotFoundException` 선례 동형) →
+  `validateLead`(leadUserId non-null이면 `UserLookupPort.exists`, false면 422 `ProjectLeadNotFoundException`) → `updateLead`.
+- **`ProjectLeadExceptions.kt`에 두 예외 신규 정의** (B3) — `ProjectLeadNotFoundException`(422, `ComponentLeadNotFoundException` 동형) +
+  `ProjectLeadProjectNotFoundException`(404). 기존 generic `ProjectNotFoundException`은 **존재하지 않음**(슬라이스별 `ComponentProjectNotFoundException`/`VersionProjectNotFoundException`/`IssueProjectNotFoundException`로 분리) — 재사용 금지.
 
 **REFACTOR**: KDoc + 컴포넌트 리드 동형 패턴 주석.
 
@@ -123,17 +128,21 @@ FR-CM-03 후속. 이슈 생성 시 컴포넌트 리드를 기본 담당자로 �
 
 **메타**.
 - agent: `backend-engineer` (권한 가드 범위는 security-engineer 검토 — 아래 메모)
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/project/web/ProjectLeadController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/project/web/dto/ChangeProjectLeadRequest.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/project/web/dto/ProjectLeadResponse.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/project/web/ProjectLeadControllerTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/project/web/ProjectLeadController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/project/web/ProjectLeadExceptionHandler.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/project/web/dto/ChangeProjectLeadRequest.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/project/web/dto/ProjectLeadResponse.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/project/web/ProjectLeadControllerTest.kt`]
 - depends-on: [3]
 
-**RED**: MVC/통합 테스트.
+**RED**: MVC/통합 테스트. **status 단언을 먼저 틀리게 넣어 핸들러 결선 검증**(메모리 archunit-vacuous-rule 정신).
 - S8: `PATCH /api/v1/projects/{idOrKey}/lead {leadUserId}` → 200 + `{ projectId, leadUserId }`.
 - S9: `{leadUserId: null}` → 200, 해제.
-- 404: 미존재 프로젝트. 422: 미존재 user. EC5: 잘못된 UUID body → 400.
+- 404: 미존재 프로젝트(→ 500 아님을 명시 단언). 422: 미존재 user(→ 500 아님). EC5: 잘못된 UUID body → 400.
 
-**GREEN**: `ProjectLeadController` — `@PatchMapping("/lead")` → `service.changeLead` 위임.
-`ChangeProjectLeadRequest{leadUserId: UUID?}`, `ProjectLeadResponse`. `ComponentController.changeLead` 동형.
-exception → HTTP 매핑은 기존 `IssueExceptionHandler` 패턴 재사용(422 매핑 추가 시 동명 예외 충돌 주의 — 메모리 duplicate-exception-name-cross-package-status).
+**GREEN**:
+- `ProjectLeadController`(`com.bts.issue.project.web`) — `@PatchMapping("/lead")` → `service.changeLead` 위임.
+  `ChangeProjectLeadRequest{leadUserId: UUID?}`, `ProjectLeadResponse`. `ComponentController.changeLead`(placeholder actor) 동형.
+- **`ProjectLeadExceptionHandler` 신규 생성** (B2) — `@RestControllerAdvice(basePackages=["com.bts.issue.project.web"])`.
+  이 모듈의 advice는 **패키지별로 분리**돼 있어(ComponentExceptionHandler=component.web, IssueExceptionHandler=adapter.inbound.rest 등)
+  `project.web`을 잡는 핸들러가 **없으면 404/422가 조용히 500으로 샌다**. `ComponentExceptionHandler` 템플릿으로
+  `ProjectLeadProjectNotFoundException`→404 · `ProjectLeadNotFoundException`→422 · 검증오류→400 매핑 + 에러코드 상수.
 
 **REFACTOR**: KDoc.
 
@@ -147,8 +156,23 @@ exception → HTTP 매핑은 기존 `IssueExceptionHandler` 패턴 재사용(422
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueApplicationServiceTest.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueCreateIntegrationTest.kt`]
-  (생성자에 `ProjectLeadRepository` 주입 → IssueApplicationService를 생성/mock하는 기존 테스트도 포함 — 메모리 plan-files-constructor-injection-existing-tests. impl 시 실제 기존 테스트 파일명 grep으로 확정)
+- files (main): [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`]
+- files (생성자 주입으로 깨지는 기존 테스트 22개 — B1, 메모리 plan-files-constructor-injection-existing-tests. `mockk(relaxed=true)` 또는 `findLeadUserId`=null stub로 회귀0):
+  `src/test/kotlin/com/bts/issue/` 하위 —
+  `repository/IssueComponentsRepositoryTest.kt`, `bulk/integration/BulkOperationIntegrationTest.kt`,
+  `bulk/application/BulkTransitionResolutionTest.kt`, `integration/IssueComponentsIntegrationTest.kt`,
+  `integration/IssueTransitionValidatorEndToEndIntegrationTest.kt`, `integration/IssueTransitionGuardFilterIntegrationTest.kt`,
+  `component/repository/ComponentRepositoryTest.kt`, `adapter/inbound/rest/IssueControllerTransitionIntegrationTest.kt`,
+  `application/IssueApplicationServiceSoftDeleteTest.kt`, `application/IssueApplicationServicePermissionTest.kt`,
+  `application/IssueApplicationServiceTest.kt`, `application/IssueTransitionResolutionIntegrationTest.kt`,
+  `application/IssueChangeComponentsAutoAssignIntegrationTest.kt`, `application/IssueApplicationServiceUpdateTest.kt`,
+  `application/IssueApplicationServiceTransitionTest.kt`, `application/IssueApplicationServiceCreateTest.kt`,
+  `application/IssueApplicationServiceListTest.kt`, `application/IssueApplicationServiceCloneTest.kt`,
+  `application/IssueApplicationServiceFindTest.kt`, `application/IssueCreateComponentAutoAssignIntegrationTest.kt`,
+  `application/IssueApplicationServiceAvailableTransitionsTest.kt`, `application/IssueChangeComponentsServiceTest.kt`
+  (impl 착수 시 `grep -rln "IssueApplicationService(" src/test`로 목록 재확인 — 위는 리뷰 시점 ground-truth)
+- 신규 폴백 통합 단언이 들어갈 테스트: `application/IssueCreateComponentAutoAssignIntegrationTest.kt`(생성 S2/S3/S4·실재 파일명) +
+  `application/IssueChangeComponentsAutoAssignIntegrationTest.kt`(변경 S7) + `application/IssueApplicationServiceCloneTest.kt`(EC6 회귀)
 - depends-on: [1, 2, 3]
 
 **RED**: Testcontainers 통합.
@@ -176,4 +200,31 @@ exception → HTTP 매핑은 기존 `IssueExceptionHandler` 패턴 재사용(422
   카운트 영향 0(FR 추가 아님, 기존 스텁 구현) — `bash scripts/verify-master-plan.sh` 통과 필수.
 - 추가 검증: ktlintMain+TestSourceSetCheck + detekt + 모듈 전체 test (메모리 subagent-ktlint-false-green).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### code-reviewer ground-truth plan 리뷰 (2026-06-06)
+
+backend FR → autoplan 대신 code-reviewer 집중 dispatch(메모리 bts-review-plan-autoplan-overkill).
+실제 코드 22개 호출처·핸들러·예외 슬라이스 대조.
+
+**BLOCKER 3건 — 모두 plan 반영 완료**.
+- **B1**. 생성자에 `ProjectLeadRepository` 주입 → `IssueApplicationService` 생성 테스트 **22개** 컴파일 깨짐.
+  plan은 1개만(+ 환각 파일명 `IssueCreateIntegrationTest.kt`) 명시했음 → T5 files에 22개 전수 열거 + 실재
+  파일명(`IssueCreateComponentAutoAssignIntegrationTest.kt`)으로 정정. ✅
+- **B2**. `ProjectLeadController`가 `project.web` 패키지인데 이 모듈 `@RestControllerAdvice`는 패키지별 분리 →
+  담당 핸들러 부재로 404/422가 조용히 500. → T4에 `ProjectLeadExceptionHandler`(basePackages=project.web) 신규 추가. ✅
+- **B3**. 재사용하려던 generic `ProjectNotFoundException` 미존재(슬라이스별 다른 이름) + `ProjectLookup.resolve`는
+  null만 반환(throw 안 함) → T3에 `ProjectLeadProjectNotFoundException`(404) 신규 정의 + 서비스가 직접 throw 명시. ✅
+
+**CONCERN 반영**.
+- C2. V013 현재 안전하나 동시 진행 `auth/fr-pm-06`(issue-tracking 접촉)이 먼저 V013 소비 시 충돌 → 머지 직전 재확인 유지.
+- C3. `current != null` early-return을 프로젝트 리드 조회 **전에** 유지(불필요 쿼리+덮어쓰기 방지) — plan 명시됨.
+- C4. `ProjectLeadRepository`는 `project.repository` 패키지 유지 + KDoc 책임 분리 → T3 반영. ✅
+
+**✅ ground-truth 확인됨**.
+- T2 기본값 파라미터 안전(프로덕션 `resolve` 직접 호출 단 1곳, named-arg).
+- EC6 클론 회귀0(클론 경로는 `resolveDefaultAssignee` 미경유, 코드상 폴백 샐 경로 없음).
+- `UserLookupPort.exists(UUID): Boolean` 실재, 컴포넌트 리드 422 guard 동형 차용 가능.
+- `projects` 컬럼 카운트 가드 부재 → 새 컬럼이 기존 마이그레이션 테스트 안 깸.
+
+**BLOCKER**: 없음 (3건 모두 plan 수정으로 해소).
