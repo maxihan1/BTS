@@ -277,7 +277,7 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
                 ),
                 // ── VIEW — FR-PM-05로 VIEW_ISSUE 매트릭스 위임 (더 이상 범위 밖 멤버 통과 아님) ─
                 Case(
-                    "MEMBER + VIEW → 허용 (VIEW_ISSUE 매트릭스 보유)",
+                    "MEMBER + VIEW(Issue) → 허용 (VIEW_ISSUE 매트릭스 보유) [S3]",
                     memberId,
                     IssuePermission.VIEW,
                     IssueScope.Issue(issueKey),
@@ -469,7 +469,13 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
         }
     }
 
-    /** adminId=PROJECT_ADMIN, memberId=MEMBER으로 두 프로젝트에 멤버십을 삽입한다. */
+    /**
+     * adminId=PROJECT_ADMIN, memberId=MEMBER으로 두 프로젝트에 멤버십을 삽입한다.
+     *
+     * BROWSE/VIEW 매트릭스 판정의 권한 행(BROWSE_PROJECT·VIEW_ISSUE)은 별도 시드가 아니라
+     * V014__browse_view_permissions.sql(FR-PM-05)이 기본 스킴 PROJECT_ADMIN·MEMBER에 부여한 것을 탄다.
+     * 따라서 멤버십만 시드하면 BROWSE(S1)·VIEW(S3)가 매트릭스로 true가 된다.
+     */
     private fun seedMemberships() {
         val now = java.time.Instant.now()
         listOf(projectId, sharedProjectId).forEach { pId ->
