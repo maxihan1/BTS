@@ -1,8 +1,8 @@
-<!-- issue-tracking BC — 이슈 코어 29 FR (CRUD/타입/담당자/본문/Resolution/PDF + 컴포넌트/버전 + 첨부/멘션/Watcher + 링크/히스토리/템플릿 + 이동) -->
+<!-- issue-tracking BC — 이슈 코어 30 FR (CRUD/타입/담당자/본문/Resolution/PDF + 컴포넌트/버전 + 첨부/멘션/Watcher + 링크/히스토리/템플릿 + 이동) -->
 
 # issue-tracking BC
 
-**소속 FR**. 29개 (IS 9 + CM 3 + VR 4 + AC 2 + MN 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2).
+**소속 FR**. 30개 (IS 9 + CM 4 + VR 4 + AC 2 + MN 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2).
 **책임**. 이슈/댓글/첨부/관계/이력/템플릿/이동.
 **SDD 참조**. 05장 (데이터 모델), 11장 (API).
 **다른 BC와의 경계**. project-workflow의 상태 전이 호출, identity-access의 권한 가드 사용, notification-dashboard 이벤트 발행. **다른 BC import 금지 — 이벤트는 pgmq**.
@@ -153,7 +153,7 @@
 
 ## §3 컴포넌트 / 버전 (7개)
 
-### §3.1 컴포넌트 (FR-CM, 3개)
+### §3.1 컴포넌트 (FR-CM, 4개)
 
 #### §3.1.1 FR-CM-01 — 프로젝트별 컴포넌트 CRUD + 컴포넌트 리드
 

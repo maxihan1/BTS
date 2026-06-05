@@ -1,8 +1,8 @@
-<!-- project-workflow BC — 워크플로우 FSM 2 FR + 워크플로우 FSM PoC + pgmq 트랜잭션 PoC -->
+<!-- project-workflow BC — 워크플로우 FSM 3 FR + 워크플로우 FSM PoC + pgmq 트랜잭션 PoC -->
 
 # project-workflow BC
 
-**소속 FR**. 2개 (WF 2).
+**소속 FR**. 3개 (WF 3).
 **책임**. 상태 기계(FSM) 기반 워크플로우, YAML 정의, 전이 검증, 후처리.
 **SDD 참조**. 07장 (워크플로우 엔진).
 **다른 BC와의 경계**. issue-tracking BC의 상태 전이 호출을 받아 검증. pgmq 이벤트 발행.

@@ -1,8 +1,8 @@
-<!-- identity-access BC — 인증/2FA/권한 22 FR + AuthN Provider PoC -->
+<!-- identity-access BC — 인증/2FA/권한 24 FR + AuthN Provider PoC -->
 
 # identity-access BC
 
-**소속 FR**. 22개 (AU 10 + MF 5 + PM 7).
+**소속 FR**. 24개 (AU 10 + MF 5 + PM 9).
 **책임**. 사용자/조직/그룹/역할/권한/인증/세션 전체.
 **SDD 참조**. 19장 (인증), 12장 (권한).
 **다른 BC와의 경계**. 모든 BC의 권한 게이트. 사용자 식별·인증·인가의 단일 진실 원천. 다른 BC는 `SecurityContext` 인터페이스로만 접근.
