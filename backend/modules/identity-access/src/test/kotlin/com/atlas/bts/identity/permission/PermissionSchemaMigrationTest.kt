@@ -52,12 +52,13 @@ class PermissionSchemaMigrationTest {
 
     @Test
     fun `기본 스킴과 매트릭스가 시드된다`() {
-        // role_permissions × permission_schemes(is_default=TRUE) JOIN 결과 8행 기대
-        // PROJECT_ADMIN(6행): CREATE_ISSUE, EDIT_ISSUE, DELETE_ISSUE,
-        //   MANAGE_COMPONENTS, MANAGE_VERSIONS, MANAGE_WORKFLOW
-        // MEMBER(2행): CREATE_ISSUE, EDIT_ISSUE
+        // role_permissions × permission_schemes(is_default=TRUE) JOIN 결과 12행 기대
+        // PROJECT_ADMIN(8행): CREATE_ISSUE, EDIT_ISSUE, DELETE_ISSUE,
+        //   MANAGE_COMPONENTS, MANAGE_VERSIONS, MANAGE_WORKFLOW, BROWSE_PROJECT, VIEW_ISSUE
+        // MEMBER(4행): CREATE_ISSUE, EDIT_ISSUE, BROWSE_PROJECT, VIEW_ISSUE
         // (V009 — FR-PM-03이 PROJECT_ADMIN에 MANAGE_COMPONENTS/MANAGE_VERSIONS 2행 추가)
         // (V013 — FR-PM-04가 PROJECT_ADMIN에 MANAGE_WORKFLOW 1행 추가)
+        // (V014 — FR-PM-05가 양 역할에 BROWSE_PROJECT/VIEW_ISSUE 4행 추가)
         val count =
             jdbc.queryForObject(
                 """
@@ -69,7 +70,7 @@ class PermissionSchemaMigrationTest {
                 mapOf<String, Any>(),
                 Int::class.java,
             )
-        assertThat(count).isEqualTo(8)
+        assertThat(count).isEqualTo(12)
     }
 
     @Test
@@ -90,6 +91,26 @@ class PermissionSchemaMigrationTest {
                 Int::class.java,
             )
         assertThat(count).isEqualTo(1)
+    }
+
+    @Test
+    fun `기본 스킴이 BROWSE_PROJECT VIEW_ISSUE를 양 역할에 보유한다`() {
+        // V014 — FR-PM-05: 프로젝트 탐색(BROWSE_PROJECT) · 이슈 열람(VIEW_ISSUE) 권한의 정본 코드.
+        // 기본 스킴(00000000-…-001) PROJECT_ADMIN · MEMBER 양 역할에 각각 2행씩 = 4행이 시드되어야 한다.
+        val count =
+            jdbc.queryForObject(
+                """
+            SELECT count(*)
+            FROM role_permissions rp
+            JOIN permission_schemes ps ON rp.scheme_id = ps.id
+            WHERE ps.is_default = TRUE
+              AND rp.role IN ('PROJECT_ADMIN', 'MEMBER')
+              AND rp.permission_code IN ('BROWSE_PROJECT', 'VIEW_ISSUE')
+            """,
+                mapOf<String, Any>(),
+                Int::class.java,
+            )
+        assertThat(count).isEqualTo(4)
     }
 
     @Test
