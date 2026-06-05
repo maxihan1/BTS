@@ -305,7 +305,7 @@ class IssueController(
      *   [ChangeComponentsRequest.expectedVersion] 은 낙관적 잠금을 위해 필수.
      * @return 200 OK + 변경된 [IssueResponse] body
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우 → 404
-     * @throws com.bts.issue.component.domain.ComponentNotFoundException 비활성 또는 타 프로젝트 컴포넌트 포함 시 → 422
+     * @throws com.bts.issue.domain.IssueComponentNotFoundException 비활성 또는 타 프로젝트 컴포넌트 포함 시 → 422
      * @throws com.bts.issue.domain.IssueVersionConflictException 낙관락 충돌 → 409
      */
     @PatchMapping("/{key}/components")
