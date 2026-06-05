@@ -79,6 +79,150 @@ FR-PM-06 이슈 보안 수준. 이슈마다 보안 등급(IssueSecurityLevel: �
 
 ✅ 통과 (적대적 sanity check, EC 12건). Maxi 결정 gap 2건 해소(관리자 우회 없음 / 2 PR 분할). 핵심 위험 인계 — cross-BC 순서 의존(판정 PR-B로 분리), 권한 시드 카운트 가드(12→13), non-prod 마스킹(판정은 PR-B prod 통합), 명세 변경 전수 동기화(SDD §12.4).
 
-## Plan (← /bts-plan 채움)
+## Plan (← /bts-plan 채움) — PR-A (identity-access 관리 인프라)
+
+> 패키지 베이스: `com.atlas.bts.identity.issuesecurity`(도메인/리포/서비스), `com.atlas.bts.identity.web`(컨트롤러).
+> 전 task identity-access 단일 모듈 → 같은 test 컴파일 단위 공유(wave 직렬화 요인, 격리 gradle home로 경합 회피). 검증 경로 `:modules:identity-access`.
+> **이번 PR 범위 = 관리 인프라만. issues.security_level_id·이슈지정·판정 결선은 PR-B 후속(범위 밖).**
+
+### Ground-truth 앵커 (구현 참조 — FR-PM-09/PR #88 동형)
+
+- 도메인 팩토리 패턴: `identity/group/UserGroup.kt`(create + require 불변식, id?/타임스탬프 nullable).
+- Repository 패턴: `identity/group/JdbcUserGroupRepository.kt`(NamedParameterJdbcTemplate, RETURNING은 단건 INSERT/UPDATE만, 멱등 멤버는 `jdbc.update`+ON CONFLICT DO NOTHING).
+- 컨트롤러/actor: `identity/web/UserGroupController.kt`·`ProjectMemberController.kt`(`@PreAuthorize("isAuthenticated()")`, `resolveActor(jwt)`→userId, 에러 envelope `mapOf("error" to "<snake_case>")` 소문자 key).
+- SYSTEM_ADMIN 가드: `shared-kernel/.../SystemPermissionResolver.kt`(`isSystemAdmin(UUID)`), 구현 `IdentityAccessSystemPermissionResolver`(@Profile 없음, 전 프로파일 실판정).
+- PROJECT_ADMIN 판정: `identity/project/ProjectMembershipRepository.kt`(`findByProjectAndUser(projectId,userId)→ProjectMembership.role`), `identity/project/ProjectRole.kt`(PROJECT_ADMIN/MEMBER). 프로젝트 키→id: `identity/project/ProjectDirectory.kt`(`resolveKeyToId(key)→UUID?`).
+- 권한 시드: `V008~V014`, `PermissionSchemaMigrationTest`(현재 count=12). 다음 마이그레이션=**V016**(머지 직전 재확인).
+- 통합테스트 부팅 레시피: `identity/web/UserGroupIntegrationTest.kt`(@ActiveProfiles prod + RANDOM_PORT + PEM 키 + OAuth2 exclude + LDAP @MockBean 5종 + loginJwt 실로그인). raw SQL만(jOOQ/init_codegen 불요).
+
+### 함정 회피 메모 (메모리 교훈)
+
+- **권한 시드 카운트 가드**(`fr-pm-permission-seed-migration-test-coupling`): SET_ISSUE_SECURITY 시드 시 `PermissionSchemaMigrationTest` count 12→13 동반 갱신. 모듈 전체 test로만 표면화.
+- **조인테이블 FK CASCADE**(`join-table-fk-cascade`): levels/members FK에 ON DELETE CASCADE 명시(스킴 삭제→등급→멤버 연쇄). project_issue_security_schemes는 scheme FK ON DELETE RESTRICT(적용 중 스킴 삭제 차단).
+- **V번호 동시 브랜치 충돌**(`migration-vnumber-concurrent-branch-collision`): 머지 직전 V016 재확인.
+- **prod+RANDOM_PORT 부팅**(`identity-access-prod-randomport-boot-recipe`): UserGroupIntegrationTest 레시피 복제.
+- **에러 envelope BC별 상이**(`frontend-api-convention-per-bc`): identity-access는 `{error:소문자코드}`.
+- **도메인 우회 금지**(`patch-merge-domain-bypass`): 서비스가 도메인 create/검증 팩토리 경유, DTO 검증은 1차 방어뿐.
+- **enum 추가 cross-module 카운트 가드**(`enum-add-breaks-crossmodule-count-guard`): MemberType은 identity-access 신규 enum(타 모듈 카운트 가드 무관) — 단 신규 enum 추가 시 자체 카운트 테스트만.
+
+- **관련 ADR**: `docs/decisions/2026-06-06-issue-security-level-scheme-model.md`(생성 대상 — SDD §12.4 단순 allowedRoles 모델 → Jira식 스킴 구조 결정, T2 또는 docs 동기화에서).
+
+### Task 1. 도메인 — IssueSecurityScheme/IssueSecurityLevel/SecurityLevelMember + MemberType + 검증
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/issuesecurity/IssueSecurityScheme.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/issuesecurity/IssueSecurityLevel.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/issuesecurity/SecurityLevelMember.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/issuesecurity/IssueSecurityDomainTest.kt`]
+- depends-on: []
+
+**RED**: `IssueSecurityDomainTest` — (a) `IssueSecurityScheme.create(name,description)` trim/blank→IAE/255자 초과→예외. (b) `IssueSecurityLevel.create(schemeId,name,description,isDefault)` 검증. (c) `SecurityLevelMember.create(levelId,memberType,memberValue)` 다형 검증 — USER/GROUP은 memberValue가 UUID 형식, PROJECT_ROLE은 `PROJECT_ADMIN`|`MEMBER`, REPORTER/ASSIGNEE는 memberValue=null이어야 함(동반 시 IAE). `MemberType` enum 5종. (실패: 클래스 없음)
+**GREEN**: 3 data class(id?/타임스탬프 nullable 불변) + `MemberType`(REPORTER/ASSIGNEE/USER/PROJECT_ROLE/GROUP) + companion `create`(require 불변식, UserGroup.create 패턴). 멤버 다형 검증은 memberType별 memberValue 규칙을 도메인에서 강제(우회 금지).
+**REFACTOR**: 길이 상수 + KDoc(한 줄 역할).
+**검증**: `./gradlew :modules:identity-access:test --tests '*IssueSecurityDomainTest'`
+
+### Task 2. 마이그레이션 V016 — 4 테이블 + SET_ISSUE_SECURITY 시드 + 스키마/카운트 검증
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/identity-access/src/main/resources/db/migration/V016__issue_security_levels.sql`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/issuesecurity/IssueSecuritySchemaMigrationTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/permission/PermissionSchemaMigrationTest.kt`]
+- depends-on: []
+
+**RED**: (a) `IssueSecuritySchemaMigrationTest`(@ActiveProfiles prod + Testcontainers) — 4 테이블 존재, scheme.name UNIQUE, level (scheme_id,name) UNIQUE, 스킴당 is_default 최대 1(부분 유니크 인덱스), 스킴 삭제→levels→members CASCADE, member_type CHECK 제약, project_issue_security_schemes scheme FK RESTRICT. (b) `PermissionSchemaMigrationTest` count **12→13** 갱신 + SET_ISSUE_SECURITY 행(PROJECT_ADMIN) 존재 단언. (실패: 테이블/시드 없음)
+**GREEN**: V016 SQL(스펙 §데이터 모델 identity-access 블록 — schemes/levels/level_members/project_issue_security_schemes + uq_security_level_one_default 부분 유니크 + SET_ISSUE_SECURITY role_permissions 시드 PROJECT_ADMIN). raw SQL만(init_codegen 불요).
+**REFACTOR**: SQL 주석(한 줄 역할).
+**검증**: `./gradlew :modules:identity-access:test --tests '*IssueSecuritySchemaMigrationTest' --tests '*PermissionSchemaMigrationTest'`
+
+### Task 3. Repository — IssueSecuritySchemeRepository (스킴/등급/멤버 raw SQL)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/issuesecurity/IssueSecuritySchemeRepository.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/issuesecurity/JdbcIssueSecuritySchemeRepository.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/issuesecurity/JdbcIssueSecuritySchemeRepositoryIntegrationTest.kt`]
+- depends-on: [1, 2]
+
+**RED**: `Jdbc...IntegrationTest`(Testcontainers) — 스킴 create/findById/findAll(+levels)/update/delete(CASCADE), 등급 addLevel/listLevels/updateLevel/deleteLevel, 멤버 addMember(다형, 중복 멱등 ON CONFLICT)/listMembers/removeMemberById, name 중복→DuplicateKeyException 전파, isDefault 둘째 등급 추가 시 부분유니크 위반. (실패: 클래스 없음)
+**GREEN**: 포트 인터페이스 + `@Repository` Jdbc 구현(NamedParameterJdbcTemplate). 스킴 aggregate(스킴+등급+멤버) 한 Repository. RETURNING은 단건 create/update만, 멤버 멱등 추가는 `jdbc.update`(ON CONFLICT DO NOTHING). findAll levels는 스칼라 서브쿼리/배치(cartesian 회피 `cartesian-product-jooq-leftjoin-count`).
+**REFACTOR**: SQL 상수 + rowMapper 분리.
+**검증**: `./gradlew :modules:identity-access:test --tests '*JdbcIssueSecuritySchemeRepositoryIntegrationTest'`
+
+### Task 4. Repository — ProjectSecuritySchemeRepository (프로젝트 스킴 적용)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/issuesecurity/ProjectSecuritySchemeRepository.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/issuesecurity/JdbcProjectSecuritySchemeRepository.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/issuesecurity/JdbcProjectSecuritySchemeRepositoryIntegrationTest.kt`]
+- depends-on: [2]
+
+**RED**: `Jdbc...IntegrationTest`(Testcontainers) — assign(projectId,schemeId) upsert(프로젝트당 0~1, 교체=덮어쓰기), findByProject, unassign(멱등), scheme FK RESTRICT(적용 중 스킴 삭제 차단 확인은 T3 영역과 교차→여기선 assign/find/unassign만). (실패: 클래스 없음)
+**GREEN**: 포트 + Jdbc 구현. assign은 `INSERT ... ON CONFLICT (project_id) DO UPDATE`(프로젝트당 단일). project_id는 cross-BC 참조(FK 없음).
+**REFACTOR**: SQL 상수.
+**검증**: `./gradlew :modules:identity-access:test --tests '*JdbcProjectSecuritySchemeRepositoryIntegrationTest'`
+
+### Task 5. Service — IssueSecuritySchemeService (스킴/등급/멤버 CRUD + 예외)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/issuesecurity/IssueSecuritySchemeService.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/issuesecurity/IssueSecurityExceptions.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/issuesecurity/IssueSecuritySchemeServiceTest.kt`]
+- depends-on: [3]
+
+**RED**: `...ServiceTest`(mockk repo + UserGroupRepository + ProjectMembershipRepository) — name 중복→SchemeNameConflict, 없는 스킴/등급→NotFound, 멤버 추가 시 USER/GROUP memberValue 실재 사전조회(없으면 404 UserNotFound/GroupNotFound), PROJECT_ROLE/REPORTER/ASSIGNEE 검증, 멱등. (실패: 클래스 없음)
+**GREEN**: `@Service @Transactional` — repo 위임 + 도메인 create 경유(우회 금지) + USER/GROUP 멤버 실재 사전조회(UserRepository/UserGroupRepository.existsById) + DuplicateKeyException→도메인 예외. 예외 클래스(SchemeNotFound/SchemeNameConflict/LevelNotFound/LevelNameConflict/MemberTypeInvalid/MemberValueInvalid).
+**REFACTOR**: 가독성 + KDoc.
+**검증**: `./gradlew :modules:identity-access:test --tests '*IssueSecuritySchemeServiceTest'`
+
+### Task 6. Service — ProjectSecuritySchemeService (프로젝트 적용 + PROJECT_ADMIN 판정)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/issuesecurity/ProjectSecuritySchemeService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/issuesecurity/ProjectSecuritySchemeServiceTest.kt`]
+- depends-on: [4, 5]
+
+**RED**: `...ServiceTest`(mockk ProjectSecuritySchemeRepository + ProjectDirectory + ProjectMembershipRepository + SchemeRepository) — assign 시 (a) 프로젝트 키→id 해석(없으면 404) (b) actor가 그 프로젝트 PROJECT_ADMIN 아니면 거부(403 의미) (c) 없는 스킴→404 (d) unassign/find 동일 가드. (실패: 클래스 없음)
+**GREEN**: `@Service @Transactional` — `ProjectDirectory.resolveKeyToId` + `ProjectMembershipRepository.findByProjectAndUser`로 role==PROJECT_ADMIN 판정(역할 직접 체크 — ADMIN_PROJECT 권한코드 미시드이므로 매트릭스 대신 역할, ground-truth 정합) + scheme 실재 확인. 거부는 도메인 예외(ProjectSchemeAccessDenied).
+**REFACTOR**: 가드 헬퍼 + KDoc.
+**검증**: `./gradlew :modules:identity-access:test --tests '*ProjectSecuritySchemeServiceTest'`
+
+### Task 7. Controller — 스킴/등급/멤버 관리 API + SYSTEM_ADMIN 가드 + DTO
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/IssueSecuritySchemeController.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/IssueSecuritySchemeControllerTest.kt`]
+- depends-on: [5]
+
+**RED**: `...ControllerTest`(MockMvc, mock service + SystemPermissionResolver) — 스킴/등급/멤버 관리 엔드포인트(스펙 §API 관리 블록) 라우팅/상태코드, 미인증 401, isSystemAdmin=false 403, 도메인 예외→404/409/400(snake_case `{error:...}`). (실패: 클래스 없음)
+**GREEN**: `@RestController`(`/api/v1/issue-security-schemes`·`/api/v1/issue-security-levels`·`/api/v1/issue-security-level-members`, `@PreAuthorize("isAuthenticated()")`) — `resolveActor(jwt)`→`isSystemAdmin` false 403 → service. DTO + 인라인 `mapServiceException`(envelope `{error:코드}`). SecurityConfig 무변경(/api/** authenticated 자동 커버).
+**REFACTOR**: DTO 매핑 헬퍼 + KDoc.
+**검증**: `./gradlew :modules:identity-access:test --tests '*IssueSecuritySchemeControllerTest'`
+
+### Task 8. Controller — 프로젝트 스킴 적용 API + PROJECT_ADMIN 가드
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/ProjectSecuritySchemeController.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/ProjectSecuritySchemeControllerTest.kt`]
+- depends-on: [6]
+
+**RED**: `...ControllerTest`(MockMvc, mock ProjectSecuritySchemeService) — `PUT/DELETE/GET /api/v1/projects/{key}/issue-security-scheme` 라우팅, 미인증 401, 비-PROJECT_ADMIN 403, 없는 프로젝트/스킴 404. **actor 추출이 프로젝트 조회보다 먼저**(미인증자 404 probe 차단, `auth-extraction-before-resource-lookup` 교훈). (실패: 클래스 없음)
+**GREEN**: `@RestController`(`@PreAuthorize("isAuthenticated()")`) — resolveActor 먼저 → service(내부 PROJECT_ADMIN 판정) 위임. DTO + envelope `{error:코드}`.
+**REFACTOR**: KDoc.
+**검증**: `./gradlew :modules:identity-access:test --tests '*ProjectSecuritySchemeControllerTest'`
+
+### Task 9. prod 통합테스트 — 관리 end-to-end ground-truth (S1~S7, 권한 거부)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/IssueSecurityIntegrationTest.kt`]
+- depends-on: [7, 8]
+
+**RED**: `IssueSecurityIntegrationTest`(@ActiveProfiles prod + RANDOM_PORT + TestRestTemplate) — SYSTEM_ADMIN 시드 후 스킴/등급/멤버 CRUD(S1~S5), PROJECT_ADMIN 시드 후 프로젝트 스킴 적용/해제(S6~S7), 비-SYSTEM_ADMIN 관리 호출 403(ground-truth 마스킹 없음), 비-PROJECT_ADMIN 적용 403, 미인증 401, 스킴 CASCADE. (실패: 시나리오 미구현)
+**GREEN**: `UserGroupIntegrationTest` 부팅 레시피 복제(PEM 키 + OAuth2 exclude + LDAP @MockBean 5종 + loginJwt 실로그인 admin + PROJECT_ADMIN 멤버 시드). TestRestTemplate Bearer.
+**REFACTOR**: 시나리오 헬퍼.
+**검증**: `./gradlew :modules:identity-access:test --tests '*IssueSecurityIntegrationTest'`
+
+## Plan 메타
+
+- task 수: 9
+- depends-on 그래프: T1[], T2[] → T3[1,2], T4[2] → T5[3], T6[4,5] → T7[5], T8[6] → T9[7,8]
+- wave(예상): W1(T1,T2) → W2(T3,T4) → W3(T5) → W4(T6,T7) → W5(T8) → W6(T9). 단일 모듈 test 컴파일 공유 → 격리 gradle home로 경합 회피(`bts-plan-wave-gradle-module-compile`).
+- TDD 강제: yes (test 커밋 먼저)
+- 추가 검증: 모듈 전체 `:modules:identity-access:test` + ktlintMain/TestSourceSetCheck + detekt(--rerun-tasks). **PermissionSchemaMigrationTest 12→13 갱신 포함**.
+- agent: T2=db-engineer(마이그레이션), 그 외 security-engineer
+- 명세 변경 전수 동기화(머지 전): SDD §12.4 + product/identity-access §4.6 D단계 + ADR 생성. FR 카운트 불변(121).
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
