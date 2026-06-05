@@ -53,15 +53,15 @@ import java.util.UUID
  * - 미인증 → 401 (CSRF 없는 변경요청 → 403)
  * - 도메인 예외 → 404/409/400 + snake_case error 키 매핑
  * - GroupResponse memberCount 동봉, 멤버 목록 UserSummaryResponse 재사용
+ *
+ * OAuth2ClientAutoConfiguration 제외 — Keycloak issuer-uri 네트워크 접속 차단.
  */
-// OAuth2ClientAutoConfiguration 제외 — Keycloak issuer-uri 네트워크 접속 차단
 @WebMvcTest(
     controllers = [UserGroupController::class],
     excludeAutoConfiguration = [OAuth2ClientAutoConfiguration::class],
 )
 @Import(SecurityConfig::class, UserGroupControllerTest.MockBeans::class)
 class UserGroupControllerTest {
-
     companion object {
         private val ADMIN_ID: UUID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
         private val GROUP_ID: UUID = UUID.fromString("11111111-1111-4111-8111-111111111111")
@@ -71,6 +71,8 @@ class UserGroupControllerTest {
 
         /** "pat_" prefix 포함 PAT raw token */
         private const val RAW_PAT = "pat_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+        private val ALLOWED_ORIGINS = listOf("http://localhost:5173")
 
         private fun group(
             id: UUID = GROUP_ID,
@@ -97,17 +99,18 @@ class UserGroupControllerTest {
             updatedAt = NOW,
         )
 
-        private fun activePat(userId: UUID = ADMIN_ID) = PersonalAccessToken(
-            id = UUID.fromString("dddddddd-dddd-4ddd-8ddd-dddddddddddd"),
-            userId = userId,
-            name = "ci-token",
-            tokenHash = "irrelevant-hash",
-            scopes = listOf("*"),
-            expiresAt = null,
-            lastUsedAt = null,
-            revokedAt = null,
-            createdAt = NOW,
-        )
+        private fun activePat(userId: UUID = ADMIN_ID) =
+            PersonalAccessToken(
+                id = UUID.fromString("dddddddd-dddd-4ddd-8ddd-dddddddddddd"),
+                userId = userId,
+                name = "ci-token",
+                tokenHash = "irrelevant-hash",
+                scopes = listOf("*"),
+                expiresAt = null,
+                lastUsedAt = null,
+                revokedAt = null,
+                createdAt = NOW,
+            )
     }
 
     @TestConfiguration
@@ -123,8 +126,7 @@ class UserGroupControllerTest {
         }
 
         @Bean
-        fun corsConfigurationSource(): CorsConfigurationSource =
-            CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        fun corsConfigurationSource(): CorsConfigurationSource = CorsConfig().corsConfigurationSource(ALLOWED_ORIGINS)
 
         @Bean
         fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)
@@ -240,10 +242,12 @@ class UserGroupControllerTest {
     @Test
     fun `GET groups 200 목록 반환 — memberCount 포함`() {
         grantAdmin()
-        every { userGroupService.listGroups() } returns listOf(
-            UserGroupWithCount(group(), 3),
-            UserGroupWithCount(group(id = MEMBER_ID, name = "Design"), 1),
-        )
+        val groups =
+            listOf(
+                UserGroupWithCount(group(), 3),
+                UserGroupWithCount(group(id = MEMBER_ID, name = "Design"), 1),
+            )
+        every { userGroupService.listGroups() } returns groups
 
         mockMvc.perform(
             get("/api/v1/groups")
