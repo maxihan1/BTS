@@ -48,9 +48,18 @@
 - 기존 결정 충돌: 없음(FR-CM-02 다대다 유지). 단일 전환 검토했으나 기각
 - 관련 ADR: [docs/adr/2026-06-05-component-default-assignee-auto-assignment.md](../adr/2026-06-05-component-default-assignee-auto-assignment.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-05-fr-cm-03-default-assignee.md](../specs/2026-06-05-fr-cm-03-default-assignee.md)
+
+핵심 시나리오 3줄 요약.
+- 컴포넌트 지정 시(생성 또는 PATCH) 담당자 미할당이면 컴포넌트 리드를 담당자로 자동 배정
+- 다중 컴포넌트면 리드 보유분 중 이름 사전순 첫 번째 리드 채택, 명시 담당자는 보존
+- createIssue에 componentIds 입력 추가(생성 트랜잭션에서 issue_components 링크 영속), 자동 배정은 silent
+
+## Brainstorming Check
+
+✅ 통과 (1회). 자동 배정 silent 처리(기존 changeAssignee 일관) + createIssue 컴포넌트 영속 주의 보강.
 
 ## Plan (← /bts-plan 채움)
 
