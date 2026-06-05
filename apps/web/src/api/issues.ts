@@ -22,6 +22,12 @@ export const issueResponseSchema = z.object({
    * 계약을 느슨하게 만들어 회귀 감지를 약화시키므로 사용하지 않는다.
    */
   assigneeId: z.string().uuid().nullable(),
+  /**
+   * FR-CM-02 — 이슈에 할당된 컴포넌트 ID 목록. 백엔드 IssueResponse.componentIds(단건 경로만 채움,
+   * 목록 경로는 빈 배열)와 정합. `.default([])`로 두어 componentIds 없는 기존 인라인 mock이 깨지지 않게 한다
+   * (메모리 zod-schema-strengthen-inline-mock-fanout).
+   */
+  componentIds: z.array(z.string().uuid()).default([]),
   version: z.number().int().nonnegative(),
   createdAt: z.string().nullable(),
   updatedAt: z.string().nullable(),

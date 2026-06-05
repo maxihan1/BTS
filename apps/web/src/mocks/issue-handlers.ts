@@ -27,6 +27,7 @@ export const createdIssueFixture = {
   currentStateKey: 'open',
   reporterId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
   assigneeId: null,
+  componentIds: [],
   version: 0,
   createdAt: '2026-05-27T00:00:00Z',
   updatedAt: null,
