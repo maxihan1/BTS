@@ -167,7 +167,8 @@ class IssueApplicationService(
      * 기존 이슈를 복제하여 같은 프로젝트에 새 이슈를 생성한다 (FR-IS-06).
      *
      * 흐름.
-     * 1. VIEW 권한 검증 (원본 Issue 범위) + CREATE 권한 검증 (대상 Project 범위) — 둘 중 하나라도 없으면 부수효과 없이 거부
+     * 1. VIEW 권한 검증 (원본 Issue 범위, 미인가 시 [assertViewIssueOrNotFound] 가 404 로 존재 숨김)
+     *    + CREATE 권한 검증 (대상 Project 범위, 미인가 시 403) — 둘 중 하나라도 없으면 부수효과 없이 거부
      * 2. 원본 조회 — 미존재/소프트삭제 시 IssueNotFoundException
      * 3. pg_advisory_xact_lock 으로 보호된 key_sequence 증가 → 새 IssueKey 발급
      * 4. [WorkflowKeyResolver.resolveStart] 로 초기 상태 키 결정 (원본 상태는 복사하지 않음)
@@ -185,8 +186,8 @@ class IssueApplicationService(
      * @param sourceKey 복제할 원본 이슈 키.
      * @param request 클론 옵션 (includeAssignee, summaryOverride).
      * @return 생성된 클론본 [Issue].
-     * @throws IssueAccessDeniedException 원본 VIEW 또는 대상 프로젝트 CREATE 권한이 없을 때.
-     * @throws IssueNotFoundException 원본 이슈가 없거나 소프트 삭제된 경우.
+     * @throws IssueAccessDeniedException 대상 프로젝트 CREATE 권한이 없을 때(403).
+     * @throws IssueNotFoundException 원본 이슈가 없거나 소프트 삭제된 경우, 또는 원본 VIEW 권한 미인가(존재 숨김 404).
      * @throws IssueWorkflowNotConfiguredException 프로젝트에 기본 워크플로우 스킴이 없을 때.
      */
     fun cloneIssue(
@@ -252,11 +253,12 @@ class IssueApplicationService(
      * 단건 경로이므로 description 을 HTML 로 렌더하여 descriptionHtml 에 채운다 (C3).
      * 목록 경로([listIssues])는 N건 렌더 비용 방지를 위해 descriptionHtml=null 유지.
      *
+     * 단건 VIEW 권한 미인가 시 [assertViewIssueOrNotFound] 가 존재를 숨겨 404 로 응답한다(403 아님).
+     *
      * @param actor 조회 행위자.
      * @param key 조회할 이슈 키.
      * @return [IssueResponse] DTO. descriptionHtml 이 채워져 있다.
-     * @throws IssueAccessDeniedException 권한 없을 때.
-     * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우.
+     * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우, 또는 VIEW 권한 미인가(존재 숨김).
      */
     @Transactional(readOnly = true)
     fun findByKey(
@@ -356,7 +358,7 @@ class IssueApplicationService(
      * 이슈의 현재 상태에서 이동 가능한 전이 목록을 조회한다.
      *
      * 흐름.
-     * 1. VIEW 권한 검증 (Issue 범위)
+     * 1. VIEW 권한 검증 (Issue 범위) — 미인가 시 [assertViewIssueOrNotFound] 가 존재를 숨겨 404 로 응답
      * 2. 이슈 조회 — 미존재 시 IssueNotFoundException
      * 3. [resolveWorkflowKeyReadOnly] 로 workflowKey 결정 (auto-assign 없음) —
      *    미할당이면 IssueWorkflowNotConfiguredException(422) 변환,
@@ -370,8 +372,7 @@ class IssueApplicationService(
      * @param actor 조회 행위자.
      * @param key 조회할 이슈 키.
      * @return 현재 상태에서 이동 가능한 [AvailableTransitionView] 목록.
-     * @throws IssueAccessDeniedException 권한 없을 때.
-     * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우.
+     * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우, 또는 VIEW 권한 미인가(존재 숨김).
      * @throws IssueWorkflowNotConfiguredException 프로젝트에 워크플로우 스킴이 미할당이거나
      *   워크플로우 row 가 없을 때. 부수 효과(DB 쓰기/이벤트)는 발생하지 않는다.
      */
@@ -618,11 +619,14 @@ class IssueApplicationService(
     /**
      * 프로젝트의 활성 이슈 목록을 페이지로 조회한다.
      *
+     * 단건 VIEW 와 달리 목록은 BROWSE 권한(Project 범위)을 검사하며, 미인가 시 403 을 유지한다
+     * (존재 숨김 정책은 단건 경로에만 적용 — ADR 2026-06-05-issue-browse-view-permission).
+     *
      * @param actor 조회 행위자.
      * @param projectKey 프로젝트 키.
      * @param pageable 페이지 정보. pageSize > 100 이면 거부.
      * @return [Page]<[IssueResponse]>.
-     * @throws IssueAccessDeniedException 권한 없을 때.
+     * @throws IssueAccessDeniedException BROWSE 권한 없을 때(403).
      * @throws IllegalArgumentException pageSize > 100 일 때.
      */
     @Transactional(readOnly = true)
