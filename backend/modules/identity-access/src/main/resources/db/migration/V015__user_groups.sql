@@ -17,3 +17,8 @@ CREATE TABLE group_memberships (
 
 -- group_id 는 복합 PK 선두라 인덱스 자동 생성. user_id FK 는 별도 인덱스 필요.
 CREATE INDEX ix_group_memberships_user ON group_memberships(user_id);
+
+COMMENT ON TABLE  user_groups             IS '전역 사용자 그룹 — 권한/알림 대상 묶음 (FR-PM-09)';
+COMMENT ON COLUMN user_groups.name        IS '그룹 이름 (전역 고유)';
+COMMENT ON COLUMN user_groups.description IS '그룹 설명 (nullable)';
+COMMENT ON TABLE  group_memberships       IS '사용자-그룹 N:M 멤버십 (그룹/사용자 삭제 시 CASCADE)';
