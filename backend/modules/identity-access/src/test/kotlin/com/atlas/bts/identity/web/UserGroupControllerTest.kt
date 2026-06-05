@@ -154,6 +154,9 @@ class UserGroupControllerTest {
     @Autowired
     lateinit var systemPermissionResolver: SystemPermissionResolver
 
+    @Autowired
+    lateinit var personalAccessTokenService: PersonalAccessTokenService
+
     private fun grantAdmin() {
         every { systemPermissionResolver.isSystemAdmin(ADMIN_ID) } returns true
     }
