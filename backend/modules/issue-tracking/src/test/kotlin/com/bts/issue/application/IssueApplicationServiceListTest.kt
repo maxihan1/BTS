@@ -85,7 +85,7 @@ class IssueApplicationServiceListTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Project(projectKey))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.BROWSE, IssueScope.Project(projectKey))
                 } returns true
                 every { repo.listWithType(projectKey, pageable) } returns page
             }
@@ -107,7 +107,7 @@ class IssueApplicationServiceListTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Project(projectKey))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.BROWSE, IssueScope.Project(projectKey))
                 } returns true
             }
 
@@ -123,7 +123,7 @@ class IssueApplicationServiceListTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Project(projectKey))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.BROWSE, IssueScope.Project(projectKey))
                 } returns true
                 every { repo.listWithType(projectKey, pageable) } returns PageImpl(emptyList(), pageable, 0L)
             }
@@ -139,7 +139,7 @@ class IssueApplicationServiceListTest : DescribeSpec({
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Project(projectKey))
+                    permissionResolver.hasPermission(actor.value, IssuePermission.BROWSE, IssueScope.Project(projectKey))
                 } returns false
             }
 

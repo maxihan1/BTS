@@ -272,8 +272,8 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
                 } returns false
             }
 
-            it("IssueAccessDeniedException 을 던지고 어떤 부수효과도 없다") {
-                shouldThrow<IssueAccessDeniedException> {
+            it("IssueNotFoundException 을 던지고 어떤 부수효과도 없다 (존재 숨김)") {
+                shouldThrow<IssueNotFoundException> {
                     sut.cloneIssue(actor, sourceKey, CloneIssueRequest())
                 }
                 verify(exactly = 0) { repo.findByKey(sourceKey) }
