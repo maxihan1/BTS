@@ -341,13 +341,13 @@
 
 전역 사용자 그룹 + 멤버십 인프라. 보안 수준(FR-PM-06)·권한 스킴·멘션이 소비할 "그룹" 단위를 제공한다. BTS에 그룹 개념이 전무(`user_external_accounts.groups` LDAP 문자열 목록만 존재, 로컬 가입 사용자는 그룹 0)해 FR-PM-06(이슈 보안 수준, 그룹 기반 멤버)이 막혀 있으며, 이 인프라가 그 선행을 해소한다. SDD [12.6.1 사용자 그룹](../../sdd/12-permissions.md).
 
-- [ ] D1. 도메인 — `UserGroup`(전역, name 유니크) + `GroupMembership`(group×user N:M) (책임. security-engineer)
-- [ ] D2. 명세 — 그룹 CRUD + 멤버 추가/제거, `SYSTEM_ADMIN` 관리, 전역 name 유니크, 중복 멤버 멱등 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `user_groups`, `group_memberships` (V015, init_codegen 미러) (책임. db-engineer)
-- [ ] D4. 백엔드 — Repository + 그룹/멤버십 관리 API + `SYSTEM_ADMIN` 가드 (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 — 통합테스트(@ActiveProfiles prod): SYSTEM_ADMIN 그룹 CRUD 허용·일반 사용자 거부, 멤버십 멱등 (책임. security-engineer)
+- [x] D1. 도메인 — `UserGroup`(전역, name 유니크) + `GroupMembership`(group×user N:M) (책임. security-engineer) (PR #88)
+- [x] D2. 명세 — 그룹 CRUD + 멤버 추가/제거, `SYSTEM_ADMIN` 관리, 전역 name 유니크, 중복 멤버 멱등 (책임. security-engineer) (PR #88)
+- [x] D3. 데이터 모델 — `user_groups`, `group_memberships` (V015) (책임. db-engineer) (PR #88)
+- [x] D4. 백엔드 — Repository + 그룹/멤버십 관리 API + `SYSTEM_ADMIN` 가드 (책임. security-engineer) (PR #88)
+- [x] D5. 백엔드 테스트 — 통합테스트(@ActiveProfiles prod): SYSTEM_ADMIN 그룹 CRUD 허용·일반 사용자 거부, 멤버십 멱등 (책임. security-engineer) (PR #88)
 
-> **범위 밖(명시 분리)**. 그룹 관리 UI/E2E(D6/D7)는 후속 FR. LDAP 그룹 문자열↔정규 그룹 매핑·주기 동기화(SDD 19.8.1)는 별도 FR. 그룹의 권한 스킴 grants 결선·그룹 멘션은 각 소비 FR(FR-PM-06 등) 소관.
+> **FR-PM-09 완료 (2026-06-05, PR #88)**. 전역 사용자 그룹 인프라 — `user_groups`(V015, name 전역 UNIQUE) + `group_memberships`(복합 PK, 두 FK ON DELETE CASCADE) + 불변 도메인 `UserGroup.create`(identity-access 첫 도메인 팩토리, trim/길이 require) + `UserGroupRepository`(raw SQL NamedParameterJdbcTemplate, memberCount 스칼라 서브쿼리, addMember/removeMember 멱등=ON CONFLICT DO NOTHING·RETURNING 회피) + `UserGroupService`(@Transactional, 도메인 우회 금지) + 관리 API 8종(`/api/v1/groups`). **권한 = 기존 `SystemPermissionResolver.isSystemAdmin` 재사용(신규 포트/권한코드 0, role_permissions 시드 무변경 → PermissionSchemaMigrationTest 카운트 비영향)**. 이중 가드(@PreAuthorize isAuthenticated + 핸들러 내 DB isSystemAdmin, @PreAuthorize hasRole 비사용=claim stale/PAT 일관). 미인가 403/미인증 401, prod 통합테스트가 거부 ground-truth(non-prod 마스킹 없음). 검증 — 모듈 전체 test(83 신규)+ktlint+detekt --rerun-tasks 그린, 회귀 0. ADR [2026-06-05-user-groups](../../decisions/2026-06-05-user-groups.md). **범위 밖**: 관리 UI/E2E(D6/D7) 후속, LDAP 그룹 동기화(SDD 19.8.1) 별도 FR, 소비처 결선(FR-PM-06 보안수준 멤버·권한스킴 grants·멘션)은 각 소비 FR. FR-PM-06(이슈 보안 수준)은 이 인프라 위에서 재개 가능.
 
 ## §NFR identity-access BC 완료 게이트
 
