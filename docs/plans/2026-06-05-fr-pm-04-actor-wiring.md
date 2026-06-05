@@ -159,6 +159,14 @@ prod 프로파일에서 전 스킴 API가 fail-closed(403)된다.
 - `./gradlew :modules:project-workflow:test`(모듈 전체 회귀 0).
 - `./gradlew :modules:project-workflow:ktlintMainSourceSetCheck :modules:project-workflow:ktlintTestSourceSetCheck :modules:project-workflow:detekt`.
 
+## 구현 결과 (/bts-impl)
+
+- **Task 1** ✅ `CurrentActor` 헬퍼 신설. TDD `682755f4`→`45f8a0e9`→`e2a686df`. 4 테스트(happy/null/anonymous/non-UUID→401).
+- **Task 2** ✅ `WorkflowSchemeController` 5곳 결선. TDD `130c4918`→`28a490fe`→`d5105053`. 25 테스트(무인증 401 + actor UUID 캡처 일치 신규 2건).
+- **Task 3** ✅ `ProjectWorkflowSchemeController` 2곳 결선 + CONCERN-B(actor 추출을 projectLookup 앞으로). TDD `21c137db`→`d824d831`→`3f6373b5`(refactor 빈 커밋). 8 테스트(무인증 401, 무인증+없는프로젝트 401, actor 일치 신규 3건).
+- **Task 4** ✅ 전수 검증. 컨트롤러 sentinel 잔존 0(앱서비스 `SYSTEM_ACTOR` 보존). `:modules:project-workflow:test`+ktlint(Main/Test)+detekt `BUILD SUCCESSFUL`(--rerun-tasks).
+- E2E 생략: UI/브라우저 표면 부재(순수 백엔드, test-assembled MockMvc로 검증 완결).
+
 ## Plan 메타
 
 - task 수: 4
