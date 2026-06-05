@@ -5,6 +5,7 @@ package com.bts.workflow.port.outbound
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import java.util.UUID
 import kotlin.reflect.full.memberFunctions
 
 /**
@@ -116,5 +117,17 @@ class PermissionResolverContractTest {
     fun `ActorId 는 유효한 UUID String 으로 정상 생성돼야 한다`() {
         val actorId = ActorId("44444444-4444-4444-4444-444444444444")
         assertThat(actorId.raw).isEqualTo("44444444-4444-4444-4444-444444444444")
+    }
+
+    // ── 6. toUuid() 변환 헬퍼 (FR-PM-04 D2 — shared-kernel UUID 포트용) ───────────
+
+    @Test
+    fun `toUuid() 는 raw UUID 문자열을 java util UUID 로 변환한다`() {
+        val actorId = ActorId("55555555-5555-4555-8555-555555555555")
+
+        val uuid = actorId.toUuid()
+
+        assertThat(uuid).isEqualTo(UUID.fromString("55555555-5555-4555-8555-555555555555"))
+        assertThat(uuid.toString()).isEqualTo(actorId.raw)
     }
 }

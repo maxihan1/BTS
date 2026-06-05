@@ -6,14 +6,14 @@ import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
-import com.bts.workflow.port.outbound.ActorId
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermission
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermissionResolver
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowSchemePermission
+import com.bts.shared.permission.WorkflowSchemePermissionResolver
+import com.bts.shared.permission.WorkflowSchemeScope
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
+import java.util.UUID
 
 /**
  * [AlwaysAllowWorkflowSchemePermissionResolver] 단위 테스트.
@@ -28,7 +28,7 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner
  * 7. prod profile 에서 Bean 이 등록되지 않는다 (stub 운영 노출 차단).
  */
 class AlwaysAllowWorkflowSchemePermissionResolverTest {
-    private val actor = ActorId("22222222-2222-2222-2222-222222222222")
+    private val actor = UUID.fromString("22222222-2222-2222-2222-222222222222")
 
     // ── ApplicationContextRunner 픽스처 ──────────────────────────────────────
     private val contextRunner =

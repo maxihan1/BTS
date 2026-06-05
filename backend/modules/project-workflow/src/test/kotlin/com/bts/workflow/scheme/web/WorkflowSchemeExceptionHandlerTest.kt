@@ -2,6 +2,9 @@
 
 package com.bts.workflow.scheme.web
 
+import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
+import com.bts.shared.permission.WorkflowSchemePermission
+import com.bts.shared.permission.WorkflowSchemeScope
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.scheme.exception.IssueTypeNotFoundException
 import com.bts.workflow.scheme.exception.MappingDefaultDuplicateException
@@ -30,6 +33,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import java.util.UUID
 
 /**
  * [WorkflowSchemeExceptionHandler] RFC 7807 ProblemDetail 매핑 11건 검증.
@@ -209,6 +213,21 @@ class WorkflowSchemeExceptionHandlerTest {
             }
     }
 
+    // ── 403 WORKFLOW_SCHEME_ACCESS_DENIED ─────────────────────────────────────
+
+    @Test
+    fun `WORKFLOW_SCHEME_ACCESS_DENIED — 403 Forbidden + errorCode`() {
+        mockMvc.get("/test/workflow-scheme-access-denied")
+            .andExpect {
+                status { isForbidden() }
+                content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+                jsonPath("$.errorCode") { value("WORKFLOW_SCHEME_ACCESS_DENIED") }
+                jsonPath("$.type") { value("https://bts.example.com/problems/workflow-scheme-access-denied") }
+                // detail 이 고정 일반 메시지와 정확히 일치 → actor UUID/scope 등 내부 식별자 미노출 보장(C1 누출 방지).
+                jsonPath("$.detail") { value("워크플로우 스킴 작업 권한이 없습니다.") }
+            }
+    }
+
     // ── Test context configuration ────────────────────────────────────────────
 
     @Configuration(proxyBeanMethods = false)
@@ -258,5 +277,13 @@ class WorkflowSchemeExceptionHandlerTest {
 
         @GetMapping("/test/scheme-standard-field-locked")
         fun schemeStandardFieldLocked(): Nothing = throw SchemeStandardFieldLockedException(key = "software-scheme", field = "name")
+
+        @GetMapping("/test/workflow-scheme-access-denied")
+        fun workflowSchemeAccessDenied(): Nothing =
+            throw WorkflowSchemeAccessDeniedException(
+                actorId = UUID.fromString("00000000-0000-4000-8000-000000000001"),
+                permission = WorkflowSchemePermission.MANAGE_SCHEME,
+                scope = WorkflowSchemeScope.Global,
+            )
     }
 }

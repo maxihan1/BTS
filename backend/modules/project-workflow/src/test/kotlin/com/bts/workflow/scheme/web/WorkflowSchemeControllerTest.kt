@@ -3,6 +3,9 @@
 package com.bts.workflow.scheme.web
 
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.permission.WorkflowSchemePermission
+import com.bts.shared.permission.WorkflowSchemePermissionResolver
+import com.bts.shared.permission.WorkflowSchemeScope
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
@@ -14,9 +17,6 @@ import com.bts.workflow.scheme.exception.MappingDuplicateException
 import com.bts.workflow.scheme.exception.SchemeInUseException
 import com.bts.workflow.scheme.exception.SchemeStandardNotDeletableException
 import com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermission
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermissionResolver
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemeScope
 import com.bts.workflow.scheme.web.dto.MappingResponseDetail
 import com.bts.workflow.scheme.web.dto.WorkflowSchemeDetailResponse
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -105,6 +105,9 @@ class WorkflowSchemeControllerTest {
 
     /** 컨트롤러가 내부적으로 사용하는 SYSTEM_ACTOR ActorId. */
     private val systemActor = ActorId("00000000-0000-0000-0000-000000000001")
+
+    // 컨트롤러가 권한 포트에 넘기는 actor.toUuid() 결과 — verify 블록 기대값.
+    private val systemActorUuid = UUID.fromString("00000000-0000-0000-0000-000000000001")
 
     @BeforeEach
     fun setUp() {
@@ -415,7 +418,7 @@ class WorkflowSchemeControllerTest {
 
         verify {
             permissionResolver.requirePermission(
-                systemActor,
+                systemActorUuid,
                 WorkflowSchemePermission.MANAGE_SCHEME,
                 WorkflowSchemeScope.Global,
             )
@@ -445,7 +448,7 @@ class WorkflowSchemeControllerTest {
 
         verify {
             permissionResolver.requirePermission(
-                systemActor,
+                systemActorUuid,
                 WorkflowSchemePermission.MANAGE_SCHEME,
                 WorkflowSchemeScope.Global,
             )
@@ -508,7 +511,7 @@ class WorkflowSchemeControllerTest {
 
         verify {
             permissionResolver.requirePermission(
-                systemActor,
+                systemActorUuid,
                 WorkflowSchemePermission.MANAGE_SCHEME,
                 WorkflowSchemeScope.Global,
             )

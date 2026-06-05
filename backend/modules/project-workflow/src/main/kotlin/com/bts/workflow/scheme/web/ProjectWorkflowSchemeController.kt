@@ -2,16 +2,17 @@
 
 package com.bts.workflow.scheme.web
 
+import com.bts.shared.permission.WorkflowSchemePermission
+import com.bts.shared.permission.WorkflowSchemePermissionResolver
+import com.bts.shared.permission.WorkflowSchemeScope
 import com.bts.workflow.port.outbound.ActorId
+import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.domain.ProjectKey
 import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
 import com.bts.workflow.scheme.domain.WorkflowScheme
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
 import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermission
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemePermissionResolver
-import com.bts.workflow.scheme.port.outbound.WorkflowSchemeScope
 import com.bts.workflow.web.DataResponse
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -80,7 +81,11 @@ class ProjectWorkflowSchemeController(
             projectLookupPort.findIdByKey(key)
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
         val actor = ActorId(SYSTEM_ACTOR_UUID)
-        permissionResolver.requirePermission(actor, WorkflowSchemePermission.ASSIGN_SCHEME, WorkflowSchemeScope.Project(projectKey))
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.ASSIGN_SCHEME,
+            WorkflowSchemeScope.Project(projectKey),
+        )
         val assignment = appService.assignToProject(actor, projectId, projectKey, WorkflowSchemeKey(body.schemeKey))
         return ResponseEntity.ok(DataResponse(data = assignment.toResponse()))
     }
@@ -104,7 +109,11 @@ class ProjectWorkflowSchemeController(
             projectLookupPort.findIdByKey(key)
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
         val actor = ActorId(SYSTEM_ACTOR_UUID)
-        permissionResolver.requirePermission(actor, WorkflowSchemePermission.ASSIGN_SCHEME, WorkflowSchemeScope.Project(projectKey))
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.ASSIGN_SCHEME,
+            WorkflowSchemeScope.Project(projectKey),
+        )
         val scheme = appService.findAssignedScheme(projectId, projectKey)
         return ResponseEntity.ok(DataResponse(data = scheme.toResponse()))
     }

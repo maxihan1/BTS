@@ -1,18 +1,18 @@
-// 워크플로우 스킴 권한 평가 범위 sealed interface — BC 격리 원칙에 따라 이 BC 전용으로 정의
+// 워크플로우 스킴 권한 평가 범위 sealed interface(공용) — FR-PM-04 D2 project-workflow→shared-kernel 이동.
 
-package com.bts.workflow.scheme.port.outbound
+package com.bts.shared.permission
 
 /**
  * 워크플로우 스킴 권한 평가의 적용 범위.
  *
- * project-workflow BC 의 기존 [com.bts.workflow.port.outbound.Scope] 와 동일한 패턴이나,
- * 스킴 권한은 이슈 전이 권한과 분리된 독립 포트를 가진다.
- * ADR `project-scheme-mapping-jira-align` 참조.
- *
  * when 식에서 else 분기 없이 컴파일러가 완전성(exhaustiveness)을 보장한다.
  *
+ * ## 배치 (BC 격리)
+ * FR-PM-04 D2 — project-workflow → shared-kernel 로 이동했다. [Project.key] 가 plain String
+ * 이라 이동에 BC 의존이 없다(identity 도메인 타입 미참조).
+ *
  * ## 구현체 설명
- * - [Global] — 시스템 수준 권한. 예. 스킴 목록 조회, 스킴 생성.
+ * - [Global] — 시스템 수준 권한. 예. 스킴 생성·수정·삭제.
  * - [Project] — 프로젝트 단위 권한. 예. `ATLAS` 프로젝트에 스킴 배정.
  */
 sealed interface WorkflowSchemeScope {
