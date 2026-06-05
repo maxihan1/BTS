@@ -125,6 +125,8 @@ data class Issue(
          * @param labels 라벨 목록. 빈 문자열 자동 제거, 공백-only/50자 초과/21개 초과 시 예외.
          * @param environment 재현 환경 설명. null 허용.
          * @param impact 영향도 1..3. null 허용.
+         * @param assigneeId 담당자. null 이면 미할당.
+         * @param componentIds 이슈가 속한 컴포넌트 UUID 목록. 중복은 자동 제거된다. 기본값 빈 리스트.
          * @return 생성된 [Issue] 인스턴스.
          */
         @Suppress("LongParameterList")
@@ -142,6 +144,7 @@ data class Issue(
             environment: String? = null,
             impact: Int? = null,
             assigneeId: ActorId? = null,
+            componentIds: List<UUID> = emptyList(),
         ): Issue {
             validateSummary(summary)
             validatePriority(priority)
@@ -166,6 +169,7 @@ data class Issue(
                 environment = environment,
                 impact = impact,
                 assigneeId = assigneeId,
+                componentIds = componentIds.filterNotNull().distinct(),
             )
         }
     }
