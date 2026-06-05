@@ -10,6 +10,8 @@ import { ApiError } from '@/api/client'
 import { useUpdateIssueSummary, issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { useChangeAssignee } from '@/api/useChangeAssignee'
 import { useDeleteIssue } from '@/api/useDeleteIssue'
+import { useChangeComponents } from '@/api/useChangeComponents'
+import { fetchComponents } from '@/api/components'
 import { useIssueTypes } from '@/hooks/use-issue-types'
 import { useIssueTransitions, issueTransitionKeys } from '@/hooks/use-issue-transitions'
 import { useUsers, useUsersByIds } from '@/hooks/use-users'
@@ -130,6 +132,16 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   const currentAssignee = assigneeList[0] ?? null
 
   const changeAssigneeMutation = useChangeAssignee()
+  const changeComponentsMutation = useChangeComponents()
+
+  /** 프로젝트 컴포넌트 목록 — issue 로드 후 projectKey 기준으로 조회 */
+  const { data: projectComponents = [] } = useQuery({
+    queryKey: ['components', issue?.projectKey],
+    queryFn: () => fetchComponents(issue!.projectKey),
+    enabled: issue !== undefined,
+    staleTime: 60_000,
+  })
+
   const {
     data: transitions = [],
     isError: isTransitionsError,
@@ -355,6 +367,21 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
     changeAssigneeMutation.mutate({ key: issue.key, assigneeId: userId, expectedVersion: issue.version })
   }
 
+  // ── 컴포넌트 변경 핸들러 ─────────────────────────────────────────────────
+  /**
+   * 컴포넌트 다중 할당 변경 핸들러.
+   * useChangeComponents mutation을 통해 PATCH /api/v1/issues/{key}/components 호출.
+   * expectedVersion은 현재 issue.version을 사용한다 (OCC 낙관락).
+   *
+   * componentIds는 issueResponseSchema에 추가되어 issue.componentIds로 직접 접근한다(백엔드 단건 응답이 채움).
+   *
+   * @param ids 새로 할당할 컴포넌트 UUID 배열
+   */
+  function handleComponentsChange(ids: string[]) {
+    if (issue === undefined) return
+    changeComponentsMutation.mutate({ key: issue.key, componentIds: ids, expectedVersion: issue.version })
+  }
+
   // ── 상태전이 핸들러 ───────────────────────────────────────────────────────
 
   /**
@@ -562,6 +589,9 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
             onAssigneeSearch={setAssigneeSearchQuery}
             onAssigneeChange={handleAssigneeChange}
             currentAssignee={currentAssignee}
+            componentIds={issue.componentIds}
+            components={projectComponents}
+            onComponentsChange={handleComponentsChange}
           />
         )}
       </div>

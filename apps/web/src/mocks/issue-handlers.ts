@@ -27,6 +27,7 @@ export const createdIssueFixture = {
   currentStateKey: 'open',
   reporterId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
   assigneeId: null,
+  componentIds: [],
   version: 0,
   createdAt: '2026-05-27T00:00:00Z',
   updatedAt: null,
@@ -265,6 +266,62 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
   // 수정 결과를 오버라이드에 보관 — invalidateQueries 후 GET 단건이 최신 타입/요약/5필드 반영 (refetch 롤백 방지).
   issueOverrides.set(key, updated)
   // POST 로 생성된 이슈는 목록(buildFilteredPage) 일관성을 위해 createdIssues 도 갱신.
+  if (createdIssues.has(key)) {
+    createdIssues.set(key, updated)
+  }
+  return HttpResponse.json({ data: updated })
+})
+
+/**
+ * PATCH /api/v1/issues/:key/components — 컴포넌트 변경 핸들러 (FR-CM-02).
+ * 분기 순서 (backend 일치):
+ *   (1) 이슈 not-found → 404
+ *   (2) expectedVersion 불일치 → 409 VERSION_CONFLICT
+ *   (3) componentIds 중 UUID 형식이 아닌 항목 존재 → 422 COMPONENT_NOT_FOUND
+ *   (4) 성공 → 200 + { data: 수정된 IssueResponse(version+1) }
+ *       stateful: issueOverrides에 변경 사항 영속 (invalidate refetch 후 롤백 방지)
+ */
+const changeComponentsHandler = http.patch('/api/v1/issues/:key/components', async ({ params, request }) => {
+  const key = params['key'] as string
+  const found = resolveIssue(key)
+  if (found === undefined) {
+    return HttpResponse.json(
+      { message: `이슈를 찾을 수 없습니다: ${key}` },
+      { status: 404 },
+    )
+  }
+  const body = await request.clone().json() as {
+    componentIds: string[]
+    expectedVersion?: number
+  }
+
+  // (2) VERSION_CONFLICT — expectedVersion 불일치
+  if (body.expectedVersion !== undefined && body.expectedVersion !== found.version) {
+    return HttpResponse.json(
+      { errorCode: 'VERSION_CONFLICT', message: '버전 충돌이 발생했습니다.' },
+      { status: 409 },
+    )
+  }
+
+  // (3) COMPONENT_NOT_FOUND — UUID 형식이 아닌 componentId 존재
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  const invalidId = body.componentIds.find((id) => !uuidPattern.test(id))
+  if (invalidId !== undefined) {
+    return HttpResponse.json(
+      { errorCode: 'COMPONENT_NOT_FOUND', message: `컴포넌트를 찾을 수 없습니다: ${invalidId}` },
+      { status: 422 },
+    )
+  }
+
+  // (4) 성공 — componentIds 영속 + version+1, stateful 보관 (교훈: msw-mutation-stateful-refetch)
+  const updated: IssueResponse = {
+    ...found,
+    componentIds: body.componentIds,
+    descriptionHtml: null, // PATCH 응답은 목록과 동일 — 단건 GET에서만 채워짐
+    version: found.version + 1,
+    updatedAt: new Date().toISOString(),
+  }
+  issueOverrides.set(key, updated)
   if (createdIssues.has(key)) {
     createdIssues.set(key, updated)
   }
@@ -673,6 +730,7 @@ export const issueHandlers = [
   getIssueHandler,
   createIssueHandler,
   updateIssueHandler,
+  changeComponentsHandler,
   changeAssigneeHandler,
   deleteIssueHandler,
   getTransitionsHandler,

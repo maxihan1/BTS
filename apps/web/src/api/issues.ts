@@ -22,6 +22,12 @@ export const issueResponseSchema = z.object({
    * 계약을 느슨하게 만들어 회귀 감지를 약화시키므로 사용하지 않는다.
    */
   assigneeId: z.string().uuid().nullable(),
+  /**
+   * FR-CM-02 — 이슈에 할당된 컴포넌트 ID 목록. 백엔드 IssueResponse.componentIds(단건 경로만 채움,
+   * 목록 경로는 빈 배열)와 정합. `.default([])`로 두어 componentIds 없는 기존 인라인 mock이 깨지지 않게 한다
+   * (메모리 zod-schema-strengthen-inline-mock-fanout).
+   */
+  componentIds: z.array(z.string().uuid()).default([]),
   version: z.number().int().nonnegative(),
   createdAt: z.string().nullable(),
   updatedAt: z.string().nullable(),
@@ -368,6 +374,40 @@ export async function fetchBulkAvailableTransitions(
  */
 export async function changeAssignee(key: string, input: ChangeAssigneeInput): Promise<IssueResponse> {
   const res = await apiFetch(`/api/v1/issues/${key}/assignee`, { method: 'PATCH', body: input })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const raw: unknown = await res.json()
+  const wrapped = dataResponseSchema(issueResponseSchema).parse(raw)
+  return wrapped.data
+}
+
+/**
+ * 컴포넌트 변경 입력 타입.
+ * PATCH /api/v1/issues/{key}/components body 형태.
+ * - componentIds: 할당할 컴포넌트 UUID 목록 (빈 배열이면 전체 제거)
+ * - expectedVersion 필수 (낙관적 잠금 OCC)
+ */
+export interface ChangeComponentsInput {
+  /** 할당할 컴포넌트 UUID 목록. 빈 배열이면 전체 제거. */
+  componentIds: string[]
+  /** 낙관적 잠금(OCC)을 위한 현재 버전 번호 */
+  expectedVersion: number
+}
+
+/**
+ * 이슈 컴포넌트 목록을 변경한다.
+ * PATCH /api/v1/issues/{key}/components body { componentIds: UUID[], expectedVersion: Long }
+ *
+ * @param key 이슈 식별 키 (예: "ATLAS-1")
+ * @param input componentIds(UUID 배열) · expectedVersion(OCC 버전)
+ * @returns 변경된 IssueResponse — componentIds와 version이 갱신된 상태
+ * @throws ApiError(409) 낙관적 잠금 충돌 시
+ * @throws ApiError(422) componentIds 중 실재하지 않는 컴포넌트가 있을 때 (COMPONENT_NOT_FOUND)
+ */
+export async function changeComponents(key: string, input: ChangeComponentsInput): Promise<IssueResponse> {
+  const res = await apiFetch(`/api/v1/issues/${key}/components`, { method: 'PATCH', body: input })
   if (!res.ok) {
     const errorBody: unknown = await res.json().catch(() => ({}))
     throw new ApiError(res.status, errorBody)

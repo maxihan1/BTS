@@ -88,6 +88,20 @@ data class AppChangeAssigneeRequest(
 )
 
 /**
+ * 이슈 컴포넌트 변경 요청 DTO (FR-CM-02).
+ *
+ * 이슈에 연결된 컴포넌트 목록을 교체한다(전체 replace).
+ * 중복 ID 는 도메인 [com.bts.issue.domain.Issue.assignComponents] 에서 distinct 처리된다.
+ *
+ * @param componentIds 새로 연결할 컴포넌트 UUID 목록. 빈 목록이면 전체 해제.
+ * @param expectedVersion 낙관적 잠금 버전. 읽은 version 값과 일치해야 업데이트가 성공한다.
+ */
+data class AppChangeComponentsRequest(
+    val componentIds: List<UUID>,
+    val expectedVersion: Long,
+)
+
+/**
  * 이슈 클론 요청 DTO (FR-IS-06).
  *
  * 클론은 원본 이슈의 필드(summary/description/typeId/priority/labels/environment/impact)를 복사한

@@ -212,6 +212,14 @@ export const issueDetailStrings = {
   cloneErrorValidation: '입력 값이 올바르지 않습니다. 확인 후 다시 시도해 주세요.',
   /** 클론 실패 — 기본 에러 */
   cloneErrorDefault: '이슈 클론 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+
+  // ── 컴포넌트(components) — FR-CM-02 ─────────────────────────────────
+  /** 메타패널 — 컴포넌트 레이블 */
+  componentsLabel: '컴포넌트',
+  /** 422 COMPONENT_NOT_FOUND 에러 메시지 */
+  componentNotFoundError: '선택한 컴포넌트를 찾을 수 없습니다. 다시 선택해 주세요.',
+  /** 컴포넌트 변경 실패 에러 메시지 */
+  componentChangeError: '컴포넌트 변경 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
 } as const
 
 /** 이슈 생성 폼 관련 문자열 */

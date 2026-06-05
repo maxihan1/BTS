@@ -4,7 +4,9 @@ import { useState, useEffect, useRef } from 'react'
 import type { IssueResponse, IssueTransition } from '@/api/issues'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import type { UserSummary } from '@/api/users'
+import type { Component } from '@/api/components'
 import { Button } from '@/components/ui/button'
+import { ComponentMultiSelect } from '@/components/issue/ComponentMultiSelect'
 import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
 import { formatDate } from '@/lib/date-format'
 import { issueDetailStrings } from '@/i18n/ko'
@@ -67,6 +69,12 @@ export interface IssueMetaPanelProps {
    * null이면 "미지정" 표시.
    */
   currentAssignee: UserSummary | null
+  /** 현재 이슈에 할당된 컴포넌트 UUID 목록 — route에서 전달. 미전달 시 빈 배열. */
+  componentIds?: string[]
+  /** 프로젝트 컴포넌트 전체 목록 — fetchComponents(projectKey) 결과. 미전달 시 빈 배열. */
+  components?: Component[]
+  /** 컴포넌트 변경 콜백 — 새 UUID 배열 전달 (route가 useChangeComponents mutation 소유). 미전달 시 no-op. */
+  onComponentsChange?: (ids: string[]) => void
 }
 
 /**
@@ -101,6 +109,9 @@ export function IssueMetaPanel({
   onAssigneeSearch,
   onAssigneeChange,
   currentAssignee,
+  componentIds = [],
+  components = [],
+  onComponentsChange = () => { /* no-op */ },
 }: IssueMetaPanelProps): JSX.Element {
   // 권한 조회 — fail-closed: 로딩 중·에러·미확정이면 false(비활성)
   const { data: permissionsData, isLoading: isPermissionsLoading, isError: isPermissionsError } =
@@ -209,6 +220,17 @@ export function IssueMetaPanel({
             onSearch={onAssigneeSearch}
             onAssigneeChange={onAssigneeChange}
             canEdit={canEdit}
+          />
+        </div>
+
+        {/* 컴포넌트 — ComponentMultiSelect (FR-CM-02) */}
+        <div className="px-3.5 py-3 border-b border-border" data-testid="components-section">
+          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.componentsLabel}</p>
+          <ComponentMultiSelect
+            value={componentIds}
+            options={components}
+            onChange={onComponentsChange}
+            disabled={!canEdit}
           />
         </div>
 

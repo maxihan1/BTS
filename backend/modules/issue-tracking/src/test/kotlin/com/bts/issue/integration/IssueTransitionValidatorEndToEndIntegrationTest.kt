@@ -37,6 +37,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.mockk.mockk
 import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
@@ -353,6 +354,7 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
                 workflowPort = workflowTransitionAdapter,
                 workflowKeyResolver = workflowKeyResolver,
                 userLookupPort = userLookupPort,
+                componentRepository = mockk(relaxed = true),
                 clock = clock,
             )
 

@@ -73,6 +73,7 @@ class IssueApplicationServiceTest : DescribeSpec({
             workflowPort = workflowPort,
             workflowKeyResolver = workflowKeyResolver,
             userLookupPort = userLookupPort,
+            componentRepository = mockk(relaxed = true),
             clock = clock,
         )
 
@@ -156,6 +157,8 @@ class IssueApplicationServiceTest : DescribeSpec({
 
     beforeEach {
         clearMocks(repo, eventPublisher, permissionResolver, userLookupPort, answers = false)
+        // withSingleDetail() 내부에서 findActiveComponentIdsByIssue 호출 — 단건 응답 테스트 기본 stub
+        every { repo.findActiveComponentIdsByIssue(any()) } returns emptyList()
     }
 
     // ── IssueResponse 신규 필드 노출 ──────────────────────────────────────────
