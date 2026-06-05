@@ -41,22 +41,25 @@ import java.util.UUID
  * - 미매핑 프로젝트는 기본 스킴(00000000-0000-0000-0000-000000000001) fallback 경로를 검증한다.
  * - Bean 배타: prod 프로파일에서 [IdentityAccessIssuePermissionResolver]가 [IssuePermissionResolver]로 주입됨을 확인한다.
  *
- * ## 13케이스 매트릭스
- * | Actor    | Permission  | Scope         | 기대  |
- * |----------|-------------|---------------|-------|
- * | ADMIN    | CREATE      | Issue(key)    | true  |
- * | ADMIN    | UPDATE      | Issue(key)    | true  |
- * | ADMIN    | SOFT_DELETE | Issue(key)    | true  |
- * | MEMBER   | CREATE      | Issue(key)    | true  |
- * | MEMBER   | UPDATE      | Issue(key)    | true  |
- * | MEMBER   | SOFT_DELETE | Issue(key)    | false |
- * | 비멤버   | CREATE      | Issue(key)    | false |
- * | 비멤버   | UPDATE      | Issue(key)    | false |
- * | 비멤버   | SOFT_DELETE | Issue(key)    | false |
- * | MEMBER   | VIEW        | Issue(key)    | true  |  ← 범위 밖 멤버 통과
- * | MEMBER   | TRANSITION  | Issue(key)    | true  |  ← 범위 밖 멤버 통과
- * | 비멤버   | VIEW        | Issue(key)    | false |  ← 범위 밖 비멤버 거부
- * | 비멤버   | TRANSITION  | Issue(key)    | false |  ← 범위 밖 비멤버 거부
+ * ## 권한 매트릭스 (FR-PM-05 BROWSE/VIEW 매트릭스 이관 반영)
+ * | Actor    | Permission  | Scope         | 기대  | 사유                         |
+ * |----------|-------------|---------------|-------|------------------------------|
+ * | ADMIN    | CREATE      | Issue(key)    | true  | CREATE_ISSUE 매트릭스        |
+ * | ADMIN    | UPDATE      | Issue(key)    | true  | UPDATE_ISSUE 매트릭스        |
+ * | ADMIN    | SOFT_DELETE | Issue(key)    | true  | DELETE_ISSUE 매트릭스        |
+ * | MEMBER   | CREATE      | Issue(key)    | true  | CREATE_ISSUE 매트릭스        |
+ * | MEMBER   | UPDATE      | Issue(key)    | true  | UPDATE_ISSUE 매트릭스        |
+ * | MEMBER   | SOFT_DELETE | Issue(key)    | false | DELETE_ISSUE 미보유          |
+ * | 비멤버   | CREATE      | Issue(key)    | false | 멤버 게이트 차단             |
+ * | 비멤버   | UPDATE      | Issue(key)    | false | 멤버 게이트 차단             |
+ * | 비멤버   | SOFT_DELETE | Issue(key)    | false | 멤버 게이트 차단             |
+ * | MEMBER   | VIEW        | Issue(key)    | true  | VIEW_ISSUE 매트릭스 보유     |
+ * | MEMBER   | TRANSITION  | Issue(key)    | true  | 범위 밖(미위임) → 멤버 통과  |
+ * | 비멤버   | VIEW        | Issue(key)    | false | 멤버 게이트 차단             |
+ * | 비멤버   | TRANSITION  | Issue(key)    | false | 멤버 게이트 차단             |
+ * | MEMBER   | BROWSE      | Project(key)  | true  | BROWSE_PROJECT 매트릭스 보유 |
+ * | 비멤버   | BROWSE      | Project(key)  | false | 멤버 게이트 차단             |
+ * | ADMIN    | BROWSE      | Project(key)  | true  | BROWSE_PROJECT 매트릭스 보유 |
  *
  * ## Testcontainers 설계
  * companion object에 static @Container 선언 + @DynamicPropertySource 패턴
@@ -190,12 +193,12 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
         assertThat(resolver).isInstanceOf(IdentityAccessIssuePermissionResolver::class.java)
     }
 
-    // ── 13케이스 매트릭스 (@TestFactory) ─────────────────────────────────────
+    // ── 권한 매트릭스 (@TestFactory) ──────────────────────────────────────────
 
-    // LongMethod: 13케이스 데이터 테이블을 한 @TestFactory에 모으는 것이 의도(전수 매트릭스 가독성).
+    // LongMethod: 매트릭스 데이터 테이블을 한 @TestFactory에 모으는 것이 의도(전수 매트릭스 가독성).
     @Suppress("LongMethod")
     @TestFactory
-    fun `권한 매트릭스 — 역할 × 권한 13케이스 전수 검증`(): List<DynamicTest> {
+    fun `권한 매트릭스 — 역할 × 권한 전수 검증`(): List<DynamicTest> {
         data class Case(
             val label: String,
             val actorId: UUID,
@@ -272,14 +275,22 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
                     IssueScope.Issue(issueKey),
                     false,
                 ),
-                // ── 범위 밖 × {멤버, 비멤버} — VIEW + TRANSITION ─────────────
+                // ── VIEW — FR-PM-05로 VIEW_ISSUE 매트릭스 위임 (더 이상 범위 밖 멤버 통과 아님) ─
                 Case(
-                    "MEMBER + VIEW(범위 밖) → 멤버 통과 허용",
+                    "MEMBER + VIEW → 허용 (VIEW_ISSUE 매트릭스 보유)",
                     memberId,
                     IssuePermission.VIEW,
                     IssueScope.Issue(issueKey),
                     true,
                 ),
+                Case(
+                    "비멤버 + VIEW → 거부 (멤버 게이트)",
+                    nonMemberId,
+                    IssuePermission.VIEW,
+                    IssueScope.Issue(issueKey),
+                    false,
+                ),
+                // ── TRANSITION — 아직 미위임(범위 밖) → 멤버 통과 / 비멤버 거부 ──
                 Case(
                     "MEMBER + TRANSITION(범위 밖) → 멤버 통과 허용",
                     memberId,
@@ -288,16 +299,39 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
                     true,
                 ),
                 Case(
-                    "비멤버 + VIEW(범위 밖) → 거부",
-                    nonMemberId,
-                    IssuePermission.VIEW,
-                    IssueScope.Issue(issueKey),
-                    false,
-                ),
-                Case(
                     "비멤버 + TRANSITION(범위 밖) → 거부",
                     nonMemberId,
                     IssuePermission.TRANSITION,
+                    IssueScope.Issue(issueKey),
+                    false,
+                ),
+                // ── BROWSE — FR-PM-05 BROWSE_PROJECT 매트릭스 위임 (Project 범위) ──
+                Case(
+                    "MEMBER + BROWSE → 허용 (BROWSE_PROJECT 매트릭스 보유) [S1]",
+                    memberId,
+                    IssuePermission.BROWSE,
+                    IssueScope.Project(projectKey),
+                    true,
+                ),
+                Case(
+                    "비멤버 + BROWSE → 거부 (멤버 게이트) [S2]",
+                    nonMemberId,
+                    IssuePermission.BROWSE,
+                    IssueScope.Project(projectKey),
+                    false,
+                ),
+                Case(
+                    "PROJECT_ADMIN + BROWSE → 허용 (BROWSE_PROJECT 매트릭스 보유)",
+                    adminId,
+                    IssuePermission.BROWSE,
+                    IssueScope.Project(projectKey),
+                    true,
+                ),
+                // ── 비멤버 + VIEW(Issue 범위) → 거부 [S4] ───────────────────────
+                Case(
+                    "비멤버 + VIEW(Issue) → 거부 (멤버 게이트) [S4]",
+                    nonMemberId,
+                    IssuePermission.VIEW,
                     IssueScope.Issue(issueKey),
                     false,
                 ),
