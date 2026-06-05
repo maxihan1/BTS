@@ -84,7 +84,9 @@ class IssueController(
     /**
      * 새 이슈를 생성한다.
      *
-     * @param request 이슈 생성 요청 바디 (Jakarta Validation 적용)
+     * @param request 이슈 생성 요청 바디 (Jakarta Validation 적용).
+     *   [CreateIssueRequest.componentIds] 를 app command에 그대로 전달한다 (FR-CM-03).
+     *   componentIds 미포함 시 빈 목록으로 처리한다.
      * @return 201 Created + [IssueResponse] body + `Location: /api/v1/issues/{key}` 헤더
      */
     @PostMapping

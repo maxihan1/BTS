@@ -2,7 +2,6 @@
 
 package com.bts.issue.adapter.inbound.rest
 
-import com.bts.issue.application.CreateIssueRequest as AppCreateIssueRequest
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
@@ -33,6 +32,7 @@ import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import java.time.Instant
 import java.util.UUID
+import com.bts.issue.application.CreateIssueRequest as AppCreateIssueRequest
 
 /**
  * IssueController POST /api/v1/issues componentIds 전달 검증 테스트 — FR-CM-03 Task-3.
@@ -48,7 +48,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [IssueControllerTest.TestMvcConfig::class])
 @WebAppConfiguration
 class IssueControllerTest {
-
     /**
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      */
