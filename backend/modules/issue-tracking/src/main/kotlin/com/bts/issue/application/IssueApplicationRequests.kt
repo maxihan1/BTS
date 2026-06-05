@@ -13,12 +13,14 @@ import java.util.UUID
  * @param typeId 이슈 유형 식별자 VO. null 이면 서비스가 task 타입으로 fallback 한다 (FR-6).
  * @param summary 이슈 제목. 1~255자.
  * @param reporterId 이슈 생성자 ActorId.
+ * @param componentIds 이슈 생성 시 연결할 컴포넌트 UUID 목록. 빈 목록이면 컴포넌트 미연결로 생성한다 (FR-CM-03).
  */
 data class CreateIssueRequest(
     val projectKey: String,
     val summary: String,
     val reporterId: ActorId,
     val typeId: IssueTypeId? = null,
+    val componentIds: List<UUID> = emptyList(),
 )
 
 /**

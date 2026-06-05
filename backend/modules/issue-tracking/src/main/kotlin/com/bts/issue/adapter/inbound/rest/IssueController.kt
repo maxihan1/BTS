@@ -101,6 +101,7 @@ class IssueController(
                 summary = request.summary,
                 reporterId = actor,
                 typeId = request.typeId?.let { IssueTypeId(it) },
+                componentIds = request.componentIds,
             )
         val issue = service.createIssue(actor, appRequest)
         // createIssue 는 Issue 도메인 객체를 반환하므로, type 요약 포함 응답을 위해 findByKey 재조회한다.
