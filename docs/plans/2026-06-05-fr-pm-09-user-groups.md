@@ -180,3 +180,10 @@ FR-PM-06(이슈 보안 수준, 그룹 기반 멤버)이 막혀 있음 → 이 �
 **추정**: T6 부팅 실패는 추론 — 최종 확인은 구현 후 `:modules:identity-access:test`. B1 반영으로 사전 차단.
 
 → BLOCKER 해소 완료. 게이트 1 진입 가능.
+
+## 구현 검증 (bts-impl)
+
+- 6 task 전부 TDD red→green→refactor 완료(test→feat 순서 git log 검증).
+- 모듈 전체 실검증: `:modules:identity-access:ktlintMainSourceSetCheck + ktlintTestSourceSetCheck + detekt + test --rerun-tasks` → **BUILD SUCCESSFUL**(14 task, FAILED 0). PermissionSchemaMigrationTest 포함 통과 = 신규 enum/시드 0, 카운트 가드 비영향 확인.
+- 테스트: 도메인 10 + 스키마 4 + repo 통합 13 + service 18 + controller MockMvc 27 + prod 통합 11. S8 거부 ground-truth(비관리자 403/미인증 401, prod 실판정 마스킹 없음) 실증.
+- **E2E 스킵**: UI 없는 백엔드 인프라(D6/D7 후속) → Playwright 대상 없음. prod RANDOM_PORT 통합테스트가 end-to-end ground-truth.
