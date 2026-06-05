@@ -313,9 +313,10 @@ const changeComponentsHandler = http.patch('/api/v1/issues/:key/components', asy
     )
   }
 
-  // (4) 성공 — version+1, stateful 영속 (교훈 2)
+  // (4) 성공 — componentIds 영속 + version+1, stateful 보관 (교훈: msw-mutation-stateful-refetch)
   const updated: IssueResponse = {
     ...found,
+    componentIds: body.componentIds,
     descriptionHtml: null, // PATCH 응답은 목록과 동일 — 단건 GET에서만 채워짐
     version: found.version + 1,
     updatedAt: new Date().toISOString(),

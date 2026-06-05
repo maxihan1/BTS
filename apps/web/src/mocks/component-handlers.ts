@@ -119,11 +119,50 @@ function sortedByName(components: StoredComponent[]): Component[] {
 /**
  * 활성 컴포넌트 목록 조회 — name 오름차순 정렬.
  * 성공 → 200 { data: Component[] }
+ *
+ * E2E 시나리오 토글 — X-MSW-Seed-Components 헤더(JSON 배열) 가 있으면
+ * componentStore 를 해당 데이터로 초기화한다.
+ * 이 헤더는 테스트 전용이며 프로덕션 API에는 존재하지 않는다.
  */
 const listComponentsHandler = http.get(
   '/api/v1/projects/:projectIdOrKey/components',
-  ({ params }) => {
+  ({ params, request }) => {
     const projectIdOrKey = params['projectIdOrKey'] as string
+
+    // E2E seed 헤더 처리 — X-MSW-Seed-Components: encodeURIComponent(JSON 배열)
+    // 헤더는 ISO-8859-1 만 허용하므로 클라이언트가 encodeURIComponent 로 인코딩해 전송한다.
+    const seedHeader = request.headers.get('X-MSW-Seed-Components')
+    if (seedHeader !== null) {
+      try {
+        const seeds = JSON.parse(decodeURIComponent(seedHeader)) as Array<{
+          id: string
+          name: string
+          projectId?: string
+          description?: string | null
+          leadUserId?: string | null
+        }>
+        // 기존 데이터 제거 후 seed 데이터로 초기화
+        for (const [key, comp] of componentStore.entries()) {
+          if (comp.projectIdOrKey === projectIdOrKey) {
+            componentStore.delete(key)
+          }
+        }
+        for (const seed of seeds) {
+          const stored: StoredComponent = {
+            id: seed.id,
+            projectId: seed.projectId ?? generateUuidV4(),
+            name: seed.name,
+            description: seed.description ?? null,
+            leadUserId: seed.leadUserId ?? null,
+            projectIdOrKey,
+          }
+          componentStore.set(stored.id, stored)
+        }
+      } catch {
+        // seed 파싱 실패 시 무시하고 기존 데이터 반환
+      }
+    }
+
     const items = Array.from(componentStore.values()).filter(
       (c) => c.projectIdOrKey === projectIdOrKey,
     )
