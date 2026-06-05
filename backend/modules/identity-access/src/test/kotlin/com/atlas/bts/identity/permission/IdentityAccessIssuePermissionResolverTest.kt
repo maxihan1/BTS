@@ -1,4 +1,4 @@
-// IdentityAccessIssuePermissionResolver 단위테스트 — 멤버 게이트 + 매트릭스 판정 (FR-PM-02 Task 4)
+// IdentityAccessIssuePermissionResolver 단위테스트 — 멤버 게이트 + BROWSE/VIEW 매트릭스 위임 (FR-PM-05)
 
 package com.atlas.bts.identity.permission
 
