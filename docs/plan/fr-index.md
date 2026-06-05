@@ -21,13 +21,14 @@
 | FR-IS-08 | 이슈 인쇄 + PDF 출력 | 중간 | issue-tracking | §2.3.2 |
 | FR-IS-09 | 라벨 자동완성 | 높음 | issue-tracking | §2.2.2 |
 
-### 컴포넌트 / 버전 (FR-CM, FR-VR, 7개)
+### 컴포넌트 / 버전 (FR-CM, FR-VR, 8개)
 
 | FR ID | 한 줄 | 우선순위 | BC | 본문 위치 |
 |---|---|---|---|---|
 | FR-CM-01 | 프로젝트별 컴포넌트 CRUD + 컴포넌트 리드 | 필수 | issue-tracking | §3.1.1 |
 | FR-CM-02 | 이슈에 다중 컴포넌트 할당 | 필수 | issue-tracking | §3.1.2 |
 | FR-CM-03 | 컴포넌트별 기본 담당자 자동 할당 | 높음 | issue-tracking | §3.1.3 |
+| FR-CM-04 | 컴포넌트 리드 부재 시 프로젝트 리드 폴백 (2순위) | 중간 | issue-tracking | §3.1.4 |
 | FR-VR-01 | 버전 생성 + 시작일/릴리즈 예정일 | 필수 | issue-tracking | §3.2.1 |
 | FR-VR-02 | 버전 상태 (Unreleased/Released/Archived) | 필수 | issue-tracking | §3.2.2 |
 | FR-VR-03 | Affects/Fix Version 연결 | 필수 | issue-tracking | §3.2.3 |

@@ -193,6 +193,20 @@
 
 > **FR-CM-03 완료 (2026-06-05, PR #84)**. 컴포넌트 리드 자동 배정(생성+변경 trigger, 미할당일 때만, 다중이면 이름 사전순 첫 리드, silent). **후속 FR 예정** — 컴포넌트 리드 없을 때 프로젝트 리드 폴백(2순위). admin(다수·권한)≠lead(단일·담당)이라 project_memberships 단일 PROJECT_LEAD 지정 + cross-BC 포트로 별도 설계. **머지 주의** — FR-PM-05(PR #85)와 IssueApplicationService.kt 동시 수정(권한 vs 자동배정 다른 영역), 머지 후 컴파일+테스트 검증 통과.
 
+#### §3.1.4 FR-CM-04 — 컴포넌트 리드 부재 시 프로젝트 리드 폴백 (2순위)
+
+**우선순위**. 중간 | **선행**. §3.1.3, §4.1(FR-PM-01) | **Plan slug**. `issue/components-project-lead-fallback`
+
+> **배경 (2026-06-05, FR-CM-03 PR #84 후속)**. FR-CM-03 자동 배정은 컴포넌트 리드(1순위)만 사용하고, 리드가 없으면 미할당으로 남긴다. Jira식으로 컴포넌트 리드가 없을 때 **프로젝트 리드**를 2순위 폴백으로 쓰자는 요구(Maxi). 단 BTS엔 "프로젝트 리드"(단일) 개념이 없다 — `projects` 테이블에 lead 필드 없음, FR-PM-01의 `PROJECT_ADMIN`은 **다수·권한** 개념이라 자동배정 대상(단일·업무 책임)과 다르다(admin≠lead). 따라서 프로젝트 단위 단일 리드 지정을 신설하고 cross-BC로 조회해야 한다.
+
+- [ ] D1. 도메인 — 폴백 체인(컴포넌트 리드 → 프로젝트 리드 → 미할당) 규칙 (책임. backend-engineer)
+- [ ] D2. 명세 — 프로젝트 리드 지정 모델 결정 (project_memberships 단일 `PROJECT_LEAD` 역할 vs `projects.lead_user_id` 컬럼), admin과 분리 (책임. backend-engineer + security-engineer)
+- [ ] D3. 데이터 모델 — 프로젝트 단일 리드 저장 (마이그레이션) + cross-BC 조회 포트 (책임. db-engineer)
+- [ ] D4. 백엔드 — 프로젝트 리드 지정 API/UI + DefaultAssigneeResolver 폴백 확장 + cross-BC 포트(issue-tracking → identity-access/project) (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 — 폴백 우선순위 + 리드 실존(UserLookupPort) + cross-BC (책임. backend-engineer)
+- [ ] D6. 프론트 UI — 프로젝트 설정에 리드 지정 (책임. designer → frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
 ### §3.2 버전 (FR-VR, 4개)
 
 #### §3.2.1 FR-VR-01 — 버전 생성 + 시작일/릴리즈 예정일
