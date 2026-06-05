@@ -113,4 +113,90 @@ class DefaultAssigneeResolverTest {
 
         assertNull(result)
     }
+
+    // ─── Task-2: 프로젝트 리드 폴백 ───────────────────────────────────────────
+
+    private val projectLead = UUID.fromString("00000000-0000-4000-8000-000000000099")
+
+    @Test
+    fun `S1 컴포넌트 리드 있고 projectLeadUserId 있으면 컴포넌트 리드(1순위)를 반환한다`() {
+        val comp =
+            ComponentLead(
+                id = UUID.fromString("00000000-0000-4000-8000-000000000100"),
+                name = "Backend",
+                leadUserId = leadA,
+            )
+
+        val result =
+            DefaultAssigneeResolver.resolve(
+                current = null,
+                candidates = listOf(comp),
+                projectLeadUserId = projectLead,
+            )
+
+        assertEquals(ActorId(leadA), result)
+    }
+
+    @Test
+    fun `S2 컴포넌트 리드 없고 projectLeadUserId 있으면 projectLeadUserId를 반환한다`() {
+        val comp =
+            ComponentLead(
+                id = UUID.fromString("00000000-0000-4000-8000-000000000100"),
+                name = "Unowned",
+                leadUserId = null,
+            )
+
+        val result =
+            DefaultAssigneeResolver.resolve(
+                current = null,
+                candidates = listOf(comp),
+                projectLeadUserId = projectLead,
+            )
+
+        assertEquals(ActorId(projectLead), result)
+    }
+
+    @Test
+    fun `S4 컴포넌트 리드 없고 projectLeadUserId도 null이면 null을 반환한다`() {
+        val result =
+            DefaultAssigneeResolver.resolve(
+                current = null,
+                candidates = emptyList(),
+                projectLeadUserId = null,
+            )
+
+        assertNull(result)
+    }
+
+    @Test
+    fun `S5 current가 있으면 projectLeadUserId를 무시하고 current를 반환한다`() {
+        val result =
+            DefaultAssigneeResolver.resolve(
+                current = existingAssignee,
+                candidates = emptyList(),
+                projectLeadUserId = projectLead,
+            )
+
+        assertEquals(existingAssignee, result)
+    }
+
+    @Test
+    fun `EC1 projectLeadUserId가 어느 컴포넌트 리드와 동일 UUID이면 컴포넌트 리드 경로로 결정한다`() {
+        // 컴포넌트 리드 UUID 와 프로젝트 리드 UUID 가 동일해도 1순위(컴포넌트 리드) 경로를 탄다.
+        val comp =
+            ComponentLead(
+                id = UUID.fromString("00000000-0000-4000-8000-000000000100"),
+                name = "Alpha",
+                leadUserId = projectLead,
+            )
+
+        val result =
+            DefaultAssigneeResolver.resolve(
+                current = null,
+                candidates = listOf(comp),
+                projectLeadUserId = projectLead,
+            )
+
+        assertEquals(ActorId(projectLead), result)
+    }
 }
