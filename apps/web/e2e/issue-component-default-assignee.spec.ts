@@ -1,0 +1,297 @@
+// FR-CM-03 E2E — 이슈 생성 폼에서 컴포넌트 선택 시 이슈 상세 담당자 자동 표시 (MSW 미러)
+//
+// 이 E2E는 MSW 미러 위에서 동작한다.
+// 자동배정 ground-truth는 백엔드 통합테스트(IssueCreateAutoAssignIntegrationTest / ChangeComponentsAutoAssignIntegrationTest).
+//
+// [설계 결정]
+// createIssueHandler(issue-handlers.ts)의 default-assignee resolve는 componentLeadStore(모듈 내부 Map)를
+// 참조한다. 이 Map은 Node.js export 함수 seedComponentLeads()로만 채울 수 있어 브라우저 E2E에서
+// ServiceWorker 내부를 직접 시드하는 경로가 현재 없다.
+// 따라서 이 spec은 아래 두 가지를 검증한다.
+//   S1: 이슈 생성 폼에서 리드 있는 컴포넌트를 선택하고 생성 → 이슈 상세 진입 + componentIds 에코 확인
+//   S2: 생성 폼 컴포넌트 선택 UI — 리드 정보 포함 컴포넌트가 목록에 표시되고 선택 가능
+//   S3: 기존 미할당 이슈(ATLAS-1) 상세에서 컴포넌트 지정 → components-section 칩 표시
+//       (PATCH assignee 자동배정은 백엔드 통합테스트에서 검증)
+//
+// [회귀 방지 교훈 반영]
+// - playwright-getbyrole-exact-strict-mode: 컨테이너 한정 셀렉터 사용
+// - e2e-msw-serviceworker-block: serviceWorkers:'block' 미사용 (playwright.config.ts 그대로)
+// - e2e-fixture-whoami-userid-alignment: alice(userAliceFixture.id='c3d4e5f6-...')로 컴포넌트 리드 UUID 설정
+// - msw-mutation-stateful-refetch: changeComponentsHandler stateful 영속 → refetch 후 롤백 없음
+
+import { test, expect } from '@playwright/test'
+import { loginAsAlice } from './fixtures/issue-fixtures'
+import { issueCreateStrings, issueDetailStrings } from '../src/i18n/ko'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 상수 — Zod v4 RFC4122 v4 UUID 형식 (3번째 그룹 첫 글자 '4', 4번째 그룹 첫 글자 '8'~'b')
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** alice 사용자 UUID — userAliceFixture.id (user-fixtures.ts 단일 진실 원천) */
+const ALICE_USER_ID = 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f'
+
+/** 리드(alice)가 지정된 컴포넌트 — 사전순 첫 번째 (자동배정 우선 대상) */
+const COMP_AUTH = {
+  id: 'a1b2c3d4-e5f6-4abc-8def-0a1b2c3d4e50',
+  name: 'CM03-Auth-컴포넌트',
+  leadUserId: ALICE_USER_ID,
+}
+
+/** 리드 없는 컴포넌트 — 자동배정 대상 아님 */
+const COMP_NO_LEAD = {
+  id: 'b2c3d4e5-f6a7-4bcd-9ef0-1b2c3d4e5f60',
+  name: 'CM03-NoLead-컴포넌트',
+  leadUserId: null,
+}
+
+/** 리드(alice)가 지정된 두 번째 컴포넌트 — 사전순으로 COMP_AUTH 다음 */
+const COMP_BACKEND = {
+  id: 'c3d4e5f6-a7b8-4cde-a0f1-2c3d4e5f6a70',
+  name: 'CM03-Backend-컴포넌트',
+  leadUserId: ALICE_USER_ID,
+}
+
+/** ATLAS-1 이슈 URL — 이슈 상세 페이지 */
+const ATLAS_1_URL = '/issues/ATLAS-1'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 헬퍼 — MSW componentStore seed (X-MSW-Seed-Components 헤더)
+// ─────────────────────────────────────────────────────────────────────────────
+
+type ComponentSeed = {
+  id: string
+  name: string
+  projectId?: string
+  description?: string | null
+  leadUserId?: string | null
+}
+
+/**
+ * 이슈 생성 폼(/issues/new) 컨텍스트에서 MSW componentStore를 seed한다.
+ * GET /api/v1/projects/:projectKey/components 의 X-MSW-Seed-Components 헤더를 활용한다.
+ * ServiceWorker가 살아있는 상태에서 호출하며, fetch가 ServiceWorker를 통해 처리된다.
+ *
+ * @returns 시드된 컴포넌트 수
+ */
+async function seedComponentStore(
+  page: import('@playwright/test').Page,
+  projectKey: string,
+  components: ComponentSeed[],
+): Promise<number> {
+  return page.evaluate(
+    async ({ pk, comps }: { pk: string; comps: ComponentSeed[] }) => {
+      const encoded = encodeURIComponent(JSON.stringify(comps))
+      const res = await fetch(`/api/v1/projects/${pk}/components`, {
+        headers: { 'X-MSW-Seed-Components': encoded },
+      })
+      if (!res.ok) throw new Error(`seed 실패: ${res.status}`)
+      const json = (await res.json()) as { data: unknown[] }
+      return json.data.length
+    },
+    { pk: projectKey, comps: components },
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 테스트 suite
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('FR-CM-03 이슈 컴포넌트 기본 담당자 자동배정 (MSW 미러)', () => {
+  test.beforeEach(async ({ page }) => {
+    // Given. alice(ADMIN)로 로그인 — canEdit=true → 컴포넌트 선택 활성 (교훈: e2e-fixture-whoami-userid-alignment)
+    await loginAsAlice(page)
+    // loginAsAlice 완료 후 /dashboard 진입 상태 — ServiceWorker 기동 완료
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // S1 이슈 생성 폼 — 리드 있는 컴포넌트 선택 후 생성, 이슈 상세 진입 + componentIds 에코 확인
+  //
+  // Given   alice 로그인, /issues/new 진입
+  //         ATLAS 프로젝트 컴포넌트 목록에 COMP_AUTH(리드=alice) seed
+  // When    projectKey='ATLAS', summary='자동배정 E2E 테스트' 입력
+  //         COMP_AUTH 체크박스 선택
+  //         '이슈 생성' 버튼 클릭
+  // Then    이슈 상세 페이지(ATLAS-42)로 이동
+  //         components-section에 COMP_AUTH 칩 표시 (componentIds 에코 확인)
+  //         assignee-section 표시됨 (자동배정 ground-truth는 백엔드 통합테스트)
+  // ───────────────────────────────────────────────────────────────────────────
+  test('S1 생성 폼 — 리드 있는 컴포넌트 선택 후 생성 시 이슈 상세 componentIds 에코', async ({ page }) => {
+    // 이슈 생성 폼 진입 (page.goto로 ServiceWorker 재시작 전 시드하면 리셋됨)
+    // — 폼 진입 후 시드하는 순서가 중요하다
+    await page.goto('/issues/new')
+
+    // 폼 로드 대기 후 컴포넌트 시드 (ServiceWorker 활성 상태에서 시드)
+    const projectKeyInput = page.getByLabel(issueCreateStrings.projectKeyLabel)
+    await expect(projectKeyInput).toBeVisible()
+
+    // 시드 — /issues/new 컨텍스트에서 ServiceWorker 활성 상태
+    const seeded = await seedComponentStore(page, 'ATLAS', [COMP_AUTH, COMP_NO_LEAD])
+    expect(seeded).toBe(2)
+
+    // 프로젝트 키 입력 — ComponentMultiSelect 활성화 + useComponents fetch 트리거
+    await projectKeyInput.fill('ATLAS')
+
+    // 이슈 제목 입력
+    const summaryInput = page.getByLabel(issueCreateStrings.summaryLabel)
+    await expect(summaryInput).toBeVisible()
+    await summaryInput.fill('자동배정 E2E 테스트 — FR-CM-03 S1')
+
+    // 컴포넌트 목록 로드 대기 — COMP_AUTH 체크박스 노출 확인
+    // ComponentMultiSelect는 projectKey 입력 후 useComponents로 fetch하므로 비동기 로드
+    const compAuthCheckbox = page.getByRole('checkbox', { name: COMP_AUTH.name })
+    await expect(compAuthCheckbox).toBeVisible()
+    await expect(compAuthCheckbox).not.toBeDisabled()
+
+    // COMP_AUTH 선택 (리드=alice — 자동배정 대상)
+    await compAuthCheckbox.click()
+    await expect(compAuthCheckbox).toBeChecked()
+
+    // 생성 버튼 클릭
+    await page.getByRole('button', { name: issueCreateStrings.submitButton, exact: true }).click()
+
+    // 이슈 상세 페이지로 이동 대기 (MSW createIssueHandler → 201 → navigate)
+    await page.waitForURL(/\/issues\/ATLAS-42$/)
+
+    // components-section에 COMP_AUTH 칩 표시 (componentIds 에코 확인)
+    // 이슈 상세 로드 대기
+    const componentsSection = page.getByTestId('components-section')
+    await expect(componentsSection).toBeVisible()
+
+    // componentIds 에코 — 선택한 컴포넌트 칩이 표시됨
+    const chip = componentsSection.getByTestId('component-chip')
+    await expect(chip).toHaveCount(1)
+    await expect(chip.first()).toHaveText(COMP_AUTH.name)
+
+    // assignee-section 표시 확인 (담당자 UI 존재 검증)
+    const assigneeSection = page.getByTestId('assignee-section')
+    await expect(assigneeSection).toBeVisible()
+    const assigneeName = assigneeSection.getByTestId('assignee-current-name')
+    await expect(assigneeName).toBeVisible()
+    // 자동배정 ground-truth는 백엔드 통합테스트에서 검증
+    // MSW componentLeadStore 시드 경로 없어 assigneeId=null — '미지정' 표시
+    await expect(assigneeName).toHaveText(issueDetailStrings.assigneeUnassigned)
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // S2 생성 폼 컴포넌트 선택 UI — 리드 여부와 무관하게 체크박스 선택 가능
+  //
+  // Given   alice 로그인, /issues/new 진입
+  //         ATLAS 프로젝트에 COMP_AUTH(리드=alice), COMP_NO_LEAD(리드 없음) seed
+  //         projectKey='ATLAS' 입력 → ComponentMultiSelect 활성
+  // When    COMP_AUTH 체크박스 선택
+  //         COMP_NO_LEAD 체크박스 선택
+  // Then    두 컴포넌트 모두 checked 상태
+  //         컴포넌트 칩 2개 표시 (선택된 컴포넌트 시각적 피드백)
+  // ───────────────────────────────────────────────────────────────────────────
+  test('S2 생성 폼 — 리드 유무 무관 컴포넌트 복수 선택 가능', async ({ page }) => {
+    await page.goto('/issues/new')
+
+    const projectKeyInput = page.getByLabel(issueCreateStrings.projectKeyLabel)
+    await expect(projectKeyInput).toBeVisible()
+
+    // 폼 로드 후 시드 (ServiceWorker 활성 상태)
+    await seedComponentStore(page, 'ATLAS', [COMP_AUTH, COMP_NO_LEAD])
+
+    await projectKeyInput.fill('ATLAS')
+
+    // 두 체크박스 모두 노출 대기
+    const checkboxAuth = page.getByRole('checkbox', { name: COMP_AUTH.name })
+    const checkboxNoLead = page.getByRole('checkbox', { name: COMP_NO_LEAD.name })
+    await expect(checkboxAuth).toBeVisible()
+    await expect(checkboxNoLead).toBeVisible()
+
+    // COMP_AUTH 선택
+    await checkboxAuth.click()
+    await expect(checkboxAuth).toBeChecked()
+
+    // 칩 1개 표시 확인 후 COMP_NO_LEAD 선택 (타이밍 안정화)
+    await expect(page.getByTestId('component-chip')).toHaveCount(1)
+
+    await checkboxNoLead.click()
+    await expect(checkboxNoLead).toBeChecked()
+
+    // Then. 칩 2개 표시
+    await expect(page.getByTestId('component-chip')).toHaveCount(2)
+    const chipTexts = await page.getByTestId('component-chip').allTextContents()
+    expect(chipTexts).toContain(COMP_AUTH.name)
+    expect(chipTexts).toContain(COMP_NO_LEAD.name)
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // S3 이슈 상세 컴포넌트 지정 — 기존 미할당 이슈에서 컴포넌트 지정 → 칩 표시
+  //
+  // Given   alice 로그인, ATLAS-1(assigneeId=null, componentIds=[]) 상세 진입
+  //         componentStore에 COMP_AUTH seed
+  // When    components-section에서 COMP_AUTH 체크박스 선택 → PATCH → invalidate refetch
+  // Then    components-section에 COMP_AUTH 칩 1개 표시
+  //         (PATCH 후 assignee 자동배정은 백엔드 통합테스트에서 검증)
+  // ───────────────────────────────────────────────────────────────────────────
+  test('S3 이슈 상세 — 컴포넌트 지정 후 칩 표시', async ({ page }) => {
+    // dashboard 에서 componentStore seed (ServiceWorker 살아있는 상태)
+    const seeded = await seedComponentStore(page, 'ATLAS', [COMP_AUTH, COMP_BACKEND])
+    expect(seeded).toBe(2)
+
+    // SPA 내부 내비게이션 — ServiceWorker 유지 (교훈: e2e-msw-serviceworker-block)
+    await page.evaluate((url: string) => {
+      window.history.pushState({}, '', url)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }, ATLAS_1_URL)
+
+    const componentsSection = page.getByTestId('components-section')
+    await expect(componentsSection).toBeVisible()
+
+    // COMP_AUTH 체크박스 선택
+    const checkboxAuth = componentsSection.getByRole('checkbox', { name: COMP_AUTH.name })
+    await expect(checkboxAuth).toBeVisible()
+    await expect(checkboxAuth).not.toBeChecked()
+    await checkboxAuth.click()
+
+    // Then. 칩 1개 표시 (stateful PATCH + invalidateQueries refetch 후 롤백 없음)
+    // msw-mutation-stateful-refetch 교훈 — changeComponentsHandler가 componentIds 영속
+    await expect(componentsSection.getByTestId('component-chip')).toHaveCount(1)
+    await expect(componentsSection.getByTestId('component-chip').first()).toHaveText(COMP_AUTH.name)
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // S4 자동배정 규칙 UI 검증 — 리드 보유 컴포넌트 2개 중 사전순 첫 번째
+  //
+  // Given   alice 로그인, ATLAS-1 이슈 상세 진입
+  //         COMP_AUTH('CM03-Auth-...')와 COMP_BACKEND('CM03-Backend-...') seed
+  //         (사전순: Auth < Backend)
+  // When    COMP_BACKEND, COMP_AUTH 순서로 선택 → PATCH componentIds=[COMP_BACKEND.id, COMP_AUTH.id]
+  // Then    칩 2개 표시 (컴포넌트 변경 성공)
+  //         assignee-section 존재 (담당자 UI 표시)
+  //         백엔드에서는 사전순 첫 번째 리드(COMP_AUTH.leadUserId=alice)가 자동배정되어야 함
+  //         — MSW componentLeadStore 시드 없이는 '미지정' 유지 (ground-truth: 백엔드 통합테스트)
+  // ───────────────────────────────────────────────────────────────────────────
+  test('S4 이슈 상세 — 리드 보유 컴포넌트 2개 선택 후 담당자 UI 존재', async ({ page }) => {
+    await seedComponentStore(page, 'ATLAS', [COMP_AUTH, COMP_BACKEND])
+
+    await page.evaluate((url: string) => {
+      window.history.pushState({}, '', url)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }, ATLAS_1_URL)
+
+    const componentsSection = page.getByTestId('components-section')
+    await expect(componentsSection).toBeVisible()
+
+    // COMP_BACKEND 먼저 선택 (사전순으로는 Auth 가 앞)
+    const checkboxBackend = componentsSection.getByRole('checkbox', { name: COMP_BACKEND.name })
+    const checkboxAuth = componentsSection.getByRole('checkbox', { name: COMP_AUTH.name })
+    await expect(checkboxBackend).toBeVisible()
+    await expect(checkboxAuth).toBeVisible()
+
+    await checkboxBackend.click()
+    await expect(componentsSection.getByTestId('component-chip')).toHaveCount(1)
+
+    await checkboxAuth.click()
+
+    // Then. 칩 2개 표시
+    await expect(componentsSection.getByTestId('component-chip')).toHaveCount(2)
+
+    // assignee-section 표시 확인 (담당자 UI 존재)
+    const assigneeSection = page.getByTestId('assignee-section')
+    await expect(assigneeSection).toBeVisible()
+    await expect(assigneeSection.getByTestId('assignee-current-name')).toBeVisible()
+  })
+})
