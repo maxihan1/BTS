@@ -86,7 +86,7 @@ prod 프로파일에서 전 스킴 API가 fail-closed(403)된다.
 - `UUID.fromString(authentication.name)` 시도, `IllegalArgumentException` → 401.
 - `ActorId(authentication.name)` 반환.
 
-**REFACTOR**. KDoc(프레임워크 중립 사유 + ADR 링크) + 401 메시지 상수.
+**REFACTOR**. 파일 첫 줄 §6 한국어 헤더(`// 인증 주체를 ActorId로 변환하는 ...`) + KDoc(프레임워크 중립 사유 + ADR 링크) + 401 메시지 상수.
 
 **검증**. `./gradlew :modules:project-workflow:test --tests "*CurrentActorTest"`
 
@@ -98,14 +98,17 @@ prod 프로파일에서 전 스킴 API가 fail-closed(403)된다.
 - depends-on: [1]
 
 **RED**. `WorkflowSchemeControllerTest`
-- 기존 mutating 테스트(create/update/delete/addMapping/deleteMapping)에 UUID principal 인증 추가
-  (`MockMvcBuilders.webAppContextSetup(wac).apply(springSecurity()).build()` + 요청에 `with(user(UUID))`).
+- 기존 mutating 테스트(create/update/delete/addMapping/deleteMapping)에 UUID principal 인증 추가.
+  스킴 컨트롤러는 `@PreAuthorize`/method-security가 없어 `@WithMockUser(username=UUID)`만으로
+  `SecurityContextHolder`가 채워진다(리뷰 CONCERN — `springSecurity()` configurer는 불필요).
+  단위/슬라이스에서 `@WithMockUser` 우선, 필요 시 `with(user(UUID))` 보조.
 - 신규: 무인증으로 `POST /api/v1/workflow-schemes` → 401 단언.
 - 신규: 인증된 mutating → 권한 판정기에 전달된 actor UUID가 principal UUID와 일치(스파이/캡처).
 - 실패 예상: 컨트롤러가 아직 systemActor() 사용 → actor 불일치 / 무인증도 통과.
 
 **GREEN**. `WorkflowSchemeController`
-- `systemActor()` 호출 5곳 → `CurrentActor.current()`.
+- `systemActor()` 호출 5곳 → `CurrentActor.current()`. **각 메서드 진입 직후(권한 판정기 호출 전)**
+  추출(현 위치가 이미 메서드 선두라 순서 OK).
 - `systemActor()` private 함수 + `SYSTEM_ACTOR_UUID_STRING` 상수 + "ActorId 임시 처리" KDoc 단락 제거.
 
 **REFACTOR**. import 정리, KDoc 권한 단락을 "인증 주체 actor 결선"으로 갱신.
@@ -127,34 +130,61 @@ prod 프로파일에서 전 스킴 API가 fail-closed(403)된다.
 
 **GREEN**. `ProjectWorkflowSchemeController`
 - `ActorId(SYSTEM_ACTOR_UUID)` 2곳 → `CurrentActor.current()`.
-- companion `SYSTEM_ACTOR_UUID` 상수 + "actor 임시 처리" KDoc 단락 + 미사용 import(`ActorId` 직접 생성 제거 시) 정리.
+- **⚠️ 보안 순서(리뷰 CONCERN-B)**: 현재 `projectLookupPort.findIdByKey`(404)가 actor 추출 **앞**에 있음.
+  in-place 치환 금지 — `CurrentActor.current()`를 **메서드 맨 앞(projectLookup 전)**으로 끌어올려
+  인증 먼저 강제. 안 그러면 무인증자가 존재하지 않는 프로젝트엔 404, 존재 프로젝트엔 401을 받아
+  프로젝트 존재 여부 probe 가능(정보 노출). 테스트: 무인증 + 없는 프로젝트 → 401(404 아님) 단언.
+- companion `SYSTEM_ACTOR_UUID` 상수 + "actor 임시 처리" KDoc 단락 + 미사용 import 정리.
 
 **REFACTOR**. KDoc 권한 단락 갱신.
 
 **검증**. `./gradlew :modules:project-workflow:test --tests "*ProjectWorkflowSchemeControllerTest"`
 
-### Task 4. 통합테스트 인증 보강 + 최종 검증
+### Task 4. 최종 전수 검증 (비-TDD, 검증 전용)
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/scheme/web/WorkflowSchemeControllerIntegrationTest.kt`]
+- files: []  (코드 변경 없음 — 검증 전용)
 - depends-on: [2, 3]
 
-**RED**. T2/T3 후 통합테스트 mutating 호출이 401로 자연 실패(무인증 + AlwaysAllow resolver는 actor 추출 이전에 401).
-
-**GREEN**. mutating 요청에 UUID principal 인증 추가(`springSecurity()` + `with(user(UUID))`). 기존 happy-path 복구.
+**참고(리뷰 CONCERN-A)**. `WorkflowSchemeControllerIntegrationTest`는 컨트롤러/MockMvc를 **경유하지 않고**
+`WorkflowSchemeApplicationService`를 직접 호출하는 read-only 테스트라 SecurityContext를 안 탄다.
+→ T2/T3 후에도 401 RED 없이 그대로 통과. **인증 보강 대상 아님**(plan 초안의 "통합테스트 RED" 전제 철회).
+따라서 Task 4는 TDD 사이클이 아니라 **전수 검증 task**다.
 
 **검증(전수)**.
-- 컨트롤러 `SYSTEM_ACTOR_UUID` grep = 0 (앱서비스 `SYSTEM_ACTOR` 보존 확인 — grep로 잔존 확인).
+- 잔존 sentinel grep = 0 (오탐 방지로 **상수명+경로 한정**, 리뷰 CONCERN-C):
+  `grep -rn "SYSTEM_ACTOR_UUID_STRING\|SYSTEM_ACTOR_UUID" backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/web/`
+  → 0건. **앱서비스 `WorkflowSchemeApplicationService.SYSTEM_ACTOR`(`...0000`)는 보존 대상이라 별도**.
 - `./gradlew :modules:project-workflow:test`(모듈 전체 회귀 0).
 - `./gradlew :modules:project-workflow:ktlintMainSourceSetCheck :modules:project-workflow:ktlintTestSourceSetCheck :modules:project-workflow:detekt`.
 
 ## Plan 메타
 
 - task 수: 4
-- wave 예상: 같은 Gradle 모듈(project-workflow) test 컴파일 단위 공유 → 사실상 직렬. T1 → (T2, T3) → T4. 파일 겹침 0이나 모듈 컴파일이 직렬화 요인(메모리 `bts-plan-wave-gradle-module-compile`).
+- wave 예상: 같은 Gradle 모듈(project-workflow) test 컴파일 단위 공유 → 사실상 직렬. T1 → (T2, T3) → T4(검증 전용). 파일 겹침 0이나 모듈 컴파일이 직렬화 요인(메모리 `bts-plan-wave-gradle-module-compile`). T1~T3만 TDD 사이클, T4는 전수 검증.
 - TDD 강제: yes (각 task test→feat 순서)
 - 신규 의존성: 0
 - 추가 검증: ktlint(Main+Test SourceSetCheck) + detekt. E2E/프론트 없음(UI 부재).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### code-reviewer ground-truth 리뷰 (2026-06-05)
+
+메모리 `bts-review-plan-autoplan-overkill`대로 autoplan 4종 대신 code-reviewer를 실제 코드와 대조 dispatch.
+
+**결론: BLOCKER 0.** 핵심 설계(프레임워크 중립 `Authentication` 추출, 단일 `CurrentActor`, fail-closed 3종, 생성자 불변, test-assembled 검증)가 코드와 정합. 검증 포인트 1~5 모두 PASS.
+
+- ✅ **1. fail-closed/하네스**: `authentication.name` = JWT subject = 사용자 UUID 확인(`JwtIssuer.kt:80` `.subject(userId)`, PAT도 principal=userId). 스킴 컨트롤러는 `@PreAuthorize` 없어 `@WithMockUser`만으로 `SecurityContextHolder` 채워짐 → `springSecurity()` 불필요(plan 정정 반영).
+- ✅ **2. SYSTEM_ACTOR 보존**: `WorkflowSchemeApplicationService.SYSTEM_ACTOR`(`...0000`)는 EC-1 자동배정(`:445`)+`WorkflowResolverImpl:94` 시스템 작업 전용. C2 범위 밖 확인.
+- ✅ **3. 영향 테스트**: 무인증 mutating 호출은 `WorkflowSchemeControllerTest`/`ProjectWorkflowSchemeControllerTest` 2개뿐(grep 전수). 누락 없음.
+- ✅ **4. 생성자 불변**: actor 출처가 메서드 내부라 생성자/mock arity 변경 불요(`plan-files-constructor-injection` 함정 비해당).
+- ✅ **5. test-assembled/예외**: "prod 활성화" 과장 없음. `ResponseStatusException(401)`은 `WorkflowSchemeExceptionHandler`(scheme 패키지 한정, 도메인 예외만)와 무충돌, 기본 resolver가 처리.
+- ✅ **ArchUnit/절대규칙**: `com.bts.workflow.web` 배치 안전(기존 `WorkflowController` 거주), `@Transactional`/cross-BC import 룰 비해당. 추측성 코드 없음(PAT 미분기가 오히려 규칙 준수).
+
+**반영한 CONCERN 3건(plan 정정 완료)**.
+- **CONCERN-B(보안)** → Task 3 GREEN: actor 추출을 메서드 맨 앞(projectLookup 404 전)으로. 무인증+없는프로젝트 → 401(404 아님) 테스트 추가.
+- **CONCERN-A** → Task 4 재정의: 통합테스트는 컨트롤러 미경유(service 직접 호출)라 401 RED 없음 → "인증 보강" 철회, 전수 검증 전용 task로.
+- **CONCERN-C** → Task 4 grep을 상수명(`SYSTEM_ACTOR_UUID_STRING`/`SYSTEM_ACTOR_UUID`)+경로(scheme/web) 한정해 앱서비스 보존분 오탐 차단.
+
+BLOCKER 없음 → 게이트 1 진입.
