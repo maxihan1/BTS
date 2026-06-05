@@ -85,7 +85,7 @@ FR-PM-06(이슈 보안 수준, 그룹 기반 멤버)이 막혀 있음 → 이 �
 - depends-on: []
 
 **RED**: `UserGroupTest` — `UserGroup.create(name, description)`가 name trim, blank→`IllegalArgumentException`, 255자 초과→예외, description 500자 초과→예외. (실패: 클래스 없음)
-**GREEN**: `UserGroup`(id?/name/description/createdAt/updatedAt 불변 data class) + companion `create`/정규화(`require` 불변식). `ProjectMembership` data class 패턴 따름.
+**GREEN**: `UserGroup`(id?/name/description/createdAt/updatedAt 불변 data class) + companion `create`/정규화(`require` 불변식). **필드 불변(val) 형태만 `ProjectMembership` 참조**. 단 `ProjectMembership`엔 create/require 팩토리가 없음(검증은 서비스 분산) → **trim/length require는 신규 도입(identity-access 첫 도메인 팩토리)**, `patch-merge-domain-bypass` 교훈대로 서비스가 이 팩토리 경유(우회 금지). (C1)
 **REFACTOR**: 길이 상수(MAX_NAME=255, MAX_DESC=500) 추출 + KDoc(한 줄 역할 주석).
 **검증**: `./gradlew :modules:identity-access:test --tests '*UserGroupTest'`
 
@@ -109,7 +109,7 @@ FR-PM-06(이슈 보안 수준, 그룹 기반 멤버)이 막혀 있음 → 이 �
 - depends-on: [1, 2]
 
 **RED**: `JdbcUserGroupRepositoryIntegrationTest`(Testcontainers) — insert/findById/findAll(memberCount 스칼라 서브쿼리)/update/delete, addMember 멱등(ON CONFLICT DO NOTHING), removeMember 멱등(없는 멤버 no-op), listMembers, name UNIQUE 위반 → `DuplicateKeyException` 전파. (실패: 클래스 없음)
-**GREEN**: 포트 인터페이스(create/findById/findAll/update/delete/addMember/removeMember/listMemberIds/existsById) + `@Repository` Jdbc 구현(NamedParameterJdbcTemplate, RETURNING, ON CONFLICT, memberCount 스칼라 서브쿼리). `JdbcSystemRoleAssignmentRepository` 패턴.
+**GREEN**: 포트 인터페이스(create/findById/findAll/update/delete/addMember/removeMember/listMemberIds/existsById) + `@Repository` Jdbc 구현(NamedParameterJdbcTemplate, memberCount 스칼라 서브쿼리). **RETURNING은 그룹 create/update(단건 신규/확정 INSERT·UPDATE)에만 사용. addMember 멱등은 `jdbc.update`(ON CONFLICT DO NOTHING, RETURNING 없이) — DO NOTHING 시 RETURNING은 0행이라 queryForObject가 EmptyResultDataAccessException으로 깨짐(C3). `JdbcSystemRoleAssignmentRepository.assign` 선례(update+ON CONFLICT) 앵커.** removeMember도 jdbc.update(영향행 무관 멱등).
 **REFACTOR**: SQL 문자열 상수 추출 + rowMapper 분리.
 **검증**: `./gradlew :modules:identity-access:test --tests '*JdbcUserGroupRepositoryIntegrationTest'`
 
@@ -133,7 +133,7 @@ FR-PM-06(이슈 보안 수준, 그룹 기반 멤버)이 막혀 있음 → 이 �
 - depends-on: [4]
 
 **RED**: `UserGroupControllerTest`(MockMvc, mock service + SystemPermissionResolver) — 8 엔드포인트 라우팅/상태코드, 미인증 401, isSystemAdmin=false 403, 도메인 예외→404/409/400 매핑(snake_case 에러코드). (실패: 클래스 없음)
-**GREEN**: `@RestController` UserGroupController(`/api/v1/groups`, `@PreAuthorize("isAuthenticated()")`) — `resolveActor(jwt)`(ProjectMemberController 패턴) → `systemPermissionResolver.isSystemAdmin(actorId)` false면 403 → service 위임. 요청/응답 DTO(GroupResponse/CreateGroupRequest/UpdateGroupRequest, UserSummaryResponse 재사용) + 인라인 `mapServiceException`.
+**GREEN**: `@RestController` UserGroupController(`/api/v1/groups`, `@PreAuthorize("isAuthenticated()")`) — `resolveActor(jwt)`(ProjectMemberController 패턴, 반환 `ActorContext`에서 `.userId` 추출) → `systemPermissionResolver.isSystemAdmin(actorId)` false면 403 → service 위임. 요청/응답 DTO(GroupResponse/CreateGroupRequest/UpdateGroupRequest, UserSummaryResponse 재사용) + 인라인 `mapServiceException`. **에러 응답 body = `mapOf("error" to "<snake_case_code>")`(소문자 key `error` — ProjectMemberController/AuthController 동일, `errorCode` 아님)(C2).** **SecurityConfig 무변경 — `/api/**` 기존 `authenticated()` 규칙이 자동 커버(N2, 신규 라우트 등록 금지).**
 **REFACTOR**: DTO 매핑 헬퍼 + KDoc.
 **검증**: `./gradlew :modules:identity-access:test --tests '*UserGroupControllerTest'`
 
@@ -145,7 +145,10 @@ FR-PM-06(이슈 보안 수준, 그룹 기반 멤버)이 막혀 있음 → 이 �
 - depends-on: [5]
 
 **RED**: `UserGroupIntegrationTest`(@ActiveProfiles prod + Testcontainers + RANDOM_PORT, TestRestTemplate) — SYSTEM_ADMIN 시드 후 그룹 생성/조회/수정/삭제 + 멤버 추가(멱등)/제거(멱등)/목록, 비관리자 403(ground-truth, non-prod 마스킹 없음 확인), 미인증 401, name 중복 409, 그룹 삭제 시 멤버십 CASCADE. (실패: 시나리오 미구현분 있으면)
-**GREEN**: 통합테스트 작성(SystemAdminInfraIntegrationTest 시드 패턴 — users INSERT 후 SystemRoleAssignmentRepository.assign).
+**GREEN**: 통합테스트 작성. **부팅 설정 — prod+RANDOM_PORT 결합 선례가 없으므로 두 선례의 합집합 필수(B1)**:
+- `@DynamicPropertySource`에 Testcontainers datasource + flyway enabled + **PEM 키 셋업**(`SystemAdminInfraIntegrationTest`의 `private-key-pem-path` 등록 — prod `PemFileKeyProvider`가 키 요구) 포함.
+- `properties = ["spring.autoconfigure.exclude=...OAuth2ClientAutoConfiguration"]`(`ProjectMemberFlowIntegrationTest` 선례) + LDAP `@MockBean` 5종(ldapProvider/ldapProviderConfigService/externalAccountRepository/autoProvisionService/ldapTemplate).
+- **관리자 토큰 경로 = `loginJwt` 실 로그인**(`ProjectMemberFlowIntegrationTest.kt:536,638` 선례 — RANDOM_PORT 필터 체인이 검증 가능한 토큰 보장): admin 사용자 users INSERT + `localCredentialService.store`로 자격 시드 → 로그인으로 JWT 획득 → `SystemRoleAssignmentRepository.assign(adminId, SYSTEM_ADMIN)`로 전역역할 부여. 비관리자용 둘째 사용자도 동일 로그인(역할 미부여)으로 403 ground-truth. TestRestTemplate `Bearer` 헤더.
 **REFACTOR**: 시나리오 헬퍼 정리.
 **검증**: `./gradlew :modules:identity-access:test --tests '*UserGroupIntegrationTest'`
 
@@ -158,4 +161,22 @@ FR-PM-06(이슈 보안 수준, 그룹 기반 멤버)이 막혀 있음 → 이 �
 - 추가 검증: 모듈 전체 `:modules:identity-access:test` + ktlintMain/TestSourceSetCheck + detekt(--rerun-tasks). 신규 enum/시드 0 → 카운트 가드 비영향 재확인.
 - agent: T2=db-engineer(마이그레이션), 그 외 security-engineer
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### code-reviewer ground-truth 적대적 plan 리뷰 (2026-06-05)
+
+실제 코드베이스 대조. 핵심 앵커(SystemPermissionResolver.isSystemAdmin·@Profile 없음, ProjectMemberController.resolveActor, UserRepository.findById, UserSummaryResponse, JdbcSystemRoleAssignmentRepository ON CONFLICT, SystemAdminInfraIntegrationTest 시드, V015, init_codegen 불요, /api/** authenticated, enum/시드 0) **전부 실재 확인 — 환각 없음**.
+
+**BLOCKER 1 (구현 전 반영 완료)**
+- B1. T6 `prod + RANDOM_PORT` 조합 선례 부재 → 부팅 시 prod PemFileKeyProvider 키 누락/필터체인 미충족 위험. **해소**: T6 GREEN에 PEM 키 셋업 + OAuth2ClientAutoConfiguration exclude + LDAP @MockBean 5종 + loginJwt 실로그인 관리자 토큰 경로 명시(두 선례 합집합).
+
+**CONCERN 3 (반영 완료)**
+- C1. T1 "ProjectMembership data class 패턴 따름" 오류(ProjectMembership엔 create/require 없음) → T1 GREEN 정정(필드 불변만 참조, require는 신규 도입=identity-access 첫 도메인 팩토리).
+- C2. 에러 envelope key 미명시 → T5 GREEN에 `mapOf("error" to code)` 소문자 key 명시(BC별 envelope 상이 함정 `frontend-api-convention-per-bc`).
+- C3. addMember 멱등을 RETURNING+queryForObject로 짜면 DO NOTHING 0행→EmptyResultDataAccessException → T3 GREEN에 멤버추가/제거는 jdbc.update(RETURNING 없이), RETURNING은 그룹 create/update만 명시.
+
+**NIT 3**: N1 패키지 약식표기(permission 패키지, import만 정확히) / N2 SecurityConfig 무변경 명시 추가(T5) / N3 memberCount 스칼라 서브쿼리 교훈 정합(확인).
+
+**추정**: T6 부팅 실패는 추론 — 최종 확인은 구현 후 `:modules:identity-access:test`. B1 반영으로 사전 차단.
+
+→ BLOCKER 해소 완료. 게이트 1 진입 가능.
