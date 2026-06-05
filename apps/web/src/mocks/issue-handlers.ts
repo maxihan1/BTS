@@ -76,11 +76,33 @@ const createdIssues = new Map<string, IssueResponse>()
 // key: 이슈 키, value: 갱신된 IssueResponse (전이 또는 타입/요약 수정 후)
 const issueOverrides = new Map<string, IssueResponse>()
 
+/**
+ * 권한없음 시나리오 이슈 키 집합 (E2E 단위 공용).
+ * addPermissionDeniedKey(key) 로 추가된 키는 GET 단건에서 404 반환.
+ * resetIssueState() / clearPermissionDeniedKeys() 로 초기화.
+ */
+const permissionDeniedKeys = new Set<string>()
+
+/**
+ * 권한없는 이슈 키를 시나리오 집합에 추가 — 이후 GET 단건 요청이 404를 반환한다.
+ * E2E(Playwright addInitScript + localStorage 플래그 → 핸들러에서 읽음)와
+ * 단위 테스트(직접 호출) 양쪽에서 동일한 시나리오 경로를 검증한다.
+ */
+export function addPermissionDeniedKey(key: string): void {
+  permissionDeniedKeys.add(key)
+}
+
+/** 권한없음 시나리오 집합 초기화 — 각 테스트 afterEach 에서 호출. */
+export function clearPermissionDeniedKeys(): void {
+  permissionDeniedKeys.clear()
+}
+
 /** E2E / 단위 테스트 격리용 — 모듈-스코프 state 초기화. 각 test setup 에서 호출. */
 export function resetIssueState(): void {
   deletedKeys.clear()
   createdIssues.clear()
   issueOverrides.clear()
+  permissionDeniedKeys.clear()
 }
 
 function buildFilteredPage(): IssuePage {
@@ -108,6 +130,16 @@ const listIssuesHandler = http.get('/api/v1/issues', () => {
 const getIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
   const key = params['key'] as string
   if (deletedKeys.has(key)) {
+    return HttpResponse.json(
+      { message: `이슈를 찾을 수 없습니다: ${key}` },
+      { status: 404 },
+    )
+  }
+  // 권한없음 시나리오 — addPermissionDeniedKey(key) 로 세팅된 키는 404 반환.
+  // E2E: Playwright addInitScript 로 localStorage 플래그를 세팅하면 브라우저 MSW 워커가
+  //      globalThis.localStorage 를 읽어 permissionDeniedKeys 에 추가하는 패턴과 연동 가능.
+  // 단위 테스트: addPermissionDeniedKey 직접 호출로 동일 경로 검증.
+  if (permissionDeniedKeys.has(key)) {
     return HttpResponse.json(
       { message: `이슈를 찾을 수 없습니다: ${key}` },
       { status: 404 },
