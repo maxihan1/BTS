@@ -198,13 +198,7 @@ class UserGroupIntegrationTest {
         val groupId = createGroupId(token, "fr-pm-09-t6-s2")
         addMemberVia(token, groupId, memberId)
 
-        val resp =
-            restTemplate.exchange(
-                url("/api/v1/groups"),
-                HttpMethod.GET,
-                HttpEntity<Void>(authHeaders(token)),
-                List::class.java,
-            )
+        val resp = listGroupsVia(token)
 
         assertThat(resp.statusCode).isEqualTo(HttpStatus.OK)
         @Suppress("UNCHECKED_CAST")
@@ -245,14 +239,7 @@ class UserGroupIntegrationTest {
 
         assertThat(resp.statusCode).isEqualTo(HttpStatus.NO_CONTENT)
         // 삭제 후 단건 조회는 404.
-        val getResp =
-            restTemplate.exchange(
-                url("/api/v1/groups/$groupId"),
-                HttpMethod.GET,
-                HttpEntity<Void>(authHeaders(token)),
-                Map::class.java,
-            )
-        assertThat(getResp.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+        assertThat(getGroupVia(token, groupId).statusCode).isEqualTo(HttpStatus.NOT_FOUND)
     }
 
     // ── S5. 멤버 추가 멱등 ─────────────────────────────────────────────────────────
@@ -290,13 +277,7 @@ class UserGroupIntegrationTest {
         val groupId = createGroupId(token, "fr-pm-09-t6-s7")
         addMemberVia(token, groupId, memberId)
 
-        val resp =
-            restTemplate.exchange(
-                url("/api/v1/groups/$groupId/members"),
-                HttpMethod.GET,
-                HttpEntity<Void>(authHeaders(token)),
-                List::class.java,
-            )
+        val resp = listMembersVia(token, groupId)
 
         assertThat(resp.statusCode).isEqualTo(HttpStatus.OK)
         @Suppress("UNCHECKED_CAST")
@@ -377,7 +358,8 @@ class UserGroupIntegrationTest {
                 Int::class.java,
             ) ?: -1
         assertThat(memberRows).isZero()
-        // 그룹 멤버 조회는 404 (그룹 없음).
+        // 그룹 멤버 조회는 404 (그룹 없음). 404 바디는 error 객체이므로 Map 으로 디코딩한다
+        // (성공 경로 전용 listMembersVia(List 바디)는 객체→List 변환에 실패하므로 사용하지 않는다).
         val membersResp =
             restTemplate.exchange(
                 url("/api/v1/groups/$groupId/members"),
@@ -510,18 +492,45 @@ class UserGroupIntegrationTest {
             Void::class.java,
         )
 
+    /** GET /api/v1/groups/{groupId} — 단건 그룹 조회. */
+    private fun getGroupVia(
+        token: String,
+        groupId: UUID,
+    ) = restTemplate
+        .exchange(
+            url("/api/v1/groups/$groupId"),
+            HttpMethod.GET,
+            HttpEntity<Void>(authHeaders(token)),
+            Map::class.java,
+        )
+
+    /** GET /api/v1/groups — 그룹 목록 조회(List 바디). */
+    private fun listGroupsVia(token: String) =
+        restTemplate.exchange(
+            url("/api/v1/groups"),
+            HttpMethod.GET,
+            HttpEntity<Void>(authHeaders(token)),
+            List::class.java,
+        )
+
+    /** GET /api/v1/groups/{groupId}/members — 멤버 목록 조회(List 바디). */
+    private fun listMembersVia(
+        token: String,
+        groupId: UUID,
+    ) = restTemplate
+        .exchange(
+            url("/api/v1/groups/$groupId/members"),
+            HttpMethod.GET,
+            HttpEntity<Void>(authHeaders(token)),
+            List::class.java,
+        )
+
     /** GET /api/v1/groups/{groupId}/members 의 멤버 식별자 문자열 목록을 반환한다. */
     private fun memberIds(
         token: String,
         groupId: UUID,
     ): List<String> {
-        val resp =
-            restTemplate.exchange(
-                url("/api/v1/groups/$groupId/members"),
-                HttpMethod.GET,
-                HttpEntity<Void>(authHeaders(token)),
-                List::class.java,
-            )
+        val resp = listMembersVia(token, groupId)
         check(resp.statusCode == HttpStatus.OK) { "memberIds 실패: ${resp.statusCode}" }
         @Suppress("UNCHECKED_CAST")
         val members = resp.body as List<Map<*, *>>
