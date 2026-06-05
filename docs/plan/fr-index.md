@@ -1,11 +1,11 @@
-<!-- 120개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
+<!-- 121개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
 
 # FR 역인덱스 + Open Questions
 
-## §A.1 FR 역인덱스 (120개 전수)
+## §A.1 FR 역인덱스 (121개 전수)
 
 > 출처. SDD `docs/sdd/02-requirements.md` §2.2 "기능 요구사항 (FR) 상세".
-> 검증. `scripts/verify-master-plan.sh` — 120개 모두 product/*.md에 등장해야 함.
+> 검증. `scripts/verify-master-plan.sh` — 121개 모두 product/*.md에 등장해야 함.
 
 ### 이슈 관리 (FR-IS, 9개)
 
@@ -139,7 +139,7 @@
 | FR-RP-03 | CFD (Cumulative Flow Diagram) | 필수 | notification-dashboard | §4.3 |
 | FR-RP-04 | Cycle Time / Lead Time 분포 | 높음 | notification-dashboard | §4.4 |
 
-### 권한 관리 (FR-PM, 8개)
+### 권한 관리 (FR-PM, 9개)
 
 | FR ID | 한 줄 | 우선순위 | BC | 본문 위치 |
 |---|---|---|---|---|
@@ -151,6 +151,7 @@
 | FR-PM-06 | 이슈 보안 수준 | 필수 | identity-access | §4.6 |
 | FR-PM-07 | 필드 수준 권한 | 높음 | identity-access | §4.7 |
 | FR-PM-08 | 전역 시스템 관리자 역할/권한 인프라 (FR-PM-04·FR-AU-05 선행) | 필수 | identity-access | §4.8 |
+| FR-PM-09 | 사용자 그룹 (전역 그룹 + 멤버십 인프라, FR-PM-06 선행) | 필수 | identity-access | §4.9 |
 
 ### 사용성 (FR-UX, 5개)
 
@@ -216,7 +217,7 @@
 
 | BC | FR 카운트 | 주요 그룹 |
 |---|---|---|
-| identity-access | 23 | AU(10) + MF(5) + PM(8) |
+| identity-access | 24 | AU(10) + MF(5) + PM(9) |
 | issue-tracking | 30 | IS(9) + CM(4) + VR(4) + AC(2) + MN(2) + WT(1) + LK(2) + HS(2) + TM(2) + MV(2) |
 | project-workflow | 3 | WF(3) |
 | agile-planning | 14 | BD(3) + BL(2) + EP(2) + TL(3) + TT(2) + PL(2) |
@@ -225,7 +226,7 @@
 | slack-integration | 6 | SL(6) |
 | personalization | 12 | PR(4) + PF(3) + CA(2) + UX-01,04,05(3) |
 | search-export-import | 12 | SR(4) + EX(2) + IM(2) + API(4) |
-| **합계** | **120** | |
+| **합계** | **121** | |
 
 ## §A.3 미해결 결정 (Open Questions)
 

@@ -100,6 +100,24 @@ field_security:
 - `Watcher` - Watcher (이슈별 동적)
 - 커스텀 역할 가능
 
+### 12.6.1 사용자 그룹 (FR-PM-09)
+
+전역(시스템 단위) 사용자 그룹. 여러 사용자를 묶어 권한 부여(§12.2)·보안 수준 멤버(§12.4)·그룹 멘션(§9)의 단위로 재사용한다.
+
+```kotlin
+data class UserGroup(
+    val id: UUID,
+    val name: String,        // 전역 유니크. 예: "임원", "보안팀"
+    val description: String,
+)
+```
+
+- **멤버십**. `group_memberships(group_id, user_id)` — 사용자 ↔ 그룹 N:M, 전역(프로젝트 무관).
+- **관리**. 시스템 관리자(`SYSTEM_ADMIN`, §12.6 OrgAdmin / FR-PM-08)만 그룹 CRUD + 멤버 추가/제거.
+- **소비처**. 이슈 보안 수준 멤버(§12.4 FR-PM-06), 권한 스킴 grants(§12.2), 그룹 멘션(§9). 각 소비 FR이 그룹을 참조한다.
+- **LDAP 그룹 동기화**(§19.8). 네이티브 그룹을 우선 도입. `user_external_accounts.groups` 문자열 ↔ 정규 그룹 매핑·주기 동기화는 별도 후속 FR.
+- **범위**. FR-PM-09는 백엔드 인프라(엔티티 + 멤버십 + CRUD API)만. 관리 UI는 후속.
+
 ## 12.7 권한 평가 (Spring Security 통합)
 
 ```kotlin

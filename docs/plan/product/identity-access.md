@@ -334,6 +334,21 @@
 
 > **FR-PM-08 완료 (2026-06-04, PR #75)**. 전역 시스템 관리자 인프라 — `system_role_assignments`(V012, 머지 시 main FR-AU-03/04 V010/V011과 충돌해 V010→V012 재배정) + `SystemRole`(SYSTEM_ADMIN 단일, ProjectRole과 별개 축) + Repository(멱등 ON CONFLICT) + `SystemPermissionResolver`(shared-kernel 포트, FR-PM-04 소비) + `JwtIssuer` roles 클레임 + `ROLE_SYSTEM_ADMIN` authority(converter) + 설정값 기반 멱등 부트스트랩 `ApplicationRunner`. 전역 판정기는 DB 조회·프로파일 무관 단일 빈(ADR D4 정정, AlwaysAllow stub 없음). PAT 전역역할 제외(EC7), IssueScope.Global 실결선은 FR-PM-04 후속. 검증 — 전체 691 test + prod 통합테스트 S3/S4 그린, 회귀 0.
 
+### §4.9 FR-PM-09 — 사용자 그룹 (전역 그룹 인프라)
+
+**우선순위**. 필수 | **선행**. §4.8 FR-PM-08(SYSTEM_ADMIN) | **Plan slug**. `identity/user-groups`
+**범위**. 백엔드 인프라만(D1~D5). 관리 UI/E2E(D6/D7)·LDAP 그룹 동기화는 후속 FR.
+
+전역 사용자 그룹 + 멤버십 인프라. 보안 수준(FR-PM-06)·권한 스킴·멘션이 소비할 "그룹" 단위를 제공한다. BTS에 그룹 개념이 전무(`user_external_accounts.groups` LDAP 문자열 목록만 존재, 로컬 가입 사용자는 그룹 0)해 FR-PM-06(이슈 보안 수준, 그룹 기반 멤버)이 막혀 있으며, 이 인프라가 그 선행을 해소한다. SDD [12.6.1 사용자 그룹](../../sdd/12-permissions.md).
+
+- [ ] D1. 도메인 — `UserGroup`(전역, name 유니크) + `GroupMembership`(group×user N:M) (책임. security-engineer)
+- [ ] D2. 명세 — 그룹 CRUD + 멤버 추가/제거, `SYSTEM_ADMIN` 관리, 전역 name 유니크, 중복 멤버 멱등 (책임. security-engineer)
+- [ ] D3. 데이터 모델 — `user_groups`, `group_memberships` (V015, init_codegen 미러) (책임. db-engineer)
+- [ ] D4. 백엔드 — Repository + 그룹/멤버십 관리 API + `SYSTEM_ADMIN` 가드 (책임. security-engineer)
+- [ ] D5. 백엔드 테스트 — 통합테스트(@ActiveProfiles prod): SYSTEM_ADMIN 그룹 CRUD 허용·일반 사용자 거부, 멤버십 멱등 (책임. security-engineer)
+
+> **범위 밖(명시 분리)**. 그룹 관리 UI/E2E(D6/D7)는 후속 FR. LDAP 그룹 문자열↔정규 그룹 매핑·주기 동기화(SDD 19.8.1)는 별도 FR. 그룹의 권한 스킴 grants 결선·그룹 멘션은 각 소비 FR(FR-PM-06 등) 소관.
+
 ## §NFR identity-access BC 완료 게이트
 
 ### 측정값 기록표
