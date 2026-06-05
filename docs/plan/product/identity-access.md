@@ -281,19 +281,21 @@
 - [—] D6. 프론트 UI — **범위 외** (스킴 관리 UI 부재, FR-PM-08과 동일). 후속 스킴관리 UI FR 소관.
 - [—] D7. E2E — **범위 외** (UI 없음, 백엔드 prod 통합테스트가 ground-truth)
 
-> **FR-PM-04 완료 (2026-06-05, PR #73)**. 워크플로우 스킴 권한 prod 결선. **범위**: `MANAGE_SCHEME`/Global=`SystemPermissionResolver.isSystemAdmin`(FR-PM-08 소비), `ASSIGN_SCHEME`/Project=멤버십+`role_permissions` `MANAGE_WORKFLOW` 매트릭스(FR-PM-03 동형). 권한 계약(포트+enum+scope+예외) project-workflow→shared-kernel 이동, `actor: ActorId`→`actorId: UUID`. Guard 예외(`WorkflowSchemeAccessDeniedException`)가 BC 가로질러 project-workflow 핸들러에서 403 매핑. **자동화 권한(`MANAGE_AUTOMATION`)은 automation BC 부재로 범위 제외**(ADR D1, dead 시드 회피). **선행 부채(C2)**: 컨트롤러가 인증 주체 대신 하드코딩 system actor를 넘겨 prod에서 fail-closed(전 스킴 API 403) — 보안 컨텍스트→actor 결선 후속 FR 필요(누출 위험 없음). 검증 — 4모듈 test+ktlint+detekt 그린, 회귀 0. ADR `2026-06-04-workflow-scheme-permission-prod-resolver`(spec 단계 D3/D4 확정 닫음).
+> **FR-PM-04 완료 (2026-06-05, PR #73)**. 워크플로우 스킴 권한 prod 결선. **범위**: `MANAGE_SCHEME`/Global=`SystemPermissionResolver.isSystemAdmin`(FR-PM-08 소비), `ASSIGN_SCHEME`/Project=멤버십+`role_permissions` `MANAGE_WORKFLOW` 매트릭스(FR-PM-03 동형). 권한 계약(포트+enum+scope+예외) project-workflow→shared-kernel 이동, `actor: ActorId`→`actorId: UUID`. Guard 예외(`WorkflowSchemeAccessDeniedException`)가 BC 가로질러 project-workflow 핸들러에서 403 매핑. **자동화 권한(`MANAGE_AUTOMATION`)은 automation BC 부재로 범위 제외**(ADR D1, dead 시드 회피). **선행 부채(C2) — ✅ 해소(PR #82, 2026-06-05)**: 스킴 컨트롤러 7곳의 하드코딩 system actor를 `CurrentActor`(SecurityContext 인증 주체→`ActorId`, 미인증/익명/비-UUID→401)로 결선. 결정 A(프레임워크 중립, `Jwt` 미사용, 신규 의존성 0). 단 project-workflow에 prod 앱/BC 배포 조립 부재라 **코드 부채 해소 + test-assembled 검증**까지(prod 활성화는 BC 조립 후). ADR `2026-06-05-workflow-scheme-controller-actor-wiring`. 검증 — 4모듈 test+ktlint+detekt 그린, 회귀 0. ADR `2026-06-04-workflow-scheme-permission-prod-resolver`(spec 단계 D3/D4 확정 닫음).
 
 ### §4.5 FR-PM-05 — 이슈 접근 (Browse, View)
 
-**우선순위**. 필수 | **선행**. §4.2 | **Plan slug**. `identity/issue-access`
+**우선순위**. 필수 | **선행**. §4.2 | **Plan slug**. `fr-pm-05-browse-view` | **PR**. #85
 
-- [ ] D1. 도메인 — BrowsePermission vs ViewPermission 분리 (책임. security-engineer)
-- [ ] D2. 명세 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — (FR-PM-02 활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — 이슈 쿼리에 필터 자동 첨부 (jOOQ Condition 빌더) (책임. security-engineer + backend-engineer)
-- [ ] D5. 백엔드 테스트 — 비공개 이슈 조회 차단 (책임. security-engineer)
-- [ ] D6. 프론트 UI — 권한 없는 이슈 404 처리 (책임. frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — BROWSE/VIEW 분리 (SDD 12.3 BROWSE_PROJECT/VIEW_ISSUE) (책임. security-engineer) (PR #85)
+- [x] D2. 명세 (책임. security-engineer) (PR #85)
+- [x] D3. 데이터 모델 — V014 BROWSE_PROJECT/VIEW_ISSUE 시드(기본 스킴 PROJECT_ADMIN·MEMBER) (책임. db-engineer) (PR #85)
+- [x] D4. 백엔드 — `IssuePermission.BROWSE` + prod resolver 매트릭스 이관(toCodeOrNull) + 단건 VIEW 404 가드(`assertViewIssueOrNotFound`) + listIssues BROWSE (책임. security-engineer) (PR #85)
+- [x] D5. 백엔드 테스트 — prod 통합테스트 허용/거부(S1~S4) + 서비스 단위 404 매핑 (책임. security-engineer) (PR #85)
+- [x] D6. 프론트 UI — 권한 없는 이슈 404 not-found(기존 catch-all 충족, 회귀 가드 + MSW 404 시나리오) (책임. frontend-engineer) (PR #85)
+- [x] D7. E2E — 권한 없는 이슈 진입 not-found(2 시나리오, 기존 issue E2E 회귀 0) (책임. qa-engineer) (PR #85)
+
+> **FR-PM-05 완료 (2026-06-05, PR #85)**. 이슈 접근 권한 BROWSE/VIEW 분리. **범위**: `IssuePermission.VIEW` 단일 → `BROWSE`(목록=`BROWSE_PROJECT`) + `VIEW`(단건=`VIEW_ISSUE`) 분리(SDD 12.3 정본). prod `IdentityAccessIssuePermissionResolver`의 "프로젝트 멤버면 통과" 임시 정책 → `role_permissions` 매트릭스 판정으로 이관(`toCodeOrNull`에 BROWSE_PROJECT/VIEW_ISSUE 매핑, KDoc 임시 정책 메모 제거). 단건 VIEW 미인가 시 **404 존재 숨김**(`assertViewIssueOrNotFound` 헬퍼 — findByKey/availableTransitions/cloneIssue 소스 3경로 일관, exportPdf 전파). 목록은 BROWSE 미인가 403 유지. V014 시드(+4행, `PermissionSchemaMigrationTest` 8→12). **범위 밖**: per-issue 보안 수준(비공개 이슈 차등)은 FR-PM-06 위임(SDD 12.4), 컨트롤러 actor 결선(`SYSTEM_ACTOR_UUID` 하드코딩)은 issue-tracking BC 전체 후속(FR-PM-04 C2 동형). 검증 — 백엔드 3모듈 test+ktlint+detekt 그린, 프론트 1216 test/typecheck/lint clean, prod Testcontainers 통합이 ground-truth(non-prod AlwaysAllow 마스킹). ADR [2026-06-05-issue-browse-view-permission](../../decisions/2026-06-05-issue-browse-view-permission.md).
 
 ### §4.6 FR-PM-06 — 이슈 보안 수준
 

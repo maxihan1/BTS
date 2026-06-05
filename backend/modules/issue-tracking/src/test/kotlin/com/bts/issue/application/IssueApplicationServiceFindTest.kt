@@ -5,7 +5,6 @@ package com.bts.issue.application
 import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
-import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.event.IssueEventPublisher
@@ -119,8 +118,8 @@ class IssueApplicationServiceFindTest : DescribeSpec({
                 } returns false
             }
 
-            it("IssueAccessDeniedException 을 던진다") {
-                shouldThrow<IssueAccessDeniedException> {
+            it("IssueNotFoundException 을 던진다 (존재 숨김 — IssueAccessDeniedException 아님)") {
+                shouldThrow<IssueNotFoundException> {
                     sut.findByKey(actor, issueKey)
                 }
             }

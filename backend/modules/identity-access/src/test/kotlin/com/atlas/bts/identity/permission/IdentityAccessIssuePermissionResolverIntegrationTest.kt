@@ -41,22 +41,25 @@ import java.util.UUID
  * - 미매핑 프로젝트는 기본 스킴(00000000-0000-0000-0000-000000000001) fallback 경로를 검증한다.
  * - Bean 배타: prod 프로파일에서 [IdentityAccessIssuePermissionResolver]가 [IssuePermissionResolver]로 주입됨을 확인한다.
  *
- * ## 13케이스 매트릭스
- * | Actor    | Permission  | Scope         | 기대  |
- * |----------|-------------|---------------|-------|
- * | ADMIN    | CREATE      | Issue(key)    | true  |
- * | ADMIN    | UPDATE      | Issue(key)    | true  |
- * | ADMIN    | SOFT_DELETE | Issue(key)    | true  |
- * | MEMBER   | CREATE      | Issue(key)    | true  |
- * | MEMBER   | UPDATE      | Issue(key)    | true  |
- * | MEMBER   | SOFT_DELETE | Issue(key)    | false |
- * | 비멤버   | CREATE      | Issue(key)    | false |
- * | 비멤버   | UPDATE      | Issue(key)    | false |
- * | 비멤버   | SOFT_DELETE | Issue(key)    | false |
- * | MEMBER   | VIEW        | Issue(key)    | true  |  ← 범위 밖 멤버 통과
- * | MEMBER   | TRANSITION  | Issue(key)    | true  |  ← 범위 밖 멤버 통과
- * | 비멤버   | VIEW        | Issue(key)    | false |  ← 범위 밖 비멤버 거부
- * | 비멤버   | TRANSITION  | Issue(key)    | false |  ← 범위 밖 비멤버 거부
+ * ## 권한 매트릭스 (FR-PM-05 BROWSE/VIEW 매트릭스 이관 반영)
+ * | Actor    | Permission  | Scope         | 기대  | 사유                         |
+ * |----------|-------------|---------------|-------|------------------------------|
+ * | ADMIN    | CREATE      | Issue(key)    | true  | CREATE_ISSUE 매트릭스        |
+ * | ADMIN    | UPDATE      | Issue(key)    | true  | UPDATE_ISSUE 매트릭스        |
+ * | ADMIN    | SOFT_DELETE | Issue(key)    | true  | DELETE_ISSUE 매트릭스        |
+ * | MEMBER   | CREATE      | Issue(key)    | true  | CREATE_ISSUE 매트릭스        |
+ * | MEMBER   | UPDATE      | Issue(key)    | true  | UPDATE_ISSUE 매트릭스        |
+ * | MEMBER   | SOFT_DELETE | Issue(key)    | false | DELETE_ISSUE 미보유          |
+ * | 비멤버   | CREATE      | Issue(key)    | false | 멤버 게이트 차단             |
+ * | 비멤버   | UPDATE      | Issue(key)    | false | 멤버 게이트 차단             |
+ * | 비멤버   | SOFT_DELETE | Issue(key)    | false | 멤버 게이트 차단             |
+ * | MEMBER   | VIEW        | Issue(key)    | true  | VIEW_ISSUE 매트릭스 보유     |
+ * | MEMBER   | TRANSITION  | Issue(key)    | true  | 범위 밖(미위임) → 멤버 통과  |
+ * | 비멤버   | VIEW        | Issue(key)    | false | 멤버 게이트 차단             |
+ * | 비멤버   | TRANSITION  | Issue(key)    | false | 멤버 게이트 차단             |
+ * | MEMBER   | BROWSE      | Project(key)  | true  | BROWSE_PROJECT 매트릭스 보유 |
+ * | 비멤버   | BROWSE      | Project(key)  | false | 멤버 게이트 차단             |
+ * | ADMIN    | BROWSE      | Project(key)  | true  | BROWSE_PROJECT 매트릭스 보유 |
  *
  * ## Testcontainers 설계
  * companion object에 static @Container 선언 + @DynamicPropertySource 패턴
@@ -190,12 +193,12 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
         assertThat(resolver).isInstanceOf(IdentityAccessIssuePermissionResolver::class.java)
     }
 
-    // ── 13케이스 매트릭스 (@TestFactory) ─────────────────────────────────────
+    // ── 권한 매트릭스 (@TestFactory) ──────────────────────────────────────────
 
-    // LongMethod: 13케이스 데이터 테이블을 한 @TestFactory에 모으는 것이 의도(전수 매트릭스 가독성).
+    // LongMethod: 매트릭스 데이터 테이블을 한 @TestFactory에 모으는 것이 의도(전수 매트릭스 가독성).
     @Suppress("LongMethod")
     @TestFactory
-    fun `권한 매트릭스 — 역할 × 권한 13케이스 전수 검증`(): List<DynamicTest> {
+    fun `권한 매트릭스 — 역할 × 권한 전수 검증`(): List<DynamicTest> {
         data class Case(
             val label: String,
             val actorId: UUID,
@@ -204,102 +207,54 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
             val expected: Boolean,
         )
 
+        // 반복되는 scope 인자(issueKey/projectKey)를 고정하는 케이스 팩토리.
+        fun issueCase(
+            label: String,
+            actorId: UUID,
+            permission: IssuePermission,
+            expected: Boolean,
+        ) = Case(label, actorId, permission, IssueScope.Issue(issueKey), expected)
+
+        fun projectCase(
+            label: String,
+            actorId: UUID,
+            permission: IssuePermission,
+            expected: Boolean,
+        ) = Case(label, actorId, permission, IssueScope.Project(projectKey), expected)
+
         val cases =
             listOf(
                 // ── PROJECT_ADMIN × 범위 내 3종 → 전부 허용 ─────────────────────
-                Case(
-                    "PROJECT_ADMIN + CREATE → 허용",
-                    adminId,
-                    IssuePermission.CREATE,
-                    IssueScope.Issue(issueKey),
-                    true,
-                ),
-                Case(
-                    "PROJECT_ADMIN + UPDATE → 허용",
-                    adminId,
-                    IssuePermission.UPDATE,
-                    IssueScope.Issue(issueKey),
-                    true,
-                ),
-                Case(
-                    "PROJECT_ADMIN + SOFT_DELETE → 허용",
-                    adminId,
-                    IssuePermission.SOFT_DELETE,
-                    IssueScope.Issue(issueKey),
-                    true,
-                ),
+                issueCase("PROJECT_ADMIN + CREATE → 허용", adminId, IssuePermission.CREATE, true),
+                issueCase("PROJECT_ADMIN + UPDATE → 허용", adminId, IssuePermission.UPDATE, true),
+                issueCase("PROJECT_ADMIN + SOFT_DELETE → 허용", adminId, IssuePermission.SOFT_DELETE, true),
                 // ── MEMBER × 범위 내 3종 → CREATE/UPDATE 허용, SOFT_DELETE 거부 ─
-                Case(
-                    "MEMBER + CREATE → 허용",
-                    memberId,
-                    IssuePermission.CREATE,
-                    IssueScope.Issue(issueKey),
-                    true,
-                ),
-                Case(
-                    "MEMBER + UPDATE → 허용",
-                    memberId,
-                    IssuePermission.UPDATE,
-                    IssueScope.Issue(issueKey),
-                    true,
-                ),
-                Case(
-                    "MEMBER + SOFT_DELETE → 거부 (DELETE_ISSUE 미보유)",
-                    memberId,
-                    IssuePermission.SOFT_DELETE,
-                    IssueScope.Issue(issueKey),
-                    false,
-                ),
+                issueCase("MEMBER + CREATE → 허용", memberId, IssuePermission.CREATE, true),
+                issueCase("MEMBER + UPDATE → 허용", memberId, IssuePermission.UPDATE, true),
+                issueCase("MEMBER + SOFT_DELETE → 거부 (DELETE_ISSUE 미보유)", memberId, IssuePermission.SOFT_DELETE, false),
                 // ── 비멤버 × 범위 내 3종 → 전부 거부 (멤버 게이트) ────────────
-                Case(
-                    "비멤버 + CREATE → 거부",
-                    nonMemberId,
-                    IssuePermission.CREATE,
-                    IssueScope.Issue(issueKey),
-                    false,
-                ),
-                Case(
-                    "비멤버 + UPDATE → 거부",
-                    nonMemberId,
-                    IssuePermission.UPDATE,
-                    IssueScope.Issue(issueKey),
-                    false,
-                ),
-                Case(
-                    "비멤버 + SOFT_DELETE → 거부",
-                    nonMemberId,
-                    IssuePermission.SOFT_DELETE,
-                    IssueScope.Issue(issueKey),
-                    false,
-                ),
-                // ── 범위 밖 × {멤버, 비멤버} — VIEW + TRANSITION ─────────────
-                Case(
-                    "MEMBER + VIEW(범위 밖) → 멤버 통과 허용",
+                issueCase("비멤버 + CREATE → 거부", nonMemberId, IssuePermission.CREATE, false),
+                issueCase("비멤버 + UPDATE → 거부", nonMemberId, IssuePermission.UPDATE, false),
+                issueCase("비멤버 + SOFT_DELETE → 거부", nonMemberId, IssuePermission.SOFT_DELETE, false),
+                // ── VIEW — FR-PM-05로 VIEW_ISSUE 매트릭스 위임 (더 이상 범위 밖 멤버 통과 아님) ─
+                issueCase("MEMBER + VIEW(Issue) → 허용 (VIEW_ISSUE 매트릭스 보유) [S3]", memberId, IssuePermission.VIEW, true),
+                issueCase("비멤버 + VIEW(Issue) → 거부 (멤버 게이트) [S4]", nonMemberId, IssuePermission.VIEW, false),
+                // ── TRANSITION — 아직 미위임(범위 밖) → 멤버 통과 / 비멤버 거부 ──
+                issueCase("MEMBER + TRANSITION(범위 밖) → 멤버 통과 허용", memberId, IssuePermission.TRANSITION, true),
+                issueCase("비멤버 + TRANSITION(범위 밖) → 거부", nonMemberId, IssuePermission.TRANSITION, false),
+                // ── BROWSE — FR-PM-05 BROWSE_PROJECT 매트릭스 위임 (Project 범위) ──
+                projectCase(
+                    "MEMBER + BROWSE → 허용 (BROWSE_PROJECT 매트릭스 보유) [S1]",
                     memberId,
-                    IssuePermission.VIEW,
-                    IssueScope.Issue(issueKey),
+                    IssuePermission.BROWSE,
                     true,
                 ),
-                Case(
-                    "MEMBER + TRANSITION(범위 밖) → 멤버 통과 허용",
-                    memberId,
-                    IssuePermission.TRANSITION,
-                    IssueScope.Issue(issueKey),
+                projectCase("비멤버 + BROWSE → 거부 (멤버 게이트) [S2]", nonMemberId, IssuePermission.BROWSE, false),
+                projectCase(
+                    "PROJECT_ADMIN + BROWSE → 허용 (BROWSE_PROJECT 매트릭스 보유)",
+                    adminId,
+                    IssuePermission.BROWSE,
                     true,
-                ),
-                Case(
-                    "비멤버 + VIEW(범위 밖) → 거부",
-                    nonMemberId,
-                    IssuePermission.VIEW,
-                    IssueScope.Issue(issueKey),
-                    false,
-                ),
-                Case(
-                    "비멤버 + TRANSITION(범위 밖) → 거부",
-                    nonMemberId,
-                    IssuePermission.TRANSITION,
-                    IssueScope.Issue(issueKey),
-                    false,
                 ),
             )
 
@@ -435,7 +390,13 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
         }
     }
 
-    /** adminId=PROJECT_ADMIN, memberId=MEMBER으로 두 프로젝트에 멤버십을 삽입한다. */
+    /**
+     * adminId=PROJECT_ADMIN, memberId=MEMBER으로 두 프로젝트에 멤버십을 삽입한다.
+     *
+     * BROWSE/VIEW 매트릭스 판정의 권한 행(BROWSE_PROJECT·VIEW_ISSUE)은 별도 시드가 아니라
+     * V014__browse_view_permissions.sql(FR-PM-05)이 기본 스킴 PROJECT_ADMIN·MEMBER에 부여한 것을 탄다.
+     * 따라서 멤버십만 시드하면 BROWSE(S1)·VIEW(S3)가 매트릭스로 true가 된다.
+     */
     private fun seedMemberships() {
         val now = java.time.Instant.now()
         listOf(projectId, sharedProjectId).forEach { pId ->
