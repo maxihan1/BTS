@@ -132,6 +132,8 @@ export type IssueResponse = z.infer<typeof issueResponseSchema>
 export interface CreateIssueInput {
   projectKey: string
   summary: string
+  /** FR-CM-03 — 생성 시 컴포넌트 지정. 미전달 시 빈 배열(컴포넌트 미할당)로 처리. */
+  componentIds?: string[]
 }
 
 /**
@@ -246,13 +248,18 @@ export async function fetchIssues(params: FetchIssuesParams): Promise<IssuePage>
 /**
  * 새 이슈를 생성한다.
  *
- * @param input projectKey · summary
+ * @param input projectKey · summary · componentIds(선택, 미전달 시 빈 배열)
  * @returns 생성된 IssueResponse — 백엔드 201 `{ data: IssueResponse }` 언래핑
  */
 export async function createIssue(input: CreateIssueInput): Promise<IssueResponse> {
   const wrapped = await apiPost(
     '/api/v1/issues',
-    input,
+    {
+      projectKey: input.projectKey,
+      summary: input.summary,
+      // FR-CM-03 — 생성 시 컴포넌트 지정. 미전달 시 빈 배열로 전송.
+      componentIds: input.componentIds ?? [],
+    },
     dataResponseSchema(issueResponseSchema),
   )
   return wrapped.data
