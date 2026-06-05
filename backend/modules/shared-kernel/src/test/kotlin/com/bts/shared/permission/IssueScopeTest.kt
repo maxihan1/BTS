@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test
  * - global_singleton — [IssueScope.Global] 은 data object 이므로 참조 동일성이 보장된다.
  * - project_equality — [IssueScope.Project] 동일 key 이면 equals true.
  * - issue_equality — [IssueScope.Issue] 동일 key 이면 equals true.
- * - permission_entries_size — [IssuePermission] 항목 수 6개 (VIEW, CREATE, UPDATE, TRANSITION, SOFT_DELETE, HARD_DELETE).
+ * - permission_entries_size — [IssuePermission] 항목 수 7개 (BROWSE, VIEW, CREATE, UPDATE, TRANSITION, SOFT_DELETE, HARD_DELETE).
  */
 class IssueScopeTest {
     @Test
@@ -41,7 +41,8 @@ class IssueScopeTest {
     }
 
     @Test
-    fun `permission_entries_size — IssuePermission 항목 수는 6이다`() {
-        assertThat(IssuePermission.entries).hasSize(6)
+    fun `permission_entries_size — IssuePermission 항목 수는 7이다`() {
+        // FR-PM-05 — BROWSE 추가(목록 가시성). VIEW는 단건으로 한정.
+        assertThat(IssuePermission.entries).hasSize(7)
     }
 }
