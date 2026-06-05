@@ -34,17 +34,23 @@ object CurrentActor {
      * @throws ResponseStatusException 인증이 없거나 주체가 유효한 UUID 가 아닐 때(401).
      */
     fun current(): ActorId {
-        val authentication: Authentication? = SecurityContextHolder.getContext().authentication
-        if (authentication == null ||
-            !authentication.isAuthenticated ||
-            authentication is AnonymousAuthenticationToken
-        ) {
-            throw ResponseStatusException(HttpStatus.UNAUTHORIZED, UNAUTHENTICATED_MESSAGE)
-        }
+        val authentication: Authentication =
+            SecurityContextHolder.getContext().authentication
+                ?.takeIf(::isAuthenticated)
+                ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, UNAUTHENTICATED_MESSAGE)
         return try {
             ActorId(authentication.name)
         } catch (e: IllegalArgumentException) {
             throw ResponseStatusException(HttpStatus.UNAUTHORIZED, UNAUTHENTICATED_MESSAGE, e)
         }
     }
+
+    /**
+     * [authentication] 이 실제 인증된 주체인지 판별한다.
+     *
+     * `isAuthenticated == false` 이거나 익명 토큰([AnonymousAuthenticationToken]) 이면 미인증으로 본다.
+     */
+    private fun isAuthenticated(authentication: Authentication): Boolean =
+        authentication.isAuthenticated &&
+            authentication !is AnonymousAuthenticationToken
 }
