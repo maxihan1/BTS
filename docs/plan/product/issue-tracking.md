@@ -171,13 +171,13 @@
 
 **우선순위**. 필수 | **선행**. §3.1.1 | **Plan slug**. `issue/components-assign`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `issue_components` 다대다 (책임. db-engineer)
-- [ ] D4. 백엔드 — 이슈 PATCH 확장 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 다중 셀렉터 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. backend-engineer) — PR #81 (Issue.componentIds + assignComponents/clearComponents distinct 정규화)
+- [x] D2. 명세 (책임. backend-engineer) — PR #81 (ADR docs/adr/2026-06-04-issue-component-assignment-model.md: 정규화 조인테이블 + 전체교체 set + 이슈 편집권)
+- [x] D3. 데이터 모델 — `issue_components` 다대다 (책임. db-engineer) — V012, PR #81 (복합 PK + FK ON DELETE CASCADE(관계테이블, prod 소프트삭제 미발화) + init_codegen 미러)
+- [x] D4. 백엔드 — 이슈 PATCH 확장 (책임. backend-engineer) — PR #81 (`PATCH /api/v1/issues/{key}/components` 전용 서브리소스, IssuePermission.UPDATE+IssueScope.Issue, 같은프로젝트+활성 검증 422 IssueComponentNotFoundException, 낙관락 409, 도메인 경유. componentIds는 단건 응답에만 노출)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #81 (도메인 단위 + Testcontainers 통합 S1~S9 + prod 권한 + 멱등 + 읽기 활성필터, 969 그린)
+- [x] D6. 프론트 UI — 다중 셀렉터 (책임. designer → frontend-engineer) — PR #81 (ComponentMultiSelect 순수 presentational + IssueMetaPanel 배선 + route가 mutation 소유 + useChangeComponents invalidate-only + issueResponseSchema 계약 정렬)
+- [x] D7. E2E (책임. qa-engineer) — PR #81 (issue-components.spec.ts 할당/부분교체/전부해제 happy path)
 
 #### §3.1.3 FR-CM-03 — 컴포넌트별 기본 담당자 자동 할당
 
