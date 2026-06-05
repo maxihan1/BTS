@@ -45,7 +45,11 @@ class JdbcUserGroupRepository(
         ) { "INSERT ... RETURNING 이 행을 반환하지 않았습니다 (그룹 생성 실패)." }
 
     override fun findById(id: UUID): UserGroup? =
-        jdbc.query(SQL_FIND_BY_ID, mapOf("id" to id), GroupRowMapper).firstOrNull()
+        jdbc.query(
+            SQL_FIND_BY_ID,
+            mapOf("id" to id),
+            GroupRowMapper,
+        ).firstOrNull()
 
     override fun findAll(): List<UserGroupWithCount> = jdbc.query(SQL_FIND_ALL, GroupWithCountRowMapper)
 
@@ -82,7 +86,11 @@ class JdbcUserGroupRepository(
         }
 
     override fun existsById(id: UUID): Boolean =
-        jdbc.queryForObject(SQL_EXISTS_BY_ID, mapOf("id" to id), Boolean::class.java) ?: false
+        jdbc.queryForObject(
+            SQL_EXISTS_BY_ID,
+            mapOf("id" to id),
+            Boolean::class.java,
+        ) ?: false
 
     // ── SQL 상수 ─────────────────────────────────────────────────────────────────
 
