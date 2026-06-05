@@ -75,7 +75,11 @@ class IssueApplicationServicePermissionTest : DescribeSpec({
         context("findByKey — VIEW false") {
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.VIEW,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns false
             }
 
@@ -94,7 +98,11 @@ class IssueApplicationServicePermissionTest : DescribeSpec({
         context("availableTransitions — VIEW false") {
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.VIEW,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns false
             }
 
@@ -114,7 +122,11 @@ class IssueApplicationServicePermissionTest : DescribeSpec({
         context("cloneIssue 소스 — 소스 VIEW false") {
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.VIEW,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns false
             }
 
