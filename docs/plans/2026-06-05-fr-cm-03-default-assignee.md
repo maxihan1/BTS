@@ -279,3 +279,18 @@ validateComponents 재사용, ComponentMultiSelect 순수 컴포넌트 재사용
 - 알려진 한계: E2E가 MSW componentLeadStore 브라우저 시드 부재로 자동배정 "담당자 이름" 표시는 직접 검증 못
   함 → 자동배정 ground-truth는 백엔드 Testcontainers 통합(IssueCreate/ChangeComponentsAutoAssignIntegrationTest).
   계층화 타당(리뷰 합의).
+
+### 게이트 2 후 수정 + 재리뷰 (2026-06-05)
+
+Maxi 요청으로 C2 + E2E 한계 수정(프로젝트 리드 폴백은 별도 후속 FR로 분리 — admin≠lead, cross-BC).
+- **C2 해소**: MSW createIssue 자동배정을 component-handlers의 componentStore(셀렉터·브라우저 시드와 동일
+  출처)에서 읽도록 통합(`getStoredComponentsByIds`), 정렬 `name → id` tiebreak으로 백엔드 DefaultAssigneeResolver와
+  일치. 별도 componentLeadStore/seedComponentLeads 제거.
+- **E2E 한계 해소**: X-MSW-Seed-Components로 리드(alice) 보유 컴포넌트 시드 → 생성 후 담당자 영역에 자동배정
+  리드 **이름(김앨리스)** 표시 직접 검증 + 다중 컴포넌트 사전순 첫 리드 tiebreak 시나리오(선택순서 무관).
+- 수정 범위 = MSW mock + test + E2E만(프로덕션 런타임 코드 0). 재리뷰 PASS.
+- 검증: 프론트 vitest 1227 그린 + typecheck TS에러 0, E2E 4 + 회귀 6 그린. 백엔드 무변경(989 유효).
+- 잔여 minor: MSW changeComponentsHandler는 자동배정 미러 안 함(상세 PATCH 경로 E2E는 생성 경로로 검증,
+  ground-truth는 백엔드 T5). 후속 정리 후보.
+- **후속 FR 예정**: 컴포넌트 리드 없을 때 프로젝트 리드 폴백(2순위). admin(다수·권한)≠lead(단일·담당)이라
+  project_memberships에 단일 PROJECT_LEAD 지정 + cross-BC 포트로 설계 예정(Maxi와 방향 논의 중).
