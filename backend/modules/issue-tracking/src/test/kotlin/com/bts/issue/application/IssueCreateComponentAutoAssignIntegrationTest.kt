@@ -173,12 +173,13 @@ class IssueCreateComponentAutoAssignIntegrationTest {
      */
     @Test
     fun `S1 리드 Alice 컴포넌트로 생성 - assignee Alice와 componentIds 영속 및 version 1 확인`() {
-        val request = CreateIssueRequest(
-            projectKey = PROJECT_KEY,
-            summary = "S1 자동 배정 테스트",
-            reporterId = ACTOR_ID,
-            componentIds = listOf(compWithAliceLead),
-        )
+        val request =
+            CreateIssueRequest(
+                projectKey = PROJECT_KEY,
+                summary = "S1 자동 배정 테스트",
+                reporterId = ACTOR_ID,
+                componentIds = listOf(compWithAliceLead),
+            )
 
         val issue = issueApplicationService.createIssue(ACTOR_ID, request)
 
@@ -216,12 +217,13 @@ class IssueCreateComponentAutoAssignIntegrationTest {
      */
     @Test
     fun `S4 두 컴포넌트 이름 사전순 - 첫 번째 리드가 assignee`() {
-        val request = CreateIssueRequest(
-            projectKey = PROJECT_KEY,
-            summary = "S4 이름순 배정 테스트",
-            reporterId = ACTOR_ID,
-            componentIds = listOf(compAlpha, compZeta),
-        )
+        val request =
+            CreateIssueRequest(
+                projectKey = PROJECT_KEY,
+                summary = "S4 이름순 배정 테스트",
+                reporterId = ACTOR_ID,
+                componentIds = listOf(compAlpha, compZeta),
+            )
 
         val issue = issueApplicationService.createIssue(ACTOR_ID, request)
 
@@ -250,12 +252,13 @@ class IssueCreateComponentAutoAssignIntegrationTest {
      */
     @Test
     fun `S5 리드 없는 컴포넌트로 생성 - assignee null`() {
-        val request = CreateIssueRequest(
-            projectKey = PROJECT_KEY,
-            summary = "S5 리드 없는 컴포넌트 테스트",
-            reporterId = ACTOR_ID,
-            componentIds = listOf(compNoLead),
-        )
+        val request =
+            CreateIssueRequest(
+                projectKey = PROJECT_KEY,
+                summary = "S5 리드 없는 컴포넌트 테스트",
+                reporterId = ACTOR_ID,
+                componentIds = listOf(compNoLead),
+            )
 
         val issue = issueApplicationService.createIssue(ACTOR_ID, request)
 
@@ -280,12 +283,13 @@ class IssueCreateComponentAutoAssignIntegrationTest {
      */
     @Test
     fun `컴포넌트 없이 생성 - assignee null과 version 1 확인 (회귀)`() {
-        val request = CreateIssueRequest(
-            projectKey = PROJECT_KEY,
-            summary = "컴포넌트 없는 이슈 회귀 테스트",
-            reporterId = ACTOR_ID,
-            componentIds = emptyList(),
-        )
+        val request =
+            CreateIssueRequest(
+                projectKey = PROJECT_KEY,
+                summary = "컴포넌트 없는 이슈 회귀 테스트",
+                reporterId = ACTOR_ID,
+                componentIds = emptyList(),
+            )
 
         val issue = issueApplicationService.createIssue(ACTOR_ID, request)
 
@@ -312,19 +316,21 @@ class IssueCreateComponentAutoAssignIntegrationTest {
      * Then   IssueComponentNotFoundException (422)
      */
     @Test
+    @Suppress("SwallowedException")
     fun `타 프로젝트 컴포넌트 - IssueComponentNotFoundException 422`() {
-        val request = CreateIssueRequest(
-            projectKey = PROJECT_KEY,
-            summary = "타 프로젝트 컴포넌트 테스트",
-            reporterId = ACTOR_ID,
-            componentIds = listOf(compOtherProject),
-        )
+        val request =
+            CreateIssueRequest(
+                projectKey = PROJECT_KEY,
+                summary = "타 프로젝트 컴포넌트 테스트",
+                reporterId = ACTOR_ID,
+                componentIds = listOf(compOtherProject),
+            )
 
         try {
             issueApplicationService.createIssue(ACTOR_ID, request)
             assert(false) { "IssueComponentNotFoundException 이 발생해야 합니다." }
         } catch (e: com.bts.issue.domain.IssueComponentNotFoundException) {
-            // 422 IssueComponentNotFoundException 정상 발생
+            // 422 IssueComponentNotFoundException 정상 발생 — 예외 삼킴 의도적 (검증 완료)
         }
 
         val issueCount = countIssues()
@@ -343,22 +349,24 @@ class IssueCreateComponentAutoAssignIntegrationTest {
      * Then   IssueComponentNotFoundException (422)
      */
     @Test
+    @Suppress("SwallowedException")
     fun `소프트삭제 컴포넌트 - IssueComponentNotFoundException 422`() {
         val deletedComp = insertComponent(PROJECT_KEY, "DeletedComp-${UUID.randomUUID()}", null)
         softDeleteComponent(deletedComp)
 
-        val request = CreateIssueRequest(
-            projectKey = PROJECT_KEY,
-            summary = "소프트삭제 컴포넌트 테스트",
-            reporterId = ACTOR_ID,
-            componentIds = listOf(deletedComp),
-        )
+        val request =
+            CreateIssueRequest(
+                projectKey = PROJECT_KEY,
+                summary = "소프트삭제 컴포넌트 테스트",
+                reporterId = ACTOR_ID,
+                componentIds = listOf(deletedComp),
+            )
 
         try {
             issueApplicationService.createIssue(ACTOR_ID, request)
             assert(false) { "IssueComponentNotFoundException 이 발생해야 합니다." }
         } catch (e: com.bts.issue.domain.IssueComponentNotFoundException) {
-            // 422 정상 발생
+            // 422 정상 발생 — 예외 삼킴 의도적 (검증 완료)
         }
     }
 
@@ -400,15 +408,16 @@ class IssueCreateComponentAutoAssignIntegrationTest {
             }
 
             // software-default 워크플로우 + 스킴 + 프로젝트 배정 (createIssue 의 resolveStart 가 필요로 함)
-            val wfId = c.prepareStatement(
-                "INSERT INTO workflows (key, name) VALUES ('software-default', '소프트웨어 개발 기본 워크플로우') " +
-                    "ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
-            ).use { stmt ->
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getObject(1) as UUID
+            val wfId =
+                c.prepareStatement(
+                    "INSERT INTO workflows (key, name) VALUES ('software-default', '소프트웨어 개발 기본 워크플로우') " +
+                        "ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as UUID
+                    }
                 }
-            }
 
             // open 상태만 필요 (createIssue 는 startState 만 조회)
             c.prepareStatement(
@@ -512,6 +521,7 @@ class IssueCreateComponentAutoAssignIntegrationTest {
             }
         }
 
+    @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
     private fun fetchAssigneeId(issueKey: String): UUID? =
         conn().use { c ->
             c.prepareStatement("SELECT assignee_id FROM issues WHERE key = ?").use { stmt ->

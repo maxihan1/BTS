@@ -100,11 +100,14 @@ class IssueApplicationService(
      * 3. IssueKey 발급
      * 4. typeId 결정 — request.typeId 가 null 이면 task fallback (FR-6: 모든 이슈는 유효 타입 보유)
      *    non-null 이면 해당 타입 존재/활성 검증. 없으면 IssueTypeNotFoundException.
-     * 5. [WorkflowKeyResolver.resolveStart] 로 초기 상태 키 결정
+     * 5. componentIds distinct 정규화 + [validateComponents] (프로젝트·활성 검증) — 위반 시 422.
+     * 6. [resolveDefaultAssignee] — 컴포넌트 리드 중 이름 오름차순 첫 번째를 담당자로 결정.
+     * 7. [WorkflowKeyResolver.resolveStart] 로 초기 상태 키 결정
      *    — WorkflowSchemeNoDefaultException 발생 시 [IssueWorkflowNotConfiguredException] 으로 변환 (BC 격리)
-     * 6. Issue.create
-     * 7. DB INSERT
-     * 8. IssueCreated 이벤트 발행
+     * 8. Issue.create (assigneeId + componentIds 포함)
+     * 9. DB INSERT (issues)
+     * 10. [IssueRepository.insertComponents] — issue_components batch INSERT (version bump 없음)
+     * 11. IssueCreated 이벤트 발행
      *
      * @param actor 이슈를 생성하는 행위자.
      * @param request 생성 요청 DTO. typeId null 이면 task 타입으로 fallback.
@@ -895,6 +898,7 @@ class IssueApplicationService(
      * @param current 현재 이슈 담당자. 생성 경로에서는 null.
      * @return 결정된 담당자 [ActorId]. 없으면 null.
      */
+    @Suppress("ReturnCount") // current 조기 반환 + 빈 목록 조기 반환 + 정상 반환 3개 — guard clause 패턴
     private fun resolveDefaultAssignee(
         projectId: UUID,
         componentIds: List<UUID>,
