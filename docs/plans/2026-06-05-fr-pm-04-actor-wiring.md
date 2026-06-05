@@ -37,9 +37,19 @@ prod 프로파일에서 전 스킴 API가 fail-closed(403)된다.
 - **framing**: "prod 활성화"가 아니라 **하드코딩 actor 코드 부채 해소 + test-assembled 검증**(BTS 현 표준). 띄울 prod 앱이 아직 없으므로 prod 동작 주장 금지.
 - **관련 ADR**: [docs/decisions/2026-06-05-workflow-scheme-controller-actor-wiring.md](../decisions/2026-06-05-workflow-scheme-controller-actor-wiring.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-05-fr-pm-04-actor-wiring.md](../specs/2026-06-05-fr-pm-04-actor-wiring.md)
+
+핵심 요약.
+- actor 생성 7곳(ProjectWorkflowSchemeController 2 + WorkflowSchemeController 5)의 하드코딩 sentinel을 SecurityContext 인증 주체 UUID로 교체.
+- 단일 추출 지점(헬퍼/argument resolver) — `Authentication.name`(=JWT subject 규약 UUID)을 ActorId로. drift 차단.
+- fail-closed 3종: 익명/null/비-UUID → 401. sentinel fallback 금지.
+- PAT 분기 없음(Maxi 확정, 필터 체인 위임). 신규 의존성 0. 검증 test-assembled(@WithMockUser).
+
+## Brainstorming Check
+
+✅ 통과 (직접 기술 스펙 — 메모리 `bts-spec-office-hours-mismatch`. 자체 sanity-check로 fail-closed 3종·PAT 추측성 배제·assignedBy 의미변화 검토 완료)
 
 ## Plan (← /bts-plan 채움)
 
