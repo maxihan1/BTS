@@ -1,7 +1,7 @@
 // 컴포넌트 MSW 핸들러 단위 테스트 — stateful CRUD + RFC 7807 에러 구조 검증 (FR-CM-01)
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { componentHandlers, resetComponentStore } from './component-handlers'
+import { componentHandlers, resetComponentStore, getStoredComponentsByIds } from './component-handlers'
 
 const server = setupServer(...componentHandlers)
 
@@ -256,5 +256,86 @@ describe('DELETE /api/v1/projects/:projectIdOrKey/components/:id', () => {
   it('존재하지 않는 id를 삭제하면 404를 반환한다', async () => {
     const res = await fetch(`${BASE_URL}/00000000-0000-4000-8000-000000000001`, { method: 'DELETE' })
     expect(res.status).toBe(404)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getStoredComponentsByIds — createIssue 자동배정 헬퍼
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('getStoredComponentsByIds', () => {
+  it('빈 store에서 호출하면 빈 배열을 반환한다', () => {
+    const result = getStoredComponentsByIds(['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'])
+    expect(result).toEqual([])
+  })
+
+  it('store에 있는 id만 반환하고 없는 id는 제외한다', async () => {
+    // POST로 컴포넌트 생성해 store에 추가
+    const createRes = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '헬퍼 테스트 컴포넌트', leadUserId: '00000000-0000-4000-8000-000000000001' }),
+    })
+    const created = await createRes.json() as { data: { id: string; name: string; leadUserId: string | null } }
+    const existingId = created.data.id
+    const nonExistingId = 'ffffffff-ffff-4fff-8fff-ffffffffffff'
+
+    const result = getStoredComponentsByIds([existingId, nonExistingId])
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      id: existingId,
+      name: '헬퍼 테스트 컴포넌트',
+      leadUserId: '00000000-0000-4000-8000-000000000001',
+    })
+  })
+
+  it('ids 배열이 빈 배열이면 빈 배열을 반환한다', () => {
+    const result = getStoredComponentsByIds([])
+    expect(result).toEqual([])
+  })
+
+  it('leadUserId가 null인 컴포넌트도 반환한다', async () => {
+    const createRes = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '리드 없는 컴포넌트' }),
+    })
+    const created = await createRes.json() as { data: { id: string } }
+    const result = getStoredComponentsByIds([created.data.id])
+    expect(result).toHaveLength(1)
+    expect(result[0]?.leadUserId).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// createIssue 자동배정 — componentStore 기반 name→id tiebreak 검증
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('createIssue 자동배정 — componentStore 기반 (issue-handlers 통합)', () => {
+  it('name이 같을 때 id 오름차순 tiebreak으로 첫 번째 리드가 자동배정된다', async () => {
+    // 같은 name, id만 다른 두 컴포넌트를 store에 추가
+    // id 사전순: 'aaa...' < 'bbb...' — 따라서 'aaa...' 리드가 먼저 배정되어야 함
+    const projectKey = 'TIEBREAK'
+    const tiebreakUrl = `/api/v1/projects/${projectKey}/components`
+    const seedHeader = encodeURIComponent(JSON.stringify([
+      { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', name: '같은이름', leadUserId: 'bbbb0000-0000-4000-8000-000000000002' },
+      { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', name: '같은이름', leadUserId: 'aaaa0000-0000-4000-8000-000000000001' },
+    ]))
+    // X-MSW-Seed-Components 헤더로 componentStore 시드
+    await fetch(tiebreakUrl, { headers: { 'X-MSW-Seed-Components': seedHeader } })
+
+    const result = getStoredComponentsByIds([
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    ])
+
+    // 정렬: name 동률 → id 오름차순 — 'aaa...' 가 첫 번째여야 함
+    const sorted = [...result]
+      .filter((c) => c.leadUserId !== null)
+      .sort((a, b) => {
+        const nameCmp = a.name.localeCompare(b.name)
+        return nameCmp !== 0 ? nameCmp : a.id.localeCompare(b.id)
+      })
+    expect(sorted[0]?.leadUserId).toBe('aaaa0000-0000-4000-8000-000000000001')
   })
 })
