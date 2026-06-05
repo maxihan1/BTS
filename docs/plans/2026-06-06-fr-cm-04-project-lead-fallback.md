@@ -30,9 +30,21 @@ FR-CM-03 후속. 이슈 생성 시 컴포넌트 리드를 기본 담당자로 �
 - **명세 deviation**: product §3.1.4 D2/D4의 cross-BC 포트 가정 → 옵션 B로 in-BC. 같은 PR에서 동기화.
 - **관련 ADR**: [docs/adr/2026-06-06-project-lead-default-assignee-fallback.md](../adr/2026-06-06-project-lead-default-assignee-fallback.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-06-fr-cm-04-project-lead-fallback.md](../specs/2026-06-06-fr-cm-04-project-lead-fallback.md)
+
+핵심 시나리오 요약.
+- 폴백 체인: 컴포넌트 리드(1순위) → 프로젝트 리드(2순위, `projects.lead_user_id`) → 미할당
+- 컴포넌트 없는 이슈(`componentIds.isEmpty()`)도 프로젝트 리드 폴백 적용 (resolveDefaultAssignee 수정)
+- `current != null`이면 폴백 미적용 + 클론은 폴백 제외 (FR-CM-03 일관, 회귀 0)
+- 프로젝트 리드 지정/해제 API: `PATCH /api/v1/projects/{idOrKey}/lead` 2-state (컴포넌트 리드 동형)
+- 리드 실존 검증은 지정 시점(422), 자동배정은 저장값 신뢰
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). gap 2건 보강 — 클론 폴백 제외 명시(EC6) + 확인 수단(EC7).
+권한 범위(지정 주체)는 plan security-engineer 검토로 이관.
 
 ## Plan (← /bts-plan 채움)
 
