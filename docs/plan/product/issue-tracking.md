@@ -183,13 +183,15 @@
 
 **우선순위**. 높음 | **선행**. §3.1.1, §2.1.3 | **Plan slug**. `issue/components-default-assignee`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — 다중 컴포넌트 시 우선순위 규칙 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — 이슈 생성/컴포넌트 변경 trigger (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 자동 표시 (책임. frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. backend-engineer) — PR #84 (DefaultAssigneeResolver 순수 함수 + Issue.create componentIds 수용. ADR docs/adr/2026-06-05-component-default-assignee-auto-assignment.md)
+- [x] D2. 명세 — 다중 컴포넌트 시 우선순위 규칙 (책임. backend-engineer) — PR #84 (기본 담당자=컴포넌트 leadUserId 재사용, 미할당일 때만, 다중이면 리드 보유 컴포넌트 이름 사전순 첫 번째, silent. 단일 전환 검토 후 다중 유지)
+- [x] D3. 데이터 모델 — (활용) (책임. db-engineer) — PR #84 (마이그레이션 없음, components.lead_user_id + issue_components 재사용)
+- [x] D4. 백엔드 — 이슈 생성/컴포넌트 변경 trigger (책임. backend-engineer) — PR #84 (createIssue에 componentIds 입력 추가+생성 전용 no-bump insertComponents+생성시 자동배정, changeComponents 자동배정 no-bump setAssignee로 version +1 유지. 도메인 assignTo 경유)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #84 (도메인 단위 + Testcontainers 통합 생성/변경 S1~S6 + version 정확성(생성=1·변경 +1) + 422 검증, 989 그린)
+- [x] D6. 프론트 UI — 자동 표시 (책임. frontend-engineer) — PR #84 (생성 폼 ComponentMultiSelect 재사용+useComponents enabled 확장 lazy 로드, 담당자 표시는 FR-IS-03 기존 UI 재사용+invalidate-only refetch, MSW 자동배정 백엔드 규칙 미러)
+- [x] D7. E2E (책임. qa-engineer) — PR #84 (issue-component-default-assignee.spec.ts: 컴포넌트 시드→자동배정 담당자 이름 검증 + 사전순 tiebreak. 자동배정 ground-truth는 백엔드 통합테스트)
+
+> **FR-CM-03 완료 (2026-06-05, PR #84)**. 컴포넌트 리드 자동 배정(생성+변경 trigger, 미할당일 때만, 다중이면 이름 사전순 첫 리드, silent). **후속 FR 예정** — 컴포넌트 리드 없을 때 프로젝트 리드 폴백(2순위). admin(다수·권한)≠lead(단일·담당)이라 project_memberships 단일 PROJECT_LEAD 지정 + cross-BC 포트로 별도 설계. **머지 주의** — FR-PM-05(PR #85)와 IssueApplicationService.kt 동시 수정(권한 vs 자동배정 다른 영역), 머지 후 컴파일+테스트 검증 통과.
 
 ### §3.2 버전 (FR-VR, 4개)
 
