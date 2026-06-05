@@ -7,7 +7,6 @@ import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.shared.permission.WorkflowSchemeScope
 import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
-import com.bts.workflow.web.CurrentActor
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
 import com.bts.workflow.scheme.web.dto.CreateWorkflowSchemeRequest
 import com.bts.workflow.scheme.web.dto.MappingRequestDto
@@ -15,6 +14,7 @@ import com.bts.workflow.scheme.web.dto.MappingResponse
 import com.bts.workflow.scheme.web.dto.UpdateWorkflowSchemeRequest
 import com.bts.workflow.scheme.web.dto.WorkflowSchemeDetailResponse
 import com.bts.workflow.scheme.web.dto.WorkflowSchemeResponse
+import com.bts.workflow.web.CurrentActor
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
