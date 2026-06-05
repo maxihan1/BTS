@@ -27,7 +27,26 @@
 
 분류: classify 오판(ui/frontend-engineer) → Maxi 확정 feature/backend-engineer.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- BC: issue-tracking (단일 BC)
+- 영향 엔티티: Issue(assigneeId, componentIds — 기존), Component(leadUserId — 기존, 재사용)
+- 새 용어/엔티티: 없음. "컴포넌트 리드 = 그 컴포넌트 이슈의 기본 담당자" 의미만 명확화
+- 데이터 신설: 없음(기존 components.lead_user_id + issue_components 활용)
+- ground-truth 검증 완료:
+  - `Issue.assigneeId: ActorId?`, `assignTo()/unassign()` 존재
+  - `Issue.componentIds: List<UUID>`, `assignComponents()/clearComponents()` 존재
+  - `Component.leadUserId: UUID?` 존재, 리드 실재는 컴포넌트 set 시 UserLookupPort 검증됨
+  - **`createIssue`는 현재 컴포넌트/담당자 미수용** → 생성 시 자동배정 위해 componentIds 입력 추가 필요(D2)
+  - FR-CM-02 `validateComponents`(같은 프로젝트+활성) 재사용 가능
+- 확정 결정(상세는 ADR):
+  1. 기본 담당자 = 기존 `leadUserId`(필드 신설 없음)
+  2. trigger = 이슈 생성 + 컴포넌트 변경 둘 다 (생성 API에 componentIds 추가)
+  3. 담당자 미할당(null)일 때만 채움
+  4. 다중이면 리드 보유 컴포넌트 중 이름 사전순 첫 번째
+  5. 로직은 IssueApplicationService, 담당자 설정은 도메인 assignTo() 경유
+- 기존 결정 충돌: 없음(FR-CM-02 다대다 유지). 단일 전환 검토했으나 기각
+- 관련 ADR: [docs/adr/2026-06-05-component-default-assignee-auto-assignment.md](../adr/2026-06-05-component-default-assignee-auto-assignment.md) (생성됨)
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
