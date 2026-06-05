@@ -46,14 +46,18 @@ object DefaultAssigneeResolver {
     fun resolve(
         current: ActorId?,
         candidates: List<ComponentLead>,
+        projectLeadUserId: UUID? = null,
     ): ActorId? {
         if (current != null) return current
 
-        return candidates
-            .filter { it.leadUserId != null }
-            .sortedWith(compareBy({ it.name }, { it.id }))
-            .firstOrNull()
-            ?.leadUserId
-            ?.let { ActorId(it) }
+        val componentLead =
+            candidates
+                .filter { it.leadUserId != null }
+                .sortedWith(compareBy({ it.name }, { it.id }))
+                .firstOrNull()
+                ?.leadUserId
+                ?.let { ActorId(it) }
+
+        return componentLead ?: projectLeadUserId?.let { ActorId(it) }
     }
 }
