@@ -57,6 +57,13 @@ const issueFixtureMap: Record<string, IssueResponse> = {
 const LS_KEY_RESOLUTION_ISSUE = '__bts_e2e_resolution_issue'
 
 /**
+ * E2E 테스트 전용 localStorage 키 — 권한없는 이슈 키 목록(쉼표 구분).
+ * Playwright addInitScript 로 goto 전에 설정하면 해당 키 GET 단건 요청이 404 반환.
+ * permissionDeniedKeys(인메모리 Set)가 없을 때 fallback으로 읽어 리로드 생존을 보장한다.
+ */
+export const LS_KEY_PERMISSION_DENIED_KEYS = '__bts_e2e_permission_denied_keys'
+
+/**
  * 이슈 타입 카탈로그 lookup — id 로 활성 타입 조회.
  * 존재하지 않으면 undefined 반환.
  */
@@ -137,9 +144,11 @@ const getIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
   }
   // 시나리오 S-PM05: 권한없는 이슈 → 미존재 동일 UX (backend 403/404 동일 처리 계약).
   // 단위 테스트: addPermissionDeniedKey(key) 직접 호출로 트리거.
-  // E2E: Playwright page.evaluate 로 addPermissionDeniedKey 호출 또는
-  //      브라우저 localStorage 플래그를 읽는 서비스 워커 핸들러로 확장 가능.
-  if (permissionDeniedKeys.has(key)) {
+  // E2E: addInitScript 로 LS_KEY_PERMISSION_DENIED_KEYS localStorage 에 쉼표 구분 키 목록 설정.
+  //      인메모리 Set(permissionDeniedKeys) 또는 localStorage 어느 쪽이든 매칭되면 404 반환.
+  const lsDeniedRaw = globalThis.localStorage?.getItem(LS_KEY_PERMISSION_DENIED_KEYS) ?? ''
+  const lsDeniedKeys = lsDeniedRaw ? lsDeniedRaw.split(',').map((k) => k.trim()) : []
+  if (permissionDeniedKeys.has(key) || lsDeniedKeys.includes(key)) {
     return HttpResponse.json(
       { message: `이슈를 찾을 수 없습니다: ${key}` },
       { status: 404 },
