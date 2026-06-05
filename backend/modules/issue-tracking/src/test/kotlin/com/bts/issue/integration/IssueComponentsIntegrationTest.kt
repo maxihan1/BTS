@@ -182,7 +182,10 @@ class IssueComponentsIntegrationTest {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
         conn().use { c ->
             c.createStatement().use { stmt ->
-                stmt.execute("DELETE FROM issue_components WHERE issue_id IN (SELECT id FROM issues WHERE key LIKE '$PROJECT_KEY-%')")
+                stmt.execute(
+                    "DELETE FROM issue_components WHERE issue_id IN " +
+                        "(SELECT id FROM issues WHERE key LIKE '$PROJECT_KEY-%')",
+                )
                 stmt.execute("DELETE FROM issues WHERE key LIKE '$PROJECT_KEY-%'")
                 stmt.execute("UPDATE projects SET key_sequence = 0 WHERE key = '$PROJECT_KEY'")
             }
@@ -203,7 +206,11 @@ class IssueComponentsIntegrationTest {
     fun `S1 컴포넌트 2개 할당 - 200 및 componentIds 2개와 version 증가 확인`() {
         val key = insertIssue("S1 컴포넌트 할당 이슈")
 
-        val body = mapOf("componentIds" to listOf(componentC1.toString(), componentC2.toString()), "expectedVersion" to 1L)
+        val body =
+            mapOf(
+                "componentIds" to listOf(componentC1.toString(), componentC2.toString()),
+                "expectedVersion" to 1L,
+            )
 
         mockMvc.perform(
             patch("/api/v1/issues/$key/components")
@@ -296,7 +303,10 @@ class IssueComponentsIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     mapper.writeValueAsString(
-                        mapOf("componentIds" to listOf(componentC1.toString(), nonExistentId.toString()), "expectedVersion" to 1L),
+                        mapOf(
+                            "componentIds" to listOf(componentC1.toString(), nonExistentId.toString()),
+                            "expectedVersion" to 1L,
+                        ),
                     ),
                 ),
         )
