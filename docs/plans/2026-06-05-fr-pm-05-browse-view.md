@@ -38,9 +38,19 @@ plan 문서(docs/plan/product/identity-access.md §4.5) D1~D7:
 - 관련 ADR: [docs/decisions/2026-06-05-issue-browse-view-permission.md](../decisions/2026-06-05-issue-browse-view-permission.md) (생성됨)
 - 글로서리: "이슈 데이터 접근 권한"에 Browse(목록 가시성)/View(단건 상세) 구분 추가 후보 — Maxi 승인 대기
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-05-fr-pm-05-browse-view.md](../specs/2026-06-05-fr-pm-05-browse-view.md)
+
+핵심 시나리오 요약.
+- 멤버는 BROWSE_PROJECT로 목록(200), VIEW_ISSUE로 단건(200). 비멤버 목록 403.
+- 비멤버/미인가 단건 조회 → **404**(존재 숨김, Jira 방식). findByKey·availableTransitions·clone소스 전 경로 일관.
+- VIEW→BROWSE/VIEW 분리(SDD 12.3), prod resolver 매트릭스 이관("멤버면 통과" 임시정책 종료), V014 시드(+4행, 카운트 8→12).
+- 컨트롤러 actor 결선·per-issue 보안수준은 범위 밖(후속/FR-PM-06).
+
+## Brainstorming Check
+
+✅ 통과 (자체 적대적 sanity check 1회). 갭3건 반영 — 갭1 단건 VIEW 전경로 404 일관(probe 차단), 갭2 jOOQ 투기 인프라 배제(프로젝트 게이트 한정), 갭3 mutation 403 잔여 문서화. 스펙 §Brainstorming Check 참조.
 
 ## Plan (← /bts-plan 채움)
 
