@@ -132,7 +132,10 @@ class UserGroupSchemaMigrationTest {
             "DELETE FROM group_memberships WHERE user_id IN (:ids)",
             mapOf("ids" to listOf(userAId, userBId)),
         )
-        jdbc.update("DELETE FROM user_groups WHERE id = :id OR name = :name", mapOf("id" to groupId, "name" to groupName))
+        jdbc.update(
+            "DELETE FROM user_groups WHERE id = :id OR name = :name",
+            mapOf("id" to groupId, "name" to groupName),
+        )
         jdbc.update("DELETE FROM users WHERE id IN (:ids)", mapOf("ids" to listOf(userAId, userBId)))
 
         seedUsers()
@@ -200,14 +203,20 @@ class UserGroupSchemaMigrationTest {
         }
     }
 
-    private fun insertGroup(id: UUID, name: String) {
+    private fun insertGroup(
+        id: UUID,
+        name: String,
+    ) {
         jdbc.update(
             "INSERT INTO user_groups (id, name) VALUES (:id, :name)",
             mapOf("id" to id, "name" to name),
         )
     }
 
-    private fun insertMembership(group: UUID, user: UUID) {
+    private fun insertMembership(
+        group: UUID,
+        user: UUID,
+    ) {
         jdbc.update(
             "INSERT INTO group_memberships (group_id, user_id) VALUES (:group, :user)",
             mapOf("group" to group, "user" to user),
