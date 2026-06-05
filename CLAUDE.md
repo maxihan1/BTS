@@ -21,6 +21,22 @@
 - Maxi가 "PoC 수준으로" 라고 명시한 경우에만 예외. 그 외는 모든 코드가 production-ready.
 - 에이전트(sub-agent 포함)가 이 작업을 PoC로 오인하지 않도록, 새 코드/문서/스킬 작성 시 PoC·prototype 같은 단어 사용 금지.
 
+## 명세/범위 변경 시 전수 동기화
+
+**초기 기획과 달라지는 모든 변경(신규 기능 / 기능·범위 변경 / 스펙 deviation / FR 추가·삭제)은 같은 PR 안에서 영향받는 모든 정본·미러·카운트를 전수 동기화한다.** 일부만 고쳐 문서 간 drift를 남기지 않는다 (2026-06-05 — README/CLAUDE FR 카운트가 여러 FR에 걸쳐 117에 멈춰 있던 사고에서 도입).
+
+동기화 대상 체크리스트.
+1. `docs/plan/fr-index.md` — FR ID 행 · §A.2 BC 카운트 · 합계 · 상단 주석 카운트
+2. `docs/sdd/` — 해당 챕터 + `02-requirements.md` (FR ID 표)
+3. `docs/plan/product/<bc>.md` — FR § 본문 · D단계 체크박스 · §N 헤더 `(FR-XX, N개)` · 파일 L1 주석 · `소속 FR. N개` · BC 완료 게이트 `(FR-XX N개)`
+4. `docs/plan/README.md` — §1 BC 테이블 행 · 합계
+5. `CLAUDE.md` — FR 총수 등 카운트/상태 표기
+6. ADR(`docs/decisions/` 또는 `docs/adr/`) · plan(`docs/plans/`) · `docs/progress.html`(`node scripts/build-dashboard.mjs` 재생성)
+7. Obsidian `Maxi_wiki/BTS/` — history · glossary · domain/<bc> · decisions·plans 미러
+8. 자동 메모리 (`~/.claude/projects/.../memory/`)
+
+**강제**. 머지 전 `bash scripts/verify-master-plan.sh` 통과 필수 — FR ID 정합(SDD↔plan) + 카운트 drift(fr-index 합계·§A.2 / README 합계·BC테이블 / product `(FR-XX,N개)` 헤더·`소속 FR` / CLAUDE `N FR`)를 자동 차단(종료 4). 새 카운트 표기를 verify가 못 잡는 형식으로 추가했다면 **verify 스크립트도 같은 PR에서 확장**한다(룰 추가 시 일부러 위반 넣어 fail 확인).
+
 ## 진입 트리 — 어떤 상황에 어느 문서
 
 | 상황 | 봐야 할 문서 |

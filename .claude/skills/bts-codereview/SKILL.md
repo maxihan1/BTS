@@ -126,7 +126,10 @@ AskUserQuestion으로 응답 수집.
 
 ## 머지 후 자동 처리 (게이트 2 승인 시)
 
+> **머지 전 필수 게이트 (CLAUDE.md §명세/범위 변경 시 전수 동기화)**. FR 추가·삭제·범위 변경을 동반한 PR은 머지 전 `bash scripts/verify-master-plan.sh` 통과 확인 — FR ID 정합 + 카운트 drift(fr-index/README/product 헤더·소속FR/CLAUDE) 자동 차단. 실패 시 누락된 정본·미러·카운트를 같은 PR에서 동기화 후 재실행.
+
 ```bash
+bash scripts/verify-master-plan.sh   # FR 변경 동반 시 필수, exit 0 확인
 gh pr merge --squash --delete-branch
 cd /Users/maxi.moff/Projects/BTS
 
