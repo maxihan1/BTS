@@ -4,9 +4,9 @@ package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.component.domain.ComponentNotFoundException
+import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueVersionConflictException
-import com.bts.issue.domain.IssueKey
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.clearMocks
@@ -49,7 +49,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [IssueComponentsControllerTest.TestMvcConfig::class])
 @WebAppConfiguration
 class IssueComponentsControllerTest {
-
     @Configuration
     @EnableWebMvc
     open class TestMvcConfig {
@@ -106,14 +105,17 @@ class IssueComponentsControllerTest {
 
     @Test
     fun `PATCH components — 정상이면 200 + componentIds 포함`() {
-        val body = mapOf(
-            "componentIds" to listOf(componentId1.toString(), componentId2.toString()),
-            "expectedVersion" to 1L,
-        )
         mockMvc.perform(
             patch("/api/v1/issues/ATLAS-1/components")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(body)),
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "componentIds" to listOf(componentId1.toString(), componentId2.toString()),
+                            "expectedVersion" to 1L,
+                        ),
+                    ),
+                ),
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.key").value("ATLAS-1"))
@@ -129,14 +131,14 @@ class IssueComponentsControllerTest {
             issueApplicationService.changeComponents(any(), issueKey, any())
         } throws ComponentNotFoundException(componentId1)
 
-        val body = mapOf(
-            "componentIds" to listOf(componentId1.toString()),
-            "expectedVersion" to 1L,
-        )
         mockMvc.perform(
             patch("/api/v1/issues/ATLAS-1/components")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(body)),
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf("componentIds" to listOf(componentId1.toString()), "expectedVersion" to 1L),
+                    ),
+                ),
         )
             .andExpect(status().isUnprocessableEntity)
             .andExpect(jsonPath("$.errorCode").value("COMPONENT_NOT_FOUND"))
@@ -150,14 +152,14 @@ class IssueComponentsControllerTest {
             issueApplicationService.changeComponents(any(), issueKey, any())
         } throws IssueVersionConflictException(issueKey, 1L)
 
-        val body = mapOf(
-            "componentIds" to emptyList<String>(),
-            "expectedVersion" to 99L,
-        )
         mockMvc.perform(
             patch("/api/v1/issues/ATLAS-1/components")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(body)),
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf("componentIds" to emptyList<String>(), "expectedVersion" to 99L),
+                    ),
+                ),
         )
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.errorCode").value("VERSION_CONFLICT"))
@@ -171,14 +173,14 @@ class IssueComponentsControllerTest {
             issueApplicationService.changeComponents(any(), issueKey, any())
         } throws IssueNotFoundException(issueKey)
 
-        val body = mapOf(
-            "componentIds" to emptyList<String>(),
-            "expectedVersion" to 1L,
-        )
         mockMvc.perform(
             patch("/api/v1/issues/ATLAS-1/components")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(body)),
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf("componentIds" to emptyList<String>(), "expectedVersion" to 1L),
+                    ),
+                ),
         )
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.errorCode").value("ISSUE_NOT_FOUND"))
