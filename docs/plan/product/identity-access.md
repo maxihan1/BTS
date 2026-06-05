@@ -225,7 +225,7 @@
 - [ ] D6. 프론트 UI — "이 디바이스 신뢰" 체크박스 + 디바이스 관리 페이지 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
-## §4 권한 관리 (FR-PM, 7개)
+## §4 권한 관리 (FR-PM, 9개)
 
 ### §4.1 FR-PM-01 — 프로젝트 행정 (관리자/멤버 관리)
 
@@ -368,7 +368,7 @@
 
 - [ ] §2 (FR-AU 10개) 모두 `[x]` 마킹
 - [ ] §3 (FR-MF 5개) 모두 `[x]` 마킹
-- [ ] §4 (FR-PM 7개) 모두 `[x]` 마킹
+- [ ] §4 (FR-PM 9개) 모두 `[x]` 마킹
 - [ ] §NFR 측정표 모든 항목 임계 통과
 - [ ] OWASP Top 10 자가 점검 (`docs/adr/<date>-identity-owasp-audit.md`)
 - [ ] CHANGELOG.md 정리 (BC 단위 변경 요약)
