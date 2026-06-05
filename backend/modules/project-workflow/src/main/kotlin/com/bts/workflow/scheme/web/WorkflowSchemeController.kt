@@ -5,9 +5,9 @@ package com.bts.workflow.scheme.web
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.shared.permission.WorkflowSchemeScope
-import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
+import com.bts.workflow.web.CurrentActor
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
 import com.bts.workflow.scheme.web.dto.CreateWorkflowSchemeRequest
 import com.bts.workflow.scheme.web.dto.MappingRequestDto
@@ -52,8 +52,10 @@ import org.springframework.web.bind.annotation.RestController
  * 인증 연동 전에는 [com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermissionResolver]
  * stub 이 모든 요청을 허용한다.
  *
- * ### ActorId 임시 처리
- * security context 연동 전까지 고정 UUID (SYSTEM_ACTOR_UUID) 를 사용한다.
+ * ### 인증 주체 actor 결선
+ * 모든 mutating endpoint 는 [CurrentActor.current] 로 Spring Security 인증 주체를
+ * [com.bts.workflow.port.outbound.ActorId] 로 변환하여 권한 평가와 유스케이스 호출에 사용한다.
+ * 미인증·익명·비-UUID 주체는 [CurrentActor] 가 401 을 던진다.
  *
  * @param applicationService 스킴 유스케이스 서비스.
  * @param permissionResolver 스킴 권한 평가 outbound port.
@@ -76,7 +78,7 @@ class WorkflowSchemeController(
     fun create(
         @RequestBody request: CreateWorkflowSchemeRequest,
     ): ResponseEntity<DataEnvelope<WorkflowSchemeResponse>> {
-        val actor = systemActor()
+        val actor = CurrentActor.current()
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
@@ -140,7 +142,7 @@ class WorkflowSchemeController(
         @PathVariable schemeKey: String,
         @RequestBody request: UpdateWorkflowSchemeRequest,
     ): ResponseEntity<DataEnvelope<WorkflowSchemeResponse>> {
-        val actor = systemActor()
+        val actor = CurrentActor.current()
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
@@ -171,7 +173,7 @@ class WorkflowSchemeController(
     fun delete(
         @PathVariable schemeKey: String,
     ) {
-        val actor = systemActor()
+        val actor = CurrentActor.current()
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
@@ -197,7 +199,7 @@ class WorkflowSchemeController(
         @PathVariable schemeKey: String,
         @RequestBody request: MappingRequestDto,
     ): ResponseEntity<DataEnvelope<MappingResponse>> {
-        val actor = systemActor()
+        val actor = CurrentActor.current()
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
@@ -235,7 +237,7 @@ class WorkflowSchemeController(
         @PathVariable schemeKey: String,
         @PathVariable mappingId: Long,
     ) {
-        val actor = systemActor()
+        val actor = CurrentActor.current()
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
@@ -243,20 +245,6 @@ class WorkflowSchemeController(
         )
         log.info("WorkflowSchemeController.deleteMapping schemeKey={} mappingId={}", schemeKey, mappingId)
         applicationService.deleteMapping(actor, mappingId)
-    }
-
-    // ── private helpers ────────────────────────────────────────────────────────
-
-    /**
-     * 인증 연동 전 임시 사용하는 시스템 행위자 [ActorId].
-     *
-     * security-engineer wave 에서 SecurityContextHolder 의 인증된 UUID 로 교체 예정.
-     */
-    private fun systemActor(): ActorId = ActorId(SYSTEM_ACTOR_UUID_STRING)
-
-    companion object {
-        /** 인증 연동 전 임시 사용하는 시스템 행위자 UUID 문자열. */
-        private const val SYSTEM_ACTOR_UUID_STRING = "00000000-0000-0000-0000-000000000001"
     }
 }
 
