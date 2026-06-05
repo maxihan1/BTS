@@ -53,7 +53,6 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueChangeComponentsAutoAssignIntegrationTest {
-
     /**
      * 자동 담당자 배정 통합 테스트 보조 설정.
      *
@@ -164,10 +163,11 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
         val key = insertIssue("S2 자동 배정 테스트", assigneeId = null)
         val versionBefore = fetchVersion(key)
 
-        val request = AppChangeComponentsRequest(
-            componentIds = listOf(compWithAliceLead),
-            expectedVersion = versionBefore,
-        )
+        val request =
+            AppChangeComponentsRequest(
+                componentIds = listOf(compWithAliceLead),
+                expectedVersion = versionBefore,
+            )
         issueApplicationService.changeComponents(ACTOR_ID, com.bts.issue.domain.IssueKey(key), request)
 
         val versionAfter = fetchVersion(key)
@@ -196,10 +196,11 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
         val key = insertIssue("S3 담당자 보존 테스트", assigneeId = CAROL_ID)
         val versionBefore = fetchVersion(key)
 
-        val request = AppChangeComponentsRequest(
-            componentIds = listOf(compWithAliceLead),
-            expectedVersion = versionBefore,
-        )
+        val request =
+            AppChangeComponentsRequest(
+                componentIds = listOf(compWithAliceLead),
+                expectedVersion = versionBefore,
+            )
         issueApplicationService.changeComponents(ACTOR_ID, com.bts.issue.domain.IssueKey(key), request)
 
         val dbAssignee = fetchAssigneeId(key)
@@ -271,10 +272,11 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
         val key = insertIssue("낙관락 충돌 테스트", assigneeId = null)
         val versionBefore = fetchVersion(key)
 
-        val request = AppChangeComponentsRequest(
-            componentIds = listOf(compWithAliceLead),
-            expectedVersion = 99L,
-        )
+        val request =
+            AppChangeComponentsRequest(
+                componentIds = listOf(compWithAliceLead),
+                expectedVersion = 99L,
+            )
 
         try {
             issueApplicationService.changeComponents(ACTOR_ID, com.bts.issue.domain.IssueKey(key), request)
@@ -307,10 +309,11 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
         val key = insertIssue("FR-CM-02 회귀 테스트", assigneeId = null)
         val versionBefore = fetchVersion(key)
 
-        val request = AppChangeComponentsRequest(
-            componentIds = listOf(compNoLead),
-            expectedVersion = versionBefore,
-        )
+        val request =
+            AppChangeComponentsRequest(
+                componentIds = listOf(compNoLead),
+                expectedVersion = versionBefore,
+            )
         issueApplicationService.changeComponents(ACTOR_ID, com.bts.issue.domain.IssueKey(key), request)
 
         val versionAfter = fetchVersion(key)
@@ -472,6 +475,7 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
                     }
                 }
 
+            @Suppress("MaxLineLength")
             c.prepareStatement(
                 "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version, type_id, assignee_id) " +
                     "VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
