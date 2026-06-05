@@ -68,6 +68,7 @@ plan 문서(docs/plan/product/identity-access.md §4.5) D1~D7:
 - resolver 단위테스트(mockk `schemeRepo`/`membershipRepo`/`projectDirectory`):
   - `BROWSE` → `roleHasPermission(projectId, role, "BROWSE_PROJECT")` 위임 검증(멤버여도 매트릭스 false면 false).
   - `VIEW` → `roleHasPermission(..., "VIEW_ISSUE")` 위임 검증(기존 "멤버면 통과" 종료).
+- **기존 단언 갱신(필수)** — `IdentityAccessIssuePermissionResolverTest.kt:76/83/88`의 "멤버는 범위 밖 VIEW 허용(schemeRepo 미호출)" 단언은 VIEW가 매트릭스 위임으로 바뀌므로 제거/갱신. 안 하면 mock 미stub로 단언 붕괴(코드리뷰 B2).
 - 실패 메시지(예상): `IssuePermission.BROWSE` 미존재(컴파일) → 추가 후 toCodeOrNull이 VIEW=null 반환해 단언 실패(RED).
 
 **GREEN**:
@@ -94,7 +95,7 @@ plan 문서(docs/plan/product/identity-access.md §4.5) D1~D7:
 - 실패(예상): V014 부재로 8행 → 12 단언 실패.
 
 **GREEN**:
-- `V014__browse_view_issue_permissions.sql`: 기본 스킴(`is_default = TRUE`)의 PROJECT_ADMIN·MEMBER에 `BROWSE_PROJECT`,`VIEW_ISSUE` INSERT(+4행). V013/V008 패턴(scheme_id 서브쿼리 + `ON CONFLICT DO NOTHING` 멱등) 복제.
+- `V014__browse_view_issue_permissions.sql`: 기본 스킴 PROJECT_ADMIN·MEMBER에 `BROWSE_PROJECT`,`VIEW_ISSUE` INSERT(+4행). **V013/V008 실제 패턴 복제(코드리뷰 C1 정정) — 하드코딩 리터럴 scheme_id `'00000000-0000-0000-0000-000000000001'` + 평이한 `INSERT ... VALUES`. 서브쿼리·ON CONFLICT 없음**(`role_permissions`의 `UNIQUE(scheme_id, role, permission_code)` 제약이 중복 방지).
 
 **REFACTOR**:
 - 마이그레이션 헤더 주석(한국어 1줄 역할).
@@ -107,15 +108,20 @@ plan 문서(docs/plan/product/identity-access.md §4.5) D1~D7:
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueApplicationServicePermissionTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueApplicationServicePermissionTest.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueApplicationServiceFindTest.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueApplicationServiceListTest.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueApplicationServiceAvailableTransitionsTest.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueApplicationServiceCloneTest.kt`]
 - depends-on: [1]
 
 **RED**:
-- `IssueApplicationService` 단위테스트(mockk `IssuePermissionResolver`):
+- `IssueApplicationServicePermissionTest.kt`(신규) 단위테스트(mockk `IssuePermissionResolver`):
   - `findByKey` — VIEW false → `IssueNotFoundException`(404), `IssueAccessDeniedException` 아님.
   - `availableTransitions` — VIEW false → `IssueNotFoundException`.
   - `cloneIssue` 소스 — 소스 VIEW false → `IssueNotFoundException`.
   - `listIssues` — `hasPermission(actor, BROWSE, IssueScope.Project)` 호출 검증, false → `IssueAccessDeniedException`(403 유지).
+- **기존 테스트 갱신(필수, 코드리뷰 B1)** — 변경 동작을 직접 단언하는 기존 4종을 같이 수정:
+  - `IssueApplicationServiceFindTest.kt:122-123` — findByKey VIEW false `IssueAccessDeniedException` 단언 → `IssueNotFoundException`(404).
+  - `IssueApplicationServiceListTest.kt:88-147` — 전 mock의 `hasPermission(..., VIEW, Project)` stub 키 → `BROWSE`로 갱신(미갱신 시 mockk 기본값으로 전 list 테스트 붕괴).
+  - `IssueApplicationServiceAvailableTransitionsTest.kt:128/172/197` — VIEW false 경로 단언 → 404.
+  - `IssueApplicationServiceCloneTest.kt` — 소스 VIEW false `IssueAccessDeniedException` → `IssueNotFoundException`(import 포함).
 - 실패(예상): 현재 VIEW 미인가가 AccessDenied → NotFound 단언 실패(RED).
 
 **GREEN**:
@@ -128,29 +134,30 @@ plan 문서(docs/plan/product/identity-access.md §4.5) D1~D7:
 
 **검증**: `./gradlew :modules:issue-tracking:test --tests "*IssueApplicationServicePermissionTest"`
 
-> ⚠️ **FR-CM-03(draft PR #84) 공유 충돌** — 같은 `IssueApplicationService.kt`의 createIssue 경로를 수정 중. 본 task는 listIssues/findByKey/availableTransitions/cloneIssue 메서드만 → 메서드 분리라 auto-merge 가능성 높음. 머지 직전 충돌 확인 필수. 먼저 머지된 쪽 기준 rebase.
+> ⚠️ **FR-CM-03(draft PR #84) 공유 충돌** — 같은 `IssueApplicationService.kt`를 수정 중(import L6, createIssue L129-156, 클래스 말미 helper `resolveDefaultAssignee` L879). 본 task는 198/266/383/637 메서드 본문 + 신규 helper. **메서드 본문은 겹치지 않으나, 양쪽 다 import 상단 + 클래스 말미 helper 추가 → git 3-way 텍스트 충돌 가능 지대**(코드리뷰 C3, auto-merge 단정 금지). 머지 직전 충돌 수동 확인 필수, 먼저 머지된 쪽 기준 rebase.
 
 ### Task 4. prod 통합테스트 — resolver 매트릭스 허용/거부 (identity-access)
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/permission/IssueBrowseViewPermissionPropIntegrationTest.kt`]
+- files: [`backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/permission/IdentityAccessIssuePermissionResolverIntegrationTest.kt`]
 - depends-on: [1, 2]
 
-**RED**:
-- `@ActiveProfiles("prod")` Testcontainers 통합테스트(FR-PM-04 D5 패턴 복제):
+**RED** (기존 FR-PM-02 통합테스트에 BROWSE/VIEW 케이스 추가 — 코드리뷰 N2/B2):
+- `@ActiveProfiles("prod")` Testcontainers(기존 파일에 케이스 추가, 신규 파일 생성 대신 중복 fixture 회피):
   - 멤버(기본 스킴) + BROWSE_PROJECT 시드 → `hasPermission(actor, BROWSE, Project)` = true (S1).
   - 비멤버 → BROWSE false (S2), VIEW false (S4).
   - 멤버 + VIEW_ISSUE → `hasPermission(actor, VIEW, Issue)` = true (S3).
-- 실패(예상): 통합테스트 신규 → 부재.
+- **기존 단언 갱신(필수, B2)** — `IdentityAccessIssuePermissionResolverIntegrationTest.kt:277`의 "MEMBER + VIEW(범위 밖) → 멤버 통과" 라벨/주석을 "VIEW_ISSUE 매트릭스 판정"으로 갱신(stale 라벨이 신규 동작과 모순된 채 동결되는 것 차단).
+- 실패(예상): BROWSE 케이스 신규 + VIEW 시맨틱 변경 → 단언 실패.
 
 **GREEN**:
-- 시드/멤버십 fixture + prod resolver wire(`IdentityAccessIssuePermissionResolver`). Task 1·2 산출물로 그린.
+- 시드/멤버십 fixture + prod resolver(`IdentityAccessIssuePermissionResolver`). Task 1·2 산출물로 그린.
 
 **REFACTOR**:
 - fixture 헬퍼 추출.
 
-**검증**: `./gradlew :modules:identity-access:test --tests "*IssueBrowseViewPermissionPropIntegrationTest"`
+**검증**: `./gradlew :modules:identity-access:test --tests "*IdentityAccessIssuePermissionResolverIntegrationTest"`
 
 ### Task 5. 프론트 — 권한 없는 이슈 상세 404 not-found UI
 
@@ -159,15 +166,18 @@ plan 문서(docs/plan/product/identity-access.md §4.5) D1~D7:
 - files: [`apps/web/src/routes/issues.$key.tsx`, `apps/web/src/routes/issues.$key.test.tsx`, `apps/web/src/mocks/issue-handlers.ts`]
 - depends-on: []
 
+> **코드리뷰 C2 정정** — `issues.$key.tsx:301-306`은 이미 `error !== null || issue === undefined` catch-all로 모든 에러를 `issueDetailStrings.notFound` 렌더. **S6는 현재 코드로 이미 충족**. Task 5는 **회귀 가드 테스트 + MSW 404 핸들러 추가만**(분기 신설/catch-all 축소 금지 — 비-404를 not-found에서 떼어내면 회귀 위험).
+
 **RED**:
-- route 테스트: 단건 GET이 404 응답 시 `issueDetailStrings.notFound` 화면 렌더(일반 에러 토스트 아님). 기존 `isError`가 404와 그 외 에러를 구분하는지 확인 — 미구분이면 RED.
-- MSW 핸들러: 특정 issueKey에 404 응답 시나리오(localStorage 플래그 토글, 메모리 `e2e-msw-scenario-toggle-localstorage-flag` 패턴) 또는 핸들러 분기.
+- route 테스트(신규): 단건 GET 404 응답 시 `issueDetailStrings.notFound` 화면 렌더 단언(권한 없는 이슈 = 미존재 동일 UX 계약 고정).
+- MSW 핸들러: 특정 issueKey에 404 응답 시나리오(localStorage 플래그 토글, 메모리 `e2e-msw-scenario-toggle-localstorage-flag` 패턴).
+- 실패(예상): 신규 테스트가 아직 MSW 404 시나리오 미배선.
 
 **GREEN**:
-- 단건 쿼리 에러에서 HTTP 404 식별 → not-found 분기(403/기타와 구분). 권한 없는 이슈 = 미존재 이슈 동일 UX.
+- MSW 404 핸들러 추가. **프로덕션 코드(issues.$key.tsx) 로직 변경 없음** — 기존 catch-all이 계약 충족.
 
 **REFACTOR**:
-- 404 판별 헬퍼(공유 ApiError 규약 — 메모리 `frontend-api-convention-per-bc`, issue-tracking BC는 `body.errorCode`/status).
+- MSW 핸들러 시나리오 주석.
 
 **검증**: `pnpm --filter @bts/web test --run issues.\$key && pnpm --filter @bts/web typecheck`
 
@@ -197,6 +207,24 @@ plan 문서(docs/plan/product/identity-access.md §4.5) D1~D7:
 - TDD 강제: yes (test→feat 커밋 순서 controller 검증)
 - 병렬 dispatch: bts-impl이 depends-on + files 교집합으로 wave 계산
 - 추가 검증: ktlintMainSourceSetCheck + ktlintTestSourceSetCheck + detekt(4모듈), pnpm typecheck, vitest, playwright
-- 공유 충돌 주의: T3 ↔ FR-CM-03 PR #84 (IssueApplicationService.kt) / V014 ↔ 동시 브랜치 V번호
+- 공유 충돌 주의: T3 ↔ FR-CM-03 PR #84 (IssueApplicationService.kt import/helper 텍스트 충돌 지대) / V014 ↔ 동시 브랜치 V번호
+- wave 직렬화 보강(N1): T1·T2·T4가 동일 `identity-access` test 컴파일 단위 공유(메모리 `bts-plan-wave-gradle-module-compile`) → 병렬 dispatch여도 같은 모듈 test 컴파일 직렬화. wave 산정엔 영향 없음.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### code-reviewer ground-truth 독립 리뷰 (2026-06-05)
+
+백엔드 권한 FR이라 autoplan 4종 대신 code-reviewer가 plan/spec/ADR 주장을 main 트리 코드와 직접 대조(메모리 `bts-review-plan-autoplan-overkill`).
+
+**BLOCKER 2건 — 모두 해소**:
+- **B1** — Task 3 변경으로 깨지는 기존 테스트 4종(Find/List/AvailableTransitions/Clone)이 files 누락(메모리 `plan-files-constructor-injection-existing-tests` 재현). → Task 3 files에 4종 추가 + RED에 "기존 403/VIEW-mock 단언 → 404/BROWSE 갱신" 명시. ✅
+- **B2** — Task 1 VIEW 매트릭스 이관으로 깨지는 resolver 테스트 2종. → Task 1 RED에 기존 멤버-통과 단언 갱신 명시 + Task 4를 신규 파일 대신 기존 `IdentityAccessIssuePermissionResolverIntegrationTest.kt` 갱신(stale 라벨 L277 정정 포함, N2 동시 해소). ✅
+
+**CONCERN 3건 — 모두 정정**:
+- **C1** — V008/V013 시드 패턴 오기("scheme_id 서브쿼리 + ON CONFLICT" 부재). → Task 2 GREEN을 "리터럴 UUID + 평이 INSERT VALUES, UNIQUE 제약이 중복방지"로 정정. ✅
+- **C2** — 프론트는 이미 catch-all로 모든 에러를 not-found 렌더(S6 충족). 분기 신설은 회귀 위험. → Task 5를 "회귀 가드 테스트 + MSW 404 핸들러만, 프로덕션 로직 무변경"으로 축소. ✅
+- **C3** — FR-CM-03 충돌 "auto-merge 높음" 과소평가(import/helper 텍스트 충돌 지대). → Task 3 노트 정정. ✅
+
+**검증된 정확 항목(환각 아님)**: SDD 12.3 정합, 404 전수 3곳(누락 read 경로 없음→probe 위험 부재), exhaustive when 1곳, V014 카운트 8→12, prod 통합 ground-truth, 스코프 경계 정당, 404 정보누출 0.
+
+**종합 판정**: B1/B2/C1/C2/C3 해소 완료 → 구현 착수 가능.
