@@ -1,5 +1,5 @@
 // 이슈 상세 페이지 단위 테스트 — Task 7 + FR-IS-01 Task-4 (전이 배선)
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -1445,6 +1445,69 @@ describe('IssueDetailPage — PDF 다운로드 버튼 (FR-IS-08)', () => {
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalledWith(issueDetailStrings.pdfDownloadError)
       expect(btn).not.toBeDisabled()
+    })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-PM-05 Task-5 — 권한없는 이슈 404 → not-found 화면 (회귀 가드)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * localStorage 플래그(__bts_e2e_permission_denied)를 세팅한 뒤
+ * issue-handlers.ts 기본 핸들러가 해당 이슈 키에 404를 반환하는 경로를 검증.
+ *
+ * 계약: 권한없는 이슈(백엔드 403/404 동일 UX) → issueDetailStrings.notFound 화면 렌더.
+ * issues.$key.tsx 라인 301-306 catch-all 분기가 이 계약을 영속적으로 충족함을 고정.
+ */
+describe('FR-PM-05 Task-5 — 권한없는 이슈 404 → not-found 화면', () => {
+  /** localStorage 플래그 키 — issue-handlers.ts 와 동일한 상수. */
+  const LS_KEY_PERMISSION_DENIED = '__bts_e2e_permission_denied'
+
+  beforeEach(() => {
+    localStorage.removeItem(LS_KEY_PERMISSION_DENIED)
+  })
+
+  afterEach(() => {
+    localStorage.removeItem(LS_KEY_PERMISSION_DENIED)
+  })
+
+  /**
+   * T-PM05-1: localStorage 플래그(__bts_e2e_permission_denied=ATLAS-1) 세팅 시
+   * GET /api/v1/issues/ATLAS-1 이 404를 반환하고 notFound 화면을 렌더해야 한다.
+   *
+   * 권한없는 이슈 조회(백엔드 403 or 404 동일 UX)는 미존재와 같은 화면으로 처리하는
+   * UX 계약(issues.$key.tsx catch-all)을 회귀 가드로 고정.
+   *
+   * 핸들러를 먼저 정상으로 세팅한 뒤 플래그를 세팅 — 핸들러가 플래그를 읽어 분기해야만
+   * 404 응답이 나오는 경로임을 보장한다(핸들러 없음 우연 통과 방지).
+   */
+  it('T-PM05-1: 권한없는 이슈 키에 플래그 세팅 시 notFound 화면을 렌더한다', async () => {
+    // 기본 핸들러 등록 (정상 ATLAS-1 응답 세팅)
+    setupIssueFoundHandler(issueAtlas1Fixture)
+    // 플래그 세팅 — issue-handlers.ts 기본 핸들러가 읽어 404 반환하는 시나리오 트리거
+    localStorage.setItem(LS_KEY_PERMISSION_DENIED, 'ATLAS-1')
+
+    renderPage('ATLAS-1')
+
+    await waitFor(() => {
+      const alert = screen.getByRole('alert')
+      expect(alert).toBeInTheDocument()
+      expect(alert).toHaveTextContent(issueDetailStrings.notFound)
+    })
+  })
+
+  /**
+   * T-PM05-2: localStorage 플래그가 없으면 기존 정상 렌더가 유지된다(회귀 없음).
+   */
+  it('T-PM05-2: 플래그가 없을 때 이슈 상세 화면을 정상 렌더한다', async () => {
+    // 플래그 없음 — 기본 핸들러가 ATLAS-1 정상 응답
+    setupIssueFoundHandler(issueAtlas1Fixture)
+
+    renderPage('ATLAS-1')
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
     })
   })
 })
