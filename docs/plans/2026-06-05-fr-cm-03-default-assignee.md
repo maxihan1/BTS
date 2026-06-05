@@ -265,3 +265,17 @@ validateComponents 재사용, ComponentMultiSelect 순수 컴포넌트 재사용
 1건 정정.
 
 **최종 BLOCKER: 0 / CONCERN: 0 (전부 정정 완료, 3라운드 리뷰).**
+
+### PR 단위 코드리뷰 (2026-06-05, 게이트 2 직전)
+
+- **code-reviewer agent (ground-truth)**: PASS. BLOCKER 0 / CONCERN 2(둘 다 nit).
+  - 절대 규칙 19개 위반 0, 신규 의존성 0, TDD 규율 모범, learnings 회귀 없음.
+  - C1(nit): `assignTo`가 단순 copy라 현재 도메인 검증 효과 형식적(향후 불변식 추가 대비 유지 권장 — 수정 불요).
+  - C2(nit): MSW 정렬 tiebreak 누락(mock 한정, dead-path — 수정 불요).
+- **구조 검증(/review 핵심)**: PASS. setAssignee/insertComponents jOOQ DSL+id한정 WHERE+null/empty 가드,
+  changeComponents 부수효과 게이트(assignee null일 때만)+no-bump version+1, enum 신규 없음. 구조 이슈 0.
+- plan-ceo-review: skip(type=feature, auth/migration 아님).
+- 검증 합계: backend ktlint+detekt+989 테스트 / frontend typecheck clean+1222 테스트 / E2E 4/4.
+- 알려진 한계: E2E가 MSW componentLeadStore 브라우저 시드 부재로 자동배정 "담당자 이름" 표시는 직접 검증 못
+  함 → 자동배정 ground-truth는 백엔드 Testcontainers 통합(IssueCreate/ChangeComponentsAutoAssignIntegrationTest).
+  계층화 타당(리뷰 합의).
