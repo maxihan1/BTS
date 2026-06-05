@@ -58,9 +58,19 @@ FR-PM-06(이슈 보안 수준, 그룹 기반 멤버)이 막혀 있음 → 이 �
 
 - **관련 ADR**: [docs/decisions/2026-06-05-user-groups.md](../decisions/2026-06-05-user-groups.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-05-fr-pm-09-user-groups.md](../specs/2026-06-05-fr-pm-09-user-groups.md)
+
+핵심 요약.
+- 전역 `UserGroup`(name 유니크) + `group_memberships`(N:M, FK CASCADE, 멱등) — V015 raw SQL.
+- 관리 API 8종(그룹 CRUD + 멤버 추가/제거/목록), 모두 SYSTEM_ADMIN. 가드=DB 기반 `isSystemAdmin` 수동 호출.
+- 멱등(중복추가/없는멤버제거 204), 없는 그룹/사용자 404, name 중복 409, 미인증 401/비관리자 403.
+- 범위 밖: 감사로그(FR-AU-10), 소비처 결선(FR-PM-06 등), 관리 UI/E2E, LDAP 동기화.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). gap 3건 보강 — (A) 감사 로그 범위 밖 명시, (B) 권한 가드를 DB 기반 isSystemAdmin 수동 호출로 확정(@PreAuthorize hasRole 비사용, PAT 일관), (C) 멤버 목록 페이지네이션 후속 플래그. Maxi 결정 필요 gap 0.
 
 ## Plan (← /bts-plan 채움)
 
