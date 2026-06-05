@@ -18,11 +18,12 @@ import java.util.UUID
 /**
  * [IdentityAccessIssuePermissionResolver] 단위테스트.
  *
- * ## 검증 시나리오 (plan Step 1 4 케이스)
+ * ## 검증 시나리오
  * (a) MEMBER는 SOFT_DELETE 거부 — 매트릭스 DELETE_ISSUE 미보유
  * (b) 비멤버는 모든 권한 거부 — 멤버 게이트
- * (c) 멤버는 범위 밖 VIEW 허용 — 임시 멤버 통과 정책 (FR-PM-05 이관 예정)
+ * (c) VIEW는 매트릭스 VIEW_ISSUE 위임 — 멤버여도 매트릭스 false면 거부 (FR-PM-05)
  * (d) 프로젝트 없음(resolveKeyToId null) → CREATE 거부 — EC-2
+ * (f) BROWSE는 매트릭스 BROWSE_PROJECT 위임 — 멤버여도 매트릭스 false면 거부 (FR-PM-05)
  *
  * MockK로 의존성을 격리하여 adapter 로직만 검증한다.
  */
@@ -77,16 +78,30 @@ class IdentityAccessIssuePermissionResolverTest {
         ).isFalse()
     }
 
-    // ── (c) 멤버 + 범위 밖 VIEW → 허용 (임시 정책) ───────────────────────────
+    // ── (c) VIEW → 매트릭스 VIEW_ISSUE 위임 (멤버여도 false면 거부) ───────────
 
     @Test
-    fun `멤버는 범위 밖 VIEW 허용 — 임시 멤버 통과 (FR-PM-05 이관 예정)`() {
+    fun `VIEW는 매트릭스 VIEW_ISSUE 위임 — 멤버여도 매트릭스 false면 거부`() {
         every { projectDirectory.resolveKeyToId("ATLAS") } returns projectId
         every { membershipRepo.findByProjectAndUser(projectId, actor) } returns membership(ProjectRole.MEMBER)
+        every { schemeRepo.roleHasPermission(projectId, "MEMBER", "VIEW_ISSUE") } returns false
 
         assertThat(
             resolver.hasPermission(actor, IssuePermission.VIEW, IssueScope.Issue("ATLAS-1")),
-        ).isTrue()
+        ).isFalse()
+    }
+
+    // ── (f) BROWSE → 매트릭스 BROWSE_PROJECT 위임 (멤버여도 false면 거부) ─────
+
+    @Test
+    fun `BROWSE는 매트릭스 BROWSE_PROJECT 위임 — 멤버여도 매트릭스 false면 거부`() {
+        every { projectDirectory.resolveKeyToId("ATLAS") } returns projectId
+        every { membershipRepo.findByProjectAndUser(projectId, actor) } returns membership(ProjectRole.MEMBER)
+        every { schemeRepo.roleHasPermission(projectId, "MEMBER", "BROWSE_PROJECT") } returns false
+
+        assertThat(
+            resolver.hasPermission(actor, IssuePermission.BROWSE, IssueScope.Project("ATLAS")),
+        ).isFalse()
     }
 
     // ── (d) 프로젝트 없음 → 거부 (EC-2) ──────────────────────────────────────
