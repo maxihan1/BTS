@@ -57,6 +57,13 @@ const issueFixtureMap: Record<string, IssueResponse> = {
 const LS_KEY_RESOLUTION_ISSUE = '__bts_e2e_resolution_issue'
 
 /**
+ * E2E 테스트 전용 localStorage 키 — 권한없는 이슈 키 목록(쉼표 구분).
+ * Playwright addInitScript 로 goto 전에 설정하면 해당 키 GET 단건 요청이 404 반환.
+ * permissionDeniedKeys(인메모리 Set)가 없을 때 fallback으로 읽어 리로드 생존을 보장한다.
+ */
+export const LS_KEY_PERMISSION_DENIED_KEYS = '__bts_e2e_permission_denied_keys'
+
+/**
  * 이슈 타입 카탈로그 lookup — id 로 활성 타입 조회.
  * 존재하지 않으면 undefined 반환.
  */
@@ -76,11 +83,33 @@ const createdIssues = new Map<string, IssueResponse>()
 // key: 이슈 키, value: 갱신된 IssueResponse (전이 또는 타입/요약 수정 후)
 const issueOverrides = new Map<string, IssueResponse>()
 
+/**
+ * 권한없음 시나리오 이슈 키 집합 (E2E 단위 공용).
+ * addPermissionDeniedKey(key) 로 추가된 키는 GET 단건에서 404 반환.
+ * resetIssueState() / clearPermissionDeniedKeys() 로 초기화.
+ */
+const permissionDeniedKeys = new Set<string>()
+
+/**
+ * 권한없는 이슈 키를 시나리오 집합에 추가 — 이후 GET 단건 요청이 404를 반환한다.
+ * E2E(Playwright addInitScript + localStorage 플래그 → 핸들러에서 읽음)와
+ * 단위 테스트(직접 호출) 양쪽에서 동일한 시나리오 경로를 검증한다.
+ */
+export function addPermissionDeniedKey(key: string): void {
+  permissionDeniedKeys.add(key)
+}
+
+/** 권한없음 시나리오 집합 초기화 — 각 테스트 afterEach 에서 호출. */
+export function clearPermissionDeniedKeys(): void {
+  permissionDeniedKeys.clear()
+}
+
 /** E2E / 단위 테스트 격리용 — 모듈-스코프 state 초기화. 각 test setup 에서 호출. */
 export function resetIssueState(): void {
   deletedKeys.clear()
   createdIssues.clear()
   issueOverrides.clear()
+  permissionDeniedKeys.clear()
 }
 
 function buildFilteredPage(): IssuePage {
@@ -108,6 +137,18 @@ const listIssuesHandler = http.get('/api/v1/issues', () => {
 const getIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
   const key = params['key'] as string
   if (deletedKeys.has(key)) {
+    return HttpResponse.json(
+      { message: `이슈를 찾을 수 없습니다: ${key}` },
+      { status: 404 },
+    )
+  }
+  // 시나리오 S-PM05: 권한없는 이슈 → 미존재 동일 UX (backend 403/404 동일 처리 계약).
+  // 단위 테스트: addPermissionDeniedKey(key) 직접 호출로 트리거.
+  // E2E: addInitScript 로 LS_KEY_PERMISSION_DENIED_KEYS localStorage 에 쉼표 구분 키 목록 설정.
+  //      인메모리 Set(permissionDeniedKeys) 또는 localStorage 어느 쪽이든 매칭되면 404 반환.
+  const lsDeniedRaw = globalThis.localStorage?.getItem(LS_KEY_PERMISSION_DENIED_KEYS) ?? ''
+  const lsDeniedKeys = lsDeniedRaw ? lsDeniedRaw.split(',').map((k) => k.trim()) : []
+  if (permissionDeniedKeys.has(key) || lsDeniedKeys.includes(key)) {
     return HttpResponse.json(
       { message: `이슈를 찾을 수 없습니다: ${key}` },
       { status: 404 },

@@ -9,7 +9,8 @@ package com.bts.shared.permission
  *
  * | 권한 | 검증 엔드포인트 |
  * |------|----------------|
- * | [VIEW] | `GET /api/v1/issues/{key}`, `GET /api/v1/issues` |
+ * | [BROWSE] | `GET /api/v1/issues` (프로젝트 이슈 목록 조회) |
+ * | [VIEW] | `GET /api/v1/issues/{key}` (이슈 단건 조회) |
  * | [CREATE] | `POST /api/v1/issues` |
  * | [UPDATE] | `PATCH /api/v1/issues/{key}` |
  * | [TRANSITION] | `POST /api/v1/issues/{key}/transition` |
@@ -17,7 +18,10 @@ package com.bts.shared.permission
  * | [HARD_DELETE] | 본 PR scope 외 — DATA.md §3 하드 삭제 ADR 결정 후 별도 엔드포인트 도입 |
  */
 enum class IssuePermission {
-    /** 이슈 단건 조회 및 목록 조회 권한. */
+    /** 프로젝트 이슈 목록 조회 권한. `GET /api/v1/issues` (BROWSE_PROJECT 매트릭스). */
+    BROWSE,
+
+    /** 이슈 단건 조회 권한. `GET /api/v1/issues/{key}` (VIEW_ISSUE 매트릭스). */
     VIEW,
 
     /** 이슈 생성 권한. */

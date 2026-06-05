@@ -1,5 +1,5 @@
 // 이슈 상세 페이지 단위 테스트 — Task 7 + FR-IS-01 Task-4 (전이 배선)
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -1445,6 +1445,64 @@ describe('IssueDetailPage — PDF 다운로드 버튼 (FR-IS-08)', () => {
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalledWith(issueDetailStrings.pdfDownloadError)
       expect(btn).not.toBeDisabled()
+    })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-PM-05 Task-5 — 권한없는 이슈 404 → not-found 화면 (회귀 가드)
+// ─────────────────────────────────────────────────────────────────────────────
+import { addPermissionDeniedKey, clearPermissionDeniedKeys } from '@/mocks/issue-handlers'
+
+/**
+ * addPermissionDeniedKey 로 issue-handlers.ts 기본 핸들러에 권한없음 시나리오를 세팅한 뒤
+ * 해당 이슈 키에 404 응답이 반환되고 notFound 화면이 렌더되는 경로를 검증.
+ *
+ * 계약: 권한없는 이슈(백엔드 403/404 동일 UX) → issueDetailStrings.notFound 화면 렌더.
+ * issues.$key.tsx 라인 301-306 catch-all 분기가 이 계약을 영속적으로 충족함을 고정.
+ */
+describe('FR-PM-05 Task-5 — 권한없는 이슈 404 → not-found 화면', () => {
+  beforeEach(() => {
+    clearPermissionDeniedKeys()
+  })
+
+  afterEach(() => {
+    clearPermissionDeniedKeys()
+  })
+
+  /**
+   * T-PM05-1: addPermissionDeniedKey('ATLAS-1') 세팅 시
+   * GET /api/v1/issues/ATLAS-1 이 404를 반환하고 role="alert" + notFound 화면을 렌더한다.
+   *
+   * 권한없는 이슈 조회(백엔드가 403을 404와 동일한 UX로 처리)는 미존재 이슈와 같은 화면으로
+   * 렌더해야 하는 UX 계약(issues.$key.tsx 라인 301-306 catch-all)을 회귀 가드로 고정.
+   *
+   * RED 조건: issue-handlers.ts 에 addPermissionDeniedKey / permissionDeniedKeys 가
+   * 아직 없어 기본 핸들러가 정상 응답 → waitFor alert 단언 실패.
+   */
+  it('T-PM05-1: 권한없는 이슈 키 세팅 시 notFound 화면을 렌더한다', async () => {
+    addPermissionDeniedKey('ATLAS-1')
+
+    renderPage('ATLAS-1')
+
+    await waitFor(() => {
+      const alert = screen.getByRole('alert')
+      expect(alert).toBeInTheDocument()
+      expect(alert).toHaveTextContent(issueDetailStrings.notFound)
+    })
+  })
+
+  /**
+   * T-PM05-2: permissionDeniedKeys 가 비어있으면 기존 정상 렌더가 유지된다(회귀 없음).
+   */
+  it('T-PM05-2: 권한없음 시나리오 미세팅 시 이슈 상세 화면을 정상 렌더한다', async () => {
+    // permissionDeniedKeys 비어있음 — 기본 핸들러가 ATLAS-1 정상 응답
+    setupIssueFoundHandler(issueAtlas1Fixture)
+
+    renderPage('ATLAS-1')
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
     })
   })
 })
