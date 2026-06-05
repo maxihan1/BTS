@@ -130,6 +130,8 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { componentRepository.findById(c1, projectId) } returns mockk()
                 every { componentRepository.findById(c2, projectId) } returns mockk()
+                // FR-CM-03 Task 5: assignee null 이므로 resolveDefaultAssignee 호출 — findByProject stub 필요
+                every { componentRepository.findByProject(projectId) } returns emptyList()
                 every {
                     repo.replaceComponents(issueKey, issueId, listOf(c1, c2), existingVersion)
                 } returns 1
@@ -175,6 +177,8 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { componentRepository.findById(c1, projectId) } returns mockk()
                 every { componentRepository.findById(c2, projectId) } returns mockk()
+                // FR-CM-03 Task 5: assignee null 이므로 resolveDefaultAssignee 호출 — findByProject stub 필요
+                every { componentRepository.findByProject(projectId) } returns emptyList()
                 every {
                     repo.replaceComponents(issueKey, issueId, listOf(c1, c2), existingVersion)
                 } returns 1

@@ -1,10 +1,12 @@
-// 이슈 생성 폼 단위 테스트 — T6-1(클라이언트 검증) T6-2(제출 성공+navigate) T6-3(PROJECT_NOT_FOUND 에러) T6-4(빈 summary 제출 차단)
+// 이슈 생성 폼 단위 테스트 — T6-1(클라이언트 검증) T6-2(제출 성공+navigate) T6-3(PROJECT_NOT_FOUND 에러) T6-4(빈 summary 제출 차단) T7-1~T7-3(컴포넌트 선택)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { issueHandlers, createdIssueFixture } from '@/mocks/issue-handlers'
+import { componentHandlers, resetComponentStore } from '@/mocks/component-handlers'
 import { server } from '@/test/server'
+import { http, HttpResponse } from 'msw'
 import { IssueCreateForm } from './issues.new'
 
 // useNavigate mock — TanStack Router 의존 없이 폼 자체 테스트
@@ -29,9 +31,28 @@ function renderForm(onSuccess?: (key: string) => void) {
   )
 }
 
+/** 컴포넌트 옵션 fixture — ComponentMultiSelect options 에 공급 */
+const componentFixtures = [
+  {
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    projectId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    name: '프론트엔드',
+    description: null,
+    leadUserId: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f', // alice
+  },
+  {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    projectId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    name: '백엔드',
+    description: null,
+    leadUserId: null,
+  },
+]
+
 describe('IssueCreateForm', () => {
   beforeEach(() => {
-    server.use(...issueHandlers)
+    resetComponentStore()
+    server.use(...issueHandlers, ...componentHandlers)
     mockNavigate.mockReset()
   })
 
@@ -119,5 +140,95 @@ describe('IssueCreateForm', () => {
     )
 
     expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  /**
+   * T7-1. projectKey가 비어 있으면 ComponentMultiSelect가 disabled 상태다.
+   */
+  it('T7-1: projectKey 미입력 시 컴포넌트 셀렉터가 disabled 상태다', async () => {
+    renderForm()
+
+    // projectKey 가 빈 상태 — 컴포넌트 검색 input이 disabled여야 한다
+    const searchInput = screen.getByLabelText('컴포넌트 검색')
+    expect(searchInput).toBeDisabled()
+  })
+
+  /**
+   * T7-2. 유효한 projectKey 입력 후 컴포넌트 옵션이 표시되고 선택 후 제출하면
+   * createIssue 에 componentIds 가 전달된다.
+   */
+  it('T7-2: 유효한 projectKey 입력 후 컴포넌트 선택 → 제출 시 componentIds 전달', async () => {
+    // MSW 핸들러로 ATLAS 프로젝트 컴포넌트 목록 시드
+    server.use(
+      http.get('/api/v1/projects/ATLAS/components', () =>
+        HttpResponse.json({ data: componentFixtures }),
+      ),
+    )
+
+    // POST 요청 body를 캡처하기 위한 핸들러 재등록
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.post('/api/v1/issues', async ({ request }) => {
+        capturedBody = await request.clone().json() as Record<string, unknown>
+        return HttpResponse.json({ data: createdIssueFixture }, { status: 201 })
+      }),
+    )
+
+    const user = userEvent.setup()
+    const onSuccess = (key: string) => {
+      mockNavigate({ to: '/issues/$key', params: { key } })
+    }
+    renderForm(onSuccess)
+
+    // projectKey 입력 → 컴포넌트 목록 로드
+    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+
+    // 컴포넌트 옵션이 로드될 때까지 대기
+    await waitFor(() =>
+      expect(screen.getByRole('checkbox', { name: '프론트엔드' })).toBeInTheDocument(),
+    )
+
+    // 컴포넌트 선택
+    await user.click(screen.getByRole('checkbox', { name: '프론트엔드' }))
+
+    await user.type(screen.getByLabelText('제목'), '컴포넌트 있는 이슈')
+    await user.click(screen.getByRole('button', { name: '이슈 생성' }))
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalled())
+
+    expect(capturedBody['componentIds']).toEqual(['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'])
+  })
+
+  /**
+   * T7-3. 컴포넌트를 선택하지 않고 제출하면 componentIds가 빈 배열로 전달된다.
+   */
+  it('T7-3: 컴포넌트 미선택 제출 시 componentIds 빈 배열 전달', async () => {
+    server.use(
+      http.get('/api/v1/projects/ATLAS/components', () =>
+        HttpResponse.json({ data: componentFixtures }),
+      ),
+    )
+
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.post('/api/v1/issues', async ({ request }) => {
+        capturedBody = await request.clone().json() as Record<string, unknown>
+        return HttpResponse.json({ data: createdIssueFixture }, { status: 201 })
+      }),
+    )
+
+    const user = userEvent.setup()
+    const onSuccess = (key: string) => {
+      mockNavigate({ to: '/issues/$key', params: { key } })
+    }
+    renderForm(onSuccess)
+
+    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await user.type(screen.getByLabelText('제목'), '컴포넌트 없는 이슈')
+    await user.click(screen.getByRole('button', { name: '이슈 생성' }))
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalled())
+
+    expect(capturedBody['componentIds']).toEqual([])
   })
 })

@@ -6,6 +6,8 @@ import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.AssigneeNotFoundException
+import com.bts.issue.domain.ComponentLead
+import com.bts.issue.domain.DefaultAssigneeResolver
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueComponentNotFoundException
@@ -98,11 +100,14 @@ class IssueApplicationService(
      * 3. IssueKey 발급
      * 4. typeId 결정 — request.typeId 가 null 이면 task fallback (FR-6: 모든 이슈는 유효 타입 보유)
      *    non-null 이면 해당 타입 존재/활성 검증. 없으면 IssueTypeNotFoundException.
-     * 5. [WorkflowKeyResolver.resolveStart] 로 초기 상태 키 결정
+     * 5. componentIds distinct 정규화 + [validateComponents] (프로젝트·활성 검증) — 위반 시 422.
+     * 6. [resolveDefaultAssignee] — 컴포넌트 리드 중 이름 오름차순 첫 번째를 담당자로 결정.
+     * 7. [WorkflowKeyResolver.resolveStart] 로 초기 상태 키 결정
      *    — WorkflowSchemeNoDefaultException 발생 시 [IssueWorkflowNotConfiguredException] 으로 변환 (BC 격리)
-     * 6. Issue.create
-     * 7. DB INSERT
-     * 8. IssueCreated 이벤트 발행
+     * 8. Issue.create (assigneeId + componentIds 포함)
+     * 9. DB INSERT (issues)
+     * 10. [IssueRepository.insertComponents] — issue_components batch INSERT (version bump 없음)
+     * 11. IssueCreated 이벤트 발행
      *
      * @param actor 이슈를 생성하는 행위자.
      * @param request 생성 요청 DTO. typeId null 이면 task 타입으로 fallback.
@@ -129,6 +134,9 @@ class IssueApplicationService(
 
         val resolvedTypeId = resolveTypeId(request.typeId)
 
+        val normalizedComponentIds = request.componentIds.distinct()
+        validateComponents(normalizedComponentIds, projectId)
+
         val startState =
             try {
                 workflowKeyResolver.resolveStart(ProjectKey.of(request.projectKey), null)
@@ -139,6 +147,9 @@ class IssueApplicationService(
                 }
                 throw e
             }
+
+        val resolvedAssignee = resolveDefaultAssignee(projectId, normalizedComponentIds, current = null)
+
         val issue =
             Issue.create(
                 id = IssueId(UUID.randomUUID()),
@@ -148,8 +159,11 @@ class IssueApplicationService(
                 summary = request.summary,
                 reporterId = request.reporterId,
                 currentStateKey = startState.startStateKey,
+                assigneeId = resolvedAssignee,
+                componentIds = normalizedComponentIds,
             )
         val saved = repo.insert(issue)
+        repo.insertComponents(saved.id.value, normalizedComponentIds)
         eventPublisher.publish(
             IssueCreated(
                 issueKey = saved.key,
@@ -580,11 +594,19 @@ class IssueApplicationService(
     }
 
     /**
-     * 이슈에 연결된 컴포넌트 목록을 교체한다 (FR-CM-02).
+     * 이슈에 연결된 컴포넌트 목록을 교체한다 (FR-CM-02 + FR-CM-03 Task 5).
      *
      * 도메인 [Issue.assignComponents] 를 경유하여 distinct 정규화 후 영속한다.
      * repository 에 raw 입력을 직행시키지 않아 도메인 불변식 검증이 우회되지 않는다
      * (메모리 patch-merge-도메인-우회).
+     *
+     * ### 자동 담당자 배정 (FR-CM-03 Task 5)
+     * 컴포넌트 교체 후 현재 담당자가 null 이면 [resolveDefaultAssignee] 로 후보를 결정한다.
+     * 후보가 있으면 [IssueRepository.setAssignee] 로 영속한다.
+     *
+     * **이중 version bump 금지** — [replaceComponents] 가 이미 version+1 을 수행하므로
+     * 담당자 자동 배정은 [IssueRepository.setAssignee](version bump·OCC 없음)를 사용한다.
+     * [updateAssignee] 를 재사용하면 +2 가 되어 기존 FR-CM-02 version 단언이 회귀한다.
      *
      * @param actor 변경 행위자.
      * @param key 대상 이슈 키.
@@ -607,6 +629,23 @@ class IssueApplicationService(
         validateComponents(normalized.componentIds, existing.projectId)
         val rows = repo.replaceComponents(key, existing.id.value, normalized.componentIds, request.expectedVersion)
         if (rows == 0) throw IssueVersionConflictException(key, existing.version)
+
+        // 자동 담당자 배정 (FR-CM-03 Task 5) — assignee null 일 때만 발동.
+        // replaceComponents 가 이미 version +1 했으므로 setAssignee(no-bump) 를 사용한다.
+        if (existing.assigneeId == null) {
+            val resolved = resolveDefaultAssignee(existing.projectId, normalized.componentIds, current = null)
+            if (resolved != null) {
+                val withAssignee = existing.assignTo(resolved)
+                repo.setAssignee(existing.id.value, withAssignee.assigneeId?.value)
+                log.info(
+                    "issue_components_auto_assigned key={} assigneeId={} actor={}",
+                    key.value,
+                    resolved.value,
+                    actor.value,
+                )
+            }
+        }
+
         log.info(
             "issue_components_changed key={} count={} actor={}",
             key.value,
@@ -894,6 +933,41 @@ class IssueApplicationService(
         componentIds.forEach { id ->
             componentRepository.findById(id, projectId) ?: throw IssueComponentNotFoundException(id)
         }
+    }
+
+    /**
+     * 컴포넌트 후보에서 이슈 기본 담당자를 결정한다.
+     *
+     * 프로젝트의 활성 컴포넌트 중 [componentIds] 에 속하고 leadUserId 가 non-null 인 항목을
+     * [DefaultAssigneeResolver.ComponentLead] 목록으로 구성한 뒤 [DefaultAssigneeResolver.resolve] 를 호출한다.
+     *
+     * [current] 가 non-null 이면 후보를 무시하고 [current] 를 그대로 반환한다 (덮어쓰기 금지).
+     * [componentIds] 가 비어 있거나 리드 보유 컴포넌트가 없으면 null 을 반환한다.
+     *
+     * Task 5 (changeComponents) 에서도 동일 로직을 재사용한다.
+     *
+     * @param projectId 소속 프로젝트 UUID.
+     * @param componentIds 이슈에 연결할 컴포넌트 UUID 목록 (distinct 정규화 완료 상태).
+     * @param current 현재 이슈 담당자. 생성 경로에서는 null.
+     * @return 결정된 담당자 [ActorId]. 없으면 null.
+     */
+    @Suppress("ReturnCount") // current 조기 반환 + 빈 목록 조기 반환 + 정상 반환 3개 — guard clause 패턴
+    private fun resolveDefaultAssignee(
+        projectId: UUID,
+        componentIds: List<UUID>,
+        current: ActorId?,
+    ): ActorId? {
+        if (current != null) return current
+        if (componentIds.isEmpty()) return null
+        val componentIdSet = componentIds.toSet()
+        val candidates =
+            componentRepository.findByProject(projectId)
+                .filter { c -> c.id != null && c.id in componentIdSet && c.leadUserId != null }
+                .map { c ->
+                    val cid = c.id ?: error("component.id must not be null after DB read")
+                    ComponentLead(id = cid, name = c.name, leadUserId = c.leadUserId)
+                }
+        return DefaultAssigneeResolver.resolve(current = null, candidates = candidates)
     }
 
     /**

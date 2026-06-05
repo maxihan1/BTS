@@ -18,7 +18,9 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { issueCreateStrings } from '@/i18n/ko'
+import { ComponentMultiSelect } from '@/components/issue/ComponentMultiSelect'
+import { useComponents } from '@/hooks/use-components'
+import { issueCreateStrings, issueDetailStrings } from '@/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zod 폼 스키마 — interface 중복 정의 금지
@@ -71,20 +73,30 @@ interface IssueCreateFormProps {
 /**
  * 이슈 생성 폼 컴포넌트.
  *
- * - projectKey + summary 입력 필드
+ * - projectKey + summary + 컴포넌트 선택 입력 필드
  * - 클라이언트 Zod 검증: 빈 값 제출 차단
  * - 제출 성공 시 onSuccess(key) 콜백 호출
  * - PROJECT_NOT_FOUND(404) 시 role="alert" 에러 메시지 노출
+ * - projectKey 비어있으면 ComponentMultiSelect disabled (lazy 로드)
  *
  * 라우터 의존 없이 props로 onSuccess를 받아 단위 테스트가 가능하다.
  */
 export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.Element {
   const [serverError, setServerError] = useState<string | null>(null)
+  const [selectedComponentIds, setSelectedComponentIds] = useState<string[]>([])
 
   const form = useForm<IssueCreateFormValues>({
     resolver: zodResolver(issueCreateSchema),
     defaultValues: { projectKey: '', summary: '' },
   })
+
+  const projectKey = form.watch('projectKey')
+  const isProjectKeyFilled = projectKey.trim() !== ''
+
+  const { data: componentData } = useComponents(projectKey, {
+    enabled: isProjectKeyFilled,
+  })
+  const componentOptions = componentData ?? []
 
   const mutation = useMutation({
     mutationFn: createIssue,
@@ -99,7 +111,7 @@ export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.E
 
   function handleSubmit(values: IssueCreateFormValues): void {
     setServerError(null)
-    mutation.mutate(values)
+    mutation.mutate({ ...values, componentIds: selectedComponentIds })
   }
 
   return (
@@ -154,6 +166,19 @@ export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.E
             </FormItem>
           )}
         />
+
+        {/* 컴포넌트 선택 — projectKey 미입력 시 disabled */}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+            {issueDetailStrings.componentsLabel}
+          </span>
+          <ComponentMultiSelect
+            value={selectedComponentIds}
+            options={componentOptions}
+            onChange={setSelectedComponentIds}
+            disabled={!isProjectKeyFilled}
+          />
+        </div>
 
         <Button
           type="submit"

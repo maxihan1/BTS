@@ -701,6 +701,52 @@ describe('fetchBulkAvailableTransitions', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// T1-16. createIssue — FR-CM-03 componentIds POST body 전달 검증
+// ─────────────────────────────────────────────────────────────────────────────
+describe('createIssue — FR-CM-03 componentIds', () => {
+  it('T1-16a: componentIds 지정 시 POST body에 componentIds 배열이 포함된다', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.post('/api/v1/issues', async ({ request }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json(
+          { data: { ...issueFixture, projectKey: 'ATLAS', summary: '컴포넌트 지정 이슈' } },
+          { status: 201 },
+        )
+      }),
+    )
+
+    await createIssue({
+      projectKey: 'ATLAS',
+      summary: '컴포넌트 지정 이슈',
+      componentIds: ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'],
+    })
+
+    expect(capturedBody['componentIds']).toEqual([
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+    ])
+  })
+
+  it('T1-16b: componentIds 미지정 시 POST body의 componentIds는 빈 배열이다', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.post('/api/v1/issues', async ({ request }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json(
+          { data: { ...issueFixture, projectKey: 'ATLAS', summary: '기본 이슈' } },
+          { status: 201 },
+        )
+      }),
+    )
+
+    await createIssue({ projectKey: 'ATLAS', summary: '기본 이슈' })
+
+    expect(capturedBody['componentIds']).toEqual([])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // T1-15. downloadIssuePdf — GET /{key}/pdf → Blob (바이너리, Zod 파싱 없음)
 // ─────────────────────────────────────────────────────────────────────────────
 describe('downloadIssuePdf', () => {

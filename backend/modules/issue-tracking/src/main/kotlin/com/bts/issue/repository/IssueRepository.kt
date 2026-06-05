@@ -467,6 +467,31 @@ class IssueRepository(
     }
 
     /**
+     * 이슈 담당자를 version bump 없이 갱신한다 (자동 배정 전용).
+     *
+     * `UPDATE issues SET assignee_id=? WHERE id=?` — version·updated_at 변경 없음.
+     * [replaceComponents] 가 이미 version +1 을 수행한 뒤 호출하는 자동 배정 side-effect 전용이다.
+     *
+     * 사용자가 직접 담당자를 변경하는 경로(컨트롤러 → changeAssignee)는
+     * 낙관락(OCC)+version bump 가 포함된 [updateAssignee] 를 사용해야 한다.
+     *
+     * @param issueId 이슈 UUID.
+     * @param assigneeId 자동 배정할 담당자 UUID. null 이면 아무 작업도 하지 않는다.
+     */
+    @Transactional
+    fun setAssignee(
+        issueId: UUID,
+        assigneeId: UUID?,
+    ) {
+        if (assigneeId == null) return
+        log.debug("setAssignee issueId={} assigneeId={}", issueId, assigneeId)
+        dsl.update(ISSUES)
+            .set(ISSUES.ASSIGNEE_ID, assigneeId)
+            .where(ISSUES.ID.eq(issueId))
+            .execute()
+    }
+
+    /**
      * 이슈의 컴포넌트 연결 목록을 원자적으로 교체한다 (낙관락 OCC).
      *
      * version bump 를 먼저 시도하는 이유 — 낙관락(Optimistic Concurrency Control)으로
@@ -533,6 +558,30 @@ class IssueRepository(
             .and(COMPONENTS.DELETED_AT.isNull)
             .fetch(ISSUE_COMPONENTS.COMPONENT_ID)
             .filterNotNull()
+    }
+
+    /**
+     * 이슈 생성 시 컴포넌트 연결을 삽입한다 (생성 전용, version bump·OCC·DELETE 없음).
+     *
+     * 신규 이슈는 version=1 계약을 유지해야 하므로 [replaceComponents] 의 version bump + DELETE 흐름을
+     * 사용하지 않는다. 이 메서드는 순수 INSERT INTO issue_components(issue_id, component_id) 만 수행한다.
+     *
+     * [componentIds] 가 비어 있으면 아무 행도 삽입하지 않는다.
+     * 사용자 편집 경로(PATCH /components)는 반드시 [replaceComponents] 를 사용해야 한다.
+     *
+     * @param issueId 이슈 UUID. 이미 issues 테이블에 존재해야 한다.
+     * @param componentIds 연결할 컴포넌트 UUID 목록. 빈 목록이면 skip.
+     */
+    @Transactional
+    fun insertComponents(
+        issueId: UUID,
+        componentIds: List<UUID>,
+    ) {
+        if (componentIds.isEmpty()) return
+        log.debug("insertComponents issueId={} componentCount={}", issueId, componentIds.size)
+        val insert = dsl.insertInto(ISSUE_COMPONENTS, ISSUE_COMPONENTS.ISSUE_ID, ISSUE_COMPONENTS.COMPONENT_ID)
+        componentIds.forEach { componentId -> insert.values(issueId, componentId) }
+        insert.execute()
     }
 
     /**

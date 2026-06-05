@@ -63,6 +63,40 @@ describe('useComponents', () => {
     server.use(...componentHandlers)
   })
 
+  it('enabled: false 옵션 전달 시 쿼리가 idle 상태가 되고 fetch가 발생하지 않는다', async () => {
+    const fetchSpy = vi.fn()
+    server.use(
+      http.get('/api/v1/projects/ATLAS/components', () => {
+        fetchSpy()
+        return HttpResponse.json({ data: [] })
+      }),
+    )
+
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useComponents('ATLAS', { enabled: false }), { wrapper })
+
+    // idle 상태 — fetchStatus: 'idle', data: undefined
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('enabled: true 옵션 전달 시 fetch가 발생한다', async () => {
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useComponents('ATLAS', { enabled: true }), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    // data가 배열로 채워지면 fetch가 일어났음을 의미
+    expect(result.current.data).toBeDefined()
+  })
+
+  it('options 미전달 시 기본 enabled=true로 fetch가 발생한다', async () => {
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useComponents('ATLAS'), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toBeDefined()
+  })
+
   it('컴포넌트 목록을 조회해 반환한다', async () => {
     // 사전 조건: 컴포넌트를 하나 추가해 둔다 (MSW 핸들러 직접 사용)
     server.use(

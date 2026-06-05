@@ -63,7 +63,8 @@ private const val IMPACT_MAX = 3
  * @property resolutionId 종결 시 설정되는 Resolution UUID. null 이면 미설정.
  *   DONE 전이 시 서비스 계층이 설정하며, 비DONE 재전이 시 null 로 clear 된다 (FR-IS-07 B6).
  * @property componentIds 이슈가 속한 컴포넌트 UUID 목록. 중복 없음, 개수 제한 없음.
- *   [assignComponents]/[clearComponents] 를 통해 변경한다.
+ *   [create] 시 [componentIds] 파라미터로 초기값 설정 가능 (기본값 빈 리스트, distinct 정규화 자동 적용).
+ *   이후 변경은 [assignComponents]/[clearComponents] 를 통해 수행한다.
  */
 data class Issue(
     val id: IssueId,
@@ -125,6 +126,8 @@ data class Issue(
          * @param labels 라벨 목록. 빈 문자열 자동 제거, 공백-only/50자 초과/21개 초과 시 예외.
          * @param environment 재현 환경 설명. null 허용.
          * @param impact 영향도 1..3. null 허용.
+         * @param assigneeId 담당자. null 이면 미할당.
+         * @param componentIds 이슈가 속한 컴포넌트 UUID 목록. 중복은 자동 제거된다. 기본값 빈 리스트.
          * @return 생성된 [Issue] 인스턴스.
          */
         @Suppress("LongParameterList")
@@ -142,6 +145,7 @@ data class Issue(
             environment: String? = null,
             impact: Int? = null,
             assigneeId: ActorId? = null,
+            componentIds: List<UUID> = emptyList(),
         ): Issue {
             validateSummary(summary)
             validatePriority(priority)
@@ -166,6 +170,7 @@ data class Issue(
                 environment = environment,
                 impact = impact,
                 assigneeId = assigneeId,
+                componentIds = componentIds.filterNotNull().distinct(),
             )
         }
     }

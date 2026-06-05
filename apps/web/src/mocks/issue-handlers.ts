@@ -1,6 +1,7 @@
 // issue-tracking BC MSW mock handlers — GET 목록/단건 + POST 생성 + PATCH 수정 + PATCH /assignee + DELETE 삭제
 // 소프트 삭제 stateful: deletedKeys 와 createdIssues 로 모듈-스코프 상태 유지 (E2E 검증 gap-H + E2E-1 happy path).
 import { http, HttpResponse } from 'msw'
+import { getStoredComponentsByIds } from './component-handlers'
 import {
   issuePageFixture,
   issueAtlas1Fixture,
@@ -190,19 +191,50 @@ const getIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
  * POST /api/v1/issues — 이슈 생성 핸들러.
  * projectKey 가 'INVALID' 이면 PROJECT_NOT_FOUND(404) 반환.
  * 그 외는 201 + { data: createdIssueFixture } 반환.
+ *
+ * FR-CM-03: 요청 componentIds를 응답에 에코.
+ * 백엔드 default-assignee resolve 규칙(미할당일 때만):
+ *   componentStore(component-handlers.ts 단일 출처)에 정보가 없으면 assigneeId=null 유지.
+ *   X-MSW-Seed-Components 헤더로 시드된 컴포넌트 중 리드 보유 컴포넌트를
+ *   name 오름차순 → id 오름차순(tiebreak) 정렬 후 첫 번째의 leadUserId가 assigneeId로 에코된다.
  */
 const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
-  const body = await request.clone().json() as { projectKey?: string; summary?: string }
+  const body = await request.clone().json() as {
+    projectKey?: string
+    summary?: string
+    componentIds?: string[]
+  }
   if (body.projectKey === 'INVALID') {
     return HttpResponse.json(
       { errorCode: 'PROJECT_NOT_FOUND', message: '프로젝트를 찾을 수 없습니다' },
       { status: 404 },
     )
   }
+
+  const componentIds = body.componentIds ?? []
+
+  // default-assignee resolve — componentStore(component-handlers.ts 단일 출처)에서 읽는다.
+  // X-MSW-Seed-Components 헤더로 브라우저 시드된 컴포넌트에서 리드를 조회한다.
+  // 정렬 기준: name 오름차순, name 동률이면 id 오름차순 (백엔드 DefaultAssigneeResolver 동일).
+  let resolvedAssigneeId: string | null = createdIssueFixture.assigneeId
+  if (resolvedAssigneeId === null && componentIds.length > 0) {
+    const firstLead = getStoredComponentsByIds(componentIds)
+      .filter((c) => c.leadUserId !== null)
+      .sort((a, b) => {
+        const nameCmp = a.name.localeCompare(b.name)
+        return nameCmp !== 0 ? nameCmp : a.id.localeCompare(b.id)
+      })[0]
+    if (firstLead !== undefined) {
+      resolvedAssigneeId = firstLead.leadUserId
+    }
+  }
+
   const created: IssueResponse = {
     ...createdIssueFixture,
     projectKey: body.projectKey ?? 'ATLAS',
     summary: body.summary ?? '',
+    componentIds,
+    assigneeId: resolvedAssigneeId,
   }
   // E2E-1 happy path 용 — POST 직후 GET 으로 조회 가능하도록 stateful 보관.
   createdIssues.set(created.key, created)

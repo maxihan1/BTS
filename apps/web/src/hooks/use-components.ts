@@ -35,6 +35,12 @@ function notifyComponentError(error: unknown): void {
 // useComponents — 목록 조회
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** useComponents 옵션 타입 */
+export interface UseComponentsOptions {
+  /** false이면 쿼리를 idle 상태로 유지해 fetch를 지연한다. 기본값 true. */
+  enabled?: boolean
+}
+
 /**
  * 프로젝트 컴포넌트 목록을 조회한다.
  *
@@ -42,12 +48,14 @@ function notifyComponentError(error: unknown): void {
  * staleTime 30초 — 빈번한 목록 재조회를 방지한다.
  *
  * @param projectKey 프로젝트 식별 키
+ * @param options 쿼리 옵션 — enabled: false이면 즉시 fetch하지 않음 (lazy 로드)
  */
-export function useComponents(projectKey: string) {
+export function useComponents(projectKey: string, options?: UseComponentsOptions) {
   return useQuery({
     queryKey: COMPONENT_KEYS.list(projectKey),
     queryFn: () => fetchComponents(projectKey),
     staleTime: 30_000,
+    enabled: options?.enabled ?? true,
   })
 }
 

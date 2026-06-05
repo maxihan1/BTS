@@ -112,6 +112,7 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 every { repo.incrementKeySequence(projectKey) } returns 1L
                 every { repo.findProjectIdByKey(projectKey) } returns fixedProjectId
                 every { repo.insert(any()) } answers { firstArg() }
+                every { repo.insertComponents(any(), any()) } returns Unit
                 every { eventPublisher.publish(any()) } returns Unit
                 every {
                     workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)

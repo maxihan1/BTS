@@ -1,4 +1,4 @@
-// Issue Aggregate Root 단위 테스트 — factory, invariants, version, deletedAt, typeId 필수, 5필드 불변식, assigneeId
+// Issue Aggregate Root 단위 테스트 — factory, invariants, version, deletedAt, typeId 필수, 5필드 불변식, assigneeId, componentIds
 
 package com.bts.issue.domain
 
@@ -522,5 +522,43 @@ class IssueTest {
         val unassigned = issue.unassign()
 
         assertThat(unassigned.assigneeId).isNull()
+    }
+
+    // ─── Task 2: componentIds 불변식 ──────────────────────────────────────────
+
+    @Test
+    fun `create_componentIds_dedup — componentIds 에 중복 UUID 가 포함되면 distinct 정규화되어 반환된다`() {
+        val a = UUID.randomUUID()
+        val b = UUID.randomUUID()
+
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                componentIds = listOf(a, a, b),
+            )
+
+        assertThat(issue.componentIds).containsExactlyInAnyOrder(a, b)
+    }
+
+    @Test
+    fun `create_default_componentIds_empty — componentIds 미지정 시 기본값은 빈 리스트다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+
+        assertThat(issue.componentIds).isEmpty()
     }
 }
