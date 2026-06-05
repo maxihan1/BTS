@@ -24,6 +24,7 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -32,6 +33,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
+import org.springframework.security.test.context.support.WithMockUser
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.test.context.web.WebAppConfiguration
@@ -103,11 +105,11 @@ class WorkflowSchemeControllerTest {
     private lateinit var mockMvc: MockMvc
     private val mapper: ObjectMapper = ObjectMapper().registerKotlinModule()
 
-    /** 컨트롤러가 내부적으로 사용하는 SYSTEM_ACTOR ActorId. */
-    private val systemActor = ActorId("00000000-0000-0000-0000-000000000001")
+    /** mutating 테스트의 @WithMockUser username — 인증 주체 UUID(v4 형식). */
+    private val authActor = ActorId(AUTH_ACTOR_UUID_STRING)
 
     // 컨트롤러가 권한 포트에 넘기는 actor.toUuid() 결과 — verify 블록 기대값.
-    private val systemActorUuid = UUID.fromString("00000000-0000-0000-0000-000000000001")
+    private val authActorUuid = UUID.fromString(AUTH_ACTOR_UUID_STRING)
 
     @BeforeEach
     fun setUp() {
@@ -117,11 +119,12 @@ class WorkflowSchemeControllerTest {
     // ── C1. POST /api/v1/workflow-schemes — 201 Created ──────────────────────
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `POST 스킴 생성 — 201 Created + 응답 body key 포함`() {
         val scheme = buildScheme("team-a-scheme", "팀 A 스킴")
         every {
             applicationService.create(
-                actor = systemActor,
+                actor = authActor,
                 key = WorkflowSchemeKey("team-a-scheme"),
                 name = "팀 A 스킴",
                 description = "설명",
@@ -252,11 +255,12 @@ class WorkflowSchemeControllerTest {
     // ── C4. PUT /api/v1/workflow-schemes/{schemeKey} — 200 수정 ──────────────
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `PUT 스킴 수정 — 200 + 변경된 name 반영`() {
         val updated = buildScheme("team-a-scheme", "팀 A 스킴 수정")
         every {
             applicationService.update(
-                actor = systemActor,
+                actor = authActor,
                 key = WorkflowSchemeKey("team-a-scheme"),
                 newName = "팀 A 스킴 수정",
                 newDescription = "새 설명",
@@ -283,9 +287,10 @@ class WorkflowSchemeControllerTest {
     // ── C5. DELETE /api/v1/workflow-schemes/{schemeKey} — 204 삭제 ────────────
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `DELETE 스킴 삭제 — 204 No Content`() {
         every {
-            applicationService.softDelete(systemActor, WorkflowSchemeKey("team-a-scheme"))
+            applicationService.softDelete(authActor, WorkflowSchemeKey("team-a-scheme"))
         } returns Unit
 
         mockMvc.perform(delete("/api/v1/workflow-schemes/team-a-scheme"))
@@ -295,12 +300,13 @@ class WorkflowSchemeControllerTest {
     // ── M1. POST /api/v1/workflow-schemes/{schemeKey}/mappings — 200 매핑 추가 ─
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `POST 매핑 추가 — 200 OK + 저장된 매핑 id 반환`() {
         val workflowId = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000001")
         val mapping = buildMapping(id = 10L, issueTypeId = IssueTypeId(1L), workflowId = workflowId)
         every {
             applicationService.addMappingByKeys(
-                actor = systemActor,
+                actor = authActor,
                 schemeKey = WorkflowSchemeKey("team-a-scheme"),
                 issueTypeKey = "bug",
                 workflowKey = "software-default",
@@ -323,12 +329,13 @@ class WorkflowSchemeControllerTest {
     }
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `POST 매핑 추가 — issueTypeKey null 은 default mapping — 200 OK`() {
         val workflowId = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000002")
         val mapping = buildMapping(id = 11L, issueTypeId = null, workflowId = workflowId)
         every {
             applicationService.addMappingByKeys(
-                actor = systemActor,
+                actor = authActor,
                 schemeKey = WorkflowSchemeKey("team-a-scheme"),
                 issueTypeKey = null,
                 workflowKey = "simple",
@@ -351,10 +358,11 @@ class WorkflowSchemeControllerTest {
     }
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `POST 매핑 추가 — 중복 시 409 MAPPING_DUPLICATE`() {
         every {
             applicationService.addMappingByKeys(
-                actor = systemActor,
+                actor = authActor,
                 schemeKey = WorkflowSchemeKey("team-a-scheme"),
                 issueTypeKey = "bug",
                 workflowKey = "software-default",
@@ -373,10 +381,11 @@ class WorkflowSchemeControllerTest {
     }
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `POST 매핑 추가 — default 중복 시 409 MAPPING_DEFAULT_DUPLICATE`() {
         every {
             applicationService.addMappingByKeys(
-                actor = systemActor,
+                actor = authActor,
                 schemeKey = WorkflowSchemeKey("team-a-scheme"),
                 issueTypeKey = null,
                 workflowKey = "simple",
@@ -395,12 +404,13 @@ class WorkflowSchemeControllerTest {
     }
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `POST 매핑 추가 — permissionResolver MANAGE_SCHEME 호출 검증`() {
         val workflowId = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000003")
         val mapping = buildMapping(id = 12L, issueTypeId = IssueTypeId(2L), workflowId = workflowId)
         every {
             applicationService.addMappingByKeys(
-                actor = systemActor,
+                actor = authActor,
                 schemeKey = WorkflowSchemeKey("team-a-scheme"),
                 issueTypeKey = "story",
                 workflowKey = "software-default",
@@ -418,7 +428,7 @@ class WorkflowSchemeControllerTest {
 
         verify {
             permissionResolver.requirePermission(
-                systemActorUuid,
+                authActorUuid,
                 WorkflowSchemePermission.MANAGE_SCHEME,
                 WorkflowSchemeScope.Global,
             )
@@ -428,9 +438,10 @@ class WorkflowSchemeControllerTest {
     // ── M2. DELETE /api/v1/workflow-schemes/{schemeKey}/mappings/{mappingId} — 204 ──
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `DELETE 매핑 삭제 — 204 No Content`() {
         justRun {
-            applicationService.deleteMapping(systemActor, 42L)
+            applicationService.deleteMapping(authActor, 42L)
         }
 
         mockMvc.perform(delete("/api/v1/workflow-schemes/team-a-scheme/mappings/42"))
@@ -438,9 +449,10 @@ class WorkflowSchemeControllerTest {
     }
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `DELETE 매핑 삭제 — permissionResolver MANAGE_SCHEME 호출 검증`() {
         justRun {
-            applicationService.deleteMapping(systemActor, 99L)
+            applicationService.deleteMapping(authActor, 99L)
         }
 
         mockMvc.perform(delete("/api/v1/workflow-schemes/team-a-scheme/mappings/99"))
@@ -448,7 +460,7 @@ class WorkflowSchemeControllerTest {
 
         verify {
             permissionResolver.requirePermission(
-                systemActorUuid,
+                authActorUuid,
                 WorkflowSchemePermission.MANAGE_SCHEME,
                 WorkflowSchemeScope.Global,
             )
@@ -458,9 +470,10 @@ class WorkflowSchemeControllerTest {
     // ── C6. DELETE 표준 스킴 차단 — 403 ──────────────────────────────────────
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `DELETE 표준 스킴 — 403 SCHEME_STANDARD_NOT_DELETABLE`() {
         every {
-            applicationService.softDelete(systemActor, WorkflowSchemeKey("software-scheme"))
+            applicationService.softDelete(authActor, WorkflowSchemeKey("software-scheme"))
         } throws SchemeStandardNotDeletableException(key = "software-scheme")
 
         mockMvc.perform(delete("/api/v1/workflow-schemes/software-scheme"))
@@ -471,9 +484,10 @@ class WorkflowSchemeControllerTest {
     // ── C7. DELETE 사용 중 스킴 차단 — 409 ───────────────────────────────────
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `DELETE 사용 중 스킴 — 409 SCHEME_IN_USE`() {
         every {
-            applicationService.softDelete(systemActor, WorkflowSchemeKey("team-a-scheme"))
+            applicationService.softDelete(authActor, WorkflowSchemeKey("team-a-scheme"))
         } throws SchemeInUseException(usedByProjects = listOf(1L))
 
         mockMvc.perform(delete("/api/v1/workflow-schemes/team-a-scheme"))
@@ -484,11 +498,12 @@ class WorkflowSchemeControllerTest {
     // ── P1. permissionResolver.requirePermission wiring 검증 ─────────────────
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `POST 스킴 생성 — permissionResolver MANAGE_SCHEME Global scope 호출 검증`() {
         val scheme = buildScheme("team-b-scheme", "팀 B 스킴")
         every {
             applicationService.create(
-                actor = systemActor,
+                actor = authActor,
                 key = WorkflowSchemeKey("team-b-scheme"),
                 name = "팀 B 스킴",
                 description = null,
@@ -511,10 +526,72 @@ class WorkflowSchemeControllerTest {
 
         verify {
             permissionResolver.requirePermission(
-                systemActorUuid,
+                authActorUuid,
                 WorkflowSchemePermission.MANAGE_SCHEME,
                 WorkflowSchemeScope.Global,
             )
+        }
+    }
+
+    // ── A1. 미인증 mutating 호출 — 401 UNAUTHORIZED ──────────────────────────
+
+    @Test
+    fun `POST 스킴 생성 — 미인증 시 401 UNAUTHORIZED`() {
+        val body =
+            mapOf(
+                "key" to "team-a-scheme",
+                "name" to "팀 A 스킴",
+                "description" to "설명",
+            )
+
+        mockMvc.perform(
+            post("/api/v1/workflow-schemes")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isUnauthorized)
+    }
+
+    // ── A2. 인증 주체 actor 결선 — 권한 포트에 인증 UUID 전달 ─────────────────
+
+    @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+    fun `POST 스킴 생성 — 권한 포트에 인증 주체 UUID 전달`() {
+        val scheme = buildScheme("team-a-scheme", "팀 A 스킴")
+        every {
+            applicationService.create(
+                actor = authActor,
+                key = WorkflowSchemeKey("team-a-scheme"),
+                name = "팀 A 스킴",
+                description = "설명",
+            )
+        } returns scheme
+
+        val capturedActor = slot<UUID>()
+        justRun {
+            permissionResolver.requirePermission(
+                capture(capturedActor),
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
+        }
+
+        val body =
+            mapOf(
+                "key" to "team-a-scheme",
+                "name" to "팀 A 스킴",
+                "description" to "설명",
+            )
+
+        mockMvc.perform(
+            post("/api/v1/workflow-schemes")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isCreated)
+
+        assert(capturedActor.captured == authActorUuid) {
+            "권한 포트에 전달된 actor=${capturedActor.captured}, 기대=$authActorUuid"
         }
     }
 
@@ -582,4 +659,9 @@ class WorkflowSchemeControllerTest {
             workflowKey = workflowKey,
             workflowName = workflowName,
         )
+
+    companion object {
+        /** @WithMockUser username 으로 쓰는 인증 주체 UUID(RFC 4122 v4 형식). */
+        private const val AUTH_ACTOR_UUID_STRING = "11111111-1111-4111-8111-111111111111"
+    }
 }
