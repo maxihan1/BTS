@@ -59,10 +59,25 @@ FR-PM-06 이슈 보안 수준. 이슈마다 보안 등급(IssueSecurityLevel: �
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
-(보류 — 그룹 FR 완료 후 재개)
+### ▶️ 재개 (2026-06-06) — 그룹 인프라(FR-PM-09 PR #88) 흡수 후 spec 작성
 
+전체 스펙. [docs/specs/2026-06-06-fr-pm-06-issue-security-level.md](../specs/2026-06-06-fr-pm-06-issue-security-level.md)
+
+**Maxi 결정(2026-06-06 도메인 grill)**: **Jira Cloud Issue Security와 동일**.
+- 구조 = 이슈 보안 스킴 → 보안 등급 → 등급 멤버 (스킴 계층 포함).
+- 멤버 타입 5종 = REPORTER / ASSIGNEE / USER / PROJECT_ROLE / **GROUP**(FR-PM-09 소비).
+- 스킴·등급·멤버 관리 = SYSTEM_ADMIN(isSystemAdmin 재사용). 프로젝트 스킴 적용 = PROJECT_ADMIN.
+- 이슈 등급 지정 = **SET_ISSUE_SECURITY 전용 권한 신설**(role_permissions 시드 12→13).
+- 판정 = identity-access resolver 확장. 등급 멤버만 VIEW, 미통과 404. **관리자 우회 없음**(Jira 동일).
+- 등급 없는 이슈 = 기존 VIEW 매트릭스만(Browse/View 통과자 모두).
+
+**2 PR 분할 확정(2026-06-06 Maxi)**.
+- **PR-A(이번 PR #86) = identity-access 관리 인프라** — V016(schemes/levels/members/project-scheme)+SET_ISSUE_SECURITY 시드 + 도메인/Repository/Service + 스킴·등급·멤버 CRUD API + 프로젝트 스킴 적용 API. issues 컬럼·판정 결선 제외.
+- **PR-B(후속) = issue-tracking 결선** — issues.security_level_id+init_codegen + 이슈 지정 API + IssueSecurityLookup 포트 + resolver 판정 확장 + 목록 필터.
 
 ## Brainstorming Check (← /bts-spec Phase B 채움)
+
+✅ 통과 (적대적 sanity check, EC 12건). Maxi 결정 gap 2건 해소(관리자 우회 없음 / 2 PR 분할). 핵심 위험 인계 — cross-BC 순서 의존(판정 PR-B로 분리), 권한 시드 카운트 가드(12→13), non-prod 마스킹(판정은 PR-B prod 통합), 명세 변경 전수 동기화(SDD §12.4).
 
 ## Plan (← /bts-plan 채움)
 

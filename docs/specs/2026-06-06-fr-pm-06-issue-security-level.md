@@ -31,6 +31,8 @@
 | 등급 미지정 이슈 | 기존 VIEW 매트릭스만 적용 (Browse/View 통과자 모두 — Jira 기본) |
 | 미통과 시 응답 | **404 존재 숨김** (FR-PM-05 `assertViewIssueOrNotFound`와 일관, probe 차단) |
 | 판정 위치 | identity-access `IdentityAccessIssuePermissionResolver` 확장 (그룹·역할·멤버십·이슈데이터 모두 read 가능) |
+| 관리자 우회 | **없음** (Jira 동일, 2026-06-06 확정) — SYSTEM_ADMIN/PROJECT_ADMIN도 등급 멤버 아니면 404. 민감 이슈 진짜 격리. |
+| PR 분할 | **2 PR** (Jira 무관, BTS 진행, 2026-06-06 확정) — ① identity-access 관리 인프라 ② issue-tracking 컬럼·지정·판정 결선. **이번 PR #86 = ①.** |
 
 **제외 멤버 타입(명시)**: Jira의 `Project Lead`(BTS에 PROJECT_LEAD 역할 미구현, FR-CM-04 논의 중),
 `User custom field value` / `Group custom field value`(BTS 커스텀 필드 미구현). 후속 필요 시 멤버 타입 추가.
@@ -160,7 +162,7 @@ CREATE INDEX ix_issues_security_level ON issues(security_level_id) WHERE securit
 - **EC7 프로젝트 스킴 적용 해제**. 해제 후 그 프로젝트 이슈의 security_level_id가 더는 유효 스킴에 없음 → 판정 시 "등급이 프로젝트 스킴에 없음" → 통과(차단 해제) vs 거부. **결정 필요**.
 - **EC8 기본 등급(isDefault) 자동 적용**. Jira는 스킴에 default 등급 있으면 신규 이슈에 자동. 본 FR 포함 여부 → brainstorming. (포함 시 createIssue가 프로젝트 스킴의 default 등급 자동 set, SET_ISSUE_SECURITY 무관.)
 - **EC9 SET_ISSUE_SECURITY 시드 대상**. PROJECT_ADMIN만? MEMBER도? → 기본 PROJECT_ADMIN(보수적). Maxi 확인.
-- **EC10 SYSTEM_ADMIN/PROJECT_ADMIN 보안수준 우회**. 전역/프로젝트 관리자가 등급 멤버 아니어도 볼 수 있나? Jira는 "Set Issue Security" 권한자도 등급 멤버 아니면 못 봄(별개). → **기본: 우회 없음**(등급 멤버십만). 단 관리자가 자기 프로젝트 이슈를 못 보는 운영 이슈 → Maxi 확인.
+- **EC10 SYSTEM_ADMIN/PROJECT_ADMIN 보안수준 우회**. → **우회 없음 확정(2026-06-06 Maxi, Jira 동일)**. 전역/프로젝트 관리자도 등급 멤버 아니면 404. 등급 멤버십만이 유일한 통과 경로(REPORTER/ASSIGNEE/USER/PROJECT_ROLE/GROUP). 관리자가 자기 프로젝트 민감 이슈를 보려면 등급 멤버에 자신을 명시 추가하거나 PROJECT_ROLE 멤버를 등급에 추가.
 - **EC11 이슈 이동(다른 프로젝트)**. security_level_id가 새 프로젝트 스킴에 없는 등급 → 이동 시 등급 해제 또는 차단. 이슈 이동 FR 미구현이면 범위 밖.
 - **EC12 cloneIssue**. 클론 시 security_level_id 복사 여부. FR-IS-06이 core-only scope(보안수준 미정의) → 복사 안 함(null) 기본.
 
@@ -172,7 +174,7 @@ CREATE INDEX ix_issues_security_level ON issues(security_level_id) WHERE securit
 - **컨트롤러 actor 결선**(issue-tracking SYSTEM_ACTOR 하드코딩) — FR-PM-04 C2 동형 후속(있으면 명시).
 
 ## 제약 조건
-- 2개 BC 변경(identity-access 주 + issue-tracking 보조 security_level_id·이슈지정). **한 PR=한 BC 원칙 예외 → plan 단계에서 PR 분할 vs 단일 PR을 Maxi 확인**(FR-WF-01 옵션 C 선례: same-feature cross-BC view layer는 한 PR 허용).
+- **2 PR 분할 확정(2026-06-06 Maxi)**. ① **PR-A = identity-access 관리 인프라**(이번 PR #86): V016(schemes/levels/members/project-scheme) + SET_ISSUE_SECURITY 시드 + 도메인·Repository·Service + 스킴/등급/멤버 CRUD API + 프로젝트 스킴 적용 API. issues 컬럼·판정 결선 **제외**(FR-PM-09가 그룹 CRUD만 먼저 한 리듬). ② **PR-B = issue-tracking 결선**(후속): issues.security_level_id 컬럼+init_codegen + 이슈 지정 API + IssueSecurityLookup 포트 + resolver 판정 확장 + 목록 필터. PR-A는 컬럼 의존 없이 self-contained → 순서 의존 최소. **이번 작업 범위 = PR-A. plan은 PR-A만 분해.**
 - 명세 변경(SDD §12.4 단순 모델→스킴 구조) → 전수 동기화(fr-index/SDD/product/README/CLAUDE/ADR/Obsidian). verify-master-plan 통과 필수.
 - 신규 권한코드 SET_ISSUE_SECURITY → PermissionSchemaMigrationTest 카운트 12→13(+1행) 갱신(fr-pm-permission-seed-migration-test-coupling 교훈).
 - 완제품 기준(DEVELOPMENT.md §1): 입력 검증·권한·에러·테스트.
@@ -188,4 +190,12 @@ CREATE INDEX ix_issues_security_level ON issues(security_level_id) WHERE securit
 
 ## Brainstorming Check
 
-(← Phase B에서 채움)
+✅ 통과 (적대적 sanity check, EC 12건 도출). Maxi 결정 gap 2건 해소 — (EC10) 관리자 우회 **없음**(Jira 동일) 확정,
+(제약) **2 PR 분할** 확정(PR-A=identity-access 인프라=이번 PR, PR-B=issue-tracking 결선). 나머지 gap(EC6/7/8/9)은
+"Jira 동일" + 보수적 default로 확정. 추가 Maxi 결정 필요 gap 없음.
+
+**적대적 검토가 잡은 핵심 위험(plan/impl 인계)**:
+1. **cross-BC 순서 의존** — 판정기(identity-access)가 issues.security_level_id(issue-tracking) read. PR-A에 판정 넣으면 컬럼 부재로 통합테스트 RED. → 판정·Lookup은 PR-B로 분리(이번 범위 밖).
+2. **권한 시드 카운트 가드** — SET_ISSUE_SECURITY 시드 시 PermissionSchemaMigrationTest 12→13 동반 갱신(fr-pm-permission-seed-migration-test-coupling 재현 예상).
+3. **non-prod 마스킹** — 판정 동작은 PR-B에서 prod Testcontainers로만 ground-truth(issue-scope-global-prod-hard-deny 동형). PR-A는 관리 API라 FR-PM-09 부팅 레시피 재사용.
+4. **명세 변경 전수 동기화** — SDD §12.4 단순 allowedRoles 모델 → 스킴 구조. fr-index는 FR 카운트 불변(121, FR-PM-06 기존)이나 SDD/product 본문 갱신 + verify-master-plan 통과.
