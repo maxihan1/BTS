@@ -163,7 +163,8 @@ FR-PM-06 이슈 보안 수준. 이슈마다 보안 등급(IssueSecurityLevel: �
 - depends-on: [3]
 
 **RED**: `...ServiceTest`(mockk repo + UserGroupRepository + ProjectMembershipRepository) — name 중복→SchemeNameConflict, 없는 스킴/등급→NotFound, 멤버 추가 시 USER/GROUP memberValue 실재 사전조회(없으면 404 UserNotFound/GroupNotFound), PROJECT_ROLE/REPORTER/ASSIGNEE 검증, 멱등. (실패: 클래스 없음)
-**GREEN**: `@Service @Transactional` — repo 위임 + 도메인 create 경유(우회 금지) + USER/GROUP 멤버 실재 사전조회(UserRepository/UserGroupRepository.existsById) + DuplicateKeyException→도메인 예외. 예외 클래스(SchemeNotFound/SchemeNameConflict/LevelNotFound/LevelNameConflict/MemberTypeInvalid/MemberValueInvalid).
+**GREEN**: `@Service @Transactional` — repo 위임 + 도메인 create 경유(우회 금지) + USER/GROUP 멤버 실재 사전조회 + DuplicateKeyException→도메인 예외. 예외 클래스(SchemeNotFound/SchemeNameConflict/LevelNotFound/LevelNameConflict/MemberTypeInvalid/MemberValueInvalid).
+  - **실재 사전조회 정정(code-reviewer CONCERN)**: `UserRepository`엔 `existsById` **없음** → `userRepository.findById(value) != null` 사용(공유 `UserRepository` 인터페이스 미수정 — 새 메서드 추가 시 JDBC 구현+기존 mock 파급 `plan-files-constructor-injection-existing-tests`). GROUP은 `userGroupRepository.existsById(uuid)` 실재.
 **REFACTOR**: 가독성 + KDoc.
 **검증**: `./gradlew :modules:identity-access:test --tests '*IssueSecuritySchemeServiceTest'`
 
@@ -211,13 +212,26 @@ FR-PM-06 이슈 보안 수준. 이슈마다 보안 등급(IssueSecurityLevel: �
 - depends-on: [7, 8]
 
 **RED**: `IssueSecurityIntegrationTest`(@ActiveProfiles prod + RANDOM_PORT + TestRestTemplate) — SYSTEM_ADMIN 시드 후 스킴/등급/멤버 CRUD(S1~S5), PROJECT_ADMIN 시드 후 프로젝트 스킴 적용/해제(S6~S7), 비-SYSTEM_ADMIN 관리 호출 403(ground-truth 마스킹 없음), 비-PROJECT_ADMIN 적용 403, 미인증 401, 스킴 CASCADE. (실패: 시나리오 미구현)
-**GREEN**: `UserGroupIntegrationTest` 부팅 레시피 복제(PEM 키 + OAuth2 exclude + LDAP @MockBean 5종 + loginJwt 실로그인 admin + PROJECT_ADMIN 멤버 시드). TestRestTemplate Bearer.
+**GREEN**: `UserGroupIntegrationTest` 부팅 레시피 복제(PEM 키 + OAuth2 exclude + LDAP @MockBean 5종 + loginJwt 실로그인 admin). **+ S6/S7용 추가 시드(code-reviewer NIT)**: UserGroup 레시피는 SYSTEM_ADMIN(`roleAssignmentRepository.assign`)만 시드 → 프로젝트 스킴 적용 시나리오는 `projects` 행 INSERT + `project_memberships` PROJECT_ADMIN 행 시드 필요(`ProjectMemberFlowIntegrationTest` 선례 참조). 비-PROJECT_ADMIN 둘째 사용자로 403 ground-truth. TestRestTemplate Bearer.
 **REFACTOR**: 시나리오 헬퍼.
 **검증**: `./gradlew :modules:identity-access:test --tests '*IssueSecurityIntegrationTest'`
 
+### Task 10. 명세 동기화 — ADR 생성 + SDD §12.4 재작성 (머지 전 필수, TDD 무관)
+
+**메타**.
+- agent: `security-engineer` (또는 controller 직접)
+- files: [`docs/decisions/2026-06-06-issue-security-level-scheme-model.md`, `docs/sdd/12-permissions.md`, `docs/plan/product/identity-access.md`]
+- depends-on: []  # 코드 무관, 머지 전 언제든. 단 게이트2 전 완료 필수.
+
+**작업**(code-reviewer CONCERN — 명세 deviation은 이 PR의 real deliverable):
+- **ADR 신규**: `docs/decisions/2026-06-06-issue-security-level-scheme-model.md` — SDD §12.4 단순 `allowedRoles: List<Long>` 모델 → Jira식 스킴 구조(스킴→등급→멤버 다형 5타입) 결정 + 관리자 우회 없음 + 2 PR 분할 근거. (현재 파일 부재 — 반드시 생성.)
+- **SDD §12.4 재작성**: `IssueSecurityLevel(id, projectId, name, description, allowedRoles)` → 스킴 계층(IssueSecurityScheme/IssueSecurityLevel(schemeId)/SecurityLevelMember(memberType,memberValue)) + UUID 체계 + 프로젝트-스킴 적용. SET_ISSUE_SECURITY 권한코드 §12.3 추가.
+- **product/identity-access §4.6**: D1~D5 체크박스 + PR-A 완료 마킹(머지 시).
+- **검증**: `bash scripts/verify-master-plan.sh` 통과(FR 카운트 121 불변, FR-PM-06 기존 — 카운트 drift 없음).
+
 ## Plan 메타
 
-- task 수: 9
+- task 수: 9 (코드 TDD) + T10(명세 동기화, TDD 무관, 머지 전)
 - depends-on 그래프: T1[], T2[] → T3[1,2], T4[2] → T5[3], T6[4,5] → T7[5], T8[6] → T9[7,8]
 - wave(예상): W1(T1,T2) → W2(T3,T4) → W3(T5) → W4(T6,T7) → W5(T8) → W6(T9). 단일 모듈 test 컴파일 공유 → 격리 gradle home로 경합 회피(`bts-plan-wave-gradle-module-compile`).
 - TDD 강제: yes (test 커밋 먼저)
@@ -225,4 +239,21 @@ FR-PM-06 이슈 보안 수준. 이슈마다 보안 등급(IssueSecurityLevel: �
 - agent: T2=db-engineer(마이그레이션), 그 외 security-engineer
 - 명세 변경 전수 동기화(머지 전): SDD §12.4 + product/identity-access §4.6 D단계 + ADR 생성. FR 카운트 불변(121).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### code-reviewer ground-truth 적대적 plan 리뷰 (2026-06-06)
+
+실제 코드 대조. 핵심 앵커(SystemPermissionResolver.isSystemAdmin·@Profile 없음, IdentityAccessSystemPermissionResolver, ProjectMembershipRepository.findByProjectAndUser→role, ProjectRole PROJECT_ADMIN/MEMBER, ProjectDirectory.resolveKeyToId, UserGroup.create, JdbcUserGroupRepository ON CONFLICT 패턴, UserGroupController resolveActor·`{error:소문자}`, UserGroupIntegrationTest prod+RANDOM_PORT 레시피, V015→V016, init_codegen 불요, PermissionSchemaMigrationTest count=12) **전부 실재 확인 — 환각 0**.
+
+**BLOCKER: 없음.** 게이트1 진입 가능(아래 3건 plan 반영 완료).
+
+**CONCERN 3 (2건 plan 반영, 1건 Maxi 확인)**:
+- C1. T5 `UserRepository.existsById` 앵커 오류 — 실제 미존재(findById/findByIds만). → **반영**: T5 GREEN을 `userRepository.findById(value)!=null`로 정정(공유 인터페이스 미수정, plan-files 파급 회피). GROUP은 existsById 실재.
+- C2. T6 PROJECT_ADMIN 판정을 role 직접 체크(ProjectMembership.role==PROJECT_ADMIN)로 — FR-PM-04는 MANAGE_WORKFLOW 매트릭스 사용. ADMIN_PROJECT 권한코드가 role_permissions에 **미시드**(V008~V014 grep 확인)라 매트릭스 불가 → 역할 직접 체크 정당. 단 "PROJECT_ADMIN 게이트 메커니즘 2종 공존"은 **게이트1 Maxi 확인 항목**.
+- C3. SDD §12.4 재작성 + ADR 생성이 이 PR의 real deliverable(ADR 파일 부재 확인). → **반영**: T10(명세 동기화) 명시 task 추가, verify-master-plan 통과 조건.
+
+**NIT 2 (반영)**:
+- N1. T9 prod 통합테스트에 projects + PROJECT_ADMIN 멤버십 시드 필요(S6/S7) → T9 GREEN 명시(ProjectMemberFlowIntegrationTest 참조).
+- N2. W1(T1,T2)/W4(T6,T7) 같은 worktree 동시 커밋 → own-files-only staging(`parallel-dispatch-precommit-hook-race`). bts-impl controller가 git log로 task별 test→feat 순서 검증.
+
+**확인된 정합**: V016 정확(feat/fr-cm-04가 identity 마이그레이션 미접촉), 카운트 12→13(SET_ISSUE_SECURITY PROJECT_ADMIN only +1), MemberType은 cross-module 카운트 가드 무관(IssueScopeTest는 IssuePermission 7종 전용), profile-scoped-bean-boot-failure 비유발(신규 빈 전부 무조건 등록, prod-scoped resolver는 PR-B), 의존 그래프 무순환, 다형 멤버 도메인 검증+DB CHECK 2중.
