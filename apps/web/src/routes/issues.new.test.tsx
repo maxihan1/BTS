@@ -175,7 +175,10 @@ describe('IssueCreateForm', () => {
     )
 
     const user = userEvent.setup()
-    renderForm()
+    const onSuccess = (key: string) => {
+      mockNavigate({ to: '/issues/$key', params: { key } })
+    }
+    renderForm(onSuccess)
 
     // projectKey 입력 → 컴포넌트 목록 로드
     await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
@@ -215,7 +218,10 @@ describe('IssueCreateForm', () => {
     )
 
     const user = userEvent.setup()
-    renderForm()
+    const onSuccess = (key: string) => {
+      mockNavigate({ to: '/issues/$key', params: { key } })
+    }
+    renderForm(onSuccess)
 
     await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
     await user.type(screen.getByLabelText('제목'), '컴포넌트 없는 이슈')

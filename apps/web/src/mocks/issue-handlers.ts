@@ -76,11 +76,33 @@ const createdIssues = new Map<string, IssueResponse>()
 // key: 이슈 키, value: 갱신된 IssueResponse (전이 또는 타입/요약 수정 후)
 const issueOverrides = new Map<string, IssueResponse>()
 
+// componentId → { name, leadUserId } 조회용 시드 Map.
+// E2E에서 seedComponentLeads() 로 미리 주입하면 createIssueHandler 가 default-assignee를 에코한다.
+const componentLeadStore = new Map<string, { name: string; leadUserId: string }>()
+
 /** E2E / 단위 테스트 격리용 — 모듈-스코프 state 초기화. 각 test setup 에서 호출. */
 export function resetIssueState(): void {
   deletedKeys.clear()
   createdIssues.clear()
   issueOverrides.clear()
+  componentLeadStore.clear()
+}
+
+/**
+ * createIssueHandler default-assignee resolve용 컴포넌트 리드 시드.
+ * E2E 시나리오가 호출해 컴포넌트 ID → name/leadUserId 매핑을 주입한다.
+ *
+ * @param components 시드할 컴포넌트 목록 — id, name, leadUserId(null 허용)
+ */
+export function seedComponentLeads(
+  components: ReadonlyArray<{ id: string; name: string; leadUserId: string | null }>,
+): void {
+  componentLeadStore.clear()
+  for (const comp of components) {
+    if (comp.leadUserId !== null) {
+      componentLeadStore.set(comp.id, { name: comp.name, leadUserId: comp.leadUserId })
+    }
+  }
 }
 
 function buildFilteredPage(): IssuePage {
@@ -149,19 +171,49 @@ const getIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
  * POST /api/v1/issues — 이슈 생성 핸들러.
  * projectKey 가 'INVALID' 이면 PROJECT_NOT_FOUND(404) 반환.
  * 그 외는 201 + { data: createdIssueFixture } 반환.
+ *
+ * FR-CM-03: 요청 componentIds를 응답에 에코.
+ * 백엔드 default-assignee resolve 규칙(미할당일 때만):
+ *   componentStore에 컴포넌트 정보가 없으면 assigneeId=null 유지.
+ *   E2E 시나리오가 X-MSW-Seed-Components 헤더로 컴포넌트를 시드한 뒤 이슈를 생성하면
+ *   해당 시드에서 리드 보유 컴포넌트 중 name 사전순 첫 번째의 leadUserId가 assigneeId로 에코된다.
  */
 const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
-  const body = await request.clone().json() as { projectKey?: string; summary?: string }
+  const body = await request.clone().json() as {
+    projectKey?: string
+    summary?: string
+    componentIds?: string[]
+  }
   if (body.projectKey === 'INVALID') {
     return HttpResponse.json(
       { errorCode: 'PROJECT_NOT_FOUND', message: '프로젝트를 찾을 수 없습니다' },
       { status: 404 },
     )
   }
+
+  const componentIds = body.componentIds ?? []
+
+  // default-assignee resolve — componentStore(component-handlers.ts 내부 상태)에
+  // 직접 접근할 수 없으므로 componentLeadStore(이 모듈 내 시드 전용 Map)를 조회한다.
+  // E2E 시나리오가 seedComponentLeads()로 리드 정보를 미리 주입한 경우에만 동작한다.
+  let resolvedAssigneeId: string | null = createdIssueFixture.assigneeId
+  if (resolvedAssigneeId === null && componentIds.length > 0) {
+    const leadsInOrder = componentIds
+      .map((id) => componentLeadStore.get(id))
+      .filter((entry): entry is { name: string; leadUserId: string } => entry !== undefined)
+      .sort((a, b) => a.name.localeCompare(b.name))
+    const firstLead = leadsInOrder[0]
+    if (firstLead !== undefined) {
+      resolvedAssigneeId = firstLead.leadUserId
+    }
+  }
+
   const created: IssueResponse = {
     ...createdIssueFixture,
     projectKey: body.projectKey ?? 'ATLAS',
     summary: body.summary ?? '',
+    componentIds,
+    assigneeId: resolvedAssigneeId,
   }
   // E2E-1 happy path 용 — POST 직후 GET 으로 조회 가능하도록 stateful 보관.
   createdIssues.set(created.key, created)
