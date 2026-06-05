@@ -420,20 +420,34 @@ class IssueCreateComponentAutoAssignIntegrationTest {
                 stmt.executeUpdate()
             }
 
-            // software-scheme + default mapping
+            // autoassign-scheme 독립 생성 — software-scheme 과 충돌 방지 (싱글톤 DB 공유)
+            c.createStatement().use { stmt ->
+                stmt.execute(
+                    """
+                    INSERT INTO workflow_schemes (key, name, is_default)
+                    VALUES ('autoassign-scheme', 'Auto Assign Test Scheme', false)
+                    ON CONFLICT (key) DO NOTHING
+                    """.trimIndent(),
+                )
+            }
+
+            // autoassign-scheme + default mapping
             c.createStatement().use { stmt ->
                 stmt.execute(
                     """
                     INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id)
                     SELECT s.id, NULL, '$wfId'
                     FROM workflow_schemes s
-                    WHERE s.key = 'software-scheme'
-                    ON CONFLICT ON CONSTRAINT uq_scheme_issue_type DO NOTHING
+                    WHERE s.key = 'autoassign-scheme'
+                      AND NOT EXISTS (
+                        SELECT 1 FROM workflow_scheme_issue_type_mappings m
+                        WHERE m.scheme_id = s.id AND m.issue_type_id IS NULL
+                      )
                     """.trimIndent(),
                 )
             }
 
-            // AUTOASSIGN 프로젝트에 software-scheme 배정
+            // AUTOASSIGN 프로젝트에 autoassign-scheme 배정
             c.createStatement().use { stmt ->
                 stmt.execute(
                     """
@@ -441,7 +455,7 @@ class IssueCreateComponentAutoAssignIntegrationTest {
                     SELECT p.id, s.id, NOW(), '00000000-0000-0000-0000-000000000000'::uuid
                     FROM projects p, workflow_schemes s
                     WHERE p.key = '$PROJECT_KEY'
-                      AND s.key = 'software-scheme'
+                      AND s.key = 'autoassign-scheme'
                     ON CONFLICT (project_id) DO NOTHING
                     """.trimIndent(),
                 )

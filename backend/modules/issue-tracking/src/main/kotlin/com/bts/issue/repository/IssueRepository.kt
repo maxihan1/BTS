@@ -536,6 +536,30 @@ class IssueRepository(
     }
 
     /**
+     * 이슈 생성 시 컴포넌트 연결을 삽입한다 (생성 전용, version bump·OCC·DELETE 없음).
+     *
+     * 신규 이슈는 version=1 계약을 유지해야 하므로 [replaceComponents] 의 version bump + DELETE 흐름을
+     * 사용하지 않는다. 이 메서드는 순수 INSERT INTO issue_components(issue_id, component_id) 만 수행한다.
+     *
+     * [componentIds] 가 비어 있으면 아무 행도 삽입하지 않는다.
+     * 사용자 편집 경로(PATCH /components)는 반드시 [replaceComponents] 를 사용해야 한다.
+     *
+     * @param issueId 이슈 UUID. 이미 issues 테이블에 존재해야 한다.
+     * @param componentIds 연결할 컴포넌트 UUID 목록. 빈 목록이면 skip.
+     */
+    @Transactional
+    fun insertComponents(
+        issueId: UUID,
+        componentIds: List<UUID>,
+    ) {
+        if (componentIds.isEmpty()) return
+        log.debug("insertComponents issueId={} componentCount={}", issueId, componentIds.size)
+        val insert = dsl.insertInto(ISSUE_COMPONENTS, ISSUE_COMPONENTS.ISSUE_ID, ISSUE_COMPONENTS.COMPONENT_ID)
+        componentIds.forEach { componentId -> insert.values(issueId, componentId) }
+        insert.execute()
+    }
+
+    /**
      * 활성 이슈(deleted_at IS NULL)의 라벨을 prefix 로 필터해 빈도 순으로 반환한다.
      *
      * 라벨 배열(labels TEXT[])을 UNNEST 해 행으로 전개한 뒤 COUNT(DISTINCT id) 로

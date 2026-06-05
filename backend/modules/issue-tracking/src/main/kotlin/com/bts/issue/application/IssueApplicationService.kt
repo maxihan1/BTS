@@ -6,6 +6,8 @@ import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.AssigneeNotFoundException
+import com.bts.issue.domain.ComponentLead
+import com.bts.issue.domain.DefaultAssigneeResolver
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueComponentNotFoundException
@@ -129,6 +131,9 @@ class IssueApplicationService(
 
         val resolvedTypeId = resolveTypeId(request.typeId)
 
+        val normalizedComponentIds = request.componentIds.distinct()
+        validateComponents(normalizedComponentIds, projectId)
+
         val startState =
             try {
                 workflowKeyResolver.resolveStart(ProjectKey.of(request.projectKey), null)
@@ -139,6 +144,9 @@ class IssueApplicationService(
                 }
                 throw e
             }
+
+        val resolvedAssignee = resolveDefaultAssignee(projectId, normalizedComponentIds, current = null)
+
         val issue =
             Issue.create(
                 id = IssueId(UUID.randomUUID()),
@@ -148,8 +156,11 @@ class IssueApplicationService(
                 summary = request.summary,
                 reporterId = request.reporterId,
                 currentStateKey = startState.startStateKey,
+                assigneeId = resolvedAssignee,
+                componentIds = normalizedComponentIds,
             )
         val saved = repo.insert(issue)
+        repo.insertComponents(saved.id.value, normalizedComponentIds)
         eventPublisher.publish(
             IssueCreated(
                 issueKey = saved.key,
@@ -866,6 +877,40 @@ class IssueApplicationService(
         componentIds.forEach { id ->
             componentRepository.findById(id, projectId) ?: throw IssueComponentNotFoundException(id)
         }
+    }
+
+    /**
+     * 컴포넌트 후보에서 이슈 기본 담당자를 결정한다.
+     *
+     * 프로젝트의 활성 컴포넌트 중 [componentIds] 에 속하고 leadUserId 가 non-null 인 항목을
+     * [DefaultAssigneeResolver.ComponentLead] 목록으로 구성한 뒤 [DefaultAssigneeResolver.resolve] 를 호출한다.
+     *
+     * [current] 가 non-null 이면 후보를 무시하고 [current] 를 그대로 반환한다 (덮어쓰기 금지).
+     * [componentIds] 가 비어 있거나 리드 보유 컴포넌트가 없으면 null 을 반환한다.
+     *
+     * Task 5 (changeComponents) 에서도 동일 로직을 재사용한다.
+     *
+     * @param projectId 소속 프로젝트 UUID.
+     * @param componentIds 이슈에 연결할 컴포넌트 UUID 목록 (distinct 정규화 완료 상태).
+     * @param current 현재 이슈 담당자. 생성 경로에서는 null.
+     * @return 결정된 담당자 [ActorId]. 없으면 null.
+     */
+    private fun resolveDefaultAssignee(
+        projectId: UUID,
+        componentIds: List<UUID>,
+        current: ActorId?,
+    ): ActorId? {
+        if (current != null) return current
+        if (componentIds.isEmpty()) return null
+        val componentIdSet = componentIds.toSet()
+        val candidates =
+            componentRepository.findByProject(projectId)
+                .filter { c -> c.id != null && c.id in componentIdSet && c.leadUserId != null }
+                .map { c ->
+                    val cid = c.id ?: error("component.id must not be null after DB read")
+                    ComponentLead(id = cid, name = c.name, leadUserId = c.leadUserId)
+                }
+        return DefaultAssigneeResolver.resolve(current = null, candidates = candidates)
     }
 
     /**
