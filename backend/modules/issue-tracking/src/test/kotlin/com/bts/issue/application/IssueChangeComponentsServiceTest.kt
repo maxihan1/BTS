@@ -5,9 +5,9 @@ package com.bts.issue.application
 import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.domain.ActorId
-import com.bts.issue.domain.ComponentNotFoundException
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
+import com.bts.issue.domain.IssueComponentNotFoundException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
@@ -213,8 +213,8 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
                 every { componentRepository.findById(unknownId, projectId) } returns null
             }
 
-            it("ComponentNotFoundException 을 던진다") {
-                shouldThrow<ComponentNotFoundException> {
+            it("IssueComponentNotFoundException 을 던진다") {
+                shouldThrow<IssueComponentNotFoundException> {
                     sut.changeComponents(actor, issueKey, request)
                 }
             }

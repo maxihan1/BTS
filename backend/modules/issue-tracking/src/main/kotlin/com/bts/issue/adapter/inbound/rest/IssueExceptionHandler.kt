@@ -2,9 +2,9 @@
 
 package com.bts.issue.adapter.inbound.rest
 
-import com.bts.issue.component.domain.ComponentNotFoundException
 import com.bts.issue.domain.AssigneeNotFoundException
 import com.bts.issue.domain.IssueAccessDeniedException
+import com.bts.issue.domain.IssueComponentNotFoundException
 import com.bts.issue.domain.IssueKeyPrefixReservedException
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueProjectNotFoundException
@@ -40,7 +40,7 @@ import java.time.Instant
  * - [IssueTransitionNotAllowedException] → 409 + [IssueErrorCodes.TRANSITION_NOT_ALLOWED]
  * - [IssueWorkflowNotConfiguredException] → 422 + [IssueErrorCodes.WORKFLOW_NOT_CONFIGURED]
  * - [AssigneeNotFoundException] → 422 + [IssueErrorCodes.ASSIGNEE_NOT_FOUND]
- * - [ComponentNotFoundException] → 422 + [IssueErrorCodes.COMPONENT_NOT_FOUND]
+ * - [IssueComponentNotFoundException] → 422 + [IssueErrorCodes.COMPONENT_NOT_FOUND]
  * - [Exception] (fallback) → 500 + [IssueErrorCodes.INTERNAL_ERROR]
  *
  * TooManyFunctions: 도메인 예외 종류(400/401/403/404/409/422/500) 각각에 @ExceptionHandler 가 필요하므로
@@ -49,7 +49,7 @@ import java.time.Instant
  * (type.web 패키지 한정 핸들러가 못 잡는 예외를 rest 패키지에서 404 로 매핑).
  * FR-IS-03 Task 5 에서 [AssigneeNotFoundException] 핸들러가 추가됐다 (422 + ASSIGNEE_NOT_FOUND).
  * FR-IS-07 Task B6 에서 [ResolutionNotFoundException] 핸들러가 추가됐다 (404 + RESOLUTION_NOT_FOUND).
- * FR-CM-02 Task 5 에서 [ComponentNotFoundException] 핸들러가 추가됐다 (422 + COMPONENT_NOT_FOUND).
+ * FR-CM-02 Task 5 에서 [IssueComponentNotFoundException] 핸들러가 추가됐다 (422 + COMPONENT_NOT_FOUND).
  */
 @Suppress("TooManyFunctions")
 @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
@@ -289,12 +289,12 @@ class IssueExceptionHandler {
     // ── 422 COMPONENT_NOT_FOUND ───────────────────────────────────────────────
 
     /**
-     * [ComponentNotFoundException] — changeComponents 에서 비활성 또는 타 프로젝트 컴포넌트 지정 시 — 422.
+     * [IssueComponentNotFoundException] — changeComponents 에서 비활성 또는 타 프로젝트 컴포넌트 지정 시 — 422.
      *
      * @param ex 존재하지 않는 컴포넌트 UUID 를 포함하는 예외.
      */
-    @ExceptionHandler(ComponentNotFoundException::class)
-    fun handleComponentNotFound(ex: ComponentNotFoundException): ProblemDetail {
+    @ExceptionHandler(IssueComponentNotFoundException::class)
+    fun handleComponentNotFound(ex: IssueComponentNotFoundException): ProblemDetail {
         log.info("ISSUE_422 component_not_found message='{}'", ex.message)
         return problem(
             status = HttpStatus.UNPROCESSABLE_ENTITY,

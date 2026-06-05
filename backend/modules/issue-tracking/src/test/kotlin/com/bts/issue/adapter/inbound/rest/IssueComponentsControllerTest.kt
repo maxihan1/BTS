@@ -3,7 +3,7 @@
 package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.application.IssueApplicationService
-import com.bts.issue.component.domain.ComponentNotFoundException
+import com.bts.issue.domain.IssueComponentNotFoundException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueVersionConflictException
@@ -40,7 +40,7 @@ import java.util.UUID
  *
  * 테스트 케이스.
  * - CC-1. 정상 → 200 + componentIds 포함
- * - CC-2. ComponentNotFoundException → 422 + COMPONENT_NOT_FOUND
+ * - CC-2. IssueComponentNotFoundException → 422 + COMPONENT_NOT_FOUND
  * - CC-3. IssueVersionConflictException → 409 + VERSION_CONFLICT
  * - CC-4. IssueNotFoundException → 404 + ISSUE_NOT_FOUND
  * - CC-5. 잘못된 UUID 형식 → 400 + VALIDATION_FAILED
@@ -123,13 +123,13 @@ class IssueComponentsControllerTest {
             .andExpect(jsonPath("$.data.componentIds[1]").value(componentId2.toString()))
     }
 
-    // ── CC-2: ComponentNotFoundException → 422 + COMPONENT_NOT_FOUND ─────────
+    // ── CC-2: IssueComponentNotFoundException → 422 + COMPONENT_NOT_FOUND ─────────
 
     @Test
-    fun `PATCH components — ComponentNotFoundException 이면 422 COMPONENT_NOT_FOUND`() {
+    fun `PATCH components — IssueComponentNotFoundException 이면 422 COMPONENT_NOT_FOUND`() {
         every {
             issueApplicationService.changeComponents(any(), issueKey, any())
-        } throws ComponentNotFoundException(componentId1)
+        } throws IssueComponentNotFoundException(componentId1)
 
         mockMvc.perform(
             patch("/api/v1/issues/ATLAS-1/components")

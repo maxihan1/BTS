@@ -98,7 +98,7 @@ class AssigneeNotFoundException(assigneeId: java.util.UUID) :
  *
  * @param componentId 존재하지 않는 컴포넌트의 UUID
  */
-class ComponentNotFoundException(componentId: java.util.UUID) :
+class IssueComponentNotFoundException(componentId: java.util.UUID) :
     IssueDomainException("component not found: $componentId")
 
 /**

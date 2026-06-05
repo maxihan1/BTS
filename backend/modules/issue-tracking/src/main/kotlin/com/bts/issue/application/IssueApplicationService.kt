@@ -6,9 +6,9 @@ import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.AssigneeNotFoundException
-import com.bts.issue.domain.ComponentNotFoundException
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
+import com.bts.issue.domain.IssueComponentNotFoundException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueImpact
 import com.bts.issue.domain.IssueKey
@@ -591,7 +591,7 @@ class IssueApplicationService(
      * @return 변경된 이슈의 [IssueResponse] (componentIds 채워짐).
      * @throws IssueAccessDeniedException 권한 없을 때.
      * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우.
-     * @throws ComponentNotFoundException 비활성 또는 타 프로젝트 컴포넌트 포함 시.
+     * @throws IssueComponentNotFoundException 비활성 또는 타 프로젝트 컴포넌트 포함 시.
      * @throws IssueVersionConflictException 낙관락 충돌 시.
      */
     @Suppress("ThrowsCount")
@@ -853,18 +853,18 @@ class IssueApplicationService(
     /**
      * 컴포넌트 UUID 목록이 모두 프로젝트 내 활성 컴포넌트인지 검증한다.
      *
-     * 하나라도 null(비활성 또는 타 프로젝트) 이면 [ComponentNotFoundException] 을 던진다.
+     * 하나라도 null(비활성 또는 타 프로젝트) 이면 [IssueComponentNotFoundException] 을 던진다.
      *
      * @param componentIds 검증할 컴포넌트 UUID 목록 (distinct 정규화 완료 상태).
      * @param projectId 소속 프로젝트 UUID.
-     * @throws ComponentNotFoundException 비활성 또는 타 프로젝트 컴포넌트가 포함된 경우.
+     * @throws IssueComponentNotFoundException 비활성 또는 타 프로젝트 컴포넌트가 포함된 경우.
      */
     private fun validateComponents(
         componentIds: List<UUID>,
         projectId: UUID,
     ) {
         componentIds.forEach { id ->
-            componentRepository.findById(id, projectId) ?: throw ComponentNotFoundException(id)
+            componentRepository.findById(id, projectId) ?: throw IssueComponentNotFoundException(id)
         }
     }
 
