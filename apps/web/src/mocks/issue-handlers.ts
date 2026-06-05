@@ -135,10 +135,10 @@ const getIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
       { status: 404 },
     )
   }
-  // 권한없음 시나리오 — addPermissionDeniedKey(key) 로 세팅된 키는 404 반환.
-  // E2E: Playwright addInitScript 로 localStorage 플래그를 세팅하면 브라우저 MSW 워커가
-  //      globalThis.localStorage 를 읽어 permissionDeniedKeys 에 추가하는 패턴과 연동 가능.
-  // 단위 테스트: addPermissionDeniedKey 직접 호출로 동일 경로 검증.
+  // 시나리오 S-PM05: 권한없는 이슈 → 미존재 동일 UX (backend 403/404 동일 처리 계약).
+  // 단위 테스트: addPermissionDeniedKey(key) 직접 호출로 트리거.
+  // E2E: Playwright page.evaluate 로 addPermissionDeniedKey 호출 또는
+  //      브라우저 localStorage 플래그를 읽는 서비스 워커 핸들러로 확장 가능.
   if (permissionDeniedKeys.has(key)) {
     return HttpResponse.json(
       { message: `이슈를 찾을 수 없습니다: ${key}` },
