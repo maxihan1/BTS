@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test
 import java.util.UUID
 
 class DefaultAssigneeResolverTest {
-
     private val leadA = UUID.fromString("00000000-0000-4000-8000-000000000001")
     private val leadB = UUID.fromString("00000000-0000-4000-8000-000000000002")
     private val existingAssignee = ActorId(UUID.fromString("00000000-0000-4000-8000-000000000010"))
@@ -16,16 +15,18 @@ class DefaultAssigneeResolverTest {
     @Test
     fun `현재 assignee 있으면 후보 무시하고 그대로 반환한다`() {
         // S3 — 이미 담당자가 지정된 이슈는 컴포넌트 리드로 덮어쓰면 안 된다.
-        val comp = ComponentLead(
-            id = UUID.fromString("00000000-0000-4000-8000-000000000100"),
-            name = "Backend",
-            leadUserId = leadA,
-        )
+        val comp =
+            ComponentLead(
+                id = UUID.fromString("00000000-0000-4000-8000-000000000100"),
+                name = "Backend",
+                leadUserId = leadA,
+            )
 
-        val result = DefaultAssigneeResolver.resolve(
-            current = existingAssignee,
-            candidates = listOf(comp),
-        )
+        val result =
+            DefaultAssigneeResolver.resolve(
+                current = existingAssignee,
+                candidates = listOf(comp),
+            )
 
         assertEquals(existingAssignee, result)
     }
@@ -33,16 +34,18 @@ class DefaultAssigneeResolverTest {
     @Test
     fun `assignee null이고 단일 리드 컴포넌트이면 그 리드를 반환한다`() {
         // S1 — 기본 할당 대상이 하나뿐인 경우.
-        val comp = ComponentLead(
-            id = UUID.fromString("00000000-0000-4000-8000-000000000100"),
-            name = "Backend",
-            leadUserId = leadA,
-        )
+        val comp =
+            ComponentLead(
+                id = UUID.fromString("00000000-0000-4000-8000-000000000100"),
+                name = "Backend",
+                leadUserId = leadA,
+            )
 
-        val result = DefaultAssigneeResolver.resolve(
-            current = null,
-            candidates = listOf(comp),
-        )
+        val result =
+            DefaultAssigneeResolver.resolve(
+                current = null,
+                candidates = listOf(comp),
+            )
 
         assertEquals(ActorId(leadA), result)
     }
@@ -50,21 +53,24 @@ class DefaultAssigneeResolverTest {
     @Test
     fun `assignee null이고 리드 다른 두 컴포넌트이면 name 오름차순 첫 번째 리드를 반환한다`() {
         // S4 — 여러 컴포넌트 중 이름 기준으로 첫 번째 리드를 선택한다.
-        val compZebra = ComponentLead(
-            id = UUID.fromString("00000000-0000-4000-8000-000000000100"),
-            name = "Zebra",
-            leadUserId = leadA,
-        )
-        val compAlpha = ComponentLead(
-            id = UUID.fromString("00000000-0000-4000-8000-000000000200"),
-            name = "Alpha",
-            leadUserId = leadB,
-        )
+        val compZebra =
+            ComponentLead(
+                id = UUID.fromString("00000000-0000-4000-8000-000000000100"),
+                name = "Zebra",
+                leadUserId = leadA,
+            )
+        val compAlpha =
+            ComponentLead(
+                id = UUID.fromString("00000000-0000-4000-8000-000000000200"),
+                name = "Alpha",
+                leadUserId = leadB,
+            )
 
-        val result = DefaultAssigneeResolver.resolve(
-            current = null,
-            candidates = listOf(compZebra, compAlpha),
-        )
+        val result =
+            DefaultAssigneeResolver.resolve(
+                current = null,
+                candidates = listOf(compZebra, compAlpha),
+            )
 
         // "Alpha" < "Zebra" — leadB 가 선택되어야 한다.
         assertEquals(ActorId(leadB), result)
@@ -79,10 +85,11 @@ class DefaultAssigneeResolverTest {
         val compSmall = ComponentLead(id = smallerId, name = "Same", leadUserId = leadA)
         val compLarge = ComponentLead(id = largerId, name = "Same", leadUserId = leadB)
 
-        val result = DefaultAssigneeResolver.resolve(
-            current = null,
-            candidates = listOf(compLarge, compSmall),
-        )
+        val result =
+            DefaultAssigneeResolver.resolve(
+                current = null,
+                candidates = listOf(compLarge, compSmall),
+            )
 
         // id 오름차순 → smallerId 컴포넌트의 leadA 가 선택되어야 한다.
         assertEquals(ActorId(leadA), result)
@@ -91,16 +98,18 @@ class DefaultAssigneeResolverTest {
     @Test
     fun `리드 보유 컴포넌트가 없으면 null을 반환한다`() {
         // S5 — 아무도 리드가 없으면 기본 담당자를 결정할 수 없다.
-        val comp = ComponentLead(
-            id = UUID.fromString("00000000-0000-4000-8000-000000000100"),
-            name = "Unowned",
-            leadUserId = null,
-        )
+        val comp =
+            ComponentLead(
+                id = UUID.fromString("00000000-0000-4000-8000-000000000100"),
+                name = "Unowned",
+                leadUserId = null,
+            )
 
-        val result = DefaultAssigneeResolver.resolve(
-            current = null,
-            candidates = listOf(comp),
-        )
+        val result =
+            DefaultAssigneeResolver.resolve(
+                current = null,
+                candidates = listOf(comp),
+            )
 
         assertNull(result)
     }

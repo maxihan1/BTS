@@ -31,7 +31,6 @@ data class ComponentLead(
  * 근거 ADR: docs/adr/2026-06-05-component-default-assignee-auto-assignment.md
  */
 object DefaultAssigneeResolver {
-
     /**
      * 컴포넌트 후보 목록에서 이슈 기본 담당자를 결정한다.
      *
@@ -44,7 +43,10 @@ object DefaultAssigneeResolver {
      * @param candidates 이슈에 연결된 컴포넌트 후보 목록.
      * @return 결정된 담당자. 없으면 null.
      */
-    fun resolve(current: ActorId?, candidates: List<ComponentLead>): ActorId? {
+    fun resolve(
+        current: ActorId?,
+        candidates: List<ComponentLead>,
+    ): ActorId? {
         if (current != null) return current
 
         return candidates
