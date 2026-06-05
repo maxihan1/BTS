@@ -207,133 +207,54 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
             val expected: Boolean,
         )
 
+        // 반복되는 scope 인자(issueKey/projectKey)를 고정하는 케이스 팩토리.
+        fun issueCase(
+            label: String,
+            actorId: UUID,
+            permission: IssuePermission,
+            expected: Boolean,
+        ) = Case(label, actorId, permission, IssueScope.Issue(issueKey), expected)
+
+        fun projectCase(
+            label: String,
+            actorId: UUID,
+            permission: IssuePermission,
+            expected: Boolean,
+        ) = Case(label, actorId, permission, IssueScope.Project(projectKey), expected)
+
         val cases =
             listOf(
                 // ── PROJECT_ADMIN × 범위 내 3종 → 전부 허용 ─────────────────────
-                Case(
-                    "PROJECT_ADMIN + CREATE → 허용",
-                    adminId,
-                    IssuePermission.CREATE,
-                    IssueScope.Issue(issueKey),
-                    true,
-                ),
-                Case(
-                    "PROJECT_ADMIN + UPDATE → 허용",
-                    adminId,
-                    IssuePermission.UPDATE,
-                    IssueScope.Issue(issueKey),
-                    true,
-                ),
-                Case(
-                    "PROJECT_ADMIN + SOFT_DELETE → 허용",
-                    adminId,
-                    IssuePermission.SOFT_DELETE,
-                    IssueScope.Issue(issueKey),
-                    true,
-                ),
+                issueCase("PROJECT_ADMIN + CREATE → 허용", adminId, IssuePermission.CREATE, true),
+                issueCase("PROJECT_ADMIN + UPDATE → 허용", adminId, IssuePermission.UPDATE, true),
+                issueCase("PROJECT_ADMIN + SOFT_DELETE → 허용", adminId, IssuePermission.SOFT_DELETE, true),
                 // ── MEMBER × 범위 내 3종 → CREATE/UPDATE 허용, SOFT_DELETE 거부 ─
-                Case(
-                    "MEMBER + CREATE → 허용",
-                    memberId,
-                    IssuePermission.CREATE,
-                    IssueScope.Issue(issueKey),
-                    true,
-                ),
-                Case(
-                    "MEMBER + UPDATE → 허용",
-                    memberId,
-                    IssuePermission.UPDATE,
-                    IssueScope.Issue(issueKey),
-                    true,
-                ),
-                Case(
-                    "MEMBER + SOFT_DELETE → 거부 (DELETE_ISSUE 미보유)",
-                    memberId,
-                    IssuePermission.SOFT_DELETE,
-                    IssueScope.Issue(issueKey),
-                    false,
-                ),
+                issueCase("MEMBER + CREATE → 허용", memberId, IssuePermission.CREATE, true),
+                issueCase("MEMBER + UPDATE → 허용", memberId, IssuePermission.UPDATE, true),
+                issueCase("MEMBER + SOFT_DELETE → 거부 (DELETE_ISSUE 미보유)", memberId, IssuePermission.SOFT_DELETE, false),
                 // ── 비멤버 × 범위 내 3종 → 전부 거부 (멤버 게이트) ────────────
-                Case(
-                    "비멤버 + CREATE → 거부",
-                    nonMemberId,
-                    IssuePermission.CREATE,
-                    IssueScope.Issue(issueKey),
-                    false,
-                ),
-                Case(
-                    "비멤버 + UPDATE → 거부",
-                    nonMemberId,
-                    IssuePermission.UPDATE,
-                    IssueScope.Issue(issueKey),
-                    false,
-                ),
-                Case(
-                    "비멤버 + SOFT_DELETE → 거부",
-                    nonMemberId,
-                    IssuePermission.SOFT_DELETE,
-                    IssueScope.Issue(issueKey),
-                    false,
-                ),
+                issueCase("비멤버 + CREATE → 거부", nonMemberId, IssuePermission.CREATE, false),
+                issueCase("비멤버 + UPDATE → 거부", nonMemberId, IssuePermission.UPDATE, false),
+                issueCase("비멤버 + SOFT_DELETE → 거부", nonMemberId, IssuePermission.SOFT_DELETE, false),
                 // ── VIEW — FR-PM-05로 VIEW_ISSUE 매트릭스 위임 (더 이상 범위 밖 멤버 통과 아님) ─
-                Case(
-                    "MEMBER + VIEW(Issue) → 허용 (VIEW_ISSUE 매트릭스 보유) [S3]",
-                    memberId,
-                    IssuePermission.VIEW,
-                    IssueScope.Issue(issueKey),
-                    true,
-                ),
-                Case(
-                    "비멤버 + VIEW → 거부 (멤버 게이트)",
-                    nonMemberId,
-                    IssuePermission.VIEW,
-                    IssueScope.Issue(issueKey),
-                    false,
-                ),
+                issueCase("MEMBER + VIEW(Issue) → 허용 (VIEW_ISSUE 매트릭스 보유) [S3]", memberId, IssuePermission.VIEW, true),
+                issueCase("비멤버 + VIEW(Issue) → 거부 (멤버 게이트) [S4]", nonMemberId, IssuePermission.VIEW, false),
                 // ── TRANSITION — 아직 미위임(범위 밖) → 멤버 통과 / 비멤버 거부 ──
-                Case(
-                    "MEMBER + TRANSITION(범위 밖) → 멤버 통과 허용",
-                    memberId,
-                    IssuePermission.TRANSITION,
-                    IssueScope.Issue(issueKey),
-                    true,
-                ),
-                Case(
-                    "비멤버 + TRANSITION(범위 밖) → 거부",
-                    nonMemberId,
-                    IssuePermission.TRANSITION,
-                    IssueScope.Issue(issueKey),
-                    false,
-                ),
+                issueCase("MEMBER + TRANSITION(범위 밖) → 멤버 통과 허용", memberId, IssuePermission.TRANSITION, true),
+                issueCase("비멤버 + TRANSITION(범위 밖) → 거부", nonMemberId, IssuePermission.TRANSITION, false),
                 // ── BROWSE — FR-PM-05 BROWSE_PROJECT 매트릭스 위임 (Project 범위) ──
-                Case(
+                projectCase(
                     "MEMBER + BROWSE → 허용 (BROWSE_PROJECT 매트릭스 보유) [S1]",
                     memberId,
                     IssuePermission.BROWSE,
-                    IssueScope.Project(projectKey),
                     true,
                 ),
-                Case(
-                    "비멤버 + BROWSE → 거부 (멤버 게이트) [S2]",
-                    nonMemberId,
-                    IssuePermission.BROWSE,
-                    IssueScope.Project(projectKey),
-                    false,
-                ),
-                Case(
+                projectCase("비멤버 + BROWSE → 거부 (멤버 게이트) [S2]", nonMemberId, IssuePermission.BROWSE, false),
+                projectCase(
                     "PROJECT_ADMIN + BROWSE → 허용 (BROWSE_PROJECT 매트릭스 보유)",
                     adminId,
                     IssuePermission.BROWSE,
-                    IssueScope.Project(projectKey),
                     true,
-                ),
-                // ── 비멤버 + VIEW(Issue 범위) → 거부 [S4] ───────────────────────
-                Case(
-                    "비멤버 + VIEW(Issue) → 거부 (멤버 게이트) [S4]",
-                    nonMemberId,
-                    IssuePermission.VIEW,
-                    IssueScope.Issue(issueKey),
-                    false,
                 ),
             )
 
