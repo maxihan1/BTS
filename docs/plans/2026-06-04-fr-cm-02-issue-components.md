@@ -321,3 +321,19 @@ Maxi 결정 3건: 목록=단건전용, 고아행=읽기시 활성필터, 개수�
 - **견고 확인**: 권한 scope IssueScope.Issue(Global 함정 회피), V012 다음번호, init_codegen jOOQ 소스, ComponentRepository.findById(id,projectId) 소프트삭제 null, 도메인 우회 방지 패턴, 낙관락, MSW stateful, invalidate-only, canEdit 게이팅 — 모두 실제 코드와 일치.
 
 → 5 CONCERN + 2 NIT 전부 plan 반영 완료. 머지 차단 요인 없음. 구현 착수 가능.
+
+### PR 코드리뷰 (code-reviewer, 2026-06-05) — PASS
+
+merge-base(c8319425) 기준 순수 변경 51파일 +3983/-5 대상.
+
+- **판정: PASS. BLOCKER 0.** 절대규칙 18 + 데이터무결성 5원칙 + 메모리 함정 7건 + adversarial 5건 전부 통과.
+- **CONCERN 1건(C1, 해소)**: IssueController KDoc `@throws`가 개명 전 옛 예외명(component.domain.ComponentNotFoundException 404) 인용 → `IssueComponentNotFoundException`(422)로 정정(커밋 f2ed45da).
+- 견고 확인: 도메인 우회 회피(distinct 후 검증), IssueScope.Issue(Global 함정 회피), init_codegen 미러, MSW stateful, Zod 계약 정합(.default([])), 동명 예외 분리, 낙관락 0행시 partial update 없음, 활성필터 cartesian 안전, 단건전용 N+1 회피, ON DELETE CASCADE 관계테이블 한정(prod 소프트삭제 미발화).
+
+### 구현 중 검증이 잡은 통합 결함 4건 (전부 해소)
+1. issue_components FK ON DELETE CASCADE 누락 → 공유 Testcontainers cleanup 39 회귀(fix d5fe804d).
+2. 프론트 Zod 스키마 componentIds 누락 → z.parse가 필드 제거(fix 4278dd63 + 인라인 mock 전수).
+3. 동명 ComponentNotFoundException(404/422) handler 오import로 422→500(fix db01ecb7, IssueComponentNotFoundException 개명).
+4. T6 detekt MaxLineLength 3건(fix d9892d37).
+
+최종 검증: 백엔드 969 test + ktlint + detekt 그린, 프론트 typecheck + lint + 1214 test 그린, 통합 12 시나리오, E2E 4 시나리오.
