@@ -195,7 +195,7 @@ class IssueApplicationService(
         request: CloneIssueRequest,
     ): Issue {
         val projectKey = sourceKey.projectPrefix
-        assertPermission(actor, IssuePermission.VIEW, IssueScope.Issue(sourceKey.value))
+        assertViewIssueOrNotFound(actor, sourceKey)
         assertPermission(actor, IssuePermission.CREATE, IssueScope.Project(projectKey))
 
         val source = repo.findByKey(sourceKey) ?: throw IssueNotFoundException(sourceKey)
@@ -263,7 +263,7 @@ class IssueApplicationService(
         actor: ActorId,
         key: IssueKey,
     ): IssueResponse {
-        assertPermission(actor, IssuePermission.VIEW, IssueScope.Issue(key.value))
+        assertViewIssueOrNotFound(actor, key)
         val response = repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)
         return response.withSingleDetail()
     }
@@ -380,7 +380,7 @@ class IssueApplicationService(
         actor: ActorId,
         key: IssueKey,
     ): List<AvailableTransitionView> {
-        assertPermission(actor, IssuePermission.VIEW, IssueScope.Issue(key.value))
+        assertViewIssueOrNotFound(actor, key)
         val issue = repo.findByKey(key) ?: throw IssueNotFoundException(key)
         val resolvedWorkflow = resolveWorkflowKeyReadOnly(key)
         // resolution 필드 포함 — EXECUTION phase RequiredField validator 입력 (B7 에서 활성화).
@@ -634,7 +634,7 @@ class IssueApplicationService(
         require(pageable.pageSize <= 100) {
             "pageSize must be 100 or fewer, but was ${pageable.pageSize}"
         }
-        assertPermission(actor, IssuePermission.VIEW, IssueScope.Project(projectKey))
+        assertPermission(actor, IssuePermission.BROWSE, IssueScope.Project(projectKey))
         return repo.listWithType(projectKey, pageable)
     }
 
@@ -847,6 +847,30 @@ class IssueApplicationService(
     ) {
         if (!permissionResolver.hasPermission(actor.value, permission, scope)) {
             throw IssueAccessDeniedException(actor, permission, scope)
+        }
+    }
+
+    /**
+     * 단건 이슈의 VIEW 권한을 검사하되, 미인가 시 존재 자체를 숨긴다 (404).
+     *
+     * 단건 경로(findByKey / availableTransitions / cloneIssue 소스)에서 VIEW 권한이 없을 때
+     * 403(IssueAccessDeniedException) 대신 404(IssueNotFoundException)를 던진다. 이렇게 하면
+     * 권한 없는 행위자가 403/404 응답 차이로 이슈의 존재 여부를 추론하는 것을 막는다(존재 숨김 정책).
+     *
+     * 목록 경로(listIssues)는 이 정책을 적용하지 않고 BROWSE 권한 미인가 시 403을 유지한다.
+     *
+     * ADR 2026-06-05-issue-browse-view-permission D2 (단건 VIEW 미인가 → 404 숨김), spec FR4 참조.
+     *
+     * @param actor 조회 행위자.
+     * @param key 검사 대상 이슈 키.
+     * @throws IssueNotFoundException VIEW 권한이 없을 때 (미존재와 동일 응답, 거부 사유 미포함).
+     */
+    private fun assertViewIssueOrNotFound(
+        actor: ActorId,
+        key: IssueKey,
+    ) {
+        if (!permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(key.value))) {
+            throw IssueNotFoundException(key)
         }
     }
 
