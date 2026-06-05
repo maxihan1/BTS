@@ -292,7 +292,6 @@ class IssueExceptionHandler {
      * [ComponentNotFoundException] — changeComponents 에서 비활성 또는 타 프로젝트 컴포넌트 지정 시 — 422.
      *
      * @param ex 존재하지 않는 컴포넌트 UUID 를 포함하는 예외.
-     * @throws Nothing 핸들러 함수이므로 예외를 던지지 않는다.
      */
     @ExceptionHandler(ComponentNotFoundException::class)
     fun handleComponentNotFound(ex: ComponentNotFoundException): ProblemDetail {
