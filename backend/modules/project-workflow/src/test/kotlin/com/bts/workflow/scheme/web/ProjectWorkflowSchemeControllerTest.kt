@@ -23,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
+import org.springframework.security.test.context.support.WithMockUser
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.test.context.web.WebAppConfiguration
@@ -62,6 +63,7 @@ class ProjectWorkflowSchemeControllerTest {
      * 마지막으로 호출된 [permission] 과 [scope] 를 캡처한다.
      */
     class CapturingPermissionResolverStub : WorkflowSchemePermissionResolver {
+        var capturedActorId: UUID? = null
         var capturedPermission: WorkflowSchemePermission? = null
         var capturedScope: WorkflowSchemeScope? = null
         var callCount = 0
@@ -71,12 +73,14 @@ class ProjectWorkflowSchemeControllerTest {
             permission: WorkflowSchemePermission,
             scope: WorkflowSchemeScope,
         ) {
+            capturedActorId = actorId
             capturedPermission = permission
             capturedScope = scope
             callCount++
         }
 
         fun reset() {
+            capturedActorId = null
             capturedPermission = null
             capturedScope = null
             callCount = 0
@@ -107,14 +111,17 @@ class ProjectWorkflowSchemeControllerTest {
     ) {
         var assignToProjectResponse: ProjectWorkflowSchemeAssignment? = null
         var findAssignedSchemeResponse: WorkflowScheme? = null
+        var capturedActor: ActorId? = null
 
         override fun assignToProject(
             actor: ActorId,
             projectId: UUID,
             projectKey: String,
             schemeKey: WorkflowSchemeKey,
-        ): ProjectWorkflowSchemeAssignment =
-            assignToProjectResponse ?: throw IllegalStateException("assignToProjectResponse not configured")
+        ): ProjectWorkflowSchemeAssignment {
+            capturedActor = actor
+            return assignToProjectResponse ?: throw IllegalStateException("assignToProjectResponse not configured")
+        }
 
         override fun findAssignedScheme(
             projectId: UUID,
@@ -163,17 +170,22 @@ class ProjectWorkflowSchemeControllerTest {
     private val schemeId = WorkflowSchemeId(1L)
     private val schemeKey = WorkflowSchemeKey("software-scheme")
 
+    // 컨트롤러가 권한 포트에 넘기는 actor.toUuid() 결과 — actor 결선 검증 기대값.
+    private val authActorUuid = UUID.fromString(AUTH_ACTOR_UUID_STRING)
+
     @BeforeEach
     fun setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(wac).build()
         config.permResolverStub.reset()
         config.appServiceStub.assignToProjectResponse = null
         config.appServiceStub.findAssignedSchemeResponse = null
+        config.appServiceStub.capturedActor = null
     }
 
     // ── Case 1. PUT /api/v1/projects/{projectKey}/workflow-scheme — 200 ───────
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `PUT — 프로젝트에 스킴 할당 성공 시 200 + assignment 응답`() {
         val assignment =
             ProjectWorkflowSchemeAssignment(
@@ -201,6 +213,7 @@ class ProjectWorkflowSchemeControllerTest {
     // ── Case 2. GET /api/v1/projects/{projectKey}/workflow-scheme — 200 ────────
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `GET — 프로젝트에 배정된 스킴 조회 성공 시 200 + scheme 응답`() {
         val scheme =
             WorkflowScheme.reconstruct(
@@ -226,6 +239,7 @@ class ProjectWorkflowSchemeControllerTest {
     // ── Case 3. PUT — ASSIGN_SCHEME 권한 검증 호출 확인 ──────────────────────
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `PUT — ASSIGN_SCHEME 권한 검증이 호출된다`() {
         val assignment =
             ProjectWorkflowSchemeAssignment(
@@ -255,6 +269,7 @@ class ProjectWorkflowSchemeControllerTest {
     // ── Case 4. GET — ASSIGN_SCHEME 권한 검증 호출 확인 ──────────────────────
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `GET — ASSIGN_SCHEME 권한 검증이 호출된다`() {
         val scheme =
             WorkflowScheme.reconstruct(
@@ -282,6 +297,7 @@ class ProjectWorkflowSchemeControllerTest {
     // ── Case 5. projectKey 에 해당하는 project 없으면 404 ─────────────────────
 
     @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `PUT — projectKey 에 해당 project 없으면 404`() {
         every { projectLookupPort.findIdByKey(ProjectKey("UNKNOWN")) } returns null
 
@@ -293,5 +309,75 @@ class ProjectWorkflowSchemeControllerTest {
                 .content(body),
         )
             .andExpect(status().isNotFound)
+    }
+
+    // ── Case 6. 미인증 PUT — 401 UNAUTHORIZED ─────────────────────────────────
+
+    @Test
+    fun `PUT — 미인증 시 401 UNAUTHORIZED`() {
+        every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
+
+        val body = """{"schemeKey":"software-scheme"}"""
+
+        mockMvc.perform(
+            put("/api/v1/projects/ATLAS/workflow-scheme")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isUnauthorized)
+    }
+
+    // ── Case 7. CONCERN-B. 미인증 + 없는 프로젝트키 — 404 아닌 401 ──────────────
+    //
+    // actor 추출이 projectLookup 보다 먼저여야 함을 강제한다.
+    // 인증을 먼저 강제하지 않으면 미인증자가 404(없음) vs 401(있음) 차이로
+    // 프로젝트 존재 여부를 probe 할 수 있다(정보 노출).
+
+    @Test
+    fun `PUT — 미인증 + 없는 프로젝트키도 404 아닌 401`() {
+        every { projectLookupPort.findIdByKey(ProjectKey("UNKNOWN")) } returns null
+
+        val body = """{"schemeKey":"software-scheme"}"""
+
+        mockMvc.perform(
+            put("/api/v1/projects/UNKNOWN/workflow-scheme")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isUnauthorized)
+    }
+
+    // ── Case 8. 인증 주체 actor 결선 — 권한 포트/appService 에 인증 UUID 전달 ────
+
+    @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+    fun `PUT — 권한 포트에 인증 주체 UUID 전달`() {
+        val assignment =
+            ProjectWorkflowSchemeAssignment(
+                projectId = projectId,
+                workflowSchemeId = schemeId,
+                assignedAt = Instant.parse("2026-01-01T00:00:00Z"),
+                assignedBy = authActorUuid,
+            )
+
+        every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
+        config.appServiceStub.assignToProjectResponse = assignment
+
+        val body = """{"schemeKey":"software-scheme"}"""
+
+        mockMvc.perform(
+            put("/api/v1/projects/ATLAS/workflow-scheme")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isOk)
+
+        assertThat(config.permResolverStub.capturedActorId).isEqualTo(authActorUuid)
+        assertThat(config.appServiceStub.capturedActor).isEqualTo(ActorId(AUTH_ACTOR_UUID_STRING))
+    }
+
+    companion object {
+        /** @WithMockUser username 으로 쓰는 인증 주체 UUID(RFC 4122 v4 형식). */
+        private const val AUTH_ACTOR_UUID_STRING = "22222222-2222-4222-8222-222222222222"
     }
 }

@@ -5,7 +5,6 @@ package com.bts.workflow.scheme.web
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.shared.permission.WorkflowSchemeScope
-import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.domain.ProjectKey
@@ -13,6 +12,7 @@ import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
 import com.bts.workflow.scheme.domain.WorkflowScheme
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
 import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
+import com.bts.workflow.web.CurrentActor
 import com.bts.workflow.web.DataResponse
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -42,9 +42,14 @@ import java.util.UUID
  * 두 endpoint 모두 [WorkflowSchemePermission.ASSIGN_SCHEME] +
  * [WorkflowSchemeScope.Project] 범위 검증. spec §4.3 주석 참조.
  *
- * ### actor 임시 처리
- * 인증 시스템(FR-PM-04) 미완성 단계로, 모든 요청에서 SYSTEM_ACTOR(올-제로 UUID)를 사용한다.
- * FR-PM-04 정식 인증 도입 시 JWT/세션에서 ActorId 를 추출하는 방식으로 교체한다.
+ * ### 인증 주체 actor 결선
+ * 두 endpoint 모두 메서드 진입 직후 [CurrentActor.current] 로 Spring Security 인증 주체를
+ * [com.bts.workflow.port.outbound.ActorId] 로 변환하여 권한 평가와 유스케이스 호출에 사용한다.
+ * 미인증·익명·비-UUID 주체는 [CurrentActor] 가 401 을 던진다.
+ *
+ * actor 추출은 [ProjectLookupPort.findIdByKey] 호출보다 먼저 수행한다. 인증을 먼저 강제하지 않으면
+ * 미인증 요청이 존재하지 않는 프로젝트엔 404, 존재하는 프로젝트엔 401 을 받아 프로젝트 존재 여부를
+ * probe 할 수 있다(정보 노출). 따라서 인증을 가장 앞에서 강제한다.
  *
  * @param appService 워크플로우 스킴 application service.
  * @param permissionResolver 스킴 권한 평가 outbound port.
@@ -76,11 +81,11 @@ class ProjectWorkflowSchemeController(
         @RequestBody body: AssignSchemeRequest,
     ): ResponseEntity<DataResponse<AssignmentResponse>> {
         log.info("assignScheme: projectKey={} schemeKey={}", projectKey, body.schemeKey)
+        val actor = CurrentActor.current()
         val key = ProjectKey(projectKey)
         val projectId =
             projectLookupPort.findIdByKey(key)
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.ASSIGN_SCHEME,
@@ -104,11 +109,11 @@ class ProjectWorkflowSchemeController(
         @PathVariable projectKey: String,
     ): ResponseEntity<DataResponse<SchemeResponse>> {
         log.info("getAssignedScheme: projectKey={}", projectKey)
+        val actor = CurrentActor.current()
         val key = ProjectKey(projectKey)
         val projectId =
             projectLookupPort.findIdByKey(key)
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.ASSIGN_SCHEME,
@@ -116,17 +121,6 @@ class ProjectWorkflowSchemeController(
         )
         val scheme = appService.findAssignedScheme(projectId, projectKey)
         return ResponseEntity.ok(DataResponse(data = scheme.toResponse()))
-    }
-
-    // ── companion ─────────────────────────────────────────────────────────────
-
-    companion object {
-        /**
-         * 인증 시스템 미완성 단계에서 사용하는 시스템 actor sentinel UUID.
-         *
-         * FR-PM-04 정식 인증 도입 시 교체 대상.
-         */
-        const val SYSTEM_ACTOR_UUID = "00000000-0000-0000-0000-000000000000"
     }
 }
 
