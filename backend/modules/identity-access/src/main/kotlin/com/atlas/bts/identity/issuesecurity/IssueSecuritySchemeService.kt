@@ -166,16 +166,26 @@ class IssueSecuritySchemeService(
         isDefault: Boolean,
     ): IssueSecurityLevel {
         schemeRepository.findById(schemeId) ?: throw SchemeNotFoundException(schemeId)
-        // 둘째 기본 등급은 부분 유니크 위반 → DuplicateKeyException 이 이름 충돌로 오매핑되므로,
-        // 사전 확인으로 의미를 분리한다(N1). DB 인덱스는 race 최종 방어로 잔존.
-        if (isDefault && schemeRepository.listLevels(schemeId).any { it.isDefault }) {
-            throw DefaultLevelConflictException(schemeId)
-        }
+        if (isDefault) requireNoExistingDefaultLevel(schemeId)
         val normalized = IssueSecurityLevel.create(schemeId, name, description, isDefault)
         return try {
             schemeRepository.addLevel(normalized)
         } catch (ex: DuplicateKeyException) {
             throw LevelNameConflictException(normalized.name).apply { initCause(ex) }
+        }
+    }
+
+    /**
+     * 스킴에 이미 기본 등급이 있으면 [DefaultLevelConflictException] 을 던진다(N1).
+     *
+     * 둘째 기본 등급은 부분 유니크 인덱스 위반 → [DuplicateKeyException] 이 이름 충돌로 오매핑되므로,
+     * 사전 확인으로 의미를 분리한다. DB 인덱스는 race 최종 방어로 잔존한다.
+     *
+     * @throws DefaultLevelConflictException 스킴에 이미 기본 등급이 존재하는 경우.
+     */
+    private fun requireNoExistingDefaultLevel(schemeId: UUID) {
+        if (schemeRepository.listLevels(schemeId).any { it.isDefault }) {
+            throw DefaultLevelConflictException(schemeId)
         }
     }
 
