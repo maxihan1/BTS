@@ -111,8 +111,10 @@ describe('ProjectLeadSettingsPage', () => {
       isError: false,
       error: null,
     } as ReturnType<typeof useProjectPermissions>)
-    vi.mocked(useUsers).mockReturnValue({ data: [] } as ReturnType<typeof useUsers>)
-    vi.mocked(useUsersByIds).mockReturnValue({ data: [] } as ReturnType<typeof useUsersByIds>)
+    vi.mocked(useUsers).mockReturnValue({ data: [] } as unknown as ReturnType<typeof useUsers>)
+    vi.mocked(useUsersByIds).mockReturnValue(
+      { data: [] } as unknown as ReturnType<typeof useUsersByIds>,
+    )
   })
 
   /**
