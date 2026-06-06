@@ -60,8 +60,9 @@ class ProjectLeadControllerTest {
         open fun projectLeadApplicationService(): ProjectLeadApplicationService = mockk(relaxed = true)
 
         @Bean
-        open fun projectLeadController(service: ProjectLeadApplicationService): ProjectLeadController =
-            ProjectLeadController(service)
+        open fun projectLeadController(svc: ProjectLeadApplicationService): ProjectLeadController {
+            return ProjectLeadController(svc)
+        }
 
         @Bean
         open fun projectLeadExceptionHandler(): ProjectLeadExceptionHandler = ProjectLeadExceptionHandler()
