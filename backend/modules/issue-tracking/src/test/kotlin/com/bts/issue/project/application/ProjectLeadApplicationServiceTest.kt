@@ -45,7 +45,6 @@ import java.util.UUID
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class ProjectLeadApplicationServiceTest {
-
     private lateinit var sut: ProjectLeadApplicationService
     private lateinit var leadRepository: ProjectLeadRepository
     private val userLookupPort: UserLookupPort = mockk()
@@ -75,11 +74,12 @@ class ProjectLeadApplicationServiceTest {
         val lookupRepository = ProjectLookupRepository(dsl)
         val projectLookup = ProjectLookup(lookupRepository)
 
-        sut = ProjectLeadApplicationService(
-            repository = leadRepository,
-            projectLookup = projectLookup,
-            userLookupPort = userLookupPort,
-        )
+        sut =
+            ProjectLeadApplicationService(
+                repository = leadRepository,
+                projectLookup = projectLookup,
+                userLookupPort = userLookupPort,
+            )
 
         // 테스트용 활성 프로젝트 삽입
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
@@ -95,9 +95,10 @@ class ProjectLeadApplicationServiceTest {
             }
 
             // 소프트삭제 프로젝트 삽입 — key 형식: ^[A-Z][A-Z0-9]{1,9}$
-            conn.prepareStatement(
-                "INSERT INTO projects (key, name, deleted_at) VALUES ('PLEADDEL', 'Deleted Project', now()) ON CONFLICT (key) DO NOTHING",
-            ).use { it.executeUpdate() }
+            val deletedInsertSql =
+                "INSERT INTO projects (key, name, deleted_at) " +
+                    "VALUES ('PLEADDEL', 'Deleted Project', now()) ON CONFLICT (key) DO NOTHING"
+            conn.prepareStatement(deletedInsertSql).use { it.executeUpdate() }
 
             conn.prepareStatement("SELECT id FROM projects WHERE key = 'PLEADDEL'").use { stmt ->
                 stmt.executeQuery().use { rs ->
@@ -127,11 +128,12 @@ class ProjectLeadApplicationServiceTest {
         val leadUserId = UUID.randomUUID()
         every { userLookupPort.exists(leadUserId) } returns true
 
-        val result = sut.changeLead(
-            actorId = UUID.randomUUID(),
-            projectIdOrKey = activeProjectId.toString(),
-            leadUserId = leadUserId,
-        )
+        val result =
+            sut.changeLead(
+                actorId = UUID.randomUUID(),
+                projectIdOrKey = activeProjectId.toString(),
+                leadUserId = leadUserId,
+            )
 
         assertThat(result.projectId).isEqualTo(activeProjectId)
         assertThat(result.leadUserId).isEqualTo(leadUserId)
@@ -155,16 +157,16 @@ class ProjectLeadApplicationServiceTest {
         )
 
         // 해제
-        val result = sut.changeLead(
-            actorId = UUID.randomUUID(),
-            projectIdOrKey = activeProjectId.toString(),
-            leadUserId = null,
-        )
+        val result =
+            sut.changeLead(
+                actorId = UUID.randomUUID(),
+                projectIdOrKey = activeProjectId.toString(),
+                leadUserId = null,
+            )
 
         assertThat(result.leadUserId).isNull()
         val stored = leadRepository.findLeadUserId(activeProjectId)
         assertThat(stored).isNull()
-
     }
 
     // ── 422: 미존재 사용자 ────────────────────────────────────────────────────

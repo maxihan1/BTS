@@ -70,8 +70,9 @@ class ProjectLeadApplicationService(
             leadUserId,
         )
 
-        val projectId = projectLookup.resolve(projectIdOrKey)
-            ?: throw ProjectLeadProjectNotFoundException(projectIdOrKey)
+        val projectId =
+            projectLookup.resolve(projectIdOrKey)
+                ?: throw ProjectLeadProjectNotFoundException(projectIdOrKey)
 
         validateLead(leadUserId)
 
