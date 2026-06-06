@@ -13,6 +13,7 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -46,6 +47,7 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
     val workflowKeyResolver = mockk<WorkflowKeyResolver>()
     val userLookupPort = mockk<UserLookupPort>(relaxed = true)
     val componentRepository = mockk<ComponentRepository>()
+    val projectLeadRepository = mockk<ProjectLeadRepository>(relaxed = true)
     val clock = Clock.fixed(Instant.parse("2026-06-05T00:00:00Z"), ZoneOffset.UTC)
 
     val sut =
@@ -59,6 +61,7 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
             workflowKeyResolver = workflowKeyResolver,
             userLookupPort = userLookupPort,
             componentRepository = componentRepository,
+            projectLeadRepository = projectLeadRepository,
             clock = clock,
         )
 
@@ -105,7 +108,8 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
         )
 
     beforeEach {
-        clearMocks(repo, permissionResolver, componentRepository, answers = false)
+        clearMocks(repo, permissionResolver, componentRepository, projectLeadRepository, answers = false)
+        every { projectLeadRepository.findLeadUserId(any()) } returns null
     }
 
     describe("changeComponents") {

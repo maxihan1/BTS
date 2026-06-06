@@ -26,6 +26,7 @@ import com.bts.issue.event.IssueSoftDeleted
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.event.IssueUpdated
 import com.bts.issue.markdown.MarkdownRenderer
+import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.domain.ResolutionNotFoundException
@@ -87,6 +88,7 @@ class IssueApplicationService(
     private val workflowKeyResolver: WorkflowKeyResolver,
     private val userLookupPort: UserLookupPort,
     private val componentRepository: ComponentRepository,
+    private val projectLeadRepository: ProjectLeadRepository,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -942,7 +944,14 @@ class IssueApplicationService(
      * [DefaultAssigneeResolver.ComponentLead] 목록으로 구성한 뒤 [DefaultAssigneeResolver.resolve] 를 호출한다.
      *
      * [current] 가 non-null 이면 후보를 무시하고 [current] 를 그대로 반환한다 (덮어쓰기 금지).
-     * [componentIds] 가 비어 있거나 리드 보유 컴포넌트가 없으면 null 을 반환한다.
+     *
+     * 담당자 결정 우선순위.
+     * 1. [current] non-null → 그대로 반환 (덮어쓰기 금지).
+     * 2. 컴포넌트 리드 → [componentIds] 에 속하고 leadUserId non-null 인 컴포넌트 중 이름 오름차순 첫 번째.
+     * 3. 프로젝트 리드 → [ProjectLeadRepository.findLeadUserId] 조회 결과.
+     * 4. 모두 없으면 null.
+     *
+     * [componentIds] 가 비어 있어도 프로젝트 리드 폴백을 시도한다.
      *
      * Task 5 (changeComponents) 에서도 동일 로직을 재사용한다.
      *
@@ -951,14 +960,13 @@ class IssueApplicationService(
      * @param current 현재 이슈 담당자. 생성 경로에서는 null.
      * @return 결정된 담당자 [ActorId]. 없으면 null.
      */
-    @Suppress("ReturnCount") // current 조기 반환 + 빈 목록 조기 반환 + 정상 반환 3개 — guard clause 패턴
+    @Suppress("ReturnCount") // current 조기 반환 + 정상 반환 — guard clause 패턴
     private fun resolveDefaultAssignee(
         projectId: UUID,
         componentIds: List<UUID>,
         current: ActorId?,
     ): ActorId? {
         if (current != null) return current
-        if (componentIds.isEmpty()) return null
         val componentIdSet = componentIds.toSet()
         val candidates =
             componentRepository.findByProject(projectId)
@@ -967,7 +975,8 @@ class IssueApplicationService(
                     val cid = c.id ?: error("component.id must not be null after DB read")
                     ComponentLead(id = cid, name = c.name, leadUserId = c.leadUserId)
                 }
-        return DefaultAssigneeResolver.resolve(current = null, candidates = candidates)
+        val projectLead = projectLeadRepository.findLeadUserId(projectId)
+        return DefaultAssigneeResolver.resolve(current = null, candidates = candidates, projectLeadUserId = projectLead)
     }
 
     /**

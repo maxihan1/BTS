@@ -18,14 +18,16 @@ CREATE TABLE projects (
     key           VARCHAR(10)  NOT NULL UNIQUE CHECK (key ~ '^[A-Z][A-Z0-9]{1,9}$'),
     name          VARCHAR(255) NOT NULL,
     key_sequence  BIGINT       NOT NULL DEFAULT 0,
+    lead_user_id  UUID         NULL,
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     deleted_at    TIMESTAMPTZ  NULL
 );
-COMMENT ON TABLE  projects              IS '이슈 컨테이너. key 는 영구 보존 (DATA.md §1.1).';
-COMMENT ON COLUMN projects.key          IS '프로젝트 접두사 — 대문자로 시작, 대문자+숫자 2~10자 (예: BTS, ATLAS1). 이슈 키 생성의 기반.';
-COMMENT ON COLUMN projects.key_sequence IS '다음 이슈에 부여할 일련번호. 이슈 생성 시 ApplicationService 가 SELECT FOR UPDATE 후 증가.';
-COMMENT ON COLUMN projects.deleted_at   IS 'NULL=활성, NOT NULL=삭제됨. 소프트 삭제 (DATA.md §3).';
+COMMENT ON TABLE  projects                IS '이슈 컨테이너. key 는 영구 보존 (DATA.md §1.1).';
+COMMENT ON COLUMN projects.key            IS '프로젝트 접두사 — 대문자로 시작, 대문자+숫자 2~10자 (예: BTS, ATLAS1). 이슈 키 생성의 기반.';
+COMMENT ON COLUMN projects.key_sequence   IS '다음 이슈에 부여할 일련번호. 이슈 생성 시 ApplicationService 가 SELECT FOR UPDATE 후 증가.';
+COMMENT ON COLUMN projects.lead_user_id   IS 'identity-access BC users.id 대응 프로젝트 리드. BC 격리로 FK 미적용 — ApplicationService 가 존재 guard.';
+COMMENT ON COLUMN projects.deleted_at     IS 'NULL=활성, NOT NULL=삭제됨. 소프트 삭제 (DATA.md §3).';
 
 -- 3. issues 테이블
 CREATE TABLE issues (

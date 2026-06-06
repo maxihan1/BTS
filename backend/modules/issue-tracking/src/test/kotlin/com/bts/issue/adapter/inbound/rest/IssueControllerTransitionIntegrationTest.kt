@@ -316,6 +316,7 @@ class IssueControllerTransitionIntegrationTest {
                 workflowKeyResolver = workflowKeyResolver,
                 userLookupPort = userLookupPort,
                 componentRepository = mockk(relaxed = true),
+                projectLeadRepository = mockk(relaxed = true),
                 clock = clock,
             )
 
