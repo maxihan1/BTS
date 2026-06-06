@@ -3,6 +3,7 @@
 package com.bts.issue.application
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
+import com.bts.issue.adapter.outbound.AlwaysAllowIssueSecurityDirectory
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.AssigneeNotFoundException
@@ -94,7 +95,7 @@ class IssueApplicationService(
     // 기본값은 Spring이 관리하지 않는 단위 테스트 컨텍스트 호환용 fallback이다 (pdfRenderer 패턴 동형).
     // prod 컨텍스트에서는 IdentityAccessIssueSecurityDirectory(@Profile("prod")) 또는
     // AlwaysAllowIssueSecurityDirectory(@Profile("!prod")) Bean이 타입으로 주입돼 이 기본값을 대체한다.
-    private val securityDirectory: IssueSecurityDirectory = com.bts.issue.adapter.outbound.AlwaysAllowIssueSecurityDirectory(),
+    private val securityDirectory: IssueSecurityDirectory = AlwaysAllowIssueSecurityDirectory(),
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -370,9 +371,10 @@ class IssueApplicationService(
         // 변경이 적용되면 version 이 +1 되므로 후속 field update 는 갱신된 version 을 사용해야 한다.
         val versionAfterSecurity = applySecurityLevel(existing, request.securityLevel, request.expectedVersion)
 
+        val securityChanged = versionAfterSecurity != request.expectedVersion
         val changedFields = buildChangedFields(existing, request, normalizedLabels)
         if (changedFields.isEmpty()) {
-            log.info("issue_update_noop key={} actor={} securityChanged={}", key.value, actor.value, versionAfterSecurity != request.expectedVersion)
+            log.info("issue_update_noop key={} actor={} securityChanged={}", key.value, actor.value, securityChanged)
             return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
         }
         val updatedRows =

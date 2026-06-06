@@ -6,8 +6,6 @@ import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.SecurityLevelPatch
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -92,10 +90,7 @@ class IssueControllerSecurityLevelTest {
 
     lateinit var mockMvc: MockMvc
 
-    private val mapper: ObjectMapper = ObjectMapper().registerKotlinModule()
-
     private val fixedNow: Instant = Instant.parse("2026-06-06T00:00:00Z")
-    private val issueKey = IssueKey("ATLAS-1")
     private val actorId = ActorId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
 
     private val sampleResponse =
