@@ -280,6 +280,32 @@ describe('ProjectLeadSettingsPage', () => {
   })
 
   /**
+   * T5-9. 삭제/비활성 리드 시뮬 — leadUserId 있으나 useUsersByIds가 빈 배열 반환.
+   *        "알 수 없는 사용자 (uuid앞8자)" 텍스트가 표시되어야 하며 "미지정"이 아니어야 한다.
+   */
+  it('T5-9: leadUserId는 있으나 useUsersByIds가 빈 배열이면 알 수 없는 사용자가 표시된다', () => {
+    const unknownId = '40000000-0000-4000-8000-deadbeef0001'
+    vi.mocked(useProjectLead).mockReturnValue({
+      data: {
+        projectId: '00000000-0000-4000-8000-000000000001',
+        leadUserId: unknownId,
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as ReturnType<typeof useProjectLead>)
+    vi.mocked(useUsersByIds).mockReturnValue(
+      { data: [] } as unknown as ReturnType<typeof useUsersByIds>,
+    )
+
+    renderPage()
+
+    const nameEl = screen.getByTestId('lead-current-name')
+    expect(nameEl).toHaveTextContent(`알 수 없는 사용자 (${unknownId.slice(0, 8)})`)
+    expect(nameEl).not.toHaveTextContent('미지정')
+  })
+
+  /**
    * T5-8. 권한 로딩 중(isLoading=true) — fail-closed: 검색 input이 disabled이다.
    */
   it('T5-8: 권한 로딩 중이면 컨트롤이 disabled 상태가 된다', () => {

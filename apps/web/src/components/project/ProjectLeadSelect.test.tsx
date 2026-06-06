@@ -129,4 +129,68 @@ describe('ProjectLeadSelect', () => {
     expect(screen.getByRole('textbox', { name: /리드 검색/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: '미지정' })).toBeDisabled()
   })
+
+  /**
+   * T-unknown-1: unknownLeadId가 주어지고 currentLead가 null이면
+   *              "알 수 없는 사용자 (앞8자)" 텍스트가 data-testid="lead-current-name"에 표시된다.
+   */
+  it('unknownLeadId 있고 currentLead null이면 알 수 없는 사용자 텍스트를 렌더한다', () => {
+    const unknownId = '40000000-0000-4000-8000-deadbeef0001'
+    render(
+      <ProjectLeadSelect
+        users={[]}
+        currentLead={null}
+        unknownLeadId={unknownId}
+        onSearch={vi.fn()}
+        onChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('lead-current-name')).toHaveTextContent(
+      `알 수 없는 사용자 (${unknownId.slice(0, 8)})`,
+    )
+  })
+
+  /**
+   * T-unknown-2: unknownLeadId 상태에서 해제 버튼이 노출되고 클릭 시 onChange(null)이 호출된다.
+   */
+  it('unknownLeadId 있을 때 해제 버튼이 노출되고 클릭 시 onChange(null)이 호출된다', async () => {
+    const onChange = vi.fn()
+    const unknownId = '40000000-0000-4000-8000-deadbeef0001'
+    render(
+      <ProjectLeadSelect
+        users={[]}
+        currentLead={null}
+        unknownLeadId={unknownId}
+        onSearch={vi.fn()}
+        onChange={onChange}
+      />,
+    )
+
+    const unassignBtn = screen.getByRole('button', { name: '미지정' })
+    expect(unassignBtn).toBeInTheDocument()
+    await userEvent.click(unassignBtn)
+
+    expect(onChange).toHaveBeenCalledWith(null)
+  })
+
+  /**
+   * T-unknown-3: unknownLeadId가 null이고 currentLead도 null이면 기존대로 "미지정" 텍스트가 표시된다.
+   *              즉, 둘 다 없는 경우와 unknownLeadId 있는 경우를 명확히 구분한다.
+   */
+  it('unknownLeadId가 null이고 currentLead도 null이면 미지정 텍스트가 표시된다', () => {
+    render(
+      <ProjectLeadSelect
+        users={[]}
+        currentLead={null}
+        unknownLeadId={null}
+        onSearch={vi.fn()}
+        onChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('lead-current-name')).toHaveTextContent('미지정')
+    // 해제 버튼은 없어야 한다
+    expect(screen.queryByRole('button', { name: '미지정' })).not.toBeInTheDocument()
+  })
 })
