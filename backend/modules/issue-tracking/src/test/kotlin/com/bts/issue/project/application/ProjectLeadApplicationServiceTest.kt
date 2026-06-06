@@ -4,6 +4,8 @@
 package com.bts.issue.project.application
 
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.domain.ProjectLeadNotFoundException
+import com.bts.issue.project.domain.ProjectLeadProjectNotFoundException
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.project.repository.ProjectLookupRepository
 import com.bts.issue.repository.IssueTestcontainersBase
@@ -92,14 +94,14 @@ class ProjectLeadApplicationServiceTest {
                 }
             }
 
-            // 소프트삭제 프로젝트 삽입
+            // 소프트삭제 프로젝트 삽입 — key 형식: ^[A-Z][A-Z0-9]{1,9}$
             conn.prepareStatement(
-                "INSERT INTO projects (key, name, deleted_at) VALUES ('PLEAD_DEL', 'Deleted Project', now()) ON CONFLICT (key) DO NOTHING",
+                "INSERT INTO projects (key, name, deleted_at) VALUES ('PLEADDEL', 'Deleted Project', now()) ON CONFLICT (key) DO NOTHING",
             ).use { it.executeUpdate() }
 
-            conn.prepareStatement("SELECT id FROM projects WHERE key = 'PLEAD_DEL'").use { stmt ->
+            conn.prepareStatement("SELECT id FROM projects WHERE key = 'PLEADDEL'").use { stmt ->
                 stmt.executeQuery().use { rs ->
-                    check(rs.next()) { "PLEAD_DEL 프로젝트를 찾을 수 없습니다." }
+                    check(rs.next()) { "PLEADDEL 프로젝트를 찾을 수 없습니다." }
                     deletedProjectId = rs.getObject(1) as UUID
                 }
             }
@@ -162,6 +164,7 @@ class ProjectLeadApplicationServiceTest {
         assertThat(result.leadUserId).isNull()
         val stored = leadRepository.findLeadUserId(activeProjectId)
         assertThat(stored).isNull()
+
     }
 
     // ── 422: 미존재 사용자 ────────────────────────────────────────────────────
