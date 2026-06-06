@@ -2,6 +2,9 @@
 
 package com.atlas.bts.identity.permission
 
+import com.atlas.bts.identity.group.UserGroupRepository
+import com.atlas.bts.identity.issuesecurity.IssueSecurityLookup
+import com.atlas.bts.identity.issuesecurity.IssueSecuritySchemeRepository
 import com.atlas.bts.identity.project.ProjectDirectory
 import com.atlas.bts.identity.project.ProjectMembership
 import com.atlas.bts.identity.project.ProjectMembershipRepository
@@ -32,12 +35,18 @@ class IdentityAccessIssuePermissionResolverTest {
     private val projectDirectory: ProjectDirectory = mockk()
     private val membershipRepo: ProjectMembershipRepository = mockk()
     private val schemeRepo: PermissionSchemeRepository = mockk()
+    private val securityLookup: IssueSecurityLookup = mockk()
+    private val securitySchemeRepo: IssueSecuritySchemeRepository = mockk()
+    private val userGroupRepo: UserGroupRepository = mockk()
 
     private val resolver =
         IdentityAccessIssuePermissionResolver(
             projectDirectory = projectDirectory,
             membershipRepo = membershipRepo,
             schemeRepo = schemeRepo,
+            securityLookup = securityLookup,
+            securitySchemeRepo = securitySchemeRepo,
+            userGroupRepo = userGroupRepo,
         )
 
     private val actor: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
