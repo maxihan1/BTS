@@ -47,18 +47,16 @@ test.describe('FR-PM-06 이슈 보안등급 (IssueSecurityLevelSelect)', () => {
     await page.waitForURL(/\/issues\/ATLAS-42$/)
 
     // Then. 상세 페이지 보안등급 섹션에서 Internal 선택 확인
+    // createIssueHandler가 body.securityLevelId를 createdIssues에 영속하므로
+    // GET /issues/ATLAS-42 가 securityLevelId=Internal UUID를 반환 → select 값 일치
     const securitySection = page.getByTestId('security-level-section')
     await expect(securitySection).toBeVisible()
     const detailSelect = securitySection.getByRole('combobox', {
       name: i18nLabels.issueDetail.securityLevelSelectLabel,
     })
-    // invalidateQueries refetch 후 화면에 반영 — securityLevelId가 Internal UUID로 갱신
-    // 참고: 이슈 생성 핸들러는 securityLevelId를 body에서 읽어 createdIssues에 영속하지 않으므로
-    //   (생성 응답에 securityLevelId 미포함) 상세 GET 시 null 반환 → "선택 안 함"이 정상
-    //   실제 백엔드 계약과 동일하게 생성 응답에 securityLevelId 반영이 필요하나
-    //   현재 createIssueHandler가 body의 securityLevelId를 에코하지 않으므로
-    //   "선택 안 함" 상태를 확인하는 것이 MSW 계약에 부합
     await expect(detailSelect).toBeVisible()
+    // round-trip 검증 — 생성 시 선택한 Internal UUID가 상세 페이지 셀렉터 값과 일치
+    await expect(detailSelect).toHaveValue(securityLevelFixtures.internal.id)
   })
 
   // ──────────────────────────────────────────────────────────────────────────

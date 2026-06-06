@@ -205,6 +205,7 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
     projectKey?: string
     summary?: string
     componentIds?: string[]
+    securityLevelId?: string | null
   }
   if (body.projectKey === 'INVALID') {
     return HttpResponse.json(
@@ -236,12 +237,18 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
     }
   }
 
+  // securityLevelId: body에 명시된 경우(null 포함) 반영, 미전달이면 fixture 기본값(null) 유지
+  const resolvedSecurityLevelId = body.securityLevelId !== undefined
+    ? body.securityLevelId
+    : createdIssueFixture.securityLevelId
+
   const created: IssueResponse = {
     ...createdIssueFixture,
     projectKey: body.projectKey ?? 'ATLAS',
     summary: body.summary ?? '',
     componentIds,
     assigneeId: resolvedAssigneeId,
+    securityLevelId: resolvedSecurityLevelId,
   }
   // E2E-1 happy path 용 — POST 직후 GET 으로 조회 가능하도록 stateful 보관.
   createdIssues.set(created.key, created)
