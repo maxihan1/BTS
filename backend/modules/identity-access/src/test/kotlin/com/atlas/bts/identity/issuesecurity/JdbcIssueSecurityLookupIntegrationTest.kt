@@ -29,7 +29,15 @@ import java.util.UUID
  * - `@JdbcTest` — DataSource + JdbcTemplate 슬라이스만 로드([JdbcProjectDirectoryIntegrationTest] 동형).
  * - Testcontainers PostgreSQL 16.
  * - `issues` 테이블은 issue-tracking 소유라 identity-access Flyway 에 없으므로 setUp() 에서 직접 생성한다.
+ *   수동 DDL 은 인라인 대신 공유 리소스(`issuesecurity/issues_lookup_schema.sql`)로 추출했다(C3).
  *   의존 컬럼(key/security_level_id/reporter_id/assignee_id/deleted_at)만 최소로 만든다(ADR D2).
+ *
+ * ## 스키마 drift 한계 (C3)
+ * identity-access 는 issue-tracking 에 의존하지 않으므로(ADR D2) 실 issues Flyway 를 가져올 수 없다.
+ * [lookup이 의존하는 컬럼이 모두 존재하고 타입이 일치한다]() 테스트가 수동 스키마(리소스 SQL)와
+ * lookup SQL 의 정합은 잡지만, issue-tracking 의 실제 issues 스키마와의 drift 는 cross-module 의존
+ * 부재로 자동 폐쇄가 불가하다([com.atlas.bts.identity.project.JdbcProjectDirectoryIntegrationTest]의
+ * 수동 projects 스키마와 동형 한계). issues DDL 변경 시 리소스 SQL 을 수동으로 맞춰야 한다(파일 내 경고 주석).
  *
  * ## 검증 시나리오
  * | 케이스 | 조건 | 기대값 |
@@ -74,20 +82,41 @@ class JdbcIssueSecurityLookupIntegrationTest {
     @BeforeEach
     fun setUp() {
         // issues 테이블은 issue-tracking 소유 — identity-access Flyway 에 없으므로 직접 생성.
-        // 의존 컬럼(key/security_level_id/reporter_id/assignee_id/deleted_at)만 최소로 둔다.
-        jdbc.jdbcTemplate.execute(
-            """
-            CREATE TABLE IF NOT EXISTS issues (
-                id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-                key               VARCHAR(20)  NOT NULL UNIQUE,
-                reporter_id       UUID         NOT NULL,
-                assignee_id       UUID         NULL,
-                security_level_id UUID         NULL,
-                deleted_at        TIMESTAMPTZ  NULL
-            )
-            """.trimIndent(),
-        )
+        // 수동 DDL 은 공유 리소스로 추출했다(C3 — drift 경고 주석을 한 곳에 모음).
+        jdbc.jdbcTemplate.execute(loadSchemaSql())
         jdbc.update("DELETE FROM issues", emptyMap<String, Any>())
+    }
+
+    /**
+     * lookup 이 의존하는 컬럼이 모두 존재하고 타입이 일치하는지 검증한다(C3 — 수동 스키마 drift 방어).
+     *
+     * 수동 `issues` 스키마(리소스 SQL)가 [JdbcIssueSecurityLookup] 가 읽는 컬럼과 어긋나면 즉시 fail 한다.
+     * issue-tracking 의 실 issues 스키마와의 drift 는 cross-module 의존 부재로 자동 폐쇄 불가하다(KDoc 한계 참조).
+     */
+    @Test
+    fun `lookup이 의존하는 컬럼이 모두 존재하고 타입이 일치한다`() {
+        val expectedTypes =
+            mapOf(
+                "key" to "character varying",
+                "reporter_id" to "uuid",
+                "assignee_id" to "uuid",
+                "security_level_id" to "uuid",
+                "deleted_at" to "timestamp with time zone",
+            )
+
+        val actualTypes =
+            jdbc.query(
+                """
+                SELECT column_name, data_type
+                FROM information_schema.columns
+                WHERE table_name = 'issues'
+                  AND column_name IN (:columns)
+                """.trimIndent(),
+                mapOf("columns" to expectedTypes.keys),
+            ) { rs, _ -> rs.getString("column_name") to rs.getString("data_type") }
+                .toMap()
+
+        assertThat(actualTypes).containsAllEntriesOf(expectedTypes)
     }
 
     @Test
@@ -138,6 +167,16 @@ class JdbcIssueSecurityLookupIntegrationTest {
     fun `존재하지 않는 이슈 키는 null을 반환한다`() {
         assertThat(lookup.lookup("BTS-999")).isNull()
     }
+
+    /**
+     * 공유 리소스에서 수동 issues 스키마 DDL 을 읽는다(C3 — 인라인 대신 단일 출처).
+     *
+     * 리소스가 없으면 테스트 클래스패스 구성 문제이므로 명시 메시지로 실패시킨다.
+     */
+    private fun loadSchemaSql(): String =
+        requireNotNull(javaClass.getResource("/issuesecurity/issues_lookup_schema.sql")) {
+            "테스트 리소스 issuesecurity/issues_lookup_schema.sql 를 찾을 수 없습니다."
+        }.readText()
 
     private fun insertIssue(
         key: String,
