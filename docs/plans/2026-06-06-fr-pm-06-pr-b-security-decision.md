@@ -41,9 +41,23 @@ FR-PM-06(이슈 보안 수준)의 후속 PR-B. PR-A에서 Jira Cloud 방식 스�
   1. **목록 필터 N+1 전략** — listIssues 등급 멤버 아닌 이슈 제외. 후처리 배치 필터 vs 쿼리 술어 푸시다운. cross-BC·성능 stakes.
   2. **등급 지정 "적용 스킴 소속" 422 검증 경로** — issue-tracking cross-BC read 포트 직접 검증 vs identity-access 위임.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-06-fr-pm-06-pr-b-security-decision.md](../specs/2026-06-06-fr-pm-06-pr-b-security-decision.md)
+
+핵심 시나리오 요약.
+- 등급 멤버는 단건 200, 비멤버는 **404**(403 아님, 존재 숨김). 등급 NULL = 공개.
+- 멤버 5타입 OR 충족(REPORTER=reporter_id / ASSIGNEE=assignee_id / USER / GROUP / PROJECT_ROLE). 관리자 우회 없음.
+- 목록은 비멤버 이슈 제외(총개수·content 정합). 등급 지정은 SET_ISSUE_SECURITY 가드 + 적용 스킴 미소속 422.
+
+**설계 갈림길 결정(게이트1 전 Maxi 확정, 2026-06-06)**.
+- **갈림길 3 = 옵션 A** — PR-B가 `IssueController` actor 결선 포함(`CurrentActor` 패턴, PR #82 WorkflowSchemeController 선례 복제). 고정 `SYSTEM_ACTOR_UUID`(FR-PM-04 C2 부채)를 실제 인증 주체로 치환 → 보안 수준이 prod에서 실작동. 미인증/비-UUID → 401. **범위 확대**: 컨트롤러 actor 치환 + 401 회귀테스트 포함.
+- **갈림길 1 = 옵션 A** — 목록 필터 SQL 술어 푸시다운. identity-access가 actor 기준 접근 가능 등급 집합(+REPORTER/ASSIGNEE 적용 등급 집합)을 계산 → issue-tracking 목록 쿼리 WHERE로 푸시(신규 cross-BC 포트 1개, shared-kernel 정의·identity-access 구현, `IssuePermissionResolver` 동형 방향). 페이지네이션 정합 + N+1 0.
+- **갈림길 2 = 옵션 A**(권장 채택) — `IssueSecurityLookup`(또는 인접 포트)에 `levelBelongsToProjectScheme(levelId, projectId): Boolean` 추가, issue-tracking이 등급 지정 전 호출해 422 판정.
+
+## Brainstorming Check
+
+✅ 통과 (office-hours 스킵·정의된 FR. Explore 코드 정초로 갈림길 3건 발굴 → Maxi 확정. brainstorming 재흔들기 불요 — 갈림길이 곧 gap, 전부 해소).
 
 ## Plan (← /bts-plan 채움)
 
