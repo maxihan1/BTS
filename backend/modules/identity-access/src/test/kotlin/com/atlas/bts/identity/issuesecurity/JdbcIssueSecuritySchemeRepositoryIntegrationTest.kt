@@ -270,6 +270,28 @@ class JdbcIssueSecuritySchemeRepositoryIntegrationTest {
         assertThat(repository.updateLevel(UUID.randomUUID(), "x", null, isDefault = false)).isNull()
     }
 
+    // ── 등급 findLevelById (plan T5 갭 보강 — 없는 등급 404 vs 빈 등급 200 구분) ────
+
+    @Test
+    fun `findLevelById는 존재하는 등급을 반환한다`() {
+        val scheme = repository.create(IssueSecurityScheme.create("fr-pm-06-t3-lvl-find", null))
+        val level = repository.addLevel(IssueSecurityLevel.create(scheme.id!!, "임원만", "설명", isDefault = true))
+
+        val found = repository.findLevelById(level.id!!)
+
+        assertThat(found).isNotNull()
+        assertThat(found!!.id).isEqualTo(level.id)
+        assertThat(found.schemeId).isEqualTo(scheme.id)
+        assertThat(found.name).isEqualTo("임원만")
+        assertThat(found.description).isEqualTo("설명")
+        assertThat(found.isDefault).isTrue()
+    }
+
+    @Test
+    fun `존재하지 않는 등급 findLevelById 시 null을 반환한다`() {
+        assertThat(repository.findLevelById(UUID.randomUUID())).isNull()
+    }
+
     @Test
     fun `deleteLevel은 존재하는 등급 삭제 시 true, 없으면 false를 반환한다`() {
         val scheme = repository.create(IssueSecurityScheme.create("fr-pm-06-t3-lvl-del", null))

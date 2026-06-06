@@ -386,10 +386,22 @@ class IssueSecuritySchemeServiceTest {
     }
 
     @Test
-    fun `listMembers는 repo에 위임한다`() {
+    fun `listMembers는 등급이 존재하면 repo에 위임한다`() {
+        every { schemeRepo.findLevelById(levelId) } returns persistedLevel()
         every { schemeRepo.listMembers(levelId) } returns listOf(persistedMember())
 
         assertThat(service.listMembers(levelId)).containsExactly(persistedMember())
+    }
+
+    @Test
+    fun `listMembers는 없는 등급이면 LevelNotFound를 던진다`() {
+        // 빈 멤버 목록(200)과 없는 등급(404)을 구분하기 위해 등급 실재를 먼저 확인한다(plan T5 갭 보강).
+        every { schemeRepo.findLevelById(levelId) } returns null
+
+        assertThatThrownBy { service.listMembers(levelId) }
+            .isInstanceOf(LevelNotFoundException::class.java)
+
+        verify(exactly = 0) { schemeRepo.listMembers(any()) }
     }
 
     // ── Annotation 회귀 가드 ──────────────────────────────────────────────────────
