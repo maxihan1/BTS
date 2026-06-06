@@ -1,4 +1,4 @@
-// 프로젝트 리드 지정·해제·조회 ApplicationService — ProjectLookup + UserLookupPort 경유
+// 프로젝트 리드 지정·해제 ApplicationService — 컴포넌트 UPDATE 권한 가드 + ProjectLookup + UserLookupPort 경유
 
 package com.bts.issue.project.application
 
