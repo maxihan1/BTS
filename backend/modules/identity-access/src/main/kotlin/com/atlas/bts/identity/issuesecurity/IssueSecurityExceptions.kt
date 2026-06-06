@@ -27,6 +27,15 @@ class LevelNotFoundException(levelId: UUID) :
 class LevelNameConflictException(name: String) :
     IssueSecurityException("issue security level name already exists in scheme: $name")
 
+/**
+ * 스킴에 이미 기본 등급(`isDefault=true`)이 있는데 둘째 기본 등급을 추가하려 함 (→ 409).
+ *
+ * DB 부분 유니크 인덱스(`uq_security_level_one_default`)가 최종 방어이지만,
+ * 서비스가 사전 확인으로 이름 충돌([LevelNameConflictException])과 의미를 분리한다(N1).
+ */
+class DefaultLevelConflictException(schemeId: UUID) :
+    IssueSecurityException("issue security scheme already has a default level: $schemeId")
+
 /** 멤버로 추가할 사용자([MemberType.USER] memberValue)가 BTS 에 존재하지 않음 (→ 404). */
 class IssueSecurityUserNotFoundException(userId: UUID) :
     IssueSecurityException("user not found: $userId")

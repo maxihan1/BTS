@@ -2,6 +2,7 @@
 
 package com.atlas.bts.identity.web
 
+import com.atlas.bts.identity.issuesecurity.DefaultLevelConflictException
 import com.atlas.bts.identity.issuesecurity.IssueSecurityException
 import com.atlas.bts.identity.issuesecurity.IssueSecurityGroupNotFoundException
 import com.atlas.bts.identity.issuesecurity.IssueSecurityLevel
@@ -222,7 +223,8 @@ class IssueSecuritySchemeController(
         @RequestBody body: AddMemberRequest,
     ): ResponseEntity<*> {
         requireSystemAdmin(jwt)?.let { return it }
-        return runHandler {
+        // 멤버 추가 한정 — 도메인 멤버값/타입 검증 IAE 는 member_value_invalid 로 매핑(N2, 스펙 EC1/EC3).
+        return runHandler(validationCode = "member_value_invalid") {
             val created = service.addMember(levelId, body.memberType, body.memberValue)
             ResponseEntity.status(HttpStatus.CREATED).body(MemberResponse.from(created))
         }
@@ -300,17 +302,23 @@ class IssueSecuritySchemeController(
      *
      * 잡는 예외를 세 종류로 한정한다(광범위 catch 금지, silently swallow 금지).
      * - [IssueSecurityException]: 서비스 도메인 예외 sealed 계층([mapServiceException]).
-     * - [IllegalArgumentException]: 도메인 팩토리(이름/멤버 값) 불변식 위반 → 400.
+     * - [IllegalArgumentException]: 도메인 팩토리(이름/멤버 값) 불변식 위반 → 400 [validationCode].
      * - [DataIntegrityViolationException]: 프로젝트 적용 중 스킴 삭제(FK RESTRICT) → 409 `scheme_in_use`.
      * 그 외 예외는 잡지 않고 전파시켜 전역 처리에 위임한다.
+     *
+     * @param validationCode 400 검증 위반 시 응답 error 코드. 멤버 추가는 `member_value_invalid`(N2),
+     *   그 외 스킴/등급 생성은 기본 `validation_error`.
      */
-    private inline fun runHandler(block: () -> ResponseEntity<*>): ResponseEntity<*> =
+    private inline fun runHandler(
+        validationCode: String = "validation_error",
+        block: () -> ResponseEntity<*>,
+    ): ResponseEntity<*> =
         try {
             block()
         } catch (ex: IssueSecurityException) {
             mapServiceException(ex)
         } catch (ignoredValidation: IllegalArgumentException) {
-            errorResponse(HttpStatus.BAD_REQUEST, "validation_error")
+            errorResponse(HttpStatus.BAD_REQUEST, validationCode)
         } catch (ignoredIntegrity: DataIntegrityViolationException) {
             errorResponse(HttpStatus.CONFLICT, "scheme_in_use")
         }
@@ -324,6 +332,7 @@ class IssueSecuritySchemeController(
             is SchemeNameConflictException -> errorResponse(HttpStatus.CONFLICT, "scheme_name_conflict")
             is LevelNotFoundException -> errorResponse(HttpStatus.NOT_FOUND, "level_not_found")
             is LevelNameConflictException -> errorResponse(HttpStatus.CONFLICT, "level_name_conflict")
+            is DefaultLevelConflictException -> errorResponse(HttpStatus.CONFLICT, "default_level_conflict")
             is IssueSecurityUserNotFoundException -> errorResponse(HttpStatus.NOT_FOUND, "user_not_found")
             is IssueSecurityGroupNotFoundException -> errorResponse(HttpStatus.NOT_FOUND, "group_not_found")
         }

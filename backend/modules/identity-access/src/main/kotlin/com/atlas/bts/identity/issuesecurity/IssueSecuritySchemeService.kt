@@ -156,6 +156,7 @@ class IssueSecuritySchemeService(
      * @return id/createdAt 이 채워진 영속 [IssueSecurityLevel].
      * @throws SchemeNotFoundException 소속 스킴이 없는 경우.
      * @throws LevelNameConflictException 같은 스킴 내 이름이 충돌하는 경우.
+     * @throws DefaultLevelConflictException 스킴에 이미 기본 등급이 있는데 둘째 기본 등급을 추가하는 경우.
      * @throws IllegalArgumentException 이름이 비어 있거나 길이 제약 위반.
      */
     fun addLevel(
@@ -165,6 +166,11 @@ class IssueSecuritySchemeService(
         isDefault: Boolean,
     ): IssueSecurityLevel {
         schemeRepository.findById(schemeId) ?: throw SchemeNotFoundException(schemeId)
+        // 둘째 기본 등급은 부분 유니크 위반 → DuplicateKeyException 이 이름 충돌로 오매핑되므로,
+        // 사전 확인으로 의미를 분리한다(N1). DB 인덱스는 race 최종 방어로 잔존.
+        if (isDefault && schemeRepository.listLevels(schemeId).any { it.isDefault }) {
+            throw DefaultLevelConflictException(schemeId)
+        }
         val normalized = IssueSecurityLevel.create(schemeId, name, description, isDefault)
         return try {
             schemeRepository.addLevel(normalized)

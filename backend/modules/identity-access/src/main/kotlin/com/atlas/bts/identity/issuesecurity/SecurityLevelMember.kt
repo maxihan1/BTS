@@ -55,6 +55,14 @@ data class SecurityLevelMember(
         val ALLOWED_PROJECT_ROLES = setOf("PROJECT_ADMIN", "MEMBER")
 
         /**
+         * 표준 UUID 형식(8-4-4-4-12 hex) 정규식.
+         *
+         * [UUID.fromString]은 `1-1-1-1-1` 같은 비표준 단축형도 관대하게 허용하므로,
+         * 1차 도메인 검증에서 표준 형식만 통과시킨다(N3).
+         */
+        private val UUID_FORMAT = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+        /**
          * [memberType]별 다형 규칙을 검증해 신규 [SecurityLevelMember]를 생성한다.
          *
          * - USER/GROUP: [memberValue]는 UUID 형식 문자열이어야 한다.
@@ -112,16 +120,19 @@ data class SecurityLevelMember(
             }
 
         /**
-         * 문자열이 UUID 형식인지 검사한다.
+         * 문자열이 표준 UUID 형식(8-4-4-4-12 hex)인지 검사한다(N3).
          *
-         * [UUID.fromString]은 형식 위반 시 [IllegalArgumentException]을 던지므로 이를 false로 변환한다.
+         * [UUID.fromString]만으로는 `1-1-1-1-1` 같은 비표준 단축형이 통과하므로,
+         * 표준 형식 정규식([UUID_FORMAT])으로 1차 검증한 뒤 [UUID.fromString]으로 파싱 가능성도 확인한다.
          */
-        private fun isUuid(value: String): Boolean =
-            try {
+        private fun isUuid(value: String): Boolean {
+            if (!UUID_FORMAT.matches(value)) return false
+            return try {
                 UUID.fromString(value)
                 true
             } catch (_: IllegalArgumentException) {
                 false
             }
+        }
     }
 }
