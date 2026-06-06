@@ -377,6 +377,18 @@ class JdbcIssueSecuritySchemeRepositoryIntegrationTest {
     }
 
     @Test
+    fun `addMember는 member_value가 null인 REPORTER를 두 번 추가해도 멱등하다 (C1 회귀)`() {
+        // UNIQUE NULLS NOT DISTINCT 가 없으면 NULL 끼리 서로 다른 값으로 취급돼 ON CONFLICT 미발화 → 중복 행.
+        val scheme = repository.create(IssueSecurityScheme.create("fr-pm-06-t3-member-idem-null", null))
+        val level = repository.addLevel(IssueSecurityLevel.create(scheme.id!!, "lvl", null, isDefault = false))
+
+        repository.addMember(SecurityLevelMember.create(level.id!!, MemberType.REPORTER, null))
+        repository.addMember(SecurityLevelMember.create(level.id, MemberType.REPORTER, null))
+
+        assertThat(repository.listMembers(level.id)).hasSize(1)
+    }
+
+    @Test
     fun `removeMemberById는 멤버를 제거하고 true, 없으면 false를 반환한다`() {
         val scheme = repository.create(IssueSecurityScheme.create("fr-pm-06-t3-member-remove", null))
         val level = repository.addLevel(IssueSecurityLevel.create(scheme.id!!, "lvl", null, isDefault = false))
