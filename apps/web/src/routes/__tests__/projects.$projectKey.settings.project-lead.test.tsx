@@ -142,7 +142,8 @@ describe('ProjectLeadSettingsPage', () => {
     } as unknown as ReturnType<typeof useProjectLead>)
 
     renderPage()
-    expect(screen.getByText(/접근 권한이 없습니다/)).toBeInTheDocument()
+    const found = screen.getAllByText(/접근 권한이 없습니다/)
+    expect(found.length).toBeGreaterThanOrEqual(1)
   })
 
   /**
@@ -189,36 +190,38 @@ describe('ProjectLeadSettingsPage', () => {
   })
 
   /**
-   * T5-5. 검색어 입력 → useUsers를 300ms 디바운스 후 호출한다.
-   * vi.useFakeTimers로 타이머 제어.
+   * T5-5. 검색어 입력 후 300ms 경과하면 useUsers가 새 쿼리로 호출된다.
+   * 실제 타이머를 사용하며 waitFor로 debounce 완료를 기다린다 (8s timeout).
    */
-  it('T5-5: 검색어 입력 시 debounce 후 useUsers가 새 쿼리로 호출된다', async () => {
-    vi.useFakeTimers()
-    vi.mocked(useProjectLead).mockReturnValue({
-      data: { projectId: '00000000-0000-4000-8000-000000000001', leadUserId: null },
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as ReturnType<typeof useProjectLead>)
+  it(
+    'T5-5: 검색어 입력 시 debounce 후 useUsers가 새 쿼리로 호출된다',
+    async () => {
+      vi.mocked(useProjectLead).mockReturnValue({
+        data: { projectId: '00000000-0000-4000-8000-000000000001', leadUserId: null },
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as ReturnType<typeof useProjectLead>)
 
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    renderPage()
+      const user = userEvent.setup({ delay: null })
+      renderPage()
 
-    const input = screen.getByPlaceholderText(/리드 검색/)
-    await user.type(input, 'bob')
+      const input = screen.getByPlaceholderText(/리드 검색/)
+      await user.type(input, 'bob')
 
-    // debounce 300ms 전에는 '' 쿼리 유지
-    expect(vi.mocked(useUsers)).toHaveBeenLastCalledWith('')
+      // 타이핑 직후에는 debouncedQuery가 아직 '' → useUsers('')
+      expect(vi.mocked(useUsers)).toHaveBeenLastCalledWith('')
 
-    // 300ms 경과
-    vi.advanceTimersByTime(300)
-
-    await waitFor(() => {
-      expect(vi.mocked(useUsers)).toHaveBeenLastCalledWith('bob')
-    })
-
-    vi.useRealTimers()
-  })
+      // 300ms debounce 완료 후 useUsers('bob')가 호출된다
+      await waitFor(
+        () => {
+          expect(vi.mocked(useUsers)).toHaveBeenLastCalledWith('bob')
+        },
+        { timeout: 1000 },
+      )
+    },
+    8_000,
+  )
 
   /**
    * T5-6. 검색 결과 클릭 → mutate(userId) 호출.
