@@ -4,7 +4,6 @@ package com.bts.issue.application
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.component.repository.ComponentRepository
-import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.AssigneeNotFoundException
 import com.bts.issue.domain.ComponentLead
@@ -27,6 +26,7 @@ import com.bts.issue.event.IssueSoftDeleted
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.event.IssueUpdated
 import com.bts.issue.markdown.MarkdownRenderer
+import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.domain.ResolutionNotFoundException

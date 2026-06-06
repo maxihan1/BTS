@@ -313,7 +313,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
             }
         }
 
-                context("대상 프로젝트 CREATE 권한이 없을 때") {
+        context("대상 프로젝트 CREATE 권한이 없을 때") {
             beforeEach {
                 every {
                     permissionResolver.hasPermission(

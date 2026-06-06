@@ -220,7 +220,6 @@ class IssueCreateComponentAutoAssignIntegrationTest {
         }
     }
 
-
     // ── S2. 컴포넌트 리드 없음 + 프로젝트 리드 → 프로젝트 리드 배정 (FR-CM-04 Task 5) ──
 
     /**
@@ -290,7 +289,7 @@ class IssueCreateComponentAutoAssignIntegrationTest {
         }
     }
 
-        // ── S4-fallback. 컴포넌트 리드 없음 + 프로젝트 리드 없음 → null (FR-CM-04 Task 5) ──
+    // ── S4-fallback. 컴포넌트 리드 없음 + 프로젝트 리드 없음 → null (FR-CM-04 Task 5) ──
 
     /**
      * S4-fallback 둘 다 없음 → 미할당.
