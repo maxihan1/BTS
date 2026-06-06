@@ -5,7 +5,6 @@ package com.bts.issue.adapter.inbound.rest
 import com.bts.issue.application.AppChangeAssigneeRequest
 import com.bts.issue.application.AppChangeComponentsRequest
 import com.bts.issue.application.IssueApplicationService
-import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.pdf.IssuePdfRenderer
 import com.bts.issue.pdf.IssuePdfTemplate
@@ -30,7 +29,6 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.net.URI
-import java.util.UUID
 import com.bts.issue.application.CloneIssueRequest as AppCloneIssueRequest
 import com.bts.issue.application.CreateIssueRequest as AppCreateIssueRequest
 import com.bts.issue.application.TransitionIssueRequest as AppTransitionIssueRequest
@@ -60,9 +58,10 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
  * `workflowKey` 는 [IssueApplicationService] 가 [com.bts.shared.workflow.WorkflowKeyResolver] 를
  * 통해 프로젝트 스킴 설정에서 자동 결정한다. 컨트롤러(transport 계층) 는 workflow 결정 책임을 갖지 않는다.
  *
- * ### ActorId 임시 처리
- * security context 연동 전까지 고정 UUID 를 사용한다.
- * 인증 연동은 이후 security-engineer wave 에서 처리한다.
+ * ### ActorId 결선 (FR-PM-06 PR-B)
+ * 각 엔드포인트는 [CurrentActor.current] 로 [SecurityContextHolder] 의 인증 주체를 actor 로 추출한다.
+ * 미인증·익명·비-UUID·nil-UUID 주체는 401(UNAUTHORIZED)로 거부한다.
+ * actor 추출은 리소스 조회(404)보다 앞서 수행하여 미인증자가 404 로 리소스 존재를 probe 하지 못하게 한다.
  *
  * TooManyFunctions: 이슈 CRUD + 전이 + 클론 REST 엔드포인트를 단일 컨트롤러가 담당하므로 함수 수 임계치(11)를 초과한다.
  * 책임 분리보다 이슈 리소스 응집이 더 적합한 구조이므로 Suppress 처리.
@@ -95,8 +94,7 @@ class IssueController(
     ): ResponseEntity<DataResponse<IssueResponse>> {
         log.info("IssueController.create projectKey={}", request.projectKey)
 
-        // 임시 fallback — security-engineer wave 에서 SecurityContextHolder 의 인증된 UUID 로 교체 예정.
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val actor = CurrentActor.current()
         val appRequest =
             AppCreateIssueRequest(
                 projectKey = request.projectKey,
@@ -126,7 +124,7 @@ class IssueController(
     ): ResponseEntity<DataResponse<IssueResponse>> {
         log.info("IssueController.get key={}", key)
 
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val actor = CurrentActor.current()
         val issueKey = IssueKey(key)
         val response = service.findByKey(actor, issueKey)
         return ResponseEntity.ok(DataResponse(data = response))
@@ -146,7 +144,7 @@ class IssueController(
     ): ResponseEntity<Page<IssueResponse>> {
         log.info("IssueController.list projectKey={} pageable={}", projectKey, pageable)
 
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val actor = CurrentActor.current()
         val page = service.listIssues(actor, projectKey ?: "", pageable)
         return ResponseEntity.ok(page)
     }
@@ -174,7 +172,7 @@ class IssueController(
     ): ResponseEntity<DataResponse<IssueResponse>> {
         log.info("IssueController.update key={}", key)
 
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val actor = CurrentActor.current()
         val issueKey = IssueKey(key)
         val appRequest =
             AppUpdateIssueRequest(
@@ -218,7 +216,7 @@ class IssueController(
     ): ResponseEntity<DataResponse<IssueResponse>> {
         log.info("IssueController.transition key={} toStatusKey={}", key, request.toStatusKey)
 
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val actor = CurrentActor.current()
         val issueKey = IssueKey(key)
         val appRequest =
             AppTransitionIssueRequest(
@@ -249,7 +247,7 @@ class IssueController(
     ): ResponseEntity<DataResponse<AvailableTransitionsResponse>> {
         log.info("IssueController.availableTransitions key={}", key)
 
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val actor = CurrentActor.current()
         val issueKey = IssueKey(key)
         val views = service.availableTransitions(actor, issueKey)
         return ResponseEntity.ok(DataResponse(data = AvailableTransitionsResponse.from(views)))
@@ -279,7 +277,7 @@ class IssueController(
     ): ResponseEntity<DataResponse<IssueResponse>> {
         log.info("IssueController.changeAssignee key={} assigneeId={}", key, request.assigneeId)
 
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val actor = CurrentActor.current()
         val issueKey = IssueKey(key)
         // @NotNull 검증이 통과한 뒤 호출되므로 expectedVersion 은 null 이 아님.
         // !! 금지 규칙에 따라 명시적 체크로 처리한다.
@@ -318,7 +316,7 @@ class IssueController(
     ): ResponseEntity<DataResponse<IssueResponse>> {
         log.info("IssueController.changeComponents key={} count={}", key, request.componentIds.size)
 
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val actor = CurrentActor.current()
         val issueKey = IssueKey(key)
         // @NotNull 검증이 통과한 뒤 호출되므로 expectedVersion 은 null 이 아님.
         val expectedVersion =
@@ -355,7 +353,7 @@ class IssueController(
     ): ResponseEntity<ByteArray> {
         log.info("IssueController.exportPdf key={}", key)
 
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val actor = CurrentActor.current()
         val response = service.findByKey(actor, IssueKey(key))
         val pdf = pdfRenderer.render(response)
         return ResponseEntity.ok()
@@ -380,7 +378,7 @@ class IssueController(
     ) {
         log.info("IssueController.delete key={}", key)
 
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val actor = CurrentActor.current()
         service.softDeleteIssue(actor, IssueKey(key))
     }
 
@@ -403,7 +401,7 @@ class IssueController(
     ): ResponseEntity<DataResponse<IssueResponse>> {
         log.info("IssueController.clone sourceKey={}", key)
 
-        val actor = ActorId(SYSTEM_ACTOR_UUID)
+        val actor = CurrentActor.current()
         val webRequest = request ?: CloneIssueRequest()
         val appRequest =
             AppCloneIssueRequest(
@@ -421,11 +419,6 @@ class IssueController(
     // ── private helpers ───────────────────────────────────────────────────────
 
     private fun buildLocation(issueKey: String): URI = URI.create("/api/v1/issues/$issueKey")
-
-    companion object {
-        /** 인증 연동 전 임시 사용하는 시스템 행위자 UUID. */
-        private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
-    }
 }
 
 /**

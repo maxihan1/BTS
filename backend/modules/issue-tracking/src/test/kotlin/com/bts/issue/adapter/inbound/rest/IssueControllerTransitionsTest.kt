@@ -17,6 +17,9 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.authority.SimpleGrantedAuthority
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.test.context.web.WebAppConfiguration
@@ -72,6 +75,13 @@ class IssueControllerTransitionsTest {
     @BeforeEach
     fun setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+        // CurrentActor 결선(FR-PM-06 PR-B) 이후 컨트롤러가 인증 주체를 요구하므로 SecurityContext 를 주입한다.
+        SecurityContextHolder.getContext().authentication =
+            UsernamePasswordAuthenticationToken(
+                "11111111-1111-4111-8111-111111111111",
+                null,
+                listOf(SimpleGrantedAuthority("ROLE_USER")),
+            )
     }
 
     /**
@@ -84,6 +94,7 @@ class IssueControllerTransitionsTest {
     @AfterEach
     fun tearDown() {
         clearMocks(issueApplicationService)
+        SecurityContextHolder.clearContext()
     }
 
     // ── T-1: 정상 — 2건 반환 + 필드 직렬화 ────────────────────────────────────

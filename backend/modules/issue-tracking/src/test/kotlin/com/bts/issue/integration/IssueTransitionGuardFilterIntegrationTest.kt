@@ -42,6 +42,7 @@ import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -53,6 +54,9 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Profile
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.authority.SimpleGrantedAuthority
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
@@ -140,12 +144,19 @@ class IssueTransitionGuardFilterIntegrationTest {
                     .apply { start() }
 
             /**
-             * actor UUID — permission-check validator 가 true 를 반환하는 액터 식별자.
-             * IssueController 의 SYSTEM_ACTOR_UUID 를 교체할 수 없으므로
-             * validator factory stub 이 contextHolder 를 통해 actor 를 구분한다.
+             * 시나리오 문서화용 actor UUID 상수.
+             * FR-PM-06 PR-B 이후 IssueController 는 CurrentActor 로 추출한 인증 주체를 actor 로 전달하므로
+             * 실제 PRIVILEGED 판별은 setUpEach 가 주입하는 [AUTHENTICATED_ACTOR_UUID] 를 기준으로 한다.
              */
             const val PRIVILEGED_ACTOR_UUID = "00000000-0000-0000-0000-000000000010"
             const val UNPRIVILEGED_ACTOR_UUID = "00000000-0000-0000-0000-000000000020"
+
+            /**
+             * setUpEach 가 SecurityContext 에 주입하는 인증 주체 UUID(v4 형식).
+             * FR-PM-06 PR-B 이후 IssueController 가 CurrentActor 로 추출하는 actor 가 이 값이며,
+             * permission-check validator stub 이 이 UUID 를 PRIVILEGED 로 판별한다.
+             */
+            const val AUTHENTICATED_ACTOR_UUID = "11111111-1111-4111-8111-111111111111"
 
             /** 가드 필터 검증 전용 프로젝트 키. */
             const val GUARD_PROJECT_KEY = "GUARD"
@@ -221,9 +232,10 @@ class IssueTransitionGuardFilterIntegrationTest {
                                 override val type: String = "permission-check"
 
                                 override fun validate(ctx: TransitionContext): ValidatorResult =
-                                    // IssueController 는 SYSTEM_ACTOR_UUID 를 actor 로 전달한다.
-                                    // GUARD 프로젝트 이슈 조회 시 SYSTEM_ACTOR_UUID 는 PRIVILEGED 로 판별.
-                                    if (ctx.request.actorId == "00000000-0000-0000-0000-000000000001") {
+                                    // FR-PM-06 PR-B 이후 IssueController 는 CurrentActor 로 추출한 인증 주체를 actor 로 전달한다.
+                                    // 이 테스트는 setUpEach 에서 AUTHENTICATED_ACTOR_UUID 를 인증 주체로 주입하므로
+                                    // 해당 UUID 를 PRIVILEGED 로 판별한다.
+                                    if (ctx.request.actorId == AUTHENTICATED_ACTOR_UUID) {
                                         ValidatorResult.Pass
                                     } else {
                                         ValidatorResult.Fail(
@@ -433,6 +445,13 @@ class IssueTransitionGuardFilterIntegrationTest {
     @BeforeEach
     fun setUpEach() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+        // CurrentActor 결선(FR-PM-06 PR-B) 이후 컨트롤러가 인증 주체를 요구하므로 SecurityContext 를 주입한다.
+        SecurityContextHolder.getContext().authentication =
+            UsernamePasswordAuthenticationToken(
+                GuardTestConfig.AUTHENTICATED_ACTOR_UUID,
+                null,
+                listOf(SimpleGrantedAuthority("ROLE_USER")),
+            )
         DriverManager.getConnection(
             GuardTestConfig.postgres.jdbcUrl,
             GuardTestConfig.postgres.username,
@@ -445,6 +464,11 @@ class IssueTransitionGuardFilterIntegrationTest {
                 )
             }
         }
+    }
+
+    @AfterEach
+    fun clearSecurityContext() {
+        SecurityContextHolder.clearContext()
     }
 
     // ── S1. PRIVILEGED actor → actor_gated 전이 포함 (2건) ──────────────────────
