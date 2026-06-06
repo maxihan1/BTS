@@ -206,7 +206,7 @@
 - [x] D3. 데이터 모델 — `projects.lead_user_id` 마이그레이션(V013) + init_codegen 미러. cross-BC 포트 없음(in-BC) (책임. backend-engineer)
 - [x] D4. 백엔드 — 프로젝트 리드 지정/해제 API(PATCH /api/v1/projects/{idOrKey}/lead) + DefaultAssigneeResolver 폴백 확장 + IssueApplicationService 주입 (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 — 폴백 우선순위(resolver 단위) + 리드 실존(UserLookupPort, 422) + 생성/변경 통합(Testcontainers) (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 프로젝트 설정에 리드 지정 (책임. designer → frontend-engineer)
+- [x] D6. 프론트 UI — 프로젝트 설정에 리드 지정 (책임. designer → frontend-engineer) (완료. PR #91 — 신규 라우트 `/projects/$projectKey/settings/project-lead`(RouteAdapter+Page, workflow-scheme 동형) + 백엔드 조회 GET `/api/v1/projects/{idOrKey}/lead`(same-BC view layer, readOnly, 무권한 READ) + api/project-lead+useProjectLead/useChangeProjectLead+ProjectLeadSelect(ComponentLeadSelect 동형)+MSW stateful. 권한 fail-closed(MANAGE_COMPONENTS) + CSRF + errorCode. 적대적 리뷰 #1(삭제된 리드→"미지정" 둔갑) 수정 — leadUserId 있는데 조회 실패 시 "알 수 없는 사용자 (uuid 앞8자)"+해제버튼 표시. 컴포넌트 리드 동형 UX 개선(#2~#4)·D7 E2E는 후속)
 - [ ] D7. E2E (책임. qa-engineer)
 
 ### §3.2 버전 (FR-VR, 4개)
