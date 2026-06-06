@@ -195,15 +195,17 @@
 
 #### §3.1.4 FR-CM-04 — 컴포넌트 리드 부재 시 프로젝트 리드 폴백 (2순위)
 
-**우선순위**. 중간 | **선행**. §3.1.3, §4.1(FR-PM-01) | **Plan slug**. `issue/components-project-lead-fallback`
+**우선순위**. 중간 | **선행**. §3.1.3, §4.1(FR-PM-01) | **Plan slug**. `fr-cm-04-project-lead-fallback`
 
-> **배경 (2026-06-05, FR-CM-03 PR #84 후속)**. FR-CM-03 자동 배정은 컴포넌트 리드(1순위)만 사용하고, 리드가 없으면 미할당으로 남긴다. Jira식으로 컴포넌트 리드가 없을 때 **프로젝트 리드**를 2순위 폴백으로 쓰자는 요구(Maxi). 단 BTS엔 "프로젝트 리드"(단일) 개념이 없다 — `projects` 테이블에 lead 필드 없음, FR-PM-01의 `PROJECT_ADMIN`은 **다수·권한** 개념이라 자동배정 대상(단일·업무 책임)과 다르다(admin≠lead). 따라서 프로젝트 단위 단일 리드 지정을 신설하고 cross-BC로 조회해야 한다.
+> **배경 (2026-06-05, FR-CM-03 PR #84 후속)**. FR-CM-03 자동 배정은 컴포넌트 리드(1순위)만 사용하고, 리드가 없으면 미할당으로 남긴다. Jira식으로 컴포넌트 리드가 없을 때 **프로젝트 리드**를 2순위 폴백으로 쓰자는 요구(Maxi). 단 BTS엔 "프로젝트 리드"(단일) 개념이 없었다 — `projects` 테이블에 lead 필드 없음, FR-PM-01의 `PROJECT_ADMIN`은 **다수·권한** 개념이라 자동배정 대상(단일·업무 책임)과 다르다(admin≠lead).
+>
+> **결정 (2026-06-06, 구현 PR — ADR docs/adr/2026-06-06-project-lead-default-assignee-fallback.md)**. 프로젝트 리드를 **`projects.lead_user_id` 컬럼**(옵션 B, in-BC)으로 표현한다. issue-tracking 소유 테이블이라 **cross-BC 포트 불필요** — `components.lead_user_id`(FR-CM-03) 동형. 대안이던 project_memberships 단일 `PROJECT_LEAD` 역할(옵션 A)은 cross-BC 포트 + 단일 UNIQUE 제약 비용으로 기각. 범위는 폴백 로직 + 지정/해제 API. 지정 UI(D6)·E2E(D7)는 후속.
 
-- [ ] D1. 도메인 — 폴백 체인(컴포넌트 리드 → 프로젝트 리드 → 미할당) 규칙 (책임. backend-engineer)
-- [ ] D2. 명세 — 프로젝트 리드 지정 모델 결정 (project_memberships 단일 `PROJECT_LEAD` 역할 vs `projects.lead_user_id` 컬럼), admin과 분리 (책임. backend-engineer + security-engineer)
-- [ ] D3. 데이터 모델 — 프로젝트 단일 리드 저장 (마이그레이션) + cross-BC 조회 포트 (책임. db-engineer)
-- [ ] D4. 백엔드 — 프로젝트 리드 지정 API/UI + DefaultAssigneeResolver 폴백 확장 + cross-BC 포트(issue-tracking → identity-access/project) (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — 폴백 우선순위 + 리드 실존(UserLookupPort) + cross-BC (책임. backend-engineer)
+- [x] D1. 도메인 — 폴백 체인(컴포넌트 리드 → 프로젝트 리드 → 미할당) 규칙 (책임. backend-engineer) — current!=null·클론 제외
+- [x] D2. 명세 — 프로젝트 리드 지정 모델 결정 → **옵션 B `projects.lead_user_id` 컬럼**(in-BC), admin≠lead (책임. backend-engineer)
+- [x] D3. 데이터 모델 — `projects.lead_user_id` 마이그레이션(V013) + init_codegen 미러. cross-BC 포트 없음(in-BC) (책임. backend-engineer)
+- [x] D4. 백엔드 — 프로젝트 리드 지정/해제 API(PATCH /api/v1/projects/{idOrKey}/lead) + DefaultAssigneeResolver 폴백 확장 + IssueApplicationService 주입 (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — 폴백 우선순위(resolver 단위) + 리드 실존(UserLookupPort, 422) + 생성/변경 통합(Testcontainers) (책임. backend-engineer)
 - [ ] D6. 프론트 UI — 프로젝트 설정에 리드 지정 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
