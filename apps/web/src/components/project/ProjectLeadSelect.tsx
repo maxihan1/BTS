@@ -11,8 +11,14 @@ import { projectLeadLabels } from '../../i18n/project-lead-labels'
 interface ProjectLeadSelectProps {
   /** 검색 결과 사용자 목록 — 드롭다운 후보 전용 */
   users: UserSummary[]
-  /** 현재 리드 UserSummary — 상위에서 id 조회 후 주입. null이면 "미지정" 표시 */
+  /** 현재 리드 UserSummary — 상위에서 id 조회 후 주입. null이면 "미지정" 또는 알 수 없는 사용자 표시 */
   currentLead: UserSummary | null
+  /**
+   * leadUserId는 있으나 useUsersByIds 결과가 비어 사용자 정보를 조회하지 못한 경우의 UUID.
+   * 삭제/비활성 계정 시 발생. 이 값이 있으면 "알 수 없는 사용자 (uuid앞8자)" 표시 + 해제 버튼 노출.
+   * null이면 "미지정" 표시(leadUserId 자체가 없는 경우와 동일).
+   */
+  unknownLeadId?: string | null
   /** 검색어 변경 콜백 — 상위에서 debounce 처리 */
   onSearch: (query: string) => void
   /** 리드 변경 콜백 — UUID 또는 null(해제) */
@@ -47,11 +53,26 @@ function getDisplayName(user: UserSummary): string {
 export const ProjectLeadSelect = ({
   users,
   currentLead,
+  unknownLeadId = null,
   onSearch,
   onChange,
   disabled = false,
 }: ProjectLeadSelectProps): JSX.Element => {
   const { form } = projectLeadLabels
+
+  /** 현재 표시할 이름 텍스트를 결정한다. 우선순위: currentLead > unknownLeadId > 미지정 */
+  function resolveCurrentDisplayName(): string {
+    if (currentLead !== null) {
+      return getDisplayName(currentLead)
+    }
+    if (unknownLeadId != null) {
+      return `${form.leadUnknown} (${unknownLeadId.slice(0, 8)})`
+    }
+    return form.leadUnassigned
+  }
+
+  /** 해제 버튼 노출 여부 — 리드가 지정됐거나 알 수 없는 사용자 상태일 때 관리자가 정리할 수 있도록 노출 */
+  const showUnassignButton = currentLead !== null || unknownLeadId != null
 
   return (
     <div className="flex flex-col gap-1.5" aria-label={form.leadLabel}>
@@ -61,11 +82,11 @@ export const ProjectLeadSelect = ({
           className="text-sm font-medium truncate"
           data-testid="lead-current-name"
         >
-          {currentLead !== null ? getDisplayName(currentLead) : form.leadUnassigned}
+          {resolveCurrentDisplayName()}
         </span>
 
-        {/* "미지정" 해제 버튼 — 리드가 지정된 경우에만 노출 */}
-        {currentLead !== null && (
+        {/* "미지정" 해제 버튼 — 리드가 지정됐거나 알 수 없는 사용자 상태일 때 노출 */}
+        {showUnassignButton && (
           <button
             type="button"
             onClick={() => onChange(null)}

@@ -80,6 +80,13 @@ export function ProjectLeadSettingsPage({
   const { data: leadUsers = [] } = useUsersByIds(leadIds)
   const currentLead = leadUsers.find((u) => u.id === projectLead?.leadUserId) ?? null
 
+  /**
+   * leadUserId는 있지만 useUsersByIds 결과에 없는 경우 — 삭제/비활성 사용자.
+   * "알 수 없는 사용자" 상태로 표시해 관리자가 거짓 "미지정"으로 오인하지 않도록 한다.
+   */
+  const unknownLeadId =
+    projectLead?.leadUserId != null && currentLead === null ? projectLead.leadUserId : null
+
   // ── 분기 처리 ──
   if (isLoading) {
     return (
@@ -107,6 +114,7 @@ export function ProjectLeadSettingsPage({
           <ProjectLeadSelect
             users={searchUsers}
             currentLead={currentLead}
+            unknownLeadId={unknownLeadId}
             onSearch={setSearchQuery}
             onChange={(userId) => changeLead.mutate(userId)}
             disabled={!canManage || changeLead.isPending}

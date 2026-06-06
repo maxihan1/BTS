@@ -23,6 +23,8 @@ export const projectLeadLabels = {
     leadLabel: '프로젝트 리드',
     /** 리드 미지정 표시 텍스트 */
     leadUnassigned: '미지정',
+    /** 리드 UUID는 있으나 사용자 조회 실패 시 표시 텍스트 (삭제/비활성 계정) */
+    leadUnknown: '알 수 없는 사용자',
     /** 검색 input placeholder / aria-label */
     searchLabel: '리드 검색',
     /** 현재 리드 섹션 title */
