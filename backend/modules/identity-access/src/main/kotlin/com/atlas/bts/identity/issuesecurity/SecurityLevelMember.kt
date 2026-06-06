@@ -111,7 +111,11 @@ data class SecurityLevelMember(
                 }
             }
 
-        /** 문자열이 UUID 형식인지 검사한다. */
+        /**
+         * 문자열이 UUID 형식인지 검사한다.
+         *
+         * [UUID.fromString]은 형식 위반 시 [IllegalArgumentException]을 던지므로 이를 false로 변환한다.
+         */
         private fun isUuid(value: String): Boolean =
             try {
                 UUID.fromString(value)
