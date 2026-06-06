@@ -102,6 +102,9 @@ data class IssueResponse(
          * FR-IS-07 B11 — [resolution] 은 단건 경로에서 ApplicationService 가 채워 주입한다.
          * 목록 경로(listWithType)는 null 로 호출한다.
          *
+         * FR-PM-06 PR-B — [IssueResponse.securityLevelId] 는 [Issue.securityLevelId] 에서 직접 매핑된다.
+         * 단건/목록 경로 모두 동일하게 노출된다.
+         *
          * @param issue 변환할 이슈 Aggregate.
          * @param projectKey 이슈가 속한 프로젝트 키 문자열.
          * @param typeInfo 이슈 타입 요약 (id, key, name).
