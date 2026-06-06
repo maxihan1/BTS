@@ -109,19 +109,19 @@ class ProjectLeadControllerTest {
     @Test
     fun `PATCH lead — leadUserId null이면 200 + leadUserId null 반환`() {
         every {
-            projectLeadApplicationService.changeLead(any(), eq(projectIdOrKey), eq(null))
+            projectLeadApplicationService.changeLead(any(), eq(projectIdOrKey), null)
         } returns ProjectLeadResult(projectId = projectId, leadUserId = null)
 
-        val body = mapOf("leadUserId" to null)
+        val body = """{"leadUserId": null}"""
 
         mockMvc.perform(
             patch("/api/v1/projects/$projectIdOrKey/lead")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(body)),
+                .content(body),
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.projectId").value(projectId.toString()))
-            .andExpect(jsonPath("$.data.leadUserId").isEmpty)
+            .andExpect(jsonPath("$.data.leadUserId").doesNotExist())
     }
 
     // ── E1: 미존재 프로젝트 → 404 PROJECT_NOT_FOUND (500 아님) ────────────────
