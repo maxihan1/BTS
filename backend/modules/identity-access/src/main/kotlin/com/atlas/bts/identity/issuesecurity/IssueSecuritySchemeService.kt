@@ -37,10 +37,16 @@ import java.util.UUID
  * 표면화되며 이를 [LevelNotFoundException] 으로 변환한다(멤버 값 중복은 ON CONFLICT DO NOTHING 으로
  * 예외를 던지지 않으므로 무결성 위반은 곧 등급 부재를 의미한다).
  *
+ * ## 함수 수 (detekt TooManyFunctions)
+ * 스킴/등급/멤버 3계층 CRUD 를 한 트랜잭션 경계 안에서 오케스트레이션하므로 메서드가 13개다
+ * (임계 11). 계층별로 서비스를 쪼개면 트랜잭션 경계가 흩어지고 사전 존재 확인이 분산되므로
+ * 의도된 단일 aggregate 서비스이며 [Repository][IssueSecuritySchemeRepository] 와 같은 근거로 `@Suppress` 한다.
+ *
  * @see docs/decisions/2026-06-06-issue-security-level-scheme-model.md 설계 결정 ADR
  */
 @Service
 @Transactional(isolation = Isolation.READ_COMMITTED)
+@Suppress("TooManyFunctions")
 class IssueSecuritySchemeService(
     private val schemeRepository: IssueSecuritySchemeRepository,
     private val userRepository: UserRepository,
@@ -124,7 +130,9 @@ class IssueSecuritySchemeService(
      * @throws SchemeNotFoundException 해당 스킴이 없는 경우.
      */
     @Transactional(readOnly = true, isolation = Isolation.READ_COMMITTED)
-    fun getScheme(id: UUID): IssueSecuritySchemeDetail = schemeRepository.findById(id) ?: throw SchemeNotFoundException(id)
+    fun getScheme(id: UUID): IssueSecuritySchemeDetail {
+        return schemeRepository.findById(id) ?: throw SchemeNotFoundException(id)
+    }
 
     /**
      * 모든 스킴을 각자의 등급 목록과 함께 조회한다.

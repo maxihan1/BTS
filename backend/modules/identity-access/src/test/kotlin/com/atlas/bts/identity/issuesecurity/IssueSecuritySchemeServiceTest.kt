@@ -294,7 +294,9 @@ class IssueSecuritySchemeServiceTest {
         every { userRepo.findById(userId) } returns persistedUser()
         every {
             schemeRepo.addMember(
-                match { it.levelId == levelId && it.memberType == MemberType.USER && it.memberValue == userId.toString() },
+                match {
+                    it.levelId == levelId && it.memberType == MemberType.USER && it.memberValue == userId.toString()
+                },
             )
         } returns persistedMember()
 
@@ -330,7 +332,9 @@ class IssueSecuritySchemeServiceTest {
     @Test
     fun `addMember은 PROJECT_ROLE는 실재조회 없이 도메인 검증만으로 추가한다`() {
         every {
-            schemeRepo.addMember(match { it.memberType == MemberType.PROJECT_ROLE && it.memberValue == "PROJECT_ADMIN" })
+            schemeRepo.addMember(
+                match { it.memberType == MemberType.PROJECT_ROLE && it.memberValue == "PROJECT_ADMIN" },
+            )
         } returns persistedMember(MemberType.PROJECT_ROLE, "PROJECT_ADMIN")
 
         val result = service.addMember(levelId, MemberType.PROJECT_ROLE, "PROJECT_ADMIN")
