@@ -20,6 +20,9 @@ import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.web.config.EnableSpringDataWebSupport
 import org.springframework.http.MediaType
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.authority.SimpleGrantedAuthority
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.test.context.web.WebAppConfiguration
@@ -110,11 +113,19 @@ class IssueControllerReadTest {
     @AfterEach
     fun tearDown() {
         clearMocks(issueApplicationService)
+        SecurityContextHolder.clearContext()
     }
 
     @BeforeEach
     fun setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+        // CurrentActor 결선(FR-PM-06 PR-B) 이후 컨트롤러가 인증 주체를 요구하므로 SecurityContext 를 주입한다.
+        SecurityContextHolder.getContext().authentication =
+            UsernamePasswordAuthenticationToken(
+                "11111111-1111-4111-8111-111111111111",
+                null,
+                listOf(SimpleGrantedAuthority("ROLE_USER")),
+            )
     }
 
     // ── R-1: GET /issues/{key} 정상 → 200 + IssueResponse ────────────────────
@@ -176,6 +187,32 @@ class IssueControllerReadTest {
             .andExpect(jsonPath("$.totalPages").value(1))
             .andExpect(jsonPath("$.number").value(0))
             .andExpect(jsonPath("$.size").value(20))
+    }
+
+    // ── R-5: 미인증 호출 → 401 (ResponseStatusException 변질 차단) ─────────────
+
+    @Test
+    fun `GET 이슈 단건 조회 — 미인증(SecurityContext 비움)이면 401`() {
+        // CurrentActor.current() 가 던지는 ResponseStatusException(401) 이 catch-all 500 으로
+        // 변질되지 않고 401 로 전파되는지 검증한다 (FR-PM-06 PR-B B1).
+        SecurityContextHolder.clearContext()
+
+        mockMvc.perform(
+            get("/api/v1/issues/ATLAS-1").accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isUnauthorized)
+    }
+
+    @Test
+    fun `GET 이슈 목록 조회 — 미인증(SecurityContext 비움)이면 401`() {
+        SecurityContextHolder.clearContext()
+
+        mockMvc.perform(
+            get("/api/v1/issues")
+                .param("projectKey", "ATLAS")
+                .accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isUnauthorized)
     }
 
     // ── R-4: GET /issues projectKey 생략 → 200 + 빈 Page ──────────────────────

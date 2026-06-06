@@ -92,6 +92,16 @@ class JdbcUserGroupRepository(
             Boolean::class.java,
         ) ?: false
 
+    override fun isMemberOf(
+        groupId: UUID,
+        userId: UUID,
+    ): Boolean =
+        jdbc.queryForObject(
+            SQL_IS_MEMBER_OF,
+            mapOf("groupId" to groupId, "userId" to userId),
+            Boolean::class.java,
+        ) ?: false
+
     // ── SQL 상수 ─────────────────────────────────────────────────────────────────
 
     private companion object {
@@ -168,6 +178,16 @@ class JdbcUserGroupRepository(
                 SELECT 1
                 FROM user_groups
                 WHERE id = :id
+            )
+        """
+
+        /** 사용자가 그룹 멤버인지 — 복합 PK 단건 EXISTS(없는 그룹이면 행 없어 false). */
+        const val SQL_IS_MEMBER_OF = """
+            SELECT EXISTS(
+                SELECT 1
+                FROM group_memberships
+                WHERE group_id = :groupId
+                  AND user_id = :userId
             )
         """
     }

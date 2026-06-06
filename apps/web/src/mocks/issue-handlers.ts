@@ -44,6 +44,7 @@ export const createdIssueFixture = {
   environment: null,
   impact: null,
   impactName: null,
+  securityLevelId: null,
 }
 
 const issueFixtureMap: Record<string, IssueResponse> = {
@@ -204,6 +205,7 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
     projectKey?: string
     summary?: string
     componentIds?: string[]
+    securityLevelId?: string | null
   }
   if (body.projectKey === 'INVALID') {
     return HttpResponse.json(
@@ -235,12 +237,18 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
     }
   }
 
+  // securityLevelId: body에 명시된 경우(null 포함) 반영, 미전달이면 fixture 기본값(null) 유지
+  const resolvedSecurityLevelId = body.securityLevelId !== undefined
+    ? body.securityLevelId
+    : createdIssueFixture.securityLevelId
+
   const created: IssueResponse = {
     ...createdIssueFixture,
     projectKey: body.projectKey ?? 'ATLAS',
     summary: body.summary ?? '',
     componentIds,
     assigneeId: resolvedAssigneeId,
+    securityLevelId: resolvedSecurityLevelId,
   }
   // E2E-1 happy path 용 — POST 직후 GET 으로 조회 가능하도록 stateful 보관.
   createdIssues.set(created.key, created)
@@ -284,6 +292,7 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     labels?: string[] | null
     environment?: string | null
     impact?: number | null
+    securityLevelId?: string | null
   }
 
   // (2) typeId 검증 — 카탈로그에 없는 id 는 404
@@ -325,6 +334,11 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
   const resolvedEnvironment = applyNullableStringPatch(found.environment, body.environment)
   const resolvedImpact = body.impact !== undefined ? (body.impact ?? found.impact) : found.impact
 
+  // securityLevelId: undefined(미전달) → 기존값 유지, null → 해제, UUID → 지정
+  const resolvedSecurityLevelId = body.securityLevelId !== undefined
+    ? body.securityLevelId
+    : found.securityLevelId
+
   const updated: IssueResponse = {
     ...found,
     summary: body.summary ?? found.summary,
@@ -339,6 +353,7 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     environment: resolvedEnvironment,
     impact: resolvedImpact,
     impactName: impactNameOf(resolvedImpact),
+    securityLevelId: resolvedSecurityLevelId,
     version: found.version + 1,
     updatedAt: new Date().toISOString(),
   }

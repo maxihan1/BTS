@@ -220,6 +220,22 @@ export const issueDetailStrings = {
   componentNotFoundError: '선택한 컴포넌트를 찾을 수 없습니다. 다시 선택해 주세요.',
   /** 컴포넌트 변경 실패 에러 메시지 */
   componentChangeError: '컴포넌트 변경 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+
+  // ── 보안등급(securityLevel) — FR-PM-06 PR-B ──────────────────────────
+  /** 메타패널 — 보안등급 레이블 */
+  securityLevelLabel: '보안등급',
+  /** 보안등급 셀렉터 aria-label */
+  securityLevelSelectLabel: '보안등급 선택',
+  /** 보안등급 미지정 옵션 표시 */
+  securityLevelNone: '선택 안 함',
+  /** 보안등급 변경 실패 — 409 버전 충돌 */
+  securityLevelVersionConflictError: '다른 사용자가 이미 이 이슈를 수정했습니다. 새로고침 후 다시 시도해 주세요.',
+  /** 보안등급 변경 실패 — 403 권한 없음 */
+  securityLevelForbiddenError: '보안등급을 변경할 권한이 없습니다.',
+  /** 보안등급 변경 실패 — 기본 에러 */
+  securityLevelChangeError: '보안등급 변경 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+  /** 이슈 생성 폼 — 보안등급 레이블 */
+  securityLevelCreateLabel: '보안등급 (선택)',
 } as const
 
 /** 이슈 생성 폼 관련 문자열 */

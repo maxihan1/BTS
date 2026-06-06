@@ -305,10 +305,12 @@
 - [x] D1. 도메인 — IssueSecurityScheme/Level/SecurityLevelMember(다형 5타입) (책임. security-engineer) (PR-A #86)
 - [x] D2. 명세 — 스킴→등급→멤버, 멤버 5타입, 관리자 우회 없음 (책임. security-engineer) (PR-A #86)
 - [x] D3. 데이터 모델 — V016 `issue_security_schemes`/`issue_security_levels`/`issue_security_level_members`/`project_issue_security_schemes` + SET_ISSUE_SECURITY 시드 (책임. db-engineer) (PR-A #86). `issues.security_level_id`는 PR-B.
-- [~] D4. 백엔드 — 관리 인프라(스킴/등급/멤버 CRUD + 프로젝트 적용 + SYSTEM_ADMIN/PROJECT_ADMIN 가드) PR-A 완료. 등급 검증 **판정 가드**(resolver 확장 + IssueSecurityLookup)는 PR-B (책임. security-engineer)
-- [~] D5. 백엔드 테스트 — 관리 prod 통합(S1~S7 + 권한 거부 ground-truth) PR-A 완료. 판정 테스트는 PR-B (책임. security-engineer)
-- [ ] D6. 프론트 UI — 이슈 생성/편집 시 등급 선택 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D4. 백엔드 — 관리 인프라(스킴/등급/멤버 CRUD + 프로젝트 적용 + SYSTEM_ADMIN/PROJECT_ADMIN 가드) PR-A. 판정 결선(resolver VIEW 게이트 + IssueSecurityLookup + IssueSecurityDirectory + 지정 API + SET_ISSUE_SECURITY 가드 + 422 + 목록 필터) PR-B #90 (책임. security-engineer)
+- [x] D5. 백엔드 테스트 — 관리 prod 통합 PR-A. 판정 prod Testcontainers(S2 비멤버 404·S7 관리자 우회없음 ground-truth) PR-B #90 (책임. security-engineer)
+- [x] D6. 프론트 UI — 이슈 생성/편집 시 등급 선택(IssueSecurityLevelSelect + 등급 목록 조회 API) PR-B #90 (책임. frontend-engineer)
+- [x] D7. E2E — 생성/편집/해제 시나리오 PR-B #90 (책임. qa-engineer)
+
+> **FR-PM-06 완료 (2026-06-06, PR #90, PR-B)**. 이슈 보안 수준 판정 결선. **판정**: `VIEW_ISSUE` 매트릭스 통과 AND (등급 NULL OR 등급 멤버 5타입 충족), 미통과 단건 404·목록 SQL 제외. **관리자 우회 없음**(resolver isSystemAdmin 미호출, S7 prod 통합 isFalse 실측). cross-BC 포트 2종 — `IssueSecurityLookup`(identity-access 내부 raw SQL read of issues, ProjectDirectory 동형) + `IssueSecurityDirectory`(shared-kernel 포트, prod 구현+non-prod stub, 목록 필터·422 검증). `issues.security_level_id`(V014, init_codegen 미러). 등급 지정 = SET_ISSUE_SECURITY 가드 + 적용 스킴 미소속 422 + Jira식 JsonNullable 3-state(부재 무변경/명시null 해제/값 지정). 목록 = SQL 술어 푸시다운(count·content 동일 WHERE, 페이지네이션 정합, N+1 0). `IssueController` actor 결선(고정 SYSTEM_ACTOR→인증주체, FR-PM-04 C2 해소, 미인증 401). 사용자용 등급 목록 조회 `GET /api/v1/projects/{key}/issue-security-scheme/levels`. 검증 — 백엔드 3모듈 test+ktlint+detekt 그린, 프론트 1291 test/typecheck/lint/build + E2E 3 시나리오 그린, prod Testcontainers 거부 ground-truth(non-prod AlwaysAllow 마스킹). code-reviewer BLOCKER 1(미인증 401→500 변질, @ExceptionHandler(ResponseStatusException) 추가로 해소)+CONCERN 4 처리. FR 카운트 불변(121). ADR [2026-06-06-issue-security-level-scheme-model](../../decisions/2026-06-06-issue-security-level-scheme-model.md).
 
 ### §4.7 FR-PM-07 — 필드 수준 권한
 

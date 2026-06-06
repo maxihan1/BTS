@@ -11,6 +11,7 @@ import { useUpdateIssueSummary, issueQueryKey } from '@/api/useUpdateIssueSummar
 import { useChangeAssignee } from '@/api/useChangeAssignee'
 import { useDeleteIssue } from '@/api/useDeleteIssue'
 import { useChangeComponents } from '@/api/useChangeComponents'
+import { useChangeSecurityLevel } from '@/api/useChangeSecurityLevel'
 import { fetchComponents } from '@/api/components'
 import { useIssueTypes } from '@/hooks/use-issue-types'
 import { useIssueTransitions, issueTransitionKeys } from '@/hooks/use-issue-transitions'
@@ -133,6 +134,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
 
   const changeAssigneeMutation = useChangeAssignee()
   const changeComponentsMutation = useChangeComponents()
+  const changeSecurityLevelMutation = useChangeSecurityLevel()
 
   /** 프로젝트 컴포넌트 목록 — issue 로드 후 projectKey 기준으로 조회 */
   const { data: projectComponents = [] } = useQuery({
@@ -367,6 +369,16 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
     changeAssigneeMutation.mutate({ key: issue.key, assigneeId: userId, expectedVersion: issue.version })
   }
 
+  // ── 보안등급 변경 핸들러 ─────────────────────────────────────────────────
+  function handleSecurityLevelChange(levelId: string | null) {
+    if (issue === undefined) return
+    changeSecurityLevelMutation.mutate({
+      key: issue.key,
+      securityLevelId: levelId,
+      expectedVersion: issue.version,
+    })
+  }
+
   // ── 컴포넌트 변경 핸들러 ─────────────────────────────────────────────────
   /**
    * 컴포넌트 다중 할당 변경 핸들러.
@@ -592,6 +604,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
             componentIds={issue.componentIds}
             components={projectComponents}
             onComponentsChange={handleComponentsChange}
+            onSecurityLevelChange={handleSecurityLevelChange}
           />
         )}
       </div>

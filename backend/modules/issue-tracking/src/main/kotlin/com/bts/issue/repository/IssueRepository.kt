@@ -15,6 +15,7 @@ import com.bts.issue.jooq.tables.references.ISSUE_COMPONENTS
 import com.bts.issue.jooq.tables.references.ISSUE_TYPES
 import com.bts.issue.jooq.tables.references.PROJECTS
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.permission.IssueSecurityAccess
 import org.jooq.Condition
 import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
@@ -406,25 +407,44 @@ class IssueRepository(
      * count 쿼리는 ISSUES × PROJECTS join 만 사용 (ISSUE_TYPES join 은 count에 불필요).
      * content 쿼리는 ISSUES × PROJECTS × ISSUE_TYPES — 단일 이슈 당 타입이 1건이므로 cartesian 없음.
      *
+     * [access] 가 [IssueSecurityAccess.unrestricted] = true 이면 보안 등급 필터를 생략(빠른경로).
+     * unrestricted = false 이면 [buildSecurityCondition] 이 반환하는 Condition 을 count/content
+     * 양쪽 WHERE 에 동일하게 추가한다 — cartesian product 위험 없이 신규 JOIN 0.
+     *
      * @param projectKey 프로젝트 접두사. 예: `"BTS"`.
      * @param pageable 페이지 정보.
+     * @param actor 조회 행위자 UUID. 보안 등급 필터가 적용될 때 reporter/assignee 동적 조건에 사용.
+     *   [access] 가 unrestricted=true 이면 무의미하다. 보안 민감 메서드이므로 기본값 없이 항상 명시 전달한다.
+     * @param access actor 가 접근 가능한 보안 등급 집합. 기본값은 무제한(unrestricted=true).
      * @return [Page]<[IssueResponse]> — type 요약 포함.
      */
     @Transactional(readOnly = true)
     fun listWithType(
         projectKey: String,
         pageable: Pageable,
+        actor: UUID,
+        access: IssueSecurityAccess = UNRESTRICTED_ACCESS,
     ): Page<IssueResponse> {
         val activeInProject =
             PROJECTS.KEY.eq(projectKey)
                 .and(ISSUES.DELETED_AT.isNull)
+
+        // 보안 등급 WHERE 술어 — unrestricted=true 이면 null(필터 미적용).
+        val securityCondition = buildSecurityCondition(actor, access)
+
+        val baseWhere =
+            if (securityCondition != null) {
+                activeInProject.and(securityCondition)
+            } else {
+                activeInProject
+            }
 
         // count 쿼리: ISSUE_TYPES join 제외 — 불필요한 join 으로 count 왜곡 방지
         val total =
             dsl.selectCount()
                 .from(ISSUES)
                 .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
-                .where(activeInProject)
+                .where(baseWhere)
                 .fetchOne(0, Long::class.java) ?: 0L
 
         // content 쿼리: ISSUE_TYPES join 으로 type 요약 포함
@@ -440,7 +460,7 @@ class IssueRepository(
                 .from(ISSUES)
                 .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
                 .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
-                .where(activeInProject)
+                .where(baseWhere)
                 .orderBy(ISSUES.CREATED_AT.desc())
                 .limit(pageable.pageSize)
                 .offset(pageable.offset)
@@ -464,6 +484,75 @@ class IssueRepository(
                 }
 
         return PageImpl(content, pageable, total)
+    }
+
+    /**
+     * [IssueSecurityAccess] 로부터 SQL WHERE 술어를 생성한다.
+     *
+     * [access] 가 unrestricted=true 이면 `null` 을 반환(필터 미적용 빠른경로).
+     * unrestricted=false 이면 다음 OR 조합 Condition 을 반환한다.
+     *
+     * ```
+     * security_level_id IS NULL
+     * OR security_level_id IN (:staticLevelIds)        -- staticLevelIds 비어있지 않을 때만
+     * OR (security_level_id IN (:reporterLevelIds)     -- reporterLevelIds 비어있지 않을 때만
+     *     AND reporter_id = :actor)
+     * OR (security_level_id IN (:assigneeLevelIds)     -- assigneeLevelIds 비어있지 않을 때만
+     *     AND assignee_id = :actor)
+     * ```
+     *
+     * 빈 IN 집합은 조건 자체를 생략해 `IN ()` SQL 구문 오류를 방지한다(jOOQ 는 빈 IN 을 false 로
+     * 처리하지만, 조건 자체를 제거함으로써 불필요한 predicate 를 줄인다).
+     *
+     * @param actor 조회 행위자 UUID.
+     * @param access 보안 등급 접근 결과 VO.
+     * @return WHERE 에 추가할 [Condition]. unrestricted=true 이면 `null`.
+     */
+    private fun buildSecurityCondition(
+        actor: UUID,
+        access: IssueSecurityAccess,
+    ): Condition? {
+        if (access.unrestricted) return null
+
+        // NULL 등급 — 항상 공개
+        var condition: Condition = ISSUES.SECURITY_LEVEL_ID.isNull
+
+        // static: USER/GROUP/PROJECT_ROLE 조건으로 actor 가 멤버인 등급 — 항상 노출
+        if (access.staticLevelIds.isNotEmpty()) {
+            condition = condition.or(ISSUES.SECURITY_LEVEL_ID.`in`(access.staticLevelIds))
+        }
+
+        // reporter: REPORTER 조건 등급 — actor 가 reporter 일 때만 노출
+        if (access.reporterLevelIds.isNotEmpty()) {
+            val reporterCondition =
+                ISSUES.SECURITY_LEVEL_ID.`in`(access.reporterLevelIds)
+                    .and(ISSUES.REPORTER_ID.eq(actor))
+            condition = condition.or(reporterCondition)
+        }
+
+        // assignee: ASSIGNEE 조건 등급 — actor 가 assignee 일 때만 노출
+        if (access.assigneeLevelIds.isNotEmpty()) {
+            val assigneeCondition =
+                ISSUES.SECURITY_LEVEL_ID.`in`(access.assigneeLevelIds)
+                    .and(ISSUES.ASSIGNEE_ID.eq(actor))
+            condition = condition.or(assigneeCondition)
+        }
+
+        return condition
+    }
+
+    companion object {
+        /**
+         * 기본 unrestricted [IssueSecurityAccess] — [listWithType] 파라미터 기본값.
+         * non-prod 환경(AlwaysAllowIssueSecurityDirectory)과 동일한 빠른경로를 보장한다.
+         */
+        private val UNRESTRICTED_ACCESS =
+            IssueSecurityAccess(
+                unrestricted = true,
+                staticLevelIds = emptySet(),
+                reporterLevelIds = emptySet(),
+                assigneeLevelIds = emptySet(),
+            )
     }
 
     /**
@@ -585,6 +674,41 @@ class IssueRepository(
     }
 
     /**
+     * 이슈 보안 등급을 갱신한다 (낙관락 OCC UPDATE).
+     *
+     * WHERE key=? AND version=? AND deleted_at IS NULL 조건으로 UPDATE.
+     * version 불일치(stale read) 시 영향 행 0 반환.
+     *
+     * null 전달 시 DB NULL 로 클리어하여 이슈를 공개 상태로 만든다.
+     *
+     * @param key 이슈 키.
+     * @param securityLevelId 지정할 보안 등급 UUID. null 이면 등급 해제(공개).
+     * @param expectedVersion 현재 버전. DB 버전과 일치해야 업데이트가 실행된다.
+     * @return 업데이트된 행 수 (성공=1, 낙관락 충돌=0).
+     */
+    @Transactional
+    fun updateSecurityLevel(
+        key: IssueKey,
+        securityLevelId: UUID?,
+        expectedVersion: Long,
+    ): Int {
+        log.debug(
+            "updateSecurityLevel key={} securityLevelId={} expectedVersion={}",
+            key.value,
+            securityLevelId,
+            expectedVersion,
+        )
+        return dsl.update(ISSUES)
+            .set(ISSUES.SECURITY_LEVEL_ID, securityLevelId)
+            .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+            .set(ISSUES.VERSION, expectedVersion + 1)
+            .where(ISSUES.KEY.eq(key.value))
+            .and(ISSUES.VERSION.eq(expectedVersion))
+            .and(ISSUES.DELETED_AT.isNull)
+            .execute()
+    }
+
+    /**
      * 활성 이슈(deleted_at IS NULL)의 라벨을 prefix 로 필터해 빈도 순으로 반환한다.
      *
      * 라벨 배열(labels TEXT[])을 UNNEST 해 행으로 전개한 뒤 COUNT(DISTINCT id) 로
@@ -674,6 +798,7 @@ private fun Issue.toInsertRecord(): IssuesRecord =
         environment = environment,
         impact = impact?.toShort(),
         assigneeId = assigneeId?.value,
+        securityLevelId = securityLevelId,
     )
 
 /**
@@ -706,6 +831,7 @@ private fun IssuesRecord.toIssue(): Issue {
         impact = impact?.toInt(),
         assigneeId = assigneeId?.let { ActorId(it) },
         resolutionId = resolutionId,
+        securityLevelId = securityLevelId,
     )
 }
 

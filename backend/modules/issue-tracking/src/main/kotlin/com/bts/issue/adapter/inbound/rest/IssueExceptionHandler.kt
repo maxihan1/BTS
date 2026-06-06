@@ -8,6 +8,7 @@ import com.bts.issue.domain.IssueComponentNotFoundException
 import com.bts.issue.domain.IssueKeyPrefixReservedException
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueProjectNotFoundException
+import com.bts.issue.domain.IssueSecurityLevelNotInSchemeException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
@@ -20,6 +21,7 @@ import org.springframework.security.core.AuthenticationException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.server.ResponseStatusException
 import java.net.URI
 import java.time.Instant
 
@@ -305,6 +307,28 @@ class IssueExceptionHandler {
         )
     }
 
+    // ── 422 SECURITY_LEVEL_NOT_IN_SCHEME ──────────────────────────────────────
+
+    /**
+     * [IssueSecurityLevelNotInSchemeException] — 지정 보안 등급이 프로젝트 적용 스킴 미소속 — 422 (FR-PM-06).
+     *
+     * 보안 — detail 에 내부 식별자(levelId)를 노출하지 않는다(guard-exception 누출 방지).
+     * levelId 는 로그에만 기록한다.
+     *
+     * @param ex 스킴 미소속 보안 등급 UUID 를 포함하는 예외.
+     */
+    @ExceptionHandler(IssueSecurityLevelNotInSchemeException::class)
+    fun handleSecurityLevelNotInScheme(ex: IssueSecurityLevelNotInSchemeException): ProblemDetail {
+        log.info("ISSUE_422 security_level_not_in_scheme levelId='{}'", ex.levelId)
+        return problem(
+            status = HttpStatus.UNPROCESSABLE_ENTITY,
+            type = "security-level-not-in-scheme",
+            title = "Security Level Not In Scheme",
+            errorCode = IssueErrorCodes.SECURITY_LEVEL_NOT_IN_SCHEME,
+            detail = "지정한 보안 등급이 이 프로젝트의 적용 스킴에 속하지 않습니다.",
+        )
+    }
+
     // ── 404 RESOLUTION_NOT_FOUND ──────────────────────────────────────────────
 
     /**
@@ -324,6 +348,43 @@ class IssueExceptionHandler {
             title = "Resolution Not Found",
             errorCode = IssueErrorCodes.RESOLUTION_NOT_FOUND,
             detail = ex.message,
+        )
+    }
+
+    // ── ResponseStatusException 상태 전파 (catch-all 변질 차단) ────────────────
+
+    /**
+     * [ResponseStatusException] — 컨트롤러/헬퍼가 명시한 HTTP 상태를 그대로 전파한다 (FR-PM-06 PR-B B1).
+     *
+     * [CurrentActor.current] 가 미인증 시 던지는 401 [ResponseStatusException] 이
+     * catch-all [handleInternalError] 에 가로채여 500 으로 변질되던 문제를 차단한다.
+     * `@RestControllerAdvice` 는 Spring 의 `ResponseStatusExceptionResolver` 보다 먼저 실행되므로,
+     * [Exception] 보다 구체적인 이 핸들러를 등록해 Spring 이 우선 선택하도록 한다.
+     *
+     * 보안 — detail 에 `ex.reason` 등 내부 정보를 노출하지 않고 상태 코드 기반 일반 메시지를 사용한다
+     * (guard-exception 누출 방지). 원본 사유는 로그에만 기록한다.
+     *
+     * @param ex 컨트롤러 계층에서 던진 상태 코드 보유 예외.
+     */
+    @ExceptionHandler(ResponseStatusException::class)
+    fun handleResponseStatus(ex: ResponseStatusException): ProblemDetail {
+        val status = HttpStatus.valueOf(ex.statusCode.value())
+        log.info("ISSUE_{} response_status reason='{}'", status.value(), ex.reason)
+        val (errorCode, detail) =
+            when (status) {
+                HttpStatus.UNAUTHORIZED ->
+                    IssueErrorCodes.UNAUTHENTICATED to "인증이 필요합니다. 세션이 만료되었을 수 있습니다."
+                HttpStatus.FORBIDDEN ->
+                    IssueErrorCodes.ACCESS_DENIED to "이 작업을 수행할 권한이 없습니다."
+                else ->
+                    IssueErrorCodes.INTERNAL_ERROR to "요청을 처리할 수 없습니다."
+            }
+        return problem(
+            status = status,
+            type = "response-status",
+            title = status.reasonPhrase,
+            errorCode = errorCode,
+            detail = detail,
         )
     }
 
@@ -399,6 +460,7 @@ object IssueErrorCodes {
     const val WORKFLOW_NOT_CONFIGURED = "WORKFLOW_NOT_CONFIGURED"
     const val ASSIGNEE_NOT_FOUND = "ASSIGNEE_NOT_FOUND"
     const val COMPONENT_NOT_FOUND = "COMPONENT_NOT_FOUND"
+    const val SECURITY_LEVEL_NOT_IN_SCHEME = "SECURITY_LEVEL_NOT_IN_SCHEME"
     const val RESOLUTION_NOT_FOUND = "RESOLUTION_NOT_FOUND"
     const val INTERNAL_ERROR = "INTERNAL_ERROR"
 }

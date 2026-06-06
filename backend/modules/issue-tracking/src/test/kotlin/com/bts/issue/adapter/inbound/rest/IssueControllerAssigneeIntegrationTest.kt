@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.flywaydb.core.Flyway
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -18,6 +19,9 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Primary
 import org.springframework.http.MediaType
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.authority.SimpleGrantedAuthority
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
@@ -113,12 +117,24 @@ class IssueControllerAssigneeIntegrationTest {
     @BeforeEach
     fun setUpEach() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+        // CurrentActor 결선(FR-PM-06 PR-B) 이후 컨트롤러가 인증 주체를 요구하므로 SecurityContext 를 주입한다.
+        SecurityContextHolder.getContext().authentication =
+            UsernamePasswordAuthenticationToken(
+                "11111111-1111-4111-8111-111111111111",
+                null,
+                listOf(SimpleGrantedAuthority("ROLE_USER")),
+            )
         conn().use { c ->
             c.createStatement().use { stmt ->
                 stmt.execute("DELETE FROM issues WHERE key LIKE '$PROJECT_KEY-%'")
                 stmt.execute("UPDATE projects SET key_sequence = 0 WHERE key = '$PROJECT_KEY'")
             }
         }
+    }
+
+    @AfterEach
+    fun clearSecurityContext() {
+        SecurityContextHolder.clearContext()
     }
 
     // ── S1. 미할당 이슈에 assignee 지정 → 200 + assigneeId = 지정값 ────────────

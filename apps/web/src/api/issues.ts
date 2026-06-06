@@ -62,6 +62,13 @@ export const issueResponseSchema = z.object({
     key: z.string().min(1),
     name: z.string().min(1),
   }).nullable().optional(),
+  /**
+   * 이슈에 적용된 보안 등급 UUID (FR-PM-06 PR-B).
+   * nullable — 등급 미지정(공개) 이슈는 null.
+   * optional()을 추가해 기존 인라인 mock(securityLevelId 키 미포함)이 깨지지 않게 한다
+   * (zod-schema-strengthen-inline-mock-fanout 교훈).
+   */
+  securityLevelId: z.string().uuid().nullable().optional(),
 })
 
 /** Spring Page 응답 Zod 스키마 — 래퍼 없음 (DataResponse 감싸지 않음) */
@@ -134,6 +141,8 @@ export interface CreateIssueInput {
   summary: string
   /** FR-CM-03 — 생성 시 컴포넌트 지정. 미전달 시 빈 배열(컴포넌트 미할당)로 처리. */
   componentIds?: string[]
+  /** FR-PM-06 — 생성 시 보안등급 지정. 미전달/null이면 등급 없음(공개). */
+  securityLevelId?: string | null
 }
 
 /**
@@ -177,6 +186,13 @@ export interface UpdateIssueInput {
    * 클리어 sentinel 없음 — 한 번 설정 후 비울 수 없음.
    */
   impact?: number | null
+  /**
+   * 보안등급 UUID (FR-PM-06, JsonNullable 3-state).
+   * - undefined(미전달) = 무변경
+   * - null = 해제(공개 복귀)
+   * - UUID 문자열 = 지정
+   */
+  securityLevelId?: string | null
   expectedVersion: number
 }
 
@@ -252,14 +268,19 @@ export async function fetchIssues(params: FetchIssuesParams): Promise<IssuePage>
  * @returns 생성된 IssueResponse — 백엔드 201 `{ data: IssueResponse }` 언래핑
  */
 export async function createIssue(input: CreateIssueInput): Promise<IssueResponse> {
+  const body: Record<string, unknown> = {
+    projectKey: input.projectKey,
+    summary: input.summary,
+    // FR-CM-03 — 생성 시 컴포넌트 지정. 미전달 시 빈 배열로 전송.
+    componentIds: input.componentIds ?? [],
+  }
+  // FR-PM-06 — securityLevelId 미전달 시 필드 자체를 body에서 제외해 서버가 null(무등급)으로 처리하게 한다.
+  if (input.securityLevelId !== undefined) {
+    body['securityLevelId'] = input.securityLevelId
+  }
   const wrapped = await apiPost(
     '/api/v1/issues',
-    {
-      projectKey: input.projectKey,
-      summary: input.summary,
-      // FR-CM-03 — 생성 시 컴포넌트 지정. 미전달 시 빈 배열로 전송.
-      componentIds: input.componentIds ?? [],
-    },
+    body,
     dataResponseSchema(issueResponseSchema),
   )
   return wrapped.data

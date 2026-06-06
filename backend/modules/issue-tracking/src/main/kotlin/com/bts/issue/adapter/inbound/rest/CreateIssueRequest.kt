@@ -17,6 +17,8 @@ import java.util.UUID
  *   클라이언트가 양수를 전달하면 해당 타입으로 생성한다.
  * @property summary 이슈 제목. 공백 불가, 최대 200자.
  * @property componentIds 이슈에 연결할 컴포넌트 UUID 목록. 생략 시 빈 목록으로 처리한다 (FR-CM-03).
+ * @property securityLevelId 이슈에 지정할 보안 등급 UUID (FR-PM-06). 생략/null 이면 등급 없음(공개).
+ *   non-null 이면 서비스가 SET_ISSUE_SECURITY 권한 + 적용 스킴 소속(422)을 검증한다.
  */
 data class CreateIssueRequest(
     @field:NotBlank(message = "projectKey는 비어 있을 수 없습니다.")
@@ -27,4 +29,5 @@ data class CreateIssueRequest(
     @field:Size(max = 200, message = "summary는 200자 이하여야 합니다.")
     val summary: String,
     val componentIds: List<UUID> = emptyList(),
+    val securityLevelId: UUID? = null,
 )

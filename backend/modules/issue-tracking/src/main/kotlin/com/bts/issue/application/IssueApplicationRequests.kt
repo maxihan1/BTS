@@ -14,6 +14,8 @@ import java.util.UUID
  * @param summary 이슈 제목. 1~255자.
  * @param reporterId 이슈 생성자 ActorId.
  * @param componentIds 이슈 생성 시 연결할 컴포넌트 UUID 목록. 빈 목록이면 컴포넌트 미연결로 생성한다 (FR-CM-03).
+ * @param securityLevelId 이슈에 지정할 보안 등급 UUID (FR-PM-06). null 이면 등급 없음(공개).
+ *   non-null 이면 서비스가 SET_SECURITY 권한 + 적용 스킴 소속을 검증한다.
  */
 data class CreateIssueRequest(
     val projectKey: String,
@@ -21,7 +23,32 @@ data class CreateIssueRequest(
     val reporterId: ActorId,
     val typeId: IssueTypeId? = null,
     val componentIds: List<UUID> = emptyList(),
+    val securityLevelId: UUID? = null,
 )
+
+/**
+ * 이슈 보안 등급 수정 의도 3-state (FR-PM-06, Jira Cloud 방식).
+ *
+ * PATCH 시맨틱에서 "필드 부재(무변경)" 와 "명시 null(해제)" 를 구분하기 위한 sealed 표현이다.
+ * 컨트롤러(transport)가 `JsonNullable<UUID>` 의 presence 를 이 타입으로 변환하여 서비스에 전달한다.
+ * 웹 직렬화 라이브러리(JsonNullable)에 application 계층이 결합되지 않도록 별도 타입으로 분리한다.
+ *
+ * when 식에서 else 분기 없이 컴파일러가 완전성(exhaustiveness)을 보장한다.
+ */
+sealed interface SecurityLevelPatch {
+    /** 필드 부재 — 보안 등급을 변경하지 않는다. */
+    data object Unchanged : SecurityLevelPatch
+
+    /** 명시 null — 보안 등급을 해제하여 공개 상태로 되돌린다. */
+    data object Clear : SecurityLevelPatch
+
+    /**
+     * 값 지정 — 보안 등급을 [levelId] 로 지정한다.
+     *
+     * @param levelId 지정할 보안 등급 UUID.
+     */
+    data class Assign(val levelId: UUID) : SecurityLevelPatch
+}
 
 /**
  * 이슈 수정 요청 DTO (RFC 7396 JSON Merge Patch 시맨틱).
@@ -42,6 +69,8 @@ data class CreateIssueRequest(
  * @param labels 라벨 목록. null=무변경, []=전체 제거, 값=교체.
  * @param environment 재현 환경 설명. null=무변경, ""=클리어, 값=설정.
  * @param impact 영향도 1..3. null=무변경.
+ * @param securityLevel 보안 등급 수정 의도 (FR-PM-06). [SecurityLevelPatch] 3-state —
+ *   Unchanged=무변경(기본), Clear=해제, Assign=지정. 무변경 외에는 SET_SECURITY 권한을 검증한다.
  */
 data class UpdateIssueRequest(
     val summary: String?,
@@ -52,6 +81,7 @@ data class UpdateIssueRequest(
     val labels: List<String>? = null,
     val environment: String? = null,
     val impact: Int? = null,
+    val securityLevel: SecurityLevelPatch = SecurityLevelPatch.Unchanged,
 )
 
 /**

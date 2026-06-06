@@ -2,6 +2,9 @@
 
 package com.atlas.bts.identity.permission
 
+import com.atlas.bts.identity.group.UserGroupRepository
+import com.atlas.bts.identity.issuesecurity.IssueSecurityLookup
+import com.atlas.bts.identity.issuesecurity.IssueSecuritySchemeRepository
 import com.atlas.bts.identity.project.ProjectDirectory
 import com.atlas.bts.identity.project.ProjectMembership
 import com.atlas.bts.identity.project.ProjectMembershipRepository
@@ -24,6 +27,7 @@ import java.util.UUID
  * (c) VIEW는 매트릭스 VIEW_ISSUE 위임 — 멤버여도 매트릭스 false면 거부 (FR-PM-05)
  * (d) 프로젝트 없음(resolveKeyToId null) → CREATE 거부 — EC-2
  * (f) BROWSE는 매트릭스 BROWSE_PROJECT 위임 — 멤버여도 매트릭스 false면 거부 (FR-PM-05)
+ * (g) SET_SECURITY는 매트릭스 SET_ISSUE_SECURITY 위임 — 멤버여도 매트릭스 false면 거부 (FR-PM-06)
  *
  * MockK로 의존성을 격리하여 adapter 로직만 검증한다.
  */
@@ -31,12 +35,18 @@ class IdentityAccessIssuePermissionResolverTest {
     private val projectDirectory: ProjectDirectory = mockk()
     private val membershipRepo: ProjectMembershipRepository = mockk()
     private val schemeRepo: PermissionSchemeRepository = mockk()
+    private val securityLookup: IssueSecurityLookup = mockk()
+    private val securitySchemeRepo: IssueSecuritySchemeRepository = mockk()
+    private val userGroupRepo: UserGroupRepository = mockk()
 
     private val resolver =
         IdentityAccessIssuePermissionResolver(
             projectDirectory = projectDirectory,
             membershipRepo = membershipRepo,
             schemeRepo = schemeRepo,
+            securityLookup = securityLookup,
+            securitySchemeRepo = securitySchemeRepo,
+            userGroupRepo = userGroupRepo,
         )
 
     private val actor: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
@@ -101,6 +111,19 @@ class IdentityAccessIssuePermissionResolverTest {
 
         assertThat(
             resolver.hasPermission(actor, IssuePermission.BROWSE, IssueScope.Project("ATLAS")),
+        ).isFalse()
+    }
+
+    // ── (g) SET_SECURITY → 매트릭스 SET_ISSUE_SECURITY 위임 (멤버여도 false면 거부) ──
+
+    @Test
+    fun `SET_SECURITY는 매트릭스 SET_ISSUE_SECURITY 위임 — 멤버여도 매트릭스 false면 거부`() {
+        every { projectDirectory.resolveKeyToId("ATLAS") } returns projectId
+        every { membershipRepo.findByProjectAndUser(projectId, actor) } returns membership(ProjectRole.MEMBER)
+        every { schemeRepo.roleHasPermission(projectId, "MEMBER", "SET_ISSUE_SECURITY") } returns false
+
+        assertThat(
+            resolver.hasPermission(actor, IssuePermission.SET_SECURITY, IssueScope.Issue("ATLAS-1")),
         ).isFalse()
     }
 

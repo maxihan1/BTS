@@ -79,6 +79,11 @@ import java.util.UUID
 @Testcontainers
 class IdentityAccessIssuePermissionResolverIntegrationTest {
     companion object {
+        // 보안 등급 멤버 타입 문자열(issue_security_level_members.member_type CHECK 제약값).
+        const val MEMBER_TYPE_USER = "USER"
+        const val MEMBER_TYPE_REPORTER = "REPORTER"
+        const val MEMBER_TYPE_PROJECT_ROLE = "PROJECT_ROLE"
+
         @Container
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
@@ -170,16 +175,34 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
     // 기본 스킴 UUID — V008 시드 고정값
     private val defaultSchemeId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
 
+    // ── 보안 게이트(Task 9) 픽스처 ───────────────────────────────────────────────
+
+    /** 보안 등급 멤버 판정용 제3의 사용자(보고자/타 멤버로 사용). */
+    private val otherId: UUID = UUID.fromString("00000000-4444-0000-0000-000000000001")
+
+    /** 보안 스킴/등급 식별자. */
+    private val securitySchemeId: UUID = UUID.fromString("cccccccc-0000-0000-0000-000000000001")
+    private val levelId: UUID = UUID.fromString("dddddddd-0000-0000-0000-000000000001")
+
+    /** 보안 등급이 지정된 이슈 / 공개(등급 미지정) 이슈 키. */
+    private val securedIssueKey = "$projectKey-100"
+    private val publicIssueKey = "$projectKey-101"
+
     // ── 설정/해제 ─────────────────────────────────────────────────────────────
 
     @BeforeEach
     fun setUp() {
         ensureProjectsTableExists()
+        ensureIssuesTableExists()
         cleanTestData()
         seedUsers()
         seedProjects()
         seedMemberships()
         seedSharedSchemeMapping()
+        // 기존 매트릭스 VIEW 케이스(issueKey/sharedIssueKey)는 보안 게이트 도입 후 이슈 행이 있어야
+        // lookup 이 컨텍스트를 반환한다. 등급 미지정(공개)으로 시드해 매트릭스 판정만 검증되게 한다.
+        seedSecuredIssue(issueKey, reporterId = otherId, assigneeId = null, levelId = null)
+        seedSecuredIssue(sharedIssueKey, reporterId = otherId, assigneeId = null, levelId = null)
     }
 
     // ── Bean 배타 검증 ─────────────────────────────────────────────────────────
@@ -335,6 +358,117 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
         ).isFalse()
     }
 
+    // ── VIEW 보안등급 게이트 (FR-PM-06 PR-B Task 9) ──────────────────────────────
+    //
+    // VIEW_ISSUE 매트릭스를 통과한 actor에게 보안 등급 멤버십 게이트를 추가로 적용한다.
+    // 멤버이면 통과(S1/S4~S6), 비멤버이면 false(S2). 관리자라도 등급 멤버가 아니면 false(S7).
+    // 이 prod 단언이 거부 경로의 유일한 ground-truth다(non-prod AlwaysAllow가 마스킹, B2).
+
+    /**
+     * USER 멤버로 등급에 등록된 actor는 VIEW 보안 게이트를 통과한다(S5).
+     *
+     * memberId는 VIEW_ISSUE 매트릭스를 통과(MEMBER 역할)하고, USER 멤버로 등급에 등록돼 있어
+     * 보안 게이트도 통과한다.
+     */
+    @Test
+    fun `VIEW 게이트 — USER 멤버는 보안 등급 이슈를 통과한다 S5`() {
+        seedSecurityScheme()
+        seedSecuredIssue(securedIssueKey, reporterId = otherId, assigneeId = null, levelId = levelId)
+        addLevelMember(MEMBER_TYPE_USER, memberId.toString())
+
+        assertThat(
+            resolver.hasPermission(memberId, IssuePermission.VIEW, IssueScope.Issue(securedIssueKey)),
+        ).isTrue()
+    }
+
+    /**
+     * 등급 멤버가 아닌 actor는 VIEW_ISSUE 매트릭스를 통과해도 보안 게이트에서 차단된다(S2).
+     *
+     * memberId는 MEMBER 역할로 VIEW_ISSUE 매트릭스는 통과하지만, 등급에 어떤 멤버로도
+     * 등록돼 있지 않아 보안 게이트에서 false가 된다 → 컨트롤러가 404.
+     */
+    @Test
+    fun `VIEW 게이트 — 등급 비멤버는 매트릭스 통과해도 차단된다 S2`() {
+        seedSecurityScheme()
+        seedSecuredIssue(securedIssueKey, reporterId = otherId, assigneeId = null, levelId = levelId)
+        // 멤버 미등록 → 고아 등급은 아니나(다른 멤버 존재) memberId 자신은 비멤버.
+        addLevelMember(MEMBER_TYPE_USER, otherId.toString())
+
+        assertThat(
+            resolver.hasPermission(memberId, IssuePermission.VIEW, IssueScope.Issue(securedIssueKey)),
+        ).isFalse()
+    }
+
+    /**
+     * SYSTEM_ADMIN(전역 관리자)이라도 등급 멤버가 아니면 보안 게이트에서 차단된다(S7 — 관리자 우회 없음).
+     *
+     * adminId는 PROJECT_ADMIN으로 VIEW_ISSUE 매트릭스를 통과하지만, 등급 멤버가 아니므로
+     * 보안 게이트에서 false가 된다. resolver는 isSystemAdmin을 호출하지 않으며 admin 단락 경로가 없다.
+     * decider 호출이 누락되면 이 단언만이 회귀를 잡는다(non-prod는 항상 통과, isomorphic-clone 교훈).
+     */
+    @Test
+    fun `VIEW 게이트 — 관리자도 등급 비멤버면 차단된다 S7 우회 없음`() {
+        seedSecurityScheme()
+        seedSecuredIssue(securedIssueKey, reporterId = otherId, assigneeId = null, levelId = levelId)
+        addLevelMember(MEMBER_TYPE_USER, otherId.toString())
+
+        assertThat(
+            resolver.hasPermission(adminId, IssuePermission.VIEW, IssueScope.Issue(securedIssueKey)),
+        ).isFalse()
+    }
+
+    /**
+     * 등급 미지정(security_level_id IS NULL) 이슈는 VIEW_ISSUE 매트릭스 통과자에게 공개된다(S1).
+     *
+     * 보안 게이트는 등급이 NULL이면 무조건 통과시킨다(공개 이슈).
+     */
+    @Test
+    fun `VIEW 게이트 — 등급 미지정 이슈는 매트릭스 통과자에게 공개된다 S1`() {
+        seedSecuredIssue(publicIssueKey, reporterId = otherId, assigneeId = null, levelId = null)
+
+        assertThat(
+            resolver.hasPermission(memberId, IssuePermission.VIEW, IssueScope.Issue(publicIssueKey)),
+        ).isTrue()
+    }
+
+    /**
+     * REPORTER 멤버 타입 — actor가 이슈 보고자이면 보안 게이트를 통과한다(S4).
+     */
+    @Test
+    fun `VIEW 게이트 — REPORTER 멤버 타입은 보고자에게 통과한다 S4`() {
+        seedSecurityScheme()
+        seedSecuredIssue(securedIssueKey, reporterId = memberId, assigneeId = null, levelId = levelId)
+        addLevelMember(MEMBER_TYPE_REPORTER, null)
+
+        assertThat(
+            resolver.hasPermission(memberId, IssuePermission.VIEW, IssueScope.Issue(securedIssueKey)),
+        ).isTrue()
+    }
+
+    /**
+     * PROJECT_ROLE 멤버 타입 — actor의 프로젝트 역할이 멤버 값과 일치하면 통과한다(S6).
+     */
+    @Test
+    fun `VIEW 게이트 — PROJECT_ROLE 멤버 타입은 역할 일치 시 통과한다 S6`() {
+        seedSecurityScheme()
+        seedSecuredIssue(securedIssueKey, reporterId = otherId, assigneeId = null, levelId = levelId)
+        addLevelMember(MEMBER_TYPE_PROJECT_ROLE, "MEMBER")
+
+        assertThat(
+            resolver.hasPermission(memberId, IssuePermission.VIEW, IssueScope.Issue(securedIssueKey)),
+        ).isTrue()
+    }
+
+    /**
+     * 존재하지 않는 이슈(lookup null)는 false다 — 기존 404 일관.
+     */
+    @Test
+    fun `VIEW 게이트 — 존재하지 않는 이슈는 false다`() {
+        assertThat(
+            resolver.hasPermission(memberId, IssuePermission.VIEW, IssueScope.Issue("$projectKey-9999")),
+        ).isFalse()
+    }
+
     // ── 픽스처 헬퍼 ───────────────────────────────────────────────────────────
 
     /**
@@ -355,20 +489,50 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
         )
     }
 
+    /**
+     * issues 테이블을 생성한다(Task 9 보안 게이트의 IssueSecurityLookup이 조회).
+     *
+     * issues는 issue-tracking BC 소유라 identity-access Flyway에 없으므로 테스트 DB에 직접 만든다.
+     * 보안 판정에 필요한 의존 컬럼(key/reporter_id/assignee_id/security_level_id/deleted_at)만 둔다(ADR D2).
+     */
+    private fun ensureIssuesTableExists() {
+        jdbc.jdbcTemplate.execute(
+            """
+            CREATE TABLE IF NOT EXISTS issues (
+                id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+                key               VARCHAR(20)  NOT NULL UNIQUE,
+                reporter_id       UUID         NOT NULL,
+                assignee_id       UUID         NULL,
+                security_level_id UUID         NULL,
+                deleted_at        TIMESTAMPTZ  NULL
+            )
+            """.trimIndent(),
+        )
+    }
+
     /** 테스트 데이터를 FK 순서대로 초기화한다. */
     private fun cleanTestData() {
+        jdbc.update("DELETE FROM issue_security_level_members", emptyMap<String, Any>())
+        jdbc.update("DELETE FROM project_issue_security_schemes", emptyMap<String, Any>())
+        jdbc.update("DELETE FROM issue_security_levels", emptyMap<String, Any>())
+        jdbc.update("DELETE FROM issue_security_schemes WHERE id = :id", mapOf("id" to securitySchemeId))
+        jdbc.update("DELETE FROM issues", emptyMap<String, Any>())
         jdbc.update("DELETE FROM project_permission_scheme", emptyMap<String, Any>())
         jdbc.update("DELETE FROM project_memberships", emptyMap<String, Any>())
-        jdbc.update("DELETE FROM users WHERE id IN (:ids)", mapOf("ids" to listOf(adminId, memberId, nonMemberId)))
+        jdbc.update(
+            "DELETE FROM users WHERE id IN (:ids)",
+            mapOf("ids" to listOf(adminId, memberId, nonMemberId, otherId)),
+        )
         jdbc.update("DELETE FROM projects WHERE id IN (:ids)", mapOf("ids" to listOf(projectId, sharedProjectId)))
     }
 
-    /** 테스트 사용자 3명을 삽입한다 (FK 충족). */
+    /** 테스트 사용자 4명을 삽입한다 (FK 충족). */
     private fun seedUsers() {
         listOf(
             Triple(adminId, "itest_admin", "Integration Admin"),
             Triple(memberId, "itest_member", "Integration Member"),
             Triple(nonMemberId, "itest_nonmember", "Integration NonMember"),
+            Triple(otherId, "itest_other", "Integration Other"),
         ).forEach { (id, username, displayName) ->
             jdbc.update(
                 "INSERT INTO users (id, username, display_name) VALUES (:id, :username, :displayName)",
@@ -440,6 +604,59 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
                 "createdAt" to java.sql.Timestamp.from(now),
                 "updatedAt" to java.sql.Timestamp.from(now),
             ),
+        )
+    }
+
+    // ── 보안 게이트(Task 9) 시드 헬퍼 ───────────────────────────────────────────
+
+    /**
+     * 보안 스킴 1개 + 그 소속 등급 1개를 시드하고, projectId에 스킴을 적용한다.
+     *
+     * 등급 멤버는 [addLevelMember]로 케이스별 추가한다. 멤버를 한 명도 추가하지 않으면
+     * 고아 등급(decider가 보수적으로 차단)이 된다.
+     */
+    private fun seedSecurityScheme() {
+        jdbc.update(
+            "INSERT INTO issue_security_schemes (id, name) VALUES (:id, :name)",
+            mapOf("id" to securitySchemeId, "name" to "ITEST Security Scheme"),
+        )
+        jdbc.update(
+            "INSERT INTO issue_security_levels (id, scheme_id, name, is_default) VALUES (:id, :schemeId, :name, FALSE)",
+            mapOf("id" to levelId, "schemeId" to securitySchemeId, "name" to "Confidential"),
+        )
+        jdbc.update(
+            "INSERT INTO project_issue_security_schemes (project_id, scheme_id) VALUES (:projectId, :schemeId)",
+            mapOf("projectId" to projectId, "schemeId" to securitySchemeId),
+        )
+    }
+
+    /** [levelId] 등급에 멤버 한 명을 추가한다. */
+    private fun addLevelMember(
+        memberType: String,
+        memberValue: String?,
+    ) {
+        jdbc.update(
+            """
+            INSERT INTO issue_security_level_members (level_id, member_type, member_value)
+            VALUES (:levelId, :memberType, :memberValue)
+            """.trimIndent(),
+            mapOf("levelId" to levelId, "memberType" to memberType, "memberValue" to memberValue),
+        )
+    }
+
+    /** projectKey 프로젝트에 속한 보안 판정용 이슈를 시드한다([levelId] 또는 NULL). */
+    private fun seedSecuredIssue(
+        key: String,
+        reporterId: UUID,
+        assigneeId: UUID?,
+        levelId: UUID?,
+    ) {
+        jdbc.update(
+            """
+            INSERT INTO issues (key, reporter_id, assignee_id, security_level_id, deleted_at)
+            VALUES (:key, :reporterId, :assigneeId, :levelId, NULL)
+            """.trimIndent(),
+            mapOf("key" to key, "reporterId" to reporterId, "assigneeId" to assigneeId, "levelId" to levelId),
         )
     }
 }

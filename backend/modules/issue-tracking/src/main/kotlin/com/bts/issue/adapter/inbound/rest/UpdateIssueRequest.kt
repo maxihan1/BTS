@@ -8,6 +8,8 @@ import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Positive
 import jakarta.validation.constraints.Size
+import org.openapitools.jackson.nullable.JsonNullable
+import java.util.UUID
 
 /**
  * 이슈 수정 REST 요청 바디.
@@ -38,6 +40,10 @@ import jakarta.validation.constraints.Size
  *   @Pattern 적용 없음 — 빈문자열은 클리어 sentinel 로 유효하다.
  *   최대 1000자 (@Size 제한).
  * @property impact 영향도 1..3. null=무변경. 범위 밖이면 400.
+ * @property securityLevelId 보안 등급 UUID (FR-PM-06, Jira Cloud 방식 3-state).
+ *   [JsonNullable] presence 로 구분한다 — 필드 부재(undefined)=무변경, 명시 null=해제(공개 복귀), 값=지정.
+ *   기본값 [JsonNullable.undefined] 이므로 본문에 없으면 무변경이다.
+ *   지정/해제 시 SET_ISSUE_SECURITY 권한을, 지정 시 적용 스킴 소속(422)을 서비스가 검증한다.
  */
 data class UpdateIssueRequest(
     @field:Size(max = 200, message = "summary는 200자 이하여야 합니다.")
@@ -65,4 +71,5 @@ data class UpdateIssueRequest(
     @field:Min(value = 1, message = "impact는 1 이상이어야 합니다.")
     @field:Max(value = 3, message = "impact는 3 이하여야 합니다.")
     val impact: Int? = null,
+    val securityLevelId: JsonNullable<UUID> = JsonNullable.undefined(),
 )
