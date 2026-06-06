@@ -1,10 +1,11 @@
-// createIssue 컴포넌트 자동 담당자 배정 + 컴포넌트 링크 영속 통합 테스트 (FR-CM-03 Task 4)
+// createIssue 컴포넌트 자동 담당자 배정 + 컴포넌트 링크 영속 통합 테스트 (FR-CM-03 Task 4 / FR-CM-04 Task 5)
 
 package com.bts.issue.application
 
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -40,7 +41,10 @@ import java.util.UUID
  *
  * ## 검증 시나리오
  * - S1. 리드 Alice 인 컴포넌트로 생성 → assignee=Alice + componentIds 영속 + version=1
+ * - S2. 컴포넌트 리드 없음 + 프로젝트 리드 지정 → 프로젝트 리드 배정 (FR-CM-04 Task 5 RED)
+ * - S3. 컴포넌트 없는 이슈 + 프로젝트 리드 → 프로젝트 리드 배정 (FR-CM-04 Task 5 RED)
  * - S4. 리드 다른 두 컴포넌트(이름 다름) → 이름 사전순 첫 번째의 리드가 assignee
+ * - S4-fallback. 컴포넌트 리드 없음 + 프로젝트 리드 없음 → null (FR-CM-04 Task 5 RED)
  * - S5. 리드 null 컴포넌트로 생성 → assignee null
  * - noComponent. 컴포넌트 없이 생성 → assignee null, componentIds 빈
  * - invalidOtherProject. 다른 프로젝트 컴포넌트 → 422 IssueComponentNotFoundException
@@ -58,7 +62,7 @@ class IssueCreateComponentAutoAssignIntegrationTest {
     /**
      * 자동 담당자 배정 통합 테스트 보조 설정.
      *
-     * 실 ComponentRepository + IssueApplicationService 재조립.
+     * 실 ComponentRepository + ProjectLeadRepository + IssueApplicationService 재조립.
      * TestConfig 의 componentRepository=mockk(relaxed=true) 를 실 DB 로 대체한다.
      */
     @Configuration
@@ -66,6 +70,9 @@ class IssueCreateComponentAutoAssignIntegrationTest {
     open class AutoAssignTestConfig {
         @Bean
         open fun realComponentRepository(dsl: DSLContext): ComponentRepository = ComponentRepository(dsl)
+
+        @Bean
+        open fun realProjectLeadRepository(dsl: DSLContext): ProjectLeadRepository = ProjectLeadRepository(dsl)
 
         @Bean
         @Primary
@@ -79,6 +86,7 @@ class IssueCreateComponentAutoAssignIntegrationTest {
             workflowKeyResolver: WorkflowKeyResolverImpl,
             userLookupPort: UserLookupPort,
             componentRepository: ComponentRepository,
+            projectLeadRepository: ProjectLeadRepository,
             clock: Clock,
         ): IssueApplicationService =
             IssueApplicationService(
@@ -91,6 +99,7 @@ class IssueCreateComponentAutoAssignIntegrationTest {
                 workflowKeyResolver = workflowKeyResolver,
                 userLookupPort = userLookupPort,
                 componentRepository = componentRepository,
+                projectLeadRepository = projectLeadRepository,
                 clock = clock,
             )
     }
@@ -111,6 +120,9 @@ class IssueCreateComponentAutoAssignIntegrationTest {
         /** Bob — S4 시나리오 두 번째 컴포넌트 리드 UUID */
         val BOB_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000102")
 
+        /** Dave — S2/S3/S4-fallback 프로젝트 리드 UUID (FR-CM-04 Task 5) */
+        val PROJECT_LEAD_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000104")
+
         /** 이슈 생성 actor */
         val ACTOR_ID = com.bts.issue.domain.ActorId(UUID.fromString("00000000-0000-4000-8000-000000000001"))
 
@@ -126,7 +138,7 @@ class IssueCreateComponentAutoAssignIntegrationTest {
         /** S4 — 이름 사전순 두 번째(Zeta), 리드 Bob */
         lateinit var compZeta: UUID
 
-        /** S5 — 리드 없는 컴포넌트 */
+        /** S5/S2 — 리드 없는 컴포넌트 */
         lateinit var compNoLead: UUID
 
         /** invalidOtherProject — OTHERASGN 소속 컴포넌트 */
@@ -155,6 +167,8 @@ class IssueCreateComponentAutoAssignIntegrationTest {
                 )
                 stmt.execute("DELETE FROM issues WHERE key LIKE '$PROJECT_KEY-%'")
                 stmt.execute("UPDATE projects SET key_sequence = 0 WHERE key = '$PROJECT_KEY'")
+                // FR-CM-04 Task 5: 테스트 간 리드 격리 — 기본값 null 로 리셋
+                stmt.execute("UPDATE projects SET lead_user_id = NULL WHERE key = '$PROJECT_KEY'")
             }
         }
     }
@@ -203,6 +217,104 @@ class IssueCreateComponentAutoAssignIntegrationTest {
         val dbVersion = fetchVersion(issue.key.value)
         assert(dbVersion == 1L) {
             "DB version 이 1 이어야 하지만 $dbVersion 입니다."
+        }
+    }
+
+
+    // ── S2. 컴포넌트 리드 없음 + 프로젝트 리드 → 프로젝트 리드 배정 (FR-CM-04 Task 5) ──
+
+    /**
+     * S2 프로젝트 리드 폴백.
+     *
+     * Given  AUTOASSIGN 프로젝트에 리드=Dave 지정, 리드 없는 컴포넌트
+     * When   createIssue(componentIds=[compNoLead])
+     * Then   assigneeId=Dave (컴포넌트 리드 없으므로 프로젝트 리드 폴백)
+     */
+    @Test
+    fun `S2 컴포넌트 리드 없음 + 프로젝트 리드 지정 - 프로젝트 리드 배정`() {
+        setProjectLead(PROJECT_KEY, PROJECT_LEAD_ID)
+
+        val request =
+            CreateIssueRequest(
+                projectKey = PROJECT_KEY,
+                summary = "S2 프로젝트 리드 폴백 테스트",
+                reporterId = ACTOR_ID,
+                componentIds = listOf(compNoLead),
+            )
+
+        val issue = issueApplicationService.createIssue(ACTOR_ID, request)
+
+        assert(issue.assigneeId?.value == PROJECT_LEAD_ID) {
+            "프로젝트 리드 Dave 가 assignee 여야 하지만 ${issue.assigneeId?.value} 입니다."
+        }
+
+        val dbAssignee = fetchAssigneeId(issue.key.value)
+        assert(dbAssignee == PROJECT_LEAD_ID) {
+            "DB assignee_id 가 Dave 여야 하지만 $dbAssignee 입니다."
+        }
+    }
+
+    // ── S3. 컴포넌트 없는 이슈 + 프로젝트 리드 → 프로젝트 리드 배정 (FR-CM-04 Task 5) ──
+
+    /**
+     * S3 컴포넌트 없음 + 프로젝트 리드 폴백.
+     *
+     * Given  AUTOASSIGN 프로젝트에 리드=Dave 지정
+     * When   createIssue(componentIds=[])
+     * Then   assigneeId=Dave (빈 컴포넌트 경로도 프로젝트 리드 폴백)
+     */
+    @Test
+    fun `S3 컴포넌트 없는 이슈 + 프로젝트 리드 - 프로젝트 리드 배정`() {
+        setProjectLead(PROJECT_KEY, PROJECT_LEAD_ID)
+
+        val request =
+            CreateIssueRequest(
+                projectKey = PROJECT_KEY,
+                summary = "S3 컴포넌트 없음 + 프로젝트 리드 테스트",
+                reporterId = ACTOR_ID,
+                componentIds = emptyList(),
+            )
+
+        val issue = issueApplicationService.createIssue(ACTOR_ID, request)
+
+        assert(issue.assigneeId?.value == PROJECT_LEAD_ID) {
+            "프로젝트 리드 Dave 가 assignee 여야 하지만 ${issue.assigneeId?.value} 입니다."
+        }
+        assert(issue.version == 1L) {
+            "version 이 1 이어야 하지만 ${issue.version} 입니다."
+        }
+
+        val compCount = countIssueComponents(issue.key.value)
+        assert(compCount == 0) {
+            "컴포넌트 없는 이슈의 issue_components 행이 0이어야 하지만 $compCount 입니다."
+        }
+    }
+
+        // ── S4-fallback. 컴포넌트 리드 없음 + 프로젝트 리드 없음 → null (FR-CM-04 Task 5) ──
+
+    /**
+     * S4-fallback 둘 다 없음 → 미할당.
+     *
+     * Given  프로젝트 리드=null, 리드 없는 컴포넌트
+     * When   createIssue(componentIds=[compNoLead])
+     * Then   assigneeId=null
+     */
+    @Test
+    fun `S4-fallback 컴포넌트 리드 없음 + 프로젝트 리드 없음 - assignee null`() {
+        // cleanIssues 에서 lead_user_id=null 로 리셋됨 — 추가 설정 불필요
+
+        val request =
+            CreateIssueRequest(
+                projectKey = PROJECT_KEY,
+                summary = "S4-fallback 둘 다 없음 테스트",
+                reporterId = ACTOR_ID,
+                componentIds = listOf(compNoLead),
+            )
+
+        val issue = issueApplicationService.createIssue(ACTOR_ID, request)
+
+        assert(issue.assigneeId == null) {
+            "컴포넌트/프로젝트 리드 모두 없으면 assigneeId=null 이어야 하지만 \${issue.assigneeId?.value} 입니다."
         }
     }
 
@@ -371,6 +483,20 @@ class IssueCreateComponentAutoAssignIntegrationTest {
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
+
+    /** 프로젝트 lead_user_id 를 설정한다. null 이면 리드 해제. */
+    private fun setProjectLead(
+        projectKey: String,
+        leadUserId: UUID?,
+    ) {
+        conn().use { c ->
+            c.prepareStatement("UPDATE projects SET lead_user_id = ? WHERE key = ?").use { stmt ->
+                stmt.setObject(1, leadUserId)
+                stmt.setString(2, projectKey)
+                stmt.executeUpdate()
+            }
+        }
+    }
 
     private fun applyMigrations() {
         Flyway.configure()

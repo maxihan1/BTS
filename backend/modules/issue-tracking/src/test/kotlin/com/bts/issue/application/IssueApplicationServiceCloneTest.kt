@@ -10,6 +10,7 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
@@ -55,6 +56,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
     val workflowPort = mockk<WorkflowTransitionPort>()
     val workflowKeyResolver = mockk<WorkflowKeyResolver>()
     val userLookupPort = mockk<UserLookupPort>(relaxed = true)
+    val projectLeadRepository = mockk<ProjectLeadRepository>(relaxed = true)
     val clock = Clock.fixed(Instant.parse("2026-06-02T00:00:00Z"), ZoneOffset.UTC)
 
     val sut =
@@ -68,6 +70,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
             workflowKeyResolver = workflowKeyResolver,
             userLookupPort = userLookupPort,
             componentRepository = mockk(relaxed = true),
+            projectLeadRepository = projectLeadRepository,
             clock = clock,
         )
 
@@ -282,7 +285,35 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
             }
         }
 
-        context("대상 프로젝트 CREATE 권한이 없을 때") {
+        context("EC6 — 클론은 프로젝트 리드 폴백 미적용 (FR-CM-04 Task 5 회귀)") {
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(
+                        actor.value, IssuePermission.VIEW, IssueScope.Issue(sourceKey.value),
+                    )
+                } returns true
+                every {
+                    permissionResolver.hasPermission(
+                        actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey),
+                    )
+                } returns true
+                every { repo.findByKey(sourceKey) } returns source
+                every { repo.incrementKeySequence(projectKey) } returns 2L
+                every { repo.insert(any()) } answers { firstArg() }
+                every { eventPublisher.publish(any()) } returns Unit
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
+                } returns WorkflowStartState(workflowKey = "software-default", startStateKey = "open")
+            }
+
+            it("클론 시 projectLeadRepository.findLeadUserId 를 호출하지 않는다") {
+                sut.cloneIssue(actor, sourceKey, CloneIssueRequest())
+
+                verify(exactly = 0) { projectLeadRepository.findLeadUserId(any()) }
+            }
+        }
+
+                context("대상 프로젝트 CREATE 권한이 없을 때") {
             beforeEach {
                 every {
                     permissionResolver.hasPermission(

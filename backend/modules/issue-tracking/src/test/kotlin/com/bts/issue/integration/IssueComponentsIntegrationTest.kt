@@ -109,6 +109,10 @@ class IssueComponentsIntegrationTest {
          * 이 빈이 @Primary로 TestConfig 빈을 대체하여 실 DB componentRepository로 검증한다.
          */
         @Bean
+        open fun realProjectLeadRepository(dsl: DSLContext): com.bts.issue.project.repository.ProjectLeadRepository =
+            com.bts.issue.project.repository.ProjectLeadRepository(dsl)
+
+        @Bean
         @Primary
         open fun issueApplicationServiceWithRealComponents(
             repo: IssueRepository,
@@ -120,6 +124,7 @@ class IssueComponentsIntegrationTest {
             workflowKeyResolver: WorkflowKeyResolverImpl,
             userLookupPort: UserLookupPort,
             componentRepository: ComponentRepository,
+            projectLeadRepository: com.bts.issue.project.repository.ProjectLeadRepository,
             clock: Clock,
         ): IssueApplicationService =
             IssueApplicationService(
@@ -132,6 +137,7 @@ class IssueComponentsIntegrationTest {
                 workflowKeyResolver = workflowKeyResolver,
                 userLookupPort = userLookupPort,
                 componentRepository = componentRepository,
+                projectLeadRepository = projectLeadRepository,
                 clock = clock,
             )
     }

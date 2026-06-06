@@ -59,6 +59,7 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
             workflowKeyResolver = workflowKeyResolver,
             userLookupPort = userLookupPort,
             componentRepository = componentRepository,
+            projectLeadRepository = mockk(relaxed = true),
             clock = clock,
         )
 

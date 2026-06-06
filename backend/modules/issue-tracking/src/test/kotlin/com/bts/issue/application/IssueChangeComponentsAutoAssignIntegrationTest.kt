@@ -1,10 +1,11 @@
-// changeComponents 자동 담당자 배정 Testcontainers 통합 테스트 (FR-CM-03 Task 5)
+// changeComponents 자동 담당자 배정 Testcontainers 통합 테스트 (FR-CM-03 Task 5 / FR-CM-04 Task 5)
 
 package com.bts.issue.application
 
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -33,7 +34,7 @@ import java.time.Clock
 import java.util.UUID
 
 /**
- * changeComponents 자동 담당자 배정 전 구간 Testcontainers 통합 테스트 (FR-CM-03 Task 5).
+ * changeComponents 자동 담당자 배정 전 구간 Testcontainers 통합 테스트 (FR-CM-03 Task 5 / FR-CM-04 Task 5).
  *
  * 컨트롤러 → 서비스 → 리포지토리 → 실 PostgreSQL 전 구간을 검증한다.
  * 단위 mock 이 못 잡는 이중 version bump 방지, 트랜잭션 경계, 자동 배정 영속을 실증한다.
@@ -42,6 +43,7 @@ import java.util.UUID
  * - S2. 미할당 이슈에 리드 보유 컴포넌트 지정 → assignee 자동 설정 + version 정확히 +1 (이중 bump 금지)
  * - S3. 명시 담당자(Carol) 있는 이슈에 컴포넌트 지정 → Carol 보존 (덮어쓰기 안 함)
  * - S6. 컴포넌트 전부 해제(componentIds=[]) → 기존 담당자 유지 (자동 unassign 없음)
+ * - S7. 리드 없는 컴포넌트로 교체 + 프로젝트 리드 → 프로젝트 리드 재배정 (FR-CM-04 Task 5 RED)
  * - occ. 낙관락 충돌(expectedVersion 불일치) → IssueVersionConflictException (409 회귀)
  * - regression. 기존 changeComponents (FR-CM-02) version +1 단언 — 자동 배정 추가 후에도 version 변화 없음
  */
@@ -56,7 +58,7 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
     /**
      * 자동 담당자 배정 통합 테스트 보조 설정.
      *
-     * 실 ComponentRepository + IssueApplicationService 재조립.
+     * 실 ComponentRepository + ProjectLeadRepository + IssueApplicationService 재조립.
      * TestConfig 의 componentRepository=mockk(relaxed=true) 를 실 DB 로 대체한다.
      */
     @Configuration
@@ -64,6 +66,9 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
     open class AutoAssignChangeConfig {
         @Bean
         open fun realComponentRepository(dsl: DSLContext): ComponentRepository = ComponentRepository(dsl)
+
+        @Bean
+        open fun realProjectLeadRepository(dsl: DSLContext): ProjectLeadRepository = ProjectLeadRepository(dsl)
 
         @Bean
         @Primary
@@ -77,6 +82,7 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
             workflowKeyResolver: WorkflowKeyResolverImpl,
             userLookupPort: UserLookupPort,
             componentRepository: ComponentRepository,
+            projectLeadRepository: ProjectLeadRepository,
             clock: Clock,
         ): IssueApplicationService =
             IssueApplicationService(
@@ -89,6 +95,7 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
                 workflowKeyResolver = workflowKeyResolver,
                 userLookupPort = userLookupPort,
                 componentRepository = componentRepository,
+                projectLeadRepository = projectLeadRepository,
                 clock = clock,
             )
     }
@@ -108,6 +115,9 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
         /** Carol — S3 시나리오 명시 담당자 UUID */
         val CAROL_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000203")
 
+        /** Eve — S7 프로젝트 리드 UUID (FR-CM-04 Task 5) */
+        val PROJECT_LEAD_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000205")
+
         /** 이슈 조작 actor */
         val ACTOR_ID = com.bts.issue.domain.ActorId(UUID.fromString("00000000-0000-4000-8000-000000000001"))
 
@@ -117,7 +127,7 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
         /** S2 — 리드=Alice 인 컴포넌트 */
         lateinit var compWithAliceLead: UUID
 
-        /** S3/S6 — 리드 없는 컴포넌트 (담당자 보존 확인용) */
+        /** S3/S6/S7 — 리드 없는 컴포넌트 (담당자 보존/프로젝트 리드 폴백 확인용) */
         lateinit var compNoLead: UUID
     }
 
@@ -143,6 +153,8 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
                 )
                 stmt.execute("DELETE FROM issues WHERE key LIKE '$PROJECT_KEY-%'")
                 stmt.execute("UPDATE projects SET key_sequence = 0 WHERE key = '$PROJECT_KEY'")
+                // FR-CM-04 Task 5: 테스트 간 리드 격리 — 기본값 null 로 리셋
+                stmt.execute("UPDATE projects SET lead_user_id = NULL WHERE key = '$PROJECT_KEY'")
             }
         }
     }
@@ -256,6 +268,41 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
         }
     }
 
+    // ── S7. 리드 없는 컴포넌트로 교체 + 프로젝트 리드 → 프로젝트 리드 재배정 (FR-CM-04 Task 5) ──
+
+    /**
+     * S7 changeComponents 프로젝트 리드 폴백.
+     *
+     * Given  미할당 이슈(version=1), CHGCMP 프로젝트 리드=Eve
+     * When   changeComponents(componentIds=[compNoLead]) (리드 없는 컴포넌트)
+     * Then   assigneeId=Eve (컴포넌트 리드 없으므로 프로젝트 리드 폴백)
+     * And    version=2 (정확히 +1)
+     */
+    @Test
+    fun `S7 리드 없는 컴포넌트 교체 + 프로젝트 리드 - 프로젝트 리드 재배정`() {
+        setProjectLead(PROJECT_KEY, PROJECT_LEAD_ID)
+
+        val key = insertIssue("S7 프로젝트 리드 폴백 테스트", assigneeId = null)
+        val versionBefore = fetchVersion(key)
+
+        val request =
+            AppChangeComponentsRequest(
+                componentIds = listOf(compNoLead),
+                expectedVersion = versionBefore,
+            )
+        issueApplicationService.changeComponents(ACTOR_ID, com.bts.issue.domain.IssueKey(key), request)
+
+        val dbAssignee = fetchAssigneeId(key)
+        assert(dbAssignee == PROJECT_LEAD_ID) {
+            "프로젝트 리드 Eve 가 assignee 여야 하지만 $dbAssignee 입니다."
+        }
+
+        val versionAfter = fetchVersion(key)
+        assert(versionAfter == versionBefore + 1) {
+            "version 이 정확히 +1 이어야 하지만 before=$versionBefore after=$versionAfter 입니다."
+        }
+    }
+
     // ── occ. 낙관락 충돌 → IssueVersionConflictException (409 회귀) ─────────────
 
     /**
@@ -299,13 +346,14 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
      * 자동 배정 로직 추가 후에도 기존 FR-CM-02 version 계약이 깨지지 않음을 검증한다.
      * 리드 없는 컴포넌트를 사용해 자동 배정이 발동하지 않는 경로를 테스트한다.
      *
-     * Given  미할당 이슈(version=1), 리드 없는 컴포넌트
+     * Given  미할당 이슈(version=1), 리드 없는 컴포넌트, 프로젝트 리드 없음
      * When   changeComponents(componentIds=[compNoLead], expectedVersion=1)
      * Then   version=2 (정확히 +1, 이중 bump 없음)
      * And    assigneeId=null (자동 배정 미발동)
      */
     @Test
     fun `FR-CM-02 회귀 - 자동 배정 추가 후에도 version 정확히 +1 유지`() {
+        // cleanIssues 에서 lead_user_id=null 리셋됨 — 추가 설정 불필요
         val key = insertIssue("FR-CM-02 회귀 테스트", assigneeId = null)
         val versionBefore = fetchVersion(key)
 
@@ -323,11 +371,25 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
 
         val dbAssignee = fetchAssigneeId(key)
         assert(dbAssignee == null) {
-            "리드 없는 컴포넌트는 assigneeId=null 이어야 하지만 $dbAssignee 입니다."
+            "리드 없는 컴포넌트 + 프로젝트 리드 없음은 assigneeId=null 이어야 하지만 $dbAssignee 입니다."
         }
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
+
+    /** 프로젝트 lead_user_id 를 설정한다. null 이면 리드 해제. */
+    private fun setProjectLead(
+        projectKey: String,
+        leadUserId: UUID?,
+    ) {
+        conn().use { c ->
+            c.prepareStatement("UPDATE projects SET lead_user_id = ? WHERE key = ?").use { stmt ->
+                stmt.setObject(1, leadUserId)
+                stmt.setString(2, projectKey)
+                stmt.executeUpdate()
+            }
+        }
+    }
 
     private fun applyMigrations() {
         Flyway.configure()
