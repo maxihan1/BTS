@@ -6,9 +6,9 @@ import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
 import com.atlas.bts.identity.issuesecurity.IssueSecurityGroupNotFoundException
 import com.atlas.bts.identity.issuesecurity.IssueSecurityLevel
+import com.atlas.bts.identity.issuesecurity.IssueSecurityScheme
 import com.atlas.bts.identity.issuesecurity.IssueSecuritySchemeDetail
 import com.atlas.bts.identity.issuesecurity.IssueSecuritySchemeService
-import com.atlas.bts.identity.issuesecurity.IssueSecurityScheme
 import com.atlas.bts.identity.issuesecurity.IssueSecurityUserNotFoundException
 import com.atlas.bts.identity.issuesecurity.LevelNameConflictException
 import com.atlas.bts.identity.issuesecurity.LevelNotFoundException
@@ -515,7 +515,8 @@ class IssueSecuritySchemeControllerTest {
     @Test
     fun `POST members REPORTER 201 — memberValue 없음`() {
         grantAdmin()
-        every { service.addMember(LEVEL_ID, MemberType.REPORTER, null) } returns member(type = MemberType.REPORTER, value = null)
+        every { service.addMember(LEVEL_ID, MemberType.REPORTER, null) } returns
+            member(type = MemberType.REPORTER, value = null)
 
         mockMvc.perform(
             post("/api/v1/issue-security-levels/$LEVEL_ID/members")

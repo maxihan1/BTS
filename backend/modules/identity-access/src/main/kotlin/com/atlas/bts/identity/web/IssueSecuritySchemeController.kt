@@ -422,7 +422,10 @@ data class SchemeResponse(
     companion object {
         /** 스킴+등급 상세([IssueSecuritySchemeDetail])로부터 응답을 만든다. */
         fun from(detail: IssueSecuritySchemeDetail): SchemeResponse =
-            from(detail.scheme, detail.levels.map { LevelResponse.from(it) })
+            from(
+                scheme = detail.scheme,
+                levels = detail.levels.map { LevelResponse.from(it) },
+            )
 
         /** 영속 [IssueSecurityScheme] 과 등급 응답 목록으로부터 응답을 만든다. */
         fun from(
