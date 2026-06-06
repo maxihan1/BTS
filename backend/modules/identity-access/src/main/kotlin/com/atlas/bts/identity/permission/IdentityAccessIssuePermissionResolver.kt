@@ -104,5 +104,6 @@ private fun IssuePermission.toCodeOrNull(): String? =
         IssuePermission.CREATE -> "CREATE_ISSUE"
         IssuePermission.UPDATE -> "EDIT_ISSUE"
         IssuePermission.SOFT_DELETE -> "DELETE_ISSUE"
+        IssuePermission.SET_SECURITY -> "SET_ISSUE_SECURITY"
         IssuePermission.TRANSITION, IssuePermission.HARD_DELETE -> null
     }

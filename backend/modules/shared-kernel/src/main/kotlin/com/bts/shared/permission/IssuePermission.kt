@@ -15,6 +15,7 @@ package com.bts.shared.permission
  * | [UPDATE] | `PATCH /api/v1/issues/{key}` |
  * | [TRANSITION] | `POST /api/v1/issues/{key}/transition` |
  * | [SOFT_DELETE] | `DELETE /api/v1/issues/{key}` |
+ * | [SET_SECURITY] | `PATCH /api/v1/issues/{key}` 의 securityLevelId 변경 (FR-PM-06) |
  * | [HARD_DELETE] | 본 PR scope 외 — DATA.md §3 하드 삭제 ADR 결정 후 별도 엔드포인트 도입 |
  */
 enum class IssuePermission {
@@ -35,6 +36,12 @@ enum class IssuePermission {
 
     /** 이슈 소프트 삭제 권한. deleted_at 설정, 키는 영구 보존(DATA.md §1.1). */
     SOFT_DELETE,
+
+    /**
+     * 이슈 보안 수준(security level) 지정/변경 권한. `PATCH /api/v1/issues/{key}` 의
+     * securityLevelId 변경 시 검증한다. SET_ISSUE_SECURITY 매트릭스 위임 (FR-PM-06).
+     */
+    SET_SECURITY,
 
     /**
      * 이슈 하드 삭제 권한.
