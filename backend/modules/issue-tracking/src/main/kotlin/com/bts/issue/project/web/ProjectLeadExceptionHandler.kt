@@ -2,6 +2,7 @@
 
 package com.bts.issue.project.web
 
+import com.bts.issue.project.domain.ProjectLeadAccessDeniedException
 import com.bts.issue.project.domain.ProjectLeadNotFoundException
 import com.bts.issue.project.domain.ProjectLeadProjectNotFoundException
 import org.slf4j.LoggerFactory
@@ -26,6 +27,9 @@ internal object ProjectLeadErrorCodes {
     /** 프로젝트 미존재 — 404. */
     const val PROJECT_NOT_FOUND = "PROJECT_NOT_FOUND"
 
+    /** 권한 없음 — 403. */
+    const val ACCESS_DENIED = "PROJECT_LEAD_ACCESS_DENIED"
+
     /** 리드 사용자 미존재 — 422. */
     const val PROJECT_LEAD_NOT_FOUND = "PROJECT_LEAD_NOT_FOUND"
 
@@ -40,6 +44,7 @@ internal object ProjectLeadErrorCodes {
  * [com.bts.issue.component.web.ComponentExceptionHandler] 선례와 동일한 구조를 따른다.
  *
  * 매핑 규칙.
+ * - [ProjectLeadAccessDeniedException] → 403 + [ProjectLeadErrorCodes.ACCESS_DENIED]
  * - [ProjectLeadProjectNotFoundException] → 404 + [ProjectLeadErrorCodes.PROJECT_NOT_FOUND]
  * - [ProjectLeadNotFoundException] → 422 + [ProjectLeadErrorCodes.PROJECT_LEAD_NOT_FOUND]
  * - [HttpMessageNotReadableException] → 400 + [ProjectLeadErrorCodes.VALIDATION_FAILED] (잘못된 UUID 등)
@@ -67,6 +72,31 @@ class ProjectLeadExceptionHandler {
             title = "Validation Failed",
             errorCode = ProjectLeadErrorCodes.VALIDATION_FAILED,
             detail = "요청 바디를 파싱할 수 없습니다.",
+        )
+    }
+
+    // ── 403 ACCESS_DENIED ─────────────────────────────────────────────────────
+
+    /**
+     * [ProjectLeadAccessDeniedException] — 권한 없음 — 403.
+     *
+     * detail 에 내부 식별자(actor/projectId/권한코드)를 포함하지 않는다 — 일반 메시지만 노출하고,
+     * 상세는 로그에만 기록한다 (메모리: guard-exception-message-http-leak).
+     *
+     * prod profile 의 실 권한 판정기(IdentityAccessComponentPermissionResolver)가 거부하면 발생한다.
+     * AlwaysAllow stub 환경(non-prod)에서는 발생하지 않으나 핸들러는 등록한다.
+     *
+     * @param ex 권한 거부 예외 (message 에 내부 식별자 포함 — 로그 전용).
+     */
+    @ExceptionHandler(ProjectLeadAccessDeniedException::class)
+    fun handleAccessDenied(ex: ProjectLeadAccessDeniedException): ProblemDetail {
+        log.warn("PROJECT_LEAD_403 access_denied message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.FORBIDDEN,
+            type = "project-lead-access-denied",
+            title = "Access Denied",
+            errorCode = ProjectLeadErrorCodes.ACCESS_DENIED,
+            detail = "이 프로젝트의 리드를 변경할 권한이 없습니다.",
         )
     }
 
