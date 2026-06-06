@@ -286,4 +286,42 @@ class ProjectLeadApplicationServiceTest {
         val found = leadRepository.findLeadUserId(activeProjectId)
         assertThat(found).isNull()
     }
+
+    // ── getLead: 조회 ─────────────────────────────────────────────────────────
+
+    @Test
+    @Order(10)
+    fun `getLead 는 리드가 지정된 프로젝트에서 leadUserId 를 반환한다`() {
+        val leadUserId = UUID.randomUUID()
+        every { userLookupPort.exists(leadUserId) } returns true
+        sut.changeLead(
+            actorId = UUID.randomUUID(),
+            projectIdOrKey = activeProjectId.toString(),
+            leadUserId = leadUserId,
+        )
+
+        val result = sut.getLead(activeProjectId.toString())
+
+        assertThat(result.projectId).isEqualTo(activeProjectId)
+        assertThat(result.leadUserId).isEqualTo(leadUserId)
+    }
+
+    @Test
+    @Order(11)
+    fun `getLead 는 리드가 없는 프로젝트에서 leadUserId null 을 반환한다`() {
+        val result = sut.getLead(activeProjectId.toString())
+
+        assertThat(result.projectId).isEqualTo(activeProjectId)
+        assertThat<UUID?>(result.leadUserId).isNull()
+    }
+
+    @Test
+    @Order(12)
+    fun `getLead 는 존재하지 않는 projectIdOrKey 로 호출 시 ProjectLeadProjectNotFoundException 이 발생한다`() {
+        val nonExistentId = UUID.randomUUID().toString()
+
+        assertThatThrownBy {
+            sut.getLead(nonExistentId)
+        }.isInstanceOf(ProjectLeadProjectNotFoundException::class.java)
+    }
 }
