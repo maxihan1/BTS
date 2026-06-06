@@ -43,7 +43,10 @@ CREATE TABLE issue_security_level_members (
         CHECK (member_type IN ('REPORTER', 'ASSIGNEE', 'USER', 'PROJECT_ROLE', 'GROUP')),
     member_value VARCHAR(64),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (level_id, member_type, member_value)
+    -- NULLS NOT DISTINCT(PG15+): REPORTER/ASSIGNEE 는 member_value=NULL 이라 기본 NULLS DISTINCT
+    -- 였다면 NULL≠NULL 로 취급돼 같은 등급에 중복 행이 생긴다. NULL 을 동일 값으로 묶어
+    -- addMember 의 ON CONFLICT DO NOTHING 이 발화하도록 한다(중복 멤버 멱등, C1).
+    UNIQUE NULLS NOT DISTINCT (level_id, member_type, member_value)
 );
 
 -- level_id FK 인덱스 — 등급별 멤버 목록 조회 최적화.
