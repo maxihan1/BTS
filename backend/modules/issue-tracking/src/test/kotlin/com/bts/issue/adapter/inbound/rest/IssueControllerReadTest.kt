@@ -189,6 +189,32 @@ class IssueControllerReadTest {
             .andExpect(jsonPath("$.size").value(20))
     }
 
+    // ── R-5: 미인증 호출 → 401 (ResponseStatusException 변질 차단) ─────────────
+
+    @Test
+    fun `GET 이슈 단건 조회 — 미인증(SecurityContext 비움)이면 401`() {
+        // CurrentActor.current() 가 던지는 ResponseStatusException(401) 이 catch-all 500 으로
+        // 변질되지 않고 401 로 전파되는지 검증한다 (FR-PM-06 PR-B B1).
+        SecurityContextHolder.clearContext()
+
+        mockMvc.perform(
+            get("/api/v1/issues/ATLAS-1").accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isUnauthorized)
+    }
+
+    @Test
+    fun `GET 이슈 목록 조회 — 미인증(SecurityContext 비움)이면 401`() {
+        SecurityContextHolder.clearContext()
+
+        mockMvc.perform(
+            get("/api/v1/issues")
+                .param("projectKey", "ATLAS")
+                .accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isUnauthorized)
+    }
+
     // ── R-4: GET /issues projectKey 생략 → 200 + 빈 Page ──────────────────────
 
     @Test
