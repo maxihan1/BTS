@@ -286,9 +286,16 @@ class IssueSecuritySchemeService(
     /**
      * 등급에 속한 모든 멤버를 조회한다.
      *
+     * "없는 등급"과 "멤버 0인 빈 등급"을 구분하기 위해 등급 실재를 먼저 확인한다. 빈 목록만으로는
+     * 둘을 구분할 수 없어 없는 등급도 200(빈 배열)로 응답해 버리는 갭을 막는다(plan Task 5 갭 보강).
+     *
      * @param levelId 등급 식별자.
-     * @return 멤버 목록. 없으면 빈 목록.
+     * @return 멤버 목록. 멤버가 없으면 빈 목록.
+     * @throws LevelNotFoundException 해당 등급이 없는 경우.
      */
     @Transactional(readOnly = true, isolation = Isolation.READ_COMMITTED)
-    fun listMembers(levelId: UUID): List<SecurityLevelMember> = schemeRepository.listMembers(levelId)
+    fun listMembers(levelId: UUID): List<SecurityLevelMember> {
+        schemeRepository.findLevelById(levelId) ?: throw LevelNotFoundException(levelId)
+        return schemeRepository.listMembers(levelId)
+    }
 }

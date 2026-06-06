@@ -103,6 +103,17 @@ interface IssueSecuritySchemeRepository {
     fun listLevels(schemeId: UUID): List<IssueSecurityLevel>
 
     /**
+     * 등급을 id 로 단건 조회한다.
+     *
+     * 멤버 목록 조회 시 "없는 등급(404)"과 "멤버 0인 빈 등급(200)"을 구분하기 위한 등급 실재 확인용이다
+     * (plan Task 5 갭 보강 — listMembers 가 빈 목록만으로는 둘을 구분할 수 없다).
+     *
+     * @param levelId 등급 식별자.
+     * @return 등급, 없으면 `null`.
+     */
+    fun findLevelById(levelId: UUID): IssueSecurityLevel?
+
+    /**
      * 등급의 이름/설명/기본 여부를 갱신하고 갱신된 [IssueSecurityLevel]을 반환한다.
      *
      * @param id 갱신할 등급 식별자.

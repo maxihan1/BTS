@@ -93,6 +93,9 @@ class JdbcIssueSecuritySchemeRepository(
     override fun listLevels(schemeId: UUID): List<IssueSecurityLevel> =
         jdbc.query(SQL_LEVEL_LIST, mapOf("schemeId" to schemeId), LevelRowMapper)
 
+    override fun findLevelById(levelId: UUID): IssueSecurityLevel? =
+        jdbc.query(SQL_LEVEL_FIND_BY_ID, mapOf("id" to levelId), LevelRowMapper).firstOrNull()
+
     override fun updateLevel(
         id: UUID,
         name: String,
@@ -181,6 +184,13 @@ class JdbcIssueSecuritySchemeRepository(
             FROM issue_security_levels
             WHERE scheme_id = :schemeId
             ORDER BY name
+        """
+
+        /** id 단건 등급 조회 — 멤버 조회 시 등급 실재 확인용(plan T5 갭 보강). */
+        const val SQL_LEVEL_FIND_BY_ID = """
+            SELECT id, scheme_id, name, description, is_default, created_at
+            FROM issue_security_levels
+            WHERE id = :id
         """
 
         /** 전체 등급(findAll 에서 스킴별 그룹핑용). */
