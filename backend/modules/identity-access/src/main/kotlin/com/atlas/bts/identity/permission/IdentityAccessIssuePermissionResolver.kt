@@ -92,10 +92,11 @@ class IdentityAccessIssuePermissionResolver(
  * | CREATE          | CREATE_ISSUE     | FR-PM-02 매트릭스 위임       |
  * | UPDATE          | EDIT_ISSUE       | FR-PM-02 매트릭스 위임       |
  * | SOFT_DELETE     | DELETE_ISSUE     | FR-PM-02 매트릭스 위임       |
+ * | SET_SECURITY    | SET_ISSUE_SECURITY | FR-PM-06 매트릭스 위임     |
  * | TRANSITION      | null             | FR-PM-04 이관 예정           |
  * | HARD_DELETE     | null             | DATA.md §3 ADR 결정 후 도입  |
  *
- * `when` else 없이 7종 전부 명시 — enum 값 추가/리네임 시 컴파일 에러로 drift 차단.
+ * `when` else 없이 8종 전부 명시 — enum 값 추가/리네임 시 컴파일 에러로 drift 차단.
  */
 private fun IssuePermission.toCodeOrNull(): String? =
     when (this) {
