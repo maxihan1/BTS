@@ -68,7 +68,9 @@ CREATE INDEX ix_project_issue_security_schemes_scheme ON project_issue_security_
 INSERT INTO role_permissions (scheme_id, role, permission_code)
 VALUES ('00000000-0000-0000-0000-000000000001', 'PROJECT_ADMIN', 'SET_ISSUE_SECURITY');
 
-COMMENT ON TABLE issue_security_schemes           IS '이슈 보안 스킴 — 보안 등급의 묶음(전역, FR-PM-06)';
-COMMENT ON TABLE issue_security_levels            IS '보안 등급 — 스킴당 여러 개, 스킴당 기본 등급 최대 1';
-COMMENT ON TABLE issue_security_level_members     IS '보안 등급 멤버 — 다형 5종(REPORTER/ASSIGNEE/USER/PROJECT_ROLE/GROUP)';
-COMMENT ON TABLE project_issue_security_schemes   IS '프로젝트별 보안 스킴 적용(프로젝트당 0~1, 적용 중 스킴 삭제 RESTRICT)';
+COMMENT ON TABLE  issue_security_schemes               IS '이슈 보안 스킴 — 보안 등급의 묶음(전역, FR-PM-06)';
+COMMENT ON TABLE  issue_security_levels                IS '보안 등급 — 스킴당 여러 개, 스킴당 기본 등급 최대 1';
+COMMENT ON TABLE  issue_security_level_members         IS '보안 등급 멤버 — 다형 5종(REPORTER/ASSIGNEE/USER/PROJECT_ROLE/GROUP)';
+COMMENT ON COLUMN issue_security_level_members.member_value
+    IS 'member_type별 값: USER/GROUP=UUID, PROJECT_ROLE=역할 문자열, REPORTER/ASSIGNEE=NULL';
+COMMENT ON TABLE  project_issue_security_schemes       IS '프로젝트별 보안 스킴 적용(프로젝트당 0~1, 적용 중 스킴 삭제 RESTRICT)';
