@@ -398,8 +398,7 @@ class IssueSecurityIntegrationTest {
                 Map::class.java,
             )
 
-        // RED: 미인증은 401 이어야 하지만, GREEN 완성 전 일부러 틀린 단언으로 RED 를 만든다.
-        assertThat(resp.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(resp.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
     }
 
     // ── private 헬퍼 — fixture ───────────────────────────────────────────────────
@@ -452,7 +451,9 @@ class IssueSecurityIntegrationTest {
         localCredentialService.store(adminId, adminPassword.toCharArray())
         localCredentialService.store(memberId, memberPassword.toCharArray())
         localCredentialService.store(projectAdminId, projectAdminPassword.toCharArray())
-        groupId = userGroupRepository.create("isec-group", "ISEC 그룹").id
+        groupId = requireNotNull(userGroupRepository.create("isec-group", "ISEC 그룹").id) {
+            "영속 그룹은 id 를 가져야 한다."
+        }
     }
 
     /** 활성 프로젝트 1개 + PROJECT_ADMIN(projectAdmin)/MEMBER(member) 멤버십을 시드한다. */
