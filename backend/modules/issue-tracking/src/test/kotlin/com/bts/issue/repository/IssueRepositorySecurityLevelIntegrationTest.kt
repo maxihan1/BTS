@@ -46,8 +46,7 @@ class IssueRepositorySecurityLevelIntegrationTest : IssueTestcontainersBase() {
         }
     }
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
+    private fun requireTaskTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
 
     // ── SL-IT-1. securityLevelId 지정 이슈 — findByKeyWithType 결과에 반영 ────
 
