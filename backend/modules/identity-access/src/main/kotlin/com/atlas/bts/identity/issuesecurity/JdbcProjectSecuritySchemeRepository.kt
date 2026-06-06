@@ -30,22 +30,26 @@ class JdbcProjectSecuritySchemeRepository(
         projectId: UUID,
         schemeId: UUID,
     ) {
-        jdbc.update(SQL_ASSIGN, mapOf("projectId" to projectId, "schemeId" to schemeId))
+        jdbc.update(SQL_ASSIGN, mapOf(PARAM_PROJECT_ID to projectId, PARAM_SCHEME_ID to schemeId))
     }
 
     @Transactional(readOnly = true)
     override fun findByProject(projectId: UUID): UUID? =
-        jdbc.query(SQL_FIND_BY_PROJECT, mapOf("projectId" to projectId)) { rs, _ ->
+        jdbc.query(SQL_FIND_BY_PROJECT, mapOf(PARAM_PROJECT_ID to projectId)) { rs, _ ->
             rs.getObject("scheme_id", UUID::class.java)
         }.firstOrNull()
 
     override fun unassign(projectId: UUID) {
-        jdbc.update(SQL_UNASSIGN, mapOf("projectId" to projectId))
+        jdbc.update(SQL_UNASSIGN, mapOf(PARAM_PROJECT_ID to projectId))
     }
 
     // ── SQL 상수 ─────────────────────────────────────────────────────────────────
 
     private companion object {
+        /** 바인딩 파라미터 이름 — SQL `:projectId` / `:schemeId` 와 일치(오타 방지). */
+        const val PARAM_PROJECT_ID = "projectId"
+        const val PARAM_SCHEME_ID = "schemeId"
+
         /** 프로젝트 스킴 적용 — project_id PK 충돌 시 새 scheme_id 로 교체(덮어쓰기). */
         const val SQL_ASSIGN = """
             INSERT INTO project_issue_security_schemes (project_id, scheme_id)
