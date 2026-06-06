@@ -356,3 +356,13 @@ COMMENT ON COLUMN issue_components.created_at   IS '연결 생성 시각. TIMEST
 -- FK 인덱스 (DATA.md §7). component_id 만 추가: 복합 PK 선두 issue_id 는 PK 인덱스가 커버,
 -- component_id 는 PK 후미라 역방향(컴포넌트→이슈) 조인에 단독 인덱스가 필요.
 CREATE INDEX idx_issue_components_component_id ON issue_components(component_id);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V014: issues.security_level_id UUID NULL 컬럼 추가 (FR-PM-06 이슈 보안 수준)
+-- 원본: db/migration/issue-tracking/V014__issue_security_level.sql
+-- jOOQ: Issues.SECURITY_LEVEL_ID 생성 대상 (이 미러가 빠지면 상수 미생성 → repository 컴파일 불가)
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- 등급 소유 BC=identity-access (issue_security_levels.id). BC 격리로 FK 미적용 — V007 assignee 동형.
+-- null=등급 미지정(공개). 판정은 ApplicationService/cross-BC 포트가 수행.
+ALTER TABLE issues ADD COLUMN security_level_id UUID NULL;
