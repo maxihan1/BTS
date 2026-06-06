@@ -68,11 +68,13 @@ class IdentityAccessIssueSecurityDirectory(
         val schemeId = projectSecuritySchemeRepo.findByProject(projectId) ?: return UNRESTRICTED
 
         val actorRole = membershipRepo.findByProjectAndUser(projectId, actorId)?.role?.name
+        // 등급당 listMembers(N+1) 대신 스킴 멤버를 1쿼리로 모아 등급별 그룹핑(C2).
+        val membersByLevel = schemeRepo.listMembersByScheme(schemeId).groupBy { it.levelId }
         val staticLevelIds =
             schemeRepo.listLevels(schemeId)
                 .mapNotNull { it.id }
                 .filterTo(mutableSetOf()) { levelId ->
-                    actorSatisfiesStaticMember(levelId, actorId, actorRole)
+                    actorSatisfiesStaticMember(membersByLevel[levelId].orEmpty(), actorId, actorRole)
                 }
 
         return IssueSecurityAccess(
@@ -86,16 +88,18 @@ class IdentityAccessIssueSecurityDirectory(
     /**
      * actor 가 한 등급의 정적 멤버(USER/GROUP/PROJECT_ROLE) 중 하나라도 충족하는지 판정한다.
      *
+     * 멤버 목록은 [accessibleLevels] 가 배치 조회([IssueSecuritySchemeRepository.listMembersByScheme])로
+     * 미리 모아 등급별로 그룹핑한 결과를 그대로 전달받는다(여기서 추가 DB 조회 없음 — N+1 회피).
      * REPORTER/ASSIGNEE 는 이슈별 동적 조건이라 여기서 평가하지 않는다([accessibleLevels] 가 별도 집합으로 분리).
      * GROUP 은 등급에 등록된 GROUP 멤버에 대해서만 [UserGroupRepository.isMemberOf] 를 호출해
      * 전 그룹 순회를 피한다.
      */
     private fun actorSatisfiesStaticMember(
-        levelId: UUID,
+        members: List<SecurityLevelMember>,
         actorId: UUID,
         actorRole: String?,
     ): Boolean =
-        schemeRepo.listMembers(levelId).any { member ->
+        members.any { member ->
             when (member.memberType) {
                 MemberType.USER -> member.memberValue == actorId.toString()
                 MemberType.GROUP ->

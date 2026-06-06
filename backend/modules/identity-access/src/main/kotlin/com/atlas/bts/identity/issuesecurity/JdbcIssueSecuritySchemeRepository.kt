@@ -129,6 +129,10 @@ class JdbcIssueSecuritySchemeRepository(
     override fun listMembers(levelId: UUID): List<SecurityLevelMember> =
         jdbc.query(SQL_MEMBER_LIST, mapOf("levelId" to levelId), MemberRowMapper)
 
+    @Transactional(readOnly = true)
+    override fun listMembersByScheme(schemeId: UUID): List<SecurityLevelMember> =
+        jdbc.query(SQL_MEMBER_LIST_BY_SCHEME, mapOf("schemeId" to schemeId), MemberRowMapper)
+
     override fun removeMemberById(id: UUID): Boolean = jdbc.update(SQL_MEMBER_DELETE, mapOf("id" to id)) > 0
 
     // ── 판정 결선 (FR-PM-06 PR-B Task 7) ───────────────────────────────────────────
@@ -261,6 +265,19 @@ class JdbcIssueSecuritySchemeRepository(
             FROM issue_security_level_members
             WHERE level_id = :levelId
             ORDER BY created_at
+        """
+
+        /**
+         * 스킴 소속 등급들의 전체 멤버를 단일 쿼리로 조회(N+1 회피 배치).
+         * 등급 ⨝ 멤버 후 level_id 를 함께 반환해 호출 측이 메모리에서 등급별로 그룹핑한다.
+         */
+        const val SQL_MEMBER_LIST_BY_SCHEME = """
+            SELECT m.id, m.level_id, m.member_type, m.member_value, m.created_at
+            FROM issue_security_level_members m
+            JOIN issue_security_levels lvl
+              ON lvl.id = m.level_id
+            WHERE lvl.scheme_id = :schemeId
+            ORDER BY m.level_id, m.created_at
         """
 
         /** 멤버 id 단건 삭제. */

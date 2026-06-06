@@ -161,6 +161,18 @@ interface IssueSecuritySchemeRepository {
     fun listMembers(levelId: UUID): List<SecurityLevelMember>
 
     /**
+     * 한 스킴에 속한 모든 등급의 멤버를 단일 쿼리로 조회한다(N+1 회피용 배치 조회).
+     *
+     * [accessibleLevels] 산출 시 등급마다 [listMembers] 를 호출하면 등급 수 N 만큼 쿼리가 발생한다
+     * (목록 요청마다 N+1). 본 메서드는 스킴 소속 멤버를 한 번에 읽어 호출 측이 메모리에서 등급별로
+     * 그룹핑하도록 한다([SecurityLevelMember.levelId] 로 묶음). 등급 수와 무관히 멤버 조회 1쿼리다.
+     *
+     * @param schemeId 대상 스킴 식별자.
+     * @return 스킴 소속 등급들의 전체 멤버 목록. 멤버가 없으면 빈 목록.
+     */
+    fun listMembersByScheme(schemeId: UUID): List<SecurityLevelMember>
+
+    /**
      * 멤버를 id 로 제거한다.
      *
      * @param id 제거할 멤버 식별자.
