@@ -146,16 +146,18 @@ class JdbcIssueSecurityLookupIntegrationTest {
         levelId: UUID?,
         deleted: Boolean,
     ) {
+        // deleted_at 도 파라미터 바인딩으로 처리(문자열 결합 금지). 소프트삭제는 과거 시각으로 둔다.
         jdbc.update(
             """
             INSERT INTO issues (key, reporter_id, assignee_id, security_level_id, deleted_at)
-            VALUES (:key, :reporterId, :assigneeId, :levelId, ${if (deleted) "NOW()" else "NULL"})
+            VALUES (:key, :reporterId, :assigneeId, :levelId, :deletedAt)
             """.trimIndent(),
             mapOf(
                 "key" to key,
                 "reporterId" to reporterId,
                 "assigneeId" to assigneeId,
                 "levelId" to levelId,
+                "deletedAt" to if (deleted) java.sql.Timestamp.from(java.time.Instant.now()) else null,
             ),
         )
     }
