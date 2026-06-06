@@ -24,6 +24,7 @@ class IssueSecurityDeciderTest {
         createdAt = null,
     )
 
+    @Suppress("LongParameterList") // 판정 함수 입력 7종을 기본값으로 노출하는 테스트 빌더(케이스별 일부만 override).
     private fun decide(
         actor: UUID = actorId,
         level: UUID? = levelId,

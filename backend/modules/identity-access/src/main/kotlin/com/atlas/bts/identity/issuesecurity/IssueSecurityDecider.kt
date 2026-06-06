@@ -15,8 +15,12 @@ import java.util.UUID
  * 시스템 관리자라도 등급 멤버가 아니면 통과하지 못한다. 이 함수에는 admin 단락 경로가 없으며,
  * 멤버십(OR)만이 유일한 통과 수단이다.
  *
+ * 판정에 필요한 사실(actor·이슈·멤버·역할·그룹)을 모두 인자로 주입하는 순수 함수라 파라미터가 많다
+ * (I/O 분리의 대가). 이 때문에 [LongParameterList]를 의도적으로 억제한다.
+ *
  * @see docs/decisions/2026-06-06-issue-security-level-scheme-model.md 설계 결정 ADR
  */
+@Suppress("LongParameterList")
 object IssueSecurityDecider {
     /**
      * actor가 지정 보안 등급을 통과할 자격이 있는지 판정한다.
@@ -56,9 +60,7 @@ object IssueSecurityDecider {
         if (securityLevelId == null) return true
 
         // 2. 고아 등급(멤버 0)은 공개와 구분해 보수적으로 차단(C4).
-        if (members.isEmpty()) return false
-
-        // 3. 멤버 중 하나라도 충족하면 통과(OR).
+        //    멤버가 있으면 그중 하나라도 충족하면 통과(OR). isEmpty 시 any가 false라 차단도 함께 성립.
         return members.any { member ->
             satisfies(
                 member = member,
