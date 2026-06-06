@@ -27,7 +27,11 @@ data class IssueSecuritySchemeDetail(
  *
  * 트랜잭션 경계는 본 인터페이스 구현체([JdbcIssueSecuritySchemeRepository])가 클래스 수준
  * `@Transactional` 로 소유한다.
+ *
+ * 스킴/등급/멤버 3계층을 한 aggregate 포트로 묶어 메서드가 12개다(detekt `TooManyFunctions` 임계 11).
+ * 분리하면 트랜잭션 경계가 흩어지므로 의도된 설계이며 `@Suppress` 로 명시한다(plan Task 3).
  */
+@Suppress("TooManyFunctions")
 interface IssueSecuritySchemeRepository {
     // ── 스킴 ──────────────────────────────────────────────────────────────────────
 

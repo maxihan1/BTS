@@ -27,7 +27,11 @@ import java.util.UUID
  *
  * **트랜잭션 경계:**
  * 클래스 수준 `@Transactional` 로 각 연산을 한 트랜잭션으로 묶는다(ArchUnit `TransactionalServiceArchTest`).
+ *
+ * 스킴/등급/멤버 aggregate 를 한 구현체로 묶어 메서드가 12개다(detekt `TooManyFunctions` 임계 11).
+ * 트랜잭션 경계 단일화를 위한 의도된 설계이므로 `@Suppress` 로 명시한다(plan Task 3).
  */
+@Suppress("TooManyFunctions")
 @Repository
 @Transactional
 class JdbcIssueSecuritySchemeRepository(
@@ -45,8 +49,9 @@ class JdbcIssueSecuritySchemeRepository(
         ) { "INSERT ... RETURNING 이 행을 반환하지 않았습니다 (스킴 생성 실패)." }
 
     override fun findById(id: UUID): IssueSecuritySchemeDetail? {
-        val scheme = jdbc.query(SQL_SCHEME_FIND_BY_ID, mapOf("id" to id), SchemeRowMapper).firstOrNull()
-            ?: return null
+        val scheme =
+            jdbc.query(SQL_SCHEME_FIND_BY_ID, mapOf("id" to id), SchemeRowMapper).firstOrNull()
+                ?: return null
         return IssueSecuritySchemeDetail(scheme, listLevels(id))
     }
 
@@ -106,24 +111,15 @@ class JdbcIssueSecuritySchemeRepository(
 
     override fun addMember(member: SecurityLevelMember): SecurityLevelMember {
         // ON CONFLICT DO NOTHING 은 충돌 시 0행 → RETURNING 사용 불가. 멱등 추가 후 정규 행을 별도 SELECT.
-        jdbc.update(
-            SQL_MEMBER_INSERT,
+        val identity =
             mapOf(
                 "levelId" to member.levelId,
                 "memberType" to member.memberType.name,
                 "memberValue" to member.memberValue,
-            ),
-        )
+            )
+        jdbc.update(SQL_MEMBER_INSERT, identity)
         return requireNotNull(
-            jdbc.query(
-                SQL_MEMBER_FIND_ONE,
-                mapOf(
-                    "levelId" to member.levelId,
-                    "memberType" to member.memberType.name,
-                    "memberValue" to member.memberValue,
-                ),
-                MemberRowMapper,
-            ).firstOrNull(),
+            jdbc.query(SQL_MEMBER_FIND_ONE, identity, MemberRowMapper).firstOrNull(),
         ) { "멤버 추가 후 정규 행 조회에 실패했습니다 (level=${member.levelId}, type=${member.memberType})." }
     }
 
