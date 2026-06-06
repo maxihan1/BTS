@@ -146,6 +146,30 @@ class IssueSecurityDomainTest {
     }
 
     @Test
+    fun `Member create는 USER 타입에 비표준 UUID 형식이면 예외를 던진다 (N3)`() {
+        // UUID.fromString 은 "1-1-1-1-1" 같은 비표준 단축형도 관대하게 허용한다.
+        // 표준 8-4-4-4-12 hex 가 아니면 1차 도메인 검증에서 거부해야 한다.
+        assertThatThrownBy {
+            SecurityLevelMember.create(
+                levelId = UUID.randomUUID(),
+                memberType = MemberType.USER,
+                memberValue = "1-1-1-1-1",
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
+    fun `Member create는 GROUP 타입에 비표준 UUID 형식이면 예외를 던진다 (N3)`() {
+        assertThatThrownBy {
+            SecurityLevelMember.create(
+                levelId = UUID.randomUUID(),
+                memberType = MemberType.GROUP,
+                memberValue = "123-456-789-abc-def",
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
     fun `Member create는 USER 타입에 null memberValue면 예외를 던진다`() {
         assertThatThrownBy {
             SecurityLevelMember.create(

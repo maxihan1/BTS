@@ -4,6 +4,7 @@ package com.atlas.bts.identity.web
 
 import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
+import com.atlas.bts.identity.issuesecurity.DefaultLevelConflictException
 import com.atlas.bts.identity.issuesecurity.IssueSecurityGroupNotFoundException
 import com.atlas.bts.identity.issuesecurity.IssueSecurityLevel
 import com.atlas.bts.identity.issuesecurity.IssueSecurityScheme
@@ -434,6 +435,21 @@ class IssueSecuritySchemeControllerTest {
             .andExpect(jsonPath("$.error").value("level_name_conflict"))
     }
 
+    @Test
+    fun `POST levels 둘째 기본등급 409 default_level_conflict (N1)`() {
+        grantAdmin()
+        every { service.addLevel(any(), any(), any(), any()) } throws DefaultLevelConflictException(SCHEME_ID)
+
+        mockMvc.perform(
+            post("/api/v1/issue-security-schemes/$SCHEME_ID/levels")
+                .with(jwt().jwt { it.subject(ADMIN_ID.toString()) })
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"name":"둘째기본","isDefault":true}"""),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.error").value("default_level_conflict"))
+    }
+
     // ── PATCH /api/v1/issue-security-levels/{levelId} — updateLevel ──────────
 
     @Test
@@ -529,7 +545,8 @@ class IssueSecuritySchemeControllerTest {
     }
 
     @Test
-    fun `POST members 잘못된 값 400 validation_error`() {
+    fun `POST members 잘못된 값 400 member_value_invalid (N2)`() {
+        // 멤버 추가 엔드포인트 한정 — 도메인 멤버값 검증 IAE 는 member_value_invalid 로 매핑(스펙 EC1/EC3).
         grantAdmin()
         every {
             service.addMember(any(), any(), any())
@@ -542,7 +559,7 @@ class IssueSecuritySchemeControllerTest {
                 .content("""{"memberType":"PROJECT_ROLE","memberValue":"NOT_A_ROLE"}"""),
         )
             .andExpect(status().isBadRequest)
-            .andExpect(jsonPath("$.error").value("validation_error"))
+            .andExpect(jsonPath("$.error").value("member_value_invalid"))
     }
 
     @Test

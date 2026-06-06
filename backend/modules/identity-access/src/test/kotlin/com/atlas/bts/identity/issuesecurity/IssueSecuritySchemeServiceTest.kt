@@ -208,6 +208,8 @@ class IssueSecuritySchemeServiceTest {
     @Test
     fun `addLevel은 스킴이 존재하면 도메인 정규화를 경유해 추가한다`() {
         every { schemeRepo.findById(schemeId) } returns IssueSecuritySchemeDetail(persistedScheme(), emptyList())
+        // isDefault=true 추가는 기존 기본 등급 사전확인을 거치므로 listLevels(빈 목록)를 stub 한다 (N1).
+        every { schemeRepo.listLevels(schemeId) } returns emptyList()
         every {
             schemeRepo.addLevel(match { it.schemeId == schemeId && it.name == "임원만" && it.isDefault })
         } returns persistedLevel(isDefault = true)
@@ -216,6 +218,18 @@ class IssueSecuritySchemeServiceTest {
 
         assertThat(result.id).isEqualTo(levelId)
         verify(exactly = 1) { schemeRepo.addLevel(match { it.name == "임원만" }) }
+    }
+
+    @Test
+    fun `addLevel은 이미 기본 등급이 있는 스킴에 둘째 기본 등급이면 DefaultLevelConflict를 던진다 (N1)`() {
+        every { schemeRepo.findById(schemeId) } returns IssueSecuritySchemeDetail(persistedScheme(), emptyList())
+        // 이미 기본 등급(isDefault=true)이 한 개 존재 → 둘째 기본 등급은 사전확인에서 거부.
+        every { schemeRepo.listLevels(schemeId) } returns listOf(persistedLevel(isDefault = true))
+
+        assertThatThrownBy { service.addLevel(schemeId, "둘째기본", null, true) }
+            .isInstanceOf(DefaultLevelConflictException::class.java)
+
+        verify(exactly = 0) { schemeRepo.addLevel(any()) }
     }
 
     @Test
