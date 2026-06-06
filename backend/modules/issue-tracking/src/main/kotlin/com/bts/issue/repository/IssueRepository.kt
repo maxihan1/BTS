@@ -414,7 +414,7 @@ class IssueRepository(
      * @param projectKey 프로젝트 접두사. 예: `"BTS"`.
      * @param pageable 페이지 정보.
      * @param actor 조회 행위자 UUID. 보안 등급 필터가 적용될 때 reporter/assignee 동적 조건에 사용.
-     *   [access] 가 unrestricted=true 이면 무의미하다.
+     *   [access] 가 unrestricted=true 이면 무의미하다. 보안 민감 메서드이므로 기본값 없이 항상 명시 전달한다.
      * @param access actor 가 접근 가능한 보안 등급 집합. 기본값은 무제한(unrestricted=true).
      * @return [Page]<[IssueResponse]> — type 요약 포함.
      */
@@ -422,7 +422,7 @@ class IssueRepository(
     fun listWithType(
         projectKey: String,
         pageable: Pageable,
-        actor: UUID = UUID(0, 0),
+        actor: UUID,
         access: IssueSecurityAccess = UNRESTRICTED_ACCESS,
     ): Page<IssueResponse> {
         val activeInProject =

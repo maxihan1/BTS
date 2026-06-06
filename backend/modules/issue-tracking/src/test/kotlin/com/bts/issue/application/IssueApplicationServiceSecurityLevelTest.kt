@@ -189,6 +189,39 @@ class IssueApplicationServiceSecurityLevelTest : DescribeSpec({
             }
         }
 
+        context("C1 — 보안등급 Assign + summary 동시 변경: 단일 +1 version 체인") {
+            val request =
+                UpdateIssueRequest(
+                    summary = "변경된 요약",
+                    expectedVersion = existingVersion,
+                    securityLevel = SecurityLevelPatch.Assign(levelId),
+                )
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.SET_SECURITY,
+                        IssueScope.Issue(issueKey.value),
+                    )
+                } returns true
+                every { securityDirectory.levelBelongsToProjectScheme(levelId, projectKey) } returns true
+                every { repo.updateSecurityLevel(issueKey, levelId, existingVersion) } returns 1
+                every {
+                    repo.updateFields(issueKey, any(), existingVersion + 1)
+                } returns 1
+            }
+
+            it("updateFields 가 보안 적용 후 +1 된 version 을 expectedVersion 으로 사용한다 (이중bump 금지)") {
+                sut.updateIssue(actor, issueKey, request)
+                // 보안 등급 적용으로 version 이 existingVersion+1 이 된 뒤,
+                // 필드 update 가 그 값을 expectedVersion 으로 받아야 단일 OCC 체인이 성립한다.
+                // 이중 bump(되돌림 회귀)면 expectedVersion 이 달라져 verify 가 실패한다.
+                verify(exactly = 1) { repo.updateSecurityLevel(issueKey, levelId, existingVersion) }
+                verify(exactly = 1) { repo.updateFields(issueKey, any(), existingVersion + 1) }
+            }
+        }
+
         context("S10 — SET_SECURITY 미보유: 403 (Assign)") {
             val request =
                 UpdateIssueRequest(

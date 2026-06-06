@@ -767,7 +767,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
             )
         }
 
-        val page = repository.listWithType("TPRJ", PageRequest.of(0, 10))
+        val page = repository.listWithType("TPRJ", PageRequest.of(0, 10), reporterId.value)
 
         assertThat(page.totalElements).isEqualTo(2L)
         assertThat(page.content).allSatisfy { response ->
