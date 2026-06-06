@@ -72,6 +72,28 @@ class ProjectLeadApplicationService(
      * @throws ProjectLeadAccessDeniedException 행위자에게 컴포넌트 UPDATE 권한이 없는 경우 (403 의도).
      * @throws ProjectLeadNotFoundException leadUserId 가 non-null 이면서 시스템에 존재하지 않는 경우 (422 의도).
      */
+    /**
+     * 프로젝트 리드를 조회한다.
+     *
+     * READ 는 컴포넌트 READ 정책과 동일하게 권한 게이트 없음.
+     *
+     * @param projectIdOrKey 대상 프로젝트 UUID 문자열 또는 projectKey.
+     * @return [ProjectLeadResult] — projectId + leadUserId (null 이면 미지정).
+     * @throws ProjectLeadProjectNotFoundException 프로젝트가 미존재하거나 소프트삭제된 경우 (404 의도).
+     */
+    @Transactional(readOnly = true)
+    fun getLead(projectIdOrKey: String): ProjectLeadResult {
+        log.debug("ProjectLeadApplicationService.getLead projectIdOrKey={}", projectIdOrKey)
+
+        val projectId =
+            projectLookup.resolve(projectIdOrKey)
+                ?: throw ProjectLeadProjectNotFoundException(projectIdOrKey)
+
+        val leadUserId = repository.findLeadUserId(projectId)
+
+        return ProjectLeadResult(projectId = projectId, leadUserId = leadUserId)
+    }
+
     @Suppress("ThrowsCount")
     fun changeLead(
         actorId: UUID,
