@@ -4,6 +4,7 @@ package com.atlas.bts.identity.web
 
 import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
+import com.atlas.bts.identity.issuesecurity.IssueSecurityLevel
 import com.atlas.bts.identity.issuesecurity.ProjectNotFoundException
 import com.atlas.bts.identity.issuesecurity.ProjectSchemeAccessDeniedException
 import com.atlas.bts.identity.issuesecurity.ProjectSecuritySchemeService
@@ -67,6 +68,22 @@ class ProjectSecuritySchemeControllerTest {
         private val NOW: Instant = Instant.parse("2026-06-06T10:00:00Z")
         private const val RAW_PAT = "pat_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         private val ALLOWED_ORIGINS = listOf("http://localhost:5173")
+
+        private val LEVEL_ID: UUID = UUID.fromString("22222222-2222-4222-8222-222222222222")
+
+        private fun level(
+            id: UUID = LEVEL_ID,
+            name: String = "임원만",
+            description: String? = "임원 전용 등급",
+            isDefault: Boolean = true,
+        ) = IssueSecurityLevel(
+            id = id,
+            schemeId = SCHEME_ID,
+            name = name,
+            description = description,
+            isDefault = isDefault,
+            createdAt = NOW,
+        )
 
         private fun activePat(userId: UUID = ACTOR_ID) =
             PersonalAccessToken(
@@ -329,5 +346,62 @@ class ProjectSecuritySchemeControllerTest {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.schemeId").value(SCHEME_ID.toString()))
+    }
+
+    // ── GET /api/v1/projects/{key}/issue-security-scheme/levels — listLevelsByProject ──
+    // BE-2: 이슈 편집/생성 드롭다운 옵션용. 인증만 요구(PROJECT_ADMIN 불요), 멤버 데이터 비노출.
+
+    @Test
+    fun `GET levels 적용 스킴 등급 목록 200`() {
+        every { service.listLevelsByProject(PROJECT_KEY, ACTOR_ID) } returns listOf(level())
+
+        mockMvc.perform(
+            get("/api/v1/projects/$PROJECT_KEY/issue-security-scheme/levels")
+                .with(jwt().jwt { it.subject(ACTOR_ID.toString()) }),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.levels[0].id").value(LEVEL_ID.toString()))
+            .andExpect(jsonPath("$.levels[0].name").value("임원만"))
+            .andExpect(jsonPath("$.levels[0].description").value("임원 전용 등급"))
+            .andExpect(jsonPath("$.levels[0].isDefault").value(true))
+            // 멤버 데이터(누가 볼 수 있나)는 노출하지 않는다 — 스킴 구조만.
+            .andExpect(jsonPath("$.levels[0].members").doesNotExist())
+    }
+
+    @Test
+    fun `GET levels 미적용 프로젝트 200 빈 배열`() {
+        every { service.listLevelsByProject(PROJECT_KEY, ACTOR_ID) } returns emptyList()
+
+        mockMvc.perform(
+            get("/api/v1/projects/$PROJECT_KEY/issue-security-scheme/levels")
+                .with(jwt().jwt { it.subject(ACTOR_ID.toString()) }),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.levels").isArray)
+            .andExpect(jsonPath("$.levels").isEmpty)
+    }
+
+    @Test
+    fun `GET levels 없는 프로젝트 404 project_not_found`() {
+        every { service.listLevelsByProject(PROJECT_KEY, ACTOR_ID) } throws ProjectNotFoundException(PROJECT_KEY)
+
+        mockMvc.perform(
+            get("/api/v1/projects/$PROJECT_KEY/issue-security-scheme/levels")
+                .with(jwt().jwt { it.subject(ACTOR_ID.toString()) }),
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.error").value("project_not_found"))
+    }
+
+    @Test
+    fun `GET levels 미인증 401 unauthorized — 프로젝트 조회보다 actor 추출 먼저`() {
+        mockMvc.perform(
+            get("/api/v1/projects/$PROJECT_KEY/issue-security-scheme/levels")
+                .with(jwt().jwt { it.subject("not-a-uuid") }),
+        )
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.error").value("unauthorized"))
+
+        verify(exactly = 0) { service.listLevelsByProject(any(), any()) }
     }
 }
