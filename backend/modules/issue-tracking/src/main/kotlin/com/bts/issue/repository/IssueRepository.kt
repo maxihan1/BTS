@@ -603,7 +603,12 @@ class IssueRepository(
         securityLevelId: UUID?,
         expectedVersion: Long,
     ): Int {
-        log.debug("updateSecurityLevel key={} securityLevelId={} expectedVersion={}", key.value, securityLevelId, expectedVersion)
+        log.debug(
+            "updateSecurityLevel key={} securityLevelId={} expectedVersion={}",
+            key.value,
+            securityLevelId,
+            expectedVersion,
+        )
         return dsl.update(ISSUES)
             .set(ISSUES.SECURITY_LEVEL_ID, securityLevelId)
             .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))

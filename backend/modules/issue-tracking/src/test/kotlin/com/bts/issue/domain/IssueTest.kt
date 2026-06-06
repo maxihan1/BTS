@@ -578,7 +578,7 @@ class IssueTest {
     }
 
     @Test
-    fun `assignSecurityLevel_sets_levelId_and_bumps_version — assignSecurityLevel(UUID) 호출 시 securityLevelId 가 설정되고 version 이 +1 된다`() {
+    fun `assignSecurityLevel_sets_levelId_and_bumps_version — levelId 설정 및 version+1`() {
         val issue =
             Issue.create(
                 id = validId,
@@ -598,7 +598,7 @@ class IssueTest {
     }
 
     @Test
-    fun `assignSecurityLevel_null_clears_levelId_and_bumps_version — assignSecurityLevel(null) 호출 시 securityLevelId 가 null 이 되고 version 이 +1 된다`() {
+    fun `assignSecurityLevel_null_clears_levelId_and_bumps_version — null 전달 시 levelId=null, version+1`() {
         val levelId = UUID.randomUUID()
         val issue =
             Issue.create(
