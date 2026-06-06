@@ -270,6 +270,22 @@ class JdbcUserGroupRepositoryIntegrationTest {
         assertThat(repository.existsById(UUID.randomUUID())).isFalse()
     }
 
+    // ── isMemberOf (PR-B Task 7 — GROUP 보안 등급 판정용 단건 소속 확인) ────────────
+
+    @Test
+    fun `isMemberOf는 그룹 소속 사용자면 true, 비소속이면 false를 반환한다`() {
+        val created = repository.create("fr-pm-09-t3-ismember", null)
+        repository.addMember(created.id!!, userAId)
+
+        assertThat(repository.isMemberOf(created.id!!, userAId)).isTrue()
+        assertThat(repository.isMemberOf(created.id!!, userBId)).isFalse()
+    }
+
+    @Test
+    fun `isMemberOf는 존재하지 않는 그룹이면 false를 반환한다`() {
+        assertThat(repository.isMemberOf(UUID.randomUUID(), userAId)).isFalse()
+    }
+
     // ── name UNIQUE ───────────────────────────────────────────────────────────────
 
     @Test

@@ -121,10 +121,21 @@ class JdbcIssueSecuritySchemeRepositoryIntegrationTest {
     private lateinit var repository: IssueSecuritySchemeRepository
 
     @Autowired
+    private lateinit var projectSchemeRepository: ProjectSecuritySchemeRepository
+
+    @Autowired
     private lateinit var jdbc: NamedParameterJdbcTemplate
 
     @BeforeEach
     fun setUp() {
+        // 프로젝트 적용표는 scheme FK(ON DELETE RESTRICT)라 스킴 삭제 전에 먼저 비운다.
+        jdbc.update(
+            """
+            DELETE FROM project_issue_security_schemes
+            WHERE scheme_id IN (SELECT id FROM issue_security_schemes WHERE name LIKE :prefix)
+            """.trimIndent(),
+            mapOf("prefix" to "fr-pm-06-t3-%"),
+        )
         // 스킴 삭제 → 등급/멤버 CASCADE 로 동반 삭제(테스트 격리).
         jdbc.update("DELETE FROM issue_security_schemes WHERE name LIKE :prefix", mapOf("prefix" to "fr-pm-06-t3-%"))
     }
@@ -408,5 +419,84 @@ class JdbcIssueSecuritySchemeRepositoryIntegrationTest {
         assertThatThrownBy {
             repository.create(IssueSecurityScheme.create("fr-pm-06-t3-dup", null))
         }.isInstanceOf(DuplicateKeyException::class.java)
+    }
+
+    // ── levelBelongsToProjectScheme (PR-B Task 7 — 등급 지정 422 검증용) ────────────
+
+    @Test
+    fun `levelBelongsToProjectScheme는 프로젝트 적용 스킴 소속 등급이면 true를 반환한다`() {
+        val scheme = repository.create(IssueSecurityScheme.create("fr-pm-06-t3-belong-ok", null))
+        val level = repository.addLevel(IssueSecurityLevel.create(scheme.id!!, "lvl", null, isDefault = false))
+        val projectId = UUID.randomUUID()
+        projectSchemeRepository.assign(projectId, scheme.id)
+
+        assertThat(repository.levelBelongsToProjectScheme(level.id!!, projectId)).isTrue()
+    }
+
+    @Test
+    fun `levelBelongsToProjectScheme는 다른 스킴 소속 등급이면 false를 반환한다`() {
+        val applied = repository.create(IssueSecurityScheme.create("fr-pm-06-t3-belong-applied", null))
+        val other = repository.create(IssueSecurityScheme.create("fr-pm-06-t3-belong-other", null))
+        val otherLevel = repository.addLevel(IssueSecurityLevel.create(other.id!!, "lvl", null, isDefault = false))
+        val projectId = UUID.randomUUID()
+        projectSchemeRepository.assign(projectId, applied.id!!)
+
+        assertThat(repository.levelBelongsToProjectScheme(otherLevel.id!!, projectId)).isFalse()
+    }
+
+    @Test
+    fun `levelBelongsToProjectScheme는 스킴 미적용 프로젝트면 false를 반환한다`() {
+        val scheme = repository.create(IssueSecurityScheme.create("fr-pm-06-t3-belong-unassigned", null))
+        val level = repository.addLevel(IssueSecurityLevel.create(scheme.id!!, "lvl", null, isDefault = false))
+
+        assertThat(repository.levelBelongsToProjectScheme(level.id!!, UUID.randomUUID())).isFalse()
+    }
+
+    @Test
+    fun `levelBelongsToProjectScheme는 존재하지 않는 등급이면 false를 반환한다`() {
+        val scheme = repository.create(IssueSecurityScheme.create("fr-pm-06-t3-belong-ghost", null))
+        val projectId = UUID.randomUUID()
+        projectSchemeRepository.assign(projectId, scheme.id!!)
+
+        assertThat(repository.levelBelongsToProjectScheme(UUID.randomUUID(), projectId)).isFalse()
+    }
+
+    // ── listLevelIdsByMemberType (PR-B Task 7 — REPORTER/ASSIGNEE 적용 등급 집합) ───
+
+    @Test
+    fun `listLevelIdsByMemberType는 해당 멤버타입을 가진 등급 id만 반환한다`() {
+        val scheme = repository.create(IssueSecurityScheme.create("fr-pm-06-t3-bytype", null))
+        val withReporter = repository.addLevel(IssueSecurityLevel.create(scheme.id!!, "r1", null, isDefault = false))
+        val withReporter2 = repository.addLevel(IssueSecurityLevel.create(scheme.id, "r2", null, isDefault = false))
+        val withAssignee = repository.addLevel(IssueSecurityLevel.create(scheme.id, "a1", null, isDefault = false))
+        repository.addMember(SecurityLevelMember.create(withReporter.id!!, MemberType.REPORTER, null))
+        repository.addMember(SecurityLevelMember.create(withReporter2.id!!, MemberType.REPORTER, null))
+        repository.addMember(SecurityLevelMember.create(withAssignee.id!!, MemberType.ASSIGNEE, null))
+
+        val reporterLevels = repository.listLevelIdsByMemberType(scheme.id, MemberType.REPORTER)
+        val assigneeLevels = repository.listLevelIdsByMemberType(scheme.id, MemberType.ASSIGNEE)
+
+        assertThat(reporterLevels).containsExactlyInAnyOrder(withReporter.id, withReporter2.id)
+        assertThat(assigneeLevels).containsExactly(withAssignee.id)
+    }
+
+    @Test
+    fun `listLevelIdsByMemberType는 다른 스킴의 등급을 섞지 않는다`() {
+        val schemeA = repository.create(IssueSecurityScheme.create("fr-pm-06-t3-bytype-a", null))
+        val schemeB = repository.create(IssueSecurityScheme.create("fr-pm-06-t3-bytype-b", null))
+        val levelA = repository.addLevel(IssueSecurityLevel.create(schemeA.id!!, "lvl", null, isDefault = false))
+        val levelB = repository.addLevel(IssueSecurityLevel.create(schemeB.id!!, "lvl", null, isDefault = false))
+        repository.addMember(SecurityLevelMember.create(levelA.id!!, MemberType.REPORTER, null))
+        repository.addMember(SecurityLevelMember.create(levelB.id!!, MemberType.REPORTER, null))
+
+        assertThat(repository.listLevelIdsByMemberType(schemeA.id, MemberType.REPORTER)).containsExactly(levelA.id)
+    }
+
+    @Test
+    fun `listLevelIdsByMemberType는 해당 멤버타입이 없으면 빈 집합을 반환한다`() {
+        val scheme = repository.create(IssueSecurityScheme.create("fr-pm-06-t3-bytype-empty", null))
+        repository.addLevel(IssueSecurityLevel.create(scheme.id!!, "lvl", null, isDefault = false))
+
+        assertThat(repository.listLevelIdsByMemberType(scheme.id, MemberType.REPORTER)).isEmpty()
     }
 }
