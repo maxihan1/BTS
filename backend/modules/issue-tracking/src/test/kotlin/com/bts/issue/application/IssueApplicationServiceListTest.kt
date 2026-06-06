@@ -11,6 +11,7 @@ import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import com.bts.shared.permission.IssueSecurityAccess
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowTransitionPort
@@ -92,7 +93,7 @@ class IssueApplicationServiceListTest : DescribeSpec({
                         IssueScope.Project(projectKey),
                     )
                 } returns true
-                every { repo.listWithType(projectKey, pageable) } returns page
+                every { repo.listWithType(projectKey, pageable, any(), any<IssueSecurityAccess>()) } returns page
             }
 
             it("Page<IssueResponse> 를 반환하며 content 크기가 일치한다") {
@@ -138,7 +139,7 @@ class IssueApplicationServiceListTest : DescribeSpec({
                         IssueScope.Project(projectKey),
                     )
                 } returns true
-                every { repo.listWithType(projectKey, pageable) } returns PageImpl(emptyList(), pageable, 0L)
+                every { repo.listWithType(projectKey, pageable, any(), any<IssueSecurityAccess>()) } returns PageImpl(emptyList(), pageable, 0L)
             }
 
             it("예외 없이 빈 페이지를 반환한다") {

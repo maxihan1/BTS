@@ -716,7 +716,9 @@ class IssueApplicationService(
             "pageSize must be 100 or fewer, but was ${pageable.pageSize}"
         }
         assertPermission(actor, IssuePermission.BROWSE, IssueScope.Project(projectKey))
-        return repo.listWithType(projectKey, pageable)
+        // 목록당 1회 cross-BC 호출 — N+1 없음. unrestricted=true 이면 WHERE 술어 미적용(빠른경로).
+        val access = securityDirectory.accessibleLevels(actor.value, projectKey)
+        return repo.listWithType(projectKey, pageable, actor.value, access)
     }
 
     // ── private helpers ────────────────────────────────────────────────────────
