@@ -167,4 +167,37 @@ interface IssueSecuritySchemeRepository {
      * @return 실제로 삭제된 행이 있으면 `true`, 없으면 `false`.
      */
     fun removeMemberById(id: UUID): Boolean
+
+    // ── 판정 결선 (FR-PM-06 PR-B Task 7) ───────────────────────────────────────────
+
+    /**
+     * 등급이 프로젝트에 적용된 스킴 소속인지 확인한다(이슈 등급 지정 422 검증용).
+     *
+     * `project_issue_security_schemes`(projectId → schemeId) ⨝ `issue_security_levels`(scheme_id)
+     * 에서 [levelId] 가 그 스킴 소속인지를 조회한다. 프로젝트에 적용 스킴이 없으면 어떤 등급도
+     * 소속이 아니므로 `false` 이다.
+     *
+     * @param levelId 지정하려는 보안 등급 식별자.
+     * @param projectId 이슈가 속한 프로젝트 식별자(cross-BC 참조).
+     * @return 적용 스킴 소속 등급이면 `true`, 아니면 `false`.
+     */
+    fun levelBelongsToProjectScheme(
+        levelId: UUID,
+        projectId: UUID,
+    ): Boolean
+
+    /**
+     * 스킴 안에서 특정 멤버 타입을 보유한 등급 id 집합을 반환한다(목록 필터 적용 등급집합용).
+     *
+     * REPORTER/ASSIGNEE 처럼 actor 식별자에 따라 동적으로 통과 여부가 갈리는 멤버 타입의
+     * "적용 등급" 집합을 산출하는 데 쓴다([com.bts.shared.permission.IssueSecurityAccess] 구성).
+     *
+     * @param schemeId 대상 스킴 식별자.
+     * @param memberType 조회할 멤버 타입.
+     * @return 해당 멤버 타입을 가진 등급 id 집합. 없으면 빈 집합.
+     */
+    fun listLevelIdsByMemberType(
+        schemeId: UUID,
+        memberType: MemberType,
+    ): Set<UUID>
 }

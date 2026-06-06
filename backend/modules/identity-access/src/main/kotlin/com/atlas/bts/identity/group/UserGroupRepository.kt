@@ -121,4 +121,19 @@ interface UserGroupRepository {
      * @return 존재하면 `true`, 아니면 `false`.
      */
     fun existsById(id: UUID): Boolean
+
+    /**
+     * 사용자가 특정 그룹의 멤버인지 단건 확인한다(FR-PM-06 PR-B Task 7).
+     *
+     * GROUP 타입 보안 등급 판정에서 actor 의 소속만 확인하면 되므로, 멤버 전체를 가져오는
+     * [listMemberIds] 보다 EXISTS 단건 조회가 효율적이다.
+     *
+     * @param groupId 그룹 식별자.
+     * @param userId 확인할 사용자 식별자.
+     * @return 해당 그룹 멤버이면 `true`, 아니면(없는 그룹 포함) `false`.
+     */
+    fun isMemberOf(
+        groupId: UUID,
+        userId: UUID,
+    ): Boolean
 }

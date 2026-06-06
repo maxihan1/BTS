@@ -131,6 +131,29 @@ class JdbcIssueSecuritySchemeRepository(
 
     override fun removeMemberById(id: UUID): Boolean = jdbc.update(SQL_MEMBER_DELETE, mapOf("id" to id)) > 0
 
+    // ── 판정 결선 (FR-PM-06 PR-B Task 7) ───────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    override fun levelBelongsToProjectScheme(
+        levelId: UUID,
+        projectId: UUID,
+    ): Boolean =
+        jdbc.queryForObject(
+            SQL_LEVEL_BELONGS_TO_PROJECT_SCHEME,
+            mapOf("levelId" to levelId, "projectId" to projectId),
+            Boolean::class.java,
+        ) ?: false
+
+    @Transactional(readOnly = true)
+    override fun listLevelIdsByMemberType(
+        schemeId: UUID,
+        memberType: MemberType,
+    ): Set<UUID> =
+        jdbc.query(
+            SQL_LEVEL_IDS_BY_MEMBER_TYPE,
+            mapOf("schemeId" to schemeId, "memberType" to memberType.name),
+        ) { rs, _ -> rs.getObject("id", UUID::class.java) }.toSet()
+
     // ── SQL 상수 ─────────────────────────────────────────────────────────────────
 
     private companion object {
@@ -244,6 +267,31 @@ class JdbcIssueSecuritySchemeRepository(
         const val SQL_MEMBER_DELETE = """
             DELETE FROM issue_security_level_members
             WHERE id = :id
+        """
+
+        /**
+         * 등급이 프로젝트 적용 스킴 소속인지 — 프로젝트 적용표 ⨝ 등급의 scheme_id 일치 EXISTS.
+         * 적용 스킴이 없으면 조인 결과가 비어 항상 false.
+         */
+        const val SQL_LEVEL_BELONGS_TO_PROJECT_SCHEME = """
+            SELECT EXISTS(
+                SELECT 1
+                FROM issue_security_levels lvl
+                JOIN project_issue_security_schemes pss
+                  ON pss.scheme_id = lvl.scheme_id
+                WHERE lvl.id = :levelId
+                  AND pss.project_id = :projectId
+            )
+        """
+
+        /** 스킴 내에서 특정 멤버 타입을 보유한 등급 id 집합(DISTINCT — 한 등급에 같은 타입 다중 멤버 가능). */
+        const val SQL_LEVEL_IDS_BY_MEMBER_TYPE = """
+            SELECT DISTINCT lvl.id
+            FROM issue_security_levels lvl
+            JOIN issue_security_level_members m
+              ON m.level_id = lvl.id
+            WHERE lvl.scheme_id = :schemeId
+              AND m.member_type = :memberType
         """
     }
 }
