@@ -298,13 +298,15 @@
 
 ### §4.6 FR-PM-06 — 이슈 보안 수준
 
-**우선순위**. 필수 | **선행**. §4.5 | **Plan slug**. `identity/issue-security-level`
+**우선순위**. 필수 | **선행**. §4.5 · §4.8(SYSTEM_ADMIN) · §4.9(사용자 그룹) | **Plan slug**. `identity/issue-security-level`
 
-- [ ] D1. 도메인 — SecurityLevel 등급 (책임. security-engineer)
-- [ ] D2. 명세 — 이슈마다 등급 + 등급별 접근자 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `security_levels`, `issues.security_level_id` (책임. db-engineer)
-- [ ] D4. 백엔드 — 등급 검증 가드 (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 (책임. security-engineer)
+**Jira식 스킴 구조 채택**(ADR [2026-06-06-issue-security-level-scheme-model](../../decisions/2026-06-06-issue-security-level-scheme-model.md)). 스킴→등급→멤버(5타입) + 프로젝트 적용 + SET_ISSUE_SECURITY. 관리자 우회 없음. **2 PR 분할** — PR-A(identity-access 관리 인프라) / PR-B(issue-tracking 컬럼·지정·판정 결선).
+
+- [x] D1. 도메인 — IssueSecurityScheme/Level/SecurityLevelMember(다형 5타입) (책임. security-engineer) (PR-A #86)
+- [x] D2. 명세 — 스킴→등급→멤버, 멤버 5타입, 관리자 우회 없음 (책임. security-engineer) (PR-A #86)
+- [x] D3. 데이터 모델 — V016 `issue_security_schemes`/`issue_security_levels`/`issue_security_level_members`/`project_issue_security_schemes` + SET_ISSUE_SECURITY 시드 (책임. db-engineer) (PR-A #86). `issues.security_level_id`는 PR-B.
+- [~] D4. 백엔드 — 관리 인프라(스킴/등급/멤버 CRUD + 프로젝트 적용 + SYSTEM_ADMIN/PROJECT_ADMIN 가드) PR-A 완료. 등급 검증 **판정 가드**(resolver 확장 + IssueSecurityLookup)는 PR-B (책임. security-engineer)
+- [~] D5. 백엔드 테스트 — 관리 prod 통합(S1~S7 + 권한 거부 ground-truth) PR-A 완료. 판정 테스트는 PR-B (책임. security-engineer)
 - [ ] D6. 프론트 UI — 이슈 생성/편집 시 등급 선택 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 

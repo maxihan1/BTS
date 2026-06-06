@@ -55,6 +55,7 @@ scheme:
 - `RESOLVE_ISSUE` - 해결 처리
 - `ATTACH_FILE` - 첨부
 - `LINK_ISSUE` - 링크
+- `SET_ISSUE_SECURITY` - 이슈에 보안 등급 지정/변경 (FR-PM-06, Jira "Set Issue Security")
 
 ### 시스템
 - `MANAGE_USERS` - 사용자 관리
@@ -64,19 +65,31 @@ scheme:
 
 ## 12.4 이슈 보안 수준 (FR-PM-06)
 
-특정 이슈를 추가로 제한:
+**Jira Cloud Issue Security와 동일 구조** (ADR [2026-06-06-issue-security-level-scheme-model](../decisions/2026-06-06-issue-security-level-scheme-model.md)). 특정 이슈에 등급을 붙여 추가 제한한다 — `VIEW_ISSUE` 권한이 있어도 그 등급의 멤버가 아니면 못 본다(미통과 시 404 존재 숨김, §12.3 BROWSE/VIEW와 일관).
 
-```kotlin
-data class IssueSecurityLevel(
-    val id: Long,
-    val projectId: Long,
-    val name: String,        // "내부용", "임원만"
-    val description: String,
-    val allowedRoles: List<Long>,
-)
+```
+이슈 보안 스킴(IssueSecurityScheme)   ── 등급들의 묶음 (전역, 여러 프로젝트 공유)
+   └─ 보안 등급(IssueSecurityLevel)    ── "내부용", "임원만" (스킴당 여러 개, 기본 등급 지정 가능)
+        └─ 등급 멤버(SecurityLevelMember) ── 멤버 타입 다형 5종
+프로젝트에 스킴 적용                    ── project_issue_security_schemes (프로젝트당 0~1, PROJECT_ADMIN)
+이슈에 등급 지정                        ── SET_ISSUE_SECURITY 권한자 (생성/편집 시)
 ```
 
-이슈 생성/수정 시 보안 수준 지정. `VIEW_ISSUE` 권한이 있어도 보안 수준 통과 못 하면 못 봄.
+```kotlin
+data class IssueSecurityScheme(val id: UUID, val name: String, val description: String?)            // 전역, name UNIQUE
+data class IssueSecurityLevel(val id: UUID, val schemeId: UUID, val name: String,
+                              val description: String?, val isDefault: Boolean)                       // 스킴당 name UNIQUE, 기본 등급 ≤1
+data class SecurityLevelMember(val id: UUID, val levelId: UUID,
+                               val memberType: MemberType, val memberValue: String?)                 // 다형
+enum class MemberType { REPORTER, ASSIGNEE, USER, PROJECT_ROLE, GROUP }
+// memberValue: USER/GROUP=UUID, PROJECT_ROLE='PROJECT_ADMIN'|'MEMBER', REPORTER/ASSIGNEE=null
+```
+
+- **멤버 타입**. REPORTER(이슈 보고자) / ASSIGNEE(현재 담당자) / USER(특정 사용자) / PROJECT_ROLE(프로젝트 역할) / GROUP(사용자 그룹 §12.6.1, FR-PM-09).
+- **관리 권한**. 스킴·등급·멤버 = `SYSTEM_ADMIN`(전역, Jira 사이트 관리자). 프로젝트에 스킴 적용 = `PROJECT_ADMIN`(역할 직접 확인). 이슈에 등급 지정 = `SET_ISSUE_SECURITY`(§12.3).
+- **관리자 우회 없음**. SYSTEM_ADMIN/PROJECT_ADMIN도 등급 멤버가 아니면 못 본다 — 등급 멤버십이 유일한 통과 경로(민감 이슈 진짜 격리).
+- **등급 없는 이슈**. 기존 `VIEW_ISSUE` 매트릭스만 적용(추가 제한 없음).
+- **구현 단계**. 관리 인프라(스킴/등급/멤버/프로젝트 적용)는 identity-access(PR-A). `issues.security_level_id` 컬럼 + 이슈 지정 + 판정 결선(`IdentityAccessIssuePermissionResolver` 확장)은 issue-tracking 결선(PR-B).
 
 ## 12.5 필드 수준 권한 (FR-PM-07)
 
