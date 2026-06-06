@@ -17,9 +17,10 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.openapitools.jackson.nullable.JsonNullableModule
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
+import org.springframework.http.converter.HttpMessageConverter
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
@@ -32,6 +33,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import java.time.Instant
 import java.util.UUID
 import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
@@ -58,18 +60,28 @@ class IssueControllerSecurityLevelTest {
      */
     @Configuration
     @EnableWebMvc
-    open class TestMvcConfig {
-        @Bean
+    open class TestMvcConfig : WebMvcConfigurer {
+        @org.springframework.context.annotation.Bean
         open fun issueApplicationService(): IssueApplicationService = mockk(relaxed = true)
 
-        @Bean
-        open fun issueController(service: IssueApplicationService): IssueController = IssueController(service)
+        @org.springframework.context.annotation.Bean
+        open fun issueController(svc: IssueApplicationService): IssueController = IssueController(svc)
 
-        @Bean
+        @org.springframework.context.annotation.Bean
         open fun issueExceptionHandler(): IssueExceptionHandler = IssueExceptionHandler()
 
-        @Bean
-        open fun jsonNullableModule(): JsonNullableModule = JsonNullableModule()
+        /**
+         * MockMvc 의 Jackson 컨버터에 [JsonNullableModule] 을 등록한다.
+         *
+         * 운영에서는 Spring Boot JacksonAutoConfiguration 이 JsonNullableModule Bean 을
+         * ObjectMapper 에 자동 등록하지만(JacksonNullableConfiguration), @EnableWebMvc 슬라이스에는
+         * 자동 등록 경로가 없으므로 컨버터의 ObjectMapper 에 직접 모듈을 등록한다.
+         */
+        override fun extendMessageConverters(converters: MutableList<HttpMessageConverter<*>>) {
+            converters
+                .filterIsInstance<MappingJackson2HttpMessageConverter>()
+                .forEach { it.objectMapper.registerModule(JsonNullableModule()) }
+        }
     }
 
     @Autowired

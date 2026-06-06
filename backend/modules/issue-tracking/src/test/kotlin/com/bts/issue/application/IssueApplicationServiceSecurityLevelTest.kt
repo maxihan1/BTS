@@ -130,7 +130,7 @@ class IssueApplicationServiceSecurityLevelTest : DescribeSpec({
 
             it("updateSecurityLevel 및 SET_SECURITY 가드를 호출하지 않는다") {
                 sut.updateIssue(actor, issueKey, request)
-                verify(exactly = 0) { repo.updateSecurityLevel(any(), any(), any()) }
+                verify(exactly = 0) { repo.updateSecurityLevel(issueKey, any(), any()) }
                 verify(exactly = 0) {
                     permissionResolver.hasPermission(actor.value, IssuePermission.SET_SECURITY, any())
                 }
@@ -211,7 +211,7 @@ class IssueApplicationServiceSecurityLevelTest : DescribeSpec({
                 shouldThrow<IssueAccessDeniedException> {
                     sut.updateIssue(actor, issueKey, request)
                 }
-                verify(exactly = 0) { repo.updateSecurityLevel(any(), any(), any()) }
+                verify(exactly = 0) { repo.updateSecurityLevel(issueKey, any(), any()) }
             }
         }
 
@@ -237,7 +237,7 @@ class IssueApplicationServiceSecurityLevelTest : DescribeSpec({
                 shouldThrow<IssueAccessDeniedException> {
                     sut.updateIssue(actor, issueKey, request)
                 }
-                verify(exactly = 0) { repo.updateSecurityLevel(any(), any(), any()) }
+                verify(exactly = 0) { repo.updateSecurityLevel(issueKey, any(), any()) }
             }
         }
 
@@ -264,7 +264,7 @@ class IssueApplicationServiceSecurityLevelTest : DescribeSpec({
                 shouldThrow<IssueSecurityLevelNotInSchemeException> {
                     sut.updateIssue(actor, issueKey, request)
                 }
-                verify(exactly = 0) { repo.updateSecurityLevel(any(), any(), any()) }
+                verify(exactly = 0) { repo.updateSecurityLevel(issueKey, any(), any()) }
             }
         }
     }
@@ -292,8 +292,9 @@ class IssueApplicationServiceSecurityLevelTest : DescribeSpec({
             every {
                 workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
             } returns WorkflowStartState(workflowKey = "software-default", startStateKey = "open")
-            every { repo.findByKeyWithType(any()) } returns makeResponse()
-            every { permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, any()) } returns true
+            // typeId=null → task fallback. relaxed mock 의 IssueTypeId 캐스팅 오류를 막기 위해 명시 stub.
+            every { issueTypeRepository.findByKey(com.bts.shared.issue.IssueTypeKey("task")) } returns
+                com.bts.issue.type.domain.IssueType.TASK.copy(id = IssueTypeId(3L))
         }
 
         context("securityLevelId=null — 등급 없음: SET_SECURITY 가드/스킴 검증 미호출") {

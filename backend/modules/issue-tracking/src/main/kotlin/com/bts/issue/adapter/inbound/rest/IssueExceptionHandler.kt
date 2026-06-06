@@ -8,6 +8,7 @@ import com.bts.issue.domain.IssueComponentNotFoundException
 import com.bts.issue.domain.IssueKeyPrefixReservedException
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueProjectNotFoundException
+import com.bts.issue.domain.IssueSecurityLevelNotInSchemeException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
@@ -305,6 +306,28 @@ class IssueExceptionHandler {
         )
     }
 
+    // ── 422 SECURITY_LEVEL_NOT_IN_SCHEME ──────────────────────────────────────
+
+    /**
+     * [IssueSecurityLevelNotInSchemeException] — 지정 보안 등급이 프로젝트 적용 스킴 미소속 — 422 (FR-PM-06).
+     *
+     * 보안 — detail 에 내부 식별자(levelId)를 노출하지 않는다(guard-exception 누출 방지).
+     * levelId 는 로그에만 기록한다.
+     *
+     * @param ex 스킴 미소속 보안 등급 UUID 를 포함하는 예외.
+     */
+    @ExceptionHandler(IssueSecurityLevelNotInSchemeException::class)
+    fun handleSecurityLevelNotInScheme(ex: IssueSecurityLevelNotInSchemeException): ProblemDetail {
+        log.info("ISSUE_422 security_level_not_in_scheme levelId='{}'", ex.levelId)
+        return problem(
+            status = HttpStatus.UNPROCESSABLE_ENTITY,
+            type = "security-level-not-in-scheme",
+            title = "Security Level Not In Scheme",
+            errorCode = IssueErrorCodes.SECURITY_LEVEL_NOT_IN_SCHEME,
+            detail = "지정한 보안 등급이 이 프로젝트의 적용 스킴에 속하지 않습니다.",
+        )
+    }
+
     // ── 404 RESOLUTION_NOT_FOUND ──────────────────────────────────────────────
 
     /**
@@ -399,6 +422,7 @@ object IssueErrorCodes {
     const val WORKFLOW_NOT_CONFIGURED = "WORKFLOW_NOT_CONFIGURED"
     const val ASSIGNEE_NOT_FOUND = "ASSIGNEE_NOT_FOUND"
     const val COMPONENT_NOT_FOUND = "COMPONENT_NOT_FOUND"
+    const val SECURITY_LEVEL_NOT_IN_SCHEME = "SECURITY_LEVEL_NOT_IN_SCHEME"
     const val RESOLUTION_NOT_FOUND = "RESOLUTION_NOT_FOUND"
     const val INTERNAL_ERROR = "INTERNAL_ERROR"
 }

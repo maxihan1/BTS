@@ -102,6 +102,20 @@ class IssueComponentNotFoundException(componentId: java.util.UUID) :
     IssueDomainException("component not found: $componentId")
 
 /**
+ * 이슈에 지정하려는 보안 등급이 프로젝트 적용 스킴 소속이 아닐 때 (FR-PM-06).
+ *
+ * 이슈 생성/수정 시 `security_level_id` 가 해당 프로젝트의 적용 스킴에 속하지 않으면 발생한다.
+ * HTTP 422 매핑은 IssueExceptionHandler 에서 처리한다.
+ *
+ * 보안 — 응답 detail 에는 내부 식별자(levelId)를 노출하지 않는다(guard-exception 누출 방지).
+ * levelId 는 로그 추적용으로만 보관한다.
+ *
+ * @param levelId 스킴 미소속 보안 등급 UUID (로그 전용, HTTP 응답 비노출).
+ */
+class IssueSecurityLevelNotInSchemeException(val levelId: java.util.UUID) :
+    IssueDomainException("security level not in project scheme: $levelId")
+
+/**
  * 워크플로우 전이가 허용되지 않을 때.
  *
  * project-workflow BC 의 [TransitionResult] 실패 케이스를 issue-tracking BC 경계 내부에서

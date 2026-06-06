@@ -17,6 +17,7 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssuePriority
 import com.bts.issue.domain.IssueProjectNotFoundException
+import com.bts.issue.domain.IssueSecurityLevelNotInSchemeException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
@@ -38,6 +39,7 @@ import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import com.bts.shared.permission.IssueSecurityDirectory
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.AvailableTransitionView
 import com.bts.shared.workflow.AvailableTransitionsRequest
@@ -89,6 +91,10 @@ class IssueApplicationService(
     private val userLookupPort: UserLookupPort,
     private val componentRepository: ComponentRepository,
     private val projectLeadRepository: ProjectLeadRepository,
+    // 기본값은 Spring이 관리하지 않는 단위 테스트 컨텍스트 호환용 fallback이다 (pdfRenderer 패턴 동형).
+    // prod 컨텍스트에서는 IdentityAccessIssueSecurityDirectory(@Profile("prod")) 또는
+    // AlwaysAllowIssueSecurityDirectory(@Profile("!prod")) Bean이 타입으로 주입돼 이 기본값을 대체한다.
+    private val securityDirectory: IssueSecurityDirectory = com.bts.issue.adapter.outbound.AlwaysAllowIssueSecurityDirectory(),
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -139,6 +145,16 @@ class IssueApplicationService(
         val normalizedComponentIds = request.componentIds.distinct()
         validateComponents(normalizedComponentIds, projectId)
 
+        // 보안 등급 지정(FR-PM-06) — null 이면 무검증(공개). non-null 이면 SET_SECURITY 가드 + 스킴 소속 422.
+        if (request.securityLevelId != null) {
+            assertSecurityLevelAssignable(
+                actor = actor,
+                scope = IssueScope.Project(request.projectKey),
+                projectKey = request.projectKey,
+                levelId = request.securityLevelId,
+            )
+        }
+
         val startState =
             try {
                 workflowKeyResolver.resolveStart(ProjectKey.of(request.projectKey), null)
@@ -163,6 +179,7 @@ class IssueApplicationService(
                 currentStateKey = startState.startStateKey,
                 assigneeId = resolvedAssignee,
                 componentIds = normalizedComponentIds,
+                securityLevelId = request.securityLevelId,
             )
         val saved = repo.insert(issue)
         repo.insertComponents(saved.id.value, normalizedComponentIds)
@@ -325,6 +342,19 @@ class IssueApplicationService(
         assertPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(key.value))
         val existing = repo.findByKey(key) ?: throw IssueNotFoundException(key)
 
+        // 보안 등급 변경(FR-PM-06) — Unchanged 외에는 SET_SECURITY 가드 + (Assign 시) 스킴 소속 422 를
+        // 부수 효과(field update) 이전에 fail-fast 로 검증한다. 미보유 403, 미소속 422.
+        if (request.securityLevel is SecurityLevelPatch.Assign) {
+            assertSecurityLevelAssignable(
+                actor = actor,
+                scope = IssueScope.Issue(key.value),
+                projectKey = key.projectPrefix,
+                levelId = request.securityLevel.levelId,
+            )
+        } else if (request.securityLevel is SecurityLevelPatch.Clear) {
+            assertPermission(actor, IssuePermission.SET_SECURITY, IssueScope.Issue(key.value))
+        }
+
         // typeId non-null 이면 활성 타입 존재 검증. null=변경없음 (resolveTypeId 의 null=fallback 과 다른 시맨틱).
         if (request.typeId != null) {
             issueTypeRepository.findById(request.typeId) ?: throw IssueTypeNotFoundException(request.typeId)
@@ -336,9 +366,13 @@ class IssueApplicationService(
         // BLOCKER 1: PATCH 경로에서 도메인 validateAndNormalizeLabels 를 우회하는 경로를 차단한다.
         val normalizedLabels: List<String>? = request.labels?.let { Issue.normalizeLabels(it) }
 
+        // 보안 등급 변경을 field update 보다 먼저 적용해 OCC version 체인을 단일화한다.
+        // 변경이 적용되면 version 이 +1 되므로 후속 field update 는 갱신된 version 을 사용해야 한다.
+        val versionAfterSecurity = applySecurityLevel(existing, request.securityLevel, request.expectedVersion)
+
         val changedFields = buildChangedFields(existing, request, normalizedLabels)
         if (changedFields.isEmpty()) {
-            log.info("issue_update_noop key={} actor={}", key.value, actor.value)
+            log.info("issue_update_noop key={} actor={} securityChanged={}", key.value, actor.value, versionAfterSecurity != request.expectedVersion)
             return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
         }
         val updatedRows =
@@ -354,7 +388,7 @@ class IssueApplicationService(
                         environment = request.environment,
                         impact = request.impact,
                     ),
-                expectedVersion = request.expectedVersion,
+                expectedVersion = versionAfterSecurity,
             )
         if (updatedRows == 0) {
             throw IssueVersionConflictException(key, existing.version)
@@ -893,6 +927,72 @@ class IssueApplicationService(
         if (!permissionResolver.hasPermission(actor.value, permission, scope)) {
             throw IssueAccessDeniedException(actor, permission, scope)
         }
+    }
+
+    /**
+     * 보안 등급 지정 가능 여부를 검증한다 (FR-PM-06).
+     *
+     * 1. [IssuePermission.SET_SECURITY] 권한을 [scope] 범위로 검증 — 미보유 시 403.
+     * 2. [IssueSecurityDirectory.levelBelongsToProjectScheme] 로 등급이 프로젝트 적용 스킴 소속인지 검증 —
+     *    미소속 시 [IssueSecurityLevelNotInSchemeException] (422).
+     *
+     * 해제(Clear)는 등급 값이 없으므로 스킴 소속 검증 대상이 아니며, 호출자가 권한만 검증한다.
+     *
+     * @param actor 행위자.
+     * @param scope 권한 평가 범위. 생성은 Project, 수정은 Issue.
+     * @param projectKey 등급이 속해야 하는 프로젝트 키.
+     * @param levelId 지정하려는 보안 등급 UUID.
+     * @throws IssueAccessDeniedException SET_SECURITY 권한 미보유 시 (403).
+     * @throws IssueSecurityLevelNotInSchemeException 등급이 적용 스킴 미소속일 때 (422).
+     */
+    private fun assertSecurityLevelAssignable(
+        actor: ActorId,
+        scope: IssueScope,
+        projectKey: String,
+        levelId: UUID,
+    ) {
+        assertPermission(actor, IssuePermission.SET_SECURITY, scope)
+        if (!securityDirectory.levelBelongsToProjectScheme(levelId, projectKey)) {
+            throw IssueSecurityLevelNotInSchemeException(levelId)
+        }
+    }
+
+    /**
+     * 보안 등급 3-state 패치를 도메인 경유로 적용하고 적용 후 OCC version 을 반환한다 (FR-PM-06).
+     *
+     * - [SecurityLevelPatch.Unchanged] — 무변경. [expectedVersion] 을 그대로 반환한다.
+     * - [SecurityLevelPatch.Clear] — 등급 해제(공개 복귀). [Issue.assignSecurityLevel](null) 경유.
+     * - [SecurityLevelPatch.Assign] — 등급 지정. [Issue.assignSecurityLevel](levelId) 경유.
+     *
+     * 권한·스킴 검증은 호출 전 [updateIssue] 가 fail-fast 로 수행한다.
+     * 영속 값은 도메인 [Issue.assignSecurityLevel] 산출물에서 가져와 repository 직행 우회를 차단한다
+     * (patch-merge-domain-bypass 방지).
+     *
+     * @param existing 변경 전 이슈.
+     * @param patch 보안 등급 수정 의도.
+     * @param expectedVersion OCC 기준 버전.
+     * @return 적용 후 버전. 변경이 일어났으면 [expectedVersion]+1, 무변경이면 [expectedVersion].
+     * @throws IssueVersionConflictException 낙관락 충돌 시.
+     */
+    private fun applySecurityLevel(
+        existing: Issue,
+        patch: SecurityLevelPatch,
+        expectedVersion: Long,
+    ): Long {
+        val targetLevelId =
+            when (patch) {
+                is SecurityLevelPatch.Unchanged -> return expectedVersion
+                is SecurityLevelPatch.Clear -> null
+                is SecurityLevelPatch.Assign -> patch.levelId
+            }
+        // 도메인 경유 — assignSecurityLevel 에 향후 불변식이 추가돼도 repository 가 우회하지 않도록 한다.
+        val mutated = existing.assignSecurityLevel(targetLevelId)
+        val rows = repo.updateSecurityLevel(existing.key, mutated.securityLevelId, expectedVersion)
+        if (rows == 0) {
+            throw IssueVersionConflictException(existing.key, existing.version)
+        }
+        log.info("issue_security_level_changed key={} levelId={}", existing.key.value, targetLevelId)
+        return expectedVersion + 1
     }
 
     /**

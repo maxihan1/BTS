@@ -5,6 +5,7 @@ package com.bts.issue.adapter.inbound.rest
 import com.bts.issue.application.AppChangeAssigneeRequest
 import com.bts.issue.application.AppChangeComponentsRequest
 import com.bts.issue.application.IssueApplicationService
+import com.bts.issue.application.SecurityLevelPatch
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.pdf.IssuePdfRenderer
 import com.bts.issue.pdf.IssuePdfTemplate
@@ -28,7 +29,9 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import org.openapitools.jackson.nullable.JsonNullable
 import java.net.URI
+import java.util.UUID
 import com.bts.issue.application.CloneIssueRequest as AppCloneIssueRequest
 import com.bts.issue.application.CreateIssueRequest as AppCreateIssueRequest
 import com.bts.issue.application.TransitionIssueRequest as AppTransitionIssueRequest
@@ -102,6 +105,7 @@ class IssueController(
                 reporterId = actor,
                 typeId = request.typeId?.let { IssueTypeId(it) },
                 componentIds = request.componentIds,
+                securityLevelId = request.securityLevelId,
             )
         val issue = service.createIssue(actor, appRequest)
         // createIssue 는 Issue 도메인 객체를 반환하므로, type 요약 포함 응답을 위해 findByKey 재조회한다.
@@ -184,6 +188,7 @@ class IssueController(
                 labels = request.labels,
                 environment = request.environment,
                 impact = request.impact,
+                securityLevel = toSecurityLevelPatch(request.securityLevelId),
             )
         val response = service.updateIssue(actor, issueKey, appRequest)
         return ResponseEntity.ok(DataResponse(data = response))
@@ -419,6 +424,22 @@ class IssueController(
     // ── private helpers ───────────────────────────────────────────────────────
 
     private fun buildLocation(issueKey: String): URI = URI.create("/api/v1/issues/$issueKey")
+
+    /**
+     * `JsonNullable<UUID>` 의 presence 를 [SecurityLevelPatch] 3-state 로 매핑한다 (FR-PM-06).
+     *
+     * Jira Cloud 방식 — 필드 부재(undefined)=무변경, 명시 null=해제, 값=지정.
+     * application 계층이 웹 직렬화 라이브러리(JsonNullable)에 결합되지 않도록 transport 계층에서 변환한다.
+     *
+     * @param raw PATCH 요청의 securityLevelId JsonNullable 값.
+     * @return 대응하는 [SecurityLevelPatch].
+     */
+    private fun toSecurityLevelPatch(raw: JsonNullable<UUID>): SecurityLevelPatch =
+        when {
+            !raw.isPresent -> SecurityLevelPatch.Unchanged
+            raw.get() == null -> SecurityLevelPatch.Clear
+            else -> SecurityLevelPatch.Assign(raw.get())
+        }
 }
 
 /**
