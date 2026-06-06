@@ -199,6 +199,10 @@ class IdentityAccessIssuePermissionResolverIntegrationTest {
         seedProjects()
         seedMemberships()
         seedSharedSchemeMapping()
+        // 기존 매트릭스 VIEW 케이스(issueKey/sharedIssueKey)는 보안 게이트 도입 후 이슈 행이 있어야
+        // lookup 이 컨텍스트를 반환한다. 등급 미지정(공개)으로 시드해 매트릭스 판정만 검증되게 한다.
+        seedSecuredIssue(issueKey, reporterId = otherId, assigneeId = null, levelId = null)
+        seedSecuredIssue(sharedIssueKey, reporterId = otherId, assigneeId = null, levelId = null)
     }
 
     // ── Bean 배타 검증 ─────────────────────────────────────────────────────────
