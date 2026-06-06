@@ -204,7 +204,7 @@ export const routeTree = rootRoute.addChildren([
   projectComponentsSettingsRoute,
   // version-release BC — 프로젝트 버전 관리
   projectVersionsSettingsRoute,
-  // component-management BC — 프로젝트 리드 설정
+  // issue-tracking BC — 프로젝트 리드 설정 (project 서브도메인, 권한만 MANAGE_COMPONENTS 재사용)
   projectLeadSettingsRoute,
   // identity-access BC — 내 활성 세션 관리
   settingsSessionsRoute,
