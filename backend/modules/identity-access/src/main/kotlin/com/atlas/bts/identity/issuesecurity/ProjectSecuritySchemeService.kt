@@ -116,6 +116,31 @@ class ProjectSecuritySchemeService(
     }
 
     /**
+     * 프로젝트에 적용된 스킴의 보안 등급 목록을 조회한다 (FR-PM-06 PR-B BE-2, 드롭다운 옵션용).
+     *
+     * 이슈 편집/생성 화면의 "보안 등급" 드롭다운을 채우기 위한 조회로, 실제 등급 지정은
+     * `SET_ISSUE_SECURITY` 권한으로 가드되므로 본 조회는 **인증만** 요구한다(PROJECT_ADMIN 불요,
+     * Jira 동일 — 편집 권한자가 드롭다운을 본다). 따라서 [requireProjectAdmin] 을 호출하지 않는다.
+     * 등급 멤버(누가 볼 수 있나)는 노출하지 않으며, 스킴 구조(등급 식별자/이름/설명/기본여부)만 반환한다.
+     *
+     * 프로젝트에 적용된 스킴이 없으면 빈 목록을 반환한다(404 아님 — 드롭다운이 "선택 안 함"만 표시).
+     *
+     * @param projectKey 대상 프로젝트 키.
+     * @param actorId 요청 사용자 식별자(인증 확인은 컨트롤러가 완료).
+     * @return 적용 스킴의 등급 목록. 미적용이면 빈 목록.
+     * @throws ProjectNotFoundException 프로젝트가 없는 경우.
+     */
+    @Transactional(readOnly = true, isolation = Isolation.READ_COMMITTED)
+    fun listLevelsByProject(
+        projectKey: String,
+        actorId: UUID,
+    ): List<IssueSecurityLevel> {
+        val projectId = projectDirectory.resolveKeyToId(projectKey) ?: throw ProjectNotFoundException(projectKey)
+        val schemeId = projectSchemeRepository.findByProject(projectId) ?: return emptyList()
+        return schemeRepository.listLevels(schemeId)
+    }
+
+    /**
      * 프로젝트 키를 id 로 해석하고 actor 의 PROJECT_ADMIN 권한을 확인한다.
      *
      * @return 검증을 통과한 프로젝트 id.
