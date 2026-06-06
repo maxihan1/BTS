@@ -139,7 +139,9 @@ class IssueApplicationServiceListTest : DescribeSpec({
                         IssueScope.Project(projectKey),
                     )
                 } returns true
-                every { repo.listWithType(projectKey, pageable, any(), any<IssueSecurityAccess>()) } returns PageImpl(emptyList(), pageable, 0L)
+                every {
+                    repo.listWithType(projectKey, pageable, any(), any<IssueSecurityAccess>())
+                } returns PageImpl(emptyList(), pageable, 0L)
             }
 
             it("예외 없이 빈 페이지를 반환한다") {

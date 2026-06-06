@@ -39,7 +39,6 @@ import java.util.UUID
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class IssueSecurityListFilterTest : IssueTestcontainersBase() {
-
     private var taskTypeId: IssueTypeId? = null
 
     /** resolveTaskTypeId — V003 seed 에서 task 타입 id 조회. */
@@ -56,8 +55,7 @@ class IssueSecurityListFilterTest : IssueTestcontainersBase() {
         }
     }
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
+    private fun requireTaskTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
 
     /**
      * 테스트용 이슈를 생성하는 helper.
@@ -101,12 +99,13 @@ class IssueSecurityListFilterTest : IssueTestcontainersBase() {
         repository.insert(buildIssue(seq = 1, reporterId = actor, securityLevelId = null))
         repository.insert(buildIssue(seq = 2, reporterId = actor, securityLevelId = excludedLevel))
 
-        val access = IssueSecurityAccess(
-            unrestricted = false,
-            staticLevelIds = emptySet(),
-            reporterLevelIds = emptySet(),
-            assigneeLevelIds = emptySet(),
-        )
+        val access =
+            IssueSecurityAccess(
+                unrestricted = false,
+                staticLevelIds = emptySet(),
+                reporterLevelIds = emptySet(),
+                assigneeLevelIds = emptySet(),
+            )
 
         val page = repository.listWithType("TPRJ", PageRequest.of(0, 10), actor, access)
 
@@ -134,12 +133,13 @@ class IssueSecurityListFilterTest : IssueTestcontainersBase() {
         repository.insert(buildIssue(seq = 2, securityLevelId = staticLevel))
         repository.insert(buildIssue(seq = 3, securityLevelId = excludedLevel))
 
-        val access = IssueSecurityAccess(
-            unrestricted = false,
-            staticLevelIds = setOf(staticLevel),
-            reporterLevelIds = emptySet(),
-            assigneeLevelIds = emptySet(),
-        )
+        val access =
+            IssueSecurityAccess(
+                unrestricted = false,
+                staticLevelIds = setOf(staticLevel),
+                reporterLevelIds = emptySet(),
+                assigneeLevelIds = emptySet(),
+            )
 
         val page = repository.listWithType("TPRJ", PageRequest.of(0, 10), actor, access)
 
@@ -166,12 +166,13 @@ class IssueSecurityListFilterTest : IssueTestcontainersBase() {
         // 타인이 reporter 인 이슈 — 노출 불가
         repository.insert(buildIssue(seq = 2, reporterId = otherReporter, securityLevelId = reporterLevel))
 
-        val access = IssueSecurityAccess(
-            unrestricted = false,
-            staticLevelIds = emptySet(),
-            reporterLevelIds = setOf(reporterLevel),
-            assigneeLevelIds = emptySet(),
-        )
+        val access =
+            IssueSecurityAccess(
+                unrestricted = false,
+                staticLevelIds = emptySet(),
+                reporterLevelIds = setOf(reporterLevel),
+                assigneeLevelIds = emptySet(),
+            )
 
         val page = repository.listWithType("TPRJ", PageRequest.of(0, 10), actor, access)
 
@@ -198,12 +199,13 @@ class IssueSecurityListFilterTest : IssueTestcontainersBase() {
         // 타인이 assignee 인 이슈 — 노출 불가
         repository.insert(buildIssue(seq = 2, assigneeId = otherAssignee, securityLevelId = assigneeLevel))
 
-        val access = IssueSecurityAccess(
-            unrestricted = false,
-            staticLevelIds = emptySet(),
-            reporterLevelIds = emptySet(),
-            assigneeLevelIds = setOf(assigneeLevel),
-        )
+        val access =
+            IssueSecurityAccess(
+                unrestricted = false,
+                staticLevelIds = emptySet(),
+                reporterLevelIds = emptySet(),
+                assigneeLevelIds = setOf(assigneeLevel),
+            )
 
         val page = repository.listWithType("TPRJ", PageRequest.of(0, 10), actor, access)
 
@@ -228,12 +230,13 @@ class IssueSecurityListFilterTest : IssueTestcontainersBase() {
             repository.insert(buildIssue(seq = i.toLong(), securityLevelId = excludedLevel))
         }
 
-        val access = IssueSecurityAccess(
-            unrestricted = false,
-            staticLevelIds = emptySet(),
-            reporterLevelIds = emptySet(),
-            assigneeLevelIds = emptySet(),
-        )
+        val access =
+            IssueSecurityAccess(
+                unrestricted = false,
+                staticLevelIds = emptySet(),
+                reporterLevelIds = emptySet(),
+                assigneeLevelIds = emptySet(),
+            )
 
         val page = repository.listWithType("TPRJ", PageRequest.of(0, 10), actor, access)
 
@@ -259,12 +262,13 @@ class IssueSecurityListFilterTest : IssueTestcontainersBase() {
         repository.insert(buildIssue(seq = 2, securityLevelId = levelA))
         repository.insert(buildIssue(seq = 3, securityLevelId = levelB))
 
-        val access = IssueSecurityAccess(
-            unrestricted = true,
-            staticLevelIds = emptySet(),
-            reporterLevelIds = emptySet(),
-            assigneeLevelIds = emptySet(),
-        )
+        val access =
+            IssueSecurityAccess(
+                unrestricted = true,
+                staticLevelIds = emptySet(),
+                reporterLevelIds = emptySet(),
+                assigneeLevelIds = emptySet(),
+            )
 
         val page = repository.listWithType("TPRJ", PageRequest.of(0, 10), actor, access)
 
@@ -292,12 +296,13 @@ class IssueSecurityListFilterTest : IssueTestcontainersBase() {
             repository.insert(buildIssue(seq = i.toLong(), securityLevelId = excludedLevel))
         }
 
-        val access = IssueSecurityAccess(
-            unrestricted = false,
-            staticLevelIds = emptySet(),
-            reporterLevelIds = emptySet(),
-            assigneeLevelIds = emptySet(),
-        )
+        val access =
+            IssueSecurityAccess(
+                unrestricted = false,
+                staticLevelIds = emptySet(),
+                reporterLevelIds = emptySet(),
+                assigneeLevelIds = emptySet(),
+            )
 
         val page = repository.listWithType("TPRJ", PageRequest.of(0, 3), actor, access)
 
@@ -330,12 +335,13 @@ class IssueSecurityListFilterTest : IssueTestcontainersBase() {
         repository.insert(buildIssue(seq = 5, securityLevelId = excludedLevel))
         repository.insert(buildIssue(seq = 6, securityLevelId = excludedLevel))
 
-        val access = IssueSecurityAccess(
-            unrestricted = false,
-            staticLevelIds = setOf(staticLevel),
-            reporterLevelIds = setOf(reporterLevel),
-            assigneeLevelIds = setOf(assigneeLevel),
-        )
+        val access =
+            IssueSecurityAccess(
+                unrestricted = false,
+                staticLevelIds = setOf(staticLevel),
+                reporterLevelIds = setOf(reporterLevel),
+                assigneeLevelIds = setOf(assigneeLevel),
+            )
 
         val page = repository.listWithType("TPRJ", PageRequest.of(0, 10), actor, access)
 

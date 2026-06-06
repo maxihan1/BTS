@@ -18,7 +18,6 @@ import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssueSecurityAccess
 import org.jooq.Condition
 import org.jooq.DSLContext
-import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
@@ -433,11 +432,12 @@ class IssueRepository(
         // 보안 등급 WHERE 술어 — unrestricted=true 이면 null(필터 미적용).
         val securityCondition = buildSecurityCondition(actor, access)
 
-        val baseWhere = if (securityCondition != null) {
-            activeInProject.and(securityCondition)
-        } else {
-            activeInProject
-        }
+        val baseWhere =
+            if (securityCondition != null) {
+                activeInProject.and(securityCondition)
+            } else {
+                activeInProject
+            }
 
         // count 쿼리: ISSUE_TYPES join 제외 — 불필요한 join 으로 count 왜곡 방지
         val total =
@@ -524,18 +524,18 @@ class IssueRepository(
 
         // reporter: REPORTER 조건 등급 — actor 가 reporter 일 때만 노출
         if (access.reporterLevelIds.isNotEmpty()) {
-            condition = condition.or(
+            val reporterCondition =
                 ISSUES.SECURITY_LEVEL_ID.`in`(access.reporterLevelIds)
-                    .and(ISSUES.REPORTER_ID.eq(actor)),
-            )
+                    .and(ISSUES.REPORTER_ID.eq(actor))
+            condition = condition.or(reporterCondition)
         }
 
         // assignee: ASSIGNEE 조건 등급 — actor 가 assignee 일 때만 노출
         if (access.assigneeLevelIds.isNotEmpty()) {
-            condition = condition.or(
+            val assigneeCondition =
                 ISSUES.SECURITY_LEVEL_ID.`in`(access.assigneeLevelIds)
-                    .and(ISSUES.ASSIGNEE_ID.eq(actor)),
-            )
+                    .and(ISSUES.ASSIGNEE_ID.eq(actor))
+            condition = condition.or(assigneeCondition)
         }
 
         return condition
@@ -546,12 +546,13 @@ class IssueRepository(
          * 기본 unrestricted [IssueSecurityAccess] — [listWithType] 파라미터 기본값.
          * non-prod 환경(AlwaysAllowIssueSecurityDirectory)과 동일한 빠른경로를 보장한다.
          */
-        private val UNRESTRICTED_ACCESS = IssueSecurityAccess(
-            unrestricted = true,
-            staticLevelIds = emptySet(),
-            reporterLevelIds = emptySet(),
-            assigneeLevelIds = emptySet(),
-        )
+        private val UNRESTRICTED_ACCESS =
+            IssueSecurityAccess(
+                unrestricted = true,
+                staticLevelIds = emptySet(),
+                reporterLevelIds = emptySet(),
+                assigneeLevelIds = emptySet(),
+            )
     }
 
     /**
