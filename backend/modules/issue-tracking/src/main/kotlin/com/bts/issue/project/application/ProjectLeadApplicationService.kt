@@ -62,17 +62,6 @@ class ProjectLeadApplicationService(
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
-     * 프로젝트 리드를 지정하거나 해제한다.
-     *
-     * @param actorId 요청 행위자 UUID — 컴포넌트 UPDATE 권한 검증 대상.
-     * @param projectIdOrKey 대상 프로젝트 UUID 문자열 또는 projectKey.
-     * @param leadUserId 지정할 리드 사용자 UUID. null 이면 해제.
-     * @return [ProjectLeadResult] — projectId + leadUserId.
-     * @throws ProjectLeadProjectNotFoundException 프로젝트가 미존재하거나 소프트삭제된 경우 (404 의도).
-     * @throws ProjectLeadAccessDeniedException 행위자에게 컴포넌트 UPDATE 권한이 없는 경우 (403 의도).
-     * @throws ProjectLeadNotFoundException leadUserId 가 non-null 이면서 시스템에 존재하지 않는 경우 (422 의도).
-     */
-    /**
      * 프로젝트 리드를 조회한다.
      *
      * READ 는 컴포넌트 READ 정책과 동일하게 권한 게이트 없음.
@@ -94,6 +83,17 @@ class ProjectLeadApplicationService(
         return ProjectLeadResult(projectId = projectId, leadUserId = leadUserId)
     }
 
+    /**
+     * 프로젝트 리드를 지정하거나 해제한다.
+     *
+     * @param actorId 요청 행위자 UUID — 컴포넌트 UPDATE 권한 검증 대상.
+     * @param projectIdOrKey 대상 프로젝트 UUID 문자열 또는 projectKey.
+     * @param leadUserId 지정할 리드 사용자 UUID. null 이면 해제.
+     * @return [ProjectLeadResult] — projectId + leadUserId.
+     * @throws ProjectLeadProjectNotFoundException 프로젝트가 미존재하거나 소프트삭제된 경우 (404 의도).
+     * @throws ProjectLeadAccessDeniedException 행위자에게 컴포넌트 UPDATE 권한이 없는 경우 (403 의도).
+     * @throws ProjectLeadNotFoundException leadUserId 가 non-null 이면서 시스템에 존재하지 않는 경우 (422 의도).
+     */
     @Suppress("ThrowsCount")
     fun changeLead(
         actorId: UUID,
