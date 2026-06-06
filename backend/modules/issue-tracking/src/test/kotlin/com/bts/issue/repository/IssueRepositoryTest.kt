@@ -525,6 +525,149 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
         assertThat(found.impact).isEqualTo(3)
     }
 
+    // ── T11. securityLevelId round-trip (FR-PM-06 Task 4) ────────────────────────
+
+    /**
+     * Given  securityLevelId 를 지정해 생성한 Issue
+     * When   insert 후 findByKey 로 조회
+     * Then   securityLevelId 가 동일한 UUID 로 반환된다.
+     */
+    @Test
+    @Order(20)
+    fun `T11a - securityLevelId round-trip - 지정한 levelId 가 DB 에 영속·조회된다`() {
+        val key = IssueKey.of("TPRJ", 1L)
+        val levelId = UUID.randomUUID()
+        val issue =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = key,
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "보안 등급 round-trip 테스트",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+                securityLevelId = levelId,
+            )
+        repository.insert(issue)
+
+        val found = requireNotNull(repository.findByKey(key))
+
+        assertThat(found.securityLevelId).isEqualTo(levelId)
+    }
+
+    /**
+     * Given  securityLevelId = null 로 생성한 Issue (등급 없음 = 공개)
+     * When   insert 후 findByKey 로 조회
+     * Then   securityLevelId 가 null 로 반환된다.
+     */
+    @Test
+    @Order(21)
+    fun `T11b - securityLevelId null round-trip - levelId 미지정 시 null 로 영속·조회된다`() {
+        val key = IssueKey.of("TPRJ", 2L)
+        val issue =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = key,
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "보안 등급 null round-trip",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+            )
+        repository.insert(issue)
+
+        val found = requireNotNull(repository.findByKey(key))
+
+        assertThat(found.securityLevelId).isNull()
+    }
+
+    /**
+     * Given  securityLevelId = null 로 생성된 이슈
+     * When   updateSecurityLevel 로 levelId 지정 후 findByKey 조회
+     * Then   securityLevelId 가 지정한 UUID 로 반환되고 version 이 +1 된다.
+     */
+    @Test
+    @Order(22)
+    fun `T11c - updateSecurityLevel - levelId 지정 시 DB 에 영속되고 version+1 된다`() {
+        val key = IssueKey.of("TPRJ", 1L)
+        val levelId = UUID.randomUUID()
+        val issue =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = key,
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "보안 등급 지정 테스트",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+            )
+        repository.insert(issue)
+
+        val updateCount = repository.updateSecurityLevel(key, levelId, expectedVersion = 1L)
+
+        assertThat(updateCount).isEqualTo(1)
+        val found = requireNotNull(repository.findByKey(key))
+        assertThat(found.securityLevelId).isEqualTo(levelId)
+        assertThat(found.version).isEqualTo(2L)
+    }
+
+    /**
+     * Given  securityLevelId 가 지정된 이슈
+     * When   updateSecurityLevel(null) 로 해제 후 findByKey 조회
+     * Then   securityLevelId 가 null 로 반환되고 version 이 +1 된다.
+     */
+    @Test
+    @Order(23)
+    fun `T11d - updateSecurityLevel null - 등급 해제 시 DB null 로 영속되고 version+1 된다`() {
+        val key = IssueKey.of("TPRJ", 1L)
+        val levelId = UUID.randomUUID()
+        val issue =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = key,
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "보안 등급 해제 테스트",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+                securityLevelId = levelId,
+            )
+        repository.insert(issue)
+
+        val updateCount = repository.updateSecurityLevel(key, null, expectedVersion = 1L)
+
+        assertThat(updateCount).isEqualTo(1)
+        val found = requireNotNull(repository.findByKey(key))
+        assertThat(found.securityLevelId).isNull()
+        assertThat(found.version).isEqualTo(2L)
+    }
+
+    /**
+     * Given  version=1 로 삽입된 이슈
+     * When   updateSecurityLevel 에 stale version(99) 전달
+     * Then   반환값 0 — 낙관락 충돌, DB 변경 없음.
+     */
+    @Test
+    @Order(24)
+    fun `T11e - updateSecurityLevel stale - version 불일치 시 0 반환`() {
+        val key = IssueKey.of("TPRJ", 1L)
+        val issue =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = key,
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "보안 등급 낙관락 테스트",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+            )
+        repository.insert(issue)
+
+        val updateCount = repository.updateSecurityLevel(key, UUID.randomUUID(), expectedVersion = 99L)
+
+        assertThat(updateCount).isEqualTo(0)
+    }
+
     // ── T10d. ifBlank → NULL 클리어 round-trip (CONCERN 회귀 가드) ─────────────────
 
     /**

@@ -524,6 +524,120 @@ class IssueTest {
         assertThat(unassigned.assigneeId).isNull()
     }
 
+    // ─── Task 4: securityLevelId 불변식 ──────────────────────────────────────
+
+    @Test
+    fun `create_default_securityLevelId_null — securityLevelId 기본값은 null(공개)이다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+
+        assertThat(issue.securityLevelId).isNull()
+    }
+
+    @Test
+    fun `create_with_securityLevelId — 생성 시 securityLevelId 를 지정하면 해당 값을 보유한다`() {
+        val levelId = UUID.randomUUID()
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                securityLevelId = levelId,
+            )
+
+        assertThat(issue.securityLevelId).isEqualTo(levelId)
+    }
+
+    @Test
+    fun `create_with_securityLevelId_version_is_one — securityLevelId 지정 생성도 version=1 이다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                securityLevelId = UUID.randomUUID(),
+            )
+
+        assertThat(issue.version).isEqualTo(1L)
+    }
+
+    @Test
+    fun `assignSecurityLevel_sets_levelId_and_bumps_version — assignSecurityLevel(UUID) 호출 시 securityLevelId 가 설정되고 version 이 +1 된다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+        val levelId = UUID.randomUUID()
+
+        val updated = issue.assignSecurityLevel(levelId)
+
+        assertThat(updated.securityLevelId).isEqualTo(levelId)
+        assertThat(updated.version).isEqualTo(issue.version + 1)
+    }
+
+    @Test
+    fun `assignSecurityLevel_null_clears_levelId_and_bumps_version — assignSecurityLevel(null) 호출 시 securityLevelId 가 null 이 되고 version 이 +1 된다`() {
+        val levelId = UUID.randomUUID()
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+                securityLevelId = levelId,
+            )
+
+        val updated = issue.assignSecurityLevel(null)
+
+        assertThat(updated.securityLevelId).isNull()
+        assertThat(updated.version).isEqualTo(issue.version + 1)
+    }
+
+    @Test
+    fun `assignSecurityLevel_returns_new_instance — 원본 Issue 는 불변, 반환값만 변경된다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+        val levelId = UUID.randomUUID()
+
+        val updated = issue.assignSecurityLevel(levelId)
+
+        assertThat(issue.securityLevelId).isNull()
+        assertThat(updated).isNotSameAs(issue)
+    }
+
     // ─── Task 2: componentIds 불변식 ──────────────────────────────────────────
 
     @Test
