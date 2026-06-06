@@ -12,9 +12,12 @@ import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.session.SessionService
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import org.hamcrest.core.IsNull
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration
@@ -109,6 +112,13 @@ class ProjectSecuritySchemeControllerTest {
 
     @Autowired
     lateinit var personalAccessTokenService: PersonalAccessTokenService
+
+    @BeforeEach
+    fun resetMocks() {
+        // WebMvcTest 슬라이스의 mockk 빈은 테스트 간 공유되므로 호출 기록을 초기화한다
+        // (verify(exactly = 0) 가 다른 테스트의 호출을 세지 않게).
+        clearMocks(service)
+    }
 
     // ── PUT /api/v1/projects/{key}/issue-security-scheme — assign ─────────────
 
@@ -267,7 +277,7 @@ class ProjectSecuritySchemeControllerTest {
                 .with(jwt().jwt { it.subject(ACTOR_ID.toString()) }),
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.schemeId").doesNotExist())
+            .andExpect(jsonPath("$.schemeId").value(IsNull.nullValue())) // schemeId=null 로 직렬화
     }
 
     @Test
