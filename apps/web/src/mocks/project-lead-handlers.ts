@@ -19,6 +19,15 @@ interface StoredProjectLead {
 /** 422 강제 플래그 키 — 'true' 세팅 시 PATCH /lead가 422를 반환한다 */
 const LS_KEY_PROJECT_LEAD_422 = 'msw-project-lead-422'
 
+/**
+ * E2E 자동 시드 localStorage 키 — addInitScript로 설정하면 GET /lead 최초 요청 시
+ * store에 자동 시드된다 (SPA full reload + SW 재연결 후에도 시드 데이터 보존).
+ *
+ * 형식: encodeURIComponent(JSON.stringify({ projectId, leadUserId }))
+ * (e2e-msw-scenario-toggle-localstorage-flag 교훈 — addInitScript 리로드 생존 패턴)
+ */
+export const LS_KEY_PROJECT_LEAD_SEED = 'msw-project-lead-seed'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 모듈 상태 — resetProjectLeadStore()로 테스트 격리
 // ─────────────────────────────────────────────────────────────────────────────
@@ -130,6 +139,27 @@ const getProjectLeadHandler = http.get(
         })
       } catch {
         // seed 파싱 실패 시 무시하고 기존 데이터 반환
+      }
+    }
+
+    // E2E localStorage 자동 시드 — addInitScript로 LS_KEY_PROJECT_LEAD_SEED 설정 시
+    // store 미존재 상태에서 GET 최초 요청 시 자동으로 store를 채운다 (SPA full reload 후에도 생존).
+    // (e2e-msw-scenario-toggle-localstorage-flag 교훈 — addInitScript + localStorage 플래그 패턴)
+    if (!projectLeadStore.has(projectIdOrKey)) {
+      const lsSeedRaw = globalThis.localStorage?.getItem(LS_KEY_PROJECT_LEAD_SEED)
+      if (lsSeedRaw !== null && lsSeedRaw !== undefined) {
+        try {
+          const seed = JSON.parse(decodeURIComponent(lsSeedRaw)) as {
+            projectId: string
+            leadUserId?: string | null
+          }
+          projectLeadStore.set(projectIdOrKey, {
+            projectId: seed.projectId ?? projectIdOrKey,
+            leadUserId: seed.leadUserId ?? null,
+          })
+        } catch {
+          // localStorage seed 파싱 실패 시 무시
+        }
       }
     }
 

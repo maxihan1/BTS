@@ -7,11 +7,18 @@
 // - S1~S4: /projects/ATLAS/settings/project-lead 설정 페이지 시나리오
 // - S5: createIssueHandler 폴백 분기(T1 MSW 변경) 위에서 이슈 생성 후 담당자 자동배정 검증
 //
+// [시드 패턴]
+// MSW module-scope store는 page.goto() full reload 시 재초기화된다.
+// S1~S4는 loginAsAlice → dashboard에서 seedProjectLead(fetch) → navigateInSpa(SETTINGS_URL)
+//   패턴으로 store를 유지하면서 설정 페이지로 진입한다
+//   (issue-component-default-assignee S3 동형 패턴, 4건 통과 확인).
+// S5는 goto('/issues/new') 후 seed fetch → 이슈 생성 흐름이라 goto 이후 시드가 가능하다.
+//
 // [회귀 방지 교훈 반영]
-// - playwright-getbyrole-exact-strict-mode: 컨테이너 한정 셀렉터, exact:true
+// - playwright-getbyrole-exact-strict-mode: exact:true
 // - msw-mutation-stateful-refetch: PATCH 후 refetch 롤백 없음 검증
 // - e2e-fixture-whoami-userid-alignment: alice(ALICE_USER_ID)로 리드/담당자 UUID 통일
-// - e2e-msw-scenario-toggle-localstorage-flag: 시드는 X-MSW-Seed-ProjectLead 헤더 활용
+// - e2e-msw-serviceworker-block: navigateInSpa(history.pushState+popstate)로 SW store 유지
 
 import { test, expect } from '@playwright/test'
 import { loginAsAlice, loginAsBob } from './fixtures/issue-fixtures'
@@ -28,8 +35,18 @@ const ALICE_USER_ID = userAliceFixture.id
 /** 존재하지 않는 사용자 UUID — S4 삭제리드 시나리오용 (Zod v4 RFC4122 v4 형식) */
 const GHOST_USER_ID = 'f0e1d2c3-b4a5-4f6e-8d7c-9b0a1c2d3e4f'
 
+/** carol 사용자 UUID — userCarolFixture.id (user-fixtures.ts 단일 진실 원천) */
+const CAROL_USER_ID = '961fb10c-6317-47c8-b377-d8fc5594db82'
+
 /** ATLAS 프로젝트 키 */
 const PROJECT_KEY = 'ATLAS'
+
+/**
+ * ATLAS 프로젝트 UUID — projectLeadResponseSchema 의 projectId 는 z.string().uuid() 검증이므로
+ * MSW 시드 시 반드시 유효한 RFC4122 v4 UUID를 사용해야 한다.
+ * (zod-v4-uuid-fixture-strictness 교훈)
+ */
+const ATLAS_PROJECT_UUID = '00000000-0000-4000-8000-000000000010'
 
 /** 프로젝트 리드 설정 페이지 URL */
 const SETTINGS_URL = `/projects/${PROJECT_KEY}/settings/project-lead`
@@ -44,13 +61,20 @@ const ARIA_UNASSIGN = '미지정'
 const HEADING_PAGE = '프로젝트 리드'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 헬퍼 — MSW projectLeadStore seed (X-MSW-Seed-ProjectLead 헤더)
+// 헬퍼 — MSW projectLeadStore seed
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * GET /api/v1/projects/:projectKey/lead 요청에 X-MSW-Seed-ProjectLead 헤더를 붙여
  * MSW projectLeadStore에 리드 정보를 시드한다.
- * ServiceWorker가 살아있는 상태에서 page.evaluate로 호출해야 한다.
+ *
+ * SW가 활성화된 SPA 컨텍스트에서 호출해야 하며, page.goto() 이후에 호출한다.
+ * 시드 후 navigateInSpa로 이동하면 module-scope store가 유지된다.
+ *
+ * @param page Playwright Page 객체
+ * @param projectKey 프로젝트 키 (URL 파라미터)
+ * @param projectId store에 저장할 projectId 값
+ * @param leadUserId 리드 사용자 UUID — null 허용
  */
 async function seedProjectLead(
   page: import('@playwright/test').Page,
@@ -67,20 +91,34 @@ async function seedProjectLead(
       seed: { projectId: string; leadUserId: string | null }
     }) => {
       const encoded = encodeURIComponent(JSON.stringify(seed))
-      const res = await fetch(`/api/v1/projects/${pk}/lead`, {
+      await fetch(`/api/v1/projects/${pk}/lead`, {
         headers: { 'X-MSW-Seed-ProjectLead': encoded },
       })
-      if (!res.ok && res.status !== 200) {
-        throw new Error(`seed 실패: ${res.status}`)
-      }
     },
     { pk: projectKey, seed: { projectId, leadUserId } },
   )
 }
 
 /**
+ * SPA 내부 네비게이션으로 지정 URL로 이동한다.
+ * page.goto()는 full reload → MSW module-scope store 리셋.
+ * history.pushState + popstate 이벤트는 SPA 라우터가 내부 네비게이션으로 처리 → store 유지.
+ * (issue-component-default-assignee S3 동형 패턴 — 4건 통과 확인)
+ */
+async function navigateInSpa(
+  page: import('@playwright/test').Page,
+  url: string,
+): Promise<void> {
+  await page.evaluate((targetUrl: string) => {
+    window.history.pushState({}, '', targetUrl)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, url)
+}
+
+/**
  * 이슈 생성 폼용 componentStore seed (component-handlers.ts X-MSW-Seed-Components 헤더).
  * S5 폴백 시나리오에서 리드 없는 컴포넌트를 시드할 때 사용한다.
+ * page.goto 후 폼 로드 대기 후에 호출해야 SW가 활성 상태다.
  */
 async function seedComponentStore(
   page: import('@playwright/test').Page,
@@ -113,8 +151,8 @@ test.describe('FR-CM-04 프로젝트 리드 지정/해제 + 폴백 자동배정 
   // ───────────────────────────────────────────────────────────────────────────
   // S1 리드 지정
   //
-  // Given   alice 로그인 → settings/project-lead 진입
-  //         X-MSW-Seed-ProjectLead로 ATLAS 프로젝트 리드=null(미지정) 초기화
+  // Given   alice 로그인 → dashboard 컨텍스트에서 리드=null(미지정) seed
+  //         navigateInSpa로 settings/project-lead 진입 (store 유지)
   // When    "리드 검색" input에 "캐럴" 입력 → 드롭다운 "캐럴" 버튼 클릭
   // Then    lead-current-name이 "캐럴" 표시 (PATCH /lead 후 stateful refetch)
   // ───────────────────────────────────────────────────────────────────────────
@@ -123,11 +161,9 @@ test.describe('FR-CM-04 프로젝트 리드 지정/해제 + 폴백 자동배정 
   }) => {
     await loginAsAlice(page)
 
-    // projectLeadStore 시드 — ATLAS 프로젝트에 리드 미지정 상태로 초기화
-    await seedProjectLead(page, PROJECT_KEY, PROJECT_KEY, null)
-
-    // 설정 페이지 진입
-    await page.goto(SETTINGS_URL)
+    // dashboard 컨텍스트(SW 활성)에서 seed → navigateInSpa로 store 유지
+    await seedProjectLead(page, PROJECT_KEY, ATLAS_PROJECT_UUID, null)
+    await navigateInSpa(page, SETTINGS_URL)
     await expect(page.getByRole('heading', { name: HEADING_PAGE })).toBeVisible()
 
     // 초기 상태 확인 — 리드 미지정
@@ -147,8 +183,8 @@ test.describe('FR-CM-04 프로젝트 리드 지정/해제 + 폴백 자동배정 
   // ───────────────────────────────────────────────────────────────────────────
   // S2 리드 해제
   //
-  // Given   alice 로그인 → settings/project-lead 진입
-  //         X-MSW-Seed-ProjectLead로 ATLAS 프로젝트 리드=캐럴로 초기화
+  // Given   alice 로그인 → dashboard에서 carol이 리드로 지정된 상태 seed
+  //         navigateInSpa로 settings/project-lead 진입
   // When    "미지정" 해제 버튼 클릭
   // Then    lead-current-name이 "미지정"으로 변경
   // ───────────────────────────────────────────────────────────────────────────
@@ -157,13 +193,9 @@ test.describe('FR-CM-04 프로젝트 리드 지정/해제 + 폴백 자동배정 
   }) => {
     await loginAsAlice(page)
 
-    // carol UUID — userCarolFixture.id (user-fixtures.ts 단일 진실 원천)
-    const CAROL_USER_ID = '961fb10c-6317-47c8-b377-d8fc5594db82'
-
-    // projectLeadStore 시드 — ATLAS 프로젝트에 carol이 리드로 지정된 상태
-    await seedProjectLead(page, PROJECT_KEY, PROJECT_KEY, CAROL_USER_ID)
-
-    await page.goto(SETTINGS_URL)
+    // carol이 리드로 지정된 상태로 seed
+    await seedProjectLead(page, PROJECT_KEY, ATLAS_PROJECT_UUID, CAROL_USER_ID)
+    await navigateInSpa(page, SETTINGS_URL)
     await expect(page.getByRole('heading', { name: HEADING_PAGE })).toBeVisible()
 
     // 초기 상태 확인 — 캐럴이 리드
@@ -179,19 +211,17 @@ test.describe('FR-CM-04 프로젝트 리드 지정/해제 + 폴백 자동배정 
   // ───────────────────────────────────────────────────────────────────────────
   // S3 권한 제한 (bob은 MANAGE_COMPONENTS 없음)
   //
-  // Given   bob 로그인 → settings/project-lead 진입
-  //         X-MSW-Seed-ProjectLead로 ATLAS 프로젝트 리드=null 초기화
+  // Given   bob 로그인 → dashboard에서 리드=null seed
+  //         navigateInSpa로 settings/project-lead 진입
   // When    페이지 렌더 완료
   // Then    "리드 검색" input이 disabled
-  //         "미지정" 해제 버튼이 없거나 disabled
   // ───────────────────────────────────────────────────────────────────────────
   test('S3 권한 제한 — bob은 리드 검색 input이 disabled 상태', async ({ page }) => {
     await loginAsBob(page)
 
-    // projectLeadStore 시드 — ATLAS 프로젝트에 리드 미지정 상태로 초기화
-    await seedProjectLead(page, PROJECT_KEY, PROJECT_KEY, null)
-
-    await page.goto(SETTINGS_URL)
+    // 리드 미지정 상태로 seed
+    await seedProjectLead(page, PROJECT_KEY, ATLAS_PROJECT_UUID, null)
+    await navigateInSpa(page, SETTINGS_URL)
     await expect(page.getByRole('heading', { name: HEADING_PAGE })).toBeVisible()
 
     // Then. "리드 검색" input이 disabled (bob은 MANAGE_COMPONENTS=false)
@@ -201,19 +231,17 @@ test.describe('FR-CM-04 프로젝트 리드 지정/해제 + 폴백 자동배정 
   // ───────────────────────────────────────────────────────────────────────────
   // S4 삭제된 리드 표시
   //
-  // Given   alice 로그인 → settings/project-lead 진입
-  //         X-MSW-Seed-ProjectLead로 ATLAS 프로젝트 리드=존재하지 않는 UUID 시드
+  // Given   alice 로그인 → dashboard에서 존재하지 않는 UUID로 리드 seed
+  //         navigateInSpa로 settings/project-lead 진입
   // When    페이지 렌더 완료
   // Then    lead-current-name이 "알 수 없는 사용자 (앞8자)" 형식으로 표시
-  //         (UserSummary를 찾지 못할 때 앞 8자 fallback 텍스트 — ProjectLeadSelect 구현)
   // ───────────────────────────────────────────────────────────────────────────
   test('S4 삭제된 리드 — 없는 UUID 시드 시 알 수 없는 사용자 앞8자 표시', async ({ page }) => {
     await loginAsAlice(page)
 
-    // 존재하지 않는 UUID로 리드 시드
-    await seedProjectLead(page, PROJECT_KEY, PROJECT_KEY, GHOST_USER_ID)
-
-    await page.goto(SETTINGS_URL)
+    // 존재하지 않는 UUID로 리드 seed
+    await seedProjectLead(page, PROJECT_KEY, ATLAS_PROJECT_UUID, GHOST_USER_ID)
+    await navigateInSpa(page, SETTINGS_URL)
     await expect(page.getByRole('heading', { name: HEADING_PAGE })).toBeVisible()
 
     // GHOST_USER_ID 앞 8자
@@ -229,8 +257,8 @@ test.describe('FR-CM-04 프로젝트 리드 지정/해제 + 폴백 자동배정 
   // S5 폴백 자동배정 (T1 MSW 변경 의존)
   //
   // Given   alice 로그인
-  //         X-MSW-Seed-ProjectLead로 ATLAS 프로젝트 리드=김앨리스(alice) 시드
-  //         리드 없는 컴포넌트 1개(COMP_NO_LEAD) 시드
+  //         goto('/issues/new') 후 ATLAS 프로젝트 리드=alice seed
+  //         리드 없는 컴포넌트 1개(COMP_NO_LEAD) seed
   // When    이슈 생성 폼에서 COMP_NO_LEAD 선택 후 이슈 생성
   // Then    이슈 상세 assignee-section의 assignee-current-name이 "김앨리스"
   //         (컴포넌트 리드 없음 → 프로젝트 리드 폴백 → alice 자동배정)
@@ -240,15 +268,15 @@ test.describe('FR-CM-04 프로젝트 리드 지정/해제 + 폴백 자동배정 
   }) => {
     await loginAsAlice(page)
 
-    // 프로젝트 리드 시드 — ATLAS 프로젝트 리드=alice
-    await seedProjectLead(page, PROJECT_KEY, PROJECT_KEY, ALICE_USER_ID)
-
-    // 이슈 생성 폼 진입
+    // 이슈 생성 폼 진입 — goto 후 SW 활성 상태에서 seed
     await page.goto('/issues/new')
     const projectKeyInput = page.getByLabel(issueCreateStrings.projectKeyLabel)
     await expect(projectKeyInput).toBeVisible()
 
-    // 리드 없는 컴포넌트 시드 (ServiceWorker 활성 상태)
+    // ATLAS 프로젝트 리드=alice seed (goto 후 SW 활성 상태)
+    await seedProjectLead(page, PROJECT_KEY, ATLAS_PROJECT_UUID, ALICE_USER_ID)
+
+    // 리드 없는 컴포넌트 seed
     const COMP_NO_LEAD = {
       id: 'b2c3d4e5-f6a7-4bcd-9ef0-1b2c3d4e5f60',
       name: 'CM04-NoLead-컴포넌트',
@@ -277,7 +305,6 @@ test.describe('FR-CM-04 프로젝트 리드 지정/해제 + 폴백 자동배정 
     await page.waitForURL(/\/issues\/ATLAS-42$/)
 
     // assignee-section — 프로젝트 리드 폴백으로 alice(김앨리스)가 자동배정
-    // T1 MSW 변경(getStoredProjectLead + 폴백 분기) 없으면 null → 미할당 → 이 단언 실패(RED)
     const assigneeSection = page.getByTestId('assignee-section')
     await expect(assigneeSection).toBeVisible()
     await expect(assigneeSection.getByTestId('assignee-current-name')).toHaveText('김앨리스')
