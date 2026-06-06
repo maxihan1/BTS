@@ -152,7 +152,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 <aside class="sidebar">
     <div class="sidebar-head">
       <div class="logo">🏢 BTS Dashboard</div>
-      <div class="updated">2026-06-05 갱신</div>
+      <div class="updated">2026-06-06 갱신</div>
     </div>
     <nav>
       <ul class="nav-top">
@@ -182,9 +182,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
           <div><span class="dot dot-done"></span> 완료 <b>28</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>3</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>4</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>90</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>89</b></div>
         </div>
       </div>
     </div>
@@ -1282,9 +1282,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:50%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 12</div>
-        <div>🔄 진행중 1</div>
+        <div>🔄 진행중 2</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 11</div>
+        <div>⬜ 대기 10</div>
       </div>
     </div>
     <h2>세부 기능 (24개)</h2>
@@ -1323,13 +1323,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 접근 (Browse, View)</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — BROWSE/VIEW 분리 (SDD 12.3 BROWSE_<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span>OJECT</span>/VIEW_<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">ISSUE</span>)</li><li><span class="step-icon">✅</span> D2 — 명세</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — V014 BROWSE_<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span>OJECT</span>/VIEW_<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">ISSUE</span> 시드(기본 스킴 PROJECT_ADMIN·MEMBER)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>Permission.BROWSE` + prod resolver 매트릭스 이관(toCodeOrNull) + 단건 VIEW 404 가드(`assertViewIssueOrNotFound`) + listIssues BROWSE</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>od 통합테스트 허용/거부(S1~S4) + 서비스 단위 404 매핑</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 권한 없는 <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 404 not-found(기존 catch-all 충족, 회귀 가드 + MSW 404 시나리오)</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 권한 없는 <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 진입 not-found(2 시나리오, 기존 <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span> E2E 회귀 0)</li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-진행중">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">🔄</span>
         <span class="fr-id">FR-PM-06</span>
         <span class="fr-desc"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 보안 수준</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — SecurityLevel 등급</li><li><span class="step-icon">⬜</span> D2 — 명세 — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span>마다 등급 + 등급별 접근자</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `security_levels`, `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s.security_level_id`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — 등급 검증 가드</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 생성/편집 시 등급 선택</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>SecurityScheme/Level/SecurityLevelMember(다형 5타입)</li><li><span class="step-icon">✅</span> D2 — 명세 — 스킴→등급→멤버, 멤버 5타입, 관리자 우회 없음</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — V016 `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_security_schemes`/`issue_security_levels`/`issue_security_level_members`/`<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">project</span>_issue_security_schemes` + SET_ISSUE_SECURITY 시드 (책임. db-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) (PR-A #86). `issues.security_level_id`는 PR-B.</li><li><span class="step-icon">🔄</span> D4 — 백엔드 — 관리 인프라(스킴/등급/멤버 CRUD + <span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">프로젝트</span> 적용 + SYSTEM_ADMIN/<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span>OJECT</span>_ADMIN 가드) PR-A 완료. 등급 검증 **판정 가드**(resolver 확장 + <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>SecurityLookup)는 PR-B</li><li><span class="step-icon">🔄</span> D5 — 백엔드 테스트 — 관리 <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>od 통합(S1~S7 + 권한 거부 ground-truth) PR-A 완료. 판정 테스트는 PR-B</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 생성/편집 시 등급 선택</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
@@ -1348,7 +1348,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <summary>
         <span class="fr-status">✅</span>
         <span class="fr-id">FR-PM-09</span>
-        <span class="fr-desc">사용자 그룹 (전역 그룹 인프라)</span>
+        <span class="fr-desc"><span class="term" data-def="User Group. 여러 사용자를 묶은 전역(시스템 단위) 재사용 단위. `usergroups`(name 전역 유니크) + `groupmemberships`(사용자↔그룹 N:M). 시스템 관리자만 CRUD/멤버 관리. 보안 수준 멤버(FR-PM-06)·권한 스킴 grants·그룹 멘션이 소비할 단위. LDAP 그룹 문자열과는 별개(동기화는 후속) (FR-PM-09)">사용자 그룹</span> (전역 그룹 인프라)</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — `UserGroup`(전역, name 유니크) + `GroupMembership`(group×user N:M)</li><li><span class="step-icon">✅</span> D2 — 명세 — 그룹 CRUD + 멤버 추가/제거, `SYSTEM_ADMIN` 관리, 전역 name 유니크, 중복 멤버 멱등</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `user_groups`, `group_memberships` (V015)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — Repository + 그룹/멤버십 관리 API + `SYSTEM_ADMIN` 가드</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 통합테스트(@Active<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">Pr</span>ofiles prod): SYSTEM_ADMIN 그룹 CRUD 허용·일반 사용자 거부, 멤버십 멱등</li></ol>
     </details><details class="fr-item fr-완료">
@@ -1610,6 +1610,10 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">시스템 관리자</div>
       <div class="term-cat">도메인 — 권한 (두 레이어)</div>
       <div class="term-def">System Admin. `SYSTEM_ADMIN` 전역 역할 보유자. SDD 12.6 OrgAdmin의 단일 역할 구현. 전역 자원(워크플로우 스킴 등) 관리 주체 (FR-PM-08, FR-PM-04에서 실사용)</div>
+    </div><div class="term-item" data-cat="도메인 — 권한 (두 레이어)" data-search="사용자 그룹 user group. 여러 사용자를 묶은 전역(시스템 단위) 재사용 단위. `usergroups`(name 전역 유니크) + `groupmemberships`(사용자↔그룹 n:m). 시스템 관리자만 crud/멤버 관리. 보안 수준 멤버(fr-pm-06)·권한 스킴 grants·그룹 멘션이 소비할 단위. ldap 그룹 문자열과는 별개(동기화는 후속) (fr-pm-09)">
+      <div class="term-name">사용자 그룹</div>
+      <div class="term-cat">도메인 — 권한 (두 레이어)</div>
+      <div class="term-def">User Group. 여러 사용자를 묶은 전역(시스템 단위) 재사용 단위. `usergroups`(name 전역 유니크) + `groupmemberships`(사용자↔그룹 N:M). 시스템 관리자만 CRUD/멤버 관리. 보안 수준 멤버(FR-PM-06)·권한 스킴 grants·그룹 멘션이 소비할 단위. LDAP 그룹 문자열과는 별개(동기화는 후속) (FR-PM-09)</div>
     </div><div class="term-item" data-cat="도메인 — 인증" data-search="authenticationprovider 플러그형 인증 백엔드 (ldap/saml/oidc/local/oauth)">
       <div class="term-name">AuthenticationProvider</div>
       <div class="term-cat">도메인 — 인증</div>
