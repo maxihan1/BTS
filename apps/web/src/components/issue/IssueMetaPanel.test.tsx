@@ -1,7 +1,11 @@
 // IssueMetaPanel 유형 행 + 셀렉터 + 상태전이 + 우선순위/영향도/환경/라벨 + 담당자 단위 테스트 — FR-IS-04 D6 Task-5, FR-IS-03 D6 Task-3, FR-IS-09 Task-6
-import { describe, it, expect, vi } from 'vitest'
+import type { ReactElement } from 'react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { server } from '@/test/server'
+import { http, HttpResponse } from 'msw'
 import type { IssueResponse, IssueTransition } from '@/api/issues'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import type { UserSummary } from '@/api/users'
@@ -48,6 +52,16 @@ import { useLabels } from '@/hooks/use-labels'
 vi.mock('@/hooks/use-debounce', () => ({
   useDebounce: (value: string) => value,
 }))
+
+// IssueSecurityLevelSelect 내부 useQuery가 호출하는 security-levels API 핸들러 등록
+// 기존 테스트는 보안등급 동작을 검증하지 않으므로 빈 배열로 응답해 UI에 영향 없이 동작하게 한다.
+beforeEach(() => {
+  server.use(
+    http.get('/api/v1/projects/:projectKey/issue-security-scheme/levels', () =>
+      HttpResponse.json({ levels: [] }),
+    ),
+  )
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처
@@ -152,26 +166,45 @@ function renderPanel(
 ) {
   // 기존 테스트는 권한 제어를 검증하지 않으므로 모든 권한 true로 세팅
   setupFullPermissions()
-  return render(
-    <IssueMetaPanel
-      issue={issue}
-      availableTypes={types}
-      onTypeChange={onTypeChange}
-      onDeleteClick={onDeleteClick}
-      onCloneClick={vi.fn()}
-      transitions={transitions}
-      onTransition={onTransition}
-      isTransitioning={isTransitioning}
-      onPriorityChange={onPriorityChange}
-      onImpactChange={onImpactChange}
-      onEnvironmentSave={onEnvironmentSave}
-      onLabelsSave={onLabelsSave}
-      users={users}
-      onAssigneeSearch={onAssigneeSearch}
-      onAssigneeChange={onAssigneeChange}
-      currentAssignee={currentAssignee}
-    />,
-  )
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+  function buildPanel(panelIssue: IssueResponse = issue) {
+    return (
+      <QueryClientProvider client={client}>
+        <IssueMetaPanel
+          issue={panelIssue}
+          availableTypes={types}
+          onTypeChange={onTypeChange}
+          onDeleteClick={onDeleteClick}
+          onCloneClick={vi.fn()}
+          transitions={transitions}
+          onTransition={onTransition}
+          isTransitioning={isTransitioning}
+          onPriorityChange={onPriorityChange}
+          onImpactChange={onImpactChange}
+          onEnvironmentSave={onEnvironmentSave}
+          onLabelsSave={onLabelsSave}
+          users={users}
+          onAssigneeSearch={onAssigneeSearch}
+          onAssigneeChange={onAssigneeChange}
+          currentAssignee={currentAssignee}
+        />
+      </QueryClientProvider>
+    )
+  }
+
+  const result = render(buildPanel())
+
+  return {
+    ...result,
+    // rerender를 래핑해 QueryClientProvider 컨텍스트를 유지한다.
+    // 기존 테스트에서 rerender(element)는 QueryClientProvider 없이 호출하므로
+    // 래핑 rerender는 element에서 IssueMetaPanel props를 추출하지 않고
+    // 전체 재렌더를 위해 buildPanel(issue)를 사용한다.
+    rerender: (element: ReactElement) => result.rerender(
+      <QueryClientProvider client={client}>{element}</QueryClientProvider>,
+    ),
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -409,26 +442,30 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
    * IMP-18: unavailableReason='no-workflow' 시 미설정 안내문구가 렌더된다.
    */
   it('IMP-18: unavailableReason=no-workflow 시 transitionWorkflowNotConfiguredError 문구가 렌더된다', () => {
+    setupFullPermissions()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
-      <IssueMetaPanel
-        issue={issueFixture}
-        availableTypes={availableTypes}
-        onTypeChange={vi.fn()}
-        onDeleteClick={vi.fn()}
-        onCloneClick={vi.fn()}
-        transitions={[]}
-        onTransition={vi.fn()}
-        isTransitioning={false}
-        unavailableReason="no-workflow"
-        onPriorityChange={vi.fn()}
-        onImpactChange={vi.fn()}
-        onEnvironmentSave={vi.fn()}
-        onLabelsSave={vi.fn()}
-        users={[]}
-        onAssigneeSearch={vi.fn()}
-        onAssigneeChange={vi.fn()}
-        currentAssignee={null}
-      />,
+      <QueryClientProvider client={client}>
+        <IssueMetaPanel
+          issue={issueFixture}
+          availableTypes={availableTypes}
+          onTypeChange={vi.fn()}
+          onDeleteClick={vi.fn()}
+          onCloneClick={vi.fn()}
+          transitions={[]}
+          onTransition={vi.fn()}
+          isTransitioning={false}
+          unavailableReason="no-workflow"
+          onPriorityChange={vi.fn()}
+          onImpactChange={vi.fn()}
+          onEnvironmentSave={vi.fn()}
+          onLabelsSave={vi.fn()}
+          users={[]}
+          onAssigneeSearch={vi.fn()}
+          onAssigneeChange={vi.fn()}
+          currentAssignee={null}
+        />
+      </QueryClientProvider>,
     )
     expect(screen.getByText(issueDetailStrings.transitionWorkflowNotConfiguredError)).toBeInTheDocument()
     expect(screen.queryByText(issueDetailStrings.noTransitionsAvailable)).not.toBeInTheDocument()
@@ -438,26 +475,30 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
    * IMP-19: unavailableReason='terminal'(또는 null) 시 noTransitionsAvailable 문구가 렌더된다.
    */
   it('IMP-19: unavailableReason=terminal 시 noTransitionsAvailable 문구가 렌더된다', () => {
+    setupFullPermissions()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
-      <IssueMetaPanel
-        issue={issueFixture}
-        availableTypes={availableTypes}
-        onTypeChange={vi.fn()}
-        onDeleteClick={vi.fn()}
-        onCloneClick={vi.fn()}
-        transitions={[]}
-        onTransition={vi.fn()}
-        isTransitioning={false}
-        unavailableReason="terminal"
-        onPriorityChange={vi.fn()}
-        onImpactChange={vi.fn()}
-        onEnvironmentSave={vi.fn()}
-        onLabelsSave={vi.fn()}
-        users={[]}
-        onAssigneeSearch={vi.fn()}
-        onAssigneeChange={vi.fn()}
-        currentAssignee={null}
-      />,
+      <QueryClientProvider client={client}>
+        <IssueMetaPanel
+          issue={issueFixture}
+          availableTypes={availableTypes}
+          onTypeChange={vi.fn()}
+          onDeleteClick={vi.fn()}
+          onCloneClick={vi.fn()}
+          transitions={[]}
+          onTransition={vi.fn()}
+          isTransitioning={false}
+          unavailableReason="terminal"
+          onPriorityChange={vi.fn()}
+          onImpactChange={vi.fn()}
+          onEnvironmentSave={vi.fn()}
+          onLabelsSave={vi.fn()}
+          users={[]}
+          onAssigneeSearch={vi.fn()}
+          onAssigneeChange={vi.fn()}
+          currentAssignee={null}
+        />
+      </QueryClientProvider>,
     )
     expect(screen.getByText(issueDetailStrings.noTransitionsAvailable)).toBeInTheDocument()
     expect(screen.queryByText(issueDetailStrings.transitionWorkflowNotConfiguredError)).not.toBeInTheDocument()
@@ -467,26 +508,30 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
    * IMP-20: 전이가 있으면 unavailableReason과 무관하게 셀렉터가 렌더된다.
    */
   it('IMP-20: 전이가 있으면 unavailableReason=no-workflow여도 셀렉터가 렌더된다', () => {
+    setupFullPermissions()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
-      <IssueMetaPanel
-        issue={issueFixture}
-        availableTypes={availableTypes}
-        onTypeChange={vi.fn()}
-        onDeleteClick={vi.fn()}
-        onCloneClick={vi.fn()}
-        transitions={transitionsFixture}
-        onTransition={vi.fn()}
-        isTransitioning={false}
-        unavailableReason="no-workflow"
-        onPriorityChange={vi.fn()}
-        onImpactChange={vi.fn()}
-        onEnvironmentSave={vi.fn()}
-        onLabelsSave={vi.fn()}
-        users={[]}
-        onAssigneeSearch={vi.fn()}
-        onAssigneeChange={vi.fn()}
-        currentAssignee={null}
-      />,
+      <QueryClientProvider client={client}>
+        <IssueMetaPanel
+          issue={issueFixture}
+          availableTypes={availableTypes}
+          onTypeChange={vi.fn()}
+          onDeleteClick={vi.fn()}
+          onCloneClick={vi.fn()}
+          transitions={transitionsFixture}
+          onTransition={vi.fn()}
+          isTransitioning={false}
+          unavailableReason="no-workflow"
+          onPriorityChange={vi.fn()}
+          onImpactChange={vi.fn()}
+          onEnvironmentSave={vi.fn()}
+          onLabelsSave={vi.fn()}
+          users={[]}
+          onAssigneeSearch={vi.fn()}
+          onAssigneeChange={vi.fn()}
+          currentAssignee={null}
+        />
+      </QueryClientProvider>,
     )
     expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument()
   })
@@ -1266,25 +1311,28 @@ describe('IssueMetaPanel — 담당자 canEdit 게이트 (FR-PM-02 C1)', () => {
    */
   it('IMP-58: UPDATE=false이면 담당자 검색 input이 disabled된다', () => {
     setupNoEditPermissions()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
-      <IssueMetaPanel
-        issue={issueFixture}
-        availableTypes={availableTypes}
-        onTypeChange={vi.fn()}
-        onDeleteClick={vi.fn()}
-        onCloneClick={vi.fn()}
-        transitions={transitionsFixture}
-        onTransition={vi.fn()}
-        isTransitioning={false}
-        onPriorityChange={vi.fn()}
-        onImpactChange={vi.fn()}
-        onEnvironmentSave={vi.fn()}
-        onLabelsSave={vi.fn()}
-        users={[]}
-        onAssigneeSearch={vi.fn()}
-        onAssigneeChange={vi.fn()}
-        currentAssignee={null}
-      />,
+      <QueryClientProvider client={client}>
+        <IssueMetaPanel
+          issue={issueFixture}
+          availableTypes={availableTypes}
+          onTypeChange={vi.fn()}
+          onDeleteClick={vi.fn()}
+          onCloneClick={vi.fn()}
+          transitions={transitionsFixture}
+          onTransition={vi.fn()}
+          isTransitioning={false}
+          onPriorityChange={vi.fn()}
+          onImpactChange={vi.fn()}
+          onEnvironmentSave={vi.fn()}
+          onLabelsSave={vi.fn()}
+          users={[]}
+          onAssigneeSearch={vi.fn()}
+          onAssigneeChange={vi.fn()}
+          currentAssignee={null}
+        />
+      </QueryClientProvider>,
     )
     const assigneeSection = screen.getByTestId('assignee-section')
     const searchInput = within(assigneeSection).getByRole('textbox', { name: issueDetailStrings.assigneeSearchPlaceholder })
@@ -1299,25 +1347,28 @@ describe('IssueMetaPanel — 담당자 canEdit 게이트 (FR-PM-02 C1)', () => {
     const alice = usersFixture[0]
     if (!alice) return
     const issueWithAssignee: IssueResponse = { ...issueFixture, assigneeId: alice.id }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
-      <IssueMetaPanel
-        issue={issueWithAssignee}
-        availableTypes={availableTypes}
-        onTypeChange={vi.fn()}
-        onDeleteClick={vi.fn()}
-        onCloneClick={vi.fn()}
-        transitions={transitionsFixture}
-        onTransition={vi.fn()}
-        isTransitioning={false}
-        onPriorityChange={vi.fn()}
-        onImpactChange={vi.fn()}
-        onEnvironmentSave={vi.fn()}
-        onLabelsSave={vi.fn()}
-        users={[]}
-        onAssigneeSearch={vi.fn()}
-        onAssigneeChange={vi.fn()}
-        currentAssignee={alice}
-      />,
+      <QueryClientProvider client={client}>
+        <IssueMetaPanel
+          issue={issueWithAssignee}
+          availableTypes={availableTypes}
+          onTypeChange={vi.fn()}
+          onDeleteClick={vi.fn()}
+          onCloneClick={vi.fn()}
+          transitions={transitionsFixture}
+          onTransition={vi.fn()}
+          isTransitioning={false}
+          onPriorityChange={vi.fn()}
+          onImpactChange={vi.fn()}
+          onEnvironmentSave={vi.fn()}
+          onLabelsSave={vi.fn()}
+          users={[]}
+          onAssigneeSearch={vi.fn()}
+          onAssigneeChange={vi.fn()}
+          currentAssignee={alice}
+        />
+      </QueryClientProvider>,
     )
     const assigneeSection = screen.getByTestId('assignee-section')
     const unassignBtn = within(assigneeSection).getByRole('button', { name: issueDetailStrings.assigneeUnassignButton })

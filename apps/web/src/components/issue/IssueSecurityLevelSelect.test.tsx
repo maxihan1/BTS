@@ -58,15 +58,14 @@ describe('IssueSecurityLevelSelect', () => {
   it('SL-SEL-1: 등급 목록 로드 후 "선택 안 함"과 각 등급 옵션이 렌더된다', async () => {
     renderSelect()
 
-    // "선택 안 함" 옵션 존재
-    await waitFor(() =>
-      expect(
-        screen.getByRole('option', { name: issueDetailStrings.securityLevelNone }),
-      ).toBeInTheDocument(),
-    )
+    // "선택 안 함" 옵션 — 초기 렌더에서 이미 있음
+    expect(
+      await screen.findByRole('option', { name: issueDetailStrings.securityLevelNone }),
+    ).toBeInTheDocument()
 
-    expect(screen.getByRole('option', { name: '기밀' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: '내부' })).toBeInTheDocument()
+    // 등급 옵션 — MSW 응답 후 렌더됨
+    expect(await screen.findByRole('option', { name: '기밀' })).toBeInTheDocument()
+    expect(await screen.findByRole('option', { name: '내부' })).toBeInTheDocument()
   })
 
   /**
@@ -99,7 +98,9 @@ describe('IssueSecurityLevelSelect', () => {
     const user = userEvent.setup()
     renderSelect({ onChange })
 
-    const select = await screen.findByLabelText(issueDetailStrings.securityLevelSelectLabel)
+    // 옵션이 렌더될 때까지 대기
+    await screen.findByRole('option', { name: '기밀' })
+    const select = screen.getByLabelText(issueDetailStrings.securityLevelSelectLabel)
     await user.selectOptions(select, '기밀')
 
     expect(onChange).toHaveBeenCalledWith('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
@@ -114,7 +115,9 @@ describe('IssueSecurityLevelSelect', () => {
     // 처음에 값 있는 상태
     renderSelect({ value: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', onChange })
 
-    const select = await screen.findByLabelText(issueDetailStrings.securityLevelSelectLabel)
+    // 옵션이 렌더될 때까지 대기
+    await screen.findByRole('option', { name: issueDetailStrings.securityLevelNone })
+    const select = screen.getByLabelText(issueDetailStrings.securityLevelSelectLabel)
     await user.selectOptions(select, issueDetailStrings.securityLevelNone)
 
     expect(onChange).toHaveBeenCalledWith(null)

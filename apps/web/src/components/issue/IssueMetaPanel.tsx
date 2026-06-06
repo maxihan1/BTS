@@ -1,4 +1,4 @@
-// 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전이 셀렉터·우선순위·영향도·환경·라벨·담당자·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
+// 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전이 셀렉터·우선순위·영향도·환경·라벨·담당자·보안등급·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
 import type { JSX } from 'react'
 import { useState, useEffect, useRef } from 'react'
 import type { IssueResponse, IssueTransition } from '@/api/issues'
@@ -7,6 +7,7 @@ import type { UserSummary } from '@/api/users'
 import type { Component } from '@/api/components'
 import { Button } from '@/components/ui/button'
 import { ComponentMultiSelect } from '@/components/issue/ComponentMultiSelect'
+import { IssueSecurityLevelSelect } from '@/components/issue/IssueSecurityLevelSelect'
 import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
 import { formatDate } from '@/lib/date-format'
 import { issueDetailStrings } from '@/i18n/ko'
@@ -75,6 +76,11 @@ export interface IssueMetaPanelProps {
   components?: Component[]
   /** 컴포넌트 변경 콜백 — 새 UUID 배열 전달 (route가 useChangeComponents mutation 소유). 미전달 시 no-op. */
   onComponentsChange?: (ids: string[]) => void
+  /**
+   * 보안등급 변경 콜백 — 선택한 등급 UUID 또는 null(해제)을 전달.
+   * route가 useChangeSecurityLevel mutation 소유. 미전달 시 no-op.
+   */
+  onSecurityLevelChange?: (levelId: string | null) => void
 }
 
 /**
@@ -112,6 +118,7 @@ export function IssueMetaPanel({
   componentIds = [],
   components = [],
   onComponentsChange = () => { /* no-op */ },
+  onSecurityLevelChange = () => { /* no-op */ },
 }: IssueMetaPanelProps): JSX.Element {
   // 권한 조회 — fail-closed: 로딩 중·에러·미확정이면 false(비활성)
   const { data: permissionsData, isLoading: isPermissionsLoading, isError: isPermissionsError } =
@@ -230,6 +237,17 @@ export function IssueMetaPanel({
             value={componentIds}
             options={components}
             onChange={onComponentsChange}
+            disabled={!canEdit}
+          />
+        </div>
+
+        {/* 보안등급 — IssueSecurityLevelSelect (FR-PM-06 PR-B) */}
+        <div className="px-3.5 py-3 border-b border-border" data-testid="security-level-section">
+          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.securityLevelLabel}</p>
+          <IssueSecurityLevelSelect
+            projectKey={issue.projectKey}
+            value={issue.securityLevelId ?? null}
+            onChange={onSecurityLevelChange}
             disabled={!canEdit}
           />
         </div>

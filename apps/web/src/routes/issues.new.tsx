@@ -19,6 +19,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { ComponentMultiSelect } from '@/components/issue/ComponentMultiSelect'
+import { IssueSecurityLevelSelect } from '@/components/issue/IssueSecurityLevelSelect'
 import { useComponents } from '@/hooks/use-components'
 import { issueCreateStrings, issueDetailStrings } from '@/i18n/ko'
 
@@ -84,6 +85,7 @@ interface IssueCreateFormProps {
 export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.Element {
   const [serverError, setServerError] = useState<string | null>(null)
   const [selectedComponentIds, setSelectedComponentIds] = useState<string[]>([])
+  const [selectedSecurityLevelId, setSelectedSecurityLevelId] = useState<string | null>(null)
 
   const form = useForm<IssueCreateFormValues>({
     resolver: zodResolver(issueCreateSchema),
@@ -111,7 +113,12 @@ export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.E
 
   function handleSubmit(values: IssueCreateFormValues): void {
     setServerError(null)
-    mutation.mutate({ ...values, componentIds: selectedComponentIds })
+    mutation.mutate({
+      ...values,
+      componentIds: selectedComponentIds,
+      // securityLevelId null은 명시적으로 전달 — 미선택(null)이면 body에 포함해 서버가 무등급으로 처리
+      securityLevelId: selectedSecurityLevelId,
+    })
   }
 
   return (
@@ -176,6 +183,19 @@ export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.E
             value={selectedComponentIds}
             options={componentOptions}
             onChange={setSelectedComponentIds}
+            disabled={!isProjectKeyFilled}
+          />
+        </div>
+
+        {/* 보안등급 선택 — projectKey 입력 시 등급 목록 로드 (FR-PM-06 PR-B) */}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+            {issueDetailStrings.securityLevelCreateLabel}
+          </span>
+          <IssueSecurityLevelSelect
+            projectKey={projectKey}
+            value={selectedSecurityLevelId}
+            onChange={setSelectedSecurityLevelId}
             disabled={!isProjectKeyFilled}
           />
         </div>

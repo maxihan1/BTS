@@ -1,6 +1,9 @@
 // IssueMetaPanel 권한별 삭제/저장 버튼 disabled 단위 테스트 (FR-PM-02 Task 5)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { server } from '@/test/server'
+import { http, HttpResponse } from 'msw'
 import { IssueMetaPanel } from '../IssueMetaPanel'
 import type { IssueResponse } from '@/api/issues'
 import type { IssueTypeResponse } from '@/api/issue-types'
@@ -28,6 +31,16 @@ vi.mock('@/hooks/use-debounce', () => ({
 }))
 
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
+
+// IssueSecurityLevelSelect 내부 useQuery가 호출하는 security-levels API 핸들러 등록
+// 이 테스트는 권한 제어만 검증하므로 빈 배열로 응답해 UI에 영향 없이 동작하게 한다.
+beforeEach(() => {
+  server.use(
+    http.get('/api/v1/projects/:projectKey/issue-security-scheme/levels', () =>
+      HttpResponse.json({ levels: [] }),
+    ),
+  )
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 공통 fixture
@@ -107,25 +120,28 @@ function renderPanel(overrides: {
     refetch: vi.fn(),
   } as unknown as ReturnType<typeof useIssuePermissions>)
 
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <IssueMetaPanel
-      issue={issueFixture}
-      availableTypes={[typeFixture]}
-      onTypeChange={vi.fn()}
-      onDeleteClick={vi.fn()}
-      onCloneClick={vi.fn()}
-      transitions={[]}
-      onTransition={vi.fn()}
-      isTransitioning={false}
-      onPriorityChange={vi.fn()}
-      onImpactChange={vi.fn()}
-      onEnvironmentSave={vi.fn()}
-      onLabelsSave={vi.fn()}
-      users={[]}
-      onAssigneeSearch={vi.fn()}
-      onAssigneeChange={vi.fn()}
-      currentAssignee={null}
-    />,
+    <QueryClientProvider client={client}>
+      <IssueMetaPanel
+        issue={issueFixture}
+        availableTypes={[typeFixture]}
+        onTypeChange={vi.fn()}
+        onDeleteClick={vi.fn()}
+        onCloneClick={vi.fn()}
+        transitions={[]}
+        onTransition={vi.fn()}
+        isTransitioning={false}
+        onPriorityChange={vi.fn()}
+        onImpactChange={vi.fn()}
+        onEnvironmentSave={vi.fn()}
+        onLabelsSave={vi.fn()}
+        users={[]}
+        onAssigneeSearch={vi.fn()}
+        onAssigneeChange={vi.fn()}
+        currentAssignee={null}
+      />
+    </QueryClientProvider>,
   )
 }
 
