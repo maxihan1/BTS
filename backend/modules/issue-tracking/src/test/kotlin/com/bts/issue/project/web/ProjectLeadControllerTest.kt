@@ -50,6 +50,8 @@ class ProjectLeadControllerTest {
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
      * [ProjectLeadController], [ProjectLeadExceptionHandler] 와 MockK stub Bean 을 등록한다.
+     * `@SpringBootApplication` 없이 최소 컨텍스트로 구성한다.
+     * [com.bts.issue.type.web.IssueTypeControllerTest.TestMvcConfig] 선례와 동일한 구조를 따른다.
      */
     @Configuration
     @EnableWebMvc
