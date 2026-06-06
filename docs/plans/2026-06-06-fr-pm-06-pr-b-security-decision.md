@@ -246,4 +246,21 @@ FR-PM-06(이슈 보안 수준)의 후속 PR-B. PR-A에서 Jira Cloud 방식 스�
 - **C5(반영)** — unrestricted 빠른경로(스킴 미적용→추가쿼리 0)는 prod에서만 실측, T9에 명시.
 - **정합 확인(이의 없음)** — 포트 방향·ArchUnit(shared-kernel UUID/String/Boolean만), 422 cross-BC 쿼리 가능, V013→V014 충돌 없음·init_codegen 미러 패턴 확립, FK 미적용 타당, resolver isSystemAdmin 미호출(단건 404 일관), 의존 그래프 순환 0.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 구현 + PR 코드리뷰 (게이트2)
+
+**구현**: 10 TDD task(T1~T10) 전부 test→feat→refactor 순서 완료. wave 4 dispatch. 3모듈 통합 BUILD SUCCESSFUL.
+
+**PR code-reviewer ground-truth 적대적 리뷰 (라운드1)**: BLOCKER 1 + CONCERN 4.
+- **B1(해소)** — `CurrentActor`의 `ResponseStatusException(401)`을 `IssueExceptionHandler` catch-all `@ExceptionHandler(Exception)`이 가로채 500 반환(@RestControllerAdvice 우선). 거짓그린(단위 CurrentActorTest 직접호출·컨트롤러 19개 전부 인증주입). → `@ExceptionHandler(ResponseStatusException)` 추가(status 전파, detail 일반화) + 컨트롤러 미인증 MockMvc 회귀(RED 500→GREEN 401).
+- **C1(해소)** — 조합 PATCH(보안등급+필드) version 단일체인 잠금 테스트 추가(이중bump 차단).
+- **C4(해소)** — listWithType actor 기본인자 제거.
+- **C2(해소, 라운드2)** — accessibleLevels 등급당 listMembers(N+1) → `listMembersByScheme` 배치(등급 수 무관 1쿼리).
+- **C3(해소, 라운드2)** — lookup 통합테스트 수동 issues 스키마를 공유 리소스 추출 + information_schema 컬럼 단언. 한계(cross-module 의존 부재로 완전 폐쇄 불가) 명시.
+
+**Maxi 게이트2 결정 — 머지 전 추가 범위 포함**: C2/C3 + **D6/D7(UI/E2E)**.
+- **BE-1**: IssueResponse에 securityLevelId 노출(단건+목록, 편집 화면 표시용).
+- **BE-2**: 사용자용 `GET /api/v1/projects/{key}/issue-security-scheme/levels`(인증, 미적용=빈배열 200, 없는 프로젝트 404, 멤버 비노출).
+- **D6 프론트**: IssueSecurityLevelSelect + security-levels api + useChangeSecurityLevel(invalidate-only) + 생성/편집 통합 + i18n. typecheck/lint/test(1291)/build 그린.
+- **D7 E2E**: 생성(등급 선택 round-trip)·편집(변경)·해제(null) 3 시나리오 + MSW 핸들러(create/update securityLevelId stateful 영속). 기존 이슈 E2E 53개 회귀 0.
+
+**최종 검증**: 백엔드 3모듈 test+ktlint+detekt BUILD SUCCESSFUL, 프론트 typecheck/lint/test/build/E2E 그린, verify-master-plan PASS(FR 121/121). FR-PM-06 D1~D7 완료.
