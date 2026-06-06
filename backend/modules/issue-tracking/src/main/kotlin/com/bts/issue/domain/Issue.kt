@@ -65,6 +65,9 @@ private const val IMPACT_MAX = 3
  * @property componentIds 이슈가 속한 컴포넌트 UUID 목록. 중복 없음, 개수 제한 없음.
  *   [create] 시 [componentIds] 파라미터로 초기값 설정 가능 (기본값 빈 리스트, distinct 정규화 자동 적용).
  *   이후 변경은 [assignComponents]/[clearComponents] 를 통해 수행한다.
+ * @property securityLevelId 이슈에 적용된 보안 등급 UUID (issue_security_levels.id FK). null 이면 등급 없음(공개).
+ *   [create] 시 [securityLevelId] 파라미터로 초기값 설정 가능 (기본값 null).
+ *   이후 변경은 [assignSecurityLevel] 을 통해 수행한다 (patch-merge-domain-bypass 방지).
  */
 data class Issue(
     val id: IssueId,
@@ -86,6 +89,7 @@ data class Issue(
     val assigneeId: ActorId? = null,
     val resolutionId: UUID? = null,
     val componentIds: List<UUID> = emptyList(),
+    val securityLevelId: UUID? = null,
 ) {
     companion object {
         /**
@@ -128,6 +132,7 @@ data class Issue(
          * @param impact 영향도 1..3. null 허용.
          * @param assigneeId 담당자. null 이면 미할당.
          * @param componentIds 이슈가 속한 컴포넌트 UUID 목록. 중복은 자동 제거된다. 기본값 빈 리스트.
+         * @param securityLevelId 보안 등급 UUID. null 이면 등급 없음(공개). 기본값 null.
          * @return 생성된 [Issue] 인스턴스.
          */
         @Suppress("LongParameterList")
@@ -146,6 +151,7 @@ data class Issue(
             impact: Int? = null,
             assigneeId: ActorId? = null,
             componentIds: List<UUID> = emptyList(),
+            securityLevelId: UUID? = null,
         ): Issue {
             validateSummary(summary)
             validatePriority(priority)
@@ -171,6 +177,7 @@ data class Issue(
                 impact = impact,
                 assigneeId = assigneeId,
                 componentIds = componentIds.filterNotNull().distinct(),
+                securityLevelId = securityLevelId,
             )
         }
     }
@@ -213,6 +220,20 @@ data class Issue(
      * @return [componentIds] 가 빈 목록으로 설정된 새 [Issue] 인스턴스.
      */
     fun clearComponents(): Issue = copy(componentIds = emptyList())
+
+    /**
+     * 이 이슈에 보안 등급을 지정하거나 해제한다.
+     *
+     * 사용자가 직접 수행하는 명시적 편집 — [version] 을 +1 하여 낙관적 잠금(OCC) 버전을 갱신한다.
+     * null 전달 시 등급이 해제되어 이슈가 공개 상태가 된다.
+     *
+     * patch-merge-domain-bypass 방지 — 서비스 계층이 이 함수를 반드시 경유해야
+     * 도메인 불변식이 강제된다. repository 직접 update 금지.
+     *
+     * @param levelId 지정할 보안 등급 UUID. null 이면 등급 해제(공개).
+     * @return [securityLevelId] 가 [levelId] 로 설정되고 [version] 이 +1 된 새 [Issue] 인스턴스.
+     */
+    fun assignSecurityLevel(levelId: UUID?): Issue = copy(securityLevelId = levelId, version = version + 1)
 }
 
 /**

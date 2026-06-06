@@ -585,6 +585,36 @@ class IssueRepository(
     }
 
     /**
+     * 이슈 보안 등급을 갱신한다 (낙관락 OCC UPDATE).
+     *
+     * WHERE key=? AND version=? AND deleted_at IS NULL 조건으로 UPDATE.
+     * version 불일치(stale read) 시 영향 행 0 반환.
+     *
+     * null 전달 시 DB NULL 로 클리어하여 이슈를 공개 상태로 만든다.
+     *
+     * @param key 이슈 키.
+     * @param securityLevelId 지정할 보안 등급 UUID. null 이면 등급 해제(공개).
+     * @param expectedVersion 현재 버전. DB 버전과 일치해야 업데이트가 실행된다.
+     * @return 업데이트된 행 수 (성공=1, 낙관락 충돌=0).
+     */
+    @Transactional
+    fun updateSecurityLevel(
+        key: IssueKey,
+        securityLevelId: UUID?,
+        expectedVersion: Long,
+    ): Int {
+        log.debug("updateSecurityLevel key={} securityLevelId={} expectedVersion={}", key.value, securityLevelId, expectedVersion)
+        return dsl.update(ISSUES)
+            .set(ISSUES.SECURITY_LEVEL_ID, securityLevelId)
+            .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+            .set(ISSUES.VERSION, expectedVersion + 1)
+            .where(ISSUES.KEY.eq(key.value))
+            .and(ISSUES.VERSION.eq(expectedVersion))
+            .and(ISSUES.DELETED_AT.isNull)
+            .execute()
+    }
+
+    /**
      * 활성 이슈(deleted_at IS NULL)의 라벨을 prefix 로 필터해 빈도 순으로 반환한다.
      *
      * 라벨 배열(labels TEXT[])을 UNNEST 해 행으로 전개한 뒤 COUNT(DISTINCT id) 로
@@ -674,6 +704,7 @@ private fun Issue.toInsertRecord(): IssuesRecord =
         environment = environment,
         impact = impact?.toShort(),
         assigneeId = assigneeId?.value,
+        securityLevelId = securityLevelId,
     )
 
 /**
@@ -706,6 +737,7 @@ private fun IssuesRecord.toIssue(): Issue {
         impact = impact?.toInt(),
         assigneeId = assigneeId?.let { ActorId(it) },
         resolutionId = resolutionId,
+        securityLevelId = securityLevelId,
     )
 }
 
