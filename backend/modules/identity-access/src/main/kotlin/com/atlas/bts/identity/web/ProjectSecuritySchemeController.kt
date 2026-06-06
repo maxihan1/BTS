@@ -131,9 +131,10 @@ class ProjectSecuritySchemeController(
         @AuthenticationPrincipal jwt: Jwt?,
         @PathVariable key: String,
     ): ResponseEntity<*> {
-        val actorId = resolveActorId(jwt) ?: return UNAUTHORIZED_RESPONSE
+        // actor 추출은 401 가드 목적(미인증 차단). 조회 자체는 actor 무관(인증된 사용자 누구나 옵션 조회).
+        resolveActorId(jwt) ?: return UNAUTHORIZED_RESPONSE
         return runHandler {
-            val levels = service.listLevelsByProject(key, actorId).map { ProjectLevelResponse.from(it) }
+            val levels = service.listLevelsByProject(key).map { ProjectLevelResponse.from(it) }
             ResponseEntity.ok(ProjectLevelsResponse(levels = levels))
         }
     }

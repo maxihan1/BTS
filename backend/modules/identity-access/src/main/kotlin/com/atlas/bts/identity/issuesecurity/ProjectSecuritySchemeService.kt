@@ -125,16 +125,15 @@ class ProjectSecuritySchemeService(
      *
      * 프로젝트에 적용된 스킴이 없으면 빈 목록을 반환한다(404 아님 — 드롭다운이 "선택 안 함"만 표시).
      *
+     * 인증된 사용자라면 누구나 옵션을 볼 수 있으므로 actor 식별자는 받지 않는다(per-actor 필터링은
+     * 등급 멤버 판정 = PR-B Task 7 resolver 의 책임이며, 본 조회는 스킴 구조만 반환한다).
+     *
      * @param projectKey 대상 프로젝트 키.
-     * @param actorId 요청 사용자 식별자(인증 확인은 컨트롤러가 완료).
      * @return 적용 스킴의 등급 목록. 미적용이면 빈 목록.
      * @throws ProjectNotFoundException 프로젝트가 없는 경우.
      */
     @Transactional(readOnly = true, isolation = Isolation.READ_COMMITTED)
-    fun listLevelsByProject(
-        projectKey: String,
-        actorId: UUID,
-    ): List<IssueSecurityLevel> {
+    fun listLevelsByProject(projectKey: String): List<IssueSecurityLevel> {
         val projectId = projectDirectory.resolveKeyToId(projectKey) ?: throw ProjectNotFoundException(projectKey)
         val schemeId = projectSchemeRepository.findByProject(projectId) ?: return emptyList()
         return schemeRepository.listLevels(schemeId)

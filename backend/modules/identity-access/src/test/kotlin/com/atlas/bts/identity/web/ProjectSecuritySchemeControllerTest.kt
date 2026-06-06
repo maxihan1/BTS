@@ -353,7 +353,7 @@ class ProjectSecuritySchemeControllerTest {
 
     @Test
     fun `GET levels 적용 스킴 등급 목록 200`() {
-        every { service.listLevelsByProject(PROJECT_KEY, ACTOR_ID) } returns listOf(level())
+        every { service.listLevelsByProject(PROJECT_KEY) } returns listOf(level())
 
         mockMvc.perform(
             get("/api/v1/projects/$PROJECT_KEY/issue-security-scheme/levels")
@@ -370,7 +370,7 @@ class ProjectSecuritySchemeControllerTest {
 
     @Test
     fun `GET levels 미적용 프로젝트 200 빈 배열`() {
-        every { service.listLevelsByProject(PROJECT_KEY, ACTOR_ID) } returns emptyList()
+        every { service.listLevelsByProject(PROJECT_KEY) } returns emptyList()
 
         mockMvc.perform(
             get("/api/v1/projects/$PROJECT_KEY/issue-security-scheme/levels")
@@ -383,7 +383,7 @@ class ProjectSecuritySchemeControllerTest {
 
     @Test
     fun `GET levels 없는 프로젝트 404 project_not_found`() {
-        every { service.listLevelsByProject(PROJECT_KEY, ACTOR_ID) } throws ProjectNotFoundException(PROJECT_KEY)
+        every { service.listLevelsByProject(PROJECT_KEY) } throws ProjectNotFoundException(PROJECT_KEY)
 
         mockMvc.perform(
             get("/api/v1/projects/$PROJECT_KEY/issue-security-scheme/levels")
@@ -402,6 +402,6 @@ class ProjectSecuritySchemeControllerTest {
             .andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.error").value("unauthorized"))
 
-        verify(exactly = 0) { service.listLevelsByProject(any(), any()) }
+        verify(exactly = 0) { service.listLevelsByProject(any()) }
     }
 }

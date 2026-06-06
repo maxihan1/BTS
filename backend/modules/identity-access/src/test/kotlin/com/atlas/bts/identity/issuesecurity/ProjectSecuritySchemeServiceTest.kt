@@ -219,6 +219,48 @@ class ProjectSecuritySchemeServiceTest {
             .isInstanceOf(ProjectSchemeAccessDeniedException::class.java)
     }
 
+    // ── listLevelsByProject (BE-2, PROJECT_ADMIN 불요) ──────────────────────────────
+
+    private fun persistedLevel(): IssueSecurityLevel =
+        IssueSecurityLevel(
+            id = UUID.fromString("66666666-6666-4666-8666-666666666666"),
+            schemeId = schemeId,
+            name = "임원만",
+            description = "임원 전용 등급",
+            isDefault = true,
+            createdAt = Instant.parse("2026-06-06T00:00:00Z"),
+        )
+
+    @Test
+    fun `listLevelsByProject — 적용 스킴 등급 목록 반환, PROJECT_ADMIN 가드 미호출`() {
+        every { projectDirectory.resolveKeyToId(projectKey) } returns projectId
+        every { projectSchemeRepo.findByProject(projectId) } returns schemeId
+        every { schemeRepo.listLevels(schemeId) } returns listOf(persistedLevel())
+
+        assertThat(service.listLevelsByProject(projectKey)).containsExactly(persistedLevel())
+
+        // 드롭다운 조회는 인증만 요구 — 멤버십(PROJECT_ADMIN) 조회를 하지 않는다.
+        verify(exactly = 0) { membershipRepo.findByProjectAndUser(any(), any()) }
+    }
+
+    @Test
+    fun `listLevelsByProject — 미적용 프로젝트면 빈 목록 (404 아님)`() {
+        every { projectDirectory.resolveKeyToId(projectKey) } returns projectId
+        every { projectSchemeRepo.findByProject(projectId) } returns null
+
+        assertThat(service.listLevelsByProject(projectKey)).isEmpty()
+
+        verify(exactly = 0) { schemeRepo.listLevels(any()) }
+    }
+
+    @Test
+    fun `listLevelsByProject — 없는 프로젝트면 ProjectNotFound`() {
+        every { projectDirectory.resolveKeyToId(projectKey) } returns null
+
+        assertThatThrownBy { service.listLevelsByProject(projectKey) }
+            .isInstanceOf(ProjectNotFoundException::class.java)
+    }
+
     // ── Annotation 회귀 가드 ────────────────────────────────────────────────────────
 
     @Test
