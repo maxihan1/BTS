@@ -44,6 +44,7 @@ export const createdIssueFixture = {
   environment: null,
   impact: null,
   impactName: null,
+  securityLevelId: null,
 }
 
 const issueFixtureMap: Record<string, IssueResponse> = {
@@ -284,6 +285,7 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     labels?: string[] | null
     environment?: string | null
     impact?: number | null
+    securityLevelId?: string | null
   }
 
   // (2) typeId 검증 — 카탈로그에 없는 id 는 404
@@ -325,6 +327,11 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
   const resolvedEnvironment = applyNullableStringPatch(found.environment, body.environment)
   const resolvedImpact = body.impact !== undefined ? (body.impact ?? found.impact) : found.impact
 
+  // securityLevelId: undefined(미전달) → 기존값 유지, null → 해제, UUID → 지정
+  const resolvedSecurityLevelId = body.securityLevelId !== undefined
+    ? body.securityLevelId
+    : found.securityLevelId
+
   const updated: IssueResponse = {
     ...found,
     summary: body.summary ?? found.summary,
@@ -339,6 +346,7 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     environment: resolvedEnvironment,
     impact: resolvedImpact,
     impactName: impactNameOf(resolvedImpact),
+    securityLevelId: resolvedSecurityLevelId,
     version: found.version + 1,
     updatedAt: new Date().toISOString(),
   }
