@@ -2,6 +2,7 @@
 // 소프트 삭제 stateful: deletedKeys 와 createdIssues 로 모듈-스코프 상태 유지 (E2E 검증 gap-H + E2E-1 happy path).
 import { http, HttpResponse } from 'msw'
 import { getStoredComponentsByIds } from './component-handlers'
+import { getStoredProjectLead } from './project-lead-handlers'
 import {
   issuePageFixture,
   issueAtlas1Fixture,
@@ -218,6 +219,7 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
   // 정렬 기준: name 오름차순, name 동률이면 id 오름차순 (백엔드 DefaultAssigneeResolver 동일).
   let resolvedAssigneeId: string | null = createdIssueFixture.assigneeId
   if (resolvedAssigneeId === null && componentIds.length > 0) {
+    // 우선순위 1: 컴포넌트 리드 (name 오름차순 → id 오름차순 tiebreak)
     const firstLead = getStoredComponentsByIds(componentIds)
       .filter((c) => c.leadUserId !== null)
       .sort((a, b) => {
@@ -226,6 +228,10 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
       })[0]
     if (firstLead !== undefined) {
       resolvedAssigneeId = firstLead.leadUserId
+    } else {
+      // 우선순위 2: 프로젝트 리드 폴백 — 컴포넌트 리드가 없는 경우
+      // body.projectKey 원본 키로 조회 (store 키와 일치: 'ATLAS')
+      resolvedAssigneeId = getStoredProjectLead(body.projectKey ?? '')
     }
   }
 

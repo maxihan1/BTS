@@ -207,7 +207,7 @@
 - [x] D4. 백엔드 — 프로젝트 리드 지정/해제 API(PATCH /api/v1/projects/{idOrKey}/lead) + DefaultAssigneeResolver 폴백 확장 + IssueApplicationService 주입 (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 — 폴백 우선순위(resolver 단위) + 리드 실존(UserLookupPort, 422) + 생성/변경 통합(Testcontainers) (책임. backend-engineer)
 - [x] D6. 프론트 UI — 프로젝트 설정에 리드 지정 (책임. designer → frontend-engineer) (완료. PR #91 — 신규 라우트 `/projects/$projectKey/settings/project-lead`(RouteAdapter+Page, workflow-scheme 동형) + 백엔드 조회 GET `/api/v1/projects/{idOrKey}/lead`(same-BC view layer, readOnly, 무권한 READ) + api/project-lead+useProjectLead/useChangeProjectLead+ProjectLeadSelect(ComponentLeadSelect 동형)+MSW stateful. 권한 fail-closed(MANAGE_COMPONENTS) + CSRF + errorCode. 적대적 리뷰 #1(삭제된 리드→"미지정" 둔갑) 수정 — leadUserId 있는데 조회 실패 시 "알 수 없는 사용자 (uuid 앞8자)"+해제버튼 표시. 컴포넌트 리드 동형 UX 개선(#2~#4)·D7 E2E는 후속)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D7. E2E (책임. qa-engineer) (완료. PR #92 — `project-lead.spec.ts` 5시나리오(S1 지정/S2 해제/S3 권한disabled bob/S4 삭제리드 "알 수 없는 사용자"/S5 폴백 자동배정=리드 없는 컴포넌트 이슈 생성→프로젝트 리드 김앨리스 자동배정). MSW createIssueHandler 폴백 미러 확장(getStoredProjectLead getter, 컴포넌트 리드→프로젝트 리드 폴백, 브라우저 시드 X-MSW-Seed-ProjectLead). 구현 src 무수정(mocks/e2e만). E2E 9/9(신규5+회귀4) 통과. 코드리뷰 CONCERN1(미사용 dead code) 제거)
 
 ### §3.2 버전 (FR-VR, 4개)
 

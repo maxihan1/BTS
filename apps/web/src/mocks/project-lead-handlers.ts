@@ -31,6 +31,18 @@ export function resetProjectLeadStore(): void {
 }
 
 /**
+ * 특정 프로젝트의 리드 userId를 반환한다 (createIssueHandler 폴백 배정용 읽기 헬퍼).
+ * store에 없는 키는 null 반환 — 미시드 프로젝트는 기존 자동배정 spec에 영향 없음.
+ * getStoredComponentsByIds(component-handlers.ts L59) 동형.
+ *
+ * @param projectIdOrKey 프로젝트 UUID 또는 키
+ * @returns 리드 사용자 UUID, 없거나 미시드이면 null
+ */
+export function getStoredProjectLead(projectIdOrKey: string): string | null {
+  return projectLeadStore.get(projectIdOrKey)?.leadUserId ?? null
+}
+
+/**
  * 특정 프로젝트의 리드 정보를 store에 직접 삽입한다 (테스트 / E2E 시드용).
  *
  * @param projectId 프로젝트 UUID 또는 키
