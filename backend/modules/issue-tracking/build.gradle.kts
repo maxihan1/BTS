@@ -66,6 +66,10 @@ dependencies {
     // 도메인 검증 (Konform — Kotlin-native 선언형 검증 라이브러리, ADR 2026-05-21 GAP-17)
     implementation("io.konform:konform-jvm:0.7.0")
 
+    // jackson-databind-nullable — JsonNullable<T> 로 JSON 필드 부재(undefined) 와 명시 null 을 구분한다.
+    // FR-PM-06 PR-B securityLevelId 3-state(무변경/해제/지정) PATCH 시맨틱에 사용 (게이트1 Maxi 승인).
+    implementation("org.openapitools:jackson-databind-nullable:0.2.6")
+
     // Spring 핵심 (spring-boot-starter 없이 필요한 컴포넌트만 직접 선언 — CONCERN-2)
     implementation("org.springframework:spring-context")
     implementation("org.springframework:spring-tx")
