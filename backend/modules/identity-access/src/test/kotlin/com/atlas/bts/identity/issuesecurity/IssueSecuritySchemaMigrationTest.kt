@@ -111,26 +111,38 @@ class IssueSecuritySchemaMigrationTest {
     fun `등급 name은 스킴 내 UNIQUE다`() {
         val schemeId = insertScheme("Scheme-LevelUnique")
         insertLevel(schemeId, "Executives")
-        // 같은 스킴 내 같은 이름 → 위반
+        // 같은 스킴 내 같은 이름 → 위반.
+        // (@JdbcTest 단일 트랜잭션이라 위반 후 같은 트랜잭션 내 추가 INSERT 불가 → 위반 단언만.)
         assertThatThrownBy { insertLevel(schemeId, "Executives") }
             .isInstanceOf(DataIntegrityViolationException::class.java)
+    }
 
-        // 다른 스킴이면 같은 이름 허용
-        val other = insertScheme("Scheme-LevelUnique-2")
-        insertLevel(other, "Executives")
+    @Test
+    fun `다른 스킴이면 같은 등급 이름을 허용한다`() {
+        val schemeA = insertScheme("Scheme-LevelName-A")
+        val schemeB = insertScheme("Scheme-LevelName-B")
+        // (scheme_id, name) 복합 UNIQUE라 스킴이 다르면 같은 이름 등급 허용.
+        insertLevel(schemeA, "Executives")
+        insertLevel(schemeB, "Executives")
     }
 
     @Test
     fun `스킴당 기본 등급은 최대 1개다`() {
         val schemeId = insertScheme("Scheme-Default")
         insertLevel(schemeId, "First", isDefault = true)
-        // 같은 스킴에 둘째 기본 등급 → 부분 유니크 인덱스 위반
+        // 같은 스킴에 둘째 기본 등급 → 부분 유니크 인덱스 위반.
+        // (단일 트랜잭션이라 위반 후 추가 INSERT 불가 → 위반 단언만.)
         assertThatThrownBy { insertLevel(schemeId, "Second", isDefault = true) }
             .isInstanceOf(DataIntegrityViolationException::class.java)
+    }
 
-        // is_default=false 인 등급은 여러 개 허용
-        insertLevel(schemeId, "Third", isDefault = false)
-        insertLevel(schemeId, "Fourth", isDefault = false)
+    @Test
+    fun `is_default false 등급은 스킴당 여러 개 허용한다`() {
+        val schemeId = insertScheme("Scheme-NonDefault")
+        // 부분 유니크 인덱스는 is_default=TRUE 행에만 적용 → false 등급은 제한 없음.
+        insertLevel(schemeId, "Lvl1", isDefault = false)
+        insertLevel(schemeId, "Lvl2", isDefault = false)
+        insertLevel(schemeId, "Lvl3", isDefault = false)
     }
 
     @Test
