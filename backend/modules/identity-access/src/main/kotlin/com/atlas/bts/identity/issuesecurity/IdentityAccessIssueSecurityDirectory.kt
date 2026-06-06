@@ -56,6 +56,9 @@ class IdentityAccessIssueSecurityDirectory(
         return schemeRepo.levelBelongsToProjectScheme(levelId, projectId)
     }
 
+    // ReturnCount: guard-clause early return 2개(프로젝트 미존재·적용 스킴 없음 → UNRESTRICTED) + 본문 1.
+    // DEVELOPMENT.md §2.3 Early return 권장 정책에 부합 — 전역 임계 완화 대신 국소 Suppress.
+    @Suppress("ReturnCount")
     override fun accessibleLevels(
         actorId: UUID,
         projectKey: String,

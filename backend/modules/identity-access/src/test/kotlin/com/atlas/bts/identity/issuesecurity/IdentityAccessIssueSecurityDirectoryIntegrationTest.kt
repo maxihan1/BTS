@@ -1,4 +1,4 @@
-// IdentityAccessIssueSecurityDirectory prod 통합테스트 — accessibleLevels 집합 산출·levelBelongsToProjectScheme·unrestricted 빠른경로 (FR-PM-06 PR-B Task 9)
+// IdentityAccessIssueSecurityDirectory prod 통합테스트 — 접근가능 등급집합 산출·스킴소속·빠른경로 (FR-PM-06 PR-B T9)
 
 package com.atlas.bts.identity.issuesecurity
 
