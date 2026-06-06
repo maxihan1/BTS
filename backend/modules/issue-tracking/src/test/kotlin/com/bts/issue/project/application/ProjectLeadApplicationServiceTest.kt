@@ -4,11 +4,14 @@
 package com.bts.issue.project.application
 
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.domain.ProjectLeadAccessDeniedException
 import com.bts.issue.project.domain.ProjectLeadNotFoundException
 import com.bts.issue.project.domain.ProjectLeadProjectNotFoundException
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.project.repository.ProjectLookupRepository
 import com.bts.issue.repository.IssueTestcontainersBase
+import com.bts.shared.permission.ComponentPermission
+import com.bts.shared.permission.ComponentPermissionResolver
 import com.bts.shared.user.UserLookupPort
 import io.mockk.every
 import io.mockk.mockk
@@ -49,6 +52,12 @@ class ProjectLeadApplicationServiceTest {
     private lateinit var leadRepository: ProjectLeadRepository
     private val userLookupPort: UserLookupPort = mockk()
 
+    /**
+     * 컴포넌트 권한 판정 포트 mock — 기본 allow(true) 로 stub 하여 기존 시나리오는 회귀 0.
+     * 권한 거부 테스트에서만 false 로 오버라이드한다.
+     */
+    private val permissionResolver: ComponentPermissionResolver = mockk()
+
     /** Testcontainers 에 삽입한 테스트용 활성 프로젝트 UUID. */
     private lateinit var activeProjectId: UUID
 
@@ -79,6 +88,7 @@ class ProjectLeadApplicationServiceTest {
                 repository = leadRepository,
                 projectLookup = projectLookup,
                 userLookupPort = userLookupPort,
+                permissionResolver = permissionResolver,
             )
 
         // 테스트용 활성 프로젝트 삽입
@@ -109,9 +119,12 @@ class ProjectLeadApplicationServiceTest {
         }
     }
 
-    /** 각 테스트 전 lead_user_id 초기화 — 테스트 격리. */
+    /** 각 테스트 전 lead_user_id 초기화 + 권한 기본 allow stub — 테스트 격리. */
     @BeforeEach
     fun resetLead() {
+        // 기본 allow — 권한 거부 테스트에서만 false 로 오버라이드한다(회귀 0).
+        every { permissionResolver.hasPermission(any(), any(), any()) } returns true
+
         val postgres = IssueTestcontainersBase.postgres
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.prepareStatement("UPDATE projects SET lead_user_id = NULL WHERE key IN ('PLEAD')").use {
@@ -167,6 +180,40 @@ class ProjectLeadApplicationServiceTest {
         assertThat(result.leadUserId).isNull()
         val stored = leadRepository.findLeadUserId(activeProjectId)
         assertThat(stored).isNull()
+    }
+
+    // ── 403: 권한 없음 ────────────────────────────────────────────────────────
+
+    @Test
+    @Order(8)
+    fun `권한이 없으면 ProjectLeadAccessDeniedException 이 발생한다`() {
+        // 존재하는 프로젝트(404 통과) + 권한 거부 → 403.
+        every { permissionResolver.hasPermission(any(), any(), any()) } returns false
+
+        assertThatThrownBy {
+            sut.changeLead(
+                actorId = UUID.randomUUID(),
+                projectIdOrKey = activeProjectId.toString(),
+                leadUserId = UUID.randomUUID(),
+            )
+        }.isInstanceOf(ProjectLeadAccessDeniedException::class.java)
+    }
+
+    @Test
+    @Order(9)
+    fun `권한 검증은 UPDATE 권한으로 활성 프로젝트 UUID 에 대해 수행된다`() {
+        val leadUserId = UUID.randomUUID()
+        every { userLookupPort.exists(leadUserId) } returns true
+
+        sut.changeLead(
+            actorId = UUID.randomUUID(),
+            projectIdOrKey = activeProjectId.toString(),
+            leadUserId = leadUserId,
+        )
+
+        io.mockk.verify {
+            permissionResolver.hasPermission(any(), ComponentPermission.UPDATE, activeProjectId)
+        }
     }
 
     // ── 422: 미존재 사용자 ────────────────────────────────────────────────────

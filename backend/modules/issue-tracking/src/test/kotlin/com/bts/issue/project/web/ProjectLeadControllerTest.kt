@@ -4,6 +4,7 @@ package com.bts.issue.project.web
 
 import com.bts.issue.project.application.ProjectLeadApplicationService
 import com.bts.issue.project.application.ProjectLeadResult
+import com.bts.issue.project.domain.ProjectLeadAccessDeniedException
 import com.bts.issue.project.domain.ProjectLeadNotFoundException
 import com.bts.issue.project.domain.ProjectLeadProjectNotFoundException
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -163,6 +164,32 @@ class ProjectLeadControllerTest {
         )
             .andExpect(status().isUnprocessableEntity)
             .andExpect(jsonPath("$.errorCode").value("PROJECT_LEAD_NOT_FOUND"))
+    }
+
+    // ── E3: 권한 없음 → 403 PROJECT_LEAD_ACCESS_DENIED (내부 식별자 누출 없음) ──
+
+    @Test
+    fun `PATCH lead — 권한 없으면 403 PROJECT_LEAD_ACCESS_DENIED`() {
+        every {
+            projectLeadApplicationService.changeLead(any(), eq(projectIdOrKey), eq(leadUserId))
+        } throws
+            ProjectLeadAccessDeniedException(
+                actorId = UUID.fromString("cccccccc-cccc-4ccc-8ccc-cccccccccccc"),
+                permission = com.bts.shared.permission.ComponentPermission.UPDATE,
+                projectId = projectId,
+            )
+
+        val body = mapOf("leadUserId" to leadUserId.toString())
+
+        mockMvc.perform(
+            patch("/api/v1/projects/$projectIdOrKey/lead")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value("PROJECT_LEAD_ACCESS_DENIED"))
+            // 내부 식별자(actor/projectId/권한코드)가 응답 detail 로 누출되지 않는다.
+            .andExpect(jsonPath("$.detail").value("이 프로젝트의 리드를 변경할 권한이 없습니다."))
     }
 
     // ── EC5: 잘못된 UUID body → 400 ──────────────────────────────────────────
