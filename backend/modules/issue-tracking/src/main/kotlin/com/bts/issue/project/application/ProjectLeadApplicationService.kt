@@ -62,6 +62,28 @@ class ProjectLeadApplicationService(
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
+     * 프로젝트 리드를 조회한다.
+     *
+     * READ 는 컴포넌트 READ 정책과 동일하게 권한 게이트 없음.
+     *
+     * @param projectIdOrKey 대상 프로젝트 UUID 문자열 또는 projectKey.
+     * @return [ProjectLeadResult] — projectId + leadUserId (null 이면 미지정).
+     * @throws ProjectLeadProjectNotFoundException 프로젝트가 미존재하거나 소프트삭제된 경우 (404 의도).
+     */
+    @Transactional(readOnly = true)
+    fun getLead(projectIdOrKey: String): ProjectLeadResult {
+        log.debug("ProjectLeadApplicationService.getLead projectIdOrKey={}", projectIdOrKey)
+
+        val projectId =
+            projectLookup.resolve(projectIdOrKey)
+                ?: throw ProjectLeadProjectNotFoundException(projectIdOrKey)
+
+        val leadUserId = repository.findLeadUserId(projectId)
+
+        return ProjectLeadResult(projectId = projectId, leadUserId = leadUserId)
+    }
+
+    /**
      * 프로젝트 리드를 지정하거나 해제한다.
      *
      * @param actorId 요청 행위자 UUID — 컴포넌트 UPDATE 권한 검증 대상.

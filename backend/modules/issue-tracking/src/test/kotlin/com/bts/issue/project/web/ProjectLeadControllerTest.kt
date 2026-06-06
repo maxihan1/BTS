@@ -22,6 +22,7 @@ import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.test.context.web.WebAppConfiguration
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -204,5 +205,30 @@ class ProjectLeadControllerTest {
                 .content(body),
         )
             .andExpect(status().isBadRequest)
+    }
+
+    // ── GET lead: 조회 ────────────────────────────────────────────────────────
+
+    @Test
+    fun `GET lead — 리드가 지정된 프로젝트이면 200 + leadUserId 반환`() {
+        every {
+            projectLeadApplicationService.getLead(eq(projectIdOrKey))
+        } returns ProjectLeadResult(projectId = projectId, leadUserId = leadUserId)
+
+        mockMvc.perform(get("/api/v1/projects/$projectIdOrKey/lead"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.projectId").value(projectId.toString()))
+            .andExpect(jsonPath("$.data.leadUserId").value(leadUserId.toString()))
+    }
+
+    @Test
+    fun `GET lead — 미존재 프로젝트이면 404 PROJECT_NOT_FOUND`() {
+        every {
+            projectLeadApplicationService.getLead(eq("NOTEXIST"))
+        } throws ProjectLeadProjectNotFoundException("NOTEXIST")
+
+        mockMvc.perform(get("/api/v1/projects/NOTEXIST/lead"))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("PROJECT_NOT_FOUND"))
     }
 }

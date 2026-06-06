@@ -8,6 +8,7 @@ import com.bts.issue.project.web.dto.ChangeProjectLeadRequest
 import com.bts.issue.project.web.dto.ProjectLeadResponse
 import org.slf4j.LoggerFactory
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestBody
@@ -40,6 +41,24 @@ class ProjectLeadController(
     private val service: ProjectLeadApplicationService,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+
+    /**
+     * 프로젝트 리드를 조회한다.
+     *
+     * READ 는 권한 게이트 없음 — Jira 동일 정책.
+     *
+     * @param projectIdOrKey path variable 프로젝트 UUID 또는 projectKey.
+     * @return 200 OK + [ProjectLeadResponse] body.
+     * @throws com.bts.issue.project.domain.ProjectLeadProjectNotFoundException 프로젝트 미존재 → 404
+     */
+    @GetMapping("/lead")
+    fun getLead(
+        @PathVariable projectIdOrKey: String,
+    ): ResponseEntity<DataResponse<ProjectLeadResponse>> {
+        log.info("ProjectLeadController.getLead projectIdOrKey={}", projectIdOrKey)
+        val result = service.getLead(projectIdOrKey)
+        return ResponseEntity.ok(DataResponse(data = ProjectLeadResponse.from(result)))
+    }
 
     /**
      * 프로젝트 리드를 지정하거나 해제한다.
