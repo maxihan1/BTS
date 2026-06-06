@@ -410,6 +410,47 @@ class JdbcIssueSecuritySchemeRepositoryIntegrationTest {
         assertThat(repository.removeMemberById(UUID.randomUUID())).isFalse()
     }
 
+    // ── listMembersByScheme (PR-B C2 — accessibleLevels N+1 회피 배치 조회) ─────────
+
+    @Test
+    fun `listMembersByScheme는 스킴 소속 모든 등급의 멤버를 단일 조회로 반환한다`() {
+        val scheme = repository.create(IssueSecurityScheme.create("fr-pm-06-t3-byscheme", null))
+        val l1 = repository.addLevel(IssueSecurityLevel.create(scheme.id!!, "l1", null, isDefault = false))
+        val l2 = repository.addLevel(IssueSecurityLevel.create(scheme.id, "l2", null, isDefault = false))
+        val userId = UUID.randomUUID().toString()
+        repository.addMember(SecurityLevelMember.create(l1.id!!, MemberType.USER, userId))
+        repository.addMember(SecurityLevelMember.create(l1.id, MemberType.REPORTER, null))
+        repository.addMember(SecurityLevelMember.create(l2.id!!, MemberType.ASSIGNEE, null))
+
+        val members = repository.listMembersByScheme(scheme.id)
+
+        assertThat(members.map { it.levelId to it.memberType }).containsExactlyInAnyOrder(
+            l1.id to MemberType.USER,
+            l1.id to MemberType.REPORTER,
+            l2.id to MemberType.ASSIGNEE,
+        )
+    }
+
+    @Test
+    fun `listMembersByScheme는 다른 스킴의 멤버를 섞지 않는다`() {
+        val schemeA = repository.create(IssueSecurityScheme.create("fr-pm-06-t3-byscheme-a", null))
+        val schemeB = repository.create(IssueSecurityScheme.create("fr-pm-06-t3-byscheme-b", null))
+        val la = repository.addLevel(IssueSecurityLevel.create(schemeA.id!!, "lvl", null, isDefault = false))
+        val lb = repository.addLevel(IssueSecurityLevel.create(schemeB.id!!, "lvl", null, isDefault = false))
+        repository.addMember(SecurityLevelMember.create(la.id!!, MemberType.REPORTER, null))
+        repository.addMember(SecurityLevelMember.create(lb.id!!, MemberType.REPORTER, null))
+
+        assertThat(repository.listMembersByScheme(schemeA.id).map { it.levelId }).containsExactly(la.id)
+    }
+
+    @Test
+    fun `listMembersByScheme는 멤버가 없으면 빈 목록을 반환한다`() {
+        val scheme = repository.create(IssueSecurityScheme.create("fr-pm-06-t3-byscheme-empty", null))
+        repository.addLevel(IssueSecurityLevel.create(scheme.id!!, "lvl", null, isDefault = false))
+
+        assertThat(repository.listMembersByScheme(scheme.id)).isEmpty()
+    }
+
     // ── 스킴 name UNIQUE ───────────────────────────────────────────────────────────
 
     @Test
