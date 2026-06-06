@@ -25,6 +25,7 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.http.ResponseEntity
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.ldap.core.LdapTemplate
 import org.springframework.test.context.ActiveProfiles
@@ -195,7 +196,7 @@ class IssueSecurityIntegrationTest {
 
         val getResp = getScheme(token, schemeId)
         assertThat(getResp.statusCode).isEqualTo(HttpStatus.OK)
-        assertThat((getResp.body as Map<*, *>)["name"]).isEqualTo("ISEC-S1")
+        assertThat(getResp.field("name")).isEqualTo("ISEC-S1")
 
         val patchResp =
             restTemplate.exchange(
@@ -205,7 +206,7 @@ class IssueSecurityIntegrationTest {
                 Map::class.java,
             )
         assertThat(patchResp.statusCode).isEqualTo(HttpStatus.OK)
-        assertThat((patchResp.body as Map<*, *>)["name"]).isEqualTo("ISEC-S1-new")
+        assertThat(patchResp.field("name")).isEqualTo("ISEC-S1-new")
 
         assertThat(deleteScheme(token, schemeId).statusCode).isEqualTo(HttpStatus.NO_CONTENT)
         assertThat(getScheme(token, schemeId).statusCode).isEqualTo(HttpStatus.NOT_FOUND)
@@ -220,7 +221,7 @@ class IssueSecurityIntegrationTest {
 
         val first = addLevel(token, schemeId, "기본등급", isDefault = true)
         assertThat(first.statusCode).isEqualTo(HttpStatus.CREATED)
-        assertThat((first.body as Map<*, *>)["isDefault"]).isEqualTo(true)
+        assertThat(first.field("isDefault")).isEqualTo(true)
 
         // 둘째 기본 등급은 부분 유니크 인덱스 위반 → 409(scheme_in_use 가 아닌 무결성) 으로 매핑.
         val second = addLevel(token, schemeId, "둘째기본", isDefault = true)
@@ -308,7 +309,7 @@ class IssueSecurityIntegrationTest {
         val resp = listMembers(token, UUID.randomUUID())
 
         assertThat(resp.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
-        assertThat((resp.body as Map<*, *>)["error"]).isEqualTo("level_not_found")
+        assertThat(resp.field("error")).isEqualTo("level_not_found")
     }
 
     // ── S6. 프로젝트 스킴 적용 (PROJECT_ADMIN) ──────────────────────────────────────
@@ -324,10 +325,10 @@ class IssueSecurityIntegrationTest {
 
         val findResp = findProjectScheme(projectAdminToken, projectKey)
         assertThat(findResp.statusCode).isEqualTo(HttpStatus.OK)
-        assertThat((findResp.body as Map<*, *>)["schemeId"].toString()).isEqualTo(schemeId.toString())
+        assertThat(findResp.field("schemeId").toString()).isEqualTo(schemeId.toString())
 
         assertThat(unassignScheme(projectAdminToken, projectKey).statusCode).isEqualTo(HttpStatus.NO_CONTENT)
-        assertThat((findProjectScheme(projectAdminToken, projectKey).body as Map<*, *>)["schemeId"]).isNull()
+        assertThat(findProjectScheme(projectAdminToken, projectKey).field("schemeId")).isNull()
     }
 
     // ── S7. 프로젝트 스킴 거부 ground-truth ─────────────────────────────────────────
@@ -341,7 +342,7 @@ class IssueSecurityIntegrationTest {
         val resp = assignScheme(memberToken, projectKey, schemeId)
 
         assertThat(resp.statusCode).isEqualTo(HttpStatus.FORBIDDEN)
-        assertThat((resp.body as Map<*, *>)["error"]).isEqualTo("forbidden")
+        assertThat(resp.field("error")).isEqualTo("forbidden")
     }
 
     @Test
@@ -367,7 +368,7 @@ class IssueSecurityIntegrationTest {
         val resp = assignScheme(projectAdminToken, "NOPE", schemeId)
 
         assertThat(resp.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
-        assertThat((resp.body as Map<*, *>)["error"]).isEqualTo("project_not_found")
+        assertThat(resp.field("error")).isEqualTo("project_not_found")
     }
 
     // ── DENY. 스킴 관리 거부 ground-truth ───────────────────────────────────────────
@@ -384,7 +385,7 @@ class IssueSecurityIntegrationTest {
         val resp = createScheme(token, "ISEC-denied", null)
 
         assertThat(resp.statusCode).isEqualTo(HttpStatus.FORBIDDEN)
-        assertThat((resp.body as Map<*, *>)["error"]).isEqualTo("forbidden")
+        assertThat(resp.field("error")).isEqualTo("forbidden")
     }
 
     @Test
@@ -451,9 +452,8 @@ class IssueSecurityIntegrationTest {
         localCredentialService.store(adminId, adminPassword.toCharArray())
         localCredentialService.store(memberId, memberPassword.toCharArray())
         localCredentialService.store(projectAdminId, projectAdminPassword.toCharArray())
-        groupId = requireNotNull(userGroupRepository.create("isec-group", "ISEC 그룹").id) {
-            "영속 그룹은 id 를 가져야 한다."
-        }
+        val group = userGroupRepository.create("isec-group", "ISEC 그룹")
+        groupId = requireNotNull(group.id) { "영속 그룹은 id 를 가져야 한다." }
     }
 
     /** 활성 프로젝트 1개 + PROJECT_ADMIN(projectAdmin)/MEMBER(member) 멤버십을 시드한다. */
@@ -486,6 +486,9 @@ class IssueSecurityIntegrationTest {
 
     /** 절대 URL 을 구성한다 (RANDOM_PORT 바인딩). */
     private fun url(path: String): String = "http://localhost:$port$path"
+
+    /** Map 바디 응답에서 한 필드를 읽는다(에러 envelope/단건 응답 단언 공용). */
+    private fun ResponseEntity<*>.field(name: String): Any? = (body as Map<*, *>)[name]
 
     /**
      * POST /api/v1/auth/login 으로 JWT access_token 을 발급받는다.
