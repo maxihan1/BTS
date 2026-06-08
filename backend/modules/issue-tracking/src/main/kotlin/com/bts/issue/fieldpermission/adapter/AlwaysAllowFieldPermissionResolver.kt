@@ -38,6 +38,8 @@ import java.util.UUID
  * 이 구현체를 직접 import 하면 빌드 실패.
  *
  * @see FieldPermissionResolver
+ * @see FieldRef
+ * @see com.bts.shared.permission.FieldKind
  */
 @Component
 @Profile("!prod")
