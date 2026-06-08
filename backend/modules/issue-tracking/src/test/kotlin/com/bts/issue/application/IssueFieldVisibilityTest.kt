@@ -22,10 +22,10 @@ import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowTransitionPort
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.booleans.shouldBeFalse
+import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
-import io.kotest.matchers.maps.shouldContainKey
-import io.kotest.matchers.maps.shouldNotContainKey
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
@@ -139,12 +139,12 @@ class IssueFieldVisibilityTest : DescribeSpec({
 
             it("customFields 에서 secret 키가 제거된다") {
                 val result = sut.findByKey(actor, issueKey)
-                result.customFields shouldNotContainKey "secret"
+                result.customFields.containsKey("secret").shouldBeFalse()
             }
 
             it("customFields 에서 public 키는 유지된다") {
                 val result = sut.findByKey(actor, issueKey)
-                result.customFields shouldContainKey "public"
+                result.customFields.containsKey("public").shouldBeTrue()
             }
 
             it("restrictedFields 에 secret 이 포함된다") {
@@ -282,8 +282,8 @@ class IssueFieldVisibilityTest : DescribeSpec({
 
             it("customFields 가 원본 그대로 유지된다") {
                 val result = sut.findByKey(actor, issueKey)
-                result.customFields shouldContainKey "secret"
-                result.customFields shouldContainKey "public"
+                result.customFields.containsKey("secret").shouldBeTrue()
+                result.customFields.containsKey("public").shouldBeTrue()
             }
 
             it("restrictedFields 가 비어 있다") {
@@ -323,12 +323,12 @@ class IssueFieldVisibilityTest : DescribeSpec({
 
             it("목록의 모든 이슈에서 secret 이 제거된다") {
                 val result = sut.listIssues(actor, projectKey, pageable)
-                result.content.forEach { it.customFields shouldNotContainKey "secret" }
+                result.content.forEach { it.customFields.containsKey("secret").shouldBeFalse() }
             }
 
             it("목록의 모든 이슈에서 public 은 유지된다") {
                 val result = sut.listIssues(actor, projectKey, pageable)
-                result.content.forEach { it.customFields shouldContainKey "public" }
+                result.content.forEach { it.customFields.containsKey("public").shouldBeTrue() }
             }
 
             it("목록의 모든 이슈에서 restrictedFields 에 secret 이 포함된다") {

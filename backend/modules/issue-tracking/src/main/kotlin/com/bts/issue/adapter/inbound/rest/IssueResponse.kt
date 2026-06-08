@@ -6,6 +6,8 @@ import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueImpact
 import com.bts.issue.domain.IssuePriority
 import com.bts.issue.markdown.MarkdownRenderer
+import com.bts.shared.permission.FieldKind
+import com.bts.shared.permission.FieldRef
 import java.time.Instant
 import java.util.UUID
 
@@ -43,6 +45,9 @@ import java.util.UUID
  * @property securityLevelId 이슈에 적용된 보안 등급 UUID. null 이면 등급 없음(공개). FR-PM-06 PR-B.
  * @property customFields 커스텀 필드 값 맵. 키는 필드 정의 key, 값은 타입별 JSON 값. FR-IS-10.
  *   단건·목록 경로 모두 노출된다. issues.custom_fields JSONB 컬럼에서 직접 매핑된다.
+ * @property restrictedFields actor 에게 열람 권한이 없어 마스킹된 필드 키 목록. FR-PM-07 Task-7.
+ *   코어 필드는 필드명 그대로(예: `"description"`), 커스텀 필드는 정의 key(예: `"secret"`) 를 담는다.
+ *   마스킹이 없으면 빈 리스트. 클라이언트는 이 목록을 통해 어떤 필드가 숨겨졌는지 인지할 수 있다.
  */
 data class IssueResponse(
     val key: String,
@@ -72,7 +77,95 @@ data class IssueResponse(
     val resolutionId: UUID? = null,
     val securityLevelId: UUID? = null,
     val customFields: Map<String, Any?> = emptyMap(),
+    val restrictedFields: List<String> = emptyList(),
 ) {
+    /**
+     * [visible] 집합을 기준으로 열람 불가 필드를 마스킹한 새 [IssueResponse] 를 반환한다 (FR-PM-07 Task-7).
+     *
+     * ### 마스킹 규칙 (spec §3.1 / §F4)
+     * - CUSTOM 필드: [visible] 에 없는 customFields 맵 키를 제거 (S1).
+     * - nullable CORE(description·environment·impact·assigneeId·labels):
+     *   [visible] 에 없으면 null / 빈리스트 로 대체.
+     * - non-null CORE(summary·priority): 마스킹 대상 아님 — 항상 노출.
+     * - impactName: impact 마스킹과 연동 — impact 가 마스킹되면 impactName 도 null.
+     * - 마스킹된 모든 key 를 [restrictedFields] 에 기록한다.
+     *
+     * @param visible actor 가 열람 가능한 [FieldRef] 집합. [FieldPermissionResolver.visibleFields] 결과.
+     * @return 마스킹이 적용된 새 [IssueResponse]. 원본은 변경하지 않는다.
+     */
+    fun maskInvisible(visible: Set<FieldRef>): IssueResponse {
+        val masked = mutableListOf<String>()
+
+        // CUSTOM 필드 마스킹 — visible 에 없는 key 제거
+        val filteredCustom =
+            customFields.entries.fold(mutableMapOf<String, Any?>()) { acc, (k, v) ->
+                if (FieldRef(FieldKind.CUSTOM, k) in visible) {
+                    acc[k] = v
+                } else {
+                    masked += k
+                }
+                acc
+            }
+
+        // nullable CORE 필드 마스킹
+        val maskedDescription = maskNullableCore("description", description, visible, masked)
+        val maskedEnvironment = maskNullableCore("environment", environment, visible, masked)
+        val maskedLabels: List<String>
+        val maskedImpact: Int?
+        val maskedImpactName: String?
+        val maskedAssigneeId: UUID?
+
+        if (FieldRef(FieldKind.CORE, "labels") !in visible) {
+            maskedLabels = emptyList()
+            masked += "labels"
+        } else {
+            maskedLabels = labels
+        }
+
+        if (FieldRef(FieldKind.CORE, "impact") !in visible) {
+            maskedImpact = null
+            maskedImpactName = null
+            masked += "impact"
+        } else {
+            maskedImpact = impact
+            maskedImpactName = impactName
+        }
+
+        if (FieldRef(FieldKind.CORE, "assigneeId") !in visible) {
+            maskedAssigneeId = null
+            masked += "assigneeId"
+        } else {
+            maskedAssigneeId = assigneeId
+        }
+
+        return copy(
+            description = maskedDescription,
+            environment = maskedEnvironment,
+            labels = maskedLabels,
+            impact = maskedImpact,
+            impactName = maskedImpactName,
+            assigneeId = maskedAssigneeId,
+            customFields = filteredCustom,
+            restrictedFields = masked,
+        )
+    }
+
+    /**
+     * nullable String CORE 필드 하나를 마스킹한다. [visible] 에 없으면 null 반환하고 [masked] 에 key 추가.
+     */
+    private fun maskNullableCore(
+        key: String,
+        value: String?,
+        visible: Set<FieldRef>,
+        masked: MutableList<String>,
+    ): String? {
+        if (FieldRef(FieldKind.CORE, key) !in visible) {
+            masked += key
+            return null
+        }
+        return value
+    }
+
     /**
      * 이슈 타입 요약 정보. [from] 파라미터 그룹화용.
      *

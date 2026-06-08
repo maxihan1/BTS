@@ -39,6 +39,9 @@ import com.bts.issue.type.domain.IssueTypeNotFoundException
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeKey
+import com.bts.shared.permission.FieldKind
+import com.bts.shared.permission.FieldPermissionResolver
+import com.bts.shared.permission.FieldRef
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -102,6 +105,8 @@ class IssueApplicationService(
     // AlwaysAllowIssueSecurityDirectory(@Profile("!prod")) Bean이 타입으로 주입돼 이 기본값을 대체한다.
     private val securityDirectory: IssueSecurityDirectory = AlwaysAllowIssueSecurityDirectory(),
     private val clock: Clock = Clock.systemUTC(),
+    // null 이면 마스킹을 수행하지 않는다(기존 테스트 backward-compat). Spring 컨텍스트에서는 Bean 주입.
+    private val fieldPermissionResolver: FieldPermissionResolver? = null,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -315,7 +320,8 @@ class IssueApplicationService(
     ): IssueResponse {
         assertViewIssueOrNotFound(actor, key)
         val response = repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)
-        return response.withSingleDetail()
+        val detailed = response.withSingleDetail()
+        return maskFieldsForSingle(actor, key.projectPrefix, detailed)
     }
 
     /**
@@ -737,7 +743,8 @@ class IssueApplicationService(
         assertPermission(actor, IssuePermission.BROWSE, IssueScope.Project(projectKey))
         // 목록당 1회 cross-BC 호출 — N+1 없음. unrestricted=true 이면 WHERE 술어 미적용(빠른경로).
         val access = securityDirectory.accessibleLevels(actor.value, projectKey)
-        return repo.listWithType(projectKey, pageable, actor.value, access)
+        val page = repo.listWithType(projectKey, pageable, actor.value, access)
+        return maskFieldsForPage(actor, projectKey, page)
     }
 
     // ── private helpers ────────────────────────────────────────────────────────
@@ -1166,6 +1173,85 @@ class IssueApplicationService(
         val projectLead = projectLeadRepository.findLeadUserId(projectId)
         return DefaultAssigneeResolver.resolve(current = null, candidates = candidates, projectLeadUserId = projectLead)
     }
+
+    /**
+     * 단건 조회 응답에 필드 수준 마스킹을 적용한다 (FR-PM-07 Task-7).
+     *
+     * [fieldPermissionResolver] 가 null(기존 테스트 backward-compat)이면 마스킹 없이 그대로 반환한다.
+     * non-null 이면 projectKey 로 projectId 를 조회한 뒤 [buildCandidates] 를 구성하고
+     * [FieldPermissionResolver.visibleFields] 를 1회 호출하여 마스킹을 적용한다.
+     *
+     * @param actor 조회 행위자.
+     * @param projectKey 이슈가 속한 프로젝트 키.
+     * @param response 마스킹 전 응답.
+     * @return 마스킹이 적용된 응답.
+     */
+    private fun maskFieldsForSingle(
+        actor: ActorId,
+        projectKey: String,
+        response: IssueResponse,
+    ): IssueResponse {
+        val resolver = fieldPermissionResolver ?: return response
+        val projectId = repo.findProjectIdByKey(projectKey) ?: return response
+        val candidates = buildCandidates(response)
+        val visible = resolver.visibleFields(actor.value, projectId, candidates)
+        return response.maskInvisible(visible)
+    }
+
+    /**
+     * 목록 조회 응답 Page 전체에 필드 수준 마스킹을 적용한다 (FR-PM-07 Task-7, EC14).
+     *
+     * 같은 프로젝트의 이슈 목록이므로 [FieldPermissionResolver.visibleFields] 를 페이지당 1회만 호출한다(N+1 회피).
+     * candidates 는 페이지 내 모든 이슈의 커스텀 필드 키를 합집합으로 구성한다.
+     *
+     * @param actor 조회 행위자.
+     * @param projectKey 목록이 속한 프로젝트 키.
+     * @param page 마스킹 전 Page.
+     * @return 마스킹이 적용된 Page.
+     */
+    private fun maskFieldsForPage(
+        actor: ActorId,
+        projectKey: String,
+        page: org.springframework.data.domain.Page<IssueResponse>,
+    ): org.springframework.data.domain.Page<IssueResponse> {
+        val resolver = fieldPermissionResolver ?: return page
+        if (page.isEmpty) return page
+        val projectId = repo.findProjectIdByKey(projectKey) ?: return page
+        // 페이지 내 커스텀 필드 키 합집합 + 코어 마스킹 대상 후보 — 1회 호출로 배치 처리(EC14)
+        val candidates = page.content.fold(buildCoreCandidates()) { acc, r ->
+            acc + r.customFields.keys.map { FieldRef(FieldKind.CUSTOM, it) }
+        }.toSet()
+        val visible = resolver.visibleFields(actor.value, projectId, candidates)
+        val maskedContent = page.content.map { it.maskInvisible(visible) }
+        return org.springframework.data.domain.PageImpl(maskedContent, page.pageable, page.totalElements)
+    }
+
+    /**
+     * 단건 응답의 마스킹 candidate 집합을 구성한다.
+     *
+     * 코어 마스킹 대상 7종 + 이슈의 커스텀 필드 키 전체를 포함한다.
+     *
+     * @param response 대상 이슈 응답.
+     * @return [FieldRef] candidate 집합.
+     */
+    private fun buildCandidates(response: IssueResponse): Set<FieldRef> =
+        buildCoreCandidates() + response.customFields.keys.map { FieldRef(FieldKind.CUSTOM, it) }
+
+    /**
+     * 마스킹 대상 코어 필드 7종의 [FieldRef] 집합을 반환한다.
+     *
+     * summary·priority 는 non-null CORE 로 마스킹 대상이 아니므로 제외된다.
+     */
+    private fun buildCoreCandidates(): Set<FieldRef> =
+        setOf(
+            FieldRef(FieldKind.CORE, "description"),
+            FieldRef(FieldKind.CORE, "environment"),
+            FieldRef(FieldKind.CORE, "impact"),
+            FieldRef(FieldKind.CORE, "assigneeId"),
+            FieldRef(FieldKind.CORE, "labels"),
+            FieldRef(FieldKind.CORE, "summary"),
+            FieldRef(FieldKind.CORE, "priority"),
+        )
 
     /**
      * 단건 조회 응답에 descriptionHtml, resolution, componentIds 를 채운다
