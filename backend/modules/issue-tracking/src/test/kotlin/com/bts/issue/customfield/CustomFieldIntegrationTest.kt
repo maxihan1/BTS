@@ -106,7 +106,6 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class CustomFieldIntegrationTest {
-
     // ── Spring Bean 구성 ──────────────────────────────────────────────────────
 
     @Configuration
@@ -140,8 +139,8 @@ class CustomFieldIntegrationTest {
             DataSourceTransactionManager(dataSource)
 
         @Bean
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext =
-            DSL.using(dataSource, SQLDialect.POSTGRES)
+        @Suppress("MaxLineLength")
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext = DSL.using(dataSource, SQLDialect.POSTGRES)
 
         @Bean
         open fun objectMapper(): ObjectMapper =
@@ -152,16 +151,14 @@ class CustomFieldIntegrationTest {
         // ── 커스텀 필드 BC 빈 ─────────────────────────────────────────────────────
 
         @Bean
-        open fun customFieldDefinitionRepository(dsl: DSLContext): CustomFieldDefinitionRepository =
-            CustomFieldDefinitionRepository(dsl)
+        @Suppress("MaxLineLength")
+        open fun customFieldDefinitionRepository(dsl: DSLContext): CustomFieldDefinitionRepository = CustomFieldDefinitionRepository(dsl)
 
         @Bean
-        open fun projectLookupRepository(dsl: DSLContext): ProjectLookupRepository =
-            ProjectLookupRepository(dsl)
+        open fun projectLookupRepository(dsl: DSLContext): ProjectLookupRepository = ProjectLookupRepository(dsl)
 
         @Bean
-        open fun projectLookup(repository: ProjectLookupRepository): ProjectLookup =
-            ProjectLookup(repository)
+        open fun projectLookup(repository: ProjectLookupRepository): ProjectLookup = ProjectLookup(repository)
 
         /**
          * 권한 ground-truth 스텁.
@@ -191,22 +188,19 @@ class CustomFieldIntegrationTest {
             )
 
         @Bean
-        open fun customFieldController(service: CustomFieldApplicationService): CustomFieldController =
-            CustomFieldController(service)
+        @Suppress("MaxLineLength")
+        open fun customFieldController(service: CustomFieldApplicationService): CustomFieldController = CustomFieldController(service)
 
         @Bean
-        open fun customFieldExceptionHandler(): CustomFieldExceptionHandler =
-            CustomFieldExceptionHandler()
+        open fun customFieldExceptionHandler(): CustomFieldExceptionHandler = CustomFieldExceptionHandler()
 
         // ── 컴포넌트 BC 빈 (프로젝트 FK 충족용) ───────────────────────────────────
 
         @Bean
-        open fun componentRepository(dsl: DSLContext): ComponentRepository =
-            ComponentRepository(dsl)
+        open fun componentRepository(dsl: DSLContext): ComponentRepository = ComponentRepository(dsl)
 
         @Bean
-        open fun componentPermissionResolver(): ComponentPermissionResolver =
-            AlwaysAllowComponentPermissionResolver()
+        open fun componentPermissionResolver(): ComponentPermissionResolver = AlwaysAllowComponentPermissionResolver()
 
         @Bean
         open fun userLookupPort(): UserLookupPort =
@@ -316,8 +310,9 @@ class CustomFieldIntegrationTest {
         val projectLookup = webApplicationContext.getBean(ProjectLookup::class.java)
 
         // MEMBER_ACTOR_UUID를 actorId로 직접 서비스 호출 → resolver가 false 반환 → 예외 발생 검증
-        val projectId = projectLookup.resolve(PROJECT_KEY)
-            ?: error("프로젝트 $PROJECT_KEY 를 찾을 수 없음")
+        val projectId =
+            projectLookup.resolve(PROJECT_KEY)
+                ?: error("프로젝트 $PROJECT_KEY 를 찾을 수 없음")
 
         val thrownException =
             try {
@@ -440,12 +435,13 @@ class CustomFieldIntegrationTest {
         val values = mapOf("unknown_key" to "value")
         val definitions = activeDefinitionsForProject(PROJECT_KEY) // 빈 리스트 (BeforeEach에서 clean)
 
-        val thrown = try {
-            CustomFieldValueValidator().validate(definitions, values)
-            null
-        } catch (ex: com.bts.issue.customfield.domain.CustomFieldValidationException) {
-            ex
-        }
+        val thrown =
+            try {
+                CustomFieldValueValidator().validate(definitions, values)
+                null
+            } catch (ex: com.bts.issue.customfield.domain.CustomFieldValidationException) {
+                ex
+            }
 
         checkNotNull(thrown) { "E1: 미정의 키 포함 시 CustomFieldValidationException 이 발생해야 한다" }
     }
@@ -466,12 +462,13 @@ class CustomFieldIntegrationTest {
 
         val definitions = activeDefinitionsForProject(PROJECT_KEY)
 
-        val thrown = try {
-            CustomFieldValueValidator().validate(definitions, emptyMap()) // required 누락
-            null
-        } catch (ex: com.bts.issue.customfield.domain.CustomFieldValidationException) {
-            ex
-        }
+        val thrown =
+            try {
+                CustomFieldValueValidator().validate(definitions, emptyMap()) // required 누락
+                null
+            } catch (ex: com.bts.issue.customfield.domain.CustomFieldValidationException) {
+                ex
+            }
 
         checkNotNull(thrown) { "E2: required 필드 누락 시 CustomFieldValidationException 이 발생해야 한다" }
     }
@@ -496,11 +493,12 @@ class CustomFieldIntegrationTest {
                     "fieldType" to "SINGLE_SELECT",
                     "required" to false,
                     "displayOrder" to 1,
-                    "options" to listOf(
-                        mapOf("value" to "low", "label" to "낮음", "displayOrder" to 1),
-                        mapOf("value" to "medium", "label" to "보통", "displayOrder" to 2),
-                        mapOf("value" to "high", "label" to "높음", "displayOrder" to 3),
-                    ),
+                    "options" to
+                        listOf(
+                            mapOf("value" to "low", "label" to "낮음", "displayOrder" to 1),
+                            mapOf("value" to "medium", "label" to "보통", "displayOrder" to 2),
+                            mapOf("value" to "high", "label" to "높음", "displayOrder" to 3),
+                        ),
                 ),
             )
 
@@ -512,12 +510,13 @@ class CustomFieldIntegrationTest {
 
         val definitions = activeDefinitionsForProject(PROJECT_KEY)
 
-        val thrown = try {
-            CustomFieldValueValidator().validate(definitions, mapOf("priority_level_e3" to "invalid"))
-            null
-        } catch (ex: com.bts.issue.customfield.domain.CustomFieldValidationException) {
-            ex
-        }
+        val thrown =
+            try {
+                CustomFieldValueValidator().validate(definitions, mapOf("priority_level_e3" to "invalid"))
+                null
+            } catch (ex: com.bts.issue.customfield.domain.CustomFieldValidationException) {
+                ex
+            }
 
         checkNotNull(thrown) { "E3: 선택지 위반 시 CustomFieldValidationException 이 발생해야 한다" }
     }
@@ -537,12 +536,13 @@ class CustomFieldIntegrationTest {
 
         val definitions = activeDefinitionsForProject(PROJECT_KEY)
 
-        val thrown = try {
-            CustomFieldValueValidator().validate(definitions, mapOf("amount_e4" to "not-a-number"))
-            null
-        } catch (ex: com.bts.issue.customfield.domain.CustomFieldValidationException) {
-            ex
-        }
+        val thrown =
+            try {
+                CustomFieldValueValidator().validate(definitions, mapOf("amount_e4" to "not-a-number"))
+                null
+            } catch (ex: com.bts.issue.customfield.domain.CustomFieldValidationException) {
+                ex
+            }
 
         checkNotNull(thrown) { "E4: 타입 불일치 시 CustomFieldValidationException 이 발생해야 한다" }
     }
@@ -567,7 +567,7 @@ class CustomFieldIntegrationTest {
         // 활성 목록에서 제외 확인
         mockMvc.perform(get("/api/v1/projects/$PROJECT_KEY/custom-fields"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data[?(@.id == '${fieldId}')]").doesNotExist())
+            .andExpect(jsonPath("$.data[?(@.id == '$fieldId')]").doesNotExist())
 
         // DB에서 JSONB 값 보존 확인 — 정의가 소프트 삭제되어도 custom_field_definitions 행은 존재해야 함
         conn().use { c ->
@@ -692,10 +692,11 @@ class CustomFieldIntegrationTest {
                     "fieldType" to "SINGLE_SELECT",
                     "required" to false,
                     "displayOrder" to 1,
-                    "options" to listOf(
-                        mapOf("value" to "yes", "label" to "예", "displayOrder" to 1),
-                        mapOf("value" to "no", "label" to "아니오", "displayOrder" to 2),
-                    ),
+                    "options" to
+                        listOf(
+                            mapOf("value" to "yes", "label" to "예", "displayOrder" to 1),
+                            mapOf("value" to "no", "label" to "아니오", "displayOrder" to 2),
+                        ),
                 ),
             )
 
@@ -745,8 +746,9 @@ class CustomFieldIntegrationTest {
     private fun activeDefinitionsForProject(projectKey: String): List<CustomFieldDefinition> {
         val repo = webApplicationContext.getBean(CustomFieldDefinitionRepository::class.java)
         val projectLookup = webApplicationContext.getBean(ProjectLookup::class.java)
-        val projectId = projectLookup.resolve(projectKey)
-            ?: error("테스트 프로젝트 $projectKey 를 찾을 수 없음")
+        val projectId =
+            projectLookup.resolve(projectKey)
+                ?: error("테스트 프로젝트 $projectKey 를 찾을 수 없음")
         return repo.findActiveByProject(projectId)
     }
 

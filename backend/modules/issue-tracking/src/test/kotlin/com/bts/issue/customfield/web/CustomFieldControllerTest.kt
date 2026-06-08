@@ -80,8 +80,8 @@ class CustomFieldControllerTest {
         open fun customFieldApplicationService(): CustomFieldApplicationService = mockk(relaxed = true)
 
         @Bean
-        open fun customFieldController(service: CustomFieldApplicationService): CustomFieldController =
-            CustomFieldController(service)
+        @Suppress("MaxLineLength")
+        open fun customFieldController(service: CustomFieldApplicationService): CustomFieldController = CustomFieldController(service)
 
         @Bean
         open fun customFieldExceptionHandler(): CustomFieldExceptionHandler = CustomFieldExceptionHandler()
