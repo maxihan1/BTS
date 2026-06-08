@@ -1,6 +1,6 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 18개 라우트 (이슈 7 + 워크플로우 스킴 4 + settings 3 + 멤버 1 + 컴포넌트 1 + 버전 1 + 커스텀 필드 1)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 19개 라우트 (이슈 7 + 워크플로우 스킴 4 + settings 3 + 멤버 1 + 컴포넌트 1 + 버전 1 + 커스텀 필드 1 + 사용자 생성 1)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
-import { requireAuth, redirectIfAuth, requirePasswordChanged, composeGuards } from './auth/routeGuard'
+import { requireAuth, redirectIfAuth, requirePasswordChanged, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
 /** 대부분의 보호 라우트에 적용하는 기본 가드 체인 — 미인증 차단 + 비밀번호 변경 강제 */
 const requireAuthAndPasswordChanged = composeGuards(requireAuth, requirePasswordChanged)
@@ -21,6 +21,7 @@ import { ProjectComponentsSettingsRouteAdapter } from './routes/projects.$projec
 import { ProjectVersionsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.versions'
 import { ProjectCustomFieldsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.custom-fields'
 import { ProjectLeadSettingsRouteAdapter } from './routes/projects.$projectKey.settings.project-lead'
+import { AdminUsersNewRouteAdapter } from './routes/admin.users.new'
 import { SessionsSettingsRouteAdapter } from './routes/settings.sessions'
 import { PasswordSettingsRouteAdapter } from './routes/settings.password'
 
@@ -177,6 +178,15 @@ const settingsSessionsRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
+/** 사용자 생성 라우트 — /admin/users/new, requireAuth + requireSystemAdmin */
+const adminUsersNewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin/users/new',
+  component: AdminUsersNewRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: composeGuards(requireAuth, requireSystemAdmin),
+})
+
 /** 비밀번호 변경 라우트 — /settings/password, requireAuth */
 const settingsPasswordRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -188,8 +198,9 @@ const settingsPasswordRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 18개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 19개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
+ *   · /admin/users/new
  *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
  *   · /projects/:projectKey/settings/components · /projects/:projectKey/settings/versions
  *   · /projects/:projectKey/settings/custom-fields · /projects/:projectKey/settings/project-lead
@@ -209,6 +220,8 @@ export const routeTree = rootRoute.addChildren([
   adminWorkflowSchemesRoute,
   adminWorkflowSchemesNewRoute,
   adminWorkflowSchemesDetailRoute,
+  // identity-access BC — 사용자 생성 (/admin/users/new)
+  adminUsersNewRoute,
   // project-workflow BC — 프로젝트별 스킴 할당
   projectWorkflowSchemeSettingsRoute,
   // project-membership BC — 프로젝트 멤버 관리

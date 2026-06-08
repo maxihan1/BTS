@@ -175,7 +175,8 @@ describe('fetchUsersByIds', () => {
 describe('createUser', () => {
   const VALID_PAYLOAD = { username: 'newuser', displayName: '새 사용자' }
   const CREATED_RESPONSE = {
-    id: '11111111-0000-0000-0000-000000000001',
+    // RFC4122 v4 형식 고정 UUID (Zod v4 uuid 엄격 검증 통과)
+    id: 'a1b2c3d4-e5f6-4890-abcd-ef1234567891',
     username: 'newuser',
     temporaryPassword: 'TmpPass123!',
   }

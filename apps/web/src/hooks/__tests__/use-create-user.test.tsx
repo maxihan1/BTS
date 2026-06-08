@@ -1,6 +1,6 @@
 // useCreateUser 훅 테스트 — 성공 / 409 USERNAME_TAKEN 에러 시나리오 검증
 import { renderHook, waitFor, act } from '@testing-library/react'
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
@@ -25,7 +25,8 @@ function createWrapper() {
 const VALID_PAYLOAD = { username: 'newuser', displayName: '새 사용자' }
 
 const CREATED_RESPONSE = {
-  id: '11111111-0000-0000-0000-000000000001',
+  // RFC4122 v4 형식 고정 UUID (Zod v4 uuid 엄격 검증 통과)
+  id: 'a1b2c3d4-e5f6-4890-abcd-ef1234567891',
   username: 'newuser',
   temporaryPassword: 'TmpPass123!',
 }
@@ -36,6 +37,10 @@ const CREATED_RESPONSE = {
 
 beforeEach(() => {
   document.cookie = 'XSRF-TOKEN=test-xsrf-token; path=/'
+})
+
+afterEach(() => {
+  document.cookie = 'XSRF-TOKEN=; max-age=0; path=/'
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
