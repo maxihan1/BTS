@@ -111,14 +111,16 @@ identity-access BC. SDD §12.5, plan §4.7. 선행 FR-IS-10(커스텀 필드)·F
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/fieldpermission/IdentityAccessFieldPermissionResolver.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/fieldpermission/repository/FieldPermissionRepository.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/fieldpermission/IdentityAccessFieldPermissionResolverTest.kt`]
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/fieldpermission/IdentityAccessFieldPermissionResolver.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/group/UserGroupRepository.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/fieldpermission/IdentityAccessFieldPermissionResolverTest.kt`]
 - depends-on: [1, 3]
+
+> **eng 리뷰 반영(CONCERN)**: `UserGroupRepository`엔 정방향 `listMemberIds(groupId)`만 있고 actor→그룹 역조회가 없음. **방식 A 확정** — `UserGroupRepository.findGroupIdsByUser(userId: UUID): List<UUID>` 신규 추가(계층 일관, 임시 직조회 기각). 이 파일을 T4가 수정하므로 files에 포함. T5는 `userGroupRepo`를 읽기 호출만(수정 없음)이라 파일 겹침 아님.
 
 **RED**: `IdentityAccessFieldPermissionResolverTest`(prod 통합) — (a) 규칙 없는 필드 항상 visible/editable(EC1), (b) VIEW 규칙 그룹 멤버만 visible·비멤버 제외(S1/S2), (c) EDIT⊃VIEW(S7/EC3), (d) 관리자라도 그룹 비멤버 제외(S5/EC10, isSystemAdmin 미호출 ground-truth), (e) 다중 그룹 OR(EC2). 실패: 클래스 없음.
 
 **GREEN**:
 - `@Component @Profile("prod") class IdentityAccessFieldPermissionResolver(fieldPermissionRepo, userGroupRepo) : FieldPermissionResolver`.
-- 알고리즘: 프로젝트 규칙 1회 조회(`findByProject`) + actor group_ids 1회 배치 조회(`UserGroupRepository` 확장 `findGroupIdsByUser` 또는 FieldPermissionRepository 헬퍼 — N+1 회피, EC14). candidate별: 규칙 없으면 포함, VIEW/EDIT 행의 group_id ∩ actor groups ≠ ∅ 판정. editable은 EDIT 행만, visible은 VIEW∪EDIT 행.
+- 알고리즘: 프로젝트 규칙 1회 조회(`findByProject`) + actor group_ids 1회 배치 조회(`UserGroupRepository.findGroupIdsByUser(actorId)` 신규 — N+1 회피, EC14). candidate별: 규칙 없으면 포함, VIEW/EDIT 행의 group_id ∩ actor groups ≠ ∅ 판정. editable은 EDIT 행만, visible은 VIEW∪EDIT 행.
 - 관리자 우회 없음 — `isSystemAdmin`/PROJECT_ADMIN 미참조.
 
 **REFACTOR**: 순수 판정 로직을 I/O 없는 함수로 분리(IssueSecurityDecider 선례) — 단위 테스트 용이.
@@ -215,4 +217,21 @@ identity-access BC. SDD §12.5, plan §4.7. 선행 FR-IS-10(커스텀 필드)·F
 - prod 통합테스트 ground-truth: T4/T5(identity prod 거부 실측, non-prod 마스킹 금지)
 - 추가 검증: 3모듈 ktlint+detekt(--rerun-tasks, learnings: backend-detekt-lint-debt-unmasked) + verify-master-plan.sh + FR 전수 동기화
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-08, 독립 코드검증 — autoplan/ceo overkill 회피, learnings: bts-review-plan-autoplan-overkill)
+
+전 task의 기존 코드 가정을 grep으로 전수 검증.
+
+- ✅ **시그니처 실재**: `IssueResponse.from`(+customFields)·`IssueApplicationService.{findByKey,updateIssue,listIssues,changeAssignee}`·`PermissionSchemeRepository.roleHasPermission`·`ProjectMembershipRepository.findByProjectAndUser` 모두 plan 가정대로 존재. `PermissionSchemaMigrationTest` 현재 14(→15 정확).
+- ✅ **패턴 실재**: `AlwaysAllow{X}PermissionResolver @Profile("!prod")` 4종 + BootTest 선례. 인증주체 추출(JWT/PAT, WhoamiController/UserGroupController) + FR-PM-09 이중가드(@PreAuthorize isAuthenticated + DB 판정) 패턴 확인.
+- ✅ **BC 격리**: `IssueBcArchTest`가 issue-tracking→identity 직접 import 금지 강제(위반 0). shared-kernel 포트 소비 선례 3종.
+- ✅ **CORE field_key 정합**: spec §3.1 코어 7종이 IssueResponse JSON 필드명과 일치. customFields 맵과 충돌 없음.
+- ✅ **마이그레이션**: V018 다음 번호 정확(V017 최신). gen_random_uuid 선례 다수.
+- ✅ **커버리지/wave**: 8 task가 spec §9 백엔드 기준 전부 매핑. wave 단방향 무순환. cross-cutting(detekt baseline·게이트 예외 누출·verify) 계획됨.
+- ⚠️ **CONCERN(반영 완료)**: `UserGroupRepository`에 actor→그룹 역조회 부재(`listMemberIds` 정방향만) → Task 4에 `findGroupIdsByUser(userId)` 신규(방식 A 확정) 반영, files에 UserGroupRepository.kt 추가.
+- **BLOCKER: 없음**. (에이전트가 BLOCKER로 표기한 "FieldPermissionResolver 포트/restrictedFields 미존재"는 Task 1·Task 7이 생성하기로 한 신규 산출물 — 오탐.)
+
+### plan-ceo-review
+
+스킵. 백엔드 권한 인프라는 제품/전략 판단 요소 적음(learnings: bts-review-plan-autoplan-overkill). eng 코드검증으로 충분.
