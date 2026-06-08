@@ -210,10 +210,10 @@ export interface UpdateIssueInput {
    */
   securityLevelId?: string | null
   /**
-   * FR-IS-10 — 커스텀 필드 수정 (3-state).
+   * FR-IS-10 — 커스텀 필드 수정.
    * - undefined(미전달) = 무변경
    * - null = 무변경 (백엔드 동일 처리)
-   * - {} (빈 맵) = 전체 제거
+   * - {} (빈 맵) = 무변경 (병합할 키 0개·기존 유지). 백엔드에 "전체 제거" 기능 없음.
    * - { key: value } = 키 단위 병합; 값이 null인 키는 삭제 (백엔드 처리)
    */
   customFields?: CustomFieldValues | null
