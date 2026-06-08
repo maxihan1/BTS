@@ -935,6 +935,48 @@ function IssueCustomFieldsEdit({
     setDraft((prev) => ({ ...prev, [key]: value }))
   }
 
+  /**
+   * 저장 직전 draft를 정규화한다 (스펙 E-6).
+   * - draft에 실제로 존재하는 키만 처리 (미정의 잔존 키 포함 금지 — E-2 정책)
+   * - 타입별 빈값 판정:
+   *   SHORT_TEXT/LONG_TEXT/URL/DATE/DATETIME/SINGLE_SELECT/RADIO: '' | undefined → null
+   *   NUMBER: undefined 또는 NaN → null. 단 0은 유효값으로 유지.
+   *   MULTI_SELECT: [] → null
+   *   CHECKBOX: boolean false 포함 유효값, null 변환 안 함.
+   */
+  function buildNormalizedPatch(): CustomFieldValues {
+    const patch: CustomFieldValues = {}
+    for (const field of fieldDefs) {
+      const key = field.key
+      if (!(key in draft)) continue
+      const raw = draft[key]
+      switch (field.fieldType) {
+        case 'SHORT_TEXT':
+        case 'LONG_TEXT':
+        case 'URL':
+        case 'DATE':
+        case 'DATETIME':
+        case 'SINGLE_SELECT':
+        case 'RADIO':
+          patch[key] = raw === '' || raw === undefined ? null : raw
+          break
+        case 'NUMBER': {
+          const isBlank = raw === undefined || raw === null || (typeof raw === 'number' && isNaN(raw))
+          patch[key] = isBlank ? null : raw
+          break
+        }
+        case 'MULTI_SELECT':
+          patch[key] = Array.isArray(raw) && raw.length === 0 ? null : raw
+          break
+        case 'CHECKBOX':
+          // boolean false 포함 유효값 — 그대로 유지
+          patch[key] = raw
+          break
+      }
+    }
+    return patch
+  }
+
   return (
     <div
       className="px-3.5 py-3 border-b border-border"
@@ -961,7 +1003,7 @@ function IssueCustomFieldsEdit({
         variant="outline"
         size="sm"
         className="self-end mt-2 min-h-[44px]"
-        onClick={() => onSave(draft)}
+        onClick={() => onSave(buildNormalizedPatch())}
         disabled={!canEdit}
         aria-label="커스텀 필드 저장"
         data-testid="custom-fields-save"
