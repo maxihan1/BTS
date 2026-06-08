@@ -2,6 +2,7 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.customfield.domain.CustomFieldValidationException
 import com.bts.issue.domain.AssigneeNotFoundException
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueComponentNotFoundException
@@ -43,6 +44,7 @@ import java.time.Instant
  * - [IssueWorkflowNotConfiguredException] → 422 + [IssueErrorCodes.WORKFLOW_NOT_CONFIGURED]
  * - [AssigneeNotFoundException] → 422 + [IssueErrorCodes.ASSIGNEE_NOT_FOUND]
  * - [IssueComponentNotFoundException] → 422 + [IssueErrorCodes.COMPONENT_NOT_FOUND]
+ * - [CustomFieldValidationException] → 422 + [IssueErrorCodes.CUSTOM_FIELD_VALIDATION_FAILED]
  * - [Exception] (fallback) → 500 + [IssueErrorCodes.INTERNAL_ERROR]
  *
  * TooManyFunctions: 도메인 예외 종류(400/401/403/404/409/422/500) 각각에 @ExceptionHandler 가 필요하므로
@@ -52,6 +54,7 @@ import java.time.Instant
  * FR-IS-03 Task 5 에서 [AssigneeNotFoundException] 핸들러가 추가됐다 (422 + ASSIGNEE_NOT_FOUND).
  * FR-IS-07 Task B6 에서 [ResolutionNotFoundException] 핸들러가 추가됐다 (404 + RESOLUTION_NOT_FOUND).
  * FR-CM-02 Task 5 에서 [IssueComponentNotFoundException] 핸들러가 추가됐다 (422 + COMPONENT_NOT_FOUND).
+ * FR-IS-10 BLOCKER 1 에서 [CustomFieldValidationException] 핸들러가 추가됐다 (422 + CUSTOM_FIELD_VALIDATION_FAILED).
  */
 @Suppress("TooManyFunctions")
 @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
@@ -307,6 +310,29 @@ class IssueExceptionHandler {
         )
     }
 
+    // ── 422 CUSTOM_FIELD_VALIDATION_FAILED ───────────────────────────────────
+
+    /**
+     * [CustomFieldValidationException] — 이슈 생성/수정 시 커스텀 필드 값 검증 실패 — 422.
+     *
+     * E1(미정의 키) / E2(required 누락) / E3(선택지 위반) / E4(타입 불일치) 모두 이 핸들러로 처리된다.
+     * 보안 — detail 에 내부 사유(필드 키, 허용 옵션 목록 등)를 노출하지 않고 일반 메시지만 응답한다.
+     * 원본 메시지는 로그에만 기록한다 (guard-exception 누출 방지).
+     *
+     * @param ex 검증 실패한 필드 키와 위반 사유를 포함하는 예외.
+     */
+    @ExceptionHandler(CustomFieldValidationException::class)
+    fun handleCustomFieldValidation(ex: CustomFieldValidationException): ProblemDetail {
+        log.info("ISSUE_422 custom_field_validation_failed message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.UNPROCESSABLE_ENTITY,
+            type = "custom-field-validation-failed",
+            title = "Custom Field Validation Failed",
+            errorCode = IssueErrorCodes.CUSTOM_FIELD_VALIDATION_FAILED,
+            detail = "커스텀 필드 값이 유효하지 않습니다.",
+        )
+    }
+
     // ── 422 SECURITY_LEVEL_NOT_IN_SCHEME ──────────────────────────────────────
 
     /**
@@ -462,5 +488,6 @@ object IssueErrorCodes {
     const val COMPONENT_NOT_FOUND = "COMPONENT_NOT_FOUND"
     const val SECURITY_LEVEL_NOT_IN_SCHEME = "SECURITY_LEVEL_NOT_IN_SCHEME"
     const val RESOLUTION_NOT_FOUND = "RESOLUTION_NOT_FOUND"
+    const val CUSTOM_FIELD_VALIDATION_FAILED = "CUSTOM_FIELD_VALIDATION_FAILED"
     const val INTERNAL_ERROR = "INTERNAL_ERROR"
 }
