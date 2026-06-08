@@ -4,7 +4,6 @@ package com.bts.issue.application
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.adapter.outbound.AlwaysAllowIssueSecurityDirectory
-import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.customfield.domain.CustomFieldValueValidator
 import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
@@ -30,6 +29,7 @@ import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueSoftDeleted
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.event.IssueUpdated
+import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
 import com.bts.issue.markdown.MarkdownRenderer
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueFieldPatch

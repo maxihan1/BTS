@@ -1,4 +1,4 @@
-// AlwaysAllow stub — FR-PM-07 prod 구현(identity-access PR-B) 전까지 dev/staging 활성. @Profile("!prod") 로 운영 차단.
+// AlwaysAllow stub — FR-PM-07 prod 구현(IdentityAccessFieldPermissionResolver) 주입 전 기본값 폴백. @Profile("!prod") 로 비prod 빈 등록.
 
 package com.bts.issue.fieldpermission.adapter
 
@@ -10,32 +10,29 @@ import org.springframework.stereotype.Component
 import java.util.UUID
 
 /**
- * issue-tracking BC 필드 수준 권한 stub resolver.
+ * issue-tracking BC 필드 수준 권한 allow-all 폴백 resolver.
  *
  * ## 보안 모델
  * 이 구현체는 [visibleFields] 와 [editableFields] 가 [candidates] 를 그대로 반환한다.
- * `@Profile("!prod")` 로 운영(prod) profile 에서 Bean 등록이 차단되므로,
- * 운영 환경에서는 이 클래스가 절대 활성화되지 않는다.
+ * `@Profile("!prod")` 로 비prod(개발/테스트/스테이징) 환경에서만 Bean 으로 등록된다.
  *
- * prod profile 에서 [FieldPermissionResolver] Bean 이 미해소 상태로 남으면
- * Spring 이 `BeanCreationException` 을 던져 부팅 자체를 차단한다.
- * 즉, stub 없이 운영 배포 시 반드시 실제 adapter 가 존재해야 부팅이 성공한다.
- *
- * ## prod 실판정은 FR-PM-07 PR-B(identity-access)
- * FR-PM-07 PR-B 에서 identity-access BC 에 prod 프로파일용 필드 권한 adapter
- * `IdentityAccessFieldPermissionResolver` 가 도입되면 두 resolver 는
- * profile 로 상호 배타적(mutually exclusive)으로 동작한다.
+ * ## 기본값 폴백 + 빈 주입 시 대체 (securityDirectory 패턴 동형)
+ * [IssueApplicationService] 생성자 기본값으로 사용된다.
+ * Spring 컨텍스트에서는 profile 에 맞는 실제 Bean 이 주입돼 이 기본값을 대체한다.
  * - `AlwaysAllowFieldPermissionResolver` — `@Profile("!prod")` (개발/테스트/스테이징)
- * - `IdentityAccessFieldPermissionResolver` (FR-PM-07 PR-B) — `@Profile("prod")` (운영)
+ * - `IdentityAccessFieldPermissionResolver` — `@Profile("prod")` (운영, cross-BC 조립 시 주입)
+ *
+ * Spring 이 관리하지 않는 단위 테스트 컨텍스트에서는 기본값(이 클래스 인스턴스)이 유지된다.
+ * 이 경우 마스킹/편집게이트 코드 경로는 항상 실행되되 모든 필드를 허용한다(null-skip 없음).
+ *
+ * ## prod 실판정
+ * prod 구현 `IdentityAccessFieldPermissionResolver` 는 FR-PM-07 PR-A 에 이미 존재한다.
+ * cross-BC 조립 시점에 issue-tracking 에 주입되어 이 폴백을 대체한다.
  *
  * ## 실차단 검증 위임
  * 실제 필드 수준 차단이 올바르게 동작하는지 검증하는 통합테스트는
  * identity-access prod 통합테스트(`FR-PM-07 PR-B`)가 담당한다.
- * 이 stub 은 issue-tracking 개발/테스트 환경의 부팅 보장만 책임진다.
- *
- * ## ArchUnit 강제
- * 소비자(Service/Controller 계층)는 [FieldPermissionResolver] interface 만 의존한다.
- * 이 구현체를 직접 import 하면 빌드 실패.
+ * 이 폴백은 issue-tracking 개발/테스트 환경의 부팅 보장만 책임진다.
  *
  * @see FieldPermissionResolver
  * @see FieldRef
@@ -50,7 +47,8 @@ class AlwaysAllowFieldPermissionResolver : FieldPermissionResolver {
      * [candidates] 를 그대로 반환한다.
      *
      * 개발/테스트 환경에서 필드 권한 검사 없이 이슈를 테스트할 수 있도록
-     * 모든 필드의 열람을 허용한다. 운영 환경에서는 이 메서드가 절대 호출되지 않는다.
+     * 모든 필드의 열람을 허용한다. prod 환경에서는 [IssueApplicationService] 에
+     * `IdentityAccessFieldPermissionResolver` Bean 이 주입돼 이 메서드가 호출되지 않는다.
      *
      * @param actorId 권한 평가 대상 행위자 UUID.
      * @param projectId 필드가 속한 프로젝트의 UUID.
@@ -63,7 +61,8 @@ class AlwaysAllowFieldPermissionResolver : FieldPermissionResolver {
         candidates: Set<FieldRef>,
     ): Set<FieldRef> {
         log.warn(
-            "AlwaysAllowFieldPermissionResolver: granting all {} field(s) visibility on project {} to actor {} — stub (FR-PM-07 PR-B 미도입)",
+            "AlwaysAllowFieldPermissionResolver: granting all {} field(s) visibility" +
+                " on project {} to actor {} — allow-all fallback (non-prod)",
             candidates.size,
             projectId,
             actorId,
@@ -75,7 +74,8 @@ class AlwaysAllowFieldPermissionResolver : FieldPermissionResolver {
      * [candidates] 를 그대로 반환한다.
      *
      * 개발/테스트 환경에서 필드 권한 검사 없이 이슈를 테스트할 수 있도록
-     * 모든 필드의 편집을 허용한다. 운영 환경에서는 이 메서드가 절대 호출되지 않는다.
+     * 모든 필드의 편집을 허용한다. prod 환경에서는 [IssueApplicationService] 에
+     * `IdentityAccessFieldPermissionResolver` Bean 이 주입돼 이 메서드가 호출되지 않는다.
      *
      * @param actorId 권한 평가 대상 행위자 UUID.
      * @param projectId 필드가 속한 프로젝트의 UUID.
@@ -88,7 +88,8 @@ class AlwaysAllowFieldPermissionResolver : FieldPermissionResolver {
         candidates: Set<FieldRef>,
     ): Set<FieldRef> {
         log.warn(
-            "AlwaysAllowFieldPermissionResolver: granting all {} field(s) editability on project {} to actor {} — stub (FR-PM-07 PR-B 미도입)",
+            "AlwaysAllowFieldPermissionResolver: granting all {} field(s) editability" +
+                " on project {} to actor {} — allow-all fallback (non-prod)",
             candidates.size,
             projectId,
             actorId,
