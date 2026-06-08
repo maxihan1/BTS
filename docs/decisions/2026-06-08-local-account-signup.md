@@ -42,7 +42,9 @@ FR-AU-05(로컬 계정)는 비밀번호 변경(PR #44 API + PR #45 프론트/E2E
 - **기각: 관리자 직접 입력(Maxi 2026-06-08).** 관리자가 평문을 알게 되고 약한 비번 입력 여지. 서버 생성이 정책 보장 + 최소 노출.
 - 응답 DTO는 `{ id, username, temporaryPassword }`. SYSTEM_ADMIN에게 HTTPS로만 전달.
 
-### D4 — 강제 비밀번호 변경 = `local_credentials.must_change_password` 플래그 (V018)
+### D4 — 강제 비밀번호 변경 = `local_credentials.must_change_password` 플래그 (V019)
+
+> **머지 후 재번호(2026-06-08)**. 계획 시 V018이었으나 동시 머지된 FR-PM-07(#97)이 `V018__field_permissions`를 선점 → Flyway 버전 충돌. 머지 직후 V018→V019로 재번호(메모리 migration-vnumber-concurrent-branch-collision).
 
 임시 비번으로 첫 로그인 시 반드시 새 비번으로 바꾸게 강제한다(Maxi 2026-06-08, "더 안전").
 
@@ -71,7 +73,7 @@ ALTER TABLE local_credentials
 
 ## 결과 / 트레이드오프
 
-- **산출물**: V018 마이그레이션 + `CreateLocalAccountService`(가입) + `POST /api/v1/users`(SYSTEM_ADMIN) + 임시 비번 생성기 + `must_change_password` 노출/해제 결선 + 가입 폼(D6) + E2E(D7).
+- **산출물**: V019 마이그레이션 + `CreateLocalAccountService`(가입) + `POST /api/v1/users`(SYSTEM_ADMIN) + 임시 비번 생성기 + `must_change_password` 노출/해제 결선 + 가입 폼(D6) + E2E(D7).
 - **장점**: 기존 부품 재사용. 협력사 계정 보안(서버 생성 비번 + 강제 변경). FR-AU-05 사실상 완결(리셋 제외).
-- **비용**: V018 마이그레이션 1건. 로그인/whoami 흐름에 `mustChangePassword` 결선 + 프론트 가드 추가.
+- **비용**: V019 마이그레이션 1건. 로그인/whoami 흐름에 `mustChangePassword` 결선 + 프론트 가드 추가.
 - **새 용어**: "임시 비밀번호(temporary password)", "강제 비밀번호 변경(must-change-on-first-login)" → glossary 추가 후보(Maxi 승인 대기).
