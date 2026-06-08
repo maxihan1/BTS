@@ -365,7 +365,7 @@ class CustomFieldControllerTest {
 
     @Test
     fun `PATCH custom-fields fieldKey — fieldType 변경 시도 → 422 CUSTOM_FIELD_IMMUTABLE_CHANGE`() {
-        val body = mapper.writeValueAsString(mapOf("name" to "이름", "fieldType" to "TEXT"))
+        val body = mapper.writeValueAsString(mapOf("name" to "이름", "fieldType" to "LONG_TEXT"))
         every {
             customFieldApplicationService.update(any(), any(), any(), any(), any(), any(), any(), any())
         } throws ImmutableFieldTypeChangeException("fieldType")
