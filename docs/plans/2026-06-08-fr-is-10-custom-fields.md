@@ -32,9 +32,20 @@ classify: type=backend, agent=backend-engineer, primary_bc=issue-tracking
 - **관련 ADR**: docs/decisions/2026-06-08-custom-fields-model.md (생성)
 - **신규 FR 등록 필요**(전수 동기화): fr-index · SDD(02 + 신규 §) · product/issue-tracking · README · CLAUDE 카운트.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-08-fr-is-10-custom-fields.md](../specs/2026-06-08-fr-is-10-custom-fields.md)
+
+핵심 요약.
+- 1차 PR = **백엔드만** (정의 CRUD API + 이슈 값 검증 + 테스트). 프론트는 후속 PR.
+- 정의 CRUD = ComponentController 패턴 차용(`/api/v1/projects/{key}/custom-fields`). 관리 권한 = PROJECT_ADMIN 직접 확인(신규 권한코드 없음).
+- 값 = `issues.custom_fields` JSONB. 검증(미정의키/required/타입/선택지 → 422)은 ApplicationService.
+- PATCH = 필드 단위 병합(키 단위 갱신, null=제거). FieldType/key 생성 후 불변.
+- 데이터: V015 — custom_field_definitions + custom_field_options + issues.custom_fields JSONB + GIN(init_codegen 미러).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). gap 4건 보강 — PATCH 병합 정책(Maxi 결정), 클론 미복사, 목록 노출, 검색/bulk/pdf 범위밖 명시.
 
 ## Plan (← /bts-plan 채움)
 
