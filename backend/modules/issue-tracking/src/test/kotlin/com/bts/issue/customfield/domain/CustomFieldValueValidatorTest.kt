@@ -43,10 +43,11 @@ class CustomFieldValueValidatorTest : DescribeSpec({
         options = options,
     )
 
-    val colorOptions = listOf(
-        CustomFieldOption(value = "red", label = "빨강", displayOrder = 1),
-        CustomFieldOption(value = "blue", label = "파랑", displayOrder = 2),
-    )
+    val colorOptions =
+        listOf(
+            CustomFieldOption(value = "red", label = "빨강", displayOrder = 1),
+            CustomFieldOption(value = "blue", label = "파랑", displayOrder = 2),
+        )
 
     // ── E1: 미정의 키 거부 ────────────────────────────────────────────────────
 
@@ -56,9 +57,10 @@ class CustomFieldValueValidatorTest : DescribeSpec({
             val definitions = listOf(defOf("name_field", FieldType.SHORT_TEXT))
             val values = mapOf("name_field" to "홍길동", "unknown_key" to "값")
 
-            val ex = shouldThrow<CustomFieldValidationException> {
-                validator.validate(definitions, values)
-            }
+            val ex =
+                shouldThrow<CustomFieldValidationException> {
+                    validator.validate(definitions, values)
+                }
             ex.message shouldContain "unknown_key"
         }
 
@@ -81,18 +83,20 @@ class CustomFieldValueValidatorTest : DescribeSpec({
         it("required 필드가 values 에 없으면 CustomFieldValidationException 을 던진다") {
             val definitions = listOf(defOf("req_field", FieldType.SHORT_TEXT, required = true))
 
-            val ex = shouldThrow<CustomFieldValidationException> {
-                validator.validate(definitions, emptyMap())
-            }
+            val ex =
+                shouldThrow<CustomFieldValidationException> {
+                    validator.validate(definitions, emptyMap())
+                }
             ex.message shouldContain "req_field"
         }
 
         it("required 필드 값이 null 이면 CustomFieldValidationException 을 던진다") {
             val definitions = listOf(defOf("req_field", FieldType.SHORT_TEXT, required = true))
 
-            val ex = shouldThrow<CustomFieldValidationException> {
-                validator.validate(definitions, mapOf("req_field" to null))
-            }
+            val ex =
+                shouldThrow<CustomFieldValidationException> {
+                    validator.validate(definitions, mapOf("req_field" to null))
+                }
             ex.message shouldContain "req_field"
         }
 
@@ -119,9 +123,10 @@ class CustomFieldValueValidatorTest : DescribeSpec({
         it("256자 문자열이면 CustomFieldValidationException 을 던진다") {
             val definitions = listOf(defOf("short", FieldType.SHORT_TEXT))
 
-            val ex = shouldThrow<CustomFieldValidationException> {
-                validator.validate(definitions, mapOf("short" to "a".repeat(256)))
-            }
+            val ex =
+                shouldThrow<CustomFieldValidationException> {
+                    validator.validate(definitions, mapOf("short" to "a".repeat(256)))
+                }
             ex.message shouldContain "short"
         }
 
@@ -146,9 +151,10 @@ class CustomFieldValueValidatorTest : DescribeSpec({
         it("32769자 문자열이면 CustomFieldValidationException 을 던진다") {
             val definitions = listOf(defOf("long", FieldType.LONG_TEXT))
 
-            val ex = shouldThrow<CustomFieldValidationException> {
-                validator.validate(definitions, mapOf("long" to "a".repeat(32769)))
-            }
+            val ex =
+                shouldThrow<CustomFieldValidationException> {
+                    validator.validate(definitions, mapOf("long" to "a".repeat(32769)))
+                }
             ex.message shouldContain "long"
         }
 
@@ -212,9 +218,10 @@ class CustomFieldValueValidatorTest : DescribeSpec({
         it("형식이 틀리면 CustomFieldValidationException 을 던진다") {
             val definitions = listOf(defOf("dt", FieldType.DATE))
 
-            val ex = shouldThrow<CustomFieldValidationException> {
-                validator.validate(definitions, mapOf("dt" to "20240315"))
-            }
+            val ex =
+                shouldThrow<CustomFieldValidationException> {
+                    validator.validate(definitions, mapOf("dt" to "20240315"))
+                }
             ex.message shouldContain "dt"
         }
 
@@ -252,9 +259,10 @@ class CustomFieldValueValidatorTest : DescribeSpec({
         it("형식이 틀리면 CustomFieldValidationException 을 던진다") {
             val definitions = listOf(defOf("dtime", FieldType.DATETIME))
 
-            val ex = shouldThrow<CustomFieldValidationException> {
-                validator.validate(definitions, mapOf("dtime" to "2024-03-15 10:30:00"))
-            }
+            val ex =
+                shouldThrow<CustomFieldValidationException> {
+                    validator.validate(definitions, mapOf("dtime" to "2024-03-15 10:30:00"))
+                }
             ex.message shouldContain "dtime"
         }
 
@@ -279,9 +287,10 @@ class CustomFieldValueValidatorTest : DescribeSpec({
         it("정의되지 않은 옵션 값이면 CustomFieldValidationException 을 던진다 (E3)") {
             val definitions = listOf(defOf("color", FieldType.SINGLE_SELECT, options = colorOptions))
 
-            val ex = shouldThrow<CustomFieldValidationException> {
-                validator.validate(definitions, mapOf("color" to "green"))
-            }
+            val ex =
+                shouldThrow<CustomFieldValidationException> {
+                    validator.validate(definitions, mapOf("color" to "green"))
+                }
             ex.message shouldContain "color"
         }
 
@@ -306,9 +315,10 @@ class CustomFieldValueValidatorTest : DescribeSpec({
         it("하나라도 정의되지 않은 값이 있으면 CustomFieldValidationException 을 던진다 (E3)") {
             val definitions = listOf(defOf("colors", FieldType.MULTI_SELECT, options = colorOptions))
 
-            val ex = shouldThrow<CustomFieldValidationException> {
-                validator.validate(definitions, mapOf("colors" to listOf("red", "green")))
-            }
+            val ex =
+                shouldThrow<CustomFieldValidationException> {
+                    validator.validate(definitions, mapOf("colors" to listOf("red", "green")))
+                }
             ex.message shouldContain "colors"
         }
 
@@ -369,9 +379,10 @@ class CustomFieldValueValidatorTest : DescribeSpec({
         it("정의되지 않은 옵션 값이면 CustomFieldValidationException 을 던진다 (E3)") {
             val definitions = listOf(defOf("color_radio", FieldType.RADIO, options = colorOptions))
 
-            val ex = shouldThrow<CustomFieldValidationException> {
-                validator.validate(definitions, mapOf("color_radio" to "yellow"))
-            }
+            val ex =
+                shouldThrow<CustomFieldValidationException> {
+                    validator.validate(definitions, mapOf("color_radio" to "yellow"))
+                }
             ex.message shouldContain "color_radio"
         }
     }
@@ -393,9 +404,10 @@ class CustomFieldValueValidatorTest : DescribeSpec({
         it("ftp:// URL 이면 CustomFieldValidationException 을 던진다") {
             val definitions = listOf(defOf("link", FieldType.URL))
 
-            val ex = shouldThrow<CustomFieldValidationException> {
-                validator.validate(definitions, mapOf("link" to "ftp://example.com"))
-            }
+            val ex =
+                shouldThrow<CustomFieldValidationException> {
+                    validator.validate(definitions, mapOf("link" to "ftp://example.com"))
+                }
             ex.message shouldContain "link"
         }
 
@@ -421,28 +433,32 @@ class CustomFieldValueValidatorTest : DescribeSpec({
     describe("복합 케이스 — 여러 필드 동시 검증") {
 
         it("여러 필드 모두 유효하면 예외 없이 통과한다") {
-            val definitions = listOf(
-                defOf("title", FieldType.SHORT_TEXT, required = true),
-                defOf("count", FieldType.NUMBER),
-                defOf("priority", FieldType.SINGLE_SELECT, options = colorOptions),
-            )
-            val values = mapOf(
-                "title" to "테스트 이슈",
-                "count" to 5,
-                "priority" to "red",
-            )
+            val definitions =
+                listOf(
+                    defOf("title", FieldType.SHORT_TEXT, required = true),
+                    defOf("count", FieldType.NUMBER),
+                    defOf("priority", FieldType.SINGLE_SELECT, options = colorOptions),
+                )
+            val values =
+                mapOf(
+                    "title" to "테스트 이슈",
+                    "count" to 5,
+                    "priority" to "red",
+                )
             validator.validate(definitions, values)
         }
 
         it("여러 필드 중 하나라도 위반이 있으면 CustomFieldValidationException 을 던진다") {
-            val definitions = listOf(
-                defOf("title", FieldType.SHORT_TEXT, required = true),
-                defOf("count", FieldType.NUMBER),
-            )
-            val values = mapOf(
-                "title" to "유효한 제목",
-                "unknown_extra" to "값",
-            )
+            val definitions =
+                listOf(
+                    defOf("title", FieldType.SHORT_TEXT, required = true),
+                    defOf("count", FieldType.NUMBER),
+                )
+            val values =
+                mapOf(
+                    "title" to "유효한 제목",
+                    "unknown_extra" to "값",
+                )
             shouldThrow<CustomFieldValidationException> {
                 validator.validate(definitions, values)
             }

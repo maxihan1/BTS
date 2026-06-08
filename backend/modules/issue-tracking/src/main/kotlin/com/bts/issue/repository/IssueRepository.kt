@@ -881,8 +881,7 @@ private fun Map<String, Any?>.toJsonb(): JSONB = JSONB.jsonb(CUSTOM_FIELDS_MAPPE
  * PostgreSQL JSONB 의 기본값 `'{}'` 은 역직렬화 후 빈 맵이 된다.
  */
 private fun JSONB?.toCustomFieldsMap(): Map<String, Any?> {
-    if (this == null) return emptyMap()
-    val json = this.data()
+    val json = this?.data()
     if (json.isNullOrBlank() || json == "{}") return emptyMap()
     return CUSTOM_FIELDS_MAPPER.readValue(json, CUSTOM_FIELDS_TYPE_REF)
 }

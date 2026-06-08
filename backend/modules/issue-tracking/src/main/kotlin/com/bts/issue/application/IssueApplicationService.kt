@@ -133,7 +133,7 @@ class IssueApplicationService(
      * TooGenericExceptionCaught/ThrowsCount: BC 격리 — project-workflow 내부 예외를 직접 import 할 수 없으므로
      * javaClass.simpleName 으로 감지한다. RuntimeException catch 는 의도적인 설계 (DEVELOPMENT.md §1.1).
      */
-    @Suppress("TooGenericExceptionCaught", "ThrowsCount")
+    @Suppress("TooGenericExceptionCaught", "ThrowsCount", "LongMethod")
     fun createIssue(
         actor: ActorId,
         request: CreateIssueRequest,
@@ -900,6 +900,7 @@ class IssueApplicationService(
      * @param mergedCustomFields 병합 완료된 커스텀 필드 최종 맵. null=무변경.
      * @return 변경된 필드 이름 집합. 비어있으면 no-op.
      */
+    @Suppress("CyclomaticComplexMethod")
     private fun buildChangedFields(
         existing: Issue,
         request: UpdateIssueRequest,

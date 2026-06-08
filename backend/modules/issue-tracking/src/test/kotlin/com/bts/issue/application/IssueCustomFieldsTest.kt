@@ -3,7 +3,6 @@ package com.bts.issue.application
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.customfield.domain.CustomFieldDefinition
-import com.bts.issue.customfield.domain.CustomFieldOption
 import com.bts.issue.customfield.domain.CustomFieldValidationException
 import com.bts.issue.customfield.domain.FieldType
 import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
@@ -116,22 +115,6 @@ class IssueCustomFieldsTest : DescribeSpec({
             options = emptyList(),
         )
 
-    /** SINGLE_SELECT 타입 status 필드. */
-    val statusDef =
-        CustomFieldDefinition(
-            id = UUID.randomUUID(),
-            projectId = projectId,
-            key = "dept_status",
-            name = "부서 상태",
-            fieldType = FieldType.SINGLE_SELECT,
-            required = false,
-            displayOrder = 3,
-            options = listOf(
-                CustomFieldOption(value = "active", label = "Active", displayOrder = 1),
-                CustomFieldOption(value = "inactive", label = "Inactive", displayOrder = 2),
-            ),
-        )
-
     fun makeIssue(customFields: Map<String, Any?> = emptyMap()) =
         Issue(
             id = IssueId(UUID.randomUUID()),
@@ -194,7 +177,9 @@ class IssueCustomFieldsTest : DescribeSpec({
             val savedIssue = makeIssue(customFields = customFieldValues)
 
             beforeEach {
-                every { permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey)) } returns true
+                every {
+                    permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey))
+                } returns true
                 every { repo.incrementKeySequence(projectKey) } returns 1L
                 every { repo.findProjectIdByKey(projectKey) } returns projectId
                 every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
@@ -225,7 +210,9 @@ class IssueCustomFieldsTest : DescribeSpec({
 
         context("미정의 키 포함 시 CustomFieldValidationException(E1) 발생") {
             beforeEach {
-                every { permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey)) } returns true
+                every {
+                    permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey))
+                } returns true
                 every { repo.incrementKeySequence(projectKey) } returns 1L
                 every { repo.findProjectIdByKey(projectKey) } returns projectId
                 every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
@@ -253,7 +240,9 @@ class IssueCustomFieldsTest : DescribeSpec({
 
         context("required 필드 누락 시 CustomFieldValidationException(E2) 발생") {
             beforeEach {
-                every { permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey)) } returns true
+                every {
+                    permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey))
+                } returns true
                 every { repo.incrementKeySequence(projectKey) } returns 1L
                 every { repo.findProjectIdByKey(projectKey) } returns projectId
                 every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
@@ -270,7 +259,8 @@ class IssueCustomFieldsTest : DescribeSpec({
                         projectKey = projectKey,
                         summary = "이슈 생성",
                         reporterId = actor,
-                        customFields = emptyMap(), // required salary_impact 누락
+                        // required salary_impact 누락
+                        customFields = emptyMap(),
                     )
 
                 shouldThrow<CustomFieldValidationException> {
@@ -283,7 +273,9 @@ class IssueCustomFieldsTest : DescribeSpec({
             val savedIssue = makeIssue(customFields = emptyMap())
 
             beforeEach {
-                every { permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey)) } returns true
+                every {
+                    permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey))
+                } returns true
                 every { repo.incrementKeySequence(projectKey) } returns 1L
                 every { repo.findProjectIdByKey(projectKey) } returns projectId
                 every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
@@ -320,7 +312,9 @@ class IssueCustomFieldsTest : DescribeSpec({
             val responseWithCustom = makeResponse(customFields = customFields)
 
             beforeEach {
-                every { permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(issueKey.value)) } returns true
+                every {
+                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
+                } returns true
                 every { repo.findByKeyWithType(issueKey) } returns responseWithCustom
                 every { repo.findActiveComponentIdsByIssue(any()) } returns emptyList()
             }
@@ -353,7 +347,9 @@ class IssueCustomFieldsTest : DescribeSpec({
             val updatedResponse = makeResponse(customFields = existingCustomFields)
 
             beforeEach {
-                every { permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value)) } returns true
+                every {
+                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { repo.findByKeyWithType(issueKey) } returns updatedResponse
             }
@@ -363,7 +359,8 @@ class IssueCustomFieldsTest : DescribeSpec({
                     UpdateIssueRequest(
                         summary = null,
                         expectedVersion = existingVersion,
-                        customFields = null, // 부재 — 무변경
+                        // 부재 — 무변경
+                        customFields = null,
                     )
 
                 val result = sut.updateIssue(actor, issueKey, request)
@@ -379,7 +376,9 @@ class IssueCustomFieldsTest : DescribeSpec({
             val updatedResponse = makeResponse(customFields = mergedFields)
 
             beforeEach {
-                every { permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value)) } returns true
+                every {
+                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                } returns true
                 every { customFieldDefinitionRepository.findActiveByProject(projectId) } returns
                     listOf(salaryImpactDef, noteDef)
                 every { repo.findByKey(issueKey) } returns existingIssue
@@ -408,7 +407,9 @@ class IssueCustomFieldsTest : DescribeSpec({
             val updatedResponse = makeResponse(customFields = afterRemove)
 
             beforeEach {
-                every { permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value)) } returns true
+                every {
+                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                } returns true
                 every { customFieldDefinitionRepository.findActiveByProject(projectId) } returns
                     listOf(salaryImpactDef, noteDef)
                 every { repo.findByKey(issueKey) } returns existingIssue
@@ -434,7 +435,9 @@ class IssueCustomFieldsTest : DescribeSpec({
             val existingIssue = makeIssue(customFields = existingCustomFields)
 
             beforeEach {
-                every { permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value)) } returns true
+                every {
+                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                } returns true
                 every { customFieldDefinitionRepository.findActiveByProject(projectId) } returns
                     listOf(salaryImpactDef, noteDef)
                 every { repo.findByKey(issueKey) } returns existingIssue
@@ -445,7 +448,8 @@ class IssueCustomFieldsTest : DescribeSpec({
                     UpdateIssueRequest(
                         summary = null,
                         expectedVersion = existingVersion,
-                        customFields = mapOf("salary_impact" to null), // required 필드 제거 시도
+                        // required 필드 제거 시도
+                        customFields = mapOf("salary_impact" to null),
                     )
 
                 shouldThrow<CustomFieldValidationException> {
@@ -464,8 +468,12 @@ class IssueCustomFieldsTest : DescribeSpec({
             val cloneIssue = makeIssue(customFields = emptyMap()).copy(key = IssueKey("ATLAS-2"), version = 1L)
 
             beforeEach {
-                every { permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(issueKey.value)) } returns true
-                every { permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey)) } returns true
+                every {
+                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
+                } returns true
+                every {
+                    permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey))
+                } returns true
                 every { repo.findByKey(issueKey) } returns sourceIssue
                 every { repo.incrementKeySequence(projectKey) } returns 2L
                 every { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null) } returns

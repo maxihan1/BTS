@@ -4,9 +4,17 @@
   <CurrentIssues>
     <ID>MagicNumber:Issue.kt$255</ID>
     <ID>MagicNumber:IssueApplicationService.kt$IssueApplicationService$100</ID>
+    <ID>MaxLineLength:CustomFieldApplicationServiceTest.kt$CustomFieldApplicationServiceTest$sut.create(actorId, projectIdOrKey, "salary_impact", "급여", FieldType.SHORT_TEXT, false, 0, emptyList())</ID>
+    <ID>MaxLineLength:CustomFieldApplicationServiceTest.kt$CustomFieldApplicationServiceTest$sut.update(actorId, projectIdOrKey, fieldId, null, FieldType.SHORT_TEXT, "salary_impact", null, null)</ID>
     <ID>MaxLineLength:CustomFieldsMigrationTest.kt$// issue-tracking V015 마이그레이션 검증 — custom_field_definitions/custom_field_options 테이블 + issues.custom_fields JSONB + GIN 인덱스 + 부분 유니크 + FK CASCADE + TIMESTAMPTZ 존재 확인</ID>
+    <ID>MaxLineLength:IssueCustomFieldsTest.kt$IssueCustomFieldsTest$permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey))</ID>
+    <ID>MaxLineLength:IssueCustomFieldsTest.kt$IssueCustomFieldsTest$permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))</ID>
+    <ID>MaxLineLength:IssueCustomFieldsTest.kt$IssueCustomFieldsTest$permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))</ID>
     <ID>NestedBlockDepth:CustomFieldsMigrationTest.kt$CustomFieldsMigrationTest$private fun indexUsesGin(indexName: String): Boolean</ID>
     <ID>NestedBlockDepth:V007MigrationIntegrationTest.kt$V007MigrationIntegrationTest$private fun columnInfo( tableName: String, columnName: String, ): Pair&lt;String?, String?&gt;</ID>
+    <ID>ThrowsCount:CustomFieldValueValidator.kt$CustomFieldValueValidator$private fun validateMultiSelect( key: String, value: Any, options: List&lt;CustomFieldOption&gt;, )</ID>
     <ID>ThrowsCount:IssueApplicationService.kt$IssueApplicationService$fun updateIssue( actor: ActorId, key: IssueKey, request: UpdateIssueRequest, ): IssueResponse</ID>
+    <ID>TooManyFunctions:CustomFieldDefinitionRepository.kt$CustomFieldDefinitionRepository</ID>
+    <ID>TooManyFunctions:CustomFieldValueValidator.kt$CustomFieldValueValidator</ID>
   </CurrentIssues>
 </SmellBaseline>

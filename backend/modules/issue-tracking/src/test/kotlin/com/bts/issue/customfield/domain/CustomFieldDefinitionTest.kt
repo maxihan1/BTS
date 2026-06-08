@@ -82,12 +82,13 @@ class CustomFieldDefinitionTest : DescribeSpec({
 
         context("비선택형 타입") {
             it("SHORT_TEXT 로 옵션 없이 생성하면 인스턴스를 반환한다") {
-                val definition = CustomFieldDefinition.create(
-                    projectId = projectId,
-                    key = "summary_text",
-                    name = "요약 텍스트",
-                    fieldType = FieldType.SHORT_TEXT,
-                )
+                val definition =
+                    CustomFieldDefinition.create(
+                        projectId = projectId,
+                        key = "summary_text",
+                        name = "요약 텍스트",
+                        fieldType = FieldType.SHORT_TEXT,
+                    )
 
                 definition.projectId shouldBe projectId
                 definition.key shouldBe "summary_text"
@@ -96,58 +97,63 @@ class CustomFieldDefinitionTest : DescribeSpec({
             }
 
             it("id 는 null 이다 (DB 저장 전)") {
-                val definition = CustomFieldDefinition.create(
-                    projectId = projectId,
-                    key = "my_field",
-                    name = "내 필드",
-                    fieldType = FieldType.NUMBER,
-                )
+                val definition =
+                    CustomFieldDefinition.create(
+                        projectId = projectId,
+                        key = "my_field",
+                        name = "내 필드",
+                        fieldType = FieldType.NUMBER,
+                    )
 
                 definition.id.shouldBeNull()
             }
 
             it("required 기본값은 false 이다") {
-                val definition = CustomFieldDefinition.create(
-                    projectId = projectId,
-                    key = "opt_field",
-                    name = "선택 필드",
-                    fieldType = FieldType.DATE,
-                )
+                val definition =
+                    CustomFieldDefinition.create(
+                        projectId = projectId,
+                        key = "opt_field",
+                        name = "선택 필드",
+                        fieldType = FieldType.DATE,
+                    )
 
                 definition.required shouldBe false
             }
 
             it("options 기본값은 빈 리스트다") {
-                val definition = CustomFieldDefinition.create(
-                    projectId = projectId,
-                    key = "no_opts",
-                    name = "옵션 없음",
-                    fieldType = FieldType.LONG_TEXT,
-                )
+                val definition =
+                    CustomFieldDefinition.create(
+                        projectId = projectId,
+                        key = "no_opts",
+                        name = "옵션 없음",
+                        fieldType = FieldType.LONG_TEXT,
+                    )
 
                 definition.options.shouldBeEmpty()
             }
 
             it("required = true 로 생성할 수 있다") {
-                val definition = CustomFieldDefinition.create(
-                    projectId = projectId,
-                    key = "req_field",
-                    name = "필수 필드",
-                    fieldType = FieldType.SHORT_TEXT,
-                    required = true,
-                )
+                val definition =
+                    CustomFieldDefinition.create(
+                        projectId = projectId,
+                        key = "req_field",
+                        name = "필수 필드",
+                        fieldType = FieldType.SHORT_TEXT,
+                        required = true,
+                    )
 
                 definition.required shouldBe true
             }
 
             it("displayOrder 를 지정할 수 있다") {
-                val definition = CustomFieldDefinition.create(
-                    projectId = projectId,
-                    key = "ordered_field",
-                    name = "순서 있는 필드",
-                    fieldType = FieldType.URL,
-                    displayOrder = 5,
-                )
+                val definition =
+                    CustomFieldDefinition.create(
+                        projectId = projectId,
+                        key = "ordered_field",
+                        name = "순서 있는 필드",
+                        fieldType = FieldType.URL,
+                        displayOrder = 5,
+                    )
 
                 definition.displayOrder shouldBe 5
             }
@@ -155,45 +161,50 @@ class CustomFieldDefinitionTest : DescribeSpec({
 
         context("선택형 타입 — 옵션 있음") {
             it("SINGLE_SELECT + 옵션 1건으로 생성하면 인스턴스를 반환한다") {
-                val definition = CustomFieldDefinition.create(
-                    projectId = projectId,
-                    key = "priority_level",
-                    name = "우선순위",
-                    fieldType = FieldType.SINGLE_SELECT,
-                    options = listOf(sampleOption),
-                )
+                val definition =
+                    CustomFieldDefinition.create(
+                        projectId = projectId,
+                        key = "priority_level",
+                        name = "우선순위",
+                        fieldType = FieldType.SINGLE_SELECT,
+                        options = listOf(sampleOption),
+                    )
 
                 definition.fieldType shouldBe FieldType.SINGLE_SELECT
                 definition.options.size shouldBe 1
             }
 
             it("MULTI_SELECT + 옵션 2건으로 생성하면 옵션 2건을 포함한다") {
-                val opts = listOf(
-                    CustomFieldOption(value = "a", label = "A", displayOrder = 1),
-                    CustomFieldOption(value = "b", label = "B", displayOrder = 2),
-                )
-                val definition = CustomFieldDefinition.create(
-                    projectId = projectId,
-                    key = "tags_field",
-                    name = "태그",
-                    fieldType = FieldType.MULTI_SELECT,
-                    options = opts,
-                )
+                val opts =
+                    listOf(
+                        CustomFieldOption(value = "a", label = "A", displayOrder = 1),
+                        CustomFieldOption(value = "b", label = "B", displayOrder = 2),
+                    )
+                val definition =
+                    CustomFieldDefinition.create(
+                        projectId = projectId,
+                        key = "tags_field",
+                        name = "태그",
+                        fieldType = FieldType.MULTI_SELECT,
+                        options = opts,
+                    )
 
                 definition.options.size shouldBe 2
             }
 
             it("RADIO + 옵션 있으면 생성된다") {
-                val definition = CustomFieldDefinition.create(
-                    projectId = projectId,
-                    key = "yesno_field",
-                    name = "예/아니오",
-                    fieldType = FieldType.RADIO,
-                    options = listOf(
-                        CustomFieldOption(value = "yes", label = "예", displayOrder = 1),
-                        CustomFieldOption(value = "no", label = "아니오", displayOrder = 2),
-                    ),
-                )
+                val definition =
+                    CustomFieldDefinition.create(
+                        projectId = projectId,
+                        key = "yesno_field",
+                        name = "예/아니오",
+                        fieldType = FieldType.RADIO,
+                        options =
+                            listOf(
+                                CustomFieldOption(value = "yes", label = "예", displayOrder = 1),
+                                CustomFieldOption(value = "no", label = "아니오", displayOrder = 2),
+                            ),
+                    )
 
                 definition.options.size shouldBe 2
             }
@@ -205,12 +216,13 @@ class CustomFieldDefinitionTest : DescribeSpec({
     describe("CustomFieldDefinition.create — key 불변식") {
 
         it("key 가 URL-safe 소문자(영문자 시작, 영숫자+언더스코어)면 정상 생성") {
-            val definition = CustomFieldDefinition.create(
-                projectId = projectId,
-                key = "my_field_01",
-                name = "테스트",
-                fieldType = FieldType.SHORT_TEXT,
-            )
+            val definition =
+                CustomFieldDefinition.create(
+                    projectId = projectId,
+                    key = "my_field_01",
+                    name = "테스트",
+                    fieldType = FieldType.SHORT_TEXT,
+                )
 
             definition.key shouldBe "my_field_01"
         }
@@ -337,12 +349,13 @@ class CustomFieldDefinitionTest : DescribeSpec({
         }
 
         it("CHECKBOX 는 isSelectType = false 이므로 옵션 없어도 정상 생성한다") {
-            val definition = CustomFieldDefinition.create(
-                projectId = projectId,
-                key = "cb_field",
-                name = "체크박스",
-                fieldType = FieldType.CHECKBOX,
-            )
+            val definition =
+                CustomFieldDefinition.create(
+                    projectId = projectId,
+                    key = "cb_field",
+                    name = "체크박스",
+                    fieldType = FieldType.CHECKBOX,
+                )
 
             definition.fieldType shouldBe FieldType.CHECKBOX
         }
