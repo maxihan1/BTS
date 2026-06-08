@@ -52,15 +52,16 @@ class PermissionSchemaMigrationTest {
 
     @Test
     fun `기본 스킴과 매트릭스가 시드된다`() {
-        // role_permissions × permission_schemes(is_default=TRUE) JOIN 결과 13행 기대
-        // PROJECT_ADMIN(9행): CREATE_ISSUE, EDIT_ISSUE, DELETE_ISSUE,
+        // role_permissions × permission_schemes(is_default=TRUE) JOIN 결과 14행 기대
+        // PROJECT_ADMIN(10행): CREATE_ISSUE, EDIT_ISSUE, DELETE_ISSUE,
         //   MANAGE_COMPONENTS, MANAGE_VERSIONS, MANAGE_WORKFLOW, BROWSE_PROJECT, VIEW_ISSUE,
-        //   SET_ISSUE_SECURITY
+        //   SET_ISSUE_SECURITY, MANAGE_CUSTOM_FIELDS
         // MEMBER(4행): CREATE_ISSUE, EDIT_ISSUE, BROWSE_PROJECT, VIEW_ISSUE
         // (V009 — FR-PM-03이 PROJECT_ADMIN에 MANAGE_COMPONENTS/MANAGE_VERSIONS 2행 추가)
         // (V013 — FR-PM-04가 PROJECT_ADMIN에 MANAGE_WORKFLOW 1행 추가)
         // (V014 — FR-PM-05가 양 역할에 BROWSE_PROJECT/VIEW_ISSUE 4행 추가)
         // (V016 — FR-PM-06이 PROJECT_ADMIN에 SET_ISSUE_SECURITY 1행 추가)
+        // (V017 — FR-IS-10이 PROJECT_ADMIN에 MANAGE_CUSTOM_FIELDS 1행 추가)
         val count =
             jdbc.queryForObject(
                 """
@@ -72,7 +73,43 @@ class PermissionSchemaMigrationTest {
                 mapOf<String, Any>(),
                 Int::class.java,
             )
-        assertThat(count).isEqualTo(13)
+        assertThat(count).isEqualTo(14)
+    }
+
+    @Test
+    fun `기본 스킴 PROJECT_ADMIN이 MANAGE_CUSTOM_FIELDS를 보유한다`() {
+        // V017 — FR-IS-10: 커스텀 필드 정의 관리(MANAGE_CUSTOM_FIELDS) 권한의 정본 코드.
+        // 기본 스킴(00000000-…-001) PROJECT_ADMIN 역할에만 1행 시드 (MEMBER 제외, 행정 성격).
+        val adminCount =
+            jdbc.queryForObject(
+                """
+            SELECT count(*)
+            FROM role_permissions rp
+            JOIN permission_schemes ps ON rp.scheme_id = ps.id
+            WHERE ps.is_default = TRUE
+              AND rp.role = 'PROJECT_ADMIN'
+              AND rp.permission_code = 'MANAGE_CUSTOM_FIELDS'
+            """,
+                mapOf<String, Any>(),
+                Int::class.java,
+            )
+        assertThat(adminCount).isEqualTo(1)
+
+        // MEMBER 역할에는 MANAGE_CUSTOM_FIELDS 가 없어야 한다 (보수적 시드)
+        val memberCount =
+            jdbc.queryForObject(
+                """
+            SELECT count(*)
+            FROM role_permissions rp
+            JOIN permission_schemes ps ON rp.scheme_id = ps.id
+            WHERE ps.is_default = TRUE
+              AND rp.role = 'MEMBER'
+              AND rp.permission_code = 'MANAGE_CUSTOM_FIELDS'
+            """,
+                mapOf<String, Any>(),
+                Int::class.java,
+            )
+        assertThat(memberCount).isEqualTo(0)
     }
 
     @Test
