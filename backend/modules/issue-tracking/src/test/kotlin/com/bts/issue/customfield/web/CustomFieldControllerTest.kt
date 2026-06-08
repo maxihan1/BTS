@@ -102,6 +102,7 @@ class CustomFieldControllerTest {
     private val projectId: UUID = UUID.fromString("bbbbbbbb-cccc-dddd-eeee-000000000001")
     private val actorId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
 
+    @Suppress("LongParameterList") // 테스트 헬퍼 — 도메인 필드 전체를 커버하기 위해 분리 불가
     private fun sampleDefinition(
         id: UUID = fieldId,
         key: String = "salary_impact",
