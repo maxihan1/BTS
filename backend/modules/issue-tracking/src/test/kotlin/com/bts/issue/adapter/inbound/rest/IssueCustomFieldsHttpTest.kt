@@ -58,24 +58,27 @@ class IssueCustomFieldsHttpTest {
     @RequestMapping("/test/custom-fields")
     class StubCustomFieldExceptionController {
         /** E1: 미정의 키 */
+        @Suppress("MaxLineLength")
         @GetMapping("/undefined-key")
-        fun throwUndefinedKey(): Nothing =
-            throw CustomFieldValidationException("unknown_field", "field is not defined in this project")
+        fun throwUndefinedKey(): Nothing = throw CustomFieldValidationException("unknown_field", "field is not defined in this project")
 
         /** E2: required 필드 누락 */
+        @Suppress("MaxLineLength")
         @GetMapping("/required-missing")
-        fun throwRequiredMissing(): Nothing =
-            throw CustomFieldValidationException("priority", "field is required but missing or null")
+        fun throwRequiredMissing(): Nothing = throw CustomFieldValidationException("priority", "field is required but missing or null")
 
         /** E3: 선택지 위반 */
         @GetMapping("/invalid-option")
         fun throwInvalidOption(): Nothing =
-            throw CustomFieldValidationException("status_tag", "value 'unknown' is not in defined options [low, medium, high]")
+            throw CustomFieldValidationException(
+                "status_tag",
+                "value 'unknown' is not in defined options [low, medium, high]",
+            )
 
         /** E4: 타입 불일치 */
+        @Suppress("MaxLineLength")
         @GetMapping("/type-mismatch")
-        fun throwTypeMismatch(): Nothing =
-            throw CustomFieldValidationException("due_date", "expected String (YYYY-MM-DD) but got Integer")
+        fun throwTypeMismatch(): Nothing = throw CustomFieldValidationException("due_date", "expected String (YYYY-MM-DD) but got Integer")
     }
 
     @org.springframework.beans.factory.annotation.Autowired
