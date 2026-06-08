@@ -4,6 +4,8 @@ import { authHandlers } from './auth-handlers'
 import { bulkOperationHandlers } from './bulk-operation-handlers'
 import { componentHandlers } from './component-handlers'
 import { customFieldHandlers } from './custom-field-handlers'
+import { fieldPermissionHandlers } from './field-permission-handlers'
+import { groupHandlers } from './group-handlers'
 import { issueHandlers } from './issue-handlers'
 import { issuePermissionHandlers } from './issue-permission-handlers'
 import { issueTypeHandlers } from './issue-type-handlers'
@@ -34,6 +36,8 @@ export const handlers = [
   ...bulkOperationHandlers,
   ...componentHandlers,
   ...customFieldHandlers,
+  ...fieldPermissionHandlers,
+  ...groupHandlers,
   ...issueHandlers,
   ...issuePermissionHandlers,
   ...issueTypeHandlers,
