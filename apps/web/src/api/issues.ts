@@ -78,16 +78,18 @@ export const issueResponseSchema = z.object({
    */
   customFields: z.record(z.string(), z.unknown()).default({}),
   /**
-   * FR-PM-07 — 열람 마스킹된 필드 키 목록(PR-A).
-   * 현재 사용자의 권한으로 값을 읽을 수 없는 필드의 키가 담긴다.
-   * 필드가 응답에 없으면 빈 배열로 기본 처리 — 기존 인라인 mock이 깨지지 않게 한다
+   * FR-PM-07 — 열람숨김(restrictedFields) 필드 키 목록(PR-A).
+   * 현재 사용자의 필드 권한(FIELD_PERMISSION) 상 VIEW 이하여서 값이 마스킹된 필드 키.
+   * UI는 해당 키의 셀을 "열람 권한 없음" 안내로 대체해야 한다.
+   * `default([])`: 필드가 응답에 없으면 빈 배열로 처리 — 기존 인라인 mock이 깨지지 않게 한다
    * (zod-schema-strengthen-inline-mock-fanout 교훈).
    */
   restrictedFields: z.array(z.string()).default([]),
   /**
-   * FR-PM-07 — 편집 비활성 필드 키 목록(PR-B).
-   * 화면에는 보이지만 현재 사용자의 권한으로 수정할 수 없는 필드의 키가 담긴다.
-   * 필드가 응답에 없으면 빈 배열로 기본 처리 — 기존 인라인 mock이 깨지지 않게 한다
+   * FR-PM-07 — 편집비활성(noneditableFields) 필드 키 목록(PR-B).
+   * 현재 사용자의 필드 권한 상 VIEW만 허용되어 값은 보이지만 수정할 수 없는 필드 키.
+   * UI는 해당 키의 편집 컨트롤을 비활성(disabled) 처리해야 한다.
+   * `default([])`: 필드가 응답에 없으면 빈 배열로 처리 — 기존 인라인 mock이 깨지지 않게 한다
    * (zod-schema-strengthen-inline-mock-fanout 교훈).
    */
   noneditableFields: z.array(z.string()).default([]),
