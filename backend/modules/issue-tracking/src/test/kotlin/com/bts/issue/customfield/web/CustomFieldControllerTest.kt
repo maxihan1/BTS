@@ -346,10 +346,12 @@ class CustomFieldControllerTest {
                 projectIdOrKey = projectKey,
                 fieldId = fieldId,
                 name = "수정된 이름",
+                description = null,
                 fieldType = null,
                 key = null,
                 required = null,
                 displayOrder = null,
+                options = null,
             )
         } returns sampleDefinition(name = "수정된 이름")
 

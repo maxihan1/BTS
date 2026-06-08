@@ -154,10 +154,12 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
                         projectIdOrKey = projectIdOrKey,
                         fieldId = fieldId,
                         name = "급여 영향",
+                        description = null,
                         fieldType = FieldType.SHORT_TEXT,
                         key = "salary_impact",
                         required = null,
                         displayOrder = null,
+                        options = null,
                     )
 
                 result.name shouldBe "급여 영향"
@@ -179,10 +181,12 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
                         projectIdOrKey = projectIdOrKey,
                         fieldId = fieldId,
                         name = null,
+                        description = null,
                         fieldType = FieldType.NUMBER,
                         key = "salary_impact",
                         required = null,
                         displayOrder = null,
+                        options = null,
                     )
                 }
                 verify(exactly = 0) { repo.update(any()) }
@@ -203,10 +207,12 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
                         projectIdOrKey = projectIdOrKey,
                         fieldId = fieldId,
                         name = null,
+                        description = null,
                         fieldType = FieldType.SHORT_TEXT,
                         key = "different_key",
                         required = null,
                         displayOrder = null,
+                        options = null,
                     )
                 }
                 verify(exactly = 0) { repo.update(any()) }
@@ -221,7 +227,7 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
                 } returns false
 
                 shouldThrow<CustomFieldAccessDeniedException> {
-                    sut.update(actorId, projectIdOrKey, fieldId, null, FieldType.SHORT_TEXT, "k", null, null)
+                    sut.update(actorId, projectIdOrKey, fieldId, null, null, FieldType.SHORT_TEXT, "k", null, null, null)
                 }
                 verify(exactly = 0) { repo.update(any()) }
             }
@@ -236,7 +242,7 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
                 every { repo.findById(fieldId, projectId) } returns null
 
                 shouldThrow<CustomFieldNotFoundException> {
-                    sut.update(actorId, projectIdOrKey, fieldId, null, FieldType.SHORT_TEXT, "salary_impact", null, null)
+                    sut.update(actorId, projectIdOrKey, fieldId, null, null, FieldType.SHORT_TEXT, "salary_impact", null, null, null)
                 }
                 verify(exactly = 0) { repo.update(any()) }
             }
@@ -247,8 +253,72 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
                 every { projectLookup.resolve(projectIdOrKey) } returns null
 
                 shouldThrow<CustomFieldProjectNotFoundException> {
-                    sut.update(actorId, projectIdOrKey, fieldId, null, FieldType.SHORT_TEXT, "k", null, null)
+                    sut.update(actorId, projectIdOrKey, fieldId, null, null, FieldType.SHORT_TEXT, "k", null, null)
                 }
+            }
+        }
+
+        // CONCERN 2: description/options 전달 시 반영 검증
+        context("정상 경로 — description/options 변경") {
+            it("description 과 options 를 전달하면 repo.update 에 반영된 객체가 전달된다") {
+                every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                every {
+                    permissionResolver.hasPermission(actorId, CustomFieldPermission.UPDATE, projectId)
+                } returns true
+                val selectField = existingField.copy(
+                    fieldType = FieldType.SELECT,
+                    options = listOf(CustomFieldOption("old", "Old", 0)),
+                )
+                every { repo.findById(fieldId, projectId) } returns selectField
+                val newOptions = listOf(CustomFieldOption("new", "New", 0))
+                val updated = selectField.copy(description = "업데이트 설명", options = newOptions)
+                every { repo.update(any()) } returns updated
+
+                val result = sut.update(
+                    actorId = actorId,
+                    projectIdOrKey = projectIdOrKey,
+                    fieldId = fieldId,
+                    name = null,
+                    description = "업데이트 설명",
+                    fieldType = FieldType.SELECT,
+                    key = "salary_impact",
+                    required = null,
+                    displayOrder = null,
+                    options = newOptions,
+                )
+
+                result.description shouldBe "업데이트 설명"
+                result.options shouldBe newOptions
+                verify(exactly = 1) {
+                    repo.update(match { it.description == "업데이트 설명" && it.options == newOptions })
+                }
+            }
+        }
+
+        // CONCERN 3: 공백 name 도메인 검증 우회 차단
+        context("오류 경로 — 공백 name 전달") {
+            it("name 이 공백 문자열이면 InvalidFieldDefinitionException 발생 (도메인 검증 경유)") {
+                every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                every {
+                    permissionResolver.hasPermission(actorId, CustomFieldPermission.UPDATE, projectId)
+                } returns true
+                every { repo.findById(fieldId, projectId) } returns existingField
+
+                shouldThrow<com.bts.issue.customfield.domain.InvalidFieldDefinitionException> {
+                    sut.update(
+                        actorId = actorId,
+                        projectIdOrKey = projectIdOrKey,
+                        fieldId = fieldId,
+                        name = "   ",
+                        description = null,
+                        fieldType = FieldType.SHORT_TEXT,
+                        key = "salary_impact",
+                        required = null,
+                        displayOrder = null,
+                        options = null,
+                    )
+                }
+                verify(exactly = 0) { repo.update(any()) }
             }
         }
     }
