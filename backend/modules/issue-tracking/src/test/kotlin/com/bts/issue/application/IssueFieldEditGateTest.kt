@@ -9,6 +9,7 @@ import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
@@ -26,6 +27,7 @@ import com.bts.shared.workflow.WorkflowTransitionPort
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -440,6 +442,61 @@ class IssueFieldEditGateTest : DescribeSpec({
             it("403 없이 정상 반환한다") {
                 sut.updateIssue(actor, issueKey, request)
             }
+        }
+    }
+
+    // ── fail-open 방지 — 기본 생성자(fieldPermissionResolver 미주입) ─────────────
+
+    describe("fail-open 방지 — fieldPermissionResolver 기본값은 AlwaysAllow (non-null)") {
+
+        /**
+         * fieldPermissionResolver 를 명시적으로 전달하지 않은 기본 생성자 sut.
+         * 현재 코드(?: return null-skip)라면 null 이므로 이 테스트가 실패해야 한다(RED).
+         * 수정 후(AlwaysAllow 기본값)에는 통과한다(GREEN).
+         */
+        val defaultSut =
+            IssueApplicationService(
+                repo = repo,
+                issueTypeRepository = issueTypeRepository,
+                resolutionRepository = resolutionRepository,
+                eventPublisher = eventPublisher,
+                permissionResolver = permissionResolver,
+                workflowPort = workflowPort,
+                workflowKeyResolver = workflowKeyResolver,
+                userLookupPort = userLookupPort,
+                componentRepository = componentRepository,
+                projectLeadRepository = projectLeadRepository,
+                clock = clock,
+                // fieldPermissionResolver 미전달 — 기본값 사용
+            )
+
+        it("기본값 fieldPermissionResolver 는 AlwaysAllowFieldPermissionResolver 인스턴스여야 한다(non-null, null-skip 금지)") {
+            val field =
+                IssueApplicationService::class.java.declaredFields
+                    .first { it.name == "fieldPermissionResolver" }
+            field.isAccessible = true
+            val resolver = field.get(defaultSut)
+            // null 이면 RED (현재 코드), AlwaysAllowFieldPermissionResolver 이면 GREEN (수정 후)
+            resolver.shouldBeInstanceOf<AlwaysAllowFieldPermissionResolver>()
+        }
+
+        it("기본 resolver 로 assertEditableOrForbidden 경로가 실행돼도 NPE 없이 통과한다(모든 필드 allow)") {
+            val existing = makeIssue(description = null)
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    description = "새 설명",
+                )
+            every { repo.findByKey(issueKey) } returns existing
+            every { repo.findProjectIdByKey(issueKey.projectPrefix) } returns projectId
+            every {
+                permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+            } returns true
+            every { repo.findActiveComponentIdsByIssue(any()) } returns emptyList()
+
+            // AlwaysAllow 는 모든 필드를 editable 로 반환하므로 403 없이 통과해야 한다
+            defaultSut.updateIssue(actor, issueKey, request)
         }
     }
 })
