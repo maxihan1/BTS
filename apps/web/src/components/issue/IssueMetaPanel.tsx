@@ -217,30 +217,44 @@ export function IssueMetaPanel({
           <IssueImpactSelect value={issue.impact} onImpactChange={onImpactChange} />
         </div>
 
-        {/* 환경 — IssueEnvironmentEdit (FR-IS-04) */}
-        <div className="px-3.5 py-3 border-b border-border" data-testid="environment-section">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.environmentLabel}</p>
-          <IssueEnvironmentEdit value={issue.environment} onSave={onEnvironmentSave} canEdit={canEdit} />
-        </div>
+        {/* 환경 — IssueEnvironmentEdit (FR-IS-04). restrictedFields에 "environment"가 있으면 섹션 전체 숨김 (FR-PM-07) */}
+        {!issue.restrictedFields.includes('environment') && (
+          <div className="px-3.5 py-3 border-b border-border" data-testid="environment-section">
+            <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.environmentLabel}</p>
+            <IssueEnvironmentEdit
+              value={issue.environment}
+              onSave={onEnvironmentSave}
+              canEdit={canEdit && !issue.noneditableFields.includes('environment')}
+            />
+          </div>
+        )}
 
-        {/* 라벨 — IssueLabelsEdit (FR-IS-04) */}
-        <div className="px-3.5 py-3 border-b border-border" data-testid="labels-section">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.labelsLabel}</p>
-          <IssueLabelsEdit value={issue.labels} onSave={onLabelsSave} canEdit={canEdit} />
-        </div>
+        {/* 라벨 — IssueLabelsEdit (FR-IS-04). restrictedFields에 "labels"가 있으면 섹션 전체 숨김 (FR-PM-07) */}
+        {!issue.restrictedFields.includes('labels') && (
+          <div className="px-3.5 py-3 border-b border-border" data-testid="labels-section">
+            <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.labelsLabel}</p>
+            <IssueLabelsEdit
+              value={issue.labels}
+              onSave={onLabelsSave}
+              canEdit={canEdit && !issue.noneditableFields.includes('labels')}
+            />
+          </div>
+        )}
 
-        {/* 담당자 — IssueAssigneeSelect (FR-IS-03) */}
-        <div className="px-3.5 py-3 border-b border-border" data-testid="assignee-section">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.assigneeLabel}</p>
-          <IssueAssigneeSelect
-            value={issue.assigneeId ?? null}
-            currentAssignee={currentAssignee}
-            users={users}
-            onSearch={onAssigneeSearch}
-            onAssigneeChange={onAssigneeChange}
-            canEdit={canEdit}
-          />
-        </div>
+        {/* 담당자 — IssueAssigneeSelect (FR-IS-03). restrictedFields에 "assigneeId"가 있으면 섹션 전체 숨김 (FR-PM-07) */}
+        {!issue.restrictedFields.includes('assigneeId') && (
+          <div className="px-3.5 py-3 border-b border-border" data-testid="assignee-section">
+            <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.assigneeLabel}</p>
+            <IssueAssigneeSelect
+              value={issue.assigneeId ?? null}
+              currentAssignee={currentAssignee}
+              users={users}
+              onSearch={onAssigneeSearch}
+              onAssigneeChange={onAssigneeChange}
+              canEdit={canEdit && !issue.noneditableFields.includes('assigneeId')}
+            />
+          </div>
+        )}
 
         {/* 컴포넌트 — ComponentMultiSelect (FR-CM-02) */}
         <div className="px-3.5 py-3 border-b border-border" data-testid="components-section">
@@ -264,13 +278,16 @@ export function IssueMetaPanel({
           />
         </div>
 
-        {/* 커스텀 필드 — 활성 정의 기준 렌더, 미정의 잔존 키 생략 (FR-IS-10 E-2) */}
+        {/* 커스텀 필드 — 활성 정의 기준 렌더, 미정의 잔존 키 생략 (FR-IS-10 E-2).
+            restrictedFields에 포함된 커스텀 필드는 IssueCustomFieldsEdit 내부에서 필터링 (FR-PM-07) */}
         {customFieldDefs.length > 0 && (
           <IssueCustomFieldsEdit
             fieldDefs={customFieldDefs}
             values={issue.customFields}
             onSave={onCustomFieldsSave}
             canEdit={canEdit}
+            restrictedFields={issue.restrictedFields}
+            noneditableFields={issue.noneditableFields}
           />
         )}
 
@@ -942,6 +959,17 @@ interface IssueCustomFieldsEditProps {
   onSave: (customFields: CustomFieldValues) => void
   /** 수정 권한 — false이면 저장 버튼 disabled */
   canEdit: boolean
+  /**
+   * FR-PM-07 — 열람 불가 필드 키 목록. 해당 커스텀 필드는 렌더 자체를 건너뜀.
+   * 미전달 시 빈 배열로 처리 (기존 호출부 하위호환).
+   */
+  restrictedFields?: string[]
+  /**
+   * FR-PM-07 — 편집 불가 필드 키 목록. 해당 커스텀 필드의 입력 컨트롤은 disabled.
+   * canEdit과 OR 비활성 — 둘 중 하나라도 막으면 disabled.
+   * 미전달 시 빈 배열로 처리 (기존 호출부 하위호환).
+   */
+  noneditableFields?: string[]
 }
 
 /**
@@ -958,7 +986,11 @@ function IssueCustomFieldsEdit({
   values,
   onSave,
   canEdit,
+  restrictedFields = [],
+  noneditableFields = [],
 }: IssueCustomFieldsEditProps): JSX.Element {
+  // FR-PM-07: restrictedFields에 포함된 커스텀 필드는 렌더에서 제외
+  const visibleFieldDefs = fieldDefs.filter((f) => !restrictedFields.includes(f.key))
   const [draft, setDraft] = useState<CustomFieldValues>({ ...values })
   const [hasRequiredError, setHasRequiredError] = useState(false)
 
@@ -989,7 +1021,8 @@ function IssueCustomFieldsEdit({
    */
   function buildNormalizedPatch(): CustomFieldValues {
     const patch: CustomFieldValues = {}
-    for (const field of fieldDefs) {
+    // visibleFieldDefs 기준 — restrictedFields에 포함된 키는 패치에서도 제외 (FR-PM-07)
+    for (const field of visibleFieldDefs) {
       const key = field.key
       if (!(key in draft)) continue
       const raw = draft[key]
@@ -1021,8 +1054,8 @@ function IssueCustomFieldsEdit({
   }
 
   function handleSave(): void {
-    // 스펙 E-3: required 필드 빈값 1차 검사 — 빈 판정 기준은 buildNormalizedPatch와 동일
-    const hasEmpty = fieldDefs.some((field) => {
+    // 스펙 E-3: required 필드 빈값 1차 검사 — visibleFieldDefs 기준 (restrictedFields 제외)
+    const hasEmpty = visibleFieldDefs.some((field) => {
       if (!field.required) return false
       const raw = draft[field.key]
       return isRequiredFieldEmpty(field.fieldType, raw)
@@ -1042,7 +1075,7 @@ function IssueCustomFieldsEdit({
     >
       <p className="text-xs text-muted-foreground mb-2">{issueDetailStrings.customFieldsSectionLabel}</p>
       <div className="flex flex-col gap-3">
-        {fieldDefs.map((field) => (
+        {visibleFieldDefs.map((field) => (
           <div key={field.id} className="flex flex-col gap-1">
             <label className="text-xs font-medium text-muted-foreground">
               {field.name}
@@ -1052,7 +1085,7 @@ function IssueCustomFieldsEdit({
               field={field}
               value={draft[field.key]}
               onChange={(v) => handleFieldChange(field.key, v)}
-              disabled={!canEdit}
+              disabled={!canEdit || noneditableFields.includes(field.key)}
             />
           </div>
         ))}
