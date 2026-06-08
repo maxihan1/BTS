@@ -8,6 +8,8 @@ import com.atlas.bts.identity.project.ProjectDirectory
 import com.atlas.bts.identity.web.dto.ProjectPermissionsResponse
 import com.bts.shared.permission.ComponentPermission
 import com.bts.shared.permission.ComponentPermissionResolver
+import com.bts.shared.permission.CustomFieldPermission
+import com.bts.shared.permission.CustomFieldPermissionResolver
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -46,10 +48,12 @@ import java.util.UUID
  * 응답 `permissions` 맵에 담기는 권한 키.
  * - [UI_PROJECT_PERMISSIONS] — 이슈 생성 버튼 노출용 `CREATE` (FR-PM-02).
  * - `MANAGE_COMPONENTS`/`MANAGE_VERSIONS` — 버전/컴포넌트 관리 버튼 게이팅용 (FR-PM-03 D6/D7).
- *   [ComponentPermissionResolver]/[VersionPermissionResolver]가 단일 관리 코드(MANAGE_*)로 매핑하므로
- *   임의 대표값([ComponentPermission.CREATE]/[VersionPermission.CREATE]) 1회 호출로 판정한다.
- *   projectKey→projectId는 [ProjectDirectory.resolveKeyToId]로 해석하고, null(미존재/소프트삭제)이면
- *   MANAGE_* 둘 다 false(기존 "미존재 projectKey → 200 + false" 정책 일관).
+ * - `MANAGE_CUSTOM_FIELDS` — 커스텀 필드 관리 버튼 게이팅용 (FR-IS-10 D6).
+ *   [ComponentPermissionResolver]/[VersionPermissionResolver]/[CustomFieldPermissionResolver]가 단일
+ *   관리 코드(MANAGE_*)로 매핑하므로 임의 대표값
+ *   ([ComponentPermission.CREATE]/[VersionPermission.CREATE]/[CustomFieldPermission.CREATE]) 1회 호출로
+ *   판정한다. projectKey→projectId는 [ProjectDirectory.resolveKeyToId]로 해석하고, null(미존재/소프트삭제)이면
+ *   MANAGE_* 모두 false(기존 "미존재 projectKey → 200 + false" 정책 일관).
  *
  * @see docs/decisions/2026-06-03-version-component-permission-query-and-gating.md
  * @see docs/decisions/2026-06-02-issue-permission-query-api.md
@@ -61,6 +65,7 @@ class MyProjectPermissionController(
     private val permissionResolver: IssuePermissionResolver,
     private val componentPermissionResolver: ComponentPermissionResolver,
     private val versionPermissionResolver: VersionPermissionResolver,
+    private val customFieldPermissionResolver: CustomFieldPermissionResolver,
     private val projectDirectory: ProjectDirectory,
     private val personalAccessTokenService: PersonalAccessTokenService,
 ) {
@@ -73,6 +78,9 @@ class MyProjectPermissionController(
 
         /** UI 버전 관리 버튼 게이팅 권한 키 (FR-PM-03 D6/D7). */
         const val MANAGE_VERSIONS_KEY = "MANAGE_VERSIONS"
+
+        /** UI 커스텀 필드 관리 버튼 게이팅 권한 키 (FR-IS-10 D6). */
+        const val MANAGE_CUSTOM_FIELDS_KEY = "MANAGE_CUSTOM_FIELDS"
     }
 
     /**
@@ -105,16 +113,20 @@ class MyProjectPermissionController(
     }
 
     /**
-     * `MANAGE_COMPONENTS`/`MANAGE_VERSIONS` 보유 여부를 판정한다 (FR-PM-03 D6/D7).
+     * `MANAGE_COMPONENTS`/`MANAGE_VERSIONS`/`MANAGE_CUSTOM_FIELDS` 보유 여부를 판정한다.
+     *
+     * MANAGE_COMPONENTS/MANAGE_VERSIONS는 FR-PM-03 D6/D7, MANAGE_CUSTOM_FIELDS는 FR-IS-10 D6
+     * (커스텀 필드 관리 버튼 게이팅)에서 사용한다.
      *
      * projectKey를 [ProjectDirectory.resolveKeyToId]로 projectId(UUID)로 해석한다.
-     * - null(미존재/소프트삭제) → 두 키 모두 false (기존 미존재 정책 일관, 404 아님).
-     * - 그 외 → Component/VersionPermissionResolver를 각 1회 호출한다. 두 리졸버가 CREATE/UPDATE/DELETE를
-     *   단일 관리 코드(MANAGE_*)로 매핑하므로 임의 대표값 CREATE로 판정해도 결과는 동일하다.
+     * - null(미존재/소프트삭제) → 세 키 모두 false (기존 미존재 정책 일관, 404 아님).
+     * - 그 외 → Component/Version/CustomFieldPermissionResolver를 각 1회 호출한다. 세 리졸버가
+     *   CREATE/UPDATE/DELETE를 단일 관리 코드(MANAGE_*)로 매핑하므로 임의 대표값 CREATE로 판정해도
+     *   결과는 동일하다.
      *
      * @param actorId 인증 토큰에서 추출한 행위자 UUID
      * @param projectKey 권한 조회 대상 프로젝트 키
-     * @return MANAGE_COMPONENTS/MANAGE_VERSIONS → 보유 여부 맵
+     * @return MANAGE_COMPONENTS/MANAGE_VERSIONS/MANAGE_CUSTOM_FIELDS → 보유 여부 맵
      */
     private fun resolveManagePermissions(
         actorId: UUID,
@@ -122,12 +134,18 @@ class MyProjectPermissionController(
     ): Map<String, Boolean> {
         val projectId =
             projectDirectory.resolveKeyToId(projectKey)
-                ?: return mapOf(MANAGE_COMPONENTS_KEY to false, MANAGE_VERSIONS_KEY to false)
+                ?: return mapOf(
+                    MANAGE_COMPONENTS_KEY to false,
+                    MANAGE_VERSIONS_KEY to false,
+                    MANAGE_CUSTOM_FIELDS_KEY to false,
+                )
         return mapOf(
             MANAGE_COMPONENTS_KEY to
                 componentPermissionResolver.hasPermission(actorId, ComponentPermission.CREATE, projectId),
             MANAGE_VERSIONS_KEY to
                 versionPermissionResolver.hasPermission(actorId, VersionPermission.CREATE, projectId),
+            MANAGE_CUSTOM_FIELDS_KEY to
+                customFieldPermissionResolver.hasPermission(actorId, CustomFieldPermission.CREATE, projectId),
         )
     }
 
