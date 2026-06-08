@@ -59,6 +59,20 @@ export function useCustomFields(projectKey: string, options?: UseCustomFieldsOpt
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 공통 mutation 옵션 타입
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** useCreateCustomField / useUpdateCustomField 공통 옵션 */
+export interface UseCustomFieldMutationOptions {
+  /**
+   * true이면 onError에서 toast를 발사하지 않는다.
+   * Dialog 경로처럼 인라인 submitError만 표시하는 경우에 사용한다.
+   * 삭제(useDeleteCustomField)는 Dialog가 없으므로 이 옵션을 지원하지 않는다.
+   */
+  silent?: boolean
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // useCreateCustomField — 생성
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -68,13 +82,16 @@ export function useCustomFields(projectKey: string, options?: UseCustomFieldsOpt
  * POST /api/v1/projects/{projectKey}/custom-fields → 201 CustomField
  *
  * onSuccess → invalidateQueries (invalidate-only, setQueryData 금지)
- * onError   → extractCustomFieldErrorCode → customFieldErrorMessage → toast.error
+ * onError   → silent:false(기본)이면 toast.error 발사, silent:true이면 억제.
+ *             Dialog 경로는 silent:true + per-call onError로 인라인 submitError만 표시한다.
  *
  * @param projectKey 커스텀 필드를 추가할 프로젝트 키
+ * @param options 뮤테이션 옵션 — silent:true이면 onError toast 억제
  */
-export function useCreateCustomField(projectKey: string) {
+export function useCreateCustomField(projectKey: string, options?: UseCustomFieldMutationOptions) {
   const queryClient = useQueryClient()
   const listKey = CUSTOM_FIELD_KEYS.list(projectKey)
+  const silent = options?.silent ?? false
 
   return useMutation<CustomField, unknown, CreateCustomFieldInput>({
     mutationFn: (input) => createCustomField(projectKey, input),
@@ -82,7 +99,9 @@ export function useCreateCustomField(projectKey: string) {
       await queryClient.invalidateQueries({ queryKey: listKey })
     },
     onError: (error) => {
-      notifyCustomFieldError(error)
+      if (!silent) {
+        notifyCustomFieldError(error)
+      }
     },
   })
 }
@@ -103,13 +122,16 @@ export interface UpdateCustomFieldMutationInput {
  * PATCH /api/v1/projects/{projectKey}/custom-fields/{fieldId} → 200 CustomField
  *
  * onSuccess → invalidateQueries
- * onError   → toast.error
+ * onError   → silent:false(기본)이면 toast.error 발사, silent:true이면 억제.
+ *             Dialog 경로는 silent:true + per-call onError로 인라인 submitError만 표시한다.
  *
  * @param projectKey 프로젝트 키
+ * @param options 뮤테이션 옵션 — silent:true이면 onError toast 억제
  */
-export function useUpdateCustomField(projectKey: string) {
+export function useUpdateCustomField(projectKey: string, options?: UseCustomFieldMutationOptions) {
   const queryClient = useQueryClient()
   const listKey = CUSTOM_FIELD_KEYS.list(projectKey)
+  const silent = options?.silent ?? false
 
   return useMutation<CustomField, unknown, UpdateCustomFieldMutationInput>({
     mutationFn: ({ fieldId, input }) => updateCustomField(projectKey, fieldId, input),
@@ -117,7 +139,9 @@ export function useUpdateCustomField(projectKey: string) {
       await queryClient.invalidateQueries({ queryKey: listKey })
     },
     onError: (error) => {
-      notifyCustomFieldError(error)
+      if (!silent) {
+        notifyCustomFieldError(error)
+      }
     },
   })
 }

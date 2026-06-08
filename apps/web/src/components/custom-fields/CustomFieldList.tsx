@@ -65,8 +65,9 @@ function CustomFieldListSkeleton(): JSX.Element {
  */
 export function CustomFieldList({ projectKey }: CustomFieldListProps): JSX.Element {
   const { data: fields, isLoading, isError, error } = useCustomFields(projectKey)
-  const createCustomField = useCreateCustomField(projectKey)
-  const updateCustomField = useUpdateCustomField(projectKey)
+  // silent:true — Dialog 경로는 per-call onError의 submitError 인라인 표시만 사용, toast 이중 발사 방지 (C3)
+  const createCustomField = useCreateCustomField(projectKey, { silent: true })
+  const updateCustomField = useUpdateCustomField(projectKey, { silent: true })
   const deleteCustomField = useDeleteCustomField(projectKey)
 
   // 권한 게이팅 — fail-closed: 로딩/에러/미인가이면 false (FR-PM-03 D6)
