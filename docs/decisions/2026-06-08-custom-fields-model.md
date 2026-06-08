@@ -39,5 +39,6 @@ SDD는 커스텀 필드를 사실상 설계하지 않은 채 흔적만 남겨 �
 ## 영향
 
 - 신규 FR-IS-10 등록 — fr-index · SDD(02 + 신규 §) · product/issue-tracking · README · CLAUDE 카운트 전수 동기화(CLAUDE.md §명세/범위 변경).
-- 관리 권한(PROJECT_ADMIN vs 신규 권한 코드)은 spec에서 확정. 신규 권한 코드 도입 시 identity-access의 role_permissions 시드 + PermissionSchemaMigrationTest 카운트 영향(learnings: fr-pm-permission-seed-migration-test-coupling).
+- 관리 권한 = **MANAGE_CUSTOM_FIELDS 권한코드 + CustomFieldPermissionResolver 포트**(Component의 MANAGE_COMPONENTS 동형, 2026-06-08 확정). issue-tracking BC는 BC 격리로 멤버십 role을 직접 조회할 수 없어, "PROJECT_ADMIN 역할 직접 확인"(identity-access 내부 ProjectSecuritySchemeService 방식)은 채택 불가. 권한코드+resolver 창구가 BC 격리를 지키는 정석. identity-access의 role_permissions 시드(PROJECT_ADMIN 기본 부여) + PermissionSchemaMigrationTest 카운트 갱신 필요(learnings: fr-pm-permission-seed-migration-test-coupling, enum-add-breaks-crossmodule-count-guard).
+- **cross-BC PR**: 권한코드 시드 + resolver prod 구현은 identity-access, 나머지(정의/값/CRUD)는 issue-tracking. Component(FR-CM-01)가 동일 구조를 쓴 선례 — "한 PR=한 BC"의 권한 결선 예외.
 - 후행 FR-PM-07(필드 수준 권한)이 코어 필드 + 이 커스텀 필드를 대상으로 가시성/편집 제어.

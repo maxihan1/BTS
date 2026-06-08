@@ -48,7 +48,7 @@
 | IS-10-1 | 프로젝트별 커스텀 필드 정의 CRUD (생성/목록/단건/수정/소프트삭제) |
 | IS-10-2 | 확장 가능 FieldType — 1차 10종: SHORT_TEXT, LONG_TEXT, NUMBER, DATE, DATETIME, SINGLE_SELECT, MULTI_SELECT, CHECKBOX, RADIO, URL |
 | IS-10-3 | 선택형(SINGLE_SELECT/MULTI_SELECT/RADIO)은 선택지(CustomFieldOption) 정의. value/label/display_order |
-| IS-10-4 | 정의 관리 권한 = PROJECT_ADMIN 역할 직접 확인 (신규 권한 코드 없음, FR-PM-06 스킴적용 선례) |
+| IS-10-4 | 정의 관리 권한 = **MANAGE_CUSTOM_FIELDS 권한코드** (Component의 MANAGE_COMPONENTS 선례 동형). `CustomFieldPermission` enum(CREATE/UPDATE/DELETE) + `CustomFieldPermissionResolver` shared 포트 + identity-access prod 구현 + issue-tracking AlwaysAllow stub. BC 격리로 role 직접 조회 불가 → 권한코드+resolver 창구 방식. 기본 부여 = PROJECT_ADMIN(시드) |
 | IS-10-5 | 이슈 생성/수정 시 customFields 값 검증 + `issues.custom_fields` JSONB 저장 |
 | IS-10-6 | 값 검증: 미정의 키 거부, required 누락 거부, 타입 불일치 거부, 선택지 위반 거부 — 모두 422 |
 | IS-10-7 | 이슈 조회 응답(IssueResponse)에 customFields 노출 (활성 정의만). 단건 + 목록 경로 모두 — JSONB가 issues row에 있어 추가 쿼리 없음 |
@@ -67,11 +67,13 @@
 
 | 메서드 | 경로 | 권한 | 응답 |
 |---|---|---|---|
-| POST | `/custom-fields` | PROJECT_ADMIN | 201 + CustomFieldResponse |
-| GET | `/custom-fields` | 프로젝트 멤버 | 200 + List |
-| GET | `/custom-fields/{fieldKey}` | 프로젝트 멤버 | 200 |
-| PATCH | `/custom-fields/{fieldKey}` | PROJECT_ADMIN | 200 |
-| DELETE | `/custom-fields/{fieldKey}` | PROJECT_ADMIN | 204 |
+| POST | `/custom-fields` | MANAGE_CUSTOM_FIELDS (CREATE) | 201 + CustomFieldResponse |
+| GET | `/custom-fields` | 프로젝트 멤버(인증) | 200 + List |
+| GET | `/custom-fields/{fieldKey}` | 프로젝트 멤버(인증) | 200 |
+| PATCH | `/custom-fields/{fieldKey}` | MANAGE_CUSTOM_FIELDS (UPDATE) | 200 |
+| DELETE | `/custom-fields/{fieldKey}` | MANAGE_CUSTOM_FIELDS (DELETE) | 204 |
+
+> 권한 = `CustomFieldPermissionResolver.hasPermission(actorId, permission, projectId)` (ComponentPermissionResolver 동형). 미인가 403 / 미인증 401. prod 거부 ground-truth(non-prod AlwaysAllow 마스킹).
 
 이슈 값: 기존 `CreateIssueRequest`/`UpdateIssueRequest`에 `customFields: Map<String, Any?>?` 추가, `IssueResponse`에 `customFields: Map<String, Any?>` 추가.
 
