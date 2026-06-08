@@ -139,7 +139,7 @@ describe('fetchFieldPermissions', () => {
     await fetchFieldPermissions(PROJECT_KEY)
 
     expect(capturedUrl).not.toBeNull()
-    expect(new URL(capturedUrl as string).pathname).toBe(FIELD_PERMISSIONS_ENDPOINT)
+    expect(new URL(capturedUrl as unknown as string).pathname).toBe(FIELD_PERMISSIONS_ENDPOINT)
   })
 
   it('T-FP-3b: 응답을 FieldPermissionResponse[] 로 파싱해 반환한다', async () => {
@@ -229,7 +229,7 @@ describe('createFieldPermission', () => {
     await createFieldPermission(PROJECT_KEY, createInput)
 
     expect(capturedMethod).toBe('POST')
-    expect(new URL(capturedUrl as string).pathname).toBe(FIELD_PERMISSIONS_ENDPOINT)
+    expect(new URL(capturedUrl as unknown as string).pathname).toBe(FIELD_PERMISSIONS_ENDPOINT)
   })
 
   it('T-FP-4b: POST 요청에 X-XSRF-TOKEN 헤더를 포함한다', async () => {
@@ -294,7 +294,7 @@ describe('deleteFieldPermission', () => {
     await deleteFieldPermission(PROJECT_KEY, PERMISSION_ID)
 
     expect(capturedMethod).toBe('DELETE')
-    expect(new URL(capturedUrl as string).pathname).toBe(DELETE_ENDPOINT)
+    expect(new URL(capturedUrl as unknown as string).pathname).toBe(DELETE_ENDPOINT)
   })
 
   it('T-FP-5b: DELETE 요청에 X-XSRF-TOKEN 헤더를 포함한다', async () => {
@@ -350,7 +350,7 @@ describe('fetchGroups', () => {
     await fetchGroups()
 
     expect(capturedUrl).not.toBeNull()
-    expect(new URL(capturedUrl as string).pathname).toBe(GROUPS_ENDPOINT)
+    expect(new URL(capturedUrl as unknown as string).pathname).toBe(GROUPS_ENDPOINT)
   })
 
   it('T-FP-6b: 응답을 GroupResponse[] 로 파싱해 반환한다', async () => {
