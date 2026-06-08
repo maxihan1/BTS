@@ -68,6 +68,9 @@ private const val IMPACT_MAX = 3
  * @property securityLevelId 이슈에 적용된 보안 등급 UUID (issue_security_levels.id FK). null 이면 등급 없음(공개).
  *   [create] 시 [securityLevelId] 파라미터로 초기값 설정 가능 (기본값 null).
  *   이후 변경은 [assignSecurityLevel] 을 통해 수행한다 (patch-merge-domain-bypass 방지).
+ * @property customFields 프로젝트별 커스텀 필드 값 맵. 키는 필드 정의의 key, 값은 타입별 JSON 값.
+ *   기본값은 빈 맵. 생성/수정 시 [com.bts.issue.customfield.domain.CustomFieldValueValidator] 가 검증한다.
+ *   클론(FR-IS-06) 시 미복사(E10) — 클론본은 항상 빈 맵으로 시작한다.
  */
 data class Issue(
     val id: IssueId,
@@ -90,6 +93,7 @@ data class Issue(
     val resolutionId: UUID? = null,
     val componentIds: List<UUID> = emptyList(),
     val securityLevelId: UUID? = null,
+    val customFields: Map<String, Any?> = emptyMap(),
 ) {
     companion object {
         /**
@@ -133,6 +137,8 @@ data class Issue(
          * @param assigneeId 담당자. null 이면 미할당.
          * @param componentIds 이슈가 속한 컴포넌트 UUID 목록. 중복은 자동 제거된다. 기본값 빈 리스트.
          * @param securityLevelId 보안 등급 UUID. null 이면 등급 없음(공개). 기본값 null.
+         * @param customFields 커스텀 필드 값 맵. 검증은 ApplicationService 책임. 기본값 빈 맵.
+         *   클론(FR-IS-06) 경로에서는 반드시 emptyMap() 를 전달해야 한다 (E10 미복사 규칙).
          * @return 생성된 [Issue] 인스턴스.
          */
         @Suppress("LongParameterList")
@@ -152,6 +158,7 @@ data class Issue(
             assigneeId: ActorId? = null,
             componentIds: List<UUID> = emptyList(),
             securityLevelId: UUID? = null,
+            customFields: Map<String, Any?> = emptyMap(),
         ): Issue {
             validateSummary(summary)
             validatePriority(priority)
@@ -178,6 +185,7 @@ data class Issue(
                 assigneeId = assigneeId,
                 componentIds = componentIds.filterNotNull().distinct(),
                 securityLevelId = securityLevelId,
+                customFields = customFields,
             )
         }
     }

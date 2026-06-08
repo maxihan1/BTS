@@ -44,6 +44,9 @@ import java.util.UUID
  *   [JsonNullable] presence 로 구분한다 — 필드 부재(undefined)=무변경, 명시 null=해제(공개 복귀), 값=지정.
  *   기본값 [JsonNullable.undefined] 이므로 본문에 없으면 무변경이다.
  *   지정/해제 시 SET_ISSUE_SECURITY 권한을, 지정 시 적용 스킴 소속(422)을 서비스가 검증한다.
+ * @property customFields 커스텀 필드 패치 맵 (FR-IS-10, E11 필드단위 병합).
+ *   null=무변경, 맵 명시=키 단위 병합(나머지 기존 값 유지), 키 값 null=해당 필드 제거.
+ *   required 검증은 병합 후 최종 상태 기준으로 수행한다.
  */
 data class UpdateIssueRequest(
     @field:Size(max = 200, message = "summary는 200자 이하여야 합니다.")
@@ -72,4 +75,5 @@ data class UpdateIssueRequest(
     @field:Max(value = 3, message = "impact는 3 이하여야 합니다.")
     val impact: Int? = null,
     val securityLevelId: JsonNullable<UUID> = JsonNullable.undefined(),
+    val customFields: Map<String, Any?>? = null,
 )
