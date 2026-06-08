@@ -7,7 +7,7 @@ import { apiGet, apiPost, apiFetch, ApiError } from './client'
 // backend IssueResponse DTO 직렬화 형태와 1:1 대응.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 이슈 단건 응답 Zod 스키마 — 21 필드 (12 기존 + 8 FR-IS-04 + 1 FR-IS-03 assigneeId), createdAt/updatedAt nullable */
+/** 이슈 단건 응답 Zod 스키마 — 22 필드 (12 기존 + 8 FR-IS-04 + 1 FR-IS-03 assigneeId + 1 FR-IS-10 customFields), createdAt/updatedAt nullable */
 export const issueResponseSchema = z.object({
   key: z.string().min(1),
   id: z.string().uuid(),
