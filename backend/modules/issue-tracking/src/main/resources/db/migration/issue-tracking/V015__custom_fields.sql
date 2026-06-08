@@ -21,6 +21,15 @@ CREATE TABLE custom_field_definitions (
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     deleted_at    TIMESTAMPTZ  NULL
 );
+COMMENT ON TABLE  custom_field_definitions               IS '프로젝트별 커스텀 필드 정의 마스터 (FR-IS-10). 같은 BC 라 projects 실 FK 적용.';
+COMMENT ON COLUMN custom_field_definitions.project_id    IS '소속 프로젝트 (projects.id). 같은 BC(issue-tracking) 이므로 실 FK 적용.';
+COMMENT ON COLUMN custom_field_definitions.key           IS 'URL-safe 소문자 식별자(JSONB 키). 활성(deleted_at IS NULL) 기준 프로젝트 내 유일. 생성 후 불변.';
+COMMENT ON COLUMN custom_field_definitions.name          IS '필드 표시명.';
+COMMENT ON COLUMN custom_field_definitions.description   IS '필드 설명 (선택).';
+COMMENT ON COLUMN custom_field_definitions.field_type    IS 'FieldType enum 값 (SHORT_TEXT/NUMBER/SINGLE_SELECT 등). 생성 후 불변 — 타입 변경은 값 정합 붕괴.';
+COMMENT ON COLUMN custom_field_definitions.required      IS '이슈 저장 시 필수 입력 여부. 검증은 ApplicationService 가 수행.';
+COMMENT ON COLUMN custom_field_definitions.display_order IS '목록/폼 정렬 순서.';
+COMMENT ON COLUMN custom_field_definitions.deleted_at    IS 'NULL=활성, NOT NULL=삭제됨. 소프트 삭제 (DATA.md §3). 삭제 후 동일 key 재생성 허용.';
 
 -- FK 인덱스 (DATA.md §7 — PostgreSQL 은 FK 에 인덱스 자동 생성 안 함)
 CREATE INDEX idx_custom_field_definitions_project_id ON custom_field_definitions(project_id);
@@ -42,6 +51,11 @@ CREATE TABLE custom_field_options (
     display_order INT          NOT NULL,
     UNIQUE (field_id, value)
 );
+COMMENT ON TABLE  custom_field_options               IS '선택형 커스텀 필드(SINGLE_SELECT/MULTI_SELECT/RADIO)의 선택지 (FR-IS-10). 정의에 종속.';
+COMMENT ON COLUMN custom_field_options.field_id      IS '소속 필드 정의 (custom_field_definitions.id). FK ON DELETE CASCADE — 정의 하드 삭제 시 자동 정리.';
+COMMENT ON COLUMN custom_field_options.value         IS 'JSONB 에 저장되는 실제 값. 정의 내 유일 (UNIQUE(field_id, value)).';
+COMMENT ON COLUMN custom_field_options.label         IS '화면 표시 라벨.';
+COMMENT ON COLUMN custom_field_options.display_order IS '선택지 정렬 순서.';
 
 -- FK 인덱스 (DATA.md §7). UNIQUE(field_id, value) 인덱스 선두가 field_id 라 단독 조회를 커버하나,
 -- 명시적 FK 인덱스 관례 유지를 위해 별도 인덱스 추가 (components 선례 동형).
@@ -51,6 +65,8 @@ CREATE INDEX idx_custom_field_options_field_id ON custom_field_options(field_id)
 -- NOT NULL + DEFAULT '{}' 이므로 기존 row backfill 불필요(SDD §05 데이터모델 결선).
 -- 타입/참조 정합은 JSONB 스키마리스라 ApplicationService 가 보증(검증 후 저장, 도메인 우회 금지).
 ALTER TABLE issues ADD COLUMN custom_fields JSONB NOT NULL DEFAULT '{}'::jsonb;
+COMMENT ON COLUMN issues.custom_fields IS
+    '커스텀 필드 값 {field_key: value}. JSONB 스키마리스 — 타입/참조 정합은 ApplicationService 가 보증 (FR-IS-10).';
 
 -- GIN 인덱스: 후속 검색/필터(FR-IS-09 AQL) 대비. SDD §05 line 266 명시.
 CREATE INDEX idx_issues_custom_fields ON issues USING GIN (custom_fields);
