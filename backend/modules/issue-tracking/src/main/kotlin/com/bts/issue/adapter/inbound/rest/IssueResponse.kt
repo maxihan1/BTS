@@ -155,18 +155,7 @@ data class IssueResponse(
             maskedAssigneeId = assigneeId
         }
 
-        // noneditableFields — visible 이지만 editable 에 없는 필드 key 목록 (Task-1).
-        // restrictedFields(masked) 에 포함된 key 는 중복 수록하지 않는다.
-        val noneditable: List<String> =
-            if (editable == null) {
-                emptyList()
-            } else {
-                val restrictedSet = masked.toSet()
-                visible
-                    .filter { ref -> ref !in editable }
-                    .map { ref -> ref.key }
-                    .filter { key -> key !in restrictedSet }
-            }
+        val noneditable = buildNoneditableKeys(visible, editable, masked)
 
         return copy(
             description = maskedDescription,
@@ -179,6 +168,30 @@ data class IssueResponse(
             restrictedFields = masked,
             noneditableFields = noneditable,
         )
+    }
+
+    /**
+     * visible 집합에서 editable 에 없는 필드 key 목록을 계산한다 (FR-PM-07 Task-1).
+     *
+     * [restrictedFields](masked) 에 포함된 key 는 중복 수록하지 않는다.
+     * [editable] 이 null 이면 빈 리스트를 반환한다.
+     *
+     * @param visible actor 가 열람 가능한 [FieldRef] 집합.
+     * @param editable actor 가 편집 가능한 [FieldRef] 집합. null 이면 계산을 건너뛴다.
+     * @param restricted 이미 [restrictedFields] 에 기록된 key 목록. 중복 제외에 사용.
+     * @return 편집 불가 필드 key 목록.
+     */
+    private fun buildNoneditableKeys(
+        visible: Set<FieldRef>,
+        editable: Set<FieldRef>?,
+        restricted: List<String>,
+    ): List<String> {
+        if (editable == null) return emptyList()
+        val restrictedSet = restricted.toSet()
+        return visible
+            .filter { ref -> ref !in editable }
+            .map { ref -> ref.key }
+            .filter { key -> key !in restrictedSet }
     }
 
     /**
