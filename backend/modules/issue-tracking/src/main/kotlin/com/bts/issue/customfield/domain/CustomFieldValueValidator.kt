@@ -39,7 +39,6 @@ private val URL_PATTERN: Regex = Regex("""^https?://.+""")
  * ApplicationService 에서 이슈 생성/수정 시 호출한다.
  */
 class CustomFieldValueValidator {
-
     /**
      * 정의 목록([definitions])과 입력값 맵([values])을 검증한다.
      *
@@ -86,7 +85,10 @@ class CustomFieldValueValidator {
             if (!definition.required) continue
             val value = values[definition.key]
             if (value == null) {
-                throw CustomFieldValidationException(definition.key, "field is required but missing or null")
+                throw CustomFieldValidationException(
+                    definition.key,
+                    "field is required but missing or null",
+                )
             }
         }
     }
@@ -110,9 +112,16 @@ class CustomFieldValueValidator {
         }
     }
 
-    private fun validateShortText(key: String, value: Any) {
-        val str = value as? String
-            ?: throw CustomFieldValidationException(key, "expected String but got ${value::class.simpleName}")
+    private fun validateShortText(
+        key: String,
+        value: Any,
+    ) {
+        val str =
+            value as? String
+                ?: throw CustomFieldValidationException(
+                    key,
+                    "expected String but got ${value::class.simpleName}",
+                )
         if (str.length > SHORT_TEXT_MAX_LENGTH) {
             throw CustomFieldValidationException(
                 key,
@@ -121,9 +130,16 @@ class CustomFieldValueValidator {
         }
     }
 
-    private fun validateLongText(key: String, value: Any) {
-        val str = value as? String
-            ?: throw CustomFieldValidationException(key, "expected String but got ${value::class.simpleName}")
+    private fun validateLongText(
+        key: String,
+        value: Any,
+    ) {
+        val str =
+            value as? String
+                ?: throw CustomFieldValidationException(
+                    key,
+                    "expected String but got ${value::class.simpleName}",
+                )
         if (str.length > LONG_TEXT_MAX_LENGTH) {
             throw CustomFieldValidationException(
                 key,
@@ -132,74 +148,141 @@ class CustomFieldValueValidator {
         }
     }
 
-    private fun validateNumber(key: String, value: Any) {
-        val number = value as? Number
-            ?: throw CustomFieldValidationException(key, "expected Number but got ${value::class.simpleName}")
+    private fun validateNumber(
+        key: String,
+        value: Any,
+    ) {
+        val number =
+            value as? Number
+                ?: throw CustomFieldValidationException(
+                    key,
+                    "expected Number but got ${value::class.simpleName}",
+                )
         val double = number.toDouble()
         if (!double.isFinite()) {
             throw CustomFieldValidationException(key, "NUMBER must be a finite value, but was $double")
         }
     }
 
-    private fun validateDate(key: String, value: Any) {
-        val str = value as? String
-            ?: throw CustomFieldValidationException(key, "expected String (YYYY-MM-DD) but got ${value::class.simpleName}")
+    private fun validateDate(
+        key: String,
+        value: Any,
+    ) {
+        val str =
+            value as? String
+                ?: throw CustomFieldValidationException(
+                    key,
+                    "expected String (YYYY-MM-DD) but got ${value::class.simpleName}",
+                )
         if (!DATE_PATTERN.matches(str)) {
             throw CustomFieldValidationException(key, "DATE must match YYYY-MM-DD format, but was '$str'")
         }
     }
 
-    private fun validateDatetime(key: String, value: Any) {
-        val str = value as? String
-            ?: throw CustomFieldValidationException(key, "expected String (ISO 8601) but got ${value::class.simpleName}")
+    private fun validateDatetime(
+        key: String,
+        value: Any,
+    ) {
+        val str =
+            value as? String
+                ?: throw CustomFieldValidationException(
+                    key,
+                    "expected String (ISO 8601) but got ${value::class.simpleName}",
+                )
         if (!DATETIME_PATTERN.matches(str)) {
             throw CustomFieldValidationException(key, "DATETIME must be ISO 8601 format, but was '$str'")
         }
     }
 
-    private fun validateSingleSelect(key: String, value: Any, options: List<CustomFieldOption>) {
-        val str = value as? String
-            ?: throw CustomFieldValidationException(key, "expected String but got ${value::class.simpleName}")
+    private fun validateSingleSelect(
+        key: String,
+        value: Any,
+        options: List<CustomFieldOption>,
+    ) {
+        val str =
+            value as? String
+                ?: throw CustomFieldValidationException(
+                    key,
+                    "expected String but got ${value::class.simpleName}",
+                )
         val validValues = options.map { it.value }.toSet()
         if (str !in validValues) {
             throw CustomFieldValidationException(key, "value '$str' is not in defined options $validValues")
         }
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun validateMultiSelect(key: String, value: Any, options: List<CustomFieldOption>) {
-        val list = value as? List<*>
-            ?: throw CustomFieldValidationException(key, "expected List but got ${value::class.simpleName}")
+    private fun validateMultiSelect(
+        key: String,
+        value: Any,
+        options: List<CustomFieldOption>,
+    ) {
+        val list =
+            value as? List<*>
+                ?: throw CustomFieldValidationException(
+                    key,
+                    "expected List but got ${value::class.simpleName}",
+                )
         val validValues = options.map { it.value }.toSet()
         for (item in list) {
-            val str = item as? String
-                ?: throw CustomFieldValidationException(key, "MULTI_SELECT list items must be String, but found ${item?.let { it::class.simpleName }}")
+            val str =
+                item as? String
+                    ?: throw CustomFieldValidationException(
+                        key,
+                        "MULTI_SELECT list items must be String, but found ${item?.let { it::class.simpleName }}",
+                    )
             if (str !in validValues) {
-                throw CustomFieldValidationException(key, "value '$str' is not in defined options $validValues")
+                throw CustomFieldValidationException(
+                    key,
+                    "value '$str' is not in defined options $validValues",
+                )
             }
         }
     }
 
-    private fun validateCheckbox(key: String, value: Any) {
+    private fun validateCheckbox(
+        key: String,
+        value: Any,
+    ) {
         if (value !is Boolean) {
-            throw CustomFieldValidationException(key, "expected Boolean but got ${value::class.simpleName}")
+            throw CustomFieldValidationException(
+                key,
+                "expected Boolean but got ${value::class.simpleName}",
+            )
         }
     }
 
-    private fun validateRadio(key: String, value: Any, options: List<CustomFieldOption>) {
-        val str = value as? String
-            ?: throw CustomFieldValidationException(key, "expected String but got ${value::class.simpleName}")
+    private fun validateRadio(
+        key: String,
+        value: Any,
+        options: List<CustomFieldOption>,
+    ) {
+        val str =
+            value as? String
+                ?: throw CustomFieldValidationException(
+                    key,
+                    "expected String but got ${value::class.simpleName}",
+                )
         val validValues = options.map { it.value }.toSet()
         if (str !in validValues) {
             throw CustomFieldValidationException(key, "value '$str' is not in defined options $validValues")
         }
     }
 
-    private fun validateUrl(key: String, value: Any) {
-        val str = value as? String
-            ?: throw CustomFieldValidationException(key, "expected String but got ${value::class.simpleName}")
+    private fun validateUrl(
+        key: String,
+        value: Any,
+    ) {
+        val str =
+            value as? String
+                ?: throw CustomFieldValidationException(
+                    key,
+                    "expected String but got ${value::class.simpleName}",
+                )
         if (!URL_PATTERN.matches(str)) {
-            throw CustomFieldValidationException(key, "URL must start with http:// or https://, but was '$str'")
+            throw CustomFieldValidationException(
+                key,
+                "URL must start with http:// or https://, but was '$str'",
+            )
         }
     }
 }
