@@ -46,13 +46,13 @@ export function ProjectCustomFieldsSettingsPage({
 }: ProjectCustomFieldsSettingsPageProps): JSX.Element {
   const { error, isError } = useCustomFields(projectKey)
 
-  // PROJECT_NOT_FOUND(404): 비멤버 또는 미존재 프로젝트 → 접근 불가 안내
-  if (isError && extractCustomFieldErrorCode(error) === 'CUSTOM_FIELD_PROJECT_NOT_FOUND') {
-    return <ProjectNotFoundScreen />
-  }
-
-  // 백엔드가 PROJECT_NOT_FOUND를 errorCode로 반환하는 경우도 처리
-  if (isError && extractCustomFieldErrorCode(error) === 'PROJECT_NOT_FOUND') {
+  // PROJECT_NOT_FOUND(404): 비멤버 또는 미존재 프로젝트 → 접근 불가 안내.
+  // errorCode는 백엔드 구현에 따라 'PROJECT_NOT_FOUND' 또는 'CUSTOM_FIELD_PROJECT_NOT_FOUND' 두 값으로 올 수 있다.
+  const errorCode = isError ? extractCustomFieldErrorCode(error) : null
+  if (
+    errorCode === 'PROJECT_NOT_FOUND' ||
+    errorCode === 'CUSTOM_FIELD_PROJECT_NOT_FOUND'
+  ) {
     return <ProjectNotFoundScreen />
   }
 
