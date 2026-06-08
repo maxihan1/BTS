@@ -5,10 +5,12 @@ package com.atlas.bts.identity.web
 import com.atlas.bts.identity.audit.AuthAuditLog
 import com.atlas.bts.identity.audit.AuthAuditLogService
 import com.atlas.bts.identity.audit.AuthEventType
+import com.atlas.bts.identity.credential.StoredPasswordCredentialRepository
 import com.atlas.bts.identity.dto.WhoamiResponse
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.user.UserRepository
+import com.bts.shared.permission.SystemPermissionResolver
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -47,6 +49,8 @@ class WhoamiController(
     private val personalAccessTokenService: PersonalAccessTokenService,
     private val authAuditLogService: AuthAuditLogService,
     private val userRepository: UserRepository,
+    private val storedPasswordCredentialRepository: StoredPasswordCredentialRepository,
+    private val systemPermissionResolver: SystemPermissionResolver,
 ) {
 
     /**
@@ -75,11 +79,16 @@ class WhoamiController(
                 ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
             val user = userRepository.findById(userId)
                 ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
+            // local_credentials 행이 없는 SSO(LDAP/OIDC/SAML) 사용자는 강제 변경 대상이 아님 → false
+            val mustChangePassword =
+                storedPasswordCredentialRepository.findByUserId(userId)?.mustChangePassword ?: false
             return WhoamiResponse(
                 username = user.username,
                 email = user.email ?: "",
                 authMethod = "jwt",
                 userId = user.id,
+                mustChangePassword = mustChangePassword,
+                isSystemAdmin = systemPermissionResolver.isSystemAdmin(userId),
             )
         }
 
@@ -112,11 +121,16 @@ class WhoamiController(
             ),
         )
 
+        // PAT 분기는 비밀번호 변경 흐름·시스템 역할 컨텍스트를 노출하지 않는다.
+        // 강제 변경(mustChangePassword)은 대화형 로그인(JWT) 사용자만의 관심사이며,
+        // 시스템 관리자 판정(isSystemAdmin) 또한 JWT 세션에서만 의미가 있으므로 둘 다 false 고정.
         return WhoamiResponse(
             username = "",
             email = "",
             authMethod = "pat",
             userId = pat.userId,
+            mustChangePassword = false,
+            isSystemAdmin = false,
         )
     }
 
