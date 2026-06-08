@@ -26,6 +26,16 @@ import java.security.SecureRandom
  */
 @Component
 class TemporaryPasswordGenerator {
+    init {
+        // 상수를 잘못 줄여 정책을 깨는 회귀를 방어한다 (LENGTH·문자군 수를 정책 상수에 결속).
+        require(LENGTH >= PasswordPolicy.MIN_LENGTH) {
+            "LENGTH($LENGTH)는 정책 최소 길이(${PasswordPolicy.MIN_LENGTH}) 이상이어야 한다."
+        }
+        require(CHARACTER_GROUPS.size >= PasswordPolicy.MIN_CHARACTER_CLASSES) {
+            "문자군 수(${CHARACTER_GROUPS.size})는 정책 최소 종류(${PasswordPolicy.MIN_CHARACTER_CLASSES}) 이상이어야 한다."
+        }
+    }
+
     /**
      * 정책을 충족하는 임시 비밀번호를 생성한다.
      *
