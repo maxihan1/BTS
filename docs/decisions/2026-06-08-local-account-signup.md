@@ -57,6 +57,14 @@ ALTER TABLE local_credentials
 - 기존 로컬 계정/외부 계정은 `DEFAULT FALSE`라 영향 없음(외부 계정은 `local_credentials` 행 자체가 없음).
 - init_codegen 미러 규칙(메모리 `jooq-init-codegen-mirror`) — identity-access는 별도 init_codegen.sql 부재 확인됨, 마이그레이션만 추가.
 
+### D4-b — whoami가 `isSystemAdmin`도 노출 (프론트 admin UI 게이팅)
+
+가입 폼은 SYSTEM_ADMIN 전용인데, 프론트엔드에 시스템 관리자 판별 수단이 없었다(기존엔 프로젝트 단위 권한 게이팅만). whoami를 확장하는 김에 `isSystemAdmin: Boolean`도 함께 노출한다 — `SystemPermissionResolver.isSystemAdmin(userId)` 계산, PAT 인증은 false(전역역할 제외).
+
+- **기각: 프론트 JWT roles 클레임 직접 디코드.** 프론트는 현재 JWT를 파싱하지 않고 whoami를 단일 진실원으로 쓴다. whoami 확장이 일관적이고 PAT 제외 규칙도 서버에서 일괄 적용된다.
+- **기각: 프론트 게이팅 없이 백엔드 403만.** 비 admin에게 못 쓰는 폼을 노출하는 나쁜 UX. 백엔드 403은 최종 방어로 유지하되 프론트도 게이팅한다.
+- 로그인 흐름이 이미 whoami 결과를 `authStore.user`에 저장하므로 `requireSystemAdmin` 가드가 `user.isSystemAdmin`을 동기 읽기.
+
 ### D5 — 리셋(비밀번호 재설정)은 본 슬라이스 제외
 
 비밀번호 리셋은 이메일 발송 인프라(notification BC `JavaMailSender`)가 필요하나 부재 → 후속 FR. 본 PR은 가입 + 강제 변경까지.
