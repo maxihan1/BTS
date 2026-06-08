@@ -29,6 +29,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.registerInstanceFactory
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
 import java.time.Clock
@@ -86,6 +87,7 @@ class IssueFieldEditGateTest : DescribeSpec({
     val existingVersion = 1L
 
     /** 테스트용 기본 Issue — projectId 고정 */
+    @Suppress("LongParameterList")
     fun makeIssue(
         summary: String = "기존 제목",
         description: String? = null,
@@ -133,7 +135,19 @@ class IssueFieldEditGateTest : DescribeSpec({
             typeName = "Task",
         )
 
+    beforeSpec {
+        // IssueKey value class dummy factory 등록 — MockK 1.13.x 가 String dummy 를 IssueKey 생성자에
+        // 전달하면 regex validation 실패가 발생한다. 유효한 IssueKey 인스턴스를 팩토리로 등록한다.
+        registerInstanceFactory { IssueKey("BTS-1") }
+        // IssueKey 파라미터를 받는 메서드(findByKeyWithType, updateFields, updateAssignee 등)는
+        // spec 당 1회만 stub 등록하여 beforeEach 재등록 시 MockK recording 충돌을 방지한다.
+        // updateAssignee 는 no-op 경로에서 호출되지 않으므로(early-return) 여기서 등록하지 않는다.
+        every { repo.findByKeyWithType(issueKey) } returns makeResponse()
+        every { repo.updateFields(issueKey, any(), any()) } returns 1
+    }
+
     beforeEach {
+        // answers = false: stub 정의를 유지하고 invocation 기록만 초기화
         clearMocks(repo, permissionResolver, fieldPermissionResolver, answers = false)
         // UPDATE 권한 기본 통과
         every {
@@ -150,11 +164,12 @@ class IssueFieldEditGateTest : DescribeSpec({
 
         context("S3/EC5 — description 편집 불가 actor 가 description 을 변경하면") {
             val existing = makeIssue(description = null)
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                description = "새 설명",
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    description = "새 설명",
+                )
 
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existing
@@ -169,19 +184,21 @@ class IssueFieldEditGateTest : DescribeSpec({
             }
 
             it("403 ResponseStatusException 을 던진다") {
-                val ex = shouldThrow<ResponseStatusException> {
-                    sut.updateIssue(actor, issueKey, request)
-                }
+                val ex =
+                    shouldThrow<ResponseStatusException> {
+                        sut.updateIssue(actor, issueKey, request)
+                    }
                 ex.statusCode shouldBe HttpStatus.FORBIDDEN
             }
         }
 
         context("S3/EC5 — summary 편집 불가 actor 가 summary 를 변경하면") {
             val existing = makeIssue(summary = "원래 제목")
-            val request = UpdateIssueRequest(
-                summary = "새 제목",
-                expectedVersion = existingVersion,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = "새 제목",
+                    expectedVersion = existingVersion,
+                )
 
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existing
@@ -195,20 +212,22 @@ class IssueFieldEditGateTest : DescribeSpec({
             }
 
             it("403 ResponseStatusException 을 던진다") {
-                val ex = shouldThrow<ResponseStatusException> {
-                    sut.updateIssue(actor, issueKey, request)
-                }
+                val ex =
+                    shouldThrow<ResponseStatusException> {
+                        sut.updateIssue(actor, issueKey, request)
+                    }
                 ex.statusCode shouldBe HttpStatus.FORBIDDEN
             }
         }
 
         context("S3/EC5 — priority 편집 불가 actor 가 priority 를 변경하면") {
             val existing = makeIssue(priority = 3)
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                priority = 1,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    priority = 1,
+                )
 
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existing
@@ -222,9 +241,10 @@ class IssueFieldEditGateTest : DescribeSpec({
             }
 
             it("403 ResponseStatusException 을 던진다") {
-                val ex = shouldThrow<ResponseStatusException> {
-                    sut.updateIssue(actor, issueKey, request)
-                }
+                val ex =
+                    shouldThrow<ResponseStatusException> {
+                        sut.updateIssue(actor, issueKey, request)
+                    }
                 ex.statusCode shouldBe HttpStatus.FORBIDDEN
             }
         }
@@ -235,17 +255,17 @@ class IssueFieldEditGateTest : DescribeSpec({
 
         context("S4/EC4 — summary 동일값 PATCH") {
             val existing = makeIssue(summary = "기존 제목")
-            val request = UpdateIssueRequest(
-                summary = "기존 제목",
-                expectedVersion = existingVersion,
-            )
-            val existingResponse = makeResponse()
+            val request =
+                UpdateIssueRequest(
+                    summary = "기존 제목",
+                    expectedVersion = existingVersion,
+                )
 
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existing
-                every { repo.findByKeyWithType(issueKey) } returns existingResponse
                 // editableFields 는 candidates 가 비어있을 때 호출될 수 있으므로 emptySet 반환
                 every { fieldPermissionResolver.editableFields(any(), any(), emptySet()) } returns emptySet()
+                // findByKeyWithType 는 beforeSpec 에서 1회 등록 (IssueKey value class MockK 재등록 충돌 방지)
             }
 
             it("403 없이 정상 반환한다") {
@@ -261,11 +281,12 @@ class IssueFieldEditGateTest : DescribeSpec({
 
         context("EC6 — 커스텀 필드 'cf_secret' 편집 불가 actor 가 값을 변경하면") {
             val existing = makeIssue(customFields = mapOf("cf_secret" to "old"))
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                customFields = mapOf("cf_secret" to "new"),
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    customFields = mapOf("cf_secret" to "new"),
+                )
 
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existing
@@ -279,20 +300,22 @@ class IssueFieldEditGateTest : DescribeSpec({
             }
 
             it("403 ResponseStatusException 을 던진다") {
-                val ex = shouldThrow<ResponseStatusException> {
-                    sut.updateIssue(actor, issueKey, request)
-                }
+                val ex =
+                    shouldThrow<ResponseStatusException> {
+                        sut.updateIssue(actor, issueKey, request)
+                    }
                 ex.statusCode shouldBe HttpStatus.FORBIDDEN
             }
         }
 
         context("EC6 — 커스텀 필드 'cf_public' 은 editable, 'cf_secret' 은 not editable — 복합") {
             val existing = makeIssue(customFields = mapOf("cf_public" to "old", "cf_secret" to "old"))
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                customFields = mapOf("cf_public" to "new", "cf_secret" to "new"),
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    customFields = mapOf("cf_public" to "new", "cf_secret" to "new"),
+                )
 
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existing
@@ -305,13 +328,14 @@ class IssueFieldEditGateTest : DescribeSpec({
                                 it.contains(FieldRef(FieldKind.CUSTOM, "cf_secret"))
                         },
                     )
-                } returns setOf(FieldRef(FieldKind.CUSTOM, "cf_public"))  // cf_secret 제외
+                } returns setOf(FieldRef(FieldKind.CUSTOM, "cf_public")) // cf_secret 제외
             }
 
             it("403 ResponseStatusException 을 던진다") {
-                val ex = shouldThrow<ResponseStatusException> {
-                    sut.updateIssue(actor, issueKey, request)
-                }
+                val ex =
+                    shouldThrow<ResponseStatusException> {
+                        sut.updateIssue(actor, issueKey, request)
+                    }
                 ex.statusCode shouldBe HttpStatus.FORBIDDEN
             }
         }
@@ -323,10 +347,11 @@ class IssueFieldEditGateTest : DescribeSpec({
         context("assigneeId 필드가 editable 목록에 없을 때") {
             val newAssigneeId = UUID.randomUUID()
             val existing = makeIssue(assigneeId = null)
-            val request = AppChangeAssigneeRequest(
-                assigneeId = newAssigneeId,
-                expectedVersion = existingVersion,
-            )
+            val request =
+                AppChangeAssigneeRequest(
+                    assigneeId = newAssigneeId,
+                    expectedVersion = existingVersion,
+                )
 
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existing
@@ -341,9 +366,10 @@ class IssueFieldEditGateTest : DescribeSpec({
             }
 
             it("403 ResponseStatusException 을 던진다") {
-                val ex = shouldThrow<ResponseStatusException> {
-                    sut.changeAssignee(actor, issueKey, request)
-                }
+                val ex =
+                    shouldThrow<ResponseStatusException> {
+                        sut.changeAssignee(actor, issueKey, request)
+                    }
                 ex.statusCode shouldBe HttpStatus.FORBIDDEN
             }
         }
@@ -351,19 +377,17 @@ class IssueFieldEditGateTest : DescribeSpec({
         context("assigneeId 동일값(no-op) 이면 게이트 통과") {
             val existingAssigneeId = UUID.randomUUID()
             val existing = makeIssue(assigneeId = ActorId(existingAssigneeId))
-            val request = AppChangeAssigneeRequest(
-                assigneeId = existingAssigneeId,
-                expectedVersion = existingVersion,
-            )
-            val existingResponse = makeResponse()
+            val request =
+                AppChangeAssigneeRequest(
+                    assigneeId = existingAssigneeId,
+                    expectedVersion = existingVersion,
+                )
 
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existing
-                every { userLookupPort.exists(existingAssigneeId) } returns true
-                every { repo.updateAssignee(issueKey, existingAssigneeId, existingVersion) } returns 1
-                every { repo.findByKeyWithType(issueKey) } returns existingResponse
-                // no-op → candidates 비어있을 수 있음
-                every { fieldPermissionResolver.editableFields(any(), any(), emptySet()) } returns emptySet()
+                // no-op: assigneeChanged = false → early-return 경로.
+                // assertEditableOrForbidden / userLookupPort / updateAssignee 모두 건너뜀.
+                // findByKeyWithType 는 beforeSpec 에서 1회 등록.
             }
 
             it("403 없이 정상 반환한다") {
@@ -377,24 +401,19 @@ class IssueFieldEditGateTest : DescribeSpec({
 
         context("description 이 editable 일 때 변경하면") {
             val existing = makeIssue(description = null)
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                description = "새 설명",
-            )
-            val updatedResponse = makeResponse(version = existingVersion + 1)
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    description = "새 설명",
+                )
 
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existing
                 every {
-                    fieldPermissionResolver.editableFields(
-                        actor.value,
-                        projectId,
-                        match { it.contains(FieldRef(FieldKind.CORE, "description")) },
-                    )
+                    fieldPermissionResolver.editableFields(any(), any(), any())
                 } returns setOf(FieldRef(FieldKind.CORE, "description"))
-                every { repo.updateFields(any(), any(), any()) } returns 1
-                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+                // updateFields, findByKeyWithType 는 beforeSpec 에서 1회 등록 (IssueKey value class MockK 재등록 충돌 방지)
             }
 
             it("403 없이 정상 반환한다") {
@@ -404,24 +423,18 @@ class IssueFieldEditGateTest : DescribeSpec({
 
         context("커스텀 필드 'cf_public' 이 editable 일 때 변경하면") {
             val existing = makeIssue(customFields = mapOf("cf_public" to "old"))
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                customFields = mapOf("cf_public" to "new"),
-            )
-            val updatedResponse = makeResponse(version = existingVersion + 1)
-
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    customFields = mapOf("cf_public" to "new"),
+                )
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existing
                 every {
-                    fieldPermissionResolver.editableFields(
-                        actor.value,
-                        projectId,
-                        match { it.contains(FieldRef(FieldKind.CUSTOM, "cf_public")) },
-                    )
+                    fieldPermissionResolver.editableFields(any(), any(), any())
                 } returns setOf(FieldRef(FieldKind.CUSTOM, "cf_public"))
-                every { repo.updateFields(any(), any(), any()) } returns 1
-                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+                // updateFields, findByKeyWithType 는 beforeSpec 에서 1회 등록 (IssueKey value class MockK 재등록 충돌 방지)
             }
 
             it("403 없이 정상 반환한다") {

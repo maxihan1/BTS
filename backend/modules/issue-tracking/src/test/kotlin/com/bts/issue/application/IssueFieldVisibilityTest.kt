@@ -298,10 +298,11 @@ class IssueFieldVisibilityTest : DescribeSpec({
     describe("listIssues — 필드 마스킹 (페이지당 resolver 1회 호출 EC14)") {
 
         val pageable = PageRequest.of(0, 20)
-        val responses = listOf(
-            makeFullResponse(mapOf("secret" to "val1", "public" to 1)),
-            makeFullResponse(mapOf("secret" to "val2", "public" to 2)),
-        )
+        val responses =
+            listOf(
+                makeFullResponse(mapOf("secret" to "val1", "public" to 1)),
+                makeFullResponse(mapOf("secret" to "val2", "public" to 2)),
+            )
         val page = PageImpl(responses, pageable, 2L)
 
         beforeEach {
