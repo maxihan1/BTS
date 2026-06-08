@@ -10,6 +10,7 @@ import com.atlas.bts.identity.web.dto.CreateUserRequest
 import com.atlas.bts.identity.web.dto.CreateUserResponse
 import com.atlas.bts.identity.web.dto.UserSummaryResponse
 import jakarta.validation.Valid
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
@@ -44,6 +45,9 @@ class UsersController(
     private val userRepository: UserRepository,
     private val createLocalAccountService: CreateLocalAccountService,
 ) {
+    /** PII/평문 비밀번호 미출력 로거 (DEVELOPMENT.md §1.1/§1.2) */
+    private val log = LoggerFactory.getLogger(UsersController::class.java)
+
     companion object {
         /** typeahead 결과 상한 — 매직넘버 방지 상수화 */
         const val MAX_RESULTS = 50
@@ -154,14 +158,11 @@ class UsersController(
         } catch (e: UsernameTakenException) {
             // 도메인 중복 예외를 409 인라인 응답으로 변환 (PasswordController 패턴, RestControllerAdvice 부재).
             // 빈 catch 금지 — 명시적 HTTP 매핑. 예외 message 는 응답에 노출하지 않는다 (일반 메시지 사용).
-            logger.info("로컬 계정 생성 username 중복 거부", e)
+            log.info("로컬 계정 생성 username 중복 거부", e)
             usernameTakenResponse()
         }
     }
 }
-
-/** UsersController 전용 로거 — 평문 비밀번호/PII 미출력 (DEVELOPMENT.md §1.1/§1.2) */
-private val logger = org.slf4j.LoggerFactory.getLogger(UsersController::class.java)
 
 /**
  * 409 Conflict — username 중복 에러 응답 헬퍼.

@@ -14,6 +14,8 @@ import com.atlas.bts.identity.user.User
 import com.atlas.bts.identity.user.UserRepository
 import io.mockk.every
 import io.mockk.mockk
+import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.not
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration
@@ -46,15 +48,15 @@ import java.util.UUID
  * - 중복 username: 409 {code:"USERNAME_TAKEN"}
  * - 검증 위반(username 누락/형식, displayName 누락, email 형식): 400
  * - 미인증: 401 (필터 체인)
+ *
+ * OAuth2ClientAutoConfiguration 제외 — Keycloak issuer-uri 네트워크 접속 차단.
  */
-// OAuth2ClientAutoConfiguration 제외 — Keycloak issuer-uri 네트워크 접속 차단
 @WebMvcTest(
     controllers = [UsersController::class],
     excludeAutoConfiguration = [OAuth2ClientAutoConfiguration::class],
 )
 @Import(SecurityConfig::class, UsersControllerTest.MockBeans::class)
 class UsersControllerTest {
-
     companion object {
         private val NEW_USER_ID: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
         private val ADMIN_ID: UUID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
@@ -64,15 +66,17 @@ class UsersControllerTest {
         private const val NEW_EMAIL = "new.user@example.com"
         private const val NEW_DISPLAY_NAME = "New User"
         private const val TEMP_PASSWORD = "Temp-Passw0rd!"
+        private const val ALLOWED_ORIGIN = "http://localhost:5173"
 
-        private fun newUser() = User(
-            id = NEW_USER_ID,
-            username = NEW_USERNAME,
-            email = NEW_EMAIL,
-            displayName = NEW_DISPLAY_NAME,
-            createdAt = NOW,
-            updatedAt = NOW,
-        )
+        private fun newUser() =
+            User(
+                id = NEW_USER_ID,
+                username = NEW_USERNAME,
+                email = NEW_EMAIL,
+                displayName = NEW_DISPLAY_NAME,
+                createdAt = NOW,
+                updatedAt = NOW,
+            )
     }
 
     @TestConfiguration
@@ -88,8 +92,9 @@ class UsersControllerTest {
         }
 
         @Bean
-        fun corsConfigurationSource(): CorsConfigurationSource =
-            CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        fun corsConfigurationSource(): CorsConfigurationSource {
+            return CorsConfig().corsConfigurationSource(listOf(ALLOWED_ORIGIN))
+        }
 
         @Bean
         fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)
@@ -119,8 +124,7 @@ class UsersControllerTest {
             .authorities(SimpleGrantedAuthority("ROLE_SYSTEM_ADMIN"))
 
     /** SYSTEM_ADMIN authority 없는 일반 사용자 JWT (authority 기본값 SCOPE_*) */
-    private fun userJwt() =
-        jwt().jwt { it.subject(ADMIN_ID.toString()) }
+    private fun userJwt() = jwt().jwt { it.subject(ADMIN_ID.toString()) }
 
     @Test
     fun `admin POST users 201 반환 — id username temporaryPassword 포함`() {
@@ -148,10 +152,11 @@ class UsersControllerTest {
     fun `admin POST users email 없이도 201`() {
         every {
             createLocalAccountService.create(NEW_USERNAME, null, NEW_DISPLAY_NAME)
-        } returns CreatedAccount(
-            user = newUser().copy(email = null),
-            temporaryPassword = TEMP_PASSWORD.toCharArray(),
-        )
+        } returns
+            CreatedAccount(
+                user = newUser().copy(email = null),
+                temporaryPassword = TEMP_PASSWORD.toCharArray(),
+            )
 
         mockMvc.perform(
             post("/api/v1/users")
@@ -176,7 +181,7 @@ class UsersControllerTest {
                 ),
         )
             .andExpect(status().isForbidden)
-            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("SYSTEM_ADMIN"))))
+            .andExpect(content().string(not(containsString("SYSTEM_ADMIN"))))
     }
 
     @Test
