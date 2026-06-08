@@ -150,13 +150,14 @@ class CustomFieldApplicationService(
             throw ImmutableFieldTypeChangeException("key")
         }
 
-        val updated = existing.withChanges(
-            name = name,
-            description = description,
-            required = required,
-            displayOrder = displayOrder,
-            options = options,
-        )
+        val updated =
+            existing.withChanges(
+                name = name,
+                description = description,
+                required = required,
+                displayOrder = displayOrder,
+                options = options,
+            )
         log.info("custom_field_updated id={} projectId={} actor={}", fieldId, projectId, actorId)
         return repo.update(updated)
     }

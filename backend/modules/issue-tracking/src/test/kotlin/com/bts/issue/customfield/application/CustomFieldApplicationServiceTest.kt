@@ -9,8 +9,8 @@ import com.bts.issue.customfield.domain.CustomFieldOption
 import com.bts.issue.customfield.domain.CustomFieldProjectNotFoundException
 import com.bts.issue.customfield.domain.DuplicateCustomFieldKeyException
 import com.bts.issue.customfield.domain.FieldType
-import com.bts.issue.customfield.domain.InvalidFieldDefinitionException
 import com.bts.issue.customfield.domain.ImmutableFieldTypeChangeException
+import com.bts.issue.customfield.domain.InvalidFieldDefinitionException
 import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
 import com.bts.issue.project.ProjectLookup
 import com.bts.shared.permission.CustomFieldPermission
@@ -230,7 +230,10 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
                 } returns false
 
                 shouldThrow<CustomFieldAccessDeniedException> {
-                    sut.update(actorId, projectIdOrKey, fieldId, null, null, FieldType.SHORT_TEXT, "k", null, null, null)
+                    sut.update(
+                        actorId, projectIdOrKey, fieldId,
+                        null, null, FieldType.SHORT_TEXT, "k", null, null, null,
+                    )
                 }
                 verify(exactly = 0) { repo.update(any()) }
             }
@@ -245,7 +248,10 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
                 every { repo.findById(fieldId, projectId) } returns null
 
                 shouldThrow<CustomFieldNotFoundException> {
-                    sut.update(actorId, projectIdOrKey, fieldId, null, null, FieldType.SHORT_TEXT, "salary_impact", null, null, null)
+                    sut.update(
+                        actorId, projectIdOrKey, fieldId,
+                        null, null, FieldType.SHORT_TEXT, "salary_impact", null, null, null,
+                    )
                 }
                 verify(exactly = 0) { repo.update(any()) }
             }
@@ -256,7 +262,10 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
                 every { projectLookup.resolve(projectIdOrKey) } returns null
 
                 shouldThrow<CustomFieldProjectNotFoundException> {
-                    sut.update(actorId, projectIdOrKey, fieldId, null, null, FieldType.SHORT_TEXT, "k", null, null, null)
+                    sut.update(
+                        actorId, projectIdOrKey, fieldId,
+                        null, null, FieldType.SHORT_TEXT, "k", null, null, null,
+                    )
                 }
             }
         }
@@ -274,18 +283,19 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
                 val updated = existingField.copy(description = "업데이트 설명", options = newOptions)
                 every { repo.update(any()) } returns updated
 
-                val result = sut.update(
-                    actorId = actorId,
-                    projectIdOrKey = projectIdOrKey,
-                    fieldId = fieldId,
-                    name = null,
-                    description = "업데이트 설명",
-                    fieldType = FieldType.SHORT_TEXT,
-                    key = "salary_impact",
-                    required = null,
-                    displayOrder = null,
-                    options = newOptions,
-                )
+                val result =
+                    sut.update(
+                        actorId = actorId,
+                        projectIdOrKey = projectIdOrKey,
+                        fieldId = fieldId,
+                        name = null,
+                        description = "업데이트 설명",
+                        fieldType = FieldType.SHORT_TEXT,
+                        key = "salary_impact",
+                        required = null,
+                        displayOrder = null,
+                        options = newOptions,
+                    )
 
                 result.description shouldBe "업데이트 설명"
                 result.options shouldBe newOptions
