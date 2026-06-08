@@ -40,7 +40,12 @@ class StoredPasswordCredentialRepository(
      *
      * - 신규: [StoredPasswordCredential.createdAt] + [StoredPasswordCredential.updatedAt] 모두 DB now() 로 설정.
      * - 갱신: [StoredPasswordCredential.passwordHash] + [StoredPasswordCredential.algoVersion] +
-     *   [StoredPasswordCredential.updatedAt] 갱신. [StoredPasswordCredential.createdAt] 보존.
+     *   [StoredPasswordCredential.mustChangePassword] + [StoredPasswordCredential.updatedAt] 갱신.
+     *   [StoredPasswordCredential.createdAt] 보존.
+     *
+     * **강제 변경 플래그 해제 경로 (FR-AU-05)**: `ON CONFLICT DO UPDATE SET must_change_password =
+     * EXCLUDED.must_change_password` 가 유일한 갱신 경로다. 정상 비밀번호 변경(rotate → store mustChange=false)
+     * 시 이 SET 절이 강제 변경 플래그를 false 로 덮어써 자동 해제한다. 별도 clear 메서드는 두지 않는다.
      *
      * @return DB에 반영된 최신 상태의 [StoredPasswordCredential]
      */
