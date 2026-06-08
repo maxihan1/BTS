@@ -31,7 +31,7 @@ import java.util.UUID
  *
  * ## 실차단 검증 위임
  * 실제 필드 수준 차단이 올바르게 동작하는지 검증하는 통합테스트는
- * identity-access prod 통합테스트(`FR-PM-07 PR-B`)가 담당한다.
+ * identity-access prod 통합테스트(`IdentityAccessFieldPermissionResolverTest`)가 담당한다.
  * 이 폴백은 issue-tracking 개발/테스트 환경의 부팅 보장만 책임진다.
  *
  * @see FieldPermissionResolver

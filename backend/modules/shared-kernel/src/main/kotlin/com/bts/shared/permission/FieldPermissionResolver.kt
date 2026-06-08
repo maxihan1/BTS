@@ -1,4 +1,4 @@
-// 필드 수준 권한 판정 cross-BC 포트(공용) — prod 실판정은 FR-PM-07 PR-B(identity-access)에서 채운다.
+// 필드 수준 권한 판정 cross-BC 포트(공용) — prod 실판정은 identity-access의 IdentityAccessFieldPermissionResolver.
 
 package com.bts.shared.permission
 
@@ -35,7 +35,7 @@ data class FieldRef(val kind: FieldKind, val key: String)
  * issue-tracking BC 가 이슈 직렬화(`IssueResponse.from`)와 편집 게이트(`updateIssue`)에서
  * 이 interface 를 통해 actor 가 볼/편집할 수 있는 필드 집합을 질의한다.
  * prod 실판정 adapter `IdentityAccessFieldPermissionResolver`(`@Profile("prod")`)는
- * actor 의 그룹 멤버십 + `field_permissions` 규칙으로 집합을 계산한다(FR-PM-07 PR-B).
+ * actor 의 그룹 멤버십 + `field_permissions` 규칙으로 집합을 계산한다.
  * 개발/스테이징 환경에서는 `AlwaysAllowFieldPermissionResolver`(`@Profile("!prod")`) stub 이
  * candidates 를 그대로 반환해 issue-tracking 통합테스트 부팅을 보장한다.
  *

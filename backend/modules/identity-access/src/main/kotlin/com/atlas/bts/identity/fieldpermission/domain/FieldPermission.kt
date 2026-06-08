@@ -10,7 +10,8 @@ import java.util.UUID
  *
  * `field_permissions.access_level` 컬럼(`CHECK IN ('VIEW','EDIT')`)과 1:1 매핑된다.
  * [EDIT] 는 [VIEW] 를 포함한다(EDIT ⊃ VIEW). 포함관계의 실제 판정은
- * resolver(FR-PM-07 PR-B)에서 수행하며, 본 enum 은 값 표현만 담당한다.
+ * resolver([com.atlas.bts.identity.fieldpermission.IdentityAccessFieldPermissionResolver])에서
+ * 수행하며, 본 enum 은 값 표현만 담당한다.
  *
  * @property VIEW 읽기 허용.
  * @property EDIT 쓰기 허용(읽기 자동 포함).
@@ -30,7 +31,7 @@ enum class FieldAccessLevel {
  * ## opt-in 제한 모델
  * 어떤 필드에 규칙이 한 건도 없으면 그 필드는 모든 멤버에게 열린다(기본 허용).
  * 규칙이 한 건이라도 추가되면 그 필드는 제한 대상이 되어 명시된 그룹 멤버에게만 허용된다.
- * 이 판정은 resolver(FR-PM-07 PR-B) 책임이며, 본 모델은 규칙 한 건의 표현·검증만 담당한다.
+ * 이 판정은 resolver 책임이며, 본 모델은 규칙 한 건의 표현·검증만 담당한다.
  *
  * ## 생성 규칙
  * 신규 규칙은 반드시 [create] 팩토리를 경유해 [fieldKey] 정규화/길이 불변식을 보장해야 한다.
