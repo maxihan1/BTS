@@ -29,7 +29,7 @@
 | original_estimate | INT NULL | 최초 추정 시간 (초) |
 | remaining_estimate | INT NULL | 잔여 시간 (초) |
 | time_spent | INT NULL | 실제 소요 시간 (초) |
-| custom_fields | JSONB | 커스텀 필드 |
+| custom_fields | JSONB NOT NULL DEFAULT '{}' | 커스텀 필드 값 — `{field_key: value}` 형식. 타입/참조무결성은 ApplicationService 책임. GIN 인덱스(§5.14). 정의는 `custom_field_definitions` 참조 (FR-IS-10) |
 | search_vector | tsvector (Generated) | FTS 검색용 |
 | created_at / updated_at | TIMESTAMPTZ | 생성/수정 시각 |
 | deleted_at | TIMESTAMPTZ NULL | 소프트 삭제 |
@@ -255,6 +255,38 @@ workflow:
 | SlackWorkspace | Slack 워크스페이스 | 09.3 |
 | SlackUserMapping | Atlas-Slack 매핑 | 09.3 |
 | SlackChannelSubscription | 채널 ↔ 프로젝트 | 09.8 |
+
+## 5.13b 커스텀 필드 정의 (FR-IS-10)
+
+프로젝트별로 이슈에 부착할 커스텀 필드를 정의하는 마스터 테이블.
+
+### CustomFieldDefinition
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| id | UUID (PK) | 정의 ID |
+| project_id | BIGINT (FK) | 소속 프로젝트 |
+| key | VARCHAR(50) | 필드 키 (URL-safe, 생성 후 불변). UNIQUE(project_id, key) WHERE deleted_at IS NULL |
+| name | VARCHAR(100) | 표시명 |
+| description | TEXT NULL | 설명 |
+| field_type | VARCHAR(30) | FieldType enum (아래 10종) |
+| is_required | BOOLEAN | 필수 여부 |
+| display_order | INT | 이슈 폼 표시 순서 |
+| is_active | BOOLEAN | 활성 여부 (비활성 = 신규 이슈에 노출 안 됨, 기존 값 보존) |
+| deleted_at | TIMESTAMPTZ NULL | 소프트 삭제 |
+
+**FieldType 10종 (1차)**: `SHORT_TEXT` · `LONG_TEXT` · `NUMBER` · `DATE` · `DATETIME` · `SINGLE_SELECT` · `MULTI_SELECT` · `CHECKBOX` · `RADIO` · `URL`. cross-BC 참조형(USER/GROUP/VERSION/COMPONENT picker)은 후속 타입 추가.
+
+### CustomFieldOption
+
+선택형(`SINGLE_SELECT` / `MULTI_SELECT` / `RADIO`) 정의의 선택지.
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| id | UUID (PK) | 선택지 ID |
+| definition_id | UUID (FK) | 소속 정의. ON DELETE CASCADE |
+| value | VARCHAR(200) | 선택지 값 |
+| display_order | INT | 표시 순서 |
 
 ## 5.14 파티셔닝 / 인덱싱
 
