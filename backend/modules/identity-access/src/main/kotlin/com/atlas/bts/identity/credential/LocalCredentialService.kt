@@ -67,15 +67,20 @@ class LocalCredentialService(
      * - 예외를 외부로 throw 하지 않는다. repo 오류는 예외 전파.
      * - [plain] 은 finally 블록에서 반드시 wipe 된다 (DEVELOPMENT.md §1.1).
      * - 트랜잭션 경계: @Transactional (REQUIRED). 호출 측 트랜잭션 참여 또는 신규 시작.
+     * - [mustChange] 가 `true`면 강제 비밀번호 변경 플래그를 켜서 저장한다 (FR-AU-05).
+     *   관리자가 임시 비밀번호로 계정을 생성할 때 사용. [rotate] 의 내부 호출은 default `false`로
+     *   호출되어 UPSERT SET 경로로 플래그를 자동 해제한다.
      *
-     * @param userId  저장 대상 사용자 식별자
-     * @param plain   평문 비밀번호 CharArray — 호출 후 wipe 됨
+     * @param userId      저장 대상 사용자 식별자
+     * @param plain       평문 비밀번호 CharArray — 호출 후 wipe 됨
+     * @param mustChange  강제 비밀번호 변경 플래그 (default false)
      * @return DB 에 저장된 [StoredPasswordCredential]
      */
     @Transactional
     fun store(
         userId: UUID,
         plain: CharArray,
+        mustChange: Boolean = false,
     ): StoredPasswordCredential {
         val start = clock.millis()
         return try {
@@ -92,6 +97,7 @@ class LocalCredentialService(
                     passwordHash = passwordHash,
                     createdAt = Instant.now(clock),
                     updatedAt = Instant.now(clock),
+                    mustChangePassword = mustChange,
                 )
             repo.save(credential).also {
                 log.info("store success latency={}ms", clock.millis() - start)
@@ -152,6 +158,8 @@ class LocalCredentialService(
      * - [oldPlain] 검증 실패 시 false 반환, DB 변경 없음 (EC-02).
      * - [oldPlain] / [newPlain] 은 finally 블록에서 반드시 wipe 된다.
      * - 트랜잭션 경계: @Transactional (REQUIRED). store 포함 단일 경계.
+     * - 내부 [store] 호출은 `mustChange=false`(default)로 수행되어, 강제 변경 플래그가 켜져 있던
+     *   자격증명이라도 정상 변경 성공 시 UPSERT SET 경로로 플래그가 자동 해제된다 (FR-AU-05).
      *
      * @param userId    변경 대상 사용자 식별자
      * @param oldPlain  현재 비밀번호 CharArray — 호출 후 wipe 됨

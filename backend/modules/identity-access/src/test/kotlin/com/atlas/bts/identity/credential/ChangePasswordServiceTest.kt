@@ -11,8 +11,19 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.mockk.verifyOrder
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
+import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest
+import org.springframework.context.annotation.Import
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import org.springframework.test.context.DynamicPropertyRegistry
+import org.springframework.test.context.DynamicPropertySource
+import org.testcontainers.containers.PostgreSQLContainer
+import org.testcontainers.junit.jupiter.Container
+import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.Instant
 import java.util.UUID
 
@@ -209,5 +220,119 @@ class ChangePasswordServiceTest {
         // finally 블록이 성공 경로에서도 배열을 fill(' ')로 wipe해야 한다
         assertThat(currentArr).doesNotContain('O', 'l', 'd')
         assertThat(newArr).doesNotContain('N', 'e', 'w')
+    }
+}
+
+/**
+ * ChangePasswordService 자동해제 통합 테스트 (실 repo + Testcontainers PostgreSQL).
+ *
+ * 단위 테스트는 LocalCredentialService 를 mockk 으로 대체하므로 mustChangePassword
+ * 자동 해제(BLOCKER-2)를 잡지 못한다. 이 클래스는 LocalCredentialService + 실
+ * StoredPasswordCredentialRepository 를 실제 PostgreSQL 에 연결해, change() 전체
+ * 흐름(policy → same → rotate → 세션무효화)을 거쳐 강제 변경 플래그가 false 로
+ * 자동 해제되는지를 end-to-end 로 검증한다.
+ *
+ * SessionService / RefreshTokenRepository 는 자동해제 경로와 무관하므로 relaxed mock
+ * 으로 두며, findActiveByUser 는 빈 리스트를 반환해 세션 무효화 단계를 무해하게 통과시킨다.
+ * 핵심 검증 대상인 credential UPSERT 경로는 실 DB 다.
+ *
+ * 최상위 클래스로 분리한 이유: @Nested inner class 는 바깥 companion 의
+ * @DynamicPropertySource 를 적용받지 못해 datasource 주입이 누락된다.
+ */
+@JdbcTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import(StoredPasswordCredentialRepository::class)
+@Testcontainers
+class ChangePasswordServiceMustChangeIntegrationTest {
+    companion object {
+        @Container
+        @JvmStatic
+        val postgres: PostgreSQLContainer<*> =
+            PostgreSQLContainer("postgres:16-alpine")
+                .withDatabaseName("bts_test")
+                .withUsername("bts")
+                .withPassword("bts_test")
+
+        @DynamicPropertySource
+        @JvmStatic
+        fun postgresProps(r: DynamicPropertyRegistry) {
+            r.add("spring.datasource.url") { postgres.jdbcUrl }
+            r.add("spring.datasource.username") { postgres.username }
+            r.add("spring.datasource.password") { postgres.password }
+            r.add("spring.flyway.enabled") { "true" }
+        }
+    }
+
+    @Autowired
+    private lateinit var repo: StoredPasswordCredentialRepository
+
+    @Autowired
+    private lateinit var jdbc: NamedParameterJdbcTemplate
+
+    private lateinit var userId: UUID
+    private lateinit var sut: ChangePasswordService
+
+    @BeforeEach
+    fun setUp() {
+        jdbc.update("DELETE FROM local_credentials", emptyMap<String, Any>())
+        jdbc.update("DELETE FROM users", emptyMap<String, Any>())
+
+        userId = UUID.randomUUID()
+        jdbc.update(
+            "INSERT INTO users (id, username) VALUES (:id, :username)",
+            mapOf("id" to userId, "username" to "test-user-$userId"),
+        )
+
+        val localCredentialService = LocalCredentialService(repo)
+        val sessionService = mockk<SessionService>(relaxed = true)
+        val refreshTokenRepository = mockk<RefreshTokenRepository>(relaxed = true)
+        // 세션 무효화 단계는 자동해제와 무관 — 활성 세션 없음으로 무해하게 통과
+        every { sessionService.findActiveByUser(userId) } returns emptyList()
+
+        sut =
+            ChangePasswordService(
+                localCredentialService = localCredentialService,
+                sessionService = sessionService,
+                refreshTokenRepository = refreshTokenRepository,
+            )
+    }
+
+    @Test
+    fun `change 성공 — mustChange=true 였던 자격증명이 change 흐름 후 false 로 자동 해제`() {
+        // 강제 변경 대상으로 저장 (mustChange=true)
+        LocalCredentialService(repo).store(userId, "InitP@ss1!".toCharArray(), mustChange = true)
+        assertThat(repo.findByUserId(userId)!!.mustChangePassword).isTrue()
+
+        // change() 전체 흐름 통과 → rotate → store(false) → UPSERT SET 으로 자동 해제
+        val result =
+            sut.change(
+                userId = userId,
+                currentSid = UUID.randomUUID(),
+                current = "InitP@ss1!".toCharArray(),
+                new = "NewP@ssw0rd!1".toCharArray(),
+            )
+
+        assertThat(result).isEqualTo(ChangePasswordResult.Success)
+        val after = repo.findByUserId(userId)
+        assertThat(after).isNotNull()
+        assertThat(after!!.mustChangePassword).isFalse()
+    }
+
+    @Test
+    fun `change CurrentMismatch — old 불일치 시 mustChange 플래그 유지 (해제 안 됨)`() {
+        LocalCredentialService(repo).store(userId, "InitP@ss1!".toCharArray(), mustChange = true)
+        assertThat(repo.findByUserId(userId)!!.mustChangePassword).isTrue()
+
+        val result =
+            sut.change(
+                userId = userId,
+                currentSid = UUID.randomUUID(),
+                current = "WrongOld@1234".toCharArray(),
+                new = "NewP@ssw0rd!1".toCharArray(),
+            )
+
+        assertThat(result).isEqualTo(ChangePasswordResult.CurrentMismatch)
+        // rotate 미수행 → UPSERT SET 미발생 → 플래그 그대로 true 유지
+        assertTrue(repo.findByUserId(userId)!!.mustChangePassword)
     }
 }

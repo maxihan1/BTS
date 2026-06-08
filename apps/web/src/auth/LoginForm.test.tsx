@@ -47,6 +47,8 @@ describe('LoginForm', () => {
           email: 'alice@bts.local',
           authMethod: 'local',
           userId: 'u1',
+          mustChangePassword: false,
+          isSystemAdmin: false,
         }),
       ),
     )

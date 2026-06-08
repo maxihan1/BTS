@@ -8,6 +8,8 @@ const MOCK_USER: WhoamiResponse = {
   email: 'alice@example.com',
   authMethod: 'local',
   userId: 'user-001',
+  mustChangePassword: false,
+  isSystemAdmin: false,
 }
 
 const MOCK_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.test.token'

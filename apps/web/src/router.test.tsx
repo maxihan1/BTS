@@ -43,7 +43,7 @@ describe('Router', () => {
   it('/dashboard 라우트 마운트 (인증 상태) → DashboardPage placeholder 렌더', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'test-access-token',
-      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1' },
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false },
     })
     renderWithRoute('/dashboard')
     expect(await screen.findByText(/환영합니다/)).toBeInTheDocument()
@@ -60,7 +60,7 @@ describe('Router', () => {
   it('/issues 라우트 마운트 (인증 상태) → IssueListRouteAdapter 렌더', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'test-access-token',
-      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1' },
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false },
     })
     renderWithRoute('/issues')
     expect(await screen.findByText(/이슈 목록/)).toBeInTheDocument()
@@ -75,7 +75,7 @@ describe('Router', () => {
   it('/issues/new 라우트 마운트 (인증 상태) → IssueCreateRouteAdapter 렌더', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'test-access-token',
-      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1' },
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false },
     })
     renderWithRoute('/issues/new')
     expect(await screen.findByText(/이슈 생성/)).toBeInTheDocument()
@@ -84,7 +84,7 @@ describe('Router', () => {
   it('/issues/$key 라우트 마운트 (인증 상태) → IssueDetailRouteAdapter 렌더', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'test-access-token',
-      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1' },
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false },
     })
     renderWithRoute('/issues/ATLAS-1')
     expect(await screen.findByText(/이슈 상세/)).toBeInTheDocument()
@@ -93,7 +93,7 @@ describe('Router', () => {
   it('dashboard에 /issues 네비 링크 1개 존재', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'test-access-token',
-      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1' },
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false },
     })
     renderWithRoute('/dashboard')
     await screen.findByText(/환영합니다/)

@@ -1,9 +1,22 @@
 // identity-access BC 사용자 목록 API client 단위 테스트 — MSW + Zod 파싱 검증
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
-import { userSummarySchema, fetchUsers } from './users'
+import { userSummarySchema, fetchUsers, createUser } from './users'
 import { ApiError } from './client'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// XSRF 쿠키 설정 / 해제 — createUser X-XSRF-TOKEN 검증용
+// ─────────────────────────────────────────────────────────────────────────────
+const XSRF_COOKIE_VALUE = 'test-xsrf-token'
+
+beforeEach(() => {
+  document.cookie = `XSRF-TOKEN=${XSRF_COOKIE_VALUE}; path=/`
+})
+
+afterEach(() => {
+  document.cookie = 'XSRF-TOKEN=; max-age=0; path=/'
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fixture — UserSummary (displayName/email nullable 케이스 포함)
@@ -153,5 +166,112 @@ describe('fetchUsersByIds', () => {
     const result = await fetchUsersByIds(['a1b2c3d4-e5f6-4890-abcd-ef1234567890'])
     expect(result).toHaveLength(1)
     expect(result[0]?.username).toBe('alice')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-US-4. createUser — POST /api/v1/users, 201 응답 Zod 파싱 + XSRF + 에러
+// ─────────────────────────────────────────────────────────────────────────────
+describe('createUser', () => {
+  const VALID_PAYLOAD = { username: 'newuser', displayName: '새 사용자' }
+  const CREATED_RESPONSE = {
+    // RFC4122 v4 형식 고정 UUID (Zod v4 uuid 엄격 검증 통과)
+    id: 'a1b2c3d4-e5f6-4890-abcd-ef1234567891',
+    username: 'newuser',
+    temporaryPassword: 'TmpPass123!',
+  }
+
+  /**
+   * T-US-4a. 201 응답 → Zod 파싱 후 { id, username, temporaryPassword } 반환.
+   */
+  it('T-US-4a: 201 응답 → { id, username, temporaryPassword } 반환', async () => {
+    server.use(
+      http.post('/api/v1/users', () =>
+        HttpResponse.json(CREATED_RESPONSE, { status: 201 }),
+      ),
+    )
+
+    const result = await createUser(VALID_PAYLOAD)
+    expect(result.id).toBe(CREATED_RESPONSE.id)
+    expect(result.username).toBe(CREATED_RESPONSE.username)
+    expect(result.temporaryPassword).toBe(CREATED_RESPONSE.temporaryPassword)
+  })
+
+  /**
+   * T-US-4b. X-XSRF-TOKEN 헤더가 요청에 포함된다 (double submit cookie 패턴).
+   */
+  it('T-US-4b: X-XSRF-TOKEN 헤더가 요청에 포함된다', async () => {
+    let capturedXsrf: string | null = null
+
+    server.use(
+      http.post('/api/v1/users', ({ request }) => {
+        capturedXsrf = request.headers.get('x-xsrf-token')
+        return HttpResponse.json(CREATED_RESPONSE, { status: 201 })
+      }),
+    )
+
+    await createUser(VALID_PAYLOAD)
+    expect(capturedXsrf).toBe(XSRF_COOKIE_VALUE)
+  })
+
+  /**
+   * T-US-4c. 409 USERNAME_TAKEN → ApiError(409) throw, body.code 보존.
+   */
+  it('T-US-4c: 409 USERNAME_TAKEN → ApiError(409) throw, code 보존', async () => {
+    server.use(
+      http.post('/api/v1/users', () =>
+        HttpResponse.json({ code: 'USERNAME_TAKEN' }, { status: 409 }),
+      ),
+    )
+
+    let thrown: unknown
+    try {
+      await createUser(VALID_PAYLOAD)
+    } catch (e) {
+      thrown = e
+    }
+    expect(thrown).toBeInstanceOf(ApiError)
+    if (!(thrown instanceof ApiError)) throw new Error('type guard missed')
+    expect(thrown.status).toBe(409)
+    expect((thrown.body as { code?: string } | null)?.code).toBe('USERNAME_TAKEN')
+  })
+
+  /**
+   * T-US-4d. 400 검증 실패 → ApiError(400) throw.
+   */
+  it('T-US-4d: 400 검증 실패 → ApiError(400) throw', async () => {
+    server.use(
+      http.post('/api/v1/users', () =>
+        HttpResponse.json({ code: 'VALIDATION_ERROR' }, { status: 400 }),
+      ),
+    )
+
+    let thrown: unknown
+    try {
+      await createUser({ username: '', displayName: '테스트' })
+    } catch (e) {
+      thrown = e
+    }
+    expect(thrown).toBeInstanceOf(ApiError)
+    if (!(thrown instanceof ApiError)) throw new Error('type guard missed')
+    expect(thrown.status).toBe(400)
+  })
+
+  /**
+   * T-US-4e. email 선택 필드 포함 시 정상 동작.
+   */
+  it('T-US-4e: email 포함 payload → 정상 동작', async () => {
+    server.use(
+      http.post('/api/v1/users', () =>
+        HttpResponse.json(CREATED_RESPONSE, { status: 201 }),
+      ),
+    )
+
+    const result = await createUser({
+      username: 'newuser',
+      email: 'newuser@bts.local',
+      displayName: '새 사용자',
+    })
+    expect(result.username).toBe('newuser')
   })
 })

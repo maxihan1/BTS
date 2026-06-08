@@ -171,6 +171,58 @@ class StoredPasswordCredentialRepositoryTest {
     }
 
     @Test
+    fun `save mustChangePassword=true — findByUserId 가 true 반환`() {
+        repo.save(
+            StoredPasswordCredential(
+                userId = userId,
+                passwordHash = "\$argon2id\$v=19\$m=65536,t=3,p=4\$salt1\$hash1",
+                algoVersion = "argon2id-v1",
+                createdAt = java.time.Instant.EPOCH,
+                updatedAt = java.time.Instant.EPOCH,
+                mustChangePassword = true,
+            ),
+        )
+
+        val found = repo.findByUserId(userId)
+
+        assertThat(found).isNotNull()
+        assertThat(found!!.mustChangePassword).isTrue()
+    }
+
+    @Test
+    fun `save UPSERT mustChangePassword — 기존 true 행에 false 로 재저장 시 false 로 갱신 (ON CONFLICT SET 검증)`() {
+        // 1차: must_change=true 저장
+        repo.save(
+            StoredPasswordCredential(
+                userId = userId,
+                passwordHash = "\$argon2id\$v=19\$m=65536,t=3,p=4\$salt1\$hash1",
+                algoVersion = "argon2id-v1",
+                createdAt = java.time.Instant.EPOCH,
+                updatedAt = java.time.Instant.EPOCH,
+                mustChangePassword = true,
+            ),
+        )
+        assertThat(repo.findByUserId(userId)!!.mustChangePassword).isTrue()
+
+        // 2차: 같은 user_id 에 must_change=false 로 UPSERT 재호출
+        repo.save(
+            StoredPasswordCredential(
+                userId = userId,
+                passwordHash = "\$argon2id\$v=19\$m=65536,t=3,p=4\$salt2\$hash2",
+                algoVersion = "argon2id-v1",
+                createdAt = java.time.Instant.EPOCH,
+                updatedAt = java.time.Instant.EPOCH,
+                mustChangePassword = false,
+            ),
+        )
+
+        // ON CONFLICT DO UPDATE SET must_change_password = EXCLUDED... 가 동작해야 false 로 덮어써짐
+        val found = repo.findByUserId(userId)
+        assertThat(found).isNotNull()
+        assertThat(found!!.mustChangePassword).isFalse()
+    }
+
+    @Test
     fun `users CASCADE 삭제 — users 행 삭제 시 local_credentials 자동 삭제`() {
         repo.save(
             StoredPasswordCredential(

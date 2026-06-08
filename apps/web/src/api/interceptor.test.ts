@@ -102,7 +102,7 @@ describe('401 인터셉터', () => {
       }),
     )
 
-    useAuthStore.setState({ accessToken: 'old-token', user: { username: 'u', email: 'e@e.com', authMethod: 'local', userId: '1' } })
+    useAuthStore.setState({ accessToken: 'old-token', user: { username: 'u', email: 'e@e.com', authMethod: 'local', userId: '1', mustChangePassword: false, isSystemAdmin: false } })
 
     const clearSessionSpy = vi.spyOn(useAuthStore.getState(), 'clearSession')
 

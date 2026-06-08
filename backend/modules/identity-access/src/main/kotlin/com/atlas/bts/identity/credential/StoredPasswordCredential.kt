@@ -28,6 +28,9 @@ import java.util.UUID
  *   향후 알고리즘 변경 시 `WHERE algo_version = 'argon2id-v1'` batch 재해시에 사용된다.
  * - [createdAt]: 행 최초 생성 시각. UPSERT 시 보존된다 (비밀번호 변경 시에도 갱신 안 됨).
  * - [updatedAt]: 비밀번호 마지막 변경 시각. UPSERT 시 `now()`로 갱신된다.
+ * - [mustChangePassword]: 강제 비밀번호 변경 플래그 (FR-AU-05). `true`면 다음 로그인 시 변경 필수.
+ *   관리자가 임시 비밀번호로 계정을 생성하면 `true`로 저장된다. 정상 변경(`rotate`) 성공 시
+ *   UPSERT 의 `ON CONFLICT DO UPDATE SET` 경로로 `false`로 자동 해제된다 (별도 해제 메서드 없음).
  *
  * ## equals / hashCode
  * [userId] 기반으로만 동등성을 판단한다. 한 사용자에게 하나의 로컬 자격증명만 존재하기 때문이다.
@@ -45,6 +48,7 @@ data class StoredPasswordCredential(
     val algoVersion: String = "argon2id-v1",
     val createdAt: Instant,
     val updatedAt: Instant,
+    val mustChangePassword: Boolean = false,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -57,5 +61,5 @@ data class StoredPasswordCredential(
     override fun toString(): String =
         "StoredPasswordCredential(" +
             "userId=$userId, passwordHash=***, algoVersion=$algoVersion, " +
-            "createdAt=$createdAt, updatedAt=$updatedAt)"
+            "createdAt=$createdAt, updatedAt=$updatedAt, mustChangePassword=$mustChangePassword)"
 }

@@ -7,6 +7,8 @@ import com.atlas.bts.identity.audit.AuthAuditLogService
 import com.atlas.bts.identity.audit.AuthEventType
 import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
+import com.atlas.bts.identity.credential.StoredPasswordCredential
+import com.atlas.bts.identity.credential.StoredPasswordCredentialRepository
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
 import com.atlas.bts.identity.pat.PatVerificationException
 import com.atlas.bts.identity.pat.PersonalAccessToken
@@ -14,6 +16,7 @@ import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.user.User
 import com.atlas.bts.identity.user.UserRepository
+import com.bts.shared.permission.SystemPermissionResolver
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -46,7 +49,6 @@ import java.util.UUID
 )
 @Import(SecurityConfig::class, WhoamiControllerTest.MockSecurityBeans::class)
 class WhoamiControllerTest {
-
     companion object {
         // EC-26: "pat_" prefix 포함 52자 raw token (pat_ + 48자 body)
         private const val RAW_PAT = "pat_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -69,8 +71,9 @@ class WhoamiControllerTest {
         }
 
         @Bean
-        fun corsConfigurationSource(): CorsConfigurationSource =
-            CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        fun corsConfigurationSource(): CorsConfigurationSource {
+            return CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        }
 
         @Bean
         fun personalAccessTokenService(): PersonalAccessTokenService = mockk()
@@ -80,6 +83,12 @@ class WhoamiControllerTest {
 
         @Bean
         fun userRepository(): UserRepository = mockk(relaxed = true)
+
+        @Bean
+        fun storedPasswordCredentialRepository(): StoredPasswordCredentialRepository = mockk(relaxed = true)
+
+        @Bean
+        fun systemPermissionResolver(): SystemPermissionResolver = mockk(relaxed = true)
     }
 
     @Autowired
@@ -94,6 +103,12 @@ class WhoamiControllerTest {
     @Autowired
     lateinit var userRepository: UserRepository
 
+    @Autowired
+    lateinit var storedPasswordCredentialRepository: StoredPasswordCredentialRepository
+
+    @Autowired
+    lateinit var systemPermissionResolver: SystemPermissionResolver
+
     // ── 기존 JWT 케이스 (PR #2 회귀 방지) ─────────────────────────────────────
 
     @Test
@@ -106,14 +121,20 @@ class WhoamiControllerTest {
     fun `whoami returns 200 with mock JWT and authMethod jwt`() {
         val aliceId = UUID.fromString("00000000-0000-0000-0000-000000000001")
         val now = Instant.parse("2026-05-21T10:00:00Z")
-        every { userRepository.findById(aliceId) } returns User(
-            id = aliceId,
-            username = "alice",
-            email = "alice@bts.local",
-            displayName = "Alice",
-            createdAt = now,
-            updatedAt = now,
-        )
+        every { userRepository.findById(aliceId) } returns
+            User(
+                id = aliceId,
+                username = "alice",
+                email = "alice@bts.local",
+                displayName = "Alice",
+                createdAt = now,
+                updatedAt = now,
+            )
+        // 일반 사용자: 강제 변경 플래그 없음(false), 시스템 관리자 아님(false)
+        val cred = credential(aliceId, mustChange = false)
+        every { storedPasswordCredentialRepository.findByUserId(aliceId) } returns cred
+        every { systemPermissionResolver.isSystemAdmin(aliceId) } returns false
+
         mockMvc.perform(
             get("/api/v1/users/me/whoami").with(
                 jwt().jwt { builder ->
@@ -126,6 +147,8 @@ class WhoamiControllerTest {
             .andExpect(jsonPath("$.email").value("alice@bts.local"))
             .andExpect(jsonPath("$.authMethod").value("jwt"))
             .andExpect(jsonPath("$.userId").value(aliceId.toString()))
+            .andExpect(jsonPath("$.mustChangePassword").value(false))
+            .andExpect(jsonPath("$.isSystemAdmin").value(false))
     }
 
     @Test
@@ -154,17 +177,18 @@ class WhoamiControllerTest {
 
     @Test
     fun `whoami returns 200 with valid PAT and authMethod pat`() {
-        val activePat = PersonalAccessToken(
-            id = PAT_ID,
-            userId = PAT_USER_ID,
-            name = "ci-token",
-            tokenHash = "irrelevant-hash",
-            scopes = listOf("*"),
-            expiresAt = null,
-            lastUsedAt = null,
-            revokedAt = null,
-            createdAt = Instant.parse("2026-01-01T00:00:00Z"),
-        )
+        val activePat =
+            PersonalAccessToken(
+                id = PAT_ID,
+                userId = PAT_USER_ID,
+                name = "ci-token",
+                tokenHash = "irrelevant-hash",
+                scopes = listOf("*"),
+                expiresAt = null,
+                lastUsedAt = null,
+                revokedAt = null,
+                createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
         every { personalAccessTokenService.verify(RAW_PAT) } returns Result.success(activePat)
 
         mockMvc.perform(
@@ -174,12 +198,15 @@ class WhoamiControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.userId").value(PAT_USER_ID.toString()))
             .andExpect(jsonPath("$.authMethod").value("pat"))
+            // PAT 분기는 비밀번호/시스템역할 컨텍스트를 노출하지 않으므로 둘 다 false 고정
+            .andExpect(jsonPath("$.mustChangePassword").value(false))
+            .andExpect(jsonPath("$.isSystemAdmin").value(false))
     }
 
     @Test
     fun `whoami returns 401 when PAT is expired`() {
-        every { personalAccessTokenService.verify(RAW_PAT) } returns
-            Result.failure(PatVerificationException("PAT is expired or revoked"))
+        val failure = Result.failure<PersonalAccessToken>(PatVerificationException("PAT is expired or revoked"))
+        every { personalAccessTokenService.verify(RAW_PAT) } returns failure
 
         mockMvc.perform(
             get("/api/v1/users/me/whoami")
@@ -190,8 +217,8 @@ class WhoamiControllerTest {
 
     @Test
     fun `whoami returns 401 when PAT is revoked`() {
-        every { personalAccessTokenService.verify(RAW_PAT) } returns
-            Result.failure(PatVerificationException("PAT is expired or revoked"))
+        val failure = Result.failure<PersonalAccessToken>(PatVerificationException("PAT is expired or revoked"))
+        every { personalAccessTokenService.verify(RAW_PAT) } returns failure
 
         mockMvc.perform(
             get("/api/v1/users/me/whoami")
@@ -202,17 +229,18 @@ class WhoamiControllerTest {
 
     @Test
     fun `whoami records PAT_USED audit event on successful PAT authentication`() {
-        val activePat = PersonalAccessToken(
-            id = PAT_ID,
-            userId = PAT_USER_ID,
-            name = "ci-token",
-            tokenHash = "irrelevant-hash",
-            scopes = listOf("*"),
-            expiresAt = null,
-            lastUsedAt = null,
-            revokedAt = null,
-            createdAt = Instant.parse("2026-01-01T00:00:00Z"),
-        )
+        val activePat =
+            PersonalAccessToken(
+                id = PAT_ID,
+                userId = PAT_USER_ID,
+                name = "ci-token",
+                tokenHash = "irrelevant-hash",
+                scopes = listOf("*"),
+                expiresAt = null,
+                lastUsedAt = null,
+                revokedAt = null,
+                createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
         every { personalAccessTokenService.verify(RAW_PAT) } returns Result.success(activePat)
         val eventSlot = slot<AuthAuditLog>()
         every { authAuditLogService.record(capture(eventSlot)) } returns Unit
@@ -227,5 +255,132 @@ class WhoamiControllerTest {
         assertThat(eventSlot.captured.eventType).isEqualTo(AuthEventType.PAT_USED)
         assertThat(eventSlot.captured.userId).isEqualTo(PAT_USER_ID)
         assertThat(eventSlot.captured.providerId).isEqualTo("pat")
+    }
+
+    // ── Task 5: mustChangePassword / isSystemAdmin (FR-AU-05) ────────────────────
+
+    @Test
+    fun `whoami JWT 사용자의 강제 변경 플래그가 true 이면 mustChangePassword true 반영`() {
+        val bobId = UUID.fromString("00000000-0000-0000-0000-000000000002")
+        val now = Instant.parse("2026-05-21T10:00:00Z")
+        every { userRepository.findById(bobId) } returns
+            User(
+                id = bobId,
+                username = "bob",
+                email = "bob@bts.local",
+                displayName = "Bob",
+                createdAt = now,
+                updatedAt = now,
+            )
+        every { storedPasswordCredentialRepository.findByUserId(bobId) } returns credential(bobId, mustChange = true)
+        every { systemPermissionResolver.isSystemAdmin(bobId) } returns false
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder -> builder.subject(bobId.toString()) },
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.mustChangePassword").value(true))
+            .andExpect(jsonPath("$.isSystemAdmin").value(false))
+    }
+
+    @Test
+    fun `whoami JWT 사용자가 시스템 관리자이면 isSystemAdmin true 반영`() {
+        val adminId = UUID.fromString("00000000-0000-0000-0000-000000000003")
+        val now = Instant.parse("2026-05-21T10:00:00Z")
+        every { userRepository.findById(adminId) } returns
+            User(
+                id = adminId,
+                username = "admin",
+                email = "admin@bts.local",
+                displayName = "Admin",
+                createdAt = now,
+                updatedAt = now,
+            )
+        val cred = credential(adminId, mustChange = false)
+        every { storedPasswordCredentialRepository.findByUserId(adminId) } returns cred
+        every { systemPermissionResolver.isSystemAdmin(adminId) } returns true
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder -> builder.subject(adminId.toString()) },
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.mustChangePassword").value(false))
+            .andExpect(jsonPath("$.isSystemAdmin").value(true))
+    }
+
+    @Test
+    fun `whoami JWT 사용자의 local_credentials 행이 없으면 mustChangePassword false (SSO 사용자)`() {
+        val ssoId = UUID.fromString("00000000-0000-0000-0000-000000000004")
+        val now = Instant.parse("2026-05-21T10:00:00Z")
+        every { userRepository.findById(ssoId) } returns
+            User(
+                id = ssoId,
+                username = "sso-user",
+                email = "sso@bts.local",
+                displayName = "Sso User",
+                createdAt = now,
+                updatedAt = now,
+            )
+        // local_credentials 행 없음 → null → mustChangePassword=false 로 귀결
+        every { storedPasswordCredentialRepository.findByUserId(ssoId) } returns null
+        every { systemPermissionResolver.isSystemAdmin(ssoId) } returns false
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder -> builder.subject(ssoId.toString()) },
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.mustChangePassword").value(false))
+            .andExpect(jsonPath("$.isSystemAdmin").value(false))
+    }
+
+    @Test
+    fun `whoami PAT 인증은 mustChangePassword 와 isSystemAdmin 모두 false 고정`() {
+        val activePat =
+            PersonalAccessToken(
+                id = PAT_ID,
+                userId = PAT_USER_ID,
+                name = "ci-token",
+                tokenHash = "irrelevant-hash",
+                scopes = listOf("*"),
+                expiresAt = null,
+                lastUsedAt = null,
+                revokedAt = null,
+                createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
+        every { personalAccessTokenService.verify(RAW_PAT) } returns Result.success(activePat)
+        // PAT 사용자가 실제로는 시스템 관리자/강제변경 대상이더라도 PAT 분기는 조회하지 않고 false 고정
+        val cred = credential(PAT_USER_ID, mustChange = true)
+        every { storedPasswordCredentialRepository.findByUserId(PAT_USER_ID) } returns cred
+        every { systemPermissionResolver.isSystemAdmin(PAT_USER_ID) } returns true
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami")
+                .header("Authorization", "Bearer $RAW_PAT"),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.authMethod").value("pat"))
+            .andExpect(jsonPath("$.mustChangePassword").value(false))
+            .andExpect(jsonPath("$.isSystemAdmin").value(false))
+    }
+
+    /** local_credentials 행 픽스처 — mustChangePassword 플래그만 변주 */
+    private fun credential(
+        userId: UUID,
+        mustChange: Boolean,
+    ): StoredPasswordCredential {
+        val ts = Instant.parse("2026-01-01T00:00:00Z")
+        return StoredPasswordCredential(
+            userId = userId,
+            passwordHash = "\$argon2id\$irrelevant",
+            createdAt = ts,
+            updatedAt = ts,
+            mustChangePassword = mustChange,
+        )
     }
 }

@@ -8,7 +8,18 @@ import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
+import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest
+import org.springframework.context.annotation.Import
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import org.springframework.test.context.DynamicPropertyRegistry
+import org.springframework.test.context.DynamicPropertySource
+import org.testcontainers.containers.PostgreSQLContainer
+import org.testcontainers.junit.jupiter.Container
+import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.Instant
 import java.util.UUID
 
@@ -242,5 +253,84 @@ class LocalCredentialServiceTest {
         assertFalse(result)
         // save 가 호출되지 않아야 한다 (DB 변경 없음)
         verify(exactly = 0) { repo.save(any()) }
+    }
+}
+
+/**
+ * mustChangePassword 강제 변경 플래그 통합 테스트 (실 repo + Testcontainers PostgreSQL).
+ *
+ * store(mustChange=true) 후 플래그가 영속되고, rotate 성공 시 UPSERT SET 경로로
+ * 플래그가 자동 해제(false)되는지를 실제 PostgreSQL 로 검증한다.
+ * 최상위 클래스로 분리한 이유: @Nested inner class 는 바깥 companion 의
+ * @DynamicPropertySource 를 적용받지 못해 datasource 주입이 누락된다.
+ */
+@JdbcTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import(StoredPasswordCredentialRepository::class)
+@Testcontainers
+class LocalCredentialServiceMustChangeIntegrationTest {
+    companion object {
+        @Container
+        @JvmStatic
+        val postgres: PostgreSQLContainer<*> =
+            PostgreSQLContainer("postgres:16-alpine")
+                .withDatabaseName("bts_test")
+                .withUsername("bts")
+                .withPassword("bts_test")
+
+        @DynamicPropertySource
+        @JvmStatic
+        fun postgresProps(r: DynamicPropertyRegistry) {
+            r.add("spring.datasource.url") { postgres.jdbcUrl }
+            r.add("spring.datasource.username") { postgres.username }
+            r.add("spring.datasource.password") { postgres.password }
+            r.add("spring.flyway.enabled") { "true" }
+        }
+    }
+
+    @Autowired
+    private lateinit var repo: StoredPasswordCredentialRepository
+
+    @Autowired
+    private lateinit var jdbc: NamedParameterJdbcTemplate
+
+    private lateinit var userId: UUID
+    private lateinit var service: LocalCredentialService
+
+    @BeforeEach
+    fun setUp() {
+        jdbc.update("DELETE FROM local_credentials", emptyMap<String, Any>())
+        jdbc.update("DELETE FROM users", emptyMap<String, Any>())
+
+        userId = UUID.randomUUID()
+        jdbc.update(
+            "INSERT INTO users (id, username) VALUES (:id, :username)",
+            mapOf("id" to userId, "username" to "test-user-$userId"),
+        )
+        service = LocalCredentialService(repo)
+    }
+
+    @Test
+    fun `store mustChange=true — 플래그 true 로 영속`() {
+        service.store(userId, "InitP@ss1!".toCharArray(), mustChange = true)
+
+        val stored = repo.findByUserId(userId)
+        assertThat(stored).isNotNull()
+        assertThat(stored!!.mustChangePassword).isTrue()
+    }
+
+    @Test
+    fun `rotate 성공 — mustChange=true 였던 자격증명이 false 로 자동 해제`() {
+        // 강제 변경 대상으로 저장 (mustChange=true)
+        service.store(userId, "InitP@ss1!".toCharArray(), mustChange = true)
+        assertThat(repo.findByUserId(userId)!!.mustChangePassword).isTrue()
+
+        // 정상 비밀번호 변경 → UPSERT SET 이 mustChange=false 로 덮어쓰며 자동 해제
+        val rotated = service.rotate(userId, "InitP@ss1!".toCharArray(), "NewP@ss2!".toCharArray())
+
+        assertTrue(rotated)
+        val after = repo.findByUserId(userId)
+        assertThat(after).isNotNull()
+        assertThat(after!!.mustChangePassword).isFalse()
     }
 }

@@ -48,6 +48,25 @@ interface UserRepository {
     ): User
 
     /**
+     * 신규 로컬 계정 전용 INSERT (FR-AU-05).
+     *
+     * [save] / [provisionFromExternal] 의 UPSERT 와 달리 **ON CONFLICT 없는 순수 INSERT** 다.
+     * 관리자 회원가입은 기존 사용자 덮어쓰기가 절대 일어나면 안 되므로, username 이 이미 존재하면
+     * unique 제약 위반을 [org.springframework.dao.DuplicateKeyException] 로 전파한다.
+     *
+     * @param username    로그인 식별자 (UNIQUE)
+     * @param email       이메일 (null 허용)
+     * @param displayName 화면 표시 이름
+     * @return INSERT 된 신규 [User] (DB 발급 id / 타임스탬프 포함)
+     * @throws org.springframework.dao.DuplicateKeyException username 이 이미 존재할 때
+     */
+    fun create(
+        username: String,
+        email: String?,
+        displayName: String,
+    ): User
+
+    /**
      * 외부 IdP Auto-provisioning 전용 UPSERT (FR-AU-09 §29).
      *
      * [save] 와 동일한 UPSERT 동작이지만 호출 의도를 명확히 하기 위해 별도로 선언한다.
@@ -134,6 +153,28 @@ class JdbcUserRepository(
         email: String?,
         displayName: String,
     ): User = upsert(username, email, displayName)
+
+    /**
+     * 신규 로컬 계정 INSERT (FR-AU-05) — ON CONFLICT 없는 순수 INSERT.
+     *
+     * username 중복 시 Postgres unique 위반을 Spring 이 [org.springframework.dao.DuplicateKeyException]
+     * 으로 변환해 던진다. 호출 측(서비스)이 이를 도메인 예외로 변환한다.
+     */
+    override fun create(
+        username: String,
+        email: String?,
+        displayName: String,
+    ): User =
+        jdbc.queryForObject(
+            SQL_INSERT,
+            mapOf(
+                "id" to UUID.randomUUID(),
+                "username" to username,
+                "email" to email,
+                "displayName" to displayName,
+            ),
+            UserRowMapper,
+        ) ?: error("INSERT RETURNING 결과 없음 — username=$username")
 
     override fun provisionFromExternal(
         username: String,
@@ -230,6 +271,17 @@ class JdbcUserRepository(
             SELECT id, username, email, display_name, created_at, updated_at
             FROM users
             WHERE username = :username
+        """
+
+        /**
+         * 신규 로컬 계정 INSERT (FR-AU-05) — ON CONFLICT 없음.
+         * username 중복 시 unique 제약 위반으로 실패한다 (덮어쓰기 금지 — [SQL_UPSERT] 와 구분).
+         * RETURNING 으로 DB 발급 id / now() 타임스탬프를 그대로 반환한다.
+         */
+        const val SQL_INSERT = """
+            INSERT INTO users (id, username, email, display_name)
+            VALUES (:id, :username, :email, :displayName)
+            RETURNING id, username, email, display_name, created_at, updated_at
         """
 
         /**

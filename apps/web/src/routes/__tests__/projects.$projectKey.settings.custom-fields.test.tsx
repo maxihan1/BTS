@@ -54,6 +54,8 @@ describe('ProjectCustomFieldsSettingsPage', () => {
         username: 'alice',
         email: 'alice@example.com',
         authMethod: 'local',
+        mustChangePassword: false,
+        isSystemAdmin: false,
       },
     })
   })

@@ -32,7 +32,8 @@ export async function loginAsAlice(page: Page): Promise<void> {
   ).toBeVisible()
   await page.getByLabel(loginStrings.usernameLabel).fill('alice')
   await page.getByLabel(loginStrings.passwordLabel).fill('password')
-  await page.getByRole('button', { name: loginStrings.submitButton }).click()
+  // exact:true — "Okta SSO 로 로그인", "Google 로 로그인" 버튼과 구분 (playwright-getbyrole-exact-strict-mode)
+  await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
   await page.waitForURL('**/dashboard')
 }
 

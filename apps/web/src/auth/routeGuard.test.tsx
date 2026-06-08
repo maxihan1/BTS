@@ -1,8 +1,9 @@
-// 라우트 가드 헬퍼 단위 테스트 — requireAuth / redirectIfAuth / isSafeReturnTo
+// 라우트 가드 헬퍼 단위 테스트 — requireAuth / redirectIfAuth / isSafeReturnTo / requirePasswordChanged / requireSystemAdmin
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { isRedirect } from '@tanstack/react-router'
 import { useAuthStore } from './authStore'
-import { requireAuth, redirectIfAuth, isSafeReturnTo } from './routeGuard'
+import { requireAuth, redirectIfAuth, isSafeReturnTo, requirePasswordChanged, requireSystemAdmin } from './routeGuard'
+import { makeWhoami } from '@/mocks/auth-fixtures'
 
 // TanStack Router beforeLoad 컨텍스트 중 가드에서 사용하는 최소 형태
 interface MinimalBeforeLoadContext {
@@ -203,6 +204,103 @@ describe('redirectIfAuth', () => {
       thrown = e
     }
 
+    const r = thrown as RedirectResponse
+    expect(r.options.to).toBe('/dashboard')
+  })
+})
+
+// ─────────────────────────────────────────────
+// requirePasswordChanged
+// ─────────────────────────────────────────────
+describe('requirePasswordChanged', () => {
+  it('mustChangePassword=true인 유저 → /settings/password 로 redirect', () => {
+    useAuthStore.setState({
+      accessToken: 'valid-token',
+      user: makeWhoami({ mustChangePassword: true }),
+    })
+
+    let thrown: unknown
+    try {
+      requirePasswordChanged(makeCtx('/dashboard'))
+    } catch (e) {
+      thrown = e
+    }
+
+    expect(thrown).toBeDefined()
+    expect(isRedirect(thrown)).toBe(true)
+    const r = thrown as RedirectResponse
+    expect(r.options.to).toBe('/settings/password')
+  })
+
+  it('mustChangePassword=false인 유저 → throw 없음 (통과)', () => {
+    useAuthStore.setState({
+      accessToken: 'valid-token',
+      user: makeWhoami({ mustChangePassword: false }),
+    })
+
+    expect(() => requirePasswordChanged(makeCtx('/dashboard'))).not.toThrow()
+  })
+
+  it('이미 /settings/password 경로이면 mustChangePassword=true여도 통과 (무한 redirect 방지)', () => {
+    useAuthStore.setState({
+      accessToken: 'valid-token',
+      user: makeWhoami({ mustChangePassword: true }),
+    })
+
+    expect(() => requirePasswordChanged(makeCtx('/settings/password'))).not.toThrow()
+  })
+
+  it('user null이면 통과 (requireAuth가 먼저 처리)', () => {
+    useAuthStore.setState({ accessToken: null, user: null })
+
+    expect(() => requirePasswordChanged(makeCtx('/dashboard'))).not.toThrow()
+  })
+})
+
+// ─────────────────────────────────────────────
+// requireSystemAdmin
+// ─────────────────────────────────────────────
+describe('requireSystemAdmin', () => {
+  it('isSystemAdmin=true인 유저 → throw 없음 (통과)', () => {
+    useAuthStore.setState({
+      accessToken: 'valid-token',
+      user: makeWhoami({ isSystemAdmin: true }),
+    })
+
+    expect(() => requireSystemAdmin()).not.toThrow()
+  })
+
+  it('isSystemAdmin=false인 유저 → /dashboard 로 redirect', () => {
+    useAuthStore.setState({
+      accessToken: 'valid-token',
+      user: makeWhoami({ isSystemAdmin: false }),
+    })
+
+    let thrown: unknown
+    try {
+      requireSystemAdmin()
+    } catch (e) {
+      thrown = e
+    }
+
+    expect(thrown).toBeDefined()
+    expect(isRedirect(thrown)).toBe(true)
+    const r = thrown as RedirectResponse
+    expect(r.options.to).toBe('/dashboard')
+  })
+
+  it('user null이면 → /dashboard 로 redirect (deny-by-default)', () => {
+    useAuthStore.setState({ accessToken: null, user: null })
+
+    let thrown: unknown
+    try {
+      requireSystemAdmin()
+    } catch (e) {
+      thrown = e
+    }
+
+    expect(thrown).toBeDefined()
+    expect(isRedirect(thrown)).toBe(true)
     const r = thrown as RedirectResponse
     expect(r.options.to).toBe('/dashboard')
   })

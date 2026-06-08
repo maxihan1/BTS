@@ -7,6 +7,7 @@ import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
 import com.atlas.bts.identity.provider.ldap.LdapProvider
 import com.atlas.bts.identity.provider.ldap.LdapProviderConfigService
 import com.bts.shared.permission.ComponentPermissionResolver
+import com.bts.shared.permission.CustomFieldPermissionResolver
 import com.bts.shared.permission.VersionPermissionResolver
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -99,5 +100,15 @@ class ComponentVersionPermissionResolverFallbackBootTest {
 
         assertThat(beans).hasSize(1)
         assertThat(beans.values.single()).isInstanceOf(DevAllowVersionPermissionResolver::class.java)
+    }
+
+    // FR-IS-10 #98 이 MyProjectPermissionController 에 CustomFieldPermissionResolver 의존을 추가하면서
+    // non-prod fallback 을 누락해 모든 통합테스트가 부팅 실패했다(PRE_EXISTING). 동일 회귀 가드를 추가한다.
+    @Test
+    fun `non-prod 컨텍스트에 CustomFieldPermissionResolver fallback 빈이 정확히 1개 존재한다`() {
+        val beans = context.getBeansOfType(CustomFieldPermissionResolver::class.java)
+
+        assertThat(beans).hasSize(1)
+        assertThat(beans.values.single()).isInstanceOf(DevAllowCustomFieldPermissionResolver::class.java)
     }
 }

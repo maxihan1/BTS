@@ -34,7 +34,7 @@ beforeEach(() => {
   mockNavigate.mockReset()
   useAuthStore.setState({
     accessToken: 'test-token',
-    user: { username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1' },
+    user: { username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false },
   })
 })
 

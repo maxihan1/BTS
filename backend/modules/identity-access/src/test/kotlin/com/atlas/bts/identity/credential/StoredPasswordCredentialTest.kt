@@ -15,7 +15,7 @@ class StoredPasswordCredentialTest {
     private val now = Instant.parse("2026-05-20T00:00:00Z")
 
     @Test
-    fun `인스턴스 생성 후 5개 필드가 정상 노출된다`() {
+    fun `인스턴스 생성 후 6개 필드가 정상 노출된다`() {
         val hash = "\$argon2id\$v=19\$m=65536,t=3,p=4\$salt\$hash"
         val credential =
             StoredPasswordCredential(
@@ -24,6 +24,7 @@ class StoredPasswordCredentialTest {
                 algoVersion = "argon2id-v1",
                 createdAt = now,
                 updatedAt = now,
+                mustChangePassword = true,
             )
 
         assertEquals(userId, credential.userId)
@@ -31,10 +32,25 @@ class StoredPasswordCredentialTest {
         assertEquals("argon2id-v1", credential.algoVersion)
         assertEquals(now, credential.createdAt)
         assertEquals(now, credential.updatedAt)
+        assertTrue(credential.mustChangePassword)
     }
 
     @Test
-    fun `toString 은 passwordHash 를 *** 로 마스킹한다`() {
+    fun `mustChangePassword 는 기본값 false 이다`() {
+        val credential =
+            StoredPasswordCredential(
+                userId = userId,
+                passwordHash = "\$argon2id\$v=19\$m=65536,t=3,p=4\$salt\$hash",
+                algoVersion = "argon2id-v1",
+                createdAt = now,
+                updatedAt = now,
+            )
+
+        assertFalse(credential.mustChangePassword)
+    }
+
+    @Test
+    fun `toString 은 mustChangePassword=true 여도 passwordHash 를 *** 로 마스킹한다`() {
         val originalHash = "\$argon2id\$v=19\$m=65536,t=3,p=4\$salt\$hash"
         val credential =
             StoredPasswordCredential(
@@ -43,12 +59,14 @@ class StoredPasswordCredentialTest {
                 algoVersion = "argon2id-v1",
                 createdAt = now,
                 updatedAt = now,
+                mustChangePassword = true,
             )
 
         val str = credential.toString()
 
         assertTrue(str.contains("passwordHash=***"), "toString 에 'passwordHash=***' 가 포함되어야 한다. 실제: $str")
         assertFalse(str.contains(originalHash), "toString 에 실제 해시 값이 노출되면 안 된다. 실제: $str")
+        assertTrue(str.contains("mustChangePassword=true"), "toString 에 mustChangePassword 가 노출되어야 한다. 실제: $str")
     }
 
     @Test

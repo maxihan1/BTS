@@ -115,6 +115,8 @@ describe('WhoamiResponseSchema', () => {
       email: 'alice@example.com',
       authMethod: 'local',
       userId: 'usr-0001',
+      mustChangePassword: false,
+      isSystemAdmin: false,
     })
     expect(result.success).toBe(true)
   })
@@ -124,6 +126,8 @@ describe('WhoamiResponseSchema', () => {
       email: 'alice@example.com',
       authMethod: 'local',
       userId: 'usr-0001',
+      mustChangePassword: false,
+      isSystemAdmin: false,
     })
     expect(result.success).toBe(false)
   })
@@ -133,8 +137,56 @@ describe('WhoamiResponseSchema', () => {
       username: 'alice',
       email: 'alice@example.com',
       authMethod: 'local',
+      mustChangePassword: false,
+      isSystemAdmin: false,
     })
     expect(result.success).toBe(false)
+  })
+
+  it('mustChangePassword 누락 → safeParse fail', () => {
+    const result = WhoamiResponseSchema.safeParse({
+      username: 'alice',
+      email: 'alice@example.com',
+      authMethod: 'local',
+      userId: 'usr-0001',
+      isSystemAdmin: false,
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('isSystemAdmin 누락 → safeParse fail', () => {
+    const result = WhoamiResponseSchema.safeParse({
+      username: 'alice',
+      email: 'alice@example.com',
+      authMethod: 'local',
+      userId: 'usr-0001',
+      mustChangePassword: false,
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('mustChangePassword boolean true → safeParse success', () => {
+    const result = WhoamiResponseSchema.safeParse({
+      username: 'alice',
+      email: 'alice@example.com',
+      authMethod: 'local',
+      userId: 'usr-0001',
+      mustChangePassword: true,
+      isSystemAdmin: false,
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('isSystemAdmin boolean true → safeParse success', () => {
+    const result = WhoamiResponseSchema.safeParse({
+      username: 'alice',
+      email: 'alice@example.com',
+      authMethod: 'local',
+      userId: 'usr-0001',
+      mustChangePassword: false,
+      isSystemAdmin: true,
+    })
+    expect(result.success).toBe(true)
   })
 })
 
