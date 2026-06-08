@@ -29,6 +29,18 @@ export interface IssueDescriptionProps {
    * fail-closed: 권한 미확정 시 false 전달 권장.
    */
   canEdit?: boolean
+  /**
+   * 열람 불가 필드 키 목록 — "description"이 포함되면 본문 대신
+   * 열람 불가 placeholder를 표시하고 편집 버튼을 숨긴다 (FR-PM-07 §3.1).
+   * 기본값 빈 배열 — 미전달 시 제한 없음.
+   */
+  restrictedFields?: string[]
+  /**
+   * 편집 불가 필드 키 목록 — "description"이 포함되면 canEdit과 AND로
+   * 편집 버튼을 disabled 처리한다 (FR-PM-07 §3.2).
+   * 기본값 빈 배열 — 미전달 시 제한 없음.
+   */
+  noneditableFields?: string[]
 }
 
 /** Write/Preview 탭 상태 */
@@ -60,10 +72,17 @@ export function IssueDescription({
   onSave,
   isSaving,
   canEdit = true,
+  restrictedFields = [],
+  noneditableFields = [],
 }: IssueDescriptionProps): JSX.Element {
   const [isEditing, setIsEditing] = useState(false)
   const [activeTab, setActiveTab] = useState<ActiveTab>('write')
   const [draftMarkdown, setDraftMarkdown] = useState('')
+
+  // FR-PM-07 §3.1: "description"이 restrictedFields에 포함되면 열람 자체를 차단
+  const isRestricted = restrictedFields.includes('description')
+  // FR-PM-07 §3.2: canEdit AND noneditableFields 둘 중 하나라도 false이면 편집 불가
+  const isEditDisabled = !canEdit || noneditableFields.includes('description')
 
   function handleEditClick() {
     setDraftMarkdown(description ?? '')
@@ -78,6 +97,18 @@ export function IssueDescription({
 
   function handleSave() {
     onSave(draftMarkdown)
+  }
+
+  // 열람 불가 — 본문/편집 버튼 대신 placeholder만 표시
+  if (isRestricted) {
+    return (
+      <p
+        data-testid="description-restricted"
+        className="text-sm text-muted-foreground italic min-h-[44px] flex items-center"
+      >
+        {issueDetailStrings.descriptionRestricted}
+      </p>
+    )
   }
 
   if (isEditing) {
@@ -99,7 +130,7 @@ export function IssueDescription({
     <ReadMode
       descriptionHtml={descriptionHtml}
       onEditClick={handleEditClick}
-      canEdit={canEdit}
+      canEdit={!isEditDisabled}
     />
   )
 }
