@@ -122,7 +122,7 @@ classify: type=backend, agent=backend-engineer, primary_bc=issue-tracking
 - depends-on: [1]
 
 **RED**: PermissionSchemaMigrationTest 카운트 +1(role_permissions) 기대 → 현재 시드로 실패. resolver 통합 테스트 — PROJECT_ADMIN true / MEMBER false.
-**GREEN**: V017 시드 `('...001','PROJECT_ADMIN','MANAGE_CUSTOM_FIELDS')`. IdentityAccessComponentPermissionResolver 동형 prod resolver(roleHasPermission). PermissionSchemaMigrationTest 카운트 갱신(메모리 fr-pm-permission-seed-migration-test-coupling).
+**GREEN**: V017 시드 `('...001','PROJECT_ADMIN','MANAGE_CUSTOM_FIELDS')`. IdentityAccessComponentPermissionResolver 동형 prod resolver(`@Profile("prod")`, roleHasPermission). PermissionSchemaMigrationTest 카운트 갱신(메모리 fr-pm-permission-seed-migration-test-coupling). **eng 리뷰 C3**: 권한코드 추가가 PermissionSchemaMigrationTest 외 다른 카운트 가드도 깨는지 전 모듈 grep(메모리 enum-add-breaks-crossmodule-count-guard) — `grep -rn "role_permissions\|permission_code" backend/*/src/test`.
 **REFACTOR**: toPermissionCode 재사용.
 **검증**: `./gradlew :backend:identity-access:test --tests PermissionSchemaMigrationTest --tests IdentityAccessCustomFieldPermissionResolverTest`
 
@@ -134,7 +134,7 @@ classify: type=backend, agent=backend-engineer, primary_bc=issue-tracking
 - depends-on: [1, 4, 5]
 
 **RED**: Service 단위 테스트(mock resolver/repo) — create/update/delete 전 assertPermission 호출, 미인가 시 거부 예외. fieldType/key 불변(update 시 변경 거부). 프로젝트 미존재 404.
-**GREEN**: ComponentApplicationService 동형. @Service @Transactional. CRUD + assertPermission(CustomFieldPermissionResolver). AlwaysAllow stub(non-prod, issue-tracking adapter — IssueScope 마스킹 패턴).
+**GREEN**: ComponentApplicationService 동형. @Service @Transactional. CRUD + assertPermission(CustomFieldPermissionResolver). AlwaysAllow stub `@Component @Profile("!prod")` (identity prod resolver는 `@Profile("prod")` — 배타, AlwaysAllowComponentPermissionResolver 선례). prod 빈은 런타임 DI가 shared 포트로 연결(컴파일 의존은 shared만, BC격리 유지).
 **REFACTOR**: assertPermission private 헬퍼.
 **검증**: `./gradlew :backend:issue-tracking:test --tests CustomFieldApplicationServiceTest`
 
@@ -154,8 +154,10 @@ classify: type=backend, agent=backend-engineer, primary_bc=issue-tracking
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/CreateIssueRequest.kt`, `.../rest/UpdateIssueRequest.kt`, `.../rest/IssueResponse.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/domain/Issue.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationRequests.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueCustomFieldsTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/CreateIssueRequest.kt`, `.../rest/UpdateIssueRequest.kt`, `.../rest/IssueResponse.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/domain/Issue.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationRequests.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueCustomFieldsTest.kt`]
 - depends-on: [4, 5]
+
+> **eng 리뷰 C1**: `IssueRepository.kt`에 custom_fields JSONB read/write 매핑 필수(누락 시 DB 미저장). jOOQ JSONB 매핑 — Jackson Map 직렬화/역직렬화. init_codegen 컬럼(T2)이 codegen에 반영돼야 jOOQ 타입 인식.
 
 **RED**: IssueCustomFieldsTest — 생성 시 customFields 검증+저장, 조회 응답 노출(단건+목록), PATCH 필드단위 병합(키 갱신/null 제거/부재 무변경, E11), required 최종상태 검증. 미구현 실패.
 **GREEN**: Issue 도메인에 customFields(Map) 추가. CreateIssueRequest/UpdateIssueRequest(JsonNullable 병합)/IssueResponse 필드 추가. IssueApplicationService가 정의 로드(Repository) + Validator 호출 + JSONB 저장. 클론(FR-IS-06) 미복사 유지(E10).
@@ -200,4 +202,22 @@ classify: type=backend, agent=backend-engineer, primary_bc=issue-tracking
 - 추가 검증: ktlint, detekt(--rerun-tasks), verify-master-plan.sh
 - 주의(메모리): jooq-init-codegen-mirror(T2), permission-seed-migration-test-coupling+enum-count-guard(T6), patch-merge-domain-bypass(T9), join-table-fk-cascade(T2 options), migration-vnumber-concurrent-branch-collision(T2 V015 / T6 V017 머지 직전 재확인)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-08, eng 집중 독립 리뷰 — autoplan overkill 메모 적용)
+
+- ✅ TDD 분해: 11 task 모두 RED/GREEN/REFACTOR + 메타(agent/files/depends-on) 완비.
+- ✅ 의존 그래프: cycle 없음, 파일 겹침 자동 직렬화 정합(T7 CustomFieldApplicationService ↔ T9 IssueApplicationService 별도 파일, 동시 wave 가능).
+- ✅ cross-BC: 권한 결선(T1/T6 identity) + 본체(issue-tracking). FR-CM-01 동일 구조, BC격리 유지(컴파일 의존 shared 포트만).
+- **C1 (해소)**: T9 영속화 누락 → `IssueRepository.kt` custom_fields JSONB 매핑 추가. 미반영 시 DB 미저장(silent fail).
+- **C2 (해소)**: resolver 빈 `@Profile("prod")`↔`@Profile("!prod")` 배타 패턴 T7 명시(profile-scoped-bean-boot-failure 메모).
+- **C3 (해소)**: 권한코드 추가 전 모듈 카운트 가드 grep T6 추가(enum-add-breaks-crossmodule-count-guard 메모).
+- **C4 (해소)**: SecurityConfig `anyRequest authenticated` — 신규 엔드포인트 401 자동 커버, 별도 task 불요.
+- ⚠️ 주의(머지 직전): V015(issue)/V017(identity) 동시 브랜치 V번호 충돌 재확인(migration-vnumber 메모).
+- BLOCKER: 없음.
+
+### 보안 관점 (cross-BC 권한)
+
+- ✅ 권한 ground-truth = prod Testcontainers(T10). non-prod AlwaysAllow 마스킹 인지.
+- ✅ 관리자 우회 경로 없음 — 정의 CRUD는 MANAGE_CUSTOM_FIELDS 단일 게이트.
+- ✅ 값 검증(T4)이 미정의 키 silent drop 금지(명시 422) — 권한 우회로 숨은 필드 주입 차단.
