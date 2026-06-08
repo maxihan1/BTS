@@ -59,27 +59,29 @@ class CustomFieldDefinitionRepository(
         )
         val now = OffsetDateTime.now(ZoneOffset.UTC)
 
-        val record = dsl.insertInto(CUSTOM_FIELD_DEFINITIONS)
-            .set(CUSTOM_FIELD_DEFINITIONS.PROJECT_ID, definition.projectId)
-            .set(CUSTOM_FIELD_DEFINITIONS.KEY, definition.key)
-            .set(CUSTOM_FIELD_DEFINITIONS.NAME, definition.name)
-            .set(CUSTOM_FIELD_DEFINITIONS.DESCRIPTION, null as String?)
-            .set(CUSTOM_FIELD_DEFINITIONS.FIELD_TYPE, definition.fieldType.name)
-            .set(CUSTOM_FIELD_DEFINITIONS.REQUIRED, definition.required)
-            .set(CUSTOM_FIELD_DEFINITIONS.DISPLAY_ORDER, definition.displayOrder)
-            .set(CUSTOM_FIELD_DEFINITIONS.CREATED_AT, now)
-            .set(CUSTOM_FIELD_DEFINITIONS.UPDATED_AT, now)
-            .returning()
-            .fetchOne()
-            ?: error("insert returning() returned null for key=${definition.key}")
+        val record =
+            dsl.insertInto(CUSTOM_FIELD_DEFINITIONS)
+                .set(CUSTOM_FIELD_DEFINITIONS.PROJECT_ID, definition.projectId)
+                .set(CUSTOM_FIELD_DEFINITIONS.KEY, definition.key)
+                .set(CUSTOM_FIELD_DEFINITIONS.NAME, definition.name)
+                .set(CUSTOM_FIELD_DEFINITIONS.DESCRIPTION, null as String?)
+                .set(CUSTOM_FIELD_DEFINITIONS.FIELD_TYPE, definition.fieldType.name)
+                .set(CUSTOM_FIELD_DEFINITIONS.REQUIRED, definition.required)
+                .set(CUSTOM_FIELD_DEFINITIONS.DISPLAY_ORDER, definition.displayOrder)
+                .set(CUSTOM_FIELD_DEFINITIONS.CREATED_AT, now)
+                .set(CUSTOM_FIELD_DEFINITIONS.UPDATED_AT, now)
+                .returning()
+                .fetchOne()
+                ?: error("insert returning() returned null for key=${definition.key}")
 
         val fieldId = record.id ?: error("custom_field_definitions.id must not be null after insert")
 
-        val savedOptions = if (definition.options.isNotEmpty()) {
-            saveOptions(fieldId, definition.options)
-        } else {
-            emptyList()
-        }
+        val savedOptions =
+            if (definition.options.isNotEmpty()) {
+                saveOptions(fieldId, definition.options)
+            } else {
+                emptyList()
+            }
 
         return toDefinition(
             id = fieldId,
@@ -105,28 +107,13 @@ class CustomFieldDefinitionRepository(
     fun findByProjectAndKey(
         projectId: UUID,
         key: String,
-    ): CustomFieldDefinition? {
-        val record = dsl.selectFrom(CUSTOM_FIELD_DEFINITIONS)
+    ): CustomFieldDefinition? =
+        dsl.selectFrom(CUSTOM_FIELD_DEFINITIONS)
             .where(CUSTOM_FIELD_DEFINITIONS.PROJECT_ID.eq(projectId))
             .and(CUSTOM_FIELD_DEFINITIONS.KEY.eq(key))
             .and(CUSTOM_FIELD_DEFINITIONS.DELETED_AT.isNull)
             .fetchOne()
-            ?: return null
-
-        val fieldId = record.id ?: return null
-        val options = loadOptions(fieldId)
-
-        return toDefinition(
-            id = fieldId,
-            projectId = record.projectId ?: return null,
-            key = record.key ?: return null,
-            name = record.name ?: return null,
-            fieldType = FieldType.valueOf(record.fieldType ?: return null),
-            required = record.required ?: false,
-            displayOrder = record.displayOrder ?: 0,
-            options = options,
-        )
-    }
+            ?.let { record -> recordToDefinition(record) }
 
     /**
      * 프로젝트 소속 활성 정의를 [CustomFieldDefinition.displayOrder] 오름차순으로 반환한다.
@@ -140,11 +127,12 @@ class CustomFieldDefinitionRepository(
      */
     @Transactional(readOnly = true)
     fun findActiveByProject(projectId: UUID): List<CustomFieldDefinition> {
-        val records = dsl.selectFrom(CUSTOM_FIELD_DEFINITIONS)
-            .where(CUSTOM_FIELD_DEFINITIONS.PROJECT_ID.eq(projectId))
-            .and(CUSTOM_FIELD_DEFINITIONS.DELETED_AT.isNull)
-            .orderBy(CUSTOM_FIELD_DEFINITIONS.DISPLAY_ORDER.asc())
-            .fetch()
+        val records =
+            dsl.selectFrom(CUSTOM_FIELD_DEFINITIONS)
+                .where(CUSTOM_FIELD_DEFINITIONS.PROJECT_ID.eq(projectId))
+                .and(CUSTOM_FIELD_DEFINITIONS.DELETED_AT.isNull)
+                .orderBy(CUSTOM_FIELD_DEFINITIONS.DISPLAY_ORDER.asc())
+                .fetch()
 
         if (records.isEmpty()) return emptyList()
 
@@ -155,10 +143,14 @@ class CustomFieldDefinitionRepository(
             val fieldId = record.id ?: return@mapNotNull null
             toDefinition(
                 id = fieldId,
-                projectId = record.projectId ?: return@mapNotNull null,
-                key = record.key ?: return@mapNotNull null,
-                name = record.name ?: return@mapNotNull null,
-                fieldType = FieldType.valueOf(record.fieldType ?: return@mapNotNull null),
+                projectId = record.projectId
+                    ?: error("custom_field_definitions.project_id must not be null"),
+                key = record.key ?: error("custom_field_definitions.key must not be null"),
+                name = record.name ?: error("custom_field_definitions.name must not be null"),
+                fieldType = FieldType.valueOf(
+                    record.fieldType
+                        ?: error("custom_field_definitions.field_type must not be null"),
+                ),
                 required = record.required ?: false,
                 displayOrder = record.displayOrder ?: 0,
                 options = optionsByFieldId[fieldId] ?: emptyList(),
@@ -284,4 +276,32 @@ class CustomFieldDefinitionRepository(
             displayOrder = displayOrder,
             options = options,
         )
+
+    /**
+     * jOOQ [com.bts.issue.jooq.tables.records.CustomFieldDefinitionsRecord] 를
+     * [CustomFieldDefinition] 도메인 객체로 변환한다.
+     *
+     * NOT NULL 컬럼(id, project_id, key, name, field_type)이 null 이면 DB 정합 이상이므로
+     * `error()` 로 빠른 실패를 유도한다.
+     * 옵션은 [loadOptions] 를 통해 함께 로드한다.
+     *
+     * @param record 변환할 jOOQ 레코드.
+     * @return 변환된 [CustomFieldDefinition].
+     */
+    private fun recordToDefinition(
+        record: com.bts.issue.jooq.tables.records.CustomFieldDefinitionsRecord,
+    ): CustomFieldDefinition {
+        val fieldId = record.id ?: error("custom_field_definitions.id must not be null")
+        val options = loadOptions(fieldId)
+        return toDefinition(
+            id = fieldId,
+            projectId = record.projectId ?: error("project_id must not be null"),
+            key = record.key ?: error("key must not be null"),
+            name = record.name ?: error("name must not be null"),
+            fieldType = FieldType.valueOf(record.fieldType ?: error("field_type must not be null")),
+            required = record.required ?: false,
+            displayOrder = record.displayOrder ?: 0,
+            options = options,
+        )
+    }
 }

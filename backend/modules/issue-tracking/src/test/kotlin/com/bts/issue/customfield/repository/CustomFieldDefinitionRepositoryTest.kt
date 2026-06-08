@@ -1,4 +1,4 @@
-// CustomFieldDefinitionRepository Testcontainers 통합테스트 — save/findByProjectAndKey/findActiveByProject/softDelete + 옵션 동반 저장/조회
+// CustomFieldDefinitionRepository 통합테스트 — CRUD + 옵션 동반 + 소프트 삭제 + 유니크 위반
 package com.bts.issue.customfield.repository
 
 import com.bts.issue.customfield.domain.CustomFieldDefinition
@@ -7,12 +7,12 @@ import com.bts.issue.customfield.domain.FieldType
 import com.bts.issue.repository.IssueTestcontainersBase
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.jooq.exception.DataAccessException
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.MethodOrderer
 import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
-import org.jooq.exception.DataAccessException
 import java.util.UUID
 
 /**
@@ -23,7 +23,7 @@ import java.util.UUID
  *
  * 테스트 케이스 목록.
  * - T1: save 후 findByProjectAndKey 로 활성 정의 조회.
- * - T2: save — 비선택형 정의(옵션 없음) + 선택형 정의(옵션 동반 저장/조회).
+ * - T2: save — 선택형 정의(옵션 동반 저장/조회).
  * - T3: findActiveByProject — display_order 오름차순 정렬.
  * - T4: findActiveByProject — 소프트 삭제된 정의 제외.
  * - T5: softDelete 후 findByProjectAndKey null 반환.
@@ -33,7 +33,6 @@ import java.util.UUID
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class CustomFieldDefinitionRepositoryTest : IssueTestcontainersBase() {
-
     private lateinit var repo: CustomFieldDefinitionRepository
 
     @BeforeEach
@@ -48,12 +47,13 @@ class CustomFieldDefinitionRepositoryTest : IssueTestcontainersBase() {
     @Test
     @Order(1)
     fun `save 후 findByProjectAndKey 로 활성 정의가 조회되어야 한다`() {
-        val definition = CustomFieldDefinition.create(
-            projectId = testProjectId,
-            key = "salary_impact",
-            name = "급여 영향도",
-            fieldType = FieldType.SHORT_TEXT,
-        )
+        val definition =
+            CustomFieldDefinition.create(
+                projectId = testProjectId,
+                key = "salary_impact",
+                name = "급여 영향도",
+                fieldType = FieldType.SHORT_TEXT,
+            )
 
         val saved = repo.save(definition)
 
@@ -76,17 +76,19 @@ class CustomFieldDefinitionRepositoryTest : IssueTestcontainersBase() {
     @Test
     @Order(2)
     fun `선택형 정의는 옵션과 함께 저장되고 함께 조회되어야 한다`() {
-        val options = listOf(
-            CustomFieldOption(value = "low", label = "낮음", displayOrder = 0),
-            CustomFieldOption(value = "high", label = "높음", displayOrder = 1),
-        )
-        val definition = CustomFieldDefinition.create(
-            projectId = testProjectId,
-            key = "priority_level",
-            name = "우선순위",
-            fieldType = FieldType.SINGLE_SELECT,
-            options = options,
-        )
+        val options =
+            listOf(
+                CustomFieldOption(value = "low", label = "낮음", displayOrder = 0),
+                CustomFieldOption(value = "high", label = "높음", displayOrder = 1),
+            )
+        val definition =
+            CustomFieldDefinition.create(
+                projectId = testProjectId,
+                key = "priority_level",
+                name = "우선순위",
+                fieldType = FieldType.SINGLE_SELECT,
+                options = options,
+            )
 
         val saved = repo.save(definition)
 
@@ -105,27 +107,33 @@ class CustomFieldDefinitionRepositoryTest : IssueTestcontainersBase() {
     @Test
     @Order(3)
     fun `findActiveByProject 는 활성 정의를 display_order 오름차순으로 반환해야 한다`() {
-        repo.save(CustomFieldDefinition.create(
-            projectId = testProjectId,
-            key = "field_c",
-            name = "필드C",
-            fieldType = FieldType.NUMBER,
-            displayOrder = 30,
-        ))
-        repo.save(CustomFieldDefinition.create(
-            projectId = testProjectId,
-            key = "field_a",
-            name = "필드A",
-            fieldType = FieldType.SHORT_TEXT,
-            displayOrder = 10,
-        ))
-        repo.save(CustomFieldDefinition.create(
-            projectId = testProjectId,
-            key = "field_b",
-            name = "필드B",
-            fieldType = FieldType.CHECKBOX,
-            displayOrder = 20,
-        ))
+        repo.save(
+            CustomFieldDefinition.create(
+                projectId = testProjectId,
+                key = "field_c",
+                name = "필드C",
+                fieldType = FieldType.NUMBER,
+                displayOrder = 30,
+            ),
+        )
+        repo.save(
+            CustomFieldDefinition.create(
+                projectId = testProjectId,
+                key = "field_a",
+                name = "필드A",
+                fieldType = FieldType.SHORT_TEXT,
+                displayOrder = 10,
+            ),
+        )
+        repo.save(
+            CustomFieldDefinition.create(
+                projectId = testProjectId,
+                key = "field_b",
+                name = "필드B",
+                fieldType = FieldType.CHECKBOX,
+                displayOrder = 20,
+            ),
+        )
 
         val result = repo.findActiveByProject(testProjectId)
 
@@ -138,20 +146,26 @@ class CustomFieldDefinitionRepositoryTest : IssueTestcontainersBase() {
     @Test
     @Order(4)
     fun `findActiveByProject 는 소프트 삭제된 정의를 포함하지 않아야 한다`() {
-        val active = repo.save(CustomFieldDefinition.create(
-            projectId = testProjectId,
-            key = "active_field",
-            name = "활성 필드",
-            fieldType = FieldType.SHORT_TEXT,
-            displayOrder = 0,
-        ))
-        val toDelete = repo.save(CustomFieldDefinition.create(
-            projectId = testProjectId,
-            key = "deleted_field",
-            name = "삭제될 필드",
-            fieldType = FieldType.SHORT_TEXT,
-            displayOrder = 1,
-        ))
+        val active =
+            repo.save(
+                CustomFieldDefinition.create(
+                    projectId = testProjectId,
+                    key = "active_field",
+                    name = "활성 필드",
+                    fieldType = FieldType.SHORT_TEXT,
+                    displayOrder = 0,
+                ),
+            )
+        val toDelete =
+            repo.save(
+                CustomFieldDefinition.create(
+                    projectId = testProjectId,
+                    key = "deleted_field",
+                    name = "삭제될 필드",
+                    fieldType = FieldType.SHORT_TEXT,
+                    displayOrder = 1,
+                ),
+            )
 
         repo.softDelete(toDelete.id!!, testProjectId)
 
@@ -165,12 +179,15 @@ class CustomFieldDefinitionRepositoryTest : IssueTestcontainersBase() {
     @Test
     @Order(5)
     fun `softDelete 후 findByProjectAndKey 는 null 을 반환해야 한다`() {
-        val saved = repo.save(CustomFieldDefinition.create(
-            projectId = testProjectId,
-            key = "to_delete",
-            name = "삭제 대상",
-            fieldType = FieldType.SHORT_TEXT,
-        ))
+        val saved =
+            repo.save(
+                CustomFieldDefinition.create(
+                    projectId = testProjectId,
+                    key = "to_delete",
+                    name = "삭제 대상",
+                    fieldType = FieldType.SHORT_TEXT,
+                ),
+            )
 
         repo.softDelete(saved.id!!, testProjectId)
 
@@ -183,20 +200,24 @@ class CustomFieldDefinitionRepositoryTest : IssueTestcontainersBase() {
     @Test
     @Order(6)
     fun `같은 프로젝트 같은 key 의 활성 정의를 재저장하면 DataAccessException 이 발생해야 한다`() {
-        repo.save(CustomFieldDefinition.create(
-            projectId = testProjectId,
-            key = "dup_key",
-            name = "중복 필드",
-            fieldType = FieldType.SHORT_TEXT,
-        ))
-
-        assertThatThrownBy {
-            repo.save(CustomFieldDefinition.create(
+        repo.save(
+            CustomFieldDefinition.create(
                 projectId = testProjectId,
                 key = "dup_key",
-                name = "중복 필드2",
+                name = "중복 필드",
                 fieldType = FieldType.SHORT_TEXT,
-            ))
+            ),
+        )
+
+        assertThatThrownBy {
+            repo.save(
+                CustomFieldDefinition.create(
+                    projectId = testProjectId,
+                    key = "dup_key",
+                    name = "중복 필드2",
+                    fieldType = FieldType.SHORT_TEXT,
+                ),
+            )
         }.isInstanceOf(DataAccessException::class.java)
     }
 
@@ -205,20 +226,26 @@ class CustomFieldDefinitionRepositoryTest : IssueTestcontainersBase() {
     @Test
     @Order(7)
     fun `softDelete 후 동일 key 로 재생성이 허용되어야 한다`() {
-        val first = repo.save(CustomFieldDefinition.create(
-            projectId = testProjectId,
-            key = "reborn_key",
-            name = "재생성 필드",
-            fieldType = FieldType.SHORT_TEXT,
-        ))
+        val first =
+            repo.save(
+                CustomFieldDefinition.create(
+                    projectId = testProjectId,
+                    key = "reborn_key",
+                    name = "재생성 필드",
+                    fieldType = FieldType.SHORT_TEXT,
+                ),
+            )
         repo.softDelete(first.id!!, testProjectId)
 
-        val second = repo.save(CustomFieldDefinition.create(
-            projectId = testProjectId,
-            key = "reborn_key",
-            name = "재생성 필드2",
-            fieldType = FieldType.SHORT_TEXT,
-        ))
+        val second =
+            repo.save(
+                CustomFieldDefinition.create(
+                    projectId = testProjectId,
+                    key = "reborn_key",
+                    name = "재생성 필드2",
+                    fieldType = FieldType.SHORT_TEXT,
+                ),
+            )
 
         assertThat(second.id).isNotNull()
         assertThat(second.id).isNotEqualTo(first.id)
@@ -230,23 +257,30 @@ class CustomFieldDefinitionRepositoryTest : IssueTestcontainersBase() {
     @Test
     @Order(8)
     fun `findActiveByProject 는 다른 프로젝트의 정의를 포함하지 않아야 한다`() {
-        val otherProjectId: UUID = dsl.resultQuery(
-            "INSERT INTO projects (key, name) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
-            "TPRJCF2", "Test Project CF2",
-        ).fetchOne()?.get(0) as UUID
+        val otherProjectId: UUID =
+            dsl.resultQuery(
+                "INSERT INTO projects (key, name) VALUES (?, ?)" +
+                    " ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                "TPRJCF2",
+                "Test Project CF2",
+            ).fetchOne()?.get(0) as UUID
 
-        repo.save(CustomFieldDefinition.create(
-            projectId = testProjectId,
-            key = "mine",
-            name = "내 필드",
-            fieldType = FieldType.SHORT_TEXT,
-        ))
-        repo.save(CustomFieldDefinition.create(
-            projectId = otherProjectId,
-            key = "other",
-            name = "남의 필드",
-            fieldType = FieldType.SHORT_TEXT,
-        ))
+        repo.save(
+            CustomFieldDefinition.create(
+                projectId = testProjectId,
+                key = "mine",
+                name = "내 필드",
+                fieldType = FieldType.SHORT_TEXT,
+            ),
+        )
+        repo.save(
+            CustomFieldDefinition.create(
+                projectId = otherProjectId,
+                key = "other",
+                name = "남의 필드",
+                fieldType = FieldType.SHORT_TEXT,
+            ),
+        )
 
         val result = repo.findActiveByProject(testProjectId)
         assertThat(result).hasSize(1)
