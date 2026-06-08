@@ -135,7 +135,13 @@ interface FormBodyProps {
   readonly submitError?: string | null
 }
 
-function FormBody({ mode, initial, onSubmit, onOpenChange, submitError }: FormBodyProps): JSX.Element {
+function FormBody({
+  mode,
+  initial,
+  onSubmit,
+  onOpenChange,
+  submitError,
+}: FormBodyProps): JSX.Element {
   const { form: labels, fieldTypes } = customFieldLabels
 
   const {
@@ -161,33 +167,36 @@ function FormBody({ mode, initial, onSubmit, onOpenChange, submitError }: FormBo
 
   const watchedFieldType = watch('fieldType')
   const isOptionType = OPTION_FIELD_TYPES.has(watchedFieldType)
-  const optionCount = fields.length
-  const isSaveDisabled = isOptionType && optionCount === 0
+  const isSaveDisabled = isOptionType && fields.length === 0
+
+  /** 선택지 배열을 API 입력 형태로 변환한다. */
+  function mapOptions(values: FormValues) {
+    return isOptionType
+      ? values.options.map((o, i) => ({ value: o.value, label: o.label, displayOrder: i }))
+      : undefined
+  }
 
   function onValid(values: FormValues): void {
+    const description = values.description !== '' ? values.description : undefined
     if (mode === 'create') {
       const payload: CreateCustomFieldInput = {
         key: values.key,
         name: values.name,
-        description: values.description !== '' ? values.description : undefined,
+        description,
         fieldType: values.fieldType,
         required: values.required,
         displayOrder: values.displayOrder,
-        options: isOptionType
-          ? values.options.map((o, i) => ({ value: o.value, label: o.label, displayOrder: i }))
-          : undefined,
+        options: mapOptions(values),
       }
       onSubmit(payload)
     } else {
-      // edit 모드: fieldType·key 제외
+      // edit 모드: fieldType·key 제외 (백엔드 불변)
       const payload: UpdateCustomFieldInput = {
         name: values.name,
-        description: values.description !== '' ? values.description : undefined,
+        description,
         required: values.required,
         displayOrder: values.displayOrder,
-        options: isOptionType
-          ? values.options.map((o, i) => ({ value: o.value, label: o.label, displayOrder: i }))
-          : undefined,
+        options: mapOptions(values),
       }
       onSubmit(payload)
     }
