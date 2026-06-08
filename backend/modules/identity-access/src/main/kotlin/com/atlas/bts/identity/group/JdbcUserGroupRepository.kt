@@ -102,6 +102,11 @@ class JdbcUserGroupRepository(
             Boolean::class.java,
         ) ?: false
 
+    override fun findGroupIdsByUser(userId: UUID): List<UUID> =
+        jdbc.query(SQL_FIND_GROUP_IDS_BY_USER, mapOf("userId" to userId)) { rs, _ ->
+            rs.getObject("group_id", UUID::class.java)
+        }
+
     // ── SQL 상수 ─────────────────────────────────────────────────────────────────
 
     private companion object {
@@ -189,6 +194,13 @@ class JdbcUserGroupRepository(
                 WHERE group_id = :groupId
                   AND user_id = :userId
             )
+        """
+
+        /** 사용자가 속한 모든 그룹 식별자 — ix_group_memberships_user 인덱스 활용(actor 역방향 배치). */
+        const val SQL_FIND_GROUP_IDS_BY_USER = """
+            SELECT group_id
+            FROM group_memberships
+            WHERE user_id = :userId
         """
     }
 }

@@ -136,4 +136,17 @@ interface UserGroupRepository {
         groupId: UUID,
         userId: UUID,
     ): Boolean
+
+    /**
+     * 사용자가 소속한 모든 그룹의 식별자를 반환한다(FR-PM-07 PR-A Task 4).
+     *
+     * 필드 수준 권한 판정([FieldPermissionResolver])에서 actor 의 그룹 집합을 한 번에 회수해
+     * `field_permissions` 규칙의 group_id 와 교집합으로 visible/editable 을 계산한다.
+     * [isMemberOf] 가 (그룹, 사용자) 단건 확인인 것과 달리, 본 메서드는 actor 기준 역방향
+     * 배치 조회로 그룹별 EXISTS N회를 1회로 압축한다(N+1 회피).
+     *
+     * @param userId 그룹 소속을 조회할 사용자 식별자.
+     * @return 사용자가 속한 그룹 식별자 목록. 소속이 없으면 빈 목록.
+     */
+    fun findGroupIdsByUser(userId: UUID): List<UUID>
 }
