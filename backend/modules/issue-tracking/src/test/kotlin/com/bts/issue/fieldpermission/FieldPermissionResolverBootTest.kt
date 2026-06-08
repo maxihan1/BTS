@@ -96,11 +96,12 @@ class FieldPermissionResolverBootTest {
     fun `visibleFields는 candidates를 그대로 반환한다`() {
         val actorId = UUID.randomUUID()
         val projectId = UUID.randomUUID()
-        val candidates = setOf(
-            FieldRef(FieldKind.CORE, "summary"),
-            FieldRef(FieldKind.CORE, "priority"),
-            FieldRef(FieldKind.CUSTOM, "team"),
-        )
+        val candidates =
+            setOf(
+                FieldRef(FieldKind.CORE, "summary"),
+                FieldRef(FieldKind.CORE, "priority"),
+                FieldRef(FieldKind.CUSTOM, "team"),
+            )
 
         val result = fieldPermissionResolver.visibleFields(actorId, projectId, candidates)
 
@@ -111,10 +112,11 @@ class FieldPermissionResolverBootTest {
     fun `editableFields는 candidates를 그대로 반환한다`() {
         val actorId = UUID.randomUUID()
         val projectId = UUID.randomUUID()
-        val candidates = setOf(
-            FieldRef(FieldKind.CORE, "summary"),
-            FieldRef(FieldKind.CUSTOM, "team"),
-        )
+        val candidates =
+            setOf(
+                FieldRef(FieldKind.CORE, "summary"),
+                FieldRef(FieldKind.CUSTOM, "team"),
+            )
 
         val result = fieldPermissionResolver.editableFields(actorId, projectId, candidates)
 
