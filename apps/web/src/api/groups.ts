@@ -1,7 +1,7 @@
 // 전역 사용자 그룹 조회 API 클라이언트 — GET /api/v1/groups (FR-PM-07)
 import { z } from 'zod'
 import { apiGet } from './client'
-import { groupResponseSchema } from './field-permissions.types'
+import { groupResponseSchema, type GroupResponse } from './field-permissions.types'
 
 export type { GroupResponse } from './field-permissions.types'
 
@@ -29,6 +29,6 @@ const groupListSchema = z.array(groupResponseSchema)
  * @throws ApiError(403) 전역 관리자 권한 없음 시
  * @throws ApiError(401) 미인증 시
  */
-export async function fetchGroups(): Promise<z.infer<typeof groupListSchema>> {
+export async function fetchGroups(): Promise<GroupResponse[]> {
   return apiGet('/api/v1/groups', groupListSchema)
 }
