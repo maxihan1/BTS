@@ -656,6 +656,234 @@ describe('IssueMetaPanel — 커스텀 필드 섹션 (FR-IS-10 Task 9)', () => {
     )
   })
 
+  it('T9-C4-1: required 커스텀 필드(SHORT_TEXT)를 비운 채 저장 시도 → 경고 메시지가 표시되고 onCustomFieldsSave가 호출되지 않는다 (스펙 E-3)', async () => {
+    const requiredFieldFixture: CustomField = {
+      id: 'fd000001-0000-4000-8000-000000000010',
+      projectId: 'pd000001-0000-4000-8000-000000000001',
+      key: 'req_field',
+      name: '필수 항목',
+      description: null,
+      fieldType: 'SHORT_TEXT',
+      required: true,
+      displayOrder: 0,
+      options: [],
+    }
+    vi.mocked(useCustomFields).mockReturnValue({
+      data: [requiredFieldFixture],
+      isLoading: false,
+      isError: false,
+      isPending: false,
+      isSuccess: true,
+      error: null,
+      status: 'success',
+      fetchStatus: 'idle',
+      dataUpdatedAt: 0,
+      errorUpdatedAt: 0,
+      failureCount: 0,
+      failureReason: null,
+      isFetched: true,
+      isFetchedAfterMount: true,
+      isFetching: false,
+      isInitialLoading: false,
+      isLoadingError: false,
+      isPlaceholderData: false,
+      isRefetchError: false,
+      isRefetching: false,
+      isStale: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useCustomFields>)
+
+    const onCustomFieldsSave = vi.fn()
+    const user = userEvent.setup()
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <IssueMetaPanel
+          issue={{ ...issueFixture, customFields: {} }}
+          availableTypes={[typeFixture]}
+          onTypeChange={vi.fn()}
+          onDeleteClick={vi.fn()}
+          onCloneClick={vi.fn()}
+          transitions={[]}
+          onTransition={vi.fn()}
+          isTransitioning={false}
+          onPriorityChange={vi.fn()}
+          onImpactChange={vi.fn()}
+          onEnvironmentSave={vi.fn()}
+          onLabelsSave={vi.fn()}
+          users={[]}
+          onAssigneeSearch={vi.fn()}
+          onAssigneeChange={vi.fn()}
+          currentAssignee={null}
+          onCustomFieldsSave={onCustomFieldsSave}
+        />
+      </QueryClientProvider>,
+    )
+
+    // req_field를 비워둔 채 저장 시도
+    const saveButton = screen.getByTestId('custom-fields-save')
+    await user.click(saveButton)
+
+    // 경고 메시지가 표시되어야 한다
+    expect(screen.getByTestId('custom-fields-required-error')).toBeInTheDocument()
+    // mutation은 호출되지 않아야 한다
+    expect(onCustomFieldsSave).not.toHaveBeenCalled()
+  })
+
+  it('T9-C4-2: required 커스텀 필드(NUMBER)를 비운 채 저장 시도 → 경고 메시지가 표시되고 onCustomFieldsSave가 호출되지 않는다 (스펙 E-3)', async () => {
+    const requiredNumberFieldFixture: CustomField = {
+      id: 'fd000001-0000-4000-8000-000000000011',
+      projectId: 'pd000001-0000-4000-8000-000000000001',
+      key: 'req_number',
+      name: '필수 숫자',
+      description: null,
+      fieldType: 'NUMBER',
+      required: true,
+      displayOrder: 0,
+      options: [],
+    }
+    vi.mocked(useCustomFields).mockReturnValue({
+      data: [requiredNumberFieldFixture],
+      isLoading: false,
+      isError: false,
+      isPending: false,
+      isSuccess: true,
+      error: null,
+      status: 'success',
+      fetchStatus: 'idle',
+      dataUpdatedAt: 0,
+      errorUpdatedAt: 0,
+      failureCount: 0,
+      failureReason: null,
+      isFetched: true,
+      isFetchedAfterMount: true,
+      isFetching: false,
+      isInitialLoading: false,
+      isLoadingError: false,
+      isPlaceholderData: false,
+      isRefetchError: false,
+      isRefetching: false,
+      isStale: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useCustomFields>)
+
+    const onCustomFieldsSave = vi.fn()
+    const user = userEvent.setup()
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <IssueMetaPanel
+          issue={{ ...issueFixture, customFields: {} }}
+          availableTypes={[typeFixture]}
+          onTypeChange={vi.fn()}
+          onDeleteClick={vi.fn()}
+          onCloneClick={vi.fn()}
+          transitions={[]}
+          onTransition={vi.fn()}
+          isTransitioning={false}
+          onPriorityChange={vi.fn()}
+          onImpactChange={vi.fn()}
+          onEnvironmentSave={vi.fn()}
+          onLabelsSave={vi.fn()}
+          users={[]}
+          onAssigneeSearch={vi.fn()}
+          onAssigneeChange={vi.fn()}
+          currentAssignee={null}
+          onCustomFieldsSave={onCustomFieldsSave}
+        />
+      </QueryClientProvider>,
+    )
+
+    // req_number를 비워둔 채 저장 시도
+    const saveButton = screen.getByTestId('custom-fields-save')
+    await user.click(saveButton)
+
+    // 경고 메시지가 표시되어야 한다
+    expect(screen.getByTestId('custom-fields-required-error')).toBeInTheDocument()
+    // mutation은 호출되지 않아야 한다
+    expect(onCustomFieldsSave).not.toHaveBeenCalled()
+  })
+
+  it('T9-C4-3: required 필드를 채운 후 저장하면 onCustomFieldsSave가 호출된다 (E-3 정상 경로)', async () => {
+    const requiredFieldFixture: CustomField = {
+      id: 'fd000001-0000-4000-8000-000000000010',
+      projectId: 'pd000001-0000-4000-8000-000000000001',
+      key: 'req_field',
+      name: '필수 항목',
+      description: null,
+      fieldType: 'SHORT_TEXT',
+      required: true,
+      displayOrder: 0,
+      options: [],
+    }
+    vi.mocked(useCustomFields).mockReturnValue({
+      data: [requiredFieldFixture],
+      isLoading: false,
+      isError: false,
+      isPending: false,
+      isSuccess: true,
+      error: null,
+      status: 'success',
+      fetchStatus: 'idle',
+      dataUpdatedAt: 0,
+      errorUpdatedAt: 0,
+      failureCount: 0,
+      failureReason: null,
+      isFetched: true,
+      isFetchedAfterMount: true,
+      isFetching: false,
+      isInitialLoading: false,
+      isLoadingError: false,
+      isPlaceholderData: false,
+      isRefetchError: false,
+      isRefetching: false,
+      isStale: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useCustomFields>)
+
+    const onCustomFieldsSave = vi.fn()
+    const user = userEvent.setup()
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <IssueMetaPanel
+          issue={{ ...issueFixture, customFields: {} }}
+          availableTypes={[typeFixture]}
+          onTypeChange={vi.fn()}
+          onDeleteClick={vi.fn()}
+          onCloneClick={vi.fn()}
+          transitions={[]}
+          onTransition={vi.fn()}
+          isTransitioning={false}
+          onPriorityChange={vi.fn()}
+          onImpactChange={vi.fn()}
+          onEnvironmentSave={vi.fn()}
+          onLabelsSave={vi.fn()}
+          users={[]}
+          onAssigneeSearch={vi.fn()}
+          onAssigneeChange={vi.fn()}
+          currentAssignee={null}
+          onCustomFieldsSave={onCustomFieldsSave}
+        />
+      </QueryClientProvider>,
+    )
+
+    // req_field에 값 입력 후 저장
+    const input = screen.getByTestId('custom-field-req_field')
+    await user.type(input, '유효한 값')
+
+    const saveButton = screen.getByTestId('custom-fields-save')
+    await user.click(saveButton)
+
+    // 경고 메시지가 없어야 한다
+    expect(screen.queryByTestId('custom-fields-required-error')).not.toBeInTheDocument()
+    // mutation이 호출되어야 한다
+    expect(onCustomFieldsSave).toHaveBeenCalled()
+  })
+
   it('T9-M4: 커스텀 필드 저장 버튼 클릭 시 onCustomFieldsSave가 현재 값 맵으로 호출된다', async () => {
     vi.mocked(useCustomFields).mockReturnValue({
       data: [customFieldFixture],
