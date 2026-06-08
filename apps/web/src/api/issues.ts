@@ -77,6 +77,20 @@ export const issueResponseSchema = z.object({
    * - 값은 임의 JSON(unknown) — 배열은 Record가 아니므로 z.record가 거부한다.
    */
   customFields: z.record(z.string(), z.unknown()).default({}),
+  /**
+   * FR-PM-07 — 열람 마스킹된 필드 키 목록(PR-A).
+   * 현재 사용자의 권한으로 값을 읽을 수 없는 필드의 키가 담긴다.
+   * 필드가 응답에 없으면 빈 배열로 기본 처리 — 기존 인라인 mock이 깨지지 않게 한다
+   * (zod-schema-strengthen-inline-mock-fanout 교훈).
+   */
+  restrictedFields: z.array(z.string()).default([]),
+  /**
+   * FR-PM-07 — 편집 비활성 필드 키 목록(PR-B).
+   * 화면에는 보이지만 현재 사용자의 권한으로 수정할 수 없는 필드의 키가 담긴다.
+   * 필드가 응답에 없으면 빈 배열로 기본 처리 — 기존 인라인 mock이 깨지지 않게 한다
+   * (zod-schema-strengthen-inline-mock-fanout 교훈).
+   */
+  noneditableFields: z.array(z.string()).default([]),
 })
 
 /** Spring Page 응답 Zod 스키마 — 래퍼 없음 (DataResponse 감싸지 않음) */

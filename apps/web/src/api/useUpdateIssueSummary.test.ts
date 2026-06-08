@@ -51,6 +51,8 @@ const issueFixture: IssueResponse = {
   impact: null,
   impactName: null,
   customFields: {},
+  restrictedFields: [],
+  noneditableFields: [],
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -47,6 +47,10 @@ export const createdIssueFixture = {
   securityLevelId: null,
   /** FR-IS-10 — 커스텀 필드 기본값. 생성 시 customFields 미전달이면 백엔드 기본값 {} 에코. */
   customFields: {} as Record<string, unknown>,
+  /** FR-PM-07 — 생성 이슈는 열람 마스킹 없음(기본 빈 배열). */
+  restrictedFields: [],
+  /** FR-PM-07 — 생성 이슈는 편집 제한 없음(기본 빈 배열). */
+  noneditableFields: [],
 }
 
 const issueFixtureMap: Record<string, IssueResponse> = {

@@ -26,6 +26,8 @@ export const issueAtlas1Fixture: IssueResponse = {
   impact: null,
   impactName: null,
   customFields: {},
+  restrictedFields: [],
+  noneditableFields: [],
 }
 
 /** 이슈 단건 fixture — ATLAS-2 (typeId=2 → story, issue-type-fixtures id=2: key='story') */
@@ -53,6 +55,8 @@ export const issueAtlas2Fixture: IssueResponse = {
   impact: null,
   impactName: null,
   customFields: {},
+  restrictedFields: [],
+  noneditableFields: [],
 }
 
 /** 이슈 단건 fixture — ATLAS-3 (typeId=3 → task, issue-type-fixtures id=3: key='task') */
@@ -80,6 +84,8 @@ export const issueAtlas3Fixture: IssueResponse = {
   impact: null,
   impactName: null,
   customFields: {},
+  restrictedFields: [],
+  noneditableFields: [],
 }
 
 /** 이슈 단건 fixture — ATLAS-5 (FR-IS-07 E2E용, in_review 상태 → Approve → done 전이 검증) */
@@ -107,6 +113,8 @@ export const issueAtlas5Fixture: IssueResponse = {
   impact: null,
   impactName: null,
   customFields: {},
+  restrictedFields: [],
+  noneditableFields: [],
 }
 
 /** Spring Page 형태의 이슈 목록 fixture — 4건(ATLAS-5 포함), 1 페이지 */
@@ -146,6 +154,8 @@ export const issueAtlas4Fixture: IssueResponse = {
   impact: null,
   impactName: null,
   customFields: {},
+  restrictedFields: [],
+  noneditableFields: [],
 }
 
 /** 이슈 단건 fixture — ATLAS-NOWF (워크플로우 미설정 이슈, 422 E2E 검증용) */
@@ -173,6 +183,8 @@ export const issueAtlasNoWorkflowFixture: IssueResponse = {
   impact: null,
   impactName: null,
   customFields: {},
+  restrictedFields: [],
+  noneditableFields: [],
 }
 
 /** 빈 이슈 목록 fixture */

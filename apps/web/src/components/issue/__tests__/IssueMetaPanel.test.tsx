@@ -105,6 +105,8 @@ const issueFixture: IssueResponse = {
   impact: null,
   impactName: null,
   customFields: {},
+  restrictedFields: [],
+  noneditableFields: [],
 }
 
 const typeFixture: IssueTypeResponse = {
