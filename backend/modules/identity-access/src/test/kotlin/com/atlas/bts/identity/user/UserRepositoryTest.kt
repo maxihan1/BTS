@@ -150,6 +150,47 @@ class UserRepositoryTest {
         assertThat(count).isEqualTo(2)
     }
 
+    // ── create (INSERT 전용) ──────────────────────────────────────────────────
+
+    @Test
+    fun `create — 신규 행 INSERT 후 User 반환`() {
+        val user = repo.create("kate", "kate@bts.local", "Kate Lim")
+
+        assertThat(user.id).isNotNull()
+        assertThat(user.username).isEqualTo("kate")
+        assertThat(user.email).isEqualTo("kate@bts.local")
+        assertThat(user.displayName).isEqualTo("Kate Lim")
+
+        val found = repo.findByUsername("kate")
+        assertThat(found).isNotNull()
+        assertThat(found!!.id).isEqualTo(user.id)
+    }
+
+    @Test
+    fun `create — email null 허용`() {
+        val user = repo.create("leo", null, "Leo Han")
+
+        assertThat(user.email).isNull()
+        assertThat(user.username).isEqualTo("leo")
+    }
+
+    @Test
+    fun `create — 중복 username 은 예외 (기존 행 덮어쓰기 금지, save UPSERT 와 구분)`() {
+        val first = repo.create("mia", "mia@bts.local", "Mia Old")
+
+        // 같은 username 으로 다시 create 하면 ON CONFLICT 없는 INSERT 라 unique 위반.
+        assertThatThrownBy {
+            repo.create("mia", "mia-new@bts.local", "Mia New")
+        }.isInstanceOf(org.springframework.dao.DuplicateKeyException::class.java)
+
+        // 기존 행이 그대로 보존되어야 한다 (덮어쓰기 안 됨).
+        val found = repo.findByUsername("mia")
+        assertThat(found).isNotNull()
+        assertThat(found!!.id).isEqualTo(first.id)
+        assertThat(found.email).isEqualTo("mia@bts.local")
+        assertThat(found.displayName).isEqualTo("Mia Old")
+    }
+
     // ── provisionFromExternal ─────────────────────────────────────────────────
 
     @Test
