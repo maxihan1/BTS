@@ -1,4 +1,4 @@
-// 라우트 가드 헬퍼 — requireAuth / redirectIfAuth / isSafeReturnTo / requirePasswordChanged / requireSystemAdmin
+// 라우트 가드 헬퍼 — requireAuth / redirectIfAuth / isSafeReturnTo / requirePasswordChanged / requireSystemAdmin / composeGuards
 import { redirect } from '@tanstack/react-router'
 import { useAuthStore } from './authStore'
 
@@ -6,6 +6,9 @@ import { useAuthStore } from './authStore'
 interface GuardContext {
   location: { href: string; pathname: string }
 }
+
+/** 가드 함수 타입 */
+type Guard = (ctx: GuardContext) => void
 
 /**
  * returnTo 값이 안전한 내부 경로인지 검사한다.
@@ -106,4 +109,20 @@ export function requireSystemAdmin({ location: _location }: GuardContext): void 
   const user = useAuthStore.getState().user
   if (user?.isSystemAdmin === true) return
   throw redirect({ to: '/dashboard' })
+}
+
+/**
+ * 여러 가드를 순차 실행하는 합성 헬퍼. 앞 가드가 redirect를 throw하면 뒤 가드는 실행되지 않는다.
+ *
+ * 사용 예.
+ * ```ts
+ * beforeLoad: composeGuards(requireAuth, requirePasswordChanged)
+ * ```
+ */
+export function composeGuards(...guards: Guard[]): (ctx: GuardContext) => void {
+  return (ctx) => {
+    for (const guard of guards) {
+      guard(ctx)
+    }
+  }
 }
