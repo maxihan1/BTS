@@ -37,6 +37,7 @@ class CustomFieldValueValidatorTest : DescribeSpec({
         projectId = projectId,
         key = key,
         name = key,
+        description = null,
         fieldType = fieldType,
         required = required,
         displayOrder = 0,

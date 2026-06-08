@@ -5,9 +5,11 @@ package com.bts.issue.customfield.application
 import com.bts.issue.customfield.domain.CustomFieldAccessDeniedException
 import com.bts.issue.customfield.domain.CustomFieldDefinition
 import com.bts.issue.customfield.domain.CustomFieldNotFoundException
+import com.bts.issue.customfield.domain.CustomFieldOption
 import com.bts.issue.customfield.domain.CustomFieldProjectNotFoundException
 import com.bts.issue.customfield.domain.DuplicateCustomFieldKeyException
 import com.bts.issue.customfield.domain.FieldType
+import com.bts.issue.customfield.domain.InvalidFieldDefinitionException
 import com.bts.issue.customfield.domain.ImmutableFieldTypeChangeException
 import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
 import com.bts.issue.project.ProjectLookup
@@ -57,6 +59,7 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
             projectId = projectId,
             key = "salary_impact",
             name = "급여 영향도",
+            description = null,
             fieldType = FieldType.SHORT_TEXT,
             required = false,
             displayOrder = 0,
@@ -253,7 +256,7 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
                 every { projectLookup.resolve(projectIdOrKey) } returns null
 
                 shouldThrow<CustomFieldProjectNotFoundException> {
-                    sut.update(actorId, projectIdOrKey, fieldId, null, null, FieldType.SHORT_TEXT, "k", null, null)
+                    sut.update(actorId, projectIdOrKey, fieldId, null, null, FieldType.SHORT_TEXT, "k", null, null, null)
                 }
             }
         }
@@ -265,13 +268,10 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
                 every {
                     permissionResolver.hasPermission(actorId, CustomFieldPermission.UPDATE, projectId)
                 } returns true
-                val selectField = existingField.copy(
-                    fieldType = FieldType.SELECT,
-                    options = listOf(CustomFieldOption("old", "Old", 0)),
-                )
-                every { repo.findById(fieldId, projectId) } returns selectField
-                val newOptions = listOf(CustomFieldOption("new", "New", 0))
-                val updated = selectField.copy(description = "업데이트 설명", options = newOptions)
+                // SHORT_TEXT: isSelectType=false → options 전달해도 validateOptions 통과
+                every { repo.findById(fieldId, projectId) } returns existingField
+                val newOptions = listOf(CustomFieldOption("opt_a", "Option A", 0))
+                val updated = existingField.copy(description = "업데이트 설명", options = newOptions)
                 every { repo.update(any()) } returns updated
 
                 val result = sut.update(
@@ -280,7 +280,7 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
                     fieldId = fieldId,
                     name = null,
                     description = "업데이트 설명",
-                    fieldType = FieldType.SELECT,
+                    fieldType = FieldType.SHORT_TEXT,
                     key = "salary_impact",
                     required = null,
                     displayOrder = null,
@@ -304,7 +304,7 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
                 } returns true
                 every { repo.findById(fieldId, projectId) } returns existingField
 
-                shouldThrow<com.bts.issue.customfield.domain.InvalidFieldDefinitionException> {
+                shouldThrow<InvalidFieldDefinitionException> {
                     sut.update(
                         actorId = actorId,
                         projectIdOrKey = projectIdOrKey,

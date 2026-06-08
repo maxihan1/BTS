@@ -65,7 +65,7 @@ class CustomFieldDefinitionRepository(
                 .set(CUSTOM_FIELD_DEFINITIONS.PROJECT_ID, definition.projectId)
                 .set(CUSTOM_FIELD_DEFINITIONS.KEY, definition.key)
                 .set(CUSTOM_FIELD_DEFINITIONS.NAME, definition.name)
-                .set(CUSTOM_FIELD_DEFINITIONS.DESCRIPTION, null as String?)
+                .set(CUSTOM_FIELD_DEFINITIONS.DESCRIPTION, definition.description)
                 .set(CUSTOM_FIELD_DEFINITIONS.FIELD_TYPE, definition.fieldType.name)
                 .set(CUSTOM_FIELD_DEFINITIONS.REQUIRED, definition.required)
                 .set(CUSTOM_FIELD_DEFINITIONS.DISPLAY_ORDER, definition.displayOrder)
@@ -89,6 +89,7 @@ class CustomFieldDefinitionRepository(
             projectId = record.projectId ?: error("project_id must not be null after insert"),
             key = record.key ?: error("key must not be null after insert"),
             name = record.name ?: error("name must not be null after insert"),
+            description = record.description,
             fieldType = FieldType.valueOf(record.fieldType ?: error("field_type must not be null after insert")),
             required = record.required ?: false,
             displayOrder = record.displayOrder ?: 0,
@@ -119,7 +120,8 @@ class CustomFieldDefinitionRepository(
     /**
      * 기존 커스텀 필드 정의를 갱신한다.
      *
-     * name / required / display_order 만 변경 가능하다.
+     * name / description / required / display_order 를 갱신하고,
+     * options 가 비어 있지 않거나 현재 필드에 옵션이 있으면 전체 교체(삭제 후 재삽입)한다.
      * fieldType 과 key 는 생성 후 불변 — [ImmutableFieldTypeChangeException] 검증은 ApplicationService 책임.
      *
      * @param definition 갱신할 [CustomFieldDefinition]. [CustomFieldDefinition.id] 가 non-null 이어야 한다.
@@ -132,6 +134,7 @@ class CustomFieldDefinitionRepository(
 
         dsl.update(CUSTOM_FIELD_DEFINITIONS)
             .set(CUSTOM_FIELD_DEFINITIONS.NAME, definition.name)
+            .set(CUSTOM_FIELD_DEFINITIONS.DESCRIPTION, definition.description)
             .set(CUSTOM_FIELD_DEFINITIONS.REQUIRED, definition.required)
             .set(CUSTOM_FIELD_DEFINITIONS.DISPLAY_ORDER, definition.displayOrder)
             .set(CUSTOM_FIELD_DEFINITIONS.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
@@ -139,6 +142,8 @@ class CustomFieldDefinitionRepository(
             .and(CUSTOM_FIELD_DEFINITIONS.PROJECT_ID.eq(definition.projectId))
             .and(CUSTOM_FIELD_DEFINITIONS.DELETED_AT.isNull)
             .execute()
+
+        replaceOptions(id, definition.options)
 
         return definition
     }
@@ -198,6 +203,7 @@ class CustomFieldDefinitionRepository(
                 projectId = pid,
                 key = key,
                 name = name,
+                description = record.description,
                 fieldType = FieldType.valueOf(rawType),
                 required = record.required ?: false,
                 displayOrder = record.displayOrder ?: 0,
@@ -231,6 +237,27 @@ class CustomFieldDefinitionRepository(
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * 필드에 속한 선택지를 전체 교체한다.
+     *
+     * 기존 선택지를 모두 삭제한 뒤 [options] 를 새로 삽입한다.
+     * [options] 가 비어 있으면 삭제만 수행한다(비선택형 필드나 옵션 제거 케이스).
+     *
+     * @param fieldId 소속 필드 정의 UUID.
+     * @param options 교체할 선택지 목록.
+     */
+    private fun replaceOptions(
+        fieldId: UUID,
+        options: List<CustomFieldOption>,
+    ) {
+        dsl.deleteFrom(CUSTOM_FIELD_OPTIONS)
+            .where(CUSTOM_FIELD_OPTIONS.FIELD_ID.eq(fieldId))
+            .execute()
+        if (options.isNotEmpty()) {
+            saveOptions(fieldId, options)
+        }
+    }
 
     /**
      * 선택지 목록을 `custom_field_options` 에 삽입하고 저장된 [CustomFieldOption] 리스트를 반환한다.
@@ -309,6 +336,7 @@ class CustomFieldDefinitionRepository(
         projectId: UUID,
         key: String,
         name: String,
+        description: String?,
         fieldType: FieldType,
         required: Boolean,
         displayOrder: Int,
@@ -319,6 +347,7 @@ class CustomFieldDefinitionRepository(
             projectId = projectId,
             key = key,
             name = name,
+            description = description,
             fieldType = fieldType,
             required = required,
             displayOrder = displayOrder,
@@ -344,6 +373,7 @@ class CustomFieldDefinitionRepository(
             projectId = record.projectId ?: error("project_id must not be null"),
             key = record.key ?: error("key must not be null"),
             name = record.name ?: error("name must not be null"),
+            description = record.description,
             fieldType = FieldType.valueOf(record.fieldType ?: error("field_type must not be null")),
             required = record.required ?: false,
             displayOrder = record.displayOrder ?: 0,

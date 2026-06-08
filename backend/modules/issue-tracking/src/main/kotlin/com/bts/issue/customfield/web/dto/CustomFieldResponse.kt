@@ -74,7 +74,7 @@ data class CustomFieldResponse(
                 projectId = definition.projectId,
                 key = definition.key,
                 name = definition.name,
-                description = null,
+                description = definition.description,
                 fieldType = definition.fieldType,
                 required = definition.required,
                 displayOrder = definition.displayOrder,

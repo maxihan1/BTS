@@ -169,16 +169,26 @@ class CustomFieldController(
         @Valid @RequestBody request: UpdateCustomFieldRequest,
     ): ResponseEntity<DataResponse<CustomFieldResponse>> {
         log.info("CustomFieldController.update projectIdOrKey={} fieldId={}", projectIdOrKey, fieldId)
+        val options =
+            request.options?.map { opt ->
+                com.bts.issue.customfield.domain.CustomFieldOption(
+                    value = opt.value,
+                    label = opt.label,
+                    displayOrder = opt.displayOrder,
+                )
+            }
         val definition =
             service.update(
                 actorId = SYSTEM_ACTOR_UUID,
                 projectIdOrKey = projectIdOrKey,
                 fieldId = fieldId,
                 name = request.name,
+                description = request.description,
                 fieldType = request.fieldType,
                 key = request.key,
                 required = request.required,
                 displayOrder = request.displayOrder,
+                options = options,
             )
         return ResponseEntity.ok(DataResponse(data = CustomFieldResponse.from(definition)))
     }

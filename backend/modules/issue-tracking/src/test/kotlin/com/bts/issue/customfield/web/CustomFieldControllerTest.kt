@@ -107,6 +107,7 @@ class CustomFieldControllerTest {
         id: UUID = fieldId,
         key: String = "salary_impact",
         name: String = "급여 영향도",
+        description: String? = null,
         fieldType: FieldType = FieldType.NUMBER,
         required: Boolean = false,
         displayOrder: Int = 1,
@@ -117,6 +118,7 @@ class CustomFieldControllerTest {
             projectId = projectId,
             key = key,
             name = name,
+            description = description,
             fieldType = fieldType,
             required = required,
             displayOrder = displayOrder,
@@ -370,7 +372,7 @@ class CustomFieldControllerTest {
     fun `PATCH custom-fields fieldKey — fieldType 변경 시도 → 422 CUSTOM_FIELD_IMMUTABLE_CHANGE`() {
         val body = mapper.writeValueAsString(mapOf("name" to "이름", "fieldType" to "LONG_TEXT"))
         every {
-            customFieldApplicationService.update(any(), any(), any(), any(), any(), any(), any(), any())
+            customFieldApplicationService.update(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } throws ImmutableFieldTypeChangeException("fieldType")
 
         mockMvc.perform(
@@ -388,7 +390,7 @@ class CustomFieldControllerTest {
     fun `PATCH custom-fields fieldKey — 권한 없음 → 403 CUSTOM_FIELD_ACCESS_DENIED`() {
         val body = mapper.writeValueAsString(mapOf("name" to "이름"))
         every {
-            customFieldApplicationService.update(any(), any(), any(), any(), any(), any(), any(), any())
+            customFieldApplicationService.update(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } throws CustomFieldAccessDeniedException(actorId, projectId)
 
         mockMvc.perform(

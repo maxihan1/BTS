@@ -28,6 +28,7 @@ internal const val MAX_KEY_LENGTH = 64
  * @property projectId 이 필드 정의가 속한 프로젝트 UUID.
  * @property key 필드 식별자. URL-safe 소문자. JSONB 키로도 사용.
  * @property name 사용자에게 노출되는 필드 이름.
+ * @property description 필드에 대한 부연 설명. 선택 사항이며 null 허용.
  * @property fieldType 필드 데이터 타입. 생성 후 변경 불가.
  * @property required 이슈 저장 시 이 필드 입력이 필수인지 여부.
  * @property displayOrder 이슈 폼 내 표시 순서. 낮을수록 먼저 표시.
@@ -38,6 +39,7 @@ data class CustomFieldDefinition(
     val projectId: UUID,
     val key: String,
     val name: String,
+    val description: String?,
     val fieldType: FieldType,
     val required: Boolean,
     val displayOrder: Int,
@@ -52,6 +54,7 @@ data class CustomFieldDefinition(
          * @param projectId 이 필드 정의가 속한 프로젝트 UUID.
          * @param key 필드 식별자. `[a-z][a-z0-9_]*` 패턴, 최대 [MAX_KEY_LENGTH]자.
          * @param name 사용자에게 노출되는 필드 이름. trim 후 빈 문자열 불가, 최대 [MAX_FIELD_NAME_LENGTH]자.
+         * @param description 선택적 설명. null 허용. 기본값 null.
          * @param fieldType 필드 데이터 타입.
          * @param required 필수 여부. 기본값 false.
          * @param displayOrder 표시 순서. 기본값 0.
@@ -59,11 +62,12 @@ data class CustomFieldDefinition(
          * @return 생성된 [CustomFieldDefinition] 인스턴스.
          * @throws InvalidFieldDefinitionException 불변식 위반 시.
          */
-        @Suppress("LongParameterList") // Aggregate factory — 7개 필드 모두 도메인 불변식에 해당, 분리 불가
+        @Suppress("LongParameterList") // Aggregate factory — 8개 필드 모두 도메인 불변식에 해당, 분리 불가
         fun create(
             projectId: UUID,
             key: String,
             name: String,
+            description: String? = null,
             fieldType: FieldType,
             required: Boolean = false,
             displayOrder: Int = 0,
@@ -77,12 +81,51 @@ data class CustomFieldDefinition(
                 projectId = projectId,
                 key = key,
                 name = name.trim(),
+                description = description?.trim()?.ifEmpty { null },
                 fieldType = fieldType,
                 required = required,
                 displayOrder = displayOrder,
                 options = options,
             )
         }
+    }
+
+    /**
+     * 변경 가능한 필드(name / description / required / displayOrder / options)를 교체하여
+     * 새 [CustomFieldDefinition] 인스턴스를 반환한다.
+     *
+     * copy() 를 직접 사용하는 대신 이 메서드를 경유함으로써 name 검증([validateName])과
+     * options 불변식([validateOptions])이 항상 적용된다. (메모리: patch-merge-domain-bypass)
+     *
+     * fieldType / key 는 변경 불가 — 호출 전 ApplicationService 에서 이미 검증한다.
+     *
+     * @param name 새 이름. null 이면 기존 유지.
+     * @param description 새 설명. null 이면 기존 유지.
+     * @param required 새 필수 여부. null 이면 기존 유지.
+     * @param displayOrder 새 표시 순서. null 이면 기존 유지.
+     * @param options 새 선택지 목록(전체 교체). null 이면 기존 유지.
+     * @return 변경된 [CustomFieldDefinition] 인스턴스.
+     * @throws InvalidFieldDefinitionException name 불변식 위반 또는 선택형 옵션 미존재 시.
+     */
+    @Suppress("LongParameterList") // 변경 가능한 5개 필드 전체 처리 — 분리 불가
+    fun withChanges(
+        name: String? = null,
+        description: String? = null,
+        required: Boolean? = null,
+        displayOrder: Int? = null,
+        options: List<CustomFieldOption>? = null,
+    ): CustomFieldDefinition {
+        val newName = name ?: this.name
+        validateName(newName)
+        val newOptions = options ?: this.options
+        validateOptions(fieldType, newOptions)
+        return copy(
+            name = newName.trim(),
+            description = description ?: this.description,
+            required = required ?: this.required,
+            displayOrder = displayOrder ?: this.displayOrder,
+            options = newOptions,
+        )
     }
 }
 

@@ -113,10 +113,12 @@ class CustomFieldApplicationService(
      * @param projectIdOrKey 프로젝트 UUID 또는 projectKey.
      * @param fieldId 수정할 필드 정의 UUID.
      * @param name 새 이름. null 이면 기존 유지.
+     * @param description 새 설명. null 이면 기존 유지.
      * @param fieldType 필드 타입. 기존 값과 달라지면 예외.
      * @param key 필드 key. 기존 값과 달라지면 예외.
      * @param required 필수 여부. null 이면 기존 유지.
      * @param displayOrder 표시 순서. null 이면 기존 유지.
+     * @param options 선택지 목록(전체 교체). null 이면 기존 유지.
      * @return 수정된 [CustomFieldDefinition].
      * @throws CustomFieldProjectNotFoundException 프로젝트가 존재하지 않을 때.
      * @throws CustomFieldAccessDeniedException 권한이 없을 때.
@@ -129,10 +131,12 @@ class CustomFieldApplicationService(
         projectIdOrKey: String,
         fieldId: UUID,
         name: String?,
+        description: String?,
         fieldType: FieldType?,
         key: String?,
         required: Boolean?,
         displayOrder: Int?,
+        options: List<CustomFieldOption>?,
     ): CustomFieldDefinition {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, CustomFieldPermission.UPDATE, projectId)
@@ -146,12 +150,13 @@ class CustomFieldApplicationService(
             throw ImmutableFieldTypeChangeException("key")
         }
 
-        val updated =
-            existing.copy(
-                name = name ?: existing.name,
-                required = required ?: existing.required,
-                displayOrder = displayOrder ?: existing.displayOrder,
-            )
+        val updated = existing.withChanges(
+            name = name,
+            description = description,
+            required = required,
+            displayOrder = displayOrder,
+            options = options,
+        )
         log.info("custom_field_updated id={} projectId={} actor={}", fieldId, projectId, actorId)
         return repo.update(updated)
     }
