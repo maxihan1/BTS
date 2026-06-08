@@ -200,6 +200,110 @@ describe('IssueCreateForm', () => {
   })
 
   /**
+   * T9-1. projectKey 미입력 시 커스텀 필드 섹션이 렌더되지 않는다 (또는 disabled).
+   * useCustomFields가 enabled=false라서 로드가 되지 않으므로 섹션이 비어있어야 한다.
+   */
+  it('T9-1: projectKey 미입력 시 커스텀 필드 입력이 렌더되지 않는다', async () => {
+    server.use(
+      http.get('/api/v1/projects/ATLAS/custom-fields', () =>
+        HttpResponse.json({ data: [] }),
+      ),
+    )
+
+    renderForm()
+
+    // 커스텀 필드 섹션 헤더가 없어야 한다 (필드가 로드되지 않음)
+    expect(screen.queryByTestId('custom-fields-section')).not.toBeInTheDocument()
+  })
+
+  /**
+   * T9-2. projectKey 입력 후 커스텀 필드 정의가 로드되면 CustomFieldInput이 렌더된다.
+   */
+  it('T9-2: projectKey 입력 후 커스텀 필드 정의가 로드되면 입력 위젯이 렌더된다', async () => {
+    server.use(
+      http.get('/api/v1/projects/ATLAS/custom-fields', () =>
+        HttpResponse.json({
+          data: [
+            {
+              id: 'fd000001-0000-4000-8000-000000000001',
+              projectId: 'pd000001-0000-4000-8000-000000000001',
+              key: 'affected_version',
+              name: '영향 버전',
+              description: null,
+              fieldType: 'SHORT_TEXT',
+              required: false,
+              displayOrder: 0,
+              options: [],
+            },
+          ],
+        }),
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderForm()
+
+    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+
+    await waitFor(() =>
+      expect(screen.getByTestId('custom-field-affected_version')).toBeInTheDocument(),
+    )
+  })
+
+  /**
+   * T9-3. 커스텀 필드 값을 입력하고 제출하면 customFields가 body에 포함된다.
+   */
+  it('T9-3: 커스텀 필드 값 입력 후 제출 시 customFields가 body에 포함된다', async () => {
+    server.use(
+      http.get('/api/v1/projects/ATLAS/custom-fields', () =>
+        HttpResponse.json({
+          data: [
+            {
+              id: 'fd000001-0000-4000-8000-000000000001',
+              projectId: 'pd000001-0000-4000-8000-000000000001',
+              key: 'affected_version',
+              name: '영향 버전',
+              description: null,
+              fieldType: 'SHORT_TEXT',
+              required: false,
+              displayOrder: 0,
+              options: [],
+            },
+          ],
+        }),
+      ),
+    )
+
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.post('/api/v1/issues', async ({ request }) => {
+        capturedBody = await request.clone().json() as Record<string, unknown>
+        return HttpResponse.json({ data: createdIssueFixture }, { status: 201 })
+      }),
+    )
+
+    const user = userEvent.setup()
+    const onSuccess = (key: string) => {
+      mockNavigate({ to: '/issues/$key', params: { key } })
+    }
+    renderForm(onSuccess)
+
+    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+
+    await waitFor(() =>
+      expect(screen.getByTestId('custom-field-affected_version')).toBeInTheDocument(),
+    )
+
+    await user.type(screen.getByTestId('custom-field-affected_version'), 'v2.1.0')
+    await user.type(screen.getByLabelText('제목'), '커스텀필드 이슈')
+    await user.click(screen.getByRole('button', { name: '이슈 생성' }))
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalled())
+
+    expect(capturedBody['customFields']).toEqual({ affected_version: 'v2.1.0' })
+  })
+
+  /**
    * T7-3. 컴포넌트를 선택하지 않고 제출하면 componentIds가 빈 배열로 전달된다.
    */
   it('T7-3: 컴포넌트 미선택 제출 시 componentIds 빈 배열 전달', async () => {
