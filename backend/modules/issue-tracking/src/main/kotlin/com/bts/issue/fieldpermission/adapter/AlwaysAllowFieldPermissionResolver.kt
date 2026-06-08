@@ -1,4 +1,4 @@
-// AlwaysAllow stub — FR-PM-07 prod 구현(IdentityAccessFieldPermissionResolver) 주입 전 기본값 폴백. @Profile("!prod") 로 비prod 빈 등록.
+// 필드 수준 권한 non-prod stub resolver — 전 필드 허용 폴백(@Profile("!prod"))
 
 package com.bts.issue.fieldpermission.adapter
 
