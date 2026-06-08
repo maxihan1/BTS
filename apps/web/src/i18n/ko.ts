@@ -236,6 +236,16 @@ export const issueDetailStrings = {
   securityLevelChangeError: '보안등급 변경 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
   /** 이슈 생성 폼 — 보안등급 레이블 */
   securityLevelCreateLabel: '보안등급 (선택)',
+
+  // ── 커스텀 필드(custom fields) — FR-IS-10 E-3 ──────────────────────────
+  /** 커스텀 필드 섹션 레이블 */
+  customFieldsSectionLabel: '커스텀 필드',
+  /** 커스텀 필드 저장 버튼 */
+  customFieldsSaveButton: '저장',
+  /** 커스텀 필드 저장 버튼 aria-label */
+  customFieldsSaveAriaLabel: '커스텀 필드 저장',
+  /** required 필드 빈값 저장 시도 경고 메시지 (스펙 E-3) */
+  customFieldRequiredEmpty: '필수 항목을 모두 입력해 주세요.',
 } as const
 
 /** 이슈 생성 폼 관련 문자열 */

@@ -1,7 +1,7 @@
-// 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전이 셀렉터·우선순위·영향도·환경·라벨·담당자·보안등급·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
+// 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전이 셀렉터·우선순위·영향도·환경·라벨·담당자·보안등급·커스텀필드·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
 import type { JSX } from 'react'
 import { useState, useEffect, useRef } from 'react'
-import type { IssueResponse, IssueTransition } from '@/api/issues'
+import type { IssueResponse, IssueTransition, CustomFieldValues } from '@/api/issues'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import type { UserSummary } from '@/api/users'
 import type { Component } from '@/api/components'
@@ -13,6 +13,9 @@ import { formatDate } from '@/lib/date-format'
 import { issueDetailStrings } from '@/i18n/ko'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
 import { LabelAutocompleteInput } from '@/components/labels/LabelAutocompleteInput'
+import { useCustomFields } from '@/hooks/use-custom-fields'
+import { CustomFieldInput } from '@/components/custom-fields/CustomFieldInput'
+import type { CustomField } from '@/api/custom-fields.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // IssueMetaPanel
@@ -81,6 +84,11 @@ export interface IssueMetaPanelProps {
    * route가 useChangeSecurityLevel mutation 소유. 미전달 시 no-op.
    */
   onSecurityLevelChange?: (levelId: string | null) => void
+  /**
+   * 커스텀 필드 저장 콜백 — 편집된 키-값 맵을 전달. (FR-IS-10)
+   * route가 customFieldsMutation 소유. 미전달 시 no-op.
+   */
+  onCustomFieldsSave?: (customFields: CustomFieldValues) => void
 }
 
 /**
@@ -119,7 +127,11 @@ export function IssueMetaPanel({
   components = [],
   onComponentsChange = () => { /* no-op */ },
   onSecurityLevelChange = () => { /* no-op */ },
+  onCustomFieldsSave = () => { /* no-op */ },
 }: IssueMetaPanelProps): JSX.Element {
+  // 프로젝트 커스텀 필드 정의 조회 (FR-IS-10)
+  const { data: customFieldDefs = [] } = useCustomFields(issue.projectKey)
+
   // 권한 조회 — fail-closed: 로딩 중·에러·미확정이면 false(비활성)
   const { data: permissionsData, isLoading: isPermissionsLoading, isError: isPermissionsError } =
     useIssuePermissions(issue.key)
@@ -251,6 +263,16 @@ export function IssueMetaPanel({
             disabled={!canEdit}
           />
         </div>
+
+        {/* 커스텀 필드 — 활성 정의 기준 렌더, 미정의 잔존 키 생략 (FR-IS-10 E-2) */}
+        {customFieldDefs.length > 0 && (
+          <IssueCustomFieldsEdit
+            fieldDefs={customFieldDefs}
+            values={issue.customFields}
+            onSave={onCustomFieldsSave}
+            canEdit={canEdit}
+          />
+        )}
 
         {/* 보고자 */}
         <div className="px-3.5 py-3 border-b border-border">
@@ -864,5 +886,198 @@ function IssueStateTransition({
         </option>
       ))}
     </select>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// isRequiredFieldEmpty — required 필드 빈값 판정 헬퍼 (FR-IS-10 E-3, E-6 공통)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * required 커스텀 필드의 현재 값이 비어 있는지 판정한다 (스펙 E-3 / E-6 공통 기준).
+ *
+ * - SHORT_TEXT/LONG_TEXT/URL/DATE/DATETIME/SINGLE_SELECT/RADIO: '' | undefined | null → 빈값
+ * - NUMBER: undefined | null | NaN → 빈값. 0은 유효값.
+ * - MULTI_SELECT: 빈 배열 → 빈값.
+ * - CHECKBOX: 항상 값 보유 → 빈값 아님.
+ *
+ * @param fieldType 커스텀 필드 타입
+ * @param raw 현재 draft 값
+ * @returns 빈값이면 true
+ */
+function isRequiredFieldEmpty(
+  fieldType: CustomField['fieldType'],
+  raw: unknown,
+): boolean {
+  switch (fieldType) {
+    case 'SHORT_TEXT':
+    case 'LONG_TEXT':
+    case 'URL':
+    case 'DATE':
+    case 'DATETIME':
+    case 'SINGLE_SELECT':
+    case 'RADIO':
+      return raw === '' || raw === undefined || raw === null
+    case 'NUMBER':
+      return raw === undefined || raw === null || (typeof raw === 'number' && isNaN(raw))
+    case 'MULTI_SELECT':
+      return Array.isArray(raw) && raw.length === 0
+    case 'CHECKBOX':
+      // boolean false 포함 항상 유효값 — 빈값 아님
+      return false
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IssueCustomFieldsEdit — 커스텀 필드 일괄 편집 서브컴포넌트 (FR-IS-10)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** IssueCustomFieldsEdit props */
+interface IssueCustomFieldsEditProps {
+  /** 활성 커스텀 필드 정의 목록 */
+  fieldDefs: CustomField[]
+  /** 현재 이슈의 커스텀 필드 값 맵 */
+  values: CustomFieldValues
+  /** 저장 콜백 — 편집된 키-값 맵 전달 */
+  onSave: (customFields: CustomFieldValues) => void
+  /** 수정 권한 — false이면 저장 버튼 disabled */
+  canEdit: boolean
+}
+
+/**
+ * 이슈 커스텀 필드 일괄 편집 컴포넌트 (FR-IS-10).
+ *
+ * - 활성 정의(fieldDefs) 기준으로 CustomFieldInput을 렌더한다.
+ * - issue.customFields 값이 바뀌면(refetch) 로컬 상태도 동기화 (stale 방지).
+ * - 저장 버튼 클릭 시 required 빈값 검사 → 빈 필드 존재 시 경고 표시 + 저장 차단 (스펙 E-3).
+ * - 미정의 잔존 키는 표시 생략 (스펙 E-2).
+ * - WCAG AA: data-testid="custom-fields-section", data-testid="custom-fields-save"
+ */
+function IssueCustomFieldsEdit({
+  fieldDefs,
+  values,
+  onSave,
+  canEdit,
+}: IssueCustomFieldsEditProps): JSX.Element {
+  const [draft, setDraft] = useState<CustomFieldValues>({ ...values })
+  const [hasRequiredError, setHasRequiredError] = useState(false)
+
+  // values props가 바뀌면(refetch 후) 로컬 편집 상태를 동기화한다 — stale 방지
+  const prevValuesRef = useRef(values)
+  useEffect(() => {
+    if (prevValuesRef.current !== values) {
+      prevValuesRef.current = values
+      setDraft({ ...values })
+      setHasRequiredError(false)
+    }
+  }, [values])
+
+  function handleFieldChange(key: string, value: unknown): void {
+    setDraft((prev) => ({ ...prev, [key]: value }))
+    // 값이 변경되면 기존 에러 초기화
+    if (hasRequiredError) setHasRequiredError(false)
+  }
+
+  /**
+   * 저장 직전 draft를 정규화한다 (스펙 E-6).
+   * - draft에 실제로 존재하는 키만 처리 (미정의 잔존 키 포함 금지 — E-2 정책)
+   * - 타입별 빈값 판정:
+   *   SHORT_TEXT/LONG_TEXT/URL/DATE/DATETIME/SINGLE_SELECT/RADIO: '' | undefined → null
+   *   NUMBER: undefined 또는 NaN → null. 단 0은 유효값으로 유지.
+   *   MULTI_SELECT: [] → null
+   *   CHECKBOX: boolean false 포함 유효값, null 변환 안 함.
+   */
+  function buildNormalizedPatch(): CustomFieldValues {
+    const patch: CustomFieldValues = {}
+    for (const field of fieldDefs) {
+      const key = field.key
+      if (!(key in draft)) continue
+      const raw = draft[key]
+      switch (field.fieldType) {
+        case 'SHORT_TEXT':
+        case 'LONG_TEXT':
+        case 'URL':
+        case 'DATE':
+        case 'DATETIME':
+        case 'SINGLE_SELECT':
+        case 'RADIO':
+          patch[key] = raw === '' || raw === undefined ? null : raw
+          break
+        case 'NUMBER': {
+          const isBlank = raw === undefined || raw === null || (typeof raw === 'number' && isNaN(raw))
+          patch[key] = isBlank ? null : raw
+          break
+        }
+        case 'MULTI_SELECT':
+          patch[key] = Array.isArray(raw) && raw.length === 0 ? null : raw
+          break
+        case 'CHECKBOX':
+          // boolean false 포함 유효값 — 그대로 유지
+          patch[key] = raw
+          break
+      }
+    }
+    return patch
+  }
+
+  function handleSave(): void {
+    // 스펙 E-3: required 필드 빈값 1차 검사 — 빈 판정 기준은 buildNormalizedPatch와 동일
+    const hasEmpty = fieldDefs.some((field) => {
+      if (!field.required) return false
+      const raw = draft[field.key]
+      return isRequiredFieldEmpty(field.fieldType, raw)
+    })
+    if (hasEmpty) {
+      setHasRequiredError(true)
+      return
+    }
+    setHasRequiredError(false)
+    onSave(buildNormalizedPatch())
+  }
+
+  return (
+    <div
+      className="px-3.5 py-3 border-b border-border"
+      data-testid="custom-fields-section"
+    >
+      <p className="text-xs text-muted-foreground mb-2">{issueDetailStrings.customFieldsSectionLabel}</p>
+      <div className="flex flex-col gap-3">
+        {fieldDefs.map((field) => (
+          <div key={field.id} className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground">
+              {field.name}
+              {field.required && <span className="text-destructive ml-0.5">*</span>}
+            </label>
+            <CustomFieldInput
+              field={field}
+              value={draft[field.key]}
+              onChange={(v) => handleFieldChange(field.key, v)}
+              disabled={!canEdit}
+            />
+          </div>
+        ))}
+      </div>
+      {/* required 빈값 경고 — 스펙 E-3 1차 클라 경고 */}
+      {hasRequiredError && (
+        <p
+          className="text-xs text-destructive mt-1"
+          role="alert"
+          data-testid="custom-fields-required-error"
+        >
+          {issueDetailStrings.customFieldRequiredEmpty}
+        </p>
+      )}
+      <Button
+        variant="outline"
+        size="sm"
+        className="self-end mt-2 min-h-[44px]"
+        onClick={handleSave}
+        disabled={!canEdit}
+        aria-label={issueDetailStrings.customFieldsSaveAriaLabel}
+        data-testid="custom-fields-save"
+      >
+        {issueDetailStrings.customFieldsSaveButton}
+      </Button>
+    </div>
   )
 }

@@ -5,7 +5,7 @@ import { useParams, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { fetchIssue, updateIssue, transitionIssue } from '@/api/issues'
-import type { IssueTransition } from '@/api/issues'
+import type { IssueTransition, CustomFieldValues } from '@/api/issues'
 import { ApiError } from '@/api/client'
 import { useUpdateIssueSummary, issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { useChangeAssignee } from '@/api/useChangeAssignee'
@@ -290,6 +290,18 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
     },
   })
 
+  const customFieldsMutation = useMutation({
+    mutationFn: ({ customFields, expectedVersion }: { customFields: CustomFieldValues; expectedVersion: number }) =>
+      updateIssue(issueKey, { customFields, expectedVersion }),
+    onSuccess: () => {
+      // C2: setQueryData(updatedIssue) 금지 — invalidate-only로 최신 데이터 refetch
+      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+    },
+    onError: (err: unknown) => {
+      handleMetaMutationError(err, '커스텀 필드 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.')
+    },
+  })
+
   // ── 로딩 상태 ──────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
@@ -361,6 +373,12 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   function handleLabelsSave(labels: string[]) {
     if (issue === undefined) return
     labelsMutation.mutate({ labels, expectedVersion: issue.version })
+  }
+
+  // ── 커스텀 필드 저장 핸들러 (FR-IS-10) ───────────────────────────────────
+  function handleCustomFieldsSave(customFields: CustomFieldValues) {
+    if (issue === undefined) return
+    customFieldsMutation.mutate({ customFields, expectedVersion: issue.version })
   }
 
   // ── 담당자 변경 핸들러 ───────────────────────────────────────────────────
@@ -605,6 +623,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
             components={projectComponents}
             onComponentsChange={handleComponentsChange}
             onSecurityLevelChange={handleSecurityLevelChange}
+            onCustomFieldsSave={handleCustomFieldsSave}
           />
         )}
       </div>

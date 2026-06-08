@@ -20,7 +20,7 @@ import {
 import { ApiError } from './client'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Fixture — IssueResponse 21 필드 (12 기존 + 8 FR-IS-04 + 1 FR-IS-03 assigneeId) + nullable timestamps
+// Fixture — IssueResponse 22 필드 (12 기존 + 8 FR-IS-04 + 1 FR-IS-03 assigneeId + 1 FR-IS-10 customFields) + nullable timestamps
 // ─────────────────────────────────────────────────────────────────────────────
 const issueFixture = {
   key: 'ATLAS-1',
@@ -45,6 +45,8 @@ const issueFixture = {
   environment: 'Chrome 125, macOS 14',
   impact: 2,
   impactName: 'Medium',
+  // FR-IS-10 커스텀 필드
+  customFields: { severity: 'critical', sprint: 'Sprint-3' } as Record<string, unknown>,
 }
 
 const issueFixtureNullTimestamps = {
@@ -797,5 +799,132 @@ describe('downloadIssuePdf', () => {
     await expect(downloadIssuePdf('NOT-EXISTS')).rejects.toSatisfy(
       (e) => e instanceof ApiError && (e as ApiError).status === 404,
     )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-17. issueResponseSchema — FR-IS-10 customFields 필드 파싱 회귀가드
+// ─────────────────────────────────────────────────────────────────────────────
+describe('issueResponseSchema — FR-IS-10 customFields', () => {
+  it('T1-17a: customFields 키-값 맵이 있는 응답을 파싱한다', () => {
+    const result = issueResponseSchema.parse(issueFixture)
+    expect(result.customFields).toEqual({ severity: 'critical', sprint: 'Sprint-3' })
+  })
+
+  it('T1-17b: customFields가 {} 빈 맵이어도 파싱 성공한다', () => {
+    const result = issueResponseSchema.parse({ ...issueFixture, customFields: {} })
+    expect(result.customFields).toEqual({})
+  })
+
+  it('T1-17c: customFields 필드가 누락되면 default {}로 fallback된다 — 기존 인라인 mock 파급 방지', () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { customFields: _cf, ...withoutCustomFields } = issueFixture
+    const result = issueResponseSchema.parse(withoutCustomFields)
+    expect(result.customFields).toEqual({})
+  })
+
+  it('T1-17d: customFields 값이 null을 포함한 임의 JSON 타입을 허용한다', () => {
+    const result = issueResponseSchema.parse({
+      ...issueFixture,
+      customFields: { text: 'hello', num: 42, flag: true, empty: null },
+    })
+    expect(result.customFields['text']).toBe('hello')
+    expect(result.customFields['num']).toBe(42)
+    expect(result.customFields['flag']).toBe(true)
+    expect(result.customFields['empty']).toBeNull()
+  })
+
+  it('T1-17e: customFields가 배열이면 ZodError를 throw한다 — Record 계약', () => {
+    expect(() => issueResponseSchema.parse({ ...issueFixture, customFields: ['not', 'a', 'map'] })).toThrow()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-18. createIssue — FR-IS-10 customFields POST body 직렬화 검증
+// ─────────────────────────────────────────────────────────────────────────────
+describe('createIssue — FR-IS-10 customFields', () => {
+  it('T1-18a: customFields 지정 시 POST body에 customFields 맵이 포함된다', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.post('/api/v1/issues', async ({ request }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json({ data: issueFixture }, { status: 201 })
+      }),
+    )
+
+    await createIssue({
+      projectKey: 'ATLAS',
+      summary: '커스텀 필드 이슈',
+      customFields: { severity: 'high', sprint: 'Sprint-1' },
+    })
+
+    expect(capturedBody['customFields']).toEqual({ severity: 'high', sprint: 'Sprint-1' })
+  })
+
+  it('T1-18b: customFields 미지정 시 POST body에 customFields 키가 없다', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.post('/api/v1/issues', async ({ request }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json({ data: issueFixture }, { status: 201 })
+      }),
+    )
+
+    await createIssue({ projectKey: 'ATLAS', summary: '기본 이슈' })
+
+    expect(Object.prototype.hasOwnProperty.call(capturedBody, 'customFields')).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-19. updateIssue — FR-IS-10 customFields PATCH body 직렬화 검증
+// ─────────────────────────────────────────────────────────────────────────────
+describe('updateIssue — FR-IS-10 customFields', () => {
+  it('T1-19a: customFields 맵 전달 시 PATCH body에 포함된다', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.patch('/api/v1/issues/:key', async ({ request, params }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json({
+          data: { ...issueFixture, key: params['key'] as string },
+        })
+      }),
+    )
+
+    await updateIssue('ATLAS-1', { customFields: { sprint: 'Sprint-2' }, expectedVersion: 1 })
+
+    expect(capturedBody['customFields']).toEqual({ sprint: 'Sprint-2' })
+  })
+
+  it('T1-19b: customFields=null 전달 시 PATCH body에 null이 포함된다 (무변경 3-state)', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.patch('/api/v1/issues/:key', async ({ request, params }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json({
+          data: { ...issueFixture, key: params['key'] as string },
+        })
+      }),
+    )
+
+    await updateIssue('ATLAS-1', { customFields: null, expectedVersion: 1 })
+
+    expect(capturedBody['customFields']).toBeNull()
+  })
+
+  it('T1-19c: customFields 미전달 시 PATCH body에 customFields 키가 없다', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.patch('/api/v1/issues/:key', async ({ request, params }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json({
+          data: { ...issueFixture, key: params['key'] as string },
+        })
+      }),
+    )
+
+    await updateIssue('ATLAS-1', { summary: '제목만 수정', expectedVersion: 1 })
+
+    expect(Object.prototype.hasOwnProperty.call(capturedBody, 'customFields')).toBe(false)
   })
 })

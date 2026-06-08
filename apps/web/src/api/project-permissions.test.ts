@@ -15,6 +15,7 @@ const projectPermissionsFixture = {
     CREATE: true,
     MANAGE_COMPONENTS: true,
     MANAGE_VERSIONS: true,
+    MANAGE_CUSTOM_FIELDS: true,
   },
 }
 
@@ -24,6 +25,7 @@ const projectPermissionsFixtureFalse = {
     CREATE: false,
     MANAGE_COMPONENTS: false,
     MANAGE_VERSIONS: false,
+    MANAGE_CUSTOM_FIELDS: false,
   },
 }
 

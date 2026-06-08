@@ -45,6 +45,8 @@ export const createdIssueFixture = {
   impact: null,
   impactName: null,
   securityLevelId: null,
+  /** FR-IS-10 — 커스텀 필드 기본값. 생성 시 customFields 미전달이면 백엔드 기본값 {} 에코. */
+  customFields: {} as Record<string, unknown>,
 }
 
 const issueFixtureMap: Record<string, IssueResponse> = {
@@ -206,6 +208,7 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
     summary?: string
     componentIds?: string[]
     securityLevelId?: string | null
+    customFields?: Record<string, unknown>
   }
   if (body.projectKey === 'INVALID') {
     return HttpResponse.json(
@@ -242,6 +245,11 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
     ? body.securityLevelId
     : createdIssueFixture.securityLevelId
 
+  // FR-IS-10 — customFields: body에 명시된 경우 반영, 미전달이면 fixture 기본값({}) 유지
+  const resolvedCustomFields = body.customFields !== undefined
+    ? body.customFields
+    : createdIssueFixture.customFields
+
   const created: IssueResponse = {
     ...createdIssueFixture,
     projectKey: body.projectKey ?? 'ATLAS',
@@ -249,6 +257,7 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
     componentIds,
     assigneeId: resolvedAssigneeId,
     securityLevelId: resolvedSecurityLevelId,
+    customFields: resolvedCustomFields,
   }
   // E2E-1 happy path 용 — POST 직후 GET 으로 조회 가능하도록 stateful 보관.
   createdIssues.set(created.key, created)
@@ -293,6 +302,13 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     environment?: string | null
     impact?: number | null
     securityLevelId?: string | null
+    /**
+     * FR-IS-10 — 커스텀 필드 키 단위 병합 패치.
+     * undefined(미전달) → 기존값 유지.
+     * {}(빈 객체) → 전체 초기화.
+     * { key: value } → 키 단위 병합 (value가 null이면 해당 키 삭제).
+     */
+    customFields?: Record<string, unknown> | null
   }
 
   // (2) typeId 검증 — 카탈로그에 없는 id 는 404
@@ -339,6 +355,15 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     ? body.securityLevelId
     : found.securityLevelId
 
+  // FR-IS-10 — customFields 키 단위 병합 (msw-derived-behavior-shared-store-e2e 교훈 적용).
+  // undefined(미전달) → 기존값 유지.
+  // {}(빈 객체) → 전체 초기화.
+  // { key: value } → 키 단위 병합, value null → 해당 키 삭제.
+  const resolvedCustomFields = mergeCustomFields(
+    found.customFields as Record<string, unknown>,
+    body.customFields,
+  )
+
   const updated: IssueResponse = {
     ...found,
     summary: body.summary ?? found.summary,
@@ -354,6 +379,7 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     impact: resolvedImpact,
     impactName: impactNameOf(resolvedImpact),
     securityLevelId: resolvedSecurityLevelId,
+    customFields: resolvedCustomFields,
     version: found.version + 1,
     updatedAt: new Date().toISOString(),
   }
@@ -532,6 +558,38 @@ function applyNullableStringPatch(
   if (incoming === undefined) return current
   if (incoming === '') return null
   return incoming
+}
+
+/**
+ * FR-IS-10 — customFields 키 단위 병합 헬퍼.
+ *
+ * 병합 규칙 (backend customFields PATCH 계약과 동일).
+ * - incoming undefined(미전달) → current 그대로 반환.
+ * - incoming {}(빈 객체) → {} 로 전체 초기화.
+ * - incoming { key: null } → 해당 키 삭제.
+ * - incoming { key: value } → 해당 키 갱신, 나머지 키 보존.
+ *
+ * @param current 현재 저장된 customFields
+ * @param incoming PATCH body의 customFields (undefined/null 허용)
+ * @returns 병합 결과
+ */
+function mergeCustomFields(
+  current: Record<string, unknown>,
+  incoming: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  // null/undefined: 무변경 (백엔드 IssueApplicationService.mergeCustomFieldsAndValidate — customFields=null → return null)
+  if (incoming === undefined || incoming === null) return current
+  // 빈 객체: 병합할 키 0개 → 기존 유지(무변경). 백엔드에 "전체 제거" 기능 없음.
+  // 키 단위 병합: value null → 삭제, 값 → 갱신
+  const merged = { ...current }
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value === null) {
+      delete merged[key]
+    } else {
+      merged[key] = value
+    }
+  }
+  return merged
 }
 
 /**

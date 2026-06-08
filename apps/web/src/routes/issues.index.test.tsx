@@ -49,7 +49,7 @@ const bulkOperationCompletedFixture = {
 /** 모든 요청에 대해 CREATE:true를 반환하는 기본 권한 핸들러 */
 const createTruePermissionHandler = http.get(
   '/api/v1/users/me/project-permissions',
-  () => HttpResponse.json({ projectKey: 'ATLAS', permissions: { CREATE: true, MANAGE_COMPONENTS: false, MANAGE_VERSIONS: false } }),
+  () => HttpResponse.json({ projectKey: 'ATLAS', permissions: { CREATE: true, MANAGE_COMPONENTS: false, MANAGE_VERSIONS: false, MANAGE_CUSTOM_FIELDS: false } }),
 )
 
 /** 모든 요청에 대해 CREATE:false를 반환하는 권한 핸들러 (비멤버 시나리오) */

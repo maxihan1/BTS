@@ -1,4 +1,4 @@
-// 이슈 생성 폼 단위 테스트 — T6-1(클라이언트 검증) T6-2(제출 성공+navigate) T6-3(PROJECT_NOT_FOUND 에러) T6-4(빈 summary 제출 차단) T7-1~T7-3(컴포넌트 선택)
+// 이슈 생성 폼 단위 테스트 — T6-1(클라이언트 검증) T6-2(제출 성공+navigate) T6-3(PROJECT_NOT_FOUND 에러) T6-4(빈 summary 제출 차단) T7-1~T7-3(컴포넌트 선택) T9-1~T9-3(커스텀필드)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -8,6 +8,7 @@ import { componentHandlers, resetComponentStore } from '@/mocks/component-handle
 import { server } from '@/test/server'
 import { http, HttpResponse } from 'msw'
 import { IssueCreateForm } from './issues.new'
+import type { CustomField } from '@/api/custom-fields.types'
 
 // useNavigate mock — TanStack Router 의존 없이 폼 자체 테스트
 const mockNavigate = vi.fn()
@@ -15,6 +16,39 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mockNavigate,
   useParams: () => ({}),
 }))
+
+// useCustomFields mock — 네트워크 없이 커스텀필드 정의 제어 (타이핑 중간 경로 요청 제거)
+vi.mock('@/hooks/use-custom-fields', () => ({
+  useCustomFields: vi.fn(),
+  CUSTOM_FIELD_KEYS: { list: (k: string) => ['custom-fields', k] },
+}))
+
+import { useCustomFields } from '@/hooks/use-custom-fields'
+
+const EMPTY_CUSTOM_FIELDS_RESULT = {
+  data: [] as CustomField[],
+  isLoading: false,
+  isError: false,
+  isPending: false,
+  isSuccess: true,
+  error: null,
+  status: 'success' as const,
+  fetchStatus: 'idle' as const,
+  dataUpdatedAt: 0,
+  errorUpdatedAt: 0,
+  failureCount: 0,
+  failureReason: null,
+  isFetched: true,
+  isFetchedAfterMount: true,
+  isFetching: false,
+  isInitialLoading: false,
+  isLoadingError: false,
+  isPlaceholderData: false,
+  isRefetchError: false,
+  isRefetching: false,
+  isStale: false,
+  refetch: vi.fn(),
+}
 
 /** onSuccess prop 없이 폼만 렌더하는 헬퍼 */
 function renderForm(onSuccess?: (key: string) => void) {
@@ -54,6 +88,10 @@ describe('IssueCreateForm', () => {
     resetComponentStore()
     server.use(...issueHandlers, ...componentHandlers)
     mockNavigate.mockReset()
+    // 기본값: 커스텀 필드 없음 — T9-* 테스트에서 개별 오버라이드
+    vi.mocked(useCustomFields).mockReturnValue(
+      EMPTY_CUSTOM_FIELDS_RESULT as unknown as ReturnType<typeof useCustomFields>,
+    )
   })
 
   /**
@@ -197,6 +235,192 @@ describe('IssueCreateForm', () => {
     await waitFor(() => expect(mockNavigate).toHaveBeenCalled())
 
     expect(capturedBody['componentIds']).toEqual(['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'])
+  })
+
+  /**
+   * T9-1. projectKey 미입력 시 커스텀 필드 섹션이 렌더되지 않는다 (또는 disabled).
+   * useCustomFields가 enabled=false라서 로드가 되지 않으므로 섹션이 비어있어야 한다.
+   */
+  it('T9-1: projectKey 미입력 시 커스텀 필드 입력이 렌더되지 않는다', () => {
+    renderForm()
+
+    // projectKey 미입력 → useCustomFields enabled=false → 섹션 렌더 안 됨
+    expect(screen.queryByTestId('custom-fields-section')).not.toBeInTheDocument()
+  })
+
+  /**
+   * T9-2. projectKey 입력 후 커스텀 필드 정의가 로드되면 CustomFieldInput이 렌더된다.
+   */
+  it('T9-2: projectKey 입력 후 커스텀 필드 정의가 로드되면 입력 위젯이 렌더된다', async () => {
+    const customFieldFixture: CustomField = {
+      id: 'fd000001-0000-4000-8000-000000000001',
+      projectId: 'pd000001-0000-4000-8000-000000000001',
+      key: 'affected_version',
+      name: '영향 버전',
+      description: null,
+      fieldType: 'SHORT_TEXT',
+      required: false,
+      displayOrder: 0,
+      options: [],
+    }
+    vi.mocked(useCustomFields).mockReturnValue({
+      ...EMPTY_CUSTOM_FIELDS_RESULT,
+      data: [customFieldFixture],
+    } as unknown as ReturnType<typeof useCustomFields>)
+
+    const user = userEvent.setup()
+    renderForm()
+
+    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+
+    await waitFor(() =>
+      expect(screen.getByTestId('custom-field-affected_version')).toBeInTheDocument(),
+    )
+  })
+
+  /**
+   * T9-3. 커스텀 필드 값을 입력하고 제출하면 customFields가 body에 포함된다.
+   */
+  it('T9-3: 커스텀 필드 값 입력 후 제출 시 customFields가 body에 포함된다', async () => {
+    const customFieldFixture: CustomField = {
+      id: 'fd000001-0000-4000-8000-000000000001',
+      projectId: 'pd000001-0000-4000-8000-000000000001',
+      key: 'affected_version',
+      name: '영향 버전',
+      description: null,
+      fieldType: 'SHORT_TEXT',
+      required: false,
+      displayOrder: 0,
+      options: [],
+    }
+    vi.mocked(useCustomFields).mockReturnValue({
+      ...EMPTY_CUSTOM_FIELDS_RESULT,
+      data: [customFieldFixture],
+    } as unknown as ReturnType<typeof useCustomFields>)
+
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.post('/api/v1/issues', async ({ request }) => {
+        capturedBody = await request.clone().json() as Record<string, unknown>
+        return HttpResponse.json({ data: createdIssueFixture }, { status: 201 })
+      }),
+    )
+
+    const user = userEvent.setup()
+    const onSuccess = (key: string) => {
+      mockNavigate({ to: '/issues/$key', params: { key } })
+    }
+    renderForm(onSuccess)
+
+    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+
+    await waitFor(() =>
+      expect(screen.getByTestId('custom-field-affected_version')).toBeInTheDocument(),
+    )
+
+    await user.type(screen.getByTestId('custom-field-affected_version'), 'v2.1.0')
+    await user.type(screen.getByLabelText('제목'), '커스텀필드 이슈')
+    await user.click(screen.getByRole('button', { name: '이슈 생성' }))
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalled())
+
+    expect(capturedBody['customFields']).toEqual({ affected_version: 'v2.1.0' })
+  })
+
+  /**
+   * T9-C4-1. required 커스텀 필드가 비어 있으면 생성 버튼이 disabled 처리되거나
+   * 경고 메시지가 노출되고 mutation이 호출되지 않는다 (스펙 E-3).
+   */
+  it('T9-C4-1: required 커스텀 필드를 비운 채 제출 시도 → mutation 미호출 + 경고 표시', async () => {
+    const requiredFieldFixture: CustomField = {
+      id: 'fd000001-0000-4000-8000-000000000010',
+      projectId: 'pd000001-0000-4000-8000-000000000001',
+      key: 'req_field',
+      name: '필수 항목',
+      description: null,
+      fieldType: 'SHORT_TEXT',
+      required: true,
+      displayOrder: 0,
+      options: [],
+    }
+    vi.mocked(useCustomFields).mockReturnValue({
+      ...EMPTY_CUSTOM_FIELDS_RESULT,
+      data: [requiredFieldFixture],
+    } as unknown as ReturnType<typeof useCustomFields>)
+
+    let mutationCalled = false
+    server.use(
+      http.post('/api/v1/issues', async () => {
+        mutationCalled = true
+        return HttpResponse.json({ data: createdIssueFixture }, { status: 201 })
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderForm()
+
+    // projectKey + summary 입력, required 커스텀 필드는 비워둠
+    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await user.type(screen.getByLabelText('제목'), '이슈 제목')
+
+    // 커스텀 필드 섹션이 렌더될 때까지 대기
+    await waitFor(() =>
+      expect(screen.getByTestId('custom-field-req_field')).toBeInTheDocument(),
+    )
+
+    // 생성 버튼 클릭 (req_field 비어 있음)
+    const submitButton = screen.getByRole('button', { name: '이슈 생성' })
+    await user.click(submitButton)
+
+    // mutation이 호출되지 않아야 한다
+    expect(mutationCalled).toBe(false)
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  /**
+   * T9-C4-2. required 커스텀 필드를 채우면 정상 제출된다 (E-3 정상 경로).
+   */
+  it('T9-C4-2: required 커스텀 필드를 채운 후 제출 → 정상 생성', async () => {
+    const requiredFieldFixture: CustomField = {
+      id: 'fd000001-0000-4000-8000-000000000010',
+      projectId: 'pd000001-0000-4000-8000-000000000001',
+      key: 'req_field',
+      name: '필수 항목',
+      description: null,
+      fieldType: 'SHORT_TEXT',
+      required: true,
+      displayOrder: 0,
+      options: [],
+    }
+    vi.mocked(useCustomFields).mockReturnValue({
+      ...EMPTY_CUSTOM_FIELDS_RESULT,
+      data: [requiredFieldFixture],
+    } as unknown as ReturnType<typeof useCustomFields>)
+
+    server.use(
+      http.post('/api/v1/issues', async () =>
+        HttpResponse.json({ data: createdIssueFixture }, { status: 201 }),
+      ),
+    )
+
+    const user = userEvent.setup()
+    const onSuccess = (key: string) => {
+      mockNavigate({ to: '/issues/$key', params: { key } })
+    }
+    renderForm(onSuccess)
+
+    await user.type(screen.getByLabelText('프로젝트 키'), 'ATLAS')
+    await user.type(screen.getByLabelText('제목'), '이슈 제목')
+
+    await waitFor(() =>
+      expect(screen.getByTestId('custom-field-req_field')).toBeInTheDocument(),
+    )
+
+    // required 필드에 값 입력 후 제출
+    await user.type(screen.getByTestId('custom-field-req_field'), '유효한 값')
+    await user.click(screen.getByRole('button', { name: '이슈 생성' }))
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalled())
   })
 
   /**
