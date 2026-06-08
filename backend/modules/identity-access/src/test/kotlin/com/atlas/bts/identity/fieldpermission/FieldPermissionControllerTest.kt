@@ -268,9 +268,17 @@ class FieldPermissionControllerTest {
     fun `EC11 MEMBER 규칙 목록 — 403`() {
         val token = loginJwt("fpc_member", memberPassword)
 
-        val resp = listRules(token, projectKey)
+        // 403 바디는 error 객체이므로 List 디코딩 listRules 대신 Map 디코딩으로 요청한다.
+        val resp =
+            restTemplate.exchange(
+                url("/api/v1/projects/$projectKey/field-permissions"),
+                HttpMethod.GET,
+                HttpEntity<Void>(authHeaders(token)),
+                Map::class.java,
+            )
 
         assertThat(resp.statusCode).isEqualTo(HttpStatus.FORBIDDEN)
+        assertThat((resp.body as Map<*, *>)["error"]).isEqualTo("forbidden")
     }
 
     // ── 미인증 → 401 (500 변질 없음) ─────────────────────────────────────────────
