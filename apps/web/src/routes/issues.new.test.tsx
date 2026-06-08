@@ -1,4 +1,4 @@
-// 이슈 생성 폼 단위 테스트 — T6-1(클라이언트 검증) T6-2(제출 성공+navigate) T6-3(PROJECT_NOT_FOUND 에러) T6-4(빈 summary 제출 차단) T7-1~T7-3(컴포넌트 선택)
+// 이슈 생성 폼 단위 테스트 — T6-1(클라이언트 검증) T6-2(제출 성공+navigate) T6-3(PROJECT_NOT_FOUND 에러) T6-4(빈 summary 제출 차단) T7-1~T7-3(컴포넌트 선택) T9-1~T9-3(커스텀필드)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -8,6 +8,7 @@ import { componentHandlers, resetComponentStore } from '@/mocks/component-handle
 import { server } from '@/test/server'
 import { http, HttpResponse } from 'msw'
 import { IssueCreateForm } from './issues.new'
+import type { CustomField } from '@/api/custom-fields.types'
 
 // useNavigate mock — TanStack Router 의존 없이 폼 자체 테스트
 const mockNavigate = vi.fn()
@@ -15,6 +16,39 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mockNavigate,
   useParams: () => ({}),
 }))
+
+// useCustomFields mock — 네트워크 없이 커스텀필드 정의 제어 (타이핑 중간 경로 요청 제거)
+vi.mock('@/hooks/use-custom-fields', () => ({
+  useCustomFields: vi.fn(),
+  CUSTOM_FIELD_KEYS: { list: (k: string) => ['custom-fields', k] },
+}))
+
+import { useCustomFields } from '@/hooks/use-custom-fields'
+
+const EMPTY_CUSTOM_FIELDS_RESULT = {
+  data: [] as CustomField[],
+  isLoading: false,
+  isError: false,
+  isPending: false,
+  isSuccess: true,
+  error: null,
+  status: 'success' as const,
+  fetchStatus: 'idle' as const,
+  dataUpdatedAt: 0,
+  errorUpdatedAt: 0,
+  failureCount: 0,
+  failureReason: null,
+  isFetched: true,
+  isFetchedAfterMount: true,
+  isFetching: false,
+  isInitialLoading: false,
+  isLoadingError: false,
+  isPlaceholderData: false,
+  isRefetchError: false,
+  isRefetching: false,
+  isStale: false,
+  refetch: vi.fn(),
+}
 
 /** onSuccess prop 없이 폼만 렌더하는 헬퍼 */
 function renderForm(onSuccess?: (key: string) => void) {
@@ -54,6 +88,10 @@ describe('IssueCreateForm', () => {
     resetComponentStore()
     server.use(...issueHandlers, ...componentHandlers)
     mockNavigate.mockReset()
+    // 기본값: 커스텀 필드 없음 — T9-* 테스트에서 개별 오버라이드
+    vi.mocked(useCustomFields).mockReturnValue(
+      EMPTY_CUSTOM_FIELDS_RESULT as unknown as ReturnType<typeof useCustomFields>,
+    )
   })
 
   /**
@@ -203,16 +241,10 @@ describe('IssueCreateForm', () => {
    * T9-1. projectKey 미입력 시 커스텀 필드 섹션이 렌더되지 않는다 (또는 disabled).
    * useCustomFields가 enabled=false라서 로드가 되지 않으므로 섹션이 비어있어야 한다.
    */
-  it('T9-1: projectKey 미입력 시 커스텀 필드 입력이 렌더되지 않는다', async () => {
-    server.use(
-      http.get('/api/v1/projects/ATLAS/custom-fields', () =>
-        HttpResponse.json({ data: [] }),
-      ),
-    )
-
+  it('T9-1: projectKey 미입력 시 커스텀 필드 입력이 렌더되지 않는다', () => {
     renderForm()
 
-    // 커스텀 필드 섹션 헤더가 없어야 한다 (필드가 로드되지 않음)
+    // projectKey 미입력 → useCustomFields enabled=false → 섹션 렌더 안 됨
     expect(screen.queryByTestId('custom-fields-section')).not.toBeInTheDocument()
   })
 
@@ -220,25 +252,21 @@ describe('IssueCreateForm', () => {
    * T9-2. projectKey 입력 후 커스텀 필드 정의가 로드되면 CustomFieldInput이 렌더된다.
    */
   it('T9-2: projectKey 입력 후 커스텀 필드 정의가 로드되면 입력 위젯이 렌더된다', async () => {
-    server.use(
-      http.get('/api/v1/projects/ATLAS/custom-fields', () =>
-        HttpResponse.json({
-          data: [
-            {
-              id: 'fd000001-0000-4000-8000-000000000001',
-              projectId: 'pd000001-0000-4000-8000-000000000001',
-              key: 'affected_version',
-              name: '영향 버전',
-              description: null,
-              fieldType: 'SHORT_TEXT',
-              required: false,
-              displayOrder: 0,
-              options: [],
-            },
-          ],
-        }),
-      ),
-    )
+    const customFieldFixture: CustomField = {
+      id: 'fd000001-0000-4000-8000-000000000001',
+      projectId: 'pd000001-0000-4000-8000-000000000001',
+      key: 'affected_version',
+      name: '영향 버전',
+      description: null,
+      fieldType: 'SHORT_TEXT',
+      required: false,
+      displayOrder: 0,
+      options: [],
+    }
+    vi.mocked(useCustomFields).mockReturnValue({
+      ...EMPTY_CUSTOM_FIELDS_RESULT,
+      data: [customFieldFixture],
+    } as unknown as ReturnType<typeof useCustomFields>)
 
     const user = userEvent.setup()
     renderForm()
@@ -254,25 +282,21 @@ describe('IssueCreateForm', () => {
    * T9-3. 커스텀 필드 값을 입력하고 제출하면 customFields가 body에 포함된다.
    */
   it('T9-3: 커스텀 필드 값 입력 후 제출 시 customFields가 body에 포함된다', async () => {
-    server.use(
-      http.get('/api/v1/projects/ATLAS/custom-fields', () =>
-        HttpResponse.json({
-          data: [
-            {
-              id: 'fd000001-0000-4000-8000-000000000001',
-              projectId: 'pd000001-0000-4000-8000-000000000001',
-              key: 'affected_version',
-              name: '영향 버전',
-              description: null,
-              fieldType: 'SHORT_TEXT',
-              required: false,
-              displayOrder: 0,
-              options: [],
-            },
-          ],
-        }),
-      ),
-    )
+    const customFieldFixture: CustomField = {
+      id: 'fd000001-0000-4000-8000-000000000001',
+      projectId: 'pd000001-0000-4000-8000-000000000001',
+      key: 'affected_version',
+      name: '영향 버전',
+      description: null,
+      fieldType: 'SHORT_TEXT',
+      required: false,
+      displayOrder: 0,
+      options: [],
+    }
+    vi.mocked(useCustomFields).mockReturnValue({
+      ...EMPTY_CUSTOM_FIELDS_RESULT,
+      data: [customFieldFixture],
+    } as unknown as ReturnType<typeof useCustomFields>)
 
     let capturedBody: Record<string, unknown> = {}
     server.use(

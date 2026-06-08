@@ -20,8 +20,11 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { ComponentMultiSelect } from '@/components/issue/ComponentMultiSelect'
 import { IssueSecurityLevelSelect } from '@/components/issue/IssueSecurityLevelSelect'
+import { CustomFieldInput } from '@/components/custom-fields/CustomFieldInput'
 import { useComponents } from '@/hooks/use-components'
+import { useCustomFields } from '@/hooks/use-custom-fields'
 import { issueCreateStrings, issueDetailStrings } from '@/i18n/ko'
+import type { CustomFieldValues } from '@/api/issues'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zod 폼 스키마 — interface 중복 정의 금지
@@ -86,6 +89,7 @@ export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.E
   const [serverError, setServerError] = useState<string | null>(null)
   const [selectedComponentIds, setSelectedComponentIds] = useState<string[]>([])
   const [selectedSecurityLevelId, setSelectedSecurityLevelId] = useState<string | null>(null)
+  const [customFieldValues, setCustomFieldValues] = useState<CustomFieldValues>({})
 
   const form = useForm<IssueCreateFormValues>({
     resolver: zodResolver(issueCreateSchema),
@@ -99,6 +103,10 @@ export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.E
     enabled: isProjectKeyFilled,
   })
   const componentOptions = componentData ?? []
+
+  const { data: customFieldDefs = [] } = useCustomFields(projectKey, {
+    enabled: isProjectKeyFilled,
+  })
 
   const mutation = useMutation({
     mutationFn: createIssue,
@@ -118,6 +126,8 @@ export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.E
       componentIds: selectedComponentIds,
       // securityLevelId null은 명시적으로 전달 — 미선택(null)이면 body에 포함해 서버가 무등급으로 처리
       securityLevelId: selectedSecurityLevelId,
+      // customFields: 값이 있으면 포함, 빈 맵이면 미전달 (서버 기본값 사용)
+      ...(Object.keys(customFieldValues).length > 0 ? { customFields: customFieldValues } : {}),
     })
   }
 
@@ -199,6 +209,28 @@ export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.E
             disabled={!isProjectKeyFilled}
           />
         </div>
+
+        {/* 커스텀 필드 섹션 — projectKey 입력 + 활성 정의가 있을 때만 렌더 (FR-IS-10) */}
+        {isProjectKeyFilled && customFieldDefs.length > 0 && (
+          <div data-testid="custom-fields-section" className="flex flex-col gap-3">
+            {customFieldDefs.map((field) => (
+              <div key={field.id} className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium leading-none">
+                  {field.name}
+                  {field.required && <span className="text-destructive ml-0.5">*</span>}
+                </span>
+                <CustomFieldInput
+                  field={field}
+                  value={customFieldValues[field.key]}
+                  onChange={(v) =>
+                    setCustomFieldValues((prev) => ({ ...prev, [field.key]: v }))
+                  }
+                  disabled={!isProjectKeyFilled}
+                />
+              </div>
+            ))}
+          </div>
+        )}
 
         <Button
           type="submit"
