@@ -151,3 +151,22 @@ enum class FieldKind { CORE, CUSTOM }
 - **관리자 우회 모호성** — F7로 명시(게이트1 Maxi 검토 대상).
 
 ✅ 통과 (자체 점검, gap 6건 사전 해소).
+
+---
+
+## PR-B (프론트 D6/D7) 명세 보강 (2026-06-08)
+
+PR-B 착수 시 Maxi 결정 — **편집 불가 필드는 입력칸을 미리 비활성**(§S8 "편집 불가 컨트롤 비활성" 완전 충족). 이를 위해 백엔드 이슈 응답에 편집 가능 정보 추가(PR-A restrictedFields=열람만 제공했음).
+
+### 백엔드 보강 (issue-tracking view layer)
+- `IssueResponse`에 `noneditableFields: List<String> = emptyList()` 추가 — actor가 **보이지만 편집 불가**한 필드 key 목록(restrictedFields=열람 불가 숨김과 별개·비중복). ApplicationService가 PR-A `FieldPermissionResolver.editableFields(actor, projectId, visibleCandidates)`로 계산. 단건·목록 양 경로.
+- restrictedFields(숨김) ⊇ 우선 — restrictedFields에 든 키는 noneditableFields에 중복 포함 안 함(이미 안 보임).
+
+### 프론트 (D6)
+- IssueResponse Zod에 `restrictedFields: string[]` + `noneditableFields: string[]` 추가(백엔드 계약 정합).
+- 이슈 화면 — restrictedFields 키는 렌더 차단(숨김), noneditableFields 키는 입력 컨트롤 `disabled`. 기존 `useIssuePermissions`(UPDATE) 게이팅과 AND.
+- 규칙 관리 화면 — 프로젝트 설정 `/projects/{key}/settings/field-permissions`. 커스텀 필드 관리(FR-IS-10 #98) 선례 복제. 규칙 = `{fieldKind, fieldKey, groupId, accessLevel}`. 그룹 선택 드롭다운(그룹 목록 조회 client 신규). MANAGE_FIELD_PERMISSIONS 게이팅(useProjectPermissions 확장).
+- API 계약(백엔드 PR-A): `GET/POST/DELETE /api/v1/projects/{key}/field-permissions`. 응답 `FieldPermissionResponse{id, fieldKind, fieldKey, groupId, groupName, accessLevel}`.
+
+### E2E (D7)
+- 규칙 생성/삭제(그룹×필드×VIEW/EDIT) + 이슈 화면 제한 필드 숨김/비활성 시나리오.
