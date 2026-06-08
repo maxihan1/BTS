@@ -1,4 +1,4 @@
-// 전역 사용자 그룹 관리 엔드포인트 — SYSTEM_ADMIN 가드 + CRUD/멤버십 8종 (FR-PM-09 Task 5)
+// 전역 사용자 그룹 관리 엔드포인트 — write 7종 SYSTEM_ADMIN 가드 + listGroups 인증사용자 읽기 (FR-PM-09 Task 5 / FR-PM-07 PR-B)
 
 package com.atlas.bts.identity.web
 

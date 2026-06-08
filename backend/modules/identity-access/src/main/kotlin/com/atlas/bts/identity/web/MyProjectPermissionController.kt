@@ -65,6 +65,10 @@ import java.util.UUID
  * @see MyIssuePermissionController
  */
 @RestController
+// 권한 게이팅 aggregator — 이슈/컴포넌트/버전/커스텀필드/필드권한 5종 판정 의존성을 한 응답에 모은다.
+// FR-PM-07 PR-B 에서 필드권한 판정용 멤버십·스킴 리포 2종이 추가되어 7 임계값을 초과하나,
+// 각 의존성은 서로 다른 권한 도메인이라 묶을 수 없다(AuthController 선례 동형).
+@Suppress("LongParameterList")
 class MyProjectPermissionController(
     private val permissionResolver: IssuePermissionResolver,
     private val componentPermissionResolver: ComponentPermissionResolver,
