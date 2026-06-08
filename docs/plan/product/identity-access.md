@@ -314,15 +314,19 @@
 
 ### §4.7 FR-PM-07 — 필드 수준 권한
 
-**우선순위**. 높음 | **선행**. §4.5 | **Plan slug**. `identity/field-permissions`
+**우선순위**. 높음 | **선행**. §4.5 · §4.9(사용자 그룹) · FR-IS-10(커스텀 필드) | **Plan slug**. `identity/field-permissions`
 
-- [ ] D1. 도메인 — FieldVisibility (책임. security-engineer)
-- [ ] D2. 명세 — 필드 × 역할 매트릭스 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `field_permissions(field_name, role, visibility)` (책임. db-engineer)
-- [ ] D4. 백엔드 — 응답 직렬화 시 필드 필터 (책임. security-engineer + backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. security-engineer)
-- [ ] D6. 프론트 UI — 숨김 필드 렌더 차단 (책임. frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+**그룹 기반 프로젝트별 규칙 채택**(ADR [2026-06-08-field-level-permissions](../../decisions/2026-06-08-field-level-permissions.md)). 필드 × 사용자 그룹 × 접근수준(VIEW/EDIT) 규칙 + opt-in 제한 + 관리자 우회 없음. **2 PR 분할** — PR-A(백엔드 전체 D1~D5) / PR-B(프론트·E2E D6~D7).
+
+- [x] D1. 도메인 — `FieldPermission`(프로젝트×필드×그룹×VIEW/EDIT) + `FieldAccessLevel` + shared-kernel `FieldKind`/`FieldRef` (책임. security-engineer) (PR-A #97)
+- [x] D2. 명세 — 필드 × 사용자 그룹 매트릭스(역할 축=그룹, FR-PM-09), 열람/편집, 관리자 우회 없음 (책임. security-engineer) (PR-A #97)
+- [x] D3. 데이터 모델 — `field_permissions(project_id, field_kind, field_key, group_id, access_level)` V018 + `MANAGE_FIELD_PERMISSIONS` 시드 (책임. db-engineer) (PR-A #97)
+- [x] D4. 백엔드 — shared-kernel `FieldPermissionResolver` 포트 + prod resolver(관리자 우회 없음) + 규칙 CRUD API + 응답 열람 마스킹(`restrictedFields`) + 편집 EDIT 게이트 (책임. security-engineer + backend-engineer) (PR-A #97)
+- [x] D5. 백엔드 테스트 — prod 통합(그룹 멤버십 유일 통과·관리자 비멤버 isEmpty ground-truth) + 마스킹/편집 게이트 (책임. security-engineer) (PR-A #97)
+- [ ] D6. 프론트 UI — 숨김 필드 렌더 차단 + 규칙 관리 화면 (책임. frontend-engineer) — PR-B
+- [ ] D7. E2E (책임. qa-engineer) — PR-B
+
+> **FR-PM-07 PR-A 완료 (2026-06-08, PR #97)**. 필드 수준 권한 백엔드. **그룹 기반 프로젝트별 규칙**(Maxi 도메인 결정) — `field_permissions(project_id, field_kind CORE/CUSTOM, field_key, group_id→user_groups CASCADE, access_level VIEW/EDIT)` V018 + `MANAGE_FIELD_PERMISSIONS`(PROJECT_ADMIN 시드, PermissionSchemaMigrationTest 14→15). shared-kernel `FieldPermissionResolver` 포트(visibleFields/editableFields) + prod `IdentityAccessFieldPermissionResolver`(actor 그룹 멤버십 ∩ 규칙, **관리자 우회 없음**=isSystemAdmin/role 미참조, prod 통합테스트 isEmpty 실증) + non-prod AlwaysAllow stub. **opt-in 제한**(규칙 0건 필드는 자유, 1건+면 지정 그룹만). **EDIT⊃VIEW**. 규칙 CRUD API 3종(MANAGE_FIELD_PERMISSIONS 이중가드, CORE 화이트리스트 422, securityLevelId 등 제외). 시행=issue-tracking — 이슈 응답 열람 마스킹(커스텀 키 제거·nullable 코어 null·non-null summary/priority는 편집만·`restrictedFields` 응답, 단건/목록 배치 N+1 회피) + 편집 EDIT 게이트(no-op 통과·변경 거부 403). **fail-open 수정**(code-review): IssueApplicationService resolver를 nullable `?: return`→securityDirectory 선례대로 non-null allow-all 기본값, 보안 코드 항상 실행. 검증 — 3모듈 test+ktlint+detekt 그린(--rerun-tasks), 회귀 0. ADR [2026-06-08-field-level-permissions](../../decisions/2026-06-08-field-level-permissions.md). **범위 밖**: 프론트 UI/E2E(D6/D7)는 PR-B.
 
 ### §4.8 FR-PM-08 — 전역 시스템 관리자 역할/권한 인프라
 

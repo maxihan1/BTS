@@ -43,6 +43,7 @@ scheme:
 - `MANAGE_VERSIONS` - 버전 추가/제거
 - `MANAGE_PERMISSIONS` - 권한 스킴 변경
 - `MANAGE_CUSTOM_FIELDS` - 커스텀 필드 정의 추가/수정/삭제 (FR-IS-10, PROJECT_ADMIN 전용)
+- `MANAGE_FIELD_PERMISSIONS` - 필드 수준 권한 규칙 추가/수정/삭제 (§12.5 FR-PM-07, PROJECT_ADMIN 전용)
 
 ### 이슈 접근
 - `BROWSE_PROJECT` - 프로젝트 조회
@@ -94,14 +95,26 @@ enum class MemberType { REPORTER, ASSIGNEE, USER, PROJECT_ROLE, GROUP }
 
 ## 12.5 필드 수준 권한 (FR-PM-07)
 
-특정 필드를 특정 역할만 볼 수 있게:
+이슈의 특정 필드(코어 + 커스텀)를 특정 **사용자 그룹**(§12.6.1)만 열람/편집하게 제어한다. 예: "급여 영향도(커스텀 필드)는 HR 그룹만 열람, 편집도 HR만". (ADR [2026-06-08-field-level-permissions](../decisions/2026-06-08-field-level-permissions.md), PR-A #97.)
 
-```yaml
-field_security:
-  - field: salary_impact     # 커스텀 필드
-    visible_to: [HR, Manager]
-    editable_by: [HR]
+```kotlin
+// 프로젝트별 규칙 1건 = (프로젝트, 필드, 그룹, 접근수준)
+data class FieldPermission(
+    val projectId: UUID,
+    val fieldKind: FieldKind,       // CORE(코어 필드) | CUSTOM(커스텀 필드 — 동명 key 네임스페이스 분리)
+    val fieldKey: String,           // 코어 필드명(화이트리스트) 또는 커스텀 필드 key
+    val groupId: UUID,              // user_groups 참조(§12.6.1 FR-PM-09)
+    val accessLevel: FieldAccessLevel,  // VIEW | EDIT (EDIT ⊃ VIEW)
+)
 ```
+
+- **역할 축 = 사용자 그룹**. ProjectRole 2종이나 멤버 5타입(§12.4) 대신 그룹 단일 축. SDD의 `visible_to: [HR, Manager]`를 그룹으로 직역.
+- **그릇 = 프로젝트별 단순 테이블**(`field_permissions`, identity-access V018). 스킴 계층(§12.2/§12.4) 미채택 — 필드 권한은 프로젝트 간 공유 수요가 적음.
+- **opt-in 제한**. 필드에 규칙이 0건이면 자유(기존 동작). 1건이라도 있으면 그 필드는 제한 모드 — VIEW/EDIT 행 그룹 멤버만 열람, EDIT 행 그룹 멤버만 편집.
+- **관리자 우회 없음**. 규칙 지정 그룹 멤버가 유일 통과 경로. PROJECT_ADMIN/SYSTEM_ADMIN도 그룹 멤버가 아니면 값을 못 본다(§12.4 보안 수준과 동일 원칙). 단 규칙 CRUD는 `MANAGE_FIELD_PERMISSIONS`(§12.3) 보유자가 수행 — 값 열람과 규칙 관리는 분리.
+- **시행**. 이슈 응답 직렬화 시 열람 불가 필드 마스킹(커스텀 키 제거 · nullable 코어 null · `restrictedFields` 응답). 이슈 편집 시 편집 불가 필드 변경 거부(403, no-op 통과). 판정은 cross-BC `FieldPermissionResolver` 포트(shared-kernel) → identity-access prod 구현.
+- **대상 필드**. 코어 7종(summary·description·priority·labels·environment·impact·assigneeId) + 커스텀 필드. `securityLevelId`(§12.4 SET_ISSUE_SECURITY)·`componentIds`(MANAGE_COMPONENTS) 등은 별도 통제라 제외(이중 통제 회피). non-null 코어(summary·priority)는 편집 제어만(열람은 항상 노출).
+- **범위**. PR-A(백엔드) 완료. 프론트 UI(숨김 필드 렌더 차단 + 규칙 관리 화면)·E2E는 PR-B.
 
 ## 12.6 역할 (Role)
 

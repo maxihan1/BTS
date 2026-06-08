@@ -27,7 +27,11 @@ data class UserGroupWithCount(
  * 트랜잭션 경계는 상위 서비스가 소유한다. 본 인터페이스 구현체는 자체 트랜잭션을 열지 않는다.
  *
  * 구현체: [JdbcUserGroupRepository].
+ *
+ * CRUD 6종 + 멤버십 연산 5종(add/remove/list/exists/isMemberOf/findGroupIdsByUser)이 한 영속
+ * 책임에 응집한다. 그룹 영속 경계를 인위로 쪼개면 트랜잭션 결합만 늘어나므로 TooManyFunctions 억제.
  */
+@Suppress("TooManyFunctions")
 interface UserGroupRepository {
     /**
      * 새 그룹을 저장하고 DB 가 채운 id/타임스탬프까지 포함한 [UserGroup]을 반환한다.
@@ -136,4 +140,17 @@ interface UserGroupRepository {
         groupId: UUID,
         userId: UUID,
     ): Boolean
+
+    /**
+     * 사용자가 소속한 모든 그룹의 식별자를 반환한다(FR-PM-07 PR-A Task 4).
+     *
+     * 필드 수준 권한 판정([FieldPermissionResolver])에서 actor 의 그룹 집합을 한 번에 회수해
+     * `field_permissions` 규칙의 group_id 와 교집합으로 visible/editable 을 계산한다.
+     * [isMemberOf] 가 (그룹, 사용자) 단건 확인인 것과 달리, 본 메서드는 actor 기준 역방향
+     * 배치 조회로 그룹별 EXISTS N회를 1회로 압축한다(N+1 회피).
+     *
+     * @param userId 그룹 소속을 조회할 사용자 식별자.
+     * @return 사용자가 속한 그룹 식별자 목록. 소속이 없으면 빈 목록.
+     */
+    fun findGroupIdsByUser(userId: UUID): List<UUID>
 }

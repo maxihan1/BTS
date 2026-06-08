@@ -29,6 +29,7 @@ import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueSoftDeleted
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.event.IssueUpdated
+import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
 import com.bts.issue.markdown.MarkdownRenderer
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueFieldPatch
@@ -39,6 +40,9 @@ import com.bts.issue.type.domain.IssueTypeNotFoundException
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeKey
+import com.bts.shared.permission.FieldKind
+import com.bts.shared.permission.FieldPermissionResolver
+import com.bts.shared.permission.FieldRef
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -79,8 +83,9 @@ import java.util.UUID
  * TooManyFunctions: 이슈 CRUD + 전이 유스케이스 전반을 단일 Application Service 가 담당하므로 함수 수 임계치(11)를 초과한다.
  * availableTransitions 추가로 11개, changeAssignee 추가로 12개, changeComponents 추가로 13개가 됐으나
  * 책임 분리보다 응집이 더 적합한 구조이므로 Suppress 처리.
+ * LargeClass: 필드 마스킹 헬퍼(FR-PM-07 Task-7) 추가로 임계치를 초과했으나 같은 응집 이유가 적용된다.
  */
-@Suppress("TooManyFunctions", "LongParameterList")
+@Suppress("TooManyFunctions", "LongParameterList", "LargeClass")
 @Service
 @Transactional
 class IssueApplicationService(
@@ -102,6 +107,10 @@ class IssueApplicationService(
     // AlwaysAllowIssueSecurityDirectory(@Profile("!prod")) Bean이 타입으로 주입돼 이 기본값을 대체한다.
     private val securityDirectory: IssueSecurityDirectory = AlwaysAllowIssueSecurityDirectory(),
     private val clock: Clock = Clock.systemUTC(),
+    // 기본값은 Spring이 관리하지 않는 단위 테스트 컨텍스트 호환용 fallback이다 (securityDirectory 패턴 동형).
+    // prod 컨텍스트에서는 IdentityAccessFieldPermissionResolver(@Profile("prod")) 또는
+    // AlwaysAllowFieldPermissionResolver(@Profile("!prod")) Bean이 타입으로 주입돼 이 기본값을 대체한다.
+    private val fieldPermissionResolver: FieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -315,7 +324,8 @@ class IssueApplicationService(
     ): IssueResponse {
         assertViewIssueOrNotFound(actor, key)
         val response = repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)
-        return response.withSingleDetail()
+        val detailed = response.withSingleDetail()
+        return maskFieldsForSingle(actor, key.projectPrefix, detailed)
     }
 
     /**
@@ -380,6 +390,14 @@ class IssueApplicationService(
         // 라벨 도메인 검증 + 정규화 — null=무변경(스킵), non-null=도메인 권위 검증 필수.
         // BLOCKER 1: PATCH 경로에서 도메인 validateAndNormalizeLabels 를 우회하는 경로를 차단한다.
         val normalizedLabels: List<String>? = request.labels?.let { Issue.normalizeLabels(it) }
+
+        // FR-PM-07 Task-8 — 편집 게이트: 실제로 값이 바뀌는 필드를 먼저 계산하고,
+        // editableFields 에 없는 필드 변경이 있으면 403. mergeCustomFieldsAndValidate 전에 수행하여
+        // 커스텀 필드 병합 비용을 차단하고 domain-bypass 를 방지한다.
+        val coreChangedForGate = buildCoreChangedFieldRefs(existing, request, normalizedLabels)
+        val customChangedForGate = buildCustomChangedFieldRefs(existing, request)
+        val allChangedForGate = coreChangedForGate + customChangedForGate
+        assertEditableOrForbidden(actor, key, allChangedForGate)
 
         // FR-IS-10 E11 커스텀 필드 필드단위 병합 — null=무변경, 맵 명시=키단위 병합, 키값 null=제거.
         // 병합 후 최종 상태를 기준으로 required 검증 수행 (patch-merge-domain-bypass 방지).
@@ -630,6 +648,17 @@ class IssueApplicationService(
         val existing = repo.findByKey(key) ?: throw IssueNotFoundException(key)
 
         val assigneeId = request.assigneeId
+
+        // FR-PM-07 Task-8 — assigneeId 편집 게이트: 값이 실제로 바뀔 때만 게이트 적용.
+        // no-op(기존값과 동일)이면 DB write 없이 현재 상태를 그대로 반환한다(불필요한 version bump 방지).
+        // null(담당자 해제) 요청은 항상 처리한다 — 기존 담당자가 이미 null이어도 명시적 해제는 통과한다.
+        val assigneeChanged = assigneeId == null || assigneeId != existing.assigneeId?.value
+        if (!assigneeChanged) {
+            return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
+        }
+
+        assertEditableOrForbidden(actor, key, setOf(FieldRef(FieldKind.CORE, "assigneeId")))
+
         val updated =
             if (assigneeId != null) {
                 if (!userLookupPort.exists(assigneeId)) {
@@ -737,7 +766,8 @@ class IssueApplicationService(
         assertPermission(actor, IssuePermission.BROWSE, IssueScope.Project(projectKey))
         // 목록당 1회 cross-BC 호출 — N+1 없음. unrestricted=true 이면 WHERE 술어 미적용(빠른경로).
         val access = securityDirectory.accessibleLevels(actor.value, projectKey)
-        return repo.listWithType(projectKey, pageable, actor.value, access)
+        val page = repo.listWithType(projectKey, pageable, actor.value, access)
+        return maskFieldsForPage(actor, projectKey, page)
     }
 
     // ── private helpers ────────────────────────────────────────────────────────
@@ -1165,6 +1195,188 @@ class IssueApplicationService(
                 }
         val projectLead = projectLeadRepository.findLeadUserId(projectId)
         return DefaultAssigneeResolver.resolve(current = null, candidates = candidates, projectLeadUserId = projectLead)
+    }
+
+    /**
+     * 단건 조회 응답에 필드 수준 마스킹을 적용한다 (FR-PM-07 Task-7).
+     *
+     * projectKey 로 projectId 를 조회한 뒤 [buildCandidates] 를 구성하고
+     * [FieldPermissionResolver.visibleFields] 를 1회 호출하여 마스킹을 적용한다.
+     * projectId 를 찾지 못하면 원본 응답을 그대로 반환한다(방어적 처리).
+     *
+     * @param actor 조회 행위자.
+     * @param projectKey 이슈가 속한 프로젝트 키.
+     * @param response 마스킹 전 응답.
+     * @return 마스킹이 적용된 응답.
+     */
+    private fun maskFieldsForSingle(
+        actor: ActorId,
+        projectKey: String,
+        response: IssueResponse,
+    ): IssueResponse {
+        val projectId = repo.findProjectIdByKey(projectKey) ?: return response
+        val candidates = buildCandidates(response)
+        val visible = fieldPermissionResolver.visibleFields(actor.value, projectId, candidates)
+        return response.maskInvisible(visible)
+    }
+
+    /**
+     * 목록 조회 응답 Page 전체에 필드 수준 마스킹을 적용한다 (FR-PM-07 Task-7, EC14).
+     *
+     * 같은 프로젝트의 이슈 목록이므로 [FieldPermissionResolver.visibleFields] 를 페이지당 1회만 호출한다(N+1 회피).
+     * candidates 는 페이지 내 모든 이슈의 커스텀 필드 키를 합집합으로 구성한다.
+     * 빈 페이지이거나 projectId 를 찾지 못하면 원본 페이지를 그대로 반환한다(방어적 처리).
+     *
+     * @param actor 조회 행위자.
+     * @param projectKey 목록이 속한 프로젝트 키.
+     * @param page 마스킹 전 Page.
+     * @return 마스킹이 적용된 Page.
+     */
+    @Suppress("ReturnCount") // empty guard + projectId miss guard 조기 반환 패턴 — 의도적 설계
+    private fun maskFieldsForPage(
+        actor: ActorId,
+        projectKey: String,
+        page: org.springframework.data.domain.Page<IssueResponse>,
+    ): org.springframework.data.domain.Page<IssueResponse> {
+        if (page.isEmpty) return page
+        val projectId = repo.findProjectIdByKey(projectKey) ?: return page
+        // 페이지 내 커스텀 필드 키 합집합 + 코어 마스킹 대상 후보 — 1회 호출로 배치 처리(EC14)
+        val candidates =
+            page.content
+                .fold(buildCoreCandidates()) { acc, r ->
+                    acc + r.customFields.keys.map { FieldRef(FieldKind.CUSTOM, it) }
+                }.toSet()
+        val visible = fieldPermissionResolver.visibleFields(actor.value, projectId, candidates)
+        val maskedContent = page.content.map { it.maskInvisible(visible) }
+        return org.springframework.data.domain.PageImpl(maskedContent, page.pageable, page.totalElements)
+    }
+
+    /**
+     * 단건 응답의 마스킹 candidate 집합을 구성한다.
+     *
+     * 코어 마스킹 대상 7종 + 이슈의 커스텀 필드 키 전체를 포함한다.
+     *
+     * @param response 대상 이슈 응답.
+     * @return [FieldRef] candidate 집합.
+     */
+    private fun buildCandidates(response: IssueResponse): Set<FieldRef> =
+        buildCoreCandidates() + response.customFields.keys.map { FieldRef(FieldKind.CUSTOM, it) }
+
+    /**
+     * 마스킹 대상 코어 필드 7종의 [FieldRef] 집합을 반환한다.
+     *
+     * summary·priority 는 non-null CORE 로 마스킹 대상이 아니므로 제외된다.
+     */
+    private fun buildCoreCandidates(): Set<FieldRef> =
+        setOf(
+            FieldRef(FieldKind.CORE, "description"),
+            FieldRef(FieldKind.CORE, "environment"),
+            FieldRef(FieldKind.CORE, "impact"),
+            FieldRef(FieldKind.CORE, "assigneeId"),
+            FieldRef(FieldKind.CORE, "labels"),
+            FieldRef(FieldKind.CORE, "summary"),
+            FieldRef(FieldKind.CORE, "priority"),
+        )
+
+    /**
+     * updateIssue 요청에서 실제로 값이 변경되는 코어 필드의 [FieldRef] 집합을 반환한다 (FR-PM-07 Task-8).
+     *
+     * [buildChangedFields] 와 동일한 3-상태 sentinel 규칙을 따른다.
+     * - summary/typeId: null=무변경, 기존값과 다른 경우만 포함.
+     * - description/environment: null=무변경, ""=클리어(기존 non-null 이면 변경), 값=변경(기존과 다를 때).
+     * - labels: null=무변경, []=전체 제거(기존 비어있지 않으면 변경), 값=교체(기존과 다를 때).
+     * - priority/impact: null=무변경, 기존값과 다른 경우만 포함.
+     *
+     * 커스텀 필드는 [buildCustomChangedFieldRefs] 에서 별도로 계산한다.
+     *
+     * @param normalizedLabels [Issue.normalizeLabels] 를 거친 정규화 값. null=무변경.
+     * @return 변경된 코어 필드의 [FieldRef] 집합.
+     */
+    @Suppress("CyclomaticComplexity")
+    private fun buildCoreChangedFieldRefs(
+        existing: Issue,
+        request: UpdateIssueRequest,
+        normalizedLabels: List<String>?,
+    ): Set<FieldRef> {
+        val refs = mutableSetOf<FieldRef>()
+        if (request.summary != null && existing.summary != request.summary) {
+            refs.add(FieldRef(FieldKind.CORE, "summary"))
+        }
+        if (request.typeId != null && existing.typeId != request.typeId) {
+            refs.add(FieldRef(FieldKind.CORE, "typeId"))
+        }
+        if (isTextFieldChanged(existing.description, request.description)) {
+            refs.add(FieldRef(FieldKind.CORE, "description"))
+        }
+        if (isTextFieldChanged(existing.environment, request.environment)) {
+            refs.add(FieldRef(FieldKind.CORE, "environment"))
+        }
+        if (normalizedLabels != null && existing.labels != normalizedLabels) {
+            refs.add(FieldRef(FieldKind.CORE, "labels"))
+        }
+        if (request.priority != null && existing.priority != request.priority) {
+            refs.add(FieldRef(FieldKind.CORE, "priority"))
+        }
+        if (request.impact != null && existing.impact != request.impact) {
+            refs.add(FieldRef(FieldKind.CORE, "impact"))
+        }
+        return refs
+    }
+
+    /**
+     * updateIssue 요청에서 실제로 값이 변경되는 커스텀 필드의 [FieldRef] 집합을 반환한다 (FR-PM-07 Task-8).
+     *
+     * request.customFields=null 이면 무변경이므로 빈 집합을 반환한다.
+     * 패치 맵의 각 키에 대해 기존값과 비교하여 달라지는 것만 포함한다.
+     * (null 값 키 = 제거 의도이며, 기존에 해당 키가 있으면 변경으로 간주한다.)
+     *
+     * @return 변경된 커스텀 필드의 [FieldRef] 집합.
+     */
+    private fun buildCustomChangedFieldRefs(
+        existing: Issue,
+        request: UpdateIssueRequest,
+    ): Set<FieldRef> {
+        val patch = request.customFields ?: return emptySet()
+        return patch.entries
+            .filter { (fieldKey, newValue) -> existing.customFields[fieldKey] != newValue }
+            .map { (fieldKey, _) -> FieldRef(FieldKind.CUSTOM, fieldKey) }
+            .toSet()
+    }
+
+    /**
+     * [changedCandidates] 중 actor 가 편집 불가한 필드가 있으면 403([ResponseStatusException])을 던진다
+     * (FR-PM-07 Task-8).
+     *
+     * [changedCandidates] 가 비어있으면 editableFields 를 호출하지 않는다(no-op 최적화).
+     * 프로젝트 ID 를 찾지 못하면 게이트를 스킵한다(방어적 처리).
+     *
+     * @param actor 편집 행위자.
+     * @param key 편집 대상 이슈 키 (projectPrefix 추출용).
+     * @param changedCandidates 실제로 변경되는 필드의 [FieldRef] 집합.
+     * @throws org.springframework.web.server.ResponseStatusException (403) editable 에 없는 변경이 있을 때.
+     */
+    @Suppress("ReturnCount")
+    private fun assertEditableOrForbidden(
+        actor: ActorId,
+        key: IssueKey,
+        changedCandidates: Set<FieldRef>,
+    ) {
+        if (changedCandidates.isEmpty()) return
+        val projectId = repo.findProjectIdByKey(key.projectPrefix) ?: return
+        val editable = fieldPermissionResolver.editableFields(actor.value, projectId, changedCandidates)
+        val blocked = changedCandidates - editable
+        if (blocked.isNotEmpty()) {
+            log.warn(
+                "issue_edit_gate_denied key={} actor={} blockedFields={}",
+                key.value,
+                actor.value,
+                blocked,
+            )
+            throw org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.FORBIDDEN,
+                "편집 권한이 없는 필드가 포함되어 있습니다.",
+            )
+        }
     }
 
     /**

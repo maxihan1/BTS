@@ -27,7 +27,10 @@ import java.util.UUID
  *
  * **트랜잭션 경계:**
  * 자체 트랜잭션을 열지 않으며, 호출하는 상위 서비스의 트랜잭션에 참여한다.
+ *
+ * [UserGroupRepository] 11개 메서드 1:1 구현(CRUD + 멤버십). 인터페이스와 동일 이유로 억제.
  */
+@Suppress("TooManyFunctions")
 @Repository
 class JdbcUserGroupRepository(
     private val jdbc: NamedParameterJdbcTemplate,
@@ -101,6 +104,11 @@ class JdbcUserGroupRepository(
             mapOf("groupId" to groupId, "userId" to userId),
             Boolean::class.java,
         ) ?: false
+
+    override fun findGroupIdsByUser(userId: UUID): List<UUID> =
+        jdbc.query(SQL_FIND_GROUP_IDS_BY_USER, mapOf("userId" to userId)) { rs, _ ->
+            rs.getObject("group_id", UUID::class.java)
+        }
 
     // ── SQL 상수 ─────────────────────────────────────────────────────────────────
 
@@ -189,6 +197,13 @@ class JdbcUserGroupRepository(
                 WHERE group_id = :groupId
                   AND user_id = :userId
             )
+        """
+
+        /** 사용자가 속한 모든 그룹 식별자 — ix_group_memberships_user 인덱스 활용(actor 역방향 배치). */
+        const val SQL_FIND_GROUP_IDS_BY_USER = """
+            SELECT group_id
+            FROM group_memberships
+            WHERE user_id = :userId
         """
     }
 }

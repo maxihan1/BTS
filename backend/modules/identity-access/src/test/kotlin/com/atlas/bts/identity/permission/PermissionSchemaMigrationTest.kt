@@ -62,6 +62,7 @@ class PermissionSchemaMigrationTest {
         // (V014 — FR-PM-05가 양 역할에 BROWSE_PROJECT/VIEW_ISSUE 4행 추가)
         // (V016 — FR-PM-06이 PROJECT_ADMIN에 SET_ISSUE_SECURITY 1행 추가)
         // (V017 — FR-IS-10이 PROJECT_ADMIN에 MANAGE_CUSTOM_FIELDS 1행 추가)
+        // (V018 — FR-PM-07이 PROJECT_ADMIN에 MANAGE_FIELD_PERMISSIONS 1행 추가)
         val count =
             jdbc.queryForObject(
                 """
@@ -73,7 +74,43 @@ class PermissionSchemaMigrationTest {
                 mapOf<String, Any>(),
                 Int::class.java,
             )
-        assertThat(count).isEqualTo(14)
+        assertThat(count).isEqualTo(15)
+    }
+
+    @Test
+    fun `기본 스킴 PROJECT_ADMIN이 MANAGE_FIELD_PERMISSIONS를 보유한다`() {
+        // V018 — FR-PM-07: 필드 수준 권한 규칙 관리(MANAGE_FIELD_PERMISSIONS) 권한의 정본 코드.
+        // 기본 스킴(00000000-…-001) PROJECT_ADMIN 역할에만 1행 시드 (MEMBER 제외, 행정 성격).
+        val adminCount =
+            jdbc.queryForObject(
+                """
+            SELECT count(*)
+            FROM role_permissions rp
+            JOIN permission_schemes ps ON rp.scheme_id = ps.id
+            WHERE ps.is_default = TRUE
+              AND rp.role = 'PROJECT_ADMIN'
+              AND rp.permission_code = 'MANAGE_FIELD_PERMISSIONS'
+            """,
+                mapOf<String, Any>(),
+                Int::class.java,
+            )
+        assertThat(adminCount).isEqualTo(1)
+
+        // MEMBER 역할에는 MANAGE_FIELD_PERMISSIONS 가 없어야 한다 (보수적 시드)
+        val memberCount =
+            jdbc.queryForObject(
+                """
+            SELECT count(*)
+            FROM role_permissions rp
+            JOIN permission_schemes ps ON rp.scheme_id = ps.id
+            WHERE ps.is_default = TRUE
+              AND rp.role = 'MEMBER'
+              AND rp.permission_code = 'MANAGE_FIELD_PERMISSIONS'
+            """,
+                mapOf<String, Any>(),
+                Int::class.java,
+            )
+        assertThat(memberCount).isEqualTo(0)
     }
 
     @Test
