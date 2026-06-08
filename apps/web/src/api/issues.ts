@@ -69,6 +69,14 @@ export const issueResponseSchema = z.object({
    * (zod-schema-strengthen-inline-mock-fanout 교훈).
    */
   securityLevelId: z.string().uuid().nullable().optional(),
+  /**
+   * FR-IS-10 커스텀 필드 — 프로젝트별 확장 키-값 맵.
+   * 백엔드 IssueResponse.customFields: Map<String, Any?> non-null, 기본 {}.
+   * - .default({})로 추가해 customFields 키가 없는 기존 인라인 mock이 깨지지 않게 한다
+   *   (zod-schema-strengthen-inline-mock-fanout 교훈).
+   * - 값은 임의 JSON(unknown) — 배열은 Record가 아니므로 z.record가 거부한다.
+   */
+  customFields: z.record(z.string(), z.unknown()).default({}),
 })
 
 /** Spring Page 응답 Zod 스키마 — 래퍼 없음 (DataResponse 감싸지 않음) */
@@ -135,6 +143,9 @@ export interface TransitionIssueInput {
 /** 이슈 단건 응답 타입 */
 export type IssueResponse = z.infer<typeof issueResponseSchema>
 
+/** 커스텀 필드 값 타입 — 프로젝트별 확장 키-값 맵 (FR-IS-10). */
+export type CustomFieldValues = Record<string, unknown>
+
 /** 이슈 생성 입력 타입 */
 export interface CreateIssueInput {
   projectKey: string
@@ -143,6 +154,11 @@ export interface CreateIssueInput {
   componentIds?: string[]
   /** FR-PM-06 — 생성 시 보안등급 지정. 미전달/null이면 등급 없음(공개). */
   securityLevelId?: string | null
+  /**
+   * FR-IS-10 — 생성 시 커스텀 필드 지정.
+   * 미전달 시 서버 기본값({}) 사용. 각 키-값은 프로젝트 필드 정의에 따라 처리됨.
+   */
+  customFields?: CustomFieldValues
 }
 
 /**
@@ -193,6 +209,14 @@ export interface UpdateIssueInput {
    * - UUID 문자열 = 지정
    */
   securityLevelId?: string | null
+  /**
+   * FR-IS-10 — 커스텀 필드 수정 (3-state).
+   * - undefined(미전달) = 무변경
+   * - null = 무변경 (백엔드 동일 처리)
+   * - {} (빈 맵) = 전체 제거
+   * - { key: value } = 키 단위 병합; 값이 null인 키는 삭제 (백엔드 처리)
+   */
+  customFields?: CustomFieldValues | null
   expectedVersion: number
 }
 
@@ -277,6 +301,10 @@ export async function createIssue(input: CreateIssueInput): Promise<IssueRespons
   // FR-PM-06 — securityLevelId 미전달 시 필드 자체를 body에서 제외해 서버가 null(무등급)으로 처리하게 한다.
   if (input.securityLevelId !== undefined) {
     body['securityLevelId'] = input.securityLevelId
+  }
+  // FR-IS-10 — customFields 미전달 시 필드 자체를 body에서 제외해 서버가 기본값({})으로 처리하게 한다.
+  if (input.customFields !== undefined) {
+    body['customFields'] = input.customFields
   }
   const wrapped = await apiPost(
     '/api/v1/issues',

@@ -45,6 +45,8 @@ export const createdIssueFixture = {
   impact: null,
   impactName: null,
   securityLevelId: null,
+  /** FR-IS-10 — 커스텀 필드 기본값. 생성 시 customFields 미전달이면 백엔드 기본값 {} 에코. */
+  customFields: {} as Record<string, unknown>,
 }
 
 const issueFixtureMap: Record<string, IssueResponse> = {
@@ -206,6 +208,7 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
     summary?: string
     componentIds?: string[]
     securityLevelId?: string | null
+    customFields?: Record<string, unknown>
   }
   if (body.projectKey === 'INVALID') {
     return HttpResponse.json(
@@ -242,6 +245,11 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
     ? body.securityLevelId
     : createdIssueFixture.securityLevelId
 
+  // FR-IS-10 — customFields: body에 명시된 경우 반영, 미전달이면 fixture 기본값({}) 유지
+  const resolvedCustomFields = body.customFields !== undefined
+    ? body.customFields
+    : createdIssueFixture.customFields
+
   const created: IssueResponse = {
     ...createdIssueFixture,
     projectKey: body.projectKey ?? 'ATLAS',
@@ -249,6 +257,7 @@ const createIssueHandler = http.post('/api/v1/issues', async ({ request }) => {
     componentIds,
     assigneeId: resolvedAssigneeId,
     securityLevelId: resolvedSecurityLevelId,
+    customFields: resolvedCustomFields,
   }
   // E2E-1 happy path 용 — POST 직후 GET 으로 조회 가능하도록 stateful 보관.
   createdIssues.set(created.key, created)

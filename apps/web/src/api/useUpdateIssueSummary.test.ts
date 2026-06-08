@@ -50,6 +50,7 @@ const issueFixture: IssueResponse = {
   environment: null,
   impact: null,
   impactName: null,
+  customFields: {},
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

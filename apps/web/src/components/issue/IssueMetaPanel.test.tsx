@@ -97,6 +97,7 @@ const issueFixture: IssueResponse = {
   environment: null,
   impact: null,
   impactName: null,
+  customFields: {},
 }
 
 /** 테스트용 사용자 목록 픽스처 */
