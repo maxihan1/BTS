@@ -165,8 +165,8 @@
 - [x] D3. 데이터 모델 — V015 마이그레이션: `custom_field_definitions` + `custom_field_options` + `issues.custom_fields JSONB` + GIN 인덱스 + init_codegen 미러 (책임. db-engineer) — PR #96
 - [x] D4. 백엔드 — `/api/v1/projects/{key}/custom-fields` CRUD + 이슈 Create/Update/Response customFields 통합 + CustomFieldValueValidator (책임. backend-engineer + security-engineer 권한 결선 T1/T6) — PR #96
 - [x] D5. 백엔드 테스트 — 도메인 단위(MockK) + Testcontainers 통합(마이그레이션/정의CRUD권한/값 왕복/E1~E11 검증/소프트삭제 후 값 보존) (책임. backend-engineer + qa-engineer) — PR #96
-- [ ] D6. 프론트 UI — 커스텀 필드 관리 페이지 + 이슈 폼 동적 렌더링 (책임. designer → frontend-engineer) — **후속 PR**
-- [ ] D7. E2E — 정의 CRUD + 이슈 값 입력/검증 시나리오 (책임. qa-engineer) — **후속 PR**
+- [x] D6. 프론트 UI — 커스텀 필드 관리 페이지 + 이슈 폼 동적 렌더링 (책임. designer → frontend-engineer) — PR #98 (settings.custom-fields 관리 페이지 + FieldType 10종 위젯(네이티브 input) + 이슈 생성폼/상세 메타패널 통합. cross-BC 예외: MyProjectPermissionController에 MANAGE_CUSTOM_FIELDS 노출. E-6 값 비우기 null 정규화, E-3 required 클라 경고)
+- [x] D7. E2E — 정의 CRUD + 이슈 값 입력/검증 시나리오 (책임. qa-engineer) — PR #98 (custom-fields.spec.ts 8 시나리오: 정의 CRUD/권한 disabled/값 입력/required·403)
 
 ## §3 컴포넌트 / 버전 (7개)
 
