@@ -49,6 +49,8 @@ describe('FieldPermissionList', () => {
         authMethod: 'local',
       },
     })
+    // XSRF-TOKEN 쿠키 설정 — API client가 X-XSRF-TOKEN 헤더로 재전송하는 double submit cookie 패턴
+    document.cookie = 'XSRF-TOKEN=test-csrf-token'
   })
 
   afterEach(() => {
@@ -238,12 +240,16 @@ describe('FieldPermissionList', () => {
     const fieldKeySelect = screen.getByRole('combobox', { name: '필드 키' })
     await user.selectOptions(fieldKeySelect, 'summary')
 
-    // groupId 선택
-    const groupSelect = screen.getByRole('combobox', { name: '그룹' })
+    // 그룹 목록이 로드되기를 기다림 (개발팀 옵션이 렌더되면 선택)
     await waitFor(() => {
-      // 그룹 목록이 로드되면 placeholder 외 옵션이 있어야 함
-      expect(groupSelect).not.toBeDisabled()
+      // 그룹 드롭다운에 개발팀 옵션이 있어야 함
+      const groupSelect = screen.getByRole('combobox', { name: '그룹' })
+      const devOption = Array.from(groupSelect.querySelectorAll('option')).find(
+        (o) => o.value === '11111111-0000-4000-8000-000000000001',
+      )
+      expect(devOption).toBeDefined()
     })
+    const groupSelect = screen.getByRole('combobox', { name: '그룹' })
     await user.selectOptions(groupSelect, '11111111-0000-4000-8000-000000000001')
 
     // accessLevel 선택 (VIEW)

@@ -24,6 +24,7 @@ export const projectPermissionsSchema = z.object({
     MANAGE_COMPONENTS: z.boolean(),
     MANAGE_VERSIONS: z.boolean(),
     MANAGE_CUSTOM_FIELDS: z.boolean(),
+    MANAGE_FIELD_PERMISSIONS: z.boolean(),
   }),
 })
 

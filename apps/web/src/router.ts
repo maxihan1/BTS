@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 19개 라우트 (이슈 7 + 워크플로우 스킴 4 + settings 3 + 멤버 1 + 컴포넌트 1 + 버전 1 + 커스텀 필드 1 + 사용자 생성 1)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 20개 라우트 (이슈 7 + 워크플로우 스킴 4 + settings 3 + 멤버 1 + 컴포넌트 1 + 버전 1 + 커스텀 필드 1 + 사용자 생성 1 + 필드 권한 1)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -20,6 +20,7 @@ import { ProjectMembersSettingsRouteAdapter } from './routes/projects.$projectKe
 import { ProjectComponentsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.components'
 import { ProjectVersionsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.versions'
 import { ProjectCustomFieldsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.custom-fields'
+import { ProjectFieldPermissionsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.field-permissions'
 import { ProjectLeadSettingsRouteAdapter } from './routes/projects.$projectKey.settings.project-lead'
 import { AdminUsersNewRouteAdapter } from './routes/admin.users.new'
 import { SessionsSettingsRouteAdapter } from './routes/settings.sessions'
@@ -151,6 +152,15 @@ const projectCustomFieldsSettingsRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
+/** 프로젝트 필드 권한 규칙 설정 라우트 — /projects/$projectKey/settings/field-permissions, requireAuth */
+const projectFieldPermissionsSettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects/$projectKey/settings/field-permissions',
+  component: ProjectFieldPermissionsSettingsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuth,
+})
+
 /** 프로젝트 버전 설정 라우트 — /projects/$projectKey/settings/versions, requireAuth */
 const projectVersionsSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -204,7 +214,8 @@ const settingsPasswordRoute = createRoute({
  *   · /admin/users/new
  *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
  *   · /projects/:projectKey/settings/components · /projects/:projectKey/settings/versions
- *   · /projects/:projectKey/settings/custom-fields · /projects/:projectKey/settings/project-lead
+ *   · /projects/:projectKey/settings/custom-fields · /projects/:projectKey/settings/field-permissions
+ *   · /projects/:projectKey/settings/project-lead
  *   · /settings/sessions · /settings/password
  * requireAuth 라우트: /dashboard · /issues · /issues/* · /admin/* · /projects/*\/settings/* · /settings/*
  */
@@ -233,6 +244,8 @@ export const routeTree = rootRoute.addChildren([
   projectVersionsSettingsRoute,
   // issue-tracking BC — 커스텀 필드 관리
   projectCustomFieldsSettingsRoute,
+  // project-workflow BC — 필드 권한 규칙 관리
+  projectFieldPermissionsSettingsRoute,
   // issue-tracking BC — 프로젝트 리드 설정 (project 서브도메인, 권한만 MANAGE_COMPONENTS 재사용)
   projectLeadSettingsRoute,
   // identity-access BC — 내 활성 세션 관리
