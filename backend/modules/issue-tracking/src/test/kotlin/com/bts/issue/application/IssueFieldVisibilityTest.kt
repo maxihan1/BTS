@@ -118,6 +118,11 @@ class IssueFieldVisibilityTest : DescribeSpec({
         every { repo.findByKeyWithType(issueKey) } returns makeFullResponse()
         every { repo.findActiveComponentIdsByIssue(issueId) } returns emptyList()
         every { repo.findProjectIdByKey(projectKey) } returns projectId
+        // editableFields 기본 stub — 모든 candidates 를 그대로 반환(전 필드 편집 허용).
+        // 개별 context 에서 필요한 경우 재정의한다.
+        every {
+            fieldPermissionResolver.editableFields(actorId, projectId, any())
+        } answers { thirdArg() }
     }
 
     // ── 단건(findByKey) 경로 ────────────────────────────────────────────────────
@@ -337,6 +342,150 @@ class IssueFieldVisibilityTest : DescribeSpec({
             it("목록의 모든 이슈에서 restrictedFields 에 secret 이 포함된다") {
                 val result = sut.listIssues(actor, projectKey, pageable)
                 result.content.forEach { it.restrictedFields shouldContain "secret" }
+            }
+        }
+    }
+
+    // ── noneditableFields — 보이지만 편집 불가한 필드 목록 (FR-PM-07 Task-1) ──────
+
+    describe("findByKey — noneditableFields") {
+
+        context("visible 이지만 editable 이 아닌 필드가 있을 때") {
+            beforeEach {
+                // 모든 필드 visible
+                every {
+                    fieldPermissionResolver.visibleFields(actorId, projectId, any())
+                } answers { thirdArg() }
+                // "secret" 커스텀 필드만 editable 에서 제외
+                every {
+                    fieldPermissionResolver.editableFields(actorId, projectId, any())
+                } answers {
+                    val candidates = thirdArg<Set<FieldRef>>()
+                    candidates.filter { it.key != "secret" }.toSet()
+                }
+            }
+
+            it("noneditableFields 에 secret 이 포함된다") {
+                val result = sut.findByKey(actor, issueKey)
+                result.noneditableFields shouldContain "secret"
+            }
+
+            it("noneditableFields 에 editable 필드는 포함되지 않는다") {
+                val result = sut.findByKey(actor, issueKey)
+                result.noneditableFields shouldNotContain "public"
+            }
+
+            it("restrictedFields(숨김)에 포함된 키는 noneditableFields 에서 제외된다(비중복)") {
+                // 이 케이스: 모두 visible 이므로 restrictedFields 는 비어 있음 — 중복 없음 확인
+                val result = sut.findByKey(actor, issueKey)
+                result.restrictedFields shouldBe emptyList()
+                // secret 은 visible·noneditable 이므로 noneditableFields 에 있고 restrictedFields 에 없어야 한다
+                result.noneditableFields shouldContain "secret"
+            }
+        }
+
+        context("visible 이지만 editable 이 아닌 CORE 필드(description)가 있을 때") {
+            beforeEach {
+                every {
+                    fieldPermissionResolver.visibleFields(actorId, projectId, any())
+                } answers { thirdArg() }
+                // description 만 편집 불가
+                every {
+                    fieldPermissionResolver.editableFields(actorId, projectId, any())
+                } answers {
+                    val candidates = thirdArg<Set<FieldRef>>()
+                    candidates.filter { !(it.kind == FieldKind.CORE && it.key == "description") }.toSet()
+                }
+            }
+
+            it("noneditableFields 에 description 이 포함된다") {
+                val result = sut.findByKey(actor, issueKey)
+                result.noneditableFields shouldContain "description"
+            }
+
+            it("description 값은 마스킹되지 않는다 (visible 이므로)") {
+                val result = sut.findByKey(actor, issueKey)
+                result.description shouldBe "상세 설명"
+            }
+        }
+
+        context("restrictedFields 에 있는 키는 noneditableFields 에 중복 수록되지 않는다") {
+            beforeEach {
+                // description 은 visible 에서 제거 (restricted)
+                every {
+                    fieldPermissionResolver.visibleFields(actorId, projectId, any())
+                } answers {
+                    val candidates = thirdArg<Set<FieldRef>>()
+                    candidates.filter { !(it.kind == FieldKind.CORE && it.key == "description") }.toSet()
+                }
+                // 모든 visible 필드를 editable 로 반환 (description 은 visible 에 없으므로 candidates 에 없음)
+                every {
+                    fieldPermissionResolver.editableFields(actorId, projectId, any())
+                } answers { thirdArg() }
+            }
+
+            it("description 은 restrictedFields 에만 있고 noneditableFields 에는 없다") {
+                val result = sut.findByKey(actor, issueKey)
+                result.restrictedFields shouldContain "description"
+                result.noneditableFields shouldNotContain "description"
+            }
+        }
+
+        context("모든 필드가 editable 일 때") {
+            beforeEach {
+                every {
+                    fieldPermissionResolver.visibleFields(actorId, projectId, any())
+                } answers { thirdArg() }
+                every {
+                    fieldPermissionResolver.editableFields(actorId, projectId, any())
+                } answers { thirdArg() }
+            }
+
+            it("noneditableFields 가 비어 있다") {
+                val result = sut.findByKey(actor, issueKey)
+                result.noneditableFields shouldBe emptyList()
+            }
+        }
+    }
+
+    describe("listIssues — noneditableFields (목록 경로)") {
+
+        val pageable = PageRequest.of(0, 20)
+        val responses =
+            listOf(
+                makeFullResponse(mapOf("secret" to "val1", "public" to 1)),
+                makeFullResponse(mapOf("secret" to "val2", "public" to 2)),
+            )
+        val page = PageImpl(responses, pageable, 2L)
+
+        beforeEach {
+            every {
+                permissionResolver.hasPermission(actorId, IssuePermission.BROWSE, IssueScope.Project(projectKey))
+            } returns true
+            every { repo.listWithType(projectKey, pageable, actorId, any<IssueSecurityAccess>()) } returns page
+        }
+
+        context("목록에서 visible 이지만 editable 이 아닌 필드가 있을 때") {
+            beforeEach {
+                every {
+                    fieldPermissionResolver.visibleFields(actorId, projectId, any())
+                } answers { thirdArg() }
+                every {
+                    fieldPermissionResolver.editableFields(actorId, projectId, any())
+                } answers {
+                    val candidates = thirdArg<Set<FieldRef>>()
+                    candidates.filter { it.key != "secret" }.toSet()
+                }
+            }
+
+            it("목록의 모든 이슈에서 noneditableFields 에 secret 이 포함된다") {
+                val result = sut.listIssues(actor, projectKey, pageable)
+                result.content.forEach { it.noneditableFields shouldContain "secret" }
+            }
+
+            it("목록의 모든 이슈에서 restrictedFields 는 비어 있다 (모두 visible)") {
+                val result = sut.listIssues(actor, projectKey, pageable)
+                result.content.forEach { it.restrictedFields shouldBe emptyList() }
             }
         }
     }

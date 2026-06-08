@@ -4,7 +4,9 @@ package com.atlas.bts.identity.web
 
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
+import com.atlas.bts.identity.permission.PermissionSchemeRepository
 import com.atlas.bts.identity.project.ProjectDirectory
+import com.atlas.bts.identity.project.ProjectMembershipRepository
 import com.atlas.bts.identity.web.dto.ProjectPermissionsResponse
 import com.bts.shared.permission.ComponentPermission
 import com.bts.shared.permission.ComponentPermissionResolver
@@ -49,6 +51,8 @@ import java.util.UUID
  * - [UI_PROJECT_PERMISSIONS] — 이슈 생성 버튼 노출용 `CREATE` (FR-PM-02).
  * - `MANAGE_COMPONENTS`/`MANAGE_VERSIONS` — 버전/컴포넌트 관리 버튼 게이팅용 (FR-PM-03 D6/D7).
  * - `MANAGE_CUSTOM_FIELDS` — 커스텀 필드 관리 버튼 게이팅용 (FR-IS-10 D6).
+ * - `MANAGE_FIELD_PERMISSIONS` — 필드 권한 규칙 관리 버튼 게이팅용 (FR-PM-07 PR-B). 전용 리졸버 없이
+ *   [ProjectMembershipRepository]+[PermissionSchemeRepository]로 직접 매트릭스 판정한다([hasManageFieldPermissions]).
  *   [ComponentPermissionResolver]/[VersionPermissionResolver]/[CustomFieldPermissionResolver]가 단일
  *   관리 코드(MANAGE_*)로 매핑하므로 임의 대표값
  *   ([ComponentPermission.CREATE]/[VersionPermission.CREATE]/[CustomFieldPermission.CREATE]) 1회 호출로
@@ -61,12 +65,18 @@ import java.util.UUID
  * @see MyIssuePermissionController
  */
 @RestController
+// 권한 게이팅 aggregator — 이슈/컴포넌트/버전/커스텀필드/필드권한 5종 판정 의존성을 한 응답에 모은다.
+// FR-PM-07 PR-B 에서 필드권한 판정용 멤버십·스킴 리포 2종이 추가되어 7 임계값을 초과하나,
+// 각 의존성은 서로 다른 권한 도메인이라 묶을 수 없다(AuthController 선례 동형).
+@Suppress("LongParameterList")
 class MyProjectPermissionController(
     private val permissionResolver: IssuePermissionResolver,
     private val componentPermissionResolver: ComponentPermissionResolver,
     private val versionPermissionResolver: VersionPermissionResolver,
     private val customFieldPermissionResolver: CustomFieldPermissionResolver,
     private val projectDirectory: ProjectDirectory,
+    private val membershipRepository: ProjectMembershipRepository,
+    private val permissionSchemeRepository: PermissionSchemeRepository,
     private val personalAccessTokenService: PersonalAccessTokenService,
 ) {
     companion object {
@@ -81,6 +91,9 @@ class MyProjectPermissionController(
 
         /** UI 커스텀 필드 관리 버튼 게이팅 권한 키 (FR-IS-10 D6). */
         const val MANAGE_CUSTOM_FIELDS_KEY = "MANAGE_CUSTOM_FIELDS"
+
+        /** UI 필드 권한 규칙 관리 버튼 게이팅 권한 키 (FR-PM-07 PR-B, V018 시드 PROJECT_ADMIN 전용). */
+        const val MANAGE_FIELD_PERMISSIONS_KEY = "MANAGE_FIELD_PERMISSIONS"
     }
 
     /**
@@ -138,6 +151,7 @@ class MyProjectPermissionController(
                     MANAGE_COMPONENTS_KEY to false,
                     MANAGE_VERSIONS_KEY to false,
                     MANAGE_CUSTOM_FIELDS_KEY to false,
+                    MANAGE_FIELD_PERMISSIONS_KEY to false,
                 )
         return mapOf(
             MANAGE_COMPONENTS_KEY to
@@ -146,6 +160,40 @@ class MyProjectPermissionController(
                 versionPermissionResolver.hasPermission(actorId, VersionPermission.CREATE, projectId),
             MANAGE_CUSTOM_FIELDS_KEY to
                 customFieldPermissionResolver.hasPermission(actorId, CustomFieldPermission.CREATE, projectId),
+            MANAGE_FIELD_PERMISSIONS_KEY to
+                hasManageFieldPermissions(actorId, projectId),
+        )
+    }
+
+    /**
+     * actor 가 [projectId] 에서 `MANAGE_FIELD_PERMISSIONS` 를 보유하는지 판정한다 (FR-PM-07 PR-B).
+     *
+     * [IdentityAccessCustomFieldPermissionResolver] 와 동형 알고리즘이다.
+     * 1. 멤버 게이트 — 비멤버([ProjectMembershipRepository.findByProjectAndUser] = null)면 false.
+     * 2. 매트릭스 판정 — [PermissionSchemeRepository.roleHasPermission] 으로 role 이
+     *    `MANAGE_FIELD_PERMISSIONS`(V018 시드, 기본 스킴 PROJECT_ADMIN 전용)를 보유하는지 확인.
+     *
+     * 전용 cross-BC 리졸버([CustomFieldPermissionResolver] 동형) 대신 컨트롤러가 두 리포지토리를
+     * 직접 조회하는 이유 — MANAGE_FIELD_PERMISSIONS 는 issue-tracking 등 타 BC 가 소비하지 않고
+     * identity-access 내부 UI 게이팅 전용이므로 shared-kernel 포트로 노출할 필요가 없다.
+     * [FieldPermissionApplicationService.requireManagePermission] 가 동일한 두 리포지토리로
+     * 서버측 권한 게이트를 수행하므로 판정 기준이 일치한다.
+     *
+     * @param actorId 인증 토큰에서 추출한 행위자 UUID
+     * @param projectId 권한 조회 대상 프로젝트 UUID
+     * @return MANAGE_FIELD_PERMISSIONS 보유 여부
+     */
+    private fun hasManageFieldPermissions(
+        actorId: UUID,
+        projectId: UUID,
+    ): Boolean {
+        val membership =
+            membershipRepository.findByProjectAndUser(projectId, actorId)
+                ?: return false // 비멤버 → 거부
+        return permissionSchemeRepository.roleHasPermission(
+            projectId,
+            membership.role.name,
+            MANAGE_FIELD_PERMISSIONS_KEY,
         )
     }
 

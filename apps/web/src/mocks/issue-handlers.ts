@@ -1,8 +1,10 @@
 // issue-tracking BC MSW mock handlers — GET 목록/단건 + POST 생성 + PATCH 수정 + PATCH /assignee + DELETE 삭제
 // 소프트 삭제 stateful: deletedKeys 와 createdIssues 로 모듈-스코프 상태 유지 (E2E 검증 gap-H + E2E-1 happy path).
+// FR-PM-07: restrictedFields/noneditableFields 시나리오 시드 — field-permission store 파생.
 import { http, HttpResponse } from 'msw'
 import { getStoredComponentsByIds } from './component-handlers'
 import { getStoredProjectLead } from './project-lead-handlers'
+import { getFieldPermissionsForProject } from './field-permission-handlers'
 import {
   issuePageFixture,
   issueAtlas1Fixture,
@@ -47,6 +49,10 @@ export const createdIssueFixture = {
   securityLevelId: null,
   /** FR-IS-10 — 커스텀 필드 기본값. 생성 시 customFields 미전달이면 백엔드 기본값 {} 에코. */
   customFields: {} as Record<string, unknown>,
+  /** FR-PM-07 — 생성 이슈는 열람 마스킹 없음(기본 빈 배열). */
+  restrictedFields: [],
+  /** FR-PM-07 — 생성 이슈는 편집 제한 없음(기본 빈 배열). */
+  noneditableFields: [],
 }
 
 const issueFixtureMap: Record<string, IssueResponse> = {
@@ -60,6 +66,13 @@ const issueFixtureMap: Record<string, IssueResponse> = {
 
 /** E2E 시나리오용 localStorage 키 — S4 재오픈 검증 시 done+resolution 이슈로 응답 분기 */
 const LS_KEY_RESOLUTION_ISSUE = '__bts_e2e_resolution_issue'
+
+/**
+ * FR-PM-07 E2E 시나리오용 localStorage 키 — 'true' 세팅 시 이슈 단건 GET에서
+ * field-permission store를 기반으로 restrictedFields/noneditableFields를 파생하여 채운다.
+ * Playwright addInitScript로 goto 전에 설정하면 필드 권한 적용 시나리오를 검증할 수 있다.
+ */
+export const LS_KEY_FIELD_PERMISSION_SCENARIO = '__bts_e2e_field_permission_scenario'
 
 /**
  * E2E 테스트 전용 localStorage 키 — 권한없는 이슈 키 목록(쉼표 구분).
@@ -184,9 +197,27 @@ const getIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
   }
 
   // 단건 GET — descriptionHtml 을 description 기반으로 채워 반환 (목록 API는 null 그대로)
+  // FR-PM-07: field-permission store 파생 시나리오 활성화 시 restrictedFields/noneditableFields 채움
+  const fieldPermissionScenario =
+    globalThis.localStorage?.getItem(LS_KEY_FIELD_PERMISSION_SCENARIO) === 'true'
+
+  let resolvedRestrictedFields = found.restrictedFields
+  let resolvedNoneditableFields = found.noneditableFields
+  if (fieldPermissionScenario) {
+    const permissions = getFieldPermissionsForProject(found.projectKey)
+    resolvedRestrictedFields = permissions
+      .filter((fp) => fp.accessLevel === 'VIEW')
+      .map((fp) => fp.fieldKey)
+    resolvedNoneditableFields = permissions
+      .filter((fp) => fp.accessLevel === 'EDIT')
+      .map((fp) => fp.fieldKey)
+  }
+
   const withHtml: IssueResponse = {
     ...found,
     descriptionHtml: renderDescriptionHtml(found.description),
+    restrictedFields: resolvedRestrictedFields,
+    noneditableFields: resolvedNoneditableFields,
   }
   return HttpResponse.json({ data: withHtml })
 })

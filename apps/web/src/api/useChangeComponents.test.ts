@@ -51,6 +51,8 @@ const issueFixture: IssueResponse = {
   impact: null,
   impactName: null,
   customFields: {},
+  restrictedFields: [],
+  noneditableFields: [],
 }
 
 const componentId = 'c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f'

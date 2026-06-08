@@ -98,6 +98,8 @@ const issueFixture: IssueResponse = {
   impact: null,
   impactName: null,
   customFields: {},
+  restrictedFields: [],
+  noneditableFields: [],
 }
 
 /** 테스트용 사용자 목록 픽스처 */

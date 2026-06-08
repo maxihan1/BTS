@@ -1,4 +1,4 @@
-// 전역 사용자 그룹 관리 엔드포인트 — SYSTEM_ADMIN 가드 + CRUD/멤버십 8종 (FR-PM-09 Task 5)
+// 전역 사용자 그룹 관리 엔드포인트 — write 7종 SYSTEM_ADMIN 가드 + listGroups 인증사용자 읽기 (FR-PM-09 Task 5 / FR-PM-07 PR-B)
 
 package com.atlas.bts.identity.web
 
@@ -34,22 +34,28 @@ import java.util.UUID
 /**
  * 전역 사용자 그룹 관리 컨트롤러 (FR-PM-09 Task 5).
  *
- * ## 엔드포인트 (모두 /api/v1/groups 하위, SYSTEM_ADMIN 전용)
- * - [createGroup]: POST 그룹 생성 → 201
- * - [listGroups]: GET 그룹 목록 → 200 (memberCount 포함)
- * - [getGroup]: GET 단건 그룹 → 200
- * - [updateGroup]: PATCH 그룹 갱신 → 200
- * - [deleteGroup]: DELETE 그룹 삭제 → 204
- * - [listMembers]: GET 그룹 멤버 목록 → 200
- * - [addMember]: PUT 멤버 추가 → 204 (멱등)
- * - [removeMember]: DELETE 멤버 제거 → 204 (멱등)
+ * ## 엔드포인트 (모두 /api/v1/groups 하위)
+ * - [createGroup]: POST 그룹 생성 → 201 (SYSTEM_ADMIN)
+ * - [listGroups]: GET 그룹 목록 → 200 (memberCount 포함, **인증 사용자 읽기 허용** — 아래 권한 표 참조)
+ * - [getGroup]: GET 단건 그룹 → 200 (SYSTEM_ADMIN)
+ * - [updateGroup]: PATCH 그룹 갱신 → 200 (SYSTEM_ADMIN)
+ * - [deleteGroup]: DELETE 그룹 삭제 → 204 (SYSTEM_ADMIN)
+ * - [listMembers]: GET 그룹 멤버 목록 → 200 (SYSTEM_ADMIN)
+ * - [addMember]: PUT 멤버 추가 → 204 (멱등, SYSTEM_ADMIN)
+ * - [removeMember]: DELETE 멤버 제거 → 204 (멱등, SYSTEM_ADMIN)
  *
- * ## 이중 가드 (DEVELOPMENT.md §1.1 #4)
+ * ## 권한 모델 — listGroups 만 읽기 완화 (FR-PM-07 PR-B, Maxi 결정)
+ * [listGroups] 를 제외한 7개 핸들러는 SYSTEM_ADMIN 전용이다. [listGroups] 만 인증된 모든 사용자가
+ * 그룹 목록(이름·id·멤버 수)을 읽을 수 있도록 완화했다. 필드 권한 규칙 생성 화면의 그룹 드롭다운이
+ * 일반 멤버에게도 그룹 선택지를 제공해야 하기 때문이다(Jira 그룹 피커 동형). 생성/수정/삭제 및
+ * 멤버 관리(write)는 불변으로 SYSTEM_ADMIN 을 유지한다.
+ *
+ * ## 이중 가드 (DEVELOPMENT.md §1.1 #4) — write/조회 단건 경로
  * 1. 클래스 레벨 [PreAuthorize]("isAuthenticated()") — 미인증 요청을 필터 체인에서 차단.
- * 2. 각 핸들러가 [requireSystemAdmin] 으로 DB 기반 [SystemPermissionResolver.isSystemAdmin]
- *    을 수동 평가한다. `@PreAuthorize hasRole` 을 쓰지 않는 이유 — JWT claim 이 stale 일 수
- *    있고 PAT 경로에는 role claim 이 없어, 두 인증 경로에서 일관된 전역 관리자 판정을 보장하기
- *    위해 DB 진실원천을 직접 조회한다 (FR-PM-04/리뷰 C2 결정).
+ * 2. [listGroups] 를 제외한 각 핸들러가 [requireSystemAdmin] 으로 DB 기반
+ *    [SystemPermissionResolver.isSystemAdmin] 을 수동 평가한다. `@PreAuthorize hasRole` 을 쓰지
+ *    않는 이유 — JWT claim 이 stale 일 수 있고 PAT 경로에는 role claim 이 없어, 두 인증 경로에서
+ *    일관된 전역 관리자 판정을 보장하기 위해 DB 진실원천을 직접 조회한다 (FR-PM-04/리뷰 C2 결정).
  *
  * ## Actor 추출 ([resolveActorId], ProjectMemberController 동형)
  * - jwt != null → JWT subject 를 UUID 로 파싱.
@@ -93,14 +99,18 @@ class UserGroupController(
     /**
      * GET /api/v1/groups — 전체 그룹 목록(멤버 수 포함) 조회.
      *
-     * @return 200 `[GroupResponse]` 또는 에러 응답
+     * ## 읽기 권한 완화 (FR-PM-07 PR-B, Maxi 결정)
+     * 다른 핸들러(create/update/delete/멤버 관리)와 달리 **SYSTEM_ADMIN 게이트를 적용하지 않는다**.
+     * 클래스 레벨 [PreAuthorize]("isAuthenticated()") 로 미인증만 차단하고, 인증된 모든 사용자가
+     * 그룹 목록(이름·id·멤버 수)을 읽을 수 있다. 필드 권한 규칙 생성 화면의 그룹 드롭다운이
+     * 일반 멤버에게도 그룹 선택지를 제공해야 하기 때문이다(Jira 그룹 피커 동형).
+     * 응답은 식별·집계 정보(name/id/memberCount)에 한정되며 멤버 명단은 포함하지 않으므로
+     * (멤버 명단은 [listMembers] 가 SYSTEM_ADMIN 게이트로 별도 보호) PII 노출이 없다.
+     *
+     * @return 200 `[GroupResponse]`
      */
     @GetMapping
-    fun listGroups(
-        @AuthenticationPrincipal jwt: Jwt?,
-    ): ResponseEntity<*> {
-        requireSystemAdmin(jwt)?.let { return it }
-
+    fun listGroups(): ResponseEntity<*> {
         val groups = userGroupService.listGroups().map { GroupResponse.from(it) }
         return ResponseEntity.ok(groups)
     }

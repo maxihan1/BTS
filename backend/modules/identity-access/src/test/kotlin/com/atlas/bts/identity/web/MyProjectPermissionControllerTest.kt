@@ -3,7 +3,11 @@
 package com.atlas.bts.identity.web
 
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
+import com.atlas.bts.identity.permission.PermissionSchemeRepository
 import com.atlas.bts.identity.project.ProjectDirectory
+import com.atlas.bts.identity.project.ProjectMembership
+import com.atlas.bts.identity.project.ProjectMembershipRepository
+import com.atlas.bts.identity.project.ProjectRole
 import com.bts.shared.permission.ComponentPermission
 import com.bts.shared.permission.ComponentPermissionResolver
 import com.bts.shared.permission.CustomFieldPermission
@@ -46,6 +50,8 @@ class MyProjectPermissionControllerTest {
     private lateinit var versionPermissionResolver: VersionPermissionResolver
     private lateinit var customFieldPermissionResolver: CustomFieldPermissionResolver
     private lateinit var projectDirectory: ProjectDirectory
+    private lateinit var membershipRepository: ProjectMembershipRepository
+    private lateinit var permissionSchemeRepository: PermissionSchemeRepository
     private lateinit var personalAccessTokenService: PersonalAccessTokenService
     private lateinit var controller: MyProjectPermissionController
 
@@ -60,6 +66,8 @@ class MyProjectPermissionControllerTest {
         versionPermissionResolver = mockk()
         customFieldPermissionResolver = mockk()
         projectDirectory = mockk()
+        membershipRepository = mockk()
+        permissionSchemeRepository = mockk()
         personalAccessTokenService = mockk()
         controller =
             MyProjectPermissionController(
@@ -68,6 +76,8 @@ class MyProjectPermissionControllerTest {
                 versionPermissionResolver = versionPermissionResolver,
                 customFieldPermissionResolver = customFieldPermissionResolver,
                 projectDirectory = projectDirectory,
+                membershipRepository = membershipRepository,
+                permissionSchemeRepository = permissionSchemeRepository,
                 personalAccessTokenService = personalAccessTokenService,
             )
 
@@ -81,6 +91,23 @@ class MyProjectPermissionControllerTest {
         every {
             versionPermissionResolver.hasPermission(actorId, VersionPermission.CREATE, projectId)
         } returns false
+        every {
+            customFieldPermissionResolver.hasPermission(actorId, CustomFieldPermission.CREATE, projectId)
+        } returns false
+        // MANAGE_FIELD_PERMISSIONS 기본 — 비멤버(membership null). 각 테스트가 필요 시 override.
+        every { membershipRepository.findByProjectAndUser(projectId, actorId) } returns null
+    }
+
+    /** [actorId] 를 주어진 [role] 의 프로젝트 멤버로 설정한다 (MANAGE_FIELD_PERMISSIONS 판정 경로용). */
+    private fun seedMembership(role: ProjectRole) {
+        every { membershipRepository.findByProjectAndUser(projectId, actorId) } returns
+            ProjectMembership(
+                projectId = projectId,
+                userId = actorId,
+                role = role,
+                createdAt = Instant.now(),
+                updatedAt = Instant.now(),
+            )
     }
 
     @Test
@@ -114,6 +141,51 @@ class MyProjectPermissionControllerTest {
         val response = controller.getProjectPermissions(MockHttpServletRequest(), jwtFor(actorId), projectKey)
 
         assertThat(response.permissions["MANAGE_CUSTOM_FIELDS"]).isFalse()
+    }
+
+    @Test
+    fun `PROJECT_ADMIN — permissions MANAGE_FIELD_PERMISSIONS true`() {
+        every { projectDirectory.resolveKeyToId(projectKey) } returns projectId
+        seedMembership(ProjectRole.PROJECT_ADMIN)
+        every {
+            permissionSchemeRepository.roleHasPermission(projectId, "PROJECT_ADMIN", "MANAGE_FIELD_PERMISSIONS")
+        } returns true
+
+        val response = controller.getProjectPermissions(MockHttpServletRequest(), jwtFor(actorId), projectKey)
+
+        assertThat(response.permissions["MANAGE_FIELD_PERMISSIONS"]).isTrue()
+    }
+
+    @Test
+    fun `일반 멤버(MEMBER) — permissions MANAGE_FIELD_PERMISSIONS false`() {
+        every { projectDirectory.resolveKeyToId(projectKey) } returns projectId
+        seedMembership(ProjectRole.MEMBER)
+        every {
+            permissionSchemeRepository.roleHasPermission(projectId, "MEMBER", "MANAGE_FIELD_PERMISSIONS")
+        } returns false
+
+        val response = controller.getProjectPermissions(MockHttpServletRequest(), jwtFor(actorId), projectKey)
+
+        assertThat(response.permissions["MANAGE_FIELD_PERMISSIONS"]).isFalse()
+    }
+
+    @Test
+    fun `비멤버 — permissions MANAGE_FIELD_PERMISSIONS false`() {
+        every { projectDirectory.resolveKeyToId(projectKey) } returns projectId
+        // setUp 기본값(membership null)으로 비멤버. schemeRepo 는 호출되지 않아야 한다.
+
+        val response = controller.getProjectPermissions(MockHttpServletRequest(), jwtFor(actorId), projectKey)
+
+        assertThat(response.permissions["MANAGE_FIELD_PERMISSIONS"]).isFalse()
+    }
+
+    @Test
+    fun `프로젝트 미존재(resolveKeyToId null) — permissions MANAGE_FIELD_PERMISSIONS false`() {
+        every { projectDirectory.resolveKeyToId(projectKey) } returns null
+
+        val response = controller.getProjectPermissions(MockHttpServletRequest(), jwtFor(actorId), projectKey)
+
+        assertThat(response.permissions["MANAGE_FIELD_PERMISSIONS"]).isFalse()
     }
 
     /**

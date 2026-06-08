@@ -102,6 +102,8 @@ export const issueDetailStrings = {
   descriptionEditButton: '본문 편집',
   /** 본문 편집 권한 없을 때 사유 메시지 (title/aria) */
   descriptionEditButtonNoPermission: '수정 권한이 없습니다',
+  /** 본문 열람 권한 없을 때 placeholder (FR-PM-07 restrictedFields) */
+  descriptionRestricted: '이 필드를 볼 권한이 없습니다.',
   /** 본문 저장 버튼 */
   descriptionSaveButton: '저장',
   /** 본문 편집 취소 버튼 */

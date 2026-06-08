@@ -137,4 +137,80 @@ describe('IssueDescription', () => {
     const editBtn = screen.getByRole('button', { name: '본문 편집' })
     expect(editBtn).not.toBeDisabled()
   })
+
+  // ── restrictedFields — 본문 열람 차단 (FR-PM-07 Task 6 보강) ─────────
+
+  it('restrictedFields에 "description"이 포함되면 본문 대신 열람 불가 placeholder가 표시된다', () => {
+    render(
+      <IssueDescription
+        {...defaultProps}
+        restrictedFields={['description']}
+      />,
+    )
+    expect(screen.getByTestId('description-restricted')).toBeInTheDocument()
+    expect(screen.queryByTestId('description-preview-content')).not.toBeInTheDocument()
+    expect(screen.queryByText('본문이 없습니다.')).not.toBeInTheDocument()
+  })
+
+  it('restrictedFields에 "description"이 포함되면 편집 버튼이 렌더되지 않는다', () => {
+    render(
+      <IssueDescription
+        {...defaultProps}
+        restrictedFields={['description']}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: '본문 편집' })).not.toBeInTheDocument()
+  })
+
+  it('restrictedFields가 빈 배열이면 본문이 정상 렌더된다', () => {
+    render(<IssueDescription {...defaultProps} restrictedFields={[]} />)
+    expect(screen.getByTestId('description-preview-content')).toBeInTheDocument()
+    expect(screen.queryByTestId('description-restricted')).not.toBeInTheDocument()
+  })
+
+  // ── noneditableFields — 편집 비활성 AND 조합 (FR-PM-07 Task 6 보강) ──
+
+  it('noneditableFields에 "description"이 포함되면 편집 버튼이 disabled된다', () => {
+    render(
+      <IssueDescription
+        {...defaultProps}
+        canEdit={true}
+        noneditableFields={['description']}
+      />,
+    )
+    expect(screen.getByRole('button', { name: '본문 편집' })).toBeDisabled()
+  })
+
+  it('canEdit=true + noneditableFields=[] 이면 편집 버튼이 활성이다', () => {
+    render(
+      <IssueDescription
+        {...defaultProps}
+        canEdit={true}
+        noneditableFields={[]}
+      />,
+    )
+    expect(screen.getByRole('button', { name: '본문 편집' })).not.toBeDisabled()
+  })
+
+  it('canEdit=false + noneditableFields=[] 이면 편집 버튼이 disabled된다 (canEdit이 막음)', () => {
+    render(
+      <IssueDescription
+        {...defaultProps}
+        canEdit={false}
+        noneditableFields={[]}
+      />,
+    )
+    expect(screen.getByRole('button', { name: '본문 편집' })).toBeDisabled()
+  })
+
+  it('canEdit=true + noneditableFields=["description"] 이면 편집 버튼이 disabled된다 (noneditableFields가 막음)', () => {
+    render(
+      <IssueDescription
+        {...defaultProps}
+        canEdit={true}
+        noneditableFields={['description']}
+      />,
+    )
+    expect(screen.getByRole('button', { name: '본문 편집' })).toBeDisabled()
+  })
 })
