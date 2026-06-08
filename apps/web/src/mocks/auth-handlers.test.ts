@@ -105,11 +105,20 @@ describe('authHandlers — GET /api/v1/users/me/whoami', () => {
     })
 
     expect(res.status).toBe(200)
-    const body = await res.json() as { username: string; email: string; authMethod: string; userId: string }
+    const body = await res.json() as {
+      username: string
+      email: string
+      authMethod: string
+      userId: string
+      mustChangePassword: boolean
+      isSystemAdmin: boolean
+    }
     expect(body.username).toBe('alice')
     expect(body.email).toBeTypeOf('string')
     expect(body.authMethod).toBe('jwt')
     expect(body.userId).toBeTypeOf('string')
+    expect(body.mustChangePassword).toBeTypeOf('boolean')
+    expect(body.isSystemAdmin).toBeTypeOf('boolean')
   })
 
   it('Authorization 헤더 없음 → 401', async () => {
