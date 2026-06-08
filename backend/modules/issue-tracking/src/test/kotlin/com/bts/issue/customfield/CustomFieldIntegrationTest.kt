@@ -8,13 +8,11 @@ import com.bts.issue.component.application.ComponentApplicationService
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.customfield.application.CustomFieldApplicationService
 import com.bts.issue.customfield.domain.CustomFieldDefinition
-import com.bts.issue.customfield.domain.CustomFieldOption
+import com.bts.issue.customfield.domain.CustomFieldValueValidator
 import com.bts.issue.customfield.domain.FieldType
 import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
 import com.bts.issue.customfield.web.CustomFieldController
 import com.bts.issue.customfield.web.CustomFieldExceptionHandler
-import com.bts.issue.customfield.domain.CustomFieldValueValidator
-import com.bts.issue.customfield.web.dto.CreateCustomFieldRequest
 import com.bts.issue.project.ProjectLookup
 import com.bts.issue.project.repository.ProjectLookupRepository
 import com.bts.shared.permission.ComponentPermissionResolver
@@ -438,14 +436,9 @@ class CustomFieldIntegrationTest {
      */
     @Test
     fun `E1 미정의 키 포함 시 CustomFieldValidationException 발생`() {
-        val repo = webApplicationContext.getBean(CustomFieldDefinitionRepository::class.java)
-        val projectLookup = webApplicationContext.getBean(ProjectLookup::class.java)
-
-        val projectId = projectLookup.resolve(PROJECT_KEY)!!
-
         // 정의 없는 상태에서 unknown_key 검증 시도 — validator 직접 호출
         val values = mapOf("unknown_key" to "value")
-        val definitions = repo.findActiveByProject(projectId) // 빈 리스트 (BeforeEach에서 clean)
+        val definitions = activeDefinitionsForProject(PROJECT_KEY) // 빈 리스트 (BeforeEach에서 clean)
 
         val thrown = try {
             CustomFieldValueValidator().validate(definitions, values)
@@ -471,11 +464,7 @@ class CustomFieldIntegrationTest {
         // 필드 정의를 실제 DB에 삽입
         createField(key = "salary_impact_e2", name = "급여 영향도", fieldType = "NUMBER", required = true)
 
-        val repo = webApplicationContext.getBean(CustomFieldDefinitionRepository::class.java)
-        val projectLookup = webApplicationContext.getBean(ProjectLookup::class.java)
-        val projectId = projectLookup.resolve(PROJECT_KEY)!!
-
-        val definitions = repo.findActiveByProject(projectId)
+        val definitions = activeDefinitionsForProject(PROJECT_KEY)
 
         val thrown = try {
             CustomFieldValueValidator().validate(definitions, emptyMap()) // required 누락
@@ -498,10 +487,6 @@ class CustomFieldIntegrationTest {
      */
     @Test
     fun `E3 선택지 위반 시 CustomFieldValidationException 발생`() {
-        val repo = webApplicationContext.getBean(CustomFieldDefinitionRepository::class.java)
-        val projectLookup = webApplicationContext.getBean(ProjectLookup::class.java)
-        val projectId = projectLookup.resolve(PROJECT_KEY)!!
-
         // SINGLE_SELECT 필드를 DB에 삽입
         val body =
             mapper.writeValueAsString(
@@ -525,7 +510,7 @@ class CustomFieldIntegrationTest {
                 .content(body),
         ).andExpect(status().isCreated)
 
-        val definitions = repo.findActiveByProject(projectId)
+        val definitions = activeDefinitionsForProject(PROJECT_KEY)
 
         val thrown = try {
             CustomFieldValueValidator().validate(definitions, mapOf("priority_level_e3" to "invalid"))
@@ -550,11 +535,7 @@ class CustomFieldIntegrationTest {
     fun `E4 타입 불일치 시 CustomFieldValidationException 발생`() {
         createField(key = "amount_e4", name = "금액", fieldType = "NUMBER")
 
-        val repo = webApplicationContext.getBean(CustomFieldDefinitionRepository::class.java)
-        val projectLookup = webApplicationContext.getBean(ProjectLookup::class.java)
-        val projectId = projectLookup.resolve(PROJECT_KEY)!!
-
-        val definitions = repo.findActiveByProject(projectId)
+        val definitions = activeDefinitionsForProject(PROJECT_KEY)
 
         val thrown = try {
             CustomFieldValueValidator().validate(definitions, mapOf("amount_e4" to "not-a-number"))
@@ -754,6 +735,20 @@ class CustomFieldIntegrationTest {
     }
 
     // ── private helpers ──────────────────────────────────────────────────────
+
+    /**
+     * 시드 헬퍼: 주어진 projectKey 의 활성 커스텀 필드 정의 목록을 반환한다.
+     *
+     * E1~E4 검증 테스트에서 반복되는 repo + projectLookup 조합을 추출한 헬퍼.
+     * [CustomFieldValueValidator] 직접 호출 시 필요한 정의 목록을 간결하게 제공한다.
+     */
+    private fun activeDefinitionsForProject(projectKey: String): List<CustomFieldDefinition> {
+        val repo = webApplicationContext.getBean(CustomFieldDefinitionRepository::class.java)
+        val projectLookup = webApplicationContext.getBean(ProjectLookup::class.java)
+        val projectId = projectLookup.resolve(projectKey)
+            ?: error("테스트 프로젝트 $projectKey 를 찾을 수 없음")
+        return repo.findActiveByProject(projectId)
+    }
 
     /**
      * 헬퍼: POST 로 커스텀 필드를 생성하고 생성된 id(UUID)를 반환한다.
