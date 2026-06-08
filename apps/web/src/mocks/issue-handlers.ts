@@ -302,6 +302,13 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     environment?: string | null
     impact?: number | null
     securityLevelId?: string | null
+    /**
+     * FR-IS-10 — 커스텀 필드 키 단위 병합 패치.
+     * undefined(미전달) → 기존값 유지.
+     * {}(빈 객체) → 전체 초기화.
+     * { key: value } → 키 단위 병합 (value가 null이면 해당 키 삭제).
+     */
+    customFields?: Record<string, unknown> | null
   }
 
   // (2) typeId 검증 — 카탈로그에 없는 id 는 404
@@ -348,6 +355,15 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     ? body.securityLevelId
     : found.securityLevelId
 
+  // FR-IS-10 — customFields 키 단위 병합 (msw-derived-behavior-shared-store-e2e 교훈 적용).
+  // undefined(미전달) → 기존값 유지.
+  // {}(빈 객체) → 전체 초기화.
+  // { key: value } → 키 단위 병합, value null → 해당 키 삭제.
+  const resolvedCustomFields = mergeCustomFields(
+    found.customFields as Record<string, unknown>,
+    body.customFields,
+  )
+
   const updated: IssueResponse = {
     ...found,
     summary: body.summary ?? found.summary,
@@ -363,6 +379,7 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     impact: resolvedImpact,
     impactName: impactNameOf(resolvedImpact),
     securityLevelId: resolvedSecurityLevelId,
+    customFields: resolvedCustomFields,
     version: found.version + 1,
     updatedAt: new Date().toISOString(),
   }
@@ -541,6 +558,41 @@ function applyNullableStringPatch(
   if (incoming === undefined) return current
   if (incoming === '') return null
   return incoming
+}
+
+/**
+ * FR-IS-10 — customFields 키 단위 병합 헬퍼.
+ *
+ * 병합 규칙 (backend customFields PATCH 계약과 동일).
+ * - incoming undefined(미전달) → current 그대로 반환.
+ * - incoming {}(빈 객체) → {} 로 전체 초기화.
+ * - incoming { key: null } → 해당 키 삭제.
+ * - incoming { key: value } → 해당 키 갱신, 나머지 키 보존.
+ *
+ * @param current 현재 저장된 customFields
+ * @param incoming PATCH body의 customFields (undefined/null 허용)
+ * @returns 병합 결과
+ */
+function mergeCustomFields(
+  current: Record<string, unknown>,
+  incoming: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  // undefined: 변경 없음
+  if (incoming === undefined) return current
+  // null: 전체 초기화(백엔드 계약상 null은 {} 동일 취급)
+  if (incoming === null) return {}
+  // 빈 객체: 전체 초기화
+  if (Object.keys(incoming).length === 0) return {}
+  // 키 단위 병합: value null → 삭제, 값 → 갱신
+  const merged = { ...current }
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value === null) {
+      delete merged[key]
+    } else {
+      merged[key] = value
+    }
+  }
+  return merged
 }
 
 /**
