@@ -107,10 +107,16 @@ class IssueApplicationServiceSecurityLevelTest : DescribeSpec({
             typeName = "Task",
         )
 
+    // assertEditableOrForbidden 이 AlwaysAllowFieldPermissionResolver 기본값으로 실행될 때
+    // repo.findProjectIdByKey 를 호출한다. 임의 UUID 를 반환하면 AlwaysAllow 가 전 필드 허용.
+    val anyProjectId: UUID = UUID.fromString("11111111-0000-0000-0000-000000000001")
+
     beforeEach {
         clearMocks(repo, permissionResolver, securityDirectory, answers = false)
         every { repo.findActiveComponentIdsByIssue(any()) } returns emptyList()
         every { repo.findByKey(issueKey) } returns makeIssue()
+        // assertEditableOrForbidden(AlwaysAllow 기본값) 이 findProjectIdByKey 를 호출한다 — 전 필드 허용용 stub
+        every { repo.findProjectIdByKey(issueKey.projectPrefix) } returns anyProjectId
         every { repo.findByKeyWithType(issueKey) } returns makeResponse()
         // UPDATE 권한은 기본 보유 — 보안 가드와 분리해 검증하기 위함.
         every {

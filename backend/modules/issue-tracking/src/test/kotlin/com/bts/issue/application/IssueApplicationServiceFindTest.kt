@@ -58,10 +58,16 @@ class IssueApplicationServiceFindTest : DescribeSpec({
     val actor = ActorId(UUID.randomUUID())
     val issueKey = IssueKey("BTS-1")
 
+    // maskFieldsForSingle 이 AlwaysAllowFieldPermissionResolver 기본값으로 실행될 때
+    // repo.findProjectIdByKey 를 호출한다. 임의 UUID 를 반환하면 AlwaysAllow 가 전 필드 허용.
+    val anyProjectId: UUID = UUID.fromString("11111111-0000-0000-0000-000000000001")
+
     beforeEach {
         clearMocks(repo, eventPublisher, permissionResolver, answers = false)
         // withSingleDetail() 내부에서 findActiveComponentIdsByIssue 호출 — 단건 응답 테스트 기본 stub
         every { repo.findActiveComponentIdsByIssue(any()) } returns emptyList()
+        // maskFieldsForSingle(AlwaysAllow 기본값) 이 findProjectIdByKey 를 호출한다 — 전 필드 허용용 stub
+        every { repo.findProjectIdByKey(issueKey.projectPrefix) } returns anyProjectId
     }
 
     describe("findByKey") {

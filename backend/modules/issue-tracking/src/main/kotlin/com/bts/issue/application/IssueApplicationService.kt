@@ -4,6 +4,7 @@ package com.bts.issue.application
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.adapter.outbound.AlwaysAllowIssueSecurityDirectory
+import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.customfield.domain.CustomFieldValueValidator
 import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
@@ -106,8 +107,10 @@ class IssueApplicationService(
     // AlwaysAllowIssueSecurityDirectory(@Profile("!prod")) Bean이 타입으로 주입돼 이 기본값을 대체한다.
     private val securityDirectory: IssueSecurityDirectory = AlwaysAllowIssueSecurityDirectory(),
     private val clock: Clock = Clock.systemUTC(),
-    // null 이면 마스킹을 수행하지 않는다(기존 테스트 backward-compat). Spring 컨텍스트에서는 Bean 주입.
-    private val fieldPermissionResolver: FieldPermissionResolver? = null,
+    // 기본값은 Spring이 관리하지 않는 단위 테스트 컨텍스트 호환용 fallback이다 (securityDirectory 패턴 동형).
+    // prod 컨텍스트에서는 IdentityAccessFieldPermissionResolver(@Profile("prod")) 또는
+    // AlwaysAllowFieldPermissionResolver(@Profile("!prod")) Bean이 타입으로 주입돼 이 기본값을 대체한다.
+    private val fieldPermissionResolver: FieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -1197,25 +1200,23 @@ class IssueApplicationService(
     /**
      * 단건 조회 응답에 필드 수준 마스킹을 적용한다 (FR-PM-07 Task-7).
      *
-     * [fieldPermissionResolver] 가 null(기존 테스트 backward-compat)이면 마스킹 없이 그대로 반환한다.
-     * non-null 이면 projectKey 로 projectId 를 조회한 뒤 [buildCandidates] 를 구성하고
+     * projectKey 로 projectId 를 조회한 뒤 [buildCandidates] 를 구성하고
      * [FieldPermissionResolver.visibleFields] 를 1회 호출하여 마스킹을 적용한다.
+     * projectId 를 찾지 못하면 원본 응답을 그대로 반환한다(방어적 처리).
      *
      * @param actor 조회 행위자.
      * @param projectKey 이슈가 속한 프로젝트 키.
      * @param response 마스킹 전 응답.
      * @return 마스킹이 적용된 응답.
      */
-    @Suppress("ReturnCount") // null guard 조기 반환 패턴 — 의도적 설계
     private fun maskFieldsForSingle(
         actor: ActorId,
         projectKey: String,
         response: IssueResponse,
     ): IssueResponse {
-        val resolver = fieldPermissionResolver ?: return response
         val projectId = repo.findProjectIdByKey(projectKey) ?: return response
         val candidates = buildCandidates(response)
-        val visible = resolver.visibleFields(actor.value, projectId, candidates)
+        val visible = fieldPermissionResolver.visibleFields(actor.value, projectId, candidates)
         return response.maskInvisible(visible)
     }
 
@@ -1224,19 +1225,19 @@ class IssueApplicationService(
      *
      * 같은 프로젝트의 이슈 목록이므로 [FieldPermissionResolver.visibleFields] 를 페이지당 1회만 호출한다(N+1 회피).
      * candidates 는 페이지 내 모든 이슈의 커스텀 필드 키를 합집합으로 구성한다.
+     * 빈 페이지이거나 projectId 를 찾지 못하면 원본 페이지를 그대로 반환한다(방어적 처리).
      *
      * @param actor 조회 행위자.
      * @param projectKey 목록이 속한 프로젝트 키.
      * @param page 마스킹 전 Page.
      * @return 마스킹이 적용된 Page.
      */
-    @Suppress("ReturnCount") // null guard + empty guard 조기 반환 패턴 — 의도적 설계
+    @Suppress("ReturnCount") // empty guard + projectId miss guard 조기 반환 패턴 — 의도적 설계
     private fun maskFieldsForPage(
         actor: ActorId,
         projectKey: String,
         page: org.springframework.data.domain.Page<IssueResponse>,
     ): org.springframework.data.domain.Page<IssueResponse> {
-        val resolver = fieldPermissionResolver ?: return page
         if (page.isEmpty) return page
         val projectId = repo.findProjectIdByKey(projectKey) ?: return page
         // 페이지 내 커스텀 필드 키 합집합 + 코어 마스킹 대상 후보 — 1회 호출로 배치 처리(EC14)
@@ -1245,7 +1246,7 @@ class IssueApplicationService(
                 .fold(buildCoreCandidates()) { acc, r ->
                     acc + r.customFields.keys.map { FieldRef(FieldKind.CUSTOM, it) }
                 }.toSet()
-        val visible = resolver.visibleFields(actor.value, projectId, candidates)
+        val visible = fieldPermissionResolver.visibleFields(actor.value, projectId, candidates)
         val maskedContent = page.content.map { it.maskInvisible(visible) }
         return org.springframework.data.domain.PageImpl(maskedContent, page.pageable, page.totalElements)
     }
@@ -1346,7 +1347,6 @@ class IssueApplicationService(
      * [changedCandidates] 중 actor 가 편집 불가한 필드가 있으면 403([ResponseStatusException])을 던진다
      * (FR-PM-07 Task-8).
      *
-     * [fieldPermissionResolver] 가 null 이면(기존 테스트 backward-compat) 게이트를 스킵한다.
      * [changedCandidates] 가 비어있으면 editableFields 를 호출하지 않는다(no-op 최적화).
      * 프로젝트 ID 를 찾지 못하면 게이트를 스킵한다(방어적 처리).
      *
@@ -1361,10 +1361,9 @@ class IssueApplicationService(
         key: IssueKey,
         changedCandidates: Set<FieldRef>,
     ) {
-        val resolver = fieldPermissionResolver ?: return
         if (changedCandidates.isEmpty()) return
         val projectId = repo.findProjectIdByKey(key.projectPrefix) ?: return
-        val editable = resolver.editableFields(actor.value, projectId, changedCandidates)
+        val editable = fieldPermissionResolver.editableFields(actor.value, projectId, changedCandidates)
         val blocked = changedCandidates - editable
         if (blocked.isNotEmpty()) {
             log.warn(
