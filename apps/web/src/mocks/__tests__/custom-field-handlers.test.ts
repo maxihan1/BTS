@@ -411,13 +411,15 @@ describe('이슈 PATCH customFields 병합', () => {
     expect(patchBody.data.customFields['cf-keep']).toBe('keep')
   })
 
-  it('PATCH customFields가 {} (빈 객체)이면 전체를 {} 로 초기화한다', async () => {
+  it('PATCH customFields가 {} (빈 객체)이면 병합할 키가 없어 기존값을 유지한다', async () => {
+    // 백엔드 계약(IssueApplicationService.mergeCustomFieldsAndValidate): 빈 맵은 병합할 키 0개 → 기존 유지.
+    // "전체 제거" 기능은 백엔드에 없음. 키 단위 삭제는 { key: null } 로만 가능.
     const createRes = await fetch('/api/v1/issues', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         projectKey: 'ATLAS',
-        summary: '전체 초기화 테스트',
+        summary: '빈 맵 병합 테스트',
         customFields: { 'cf-x': 'x', 'cf-y': 'y' },
       }),
     })
@@ -430,7 +432,7 @@ describe('이슈 PATCH customFields 병합', () => {
       body: JSON.stringify({ customFields: {} }),
     })
     const patchBody = await patchRes.json() as { data: { customFields: Record<string, unknown> } }
-    expect(patchBody.data.customFields).toEqual({})
+    expect(patchBody.data.customFields).toEqual({ 'cf-x': 'x', 'cf-y': 'y' })
   })
 
   it('PATCH에 customFields가 없으면(undefined) 기존값을 유지한다', async () => {

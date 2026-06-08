@@ -577,12 +577,9 @@ function mergeCustomFields(
   current: Record<string, unknown>,
   incoming: Record<string, unknown> | null | undefined,
 ): Record<string, unknown> {
-  // undefined: 변경 없음
-  if (incoming === undefined) return current
-  // null: 전체 초기화(백엔드 계약상 null은 {} 동일 취급)
-  if (incoming === null) return {}
-  // 빈 객체: 전체 초기화
-  if (Object.keys(incoming).length === 0) return {}
+  // null/undefined: 무변경 (백엔드 IssueApplicationService.mergeCustomFieldsAndValidate — customFields=null → return null)
+  if (incoming === undefined || incoming === null) return current
+  // 빈 객체: 병합할 키 0개 → 기존 유지(무변경). 백엔드에 "전체 제거" 기능 없음.
   // 키 단위 병합: value null → 삭제, 값 → 갱신
   const merged = { ...current }
   for (const [key, value] of Object.entries(incoming)) {
