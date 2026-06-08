@@ -38,17 +38,16 @@ bash scripts/verify-master-plan.sh    # exit 0 확인
 
 실패(exit 4 등) 시 → 누락된 정본·미러·카운트를 **같은 PR에서** 동기화(CLAUDE.md §명세/범위 변경 시 전수 동기화, 8종 대상) 후 재실행. FR 무관 PR(순수 bugfix/chore)은 생략 가능.
 
-### Step 3. dashboard 재생성 (plan 체크박스 변경 시)
+### Step 3. dashboard 재생성 — post-merge 훅이 자동 처리
 
-`docs/plan/**`의 D단계 체크박스나 FR 마킹을 바꿨다면 `progress.html`이 stale 해진다. 같은 머지에 포함시킨다.
+`docs/plan/**`의 D단계 체크박스나 FR 마킹을 바꾸면 `progress.html`이 stale 해지지만, **main 머지 시 post-merge 훅이 `build-dashboard.mjs`를 자동 실행하고 `[chore] dashboard regen` 커밋을 푸시한다** (PR #93 첫 실전에서 확인). 평소엔 손대지 말 것 — 수동 재생성은 훅과 중복된다.
+
+훅이 없거나 실패한 경우(`git log`에 regen 커밋이 안 보일 때)만 수동 처리.
 
 ```bash
-node scripts/build-dashboard.mjs      # progress.html 재생성
-git add docs/plan/progress.html && git commit -m "[chore] dashboard regen [skip ci]"
-git push
+node scripts/build-dashboard.mjs      # 훅 미작동 시에만
+git add docs/plan/progress.html && git commit -m "[chore] dashboard regen [skip ci]" && git push
 ```
-
-plan 변경이 없으면 생략.
 
 ### Step 4. 머지
 
