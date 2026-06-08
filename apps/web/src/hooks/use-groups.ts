@@ -1,7 +1,6 @@
 // 사용자 그룹 목록 조회 TanStack Query 훅 (FR-PM-07)
 import { useQuery } from '@tanstack/react-query'
 import { fetchGroups } from '@/api/groups'
-import type { GroupResponse } from '@/api/groups'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // queryKey 팩토리 — 매직 문자열 방지
@@ -34,9 +33,7 @@ export interface UseGroupsOptions {
  * @param options 쿼리 옵션 — enabled: false이면 즉시 fetch하지 않음 (lazy 로드)
  * @returns GroupResponse 배열
  */
-export function useGroups(options?: UseGroupsOptions): ReturnType<
-  typeof useQuery<GroupResponse[]>
-> {
+export function useGroups(options?: UseGroupsOptions) {
   return useQuery({
     queryKey: GROUP_KEYS.all,
     queryFn: () => fetchGroups(),
