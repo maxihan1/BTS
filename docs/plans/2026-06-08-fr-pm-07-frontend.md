@@ -176,7 +176,7 @@ PR-A에서 완료(스펙 §Brainstorming Check). 프론트는 백엔드 계약 �
 
 **RED→GREEN**:
 - `MyProjectPermissionController` 응답 맵에 `MANAGE_FIELD_PERMISSIONS` 추가(MANAGE_CUSTOM_FIELDS 동형, PROJECT_ADMIN 전용). 게이팅 노출(learnings: ui-permission-gating-needs-summary-api-exposure). prod 통합테스트.
-- 그룹 목록 읽기 — **게이트1 Maxi 결정**(아래 §리뷰 결과). 결정에 따라 `GET /api/v1/groups`(또는 신규 lightweight 읽기 엔드포인트) 권한 완화. 관리(POST/PATCH/DELETE/멤버)는 SYSTEM_ADMIN 유지.
+- 그룹 목록 읽기 — **Maxi 확정(옵션 A)**: `GET /api/v1/groups`를 **인증 사용자 읽기 허용**(이름+id+멤버수만 반환). 생성/수정/삭제/멤버 관리(POST/PATCH/DELETE)는 SYSTEM_ADMIN 유지. UserGroupController의 listGroups 가드만 isAuthenticated로 완화, 나머지 핸들러 가드 불변. prod 통합테스트로 "일반 사용자 GET 200·write 403" 실증.
 
 **검증**: `cd backend && ./gradlew :modules:identity-access:test --tests "*MyProjectPermissionControllerTest" --tests "*UserGroupControllerTest" --rerun-tasks`
 
