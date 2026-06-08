@@ -178,13 +178,14 @@ const settingsSessionsRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
-/** 사용자 생성 라우트 — /admin/users/new, requireAuth + requireSystemAdmin */
+/** 사용자 생성 라우트 — /admin/users/new, requireAuth + requireSystemAdmin + requirePasswordChanged */
 const adminUsersNewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/admin/users/new',
   component: AdminUsersNewRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: composeGuards(requireAuth, requireSystemAdmin),
+  // requirePasswordChanged 포함 (CONCERN-2) — 강제변경 미완료 관리자가 계정 생성으로 우회 못 하게 다른 보호 라우트와 일관.
+  beforeLoad: composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged),
 })
 
 /** 비밀번호 변경 라우트 — /settings/password, requireAuth */

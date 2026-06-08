@@ -148,12 +148,17 @@ class UsersController(
                     displayName = req.displayName,
                 )
             val response =
-                CreateUserResponse(
-                    id = created.user.id,
-                    username = created.user.username,
-                    // CharArray → String 1회 변환 (CONCERN-3). 직렬화 직전 단일 변환.
-                    temporaryPassword = String(created.temporaryPassword),
-                )
+                try {
+                    CreateUserResponse(
+                        id = created.user.id,
+                        username = created.user.username,
+                        // CharArray → String 1회 변환 (CONCERN-3). 직렬화 직전 단일 변환.
+                        temporaryPassword = String(created.temporaryPassword),
+                    )
+                } finally {
+                    // 평문 CharArray 명시 wipe (CONCERN-1) — 변환 직후 메모리 잔존 최소화, 평문수명 일관성.
+                    created.temporaryPassword.fill(' ')
+                }
             ResponseEntity.status(HttpStatus.CREATED).body(response)
         } catch (e: UsernameTakenException) {
             // 도메인 중복 예외를 409 인라인 응답으로 변환 (PasswordController 패턴, RestControllerAdvice 부재).

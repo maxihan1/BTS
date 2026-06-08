@@ -126,6 +126,12 @@ class UsersControllerTest {
     /** SYSTEM_ADMIN authority 없는 일반 사용자 JWT (authority 기본값 SCOPE_*) */
     private fun userJwt() = jwt().jwt { it.subject(ADMIN_ID.toString()) }
 
+    /** PAT 인증 시뮬레이션 — ROLE_PAT 만 보유, SYSTEM_ADMIN 없음 (PatAuthenticationFilter 동형) */
+    private fun patAuth() =
+        jwt()
+            .jwt { it.subject(ADMIN_ID.toString()) }
+            .authorities(SimpleGrantedAuthority("ROLE_PAT"))
+
     @Test
     fun `admin POST users 201 반환 — id username temporaryPassword 포함`() {
         every {
@@ -174,6 +180,21 @@ class UsersControllerTest {
         mockMvc.perform(
             post("/api/v1/users")
                 .with(userJwt())
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """{"username":"$NEW_USERNAME","email":"$NEW_EMAIL","displayName":"$NEW_DISPLAY_NAME"}""",
+                ),
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(content().string(not(containsString("SYSTEM_ADMIN"))))
+    }
+
+    @Test
+    fun `PAT POST users 403 — ROLE_PAT 는 SYSTEM_ADMIN 아님`() {
+        mockMvc.perform(
+            post("/api/v1/users")
+                .with(patAuth())
                 .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
