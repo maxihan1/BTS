@@ -126,34 +126,11 @@ AskUserQuestion으로 응답 수집.
 
 ## 머지 후 자동 처리 (게이트 2 승인 시)
 
-> **머지 전 필수 게이트 (CLAUDE.md §명세/범위 변경 시 전수 동기화)**. FR 추가·삭제·범위 변경을 동반한 PR은 머지 전 `bash scripts/verify-master-plan.sh` 통과 확인 — FR ID 정합 + 카운트 drift(fr-index/README/product 헤더·소속FR/CLAUDE) 자동 차단. 실패 시 누락된 정본·미러·카운트를 같은 PR에서 동기화 후 재실행.
+게이트 2 승인 시 **`/bts-merge`로 위임**. 머지 전 검증(verify-master-plan), `gh pr merge`, worktree 정리, dashboard 재생성, 5173 orphan kill, 공유 .git 오염 점검, Obsidian 동기화, 메모리 갱신을 한 절차로 묶어 처리한다. 반복 사고 5종(worktree/stash/orphan-port/spec 소실/머지에러 오인) 차단 절차가 거기 고정돼 있다.
 
-```bash
-bash scripts/verify-master-plan.sh   # FR 변경 동반 시 필수, exit 0 확인
-gh pr merge --squash --delete-branch
-cd /Users/maxi.moff/Projects/BTS
-
-# worktree 정리. uncommitted/unpushed 있을 가능성 대비 force 옵션
-git worktree remove --force .worktrees/<slug> 2>/dev/null \
-  || echo "worktree 이미 제거됨 또는 부재"
 ```
-
-### Obsidian 동기화 (Phase 0 임시. Phase 1에 자동화 예정)
-
-**현재 (Phase 0)**. 다음을 메인 에이전트가 수동으로 수행 (스크립트 부재).
-
-1. `Maxi_wiki/BTS/history.md`에 1줄 append.
-   ```
-   - YYYY-MM-DD #<PR번호> [<type>/<slug>] <PR 제목> (<리뷰 종류>)
-   ```
-2. `docs/decisions/<new>.md`가 새로 생긴 경우 → `Maxi_wiki/BTS/decisions/`에 복사
-3. `docs/plans/<merged>.md` → `Maxi_wiki/BTS/plans/`에 복사
-4. PR 라벨에 `learning:<topic>` 있으면 → `Maxi_wiki/BTS/learnings.md` append (수동 정리)
-
-**Phase 1 도입 예정**.
-- `scripts/workflow/sync-obsidian.ts` 작성 (실제 머지 1회 후 패턴 학습 → 자동화)
-- `.git/hooks/post-merge` 또는 `.github/workflows/post-merge.yml` 설치 스크립트
-- 머지마다 1번 자동 실행, 1줄 stdout 보고
+Skill({ skill: "bts-merge", args: "slug=<slug>, PR=#<N>, type=<type>, FR변경=<yes/no>, plan변경=<yes/no>" })
+```
 
 ## 실패 / 엣지 케이스
 

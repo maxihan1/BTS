@@ -17,7 +17,7 @@ description: Use when another bts-* skill references this for the overall workfl
 [6] /bts-impl          (subagent-driven + TDD 강제)
 [7] /bts-codereview    (code-reviewer agent + /review)
   ↓ 🛑 게이트 2
-[자동] merge → worktree 정리 + sync-obsidian (history/decisions append)
+[8] /bts-merge         (머지 + worktree 정리 + dashboard + sync-obsidian)
 ```
 
 ## 스킬 매핑 (얇은 오케스트레이션)
@@ -33,6 +33,7 @@ description: Use when another bts-* skill references this for the overall workfl
 | 5 | `/bts-review-plan` | `plan-ceo-review`, `plan-design-review`, `plan-eng-review`, `plan-devex-review`, `/autoplan` |
 | 6 | `/bts-impl` | `superpowers:subagent-driven-development`, `superpowers:test-driven-development`, `superpowers:systematic-debugging` (실패 시), `superpowers:verification-before-completion` (완료 시) |
 | 7 | `/bts-codereview` | `superpowers:code-reviewer` (agent), `/review` (gstack) |
+| 8 | `/bts-merge` | (내장 절차 — verify-master-plan, gh pr merge, worktree 정리, build-dashboard, Obsidian sync) |
 
 ## 작업 상태 추적
 
