@@ -91,6 +91,38 @@ export interface IssueMetaPanelProps {
   onCustomFieldsSave?: (customFields: CustomFieldValues) => void
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 필드 권한 헬퍼 (FR-PM-07)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 해당 필드가 열람 제한 대상인지 판정한다 (FR-PM-07 PR-B).
+ *
+ * restrictedFields에 포함된 필드는 UI에서 섹션 자체를 숨긴다.
+ *
+ * @param fieldKey - 판정할 필드 키 (예: 'environment', 'labels', 커스텀 필드 key)
+ * @param restrictedFields - 열람 불가 필드 키 목록 (IssueResponse.restrictedFields)
+ * @returns 해당 필드를 숨겨야 하면 true
+ */
+function isFieldHidden(fieldKey: string, restrictedFields: string[]): boolean {
+  return restrictedFields.includes(fieldKey)
+}
+
+/**
+ * 해당 필드의 편집 컨트롤을 비활성해야 하는지 판정한다 (FR-PM-07 PR-B).
+ *
+ * canEdit(useIssuePermissions UPDATE 권한)과 noneditableFields 중 하나라도
+ * 막으면 disabled — AND 조합.
+ *
+ * @param fieldKey - 판정할 필드 키
+ * @param canEdit - UPDATE 권한 여부 (fail-closed: 권한 미확정 시 false)
+ * @param noneditableFields - 편집 불가 필드 키 목록 (IssueResponse.noneditableFields)
+ * @returns 편집 컨트롤을 disabled로 설정해야 하면 true
+ */
+function isFieldDisabled(fieldKey: string, canEdit: boolean, noneditableFields: string[]): boolean {
+  return !canEdit || noneditableFields.includes(fieldKey)
+}
+
 /**
  * 이슈 상세 우측 메타패널 컴포넌트.
  *
@@ -218,31 +250,31 @@ export function IssueMetaPanel({
         </div>
 
         {/* 환경 — IssueEnvironmentEdit (FR-IS-04). restrictedFields에 "environment"가 있으면 섹션 전체 숨김 (FR-PM-07) */}
-        {!issue.restrictedFields.includes('environment') && (
+        {!isFieldHidden('environment', issue.restrictedFields) && (
           <div className="px-3.5 py-3 border-b border-border" data-testid="environment-section">
             <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.environmentLabel}</p>
             <IssueEnvironmentEdit
               value={issue.environment}
               onSave={onEnvironmentSave}
-              canEdit={canEdit && !issue.noneditableFields.includes('environment')}
+              canEdit={!isFieldDisabled('environment', canEdit, issue.noneditableFields)}
             />
           </div>
         )}
 
         {/* 라벨 — IssueLabelsEdit (FR-IS-04). restrictedFields에 "labels"가 있으면 섹션 전체 숨김 (FR-PM-07) */}
-        {!issue.restrictedFields.includes('labels') && (
+        {!isFieldHidden('labels', issue.restrictedFields) && (
           <div className="px-3.5 py-3 border-b border-border" data-testid="labels-section">
             <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.labelsLabel}</p>
             <IssueLabelsEdit
               value={issue.labels}
               onSave={onLabelsSave}
-              canEdit={canEdit && !issue.noneditableFields.includes('labels')}
+              canEdit={!isFieldDisabled('labels', canEdit, issue.noneditableFields)}
             />
           </div>
         )}
 
         {/* 담당자 — IssueAssigneeSelect (FR-IS-03). restrictedFields에 "assigneeId"가 있으면 섹션 전체 숨김 (FR-PM-07) */}
-        {!issue.restrictedFields.includes('assigneeId') && (
+        {!isFieldHidden('assigneeId', issue.restrictedFields) && (
           <div className="px-3.5 py-3 border-b border-border" data-testid="assignee-section">
             <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.assigneeLabel}</p>
             <IssueAssigneeSelect
@@ -251,7 +283,7 @@ export function IssueMetaPanel({
               users={users}
               onSearch={onAssigneeSearch}
               onAssigneeChange={onAssigneeChange}
-              canEdit={canEdit && !issue.noneditableFields.includes('assigneeId')}
+              canEdit={!isFieldDisabled('assigneeId', canEdit, issue.noneditableFields)}
             />
           </div>
         )}
@@ -989,8 +1021,8 @@ function IssueCustomFieldsEdit({
   restrictedFields = [],
   noneditableFields = [],
 }: IssueCustomFieldsEditProps): JSX.Element {
-  // FR-PM-07: restrictedFields에 포함된 커스텀 필드는 렌더에서 제외
-  const visibleFieldDefs = fieldDefs.filter((f) => !restrictedFields.includes(f.key))
+  // FR-PM-07: restrictedFields에 포함된 커스텀 필드는 렌더에서 제외 (isFieldHidden 헬퍼)
+  const visibleFieldDefs = fieldDefs.filter((f) => !isFieldHidden(f.key, restrictedFields))
   const [draft, setDraft] = useState<CustomFieldValues>({ ...values })
   const [hasRequiredError, setHasRequiredError] = useState(false)
 
@@ -1085,7 +1117,7 @@ function IssueCustomFieldsEdit({
               field={field}
               value={draft[field.key]}
               onChange={(v) => handleFieldChange(field.key, v)}
-              disabled={!canEdit || noneditableFields.includes(field.key)}
+              disabled={isFieldDisabled(field.key, canEdit, noneditableFields)}
             />
           </div>
         ))}
