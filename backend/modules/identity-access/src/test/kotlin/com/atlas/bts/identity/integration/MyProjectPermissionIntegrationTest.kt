@@ -220,6 +220,32 @@ class MyProjectPermissionIntegrationTest {
     }
 
     @Test
+    fun `PROJECT_ADMIN JWT — MANAGE_FIELD_PERMISSIONS true (V018 시드)`() {
+        val token = issueJwt(adminId, adminSessionId)
+        mockMvc.perform(
+            get("/api/v1/users/me/project-permissions")
+                .param("projectKey", projectKey)
+                .header("Authorization", "Bearer $token")
+                .accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.permissions.MANAGE_FIELD_PERMISSIONS").value(true))
+    }
+
+    @Test
+    fun `MEMBER JWT — MANAGE_FIELD_PERMISSIONS false (보수적 시드)`() {
+        val token = issueJwt(memberId, memberSessionId)
+        mockMvc.perform(
+            get("/api/v1/users/me/project-permissions")
+                .param("projectKey", projectKey)
+                .header("Authorization", "Bearer $token")
+                .accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.permissions.MANAGE_FIELD_PERMISSIONS").value(false))
+    }
+
+    @Test
     fun `비멤버 JWT — MANAGE_COMPONENTS_VERSIONS false (401 아님)`() {
         val token = issueJwt(nonMemberId, nonMemberSessionId)
         mockMvc.perform(

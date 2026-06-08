@@ -67,6 +67,9 @@ class UserGroupControllerTest {
         private val GROUP_ID: UUID = UUID.fromString("11111111-1111-4111-8111-111111111111")
         private val MEMBER_ID: UUID = UUID.fromString("22222222-2222-4222-8222-222222222222")
 
+        /** SYSTEM_ADMIN 이 아닌 일반 인증 사용자 — 그룹 읽기 완화(GET 200) 검증용. */
+        private val PLAIN_USER_ID: UUID = UUID.fromString("33333333-3333-4333-8333-333333333333")
+
         private val NOW: Instant = Instant.parse("2026-06-05T10:00:00Z")
 
         /** "pat_" prefix 포함 PAT raw token */
@@ -262,21 +265,79 @@ class UserGroupControllerTest {
     }
 
     @Test
-    fun `GET groups isSystemAdmin false 403 forbidden`() {
-        every { systemPermissionResolver.isSystemAdmin(ADMIN_ID) } returns false
+    fun `GET groups 일반 인증 사용자 200 — SYSTEM_ADMIN 아님 (FR-PM-07 읽기 완화)`() {
+        // 일반 사용자(isSystemAdmin=false)도 그룹 목록을 읽을 수 있어야 한다. 규칙 생성 드롭다운용.
+        every { systemPermissionResolver.isSystemAdmin(PLAIN_USER_ID) } returns false
+        every { userGroupService.listGroups() } returns
+            listOf(UserGroupWithCount(group(), 2))
 
         mockMvc.perform(
             get("/api/v1/groups")
-                .with(jwt().jwt { it.subject(ADMIN_ID.toString()) }),
+                .with(jwt().jwt { it.subject(PLAIN_USER_ID.toString()) }),
         )
-            .andExpect(status().isForbidden)
-            .andExpect(jsonPath("$.error").value("forbidden"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$").isArray)
+            .andExpect(jsonPath("$.length()").value(1))
+            .andExpect(jsonPath("$[0].name").value("Engineering"))
+            .andExpect(jsonPath("$[0].memberCount").value(2))
     }
 
     @Test
     fun `GET groups 미인증 401`() {
         mockMvc.perform(get("/api/v1/groups"))
             .andExpect(status().isUnauthorized)
+    }
+
+    @Test
+    fun `POST groups 일반 사용자 403 유지 — 읽기 완화가 write 를 뚫지 않음`() {
+        every { systemPermissionResolver.isSystemAdmin(PLAIN_USER_ID) } returns false
+
+        mockMvc.perform(
+            post("/api/v1/groups")
+                .with(jwt().jwt { it.subject(PLAIN_USER_ID.toString()) })
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"name":"Engineering"}"""),
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.error").value("forbidden"))
+    }
+
+    @Test
+    fun `PATCH groups 일반 사용자 403 유지 — 읽기 완화가 write 를 뚫지 않음`() {
+        every { systemPermissionResolver.isSystemAdmin(PLAIN_USER_ID) } returns false
+
+        mockMvc.perform(
+            patch("/api/v1/groups/$GROUP_ID")
+                .with(jwt().jwt { it.subject(PLAIN_USER_ID.toString()) })
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"name":"Renamed"}"""),
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.error").value("forbidden"))
+    }
+
+    @Test
+    fun `DELETE groups 일반 사용자 403 유지 — 읽기 완화가 write 를 뚫지 않음`() {
+        every { systemPermissionResolver.isSystemAdmin(PLAIN_USER_ID) } returns false
+
+        mockMvc.perform(
+            delete("/api/v1/groups/$GROUP_ID")
+                .with(jwt().jwt { it.subject(PLAIN_USER_ID.toString()) }),
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.error").value("forbidden"))
+    }
+
+    @Test
+    fun `PUT member 일반 사용자 403 유지 — 읽기 완화가 멤버 관리를 뚫지 않음`() {
+        every { systemPermissionResolver.isSystemAdmin(PLAIN_USER_ID) } returns false
+
+        mockMvc.perform(
+            put("/api/v1/groups/$GROUP_ID/members/$MEMBER_ID")
+                .with(jwt().jwt { it.subject(PLAIN_USER_ID.toString()) }),
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.error").value("forbidden"))
     }
 
     // ── GET /api/v1/groups/{groupId} — getGroup ─────────────────────────────
