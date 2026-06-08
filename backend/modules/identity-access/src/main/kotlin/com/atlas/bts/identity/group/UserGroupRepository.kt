@@ -27,9 +27,10 @@ data class UserGroupWithCount(
  * 트랜잭션 경계는 상위 서비스가 소유한다. 본 인터페이스 구현체는 자체 트랜잭션을 열지 않는다.
  *
  * 구현체: [JdbcUserGroupRepository].
+ *
+ * CRUD 6종 + 멤버십 연산 5종(add/remove/list/exists/isMemberOf/findGroupIdsByUser)이 한 영속
+ * 책임에 응집한다. 그룹 영속 경계를 인위로 쪼개면 트랜잭션 결합만 늘어나므로 TooManyFunctions 억제.
  */
-// CRUD 6종 + 멤버십 연산 5종(add/remove/list/exists/isMemberOf/findGroupIdsByUser)이 한 영속
-// 책임에 응집한다. 그룹 영속 경계를 인위로 쪼개면 트랜잭션 결합만 늘어나므로 TooManyFunctions 억제.
 @Suppress("TooManyFunctions")
 interface UserGroupRepository {
     /**
