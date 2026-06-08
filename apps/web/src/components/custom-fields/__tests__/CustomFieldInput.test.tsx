@@ -73,7 +73,7 @@ describe('SHORT_TEXT', () => {
 describe('LONG_TEXT', () => {
   it('textarea를 렌더한다', () => {
     const field = makeField({ fieldType: 'LONG_TEXT', key: 'lt' })
-    render(<CustomFieldInput field={field} value="multi\nline" onChange={vi.fn()} />)
+    render(<CustomFieldInput field={field} value={'multi\nline'} onChange={vi.fn()} />)
     const el = screen.getByTestId('custom-field-lt')
     expect(el.tagName).toBe('TEXTAREA')
     expect((el as HTMLTextAreaElement).value).toBe('multi\nline')
