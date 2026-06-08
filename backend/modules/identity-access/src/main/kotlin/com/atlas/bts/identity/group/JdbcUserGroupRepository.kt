@@ -28,6 +28,8 @@ import java.util.UUID
  * **트랜잭션 경계:**
  * 자체 트랜잭션을 열지 않으며, 호출하는 상위 서비스의 트랜잭션에 참여한다.
  */
+// [UserGroupRepository] 11개 메서드 1:1 구현(CRUD + 멤버십). 인터페이스와 동일 이유로 억제.
+@Suppress("TooManyFunctions")
 @Repository
 class JdbcUserGroupRepository(
     private val jdbc: NamedParameterJdbcTemplate,

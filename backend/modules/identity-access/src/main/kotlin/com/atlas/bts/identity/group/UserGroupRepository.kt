@@ -28,6 +28,9 @@ data class UserGroupWithCount(
  *
  * 구현체: [JdbcUserGroupRepository].
  */
+// CRUD 6종 + 멤버십 연산 5종(add/remove/list/exists/isMemberOf/findGroupIdsByUser)이 한 영속
+// 책임에 응집한다. 그룹 영속 경계를 인위로 쪼개면 트랜잭션 결합만 늘어나므로 TooManyFunctions 억제.
+@Suppress("TooManyFunctions")
 interface UserGroupRepository {
     /**
      * 새 그룹을 저장하고 DB 가 채운 id/타임스탬프까지 포함한 [UserGroup]을 반환한다.

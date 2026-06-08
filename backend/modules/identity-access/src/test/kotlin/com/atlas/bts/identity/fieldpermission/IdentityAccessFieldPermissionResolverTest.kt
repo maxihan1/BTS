@@ -140,6 +140,7 @@ class IdentityAccessFieldPermissionResolverTest {
     private val groupOtherId: UUID = UUID.fromString("00000000-0707-0004-0000-0000000000a3")
 
     // 사용자
+
     /** groupViewer 멤버. */
     private val memberId: UUID = UUID.fromString("00000000-0707-0004-0000-0000000000b1")
 
@@ -182,8 +183,10 @@ class IdentityAccessFieldPermissionResolverTest {
         // 규칙 0건. summary/priority 둘 다 제한 없음.
         val candidates = setOf(summary, priority)
 
-        assertThat(resolver.visibleFields(nonMemberId, projectId, candidates)).containsExactlyInAnyOrder(summary, priority)
-        assertThat(resolver.editableFields(nonMemberId, projectId, candidates)).containsExactlyInAnyOrder(summary, priority)
+        assertThat(resolver.visibleFields(nonMemberId, projectId, candidates))
+            .containsExactlyInAnyOrder(summary, priority)
+        assertThat(resolver.editableFields(nonMemberId, projectId, candidates))
+            .containsExactlyInAnyOrder(summary, priority)
     }
 
     // ── (b) VIEW 그룹 게이트: 멤버만 visible, 비멤버 제외 (S1/S2) ───────────────────
