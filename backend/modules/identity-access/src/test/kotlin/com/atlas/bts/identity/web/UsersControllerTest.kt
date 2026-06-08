@@ -22,7 +22,9 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.oauth2.jwt.JwtDecoder
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -105,11 +107,18 @@ class UsersControllerTest {
     @Autowired
     lateinit var createLocalAccountService: CreateLocalAccountService
 
-    /** roles 클레임에 SYSTEM_ADMIN 을 담은 JWT — SidRevokeJwtConverter 가 ROLE_SYSTEM_ADMIN authority 로 변환 */
+    /**
+     * ROLE_SYSTEM_ADMIN authority 를 가진 JWT 인증 — hasRole('SYSTEM_ADMIN') 통과용.
+     *
+     * 운영에서는 SidRevokeJwtConverter 가 roles 클레임을 ROLE_SYSTEM_ADMIN authority 로 변환하지만,
+     * jwt() post-processor 는 converter 를 거치지 않고 SecurityContext 를 직접 채우므로 authority 를 명시한다.
+     */
     private fun adminJwt() =
-        jwt().jwt { it.subject(ADMIN_ID.toString()).claim("roles", listOf("SYSTEM_ADMIN")) }
+        jwt()
+            .jwt { it.subject(ADMIN_ID.toString()).claim("roles", listOf("SYSTEM_ADMIN")) }
+            .authorities(SimpleGrantedAuthority("ROLE_SYSTEM_ADMIN"))
 
-    /** roles 클레임 없는 일반 사용자 JWT */
+    /** SYSTEM_ADMIN authority 없는 일반 사용자 JWT (authority 기본값 SCOPE_*) */
     private fun userJwt() =
         jwt().jwt { it.subject(ADMIN_ID.toString()) }
 
@@ -122,6 +131,7 @@ class UsersControllerTest {
         mockMvc.perform(
             post("/api/v1/users")
                 .with(adminJwt())
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """{"username":"$NEW_USERNAME","email":"$NEW_EMAIL","displayName":"$NEW_DISPLAY_NAME"}""",
@@ -146,6 +156,7 @@ class UsersControllerTest {
         mockMvc.perform(
             post("/api/v1/users")
                 .with(adminJwt())
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"username":"$NEW_USERNAME","displayName":"$NEW_DISPLAY_NAME"}"""),
         )
@@ -158,6 +169,7 @@ class UsersControllerTest {
         mockMvc.perform(
             post("/api/v1/users")
                 .with(userJwt())
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """{"username":"$NEW_USERNAME","email":"$NEW_EMAIL","displayName":"$NEW_DISPLAY_NAME"}""",
@@ -176,6 +188,7 @@ class UsersControllerTest {
         mockMvc.perform(
             post("/api/v1/users")
                 .with(adminJwt())
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """{"username":"$NEW_USERNAME","email":"$NEW_EMAIL","displayName":"$NEW_DISPLAY_NAME"}""",
@@ -190,6 +203,7 @@ class UsersControllerTest {
         mockMvc.perform(
             post("/api/v1/users")
                 .with(adminJwt())
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"email":"$NEW_EMAIL","displayName":"$NEW_DISPLAY_NAME"}"""),
         )
@@ -201,6 +215,7 @@ class UsersControllerTest {
         mockMvc.perform(
             post("/api/v1/users")
                 .with(adminJwt())
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"username":"bad user!","displayName":"$NEW_DISPLAY_NAME"}"""),
         )
@@ -212,6 +227,7 @@ class UsersControllerTest {
         mockMvc.perform(
             post("/api/v1/users")
                 .with(adminJwt())
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"username":"ab","displayName":"$NEW_DISPLAY_NAME"}"""),
         )
@@ -223,6 +239,7 @@ class UsersControllerTest {
         mockMvc.perform(
             post("/api/v1/users")
                 .with(adminJwt())
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"username":"$NEW_USERNAME","email":"$NEW_EMAIL"}"""),
         )
@@ -234,6 +251,7 @@ class UsersControllerTest {
         mockMvc.perform(
             post("/api/v1/users")
                 .with(adminJwt())
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"username":"$NEW_USERNAME","email":"not-an-email","displayName":"$NEW_DISPLAY_NAME"}"""),
         )
