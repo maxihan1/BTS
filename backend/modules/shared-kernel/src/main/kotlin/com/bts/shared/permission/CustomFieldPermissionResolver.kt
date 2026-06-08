@@ -19,6 +19,8 @@ import java.util.UUID
  * ## [ComponentPermissionResolver] 와 동형 — scope 단순화
  * 커스텀 필드 정의는 항상 프로젝트 스코프에 종속된다(Global/Issue 범위가 없음).
  * 따라서 [IssueScope] 같은 sealed 계층 대신 `projectId: UUID` 를 직접 받는다.
+ * 세 권한(CREATE/UPDATE/DELETE)은 단일 권한코드([CustomFieldPermission.MANAGE_CUSTOM_FIELDS])로
+ * 매핑되므로, prod resolver 는 `permission.toPermissionCode()` 결과로 role_permissions 를 조회한다.
  *
  * ## actorId 타입 — UUID (BC 공통 분모)
  * 각 BC 는 `ActorId`, `UserId` 등 자체 별칭을 사용할 수 있으나,
