@@ -15,6 +15,7 @@ import { useIssuePermissions } from '@/hooks/use-issue-permissions'
 import { LabelAutocompleteInput } from '@/components/labels/LabelAutocompleteInput'
 import { useCustomFields } from '@/hooks/use-custom-fields'
 import { CustomFieldInput } from '@/components/custom-fields/CustomFieldInput'
+import type { CustomField } from '@/api/custom-fields.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // IssueMetaPanel
@@ -891,8 +892,6 @@ function IssueStateTransition({
 // ─────────────────────────────────────────────────────────────────────────────
 // IssueCustomFieldsEdit — 커스텀 필드 일괄 편집 서브컴포넌트 (FR-IS-10)
 // ─────────────────────────────────────────────────────────────────────────────
-
-import type { CustomField } from '@/api/custom-fields.types'
 
 /** IssueCustomFieldsEdit props */
 interface IssueCustomFieldsEditProps {
