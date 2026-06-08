@@ -76,6 +76,9 @@ class FieldPermissionRepository(
     // ── SQL 상수 ─────────────────────────────────────────────────────────────────
 
     private companion object {
+        /** SELECT 컬럼 목록 — [FieldPermissionRowMapper] 가 읽는 컬럼과 동기화 유지용. */
+        const val SELECT_COLUMNS = "id, project_id, field_kind, field_key, group_id, access_level"
+
         /** 규칙 저장 — UNIQUE 조합 위반 시 멱등하게 무시(ON CONFLICT DO NOTHING). */
         const val SQL_SAVE = """
             INSERT INTO field_permissions (project_id, field_kind, field_key, group_id, access_level)
@@ -85,7 +88,7 @@ class FieldPermissionRepository(
 
         /** 프로젝트 단위 규칙 조회 — idx_field_permissions_project 인덱스 활용. */
         const val SQL_FIND_BY_PROJECT = """
-            SELECT id, project_id, field_kind, field_key, group_id, access_level
+            SELECT $SELECT_COLUMNS
             FROM field_permissions
             WHERE project_id = :projectId
             ORDER BY field_kind, field_key, access_level
