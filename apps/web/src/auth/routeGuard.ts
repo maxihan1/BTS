@@ -105,7 +105,7 @@ export function requirePasswordChanged({ location }: GuardContext): void {
  * beforeLoad: (ctx) => { requireAuth(ctx); requireSystemAdmin(ctx) }
  * ```
  */
-export function requireSystemAdmin({ location: _location }: GuardContext): void {
+export function requireSystemAdmin(): void {
   const user = useAuthStore.getState().user
   if (user?.isSystemAdmin === true) return
   throw redirect({ to: '/dashboard' })

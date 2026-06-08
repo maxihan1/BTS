@@ -267,7 +267,7 @@ describe('requireSystemAdmin', () => {
       user: makeWhoami({ isSystemAdmin: true }),
     })
 
-    expect(() => requireSystemAdmin(makeCtx('/admin/workflow-schemes'))).not.toThrow()
+    expect(() => requireSystemAdmin()).not.toThrow()
   })
 
   it('isSystemAdmin=false인 유저 → /dashboard 로 redirect', () => {
@@ -278,7 +278,7 @@ describe('requireSystemAdmin', () => {
 
     let thrown: unknown
     try {
-      requireSystemAdmin(makeCtx('/admin/workflow-schemes'))
+      requireSystemAdmin()
     } catch (e) {
       thrown = e
     }
@@ -294,7 +294,7 @@ describe('requireSystemAdmin', () => {
 
     let thrown: unknown
     try {
-      requireSystemAdmin(makeCtx('/admin/workflow-schemes'))
+      requireSystemAdmin()
     } catch (e) {
       thrown = e
     }
