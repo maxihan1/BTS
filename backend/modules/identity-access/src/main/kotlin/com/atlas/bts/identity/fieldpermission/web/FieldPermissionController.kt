@@ -3,6 +3,7 @@
 package com.atlas.bts.identity.fieldpermission.web
 
 import com.atlas.bts.identity.fieldpermission.application.FieldPermissionApplicationService
+import com.atlas.bts.identity.fieldpermission.application.FieldPermissionException
 import com.atlas.bts.identity.fieldpermission.application.GroupNotFound
 import com.atlas.bts.identity.fieldpermission.application.InvalidFieldKey
 import com.atlas.bts.identity.fieldpermission.application.ManageFieldPermissionsDenied
@@ -108,7 +109,8 @@ class FieldPermissionController(
                     groupId = requireNotNull(body.groupId),
                     accessLevel = requireNotNull(body.accessLevel),
                 )
-            ResponseEntity.status(HttpStatus.CREATED).body(FieldPermissionResponse.from(created.rule, created.groupName))
+            val response = FieldPermissionResponse.from(created.rule, created.groupName)
+            ResponseEntity.status(HttpStatus.CREATED).body(response)
         }
     }
 
@@ -168,29 +170,27 @@ class FieldPermissionController(
     /**
      * 핸들러 본문을 실행하고 도메인 예외만 HTTP 응답으로 매핑한다.
      *
-     * 잡는 예외를 도메인 sealed 계층으로 한정한다(광범위 catch 금지, silently swallow 금지).
-     * 그 외 예외는 전파시켜 기본 처리에 위임한다.
+     * 잡는 예외를 도메인 sealed 계층([FieldPermissionException])으로 한정한다
+     * (광범위 catch 금지, silently swallow 금지). 그 외 예외는 전파시켜 기본 처리에 위임한다.
      */
     private inline fun runHandler(block: () -> ResponseEntity<*>): ResponseEntity<*> =
         try {
             block()
-        } catch (ex: ManageFieldPermissionsDenied) {
-            mapDomainException(ex)
-        } catch (ex: InvalidFieldKey) {
-            mapDomainException(ex)
-        } catch (ex: GroupNotFound) {
+        } catch (ex: FieldPermissionException) {
             mapDomainException(ex)
         }
 
     /**
      * 도메인 예외를 snake_case `error` 코드 + HTTP 상태로 매핑한다.
+     *
+     * 응답 바디는 일반화된 코드만 노출하고 예외 message(내부 사유)는 절대 싣지 않는다
+     * (권한 Guard 예외 detail HTTP 누출 회귀 방지).
      */
-    private fun mapDomainException(ex: RuntimeException): ResponseEntity<Map<String, String>> =
+    private fun mapDomainException(ex: FieldPermissionException): ResponseEntity<Map<String, String>> =
         when (ex) {
             is ManageFieldPermissionsDenied -> errorResponse(HttpStatus.FORBIDDEN, "forbidden")
             is InvalidFieldKey -> errorResponse(HttpStatus.UNPROCESSABLE_ENTITY, "invalid_field_key")
             is GroupNotFound -> errorResponse(HttpStatus.UNPROCESSABLE_ENTITY, "group_not_found")
-            else -> throw ex
         }
 
     private companion object {
