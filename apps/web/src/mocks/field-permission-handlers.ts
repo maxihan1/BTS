@@ -4,6 +4,7 @@ import type {
   FieldPermissionResponse,
   CreateFieldPermissionInput,
 } from '../api/field-permissions.types'
+import { getGroupById } from './group-handlers'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 저장소 타입
@@ -247,8 +248,8 @@ const createFieldPermissionHandler = http.post(
       )
     }
 
-    // groupName은 시드된 그룹에서 찾거나 groupId를 fallback으로 사용
-    const groupName = body.groupId
+    // groupName은 group-handlers store에서 조회, 없으면 groupId를 fallback으로 사용
+    const groupName = getGroupById(body.groupId)?.name ?? body.groupId
 
     const newFp: StoredFieldPermission = {
       id: generateUuidV4(),
