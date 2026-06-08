@@ -50,6 +50,7 @@ class StoredPasswordCredentialRepository(
                 "userId" to credential.userId,
                 "passwordHash" to credential.passwordHash,
                 "algoVersion" to credential.algoVersion,
+                "mustChangePassword" to credential.mustChangePassword,
             )
         return jdbc.queryForObject(SQL_UPSERT, params, rowMapper)
             ?: error("UPSERT RETURNING 결과 없음 — userId=${credential.userId}")
@@ -77,17 +78,18 @@ class StoredPasswordCredentialRepository(
 
     private companion object {
         const val SQL_UPSERT = """
-            INSERT INTO local_credentials (user_id, password_hash, algo_version)
-            VALUES (:userId, :passwordHash, :algoVersion)
+            INSERT INTO local_credentials (user_id, password_hash, algo_version, must_change_password)
+            VALUES (:userId, :passwordHash, :algoVersion, :mustChangePassword)
             ON CONFLICT (user_id) DO UPDATE
-                SET password_hash = EXCLUDED.password_hash,
-                    algo_version  = EXCLUDED.algo_version,
-                    updated_at    = now()
-            RETURNING user_id, password_hash, algo_version, created_at, updated_at
+                SET password_hash        = EXCLUDED.password_hash,
+                    algo_version         = EXCLUDED.algo_version,
+                    must_change_password = EXCLUDED.must_change_password,
+                    updated_at           = now()
+            RETURNING user_id, password_hash, algo_version, created_at, updated_at, must_change_password
         """
 
         const val SQL_FIND = """
-            SELECT user_id, password_hash, algo_version, created_at, updated_at
+            SELECT user_id, password_hash, algo_version, created_at, updated_at, must_change_password
             FROM local_credentials
             WHERE user_id = :userId
         """
@@ -114,5 +116,6 @@ private class StoredPasswordCredentialRowMapper : RowMapper<StoredPasswordCreden
             algoVersion = rs.getString("algo_version"),
             createdAt = rs.getTimestamp("created_at").toInstant(),
             updatedAt = rs.getTimestamp("updated_at").toInstant(),
+            mustChangePassword = rs.getBoolean("must_change_password"),
         )
 }
