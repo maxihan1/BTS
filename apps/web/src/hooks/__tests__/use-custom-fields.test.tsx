@@ -329,6 +329,20 @@ describe('useCreateCustomField', () => {
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(toast.error).toHaveBeenCalled()
   })
+
+  it('silent:true 옵션 시 키 중복(409) 에러에서도 toast.error가 호출되지 않는다', async () => {
+    const { wrapper } = createWrapper()
+
+    const { result } = renderHook(() => useCreateCustomField(PROJECT_KEY, { silent: true }), {
+      wrapper,
+    })
+    await act(async () => {
+      result.current.mutate({ key: 'cf-priority', name: '중복키', fieldType: 'SHORT_TEXT' })
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(toast.error).not.toHaveBeenCalled()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -375,6 +389,23 @@ describe('useUpdateCustomField', () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(toast.error).toHaveBeenCalled()
+  })
+
+  it('silent:true 옵션 시 수정 404 에러에서도 toast.error가 호출되지 않는다', async () => {
+    const { wrapper } = createWrapper()
+
+    const { result } = renderHook(() => useUpdateCustomField(PROJECT_KEY, { silent: true }), {
+      wrapper,
+    })
+    await act(async () => {
+      result.current.mutate({
+        fieldId: '00000000-0000-4000-8000-000000000000',
+        input: { name: '없음' },
+      })
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(toast.error).not.toHaveBeenCalled()
   })
 })
 

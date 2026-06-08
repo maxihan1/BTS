@@ -4,11 +4,19 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
+import { toast } from 'sonner'
 import { server } from '@/test/server'
 import { customFieldHandlers, resetCustomFieldStore } from '@/mocks/custom-field-handlers'
 import { projectPermissionHandlers } from '@/mocks/project-permission-handlers'
 import { useAuthStore } from '@/auth/authStore'
 import { CustomFieldList } from '@/components/custom-fields/CustomFieldList'
+
+vi.mock('sonner', () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+  },
+}))
 
 function makeClient(): QueryClient {
   return new QueryClient({
@@ -30,6 +38,7 @@ function renderList(projectKey = 'ATLAS') {
 describe('CustomFieldList', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(toast.error).mockClear()
     resetCustomFieldStore()
     server.use(...customFieldHandlers, ...projectPermissionHandlers)
     useAuthStore.setState({
@@ -234,5 +243,115 @@ describe('CustomFieldList', () => {
     await waitFor(() => {
       expect(screen.getByText('필수')).toBeInTheDocument()
     })
+  })
+
+  /**
+   * T-CF-11 (C3). 생성 실패 시 toast.error가 호출되지 않고 Dialog 인라인 에러만 표시된다.
+   * useCreateCustomField는 silent:true로 호출되므로 toast가 중복 발사되면 안 된다.
+   */
+  it('T-CF-11: 생성 실패 → toast 미발사, Dialog 인라인 에러만 표시된다', async () => {
+    // 409 중복키 응답으로 오버라이드
+    server.use(
+      http.post('/api/v1/projects/ATLAS/custom-fields', () =>
+        HttpResponse.json(
+          {
+            type: 'https://bts.example.com/problems/custom-field-key-duplicate',
+            title: 'Custom Field Key Duplicate',
+            status: 409,
+            detail: '이미 같은 키의 필드가 있습니다.',
+            errorCode: 'CUSTOM_FIELD_KEY_DUPLICATE',
+            timestamp: new Date().toISOString(),
+          },
+          { status: 409 },
+        ),
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderList('ATLAS')
+
+    // 권한 로딩 완료 대기
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '필드 추가' })).not.toBeDisabled()
+    })
+
+    await user.click(screen.getByRole('button', { name: '필드 추가' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    // 폼 제출 (필수 필드 입력 후 저장)
+    const nameInput = screen.getByRole('textbox', { name: '이름' })
+    const keyInput = screen.getByRole('textbox', { name: '키' })
+    await user.type(nameInput, '테스트')
+    await user.clear(keyInput)
+    await user.type(keyInput, 'dup-key')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+
+    // Dialog 인라인 에러 표시 대기
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    // toast.error는 호출되지 않아야 한다 (인라인 메시지가 유일한 에러 표시)
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  /**
+   * T-CF-12 (C3). 수정 실패 시 toast.error가 호출되지 않고 Dialog 인라인 에러만 표시된다.
+   */
+  it('T-CF-12: 수정 실패 → toast 미발사, Dialog가 유지된다', async () => {
+    // 필드 1개 생성 후 수정 시도
+    await fetch('/api/v1/projects/ATLAS/custom-fields', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer mock-access-token-alice',
+      },
+      body: JSON.stringify({ key: 'edit-target', name: '수정 대상', fieldType: 'SHORT_TEXT' }),
+    })
+
+    // 수정은 404로 강제 실패
+    server.use(
+      http.patch('/api/v1/projects/ATLAS/custom-fields/:fieldId', () =>
+        HttpResponse.json(
+          {
+            type: 'https://bts.example.com/problems/custom-field-not-found',
+            title: 'Custom Field Not Found',
+            status: 404,
+            detail: '필드를 찾을 수 없습니다.',
+            errorCode: 'CUSTOM_FIELD_NOT_FOUND',
+            timestamp: new Date().toISOString(),
+          },
+          { status: 404 },
+        ),
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderList('ATLAS')
+
+    await waitFor(() => {
+      expect(screen.getByText('수정 대상')).toBeInTheDocument()
+    })
+
+    // 수정 버튼 클릭
+    const editButtons = screen.getAllByRole('button', { name: /수정/i })
+    await user.click(editButtons[0]!)
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: '저장' }))
+
+    // Dialog가 열린 채로 유지됨
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    // toast.error 미발사 확인
+    expect(toast.error).not.toHaveBeenCalled()
   })
 })
