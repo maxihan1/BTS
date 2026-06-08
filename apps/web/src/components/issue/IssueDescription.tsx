@@ -60,10 +60,18 @@ const TAB_INACTIVE_CLS =
 /**
  * 이슈 본문(description) 표시 및 편집 컴포넌트.
  *
+ * **열람 제어 (FR-PM-07 §3.1)** — `restrictedFields`에 "description"이 포함되면
+ * 본문/편집 버튼 대신 열람 불가 placeholder(`data-testid="description-restricted"`)만
+ * 표시한다. 백엔드가 description=null로 마스킹한 상태에서도 UI가 어색하게 보이지 않도록
+ * 명확한 안내 문구를 제공한다.
+ *
+ * **편집 제어 (FR-PM-07 §3.2)** — `canEdit`(UPDATE 권한)과 `noneditableFields`에
+ * "description" 포함 여부를 AND 연산한다. 둘 중 하나라도 false이면 편집 버튼 disabled.
+ *
  * - 읽기 모드: descriptionHtml을 dangerouslySetInnerHTML로 렌더(백엔드 정화 신뢰 HTML).
  *   descriptionHtml=null이면 '본문이 없습니다.' placeholder 표시.
  * - 편집 모드: Write/Preview 탭 + textarea + 저장/취소 버튼.
- *   raw description은 Write 탭 textarea에서만 사용, 표시 경로 렌더 금지.
+ *   raw description은 Write 탭 textarea에서만 사용, 표시 경로 렌더 금지 (NFR2).
  * - WCAG AA: min-h-[44px] 터치 타깃, aria-label 필수.
  */
 export function IssueDescription({
