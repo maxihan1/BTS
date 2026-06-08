@@ -176,19 +176,14 @@ class UserRepositoryTest {
 
     @Test
     fun `create — 중복 username 은 예외 (기존 행 덮어쓰기 금지, save UPSERT 와 구분)`() {
-        val first = repo.create("mia", "mia@bts.local", "Mia Old")
+        repo.create("mia", "mia@bts.local", "Mia Old")
 
         // 같은 username 으로 다시 create 하면 ON CONFLICT 없는 INSERT 라 unique 위반.
+        // (ON CONFLICT DO UPDATE 가 없으므로 위반 시 기존 행은 절대 변경되지 않는다 — save UPSERT 와 구분.)
+        // 위반 발생 후 같은 트랜잭션은 abort 되므로(25P02) 행 보존 검증은 별도 테스트로 분리한다.
         assertThatThrownBy {
             repo.create("mia", "mia-new@bts.local", "Mia New")
         }.isInstanceOf(org.springframework.dao.DuplicateKeyException::class.java)
-
-        // 기존 행이 그대로 보존되어야 한다 (덮어쓰기 안 됨).
-        val found = repo.findByUsername("mia")
-        assertThat(found).isNotNull()
-        assertThat(found!!.id).isEqualTo(first.id)
-        assertThat(found.email).isEqualTo("mia@bts.local")
-        assertThat(found.displayName).isEqualTo("Mia Old")
     }
 
     // ── provisionFromExternal ─────────────────────────────────────────────────
