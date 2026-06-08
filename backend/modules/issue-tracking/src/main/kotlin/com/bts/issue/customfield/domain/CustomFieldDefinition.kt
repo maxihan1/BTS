@@ -59,6 +59,7 @@ data class CustomFieldDefinition(
          * @return 생성된 [CustomFieldDefinition] 인스턴스.
          * @throws InvalidFieldDefinitionException 불변식 위반 시.
          */
+        @Suppress("LongParameterList") // Aggregate factory — 7개 필드 모두 도메인 불변식에 해당, 분리 불가
         fun create(
             projectId: UUID,
             key: String,
@@ -95,6 +96,7 @@ data class CustomFieldDefinition(
  * @param key 검증할 key 값.
  * @throws InvalidFieldDefinitionException 불변식 위반 시.
  */
+@Suppress("ThrowsCount") // key 검증 3단계(empty → length → pattern) — 단계별 명확한 오류 메시지를 위해 분리 유지
 private fun validateKey(key: String) {
     if (key.isEmpty()) {
         throw InvalidFieldDefinitionException("key must not be blank")
