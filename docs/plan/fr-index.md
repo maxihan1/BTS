@@ -1,13 +1,13 @@
-<!-- 121개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
+<!-- 122개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
 
 # FR 역인덱스 + Open Questions
 
 ## §A.1 FR 역인덱스 (121개 전수)
 
 > 출처. SDD `docs/sdd/02-requirements.md` §2.2 "기능 요구사항 (FR) 상세".
-> 검증. `scripts/verify-master-plan.sh` — 121개 모두 product/*.md에 등장해야 함.
+> 검증. `scripts/verify-master-plan.sh` — 122개 모두 product/*.md에 등장해야 함.
 
-### 이슈 관리 (FR-IS, 9개)
+### 이슈 관리 (FR-IS, 10개)
 
 | FR ID | 한 줄 | 우선순위 | BC | 본문 위치 |
 |---|---|---|---|---|
@@ -20,6 +20,7 @@
 | FR-IS-07 | Resolution 필드 | 필수 | issue-tracking | §2.1.5 |
 | FR-IS-08 | 이슈 인쇄 + PDF 출력 | 중간 | issue-tracking | §2.3.2 |
 | FR-IS-09 | 라벨 자동완성 | 높음 | issue-tracking | §2.2.2 |
+| FR-IS-10 | 커스텀 필드 인프라 (프로젝트별 정의 + JSONB 값 저장) | 높음 | issue-tracking | §2.4 |
 
 ### 컴포넌트 / 버전 (FR-CM, FR-VR, 8개)
 
@@ -218,7 +219,7 @@
 | BC | FR 카운트 | 주요 그룹 |
 |---|---|---|
 | identity-access | 24 | AU(10) + MF(5) + PM(9) |
-| issue-tracking | 30 | IS(9) + CM(4) + VR(4) + AC(2) + MN(2) + WT(1) + LK(2) + HS(2) + TM(2) + MV(2) |
+| issue-tracking | 31 | IS(10) + CM(4) + VR(4) + AC(2) + MN(2) + WT(1) + LK(2) + HS(2) + TM(2) + MV(2) |
 | project-workflow | 3 | WF(3) |
 | agile-planning | 14 | BD(3) + BL(2) + EP(2) + TL(3) + TT(2) + PL(2) |
 | automation | 7 | AT(7) |
@@ -226,7 +227,7 @@
 | slack-integration | 6 | SL(6) |
 | personalization | 12 | PR(4) + PF(3) + CA(2) + UX-01,04,05(3) |
 | search-export-import | 12 | SR(4) + EX(2) + IM(2) + API(4) |
-| **합계** | **121** | |
+| **합계** | **122** | |
 
 ## §A.3 미해결 결정 (Open Questions)
 
@@ -247,3 +248,4 @@
 
 - 2026-05-20. **재편성**. SDD 17장 Phase 0~4 분할 폐기, BC 단위 완제품 매핑으로 전환. Phase 컬럼 → BC 컬럼.
 - 2026-05-20. 초안. SDD `02-requirements.md`에서 117개 FR ID 전수 추출. Open Questions 8건 등재.
+- 2026-06-08. **FR-IS-10 신설**. 커스텀 필드 인프라 (issue-tracking). 합계 121→122.

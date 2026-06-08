@@ -13,9 +13,11 @@ import java.util.UUID
  * @param typeId 이슈 유형 식별자 VO. null 이면 서비스가 task 타입으로 fallback 한다 (FR-6).
  * @param summary 이슈 제목. 1~255자.
  * @param reporterId 이슈 생성자 ActorId.
- * @param componentIds 이슈 생성 시 연결할 컴포넌트 UUID 목록. 빈 목록이면 컴포넌트 미연결로 생성한다 (FR-CM-03).
+ * @param componentIds 이슈 생성 시 연결할 컴포넌트 UUID 목록. 빈 목목이면 컴포넌트 미연결로 생성한다 (FR-CM-03).
  * @param securityLevelId 이슈에 지정할 보안 등급 UUID (FR-PM-06). null 이면 등급 없음(공개).
  *   non-null 이면 서비스가 SET_SECURITY 권한 + 적용 스킴 소속을 검증한다.
+ * @param customFields 커스텀 필드 값 맵 (FR-IS-10). null 이면 빈 맵으로 처리한다.
+ *   값 검증(타입/required/미정의키)은 서비스에서 수행한다.
  */
 data class CreateIssueRequest(
     val projectKey: String,
@@ -24,6 +26,7 @@ data class CreateIssueRequest(
     val typeId: IssueTypeId? = null,
     val componentIds: List<UUID> = emptyList(),
     val securityLevelId: UUID? = null,
+    val customFields: Map<String, Any?>? = null,
 )
 
 /**
@@ -71,6 +74,8 @@ sealed interface SecurityLevelPatch {
  * @param impact 영향도 1..3. null=무변경.
  * @param securityLevel 보안 등급 수정 의도 (FR-PM-06). [SecurityLevelPatch] 3-state —
  *   Unchanged=무변경(기본), Clear=해제, Assign=지정. 무변경 외에는 SET_SECURITY 권한을 검증한다.
+ * @param customFields 커스텀 필드 패치 맵 (FR-IS-10, E11). null=무변경, 맵 명시=키 단위 병합,
+ *   키 값 null=해당 필드 제거. required 검증은 병합 후 최종 상태 기준.
  */
 data class UpdateIssueRequest(
     val summary: String?,
@@ -82,6 +87,7 @@ data class UpdateIssueRequest(
     val environment: String? = null,
     val impact: Int? = null,
     val securityLevel: SecurityLevelPatch = SecurityLevelPatch.Unchanged,
+    val customFields: Map<String, Any?>? = null,
 )
 
 /**

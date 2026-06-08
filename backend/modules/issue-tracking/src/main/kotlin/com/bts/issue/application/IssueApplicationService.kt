@@ -5,6 +5,8 @@ package com.bts.issue.application
 import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.adapter.outbound.AlwaysAllowIssueSecurityDirectory
 import com.bts.issue.component.repository.ComponentRepository
+import com.bts.issue.customfield.domain.CustomFieldValueValidator
+import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.AssigneeNotFoundException
 import com.bts.issue.domain.ComponentLead
@@ -92,6 +94,9 @@ class IssueApplicationService(
     private val userLookupPort: UserLookupPort,
     private val componentRepository: ComponentRepository,
     private val projectLeadRepository: ProjectLeadRepository,
+    // customFieldDefinitionRepository: 기존 테스트 호환을 위해 null 허용. Spring 컨텍스트에서는 Bean 주입.
+    // null 이면 커스텀 필드 검증을 수행하지 않는다(기존 테스트 backward-compat).
+    private val customFieldDefinitionRepository: CustomFieldDefinitionRepository? = null,
     // 기본값은 Spring이 관리하지 않는 단위 테스트 컨텍스트 호환용 fallback이다 (pdfRenderer 패턴 동형).
     // prod 컨텍스트에서는 IdentityAccessIssueSecurityDirectory(@Profile("prod")) 또는
     // AlwaysAllowIssueSecurityDirectory(@Profile("!prod")) Bean이 타입으로 주입돼 이 기본값을 대체한다.
@@ -128,7 +133,7 @@ class IssueApplicationService(
      * TooGenericExceptionCaught/ThrowsCount: BC 격리 — project-workflow 내부 예외를 직접 import 할 수 없으므로
      * javaClass.simpleName 으로 감지한다. RuntimeException catch 는 의도적인 설계 (DEVELOPMENT.md §1.1).
      */
-    @Suppress("TooGenericExceptionCaught", "ThrowsCount")
+    @Suppress("TooGenericExceptionCaught", "ThrowsCount", "LongMethod")
     fun createIssue(
         actor: ActorId,
         request: CreateIssueRequest,
@@ -169,6 +174,14 @@ class IssueApplicationService(
 
         val resolvedAssignee = resolveDefaultAssignee(projectId, normalizedComponentIds, current = null)
 
+        // FR-IS-10: 커스텀 필드 검증 — 정의 로드 후 Validator 호출. null이면 빈 맵 처리.
+        val customFieldValues = request.customFields ?: emptyMap()
+        val definitionRepo = customFieldDefinitionRepository
+        if (definitionRepo != null) {
+            val definitions = definitionRepo.findActiveByProject(projectId)
+            validateCustomFields(definitions, customFieldValues)
+        }
+
         val issue =
             Issue.create(
                 id = IssueId(UUID.randomUUID()),
@@ -181,6 +194,7 @@ class IssueApplicationService(
                 assigneeId = resolvedAssignee,
                 componentIds = normalizedComponentIds,
                 securityLevelId = request.securityLevelId,
+                customFields = customFieldValues,
             )
         val saved = repo.insert(issue)
         repo.insertComponents(saved.id.value, normalizedComponentIds)
@@ -367,12 +381,16 @@ class IssueApplicationService(
         // BLOCKER 1: PATCH 경로에서 도메인 validateAndNormalizeLabels 를 우회하는 경로를 차단한다.
         val normalizedLabels: List<String>? = request.labels?.let { Issue.normalizeLabels(it) }
 
+        // FR-IS-10 E11 커스텀 필드 필드단위 병합 — null=무변경, 맵 명시=키단위 병합, 키값 null=제거.
+        // 병합 후 최종 상태를 기준으로 required 검증 수행 (patch-merge-domain-bypass 방지).
+        val mergedCustomFields: Map<String, Any?>? = mergeCustomFieldsAndValidate(existing, request)
+
         // 보안 등급 변경을 field update 보다 먼저 적용해 OCC version 체인을 단일화한다.
         // 변경이 적용되면 version 이 +1 되므로 후속 field update 는 갱신된 version 을 사용해야 한다.
         val versionAfterSecurity = applySecurityLevel(existing, request.securityLevel, request.expectedVersion)
 
         val securityChanged = versionAfterSecurity != request.expectedVersion
-        val changedFields = buildChangedFields(existing, request, normalizedLabels)
+        val changedFields = buildChangedFields(existing, request, normalizedLabels, mergedCustomFields)
         if (changedFields.isEmpty()) {
             log.info("issue_update_noop key={} actor={} securityChanged={}", key.value, actor.value, securityChanged)
             return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
@@ -389,6 +407,7 @@ class IssueApplicationService(
                         labels = normalizedLabels,
                         environment = request.environment,
                         impact = request.impact,
+                        customFields = mergedCustomFields,
                     ),
                 expectedVersion = versionAfterSecurity,
             )
@@ -878,12 +897,15 @@ class IssueApplicationService(
      * - priority/impact: null=무변경, 값=변경(기존값과 다를 때).
      *
      * @param normalizedLabels labels 를 [Issue.normalizeLabels] 로 정규화한 결과. null=무변경.
+     * @param mergedCustomFields 병합 완료된 커스텀 필드 최종 맵. null=무변경.
      * @return 변경된 필드 이름 집합. 비어있으면 no-op.
      */
+    @Suppress("CyclomaticComplexMethod")
     private fun buildChangedFields(
         existing: Issue,
         request: UpdateIssueRequest,
         normalizedLabels: List<String>?,
+        mergedCustomFields: Map<String, Any?>? = null,
     ): Set<String> {
         val fields = mutableSetOf<String>()
         if (request.summary != null && existing.summary != request.summary) fields.add("summary")
@@ -905,6 +927,9 @@ class IssueApplicationService(
         // impact: null=무변경, 값=변경(기존과 다를 때)
         if (request.impact != null && existing.impact != request.impact) fields.add("impact")
 
+        // customFields: null=무변경, 병합맵=기존과 다를 때 변경
+        if (mergedCustomFields != null && existing.customFields != mergedCustomFields) fields.add("customFields")
+
         return fields
     }
 
@@ -921,6 +946,65 @@ class IssueApplicationService(
     ): Boolean {
         if (requestValue == null) return false
         return existingValue != requestValue
+    }
+
+    /**
+     * 커스텀 필드 값을 검증한다 (FR-IS-10).
+     *
+     * 프로젝트의 활성 정의 목록을 기준으로 [CustomFieldValueValidator] 를 호출한다.
+     * 정의 로드는 호출자가 미리 수행하여 불필요한 DB 조회를 줄인다.
+     * [customFieldDefinitionRepository] 가 null 이면 검증을 수행하지 않는다(기존 테스트 backward-compat).
+     *
+     * @param definitions 프로젝트의 활성 필드 정의 목록.
+     * @param values 저장할 커스텀 필드 값 맵. 빈 맵이면 required 없는 경우에만 통과한다.
+     * @throws [com.bts.issue.customfield.domain.CustomFieldValidationException] 위반 시.
+     */
+    private fun validateCustomFields(
+        definitions: List<com.bts.issue.customfield.domain.CustomFieldDefinition>,
+        values: Map<String, Any?>,
+    ) {
+        CustomFieldValueValidator().validate(definitions, values)
+    }
+
+    /**
+     * PATCH 커스텀 필드를 기존 값과 병합하고 최종 상태를 검증한다 (FR-IS-10, E11).
+     *
+     * - request.customFields=null → 무변경 → null 반환 (no-op 신호).
+     * - request.customFields=맵 → 기존 맵에서 각 키를 병합.
+     *   - 키 값이 non-null → 갱신.
+     *   - 키 값이 null → 해당 키 제거.
+     * - 병합 후 최종 맵에 대해 [validateCustomFields] 를 호출하여 required 검증 수행.
+     * - [customFieldDefinitionRepository] 가 null 이면 검증 없이 병합만 수행(기존 테스트 backward-compat).
+     *
+     * @param existing 수정 전 이슈 Aggregate.
+     * @param request 수정 요청 DTO.
+     * @return 병합된 최종 맵. request.customFields=null 이면 null(무변경).
+     * @throws [com.bts.issue.customfield.domain.CustomFieldValidationException] required 위반 시.
+     */
+    private fun mergeCustomFieldsAndValidate(
+        existing: Issue,
+        request: UpdateIssueRequest,
+    ): Map<String, Any?>? {
+        val patch = request.customFields ?: return null
+
+        // 기존 값 복사 후 키 단위 병합 — null 값 키는 제거(E11)
+        val merged = existing.customFields.toMutableMap()
+        for ((fieldKey, value) in patch) {
+            if (value == null) {
+                merged.remove(fieldKey)
+            } else {
+                merged[fieldKey] = value
+            }
+        }
+
+        // 병합 후 최종 상태 기준 required 검증 (patch-merge-domain-bypass 방지)
+        val definitionRepo = customFieldDefinitionRepository
+        if (definitionRepo != null) {
+            val definitions = definitionRepo.findActiveByProject(existing.projectId)
+            validateCustomFields(definitions, merged)
+        }
+
+        return merged.toMap()
     }
 
     private fun assertPermission(

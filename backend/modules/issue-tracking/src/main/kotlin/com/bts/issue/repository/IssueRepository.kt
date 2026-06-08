@@ -16,8 +16,11 @@ import com.bts.issue.jooq.tables.references.ISSUE_TYPES
 import com.bts.issue.jooq.tables.references.PROJECTS
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssueSecurityAccess
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.jooq.Condition
 import org.jooq.DSLContext
+import org.jooq.JSONB
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
@@ -69,6 +72,7 @@ private const val LABEL_AUTOCOMPLETE_DEFAULT_LIMIT = 20
  *
  * null 필드는 변경하지 않는다.
  * description/environment 는 빈/공백 문자열이면 DB NULL 로 클리어한다 (ifBlank).
+ * customFields 는 non-null 이면 병합된 최종 맵 전체를 JSONB 로 저장한다.
  */
 data class IssueFieldPatch(
     val summary: String? = null,
@@ -78,6 +82,7 @@ data class IssueFieldPatch(
     val labels: List<String>? = null,
     val environment: String? = null,
     val impact: Int? = null,
+    val customFields: Map<String, Any?>? = null,
 )
 
 /**
@@ -184,6 +189,7 @@ class IssueRepository(
             .apply { if (patch.labels != null) set(ISSUES.LABELS, patch.labels.toDbArray()) }
             .apply { if (patch.environment != null) set(ISSUES.ENVIRONMENT, patch.environment.ifBlank { null }) }
             .apply { if (patch.impact != null) set(ISSUES.IMPACT, patch.impact.toShort()) }
+            .apply { if (patch.customFields != null) set(ISSUES.CUSTOM_FIELDS, patch.customFields.toJsonb()) }
             .where(ISSUES.KEY.eq(key.value))
             .and(ISSUES.VERSION.eq(expectedVersion))
             .and(ISSUES.DELETED_AT.isNull)
@@ -799,6 +805,7 @@ private fun Issue.toInsertRecord(): IssuesRecord =
         impact = impact?.toShort(),
         assigneeId = assigneeId?.value,
         securityLevelId = securityLevelId,
+        customFields = customFields.toJsonb(),
     )
 
 /**
@@ -832,6 +839,7 @@ private fun IssuesRecord.toIssue(): Issue {
         assigneeId = assigneeId?.let { ActorId(it) },
         resolutionId = resolutionId,
         securityLevelId = securityLevelId,
+        customFields = customFields.toCustomFieldsMap(),
     )
 }
 
@@ -845,3 +853,35 @@ private const val DEFAULT_PRIORITY_SHORT: Short = 3
  * null 요소 없이 String 만 포함하므로 typed null-array 사용.
  */
 private fun List<String>.toDbArray(): Array<String?> = map { it as String? }.toTypedArray()
+
+// ── JSONB ↔ Map 변환 헬퍼 ────────────────────────────────────────────────────
+
+/**
+ * custom_fields JSONB 직렬화/역직렬화에 사용하는 ObjectMapper 싱글턴.
+ *
+ * `ObjectMapper` 는 스레드 안전하므로 파일 레벨 val 로 공유한다.
+ * Spring Bean 주입 없이 file-level 에서 사용하는 확장 함수에서 접근한다.
+ */
+private val CUSTOM_FIELDS_MAPPER = ObjectMapper()
+
+/** custom_fields Map 타입 레퍼런스 — TypeReference 재사용으로 객체 생성 절감. */
+private val CUSTOM_FIELDS_TYPE_REF = object : TypeReference<Map<String, Any?>>() {}
+
+/**
+ * 도메인 [Map]<[String], [Any]?> 를 jOOQ [JSONB] 로 직렬화한다.
+ *
+ * 빈 맵은 `'{}'` JSON 으로 직렬화된다 (DB DEFAULT `'{}'::jsonb` 와 일치).
+ */
+private fun Map<String, Any?>.toJsonb(): JSONB = JSONB.jsonb(CUSTOM_FIELDS_MAPPER.writeValueAsString(this))
+
+/**
+ * jOOQ [JSONB]? 를 도메인 [Map]<[String], [Any]?> 로 역직렬화한다.
+ *
+ * null 또는 빈 JSON 이면 빈 맵을 반환한다.
+ * PostgreSQL JSONB 의 기본값 `'{}'` 은 역직렬화 후 빈 맵이 된다.
+ */
+private fun JSONB?.toCustomFieldsMap(): Map<String, Any?> {
+    val json = this?.data()
+    if (json.isNullOrBlank() || json == "{}") return emptyMap()
+    return CUSTOM_FIELDS_MAPPER.readValue(json, CUSTOM_FIELDS_TYPE_REF)
+}

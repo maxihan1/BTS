@@ -42,6 +42,7 @@ scheme:
 - `MANAGE_COMPONENTS` - 컴포넌트 추가/제거
 - `MANAGE_VERSIONS` - 버전 추가/제거
 - `MANAGE_PERMISSIONS` - 권한 스킴 변경
+- `MANAGE_CUSTOM_FIELDS` - 커스텀 필드 정의 추가/수정/삭제 (FR-IS-10, PROJECT_ADMIN 전용)
 
 ### 이슈 접근
 - `BROWSE_PROJECT` - 프로젝트 조회

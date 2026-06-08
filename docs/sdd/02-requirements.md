@@ -74,6 +74,7 @@
 | FR-IS-07 | Resolution 필드 (Fixed/Won't Fix/Duplicate 등) | 필수 |
 | FR-IS-08 | 이슈 인쇄 / PDF 출력 | 중간 |
 | FR-IS-09 | 라벨 자동완성 | 높음 |
+| FR-IS-10 | 커스텀 필드 인프라 (프로젝트별 정의 + JSONB 값 저장) | 높음 |
 
 ### 2.2.2 컴포넌트 / 버전 / 에픽 (FR-CM, FR-VR, FR-EP)
 

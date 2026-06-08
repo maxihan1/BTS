@@ -1,8 +1,8 @@
-<!-- issue-tracking BC — 이슈 코어 30 FR (CRUD/타입/담당자/본문/Resolution/PDF + 컴포넌트/버전 + 첨부/멘션/Watcher + 링크/히스토리/템플릿 + 이동) -->
+<!-- issue-tracking BC — 이슈 코어 31 FR (CRUD/타입/담당자/본문/Resolution/PDF/커스텀필드 + 컴포넌트/버전 + 첨부/멘션/Watcher + 링크/히스토리/템플릿 + 이동) -->
 
 # issue-tracking BC
 
-**소속 FR**. 30개 (IS 9 + CM 4 + VR 4 + AC 2 + MN 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2).
+**소속 FR**. 31개 (IS 10 + CM 4 + VR 4 + AC 2 + MN 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2).
 **책임**. 이슈/댓글/첨부/관계/이력/템플릿/이동.
 **SDD 참조**. 05장 (데이터 모델), 11장 (API).
 **다른 BC와의 경계**. project-workflow의 상태 전이 호출, identity-access의 권한 가드 사용, notification-dashboard 이벤트 발행. **다른 BC import 금지 — 이벤트는 pgmq**.
@@ -21,7 +21,7 @@
 - pgmq 트랜잭션 일관성 → project-workflow §1
 - TipTap variant 추상 (issue-body / comment / wiki) → §2.1.4 본문 에디터 작성 시점
 
-## §2 이슈 코어 (FR-IS, 9개)
+## §2 이슈 코어 (FR-IS, 10개)
 
 ### §2.1 필수 5개 (CRUD/타입/담당자/본문/Resolution)
 
@@ -150,6 +150,23 @@
 - [x] D5. 백엔드 테스트 — PDF 바이너리 검증 (책임. backend-engineer) — PR #71 (단위+통합. %PDF- 시그니처, PDFTextStripper 한글 추출, XSS sanitize, 404)
 - [x] D6. 프론트 UI — 인쇄 버튼 + 다운로드 (책임. designer → frontend-engineer) — PR #74 (이슈 상세 breadcrumb 우측 PDF 다운로드 버튼. downloadIssuePdf(apiFetch→blob, 코드베이스 첫 바이너리 다운로드) + triggerBlobDownload 헬퍼(createObjectURL→앵커 click→revokeObjectURL finally 누수방지) + MSW 핸들러. 로딩 disabled+sonner 에러토스트, i18n issueDetailStrings. "인쇄"는 서버 PDF 다운로드로 해석(브라우저 print 별도 미추가). 부분 mock으로 기존 30+ 라우트 테스트 생존)
 - [x] D7. E2E (책임. qa-engineer) — PR #74 (issue-pdf.spec.ts — waitForEvent('download') 선셋업→버튼 클릭→suggestedFilename ATLAS-1.pdf 검증. 전체 E2E 90 passed/1 skip 회귀 0)
+
+### §2.4 인프라 1개 (커스텀 필드)
+
+#### §2.4.1 FR-IS-10 — 커스텀 필드 인프라 (프로젝트별 정의 + JSONB 값 저장)
+
+**우선순위**. 높음 | **선행**. §2.1.1 | **Plan slug**. `fr-is-10-custom-fields`
+
+> **선후행**. FR-IS-10(이 작업, 커스텀 필드) → FR-PM-07(필드 수준 권한, 코어+커스텀 필드 대상). 필드 권한이 커스텀 필드를 대상으로 포함하므로 FR-IS-10이 선행.
+> **스펙**. `docs/specs/2026-06-08-fr-is-10-custom-fields.md`. **ADR**. `docs/decisions/2026-06-08-custom-fields-model.md`.
+
+- [ ] D1. 도메인 — FieldType enum(10종) + CustomFieldDefinition + CustomFieldOption + 예외 (책임. backend-engineer)
+- [ ] D2. 명세 — 정의 CRUD API 계약 + 이슈 JSONB 값 검증 규칙 (E1~E11) (책임. backend-engineer)
+- [ ] D3. 데이터 모델 — V015 마이그레이션: `custom_field_definitions` + `custom_field_options` + `issues.custom_fields JSONB` + GIN 인덱스 + init_codegen 미러 (책임. db-engineer)
+- [ ] D4. 백엔드 — `/api/v1/projects/{key}/custom-fields` CRUD + 이슈 Create/Update/Response customFields 통합 + CustomFieldValueValidator (책임. backend-engineer + security-engineer 권한 결선 T1/T6)
+- [ ] D5. 백엔드 테스트 — 도메인 단위(MockK) + Testcontainers 통합(마이그레이션/정의CRUD권한/값 왕복/E1~E11 검증/소프트삭제 후 값 보존) (책임. backend-engineer + qa-engineer)
+- [ ] D6. 프론트 UI — 커스텀 필드 관리 페이지 + 이슈 폼 동적 렌더링 (책임. designer → frontend-engineer) — **후속 PR**
+- [ ] D7. E2E — 정의 CRUD + 이슈 값 입력/검증 시나리오 (책임. qa-engineer) — **후속 PR**
 
 ## §3 컴포넌트 / 버전 (7개)
 
@@ -455,7 +472,7 @@
 
 ### BC 완료 조건
 
-- [ ] §2~§6 (29 FR) 모두 `[x]` 마킹
+- [ ] §2~§6 (30 FR) 모두 `[x]` 마킹
 - [ ] §NFR 측정표 모든 항목 임계 통과
 - [ ] DATA.md §이슈키 영속성 자가 점검
 - [ ] CHANGELOG.md 정리

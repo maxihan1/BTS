@@ -41,6 +41,8 @@ import java.util.UUID
  * @property resolution 이슈에 할당된 Resolution 요약. null 이면 미설정. FR-IS-07 B11.
  * @property resolutionId 이슈에 설정된 Resolution UUID. ApplicationService 내부 전달용. JSON 직렬화 제외.
  * @property securityLevelId 이슈에 적용된 보안 등급 UUID. null 이면 등급 없음(공개). FR-PM-06 PR-B.
+ * @property customFields 커스텀 필드 값 맵. 키는 필드 정의 key, 값은 타입별 JSON 값. FR-IS-10.
+ *   단건·목록 경로 모두 노출된다. issues.custom_fields JSONB 컬럼에서 직접 매핑된다.
  */
 data class IssueResponse(
     val key: String,
@@ -69,6 +71,7 @@ data class IssueResponse(
     @com.fasterxml.jackson.annotation.JsonIgnore
     val resolutionId: UUID? = null,
     val securityLevelId: UUID? = null,
+    val customFields: Map<String, Any?> = emptyMap(),
 ) {
     /**
      * 이슈 타입 요약 정보. [from] 파라미터 그룹화용.
@@ -143,6 +146,7 @@ data class IssueResponse(
                 resolution = resolution,
                 resolutionId = issue.resolutionId,
                 securityLevelId = issue.securityLevelId,
+                customFields = issue.customFields,
             )
     }
 }
