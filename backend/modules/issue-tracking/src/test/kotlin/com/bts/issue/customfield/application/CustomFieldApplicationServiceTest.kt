@@ -2,8 +2,10 @@
 
 package com.bts.issue.customfield.application
 
+import com.bts.issue.customfield.domain.CustomFieldAccessDeniedException
 import com.bts.issue.customfield.domain.CustomFieldDefinition
 import com.bts.issue.customfield.domain.CustomFieldNotFoundException
+import com.bts.issue.customfield.domain.CustomFieldProjectNotFoundException
 import com.bts.issue.customfield.domain.DuplicateCustomFieldKeyException
 import com.bts.issue.customfield.domain.FieldType
 import com.bts.issue.customfield.domain.ImmutableFieldTypeChangeException

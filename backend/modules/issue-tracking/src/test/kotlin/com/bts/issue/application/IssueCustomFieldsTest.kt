@@ -24,8 +24,8 @@ import com.bts.shared.workflow.WorkflowStartState
 import com.bts.shared.workflow.WorkflowTransitionPort
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.maps.shouldContainKey
-import io.kotest.matchers.maps.shouldNotContainKey
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
@@ -331,8 +331,8 @@ class IssueCustomFieldsTest : DescribeSpec({
             val result = sut.updateIssue(actor, issueKey, request)
 
             verify { customFieldDefinitionRepository.findActiveByProject(projectId) }
-            result.customFields shouldContainKey "salary_impact"
-            result.customFields shouldContainKey "note"
+            result.customFields.keys shouldContain "salary_impact"
+            result.customFields.keys shouldContain "note"
         }
 
         it("키 값 null 시 해당 필드 제거(E11-null제거)") {
@@ -356,8 +356,8 @@ class IssueCustomFieldsTest : DescribeSpec({
 
             val result = sut.updateIssue(actor, issueKey, request)
 
-            result.customFields shouldContainKey "salary_impact"
-            result.customFields shouldNotContainKey "note"
+            result.customFields.keys shouldContain "salary_impact"
+            result.customFields.keys shouldNotContain "note"
         }
 
         it("병합 후 required 필드가 null 상태가 되면 CustomFieldValidationException 발생") {

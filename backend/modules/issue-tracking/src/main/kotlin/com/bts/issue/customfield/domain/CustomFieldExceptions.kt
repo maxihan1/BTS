@@ -49,3 +49,24 @@ class InvalidFieldDefinitionException(reason: String) :
  */
 class ImmutableFieldTypeChangeException(field: String) :
     CustomFieldDomainException("Field '$field' is immutable after creation")
+
+/**
+ * 행위자에게 커스텀 필드 관리 권한이 없을 때.
+ *
+ * HTTP 403 매핑은 예외 핸들러에서 처리한다.
+ *
+ * @param actorId 권한이 없는 행위자 UUID.
+ * @param projectId 대상 프로젝트 UUID.
+ */
+class CustomFieldAccessDeniedException(actorId: java.util.UUID, projectId: java.util.UUID) :
+    CustomFieldDomainException("Actor $actorId has no permission to manage custom fields in project $projectId")
+
+/**
+ * 커스텀 필드 정의가 속한 프로젝트가 존재하지 않을 때.
+ *
+ * HTTP 404 매핑은 예외 핸들러에서 처리한다.
+ *
+ * @param projectIdOrKey 조회를 시도한 프로젝트 ID 또는 key.
+ */
+class CustomFieldProjectNotFoundException(projectIdOrKey: String) :
+    CustomFieldDomainException("Project not found: $projectIdOrKey")

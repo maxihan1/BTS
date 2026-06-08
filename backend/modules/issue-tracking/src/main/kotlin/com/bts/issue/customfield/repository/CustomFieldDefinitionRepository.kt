@@ -96,6 +96,53 @@ class CustomFieldDefinitionRepository(
     }
 
     /**
+     * 필드 정의 UUID + 프로젝트 UUID 조건으로 활성(`deleted_at IS NULL`) 정의를 조회한다.
+     * 옵션도 함께 로드된다.
+     *
+     * @param id 조회할 필드 정의 UUID.
+     * @param projectId 소속 프로젝트 UUID.
+     * @return 활성 [CustomFieldDefinition], 없으면 null.
+     */
+    @Transactional(readOnly = true)
+    fun findById(
+        id: UUID,
+        projectId: UUID,
+    ): CustomFieldDefinition? =
+        dsl.selectFrom(CUSTOM_FIELD_DEFINITIONS)
+            .where(CUSTOM_FIELD_DEFINITIONS.ID.eq(id))
+            .and(CUSTOM_FIELD_DEFINITIONS.PROJECT_ID.eq(projectId))
+            .and(CUSTOM_FIELD_DEFINITIONS.DELETED_AT.isNull)
+            .fetchOne()
+            ?.let { record -> recordToDefinition(record) }
+
+    /**
+     * 기존 커스텀 필드 정의를 갱신한다.
+     *
+     * name / required / display_order 만 변경 가능하다.
+     * fieldType 과 key 는 생성 후 불변 — [ImmutableFieldTypeChangeException] 검증은 ApplicationService 책임.
+     *
+     * @param definition 갱신할 [CustomFieldDefinition]. [CustomFieldDefinition.id] 가 non-null 이어야 한다.
+     * @return 갱신된 [CustomFieldDefinition].
+     */
+    @Transactional
+    fun update(definition: CustomFieldDefinition): CustomFieldDefinition {
+        val id = definition.id ?: error("update requires non-null id")
+        log.debug("Updating custom field definition id={} projectId={}", id, definition.projectId)
+
+        dsl.update(CUSTOM_FIELD_DEFINITIONS)
+            .set(CUSTOM_FIELD_DEFINITIONS.NAME, definition.name)
+            .set(CUSTOM_FIELD_DEFINITIONS.REQUIRED, definition.required)
+            .set(CUSTOM_FIELD_DEFINITIONS.DISPLAY_ORDER, definition.displayOrder)
+            .set(CUSTOM_FIELD_DEFINITIONS.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+            .where(CUSTOM_FIELD_DEFINITIONS.ID.eq(id))
+            .and(CUSTOM_FIELD_DEFINITIONS.PROJECT_ID.eq(definition.projectId))
+            .and(CUSTOM_FIELD_DEFINITIONS.DELETED_AT.isNull)
+            .execute()
+
+        return definition
+    }
+
+    /**
      * 프로젝트 + key + 활성(`deleted_at IS NULL`) 조건으로 단건 정의를 조회한다.
      * 옵션도 함께 로드된다.
      *
