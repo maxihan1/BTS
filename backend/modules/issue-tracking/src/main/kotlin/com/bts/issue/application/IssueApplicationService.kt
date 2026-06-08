@@ -82,8 +82,9 @@ import java.util.UUID
  * TooManyFunctions: 이슈 CRUD + 전이 유스케이스 전반을 단일 Application Service 가 담당하므로 함수 수 임계치(11)를 초과한다.
  * availableTransitions 추가로 11개, changeAssignee 추가로 12개, changeComponents 추가로 13개가 됐으나
  * 책임 분리보다 응집이 더 적합한 구조이므로 Suppress 처리.
+ * LargeClass: 필드 마스킹 헬퍼(FR-PM-07 Task-7) 추가로 임계치를 초과했으나 같은 응집 이유가 적용된다.
  */
-@Suppress("TooManyFunctions", "LongParameterList")
+@Suppress("TooManyFunctions", "LongParameterList", "LargeClass")
 @Service
 @Transactional
 class IssueApplicationService(
@@ -1186,6 +1187,7 @@ class IssueApplicationService(
      * @param response 마스킹 전 응답.
      * @return 마스킹이 적용된 응답.
      */
+    @Suppress("ReturnCount") // null guard 조기 반환 패턴 — 의도적 설계
     private fun maskFieldsForSingle(
         actor: ActorId,
         projectKey: String,
@@ -1209,6 +1211,7 @@ class IssueApplicationService(
      * @param page 마스킹 전 Page.
      * @return 마스킹이 적용된 Page.
      */
+    @Suppress("ReturnCount") // null guard + empty guard 조기 반환 패턴 — 의도적 설계
     private fun maskFieldsForPage(
         actor: ActorId,
         projectKey: String,
@@ -1218,9 +1221,11 @@ class IssueApplicationService(
         if (page.isEmpty) return page
         val projectId = repo.findProjectIdByKey(projectKey) ?: return page
         // 페이지 내 커스텀 필드 키 합집합 + 코어 마스킹 대상 후보 — 1회 호출로 배치 처리(EC14)
-        val candidates = page.content.fold(buildCoreCandidates()) { acc, r ->
-            acc + r.customFields.keys.map { FieldRef(FieldKind.CUSTOM, it) }
-        }.toSet()
+        val candidates =
+            page.content
+                .fold(buildCoreCandidates()) { acc, r ->
+                    acc + r.customFields.keys.map { FieldRef(FieldKind.CUSTOM, it) }
+                }.toSet()
         val visible = resolver.visibleFields(actor.value, projectId, candidates)
         val maskedContent = page.content.map { it.maskInvisible(visible) }
         return org.springframework.data.domain.PageImpl(maskedContent, page.pageable, page.totalElements)
