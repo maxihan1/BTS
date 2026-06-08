@@ -1198,16 +1198,16 @@ class IssueApplicationService(
     }
 
     /**
-     * 단건 조회 응답에 필드 수준 마스킹을 적용한다 (FR-PM-07 Task-7).
+     * 단건 조회 응답에 필드 수준 마스킹(열람) + 편집 불가 필드 표기를 적용한다 (FR-PM-07 Task-7 + Task-1).
      *
      * projectKey 로 projectId 를 조회한 뒤 [buildCandidates] 를 구성하고
-     * [FieldPermissionResolver.visibleFields] 를 1회 호출하여 마스킹을 적용한다.
+     * [FieldPermissionResolver.visibleFields] 와 [FieldPermissionResolver.editableFields] 를 각 1회 호출한다.
      * projectId 를 찾지 못하면 원본 응답을 그대로 반환한다(방어적 처리).
      *
      * @param actor 조회 행위자.
      * @param projectKey 이슈가 속한 프로젝트 키.
      * @param response 마스킹 전 응답.
-     * @return 마스킹이 적용된 응답.
+     * @return 마스킹 및 noneditableFields 가 적용된 응답.
      */
     private fun maskFieldsForSingle(
         actor: ActorId,
@@ -1217,20 +1217,23 @@ class IssueApplicationService(
         val projectId = repo.findProjectIdByKey(projectKey) ?: return response
         val candidates = buildCandidates(response)
         val visible = fieldPermissionResolver.visibleFields(actor.value, projectId, candidates)
-        return response.maskInvisible(visible)
+        val editable = fieldPermissionResolver.editableFields(actor.value, projectId, visible)
+        return response.maskInvisible(visible, editable)
     }
 
     /**
-     * 목록 조회 응답 Page 전체에 필드 수준 마스킹을 적용한다 (FR-PM-07 Task-7, EC14).
+     * 목록 조회 응답 Page 전체에 필드 수준 마스킹(열람) + 편집 불가 필드 표기를 적용한다
+     * (FR-PM-07 Task-7 + Task-1, EC14).
      *
-     * 같은 프로젝트의 이슈 목록이므로 [FieldPermissionResolver.visibleFields] 를 페이지당 1회만 호출한다(N+1 회피).
+     * 같은 프로젝트의 이슈 목록이므로 [FieldPermissionResolver.visibleFields] 와
+     * [FieldPermissionResolver.editableFields] 를 페이지당 각 1회만 호출한다(N+1 회피).
      * candidates 는 페이지 내 모든 이슈의 커스텀 필드 키를 합집합으로 구성한다.
      * 빈 페이지이거나 projectId 를 찾지 못하면 원본 페이지를 그대로 반환한다(방어적 처리).
      *
      * @param actor 조회 행위자.
      * @param projectKey 목록이 속한 프로젝트 키.
      * @param page 마스킹 전 Page.
-     * @return 마스킹이 적용된 Page.
+     * @return 마스킹 및 noneditableFields 가 적용된 Page.
      */
     @Suppress("ReturnCount") // empty guard + projectId miss guard 조기 반환 패턴 — 의도적 설계
     private fun maskFieldsForPage(
@@ -1247,7 +1250,8 @@ class IssueApplicationService(
                     acc + r.customFields.keys.map { FieldRef(FieldKind.CUSTOM, it) }
                 }.toSet()
         val visible = fieldPermissionResolver.visibleFields(actor.value, projectId, candidates)
-        val maskedContent = page.content.map { it.maskInvisible(visible) }
+        val editable = fieldPermissionResolver.editableFields(actor.value, projectId, visible)
+        val maskedContent = page.content.map { it.maskInvisible(visible, editable) }
         return org.springframework.data.domain.PageImpl(maskedContent, page.pageable, page.totalElements)
     }
 

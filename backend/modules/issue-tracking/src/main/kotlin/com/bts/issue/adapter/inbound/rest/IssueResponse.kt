@@ -48,6 +48,9 @@ import java.util.UUID
  * @property restrictedFields actor 에게 열람 권한이 없어 마스킹된 필드 키 목록. FR-PM-07 Task-7.
  *   코어 필드는 필드명 그대로(예: `"description"`), 커스텀 필드는 정의 key(예: `"secret"`) 를 담는다.
  *   마스킹이 없으면 빈 리스트. 클라이언트는 이 목록을 통해 어떤 필드가 숨겨졌는지 인지할 수 있다.
+ * @property noneditableFields actor 에게 열람은 허용되지만 편집 권한이 없는 필드 키 목록. FR-PM-07 Task-1.
+ *   [restrictedFields](숨김) 에 포함된 키는 이 목록에 중복 수록되지 않는다.
+ *   편집 제한이 없으면 빈 리스트. 클라이언트는 이 목록으로 입력 필드를 미리 비활성화할 수 있다.
  */
 data class IssueResponse(
     val key: String,
@@ -78,9 +81,13 @@ data class IssueResponse(
     val securityLevelId: UUID? = null,
     val customFields: Map<String, Any?> = emptyMap(),
     val restrictedFields: List<String> = emptyList(),
+    val noneditableFields: List<String> = emptyList(),
 ) {
     /**
-     * [visible] 집합을 기준으로 열람 불가 필드를 마스킹한 새 [IssueResponse] 를 반환한다 (FR-PM-07 Task-7).
+     * [visible] 집합을 기준으로 열람 불가 필드를 마스킹하고, [editable] 집합을 기준으로
+     * 편집 불가 필드를 [noneditableFields] 에 기록한 새 [IssueResponse] 를 반환한다.
+     *
+     * FR-PM-07 Task-7 (열람 마스킹) + Task-1 (편집 불가 필드 표기).
      *
      * ### 마스킹 규칙 (spec §3.1 / §F4)
      * - CUSTOM 필드: [visible] 에 없는 customFields 맵 키를 제거 (S1).
@@ -90,10 +97,20 @@ data class IssueResponse(
      * - impactName: impact 마스킹과 연동 — impact 가 마스킹되면 impactName 도 null.
      * - 마스킹된 모든 key 를 [restrictedFields] 에 기록한다.
      *
+     * ### noneditableFields 규칙 (spec §3.2 / Task-1)
+     * - [visible] 에 있으나 [editable] 에 없는 필드 key 를 [noneditableFields] 에 기록한다.
+     * - [restrictedFields](숨김) 에 포함된 key 는 중복 수록하지 않는다.
+     * - [editable] 이 null 이면 noneditableFields 를 채우지 않는다(빈 리스트 유지).
+     *
      * @param visible actor 가 열람 가능한 [FieldRef] 집합. [FieldPermissionResolver.visibleFields] 결과.
-     * @return 마스킹이 적용된 새 [IssueResponse]. 원본은 변경하지 않는다.
+     * @param editable actor 가 편집 가능한 [FieldRef] 집합. [FieldPermissionResolver.editableFields] 결과.
+     *   null 이면 편집 권한 계산을 건너뛴다(noneditableFields 빈 리스트).
+     * @return 마스킹 및 noneditableFields 가 적용된 새 [IssueResponse]. 원본은 변경하지 않는다.
      */
-    fun maskInvisible(visible: Set<FieldRef>): IssueResponse {
+    fun maskInvisible(
+        visible: Set<FieldRef>,
+        editable: Set<FieldRef>? = null,
+    ): IssueResponse {
         val masked = mutableListOf<String>()
 
         // CUSTOM 필드 마스킹 — visible 에 없는 key 제거
@@ -138,6 +155,19 @@ data class IssueResponse(
             maskedAssigneeId = assigneeId
         }
 
+        // noneditableFields — visible 이지만 editable 에 없는 필드 key 목록 (Task-1).
+        // restrictedFields(masked) 에 포함된 key 는 중복 수록하지 않는다.
+        val noneditable: List<String> =
+            if (editable == null) {
+                emptyList()
+            } else {
+                val restrictedSet = masked.toSet()
+                visible
+                    .filter { ref -> ref !in editable }
+                    .map { ref -> ref.key }
+                    .filter { key -> key !in restrictedSet }
+            }
+
         return copy(
             description = maskedDescription,
             environment = maskedEnvironment,
@@ -147,6 +177,7 @@ data class IssueResponse(
             assigneeId = maskedAssigneeId,
             customFields = filteredCustom,
             restrictedFields = masked,
+            noneditableFields = noneditable,
         )
     }
 

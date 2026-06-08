@@ -118,6 +118,11 @@ class IssueFieldVisibilityTest : DescribeSpec({
         every { repo.findByKeyWithType(issueKey) } returns makeFullResponse()
         every { repo.findActiveComponentIdsByIssue(issueId) } returns emptyList()
         every { repo.findProjectIdByKey(projectKey) } returns projectId
+        // editableFields 기본 stub — 모든 candidates 를 그대로 반환(전 필드 편집 허용).
+        // 개별 context 에서 필요한 경우 재정의한다.
+        every {
+            fieldPermissionResolver.editableFields(actorId, projectId, any())
+        } answers { thirdArg() }
     }
 
     // ── 단건(findByKey) 경로 ────────────────────────────────────────────────────
