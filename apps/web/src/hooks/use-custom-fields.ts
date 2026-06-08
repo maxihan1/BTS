@@ -22,7 +22,8 @@ export const CUSTOM_FIELD_KEYS = {
 } satisfies Record<string, (...args: string[]) => readonly string[]>
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 에러 토스트 헬퍼 — 훅 레이어에서 단일 발사, 컴포넌트 중복 금지
+// 에러 토스트 헬퍼 — 훅 레이어에서 단일 발사
+// silent:true 경로(Dialog 인라인)에서는 호출하지 않는다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function notifyCustomFieldError(error: unknown): void {
