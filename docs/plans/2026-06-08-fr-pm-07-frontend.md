@@ -167,4 +167,36 @@ PR-A에서 완료(스펙 §Brainstorming Check). 프론트는 백엔드 계약 �
 - 추가 검증: pnpm typecheck(tsconfig.app.json — learnings: ci-typecheck-tsconfig-app-vs-local) + lint + test + build + E2E
 - 계약 정합: 프론트 Zod ↔ 백엔드 DTO grep 검증(learnings: frontend-zod-backend-dto-contract-gap)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+### Task 9. identity-access 권한 노출 + 그룹 읽기 API (게이팅·그룹선택 결선)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/MyProjectPermissionController.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/UserGroupController.kt`, `backend/modules/identity-access/src/test/kotlin/.../MyProjectPermissionControllerTest.kt`, `backend/modules/identity-access/src/test/kotlin/.../UserGroupControllerTest.kt`]
+- depends-on: []
+
+**RED→GREEN**:
+- `MyProjectPermissionController` 응답 맵에 `MANAGE_FIELD_PERMISSIONS` 추가(MANAGE_CUSTOM_FIELDS 동형, PROJECT_ADMIN 전용). 게이팅 노출(learnings: ui-permission-gating-needs-summary-api-exposure). prod 통합테스트.
+- 그룹 목록 읽기 — **게이트1 Maxi 결정**(아래 §리뷰 결과). 결정에 따라 `GET /api/v1/groups`(또는 신규 lightweight 읽기 엔드포인트) 권한 완화. 관리(POST/PATCH/DELETE/멤버)는 SYSTEM_ADMIN 유지.
+
+**검증**: `cd backend && ./gradlew :modules:identity-access:test --tests "*MyProjectPermissionControllerTest" --tests "*UserGroupControllerTest" --rerun-tasks`
+
+> T2(그룹조회 client)·T5(게이팅 소비)는 T9 의존. wave1에 T9 포함.
+
+## 리뷰 결과
+
+### plan-eng-review (2026-06-08, 독립 코드검증)
+
+프론트 plan 가정을 코드 grep으로 검증. 백엔드 계약·패턴 실재 확인 + **2 갭 발견(반영 완료)**.
+
+- ✅ **계약 정합**: `restrictedFields: List<String>`·`FieldPermissionResponse{id,fieldKind,fieldKey,groupId,groupName,accessLevel}`·`CreateFieldPermissionRequest` 실재(IssueResponse.kt, FieldPermissionDtos.kt). 프론트 Zod가 이 이름 그대로 따름.
+- ✅ **패턴 재사용**: 커스텀 필드 관리 UI(#98) List/Dialog/Row/훅/MSW/E2E + RouteAdapter + useProjectPermissions 게이팅 + CSRF client 패턴 실재 — field-permissions 복제 대상 명확.
+- ✅ **이슈 화면**: IssueMetaPanel(customFields+코어 렌더, useIssuePermissions canEdit), IssueDescription 실재 — restrictedFields 숨김·noneditableFields 비활성 적용 지점 명확.
+- ⚠️ **갭1(반영)**: `MyProjectPermissionController`가 `MANAGE_FIELD_PERMISSIONS` 미노출 → Task 9에서 추가(MANAGE_CUSTOM_FIELDS 동형). 미반영 시 규칙 관리 버튼 게이팅 불가.
+- ⚠️ **갭2(반영, Maxi 결정 필요)**: `GET /api/v1/groups`가 **SYSTEM_ADMIN 전용**인데 규칙 관리자는 PROJECT_ADMIN(MANAGE_FIELD_PERMISSIONS) → 그룹 드롭다운 못 채움. Task 9에서 그룹 목록 읽기 권한 완화. **방식은 게이트1 Maxi 결정**:
+  - (A) `GET /api/v1/groups`를 **인증 사용자 읽기 허용**(이름+id+멤버수만, 관리는 SYSTEM_ADMIN 유지) — 단순, 그룹 이름은 비밀이 아님.
+  - (B) `MANAGE_FIELD_PERMISSIONS` **보유자 한정** 읽기 — 더 좁은 노출, 프로젝트 권한 컨텍스트 필요(현 그룹 API는 전역이라 projectKey 인자 추가).
+- **BLOCKER: 없음**(갭 2건 Task 9로 흡수). PR-B = 프론트(T2~T8) + issue-tracking view layer(T1) + identity-access 권한 노출(T9) cross-BC. learnings 옵션 C(프론트 PR의 same-pattern 백엔드 view/권한 결선) 적용.
+
+### plan-design-review
+
+스킵. 규칙 관리 화면은 커스텀 필드 관리(#98) 디자인 복제라 신규 비주얼 결정 없음(learnings: bts-review-plan-autoplan-overkill 정신). 기존 설정 탭 레이아웃 재사용.
