@@ -80,7 +80,7 @@ function setCurrentUser(userId: string | null) {
   useAuthStore.setState({
     accessToken: 'test-token',
     user: userId !== null
-      ? { userId, username: 'testuser', email: 'test@example.com', authMethod: 'local' }
+      ? { userId, username: 'testuser', email: 'test@example.com', authMethod: 'local', mustChangePassword: false, isSystemAdmin: false }
       : null,
   })
 }

@@ -18,6 +18,8 @@ export const WhoamiResponseSchema = z.object({
   email: z.string(),
   authMethod: z.string(),
   userId: z.string(),
+  mustChangePassword: z.boolean(),
+  isSystemAdmin: z.boolean(),
 })
 
 export const ApiErrorResponseSchema = z.object({

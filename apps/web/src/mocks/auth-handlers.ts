@@ -39,7 +39,7 @@ const loginHandler = http.post('/api/v1/auth/login', async ({ request }) => {
 /**
  * GET /api/v1/users/me/whoami — Authorization Bearer 헤더 검증 후 사용자 정보 반환.
  *
- * 응답 schema: backend WhoamiResponse (`username`, `email`, `authMethod`, `userId`)
+ * 응답 schema: backend WhoamiResponse (`username`, `email`, `authMethod`, `userId`, `mustChangePassword`, `isSystemAdmin`)
  * Authorization 헤더 없거나 토큰 미인식 시 401.
  */
 const whoamiHandler = http.get('/api/v1/users/me/whoami', ({ request }) => {

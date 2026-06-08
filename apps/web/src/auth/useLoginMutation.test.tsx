@@ -40,6 +40,8 @@ describe('useLoginMutation', () => {
           email: 'alice@bts.local',
           authMethod: 'local',
           userId: 'u1',
+          mustChangePassword: false,
+          isSystemAdmin: false,
         }),
       ),
     )
@@ -62,6 +64,8 @@ describe('useLoginMutation', () => {
       email: 'alice@bts.local',
       authMethod: 'local',
       userId: 'u1',
+      mustChangePassword: false,
+      isSystemAdmin: false,
     })
     // onSuccess 콜백 호출 확인
     expect(onSuccess).toHaveBeenCalledOnce()
