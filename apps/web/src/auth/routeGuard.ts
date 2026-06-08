@@ -1,4 +1,4 @@
-// 라우트 가드 헬퍼 — requireAuth / redirectIfAuth / isSafeReturnTo (open redirect 방지 포함)
+// 라우트 가드 헬퍼 — requireAuth / redirectIfAuth / isSafeReturnTo / requirePasswordChanged / requireSystemAdmin
 import { redirect } from '@tanstack/react-router'
 import { useAuthStore } from './authStore'
 
@@ -66,4 +66,44 @@ export function redirectIfAuth({ location }: GuardContext): void {
   const safeTo = returnTo !== null && isSafeReturnTo(returnTo) ? returnTo : '/dashboard'
 
   throw redirect({ to: safeTo })
+}
+
+/**
+ * 비밀번호 변경 강제 가드. 보호된 라우트에서 requireAuth 다음에 체인한다.
+ *
+ * - user.mustChangePassword === true이면 /settings/password 로 throw redirect.
+ * - 현재 경로가 /settings/password이면 통과 (무한 redirect 방지).
+ * - user null이면 통과 (미인증 상태는 requireAuth가 이미 처리).
+ *
+ * 사용 예.
+ * ```ts
+ * beforeLoad: (ctx) => { requireAuth(ctx); requirePasswordChanged(ctx) }
+ * ```
+ */
+export function requirePasswordChanged({ location }: GuardContext): void {
+  const user = useAuthStore.getState().user
+  if (user === null) return
+  if (location.pathname === '/settings/password') return
+  if (user.mustChangePassword === true) {
+    throw redirect({ to: '/settings/password' })
+  }
+}
+
+/**
+ * 시스템 관리자 전용 가드. 관리자 전용 라우트의 beforeLoad에서 사용한다.
+ *
+ * - user.isSystemAdmin === true이면 통과.
+ * - user null 또는 isSystemAdmin !== true이면 /dashboard 로 throw redirect (deny-by-default).
+ *
+ * 보안 주의. `=== true` 명시 비교로 undefined · null · 'admin' 등을 admin으로 오인하지 않는다.
+ *
+ * 사용 예.
+ * ```ts
+ * beforeLoad: (ctx) => { requireAuth(ctx); requireSystemAdmin(ctx) }
+ * ```
+ */
+export function requireSystemAdmin({ location: _location }: GuardContext): void {
+  const user = useAuthStore.getState().user
+  if (user?.isSystemAdmin === true) return
+  throw redirect({ to: '/dashboard' })
 }

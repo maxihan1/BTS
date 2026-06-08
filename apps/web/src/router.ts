@@ -1,6 +1,6 @@
 // TanStack Router 라우트 트리 정의 — code-based 패턴, 18개 라우트 (이슈 7 + 워크플로우 스킴 4 + settings 3 + 멤버 1 + 컴포넌트 1 + 버전 1 + 커스텀 필드 1)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
-import { requireAuth, redirectIfAuth } from './auth/routeGuard'
+import { requireAuth, redirectIfAuth, requirePasswordChanged } from './auth/routeGuard'
 import { RootLayout } from './routes/__root'
 import { IndexPage } from './routes/index'
 import { LoginPage } from './routes/login'
@@ -45,7 +45,7 @@ const dashboardRoute = createRoute({
   path: '/dashboard',
   component: DashboardPage,
   staticData: { requireAuth: true },
-  beforeLoad: requireAuth,
+  beforeLoad: (ctx) => { requireAuth(ctx); requirePasswordChanged(ctx) },
 })
 
 const workflowsKeyRoute = createRoute({
@@ -60,7 +60,7 @@ const issuesIndexRoute = createRoute({
   path: '/issues',
   component: IssueListRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: requireAuth,
+  beforeLoad: (ctx) => { requireAuth(ctx); requirePasswordChanged(ctx) },
   validateSearch: (search: Record<string, unknown>): { page?: number } => ({
     page: typeof search['page'] === 'number' ? search['page'] : undefined,
   }),
@@ -72,7 +72,7 @@ const issuesNewRoute = createRoute({
   path: '/issues/new',
   component: IssueCreateRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: requireAuth,
+  beforeLoad: (ctx) => { requireAuth(ctx); requirePasswordChanged(ctx) },
 })
 
 /** 이슈 상세 라우트 — /issues/$key, requireAuth */
@@ -81,7 +81,7 @@ const issuesKeyRoute = createRoute({
   path: '/issues/$key',
   component: IssueDetailRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: requireAuth,
+  beforeLoad: (ctx) => { requireAuth(ctx); requirePasswordChanged(ctx) },
 })
 
 /** 워크플로우 스킴 목록 라우트 — /admin/workflow-schemes, requireAuth */
@@ -90,7 +90,7 @@ const adminWorkflowSchemesRoute = createRoute({
   path: '/admin/workflow-schemes',
   component: AdminWorkflowSchemesRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: requireAuth,
+  beforeLoad: (ctx) => { requireAuth(ctx); requirePasswordChanged(ctx) },
 })
 
 /** 워크플로우 스킴 생성 라우트 — /admin/workflow-schemes/new, requireAuth */
@@ -99,7 +99,7 @@ const adminWorkflowSchemesNewRoute = createRoute({
   path: '/admin/workflow-schemes/new',
   component: WorkflowSchemeNewRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: requireAuth,
+  beforeLoad: (ctx) => { requireAuth(ctx); requirePasswordChanged(ctx) },
 })
 
 /** 워크플로우 스킴 상세 라우트 — /admin/workflow-schemes/$schemeKey, requireAuth */
@@ -108,7 +108,7 @@ const adminWorkflowSchemesDetailRoute = createRoute({
   path: '/admin/workflow-schemes/$schemeKey',
   component: WorkflowSchemeDetailRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: requireAuth,
+  beforeLoad: (ctx) => { requireAuth(ctx); requirePasswordChanged(ctx) },
 })
 
 /** 프로젝트 워크플로우 스킴 할당 라우트 — /projects/$projectKey/settings/workflow-scheme, requireAuth */
@@ -117,7 +117,7 @@ const projectWorkflowSchemeSettingsRoute = createRoute({
   path: '/projects/$projectKey/settings/workflow-scheme',
   component: ProjectWorkflowSchemeSettingsRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: requireAuth,
+  beforeLoad: (ctx) => { requireAuth(ctx); requirePasswordChanged(ctx) },
 })
 
 /** 프로젝트 멤버 설정 라우트 — /projects/$projectKey/settings/members, requireAuth */
@@ -126,7 +126,7 @@ const projectMembersSettingsRoute = createRoute({
   path: '/projects/$projectKey/settings/members',
   component: ProjectMembersSettingsRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: requireAuth,
+  beforeLoad: (ctx) => { requireAuth(ctx); requirePasswordChanged(ctx) },
 })
 
 /** 프로젝트 컴포넌트 설정 라우트 — /projects/$projectKey/settings/components, requireAuth */
@@ -135,7 +135,7 @@ const projectComponentsSettingsRoute = createRoute({
   path: '/projects/$projectKey/settings/components',
   component: ProjectComponentsSettingsRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: requireAuth,
+  beforeLoad: (ctx) => { requireAuth(ctx); requirePasswordChanged(ctx) },
 })
 
 /** 프로젝트 커스텀 필드 설정 라우트 — /projects/$projectKey/settings/custom-fields, requireAuth */
@@ -144,7 +144,7 @@ const projectCustomFieldsSettingsRoute = createRoute({
   path: '/projects/$projectKey/settings/custom-fields',
   component: ProjectCustomFieldsSettingsRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: requireAuth,
+  beforeLoad: (ctx) => { requireAuth(ctx); requirePasswordChanged(ctx) },
 })
 
 /** 프로젝트 버전 설정 라우트 — /projects/$projectKey/settings/versions, requireAuth */
@@ -153,7 +153,7 @@ const projectVersionsSettingsRoute = createRoute({
   path: '/projects/$projectKey/settings/versions',
   component: ProjectVersionsSettingsRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: requireAuth,
+  beforeLoad: (ctx) => { requireAuth(ctx); requirePasswordChanged(ctx) },
 })
 
 /** 프로젝트 리드 설정 라우트 — /projects/$projectKey/settings/project-lead, requireAuth */
@@ -162,7 +162,7 @@ const projectLeadSettingsRoute = createRoute({
   path: '/projects/$projectKey/settings/project-lead',
   component: ProjectLeadSettingsRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: requireAuth,
+  beforeLoad: (ctx) => { requireAuth(ctx); requirePasswordChanged(ctx) },
 })
 
 /** 내 활성 세션 관리 라우트 — /settings/sessions, requireAuth */
@@ -171,7 +171,7 @@ const settingsSessionsRoute = createRoute({
   path: '/settings/sessions',
   component: SessionsSettingsRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: requireAuth,
+  beforeLoad: (ctx) => { requireAuth(ctx); requirePasswordChanged(ctx) },
 })
 
 /** 비밀번호 변경 라우트 — /settings/password, requireAuth */
