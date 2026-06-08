@@ -207,57 +207,49 @@ describe('CustomFieldFormDialog — S5 선택형 옵션 0건 시 저장 disabled
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('CustomFieldFormDialog — S6 create 모드 제출', () => {
-  it(
-    '유효한 값 입력 후 저장 시 onSubmit이 CreateCustomFieldInput 형태로 호출된다',
-    async () => {
-      const onSubmit = vi.fn()
-      const user = userEvent.setup({ delay: null })
-      renderCreateDialog(onSubmit)
+  it('유효한 값 입력 후 저장 시 onSubmit이 CreateCustomFieldInput 형태로 호출된다', { timeout: 10_000 }, async () => {
+    const onSubmit = vi.fn()
+    const user = userEvent.setup({ delay: null })
+    renderCreateDialog(onSubmit)
 
-      await user.type(screen.getByLabelText('키'), 'my_field')
-      await user.type(screen.getByLabelText('이름'), '내 필드')
+    await user.type(screen.getByLabelText('키'), 'my_field')
+    await user.type(screen.getByLabelText('이름'), '내 필드')
 
-      const select = screen.getByRole('combobox', { name: '필드 타입' })
-      await user.selectOptions(select, 'NUMBER')
+    const select = screen.getByRole('combobox', { name: '필드 타입' })
+    await user.selectOptions(select, 'NUMBER')
 
-      await user.click(screen.getByRole('button', { name: '저장' }))
+    await user.click(screen.getByRole('button', { name: '저장' }))
 
-      await waitFor(() => {
-        expect(onSubmit).toHaveBeenCalledOnce()
-      })
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledOnce()
+    })
 
-      const arg = onSubmit.mock.calls[0]?.[0] as CreateCustomFieldInput
-      expect(arg.key).toBe('my_field')
-      expect(arg.name).toBe('내 필드')
-      expect(arg.fieldType).toBe('NUMBER')
-    },
-    { timeout: 10_000 },
-  )
+    const arg = onSubmit.mock.calls[0]?.[0] as CreateCustomFieldInput
+    expect(arg.key).toBe('my_field')
+    expect(arg.name).toBe('내 필드')
+    expect(arg.fieldType).toBe('NUMBER')
+  })
 
-  it(
-    'create 모드 제출 시 options는 포함되지 않는다 (비선택형)',
-    async () => {
-      const onSubmit = vi.fn()
-      const user = userEvent.setup({ delay: null })
-      renderCreateDialog(onSubmit)
+  it('create 모드 제출 시 options는 포함되지 않는다 (비선택형)', { timeout: 10_000 }, async () => {
+    const onSubmit = vi.fn()
+    const user = userEvent.setup({ delay: null })
+    renderCreateDialog(onSubmit)
 
-      await user.type(screen.getByLabelText('키'), 'txt_field')
-      await user.type(screen.getByLabelText('이름'), '텍스트 필드')
+    await user.type(screen.getByLabelText('키'), 'txt_field')
+    await user.type(screen.getByLabelText('이름'), '텍스트 필드')
 
-      const select = screen.getByRole('combobox', { name: '필드 타입' })
-      await user.selectOptions(select, 'SHORT_TEXT')
+    const select = screen.getByRole('combobox', { name: '필드 타입' })
+    await user.selectOptions(select, 'SHORT_TEXT')
 
-      await user.click(screen.getByRole('button', { name: '저장' }))
+    await user.click(screen.getByRole('button', { name: '저장' }))
 
-      await waitFor(() => {
-        expect(onSubmit).toHaveBeenCalledOnce()
-      })
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledOnce()
+    })
 
-      const arg = onSubmit.mock.calls[0]?.[0] as CreateCustomFieldInput
-      expect(arg.options).toBeUndefined()
-    },
-    { timeout: 10_000 },
-  )
+    const arg = onSubmit.mock.calls[0]?.[0] as CreateCustomFieldInput
+    expect(arg.options).toBeUndefined()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -265,48 +257,40 @@ describe('CustomFieldFormDialog — S6 create 모드 제출', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('CustomFieldFormDialog — S7 edit 모드 제출', () => {
-  it(
-    'edit 모드 제출 시 fieldType·key가 포함되지 않는다',
-    async () => {
-      const onSubmit = vi.fn()
-      const user = userEvent.setup({ delay: null })
-      renderEditDialog(FIXTURE_FIELD, onSubmit)
+  it('edit 모드 제출 시 fieldType·key가 포함되지 않는다', { timeout: 10_000 }, async () => {
+    const onSubmit = vi.fn()
+    const user = userEvent.setup({ delay: null })
+    renderEditDialog(FIXTURE_FIELD, onSubmit)
 
-      await user.click(screen.getByRole('button', { name: '저장' }))
+    await user.click(screen.getByRole('button', { name: '저장' }))
 
-      await waitFor(() => {
-        expect(onSubmit).toHaveBeenCalledOnce()
-      })
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledOnce()
+    })
 
-      const arg = onSubmit.mock.calls[0]?.[0] as UpdateCustomFieldInput
-      expect((arg as Record<string, unknown>)['fieldType']).toBeUndefined()
-      expect((arg as Record<string, unknown>)['key']).toBeUndefined()
-    },
-    { timeout: 10_000 },
-  )
+    const arg = onSubmit.mock.calls[0]?.[0] as UpdateCustomFieldInput
+    expect((arg as Record<string, unknown>)['fieldType']).toBeUndefined()
+    expect((arg as Record<string, unknown>)['key']).toBeUndefined()
+  })
 
-  it(
-    'edit 모드 제출 시 수정된 이름이 onSubmit에 전달된다',
-    async () => {
-      const onSubmit = vi.fn()
-      const user = userEvent.setup({ delay: null })
-      renderEditDialog(FIXTURE_FIELD, onSubmit)
+  it('edit 모드 제출 시 수정된 이름이 onSubmit에 전달된다', { timeout: 10_000 }, async () => {
+    const onSubmit = vi.fn()
+    const user = userEvent.setup({ delay: null })
+    renderEditDialog(FIXTURE_FIELD, onSubmit)
 
-      const nameInput = screen.getByLabelText('이름')
-      await user.clear(nameInput)
-      await user.type(nameInput, '변경된 이름')
+    const nameInput = screen.getByLabelText('이름')
+    await user.clear(nameInput)
+    await user.type(nameInput, '변경된 이름')
 
-      await user.click(screen.getByRole('button', { name: '저장' }))
+    await user.click(screen.getByRole('button', { name: '저장' }))
 
-      await waitFor(() => {
-        expect(onSubmit).toHaveBeenCalledOnce()
-      })
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledOnce()
+    })
 
-      const arg = onSubmit.mock.calls[0]?.[0] as UpdateCustomFieldInput
-      expect(arg.name).toBe('변경된 이름')
-    },
-    { timeout: 10_000 },
-  )
+    const arg = onSubmit.mock.calls[0]?.[0] as UpdateCustomFieldInput
+    expect(arg.name).toBe('변경된 이름')
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
