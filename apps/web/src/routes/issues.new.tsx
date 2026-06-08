@@ -25,6 +25,7 @@ import { useComponents } from '@/hooks/use-components'
 import { useCustomFields } from '@/hooks/use-custom-fields'
 import { issueCreateStrings, issueDetailStrings } from '@/i18n/ko'
 import type { CustomFieldValues } from '@/api/issues'
+import type { CustomField } from '@/api/custom-fields.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zod 폼 스키마 — interface 중복 정의 금지
@@ -41,6 +42,40 @@ const issueCreateSchema = z.object({
 
 /** Zod 스키마에서 추론한 폼 값 타입 */
 type IssueCreateFormValues = z.infer<typeof issueCreateSchema>
+
+// ─────────────────────────────────────────────────────────────────────────────
+// isRequiredFieldEmpty — required 필드 빈값 판정 헬퍼 (스펙 E-3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * required 커스텀 필드의 현재 값이 비어 있는지 판정한다 (스펙 E-3 기준).
+ *
+ * - SHORT_TEXT/LONG_TEXT/URL/DATE/DATETIME/SINGLE_SELECT/RADIO: '' | undefined | null → 빈값
+ * - NUMBER: undefined | null | NaN → 빈값. 0은 유효값.
+ * - MULTI_SELECT: 빈 배열 → 빈값.
+ * - CHECKBOX: 항상 값 보유 → 빈값 아님.
+ */
+function isRequiredFieldEmpty(
+  fieldType: CustomField['fieldType'],
+  raw: unknown,
+): boolean {
+  switch (fieldType) {
+    case 'SHORT_TEXT':
+    case 'LONG_TEXT':
+    case 'URL':
+    case 'DATE':
+    case 'DATETIME':
+    case 'SINGLE_SELECT':
+    case 'RADIO':
+      return raw === '' || raw === undefined || raw === null
+    case 'NUMBER':
+      return raw === undefined || raw === null || (typeof raw === 'number' && isNaN(raw))
+    case 'MULTI_SELECT':
+      return Array.isArray(raw) && raw.length === 0
+    case 'CHECKBOX':
+      return false
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 에러 코드 → 사용자 메시지 매핑
@@ -90,6 +125,7 @@ export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.E
   const [selectedComponentIds, setSelectedComponentIds] = useState<string[]>([])
   const [selectedSecurityLevelId, setSelectedSecurityLevelId] = useState<string | null>(null)
   const [customFieldValues, setCustomFieldValues] = useState<CustomFieldValues>({})
+  const [customFieldRequiredError, setCustomFieldRequiredError] = useState(false)
 
   const form = useForm<IssueCreateFormValues>({
     resolver: zodResolver(issueCreateSchema),
@@ -120,6 +156,15 @@ export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.E
   })
 
   function handleSubmit(values: IssueCreateFormValues): void {
+    // 스펙 E-3: required 커스텀 필드 빈값 1차 검사 — mutation 전 차단
+    const hasRequiredEmpty = customFieldDefs.some(
+      (field) => field.required && isRequiredFieldEmpty(field.fieldType, customFieldValues[field.key]),
+    )
+    if (hasRequiredEmpty) {
+      setCustomFieldRequiredError(true)
+      return
+    }
+    setCustomFieldRequiredError(false)
     setServerError(null)
     mutation.mutate({
       ...values,
@@ -222,14 +267,26 @@ export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.E
                 <CustomFieldInput
                   field={field}
                   value={customFieldValues[field.key]}
-                  onChange={(v) =>
+                  onChange={(v) => {
                     setCustomFieldValues((prev) => ({ ...prev, [field.key]: v }))
-                  }
+                    if (customFieldRequiredError) setCustomFieldRequiredError(false)
+                  }}
                   disabled={!isProjectKeyFilled}
                 />
               </div>
             ))}
           </div>
+        )}
+
+        {/* required 커스텀 필드 빈값 경고 — 스펙 E-3 1차 클라 경고 */}
+        {customFieldRequiredError && (
+          <p
+            role="alert"
+            className="text-sm text-destructive"
+            data-testid="custom-fields-required-error"
+          >
+            {issueDetailStrings.customFieldRequiredEmpty}
+          </p>
         )}
 
         <Button

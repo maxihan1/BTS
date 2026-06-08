@@ -890,6 +890,45 @@ function IssueStateTransition({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// isRequiredFieldEmpty — required 필드 빈값 판정 헬퍼 (FR-IS-10 E-3, E-6 공통)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * required 커스텀 필드의 현재 값이 비어 있는지 판정한다 (스펙 E-3 / E-6 공통 기준).
+ *
+ * - SHORT_TEXT/LONG_TEXT/URL/DATE/DATETIME/SINGLE_SELECT/RADIO: '' | undefined | null → 빈값
+ * - NUMBER: undefined | null | NaN → 빈값. 0은 유효값.
+ * - MULTI_SELECT: 빈 배열 → 빈값.
+ * - CHECKBOX: 항상 값 보유 → 빈값 아님.
+ *
+ * @param fieldType 커스텀 필드 타입
+ * @param raw 현재 draft 값
+ * @returns 빈값이면 true
+ */
+function isRequiredFieldEmpty(
+  fieldType: CustomField['fieldType'],
+  raw: unknown,
+): boolean {
+  switch (fieldType) {
+    case 'SHORT_TEXT':
+    case 'LONG_TEXT':
+    case 'URL':
+    case 'DATE':
+    case 'DATETIME':
+    case 'SINGLE_SELECT':
+    case 'RADIO':
+      return raw === '' || raw === undefined || raw === null
+    case 'NUMBER':
+      return raw === undefined || raw === null || (typeof raw === 'number' && isNaN(raw))
+    case 'MULTI_SELECT':
+      return Array.isArray(raw) && raw.length === 0
+    case 'CHECKBOX':
+      // boolean false 포함 항상 유효값 — 빈값 아님
+      return false
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // IssueCustomFieldsEdit — 커스텀 필드 일괄 편집 서브컴포넌트 (FR-IS-10)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -910,7 +949,7 @@ interface IssueCustomFieldsEditProps {
  *
  * - 활성 정의(fieldDefs) 기준으로 CustomFieldInput을 렌더한다.
  * - issue.customFields 값이 바뀌면(refetch) 로컬 상태도 동기화 (stale 방지).
- * - 저장 버튼 클릭 시 onSave(currentValues) 호출.
+ * - 저장 버튼 클릭 시 required 빈값 검사 → 빈 필드 존재 시 경고 표시 + 저장 차단 (스펙 E-3).
  * - 미정의 잔존 키는 표시 생략 (스펙 E-2).
  * - WCAG AA: data-testid="custom-fields-section", data-testid="custom-fields-save"
  */
@@ -921,6 +960,7 @@ function IssueCustomFieldsEdit({
   canEdit,
 }: IssueCustomFieldsEditProps): JSX.Element {
   const [draft, setDraft] = useState<CustomFieldValues>({ ...values })
+  const [hasRequiredError, setHasRequiredError] = useState(false)
 
   // values props가 바뀌면(refetch 후) 로컬 편집 상태를 동기화한다 — stale 방지
   const prevValuesRef = useRef(values)
@@ -928,11 +968,14 @@ function IssueCustomFieldsEdit({
     if (prevValuesRef.current !== values) {
       prevValuesRef.current = values
       setDraft({ ...values })
+      setHasRequiredError(false)
     }
   }, [values])
 
   function handleFieldChange(key: string, value: unknown): void {
     setDraft((prev) => ({ ...prev, [key]: value }))
+    // 값이 변경되면 기존 에러 초기화
+    if (hasRequiredError) setHasRequiredError(false)
   }
 
   /**
@@ -977,12 +1020,27 @@ function IssueCustomFieldsEdit({
     return patch
   }
 
+  function handleSave(): void {
+    // 스펙 E-3: required 필드 빈값 1차 검사 — 빈 판정 기준은 buildNormalizedPatch와 동일
+    const hasEmpty = fieldDefs.some((field) => {
+      if (!field.required) return false
+      const raw = draft[field.key]
+      return isRequiredFieldEmpty(field.fieldType, raw)
+    })
+    if (hasEmpty) {
+      setHasRequiredError(true)
+      return
+    }
+    setHasRequiredError(false)
+    onSave(buildNormalizedPatch())
+  }
+
   return (
     <div
       className="px-3.5 py-3 border-b border-border"
       data-testid="custom-fields-section"
     >
-      <p className="text-xs text-muted-foreground mb-2">커스텀 필드</p>
+      <p className="text-xs text-muted-foreground mb-2">{issueDetailStrings.customFieldsSectionLabel}</p>
       <div className="flex flex-col gap-3">
         {fieldDefs.map((field) => (
           <div key={field.id} className="flex flex-col gap-1">
@@ -999,16 +1057,26 @@ function IssueCustomFieldsEdit({
           </div>
         ))}
       </div>
+      {/* required 빈값 경고 — 스펙 E-3 1차 클라 경고 */}
+      {hasRequiredError && (
+        <p
+          className="text-xs text-destructive mt-1"
+          role="alert"
+          data-testid="custom-fields-required-error"
+        >
+          {issueDetailStrings.customFieldRequiredEmpty}
+        </p>
+      )}
       <Button
         variant="outline"
         size="sm"
         className="self-end mt-2 min-h-[44px]"
-        onClick={() => onSave(buildNormalizedPatch())}
+        onClick={handleSave}
         disabled={!canEdit}
-        aria-label="커스텀 필드 저장"
+        aria-label={issueDetailStrings.customFieldsSaveAriaLabel}
         data-testid="custom-fields-save"
       >
-        저장
+        {issueDetailStrings.customFieldsSaveButton}
       </Button>
     </div>
   )
