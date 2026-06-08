@@ -4,6 +4,7 @@ package com.bts.issue.customfield.repository
 import com.bts.issue.customfield.domain.CustomFieldDefinition
 import com.bts.issue.customfield.domain.CustomFieldOption
 import com.bts.issue.customfield.domain.FieldType
+import com.bts.issue.jooq.tables.records.CustomFieldDefinitionsRecord
 import com.bts.issue.jooq.tables.references.CUSTOM_FIELD_DEFINITIONS
 import com.bts.issue.jooq.tables.references.CUSTOM_FIELD_OPTIONS
 import org.jooq.DSLContext
@@ -188,16 +189,16 @@ class CustomFieldDefinitionRepository(
 
         return records.mapNotNull { record ->
             val fieldId = record.id ?: return@mapNotNull null
+            val pid = record.projectId ?: error("custom_field_definitions.project_id must not be null")
+            val key = record.key ?: error("custom_field_definitions.key must not be null")
+            val name = record.name ?: error("custom_field_definitions.name must not be null")
+            val rawType = record.fieldType ?: error("custom_field_definitions.field_type must not be null")
             toDefinition(
                 id = fieldId,
-                projectId = record.projectId
-                    ?: error("custom_field_definitions.project_id must not be null"),
-                key = record.key ?: error("custom_field_definitions.key must not be null"),
-                name = record.name ?: error("custom_field_definitions.name must not be null"),
-                fieldType = FieldType.valueOf(
-                    record.fieldType
-                        ?: error("custom_field_definitions.field_type must not be null"),
-                ),
+                projectId = pid,
+                key = key,
+                name = name,
+                fieldType = FieldType.valueOf(rawType),
                 required = record.required ?: false,
                 displayOrder = record.displayOrder ?: 0,
                 options = optionsByFieldId[fieldId] ?: emptyList(),
@@ -335,9 +336,7 @@ class CustomFieldDefinitionRepository(
      * @param record 변환할 jOOQ 레코드.
      * @return 변환된 [CustomFieldDefinition].
      */
-    private fun recordToDefinition(
-        record: com.bts.issue.jooq.tables.records.CustomFieldDefinitionsRecord,
-    ): CustomFieldDefinition {
+    private fun recordToDefinition(record: CustomFieldDefinitionsRecord): CustomFieldDefinition {
         val fieldId = record.id ?: error("custom_field_definitions.id must not be null")
         val options = loadOptions(fieldId)
         return toDefinition(
