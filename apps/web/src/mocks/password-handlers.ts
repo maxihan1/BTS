@@ -1,5 +1,6 @@
 // 비밀번호 변경 MSW 가짜 핸들러 — POST /api/v1/users/me/password (백엔드 EC-7 분기순서 일치)
 import { http, HttpResponse } from 'msw'
+import { E2E_MUST_CHANGE_PASSWORD_KEY } from './auth-handlers'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Seed 상수 — 테스트 격리 보장을 위해 무상태 판정(요청 body만으로 분기)
@@ -105,6 +106,9 @@ const changePasswordHandler = http.post('/api/v1/users/me/password', async ({ re
   }
 
   // EC-7 분기 5: 정상
+  // E2E 강제 변경 흐름 파생 — mustChangePassword 플래그 제거로 이후 whoami 응답에서 false 반환
+  // (msw-derived-behavior-shared-store-e2e)
+  globalThis.localStorage?.removeItem(E2E_MUST_CHANGE_PASSWORD_KEY)
   return HttpResponse.json({ changed: true })
 })
 

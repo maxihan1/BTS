@@ -2,6 +2,29 @@
 import { http, HttpResponse } from 'msw'
 import { AUTH_USERS, LDAP_VALID_PASSWORDS, VALID_PASSWORDS, mockAccessToken } from './auth-fixtures'
 
+// ─────────────────────────────────────────────────────────────────────────────
+// E2E 시나리오 토글용 localStorage 키 — FR-AU-05 Task 9
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * E2E 테스트 전용 localStorage 플래그 키 — 이 키가 'true'이면 whoami 응답에
+ * mustChangePassword:true 를 오버라이드한다.
+ *
+ * password-handlers.ts 의 변경 성공 시 이 플래그를 removeItem 으로 제거해
+ * 강제 변경 해제를 시뮬레이션한다 (msw-derived-behavior-shared-store-e2e).
+ *
+ * Playwright addInitScript 로 goto 전에 플래그를 설정하면 첫 whoami fetch 시점부터 적용된다.
+ */
+export const E2E_MUST_CHANGE_PASSWORD_KEY = '__bts_e2e_must_change_password'
+
+/**
+ * E2E 테스트 전용 localStorage 플래그 키 — 이 키가 'true'이면 whoami 응답에
+ * isSystemAdmin:true 를 오버라이드한다.
+ *
+ * Playwright addInitScript 로 goto 전에 플래그를 설정하면 첫 whoami fetch 시점부터 적용된다.
+ */
+export const E2E_IS_SYSTEM_ADMIN_KEY = '__bts_e2e_is_system_admin'
+
 /**
  * POST /api/v1/auth/login — provider + username/password 검증 후 token 또는 401 반환.
  *
@@ -60,7 +83,18 @@ const whoamiHandler = http.get('/api/v1/users/me/whoami', ({ request }) => {
     return HttpResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 
-  return HttpResponse.json(user)
+  // E2E 시나리오 토글 — localStorage 플래그로 mustChangePassword / isSystemAdmin 오버라이드
+  // (e2e-msw-scenario-toggle-localstorage-flag, msw-derived-behavior-shared-store-e2e)
+  const mustChangePassword =
+    globalThis.localStorage?.getItem(E2E_MUST_CHANGE_PASSWORD_KEY) === 'true'
+      ? true
+      : user.mustChangePassword
+  const isSystemAdmin =
+    globalThis.localStorage?.getItem(E2E_IS_SYSTEM_ADMIN_KEY) === 'true'
+      ? true
+      : user.isSystemAdmin
+
+  return HttpResponse.json({ ...user, mustChangePassword, isSystemAdmin })
 })
 
 /**
