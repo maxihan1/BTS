@@ -160,11 +160,11 @@
 > **선후행**. FR-IS-10(이 작업, 커스텀 필드) → FR-PM-07(필드 수준 권한, 코어+커스텀 필드 대상). 필드 권한이 커스텀 필드를 대상으로 포함하므로 FR-IS-10이 선행.
 > **스펙**. `docs/specs/2026-06-08-fr-is-10-custom-fields.md`. **ADR**. `docs/decisions/2026-06-08-custom-fields-model.md`.
 
-- [ ] D1. 도메인 — FieldType enum(10종) + CustomFieldDefinition + CustomFieldOption + 예외 (책임. backend-engineer)
-- [ ] D2. 명세 — 정의 CRUD API 계약 + 이슈 JSONB 값 검증 규칙 (E1~E11) (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — V015 마이그레이션: `custom_field_definitions` + `custom_field_options` + `issues.custom_fields JSONB` + GIN 인덱스 + init_codegen 미러 (책임. db-engineer)
-- [ ] D4. 백엔드 — `/api/v1/projects/{key}/custom-fields` CRUD + 이슈 Create/Update/Response customFields 통합 + CustomFieldValueValidator (책임. backend-engineer + security-engineer 권한 결선 T1/T6)
-- [ ] D5. 백엔드 테스트 — 도메인 단위(MockK) + Testcontainers 통합(마이그레이션/정의CRUD권한/값 왕복/E1~E11 검증/소프트삭제 후 값 보존) (책임. backend-engineer + qa-engineer)
+- [x] D1. 도메인 — FieldType enum(10종) + CustomFieldDefinition + CustomFieldOption + 예외 (책임. backend-engineer) — PR #96
+- [x] D2. 명세 — 정의 CRUD API 계약 + 이슈 JSONB 값 검증 규칙 (E1~E11) (책임. backend-engineer) — PR #96
+- [x] D3. 데이터 모델 — V015 마이그레이션: `custom_field_definitions` + `custom_field_options` + `issues.custom_fields JSONB` + GIN 인덱스 + init_codegen 미러 (책임. db-engineer) — PR #96
+- [x] D4. 백엔드 — `/api/v1/projects/{key}/custom-fields` CRUD + 이슈 Create/Update/Response customFields 통합 + CustomFieldValueValidator (책임. backend-engineer + security-engineer 권한 결선 T1/T6) — PR #96
+- [x] D5. 백엔드 테스트 — 도메인 단위(MockK) + Testcontainers 통합(마이그레이션/정의CRUD권한/값 왕복/E1~E11 검증/소프트삭제 후 값 보존) (책임. backend-engineer + qa-engineer) — PR #96
 - [ ] D6. 프론트 UI — 커스텀 필드 관리 페이지 + 이슈 폼 동적 렌더링 (책임. designer → frontend-engineer) — **후속 PR**
 - [ ] D7. E2E — 정의 CRUD + 이슈 값 입력/검증 시나리오 (책임. qa-engineer) — **후속 PR**
 
