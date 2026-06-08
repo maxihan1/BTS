@@ -124,13 +124,13 @@ describe('CreateUserForm', () => {
     await user.type(screen.getByLabelText('표시 이름'), '새 사용자')
     await user.click(screen.getByRole('button', { name: '사용자 생성' }))
 
-    // 결과 패널: username 표시
+    // 결과 패널: username 표시 (aria-label로 특정)
     await waitFor(() =>
-      expect(screen.getByText(CREATED_RESPONSE.username)).toBeInTheDocument(),
+      expect(screen.getByLabelText('생성된 사용자 이름')).toHaveTextContent(CREATED_RESPONSE.username),
     )
 
-    // 결과 패널: temporaryPassword 표시 (1회만)
-    expect(screen.getByText(CREATED_RESPONSE.temporaryPassword)).toBeInTheDocument()
+    // 결과 패널: temporaryPassword 표시 (1회만, aria-label로 특정)
+    expect(screen.getByLabelText('임시 비밀번호')).toHaveTextContent(CREATED_RESPONSE.temporaryPassword)
 
     // 결과 패널: "다시 표시되지 않습니다" 안내 문구
     expect(screen.getByText(/다시 표시되지 않습니다/)).toBeInTheDocument()
@@ -181,7 +181,7 @@ describe('CreateUserForm', () => {
     await user.click(screen.getByRole('button', { name: '사용자 생성' }))
 
     await waitFor(() =>
-      expect(screen.getByText(/다시 표시되지 않습니다/)).toBeInTheDocument(),
+      expect(screen.getByLabelText('임시 비밀번호')).toBeInTheDocument(),
     )
 
     await user.click(screen.getByRole('button', { name: '추가 생성' }))
