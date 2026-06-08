@@ -366,3 +366,43 @@ CREATE INDEX idx_issue_components_component_id ON issue_components(component_id)
 -- 등급 소유 BC=identity-access (issue_security_levels.id). BC 격리로 FK 미적용 — V007 assignee 동형.
 -- null=등급 미지정(공개). 판정은 ApplicationService/cross-BC 포트가 수행.
 ALTER TABLE issues ADD COLUMN security_level_id UUID NULL;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V015: custom_field_definitions/custom_field_options 테이블 + issues.custom_fields JSONB + GIN (FR-IS-10 커스텀 필드)
+-- 원본: db/migration/issue-tracking/V015__custom_fields.sql
+-- jOOQ: CustomFieldDefinitions / CustomFieldOptions 테이블 + Issues.CUSTOM_FIELDS 상수 생성 대상
+--       (이 미러가 빠지면 상수/테이블 미생성 → repository 컴파일 불가 — jooq-init-codegen-mirror)
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- 프로젝트별 커스텀 필드 정의. 같은 BC 라 projects 실 FK 적용. deleted_at 소프트 삭제.
+CREATE TABLE custom_field_definitions (
+    id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id    UUID         NOT NULL REFERENCES projects(id),
+    key           TEXT         NOT NULL,
+    name          TEXT         NOT NULL,
+    description   TEXT         NULL,
+    field_type    TEXT         NOT NULL,
+    required      BOOLEAN      NOT NULL DEFAULT FALSE,
+    display_order INT          NOT NULL,
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    deleted_at    TIMESTAMPTZ  NULL
+);
+CREATE INDEX idx_custom_field_definitions_project_id ON custom_field_definitions(project_id);
+CREATE UNIQUE INDEX ux_custom_field_definitions_project_key_active
+    ON custom_field_definitions(project_id, key) WHERE deleted_at IS NULL;
+
+-- 선택형 필드의 선택지. 정의에 종속, FK ON DELETE CASCADE.
+CREATE TABLE custom_field_options (
+    id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    field_id      UUID         NOT NULL REFERENCES custom_field_definitions(id) ON DELETE CASCADE,
+    value         TEXT         NOT NULL,
+    label         TEXT         NOT NULL,
+    display_order INT          NOT NULL,
+    UNIQUE (field_id, value)
+);
+CREATE INDEX idx_custom_field_options_field_id ON custom_field_options(field_id);
+
+-- 커스텀 필드 값 저장 JSONB + GIN 인덱스. NOT NULL DEFAULT '{}'.
+ALTER TABLE issues ADD COLUMN custom_fields JSONB NOT NULL DEFAULT '{}'::jsonb;
+CREATE INDEX idx_issues_custom_fields ON issues USING GIN (custom_fields);
