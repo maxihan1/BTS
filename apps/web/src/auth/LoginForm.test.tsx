@@ -1,4 +1,4 @@
-// LoginForm 컴포넌트 통합 테스트 — RHF + Zod 검증, msw 응답 모킹, 접근성 검증
+// LoginForm 컴포넌트 통합 테스트 — identifier-first 2단계 흐름, RHF + Zod 검증, msw 응답 모킹, 접근성 검증
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -22,8 +22,21 @@ function renderLoginForm(onSuccess?: () => void) {
 }
 
 /**
+ * 이메일 입력 후 "계속" 클릭으로 2단계(폼 로그인 화면)로 진입하는 헬퍼.
+ * 매칭 없음(unmatched) 경로 — 2단계 UI가 노출될 때까지 대기한다.
+ */
+async function goToStep2(user: ReturnType<typeof userEvent.setup>, email = 'alice@example.com') {
+  // route API가 미매칭 응답을 반환하도록 설정되어야 한다 (호출 측에서 세팅)
+  const emailInput = screen.getByLabelText('이메일')
+  await user.type(emailInput, email, { delay: null })
+  await user.click(screen.getByRole('button', { name: '계속' }))
+  // 2단계 폼(provider 드롭다운 또는 로그인 버튼)이 나타날 때까지 대기
+  await screen.findByRole('button', { name: '로그인' })
+}
+
+/**
  * providers useQuery 로딩 완료를 기다리는 헬퍼.
- * provider 드롭다운이 enabled 상태가 되면 로딩 완료로 판단한다.
+ * 2단계 진입 후 provider 드롭다운이 enabled 상태가 되면 로딩 완료로 판단한다.
  */
 async function waitForProvidersLoaded() {
   await waitFor(() => {
@@ -42,17 +55,188 @@ const defaultProvidersHandler = http.get('/api/v1/auth/providers', () =>
   }),
 )
 
+/** 테스트 기본 route 핸들러 — 미매칭 응답 */
+const defaultRouteHandler = http.get('/api/v1/auth/route', () =>
+  HttpResponse.json({ matched: false }),
+)
+
 beforeEach(() => {
   useAuthStore.setState({ accessToken: null, user: null })
-  // providers useQuery가 미핸들 MSW 에러로 폼을 깨뜨리지 않도록 기본 핸들러를 등록한다.
-  server.use(defaultProvidersHandler)
+  vi.spyOn(window, 'location', 'get').mockReturnValue({
+    ...window.location,
+    assign: vi.fn(),
+  } as unknown as Location)
+  // providers/route useQuery가 미핸들 MSW 에러로 폼을 깨뜨리지 않도록 기본 핸들러를 등록한다.
+  server.use(defaultProvidersHandler, defaultRouteHandler)
 })
 
 afterEach(() => {
   useAuthStore.setState({ accessToken: null, user: null })
+  vi.restoreAllMocks()
 })
 
-describe('LoginForm', () => {
+// ─────────────────────────────────────────────────────────────────────────────
+// 1단계 — identifier-first 이메일 입력 화면
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('LoginForm — 1단계 (identifier-first)', () => {
+  it('초기 렌더에 이메일 필드와 "계속" 버튼만 표시된다', async () => {
+    renderLoginForm()
+
+    expect(screen.getByLabelText('이메일')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '계속' })).toBeInTheDocument()
+
+    // provider 드롭다운, username, password 필드는 1단계에 없어야 한다
+    expect(screen.queryByRole('combobox', { name: '로그인 방식' })).toBeNull()
+    expect(screen.queryByLabelText('사용자명')).toBeNull()
+    expect(screen.queryByLabelText('비밀번호')).toBeNull()
+  })
+
+  it('이메일 입력 후 계속 → route 매칭(SAML) → window.location.assign으로 SAML 경로 이동', async () => {
+    const assignMock = vi.fn()
+    vi.spyOn(window, 'location', 'get').mockReturnValue({
+      ...window.location,
+      assign: assignMock,
+    } as unknown as Location)
+
+    server.use(
+      http.get('/api/v1/auth/route', () =>
+        HttpResponse.json({
+          matched: true,
+          type: 'SAML',
+          registrationId: 'okta',
+          displayName: 'Okta SSO',
+        }),
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderLoginForm()
+
+    await user.type(screen.getByLabelText('이메일'), 'alice@okta.com', { delay: null })
+    await user.click(screen.getByRole('button', { name: '계속' }))
+
+    await waitFor(() => {
+      expect(assignMock).toHaveBeenCalledWith('/saml2/authenticate/okta')
+    })
+  })
+
+  it('이메일 입력 후 계속 → route 매칭(OIDC) → window.location.assign으로 OIDC 경로 이동', async () => {
+    const assignMock = vi.fn()
+    vi.spyOn(window, 'location', 'get').mockReturnValue({
+      ...window.location,
+      assign: assignMock,
+    } as unknown as Location)
+
+    server.use(
+      http.get('/api/v1/auth/route', () =>
+        HttpResponse.json({
+          matched: true,
+          type: 'OIDC',
+          registrationId: 'google',
+          displayName: 'Google',
+        }),
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderLoginForm()
+
+    await user.type(screen.getByLabelText('이메일'), 'alice@google.com', { delay: null })
+    await user.click(screen.getByRole('button', { name: '계속' }))
+
+    await waitFor(() => {
+      expect(assignMock).toHaveBeenCalledWith('/oauth2/authorization/google')
+    })
+  })
+
+  it('registrationId에 특수문자가 있으면 encodeURIComponent가 적용된 경로로 이동한다', async () => {
+    const assignMock = vi.fn()
+    vi.spyOn(window, 'location', 'get').mockReturnValue({
+      ...window.location,
+      assign: assignMock,
+    } as unknown as Location)
+
+    server.use(
+      http.get('/api/v1/auth/route', () =>
+        HttpResponse.json({
+          matched: true,
+          type: 'SAML',
+          registrationId: 'corp/ad',
+          displayName: 'Corp AD',
+        }),
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderLoginForm()
+
+    await user.type(screen.getByLabelText('이메일'), 'alice@corp.com', { delay: null })
+    await user.click(screen.getByRole('button', { name: '계속' }))
+
+    await waitFor(() => {
+      // encodeURIComponent('corp/ad') = 'corp%2Fad'
+      expect(assignMock).toHaveBeenCalledWith('/saml2/authenticate/corp%2Fad')
+    })
+  })
+
+  it('route 미매칭 → 2단계 폼(provider 드롭다운+username+password) 노출 + 이메일을 username에 프리필', async () => {
+    const user = userEvent.setup()
+    renderLoginForm()
+
+    await user.type(screen.getByLabelText('이메일'), 'alice@example.com', { delay: null })
+    await user.click(screen.getByRole('button', { name: '계속' }))
+
+    // 2단계 UI 대기
+    await screen.findByRole('button', { name: '로그인' })
+
+    expect(screen.getByRole('combobox', { name: '로그인 방식' })).toBeInTheDocument()
+    expect(screen.getByLabelText('사용자명')).toBeInTheDocument()
+    expect(screen.getByLabelText('비밀번호')).toBeInTheDocument()
+
+    // 입력한 이메일이 username 필드에 프리필되어야 한다 (사용자 수정 가능)
+    expect(screen.getByLabelText('사용자명')).toHaveValue('alice@example.com')
+  })
+
+  it('@가 없는 입력은 route 조회 없이 바로 2단계로 진행된다', async () => {
+    const user = userEvent.setup()
+    renderLoginForm()
+
+    // route API가 호출되면 실패하도록 — 실제로 호출되지 않아야 한다
+    server.use(
+      http.get('/api/v1/auth/route', () => HttpResponse.error()),
+    )
+
+    await user.type(screen.getByLabelText('이메일'), 'alice', { delay: null })
+    await user.click(screen.getByRole('button', { name: '계속' }))
+
+    // route 조회 없이 즉시 2단계 진입 — 에러 없이 로그인 버튼 노출
+    await screen.findByRole('button', { name: '로그인' })
+    // 'alice'가 username에 프리필
+    expect(screen.getByLabelText('사용자명')).toHaveValue('alice')
+  })
+
+  it('route 조회 실패(fetch 에러) 시 fail-safe로 2단계를 노출한다', async () => {
+    server.use(
+      http.get('/api/v1/auth/route', () => HttpResponse.error()),
+    )
+
+    const user = userEvent.setup()
+    renderLoginForm()
+
+    await user.type(screen.getByLabelText('이메일'), 'alice@error.com', { delay: null })
+    await user.click(screen.getByRole('button', { name: '계속' }))
+
+    // 에러여도 2단계 폼이 나타나야 한다 (사용자 막지 않음)
+    await screen.findByRole('button', { name: '로그인' })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2단계 — 폼 로그인 (기존 케이스를 2단계 진입 프리스텝 포함으로 재조정)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('LoginForm — 2단계 (폼 로그인)', () => {
   it('입력 + 제출 시 useLoginMutation.mutate가 호출된다', async () => {
     const user = userEvent.setup()
 
@@ -79,10 +263,12 @@ describe('LoginForm', () => {
     const onSuccess = vi.fn()
     renderLoginForm(onSuccess)
 
-    // providers 로딩 완료 후 제출해야 provider 폼 값이 설정된다
+    await goToStep2(user, 'alice@example.com')
     await waitForProvidersLoaded()
-    await user.type(screen.getByLabelText('사용자명'), 'alice')
-    await user.type(screen.getByLabelText('비밀번호'), 'password')
+    // username 필드는 이메일로 프리필 — 그대로 두고 비밀번호만 입력
+    await user.clear(screen.getByLabelText('사용자명'))
+    await user.type(screen.getByLabelText('사용자명'), 'alice', { delay: null })
+    await user.type(screen.getByLabelText('비밀번호'), 'password', { delay: null })
     await user.click(screen.getByRole('button', { name: '로그인' }))
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
@@ -93,10 +279,11 @@ describe('LoginForm', () => {
     const user = userEvent.setup()
     renderLoginForm()
 
-    // providers 로딩 완료 후 제출해야 provider 폼 값이 설정된다
+    await goToStep2(user)
     await waitForProvidersLoaded()
-    // username 비워두고 비밀번호만 입력
-    await user.type(screen.getByLabelText('비밀번호'), 'password')
+    // username 필드 비우고 비밀번호만 입력
+    await user.clear(screen.getByLabelText('사용자명'))
+    await user.type(screen.getByLabelText('비밀번호'), 'password', { delay: null })
     await user.click(screen.getByRole('button', { name: '로그인' }))
 
     await screen.findByText('사용자명을 입력하세요.')
@@ -113,9 +300,9 @@ describe('LoginForm', () => {
 
     renderLoginForm()
 
+    await goToStep2(user)
     await waitForProvidersLoaded()
-    await user.type(screen.getByLabelText('사용자명'), 'alice')
-    await user.type(screen.getByLabelText('비밀번호'), 'wrong')
+    await user.type(screen.getByLabelText('비밀번호'), 'wrong', { delay: null })
     await user.click(screen.getByRole('button', { name: '로그인' }))
 
     await screen.findByText('사용자명 또는 비밀번호가 올바르지 않습니다.')
@@ -132,49 +319,53 @@ describe('LoginForm', () => {
 
     renderLoginForm()
 
+    await goToStep2(user)
     await waitForProvidersLoaded()
-    await user.type(screen.getByLabelText('사용자명'), 'alice')
-    await user.type(screen.getByLabelText('비밀번호'), 'password')
+    await user.type(screen.getByLabelText('비밀번호'), 'password', { delay: null })
     await user.click(screen.getByRole('button', { name: '로그인' }))
 
     await screen.findByText('추가 인증이 필요합니다. 관리자에게 문의하세요.')
   })
 
   it('providers API 응답 기반으로 드롭다운 항목이 동적 렌더된다', async () => {
+    const user = userEvent.setup()
     renderLoginForm()
 
+    await goToStep2(user)
+
     // providers API 응답 후 드롭다운이 렌더될 때까지 대기
-    // auth-handlers.ts 기본 핸들러: ldap(priority 0), local(priority 1)
     await waitFor(() => {
       const nativeSelect = document.querySelector('select[aria-hidden="true"]')
       const options = Array.from(nativeSelect?.querySelectorAll('option') ?? []).map(
         (o) => o.textContent,
       )
-      // 한국어 id→라벨 매핑: local → 'Local', ldap → 'LDAP-corp'
       expect(options).toContain('LDAP-corp')
       expect(options).toContain('Local')
     })
   })
 
   it('provider 드롭다운 기본 선택값이 providers 응답 첫 항목(ldap)의 id이다', async () => {
+    const user = userEvent.setup()
     renderLoginForm()
 
-    // auth-handlers.ts 기본: ldap(priority 0)이 첫 항목
+    await goToStep2(user)
+
     await waitFor(() => {
       const trigger = screen.getByRole('combobox', { name: '로그인 방식' })
-      // 첫 항목 ldap → 매핑 라벨 'LDAP-corp'가 트리거에 표시
       expect(trigger).toHaveTextContent('LDAP-corp')
     })
   })
 
   it('providers 응답 항목의 value가 provider.id이다', async () => {
+    const user = userEvent.setup()
     renderLoginForm()
+
+    await goToStep2(user)
 
     await waitFor(() => {
       const nativeSelect = document.querySelector('select[aria-hidden="true"]')
       const options = Array.from(nativeSelect?.querySelectorAll('option') ?? [])
       const values = options.map((o) => (o as HTMLOptionElement).value)
-      // id: 'ldap', 'local' — 하드코딩 'ldap-corp' 없음
       expect(values).toContain('ldap')
       expect(values).toContain('local')
       expect(values).not.toContain('ldap-corp')
@@ -188,9 +379,10 @@ describe('LoginForm', () => {
       ),
     )
 
+    const user = userEvent.setup()
     renderLoginForm()
 
-    // 로그인 버튼이 렌더되어야 한다 (폼 크래시 없음)
+    await goToStep2(user)
     await screen.findByRole('button', { name: '로그인' })
   })
 
@@ -223,7 +415,8 @@ describe('LoginForm', () => {
     const onSuccess = vi.fn()
     renderLoginForm(onSuccess)
 
-    // fetch 실패 후 드롭다운에 LOCAL fallback 항목이 표시되어야 한다
+    await goToStep2(user)
+
     await waitFor(() => {
       const nativeSelect = document.querySelector('select[aria-hidden="true"]')
       const options = Array.from(nativeSelect?.querySelectorAll('option') ?? []).map(
@@ -232,9 +425,9 @@ describe('LoginForm', () => {
       expect(options).toContain('Local')
     })
 
-    // LOCAL fallback이 기본 선택되어 있어 username/password만 입력하면 제출 가능해야 한다
-    await user.type(screen.getByLabelText('사용자명'), 'alice')
-    await user.type(screen.getByLabelText('비밀번호'), 'password')
+    await user.clear(screen.getByLabelText('사용자명'))
+    await user.type(screen.getByLabelText('사용자명'), 'alice', { delay: null })
+    await user.type(screen.getByLabelText('비밀번호'), 'password', { delay: null })
     await user.click(screen.getByRole('button', { name: '로그인' }))
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
@@ -267,7 +460,8 @@ describe('LoginForm', () => {
     const onSuccess = vi.fn()
     renderLoginForm(onSuccess)
 
-    // 빈 배열 응답 후 드롭다운에 LOCAL fallback 항목이 표시되어야 한다
+    await goToStep2(user)
+
     await waitFor(() => {
       const nativeSelect = document.querySelector('select[aria-hidden="true"]')
       const options = Array.from(nativeSelect?.querySelectorAll('option') ?? []).map(
@@ -276,9 +470,9 @@ describe('LoginForm', () => {
       expect(options).toContain('Local')
     })
 
-    // LOCAL fallback이 기본 선택되어 있어 username/password만 입력하면 제출 가능해야 한다
-    await user.type(screen.getByLabelText('사용자명'), 'alice')
-    await user.type(screen.getByLabelText('비밀번호'), 'password')
+    await user.clear(screen.getByLabelText('사용자명'))
+    await user.type(screen.getByLabelText('사용자명'), 'alice', { delay: null })
+    await user.type(screen.getByLabelText('비밀번호'), 'password', { delay: null })
     await user.click(screen.getByRole('button', { name: '로그인' }))
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
@@ -288,16 +482,17 @@ describe('LoginForm', () => {
     const user = userEvent.setup()
     renderLoginForm()
 
+    await goToStep2(user)
+
     const usernameInput = screen.getByLabelText('사용자명')
     const passwordInput = screen.getByLabelText('비밀번호')
 
-    // label htmlFor 연결 확인
     expect(usernameInput).toBeInTheDocument()
     expect(passwordInput).toBeInTheDocument()
 
-    // providers 로딩 완료 후 제출해야 provider 폼 값이 설정된다
     await waitForProvidersLoaded()
-    // 빈 폼 제출 후 aria-invalid 설정 확인
+    // username을 비우고 빈 폼 제출 — aria-invalid 설정 확인
+    await user.clear(usernameInput)
     await user.click(screen.getByRole('button', { name: '로그인' }))
 
     await waitFor(() => {
@@ -305,15 +500,7 @@ describe('LoginForm', () => {
       expect(container).toHaveAttribute('aria-invalid', 'true')
     })
 
-    // aria-describedby 연결 확인 — FormControl에 aria-describedby 설정
     const formControl = usernameInput.closest('[data-slot="form-control"]')
     expect(formControl).toHaveAttribute('aria-describedby')
-
-    // 키보드로 버튼까지 Tab 이동 가능 확인
-    await user.tab()
-    await user.tab()
-    await user.tab()
-    const submitBtn = screen.getByRole('button', { name: '로그인' })
-    expect(submitBtn).toBeInTheDocument()
   })
 })

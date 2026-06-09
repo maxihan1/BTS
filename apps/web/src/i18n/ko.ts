@@ -8,6 +8,11 @@ export const loginStrings = {
   providerLabel: '로그인 방식',
   submitButton: '로그인',
 
+  /** identifier-first 1단계 */
+  emailLabel: '이메일',
+  continueButton: '계속',
+  emailStepDescription: '이메일 주소로 로그인 방식을 확인합니다.',
+
   /** provider 드롭다운 옵션 표시 이름 */
   providerLocal: 'Local',
   providerLdapCorp: 'LDAP-corp',
