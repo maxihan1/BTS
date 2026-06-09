@@ -182,7 +182,7 @@ class AuthControllerTest {
 
         `when`(
             authenticationManager.authenticate(
-                org.mockito.ArgumentMatchers.eq("local"),
+                eqStr("local"),
                 org.mockito.ArgumentMatchers.anyString(),
                 anyCharArray(),
             ),
@@ -222,8 +222,8 @@ class AuthControllerTest {
 
         // 디스패처에 정확히 "local" provider 가 전달됐는지 검증 (FR-AU-06 명시 선택)
         verify(authenticationManager).authenticate(
-            org.mockito.ArgumentMatchers.eq("local"),
-            org.mockito.ArgumentMatchers.eq("alice"),
+            eqStr("local"),
+            eqStr("alice"),
             anyCharArray(),
         )
     }
@@ -235,7 +235,7 @@ class AuthControllerTest {
         // ldap 결과는 본 테스트 관심사가 아니므로 Failure 로 단순화(발급 경로 미진입).
         `when`(
             authenticationManager.authenticate(
-                org.mockito.ArgumentMatchers.eq("ldap"),
+                eqStr("ldap"),
                 org.mockito.ArgumentMatchers.anyString(),
                 anyCharArray(),
             ),
@@ -249,8 +249,8 @@ class AuthControllerTest {
             .andExpect(status().isUnauthorized)
 
         verify(authenticationManager).authenticate(
-            org.mockito.ArgumentMatchers.eq("ldap"),
-            org.mockito.ArgumentMatchers.eq("bob"),
+            eqStr("ldap"),
+            eqStr("bob"),
             anyCharArray(),
         )
     }
@@ -890,6 +890,13 @@ class AuthControllerTest {
      */
     private fun anyCharArray(): CharArray =
         org.mockito.ArgumentMatchers.any(CharArray::class.java) ?: charArrayOf()
+
+    /**
+     * String 파라미터의 Mockito eq() 매처 — eq() 가 null 을 반환해
+     * Kotlin non-null String 파라미터에서 NPE 가 나는 것을 Elvis 로 방지한다.
+     */
+    private fun eqStr(value: String): String =
+        org.mockito.ArgumentMatchers.eq(value) ?: value
 
     /**
      * UUID 파라미터의 Mockito any() 매처 — Kotlin non-null UUID 에 null 전달 방지.

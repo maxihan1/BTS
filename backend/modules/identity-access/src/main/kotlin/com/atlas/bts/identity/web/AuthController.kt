@@ -2,7 +2,9 @@
 
 package com.atlas.bts.identity.web
 
+import com.atlas.bts.identity.auth.CompositeAuthenticationManager
 import com.atlas.bts.identity.jwt.JwtIssuer
+import com.atlas.bts.identity.provider.ldap.ProviderUnavailableException
 import com.atlas.bts.identity.session.RefreshToken
 import com.atlas.bts.identity.session.RefreshTokenRepository
 import com.atlas.bts.identity.session.RefreshTokenService
@@ -11,12 +13,12 @@ import com.atlas.bts.identity.session.RefreshTokenService.RotateResult
 import com.atlas.bts.identity.session.Session
 import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.spi.AuthnResult
-import com.atlas.bts.identity.spi.Credential
-import com.atlas.bts.identity.spi.ProviderRegistry
+import com.atlas.bts.identity.spi.Principal
 import com.atlas.bts.identity.systemrole.SystemRoleAssignmentRepository
 import com.atlas.bts.identity.web.dto.SessionResponse
 import com.fasterxml.jackson.annotation.JsonProperty
 import jakarta.servlet.http.HttpServletRequest
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -39,7 +41,8 @@ import java.util.UUID
  * 인증 엔드포인트 컨트롤러 (FR-AU-09 Task 21 / SDD §19.5).
  *
  * ## 엔드포인트
- * - [login]: POST /api/v1/auth/login — ProviderRegistry 로 인증 → Session 생성 → RefreshToken 발급 → JWT 발급
+ * - [login]: POST /api/v1/auth/login — provider 명시 디스패처([CompositeAuthenticationManager])로 인증
+ *   → Session 생성 → RefreshToken 발급 → JWT 발급
  * - [logout]: POST /api/v1/auth/logout — sid 로 Session revoke + refresh chain revoke + Cookie 만료
  * - [refresh]: POST /api/v1/auth/refresh — Cookie 의 refresh_token → RefreshTokenService.rotate
  * - [listSessions]: GET /api/v1/auth/sessions — 본인 활성 세션 목록 조회 (JWT 전용, PAT 403)
@@ -70,7 +73,7 @@ import java.util.UUID
 // FR-PM-08 에서 systemRoleAssignmentRepository 추가로 8개(주입 7 + Clock)가 됐다.
 @Suppress("LongParameterList")
 class AuthController(
-    private val providerRegistry: ProviderRegistry,
+    private val authenticationManager: CompositeAuthenticationManager,
     private val sessionService: SessionService,
     private val refreshTokenRepository: RefreshTokenRepository,
     private val refreshTokenService: RefreshTokenService,
@@ -78,87 +81,110 @@ class AuthController(
     private val systemRoleAssignmentRepository: SystemRoleAssignmentRepository,
     private val clock: Clock = Clock.systemUTC(),
 ) {
+    private val log = LoggerFactory.getLogger(AuthController::class.java)
+
     /**
-     * POST /api/v1/auth/login — username/password 자격증명 인증 후 토큰 발급.
+     * POST /api/v1/auth/login — provider 명시 후 username/password 인증 → 토큰 발급 (FR-AU-06).
      *
-     * 1. ProviderRegistry.findFor(UsernamePassword) 로 담당 Provider 탐색
-     * 2. Provider.authenticate 호출
-     * 3. SessionService.create → Session row INSERT
-     * 4. 신규 RefreshToken 생성 → RefreshTokenRepository.save
-     * 5. JwtIssuer.issue → Access Token 발급
-     * 6. 응답 body + Set-Cookie refresh_token HttpOnly Secure SameSite=Strict Max-Age=1209600
+     * 1. `body.provider` 필수 — blank/누락이면 **400 `provider_required`** (디스패처 미진입).
+     * 2. [CompositeAuthenticationManager.authenticate]`(provider, username, password)` 로 위임.
+     *    명시 선택만 수행하며 자동 fallback 은 없다 (CompositeAuthenticationManager 보안 결정 참조).
+     * 3. [AuthnResult.Success] → [issueTokens] (Session/RefreshToken/JWT 발급) → 200 + Set-Cookie.
+     * 4. [AuthnResult.Failure] → **401 `invalid_credentials`** (reason 무관 — 계정/구성 열거 방지 NFR-06-01).
+     * 5. [AuthnResult.RequiresMfa] → 401 `mfa_required`.
+     *
+     * ## 503 처리 (catch-all @ExceptionHandler 우회)
+     * 디스패처가 전파하는 [ProviderUnavailableException](LDAP/디렉터리 장애)을 이 메서드 안에서 직접
+     * catch 하여 **503 `provider_unavailable`** 로 응답한다. 전역 catch-all 핸들러가 이를 500 으로
+     * 변질시키는 회귀를 막기 위함이다 (learning: catch-all-exceptionhandler-swallows-responsestatusexception).
+     * catch 절은 예외 type(providerType)만 다루며 password/PII 는 로깅하지 않는다.
      *
      * EC-04 대응: 실패 시 session/token INSERT 없음.
      * 로그에 password 절대 미기록 (DEVELOPMENT.md §1.1 규칙 2).
      *
-     * @param req HTTP 요청 (IP/UserAgent 추출용)
-     * @param body 로그인 요청 body
-     * @return 200 + TokenResponse / 401 + {"error": "invalid_credentials"} / 503 LDAP unavailable
+     * @param request HTTP 요청 (IP/UserAgent 추출용)
+     * @param body 로그인 요청 body (provider 필수)
+     * @return 200 TokenResponse / 400 provider_required / 401 invalid_credentials|mfa_required / 503 provider_unavailable
      */
+    // ReturnCount 억제 — 400(provider_required) / 503(provider_unavailable) guard early return 이
+    // 중첩 if 보다 가독성 우수 (DEVELOPMENT.md §2.3 Early return 권장).
+    @Suppress("ReturnCount")
     @PostMapping("/login")
     fun login(
         request: HttpServletRequest,
         @RequestBody body: LoginRequest,
     ): ResponseEntity<*> {
-        val credential = Credential.UsernamePassword(
-            username = body.username,
-            password = body.password.toCharArray(),
-        )
+        val provider = body.provider?.takeIf { it.isNotBlank() }
+            ?: return errorResponse(HttpStatus.BAD_REQUEST, "provider_required")
 
-        val provider = providerRegistry.findFor(credential)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(mapOf("error" to "invalid_credentials"))
-
-        return when (val result = provider.authenticate(credential)) {
-            is AuthnResult.Success -> {
-                val principal = result.principal
-                val ipAddress = request.remoteAddr.takeIf { it.isNotBlank() }
-                val userAgent = request.getHeader(HttpHeaders.USER_AGENT)
-
-                val session = sessionService.create(
-                    userId = principal.userId,
-                    providerId = principal.providerType.name.lowercase(),
-                    ipAddress = ipAddress,
-                    userAgent = userAgent,
-                )
-
-                val rawToken = generateRawToken()
-                val tokenHash = sha256Hex(rawToken)
-                val now = clock.instant()
-                val refreshToken = RefreshToken(
-                    id = UUID.randomUUID(),
-                    sessionId = session.id,
-                    tokenHash = tokenHash,
-                    issuedAt = now,
-                    expiresAt = now.plus(REFRESH_TTL_DAYS, ChronoUnit.DAYS),
-                    usedAt = null,
-                    replacedBy = null,
-                )
-                refreshTokenRepository.save(refreshToken)
-
-                val roles = systemRoleAssignmentRepository.findRolesByUser(session.userId).map { it.name }
-                val accessToken = jwtIssuer.issue(
-                    userId = session.userId,
-                    sessionId = session.id,
-                    providerId = session.providerId,
-                    scopes = emptyList(),
-                    roles = roles,
-                )
-
-                ResponseEntity.ok()
-                    .header(HttpHeaders.SET_COOKIE, buildRefreshCookie(rawToken, REFRESH_MAX_AGE))
-                    .body(TokenResponse(accessToken = accessToken))
+        val result =
+            try {
+                authenticationManager.authenticate(provider, body.username, body.password.toCharArray())
+            } catch (ex: ProviderUnavailableException) {
+                // 503 직접 생성 — catch-all 핸들러가 500 으로 변질시키지 않도록. password/PII 미로깅.
+                log.warn("login provider unavailable: providerType={}", ex.providerType)
+                return errorResponse(HttpStatus.SERVICE_UNAVAILABLE, "provider_unavailable")
             }
 
-            is AuthnResult.Failure ->
-                ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(mapOf("error" to "invalid_credentials"))
-
-            is AuthnResult.RequiresMfa ->
-                ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(mapOf("error" to "mfa_required"))
+        return when (result) {
+            is AuthnResult.Success -> issueTokens(request, result.principal)
+            is AuthnResult.Failure -> errorResponse(HttpStatus.UNAUTHORIZED, "invalid_credentials")
+            is AuthnResult.RequiresMfa -> errorResponse(HttpStatus.UNAUTHORIZED, "mfa_required")
         }
     }
+
+    /**
+     * 인증 성공한 [principal] 에 대해 Session 생성 → RefreshToken 발급 → JWT 발급 후 200 응답을 만든다.
+     *
+     * Session INSERT, RefreshToken save, JwtIssuer.issue 를 순서대로 수행하고
+     * refresh_token HttpOnly Secure SameSite=Strict 쿠키를 Set-Cookie 로 내려준다 (현행 발급 로직 유지).
+     *
+     * @param request IP/UserAgent 추출용 HTTP 요청
+     * @param principal 디스패처가 인증한 사용자 주체
+     * @return 200 + [TokenResponse] + Set-Cookie refresh_token
+     */
+    private fun issueTokens(request: HttpServletRequest, principal: Principal): ResponseEntity<*> {
+        val ipAddress = request.remoteAddr.takeIf { it.isNotBlank() }
+        val userAgent = request.getHeader(HttpHeaders.USER_AGENT)
+
+        val session = sessionService.create(
+            userId = principal.userId,
+            providerId = principal.providerType.name.lowercase(),
+            ipAddress = ipAddress,
+            userAgent = userAgent,
+        )
+
+        val rawToken = generateRawToken()
+        val now = clock.instant()
+        refreshTokenRepository.save(
+            RefreshToken(
+                id = UUID.randomUUID(),
+                sessionId = session.id,
+                tokenHash = sha256Hex(rawToken),
+                issuedAt = now,
+                expiresAt = now.plus(REFRESH_TTL_DAYS, ChronoUnit.DAYS),
+                usedAt = null,
+                replacedBy = null,
+            ),
+        )
+
+        val roles = systemRoleAssignmentRepository.findRolesByUser(session.userId).map { it.name }
+        val accessToken = jwtIssuer.issue(
+            userId = session.userId,
+            sessionId = session.id,
+            providerId = session.providerId,
+            scopes = emptyList(),
+            roles = roles,
+        )
+
+        return ResponseEntity.ok()
+            .header(HttpHeaders.SET_COOKIE, buildRefreshCookie(rawToken, REFRESH_MAX_AGE))
+            .body(TokenResponse(accessToken = accessToken))
+    }
+
+    /** `{"error": <code>}` 본문을 가진 [status] 응답을 생성한다 (login 에러 응답 일원화). */
+    private fun errorResponse(status: HttpStatus, errorCode: String): ResponseEntity<Map<String, String>> =
+        ResponseEntity.status(status).body(mapOf("error" to errorCode))
 
     /**
      * POST /api/v1/auth/logout — 현재 디바이스 세션 폐기.
@@ -425,14 +451,18 @@ private fun FailureReason.toErrorCode(): String = when (this) {
 }
 
 /**
- * POST /api/v1/auth/login 요청 body (FR-AU-09 §4.1).
+ * POST /api/v1/auth/login 요청 body (FR-AU-09 §4.1 / FR-AU-06).
  *
- * @param provider Provider 식별자 (예: "local", "ldap-corp")
+ * `provider` 는 nullable + 기본 null 로 선언한다. JSON 에서 필드가 **누락**된 경우와 **빈 문자열**인
+ * 경우를 컨트롤러가 동일하게 처리해 400 `provider_required` 본문을 내려주기 위함이다. 필드를 non-null
+ * 로 두면 누락 시 Jackson 역직렬화 단계에서 일반 400(메시지 본문 없음)이 나 spec 응답을 못 만든다.
+ *
+ * @param provider Provider 식별자 (예: "local", "ldap"). 누락/빈 문자열은 컨트롤러가 400 처리
  * @param username 사용자 이름
  * @param password 비밀번호 평문 — 메모리 즉시 사용 후 CharArray wipe 는 Provider 책임
  */
 data class LoginRequest(
-    val provider: String,
+    val provider: String? = null,
     val username: String,
     val password: String,
 )
