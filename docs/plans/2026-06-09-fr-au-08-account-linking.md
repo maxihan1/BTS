@@ -155,6 +155,34 @@ classify 결과 (보정 적용).
 - 프론트/E2E: 범위 밖 — D6(UI)·D7(Playwright)은 후속 PR(API 안정화 후)
 - 보안 중점: TOCTOU advisory lock(T2·T4·T7), 계정 열거 0(T4), PAT 403(T6), PII 미로깅(T3·T5·T6), LdapProvider 회귀 가드(T3)
 
+## 구현 결과 (bts-impl, 2026-06-09)
+
+TDD red→green→refactor 강제, 의존성 순서 순차 dispatch(단일 모듈 test 컴파일 결합 회피). 컨트롤러 직접 git log+diff 검증(verifier agent 대신, `subagent-ktlint-false-green-controller-verify` 선례).
+
+| Task | 산출물 | 테스트 | TDD 순서 |
+|---|---|---|---|
+| T1 | StepUpService (Caffeine→ConcurrentHashMap+Clock) | 5 green | 52dbdd05→659428d0→2f382e9a ✅ |
+| T2 | ExternalAccountRepository +findByUserId/delete/count/advisoryLock | 16 green(기존11+신규5) | 28328bf7(test)→fc4a566c(feat) ✅ |
+| T3 | LdapProvider bindForLinking (provision 분리) | 신규5+회귀 LdapAuthFlow26/Integration7/Unit15 green | 84a78a24→26d55cc8→aabe37b7 ✅ |
+| T4 | AccountLinkService + AuthnProviderConfigRepository.findByIds | 11+9 green | 63ca86bf(test)→… ✅ |
+| T5 | ReauthService (LOCAL/LDAP, EC9) | 7 green | 1cf43c5e(test)→… ✅ |
+| T6 | AccountLinkController + DTO | 18 green | 1059b6e8→ac78dc71→6e825dfa ✅ |
+| T6b | linkedAt/lastLoginAt surface | 12+18 green | 99057ccc→c862e45e→34519568 ✅ |
+| T7 | 통합테스트 (S1~S8 + EC10 TOCTOU) | 11 green | ea1feceb→41c44398→d8036cf5 ✅ |
+| T8 | 신규201/멱등200 구분 (sealed LinkOutcome) | 12/19/11 green | d3babbb5(test)→c24e8da9(feat) ✅ |
+
+**구현 중 발견·정정**.
+- T4 scope 확장. provider `findByIds` read 추가(listLinks 표시 + enabled 카운트).
+- C6 정정. LOCAL lockout 인프라 부재(코드 실측) → 발명 안 함, 기존 LOCAL 로그인 동일 보호.
+- T6b. spec S1의 linkedAt/lastLoginAt 누락 보정.
+- T8. spec S6의 멱등 200 미구현 보정(컨트롤러가 항상 201이던 것 → sealed LinkOutcome).
+
+**검증(verification-before-completion)**.
+- 모듈 ktlint(`ktlintMainSourceSetCheck`/`ktlintTestSourceSetCheck`)+detekt `--rerun-tasks` BUILD SUCCESSFUL(캐시 false-green 차단).
+- FR-AU-08 전체 테스트(account+repo+ldap bind+통합) green.
+- 모듈 전체 실행 시 OIDC 5 fail = Keycloak 컨테이너 startup 타임아웃(환경적, 부하). **OIDC 단독 실행 BUILD SUCCESSFUL로 환경적 입증**. 내 변경은 OIDC 무관 → 회귀 0.
+- QA E2E. 1차 백엔드 전용(UI=D6 후속)이라 Playwright 대상 없음 → SKIP(통합테스트가 backend e2e 커버).
+
 ## 리뷰 결과
 
 ### security-engineer 독립 plan 리뷰 (2026-06-09)
