@@ -266,7 +266,7 @@ class AccountLinkController(
         return if (valid) null else errorResponse(HttpStatus.FORBIDDEN, ERROR_STEP_UP_REQUIRED)
     }
 
-    /** [AccountLinkView] → 마스킹 적용 응답 DTO. */
+    /** [AccountLinkView] → 마스킹 적용 응답 DTO. linkedAt/lastLoginAt 은 그대로 surface(S1). */
     private fun AccountLinkView.toResponse(): AccountLinkResponse =
         AccountLinkResponse(
             id = id,
@@ -275,6 +275,8 @@ class AccountLinkController(
             providerType = providerType,
             providerEnabled = providerEnabled,
             externalSubjectMasked = maskSubject(externalSubject),
+            linkedAt = linkedAt,
+            lastLoginAt = lastLoginAt,
         )
 
     /**

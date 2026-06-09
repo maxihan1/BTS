@@ -11,6 +11,7 @@ import com.atlas.bts.identity.provider.ldap.LdapProvider
 import com.atlas.bts.identity.spi.ProviderType
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -18,6 +19,9 @@ import java.util.UUID
  *
  * provider 메타데이터([providerName]/[providerType]/[providerEnabled])는
  * authn_providers 에서 결합한다. provider row 가 없으면 null/false 로 채운다.
+ *
+ * [linkedAt]·[lastLoginAt] 은 ExternalAccount 의 createdAt·lastLoginAt 를 그대로 흘려보낸다
+ * (S1 — 데이터 invent 없이 기존 데이터 surface). 한 번도 로그인하지 않은 링크는 [lastLoginAt] 이 null 이다.
  */
 data class AccountLinkView(
     val id: UUID,
@@ -26,6 +30,8 @@ data class AccountLinkView(
     val providerType: ProviderType?,
     val providerEnabled: Boolean,
     val externalSubject: String,
+    val linkedAt: Instant,
+    val lastLoginAt: Instant?,
 )
 
 /**
@@ -167,6 +173,8 @@ class AccountLinkService(
             providerType = provider?.type,
             providerEnabled = provider?.enabled ?: false,
             externalSubject = externalSubject,
+            linkedAt = createdAt,
+            lastLoginAt = lastLoginAt,
         )
 
     private companion object {

@@ -66,6 +66,8 @@ data class ReauthResponse(
  * @param providerType provider 유형. provider row 부재 시 null.
  * @param providerEnabled provider 활성 여부. provider row 부재 시 false.
  * @param externalSubjectMasked 마스킹된 외부 식별자(앞 일부 + ***).
+ * @param linkedAt 연결 시각(ISO-8601 UTC) — ExternalAccount.createdAt.
+ * @param lastLoginAt 마지막 로그인 시각(ISO-8601 UTC). 한 번도 로그인하지 않았으면 null.
  */
 data class AccountLinkResponse(
     val id: UUID,
@@ -74,6 +76,8 @@ data class AccountLinkResponse(
     val providerType: ProviderType?,
     val providerEnabled: Boolean,
     val externalSubjectMasked: String,
+    val linkedAt: Instant,
+    val lastLoginAt: Instant?,
 )
 
 /**
