@@ -1413,7 +1413,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-id">FR-AU-08</span>
         <span class="fr-desc">계정 통합 (Account Linking)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — 동일 사용자 다중 외부 계정 통합 <span class="term" data-def="이슈의 상태 전이 FSM. YAML로 정의">워크플로우</span></li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `user_external_accounts` 다대일</li><li><span class="step-icon">✅</span> D4 — 백엔드 — Linking API + 재인증 강제</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 충돌 케이스</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — &quot;계정 연결&quot; 설정 페이지</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — 동일 사용자 다중 외부 계정 통합 <span class="term" data-def="이슈의 상태 전이 FSM. YAML로 정의">워크플로우</span></li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `user_external_accounts` 다대일</li><li><span class="step-icon">✅</span> D4 — 백엔드 — Linking API + 재인증 강제</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 충돌 케이스</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — &quot;<span class="term" data-def="Account Linking. 로그인한 사용자가 자기 계정에 추가 외부 신원(LDAP/SAML/OIDC)을 명시적으로 붙이는 것. 이메일 자동연결 미도입(계정 탈취 차단). 1차는 LDAP 동기 연결만, SSO는 FR-AU-08b 후속 (FR-AU-08)">계정 연결</span>&quot; 설정 페이지</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-완료">
       <summary>
         <span class="fr-status">✅</span>
@@ -1673,6 +1673,18 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">NameID</div>
       <div class="term-cat">도메인 — 인증</div>
       <div class="term-def">SAML Assertion 안의 사용자 식별자. userexternalaccounts의 externalSubject로 매핑</div>
+    </div><div class="term-item" data-cat="도메인 — 인증" data-search="계정 연결 account linking. 로그인한 사용자가 자기 계정에 추가 외부 신원(ldap/saml/oidc)을 명시적으로 붙이는 것. 이메일 자동연결 미도입(계정 탈취 차단). 1차는 ldap 동기 연결만, sso는 fr-au-08b 후속 (fr-au-08)">
+      <div class="term-name">계정 연결</div>
+      <div class="term-cat">도메인 — 인증</div>
+      <div class="term-def">Account Linking. 로그인한 사용자가 자기 계정에 추가 외부 신원(LDAP/SAML/OIDC)을 명시적으로 붙이는 것. 이메일 자동연결 미도입(계정 탈취 차단). 1차는 LDAP 동기 연결만, SSO는 FR-AU-08b 후속 (FR-AU-08)</div>
+    </div><div class="term-item" data-cat="도메인 — 인증" data-search="재인증 / step-up 민감 동작(연결/해제) 직전 보유 로그인 수단으로 1회 재인증 → 짧은 step-up 윈도우(caffeine `sid→expiry` 5분) 부여. sid는 jwt 클레임에서만 추출 (fr-au-08)">
+      <div class="term-name">재인증 / step-up</div>
+      <div class="term-cat">도메인 — 인증</div>
+      <div class="term-def">민감 동작(연결/해제) 직전 보유 로그인 수단으로 1회 재인증 → 짧은 step-up 윈도우(Caffeine `sid→expiry` 5분) 부여. sid는 JWT 클레임에서만 추출 (FR-AU-08)</div>
+    </div><div class="term-item" data-cat="도메인 — 인증" data-search="연결 해제 unlink. 연결된 외부 신원을 제거. 남은 로그인 수단(enabled provider 링크 + local 비번)이 0이 되면 거부(self-lockout 방지, advisory lock toctou 직렬화) (fr-au-08)">
+      <div class="term-name">연결 해제</div>
+      <div class="term-cat">도메인 — 인증</div>
+      <div class="term-def">Unlink. 연결된 외부 신원을 제거. 남은 로그인 수단(enabled provider 링크 + LOCAL 비번)이 0이 되면 거부(self-lockout 방지, advisory lock TOCTOU 직렬화) (FR-AU-08)</div>
     </div><div class="term-item" data-cat="도메인 — 데이터 무결성 키워드" data-search="issuekeyredirect 이슈 키 변경 시 옛 키→새 키 매핑 (영구 보존)">
       <div class="term-name">IssueKeyRedirect</div>
       <div class="term-cat">도메인 — 데이터 무결성 키워드</div>
