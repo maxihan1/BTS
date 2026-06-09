@@ -67,8 +67,16 @@ class OidcProviderConfigRepository(
             rowMapper,
         ).firstOrNull()
 
-    /** RED 골격 — 아직 미구현. */
-    override fun findEnabledByRegistrationId(registrationId: String): OidcProviderConfig? = null
+    /**
+     * registration_id 로 **활성(enabled=true)** OIDC Provider 설정을 조회한다 (FR-AU-08b B1).
+     * 비활성이거나 존재하지 않으면 null 을 반환한다(콜백 enabled 재해소, EC16 — SAML 동형).
+     */
+    override fun findEnabledByRegistrationId(registrationId: String): OidcProviderConfig? =
+        jdbc.query(
+            SQL_FIND_ENABLED_BY_REGISTRATION_ID,
+            mapOf("registrationId" to registrationId),
+            rowMapper,
+        ).firstOrNull()
 
     /**
      * **활성(enabled=true)** OIDC Provider 설정 전체를 display_name 오름차순으로 조회한다 (EC5).
@@ -89,6 +97,17 @@ class OidcProviderConfigRepository(
                    client_secret_encrypted, scopes, authn_provider_id, enabled
             FROM oidc_provider_configs
             WHERE registration_id = :registrationId
+        """
+
+        /**
+         * registration_id 로 **활성(enabled=true)** OIDC Provider 설정 조회 (FR-AU-08b B1).
+         * SAML findEnabledByRegistrationId 동형 — 콜백 enabled 재해소(EC16).
+         */
+        const val SQL_FIND_ENABLED_BY_REGISTRATION_ID = """
+            SELECT id, registration_id, display_name, issuer_uri, client_id,
+                   client_secret_encrypted, scopes, authn_provider_id, enabled
+            FROM oidc_provider_configs
+            WHERE registration_id = :registrationId AND enabled = TRUE
         """
 
         const val SQL_FIND_ENABLED = """
