@@ -571,7 +571,7 @@ class AccountLinkIntegrationTest : LdapTestcontainersBase() {
         val headers = HttpHeaders().apply { contentType = MediaType.APPLICATION_JSON }
         val resp =
             restTemplate.exchange(
-                "http://localhost:$port/api/v1/auth/login",
+                url("/api/v1/auth/login"),
                 HttpMethod.POST,
                 HttpEntity(jsonBody, headers),
                 Map::class.java,
@@ -579,6 +579,9 @@ class AccountLinkIntegrationTest : LdapTestcontainersBase() {
         check(resp.statusCode == HttpStatus.OK) { "loginJwt 실패 ($username): ${resp.statusCode}" }
         return (resp.body as Map<*, *>)["access_token"] as String
     }
+
+    /** RANDOM_PORT 로 부팅된 내장 서버의 절대 URL 을 만든다. */
+    private fun url(path: String): String = "http://localhost:$port$path"
 
     /** POST /reauth(LOCAL) → step-up 윈도우 부여. 200 이 아니면 즉시 실패. */
     private fun reauthLocal(
@@ -638,7 +641,7 @@ class AccountLinkIntegrationTest : LdapTestcontainersBase() {
                 set(HttpHeaders.AUTHORIZATION, "Bearer $bearer")
             }
         val entity = if (body == null) HttpEntity<Void>(headers) else HttpEntity(body, headers)
-        return restTemplate.exchange("http://localhost:$port$path", method, entity, Map::class.java)
+        return restTemplate.exchange(url(path), method, entity, Map::class.java)
     }
 
     // ── 응답 파싱 헬퍼 ───────────────────────────────────────────────────────────
