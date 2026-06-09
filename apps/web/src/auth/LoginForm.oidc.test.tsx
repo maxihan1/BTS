@@ -27,7 +27,7 @@ function renderLoginForm() {
  */
 async function goToStep2(user: ReturnType<typeof userEvent.setup>) {
   const emailInput = screen.getByLabelText('이메일')
-  await user.type(emailInput, 'alice@example.com', { delay: null })
+  await user.type(emailInput, 'alice@example.com')
   await user.click(screen.getByRole('button', { name: '계속' }))
   // 2단계(로그인 버튼) 나타날 때까지 대기
   await screen.findByRole('button', { name: '로그인' })
@@ -71,7 +71,7 @@ describe('LoginForm — OIDC provider 버튼', () => {
       ),
     )
 
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderLoginForm()
     await goToStep2(user)
 
@@ -86,7 +86,7 @@ describe('LoginForm — OIDC provider 버튼', () => {
       ),
     )
 
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderLoginForm()
     await goToStep2(user)
 
@@ -110,7 +110,7 @@ describe('LoginForm — OIDC provider 버튼', () => {
       ),
     )
 
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderLoginForm()
     await goToStep2(user)
 
