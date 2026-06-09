@@ -6,6 +6,7 @@ import com.atlas.bts.identity.spi.ProviderType
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
+import java.util.UUID
 
 /**
  * 도메인 → Provider 라우트 매칭 결과.
@@ -68,18 +69,18 @@ class DomainProviderRouteRepository(
     }
 
     /** ① 도메인 → (provider_id, type) 조회. 미등록이면 null. */
-    private fun findProviderByDomain(domain: String): Pair<java.util.UUID, ProviderType>? =
+    private fun findProviderByDomain(domain: String): Pair<UUID, ProviderType>? =
         jdbc.query(
             SQL_FIND_PROVIDER_BY_DOMAIN,
             mapOf("domain" to domain),
         ) { rs, _ ->
-            rs.getObject("provider_id", java.util.UUID::class.java) to
+            rs.getObject("provider_id", UUID::class.java) to
                 ProviderType.valueOf(rs.getString("type"))
         }.firstOrNull()
 
     /** ② SAML 분기 — 활성 saml_idp_configs 단일 테이블 조회. 비활성/미존재면 null. */
     private fun findEnabledSaml(
-        providerId: java.util.UUID,
+        providerId: UUID,
         type: ProviderType,
     ): RouteMatch? =
         jdbc.query(
@@ -95,7 +96,7 @@ class DomainProviderRouteRepository(
 
     /** ② OIDC 분기 — 활성 oidc_provider_configs 단일 테이블 조회. 비활성/미존재면 null. */
     private fun findEnabledOidc(
-        providerId: java.util.UUID,
+        providerId: UUID,
         type: ProviderType,
     ): RouteMatch? =
         jdbc.query(
