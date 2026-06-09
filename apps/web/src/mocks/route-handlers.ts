@@ -17,8 +17,8 @@ interface RouteStoreEntry {
 /**
  * 도메인 → 라우팅 결과 맵.
  *
- * E2E 테스트에서 Playwright `page.evaluate(() => { window.__bts_route_store['acme.com'] = {...} })`
- * 패턴으로 시드하거나 `E2E_ROUTE_STORE_KEY` localStorage JSON 시드 패턴으로 오버라이드한다.
+ * E2E 테스트에서 `E2E_ROUTE_STORE_KEY` localStorage JSON 시드 패턴으로 오버라이드한다.
+ * Playwright `addInitScript`로 goto 전에 설정하면 첫 fetch 시점부터 적용된다.
  *
  * 기본 시드: partner.com → SAML, acme.com → OIDC.
  */
