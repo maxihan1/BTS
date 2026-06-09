@@ -129,17 +129,59 @@ class AccountLinkService(
             ldapProvider.bindForLinking(providerId, username, password)
                 ?: throw AccountLinkAuthException()
 
-        val existing =
-            externalAccountRepository.findByProviderIdAndExternalSubject(providerId, attrs.externalSubject)
+        return resolveLinkOutcome(userId, providerId, attrs.externalSubject) {
+            externalAccountRepository.provisionUser(providerId, attrs.externalSubject, userId, attrs.groups)
+        }
+    }
+
+    /**
+     * 이미 IdP 인증된 SSO 외부 신원을 현재 사용자에 연결한다 — bind 없음 (FR-AU-08b, FR4).
+     *
+     * LDAP [link] 와 달리 **동기 bind 가 없다**: SAML/OIDC 는 IdP 로 리다이렉트 왕복하므로 신원
+     * 인증이 성공 핸들러에서 이미 끝난 상태로 호출된다([externalSubject] 가 곧 인증된 식별자).
+     *
+     * 1. **lock 먼저**([acquireSubjectLock], EC18): 다중 탭/재시도 콜백의 check-then-insert 구간을
+     *    `(providerId, externalSubject)` 단위로 직렬화한다. lock 후 같은 tx 안에서 재조회·INSERT 해야
+     *    TOCTOU 가 막힌다(advisory-lock-bigint-toctou 선례).
+     * 2. **충돌 조회 후 분기**: 매핑 없음 → [insertLink] 순수 INSERT(현재 userId attach) → [LinkOutcome.Created] /
+     *    본인 소유 → 멱등 no-op([LinkOutcome.AlreadyLinked]) / 타인 소유 → [AccountLinkConflictException].
+     *
+     * **신규 user 생성 금지(confused-deputy 차단)**: `provisionUser`(users UPSERT)를 호출하지 않는다.
+     * [userId] 는 이미 로그인한 본인의 id 이며, attach 만 수행한다.
+     */
+    fun linkExternalSubject(
+        userId: UUID,
+        providerId: UUID,
+        externalSubject: String,
+        groups: List<String>,
+    ): LinkOutcome {
+        externalAccountRepository.acquireSubjectLock(providerId, externalSubject)
+        return resolveLinkOutcome(userId, providerId, externalSubject) {
+            externalAccountRepository.insertLink(providerId, externalSubject, userId, groups)
+        }
+    }
+
+    /**
+     * 외부 신원 연결의 공통 충돌 분기 — LDAP([link])·SSO([linkExternalSubject]) 공유 (FR-AU-08/08b).
+     *
+     * `(providerId, externalSubject)` 매핑을 조회해 세 갈래로 분기한다.
+     * - 매핑 없음 → [createLink] 로 신규 행 생성(LDAP=UPSERT / SSO=순수 INSERT) → [LinkOutcome.Created].
+     * - 본인 소유 → 멱등 no-op(기존 행 그대로) → [LinkOutcome.AlreadyLinked].
+     * - 타인 소유 → [AccountLinkConflictException](계정 열거 0).
+     *
+     * 매핑 없음 경로에서만 [createLink] 를 호출하므로 타계정이 선점한 신원은 INSERT 가 일어나지 않는다.
+     */
+    private fun resolveLinkOutcome(
+        userId: UUID,
+        providerId: UUID,
+        externalSubject: String,
+        createLink: () -> ExternalAccount,
+    ): LinkOutcome {
+        val existing = externalAccountRepository.findByProviderIdAndExternalSubject(providerId, externalSubject)
         val provider = authnProviderConfigRepository.findByIds(setOf(providerId))[providerId]
 
         return when {
-            existing == null ->
-                LinkOutcome.Created(
-                    externalAccountRepository
-                        .provisionUser(providerId, attrs.externalSubject, userId, attrs.groups)
-                        .toView(provider),
-                )
+            existing == null -> LinkOutcome.Created(createLink().toView(provider))
             existing.userId == userId -> LinkOutcome.AlreadyLinked(existing.toView(provider))
             else -> throw AccountLinkConflictException()
         }
