@@ -266,13 +266,29 @@ class Saml2AuthenticationSuccessHandlerTest {
     fun `연결 의도가 있으면 processor 로 위임하고 세션 JWT provision 을 발급하지 않는다 (fail-closed EC12)`() {
         val response = mockk<HttpServletResponse>(relaxed = true)
         every {
-            callbackProcessor.process(any(), ProviderType.SAML, registrationId, providerId, nameId, emptyList(), response)
+            callbackProcessor.process(
+                any(),
+                ProviderType.SAML,
+                registrationId,
+                providerId,
+                nameId,
+                emptyList(),
+                response,
+            )
         } returns true
 
         handler.onAuthenticationSuccess(requestWithIntent(linkIntent()), response, samlAuthentication())
 
         verify(exactly = 1) {
-            callbackProcessor.process(any(), ProviderType.SAML, registrationId, providerId, nameId, emptyList(), response)
+            callbackProcessor.process(
+                any(),
+                ProviderType.SAML,
+                registrationId,
+                providerId,
+                nameId,
+                emptyList(),
+                response,
+            )
         }
         // fail-closed — 발급 경로 물리적 진입 불가
         verify(exactly = 0) { autoProvisionService.provision(any(), any()) }
@@ -329,7 +345,15 @@ class Saml2AuthenticationSuccessHandlerTest {
         val locationSlot = slot<String>()
         every { response.sendRedirect(capture(locationSlot)) } returns Unit
         every {
-            callbackProcessor.process(any(), ProviderType.SAML, registrationId, providerId, nameId, emptyList(), response)
+            callbackProcessor.process(
+                any(),
+                ProviderType.SAML,
+                registrationId,
+                providerId,
+                nameId,
+                emptyList(),
+                response,
+            )
         } returns false
 
         handler.onAuthenticationSuccess(requestWithIntent(linkIntent()), response, samlAuthentication())

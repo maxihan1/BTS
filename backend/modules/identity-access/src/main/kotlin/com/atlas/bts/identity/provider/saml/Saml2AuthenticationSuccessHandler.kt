@@ -2,12 +2,16 @@
 
 package com.atlas.bts.identity.provider.saml
 
+import com.atlas.bts.identity.account.SsoLinkingCallbackProcessor
+import com.atlas.bts.identity.account.SsoLinkingIntent
+import com.atlas.bts.identity.account.SsoLinkingIntentStore
 import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.provider.ldap.AutoProvisionService
 import com.atlas.bts.identity.provider.ldap.LdapProvisionAttrs
 import com.atlas.bts.identity.session.RefreshToken
 import com.atlas.bts.identity.session.RefreshTokenRepository
 import com.atlas.bts.identity.session.SessionService
+import com.atlas.bts.identity.spi.ProviderType
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.slf4j.LoggerFactory
@@ -56,14 +60,23 @@ import java.util.UUID
  * **@Transactional 경계**:
  * JIT 의 트랜잭션은 [AutoProvisionService] 가 보장한다. 세션/토큰 저장은 각 서비스가
  * 자체 트랜잭션을 갖는다 (AuthController 와 동일하게 핸들러에는 @Transactional 미부착).
+ *
+ * **연결 모드 분기 (FR-AU-08b, FR3 fail-closed)**:
+ * 콜백 시점의 HttpSession 에 SSO 연결 인텐트가 있으면(start XHR 가 심어둠) 일반 로그인(위 1~7)
+ * 대신 [SsoLinkingCallbackProcessor] 로 위임한다. 인텐트가 있으면 [issueTokens]/[AutoProvisionService.provision]
+ * 경로에 **물리적으로 진입하지 않는다**(early return) — 분기 누락 시에도 발급이 일어나지 않는 fail-closed.
+ * 콜백 providerId 는 **enabled 재해소**([SamlIdpConfigRepository.findEnabledByRegistrationId])로만 얻는다
+ * (start↔콜백 TOCTOU 차단, EC16). 인텐트가 없으면 위 일반 로그인 흐름이 무변경(EC1 회귀).
  */
 @Component
+@Suppress("LongParameterList") // DI 생성자 — 세션/JWT 발급 협력자 + 연결 모드 분기(callbackProcessor) + Clock 주입
 class Saml2AuthenticationSuccessHandler(
     private val configRepo: SamlIdpConfigRepository,
     private val autoProvisionService: AutoProvisionService,
     private val sessionService: SessionService,
     private val refreshTokenRepository: RefreshTokenRepository,
     private val jwtIssuer: JwtIssuer,
+    private val callbackProcessor: SsoLinkingCallbackProcessor,
     private val clock: Clock = Clock.systemUTC(),
 ) : AuthenticationSuccessHandler {
     private val log = LoggerFactory.getLogger(Saml2AuthenticationSuccessHandler::class.java)
@@ -85,6 +98,12 @@ class Saml2AuthenticationSuccessHandler(
         val registrationId = principal.relyingPartyRegistrationId
         val nameId = principal.name
 
+        // 연결 모드 분기 (FR3 fail-closed) — 인텐트가 있으면 발급 경로로 진입하지 않는다.
+        if (linkingIntentOrNull(request) != null) {
+            handleLinkingMode(request, response, registrationId, nameId)
+            return
+        }
+
         val config =
             configRepo.findEnabledByRegistrationId(registrationId)
                 ?: error("활성 SAML IdP 설정 없음 — registrationId=$registrationId")
@@ -102,6 +121,64 @@ class Saml2AuthenticationSuccessHandler(
         log.debug("SAML 인증 성공 — providerId={}, registrationId={}", providerId, registrationId)
         response.sendRedirect(target)
     }
+
+    /**
+     * 콜백 시점 세션의 SSO 연결 인텐트를 **비소비 peek** 한다 (분기 판단용).
+     *
+     * 실제 1회용 소비/만료 검사는 [SsoLinkingCallbackProcessor] 가 [SsoLinkingIntentStore.consume] 으로
+     * 단일 지점에서 수행한다. 여기서는 인텐트 존재 여부와 mode(error 경로 분기)만 본다.
+     * 세션이 없거나(`getSession(false)` == null) 속성이 없으면 일반 로그인 경로(null 반환).
+     */
+    private fun linkingIntentOrNull(request: HttpServletRequest): SsoLinkingIntent? =
+        request.getSession(false)?.getAttribute(SsoLinkingIntentStore.ATTRIBUTE_KEY) as? SsoLinkingIntent
+
+    /**
+     * 연결 모드 처리 (FR3) — enabled 재해소 후 [SsoLinkingCallbackProcessor] 로 위임한다.
+     *
+     * - 비활성/미해소(콜백 TOCTOU, EC16): 발급 없이 mode 별 error 경로로 리다이렉트한다.
+     * - [SsoLinkingCallbackProcessor.process] 가 false(인텐트 만료/소실, EC5): 발급 없이 error 경로.
+     * - true: processor 가 이미 리다이렉트를 썼다(성공/충돌/실패 모두 리다이렉트로 종결).
+     *
+     * 어느 경로든 [issueTokens]/[AutoProvisionService.provision] 에 진입하지 않는다(fail-closed).
+     */
+    private fun handleLinkingMode(
+        request: HttpServletRequest,
+        response: HttpServletResponse,
+        registrationId: String,
+        externalSubject: String,
+    ) {
+        val intent = linkingIntentOrNull(request)
+        val session = request.getSession(false)
+        val config = configRepo.findEnabledByRegistrationId(registrationId)
+        if (intent == null || session == null || config == null) {
+            log.debug("SAML 연결 모드 거부 — registrationId={}, enabled 미해소", registrationId)
+            response.sendRedirect(errorPath(intent?.mode))
+            return
+        }
+        val handled =
+            callbackProcessor.process(
+                session = session,
+                providerType = ProviderType.SAML,
+                registrationId = registrationId,
+                providerId = config.authnProviderId,
+                externalSubject = externalSubject,
+                groups = emptyList(),
+                response = response,
+            )
+        if (!handled) {
+            response.sendRedirect(errorPath(intent.mode))
+        }
+    }
+
+    /**
+     * 연결/재인증 거부 시 돌아갈 서버 고정 설정 경로 + mode 별 error status 를 만든다 (open-redirect 0, EC14).
+     *
+     * 비활성 provider(EC16)·인텐트 만료(EC5) 등 발급 없이 거부할 때 쓴다. 사용자 입력을 echo 하지 않는다.
+     * mode 가 null(인텐트 소실)이면 LINK error 로 폴백한다.
+     */
+    private fun errorPath(mode: SsoLinkingIntent.Mode?): String =
+        SETTINGS_PATH +
+            if (mode == SsoLinkingIntent.Mode.REAUTH) REAUTH_FAILED else LINK_ERROR
 
     /**
      * SAML principal 을 [LdapProvisionAttrs] 로 매핑한다 (공통 프로비저닝 VO 재사용).
@@ -200,6 +277,15 @@ class Saml2AuthenticationSuccessHandler(
         const val REFRESH_MAX_AGE = 1_209_600
         const val REFRESH_TTL_DAYS = 14L
         const val TOKEN_BYTES = 32
+
+        /** 연결 모드 거부 시 돌아갈 서버 고정 설정 경로 (open-redirect 0, EC14 — SsoLinkingCallbackProcessor 와 동일). */
+        const val SETTINGS_PATH = "/settings/account-links"
+
+        /** LINK 모드 거부 status 쿼리 (비활성/만료). */
+        const val LINK_ERROR = "?link=error"
+
+        /** REAUTH 모드 거부 status 쿼리 (비활성/만료). */
+        const val REAUTH_FAILED = "?reauth=failed"
     }
 }
 

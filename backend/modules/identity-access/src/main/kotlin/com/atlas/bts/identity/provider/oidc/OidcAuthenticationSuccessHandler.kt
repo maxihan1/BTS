@@ -2,6 +2,9 @@
 
 package com.atlas.bts.identity.provider.oidc
 
+import com.atlas.bts.identity.account.SsoLinkingCallbackProcessor
+import com.atlas.bts.identity.account.SsoLinkingIntent
+import com.atlas.bts.identity.account.SsoLinkingIntentStore
 import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.provider.ldap.AutoProvisionService
 import com.atlas.bts.identity.provider.ldap.LdapProvisionAttrs
@@ -9,6 +12,7 @@ import com.atlas.bts.identity.provider.saml.RelayStateValidator
 import com.atlas.bts.identity.session.RefreshToken
 import com.atlas.bts.identity.session.RefreshTokenRepository
 import com.atlas.bts.identity.session.SessionService
+import com.atlas.bts.identity.spi.ProviderType
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.slf4j.LoggerFactory
@@ -59,14 +63,24 @@ import java.util.UUID
  * **@Transactional 경계**:
  * JIT 의 트랜잭션은 [AutoProvisionService] 가 보장한다. 세션/토큰 저장은 각 서비스가
  * 자체 트랜잭션을 갖는다 (SAML 핸들러와 동일하게 핸들러에는 @Transactional 미부착).
+ *
+ * **연결 모드 분기 (FR-AU-08b, FR3 fail-closed — SAML 핸들러 동형)**:
+ * 콜백 시점의 HttpSession 에 SSO 연결 인텐트가 있으면 일반 로그인(위 1~7) 대신
+ * [SsoLinkingCallbackProcessor] 로 위임하고, [issueTokens]/[AutoProvisionService.provision] 경로에
+ * **진입하지 않는다**(early return, fail-closed). 콜백 providerId 는 일반 로그인의
+ * [OidcProviderConfigReader.findByRegistrationId](enabled 무관)와 달리 **enabled 재해소**
+ * ([OidcProviderConfigReader.findEnabledByRegistrationId])로만 얻는다 — SAML 과 동일하게 enabled 를
+ * 거른다(OIDC 의 enabled 미필터 비대칭 보정, start↔콜백 TOCTOU 차단, EC16). 인텐트가 없으면 무변경(EC1).
  */
 @Component
+@Suppress("LongParameterList") // DI 생성자 — 세션/JWT 발급 협력자 + 연결 모드 분기(callbackProcessor) + Clock 주입
 class OidcAuthenticationSuccessHandler(
     private val configRepo: OidcProviderConfigReader,
     private val autoProvisionService: AutoProvisionService,
     private val sessionService: SessionService,
     private val refreshTokenRepository: RefreshTokenRepository,
     private val jwtIssuer: JwtIssuer,
+    private val callbackProcessor: SsoLinkingCallbackProcessor,
     private val clock: Clock = Clock.systemUTC(),
 ) : AuthenticationSuccessHandler {
     private val log = LoggerFactory.getLogger(OidcAuthenticationSuccessHandler::class.java)
@@ -89,6 +103,12 @@ class OidcAuthenticationSuccessHandler(
         val registrationId = token.authorizedClientRegistrationId
         val sub = principal.subject
 
+        // 연결 모드 분기 (FR3 fail-closed) — 인텐트가 있으면 발급 경로로 진입하지 않는다.
+        if (linkingIntentOrNull(request) != null) {
+            handleLinkingMode(request, response, registrationId, sub)
+            return
+        }
+
         val config =
             configRepo.findByRegistrationId(registrationId)
                 ?: error("OIDC Provider 설정 없음 — registrationId=$registrationId")
@@ -106,6 +126,60 @@ class OidcAuthenticationSuccessHandler(
         log.debug("OIDC 인증 성공 — providerId={}, registrationId={}", providerId, registrationId)
         response.sendRedirect(target)
     }
+
+    /**
+     * 콜백 시점 세션의 SSO 연결 인텐트를 **비소비 peek** 한다 (분기 판단용, SAML 핸들러 동형).
+     *
+     * 실제 1회용 소비/만료 검사는 [SsoLinkingCallbackProcessor] 가 [SsoLinkingIntentStore.consume] 으로
+     * 단일 지점에서 수행한다. 세션이 없거나 속성이 없으면 일반 로그인 경로(null 반환).
+     */
+    private fun linkingIntentOrNull(request: HttpServletRequest): SsoLinkingIntent? =
+        request.getSession(false)?.getAttribute(SsoLinkingIntentStore.ATTRIBUTE_KEY) as? SsoLinkingIntent
+
+    /**
+     * 연결 모드 처리 (FR3) — **enabled 재해소** 후 [SsoLinkingCallbackProcessor] 로 위임한다 (SAML 동형).
+     *
+     * 일반 로그인의 [OidcProviderConfigReader.findByRegistrationId] 와 달리
+     * [OidcProviderConfigReader.findEnabledByRegistrationId] 로 enabled 를 거른다(EC16).
+     * 비활성/미해소·인텐트 만료(processor false) 모두 발급 없이 mode 별 error 경로로 리다이렉트한다(fail-closed).
+     */
+    private fun handleLinkingMode(
+        request: HttpServletRequest,
+        response: HttpServletResponse,
+        registrationId: String,
+        externalSubject: String,
+    ) {
+        val intent = linkingIntentOrNull(request)
+        val session = request.getSession(false)
+        val config = configRepo.findEnabledByRegistrationId(registrationId)
+        if (intent == null || session == null || config == null) {
+            log.debug("OIDC 연결 모드 거부 — registrationId={}, enabled 미해소", registrationId)
+            response.sendRedirect(errorPath(intent?.mode))
+            return
+        }
+        val handled =
+            callbackProcessor.process(
+                session = session,
+                providerType = ProviderType.OIDC,
+                registrationId = registrationId,
+                providerId = config.authnProviderId,
+                externalSubject = externalSubject,
+                groups = emptyList(),
+                response = response,
+            )
+        if (!handled) {
+            response.sendRedirect(errorPath(intent.mode))
+        }
+    }
+
+    /**
+     * 연결/재인증 거부 시 돌아갈 서버 고정 설정 경로 + mode 별 error status (open-redirect 0, SAML 동형).
+     *
+     * mode 가 null(인텐트 소실)이면 LINK error 로 폴백한다.
+     */
+    private fun errorPath(mode: SsoLinkingIntent.Mode?): String =
+        SETTINGS_PATH +
+            if (mode == SsoLinkingIntent.Mode.REAUTH) REAUTH_FAILED else LINK_ERROR
 
     /**
      * OIDC principal 을 [LdapProvisionAttrs] 로 매핑한다 (공통 프로비저닝 VO 재사용).
@@ -197,5 +271,14 @@ class OidcAuthenticationSuccessHandler(
         const val REFRESH_MAX_AGE = 1_209_600
         const val REFRESH_TTL_DAYS = 14L
         const val TOKEN_BYTES = 32
+
+        /** 연결 모드 거부 시 돌아갈 서버 고정 설정 경로 (open-redirect 0, EC14 — SsoLinkingCallbackProcessor 와 동일). */
+        const val SETTINGS_PATH = "/settings/account-links"
+
+        /** LINK 모드 거부 status 쿼리 (비활성/만료). */
+        const val LINK_ERROR = "?link=error"
+
+        /** REAUTH 모드 거부 status 쿼리 (비활성/만료). */
+        const val REAUTH_FAILED = "?reauth=failed"
     }
 }
