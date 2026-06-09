@@ -77,10 +77,19 @@ class AccountLinkServiceTest {
         enabled: Boolean = true,
     ): AuthnProviderInfo = AuthnProviderInfo(id = id, name = "Corp ${type.name}", type = type, enabled = enabled)
 
-    private fun storedCredential(): StoredPasswordCredential =
-        mockk<StoredPasswordCredential>(relaxed = true)
+    private fun storedCredential(): StoredPasswordCredential = mockk(relaxed = true)
 
     private fun pw() = "Secret@1234".toCharArray()
+
+    /** 본인 소유의 두 번째(보존용) 링크 — provider 별도로 enabled 판정한다. */
+    private fun keepAccount(subject: String): ExternalAccount =
+        externalAccount(id = UUID.randomUUID(), providerId = UUID.randomUUID(), subject = subject, owner = userId)
+
+    /** 여러 링크의 provider 정보를 enabled 지정과 함께 묶어 findByIds 응답 맵을 만든다. */
+    private fun providerMap(vararg pairs: Pair<ExternalAccount, Boolean>): Map<UUID, AuthnProviderInfo> =
+        pairs.associate { (account, enabled) ->
+            account.providerId to providerInfo(id = account.providerId, enabled = enabled)
+        }
 
     // ── listLinks ──────────────────────────────────────────────────────────
 
@@ -172,10 +181,9 @@ class AccountLinkServiceTest {
     @Test
     fun `unlink — lock 을 먼저 잡고 남은 수단 재조회 후 삭제한다`() {
         val target = externalAccount(id = UUID.randomUUID(), owner = userId)
-        val keep = externalAccount(id = UUID.randomUUID(), providerId = UUID.randomUUID(), subject = "uid=bob", owner = userId)
+        val keep = keepAccount("uid=bob")
         every { externalAccountRepository.findByUserId(userId) } returns listOf(target, keep)
-        every { authnProviderConfigRepository.findByIds(any()) } returns
-            mapOf(target.providerId to providerInfo(id = target.providerId), keep.providerId to providerInfo(id = keep.providerId))
+        every { authnProviderConfigRepository.findByIds(any()) } returns providerMap(target to true, keep to true)
         every { storedPasswordCredentialRepository.findByUserId(userId) } returns null
         every { externalAccountRepository.deleteByIdAndUserId(target.id, userId) } returns 1
 
@@ -189,7 +197,7 @@ class AccountLinkServiceTest {
     fun `unlink — 마지막 남은 수단이면 AccountLinkLastMethodException(삭제 안 함)`() {
         val only = externalAccount(id = UUID.randomUUID(), owner = userId)
         every { externalAccountRepository.findByUserId(userId) } returns listOf(only)
-        every { authnProviderConfigRepository.findByIds(any()) } returns mapOf(only.providerId to providerInfo(id = only.providerId))
+        every { authnProviderConfigRepository.findByIds(any()) } returns providerMap(only to true)
         every { storedPasswordCredentialRepository.findByUserId(userId) } returns null
 
         assertThatThrownBy { sut.unlink(userId, only.id) }
@@ -202,13 +210,10 @@ class AccountLinkServiceTest {
     fun `unlink — 비활성 provider 링크는 남은 수단에서 제외(영구 락 방지)`() {
         // target(enabled) 제거 후 남는 건 비활성 provider 링크뿐 → 로컬비번도 없으면 남은 수단 0.
         val target = externalAccount(id = UUID.randomUUID(), owner = userId)
-        val disabledLink = externalAccount(id = UUID.randomUUID(), providerId = UUID.randomUUID(), subject = "uid=old", owner = userId)
+        val disabledLink = keepAccount("uid=old")
         every { externalAccountRepository.findByUserId(userId) } returns listOf(target, disabledLink)
         every { authnProviderConfigRepository.findByIds(any()) } returns
-            mapOf(
-                target.providerId to providerInfo(id = target.providerId, enabled = true),
-                disabledLink.providerId to providerInfo(id = disabledLink.providerId, enabled = false),
-            )
+            providerMap(target to true, disabledLink to false)
         every { storedPasswordCredentialRepository.findByUserId(userId) } returns null
 
         assertThatThrownBy { sut.unlink(userId, target.id) }
@@ -219,7 +224,7 @@ class AccountLinkServiceTest {
     fun `unlink — 로컬 비밀번호가 남으면 마지막 링크도 삭제 가능`() {
         val only = externalAccount(id = UUID.randomUUID(), owner = userId)
         every { externalAccountRepository.findByUserId(userId) } returns listOf(only)
-        every { authnProviderConfigRepository.findByIds(any()) } returns mapOf(only.providerId to providerInfo(id = only.providerId))
+        every { authnProviderConfigRepository.findByIds(any()) } returns providerMap(only to true)
         every { storedPasswordCredentialRepository.findByUserId(userId) } returns storedCredential()
         every { externalAccountRepository.deleteByIdAndUserId(only.id, userId) } returns 1
 
@@ -231,10 +236,9 @@ class AccountLinkServiceTest {
     @Test
     fun `unlink — delete 0행이면 AccountLinkNotFoundException(타인 소유 또는 미존재)`() {
         val target = externalAccount(id = UUID.randomUUID(), owner = userId)
-        val keep = externalAccount(id = UUID.randomUUID(), providerId = UUID.randomUUID(), subject = "uid=bob", owner = userId)
+        val keep = keepAccount("uid=bob")
         every { externalAccountRepository.findByUserId(userId) } returns listOf(target, keep)
-        every { authnProviderConfigRepository.findByIds(any()) } returns
-            mapOf(target.providerId to providerInfo(id = target.providerId), keep.providerId to providerInfo(id = keep.providerId))
+        every { authnProviderConfigRepository.findByIds(any()) } returns providerMap(target to true, keep to true)
         every { storedPasswordCredentialRepository.findByUserId(userId) } returns null
         every { externalAccountRepository.deleteByIdAndUserId(target.id, userId) } returns 0
 
