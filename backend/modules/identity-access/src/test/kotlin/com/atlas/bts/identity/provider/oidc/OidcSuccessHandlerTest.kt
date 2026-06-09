@@ -50,6 +50,7 @@ class OidcSuccessHandlerTest {
     private lateinit var refreshTokenRepository: RefreshTokenRepository
     private lateinit var jwtIssuer: JwtIssuer
     private lateinit var callbackProcessor: SsoLinkingCallbackProcessor
+    private lateinit var intentStore: SsoLinkingIntentStore
     private lateinit var handler: OidcAuthenticationSuccessHandler
 
     private val fixedNow = Instant.parse("2026-06-01T10:00:00Z")
@@ -114,6 +115,8 @@ class OidcSuccessHandlerTest {
         refreshTokenRepository = mockk(relaxed = true)
         jwtIssuer = mockk()
         callbackProcessor = mockk()
+        // 실 store — C3 비활성 경로의 명시 consume(intent 제거)을 실증한다(고정 Clock).
+        intentStore = SsoLinkingIntentStore(clock)
 
         every { configRepo.findByRegistrationId(registrationId) } returns oidcConfig
         // 연결 모드 enabled 재해소(B1/EC16) — 기본은 활성. 비활성 테스트가 개별로 override 한다.
@@ -132,6 +135,7 @@ class OidcSuccessHandlerTest {
                 refreshTokenRepository = refreshTokenRepository,
                 jwtIssuer = jwtIssuer,
                 callbackProcessor = callbackProcessor,
+                intentStore = intentStore,
                 clock = clock,
             )
     }

@@ -81,6 +81,7 @@ class OidcAuthenticationSuccessHandler(
     private val refreshTokenRepository: RefreshTokenRepository,
     private val jwtIssuer: JwtIssuer,
     private val callbackProcessor: SsoLinkingCallbackProcessor,
+    private val intentStore: SsoLinkingIntentStore,
     private val clock: Clock = Clock.systemUTC(),
 ) : AuthenticationSuccessHandler {
     private val log = LoggerFactory.getLogger(OidcAuthenticationSuccessHandler::class.java)
@@ -142,6 +143,10 @@ class OidcAuthenticationSuccessHandler(
      * 일반 로그인의 [OidcProviderConfigReader.findByRegistrationId] 와 달리
      * [OidcProviderConfigReader.findEnabledByRegistrationId] 로 enabled 를 거른다(EC16).
      * 비활성/미해소·인텐트 만료(processor false) 모두 발급 없이 mode 별 error 경로로 리다이렉트한다(fail-closed).
+     *
+     * **intent 1회용 소비 대칭 (C3, SAML 동형)**: 활성 경로는 [SsoLinkingCallbackProcessor.process] 가
+     * [SsoLinkingIntentStore.consume] 으로 intent 를 제거한다. processor 를 타지 않는 비활성/미해소
+     * 경로(EC16)에서는 여기서 [SsoLinkingIntentStore.consume] 으로 명시 제거해 세션 잔류를 막는다.
      */
     private fun handleLinkingMode(
         request: HttpServletRequest,
@@ -153,6 +158,8 @@ class OidcAuthenticationSuccessHandler(
         val session = request.getSession(false)
         val config = configRepo.findEnabledByRegistrationId(registrationId)
         if (intent == null || session == null || config == null) {
+            // processor 를 안 타는 거부 경로 — intent 를 명시 제거(1회용 대칭, C3).
+            session?.let { intentStore.consume(it) }
             log.debug("OIDC 연결 모드 거부 — registrationId={}, enabled 미해소", registrationId)
             response.sendRedirect(errorPath(intent?.mode))
             return

@@ -50,6 +50,7 @@ class Saml2AuthenticationSuccessHandlerTest {
     private lateinit var refreshTokenRepository: RefreshTokenRepository
     private lateinit var jwtIssuer: JwtIssuer
     private lateinit var callbackProcessor: SsoLinkingCallbackProcessor
+    private lateinit var intentStore: SsoLinkingIntentStore
     private lateinit var handler: Saml2AuthenticationSuccessHandler
 
     private val fixedNow = Instant.parse("2026-06-01T10:00:00Z")
@@ -111,6 +112,8 @@ class Saml2AuthenticationSuccessHandlerTest {
         refreshTokenRepository = mockk(relaxed = true)
         jwtIssuer = mockk()
         callbackProcessor = mockk()
+        // 실 store — C3 비활성 경로의 명시 consume(intent 제거)을 실증한다(고정 Clock).
+        intentStore = SsoLinkingIntentStore(clock)
 
         every { configRepo.findEnabledByRegistrationId(registrationId) } returns idpConfig
         every { autoProvisionService.provision(providerId, any()) } returns provisionedAccount
@@ -127,6 +130,7 @@ class Saml2AuthenticationSuccessHandlerTest {
                 refreshTokenRepository = refreshTokenRepository,
                 jwtIssuer = jwtIssuer,
                 callbackProcessor = callbackProcessor,
+                intentStore = intentStore,
                 clock = clock,
             )
     }

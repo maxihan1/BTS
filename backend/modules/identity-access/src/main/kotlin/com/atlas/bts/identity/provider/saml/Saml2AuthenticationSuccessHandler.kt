@@ -77,6 +77,7 @@ class Saml2AuthenticationSuccessHandler(
     private val refreshTokenRepository: RefreshTokenRepository,
     private val jwtIssuer: JwtIssuer,
     private val callbackProcessor: SsoLinkingCallbackProcessor,
+    private val intentStore: SsoLinkingIntentStore,
     private val clock: Clock = Clock.systemUTC(),
 ) : AuthenticationSuccessHandler {
     private val log = LoggerFactory.getLogger(Saml2AuthenticationSuccessHandler::class.java)
@@ -140,6 +141,11 @@ class Saml2AuthenticationSuccessHandler(
      * - true: processor 가 이미 리다이렉트를 썼다(성공/충돌/실패 모두 리다이렉트로 종결).
      *
      * 어느 경로든 [issueTokens]/[AutoProvisionService.provision] 에 진입하지 않는다(fail-closed).
+     *
+     * **intent 1회용 소비 대칭 (C3)**: 활성 경로는 [SsoLinkingCallbackProcessor.process] 가
+     * [SsoLinkingIntentStore.consume] 으로 intent 를 제거한다. processor 를 타지 않는 비활성/미해소
+     * 경로(EC16)에서는 여기서 [SsoLinkingIntentStore.consume] 으로 명시 제거해 세션 잔류를 막는다
+     * (단명 만료와 무관하게 1회용 계약을 양 경로에서 대칭으로 유지).
      */
     private fun handleLinkingMode(
         request: HttpServletRequest,
@@ -151,6 +157,8 @@ class Saml2AuthenticationSuccessHandler(
         val session = request.getSession(false)
         val config = configRepo.findEnabledByRegistrationId(registrationId)
         if (intent == null || session == null || config == null) {
+            // processor 를 안 타는 거부 경로 — intent 를 명시 제거(1회용 대칭, C3).
+            session?.let { intentStore.consume(it) }
             log.debug("SAML 연결 모드 거부 — registrationId={}, enabled 미해소", registrationId)
             response.sendRedirect(errorPath(intent?.mode))
             return
