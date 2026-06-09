@@ -381,8 +381,9 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
         window.location.assign(ssoEntryUrl(result.type, result.registrationId))
         return
       }
-    } catch {
+    } catch (err) {
       // fetch 에러는 fail-safe: 2단계로 fall-through해 사용자가 폼 로그인 가능하게 한다
+      console.error('[LoginForm] route 조회 실패 — 2단계로 fall-through', err)
     } finally {
       setIsRouting(false)
     }
