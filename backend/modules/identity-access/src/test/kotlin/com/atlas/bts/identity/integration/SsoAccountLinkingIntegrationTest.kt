@@ -204,6 +204,8 @@ class SsoAccountLinkingIntegrationTest {
         assertThat(handled).isTrue()
         assertThat(response.redirectedUrl).isEqualTo("/settings/account-links?link=success")
         assertThat(linkCount(userId)).isEqualTo(1)
+        // 정확히 그 신원이 현재 user 에 attach 됐는지(잘못된 subject 가 붙지 않았는지) 확인.
+        assertThat(linkOwnerOf(SAML_SUBJECT_A)).isEqualTo(userId)
         // EC12 — 발급 경로 미진입: 신규 세션/refresh 행이 생기지 않는다.
         assertThat(rowCount("sessions")).isEqualTo(sessionsBefore)
         assertThat(rowCount("refresh_tokens")).isEqualTo(refreshBefore)
@@ -643,6 +645,13 @@ class SsoAccountLinkingIntegrationTest {
     private fun linkIdBySubject(externalSubject: String): UUID =
         jdbc.queryForObject(
             "SELECT id FROM user_external_accounts WHERE external_subject = :subject",
+            mapOf("subject" to externalSubject),
+            UUID::class.java,
+        ) ?: error("external_subject 행 없음")
+
+    private fun linkOwnerOf(externalSubject: String): UUID =
+        jdbc.queryForObject(
+            "SELECT user_id FROM user_external_accounts WHERE external_subject = :subject",
             mapOf("subject" to externalSubject),
             UUID::class.java,
         ) ?: error("external_subject 행 없음")
