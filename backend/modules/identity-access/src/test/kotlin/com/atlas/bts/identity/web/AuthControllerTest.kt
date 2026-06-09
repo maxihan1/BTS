@@ -2,11 +2,13 @@
 
 package com.atlas.bts.identity.web
 
+import com.atlas.bts.identity.auth.CompositeAuthenticationManager
 import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
 import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
+import com.atlas.bts.identity.provider.ldap.ProviderUnavailableException
 import com.atlas.bts.identity.session.RefreshTokenRepository
 import com.atlas.bts.identity.session.RefreshTokenService
 import com.atlas.bts.identity.session.RefreshTokenService.FailureReason
@@ -14,10 +16,11 @@ import com.atlas.bts.identity.session.RefreshTokenService.RotateResult
 import com.atlas.bts.identity.session.Session
 import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.spi.AuthnResult
-import com.atlas.bts.identity.spi.Credential
+import com.atlas.bts.identity.spi.FailureReason.ACCOUNT_LOCKED
 import com.atlas.bts.identity.spi.FailureReason.INVALID_CREDENTIALS
+import com.atlas.bts.identity.spi.FailureReason.PROVIDER_UNAVAILABLE
+import com.atlas.bts.identity.spi.MfaChallenge
 import com.atlas.bts.identity.spi.Principal
-import com.atlas.bts.identity.spi.ProviderRegistry
 import com.atlas.bts.identity.spi.ProviderType
 import com.atlas.bts.identity.systemrole.SystemRole
 import com.atlas.bts.identity.systemrole.SystemRoleAssignmentRepository
@@ -56,9 +59,12 @@ import java.util.UUID
  * AuthController WebMvcTest 슬라이스 테스트 (FR-AU-09 Task 21).
  *
  * ## 검증 시나리오
- * - login 성공 — 200 + access_token body + Set-Cookie refresh_token HttpOnly Secure SameSite=Strict Max-Age=1209600
- * - login 실패 (비밀번호 불일치) — 401 + {"error": "invalid_credentials"}
- * - login 실패 (provider 없음) — 401 + {"error": "invalid_credentials"}
+ * - login 성공 (provider=local) — 200 + access_token + 디스패처에 "local" 전달 (FR-AU-06 Task 3)
+ * - login 성공 (provider=ldap) — 디스패처에 "ldap" 전달 (FR-AU-06 Task 3)
+ * - login provider 누락/빈 문자열 — 400 + {"error": "provider_required"} (FR-AU-06 Task 3)
+ * - login 디스패처 Failure — 401 + {"error": "invalid_credentials"} (reason 무관, 열거 방지 NFR-06-01)
+ * - login 디스패처 ProviderUnavailableException — 503 (FR-AU-06 Task 3)
+ * - login 디스패처 RequiresMfa — 401 + {"error": "mfa_required"}
  * - logout 성공 — 204 + Cookie refresh_token Max-Age=0 (만료)
  * - logout 미인증 — 401
  * - refresh 성공 — 200 + access_token + 새 Set-Cookie refresh_token rotation
@@ -80,7 +86,8 @@ import java.util.UUID
  * ## 의존성 모킹 전략
  * - SecurityConfig 필수 Bean (SidRevokeJwtConverter, JwtDecoder, CorsConfigurationSource, PersonalAccessTokenService):
  *   @TestConfiguration + MockK — WhoamiControllerTest 패턴과 일관.
- * - AuthController 의존 서비스 (SessionService, RefreshTokenRepository, RefreshTokenService, JwtIssuer, ProviderRegistry):
+ * - AuthController 의존 서비스
+ *   (SessionService, RefreshTokenRepository, RefreshTokenService, JwtIssuer, CompositeAuthenticationManager):
  *   @MockBean (Mockito) — MockK 로 companion object 포함 클래스를 Spring @Bean 등록 시
  *   ByteBuddy 의 $Companion 클래스 로드 실패 (NoClassDefFoundError) 회피.
  */
@@ -128,7 +135,7 @@ class AuthControllerTest {
 
     // AuthController 의존 서비스 — Mockito @MockBean (companion object ByteBuddy 문제 회피)
     @MockBean
-    lateinit var providerRegistry: ProviderRegistry
+    lateinit var authenticationManager: CompositeAuthenticationManager
 
     @MockBean
     lateinit var sessionService: SessionService
@@ -152,15 +159,14 @@ class AuthControllerTest {
             .thenReturn(emptySet<SystemRole>())
     }
 
-    // ── login 성공 ─────────────────────────────────────────────────────────────
+    // ── login 성공 (provider=local) — 디스패처 위임 (FR-AU-06 Task 3) ───────────
 
     @Test
-    fun `login success returns 200 with access_token body and refresh_token cookie`() {
+    fun `login success with provider local returns 200 and dispatches to local`() {
         val userId = UUID.fromString("11111111-1111-1111-1111-111111111111")
         val sessionId = UUID.fromString("22222222-2222-2222-2222-222222222222")
         val accessToken = "eyJhbGciOiJSUzI1NiJ9.test.access"
 
-        val mockProvider = mock(com.atlas.bts.identity.spi.AuthenticationProvider::class.java)
         val principal =
             Principal(
                 userId = userId,
@@ -174,8 +180,13 @@ class AuthControllerTest {
             `when`(it.providerId).thenReturn("local")
         }
 
-        `when`(providerRegistry.findFor(anyCredential())).thenReturn(mockProvider)
-        `when`(mockProvider.authenticate(anyCredential())).thenReturn(AuthnResult.Success(principal))
+        `when`(
+            authenticationManager.authenticate(
+                org.mockito.ArgumentMatchers.eq("local"),
+                org.mockito.ArgumentMatchers.anyString(),
+                anyCharArray(),
+            ),
+        ).thenReturn(AuthnResult.Success(principal))
         `when`(
             sessionService.create(
                 anyUuid(),
@@ -208,16 +219,89 @@ class AuthControllerTest {
             .andExpect(cookie().secure("refresh_token", true))
             .andExpect(cookie().maxAge("refresh_token", 1209600))
             .andExpect(cookie().path("refresh_token", "/api/v1/auth"))
+
+        // 디스패처에 정확히 "local" provider 가 전달됐는지 검증 (FR-AU-06 명시 선택)
+        verify(authenticationManager).authenticate(
+            org.mockito.ArgumentMatchers.eq("local"),
+            org.mockito.ArgumentMatchers.eq("alice"),
+            anyCharArray(),
+        )
     }
 
-    // ── login 실패 (비밀번호 불일치) ────────────────────────────────────────────
+    // ── login provider=ldap — 디스패처에 "ldap" 전달 검증 (FR-AU-06 Task 3) ─────
 
     @Test
-    fun `login returns 401 when password is wrong`() {
-        val mockProvider = mock(com.atlas.bts.identity.spi.AuthenticationProvider::class.java)
+    fun `login with provider ldap dispatches to ldap`() {
+        // ldap 결과는 본 테스트 관심사가 아니므로 Failure 로 단순화(발급 경로 미진입).
+        `when`(
+            authenticationManager.authenticate(
+                org.mockito.ArgumentMatchers.eq("ldap"),
+                org.mockito.ArgumentMatchers.anyString(),
+                anyCharArray(),
+            ),
+        ).thenReturn(AuthnResult.Failure(INVALID_CREDENTIALS))
 
-        `when`(providerRegistry.findFor(anyCredential())).thenReturn(mockProvider)
-        `when`(mockProvider.authenticate(anyCredential())).thenReturn(AuthnResult.Failure(INVALID_CREDENTIALS))
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"provider":"ldap","username":"bob","password":"secret"}"""),
+        )
+            .andExpect(status().isUnauthorized)
+
+        verify(authenticationManager).authenticate(
+            org.mockito.ArgumentMatchers.eq("ldap"),
+            org.mockito.ArgumentMatchers.eq("bob"),
+            anyCharArray(),
+        )
+    }
+
+    // ── login provider 누락/빈 문자열 — 400 provider_required (FR-AU-06 Task 3) ─
+
+    @Test
+    fun `login with blank provider returns 400 provider_required`() {
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"provider":"","username":"alice","password":"secret"}"""),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error").value("provider_required"))
+
+        verify(authenticationManager, never()).authenticate(
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.anyString(),
+            anyCharArray(),
+        )
+    }
+
+    @Test
+    fun `login with missing provider field returns 400 provider_required`() {
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"username":"alice","password":"secret"}"""),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error").value("provider_required"))
+
+        verify(authenticationManager, never()).authenticate(
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.anyString(),
+            anyCharArray(),
+        )
+    }
+
+    // ── login 디스패처 Failure — 401 invalid_credentials (reason 무관) ──────────
+
+    @Test
+    fun `login returns 401 invalid_credentials when dispatcher fails`() {
+        `when`(
+            authenticationManager.authenticate(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                anyCharArray(),
+            ),
+        ).thenReturn(AuthnResult.Failure(INVALID_CREDENTIALS))
 
         mockMvc.perform(
             post("/api/v1/auth/login")
@@ -228,11 +312,19 @@ class AuthControllerTest {
             .andExpect(jsonPath("$.error").value("invalid_credentials"))
     }
 
-    // ── login 실패 (provider 없음) ─────────────────────────────────────────────
-
+    /**
+     * 비활성/미등록 provider(PROVIDER_UNAVAILABLE) 도 401 invalid_credentials 로 응답한다.
+     * reason 으로 분기하면 계정/구성 열거가 가능해지므로 단일 응답코드를 강제한다 (NFR-06-01).
+     */
     @Test
-    fun `login returns 401 when no provider found for credential`() {
-        `when`(providerRegistry.findFor(anyCredential())).thenReturn(null)
+    fun `login returns 401 invalid_credentials when dispatcher fails with provider_unavailable reason`() {
+        `when`(
+            authenticationManager.authenticate(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                anyCharArray(),
+            ),
+        ).thenReturn(AuthnResult.Failure(PROVIDER_UNAVAILABLE))
 
         mockMvc.perform(
             post("/api/v1/auth/login")
@@ -241,6 +333,74 @@ class AuthControllerTest {
         )
             .andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.error").value("invalid_credentials"))
+    }
+
+    /**
+     * 잠긴 계정(ACCOUNT_LOCKED) 역시 reason 노출 없이 401 invalid_credentials 로 통일한다 (NFR-06-01).
+     */
+    @Test
+    fun `login returns 401 invalid_credentials when dispatcher fails with account_locked reason`() {
+        `when`(
+            authenticationManager.authenticate(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                anyCharArray(),
+            ),
+        ).thenReturn(AuthnResult.Failure(ACCOUNT_LOCKED))
+
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"provider":"local","username":"alice","password":"x"}"""),
+        )
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.error").value("invalid_credentials"))
+    }
+
+    // ── login 디스패처 ProviderUnavailableException — 503 (FR-AU-06 Task 3) ─────
+
+    /**
+     * 디스패처가 [ProviderUnavailableException] 을 전파하면 503 으로 응답한다.
+     * catch-all @ExceptionHandler 가 500 으로 변질시키지 않도록 login 내부에서 직접 처리한다.
+     */
+    @Test
+    fun `login returns 503 when dispatcher throws ProviderUnavailableException`() {
+        `when`(
+            authenticationManager.authenticate(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                anyCharArray(),
+            ),
+        ).thenThrow(ProviderUnavailableException("LDAP server down", providerType = "LDAP"))
+
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"provider":"ldap","username":"alice","password":"secret"}"""),
+        )
+            .andExpect(status().isServiceUnavailable)
+            .andExpect(jsonPath("$.error").value("provider_unavailable"))
+    }
+
+    // ── login 디스패처 RequiresMfa — 401 mfa_required ──────────────────────────
+
+    @Test
+    fun `login returns 401 mfa_required when dispatcher requires mfa`() {
+        `when`(
+            authenticationManager.authenticate(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                anyCharArray(),
+            ),
+        ).thenReturn(AuthnResult.RequiresMfa(MfaChallenge.NOT_IMPLEMENTED_YET))
+
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"provider":"local","username":"alice","password":"secret"}"""),
+        )
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.error").value("mfa_required"))
     }
 
     // ── logout 성공 ────────────────────────────────────────────────────────────
@@ -725,13 +885,11 @@ class AuthControllerTest {
     // ── helpers ───────────────────────────────────────────────────────────────
 
     /**
-     * Credential sealed interface 의 Mockito any() 매처.
-     * Kotlin non-null 타입에 Mockito any() 가 null 을 반환하는 것을 방지하기 위해
-     * Elvis 연산자로 더미 기본값을 제공한다.
+     * CharArray 파라미터의 Mockito any() 매처 — Kotlin non-null CharArray 에 null 전달 방지.
+     * 디스패처 authenticate(providerId, username, password: CharArray) 의 password 인자에 사용한다.
      */
-    private fun anyCredential(): Credential =
-        org.mockito.ArgumentMatchers.any(Credential::class.java)
-            ?: Credential.UsernamePassword("", charArrayOf())
+    private fun anyCharArray(): CharArray =
+        org.mockito.ArgumentMatchers.any(CharArray::class.java) ?: charArrayOf()
 
     /**
      * UUID 파라미터의 Mockito any() 매처 — Kotlin non-null UUID 에 null 전달 방지.
