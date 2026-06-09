@@ -269,6 +269,26 @@ class AccountLinkControllerTest {
         verify(reauthService, never()).reauthenticateLocal(anyUuid(), eqUuid(forgedSid), anyCharArray())
     }
 
+    /**
+     * method=LDAP 인데 providerId/username 이 누락되면 400 (C2 — 500→400).
+     * requireNotNull 의 IllegalArgumentException 이 핸들러 없이 500 으로 새지 않도록 명시 검증한다.
+     */
+    @Test
+    fun `POST reauth LDAP without providerId or username returns 400`() {
+        mockMvc.perform(
+            post("/api/v1/auth/account/reauth")
+                .with(csrf())
+                .with(jwtPrincipal())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"method":"LDAP","password":"secret"}"""),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error").value("reauth_fields_required"))
+
+        verify(reauthService, never())
+            .reauthenticateLdap(anyUuid(), anyUuid(), anyUuid(), eqStr("alice"), anyCharArray())
+    }
+
     @Test
     fun `POST reauth with PAT returns 403`() {
         mockMvc.perform(

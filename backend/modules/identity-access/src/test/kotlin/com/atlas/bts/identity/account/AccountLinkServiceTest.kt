@@ -10,6 +10,7 @@ import com.atlas.bts.identity.provider.ldap.ExternalAccount
 import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
 import com.atlas.bts.identity.provider.ldap.LdapProvider
 import com.atlas.bts.identity.provider.ldap.LdapProvisionAttrs
+import com.atlas.bts.identity.provider.ldap.ProviderUnavailableException
 import com.atlas.bts.identity.spi.ProviderType
 import io.mockk.every
 import io.mockk.mockk
@@ -179,6 +180,19 @@ class AccountLinkServiceTest {
 
         assertThat(outcome).isInstanceOf(LinkOutcome.AlreadyLinked::class.java)
         assertThat(outcome.view.id).isEqualTo(existing.id)
+        verify(exactly = 0) { externalAccountRepository.provisionUser(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `link — bindForLinking 이 ProviderUnavailableException 던지면 그대로 전파(401 로 안 바꿈)`() {
+        // C1 — EC3 503 실배선: 서버 장애는 AccountLinkAuthException(401)으로 변질되지 않고
+        // ProviderUnavailableException 그대로 link 밖으로 전파돼 컨트롤러가 503 으로 응답할 수 있어야 한다.
+        every { ldapProvider.bindForLinking(ldapProviderId, "alice", any()) } throws
+            ProviderUnavailableException("LDAP down", providerType = "LDAP")
+
+        assertThatThrownBy { sut.link(userId, ldapProviderId, "alice", pw()) }
+            .isInstanceOf(ProviderUnavailableException::class.java)
+
         verify(exactly = 0) { externalAccountRepository.provisionUser(any(), any(), any(), any()) }
     }
 

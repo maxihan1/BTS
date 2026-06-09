@@ -3,13 +3,18 @@
 package com.atlas.bts.identity.provider.ldap
 
 import com.atlas.bts.identity.config.TestIntegrationSecurityConfig
+import io.mockk.every
+import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import org.springframework.ldap.CommunicationException
+import org.springframework.ldap.core.LdapTemplate
 import org.springframework.test.context.ActiveProfiles
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.util.UUID
@@ -140,4 +145,75 @@ class LdapProviderBindForLinkingTest : LdapTestcontainersBase() {
 
         assertThat(result).isNull()
     }
+
+    /**
+     * L-06 LDAP 서버 통신 불가(Unavailable) → ProviderUnavailableException 시그널 (C1 — EC3 503 실배선).
+     *
+     * 자격증명 오류([BindOutcome.InvalidCredentials])는 그대로 null 을 유지하지만, 서버 장애
+     * ([BindOutcome.Unavailable])는 null 이 아니라 [ProviderUnavailableException] 으로 신호해야
+     * [AccountLinkService.link] 를 통과해 컨트롤러가 503 으로 응답할 수 있다(스펙 EC3).
+     *
+     * 실 LDAP 컨테이너는 "다운" 시뮬레이션이 어려우므로 MockK [LdapTemplate] 으로 [CommunicationException]
+     * 을 유발해 Unavailable 경로만 격리 검증한다([LdapProviderUnitTest] S-06 패턴과 동일).
+     */
+    @Test
+    fun `L-06 LDAP 서버 통신 불가 — ProviderUnavailableException 으로 신호`() {
+        val mockTemplate = mockk<LdapTemplate>()
+        every { mockTemplate.authenticate(any<String>(), any<String>(), any<String>()) } throws
+            CommunicationException(javax.naming.CommunicationException("connection refused"))
+
+        val mockConfigService = mockk<LdapProviderConfigService>()
+        every { mockConfigService.findEnabledLdapConfig() } returns Pair(providerId, unavailableConfig())
+
+        val isolatedProvider =
+            LdapProvider(
+                configService = mockConfigService,
+                externalAccountRepo = mockk(relaxed = true),
+                autoProvisionService = mockk(relaxed = true),
+                ldapTemplate = mockTemplate,
+            )
+
+        assertThatThrownBy {
+            isolatedProvider.bindForLinking(providerId, "alice", "Test1234!".toCharArray())
+        }.isInstanceOf(ProviderUnavailableException::class.java)
+    }
+
+    /**
+     * L-06 보강 — 자격증명 오류는 [ProviderUnavailableException] 이 아니라 그대로 null 을 유지한다.
+     * Unavailable 만 예외로 분기하고 InvalidCredentials 는 401(=null) 경로를 보존함을 격리 검증한다.
+     */
+    @Test
+    fun `L-06b 잘못된 비밀번호는 예외 없이 여전히 null`() {
+        val mockTemplate = mockk<LdapTemplate>()
+        every { mockTemplate.authenticate(any<String>(), any<String>(), any<String>()) } returns false
+
+        val mockConfigService = mockk<LdapProviderConfigService>()
+        every { mockConfigService.findEnabledLdapConfig() } returns Pair(providerId, unavailableConfig())
+
+        val isolatedProvider =
+            LdapProvider(
+                configService = mockConfigService,
+                externalAccountRepo = mockk(relaxed = true),
+                autoProvisionService = mockk(relaxed = true),
+                ldapTemplate = mockTemplate,
+            )
+
+        val result = isolatedProvider.bindForLinking(providerId, "alice", "wrongpassword".toCharArray())
+
+        assertThat(result).isNull()
+    }
+
+    /** MockK 단위 케이스용 LdapConfig — bind password env 는 PATH(어느 환경에나 존재)로 채운다. */
+    private fun unavailableConfig(): LdapConfig =
+        LdapConfig(
+            serverUrl = "ldap://unreachable:389",
+            baseDn = "dc=example,dc=org",
+            bindDn = "cn=admin,dc=example,dc=org",
+            bindPasswordEnv = "PATH",
+            userSearchBase = "ou=people",
+            userSearchFilter = "(uid={0})",
+            groupSearchBase = "ou=groups",
+            groupSearchFilter = "(member={0})",
+            lockoutPolicy = LockoutPolicy(maxAttempts = 3, lockoutMinutes = 1),
+        )
 }

@@ -350,35 +350,13 @@ class ExternalAccountRepositoryTest {
     }
 
     @Test
-    fun `countByUserId — 연결 수 정확`() {
-        assertThat(repo.countByUserId(aliceUserId)).isZero()
-
-        val secondProviderId = insertSecondProvider()
-        repo.provisionUser(
-            providerId = providerId,
-            externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
-            userId = aliceUserId,
-            groups = emptyList(),
-        )
-        assertThat(repo.countByUserId(aliceUserId)).isEqualTo(1)
-
-        repo.provisionUser(
-            providerId = secondProviderId,
-            externalSubject = "uid=alice2,ou=people,dc=bts,dc=local",
-            userId = aliceUserId,
-            groups = emptyList(),
-        )
-        assertThat(repo.countByUserId(aliceUserId)).isEqualTo(2)
-    }
-
-    @Test
     fun `acquireUserLock — 호출 성공 + 같은 userId 두 번 호출 무해`() {
         // 같은 트랜잭션 내 pg_advisory_xact_lock 획득. 예외 없이 성공해야 한다.
         // 재진입(같은 userId 두 번)도 advisory lock 은 무해 — 상세 동시성은 Task 7 통합테스트.
         repo.acquireUserLock(aliceUserId)
         repo.acquireUserLock(aliceUserId)
 
-        // 락 보유 상태에서도 후속 조회/카운트가 정상 동작 (lock 후 재조회 선례 검증)
-        assertThat(repo.countByUserId(aliceUserId)).isZero()
+        // 락 보유 상태에서도 후속 조회가 정상 동작 (lock 후 재조회 선례 검증)
+        assertThat(repo.findByUserId(aliceUserId)).isEmpty()
     }
 }
