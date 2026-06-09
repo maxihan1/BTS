@@ -119,15 +119,17 @@
 
 ### §2.7 FR-AU-07 — 도메인 기반 자동 라우팅
 
-**우선순위**. 높음 | **선행**. §2.6 | **Plan slug**. `identity/domain-routing`
+**우선순위**. 높음 | **선행**. §2.6 | **Plan slug**. `identity/domain-routing` (실제 작업 slug `fr-au-07-provider`)
 
-- [ ] D1. 도메인 (책임. security-engineer)
-- [ ] D2. 명세 — 이메일 도메인 → Provider 매핑 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `domain_provider_routes(domain, provider_id)` (책임. db-engineer)
-- [ ] D4. 백엔드 — 이메일 입력 → Provider 자동 선택 (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 (책임. security-engineer)
-- [ ] D6. 프론트 UI — 이메일 입력 후 Provider 자동 진입 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. security-engineer)
+- [x] D2. 명세 — 이메일 도메인 → Provider 매핑 (책임. security-engineer)
+- [x] D3. 데이터 모델 — `domain_provider_routes(domain, provider_id)` (책임. db-engineer)
+- [x] D4. 백엔드 — 이메일 입력 → Provider 자동 선택 (책임. security-engineer)
+- [x] D5. 백엔드 테스트 (책임. security-engineer)
+- [x] D6. 프론트 UI — 이메일 입력 후 Provider 자동 진입 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
+
+> **FR-AU-07 완료 (2026-06-09, PR #102)**. 이메일 도메인 기반 SSO 자동 라우팅(Home Realm Discovery). **라우팅 대상 SSO 전용(SAML/OIDC)** — LOCAL/LDAP는 authn_providers 시드 부재 + 비밀번호 오전달 위험으로 제외(FR-AU-06이 위임한 "똑똑한 자동 선택"을 안전하게 담당). 신규 테이블 `domain_provider_routes(domain UNIQUE, provider_id → authn_providers ON DELETE CASCADE)` V020(시드 없음, 환경 의존). 조회 `GET /api/v1/auth/route?domain=`(permitAll) — 매칭 판정은 **type 분기 2-step**(라우트→authn_providers.type→enabled SAML/OIDC config 단일조회, cartesian 회피). 매칭/미매칭 둘 다 200(계정 열거 0, 도메인만 판단·자격증명 미취급). fail-safe — 끊긴 라우트·비활성·LOCAL/LDAP 지시는 null→2단계 폼 fallback. 프론트 **identifier-first 2단계**(이메일 먼저→매칭 시 `ssoEntryUrl`로 SSO 자동 리다이렉트(encodeURIComponent), 미매칭 시 기존 폼+이메일 프리필). 도메인 **exact + lowercase 정규화**(Controller), 서브도메인 매칭·라우트 CRUD 관리 UI는 후속 FR. identity-access는 jdbc-only라 init_codegen 미러 불요. ADR `docs/decisions/2026-06-09-domain-based-provider-routing.md`.
 
 ### §2.8 FR-AU-08 — 계정 통합 (Account Linking)
 
