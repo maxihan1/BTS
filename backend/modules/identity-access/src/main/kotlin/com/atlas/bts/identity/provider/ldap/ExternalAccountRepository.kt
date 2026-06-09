@@ -167,6 +167,25 @@ class ExternalAccountRepository(
         jdbc.queryForList(SQL_ACQUIRE_USER_LOCK, mapOf("userId" to userId.toString()))
     }
 
+    // ── FR-AU-08b SSO 연결 (순수 INSERT + subject advisory lock) ──────────────
+
+    /** RED 골격 — 아직 미구현. */
+    @Suppress("LongParameterList")
+    fun insertLink(
+        providerId: UUID,
+        externalSubject: String,
+        userId: UUID,
+        groups: List<String>,
+    ): ExternalAccount = error("insertLink 미구현 (RED)")
+
+    /** RED 골격 — 아직 미구현. */
+    fun acquireSubjectLock(
+        providerId: UUID,
+        externalSubject: String,
+    ) {
+        // 미구현
+    }
+
     // ── SQL 상수 ─────────────────────────────────────────────────────────────
 
     private companion object {

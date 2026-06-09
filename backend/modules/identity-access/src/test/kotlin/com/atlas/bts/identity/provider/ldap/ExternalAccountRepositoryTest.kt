@@ -359,4 +359,79 @@ class ExternalAccountRepositoryTest {
         // 락 보유 상태에서도 후속 조회가 정상 동작 (lock 후 재조회 선례 검증)
         assertThat(repo.findByUserId(aliceUserId)).isEmpty()
     }
+
+    // ── FR-AU-08b SSO 연결 (insertLink 순수 INSERT + subject advisory lock) ──────────
+
+    @Test
+    fun `insertLink — 신규 신원 INSERT 후 row 반환`() {
+        val account =
+            repo.insertLink(
+                providerId = providerId,
+                externalSubject = "oidc|alice-sub-123",
+                userId = aliceUserId,
+                groups = listOf("engineers"),
+            )
+
+        assertThat(account.providerId).isEqualTo(providerId)
+        assertThat(account.externalSubject).isEqualTo("oidc|alice-sub-123")
+        assertThat(account.userId).isEqualTo(aliceUserId)
+        assertThat(account.failedAttempts).isZero()
+        assertThat(account.lockedUntil).isNull()
+
+        // 실제로 영속됐는지 재조회로 확인
+        val found = repo.findByProviderIdAndExternalSubject(providerId, "oidc|alice-sub-123")
+        assertThat(found).isNotNull()
+        assertThat(found!!.userId).isEqualTo(aliceUserId)
+    }
+
+    @Test
+    fun `insertLink — 중복 (provider_id, external_subject) 면 예외 (UPSERT 아님, 타계정 선점 삼킴 차단)`() {
+        val bobUserId = insertSecondUser()
+        // alice 가 먼저 신원 연결
+        repo.insertLink(
+            providerId = providerId,
+            externalSubject = "oidc|shared-sub",
+            userId = aliceUserId,
+            groups = emptyList(),
+        )
+
+        // bob 이 같은 (provider_id, external_subject) 로 INSERT 시도 → UNIQUE 위반 예외.
+        // ON CONFLICT DO UPDATE 였다면 bob 이 alice 의 신원을 조용히 가로챘을 것 — 그걸 차단.
+        var thrown: Exception? = null
+        try {
+            repo.insertLink(
+                providerId = providerId,
+                externalSubject = "oidc|shared-sub",
+                userId = bobUserId,
+                groups = emptyList(),
+            )
+        } catch (e: Exception) {
+            thrown = e
+        }
+
+        assertThat(thrown).isNotNull()
+
+        // alice 의 신원이 보존됨 (bob 으로 user_id 가 바뀌지 않음)
+        val found = repo.findByProviderIdAndExternalSubject(providerId, "oidc|shared-sub")
+        assertThat(found).isNotNull()
+        assertThat(found!!.userId).isEqualTo(aliceUserId)
+    }
+
+    @Test
+    fun `acquireSubjectLock — 같은 tx 내 호출 성공 + 재진입 무해 (스모크)`() {
+        // pg_advisory_xact_lock 획득. 예외 없이 성공해야 한다.
+        // 같은 (providerId, externalSubject) 두 번 호출(재진입)도 advisory lock 은 무해.
+        repo.acquireSubjectLock(providerId, "oidc|alice-sub-123")
+        repo.acquireSubjectLock(providerId, "oidc|alice-sub-123")
+
+        // 락 보유 상태에서도 후속 INSERT 가 같은 tx 내에서 정상 동작 (lock 후 재조회/쓰기 선례)
+        val account =
+            repo.insertLink(
+                providerId = providerId,
+                externalSubject = "oidc|alice-sub-123",
+                userId = aliceUserId,
+                groups = emptyList(),
+            )
+        assertThat(account.userId).isEqualTo(aliceUserId)
+    }
 }
