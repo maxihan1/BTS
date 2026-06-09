@@ -11,6 +11,9 @@ import com.atlas.bts.identity.provider.ldap.LdapTestcontainersBase
 import com.atlas.bts.identity.spi.AuthnResult
 import com.atlas.bts.identity.spi.Credential
 import com.atlas.bts.identity.spi.FailureReason
+import com.atlas.bts.identity.web.AuthController
+import com.atlas.bts.identity.web.LoginRequest
+import com.atlas.bts.identity.web.TokenResponse
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
@@ -18,7 +21,10 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
+import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpStatus
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.test.context.ActiveProfiles
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.util.UUID
@@ -85,6 +91,9 @@ class LdapAuthFlowIntegrationTest : LdapTestcontainersBase() {
 
     @Autowired
     private lateinit var externalAccountRepo: ExternalAccountRepository
+
+    @Autowired
+    private lateinit var authController: AuthController
 
     private lateinit var providerId: UUID
 
@@ -480,6 +489,123 @@ class LdapAuthFlowIntegrationTest : LdapTestcontainersBase() {
                 Int::class.java,
             )
             assertThat(accountCount).isEqualTo(1)
+        }
+    }
+
+    // ── S5: HTTP end-to-end — G1 해소 증명 (provider="ldap" username/password 로그인) ──
+
+    /**
+     * 시나리오 5 (FR-AU-06 Task 4): G1 버그 해소 HTTP end-to-end 증명.
+     *
+     * ## G1 버그 (변경 전)
+     * 변경 전 [AuthController] 는 항상 [Credential.UsernamePassword] 만 만들어
+     * [com.atlas.bts.identity.provider.ldap.LdapProvider] 로 진입할 수 없었다
+     * ([com.atlas.bts.identity.provider.ldap.LdapProvider.supports] 는 [Credential.LdapBind] 만 true).
+     * 따라서 LDAP 계정 사용자는 일반 로그인 폼으로 인증이 불가능했다.
+     *
+     * ## 해소 (Task 2/3 — 이미 머지)
+     * [com.atlas.bts.identity.auth.CompositeAuthenticationManager] 가 `provider="ldap"` 입력 시
+     * [Credential.LdapBind] 를 만들어 [com.atlas.bts.identity.provider.ldap.LdapProvider] 에 위임하고,
+     * [AuthController.login] 이 이 디스패처에 위임하도록 고쳤다.
+     *
+     * ## 검증 방식 — 실제 컨트롤러 빈 직접 호출
+     * 부모 클래스의 `webEnvironment = NONE` 을 유지한 채 [AuthController] 빈을 주입받아
+     * [AuthController.login] 을 [MockHttpServletRequest] 와 함께 직접 호출한다. 이는
+     * AuthController → CompositeAuthenticationManager → (LDAP enabled 판정) → LdapProvider →
+     * **실제 OpenLDAP bind** 전 경로를 그대로 탄다. `/login` 은 SecurityConfig 에서 permitAll 이므로
+     * 필터 체인은 인증 결정에 관여하지 않아 직접 호출이 RANDOM_PORT 호출과 인증 경로상 동등하다.
+     * test-integration 프로필은 `!prod` → [com.atlas.bts.identity.jwt.DevMemoryKeyProvider] 로
+     * JWT 가 실제 발급되므로 토큰 발급까지 end-to-end 로 검증된다.
+     *
+     * ## 통합 검증 task (plan 명시)
+     * prod 변경은 Task 2/3 에서 완성됐고 본 시나리오는 검증 전용이다. 테스트의 유효성(실제로
+     * LDAP 경로를 타는지)은 `provider="local"` 로 바꾼 케이스가 401 로 떨어지는 것으로 확인한다
+     * (LDAP alice 는 local_credentials 에 없으므로 LOCAL 경로로는 인증 불가).
+     *
+     * 시드 사용자: `alice` / `Test1234!` (infra/ldap/seed.ldif).
+     */
+    @Nested
+    inner class S5HttpLoginFlowTest {
+
+        @Test
+        fun `G1 해소 - provider ldap username password 로그인이 200 과 accessToken 을 반환한다`() {
+            val response =
+                authController.login(
+                    MockHttpServletRequest("POST", "/api/v1/auth/login"),
+                    LoginRequest(provider = "ldap", username = "alice", password = "Test1234!"),
+                )
+
+            assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
+
+            val body = response.body
+            assertThat(body).isInstanceOf(TokenResponse::class.java)
+            assertThat((body as TokenResponse).accessToken).isNotBlank()
+        }
+
+        @Test
+        fun `G1 해소 - 로그인 성공 응답에 refresh_token Set-Cookie 가 포함된다`() {
+            val response =
+                authController.login(
+                    MockHttpServletRequest("POST", "/api/v1/auth/login"),
+                    LoginRequest(provider = "ldap", username = "alice", password = "Test1234!"),
+                )
+
+            assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
+
+            val setCookie = response.headers.getFirst(HttpHeaders.SET_COOKIE)
+            assertThat(setCookie).contains("refresh_token=")
+            assertThat(setCookie).containsIgnoringCase("HttpOnly")
+            assertThat(setCookie).containsIgnoringCase("Secure")
+            assertThat(setCookie).containsIgnoringCase("SameSite=Strict")
+            assertThat(setCookie).containsIgnoringCase("Path=/api/v1/auth")
+        }
+
+        @Test
+        fun `G1 해소 - JIT 프로비저닝으로 users 와 user_external_accounts 가 생성된다`() {
+            authController.login(
+                MockHttpServletRequest("POST", "/api/v1/auth/login"),
+                LoginRequest(provider = "ldap", username = "alice", password = "Test1234!"),
+            )
+
+            val userCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM users WHERE username LIKE '%alice%'",
+                emptyMap<String, Any>(),
+                Int::class.java,
+            )
+            assertThat(userCount).isEqualTo(1)
+
+            val accountCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM user_external_accounts WHERE provider_id = :pid",
+                mapOf("pid" to providerId),
+                Int::class.java,
+            )
+            assertThat(accountCount).isEqualTo(1)
+        }
+
+        @Test
+        fun `provider 누락 시 400 provider_required 를 반환한다`() {
+            val response =
+                authController.login(
+                    MockHttpServletRequest("POST", "/api/v1/auth/login"),
+                    LoginRequest(provider = null, username = "alice", password = "Test1234!"),
+                )
+
+            assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+            assertThat(response.body).isEqualTo(mapOf("error" to "provider_required"))
+        }
+
+        @Test
+        fun `유효성 확인 - provider local 로는 LDAP alice 가 401 로 거부된다`() {
+            // 이 케이스가 401 이어야 위 200 케이스가 실제 LDAP 경로(LdapBind)를 탔음이 증명된다.
+            // alice 는 local_credentials 에 없으므로 LOCAL provider 로는 인증 불가.
+            val response =
+                authController.login(
+                    MockHttpServletRequest("POST", "/api/v1/auth/login"),
+                    LoginRequest(provider = "local", username = "alice", password = "Test1234!"),
+                )
+
+            assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
+            assertThat(response.body).isEqualTo(mapOf("error" to "invalid_credentials"))
         }
     }
 }
