@@ -1,7 +1,9 @@
-// UI 로그인 폼에 사용 가능한 인증 공급자 목록을 반환하는 엔드포인트 (FR-AU-09-22)
+// UI 로그인 폼에 사용 가능한 username/password 계열 인증 공급자 목록을 반환하는 엔드포인트 (FR-AU-06)
 
 package com.atlas.bts.identity.web
 
+import com.atlas.bts.identity.provider.AuthnProviderConfigRepository
+import com.atlas.bts.identity.spi.AuthenticationProvider
 import com.atlas.bts.identity.spi.ProviderRegistry
 import com.atlas.bts.identity.spi.ProviderType
 import org.springframework.transaction.annotation.Transactional
@@ -9,13 +11,19 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
 
 /**
- * GET /api/v1/auth/providers — UI 로그인 폼용 공급자 목록 (FR-AU-09-22 / spec §4.7).
+ * GET /api/v1/auth/providers — UI 로그인 폼용 username/password 계열 공급자 목록 (FR-AU-06 / spec FR-06-06).
  *
  * ## 응답 계약
- * - 인증 불필요 (permitAll): SecurityConfig Task 19 에서 `/api/v1/auth/providers` permitAll 선언.
- * - PAT 제외: PAT 는 API 전용 방식으로 UI 로그인 폼에 노출하지 않음.
- * - priority 내림차순: 높은 우선순위 공급자가 목록 앞에 위치 (SDD §19.2).
- * - available 필드: [com.atlas.bts.identity.spi.AuthenticationProvider.available] 현재 가용 여부.
+ * - 인증 불필요 (permitAll): SecurityConfig 에서 `/api/v1/auth/providers` permitAll 선언.
+ * - username/password 계열만: [LOGIN_FORM_TYPES] (LOCAL/LDAP) 만 포함한다.
+ *   SAML/OIDC 는 별도 SSO 진입점(`/saml/idps`·`/oidc/providers`)이 담당하고, PAT/OAUTH 는
+ *   UI 로그인 폼에 노출하지 않으므로 제외한다. (CONCERN C4 — 더미 Credential 의 supports() 호출 대신
+ *   type 비교로 필터해 명확·안전하게 처리.)
+ * - DB enabled 오버레이: [AuthnProviderConfigRepository.isEnabled] 가 false 인 type 은 제외한다.
+ *   row 가 없으면 true 라 LOCAL/LDAP 은 기본 노출된다.
+ * - 정렬 정책: [sortKey] 참조. sort_order 오름차순 → 동률 시 priority 내림차순.
+ * - available 필드: [AuthenticationProvider.available] 현재 가용 여부.
+ * - "auto" 항목 없음: 사용자가 명시적으로 공급자를 선택한다.
  *
  * ## 보안 (DEVELOPMENT.md §1.4)
  * 이 엔드포인트는 permitAll 이므로 @PreAuthorize 를 적용하지 않는다.
@@ -27,27 +35,61 @@ import org.springframework.web.bind.annotation.RestController
 @Transactional(readOnly = true)
 class ProvidersController(
     private val providerRegistry: ProviderRegistry,
+    private val authnProviderConfigRepository: AuthnProviderConfigRepository,
 ) {
     /**
-     * 활성 공급자 목록 반환.
+     * UI 로그인 폼용 공급자 목록 반환.
      *
-     * PAT 를 제외한 모든 등록 공급자를 priority 내림차순으로 반환한다.
+     * username/password 계열(LOCAL/LDAP) 중 DB 에서 enabled=true 인 것만,
+     * sort_order 오름차순(동률 시 priority 내림차순)으로 반환한다.
      */
     @GetMapping("/api/v1/auth/providers")
     fun listProviders(): ProvidersResponse {
-        val providers = providerRegistry.all()
-            .filter { it.type != ProviderType.PAT }
-            .sortedByDescending { it.priority }
-            .map { provider ->
-                ProviderEntry(
-                    id = provider.type.name.lowercase(),
-                    type = provider.type.name,
-                    displayName = provider.type.name.lowercase().replaceFirstChar { it.uppercase() },
-                    priority = provider.priority,
-                    available = provider.available,
-                )
-            }
+        val enabled =
+            providerRegistry.all()
+                .filter { it.type in LOGIN_FORM_TYPES }
+                .filter { authnProviderConfigRepository.isEnabled(it.type) }
+        val sortOrders =
+            authnProviderConfigRepository
+                .listEnabledByTypes(enabled.map { it.type })
+                .toMap()
+        val providers =
+            enabled
+                .sortedWith(sortComparator(sortOrders))
+                .map { toEntry(it) }
         return ProvidersResponse(providers)
+    }
+
+    /**
+     * 로그인 폼 정렬 비교자.
+     *
+     * 1순위 sort_order 오름차순 — DB row 가 있는 type 은 그 sort_order, 없는 type 은
+     * [SORT_ORDER_DEFAULT] (큰 상수)로 두어 DB 등록 공급자가 항상 앞선다.
+     * 2순위(동률) priority 내림차순 — 둘 다 기본값이면 LDAP(80)이 LOCAL(70)보다 앞.
+     */
+    private fun sortComparator(sortOrders: Map<ProviderType, Int>): Comparator<AuthenticationProvider> {
+        return compareBy<AuthenticationProvider> { sortOrders[it.type] ?: SORT_ORDER_DEFAULT }
+            .thenByDescending { it.priority }
+    }
+
+    /** [AuthenticationProvider] 를 응답 항목으로 매핑. displayName 은 type capitalize. */
+    private fun toEntry(provider: AuthenticationProvider): ProviderEntry {
+        val typeName = provider.type.name
+        return ProviderEntry(
+            id = typeName.lowercase(),
+            type = typeName,
+            displayName = typeName.lowercase().replaceFirstChar { it.uppercase() },
+            priority = provider.priority,
+            available = provider.available,
+        )
+    }
+
+    private companion object {
+        /** UI 로그인 폼에 노출하는 username/password 계열 type 집합. */
+        val LOGIN_FORM_TYPES = setOf(ProviderType.LOCAL, ProviderType.LDAP)
+
+        /** DB authn_providers row 가 없는 type 의 sort_order 기본값 — DB 등록분보다 항상 뒤로. */
+        const val SORT_ORDER_DEFAULT = Int.MAX_VALUE
     }
 }
 

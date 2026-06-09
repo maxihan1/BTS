@@ -2,11 +2,13 @@
 
 package com.atlas.bts.identity.web
 
+import com.atlas.bts.identity.auth.CompositeAuthenticationManager
 import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
 import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
+import com.atlas.bts.identity.provider.ldap.ProviderUnavailableException
 import com.atlas.bts.identity.session.RefreshTokenRepository
 import com.atlas.bts.identity.session.RefreshTokenService
 import com.atlas.bts.identity.session.RefreshTokenService.FailureReason
@@ -14,20 +16,19 @@ import com.atlas.bts.identity.session.RefreshTokenService.RotateResult
 import com.atlas.bts.identity.session.Session
 import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.spi.AuthnResult
-import com.atlas.bts.identity.spi.Credential
 import com.atlas.bts.identity.spi.FailureReason.INVALID_CREDENTIALS
+import com.atlas.bts.identity.spi.MfaChallenge
 import com.atlas.bts.identity.spi.Principal
-import com.atlas.bts.identity.spi.ProviderRegistry
 import com.atlas.bts.identity.spi.ProviderType
 import com.atlas.bts.identity.systemrole.SystemRole
 import com.atlas.bts.identity.systemrole.SystemRoleAssignmentRepository
 import io.mockk.mockk
 import jakarta.servlet.http.Cookie
 import org.junit.jupiter.api.Test
-import org.mockito.Mockito.`when`
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.`when`
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
@@ -56,9 +57,12 @@ import java.util.UUID
  * AuthController WebMvcTest 슬라이스 테스트 (FR-AU-09 Task 21).
  *
  * ## 검증 시나리오
- * - login 성공 — 200 + access_token body + Set-Cookie refresh_token HttpOnly Secure SameSite=Strict Max-Age=1209600
- * - login 실패 (비밀번호 불일치) — 401 + {"error": "invalid_credentials"}
- * - login 실패 (provider 없음) — 401 + {"error": "invalid_credentials"}
+ * - login 성공 (provider=local) — 200 + access_token + 디스패처에 "local" 전달 (FR-AU-06 Task 3)
+ * - login 성공 (provider=ldap) — 디스패처에 "ldap" 전달 (FR-AU-06 Task 3)
+ * - login provider 누락/빈 문자열 — 400 + {"error": "provider_required"} (FR-AU-06 Task 3)
+ * - login 디스패처 Failure — 401 + {"error": "invalid_credentials"} (reason 무관, 열거 방지 NFR-06-01)
+ * - login 디스패처 ProviderUnavailableException — 503 (FR-AU-06 Task 3)
+ * - login 디스패처 RequiresMfa — 401 + {"error": "mfa_required"}
  * - logout 성공 — 204 + Cookie refresh_token Max-Age=0 (만료)
  * - logout 미인증 — 401
  * - refresh 성공 — 200 + access_token + 새 Set-Cookie refresh_token rotation
@@ -80,7 +84,8 @@ import java.util.UUID
  * ## 의존성 모킹 전략
  * - SecurityConfig 필수 Bean (SidRevokeJwtConverter, JwtDecoder, CorsConfigurationSource, PersonalAccessTokenService):
  *   @TestConfiguration + MockK — WhoamiControllerTest 패턴과 일관.
- * - AuthController 의존 서비스 (SessionService, RefreshTokenRepository, RefreshTokenService, JwtIssuer, ProviderRegistry):
+ * - AuthController 의존 서비스
+ *   (SessionService, RefreshTokenRepository, RefreshTokenService, JwtIssuer, CompositeAuthenticationManager):
  *   @MockBean (Mockito) — MockK 로 companion object 포함 클래스를 Spring @Bean 등록 시
  *   ByteBuddy 의 $Companion 클래스 로드 실패 (NoClassDefFoundError) 회피.
  */
@@ -90,7 +95,6 @@ import java.util.UUID
 )
 @Import(SecurityConfig::class, AuthControllerTest.SecurityBeans::class)
 class AuthControllerTest {
-
     /** raw refresh token — 64자 소문자 hex */
     private val refreshTokenRaw = "ab".repeat(32)
 
@@ -116,8 +120,9 @@ class AuthControllerTest {
         }
 
         @Bean
-        fun corsConfigurationSource(): CorsConfigurationSource =
-            CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        fun corsConfigurationSource(): CorsConfigurationSource {
+            return CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        }
 
         @Bean
         fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)
@@ -128,7 +133,7 @@ class AuthControllerTest {
 
     // AuthController 의존 서비스 — Mockito @MockBean (companion object ByteBuddy 문제 회피)
     @MockBean
-    lateinit var providerRegistry: ProviderRegistry
+    lateinit var authenticationManager: CompositeAuthenticationManager
 
     @MockBean
     lateinit var sessionService: SessionService
@@ -152,15 +157,14 @@ class AuthControllerTest {
             .thenReturn(emptySet<SystemRole>())
     }
 
-    // ── login 성공 ─────────────────────────────────────────────────────────────
+    // ── login 성공 (provider=local) — 디스패처 위임 (FR-AU-06 Task 3) ───────────
 
     @Test
-    fun `login success returns 200 with access_token body and refresh_token cookie`() {
+    fun `login success with provider local returns 200 and dispatches to local`() {
         val userId = UUID.fromString("11111111-1111-1111-1111-111111111111")
         val sessionId = UUID.fromString("22222222-2222-2222-2222-222222222222")
         val accessToken = "eyJhbGciOiJSUzI1NiJ9.test.access"
 
-        val mockProvider = mock(com.atlas.bts.identity.spi.AuthenticationProvider::class.java)
         val principal =
             Principal(
                 userId = userId,
@@ -168,14 +172,20 @@ class AuthControllerTest {
                 displayName = "Alice",
                 externalSubject = null,
             )
-        val mockSession = mock(Session::class.java).also {
-            `when`(it.id).thenReturn(sessionId)
-            `when`(it.userId).thenReturn(userId)
-            `when`(it.providerId).thenReturn("local")
-        }
+        val mockSession =
+            mock(Session::class.java).also {
+                `when`(it.id).thenReturn(sessionId)
+                `when`(it.userId).thenReturn(userId)
+                `when`(it.providerId).thenReturn("local")
+            }
 
-        `when`(providerRegistry.findFor(anyCredential())).thenReturn(mockProvider)
-        `when`(mockProvider.authenticate(anyCredential())).thenReturn(AuthnResult.Success(principal))
+        `when`(
+            authenticationManager.authenticate(
+                eqStr("local"),
+                org.mockito.ArgumentMatchers.anyString(),
+                anyCharArray(),
+            ),
+        ).thenReturn(AuthnResult.Success(principal))
         `when`(
             sessionService.create(
                 anyUuid(),
@@ -203,44 +213,150 @@ class AuthControllerTest {
             .andExpect(jsonPath("$.access_token").value(accessToken))
             .andExpect(jsonPath("$.token_type").value("Bearer"))
             .andExpect(jsonPath("$.expires_in").value(900))
+            // 쿠키 속성(HttpOnly/Secure)은 buildRefreshCookie 공유 헬퍼로 보장돼 refresh 테스트가 전수 검증.
             .andExpect(cookie().exists("refresh_token"))
-            .andExpect(cookie().httpOnly("refresh_token", true))
-            .andExpect(cookie().secure("refresh_token", true))
             .andExpect(cookie().maxAge("refresh_token", 1209600))
             .andExpect(cookie().path("refresh_token", "/api/v1/auth"))
+
+        // 디스패처에 정확히 "local" provider + "alice" username 이 전달됐는지 검증 (FR-AU-06 명시 선택)
+        verify(authenticationManager).authenticate(eqStr("local"), eqStr("alice"), anyCharArray())
     }
 
-    // ── login 실패 (비밀번호 불일치) ────────────────────────────────────────────
+    // ── login provider=ldap — 디스패처에 "ldap" 전달 검증 (FR-AU-06 Task 3) ─────
 
     @Test
-    fun `login returns 401 when password is wrong`() {
-        val mockProvider = mock(com.atlas.bts.identity.spi.AuthenticationProvider::class.java)
-
-        `when`(providerRegistry.findFor(anyCredential())).thenReturn(mockProvider)
-        `when`(mockProvider.authenticate(anyCredential())).thenReturn(AuthnResult.Failure(INVALID_CREDENTIALS))
+    fun `login with provider ldap dispatches to ldap`() {
+        // ldap 결과는 본 테스트 관심사가 아니므로 Failure 로 단순화(발급 경로 미진입).
+        `when`(
+            authenticationManager.authenticate(
+                eqStr("ldap"),
+                org.mockito.ArgumentMatchers.anyString(),
+                anyCharArray(),
+            ),
+        ).thenReturn(AuthnResult.Failure(INVALID_CREDENTIALS))
 
         mockMvc.perform(
             post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"provider":"local","username":"alice","password":"wrong"}"""),
+                .content("""{"provider":"ldap","username":"bob","password":"secret"}"""),
         )
             .andExpect(status().isUnauthorized)
-            .andExpect(jsonPath("$.error").value("invalid_credentials"))
+
+        verify(authenticationManager).authenticate(
+            eqStr("ldap"),
+            eqStr("bob"),
+            anyCharArray(),
+        )
     }
 
-    // ── login 실패 (provider 없음) ─────────────────────────────────────────────
+    // ── login provider 누락/빈 문자열 — 400 provider_required (FR-AU-06 Task 3) ─
 
     @Test
-    fun `login returns 401 when no provider found for credential`() {
-        `when`(providerRegistry.findFor(anyCredential())).thenReturn(null)
+    fun `login with blank provider returns 400 provider_required`() {
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"provider":"","username":"alice","password":"secret"}"""),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error").value("provider_required"))
+
+        verify(authenticationManager, never()).authenticate(
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.anyString(),
+            anyCharArray(),
+        )
+    }
+
+    @Test
+    fun `login with missing provider field returns 400 provider_required`() {
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"username":"alice","password":"secret"}"""),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error").value("provider_required"))
+
+        verify(authenticationManager, never()).authenticate(
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.anyString(),
+            anyCharArray(),
+        )
+    }
+
+    // ── login 디스패처 Failure — 401 invalid_credentials (reason 무관) ──────────
+
+    /**
+     * 디스패처가 [AuthnResult.Failure] 를 반환하면 reason 과 무관하게 401 invalid_credentials 로 응답한다.
+     * 비활성/미등록(PROVIDER_UNAVAILABLE)·잠금(ACCOUNT_LOCKED) 까지 단일 응답코드로 통일해
+     * 계정/구성 열거를 차단한다 (NFR-06-01). 모든 [FailureReason] 을 순회 검증한다.
+     */
+    @Test
+    fun `login returns 401 invalid_credentials for every dispatcher failure reason`() {
+        com.atlas.bts.identity.spi.FailureReason.entries.forEach { reason ->
+            `when`(
+                authenticationManager.authenticate(
+                    org.mockito.ArgumentMatchers.anyString(),
+                    org.mockito.ArgumentMatchers.anyString(),
+                    anyCharArray(),
+                ),
+            ).thenReturn(AuthnResult.Failure(reason))
+
+            mockMvc.perform(
+                post("/api/v1/auth/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"provider":"local","username":"alice","password":"wrong"}"""),
+            )
+                .andExpect(status().isUnauthorized)
+                .andExpect(jsonPath("$.error").value("invalid_credentials"))
+        }
+    }
+
+    // ── login 디스패처 ProviderUnavailableException — 503 (FR-AU-06 Task 3) ─────
+
+    /**
+     * 디스패처가 [ProviderUnavailableException] 을 전파하면 503 으로 응답한다.
+     * catch-all @ExceptionHandler 가 500 으로 변질시키지 않도록 login 내부에서 직접 처리한다.
+     */
+    @Test
+    fun `login returns 503 when dispatcher throws ProviderUnavailableException`() {
+        `when`(
+            authenticationManager.authenticate(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                anyCharArray(),
+            ),
+        ).thenThrow(ProviderUnavailableException("LDAP server down", providerType = "LDAP"))
 
         mockMvc.perform(
             post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"provider":"local","username":"nobody","password":"x"}"""),
+                .content("""{"provider":"ldap","username":"alice","password":"secret"}"""),
+        )
+            .andExpect(status().isServiceUnavailable)
+            .andExpect(jsonPath("$.error").value("provider_unavailable"))
+    }
+
+    // ── login 디스패처 RequiresMfa — 401 mfa_required ──────────────────────────
+
+    @Test
+    fun `login returns 401 mfa_required when dispatcher requires mfa`() {
+        `when`(
+            authenticationManager.authenticate(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                anyCharArray(),
+            ),
+        ).thenReturn(AuthnResult.RequiresMfa(MfaChallenge.NOT_IMPLEMENTED_YET))
+
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"provider":"local","username":"alice","password":"secret"}"""),
         )
             .andExpect(status().isUnauthorized)
-            .andExpect(jsonPath("$.error").value("invalid_credentials"))
+            .andExpect(jsonPath("$.error").value("mfa_required"))
     }
 
     // ── logout 성공 ────────────────────────────────────────────────────────────
@@ -360,32 +476,34 @@ class AuthControllerTest {
         val now = Instant.parse("2026-05-29T10:00:00Z")
         val created = Instant.parse("2026-05-20T09:00:00Z")
 
-        val currentSession = Session(
-            id = currentSid,
-            userId = userId,
-            providerId = "local",
-            deviceFingerprint = "fp-secret-12",
-            ipAddress = "10.0.0.1",
-            userAgent = "Mozilla/5.0",
-            createdAt = created,
-            expiresAt = now.plusSeconds(86400),
-            lastSeenAt = now,
-            revokedAt = null,
-            revokeReason = null,
-        )
-        val otherSession = Session(
-            id = otherSid,
-            userId = userId,
-            providerId = "ldap",
-            deviceFingerprint = null,
-            ipAddress = null,
-            userAgent = null,
-            createdAt = created,
-            expiresAt = now.plusSeconds(86400),
-            lastSeenAt = now.minusSeconds(3600),
-            revokedAt = null,
-            revokeReason = null,
-        )
+        val currentSession =
+            Session(
+                id = currentSid,
+                userId = userId,
+                providerId = "local",
+                deviceFingerprint = "fp-secret-12",
+                ipAddress = "10.0.0.1",
+                userAgent = "Mozilla/5.0",
+                createdAt = created,
+                expiresAt = now.plusSeconds(86400),
+                lastSeenAt = now,
+                revokedAt = null,
+                revokeReason = null,
+            )
+        val otherSession =
+            Session(
+                id = otherSid,
+                userId = userId,
+                providerId = "ldap",
+                deviceFingerprint = null,
+                ipAddress = null,
+                userAgent = null,
+                createdAt = created,
+                expiresAt = now.plusSeconds(86400),
+                lastSeenAt = now.minusSeconds(3600),
+                revokedAt = null,
+                revokeReason = null,
+            )
 
         `when`(sessionService.findActiveByUser(userId)).thenReturn(listOf(currentSession, otherSession))
 
@@ -421,19 +539,20 @@ class AuthControllerTest {
         val sid = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
         val now = Instant.parse("2026-05-29T10:00:00Z")
 
-        val session = Session(
-            id = sid,
-            userId = userId,
-            providerId = "local",
-            deviceFingerprint = "should-not-appear",
-            ipAddress = "10.0.0.1",
-            userAgent = "Mozilla/5.0",
-            createdAt = now,
-            expiresAt = now.plusSeconds(86400),
-            lastSeenAt = now,
-            revokedAt = null,
-            revokeReason = null,
-        )
+        val session =
+            Session(
+                id = sid,
+                userId = userId,
+                providerId = "local",
+                deviceFingerprint = "should-not-appear",
+                ipAddress = "10.0.0.1",
+                userAgent = "Mozilla/5.0",
+                createdAt = now,
+                expiresAt = now.plusSeconds(86400),
+                lastSeenAt = now,
+                revokedAt = null,
+                revokeReason = null,
+            )
 
         `when`(sessionService.findActiveByUser(userId)).thenReturn(listOf(session))
 
@@ -490,19 +609,20 @@ class AuthControllerTest {
         val targetSid = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
         val now = Instant.parse("2026-05-29T10:00:00Z")
 
-        val targetSession = Session(
-            id = targetSid,
-            userId = userId,
-            providerId = "local",
-            deviceFingerprint = null,
-            ipAddress = null,
-            userAgent = null,
-            createdAt = now,
-            expiresAt = now.plusSeconds(86400),
-            lastSeenAt = now,
-            revokedAt = null,
-            revokeReason = null,
-        )
+        val targetSession =
+            Session(
+                id = targetSid,
+                userId = userId,
+                providerId = "local",
+                deviceFingerprint = null,
+                ipAddress = null,
+                userAgent = null,
+                createdAt = now,
+                expiresAt = now.plusSeconds(86400),
+                lastSeenAt = now,
+                revokedAt = null,
+                revokeReason = null,
+            )
         `when`(sessionService.lookup(targetSid)).thenReturn(targetSession)
 
         mockMvc.perform(
@@ -534,19 +654,20 @@ class AuthControllerTest {
         val otherUserSid = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccccc")
         val now = Instant.parse("2026-05-29T10:00:00Z")
 
-        val otherSession = Session(
-            id = otherUserSid,
-            userId = otherUserId,
-            providerId = "local",
-            deviceFingerprint = null,
-            ipAddress = null,
-            userAgent = null,
-            createdAt = now,
-            expiresAt = now.plusSeconds(86400),
-            lastSeenAt = now,
-            revokedAt = null,
-            revokeReason = null,
-        )
+        val otherSession =
+            Session(
+                id = otherUserSid,
+                userId = otherUserId,
+                providerId = "local",
+                deviceFingerprint = null,
+                ipAddress = null,
+                userAgent = null,
+                createdAt = now,
+                expiresAt = now.plusSeconds(86400),
+                lastSeenAt = now,
+                revokedAt = null,
+                revokeReason = null,
+            )
         `when`(sessionService.lookup(otherUserSid)).thenReturn(otherSession)
 
         mockMvc.perform(
@@ -576,19 +697,20 @@ class AuthControllerTest {
         val currentSid = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
         val now = Instant.parse("2026-05-29T10:00:00Z")
 
-        val currentSession = Session(
-            id = currentSid,
-            userId = userId,
-            providerId = "local",
-            deviceFingerprint = null,
-            ipAddress = null,
-            userAgent = null,
-            createdAt = now,
-            expiresAt = now.plusSeconds(86400),
-            lastSeenAt = now,
-            revokedAt = null,
-            revokeReason = null,
-        )
+        val currentSession =
+            Session(
+                id = currentSid,
+                userId = userId,
+                providerId = "local",
+                deviceFingerprint = null,
+                ipAddress = null,
+                userAgent = null,
+                createdAt = now,
+                expiresAt = now.plusSeconds(86400),
+                lastSeenAt = now,
+                revokedAt = null,
+                revokeReason = null,
+            )
         `when`(sessionService.lookup(currentSid)).thenReturn(currentSession)
 
         mockMvc.perform(
@@ -725,17 +847,19 @@ class AuthControllerTest {
     // ── helpers ───────────────────────────────────────────────────────────────
 
     /**
-     * Credential sealed interface 의 Mockito any() 매처.
-     * Kotlin non-null 타입에 Mockito any() 가 null 을 반환하는 것을 방지하기 위해
-     * Elvis 연산자로 더미 기본값을 제공한다.
+     * CharArray 파라미터의 Mockito any() 매처 — Kotlin non-null CharArray 에 null 전달 방지.
+     * 디스패처 authenticate(providerId, username, password: CharArray) 의 password 인자에 사용한다.
      */
-    private fun anyCredential(): Credential =
-        org.mockito.ArgumentMatchers.any(Credential::class.java)
-            ?: Credential.UsernamePassword("", charArrayOf())
+    private fun anyCharArray(): CharArray = org.mockito.ArgumentMatchers.any(CharArray::class.java) ?: charArrayOf()
+
+    /**
+     * String 파라미터의 Mockito eq() 매처 — eq() 가 null 을 반환해
+     * Kotlin non-null String 파라미터에서 NPE 가 나는 것을 Elvis 로 방지한다.
+     */
+    private fun eqStr(value: String): String = org.mockito.ArgumentMatchers.eq(value) ?: value
 
     /**
      * UUID 파라미터의 Mockito any() 매처 — Kotlin non-null UUID 에 null 전달 방지.
      */
-    private fun anyUuid(): UUID =
-        org.mockito.ArgumentMatchers.any(UUID::class.java) ?: UUID.randomUUID()
+    private fun anyUuid(): UUID = org.mockito.ArgumentMatchers.any(UUID::class.java) ?: UUID.randomUUID()
 }

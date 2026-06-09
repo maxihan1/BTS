@@ -27,6 +27,17 @@ beforeEach(() => {
     ...window.location,
     assign: vi.fn(),
   } as unknown as Location)
+  // providers useQuery가 미핸들 MSW 에러로 폼을 깨뜨리지 않도록 기본 핸들러를 등록한다.
+  server.use(
+    http.get('/api/v1/auth/providers', () =>
+      HttpResponse.json({
+        providers: [
+          { id: 'ldap', type: 'LDAP', displayName: 'Ldap', priority: 0, available: true },
+          { id: 'local', type: 'LOCAL', displayName: 'Local', priority: 1, available: true },
+        ],
+      }),
+    ),
+  )
 })
 
 afterEach(() => {

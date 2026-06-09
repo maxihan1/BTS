@@ -18,9 +18,9 @@ describe('LoginRequestSchema', () => {
     expect(result.success).toBe(true)
   })
 
-  it('provider ldap-corp → safeParse success', () => {
+  it('provider ldap → safeParse success', () => {
     const result = LoginRequestSchema.safeParse({
-      provider: 'ldap-corp',
+      provider: 'ldap',
       username: 'alice',
       password: 'secret123',
     })
@@ -35,13 +35,24 @@ describe('LoginRequestSchema', () => {
     expect(result.success).toBe(false)
   })
 
-  it('provider 잘못된 값(oidc) → safeParse fail', () => {
+  it('provider 빈 문자열 → safeParse fail', () => {
     const result = LoginRequestSchema.safeParse({
-      provider: 'oidc',
+      provider: '',
       username: 'alice',
       password: 'secret123',
     })
     expect(result.success).toBe(false)
+  })
+
+  it('provider 임의 id(동적 목록) → safeParse success', () => {
+    // FR-AU-06: provider 목록은 /api/v1/auth/providers 로 동적 조회되므로
+    // 클라이언트 스키마는 non-empty string 만 검증하고, 실제 유효성은 백엔드(401)가 판정한다.
+    const result = LoginRequestSchema.safeParse({
+      provider: 'saml',
+      username: 'alice',
+      password: 'secret123',
+    })
+    expect(result.success).toBe(true)
   })
 
   it('username 빈 문자열 → safeParse fail', () => {

@@ -1,8 +1,10 @@
 // 백엔드 인증 API 요청/응답 Zod 스키마 정의
 import { z } from 'zod'
 
+// provider는 GET /api/v1/auth/providers 응답의 id값 — 동적이므로 enum 대신 string.
+// 구체 값 검증은 백엔드에서 수행한다.
 export const LoginRequestSchema = z.object({
-  provider: z.enum(['local', 'ldap-corp']),
+  provider: z.string().min(1),
   username: z.string().min(1),
   password: z.string().min(1),
 })
