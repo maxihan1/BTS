@@ -39,9 +39,22 @@ classify 결과 (보정 적용).
 - **관련 ADR**. [docs/decisions/2026-06-09-account-linking-policy.md](../decisions/2026-06-09-account-linking-policy.md) (생성됨)
 - **spec 단계 미결**. 재인증 메커니즘(비밀번호 재입력 vs SSO 재수행 vs 세션 freshness 임계), 연결 모드 진입 방식(SSO/LDAP 성공 핸들러에 linking-intent 전달 경로), PAT 취급.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-09-fr-au-08-account-linking.md](../specs/2026-06-09-fr-au-08-account-linking.md)
+
+핵심 요약.
+- **1차 범위(Maxi 확정)**. 연결 목록 + 해제 + LDAP 동기 연결 + 재인증/충돌 규칙. SSO 리다이렉트 연결은 FR-AU-08b.
+- **API**. `GET /api/v1/auth/account/links` · `POST /reauth`(step-up 윈도우) · `POST /links`(LDAP, step-up 필요) · `DELETE /links/{id}`(step-up 필요). 인증 필수, PAT→403.
+- **재인증**. 보유 수단(LOCAL 비번/LDAP bind) 1회 → Caffeine `sid→expiry` 5분 윈도우.
+- **충돌**. 타계정 선점 거부(409, 계정 열거 0) / 동일계정 멱등 / 마지막 수단 해제 거부(409, advisory lock TOCTOU 가드).
+- **마이그레이션 0건**. `user_external_accounts`(V002) 재사용. LdapProvider bind-only 분리 surgical 리팩토링 + 기존 JIT/일반 로그인 무변경.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). 적대적 gap-hunt 5건 발견 → 전부 스펙 반영(기술 갭).
+- 최우선 보안 갭. **마지막 수단 해제 TOCTOU self-lockout 우회** → userId advisory lock 직렬화(N9/EC10).
+- 그 외. CSRF(N8) / LDAP bind brute-force(N10) / groups 저장(EC11) / 감사로그 FR-AU-10 위임.
 
 ## Plan (← /bts-plan 채움)
 
