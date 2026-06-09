@@ -99,11 +99,15 @@ class AccountLinkControllerTest {
         }
 
         @Bean
-        fun corsConfigurationSource(): CorsConfigurationSource =
-            CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        fun corsConfigurationSource(): CorsConfigurationSource = CorsConfig().corsConfigurationSource(listOf(ORIGIN))
 
         @Bean
         fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)
+
+        private companion object {
+            /** CORS 허용 origin — SPA dev 서버. */
+            const val ORIGIN = "http://localhost:5173"
+        }
     }
 
     @Autowired

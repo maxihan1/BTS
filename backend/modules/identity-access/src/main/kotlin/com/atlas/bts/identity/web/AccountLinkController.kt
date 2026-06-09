@@ -8,6 +8,7 @@ import com.atlas.bts.identity.account.AccountLinkLastMethodException
 import com.atlas.bts.identity.account.AccountLinkNotFoundException
 import com.atlas.bts.identity.account.AccountLinkService
 import com.atlas.bts.identity.account.AccountLinkView
+import com.atlas.bts.identity.account.ReauthChallengeFailedException
 import com.atlas.bts.identity.account.ReauthMethod
 import com.atlas.bts.identity.account.ReauthService
 import com.atlas.bts.identity.account.StepUpService
@@ -70,6 +71,9 @@ import java.util.UUID
  */
 @RestController
 @RequestMapping("/api/v1/auth/account")
+// TooManyFunctions 억제 — 4 엔드포인트 + 5 예외 핸들러 + 응집된 private 헬퍼로 단일 책임(계정 연결)에 묶인다.
+// UnusedParameter 억제 — @ExceptionHandler 메서드는 매핑을 위해 예외 타입 파라미터가 필수이나 본문에서 미사용한다.
+@Suppress("TooManyFunctions", "UnusedParameter")
 class AccountLinkController(
     private val accountLinkService: AccountLinkService,
     private val reauthService: ReauthService,
@@ -110,7 +114,10 @@ class AccountLinkController(
      * @param jwt 인증 JWT principal. PAT 인증 시 null → 403.
      * @param body 재인증 요청(method/password/(+LDAP providerId,username)).
      * @return 200 [ReauthResponse] / 401 실패(핸들러) / 403 PAT
+     *
+     * ReturnCount 억제 — PAT/sid 부재 guard early return 이 중첩 if 보다 가독성 우수(DEVELOPMENT.md §2.3).
      */
+    @Suppress("ReturnCount")
     @PostMapping("/reauth")
     fun reauth(
         @AuthenticationPrincipal jwt: Jwt?,
@@ -145,7 +152,10 @@ class AccountLinkController(
      * @param jwt 인증 JWT principal. PAT 인증 시 null → 403.
      * @param body 연결 요청(providerId/username/password).
      * @return 201 신규 / 200 멱등 / 403 PAT|step_up_required / 401|409 핸들러 / 503 provider_unavailable
+     *
+     * ReturnCount 억제 — PAT/step-up guard early return 이 중첩 if 보다 가독성 우수(DEVELOPMENT.md §2.3).
      */
+    @Suppress("ReturnCount")
     @PostMapping("/links")
     fun link(
         @AuthenticationPrincipal jwt: Jwt?,
@@ -155,7 +165,13 @@ class AccountLinkController(
         requireStepUp(claims.currentSid)?.let { return it }
 
         return try {
-            val view = accountLinkService.link(claims.userId, body.providerId, body.username, body.password.toCharArray())
+            val view =
+                accountLinkService.link(
+                    claims.userId,
+                    body.providerId,
+                    body.username,
+                    body.password.toCharArray(),
+                )
             ResponseEntity.status(HttpStatus.CREATED).body(view.toResponse())
         } catch (ex: ProviderUnavailableException) {
             // 503 직접 생성 — catch-all 핸들러가 500 으로 변질시키지 않도록. password/PII 미로깅.
@@ -173,7 +189,10 @@ class AccountLinkController(
      * @param jwt 인증 JWT principal. PAT 인증 시 null → 403.
      * @param id 해제할 연결(user_external_accounts) 식별자.
      * @return 204 / 403 PAT|step_up_required / 409|404 핸들러 / 400 UUID 형식(필터)
+     *
+     * ReturnCount 억제 — PAT/step-up guard early return 이 중첩 if 보다 가독성 우수(DEVELOPMENT.md §2.3).
      */
+    @Suppress("ReturnCount")
     @DeleteMapping("/links/{id}")
     fun unlink(
         @AuthenticationPrincipal jwt: Jwt?,
@@ -194,10 +213,9 @@ class AccountLinkController(
         errorResponse(HttpStatus.UNAUTHORIZED, ERROR_LINK_AUTH_FAILED)
 
     /** 재인증 실패 → 401. 수단·원인 비구분(계정 열거 0). */
-    @ExceptionHandler(com.atlas.bts.identity.account.ReauthChallengeFailedException::class)
-    fun handleReauthFailed(
-        ex: com.atlas.bts.identity.account.ReauthChallengeFailedException,
-    ): ResponseEntity<Map<String, String>> = errorResponse(HttpStatus.UNAUTHORIZED, ERROR_REAUTH_FAILED)
+    @ExceptionHandler(ReauthChallengeFailedException::class)
+    fun handleReauthFailed(ex: ReauthChallengeFailedException): ResponseEntity<Map<String, String>> =
+        errorResponse(HttpStatus.UNAUTHORIZED, ERROR_REAUTH_FAILED)
 
     /** 타계정 선점 → 409. 어느 user 인지 비노출. */
     @ExceptionHandler(AccountLinkConflictException::class)
@@ -211,8 +229,7 @@ class AccountLinkController(
 
     /** 미소유/미존재 연결 → 404(존재 probe 방지). */
     @ExceptionHandler(AccountLinkNotFoundException::class)
-    fun handleNotFound(ex: AccountLinkNotFoundException): ResponseEntity<Void> =
-        ResponseEntity.notFound().build()
+    fun handleNotFound(ex: AccountLinkNotFoundException): ResponseEntity<Void> = ResponseEntity.notFound().build()
 
     // ── private helpers ───────────────────────────────────────────────────────
 
