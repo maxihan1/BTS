@@ -140,4 +140,57 @@ class AuthnProviderConfigRepositoryTest {
 
         assertThat(result).isEmpty()
     }
+
+    // ── findByIds (FR-AU-08 계정 연결 — link 의 provider 정보 표시용) ───────────
+
+    @Test
+    fun `findByIds — 빈 ids 는 빈 맵`() {
+        assertThat(repo.findByIds(emptyList())).isEmpty()
+    }
+
+    @Test
+    fun `findByIds — 주어진 id 의 id name type enabled 를 맵으로 반환`() {
+        val ldapId = insertProviderReturningId(ProviderType.LDAP, enabled = true, sortOrder = 0)
+        val localId = insertProviderReturningId(ProviderType.LOCAL, enabled = false, sortOrder = 1)
+
+        val result = repo.findByIds(listOf(ldapId, localId))
+
+        assertThat(result.keys).containsExactlyInAnyOrder(ldapId, localId)
+        assertThat(result[ldapId]!!.type).isEqualTo(ProviderType.LDAP)
+        assertThat(result[ldapId]!!.enabled).isTrue()
+        assertThat(result[localId]!!.type).isEqualTo(ProviderType.LOCAL)
+        assertThat(result[localId]!!.enabled).isFalse()
+    }
+
+    @Test
+    fun `findByIds — 존재하지 않는 id 는 결과에서 빠진다`() {
+        val ldapId = insertProviderReturningId(ProviderType.LDAP, enabled = true, sortOrder = 0)
+        val missing = UUID.randomUUID()
+
+        val result = repo.findByIds(listOf(ldapId, missing))
+
+        assertThat(result.keys).containsExactly(ldapId)
+    }
+
+    private fun insertProviderReturningId(
+        type: ProviderType,
+        enabled: Boolean,
+        sortOrder: Int,
+    ): UUID {
+        val id = UUID.randomUUID()
+        jdbc.update(
+            """
+            INSERT INTO authn_providers (id, type, name, config, enabled, sort_order)
+            VALUES (:id, :type, :name, '{}'::jsonb, :enabled, :sortOrder)
+            """.trimIndent(),
+            mapOf(
+                "id" to id,
+                "type" to type.name,
+                "name" to "Test ${type.name} $id",
+                "enabled" to enabled,
+                "sortOrder" to sortOrder,
+            ),
+        )
+        return id
+    }
 }

@@ -251,4 +251,112 @@ class ExternalAccountRepositoryTest {
         // UPSERT 동작 — ON CONFLICT (provider_id, external_subject) 로 같은 id 보존
         assertThat(second.id).isEqualTo(first.id)
     }
+
+    // ── FR-AU-08 계정 연결 관리 (조회/삭제/락) ──────────────────────────
+
+    /**
+     * 두 번째 authn_providers 행 INSERT.
+     * user_external_accounts 의 UNIQUE 제약은 (provider_id, external_subject) 이므로
+     * 같은 user 에 여러 external account 를 연결하려면 서로 다른 provider 가 필요하다.
+     */
+    private fun insertSecondProvider(): UUID {
+        val secondProviderId = UUID.randomUUID()
+        jdbc.update(
+            """
+            INSERT INTO authn_providers (id, type, name, config, enabled)
+            VALUES (:id, 'LDAP', 'test-ldap-2', '{"serverUrl":"ldap://test2:389","baseDn":"dc=bts,dc=local",
+                "bindDn":"cn=admin","bindPasswordEnv":"TEST_PASS","userSearchBase":"ou=people",
+                "userSearchFilter":"(uid={0})","groupSearchBase":"ou=groups","groupSearchFilter":"(member={0})",
+                "lockoutPolicy":{"maxAttempts":3,"lockoutMinutes":1,"scope":"PER_USER_PER_PROVIDER"}}'::jsonb, true)
+            """.trimIndent(),
+            mapOf("id" to secondProviderId),
+        )
+        return secondProviderId
+    }
+
+    /** 두 번째 users 행 INSERT — 소유 검증(타인 userId) 테스트용. */
+    private fun insertSecondUser(): UUID {
+        val bobUserId = UUID.randomUUID()
+        jdbc.update(
+            "INSERT INTO users (id, username, email, display_name) VALUES (:id, :u, :e, :d)",
+            mapOf("id" to bobUserId, "u" to "bob@bts.local", "e" to "bob@bts.local", "d" to "Bob"),
+        )
+        return bobUserId
+    }
+
+    @Test
+    fun `findByUserId — 한 user 에 연결된 external account 다건 반환`() {
+        val secondProviderId = insertSecondProvider()
+        repo.provisionUser(
+            providerId = providerId,
+            externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
+            userId = aliceUserId,
+            groups = emptyList(),
+        )
+        repo.provisionUser(
+            providerId = secondProviderId,
+            externalSubject = "uid=alice2,ou=people,dc=bts,dc=local",
+            userId = aliceUserId,
+            groups = emptyList(),
+        )
+
+        val accounts = repo.findByUserId(aliceUserId)
+
+        assertThat(accounts).hasSize(2)
+        assertThat(accounts.map { it.providerId })
+            .containsExactlyInAnyOrder(providerId, secondProviderId)
+        assertThat(accounts.map { it.userId }).containsOnly(aliceUserId)
+    }
+
+    @Test
+    fun `findByUserId — 연결 없으면 빈 리스트`() {
+        val accounts = repo.findByUserId(aliceUserId)
+        assertThat(accounts).isEmpty()
+    }
+
+    @Test
+    fun `deleteByIdAndUserId — 소유자 일치 시 1행 삭제`() {
+        val account =
+            repo.provisionUser(
+                providerId = providerId,
+                externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
+                userId = aliceUserId,
+                groups = emptyList(),
+            )
+
+        val deleted = repo.deleteByIdAndUserId(account.id, aliceUserId)
+
+        assertThat(deleted).isEqualTo(1)
+        assertThat(repo.findByUserId(aliceUserId)).isEmpty()
+    }
+
+    @Test
+    fun `deleteByIdAndUserId — 타인 userId 로는 삭제되지 않음 (소유 검증)`() {
+        val bobUserId = insertSecondUser()
+        val account =
+            repo.provisionUser(
+                providerId = providerId,
+                externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
+                userId = aliceUserId,
+                groups = emptyList(),
+            )
+
+        // bob 이 alice 의 account id 로 삭제 시도 → 0행 (소유 불일치)
+        val deleted = repo.deleteByIdAndUserId(account.id, bobUserId)
+
+        assertThat(deleted).isZero()
+        // alice 의 account 는 그대로 보존
+        assertThat(repo.findByUserId(aliceUserId)).hasSize(1)
+    }
+
+    @Test
+    fun `acquireUserLock — 호출 성공 + 같은 userId 두 번 호출 무해`() {
+        // 같은 트랜잭션 내 pg_advisory_xact_lock 획득. 예외 없이 성공해야 한다.
+        // 재진입(같은 userId 두 번)도 advisory lock 은 무해 — 상세 동시성은 Task 7 통합테스트.
+        repo.acquireUserLock(aliceUserId)
+        repo.acquireUserLock(aliceUserId)
+
+        // 락 보유 상태에서도 후속 조회가 정상 동작 (lock 후 재조회 선례 검증)
+        assertThat(repo.findByUserId(aliceUserId)).isEmpty()
+    }
 }
