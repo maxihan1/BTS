@@ -73,6 +73,180 @@ LDAP 연결은 1요청 동기(bindForLinking로 즉시 소유 증명). SSO는 Id
 
 ✅ 통과 (1 iteration, 적대적 보안 갭 분석). B1(OIDC enabled 콜백 비대칭)·B2(SAML ACS 쿠키 왕복+session-fixation)·C2(동시 콜백 race)·C3(REAUTH registrationId 일치)·C5(fail-closed) 등 코드 근거 갭 전부 스펙 반영.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 전 task agent: `security-engineer`. 모듈: identity-access(단일 BC, jdbc-only). 마이그레이션 0.
+> 경로 약어: `M = backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity`, `T = backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity`.
+
+### Task 1. SsoLinkingIntent 모델 + SsoLinkingIntentStore (HttpSession)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`M/account/SsoLinkingIntent.kt`, `M/account/SsoLinkingIntentStore.kt`, `T/account/SsoLinkingIntentStoreTest.kt`]
+- depends-on: []
+
+**RED**: `T/account/SsoLinkingIntentStoreTest.kt` — `put` 후 같은 MockHttpSession에서 `consume`이 동일 intent 반환 + 두 번째 consume은 null(1회용) + 만료(expiresAt 과거)면 consume null. LINK/REAUTH 모드 구분 보존.
+
+**GREEN**: `SsoLinkingIntent`(sealed 또는 data class — `mode(LINK/REAUTH)`, `userId: UUID`, `sid: UUID?`, `registrationId: String`, `providerType: ProviderType`, `expiresAt: Instant`). `SsoLinkingIntentStore`(@Component, `clock` 주입) — `put(session, intent)` = `session.setAttribute(KEY, intent)`, `consume(session)` = get + `removeAttribute` + 만료 검사(null 반환). KEY 상수.
+
+**REFACTOR**: KDoc(보존 메커니즘·1회용·단명 ≤5분). intent는 Serializable(세션 직렬화 대비).
+
+**검증**: `./gradlew :backend:modules:identity-access:test --tests "*SsoLinkingIntentStoreTest"`
+
+### Task 2. ExternalAccountRepository — acquireSubjectLock + insertLink (race-safe 링크)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`M/provider/ldap/ExternalAccountRepository.kt`, `T/provider/ldap/ExternalAccountRepositoryTest.kt`]
+- depends-on: []
+
+**RED**: 기존 `ExternalAccountRepositoryTest`에 추가 — `insertLink(providerId, externalSubject, userId, groups)`가 신규 행 INSERT(RETURNING) + **중복 (provider_id, external_subject)면 예외**(UPSERT 아님 — DO UPDATE로 user_id 삼키기 차단). `acquireSubjectLock(providerId, externalSubject)`가 같은 tx 내 호출 가능(스모크).
+
+**GREEN**: `insertLink` = 순수 `INSERT ... RETURNING`(ON CONFLICT 없음). `acquireSubjectLock` = `pg_advisory_xact_lock(hashtextextended(:key, 0))`, key = `"$providerId:$externalSubject"`(전폭 해시, 절단 금지 — [[advisory-lock-bigint-toctou]]).
+
+**REFACTOR**: 기존 `acquireUserLock` 패턴과 KDoc 일관. SQL 상수 추출.
+
+**검증**: `:backend:modules:identity-access:test --tests "*ExternalAccountRepositoryTest"`
+
+### Task 3. OidcProviderConfigRepository.findEnabledByRegistrationId (B1 — 콜백 enabled 대칭)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`M/provider/oidc/OidcProviderConfigRepository.kt`, `T/provider/oidc/OidcProviderConfigRepositoryTest.kt`]
+- depends-on: []
+
+**RED**: `findEnabledByRegistrationId(registrationId)`가 enabled=true만 반환, 비활성 row는 null(SAML `findEnabledByRegistrationId` 동형). 기존 `findByRegistrationId`(무관)는 무변경.
+
+**GREEN**: SQL `WHERE registration_id = :registrationId AND enabled = TRUE`. 인터페이스 `OidcProviderConfigReader`에 메서드 추가(또는 repo 전용 — 호출처는 핸들러).
+
+**REFACTOR**: SAML/OIDC enabled 조회 KDoc 일관.
+
+**검증**: `:backend:modules:identity-access:test --tests "*OidcProviderConfigRepositoryTest"`
+
+### Task 4. AccountLinkService.linkExternalSubject (lock+check+insert, provision 미호출)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`M/account/AccountLinkService.kt`, `T/account/AccountLinkServiceTest.kt`]
+- depends-on: [2]
+
+**RED**: `linkExternalSubject(userId, providerId, externalSubject, groups): LinkOutcome` — 없음→`Created`(insertLink 호출), 현재 user 소유→`AlreadyLinked`(멱등, insert 안 함), 타 user 소유→`AccountLinkConflictException`. `acquireSubjectLock` 선행 호출 검증(mock verify). **provision/AutoProvisionService 미호출**(verify exactly=0 — 신규 user 생성 금지).
+
+**GREEN**: `acquireSubjectLock` → `findByProviderIdAndExternalSubject` 분기 → none: `insertLink`+Created / same user: AlreadyLinked / other: throw. 기존 `link()`(LDAP)의 충돌 분기 로직 공유 추출.
+
+**REFACTOR**: `link()`와 공통 분기 헬퍼. KDoc(SSO는 bind 없음 — IdP 인증이 성공 핸들러서 선행).
+
+**검증**: `:backend:modules:identity-access:test --tests "*AccountLinkServiceTest"`
+
+### Task 5. ReauthService.reauthenticateSso (subject∈links → grant(sid))
+
+**메타**.
+- agent: `security-engineer`
+- files: [`M/account/ReauthService.kt`, `T/account/ReauthServiceTest.kt`]
+- depends-on: []
+
+**RED**: `reauthenticateSso(userId, sid, providerId, externalSubject)` — `(providerId, externalSubject)`가 userId에 이미 연결(EC9 동형)→`stepUpService.grant(sid)`. 미연결/타 신원→`ReauthChallengeFailedException`(grant 안 함). bind 없음(이미 IdP 인증됨).
+
+**GREEN**: `findByProviderIdAndExternalSubject(providerId, externalSubject)?.userId == userId` 확인 후에만 grant. 기존 `reauthenticateLdap` EC9 패턴 재사용(bind 부분만 제거).
+
+**REFACTOR**: LDAP/SSO reauth 공통 EC9 검증 추출. KDoc.
+
+**검증**: `:backend:modules:identity-access:test --tests "*ReauthServiceTest"`
+
+### Task 6. SsoLinkingCallbackProcessor (모드 분기 + fail-closed + 복귀)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`M/account/SsoLinkingCallbackProcessor.kt`, `T/account/SsoLinkingCallbackProcessorTest.kt`]
+- depends-on: [1, 4, 5]
+
+**RED**: `process(session, providerType, registrationId, providerId, externalSubject, groups, response): Boolean`.
+- intent 없음→false(일반 로그인 위임).
+- LINK: `intent.registrationId == registrationId` 불일치→`?link=error`. linkExternalSubject 결과 Created→`?link=success`/AlreadyLinked→`?link=already_linked`/Conflict→`?link=conflict`. **새 세션/JWT/provision 미발생**(true 반환, 핸들러가 발급 경로 진입 안 함).
+- REAUTH: registrationId 불일치→`?reauth=failed`. reauthenticateSso 성공→`?reauth=success`/실패→`?reauth=failed`.
+- 복귀 대상 = **서버 고정 설정 경로**(예 `/settings/account-links`)+status 쿼리(open-redirect 0). 항상 true(intent 소비됨).
+
+**GREEN**: 위 분기. `sendRedirect(fixedSettingsPath + "?...")`. intent.providerType==providerType도 검증.
+
+**REFACTOR**: status 쿼리 빌더. KDoc(fail-closed 계약 — 호출 핸들러는 true면 즉시 return).
+
+**검증**: `:backend:modules:identity-access:test --tests "*SsoLinkingCallbackProcessorTest"`
+
+### Task 7. SAML/OIDC 성공 핸들러 intent-first 분기 (fail-closed + enabled 해소)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`M/provider/saml/Saml2AuthenticationSuccessHandler.kt`, `M/provider/oidc/OidcAuthenticationSuccessHandler.kt`, `T/provider/saml/Saml2AuthenticationSuccessHandlerTest.kt`, `T/provider/oidc/OidcAuthenticationSuccessHandlerTest.kt`]
+- depends-on: [3, 6]
+
+**RED**: 두 핸들러 단위 테스트 —
+- intent 있음 + 활성 provider → `processor.process` 호출 → **issueTokens/SessionService.create/JwtIssuer/provision 미호출**(verify exactly=0, EC12 fail-closed).
+- intent 있음 + **비활성 provider(콜백 enabled 재해소 실패)** → `?link=error`/`?reauth=failed`(B1/EC16), 발급 0.
+- intent 없음 → 기존 JIT 로그인 무변경(회귀, EC1).
+
+**GREEN**: 핸들러 시작부에서 `intentStore`로 분기 판단. intent 있으면 enabled 해소(SAML `findEnabledByRegistrationId`, OIDC Task 3 신규) → providerId → `processor.process(...)` → return(발급 경로 진입 안 함). intent 없으면 기존 경로. externalSubject/registrationId 추출은 기존 코드 재사용.
+
+**REFACTOR**: 두 핸들러 공통 분기 흐름 KDoc. providerType 명시(SAML/OIDC).
+
+**검증**: `:backend:modules:identity-access:test --tests "*Saml2AuthenticationSuccessHandlerTest" --tests "*OidcAuthenticationSuccessHandlerTest"`
+
+### Task 8. SSO 체인 세션 구성 — session-fixation 명시 + JSESSIONID SameSite (B2/EC17/EC10)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`M/config/SamlSecurityConfig.kt`, `M/config/OidcSecurityConfig.kt`, `backend/modules/identity-access/src/main/resources/application.yml`, `T/config/SsoSessionCookieConfigTest.kt`]
+- depends-on: []
+
+**RED**: (a) SSO 인증 성공 시 session-fixation `changeSessionId`로 intent 세션 속성이 **이관**되는지(속성 보존) 검증. (b) JSESSIONID SameSite 속성이 SAML ACS cross-site POST 왕복을 깨지 않는 값(`None; Secure`)인지 설정 검증.
+
+**GREEN**: 두 SSO 체인에 `.sessionManagement { it.sessionFixation { sf -> sf.changeSessionId() } }` 명시. `application.yml`에 `server.servlet.session.cookie.same-site: none` + `secure: true`(JWT API는 쿠키 인증 아님 + CSRF 토큰식이라 안전, JSESSIONID는 HttpOnly·SSO 왕복 전용). **CSRF 쿠키(SameSite=Strict)는 무변경**(ACS는 CSRF skip 경로).
+
+**REFACTOR**: 보안 근거 KDoc(왜 None인가 — SAML POST cross-site, 토큰식 CSRF로 보완).
+
+**검증**: `:backend:modules:identity-access:test --tests "*SsoSessionCookieConfigTest"` + Task 11 통합테스트 왕복 실증.
+
+### Task 9. SsoAccountLinkController — links/sso/start + reauth/sso/start
+
+**메타**.
+- agent: `security-engineer`
+- files: [`M/web/SsoAccountLinkController.kt`, `T/web/SsoAccountLinkControllerTest.kt`]
+- depends-on: [1, 3]
+
+**RED**(MockMvc):
+- `POST /api/v1/auth/account/links/sso/start` — JWT 없음/PAT→403, step-up 없음→403 `step_up_required`, 유효 step-up+활성 SAML/OIDC registrationId→200 `{authorizeUrl}`(SAML `/saml2/authenticate/{reg}`·OIDC `/oauth2/authorization/{reg}`) + intent 저장 + JSESSIONID Set-Cookie.
+- `POST /api/v1/auth/account/reauth/sso/start` — JWT 필수(step-up 불요), 활성 registrationId→200 `{authorizeUrl}` + ReauthIntent(userId+sid 동일 JWT 출처, FR8).
+- 입력 검증 매트릭스(FR7): providerType×registrationId 불일치→404, LOCAL/LDAP type→400, 미존재/비활성→404, registrationId 형식 위반→400.
+
+**GREEN**: 컨트롤러 — `@AuthenticationPrincipal Jwt`에서 subject+sid 동시 추출(기존 `resolveJwtClaims` 패턴), step-up 게이트(`requireStepUp` 재사용, link만), 검증 매트릭스, `request.getSession(true)`+`intentStore.put`, authorizeUrl 구성(검증 통과 config 값만). 로컬 `@ExceptionHandler`+에러코드(기존 상수 재사용+신규 `provider_not_found`).
+
+**REFACTOR**: 검증 로직 헬퍼. KDoc(2단계 흐름 — XHR start→SPA 네비게이트).
+
+**검증**: `:backend:modules:identity-access:test --tests "*SsoAccountLinkControllerTest"`
+
+### Task 10. 통합테스트(S1~S5/EC) + ADR + product 동기화
+
+**메타**.
+- agent: `security-engineer`
+- files: [`T/integration/SsoAccountLinkingIntegrationTest.kt`, `docs/decisions/2026-06-09-sso-account-linking.md`, `docs/plan/product/identity-access.md`]
+- depends-on: [4, 5, 6, 7, 8, 9]
+
+**RED/GREEN**(prod 프로파일 + RANDOM_PORT, identity-access 통합테스트 부팅 레시피 [[identity-access-prod-randomport-boot-recipe]]):
+- S1 LINK 신규 attach(새 세션/JWT 미발급 확인) · S4 타계정 선점 거부(`?link=conflict`, attach 0) · EC2 멱등.
+- S2/EC9 REAUTH 성공 grant · EC8 타 신원 grant 안 함 · C3 registrationId 불일치 grant 안 함.
+- S3/C4 SSO-only 사용자: SSO 재인증 step-up→새 SSO 연결+기존 링크 해제(enabled 2개중 1해제 204, 마지막 1개 409).
+- EC1 일반 SSO 로그인 회귀 0(intent 없음→JIT 무변경) · EC16 비활성 provider 콜백 거부 · EC18 동시 콜백 직렬화.
+- B2/EC17 start 세션↔SAML ACS POST 왕복서 intent 생존(EC10 session-fixation 이관).
+
+**문서**: ADR `2026-06-09-sso-account-linking`(연결 모드 핸들러·LinkingIntent HttpSession·SSO step-up·B2 쿠키 결정 기록). product §2.8 D4 마커 갱신("SSO(SAML/OIDC) 연결 FR-AU-08b 완료, D6 UI·D7 E2E 후속"). **FR 카운트 무변경**(D6/D7 미완→33/122 유지). verify-master-plan PASS.
+
+**검증**: `:backend:modules:identity-access:test` 전체 + `bash scripts/verify-master-plan.sh`
+
+## Plan 메타
+
+- task 수: 10
+- TDD 강제: yes (각 task RED→GREEN→REFACTOR)
+- 병렬 dispatch: 전 task identity-access 단일 모듈(동일 test 컴파일 단위 → wave 직렬화 요인 [[bts-plan-wave-gradle-module-compile]]). 의존 그래프: T1·T2·T3·T5·T8 무의존(초기 wave) → T4(←2)·T6(←1,4,5)·T9(←1,3) → T7(←3,6) → T10(←4,5,6,7,8,9).
+- 추가 검증: ktlint + detekt(`--rerun-tasks`, false-green 회피 [[backend-detekt-lint-debt-unmasked]]) + 모듈 전체 test + verify-master-plan.
+- 마이그레이션 0. 신규 권한코드 0. cross-BC 0.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
