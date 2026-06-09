@@ -204,4 +204,14 @@ product 문서 §2.6 (docs/plan/product/identity-access.md:106) 기준 D1~D7.
 - 추가 검증: ktlint·detekt(백엔드), typecheck·lint·vitest·playwright(프론트), ArchUnit @Transactional+@Service 가드
 - 신규 ADR 후보: `2026-06-09-multi-provider-explicit-selection.md` — 명시 선택 채택(자동 fallback 폐기) + providers 목록 username/password 계열 한정 + isEnabled 기본 활성 정책. impl 단계 작성.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-09, 독립 eng 집중 — ceo-review 스킵, 메모리 `bts-review-plan-autoplan-overkill`)
+
+- ✅ **BLOCKER 없음**. 마이그레이션 0 · BC 격리(identity-access 단일) · ArchUnit `@Transactional`+`@Service` 가드 충족 · 자동 fallback 폐기로 보안 위험(동명이인·비번 오전달·lockout 2배) 제거.
+- ⚠️ **C1 정렬 의미**. `sort_order ASC` vs 기존 `priority DESC` 반대 방향 + DEFAULT 0 → impl에서 정렬 의미 명확화 + 기본값 처리 테스트 (Task 5).
+- ⚠️ **C2 isEnabled fail-open**. row 없으면 true(의도 — LOCAL/LDAP 코드 Bean 상시 활성). KDoc에 안전 근거 명시 (Task 1). cf. 메모리 `crossbc-resolver-nullable-fail-open`.
+- ⚠️ **C3 ProviderType.valueOf 예외**. unknown provider → try/catch Failure 전환 명시 (Task 2).
+- ⚠️ **C4 providers 필터**. `type ∈ {LOCAL,LDAP}` 기반(더미 Credential supports 호출 회피) (Task 5).
+- ℹ️ **C5 Task 4 RED 약함**. prod 변경은 T2/T3에서 종료, T4는 통합 검증 전용 — 허용된 TDD 변형(plan 명시).
+- ℹ️ 운영자 enabled 제어는 현재 authn_providers 수동 INSERT(관리 UI는 후속 FR) — spec 명시됨.
