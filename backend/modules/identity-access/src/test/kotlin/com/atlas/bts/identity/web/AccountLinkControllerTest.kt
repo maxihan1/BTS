@@ -140,6 +140,8 @@ class AccountLinkControllerTest {
     @Test
     fun `GET links returns 200 with masked externalSubject and hasLocalPassword`() {
         val rawSubject = "uid=alice,ou=people,dc=corp,dc=com"
+        val linkedAt = Instant.parse("2026-01-01T00:00:00Z")
+        val lastLoginAt = Instant.parse("2026-05-20T08:30:00Z")
         `when`(accountLinkService.listLinks(userId)).thenReturn(
             AccountLinks(
                 links =
@@ -151,6 +153,8 @@ class AccountLinkControllerTest {
                             providerType = ProviderType.LDAP,
                             providerEnabled = true,
                             externalSubject = rawSubject,
+                            linkedAt = linkedAt,
+                            lastLoginAt = lastLoginAt,
                         ),
                     ),
                 hasLocalPassword = true,
@@ -169,6 +173,9 @@ class AccountLinkControllerTest {
             .andExpect(jsonPath("$.links[0].externalSubjectMasked").value("uid=al***"))
             // 원본 externalSubject 필드는 응답에 절대 노출되지 않아야 한다
             .andExpect(jsonPath("$.links[0].externalSubject").doesNotExist())
+            // 연결 시각(linkedAt) + 마지막 로그인 시각(lastLoginAt) surface — S1
+            .andExpect(jsonPath("$.links[0].linkedAt").value("2026-01-01T00:00:00Z"))
+            .andExpect(jsonPath("$.links[0].lastLoginAt").value("2026-05-20T08:30:00Z"))
     }
 
     @Test
@@ -289,6 +296,8 @@ class AccountLinkControllerTest {
                     providerType = ProviderType.LDAP,
                     providerEnabled = true,
                     externalSubject = "uid=alice,ou=people,dc=corp,dc=com",
+                    linkedAt = Instant.parse("2026-06-09T10:00:00Z"),
+                    lastLoginAt = null,
                 ),
             )
 
@@ -303,6 +312,9 @@ class AccountLinkControllerTest {
             .andExpect(jsonPath("$.id").value(linkId.toString()))
             .andExpect(jsonPath("$.externalSubjectMasked").value("uid=al***"))
             .andExpect(jsonPath("$.externalSubject").doesNotExist())
+            // 갓 연결한 계정 — linkedAt 노출, lastLoginAt 은 null(직렬화 관례상 null 로 노출)
+            .andExpect(jsonPath("$.linkedAt").value("2026-06-09T10:00:00Z"))
+            .andExpect(jsonPath("$.lastLoginAt").value(org.hamcrest.Matchers.nullValue()))
 
         verify(accountLinkService).link(eqUuid(userId), eqUuid(providerId), eqStr("alice"), anyCharArray())
     }

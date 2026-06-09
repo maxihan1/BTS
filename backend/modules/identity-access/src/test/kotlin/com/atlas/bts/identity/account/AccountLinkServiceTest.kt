@@ -57,6 +57,7 @@ class AccountLinkServiceTest {
         subject: String = dn,
         owner: UUID = userId,
         groups: List<String> = emptyList(),
+        lastLogin: Instant? = null,
     ): ExternalAccount =
         ExternalAccount(
             id = id,
@@ -66,7 +67,7 @@ class AccountLinkServiceTest {
             groups = groups,
             failedAttempts = 0,
             lockedUntil = null,
-            lastLoginAt = null,
+            lastLoginAt = lastLogin,
             createdAt = Instant.parse("2026-01-01T00:00:00Z"),
             updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
         )
@@ -95,7 +96,8 @@ class AccountLinkServiceTest {
 
     @Test
     fun `listLinks — 본인 링크에 provider 정보와 hasLocalPassword 를 결합한다`() {
-        val link = externalAccount()
+        val lastLogin = Instant.parse("2026-05-20T08:30:00Z")
+        val link = externalAccount(lastLogin = lastLogin)
         every { externalAccountRepository.findByUserId(userId) } returns listOf(link)
         every { authnProviderConfigRepository.findByIds(any()) } returns mapOf(ldapProviderId to providerInfo())
         every { storedPasswordCredentialRepository.findByUserId(userId) } returns storedCredential()
@@ -110,6 +112,22 @@ class AccountLinkServiceTest {
         assertThat(view.providerType).isEqualTo(ProviderType.LDAP)
         assertThat(view.providerEnabled).isTrue()
         assertThat(view.providerName).isEqualTo("Corp LDAP")
+        // linkedAt = ExternalAccount.createdAt, lastLoginAt = ExternalAccount.lastLoginAt — 기존 데이터 surface
+        assertThat(view.linkedAt).isEqualTo(Instant.parse("2026-01-01T00:00:00Z"))
+        assertThat(view.lastLoginAt).isEqualTo(lastLogin)
+    }
+
+    @Test
+    fun `listLinks — 한 번도 로그인하지 않은 링크는 lastLoginAt 이 null`() {
+        val link = externalAccount(lastLogin = null)
+        every { externalAccountRepository.findByUserId(userId) } returns listOf(link)
+        every { authnProviderConfigRepository.findByIds(any()) } returns mapOf(ldapProviderId to providerInfo())
+        every { storedPasswordCredentialRepository.findByUserId(userId) } returns null
+
+        val view = sut.listLinks(userId).links.first()
+
+        assertThat(view.linkedAt).isEqualTo(Instant.parse("2026-01-01T00:00:00Z"))
+        assertThat(view.lastLoginAt).isNull()
     }
 
     @Test
