@@ -102,8 +102,9 @@ classify 결과 (보정 적용).
 
 **메타**.
 - agent: `security-engineer`
-- files: [`IA/main/kotlin/com/atlas/bts/identity/account/AccountLinkService.kt`, `IA/test/kotlin/com/atlas/bts/identity/account/AccountLinkServiceTest.kt`]
+- files: [`IA/main/kotlin/com/atlas/bts/identity/account/AccountLinkService.kt`, `IA/test/kotlin/com/atlas/bts/identity/account/AccountLinkServiceTest.kt`, `IA/main/kotlin/com/atlas/bts/identity/provider/AuthnProviderConfigRepository.kt`, `IA/test/kotlin/com/atlas/bts/identity/provider/AuthnProviderConfigRepositoryTest.kt`]
 - depends-on: [2, 3]
+- **scope deviation(impl 중 발견)**. listLinks의 provider 이름/타입 표시 + 마지막 수단 enabled 카운트(C4)에 `providerId→(name,type,enabled)` 조회가 필요한데 `AuthnProviderConfigRepository`에 부재(`isEnabled(type)`/`listEnabledByTypes`만). read 메서드 `findByIds(ids): Map<UUID, AuthnProviderInfo>`(id,name,type,enabled) 추가 + 기존 테스트에 케이스. 정당한 소폭 read 추가.
 
 **RED**. 단위 테스트(mock repo/ldap/local-cred) — `listLinks(userId)` 본인것만 + provider 상태 동반(EC13) + `hasLocalPassword`(StoredPasswordCredentialRepository.findByUserId). `link(userId, providerId, username, password)`: bind **먼저**→그 후 멱등/충돌 판정(EC12), 미연결 DN INSERT(201), **타 user 매핑→ConflictException(409)**, **현재 user 이미 매핑→멱등 no-op(기존 반환)**, bind 실패→AuthException(401). `unlink(userId, id)`: `acquireUserLock`→**남은 수단 카운트 = enabled provider 링크 + LOCAL**(리뷰 C4, 비활성 provider 링크 제외)로 **0이면 LastMethodException(409)**, 타인 링크→NotFound(404), 정상→delete. groups 저장(EC11).
 **GREEN**. `@Service @Transactional`. 충돌/멱등/마지막수단 + advisory lock 직렬화 후 카운트 재조회→delete(TOCTOU 가드 N9). 마지막 수단 카운트는 **enabled provider 링크만** 집계(EC13 영구 락 방지). 도메인 예외 3종(이름 충돌 회피 — `duplicate-exception-name-cross-package-status` 선례).
