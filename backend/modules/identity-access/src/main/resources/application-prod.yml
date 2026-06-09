@@ -1,6 +1,15 @@
 # identity-access prod 프로필 설정 — 환경변수 fail-fast (BLOCKER #6, EC-30)
 # 이 파일은 --spring.profiles.active=prod 시 application.yml 위에 병합된다.
 
+server:
+  servlet:
+    session:
+      cookie:
+        # FR-AU-08b (EC17/C4) — prod 는 https 강제이므로 JSESSIONID 에 Secure 플래그를 켠다.
+        # base application.yml 의 SameSite=None 과 짝을 이룬다(SameSite=None 은 Secure 동반이 표준).
+        # base/dev/test 에는 두지 않는다 — http 부팅 시 secure:true 면 쿠키 미방출로 SSO 왕복이 깨진다.
+        secure: true
+
 bts:
   auth:
     # prod 환경 BTS issuer URI — JWT iss 클레임 + /.well-known/jwks.json endpoint 기반
