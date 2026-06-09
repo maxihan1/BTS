@@ -3,14 +3,19 @@
 // 실제 IdP 왕복은 백엔드 통합테스트(Task 7)에 위임한다.
 // 프론트는 버튼 노출 확인 및 SP-initiated 인증 URL 진입 시도까지만 검증한다.
 //
+// FR-AU-07 재조정: SAML/OIDC 버튼은 2단계 폼 안에 있다.
+// 1단계 미매칭 도메인 이메일 → "계속" → 2단계 폼 진입 후 SAML 버튼 검증.
+//
 // S1 — IdP 버튼 노출 + 클릭 시 SP-initiated 인증 경로로 네비게이션 시도.
-//   Given  /login 진입 (MSW 기본 핸들러가 Okta SSO 1개 반환)
+//   Given  /login 진입 후 1단계 미매칭 이메일 입력 → "계속" → 2단계 폼 진입
+//          (MSW 기본 핸들러가 Okta SSO 1개 반환)
 //   When   "Okta SSO 로 로그인" 버튼 클릭
 //   Then   /saml2/authenticate/okta 로 네비게이션 시도 (page.route 인터셉트로 검증)
 //
 // S5 — IdP 0개이면 SAML 버튼 영역 미노출.
 //   Given  /login 진입 + addInitScript 로 localStorage '__bts_e2e_saml_no_idps' = 'true' 설정
 //          (MSW 핸들러가 빈 idps 배열 반환)
+//          + 1단계 미매칭 이메일 입력 → "계속" → 2단계 폼 진입
 //   When   로그인 폼 로드 완료
 //   Then   SAML 버튼 및 divider("또는") 미노출
 //
@@ -18,10 +23,23 @@
 //   - playwright-getbyrole-exact-strict-mode: 버튼 텍스트 exact:true 로 한정
 //   - e2e-msw-serviceworker-block: serviceWorkers:'block' 금지 (이 파일에 없음)
 //   - e2e-msw-scenario-toggle-localstorage-flag: addInitScript + localStorage 플래그 패턴
+//   - ui-pr-defer-e2e-regression-latent: OIDC 버튼 추가가 SAML/기존 셀렉터 strict mode 안 깨는지 확인
 //   - e2e-fixture-whoami-userid-alignment: 로그인 불필요 (로그인 페이지 자체 검증)
 import { test, expect } from '@playwright/test'
-import { loginStrings } from '../src/i18n/ko'
+import { loginStrings, loginPageStrings } from '../src/i18n/ko'
 import { E2E_SAML_NO_IDPS_KEY } from '../src/mocks/saml-handlers'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 헬퍼 — 1단계 이메일 입력 + "계속" → 2단계 폼 진입 대기
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function proceedToStep2(page: import('@playwright/test').Page) {
+  await expect(page.getByRole('heading', { name: loginPageStrings.heading })).toBeVisible()
+  await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
+  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
+  // 2단계 진입 확인 — 로그인 버튼이 나타날 때까지 대기
+  await expect(page.getByRole('button', { name: loginStrings.submitButton, exact: true })).toBeVisible()
+}
 
 test.describe('SAML SSO 로그인 진입 (FR-AU-03)', () => {
   // ───────────────────────────────────────────────────────────────────────────
@@ -39,9 +57,10 @@ test.describe('SAML SSO 로그인 진입 (FR-AU-03)', () => {
       void route.fulfill({ status: 200, body: '' })
     })
 
-    // Given. 로그인 페이지 진입 — MSW 기본 핸들러가 Okta SSO 1개 반환
+    // Given. 로그인 페이지 진입 후 1단계 → 2단계 진입
+    // MSW 기본 핸들러가 Okta SSO 1개 반환
     await page.goto('/login')
-    await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
+    await proceedToStep2(page)
 
     // Given. SAML 버튼이 나타날 때까지 대기 (useQuery fetch 완료 후 렌더)
     const idpButton = page.getByRole('button', {
@@ -70,9 +89,9 @@ test.describe('SAML SSO 로그인 진입 (FR-AU-03)', () => {
       window.localStorage.setItem(key, 'true')
     }, E2E_SAML_NO_IDPS_KEY)
 
-    // When. 로그인 페이지 진입
+    // When. 로그인 페이지 진입 후 1단계 → 2단계 진입
     await page.goto('/login')
-    await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
+    await proceedToStep2(page)
 
     // Then. 로그인 버튼("로그인")은 존재하고 — 기존 폼 정상 렌더 확인
     await expect(
