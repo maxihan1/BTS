@@ -43,12 +43,12 @@ import org.testcontainers.junit.jupiter.Testcontainers
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = [
-        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration",
+        "spring.autoconfigure.exclude=" +
+            "org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration",
     ],
 )
 @Testcontainers
 class RoutePermitAllIntegrationTest {
-
     companion object {
         /** Testcontainers PostgreSQL 16 — Flyway V001~V020 적용 대상 */
         @Container
@@ -99,10 +99,11 @@ class RoutePermitAllIntegrationTest {
      */
     @Test
     fun `route 경로는 미인증으로 접근해도 401 이 아니다 (FR-AU-07 permitAll)`() {
-        val response = restTemplate.getForEntity(
-            "http://localhost:$port/api/v1/auth/route?domain=partner.com",
-            String::class.java,
-        )
+        val response =
+            restTemplate.getForEntity(
+                "http://localhost:$port/api/v1/auth/route?domain=partner.com",
+                String::class.java,
+            )
 
         assertThat(response.statusCode)
             .withFailMessage(

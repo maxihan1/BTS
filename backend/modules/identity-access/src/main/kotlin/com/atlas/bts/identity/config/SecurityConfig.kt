@@ -177,6 +177,7 @@ class SecurityConfig(
         /** 로그인 전 호출되는 활성 OIDC Provider 목록 엔드포인트 (permitAll, [com.atlas.bts.identity.web.OidcProviderController]). */
         const val OIDC_PROVIDERS_PATH = "/api/v1/auth/oidc/providers"
 
+        /** 로그인 전 호출되는 도메인 기반 SSO 라우트 조회 엔드포인트 (permitAll, [com.atlas.bts.identity.web.DomainRouteController]). */
         const val ROUTE_PATH = "/api/v1/auth/route"
     }
 }
