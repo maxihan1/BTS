@@ -136,6 +136,53 @@ class ReauthServiceTest {
         verify(exactly = 0) { stepUpService.grant(any()) }
     }
 
+    // ── SSO (FR-AU-08b Task 5) ──────────────────────────────────────────────
+
+    @Test
+    fun `SSO 성공 — (providerId, externalSubject) 가 현재 user 에 연결됨(EC9) 이면 grant(sid) 호출`() {
+        val ssoSubject = "okta|alice"
+        every { externalAccountRepository.findByProviderIdAndExternalSubject(ldapProviderId, ssoSubject) } returns
+            externalAccount(owner = userId).copy(externalSubject = ssoSubject)
+
+        sut.reauthenticateSso(userId, sid, ldapProviderId, ssoSubject)
+
+        verify(exactly = 1) { stepUpService.grant(sid) }
+    }
+
+    @Test
+    fun `SSO 실패 — (providerId, externalSubject) 미연결(EC9) 이면 grant 미호출 + ReauthChallengeFailedException`() {
+        val ssoSubject = "okta|alice"
+        every { externalAccountRepository.findByProviderIdAndExternalSubject(ldapProviderId, ssoSubject) } returns null
+
+        assertThatThrownBy { sut.reauthenticateSso(userId, sid, ldapProviderId, ssoSubject) }
+            .isInstanceOf(ReauthChallengeFailedException::class.java)
+
+        verify(exactly = 0) { stepUpService.grant(any()) }
+    }
+
+    @Test
+    fun `SSO 실패 — (providerId, externalSubject) 가 타 user 에 연결(EC8) 이면 grant 미호출 + 예외`() {
+        val ssoSubject = "okta|alice"
+        every { externalAccountRepository.findByProviderIdAndExternalSubject(ldapProviderId, ssoSubject) } returns
+            externalAccount(owner = otherUserId).copy(externalSubject = ssoSubject)
+
+        assertThatThrownBy { sut.reauthenticateSso(userId, sid, ldapProviderId, ssoSubject) }
+            .isInstanceOf(ReauthChallengeFailedException::class.java)
+
+        verify(exactly = 0) { stepUpService.grant(any()) }
+    }
+
+    @Test
+    fun `SSO 경로 — bind(LdapProvider) 를 호출하지 않는다(이미 IdP 인증됨)`() {
+        val ssoSubject = "okta|alice"
+        every { externalAccountRepository.findByProviderIdAndExternalSubject(ldapProviderId, ssoSubject) } returns
+            externalAccount(owner = userId).copy(externalSubject = ssoSubject)
+
+        sut.reauthenticateSso(userId, sid, ldapProviderId, ssoSubject)
+
+        verify(exactly = 0) { ldapProvider.bindForLinking(any(), any(), any()) }
+    }
+
     // ── 평문 wipe ─────────────────────────────────────────────────────────────
 
     @Test
