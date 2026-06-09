@@ -111,24 +111,58 @@ describe('LoginForm', () => {
     await screen.findByText('추가 인증이 필요합니다. 관리자에게 문의하세요.')
   })
 
-  it('provider 드롭다운이 기본값 local이고 ldap-corp 옵션을 포함한다', () => {
+  it('providers API 응답 기반으로 드롭다운 항목이 동적 렌더된다', async () => {
     renderLoginForm()
 
-    // combobox 트리거 — 기본값 "Local" 텍스트 포함 확인
-    const trigger = screen.getByRole('combobox', { name: '로그인 방식' })
-    expect(trigger).toBeInTheDocument()
-    expect(trigger).toHaveTextContent('Local')
+    // providers API 응답 후 드롭다운이 렌더될 때까지 대기
+    // auth-handlers.ts 기본 핸들러: ldap(priority 0), local(priority 1)
+    await waitFor(() => {
+      const nativeSelect = document.querySelector('select[aria-hidden="true"]')
+      const options = Array.from(nativeSelect?.querySelectorAll('option') ?? []).map(
+        (o) => o.textContent,
+      )
+      // 한국어 id→라벨 매핑: local → 'Local', ldap → 'LDAP-corp'
+      expect(options).toContain('LDAP-corp')
+      expect(options).toContain('Local')
+    })
+  })
 
-    // Radix Select는 접근성용 숨겨진 <select> 요소를 DOM에 렌더링한다.
-    // jsdom 환경에서 Portal은 옵션을 role="option"으로 노출하지 않으므로,
-    // 숨겨진 네이티브 select의 option 목록으로 두 옵션을 검증한다.
-    const nativeSelect = document.querySelector('select[aria-hidden="true"]')
-    expect(nativeSelect).toBeInTheDocument()
-    const options = Array.from(nativeSelect?.querySelectorAll('option') ?? []).map(
-      (o) => o.textContent,
+  it('provider 드롭다운 기본 선택값이 providers 응답 첫 항목(ldap)의 id이다', async () => {
+    renderLoginForm()
+
+    // auth-handlers.ts 기본: ldap(priority 0)이 첫 항목
+    await waitFor(() => {
+      const trigger = screen.getByRole('combobox', { name: '로그인 방식' })
+      // 첫 항목 ldap → 매핑 라벨 'LDAP-corp'가 트리거에 표시
+      expect(trigger).toHaveTextContent('LDAP-corp')
+    })
+  })
+
+  it('providers 응답 항목의 value가 provider.id이다', async () => {
+    renderLoginForm()
+
+    await waitFor(() => {
+      const nativeSelect = document.querySelector('select[aria-hidden="true"]')
+      const options = Array.from(nativeSelect?.querySelectorAll('option') ?? [])
+      const values = options.map((o) => (o as HTMLOptionElement).value)
+      // id: 'ldap', 'local' — 하드코딩 'ldap-corp' 없음
+      expect(values).toContain('ldap')
+      expect(values).toContain('local')
+      expect(values).not.toContain('ldap-corp')
+    })
+  })
+
+  it('providers fetch 실패 시 폼이 깨지지 않고 로그인 버튼이 렌더된다', async () => {
+    server.use(
+      http.get('/api/v1/auth/providers', () =>
+        HttpResponse.json({ error: 'server_error' }, { status: 500 }),
+      ),
     )
-    expect(options).toContain('Local')
-    expect(options).toContain('LDAP-corp')
+
+    renderLoginForm()
+
+    // 로그인 버튼이 렌더되어야 한다 (폼 크래시 없음)
+    await screen.findByRole('button', { name: '로그인' })
   })
 
   it('키보드 탐색 — label/aria-invalid/aria-describedby 접근성을 충족한다', async () => {

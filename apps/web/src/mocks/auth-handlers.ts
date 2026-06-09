@@ -44,7 +44,8 @@ const loginHandler = http.post('/api/v1/auth/login', async ({ request }) => {
 
   let validPasswordMap: Readonly<Record<string, string>>
   if (provider === 'local') validPasswordMap = VALID_PASSWORDS
-  else if (provider === 'ldap-corp') validPasswordMap = LDAP_VALID_PASSWORDS
+  // 'ldap' — providers API가 반환하는 현재 id. 'ldap-corp'는 레거시 하드코딩값(하위 호환 유지).
+  else if (provider === 'ldap' || provider === 'ldap-corp') validPasswordMap = LDAP_VALID_PASSWORDS
   else return HttpResponse.json({ error: 'unknown_provider' }, { status: 401 })
 
   const validPassword = validPasswordMap[username]
@@ -105,4 +106,20 @@ const logoutHandler = http.post('/api/v1/auth/logout', () => {
   return new HttpResponse(null, { status: 204 })
 })
 
-export const authHandlers = [loginHandler, whoamiHandler, logoutHandler]
+/**
+ * GET /api/v1/auth/providers — 활성 인증 공급자 목록 반환.
+ *
+ * 기본값. LDAP(priority 0, 먼저 표시) + Local(priority 1).
+ * 응답 schema: backend ProvidersController.ProvidersResponse.
+ * id는 login 요청 provider 필드에 그대로 전달된다.
+ */
+const providersHandler = http.get('/api/v1/auth/providers', () => {
+  return HttpResponse.json({
+    providers: [
+      { id: 'ldap', type: 'LDAP', displayName: 'Ldap', priority: 0, available: true },
+      { id: 'local', type: 'LOCAL', displayName: 'Local', priority: 1, available: true },
+    ],
+  })
+})
+
+export const authHandlers = [loginHandler, whoamiHandler, logoutHandler, providersHandler]
