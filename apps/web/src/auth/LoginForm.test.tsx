@@ -194,6 +194,96 @@ describe('LoginForm', () => {
     await screen.findByRole('button', { name: '로그인' })
   })
 
+  it('providers fetch 실패 시 LOCAL fallback 항목이 드롭다운에 표시되고 로그인 제출이 동작한다', async () => {
+    const user = userEvent.setup()
+
+    server.use(
+      http.get('/api/v1/auth/providers', () =>
+        HttpResponse.json({ error: 'server_error' }, { status: 500 }),
+      ),
+      http.post('/api/v1/auth/login', () =>
+        HttpResponse.json({
+          access_token: 'test-token',
+          token_type: 'Bearer',
+          expires_in: 3600,
+        }),
+      ),
+      http.get('/api/v1/users/me/whoami', () =>
+        HttpResponse.json({
+          username: 'alice',
+          email: 'alice@bts.local',
+          authMethod: 'local',
+          userId: '00000000-0000-4000-8000-000000000001',
+          mustChangePassword: false,
+          isSystemAdmin: false,
+        }),
+      ),
+    )
+
+    const onSuccess = vi.fn()
+    renderLoginForm(onSuccess)
+
+    // fetch 실패 후 드롭다운에 LOCAL fallback 항목이 표시되어야 한다
+    await waitFor(() => {
+      const nativeSelect = document.querySelector('select[aria-hidden="true"]')
+      const options = Array.from(nativeSelect?.querySelectorAll('option') ?? []).map(
+        (o) => o.textContent,
+      )
+      expect(options).toContain('Local')
+    })
+
+    // LOCAL fallback이 기본 선택되어 있어 username/password만 입력하면 제출 가능해야 한다
+    await user.type(screen.getByLabelText('사용자명'), 'alice')
+    await user.type(screen.getByLabelText('비밀번호'), 'password')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
+  })
+
+  it('providers 빈 배열 응답 시 LOCAL fallback 항목이 드롭다운에 표시되고 로그인 제출이 동작한다', async () => {
+    const user = userEvent.setup()
+
+    server.use(
+      http.get('/api/v1/auth/providers', () => HttpResponse.json({ providers: [] })),
+      http.post('/api/v1/auth/login', () =>
+        HttpResponse.json({
+          access_token: 'test-token',
+          token_type: 'Bearer',
+          expires_in: 3600,
+        }),
+      ),
+      http.get('/api/v1/users/me/whoami', () =>
+        HttpResponse.json({
+          username: 'alice',
+          email: 'alice@bts.local',
+          authMethod: 'local',
+          userId: '00000000-0000-4000-8000-000000000001',
+          mustChangePassword: false,
+          isSystemAdmin: false,
+        }),
+      ),
+    )
+
+    const onSuccess = vi.fn()
+    renderLoginForm(onSuccess)
+
+    // 빈 배열 응답 후 드롭다운에 LOCAL fallback 항목이 표시되어야 한다
+    await waitFor(() => {
+      const nativeSelect = document.querySelector('select[aria-hidden="true"]')
+      const options = Array.from(nativeSelect?.querySelectorAll('option') ?? []).map(
+        (o) => o.textContent,
+      )
+      expect(options).toContain('Local')
+    })
+
+    // LOCAL fallback이 기본 선택되어 있어 username/password만 입력하면 제출 가능해야 한다
+    await user.type(screen.getByLabelText('사용자명'), 'alice')
+    await user.type(screen.getByLabelText('비밀번호'), 'password')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
+  })
+
   it('키보드 탐색 — label/aria-invalid/aria-describedby 접근성을 충족한다', async () => {
     const user = userEvent.setup()
     renderLoginForm()
