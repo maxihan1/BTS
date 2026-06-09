@@ -105,6 +105,17 @@ class AccountLinkControllerTest {
         @Bean
         fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)
 
+        /**
+         * 공통 인증 헬퍼([AccountLinkJwtSupport]) 를 실 객체로 등록한다 (Task 11 리팩토링 회귀 기준).
+         *
+         * @WebMvcTest 슬라이스는 컴포넌트 스캔을 하지 않으므로 @Component 인 헬퍼가 자동 등록되지 않는다.
+         * step-up 판정은 @MockBean [stepUpService] 를 그대로 주입해 기존 동작(isValid mock 기반)을 보존한다.
+         */
+        @Bean
+        fun accountLinkJwtSupport(stepUpService: StepUpService): AccountLinkJwtSupport {
+            return AccountLinkJwtSupport(stepUpService)
+        }
+
         private companion object {
             /** CORS 허용 origin — SPA dev 서버. */
             const val ORIGIN = "http://localhost:5173"

@@ -35,6 +35,16 @@ import org.springframework.web.cors.CorsConfigurationSource
  * 문자열 securityMatcher 는 Spring MVC 가 있으면 MvcRequestMatcher(mvcHandlerMappingIntrospector 의존)
  * 를 강제하여 MVC 빈이 없는 통합 테스트 컨텍스트 부팅을 깬다. 따라서 MVC 비의존 [AntPathRequestMatcher]
  * 로 명시 매칭한다.
+ *
+ * ## 세션 고정 방어 + JSESSIONID SameSite (FR-AU-08b — EC10/EC17)
+ * - session-fixation 을 `changeSessionId` 로 명시한다(EC10). SSO 연결 시작(start)이 HttpSession 에
+ *   심은 LinkingIntent 가 인증 성공 시 세션 회전으로 유실되면 연결 모드 콜백이 일반 로그인으로 새므로,
+ *   세션 ID 만 바꾸고 속성을 보존하는 전략을 강제한다.
+ * - JSESSIONID 쿠키 SameSite 는 `application.yml` 의 `server.servlet.session.cookie.same-site: none`
+ *   으로 둔다(EC17). SAML ACS 는 IdP 가 외부에서 **cross-site POST** 로 콜백해, SameSite=Strict 면
+ *   start 단계 세션 쿠키가 그 POST 에 동반되지 않아 왕복이 끊긴다. None 으로 cross-site 동반을 허용하되,
+ *   CSRF 는 별도 토큰식(쿠키 SameSite=Strict, 무변경)으로 방어하므로 안전하다. `secure: true` 는 http
+ *   부팅 환경(base/dev/test)에서 쿠키 미방출을 일으키므로 `application-prod.yml` 에만 둔다(C4 — https 강제).
  */
 @Configuration
 @ConditionalOnBean(RelyingPartyRegistrationRepository::class, Saml2AuthenticationSuccessHandler::class)
@@ -61,7 +71,13 @@ class SamlSecurityConfig(
     ): SecurityFilterChain {
         return http
             .securityMatcher(samlPathMatcher())
-            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED) }
+            .sessionManagement {
+                it.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+                // session-fixation 명시(EC10) — 인증 성공 시 세션 ID 만 회전하고 속성(SSO LinkingIntent)은
+                // 보존한다. newSession 전략이면 start 단계가 심은 intent 가 유실돼 연결 모드 콜백이
+                // 일반 로그인으로 새므로(fail-open), changeSessionId 로 속성 이관을 보장한다.
+                it.sessionFixation { sf -> sf.changeSessionId() }
+            }
             .cors { it.configurationSource(corsConfigurationSource) }
             // ACS(/login/saml2/sso) 는 외부 IdP POST 이므로 CSRF 토큰 부재 — SAML 경로 한정 CSRF skip.
             // 이 체인은 SAML 경로만 처리하므로 일반 API CSRF 검증(SecurityConfig)에 영향 없음.

@@ -1,0 +1,158 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues></ManuallySuppressedIssues>
+  <CurrentIssues>
+    <ID>ConstructorParameterNaming:FakeLdapProvider.kt$FakeLdapProvider$private val _available: Boolean = true</ID>
+    <ID>EmptyFunctionBlock:LocalAuthFlowIntegrationTest.kt$LocalAuthFlowIntegrationTest.&lt;no name provided&gt;${}</ID>
+    <ID>ForbiddenVoid:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$Void</ID>
+    <ID>ForbiddenVoid:FieldPermissionControllerTest.kt$FieldPermissionControllerTest$Void</ID>
+    <ID>ForbiddenVoid:IssueSecurityIntegrationTest.kt$IssueSecurityIntegrationTest$Void</ID>
+    <ID>ForbiddenVoid:LocalAuthFlowIntegrationTest.kt$LocalAuthFlowIntegrationTest$Void</ID>
+    <ID>ForbiddenVoid:PatAndConcurrencyIntegrationTest.kt$PatAndConcurrencyIntegrationTest$Void</ID>
+    <ID>ForbiddenVoid:ProjectMemberFlowIntegrationTest.kt$ProjectMemberFlowIntegrationTest$Void</ID>
+    <ID>ForbiddenVoid:SsoAccountLinkingIntegrationTest.kt$SsoAccountLinkingIntegrationTest$Void</ID>
+    <ID>ForbiddenVoid:UserGroupIntegrationTest.kt$UserGroupIntegrationTest$Void</ID>
+    <ID>ForbiddenVoid:UsersControllerIntegrationTest.kt$UsersControllerIntegrationTest$Void</ID>
+    <ID>FunctionOnlyReturningConstant:SecurityConfigTest.kt$SecurityConfigTest.ProbeController$@GetMapping("/.well-known/jwks.json") fun jwks()</ID>
+    <ID>FunctionOnlyReturningConstant:SecurityConfigTest.kt$SecurityConfigTest.ProbeController$@GetMapping("/actuator/health") fun health()</ID>
+    <ID>FunctionOnlyReturningConstant:SecurityConfigTest.kt$SecurityConfigTest.ProbeController$@GetMapping("/api/v1/auth/login") fun login()</ID>
+    <ID>FunctionOnlyReturningConstant:SecurityConfigTest.kt$SecurityConfigTest.ProbeController$@GetMapping("/api/v1/auth/providers") fun providers()</ID>
+    <ID>FunctionOnlyReturningConstant:SecurityConfigTest.kt$SecurityConfigTest.ProbeController$@GetMapping("/api/v1/protected") fun protected()</ID>
+    <ID>LongParameterList:PatAndConcurrencyIntegrationTest.kt$PatAndConcurrencyIntegrationTest$( id: UUID, sessionId: UUID, tokenHash: String, expiresAt: Instant, usedAt: Instant?, replacedBy: UUID?, )</ID>
+    <ID>MapGetWithNotNullAssertionOperator:AuthnProviderConfigRepositoryTest.kt$AuthnProviderConfigRepositoryTest$result[ldapId]!!</ID>
+    <ID>MapGetWithNotNullAssertionOperator:AuthnProviderConfigRepositoryTest.kt$AuthnProviderConfigRepositoryTest$result[localId]!!</ID>
+    <ID>MapGetWithNotNullAssertionOperator:JdbcIssueSecuritySchemeRepositoryIntegrationTest.kt$JdbcIssueSecuritySchemeRepositoryIntegrationTest$byName["fr-pm-06-t3-all-a"]!!</ID>
+    <ID>MapGetWithNotNullAssertionOperator:JdbcIssueSecuritySchemeRepositoryIntegrationTest.kt$JdbcIssueSecuritySchemeRepositoryIntegrationTest$byName["fr-pm-06-t3-all-b"]!!</ID>
+    <ID>MaxLineLength:LocalAuthFlowIntegrationTest.kt$LocalAuthFlowIntegrationTest$"spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration"</ID>
+    <ID>MaxLineLength:PatAndConcurrencyIntegrationTest.kt$PatAndConcurrencyIntegrationTest.Companion$"org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration,"</ID>
+    <ID>MaxLineLength:PatAndConcurrencyIntegrationTest.kt$PatAndConcurrencyIntegrationTest.Companion$"org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration,"</ID>
+    <ID>MaxLineLength:ProjectMemberFlowIntegrationTest.kt$ProjectMemberFlowIntegrationTest$"spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration"</ID>
+    <ID>MaxLineLength:RefreshTokenServiceTest.kt$RefreshTokenServiceTest$assertThat(result).isEqualTo(RefreshTokenService.RotateResult.Failure(RefreshTokenService.FailureReason.Expired))</ID>
+    <ID>MaxLineLength:RefreshTokenServiceTest.kt$RefreshTokenServiceTest$assertThat(result).isEqualTo(RefreshTokenService.RotateResult.Failure(RefreshTokenService.FailureReason.NotFound))</ID>
+    <ID>MaxLineLength:RefreshTokenServiceTest.kt$RefreshTokenServiceTest$assertThat(result).isEqualTo(RefreshTokenService.RotateResult.Failure(RefreshTokenService.FailureReason.Revoked))</ID>
+    <ID>MaxLineLength:UserLookupAdapterIntegrationTest.kt$UserLookupAdapterIntegrationTest$"spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration"</ID>
+    <ID>MaxLineLength:UsersControllerIntegrationTest.kt$UsersControllerIntegrationTest$"spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration"</ID>
+    <ID>MaxLineLength:V005MigrationTest.kt$// V005 Flyway 마이그레이션 검증 — refresh_tokens 7 컬럼 + sessions FK ON DELETE CASCADE + self FK replaced_by + token_hash UNIQUE + idx_refresh_session 인덱스 확인</ID>
+    <ID>MaxLineLength:V006MigrationTest.kt$// V006 Flyway 마이그레이션 검증 — personal_access_tokens 9 컬럼 + scopes JSONB DEFAULT + token_hash UNIQUE + idx_pat_user_active 부분 인덱스 확인</ID>
+    <ID>NestedBlockDepth:V006MigrationTest.kt$V006MigrationTest$private fun columnDefault( tableName: String, columnName: String, ): String?</ID>
+    <ID>NestedBlockDepth:V007MigrationTest.kt$V007MigrationTest$private fun checkConstraintExists( tableName: String, expectedValues: List&lt;String&gt;, ): Boolean</ID>
+    <ID>ReturnCount:LocalAuthFlowIntegrationTest.kt$LocalAuthFlowIntegrationTest$private fun extractRefreshCookieValue(response: ResponseEntity&lt;*&gt;): String</ID>
+    <ID>SwallowedException:LocalAuthFlowIntegrationTest.kt$LocalAuthFlowIntegrationTest$e: Exception</ID>
+    <ID>UnnecessaryAbstractClass:KeycloakOidcTestcontainersBase.kt$KeycloakOidcTestcontainersBase$KeycloakOidcTestcontainersBase</ID>
+    <ID>UnnecessaryAbstractClass:KeycloakSamlTestcontainersBase.kt$KeycloakSamlTestcontainersBase$KeycloakSamlTestcontainersBase</ID>
+    <ID>UnnecessaryAbstractClass:LdapTestcontainersBase.kt$LdapTestcontainersBase$LdapTestcontainersBase</ID>
+    <ID>UnusedPrivateProperty:LdapAuthFlowIntegrationTest.kt$LdapAuthFlowIntegrationTest$@Autowired private lateinit var externalAccountRepo: ExternalAccountRepository</ID>
+    <ID>UnusedPrivateProperty:PersonalAccessTokenServiceTest.kt$PersonalAccessTokenServiceTest$/** 테스트 환경에서 SHA-256 계산 없이 고정 hash 를 사용하기 위한 raw token. * PersonalAccessTokenService 내부의 sha256Hex(raw) 결과가 아래 KNOWN_HASH 와 일치해야 통과. */ private val rawToken = "pat_testbody000000000000000000000000000000000000" // "pat_" + 44자 (≠ 48자, 검증용)</ID>
+    <ID>UseOrEmpty:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$(resp.body?.get("links") as? List&lt;Map&lt;*, *&gt;&gt;) ?: emptyList()</ID>
+    <ID>UseOrEmpty:LocalAuthFlowIntegrationTest.kt$LocalAuthFlowIntegrationTest$cookie .split(";") .firstOrNull { it.trim().startsWith("refresh_token=") } ?.substringAfter("refresh_token=") ?.trim() ?: ""</ID>
+    <ID>UseOrEmpty:LocalCredentialsMigrationTest.kt$LocalCredentialsMigrationTest$rs.getString("column_default") ?: ""</ID>
+    <ID>VarCouldBeVal:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$@Autowired private lateinit var localCredentialService: LocalCredentialService</ID>
+    <ID>VarCouldBeVal:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$@Autowired private lateinit var restTemplate: TestRestTemplate</ID>
+    <ID>VarCouldBeVal:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$@Autowired private lateinit var userRepository: UserRepository</ID>
+    <ID>VarCouldBeVal:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$@LocalServerPort private var port: Int = 0</ID>
+    <ID>VarCouldBeVal:AuthnProviderConfigRepositoryTest.kt$AuthnProviderConfigRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:AuthnProviderConfigRepositoryTest.kt$AuthnProviderConfigRepositoryTest$@Autowired private lateinit var repo: AuthnProviderConfigRepository</ID>
+    <ID>VarCouldBeVal:ChangePasswordServiceTest.kt$ChangePasswordServiceMustChangeIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:ChangePasswordServiceTest.kt$ChangePasswordServiceMustChangeIntegrationTest$@Autowired private lateinit var repo: StoredPasswordCredentialRepository</ID>
+    <ID>VarCouldBeVal:CreateLocalAccountServiceTest.kt$CreateLocalAccountServiceTest$@Autowired private lateinit var credentialRepository: StoredPasswordCredentialRepository</ID>
+    <ID>VarCouldBeVal:CreateLocalAccountServiceTest.kt$CreateLocalAccountServiceTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:CreateLocalAccountServiceTest.kt$CreateLocalAccountServiceTest$@Autowired private lateinit var userRepository: JdbcUserRepository</ID>
+    <ID>VarCouldBeVal:DomainProviderRouteRepositoryIntegrationTest.kt$DomainProviderRouteRepositoryIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:DomainProviderRouteRepositoryIntegrationTest.kt$DomainProviderRouteRepositoryIntegrationTest$@Autowired private lateinit var repository: DomainProviderRouteRepository</ID>
+    <ID>VarCouldBeVal:ExternalAccountRepositoryTest.kt$ExternalAccountRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:ExternalAccountRepositoryTest.kt$ExternalAccountRepositoryTest$@Autowired private lateinit var repo: ExternalAccountRepository</ID>
+    <ID>VarCouldBeVal:FieldPermissionRepositoryTest.kt$FieldPermissionRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:FieldPermissionRepositoryTest.kt$FieldPermissionRepositoryTest$@Autowired private lateinit var repository: FieldPermissionRepository</ID>
+    <ID>VarCouldBeVal:IdentityAccessComponentPermissionResolverIntegrationTest.kt$IdentityAccessComponentPermissionResolverIntegrationTest$/** prod 프로파일에서 IdentityAccessComponentPermissionResolver가 주입되어야 한다. */ @Autowired private lateinit var resolver: ComponentPermissionResolver</ID>
+    <ID>VarCouldBeVal:IdentityAccessComponentPermissionResolverIntegrationTest.kt$IdentityAccessComponentPermissionResolverIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:IdentityAccessCustomFieldPermissionResolverTest.kt$IdentityAccessCustomFieldPermissionResolverTest$/** prod 프로파일에서 IdentityAccessCustomFieldPermissionResolver가 주입되어야 한다. */ @Autowired private lateinit var resolver: CustomFieldPermissionResolver</ID>
+    <ID>VarCouldBeVal:IdentityAccessCustomFieldPermissionResolverTest.kt$IdentityAccessCustomFieldPermissionResolverTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:IdentityAccessFieldPermissionResolverTest.kt$IdentityAccessFieldPermissionResolverTest$/** prod 프로파일에서 IdentityAccessFieldPermissionResolver 가 FieldPermissionResolver 로 주입되어야 한다. */ @Autowired private lateinit var resolver: FieldPermissionResolver</ID>
+    <ID>VarCouldBeVal:IdentityAccessFieldPermissionResolverTest.kt$IdentityAccessFieldPermissionResolverTest$@Autowired private lateinit var fieldPermissionRepo: FieldPermissionRepository</ID>
+    <ID>VarCouldBeVal:IdentityAccessFieldPermissionResolverTest.kt$IdentityAccessFieldPermissionResolverTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:IdentityAccessIssuePermissionResolverIntegrationTest.kt$IdentityAccessIssuePermissionResolverIntegrationTest$/** prod 프로파일에서 IdentityAccessIssuePermissionResolver가 주입되어야 한다. */ @Autowired private lateinit var resolver: IssuePermissionResolver</ID>
+    <ID>VarCouldBeVal:IdentityAccessIssuePermissionResolverIntegrationTest.kt$IdentityAccessIssuePermissionResolverIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:IdentityAccessIssueSecurityDirectoryIntegrationTest.kt$IdentityAccessIssueSecurityDirectoryIntegrationTest$/** prod 프로파일에서 IdentityAccessIssueSecurityDirectory가 주입되어야 한다. */ @Autowired private lateinit var directory: IssueSecurityDirectory</ID>
+    <ID>VarCouldBeVal:IdentityAccessIssueSecurityDirectoryIntegrationTest.kt$IdentityAccessIssueSecurityDirectoryIntegrationTest$@Autowired private lateinit var groupRepo: com.atlas.bts.identity.group.UserGroupRepository</ID>
+    <ID>VarCouldBeVal:IdentityAccessIssueSecurityDirectoryIntegrationTest.kt$IdentityAccessIssueSecurityDirectoryIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:IdentityAccessVersionPermissionResolverIntegrationTest.kt$IdentityAccessVersionPermissionResolverIntegrationTest$/** prod 프로파일에서 IdentityAccessVersionPermissionResolver가 주입되어야 한다. */ @Autowired private lateinit var resolver: VersionPermissionResolver</ID>
+    <ID>VarCouldBeVal:IdentityAccessVersionPermissionResolverIntegrationTest.kt$IdentityAccessVersionPermissionResolverIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:IdentityAccessWorkflowSchemePermissionResolverIntegrationTest.kt$IdentityAccessWorkflowSchemePermissionResolverIntegrationTest$/** prod 프로파일에서 IdentityAccessWorkflowSchemePermissionResolver 가 주입되어야 한다. */ @Autowired private lateinit var resolver: WorkflowSchemePermissionResolver</ID>
+    <ID>VarCouldBeVal:IdentityAccessWorkflowSchemePermissionResolverIntegrationTest.kt$IdentityAccessWorkflowSchemePermissionResolverIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:IssueSecuritySchemaMigrationTest.kt$IssueSecuritySchemaMigrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:JdbcIssueSecurityLookupIntegrationTest.kt$JdbcIssueSecurityLookupIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:JdbcIssueSecurityLookupIntegrationTest.kt$JdbcIssueSecurityLookupIntegrationTest$@Autowired private lateinit var lookup: JdbcIssueSecurityLookup</ID>
+    <ID>VarCouldBeVal:JdbcIssueSecuritySchemeRepositoryIntegrationTest.kt$JdbcIssueSecuritySchemeRepositoryIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:JdbcIssueSecuritySchemeRepositoryIntegrationTest.kt$JdbcIssueSecuritySchemeRepositoryIntegrationTest$@Autowired private lateinit var projectSchemeRepository: ProjectSecuritySchemeRepository</ID>
+    <ID>VarCouldBeVal:JdbcIssueSecuritySchemeRepositoryIntegrationTest.kt$JdbcIssueSecuritySchemeRepositoryIntegrationTest$@Autowired private lateinit var repository: IssueSecuritySchemeRepository</ID>
+    <ID>VarCouldBeVal:JdbcPermissionSchemeRepositoryTest.kt$JdbcPermissionSchemeRepositoryTest$@Autowired private lateinit var repo: PermissionSchemeRepository</ID>
+    <ID>VarCouldBeVal:JdbcProjectDirectoryIntegrationTest.kt$JdbcProjectDirectoryIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:JdbcProjectDirectoryIntegrationTest.kt$JdbcProjectDirectoryIntegrationTest$@Autowired private lateinit var projectDirectory: JdbcProjectDirectory</ID>
+    <ID>VarCouldBeVal:JdbcProjectSecuritySchemeRepositoryIntegrationTest.kt$JdbcProjectSecuritySchemeRepositoryIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:JdbcProjectSecuritySchemeRepositoryIntegrationTest.kt$JdbcProjectSecuritySchemeRepositoryIntegrationTest$@Autowired private lateinit var repository: ProjectSecuritySchemeRepository</ID>
+    <ID>VarCouldBeVal:JdbcSystemRoleAssignmentRepositoryTest.kt$JdbcSystemRoleAssignmentRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:JdbcSystemRoleAssignmentRepositoryTest.kt$JdbcSystemRoleAssignmentRepositoryTest$@Autowired private lateinit var repo: SystemRoleAssignmentRepository</ID>
+    <ID>VarCouldBeVal:JdbcUserGroupRepositoryIntegrationTest.kt$JdbcUserGroupRepositoryIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:JdbcUserGroupRepositoryIntegrationTest.kt$JdbcUserGroupRepositoryIntegrationTest$@Autowired private lateinit var repository: UserGroupRepository</ID>
+    <ID>VarCouldBeVal:LdapAuthFlowIntegrationTest.kt$LdapAuthFlowIntegrationTest$@Autowired private lateinit var authController: AuthController</ID>
+    <ID>VarCouldBeVal:LdapAuthFlowIntegrationTest.kt$LdapAuthFlowIntegrationTest$@Autowired private lateinit var autoProvisionService: AutoProvisionService</ID>
+    <ID>VarCouldBeVal:LdapAuthFlowIntegrationTest.kt$LdapAuthFlowIntegrationTest$@Autowired private lateinit var externalAccountRepo: ExternalAccountRepository</ID>
+    <ID>VarCouldBeVal:LdapAuthFlowIntegrationTest.kt$LdapAuthFlowIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:LdapAuthFlowIntegrationTest.kt$LdapAuthFlowIntegrationTest$@Autowired private lateinit var ldapProvider: LdapProvider</ID>
+    <ID>VarCouldBeVal:LdapProviderBindForLinkingTest.kt$LdapProviderBindForLinkingTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:LdapProviderBindForLinkingTest.kt$LdapProviderBindForLinkingTest$@Autowired private lateinit var ldapProvider: LdapProvider</ID>
+    <ID>VarCouldBeVal:LdapProviderIntegrationTest.kt$LdapProviderIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:LdapProviderIntegrationTest.kt$LdapProviderIntegrationTest$@Autowired private lateinit var ldapProvider: LdapProvider</ID>
+    <ID>VarCouldBeVal:LocalCredentialServiceTest.kt$LocalCredentialServiceMustChangeIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:LocalCredentialServiceTest.kt$LocalCredentialServiceMustChangeIntegrationTest$@Autowired private lateinit var repo: StoredPasswordCredentialRepository</ID>
+    <ID>VarCouldBeVal:ManageComponentVersionMigrationTest.kt$ManageComponentVersionMigrationTest$@Autowired private lateinit var repo: PermissionSchemeRepository</ID>
+    <ID>VarCouldBeVal:MyIssuePermissionIntegrationTest.kt$MyIssuePermissionIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:MyIssuePermissionIntegrationTest.kt$MyIssuePermissionIntegrationTest$@Autowired private lateinit var jwtEncoder: JwtEncoder</ID>
+    <ID>VarCouldBeVal:MyIssuePermissionIntegrationTest.kt$MyIssuePermissionIntegrationTest$@Autowired private lateinit var mockMvc: MockMvc</ID>
+    <ID>VarCouldBeVal:MyProjectPermissionIntegrationTest.kt$MyProjectPermissionIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:MyProjectPermissionIntegrationTest.kt$MyProjectPermissionIntegrationTest$@Autowired private lateinit var jwtEncoder: JwtEncoder</ID>
+    <ID>VarCouldBeVal:MyProjectPermissionIntegrationTest.kt$MyProjectPermissionIntegrationTest$@Autowired private lateinit var mockMvc: MockMvc</ID>
+    <ID>VarCouldBeVal:OidcAuthFlowIntegrationTest.kt$OidcAuthFlowIntegrationTest$@Autowired private lateinit var clientRegistrationRepository: DbClientRegistrationRepository</ID>
+    <ID>VarCouldBeVal:OidcAuthFlowIntegrationTest.kt$OidcAuthFlowIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:OidcAuthFlowIntegrationTest.kt$OidcAuthFlowIntegrationTest$@Autowired private lateinit var mockMvc: MockMvc</ID>
+    <ID>VarCouldBeVal:OidcAuthFlowIntegrationTest.kt$OidcAuthFlowIntegrationTest$@Autowired private lateinit var secretEncryptor: SecretEncryptor</ID>
+    <ID>VarCouldBeVal:OidcProviderConfigRepositoryTest.kt$OidcProviderConfigRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:OidcProviderConfigRepositoryTest.kt$OidcProviderConfigRepositoryTest$@Autowired private lateinit var repo: OidcProviderConfigRepository</ID>
+    <ID>VarCouldBeVal:PermissionSchemaMigrationTest.kt$PermissionSchemaMigrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:PersonalAccessTokenRepositoryTest.kt$PersonalAccessTokenRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:PersonalAccessTokenRepositoryTest.kt$PersonalAccessTokenRepositoryTest$@Autowired private lateinit var repo: PersonalAccessTokenRepository</ID>
+    <ID>VarCouldBeVal:ProjectMembershipRepositoryIntegrationTest.kt$ProjectMembershipRepositoryIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:ProjectMembershipRepositoryIntegrationTest.kt$ProjectMembershipRepositoryIntegrationTest$@Autowired private lateinit var repo: ProjectMembershipRepository</ID>
+    <ID>VarCouldBeVal:RefreshTokenRepositoryTest.kt$RefreshTokenRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:RefreshTokenRepositoryTest.kt$RefreshTokenRepositoryTest$@Autowired private lateinit var repo: RefreshTokenRepository</ID>
+    <ID>VarCouldBeVal:SamlAuthFlowIntegrationTest.kt$SamlAuthFlowIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:SamlAuthFlowIntegrationTest.kt$SamlAuthFlowIntegrationTest$@Autowired private lateinit var mockMvc: MockMvc</ID>
+    <ID>VarCouldBeVal:SamlAuthFlowIntegrationTest.kt$SamlAuthFlowIntegrationTest$@Autowired private lateinit var relyingPartyRegistrationRepository: DbRelyingPartyRegistrationRepository</ID>
+    <ID>VarCouldBeVal:SamlAuthFlowIntegrationTest.kt$SamlAuthFlowIntegrationTest$@Autowired private lateinit var samlSuccessHandler: Saml2AuthenticationSuccessHandler</ID>
+    <ID>VarCouldBeVal:SamlIdpConfigRepositoryTest.kt$SamlIdpConfigRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:SamlIdpConfigRepositoryTest.kt$SamlIdpConfigRepositoryTest$@Autowired private lateinit var repo: SamlIdpConfigRepository</ID>
+    <ID>VarCouldBeVal:SessionRepositoryTest.kt$SessionRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:SessionRepositoryTest.kt$SessionRepositoryTest$@Autowired private lateinit var repo: SessionRepository</ID>
+    <ID>VarCouldBeVal:SsoAccountLinkingIntegrationTest.kt$SsoAccountLinkingIntegrationTest$@Autowired private lateinit var accountLinkService: AccountLinkService</ID>
+    <ID>VarCouldBeVal:SsoAccountLinkingIntegrationTest.kt$SsoAccountLinkingIntegrationTest$@Autowired private lateinit var applicationContext: ApplicationContext</ID>
+    <ID>VarCouldBeVal:SsoAccountLinkingIntegrationTest.kt$SsoAccountLinkingIntegrationTest$@Autowired private lateinit var callbackProcessor: SsoLinkingCallbackProcessor</ID>
+    <ID>VarCouldBeVal:SsoAccountLinkingIntegrationTest.kt$SsoAccountLinkingIntegrationTest$@Autowired private lateinit var intentStore: SsoLinkingIntentStore</ID>
+    <ID>VarCouldBeVal:SsoAccountLinkingIntegrationTest.kt$SsoAccountLinkingIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:SsoAccountLinkingIntegrationTest.kt$SsoAccountLinkingIntegrationTest$@Autowired private lateinit var jwtIssuer: JwtIssuer</ID>
+    <ID>VarCouldBeVal:SsoAccountLinkingIntegrationTest.kt$SsoAccountLinkingIntegrationTest$@Autowired private lateinit var reauthService: ReauthService</ID>
+    <ID>VarCouldBeVal:SsoAccountLinkingIntegrationTest.kt$SsoAccountLinkingIntegrationTest$@Autowired private lateinit var restTemplate: TestRestTemplate</ID>
+    <ID>VarCouldBeVal:SsoAccountLinkingIntegrationTest.kt$SsoAccountLinkingIntegrationTest$@Autowired private lateinit var sessionService: SessionService</ID>
+    <ID>VarCouldBeVal:SsoAccountLinkingIntegrationTest.kt$SsoAccountLinkingIntegrationTest$@Autowired private lateinit var userRepository: UserRepository</ID>
+    <ID>VarCouldBeVal:SsoAccountLinkingIntegrationTest.kt$SsoAccountLinkingIntegrationTest$@LocalServerPort private var port: Int = 0</ID>
+    <ID>VarCouldBeVal:StoredPasswordCredentialRepositoryTest.kt$StoredPasswordCredentialRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:StoredPasswordCredentialRepositoryTest.kt$StoredPasswordCredentialRepositoryTest$@Autowired private lateinit var repo: StoredPasswordCredentialRepository</ID>
+    <ID>VarCouldBeVal:SystemAdminInfraIntegrationTest.kt$SystemAdminInfraIntegrationTest$/** 실 [IdentityAccessSystemPermissionResolver] 가 prod 컨텍스트에 주입되어야 한다(mock 아님). */ @Autowired private lateinit var systemPermissionResolver: SystemPermissionResolver</ID>
+    <ID>VarCouldBeVal:SystemAdminInfraIntegrationTest.kt$SystemAdminInfraIntegrationTest$/** 실 [JdbcSystemRoleAssignmentRepository] 가 주입되어야 한다(mock 아님). */ @Autowired private lateinit var roleAssignmentRepository: SystemRoleAssignmentRepository</ID>
+    <ID>VarCouldBeVal:SystemAdminInfraIntegrationTest.kt$SystemAdminInfraIntegrationTest$/** 실 [JwtIssuer] — S3 토큰 발급 클레임 검증용. */ @Autowired private lateinit var jwtIssuer: JwtIssuer</ID>
+    <ID>VarCouldBeVal:SystemAdminInfraIntegrationTest.kt$SystemAdminInfraIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:UserGroupSchemaMigrationTest.kt$UserGroupSchemaMigrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:UserRepositoryTest.kt$UserRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:UserRepositoryTest.kt$UserRepositoryTest$@Autowired private lateinit var repo: UserRepository</ID>
+  </CurrentIssues>
+</SmellBaseline>

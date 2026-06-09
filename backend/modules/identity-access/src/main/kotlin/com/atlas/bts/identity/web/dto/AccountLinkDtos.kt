@@ -90,3 +90,31 @@ data class AccountLinksResponse(
     val links: List<AccountLinkResponse>,
     val hasLocalPassword: Boolean,
 )
+
+/**
+ * POST /api/v1/auth/account/links/sso/start · /reauth/sso/start 요청 body (FR-AU-08b, FR1/FR2).
+ *
+ * SSO(SAML/OIDC) 연결/재인증을 개시할 대상 provider 를 지정한다. 컨트롤러는 [providerType] 에 맞는
+ * config repo 로만 [registrationId] 를 조회·검증한다(FR7 매트릭스). userId/sid 는 바디로 받지 않고
+ * 인증된 JWT 에서만 추출한다(FR8 — 위조 차단).
+ *
+ * @param registrationId 대상 SSO provider 의 registration_id(영숫자+하이픈 화이트리스트 검증 대상).
+ * @param providerType SSO 유형(SAML 또는 OIDC). LOCAL/LDAP 등 SSO 아님은 400.
+ */
+data class SsoLinkStartRequest(
+    val registrationId: String,
+    val providerType: ProviderType,
+)
+
+/**
+ * SSO 연결/재인증 시작 성공 응답 — SPA 가 네비게이트할 authorize URL (FR-AU-08b).
+ *
+ * ## open-redirect 0 (FR7 e / EC14)
+ * [authorizeUrl] 은 사용자 입력 echo 가 아니라 검증 통과한 registrationId 로 서버가 구성한 고정
+ * 패턴 경로(SAML `/saml2/authenticate/{reg}` · OIDC `/oauth2/authorization/{reg}`)뿐이다.
+ *
+ * @param authorizeUrl SPA 가 `window.location.assign` 으로 네비게이트할 SSO 진입 경로(JSESSIONID 동반).
+ */
+data class SsoLinkStartResponse(
+    val authorizeUrl: String,
+)

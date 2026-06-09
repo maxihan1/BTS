@@ -131,7 +131,7 @@ class FieldPermissionController(
 
         return runHandler {
             applicationService.deleteRule(actorId, projectId, ruleId)
-            ResponseEntity.noContent().build<Void>()
+            ResponseEntity.noContent().build<Unit>()
         }
     }
 

@@ -41,6 +41,9 @@ import java.util.UUID
  */
 @Repository
 @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED)
+// 단일 테이블(user_external_accounts) 접근층이라 SQL 메서드가 응집해 자연히 11개를 넘는다.
+// 책임 분리가 부자연스러우므로 baseline 동결 대신 클래스 단위로 명시 억제한다.
+@Suppress("TooManyFunctions")
 class ExternalAccountRepository(
     private val jdbc: NamedParameterJdbcTemplate,
 ) {
@@ -167,6 +170,67 @@ class ExternalAccountRepository(
         jdbc.queryForList(SQL_ACQUIRE_USER_LOCK, mapOf("userId" to userId.toString()))
     }
 
+    // ── FR-AU-08b SSO 연결 (순수 INSERT + subject advisory lock) ──────────────
+
+    /**
+     * SSO 외부 신원을 한 사용자에 **순수 INSERT** 한다 (FR-AU-08b, FR4).
+     *
+     * **ON CONFLICT 없음 (의도)**: [provisionUser] 와 달리 UPSERT(DO UPDATE)가 아니다.
+     * 동일 (provider_id, external_subject) 가 이미 존재하면 UNIQUE 위반 예외가 던져진다.
+     * DO UPDATE 였다면 **타계정이 선점한 신원의 user_id 를 조용히 가로채** 거짓 success 를
+     * 낼 수 있어 차단한다(PR #8 learning + race window 봉쇄). 충돌 분기는 호출 측이
+     * lock → findByProviderIdAndExternalSubject → 분기로 선판단하고, 이 INSERT 는
+     * "충돌 검사 통과 후 신규 행 생성"만 책임진다.
+     *
+     * **단일 책임**: users UPSERT 는 하지 않는다. [userId] 는 이미 users 에 존재하는 row 의
+     * id 여야 한다(SSO 는 IdP 인증이 성공 핸들러에서 선행 — 새 user 생성 없음).
+     *
+     * @return INSERT 된 행(RETURNING — 추가 SELECT 불필요).
+     */
+    @Suppress("LongParameterList")
+    fun insertLink(
+        providerId: UUID,
+        externalSubject: String,
+        userId: UUID,
+        groups: List<String>,
+    ): ExternalAccount {
+        val groupsJson = objectMapper.writeValueAsString(groups)
+        val accountId = UUID.randomUUID()
+        return jdbc.queryForObject(
+            SQL_INSERT_LINK,
+            mapOf(
+                "id" to accountId,
+                "providerId" to providerId,
+                "externalSubject" to externalSubject,
+                "userId" to userId,
+                "groups" to groupsJson,
+            ),
+            rowMapper,
+        ) ?: error("INSERT RETURNING 결과 없음 — providerId=$providerId")
+    }
+
+    /**
+     * (provider_id, external_subject) 단위 advisory lock 획득 (FR-AU-08b 동시성 직렬화, EC18).
+     *
+     * **advisory-lock-bigint-toctou 선례**: lock 후 호출자가
+     * findByProviderIdAndExternalSubject 재조회 → 분기/INSERT 를 반드시 **같은 트랜잭션** 안에서
+     * 수행해야 다중 탭/재시도 콜백의 TOCTOU(읽고-나서-쓰기 사이 변경)가 막힌다.
+     * lock 밖에서 읽은 값으로 판단하면 lock 이 무력화된다.
+     *
+     * **key 전폭 해시**: key = `"$providerId:$externalSubject"` 를 `hashtextextended` 로
+     * 전폭 해시해 bigint 를 만든다. 상위 64bit 절단 금지(충돌 과다). 해시 충돌은 무관 신원의
+     * 거짓 직렬화일 뿐 안전하다. `hashtextextended` 가 bigint 를 반환하므로
+     * `pg_advisory_xact_lock(bigint)` 단일 시그니처와 정합한다 (bigint,bigint 시그니처 없음).
+     */
+    fun acquireSubjectLock(
+        providerId: UUID,
+        externalSubject: String,
+    ) {
+        // pg_advisory_xact_lock 은 void 반환 — 결과 행은 단순 소비(discard)한다.
+        val lockKey = "$providerId:$externalSubject"
+        jdbc.queryForList(SQL_ACQUIRE_SUBJECT_LOCK, mapOf("lockKey" to lockKey))
+    }
+
     // ── SQL 상수 ─────────────────────────────────────────────────────────────
 
     private companion object {
@@ -241,6 +305,27 @@ class ExternalAccountRepository(
          */
         const val SQL_ACQUIRE_USER_LOCK = """
             SELECT pg_advisory_xact_lock(hashtextextended(:userId, 0))
+        """
+
+        /**
+         * SSO 신원 순수 INSERT + RETURNING (FR-AU-08b).
+         * ON CONFLICT 없음 — 중복 (provider_id, external_subject) 는 UNIQUE 위반 예외로 거부한다
+         * (DO UPDATE 가 타계정 선점을 조용히 삼키는 것 차단).
+         */
+        const val SQL_INSERT_LINK = """
+            INSERT INTO user_external_accounts (id, provider_id, external_subject, user_id, groups)
+            VALUES (:id, :providerId, :externalSubject, :userId, :groups::jsonb)
+            RETURNING id, provider_id, external_subject, user_id, groups,
+                      failed_attempts, locked_until, last_login_at, created_at, updated_at
+        """
+
+        /**
+         * (provider_id, external_subject) 단위 advisory lock (FR-AU-08b, EC18).
+         * key = "providerId:externalSubject" 를 hashtextextended 로 전폭 해시 — 절단 금지(충돌 과다).
+         * pg_advisory_xact_lock(bigint) 단일 시그니처와 정합 (bigint,bigint 시그니처 없음).
+         */
+        const val SQL_ACQUIRE_SUBJECT_LOCK = """
+            SELECT pg_advisory_xact_lock(hashtextextended(:lockKey, 0))
         """
     }
 }

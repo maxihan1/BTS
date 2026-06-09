@@ -3,6 +3,16 @@
 
 server:
   port: 8090
+  servlet:
+    session:
+      cookie:
+        # FR-AU-08b (EC17) — SAML ACS 는 IdP 가 외부에서 cross-site POST 로 콜백한다.
+        # JSESSIONID 가 SameSite=Strict 면 그 POST 에 동반되지 않아 SSO 연결 시작(start) 단계
+        # 세션이 끊긴다. None 으로 cross-site 동반을 허용하되, CSRF 는 별도 토큰식(SameSite=Strict
+        # 쿠키, 무변경)으로 방어하므로 안전하다.
+        # secure:true 는 application-prod.yml 에만 둔다 — base/dev/test 는 http 부팅이라
+        # secure:true 면 JSESSIONID 가 방출되지 않아 SSO 왕복이 깨진다(C4).
+        same-site: none
 
 spring:
   datasource:

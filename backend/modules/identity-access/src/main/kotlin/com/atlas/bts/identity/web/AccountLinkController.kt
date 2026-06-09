@@ -80,7 +80,7 @@ import java.util.UUID
 class AccountLinkController(
     private val accountLinkService: AccountLinkService,
     private val reauthService: ReauthService,
-    private val stepUpService: StepUpService,
+    private val jwtSupport: AccountLinkJwtSupport,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(AccountLinkController::class.java)
@@ -97,7 +97,7 @@ class AccountLinkController(
     fun listLinks(
         @AuthenticationPrincipal jwt: Jwt?,
     ): ResponseEntity<*> {
-        val claims = resolveJwtClaims(jwt) ?: return PAT_FORBIDDEN_RESPONSE
+        val claims = jwtSupport.resolveClaims(jwt) ?: return PAT_FORBIDDEN_RESPONSE
 
         val links = accountLinkService.listLinks(claims.userId)
         return ResponseEntity.ok(
@@ -129,14 +129,14 @@ class AccountLinkController(
         @AuthenticationPrincipal jwt: Jwt?,
         @RequestBody body: ReauthRequest,
     ): ResponseEntity<*> {
-        val claims = resolveJwtClaims(jwt) ?: return PAT_FORBIDDEN_RESPONSE
+        val claims = jwtSupport.resolveClaims(jwt) ?: return PAT_FORBIDDEN_RESPONSE
         val sid = claims.currentSid ?: return PAT_FORBIDDEN_RESPONSE
 
         when (body.method) {
             ReauthMethod.LOCAL -> {
                 // 로컬은 비밀번호만 필수 — 누락/공백은 클라이언트 입력 오류이므로 400(서비스 호출 전 거부).
                 if (body.password.isBlank()) {
-                    return errorResponse(HttpStatus.BAD_REQUEST, ERROR_REAUTH_FIELDS_REQUIRED)
+                    return jwtSupport.errorResponse(HttpStatus.BAD_REQUEST, ERROR_REAUTH_FIELDS_REQUIRED)
                 }
                 reauthService.reauthenticateLocal(claims.userId, sid, body.password.toCharArray())
             }
@@ -146,7 +146,7 @@ class AccountLinkController(
                 val providerId = body.providerId
                 val username = body.username
                 if (providerId == null || username.isNullOrBlank() || body.password.isBlank()) {
-                    return errorResponse(HttpStatus.BAD_REQUEST, ERROR_REAUTH_FIELDS_REQUIRED)
+                    return jwtSupport.errorResponse(HttpStatus.BAD_REQUEST, ERROR_REAUTH_FIELDS_REQUIRED)
                 }
                 reauthService.reauthenticateLdap(
                     claims.userId,
@@ -180,8 +180,8 @@ class AccountLinkController(
         @AuthenticationPrincipal jwt: Jwt?,
         @RequestBody body: LinkAccountRequest,
     ): ResponseEntity<*> {
-        val claims = resolveJwtClaims(jwt) ?: return PAT_FORBIDDEN_RESPONSE
-        requireStepUp(claims.currentSid)?.let { return it }
+        val claims = jwtSupport.resolveClaims(jwt) ?: return PAT_FORBIDDEN_RESPONSE
+        jwtSupport.requireStepUp(claims.currentSid)?.let { return it }
 
         return try {
             val outcome =
@@ -197,7 +197,7 @@ class AccountLinkController(
         } catch (ex: ProviderUnavailableException) {
             // 503 직접 생성 — catch-all 핸들러가 500 으로 변질시키지 않도록. password/PII 미로깅.
             log.warn("account link provider unavailable: providerType={}", ex.providerType)
-            errorResponse(HttpStatus.SERVICE_UNAVAILABLE, ERROR_PROVIDER_UNAVAILABLE)
+            jwtSupport.errorResponse(HttpStatus.SERVICE_UNAVAILABLE, ERROR_PROVIDER_UNAVAILABLE)
         }
     }
 
@@ -219,11 +219,11 @@ class AccountLinkController(
         @AuthenticationPrincipal jwt: Jwt?,
         @PathVariable id: UUID,
     ): ResponseEntity<*> {
-        val claims = resolveJwtClaims(jwt) ?: return PAT_FORBIDDEN_RESPONSE
-        requireStepUp(claims.currentSid)?.let { return it }
+        val claims = jwtSupport.resolveClaims(jwt) ?: return PAT_FORBIDDEN_RESPONSE
+        jwtSupport.requireStepUp(claims.currentSid)?.let { return it }
 
         accountLinkService.unlink(claims.userId, id)
-        return ResponseEntity.noContent().build<Void>()
+        return ResponseEntity.noContent().build<Unit>()
     }
 
     // ── 로컬 예외 핸들러 (account 도메인 예외 → HTTP) ─────────────────────────────
@@ -231,61 +231,31 @@ class AccountLinkController(
     /** bind 실패(EC12) → 401. 계정 열거 0 — 일반화 에러코드만 노출. */
     @ExceptionHandler(AccountLinkAuthException::class)
     fun handleAuth(ex: AccountLinkAuthException): ResponseEntity<Map<String, String>> =
-        errorResponse(HttpStatus.UNAUTHORIZED, ERROR_LINK_AUTH_FAILED)
+        jwtSupport.errorResponse(HttpStatus.UNAUTHORIZED, ERROR_LINK_AUTH_FAILED)
 
     /** 재인증 실패 → 401. 수단·원인 비구분(계정 열거 0). */
     @ExceptionHandler(ReauthChallengeFailedException::class)
     fun handleReauthFailed(ex: ReauthChallengeFailedException): ResponseEntity<Map<String, String>> =
-        errorResponse(HttpStatus.UNAUTHORIZED, ERROR_REAUTH_FAILED)
+        jwtSupport.errorResponse(HttpStatus.UNAUTHORIZED, ERROR_REAUTH_FAILED)
 
     /** 타계정 선점 → 409. 어느 user 인지 비노출. */
     @ExceptionHandler(AccountLinkConflictException::class)
     fun handleConflict(ex: AccountLinkConflictException): ResponseEntity<Map<String, String>> =
-        errorResponse(HttpStatus.CONFLICT, ERROR_ACCOUNT_ALREADY_LINKED)
+        jwtSupport.errorResponse(HttpStatus.CONFLICT, ERROR_ACCOUNT_ALREADY_LINKED)
 
     /** 마지막 로그인 수단 해제 시도 → 409(영구 락 방지). */
     @ExceptionHandler(AccountLinkLastMethodException::class)
     fun handleLastMethod(ex: AccountLinkLastMethodException): ResponseEntity<Map<String, String>> =
-        errorResponse(HttpStatus.CONFLICT, ERROR_LAST_LOGIN_METHOD)
+        jwtSupport.errorResponse(HttpStatus.CONFLICT, ERROR_LAST_LOGIN_METHOD)
 
     /** 미소유/미존재 연결 → 404(존재 probe 방지). */
     @ExceptionHandler(AccountLinkNotFoundException::class)
-    fun handleNotFound(ex: AccountLinkNotFoundException): ResponseEntity<Void> = ResponseEntity.notFound().build()
+    fun handleNotFound(ex: AccountLinkNotFoundException): ResponseEntity<Unit> = ResponseEntity.notFound().build()
 
     // ── private helpers ───────────────────────────────────────────────────────
-
-    /**
-     * JWT principal 에서 userId(subject) 와 currentSid(sid 클레임) 를 추출한다.
-     *
-     * PAT 인증 시 [jwt] 가 null 이므로 null 을 반환한다(호출 측에서 403). subject 가 유효 UUID 가
-     * 아니면 null 을 반환한다. sid 클레임 부재/파싱 실패 시 [JwtClaims.currentSid] 는 null 이다.
-     *
-     * ReturnCount 억제 — null guard early return 이 가독성 우수.
-     */
-    @Suppress("ReturnCount")
-    private fun resolveJwtClaims(jwt: Jwt?): AccountLinkJwtClaims? {
-        if (jwt == null) return null
-        val userId = runCatching { UUID.fromString(jwt.subject) }.getOrNull() ?: return null
-        val currentSid =
-            jwt.getClaimAsString("sid")?.let {
-                runCatching { UUID.fromString(it) }.getOrNull()
-            }
-        return AccountLinkJwtClaims(userId = userId, currentSid = currentSid)
-    }
-
-    /**
-     * step-up 게이팅 — 유효하면 null, 아니면 403 응답을 반환한다.
-     *
-     * sid 가 null(클레임 부재) 이거나 [StepUpService.isValid] 가 false 면 fail-safe 로 403 을 돌려준다.
-     * 호출 측은 반환값이 null 이 아니면 즉시 그 응답을 반환해 서비스 호출을 건너뛴다.
-     *
-     * @param sid JWT 에서 추출한 현재 세션 식별자(없으면 null).
-     * @return 통과 시 null, 미충족 시 403 `step_up_required`.
-     */
-    private fun requireStepUp(sid: UUID?): ResponseEntity<Map<String, String>>? {
-        val valid = sid != null && stepUpService.isValid(sid)
-        return if (valid) null else errorResponse(HttpStatus.FORBIDDEN, ERROR_STEP_UP_REQUIRED)
-    }
+    //
+    // JWT subject+sid 추출(resolveClaims)·step-up 게이트(requireStepUp)·표준 errorResponse 는
+    // SSO 연결 컨트롤러와 공유하기 위해 [AccountLinkJwtSupport] 로 추출됐다(리뷰 B2 — 보안 로직 복붙 차단).
 
     /** [AccountLinkView] → 마스킹 적용 응답 DTO. linkedAt/lastLoginAt 은 그대로 surface(S1). */
     private fun AccountLinkView.toResponse(): AccountLinkResponse =
@@ -312,12 +282,6 @@ class AccountLinkController(
         return "$visible$MASK_SUFFIX"
     }
 
-    /** `{"error": <code>}` 본문을 가진 [status] 응답을 생성한다. */
-    private fun errorResponse(
-        status: HttpStatus,
-        errorCode: String,
-    ): ResponseEntity<Map<String, String>> = ResponseEntity.status(status).body(mapOf("error" to errorCode))
-
     private companion object {
         /** externalSubject 마스킹 시 앞에서 노출할 글자 수. */
         const val MASK_VISIBLE_PREFIX = 6
@@ -325,7 +289,6 @@ class AccountLinkController(
         /** 마스킹 접미사 — 나머지 글자를 가린다. */
         const val MASK_SUFFIX = "***"
 
-        const val ERROR_STEP_UP_REQUIRED = "step_up_required"
         const val ERROR_LINK_AUTH_FAILED = "link_authentication_failed"
         const val ERROR_REAUTH_FAILED = "reauth_failed"
 
@@ -341,14 +304,3 @@ class AccountLinkController(
                 .body(mapOf("error" to "account_linking_requires_interactive_login"))
     }
 }
-
-/**
- * JWT 로부터 추출된 인증 클레임 (AccountLinkController 전용).
- *
- * 이름은 web 패키지 내 고유다 — [AuthController] 의 동명 top-level `JwtClaims` 와의
- * redeclaration 충돌을 피하기 위해 접두사를 둔다.
- *
- * @param userId JWT subject UUID — 인증 사용자 ID.
- * @param currentSid JWT sid 클레임 UUID — 현재 요청 세션 ID. 클레임 부재/파싱 실패 시 null.
- */
-private data class AccountLinkJwtClaims(val userId: UUID, val currentSid: UUID?)

@@ -1,6 +1,8 @@
 // identity-access BC 서브모듈 빌드 스크립트 — Spring Boot + Security + Argon2 + JWT 자체 발급(FR-AU-09) 의존성 선언
 
 // Kotlin 버전: 2.0.10 (detekt 1.23.7 호환 상한 — build.gradle.kts 루트 주석 참고)
+import io.gitlab.arturbosch.detekt.Detekt
+import io.gitlab.arturbosch.detekt.DetektCreateBaselineTask
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
@@ -38,6 +40,17 @@ repositories {
 // 신규 코드는 baseline 에 포함하지 않고 코드/@Suppress 로 해소한다. baseline 의 점진적 축소는 후속.
 detekt {
     baseline = file("detekt-baseline.xml")
+}
+
+// 타입 해석(type-resolution) detektTest 의 PRE_EXISTING 테스트 부채(VarCouldBeVal/ForbiddenVoid 등)를
+// basic detekt-baseline.xml 와 분리된 detekt-baseline-test.xml 로 동결한다.
+// detektBaselineTest 가 단일 extension baseline 을 덮어쓰면 basic main 항목이 소실되므로 파일을 분리한다.
+// 신규 코드는 baseline 에 포함하지 않고 코드/@Suppress 로 해소한다(점진적 축소 후속).
+tasks.withType<Detekt>().configureEach {
+    if (name == "detektTest") baseline.set(file("detekt-baseline-test.xml"))
+}
+tasks.withType<DetektCreateBaselineTask>().configureEach {
+    if (name == "detektBaselineTest") baseline.set(file("detekt-baseline-test.xml"))
 }
 
 dependencies {

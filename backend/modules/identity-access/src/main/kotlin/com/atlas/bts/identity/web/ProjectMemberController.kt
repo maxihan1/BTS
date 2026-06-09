@@ -192,7 +192,7 @@ class ProjectMemberController(
                 projectId = projectId,
                 targetUserId = userId,
             )
-            ResponseEntity.noContent().build<Void>()
+            ResponseEntity.noContent().build<Unit>()
         } catch (ex: ProjectMembershipException) {
             mapServiceException(ex)
         }

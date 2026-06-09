@@ -165,7 +165,7 @@ class UserGroupController(
 
         return runHandler {
             userGroupService.deleteGroup(groupId)
-            ResponseEntity.noContent().build<Void>()
+            ResponseEntity.noContent().build<Unit>()
         }
     }
 
@@ -203,7 +203,7 @@ class UserGroupController(
 
         return runHandler {
             userGroupService.addMember(groupId, userId)
-            ResponseEntity.noContent().build<Void>()
+            ResponseEntity.noContent().build<Unit>()
         }
     }
 
@@ -222,7 +222,7 @@ class UserGroupController(
 
         return runHandler {
             userGroupService.removeMember(groupId, userId)
-            ResponseEntity.noContent().build<Void>()
+            ResponseEntity.noContent().build<Unit>()
         }
     }
 

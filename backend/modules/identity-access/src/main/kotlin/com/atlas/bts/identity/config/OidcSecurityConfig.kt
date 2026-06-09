@@ -49,6 +49,12 @@ import org.springframework.web.cors.CorsConfigurationSource
  * 본 FR 은 [OidcAuthenticationSuccessHandler] 의 RelayStateValidator open-redirect 방어 로직만
  * 유지하고, oauth2Login 의 자체 state 검증과 충돌하는 returnTo 전달은 후속으로 미룬다(복귀 경로 자체는
  * nice-to-have, open-redirect 차단이 핵심). 핸들러는 returnTo 부재 시 기본 랜딩으로 안전하게 폴백한다.
+ *
+ * ## 세션 고정 방어 + JSESSIONID SameSite (FR-AU-08b — EC10/EC17, SAML 체인 동형)
+ * session-fixation 을 `changeSessionId` 로 명시해 인증 성공 시 SSO LinkingIntent 속성을 보존한다(EC10).
+ * JSESSIONID SameSite/secure 설정은 `application.yml`(SameSite=None) + `application-prod.yml`(secure=true)
+ * 에서 공통 적용된다(EC17/C4). OIDC 콜백은 GET redirect 라 cross-site 제약이 SAML(POST)보다 느슨하나,
+ * 같은 SSO 체인 정책을 일관 적용한다.
  */
 @Configuration
 @ConditionalOnBean(ClientRegistrationRepository::class, OidcAuthenticationSuccessHandler::class)
@@ -75,7 +81,12 @@ class OidcSecurityConfig(
     ): SecurityFilterChain {
         return http
             .securityMatcher(oidcPathMatcher())
-            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED) }
+            .sessionManagement {
+                it.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+                // session-fixation 명시(EC10) — SAML 체인 동형. 인증 성공 시 세션 ID 만 회전하고
+                // SSO LinkingIntent 속성을 보존해 연결 모드 콜백 fail-open 을 막는다.
+                it.sessionFixation { sf -> sf.changeSessionId() }
+            }
             .cors { it.configurationSource(corsConfigurationSource) }
             // 콜백(/login/oauth2/code) 은 외부 IdP redirect 이므로 CSRF 토큰 부재 — OIDC 경로 한정 CSRF skip.
             // OAuth2 state 파라미터로 CSRF 방어가 유지되며, 일반 API CSRF 검증(SecurityConfig)에 영향 없음.

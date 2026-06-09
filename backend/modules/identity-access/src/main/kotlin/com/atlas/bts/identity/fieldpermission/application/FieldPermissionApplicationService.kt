@@ -64,7 +64,7 @@ class FieldPermissionApplicationService(
         requireManagePermission(actorId, projectId)
 
         return fieldPermissionRepository.findByProject(projectId).map { rule ->
-            val groupName = userGroupRepository.findById(rule.groupId)?.name ?: ""
+            val groupName = userGroupRepository.findById(rule.groupId)?.name.orEmpty()
             RuleWithGroupName(rule, groupName)
         }
     }

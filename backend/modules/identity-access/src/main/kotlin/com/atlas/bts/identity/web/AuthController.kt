@@ -215,7 +215,7 @@ class AuthController(
     @PostMapping("/logout")
     fun logout(
         @AuthenticationPrincipal jwt: Jwt,
-    ): ResponseEntity<Void> {
+    ): ResponseEntity<Unit> {
         val sidStr = jwt.getClaimAsString("sid")
         if (!sidStr.isNullOrBlank()) {
             val sid = UUID.fromString(sidStr)
@@ -339,7 +339,7 @@ class AuthController(
         // 미존재 / 타인 소유(IDOR) / 이미 비활성(revoked·만료, EC-2) 세션은 모두 404 (존재 비노출 + 멱등 재폐기 방지).
         val session = sessionService.lookup(sid)
         if (session == null || session.userId != claims.userId || !session.isActive(clock.instant())) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).build<Void>()
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build<Unit>()
         }
 
         if (sid == claims.currentSid) {
@@ -350,7 +350,7 @@ class AuthController(
         sessionService.revoke(sid, REVOKE_REASON_USER)
         refreshTokenRepository.revokeChainFromSession(sid)
 
-        return ResponseEntity.noContent().build<Void>()
+        return ResponseEntity.noContent().build<Unit>()
     }
 
     // ── private helpers ───────────────────────────────────────────────────────

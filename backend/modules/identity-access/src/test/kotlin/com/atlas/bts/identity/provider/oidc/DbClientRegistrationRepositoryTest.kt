@@ -33,6 +33,11 @@ class DbClientRegistrationRepositoryTest {
         private val byRegId: Map<String, OidcProviderConfig>,
     ) : OidcProviderConfigReader {
         override fun findByRegistrationId(registrationId: String): OidcProviderConfig? = byRegId[registrationId]
+
+        // FR-AU-08b B1 — enabled 만 반환(콜백 enabled 재해소). 본 변환 테스트에서는 호출되지 않으나
+        // 인터페이스 확장(findEnabledByRegistrationId)에 맞춰 stub 을 둬 컴파일을 유지한다.
+        override fun findEnabledByRegistrationId(registrationId: String): OidcProviderConfig? =
+            byRegId[registrationId]?.takeIf { it.enabled }
     }
 
     /**
