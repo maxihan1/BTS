@@ -3,6 +3,7 @@
 package com.atlas.bts.identity.auth
 
 import com.atlas.bts.identity.provider.AuthnProviderConfigRepository
+import com.atlas.bts.identity.spi.AuthenticationProvider
 import com.atlas.bts.identity.spi.AuthnResult
 import com.atlas.bts.identity.spi.Credential
 import com.atlas.bts.identity.spi.FailureReason
@@ -38,11 +39,10 @@ class CompositeAuthenticationManager(
      * 지정된 [providerId] 의 Provider 로 username/password 인증을 수행한다.
      *
      * 흐름:
-     * 1. [providerId] 를 [ProviderType] 으로 파싱 — 알 수 없는 값은 인증 실패로 처리.
-     * 2. username/password 계열(LOCAL/LDAP)이 아니면 [FailureReason.INVALID_INPUT].
-     * 3. 운영자가 비활성화한 Provider 이면 [FailureReason.PROVIDER_UNAVAILABLE].
-     * 4. 해당 type 의 Provider Bean 이 없으면 [FailureReason.PROVIDER_UNAVAILABLE].
-     * 5. type 에 맞는 [Credential] 을 만들어 Provider 에 위임하고 결과를 그대로 반환.
+     * 1. [providerId] 를 LOCAL/LDAP [ProviderType] 으로 파싱 — 알 수 없거나 비-username/password
+     *    계열(SAML/OIDC/PAT/OAUTH)이면 [FailureReason.INVALID_INPUT].
+     * 2. 비활성화 / Provider Bean 부재이면 [FailureReason.PROVIDER_UNAVAILABLE].
+     * 3. type 에 맞는 [Credential] 을 만들어 Provider 에 위임하고 결과를 그대로 반환.
      *
      * [com.atlas.bts.identity.provider.ldap.ProviderUnavailableException] 은 잡지 않고
      * 호출자(AuthController)로 전파한다 — 503 변환은 상위 레이어 책임이다.
@@ -51,23 +51,21 @@ class CompositeAuthenticationManager(
      * @param username 사용자명
      * @param password 비밀번호 CharArray — wipe 책임은 Provider 구현체에 있다.
      */
+    @Suppress("ReturnCount") // 실패 사유 구분(INVALID_INPUT vs PROVIDER_UNAVAILABLE)을 위한 명시적 가드 절
     fun authenticate(
         providerId: String,
         username: String,
         password: CharArray,
     ): AuthnResult {
-        val type = parseUsernamePasswordType(providerId)
-            ?: return AuthnResult.Failure(FailureReason.INVALID_INPUT)
+        val type =
+            parseUsernamePasswordType(providerId)
+                ?: return AuthnResult.Failure(FailureReason.INVALID_INPUT)
 
-        if (!authnProviderConfigRepository.isEnabled(type)) {
-            return AuthnResult.Failure(FailureReason.PROVIDER_UNAVAILABLE)
-        }
+        val provider =
+            resolveEnabledProvider(type)
+                ?: return AuthnResult.Failure(FailureReason.PROVIDER_UNAVAILABLE)
 
-        val provider = providerRegistry.findByType(type)
-            ?: return AuthnResult.Failure(FailureReason.PROVIDER_UNAVAILABLE)
-
-        val credential = buildCredential(type, username, password)
-        return provider.authenticate(credential)
+        return provider.authenticate(buildCredential(type, username, password))
     }
 
     /**
@@ -82,15 +80,27 @@ class CompositeAuthenticationManager(
             .getOrNull()
             ?.takeIf { it == ProviderType.LOCAL || it == ProviderType.LDAP }
 
-    /** username/password 계열 [type] 에 맞는 [Credential] 을 생성한다. */
+    /**
+     * [type] 이 운영자에 의해 활성 상태이며 해당 Provider Bean 이 등록돼 있으면 그 Provider 를,
+     * 둘 중 하나라도 충족하지 못하면 null 을 반환한다 (호출자가 PROVIDER_UNAVAILABLE 로 변환).
+     */
+    private fun resolveEnabledProvider(type: ProviderType): AuthenticationProvider? =
+        if (authnProviderConfigRepository.isEnabled(type)) providerRegistry.findByType(type) else null
+
+    /**
+     * username/password 계열 [type] 에 맞는 [Credential] 을 생성한다.
+     *
+     * [type] 은 [parseUsernamePasswordType] 가 LOCAL/LDAP 으로 좁혀 보장한 값이다.
+     * `else` 는 enum exhaustiveness 를 만족시키기 위한 문법적 분기로, 같은 매핑(UsernamePassword)을
+     * 둔다 — 도달 불가 경로에 예외를 두지 않아 방어적 dead-throw 를 피한다.
+     */
     private fun buildCredential(
         type: ProviderType,
         username: String,
         password: CharArray,
     ): Credential =
         when (type) {
-            ProviderType.LOCAL -> Credential.UsernamePassword(username, password)
             ProviderType.LDAP -> Credential.LdapBind(username, password)
-            else -> error("buildCredential 은 LOCAL/LDAP 만 처리한다 — parseUsernamePasswordType 로 보장됨")
+            else -> Credential.UsernamePassword(username, password)
         }
 }
