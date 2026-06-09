@@ -107,13 +107,15 @@
 
 **우선순위**. 필수 | **선행**. §2.1~§2.5 | **Plan slug**. `identity/multi-provider`
 
-- [ ] D1. 도메인 (책임. security-engineer)
-- [ ] D2. 명세 — Provider 우선순위 + fallback 규칙 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `authn_providers.priority, enabled` (책임. db-engineer)
-- [ ] D4. 백엔드 — `CompositeAuthenticationManager` (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 — 다중 Provider 시나리오 (책임. security-engineer)
-- [ ] D6. 프론트 UI — 다중 Provider 선택 화면 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. security-engineer)
+- [x] D2. 명세 — Provider **명시 선택** 규칙 (자동 fallback 폐기 — 보안) (책임. security-engineer)
+- [x] D3. 데이터 모델 — `authn_providers.enabled, sort_order` (기존 컬럼 활용, 마이그레이션 0) (책임. db-engineer)
+- [x] D4. 백엔드 — `CompositeAuthenticationManager` (명시 선택 디스패처) (책임. security-engineer)
+- [x] D5. 백엔드 테스트 — 다중 Provider 시나리오 (책임. security-engineer)
+- [x] D6. 프론트 UI — 다중 Provider 선택 화면 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
+
+> **FR-AU-06 완료 (2026-06-09, PR #101)**. 여러 인증 방식(LOCAL·LDAP·SAML·OIDC) 동시 활성화 + 로그인 화면 동적 목록. **D2 deviation** — 원안의 "우선순위 + fallback 규칙"을 brainstorming 보안 검토 후 **명시 선택만**으로 변경(자동 fallback 폐기). 자동 순차 시도의 위험 3종(동명이인 타계정 로그인 · 비밀번호 오전달 · lockout 2배)을 회피하며, "똑똑한 자동 선택"은 FR-AU-07(도메인 기반 라우팅)이 담당. **핵심 — G1 버그 해소**. 변경 전 `AuthController`가 항상 `Credential.UsernamePassword`만 생성해 `LdapProvider`(LdapBind만 supports) 진입 불가 → username/password LDAP 로그인이 사실상 불가했음. `CompositeAuthenticationManager`(명시 선택 디스패처)가 provider별 Credential을 생성하도록 수정. providers 목록은 username/password 계열(LOCAL/LDAP)만 코드 Bean ∩ DB(`enabled`/`sort_order`) 오버레이로 반환(SAML/OIDC는 별도 엔드포인트). **마이그레이션 0**(컬럼 기존재, LOCAL/LDAP seed 안 함 — LDAP config는 환경 의존). `isEnabled` fail-safe(비활성 row 하나라도 있으면 false). 같은 type 다중 인스턴스(LdapTemplate 동적 wiring)는 **제외 → 후속 FR**. ADR `docs/decisions/2026-06-09-multi-provider-explicit-selection.md`.
 
 ### §2.7 FR-AU-07 — 도메인 기반 자동 라우팅
 
