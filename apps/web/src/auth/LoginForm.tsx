@@ -1,5 +1,5 @@
 // 로그인 폼 컴포넌트 — RHF + Zod 검증 + shadcn/ui Form + provider 드롭다운(동적) + SAML IdP 버튼 + OIDC provider 버튼
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
@@ -61,6 +61,14 @@ function resolveLoginErrorMessage(error: unknown): string {
   return loginStrings.errorDefault
 }
 
+/**
+ * providers API 실패 또는 빈 배열 응답 시 사용하는 LOCAL 안전 기본값.
+ * spec EC-06-06: "LOCAL fallback — 최소 Local 로그인은 항상 가능".
+ */
+const LOCAL_FALLBACK: readonly ProviderEntry[] = [
+  { id: 'local', type: 'LOCAL', displayName: 'Local', priority: 0, available: true },
+]
+
 // provider 값은 동적이므로 enum 대신 z.string().min(1) 사용.
 // 구체 값 검증은 useLoginMutation → backend 응답에서 수행한다.
 const loginFormSchema = z.object({
@@ -78,11 +86,25 @@ interface LoginFormProps {
 export const LoginForm = ({ onSuccess }: LoginFormProps) => {
   const mutation = useLoginMutation()
 
-  const { data: providers, isLoading: isProvidersLoading } = useQuery<ProviderEntry[]>({
+  const {
+    data: providers,
+    isLoading: isProvidersLoading,
+    isError: isProvidersError,
+  } = useQuery<ProviderEntry[]>({
     queryKey: ['auth', 'providers'],
     queryFn: fetchProviders,
     staleTime: 60_000,
   })
+
+  // fetch 실패 또는 빈 배열 응답 시 LOCAL_FALLBACK으로 대체한다 (spec EC-06-06).
+  // useMemo로 감싸 참조 안정성을 보장하고 useEffect deps 경고를 방지한다.
+  const effectiveProviders = useMemo<readonly ProviderEntry[]>(
+    () =>
+      isProvidersError || (providers !== undefined && providers.length === 0)
+        ? LOCAL_FALLBACK
+        : (providers ?? []),
+    [isProvidersError, providers],
+  )
 
   const { data: samlIdps } = useQuery<SamlIdp[]>({
     queryKey: ['saml', 'idps'],
@@ -105,16 +127,16 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
     },
   })
 
-  // providers 응답이 도착하면 첫 항목을 기본 선택으로 설정한다.
+  // effectiveProviders가 결정되면 첫 항목을 기본 선택으로 설정한다.
   // react-usestate-stale-key-prop 패턴 주의: form.setValue로 명시 설정해야 한다.
-  // providers가 이미 있으면 form 값이 비어있을 때만 초기값을 설정한다.
+  // 이미 값이 있으면(사용자가 직접 변경) 덮어쓰지 않는다.
   useEffect(() => {
-    const firstProvider = providers?.[0]
+    const firstProvider = effectiveProviders[0]
     if (firstProvider === undefined) return
     if (form.getValues('provider') === '') {
       form.setValue('provider', firstProvider.id)
     }
-  }, [providers, form])
+  }, [effectiveProviders, form])
 
   const serverError = form.formState.errors.root?.message ?? null
 
@@ -154,7 +176,7 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {(providers ?? []).map((provider) => (
+                    {effectiveProviders.map((provider) => (
                       <SelectItem key={provider.id} value={provider.id} role="option">
                         {resolveProviderLabel(provider)}
                       </SelectItem>
