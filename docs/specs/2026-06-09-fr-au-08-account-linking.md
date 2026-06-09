@@ -82,7 +82,7 @@
 - **N7 (무결성)**. 동시 연결 race는 기존 `UNIQUE(provider_id, external_subject)` 제약이 DB 차원 안전망.
 - **N8 (CSRF)**. 신규 mutating 엔드포인트(POST `/reauth`, POST `/links`, DELETE `/links/{id}`)는 기존 `CookieCsrfTokenRepository` + `SameSite=Strict` CSRF 보호를 받는다. CSRF 예외 등록 금지(절대 규칙). 프론트는 BC별 CSRF 관례를 따른다(`frontend-api-convention-per-bc`).
 - **N9 (동시성/TOCTOU)**. "마지막 수단 해제 거부"(FR6)는 *check(count) → delete* 사이 TOCTOU에 취약하다 — 서로 다른 링크 2개를 동시 해제하면 둘 다 count≥2를 보고 둘 다 삭제→0이 될 수 있다. **userId 기준 `pg_advisory_xact_lock`(bigint 시그니처)로 직렬화** 후 count 재조회→delete를 같은 트랜잭션에서 수행한다(`advisory-lock-bigint-toctou` 선례).
-- **N10 (brute-force)**. 연결/재인증의 LDAP bind 반복 실패 보호 — DN이 **이미 연결된** 경우(재인증) 기존 LockoutPolicy(`failed_attempts`/`locked_until`)를 적용한다. **미연결 DN의 link-bind**는 아직 행이 없어 per-account lockout이 불가 → LDAP 서버 자체 lockout에 의존(잔여 위험). **LOCAL reauth(`POST /reauth` method=LOCAL) 비번 추측(리뷰 C6)** — 인증된 세션이라 userId를 알므로, 실패 시 기존 LockoutPolicy를 **userId 기준**으로 카운트해 탈취 세션의 무제한 추측을 차단한다. 엔드포인트 단위 공격적 rate-limit는 BTS에 전역 인프라 부재 시 후속 과제로 명시.
+- **N10 (brute-force)**. 연결/재인증의 LDAP bind 반복 실패 보호 — DN이 **이미 연결된** 경우(재인증) 기존 LockoutPolicy(`failed_attempts`/`locked_until`)를 적용한다. **미연결 DN의 link-bind**는 아직 행이 없어 per-account lockout이 불가 → LDAP 서버 자체 lockout에 의존(잔여 위험). **LOCAL reauth(`POST /reauth` method=LOCAL) 비번 추측(리뷰 C6 + 코드 실측 정정)** — 코드 실측 결과 BTS는 **LOCAL 로그인용 lockout 인프라가 없다**(LockoutPolicy는 ldap 전용 — user_external_accounts 기반). LOCAL은 user_external_accounts 행이 없어 per-account 카운터 부재. 따라서 LOCAL reauth는 기존 LOCAL 로그인과 **동일 보호**(`verifyForUser` timing-attack 방어)를 따르며, **새 lockout 인프라를 본 FR에서 발명하지 않는다**(scope 규율). 적극적 brute-force 방어(LOCAL lockout 신설 또는 reauth 엔드포인트 rate-limit)는 후속 과제(LOCAL 로그인 lockout과 함께 일괄 도입이 일관). 엔드포인트 단위 공격적 rate-limit는 BTS에 전역 인프라 부재 시 후속 과제로 명시.
 
 ## API 인터페이스 (REST)
 

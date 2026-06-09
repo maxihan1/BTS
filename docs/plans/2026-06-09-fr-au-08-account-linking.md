@@ -118,8 +118,8 @@ classify 결과 (보정 적용).
 - files: [`IA/main/kotlin/com/atlas/bts/identity/account/ReauthService.kt`, `IA/test/kotlin/com/atlas/bts/identity/account/ReauthServiceTest.kt`]
 - depends-on: [1, 3]
 
-**RED**. 단위 테스트(mock local-cred/ldap/stepup) — LOCAL: `verifyForUser(userId, plain)` true→`StepUpService.grant(sid)` 호출, false→실패(grant 미호출) + **LockoutPolicy userId 기준 카운트(리뷰 C6)**. LDAP: `bindForLinking` 성공 + **결과 DN이 현재 userId에 이미 연결됨** 확인 시에만 성공(타 신원으로 재인증 불가, EC9). 평문은 `CharArray`로 받고 wipe(N4). 응답은 만료시각만(sid 미노출, FR9).
-**GREEN**. `ReauthService.reauthenticate(userId, sid, method, creds)` — sid는 호출자(컨트롤러)가 JWT 클레임에서 추출해 전달(FR9). method 분기(LOCAL/LDAP), 검증 성공 시 `stepUpService.grant(sid)`. LOCAL 실패는 per-user lockout 카운트(C6). PII/비번 미로깅.
+**RED**. 단위 테스트(mock local-cred/ldap/stepup) — LOCAL: `verifyForUser(userId, plain)` true→`StepUpService.grant(sid)` 호출, false→실패(grant 미호출, 예외). LDAP: `bindForLinking` 성공 + **결과 DN이 현재 userId에 이미 연결됨** 확인 시에만 성공(타 신원으로 재인증 불가, EC9), 미연결/실패→실패. 평문은 `CharArray`로 받고 wipe(N4). 응답은 만료시각만(sid 미노출, FR9).
+**GREEN**. `ReauthService.reauthenticate(userId, sid, method, creds)` — sid는 호출자(컨트롤러)가 JWT 클레임에서 추출해 전달(FR9). method 분기(LOCAL/LDAP), 검증 성공 시 `stepUpService.grant(sid)`. **LOCAL lockout 인프라 부재 — 새로 발명 금지(N10 정정), 기존 LOCAL 로그인과 동일 보호**. PII/비번 미로깅.
 **REFACTOR**. method enum + KDoc(SSO 재인증은 FR-AU-08b 위임 명시).
 **검증**. `./gradlew :modules:identity-access:test --tests "*ReauthServiceTest"`
 
