@@ -405,6 +405,10 @@ class AccountLinkControllerTest {
     /**
      * link 경로에서 [ProviderUnavailableException] 이 전파되면 503 으로 직접 응답한다.
      * catch-all @ExceptionHandler 가 500 으로 변질시키지 않도록 메서드 안에서 직접 처리한다.
+     *
+     * 이 예외는 슬라이스에서 mock 으로 주입하지만, 실 경로에서도 [AccountLinkService.link] →
+     * LdapProvider.bindForLinking 이 LDAP 서버 장애 시 실제로 전파한다(C1 — LdapProviderBindForLinkingTest
+     * L-06 / AccountLinkServiceTest 전파 가드로 별도 검증). 즉 가짜 그린이 아니다.
      */
     @Test
     fun `POST links returns 503 when provider unavailable`() {

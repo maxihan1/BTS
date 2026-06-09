@@ -125,7 +125,7 @@ class ExternalAccountRepository(
         jdbc.update(SQL_UPDATE_LAST_LOGIN, mapOf("id" to id, "lastLoginAt" to Timestamp.from(now)))
     }
 
-    // ── FR-AU-08 계정 연결 관리 (조회/삭제/카운트/락) ──────────────────────────
+    // ── FR-AU-08 계정 연결 관리 (조회/삭제/락) ──────────────────────────
 
     /**
      * 한 사용자에 연결된 모든 external account 조회 (FR-AU-08).
@@ -147,11 +147,6 @@ class ExternalAccountRepository(
         id: UUID,
         userId: UUID,
     ): Int = jdbc.update(SQL_DELETE_BY_ID_AND_USER_ID, mapOf("id" to id, "userId" to userId))
-
-    /** 한 사용자에 연결된 external account 수 (FR-AU-08 — 마지막 1건 삭제 차단 판단용). */
-    fun countByUserId(userId: UUID): Int =
-        jdbc.queryForObject(SQL_COUNT_BY_USER_ID, mapOf("userId" to userId), Int::class.java)
-            ?: error("count(*) 결과 없음 — userId=$userId")
 
     /**
      * 사용자 단위 advisory lock 획득 (FR-AU-08 동시성 제어).
@@ -237,13 +232,6 @@ class ExternalAccountRepository(
         const val SQL_DELETE_BY_ID_AND_USER_ID = """
             DELETE FROM user_external_accounts
             WHERE id = :id AND user_id = :userId
-        """
-
-        /** 한 사용자에 연결된 external account 수 (FR-AU-08). */
-        const val SQL_COUNT_BY_USER_ID = """
-            SELECT count(*)
-            FROM user_external_accounts
-            WHERE user_id = :userId
         """
 
         /**

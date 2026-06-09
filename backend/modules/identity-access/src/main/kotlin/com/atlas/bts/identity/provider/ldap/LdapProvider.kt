@@ -153,12 +153,20 @@ class LdapProvider(
      * 다른 providerId·비-LDAP 이면 null 을 반환한다.
      *
      * Contract: [password] CharArray 는 예외 여부와 무관하게 finally 블록에서 wipe 된다.
-     * 예외를 throw 하지 않으며 실패(자격증명 오류·서버 장애·설정 부재)는 모두 null 로 표현한다.
+     *
+     * ## 실패 표현 (C1 — EC3 503 실배선)
+     * - 자격증명 오류([BindOutcome.InvalidCredentials])·설정 부재·providerId 불일치 → null
+     *   (호출자가 [AccountLinkAuthException] 401 로 매핑).
+     * - **서버 장애([BindOutcome.Unavailable]) → [ProviderUnavailableException] throw**.
+     *   null 로 뭉개면 컨트롤러가 401 로 변질시켜 스펙 EC3(503 `provider_unavailable`)가 나오지 않으므로,
+     *   호출자([AccountLinkService.link]가 catch 하지 않음)를 통과해 컨트롤러 catch→503 에 도달하도록 신호한다.
+     * 일반 로그인([authenticate]) 경로는 Provider contract 상 예외 대신 Failure 를 반환하므로 무변경이다.
      *
      * @param providerId 연결 대상 LDAP authn_providers.id
      * @param username LDAP 사용자명 (uid)
      * @param password 평문 비밀번호 — 호출 후 wipe 됨
-     * @return bind 성공 시 [LdapProvisionAttrs], 실패 시 null
+     * @return bind 성공 시 [LdapProvisionAttrs], 자격증명/설정 실패 시 null
+     * @throws ProviderUnavailableException LDAP 서버 통신 장애 등 일시적 사용 불가 시
      */
     @Suppress("ReturnCount")
     fun bindForLinking(
@@ -186,7 +194,10 @@ class LdapProvider(
             val credential = Credential.LdapBind(username, password)
             return when (val outcome = bindAndExtract(credential, config)) {
                 is BindOutcome.Success -> outcome.attrs
-                BindOutcome.InvalidCredentials, BindOutcome.Unavailable -> null
+                BindOutcome.InvalidCredentials -> null
+                // 서버 장애는 null 이 아니라 예외로 신호 — 컨트롤러가 503 으로 응답하도록(EC3).
+                BindOutcome.Unavailable ->
+                    throw ProviderUnavailableException("LDAP unavailable during account linking", providerType = "LDAP")
             }
         } finally {
             password.fill(' ')

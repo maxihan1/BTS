@@ -252,7 +252,7 @@ class ExternalAccountRepositoryTest {
         assertThat(second.id).isEqualTo(first.id)
     }
 
-    // ── FR-AU-08 계정 연결 관리 (조회/삭제/카운트/락) ──────────────────────────
+    // ── FR-AU-08 계정 연결 관리 (조회/삭제/락) ──────────────────────────
 
     /**
      * 두 번째 authn_providers 행 INSERT.

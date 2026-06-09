@@ -61,7 +61,9 @@ import java.util.UUID
  * ## 예외 → HTTP 매핑
  * account 도메인 예외는 이 컨트롤러 **로컬 [@ExceptionHandler]** 가 상태로 변환한다(전역
  * @ControllerAdvice 미사용 — 타 컨트롤러 영향/catch-all 변질 선례 회피). [ProviderUnavailableException]
- * (LDAP 불가) 은 catch-all 이 500 으로 변질시키지 않도록 [link] 안에서 직접 503 으로 응답한다.
+ * (LDAP 불가) 은 [AccountLinkService.link] → [com.atlas.bts.identity.provider.ldap.LdapProvider.bindForLinking]
+ * 이 서버 장애 시 **실제로 전파**하며(C1 — EC3 503 실배선), catch-all 이 500 으로 변질시키지 않도록
+ * [link] 안에서 직접 503 으로 응답한다.
  *
  * ## 트랜잭션 경계
  * @Transactional 없음 — service layer([AccountLinkService]/[ReauthService]) 가 각자 보장한다.
@@ -112,9 +114,12 @@ class AccountLinkController(
      * sid 는 JWT 클레임에서만 추출한다(바디 sid 무시 — FR9). method 별로 [ReauthService] 를 호출하고
      * 성공 시 만료시각만 담은 200 을 반환한다. 실패는 로컬 핸들러가 401 로 변환한다.
      *
+     * method 별 필수 필드(LOCAL=password, LDAP=providerId/username/password)가 누락이면 서비스 호출 전
+     * **400 `reauth_fields_required`** 로 거부한다(클라이언트 입력 오류 — C2).
+     *
      * @param jwt 인증 JWT principal. PAT 인증 시 null → 403.
      * @param body 재인증 요청(method/password/(+LDAP providerId,username)).
-     * @return 200 [ReauthResponse] / 401 실패(핸들러) / 403 PAT
+     * @return 200 [ReauthResponse] / 400 입력누락 / 401 실패(핸들러) / 403 PAT
      *
      * ReturnCount 억제 — PAT/sid 부재 guard early return 이 중첩 if 보다 가독성 우수(DEVELOPMENT.md §2.3).
      */
@@ -128,16 +133,29 @@ class AccountLinkController(
         val sid = claims.currentSid ?: return PAT_FORBIDDEN_RESPONSE
 
         when (body.method) {
-            ReauthMethod.LOCAL ->
+            ReauthMethod.LOCAL -> {
+                // 로컬은 비밀번호만 필수 — 누락/공백은 클라이언트 입력 오류이므로 400(서비스 호출 전 거부).
+                if (body.password.isBlank()) {
+                    return errorResponse(HttpStatus.BAD_REQUEST, ERROR_REAUTH_FIELDS_REQUIRED)
+                }
                 reauthService.reauthenticateLocal(claims.userId, sid, body.password.toCharArray())
-            ReauthMethod.LDAP ->
+            }
+            ReauthMethod.LDAP -> {
+                // LDAP 은 providerId/username/password 모두 필수 — 하나라도 누락이면 400
+                // (requireNotNull 의 IllegalArgumentException 이 핸들러 없이 500 으로 새는 것을 막는다 — C2).
+                val providerId = body.providerId
+                val username = body.username
+                if (providerId == null || username.isNullOrBlank() || body.password.isBlank()) {
+                    return errorResponse(HttpStatus.BAD_REQUEST, ERROR_REAUTH_FIELDS_REQUIRED)
+                }
                 reauthService.reauthenticateLdap(
                     claims.userId,
                     sid,
-                    requireNotNull(body.providerId) { "providerId required for LDAP reauth" },
-                    requireNotNull(body.username) { "username required for LDAP reauth" },
+                    providerId,
+                    username,
                     body.password.toCharArray(),
                 )
+            }
         }
 
         return ResponseEntity.ok(ReauthResponse(stepUpExpiresAt = clock.instant().plus(StepUpService.STEP_UP_TTL)))
@@ -285,7 +303,9 @@ class AccountLinkController(
     /**
      * externalSubject 를 앞 [MASK_VISIBLE_PREFIX] 자만 남기고 나머지를 `***` 로 가린다 (PII).
      *
-     * 길이가 prefix 이하면 전체를 prefix 로 간주해 그대로 `***` 를 붙인다(원본 길이 비노출).
+     * 길이가 [MASK_VISIBLE_PREFIX] 이하면 전체가 그대로 노출된 뒤 `***` 가 붙는다(짧은 값은
+     * 마스킹되지 않는다). 실제 입력은 LDAP DN(예: `uid=...,ou=...,dc=...`)으로 항상 prefix 보다
+     * 길어 끝부분(고유 식별자)이 가려지므로 PII 노출 위험이 없다.
      */
     private fun maskSubject(externalSubject: String): String {
         val visible = externalSubject.take(MASK_VISIBLE_PREFIX)
@@ -308,6 +328,9 @@ class AccountLinkController(
         const val ERROR_STEP_UP_REQUIRED = "step_up_required"
         const val ERROR_LINK_AUTH_FAILED = "link_authentication_failed"
         const val ERROR_REAUTH_FAILED = "reauth_failed"
+
+        /** reauth 입력 누락(method 별 필수 필드 부재) — 클라이언트 입력 오류(400). */
+        const val ERROR_REAUTH_FIELDS_REQUIRED = "reauth_fields_required"
         const val ERROR_ACCOUNT_ALREADY_LINKED = "account_already_linked"
         const val ERROR_LAST_LOGIN_METHOD = "last_login_method"
         const val ERROR_PROVIDER_UNAVAILABLE = "provider_unavailable"
