@@ -7,7 +7,13 @@ test('S1 정상 로그인 — alice/password (Local) → /dashboard 환영 메�
   // 페이지 진입 확인 — "BTS 로그인" 헤딩 (LoginPage)
   await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
 
-  // username, password 입력 (provider 기본값 Local — 변경 불필요)
+  // provider 드롭다운에서 "Local" 명시 선택 (FR-AU-06 — 명시 선택, 미선택 시 기본값은 우선순위상 LDAP-corp)
+  const providerSelect = page.getByRole('combobox', { name: '로그인 방식' })
+  await expect(providerSelect).not.toBeDisabled()
+  await providerSelect.click()
+  await page.getByRole('option', { name: 'Local', exact: true }).click()
+
+  // username, password 입력
   await page.getByLabel('사용자명').fill('alice')
   await page.getByLabel('비밀번호').fill('password')
 
