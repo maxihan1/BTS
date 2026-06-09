@@ -21,8 +21,31 @@ function renderLoginForm(onSuccess?: () => void) {
   return render(<LoginForm onSuccess={onSuccess} />, { wrapper: Wrapper })
 }
 
+/**
+ * providers useQuery 로딩 완료를 기다리는 헬퍼.
+ * provider 드롭다운이 enabled 상태가 되면 로딩 완료로 판단한다.
+ */
+async function waitForProvidersLoaded() {
+  await waitFor(() => {
+    const combobox = screen.getByRole('combobox', { name: '로그인 방식' })
+    expect(combobox).not.toBeDisabled()
+  })
+}
+
+/** 테스트 기본 providers 핸들러 — ldap(priority 0), local(priority 1) */
+const defaultProvidersHandler = http.get('/api/v1/auth/providers', () =>
+  HttpResponse.json({
+    providers: [
+      { id: 'ldap', type: 'LDAP', displayName: 'Ldap', priority: 0, available: true },
+      { id: 'local', type: 'LOCAL', displayName: 'Local', priority: 1, available: true },
+    ],
+  }),
+)
+
 beforeEach(() => {
   useAuthStore.setState({ accessToken: null, user: null })
+  // providers useQuery가 미핸들 MSW 에러로 폼을 깨뜨리지 않도록 기본 핸들러를 등록한다.
+  server.use(defaultProvidersHandler)
 })
 
 afterEach(() => {
@@ -56,6 +79,8 @@ describe('LoginForm', () => {
     const onSuccess = vi.fn()
     renderLoginForm(onSuccess)
 
+    // providers 로딩 완료 후 제출해야 provider 폼 값이 설정된다
+    await waitForProvidersLoaded()
     await user.type(screen.getByLabelText('사용자명'), 'alice')
     await user.type(screen.getByLabelText('비밀번호'), 'password')
     await user.click(screen.getByRole('button', { name: '로그인' }))
@@ -68,6 +93,8 @@ describe('LoginForm', () => {
     const user = userEvent.setup()
     renderLoginForm()
 
+    // providers 로딩 완료 후 제출해야 provider 폼 값이 설정된다
+    await waitForProvidersLoaded()
     // username 비워두고 비밀번호만 입력
     await user.type(screen.getByLabelText('비밀번호'), 'password')
     await user.click(screen.getByRole('button', { name: '로그인' }))
@@ -86,6 +113,7 @@ describe('LoginForm', () => {
 
     renderLoginForm()
 
+    await waitForProvidersLoaded()
     await user.type(screen.getByLabelText('사용자명'), 'alice')
     await user.type(screen.getByLabelText('비밀번호'), 'wrong')
     await user.click(screen.getByRole('button', { name: '로그인' }))
@@ -104,6 +132,7 @@ describe('LoginForm', () => {
 
     renderLoginForm()
 
+    await waitForProvidersLoaded()
     await user.type(screen.getByLabelText('사용자명'), 'alice')
     await user.type(screen.getByLabelText('비밀번호'), 'password')
     await user.click(screen.getByRole('button', { name: '로그인' }))
@@ -176,6 +205,8 @@ describe('LoginForm', () => {
     expect(usernameInput).toBeInTheDocument()
     expect(passwordInput).toBeInTheDocument()
 
+    // providers 로딩 완료 후 제출해야 provider 폼 값이 설정된다
+    await waitForProvidersLoaded()
     // 빈 폼 제출 후 aria-invalid 설정 확인
     await user.click(screen.getByRole('button', { name: '로그인' }))
 

@@ -1,5 +1,5 @@
-// 로그인 폼 컴포넌트 — RHF + Zod 검증 + shadcn/ui Form + provider 드롭다운 + SAML IdP 버튼 + OIDC provider 버튼
-import { useState } from 'react'
+// 로그인 폼 컴포넌트 — RHF + Zod 검증 + shadcn/ui Form + provider 드롭다운(동적) + SAML IdP 버튼 + OIDC provider 버튼
+import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
@@ -27,8 +27,27 @@ import { OidcIdpButtons } from './OidcIdpButtons'
 import { loginStrings } from '@/i18n/ko'
 import { fetchSamlIdps } from '@/api/saml'
 import { fetchOidcProviders } from '@/api/oidc'
+import { fetchProviders } from '@/api/providers'
 import type { SamlIdp } from '@/api/saml'
 import type { OidcProvider } from '@/api/oidc'
+import type { ProviderEntry } from '@/api/providers'
+
+/**
+ * provider id → 한국어 라벨 매핑.
+ * 키가 없으면 응답의 displayName을 그대로 사용한다(fallback).
+ */
+const PROVIDER_LABEL_MAP: Readonly<Record<string, string>> = {
+  local: loginStrings.providerLocal,
+  ldap: loginStrings.providerLdapCorp,
+}
+
+/**
+ * ProviderEntry의 id에 대응하는 표시 라벨을 반환한다.
+ * 알려진 id(local/ldap)이면 i18n 매핑값, 없으면 displayName을 fallback으로 사용한다.
+ */
+function resolveProviderLabel(provider: ProviderEntry): string {
+  return PROVIDER_LABEL_MAP[provider.id] ?? provider.displayName
+}
 
 /**
  * onError 콜백에서 받은 에러를 사용자 노출 한국어 메시지로 변환한다.
@@ -42,8 +61,10 @@ function resolveLoginErrorMessage(error: unknown): string {
   return loginStrings.errorDefault
 }
 
+// provider 값은 동적이므로 enum 대신 z.string().min(1) 사용.
+// 구체 값 검증은 useLoginMutation → backend 응답에서 수행한다.
 const loginFormSchema = z.object({
-  provider: z.enum(['local', 'ldap-corp']),
+  provider: z.string().min(1),
   username: z.string().min(1, loginStrings.usernameRequired),
   password: z.string().min(1, loginStrings.passwordRequired),
 })
@@ -55,8 +76,13 @@ interface LoginFormProps {
 }
 
 export const LoginForm = ({ onSuccess }: LoginFormProps) => {
-  const [serverError, setServerError] = useState<string | null>(null)
   const mutation = useLoginMutation()
+
+  const { data: providers, isLoading: isProvidersLoading } = useQuery<ProviderEntry[]>({
+    queryKey: ['auth', 'providers'],
+    queryFn: fetchProviders,
+    staleTime: 60_000,
+  })
 
   const { data: samlIdps } = useQuery<SamlIdp[]>({
     queryKey: ['saml', 'idps'],
@@ -73,20 +99,33 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginFormSchema),
     defaultValues: {
-      provider: 'local',
+      provider: '',
       username: '',
       password: '',
     },
   })
 
+  // providers 응답이 도착하면 첫 항목을 기본 선택으로 설정한다.
+  // react-usestate-stale-key-prop 패턴 주의: form.setValue로 명시 설정해야 한다.
+  // providers가 이미 있으면 form 값이 비어있을 때만 초기값을 설정한다.
+  useEffect(() => {
+    const firstProvider = providers?.[0]
+    if (firstProvider === undefined) return
+    if (form.getValues('provider') === '') {
+      form.setValue('provider', firstProvider.id)
+    }
+  }, [providers, form])
+
+  const serverError = form.formState.errors.root?.message ?? null
+
   function onSubmit(values: LoginFormValues) {
-    setServerError(null)
+    form.clearErrors('root')
     mutation.mutate(values, {
       onSuccess: () => {
         onSuccess?.()
       },
       onError: (error: unknown) => {
-        setServerError(resolveLoginErrorMessage(error))
+        form.setError('root', { message: resolveLoginErrorMessage(error) })
       },
     })
   }
@@ -104,6 +143,7 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
                 <Select
                   value={field.value}
                   onValueChange={field.onChange}
+                  disabled={isProvidersLoading}
                 >
                   <SelectTrigger
                     aria-labelledby="provider-label"
@@ -114,12 +154,11 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="local" role="option">
-                      {loginStrings.providerLocal}
-                    </SelectItem>
-                    <SelectItem value="ldap-corp" role="option">
-                      {loginStrings.providerLdapCorp}
-                    </SelectItem>
+                    {(providers ?? []).map((provider) => (
+                      <SelectItem key={provider.id} value={provider.id} role="option">
+                        {resolveProviderLabel(provider)}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </FormControl>
