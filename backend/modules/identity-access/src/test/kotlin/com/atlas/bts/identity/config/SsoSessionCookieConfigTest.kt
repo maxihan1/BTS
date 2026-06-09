@@ -3,6 +3,7 @@
 package com.atlas.bts.identity.config
 
 import com.atlas.bts.identity.account.SsoLinkingIntent
+import com.atlas.bts.identity.account.SsoLinkingIntentStore
 import com.atlas.bts.identity.spi.ProviderType
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -115,7 +116,7 @@ class SsoSessionCookieConfigTest {
     }
 
     private companion object {
-        /** SsoLinkingIntentStore 가 사용하는 세션 속성 키와 동일(이관 실증용 — 임의 키여도 무방). */
-        const val INTENT_KEY = "bts.sso.linking.intent"
+        /** SsoLinkingIntentStore 가 실제로 쓰는 세션 속성 키를 그대로 재사용한다(상수 drift 방지, N1). */
+        const val INTENT_KEY = SsoLinkingIntentStore.ATTRIBUTE_KEY
     }
 }
