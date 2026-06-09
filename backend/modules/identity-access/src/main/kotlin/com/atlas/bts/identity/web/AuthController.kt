@@ -108,17 +108,19 @@ class AuthController(
      * @param body 로그인 요청 body (provider 필수)
      * @return 200 TokenResponse / 400 provider_required / 401 invalid_credentials|mfa_required /
      *   503 provider_unavailable
+     *
+     * ReturnCount 억제 — 400(provider_required) / 503(provider_unavailable) guard early return 이
+     * 중첩 if 보다 가독성 우수 (DEVELOPMENT.md §2.3 Early return 권장).
      */
-    // ReturnCount 억제 — 400(provider_required) / 503(provider_unavailable) guard early return 이
-    // 중첩 if 보다 가독성 우수 (DEVELOPMENT.md §2.3 Early return 권장).
     @Suppress("ReturnCount")
     @PostMapping("/login")
     fun login(
         request: HttpServletRequest,
         @RequestBody body: LoginRequest,
     ): ResponseEntity<*> {
-        val provider = body.provider?.takeIf { it.isNotBlank() }
-            ?: return errorResponse(HttpStatus.BAD_REQUEST, "provider_required")
+        val provider =
+            body.provider?.takeIf { it.isNotBlank() }
+                ?: return errorResponse(HttpStatus.BAD_REQUEST, "provider_required")
 
         val result =
             try {
@@ -146,16 +148,20 @@ class AuthController(
      * @param principal 디스패처가 인증한 사용자 주체
      * @return 200 + [TokenResponse] + Set-Cookie refresh_token
      */
-    private fun issueTokens(request: HttpServletRequest, principal: Principal): ResponseEntity<*> {
+    private fun issueTokens(
+        request: HttpServletRequest,
+        principal: Principal,
+    ): ResponseEntity<*> {
         val ipAddress = request.remoteAddr.takeIf { it.isNotBlank() }
         val userAgent = request.getHeader(HttpHeaders.USER_AGENT)
 
-        val session = sessionService.create(
-            userId = principal.userId,
-            providerId = principal.providerType.name.lowercase(),
-            ipAddress = ipAddress,
-            userAgent = userAgent,
-        )
+        val session =
+            sessionService.create(
+                userId = principal.userId,
+                providerId = principal.providerType.name.lowercase(),
+                ipAddress = ipAddress,
+                userAgent = userAgent,
+            )
 
         val rawToken = generateRawToken()
         val now = clock.instant()
@@ -172,13 +178,14 @@ class AuthController(
         )
 
         val roles = systemRoleAssignmentRepository.findRolesByUser(session.userId).map { it.name }
-        val accessToken = jwtIssuer.issue(
-            userId = session.userId,
-            sessionId = session.id,
-            providerId = session.providerId,
-            scopes = emptyList(),
-            roles = roles,
-        )
+        val accessToken =
+            jwtIssuer.issue(
+                userId = session.userId,
+                sessionId = session.id,
+                providerId = session.providerId,
+                scopes = emptyList(),
+                roles = roles,
+            )
 
         return ResponseEntity.ok()
             .header(HttpHeaders.SET_COOKIE, buildRefreshCookie(rawToken, REFRESH_MAX_AGE))
@@ -186,8 +193,10 @@ class AuthController(
     }
 
     /** `{"error": <code>}` 본문을 가진 [status] 응답을 생성한다 (login 에러 응답 일원화). */
-    private fun errorResponse(status: HttpStatus, errorCode: String): ResponseEntity<Map<String, String>> =
-        ResponseEntity.status(status).body(mapOf("error" to errorCode))
+    private fun errorResponse(
+        status: HttpStatus,
+        errorCode: String,
+    ): ResponseEntity<Map<String, String>> = ResponseEntity.status(status).body(mapOf("error" to errorCode))
 
     /**
      * POST /api/v1/auth/logout — 현재 디바이스 세션 폐기.
@@ -238,11 +247,12 @@ class AuthController(
      */
     @PostMapping("/refresh")
     fun refresh(request: HttpServletRequest): ResponseEntity<*> {
-        val rawToken = request.cookies
-            ?.firstOrNull { it.name == REFRESH_COOKIE_NAME }
-            ?.value
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(mapOf("error" to "refresh_token_invalid"))
+        val rawToken =
+            request.cookies
+                ?.firstOrNull { it.name == REFRESH_COOKIE_NAME }
+                ?.value
+                ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(mapOf("error" to "refresh_token_invalid"))
 
         val tokenHash = sha256Hex(rawToken)
 
@@ -314,9 +324,10 @@ class AuthController(
      * @param jwt Spring Security 가 주입한 JWT principal. PAT 인증 시 null (nullable 선언)
      * @param sid 강제 종료할 세션 ID (Spring 이 UUID 바인딩 실패 시 400 자동 반환 — EC-7)
      * @return 204 No Content / 400 UUID 형식 오류 / 403 PAT / 404 IDOR/미존재 / 409 현재 세션
+     *
+     * ReturnCount 억제 — HTTP 상태별 guard clause early return(403/404/409/204)이
+     * 중첩 if 보다 가독성 우수 (DEVELOPMENT.md §2.3 Early return 권장).
      */
-    // ReturnCount 억제 — HTTP 상태별 guard clause early return(403/404/409/204)이
-    // 중첩 if 보다 가독성 우수 (DEVELOPMENT.md §2.3 Early return 권장).
     @Suppress("ReturnCount")
     @DeleteMapping("/sessions/{sid}")
     fun revokeSession(
@@ -353,15 +364,17 @@ class AuthController(
      *
      * @param jwt nullable JWT principal ([Jwt] 타입 아니면 PAT)
      * @return [JwtClaims] 또는 null (PAT/invalid_token)
+     *
+     * ReturnCount 억제 — null guard early return(PAT/invalid subject)이 가독성 우수.
      */
-    // ReturnCount 억제 — null guard early return(PAT/invalid subject)이 가독성 우수.
     @Suppress("ReturnCount")
     private fun resolveJwtClaims(jwt: Jwt?): JwtClaims? {
         if (jwt == null) return null
         val userId = runCatching { UUID.fromString(jwt.subject) }.getOrNull() ?: return null
-        val currentSid = jwt.getClaimAsString("sid")?.let {
-            runCatching { UUID.fromString(it) }.getOrNull()
-        }
+        val currentSid =
+            jwt.getClaimAsString("sid")?.let {
+                runCatching { UUID.fromString(it) }.getOrNull()
+            }
         return JwtClaims(userId = userId, currentSid = currentSid)
     }
 
@@ -374,7 +387,10 @@ class AuthController(
      * @param currentSid 요청 JWT 의 `sid` 클레임 값. null 이면 current = false
      * @return [SessionResponse]
      */
-    private fun toSessionResponse(session: Session, currentSid: UUID?): SessionResponse =
+    private fun toSessionResponse(
+        session: Session,
+        currentSid: UUID?,
+    ): SessionResponse =
         SessionResponse(
             sid = session.id,
             providerId = session.providerId,
@@ -393,8 +409,10 @@ class AuthController(
      *
      * ResponseCookie 대신 수동 문자열 조합 — SameSite 속성 지원 보장 (Spring 6.x ResponseCookie 이슈 우회).
      */
-    private fun buildRefreshCookie(value: String, maxAge: Int): String =
-        "$REFRESH_COOKIE_NAME=$value; HttpOnly; Secure; SameSite=Strict; Path=$COOKIE_PATH; Max-Age=$maxAge"
+    private fun buildRefreshCookie(
+        value: String,
+        maxAge: Int,
+    ): String = "$REFRESH_COOKIE_NAME=$value; HttpOnly; Secure; SameSite=Strict; Path=$COOKIE_PATH; Max-Age=$maxAge"
 
     /** [TOKEN_BYTES] 바이트 CSPRNG 난수를 hex 문자열로 인코딩한다. */
     private fun generateRawToken(): String {
@@ -447,11 +465,12 @@ class AuthController(
 private data class JwtClaims(val userId: UUID, val currentSid: UUID?)
 
 /** refresh_token_reused / refresh_token_expired / refresh_token_invalid 매핑 */
-private fun FailureReason.toErrorCode(): String = when (this) {
-    FailureReason.Expired -> "refresh_token_expired"
-    FailureReason.Replay, FailureReason.Race -> "refresh_token_reused"
-    FailureReason.NotFound, FailureReason.Revoked -> "refresh_token_invalid"
-}
+private fun FailureReason.toErrorCode(): String =
+    when (this) {
+        FailureReason.Expired -> "refresh_token_expired"
+        FailureReason.Replay, FailureReason.Race -> "refresh_token_reused"
+        FailureReason.NotFound, FailureReason.Revoked -> "refresh_token_invalid"
+    }
 
 /**
  * POST /api/v1/auth/login 요청 body (FR-AU-09 §4.1 / FR-AU-06).

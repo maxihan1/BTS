@@ -25,10 +25,10 @@ import com.atlas.bts.identity.systemrole.SystemRoleAssignmentRepository
 import io.mockk.mockk
 import jakarta.servlet.http.Cookie
 import org.junit.jupiter.api.Test
-import org.mockito.Mockito.`when`
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.`when`
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
@@ -95,7 +95,6 @@ import java.util.UUID
 )
 @Import(SecurityConfig::class, AuthControllerTest.SecurityBeans::class)
 class AuthControllerTest {
-
     /** raw refresh token — 64자 소문자 hex */
     private val refreshTokenRaw = "ab".repeat(32)
 
@@ -121,8 +120,9 @@ class AuthControllerTest {
         }
 
         @Bean
-        fun corsConfigurationSource(): CorsConfigurationSource =
-            CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        fun corsConfigurationSource(): CorsConfigurationSource {
+            return CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        }
 
         @Bean
         fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)
@@ -172,11 +172,12 @@ class AuthControllerTest {
                 displayName = "Alice",
                 externalSubject = null,
             )
-        val mockSession = mock(Session::class.java).also {
-            `when`(it.id).thenReturn(sessionId)
-            `when`(it.userId).thenReturn(userId)
-            `when`(it.providerId).thenReturn("local")
-        }
+        val mockSession =
+            mock(Session::class.java).also {
+                `when`(it.id).thenReturn(sessionId)
+                `when`(it.userId).thenReturn(userId)
+                `when`(it.providerId).thenReturn("local")
+            }
 
         `when`(
             authenticationManager.authenticate(
@@ -475,32 +476,34 @@ class AuthControllerTest {
         val now = Instant.parse("2026-05-29T10:00:00Z")
         val created = Instant.parse("2026-05-20T09:00:00Z")
 
-        val currentSession = Session(
-            id = currentSid,
-            userId = userId,
-            providerId = "local",
-            deviceFingerprint = "fp-secret-12",
-            ipAddress = "10.0.0.1",
-            userAgent = "Mozilla/5.0",
-            createdAt = created,
-            expiresAt = now.plusSeconds(86400),
-            lastSeenAt = now,
-            revokedAt = null,
-            revokeReason = null,
-        )
-        val otherSession = Session(
-            id = otherSid,
-            userId = userId,
-            providerId = "ldap",
-            deviceFingerprint = null,
-            ipAddress = null,
-            userAgent = null,
-            createdAt = created,
-            expiresAt = now.plusSeconds(86400),
-            lastSeenAt = now.minusSeconds(3600),
-            revokedAt = null,
-            revokeReason = null,
-        )
+        val currentSession =
+            Session(
+                id = currentSid,
+                userId = userId,
+                providerId = "local",
+                deviceFingerprint = "fp-secret-12",
+                ipAddress = "10.0.0.1",
+                userAgent = "Mozilla/5.0",
+                createdAt = created,
+                expiresAt = now.plusSeconds(86400),
+                lastSeenAt = now,
+                revokedAt = null,
+                revokeReason = null,
+            )
+        val otherSession =
+            Session(
+                id = otherSid,
+                userId = userId,
+                providerId = "ldap",
+                deviceFingerprint = null,
+                ipAddress = null,
+                userAgent = null,
+                createdAt = created,
+                expiresAt = now.plusSeconds(86400),
+                lastSeenAt = now.minusSeconds(3600),
+                revokedAt = null,
+                revokeReason = null,
+            )
 
         `when`(sessionService.findActiveByUser(userId)).thenReturn(listOf(currentSession, otherSession))
 
@@ -536,19 +539,20 @@ class AuthControllerTest {
         val sid = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
         val now = Instant.parse("2026-05-29T10:00:00Z")
 
-        val session = Session(
-            id = sid,
-            userId = userId,
-            providerId = "local",
-            deviceFingerprint = "should-not-appear",
-            ipAddress = "10.0.0.1",
-            userAgent = "Mozilla/5.0",
-            createdAt = now,
-            expiresAt = now.plusSeconds(86400),
-            lastSeenAt = now,
-            revokedAt = null,
-            revokeReason = null,
-        )
+        val session =
+            Session(
+                id = sid,
+                userId = userId,
+                providerId = "local",
+                deviceFingerprint = "should-not-appear",
+                ipAddress = "10.0.0.1",
+                userAgent = "Mozilla/5.0",
+                createdAt = now,
+                expiresAt = now.plusSeconds(86400),
+                lastSeenAt = now,
+                revokedAt = null,
+                revokeReason = null,
+            )
 
         `when`(sessionService.findActiveByUser(userId)).thenReturn(listOf(session))
 
@@ -605,19 +609,20 @@ class AuthControllerTest {
         val targetSid = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
         val now = Instant.parse("2026-05-29T10:00:00Z")
 
-        val targetSession = Session(
-            id = targetSid,
-            userId = userId,
-            providerId = "local",
-            deviceFingerprint = null,
-            ipAddress = null,
-            userAgent = null,
-            createdAt = now,
-            expiresAt = now.plusSeconds(86400),
-            lastSeenAt = now,
-            revokedAt = null,
-            revokeReason = null,
-        )
+        val targetSession =
+            Session(
+                id = targetSid,
+                userId = userId,
+                providerId = "local",
+                deviceFingerprint = null,
+                ipAddress = null,
+                userAgent = null,
+                createdAt = now,
+                expiresAt = now.plusSeconds(86400),
+                lastSeenAt = now,
+                revokedAt = null,
+                revokeReason = null,
+            )
         `when`(sessionService.lookup(targetSid)).thenReturn(targetSession)
 
         mockMvc.perform(
@@ -649,19 +654,20 @@ class AuthControllerTest {
         val otherUserSid = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccccc")
         val now = Instant.parse("2026-05-29T10:00:00Z")
 
-        val otherSession = Session(
-            id = otherUserSid,
-            userId = otherUserId,
-            providerId = "local",
-            deviceFingerprint = null,
-            ipAddress = null,
-            userAgent = null,
-            createdAt = now,
-            expiresAt = now.plusSeconds(86400),
-            lastSeenAt = now,
-            revokedAt = null,
-            revokeReason = null,
-        )
+        val otherSession =
+            Session(
+                id = otherUserSid,
+                userId = otherUserId,
+                providerId = "local",
+                deviceFingerprint = null,
+                ipAddress = null,
+                userAgent = null,
+                createdAt = now,
+                expiresAt = now.plusSeconds(86400),
+                lastSeenAt = now,
+                revokedAt = null,
+                revokeReason = null,
+            )
         `when`(sessionService.lookup(otherUserSid)).thenReturn(otherSession)
 
         mockMvc.perform(
@@ -691,19 +697,20 @@ class AuthControllerTest {
         val currentSid = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
         val now = Instant.parse("2026-05-29T10:00:00Z")
 
-        val currentSession = Session(
-            id = currentSid,
-            userId = userId,
-            providerId = "local",
-            deviceFingerprint = null,
-            ipAddress = null,
-            userAgent = null,
-            createdAt = now,
-            expiresAt = now.plusSeconds(86400),
-            lastSeenAt = now,
-            revokedAt = null,
-            revokeReason = null,
-        )
+        val currentSession =
+            Session(
+                id = currentSid,
+                userId = userId,
+                providerId = "local",
+                deviceFingerprint = null,
+                ipAddress = null,
+                userAgent = null,
+                createdAt = now,
+                expiresAt = now.plusSeconds(86400),
+                lastSeenAt = now,
+                revokedAt = null,
+                revokeReason = null,
+            )
         `when`(sessionService.lookup(currentSid)).thenReturn(currentSession)
 
         mockMvc.perform(
@@ -843,19 +850,16 @@ class AuthControllerTest {
      * CharArray 파라미터의 Mockito any() 매처 — Kotlin non-null CharArray 에 null 전달 방지.
      * 디스패처 authenticate(providerId, username, password: CharArray) 의 password 인자에 사용한다.
      */
-    private fun anyCharArray(): CharArray =
-        org.mockito.ArgumentMatchers.any(CharArray::class.java) ?: charArrayOf()
+    private fun anyCharArray(): CharArray = org.mockito.ArgumentMatchers.any(CharArray::class.java) ?: charArrayOf()
 
     /**
      * String 파라미터의 Mockito eq() 매처 — eq() 가 null 을 반환해
      * Kotlin non-null String 파라미터에서 NPE 가 나는 것을 Elvis 로 방지한다.
      */
-    private fun eqStr(value: String): String =
-        org.mockito.ArgumentMatchers.eq(value) ?: value
+    private fun eqStr(value: String): String = org.mockito.ArgumentMatchers.eq(value) ?: value
 
     /**
      * UUID 파라미터의 Mockito any() 매처 — Kotlin non-null UUID 에 null 전달 방지.
      */
-    private fun anyUuid(): UUID =
-        org.mockito.ArgumentMatchers.any(UUID::class.java) ?: UUID.randomUUID()
+    private fun anyUuid(): UUID = org.mockito.ArgumentMatchers.any(UUID::class.java) ?: UUID.randomUUID()
 }
