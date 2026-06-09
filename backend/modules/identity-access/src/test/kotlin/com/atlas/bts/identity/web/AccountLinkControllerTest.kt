@@ -193,7 +193,7 @@ class AccountLinkControllerTest {
             .andExpect(jsonPath("$.sid").doesNotExist())
             .andExpect(jsonPath("$.stepUpToken").doesNotExist())
 
-        verify(reauthService).reauthenticateLocal(userId, currentSid, anyCharArray())
+        verify(reauthService).reauthenticateLocal(eqUuid(userId), eqUuid(currentSid), anyCharArray())
     }
 
     @Test
@@ -210,7 +210,13 @@ class AccountLinkControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.stepUpExpiresAt").exists())
 
-        verify(reauthService).reauthenticateLdap(userId, currentSid, providerId, eqStr("alice"), anyCharArray())
+        verify(reauthService).reauthenticateLdap(
+            eqUuid(userId),
+            eqUuid(currentSid),
+            eqUuid(providerId),
+            eqStr("alice"),
+            anyCharArray(),
+        )
     }
 
     @Test
@@ -247,7 +253,7 @@ class AccountLinkControllerTest {
             .andExpect(status().isOk)
 
         // 위조 sid 가 아니라 JWT 의 currentSid 로 호출돼야 한다.
-        verify(reauthService).reauthenticateLocal(userId, currentSid, anyCharArray())
+        verify(reauthService).reauthenticateLocal(eqUuid(userId), eqUuid(currentSid), anyCharArray())
         verify(reauthService, never()).reauthenticateLocal(anyUuid(), eqUuid(forgedSid), anyCharArray())
     }
 
@@ -294,7 +300,7 @@ class AccountLinkControllerTest {
             .andExpect(jsonPath("$.externalSubjectMasked").value("uid=al***"))
             .andExpect(jsonPath("$.externalSubject").doesNotExist())
 
-        verify(accountLinkService).link(userId, providerId, eqStr("alice"), anyCharArray())
+        verify(accountLinkService).link(eqUuid(userId), eqUuid(providerId), eqStr("alice"), anyCharArray())
     }
 
     @Test
