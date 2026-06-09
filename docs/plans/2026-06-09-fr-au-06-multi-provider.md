@@ -57,9 +57,19 @@ product 문서 §2.6 (docs/plan/product/identity-access.md:106) 기준 D1~D7.
 - **신규 ADR 후보**: "다중 Provider fallback chain (선택우선+자동) + /api/v1/auth/providers DB 동적화" — spec/plan 단계에서 결정 구체화 후 `docs/decisions/2026-06-09-multi-provider-fallback.md` 작성.
 - **관련 learning**: [[learnings#2026-05-21 — prod 단일 LdapTemplate vs test dead URL 가정]] — 같은 type 다중 인스턴스는 본 PR 스코프 제외이므로 dead URL 동적 wiring 재도입도 **제외**(후속 FR로 유지).
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-09-fr-au-06-multi-provider.md](../specs/2026-06-09-fr-au-06-multi-provider.md)
+
+핵심 요약.
+- **G1(1순위 버그)**: 현재 `AuthController`가 항상 `UsernamePassword`만 만들어 LDAP은 username/password 로그인 진입 불가. → provider 디스패처가 선택값(local/ldap)에 맞는 Credential(UsernamePassword/LdapBind) 생성.
+- **인증 = 명시 선택만**. 자동 fallback은 보안 위험(동명이인·비번 오전달·lockout 2배)으로 폐기. "똑똑한 자동"은 FR-AU-07 도메인 라우팅이 담당.
+- **목록 동적화**: `/api/v1/auth/providers`가 username/password 계열(LOCAL/LDAP)만, DB `enabled`/`sort_order` 오버레이로 반환. 프론트 드롭다운 하드코딩 제거.
+- 마이그레이션 불요(컬럼 기존재 + LOCAL/LDAP seed 안 함). SSO @Order 무변경.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). 자동 fallback 보안 위험 3종 발견 → Maxi 결정으로 **명시 선택만** 채택(자동 fallback 폐기). 경미 gap 4건(provider 명명 통일 / AUTO 항목 제거 / RequiresMfa 처리 / ProviderUnavailable try-catch 계약) 스펙 보강.
 
 ## Plan (← /bts-plan 채움)
 
