@@ -131,8 +131,9 @@ class ExternalAccountRepository(
      * 한 사용자에 연결된 모든 external account 조회 (FR-AU-08).
      * 연결이 없으면 빈 리스트를 반환한다.
      */
-    fun findByUserId(userId: UUID): List<ExternalAccount> =
-        jdbc.query(SQL_FIND_BY_USER_ID, mapOf("userId" to userId), rowMapper)
+    fun findByUserId(userId: UUID): List<ExternalAccount> {
+        return jdbc.query(SQL_FIND_BY_USER_ID, mapOf("userId" to userId), rowMapper)
+    }
 
     /**
      * 소유 검증 겸 external account 삭제 (FR-AU-08).
