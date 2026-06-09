@@ -55,7 +55,6 @@ import java.time.ZoneOffset
     ProvidersControllerTest.MockBeans::class,
 )
 class ProvidersControllerTest {
-
     @TestConfiguration
     class MockBeans {
         @Bean
@@ -69,8 +68,9 @@ class ProvidersControllerTest {
         }
 
         @Bean
-        fun corsConfigurationSource(): CorsConfigurationSource =
-            CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        fun corsConfigurationSource(): CorsConfigurationSource {
+            return CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        }
 
         // SecurityConfig 가 PatAuthenticationFilter 생성을 위해 요구하는 Bean.
         // ProvidersController 자체는 PAT 를 사용하지 않으나 SecurityFilterChain 빌드 시점에 필요하다.
@@ -114,8 +114,9 @@ class ProvidersControllerTest {
     class StubSsoProvider(override val type: ProviderType) : AuthenticationProvider {
         override fun supports(credential: Credential): Boolean = false
 
-        override fun authenticate(credential: Credential): AuthnResult =
-            AuthnResult.Failure(FailureReason.INVALID_INPUT)
+        override fun authenticate(credential: Credential): AuthnResult {
+            return AuthnResult.Failure(FailureReason.INVALID_INPUT)
+        }
     }
 
     // --- (a) username/password 계열(LOCAL/LDAP)만, SAML/OIDC/PAT/OAUTH 제외 -------------

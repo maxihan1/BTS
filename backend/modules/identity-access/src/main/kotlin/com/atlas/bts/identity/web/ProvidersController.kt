@@ -45,38 +45,31 @@ class ProvidersController(
      */
     @GetMapping("/api/v1/auth/providers")
     fun listProviders(): ProvidersResponse {
-        val enabled = providerRegistry.all()
-            .filter { it.type in LOGIN_FORM_TYPES }
-            .filter { authnProviderConfigRepository.isEnabled(it.type) }
-        val sortOrders = authnProviderConfigRepository
-            .listEnabledByTypes(enabled.map { it.type })
-            .toMap()
-        val providers = enabled
-            .sortedWith(comparatorFor(sortOrders))
-            .map { toEntry(it) }
+        val enabled =
+            providerRegistry.all()
+                .filter { it.type in LOGIN_FORM_TYPES }
+                .filter { authnProviderConfigRepository.isEnabled(it.type) }
+        val sortOrders =
+            authnProviderConfigRepository
+                .listEnabledByTypes(enabled.map { it.type })
+                .toMap()
+        val providers =
+            enabled
+                .sortedWith(sortComparator(sortOrders))
+                .map { toEntry(it) }
         return ProvidersResponse(providers)
     }
 
     /**
-     * 정렬 비교자.
+     * 로그인 폼 정렬 비교자.
      *
      * 1순위 sort_order 오름차순 — DB row 가 있는 type 은 그 sort_order, 없는 type 은
      * [SORT_ORDER_DEFAULT] (큰 상수)로 두어 DB 등록 공급자가 항상 앞선다.
      * 2순위(동률) priority 내림차순 — 둘 다 기본값이면 LDAP(80)이 LOCAL(70)보다 앞.
      */
-    private fun comparatorFor(
-        sortOrders: Map<ProviderType, Int>,
-    ): Comparator<AuthenticationProvider> {
-        return compareBy<AuthenticationProvider> { sortKey(it.type, sortOrders) }
+    private fun sortComparator(sortOrders: Map<ProviderType, Int>): Comparator<AuthenticationProvider> {
+        return compareBy<AuthenticationProvider> { sortOrders[it.type] ?: SORT_ORDER_DEFAULT }
             .thenByDescending { it.priority }
-    }
-
-    /** [type] 의 sort_order — DB row 가 있으면 그 값, 없으면 [SORT_ORDER_DEFAULT]. */
-    private fun sortKey(
-        type: ProviderType,
-        sortOrders: Map<ProviderType, Int>,
-    ): Int {
-        return sortOrders[type] ?: SORT_ORDER_DEFAULT
     }
 
     /** [AuthenticationProvider] 를 응답 항목으로 매핑. displayName 은 type capitalize. */
