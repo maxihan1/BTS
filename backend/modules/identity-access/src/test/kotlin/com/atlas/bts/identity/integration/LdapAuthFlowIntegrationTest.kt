@@ -51,13 +51,13 @@ import java.util.concurrent.Future
  * 1. `ExternalAccountRepository.provisionUser()` — `userId` 파라미터를 `UserRepository.provisionFromExternal()`
  *    이 반환한 실제 users.id 로 사용해야 한다. 현재 내부에서 `UUID.randomUUID()` 를 생성하여
  *    users UPSERT 결과 id 와 불일치 → FK 위반 발생 (AUTO_PROVISION_BUG_1).
- * 2. `AuthController.login()` — `Failure(PROVIDER_UNAVAILABLE)` 를 HTTP 503 으로 매핑해야 한다
- *    (CONCERN-4). 현재는 401 반환 (AUTO_PROVISION_BUG_2).
+ * 2. `AuthController.login()` — LDAP 통신 불가 시 `LdapProvider` 의 `ProviderUnavailableException` 을
+ *    HTTP 503 으로 매핑한다 (CONCERN-4, FR-AU-06 Task 3). `Failure` 는 열거 방지 위해 401 (NFR-06-01).
  *
  * ## CONCERN-4 전략
  * S3 테스트는 Provider 레이어에서 LDAP container stop 후 `PROVIDER_UNAVAILABLE` 반환을 검증한다.
- * HTTP 레이어(503 응답) 검증은 `AuthController` 가 `PROVIDER_UNAVAILABLE → 503` 매핑을 추가한 후
- * HTTP integration 테스트에서 추가 검증이 필요하다 (GREEN 조건).
+ * HTTP 503 매핑은 FR-AU-06 Task 3 에서 `AuthController` 가 `ProviderUnavailableException → 503` 으로
+ * 구현했고, `AuthControllerTest` 의 @WebMvcTest 가 검증한다.
  *
  * ## EC-17 전략
  * 존재하지 않는 providerId 로 `AutoProvisionService.provision()` 을 직접 호출하여
@@ -335,9 +335,9 @@ class LdapAuthFlowIntegrationTest : LdapTestcontainersBase() {
      * (application.yml `spring.ldap.urls` 고정) 에서 의미가 없다. FR-AU-06 멀티-Provider 도입 후 DB serverUrl
      * 동적 wiring 이 추가되면 dead URL 시뮬레이션도 의미를 되찾는다.
      *
-     * ## HTTP 레이어 (503) GREEN 조건
-     * `AuthController.login()` 이 `Failure(PROVIDER_UNAVAILABLE)` 를 HTTP 503 으로 매핑해야 한다.
-     * 현재 구현은 모든 Failure 를 401 로 반환한다 (CONCERN-4 미구현).
+     * ## HTTP 레이어 매핑 (FR-AU-06 Task 3)
+     * LDAP 미설정(이 시나리오)은 `Failure(PROVIDER_UNAVAILABLE)` → 열거 방지를 위해 HTTP 401 이다 (NFR-06-01).
+     * LDAP 통신 불가는 `LdapProvider` 가 `ProviderUnavailableException` 을 throw → `AuthController` 가 503 매핑.
      *
      * ## 격리 확인
      * Local Provider 는 DB 만 의존하므로 LDAP 가용성과 무관하다.
@@ -359,11 +359,11 @@ class LdapAuthFlowIntegrationTest : LdapTestcontainersBase() {
         }
 
         /**
-         * Provider 레이어가 PROVIDER_UNAVAILABLE 을 반환하는지 통합 시나리오 안에서 확인하고,
-         * HTTP 503 매핑 spec 을 KDoc 으로 명시한다.
+         * Provider 레이어가 LDAP 미설정 시 `Failure(PROVIDER_UNAVAILABLE)` 을 반환하는지
+         * 통합 시나리오 안에서 확인한다.
          *
-         * 실제 HTTP 503 검증은 `AuthController.login()` 이 PROVIDER_UNAVAILABLE → 503 매핑을
-         * 추가한 후 별도 HTTP integration 테스트에서 수행한다 (현재 401 반환).
+         * HTTP 레이어에서 이 Failure 는 열거 방지를 위해 401 로 매핑된다 (FR-AU-06 Task 3, NFR-06-01).
+         * 통신 예외(`ProviderUnavailableException`) → 503 매핑은 `AuthControllerTest` 의 @WebMvcTest 가 검증한다.
          */
         @Test
         fun `CONCERN-4 격리 - PROVIDER_UNAVAILABLE 반환 (HTTP 503 매핑 후속 작업)`() {
