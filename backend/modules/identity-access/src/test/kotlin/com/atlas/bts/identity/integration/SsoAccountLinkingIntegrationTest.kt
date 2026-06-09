@@ -10,6 +10,8 @@ import com.atlas.bts.identity.account.SsoLinkingCallbackProcessor
 import com.atlas.bts.identity.account.SsoLinkingIntent
 import com.atlas.bts.identity.account.SsoLinkingIntentStore
 import com.atlas.bts.identity.jwt.JwtIssuer
+import com.atlas.bts.identity.provider.oidc.OidcAuthenticationSuccessHandler
+import com.atlas.bts.identity.provider.saml.Saml2AuthenticationSuccessHandler
 import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.spi.ProviderType
 import com.atlas.bts.identity.user.UserRepository
@@ -21,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.client.TestRestTemplate
 import org.springframework.boot.test.web.server.LocalServerPort
+import org.springframework.context.ApplicationContext
 import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
@@ -30,6 +33,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.mock.web.MockHttpSession
+import org.springframework.security.web.SecurityFilterChain
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.PostgreSQLContainer
@@ -151,6 +155,9 @@ class SsoAccountLinkingIntegrationTest {
 
     @Autowired
     private lateinit var jwtIssuer: JwtIssuer
+
+    @Autowired
+    private lateinit var applicationContext: ApplicationContext
 
     /** 매 테스트 재시드되는 SAML provider 식별자(authn_providers.id). */
     private lateinit var samlProviderId: UUID
@@ -525,6 +532,29 @@ class SsoAccountLinkingIntegrationTest {
             .isEqualTo(1)
         // subject A 매핑은 정확히 1개(거짓 success 로 두 user 가 모두 붙는 일 없음).
         assertThat(subjectLinkCount(SAML_SUBJECT_A)).isEqualTo(1)
+    }
+
+    // ── C1: SSO 성공 핸들러 실 빈 부팅 + SSO 체인 활성 ───────────────────────────
+
+    /**
+     * C1: SSO 성공 핸들러가 신규 `intentStore` 의존(C3)으로도 **실 빈으로 생성**되고, 두 SSO
+     * SecurityFilterChain 이 활성 상태임을 전체 부팅 컨텍스트에서 명시 단언한다.
+     *
+     * 핸들러 생성자에 의존을 추가하면 [com.atlas.bts.identity.config.SamlSecurityConfig] /
+     * [com.atlas.bts.identity.config.OidcSecurityConfig] 의 `@ConditionalOnBean(..., <Handler>::class)`
+     * 가 빈 부재로 SSO 체인을 통째로 비활성화할 수 있다(SSO 로그인 404, 가짜그린 위험). config 슬라이스
+     * 테스트는 핸들러를 mock 으로 주입해 생성 자체를 검증하지 못하므로(vacuous), @SpringBootTest 전체
+     * 부팅에서 실 핸들러 빈 + SSO 체인 빈 존재를 단언해 생성 실패를 명시 회귀로 잡는다(plan Task 7 B1).
+     */
+    @Test
+    fun `C1 SSO 성공 핸들러 실 빈 + SSO 체인이 부팅 컨텍스트에 존재한다`() {
+        // 실 핸들러 빈 — 신규 intentStore 의존 포함 생성자가 컨텍스트에서 정상 wiring 됐는지.
+        assertThat(applicationContext.getBean(Saml2AuthenticationSuccessHandler::class.java)).isNotNull()
+        assertThat(applicationContext.getBean(OidcAuthenticationSuccessHandler::class.java)).isNotNull()
+
+        // 두 SSO 체인 빈 — 핸들러 빈이 살아 @ConditionalOnBean 이 만족돼 체인이 활성.
+        assertThat(applicationContext.getBean("samlSecurityFilterChain", SecurityFilterChain::class.java)).isNotNull()
+        assertThat(applicationContext.getBean("oidcSecurityFilterChain", SecurityFilterChain::class.java)).isNotNull()
     }
 
     // ── 시드 헬퍼 ───────────────────────────────────────────────────────────────
