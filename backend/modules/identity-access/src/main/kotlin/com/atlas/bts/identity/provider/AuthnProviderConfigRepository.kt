@@ -32,8 +32,8 @@ class AuthnProviderConfigRepository(
      */
     fun isEnabled(type: ProviderType): Boolean {
         val params = MapSqlParameterSource("type", type.name)
-        val rows = jdbc.queryForList(SQL_IS_ENABLED, params, Boolean::class.java)
-        return rows.firstOrNull() ?: true
+        val disabledRows = jdbc.queryForList(SQL_DISABLED_EXISTS, params, Int::class.java)
+        return disabledRows.isEmpty()
     }
 
     /**
@@ -51,8 +51,8 @@ class AuthnProviderConfigRepository(
     }
 
     private companion object {
-        const val SQL_IS_ENABLED =
-            "SELECT enabled FROM authn_providers WHERE type = :type LIMIT 1"
+        const val SQL_DISABLED_EXISTS =
+            "SELECT 1 FROM authn_providers WHERE type = :type AND enabled = false LIMIT 1"
 
         const val SQL_LIST_ENABLED =
             "SELECT type, sort_order FROM authn_providers " +
