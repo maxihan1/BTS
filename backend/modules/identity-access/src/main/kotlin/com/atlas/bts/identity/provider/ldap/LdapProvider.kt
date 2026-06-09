@@ -129,7 +129,7 @@ class LdapProvider(
             return when (bindAndExtract(credential, config)) {
                 is BindOutcome.Success ->
                     // 6. 성공 처리 — provision (일반 로그인 전용)
-                    onSuccess(credential.username, existing, providerId, config, now, externalSubject)
+                    onSuccess(credential.username, existing, providerId, config, now)
                 BindOutcome.InvalidCredentials ->
                     onFailure(existing, config.lockoutPolicy, now, providerId, externalSubject)
                 BindOutcome.Unavailable ->
@@ -256,12 +256,15 @@ class LdapProvider(
     }
 
     /**
-     * 인증 성공 처리 — AutoProvisionService 위임 + last_login_at 갱신.
+     * 인증 성공 처리 (일반 로그인 전용) — AutoProvisionService 위임 + last_login_at 갱신.
      *
      * AutoProvisionService.provision 이 users + user_external_accounts UPSERT 를
      * 단일 @Transactional 경계 안에서 처리한다 (EC-17, DATA.md §6).
      * 첫 로그인(existing=null)이든 재로그인(existing!=null)이든 동일하게 UPSERT 를 통해
      * email/displayName 을 최신화한다 (기존 id 보존).
+     *
+     * 속성 구성은 [extractAttrs] 를 재사용하되 groups 만 재로그인 시 기존 값을 보존한다
+     * ([bindForLinking] 과의 중복 제거 — 책임 경계는 provision 호출 여부뿐).
      */
     @Suppress("LongParameterList")
     private fun onSuccess(
@@ -270,21 +273,11 @@ class LdapProvider(
         providerId: UUID,
         config: LdapConfig,
         now: Instant,
-        externalSubject: String,
     ): AuthnResult {
-        val btsUsername = "$username@${config.baseDn.removePrefix("dc=").replace(",dc=", ".")}"
-
-        // AutoProvisionService 가 users UPSERT + user_external_accounts UPSERT 를 단일 트랜잭션으로 처리
-        val account = autoProvisionService.provision(
-            providerId = providerId,
-            attrs = LdapProvisionAttrs(
-                username = btsUsername,
-                email = null,
-                displayName = username,
-                externalSubject = externalSubject,
-                groups = existing?.groups ?: emptyList(),
-            ),
-        )
+        // AutoProvisionService 가 users UPSERT + user_external_accounts UPSERT 를 단일 트랜잭션으로 처리.
+        // extractAttrs 는 groups 를 emptyList 로 채우므로, 재로그인 시 기존 매핑의 groups 를 copy 로 보존한다.
+        val attrs = extractAttrs(username, config).copy(groups = existing?.groups ?: emptyList())
+        val account = autoProvisionService.provision(providerId = providerId, attrs = attrs)
 
         externalAccountRepo.updateLastLoginAt(account.id, now)
 
