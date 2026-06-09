@@ -59,9 +59,19 @@ LDAP 연결은 1요청 동기(bindForLinking로 즉시 소유 증명). SSO는 Id
 2. **SSO step-up 범위** — SSO 전용 사용자가 연결/해제하려면 SSO 재인증 경로가 필요. (A) SSO step-up 포함(SSO-only 사용자 연결·해제 완전 지원) vs (B) 이번엔 SSO 연결 CREATE만(step-up은 기존 LOCAL/LDAP 보유자 한정, SSO-only는 다음으로) — 범위/크기 트레이드오프.
 3. **연결 모드 콜백 결과 전달** — 설정 페이지로 리다이렉트 시 성공/실패(409 등) 상태를 쿼리파라미터로(계정열거0 일반 메시지).
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-09-fr-au-08b-sso-linking.md](../specs/2026-06-09-fr-au-08b-sso-linking.md)
+
+핵심 요약.
+- 신규 엔드포인트 2 — `POST /links/sso/start`(JWT+step-up)·`POST /reauth/sso/start`(JWT). 둘 다 XHR로 HttpSession에 의도 저장+JSESSIONID 세팅 후 authorizeUrl 반환 → SPA가 SSO로 네비게이트.
+- SAML/OIDC 성공 핸들러 **연결 모드 분기**(fail-closed) — intent 있으면 일반 로그인(JWT/세션/provision) 진입 불가, LINK=현재 userId attach·REAUTH=본인 링크 일치 시 step-up grant. 새 세션/JWT 미발급.
+- 충돌/마지막수단/계정열거0/step-up 1차 기조 계승. 마이그레이션 0(user_external_accounts 재사용).
+- Maxi 결정 — 의도 보존=HttpSession, 범위=SSO 연결+SSO 재인증(SSO 전용 사용자 완전 지원), 콜백=쿼리파라미터 상태.
+
+## Brainstorming Check
+
+✅ 통과 (1 iteration, 적대적 보안 갭 분석). B1(OIDC enabled 콜백 비대칭)·B2(SAML ACS 쿠키 왕복+session-fixation)·C2(동시 콜백 race)·C3(REAUTH registrationId 일치)·C5(fail-closed) 등 코드 근거 갭 전부 스펙 반영.
 
 ## Plan (← /bts-plan 채움)
 
