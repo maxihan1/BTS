@@ -22,6 +22,7 @@ import { versionHandlers } from './version-handlers'
 import { workflowHandlers } from './workflow-handlers'
 import { samlHandlers } from './saml-handlers'
 import { oidcHandlers } from './oidc-handlers'
+import { routeHandlers } from './route-handlers'
 import { securityLevelHandlers } from './security-level-handlers'
 
 /**
@@ -48,6 +49,7 @@ export const handlers = [
   ...projectPermissionHandlers,
   ...resolutionHandlers,
   ...oidcHandlers,
+  ...routeHandlers,
   ...samlHandlers,
   ...securityLevelHandlers,
   ...schemeHandlers,

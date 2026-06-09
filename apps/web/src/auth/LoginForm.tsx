@@ -1,5 +1,5 @@
-// 로그인 폼 컴포넌트 — RHF + Zod 검증 + shadcn/ui Form + provider 드롭다운(동적) + SAML IdP 버튼 + OIDC provider 버튼
-import { useEffect, useMemo } from 'react'
+// 로그인 폼 컴포넌트 — identifier-first 2단계 (1단계: 이메일, 2단계: provider+username+password)
+import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
@@ -24,13 +24,19 @@ import {
 import { useLoginMutation } from './useLoginMutation'
 import { SamlIdpButtons } from './SamlIdpButtons'
 import { OidcIdpButtons } from './OidcIdpButtons'
+import { ssoEntryUrl } from './ssoEntryUrl'
 import { loginStrings } from '@/i18n/ko'
 import { fetchSamlIdps } from '@/api/saml'
 import { fetchOidcProviders } from '@/api/oidc'
 import { fetchProviders } from '@/api/providers'
+import { fetchRoute } from '@/api/route'
 import type { SamlIdp } from '@/api/saml'
 import type { OidcProvider } from '@/api/oidc'
 import type { ProviderEntry } from '@/api/providers'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 상수 / 순수 헬퍼
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * provider id → 한국어 라벨 매핑.
@@ -41,18 +47,13 @@ const PROVIDER_LABEL_MAP: Readonly<Record<string, string>> = {
   ldap: loginStrings.providerLdapCorp,
 }
 
-/**
- * ProviderEntry의 id에 대응하는 표시 라벨을 반환한다.
- * 알려진 id(local/ldap)이면 i18n 매핑값, 없으면 displayName을 fallback으로 사용한다.
- */
+/** ProviderEntry의 id에 대응하는 표시 라벨을 반환한다. */
 function resolveProviderLabel(provider: ProviderEntry): string {
   return PROVIDER_LABEL_MAP[provider.id] ?? provider.displayName
 }
 
 /**
  * onError 콜백에서 받은 에러를 사용자 노출 한국어 메시지로 변환한다.
- * useLoginMutation은 이미 한국어 메시지를 Error.message에 담아 throw하므로
- * 그 값을 그대로 사용하고, Error가 아닌 경우에만 기본 메시지를 반환한다.
  */
 function resolveLoginErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
@@ -70,7 +71,6 @@ const LOCAL_FALLBACK: readonly ProviderEntry[] = [
 ]
 
 // provider 값은 동적이므로 enum 대신 z.string().min(1) 사용.
-// 구체 값 검증은 useLoginMutation → backend 응답에서 수행한다.
 const loginFormSchema = z.object({
   provider: z.string().min(1),
   username: z.string().min(1, loginStrings.usernameRequired),
@@ -79,64 +79,121 @@ const loginFormSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginFormSchema>
 
-interface LoginFormProps {
-  onSuccess?: () => void
+// ─────────────────────────────────────────────────────────────────────────────
+// 1단계 — 이메일 입력 화면
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface Step1Props {
+  /** "계속" 클릭 시 — 이메일 값을 받아 부모가 route 조회를 처리한다 */
+  onContinue: (email: string) => void
+  isPending: boolean
 }
 
-export const LoginForm = ({ onSuccess }: LoginFormProps) => {
+const emailSchema = z.object({ email: z.string() })
+type EmailFormValues = z.infer<typeof emailSchema>
+
+/**
+ * 1단계: 이메일 입력 + "계속" 버튼만 렌더한다.
+ * provider 드롭다운/username/password/SSO 버튼은 이 단계에서 미표시.
+ */
+const LoginStep1 = ({ onContinue, isPending }: Step1Props) => {
+  const form = useForm<EmailFormValues>({
+    resolver: zodResolver(emailSchema),
+    defaultValues: { email: '' },
+  })
+
+  function onSubmit(values: EmailFormValues) {
+    onContinue(values.email)
+  }
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="space-y-4">
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel htmlFor="login-email">{loginStrings.emailLabel}</FormLabel>
+              <FormControl>
+                <Input
+                  id="login-email"
+                  type="text"
+                  autoComplete="email"
+                  aria-required="true"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <Button type="submit" className="w-full" disabled={isPending}>
+          {loginStrings.continueButton}
+        </Button>
+      </form>
+    </Form>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2단계 — provider + username + password 폼
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface Step2Props {
+  /** 1단계에서 입력한 이메일 — username 필드에 프리필 */
+  prefillEmail: string
+  onSuccess?: () => void
+  providers: readonly ProviderEntry[]
+  isProvidersLoading: boolean
+  samlIdps: SamlIdp[]
+  oidcProviders: OidcProvider[]
+}
+
+/**
+ * 2단계: 기존 provider 드롭다운 + username + password + SAML/OIDC 버튼 폼.
+ * prefillEmail이 username 필드의 초기값으로 설정된다 (사용자 수정 가능).
+ *
+ * key prop으로 재마운트되므로 prefillEmail이 바뀌어도 stale state 없음
+ * (react-usestate-stale-key-prop 패턴).
+ *
+ * providers는 부모 LoginForm이 이미 계산해 prop으로 전달한다.
+ * 마운트 시 providers[0].id가 이미 확정돼 있으면 defaultValues에서 직접 설정한다.
+ * providers가 아직 빈 배열이면 useEffect에서 첫 항목 도착 시 setValue로 설정한다.
+ */
+const LoginStep2 = ({
+  prefillEmail,
+  onSuccess,
+  providers,
+  isProvidersLoading,
+  samlIdps,
+  oidcProviders,
+}: Step2Props) => {
   const mutation = useLoginMutation()
 
-  const {
-    data: providers,
-    isLoading: isProvidersLoading,
-    isError: isProvidersError,
-  } = useQuery<ProviderEntry[]>({
-    queryKey: ['auth', 'providers'],
-    queryFn: fetchProviders,
-    staleTime: 60_000,
-  })
-
-  // fetch 실패 또는 빈 배열 응답 시 LOCAL_FALLBACK으로 대체한다 (spec EC-06-06).
-  // useMemo로 감싸 참조 안정성을 보장하고 useEffect deps 경고를 방지한다.
-  const effectiveProviders = useMemo<readonly ProviderEntry[]>(
-    () =>
-      isProvidersError || (providers !== undefined && providers.length === 0)
-        ? LOCAL_FALLBACK
-        : (providers ?? []),
-    [isProvidersError, providers],
-  )
-
-  const { data: samlIdps } = useQuery<SamlIdp[]>({
-    queryKey: ['saml', 'idps'],
-    queryFn: fetchSamlIdps,
-    staleTime: 60_000,
-  })
-
-  const { data: oidcProviders } = useQuery<OidcProvider[]>({
-    queryKey: ['oidc', 'providers'],
-    queryFn: fetchOidcProviders,
-    staleTime: 60_000,
-  })
+  // providers[0]?.id가 이미 있으면 마운트 시 기본값으로 사용한다.
+  // 없으면 '' — useEffect에서 채운다.
+  const initialProvider = providers[0]?.id ?? ''
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginFormSchema),
     defaultValues: {
-      provider: '',
-      username: '',
+      provider: initialProvider,
+      // 1단계에서 입력한 이메일을 username 초기값으로 설정한다
+      username: prefillEmail,
       password: '',
     },
   })
 
-  // effectiveProviders가 결정되면 첫 항목을 기본 선택으로 설정한다.
-  // react-usestate-stale-key-prop 패턴 주의: form.setValue로 명시 설정해야 한다.
-  // 이미 값이 있으면(사용자가 직접 변경) 덮어쓰지 않는다.
+  // providers가 비동기로 늦게 도착하는 경우(마운트 시 빈 배열) 첫 항목을 설정한다.
+  // 이미 provider 값이 있으면(마운트 시 defaultValues로 설정됨) 덮어쓰지 않는다.
   useEffect(() => {
-    const firstProvider = effectiveProviders[0]
+    const firstProvider = providers[0]
     if (firstProvider === undefined) return
     if (form.getValues('provider') === '') {
       form.setValue('provider', firstProvider.id)
     }
-  }, [effectiveProviders, form])
+  }, [providers, form])
 
   const serverError = form.formState.errors.root?.message ?? null
 
@@ -176,7 +233,7 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {effectiveProviders.map((provider) => (
+                    {providers.map((provider) => (
                       <SelectItem key={provider.id} value={provider.id} role="option">
                         {resolveProviderLabel(provider)}
                       </SelectItem>
@@ -239,9 +296,116 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
           {loginStrings.submitButton}
         </Button>
 
-        <SamlIdpButtons idps={samlIdps ?? []} />
-        <OidcIdpButtons providers={oidcProviders ?? []} />
+        <SamlIdpButtons idps={samlIdps} />
+        <OidcIdpButtons providers={oidcProviders} />
       </form>
     </Form>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LoginForm — 오케스트레이터 (단계 전환 + route 조회 담당)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface LoginFormProps {
+  onSuccess?: () => void
+}
+
+/**
+ * identifier-first 2단계 로그인 폼.
+ *
+ * 1단계: 이메일 입력 → "계속"
+ * - 이메일에 @가 있으면 도메인으로 route 조회
+ * - matched:true → SSO 리다이렉트 (window.location.assign)
+ * - matched:false / 조회 에러 / @없음 → 2단계 폼으로 fall-through
+ *
+ * 2단계: provider 드롭다운 + username(이메일 프리필) + password
+ */
+export const LoginForm = ({ onSuccess }: LoginFormProps) => {
+  // step: 'email' | 'form'
+  const [step, setStep] = useState<'email' | 'form'>('email')
+  const [prefillEmail, setPrefillEmail] = useState('')
+  const [isRouting, setIsRouting] = useState(false)
+
+  const {
+    data: providers,
+    isLoading: isProvidersLoading,
+    isError: isProvidersError,
+  } = useQuery<ProviderEntry[]>({
+    queryKey: ['auth', 'providers'],
+    queryFn: fetchProviders,
+    staleTime: 60_000,
+  })
+
+  const effectiveProviders = useMemo<readonly ProviderEntry[]>(
+    () =>
+      isProvidersError || (providers !== undefined && providers.length === 0)
+        ? LOCAL_FALLBACK
+        : (providers ?? []),
+    [isProvidersError, providers],
+  )
+
+  const { data: samlIdps } = useQuery<SamlIdp[]>({
+    queryKey: ['saml', 'idps'],
+    queryFn: fetchSamlIdps,
+    staleTime: 60_000,
+  })
+
+  const { data: oidcProviders } = useQuery<OidcProvider[]>({
+    queryKey: ['oidc', 'providers'],
+    queryFn: fetchOidcProviders,
+    staleTime: 60_000,
+  })
+
+  /**
+   * 1단계 "계속" 핸들러.
+   * @가 없으면 route 조회 없이 즉시 2단계로 진입한다.
+   * 조회 실패 시에도 fail-safe로 2단계 진입한다(사용자 막지 않음).
+   */
+  async function handleEmailContinue(email: string) {
+    setPrefillEmail(email)
+
+    const atIndex = email.indexOf('@')
+    // @가 없거나 도메인 부분이 비어 있으면 조회 없이 2단계로
+    const domain = atIndex !== -1 ? email.slice(atIndex + 1) : ''
+    if (domain === '') {
+      setStep('form')
+      return
+    }
+
+    setIsRouting(true)
+    try {
+      const result = await fetchRoute(domain)
+      if (result.matched) {
+        // SSO 매칭 — 브라우저를 IdP로 리다이렉트한다
+        window.location.assign(ssoEntryUrl(result.type, result.registrationId))
+        return
+      }
+    } catch (err) {
+      // fetch 에러는 fail-safe: 2단계로 fall-through해 사용자가 폼 로그인 가능하게 한다.
+      // 정상 운영(네트워크 일시 단절 등)에서도 발생할 수 있는 폴백 경로라 error가 아닌 warn으로 남긴다.
+      console.warn('[LoginForm] route 조회 실패 — 2단계로 fall-through', err)
+    } finally {
+      setIsRouting(false)
+    }
+
+    // 미매칭 또는 에러 → 2단계
+    setStep('form')
+  }
+
+  if (step === 'email') {
+    return <LoginStep1 onContinue={handleEmailContinue} isPending={isRouting} />
+  }
+
+  return (
+    <LoginStep2
+      key={prefillEmail}
+      prefillEmail={prefillEmail}
+      onSuccess={onSuccess}
+      providers={effectiveProviders}
+      isProvidersLoading={isProvidersLoading}
+      samlIdps={samlIdps ?? []}
+      oidcProviders={oidcProviders ?? []}
+    />
   )
 }

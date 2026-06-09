@@ -3,14 +3,19 @@
 // 실제 IdP 왕복(Google OAuth2 리다이렉트)은 백엔드 통합테스트(T7)에 위임한다.
 // 프론트는 버튼 노출 확인 및 인증 URL 진입 시도까지만 검증한다.
 //
+// FR-AU-07 재조정: OIDC 버튼은 2단계 폼 안에 있다.
+// 1단계 미매칭 도메인 이메일 → "계속" → 2단계 폼 진입 후 OIDC 버튼 검증.
+//
 // S1 — IdP 버튼 노출 + 클릭 시 OIDC 인증 경로로 네비게이션 시도.
-//   Given  /login 진입 (MSW 기본 핸들러가 Google provider 1개 반환)
+//   Given  /login 진입 후 1단계 미매칭 이메일 입력 → "계속" → 2단계 폼 진입
+//          (MSW 기본 핸들러가 Google provider 1개 반환)
 //   When   "Google 로 로그인" 버튼 클릭
 //   Then   /oauth2/authorization/google 로 네비게이션 시도 (page.route 인터셉트로 검증)
 //
 // S5 — IdP 0개이면 OIDC 버튼 영역 미노출.
 //   Given  /login 진입 + addInitScript 로 localStorage '__bts_e2e_oidc_no_providers' = 'true' 설정
 //          (MSW 핸들러가 빈 providers 배열 반환)
+//          + 1단계 미매칭 이메일 입력 → "계속" → 2단계 폼 진입
 //   When   로그인 폼 로드 완료
 //   Then   OIDC 버튼("Google 로 로그인") 미노출 — SAML 버튼 영향 없음
 //
@@ -21,8 +26,20 @@
 //   - ui-pr-defer-e2e-regression-latent: OIDC 버튼 추가가 SAML/기존 셀렉터 strict mode 안 깨는지 확인
 //   - e2e-fixture-whoami-userid-alignment: 로그인 불필요 (로그인 페이지 자체 검증)
 import { test, expect } from '@playwright/test'
-import { loginStrings } from '../src/i18n/ko'
+import { loginStrings, loginPageStrings } from '../src/i18n/ko'
 import { E2E_OIDC_NO_PROVIDERS_KEY } from '../src/mocks/oidc-handlers'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 헬퍼 — 1단계 이메일 입력 + "계속" → 2단계 폼 진입 대기
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function proceedToStep2(page: import('@playwright/test').Page) {
+  await expect(page.getByRole('heading', { name: loginPageStrings.heading })).toBeVisible()
+  await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
+  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
+  // 2단계 진입 확인 — 로그인 버튼이 나타날 때까지 대기
+  await expect(page.getByRole('button', { name: loginStrings.submitButton, exact: true })).toBeVisible()
+}
 
 test.describe('OIDC SSO 로그인 진입 (FR-AU-04)', () => {
   // ───────────────────────────────────────────────────────────────────────────
@@ -40,9 +57,10 @@ test.describe('OIDC SSO 로그인 진입 (FR-AU-04)', () => {
       void route.fulfill({ status: 200, body: '' })
     })
 
-    // Given. 로그인 페이지 진입 — MSW 기본 핸들러가 Google provider 1개 반환
+    // Given. 로그인 페이지 진입 후 1단계 → 2단계 진입
+    // MSW 기본 핸들러가 Google provider 1개 반환
     await page.goto('/login')
-    await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
+    await proceedToStep2(page)
 
     // Given. OIDC 버튼이 나타날 때까지 대기 (useQuery fetch 완료 후 렌더)
     const idpButton = page.getByRole('button', {
@@ -71,9 +89,9 @@ test.describe('OIDC SSO 로그인 진입 (FR-AU-04)', () => {
       window.localStorage.setItem(key, 'true')
     }, E2E_OIDC_NO_PROVIDERS_KEY)
 
-    // When. 로그인 페이지 진입
+    // When. 로그인 페이지 진입 후 1단계 → 2단계 진입
     await page.goto('/login')
-    await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
+    await proceedToStep2(page)
 
     // Then. 로그인 버튼("로그인")은 존재하고 — 기존 폼 정상 렌더 확인
     await expect(
