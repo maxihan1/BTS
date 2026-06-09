@@ -2,6 +2,9 @@
 
 package com.atlas.bts.identity.provider.oidc
 
+import com.atlas.bts.identity.account.SsoLinkingCallbackProcessor
+import com.atlas.bts.identity.account.SsoLinkingIntent
+import com.atlas.bts.identity.account.SsoLinkingIntentStore
 import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.provider.ldap.AutoProvisionService
 import com.atlas.bts.identity.provider.ldap.ExternalAccount
@@ -10,6 +13,7 @@ import com.atlas.bts.identity.session.RefreshToken
 import com.atlas.bts.identity.session.RefreshTokenRepository
 import com.atlas.bts.identity.session.Session
 import com.atlas.bts.identity.session.SessionService
+import com.atlas.bts.identity.spi.ProviderType
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -19,6 +23,7 @@ import jakarta.servlet.http.HttpServletResponse
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken
 import org.springframework.security.oauth2.core.oidc.user.OidcUser
 import java.time.Clock
@@ -44,6 +49,7 @@ class OidcSuccessHandlerTest {
     private lateinit var sessionService: SessionService
     private lateinit var refreshTokenRepository: RefreshTokenRepository
     private lateinit var jwtIssuer: JwtIssuer
+    private lateinit var callbackProcessor: SsoLinkingCallbackProcessor
     private lateinit var handler: OidcAuthenticationSuccessHandler
 
     private val fixedNow = Instant.parse("2026-06-01T10:00:00Z")
@@ -107,8 +113,11 @@ class OidcSuccessHandlerTest {
         sessionService = mockk()
         refreshTokenRepository = mockk(relaxed = true)
         jwtIssuer = mockk()
+        callbackProcessor = mockk()
 
         every { configRepo.findByRegistrationId(registrationId) } returns oidcConfig
+        // 연결 모드 enabled 재해소(B1/EC16) — 기본은 활성. 비활성 테스트가 개별로 override 한다.
+        every { configRepo.findEnabledByRegistrationId(registrationId) } returns oidcConfig
         every { autoProvisionService.provision(providerId, any()) } returns provisionedAccount
         every { sessionService.create(userId, any(), any(), any()) } returns session
         every {
@@ -122,6 +131,7 @@ class OidcSuccessHandlerTest {
                 sessionService = sessionService,
                 refreshTokenRepository = refreshTokenRepository,
                 jwtIssuer = jwtIssuer,
+                callbackProcessor = callbackProcessor,
                 clock = clock,
             )
     }
@@ -236,9 +246,135 @@ class OidcSuccessHandlerTest {
         assertThat(locationSlot.captured).isEqualTo(DEFAULT_REDIRECT)
     }
 
+    // --- FR-AU-08b 연결 모드 분기 (fail-closed, EC1/EC12/EC16) -----------------------
+
+    /**
+     * 세션에 SSO 연결 인텐트가 심어진 [MockHttpServletRequest] 를 만든다(start XHR 가 만든 세션 재사용 모사).
+     * 핸들러는 `getSession(false)` 로 이 세션을 보고 비소비 peek 한다.
+     */
+    private fun requestWithIntent(intent: SsoLinkingIntent): HttpServletRequest {
+        val req = MockHttpServletRequest("GET", "/login/oauth2/code/$registrationId")
+        req.remoteAddr = "10.0.0.1"
+        req.addHeader("User-Agent", "test-agent")
+        requireNotNull(req.getSession(true)).setAttribute(SsoLinkingIntentStore.ATTRIBUTE_KEY, intent)
+        return req
+    }
+
+    private fun linkIntent(reg: String = registrationId): SsoLinkingIntent =
+        SsoLinkingIntent(
+            mode = SsoLinkingIntent.Mode.LINK,
+            userId = userId,
+            sid = null,
+            registrationId = reg,
+            providerType = ProviderType.OIDC,
+            expiresAt = fixedNow.plusSeconds(INTENT_TTL_SECONDS),
+        )
+
+    @Test
+    fun `연결 의도가 있으면 processor 로 위임하고 세션 JWT provision 을 발급하지 않는다 (fail-closed EC12)`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        every {
+            callbackProcessor.process(any(), ProviderType.OIDC, registrationId, providerId, sub, emptyList(), response)
+        } returns true
+
+        handler.onAuthenticationSuccess(requestWithIntent(linkIntent()), response, oidcAuthentication())
+
+        verify(exactly = 1) {
+            callbackProcessor.process(any(), ProviderType.OIDC, registrationId, providerId, sub, emptyList(), response)
+        }
+        // enabled 재해소 경로(B1)로만 providerId 를 얻어야 한다(start↔콜백 TOCTOU 차단).
+        verify(exactly = 1) { configRepo.findEnabledByRegistrationId(registrationId) }
+        // fail-closed — 발급 경로 물리적 진입 불가
+        verify(exactly = 0) { autoProvisionService.provision(any(), any()) }
+        verify(exactly = 0) { sessionService.create(any(), any(), any(), any()) }
+        verify(exactly = 0) { refreshTokenRepository.save(any()) }
+        verify(exactly = 0) { jwtIssuer.issue(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `연결 의도가 있고 provider 가 비활성이면 link error 로 보내고 발급하지 않는다 (B1 EC16)`() {
+        // OIDC findByRegistrationId 비대칭 보정 — 콜백 enabled 재해소가 비활성을 거른다.
+        every { configRepo.findEnabledByRegistrationId(registrationId) } returns null
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        val locationSlot = slot<String>()
+        every { response.sendRedirect(capture(locationSlot)) } returns Unit
+
+        handler.onAuthenticationSuccess(requestWithIntent(linkIntent()), response, oidcAuthentication())
+
+        assertThat(locationSlot.captured).isEqualTo("$SETTINGS_PATH?link=error")
+        verify(exactly = 0) {
+            callbackProcessor.process(any(), any(), any(), any(), any(), any(), any())
+        }
+        verify(exactly = 0) { autoProvisionService.provision(any(), any()) }
+        verify(exactly = 0) { sessionService.create(any(), any(), any(), any()) }
+        verify(exactly = 0) { jwtIssuer.issue(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `재인증 의도가 있고 provider 가 비활성이면 reauth failed 로 보내고 발급하지 않는다 (B1 EC16)`() {
+        every { configRepo.findEnabledByRegistrationId(registrationId) } returns null
+        val reauthIntent =
+            SsoLinkingIntent(
+                mode = SsoLinkingIntent.Mode.REAUTH,
+                userId = userId,
+                sid = sessionId,
+                registrationId = registrationId,
+                providerType = ProviderType.OIDC,
+                expiresAt = fixedNow.plusSeconds(INTENT_TTL_SECONDS),
+            )
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        val locationSlot = slot<String>()
+        every { response.sendRedirect(capture(locationSlot)) } returns Unit
+
+        handler.onAuthenticationSuccess(requestWithIntent(reauthIntent), response, oidcAuthentication())
+
+        assertThat(locationSlot.captured).isEqualTo("$SETTINGS_PATH?reauth=failed")
+        verify(exactly = 0) { jwtIssuer.issue(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `연결 의도가 있지만 만료돼 processor 가 위임 거부하면 발급하지 않고 error 로 보낸다 (EC5 fail-closed)`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        val locationSlot = slot<String>()
+        every { response.sendRedirect(capture(locationSlot)) } returns Unit
+        every {
+            callbackProcessor.process(any(), ProviderType.OIDC, registrationId, providerId, sub, emptyList(), response)
+        } returns false
+
+        handler.onAuthenticationSuccess(requestWithIntent(linkIntent()), response, oidcAuthentication())
+
+        assertThat(locationSlot.captured).isEqualTo("$SETTINGS_PATH?link=error")
+        verify(exactly = 0) { autoProvisionService.provision(any(), any()) }
+        verify(exactly = 0) { sessionService.create(any(), any(), any(), any()) }
+        verify(exactly = 0) { jwtIssuer.issue(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `연결 의도가 없으면 기존 JIT 로그인 흐름이 무변경이다 (EC1 회귀)`() {
+        val req = MockHttpServletRequest("GET", "/login/oauth2/code/$registrationId")
+        req.remoteAddr = "10.0.0.1"
+        req.addHeader("User-Agent", "test-agent")
+        req.getSession(true)
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        val locationSlot = slot<String>()
+        every { response.sendRedirect(capture(locationSlot)) } returns Unit
+
+        handler.onAuthenticationSuccess(req, response, oidcAuthentication())
+
+        // 일반 로그인은 기존 findByRegistrationId(enabled 무관) 경로 그대로.
+        verify(exactly = 1) { configRepo.findByRegistrationId(registrationId) }
+        verify(exactly = 1) { autoProvisionService.provision(providerId, any()) }
+        verify(exactly = 1) { sessionService.create(userId, any(), any(), any()) }
+        verify(exactly = 1) { jwtIssuer.issue(userId, sessionId, any(), any()) }
+        verify(exactly = 0) { callbackProcessor.process(any(), any(), any(), any(), any(), any(), any()) }
+        assertThat(locationSlot.captured).isEqualTo(DEFAULT_REDIRECT)
+    }
+
     private companion object {
         const val DEFAULT_REDIRECT = "/dashboard"
         const val SESSION_TTL_SECONDS = 1_209_600L
         const val RETURN_PARAM = "returnTo"
+        const val INTENT_TTL_SECONDS = 300L
+        const val SETTINGS_PATH = "/settings/account-links"
     }
 }
