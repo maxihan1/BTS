@@ -109,6 +109,16 @@ class AuthnProviderConfigRepositoryTest {
     }
 
     @Test
+    fun `isEnabled — 같은 type 에 enabled=true 와 enabled=false row 가 공존하면 fail-safe 로 false`() {
+        // 운영자가 같은 type 에 활성/비활성 row 를 둘 다 등록한 모순 상태.
+        // fail-safe: 끄려는 의도가 하나라도 있으면 비활성. LIMIT 1 순서에 의존하지 않고 결정적이어야 한다.
+        insertProvider(ProviderType.LDAP, enabled = true, sortOrder = 0)
+        insertProvider(ProviderType.LDAP, enabled = false, sortOrder = 1)
+
+        assertThat(repo.isEnabled(ProviderType.LDAP)).isFalse()
+    }
+
+    @Test
     fun `listEnabledByTypes — enabled=true 인 type 만 sort_order 오름차순으로 반환`() {
         insertProvider(ProviderType.LDAP, enabled = true, sortOrder = 10)
         insertProvider(ProviderType.LOCAL, enabled = true, sortOrder = 5)
