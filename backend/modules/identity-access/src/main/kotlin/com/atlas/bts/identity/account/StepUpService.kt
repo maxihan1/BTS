@@ -53,6 +53,7 @@ class StepUpService(
     /**
      * 주어진 sid 가 현재 유효한 step-up 윈도우 안에 있는지 반환한다.
      *
+     * 윈도우형이라 이 검사는 윈도우를 소비하지 않는다. 유효한 동안 몇 번 호출해도 true 다.
      * grant 이력이 없거나 윈도우가 만료됐으면 false 를 반환한다(fail-safe).
      * 경계 비교는 닫힘(`expiresAt > now`)이라 정확히 TTL 경계 시점은 만료로 처리한다.
      *
