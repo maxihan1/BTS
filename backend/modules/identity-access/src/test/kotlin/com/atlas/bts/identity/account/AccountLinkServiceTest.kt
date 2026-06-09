@@ -209,6 +209,67 @@ class AccountLinkServiceTest {
         verify(exactly = 0) { externalAccountRepository.provisionUser(any(), any(), any(), any()) }
     }
 
+    // ── linkExternalSubject (SSO — bind 없음) ────────────────────────────────
+
+    private val ssoProviderId = UUID.randomUUID()
+    private val ssoSubject = "google-oidc-sub-12345"
+
+    @Test
+    fun `linkExternalSubject — lock 선행 후 기존 매핑 없으면 insertLink → Created (provision 미호출)`() {
+        every {
+            externalAccountRepository.findByProviderIdAndExternalSubject(ssoProviderId, ssoSubject)
+        } returns null
+        every {
+            externalAccountRepository.insertLink(ssoProviderId, ssoSubject, userId, emptyList())
+        } returns externalAccount(providerId = ssoProviderId, subject = ssoSubject, owner = userId)
+        every { authnProviderConfigRepository.findByIds(setOf(ssoProviderId)) } returns
+            mapOf(ssoProviderId to providerInfo(id = ssoProviderId, type = ProviderType.OIDC))
+
+        val outcome = sut.linkExternalSubject(userId, ssoProviderId, ssoSubject, emptyList())
+
+        assertThat(outcome).isInstanceOf(LinkOutcome.Created::class.java)
+        assertThat(outcome.view.providerId).isEqualTo(ssoProviderId)
+        // lock 이 INSERT 전에 잡혀야 한다 (TOCTOU 직렬화).
+        verify(exactly = 1) { externalAccountRepository.acquireSubjectLock(ssoProviderId, ssoSubject) }
+        verify(exactly = 1) { externalAccountRepository.insertLink(ssoProviderId, ssoSubject, userId, emptyList()) }
+        // SSO 는 bind 없음 + 신규 user 생성 금지 — provision/bind 절대 미호출.
+        verify(exactly = 0) { externalAccountRepository.provisionUser(any(), any(), any(), any()) }
+        verify(exactly = 0) { ldapProvider.bindForLinking(any(), any(), any()) }
+    }
+
+    @Test
+    fun `linkExternalSubject — 이미 본인에게 연결됐으면 AlreadyLinked (insert 미호출, 멱등)`() {
+        val existing = externalAccount(providerId = ssoProviderId, subject = ssoSubject, owner = userId)
+        every {
+            externalAccountRepository.findByProviderIdAndExternalSubject(ssoProviderId, ssoSubject)
+        } returns existing
+        every { authnProviderConfigRepository.findByIds(setOf(ssoProviderId)) } returns
+            mapOf(ssoProviderId to providerInfo(id = ssoProviderId, type = ProviderType.OIDC))
+
+        val outcome = sut.linkExternalSubject(userId, ssoProviderId, ssoSubject, emptyList())
+
+        assertThat(outcome).isInstanceOf(LinkOutcome.AlreadyLinked::class.java)
+        assertThat(outcome.view.id).isEqualTo(existing.id)
+        verify(exactly = 1) { externalAccountRepository.acquireSubjectLock(ssoProviderId, ssoSubject) }
+        verify(exactly = 0) { externalAccountRepository.insertLink(any(), any(), any(), any()) }
+        verify(exactly = 0) { externalAccountRepository.provisionUser(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `linkExternalSubject — 타 사용자에게 매핑됐으면 AccountLinkConflictException (insert 미호출)`() {
+        val foreign = externalAccount(providerId = ssoProviderId, subject = ssoSubject, owner = otherUserId)
+        every {
+            externalAccountRepository.findByProviderIdAndExternalSubject(ssoProviderId, ssoSubject)
+        } returns foreign
+
+        assertThatThrownBy { sut.linkExternalSubject(userId, ssoProviderId, ssoSubject, emptyList()) }
+            .isInstanceOf(AccountLinkConflictException::class.java)
+
+        verify(exactly = 1) { externalAccountRepository.acquireSubjectLock(ssoProviderId, ssoSubject) }
+        verify(exactly = 0) { externalAccountRepository.insertLink(any(), any(), any(), any()) }
+        verify(exactly = 0) { externalAccountRepository.provisionUser(any(), any(), any(), any()) }
+    }
+
     // ── unlink ───────────────────────────────────────────────────────────────
 
     @Test
