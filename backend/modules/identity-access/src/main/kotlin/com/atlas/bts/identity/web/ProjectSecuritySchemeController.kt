@@ -80,7 +80,7 @@ class ProjectSecuritySchemeController(
         val actorId = resolveActorId(jwt) ?: return UNAUTHORIZED_RESPONSE
         return runHandler {
             service.assign(key, body.schemeId, actorId)
-            ResponseEntity.noContent().build<Void>()
+            ResponseEntity.noContent().build<Unit>()
         }
     }
 
@@ -97,7 +97,7 @@ class ProjectSecuritySchemeController(
         val actorId = resolveActorId(jwt) ?: return UNAUTHORIZED_RESPONSE
         return runHandler {
             service.unassign(key, actorId)
-            ResponseEntity.noContent().build<Void>()
+            ResponseEntity.noContent().build<Unit>()
         }
     }
 

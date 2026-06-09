@@ -223,7 +223,7 @@ class AccountLinkController(
         jwtSupport.requireStepUp(claims.currentSid)?.let { return it }
 
         accountLinkService.unlink(claims.userId, id)
-        return ResponseEntity.noContent().build<Void>()
+        return ResponseEntity.noContent().build<Unit>()
     }
 
     // ── 로컬 예외 핸들러 (account 도메인 예외 → HTTP) ─────────────────────────────
@@ -250,7 +250,7 @@ class AccountLinkController(
 
     /** 미소유/미존재 연결 → 404(존재 probe 방지). */
     @ExceptionHandler(AccountLinkNotFoundException::class)
-    fun handleNotFound(ex: AccountLinkNotFoundException): ResponseEntity<Void> = ResponseEntity.notFound().build()
+    fun handleNotFound(ex: AccountLinkNotFoundException): ResponseEntity<Unit> = ResponseEntity.notFound().build()
 
     // ── private helpers ───────────────────────────────────────────────────────
     //

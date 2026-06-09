@@ -48,7 +48,7 @@ class SpringSecurityProviderAdapter(
             is UsernamePasswordAuthenticationToken ->
                 Credential.UsernamePassword(
                     username = name,
-                    password = (credentials as? String ?: "").toCharArray(),
+                    password = (credentials as? String).orEmpty().toCharArray(),
                 )
             else -> throw BadCredentialsException("unsupported authentication type: ${this::class.simpleName}")
         }

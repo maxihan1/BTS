@@ -150,7 +150,7 @@ class IssueSecuritySchemeController(
         requireSystemAdmin(jwt)?.let { return it }
         return runHandler {
             service.deleteScheme(schemeId)
-            ResponseEntity.noContent().build<Void>()
+            ResponseEntity.noContent().build<Unit>()
         }
     }
 
@@ -205,7 +205,7 @@ class IssueSecuritySchemeController(
         requireSystemAdmin(jwt)?.let { return it }
         return runHandler {
             service.deleteLevel(levelId)
-            ResponseEntity.noContent().build<Void>()
+            ResponseEntity.noContent().build<Unit>()
         }
     }
 
@@ -261,7 +261,7 @@ class IssueSecuritySchemeController(
         requireSystemAdmin(jwt)?.let { return it }
         return runHandler {
             service.removeMember(memberId)
-            ResponseEntity.noContent().build<Void>()
+            ResponseEntity.noContent().build<Unit>()
         }
     }
 

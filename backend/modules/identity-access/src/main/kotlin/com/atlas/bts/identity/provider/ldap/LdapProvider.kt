@@ -287,7 +287,7 @@ class LdapProvider(
     ): AuthnResult {
         // AutoProvisionService 가 users UPSERT + user_external_accounts UPSERT 를 단일 트랜잭션으로 처리.
         // extractAttrs 는 groups 를 emptyList 로 채우므로, 재로그인 시 기존 매핑의 groups 를 copy 로 보존한다.
-        val attrs = extractAttrs(username, config).copy(groups = existing?.groups ?: emptyList())
+        val attrs = extractAttrs(username, config).copy(groups = existing?.groups.orEmpty())
         val account = autoProvisionService.provision(providerId = providerId, attrs = attrs)
 
         externalAccountRepo.updateLastLoginAt(account.id, now)

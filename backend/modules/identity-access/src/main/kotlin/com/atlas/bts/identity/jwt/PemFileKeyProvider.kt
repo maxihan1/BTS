@@ -78,10 +78,11 @@ class PemFileKeyProvider(
                     when (obj) {
                         is PEMKeyPair -> converter.getKeyPair(obj).private as RSAPrivateKey
                         is PrivateKeyInfo -> converter.getPrivateKey(obj) as RSAPrivateKey
-                        else -> throw IllegalStateException(
-                            "지원하지 않는 PEM 형식입니다: ${obj?.javaClass?.simpleName}. " +
-                                "RSA PRIVATE KEY 또는 PRIVATE KEY 형식을 사용하세요.",
-                        )
+                        else ->
+                            error(
+                                "지원하지 않는 PEM 형식입니다: ${obj?.javaClass?.simpleName}. " +
+                                    "RSA PRIVATE KEY 또는 PRIVATE KEY 형식을 사용하세요.",
+                            )
                     }
                 }
             }.getOrElse { ex ->

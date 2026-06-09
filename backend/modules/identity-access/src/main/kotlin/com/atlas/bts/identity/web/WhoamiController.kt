@@ -89,7 +89,7 @@ class WhoamiController(
                 storedPasswordCredentialRepository.findByUserId(userId)?.mustChangePassword ?: false
             return WhoamiResponse(
                 username = user.username,
-                email = user.email ?: "",
+                email = user.email.orEmpty(),
                 authMethod = "jwt",
                 userId = user.id,
                 mustChangePassword = mustChangePassword,
