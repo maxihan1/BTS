@@ -66,14 +66,15 @@
 - **FR3**. 인증된 사용자는 유효 step-up 하에 본인 소유 링크를 해제한다.
 - **FR4**. 연결 시 (provider, externalSubject)가 다른 사용자에 매핑돼 있으면 거부한다(계정 탈취 차단).
 - **FR5**. 연결 시 (provider, externalSubject)가 현재 사용자에 이미 매핑돼 있으면 멱등 no-op.
-- **FR6**. 해제 후 남은 로그인 수단이 0이 되면 거부한다(self-lockout 방지).
-- **FR7**. 재인증 챌린지는 보유 수단(LOCAL 비번 / LDAP bind)으로만 성공하며, 검증 대상은 **현재 userId의 자격증명**이어야 한다.
+- **FR6**. 해제 후 남은 로그인 수단이 0이 되면 거부한다(self-lockout 방지). **남은 수단 카운트 = enabled provider의 링크 수 + LOCAL 비밀번호 보유(0/1)** (B2 리뷰 C4). 비활성/삭제된 provider의 링크는 실제 로그인 불가이므로 카운트에서 제외 — 안 그러면 "로그인 불가한데 해제도 막힌" 영구 락이 생긴다.
+- **FR7**. 재인증 챌린지는 보유 수단(LOCAL 비번 / LDAP bind)으로만 성공하며, 검증 대상은 **현재 userId의 자격증명**이어야 한다. **link-bind와 reauth-bind의 검증 대상이 다름**(리뷰 C1) — *link*의 LDAP bind는 *아직 연결 안 된 새 DN*의 소유 증명(현재 user 소유 불요), *reauth*의 LDAP bind는 *현재 userId에 이미 연결된 DN*이어야 성공(EC9). 구현 시 둘을 혼동 금지.
 - **FR8**. 모든 엔드포인트는 인증 필수 + 본인 자원만. **PAT principal은 403**(세션 관리 선례와 정합 — `session-management-pat-exclusion`).
+- **FR9 (sid 신뢰 출처 — 리뷰 B1)**. step-up이 묶이는 세션 식별자(`sid`)는 **오직 현재 JWT의 `sid` 클레임에서 서버가 추출**한다. 요청 바디/헤더/쿼리의 sid는 일절 수용 안 함. `reauth` 응답은 step-up 토큰/sid를 노출하지 않고 **만료 시각만** 반환한다(confused-deputy/replay 차단).
 
 ## 비기능 요구사항 (NFR)
 
 - **N1 (보안)**. `external_subject`/비밀번호/PII를 로그에 직접 출력 금지(`providerId`만). 기존 AutoProvisionService 관례.
-- **N2 (보안)**. 연결/해제 충돌 응답은 본인 계정 한정. 타 사용자 매핑 존재를 식별 가능한 형태로 노출 금지(계정 열거 0).
+- **N2 (보안)**. 연결/해제 충돌 응답은 본인 계정 한정. 타 사용자 매핑 존재를 식별 가능한 형태로 노출 금지(계정 열거 0). **잔여 위험(리뷰 C3)** — link 충돌 409(`account_already_linked`)는 "이 (provider,DN)이 어딘가 이미 연결됨"을 누설할 수 있다. 단 트리거에 step-up + 해당 DN의 bind 성공이 선행하므로(공격자가 그 DN을 인증할 수 있어야 함) 실전 위험은 낮다. 메시지는 본인 포함 일반화("이미 연결된 계정입니다")로 뭉개고, 타이밍 차이를 두지 않는다.
 - **N3 (보안)**. step-up 검증은 fail-safe — 윈도우 만료/저장소 손실 시 재인증 강제(기본 거부).
 - **N4 (보안)**. LOCAL 재인증은 `LocalCredentialService.verifyForUser`(timing-attack 방어 + 평문 wipe) 그대로 재사용. 평문 비밀번호는 `CharArray`로 받고 사용 후 wipe.
 - **N5 (트랜잭션)**. 연결/해제는 단일 `@Transactional` 경계. 부분 성공 금지.
@@ -81,7 +82,7 @@
 - **N7 (무결성)**. 동시 연결 race는 기존 `UNIQUE(provider_id, external_subject)` 제약이 DB 차원 안전망.
 - **N8 (CSRF)**. 신규 mutating 엔드포인트(POST `/reauth`, POST `/links`, DELETE `/links/{id}`)는 기존 `CookieCsrfTokenRepository` + `SameSite=Strict` CSRF 보호를 받는다. CSRF 예외 등록 금지(절대 규칙). 프론트는 BC별 CSRF 관례를 따른다(`frontend-api-convention-per-bc`).
 - **N9 (동시성/TOCTOU)**. "마지막 수단 해제 거부"(FR6)는 *check(count) → delete* 사이 TOCTOU에 취약하다 — 서로 다른 링크 2개를 동시 해제하면 둘 다 count≥2를 보고 둘 다 삭제→0이 될 수 있다. **userId 기준 `pg_advisory_xact_lock`(bigint 시그니처)로 직렬화** 후 count 재조회→delete를 같은 트랜잭션에서 수행한다(`advisory-lock-bigint-toctou` 선례).
-- **N10 (brute-force)**. 연결/재인증의 LDAP bind 반복 실패 보호 — DN이 **이미 연결된** 경우(재인증) 기존 LockoutPolicy(`failed_attempts`/`locked_until`)를 적용한다. **미연결 DN의 link-bind**는 아직 행이 없어 per-account lockout이 불가 → LDAP 서버 자체 lockout에 의존(잔여 위험). 엔드포인트 단위 공격적 rate-limit는 BTS에 전역 인프라 부재 시 후속 과제로 명시.
+- **N10 (brute-force)**. 연결/재인증의 LDAP bind 반복 실패 보호 — DN이 **이미 연결된** 경우(재인증) 기존 LockoutPolicy(`failed_attempts`/`locked_until`)를 적용한다. **미연결 DN의 link-bind**는 아직 행이 없어 per-account lockout이 불가 → LDAP 서버 자체 lockout에 의존(잔여 위험). **LOCAL reauth(`POST /reauth` method=LOCAL) 비번 추측(리뷰 C6)** — 인증된 세션이라 userId를 알므로, 실패 시 기존 LockoutPolicy를 **userId 기준**으로 카운트해 탈취 세션의 무제한 추측을 차단한다. 엔드포인트 단위 공격적 rate-limit는 BTS에 전역 인프라 부재 시 후속 과제로 명시.
 
 ## API 인터페이스 (REST)
 
@@ -117,7 +118,7 @@
 
 **없음.** 기존 `user_external_accounts`(V002) 재사용. 마이그레이션 0건.
 
-step-up 윈도우는 **Caffeine 인메모리 캐시**(`sid → expiresAt`, TTL 5분)로 보관 — 기존 `SidRevokeJwtConverter`의 Caffeine 선례와 동일 패턴. 단일 호스트(Naver Cloud Docker Compose)라 인메모리로 충분, 재시작 시 grant 소실은 재인증 강제(fail-safe). *(대안: 서명된 short-lived step-up 토큰 / `sessions.step_up_at` 컬럼 — plan 리뷰에서 확정.)*
+step-up 윈도우는 **Caffeine 인메모리 캐시**(`sid → expiresAt`, TTL 5분)로 보관 — 기존 `SidRevokeJwtConverter`의 Caffeine 선례와 동일 패턴. 단일 호스트(Naver Cloud Docker Compose)라 인메모리로 충분, 재시작 시 grant 소실은 재인증 강제(fail-safe). `sid`는 FR9대로 JWT 클레임에서만 추출(요청 페이로드 불수용). **윈도우형(의도, 리뷰 C5)** — 한 번 grant되면 5분 안에서 link/unlink **여러 번** 허용한다(per-action consume 아님). 구현자가 임의로 단발 소비로 바꾸지 않는다. *(대안: 서명된 short-lived step-up 토큰 / `sessions.step_up_at` 컬럼 — plan 리뷰에서 확정.)*
 
 ## 필요한 코드 표면 (구현 가이드)
 
@@ -143,6 +144,8 @@ step-up 윈도우는 **Caffeine 인메모리 캐시**(`sid → expiresAt`, TTL 5
 - **EC9**. step-up 재인증을 **다른 userId의 자격증명**으로 시도 → 실패(검증 대상은 현재 userId 한정).
 - **EC10**. **동시 해제 TOCTOU**(N9) — 같은 사용자의 서로 다른 링크 2개를 동시에 DELETE → advisory lock 직렬화로 한쪽만 마지막 수단 검사를 통과/거부. 0으로 떨어지지 않음. 통합테스트로 검증.
 - **EC11**. LDAP 연결 시 bind 추출의 **groups**도 `user_external_accounts.groups`에 저장(provision과 동일, FR-PM-01 role 매핑 소비). 빈 groups면 `[]`.
+- **EC12 (멱등 bind 순서, 리뷰 C2)**. DN은 bind 결과물이므로 멱등 판정(S6)은 **bind 성공 후**에만 가능하다. 따라서 자기 계정 재연결도 LDAP 왕복 + (해당되면) lockout 카운터가 정상 동작한다. 멱등 no-op은 "bind 성공 + (provider,DN)이 현재 user 소유" 확인 후 기존 행 반환.
+- **EC13 (비활성 provider 링크, 리뷰 C4)**. 연결 당시 enabled였던 provider가 후에 비활성화되면 — `GET /links`는 그 링크를 **표시하되 provider 상태를 함께** 내려주고(죽은 표시 방지), 마지막 수단 카운트(FR6)에서는 **제외**(로그인 불가 수단). 해제는 허용(영구 락 방지).
 
 ## 제약 조건
 

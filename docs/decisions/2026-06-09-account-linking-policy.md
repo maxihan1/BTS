@@ -46,12 +46,13 @@ SDD 19.4는 엔티티를 `UserIdentity`(Long id, `email`·`verifiedAt` 컬럼 �
 - 연결의 경우 "대상 Provider로 실제 인증 성공"(D1)이 그 자체로 새 신원에 대한 소유 증명이다. 추가로 현재 세션의 재인증 신선도(freshness)도 요구한다.
 - 해제는 새 Provider 인증이 없으므로 재인증은 **현재 자격증명 재확인**(또는 세션 신선도 임계) 의미다.
 - **재인증 구체 메커니즘**(비밀번호 재입력 vs SSO 재수행 vs 세션 age 임계 + freshness 윈도우 길이)은 spec 단계 결정 사항으로 남긴다. 본 ADR은 "재인증을 반드시 강제한다"는 불변식만 확정.
+- **확정(spec, 보안 리뷰 2026-06-09)**. 1차는 **재인증 챌린지 + 윈도우형 step-up**(Caffeine `sid→expiry` 5분, 윈도우 내 다회 허용). `sid`는 **JWT `sid` 클레임에서만** 추출(요청 페이로드 불수용 — confused-deputy/replay 차단). reauth 응답은 sid/토큰 미노출.
 
 ### D5. 충돌 처리 (product §2.8 D5 mandate)
 
 - **타계정 선점 거부**. 연결하려는 `(provider_id, external_subject)`가 **이미 다른 user에 매핑**돼 있으면 거부한다(계정 탈취 차단). 기존 `UNIQUE (provider_id, external_subject)` 제약이 DB 차원 안전망.
 - **멱등 연결**. 동일 신원이 이미 **현재 사용자**에 연결돼 있으면 no-op(중복 연결 아님).
-- **마지막 수단 보호**. 연결 해제 후 그 사용자의 남은 로그인 수단(연결된 외부 계정 + LOCAL 비밀번호 보유)이 **0이 되면 거부**한다. 스스로 잠기는 것(self-lockout) 방지.
+- **마지막 수단 보호**. 연결 해제 후 그 사용자의 남은 로그인 수단이 **0이 되면 거부**한다. 스스로 잠기는 것(self-lockout) 방지. **카운트 정의(보안 리뷰 C4)** = **enabled provider의 링크 수 + LOCAL 비밀번호 보유(0/1)**. 비활성/삭제된 provider의 링크는 실제 로그인 불가이므로 카운트에서 제외 — 포함 시 "로그인 불가한데 해제도 막힌" 영구 락 발생. TOCTOU는 userId advisory lock(`hashtextextended` 전폭 해시) 직렬화로 차단.
 
 ## 결과
 
