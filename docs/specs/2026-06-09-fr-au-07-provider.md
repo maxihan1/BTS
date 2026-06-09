@@ -97,7 +97,7 @@ CREATE INDEX idx_domain_provider_routes_provider_id ON domain_provider_routes (p
 
 - `domain` UNIQUE — 한 도메인은 정확히 한 Provider로만(모호성 0).
 - `provider_id` ON DELETE CASCADE — 라우트는 Provider에 종속된 메타데이터. Provider 삭제 시 무의미한 라우트 자동 제거.
-- `init_codegen.sql`에도 동일 테이블 미러(jOOQ codegen, learnings `jooq-init-codegen-mirror`).
+- init_codegen 미러 **불필요** — identity-access는 jOOQ codegen 미사용(전부 jdbc `NamedParameterJdbcTemplate`). `jooq-init-codegen-mirror` 학습은 issue-tracking 등 jOOQ 모듈 한정.
 - 시드 행 없음(라우트는 환경 의존, FR-AU-06 D3 정신과 동일).
 
 ## 엣지 케이스
@@ -118,7 +118,7 @@ CREATE INDEX idx_domain_provider_routes_provider_id ON domain_provider_routes (p
 
 ## 측정 가능한 완료 기준
 
-- [ ] V020 + init_codegen 미러. Flyway 마이그레이션 통과(Testcontainers).
+- [ ] V020 Flyway 마이그레이션 통과(Testcontainers). (init_codegen 미러 불필요 — jdbc-only 모듈)
 - [ ] `GET /api/v1/auth/route` — S1~S5 통합테스트 그린(매칭 SAML/OIDC, 미매칭, fail-safe, 정규화).
 - [ ] 계정 열거 방지 — 자격증명 미취급 + 도메인만 판단 검증.
 - [ ] 프론트 — identifier-first 2단계. 1단계 이메일 입력 → 매칭 SSO 자동 리다이렉트 / 미매칭 2단계 폼 노출 (단위테스트 + E2E).

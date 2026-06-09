@@ -41,7 +41,7 @@ FR-AU-07은 사용자가 입력한 이메일의 **도메인**(`alice@partner.com
 
 ## 결과
 
-- 신규 테이블 `domain_provider_routes(domain UNIQUE, provider_id → authn_providers(id))` — V020 + `init_codegen.sql` 미러.
+- 신규 테이블 `domain_provider_routes(domain UNIQUE, provider_id → authn_providers(id))` — V020. (identity-access는 jOOQ codegen 미사용 jdbc-only 모듈이라 init_codegen 미러 불필요.)
 - 신규 조회 엔드포인트(permitAll, 로그인 전 호출) — 이메일/도메인 → 라우팅 결과(SSO type + registrationId + displayName) 또는 미매칭. 계정 존재 여부는 절대 노출 안 함(도메인만 판단).
 - 프론트 로그인 폼 — 이메일 입력 → 라우트 조회 → 매칭 시 해당 SSO 자동 진입, 미매칭 시 기존 폼 유지.
 
