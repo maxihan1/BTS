@@ -317,6 +317,24 @@ class Saml2AuthenticationSuccessHandlerTest {
     }
 
     @Test
+    fun `연결 의도가 있고 provider 가 비활성이면 intent 를 세션에서 제거한다 (C3 1회용 대칭)`() {
+        // processor 를 안 타는 비활성 경로(EC16)에서도 intent 가 세션에 잔류하지 않아야 한다(1회용 계약 대칭).
+        every { configRepo.findEnabledByRegistrationId(registrationId) } returns null
+        val request = requestWithIntent(linkIntent())
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        every { response.sendRedirect(any()) } returns Unit
+
+        handler.onAuthenticationSuccess(request, response, samlAuthentication())
+
+        // 처리 후 세션에서 intent 속성이 제거돼야 한다(재소비 차단).
+        assertThat(request.getSession(false)?.getAttribute(SsoLinkingIntentStore.ATTRIBUTE_KEY)).isNull()
+        // fail-closed 유지 — 발급 0.
+        verify(exactly = 0) { autoProvisionService.provision(any(), any()) }
+        verify(exactly = 0) { sessionService.create(any(), any(), any(), any()) }
+        verify(exactly = 0) { jwtIssuer.issue(any(), any(), any(), any()) }
+    }
+
+    @Test
     fun `재인증 의도가 있고 provider 가 비활성이면 reauth failed 로 보내고 발급하지 않는다 (B1 EC16)`() {
         every { configRepo.findEnabledByRegistrationId(registrationId) } returns null
         val reauthIntent =
