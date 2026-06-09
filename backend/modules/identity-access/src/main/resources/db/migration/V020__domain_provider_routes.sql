@@ -1,6 +1,6 @@
 -- 이메일 도메인 → 인증 Provider 라우트 매핑 (FR-AU-07 도메인 기반 SSO 라우팅)
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- gen_random_uuid() 안전망 (V001 미적용 환경 대비)
+-- pgcrypto(gen_random_uuid)는 V001__users.sql 에서 생성되며 Flyway 순차 적용으로 보장되므로 재선언하지 않는다.
 
 -- ── domain_provider_routes ───────────────────────────────────────────────────
 -- 사용자가 입력한 이메일의 도메인(예: partner.com)을 인증 Provider 로 라우팅한다.

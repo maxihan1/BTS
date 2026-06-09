@@ -382,8 +382,9 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
         return
       }
     } catch (err) {
-      // fetch 에러는 fail-safe: 2단계로 fall-through해 사용자가 폼 로그인 가능하게 한다
-      console.error('[LoginForm] route 조회 실패 — 2단계로 fall-through', err)
+      // fetch 에러는 fail-safe: 2단계로 fall-through해 사용자가 폼 로그인 가능하게 한다.
+      // 정상 운영(네트워크 일시 단절 등)에서도 발생할 수 있는 폴백 경로라 error가 아닌 warn으로 남긴다.
+      console.warn('[LoginForm] route 조회 실패 — 2단계로 fall-through', err)
     } finally {
       setIsRouting(false)
     }
