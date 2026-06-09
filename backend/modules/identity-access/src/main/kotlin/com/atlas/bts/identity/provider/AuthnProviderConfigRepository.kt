@@ -6,6 +6,7 @@ import com.atlas.bts.identity.spi.ProviderType
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
+import java.util.UUID
 
 /**
  * authn_providers 테이블에서 Provider 의 활성 여부와 정렬 순서를 조회한다 (FR-AU-06).
@@ -56,6 +57,25 @@ class AuthnProviderConfigRepository(
         }
     }
 
+    /**
+     * 주어진 Provider id 들의 (id, name, type, enabled) 를 id → [AuthnProviderInfo] 맵으로 조회한다 (FR-AU-08).
+     *
+     * 계정 연결(link) 목록 표시에서 각 link 의 provider 이름·유형·활성 여부를 한 번에 보여주기 위함이다.
+     * 존재하지 않는 id 는 결과 맵에서 빠진다. 빈 [ids] 면 빈 맵을 반환한다(불필요 쿼리 회피).
+     */
+    fun findByIds(ids: Collection<UUID>): Map<UUID, AuthnProviderInfo> {
+        if (ids.isEmpty()) return emptyMap()
+        val params = MapSqlParameterSource("ids", ids)
+        return jdbc.query(SQL_FIND_BY_IDS, params) { rs, _ ->
+            AuthnProviderInfo(
+                id = rs.getObject("id", UUID::class.java),
+                name = rs.getString("name"),
+                type = ProviderType.valueOf(rs.getString("type")),
+                enabled = rs.getBoolean("enabled"),
+            )
+        }.associateBy { it.id }
+    }
+
     private companion object {
         const val SQL_DISABLED_EXISTS =
             "SELECT 1 FROM authn_providers WHERE type = :type AND enabled = false LIMIT 1"
@@ -63,5 +83,21 @@ class AuthnProviderConfigRepository(
         const val SQL_LIST_ENABLED =
             "SELECT type, sort_order FROM authn_providers " +
                 "WHERE type IN (:types) AND enabled = true ORDER BY sort_order ASC"
+
+        const val SQL_FIND_BY_IDS =
+            "SELECT id, name, type, enabled FROM authn_providers WHERE id IN (:ids)"
     }
 }
+
+/**
+ * authn_providers 의 한 Provider 표시용 요약 (FR-AU-08).
+ *
+ * 계정 연결 목록 API 가 각 link 의 provider 이름·유형·활성 여부를 함께 노출할 때 사용한다.
+ * config(JSONB) 같은 민감/대용량 컬럼은 포함하지 않는다.
+ */
+data class AuthnProviderInfo(
+    val id: UUID,
+    val name: String,
+    val type: ProviderType,
+    val enabled: Boolean,
+)
