@@ -96,8 +96,8 @@ class ReauthService(
      * LDAP bind 로 재인증한다 — EC9 제약 적용 (FR-AU-08).
      *
      * [LdapProvider.bindForLinking] 으로 bind 한다. null 이면 실패다. bind 성공 시
-     * 반환된 DN([com.atlas.bts.identity.provider.ldap.LdapProvisionAttrs.externalSubject])이
-     * **현재 [userId] 에 이미 연결된** 외부 계정인지 확인한다(EC9). 미연결·타 user 연결이면 실패다.
+     * 반환된 DN(externalSubject)이 **현재 [userId] 에 이미 연결된** 외부 계정인지 확인한다(EC9).
+     * 미연결·타 user 연결이면 실패다.
      * 두 조건을 모두 만족할 때만 [StepUpService.grant] 로 step-up 윈도우를 연다.
      *
      * @param userId 재인증 대상 사용자 식별자.
