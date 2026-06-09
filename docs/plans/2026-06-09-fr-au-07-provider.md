@@ -43,9 +43,23 @@
 - **관련 ADR**: [docs/decisions/2026-06-09-domain-based-provider-routing.md](../decisions/2026-06-09-domain-based-provider-routing.md) (생성됨), 선행 [2026-06-09-multi-provider-explicit-selection.md](../decisions/2026-06-09-multi-provider-explicit-selection.md)
 - **회귀 주의(learnings)**: jOOQ init_codegen 미러(V020), 마이그레이션 V번호 머지 직전 재확인, PG NULL UNIQUE 멱등성, 계정 열거 방지(도메인만 판단), cross-BC 아님(identity-access 단일).
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-09-fr-au-07-provider.md](../specs/2026-06-09-fr-au-07-provider.md)
+
+핵심 시나리오 3줄 요약.
+- 이메일 입력 → 도메인이 SSO 라우트에 매칭되면 해당 SAML/OIDC로 자동 리다이렉트.
+- 미매칭/끊긴 라우트/비활성 → 기존 2단계 로그인 폼(provider 드롭다운+username+password) 노출 (fail-safe).
+- 라우팅은 도메인만 판단(계정 열거 0), 신규 테이블 `domain_provider_routes` V020, 관리 UI는 후속 FR.
+
+핵심 결정.
+- API. `GET /api/v1/auth/route?domain={domain}` (permitAll, 200 `{matched,type,registrationId,displayName}`).
+- 프론트. identifier-first 2단계(Maxi 선택 — 이메일 먼저, 미매칭 시 기존 폼).
+- 매칭 판정. provider_id가 가리키는 enabled SAML/OIDC config 있을 때만(LOCAL/LDAP·비활성·삭제는 미매칭).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). gap 1건(프론트 로그인 UX) → Maxi 결정 identifier-first 2단계 채택. 그 외 보안/엣지 점검 통과.
 
 ## Plan (← /bts-plan 채움)
 
