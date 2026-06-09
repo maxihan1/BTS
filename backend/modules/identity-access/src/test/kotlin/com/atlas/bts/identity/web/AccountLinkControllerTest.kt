@@ -9,6 +9,7 @@ import com.atlas.bts.identity.account.AccountLinkNotFoundException
 import com.atlas.bts.identity.account.AccountLinkService
 import com.atlas.bts.identity.account.AccountLinkView
 import com.atlas.bts.identity.account.AccountLinks
+import com.atlas.bts.identity.account.LinkOutcome
 import com.atlas.bts.identity.account.ReauthChallengeFailedException
 import com.atlas.bts.identity.account.ReauthService
 import com.atlas.bts.identity.account.StepUpService
@@ -285,21 +286,10 @@ class AccountLinkControllerTest {
     // ── POST /links ──────────────────────────────────────────────────────────
 
     @Test
-    fun `POST links with valid step-up returns 201 and delegates to link`() {
+    fun `POST links new link returns 201 Created and delegates to link`() {
         `when`(stepUpService.isValid(currentSid)).thenReturn(true)
         `when`(accountLinkService.link(anyUuid(), anyUuid(), eqStr("alice"), anyCharArray()))
-            .thenReturn(
-                AccountLinkView(
-                    id = linkId,
-                    providerId = providerId,
-                    providerName = "Corp LDAP",
-                    providerType = ProviderType.LDAP,
-                    providerEnabled = true,
-                    externalSubject = "uid=alice,ou=people,dc=corp,dc=com",
-                    linkedAt = Instant.parse("2026-06-09T10:00:00Z"),
-                    lastLoginAt = null,
-                ),
-            )
+            .thenReturn(LinkOutcome.Created(linkView()))
 
         mockMvc.perform(
             post("/api/v1/auth/account/links")
@@ -315,6 +305,28 @@ class AccountLinkControllerTest {
             // 갓 연결한 계정 — linkedAt 노출, lastLoginAt 은 null(직렬화 관례상 null 로 노출)
             .andExpect(jsonPath("$.linkedAt").value("2026-06-09T10:00:00Z"))
             .andExpect(jsonPath("$.lastLoginAt").value(org.hamcrest.Matchers.nullValue()))
+
+        verify(accountLinkService).link(eqUuid(userId), eqUuid(providerId), eqStr("alice"), anyCharArray())
+    }
+
+    @Test
+    fun `POST links idempotent re-link returns 200 OK with same body`() {
+        `when`(stepUpService.isValid(currentSid)).thenReturn(true)
+        `when`(accountLinkService.link(anyUuid(), anyUuid(), eqStr("alice"), anyCharArray()))
+            .thenReturn(LinkOutcome.AlreadyLinked(linkView()))
+
+        mockMvc.perform(
+            post("/api/v1/auth/account/links")
+                .with(csrf())
+                .with(jwtPrincipal())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"providerId":"$providerId","username":"alice","password":"secret"}"""),
+        )
+            // 멱등(이미 본인 소유) 재연결 — 신규(201)와 구분되는 200 OK, 본문은 동일 형태.
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.id").value(linkId.toString()))
+            .andExpect(jsonPath("$.externalSubjectMasked").value("uid=al***"))
+            .andExpect(jsonPath("$.externalSubject").doesNotExist())
 
         verify(accountLinkService).link(eqUuid(userId), eqUuid(providerId), eqStr("alice"), anyCharArray())
     }
@@ -480,6 +492,19 @@ class AccountLinkControllerTest {
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    /** link 응답 본문 단언용 고정 뷰 — 신규(201)·멱등(200) 케이스가 같은 body 형태임을 공유 검증한다. */
+    private fun linkView(): AccountLinkView =
+        AccountLinkView(
+            id = linkId,
+            providerId = providerId,
+            providerName = "Corp LDAP",
+            providerType = ProviderType.LDAP,
+            providerEnabled = true,
+            externalSubject = "uid=alice,ou=people,dc=corp,dc=com",
+            linkedAt = Instant.parse("2026-06-09T10:00:00Z"),
+            lastLoginAt = null,
+        )
 
     /** CharArray 파라미터의 Mockito any() 매처 — Kotlin non-null CharArray 에 null 전달 방지. */
     private fun anyCharArray(): CharArray = org.mockito.ArgumentMatchers.any(CharArray::class.java) ?: charArrayOf()

@@ -217,21 +217,18 @@ class AccountLinkIntegrationTest : LdapTestcontainersBase() {
     // ── S6: 멱등 ───────────────────────────────────────────────────────────────
 
     /**
-     * S6: 현재 user 에 이미 연결된 alice DN 재연결 → 성공 + 링크 수 불변(중복 INSERT 없음).
+     * S6: 현재 user 에 이미 연결된 alice DN 재연결 → **200** + 링크 수 불변(중복 INSERT 없음).
      *
-     * ## 실제 구현의 status (스펙 deviation — 보고서에 명시)
-     * 스펙 S6 은 멱등 재연결을 **200** 으로 기대하나, 현재 [AccountLinkController.link] 는
-     * 신규/멱등 두 경로의 성공을 모두 **201 CREATED** 로 매핑한다(서비스 [AccountLinkService.link] 는
-     * 멱등 분기에서 기존 행을 그대로 반환하고 INSERT 하지 않음 — 멱등성은 보장되나 status 구분이 없음).
-     * 따라서 이 통합 테스트는 구현이 실제로 보장하는 계약(성공 + 링크 수 불변 = 멱등)을 검증하고,
-     * status 는 실제 동작인 201 로 단언한다. "멱등=200" 도입은 컨트롤러 status 분기를 추가해야 하는
-     * 후속 production 변경이며, 본 task(통합테스트 전용·prod 미수정)의 범위를 벗어난다.
+     * 신규 연결은 201 CREATED, 멱등(이미 본인 소유 DN) 재연결은 200 OK 로 구분된다
+     * (서비스 [AccountLinkService.link] 가 [LinkOutcome.Created]/[LinkOutcome.AlreadyLinked] 로 신호하고
+     * [AccountLinkController.link] 가 status 를 분기). 멱등 분기는 기존 행을 그대로 반환하고 INSERT 하지
+     * 않으므로 링크 수가 불변이어야 한다.
      *
      * 멱등 분기를 타려면 link 가 bind 후 조회할 DN 이 기존 행 DN 과 정확히 같아야 하므로,
      * 시스템이 직접 만든 행을 쓴다 — 첫 POST /links 로 연결한 뒤 같은 요청을 재실행한다.
      */
     @Test
-    fun `S6 멱등 — 본인 소유 DN 재연결 성공 + 링크 수 불변(중복 INSERT 없음)`() {
+    fun `S6 멱등 — 본인 소유 DN 재연결 200 + 링크 수 불변(중복 INSERT 없음)`() {
         val userId = seedLocalUser("s6user")
         val jwt = loginLocalJwt("s6user", LOCAL_PASSWORD)
         reauthLocal(jwt, LOCAL_PASSWORD)
@@ -240,10 +237,10 @@ class AccountLinkIntegrationTest : LdapTestcontainersBase() {
         assertThat(first.statusCode).isEqualTo(HttpStatus.CREATED)
         assertThat(linkCount(userId)).isEqualTo(1)
 
-        // 멱등 재연결 — 성공 응답이면서 중복 INSERT 가 없어 링크 수가 그대로여야 한다.
+        // 멱등 재연결 — 신규(201)와 구분되는 200 OK 이면서 중복 INSERT 가 없어 링크 수가 그대로여야 한다.
         val resp = postLink(jwt, providerId, "alice", LDAP_PASSWORD)
 
-        assertThat(resp.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(resp.statusCode).isEqualTo(HttpStatus.OK)
         assertThat(linkCount(userId)).isEqualTo(1)
     }
 

@@ -154,29 +154,31 @@ class AccountLinkServiceTest {
     }
 
     @Test
-    fun `link — bind 성공이고 기존 매핑 없으면 신규 INSERT(현재 userId attach)`() {
+    fun `link — bind 성공이고 기존 매핑 없으면 신규 INSERT → Created(현재 userId attach)`() {
         val attrs = LdapProvisionAttrs("alice", null, "Alice", dn, emptyList())
         every { ldapProvider.bindForLinking(ldapProviderId, "alice", any()) } returns attrs
         every { externalAccountRepository.findByProviderIdAndExternalSubject(ldapProviderId, dn) } returns null
         every { externalAccountRepository.provisionUser(ldapProviderId, dn, userId, emptyList()) } returns
             externalAccount(subject = dn, owner = userId)
 
-        val view = sut.link(userId, ldapProviderId, "alice", pw())
+        val outcome = sut.link(userId, ldapProviderId, "alice", pw())
 
-        assertThat(view.providerId).isEqualTo(ldapProviderId)
+        assertThat(outcome).isInstanceOf(LinkOutcome.Created::class.java)
+        assertThat(outcome.view.providerId).isEqualTo(ldapProviderId)
         verify(exactly = 1) { externalAccountRepository.provisionUser(ldapProviderId, dn, userId, emptyList()) }
     }
 
     @Test
-    fun `link — 이미 본인에게 연결된 매핑이면 멱등 no-op(기존 반환, provision 호출 안 함)`() {
+    fun `link — 이미 본인에게 연결된 매핑이면 멱등 no-op → AlreadyLinked(기존 반환, provision 호출 안 함)`() {
         val attrs = LdapProvisionAttrs("alice", null, "Alice", dn, emptyList())
         val existing = externalAccount(subject = dn, owner = userId)
         every { ldapProvider.bindForLinking(ldapProviderId, "alice", any()) } returns attrs
         every { externalAccountRepository.findByProviderIdAndExternalSubject(ldapProviderId, dn) } returns existing
 
-        val view = sut.link(userId, ldapProviderId, "alice", pw())
+        val outcome = sut.link(userId, ldapProviderId, "alice", pw())
 
-        assertThat(view.id).isEqualTo(existing.id)
+        assertThat(outcome).isInstanceOf(LinkOutcome.AlreadyLinked::class.java)
+        assertThat(outcome.view.id).isEqualTo(existing.id)
         verify(exactly = 0) { externalAccountRepository.provisionUser(any(), any(), any(), any()) }
     }
 
