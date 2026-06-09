@@ -45,8 +45,9 @@ import java.util.UUID
  * - S2 acme.com → OIDC 매칭
  * - S3 gmail.com(미등록) → null
  * - S4 dead.com(LOCAL 라우트 지시) → null (fail-safe)
+ * - S5 off-saml.com/off-oidc.com(enabled=false config 지시) → null (fail-safe 회귀 가드, 코드리뷰 CONCERN #1)
  *
- * S5(대소문자/공백 정규화)는 Controller(Task 2) 책임이므로 여기서 검증하지 않는다.
+ * 대소문자/공백 정규화는 Controller(Task 2) 책임이므로 여기서 검증하지 않는다.
  * 본 Repository 는 받은 값을 그대로 조회한다.
  *
  * ## Testcontainers 설계
@@ -141,12 +142,22 @@ class DomainProviderRouteRepositoryIntegrationTest {
      */
     private val localProviderId: UUID = UUID.fromString("00000000-0a07-0001-0000-000000000003")
 
+    /**
+     * 비활성(enabled=false) SAML/OIDC config 를 가리키는 provider 시드 — S5 fail-safe 회귀 가드.
+     * saml_idp_configs/oidc_provider_configs 의 `enabled = TRUE` 필터가 누군가 실수로 제거되면
+     * 이 도메인들이 null 대신 매칭되어 본 테스트가 실패한다(회귀 검출).
+     */
+    private val disabledSamlProviderId: UUID = UUID.fromString("00000000-0a07-0001-0000-000000000004")
+    private val disabledOidcProviderId: UUID = UUID.fromString("00000000-0a07-0001-0000-000000000005")
+
     @BeforeEach
     fun setUp() {
         cleanUp()
         seedProviders()
         seedSamlIdpConfig()
         seedOidcProviderConfig()
+        seedDisabledSamlIdpConfig()
+        seedDisabledOidcProviderConfig()
         seedRoutes()
     }
 
@@ -188,24 +199,46 @@ class DomainProviderRouteRepositoryIntegrationTest {
         assertThat(repository.findRouteByDomain("dead.com")).isNull()
     }
 
+    // ── S5: 비활성(enabled=false) config 지시 → null (fail-safe 회귀 가드) ──────────
+    // 구현의 `AND enabled = TRUE` 필터(SQL_FIND_ENABLED_SAML/OIDC)가 제거되면 이 두 테스트가 실패한다.
+
+    @Test
+    fun `off-saml_com은 비활성 SAML config를 지시하므로 null을 반환한다 fail-safe`() {
+        assertThat(repository.findRouteByDomain("off-saml.com")).isNull()
+    }
+
+    @Test
+    fun `off-oidc_com은 비활성 OIDC config를 지시하므로 null을 반환한다 fail-safe`() {
+        assertThat(repository.findRouteByDomain("off-oidc.com")).isNull()
+    }
+
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────────
 
     private fun cleanUp() {
         jdbc.update(
             "DELETE FROM domain_provider_routes WHERE domain IN (:domains)",
-            mapOf("domains" to listOf("partner.com", "acme.com", "dead.com")),
+            mapOf("domains" to listOf("partner.com", "acme.com", "dead.com", "off-saml.com", "off-oidc.com")),
         )
         jdbc.update(
-            "DELETE FROM saml_idp_configs WHERE registration_id = :reg",
-            mapOf("reg" to "fr-au-07-t1-saml-reg"),
+            "DELETE FROM saml_idp_configs WHERE registration_id IN (:regs)",
+            mapOf("regs" to listOf("fr-au-07-t1-saml-reg", "fr-au-07-t1-saml-off-reg")),
         )
         jdbc.update(
-            "DELETE FROM oidc_provider_configs WHERE registration_id = :reg",
-            mapOf("reg" to "fr-au-07-t1-oidc-reg"),
+            "DELETE FROM oidc_provider_configs WHERE registration_id IN (:regs)",
+            mapOf("regs" to listOf("fr-au-07-t1-oidc-reg", "fr-au-07-t1-oidc-off-reg")),
         )
         jdbc.update(
             "DELETE FROM authn_providers WHERE id IN (:ids)",
-            mapOf("ids" to listOf(samlProviderId, oidcProviderId, localProviderId)),
+            mapOf(
+                "ids" to
+                    listOf(
+                        samlProviderId,
+                        oidcProviderId,
+                        localProviderId,
+                        disabledSamlProviderId,
+                        disabledOidcProviderId,
+                    ),
+            ),
         )
     }
 
@@ -215,6 +248,9 @@ class DomainProviderRouteRepositoryIntegrationTest {
             Triple(oidcProviderId, "OIDC", "fr-au-07-t1-oidc"),
             // LOCAL — 비정상 상태 재현용 의도적 시드 (S4 fail-safe 검증)
             Triple(localProviderId, "LOCAL", "fr-au-07-t1-local"),
+            // 비활성 config 를 가리킬 provider (S5 fail-safe 회귀 가드)
+            Triple(disabledSamlProviderId, "SAML", "fr-au-07-t1-saml-off"),
+            Triple(disabledOidcProviderId, "OIDC", "fr-au-07-t1-oidc-off"),
         ).forEach { (id, type, name) ->
             jdbc.update(
                 "INSERT INTO authn_providers (id, type, name, config) VALUES (:id, :type, :name, '{}'::jsonb)",
@@ -261,12 +297,55 @@ class DomainProviderRouteRepositoryIntegrationTest {
         )
     }
 
+    /** S5 — enabled=FALSE 인 SAML config. `AND enabled = TRUE` 필터가 살아 있으면 매칭에서 제외된다. */
+    private fun seedDisabledSamlIdpConfig() {
+        jdbc.update(
+            """
+            INSERT INTO saml_idp_configs
+                (registration_id, display_name, idp_entity_id, idp_sso_url, idp_x509_cert, authn_provider_id, enabled)
+            VALUES
+                (:reg, :name, :entityId, :ssoUrl, :cert, :providerId, FALSE)
+            """,
+            mapOf(
+                "reg" to "fr-au-07-t1-saml-off-reg",
+                "name" to "Disabled SAML",
+                "entityId" to "urn:offsaml:idp",
+                "ssoUrl" to "https://idp.off-saml.com/sso",
+                "cert" to "-----BEGIN CERTIFICATE-----\nTEST\n-----END CERTIFICATE-----",
+                "providerId" to disabledSamlProviderId,
+            ),
+        )
+    }
+
+    /** S5 — enabled=FALSE 인 OIDC config. `AND enabled = TRUE` 필터가 살아 있으면 매칭에서 제외된다. */
+    private fun seedDisabledOidcProviderConfig() {
+        jdbc.update(
+            """
+            INSERT INTO oidc_provider_configs
+                (registration_id, display_name, issuer_uri, client_id, client_secret_encrypted, authn_provider_id, enabled)
+            VALUES
+                (:reg, :name, :issuer, :clientId, :secret, :providerId, FALSE)
+            """,
+            mapOf(
+                "reg" to "fr-au-07-t1-oidc-off-reg",
+                "name" to "Disabled OIDC",
+                "issuer" to "https://idp.off-oidc.com",
+                "clientId" to "off-oidc-client",
+                "secret" to "enc:dummy",
+                "providerId" to disabledOidcProviderId,
+            ),
+        )
+    }
+
     private fun seedRoutes() {
         listOf(
             "partner.com" to samlProviderId,
             "acme.com" to oidcProviderId,
             // dead.com → LOCAL provider 지시 (운영자 실수 재현, S4 fail-safe)
             "dead.com" to localProviderId,
+            // S5 — 비활성 SAML/OIDC config 를 가리키는 라우트 (fail-safe 회귀 가드)
+            "off-saml.com" to disabledSamlProviderId,
+            "off-oidc.com" to disabledOidcProviderId,
         ).forEach { (domain, providerId) ->
             jdbc.update(
                 "INSERT INTO domain_provider_routes (domain, provider_id) VALUES (:domain, :providerId)",
