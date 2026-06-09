@@ -107,13 +107,31 @@ const logoutHandler = http.post('/api/v1/auth/logout', () => {
 })
 
 /**
+ * E2E 테스트 전용 localStorage 플래그 키 — 이 키가 'true'이면 providers 응답에서
+ * LDAP을 제외하고 LOCAL 만 반환한다 (S3 — LDAP 비활성 시나리오).
+ *
+ * Playwright addInitScript 로 goto 전에 플래그를 설정하면 첫 fetch 시점부터 적용된다.
+ */
+export const E2E_PROVIDERS_LOCAL_ONLY_KEY = '__bts_e2e_providers_local_only'
+
+/**
  * GET /api/v1/auth/providers — 활성 인증 공급자 목록 반환.
  *
  * 기본값. LDAP(priority 0, 먼저 표시) + Local(priority 1).
  * 응답 schema: backend ProvidersController.ProvidersResponse.
  * id는 login 요청 provider 필드에 그대로 전달된다.
+ *
+ * E2E 시나리오 토글 — localStorage '__bts_e2e_providers_local_only' = 'true' 이면
+ * LDAP을 제외한 LOCAL 1개만 반환한다 (msw-derived-behavior-shared-store-e2e).
  */
 const providersHandler = http.get('/api/v1/auth/providers', () => {
+  if (globalThis.localStorage?.getItem(E2E_PROVIDERS_LOCAL_ONLY_KEY) === 'true') {
+    return HttpResponse.json({
+      providers: [
+        { id: 'local', type: 'LOCAL', displayName: 'Local', priority: 0, available: true },
+      ],
+    })
+  }
   return HttpResponse.json({
     providers: [
       { id: 'ldap', type: 'LDAP', displayName: 'Ldap', priority: 0, available: true },
