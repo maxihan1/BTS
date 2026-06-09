@@ -22,6 +22,15 @@ interface OidcProviderConfigReader {
      * 존재하지 않으면 null.
      */
     fun findByRegistrationId(registrationId: String): OidcProviderConfig?
+
+    /**
+     * registration_id 로 **활성(enabled=true)** OIDC Provider 설정만 조회한다 (FR-AU-08b B1).
+     *
+     * SSO 연결/재인증 콜백 시 start↔콜백 TOCTOU 를 차단하기 위해 enabled 를 재해소한다
+     * (SAML `findEnabledByRegistrationId` 동형 — OIDC 의 enabled 미필터 비대칭 보정, EC16).
+     * 비활성이거나 존재하지 않으면 null. 핸들러가 인터페이스 타입에 의존하므로 인터페이스에 둔다.
+     */
+    fun findEnabledByRegistrationId(registrationId: String): OidcProviderConfig?
 }
 
 /**
@@ -57,6 +66,9 @@ class OidcProviderConfigRepository(
             mapOf("registrationId" to registrationId),
             rowMapper,
         ).firstOrNull()
+
+    /** RED 골격 — 아직 미구현. */
+    override fun findEnabledByRegistrationId(registrationId: String): OidcProviderConfig? = null
 
     /**
      * **활성(enabled=true)** OIDC Provider 설정 전체를 display_name 오름차순으로 조회한다 (EC5).

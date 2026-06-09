@@ -141,4 +141,31 @@ class OidcProviderConfigRepositoryTest {
             .containsExactlyInAnyOrder("keycloak", "google")
         assertThat(configs).allMatch({ it.enabled }, "enabled")
     }
+
+    // ── FR-AU-08b B1: 콜백 enabled 대칭 (SAML findEnabledByRegistrationId 동형) ──────
+
+    @Test
+    fun `findEnabledByRegistrationId — enabled row 만 반환`() {
+        insertConfig("keycloak", enabled = true)
+
+        val config = repo.findEnabledByRegistrationId("keycloak")
+
+        assertThat(config).isNotNull()
+        assertThat(config!!.registrationId).isEqualTo("keycloak")
+        assertThat(config.enabled).isTrue()
+        assertThat(config.authnProviderId).isEqualTo(OIDC_PROVIDER_ID)
+    }
+
+    @Test
+    fun `findEnabledByRegistrationId — disabled row 는 null (콜백 enabled 재해소, EC16)`() {
+        insertConfig("disabled-oidc", enabled = false)
+
+        // start↔콜백 TOCTOU 차단 — IdP 왕복 중 비활성화된 provider 는 콜백서 거부.
+        assertThat(repo.findEnabledByRegistrationId("disabled-oidc")).isNull()
+    }
+
+    @Test
+    fun `findEnabledByRegistrationId — 미존재 registrationId 는 null`() {
+        assertThat(repo.findEnabledByRegistrationId("nonexistent")).isNull()
+    }
 }
