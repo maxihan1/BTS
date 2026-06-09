@@ -396,7 +396,9 @@ class ExternalAccountRepositoryTest {
         )
 
         // bob 이 같은 (provider_id, external_subject) 로 INSERT 시도 → UNIQUE 위반 예외.
-        // ON CONFLICT DO UPDATE 였다면 bob 이 alice 의 신원을 조용히 가로챘을 것 — 그걸 차단.
+        // ON CONFLICT DO UPDATE 였다면 bob 이 alice 의 신원을 조용히 가로챘을 것(거짓 success) — 그걸 차단.
+        // (UNIQUE 위반 후 같은 트랜잭션은 abort 되므로 user_id 보존 재조회는 별도 트랜잭션이 필요한
+        //  통합테스트(Task 10)에서 검증한다. 여기서는 중복이 조용히 삼켜지지 않고 예외로 거부됨만 확인.)
         var thrown: Exception? = null
         try {
             repo.insertLink(
@@ -410,11 +412,7 @@ class ExternalAccountRepositoryTest {
         }
 
         assertThat(thrown).isNotNull()
-
-        // alice 의 신원이 보존됨 (bob 으로 user_id 가 바뀌지 않음)
-        val found = repo.findByProviderIdAndExternalSubject(providerId, "oidc|shared-sub")
-        assertThat(found).isNotNull()
-        assertThat(found!!.userId).isEqualTo(aliceUserId)
+        assertThat(thrown!!.message).contains("user_external_accounts_provider_id_external_subject_key")
     }
 
     @Test
