@@ -45,6 +45,26 @@ data class AccountLinks(
 )
 
 /**
+ * 외부 계정 연결([AccountLinkService.link])의 성공 결과 — 신규/멱등 구분 신호 (FR-AU-08).
+ *
+ * 컨트롤러가 HTTP status 를 구분(신규 201 / 멱등 200)할 수 있도록 서비스가 어느 경로로 성공했는지
+ * 알린다. 두 케이스 모두 동일한 [view] 본문을 담는다(응답 body 는 같고 status 만 다르다).
+ *
+ * ## 케이스
+ * - [Created]: 기존 매핑이 없어 신규 INSERT 한 경우. 컨트롤러가 **201 CREATED** 로 매핑한다.
+ * - [AlreadyLinked]: 이미 본인 소유 DN 이라 멱등 no-op(기존 행 그대로 반환)한 경우.
+ *   컨트롤러가 **200 OK** 로 매핑한다. 충돌(타인 소유 409)·bind 실패(401)는 결과가 아닌 예외로 분기한다.
+ */
+sealed interface LinkOutcome {
+    /** 연결 결과 표시용 뷰 — 신규/멱등 두 케이스 공통 본문. */
+    val view: AccountLinkView
+
+    data class Created(override val view: AccountLinkView) : LinkOutcome
+
+    data class AlreadyLinked(override val view: AccountLinkView) : LinkOutcome
+}
+
+/**
  * 사용자 본인의 외부 계정 연결을 관리하는 애플리케이션 서비스 (FR-AU-08).
  *
  * ## 책임 경계
@@ -93,16 +113,18 @@ class AccountLinkService(
      * 2. **충돌 조회 후 분기**: provisionUser 는 ON CONFLICT(provider_id, external_subject) UPSERT 라
      *    타계정 선점 시 user_id 가 보존된다. 따라서 INSERT 전에 반드시 조회로 분기해
      *    타계정이면 provisionUser 를 호출하지 않는다.
-     *    - 매핑 없음 → 신규 INSERT(현재 userId attach).
-     *    - 본인 소유 → 멱등 no-op(기존 반환).
+     *    - 매핑 없음 → 신규 INSERT(현재 userId attach) → [LinkOutcome.Created].
+     *    - 본인 소유 → 멱등 no-op(기존 반환) → [LinkOutcome.AlreadyLinked].
      *    - 타인 소유 → [AccountLinkConflictException].
+     *
+     * 신규/멱등을 [LinkOutcome] 로 구분해 컨트롤러가 201/200 을 분기한다(응답 body 는 동일).
      */
     fun link(
         userId: UUID,
         providerId: UUID,
         username: String,
         password: CharArray,
-    ): AccountLinkView {
+    ): LinkOutcome {
         val attrs =
             ldapProvider.bindForLinking(providerId, username, password)
                 ?: throw AccountLinkAuthException()
@@ -113,10 +135,12 @@ class AccountLinkService(
 
         return when {
             existing == null ->
-                externalAccountRepository
-                    .provisionUser(providerId, attrs.externalSubject, userId, attrs.groups)
-                    .toView(provider)
-            existing.userId == userId -> existing.toView(provider)
+                LinkOutcome.Created(
+                    externalAccountRepository
+                        .provisionUser(providerId, attrs.externalSubject, userId, attrs.groups)
+                        .toView(provider),
+                )
+            existing.userId == userId -> LinkOutcome.AlreadyLinked(existing.toView(provider))
             else -> throw AccountLinkConflictException()
         }
     }

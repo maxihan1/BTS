@@ -8,6 +8,7 @@ import com.atlas.bts.identity.account.AccountLinkLastMethodException
 import com.atlas.bts.identity.account.AccountLinkNotFoundException
 import com.atlas.bts.identity.account.AccountLinkService
 import com.atlas.bts.identity.account.AccountLinkView
+import com.atlas.bts.identity.account.LinkOutcome
 import com.atlas.bts.identity.account.ReauthChallengeFailedException
 import com.atlas.bts.identity.account.ReauthMethod
 import com.atlas.bts.identity.account.ReauthService
@@ -165,14 +166,16 @@ class AccountLinkController(
         requireStepUp(claims.currentSid)?.let { return it }
 
         return try {
-            val view =
+            val outcome =
                 accountLinkService.link(
                     claims.userId,
                     body.providerId,
                     body.username,
                     body.password.toCharArray(),
                 )
-            ResponseEntity.status(HttpStatus.CREATED).body(view.toResponse())
+            // 신규(Created)는 201, 멱등(AlreadyLinked)은 200 — body 는 동일(toResponse).
+            val status = if (outcome is LinkOutcome.Created) HttpStatus.CREATED else HttpStatus.OK
+            ResponseEntity.status(status).body(outcome.view.toResponse())
         } catch (ex: ProviderUnavailableException) {
             // 503 직접 생성 — catch-all 핸들러가 500 으로 변질시키지 않도록. password/PII 미로깅.
             log.warn("account link provider unavailable: providerType={}", ex.providerType)
