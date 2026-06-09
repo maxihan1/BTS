@@ -18,17 +18,23 @@ class AuthnProviderConfigRepository(
     private val jdbc: NamedParameterJdbcTemplate,
 ) {
     /**
-     * 주어진 Provider 타입이 활성 상태인지 반환한다.
+     * 주어진 Provider 타입이 활성 상태인지 fail-safe 로 판정해 반환한다.
      *
-     * authn_providers 에 해당 type row 가 있으면 그 row 의 enabled 값을 그대로 반환한다.
-     * row 가 아예 없으면(미등록 type) true 를 반환한다 — fail-open 이며 안전하다.
+     * authn_providers 에 해당 type 의 enabled=false row 가 하나라도 있으면 false(비활성),
+     * 그 외(비활성 row 없음 또는 row 자체 없음)는 true(활성)를 반환한다.
      *
-     * ## 왜 fail-open(row 미등록 = true)이 안전한가
-     * authn_providers 는 운영자가 특정 Provider 를 *끄기* 위해 enabled=false row 를
-     * 등록하는 용도다. LOCAL/LDAP 은 코드 Bean(LocalProvider/LdapProvider)으로
-     * 상시 구현·존재하므로, row 미등록 = 비활성화 의도 없음 = 활성으로 본다.
-     * SAML/OIDC 는 V010/V011 마이그레이션에서 row 가 seed 되므로 이 fail-open 경로를
-     * 타지 않고 항상 등록된 enabled 값을 따른다.
+     * ## 왜 fail-safe(비활성 row 하나면 비활성)인가
+     * authn_providers 는 type 에 UNIQUE 제약이 없어 한 type 에 여러 Provider row 가
+     * 공존할 수 있다(V002 스키마). 운영자가 같은 type 에 enabled=true·false row 를
+     * 둘 다 넣은 모순 상태에서, LIMIT 1 의 반환 순서에 의존하면 활성 판정이 비결정적이 된다.
+     * 따라서 끄려는 의도(enabled=false)가 하나라도 있으면 비활성으로 본다 — 결정적이며
+     * 보안상 안전한 쪽으로 기운다.
+     *
+     * ## row 가 아예 없으면 활성인 이유
+     * authn_providers 는 운영자가 특정 Provider 를 끄기 위해 enabled=false row 를 등록하는
+     * 용도다. LOCAL/LDAP 은 코드 Bean(LocalProvider/LdapProvider)으로 상시 구현·존재하므로,
+     * row 미등록 = 비활성화 의도 없음 = 활성으로 본다. SAML/OIDC 는 V010/V011 마이그레이션에서
+     * row 가 seed 되므로 이 경로를 타지 않고 등록된 enabled 값을 따른다.
      */
     fun isEnabled(type: ProviderType): Boolean {
         val params = MapSqlParameterSource("type", type.name)
