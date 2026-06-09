@@ -205,3 +205,16 @@ TDD red→green→refactor 강제, 의존성 순서 순차 dispatch(단일 모�
 **eng 관점(controller)** — wave 구조(4) 의존성 정합, 단일 모듈 test 컴파일 직렬화 인지(`bts-plan-wave-gradle-module-compile`), ktlint 라인길이 멀티라인 인자 선례 명시. BLOCKER 없음.
 
 종합. BLOCKER 0 (2건 해소) / CONCERN 0 (6건 반영). 게이트 1 진입 가능.
+
+### PR 코드리뷰 (게이트 2 직전, 2026-06-09)
+
+병렬 2관점 — `superpowers:code-reviewer`(절대 규칙) + `security-engineer`(실구현 보안). **둘 다 BLOCKER 0** (절대 규칙 위반·보안 구멍 없음). 10개 보안 속성(타계정 탈취·bind-only·step-up·EC9·TOCTOU·계정 열거·PAT·PII·AOP·누락 시나리오) 실코드 안전 확인 + 통합테스트 실증.
+
+CONCERN 수렴 → **T9에서 전부 수정**.
+- **C1 (중요)**. EC3(LDAP 다운→503)가 실배선서 깨짐 — `bindForLinking`이 Unavailable을 null로 삼켜 401로 나가고, 컨트롤러 503 catch는 dead, 컨트롤러 테스트는 서비스 mock으로 **가짜 그린**. → T9. `bindForLinking` Unavailable→`ProviderUnavailableException` throw(InvalidCredentials는 null 유지), 503 실도달, 진짜 단위테스트(Unavailable→예외) 추가. authenticate 일반 로그인 경로 무변경(S3LdapUnavailableTest 회귀가드 green).
+- **C2 (500 버그)**. reauth LDAP 필드 누락 시 `requireNotNull`→500. → T9. 명시 검증→400 `reauth_fields_required` + 테스트.
+- **정리**. countByUserId dead code 제거(서비스는 enabled-only 정밀 카운트), maskSubject KDoc 정정.
+
+T9 검증. 풀 모듈 `:modules:identity-access:test` green + ktlint/detekt `--rerun-tasks` clean. RED a2f82a48 → GREEN 79d145d0.
+
+종합. BLOCKER 0 / CONCERN 0 (2건 + 정리 수정 완료). 게이트 2 진입 가능.
