@@ -56,6 +56,102 @@ classify 결과 (보정 적용).
 - 최우선 보안 갭. **마지막 수단 해제 TOCTOU self-lockout 우회** → userId advisory lock 직렬화(N9/EC10).
 - 그 외. CSRF(N8) / LDAP bind brute-force(N10) / groups 저장(EC11) / 감사로그 FR-AU-10 위임.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 전 task `agent: security-engineer`, 모듈 `backend/modules/identity-access`. 마이그레이션 0건.
+> 경로 약어 `IA = backend/modules/identity-access/src`. 패키지 `com.atlas.bts.identity`.
+> TDD red→green→refactor 강제. LDAP bind 필요한 task는 `LdapTestcontainersBase` singleton(`.apply { start() }`) 사용(`Testcontainers 라이프사이클` learning).
+
+### Task 1. StepUpService — Caffeine step-up 윈도우
+
+**메타**.
+- agent: `security-engineer`
+- files: [`IA/main/kotlin/com/atlas/bts/identity/account/StepUpService.kt`, `IA/test/kotlin/com/atlas/bts/identity/account/StepUpServiceTest.kt`]
+- depends-on: []
+
+**RED**. `StepUpServiceTest` — `grant(sid)` 후 `isValid(sid)`=true, TTL 경과(주입 `Clock`/`ticker`) 후 false, 미부여 sid는 false. 경계(정확히 5분)는 fail-safe(만료=false).
+**GREEN**. Caffeine cache `sid(UUID)→expiresAt`, `expireAfterWrite=5분`(또는 `Clock` 기반 expiresAt 비교). `SidRevokeJwtConverter` Caffeine 선례 패턴.
+**REFACTOR**. TTL 상수화 + KDoc(fail-safe 명시).
+**검증**. `./gradlew :modules:identity-access:test --tests "*StepUpServiceTest"`
+
+### Task 2. ExternalAccountRepository — 조회/삭제/카운트/advisory lock 추가
+
+**메타**.
+- agent: `security-engineer`
+- files: [`IA/main/kotlin/com/atlas/bts/identity/provider/ldap/ExternalAccountRepository.kt`, `IA/test/kotlin/com/atlas/bts/identity/provider/ldap/ExternalAccountRepositoryTest.kt`]
+- depends-on: []
+
+**RED**. Testcontainers repo 테스트 — `findByUserId` 다건 반환, `deleteByIdAndUserId`가 소유자만 삭제(타인 id+userId → 0행), `countByUserId` 정확, `acquireUserLock(userId)`가 `pg_advisory_xact_lock(bigint)` 호출(같은 tx 직렬화). 기존 테스트(provisionUser 등) green 유지.
+**GREEN**. `findByUserId`/`deleteByIdAndUserId(id,userId):Int`/`countByUserId(userId):Int` + `acquireUserLock(userId)` — userId→bigint 결정적 변환(상위 64bit). NamedParameterJdbcTemplate.
+**REFACTOR**. SQL 상수화 + KDoc(`advisory-lock-bigint-toctou` 선례 인용).
+**검증**. `./gradlew :modules:identity-access:test --tests "*ExternalAccountRepositoryTest"`
+
+### Task 3. LdapProvider — bind-only 추출 (provision 분리)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`IA/main/kotlin/com/atlas/bts/identity/provider/ldap/LdapProvider.kt`, `IA/test/kotlin/com/atlas/bts/identity/provider/ldap/LdapProviderBindForLinkingTest.kt`]
+- depends-on: []
+
+**RED**. LDAP Testcontainers 테스트 — `bindForLinking(providerId, username, password)`가 bind 성공 시 `LdapProvisionAttrs`(externalSubject=DN + groups) 반환 + **provision 미호출**(user_external_accounts 신규 행 0). bind 실패 시 null. **기존 `authenticate`(provision 포함) 경로 무변경**(기존 LdapProvider/LdapAuthFlow 통합테스트 green 유지 — 회귀 가드).
+**GREEN**. 기존 `authenticate` 내부의 bind+속성추출을 `private bindAndExtract(...)`로 추출 → `authenticate`=`bindAndExtract`+`provision`. 신규 public `bindForLinking`=`bindAndExtract`만(providerId로 enabled LDAP config 해소). PII(DN) 미로깅.
+**REFACTOR**. KDoc — "연결(linking)은 bind만, provision 안 함" 명시 + 책임 경계.
+**검증**. `./gradlew :modules:identity-access:test --tests "*LdapProvider*"`
+
+### Task 4. AccountLinkService — 목록/연결/해제 + 충돌/멱등/마지막수단
+
+**메타**.
+- agent: `security-engineer`
+- files: [`IA/main/kotlin/com/atlas/bts/identity/account/AccountLinkService.kt`, `IA/test/kotlin/com/atlas/bts/identity/account/AccountLinkServiceTest.kt`]
+- depends-on: [2, 3]
+
+**RED**. 단위 테스트(mock repo/ldap/local-cred) — `listLinks(userId)` 본인것만 + `hasLocalPassword`(StoredPasswordCredentialRepository.findByUserId). `link(userId, providerId, username, password)`: bind 성공→미연결 DN INSERT(201), **타 user 매핑→ConflictException(409)**, **현재 user 이미 매핑→멱등 no-op(기존 반환)**, bind 실패→AuthException(401). `unlink(userId, id)`: `acquireUserLock`→`countByUserId`+`hasLocalPassword`로 **남은 수단 0이면 LastMethodException(409)**, 타인 링크→NotFound(404), 정상→delete. groups 저장(EC11).
+**GREEN**. `@Service @Transactional`. 충돌/멱등/마지막수단 + advisory lock 직렬화 후 count 재조회→delete(TOCTOU 가드 N9). 도메인 예외 3종(이름 충돌 회피 — `duplicate-exception-name-cross-package-status` 선례).
+**REFACTOR**. 예외→메시지 일반화(계정 열거 0, N2) + KDoc.
+**검증**. `./gradlew :modules:identity-access:test --tests "*AccountLinkServiceTest"`
+
+### Task 5. ReauthService — 재인증 챌린지 → step-up 부여
+
+**메타**.
+- agent: `security-engineer`
+- files: [`IA/main/kotlin/com/atlas/bts/identity/account/ReauthService.kt`, `IA/test/kotlin/com/atlas/bts/identity/account/ReauthServiceTest.kt`]
+- depends-on: [1, 3]
+
+**RED**. 단위 테스트(mock local-cred/ldap/stepup) — LOCAL: `verifyForUser(userId, plain)` true→`StepUpService.grant(sid)` 호출+200, false→실패(grant 미호출). LDAP: `bindForLinking` 성공 + **결과 DN이 현재 userId에 이미 연결됨** 확인 시에만 성공(타 신원으로 재인증 불가, EC9). 평문은 `CharArray`로 받고 wipe(N4).
+**GREEN**. `ReauthService.reauthenticate(userId, sid, method, creds)` — method 분기(LOCAL/LDAP), 검증 성공 시 `stepUpService.grant(sid)`. PII/비번 미로깅.
+**REFACTOR**. method enum + KDoc(SSO 재인증은 FR-AU-08b 위임 명시).
+**검증**. `./gradlew :modules:identity-access:test --tests "*ReauthServiceTest"`
+
+### Task 6. AccountLinkController + DTO — 4 엔드포인트
+
+**메타**.
+- agent: `security-engineer`
+- files: [`IA/main/kotlin/com/atlas/bts/identity/web/AccountLinkController.kt`, `IA/main/kotlin/com/atlas/bts/identity/web/dto/AccountLinkDtos.kt`, `IA/test/kotlin/com/atlas/bts/identity/web/AccountLinkControllerTest.kt`]
+- depends-on: [1, 4, 5]
+
+**RED**. 컨트롤러 테스트(MockMvc, 서비스 mock) — `GET /links`(200, PAT→403), `POST /reauth`(200/401), `POST /links`(step-up 유효→201, step-up 없음→403 `step_up_required`), `DELETE /links/{id}`(step-up 유효→204, 없음→403). JWT principal→userId(`jwt.subject`), PAT(Jwt 아님)→403(`PAT_FORBIDDEN_RESPONSE` 패턴). 503 직접 응답(catch-all 변질 방지, EC3).
+**GREEN**. `@RestController("/api/v1/auth/account")`. step-up 게이팅(`StepUpService.isValid(sid)`)을 mutating 경로에 적용. DTO(LinkAccountRequest/ReauthRequest/AccountLinkResponse/AccountLinksResponse). externalSubject 마스킹.
+**REFACTOR**. 에러코드 상수화 + KDoc + ktlint/detekt(라인길이는 멀티라인 인자, `ktlint-detekt-linelength` 선례).
+**검증**. `./gradlew :modules:identity-access:test --tests "*AccountLinkControllerTest"`
+
+### Task 7. 통합테스트 — HTTP end-to-end (S1~S8 + EC)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`IA/test/kotlin/com/atlas/bts/identity/account/AccountLinkIntegrationTest.kt`]
+- depends-on: [6]
+
+**RED→GREEN**. Testcontainers(postgres + LDAP) + 실 부팅(identity-access prod+RANDOM_PORT 레시피). 시나리오 — S2 LDAP 연결 성공, S3 해제, S5 타계정 선점 409, S6 멱등, S7 마지막수단 409, S8 step-up 없음 403, EC2 bind 실패 401, EC5 타인 링크 404, EC8 PAT 403, **EC10 동시 해제 TOCTOU**(병렬 2 DELETE → 한쪽만 성공, 0 안 됨). fixture userId 정합(`e2e-fixture-whoami-userid-alignment` 선례). 기존 LDAP/SAML/OIDC 통합테스트 green 유지(회귀 0).
+**REFACTOR**. 헬퍼 추출 + KDoc.
+**검증**. `./gradlew :modules:identity-access:test` (모듈 전체 green) + `ktlintMainSourceSetCheck` + `detekt`
+
+## Plan 메타
+
+- task 수: 7
+- 예상 wave: 4 (W1: T1·T2·T3 / W2: T4·T5 / W3: T6 / W4: T7). 단일 모듈 test 컴파일 공유라 impl이 추가 직렬화 가능(`bts-plan-wave-gradle-module-compile`).
+- TDD 강제: yes (red→green→refactor)
+- 마이그레이션: 0건 (user_external_accounts V002 재사용)
+- 프론트/E2E: 범위 밖 — D6(UI)·D7(Playwright)은 후속 PR(API 안정화 후)
+- 보안 중점: TOCTOU advisory lock(T2·T4·T7), 계정 열거 0(T4), PAT 403(T6), PII 미로깅(T3·T5·T6), LdapProvider 회귀 가드(T3)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
