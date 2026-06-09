@@ -71,7 +71,9 @@ import java.util.UUID
 @RequestMapping("/api/v1/auth")
 // LongParameterList 억제 — 모두 생성자 의존성 주입(DI)이며 임의 그룹핑은 응집도를 해친다.
 // FR-PM-08 에서 systemRoleAssignmentRepository 추가로 8개(주입 7 + Clock)가 됐다.
-@Suppress("LongParameterList")
+// TooManyFunctions 억제 — login/logout/refresh/sessions/revokeSession 엔드포인트 + 응집된 private 헬퍼.
+// FR-AU-06 에서 login 을 30줄 이내로 유지하려 issueTokens/errorResponse 헬퍼를 분리해 12개가 됐다.
+@Suppress("LongParameterList", "TooManyFunctions")
 class AuthController(
     private val authenticationManager: CompositeAuthenticationManager,
     private val sessionService: SessionService,
@@ -104,7 +106,8 @@ class AuthController(
      *
      * @param request HTTP 요청 (IP/UserAgent 추출용)
      * @param body 로그인 요청 body (provider 필수)
-     * @return 200 TokenResponse / 400 provider_required / 401 invalid_credentials|mfa_required / 503 provider_unavailable
+     * @return 200 TokenResponse / 400 provider_required / 401 invalid_credentials|mfa_required /
+     *   503 provider_unavailable
      */
     // ReturnCount 억제 — 400(provider_required) / 503(provider_unavailable) guard early return 이
     // 중첩 if 보다 가독성 우수 (DEVELOPMENT.md §2.3 Early return 권장).

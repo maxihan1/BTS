@@ -16,9 +16,7 @@ import com.atlas.bts.identity.session.RefreshTokenService.RotateResult
 import com.atlas.bts.identity.session.Session
 import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.spi.AuthnResult
-import com.atlas.bts.identity.spi.FailureReason.ACCOUNT_LOCKED
 import com.atlas.bts.identity.spi.FailureReason.INVALID_CREDENTIALS
-import com.atlas.bts.identity.spi.FailureReason.PROVIDER_UNAVAILABLE
 import com.atlas.bts.identity.spi.MfaChallenge
 import com.atlas.bts.identity.spi.Principal
 import com.atlas.bts.identity.spi.ProviderType
@@ -214,18 +212,13 @@ class AuthControllerTest {
             .andExpect(jsonPath("$.access_token").value(accessToken))
             .andExpect(jsonPath("$.token_type").value("Bearer"))
             .andExpect(jsonPath("$.expires_in").value(900))
+            // 쿠키 속성(HttpOnly/Secure)은 buildRefreshCookie 공유 헬퍼로 보장돼 refresh 테스트가 전수 검증.
             .andExpect(cookie().exists("refresh_token"))
-            .andExpect(cookie().httpOnly("refresh_token", true))
-            .andExpect(cookie().secure("refresh_token", true))
             .andExpect(cookie().maxAge("refresh_token", 1209600))
             .andExpect(cookie().path("refresh_token", "/api/v1/auth"))
 
-        // 디스패처에 정확히 "local" provider 가 전달됐는지 검증 (FR-AU-06 명시 선택)
-        verify(authenticationManager).authenticate(
-            eqStr("local"),
-            eqStr("alice"),
-            anyCharArray(),
-        )
+        // 디스패처에 정확히 "local" provider + "alice" username 이 전달됐는지 검증 (FR-AU-06 명시 선택)
+        verify(authenticationManager).authenticate(eqStr("local"), eqStr("alice"), anyCharArray())
     }
 
     // ── login provider=ldap — 디스패처에 "ldap" 전달 검증 (FR-AU-06 Task 3) ─────
@@ -293,68 +286,30 @@ class AuthControllerTest {
 
     // ── login 디스패처 Failure — 401 invalid_credentials (reason 무관) ──────────
 
-    @Test
-    fun `login returns 401 invalid_credentials when dispatcher fails`() {
-        `when`(
-            authenticationManager.authenticate(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                anyCharArray(),
-            ),
-        ).thenReturn(AuthnResult.Failure(INVALID_CREDENTIALS))
-
-        mockMvc.perform(
-            post("/api/v1/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"provider":"local","username":"alice","password":"wrong"}"""),
-        )
-            .andExpect(status().isUnauthorized)
-            .andExpect(jsonPath("$.error").value("invalid_credentials"))
-    }
-
     /**
-     * 비활성/미등록 provider(PROVIDER_UNAVAILABLE) 도 401 invalid_credentials 로 응답한다.
-     * reason 으로 분기하면 계정/구성 열거가 가능해지므로 단일 응답코드를 강제한다 (NFR-06-01).
+     * 디스패처가 [AuthnResult.Failure] 를 반환하면 reason 과 무관하게 401 invalid_credentials 로 응답한다.
+     * 비활성/미등록(PROVIDER_UNAVAILABLE)·잠금(ACCOUNT_LOCKED) 까지 단일 응답코드로 통일해
+     * 계정/구성 열거를 차단한다 (NFR-06-01). 모든 [FailureReason] 을 순회 검증한다.
      */
     @Test
-    fun `login returns 401 invalid_credentials when dispatcher fails with provider_unavailable reason`() {
-        `when`(
-            authenticationManager.authenticate(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                anyCharArray(),
-            ),
-        ).thenReturn(AuthnResult.Failure(PROVIDER_UNAVAILABLE))
+    fun `login returns 401 invalid_credentials for every dispatcher failure reason`() {
+        com.atlas.bts.identity.spi.FailureReason.entries.forEach { reason ->
+            `when`(
+                authenticationManager.authenticate(
+                    org.mockito.ArgumentMatchers.anyString(),
+                    org.mockito.ArgumentMatchers.anyString(),
+                    anyCharArray(),
+                ),
+            ).thenReturn(AuthnResult.Failure(reason))
 
-        mockMvc.perform(
-            post("/api/v1/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"provider":"local","username":"nobody","password":"x"}"""),
-        )
-            .andExpect(status().isUnauthorized)
-            .andExpect(jsonPath("$.error").value("invalid_credentials"))
-    }
-
-    /**
-     * 잠긴 계정(ACCOUNT_LOCKED) 역시 reason 노출 없이 401 invalid_credentials 로 통일한다 (NFR-06-01).
-     */
-    @Test
-    fun `login returns 401 invalid_credentials when dispatcher fails with account_locked reason`() {
-        `when`(
-            authenticationManager.authenticate(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                anyCharArray(),
-            ),
-        ).thenReturn(AuthnResult.Failure(ACCOUNT_LOCKED))
-
-        mockMvc.perform(
-            post("/api/v1/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"provider":"local","username":"alice","password":"x"}"""),
-        )
-            .andExpect(status().isUnauthorized)
-            .andExpect(jsonPath("$.error").value("invalid_credentials"))
+            mockMvc.perform(
+                post("/api/v1/auth/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"provider":"local","username":"alice","password":"wrong"}"""),
+            )
+                .andExpect(status().isUnauthorized)
+                .andExpect(jsonPath("$.error").value("invalid_credentials"))
+        }
     }
 
     // ── login 디스패처 ProviderUnavailableException — 503 (FR-AU-06 Task 3) ─────
