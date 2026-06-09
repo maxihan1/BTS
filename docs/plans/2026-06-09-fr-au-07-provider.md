@@ -72,15 +72,15 @@
 - files: [`backend/modules/identity-access/src/main/resources/db/migration/V020__domain_provider_routes.sql`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/provider/route/DomainProviderRouteRepository.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/provider/route/DomainProviderRouteRepositoryIntegrationTest.kt`]
 - depends-on: []
 
-**RED**: `DomainProviderRouteRepositoryIntegrationTest` (@SpringBootTest + Testcontainers). 시드: authn_providers(SAML 1, OIDC 1, LOCAL 1) + saml_idp_configs(enabled) + oidc_provider_configs(enabled) + domain_provider_routes 3행(partner.com→SAML, acme.com→OIDC, dead.com→비활성/LOCAL). 테스트:
+**RED**: `DomainProviderRouteRepositoryIntegrationTest` (@SpringBootTest + Testcontainers). 시드: authn_providers(SAML 1, OIDC 1, **LOCAL 1 — 정상 운영에선 LOCAL이 authn_providers에 없음(코드 Bean만 존재, FR-AU-06 D3). 이 행은 "운영자가 실수로 LOCAL 라우트를 만든 비정상 상태"를 fail-safe로 막는지 검증하기 위한 의도적 시드. 주석 명시**) + saml_idp_configs(enabled) + oidc_provider_configs(enabled) + domain_provider_routes 3행(partner.com→SAML, acme.com→OIDC, dead.com→비활성/LOCAL 지시). 테스트:
 - `partner.com → SAML 매칭(registrationId, displayName)` (S1)
 - `acme.com → OIDC 매칭` (S2)
 - `gmail.com(미등록) → null` (S3)
 - `dead.com(비활성/LOCAL 지시) → null` (S4 fail-safe)
-- `Partner.COM 공백포함 → 정규화 후 partner.com 매칭` (S5)
+- (C5) S5 "대소문자/공백 정규화"는 **repository가 아니라 Controller(Task 2)가 담당** — 여기서는 "이미 정규화된 `partner.com` 입력 → 매칭"만 검증(정규화 위임 검증은 Task 2 ArgumentCaptor).
 - 실패 메시지(예상): `DomainProviderRouteRepository` 클래스 없음
 
-**GREEN**: V020 테이블(domain UNIQUE, provider_id → authn_providers ON DELETE CASCADE, idx provider_id). `DomainProviderRouteRepository.findRouteByDomain(domain): RouteMatch?` — domain 정규화는 호출자(Service/Controller) 책임이라 repository는 받은 값 그대로 조회. 매칭 판정: domain_provider_routes JOIN authn_providers(type) → SAML이면 saml_idp_configs, OIDC이면 oidc_provider_configs에서 enabled=true registration_id/display_name. **LEFT JOIN 2개(saml+oidc) 또는 type 분기 2-step** — cartesian 회피(라우트 1:1). LOCAL/LDAP·비활성·미등록은 결과 없음 → null.
+**GREEN**: V020 테이블(domain UNIQUE, provider_id → authn_providers ON DELETE CASCADE, idx provider_id). `DomainProviderRouteRepository.findRouteByDomain(domain): RouteMatch?` — domain 정규화는 호출자(Controller) 책임이라 repository는 받은 값 그대로 조회. 매칭 판정 (C4) **type 분기 2-step 명시 채택**: ① domain_provider_routes JOIN authn_providers로 (provider_id, type) 조회 → ② type=SAML이면 saml_idp_configs, type=OIDC이면 oidc_provider_configs **단일 테이블**에서 enabled=true registration_id/display_name 조회(기존 SamlIdpConfigRepository 선례와 동일 단일테이블 패턴). LEFT JOIN 2개 혼합 금지(cartesian·NULL행·enabled 누락 여지 회피, learnings cartesian-product-jooq-leftjoin-count). LOCAL/LDAP·비활성·미등록은 결과 없음 → null.
 
 **REFACTOR**: SQL 상수화 + KDoc(매칭 판정/fail-safe 사유). `RouteMatch` data class(type: ProviderType, registrationId, displayName).
 
@@ -115,7 +115,7 @@
 
 **RED**: `RoutePermitAllIntegrationTest` (@SpringBootTest + Testcontainers, 미인증). `GET /api/v1/auth/route?domain=x` → 401 아님(200). 실패(예상): permitAll 미등록이라 401.
 
-**GREEN**: companion에 `const val ROUTE_PATH = "/api/v1/auth/route"` + permitAll 블록(라인 143 근처)에 추가. GET이라 CSRF skip 불요(login/refresh만 csrf ignore).
+**GREEN**: companion에 `const val ROUTE_PATH = "/api/v1/auth/route"` + permitAll 블록(STATELESS API 체인 Order=3, 라인 131-143)에 추가. (C6) GREEN 주석에 근거 명시 — SAML(Order=1)·OIDC(Order=2) 체인은 `/saml2/**`·`/oauth2/**`만 매칭하므로 `/api/v1/auth/route`는 Order=3 API 체인에 안전히 떨어짐(체인 충돌 없음). GET이라 CSRF skip 불요(login/refresh만 csrf ignore).
 
 **REFACTOR**: KDoc 주석(FR-AU-07 라우팅, 민감정보 미노출).
 
@@ -140,30 +140,30 @@
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/auth/LoginForm.tsx`, `apps/web/src/auth/LoginForm.test.tsx`, `apps/web/src/i18n/ko.ts`]
+- files: [`apps/web/src/auth/LoginForm.tsx`, `apps/web/src/auth/LoginForm.test.tsx`, `apps/web/src/auth/LoginForm.saml.test.tsx`, `apps/web/src/auth/LoginForm.oidc.test.tsx`, `apps/web/src/auth/SamlIdpButtons.tsx`, `apps/web/src/auth/OidcIdpButtons.tsx`, `apps/web/src/auth/ssoEntryUrl.ts`, `apps/web/src/i18n/ko.ts`]
 - depends-on: [4]
 
-**RED**: `LoginForm.test.tsx` 추가/개조. 테스트:
+**RED**: `LoginForm.test.tsx` 추가/개조 + (C2) **`LoginForm.saml.test.tsx`(3개)·`LoginForm.oidc.test.tsx`(3개)도 2단계 흐름으로 재조정**(이들은 LoginForm을 직접 렌더해 드롭다운/SSO 버튼을 즉시 조회 → 1단계엔 없으므로 깨짐, learnings ui-pr-defer-e2e-regression-latent). 테스트:
 - 1단계: 이메일 입력 + "계속" 버튼만 렌더(드롭다운/비번 미표시)
 - 이메일 입력→계속→매칭 → `window.location.assign('/saml2/authenticate/...')` 호출(SAML), OIDC면 `/oauth2/authorization/...` (window.location mock)
 - 미매칭 → 2단계(provider 드롭다운+username+password+SSO 버튼) 노출, username에 이메일 프리필
 - registrationId `encodeURIComponent` 적용
 - 실패(예상): 2단계 흐름 미구현
 
-**GREEN**: LoginForm을 2단계로. 1단계 email state + "계속" → `fetchRoute(email.split('@')[1])`(@ 없으면 미조회 → 2단계). 매칭이면 type별 SSO URL `window.location.assign`. 미매칭이면 2단계 폼(기존 LoginForm 내용). i18n 문구(이메일/계속/안내) `loginStrings` 추가.
+**GREEN**: LoginForm을 2단계로. 1단계 email state + "계속" → `fetchRoute(email.split('@')[1])`(@ 없으면 미조회 → 2단계). 매칭이면 type별 SSO URL `window.location.assign`. 미매칭이면 2단계 폼(기존 LoginForm 내용). i18n 문구(이메일/계속/안내) `loginStrings` 추가. (C3) **공용 헬퍼 `ssoEntryUrl(type, registrationId)` 신규** — `encodeURIComponent` 적용한 `/saml2/authenticate/{id}`·`/oauth2/authorization/{id}` 조립을 한 곳에. **기존 `SamlIdpButtons.tsx:40`·`OidcIdpButtons.tsx:40`도 이 헬퍼로 교체**(현재 encodeURIComponent 없음 — registrationId가 DB 신뢰값이라 실 취약점은 아니나 방어 일관성). LoginForm 자동 리다이렉트도 같은 헬퍼 사용.
 
 **REFACTOR**: 단계 컴포넌트 분리 가독성, 주석.
 
-**검증**: `pnpm test LoginForm` + `pnpm typecheck`
+**검증**: `pnpm test LoginForm SamlIdpButtons OidcIdpButtons ssoEntryUrl` + `pnpm typecheck`
 
 ### Task 6. E2E — identifier-first 2단계 + 기존 로그인 E2E 재조정
 
 **메타**.
 - agent: `qa-engineer`
-- files: [`apps/web/e2e/login.spec.ts`, `apps/web/e2e/login-domain-routing.spec.ts`, `apps/web/src/mocks/route-handlers.ts`]
+- files: [`apps/web/e2e/login-domain-routing.spec.ts`, `apps/web/e2e/login-happy-path.spec.ts`, `apps/web/e2e/login-invalid.spec.ts`, `apps/web/e2e/login-ldap.spec.ts`, `apps/web/e2e/login-multi-provider.spec.ts`, `apps/web/e2e/login-oidc.spec.ts`, `apps/web/e2e/login-saml.spec.ts`, `apps/web/src/mocks/route-handlers.ts`]
 - depends-on: [5]
 
-**RED/시나리오**: 신규 `login-domain-routing.spec.ts` — 이메일 매칭 → SSO 진입 URL 네비게이션 확인, 미매칭 → 2단계 폼 노출. 기존 `login.spec.ts`(FR-AU-05/06)를 2단계 흐름으로 재조정(이메일 입력→계속→2단계). MSW route handler 시드(localStorage 플래그 토글 — learnings e2e-msw-scenario-toggle). 텍스트 중복 버튼 컨테이너 한정(learnings playwright-getbyrole).
+**RED/시나리오**: 신규 `login-domain-routing.spec.ts` — 이메일 매칭 → SSO 진입 URL 네비게이션 확인, 미매칭 → 2단계 폼 노출. (C1) **기존 로그인 E2E 6개 전부 재조정** — `login.spec.ts`는 존재하지 않음. 실제 파일은 `login-happy-path / login-invalid / login-ldap / login-multi-provider / login-oidc / login-saml` 6개이며, 모두 `/login` 진입 직후 곧장 2단계 폼 요소(드롭다운·`사용자명`·비번)와 상호작용하므로 identifier-first 2단계 전환 시 전부 깨짐. 각 spec에 "이메일 입력 → 계속 → 미매칭 → 2단계 폼" 프리스텝 추가(완료 기준 "로그인 회귀 0"의 실측 근거). MSW route handler 시드(localStorage 플래그 토글 — learnings e2e-msw-scenario-toggle). 텍스트 중복 버튼 컨테이너 한정(learnings playwright-getbyrole).
 
 **검증**: `pnpm exec playwright test login` (orphan vite kill 주의 — learnings)
 
@@ -175,4 +175,19 @@
 - TDD 강제: yes (test→feat 커밋 순서 자동 검증)
 - 추가 검증: typecheck(tsconfig.app), ktlint, detekt, ArchUnit, vitest, playwright
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### code-reviewer (eng + security 집중 독립 리뷰, 2026-06-09)
+
+**BLOCKER**: 없음. 보안 모델(계정 열거 방지·fail-safe·prepared statement·SSO 전용·domain UNIQUE) 견고, 기존 코드 관례 일치.
+
+**CONCERN 7건 — 전부 plan 반영 완료**.
+- **C1 (Task 6, 필수)** — `login.spec.ts` 미존재. 실제 로그인 E2E 6개(happy-path/invalid/ldap/multi-provider/oidc/saml) 전부 2단계 전환 시 깨짐 → Task 6 files를 실제 6개로 교체 + 프리스텝 명시. ✅
+- **C2 (Task 5, 필수)** — `LoginForm.saml.test.tsx`·`LoginForm.oidc.test.tsx`(각 3개)도 깨짐 → Task 5 files 추가 + 재조정 명시. ✅
+- **C3 (Task 5, security)** — 기존 SamlIdpButtons/OidcIdpButtons는 encodeURIComponent 없음. 공용 헬퍼 `ssoEntryUrl`로 신규/기존 통일. ✅
+- **C4 (Task 1, SQL)** — 매칭 판정 "LEFT JOIN 또는 2-step" → type 분기 2-step 단일테이블 명시 채택(cartesian 회피). ✅
+- **C5 (Task 1, 정규화)** — S5 정규화 검증은 repository 아니라 Controller(Task 2). Task 1 S5는 "이미 정규화된 입력 매칭"으로 수정. ✅
+- **C6 (Task 3)** — SecurityConfig 3체인(SAML/OIDC/API) 구조. route는 Order=3 API 체인 permitAll. GREEN 주석에 근거. ✅
+- **C7 (Task 1)** — LOCAL은 정상 운영에서 authn_providers에 없음. S4용 LOCAL 시드는 "비정상 운영자 실수" 의도임을 주석. ✅
+
+**GOOD**: 보안 위임(FR-AU-06 ADR) 정확 계승, PII 최소화(도메인만 전송) 선제 반영, learnings 반영도 높음(init_codegen 불필요 코드 확인, MSW shared-store, tsconfig.app), V020 번호 정확.
