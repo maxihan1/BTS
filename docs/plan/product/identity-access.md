@@ -135,13 +135,15 @@
 
 **우선순위**. 높음 | **선행**. §2.1~§2.5 | **Plan slug**. `identity/account-linking`
 
-- [ ] D1. 도메인 (책임. security-engineer)
-- [ ] D2. 명세 — 동일 사용자 다중 외부 계정 통합 워크플로우 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `user_external_accounts` 다대일 (책임. db-engineer)
-- [ ] D4. 백엔드 — Linking API + 재인증 강제 (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 — 충돌 케이스 (책임. security-engineer)
+- [x] D1. 도메인 (책임. security-engineer) (PR #103)
+- [x] D2. 명세 — 동일 사용자 다중 외부 계정 통합 워크플로우 (책임. security-engineer) (PR #103)
+- [x] D3. 데이터 모델 — `user_external_accounts` 다대일 (책임. db-engineer) — **기존 V002 재사용, 마이그레이션 0건** (PR #103)
+- [x] D4. 백엔드 — Linking API + 재인증 강제 (책임. security-engineer) — **LDAP 연결+해제+목록+재인증(step-up) 완료. SSO(SAML/OIDC) 연결은 FR-AU-08b 후속** (PR #103)
+- [x] D5. 백엔드 테스트 — 충돌 케이스 (책임. security-engineer) (PR #103)
 - [ ] D6. 프론트 UI — "계정 연결" 설정 페이지 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
+
+> **FR-AU-08 1차 백엔드 완료 (2026-06-09, PR #103)**. 로그인 사용자의 외부 신원 **명시적 수동 연결**(이메일 자동 연결 미도입 — 계정 탈취 차단, FR-AU-06/07 보안 기조 일관). API 4종 — `GET /api/v1/auth/account/links`(목록+`hasLocalPassword`, 마스킹) · `POST /reauth`(재인증 챌린지→Caffeine `sid→expiry` 5분 step-up 윈도우, **sid는 JWT 클레임만**) · `POST /links`(LDAP 동기 연결, step-up 필요, 신규 201/멱등 200) · `DELETE /links/{id}`(step-up 필요, 204). **충돌 규칙** — 타계정 선점 거부(409, 계정 열거 0)·동일계정 멱등·**마지막 수단 해제 거부**(409, enabled provider 링크+LOCAL만 카운트, userId `pg_advisory_xact_lock`(hashtextextended) TOCTOU 직렬화). LDAP 다운→503, bind 실패→401, PAT→403 전 엔드포인트. `LdapProvider.bindForLinking`(bind만, provision 분리 — 일반 로그인 경로 무변경 회귀가드 green). **2단계 분리(Maxi)** — SSO(SAML/OIDC) 리다이렉트 연결은 보안 핵심 성공 핸들러 수술이 필요해 **FR-AU-08b 후속**. **deviation/한계** — SSO 전용 사용자는 1차에서 동기 재인증 불가(연결/해제 불가, 08b 위임), LOCAL lockout 인프라 부재로 reauth 적극 rate-limit 후속, 감사로그 FR-AU-10 위임, **D6 UI·D7 E2E 후속(백엔드 전용 1차)**. 마이그레이션 0건. 검증 — identity-access test+ktlint+detekt green(--rerun-tasks), 통합테스트 S1~S8+EC10(동시 해제 TOCTOU) 실증, 기존 LDAP/일반 로그인 회귀 0. 독립 보안 plan리뷰(BLOCKER 2+CONCERN 6) + PR 2관점 리뷰(BLOCKER 0, EC3 503 가짜그린·reauth 500 CONCERN 2 수정) 반영. ADR [2026-06-09-account-linking-policy](../../decisions/2026-06-09-account-linking-policy.md).
 
 ### §2.9 FR-AU-09 — 세션/토큰 관리 (JWT + Refresh + PAT)
 
