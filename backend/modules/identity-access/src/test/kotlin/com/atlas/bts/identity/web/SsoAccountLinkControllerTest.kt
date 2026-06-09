@@ -32,7 +32,6 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.web.cors.CorsConfigurationSource
@@ -82,8 +81,7 @@ class SsoAccountLinkControllerTest {
         fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)
 
         @Bean
-        fun accountLinkJwtSupport(stepUpService: StepUpService): AccountLinkJwtSupport =
-            AccountLinkJwtSupport(stepUpService)
+        fun accountLinkJwtSupport(stepUpService: StepUpService) = AccountLinkJwtSupport(stepUpService)
 
         /** intent 저장은 실 store(인메모리 세션) 로 검증한다 — JSESSIONID 방출이 핵심이라 실 동작 필요. */
         @Bean
@@ -126,21 +124,31 @@ class SsoAccountLinkControllerTest {
     // ── POST /links/sso/start ──────────────────────────────────────────────────
 
     @Test
-    fun `links sso start — OIDC step-up 유효 200 authorizeUrl + JSESSIONID Set-Cookie 방출`() {
+    fun `links sso start — OIDC step-up 유효 200 authorizeUrl + HttpSession 생성 실증`() {
         `when`(stepUpService.isValid(currentSid)).thenReturn(true)
         `when`(oidcProviderConfigReader.findEnabledByRegistrationId(oidcReg)).thenReturn(oidcConfig())
 
-        mockMvc.perform(
-            post("/api/v1/auth/account/links/sso/start")
-                .with(csrf())
-                .with(jwtPrincipal())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"registrationId":"$oidcReg","providerType":"OIDC"}"""),
-        )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.authorizeUrl").value("/oauth2/authorization/$oidcReg"))
-            // C2 — getSession(true) 가 실제 JSESSIONID Set-Cookie 를 방출했는지 실증(가짜그린 회피).
-            .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString("JSESSIONID")))
+        val result =
+            mockMvc.perform(
+                post("/api/v1/auth/account/links/sso/start")
+                    .with(csrf())
+                    .with(jwtPrincipal())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"registrationId":"$oidcReg","providerType":"OIDC"}"""),
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.authorizeUrl").value("/oauth2/authorization/$oidcReg"))
+                .andReturn()
+
+        // C2 — getSession(true) 가 실제 HttpSession 을 생성했는지 실증(가짜그린 회피).
+        // MockMvc 는 servlet 컨테이너가 없어 Set-Cookie 헤더를 자동 방출하지 않으므로, 콜백 왕복의
+        // 전제(서버측 세션 생성·intent 저장)를 세션 존재로 직접 검증한다. 실제 JSESSIONID 쿠키 왕복은
+        // 통합테스트(EC17)·E2E(D7) 에서 다룬다.
+        val session = result.request.getSession(false)
+        org.assertj.core.api.Assertions.assertThat(session).isNotNull
+        org.assertj.core.api.Assertions
+            .assertThat(session!!.getAttribute(SsoLinkingIntentStore.ATTRIBUTE_KEY))
+            .isNotNull
     }
 
     @Test
@@ -187,7 +195,7 @@ class SsoAccountLinkControllerTest {
         )
             .andExpect(status().isForbidden)
 
-        verify(stepUpService, never()).isValid(org.mockito.ArgumentMatchers.any(UUID::class.java))
+        verify(stepUpService, never()).isValid(anyUuid())
     }
 
     // ── 입력 검증 매트릭스 (FR7) ─────────────────────────────────────────────────
@@ -275,19 +283,26 @@ class SsoAccountLinkControllerTest {
     fun `reauth sso start — JWT 만으로 200 authorizeUrl (step-up 불요)`() {
         `when`(oidcProviderConfigReader.findEnabledByRegistrationId(oidcReg)).thenReturn(oidcConfig())
 
-        mockMvc.perform(
-            post("/api/v1/auth/account/reauth/sso/start")
-                .with(csrf())
-                .with(jwtPrincipal())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"registrationId":"$oidcReg","providerType":"OIDC"}"""),
-        )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.authorizeUrl").value("/oauth2/authorization/$oidcReg"))
-            .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString("JSESSIONID")))
+        val result =
+            mockMvc.perform(
+                post("/api/v1/auth/account/reauth/sso/start")
+                    .with(csrf())
+                    .with(jwtPrincipal())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"registrationId":"$oidcReg","providerType":"OIDC"}"""),
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.authorizeUrl").value("/oauth2/authorization/$oidcReg"))
+                .andReturn()
 
+        // REAUTH intent 가 세션에 저장됐는지 실증(콜백 grant 전제).
+        val session = result.request.getSession(false)
+        org.assertj.core.api.Assertions.assertThat(session).isNotNull
+        org.assertj.core.api.Assertions
+            .assertThat(session!!.getAttribute(SsoLinkingIntentStore.ATTRIBUTE_KEY))
+            .isNotNull
         // step-up 불요 — isValid 호출하지 않는다.
-        verify(stepUpService, never()).isValid(org.mockito.ArgumentMatchers.any(UUID::class.java))
+        verify(stepUpService, never()).isValid(anyUuid())
     }
 
     @Test
@@ -316,4 +331,9 @@ class SsoAccountLinkControllerTest {
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.error").value("provider_not_found"))
     }
+
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    /** UUID 파라미터의 Mockito any() 매처 — Kotlin non-null UUID 에 null 전달로 인한 NPE 방지. */
+    private fun anyUuid(): UUID = org.mockito.ArgumentMatchers.any(UUID::class.java) ?: UUID.randomUUID()
 }
