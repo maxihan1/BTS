@@ -138,6 +138,11 @@ class SecurityConfig(
                     // FR-AU-04: 활성 OIDC Provider 목록도 로그인 전 호출되므로 permitAll
                     // (민감정보 미노출 — registrationId/displayName 만, OidcProviderController KDoc 참조).
                     OIDC_PROVIDERS_PATH,
+                    // FR-AU-07: 도메인 기반 SSO 라우트 조회도 로그인 전 호출되므로 permitAll.
+                    // SAML 체인(Order=1)·OIDC 체인(Order=2)은 /saml2/**·/oauth2/** 만 매칭하므로
+                    // /api/v1/auth/route 는 이 STATELESS API 체인(Order=3)에 안전히 떨어진다(체인 충돌 없음).
+                    // 도메인만으로 라우트 존재 여부만 판단하며 자격증명을 취급하지 않는다 (DomainRouteController KDoc 참조).
+                    ROUTE_PATH,
                     "/.well-known/jwks.json",
                     "/actuator/health",
                 ).permitAll()
@@ -171,5 +176,7 @@ class SecurityConfig(
 
         /** 로그인 전 호출되는 활성 OIDC Provider 목록 엔드포인트 (permitAll, [com.atlas.bts.identity.web.OidcProviderController]). */
         const val OIDC_PROVIDERS_PATH = "/api/v1/auth/oidc/providers"
+
+        const val ROUTE_PATH = "/api/v1/auth/route"
     }
 }
