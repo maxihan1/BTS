@@ -37,10 +37,13 @@ export const accountLinkLabels = {
     inactiveBadge: '비활성',
     /** provider 식별 불가 시 fallback 텍스트 */
     unknownProvider: '알 수 없는 공급자',
-    /** provider 타입 표시명 배지 */
+    /** provider 타입 표시명 배지 — AuthProviderType 값과 1:1 대응 */
     typeBadge: {
+      /** LDAP 타입 배지 표시명 */
       LDAP: 'LDAP',
+      /** SAML 타입 배지 표시명 */
       SAML: 'SAML',
+      /** OIDC 타입 배지 표시명 */
       OIDC: 'OIDC',
     },
   },
@@ -53,7 +56,7 @@ export const accountLinkLabels = {
     providerSelectGuide: '연결할 인증 방식을 선택하세요.',
     /** 연결 가능한 공급자 없음 안내 텍스트 */
     noLinkableProviders: '현재 연결 가능한 인증 방식이 없습니다.',
-    /** LDAP 연결 폼 필드 */
+    /** LDAP 연결 폼 필드 — provider 타입 LDAP 선택 시만 렌더링 */
     ldapForm: {
       /** 사용자명 입력 필드 label */
       usernameLabel: '사용자명',
