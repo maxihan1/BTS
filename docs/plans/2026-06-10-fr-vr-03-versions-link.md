@@ -57,9 +57,20 @@ Plan slug(정본): issue/versions-link
 - **타 프로젝트 버전 422** — 이슈 프로젝트 ≠ 버전 프로젝트면 422 (컴포넌트 validateComponents 동형).
 - **읽기 측 노출** — `IssueResponse`에 `affectsVersionIds`/`fixVersionIds` 단건 경로 채움 (D6 프론트 표시용).
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙 (/bts-spec)
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-10-fr-vr-03-versions-link.md](../specs/2026-06-10-fr-vr-03-versions-link.md)
+
+핵심 시나리오 요약.
+- `PATCH /api/v1/issues/{key}/affects-versions`, `.../fix-versions` 2종 — `{versionIds, expectedVersion}` 전체 교체 + OCC.
+- 검증: 이슈 프로젝트 소속 + 미삭제 버전만 (422 `ISSUE_VERSION_NOT_FOUND`). ARCHIVED 허용.
+- 단건 조회에 `affectsVersionIds`/`fixVersionIds` 노출. 권한은 `IssuePermission.UPDATE` 재사용.
+- 신규 V017 (issue_affects_versions, issue_fix_versions) + init_codegen 미러. Issue 도메인 2필드 추가 (componentIds 동형).
+- 프론트 셀렉터 2종 (ARCHIVED 기본 숨김) + E2E.
+
+## Brainstorming Check (/bts-spec)
+
+✅ 통과 (1회, gap 없음). 히스토리/PDF/클론 모두 컴포넌트도 미처리 → 동형 불필요. Maxi 결정 2건 도메인 단계 확정.
 
 ## Plan (← /bts-plan 채움)
 
