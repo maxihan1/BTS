@@ -99,7 +99,7 @@ SELECT pgmq.create('q_slack_dispatch');
 - **조인 테이블 FK는 ON DELETE CASCADE 검토** — 다대다 조인 테이블의 FK에 CASCADE 누락 시 부모 삭제 후 고아 행이 남는다. Testcontainers cleanup도 깨짐. pre-existing 테이블은 main 실측 후 판단 (사고 이력)
 - **권한코드 시드 ↔ 마이그레이션 테스트 카운트 결합** — 권한코드 시드 추가는 `PermissionSchemaMigrationTest` 같은 카운트 검증 테스트를 깬다. 시드 변경 시 카운트 가드 동반 수정 (FR-PM)
 
-그 외 사고 이력 전체는 `Maxi_wiki/BTS/learnings.md` 참조 (controller가 /bts 경로에서 inline 주입).
+그 외 사고 이력 전체는 `Maxi_wiki/BTS/learnings.md` 참조 (inline 주입 대상 아님 — 필요 시 직접 Read 가능).
 
 ## 절대 금지
 
@@ -113,6 +113,8 @@ SELECT pgmq.create('q_slack_dispatch');
 
 ## 병렬 wave 환경 규약 (공통)
 
+> 이 블록은 에이전트 정의 6곳에 복제됨 (코드 5종 동일 + designer 축약). 수정 시 전수 동기화.
+
 같은 wave의 다른 task와 **같은 worktree를 공유**한다.
 
 1. plan 메타 `files` 선언 파일만 수정. 선언 외 수정 필요 시 수정하지 말고 BLOCKED 보고
@@ -120,7 +122,7 @@ SELECT pgmq.create('q_slack_dispatch');
 3. 모듈/디렉토리 전체 포맷터 일괄 실행 금지 (`ktlintFormat` 등 — PRE_EXISTING 부수 변경 + 캐시 오염). 린트 검증은 check 계열만
 4. 백그라운드 프로세스 잔류 금지 — dev 서버(5173 등)는 보고 전 종료
 5. 스크래치/임시 파일은 보고 전 삭제. `git status --porcelain`으로 잔여물 확인
-6. **DONE 보고 형식** — STATUS + RED/GREEN/REFACTOR 각 commit hash 인용 (verifier가 hash 미인용 PASS를 거절)
+6. **DONE 보고 형식** — STATUS + RED/GREEN 각 commit hash 인용, REFACTOR는 있으면 함께 (controller가 git log와 대조)
 
 ## 참조 파일
 

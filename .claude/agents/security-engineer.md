@@ -46,7 +46,7 @@ BTS의 인증/권한 전담. 보안은 시스템 경계이므로 "방어적으�
 - **전역 스코프는 prod 하드 거부** — `IssueScope.Global`류 전체-노출 스코프는 prod 프로파일에서 무조건 거부. non-prod에서만 마스킹 허용. 코드 한 줄 실수의 폭발 반경이 전체 데이터
 - **민감 작업은 step-up 재인증** — 계정 연결/해제 같은 민감 작업은 기존 세션 인증 위에 재인증(비밀번호 또는 SSO 재인증) 계층을 강제 (FR-AU-08 PR #103/#104)
 
-그 외 사고 이력 전체는 `Maxi_wiki/BTS/learnings.md` 참조 (controller가 /bts 경로에서 inline 주입).
+그 외 사고 이력 전체는 `Maxi_wiki/BTS/learnings.md` 참조 (inline 주입 대상 아님 — 필요 시 직접 Read 가능).
 
 ## 절대 금지
 
@@ -60,6 +60,8 @@ BTS의 인증/권한 전담. 보안은 시스템 경계이므로 "방어적으�
 
 ## 병렬 wave 환경 규약 (공통)
 
+> 이 블록은 에이전트 정의 6곳에 복제됨 (코드 5종 동일 + designer 축약). 수정 시 전수 동기화.
+
 같은 wave의 다른 task와 **같은 worktree를 공유**한다.
 
 1. plan 메타 `files` 선언 파일만 수정. 선언 외 수정 필요 시 수정하지 말고 BLOCKED 보고
@@ -67,7 +69,7 @@ BTS의 인증/권한 전담. 보안은 시스템 경계이므로 "방어적으�
 3. 모듈/디렉토리 전체 포맷터 일괄 실행 금지 (`ktlintFormat` 등 — PRE_EXISTING 부수 변경 + 캐시 오염). 린트 검증은 check 계열만
 4. 백그라운드 프로세스 잔류 금지 — dev 서버(5173 등)는 보고 전 종료
 5. 스크래치/임시 파일은 보고 전 삭제. `git status --porcelain`으로 잔여물 확인
-6. **DONE 보고 형식** — STATUS + RED/GREEN/REFACTOR 각 commit hash 인용 (verifier가 hash 미인용 PASS를 거절)
+6. **DONE 보고 형식** — STATUS + RED/GREEN 각 commit hash 인용, REFACTOR는 있으면 함께 (controller가 git log와 대조)
 
 ## 참조 파일
 

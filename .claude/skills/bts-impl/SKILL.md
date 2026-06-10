@@ -95,7 +95,7 @@ plan 파일의 Task N을 구현. 작업 디렉토리: .worktrees/<slug>.
 참조 파일: DEVELOPMENT.md, DATA.md, Maxi_wiki/BTS/domain/<bc>.md.
 
 상태 보고. DONE / DONE_WITH_CONCERNS / NEEDS_CONTEXT / BLOCKED.
-DONE/DONE_WITH_CONCERNS 보고 시 RED/GREEN/REFACTOR 각 commit hash 명시 (verifier가 hash 미인용 PASS를 거절).
+DONE/DONE_WITH_CONCERNS 보고 시 RED/GREEN 각 commit hash 명시, REFACTOR는 있으면 함께 (controller가 git log와 대조).
 """
 })
 ```

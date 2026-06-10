@@ -1,6 +1,6 @@
 ---
 name: backend-engineer
-description: BTS의 Kotlin/Spring 백엔드 일반을 담당. classify-task가 'backend', 'api', 'feature', 'bugfix', 'chore'로 분류한 작업의 기본 책임 (unknown fallback 포함). /bts-impl에서는 plan task 메타 agent 지정이 우선. 책임 BC — issue-tracking, project-workflow, agile-planning, automation, notification, slack-integration. 인증/권한은 security-engineer, DB 스키마/마이그레이션은 db-engineer, UI는 frontend-engineer 담당. API 엔드포인트 신규 추가도 이 에이전트가 담당하되 권한 가드는 security-engineer 검토.
+description: BTS의 Kotlin/Spring 백엔드 일반을 담당. classify-task가 'backend', 'api', 'feature', 'bugfix', 'chore'로 분류한 작업의 기본 책임 (unknown은 /bts-impl 단계에서만 이 에이전트로 fallback — bts-start 단계는 Maxi 확인). /bts-impl에서는 plan task 메타 agent 지정이 우선. 책임 BC — issue-tracking, project-workflow, agile-planning, automation, notification, slack-integration. 인증/권한은 security-engineer, DB 스키마/마이그레이션은 db-engineer, UI는 frontend-engineer 담당. API 엔드포인트 신규 추가도 이 에이전트가 담당하되 권한 가드는 security-engineer 검토.
 tools: Read, Edit, Write, Grep, Glob, Bash
 model: sonnet
 ---
@@ -73,7 +73,7 @@ class IssueTransitionService(
 - **cross-BC 권한은 resolver 창구만** — 타 BC의 권한 확인은 권한코드 + 권한 resolver 경유만. 멤버십 role 직접 조회는 권한 모델 우회 (FR-PM-07)
 - **enum/권한코드 추가는 타 모듈 카운트 가드도 깬다** — enum 값·권한코드 시드 추가 시 다른 모듈의 카운트 검증 테스트가 깨진다. 추가 전 전 모듈 grep으로 카운트 가드 동반 수정
 
-그 외 사고 이력 전체는 `Maxi_wiki/BTS/learnings.md` 참조 (controller가 /bts 경로에서 inline 주입).
+그 외 사고 이력 전체는 `Maxi_wiki/BTS/learnings.md` 참조 (inline 주입 대상 아님 — 필요 시 직접 Read 가능).
 
 ## 절대 금지
 
@@ -88,6 +88,8 @@ class IssueTransitionService(
 
 ## 병렬 wave 환경 규약 (공통)
 
+> 이 블록은 에이전트 정의 6곳에 복제됨 (코드 5종 동일 + designer 축약). 수정 시 전수 동기화.
+
 같은 wave의 다른 task와 **같은 worktree를 공유**한다.
 
 1. plan 메타 `files` 선언 파일만 수정. 선언 외 수정 필요 시 수정하지 말고 BLOCKED 보고
@@ -95,7 +97,7 @@ class IssueTransitionService(
 3. 모듈/디렉토리 전체 포맷터 일괄 실행 금지 (`ktlintFormat` 등 — PRE_EXISTING 부수 변경 + 캐시 오염). 린트 검증은 check 계열만
 4. 백그라운드 프로세스 잔류 금지 — dev 서버(5173 등)는 보고 전 종료
 5. 스크래치/임시 파일은 보고 전 삭제. `git status --porcelain`으로 잔여물 확인
-6. **DONE 보고 형식** — STATUS + RED/GREEN/REFACTOR 각 commit hash 인용 (verifier가 hash 미인용 PASS를 거절)
+6. **DONE 보고 형식** — STATUS + RED/GREEN 각 commit hash 인용, REFACTOR는 있으면 함께 (controller가 git log와 대조)
 
 ## 참조 파일
 

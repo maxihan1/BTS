@@ -22,8 +22,8 @@ Pre-Landing Review: N issues (X critical, Y informational)
 
 ## Pass 0 — BTS 전제 절차 (카테고리 검사 전 의무 실행)
 
-1. **PRE_EXISTING 판별** — 위반을 지적하기 전에 `git show origin/main:<file>`로 main에 이미 있던 코드인지 대조. PRE_EXISTING이면 출력에 표기만 하고 이 PR을 차단하지 않는다 (hot-fix 혼입 금지).
-2. **정적 분석 실검증** — detekt는 빌드 캐시가 위반을 가리므로 `./gradlew detekt --rerun-tasks`로만 신뢰. 모듈 전체 `ktlintFormat` 실행 절대 금지 (의도 안 한 부수 변경 + 캐시 오염) — `ktlintCheck` 계열만.
+1. **PRE_EXISTING 판별** — 위반을 지적하기 전에 `git show origin/main:<file>`로 main에 이미 있던 코드인지 대조. PRE_EXISTING이면 출력에 표기만 하고 이 PR을 차단하지 않는다 (hot-fix 혼입 금지). 단, **diff가 해당 라인을 직접 변경했다면 PRE_EXISTING이 아니다** — 정상 지적 대상.
+2. **정적 분석 실검증** (Kotlin diff가 있을 때만) — detekt는 빌드 캐시가 위반을 가리므로 `./gradlew detekt --rerun-tasks`로만 신뢰. 모듈 전체 `ktlintFormat` 실행 절대 금지 (의도 안 한 부수 변경 + 캐시 오염) — `ktlintCheck` 계열만.
 3. **잔여물 전수 확인** — `git status --porcelain`으로 미커밋 산출물·스크래치 파일 잔여 확인 (worktree 산출물 소실 사고 이력).
 4. **FR/plan 정합** — diff에 FR 카운트·plan 파일 변경이 포함되면 `bash scripts/verify-master-plan.sh` 결과(exit 0) 확인.
 
@@ -37,7 +37,7 @@ Pre-Landing Review: N issues (X critical, Y informational)
 - Race Conditions & Concurrency
 - LLM Output Trust Boundary
 - Shell Injection
-- Enum Completeness
+- Enum & Value Completeness
 
 글로벌 파일을 읽을 수 없으면 위 카테고리 이름 기준으로 자체 검사하고, 출력에 `global checklist unavailable`을 명시한다.
 
@@ -61,7 +61,7 @@ Pre-Landing Review: N issues (X critical, Y informational)
 - 빈 catch 블록 (최소 로그 + rethrow 또는 명시 처리).
 - KDoc/주석의 책임 선언 ↔ 실제 구현 불일치.
 - plan↔spec 표기 drift — 불일치 발견 시 spec이 정본임을 표기 (plan은 축약본).
-- 에러 코드 prefix 규약 (`ISSUE_` / `WORKFLOW_` / `AUTOMATION_` / `NOTIF_` / `SLACK_`) 위반.
+- 에러 응답 code 네이밍이 같은 BC의 기존 코드 관례와 어긋나는 경우 (관례가 BC별로 다름 — issue-tracking 계열은 `ISSUE_`/`WORKFLOW_` 등 prefix, identity-access는 snake_case 키. 다른 BC 관례 이식 금지, 판단 기준은 같은 BC의 기존 코드 grep).
 - 사용자 노출 문자열의 i18n 키 누락 (하드코딩 한국어/영어 리터럴).
 
 ## Severity / Fix-First

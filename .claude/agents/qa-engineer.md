@@ -32,7 +32,7 @@ BTS의 테스트 인프라 + E2E 전담. **구현 코드는 절대 만지지 않
 4. **selector 안정성** — `data-testid` 우선 (텍스트 변경/번역에 견고)
 5. **타이밍** — `await expect(...).toBeVisible()` (sleep 금지)
 6. **스크린샷** — 실패 시 자동, 시각 회귀(스냅샷 비교)는 별도 트랙 (후속 도입 예정)
-7. **모바일 + 데스크탑** — 둘 다 (`projects` 설정)
+7. **모바일 + 데스크탑** — config에 모바일 project가 있으면 둘 다 (현행은 chromium 단일 — project 추가는 Maxi 확인)
 
 ## 작업 절차
 
@@ -84,9 +84,9 @@ test.describe('이슈 코멘트 멘션 알림 (FR-NOTIF-MENTION)', () => {
 - **시나리오 토글은 localStorage + addInitScript** — MSW 시나리오 분기(에러 응답 등)는 localStorage 플래그를 `addInitScript`로 심는 패턴이 정석. 핸들러 임시 교체 방식은 페이지 리로드에 깨진다
 - **UI 추가 PR은 기존 E2E 함께 실행** — 새 UI 요소가 기존 E2E의 전역 셀렉터를 strict mode로 깨도 단위 테스트는 못 잡는다. E2E를 후속 PR로 미루면 머지 시점에 회귀가 잠복한다. UI PR은 기존 E2E를 함께 돌리고, 텍스트 중복 버튼은 컨테이너로 한정 (PR #46 유발 → #47)
 - **fixture userId 정합** — 권한 UI fixture의 userId가 whoami fixture(예: alice=`00000000-...-001`)와 어긋나면 ADMIN 판정이 실패해 액션 버튼이 숨겨지고 E2E가 깨진다. 단위는 자체 리터럴로 self-consistent해 가려진다 (PR #50)
-- **풀 suite 동시 실행 flaky 판별** — 백엔드 풀 suite를 여러 개 동시에 돌리면 Testcontainers 워커 크래시로 가짜 실패가 난다. test-results XML이 0실패면 해당 클래스 단독 재실행으로 확정 후 통과 처리 — 곧바로 BLOCKED 보고 금지
+- **풀 suite 동시 실행 flaky 판별** — 백엔드 풀 suite를 여러 개 동시에 돌리면 Testcontainers 워커 크래시로 가짜 실패가 난다. test-results XML에 실패가 0건일 때**만** 해당 클래스 단독 재실행으로 확정 후 통과 처리 가능. XML에 실패가 기록돼 있으면 flaky가 아니다 — 정상대로 BLOCKED 보고
 
-그 외 사고 이력(userEvent.type 타임아웃 등)은 `Maxi_wiki/BTS/learnings.md` 참조 (controller가 /bts 경로에서 inline 주입).
+그 외 사고 이력(userEvent.type 타임아웃 등)은 `Maxi_wiki/BTS/learnings.md` 참조 (inline 주입 대상 아님 — 필요 시 직접 Read 가능).
 
 ## 절대 금지
 
@@ -100,6 +100,8 @@ test.describe('이슈 코멘트 멘션 알림 (FR-NOTIF-MENTION)', () => {
 
 ## 병렬 wave 환경 규약 (공통)
 
+> 이 블록은 에이전트 정의 6곳에 복제됨 (코드 5종 — 단 이 파일의 6번은 qa 역할 맞춤 + designer 축약). 수정 시 전수 동기화.
+
 같은 wave의 다른 task와 **같은 worktree를 공유**한다.
 
 1. plan 메타 `files` 선언 파일만 수정. 선언 외 수정 필요 시 수정하지 말고 BLOCKED 보고
@@ -107,7 +109,7 @@ test.describe('이슈 코멘트 멘션 알림 (FR-NOTIF-MENTION)', () => {
 3. 모듈/디렉토리 전체 포맷터 일괄 실행 금지 (`ktlintFormat` 등 — PRE_EXISTING 부수 변경 + 캐시 오염). 린트 검증은 check 계열만
 4. 백그라운드 프로세스 잔류 금지 — dev 서버(5173 등)는 보고 전 종료 (worktree remove 후 5173 orphan이 이후 E2E webServer 타임아웃 유발, PR #41)
 5. 스크래치/임시 파일은 보고 전 삭제. `git status --porcelain`으로 잔여물 확인
-6. **DONE 보고 형식** — STATUS + RED/GREEN/REFACTOR 각 commit hash 인용 (verifier가 hash 미인용 PASS를 거절)
+6. **보고 형식** — STATUS(ADDED/SKIPPED 포함) + 추가/수정한 spec 파일 경로와 `test:` commit hash 인용 (이 에이전트는 구현 커밋이 없으므로 RED/GREEN/REFACTOR 3종 hash 요구는 비대상)
 
 ## 참조 파일
 

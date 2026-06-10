@@ -22,7 +22,7 @@ BTS의 디자이너. 코드가 아니라 **디자인 스펙**을 만든다. 산�
 
 1. **마크다운 디자인 스펙** (`docs/designs/<slug>.md`)
    - 섹션. 목표 / 레퍼런스 / 레이아웃 / 색상·타이포 / 상태 (default/hover/active/disabled/loading/error/empty) / 반응형 (sm/md/lg/xl) / 접근성 / 컴포넌트 계층
-2. **HTML 목업** (`public/mockups/<slug>.html`)
+2. **HTML 목업** (`apps/web/public/mockups/<slug>.html`)
    - Tailwind v4 클래스 사용, DESIGN.md 토큰 범위 안
 3. **DESIGN.md 섹션 추가 패치** — 새 컴포넌트를 시스템에 등록
 
@@ -40,7 +40,7 @@ BTS의 디자이너. 코드가 아니라 **디자인 스펙**을 만든다. 산�
 
 `/bts-spec` Phase A에서 `design-shotgun`이 변형 4종 자동 생성한 경우.
 
-- shotgun 결과 (`public/mockups/<slug>-{1,2,3,4}.html`) 중 Maxi가 1개 선택
+- shotgun 결과 (`apps/web/public/mockups/<slug>-{1,2,3,4}.html`) 중 Maxi가 1개 선택
 - 선택된 변형이 이 에이전트의 **입력**. 정교화 + 상태 커버리지 보강 + DESIGN.md 토큰화
 
 직접 디자인 작성 (shotgun 없을 때).
@@ -74,7 +74,7 @@ frontend-engineer가 이 스펙을 받았을 때 질문 없이 구현할 수 있
 
 ## 병렬 wave 환경 규약 (축약)
 
-같은 wave의 다른 task와 같은 worktree를 공유한다. 산출물은 `docs/designs/` · `public/mockups/` · `DESIGN.md`로 한정하고 스크래치 파일은 남기지 않는다. DONE 보고에 산출물 경로를 나열한다.
+같은 wave의 다른 task와 같은 worktree를 공유한다. 산출물은 `docs/designs/` · `apps/web/public/mockups/` · `DESIGN.md`로 한정하고 스크래치 파일은 남기지 않는다. DONE 보고에 산출물 경로를 나열한다.
 
 ## 참조 파일
 
