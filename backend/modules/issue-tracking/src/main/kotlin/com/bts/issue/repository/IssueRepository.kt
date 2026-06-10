@@ -16,6 +16,7 @@ import com.bts.issue.jooq.tables.references.ISSUE_COMPONENTS
 import com.bts.issue.jooq.tables.references.ISSUE_FIX_VERSIONS
 import com.bts.issue.jooq.tables.references.ISSUE_TYPES
 import com.bts.issue.jooq.tables.references.PROJECTS
+import com.bts.issue.jooq.tables.references.VERSIONS
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssueSecurityAccess
 import com.fasterxml.jackson.core.type.TypeReference
@@ -767,18 +768,20 @@ class IssueRepository(
      * 이슈에 연결된 "영향받는 버전" UUID 목록을 반환한다.
      *
      * CONCERN-3: fix 버전과 동시 JOIN 금지 — 독립 단일-컬렉션 SELECT.
-     * CONCERN-4: versions.status / deleted_at 필터 미적용.
-     *            ARCHIVED 버전 링크도 반드시 반환해야 하므로 versions 테이블 조인 자체를 하지 않는다.
+     * CONCERN-4: versions 테이블을 JOIN 해 deleted_at IS NULL 인 행만 반환한다.
+     *            status(ARCHIVED 등)는 필터하지 않는다 — ARCHIVED 버전 링크도 반환해야 한다.
      *
      * @param issueId 조회할 이슈 UUID.
-     * @return 연결된 버전 UUID 목록. 없으면 빈 리스트.
+     * @return 소프트삭제되지 않은 연결 버전 UUID 목록. 없으면 빈 리스트.
      */
     @Transactional(readOnly = true)
     fun findAffectsVersionIdsByIssue(issueId: UUID): List<UUID> {
         log.debug("findAffectsVersionIdsByIssue issueId={}", issueId)
         return dsl.select(ISSUE_AFFECTS_VERSIONS.VERSION_ID)
             .from(ISSUE_AFFECTS_VERSIONS)
+            .join(VERSIONS).on(ISSUE_AFFECTS_VERSIONS.VERSION_ID.eq(VERSIONS.ID))
             .where(ISSUE_AFFECTS_VERSIONS.ISSUE_ID.eq(issueId))
+            .and(VERSIONS.DELETED_AT.isNull)
             .fetch(ISSUE_AFFECTS_VERSIONS.VERSION_ID)
             .filterNotNull()
     }
@@ -787,17 +790,20 @@ class IssueRepository(
      * 이슈에 연결된 "수정 예정 버전" UUID 목록을 반환한다.
      *
      * CONCERN-3: affects 버전과 동시 JOIN 금지 — 독립 단일-컬렉션 SELECT.
-     * CONCERN-4: versions.status / deleted_at 필터 미적용.
+     * CONCERN-4: versions 테이블을 JOIN 해 deleted_at IS NULL 인 행만 반환한다.
+     *            status(ARCHIVED 등)는 필터하지 않는다 — ARCHIVED 버전 링크도 반환해야 한다.
      *
      * @param issueId 조회할 이슈 UUID.
-     * @return 연결된 버전 UUID 목록. 없으면 빈 리스트.
+     * @return 소프트삭제되지 않은 연결 버전 UUID 목록. 없으면 빈 리스트.
      */
     @Transactional(readOnly = true)
     fun findFixVersionIdsByIssue(issueId: UUID): List<UUID> {
         log.debug("findFixVersionIdsByIssue issueId={}", issueId)
         return dsl.select(ISSUE_FIX_VERSIONS.VERSION_ID)
             .from(ISSUE_FIX_VERSIONS)
+            .join(VERSIONS).on(ISSUE_FIX_VERSIONS.VERSION_ID.eq(VERSIONS.ID))
             .where(ISSUE_FIX_VERSIONS.ISSUE_ID.eq(issueId))
+            .and(VERSIONS.DELETED_AT.isNull)
             .fetch(ISSUE_FIX_VERSIONS.VERSION_ID)
             .filterNotNull()
     }
@@ -885,6 +891,7 @@ class IssueRepository(
      * @param versionIdField 조인 테이블의 version_id 필드.
      * @return 성공=1, 낙관락 충돌=0.
      */
+    @Suppress("LongParameterList") // affects / fix 두 조인 테이블을 단일 헬퍼로 공유하기 위해 필요한 jOOQ 타입 파라미터
     private fun <R : Record> replaceVersionLinks(
         key: IssueKey,
         issueId: UUID,
