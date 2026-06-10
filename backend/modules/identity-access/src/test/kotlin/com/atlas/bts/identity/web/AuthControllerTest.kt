@@ -909,7 +909,7 @@ class AuthControllerTest {
             .andExpect(status().isOk)
 
         val captor = ArgumentCaptor.forClass(AuthAuditLog::class.java)
-        verify(authAuditLogService).record(captor.capture())
+        verify(authAuditLogService).record(captureAuditLog(captor))
         val event = captor.value
         assertThat(event.eventType).isEqualTo(AuthEventType.LOGIN_SUCCESS)
         assertThat(event.userId).isEqualTo(userId)
@@ -940,7 +940,7 @@ class AuthControllerTest {
             .andExpect(status().isUnauthorized)
 
         val captor = ArgumentCaptor.forClass(AuthAuditLog::class.java)
-        verify(authAuditLogService).record(captor.capture())
+        verify(authAuditLogService).record(captureAuditLog(captor))
         val event = captor.value
         assertThat(event.eventType).isEqualTo(AuthEventType.LOGIN_FAILURE)
         assertThat(event.userId).isNull()
@@ -970,7 +970,7 @@ class AuthControllerTest {
         )
             .andExpect(status().isUnauthorized)
 
-        verify(authAuditLogService, never()).record(org.mockito.ArgumentMatchers.any(AuthAuditLog::class.java))
+        verify(authAuditLogService, never()).record(anyAuditLog())
     }
 
     /**
@@ -995,7 +995,7 @@ class AuthControllerTest {
             .andExpect(status().isNoContent)
 
         val captor = ArgumentCaptor.forClass(AuthAuditLog::class.java)
-        verify(authAuditLogService).record(captor.capture())
+        verify(authAuditLogService).record(captureAuditLog(captor))
         val event = captor.value
         assertThat(event.eventType).isEqualTo(AuthEventType.LOGOUT)
         assertThat(event.userId).isEqualTo(userId)
@@ -1046,7 +1046,7 @@ class AuthControllerTest {
             ),
         ).thenReturn("eyJhbGciOiJSUzI1NiJ9.test.access")
         doThrow(RuntimeException("audit DB down")).`when`(authAuditLogService)
-            .record(org.mockito.ArgumentMatchers.any(AuthAuditLog::class.java))
+            .record(anyAuditLog())
 
         mockMvc.perform(
             post("/api/v1/auth/login")
@@ -1063,7 +1063,7 @@ class AuthControllerTest {
     @Test
     fun `logout still returns 204 when audit record throws (best-effort)`() {
         doThrow(RuntimeException("audit DB down")).`when`(authAuditLogService)
-            .record(org.mockito.ArgumentMatchers.any(AuthAuditLog::class.java))
+            .record(anyAuditLog())
 
         mockMvc.perform(
             post("/api/v1/auth/logout")
@@ -1096,4 +1096,19 @@ class AuthControllerTest {
      * UUID 파라미터의 Mockito any() 매처 — Kotlin non-null UUID 에 null 전달 방지.
      */
     private fun anyUuid(): UUID = org.mockito.ArgumentMatchers.any(UUID::class.java) ?: UUID.randomUUID()
+
+    /**
+     * AuthAuditLog 파라미터의 Mockito any() 매처 — Kotlin non-null record(AuthAuditLog) 에 null 전달 방지.
+     */
+    private fun anyAuditLog(): AuthAuditLog =
+        org.mockito.ArgumentMatchers.any(AuthAuditLog::class.java)
+            ?: AuthAuditLog(userId = null, eventType = AuthEventType.LOGOUT, providerId = "test")
+
+    /**
+     * ArgumentCaptor.capture() 의 Kotlin non-null 가드.
+     * Mockito capture() 는 호출 시 null 을 반환해 Kotlin non-null 파라미터(record(AuthAuditLog)) 에서
+     * NPE 를 유발한다. capture() 부수효과(인자 기록)는 유지하면서 placeholder 로 null 을 치환한다.
+     */
+    private fun captureAuditLog(captor: ArgumentCaptor<AuthAuditLog>): AuthAuditLog =
+        captor.capture() ?: AuthAuditLog(userId = null, eventType = AuthEventType.LOGOUT, providerId = "test")
 }

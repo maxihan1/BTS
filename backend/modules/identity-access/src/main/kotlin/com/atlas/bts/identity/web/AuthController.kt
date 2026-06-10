@@ -2,6 +2,9 @@
 
 package com.atlas.bts.identity.web
 
+import com.atlas.bts.identity.audit.AuthAuditLog
+import com.atlas.bts.identity.audit.AuthAuditLogService
+import com.atlas.bts.identity.audit.AuthEventType
 import com.atlas.bts.identity.auth.CompositeAuthenticationManager
 import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.provider.ldap.ProviderUnavailableException
@@ -81,6 +84,7 @@ class AuthController(
     private val refreshTokenService: RefreshTokenService,
     private val jwtIssuer: JwtIssuer,
     private val systemRoleAssignmentRepository: SystemRoleAssignmentRepository,
+    private val authAuditLogService: AuthAuditLogService,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(AuthController::class.java)
@@ -132,10 +136,72 @@ class AuthController(
             }
 
         return when (result) {
-            is AuthnResult.Success -> issueTokens(request, result.principal)
-            is AuthnResult.Failure -> errorResponse(HttpStatus.UNAUTHORIZED, "invalid_credentials")
+            is AuthnResult.Success -> {
+                recordLoginSuccess(request, result.principal)
+                issueTokens(request, result.principal)
+            }
+            is AuthnResult.Failure -> {
+                recordLoginFailure(request, provider, body.username, result.reason)
+                errorResponse(HttpStatus.UNAUTHORIZED, "invalid_credentials")
+            }
             is AuthnResult.RequiresMfa -> errorResponse(HttpStatus.UNAUTHORIZED, "mfa_required")
         }
+    }
+
+    /**
+     * LOGIN_SUCCESS 감사 이벤트를 best-effort 로 기록한다 (FR-AU-10 Task 4 / spec §5, NFR-3 B-1).
+     *
+     * userId=주체, providerId=provider 유형 소문자, ip/userAgent=요청에서 캡처.
+     *
+     * @param request IP/UserAgent 캡처용 HTTP 요청
+     * @param principal 인증 성공한 주체
+     */
+    private fun recordLoginSuccess(
+        request: HttpServletRequest,
+        principal: Principal,
+    ) {
+        recordAuditBestEffort(
+            AuthAuditLog(
+                userId = principal.userId,
+                eventType = AuthEventType.LOGIN_SUCCESS,
+                providerId = principal.providerType.name.lowercase(),
+                ipAddress = request.remoteAddr.takeIf { it.isNotBlank() },
+                userAgent = request.getHeader(HttpHeaders.USER_AGENT),
+            ),
+        )
+    }
+
+    /**
+     * LOGIN_FAILURE 감사 이벤트를 best-effort 로 기록한다 (FR-AU-10 Task 4 / spec §5, EC-1/EC-11).
+     *
+     * **PROVIDER_UNAVAILABLE 은 기록하지 않는다** — provider-unavailable 실패는 LdapProvider 깊은
+     * 지점에서 [AuthEventType.LDAP_UNAVAILABLE] 로만 기록되므로 여기서 추가 기록하면 이중 기록이 된다(EC-11).
+     * userId 는 항상 null 이다 — username→userId 역조회를 하지 않아 계정 존재 probe 를 차단한다(NFR-2).
+     *
+     * @param request IP/UserAgent 캡처용 HTTP 요청
+     * @param provider 인증 시도 대상 provider 식별자 (검증된 non-blank 요청값)
+     * @param username 인증 시도 username (metadata 에만 기록, 역조회 안 함)
+     * @param reason 디스패처가 반환한 실패 원인
+     */
+    private fun recordLoginFailure(
+        request: HttpServletRequest,
+        provider: String,
+        username: String,
+        reason: com.atlas.bts.identity.spi.FailureReason,
+    ) {
+        if (reason == com.atlas.bts.identity.spi.FailureReason.PROVIDER_UNAVAILABLE) {
+            return
+        }
+        recordAuditBestEffort(
+            AuthAuditLog(
+                userId = null,
+                eventType = AuthEventType.LOGIN_FAILURE,
+                providerId = provider,
+                ipAddress = request.remoteAddr.takeIf { it.isNotBlank() },
+                userAgent = request.getHeader(HttpHeaders.USER_AGENT),
+                metadata = mapOf("username" to username, "reason" to reason.name),
+            ),
+        )
     }
 
     /**
@@ -221,11 +287,56 @@ class AuthController(
             val sid = UUID.fromString(sidStr)
             sessionService.revoke(sid, REVOKE_REASON_LOGOUT)
             refreshTokenRepository.revokeChainFromSession(sid)
+            recordLogout(jwt, sidStr)
         }
 
         return ResponseEntity.noContent()
             .header(HttpHeaders.SET_COOKIE, buildRefreshCookie("", 0))
             .build()
+    }
+
+    /**
+     * LOGOUT 감사 이벤트를 best-effort 로 기록한다 (FR-AU-10 Task 4 / spec §5, NFR-3 B-1).
+     *
+     * userId=JWT subject, providerId=JWT providerId 클레임(부재 시 "unknown"), metadata.sid=폐기 세션.
+     * ip/userAgent 는 LOGOUT 에서는 채우지 않는다(spec §5 — logout 은 sid metadata 중심).
+     *
+     * @param jwt 인증된 JWT (subject / providerId 클레임 추출용)
+     * @param sid 폐기된 세션 ID 문자열 (metadata)
+     */
+    private fun recordLogout(
+        jwt: Jwt,
+        sid: String,
+    ) {
+        val userId = runCatching { UUID.fromString(jwt.subject) }.getOrNull()
+        val providerId = jwt.getClaimAsString(JWT_CLAIM_PROVIDER_ID)?.takeIf { it.isNotBlank() } ?: PROVIDER_UNKNOWN
+        recordAuditBestEffort(
+            AuthAuditLog(
+                userId = userId,
+                eventType = AuthEventType.LOGOUT,
+                providerId = providerId,
+                metadata = mapOf("sid" to sid),
+            ),
+        )
+    }
+
+    /**
+     * 감사 이벤트를 best-effort 로 기록한다 (NFR-3 B-1 — web 레이어 emit 정책).
+     *
+     * AuthController 는 의도적 무-트랜잭션이므로(클래스 KDoc 참조), 감사 INSERT 실패가 로그인/로그아웃
+     * 가용성을 인질로 잡으면 안 된다. 따라서 [record][AuthAuditLogService.record] 예외를 catch 해
+     * 흐름을 계속한다. 단 **silent 삼킴은 금지** — high-severity 에러 로그로 감사 갭을 탐지 가능하게 한다.
+     * 로그에는 PII(ip/userAgent/username)를 출력하지 않고 이벤트 유형만 남긴다(DEVELOPMENT.md §1.2).
+     *
+     * @param event 기록할 감사 이벤트
+     */
+    private fun recordAuditBestEffort(event: AuthAuditLog) {
+        try {
+            authAuditLogService.record(event)
+        } catch (ex: RuntimeException) {
+            // 감사 갭 경보 — 가용성 우선이라 흐름은 계속하되 silent 삼킴은 아니다(B-1). PII 미출력.
+            log.error("audit emit failed (availability preserved): eventType={}", event.eventType, ex)
+        }
     }
 
     /**
@@ -448,6 +559,12 @@ class AuthController(
 
         /** 사용자 강제종료 세션 폐기 사유 — 감사 로그 검색 키 (spec §EC 소문자 snake 관례) */
         const val REVOKE_REASON_USER = "user_revoke"
+
+        /** JWT providerId 클레임 키 (JwtIssuer.CLAIM_PROVIDER_ID 와 동일 값) — LOGOUT 감사 providerId 추출용 */
+        const val JWT_CLAIM_PROVIDER_ID = "providerId"
+
+        /** LOGOUT 감사 providerId 폴백 — JWT providerId 클레임 부재 시 사용 */
+        const val PROVIDER_UNKNOWN = "unknown"
 
         /** PAT 인증 시 세션 관리 불가 응답 — listSessions / revokeSession 공용 (FR-6b / EC-8) */
         val PAT_FORBIDDEN_RESPONSE: ResponseEntity<Map<String, String>> =
