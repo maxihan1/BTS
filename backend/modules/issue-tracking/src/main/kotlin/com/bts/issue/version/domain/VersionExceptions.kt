@@ -1,4 +1,4 @@
-// 버전 BC 도메인 예외 계층 — sealed 베이스 + 4 서브클래스
+// 버전 BC 도메인 예외 계층 — sealed 베이스 + 5 서브클래스
 
 package com.bts.issue.version.domain
 
@@ -55,3 +55,13 @@ class VersionAccessDeniedException(
 ) : VersionDomainException(
         "Access denied: actor=$actorId, permission=${permission.name}, projectId=$projectId",
     )
+
+/**
+ * 현재 [VersionStatus] 에서 요청한 상태 전이가 허용되지 않을 때.
+ *
+ * self-transition(같은 상태로의 전이) 또는 전이 그래프에 정의되지 않은 경로 시 발생한다.
+ * HTTP 409 CONFLICT 으로 매핑한다.
+ *
+ * @param message 전이 거부 사유 메시지.
+ */
+class VersionTransitionNotAllowedException(message: String) : VersionDomainException(message)
