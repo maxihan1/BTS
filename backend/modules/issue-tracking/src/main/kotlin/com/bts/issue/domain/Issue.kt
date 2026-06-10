@@ -65,6 +65,12 @@ private const val IMPACT_MAX = 3
  * @property componentIds 이슈가 속한 컴포넌트 UUID 목록. 중복 없음, 개수 제한 없음.
  *   [create] 시 [componentIds] 파라미터로 초기값 설정 가능 (기본값 빈 리스트, distinct 정규화 자동 적용).
  *   이후 변경은 [assignComponents]/[clearComponents] 를 통해 수행한다.
+ * @property affectsVersionIds 이 이슈가 영향받는 버전 UUID 목록. 중복 없음, 개수 제한 없음.
+ *   생성 시 기본값은 빈 리스트이며 [create] 시 지정 불가 (Maxi 결정).
+ *   변경은 [assignAffectsVersions]/[clearAffectsVersions] 를 통해 수행한다.
+ * @property fixVersionIds 이 이슈가 수정될 예정인 버전 UUID 목록. 중복 없음, 개수 제한 없음.
+ *   생성 시 기본값은 빈 리스트이며 [create] 시 지정 불가 (Maxi 결정).
+ *   변경은 [assignFixVersions]/[clearFixVersions] 를 통해 수행한다.
  * @property securityLevelId 이슈에 적용된 보안 등급 UUID (issue_security_levels.id FK). null 이면 등급 없음(공개).
  *   [create] 시 [securityLevelId] 파라미터로 초기값 설정 가능 (기본값 null).
  *   이후 변경은 [assignSecurityLevel] 을 통해 수행한다 (patch-merge-domain-bypass 방지).
@@ -92,6 +98,8 @@ data class Issue(
     val assigneeId: ActorId? = null,
     val resolutionId: UUID? = null,
     val componentIds: List<UUID> = emptyList(),
+    val affectsVersionIds: List<UUID> = emptyList(),
+    val fixVersionIds: List<UUID> = emptyList(),
     val securityLevelId: UUID? = null,
     val customFields: Map<String, Any?> = emptyMap(),
 ) {
@@ -228,6 +236,44 @@ data class Issue(
      * @return [componentIds] 가 빈 목록으로 설정된 새 [Issue] 인스턴스.
      */
     fun clearComponents(): Issue = copy(componentIds = emptyList())
+
+    /**
+     * 이 이슈가 영향받는 버전 목록을 할당한다.
+     *
+     * 같은 버전을 두 번 이상 전달해도 중복 없이 저장되도록 [distinct] 를 적용하며,
+     * 플랫폼 경계나 역직렬화 과정에서 null 이 섞여 들어오는 경우를 방어하기 위해
+     * [filterNotNull] 로 null 요소를 제거한다.
+     *
+     * @param ids 할당할 버전 UUID 목록. 중복·null 은 자동 제거된다.
+     * @return [affectsVersionIds] 가 정규화된 목록으로 교체된 새 [Issue] 인스턴스.
+     */
+    fun assignAffectsVersions(ids: List<UUID>): Issue = copy(affectsVersionIds = ids.filterNotNull().distinct())
+
+    /**
+     * 이 이슈의 영향받는 버전 할당을 모두 해제한다.
+     *
+     * @return [affectsVersionIds] 가 빈 목록으로 설정된 새 [Issue] 인스턴스.
+     */
+    fun clearAffectsVersions(): Issue = copy(affectsVersionIds = emptyList())
+
+    /**
+     * 이 이슈가 수정될 예정인 버전 목록을 할당한다.
+     *
+     * 같은 버전을 두 번 이상 전달해도 중복 없이 저장되도록 [distinct] 를 적용하며,
+     * 플랫폼 경계나 역직렬화 과정에서 null 이 섞여 들어오는 경우를 방어하기 위해
+     * [filterNotNull] 로 null 요소를 제거한다.
+     *
+     * @param ids 할당할 버전 UUID 목록. 중복·null 은 자동 제거된다.
+     * @return [fixVersionIds] 가 정규화된 목록으로 교체된 새 [Issue] 인스턴스.
+     */
+    fun assignFixVersions(ids: List<UUID>): Issue = copy(fixVersionIds = ids.filterNotNull().distinct())
+
+    /**
+     * 이 이슈의 수정 버전 할당을 모두 해제한다.
+     *
+     * @return [fixVersionIds] 가 빈 목록으로 설정된 새 [Issue] 인스턴스.
+     */
+    fun clearFixVersions(): Issue = copy(fixVersionIds = emptyList())
 
     /**
      * 이 이슈에 보안 등급을 지정하거나 해제한다.
