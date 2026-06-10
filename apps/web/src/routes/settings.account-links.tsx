@@ -10,21 +10,7 @@ import { useAccountLinksQuery } from '@/auth/useAccountLinksQuery'
 import { useAccountLinkMutations } from '@/auth/useAccountLinkMutations'
 import { accountLinkLabels, accountLinkErrorMessage } from '@/i18n/account-link-labels'
 import { ApiError } from '@/api/client'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 내부 유틸
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 백엔드 ProblemDetail-like 응답 body에서 errorCode를 추출한다.
- * body가 객체가 아니거나 errorCode가 문자열이 아니면 null을 반환한다.
- */
-function extractErrorCode(body: unknown): string | null {
-  if (body === null || typeof body !== 'object') return null
-  const b = body as Record<string, unknown>
-  const code = b['errorCode'] ?? b['error']
-  return typeof code === 'string' ? code : null
-}
+import { extractErrorCode } from '@/lib/extract-error-code'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 콜백 status → 메시지/토스트 타입 매핑 헬퍼

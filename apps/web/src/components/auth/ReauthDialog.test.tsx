@@ -251,7 +251,7 @@ describe('ReauthDialog — 에러 처리', () => {
     server.use(
       http.post('/api/v1/auth/account/reauth', () =>
         HttpResponse.json(
-          { status: 401, errorCode: 'reauth_failed', detail: 'reauth failed' },
+          { error: 'reauth_failed' },
           { status: 401 },
         ),
       ),
@@ -274,7 +274,7 @@ describe('ReauthDialog — 에러 처리', () => {
     server.use(
       http.post('/api/v1/auth/account/reauth', () =>
         HttpResponse.json(
-          { status: 400, errorCode: 'reauth_fields_required', detail: 'fields required' },
+          { error: 'reauth_fields_required' },
           { status: 400 },
         ),
       ),
