@@ -20,10 +20,13 @@ interface TypeBadgeProps {
 
 /**
  * 공급자 유형(LDAP/SAML/OIDC)을 나타내는 배지.
+ *
  * providerType이 null이면 아무것도 렌더하지 않는다.
+ * 공급자 삭제 등으로 유형 정보를 알 수 없는 경우 대응.
  */
 function TypeBadge({ providerType }: TypeBadgeProps): JSX.Element | null {
   if (providerType === null) return null
+
   const label =
     providerType === 'LDAP'
       ? accountLinkLabels.card.typeBadge.LDAP
@@ -43,7 +46,8 @@ function TypeBadge({ providerType }: TypeBadgeProps): JSX.Element | null {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 공급자가 비활성화된 경우 표시하는 배지.
+ * 공급자가 비활성화(providerEnabled=false)된 경우 표시하는 배지.
+ * 비활성 공급자로의 재로그인이 불가함을 시각적으로 안내한다.
  */
 function InactiveBadge(): JSX.Element {
   return (
