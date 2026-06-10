@@ -369,3 +369,163 @@ describe('DELETE /api/v1/projects/:projectIdOrKey/versions/:id', () => {
     expect(body['errorCode']).toBe('VERSION_NOT_FOUND')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /:id/status — FR-VR-02 Task 5 RED
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PATCH /api/v1/projects/:projectIdOrKey/versions/:id/status', () => {
+  it('UNRELEASED → RELEASED 전이 후 200 + status=RELEASED + releasedAt이 반환된다', async () => {
+    const createRes = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Release Candidate' }),
+    })
+    const created = await createRes.json() as { data: { id: string } }
+    const id = created.data.id
+
+    const res = await fetch(`${BASE_URL}/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'RELEASED' }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { status: string; releasedAt?: string } }
+    expect(body.data.status).toBe('RELEASED')
+    expect(typeof body.data.releasedAt).toBe('string')
+  })
+
+  it('RELEASED → UNRELEASED 전이 후 200 + status=UNRELEASED + releasedAt이 없다', async () => {
+    const createRes = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Unrelease Target' }),
+    })
+    const created = await createRes.json() as { data: { id: string } }
+    const id = created.data.id
+
+    // 먼저 RELEASED로
+    await fetch(`${BASE_URL}/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'RELEASED' }),
+    })
+
+    const res = await fetch(`${BASE_URL}/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'UNRELEASED' }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { status: string; releasedAt?: string } }
+    expect(body.data.status).toBe('UNRELEASED')
+    expect(body.data.releasedAt).toBeUndefined()
+  })
+
+  it('UNRELEASED → ARCHIVED 전이 후 200 + status=ARCHIVED', async () => {
+    const createRes = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Archive Target' }),
+    })
+    const created = await createRes.json() as { data: { id: string } }
+    const id = created.data.id
+
+    const res = await fetch(`${BASE_URL}/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'ARCHIVED' }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { status: string } }
+    expect(body.data.status).toBe('ARCHIVED')
+  })
+
+  it('ARCHIVED → RELEASED 불허 전이는 409 + VERSION_TRANSITION_NOT_ALLOWED를 반환한다', async () => {
+    const createRes = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Archived Version' }),
+    })
+    const created = await createRes.json() as { data: { id: string } }
+    const id = created.data.id
+
+    // ARCHIVED로 만들기
+    await fetch(`${BASE_URL}/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'ARCHIVED' }),
+    })
+
+    // ARCHIVED → RELEASED 불허
+    const res = await fetch(`${BASE_URL}/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'RELEASED' }),
+    })
+    expect(res.status).toBe(409)
+    const body = await res.json() as Record<string, unknown>
+    expect(body['errorCode']).toBe('VERSION_TRANSITION_NOT_ALLOWED')
+  })
+
+  it('self-transition은 409 + VERSION_TRANSITION_NOT_ALLOWED를 반환한다', async () => {
+    const createRes = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Self Transition Target' }),
+    })
+    const created = await createRes.json() as { data: { id: string } }
+    const id = created.data.id
+
+    const res = await fetch(`${BASE_URL}/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'UNRELEASED' }),
+    })
+    expect(res.status).toBe(409)
+    const body = await res.json() as Record<string, unknown>
+    expect(body['errorCode']).toBe('VERSION_TRANSITION_NOT_ALLOWED')
+  })
+
+  it('상태 전이 후 GET 목록 refetch 시 status가 반영된다(stateful 영속)', async () => {
+    const createRes = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Stateful Status Version' }),
+    })
+    const created = await createRes.json() as { data: { id: string } }
+    const id = created.data.id
+
+    await fetch(`${BASE_URL}/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'RELEASED' }),
+    })
+
+    const listRes = await fetch(BASE_URL)
+    const listBody = await listRes.json() as { data: Array<{ id: string; status: string }> }
+    const found = listBody.data.find((v) => v.id === id)
+    expect(found?.status).toBe('RELEASED')
+  })
+
+  it('존재하지 않는 id는 404 + VERSION_NOT_FOUND를 반환한다', async () => {
+    const res = await fetch(`${BASE_URL}/00000000-0000-4000-8000-000000000001/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'RELEASED' }),
+    })
+    expect(res.status).toBe(404)
+    const body = await res.json() as Record<string, unknown>
+    expect(body['errorCode']).toBe('VERSION_NOT_FOUND')
+  })
+
+  it('생성된 버전의 초기 status는 UNRELEASED다', async () => {
+    const createRes = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Status Check Version' }),
+    })
+    const created = await createRes.json() as { data: { status: string } }
+    expect(created.data.status).toBe('UNRELEASED')
+  })
+})

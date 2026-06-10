@@ -13,6 +13,7 @@ import {
   useUpdateVersion,
   useChangeVersionDates,
   useDeleteVersion,
+  useChangeVersionStatus,
   VERSION_KEYS,
 } from '../use-versions'
 
@@ -290,6 +291,65 @@ describe('useChangeVersionDates', () => {
         startDate: '2026-01-01',
         releaseDate: null,
       })
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(toast.error).toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useChangeVersionStatus — 상태 전이 + invalidate (FR-VR-02 Task 5 RED)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('useChangeVersionStatus', () => {
+  beforeEach(() => {
+    resetVersionStore()
+    server.use(...versionHandlers)
+    vi.mocked(toast.error).mockClear()
+  })
+
+  it('상태 전이 성공 시 목록 쿼리가 invalidate된다', async () => {
+    const { client, wrapper } = createWrapper()
+
+    // 사전 버전 생성
+    const { result: create } = renderHook(() => useCreateVersion('ATLAS'), { wrapper })
+    await act(async () => {
+      create.current.mutate({ name: 'v1.0.0' })
+    })
+    await waitFor(() => expect(create.current.isSuccess).toBe(true))
+
+    const listHook = renderHook(() => useVersions('ATLAS'), { wrapper })
+    await waitFor(() => expect(listHook.result.current.isSuccess).toBe(true))
+    const created = listHook.result.current.data?.[0]
+    expect(created).toBeDefined()
+
+    const { result } = renderHook(() => useChangeVersionStatus('ATLAS'), { wrapper })
+    await act(async () => {
+      result.current.mutate({ id: created!.id, status: 'RELEASED' })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    // invalidate 후 queryKey가 캐시에 있어야 한다
+    expect(client.getQueryState(VERSION_KEYS.list('ATLAS'))).toBeDefined()
+  })
+
+  it('불허 전이(409) 시 toast.error가 호출된다', async () => {
+    const { wrapper } = createWrapper()
+
+    server.use(
+      http.patch('/api/v1/projects/ATLAS/versions/:id/status', async () =>
+        HttpResponse.json(
+          { errorCode: 'VERSION_TRANSITION_NOT_ALLOWED' },
+          { status: 409 },
+        ),
+      ),
+    )
+
+    const { result } = renderHook(() => useChangeVersionStatus('ATLAS'), { wrapper })
+    await act(async () => {
+      result.current.mutate({ id: '11111111-1111-4111-8111-111111111111', status: 'RELEASED' })
     })
 
     await waitFor(() => expect(result.current.isError).toBe(true))

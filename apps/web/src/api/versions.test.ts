@@ -9,14 +9,16 @@ import {
   updateVersion,
   changeVersionDates,
   deleteVersion,
+  changeVersionStatus,
   extractVersionErrorCode,
 } from './versions'
 import { ApiError } from './client'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Fixture — VersionResponse 6 필드 (backend DTO 1:1, createdAt/updatedAt 없음)
+// Fixture — VersionResponse 8 필드 (backend DTO 1:1, createdAt/updatedAt 없음)
 // Zod 4.x uuid() 검증 통과를 위해 RFC4122 v4 형식 UUID 사용
 // 날짜는 @JsonFormat yyyy-MM-dd 문자열
+// status: VersionStatus enum, releasedAt: @JsonInclude(NON_NULL) ISO-8601 문자열
 // ─────────────────────────────────────────────────────────────────────────────
 const versionFixture = {
   id: 'a1b2c3d4-e5f6-4890-abcd-ef1234567890',
@@ -25,6 +27,8 @@ const versionFixture = {
   description: '첫 번째 정식 릴리스',
   startDate: '2026-01-01',
   releaseDate: '2026-06-30',
+  status: 'UNRELEASED' as const,
+  // releasedAt 생략 — @JsonInclude(NON_NULL) → null이면 필드 자체 없음
 }
 
 const versionFixtureNullFields = {
@@ -33,6 +37,14 @@ const versionFixtureNullFields = {
   description: null,
   startDate: null,
   releaseDate: null,
+  status: 'UNRELEASED' as const,
+}
+
+const versionFixtureReleased = {
+  ...versionFixture,
+  id: 'd4e5f6a7-b8c9-4012-adef-123456789003',
+  status: 'RELEASED' as const,
+  releasedAt: '2026-06-10T12:00:00Z',
 }
 
 describe('fetchVersions', () => {
@@ -145,6 +157,48 @@ describe('deleteVersion', () => {
       ),
     )
     await expect(deleteVersion('ATLAS', versionFixture.id)).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// changeVersionStatus — FR-VR-02 Task 5 RED
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('changeVersionStatus', () => {
+  it('PATCH /status 호출 후 200 응답을 파싱해 Version을 반환한다', async () => {
+    server.use(
+      http.patch('/api/v1/projects/:projectIdOrKey/versions/:id/status', async () =>
+        HttpResponse.json({ data: versionFixtureReleased }),
+      ),
+    )
+    const result = await changeVersionStatus('ATLAS', versionFixture.id, 'RELEASED')
+    expect(result.status).toBe('RELEASED')
+    expect(result.releasedAt).toBe('2026-06-10T12:00:00Z')
+  })
+
+  it('UNRELEASED 상태로 전이 시 releasedAt이 없는 응답을 처리한다', async () => {
+    server.use(
+      http.patch('/api/v1/projects/:projectIdOrKey/versions/:id/status', async () =>
+        HttpResponse.json({ data: versionFixture }),
+      ),
+    )
+    const result = await changeVersionStatus('ATLAS', versionFixture.id, 'UNRELEASED')
+    expect(result.status).toBe('UNRELEASED')
+    expect(result.releasedAt).toBeUndefined()
+  })
+
+  it('불허 전이(409) 시 ApiError를 throw한다', async () => {
+    server.use(
+      http.patch('/api/v1/projects/:projectIdOrKey/versions/:id/status', async () =>
+        HttpResponse.json(
+          { errorCode: 'VERSION_TRANSITION_NOT_ALLOWED' },
+          { status: 409 },
+        ),
+      ),
+    )
+    await expect(
+      changeVersionStatus('ATLAS', versionFixture.id, 'RELEASED'),
+    ).rejects.toBeInstanceOf(ApiError)
   })
 })
 
