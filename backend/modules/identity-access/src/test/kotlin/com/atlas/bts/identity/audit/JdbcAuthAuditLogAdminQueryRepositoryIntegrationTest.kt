@@ -91,10 +91,42 @@ class JdbcAuthAuditLogAdminQueryRepositoryIntegrationTest {
         // idx 3: orphan LOGIN_SUCCESS   @ T0+3 (users 미존재 user_id)
         // idx 4: alice TOKEN_REFRESHED  @ T0+4 (최신)
         insertLog(ALICE_ID, AuthEventType.LOGIN_SUCCESS, "local", "203.0.113.1", "agent-a", mapOf("sid" to "s1"), T0)
-        insertLog(BOB_ID, AuthEventType.LOGIN_FAILURE, "local", null, null, mapOf("reason" to "BAD"), T0.plusSeconds(1))
-        insertLog(null, AuthEventType.LOGIN_FAILURE, "local", null, null, mapOf("username" to "ghost"), T0.plusSeconds(2))
-        insertLog(ORPHAN_ID, AuthEventType.LOGIN_SUCCESS, "ldap", "203.0.113.9", "agent-x", emptyMap(), T0.plusSeconds(3))
-        insertLog(ALICE_ID, AuthEventType.TOKEN_REFRESHED, "local", "203.0.113.1", "agent-a", emptyMap(), T0.plusSeconds(4))
+        insertLog(
+            userId = BOB_ID,
+            eventType = AuthEventType.LOGIN_FAILURE,
+            providerId = "local",
+            ipAddress = null,
+            userAgent = null,
+            metadata = mapOf("reason" to "BAD"),
+            createdAt = T0.plusSeconds(1),
+        )
+        insertLog(
+            userId = null,
+            eventType = AuthEventType.LOGIN_FAILURE,
+            providerId = "local",
+            ipAddress = null,
+            userAgent = null,
+            metadata = mapOf("username" to "ghost"),
+            createdAt = T0.plusSeconds(2),
+        )
+        insertLog(
+            userId = ORPHAN_ID,
+            eventType = AuthEventType.LOGIN_SUCCESS,
+            providerId = "ldap",
+            ipAddress = "203.0.113.9",
+            userAgent = "agent-x",
+            metadata = emptyMap(),
+            createdAt = T0.plusSeconds(3),
+        )
+        insertLog(
+            userId = ALICE_ID,
+            eventType = AuthEventType.TOKEN_REFRESHED,
+            providerId = "local",
+            ipAddress = "203.0.113.1",
+            userAgent = "agent-a",
+            metadata = emptyMap(),
+            createdAt = T0.plusSeconds(4),
+        )
     }
 
     // ── 무필터 전체 조회 + 정렬 + totalElements ───────────────────────────────────
@@ -274,6 +306,8 @@ class JdbcAuthAuditLogAdminQueryRepositoryIntegrationTest {
         )
     }
 
+    // LongParameterList 억제 — auth_audit_logs 컬럼을 1:1 로 시드하는 테스트 전용 헬퍼(임의 그룹핑은 가독성 저하).
+    @Suppress("LongParameterList")
     private fun insertLog(
         userId: UUID?,
         eventType: AuthEventType,

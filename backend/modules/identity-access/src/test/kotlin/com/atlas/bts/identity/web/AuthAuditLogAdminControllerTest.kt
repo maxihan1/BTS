@@ -44,7 +44,8 @@ import java.util.UUID
  * AuthAuditLogAdminController GET /api/v1/admin/auth-audit-logs 슬라이스 테스트 (FR-AU-10 D6/D7).
  *
  * 검증 범위.
- * - SYSTEM_ADMIN(ROLE_SYSTEM_ADMIN): 200 + 응답형태(username/displayName null 포함, metadata 직렬화, page/size/totalElements/totalPages).
+ * - SYSTEM_ADMIN(ROLE_SYSTEM_ADMIN): 200 + 응답형태(username/displayName null 포함, metadata 직렬화,
+ *   page/size/totalElements/totalPages).
  * - 비 admin JWT: 403 + 권한 상세 미노출.
  * - PAT(ROLE_PAT): 403.
  * - 미인증: 401(필터 체인).
@@ -52,7 +53,8 @@ import java.util.UUID
  * - 기본값(page0, size50) + criteria 매핑 정확(slot capture).
  *
  * OAuth2ClientAutoConfiguration 제외 — @WebMvcTest 환경에서 Keycloak issuer-uri 네트워크 접속 차단.
- * SecurityConfig 가 SidRevokeJwtConverter + CorsConfigurationSource + PersonalAccessTokenService Bean 을 요구하므로 MockBeans 로 공급.
+ * SecurityConfig 가 SidRevokeJwtConverter + CorsConfigurationSource + PersonalAccessTokenService Bean 을
+ * 요구하므로 MockBeans 로 공급.
  */
 @WebMvcTest(
     controllers = [AuthAuditLogAdminController::class],
@@ -81,7 +83,9 @@ class AuthAuditLogAdminControllerTest {
         }
 
         @Bean
-        fun corsConfigurationSource(): CorsConfigurationSource = CorsConfig().corsConfigurationSource(listOf(ALLOWED_ORIGIN))
+        fun corsConfigurationSource(): CorsConfigurationSource {
+            return CorsConfig().corsConfigurationSource(listOf(ALLOWED_ORIGIN))
+        }
 
         @Bean
         fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)

@@ -54,10 +54,11 @@ class JdbcAuthAuditLogAdminQueryRepository(
             ) ?: 0L
 
         val offset = criteria.page.toLong() * criteria.size.toLong()
-        val pageParams = HashMap<String, Any?>(filterParams).apply {
-            put("size", criteria.size)
-            put("offset", offset)
-        }
+        val pageParams =
+            HashMap<String, Any?>(filterParams).apply {
+                put("size", criteria.size)
+                put("offset", offset)
+            }
         val items =
             jdbc.query(
                 "$SQL_SELECT_PREFIX$whereClause$SQL_SELECT_SUFFIX",

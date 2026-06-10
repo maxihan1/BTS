@@ -56,7 +56,11 @@ class AuthAuditLogAdminController(
      * @param to ISO-8601 시각 상한(포함). 파싱 실패 시 400.
      * @param page 0-based 페이지(기본 0). 음수 400.
      * @param size 페이지 크기(기본 [DEFAULT_PAGE_SIZE]). 1..[MAX_PAGE_SIZE] 벗어나면 400.
+     *
+     * LongParameterList 억제 — 모두 명세상 독립 query parameter 이며 임의 그룹핑은 가독성을 해친다(AuthController login 선례).
+     * ReturnCount 억제 — 파라미터별 검증 실패 시 400 guard early return 이 중첩 if 보다 가독성 우수(DEVELOPMENT.md §2.3).
      */
+    @Suppress("LongParameterList", "ReturnCount")
     @GetMapping("/auth-audit-logs")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     fun search(
@@ -101,20 +105,22 @@ class AuthAuditLogAdminController(
     /**
      * eventType 파싱. 부재 → value 가 null 인 Box(정상), enum 미일치 → null(400).
      */
-    private fun parseEventType(raw: String?): Box<AuthEventType?>? {
-        if (raw == null) return Box(null)
-        val matched = AuthEventType.entries.firstOrNull { it.name == raw } ?: return null
-        return Box(matched)
-    }
+    private fun parseEventType(raw: String?): Box<AuthEventType?>? =
+        if (raw == null) {
+            Box(null)
+        } else {
+            AuthEventType.entries.firstOrNull { it.name == raw }?.let { Box(it) }
+        }
 
     /**
      * ISO-8601 시각 파싱. 부재 → value 가 null 인 Box(정상), 파싱 실패 → null(400).
      */
-    private fun parseInstant(raw: String?): Box<Instant?>? {
-        if (raw == null) return Box(null)
-        val parsed = runCatching { Instant.parse(raw) }.getOrNull() ?: return null
-        return Box(parsed)
-    }
+    private fun parseInstant(raw: String?): Box<Instant?>? =
+        if (raw == null) {
+            Box(null)
+        } else {
+            runCatching { Instant.parse(raw) }.getOrNull()?.let { Box(it) }
+        }
 
     private fun toResponse(entry: AuthAuditLogAdminEntry): AuthAuditLogEntryResponse =
         AuthAuditLogEntryResponse(
