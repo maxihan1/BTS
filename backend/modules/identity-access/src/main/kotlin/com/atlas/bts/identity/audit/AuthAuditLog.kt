@@ -14,7 +14,7 @@ import java.util.UUID
  * DB persistence + 월 단위 파티션은 SDD 19.9 후속 PR에서 구현 예정.
  */
 data class AuthAuditLog(
-    val userId: UUID,
+    val userId: UUID?,
     val eventType: AuthEventType,
     val providerId: String,
     val ipAddress: String? = null,
