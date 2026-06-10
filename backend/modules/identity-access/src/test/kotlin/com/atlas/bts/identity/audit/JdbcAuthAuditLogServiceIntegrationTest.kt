@@ -42,7 +42,6 @@ import java.util.UUID
 @Import(JdbcAuthAuditLogService::class, JacksonAutoConfiguration::class)
 @Testcontainers
 class JdbcAuthAuditLogServiceIntegrationTest {
-
     companion object {
         @Container
         @JvmStatic
@@ -182,10 +181,8 @@ class JdbcAuthAuditLogServiceIntegrationTest {
         )
 
         // findRecent(userId)는 non-null userId 조회용이므로, userId=null 행은 SQL 로 직접 검증한다.
-        val rows = jdbc.queryForList(
-            "SELECT user_id, event_type, metadata FROM auth_audit_logs WHERE user_id IS NULL",
-            emptyMap<String, Any>(),
-        )
+        val sql = "SELECT user_id, event_type, metadata FROM auth_audit_logs WHERE user_id IS NULL"
+        val rows = jdbc.queryForList(sql, emptyMap<String, Any>())
 
         assertThat(rows).hasSize(1)
         assertThat(rows.first()["user_id"]).isNull()

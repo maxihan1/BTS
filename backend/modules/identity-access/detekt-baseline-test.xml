@@ -82,6 +82,8 @@
     <ID>VarCouldBeVal:IdentityAccessWorkflowSchemePermissionResolverIntegrationTest.kt$IdentityAccessWorkflowSchemePermissionResolverIntegrationTest$/** prod 프로파일에서 IdentityAccessWorkflowSchemePermissionResolver 가 주입되어야 한다. */ @Autowired private lateinit var resolver: WorkflowSchemePermissionResolver</ID>
     <ID>VarCouldBeVal:IdentityAccessWorkflowSchemePermissionResolverIntegrationTest.kt$IdentityAccessWorkflowSchemePermissionResolverIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:IssueSecuritySchemaMigrationTest.kt$IssueSecuritySchemaMigrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:JdbcAuthAuditLogServiceIntegrationTest.kt$JdbcAuthAuditLogServiceIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:JdbcAuthAuditLogServiceIntegrationTest.kt$JdbcAuthAuditLogServiceIntegrationTest$@Autowired private lateinit var service: JdbcAuthAuditLogService</ID>
     <ID>VarCouldBeVal:JdbcIssueSecurityLookupIntegrationTest.kt$JdbcIssueSecurityLookupIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:JdbcIssueSecurityLookupIntegrationTest.kt$JdbcIssueSecurityLookupIntegrationTest$@Autowired private lateinit var lookup: JdbcIssueSecurityLookup</ID>
     <ID>VarCouldBeVal:JdbcIssueSecuritySchemeRepositoryIntegrationTest.kt$JdbcIssueSecuritySchemeRepositoryIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>

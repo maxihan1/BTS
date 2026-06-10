@@ -48,7 +48,6 @@ class JdbcAuthAuditLogService(
     private val jdbc: NamedParameterJdbcTemplate,
     private val objectMapper: ObjectMapper,
 ) : AuthAuditLogService {
-
     override fun record(event: AuthAuditLog) {
         jdbc.update(
             SQL_INSERT,
@@ -69,17 +68,17 @@ class JdbcAuthAuditLogService(
     override fun findRecent(
         userId: UUID,
         limit: Int,
-    ): List<AuthAuditLog> =
-        jdbc.query(
+    ): List<AuthAuditLog> {
+        return jdbc.query(
             SQL_FIND_RECENT,
             mapOf("userId" to userId, "limit" to limit),
             rowMapper,
         )
+    }
 
     // ── 직렬화 헬퍼 ──────────────────────────────────────────────────────────────
 
-    private fun serializeMetadata(metadata: Map<String, String>): String =
-        objectMapper.writeValueAsString(metadata)
+    private fun serializeMetadata(metadata: Map<String, String>): String = objectMapper.writeValueAsString(metadata)
 
     private fun deserializeMetadata(json: String?): Map<String, String> {
         if (json == null) return emptyMap()
@@ -112,7 +111,6 @@ class JdbcAuthAuditLogService(
     // ── SQL 상수 ─────────────────────────────────────────────────────────────────
 
     private companion object {
-
         /** metadata Map<String,String> 역직렬화 TypeReference — ObjectMapper reuse. */
         val METADATA_TYPE_REF: TypeReference<Map<String, String>> =
             object : TypeReference<Map<String, String>>() {}

@@ -28,7 +28,6 @@ import java.util.concurrent.ConcurrentLinkedDeque
  * (DEVELOPMENT.md §보안 규칙 8번 — 로그에 PII/비밀값 마스킹)
  */
 class InMemoryAuthAuditLogService : AuthAuditLogService {
-
     private val log = LoggerFactory.getLogger("audit.auth")
 
     private val store = ConcurrentLinkedDeque<AuthAuditLog>()
@@ -45,7 +44,10 @@ class InMemoryAuthAuditLogService : AuthAuditLogService {
         )
     }
 
-    override fun findRecent(userId: UUID, limit: Int): List<AuthAuditLog> {
+    override fun findRecent(
+        userId: UUID,
+        limit: Int,
+    ): List<AuthAuditLog> {
         return store.asSequence()
             .filter { it.userId == userId }
             .take(limit)
