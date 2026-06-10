@@ -190,7 +190,9 @@ class ReleaseNotesServiceTest : DescribeSpec({
                 val result = sut.generate(actorId, "BTS", versionId)
 
                 result.issueCount shouldBe 1
-                result.markdown.contains("(") shouldBe false // resolutionName 미표시
+                // resolutionName 미표시 — "Fixed", "Done" 등 resolution 이름이 markdown 에 없음
+                result.markdown.contains("Fixed") shouldBe false
+                result.markdown.contains("Done") shouldBe false
             }
         }
 
