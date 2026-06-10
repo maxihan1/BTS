@@ -155,11 +155,14 @@ ARCHIVED   ─unarchive─▶ UNRELEASED    (released_at = null)
 
 **RED**:
 - `VersionRepositoryTest.kt` — insert/update가 status/released_at 왕복(round-trip) 보존, findById/findByProject가 두 필드 매핑.
-- `VersionApplicationServiceTest.kt` — `changeStatus(actor, project, id, RELEASED)` 호출 시 도메인 전이 경유 + repo.update. 불허 전이 시 `VersionTransitionNotAllowedException`. ARCHIVED 버전 update/changeDates/delete 시 예외 전파. Clock 고정으로 releasedAt 검증.
+- `VersionApplicationServiceTest.kt` — `changeStatus(actor, project, id, RELEASED)` 호출 시 도메인 전이 경유 + repo.update. 불허 전이 시 `VersionTransitionNotAllowedException`. ARCHIVED 버전 update/changeDates 시 예외 전파(도메인 가드). **ARCHIVED 버전 delete 시 VersionTransitionNotAllowedException 이고 repo.softDelete 미호출**(결함 A 회귀 가드). Clock 고정으로 releasedAt 검증.
 
 **GREEN**:
 - `VersionRepository.kt` — insert/update SQL에 status/released_at 컬럼 추가, record→domain 매핑에 두 필드 추가(jOOQ 생성 컬럼 사용).
-- `VersionApplicationService.kt` — `changeStatus(actorId, projectIdOrKey, versionId, target: VersionStatus): Version` 추가. 흐름: resolveProject → assertPermission(UPDATE) → findActiveVersion → 도메인 전이 메서드(target별 release/unrelease/archive/unarchive, Clock 주입) → repo.update. `Clock` 생성자 주입(기본 `Clock.systemUTC()` 빈). update/changeDates/delete는 도메인 가드가 ARCHIVED를 거부하므로 별도 코드 불필요(예외만 전파 — 단 delete는 findActiveVersion 후 도메인 softDelete 경유로 변경하거나 status 사전 체크).
+- `VersionApplicationService.kt` — `changeStatus(actorId, projectIdOrKey, versionId, target: VersionStatus): Version` 추가. 흐름: resolveProject → assertPermission(UPDATE) → findActiveVersion → 도메인 전이 메서드(target별 release/unrelease/archive/unarchive) → repo.update. `Clock` 생성자 주입 — **선례 패턴 `private val clock: Clock = Clock.systemUTC()` 생성자 기본값**(identity-access 전체 동형, 별도 @Bean 불필요·기존 테스트 안 깨짐). release 시 `Instant.now(clock)` 를 도메인에 전달.
+  - **ARCHIVED 거부 분기 (eng 리뷰 결함 A)**:
+    - update/changeDates는 도메인 메서드(rename/changeDescription/changeDates)를 경유하므로 T1의 `requireNotArchived()` 가드가 자동 적용 → 별도 코드 불필요.
+    - **delete는 예외**. 기존 `delete`가 `repo.softDelete(versionId, projectId)` 로 **repo 직행(도메인 softDelete 미경유)**이라 도메인 가드를 우회한다(메모리 patch-merge-domain-bypass). 따라서 service.delete 에서 `findActiveVersion` 결과의 `status == ARCHIVED` 면 `VersionTransitionNotAllowedException` 을 **명시적으로** 던진 뒤 repo.softDelete 호출. 도메인 softDelete()의 ARCHIVED 가드(T1)는 일관성 안전망으로 유지.
 
 **REFACTOR**: target→전이 메서드 매핑을 private when 헬퍼로. Clock 빈은 기존 설정 재사용 확인.
 
@@ -243,4 +246,18 @@ GET 목록/단건 → status/releasedAt 포함                                  
 - 추가 검증: ktlint/detekt(백엔드), typecheck/vitest/playwright(프론트).
 - BC: issue-tracking 단일. permission enum/seed 변경 없음(verify-master-plan 카운트 영향 없음).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-10, 직접 적대적 eng 리뷰 — autoplan 대신, 백엔드 주력)
+
+- ✅ 메타블록 완전: 6 task 모두 agent/files/depends-on 명시. depends-on DAG 순환 없음(1,2→3→4→5→6).
+- ✅ TDD 형식: 전 task RED/GREEN/REFACTOR + 검증 명령.
+- ✅ BTS 절대 규칙: 트랜잭션 경계(ApplicationService), 소프트삭제, BC 격리(issue-tracking 단일), L1 한글주석(신규파일), 권한 UPDATE 재사용.
+- **🔧 결함 A (보강 완료)**: 기존 delete가 `repo.softDelete` repo 직행이라 도메인 ARCHIVED 가드 우회. T3에서 service.delete 명시 체크 + 회귀 가드 테스트 추가.
+- ✅ 확인 B (해소): Clock은 생성자 기본값 `Clock.systemUTC()` 선례 패턴 → 별도 빈 불필요, 기존 생성자 테스트 안 깨짐.
+- ⚠️ 인지 C: jOOQ 재생성 T2→T3 직렬 의존(init_codegen 수정 후 빌드 시 컬럼 생성). clean 빌드 주의(메모리 backend-clean-build-broken).
+- ⚠️ 주의: VersionResponse status/releasedAt 추가가 기존 통합테스트 응답 검증 파급 → T4 files에 VersionControllerIntegrationTest 포함됨(인지).
+- BLOCKER: 없음.
+
+### autoplan / ceo / design / devex
+- skip — 백엔드 주력 feature. 메모리 bts-review-plan-autoplan-overkill에 따라 eng 집중 리뷰로 대체.
