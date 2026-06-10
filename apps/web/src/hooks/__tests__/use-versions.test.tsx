@@ -14,6 +14,7 @@ import {
   useChangeVersionDates,
   useDeleteVersion,
   useChangeVersionStatus,
+  useReleaseNotes,
   VERSION_KEYS,
 } from '../use-versions'
 
@@ -355,6 +356,68 @@ describe('useChangeVersionStatus', () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(toast.error).toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useReleaseNotes — 릴리즈 노트 조회 (lazy, FR-VR-04 Task 5 RED)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('useReleaseNotes', () => {
+  const versionId = 'a1b2c3d4-e5f6-4890-abcd-ef1234567890'
+
+  const releaseNotesFixture = {
+    versionId,
+    projectKey: 'ATLAS',
+    versionName: 'v1.0.0',
+    versionStatus: 'RELEASED' as const,
+    releaseDate: '2026-06-10',
+    issueCount: 3,
+    generatedAt: '2026-06-10T12:00:00Z',
+    markdown: '## v1.0.0\n\n### Bug Fixes\n\n- ATL-1: 로그인 버그 수정',
+  }
+
+  beforeEach(() => {
+    resetVersionStore()
+    server.use(...versionHandlers)
+  })
+
+  it('enabled=false이면 쿼리가 실행되지 않는다(idle)', () => {
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useReleaseNotes('ATLAS', versionId, false), { wrapper })
+
+    // enabled=false → 쿼리 실행 없이 fetchStatus='idle'
+    expect(result.current.fetchStatus).toBe('idle')
+  })
+
+  it('enabled=true이면 릴리즈 노트를 조회해 반환한다', async () => {
+    server.use(
+      http.get('/api/v1/projects/ATLAS/versions/:versionId/release-notes', () =>
+        HttpResponse.json({ data: releaseNotesFixture }),
+      ),
+    )
+
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useReleaseNotes('ATLAS', versionId, true), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(result.current.data?.versionId).toBe(versionId)
+    expect(result.current.data?.markdown).toContain('## v1.0.0')
+    expect(result.current.data?.issueCount).toBe(3)
+  })
+
+  it('404 응답 시 isError가 true가 된다', async () => {
+    server.use(
+      http.get('/api/v1/projects/ATLAS/versions/:versionId/release-notes', () =>
+        HttpResponse.json({ errorCode: 'VERSION_NOT_FOUND' }, { status: 404 }),
+      ),
+    )
+
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useReleaseNotes('ATLAS', versionId, true), { wrapper })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
   })
 })
 

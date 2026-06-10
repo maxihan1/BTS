@@ -1,10 +1,11 @@
-// 버전 단일 행 — 상태 뱃지 + 전이 버튼 + 수정/삭제 + ARCHIVED 비활성화 (FR-VR-01, FR-VR-02)
+// 버전 단일 행 — 상태 뱃지 + 전이 버튼 + 수정/삭제 + ARCHIVED 비활성화 + 릴리즈 노트 버튼 (FR-VR-01, FR-VR-02, FR-VR-04)
 import { useState } from 'react'
 import type { JSX } from 'react'
 import { Button } from '@/components/ui/button'
 import { useDeleteVersion, useChangeVersionStatus } from '@/hooks/use-versions'
 import { versionLabels, versionStatusLabel, versionTransitionLabel } from '@/i18n/version-labels'
 import type { Version, VersionStatus } from '@/api/versions.types'
+import { ReleaseNotesDialog } from './ReleaseNotesDialog'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -162,6 +163,7 @@ export function VersionRow({
   canManage,
 }: VersionRowProps): JSX.Element {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [releaseNotesOpen, setReleaseNotesOpen] = useState(false)
 
   const deleteMutation = useDeleteVersion(projectKey)
   const statusMutation = useChangeVersionStatus(projectKey)
@@ -247,6 +249,16 @@ export function VersionRow({
           </Button>
         ))}
 
+        {/* 릴리즈 노트 버튼 — ARCHIVED 무관 활성 (읽기 동작) */}
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label={`${version.name} ${actions.releaseNotesButton}`}
+          onClick={() => { setReleaseNotesOpen(true) }}
+        >
+          {actions.releaseNotesButton}
+        </Button>
+
         {showDeleteConfirm ? (
           <DeleteConfirm
             onConfirm={handleDeleteConfirm}
@@ -290,6 +302,15 @@ export function VersionRow({
           </>
         )}
       </div>
+
+      {/* 릴리즈 노트 다이얼로그 — 행 단위 open state */}
+      <ReleaseNotesDialog
+        versionId={version.id}
+        versionName={version.name}
+        projectKey={projectKey}
+        open={releaseNotesOpen}
+        onOpenChange={setReleaseNotesOpen}
+      />
     </li>
   )
 }

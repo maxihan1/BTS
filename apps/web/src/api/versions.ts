@@ -1,11 +1,13 @@
-// 버전 BC REST API 클라이언트 — CRUD + 날짜 변경 + 상태 전이 + X-XSRF-TOKEN + errorCode 추출 헬퍼 (FR-VR-01, FR-VR-02)
+// 버전 BC REST API 클라이언트 — CRUD + 날짜 변경 + 상태 전이 + 릴리즈 노트 조회 + X-XSRF-TOKEN + errorCode 추출 헬퍼 (FR-VR-01, FR-VR-02, FR-VR-04)
 import { z } from 'zod'
 import { apiGet, apiFetch, ApiError } from './client'
 import { readXsrfToken } from './sessions'
 import {
   versionResponseSchema,
+  releaseNotesResponseSchema,
   dataResponseSchema,
   type Version,
+  type ReleaseNotes,
   type CreateVersionInput,
   type UpdateVersionInput,
   type ChangeDatesInput,
@@ -15,6 +17,7 @@ import {
 
 export type {
   Version,
+  ReleaseNotes,
   CreateVersionInput,
   UpdateVersionInput,
   ChangeDatesInput,
@@ -26,9 +29,10 @@ export type {
 // 내부 상수
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 버전 단건 + 목록 응답 래퍼 스키마 — 내부 전용 */
+/** 버전 단건 + 목록 + 릴리즈 노트 응답 래퍼 스키마 — 내부 전용 */
 const versionDataSchema = dataResponseSchema(versionResponseSchema)
 const versionListDataSchema = dataResponseSchema(z.array(versionResponseSchema))
+const releaseNotesDataSchema = dataResponseSchema(releaseNotesResponseSchema)
 
 /** 기본 경로 헬퍼 */
 function basePath(projectIdOrKey: string): string {
@@ -218,6 +222,26 @@ export async function changeVersionStatus(
   }
   const raw: unknown = await res.json()
   const wrapped = versionDataSchema.parse(raw)
+  return wrapped.data
+}
+
+/**
+ * 버전 릴리즈 노트를 조회한다.
+ *
+ * GET /api/v1/projects/{projectKey}/versions/{versionId}/release-notes
+ * → `{ data: ... }` 언래핑 후 반환.
+ * GET 엔드포인트이므로 CSRF 헤더 불필요.
+ *
+ * @param projectKey 프로젝트 UUID 또는 키
+ * @param versionId 버전 UUID
+ * @returns ReleaseNotes — 릴리즈 노트 메타데이터 + markdown 본문
+ * @throws ApiError(404) 버전 미존재 시
+ */
+export async function getReleaseNotes(projectKey: string, versionId: string): Promise<ReleaseNotes> {
+  const wrapped = await apiGet(
+    `${basePath(projectKey)}/${versionId}/release-notes`,
+    releaseNotesDataSchema,
+  )
   return wrapped.data
 }
 

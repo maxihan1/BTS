@@ -10,6 +10,7 @@ import {
   changeVersionDates,
   deleteVersion,
   changeVersionStatus,
+  getReleaseNotes,
   extractVersionErrorCode,
 } from './versions'
 import { ApiError } from './client'
@@ -199,6 +200,59 @@ describe('changeVersionStatus', () => {
     await expect(
       changeVersionStatus('ATLAS', versionFixture.id, 'RELEASED'),
     ).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getReleaseNotes — FR-VR-04 Task 5 RED
+// ─────────────────────────────────────────────────────────────────────────────
+
+const releaseNotesFixture = {
+  versionId: 'a1b2c3d4-e5f6-4890-abcd-ef1234567890',
+  projectKey: 'ATLAS',
+  versionName: 'v1.0.0',
+  versionStatus: 'RELEASED' as const,
+  releaseDate: '2026-06-10',
+  issueCount: 3,
+  generatedAt: '2026-06-10T12:00:00Z',
+  markdown: '## v1.0.0\n\n### Bug Fixes\n\n- ATL-1: 로그인 버그 수정',
+}
+
+describe('getReleaseNotes', () => {
+  it('{data: ...} 래퍼를 언래핑해 ReleaseNotes를 반환한다', async () => {
+    server.use(
+      http.get('/api/v1/projects/:projectIdOrKey/versions/:versionId/release-notes', () =>
+        HttpResponse.json({ data: releaseNotesFixture }),
+      ),
+    )
+    const result = await getReleaseNotes('ATLAS', releaseNotesFixture.versionId)
+    expect(result.versionId).toBe(releaseNotesFixture.versionId)
+    expect(result.projectKey).toBe('ATLAS')
+    expect(result.versionName).toBe('v1.0.0')
+    expect(result.versionStatus).toBe('RELEASED')
+    expect(result.releaseDate).toBe('2026-06-10')
+    expect(result.issueCount).toBe(3)
+    expect(result.generatedAt).toBe('2026-06-10T12:00:00Z')
+    expect(result.markdown).toContain('## v1.0.0')
+  })
+
+  it('releaseDate가 null이어도 파싱에 성공한다', async () => {
+    server.use(
+      http.get('/api/v1/projects/:projectIdOrKey/versions/:versionId/release-notes', () =>
+        HttpResponse.json({ data: { ...releaseNotesFixture, releaseDate: null } }),
+      ),
+    )
+    const result = await getReleaseNotes('ATLAS', releaseNotesFixture.versionId)
+    expect(result.releaseDate).toBeNull()
+  })
+
+  it('404 응답 시 ApiError를 throw한다', async () => {
+    server.use(
+      http.get('/api/v1/projects/:projectIdOrKey/versions/:versionId/release-notes', () =>
+        HttpResponse.json({ errorCode: 'VERSION_NOT_FOUND' }, { status: 404 }),
+      ),
+    )
+    await expect(getReleaseNotes('ATLAS', '00000000-0000-4000-8000-000000000001')).rejects.toBeInstanceOf(ApiError)
   })
 })
 

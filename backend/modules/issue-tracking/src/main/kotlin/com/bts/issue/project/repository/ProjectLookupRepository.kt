@@ -57,4 +57,24 @@ class ProjectLookupRepository(
             .and(PROJECTS.DELETED_AT.isNull)
             .fetchOne(PROJECTS.ID)
     }
+
+    /**
+     * 프로젝트 UUID 로 활성 프로젝트 key 를 조회한다 ([findActiveProjectIdByKey] 역방향).
+     *
+     * 릴리즈 노트 생성 시 versionId 에서 projectKey 를 역방향으로 조회하는 용도.
+     * 활성 기준: `deleted_at IS NULL`. 미존재·소프트 삭제 시 null.
+     *
+     * @param id 프로젝트 UUID.
+     * @return 활성 프로젝트의 key (예: "BTS"). 미존재·소프트 삭제 시 null.
+     */
+    @Transactional(readOnly = true)
+    fun findProjectKeyById(id: UUID): String? {
+        log.debug("ProjectLookupRepository.findProjectKeyById id={}", id)
+        return dsl
+            .select(PROJECTS.KEY)
+            .from(PROJECTS)
+            .where(PROJECTS.ID.eq(id))
+            .and(PROJECTS.DELETED_AT.isNull)
+            .fetchOne(PROJECTS.KEY)
+    }
 }

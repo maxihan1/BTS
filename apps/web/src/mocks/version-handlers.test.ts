@@ -1,7 +1,7 @@
 // 버전 MSW 핸들러 단위 테스트 — stateful CRUD + RFC 7807 에러 구조 검증 (FR-VR-01)
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { resetVersionStore, versionHandlers } from './version-handlers'
+import { resetVersionStore, seedReleaseNotes, versionHandlers } from './version-handlers'
 
 const server = setupServer(...versionHandlers)
 
@@ -527,5 +527,104 @@ describe('PATCH /api/v1/projects/:projectIdOrKey/versions/:id/status', () => {
     })
     const created = await createRes.json() as { data: { status: string } }
     expect(created.data.status).toBe('UNRELEASED')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /:id/release-notes — FR-VR-04 Task 5 RED
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/v1/projects/:projectIdOrKey/versions/:id/release-notes', () => {
+  it('존재하는 버전의 릴리즈 노트를 200으로 반환한다', async () => {
+    const createRes = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'v1.0.0' }),
+    })
+    const created = await createRes.json() as { data: { id: string } }
+    const id = created.data.id
+
+    // 릴리즈 노트 픽스처 시드
+    seedReleaseNotes(id, {
+      markdown: '## v1.0.0\n\n### Bug Fixes\n\n- ATL-1: 로그인 버그 수정',
+      issueCount: 1,
+    })
+
+    const res = await fetch(`${BASE_URL}/${id}/release-notes`)
+    expect(res.status).toBe(200)
+    const body = await res.json() as {
+      data: {
+        versionId: string
+        projectKey: string
+        versionName: string
+        versionStatus: string
+        releaseDate: string | null
+        issueCount: number
+        generatedAt: string
+        markdown: string
+      }
+    }
+    expect(body.data.versionId).toBe(id)
+    expect(body.data.projectKey).toBe('ATLAS')
+    expect(body.data.versionName).toBe('v1.0.0')
+    expect(body.data.versionStatus).toBe('UNRELEASED')
+    expect(body.data.issueCount).toBe(1)
+    expect(typeof body.data.generatedAt).toBe('string')
+    expect(body.data.markdown).toContain('## v1.0.0')
+  })
+
+  it('시드 없이 조회하면 issueCount=0인 빈 릴리즈 노트를 반환한다', async () => {
+    const createRes = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Empty Release Notes Version' }),
+    })
+    const created = await createRes.json() as { data: { id: string } }
+    const id = created.data.id
+
+    const res = await fetch(`${BASE_URL}/${id}/release-notes`)
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { issueCount: number; markdown: string } }
+    expect(body.data.issueCount).toBe(0)
+    expect(typeof body.data.markdown).toBe('string')
+  })
+
+  it('releaseDate가 있는 버전은 릴리즈 노트에 releaseDate를 포함한다', async () => {
+    const createRes = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Dated Release Notes Version', releaseDate: '2026-06-30' }),
+    })
+    const created = await createRes.json() as { data: { id: string } }
+    const id = created.data.id
+
+    const res = await fetch(`${BASE_URL}/${id}/release-notes`)
+    expect(res.status).toBe(200)
+    const body = await res.json() as { data: { releaseDate: string | null } }
+    expect(body.data.releaseDate).toBe('2026-06-30')
+  })
+
+  it('존재하지 않는 id는 404 + VERSION_NOT_FOUND를 반환한다', async () => {
+    const res = await fetch(`${BASE_URL}/00000000-0000-4000-8000-000000000001/release-notes`)
+    expect(res.status).toBe(404)
+    const body = await res.json() as Record<string, unknown>
+    expect(body['errorCode']).toBe('VERSION_NOT_FOUND')
+  })
+
+  it('삭제된 버전은 404 + VERSION_NOT_FOUND를 반환한다', async () => {
+    const createRes = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Deleted Release Notes Version' }),
+    })
+    const created = await createRes.json() as { data: { id: string } }
+    const id = created.data.id
+
+    await fetch(`${BASE_URL}/${id}`, { method: 'DELETE' })
+
+    const res = await fetch(`${BASE_URL}/${id}/release-notes`)
+    expect(res.status).toBe(404)
+    const body = await res.json() as Record<string, unknown>
+    expect(body['errorCode']).toBe('VERSION_NOT_FOUND')
   })
 })

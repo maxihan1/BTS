@@ -1,4 +1,4 @@
-// VersionRow 단위 테스트 — 렌더/날짜표시/수정콜백/삭제확인/aria-label/날짜 null 분기
+// VersionRow 단위 테스트 — 렌더/날짜표시/수정콜백/삭제확인/aria-label/날짜 null 분기/릴리즈 노트 버튼
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -601,5 +601,87 @@ describe('VersionRow — 권한 게이팅', () => {
     const row = screen.getByRole('listitem')
     expect(within(row).getByRole('button', { name: `${versionWithDates.name} 수정` })).toBeDisabled()
     expect(within(row).getByRole('button', { name: `${versionWithDates.name} 삭제` })).toBeDisabled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VersionRow — 릴리즈 노트 버튼 (FR-VR-04 Task 6 RED)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('VersionRow — 릴리즈 노트 버튼', () => {
+  it('각 버전 행에 "릴리즈 노트" 버튼이 존재한다', () => {
+    const Wrapper = createWrapper()
+    render(
+      <VersionRow
+        version={versionWithDates}
+        projectKey={PROJECT_KEY}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        canManage={true}
+      />,
+      { wrapper: Wrapper },
+    )
+    const row = screen.getByRole('listitem')
+    expect(within(row).getByRole('button', { name: /릴리즈 노트/i })).toBeInTheDocument()
+  })
+
+  it('ARCHIVED 버전에서도 릴리즈 노트 버튼이 활성화된다 (읽기 동작)', () => {
+    const Wrapper = createWrapper()
+    render(
+      <VersionRow
+        version={versionArchived}
+        projectKey={PROJECT_KEY}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        canManage={true}
+      />,
+      { wrapper: Wrapper },
+    )
+    const row = screen.getByRole('listitem')
+    const releaseNotesBtn = within(row).getByRole('button', { name: /릴리즈 노트/i })
+    expect(releaseNotesBtn).not.toBeDisabled()
+  })
+
+  it('릴리즈 노트 버튼 클릭 시 dialog가 열린다', async () => {
+    // dialog 내부에서 release-notes API 호출을 MSW로 처리한다
+    server.use(
+      http.get(
+        `/api/v1/projects/${PROJECT_KEY}/versions/${versionWithDates.id}/release-notes`,
+        () =>
+          HttpResponse.json({
+            data: {
+              versionId: versionWithDates.id,
+              projectKey: PROJECT_KEY,
+              versionName: versionWithDates.name,
+              versionStatus: 'UNRELEASED',
+              releaseDate: null,
+              issueCount: 0,
+              generatedAt: '2026-06-10T12:00:00Z',
+              markdown: '## v1.0.0\n\n이슈가 없습니다.',
+            },
+          }),
+      ),
+    )
+
+    const Wrapper = createWrapper()
+    render(
+      <VersionRow
+        version={versionWithDates}
+        projectKey={PROJECT_KEY}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        canManage={true}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    const user = userEvent.setup()
+    const row = screen.getByRole('listitem')
+    const releaseNotesBtn = within(row).getByRole('button', { name: /릴리즈 노트/i })
+    await user.click(releaseNotesBtn)
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
   })
 })
