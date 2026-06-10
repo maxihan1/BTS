@@ -36,6 +36,8 @@ const issueFixture: IssueResponse = {
   reporterId: 'f0e9d8c7-b6a5-4321-8edc-ba9876543210',
   assigneeId: null,
   componentIds: [],
+  affectsVersionIds: [],
+  fixVersionIds: [],
   version: 1,
   createdAt: '2024-01-15T09:00:00Z',
   updatedAt: null,

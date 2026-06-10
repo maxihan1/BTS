@@ -93,6 +93,22 @@ export const issueResponseSchema = z.object({
    * (zod-schema-strengthen-inline-mock-fanout 교훈).
    */
   noneditableFields: z.array(z.string()).default([]),
+  /**
+   * FR-VR-03 — 이슈에 연결된 영향 버전 ID 목록.
+   * 백엔드 IssueResponse.affectsVersionIds: List<UUID> (단건 경로에서만 채워짐).
+   * `optional().default([])`: optional()이 TS 추론 타입을 optional로 만들어
+   * 기존 인라인 mock(필드 미포함)이 TS 컴파일 에러 없이 통과하게 한다
+   * (zod-schema-strengthen-inline-mock-fanout 교훈 — componentIds 패턴과 동일).
+   */
+  affectsVersionIds: z.array(z.string()).optional().default([]),
+  /**
+   * FR-VR-03 — 이슈에 연결된 수정 버전 ID 목록.
+   * 백엔드 IssueResponse.fixVersionIds: List<UUID> (단건 경로에서만 채워짐).
+   * `optional().default([])`: optional()이 TS 추론 타입을 optional로 만들어
+   * 기존 인라인 mock(필드 미포함)이 TS 컴파일 에러 없이 통과하게 한다
+   * (zod-schema-strengthen-inline-mock-fanout 교훈 — componentIds 패턴과 동일).
+   */
+  fixVersionIds: z.array(z.string()).optional().default([]),
 })
 
 /** Spring Page 응답 Zod 스키마 — 래퍼 없음 (DataResponse 감싸지 않음) */

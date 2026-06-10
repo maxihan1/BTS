@@ -317,7 +317,7 @@ describe('IssueResponse Zod — affectsVersionIds/fixVersionIds 파싱', () => {
       ),
     )
 
-    const { queryClient, Wrapper } = createWrapper()
+    const { Wrapper } = createWrapper()
     const { result } = renderHook(() => useChangeAffectsVersions(), { wrapper: Wrapper })
 
     act(() => {
@@ -338,7 +338,7 @@ describe('IssueResponse Zod — affectsVersionIds/fixVersionIds 파싱', () => {
       ),
     )
 
-    const { queryClient: _qc, Wrapper } = createWrapper()
+    const { Wrapper } = createWrapper()
     const { result } = renderHook(() => useChangeAffectsVersions(), { wrapper: Wrapper })
 
     act(() => {

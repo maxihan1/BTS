@@ -5,8 +5,10 @@ import type { IssueResponse, IssueTransition, CustomFieldValues } from '@/api/is
 import type { IssueTypeResponse } from '@/api/issue-types'
 import type { UserSummary } from '@/api/users'
 import type { Component } from '@/api/components'
+import type { Version } from '@/api/versions.types'
 import { Button } from '@/components/ui/button'
 import { ComponentMultiSelect } from '@/components/issue/ComponentMultiSelect'
+import { VersionMultiSelect } from '@/components/issue/VersionMultiSelect'
 import { IssueSecurityLevelSelect } from '@/components/issue/IssueSecurityLevelSelect'
 import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
 import { formatDate } from '@/lib/date-format'
@@ -79,6 +81,16 @@ export interface IssueMetaPanelProps {
   components?: Component[]
   /** 컴포넌트 변경 콜백 — 새 UUID 배열 전달 (route가 useChangeComponents mutation 소유). 미전달 시 no-op. */
   onComponentsChange?: (ids: string[]) => void
+  /** 프로젝트 버전 전체 목록 — useVersions(projectKey) 결과. 미전달 시 빈 배열. */
+  versions?: Version[]
+  /** 현재 이슈에 연결된 영향 버전 UUID 목록 — route에서 전달. 미전달 시 빈 배열. */
+  affectsVersionIds?: string[]
+  /** 영향 버전 변경 콜백 — 새 UUID 배열 전달 (route가 useChangeAffectsVersions mutation 소유). 미전달 시 no-op. */
+  onAffectsVersionsChange?: (ids: string[]) => void
+  /** 현재 이슈에 연결된 수정 버전 UUID 목록 — route에서 전달. 미전달 시 빈 배열. */
+  fixVersionIds?: string[]
+  /** 수정 버전 변경 콜백 — 새 UUID 배열 전달 (route가 useChangeFixVersions mutation 소유). 미전달 시 no-op. */
+  onFixVersionsChange?: (ids: string[]) => void
   /**
    * 보안등급 변경 콜백 — 선택한 등급 UUID 또는 null(해제)을 전달.
    * route가 useChangeSecurityLevel mutation 소유. 미전달 시 no-op.
@@ -158,6 +170,11 @@ export function IssueMetaPanel({
   componentIds = [],
   components = [],
   onComponentsChange = () => { /* no-op */ },
+  versions = [],
+  affectsVersionIds = [],
+  onAffectsVersionsChange = () => { /* no-op */ },
+  fixVersionIds = [],
+  onFixVersionsChange = () => { /* no-op */ },
   onSecurityLevelChange = () => { /* no-op */ },
   onCustomFieldsSave = () => { /* no-op */ },
 }: IssueMetaPanelProps): JSX.Element {
@@ -295,6 +312,30 @@ export function IssueMetaPanel({
             value={componentIds}
             options={components}
             onChange={onComponentsChange}
+            disabled={!canEdit}
+          />
+        </div>
+
+        {/* 영향 버전 — VersionMultiSelect affects (FR-VR-03) */}
+        <div className="px-3.5 py-3 border-b border-border" data-testid="affects-versions-section">
+          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.affectsVersionsLabel}</p>
+          <VersionMultiSelect
+            variant="affects"
+            value={affectsVersionIds}
+            options={versions}
+            onChange={onAffectsVersionsChange}
+            disabled={!canEdit}
+          />
+        </div>
+
+        {/* 수정 버전 — VersionMultiSelect fix (FR-VR-03) */}
+        <div className="px-3.5 py-3 border-b border-border" data-testid="fix-versions-section">
+          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.fixVersionsLabel}</p>
+          <VersionMultiSelect
+            variant="fix"
+            value={fixVersionIds}
+            options={versions}
+            onChange={onFixVersionsChange}
             disabled={!canEdit}
           />
         </div>

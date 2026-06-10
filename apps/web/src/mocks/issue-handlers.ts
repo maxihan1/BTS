@@ -32,6 +32,10 @@ export const createdIssueFixture = {
   reporterId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
   assigneeId: null,
   componentIds: [],
+  /** FR-VR-03 — 영향 버전 기본값. */
+  affectsVersionIds: [] as string[],
+  /** FR-VR-03 — 수정 버전 기본값. */
+  fixVersionIds: [] as string[],
   version: 0,
   createdAt: '2026-05-27T00:00:00Z',
   updatedAt: null,
@@ -480,6 +484,118 @@ const changeComponentsHandler = http.patch('/api/v1/issues/:key/components', asy
 })
 
 /**
+ * PATCH /api/v1/issues/:key/affects-versions — 영향 버전 변경 핸들러 (FR-VR-03).
+ * 분기 순서 (backend 일치):
+ *   (1) 이슈 not-found → 404
+ *   (2) expectedVersion 불일치 → 409 ISSUE_VERSION_CONFLICT
+ *   (3) versionIds 중 UUID 형식이 아닌 항목 존재 → 422 ISSUE_LINKED_VERSION_NOT_FOUND
+ *   (4) 성공 → 200 + { data: 수정된 IssueResponse(version+1) }
+ *       stateful: issueOverrides에 변경 사항 영속 (invalidate refetch 후 롤백 방지)
+ */
+const changeAffectsVersionsHandler = http.patch('/api/v1/issues/:key/affects-versions', async ({ params, request }) => {
+  const key = params['key'] as string
+  const found = resolveIssue(key)
+  if (found === undefined) {
+    return HttpResponse.json(
+      { message: `이슈를 찾을 수 없습니다: ${key}` },
+      { status: 404 },
+    )
+  }
+  const body = await request.clone().json() as {
+    versionIds: string[]
+    expectedVersion?: number
+  }
+
+  // (2) VERSION_CONFLICT — expectedVersion 불일치
+  if (body.expectedVersion !== undefined && body.expectedVersion !== found.version) {
+    return HttpResponse.json(
+      { errorCode: 'ISSUE_VERSION_CONFLICT', message: '버전 충돌이 발생했습니다.' },
+      { status: 409 },
+    )
+  }
+
+  // (3) ISSUE_LINKED_VERSION_NOT_FOUND — UUID 형식이 아닌 versionId 존재
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  const invalidId = body.versionIds.find((id) => !uuidPattern.test(id))
+  if (invalidId !== undefined) {
+    return HttpResponse.json(
+      { errorCode: 'ISSUE_LINKED_VERSION_NOT_FOUND', message: `버전을 찾을 수 없습니다: ${invalidId}` },
+      { status: 422 },
+    )
+  }
+
+  // (4) 성공 — affectsVersionIds 영속 + version+1, stateful 보관
+  const updated: IssueResponse = {
+    ...found,
+    affectsVersionIds: body.versionIds,
+    descriptionHtml: null, // PATCH 응답은 목록과 동일 — 단건 GET에서만 채워짐
+    version: found.version + 1,
+    updatedAt: new Date().toISOString(),
+  }
+  issueOverrides.set(key, updated)
+  if (createdIssues.has(key)) {
+    createdIssues.set(key, updated)
+  }
+  return HttpResponse.json({ data: updated })
+})
+
+/**
+ * PATCH /api/v1/issues/:key/fix-versions — 수정 버전 변경 핸들러 (FR-VR-03).
+ * 분기 순서 (backend 일치):
+ *   (1) 이슈 not-found → 404
+ *   (2) expectedVersion 불일치 → 409 ISSUE_VERSION_CONFLICT
+ *   (3) versionIds 중 UUID 형식이 아닌 항목 존재 → 422 ISSUE_LINKED_VERSION_NOT_FOUND
+ *   (4) 성공 → 200 + { data: 수정된 IssueResponse(version+1) }
+ *       stateful: issueOverrides에 변경 사항 영속 (invalidate refetch 후 롤백 방지)
+ */
+const changeFixVersionsHandler = http.patch('/api/v1/issues/:key/fix-versions', async ({ params, request }) => {
+  const key = params['key'] as string
+  const found = resolveIssue(key)
+  if (found === undefined) {
+    return HttpResponse.json(
+      { message: `이슈를 찾을 수 없습니다: ${key}` },
+      { status: 404 },
+    )
+  }
+  const body = await request.clone().json() as {
+    versionIds: string[]
+    expectedVersion?: number
+  }
+
+  // (2) VERSION_CONFLICT — expectedVersion 불일치
+  if (body.expectedVersion !== undefined && body.expectedVersion !== found.version) {
+    return HttpResponse.json(
+      { errorCode: 'ISSUE_VERSION_CONFLICT', message: '버전 충돌이 발생했습니다.' },
+      { status: 409 },
+    )
+  }
+
+  // (3) ISSUE_LINKED_VERSION_NOT_FOUND — UUID 형식이 아닌 versionId 존재
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  const invalidId = body.versionIds.find((id) => !uuidPattern.test(id))
+  if (invalidId !== undefined) {
+    return HttpResponse.json(
+      { errorCode: 'ISSUE_LINKED_VERSION_NOT_FOUND', message: `버전을 찾을 수 없습니다: ${invalidId}` },
+      { status: 422 },
+    )
+  }
+
+  // (4) 성공 — fixVersionIds 영속 + version+1, stateful 보관
+  const updated: IssueResponse = {
+    ...found,
+    fixVersionIds: body.versionIds,
+    descriptionHtml: null, // PATCH 응답은 목록과 동일 — 단건 GET에서만 채워짐
+    version: found.version + 1,
+    updatedAt: new Date().toISOString(),
+  }
+  issueOverrides.set(key, updated)
+  if (createdIssues.has(key)) {
+    createdIssues.set(key, updated)
+  }
+  return HttpResponse.json({ data: updated })
+})
+
+/**
  * PATCH /api/v1/issues/:key/assignee — 담당자 변경 핸들러 (FR-IS-03).
  * 분기 순서 (backend 일치):
  *   (1) 이슈 not-found → 404
@@ -914,6 +1030,8 @@ export const issueHandlers = [
   createIssueHandler,
   updateIssueHandler,
   changeComponentsHandler,
+  changeAffectsVersionsHandler,
+  changeFixVersionsHandler,
   changeAssigneeHandler,
   deleteIssueHandler,
   getTransitionsHandler,
