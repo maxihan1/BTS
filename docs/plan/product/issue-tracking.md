@@ -256,13 +256,13 @@
 
 **우선순위**. 필수 | **선행**. §3.2.1 | **Plan slug**. `issue/versions-link`
 
-- [ ] D1. 도메인 — Affects vs Fix 의미 (책임. backend-engineer)
-- [ ] D2. 명세 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `issue_affects_versions`, `issue_fix_versions` (책임. db-engineer)
-- [ ] D4. 백엔드 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 버전 셀렉터 2종 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — Affects vs Fix 의미 (책임. backend-engineer) — PR #107 (Issue 애그리거트에 `affectsVersionIds`/`fixVersionIds` + assign/clear, componentIds 동형. 생성 시점 미지원 — PATCH 교체만)
+- [x] D2. 명세 (책임. backend-engineer) — PR #107 (이슈↔컴포넌트(FR-CM-02/03) 동형. 전체 교체+OCC, 타 프로젝트/삭제 버전 422, ARCHIVED는 API 허용·UI 숨김. 에러코드 `ISSUE_LINKED_VERSION_NOT_FOUND`)
+- [x] D3. 데이터 모델 — `issue_affects_versions`, `issue_fix_versions` (책임. db-engineer) — PR #107 (V017, 복합 PK + version_id 인덱스 + FK CASCADE, 소프트삭제 없음, init_codegen 미러)
+- [x] D4. 백엔드 (책임. backend-engineer) — PR #107 (PATCH /{key}/affects-versions·/fix-versions 2종, IssueResponse 노출(withSingleDetail 독립 쿼리 2개), IssuePermission.UPDATE 재사용. versionRepository non-null 주입 — fail-open 차단)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #107 (도메인/repo/service + 통합 S1~S12(errorCode 바디 단언) + MVC + 마이그레이션, 전체 모듈 1415 그린)
+- [x] D6. 프론트 UI — 버전 셀렉터 2종 (책임. frontend-engineer) — PR #107 (VersionMultiSelect variant affects/fix, ARCHIVED 드롭다운 숨김(연결분은 표시), issues.$key 라우트 배선, Zod optional+default, MSW stateful)
+- [x] D7. E2E (책임. qa-engineer) — PR #107 (issue-versions-link.spec.ts S0~S5 happy path 6/6. 기존 issue-components 로그인은 FR-AU-07 1단계 회귀로 별도 PR — session-fixtures 2단계 loginAsAlice 사용)
 
 #### §3.2.4 FR-VR-04 — 버전 릴리즈 노트 자동 생성
 
