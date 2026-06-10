@@ -25,31 +25,88 @@ import java.time.LocalDate
  */
 class ReleaseNotesGeneratorTest : DescribeSpec({
 
+    // ── 테스트 헬퍼 ──────────────────────────────────────────────────────────
+
+    /** [ReleaseNoteIssue] 생성 헬퍼 — Bug 타입. */
+    fun bugIssue(
+        key: String,
+        summary: String,
+        resolutionName: String? = null,
+    ) = ReleaseNoteIssue(
+        key = key,
+        summary = summary,
+        typeKey = "bug",
+        typeName = "Bug",
+        hierarchyLevel = 0,
+        resolutionName = resolutionName,
+    )
+
+    /** [ReleaseNoteIssue] 생성 헬퍼 — Story 타입. */
+    fun storyIssue(
+        key: String,
+        summary: String,
+        resolutionName: String? = null,
+    ) = ReleaseNoteIssue(
+        key = key,
+        summary = summary,
+        typeKey = "story",
+        typeName = "Story",
+        hierarchyLevel = 0,
+        resolutionName = resolutionName,
+    )
+
+    /** [ReleaseNoteIssue] 생성 헬퍼 — Task 타입. */
+    fun taskIssue(
+        key: String,
+        summary: String,
+    ) = ReleaseNoteIssue(
+        key = key,
+        summary = summary,
+        typeKey = "task",
+        typeName = "Task",
+        hierarchyLevel = 0,
+        resolutionName = null,
+    )
+
+    /** 기본 [ReleaseNotesInput] 헬퍼. 이슈 목록만 변경하는 테스트에 사용. */
+    fun baseInput(issues: List<ReleaseNoteIssue>) =
+        ReleaseNotesInput(
+            projectKey = "ATLAS",
+            versionName = "1.0.0",
+            versionStatus = "RELEASED",
+            releaseDate = null,
+            issues = issues,
+        )
+
+    // ── 테스트 본문 ──────────────────────────────────────────────────────────
+
     describe("ReleaseNotesGenerator.generate") {
 
         context("제목 및 메타 블록") {
 
             it("제목이 '# {projectKey} {versionName} 릴리즈 노트' 형식으로 생성된다") {
-                val input = ReleaseNotesInput(
-                    projectKey = "ATLAS",
-                    versionName = "1.2.0",
-                    versionStatus = "RELEASED",
-                    releaseDate = LocalDate.of(2026, 6, 10),
-                    issues = emptyList(),
-                )
+                val input =
+                    ReleaseNotesInput(
+                        projectKey = "ATLAS",
+                        versionName = "1.2.0",
+                        versionStatus = "RELEASED",
+                        releaseDate = LocalDate.of(2026, 6, 10),
+                        issues = emptyList(),
+                    )
                 val result = ReleaseNotesGenerator.generate(input)
 
                 result.lines().first() shouldBe "# ATLAS 1.2.0 릴리즈 노트"
             }
 
             it("메타 3줄 — 상태·릴리즈일·포함 이슈 건수를 포함한다") {
-                val input = ReleaseNotesInput(
-                    projectKey = "ATLAS",
-                    versionName = "1.2.0",
-                    versionStatus = "RELEASED",
-                    releaseDate = LocalDate.of(2026, 6, 10),
-                    issues = emptyList(),
-                )
+                val input =
+                    ReleaseNotesInput(
+                        projectKey = "ATLAS",
+                        versionName = "1.2.0",
+                        versionStatus = "RELEASED",
+                        releaseDate = LocalDate.of(2026, 6, 10),
+                        issues = emptyList(),
+                    )
                 val result = ReleaseNotesGenerator.generate(input)
 
                 result shouldContain "- 상태: RELEASED"
@@ -58,13 +115,14 @@ class ReleaseNotesGeneratorTest : DescribeSpec({
             }
 
             it("releaseDate 가 null 이면 릴리즈일을 '미지정'으로 표시한다") {
-                val input = ReleaseNotesInput(
-                    projectKey = "ATLAS",
-                    versionName = "1.2.0",
-                    versionStatus = "UNRELEASED",
-                    releaseDate = null,
-                    issues = emptyList(),
-                )
+                val input =
+                    ReleaseNotesInput(
+                        projectKey = "ATLAS",
+                        versionName = "1.2.0",
+                        versionStatus = "UNRELEASED",
+                        releaseDate = null,
+                        issues = emptyList(),
+                    )
                 val result = ReleaseNotesGenerator.generate(input)
 
                 result shouldContain "- 릴리즈일: 미지정"
@@ -74,14 +132,7 @@ class ReleaseNotesGeneratorTest : DescribeSpec({
         context("이슈 0건") {
 
             it("그룹 섹션 없이 '포함된 이슈가 없습니다.' 한 줄을 출력한다") {
-                val input = ReleaseNotesInput(
-                    projectKey = "ATLAS",
-                    versionName = "1.2.0",
-                    versionStatus = "UNRELEASED",
-                    releaseDate = null,
-                    issues = emptyList(),
-                )
-                val result = ReleaseNotesGenerator.generate(input)
+                val result = ReleaseNotesGenerator.generate(baseInput(emptyList()))
 
                 result shouldContain "포함된 이슈가 없습니다."
                 result shouldNotContain "## "
@@ -91,31 +142,15 @@ class ReleaseNotesGeneratorTest : DescribeSpec({
         context("타입별 그룹핑") {
 
             it("같은 typeKey 의 이슈를 하나의 그룹으로 묶는다") {
-                val input = ReleaseNotesInput(
-                    projectKey = "ATLAS",
-                    versionName = "1.0.0",
-                    versionStatus = "RELEASED",
-                    releaseDate = LocalDate.of(2026, 6, 1),
-                    issues = listOf(
-                        ReleaseNoteIssue(
-                            key = "ATLAS-1",
-                            summary = "첫 번째 버그 수정",
-                            typeKey = "bug",
-                            typeName = "Bug",
-                            hierarchyLevel = 0,
-                            resolutionName = null,
+                val result =
+                    ReleaseNotesGenerator.generate(
+                        baseInput(
+                            listOf(
+                                bugIssue("ATLAS-1", "첫 번째 버그 수정"),
+                                bugIssue("ATLAS-2", "두 번째 버그 수정"),
+                            ),
                         ),
-                        ReleaseNoteIssue(
-                            key = "ATLAS-2",
-                            summary = "두 번째 버그 수정",
-                            typeKey = "bug",
-                            typeName = "Bug",
-                            hierarchyLevel = 0,
-                            resolutionName = null,
-                        ),
-                    ),
-                )
-                val result = ReleaseNotesGenerator.generate(input)
+                    )
 
                 // Bug 그룹이 1개만 생성돼야 한다
                 result.lines().count { it.startsWith("## Bug") } shouldBe 1
@@ -123,69 +158,44 @@ class ReleaseNotesGeneratorTest : DescribeSpec({
             }
 
             it("그룹 헤더가 '## {typeName} ({건수})' 형식으로 생성된다") {
-                val input = ReleaseNotesInput(
-                    projectKey = "ATLAS",
-                    versionName = "1.0.0",
-                    versionStatus = "RELEASED",
-                    releaseDate = null,
-                    issues = listOf(
-                        ReleaseNoteIssue(
-                            key = "ATLAS-3",
-                            summary = "새 기능",
-                            typeKey = "story",
-                            typeName = "Story",
-                            hierarchyLevel = 0,
-                            resolutionName = null,
-                        ),
-                    ),
-                )
-                val result = ReleaseNotesGenerator.generate(input)
+                val result =
+                    ReleaseNotesGenerator.generate(
+                        baseInput(listOf(storyIssue("ATLAS-3", "새 기능"))),
+                    )
 
                 result shouldContain "## Story (1)"
             }
 
             it("그룹 순서는 hierarchyLevel 오름차순, 동률은 typeName 오름차순이다") {
-                val input = ReleaseNotesInput(
-                    projectKey = "ATLAS",
-                    versionName = "1.0.0",
-                    versionStatus = "RELEASED",
-                    releaseDate = null,
-                    issues = listOf(
-                        ReleaseNoteIssue(
-                            key = "ATLAS-10",
-                            summary = "에픽 이슈",
-                            typeKey = "epic",
-                            typeName = "Epic",
-                            hierarchyLevel = 1,
-                            resolutionName = null,
+                val epicIssue =
+                    ReleaseNoteIssue(
+                        key = "ATLAS-10",
+                        summary = "에픽 이슈",
+                        typeKey = "epic",
+                        typeName = "Epic",
+                        hierarchyLevel = 1,
+                        resolutionName = null,
+                    )
+                val subtaskIssue =
+                    ReleaseNoteIssue(
+                        key = "ATLAS-30",
+                        summary = "서브태스크",
+                        typeKey = "subtask",
+                        typeName = "Subtask",
+                        hierarchyLevel = -1,
+                        resolutionName = null,
+                    )
+                val result =
+                    ReleaseNotesGenerator.generate(
+                        baseInput(
+                            listOf(
+                                epicIssue,
+                                bugIssue("ATLAS-20", "버그 수정"),
+                                subtaskIssue,
+                                storyIssue("ATLAS-40", "스토리"),
+                            ),
                         ),
-                        ReleaseNoteIssue(
-                            key = "ATLAS-20",
-                            summary = "버그 수정",
-                            typeKey = "bug",
-                            typeName = "Bug",
-                            hierarchyLevel = 0,
-                            resolutionName = null,
-                        ),
-                        ReleaseNoteIssue(
-                            key = "ATLAS-30",
-                            summary = "서브태스크",
-                            typeKey = "subtask",
-                            typeName = "Subtask",
-                            hierarchyLevel = -1,
-                            resolutionName = null,
-                        ),
-                        ReleaseNoteIssue(
-                            key = "ATLAS-40",
-                            summary = "스토리",
-                            typeKey = "story",
-                            typeName = "Story",
-                            hierarchyLevel = 0,
-                            resolutionName = null,
-                        ),
-                    ),
-                )
-                val result = ReleaseNotesGenerator.generate(input)
+                    )
 
                 val lines = result.lines()
                 val subtaskIdx = lines.indexOfFirst { it.startsWith("## Subtask") }
@@ -204,39 +214,16 @@ class ReleaseNotesGeneratorTest : DescribeSpec({
         context("그룹 내 이슈 정렬") {
 
             it("그룹 내 이슈는 key 오름차순으로 정렬된다") {
-                val input = ReleaseNotesInput(
-                    projectKey = "ATLAS",
-                    versionName = "1.0.0",
-                    versionStatus = "RELEASED",
-                    releaseDate = null,
-                    issues = listOf(
-                        ReleaseNoteIssue(
-                            key = "ATLAS-3",
-                            summary = "세 번째",
-                            typeKey = "bug",
-                            typeName = "Bug",
-                            hierarchyLevel = 0,
-                            resolutionName = null,
+                val result =
+                    ReleaseNotesGenerator.generate(
+                        baseInput(
+                            listOf(
+                                bugIssue("ATLAS-3", "세 번째"),
+                                bugIssue("ATLAS-1", "첫 번째"),
+                                bugIssue("ATLAS-2", "두 번째"),
+                            ),
                         ),
-                        ReleaseNoteIssue(
-                            key = "ATLAS-1",
-                            summary = "첫 번째",
-                            typeKey = "bug",
-                            typeName = "Bug",
-                            hierarchyLevel = 0,
-                            resolutionName = null,
-                        ),
-                        ReleaseNoteIssue(
-                            key = "ATLAS-2",
-                            summary = "두 번째",
-                            typeKey = "bug",
-                            typeName = "Bug",
-                            hierarchyLevel = 0,
-                            resolutionName = null,
-                        ),
-                    ),
-                )
-                val result = ReleaseNotesGenerator.generate(input)
+                    )
 
                 val lines = result.lines()
                 val atlas1Idx = lines.indexOfFirst { it.contains("ATLAS-1") }
@@ -251,67 +238,30 @@ class ReleaseNotesGeneratorTest : DescribeSpec({
         context("이슈 항목 형식") {
 
             it("항목이 '- {key} {summary}' 형식으로 생성된다") {
-                val input = ReleaseNotesInput(
-                    projectKey = "ATLAS",
-                    versionName = "1.0.0",
-                    versionStatus = "RELEASED",
-                    releaseDate = null,
-                    issues = listOf(
-                        ReleaseNoteIssue(
-                            key = "ATLAS-5",
-                            summary = "로그인 버그 수정",
-                            typeKey = "bug",
-                            typeName = "Bug",
-                            hierarchyLevel = 0,
-                            resolutionName = null,
-                        ),
-                    ),
-                )
-                val result = ReleaseNotesGenerator.generate(input)
+                val result =
+                    ReleaseNotesGenerator.generate(
+                        baseInput(listOf(bugIssue("ATLAS-5", "로그인 버그 수정"))),
+                    )
 
                 result shouldContain "- ATLAS-5 로그인 버그 수정"
             }
 
             it("resolutionName 이 있으면 항목 끝에 ' ({resolutionName})' 을 표시한다") {
-                val input = ReleaseNotesInput(
-                    projectKey = "ATLAS",
-                    versionName = "1.0.0",
-                    versionStatus = "RELEASED",
-                    releaseDate = null,
-                    issues = listOf(
-                        ReleaseNoteIssue(
-                            key = "ATLAS-5",
-                            summary = "로그인 버그 수정",
-                            typeKey = "bug",
-                            typeName = "Bug",
-                            hierarchyLevel = 0,
-                            resolutionName = "Fixed",
+                val result =
+                    ReleaseNotesGenerator.generate(
+                        baseInput(
+                            listOf(bugIssue("ATLAS-5", "로그인 버그 수정", "Fixed")),
                         ),
-                    ),
-                )
-                val result = ReleaseNotesGenerator.generate(input)
+                    )
 
                 result shouldContain "- ATLAS-5 로그인 버그 수정 (Fixed)"
             }
 
             it("resolutionName 이 null 이면 접미사를 붙이지 않는다") {
-                val input = ReleaseNotesInput(
-                    projectKey = "ATLAS",
-                    versionName = "1.0.0",
-                    versionStatus = "RELEASED",
-                    releaseDate = null,
-                    issues = listOf(
-                        ReleaseNoteIssue(
-                            key = "ATLAS-6",
-                            summary = "대시보드 개선",
-                            typeKey = "story",
-                            typeName = "Story",
-                            hierarchyLevel = 0,
-                            resolutionName = null,
-                        ),
-                    ),
-                )
-                val result = ReleaseNotesGenerator.generate(input)
+                val result =
+                    ReleaseNotesGenerator.generate(
+                        baseInput(listOf(storyIssue("ATLAS-6", "대시보드 개선"))),
+                    )
 
                 result shouldContain "- ATLAS-6 대시보드 개선"
                 result shouldNotContain "- ATLAS-6 대시보드 개선 ("
@@ -321,67 +271,28 @@ class ReleaseNotesGeneratorTest : DescribeSpec({
         context("summary 줄바꿈 치환") {
 
             it("summary 내 \\n 을 공백으로 치환한다") {
-                val input = ReleaseNotesInput(
-                    projectKey = "ATLAS",
-                    versionName = "1.0.0",
-                    versionStatus = "RELEASED",
-                    releaseDate = null,
-                    issues = listOf(
-                        ReleaseNoteIssue(
-                            key = "ATLAS-7",
-                            summary = "첫 줄\n두 번째 줄",
-                            typeKey = "task",
-                            typeName = "Task",
-                            hierarchyLevel = 0,
-                            resolutionName = null,
-                        ),
-                    ),
-                )
-                val result = ReleaseNotesGenerator.generate(input)
+                val result =
+                    ReleaseNotesGenerator.generate(
+                        baseInput(listOf(taskIssue("ATLAS-7", "첫 줄\n두 번째 줄"))),
+                    )
 
                 result shouldContain "- ATLAS-7 첫 줄 두 번째 줄"
             }
 
             it("summary 내 \\r\\n 을 공백으로 치환한다") {
-                val input = ReleaseNotesInput(
-                    projectKey = "ATLAS",
-                    versionName = "1.0.0",
-                    versionStatus = "RELEASED",
-                    releaseDate = null,
-                    issues = listOf(
-                        ReleaseNoteIssue(
-                            key = "ATLAS-8",
-                            summary = "윈도우\r\n줄바꿈",
-                            typeKey = "task",
-                            typeName = "Task",
-                            hierarchyLevel = 0,
-                            resolutionName = null,
-                        ),
-                    ),
-                )
-                val result = ReleaseNotesGenerator.generate(input)
+                val result =
+                    ReleaseNotesGenerator.generate(
+                        baseInput(listOf(taskIssue("ATLAS-8", "윈도우\r\n줄바꿈"))),
+                    )
 
                 result shouldContain "- ATLAS-8 윈도우 줄바꿈"
             }
 
             it("summary 내 \\r 을 공백으로 치환한다") {
-                val input = ReleaseNotesInput(
-                    projectKey = "ATLAS",
-                    versionName = "1.0.0",
-                    versionStatus = "RELEASED",
-                    releaseDate = null,
-                    issues = listOf(
-                        ReleaseNoteIssue(
-                            key = "ATLAS-9",
-                            summary = "CR만\r있는 경우",
-                            typeKey = "task",
-                            typeName = "Task",
-                            hierarchyLevel = 0,
-                            resolutionName = null,
-                        ),
-                    ),
-                )
-                val result = ReleaseNotesGenerator.generate(input)
+                val result =
+                    ReleaseNotesGenerator.generate(
+                        baseInput(listOf(taskIssue("ATLAS-9", "CR만\r있는 경우"))),
+                    )
 
                 result shouldContain "- ATLAS-9 CR만 있는 경우"
             }
@@ -390,38 +301,19 @@ class ReleaseNotesGeneratorTest : DescribeSpec({
         context("복합 시나리오") {
 
             it("여러 타입 + resolution 혼재 — spec §5 해피패스 전체 구조를 검증한다") {
-                val input = ReleaseNotesInput(
-                    projectKey = "ATLAS",
-                    versionName = "2.0.0",
-                    versionStatus = "RELEASED",
-                    releaseDate = LocalDate.of(2026, 6, 10),
-                    issues = listOf(
-                        ReleaseNoteIssue(
-                            key = "ATLAS-1",
-                            summary = "크리티컬 버그 수정",
-                            typeKey = "bug",
-                            typeName = "Bug",
-                            hierarchyLevel = 0,
-                            resolutionName = "Fixed",
-                        ),
-                        ReleaseNoteIssue(
-                            key = "ATLAS-3",
-                            summary = "사용자 인증 개선",
-                            typeKey = "story",
-                            typeName = "Story",
-                            hierarchyLevel = 0,
-                            resolutionName = null,
-                        ),
-                        ReleaseNoteIssue(
-                            key = "ATLAS-2",
-                            summary = "로딩 버그 수정",
-                            typeKey = "bug",
-                            typeName = "Bug",
-                            hierarchyLevel = 0,
-                            resolutionName = null,
-                        ),
-                    ),
-                )
+                val input =
+                    ReleaseNotesInput(
+                        projectKey = "ATLAS",
+                        versionName = "2.0.0",
+                        versionStatus = "RELEASED",
+                        releaseDate = LocalDate.of(2026, 6, 10),
+                        issues =
+                            listOf(
+                                bugIssue("ATLAS-1", "크리티컬 버그 수정", "Fixed"),
+                                storyIssue("ATLAS-3", "사용자 인증 개선"),
+                                bugIssue("ATLAS-2", "로딩 버그 수정"),
+                            ),
+                    )
                 val result = ReleaseNotesGenerator.generate(input)
 
                 result shouldContain "# ATLAS 2.0.0 릴리즈 노트"
