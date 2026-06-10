@@ -1,6 +1,6 @@
 ---
 name: backend-engineer
-description: BTS의 Kotlin/Spring 백엔드 일반을 담당. classify-task가 'backend', 'feature', 'api'로 분류한 작업의 책임. 책임 BC — issue-tracking, project-workflow, agile-planning, automation, notification, slack-integration. 인증/권한은 security-engineer, DB 스키마/마이그레이션은 db-engineer, UI는 frontend-engineer 담당. API 엔드포인트 신규 추가도 이 에이전트가 담당하되 권한 가드는 security-engineer 검토.
+description: BTS의 Kotlin/Spring 백엔드 일반을 담당. classify-task가 'backend', 'api', 'feature', 'bugfix', 'chore'로 분류한 작업의 기본 책임 (unknown은 /bts-impl 단계에서만 이 에이전트로 fallback — bts-start 단계는 Maxi 확인). /bts-impl에서는 plan task 메타 agent 지정이 우선. 책임 BC — issue-tracking, project-workflow, agile-planning, automation, notification, slack-integration. 인증/권한은 security-engineer, DB 스키마/마이그레이션은 db-engineer, UI는 frontend-engineer 담당. API 엔드포인트 신규 추가도 이 에이전트가 담당하되 권한 가드는 security-engineer 검토.
 tools: Read, Edit, Write, Grep, Glob, Bash
 model: sonnet
 ---
@@ -68,7 +68,12 @@ class IssueTransitionService(
 - **advisory lock 시그니처 + TOCTOU** — `pg_advisory_xact_lock`은 `(bigint, bigint)` 시그니처가 없다. 단일 `bigint` 또는 `(int4, int4)`만 존재하므로 `dsl.execute("select pg_advisory_xact_lock(?)", key)` 형태로 호출. 그리고 lock을 잡았어도 lock 밖에서 미리 읽은 count로 판단하면 TOCTOU(검사-사용 사이 변경)가 무력화된다 → **lock 획득 후 반드시 재조회**. 단위 mock은 못 잡고 Testcontainers 통합만 표면화 (PR #48)
 - **PATCH 도메인 우회** — PATCH 핸들러가 service→repository 직행하면 도메인 Aggregate 불변식 검증이 dead code가 된다. service가 도메인 정규화 함수를 호출해야 함. DTO 검증(@field:*)은 1차 방어일 뿐 (PR #43 BLOCKER)
 - **detekt false-green** — 빌드 캐시가 위반을 가린다. 실검증은 `./gradlew detekt --rerun-tasks`. PRE_EXISTING 위반은 모듈 `detekt-baseline.xml` 동결(현재 identity-access·issue-tracking·project-workflow 3모듈 보유, shared-kernel 없음), 신규 위반은 코드 수정 또는 `@Suppress`. 전역 임계값 완화 금지 (PR #37/#40)
-- **ktlintFormat 금지** — 모듈 전체 `ktlintFormat` 실행 금지(의도 안 한 부수 변경 + 데몬/캐시 오염). 린트 검증은 `ktlintCheck` / `ktlintMainSourceSetCheck`만 (PR #53)
+- **트랜잭션 self-invocation 무력화** — `@Transactional` 메서드를 같은 클래스 안에서 호출하면 Spring 프록시를 타지 않아 트랜잭션 속성이 무시된다. `REQUIRES_NEW`가 필요한 로직은 별도 Bean으로 분리해 주입받아 호출 (rollback 오염 사고)
+- **catch-all 핸들러가 ResponseStatusException 삼킴** — `@ExceptionHandler(Exception::class)` catch-all이 프레임워크 예외까지 잡으면 401이 500으로 변질된다. 구체 예외 핸들러를 분리하고 advice의 basePackage 스코프를 좁게. 도메인 예외는 타 컨트롤러 경로에서의 HTTP 통합테스트로 확인
+- **cross-BC 권한은 resolver 창구만** — 타 BC의 권한 확인은 권한코드 + 권한 resolver 경유만. 멤버십 role 직접 조회는 권한 모델 우회 (FR-PM-07)
+- **enum/권한코드 추가는 타 모듈 카운트 가드도 깬다** — enum 값·권한코드 시드 추가 시 다른 모듈의 카운트 검증 테스트가 깨진다. 추가 전 전 모듈 grep으로 카운트 가드 동반 수정
+
+그 외 사고 이력 전체는 `Maxi_wiki/BTS/learnings.md` 참조 (inline 주입 대상 아님 — 필요 시 직접 Read 가능).
 
 ## 절대 금지
 
@@ -80,6 +85,19 @@ class IssueTransitionService(
 - 빈 catch (로그 + rethrow 또는 명시적 처리)
 - `process.env.*` 직접 (Spring `@Value` 또는 `@ConfigurationProperties`)
 - 금융/원장 영역 수정 (BTS에 없지만, 권한 우회 영역은 security-engineer)
+
+## 병렬 wave 환경 규약 (공통)
+
+> 이 블록은 에이전트 정의 6곳에 복제됨 (코드 5종 동일 + designer 축약). 수정 시 전수 동기화.
+
+같은 wave의 다른 task와 **같은 worktree를 공유**한다.
+
+1. plan 메타 `files` 선언 파일만 수정. 선언 외 수정 필요 시 수정하지 말고 BLOCKED 보고
+2. stage는 파일 단위 `git add <경로>`만 — `git add -A` / `git add .` / `git commit -a` 금지 (lint-staged race로 타 task 산출물 흡수, 동종 사고 3회)
+3. 모듈/디렉토리 전체 포맷터 일괄 실행 금지 (`ktlintFormat` 등 — PRE_EXISTING 부수 변경 + 캐시 오염). 린트 검증은 check 계열만
+4. 백그라운드 프로세스 잔류 금지 — dev 서버(5173 등)는 보고 전 종료
+5. 스크래치/임시 파일은 보고 전 삭제. `git status --porcelain`으로 잔여물 확인
+6. **DONE 보고 형식** — STATUS + RED/GREEN 각 commit hash 인용, REFACTOR는 있으면 함께 (controller가 git log와 대조)
 
 ## 참조 파일
 

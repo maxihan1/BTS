@@ -51,7 +51,7 @@ PR diff. <PR_DIFF>
 ```
 Skill({
   skill: "review",
-  args: "PR pre-landing 리뷰. 작업 디렉토리. .worktrees/<slug>. SQL 안전성, LLM 신뢰 경계, 조건부 부수효과 등 구조적 이슈 검사."
+  args: "PR pre-landing 리뷰. 작업 디렉토리. .worktrees/<slug> (이 디렉토리에서 실행 — 프로젝트 체크리스트 .claude/skills/review/checklist.md가 worktree 루트 기준으로 존재). base는 origin/main. 글로벌 카테고리(SQL 안전성, race, LLM 신뢰 경계 등)에 더해 체크리스트의 BTS 고유 항목(Pass 0 PRE_EXISTING 판별, init_codegen 미러, 도메인 예외 핸들러 스코프, @JsonInclude↔Zod 정합) 적용."
 })
 ```
 
