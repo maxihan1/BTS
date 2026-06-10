@@ -1,4 +1,4 @@
-// Header 컴포넌트 단위 테스트 — 사용자명 표시, 로그아웃 클릭, 리다이렉트, 관리 nav 검증
+// Header 컴포넌트 단위 테스트 — 사용자명 표시, 로그아웃 클릭, 리다이렉트, 관리 nav isSystemAdmin 게이팅
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -91,13 +91,46 @@ describe('Header', () => {
     })
   })
 
-  it('관리 nav 안에 워크플로우 스킴 링크가 존재하고 /admin/workflow-schemes를 가리킨다', () => {
+  it('isSystemAdmin=true이면 관리 nav 안에 워크플로우 스킴 링크가 존재한다', () => {
+    useAuthStore.setState({
+      accessToken: 'test-token',
+      user: { username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: true },
+    })
     renderHeader()
 
     // 「워크플로우 스킴」 링크가 존재해야 함
     const link = screen.getByRole('link', { name: '워크플로우 스킴' })
     expect(link).toBeInTheDocument()
     expect(link).toHaveAttribute('href', '/admin/workflow-schemes')
+  })
+
+  it('isSystemAdmin=true이면 관리 nav 안에 감사 로그 링크가 존재한다', () => {
+    useAuthStore.setState({
+      accessToken: 'test-token',
+      user: { username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: true },
+    })
+    renderHeader()
+
+    const link = screen.getByRole('link', { name: '감사 로그' })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute('href', '/admin/audit-logs')
+  })
+
+  it('isSystemAdmin=false이면 관리 메뉴 nav가 렌더되지 않는다', () => {
+    // beforeEach에서 isSystemAdmin: false로 설정됨
+    renderHeader()
+
+    expect(screen.queryByRole('navigation', { name: '관리 메뉴' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '워크플로우 스킴' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '감사 로그' })).not.toBeInTheDocument()
+  })
+
+  it('isSystemAdmin=false이면 로그아웃 드롭다운은 정상 노출된다', () => {
+    // beforeEach에서 isSystemAdmin: false로 설정됨
+    renderHeader()
+
+    // 로그아웃 버튼은 여전히 존재해야 함
+    expect(screen.getByRole('button', { name: /alice/ })).toBeInTheDocument()
   })
 
   it('서버 로그아웃 실패(500) 시에도 세션이 정리되고 /login으로 이동한다', async () => {
