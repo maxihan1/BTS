@@ -57,6 +57,190 @@ classify-task가 제목 끝 "조회 UI" 키워드로 `ui/frontend-engineer` 오�
 - 갭 C: 생성자 주입 파급 + JSONB 직렬화 + @EnableScheduling + 타입 실재검증 → 스펙 §9 구현 파급(G-1~G-7).
 - office-hours/brainstorming 무거운 대화형 스킬은 완성도 높은 인프라 FR에 부적합(메모리 `bts-spec-office-hours-mismatch`) → 직접 기술 스펙 + 적대적 sanity check로 대체.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 모든 경로는 `backend/modules/identity-access/src/...` 기준. 검증: `./gradlew :backend:identity-access:test --tests <Class>` + 모듈 ktlint/detekt.
+> 실재 확인됨(phantom 0): `AuthnResult.Success(principal)`/`Failure(reason)`, `Principal.userId:UUID`/`providerType:ProviderType`, spi `FailureReason{INVALID_CREDENTIALS,INVALID_INPUT,PROVIDER_UNAVAILABLE,ACCOUNT_LOCKED}`, `RotateResult`, `rotate(oldTokenHash)`, `SessionService.revokeAllOfUser`, `UserRepository.provisionFromExternal`. ⚠️ `rotate()`의 실패 enum은 spi가 아닌 **RefreshTokenService 자체 FailureReason(Replay/NotFound/Race)** — 컨텍스트별 올바른 enum 사용.
+
+### Task 1. V021 `auth_audit_logs` 테이블 + 인덱스 3종
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/identity-access/src/main/resources/db/migration/V021__auth_audit_logs.sql`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/audit/AuthAuditLogsSchemaTest.kt`]
+- depends-on: []
+
+**RED**. `AuthAuditLogsSchemaTest`(Testcontainers + Flyway) — `auth_audit_logs` 테이블 존재 + 컬럼 9종(id BIGINT IDENTITY, user_id UUID NULL, event_type, provider_id, ip_address, user_agent, device_fingerprint, metadata JSONB, created_at) + 인덱스 3종 조회. 실패: relation 없음.
+
+**GREEN**. V021 마이그레이션 작성 (스펙 §4.1/4.2). FK 없음, 단순 테이블, 인덱스 3종(`idx_..._user_created`, `idx_..._event_type`, `idx_..._created_at`).
+
+**REFACTOR**. 컬럼/인덱스 COMMENT, 1줄 L1 한글 주석.
+
+**검증**. `./gradlew :backend:identity-access:test --tests AuthAuditLogsSchemaTest`.
+
+### Task 2. `AuthAuditLog.userId` nullable화
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/audit/AuthAuditLog.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/audit/AuthAuditLogServiceTest.kt`]
+- depends-on: []
+
+**RED**. `AuthAuditLogServiceTest`에 `userId = null`로 `AuthAuditLog` 생성 + record/findRecent 케이스 추가. 실패: `UUID?` 아님(컴파일/타입).
+
+**GREEN**. `userId: UUID` → `UUID?`. 그 외 필드 무변경. (기존 non-null 호출부 호환.)
+
+**REFACTOR**. KDoc에 "null = 사용자 미상(LOGIN_FAILURE/LDAP_UNAVAILABLE)" 명시.
+
+**검증**. `./gradlew :backend:identity-access:test --tests AuthAuditLogServiceTest`.
+
+### Task 3. `JdbcAuthAuditLogService` 영속 구현 + 빈 전환
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/audit/JdbcAuthAuditLogService.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/audit/InMemoryAuthAuditLogService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/audit/JdbcAuthAuditLogServiceIntegrationTest.kt`]
+- depends-on: [1, 2]
+
+**RED**. `JdbcAuthAuditLogServiceIntegrationTest`(Testcontainers) — record→findRecent 왕복, 최신순(created_at DESC, id DESC tiebreaker), limit, 사용자 격리, **userId=null 영속/조회**, metadata JSONB 왕복, 재조회 내구성. 실패: `JdbcAuthAuditLogService` 없음.
+
+**GREEN**.
+- `JdbcAuthAuditLogService(@Repository 패턴, NamedParameterJdbcTemplate)` — `record()`=INSERT, `findRecent(userId,limit)`=SELECT ORDER BY created_at DESC, id DESC LIMIT. SQL은 companion const, named param, RowMapper. **JSONB 직렬화는 기존 패턴 재사용**(G-3: LockoutPolicy/authn_providers config JSONB 핸들링 grep해 동일 방식, 신규 발명 금지).
+- `@Service`를 `JdbcAuthAuditLogService`에 부착. `InMemoryAuthAuditLogService`에서 `@Service` 제거(단위테스트 헬퍼로 강등). `@Transactional` 서비스이므로 `@Service` 필수(ArchUnit 가드).
+- **G-2 기존 빈 소비 테스트 점검**: InMemory를 auto-wire하던 통합테스트가 Jdbc로 전환돼도 green인지(WhoamiController/Pat/ProjectMembership 통합). 단위테스트는 InMemory 직접 생성 유지.
+
+**REFACTOR**. SQL const 추출, MaxLineLength 주의(G-7 블록 단위), KDoc 갱신(현재→영속).
+
+**검증**. `./gradlew :backend:identity-access:test --tests JdbcAuthAuditLogServiceIntegrationTest --rerun-tasks`.
+
+### Task 4. AuthController emit — LOGIN_SUCCESS/LOGIN_FAILURE/LOGOUT
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/AuthController.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/AuthControllerTest.kt`]
+- depends-on: [3]
+
+**RED**. `AuthControllerTest`(mock AuthAuditLogService) — (a) 로그인 성공 시 LOGIN_SUCCESS(userId=principal.userId, providerId, ip/userAgent from request), (b) 자격증명 실패 시 LOGIN_FAILURE(userId=null, metadata.username/reason), (c) **PROVIDER_UNAVAILABLE 실패는 LOGIN_FAILURE emit 안 함**(EC-11), (d) 로그아웃 시 LOGOUT(metadata.sid). 실패: emit 없음.
+
+**GREEN**. `AuthController` 생성자에 `AuthAuditLogService` 주입(G-1). login Success 분기 issueTokens 직전 + Failure 분기(reason≠PROVIDER_UNAVAILABLE) 401 직전 + logout revoke 직후 record. ip=`request.remoteAddr`, userAgent=`request.getHeader("User-Agent")`.
+
+**REFACTOR**. emit 헬퍼 private 함수 추출(중복 제거).
+
+**검증**. `./gradlew :backend:identity-access:test --tests AuthControllerTest`.
+
+### Task 5. SessionService emit — LOGOUT_ALL_DEVICES
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/session/SessionService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/session/SessionServiceTest.kt`]
+- depends-on: [3]
+
+**RED**. `SessionServiceTest`(mock 추가) — `revokeAllOfUser(userId)` 호출 시 revoked>0이면 LOGOUT_ALL_DEVICES emit(userId, metadata.revokedSessionCount), revoked==0이면 emit 안 함. 실패: emit 없음.
+
+**GREEN**. SessionService 생성자에 `AuthAuditLogService` 주입(G-1). revokeAllByUserId 직후 조건부 record.
+
+**REFACTOR**. 불필요.
+
+**검증**. `./gradlew :backend:identity-access:test --tests SessionServiceTest`.
+
+### Task 6. RefreshTokenService emit — TOKEN_REFRESHED + SUSPICIOUS_REFRESH_REPLAY
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/session/RefreshTokenService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/session/RefreshTokenServiceTest.kt`]
+- depends-on: [3]
+
+**RED**. `RefreshTokenServiceTest`(mock 추가) — (a) rotate 성공 시 TOKEN_REFRESHED(session.userId, metadata old/new tokenId), (b) **replay 분기**(used/replaced 재사용)만 SUSPICIOUS_REFRESH_REPLAY emit, (c) **race-loser 분기는 emit 안 함**(EC-7). 실패: emit 없음.
+
+**GREEN**. RefreshTokenService 생성자에 `AuthAuditLogService` 주입(G-1). RotateResult.Success 직전 TOKEN_REFRESHED. replay 감지 분기(RefreshTokenService 자체 FailureReason.Replay 경로)에서만 SUSPICIOUS_REFRESH_REPLAY — **체인 폐기와 같은 트랜잭션 커밋**(G-6, rotate는 예외 아닌 Failure 반환). race-loser(Race) 분기 제외.
+
+**REFACTOR**. 불필요.
+
+**검증**. `./gradlew :backend:identity-access:test --tests RefreshTokenServiceTest`.
+
+### Task 7. AutoProvisionService emit — USER_PROVISIONED (신규 only)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/provider/ldap/AutoProvisionService.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/user/UserRepository.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/provider/ldap/AutoProvisionServiceTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/user/UserRepositoryTest.kt`]
+- depends-on: [3]
+
+**RED**. (a) `UserRepositoryTest` — `provisionFromExternal`이 신규 INSERT시 `isNew=true`, 기존 username 재호출시 `isNew=false` 노출. (b) `AutoProvisionServiceTest`(mock 추가) — 신규시만 USER_PROVISIONED emit(user.id, metadata.username/providerType), 기존 재로그인은 emit 안 함(EC-3). 실패: isNew 미노출/emit 없음.
+
+**GREEN**. `provisionFromExternal` UPSERT를 `INSERT ... ON CONFLICT ... RETURNING (xmax = 0) AS is_new`로 확장, 반환에 신규 플래그 포함(호출자 흡수 — 외부 시그니처 영향 최소). AutoProvisionService 생성자에 `AuthAuditLogService` 주입(G-1), is_new시만 record.
+
+**REFACTOR**. provisionFromExternal 반환 타입 정리(Pair 또는 결과 DTO).
+
+**검증**. `./gradlew :backend:identity-access:test --tests AutoProvisionServiceTest --tests UserRepositoryTest`.
+
+### Task 8. SSO 성공 핸들러 emit — LOGIN_SUCCESS (OIDC + SAML)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/provider/oidc/OidcAuthenticationSuccessHandler.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/provider/saml/Saml2AuthenticationSuccessHandler.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/provider/oidc/OidcAuthenticationSuccessHandlerTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/provider/saml/Saml2AuthenticationSuccessHandlerTest.kt`]
+- depends-on: [3]
+
+**RED**. 각 핸들러 테스트(mock 추가) — onAuthenticationSuccess시 LOGIN_SUCCESS emit(user.id, providerId=oidc/saml, ip/userAgent from request). 실패: emit 없음.
+
+**GREEN**. 각 핸들러 생성자에 `AuthAuditLogService` 주입(G-1, SecurityConfig 배선 확인). 프로비저닝 직후 record. (USER_PROVISIONED는 Task 7의 AutoProvisionService 내부에서 별도 emit — 중복 아님.)
+
+**REFACTOR**. 불필요.
+
+**검증**. `./gradlew :backend:identity-access:test --tests Oidc* --tests Saml2*`.
+
+### Task 9. LdapProvider emit — LDAP_UNAVAILABLE
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/provider/ldap/LdapProvider.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/provider/ldap/LdapProviderTest.kt`]
+- depends-on: [3]
+
+**RED**. `LdapProviderTest`(mock 추가) — (a) LDAP 미설정/bind password 미설정시, (b) CommunicationException(통신 불가)시 LDAP_UNAVAILABLE emit(userId=null, metadata.reason/exception). 실패: emit 없음.
+
+**GREEN**. LdapProvider 생성자에 `AuthAuditLogService` 주입(G-1). config null / bind password null / CommunicationException catch 지점에서 record. userId=null(EC-2, 더미 UUID 금지).
+
+**REFACTOR**. 불필요.
+
+**검증**. `./gradlew :backend:identity-access:test --tests LdapProviderTest`.
+
+### Task 10. 보존 1년 — @Scheduled 정리 작업
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/audit/AuthAuditLogRetentionJob.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/audit/AuthAuditLogService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/audit/AuthAuditLogRetentionJobIntegrationTest.kt`]
+- depends-on: [3]
+
+**RED**. `AuthAuditLogRetentionJobIntegrationTest`(Testcontainers) — 1년 경과 행 + 미경과 행 시드 후 purge 메서드 직접 호출 → 경과 행만 삭제. 실패: purge 없음.
+
+**GREEN**. `AuthAuditLogService`에 `purgeOlderThan(cutoff: Instant): Int` 추가(Jdbc 구현=`DELETE WHERE created_at < :cutoff`, InMemory 구현도 대응). `AuthAuditLogRetentionJob` `@Component` + `@Scheduled`(일 1회 등)가 `purgeOlderThan(now - 1년)` 호출. **G-4: `@EnableScheduling` 실재 확인 후 없으면 추가, 테스트 프로파일 스케줄 억제, 테스트는 메서드 직접 호출**.
+
+**REFACTOR**. cutoff 상수(1년) 명명.
+
+**검증**. `./gradlew :backend:identity-access:test --tests AuthAuditLogRetentionJobIntegrationTest`.
+
+### Task 11. "이벤트 누락 0" 커버리지 캡스톤 테스트
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/audit/AuthEventEmitCoverageTest.kt`]
+- depends-on: [4, 5, 6, 7, 8, 9]
+
+**RED**. `AuthEventEmitCoverageTest` — `AuthEventType` 12종 enum 전부가 코드베이스에 1개 이상 emit 경로(또는 테스트 커버)를 가지는지 회귀 가드. enum에 새 값 추가 시 fail해 누락 방지(vacuous 회피 — 일부러 미배선 값 넣으면 fail 확인, 메모리 `archunit-vacuous-rule-silent-pass`). 실패: 일부 미커버.
+
+**GREEN**. (선행 task가 모두 배선했으므로) 12종 전부 커버 확인.
+
+**REFACTOR**. 가드 메시지에 "새 AuthEventType 추가시 emit 배선 + 본 테스트 갱신" 안내.
+
+**검증**. `./gradlew :backend:identity-access:test --tests AuthEventEmitCoverageTest`.
+
+## Plan 메타
+
+- task 수: 11
+- wave 예상 (depends-on + files 기반):
+  - wave 1: T1(db), T2(security) — 병렬(다른 파일)
+  - wave 2: T3 — 영속+빈전환(T1,T2 의존)
+  - wave 3: T4~T10 — emit 배선 7종, 모두 T3 의존 + 서로 다른 파일 → 병렬 후보
+  - wave 4: T11 — 캡스톤(T4~T9 의존)
+- ⚠️ **모듈 단일 test 컴파일 직렬화**(메모리 `bts-plan-wave-gradle-module-compile`): wave 3의 7 task가 파일은 disjoint여도 identity-access 단일 test 컴파일 단위라 test 실행은 직렬화됨. wave 병렬은 구현/red 작성 단계에 유효.
+- **G-1 주입 파급**: T4~T9 각 task의 `files`에 해당 빈의 기존 단위테스트 포함. 통합테스트는 Jdbc @Service 자동 배선이라 공유 TestConfig 수술 불요(공유 파일 충돌 회피) — 단위테스트 mock은 각 task 자기 테스트 파일에만.
+- TDD 강제: yes (red→green→refactor, `test:` 커밋 선행 검증)
+- 추가 검증: 모듈 ktlint/detekt(`--rerun-tasks`), 기존 로그인/세션/리프레시/프로비저닝 회귀 0.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
