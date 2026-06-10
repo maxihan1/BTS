@@ -100,6 +100,9 @@ import java.util.UUID
     excludeAutoConfiguration = [OAuth2ClientAutoConfiguration::class],
 )
 @Import(SecurityConfig::class, AuthControllerTest.SecurityBeans::class)
+// LargeClass 억제 — login/logout/refresh/sessions/revokeSession 5개 엔드포인트 + FR-AU-10 감사 emit
+// 시나리오까지 단일 슬라이스 테스트로 응집한다. 엔드포인트별 분리는 공유 SecurityBeans/MockBean 중복을 낳는다.
+@Suppress("LargeClass")
 class AuthControllerTest {
     /** raw refresh token — 64자 소문자 hex */
     private val refreshTokenRaw = "ab".repeat(32)
@@ -880,7 +883,11 @@ class AuthControllerTest {
             }
 
         `when`(
-            authenticationManager.authenticate(eqStr("local"), org.mockito.ArgumentMatchers.anyString(), anyCharArray()),
+            authenticationManager.authenticate(
+                eqStr("local"),
+                org.mockito.ArgumentMatchers.anyString(),
+                anyCharArray(),
+            ),
         ).thenReturn(AuthnResult.Success(principal))
         `when`(
             sessionService.create(
@@ -1026,7 +1033,11 @@ class AuthControllerTest {
             }
 
         `when`(
-            authenticationManager.authenticate(eqStr("local"), org.mockito.ArgumentMatchers.anyString(), anyCharArray()),
+            authenticationManager.authenticate(
+                eqStr("local"),
+                org.mockito.ArgumentMatchers.anyString(),
+                anyCharArray(),
+            ),
         ).thenReturn(AuthnResult.Success(principal))
         `when`(
             sessionService.create(

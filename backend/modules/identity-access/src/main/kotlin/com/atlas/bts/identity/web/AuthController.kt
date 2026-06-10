@@ -328,8 +328,12 @@ class AuthController(
      * 흐름을 계속한다. 단 **silent 삼킴은 금지** — high-severity 에러 로그로 감사 갭을 탐지 가능하게 한다.
      * 로그에는 PII(ip/userAgent/username)를 출력하지 않고 이벤트 유형만 남긴다(DEVELOPMENT.md §1.2).
      *
+     * `TooGenericExceptionCaught` 억제 — B-1 가용성 우선 정책상 어떤 RuntimeException 이든(DataAccess/
+     * 직렬화/타임아웃 등) 흐름을 계속해야 하며, error 로그로 감사 갭을 경보하므로 generic catch 가 의도적이다.
+     *
      * @param event 기록할 감사 이벤트
      */
+    @Suppress("TooGenericExceptionCaught")
     private fun recordAuditBestEffort(event: AuthAuditLog) {
         try {
             authAuditLogService.record(event)
