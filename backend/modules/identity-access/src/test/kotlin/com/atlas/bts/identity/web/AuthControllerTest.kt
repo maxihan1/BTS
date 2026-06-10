@@ -2,6 +2,9 @@
 
 package com.atlas.bts.identity.web
 
+import com.atlas.bts.identity.audit.AuthAuditLog
+import com.atlas.bts.identity.audit.AuthAuditLogService
+import com.atlas.bts.identity.audit.AuthEventType
 import com.atlas.bts.identity.auth.CompositeAuthenticationManager
 import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
@@ -24,7 +27,10 @@ import com.atlas.bts.identity.systemrole.SystemRole
 import com.atlas.bts.identity.systemrole.SystemRoleAssignmentRepository
 import io.mockk.mockk
 import jakarta.servlet.http.Cookie
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentCaptor
+import org.mockito.Mockito.doThrow
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
@@ -149,6 +155,9 @@ class AuthControllerTest {
 
     @MockBean
     lateinit var systemRoleAssignmentRepository: SystemRoleAssignmentRepository
+
+    @MockBean
+    lateinit var authAuditLogService: AuthAuditLogService
 
     /** 기본값: 전역 역할 없음 (일반 사용자). 역할 의존 케이스는 개별 테스트에서 재정의. */
     @org.junit.jupiter.api.BeforeEach
@@ -842,6 +851,231 @@ class AuthControllerTest {
                 ),
         )
             .andExpect(status().isBadRequest)
+    }
+
+    // ── FR-AU-10 감사 emit (LOGIN_SUCCESS / LOGIN_FAILURE / LOGOUT) ─────────────
+
+    /**
+     * (a) 로그인 성공 시 LOGIN_SUCCESS 감사 이벤트를 기록한다 (spec §5).
+     * userId=principal.userId, providerId=principal.providerType.name.lowercase(),
+     * ip=request.remoteAddr, userAgent=request User-Agent 헤더.
+     */
+    @Test
+    fun `login success records LOGIN_SUCCESS audit event`() {
+        val userId = UUID.fromString("11111111-1111-1111-1111-111111111111")
+        val sessionId = UUID.fromString("22222222-2222-2222-2222-222222222222")
+
+        val principal =
+            Principal(
+                userId = userId,
+                providerType = ProviderType.LOCAL,
+                displayName = "Alice",
+                externalSubject = null,
+            )
+        val mockSession =
+            mock(Session::class.java).also {
+                `when`(it.id).thenReturn(sessionId)
+                `when`(it.userId).thenReturn(userId)
+                `when`(it.providerId).thenReturn("local")
+            }
+
+        `when`(
+            authenticationManager.authenticate(eqStr("local"), org.mockito.ArgumentMatchers.anyString(), anyCharArray()),
+        ).thenReturn(AuthnResult.Success(principal))
+        `when`(
+            sessionService.create(
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+            ),
+        ).thenReturn(mockSession)
+        `when`(
+            jwtIssuer.issue(
+                anyUuid(),
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.anyList(),
+            ),
+        ).thenReturn("eyJhbGciOiJSUzI1NiJ9.test.access")
+
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("User-Agent", "Mozilla/5.0 (audit-test)")
+                .content("""{"provider":"local","username":"alice","password":"secret"}"""),
+        )
+            .andExpect(status().isOk)
+
+        val captor = ArgumentCaptor.forClass(AuthAuditLog::class.java)
+        verify(authAuditLogService).record(captor.capture())
+        val event = captor.value
+        assertThat(event.eventType).isEqualTo(AuthEventType.LOGIN_SUCCESS)
+        assertThat(event.userId).isEqualTo(userId)
+        assertThat(event.providerId).isEqualTo("local")
+        assertThat(event.ipAddress).isEqualTo("127.0.0.1")
+        assertThat(event.userAgent).isEqualTo("Mozilla/5.0 (audit-test)")
+    }
+
+    /**
+     * (b) 자격증명 실패(PROVIDER_UNAVAILABLE 외) 시 LOGIN_FAILURE 감사 이벤트를 기록한다 (spec §5 / EC-1).
+     * userId=null(존재 probe 회피 NFR-2), metadata 에 username 시도값과 reason 포함.
+     */
+    @Test
+    fun `login credential failure records LOGIN_FAILURE audit event with null userId`() {
+        `when`(
+            authenticationManager.authenticate(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                anyCharArray(),
+            ),
+        ).thenReturn(AuthnResult.Failure(INVALID_CREDENTIALS))
+
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"provider":"local","username":"alice","password":"wrong"}"""),
+        )
+            .andExpect(status().isUnauthorized)
+
+        val captor = ArgumentCaptor.forClass(AuthAuditLog::class.java)
+        verify(authAuditLogService).record(captor.capture())
+        val event = captor.value
+        assertThat(event.eventType).isEqualTo(AuthEventType.LOGIN_FAILURE)
+        assertThat(event.userId).isNull()
+        assertThat(event.metadata["username"]).isEqualTo("alice")
+        assertThat(event.metadata["reason"]).isEqualTo(INVALID_CREDENTIALS.name)
+    }
+
+    /**
+     * (c) PROVIDER_UNAVAILABLE 실패는 LOGIN_FAILURE 를 emit 하지 않는다 (EC-11 무중복).
+     * provider-unavailable 은 LdapProvider 깊은 지점에서 LDAP_UNAVAILABLE 로만 기록되므로
+     * AuthController 가 추가 기록하면 이중 기록이 된다.
+     */
+    @Test
+    fun `login provider unavailable failure does not emit LOGIN_FAILURE`() {
+        `when`(
+            authenticationManager.authenticate(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                anyCharArray(),
+            ),
+        ).thenReturn(AuthnResult.Failure(com.atlas.bts.identity.spi.FailureReason.PROVIDER_UNAVAILABLE))
+
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"provider":"ldap","username":"alice","password":"secret"}"""),
+        )
+            .andExpect(status().isUnauthorized)
+
+        verify(authAuditLogService, never()).record(org.mockito.ArgumentMatchers.any(AuthAuditLog::class.java))
+    }
+
+    /**
+     * (d) 로그아웃 시 LOGOUT 감사 이벤트를 기록한다 (spec §5).
+     * userId=JWT subject, metadata.sid=JWT sid 클레임.
+     */
+    @Test
+    fun `logout records LOGOUT audit event with sid metadata`() {
+        val userId = UUID.fromString("11111111-1111-1111-1111-111111111111")
+        val sessionId = UUID.fromString("22222222-2222-2222-2222-222222222222")
+
+        mockMvc.perform(
+            post("/api/v1/auth/logout")
+                .with(
+                    jwt().jwt { builder ->
+                        builder
+                            .subject(userId.toString())
+                            .claim("sid", sessionId.toString())
+                    },
+                ),
+        )
+            .andExpect(status().isNoContent)
+
+        val captor = ArgumentCaptor.forClass(AuthAuditLog::class.java)
+        verify(authAuditLogService).record(captor.capture())
+        val event = captor.value
+        assertThat(event.eventType).isEqualTo(AuthEventType.LOGOUT)
+        assertThat(event.userId).isEqualTo(userId)
+        assertThat(event.metadata["sid"]).isEqualTo(sessionId.toString())
+    }
+
+    /**
+     * (e) B-1 best-effort — record() 가 예외를 던져도 로그인 응답은 200 이고 예외가 전파되지 않는다.
+     * AuthController 는 의도적 무-트랜잭션이라 감사 INSERT 실패가 로그인 가용성을 인질로 잡으면 안 된다.
+     */
+    @Test
+    fun `login still returns 200 when audit record throws (best-effort)`() {
+        val userId = UUID.fromString("11111111-1111-1111-1111-111111111111")
+        val sessionId = UUID.fromString("22222222-2222-2222-2222-222222222222")
+
+        val principal =
+            Principal(
+                userId = userId,
+                providerType = ProviderType.LOCAL,
+                displayName = "Alice",
+                externalSubject = null,
+            )
+        val mockSession =
+            mock(Session::class.java).also {
+                `when`(it.id).thenReturn(sessionId)
+                `when`(it.userId).thenReturn(userId)
+                `when`(it.providerId).thenReturn("local")
+            }
+
+        `when`(
+            authenticationManager.authenticate(eqStr("local"), org.mockito.ArgumentMatchers.anyString(), anyCharArray()),
+        ).thenReturn(AuthnResult.Success(principal))
+        `when`(
+            sessionService.create(
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+            ),
+        ).thenReturn(mockSession)
+        `when`(
+            jwtIssuer.issue(
+                anyUuid(),
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.anyList(),
+            ),
+        ).thenReturn("eyJhbGciOiJSUzI1NiJ9.test.access")
+        doThrow(RuntimeException("audit DB down")).`when`(authAuditLogService)
+            .record(org.mockito.ArgumentMatchers.any(AuthAuditLog::class.java))
+
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"provider":"local","username":"alice","password":"secret"}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.access_token").value("eyJhbGciOiJSUzI1NiJ9.test.access"))
+    }
+
+    /**
+     * (e-2) B-1 best-effort (logout) — record() 가 예외를 던져도 로그아웃 응답은 204 이고 예외 미전파.
+     */
+    @Test
+    fun `logout still returns 204 when audit record throws (best-effort)`() {
+        doThrow(RuntimeException("audit DB down")).`when`(authAuditLogService)
+            .record(org.mockito.ArgumentMatchers.any(AuthAuditLog::class.java))
+
+        mockMvc.perform(
+            post("/api/v1/auth/logout")
+                .with(
+                    jwt().jwt { builder ->
+                        builder
+                            .subject("11111111-1111-1111-1111-111111111111")
+                            .claim("sid", "22222222-2222-2222-2222-222222222222")
+                    },
+                ),
+        )
+            .andExpect(status().isNoContent)
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
