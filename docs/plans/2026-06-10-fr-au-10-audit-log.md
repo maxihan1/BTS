@@ -40,9 +40,22 @@ classify-task가 제목 끝 "조회 UI" 키워드로 `ui/frontend-engineer` 오�
 - **기존 결정 충돌**: SDD §19.9 파티셔닝 일탈 (ADR로 근거 기록). 그 외 충돌 없음.
 - **관련 ADR**: [docs/decisions/2026-06-10-auth-audit-log-persistence.md](../decisions/2026-06-10-auth-audit-log-persistence.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-10-fr-au-10-audit-log.md](../specs/2026-06-10-fr-au-10-audit-log.md)
+
+핵심 3줄 요약.
+- 기존 `audit/` 골격(enum 12종 + AuthAuditLog + service)을 `JdbcAuthAuditLogService`(raw JDBC, V021 `auth_audit_logs` 테이블)로 영속화.
+- enum 12종 전부 emit 배선 — 현재 4종(PAT/PROJECT_*)만 emit, 8종 갭(LOGIN_*, LOGOUT_*, TOKEN_REFRESHED, REPLAY, PROVISIONED, LDAP_UNAVAILABLE). SSO 성공은 OIDC/SAML 핸들러 3곳까지.
+- `AuthAuditLog.userId` nullable화(LOGIN_FAILURE/LDAP_UNAVAILABLE), @Scheduled 1년 보존, 무중복 규칙(EC-11), 신규-only USER_PROVISIONED(xmax).
+
+## Brainstorming Check
+
+✅ 통과 (직접 적대적 검토, gap 3건 발견 후 스펙 반영).
+- 갭 A: SSO(OIDC/SAML) LOGIN_SUCCESS 누락 → 성공 핸들러 2곳 추가 배선(EC-12).
+- 갭 B: LOGIN_FAILURE↔LDAP_UNAVAILABLE 이중기록 → 무중복 규칙(EC-11).
+- 갭 C: 생성자 주입 파급 + JSONB 직렬화 + @EnableScheduling + 타입 실재검증 → 스펙 §9 구현 파급(G-1~G-7).
+- office-hours/brainstorming 무거운 대화형 스킬은 완성도 높은 인프라 FR에 부적합(메모리 `bts-spec-office-hours-mismatch`) → 직접 기술 스펙 + 적대적 sanity check로 대체.
 
 ## Plan (← /bts-plan 채움)
 
