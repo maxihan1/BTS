@@ -11,9 +11,7 @@ class AuthEventEmitCoverageTest {
 
     @Test
     fun `모든 AuthEventType 은 main 소스에 emit 배선이 존재해야 한다`() {
-        // RED 단계 — 의도적으로 존재하지 않는 가짜 이벤트명을 스캔 대상에 추가해
-        // 가드가 진짜 미배선을 잡는지 증명한다 (vacuous green 회피, GREEN 에서 제거).
-        val eventNames = AuthEventType.entries.map { it.name } + "__FAKE_UNWIRED_EVENT__"
+        val eventNames = AuthEventType.entries.map { it.name }
 
         val mainSourceFiles = collectMainSourceKtFiles()
         val unwired = eventNames.filter { name ->
