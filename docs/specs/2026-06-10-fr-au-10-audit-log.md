@@ -6,7 +6,7 @@
 
 ## 0. 한 줄 요약
 
-이미 골격이 선 감사 시스템(`audit/` 패키지: `AuthEventType` 12종 + `AuthAuditLog` + `AuthAuditLogService` + `InMemoryAuthAuditLogService`)을 **DB 영속화**하고, enum 12종이 **전부 emit되도록 8개 갭을 배선**한다. 보존 1년은 `@Scheduled` 정리로 enforce.
+이미 골격이 선 감사 시스템(`audit/` 패키지: `AuthEventType` 12종 + `AuthAuditLog` + `AuthAuditLogService` + `InMemoryAuthAuditLogService`)을 **DB 영속화**하고, enum 12종이 **전부 emit되도록 8개 갭을 배선**한다. 감사 로그는 **append-only 영구 보존**(DATA.md §3, "보존 1년"은 최소 floor — 영구 보존이 충족, Maxi 결정 2026-06-10).
 
 ## 1. 사용자 시나리오 (Given-When-Then)
 
@@ -22,7 +22,7 @@
 - **S8 LDAP 불가 기록**. Given LDAP 서버 통신 불가/미설정, When 인증 시도, Then `LDAP_UNAVAILABLE` 1행(userId null, reason metadata).
 - **S9 PAT 사용 기록**. (기존 유지) PAT 인증 시 `PAT_USED` 1행 — 영속 백엔드로 자동 전환.
 - **S10 권한 변경 기록**. (기존 유지) 프로젝트 멤버 추가/제거/역할변경 시 `PROJECT_MEMBER_ADDED/REMOVED`·`PROJECT_ROLE_CHANGED` — 영속 백엔드로 자동 전환.
-- **S11 보존 1년**. Given `created_at`이 1년 지난 행, When 정리 스케줄 실행, Then 해당 행 삭제.
+- **S11 영구 보존**. Given 기록된 감사 로그, When 시간이 1년 이상 경과, Then 삭제되지 않고 보존(DATA.md §3 append-only — "보존 1년"은 최소 floor 충족).
 - **S12 프로세스 재시작 내구성**. Given 기록된 감사 로그, When 애플리케이션 재시작, Then 로그 보존(인메모리와 달리 소실 없음).
 
 ## 2. 기능 요구사항 (FR)
@@ -33,7 +33,7 @@
 - **FR-4 (D1/D4)**. `AuthAuditLog.userId`를 `UUID` → `UUID?`로 변경 (LOGIN_FAILURE·LDAP_UNAVAILABLE 수용, SDD 19.9 원안 `userId: Long?`과 정합).
 - **FR-5 (D4)**. 8개 갭 이벤트 emit 배선 (§5 매핑표). enum 12종 전부 1개 이상 emit 경로 보유.
 - **FR-6 (D4)**. `USER_PROVISIONED`은 신규 사용자에만 emit. `provisionFromExternal()`이 신규 여부를 노출(PostgreSQL `xmax = 0` RETURNING) → 호출자(AutoProvisionService)가 신규일 때만 record.
-- **FR-7 (D2)**. 보존 1년 enforcement. `@Scheduled` 작업이 `created_at < now() - INTERVAL '1 year'` 행을 주기 삭제.
+- **FR-7 (D2)**. 보존 정책 = **append-only 영구 보존**(DATA.md §3 "감사 로그 절대 삭제 금지"). 삭제/정리 작업 미도입. "보존 1년"(SDD §2.3.3)은 최소 보존 floor로 충족. (T10 드롭.)
 - **FR-8 (D5)**. enum 12종 전부에 대해 "emit → DB 영속 → findRecent 조회" 통합 테스트(Testcontainers). "이벤트 누락 0" 회귀 가드.
 
 ## 3. 비기능 요구사항 (NFR)
@@ -71,7 +71,7 @@
 
 - `idx_auth_audit_logs_user_created` ON (user_id, created_at DESC) — findRecent(userId) 조회.
 - `idx_auth_audit_logs_event_type` ON (event_type) — 이벤트 유형 필터(후속 admin).
-- `idx_auth_audit_logs_created_at` ON (created_at) — 보존 1년 정리 sweep(`DELETE WHERE created_at < ...`).
+- `idx_auth_audit_logs_created_at` ON (created_at) — 시간 범위 조회(후속 admin 필터/감사 기간 검색). (삭제 sweep 아님 — append-only.)
 
 ### 4.3 도메인 클래스 변경
 
@@ -130,7 +130,7 @@
 2. `JdbcAuthAuditLogService` 통합테스트 — record→findRecent 왕복, 최신순/limit/사용자격리/nullable userId.
 3. **enum 12종 전부 emit 통합테스트 green**(이벤트 누락 0 회귀 가드).
 4. USER_PROVISIONED 신규-only / race-loser 비-emit / LOGIN_FAILURE userId-null 회귀 가드.
-5. 보존 정리 작업 테스트(1년 경과 행 삭제, 미경과 행 보존).
+5. (삭제됨) ~~보존 정리 작업 테스트~~ — append-only 영구 보존이라 정리 작업 없음(T10 드롭).
 6. identity-access 모듈 전체 test + ktlint + detekt green(`--rerun-tasks`).
 7. 기존 로그인/세션/리프레시/프로비저닝 E2E·통합 회귀 0.
 
@@ -141,7 +141,7 @@ Brainstorming sanity check에서 도출. plan task 분해 시 반드시 포함.
 - **G-1 생성자 주입 파급 (메모리 `plan-files-constructor-injection-existing-tests`)**. `AuthAuditLogService`를 신규 주입하는 빈 = AuthController·SessionService·RefreshTokenService·AutoProvisionService·LdapProvider·OIDC/SAML 성공핸들러. 각 빈의 **기존 단위테스트(mock 추가)** + **통합 TestConfig 배선**이 함께 깨지므로, 해당 task의 `files`에 기존 테스트도 포함. (WhoamiController·ProjectMembershipService는 이미 주입됨.)
 - **G-2 기존 빈 소비 테스트 점검**. `InMemoryAuthAuditLogService`의 `@Service` 제거 시, 이 빈을 auto-wire해 findRecent를 assert하던 기존 테스트(WhoamiControllerTest/PatAndConcurrencyIntegrationTest/ProjectMembershipServiceTest 등)가 Jdbc 빈으로 전환됨 → DB 기반 assert로 동작하는지 확인. 단위테스트는 InMemory 직접 생성 유지.
 - **G-3 JSONB↔Map 직렬화**. `metadata: Map<String,String>` ↔ JSONB. 신규 직렬화 발명 금지 — 기존 JSONB 패턴 재사용(LockoutPolicy JSONB / authn_providers config JSONB 핸들링 grep해 동일 방식, 메모리 `lockout-policy-location`).
-- **G-4 `@EnableScheduling` 실재 확인**. `@Scheduled` 보존 작업 추가 전 모듈에 스케줄링 활성화 존재 여부 grep. 없으면 추가(다른 @Scheduled 빈 부작용 확인). 테스트는 purge 메서드 직접 호출(스케줄 트리거 의존 금지), 테스트 프로파일에서 스케줄 실행 억제.
+- **G-4 (삭제됨)** ~~@EnableScheduling~~ — 보존 정리 작업(T10) 드롭으로 스케줄링 미도입. append-only 영구 보존.
 - **G-5 타입 실재 검증 (메모리 phantom 엔티티)**. plan/impl 전 `AuthnResult`(sealed Success/Failure), `principal.userId`/`principal.providerType`, `FailureReason.PROVIDER_UNAVAILABLE`, `RotateResult`, `provisionFromExternal` 시그니처를 `git grep`으로 실재 확인 후 인용. 추측 금지.
 - **G-6 replay 분기 트랜잭션 커밋**. SUSPICIOUS_REFRESH_REPLAY는 체인 폐기와 **같은 트랜잭션에서 커밋**돼야(rotate가 예외 아닌 Failure 반환 = 커밋). 감사 row가 폐기와 함께 남는지 확인.
 - **G-7 라인 길이 (메모리 `ktlint-detekt-linelength-and-baseline-traps`)**. SQL const 문자열·RowMapper·긴 record() 호출은 detekt MaxLineLength 위반 주의. baseline 라인시프트 회피 위해 블록 단위 작성.

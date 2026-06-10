@@ -75,7 +75,7 @@ classify-task가 제목 끝 "조회 UI" 키워드로 `ui/frontend-engineer` 오�
 
 > ⚠️ **C-4 전수 동기화**(CLAUDE.md §명세/범위 변경 전수 동기화): SDD가 구현과 drift. **같은 PR에서 정정**:
 > - `docs/sdd/05-data-model.md:250` 단수 `auth_audit_log` → 복수 `auth_audit_logs`, `:302` "월 단위 파티션" → 인덱스 3종(파티셔닝 없음), ADR 링크.
-> - `docs/sdd/19-authentication.md:179` "월 단위 파티션, 1년 보존" → "단순 테이블 + 인덱스, @Scheduled 1년 보존(파티셔닝 일탈 — ADR 2026-06-10-auth-audit-log-persistence)". 19.9의 `id: Long`/`userId: Long?` 표기는 실제 UUID/UUID? 와 drift 명시(또는 정정).
+> - `docs/sdd/19-authentication.md:179` "월 단위 파티션, 1년 보존" → "단순 테이블 + 인덱스, **append-only 영구 보존**(DATA.md §3, '1년'은 최소 floor; 파티셔닝 일탈 — ADR 2026-06-10-auth-audit-log-persistence)". 19.9의 `id: Long`/`userId: Long?` 표기는 실제 UUID/UUID? 와 drift 명시(또는 정정).
 
 **REFACTOR**. 컬럼/인덱스 COMMENT, 1줄 L1 한글 주석.
 
@@ -210,22 +210,9 @@ classify-task가 제목 끝 "조회 UI" 키워드로 `ui/frontend-engineer` 오�
 
 **검증**. `./gradlew :backend:identity-access:test --tests LdapProviderTest`.
 
-### Task 10. 보존 1년 — @Scheduled 정리 작업
+### Task 10. ~~보존 1년 — @Scheduled 정리 작업~~ (드롭 — DATA.md §3 충돌)
 
-**메타**.
-- agent: `security-engineer`
-- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/audit/AuthAuditLogRetentionJob.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/config/SchedulingConfiguration.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/audit/AuthAuditLogService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/audit/AuthAuditLogRetentionJobIntegrationTest.kt`]
-- depends-on: [3]
-
-> ⚠️ **C-2**: identity-access엔 `@EnableScheduling`·`@Scheduled` 실사용 0(SessionService:33 주석뿐). 진입점 오염 회피 위해 **issue-tracking의 `SchedulingConfiguration.kt` 격리 패턴**을 따라 별도 `config/SchedulingConfiguration`(@Configuration @EnableScheduling)으로 분리. cron은 프로퍼티 외부화(`application.yml`) + **테스트 프로파일에서 cron override/비활성화**로 통합테스트 오염(보존 job 자동 실행→타 테스트 시드 삭제) 차단. 기존 RANDOM_PORT 부팅 레시피(메모리 `identity-access-prod-randomport-boot-recipe`)와 충돌 없는지 확인.
-
-**RED**. `AuthAuditLogRetentionJobIntegrationTest`(Testcontainers) — 1년 경과 행 + 미경과 행 시드 후 purge 메서드 **직접 호출**(스케줄 트리거 의존 금지) → 경과 행만 삭제. 실패: purge 없음.
-
-**GREEN**. `AuthAuditLogService`에 `purgeOlderThan(cutoff: Instant): Int` 추가(Jdbc=`DELETE WHERE created_at < :cutoff`, InMemory 대응). `AuthAuditLogRetentionJob` `@Component`의 `@Scheduled`(cron 프로퍼티)가 `purgeOlderThan(now - 1년)` 호출. `SchedulingConfiguration`로 `@EnableScheduling` 격리, 테스트 프로파일 cron 비활성.
-
-**REFACTOR**. cutoff 상수(1년) 명명, cron 프로퍼티 기본값 문서화.
-
-**검증**. `./gradlew :backend:identity-access:test --tests AuthAuditLogRetentionJobIntegrationTest`.
+> ❌ **드롭 (Maxi 결정 2026-06-10)**. DATA.md §3 "감사 로그 절대 삭제 금지(append-only)"와 정면 충돌. "보존 1년"(SDD §2.3.3)은 **최소 보존 floor**로 해석 — 영구 보존이 1년 floor를 충족(∞ ≥ 1년). 삭제 작업 불필요. `purgeOlderThan`·`@Scheduled`·`SchedulingConfiguration` 전부 미도입. spec D2/FR-7은 "append-only 영구 보존"으로 갱신. 헌법 준수.
 
 ### Task 11. "이벤트 누락 0" 커버리지 캡스톤 테스트
 
@@ -244,13 +231,13 @@ classify-task가 제목 끝 "조회 UI" 키워드로 `ui/frontend-engineer` 오�
 
 ## Plan 메타
 
-- task 수: 11
+- task 수: 10 (T10 드롭 — DATA.md §3 충돌)
 - wave 예상 (depends-on + files 기반):
   - wave 1: T1(db), T2(security) — 병렬(다른 파일)
   - wave 2: T3 — 영속+빈전환(T1,T2 의존)
-  - wave 3: T4~T10 — emit 배선 7종, 모두 T3 의존 + 서로 다른 파일 → 병렬 후보
+  - wave 3: T4~T9 — emit 배선 6종, 모두 T3 의존 + 서로 다른 파일 → 병렬 후보
   - wave 4: T11 — 캡스톤(T4~T9 의존)
-- ⚠️ **모듈 단일 test 컴파일 직렬화**(메모리 `bts-plan-wave-gradle-module-compile`): wave 3의 7 task가 파일은 disjoint여도 identity-access 단일 test 컴파일 단위라 test 실행은 직렬화됨. wave 병렬은 구현/red 작성 단계에 유효.
+- ⚠️ **모듈 단일 test 컴파일 직렬화**(메모리 `bts-plan-wave-gradle-module-compile`): wave 3의 6 task가 파일은 disjoint여도 identity-access 단일 test 컴파일 단위 + Gradle 프로젝트 빌드 락이라 test 실행은 직렬화됨. **실 dispatch는 Gradle 락 충돌 회피 위해 직렬/소batch로 진행**(메모리 `parallel-dispatch-precommit-hook-race`).
 - **G-1 주입 파급**: T4~T9 각 task의 `files`에 해당 빈의 기존 단위테스트 포함. 통합테스트는 Jdbc @Service 자동 배선이라 공유 TestConfig 수술 불요(공유 파일 충돌 회피) — 단위테스트 mock은 각 task 자기 테스트 파일에만.
 - TDD 강제: yes (red→green→refactor, `test:` 커밋 선행 검증)
 - 추가 검증: 모듈 ktlint/detekt(`--rerun-tasks`), 기존 로그인/세션/리프레시/프로비저닝 회귀 0.
