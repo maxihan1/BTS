@@ -29,7 +29,7 @@ import java.util.UUID
  * | iat | 발급 시각 |
  * | jti | 고유 UUID (재사용 방지) |
  * | sid | sessionId (UUID 문자열) |
- * | mfa_verified | false 더미 (FR-09-15 — MFA Task 완료 후 실제 값으로 교체) |
+ * | mfa_verified | MFA 2차 인증 통과 여부 ([mfaVerified] 파라미터, 기본 false) — FR-MF-01 |
  * | providerId | 인증 공급자 식별자 (e.g. "local", "ldap") |
  * | scopes | 허용 스코프 목록 |
  * | roles | 전역 시스템 역할 목록 (e.g. ["SYSTEM_ADMIN"]) — 비어 있으면 claim 생략 (FR-PM-08) |
@@ -40,7 +40,7 @@ import java.util.UUID
  *
  * ## 참조
  * - FR-AU-09, FR-09-1~5 (claims 명세)
- * - FR-09-15 (mfa_verified 더미)
+ * - FR-MF-01 (mfa_verified 실체화 — [mfaVerified] 파라미터)
  * - SDD §19.5 (login response body)
  */
 @Service
@@ -58,6 +58,8 @@ class JwtIssuer(
      * @param providerId 인증 공급자 식별자 (e.g. "local")
      * @param scopes 허용 스코프 목록
      * @param roles 전역 시스템 역할 목록 (FR-PM-08). 비어 있으면 [CLAIM_ROLES] claim 을 생략한다.
+     * @param mfaVerified MFA 2차 인증 통과 여부 ([CLAIM_MFA_VERIFIED]). 기본 `false` (FR-MF-01).
+     *   미전달 호출처(SSO 성공 핸들러 등)는 `false` 가 유지된다.
      * @return 서명된 JWT 문자열 (header.payload.signature)
      */
     fun issue(
@@ -66,6 +68,7 @@ class JwtIssuer(
         providerId: String,
         scopes: List<String>,
         roles: List<String> = emptyList(),
+        mfaVerified: Boolean = false,
     ): String {
         val now = Instant.now()
         val exp = now.plusSeconds(ACCESS_TOKEN_TTL_SECONDS)
@@ -84,7 +87,7 @@ class JwtIssuer(
                 .expirationTime(Date.from(exp))
                 .jwtID(UUID.randomUUID().toString())
                 .claim(CLAIM_SID, sessionId.toString())
-                .claim(CLAIM_MFA_VERIFIED, false)
+                .claim(CLAIM_MFA_VERIFIED, mfaVerified)
                 .claim(CLAIM_PROVIDER_ID, providerId)
                 .claim(CLAIM_SCOPES, scopes)
                 // roles 가 비어 있으면 claim 자체를 생략한다 (일반 사용자 토큰은 roles 미포함).

@@ -30,7 +30,6 @@ import java.util.UUID
  * - plan-files-constructor-injection 메모리 (시그니처 변경 시 호출처 회귀 테스트 포함)
  */
 class JwtIssuerSignatureRegressionTest {
-
     private val keyProvider = DevMemoryKeyProvider()
     private val issuerUri = "https://bts.example.com"
     private lateinit var jwtIssuer: JwtIssuer

@@ -33,7 +33,6 @@ import java.util.UUID
  * - C1 일회용: 같은 jti consume 2회 시 2번째 거부
  */
 class MfaChallengeTokenServiceTest {
-
     private val keyProvider = DevMemoryKeyProvider()
     private val fixedNow: Instant = Instant.parse("2026-06-11T10:00:00Z")
     private val clock: Clock = Clock.fixed(fixedNow, ZoneOffset.UTC)
@@ -109,10 +108,7 @@ class MfaChallengeTokenServiceTest {
 
     @Test
     fun `validate 는 다른 키로 서명된 위조 토큰에 대해 null 을 반환한다`() {
-        val forgedToken = signWith(
-            otherKeyProvider = DevMemoryKeyProvider(),
-            purpose = "mfa_challenge",
-        )
+        val forgedToken = signWith(DevMemoryKeyProvider(), purpose = "mfa_challenge")
 
         assertThat(service.validate(forgedToken)).isNull()
     }
@@ -128,10 +124,7 @@ class MfaChallengeTokenServiceTest {
     @Test
     fun `validate 는 purpose 가 다른 토큰에 대해 null 을 반환한다`() {
         // 올바른 키로 서명했지만 purpose 가 mfa_challenge 가 아닌 토큰 — 다른 용도 토큰 재사용 차단.
-        val wrongPurposeToken = signWith(
-            otherKeyProvider = keyProvider,
-            purpose = "password_reset",
-        )
+        val wrongPurposeToken = signWith(keyProvider, purpose = "password_reset")
 
         assertThat(service.validate(wrongPurposeToken)).isNull()
     }
@@ -168,14 +161,15 @@ class MfaChallengeTokenServiceTest {
         purpose: String,
     ): String {
         val header = JWSHeader.Builder(JWSAlgorithm.RS256).keyID(otherKeyProvider.kid).build()
-        val claims = JWTClaimsSet.Builder()
-            .subject(userId.toString())
-            .issueTime(Date.from(fixedNow))
-            .expirationTime(Date.from(fixedNow.plus(Duration.ofMinutes(5))))
-            .jwtID(UUID.randomUUID().toString())
-            .claim("purpose", purpose)
-            .claim("providerId", providerId)
-            .build()
+        val claims =
+            JWTClaimsSet.Builder()
+                .subject(userId.toString())
+                .issueTime(Date.from(fixedNow))
+                .expirationTime(Date.from(fixedNow.plus(Duration.ofMinutes(5))))
+                .jwtID(UUID.randomUUID().toString())
+                .claim("purpose", purpose)
+                .claim("providerId", providerId)
+                .build()
         val jwt = SignedJWT(header, claims)
         jwt.sign(RSASSASigner(otherKeyProvider.privateKey))
         return jwt.serialize()
