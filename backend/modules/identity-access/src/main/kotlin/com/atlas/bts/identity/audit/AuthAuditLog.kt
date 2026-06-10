@@ -12,6 +12,9 @@ import java.util.UUID
  * Logback 마스킹 패턴을 통해 보호해야 한다. (DEVELOPMENT.md §보안 규칙)
  *
  * DB persistence + 월 단위 파티션은 SDD 19.9 후속 PR에서 구현 예정.
+ *
+ * @property userId 이벤트 주체 사용자 ID. null = 사용자 미상
+ *   (LOGIN_FAILURE/LDAP_UNAVAILABLE 등 인증 전이라 주체를 특정할 수 없는 이벤트).
  */
 data class AuthAuditLog(
     val userId: UUID?,
