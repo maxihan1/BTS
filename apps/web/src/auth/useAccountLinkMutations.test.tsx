@@ -9,11 +9,7 @@ import { server } from '@/test/server'
 import { useAuthStore } from './authStore'
 import { useAccountLinkMutations } from './useAccountLinkMutations'
 import { ACCOUNT_LINKS_QUERY_KEY } from './useAccountLinksQuery'
-import {
-  DEFAULT_LDAP_LINK,
-  resetStore,
-  seedLinks,
-} from '@/mocks/account-link-fixtures'
+import { DEFAULT_LDAP_LINK } from '@/mocks/account-link-fixtures'
 
 // sonner toast mock — 실제 DOM 없이 호출 여부만 검증
 vi.mock('sonner', () => ({
@@ -26,6 +22,7 @@ vi.mock('sonner', () => ({
 // RFC 4122 v4 UUID — Zod uuid() 검증 통과
 const PROVIDER_UUID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const LINK_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const STEP_UP_EXPIRES = new Date(Date.now() + 5 * 60 * 1000).toISOString()
 
 function createWrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { readonly children: ReactNode }) {
@@ -41,29 +38,22 @@ describe('useAccountLinkMutations', () => {
       defaultOptions: { mutations: { retry: false } },
     })
     useAuthStore.setState({ accessToken: 'test-token', user: null })
-    resetStore()
     vi.clearAllMocks()
-    // step-up 유효 플래그 초기화
-    try {
-      localStorage.removeItem('msw:account-link:step-up-valid')
-    } catch {
-      // jsdom에서는 무시
-    }
   })
 
   afterEach(() => {
     useAuthStore.setState({ accessToken: null, user: null })
-    resetStore()
-    try {
-      localStorage.clear()
-    } catch {
-      // jsdom에서는 무시
-    }
   })
 
   // ─── reauth ───────────────────────────────────────────────────────────────
 
   it('reauth 성공 시 stepUpExpiresAt 문자열을 반환하고 account-links 캐시를 무효화한다', async () => {
+    server.use(
+      http.post('/api/v1/auth/account/reauth', () =>
+        HttpResponse.json({ stepUpExpiresAt: STEP_UP_EXPIRES }),
+      ),
+    )
+
     queryClient.setQueryData(ACCOUNT_LINKS_QUERY_KEY, {
       links: [],
       hasLocalPassword: true,
@@ -113,12 +103,11 @@ describe('useAccountLinkMutations', () => {
   // ─── link ─────────────────────────────────────────────────────────────────
 
   it('link 성공(201) 시 account-links 캐시를 무효화한다 (setQueryData 미사용)', async () => {
-    // step-up 유효 플래그 세팅
-    try {
-      localStorage.setItem('msw:account-link:step-up-valid', 'true')
-    } catch {
-      // jsdom에서는 무시
-    }
+    server.use(
+      http.post('/api/v1/auth/account/links', () =>
+        HttpResponse.json(DEFAULT_LDAP_LINK, { status: 201 }),
+      ),
+    )
 
     queryClient.setQueryData(ACCOUNT_LINKS_QUERY_KEY, {
       links: [],
@@ -144,12 +133,11 @@ describe('useAccountLinkMutations', () => {
   })
 
   it('link 실패(409 충돌) 시 mutation이 에러 상태가 된다', async () => {
-    try {
-      localStorage.setItem('msw:account-link:step-up-valid', 'true')
-      localStorage.setItem('msw:account-link:conflict', 'true')
-    } catch {
-      // jsdom에서는 무시
-    }
+    server.use(
+      http.post('/api/v1/auth/account/links', () =>
+        HttpResponse.json({ error: 'account_already_linked' }, { status: 409 }),
+      ),
+    )
 
     const { result } = renderHook(() => useAccountLinkMutations(), {
       wrapper: createWrapper(queryClient),
@@ -169,12 +157,11 @@ describe('useAccountLinkMutations', () => {
   // ─── unlink ───────────────────────────────────────────────────────────────
 
   it('unlink 성공(204) 시 account-links 캐시를 무효화한다', async () => {
-    try {
-      localStorage.setItem('msw:account-link:step-up-valid', 'true')
-    } catch {
-      // jsdom에서는 무시
-    }
-    seedLinks([DEFAULT_LDAP_LINK])
+    server.use(
+      http.delete(`/api/v1/auth/account/links/${LINK_UUID}`, () =>
+        new HttpResponse(null, { status: 204 }),
+      ),
+    )
 
     queryClient.setQueryData(ACCOUNT_LINKS_QUERY_KEY, {
       links: [DEFAULT_LDAP_LINK],
@@ -196,12 +183,11 @@ describe('useAccountLinkMutations', () => {
   })
 
   it('unlink 실패(409 마지막 수단) 시 mutation이 에러 상태가 된다', async () => {
-    try {
-      localStorage.setItem('msw:account-link:step-up-valid', 'true')
-      localStorage.setItem('msw:account-link:last-method', 'true')
-    } catch {
-      // jsdom에서는 무시
-    }
+    server.use(
+      http.delete(`/api/v1/auth/account/links/${LINK_UUID}`, () =>
+        HttpResponse.json({ error: 'last_login_method' }, { status: 409 }),
+      ),
+    )
 
     const { result } = renderHook(() => useAccountLinkMutations(), {
       wrapper: createWrapper(queryClient),
@@ -217,11 +203,11 @@ describe('useAccountLinkMutations', () => {
   // ─── ssoLinkStart ─────────────────────────────────────────────────────────
 
   it('ssoLinkStart 성공 시 authorizeUrl을 반환하고 캐시를 무효화한다', async () => {
-    try {
-      localStorage.setItem('msw:account-link:step-up-valid', 'true')
-    } catch {
-      // jsdom에서는 무시
-    }
+    server.use(
+      http.post('/api/v1/auth/account/links/sso/start', () =>
+        HttpResponse.json({ authorizeUrl: '/saml2/authenticate/saml-corp' }),
+      ),
+    )
 
     queryClient.setQueryData(ACCOUNT_LINKS_QUERY_KEY, {
       links: [],
@@ -252,6 +238,12 @@ describe('useAccountLinkMutations', () => {
   // ─── ssoReauthStart ───────────────────────────────────────────────────────
 
   it('ssoReauthStart 성공 시 authorizeUrl을 반환하고 캐시를 무효화한다', async () => {
+    server.use(
+      http.post('/api/v1/auth/account/reauth/sso/start', () =>
+        HttpResponse.json({ authorizeUrl: '/oauth2/authorization/oidc-google' }),
+      ),
+    )
+
     queryClient.setQueryData(ACCOUNT_LINKS_QUERY_KEY, {
       links: [],
       hasLocalPassword: true,
@@ -280,22 +272,18 @@ describe('useAccountLinkMutations', () => {
   // ─── setQueryData 미사용 검증 ─────────────────────────────────────────────
 
   it('모든 mutation 성공 후 캐시 데이터는 직접 교체(setQueryData)되지 않는다', async () => {
-    try {
-      localStorage.setItem('msw:account-link:step-up-valid', 'true')
-    } catch {
-      // jsdom에서는 무시
-    }
+    server.use(
+      http.post('/api/v1/auth/account/reauth', () =>
+        HttpResponse.json({ stepUpExpiresAt: STEP_UP_EXPIRES }),
+      ),
+    )
 
-    // 캐시에 파생 필드를 포함한 확장 데이터 세팅 (setQueryData로 덮이면 소실됨)
-    const extendedData = {
+    queryClient.setQueryData(ACCOUNT_LINKS_QUERY_KEY, {
       links: [DEFAULT_LDAP_LINK],
       hasLocalPassword: true,
-      _derivedField: 'should-survive',
-    }
-    queryClient.setQueryData(ACCOUNT_LINKS_QUERY_KEY, extendedData)
+    })
 
-    // setQueryData가 내부 호출되면 캐시가 응답으로 교체되어 _derivedField가 사라짐
-    // invalidate-only라면 무효화만 되고 refetch 전까지 데이터는 그대로 남음
+    // setQueryData가 내부 호출되면 캐시가 응답으로 교체됨 — invalidate-only라면 호출 없음
     const spy = vi.spyOn(queryClient, 'setQueryData')
 
     const { result } = renderHook(() => useAccountLinkMutations(), {
@@ -306,7 +294,7 @@ describe('useAccountLinkMutations', () => {
       await result.current.reauth.mutateAsync({ method: 'LOCAL', password: 'pw' })
     })
 
-    // mutation hooks 내부에서 setQueryData를 호출하지 않았는지 확인
+    // mutation hooks 내부에서 setQueryData를 account-links 키로 호출하지 않았는지 확인
     expect(spy).not.toHaveBeenCalledWith(ACCOUNT_LINKS_QUERY_KEY, expect.anything())
 
     spy.mockRestore()

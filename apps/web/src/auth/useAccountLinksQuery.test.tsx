@@ -12,13 +12,7 @@ import {
   ACCOUNT_LINKS_QUERY_KEY,
 } from './useAccountLinksQuery'
 import { useLinkableProvidersQuery } from './useLinkableProvidersQuery'
-import {
-  DEFAULT_LDAP_LINK,
-  DEFAULT_SSO_LINK,
-  DEFAULT_LINKABLE_PROVIDERS,
-  resetStore,
-  seedLinks,
-} from '@/mocks/account-link-fixtures'
+import { DEFAULT_LDAP_LINK, DEFAULT_SSO_LINK, DEFAULT_LINKABLE_PROVIDERS } from '@/mocks/account-link-fixtures'
 
 function createWrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { readonly children: ReactNode }) {
@@ -34,15 +28,19 @@ describe('useAccountLinksQuery', () => {
       defaultOptions: { queries: { retry: false } },
     })
     useAuthStore.setState({ accessToken: 'test-token', user: null })
-    resetStore()
   })
 
   afterEach(() => {
     useAuthStore.setState({ accessToken: null, user: null })
-    resetStore()
   })
 
   it('연결이 없으면 links 빈 배열·hasLocalPassword true를 반환한다', async () => {
+    server.use(
+      http.get('/api/v1/auth/account/links', () =>
+        HttpResponse.json({ links: [], hasLocalPassword: true }),
+      ),
+    )
+
     const { result } = renderHook(() => useAccountLinksQuery(), {
       wrapper: createWrapper(queryClient),
     })
@@ -54,7 +52,14 @@ describe('useAccountLinksQuery', () => {
   })
 
   it('연결 목록이 있으면 AccountLinksResponse를 반환한다', async () => {
-    seedLinks([DEFAULT_LDAP_LINK, DEFAULT_SSO_LINK])
+    server.use(
+      http.get('/api/v1/auth/account/links', () =>
+        HttpResponse.json({
+          links: [DEFAULT_LDAP_LINK, DEFAULT_SSO_LINK],
+          hasLocalPassword: true,
+        }),
+      ),
+    )
 
     const { result } = renderHook(() => useAccountLinksQuery(), {
       wrapper: createWrapper(queryClient),
@@ -101,6 +106,12 @@ describe('useLinkableProvidersQuery', () => {
   })
 
   it('enabled=true(기본값)이면 공급자 목록을 반환한다', async () => {
+    server.use(
+      http.get('/api/v1/auth/account/linkable-providers', () =>
+        HttpResponse.json({ linkable: DEFAULT_LINKABLE_PROVIDERS }),
+      ),
+    )
+
     const { result } = renderHook(() => useLinkableProvidersQuery(), {
       wrapper: createWrapper(queryClient),
     })
@@ -122,6 +133,12 @@ describe('useLinkableProvidersQuery', () => {
   })
 
   it('SAML·OIDC 공급자도 올바른 kind 값으로 반환한다', async () => {
+    server.use(
+      http.get('/api/v1/auth/account/linkable-providers', () =>
+        HttpResponse.json({ linkable: DEFAULT_LINKABLE_PROVIDERS }),
+      ),
+    )
+
     const { result } = renderHook(() => useLinkableProvidersQuery(), {
       wrapper: createWrapper(queryClient),
     })
