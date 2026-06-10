@@ -268,13 +268,13 @@
 
 **우선순위**. 중간 | **선행**. §3.2.1, §3.2.3 | **Plan slug**. `issue/versions-release-notes`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — Markdown 템플릿 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/versions/{id}/release-notes` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 미리보기 + 복사 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. backend-engineer) — PR #110 (조회 전용 — 영속 안 함. ReleaseNoteIssue 입력 모델 + ReleaseNotes 출력 모델, 신규 엔티티/테이블 없음)
+- [x] D2. 명세 — Markdown 템플릿 (책임. backend-engineer) — PR #110 (타입별 그룹핑 hierarchy_level 순+그룹 내 키 순, resolution 표시, 0건 안내, summary 줄바꿈 sanitize. ReleaseNotesGenerator 순수 함수)
+- [x] D3. 데이터 모델 — (활용) (책임. db-engineer) — PR #110 (신규 테이블 없음. IssueRepository.findFixVersionIssuesForReleaseNotes 역방향 조회(단일 JOIN, cartesian 안전) + ProjectLookupRepository.findProjectKeyById)
+- [x] D4. 백엔드 — `GET /api/v1/projects/{projectIdOrKey}/versions/{id}/release-notes` (책임. backend-engineer) — PR #110 (별도 ReleaseNotesController, DataResponse 래핑, READ 게이트 없음(getById 정책), VersionExceptionHandler basePackage 스코프 커버, Clock 주입 generatedAt)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #110 (Generator 단위 + Service mockk + Repository 통합 + Controller 통합 S1~S7(errorCode 바디 단언), Clock 고정 결정론, WebMvcConfigurer로 Instant ISO 직렬화)
+- [x] D6. 프론트 UI — 미리보기 + 복사 (책임. designer → frontend-engineer) — PR #110 (ReleaseNotesDialog radix Dialog + 클립보드 복사 graceful, VersionRow "릴리즈 노트" 버튼, Zod↔DTO 1:1, useReleaseNotes lazy fetch)
+- [x] D7. E2E (책임. qa-engineer) — PR #110 (version-release-notes.spec.ts 3 happy path(열림/복사/닫기) + 기존 version E2E 9 회귀, 클립보드 권한 grant, 한글 markdown Base64 헤더)
 
 ## §4 첨부 / 멘션 / Watcher (5개)
 
