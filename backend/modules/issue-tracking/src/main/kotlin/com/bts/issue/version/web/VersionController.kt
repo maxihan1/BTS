@@ -1,10 +1,11 @@
-// 버전 CRUD REST 컨트롤러 — POST/GET/PATCH/DELETE (FR-VR-01 Task 7)
+// 버전 CRUD REST 컨트롤러 — POST/GET/PATCH/DELETE + 상태 전이 (FR-VR-01 Task 7 + FR-VR-02)
 
 package com.bts.issue.version.web
 
 import com.bts.issue.adapter.inbound.rest.DataResponse
 import com.bts.issue.version.application.VersionApplicationService
 import com.bts.issue.version.web.dto.ChangeVersionDatesRequest
+import com.bts.issue.version.web.dto.ChangeVersionStatusRequest
 import com.bts.issue.version.web.dto.CreateVersionRequest
 import com.bts.issue.version.web.dto.UpdateVersionRequest
 import com.bts.issue.version.web.dto.VersionResponse
@@ -35,6 +36,7 @@ private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-0
  * - GET  /{id}              — 단건 조회 → 200
  * - PATCH /{id}             — name/description 수정 → 200
  * - PATCH /{id}/dates       — 날짜 지정 / 해제 (2-state each) → 200
+ * - PATCH /{id}/status      — 상태 전이 (UNRELEASED/RELEASED/ARCHIVED) → 200
  * - DELETE /{id}            — 소프트 삭제 → 204
  *
  * ### 트랜잭션 정책
@@ -191,6 +193,38 @@ class VersionController(
                 versionId = id,
                 startDate = request.startDate,
                 releaseDate = request.releaseDate,
+            )
+        return ResponseEntity.ok(DataResponse(data = VersionResponse.from(version)))
+    }
+
+    /**
+     * 버전의 상태를 전이한다.
+     *
+     * 전이 그래프는 [VersionApplicationService.changeStatus] 가 도메인 Aggregate 를 통해 강제한다.
+     * 허용되지 않는 전이는 409 [VersionErrorCodes.VERSION_TRANSITION_NOT_ALLOWED] 로 응답한다.
+     *
+     * @param projectIdOrKey path variable 프로젝트 UUID 또는 projectKey.
+     * @param id path variable 버전 UUID.
+     * @param request 상태 전이 요청 바디. status 필수.
+     * @return 200 OK + 전이 후 [VersionResponse].
+     * @throws com.bts.issue.version.domain.VersionProjectNotFoundException 프로젝트 미존재 → 404
+     * @throws com.bts.issue.version.domain.VersionNotFoundException 버전 미존재 → 404
+     * @throws com.bts.issue.version.domain.VersionTransitionNotAllowedException 불허 전이 → 409
+     */
+    @PatchMapping("/{id}/status")
+    fun changeStatus(
+        @PathVariable projectIdOrKey: String,
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: ChangeVersionStatusRequest,
+    ): ResponseEntity<DataResponse<VersionResponse>> {
+        log.info("VersionController.changeStatus projectIdOrKey={} id={} target={}", projectIdOrKey, id, request.status)
+        val target = requireNotNull(request.status) { "status must not be null" }
+        val version =
+            service.changeStatus(
+                actorId = SYSTEM_ACTOR_UUID,
+                projectIdOrKey = projectIdOrKey,
+                versionId = id,
+                target = target,
             )
         return ResponseEntity.ok(DataResponse(data = VersionResponse.from(version)))
     }

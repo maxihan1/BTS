@@ -457,9 +457,10 @@ class VersionTest : DescribeSpec({
 
         it("ARCHIVED 상태에서 unarchive 호출 시 releasedAt 이 null 로 클리어된다") {
             val fixedNow = Instant.parse("2026-06-10T00:00:00Z")
-            val version = Version.create(projectId = projectId, name = "1.0.0")
-                .release(fixedNow)
-                .archive()
+            val version =
+                Version.create(projectId = projectId, name = "1.0.0")
+                    .release(fixedNow)
+                    .archive()
             val unarchived = version.unarchive()
 
             unarchived.releasedAt.shouldBeNull()

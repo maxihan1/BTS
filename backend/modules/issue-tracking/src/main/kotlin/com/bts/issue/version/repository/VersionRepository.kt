@@ -171,9 +171,10 @@ class VersionRepository(
             description = record.description,
             startDate = record.startDate,
             releaseDate = record.releaseDate,
-            status = VersionStatus.valueOf(
-                record.status ?: error("versions.status must not be null after DB read"),
-            ),
+            status =
+                VersionStatus.valueOf(
+                    record.status ?: error("versions.status must not be null after DB read"),
+                ),
             releasedAt = record.releasedAt?.toInstant(),
             deletedAt = record.deletedAt?.toInstant(),
         )

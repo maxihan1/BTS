@@ -9,9 +9,6 @@ import com.bts.issue.version.adapter.AlwaysAllowVersionPermissionResolver
 import com.bts.issue.version.application.VersionApplicationService
 import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.permission.VersionPermissionResolver
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneOffset
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
@@ -51,6 +48,9 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import java.util.UUID
 
 /**

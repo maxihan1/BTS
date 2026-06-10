@@ -418,10 +418,11 @@ class VersionApplicationServiceTest : DescribeSpec({
         context("정상 경로 — UNRELEASED → RELEASED") {
             it("도메인 release() 경유, releasedAt=fixedInstant, repo.update 호출") {
                 val unreleasedVersion = activeVersion.copy(status = VersionStatus.UNRELEASED, releasedAt = null)
-                val expectedReleased = unreleasedVersion.copy(
-                    status = VersionStatus.RELEASED,
-                    releasedAt = fixedInstant,
-                )
+                val expectedReleased =
+                    unreleasedVersion.copy(
+                        status = VersionStatus.RELEASED,
+                        releasedAt = fixedInstant,
+                    )
                 every { permissionResolver.hasPermission(actorId, VersionPermission.UPDATE, projectId) } returns true
                 every { projectLookup.resolve(projectIdOrKey) } returns projectId
                 every { repo.findById(versionId, projectId) } returns unreleasedVersion
