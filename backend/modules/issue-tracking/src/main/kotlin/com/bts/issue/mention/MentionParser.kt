@@ -19,7 +19,6 @@ package com.bts.issue.mention
  * 기능적 오동작은 없지만, 멘션이 무시될 수 있다. v1 수용 — 정밀 파서는 FR-MN-02(렌더링)에서 도입.
  */
 object MentionParser {
-
     /**
      * 펜스 코드 블록 패턴 — `` ``` `` 로 시작·끝나는 블록(DOTALL, non-greedy).
      *
@@ -62,8 +61,8 @@ object MentionParser {
     fun extract(text: String?): Set<String> {
         if (text.isNullOrBlank()) return emptySet()
 
-        val stripped = FENCE_CODE_BLOCK.replace(text, "")
-            .let { INLINE_CODE_SPAN.replace(it, "") }
+        val withoutFence = FENCE_CODE_BLOCK.replace(text, "")
+        val stripped = INLINE_CODE_SPAN.replace(withoutFence, "")
 
         val result = LinkedHashSet<String>()
         MENTION_PATTERN.findAll(stripped).forEach { match ->
