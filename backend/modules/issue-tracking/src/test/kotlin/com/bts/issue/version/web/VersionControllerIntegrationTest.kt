@@ -1,4 +1,4 @@
-// FR-VR-01 Task 7 — VersionController end-to-end 통합테스트 (S1~S9 전 스택 검증)
+// FR-VR-01 Task 7 + FR-VR-02 Task 4 — VersionController end-to-end 통합테스트 (S1~S9 + 상태 전이)
 @file:Suppress("MaxLineLength")
 
 package com.bts.issue.version.web
@@ -9,6 +9,9 @@ import com.bts.issue.version.adapter.AlwaysAllowVersionPermissionResolver
 import com.bts.issue.version.application.VersionApplicationService
 import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.permission.VersionPermissionResolver
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
@@ -139,15 +142,20 @@ class VersionControllerIntegrationTest {
         open fun versionPermissionResolver(): VersionPermissionResolver = AlwaysAllowVersionPermissionResolver()
 
         @Bean
+        open fun clock(): Clock = VersionControllerIntegrationTest.FIXED_CLOCK
+
+        @Bean
         open fun versionApplicationService(
             permissionResolver: VersionPermissionResolver,
             projectLookup: ProjectLookup,
             repo: VersionRepository,
+            clock: Clock,
         ): VersionApplicationService =
             VersionApplicationService(
                 permissionResolver = permissionResolver,
                 projectLookup = projectLookup,
                 repo = repo,
+                clock = clock,
             )
 
         @Bean
@@ -169,6 +177,9 @@ class VersionControllerIntegrationTest {
         private const val PROJECT_KEY = "VRTEST"
         private var migrated = false
         private var seeded = false
+
+        /** 결정론적 Clock — release 전이 시각 검증용. */
+        val FIXED_CLOCK: Clock = Clock.fixed(Instant.parse("2026-06-10T12:00:00Z"), ZoneOffset.UTC)
     }
 
     @BeforeAll
@@ -531,6 +542,179 @@ class VersionControllerIntegrationTest {
             .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
     }
 
+    // ── FR-VR-02: 상태 전이 (S1~S7) ────────────────────────────────────────
+
+    /**
+     * FR-VR-02 S1 — PATCH /status RELEASED → 200, status=RELEASED, releasedAt!=null.
+     *
+     * Given  UNRELEASED 버전
+     * When   PATCH /{id}/status { status: "RELEASED" }
+     * Then   200 + data.status=RELEASED, data.releasedAt=고정 시각
+     */
+    @Test
+    fun `FR-VR-02 S1 PATCH status RELEASED - 200 status=RELEASED releasedAt 설정`() {
+        val id = createVersion("vr02-s1")
+
+        val body = mapOf("status" to "RELEASED")
+
+        mockMvc.perform(
+            patch("/api/v1/projects/$PROJECT_KEY/versions/$id/status")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.status").value("RELEASED"))
+            .andExpect(jsonPath("$.data.releasedAt").value("2026-06-10T12:00:00Z"))
+    }
+
+    /**
+     * FR-VR-02 S2 — PATCH /status UNRELEASED (from RELEASED) → 200, releasedAt=null.
+     *
+     * Given  RELEASED 상태 버전
+     * When   PATCH /{id}/status { status: "UNRELEASED" }
+     * Then   200 + data.status=UNRELEASED, data.releasedAt 없음
+     */
+    @Test
+    fun `FR-VR-02 S2 PATCH status UNRELEASED from RELEASED - 200 releasedAt null`() {
+        val id = createVersion("vr02-s2")
+        patchStatus(id, "RELEASED")
+
+        val body = mapOf("status" to "UNRELEASED")
+
+        mockMvc.perform(
+            patch("/api/v1/projects/$PROJECT_KEY/versions/$id/status")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.status").value("UNRELEASED"))
+            .andExpect(jsonPath("$.data.releasedAt").doesNotExist())
+    }
+
+    /**
+     * FR-VR-02 S3 — PATCH /status ARCHIVED → 200.
+     *
+     * Given  UNRELEASED 버전
+     * When   PATCH /{id}/status { status: "ARCHIVED" }
+     * Then   200 + data.status=ARCHIVED
+     */
+    @Test
+    fun `FR-VR-02 S3 PATCH status ARCHIVED from UNRELEASED - 200`() {
+        val id = createVersion("vr02-s3")
+
+        val body = mapOf("status" to "ARCHIVED")
+
+        mockMvc.perform(
+            patch("/api/v1/projects/$PROJECT_KEY/versions/$id/status")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.status").value("ARCHIVED"))
+    }
+
+    /**
+     * FR-VR-02 S5 — PATCH /status RELEASED (from ARCHIVED) → 409 VERSION_TRANSITION_NOT_ALLOWED.
+     *
+     * Given  ARCHIVED 상태 버전
+     * When   PATCH /{id}/status { status: "RELEASED" }
+     * Then   409 + errorCode=VERSION_TRANSITION_NOT_ALLOWED
+     */
+    @Test
+    fun `FR-VR-02 S5 PATCH status RELEASED from ARCHIVED - 409 VERSION_TRANSITION_NOT_ALLOWED`() {
+        val id = createVersion("vr02-s5")
+        patchStatus(id, "ARCHIVED")
+
+        val body = mapOf("status" to "RELEASED")
+
+        mockMvc.perform(
+            patch("/api/v1/projects/$PROJECT_KEY/versions/$id/status")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("VERSION_TRANSITION_NOT_ALLOWED"))
+    }
+
+    /**
+     * FR-VR-02 S6 — PATCH /{id} rename on ARCHIVED → 409 VERSION_TRANSITION_NOT_ALLOWED.
+     *
+     * Given  ARCHIVED 상태 버전
+     * When   PATCH /{id} { name: "new-name" }
+     * Then   409 + errorCode=VERSION_TRANSITION_NOT_ALLOWED
+     */
+    @Test
+    fun `FR-VR-02 S6 PATCH rename on ARCHIVED - 409 VERSION_TRANSITION_NOT_ALLOWED`() {
+        val id = createVersion("vr02-s6")
+        patchStatus(id, "ARCHIVED")
+
+        val body = mapOf("name" to "vr02-s6-renamed")
+
+        mockMvc.perform(
+            patch("/api/v1/projects/$PROJECT_KEY/versions/$id")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("VERSION_TRANSITION_NOT_ALLOWED"))
+    }
+
+    /**
+     * FR-VR-02 EC3 — PATCH /status "FOO" → 400 VALIDATION_FAILED.
+     *
+     * Given  유효한 버전
+     * When   PATCH /{id}/status { status: "FOO" } (잘못된 enum 문자열)
+     * Then   400 + errorCode=VALIDATION_FAILED
+     */
+    @Test
+    fun `FR-VR-02 EC3 PATCH status invalid enum value - 400 VALIDATION_FAILED`() {
+        val id = createVersion("vr02-ec3")
+
+        val body = mapOf("status" to "FOO")
+
+        mockMvc.perform(
+            patch("/api/v1/projects/$PROJECT_KEY/versions/$id/status")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
+    }
+
+    /**
+     * FR-VR-02 S7 — GET 목록/단건 응답에 status, releasedAt 포함.
+     *
+     * Given  RELEASED 상태로 전이된 버전
+     * When   GET /{id}
+     * Then   200 + data.status=RELEASED, data.releasedAt!=null
+     */
+    @Test
+    fun `FR-VR-02 S7 GET 단건 응답에 status releasedAt 포함`() {
+        val id = createVersion("vr02-s7")
+        patchStatus(id, "RELEASED")
+
+        mockMvc.perform(get("/api/v1/projects/$PROJECT_KEY/versions/$id"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.status").value("RELEASED"))
+            .andExpect(jsonPath("$.data.releasedAt").value("2026-06-10T12:00:00Z"))
+    }
+
+    /**
+     * FR-VR-02 S7(목록) — GET 목록 응답에 status 포함.
+     *
+     * Given  UNRELEASED 신규 버전
+     * When   GET 목록
+     * Then   200 + 각 항목에 data[*].status=UNRELEASED
+     */
+    @Test
+    fun `FR-VR-02 S7 GET 목록 응답에 status 포함`() {
+        createVersion("vr02-s7-list")
+
+        mockMvc.perform(get("/api/v1/projects/$PROJECT_KEY/versions"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data[0].status").value("UNRELEASED"))
+    }
+
     // ── private helpers ─────────────────────────────────────────────────────
 
     /**
@@ -562,6 +746,20 @@ class VersionControllerIntegrationTest {
 
         val json = mapper.readTree(result.response.contentAsString)
         return UUID.fromString(json["data"]["id"].asText())
+    }
+
+    /**
+     * 헬퍼: PATCH /{id}/status 로 버전 상태를 전이한다.
+     */
+    private fun patchStatus(
+        id: UUID,
+        status: String,
+    ) {
+        mockMvc.perform(
+            patch("/api/v1/projects/$PROJECT_KEY/versions/$id/status")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("status" to status))),
+        ).andExpect(status().isOk)
     }
 
     private fun applyMigrations() {
