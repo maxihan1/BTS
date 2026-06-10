@@ -26,6 +26,8 @@ import java.util.UUID
  * - start_date / release_date 이 DATE
  * - 활성 기준 (project_id, name) 유일 — 같은 활성 이름 INSERT 시 유니크 위반
  * - 소프트 삭제 후 동명 재생성 허용 — deleted_at 채운 row 와 동명 활성 row 공존 가능
+ * - (V016) status 컬럼 — DEFAULT 'UNRELEASED', released_at 은 nullable TIMESTAMPTZ
+ * - (V016) ck_versions_status CHECK 제약 — 'FOO' 같은 미정의 값 거부
  *
  * 이미지 선택 이유.
  * V002 마이그레이션이 pgmq 확장을 요구하므로 postgres:16-alpine 사용 불가.
@@ -109,6 +111,57 @@ class VersionsMigrationTest {
                 stmt.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
             }
         }
+
+    // 컬럼의 is_nullable ('YES'/'NO') 조회 — released_at 이 nullable 인지 검증용.
+    @Suppress("NestedBlockDepth")
+    private fun columnIsNullable(
+        tableName: String,
+        columnName: String,
+    ): String? =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "SELECT is_nullable FROM information_schema.columns" +
+                    " WHERE table_schema = 'public' AND table_name = ? AND column_name = ?",
+            ).use { stmt ->
+                stmt.setString(1, tableName)
+                stmt.setString(2, columnName)
+                stmt.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
+            }
+        }
+
+    // status 컬럼에 값을 주지 않고 INSERT 한 row 의 status 를 조회 — DEFAULT 'UNRELEASED' 검증용.
+    @Suppress("NestedBlockDepth")
+    private fun insertVersionAndReadStatus(
+        projectId: UUID,
+        name: String,
+    ): String? =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "INSERT INTO versions (project_id, name) VALUES (?, ?) RETURNING status",
+            ).use { stmt ->
+                stmt.setObject(1, projectId)
+                stmt.setString(2, name)
+                stmt.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
+            }
+        }
+
+    // status 에 임의 문자열을 명시 INSERT — ck_versions_status CHECK 위반 유도용.
+    private fun insertVersionWithStatus(
+        projectId: UUID,
+        name: String,
+        status: String,
+    ) {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "INSERT INTO versions (project_id, name, status) VALUES (?, ?, ?)",
+            ).use { stmt ->
+                stmt.setObject(1, projectId)
+                stmt.setString(2, name)
+                stmt.setString(3, status)
+                stmt.executeUpdate()
+            }
+        }
+    }
 
     // 활성 projects row 1건 생성 후 id 반환 — FK 충족용.
     private fun insertProject(): UUID =
@@ -212,5 +265,31 @@ class VersionsMigrationTest {
         insertVersion(projectId, "v2.0.0", deleted = true)
         // 삭제된 row 가 있어도 동명 활성 row INSERT 는 성공해야 한다 (부분 인덱스가 활성만 커버).
         insertVersion(projectId, "v2.0.0", deleted = false)
+    }
+
+    // ── V016 status / released_at 검증 (FR-VR-02) ─────────────────────────────
+
+    @Test
+    fun `V016 versions status 컬럼은 DEFAULT UNRELEASED`() {
+        val projectId = insertProject()
+        // status 를 명시하지 않고 INSERT — DEFAULT 'UNRELEASED' 가 채워져야 한다.
+        assertThat(insertVersionAndReadStatus(projectId, "v3.0.0"))
+            .isEqualTo("UNRELEASED")
+    }
+
+    @Test
+    fun `V016 versions released_at 은 nullable TIMESTAMPTZ`() {
+        assertThat(columnDataType("versions", "released_at"))
+            .isEqualTo("timestamp with time zone")
+        assertThat(columnIsNullable("versions", "released_at"))
+            .isEqualTo("YES")
+    }
+
+    @Test
+    fun `V016 ck_versions_status 제약은 미정의 status 값을 거부`() {
+        val projectId = insertProject()
+        // 'FOO' 는 ('UNRELEASED','RELEASED','ARCHIVED') 에 없으므로 CHECK 위반이어야 한다.
+        assertThatThrownBy { insertVersionWithStatus(projectId, "v4.0.0", "FOO") }
+            .hasMessageContaining("ck_versions_status")
     }
 }
