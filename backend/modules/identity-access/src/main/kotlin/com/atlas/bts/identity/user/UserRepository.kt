@@ -72,13 +72,18 @@ interface UserRepository {
      * [save] 와 동일한 UPSERT 동작이지만 호출 의도를 명확히 하기 위해 별도로 선언한다.
      * Race condition(EC-11) 은 ON CONFLICT 로 방어한다.
      *
-     * @return DB 에 반영된 최신 상태의 [User]
+     * **신규 판정 (FR-AU-10).**
+     * 반환 [ProvisionResult.isNew] 는 이번 호출이 신규 INSERT 였는지(true) ON CONFLICT UPDATE 였는지(false)를
+     * PostgreSQL 시스템 컬럼 `xmax = 0` 으로 구분한다. 호출자(AutoProvisionService)는 신규일 때만
+     * `USER_PROVISIONED` 감사 이벤트를 emit 한다 (기존 사용자 재로그인은 emit 안 함, EC-3).
+     *
+     * @return DB 에 반영된 최신 상태의 [User] + 신규 INSERT 여부 [ProvisionResult]
      */
     fun provisionFromExternal(
         username: String,
         email: String?,
         displayName: String,
-    ): User
+    ): ProvisionResult
 
     /**
      * 마지막 로그인 시각 갱신 — users.updated_at 을 NOW() 로 갱신한다.
@@ -119,6 +124,18 @@ interface UserRepository {
         limit: Int,
     ): List<User>
 }
+
+/**
+ * 외부 IdP Auto-provisioning UPSERT 결과 (FR-AU-10).
+ *
+ * @property user DB 에 반영된 최신 상태의 사용자.
+ * @property isNew 이번 호출이 신규 INSERT 였으면 true, ON CONFLICT UPDATE(기존 사용자)였으면 false.
+ *   PostgreSQL `xmax = 0` 으로 판정한다 — `USER_PROVISIONED` 감사 emit 조건(신규 only).
+ */
+data class ProvisionResult(
+    val user: User,
+    val isNew: Boolean,
+)
 
 /**
  * [UserRepository] JDBC 구현체 (FR-AU-09 Task 32).
@@ -176,11 +193,30 @@ class JdbcUserRepository(
             UserRowMapper,
         ) ?: error("INSERT RETURNING 결과 없음 — username=$username")
 
+    /**
+     * 외부 IdP Auto-provisioning UPSERT (FR-AU-09 §29 / FR-AU-10).
+     *
+     * [save] 와 동일한 ON CONFLICT UPSERT 이지만, RETURNING 절에 `(xmax = 0) AS is_new` 를 추가해
+     * 이번 호출이 신규 INSERT 였는지(true) 충돌 UPDATE 였는지(false)를 [ProvisionResult.isNew] 로 노출한다.
+     * 순수 INSERT 면 행의 시스템 컬럼 xmax 가 0, ON CONFLICT UPDATE 면 0 이 아니다 — 추가 SELECT 없이 1 왕복으로 판정.
+     */
     override fun provisionFromExternal(
         username: String,
         email: String?,
         displayName: String,
-    ): User = upsert(username, email, displayName)
+    ): ProvisionResult {
+        val id = UUID.randomUUID()
+        return jdbc.queryForObject(
+            SQL_PROVISION_UPSERT,
+            mapOf(
+                "id" to id,
+                "username" to username,
+                "email" to email,
+                "displayName" to displayName,
+            ),
+            ProvisionResultRowMapper,
+        ) ?: error("provisionFromExternal UPSERT RETURNING 결과 없음 — username=$username")
+    }
 
     /**
      * 마지막 로그인 시각으로 users.updated_at 을 갱신한다 (FR-AU-09 §29).
@@ -300,6 +336,21 @@ class JdbcUserRepository(
         """
 
         /**
+         * 외부 IdP Auto-provisioning UPSERT — [SQL_UPSERT] 와 동일하나 RETURNING 에 `(xmax = 0) AS is_new` 추가.
+         * `xmax = 0` 은 이번 호출이 신규 INSERT 였음을(true), 0 이 아니면 ON CONFLICT UPDATE(기존 사용자)였음을 뜻한다.
+         * USER_PROVISIONED 감사 emit(신규 only, EC-3) 판정에 사용한다 (FR-AU-10).
+         */
+        const val SQL_PROVISION_UPSERT = """
+            INSERT INTO users (id, username, email, display_name)
+            VALUES (:id, :username, :email, :displayName)
+            ON CONFLICT (username) DO UPDATE
+                SET email        = EXCLUDED.email,
+                    display_name = EXCLUDED.display_name,
+                    updated_at   = NOW()
+            RETURNING id, username, email, display_name, created_at, updated_at, (xmax = 0) AS is_new
+        """
+
+        /**
          * 마지막 로그인 시각 갱신 — updated_at 컬럼만 갱신한다.
          * 향후 last_login_at 전용 컬럼 추가 시 이 SQL 과 함께 마이그레이션 필요.
          */
@@ -362,5 +413,21 @@ private object UserRowMapper : RowMapper<User> {
             displayName = rs.getString("display_name"),
             createdAt = rs.getTimestamp("created_at").toInstant(),
             updatedAt = rs.getTimestamp("updated_at").toInstant(),
+        )
+}
+
+/**
+ * provisionFromExternal RowMapper — ResultSet → [ProvisionResult] 변환 (FR-AU-10).
+ *
+ * users 컬럼은 [UserRowMapper] 로 매핑하고, 추가된 `is_new` boolean 컬럼(`xmax = 0`)으로 신규 INSERT 여부를 채운다.
+ */
+private object ProvisionResultRowMapper : RowMapper<ProvisionResult> {
+    override fun mapRow(
+        rs: ResultSet,
+        rowNum: Int,
+    ): ProvisionResult =
+        ProvisionResult(
+            user = UserRowMapper.mapRow(rs, rowNum),
+            isNew = rs.getBoolean("is_new"),
         )
 }
