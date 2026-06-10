@@ -94,6 +94,12 @@ SELECT pgmq.create('q_slack_dispatch');
 
 - **init_codegen.sql 미러 필수** — BTS는 Flyway(PG16 런타임)와 jOOQ 코드젠을 분리한 구조라, 컬럼/테이블 추가 마이그레이션은 `init_codegen.sql`에도 **똑같이 미러**해야 jOOQ 상수가 생성된다. 빠뜨리면 repository가 컴파일조차 안 됨. V005가 선례 (PR #43 B3)
 - **advisory lock 시그니처** — 동시성 제어에 advisory lock을 권할 때 `pg_advisory_xact_lock`은 `(bigint,bigint)` 시그니처가 없음(단일 bigint 또는 (int4,int4)만). backend-engineer가 lock 후 재조회(TOCTOU 방어)하도록 안내 (PR #48)
+- **V번호 동시 브랜치 충돌** — 병렬 PR이 각자 다음 V번호를 선점하면 머지 순서에 따라 Flyway checksum 충돌로 머지가 깨진다. 머지 직전 `origin/main`의 최신 V번호를 재확인하고 필요 시 리넘버 (사고 이력)
+- **NULL 멱등성은 NULLS NOT DISTINCT** — PostgreSQL UNIQUE 제약은 NULL을 서로 다른 값으로 본다. NULL 포함 컬럼의 멱등 INSERT(ON CONFLICT)는 `UNIQUE NULLS NOT DISTINCT`로 선언해야 재실행 안전 (사고 이력)
+- **조인 테이블 FK는 ON DELETE CASCADE 검토** — 다대다 조인 테이블의 FK에 CASCADE 누락 시 부모 삭제 후 고아 행이 남는다. Testcontainers cleanup도 깨짐. pre-existing 테이블은 main 실측 후 판단 (사고 이력)
+- **권한코드 시드 ↔ 마이그레이션 테스트 카운트 결합** — 권한코드 시드 추가는 `PermissionSchemaMigrationTest` 같은 카운트 검증 테스트를 깬다. 시드 변경 시 카운트 가드 동반 수정 (FR-PM)
+
+그 외 사고 이력 전체는 `Maxi_wiki/BTS/learnings.md` 참조 (controller가 /bts 경로에서 inline 주입).
 
 ## 절대 금지
 
@@ -104,6 +110,17 @@ SELECT pgmq.create('q_slack_dispatch');
 - 같은 V<번호> 재사용 (Flyway checksum 충돌)
 - 마이그레이션에 비즈니스 로직 SQL 포함 (스키마 변경만)
 - 테스트 없이 마이그레이션 커밋
+
+## 병렬 wave 환경 규약 (공통)
+
+같은 wave의 다른 task와 **같은 worktree를 공유**한다.
+
+1. plan 메타 `files` 선언 파일만 수정. 선언 외 수정 필요 시 수정하지 말고 BLOCKED 보고
+2. stage는 파일 단위 `git add <경로>`만 — `git add -A` / `git add .` / `git commit -a` 금지 (lint-staged race로 타 task 산출물 흡수, 동종 사고 3회)
+3. 모듈/디렉토리 전체 포맷터 일괄 실행 금지 (`ktlintFormat` 등 — PRE_EXISTING 부수 변경 + 캐시 오염). 린트 검증은 check 계열만
+4. 백그라운드 프로세스 잔류 금지 — dev 서버(5173 등)는 보고 전 종료
+5. 스크래치/임시 파일은 보고 전 삭제. `git status --porcelain`으로 잔여물 확인
+6. **DONE 보고 형식** — STATUS + RED/GREEN/REFACTOR 각 commit hash 인용 (verifier가 hash 미인용 PASS를 거절)
 
 ## 참조 파일
 

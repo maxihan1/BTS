@@ -71,41 +71,22 @@ test.describe('이슈 코멘트 멘션 알림 (FR-NOTIF-MENTION)', () => {
 });
 ```
 
-## 핵심 패턴 — Testcontainers 인프라
+## Testcontainers 인프라 현황
 
-> **현황** — 아직 공통 베이스 클래스(`IntegrationTestBase`)는 없고, 각 통합 테스트가 `@Testcontainers` + `@Container`를 직접 선언하는 패턴이다. 모듈별로 같은 보일러플레이트가 늘면 아래처럼 공통 베이스 추출을 제안할 것(현재는 강제 아님).
-
-```kotlin
-// (제안 패턴) backend/shared/test/.../IntegrationTestBase.kt
-@Testcontainers
-abstract class IntegrationTestBase {
-    companion object {
-        @Container
-        val postgres = PostgreSQLContainer<Nothing>("postgres:16-alpine").apply {
-            withDatabaseName("bts_test")
-            withReuse(true)  // 재사용으로 속도 ↑
-        }
-
-        @JvmStatic
-        @DynamicPropertySource
-        fun props(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url") { postgres.jdbcUrl }
-            registry.add("spring.datasource.username") { postgres.username }
-            registry.add("spring.datasource.password") { postgres.password }
-        }
-    }
-}
-```
+아직 공통 베이스 클래스(`IntegrationTestBase`)는 없고, 각 통합 테스트가 `@Testcontainers` + `@Container`를 직접 선언하는 패턴이다. 모듈별 보일러플레이트가 늘면 공통 베이스 추출(싱글톤 컨테이너 + `@DynamicPropertySource`)을 **제안만** 할 것 — 현재는 강제 아님 (알려진 현황, 후속 트랙).
 
 ## 회귀 방지 (실제 사고 교훈 — 같은 실수 재발 금지)
 
 - **getByRole strict mode** — 같은 텍스트 버튼이 여러 곳에 노출되면 `getByRole` substring 매칭이 strict mode violation을 낸다. `{ exact: true }` 또는 좁은 컨테이너로 한정 (PR #35)
-- **userEvent.type 긴 문자열 타임아웃** — 200자+ 타이핑은 default delay + 5s 타임아웃에 걸려 실패한다. `{ delay: null }` + 명시적 `testTimeout`을 이중으로 (PR #35)
 - **MSW serviceWorker:'block' 금지** — 프론트 E2E에서 `serviceWorkers: 'block'`은 MSW 의존 앱 부팅을 깨뜨린다. 새 API mock은 MSW 핸들러를 추가하는 게 정석이고, mock 분기 순서는 백엔드와 일치시킬 것 (PR #37)
 - **MSW mutation은 stateful 영속** — PATCH/POST 핸들러가 결과를 stateful 오버라이드에 영속하지 않으면, `invalidateQueries` refetch 후 화면이 옛 값으로 롤백된다(setQueryData 위에서만 통과하는 가짜 그린). 핸들러가 변경을 메모리에 보존해야 함 (FR-IS-02 D7)
+- **MSW 파생동작은 공유 store 경유** — mutation의 파생 응답(다른 엔드포인트가 반환할 값)이 핸들러별 지역 상태에 분산되면 시나리오 간 drift가 난다. 브라우저에서 시드 가능한 공유 store에서 읽도록 통일 (FR-CM)
+- **시나리오 토글은 localStorage + addInitScript** — MSW 시나리오 분기(에러 응답 등)는 localStorage 플래그를 `addInitScript`로 심는 패턴이 정석. 핸들러 임시 교체 방식은 페이지 리로드에 깨진다
 - **UI 추가 PR은 기존 E2E 함께 실행** — 새 UI 요소가 기존 E2E의 전역 셀렉터를 strict mode로 깨도 단위 테스트는 못 잡는다. E2E를 후속 PR로 미루면 머지 시점에 회귀가 잠복한다. UI PR은 기존 E2E를 함께 돌리고, 텍스트 중복 버튼은 컨테이너로 한정 (PR #46 유발 → #47)
 - **fixture userId 정합** — 권한 UI fixture의 userId가 whoami fixture(예: alice=`00000000-...-001`)와 어긋나면 ADMIN 판정이 실패해 액션 버튼이 숨겨지고 E2E가 깨진다. 단위는 자체 리터럴로 self-consistent해 가려진다 (PR #50)
-- **worktree 잔여 vite 프로세스** — worktree에서 E2E를 돌린 뒤 worktree를 remove하면 Vite dev 서버가 5173 포트에 orphan으로 남아 이후 E2E가 webServer 60s 타임아웃에 걸린다. 테스트 실패가 아니므로, 막히면 5173 포트 kill로 해소 (PR #41)
+- **풀 suite 동시 실행 flaky 판별** — 백엔드 풀 suite를 여러 개 동시에 돌리면 Testcontainers 워커 크래시로 가짜 실패가 난다. test-results XML이 0실패면 해당 클래스 단독 재실행으로 확정 후 통과 처리 — 곧바로 BLOCKED 보고 금지
+
+그 외 사고 이력(userEvent.type 타임아웃 등)은 `Maxi_wiki/BTS/learnings.md` 참조 (controller가 /bts 경로에서 inline 주입).
 
 ## 절대 금지
 
@@ -117,6 +98,17 @@ abstract class IntegrationTestBase {
 - CI 30분 초과시 사용자 무통보
 - 테스트 격리 깨기 — 다른 테스트 결과에 의존
 
+## 병렬 wave 환경 규약 (공통)
+
+같은 wave의 다른 task와 **같은 worktree를 공유**한다.
+
+1. plan 메타 `files` 선언 파일만 수정. 선언 외 수정 필요 시 수정하지 말고 BLOCKED 보고
+2. stage는 파일 단위 `git add <경로>`만 — `git add -A` / `git add .` / `git commit -a` 금지 (lint-staged race로 타 task 산출물 흡수, 동종 사고 3회)
+3. 모듈/디렉토리 전체 포맷터 일괄 실행 금지 (`ktlintFormat` 등 — PRE_EXISTING 부수 변경 + 캐시 오염). 린트 검증은 check 계열만
+4. 백그라운드 프로세스 잔류 금지 — dev 서버(5173 등)는 보고 전 종료 (worktree remove 후 5173 orphan이 이후 E2E webServer 타임아웃 유발, PR #41)
+5. 스크래치/임시 파일은 보고 전 삭제. `git status --porcelain`으로 잔여물 확인
+6. **DONE 보고 형식** — STATUS + RED/GREEN/REFACTOR 각 commit hash 인용 (verifier가 hash 미인용 PASS를 거절)
+
 ## 참조 파일
 
 **controller가 prompt에 inline 첨부 — 직접 Read 금지** (중복 로드 토큰 낭비).
@@ -125,13 +117,9 @@ abstract class IntegrationTestBase {
 **필요 시 직접 Read 가능**.
 - 관련 SDD. `docs/sdd/22-claude-code-env.md` §22.7.2
 
-## Playwright 설정 권장
+## Playwright 설정
 
-- `playwright.config.ts`. workers 2~4 (1인 환경)
-- `projects`. chromium-desktop, chromium-mobile, firefox-desktop (선택)
-- `reporter`. 'html' (로컬), 'github' (CI)
-- `use.baseURL`. `BTS_E2E_BASE_URL` 환경변수 (로컬은 `http://localhost:3000`, CI는 dev 서버)
-- `webServer.command`. `pnpm dev` (로컬 dev 자동 기동)
+설정 변경 전 실제 `apps/web/playwright.config.ts`를 Read해 현행(projects/webServer/baseURL)을 따른다. 임의 변경은 Maxi 확인.
 
 ## 테스트 커버리지 목표 (SDD 22.7.2)
 
