@@ -185,5 +185,5 @@ val fixVersionIds: List<UUID> = emptyList(),
 - **이슈 히스토리 감사** — IssueHistory 미존재 + changeComponents도 history 미기록 → 버전 동형 불필요.
 - **PDF 내보내기** — IssuePdfTemplate에 컴포넌트 필드 렌더 없음 → 버전 노출 불필요.
 - **이슈 클론** — core-only (componentIds 미복사, ADR 2026-06-02-issue-clone-semantics) → affects/fix 버전도 미복사(Issue.create 기본값 emptyList 처리).
-- **소프트 삭제 버전이 연결된 채 조회** — CASCADE는 하드 삭제만 발화하므로 링크 행 잔존. 컴포넌트와 동일 동작. 프론트는 버전 목록(삭제 제외)에서 이름 해소하므로 dangling id는 이름 미표시로 graceful. 별도 필터 미도입(컴포넌트 선례 일치).
+- **소프트 삭제 버전이 연결된 채 조회** — 코드리뷰(적대적)에서 원래 "필터 미도입+프론트 graceful" 가정이 틀렸음이 드러남. dangling id가 GET엔 남고 PATCH는 422 거부 → 사용자가 안 보이는 버전 때문에 영문 모를 422. **정정**: 읽기 쿼리(`findAffects/FixVersionIdsByIssue`)가 `versions`를 조인해 `deleted_at IS NULL` 필터(status는 미필터 — ARCHIVED 유지). 컴포넌트 `findActiveComponentIdsByIssue`와 동형. 소프트삭제 버전은 읽기에서 제외되어 쓰기 검증과 일치.
 - Maxi 결정 2건(생성 시점 미지원 / ARCHIVED 허용)은 도메인 단계에서 확정.
