@@ -33,6 +33,8 @@ import java.util.UUID
  * - T3-G. replaceFixVersions — stale version 시 rows=0 (fix 변형).
  * - T3-H. findFixVersionIdsByIssue — ARCHIVED 버전 링크도 반환(status 필터 없음).
  * - T3-I. affects / fix 독립 쿼리 — 같은 이슈에 affects / fix 각각 연결 시 교차 없음 (CONCERN-3 검증).
+ * - T3-J. findAffectsVersionIdsByIssue — 소프트삭제된 버전은 제외, 살아있는 버전만 반환 (버그 회귀).
+ * - T3-K. findFixVersionIdsByIssue — 소프트삭제된 버전은 제외, 살아있는 버전만 반환 (버그 회귀).
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class IssueVersionLinksRepositoryTest : IssueTestcontainersBase() {
@@ -372,5 +374,91 @@ class IssueVersionLinksRepositoryTest : IssueTestcontainersBase() {
         assertThat(affects).doesNotContain(vf1)
         // affects ID 가 fix 결과에 포함되지 않는다
         assertThat(fix.toSet()).doesNotContain(va1, va2)
+    }
+
+    // ── 헬퍼 — 소프트삭제 ──────────────────────────────────────────────────────
+
+    /** versions 테이블의 특정 행을 소프트삭제(deleted_at = NOW())한다. */
+    private fun softDeleteVersion(versionId: UUID) {
+        val pg = IssueTestcontainersBase.postgres
+        DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { conn ->
+            conn.prepareStatement("UPDATE versions SET deleted_at = NOW() WHERE id = ?").use { stmt ->
+                stmt.setObject(1, versionId)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    // ── T3-J. findAffectsVersionIdsByIssue — 소프트삭제 버전 제외 (버그 회귀) ──
+
+    /**
+     * 버그 회귀 테스트: 읽기 경로가 versions.deleted_at 을 필터하지 않으면
+     * 소프트삭제된 버전 ID 가 응답에 포함되어 쓰기 경로(validateVersions)의 422 와 충돌한다.
+     *
+     * Given  이슈에 [V_LIVE, V_DELETED] 가 연결됨, V_DELETED 를 소프트삭제
+     * When   findAffectsVersionIdsByIssue(issueId)
+     * Then   V_LIVE 만 반환됨 (V_DELETED 제외).
+     * And    ARCHIVED(status=ARCHIVED, deleted_at=NULL) 버전은 여전히 반환됨.
+     */
+    @Test
+    @Order(10)
+    fun `T3-J - findAffectsVersionIdsByIssue - 소프트삭제 버전 제외 ARCHIVED 유지`() {
+        val issue = insertIssue(IssueKey.of("TPRJ", 1L))
+        val issueId = issue.id.value
+        val vLive = insertVersion("v1.0.0-live")
+        val vDeleted = insertVersion("v1.1.0-deleted")
+        val vArchived = insertVersion("v0.9.0-archived", status = "ARCHIVED")
+        repository.replaceAffectsVersions(
+            issue.key,
+            issueId,
+            listOf(vLive, vDeleted, vArchived),
+            expectedVersion = 1L,
+        )
+        softDeleteVersion(vDeleted)
+
+        val result = repository.findAffectsVersionIdsByIssue(issueId)
+
+        // 소프트삭제된 버전은 제외
+        assertThat(result).doesNotContain(vDeleted)
+        // 살아있는 버전은 포함
+        assertThat(result).contains(vLive)
+        // ARCHIVED(deleted_at=NULL)는 여전히 포함
+        assertThat(result).contains(vArchived)
+    }
+
+    // ── T3-K. findFixVersionIdsByIssue — 소프트삭제 버전 제외 (버그 회귀) ───────
+
+    /**
+     * 버그 회귀 테스트: fix 변형.
+     *
+     * Given  이슈에 [V_LIVE, V_DELETED] 가 fix 버전으로 연결됨, V_DELETED 를 소프트삭제
+     * When   findFixVersionIdsByIssue(issueId)
+     * Then   V_LIVE 만 반환됨 (V_DELETED 제외).
+     * And    ARCHIVED(status=ARCHIVED, deleted_at=NULL) 버전은 여전히 반환됨.
+     */
+    @Test
+    @Order(11)
+    fun `T3-K - findFixVersionIdsByIssue - 소프트삭제 버전 제외 ARCHIVED 유지`() {
+        val issue = insertIssue(IssueKey.of("TPRJ", 1L))
+        val issueId = issue.id.value
+        val vLive = insertVersion("v2.0.0-live")
+        val vDeleted = insertVersion("v2.1.0-deleted")
+        val vArchived = insertVersion("v1.9.0-fix-archived", status = "ARCHIVED")
+        repository.replaceFixVersions(
+            issue.key,
+            issueId,
+            listOf(vLive, vDeleted, vArchived),
+            expectedVersion = 1L,
+        )
+        softDeleteVersion(vDeleted)
+
+        val result = repository.findFixVersionIdsByIssue(issueId)
+
+        // 소프트삭제된 버전은 제외
+        assertThat(result).doesNotContain(vDeleted)
+        // 살아있는 버전은 포함
+        assertThat(result).contains(vLive)
+        // ARCHIVED(deleted_at=NULL)는 여전히 포함
+        assertThat(result).contains(vArchived)
     }
 }
