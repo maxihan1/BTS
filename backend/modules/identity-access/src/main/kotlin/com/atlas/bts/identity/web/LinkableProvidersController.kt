@@ -22,9 +22,16 @@ import org.springframework.web.bind.annotation.RestController
  * ## 엔드포인트
  * - [listLinkable]: GET /linkable-providers — LDAP/SAML/OIDC 활성 provider 를 한 배열로 반환.
  *
- * ## JWT 전용 (PAT 차단)
- * 계정 연결 셀프서비스의 일부이므로 PAT 는 차단한다([AccountLinkController] 선례와 동일 원칙).
- * step-up 은 요구하지 않는다 — 읽기전용 공개정보(enabled provider 이름)만 노출하기 때문이다.
+ * ## 노출 범위 — enabled 공개정보, per-user 필터 없음
+ * 노출 대상은 활성(enabled) provider 의 표시 이름·식별자뿐인 공개정보다. 사용자별로 다르게 거를
+ * 항목이 없으므로 per-user 필터링을 하지 않는다(이미 연결됐는지 여부는 별도 /links 엔드포인트가 담당).
+ *
+ * ## JWT 전용 (PAT 차단) — `@PreAuthorize` 불요 사유
+ * 이 경로는 SecurityConfig 의 api/v1 매칭에서 `authenticated()` 에 떨어져 PAT 도 필터 체인을 통과한다.
+ * 따라서 PAT 차단은 메서드 내부에서 [AccountLinkJwtSupport.resolveClaims] 가 null(=PAT, Jwt 아님)을
+ * 반환하는지로만 게이팅한다 — 이 null 검사가 **유일한 PAT 가드**다. PAT/JWT 구분은
+ * `@PreAuthorize` SpEL 로는 표현되지 않으므로(둘 다 authenticated), 별도 `@PreAuthorize` 를 두지 않는다
+ * ([AccountLinkController] 선례와 동일 원칙). step-up 도 요구하지 않는다(읽기전용 공개정보).
  *
  * ## 트랜잭션 경계
  * @Transactional 없음 — repository 의 읽기 전용 조회만 수행한다.
@@ -54,35 +61,53 @@ class LinkableProvidersController(
     ): ResponseEntity<*> {
         jwtSupport.resolveClaims(jwt) ?: return PAT_FORBIDDEN_RESPONSE
 
-        val linkable = buildList {
-            authnProviderConfigRepository.findEnabledByType(ProviderType.LDAP).forEach {
-                add(LinkableProviderDto(kind = "LDAP", providerId = it.id, registrationId = null, displayName = it.name))
-            }
-            samlIdpConfigRepository.findAllEnabled().forEach {
-                add(
-                    LinkableProviderDto(
-                        kind = "SAML",
-                        providerId = null,
-                        registrationId = it.registrationId,
-                        displayName = it.displayName,
-                    ),
-                )
-            }
-            oidcProviderConfigRepository.findEnabled().forEach {
-                add(
-                    LinkableProviderDto(
-                        kind = "OIDC",
-                        providerId = null,
-                        registrationId = it.registrationId,
-                        displayName = it.displayName,
-                    ),
-                )
-            }
-        }
+        val linkable = ldapLinkables() + samlLinkables() + oidcLinkables()
         return ResponseEntity.ok(LinkableProvidersResponse(linkable = linkable))
     }
 
+    /** 활성 LDAP provider 를 kind=LDAP(providerId) 항목으로 매핑한다. */
+    private fun ldapLinkables(): List<LinkableProviderDto> =
+        authnProviderConfigRepository.findEnabledByType(ProviderType.LDAP).map {
+            LinkableProviderDto(
+                kind = KIND_LDAP,
+                providerId = it.id,
+                registrationId = null,
+                displayName = it.name,
+            )
+        }
+
+    /** 활성 SAML IdP 를 kind=SAML(registrationId) 항목으로 매핑한다. */
+    private fun samlLinkables(): List<LinkableProviderDto> =
+        samlIdpConfigRepository.findAllEnabled().map {
+            LinkableProviderDto(
+                kind = KIND_SAML,
+                providerId = null,
+                registrationId = it.registrationId,
+                displayName = it.displayName,
+            )
+        }
+
+    /** 활성 OIDC provider 를 kind=OIDC(registrationId) 항목으로 매핑한다. */
+    private fun oidcLinkables(): List<LinkableProviderDto> =
+        oidcProviderConfigRepository.findEnabled().map {
+            LinkableProviderDto(
+                kind = KIND_OIDC,
+                providerId = null,
+                registrationId = it.registrationId,
+                displayName = it.displayName,
+            )
+        }
+
     private companion object {
+        /** LDAP 항목 kind — providerId(authn_providers.id) 로 식별. */
+        const val KIND_LDAP = "LDAP"
+
+        /** SAML 항목 kind — registrationId 로 식별. */
+        const val KIND_SAML = "SAML"
+
+        /** OIDC 항목 kind — registrationId 로 식별. */
+        const val KIND_OIDC = "OIDC"
+
         /** PAT 인증 시 계정 연결 셀프서비스 불가 응답 — [AccountLinkController] PAT 차단 선례와 동형. */
         val PAT_FORBIDDEN_RESPONSE: ResponseEntity<Map<String, String>> =
             ResponseEntity.status(HttpStatus.FORBIDDEN)
