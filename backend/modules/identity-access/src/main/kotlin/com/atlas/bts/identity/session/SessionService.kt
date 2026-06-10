@@ -2,6 +2,9 @@
 
 package com.atlas.bts.identity.session
 
+import com.atlas.bts.identity.audit.AuthAuditLog
+import com.atlas.bts.identity.audit.AuthAuditLogService
+import com.atlas.bts.identity.audit.AuthEventType
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.security.MessageDigest
@@ -38,6 +41,7 @@ import java.util.UUID
 @Service
 class SessionService(
     private val repo: SessionRepository,
+    private val auditLog: AuthAuditLogService,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     /**
@@ -114,6 +118,12 @@ class SessionService(
      *
      * 패스워드 변경, 계정 잠금, 전체 로그아웃 시 사용한다.
      *
+     * ## 감사 emit (FR-AU-10)
+     * 실제로 폐기된 세션이 1개 이상이면 [AuthEventType.LOGOUT_ALL_DEVICES] 를 감사 로그에 기록한다.
+     * 폐기된 세션이 0개(이미 모두 만료/폐기 상태)이면 기록하지 않는다 — 의미 없는 이벤트 방지.
+     * service 레이어 `@Transactional` 경계 내 동기 기록이므로 폐기 UPDATE 와 원자적으로 커밋/롤백된다
+     * (NFR-3, best-effort 아님 — 감사 기록 실패 시 폐기도 롤백).
+     *
      * @param userId 폐기 대상 사용자 ID
      * @param reason 폐기 사유 (예: "logout_all", "password_changed")
      * @return 영향받은 세션 수
@@ -122,7 +132,20 @@ class SessionService(
     fun revokeAllOfUser(
         userId: UUID,
         reason: String,
-    ): Int = repo.revokeAllByUserId(userId, reason)
+    ): Int {
+        val revoked = repo.revokeAllByUserId(userId, reason)
+        if (revoked > NO_SESSIONS_REVOKED) {
+            auditLog.record(
+                AuthAuditLog(
+                    userId = userId,
+                    eventType = AuthEventType.LOGOUT_ALL_DEVICES,
+                    providerId = AUDIT_PROVIDER_ID,
+                    metadata = mapOf("revokedSessionCount" to revoked.toString()),
+                ),
+            )
+        }
+        return revoked
+    }
 
     /**
      * 사용자의 활성 세션 목록을 조회한다.
@@ -173,5 +196,11 @@ class SessionService(
 
         /** device_fingerprint hex 길이 (FR-09-23) */
         internal const val FP_LENGTH: Int = 12
+
+        /** LOGOUT_ALL_DEVICES emit 임계값 — 폐기 세션 수가 이 값을 초과해야 감사 기록 (FR-AU-10) */
+        internal const val NO_SESSIONS_REVOKED: Int = 0
+
+        /** 전체 로그아웃 감사 이벤트의 providerId — 특정 Provider 가 아닌 세션 일괄 폐기 동작 (FR-AU-10) */
+        internal const val AUDIT_PROVIDER_ID: String = "session"
     }
 }
