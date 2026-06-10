@@ -25,7 +25,7 @@
 - **FR3**. 포함 이슈 = 해당 버전을 fix version으로 가진 **활성(soft-delete 안 된) 이슈 전부**. 워크플로우 상태/resolution 유무로 필터링하지 않는다(전부 포함, cross-BC 회피).
 - **FR4**. 이슈를 **타입별로 그룹핑**한다. 그룹 순서는 IssueType 표준 순서(`hierarchy_level` 오름차순, 동률은 typeName), 그룹 내 이슈는 **이슈 키 순**.
 - **FR5**. Markdown 템플릿(§5)에 따라 본문을 생성한다.
-- **FR6**. 권한은 기존 버전 조회와 동일한 READ 게이트(`VersionPermissionResolver`)를 적용한다. actorId는 `SYSTEM_ACTOR_UUID` placeholder(FR-PM-03 이연).
+- **FR6**. 권한은 기존 버전 조회(`getById`/`listByProject`)와 동일하게 **READ 게이트를 적용하지 않는다**(Jira 동일 정책, VersionApplicationService 주석 명시). 프로젝트 존재 확인만 수행하고, 미인증 요청은 SecurityFilterChain이 401로 차단한다. actorId는 `SYSTEM_ACTOR_UUID` placeholder(로깅용, FR-PM-03 이연).
 - **FR7 (D6 프론트)**. 버전 관리 화면(`/projects/$projectKey/settings/versions`)의 각 버전 행에 "릴리즈 노트" 액션을 추가, 클릭 시 미리보기 다이얼로그에 Markdown 렌더 + **클립보드 복사** 버튼을 제공한다.
 
 ## 4. API 인터페이스 (REST)

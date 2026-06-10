@@ -66,6 +66,173 @@ SDD 참조: §3.2.4
 
 ✅ 통과 (1회 자가 점검). gap 1건(헤더 프로젝트 식별 누락) 발견 후 spec에 projectKey 보강. 구현 주의점 4건(resolution 다건 주입 / IssueType 표준 순서 / projectKey ProjectLookup / 클립보드 secure-context) plan에 인계.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 패키지 기준: `com.bts.issue` (issue-tracking 모듈). 모든 백엔드 task는 `:backend:modules:issue-tracking` 컴파일 단위.
+> 검증 게이트(공통): `./gradlew :backend:modules:issue-tracking:test ktlintCheck detekt` (백엔드), `pnpm typecheck lint test` (프론트), `pnpm test:e2e` (E2E).
+
+### Task 1. IssueRepository 역방향 조회 2종 (버전→이슈, projectId→projectKey)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/project/ProjectLookup.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/repository/IssueRepositoryReleaseNotesTest.kt`]
+- depends-on: []
+
+**RED**:
+- Testcontainers 통합테스트 `IssueRepositoryReleaseNotesTest`:
+  - `findFixVersionIssuesForReleaseNotes(versionId)` 가 해당 버전을 fix version 으로 가진 활성 이슈만(`deleted_at IS NULL`) 반환, soft-delete 이슈 제외, 타입 정보(typeId/typeKey/typeName) 동봉.
+  - `ProjectIdRepository.findProjectKeyById(projectId)` 가 활성 프로젝트 key 반환, 미존재 null.
+- 실패: 두 메서드 미존재.
+
+**GREEN**:
+- `IssueRepository.findFixVersionIssuesForReleaseNotes(versionId: UUID): List<ReleaseNoteIssueRow>` — `ISSUE_FIX_VERSIONS` JOIN `ISSUES`(deleted_at IS NULL) JOIN `ISSUE_TYPES`, 단일 쿼리(cartesian product 회피 — 메모리 jooq-leftjoin-count). 반환 row 에 `key/summary/typeId/typeKey/typeName/resolutionId` 포함.
+- `ProjectIdRepository`(ProjectLookup.kt 내)에 `findProjectKeyById(id: UUID): String?` 추가 — 기존 `findActiveProjectIdByKey` 역방향.
+- `ReleaseNoteIssueRow` data class 는 IssueRepository.kt 내부 또는 인접 정의.
+
+**REFACTOR**: 컬럼 매핑 KDoc, 정렬은 Service/Generator 책임이므로 repository 는 raw 반환.
+
+**검증**: `./gradlew :backend:modules:issue-tracking:test --tests '*IssueRepositoryReleaseNotesTest'`
+
+### Task 2. ReleaseNotesGenerator — 순수 Markdown 조립 도메인
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/version/releasenotes/ReleaseNotesGenerator.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/version/releasenotes/ReleaseNotesGeneratorTest.kt`]
+- depends-on: []
+
+**RED**:
+- 단위테스트 `ReleaseNotesGeneratorTest`:
+  - 입력(projectKey, versionName, versionStatus, releaseDate, List<ReleaseNoteIssue>) → spec §5 템플릿대로 markdown 생성.
+  - 타입별 그룹핑 + 그룹 hierarchy_level 순 + 그룹 내 이슈 키 순.
+  - resolution 있으면 ` (Fixed)` 접미, 없으면 미표기.
+  - 이슈 0건 → `포함된 이슈가 없습니다.` 한 줄.
+  - summary 내 줄바꿈 → 공백 치환.
+  - releaseDate null → `미지정`.
+- 실패: `ReleaseNotesGenerator` 미존재.
+
+**GREEN**:
+- `ReleaseNotesGenerator.generate(input): String` 순수 함수. `ReleaseNoteIssue`(key, summary, typeName, hierarchyLevel, typeKey, resolutionName?) 입력 모델 정의.
+- 그룹핑: `groupBy(typeKey)` 후 `(hierarchyLevel, typeName)` 정렬, 그룹 내 `sortedBy(key)`.
+
+**REFACTOR**: 템플릿 상수 추출, 이스케이프 헬퍼(`sanitizeSummary`) 분리.
+
+**검증**: `./gradlew :backend:modules:issue-tracking:test --tests '*ReleaseNotesGeneratorTest'`
+
+### Task 3. ReleaseNotesService — 조회 조합 + Clock 주입
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/version/releasenotes/ReleaseNotesService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/version/releasenotes/ReleaseNotes.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/version/releasenotes/ReleaseNotesServiceTest.kt`]
+- depends-on: [1, 2]
+
+**RED**:
+- 단위테스트(mockk repository): `generate(actorId, projectIdOrKey, versionId)` 가
+  - resolveProject 미존재 → `VersionProjectNotFoundException`(404).
+  - findActiveVersion 미존재 → `VersionNotFoundException`(404).
+  - 이슈 역방향 조회 + `ResolutionRepository.findAllActive()` 맵으로 resolutionId→name 주입.
+  - projectKey 조회 + Generator 호출 → `ReleaseNotes`(projectKey, versionName, versionStatus, releaseDate, issueCount, generatedAt=Instant.now(clock), markdown).
+  - Clock 고정 시 generatedAt 결정적.
+- 실패: `ReleaseNotesService` 미존재.
+
+**GREEN**:
+- `@Service @Transactional(readOnly = true) ReleaseNotesService(projectLookup, versionRepo, issueRepo, resolutionRepo, clock=Clock.systemUTC())`.
+- READ 게이트 없음(VersionApplicationService.getById 정책 동일). resolveProject(404) + findActiveVersion(404)만.
+- `ReleaseNotes` 출력 data class.
+
+**REFACTOR**: resolution 맵 빌드 헬퍼, row→ReleaseNoteIssue 매핑 헬퍼 분리.
+
+**검증**: `./gradlew :backend:modules:issue-tracking:test --tests '*ReleaseNotesServiceTest'`
+
+### Task 4. GET 엔드포인트 + ReleaseNotesResponse DTO + 통합/MVC 테스트
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/version/web/VersionController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/version/web/dto/ReleaseNotesResponse.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/version/web/ReleaseNotesIntegrationTest.kt`]
+- depends-on: [3]
+
+**RED**:
+- Testcontainers 통합테스트 `ReleaseNotesIntegrationTest` (spec §2 시나리오):
+  - S1 200 + ReleaseNotesResponse(메타+markdown), 타입별 그룹.
+  - S2 0건 → 200, issueCount=0, 안내 markdown.
+  - S3 resolution 표시.
+  - S4 버전 미존재 404 `VERSION_NOT_FOUND`(errorCode 바디 단언 — 메모리 패턴).
+  - S5 프로젝트 미존재 404 `VERSION_PROJECT_NOT_FOUND`.
+  - S7 ARCHIVED 200 / soft-delete 404.
+- 실패: 엔드포인트 미존재 404 라우팅.
+
+**GREEN**:
+- `VersionController` 에 `@GetMapping("/{id}/release-notes") fun getReleaseNotes(...)` 추가 — `ReleaseNotesService.generate` 위임, `DataResponse(ReleaseNotesResponse.from(releaseNotes))`.
+- `ReleaseNotesResponse`(versionId, projectKey, versionName, versionStatus, releaseDate, issueCount, generatedAt, markdown) + `from(ReleaseNotes)`.
+
+**REFACTOR**: KDoc(@throws 404 종류), 컨트롤러는 트랜잭션 경계 없음 확인.
+
+**검증**: `./gradlew :backend:modules:issue-tracking:test --tests '*ReleaseNotesIntegrationTest'` + 전체 모듈 그린.
+
+### Task 5. 프론트 API + Zod 스키마 + 훅 + MSW 핸들러
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/versions.ts`, `apps/web/src/api/versions.types.ts`, `apps/web/src/hooks/use-versions.ts`, `apps/web/src/mocks/version-handlers.ts`, `apps/web/src/api/versions.test.ts`, `apps/web/src/mocks/version-handlers.test.ts`]
+- depends-on: [4]
+
+**RED**:
+- `versions.test.ts`: `getReleaseNotes(projectKey, versionId)` 가 `GET .../release-notes` 호출 후 Zod 파싱한 ReleaseNotes 반환. MSW fixture 로 응답.
+- 실패: 함수/스키마 미존재.
+
+**GREEN**:
+- `versions.types.ts`: `ReleaseNotesResponseSchema` Zod — **spec §4 응답 계약 정확히 일치**(메모리 frontend-zod-backend-dto-contract-gap: backend DTO 그대로, invent 금지). 필드 grep 대조.
+- `versions.ts`: `getReleaseNotes`.
+- `use-versions.ts`: `useReleaseNotes(projectKey, versionId, enabled)` React Query 훅(요청 시점 lazy — dialog open 시 enabled).
+- `version-handlers.ts`: release-notes MSW 핸들러 + fixture(markdown 포함).
+
+**REFACTOR**: 기존 versions API 관례(BC별 convention 메모리) 준수, CSRF 불필요(GET).
+
+**검증**: `pnpm --filter web test -- versions version-handlers` + `pnpm typecheck`
+
+### Task 6. ReleaseNotesDialog 컴포넌트 + VersionRow 액션 버튼
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/version/ReleaseNotesDialog.tsx`, `apps/web/src/components/version/VersionRow.tsx`, `apps/web/src/components/version/ReleaseNotesDialog.test.tsx`, `apps/web/src/components/version/VersionRow.test.tsx`]
+- depends-on: [5]
+
+**RED**:
+- `ReleaseNotesDialog.test.tsx`: open 시 `useReleaseNotes` 데이터 렌더(markdown 미리보기 `<pre>`/렌더), 복사 버튼 클릭 → `navigator.clipboard.writeText(markdown)` 호출(mock). 로딩/에러 상태.
+- `VersionRow.test.tsx`: "릴리즈 노트" 버튼 존재 + 클릭 시 dialog open. (행 컨테이너 한정 셀렉터 — 메모리 playwright/ui 중복).
+- 실패: 컴포넌트/버튼 미존재.
+
+**GREEN**:
+- `ReleaseNotesDialog`(radix Dialog 직접 import — 메모리 shadcn Dialog 래퍼 부재) — markdown `<pre>` 미리보기 + 복사 버튼(clipboard) + 복사 완료 토스트/표시.
+- `VersionRow` 에 "릴리즈 노트" 버튼(ARCHIVED 무관 활성 — 읽기 동작) + dialog state.
+
+**REFACTOR**: clipboard 실패(secure-context 아님) graceful 처리, i18n 라벨 version-labels.ts 합류.
+
+**검증**: `pnpm --filter web test -- ReleaseNotesDialog VersionRow` + `pnpm typecheck lint`
+
+### Task 7. E2E — 릴리즈 노트 미리보기 + 복사 happy path
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/version-release-notes.spec.ts`, `apps/web/src/mocks/version-handlers.ts`]
+- depends-on: [6]
+
+**RED**:
+- `version-release-notes.spec.ts`: 버전 관리 화면 진입(session-fixtures `loginAsAlice` 2단계 — 메모리 FR-AU-07 회귀) → 버전 행 "릴리즈 노트" 클릭 → dialog 에 markdown 미리보기 노출 → 복사 버튼 클릭 → 복사 완료 표시. clipboard 권한 grant(`context.grantPermissions(['clipboard-read','clipboard-write'])`).
+- MSW 시나리오: release-notes 응답(기존 stateful store 재사용 — 메모리 msw-derived-behavior-shared-store).
+
+**GREEN**: E2E 통과까지 셀렉터/대기 조정(드롭다운/dialog 로딩 대기 — 메모리 worktree-stale-base-rebase-and-e2e-msw-traps).
+
+**REFACTOR**: 기존 version-management E2E 회귀 동시 실행 확인(메모리 ui-pr-defer-e2e).
+
+**검증**: `pnpm --filter web test:e2e -- version-release-notes` + 기존 version E2E 회귀.
+
+## Plan 메타
+
+- task 수: 7
+- 예상 wave: 6 (wave1: T1∥T2, wave2: T3, wave3: T4, wave4: T5, wave5: T6, wave6: T7). 백엔드→프론트→E2E 자연 직렬 + 계약 일치 위해 프론트는 백엔드 DTO(T4) 확정 후.
+- TDD 강제: yes (test 커밋이 feat 커밋보다 먼저)
+- 추가 검증: ktlint/detekt(백), typecheck/lint/vitest(프론트), playwright(E2E)
+- BC 격리: issue-tracking 단일 BC. cross-BC 호출 없음(워크플로우 상태 미조회).
+- 신규 테이블/마이그레이션: 없음.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
