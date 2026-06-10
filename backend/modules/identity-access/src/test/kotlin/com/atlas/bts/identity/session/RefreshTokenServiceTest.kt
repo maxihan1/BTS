@@ -186,6 +186,8 @@ class RefreshTokenServiceTest {
             replacedBy = UUID.randomUUID(),
         )
         every { repo.findByTokenHash("a".repeat(64)) } returns usedToken
+        // 감사 주체 식별용 세션 조회 — 이미 폐기됐을 수 있어 null 반환 케이스 (FR-AU-10)
+        every { sessionService.lookup(sessionId) } returns null
         every { repo.revokeChainFromSession(sessionId) } returns 1
         justRun { sessionService.revoke(sessionId, "REFRESH_REPLAY") }
 
@@ -207,6 +209,8 @@ class RefreshTokenServiceTest {
             replacedBy = UUID.randomUUID(),
         )
         every { repo.findByTokenHash("a".repeat(64)) } returns replacedToken
+        // 감사 주체 식별용 세션 조회 — 이미 폐기됐을 수 있어 null 반환 케이스 (FR-AU-10)
+        every { sessionService.lookup(sessionId) } returns null
         every { repo.revokeChainFromSession(sessionId) } returns 1
         justRun { sessionService.revoke(sessionId, "REFRESH_REPLAY") }
 
