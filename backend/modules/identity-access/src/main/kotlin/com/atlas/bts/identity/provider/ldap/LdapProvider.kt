@@ -57,6 +57,8 @@ import java.util.UUID
  * ProviderRegistry(Task 35) 는 PROVIDER_UNAVAILABLE 결과를 받으면 다른 Provider 시도를 건너뛰어야 한다.
  * LDAP 장애 시 다른 Provider 폴백 여부는 Task 35 격리 정책에서 결정한다.
  * [ProviderUnavailableException] 은 이 클래스 외부에서 LDAP unavailable 을 시그널할 때 사용한다.
+ * unavailable(미설정·bind password 미설정·통신 장애) 시 [recordLdapUnavailable] 로 LDAP_UNAVAILABLE
+ * 감사 이벤트를 best-effort 기록한다(FR-AU-10 / spec §5, EC-2, EC-11).
  *
  * **보안 (DEVELOPMENT.md §1.1, §1.2)**:
  * - password CharArray 는 finally 블록에서 반드시 wipe (fill ' ')
