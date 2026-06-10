@@ -262,7 +262,8 @@ class PatAndConcurrencyIntegrationTest {
     /**
      * US-09-D: 성공적인 PAT 인증 후 [AuthEventType.PAT_USED] 감사 이벤트가 기록된다.
      *
-     * InMemoryAuthAuditLogService가 Bean으로 등록되어 있으므로 findRecent로 즉시 조회 가능하다.
+     * 프로덕션 빈 [com.atlas.bts.identity.audit.JdbcAuthAuditLogService]가 등록되어 있으므로
+     * record()는 auth_audit_logs 테이블(V021)에 영속되고, findRecent로 DB에서 즉시 조회된다(FR-AU-10).
      * 이 테스트는 FR-09-31 "PAT_USED 9종 enum" 검증이기도 하다.
      */
     @Test
@@ -279,7 +280,8 @@ class PatAndConcurrencyIntegrationTest {
             Map::class.java,
         )
 
-        // 감사 로그는 InMemoryAuthAuditLogService에 기록된다 (Task 36)
+        // 감사 로그는 JdbcAuthAuditLogService 가 auth_audit_logs 테이블에 영속한다 (FR-AU-10).
+        // 같은 트랜잭션 내 INSERT한 PAT_USED 를 findRecent 가 DB에서 즉시 조회한다.
         val logs = authAuditLogService.findRecent(testUserId, limit = 10)
         val patUsedEvents = logs.filter { it.eventType == AuthEventType.PAT_USED }
         assertThat(patUsedEvents).isNotEmpty
