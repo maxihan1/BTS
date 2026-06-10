@@ -1,4 +1,4 @@
-// 버전 BC TanStack Query 훅 — CRUD invalidate-only + 에러 토스트 (FR-VR-01, FR-VR-02)
+// 버전 BC TanStack Query 훅 — CRUD invalidate-only + 에러 토스트 + 릴리즈 노트 lazy 조회 (FR-VR-01, FR-VR-02, FR-VR-04)
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -8,11 +8,13 @@ import {
   changeVersionDates,
   deleteVersion,
   changeVersionStatus,
+  getReleaseNotes,
   extractVersionErrorCode,
 } from '@/api/versions'
 import { versionErrorMessage } from '@/i18n/version-labels'
 import type {
   Version,
+  ReleaseNotes,
   CreateVersionInput,
   UpdateVersionInput,
   ChangeDatesInput,
@@ -27,6 +29,9 @@ import type {
 export const VERSION_KEYS = {
   /** 프로젝트별 버전 목록 queryKey */
   list: (projectKey: string) => ['versions', projectKey] as const,
+  /** 버전 릴리즈 노트 단건 queryKey */
+  releaseNotes: (projectKey: string, versionId: string) =>
+    ['versions', projectKey, versionId, 'release-notes'] as const,
 } satisfies Record<string, (...args: string[]) => readonly string[]>
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -36,6 +41,31 @@ export const VERSION_KEYS = {
 function notifyVersionError(error: unknown): void {
   const code = extractVersionErrorCode(error)
   toast.error(versionErrorMessage(code))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useReleaseNotes — 릴리즈 노트 lazy 조회 (FR-VR-04)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 버전 릴리즈 노트를 lazy하게 조회한다.
+ *
+ * GET /api/v1/projects/{projectKey}/versions/{versionId}/release-notes → ReleaseNotes
+ * Dialog open 시 enabled=true로 전환해 fetch를 트리거한다.
+ * staleTime 0 — 릴리즈 노트는 요청마다 최신 생성.
+ *
+ * @param projectKey 프로젝트 식별 키
+ * @param versionId 버전 UUID
+ * @param enabled 쿼리 활성 여부 — false이면 fetch 안 함 (lazy pattern)
+ */
+export function useReleaseNotes(projectKey: string, versionId: string, enabled: boolean) {
+  return useQuery<ReleaseNotes, unknown>({
+    queryKey: VERSION_KEYS.releaseNotes(projectKey, versionId),
+    queryFn: () => getReleaseNotes(projectKey, versionId),
+    enabled,
+    staleTime: 0,
+    retry: false,
+  })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

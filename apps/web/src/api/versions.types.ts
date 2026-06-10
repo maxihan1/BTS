@@ -1,4 +1,4 @@
-// 버전 BC Zod 스키마 + 추론 타입 정의 — backend VersionResponse DTO 1:1 대응 (FR-VR-01, FR-VR-02)
+// 버전 BC Zod 스키마 + 추론 타입 정의 — backend VersionResponse/ReleaseNotesResponse DTO 1:1 대응 (FR-VR-01, FR-VR-02, FR-VR-04)
 import { z } from 'zod'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -70,3 +70,31 @@ export interface ChangeDatesInput {
 export interface ChangeVersionStatusInput {
   status: VersionStatus
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 릴리즈 노트 응답 스키마 — backend ReleaseNotesResponse DTO 1:1 대응 (FR-VR-04)
+// versionId: UUID, projectKey: String, versionName: String,
+// versionStatus: VersionStatus, releaseDate: LocalDate? (null 허용),
+// issueCount: Int, generatedAt: Instant (ISO-8601 문자열), markdown: String
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 릴리즈 노트 조회 응답 Zod 스키마.
+ * backend ReleaseNotesResponse(versionId, projectKey, versionName, versionStatus,
+ * releaseDate?, issueCount, generatedAt, markdown) 1:1 대응.
+ * releaseDate: @JsonFormat("yyyy-MM-dd") 또는 null (@JsonInclude 아님 — null 필드 포함됨).
+ * generatedAt: Instant → Jackson ISO-8601 문자열 직렬화.
+ */
+export const releaseNotesResponseSchema = z.object({
+  versionId: z.string().uuid(),
+  projectKey: z.string().min(1),
+  versionName: z.string().min(1),
+  versionStatus: versionStatusSchema,
+  releaseDate: z.string().nullable(),
+  issueCount: z.number().int().nonnegative(),
+  generatedAt: z.string(),
+  markdown: z.string(),
+})
+
+/** 릴리즈 노트 응답 타입 */
+export type ReleaseNotes = z.infer<typeof releaseNotesResponseSchema>

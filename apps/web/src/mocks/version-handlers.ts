@@ -1,6 +1,16 @@
-// 버전 BC MSW 핸들러 — stateful CRUD + 상태 전이 + RFC 7807 ProblemDetail 에러 (FR-VR-01, FR-VR-02)
+// 버전 BC MSW 핸들러 — stateful CRUD + 상태 전이 + 릴리즈 노트 조회 + RFC 7807 ProblemDetail 에러 (FR-VR-01, FR-VR-02, FR-VR-04)
 import { http, HttpResponse } from 'msw'
 import type { Version, VersionStatus } from '../api/versions.types'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 릴리즈 노트 시드 입력 타입
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 릴리즈 노트 시드 입력 — 마크다운 본문과 이슈 수를 외부 주입 가능하게 한다 */
+interface ReleaseNotesSeedInput {
+  markdown: string
+  issueCount: number
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 저장소 타입 — 프로젝트별 버전 Map
@@ -49,9 +59,27 @@ function generateUuidV4(): string {
 
 let versionStore: Map<string, StoredVersion> = new Map()
 
+/**
+ * 릴리즈 노트 시드 저장소 — versionId → ReleaseNotesSeedInput
+ * 기본값 없이 시드된 데이터만 저장. 시드 없으면 빈 릴리즈 노트 기본값 사용.
+ */
+let releaseNotesSeedStore: Map<string, ReleaseNotesSeedInput> = new Map()
+
 /** 저장소를 빈 상태로 초기화한다 (테스트 격리용) */
 export function resetVersionStore(): void {
   versionStore = new Map()
+  releaseNotesSeedStore = new Map()
+}
+
+/**
+ * 특정 버전의 릴리즈 노트 시드 데이터를 등록한다.
+ * 핸들러가 GET /release-notes 요청을 받으면 이 데이터를 사용한다.
+ *
+ * @param versionId 버전 UUID
+ * @param seed 마크다운 본문 + 이슈 수
+ */
+export function seedReleaseNotes(versionId: string, seed: ReleaseNotesSeedInput): void {
+  releaseNotesSeedStore.set(versionId, seed)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -379,6 +407,48 @@ const changeStatusHandler = http.patch(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/projects/:projectIdOrKey/versions/:id/release-notes — FR-VR-04
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 버전 릴리즈 노트 조회.
+ * seedReleaseNotes()로 등록된 시드가 있으면 해당 데이터를 사용하고,
+ * 없으면 issueCount=0, 빈 markdown 기본값을 반환한다.
+ *
+ * 에러 분기 순서 (백엔드와 동일).
+ * 1. 버전 미존재 또는 삭제됨 → 404 VERSION_NOT_FOUND
+ * 성공 → 200 { data: ReleaseNotesResponse }
+ */
+const getReleaseNotesHandler = http.get(
+  '/api/v1/projects/:projectIdOrKey/versions/:id/release-notes',
+  ({ params }) => {
+    const id = params['id'] as string
+    const projectIdOrKey = params['projectIdOrKey'] as string
+    const stored = versionStore.get(id)
+    if (stored === undefined || stored.deleted) {
+      return versionNotFound(id)
+    }
+
+    const seed = releaseNotesSeedStore.get(id)
+    const markdown = seed?.markdown ?? `## ${stored.name}\n\n이슈가 없습니다.`
+    const issueCount = seed?.issueCount ?? 0
+
+    return HttpResponse.json({
+      data: {
+        versionId: stored.id,
+        projectKey: stored.projectIdOrKey === projectIdOrKey ? projectIdOrKey : stored.projectIdOrKey,
+        versionName: stored.name,
+        versionStatus: stored.status,
+        releaseDate: stored.releaseDate,
+        issueCount,
+        generatedAt: new Date().toISOString(),
+        markdown,
+      },
+    })
+  },
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Export
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -391,4 +461,5 @@ export const versionHandlers = [
   changeDatesHandler,
   changeStatusHandler,
   deleteVersionHandler,
+  getReleaseNotesHandler,
 ]
