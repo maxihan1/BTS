@@ -318,5 +318,6 @@ classify 결과 — type=auth, agent=security-engineer, primary_bc=identity-acce
 - C6 — Task 5: JwtIssuer 시그니처 파급(SSO 핸들러 false 유지) 회귀 가드
 - C7 — Task 10: isEnabled 조회를 Success 분기 후로 한정(타이밍 누출 방지)
 
-**Maxi 결정 필요 (게이트1)**:
-- C5 — 13 task 단일 PR vs 백엔드(T1~11)/프론트+E2E(T12~13) 2-PR 분할. T12/13의 depends-on:[9,10]이 자연 분할선. 백엔드 API 계약 확정 후 프론트 Zod invent 없이 grep 검증 가능(frontend-zod-backend-dto-contract-gap).
+**Maxi 결정 (게이트1, 2026-06-11)**:
+- 게이트1 **승인** → /bts-impl 진행.
+- C5 — **2-PR 분할 확정**. **PR #113 = 백엔드 T1~T11**(API·마이그레이션·암호화·rate-limit·통합테스트). **후속 PR = 프론트 T12 + E2E T13**(백엔드 API 계약 확정 후, Zod invent 없이 grep 검증). 본 PR 구현 범위는 T1~T11만.
