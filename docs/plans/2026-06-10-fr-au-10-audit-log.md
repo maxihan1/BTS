@@ -66,12 +66,16 @@ classify-task가 제목 끝 "조회 UI" 키워드로 `ui/frontend-engineer` 오�
 
 **메타**.
 - agent: `db-engineer`
-- files: [`backend/modules/identity-access/src/main/resources/db/migration/V021__auth_audit_logs.sql`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/audit/AuthAuditLogsSchemaTest.kt`]
+- files: [`backend/modules/identity-access/src/main/resources/db/migration/V021__auth_audit_logs.sql`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/audit/AuthAuditLogsSchemaTest.kt`, `docs/sdd/05-data-model.md`, `docs/sdd/19-authentication.md`]
 - depends-on: []
 
 **RED**. `AuthAuditLogsSchemaTest`(Testcontainers + Flyway) — `auth_audit_logs` 테이블 존재 + 컬럼 9종(id BIGINT IDENTITY, user_id UUID NULL, event_type, provider_id, ip_address, user_agent, device_fingerprint, metadata JSONB, created_at) + 인덱스 3종 조회. 실패: relation 없음.
 
 **GREEN**. V021 마이그레이션 작성 (스펙 §4.1/4.2). FK 없음, 단순 테이블, 인덱스 3종(`idx_..._user_created`, `idx_..._event_type`, `idx_..._created_at`).
+
+> ⚠️ **C-4 전수 동기화**(CLAUDE.md §명세/범위 변경 전수 동기화): SDD가 구현과 drift. **같은 PR에서 정정**:
+> - `docs/sdd/05-data-model.md:250` 단수 `auth_audit_log` → 복수 `auth_audit_logs`, `:302` "월 단위 파티션" → 인덱스 3종(파티셔닝 없음), ADR 링크.
+> - `docs/sdd/19-authentication.md:179` "월 단위 파티션, 1년 보존" → "단순 테이블 + 인덱스, @Scheduled 1년 보존(파티셔닝 일탈 — ADR 2026-06-10-auth-audit-log-persistence)". 19.9의 `id: Long`/`userId: Long?` 표기는 실제 UUID/UUID? 와 drift 명시(또는 정정).
 
 **REFACTOR**. 컬럼/인덱스 COMMENT, 1줄 L1 한글 주석.
 
@@ -96,8 +100,10 @@ classify-task가 제목 끝 "조회 UI" 키워드로 `ui/frontend-engineer` 오�
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/audit/JdbcAuthAuditLogService.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/audit/InMemoryAuthAuditLogService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/audit/JdbcAuthAuditLogServiceIntegrationTest.kt`]
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/audit/JdbcAuthAuditLogService.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/audit/InMemoryAuthAuditLogService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/audit/JdbcAuthAuditLogServiceIntegrationTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/integration/PatAndConcurrencyIntegrationTest.kt`]
 - depends-on: [1, 2]
+
+> ⚠️ **C-1**: `PatAndConcurrencyIntegrationTest`(`:79,148,283`)는 `@Autowired AuthAuditLogService`로 빈을 받아 `findRecent`로 PAT_USED를 assert. InMemory→Jdbc 전환 시 이 테스트가 자동으로 DB(`auth_audit_logs`)를 읽게 됨 → 같은 tx 내 INSERT한 PAT_USED를 findRecent가 즉시 보는지 검증 + line 265/282 "InMemory에 기록" 주석 정정. files 포함.
 
 **RED**. `JdbcAuthAuditLogServiceIntegrationTest`(Testcontainers) — record→findRecent 왕복, 최신순(created_at DESC, id DESC tiebreaker), limit, 사용자 격리, **userId=null 영속/조회**, metadata JSONB 왕복, 재조회 내구성. 실패: `JdbcAuthAuditLogService` 없음.
 
@@ -108,7 +114,7 @@ classify-task가 제목 끝 "조회 UI" 키워드로 `ui/frontend-engineer` 오�
 
 **REFACTOR**. SQL const 추출, MaxLineLength 주의(G-7 블록 단위), KDoc 갱신(현재→영속).
 
-**검증**. `./gradlew :backend:identity-access:test --tests JdbcAuthAuditLogServiceIntegrationTest --rerun-tasks`.
+**검증**. `./gradlew :backend:identity-access:test --tests JdbcAuthAuditLogServiceIntegrationTest --tests PatAndConcurrencyIntegrationTest --rerun-tasks`.
 
 ### Task 4. AuthController emit — LOGIN_SUCCESS/LOGIN_FAILURE/LOGOUT
 
@@ -174,12 +180,14 @@ classify-task가 제목 끝 "조회 UI" 키워드로 `ui/frontend-engineer` 오�
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/provider/oidc/OidcAuthenticationSuccessHandler.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/provider/saml/Saml2AuthenticationSuccessHandler.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/provider/oidc/OidcAuthenticationSuccessHandlerTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/provider/saml/Saml2AuthenticationSuccessHandlerTest.kt`]
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/provider/oidc/OidcAuthenticationSuccessHandler.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/provider/saml/Saml2AuthenticationSuccessHandler.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/provider/oidc/OidcSuccessHandlerTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/provider/saml/Saml2AuthenticationSuccessHandlerTest.kt`]
 - depends-on: [3]
 
-**RED**. 각 핸들러 테스트(mock 추가) — onAuthenticationSuccess시 LOGIN_SUCCESS emit(user.id, providerId=oidc/saml, ip/userAgent from request). 실패: emit 없음.
+> ⚠️ **B-3 정정**: OIDC 테스트 실제 파일명은 `OidcSuccessHandlerTest.kt`(`...Test.kt:131`에서 핸들러 생성자 호출). `OidcAuthenticationSuccessHandlerTest.kt`는 미존재. SAML 쪽 이름은 정확.
 
-**GREEN**. 각 핸들러 생성자에 `AuthAuditLogService` 주입(G-1, SecurityConfig 배선 확인). 프로비저닝 직후 record. (USER_PROVISIONED는 Task 7의 AutoProvisionService 내부에서 별도 emit — 중복 아님.)
+**RED**. 각 핸들러 테스트(mock 추가) — (a) **일반 로그인** 경로(`issueTokens(request, response, account.userId)` 직후)에서 LOGIN_SUCCESS emit(user.id, providerId=oidc/saml, ip/userAgent from request). (b) **C-3 가드**: 연결 모드(linking) early-return 분기(`OidcAuthenticationSuccessHandler.kt`의 `if (linkingIntent != null) { handleLinkingMode; return }`, SAML 동형 `:103-105`)에서는 LOGIN_SUCCESS emit **안 함** — vacuous green 회피 위해 연결 모드 비-emit을 명시 assert. 실패: emit 없음.
+
+**GREEN**. 각 핸들러 생성자에 `AuthAuditLogService` 주입(G-1). 컴포넌트 스캔(`@Component`) 자동 주입이라 SecurityConfig 수정 불요(검증7 OK). **emit 위치 = 연결 모드 early-return 아래의 일반 로그인 경로 `issueTokens` 직후**(C-3). (USER_PROVISIONED는 Task 7 AutoProvisionService 내부 별도 emit — 중복 아님.)
 
 **REFACTOR**. 불필요.
 
@@ -189,12 +197,14 @@ classify-task가 제목 끝 "조회 UI" 키워드로 `ui/frontend-engineer` 오�
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/provider/ldap/LdapProvider.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/provider/ldap/LdapProviderTest.kt`]
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/provider/ldap/LdapProvider.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/provider/ldap/LdapProviderUnitTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/provider/ldap/LdapProviderBindForLinkingTest.kt`]
 - depends-on: [3]
 
-**RED**. `LdapProviderTest`(mock 추가) — (a) LDAP 미설정/bind password 미설정시, (b) CommunicationException(통신 불가)시 LDAP_UNAVAILABLE emit(userId=null, metadata.reason/exception). 실패: emit 없음.
+> ⚠️ **B-2 정정**: `LdapProviderTest.kt`는 미존재. LdapProvider 생성자(`LdapProvider.kt:64-69`)에 6번째 인자 `AuthAuditLogService` 추가 시 깨지는 실제 테스트는 `LdapProviderUnitTest.kt:77`(5인자 직접 호출) + `LdapProviderBindForLinkingTest.kt:169,194`(2곳). 둘 다 files 포함, 생성자 호출부 갱신 필수.
 
-**GREEN**. LdapProvider 생성자에 `AuthAuditLogService` 주입(G-1). config null / bind password null / CommunicationException catch 지점에서 record. userId=null(EC-2, 더미 UUID 금지).
+**RED**. `LdapProviderUnitTest`(mock 추가) — (a) LDAP 미설정/bind password 미설정시, (b) CommunicationException(통신 불가)시 LDAP_UNAVAILABLE emit(userId=null, metadata.reason/exception). 실패: emit 없음.
+
+**GREEN**. LdapProvider 생성자에 `AuthAuditLogService` 주입(G-1) — `LdapProviderUnitTest`·`LdapProviderBindForLinkingTest`의 생성자 호출 3곳 mock 인자 추가. config null / bind password null / CommunicationException catch 지점에서 record. userId=null(EC-2, 더미 UUID 금지).
 
 **REFACTOR**. 불필요.
 
@@ -204,14 +214,16 @@ classify-task가 제목 끝 "조회 UI" 키워드로 `ui/frontend-engineer` 오�
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/audit/AuthAuditLogRetentionJob.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/audit/AuthAuditLogService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/audit/AuthAuditLogRetentionJobIntegrationTest.kt`]
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/audit/AuthAuditLogRetentionJob.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/config/SchedulingConfiguration.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/audit/AuthAuditLogService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/audit/AuthAuditLogRetentionJobIntegrationTest.kt`]
 - depends-on: [3]
 
-**RED**. `AuthAuditLogRetentionJobIntegrationTest`(Testcontainers) — 1년 경과 행 + 미경과 행 시드 후 purge 메서드 직접 호출 → 경과 행만 삭제. 실패: purge 없음.
+> ⚠️ **C-2**: identity-access엔 `@EnableScheduling`·`@Scheduled` 실사용 0(SessionService:33 주석뿐). 진입점 오염 회피 위해 **issue-tracking의 `SchedulingConfiguration.kt` 격리 패턴**을 따라 별도 `config/SchedulingConfiguration`(@Configuration @EnableScheduling)으로 분리. cron은 프로퍼티 외부화(`application.yml`) + **테스트 프로파일에서 cron override/비활성화**로 통합테스트 오염(보존 job 자동 실행→타 테스트 시드 삭제) 차단. 기존 RANDOM_PORT 부팅 레시피(메모리 `identity-access-prod-randomport-boot-recipe`)와 충돌 없는지 확인.
 
-**GREEN**. `AuthAuditLogService`에 `purgeOlderThan(cutoff: Instant): Int` 추가(Jdbc 구현=`DELETE WHERE created_at < :cutoff`, InMemory 구현도 대응). `AuthAuditLogRetentionJob` `@Component` + `@Scheduled`(일 1회 등)가 `purgeOlderThan(now - 1년)` 호출. **G-4: `@EnableScheduling` 실재 확인 후 없으면 추가, 테스트 프로파일 스케줄 억제, 테스트는 메서드 직접 호출**.
+**RED**. `AuthAuditLogRetentionJobIntegrationTest`(Testcontainers) — 1년 경과 행 + 미경과 행 시드 후 purge 메서드 **직접 호출**(스케줄 트리거 의존 금지) → 경과 행만 삭제. 실패: purge 없음.
 
-**REFACTOR**. cutoff 상수(1년) 명명.
+**GREEN**. `AuthAuditLogService`에 `purgeOlderThan(cutoff: Instant): Int` 추가(Jdbc=`DELETE WHERE created_at < :cutoff`, InMemory 대응). `AuthAuditLogRetentionJob` `@Component`의 `@Scheduled`(cron 프로퍼티)가 `purgeOlderThan(now - 1년)` 호출. `SchedulingConfiguration`로 `@EnableScheduling` 격리, 테스트 프로파일 cron 비활성.
+
+**REFACTOR**. cutoff 상수(1년) 명명, cron 프로퍼티 기본값 문서화.
 
 **검증**. `./gradlew :backend:identity-access:test --tests AuthAuditLogRetentionJobIntegrationTest`.
 
@@ -243,4 +255,22 @@ classify-task가 제목 끝 "조회 UI" 키워드로 `ui/frontend-engineer` 오�
 - TDD 강제: yes (red→green→refactor, `test:` 커밋 선행 검증)
 - 추가 검증: 모듈 ktlint/detekt(`--rerun-tasks`), 기존 로그인/세션/리프레시/프로비저닝 회귀 0.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### security-engineer 독립 적대적 리뷰 (2026-06-10)
+
+autoplan overkill 회피(메모리 `bts-review-plan-autoplan-overkill`) → 보안 관점 독립 리뷰. CEO 리뷰는 범위 확정됨으로 생략.
+
+**BLOCKER 3건**.
+- **B-1 (Maxi 정책 결정 — 게이트1 상정)**. NFR-3 "동기 트랜잭션 내 INSERT, 삼킴 금지"가 web 레이어 emit(LOGIN_*, LOGOUT)에서 불가. `AuthController.kt:52`는 의도적 무-트랜잭션. 감사 DB 장애 시 가용성 vs 무결성 trade-off. **→ 게이트1 결정 후 spec NFR-3 + T4 GREEN 확정.**
+- **B-2 (정정 완료)**. T9 files `LdapProviderTest.kt`(미존재) → `LdapProviderUnitTest.kt:77` + `LdapProviderBindForLinkingTest.kt:169,194`.
+- **B-3 (정정 완료)**. T8 files `OidcAuthenticationSuccessHandlerTest.kt`(미존재) → `OidcSuccessHandlerTest.kt:131`.
+
+**CONCERN 5건 (plan 반영 완료)**.
+- C-1. Pat 통합테스트 Jdbc 전환 점검 → T3 files/검증 추가.
+- C-2. @EnableScheduling 부재 → T10에 `SchedulingConfiguration` 격리 패턴 + 테스트 cron 비활성.
+- C-3. SSO 연결 모드 early-return에선 LOGIN_SUCCESS 비-emit → T8 RED 가드.
+- C-4. SDD 05/19.9 테이블명·파티션 drift → T1에 전수 동기화 추가.
+- **C-5 (Maxi 확인 — 게이트1 상정)**. race-loser refresh를 SUSPICIOUS_REFRESH_REPLAY로 감사할지. 코드 저자는 race-loser도 "탈취 위험"으로 보고 동일 REFRESH_REPLAY 사유로 revoke. plan은 양성으로 보고 제외. **→ 게이트1 확인.**
+
+**OK (검증 완료)**. 계정열거 timing(LocalProvider dummy Argon2), userId nullable 파급(기존 4 emit non-null 호환), xmax 기법(ON CONFLICT 이미 존재), SSO user.id/request 접근, LDAP_UNAVAILABLE 위치, bean 모호성, V021 충돌 없음.
