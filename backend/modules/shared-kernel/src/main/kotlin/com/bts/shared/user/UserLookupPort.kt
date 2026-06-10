@@ -1,13 +1,14 @@
-// 사용자 실재 검증 cross-BC 포트 — issue-tracking 이 assignee 존재 확인에 사용
+// 사용자 실재 검증 cross-BC 포트 — issue-tracking 이 assignee 존재 확인 및 멘션 username 해석에 사용
 
 package com.bts.shared.user
 
 import java.util.UUID
 
 /**
- * 사용자 존재 여부 cross-BC 조회 포트 (FR-IS-03 Task 3 / ADR 2026-06-01-issue-assignee-user-lookup-port).
+ * 사용자 존재 여부 cross-BC 조회 포트 (FR-IS-03 Task 3 / FR-MN-01 Task 3 / ADR 2026-06-01-issue-assignee-user-lookup-port).
  *
- * issue-tracking BC 가 assignee 배정 전 사용자 실재를 검증할 때 이 인터페이스를 호출한다.
+ * issue-tracking BC 가 assignee 배정 전 사용자 실재를 검증하거나, 멘션된 username 을 userId 로 일괄 해석할 때
+ * 이 인터페이스를 호출한다.
  * 구현체는 identity-access BC 가 제공하며, 양쪽 BC 는 shared-kernel 을 통해 간접 의존한다.
  * issue-tracking 은 identity-access 를 직접 gradle 의존하지 않는다.
  *
@@ -32,4 +33,26 @@ interface UserLookupPort {
      * @return 행이 존재하면 true, 없으면 false
      */
     fun exists(userId: UUID): Boolean
+
+    /**
+     * 주어진 username 집합을 실재 사용자 id 로 일괄 해석한다.
+     *
+     * users 테이블에서 username 으로 조회해 `username -> UUID` 맵을 반환한다.
+     * 미존재 username 은 결과 맵에서 제외된다 — 호출자가 명시적으로 드롭 처리.
+     * 빈 입력 시 DB 쿼리 없이 빈 맵을 즉시 반환한다.
+     *
+     * ### 실제 구현
+     * [com.atlas.bts.identity.user.UserLookupAdapter] 가 `SELECT id, username FROM users WHERE username = ANY(:names)`
+     * 단일 쿼리로 구현한다. production 환경에서 이 default 구현이 호출되면 안 된다.
+     *
+     * ### 기본값 = emptyMap() 의 의미
+     * 기존 테스트 파일 ~35 개가 `object : UserLookupPort { override fun exists(...) }` 인라인으로
+     * 구현 중이다. 새 추상 메서드로 추가하면 이 파일들이 전부 컴파일 에러가 난다.
+     * default `emptyMap()` 은 기존 fake 들을 보호하는 fail-safe 이며, 멘션 0건(미발행)으로 안전하게 동작한다.
+     * production 유일 구현체는 [com.atlas.bts.identity.user.UserLookupAdapter] 로 override 한다.
+     *
+     * @param usernames 해석할 username 집합 (대소문자 원문 보존, users.username 정확 매칭)
+     * @return 실재하는 username 만 포함한 `username -> UUID` 맵 (순서 미보장)
+     */
+    fun findIdsByUsernames(usernames: Set<String>): Map<String, UUID> = emptyMap()
 }
