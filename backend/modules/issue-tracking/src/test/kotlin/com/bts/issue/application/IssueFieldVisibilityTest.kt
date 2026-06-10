@@ -83,6 +83,7 @@ class IssueFieldVisibilityTest : DescribeSpec({
             userLookupPort = userLookupPort,
             componentRepository = mockk<ComponentRepository>(relaxed = true),
             projectLeadRepository = mockk<ProjectLeadRepository>(relaxed = true),
+            versionRepository = mockk(relaxed = true),
             clock = clock,
             fieldPermissionResolver = fieldPermissionResolver,
         )
@@ -117,6 +118,8 @@ class IssueFieldVisibilityTest : DescribeSpec({
         every { permissionResolver.hasPermission(actorId, IssuePermission.VIEW, IssueScope.Issue(issueKey.value)) } returns true
         every { repo.findByKeyWithType(issueKey) } returns makeFullResponse()
         every { repo.findActiveComponentIdsByIssue(issueId) } returns emptyList()
+        every { repo.findAffectsVersionIdsByIssue(any()) } returns emptyList()
+        every { repo.findFixVersionIdsByIssue(any()) } returns emptyList()
         every { repo.findProjectIdByKey(projectKey) } returns projectId
         // editableFields 기본 stub — 모든 candidates 를 그대로 반환(전 필드 편집 허용).
         // 개별 context 에서 필요한 경우 재정의한다.
@@ -511,6 +514,7 @@ class IssueFieldVisibilityTest : DescribeSpec({
                 userLookupPort = userLookupPort,
                 componentRepository = mockk<ComponentRepository>(relaxed = true),
                 projectLeadRepository = mockk<ProjectLeadRepository>(relaxed = true),
+                versionRepository = mockk(relaxed = true),
                 clock = clock,
                 // fieldPermissionResolver 미전달 — 기본값 사용
             )

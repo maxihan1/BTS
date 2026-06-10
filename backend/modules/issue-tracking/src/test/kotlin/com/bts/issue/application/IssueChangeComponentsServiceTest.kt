@@ -62,6 +62,7 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
             userLookupPort = userLookupPort,
             componentRepository = componentRepository,
             projectLeadRepository = projectLeadRepository,
+            versionRepository = mockk(relaxed = true),
             clock = clock,
         )
 
@@ -110,6 +111,8 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
     beforeEach {
         clearMocks(repo, permissionResolver, componentRepository, projectLeadRepository, answers = false)
         every { projectLeadRepository.findLeadUserId(any()) } returns null
+        every { repo.findAffectsVersionIdsByIssue(any()) } returns emptyList()
+        every { repo.findFixVersionIdsByIssue(any()) } returns emptyList()
     }
 
     describe("changeComponents") {

@@ -4,6 +4,7 @@ package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.application.AppChangeAssigneeRequest
 import com.bts.issue.application.AppChangeComponentsRequest
+import com.bts.issue.application.AppChangeVersionsRequest
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.SecurityLevelPatch
 import com.bts.issue.domain.IssueKey
@@ -49,6 +50,8 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
  * - GET    /api/v1/issues/{key}/transitions — 가용 전이 목록 조회 (T4)
  * - PATCH  /api/v1/issues/{key}/assignee — 담당자 변경/해제 (FR-IS-03 T8)
  * - PATCH  /api/v1/issues/{key}/components — 컴포넌트 목록 교체 (FR-CM-02 T5)
+ * - PATCH  /api/v1/issues/{key}/affects-versions — 영향 버전 목록 교체 (FR-VR-03 T5)
+ * - PATCH  /api/v1/issues/{key}/fix-versions — 수정 예정 버전 목록 교체 (FR-VR-03 T5)
  * - DELETE /api/v1/issues/{key} — 이슈 소프트 삭제 (T16)
  * - GET    /api/v1/issues/{key}/pdf — 이슈 PDF 내보내기 (FR-IS-08)
  *
@@ -333,6 +336,82 @@ class IssueController(
                 expectedVersion = expectedVersion,
             )
         val response = service.changeComponents(actor, issueKey, appRequest)
+        return ResponseEntity.ok(DataResponse(data = response))
+    }
+
+    /**
+     * 이슈에 연결된 영향 버전(affects) 목록을 전체 교체한다 (FR-VR-03).
+     *
+     * [ChangeVersionsRequest.versionIds] 에 명시된 UUID 목록으로 기존 영향 버전 연결을 전부 교체한다.
+     * 빈 목록이면 기존 연결을 전부 해제한다.
+     * 타 프로젝트 소속이거나 삭제된 버전 ID 가 포함되면 422 Linked Version Not Found 로 응답한다.
+     *
+     * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
+     * @param request 버전 변경 요청 바디 (Jakarta Validation 적용).
+     *   [ChangeVersionsRequest.versionIds] 빈 목록이면 전체 해제.
+     *   [ChangeVersionsRequest.expectedVersion] 은 낙관적 잠금을 위해 필수.
+     * @return 200 OK + 변경된 [IssueResponse] body
+     * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우 → 404
+     * @throws com.bts.issue.domain.IssueLinkedVersionNotFoundException 타 프로젝트/삭제 버전 포함 시 → 422
+     * @throws com.bts.issue.domain.IssueVersionConflictException 낙관락 충돌 → 409
+     */
+    @PatchMapping("/{key}/affects-versions")
+    fun changeAffectsVersions(
+        @PathVariable key: String,
+        @Valid @RequestBody request: ChangeVersionsRequest,
+    ): ResponseEntity<DataResponse<IssueResponse>> {
+        log.info("IssueController.changeAffectsVersions key={} count={}", key, request.versionIds.size)
+
+        val actor = CurrentActor.current()
+        val issueKey = IssueKey(key)
+        // @NotNull 검증이 통과한 뒤 호출되므로 expectedVersion 은 null 이 아님.
+        val expectedVersion =
+            request.expectedVersion
+                ?: error("expectedVersion 은 @NotNull 검증 통과 후 null 일 수 없습니다.")
+        val appRequest =
+            AppChangeVersionsRequest(
+                versionIds = request.versionIds,
+                expectedVersion = expectedVersion,
+            )
+        val response = service.changeAffectsVersions(actor, issueKey, appRequest)
+        return ResponseEntity.ok(DataResponse(data = response))
+    }
+
+    /**
+     * 이슈에 연결된 수정 예정 버전(fix) 목록을 전체 교체한다 (FR-VR-03).
+     *
+     * [ChangeVersionsRequest.versionIds] 에 명시된 UUID 목록으로 기존 수정 예정 버전 연결을 전부 교체한다.
+     * 빈 목록이면 기존 연결을 전부 해제한다.
+     * 타 프로젝트 소속이거나 삭제된 버전 ID 가 포함되면 422 Linked Version Not Found 로 응답한다.
+     *
+     * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
+     * @param request 버전 변경 요청 바디 (Jakarta Validation 적용).
+     *   [ChangeVersionsRequest.versionIds] 빈 목록이면 전체 해제.
+     *   [ChangeVersionsRequest.expectedVersion] 은 낙관적 잠금을 위해 필수.
+     * @return 200 OK + 변경된 [IssueResponse] body
+     * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우 → 404
+     * @throws com.bts.issue.domain.IssueLinkedVersionNotFoundException 타 프로젝트/삭제 버전 포함 시 → 422
+     * @throws com.bts.issue.domain.IssueVersionConflictException 낙관락 충돌 → 409
+     */
+    @PatchMapping("/{key}/fix-versions")
+    fun changeFixVersions(
+        @PathVariable key: String,
+        @Valid @RequestBody request: ChangeVersionsRequest,
+    ): ResponseEntity<DataResponse<IssueResponse>> {
+        log.info("IssueController.changeFixVersions key={} count={}", key, request.versionIds.size)
+
+        val actor = CurrentActor.current()
+        val issueKey = IssueKey(key)
+        // @NotNull 검증이 통과한 뒤 호출되므로 expectedVersion 은 null 이 아님.
+        val expectedVersion =
+            request.expectedVersion
+                ?: error("expectedVersion 은 @NotNull 검증 통과 후 null 일 수 없습니다.")
+        val appRequest =
+            AppChangeVersionsRequest(
+                versionIds = request.versionIds,
+                expectedVersion = expectedVersion,
+            )
+        val response = service.changeFixVersions(actor, issueKey, appRequest)
         return ResponseEntity.ok(DataResponse(data = response))
     }
 

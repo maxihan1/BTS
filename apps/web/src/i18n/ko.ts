@@ -244,6 +244,22 @@ export const issueDetailStrings = {
   /** 이슈 생성 폼 — 보안등급 레이블 */
   securityLevelCreateLabel: '보안등급 (선택)',
 
+  // ── 영향 버전 / 수정 버전(affectsVersions / fixVersions) — FR-VR-03 ────
+  /** 메타패널 — 영향 버전 레이블 */
+  affectsVersionsLabel: '영향 버전',
+  /** 영향 버전 검색 input placeholder */
+  affectsVersionsSearchPlaceholder: '영향 버전 검색',
+  /** 메타패널 — 수정 버전 레이블 */
+  fixVersionsLabel: '수정 버전',
+  /** 수정 버전 검색 input placeholder */
+  fixVersionsSearchPlaceholder: '수정 버전 검색',
+  /** 422 ISSUE_LINKED_VERSION_NOT_FOUND 에러 메시지 */
+  versionLinkedNotFoundError: '선택한 버전을 찾을 수 없습니다. 다시 선택해 주세요.',
+  /** 영향 버전 변경 실패 기본 에러 메시지 */
+  affectsVersionsChangeError: '영향 버전 변경 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+  /** 수정 버전 변경 실패 기본 에러 메시지 */
+  fixVersionsChangeError: '수정 버전 변경 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+
   // ── 커스텀 필드(custom fields) — FR-IS-10 E-3 ──────────────────────────
   /** 커스텀 필드 섹션 레이블 */
   customFieldsSectionLabel: '커스텀 필드',

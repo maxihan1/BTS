@@ -12,7 +12,9 @@ import { useChangeAssignee } from '@/api/useChangeAssignee'
 import { useDeleteIssue } from '@/api/useDeleteIssue'
 import { useChangeComponents } from '@/api/useChangeComponents'
 import { useChangeSecurityLevel } from '@/api/useChangeSecurityLevel'
+import { useChangeAffectsVersions, useChangeFixVersions } from '@/api/issue-versions'
 import { fetchComponents } from '@/api/components'
+import { useVersions } from '@/hooks/use-versions'
 import { useIssueTypes } from '@/hooks/use-issue-types'
 import { useIssueTransitions, issueTransitionKeys } from '@/hooks/use-issue-transitions'
 import { useUsers, useUsersByIds } from '@/hooks/use-users'
@@ -135,6 +137,8 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   const changeAssigneeMutation = useChangeAssignee()
   const changeComponentsMutation = useChangeComponents()
   const changeSecurityLevelMutation = useChangeSecurityLevel()
+  const changeAffectsVersionsMutation = useChangeAffectsVersions()
+  const changeFixVersionsMutation = useChangeFixVersions()
 
   /** 프로젝트 컴포넌트 목록 — issue 로드 후 projectKey 기준으로 조회 */
   const { data: projectComponents = [] } = useQuery({
@@ -143,6 +147,9 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
     enabled: issue !== undefined,
     staleTime: 60_000,
   })
+
+  /** 프로젝트 버전 목록 — issue 로드 후 projectKey 기준으로 조회 */
+  const { data: projectVersions = [] } = useVersions(issue?.projectKey ?? '')
 
   const {
     data: transitions = [],
@@ -412,6 +419,18 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
     changeComponentsMutation.mutate({ key: issue.key, componentIds: ids, expectedVersion: issue.version })
   }
 
+  // ── 영향 버전 변경 핸들러 ─────────────────────────────────────────────────
+  function handleAffectsVersionsChange(ids: string[]) {
+    if (issue === undefined) return
+    changeAffectsVersionsMutation.mutate({ key: issue.key, versionIds: ids, expectedVersion: issue.version })
+  }
+
+  // ── 수정 버전 변경 핸들러 ─────────────────────────────────────────────────
+  function handleFixVersionsChange(ids: string[]) {
+    if (issue === undefined) return
+    changeFixVersionsMutation.mutate({ key: issue.key, versionIds: ids, expectedVersion: issue.version })
+  }
+
   // ── 상태전이 핸들러 ───────────────────────────────────────────────────────
 
   /**
@@ -624,6 +643,11 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
             componentIds={issue.componentIds}
             components={projectComponents}
             onComponentsChange={handleComponentsChange}
+            versions={projectVersions}
+            affectsVersionIds={issue.affectsVersionIds}
+            fixVersionIds={issue.fixVersionIds}
+            onAffectsVersionsChange={handleAffectsVersionsChange}
+            onFixVersionsChange={handleFixVersionsChange}
             onSecurityLevelChange={handleSecurityLevelChange}
             onCustomFieldsSave={handleCustomFieldsSave}
           />

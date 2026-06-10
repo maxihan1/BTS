@@ -412,3 +412,42 @@ CREATE INDEX idx_custom_field_options_field_id ON custom_field_options(field_id)
 -- 커스텀 필드 값 저장 JSONB + GIN 인덱스. NOT NULL DEFAULT '{}'.
 ALTER TABLE issues ADD COLUMN custom_fields JSONB NOT NULL DEFAULT '{}'::jsonb;
 CREATE INDEX idx_issues_custom_fields ON issues USING GIN (custom_fields);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V017: issue_affects_versions / issue_fix_versions 연결 테이블 (FR-VR-03 이슈↔버전 N:M)
+-- 원본: db/migration/issue-tracking/V017__issue_version_links.sql
+-- jOOQ: IssueAffectsVersions / IssueFixVersions 테이블 + ISSUE_ID/VERSION_ID/CREATED_AT 상수 생성 대상
+--       (이 미러가 빠지면 상수/테이블 미생성 → repository 컴파일 불가 — jooq-init-codegen-mirror)
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- 관계 테이블이라 소프트 삭제 없음(연결 해제 = 행 DELETE). issues / versions 양쪽 실 FK + ON DELETE CASCADE
+-- (순수 관계라 양쪽 엔티티 하드 삭제 시 고아 연결 자동 정리. prod 소프트삭제라 미발화).
+CREATE TABLE issue_affects_versions (
+    issue_id   UUID        NOT NULL REFERENCES issues(id)   ON DELETE CASCADE,
+    version_id UUID        NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (issue_id, version_id)
+);
+COMMENT ON TABLE  issue_affects_versions            IS '이슈↔영향받는 버전 N:M 연결. 관계 테이블이라 소프트 삭제 없음 (FR-VR-03).';
+COMMENT ON COLUMN issue_affects_versions.issue_id   IS '연결된 이슈 (issues.id). 같은 BC 라 실 FK 적용.';
+COMMENT ON COLUMN issue_affects_versions.version_id IS '영향받는 버전 (versions.id). 같은 BC 라 실 FK 적용.';
+COMMENT ON COLUMN issue_affects_versions.created_at IS '연결 생성 시각. TIMESTAMPTZ (DATA.md §4).';
+
+-- FK 인덱스 (DATA.md §7). version_id 만 추가: 복합 PK 선두 issue_id 는 PK 인덱스가 커버,
+-- version_id 는 PK 후미라 역방향(버전→이슈) 조인에 단독 인덱스가 필요.
+CREATE INDEX idx_issue_affects_versions_version_id ON issue_affects_versions(version_id);
+
+-- issue_fix_versions 는 issue_affects_versions 와 구조 동일(의미만 다름: 수정 예정 버전).
+CREATE TABLE issue_fix_versions (
+    issue_id   UUID        NOT NULL REFERENCES issues(id)   ON DELETE CASCADE,
+    version_id UUID        NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (issue_id, version_id)
+);
+COMMENT ON TABLE  issue_fix_versions            IS '이슈↔수정 예정 버전 N:M 연결. 관계 테이블이라 소프트 삭제 없음 (FR-VR-03).';
+COMMENT ON COLUMN issue_fix_versions.issue_id   IS '연결된 이슈 (issues.id). 같은 BC 라 실 FK 적용.';
+COMMENT ON COLUMN issue_fix_versions.version_id IS '수정 예정 버전 (versions.id). 같은 BC 라 실 FK 적용.';
+COMMENT ON COLUMN issue_fix_versions.created_at IS '연결 생성 시각. TIMESTAMPTZ (DATA.md §4).';
+
+-- FK 인덱스 (DATA.md §7). version_id 만 추가(복합 PK 후미 컬럼).
+CREATE INDEX idx_issue_fix_versions_version_id ON issue_fix_versions(version_id);

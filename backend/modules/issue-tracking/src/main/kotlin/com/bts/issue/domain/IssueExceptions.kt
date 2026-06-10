@@ -116,6 +116,21 @@ class IssueSecurityLevelNotInSchemeException(val levelId: java.util.UUID) :
     IssueDomainException("security level not in project scheme: $levelId")
 
 /**
+ * 이슈에 연결하려는 버전이 프로젝트 내 활성(deleted_at IS NULL) 버전이 아닐 때 (FR-VR-03).
+ *
+ * 타 프로젝트 소속이거나 소프트 삭제된 버전을 연결하려 할 때 발생한다.
+ * ARCHIVED 상태(status='ARCHIVED')는 deleted_at=null 이므로 이 예외를 발생시키지 않는다.
+ * HTTP 422 매핑은 IssueExceptionHandler 에서 처리한다 (Task 5 scope).
+ *
+ * 네이밍 근거 — version 패키지의 VersionNotFoundException(404), OCC의 IssueVersionConflictException(409)과
+ * 충돌을 피하고 의미를 명확히 하기 위해 IssueLinkedVersionNotFoundException 을 사용한다.
+ *
+ * @param versionId 존재하지 않는(또는 타 프로젝트/삭제된) 버전 UUID
+ */
+class IssueLinkedVersionNotFoundException(val versionId: java.util.UUID) :
+    IssueDomainException("version not found in project: $versionId")
+
+/**
  * 워크플로우 전이가 허용되지 않을 때.
  *
  * project-workflow BC 의 [TransitionResult] 실패 케이스를 issue-tracking BC 경계 내부에서

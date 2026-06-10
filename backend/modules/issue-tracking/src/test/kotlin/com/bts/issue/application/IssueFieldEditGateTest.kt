@@ -79,6 +79,7 @@ class IssueFieldEditGateTest : DescribeSpec({
             userLookupPort = userLookupPort,
             componentRepository = componentRepository,
             projectLeadRepository = projectLeadRepository,
+            versionRepository = mockk(relaxed = true),
             clock = clock,
             fieldPermissionResolver = fieldPermissionResolver,
         )
@@ -159,6 +160,8 @@ class IssueFieldEditGateTest : DescribeSpec({
         every { repo.findProjectIdByKey(issueKey.projectPrefix) } returns projectId
         // withSingleDetail() 내부 findActiveComponentIdsByIssue stub
         every { repo.findActiveComponentIdsByIssue(any()) } returns emptyList()
+        every { repo.findAffectsVersionIdsByIssue(any()) } returns emptyList()
+        every { repo.findFixVersionIdsByIssue(any()) } returns emptyList()
     }
 
     // ── (a) EDIT 불가 코어 필드 변경 → 403 ────────────────────────────────────
@@ -466,6 +469,7 @@ class IssueFieldEditGateTest : DescribeSpec({
                 userLookupPort = userLookupPort,
                 componentRepository = componentRepository,
                 projectLeadRepository = projectLeadRepository,
+                versionRepository = mockk(relaxed = true),
                 clock = clock,
                 // fieldPermissionResolver 미전달 — 기본값 사용
             )
