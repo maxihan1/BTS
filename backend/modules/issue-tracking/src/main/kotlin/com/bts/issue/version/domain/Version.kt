@@ -14,14 +14,22 @@ internal const val MAX_NAME = 255
  * 프로젝트의 릴리스 단위를 표현한다.
  * 직접 생성자 대신 [Version.create] factory 를 통해 invariant 를 검증하고 인스턴스를 얻는다.
  *
- * invariant.
+ * **invariant.**
  * - [name] 은 trim 후 빈 문자열 불가, 최대 [MAX_NAME]자.
  * - [deletedAt] 은 생성 시 null. 소프트 삭제 시 타임스탬프가 채워진다.
  * - 이미 삭제된 버전에 [softDelete] 재호출 시 [IllegalStateException] 발생.
  * - [status] 초기값은 [VersionStatus.UNRELEASED].
- * - [releasedAt] 불변식: UNRELEASED → null, RELEASED → non-null, ARCHIVED → 보관 직전 상태 반영.
- * - [VersionStatus.ARCHIVED] 버전은 읽기 전용 — [rename], [changeDescription], [changeDates],
- *   [softDelete] 호출 시 [VersionTransitionNotAllowedException] 발생.
+ *
+ * **[releasedAt] 불변식 (ADR 2026-06-10-version-status-and-transitions D3).**
+ * ```
+ * status == UNRELEASED  →  releasedAt == null
+ * status == RELEASED    →  releasedAt != null  (release() 호출 시각)
+ * status == ARCHIVED    →  releasedAt == 보관 직전 상태 반영 (null 또는 시각)
+ * ```
+ *
+ * **[VersionStatus.ARCHIVED] 읽기 전용.**
+ * [rename], [changeDescription], [changeDates], [softDelete] 호출 시
+ * [VersionTransitionNotAllowedException] 발생. [unarchive] 만 허용.
  *
  * **날짜 순서 미강제.**
  * [startDate] 와 [releaseDate] 의 선후 관계는 도메인이 검증하지 않는다(Jira 기본 동작).
@@ -34,7 +42,8 @@ internal const val MAX_NAME = 255
  * @property startDate 버전 시작일. null 이면 미지정 상태.
  * @property releaseDate 버전 릴리스 예정일. null 이면 미지정 상태.
  * @property status 버전 생명주기 상태. 기본값 [VersionStatus.UNRELEASED].
- * @property releasedAt 실제 릴리스 시각. RELEASED 전이 시 설정, UNRELEASED/ARCHIVED 전이 시 null.
+ * @property releasedAt 실제 릴리스 시각. RELEASED 전이 시 설정, UNRELEASED/unarchive 전이 시 null.
+ *   ARCHIVED 전이 시에는 보관 직전 값을 유지한다.
  * @property deletedAt 소프트 삭제 타임스탬프. null 이면 활성 상태.
  */
 data class Version(
@@ -93,7 +102,7 @@ data class Version(
      * @return [name] 이 [newName] 으로 설정된 새 [Version] 인스턴스.
      */
     fun rename(newName: String): Version {
-        requireNotArchived("rename")
+        assertNotArchived("rename")
         val trimmedName = validateAndTrimName(newName)
         return copy(name = trimmedName)
     }
@@ -108,7 +117,7 @@ data class Version(
      * @return [description] 이 [newDescription] 으로 설정된 새 [Version] 인스턴스.
      */
     fun changeDescription(newDescription: String?): Version {
-        requireNotArchived("changeDescription")
+        assertNotArchived("changeDescription")
         return copy(description = newDescription)
     }
 
@@ -127,7 +136,7 @@ data class Version(
         newStartDate: LocalDate?,
         newReleaseDate: LocalDate?,
     ): Version {
-        requireNotArchived("changeDates")
+        assertNotArchived("changeDates")
         return copy(startDate = newStartDate, releaseDate = newReleaseDate)
     }
 
@@ -142,7 +151,7 @@ data class Version(
      * @throws IllegalStateException 이미 삭제된 버전 재삭제 시.
      */
     fun softDelete(): Version {
-        requireNotArchived("softDelete")
+        assertNotArchived("softDelete")
         check(deletedAt == null) { "Version is already deleted (id=$id)" }
         return copy(deletedAt = Instant.now())
     }
@@ -152,16 +161,14 @@ data class Version(
      *
      * UNRELEASED 상태에서만 허용한다. 그 외 상태는 [VersionTransitionNotAllowedException].
      *
+     * releasedAt 불변식: 전이 후 status==RELEASED, releasedAt==[now].
+     *
      * @param now 릴리스 시각 (Clock 은 서비스 레이어 책임, 도메인은 파라미터로 수신).
      * @return status=RELEASED, releasedAt=[now] 로 설정된 새 [Version] 인스턴스.
      * @throws VersionTransitionNotAllowedException UNRELEASED 외 상태에서 호출 시.
      */
     fun release(now: Instant): Version {
-        if (status != VersionStatus.UNRELEASED) {
-            throw VersionTransitionNotAllowedException(
-                "Cannot release version in status $status (id=$id). Only UNRELEASED can be released.",
-            )
-        }
+        assertTransitionAllowed("release", setOf(VersionStatus.UNRELEASED))
         return copy(status = VersionStatus.RELEASED, releasedAt = now)
     }
 
@@ -170,15 +177,13 @@ data class Version(
      *
      * RELEASED 상태에서만 허용한다. 그 외 상태는 [VersionTransitionNotAllowedException].
      *
+     * releasedAt 불변식: 전이 후 status==UNRELEASED, releasedAt==null.
+     *
      * @return status=UNRELEASED, releasedAt=null 로 설정된 새 [Version] 인스턴스.
      * @throws VersionTransitionNotAllowedException RELEASED 외 상태에서 호출 시.
      */
     fun unrelease(): Version {
-        if (status != VersionStatus.RELEASED) {
-            throw VersionTransitionNotAllowedException(
-                "Cannot unrelease version in status $status (id=$id). Only RELEASED can be unreleased.",
-            )
-        }
+        assertTransitionAllowed("unrelease", setOf(VersionStatus.RELEASED))
         return copy(status = VersionStatus.UNRELEASED, releasedAt = null)
     }
 
@@ -186,17 +191,15 @@ data class Version(
      * 이 버전을 ARCHIVED 상태로 전이한다.
      *
      * UNRELEASED 또는 RELEASED 상태에서만 허용한다. 그 외 상태는 [VersionTransitionNotAllowedException].
-     * releasedAt 은 보관 직전 값을 그대로 유지한다(RELEASED → ARCHIVED 시 시각 보존).
+     *
+     * releasedAt 불변식: 전이 후 status==ARCHIVED, releasedAt 은 보관 직전 값 유지.
+     * (RELEASED → ARCHIVED 시 releasedAt 시각 보존, UNRELEASED → ARCHIVED 시 null 유지)
      *
      * @return status=ARCHIVED, releasedAt 유지된 새 [Version] 인스턴스.
      * @throws VersionTransitionNotAllowedException UNRELEASED/RELEASED 외 상태에서 호출 시.
      */
     fun archive(): Version {
-        if (status == VersionStatus.ARCHIVED) {
-            throw VersionTransitionNotAllowedException(
-                "Cannot archive version in status $status (id=$id). Already ARCHIVED.",
-            )
-        }
+        assertTransitionAllowed("archive", setOf(VersionStatus.UNRELEASED, VersionStatus.RELEASED))
         return copy(status = VersionStatus.ARCHIVED)
     }
 
@@ -205,24 +208,44 @@ data class Version(
      *
      * ARCHIVED 상태에서만 허용한다. 그 외 상태는 [VersionTransitionNotAllowedException].
      *
+     * releasedAt 불변식: 전이 후 status==UNRELEASED, releasedAt==null.
+     *
      * @return status=UNRELEASED, releasedAt=null 로 설정된 새 [Version] 인스턴스.
      * @throws VersionTransitionNotAllowedException ARCHIVED 외 상태에서 호출 시.
      */
     fun unarchive(): Version {
-        if (status != VersionStatus.ARCHIVED) {
+        assertTransitionAllowed("unarchive", setOf(VersionStatus.ARCHIVED))
+        return copy(status = VersionStatus.UNRELEASED, releasedAt = null)
+    }
+
+    /**
+     * 전이 가능 여부를 검사한다.
+     *
+     * 현재 [status] 가 [allowedStatuses] 에 포함되지 않으면 [VersionTransitionNotAllowedException] 을 던진다.
+     *
+     * @param operation 호출 측 연산 이름 (에러 메시지 포함용).
+     * @param allowedStatuses 해당 연산을 허용하는 상태 집합.
+     */
+    private fun assertTransitionAllowed(
+        operation: String,
+        allowedStatuses: Set<VersionStatus>,
+    ) {
+        if (status !in allowedStatuses) {
             throw VersionTransitionNotAllowedException(
-                "Cannot unarchive version in status $status (id=$id). Only ARCHIVED can be unarchived.",
+                "Cannot $operation version in status $status (id=$id). " +
+                    "Allowed from: ${allowedStatuses.joinToString()}.",
             )
         }
-        return copy(status = VersionStatus.UNRELEASED, releasedAt = null)
     }
 
     /**
      * ARCHIVED 상태에서 mutation 을 시도할 경우 [VersionTransitionNotAllowedException] 을 던진다.
      *
+     * [rename], [changeDescription], [changeDates], [softDelete] 의 ARCHIVED 가드로 사용한다.
+     *
      * @param operation 호출 측 연산 이름 (에러 메시지 포함용).
      */
-    private fun requireNotArchived(operation: String) {
+    private fun assertNotArchived(operation: String) {
         if (status == VersionStatus.ARCHIVED) {
             throw VersionTransitionNotAllowedException(
                 "Cannot $operation an ARCHIVED version (id=$id). Unarchive first.",
