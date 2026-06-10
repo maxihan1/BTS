@@ -65,7 +65,6 @@ data class ReleaseNoteIssue(
  * [generate] 는 [ReleaseNotesInput] 을 받아 spec §5 Markdown 템플릿에 따른 문자열을 반환한다.
  */
 object ReleaseNotesGenerator {
-
     /**
      * spec §5 Markdown 템플릿에 따라 릴리즈 노트 문자열을 생성한다.
      *

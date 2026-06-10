@@ -872,17 +872,25 @@ class IssueRepository(
             .and(ISSUES.DELETED_AT.isNull)
             .fetch { record ->
                 ReleaseNoteIssueRow(
-                    key = record.get(ISSUES.KEY) ?: error("issues.key must not be null"),
-                    summary = record.get(ISSUES.SUMMARY) ?: error("issues.summary must not be null"),
+                    key =
+                        record.get(ISSUES.KEY)
+                            ?: error("issues.key must not be null"),
+                    summary =
+                        record.get(ISSUES.SUMMARY)
+                            ?: error("issues.summary must not be null"),
                     resolutionId = record.get(ISSUES.RESOLUTION_ID),
-                    typeId = record.get("type_id", Long::class.java)
-                        ?: error("issue_types.id must not be null in join result"),
-                    typeKey = record.get("type_key", String::class.java)
-                        ?: error("issue_types.key must not be null in join result"),
-                    typeName = record.get("type_name", String::class.java)
-                        ?: error("issue_types.name must not be null in join result"),
-                    hierarchyLevel = record.get(ISSUE_TYPES.HIERARCHY_LEVEL)
-                        ?: error("issue_types.hierarchy_level must not be null in join result"),
+                    typeId =
+                        record.get("type_id", Long::class.java)
+                            ?: error("issue_types.id must not be null in join result"),
+                    typeKey =
+                        record.get("type_key", String::class.java)
+                            ?: error("issue_types.key must not be null in join result"),
+                    typeName =
+                        record.get("type_name", String::class.java)
+                            ?: error("issue_types.name must not be null in join result"),
+                    hierarchyLevel =
+                        record.get(ISSUE_TYPES.HIERARCHY_LEVEL)
+                            ?: error("issue_types.hierarchy_level must not be null in join result"),
                 )
             }
     }
