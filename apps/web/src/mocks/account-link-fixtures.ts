@@ -6,6 +6,9 @@ import type { AccountLinkResponse, LinkableProvider } from '../api/account-links
 // E2E에서 addInitScript로 localStorage에 플래그를 세팅해 분기를 유발한다.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 시나리오 플래그 키 타입 — 값은 localStorage 키 문자열 */
+type ScenarioKeyMap = Record<string, string>
+
 export const SCENARIO_KEY = {
   /** step-up 재인증 유효 플래그 — 미세팅이면 mutation 403 반환 */
   STEP_UP_VALID: 'msw:account-link:step-up-valid',
@@ -17,7 +20,7 @@ export const SCENARIO_KEY = {
   PROVIDER_UNAVAILABLE: 'msw:account-link:provider-unavailable',
   /** 마지막 인증수단 시나리오 — 세팅 시 DELETE /links/:id 409 반환 */
   LAST_METHOD: 'msw:account-link:last-method',
-} as const
+} as const satisfies ScenarioKeyMap
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UUID는 RFC4122 v4 형식 준수 — 3번째 그룹 첫 글자 '4', 4번째 그룹 첫 글자 '8'~'b'
@@ -75,14 +78,18 @@ export const DEFAULT_LINKABLE_PROVIDERS: LinkableProvider[] = [
 /** 현재 인메모리 링크 store (handlers에서 직접 참조) */
 export const linkStore: Map<string, AccountLinkResponse> = new Map()
 
-/** store를 초기 상태(빈 Map)로 리셋한다 — 테스트 afterEach / E2E 시드 전 호출 */
+/**
+ * store를 초기 상태(빈 Map)로 리셋한다.
+ * 테스트 afterEach 또는 E2E 시드 전 호출해 이전 테스트 잔여 데이터를 제거한다.
+ */
 export function resetStore(): void {
   linkStore.clear()
 }
 
 /**
  * 지정한 링크 배열로 store를 시드한다.
- * 기존 항목은 덮어쓰지 않고 추가한다 (중복 id 시 덮어씀).
+ * 기존 항목은 id 기준으로 덮어쓴다 (중복 id 허용 — 의도적 override).
+ * E2E addInitScript에서 호출하거나 테스트 beforeEach에서 초기 상태를 구성할 때 사용한다.
  */
 export function seedLinks(links: AccountLinkResponse[]): void {
   for (const link of links) {
