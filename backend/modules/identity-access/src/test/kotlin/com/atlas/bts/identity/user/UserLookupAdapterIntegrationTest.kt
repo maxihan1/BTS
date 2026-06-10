@@ -95,16 +95,20 @@ class UserLookupAdapterIntegrationTest {
 
         // T-03 용 고정 username 시드 — UUID suffix 로 충돌 방지
         val suffix = UUID.randomUUID().toString().take(8)
-        aliceId = userRepository.save(
-            username = "alice-$suffix",
-            email = "alice-$suffix@example.com",
-            displayName = "Alice",
-        ).id
-        bobId = userRepository.save(
-            username = "bob-$suffix",
-            email = "bob-$suffix@example.com",
-            displayName = "Bob",
-        ).id
+        val alice =
+            userRepository.save(
+                username = "alice-$suffix",
+                email = "alice-$suffix@example.com",
+                displayName = "Alice",
+            )
+        val bob =
+            userRepository.save(
+                username = "bob-$suffix",
+                email = "bob-$suffix@example.com",
+                displayName = "Bob",
+            )
+        aliceId = alice.id
+        bobId = bob.id
 
         // T-03 에서 실제 username 으로 조회하기 위해 suffix 저장
         aliceSuffix = suffix

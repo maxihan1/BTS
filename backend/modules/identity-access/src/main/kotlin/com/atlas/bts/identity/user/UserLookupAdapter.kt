@@ -51,8 +51,7 @@ class UserLookupAdapter(
      * 주어진 username 집합을 실재 사용자 id 로 일괄 해석한다 (FR-MN-01 Task 3).
      *
      * 빈 입력 시 DB 쿼리 없이 emptyMap 을 즉시 반환한다.
-     * `SELECT id, username FROM users WHERE username = ANY(:names)` 단일 쿼리로 N+1 없이 처리한다.
-     * NamedParameterJdbcTemplate 이 Set<String> 을 PostgreSQL Array 로 변환해 바인딩한다.
+     * `WHERE username IN (:names)` 단일 쿼리로 N+1 없이 처리한다.
      * 미존재 username 은 결과에서 자동으로 제외된다 — 호출자가 명시적으로 드롭 처리한다.
      *
      * SQL 인젝션 방어: named parameter `:names` 바인딩 (문자열 결합 금지, DEVELOPMENT.md §1.3).
