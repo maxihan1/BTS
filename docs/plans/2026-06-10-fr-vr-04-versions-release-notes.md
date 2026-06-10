@@ -46,9 +46,25 @@ SDD 참조: §3.2.4
 4. **포함 이슈 범위** — fix version 연결 활성 이슈 전부 vs resolution 보유분만.
 5. **정렬 순서** — 이슈 키 / 생성순 등.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙: [docs/specs/2026-06-10-fr-vr-04-versions-release-notes.md](../specs/2026-06-10-fr-vr-04-versions-release-notes.md)
+
+확정된 핵심 결정 5건.
+1. 엔드포인트: `GET /api/v1/projects/{projectIdOrKey}/versions/{id}/release-notes` (VersionController 매핑 일관)
+2. 응답: JSON `DataResponse<ReleaseNotesResponse>` — `{ projectKey, versionName, versionStatus, releaseDate, issueCount, generatedAt, markdown }` (Maxi 결정)
+3. 그룹핑: 이슈 타입별 섹션 (hierarchy_level 순, 그룹 내 키 순)
+4. 포함 범위: Fix Version 연결 활성 이슈 **전부** (상태 무관, resolution은 표시만) (Maxi 결정)
+5. 데이터: 신규 테이블 없음. IssueRepository에 버전→이슈 역방향 조회 메서드 추가.
+
+3줄 요약.
+- 버전의 fix version 연결 활성 이슈를 타입별로 묶어 Markdown 릴리즈 노트를 요청 시 생성(영속 안 함)
+- 응답은 메타데이터 + markdown 본문을 JSON으로 래핑, 권한/Clock/에러는 기존 Version 패턴 재사용
+- 프론트는 버전 행에 "릴리즈 노트" 액션 → 미리보기 다이얼로그 + 클립보드 복사
+
+## Brainstorming Check
+
+✅ 통과 (1회 자가 점검). gap 1건(헤더 프로젝트 식별 누락) 발견 후 spec에 projectKey 보강. 구현 주의점 4건(resolution 다건 주입 / IssueType 표준 순서 / projectKey ProjectLookup / 클립보드 secure-context) plan에 인계.
 
 ## Plan (← /bts-plan 채움)
 
