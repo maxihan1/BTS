@@ -2,6 +2,9 @@
 
 package com.atlas.bts.identity.provider.ldap
 
+import com.atlas.bts.identity.audit.AuthAuditLog
+import com.atlas.bts.identity.audit.AuthAuditLogService
+import com.atlas.bts.identity.audit.AuthEventType
 import com.atlas.bts.identity.spi.AuthenticationProvider
 import com.atlas.bts.identity.spi.AuthnResult
 import com.atlas.bts.identity.spi.Credential
@@ -66,6 +69,7 @@ class LdapProvider(
     private val externalAccountRepo: ExternalAccountRepository,
     private val autoProvisionService: AutoProvisionService,
     private val ldapTemplate: LdapTemplate,
+    private val auditLog: AuthAuditLogService,
     private val clock: Clock = Clock.systemUTC(),
 ) : AuthenticationProvider {
     private val log = LoggerFactory.getLogger(LdapProvider::class.java)
@@ -95,6 +99,7 @@ class LdapProvider(
                 configService.findEnabledLdapConfig()
                     ?: run {
                         log.warn("LDAP provider 미설정 — authn_providers 에 활성 LDAP 행 없음")
+                        recordLdapUnavailable(UNKNOWN_PROVIDER_ID, REASON_CONFIG_MISSING)
                         return AuthnResult.Failure(FailureReason.PROVIDER_UNAVAILABLE)
                     }
 
@@ -102,6 +107,7 @@ class LdapProvider(
             config.resolveBindPassword()
                 ?: run {
                     log.warn("LDAP bind password 환경변수 미설정 — env: {}", config.bindPasswordEnv)
+                    recordLdapUnavailable(providerId.toString(), REASON_BIND_PASSWORD_MISSING)
                     return AuthnResult.Failure(FailureReason.PROVIDER_UNAVAILABLE)
                 }
 
@@ -126,14 +132,17 @@ class LdapProvider(
             }
 
             // 5. LDAP bind + 속성추출 (provision 미포함 — bindForLinking 과 공유)
-            return when (bindAndExtract(credential, config)) {
+            return when (val outcome = bindAndExtract(credential, config)) {
                 is BindOutcome.Success ->
                     // 6. 성공 처리 — provision (일반 로그인 전용)
                     onSuccess(credential.username, existing, providerId, config, now)
                 BindOutcome.InvalidCredentials ->
                     onFailure(existing, config.lockoutPolicy, now, providerId, externalSubject)
-                BindOutcome.Unavailable ->
+                is BindOutcome.Unavailable -> {
+                    // EC-11: provider-unavailable 은 LDAP_UNAVAILABLE 로만 기록(AuthController LOGIN_FAILURE 중복 회피).
+                    recordLdapUnavailable(providerId.toString(), REASON_COMMUNICATION_ERROR, outcome.exceptionName)
                     AuthnResult.Failure(FailureReason.PROVIDER_UNAVAILABLE)
+                }
             }
         } finally {
             // password wipe — 예외 여부 무관 (DEVELOPMENT.md §1.1)
@@ -196,7 +205,7 @@ class LdapProvider(
                 is BindOutcome.Success -> outcome.attrs
                 BindOutcome.InvalidCredentials -> null
                 // 서버 장애는 null 이 아니라 예외로 신호 — 컨트롤러가 503 으로 응답하도록(EC3).
-                BindOutcome.Unavailable ->
+                is BindOutcome.Unavailable ->
                     throw ProviderUnavailableException("LDAP unavailable during account linking", providerType = "LDAP")
             }
         } finally {
@@ -239,10 +248,10 @@ class LdapProvider(
             BindOutcome.InvalidCredentials
         } catch (e: CommunicationException) {
             log.warn("LDAP 서버 통신 오류 — {}", e.message)
-            BindOutcome.Unavailable
+            BindOutcome.Unavailable(e.javaClass.simpleName)
         } catch (e: Exception) {
             log.warn("LDAP 인증 중 예상치 못한 오류 — {}", e.javaClass.simpleName)
-            BindOutcome.Unavailable
+            BindOutcome.Unavailable(e.javaClass.simpleName)
         }
     }
 
@@ -329,6 +338,49 @@ class LdapProvider(
     ): String = "uid=$username,${config.userSearchBase},${config.baseDn}"
 
     /**
+     * LDAP_UNAVAILABLE 감사 이벤트를 best-effort 로 기록한다 (FR-AU-10 Task 9 / spec §5, NFR-3 B-1, EC-2).
+     *
+     * LDAP 미설정·bind password 미설정·서버 통신 장애는 모두 **인증 실패 경로**다. 감사 INSERT 실패가
+     * 로그인 가용성을 인질로 잡으면 안 되므로 [record][AuthAuditLogService.record] 예외를 catch 해 흐름을
+     * 계속한다. 단 **silent 삼킴 금지** — high-severity 에러 로그로 감사 갭을 탐지 가능하게 한다(DEVELOPMENT.md §1.13).
+     *
+     * EC-2: 인증 전이라 주체를 특정할 수 없으므로 `userId = null`(시스템 더미 UUID 금지, 매직 sentinel 회피).
+     * 로그·metadata 에 username/DN 등 PII 를 출력하지 않고 reason 과 예외 클래스 단순명만 남긴다(DEVELOPMENT.md §1.2).
+     *
+     * `TooGenericExceptionCaught` 억제 — B-1 가용성 우선 정책상 어떤 RuntimeException 이든(DataAccess/
+     * 직렬화/타임아웃 등) 흐름을 계속해야 하며, error 로그로 감사 갭을 경보하므로 generic catch 가 의도적이다.
+     *
+     * @param providerId 활성 LDAP authn_providers.id. config 미상이면 [UNKNOWN_PROVIDER_ID].
+     * @param reason 사유 코드 — [REASON_CONFIG_MISSING]/[REASON_BIND_PASSWORD_MISSING]/[REASON_COMMUNICATION_ERROR].
+     * @param exceptionName 통신 장애 유발 예외 클래스 단순명(통신불가에만 존재, 그 외 null).
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun recordLdapUnavailable(
+        providerId: String,
+        reason: String,
+        exceptionName: String? = null,
+    ) {
+        val metadata =
+            buildMap {
+                put("reason", reason)
+                exceptionName?.let { put("exception", it) }
+            }
+        try {
+            auditLog.record(
+                AuthAuditLog(
+                    userId = null,
+                    eventType = AuthEventType.LDAP_UNAVAILABLE,
+                    providerId = providerId,
+                    metadata = metadata,
+                ),
+            )
+        } catch (ex: RuntimeException) {
+            // 감사 갭 경보 — 가용성 우선이라 흐름은 계속하되 silent 삼킴은 아니다(B-1). PII 미출력.
+            log.error("audit emit failed (availability preserved): eventType=LDAP_UNAVAILABLE reason={}", reason, ex)
+        }
+    }
+
+    /**
      * [bindAndExtract] 결과 — provision/lockout 무관 순수 bind 결과.
      * - [Success]: bind 성공 + 속성추출 완료.
      * - [InvalidCredentials]: 자격증명 불일치 (enumeration 방지 위해 user 미존재와 동일 취급).
@@ -339,11 +391,24 @@ class LdapProvider(
 
         data object InvalidCredentials : BindOutcome
 
-        data object Unavailable : BindOutcome
+        /** @property exceptionName 통신 장애를 유발한 예외 클래스 단순명(PII 무관 — 감사 metadata 기록용) */
+        data class Unavailable(val exceptionName: String) : BindOutcome
     }
 
     internal companion object {
         const val MAX_USERNAME_LENGTH = 256
+
+        /** config 로드 실패라 providerId 를 알 수 없을 때 감사 로그에 기록하는 placeholder. */
+        private const val UNKNOWN_PROVIDER_ID = "unknown"
+
+        /** LDAP_UNAVAILABLE 감사 사유 — 활성 LDAP config 부재(authn_providers 행 없음). */
+        private const val REASON_CONFIG_MISSING = "config_missing"
+
+        /** LDAP_UNAVAILABLE 감사 사유 — bind password 환경변수 미설정. */
+        private const val REASON_BIND_PASSWORD_MISSING = "bind_password_missing"
+
+        /** LDAP_UNAVAILABLE 감사 사유 — LDAP 서버 통신 장애(CommunicationException 등). */
+        private const val REASON_COMMUNICATION_ERROR = "communication_error"
 
         /**
          * LDAP 필터 특수문자 escape (LDAP injection 방어 — DEVELOPMENT.md §1.6).

@@ -171,6 +171,7 @@ class LdapProviderBindForLinkingTest : LdapTestcontainersBase() {
                 externalAccountRepo = mockk(relaxed = true),
                 autoProvisionService = mockk(relaxed = true),
                 ldapTemplate = mockTemplate,
+                auditLog = mockk(relaxed = true),
             )
 
         assertThatThrownBy {
@@ -196,6 +197,7 @@ class LdapProviderBindForLinkingTest : LdapTestcontainersBase() {
                 externalAccountRepo = mockk(relaxed = true),
                 autoProvisionService = mockk(relaxed = true),
                 ldapTemplate = mockTemplate,
+                auditLog = mockk(relaxed = true),
             )
 
         val result = isolatedProvider.bindForLinking(providerId, "alice", "wrongpassword".toCharArray())
