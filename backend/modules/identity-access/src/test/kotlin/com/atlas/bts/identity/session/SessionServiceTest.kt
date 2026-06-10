@@ -2,6 +2,9 @@
 
 package com.atlas.bts.identity.session
 
+import com.atlas.bts.identity.audit.AuthAuditLog
+import com.atlas.bts.identity.audit.AuthAuditLogService
+import com.atlas.bts.identity.audit.AuthEventType
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
@@ -32,6 +35,7 @@ import java.util.UUID
 class SessionServiceTest {
 
     private lateinit var repo: SessionRepository
+    private lateinit var auditLog: AuthAuditLogService
     private lateinit var service: SessionService
 
     private val fixedNow: Instant = Instant.parse("2026-05-21T10:00:00Z")
@@ -42,7 +46,8 @@ class SessionServiceTest {
     @BeforeEach
     fun setUp() {
         repo = mockk()
-        service = SessionService(repo, clock)
+        auditLog = mockk(relaxed = true)
+        service = SessionService(repo, auditLog, clock)
     }
 
     // ── create ────────────────────────────────────────────────────────────────
@@ -206,6 +211,30 @@ class SessionServiceTest {
         val count = service.revokeAllOfUser(userId, "logout_all")
 
         assertThat(count).isEqualTo(0)
+    }
+
+    @Test
+    fun `revokeAllOfUser — revoked가 0보다 크면 LOGOUT_ALL_DEVICES 를 emit 한다 (FR-AU-10)`() {
+        every { repo.revokeAllByUserId(userId, "logout_all") } returns 3
+        val eventSlot = slot<AuthAuditLog>()
+        justRun { auditLog.record(capture(eventSlot)) }
+
+        service.revokeAllOfUser(userId, "logout_all")
+
+        verify(exactly = 1) { auditLog.record(any()) }
+        val event = eventSlot.captured
+        assertThat(event.eventType).isEqualTo(AuthEventType.LOGOUT_ALL_DEVICES)
+        assertThat(event.userId).isEqualTo(userId)
+        assertThat(event.metadata["revokedSessionCount"]).isEqualTo("3")
+    }
+
+    @Test
+    fun `revokeAllOfUser — revoked가 0이면 LOGOUT_ALL_DEVICES 를 emit 하지 않는다 (FR-AU-10)`() {
+        every { repo.revokeAllByUserId(userId, "logout_all") } returns 0
+
+        service.revokeAllOfUser(userId, "logout_all")
+
+        verify(exactly = 0) { auditLog.record(any()) }
     }
 
     // ── markLastSeen ──────────────────────────────────────────────────────────
