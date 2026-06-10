@@ -18,14 +18,27 @@ export const i18nLabels = {
 /**
  * Alice (dev seed LOCAL provider) 로 로그인하고 /dashboard 진입까지 완료한다.
  *
+ * identifier-first 2단계 흐름 (FR-AU-07 적용 이후).
+ * 1단계: 미매칭 이메일(example.com) 입력 → "계속" → 2단계 폼 진입
+ * 2단계: Local provider 선택 + alice / password 입력 → 로그인
+ *
  * MSW dev mock 환경 가정 (backend dev 서버 불필요).
- * apps/web/e2e/login-happy-path.spec.ts 의 S1 시나리오 패턴 일관.
  *
  * @param page Playwright Page 객체
  */
 export async function loginAsAlice(page: Page): Promise<void> {
   await page.goto('/login')
   await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
+  // 1단계: 미매칭 도메인 이메일 입력 → "계속"
+  await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
+  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
+  // 2단계: provider 드롭다운 로딩 대기 + Local 선택
+  const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
+  await expect(providerSelect).toBeVisible()
+  await expect(providerSelect).not.toBeDisabled()
+  await providerSelect.click()
+  await page.getByRole('option', { name: loginStrings.providerLocal, exact: true }).click()
+  // 2단계: username / password 입력
   await page.getByLabel(loginStrings.usernameLabel).fill('alice')
   await page.getByLabel(loginStrings.passwordLabel).fill('password')
   await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
@@ -35,7 +48,7 @@ export async function loginAsAlice(page: Page): Promise<void> {
 /**
  * Bob (dev seed LOCAL provider) 으로 로그인하고 /dashboard 진입까지 완료한다.
  *
- * MSW dev mock 환경 가정 — auth-handlers.ts 의 loginHandler/whoamiHandler 가 처리.
+ * identifier-first 2단계 흐름 (FR-AU-07 적용 이후).
  * bob 은 MEMBER 역할 — SOFT_DELETE 권한 없음, UPDATE 권한 있음.
  *
  * @param page Playwright Page 객체
@@ -43,6 +56,15 @@ export async function loginAsAlice(page: Page): Promise<void> {
 export async function loginAsBob(page: Page): Promise<void> {
   await page.goto('/login')
   await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
+  // 1단계
+  await page.getByLabel(loginStrings.emailLabel).fill('bob@example.com')
+  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
+  // 2단계
+  const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
+  await expect(providerSelect).toBeVisible()
+  await expect(providerSelect).not.toBeDisabled()
+  await providerSelect.click()
+  await page.getByRole('option', { name: loginStrings.providerLocal, exact: true }).click()
   await page.getByLabel(loginStrings.usernameLabel).fill('bob')
   await page.getByLabel(loginStrings.passwordLabel).fill('password')
   await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
