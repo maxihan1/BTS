@@ -6,13 +6,16 @@ import {
   unlinkAccount,
   ssoLinkStart,
   ssoReauthStart,
-} from '@/api/account-links'
-import type {
-  ReauthResponse,
-  AccountLinkResponse,
-  SsoLinkStartResponse,
+  type ReauthResponse,
+  type AccountLinkResponse,
+  type SsoLinkStartResponse,
 } from '@/api/account-links'
 import { ACCOUNT_LINKS_QUERY_KEY } from './useAccountLinksQuery'
+
+// ─── 요청 body 타입 별칭 — api 모듈에서 직접 파생해 중복 정의 없음 ────────────
+type ReauthParams = Parameters<typeof reauth>[0]
+type LinkAccountParams = Parameters<typeof linkAccount>[0]
+type SsoStartParams = Parameters<typeof ssoLinkStart>[0]
 
 /**
  * 계정 연결 관련 mutation 훅 묶음.
@@ -34,11 +37,7 @@ export function useAccountLinkMutations() {
    * step-up 재인증을 수행한다.
    * 성공 시 `stepUpExpiresAt`(ISO 8601 문자열)을 반환 — 컴포넌트가 step-up 윈도우 만료를 추적.
    */
-  const reauthMutation = useMutation<
-    ReauthResponse,
-    unknown,
-    Parameters<typeof reauth>[0]
-  >({
+  const reauthMutation = useMutation<ReauthResponse, unknown, ReauthParams>({
     mutationFn: reauth,
     onSuccess: invalidateLinks,
   })
@@ -47,17 +46,13 @@ export function useAccountLinkMutations() {
    * LDAP 계정을 현재 사용자에게 연결한다.
    * step-up이 유효해야 한다. 실패 에러(401/409/503)는 컴포넌트로 전파.
    */
-  const linkMutation = useMutation<
-    AccountLinkResponse,
-    unknown,
-    Parameters<typeof linkAccount>[0]
-  >({
+  const linkMutation = useMutation<AccountLinkResponse, unknown, LinkAccountParams>({
     mutationFn: linkAccount,
     onSuccess: invalidateLinks,
   })
 
   /**
-   * 지정한 계정 연결을 해제한다.
+   * 지정한 계정 연결을 해제한다 (id = 연결 UUID).
    * step-up이 유효해야 한다. 실패 에러(401/404/409)는 컴포넌트로 전파.
    */
   const unlinkMutation = useMutation<void, unknown, string>({
@@ -69,11 +64,7 @@ export function useAccountLinkMutations() {
    * SSO 공급자 계정 연결 흐름을 시작한다.
    * 성공 시 `authorizeUrl`(IdP 인증 URL)을 반환. 컴포넌트가 해당 URL로 리디렉트.
    */
-  const ssoLinkStartMutation = useMutation<
-    SsoLinkStartResponse,
-    unknown,
-    Parameters<typeof ssoLinkStart>[0]
-  >({
+  const ssoLinkStartMutation = useMutation<SsoLinkStartResponse, unknown, SsoStartParams>({
     mutationFn: ssoLinkStart,
     onSuccess: invalidateLinks,
   })
@@ -82,11 +73,7 @@ export function useAccountLinkMutations() {
    * SSO step-up 재인증 흐름을 시작한다.
    * 성공 시 `authorizeUrl`을 반환. 컴포넌트가 해당 URL로 리디렉트.
    */
-  const ssoReauthStartMutation = useMutation<
-    SsoLinkStartResponse,
-    unknown,
-    Parameters<typeof ssoReauthStart>[0]
-  >({
+  const ssoReauthStartMutation = useMutation<SsoLinkStartResponse, unknown, SsoStartParams>({
     mutationFn: ssoReauthStart,
     onSuccess: invalidateLinks,
   })
