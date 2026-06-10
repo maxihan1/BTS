@@ -174,4 +174,26 @@ classify 결과: type=backend, agent=backend-engineer, primary_bc=notification(�
 - 추가 검증: 3모듈(issue-tracking·identity-access·shared-kernel) detekt/ktlint 그린, 전체 회귀 통과
 - 범위 deferred 마킹: D6 렌더링·D7 Inbox E2E·댓글 멘션·그룹 멘션 (product 파일에 후속 FR 위임 명시 — 머지 단계 동기화)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### eng 집중 독립 리뷰 (2026-06-11, backend type — autoplan 대신 eng 집중)
+
+**실측 검증 (가정 확정)**.
+- ✅ 트랜잭션 경계(F6): `IssueApplicationService` 클래스 레벨 `@Transactional`(L92) → `updateIssue`의 `IssueMentioned` 발행이 본문 저장과 동일 트랜잭션. `IssueEventPublisher`(MANDATORY) 정합.
+- ✅ description 게이트(F1/F4): `buildChangedFields`가 `"description"` 토큰 추가(L1032, `isTextFieldChanged`). clear("") → added 빈집합 → 미발행(EC-4) 정확.
+- ✅ cross-BC 격리(C1): identity-access 직접 import 없음, shared-kernel `UserLookupPort` 경유만.
+- ✅ fail-open 금지(C2): default `emptyMap()`은 테스트 fake 보호용 fail-safe(멘션 0=미발행), per-mention 드롭 의미. allow-all 아님.
+- ✅ 권한 분리(C3): 추출/발행은 수신자 권한 미필터(전달단 FR-NT 책임). 이벤트=큐 내부 데이터, 외부 미노출.
+- ✅ 클론 일관성(EC-9): cloneIssue는 updateIssue 미경유 → 멘션 자동 미발행, 추가 코드 불요.
+- ✅ wave 파일 비겹침: T1·T2(issue-tracking 신규 파일)·T3(shared-kernel+identity-access) 교집합 ∅ → 병렬 안전.
+
+**⚠️ 주의 (구현 시 반영, BLOCKER 아님)**.
+- A1. `UserLookupAdapter.override` 필수 — default가 production에 새면 멘션 영구 침묵. 완화: Task 3 통합테스트가 실제 어댑터 검증 + production 유일 `@Component` 구현체. 가능하면 boot 컨텍스트(예: identity-access boot test)에서 `UserLookupAdapter` 빈 주입 확인 1줄 추가.
+- A2. `MentionParser` 코드스팬 제거는 불균형 백틱 등 엣지에서 best-effort — v1 수용, KDoc에 한계 명시. 정밀화는 렌더링(D6)/FR-MN-02에서.
+- A3. 신규 파일 2종(`MentionParser.kt`, `IssueApplicationServiceMentionTest.kt`)은 **L1 한글 헤더 주석** 필수(글로벌 CLAUDE.md §6).
+- A4. `mentionedUserIds`는 `UUID.sorted()`(UUID Comparable) 결정적 직렬화 — N3.
+
+**관찰**.
+- O1. `q_issue_events` 무소비자 — 기존 모든 이슈 이벤트와 동일 패턴, 회귀 아님. 큐 retention/소비는 FR-NT 책임.
+
+**BLOCKER: 없음.**
