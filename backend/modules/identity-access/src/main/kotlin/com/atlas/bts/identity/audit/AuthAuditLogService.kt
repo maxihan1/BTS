@@ -9,8 +9,8 @@ import java.util.UUID
  *
  * ## 구현체 현황
  *
- * - **현재 (이 PR):** [InMemoryAuthAuditLogService] — in-memory + logback 파일 기록.
- * - **후속 PR (SDD 19.9):** `JdbcAuthAuditLogService` — `audit_logs` 테이블 + 월 단위 파티션.
+ * - **프로덕션 (`@Service`):** [JdbcAuthAuditLogService] — `auth_audit_logs` 테이블 영속(append-only, FR-AU-10).
+ * - **단위테스트 헬퍼:** [InMemoryAuthAuditLogService] — in-memory + logback 파일 기록(`@Service` 미부착).
  */
 interface AuthAuditLogService {
 

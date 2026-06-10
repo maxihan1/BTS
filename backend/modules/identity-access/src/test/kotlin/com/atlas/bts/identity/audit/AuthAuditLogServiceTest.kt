@@ -142,6 +142,40 @@ class AuthAuditLogServiceTest {
         assertThat(logs).hasSize(20)
     }
 
+    // ── userId nullable — 사용자 미상 이벤트 (LOGIN_FAILURE / LDAP_UNAVAILABLE) ──
+
+    @Test
+    fun `userId 가 null 인 사용자 미상 이벤트를 record 할 수 있다`() {
+        val event = AuthAuditLog(
+            userId = null,
+            eventType = AuthEventType.LOGIN_FAILURE,
+            providerId = "local",
+            metadata = mapOf("reason" to "INVALID_CREDENTIALS"),
+        )
+
+        service.record(event)
+
+        // userId 가 null 인 이벤트는 특정 userId findRecent 에 잡히지 않는다 (사용자 격리).
+        val someUserId = UUID.randomUUID()
+        assertThat(service.findRecent(someUserId, limit = 10)).isEmpty()
+    }
+
+    @Test
+    fun `userId null 이벤트는 다른 userId 의 findRecent 결과를 오염시키지 않는다`() {
+        val userA = UUID.randomUUID()
+
+        service.record(
+            AuthAuditLog(userId = null, eventType = AuthEventType.LDAP_UNAVAILABLE, providerId = "ldap"),
+        )
+        service.record(
+            AuthAuditLog(userId = userA, eventType = AuthEventType.LOGIN_SUCCESS, providerId = "local"),
+        )
+
+        val logsA = service.findRecent(userA, limit = 10)
+        assertThat(logsA).hasSize(1)
+        assertThat(logsA.first().userId).isEqualTo(userA)
+    }
+
     // ── metadata / nullable 필드 ─────────────────────────────────
 
     @Test

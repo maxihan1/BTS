@@ -5,6 +5,9 @@ package com.atlas.bts.identity.provider.saml
 import com.atlas.bts.identity.account.SsoLinkingCallbackProcessor
 import com.atlas.bts.identity.account.SsoLinkingIntent
 import com.atlas.bts.identity.account.SsoLinkingIntentStore
+import com.atlas.bts.identity.audit.AuthAuditLog
+import com.atlas.bts.identity.audit.AuthAuditLogService
+import com.atlas.bts.identity.audit.AuthEventType
 import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.provider.ldap.AutoProvisionService
 import com.atlas.bts.identity.provider.ldap.ExternalAccount
@@ -51,6 +54,7 @@ class Saml2AuthenticationSuccessHandlerTest {
     private lateinit var jwtIssuer: JwtIssuer
     private lateinit var callbackProcessor: SsoLinkingCallbackProcessor
     private lateinit var intentStore: SsoLinkingIntentStore
+    private lateinit var auditLogService: AuthAuditLogService
     private lateinit var handler: Saml2AuthenticationSuccessHandler
 
     private val fixedNow = Instant.parse("2026-06-01T10:00:00Z")
@@ -112,6 +116,7 @@ class Saml2AuthenticationSuccessHandlerTest {
         refreshTokenRepository = mockk(relaxed = true)
         jwtIssuer = mockk()
         callbackProcessor = mockk()
+        auditLogService = mockk(relaxed = true)
         // 실 store — C3 비활성 경로의 명시 consume(intent 제거)을 실증한다(고정 Clock).
         intentStore = SsoLinkingIntentStore(clock)
 
@@ -131,6 +136,7 @@ class Saml2AuthenticationSuccessHandlerTest {
                 jwtIssuer = jwtIssuer,
                 callbackProcessor = callbackProcessor,
                 intentStore = intentStore,
+                auditLogService = auditLogService,
                 clock = clock,
             )
     }
@@ -404,6 +410,62 @@ class Saml2AuthenticationSuccessHandlerTest {
         verify(exactly = 1) { jwtIssuer.issue(userId, sessionId, any(), any()) }
         verify(exactly = 0) { callbackProcessor.process(any(), any(), any(), any(), any(), any(), any()) }
         assertThat(locationSlot.captured).isEqualTo(DEFAULT_REDIRECT)
+    }
+
+    // --- FR-AU-10 Task 8 LOGIN_SUCCESS 감사 emit (spec §5, EC-12, C-3 가드) -----------
+
+    @Test
+    fun `일반 로그인 성공 시 LOGIN_SUCCESS 를 emit 한다 (userId providerId ip userAgent)`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        val eventSlot = slot<AuthAuditLog>()
+        every { auditLogService.record(capture(eventSlot)) } returns Unit
+
+        handler.onAuthenticationSuccess(request("/projects"), response, samlAuthentication())
+
+        verify(exactly = 1) { auditLogService.record(any()) }
+        assertThat(eventSlot.captured.eventType).isEqualTo(AuthEventType.LOGIN_SUCCESS)
+        assertThat(eventSlot.captured.userId).isEqualTo(userId)
+        assertThat(eventSlot.captured.providerId).isEqualTo("saml")
+        assertThat(eventSlot.captured.ipAddress).isEqualTo("10.0.0.1")
+        assertThat(eventSlot.captured.userAgent).isEqualTo("test-agent")
+    }
+
+    @Test
+    fun `연결 모드 early-return 분기에서는 LOGIN_SUCCESS 를 emit 하지 않는다 (C-3)`() {
+        // 연결(linking)은 로그인이 아니므로 LOGIN_SUCCESS 비-emit (vacuous green 회피 명시 가드).
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        every {
+            callbackProcessor.process(
+                any(),
+                ProviderType.SAML,
+                registrationId,
+                providerId,
+                nameId,
+                emptyList(),
+                response,
+            )
+        } returns true
+
+        handler.onAuthenticationSuccess(requestWithIntent(linkIntent()), response, samlAuthentication())
+
+        verify(exactly = 0) {
+            auditLogService.record(match { it.eventType == AuthEventType.LOGIN_SUCCESS })
+        }
+    }
+
+    @Test
+    fun `감사 record 가 예외를 던져도 로그인 발급 흐름은 정상 완료된다 (B-1 best-effort)`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        val locationSlot = slot<String>()
+        every { response.sendRedirect(capture(locationSlot)) } returns Unit
+        every { auditLogService.record(any()) } throws RuntimeException("audit DB down")
+
+        // 예외가 전파되지 않고 발급/리다이렉트가 끝까지 수행돼야 한다(가용성 우선).
+        handler.onAuthenticationSuccess(request("/projects"), response, samlAuthentication())
+
+        verify(exactly = 1) { sessionService.create(userId, any(), any(), any()) }
+        verify(exactly = 1) { jwtIssuer.issue(userId, sessionId, any(), any()) }
+        assertThat(locationSlot.captured).isEqualTo("/projects")
     }
 
     private companion object {

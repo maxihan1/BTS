@@ -120,8 +120,8 @@
         <error line="45" column="82" source="standard:trailing-comma-on-call-site" />
     </file>
     <file name="src/main/kotlin/com/atlas/bts/identity/provider/ldap/AutoProvisionService.kt">
-        <error line="65" column="20" source="standard:multiline-expression-wrapping" />
-        <error line="72" column="23" source="standard:multiline-expression-wrapping" />
+        <error line="74" column="29" source="standard:multiline-expression-wrapping" />
+        <error line="81" column="23" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="src/main/kotlin/com/atlas/bts/identity/provider/ldap/LdapProvider.kt">
         <error line="177" column="23" source="standard:multiline-expression-wrapping" />
@@ -146,10 +146,10 @@
         <error line="148" column="1" source="standard:no-empty-first-line-in-class-body" />
     </file>
     <file name="src/main/kotlin/com/atlas/bts/identity/session/RefreshTokenService.kt">
-        <error line="51" column="1" source="standard:no-empty-first-line-in-class-body" />
-        <error line="72" column="19" source="standard:multiline-expression-wrapping" />
-        <error line="100" column="24" source="standard:multiline-expression-wrapping" />
-        <error line="123" column="27" source="standard:multiline-expression-wrapping" />
+        <error line="56" column="1" source="standard:no-empty-first-line-in-class-body" />
+        <error line="88" column="19" source="standard:multiline-expression-wrapping" />
+        <error line="119" column="24" source="standard:multiline-expression-wrapping" />
+        <error line="143" column="27" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="src/main/kotlin/com/atlas/bts/identity/session/SessionRepository.kt">
         <error line="26" column="1" source="standard:no-empty-first-line-in-class-body" />
@@ -157,7 +157,7 @@
         <error line="116" column="48" source="standard:function-signature" />
     </file>
     <file name="src/main/kotlin/com/atlas/bts/identity/session/SessionService.kt">
-        <error line="138" column="56" source="standard:function-signature" />
+        <error line="161" column="56" source="standard:function-signature" />
     </file>
     <file name="src/main/kotlin/com/atlas/bts/identity/web/AuthController.kt">
         <error line="103" column="26" source="standard:multiline-expression-wrapping" />
@@ -222,7 +222,8 @@
         <error line="112" column="18" source="standard:trailing-comma-on-call-site" />
         <error line="127" column="23" source="standard:multiline-expression-wrapping" />
         <error line="134" column="22" source="standard:trailing-comma-on-call-site" />
-        <error line="150" column="21" source="standard:multiline-expression-wrapping" />
+        <error line="149" column="21" source="standard:multiline-expression-wrapping" />
+        <error line="184" column="21" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="src/test/kotlin/com/atlas/bts/identity/config/CorsConfigTest.kt">
         <error line="26" column="1" source="standard:no-empty-first-line-in-class-body" />
@@ -620,11 +621,11 @@
         <error line="67" column="26" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="src/test/kotlin/com/atlas/bts/identity/provider/ldap/AutoProvisionServiceTest.kt">
-        <error line="30" column="1" source="standard:no-empty-first-line-in-class-body" />
-        <error line="40" column="30" source="standard:multiline-expression-wrapping" />
-        <error line="49" column="33" source="standard:multiline-expression-wrapping" />
-        <error line="62" column="29" source="standard:multiline-expression-wrapping" />
-        <error line="181" column="26" source="standard:multiline-expression-wrapping" />
+        <error line="36" column="1" source="standard:no-empty-first-line-in-class-body" />
+        <error line="47" column="30" source="standard:multiline-expression-wrapping" />
+        <error line="59" column="33" source="standard:multiline-expression-wrapping" />
+        <error line="72" column="29" source="standard:multiline-expression-wrapping" />
+        <error line="224" column="26" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="src/test/kotlin/com/atlas/bts/identity/provider/local/LocalProviderTest.kt">
         <error line="36" column="1" source="standard:no-empty-first-line-in-class-body" />
@@ -641,10 +642,10 @@
         <error line="239" column="23" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="src/test/kotlin/com/atlas/bts/identity/session/RefreshTokenServiceTest.kt">
-        <error line="35" column="1" source="standard:no-empty-first-line-in-class-body" />
-        <error line="139" column="28" source="standard:multiline-expression-wrapping" />
-        <error line="178" column="25" source="standard:multiline-expression-wrapping" />
-        <error line="200" column="29" source="standard:multiline-expression-wrapping" />
+        <error line="38" column="1" source="standard:no-empty-first-line-in-class-body" />
+        <error line="145" column="28" source="standard:multiline-expression-wrapping" />
+        <error line="184" column="25" source="standard:multiline-expression-wrapping" />
+        <error line="208" column="29" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="src/test/kotlin/com/atlas/bts/identity/session/RefreshTokenTest.kt">
         <error line="12" column="1" source="standard:no-empty-first-line-in-class-body" />
@@ -654,10 +655,10 @@
         <error line="36" column="1" source="standard:no-empty-first-line-in-class-body" />
     </file>
     <file name="src/test/kotlin/com/atlas/bts/identity/session/SessionServiceTest.kt">
-        <error line="33" column="1" source="standard:no-empty-first-line-in-class-body" />
-        <error line="111" column="22" source="standard:multiline-expression-wrapping" />
-        <error line="144" column="23" source="standard:multiline-expression-wrapping" />
-        <error line="158" column="23" source="standard:multiline-expression-wrapping" />
+        <error line="36" column="1" source="standard:no-empty-first-line-in-class-body" />
+        <error line="116" column="22" source="standard:multiline-expression-wrapping" />
+        <error line="149" column="23" source="standard:multiline-expression-wrapping" />
+        <error line="163" column="23" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="src/test/kotlin/com/atlas/bts/identity/session/SessionTest.kt">
         <error line="14" column="1" source="standard:no-empty-first-line-in-class-body" />
@@ -704,7 +705,7 @@
         <error line="6" column="1" source="standard:no-unused-imports" />
         <error line="32" column="1" source="standard:no-empty-first-line-in-class-body" />
         <error line="145" column="21" source="standard:multiline-expression-wrapping" />
-        <error line="193" column="20" source="standard:multiline-expression-wrapping" />
+        <error line="193" column="22" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="src/test/kotlin/com/atlas/bts/identity/web/AuthControllerTest.kt">
         <error line="5" column="1" source="standard:import-ordering" />

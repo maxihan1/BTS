@@ -2,10 +2,16 @@
 
 package com.atlas.bts.identity.provider.ldap
 
+import com.atlas.bts.identity.audit.AuthAuditLog
+import com.atlas.bts.identity.audit.AuthAuditLogService
+import com.atlas.bts.identity.audit.AuthEventType
+import com.atlas.bts.identity.user.ProvisionResult
 import com.atlas.bts.identity.user.User
 import com.atlas.bts.identity.user.UserRepository
 import io.mockk.every
+import io.mockk.justRun
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import io.mockk.verifyOrder
 import org.assertj.core.api.Assertions.assertThat
@@ -30,6 +36,7 @@ class AutoProvisionServiceTest {
 
     private lateinit var userRepo: UserRepository
     private lateinit var externalAccountRepo: ExternalAccountRepository
+    private lateinit var auditLog: AuthAuditLogService
     private lateinit var service: AutoProvisionService
 
     private val fixedNow = Instant.parse("2026-05-21T00:00:00Z")
@@ -45,6 +52,9 @@ class AutoProvisionServiceTest {
         createdAt = fixedNow,
         updatedAt = fixedNow,
     )
+
+    private val newProvisionResult = ProvisionResult(user = sampleUser, isNew = true)
+    private val existingProvisionResult = ProvisionResult(user = sampleUser, isNew = false)
 
     private val sampleAccount = ExternalAccount(
         id = accountId,
@@ -71,14 +81,15 @@ class AutoProvisionServiceTest {
     fun setUp() {
         userRepo = mockk()
         externalAccountRepo = mockk(relaxed = true)
-        service = AutoProvisionService(userRepo, externalAccountRepo)
+        auditLog = mockk(relaxed = true)
+        service = AutoProvisionService(userRepo, externalAccountRepo, auditLog)
     }
 
     // ── US-04: 첫 로그인 — user 미존재 → 신규 INSERT ─────────────────────────
 
     @Test
     fun `첫 로그인 — UserRepository provisionFromExternal 호출 후 ExternalAccountRepository UPSERT`() {
-        every { userRepo.provisionFromExternal(any(), any(), any()) } returns sampleUser
+        every { userRepo.provisionFromExternal(any(), any(), any()) } returns newProvisionResult
         every {
             externalAccountRepo.provisionUser(any(), any(), any(), any())
         } returns sampleAccount
@@ -99,7 +110,7 @@ class AutoProvisionServiceTest {
 
     @Test
     fun `첫 로그인 — UserRepository 먼저, ExternalAccountRepository 나중 순서 보장 (DATA-md 단일 트랜잭션)`() {
-        every { userRepo.provisionFromExternal(any(), any(), any()) } returns sampleUser
+        every { userRepo.provisionFromExternal(any(), any(), any()) } returns newProvisionResult
         every {
             externalAccountRepo.provisionUser(any(), any(), any(), any())
         } returns sampleAccount
@@ -121,7 +132,7 @@ class AutoProvisionServiceTest {
         val updatedAttrs = ldapAttrs.copy(email = "bob-new@example.org", displayName = "Bob Updated")
         every {
             userRepo.provisionFromExternal("bob@example.org", "bob-new@example.org", "Bob Updated")
-        } returns updatedUser
+        } returns ProvisionResult(user = updatedUser, isNew = false)
         every {
             externalAccountRepo.provisionUser(any(), any(), any(), any())
         } returns sampleAccount
@@ -130,6 +141,38 @@ class AutoProvisionServiceTest {
 
         assertThat(result.userId).isEqualTo(userId)
         verify { userRepo.provisionFromExternal("bob@example.org", "bob-new@example.org", "Bob Updated") }
+    }
+
+    // ── FR-AU-10: USER_PROVISIONED 감사 emit (신규 INSERT 시에만) ──────────────
+
+    @Test
+    fun `신규 프로비저닝 — USER_PROVISIONED 를 emit 한다 (user-id + metadata-username)`() {
+        every { userRepo.provisionFromExternal(any(), any(), any()) } returns newProvisionResult
+        every {
+            externalAccountRepo.provisionUser(any(), any(), any(), any())
+        } returns sampleAccount
+        val eventSlot = slot<AuthAuditLog>()
+        justRun { auditLog.record(capture(eventSlot)) }
+
+        service.provision(providerId, ldapAttrs)
+
+        verify(exactly = 1) { auditLog.record(any()) }
+        val event = eventSlot.captured
+        assertThat(event.eventType).isEqualTo(AuthEventType.USER_PROVISIONED)
+        assertThat(event.userId).isEqualTo(userId)
+        assertThat(event.metadata["username"]).isEqualTo("bob@example.org")
+    }
+
+    @Test
+    fun `EC-3 기존 사용자 재로그인 — USER_PROVISIONED 를 emit 하지 않는다`() {
+        every { userRepo.provisionFromExternal(any(), any(), any()) } returns existingProvisionResult
+        every {
+            externalAccountRepo.provisionUser(any(), any(), any(), any())
+        } returns sampleAccount
+
+        service.provision(providerId, ldapAttrs)
+
+        verify(exactly = 0) { auditLog.record(any()) }
     }
 
     // ── EC-17: provision 도중 오류 → 예외 전파 (Spring @Transactional rollback) ─
@@ -149,7 +192,7 @@ class AutoProvisionServiceTest {
 
     @Test
     fun `EC-17 ExternalAccountRepository 오류 시 예외 전파 — @Transactional rollback 대상`() {
-        every { userRepo.provisionFromExternal(any(), any(), any()) } returns sampleUser
+        every { userRepo.provisionFromExternal(any(), any(), any()) } returns newProvisionResult
         every {
             externalAccountRepo.provisionUser(any(), any(), any(), any())
         } throws RuntimeException("DB 연결 오류 — user_external_accounts UPSERT 실패")

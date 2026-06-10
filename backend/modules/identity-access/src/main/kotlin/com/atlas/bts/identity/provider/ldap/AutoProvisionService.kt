@@ -2,6 +2,9 @@
 
 package com.atlas.bts.identity.provider.ldap
 
+import com.atlas.bts.identity.audit.AuthAuditLog
+import com.atlas.bts.identity.audit.AuthAuditLogService
+import com.atlas.bts.identity.audit.AuthEventType
 import com.atlas.bts.identity.user.UserRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -40,6 +43,7 @@ import java.util.UUID
 class AutoProvisionService(
     private val userRepo: UserRepository,
     private val externalAccountRepo: ExternalAccountRepository,
+    private val auditLog: AuthAuditLogService,
 ) {
     private val log = LoggerFactory.getLogger(AutoProvisionService::class.java)
 
@@ -49,6 +53,11 @@ class AutoProvisionService(
      * 실행 순서 (FK 의존성):
      * 1. users UPSERT (UserRepository.provisionFromExternal)
      * 2. user_external_accounts UPSERT (ExternalAccountRepository.provisionUser)
+     *
+     * **감사 emit (FR-AU-10):**
+     * Step 1 이 신규 INSERT 였을 때만([ProvisionResult.isNew]) [AuthEventType.USER_PROVISIONED] 를 감사 로그에 기록한다.
+     * 기존 사용자 외부 재로그인(ON CONFLICT UPDATE)은 emit 하지 않는다 (EC-3).
+     * service 레이어 `@Transactional` 경계 내 동기 기록이라 프로비저닝 UPSERT 와 원자적으로 커밋/롤백된다.
      *
      * @param providerId authn_providers.id (LDAP 공급자 식별)
      * @param attrs LDAP 인증 결과에서 추출한 사용자 속성
@@ -61,8 +70,8 @@ class AutoProvisionService(
     ): ExternalAccount {
         log.debug("Auto-provisioning 시작 — providerId={}", providerId)
 
-        // Step 1: users UPSERT — username 충돌 시 email/displayName 갱신 (id 보존)
-        val user = userRepo.provisionFromExternal(
+        // Step 1: users UPSERT — username 충돌 시 email/displayName 갱신 (id 보존). isNew 로 신규 INSERT 여부 노출.
+        val (user, isNew) = userRepo.provisionFromExternal(
             username = attrs.username,
             email = attrs.email,
             displayName = attrs.displayName,
@@ -75,6 +84,18 @@ class AutoProvisionService(
             userId = user.id,
             groups = attrs.groups,
         )
+
+        // FR-AU-10: 신규 INSERT 일 때만 USER_PROVISIONED 감사 기록 (기존 재로그인은 emit 안 함, EC-3)
+        if (isNew) {
+            auditLog.record(
+                AuthAuditLog(
+                    userId = user.id,
+                    eventType = AuthEventType.USER_PROVISIONED,
+                    providerId = providerId.toString(),
+                    metadata = mapOf("username" to attrs.username),
+                ),
+            )
+        }
 
         log.debug("Auto-provisioning 완료 — providerId={}, userId={}", providerId, user.id)
         return account

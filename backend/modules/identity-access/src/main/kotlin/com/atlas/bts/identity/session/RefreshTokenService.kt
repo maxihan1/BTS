@@ -2,6 +2,9 @@
 
 package com.atlas.bts.identity.session
 
+import com.atlas.bts.identity.audit.AuthAuditLog
+import com.atlas.bts.identity.audit.AuthAuditLogService
+import com.atlas.bts.identity.audit.AuthEventType
 import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.systemrole.SystemRoleAssignmentRepository
 import org.springframework.stereotype.Service
@@ -38,6 +41,7 @@ import java.util.UUID
  * @param sessionService [SessionService] — 세션 조회/폐기
  * @param jwtIssuer [JwtIssuer] — access token 발급
  * @param systemRoleAssignmentRepository [SystemRoleAssignmentRepository] — 전역 시스템 역할 조회 (FR-PM-08)
+ * @param auditLog [AuthAuditLogService] — 인증 감사 로그 emit (FR-AU-10)
  * @param clock 시각 주입 (테스트 가용성)
  */
 @Service
@@ -46,6 +50,7 @@ class RefreshTokenService(
     private val sessionService: SessionService,
     private val jwtIssuer: JwtIssuer,
     private val systemRoleAssignmentRepository: SystemRoleAssignmentRepository,
+    private val auditLog: AuthAuditLogService,
     private val clock: Clock = Clock.systemUTC(),
 ) {
 
@@ -60,6 +65,17 @@ class RefreshTokenService(
      * ## EC-22 race-safe
      * [RefreshTokenRepository.markUsedAndChain] 이 null 을 반환하면 race loser 로 판단한다.
      * 동시 rotate 요청이 들어온 상황은 replay 위험과 동일하게 취급 — 세션 전체 revoke.
+     *
+     * ## 감사 emit (FR-AU-10, C-5)
+     * - 성공: [RotateResult.Success] 직전 [AuthEventType.TOKEN_REFRESHED]
+     *   (`metadata.oldTokenId`/`newTokenId`).
+     * - replay 분기([FailureReason.Replay]): [AuthEventType.SUSPICIOUS_REFRESH_REPLAY]
+     *   (`metadata.reason = "replay"`).
+     * - race-loser 분기([FailureReason.Race]): [AuthEventType.SUSPICIOUS_REFRESH_REPLAY]
+     *   (`metadata.reason = "race"`).
+     * replay/race 둘 다 탈취 위험이므로 동일 이벤트 유형으로 기록하고 `metadata.reason` 으로 구분한다.
+     * service 레이어 `@Transactional` 경계 내 동기 emit 이므로 체인 폐기 UPDATE 와 원자적으로 커밋된다
+     * (rotate 는 예외가 아닌 [RotateResult.Failure] 를 반환하므로 트랜잭션이 커밋되며 감사 row 가 함께 남는다).
      *
      * @param oldTokenHash SHA-256 hex 64자 (raw token 의 hash). **로그 기록 금지.**
      * @return [RotateResult.Success] (새 토큰 쌍) 또는 [RotateResult.Failure] (사유 포함)
@@ -77,8 +93,11 @@ class RefreshTokenService(
         //    usedAt != null 은 markUsedAndChain 이 성공한 이후의 상태.
         //    어느 쪽이든 탈취/재사용 시도로 간주한다.
         if (old.isReplaced() || old.usedAt != null) {
+            // 감사 주체 식별을 위해 세션을 조회한다 (이미 폐기됐을 수 있으므로 nullable).
+            val session = sessionService.lookup(old.sessionId)
             repo.revokeChainFromSession(old.sessionId)
             sessionService.revoke(old.sessionId, REVOKE_REASON_REPLAY)
+            recordSuspiciousReplay(session, REPLAY_REASON_REPLAY)
             return RotateResult.Failure(FailureReason.Replay)
         }
 
@@ -115,6 +134,7 @@ class RefreshTokenService(
         if (winner == null) {
             repo.revokeChainFromSession(old.sessionId)
             sessionService.revoke(old.sessionId, REVOKE_REASON_REPLAY)
+            recordSuspiciousReplay(session, REPLAY_REASON_RACE)
             return RotateResult.Failure(FailureReason.Race)
         }
 
@@ -128,6 +148,9 @@ class RefreshTokenService(
             roles = roles,
         )
 
+        // FR-AU-10 — rotation 성공 감사. tokenId 만 기록(raw token / hash 절대 금지, §1.1 규칙 2).
+        recordTokenRefreshed(session, oldTokenId = old.id, newTokenId = newToken.id)
+
         return RotateResult.Success(
             accessToken = accessToken,
             newRefreshTokenRaw = rawNewToken,
@@ -135,6 +158,58 @@ class RefreshTokenService(
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * TOKEN_REFRESHED 감사 이벤트를 기록한다 (FR-AU-10).
+     *
+     * raw token / token_hash 는 절대 기록하지 않고 식별용 tokenId(UUID)만 metadata 에 담는다 (§1.1 규칙 2).
+     *
+     * @param session    rotation 주체 세션
+     * @param oldTokenId 무효화된 옛 refresh token id
+     * @param newTokenId 새로 발급된 refresh token id
+     */
+    private fun recordTokenRefreshed(
+        session: Session,
+        oldTokenId: UUID,
+        newTokenId: UUID,
+    ) {
+        val metadata =
+            mapOf(
+                METADATA_OLD_TOKEN_ID to oldTokenId.toString(),
+                METADATA_NEW_TOKEN_ID to newTokenId.toString(),
+            )
+        auditLog.record(
+            AuthAuditLog(
+                userId = session.userId,
+                eventType = AuthEventType.TOKEN_REFRESHED,
+                providerId = session.providerId,
+                metadata = metadata,
+            ),
+        )
+    }
+
+    /**
+     * SUSPICIOUS_REFRESH_REPLAY 감사 이벤트를 기록한다 (FR-AU-10, C-5).
+     *
+     * replay 분기와 race-loser 분기가 공유하는 emit 지점이다. 주체 식별은 [session] 의 userId/providerId 로 하되,
+     * 세션이 이미 폐기/소실된 경우 [session] 이 null 이므로 userId 는 null, providerId 는 [AUDIT_PROVIDER_FALLBACK] 로 둔다.
+     *
+     * @param session 감사 주체 식별용 세션 (nullable — 이미 폐기됐을 수 있음)
+     * @param reason `metadata.reason` 값 — [REPLAY_REASON_REPLAY] 또는 [REPLAY_REASON_RACE]
+     */
+    private fun recordSuspiciousReplay(
+        session: Session?,
+        reason: String,
+    ) {
+        auditLog.record(
+            AuthAuditLog(
+                userId = session?.userId,
+                eventType = AuthEventType.SUSPICIOUS_REFRESH_REPLAY,
+                providerId = session?.providerId ?: AUDIT_PROVIDER_FALLBACK,
+                metadata = mapOf(METADATA_REASON to reason),
+            ),
+        )
+    }
 
     /** [TOKEN_BYTES] 바이트 CSPRNG 난수를 hex 문자열로 인코딩한다. */
     private fun generateRawToken(): String {
@@ -202,5 +277,23 @@ class RefreshTokenService(
          * "REFRESH_REPLAY" — 감사 로그 검색 키. 변경 시 운영 알림 쿼리도 함께 수정.
          */
         internal const val REVOKE_REASON_REPLAY = "REFRESH_REPLAY"
+
+        /** SUSPICIOUS_REFRESH_REPLAY 세션 소실 시 providerId fallback (FR-AU-10). */
+        private const val AUDIT_PROVIDER_FALLBACK = "refresh"
+
+        /** TOKEN_REFRESHED metadata 키 — 무효화된 옛 토큰 id (FR-AU-10). */
+        private const val METADATA_OLD_TOKEN_ID = "oldTokenId"
+
+        /** TOKEN_REFRESHED metadata 키 — 새로 발급된 토큰 id (FR-AU-10). */
+        private const val METADATA_NEW_TOKEN_ID = "newTokenId"
+
+        /** SUSPICIOUS_REFRESH_REPLAY metadata 키 — 의심 사유 구분 (FR-AU-10, C-5). */
+        private const val METADATA_REASON = "reason"
+
+        /** SUSPICIOUS_REFRESH_REPLAY reason — 이미 사용/교체된 토큰 재제출 (EC-23). */
+        private const val REPLAY_REASON_REPLAY = "replay"
+
+        /** SUSPICIOUS_REFRESH_REPLAY reason — 동시 rotate race loser (EC-22). */
+        private const val REPLAY_REASON_RACE = "race"
     }
 }

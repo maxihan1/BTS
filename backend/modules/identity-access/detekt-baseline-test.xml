@@ -51,6 +51,7 @@
     <ID>VarCouldBeVal:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$@Autowired private lateinit var restTemplate: TestRestTemplate</ID>
     <ID>VarCouldBeVal:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$@Autowired private lateinit var userRepository: UserRepository</ID>
     <ID>VarCouldBeVal:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$@LocalServerPort private var port: Int = 0</ID>
+    <ID>VarCouldBeVal:AuthAuditLogsSchemaTest.kt$AuthAuditLogsSchemaTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:AuthnProviderConfigRepositoryTest.kt$AuthnProviderConfigRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:AuthnProviderConfigRepositoryTest.kt$AuthnProviderConfigRepositoryTest$@Autowired private lateinit var repo: AuthnProviderConfigRepository</ID>
     <ID>VarCouldBeVal:ChangePasswordServiceTest.kt$ChangePasswordServiceMustChangeIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
@@ -81,6 +82,8 @@
     <ID>VarCouldBeVal:IdentityAccessWorkflowSchemePermissionResolverIntegrationTest.kt$IdentityAccessWorkflowSchemePermissionResolverIntegrationTest$/** prod 프로파일에서 IdentityAccessWorkflowSchemePermissionResolver 가 주입되어야 한다. */ @Autowired private lateinit var resolver: WorkflowSchemePermissionResolver</ID>
     <ID>VarCouldBeVal:IdentityAccessWorkflowSchemePermissionResolverIntegrationTest.kt$IdentityAccessWorkflowSchemePermissionResolverIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:IssueSecuritySchemaMigrationTest.kt$IssueSecuritySchemaMigrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:JdbcAuthAuditLogServiceIntegrationTest.kt$JdbcAuthAuditLogServiceIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:JdbcAuthAuditLogServiceIntegrationTest.kt$JdbcAuthAuditLogServiceIntegrationTest$@Autowired private lateinit var service: JdbcAuthAuditLogService</ID>
     <ID>VarCouldBeVal:JdbcIssueSecurityLookupIntegrationTest.kt$JdbcIssueSecurityLookupIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:JdbcIssueSecurityLookupIntegrationTest.kt$JdbcIssueSecurityLookupIntegrationTest$@Autowired private lateinit var lookup: JdbcIssueSecurityLookup</ID>
     <ID>VarCouldBeVal:JdbcIssueSecuritySchemeRepositoryIntegrationTest.kt$JdbcIssueSecuritySchemeRepositoryIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
