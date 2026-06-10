@@ -123,11 +123,11 @@ classify-task가 제목 끝 "조회 UI" 키워드로 `ui/frontend-engineer` 오�
 - files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/AuthController.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/AuthControllerTest.kt`]
 - depends-on: [3]
 
-**RED**. `AuthControllerTest`(mock AuthAuditLogService) — (a) 로그인 성공 시 LOGIN_SUCCESS(userId=principal.userId, providerId, ip/userAgent from request), (b) 자격증명 실패 시 LOGIN_FAILURE(userId=null, metadata.username/reason), (c) **PROVIDER_UNAVAILABLE 실패는 LOGIN_FAILURE emit 안 함**(EC-11), (d) 로그아웃 시 LOGOUT(metadata.sid). 실패: emit 없음.
+**RED**. `AuthControllerTest`(mock AuthAuditLogService) — (a) 로그인 성공 시 LOGIN_SUCCESS(userId=principal.userId, providerId, ip/userAgent from request), (b) 자격증명 실패 시 LOGIN_FAILURE(userId=null, metadata.username/reason), (c) **PROVIDER_UNAVAILABLE 실패는 LOGIN_FAILURE emit 안 함**(EC-11), (d) 로그아웃 시 LOGOUT(metadata.sid), (e) **B-1 best-effort**: `record()`가 예외를 던져도 로그인/로그아웃 응답은 정상(200/204)이고 에러가 전파되지 않음(mock이 throw하도록 stub). 실패: emit 없음 / 예외 전파.
 
-**GREEN**. `AuthController` 생성자에 `AuthAuditLogService` 주입(G-1). login Success 분기 issueTokens 직전 + Failure 분기(reason≠PROVIDER_UNAVAILABLE) 401 직전 + logout revoke 직후 record. ip=`request.remoteAddr`, userAgent=`request.getHeader("User-Agent")`.
+**GREEN**. `AuthController` 생성자에 `AuthAuditLogService` 주입(G-1). login Success 분기 issueTokens 직전 + Failure 분기(reason≠PROVIDER_UNAVAILABLE) 401 직전 + logout revoke 직후 record. ip=`request.remoteAddr`, userAgent=`request.getHeader("User-Agent")`. **B-1: emit을 try-catch로 감싸 실패 시 high-severity 에러 로그(+메트릭 자리) 후 흐름 계속 — silent 삼킴 아님, 로그인 가용성 우선.**
 
-**REFACTOR**. emit 헬퍼 private 함수 추출(중복 제거).
+**REFACTOR**. best-effort emit 헬퍼 private 함수 추출(try-catch+로그 1곳, 중복 제거).
 
 **검증**. `./gradlew :backend:identity-access:test --tests AuthControllerTest`.
 
@@ -153,9 +153,9 @@ classify-task가 제목 끝 "조회 UI" 키워드로 `ui/frontend-engineer` 오�
 - files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/session/RefreshTokenService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/session/RefreshTokenServiceTest.kt`]
 - depends-on: [3]
 
-**RED**. `RefreshTokenServiceTest`(mock 추가) — (a) rotate 성공 시 TOKEN_REFRESHED(session.userId, metadata old/new tokenId), (b) **replay 분기**(used/replaced 재사용)만 SUSPICIOUS_REFRESH_REPLAY emit, (c) **race-loser 분기는 emit 안 함**(EC-7). 실패: emit 없음.
+**RED**. `RefreshTokenServiceTest`(mock 추가) — (a) rotate 성공 시 TOKEN_REFRESHED(session.userId, metadata old/new tokenId), (b) **replay 분기**(used/replaced 재사용) SUSPICIOUS_REFRESH_REPLAY emit(metadata.reason=replay), (c) **race-loser 분기도** SUSPICIOUS_REFRESH_REPLAY emit(metadata.reason=race)(C-5). 실패: emit 없음.
 
-**GREEN**. RefreshTokenService 생성자에 `AuthAuditLogService` 주입(G-1). RotateResult.Success 직전 TOKEN_REFRESHED. replay 감지 분기(RefreshTokenService 자체 FailureReason.Replay 경로)에서만 SUSPICIOUS_REFRESH_REPLAY — **체인 폐기와 같은 트랜잭션 커밋**(G-6, rotate는 예외 아닌 Failure 반환). race-loser(Race) 분기 제외.
+**GREEN**. RefreshTokenService 생성자에 `AuthAuditLogService` 주입(G-1). RotateResult.Success 직전 TOKEN_REFRESHED. **replay 분기(FailureReason.Replay)와 race-loser 분기(FailureReason.Race) 둘 다** SUSPICIOUS_REFRESH_REPLAY emit, metadata.reason으로 구분(C-5) — **체인 폐기와 같은 트랜잭션 커밋**(G-6, rotate는 예외 아닌 Failure 반환).
 
 **REFACTOR**. 불필요.
 

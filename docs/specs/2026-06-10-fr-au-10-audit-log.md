@@ -40,7 +40,9 @@
 
 - **NFR-1 보안/PII**. logback `audit.auth` 로거에는 PII(ip/userAgent/deviceFingerprint) 미출력 유지(기존 InMemory 패턴). DB에는 저장하되 감사 목적상 허용(VIEW_AUDIT_LOG 권한자만 후속 조회).
 - **NFR-2 계정 열거 차단**. LOGIN_FAILURE 기록 시 username→userId 역조회 **금지**(존재 probe 회피, 메모리 `auth-extraction-before-resource-lookup`). userId=null + metadata.username.
-- **NFR-3 감사 무결성**. 감사 INSERT 실패가 인증 흐름을 깨선 안 되지만, "이벤트 누락 0"이 목표이므로 INSERT는 동일 트랜잭션 내 동기 수행(기존 동기 record 패턴 유지). best-effort 삼킴 금지(메모리 `best-effort-loop-permission-exception-nonprod-mask`).
+- **NFR-3 감사 무결성 (B-1 결정 — 레이어 분리)**. 트랜잭션 경계가 레이어마다 다르므로 정책 분리.
+  - **service 레이어 emit**(LOGOUT_ALL_DEVICES·TOKEN_REFRESHED·SUSPICIOUS_REFRESH_REPLAY·USER_PROVISIONED·PROJECT_*)은 해당 메서드 `@Transactional` 안에서 동기 INSERT. 삼킴 금지(흐름 롤백 시 감사도 롤백 — 원자적).
+  - **web 레이어 emit**(LOGIN_SUCCESS·LOGIN_FAILURE·LOGOUT — AuthController 무-트랜잭션; LDAP_UNAVAILABLE — 인증 실패 경로)은 **best-effort**. try-catch로 감싸 감사 INSERT 실패해도 로그인/로그아웃은 성공. 단 **silent 삼킴 금지** — 실패 시 high-severity 에러 로그 + 메트릭으로 경보(감사 갭 탐지 가능). 가용성 우선(감사 DB가 로그인 인질 되지 않음, 1K 사내).
 - **NFR-4 동시성**. record() 동시 호출 안전(DB INSERT는 본질적으로 안전, IDENTITY PK).
 - **NFR-5 내구성**. 영속(재시작 보존). InMemory 대체.
 - **NFR-6 회귀 0**. 기존 4개 emit 지점(PAT/PROJECT_*) 및 로그인/세션/리프레시/프로비저닝 흐름의 동작 무변경(감사 기록 추가 외).
@@ -87,7 +89,7 @@
 | LOGOUT | web/AuthController:~222 | logout | sessionService.revoke 직후 | JWT subject | ✓ request | sid |
 | LOGOUT_ALL_DEVICES | session/SessionService:~123 | revokeAllOfUser | revokeAllByUserId 직후, revoked>0 | userId 파라미터 | null | revokedCount |
 | TOKEN_REFRESHED | session/RefreshTokenService:~131 | rotate | RotateResult.Success 직전 | session.userId | null | oldTokenId,newTokenId |
-| SUSPICIOUS_REFRESH_REPLAY | session/RefreshTokenService:~79 | rotate | **replay 분기만**(used/replaced 재사용) | session.userId | null | tokenId, reason |
+| SUSPICIOUS_REFRESH_REPLAY | session/RefreshTokenService:~79,~114 | rotate | **replay + race-loser 둘 다**(C-5) | session.userId | null | tokenId, reason(replay/race) |
 | USER_PROVISIONED | provider/ldap/AutoProvisionService:~60 | provision | **신규 INSERT 시만** | user.id | null | username, providerType |
 | LDAP_UNAVAILABLE | provider/ldap/LdapProvider:~95,~243 | authenticate/bindAndExtract | 미설정/통신불가 | **null** | null | reason, exception |
 | PAT_USED | web/WhoamiController (기존) | — | (변경 없음) | — | — | — |
@@ -95,7 +97,7 @@
 
 **ip/userAgent 정책**. web 레이어 emit(LOGIN_*, LOGOUT, PAT_USED)만 캡처. service 레이어 emit은 null(투기적 세션 역조회·시그니처 수술 회피, NFR-6 surgical). ip/userAgent는 이미 nullable best-effort 컨텍스트 필드.
 
-**SUSPICIOUS_REFRESH_REPLAY semantics**. rotate()에는 (a) replay 분기(EC-23, 이미 used/replaced된 토큰 재사용 = 공격 의심)와 (b) race-loser 분기(EC-22, 동시 갱신 경쟁 패자 = 양성)가 있다. **(a)만 emit**. (b)는 정상 동시성으로 false alarm 회피.
+**SUSPICIOUS_REFRESH_REPLAY semantics (C-5 결정)**. rotate()의 (a) replay 분기(EC-23, used/replaced 재사용)와 (b) race-loser 분기(EC-22, 동시 갱신 경쟁 패자) **둘 다 emit**. 코드 저자가 둘 다 동일 `REFRESH_REPLAY` 사유로 세션 revoke(탈취 위험)하는 것과 정합. `metadata.reason`으로 replay/race 구분. 보안 감사는 over-report가 안전(admin 전용 포렌식).
 
 **USER_PROVISIONED 신규 판정**. `UserRepository.provisionFromExternal()`의 UPSERT를 `INSERT ... ON CONFLICT ... RETURNING (xmax = 0) AS is_new`로 확장해 신규 INSERT 여부 노출. AutoProvisionService가 `is_new == true`일 때만 record. 호출자(LdapProvider/OIDC/SAML 성공핸들러) 반환 타입 변경 없음(provision 내부 흡수).
 
@@ -104,7 +106,7 @@
 - **EC-1 (존재하지 않는 username 로그인 실패)**. userId=null, metadata.username=시도값. 역조회 금지(NFR-2).
 - **EC-2 (LDAP 미설정/통신불가)**. userId=null. 시스템 더미 UUID 사용 금지(매직 sentinel 회피) → nullable로 해결.
 - **EC-3 (기존 사용자 외부 재로그인)**. USER_PROVISIONED emit 안 함(xmax≠0). 회귀 가드 테스트.
-- **EC-4 (race-loser refresh)**. SUSPICIOUS_REFRESH_REPLAY emit 안 함(§5 semantics).
+- **EC-4 (race-loser refresh)**. SUSPICIOUS_REFRESH_REPLAY emit **함**(C-5, metadata.reason=race). replay 분기는 reason=replay.
 - **EC-5 (감사 INSERT 실패)**. 동기 트랜잭션 내 발생 시 인증 트랜잭션과 함께 처리. 권한 예외 등을 best-effort로 삼키지 않음.
 - **EC-6 (Bean 모호성)**. `JdbcAuthAuditLogService`만 `@Service`. `InMemoryAuthAuditLogService`는 `@Service` 제거(단위테스트 직접 생성). 동일 인터페이스 2 빈 충돌 방지.
 - **EC-7 (통합테스트 부팅 시 V021 부재)**. identity-access 통합테스트는 Testcontainers + Flyway 전 마이그레이션 적용 → V021 자동 반영, 테이블 존재. Jdbc 빈이 DB에 써도 정상.
