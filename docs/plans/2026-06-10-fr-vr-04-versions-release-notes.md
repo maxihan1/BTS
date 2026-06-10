@@ -23,7 +23,28 @@ classify: { type: api, agent: backend-engineer, primary_bc: issue-tracking }
 product 정본: docs/plan/product/issue-tracking.md §3.2.4
 SDD 참조: §3.2.4
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**: issue-tracking
+- **영향 엔티티** (모두 기존, 읽기 전용으로 사용):
+  - `Version` (`com.bts.issue.version.domain.Version`) — 이름·상태·releaseDate 등 릴리즈 노트 헤더 정보
+  - `Issue` (`com.bts.issue.domain.Issue`) — `fixVersionIds`, `key`, `summary`, `typeId`, `resolutionId`
+  - `IssueType` (`com.bts.issue.type`) — `typeId → 타입명` (그룹핑 라벨)
+- **새 엔티티/테이블**: **없음** (D3 = 활용). 릴리즈 노트는 영속화하지 않고 요청 시 생성(조회 전용).
+- **새 도메인 개념**: **릴리즈 노트(Release Notes)** — 한 버전을 Fix Version으로 가진 활성 이슈들을 모아 만든 Markdown 문서. glossary 추가 후보(게이트 1에서 Maxi 확인).
+- **신규 repository 메서드 필요**: 버전 ID → 그 버전을 fix version으로 가진 활성 이슈 역방향 조회 (`IssueRepository`에 추가). 현재는 issue→version 방향(`findFixVersionIdsByIssue`)만 존재.
+- **Issue에 워크플로우 상태 없음**: 상태 전이는 project-workflow BC 위임. issue-tracking에서는 `resolutionId`로 해결 여부 표현 → 릴리즈 노트 필터/그룹핑은 타입·resolution 축만 사용(cross-BC 회피).
+- **권한**: 기존 `VersionPermissionResolver` READ 패턴 재사용. actorId는 `SYSTEM_ACTOR_UUID` placeholder(FR-PM-03 이연), Security 필터가 401 보장.
+- **기존 결정 충돌**: 없음.
+- **관련 ADR** (참조, 충돌 없음): docs/adr/2026-06-03-version-model-and-permission-deferral.md, 2026-06-10-version-status-and-transitions.md
+
+### ⚠️ spec 단계로 넘길 핵심 결정 (옵션 논의 필요)
+
+1. **엔드포인트 경로** — VersionController가 `/api/v1/projects/{projectIdOrKey}/versions` 하위이므로, 릴리즈 노트도 `GET /api/v1/projects/{projectIdOrKey}/versions/{id}/release-notes`로 정렬해야 함. product 문서의 `GET /api/v1/versions/{id}/release-notes`는 약식 표기.
+2. **응답 형식** — JSON `{ data: { markdown, ... } }` vs `text/markdown` raw.
+3. **Markdown 그룹핑 기준** — 이슈 타입별 섹션(Bug/Story/Task…).
+4. **포함 이슈 범위** — fix version 연결 활성 이슈 전부 vs resolution 보유분만.
+5. **정렬 순서** — 이슈 키 / 생성순 등.
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
