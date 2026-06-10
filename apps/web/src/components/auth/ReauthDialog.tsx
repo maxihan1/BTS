@@ -56,16 +56,28 @@ interface ReauthDialogProps {
 // 재인증 수단 결정
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 재인증 수단 식별 유형 */
+/**
+ * 재인증 수단 식별 유형.
+ *
+ * - LOCAL: 로컬 계정 비밀번호로 재인증
+ * - LDAP: LDAP 사용자명/비밀번호로 재인증
+ * - SSO: SSO 공급자로 리디렉트해 재인증
+ */
 type ReauthMode = 'LOCAL' | 'LDAP' | 'SSO'
 
 /**
  * props로부터 재인증 수단을 결정한다.
  *
  * 우선순위:
- * 1. hasLocalPassword=true → LOCAL
- * 2. ldapProviderId 존재 → LDAP
- * 3. 나머지(SSO 전용) → SSO
+ * 1. `hasLocalPassword=true` → LOCAL 비밀번호 폼
+ * 2. `ldapProviderId` 존재 → LDAP 사용자명/비밀번호 폼
+ * 3. 둘 다 없음(SSO 전용 계정) → SSO 버튼
+ *
+ * 반환값은 컴포넌트가 렌더할 UI 수단을 결정하는 데만 사용하며,
+ * 실제 API 요청 시 `method` 필드로 변환된다.
+ *
+ * @param props hasLocalPassword + ldapProviderId 두 필드만 사용
+ * @returns 결정된 재인증 수단
  */
 function resolveReauthMode(props: Pick<ReauthDialogProps, 'hasLocalPassword' | 'ldapProviderId'>): ReauthMode {
   if (props.hasLocalPassword) return 'LOCAL'
@@ -77,6 +89,14 @@ function resolveReauthMode(props: Pick<ReauthDialogProps, 'hasLocalPassword' | '
 // 에러 body에서 errorCode 추출
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * 백엔드 ProblemDetail-like 응답 body에서 errorCode를 추출한다.
+ * body가 객체가 아니거나 errorCode가 문자열이 아니면 null을 반환한다.
+ * accountLinkErrorMessage와 함께 사용해 계정 열거 방지 메시지를 생성한다.
+ *
+ * @param body ApiError.body (unknown)
+ * @returns errorCode 문자열 또는 null
+ */
 function extractErrorCode(body: unknown): string | null {
   if (body === null || typeof body !== 'object') return null
   const b = body as Record<string, unknown>
