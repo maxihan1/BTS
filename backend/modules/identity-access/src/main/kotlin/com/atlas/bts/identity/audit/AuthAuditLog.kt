@@ -11,7 +11,8 @@ import java.util.UUID
  * PII 포함 필드 (ipAddress, userAgent, deviceFingerprint)는 로그 출력 시
  * Logback 마스킹 패턴을 통해 보호해야 한다. (DEVELOPMENT.md §보안 규칙)
  *
- * DB persistence + 월 단위 파티션은 SDD 19.9 후속 PR에서 구현 예정.
+ * DB 영속은 [JdbcAuthAuditLogService] (auth_audit_logs 테이블, V021)가 담당.
+ * 파티셔닝 없는 append-only 단순 테이블 — 영구 보존 (ADR 2026-06-10-auth-audit-log-persistence).
  *
  * @property userId 이벤트 주체 사용자 ID. null = 사용자 미상
  *   (LOGIN_FAILURE/LDAP_UNAVAILABLE 등 인증 전이라 주체를 특정할 수 없는 이벤트).
