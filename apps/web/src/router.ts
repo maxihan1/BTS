@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 21개 라우트 (이슈 7 + 워크플로우 스킴 4 + settings 4 + 멤버 1 + 컴포넌트 1 + 버전 1 + 커스텀 필드 1 + 사용자 생성 1 + 필드 권한 1)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 21개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 7 + settings 3 + 사용자 생성 1 + workflow detail 1)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
