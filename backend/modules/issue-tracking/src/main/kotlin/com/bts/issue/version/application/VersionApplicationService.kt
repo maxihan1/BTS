@@ -39,7 +39,7 @@ private const val SQL_STATE_UNIQUE_VIOLATION = "23505"
  * 클래스 레벨 `@Transactional` 이 기본(읽기/쓰기 모두). 읽기 전용 메서드는
  * `@Transactional(readOnly = true)` 를 오버라이드한다.
  *
- * 공개 메서드 7개 + private 헬퍼 7개 = 14개. TooManyFunctions 임계값 11 초과이나
+ * 공개 메서드 7개 + private 헬퍼 9개 = 16개. TooManyFunctions 임계값 11 초과이나
  * 명세 요구 메서드 수로 파일 분리는 과도 — Suppress 처리.
  */
 @Suppress("TooManyFunctions")
