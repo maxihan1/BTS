@@ -76,6 +76,18 @@ class AuthnProviderConfigRepository(
         }.associateBy { it.id }
     }
 
+    fun findEnabledByType(type: ProviderType): List<AuthnProviderInfo> {
+        val params = MapSqlParameterSource("type", type.name)
+        return jdbc.query(SQL_FIND_ENABLED_BY_TYPE, params) { rs, _ ->
+            AuthnProviderInfo(
+                id = rs.getObject("id", UUID::class.java),
+                name = rs.getString("name"),
+                type = ProviderType.valueOf(rs.getString("type")),
+                enabled = rs.getBoolean("enabled"),
+            )
+        }
+    }
+
     private companion object {
         const val SQL_DISABLED_EXISTS =
             "SELECT 1 FROM authn_providers WHERE type = :type AND enabled = false LIMIT 1"
@@ -86,6 +98,9 @@ class AuthnProviderConfigRepository(
 
         const val SQL_FIND_BY_IDS =
             "SELECT id, name, type, enabled FROM authn_providers WHERE id IN (:ids)"
+
+        const val SQL_FIND_ENABLED_BY_TYPE =
+            "SELECT id, name, type, enabled FROM authn_providers WHERE type = :type AND enabled = TRUE"
     }
 }
 
