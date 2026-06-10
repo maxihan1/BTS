@@ -5,10 +5,10 @@ package com.bts.issue.integration
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
-import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
@@ -96,8 +96,7 @@ class IssueVersionLinksIntegrationTest {
         open fun realVersionRepositoryForLinks(dsl: DSLContext): VersionRepository = VersionRepository(dsl)
 
         @Bean
-        open fun realProjectLeadRepositoryForLinks(dsl: DSLContext): ProjectLeadRepository =
-            ProjectLeadRepository(dsl)
+        open fun realProjectLeadRepositoryForLinks(dsl: DSLContext): ProjectLeadRepository = ProjectLeadRepository(dsl)
 
         @Bean
         @Primary
