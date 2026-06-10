@@ -106,6 +106,37 @@ class IssueDomainEventTest : DescribeSpec({
         }
     }
 
+    describe("IssueMentioned") {
+        val bobId = UUID.fromString("22222222-2222-2222-2222-222222222222")
+        val carolId = UUID.fromString("33333333-3333-3333-3333-333333333333")
+        val event =
+            IssueMentioned(
+                issueKey = issueKey,
+                projectKey = "ATLAS",
+                mentionedUserIds = listOf(bobId, carolId),
+                actorId = actorId,
+                sourceField = "description",
+                occurredAt = now,
+            )
+
+        it("직렬화 시 type 필드가 'issue.mentioned' 로 포함된다") {
+            val json = mapper.writeValueAsString(event)
+            json shouldContain "\"type\":\"issue.mentioned\""
+        }
+
+        it("round-trip: IssueDomainEvent 로 역직렬화하면 원본과 동일하다") {
+            val json = mapper.writeValueAsString(event)
+            val restored = mapper.readValue(json, IssueDomainEvent::class.java)
+            restored shouldBe event
+        }
+
+        it("mentionedUserIds 순서가 역직렬화 후에도 보존된다") {
+            val json = mapper.writeValueAsString(event)
+            val restored = mapper.readValue(json, IssueDomainEvent::class.java) as IssueMentioned
+            restored.mentionedUserIds shouldBe listOf(bobId, carolId)
+        }
+    }
+
     describe("다형성 역직렬화") {
         it("type=issue.created JSON 을 IssueDomainEvent 로 읽으면 IssueCreated 인스턴스다") {
             val json =
