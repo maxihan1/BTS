@@ -1,4 +1,4 @@
-// Issue Aggregate Root 단위 테스트 — factory, invariants, version, deletedAt, typeId 필수, 5필드 불변식, assigneeId, componentIds
+// Issue Aggregate Root 단위 테스트 — factory, invariants, version, deletedAt, typeId 필수, 5필드 불변식, assigneeId, componentIds, affectsVersionIds, fixVersionIds
 
 package com.bts.issue.domain
 
@@ -39,6 +39,14 @@ import java.util.UUID
  * - create_default_assigneeId_null — assigneeId 기본값은 null 이다.
  * - assignTo_sets_assigneeId — assignTo(actorId) 호출 후 반환된 Issue 의 assigneeId 가 그 actorId 와 일치한다.
  * - unassign_clears_assigneeId — unassign() 호출 후 반환된 Issue 의 assigneeId 는 null 이다.
+ * - create_default_affectsVersionIds_empty — affectsVersionIds 미지정 시 기본값은 빈 리스트다.
+ * - assignAffectsVersions_dedup — 중복 UUID 를 전달하면 distinct 정규화되어 반환된다.
+ * - assignAffectsVersions_replaces_existing — 기존 affectsVersionIds 를 새 목록으로 교체한다.
+ * - clearAffectsVersions_empties_list — clearAffectsVersions() 호출 후 affectsVersionIds 는 빈 리스트다.
+ * - create_default_fixVersionIds_empty — fixVersionIds 미지정 시 기본값은 빈 리스트다.
+ * - assignFixVersions_dedup — 중복 UUID 를 전달하면 distinct 정규화되어 반환된다.
+ * - assignFixVersions_replaces_existing — 기존 fixVersionIds 를 새 목록으로 교체한다.
+ * - clearFixVersions_empties_list — clearFixVersions() 호출 후 fixVersionIds 는 빈 리스트다.
  */
 class IssueTest {
     private val validId = IssueId(UUID.randomUUID())
@@ -674,5 +682,163 @@ class IssueTest {
             )
 
         assertThat(issue.componentIds).isEmpty()
+    }
+
+    // ─── Task 2 (FR-VR-03): affectsVersionIds 불변식 ─────────────────────────
+
+    @Test
+    fun `create_default_affectsVersionIds_empty — affectsVersionIds 미지정 시 기본값은 빈 리스트다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+
+        assertThat(issue.affectsVersionIds).isEmpty()
+    }
+
+    @Test
+    fun `assignAffectsVersions_dedup — 중복 UUID 를 전달하면 distinct 정규화되어 반환된다`() {
+        val a = UUID.randomUUID()
+        val b = UUID.randomUUID()
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+
+        val updated = issue.assignAffectsVersions(listOf(a, a, b))
+
+        assertThat(updated.affectsVersionIds).containsExactlyInAnyOrder(a, b)
+    }
+
+    @Test
+    fun `assignAffectsVersions_replaces_existing — 기존 affectsVersionIds 를 새 목록으로 교체한다`() {
+        val old = UUID.randomUUID()
+        val new1 = UUID.randomUUID()
+        val new2 = UUID.randomUUID()
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            ).assignAffectsVersions(listOf(old))
+
+        val updated = issue.assignAffectsVersions(listOf(new1, new2))
+
+        assertThat(updated.affectsVersionIds).containsExactlyInAnyOrder(new1, new2)
+        assertThat(updated.affectsVersionIds).doesNotContain(old)
+    }
+
+    @Test
+    fun `clearAffectsVersions_empties_list — clearAffectsVersions() 호출 후 affectsVersionIds 는 빈 리스트다`() {
+        val a = UUID.randomUUID()
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            ).assignAffectsVersions(listOf(a))
+
+        val cleared = issue.clearAffectsVersions()
+
+        assertThat(cleared.affectsVersionIds).isEmpty()
+    }
+
+    // ─── Task 2 (FR-VR-03): fixVersionIds 불변식 ─────────────────────────────
+
+    @Test
+    fun `create_default_fixVersionIds_empty — fixVersionIds 미지정 시 기본값은 빈 리스트다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+
+        assertThat(issue.fixVersionIds).isEmpty()
+    }
+
+    @Test
+    fun `assignFixVersions_dedup — 중복 UUID 를 전달하면 distinct 정규화되어 반환된다`() {
+        val a = UUID.randomUUID()
+        val b = UUID.randomUUID()
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+
+        val updated = issue.assignFixVersions(listOf(a, a, b))
+
+        assertThat(updated.fixVersionIds).containsExactlyInAnyOrder(a, b)
+    }
+
+    @Test
+    fun `assignFixVersions_replaces_existing — 기존 fixVersionIds 를 새 목록으로 교체한다`() {
+        val old = UUID.randomUUID()
+        val new1 = UUID.randomUUID()
+        val new2 = UUID.randomUUID()
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            ).assignFixVersions(listOf(old))
+
+        val updated = issue.assignFixVersions(listOf(new1, new2))
+
+        assertThat(updated.fixVersionIds).containsExactlyInAnyOrder(new1, new2)
+        assertThat(updated.fixVersionIds).doesNotContain(old)
+    }
+
+    @Test
+    fun `clearFixVersions_empties_list — clearFixVersions() 호출 후 fixVersionIds 는 빈 리스트다`() {
+        val a = UUID.randomUUID()
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            ).assignFixVersions(listOf(a))
+
+        val cleared = issue.clearFixVersions()
+
+        assertThat(cleared.fixVersionIds).isEmpty()
     }
 }
