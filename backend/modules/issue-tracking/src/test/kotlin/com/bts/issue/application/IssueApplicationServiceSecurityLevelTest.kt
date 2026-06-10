@@ -115,6 +115,8 @@ class IssueApplicationServiceSecurityLevelTest : DescribeSpec({
     beforeEach {
         clearMocks(repo, permissionResolver, securityDirectory, answers = false)
         every { repo.findActiveComponentIdsByIssue(any()) } returns emptyList()
+        every { repo.findAffectsVersionIdsByIssue(any()) } returns emptyList()
+        every { repo.findFixVersionIdsByIssue(any()) } returns emptyList()
         every { repo.findByKey(issueKey) } returns makeIssue()
         // assertEditableOrForbidden(AlwaysAllow 기본값) 이 findProjectIdByKey 를 호출한다 — 전 필드 허용용 stub
         every { repo.findProjectIdByKey(issueKey.projectPrefix) } returns anyProjectId

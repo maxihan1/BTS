@@ -67,6 +67,8 @@ class IssueApplicationServiceFindTest : DescribeSpec({
         clearMocks(repo, eventPublisher, permissionResolver, answers = false)
         // withSingleDetail() 내부에서 findActiveComponentIdsByIssue 호출 — 단건 응답 테스트 기본 stub
         every { repo.findActiveComponentIdsByIssue(any()) } returns emptyList()
+        every { repo.findAffectsVersionIdsByIssue(any()) } returns emptyList()
+        every { repo.findFixVersionIdsByIssue(any()) } returns emptyList()
         // maskFieldsForSingle(AlwaysAllow 기본값) 이 findProjectIdByKey 를 호출한다 — 전 필드 허용용 stub
         every { repo.findProjectIdByKey(issueKey.projectPrefix) } returns anyProjectId
     }

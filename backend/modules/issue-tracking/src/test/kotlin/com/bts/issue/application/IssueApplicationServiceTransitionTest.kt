@@ -111,6 +111,8 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         clearMocks(repo, eventPublisher, permissionResolver, workflowPort, workflowKeyResolver, answers = false)
         // withSingleDetail() 내부에서 findActiveComponentIdsByIssue 호출 — 단건 응답 테스트 기본 stub
         every { repo.findActiveComponentIdsByIssue(any()) } returns emptyList()
+        every { repo.findAffectsVersionIdsByIssue(any()) } returns emptyList()
+        every { repo.findFixVersionIdsByIssue(any()) } returns emptyList()
     }
 
     describe("transitionIssue") {

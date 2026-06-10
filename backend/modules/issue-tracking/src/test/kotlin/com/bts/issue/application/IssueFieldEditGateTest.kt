@@ -160,6 +160,8 @@ class IssueFieldEditGateTest : DescribeSpec({
         every { repo.findProjectIdByKey(issueKey.projectPrefix) } returns projectId
         // withSingleDetail() 내부 findActiveComponentIdsByIssue stub
         every { repo.findActiveComponentIdsByIssue(any()) } returns emptyList()
+        every { repo.findAffectsVersionIdsByIssue(any()) } returns emptyList()
+        every { repo.findFixVersionIdsByIssue(any()) } returns emptyList()
     }
 
     // ── (a) EDIT 불가 코어 필드 변경 → 403 ────────────────────────────────────

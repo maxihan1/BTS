@@ -114,6 +114,8 @@ class IssueChangeVersionsServiceTest : DescribeSpec({
 
     beforeEach {
         clearMocks(repo, permissionResolver, versionRepository, answers = false)
+        every { repo.findAffectsVersionIdsByIssue(any()) } returns emptyList()
+        every { repo.findFixVersionIdsByIssue(any()) } returns emptyList()
     }
 
     // ── changeAffectsVersions ────────────────────────────────────────────────
