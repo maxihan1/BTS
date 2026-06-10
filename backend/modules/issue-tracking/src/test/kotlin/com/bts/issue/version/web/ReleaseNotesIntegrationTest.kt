@@ -30,6 +30,8 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Profile
 import org.springframework.http.MediaType
+import org.springframework.http.converter.HttpMessageConverter
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.test.context.ActiveProfiles
@@ -47,6 +49,7 @@ import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.EnableTransactionManagement
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
@@ -92,7 +95,21 @@ class ReleaseNotesIntegrationTest {
     @Configuration
     @EnableWebMvc
     @EnableTransactionManagement(proxyTargetClass = true)
-    open class TestConfig {
+    open class TestConfig : WebMvcConfigurer {
+        /**
+         * @EnableWebMvc 기본 Jackson 컨버터는 Instant 를 epoch timestamp 로 직렬화한다.
+         * 기존 컨버터를 교체하지 않고(= Spring 의 ProblemDetail 믹스인·errorCode 직렬화 보존)
+         * 매퍼 설정만 보강해 Instant(generatedAt) 가 ISO-8601 로 나오게 한다.
+         * Spring Boot 의 기본 Jackson 설정과 동등 — prod 직렬화 형식을 통합테스트가 검증한다.
+         */
+        override fun extendMessageConverters(converters: MutableList<HttpMessageConverter<*>>) {
+            converters.filterIsInstance<MappingJackson2HttpMessageConverter>().forEach { converter ->
+                converter.objectMapper
+                    .registerModule(JavaTimeModule())
+                    .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            }
+        }
+
         companion object {
             /** JVM 단위 singleton Testcontainers — singleton pattern */
             @JvmStatic
@@ -217,7 +234,6 @@ class ReleaseNotesIntegrationTest {
         if (!initialized) {
             applyMigrations()
             seedProject()
-            seedIssueTypes()
             initialized = true
         }
     }
@@ -463,7 +479,7 @@ class ReleaseNotesIntegrationTest {
     private fun createIssue(
         issueKey: String,
         summary: String,
-        issueTypeId: UUID,
+        issueTypeId: Long,
         resolutionId: UUID? = null,
     ): UUID {
         val issueId = UUID.randomUUID()
@@ -472,16 +488,15 @@ class ReleaseNotesIntegrationTest {
             c.prepareStatement(
                 """
                 INSERT INTO issues (id, project_id, key, summary, type_id, resolution_id,
-                    priority, created_by, updated_by, current_state_key)
-                VALUES (?, ?, ?, ?, ?, ?, 'MEDIUM', '00000000-0000-0000-0000-000000000001',
-                    '00000000-0000-0000-0000-000000000001', 'open')
+                    reporter_id, current_state_key)
+                VALUES (?, ?, ?, ?, ?, ?, '00000000-0000-0000-0000-000000000001', 'open')
                 """.trimIndent(),
             ).use { stmt ->
                 stmt.setObject(1, issueId)
                 stmt.setObject(2, projectId)
                 stmt.setString(3, issueKey)
                 stmt.setString(4, summary)
-                stmt.setObject(5, issueTypeId)
+                stmt.setLong(5, issueTypeId)
                 stmt.setObject(6, resolutionId)
                 stmt.executeUpdate()
             }
@@ -510,13 +525,13 @@ class ReleaseNotesIntegrationTest {
     /**
      * 헬퍼: 이슈 타입 id 를 typeName 으로 조회한다.
      */
-    private fun issueTypeId(typeName: String): UUID {
+    private fun issueTypeId(typeName: String): Long {
         conn().use { c ->
-            c.prepareStatement("SELECT id FROM issue_types WHERE name = ?").use { stmt ->
+            c.prepareStatement("SELECT id FROM issue_types WHERE name = ? AND deleted_at IS NULL").use { stmt ->
                 stmt.setString(1, typeName)
                 val rs = stmt.executeQuery()
                 check(rs.next()) { "이슈 타입 '$typeName' 미존재" }
-                return rs.getObject("id") as UUID
+                return rs.getLong("id")
             }
         }
     }
@@ -527,17 +542,18 @@ class ReleaseNotesIntegrationTest {
      */
     private fun ensureResolution(name: String): UUID {
         conn().use { c ->
-            c.prepareStatement("SELECT id FROM resolutions WHERE name = ?").use { stmt ->
+            c.prepareStatement("SELECT id FROM resolutions WHERE name = ? AND deleted_at IS NULL").use { stmt ->
                 stmt.setString(1, name)
                 val rs = stmt.executeQuery()
                 if (rs.next()) return rs.getObject("id") as UUID
             }
             val newId = UUID.randomUUID()
             c.prepareStatement(
-                "INSERT INTO resolutions (id, name, description) VALUES (?, ?, '')",
+                "INSERT INTO resolutions (id, key, name, description, display_order) VALUES (?, ?, ?, '', 999)",
             ).use { stmt ->
                 stmt.setObject(1, newId)
-                stmt.setString(2, name)
+                stmt.setString(2, name.lowercase())
+                stmt.setString(3, name)
                 stmt.executeUpdate()
             }
             return newId
@@ -579,29 +595,6 @@ class ReleaseNotesIntegrationTest {
                 stmt.setString(1, PROJECT_KEY)
                 stmt.setString(2, "Release Notes Integration Test Project")
                 stmt.executeUpdate()
-            }
-        }
-    }
-
-    private fun seedIssueTypes() {
-        conn().use { c ->
-            listOf(
-                Triple("Bug", "bug", 10),
-                Triple("Story", "story", 20),
-                Triple("Task", "task", 30),
-            ).forEach { (name, key, level) ->
-                c.prepareStatement(
-                    """
-                    INSERT INTO issue_types (id, name, key, hierarchy_level, description)
-                    VALUES (gen_random_uuid(), ?, ?, ?, '')
-                    ON CONFLICT (name) DO NOTHING
-                    """.trimIndent(),
-                ).use { stmt ->
-                    stmt.setString(1, name)
-                    stmt.setString(2, key)
-                    stmt.setInt(3, level)
-                    stmt.executeUpdate()
-                }
             }
         }
     }
