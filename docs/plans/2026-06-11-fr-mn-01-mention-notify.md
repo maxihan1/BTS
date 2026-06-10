@@ -40,6 +40,138 @@ classify 결과: type=backend, agent=backend-engineer, primary_bc=notification(�
 
 ✅ 통과 (1회 iteration). sealed subtype 추가 안전성·q_issue_events 무소비자 패턴 코드 검증 완료. Maxi 결정 gap 없음.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 파급 분석 결과 반영.
+> - **UserLookupPort 확장은 interface default 메서드**로 — `object : UserLookupPort` 인라인 구현 ~35개 테스트 fake가 깨지지 않도록(`enum-add-breaks` 교훈의 인터페이스판). 실제 어댑터(`UserLookupAdapter`)와 멘션 테스트만 override. production 구현체는 `UserLookupAdapter` 단 1개.
+> - **MentionParser는 무상태 `object` 유틸** — `IssueApplicationService` 생성자 미변경(주입 빈 아님). `userLookupPort`는 이미 주입됨 → Task 4는 생성자 파급 0 → 기존 IssueApplicationService 테스트 fake 영향 없음.
+
+### Task 1. IssueMentioned 도메인 이벤트 추가
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/event/IssueDomainEvent.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/event/IssueDomainEventTest.kt`]
+- depends-on: []
+
+**RED**:
+- 파일: `IssueDomainEventTest.kt`
+- 테스트: `issue.mentioned` JSON 직렬화→역직렬화 라운드트립 — `IssueMentioned(issueKey, projectKey, mentionedUserIds, actorId, sourceField, occurredAt)`가 `"type":"issue.mentioned"`로 직렬화되고 다시 같은 인스턴스로 역직렬화. `mentionedUserIds` 순서 보존.
+- 실패: `IssueMentioned` 클래스 없음 (컴파일 실패).
+
+**GREEN**:
+- 파일: `IssueDomainEvent.kt`
+- `@JsonSubTypes`에 `JsonSubTypes.Type(value = IssueMentioned::class, name = "issue.mentioned")` 추가.
+- `data class IssueMentioned(val issueKey: IssueKey, val projectKey: String, val mentionedUserIds: List<UUID>, val actorId: ActorId, val sourceField: String, val occurredAt: Instant) : IssueDomainEvent` + `@JsonTypeName("issue.mentioned")`. (import `java.util.UUID`)
+
+**REFACTOR**:
+- KDoc(각 프로퍼티 의미 + sourceField 향후 "comment" 메모). 기존 이벤트 KDoc 스타일 일치.
+
+**검증**: `./gradlew :backend:modules:issue-tracking:test --tests "*IssueDomainEventTest*"`
+
+---
+
+### Task 2. MentionParser 무상태 유틸 (정규식 + 코드 스팬 제거)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/mention/MentionParser.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/mention/MentionParserTest.kt`]
+- depends-on: []
+
+**RED**:
+- 파일: `MentionParserTest.kt`
+- 테스트(스펙 S6/EC-6/EC-8/EC-10 + EC-2):
+  - `"@bob 검토"` → `{"bob"}`
+  - `"contact alice@corp.com or @bob"` → `{"bob"}` (이메일 회피)
+  - 인라인 코드 `` "`@bob`" `` → `{}` (코드 스팬 제거)
+  - 펜스 코드 블록 ```` "```\n@bob\n```" ```` → `{}`
+  - `"@bob @bob"` → `{"bob"}` (dedup)
+  - `"@alice."`(문장부호) → `{"alice"}` (영숫자 경계)
+  - `"@alice-bob @x.y_z"` → `{"alice-bob","x.y_z"}`
+- 실패: `MentionParser` 없음.
+
+**GREEN**:
+- 파일: `MentionParser.kt`
+- `object MentionParser { fun extract(text: String?): Set<String> }`.
+  - text null/blank → emptySet.
+  - 선처리: 펜스 코드 블록 제거(```` ```...``` ````, DOTALL non-greedy) → 인라인 코드 제거(`` `...` ``).
+  - 멘션 정규식 `(?<![A-Za-z0-9._-])@([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)`. 캡처 그룹 수집(LinkedHashSet 순서 보존).
+- 정규식·코드제거 패턴은 `private val` 상수.
+
+**REFACTOR**:
+- KDoc(L1 한글 주석 + 각 패턴 의미). detekt MaxLineLength/NestedBlockDepth 0 보장.
+
+**검증**: `./gradlew :backend:modules:issue-tracking:test --tests "*MentionParserTest*"`
+
+---
+
+### Task 3. UserLookupPort.findIdsByUsernames 확장 (default 메서드 + 어댑터 구현)
+
+**메타**.
+- agent: `backend-engineer` (shared-kernel + identity-access 단순 조회 — 사용자/세션 스키마 변경 아님, security 공동검토 불요. 단 리뷰에서 cross-BC 계약 확인)
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/user/UserLookupPort.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/user/UserLookupAdapter.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/user/UserLookupAdapterIntegrationTest.kt`]
+- depends-on: []
+
+**RED**:
+- 파일: `UserLookupAdapterIntegrationTest.kt` (Testcontainers, 기존 클래스 확장)
+- 테스트: `users`에 alice/bob 시드 → `findIdsByUsernames(setOf("alice","bob","ghost"))` → `{"alice"->id, "bob"->id}` (ghost 드롭). 빈 입력 → 빈 맵(쿼리 생략).
+- 실패: `findIdsByUsernames` 미정의.
+
+**GREEN**:
+- `UserLookupPort.kt`: `fun findIdsByUsernames(usernames: Set<String>): Map<String, UUID> = emptyMap()` **default 메서드**(인라인 fake 보호). KDoc로 "미존재 username은 결과 제외, 실제 구현은 UserLookupAdapter" 명시.
+- `UserLookupAdapter.kt`: override. 빈 입력 → `emptyMap()` 즉시 반환. 아니면 `SELECT id, username FROM users WHERE username = ANY(:names)` (named param, `Array` 바인딩) → `RowMapper`로 `username->id` 수집. `@Transactional(readOnly = true)`.
+
+**REFACTOR**:
+- SQL 상수 `SQL_FIND_IDS_BY_USERNAMES` companion. KDoc.
+
+**검증**: `./gradlew :backend:modules:identity-access:test --tests "*UserLookupAdapterIntegrationTest*"`
+
+---
+
+### Task 4. updateIssue 멘션 추출 → IssueMentioned 발행 결선
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueApplicationServiceMentionTest.kt`]
+- depends-on: [1, 2, 3]
+
+**RED**:
+- 파일: `IssueApplicationServiceMentionTest.kt` (신규, MockK 단위 — 기존 `object : UserLookupPort` fake 패턴에 `findIdsByUsernames` override 추가)
+- 테스트(스펙 S1~S5):
+  - S1: 본문 `null→"@bob"` 변경 → `eventPublisher.publish(match { it is IssueMentioned && it.mentionedUserIds == listOf(bobId) && it.sourceField=="description" && it.actorId==alice })` 1회.
+  - S2: `"@bob"→"@bob 추가"`(멘션 동일) → `IssueMentioned` 미발행(`verify(exactly=0)`).
+  - S3: `"@bob"→"@bob @carol"` → `mentionedUserIds == listOf(carolId)` (추가분만).
+  - S4: actor=alice가 `"@alice"` 추가 → `IssueMentioned` 미발행(자기 제외 후 빈집합).
+  - S5: `"@ghost"`(해석 빈맵) → 미발행.
+  - 기존 `IssueUpdated`(description) 발행은 모든 케이스 유지(회귀).
+- 실패: 멘션 발행 로직 없음.
+
+**GREEN**:
+- 파일: `IssueApplicationService.kt`, `updateIssue` 내 `IssueUpdated` 발행(L438) **직후**:
+  - `if ("description" in changedFields)` 일 때만:
+    - `val newM = MentionParser.extract(request.description)`; `val oldM = MentionParser.extract(existing.description)`
+    - `val added = newM - oldM`; if `added.isEmpty()` → skip.
+    - `val resolved = userLookupPort.findIdsByUsernames(added)` (`Map<String,UUID>`)
+    - `val targets = resolved.values.toSet() - actor.value` (자기 제외, dedup)
+    - if `targets.isNotEmpty()` → `eventPublisher.publish(IssueMentioned(key, key.projectPrefix, targets.sorted(), actor, "description", Instant.now(clock)))`.
+  - 생성자/주입 변경 없음(`MentionParser` object 호출, `userLookupPort`/`eventPublisher`/`clock` 기존 주입).
+- `changedFields`의 description 토큰 문자열은 GREEN 직전 `buildChangedFields` 실측 확인("description").
+
+**REFACTOR**:
+- 멘션 블록을 `private fun publishMentions(key, existing, request, actor)`로 추출 + KDoc. detekt 복잡도 0. ktlint 라인길이.
+
+**검증**: `./gradlew :backend:modules:issue-tracking:test --tests "*IssueApplicationServiceMentionTest*"` + 회귀 `--tests "*IssueApplicationServiceUpdateTest*"`
+
+---
+
+## Plan 메타
+
+- task 수: 4
+- 예상 wave: 2 (Wave 1 = T1·T2·T3 병렬 독립 / Wave 2 = T4 ← [1,2,3])
+  - T1·T2(issue-tracking) · T3(shared-kernel+identity-access)는 파일·모듈 비겹침 → 병렬. T4는 세 산출물 모두 호출 → 직렬.
+- 예상 시간: 직렬 ≈ 16분, wave 병렬 ≈ 9분
+- TDD 강제: yes (각 task RED→GREEN→REFACTOR)
+- 마이그레이션: 없음 (q_issue_events 재사용, 스키마 무변경)
+- 추가 검증: 3모듈(issue-tracking·identity-access·shared-kernel) detekt/ktlint 그린, 전체 회귀 통과
+- 범위 deferred 마킹: D6 렌더링·D7 Inbox E2E·댓글 멘션·그룹 멘션 (product 파일에 후속 FR 위임 명시 — 머지 단계 동기화)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
