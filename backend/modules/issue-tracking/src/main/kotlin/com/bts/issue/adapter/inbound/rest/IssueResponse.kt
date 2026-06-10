@@ -40,6 +40,8 @@ import java.util.UUID
  * @property impactName [IssueImpact.displayName]. null 허용 (impact=null 일 때).
  * @property assigneeId 담당자 UUID. null 이면 미할당.
  * @property componentIds 이슈에 연결된 컴포넌트 UUID 목록. 단건 경로에서만 채워지며, 목록 경로는 빈 목록. FR-CM-02.
+ * @property affectsVersionIds 이슈가 영향 받는 버전 UUID 목록. 단건 경로에서만 채워지며, 목록 경로는 빈 목록. FR-VR-03.
+ * @property fixVersionIds 이슈를 수정할 예정인 버전 UUID 목록. 단건 경로에서만 채워지며, 목록 경로는 빈 목록. FR-VR-03.
  * @property resolution 이슈에 할당된 Resolution 요약. null 이면 미설정. FR-IS-07 B11.
  * @property resolutionId 이슈에 설정된 Resolution UUID. ApplicationService 내부 전달용. JSON 직렬화 제외.
  * @property securityLevelId 이슈에 적용된 보안 등급 UUID. null 이면 등급 없음(공개). FR-PM-06 PR-B.
@@ -75,6 +77,8 @@ data class IssueResponse(
     val impactName: String? = null,
     val assigneeId: UUID? = null,
     val componentIds: List<UUID> = emptyList(),
+    val affectsVersionIds: List<UUID> = emptyList(),
+    val fixVersionIds: List<UUID> = emptyList(),
     val resolution: ResolutionSummary? = null,
     @com.fasterxml.jackson.annotation.JsonIgnore
     val resolutionId: UUID? = null,

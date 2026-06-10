@@ -1499,6 +1499,8 @@ class IssueApplicationService(
      *   [IssueResponse.ResolutionSummary] 를 생성한다. 단건 GET 이므로 추가 쿼리 1회 허용.
      * - componentIds 는 [IssueRepository.findActiveComponentIdsByIssue] 로 단건 경로에서만 채운다.
      *   목록 경로([listIssues])는 N건 비용 방지를 위해 이 함수를 호출하지 않는다.
+     * - affectsVersionIds / fixVersionIds 는 [IssueRepository.findAffectsVersionIdsByIssue] /
+     *   [IssueRepository.findFixVersionIdsByIssue] 로 단건 경로에서만 채운다 (FR-VR-03 T5).
      */
     private fun IssueResponse.withSingleDetail(): IssueResponse {
         val resolvedResolution =
@@ -1515,6 +1517,8 @@ class IssueApplicationService(
             descriptionHtml = description?.let { MarkdownRenderer.renderSafe(it) },
             resolution = resolvedResolution,
             componentIds = repo.findActiveComponentIdsByIssue(this.id),
+            affectsVersionIds = repo.findAffectsVersionIdsByIssue(this.id),
+            fixVersionIds = repo.findFixVersionIdsByIssue(this.id),
         )
     }
 }

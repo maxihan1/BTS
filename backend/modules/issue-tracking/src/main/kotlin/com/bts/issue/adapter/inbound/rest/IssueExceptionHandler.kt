@@ -7,6 +7,7 @@ import com.bts.issue.domain.AssigneeNotFoundException
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueComponentNotFoundException
 import com.bts.issue.domain.IssueKeyPrefixReservedException
+import com.bts.issue.domain.IssueLinkedVersionNotFoundException
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueSecurityLevelNotInSchemeException
@@ -44,6 +45,7 @@ import java.time.Instant
  * - [IssueWorkflowNotConfiguredException] → 422 + [IssueErrorCodes.WORKFLOW_NOT_CONFIGURED]
  * - [AssigneeNotFoundException] → 422 + [IssueErrorCodes.ASSIGNEE_NOT_FOUND]
  * - [IssueComponentNotFoundException] → 422 + [IssueErrorCodes.COMPONENT_NOT_FOUND]
+ * - [IssueLinkedVersionNotFoundException] → 422 + [IssueErrorCodes.LINKED_VERSION_NOT_FOUND]
  * - [CustomFieldValidationException] → 422 + [IssueErrorCodes.CUSTOM_FIELD_VALIDATION_FAILED]
  * - [Exception] (fallback) → 500 + [IssueErrorCodes.INTERNAL_ERROR]
  *
@@ -55,6 +57,7 @@ import java.time.Instant
  * FR-IS-07 Task B6 에서 [ResolutionNotFoundException] 핸들러가 추가됐다 (404 + RESOLUTION_NOT_FOUND).
  * FR-CM-02 Task 5 에서 [IssueComponentNotFoundException] 핸들러가 추가됐다 (422 + COMPONENT_NOT_FOUND).
  * FR-IS-10 BLOCKER 1 에서 [CustomFieldValidationException] 핸들러가 추가됐다 (422 + CUSTOM_FIELD_VALIDATION_FAILED).
+ * FR-VR-03 Task 5 에서 [IssueLinkedVersionNotFoundException] 핸들러가 추가됐다 (422 + LINKED_VERSION_NOT_FOUND).
  */
 @Suppress("TooManyFunctions")
 @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
@@ -310,6 +313,29 @@ class IssueExceptionHandler {
         )
     }
 
+    // ── 422 LINKED_VERSION_NOT_FOUND ─────────────────────────────────────────
+
+    /**
+     * [IssueLinkedVersionNotFoundException] — changeAffectsVersions / changeFixVersions 에서
+     * 타 프로젝트 또는 소프트 삭제된 버전 지정 시 — 422 (FR-VR-03).
+     *
+     * 보안 — detail 에 내부 식별자(versionId)를 노출하지 않는다(guard-exception 누출 방지).
+     * versionId 는 로그에만 기록한다.
+     *
+     * @param ex 존재하지 않는(또는 타 프로젝트/삭제된) 버전 UUID 를 포함하는 예외.
+     */
+    @ExceptionHandler(IssueLinkedVersionNotFoundException::class)
+    fun handleLinkedVersionNotFound(ex: IssueLinkedVersionNotFoundException): ProblemDetail {
+        log.info("ISSUE_422 linked_version_not_found versionId='{}'", ex.versionId)
+        return problem(
+            status = HttpStatus.UNPROCESSABLE_ENTITY,
+            type = "linked-version-not-found",
+            title = "Linked Version Not Found",
+            errorCode = IssueErrorCodes.LINKED_VERSION_NOT_FOUND,
+            detail = "지정한 버전이 이 프로젝트에 존재하지 않거나 삭제되었습니다.",
+        )
+    }
+
     // ── 422 CUSTOM_FIELD_VALIDATION_FAILED ───────────────────────────────────
 
     /**
@@ -486,6 +512,7 @@ object IssueErrorCodes {
     const val WORKFLOW_NOT_CONFIGURED = "WORKFLOW_NOT_CONFIGURED"
     const val ASSIGNEE_NOT_FOUND = "ASSIGNEE_NOT_FOUND"
     const val COMPONENT_NOT_FOUND = "COMPONENT_NOT_FOUND"
+    const val LINKED_VERSION_NOT_FOUND = "ISSUE_LINKED_VERSION_NOT_FOUND"
     const val SECURITY_LEVEL_NOT_IN_SCHEME = "SECURITY_LEVEL_NOT_IN_SCHEME"
     const val RESOLUTION_NOT_FOUND = "RESOLUTION_NOT_FOUND"
     const val CUSTOM_FIELD_VALIDATION_FAILED = "CUSTOM_FIELD_VALIDATION_FAILED"
