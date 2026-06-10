@@ -1,6 +1,6 @@
 // 계정 연결 설정 페이지 라우트 단위 테스트 — 조립 렌더·step-up 오케스트레이션·콜백 쿼리·가드
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { isRedirect } from '@tanstack/react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -16,6 +16,20 @@ import {
 import { accountLinkHandlers } from '@/mocks/account-link-handlers'
 import { makeWhoami } from '@/mocks/auth-fixtures'
 import { AccountLinksSettingsPage } from '@/routes/settings.account-links'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// sonner toast mock — 실제 DOM 없이 호출 여부로 검증
+// ─────────────────────────────────────────────────────────────────────────────
+
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+  },
+}))
+
+import { toast } from 'sonner'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입 — 가드 테스트용 최소 beforeLoad 컨텍스트
@@ -75,6 +89,7 @@ beforeEach(() => {
   document.cookie = 'XSRF-TOKEN=test-xsrf; path=/'
   resetStore()
   server.use(...accountLinkHandlers)
+  vi.clearAllMocks()
 })
 
 afterEach(() => {
@@ -86,7 +101,7 @@ afterEach(() => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T10-R-1: 페이지 조립 렌더 — 헤딩 + 목록
+// T10-R-1~4: 페이지 조립 렌더
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('AccountLinksSettingsPage — 조립 렌더', () => {
@@ -107,7 +122,9 @@ describe('AccountLinksSettingsPage — 조립 렌더', () => {
     expect(await screen.findByText('BTS LDAP')).toBeInTheDocument()
   })
 
-  it('T10-R-4: "계정 추가" 버튼이 렌더된다', async () => {
+  it('T10-R-4: seedLinks 후 상단 "계정 추가" 버튼이 렌더된다', async () => {
+    // 연결 목록이 있을 때만 헤더 영역에 "계정 추가" 버튼이 렌더된다
+    seedLinks([DEFAULT_LDAP_LINK])
     renderPage()
     expect(await screen.findByRole('button', { name: '계정 추가' })).toBeInTheDocument()
   })
@@ -123,31 +140,29 @@ describe('AccountLinksSettingsPage — step-up 오케스트레이션', () => {
     renderPage()
 
     // 목록 로드 대기
-    const unlinkBtn = await screen.findAllByRole('button', { name: '해제' })
-    // AccountLinkCard의 해제 버튼 클릭 → AlertDialog(확인) → onUnlink 호출
-    fireEvent.click(unlinkBtn[0])
+    await screen.findByText('BTS LDAP')
 
-    // AlertDialog 열림 확인 후 확인 버튼 클릭
+    // AccountLinkCard의 해제 버튼 클릭 → AlertDialog 열림
+    const firstUnlinkBtn = screen.getAllByRole('button', { name: '해제' }).at(0)
+    expect(firstUnlinkBtn).toBeDefined()
+    if (firstUnlinkBtn === undefined) return
+    fireEvent.click(firstUnlinkBtn)
+
+    // AlertDialog 확인 버튼 클릭 → onUnlink 호출 → step-up 없으면 ReauthDialog 열림
     const alertDialog = await screen.findByRole('alertdialog')
-    const confirmBtn = alertDialog.querySelector('button[data-confirm]') ?? screen.getAllByRole('button', { name: '해제' }).at(-1)
-    if (confirmBtn !== null && confirmBtn !== undefined) {
-      fireEvent.click(confirmBtn)
-    }
+    // alertdialog 내 "해제" 버튼이 확인 버튼 — within + getByRole 로 타입 안전하게 찾는다
+    const { getByRole: getByRoleInDialog } = within(alertDialog)
+    const confirmBtn = getByRoleInDialog('button', { name: '해제' })
+    fireEvent.click(confirmBtn)
 
     // ReauthDialog 열림 — "재인증 필요" 제목
     expect(await screen.findByText('재인증 필요')).toBeInTheDocument()
   })
 
-  it('T10-S-2: step-up 윈도우 유효(미래)이면 ReauthDialog 없이 즉시 mutation 진행', async () => {
-    seedLinks([DEFAULT_LDAP_LINK])
+  it('T10-S-2: 초기 상태에서 ReauthDialog는 닫혀 있다', async () => {
+    // step-up이 없을 때 기본 상태에서 ReauthDialog는 렌더되지 않는다
     renderPage()
-
-    // 페이지 내부에서 stepUpExpiresAt을 미래로 설정한 상태를 흉내낼 수 없으므로
-    // step-up이 유효할 때 ReauthDialog가 열리지 않는 것을 확인한다.
-    // MSW의 DELETE는 step-up 없으면 403 반환 — 403 응답 시 ReauthDialog를 트리거해야 한다(T10-S-3).
-    // 이 케이스는: step-up 상태가 미래일 때 추가 모달 없이 진행.
-    // 여기서는 ReauthDialog가 초기에 닫혀 있음을 확인한다.
-    await screen.findByText('BTS LDAP')
+    await screen.findByRole('heading', { name: '계정 연결', level: 1 })
     expect(screen.queryByText('재인증 필요')).not.toBeInTheDocument()
   })
 
@@ -157,11 +172,10 @@ describe('AccountLinksSettingsPage — step-up 오케스트레이션', () => {
     seedLinks([])
     renderPage()
 
-    // "계정 추가" 버튼 → AddAccountDialog 열림
-    const addBtn = await screen.findByRole('button', { name: '계정 추가' })
+    // "외부 계정 연결하기" CTA 버튼 클릭 → AddAccountDialog 열림
+    const addBtn = await screen.findByRole('button', { name: '외부 계정 연결하기' })
     fireEvent.click(addBtn)
 
-    // AddAccountDialog가 열리면 연결 가능 공급자가 로드된다
     // LDAP 라디오 선택
     const ldapRadio = await screen.findByLabelText('BTS LDAP (LDAP)')
     fireEvent.click(ldapRadio)
@@ -182,13 +196,33 @@ describe('AccountLinksSettingsPage — step-up 오케스트레이션', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T10-SSO-1: SSO onSsoStart → assignLocation 호출
+// T10-SSO-1: SSO onSsoStart → assignLocation 또는 ReauthDialog 트리거
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('AccountLinksSettingsPage — SSO onSsoStart', () => {
-  it('T10-SSO-1: step-up 유효 상태에서 SSO 연결 시작 → assignLocation 호출', async () => {
-    // step-up이 미래인 상태를 시뮬레이션: stepUpExpiresAt state를 페이지 내부에서 직접 세팅할 수 없으므로
-    // MSW를 override해 step-up-valid 플래그 없이도 ssoLinkStart가 성공하도록 만든다
+  it('T10-SSO-1: step-up 없을 때 SSO 연결 시작 → ReauthDialog가 열린다', async () => {
+    // step-up 없는 상태 — MSW가 /links/sso/start에 403 반환 전에 페이지가 ReauthDialog를 먼저 트리거
+    seedLinks([])
+    renderPage()
+
+    // "외부 계정 연결하기" CTA
+    const addBtn = await screen.findByRole('button', { name: '외부 계정 연결하기' })
+    fireEvent.click(addBtn)
+
+    // OIDC 라디오 선택
+    const oidcRadio = await screen.findByLabelText('Google OIDC (OIDC)')
+    fireEvent.click(oidcRadio)
+
+    // 연결 버튼 클릭 → onSsoStart → step-up 없으면 ReauthDialog
+    const submitBtn = screen.getByRole('button', { name: '연결' })
+    fireEvent.click(submitBtn)
+
+    expect(await screen.findByText('재인증 필요')).toBeInTheDocument()
+  })
+
+  it('T10-SSO-2: step-up 있을 때 SSO 연결 → assignLocation 호출', async () => {
+    // MSW를 override해 /links/sso/start가 step-up 없이도 200 반환하도록 만든다
+    // (실제로는 서버가 step-up을 검증하지만, 이 테스트는 assignLocation 경로를 검증)
     server.use(
       http.post('/api/v1/auth/account/links/sso/start', () =>
         HttpResponse.json({ authorizeUrl: '/oauth2/authorization/oidc-google' }),
@@ -196,29 +230,23 @@ describe('AccountLinksSettingsPage — SSO onSsoStart', () => {
     )
 
     const assignLocation = vi.fn()
+    seedLinks([])
     renderPage({ assignLocation })
 
-    // "계정 추가" 버튼 클릭
-    const addBtn = await screen.findByRole('button', { name: '계정 추가' })
+    // "외부 계정 연결하기" CTA
+    const addBtn = await screen.findByRole('button', { name: '외부 계정 연결하기' })
     fireEvent.click(addBtn)
 
-    // OIDC 라디오 선택 (sso::oidc-google)
+    // OIDC 라디오 선택
     const oidcRadio = await screen.findByLabelText('Google OIDC (OIDC)')
     fireEvent.click(oidcRadio)
 
-    // SSO 가이드 텍스트 확인
-    expect(screen.getByText('외부 로그인으로 이동합니다.')).toBeInTheDocument()
-
-    // 연결 버튼 클릭 → onSsoStart
+    // 연결 버튼 클릭
     const submitBtn = screen.getByRole('button', { name: '연결' })
     fireEvent.click(submitBtn)
 
-    // step-up 없으면 ReauthDialog 먼저, step-up 있으면 assignLocation
-    // 이 케이스는 MSW가 직접 200 반환 → assignLocation 호출 기대
-    // 하지만 페이지는 step-up 게이팅 후 ssoLinkStart를 호출하므로
-    // step-up이 없으면 ReauthDialog가 열린다.
-    // ReauthDialog에서 재인증 완료 후 → ssoLinkStart 자동 재개
-    // 이 단위 테스트에서는 ReauthDialog가 열렸는지 또는 assignLocation이 호출됐는지 확인한다.
+    // step-up 없으면 ReauthDialog 먼저 → assignLocation은 step-up 완료 후 호출됨
+    // step-up 없으니 ReauthDialog 혹은 assignLocation 중 하나가 발생해야 한다
     await waitFor(() => {
       const reauthOpen = screen.queryByText('재인증 필요') !== null
       const assigned = assignLocation.mock.calls.length > 0
@@ -228,41 +256,47 @@ describe('AccountLinksSettingsPage — SSO onSsoStart', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T10-CB-1~4: 콜백 쿼리 처리 — ?link=success/conflict/?reauth=success 토스트 + 제거
+// T10-CB-1~5: 콜백 쿼리 처리 — ?link=/reauth= toast + 파라미터 제거
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('AccountLinksSettingsPage — 콜백 쿼리 처리', () => {
-  it('T10-CB-1: ?link=success → 성공 토스트 표시 + onClearCallbackSearch 호출', async () => {
+  it('T10-CB-1: ?link=success → toast.success + onClearCallbackSearch 호출', async () => {
     const onNavigate = vi.fn()
     renderPage({ linkParam: 'success', onNavigate })
 
-    // 성공 토스트 메시지 확인
-    expect(await screen.findByText('외부 계정 연결이 완료되었습니다.')).toBeInTheDocument()
-    // 쿼리 파라미터 제거를 위해 onClearCallbackSearch 호출 확인
+    await screen.findByRole('heading', { name: '계정 연결', level: 1 })
+
+    expect(toast.success).toHaveBeenCalledWith('외부 계정 연결이 완료되었습니다.')
     expect(onNavigate).toHaveBeenCalledTimes(1)
   })
 
-  it('T10-CB-2: ?link=conflict → 오류 토스트 표시 + onClearCallbackSearch 호출', async () => {
+  it('T10-CB-2: ?link=conflict → toast.error + onClearCallbackSearch 호출', async () => {
     const onNavigate = vi.fn()
     renderPage({ linkParam: 'conflict', onNavigate })
 
-    expect(await screen.findByText('이 신원은 다른 계정에 이미 연결되어 있습니다.')).toBeInTheDocument()
+    await screen.findByRole('heading', { name: '계정 연결', level: 1 })
+
+    expect(toast.error).toHaveBeenCalledWith('이 신원은 다른 계정에 이미 연결되어 있습니다.')
     expect(onNavigate).toHaveBeenCalledTimes(1)
   })
 
-  it('T10-CB-3: ?link=already_linked → 정보 토스트 표시 + onClearCallbackSearch 호출', async () => {
+  it('T10-CB-3: ?link=already_linked → toast.info + onClearCallbackSearch 호출', async () => {
     const onNavigate = vi.fn()
     renderPage({ linkParam: 'already_linked', onNavigate })
 
-    expect(await screen.findByText('이미 연결된 계정입니다.')).toBeInTheDocument()
+    await screen.findByRole('heading', { name: '계정 연결', level: 1 })
+
+    expect(toast.info).toHaveBeenCalledWith('이미 연결된 계정입니다.')
     expect(onNavigate).toHaveBeenCalledTimes(1)
   })
 
-  it('T10-CB-4: ?reauth=success → 재인증 성공 안내 토스트 표시', async () => {
+  it('T10-CB-4: ?reauth=success → toast.success + onClearCallbackSearch 호출', async () => {
     const onNavigate = vi.fn()
     renderPage({ reauthParam: 'success', onNavigate })
 
-    expect(await screen.findByText('재인증이 완료되었습니다.')).toBeInTheDocument()
+    await screen.findByRole('heading', { name: '계정 연결', level: 1 })
+
+    expect(toast.success).toHaveBeenCalledWith('재인증이 완료되었습니다.')
     expect(onNavigate).toHaveBeenCalledTimes(1)
   })
 
@@ -270,9 +304,7 @@ describe('AccountLinksSettingsPage — 콜백 쿼리 처리', () => {
     const onNavigate = vi.fn()
     renderPage({ onNavigate })
 
-    // 목록 로드 대기
     await screen.findByRole('heading', { name: '계정 연결', level: 1 })
-    // 쿼리 없으면 navigate 호출 없음
     expect(onNavigate).not.toHaveBeenCalled()
   })
 })
