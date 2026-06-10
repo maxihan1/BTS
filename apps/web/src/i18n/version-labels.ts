@@ -1,4 +1,4 @@
-// 버전 관리 UI의 한국어 라벨 + errorCode → 사용자 메시지 단일 출처 (FR-VR-01, FR-VR-02)
+// 버전 관리 UI의 한국어 라벨 + errorCode → 사용자 메시지 단일 출처 (FR-VR-01, FR-VR-02, FR-VR-04)
 import type { VersionStatus } from '@/api/versions.types'
 
 /**
@@ -39,6 +39,36 @@ export const versionLabels = {
     deleteConfirm: '정말 삭제하시겠습니까?',
     /** 권한 없음 tooltip 텍스트 (disabled 버튼 title) */
     noPermission: '이 작업을 수행할 권한이 없습니다.',
+    /** 릴리즈 노트 버튼 visible 텍스트 */
+    releaseNotesButton: '릴리즈 노트',
+  },
+
+  /** 릴리즈 노트 dialog 라벨 — FR-VR-04 */
+  releaseNotes: {
+    /** dialog 제목 접미사 — "{versionName} 릴리즈 노트" */
+    dialogTitleSuffix: '릴리즈 노트',
+    /** dialog 설명 문구 */
+    dialogDescription: '이 버전의 Fix Version 이슈를 기반으로 자동 생성된 릴리즈 노트입니다.',
+    /** 로딩 상태 텍스트 */
+    loadingText: '릴리즈 노트를 불러오는 중...',
+    /** 로딩 aria-label */
+    loadingAriaLabel: '릴리즈 노트 로딩 중',
+    /** 에러 메시지 */
+    errorMessage: '릴리즈 노트를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
+    /** 콘텐츠 영역 aria-label */
+    contentAriaLabel: '릴리즈 노트 내용',
+    /** 이슈 수 표시 텍스트 헬퍼 */
+    issueCountLabel: (count: number) => `이슈 ${count}개 포함`,
+    /** 복사 버튼 기본 텍스트 */
+    copyButton: '복사',
+    /** 복사 완료 텍스트 */
+    copiedText: '복사됨',
+    /** 복사 실패 텍스트 */
+    copyFailText: '복사 실패',
+    /** 복사 버튼 aria-label */
+    copyButtonAriaLabel: '릴리즈 노트 복사',
+    /** 닫기 버튼 텍스트 */
+    closeButton: '닫기',
   },
 
   /** 폼 필드 라벨 / placeholder */

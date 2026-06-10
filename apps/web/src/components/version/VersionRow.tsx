@@ -253,10 +253,10 @@ export function VersionRow({
         <Button
           variant="outline"
           size="sm"
-          aria-label={`${version.name} 릴리즈 노트`}
+          aria-label={`${version.name} ${actions.releaseNotesButton}`}
           onClick={() => { setReleaseNotesOpen(true) }}
         >
-          릴리즈 노트
+          {actions.releaseNotesButton}
         </Button>
 
         {showDeleteConfirm ? (

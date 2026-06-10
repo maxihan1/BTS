@@ -4,6 +4,7 @@ import type { JSX } from 'react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { Button } from '@/components/ui/button'
 import { useReleaseNotes } from '@/hooks/use-versions'
+import { versionLabels } from '@/i18n/version-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -26,7 +27,7 @@ interface ReleaseNotesDialogProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 내부 상수
+// 내부 상수 — Tailwind 클래스
 // ─────────────────────────────────────────────────────────────────────────────
 
 const OVERLAY_CLASS =
@@ -64,6 +65,7 @@ export function ReleaseNotesDialog({
   onOpenChange,
 }: ReleaseNotesDialogProps): JSX.Element {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
+  const { releaseNotes: labels } = versionLabels
 
   const { data: releaseNotes, isLoading, isError } = useReleaseNotes(projectKey, versionId, open)
 
@@ -77,7 +79,6 @@ export function ReleaseNotesDialog({
     try {
       await navigator.clipboard.writeText(releaseNotes.markdown)
       setCopyState('copied')
-      // 2초 후 idle로 복귀
       setTimeout(() => { setCopyState('idle') }, 2000)
     } catch {
       setCopyState('error')
@@ -92,10 +93,10 @@ export function ReleaseNotesDialog({
     onOpenChange(next)
   }
 
-  function renderCopyButtonLabel(): string {
-    if (copyState === 'copied') return '복사됨'
-    if (copyState === 'error') return '복사 실패'
-    return '복사'
+  function copyButtonLabel(): string {
+    if (copyState === 'copied') return labels.copiedText
+    if (copyState === 'error') return labels.copyFailText
+    return labels.copyButton
   }
 
   return (
@@ -106,11 +107,11 @@ export function ReleaseNotesDialog({
         <DialogPrimitive.Content className={CONTENT_CLASS}>
           {/* 제목 */}
           <DialogPrimitive.Title className="text-lg font-semibold mb-1 shrink-0">
-            {versionName} 릴리즈 노트
+            {versionName} {labels.dialogTitleSuffix}
           </DialogPrimitive.Title>
 
           <p className="text-sm text-muted-foreground mb-4 shrink-0">
-            이 버전의 Fix Version 이슈를 기반으로 자동 생성된 릴리즈 노트입니다.
+            {labels.dialogDescription}
           </p>
 
           {/* 콘텐츠 영역 */}
@@ -118,11 +119,11 @@ export function ReleaseNotesDialog({
             {isLoading && (
               <div
                 role="status"
-                aria-label="릴리즈 노트 로딩 중"
+                aria-label={labels.loadingAriaLabel}
                 className="flex items-center justify-center py-8"
               >
                 <span className="text-sm text-muted-foreground animate-pulse">
-                  릴리즈 노트를 불러오는 중...
+                  {labels.loadingText}
                 </span>
               </div>
             )}
@@ -132,14 +133,14 @@ export function ReleaseNotesDialog({
                 role="alert"
                 className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
               >
-                릴리즈 노트를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
+                {labels.errorMessage}
               </div>
             )}
 
             {releaseNotes !== undefined && !isLoading && !isError && (
               <div
                 role="region"
-                aria-label="릴리즈 노트 내용"
+                aria-label={labels.contentAriaLabel}
                 className="flex-1 overflow-auto rounded-md border bg-muted/30 p-4 min-h-0"
               >
                 <pre className="text-sm font-mono whitespace-pre-wrap break-words">
@@ -152,12 +153,13 @@ export function ReleaseNotesDialog({
           {/* 액션 버튼 */}
           <div className="flex items-center justify-between mt-4 shrink-0">
             {/* 이슈 수 메타정보 */}
-            {releaseNotes !== undefined && (
+            {releaseNotes !== undefined ? (
               <span className="text-xs text-muted-foreground">
-                이슈 {releaseNotes.issueCount}개 포함
+                {labels.issueCountLabel(releaseNotes.issueCount)}
               </span>
+            ) : (
+              <span />
             )}
-            {releaseNotes === undefined && <span />}
 
             <div className="flex gap-2">
               {releaseNotes !== undefined && (
@@ -165,15 +167,15 @@ export function ReleaseNotesDialog({
                   variant="outline"
                   size="sm"
                   onClick={() => { void handleCopy() }}
-                  aria-label="릴리즈 노트 복사"
+                  aria-label={labels.copyButtonAriaLabel}
                 >
-                  {renderCopyButtonLabel()}
+                  {copyButtonLabel()}
                 </Button>
               )}
 
               <DialogPrimitive.Close asChild>
                 <Button variant="outline" size="sm">
-                  닫기
+                  {labels.closeButton}
                 </Button>
               </DialogPrimitive.Close>
             </div>
