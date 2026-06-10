@@ -1,4 +1,4 @@
-// 전역 헤더 컴포넌트 — 관리 nav + 사용자명 표시 + 로그아웃 드롭다운 메뉴
+// 전역 헤더 컴포넌트 — 관리 nav(isSystemAdmin 게이팅) + 사용자명 표시 + 로그아웃 드롭다운 메뉴
 import { useNavigate, Link } from '@tanstack/react-router'
 import { useAuthUser } from '@/auth/authStore'
 import { useLogoutMutation } from '@/auth/useLogoutMutation'
@@ -8,6 +8,16 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// admin 링크 목록 — isSystemAdmin=true 시 관리 메뉴에 표시할 링크
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 관리 메뉴 링크 정의 — 확장 시 이 배열에만 추가 */
+const ADMIN_LINKS = [
+  { to: '/admin/workflow-schemes', label: '워크플로우 스킴' },
+  { to: '/admin/audit-logs', label: '감사 로그' },
+] as const
 
 export const Header = () => {
   const user = useAuthUser()
@@ -25,17 +35,25 @@ export const Header = () => {
 
   const username = user?.username ?? ''
 
+  // === true 명시비교 — undefined/null/'admin' 오인 방지 (routeGuard.requireSystemAdmin 일관)
+  const isAdmin = user?.isSystemAdmin === true
+
   return (
     <header className="flex h-14 items-center border-b bg-background px-4">
-      {/* 관리 nav — 워크플로우 스킴 등 관리자 링크 그룹 */}
-      <nav className="flex items-center gap-4 text-sm font-medium" aria-label="관리 메뉴">
-        <Link
-          to="/admin/workflow-schemes"
-          className="text-muted-foreground hover:text-foreground [&.active]:text-foreground [&.active]:font-semibold"
-        >
-          워크플로우 스킴
-        </Link>
-      </nav>
+      {/* 관리 nav — SYSTEM_ADMIN 전용 (isSystemAdmin === true일 때만 렌더) */}
+      {isAdmin && (
+        <nav className="flex items-center gap-4 text-sm font-medium" aria-label="관리 메뉴">
+          {ADMIN_LINKS.map(({ to, label }) => (
+            <Link
+              key={to}
+              to={to}
+              className="text-muted-foreground hover:text-foreground [&.active]:text-foreground [&.active]:font-semibold"
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
+      )}
       <div className="flex-1" />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
