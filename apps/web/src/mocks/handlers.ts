@@ -1,6 +1,7 @@
 // MSW 핸들러 통합 인덱스 — BC별 handlers를 spread해서 내보낸다
 import { accountLinkHandlers } from './account-link-handlers'
 import { adminUserHandlers } from './admin-user-handlers'
+import { auditLogHandlers } from './audit-log-handlers'
 import { authHandlers } from './auth-handlers'
 import { bulkOperationHandlers } from './bulk-operation-handlers'
 import { componentHandlers } from './component-handlers'
@@ -35,6 +36,7 @@ import { securityLevelHandlers } from './security-level-handlers'
 export const handlers = [
   ...accountLinkHandlers,
   ...adminUserHandlers,
+  ...auditLogHandlers,
   ...authHandlers,
   ...bulkOperationHandlers,
   ...componentHandlers,

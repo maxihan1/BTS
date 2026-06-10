@@ -180,6 +180,8 @@ data class AuthAuditLog(
 
 > 위 `data class AuthAuditLog` 표기의 `id: Long`/`userId: Long?` 은 원안 스케치다. 실제 구현은 PK `id: Long`(BIGINT IDENTITY)이되 `userId: UUID?`(users.id 가 UUID), `metadata: Map<String, String>`(JSONB), `createdAt: Instant` 이다(FR-AU-10).
 
+> **관리자 조회 (FR-AU-10 D6/D7, PR #112).** `GET /api/v1/admin/auth-audit-logs` — SYSTEM_ADMIN 전용(`@PreAuthorize hasRole('SYSTEM_ADMIN')` + filter authenticated 이중가드, 비관리자/PAT 403). 필터 `eventType`·`userId`·`from`(>=)·`to`(<=) + offset 페이지네이션(`page`/`size`, 기본 50·1..100), 잘못된 파라미터 400. `users` LEFT JOIN 으로 주체(username/displayName) 표시(삭제/미상 사용자는 null — append-only 보존). count 는 JOIN 없이 단독 산출(cartesian 회피), 동적 WHERE 는 전부 named parameter(SQL 인젝션 방어). 프론트 `/admin/audit-logs`(SYSTEM_ADMIN 게이팅, Header 관리 메뉴 `isSystemAdmin` 노출).
+
 ## 19.10 보안 이벤트 알림
 
 - 새 디바이스 로그인 → 사용자 이메일 알림
