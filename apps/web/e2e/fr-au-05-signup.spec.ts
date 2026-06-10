@@ -45,6 +45,15 @@ async function loginAsSystemAdmin(page: import('@playwright/test').Page): Promis
 async function loginWithMustChangePwd(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/login')
   await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
+  // 1단계: identifier-first 이메일 입력 → "계속"
+  await page.getByLabel('이메일').fill('alice@example.com')
+  await page.getByRole('button', { name: '계속', exact: true }).click()
+  // 2단계: Local 선택 + 자격증명
+  const providerSelect = page.getByRole('combobox', { name: '로그인 방식' })
+  await expect(providerSelect).toBeVisible()
+  await expect(providerSelect).not.toBeDisabled()
+  await providerSelect.click()
+  await page.getByRole('option', { name: 'Local', exact: true }).click()
   await page.getByLabel('사용자명').fill('alice')
   await page.getByLabel('비밀번호').fill('password')
   // exact:true — strict mode violation 회피 (playwright-getbyrole-exact-strict-mode)
