@@ -273,10 +273,11 @@ class RefreshTokenServiceTest {
 
     @Test
     fun `FR-AU-10 — replay 분기에서 SUSPICIOUS_REFRESH_REPLAY 를 emit 한다 (reason=replay)`() {
-        val usedToken = buildUsableToken().copy(
-            usedAt = fixedNow.minus(5, ChronoUnit.MINUTES),
-            replacedBy = UUID.randomUUID(),
-        )
+        val usedToken =
+            buildUsableToken().copy(
+                usedAt = fixedNow.minus(5, ChronoUnit.MINUTES),
+                replacedBy = UUID.randomUUID(),
+            )
         val eventSlot = slot<AuthAuditLog>()
 
         every { repo.findByTokenHash("a".repeat(64)) } returns usedToken

@@ -149,17 +149,7 @@ class RefreshTokenService(
         )
 
         // FR-AU-10 — rotation 성공 감사. tokenId 만 기록(raw token / hash 절대 금지, §1.1 규칙 2).
-        auditLog.record(
-            AuthAuditLog(
-                userId = session.userId,
-                eventType = AuthEventType.TOKEN_REFRESHED,
-                providerId = session.providerId,
-                metadata = mapOf(
-                    METADATA_OLD_TOKEN_ID to old.id.toString(),
-                    METADATA_NEW_TOKEN_ID to newToken.id.toString(),
-                ),
-            ),
-        )
+        recordTokenRefreshed(session, oldTokenId = old.id, newTokenId = newToken.id)
 
         return RotateResult.Success(
             accessToken = accessToken,
@@ -168,6 +158,35 @@ class RefreshTokenService(
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * TOKEN_REFRESHED 감사 이벤트를 기록한다 (FR-AU-10).
+     *
+     * raw token / token_hash 는 절대 기록하지 않고 식별용 tokenId(UUID)만 metadata 에 담는다 (§1.1 규칙 2).
+     *
+     * @param session    rotation 주체 세션
+     * @param oldTokenId 무효화된 옛 refresh token id
+     * @param newTokenId 새로 발급된 refresh token id
+     */
+    private fun recordTokenRefreshed(
+        session: Session,
+        oldTokenId: UUID,
+        newTokenId: UUID,
+    ) {
+        val metadata =
+            mapOf(
+                METADATA_OLD_TOKEN_ID to oldTokenId.toString(),
+                METADATA_NEW_TOKEN_ID to newTokenId.toString(),
+            )
+        auditLog.record(
+            AuthAuditLog(
+                userId = session.userId,
+                eventType = AuthEventType.TOKEN_REFRESHED,
+                providerId = session.providerId,
+                metadata = metadata,
+            ),
+        )
+    }
 
     /**
      * SUSPICIOUS_REFRESH_REPLAY 감사 이벤트를 기록한다 (FR-AU-10, C-5).

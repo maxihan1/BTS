@@ -146,10 +146,10 @@
         <error line="148" column="1" source="standard:no-empty-first-line-in-class-body" />
     </file>
     <file name="src/main/kotlin/com/atlas/bts/identity/session/RefreshTokenService.kt">
-        <error line="51" column="1" source="standard:no-empty-first-line-in-class-body" />
-        <error line="72" column="19" source="standard:multiline-expression-wrapping" />
-        <error line="100" column="24" source="standard:multiline-expression-wrapping" />
-        <error line="123" column="27" source="standard:multiline-expression-wrapping" />
+        <error line="56" column="1" source="standard:no-empty-first-line-in-class-body" />
+        <error line="88" column="19" source="standard:multiline-expression-wrapping" />
+        <error line="119" column="24" source="standard:multiline-expression-wrapping" />
+        <error line="143" column="27" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="src/main/kotlin/com/atlas/bts/identity/session/SessionRepository.kt">
         <error line="26" column="1" source="standard:no-empty-first-line-in-class-body" />
@@ -642,10 +642,10 @@
         <error line="239" column="23" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="src/test/kotlin/com/atlas/bts/identity/session/RefreshTokenServiceTest.kt">
-        <error line="35" column="1" source="standard:no-empty-first-line-in-class-body" />
-        <error line="139" column="28" source="standard:multiline-expression-wrapping" />
-        <error line="178" column="25" source="standard:multiline-expression-wrapping" />
-        <error line="200" column="29" source="standard:multiline-expression-wrapping" />
+        <error line="38" column="1" source="standard:no-empty-first-line-in-class-body" />
+        <error line="145" column="28" source="standard:multiline-expression-wrapping" />
+        <error line="184" column="25" source="standard:multiline-expression-wrapping" />
+        <error line="208" column="29" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="src/test/kotlin/com/atlas/bts/identity/session/RefreshTokenTest.kt">
         <error line="12" column="1" source="standard:no-empty-first-line-in-class-body" />
