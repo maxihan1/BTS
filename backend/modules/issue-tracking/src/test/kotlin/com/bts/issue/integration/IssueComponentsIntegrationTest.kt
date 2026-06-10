@@ -9,6 +9,7 @@ import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -117,6 +118,9 @@ class IssueComponentsIntegrationTest {
             com.bts.issue.project.repository.ProjectLeadRepository(dsl)
 
         @Bean
+        open fun realVersionRepository(dsl: DSLContext): VersionRepository = VersionRepository(dsl)
+
+        @Bean
         @Primary
         open fun issueApplicationServiceWithRealComponents(
             repo: IssueRepository,
@@ -129,6 +133,7 @@ class IssueComponentsIntegrationTest {
             userLookupPort: UserLookupPort,
             componentRepository: ComponentRepository,
             projectLeadRepository: com.bts.issue.project.repository.ProjectLeadRepository,
+            versionRepository: VersionRepository,
             clock: Clock,
         ): IssueApplicationService =
             IssueApplicationService(
@@ -142,6 +147,7 @@ class IssueComponentsIntegrationTest {
                 userLookupPort = userLookupPort,
                 componentRepository = componentRepository,
                 projectLeadRepository = projectLeadRepository,
+                versionRepository = versionRepository,
                 clock = clock,
             )
     }

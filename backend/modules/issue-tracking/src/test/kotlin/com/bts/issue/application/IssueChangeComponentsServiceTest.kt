@@ -62,6 +62,7 @@ class IssueChangeComponentsServiceTest : DescribeSpec({
             userLookupPort = userLookupPort,
             componentRepository = componentRepository,
             projectLeadRepository = projectLeadRepository,
+            versionRepository = mockk(relaxed = true),
             clock = clock,
         )
 

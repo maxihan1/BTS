@@ -79,6 +79,7 @@ class IssueFieldEditGateTest : DescribeSpec({
             userLookupPort = userLookupPort,
             componentRepository = componentRepository,
             projectLeadRepository = projectLeadRepository,
+            versionRepository = mockk(relaxed = true),
             clock = clock,
             fieldPermissionResolver = fieldPermissionResolver,
         )
@@ -466,6 +467,7 @@ class IssueFieldEditGateTest : DescribeSpec({
                 userLookupPort = userLookupPort,
                 componentRepository = componentRepository,
                 projectLeadRepository = projectLeadRepository,
+                versionRepository = mockk(relaxed = true),
                 clock = clock,
                 // fieldPermissionResolver 미전달 — 기본값 사용
             )

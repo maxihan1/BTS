@@ -79,6 +79,7 @@ class IssueCustomFieldsTest : DescribeSpec({
             userLookupPort = mockk(relaxed = true),
             componentRepository = mockk(relaxed = true),
             projectLeadRepository = mockk(relaxed = true),
+            versionRepository = mockk(relaxed = true),
             customFieldDefinitionRepository = customFieldDefinitionRepository,
             clock = clock,
         )

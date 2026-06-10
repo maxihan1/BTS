@@ -101,9 +101,7 @@ class IssueApplicationService(
     private val userLookupPort: UserLookupPort,
     private val componentRepository: ComponentRepository,
     private val projectLeadRepository: ProjectLeadRepository,
-    // versionRepository: 기존 테스트 호환을 위해 null 허용. Spring 컨텍스트에서는 Bean 주입.
-    // null 이면 버전 존재 검증을 수행하지 않는다(기존 테스트 backward-compat).
-    private val versionRepository: VersionRepository? = null,
+    private val versionRepository: VersionRepository,
     // customFieldDefinitionRepository: 기존 테스트 호환을 위해 null 허용. Spring 컨텍스트에서는 Bean 주입.
     // null 이면 커스텀 필드 검증을 수행하지 않는다(기존 테스트 backward-compat).
     private val customFieldDefinitionRepository: CustomFieldDefinitionRepository? = null,
@@ -1249,7 +1247,6 @@ class IssueApplicationService(
      *
      * 하나라도 null(타 프로젝트 또는 소프트 삭제) 이면 [IssueLinkedVersionNotFoundException] 을 던진다.
      * ARCHIVED 상태 버전은 deleted_at=null 이므로 이 검증을 통과한다.
-     * [versionRepository] 가 null 이면 검증을 수행하지 않는다(기존 테스트 backward-compat).
      *
      * @param versionIds 검증할 버전 UUID 목록 (distinct 정규화 완료 상태).
      * @param projectId 소속 프로젝트 UUID.
@@ -1259,9 +1256,8 @@ class IssueApplicationService(
         versionIds: List<UUID>,
         projectId: UUID,
     ) {
-        val verRepo = versionRepository ?: return
         versionIds.forEach { id ->
-            verRepo.findById(id, projectId) ?: throw IssueLinkedVersionNotFoundException(id)
+            versionRepository.findById(id, projectId) ?: throw IssueLinkedVersionNotFoundException(id)
         }
     }
 

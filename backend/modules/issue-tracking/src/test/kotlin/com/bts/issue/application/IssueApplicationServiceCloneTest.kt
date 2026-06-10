@@ -71,6 +71,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
             userLookupPort = userLookupPort,
             componentRepository = mockk(relaxed = true),
             projectLeadRepository = projectLeadRepository,
+            versionRepository = mockk(relaxed = true),
             clock = clock,
         )
 

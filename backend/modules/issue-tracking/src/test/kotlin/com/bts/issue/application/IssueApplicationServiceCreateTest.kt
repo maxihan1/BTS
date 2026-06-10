@@ -63,6 +63,7 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
             userLookupPort = userLookupPort,
             componentRepository = mockk(relaxed = true),
             projectLeadRepository = mockk(relaxed = true),
+            versionRepository = mockk(relaxed = true),
             clock = clock,
         )
 

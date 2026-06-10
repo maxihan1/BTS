@@ -9,6 +9,7 @@ import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.user.UserLookupPort
 import com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter
@@ -71,6 +72,9 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
         open fun realProjectLeadRepository(dsl: DSLContext): ProjectLeadRepository = ProjectLeadRepository(dsl)
 
         @Bean
+        open fun realVersionRepository(dsl: DSLContext): VersionRepository = VersionRepository(dsl)
+
+        @Bean
         @Primary
         open fun issueApplicationServiceWithRealComponents(
             repo: IssueRepository,
@@ -83,6 +87,7 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
             userLookupPort: UserLookupPort,
             componentRepository: ComponentRepository,
             projectLeadRepository: ProjectLeadRepository,
+            versionRepository: VersionRepository,
             clock: Clock,
         ): IssueApplicationService =
             IssueApplicationService(
@@ -96,6 +101,7 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
                 userLookupPort = userLookupPort,
                 componentRepository = componentRepository,
                 projectLeadRepository = projectLeadRepository,
+                versionRepository = versionRepository,
                 clock = clock,
             )
     }

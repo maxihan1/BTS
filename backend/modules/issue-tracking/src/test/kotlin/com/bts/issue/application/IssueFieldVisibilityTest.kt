@@ -83,6 +83,7 @@ class IssueFieldVisibilityTest : DescribeSpec({
             userLookupPort = userLookupPort,
             componentRepository = mockk<ComponentRepository>(relaxed = true),
             projectLeadRepository = mockk<ProjectLeadRepository>(relaxed = true),
+            versionRepository = mockk(relaxed = true),
             clock = clock,
             fieldPermissionResolver = fieldPermissionResolver,
         )
@@ -511,6 +512,7 @@ class IssueFieldVisibilityTest : DescribeSpec({
                 userLookupPort = userLookupPort,
                 componentRepository = mockk<ComponentRepository>(relaxed = true),
                 projectLeadRepository = mockk<ProjectLeadRepository>(relaxed = true),
+                versionRepository = mockk(relaxed = true),
                 clock = clock,
                 // fieldPermissionResolver 미전달 — 기본값 사용
             )
