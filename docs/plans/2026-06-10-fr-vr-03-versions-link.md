@@ -26,7 +26,36 @@ Plan slug(정본): issue/versions-link
 - [ ] D6. 프론트 UI — 버전 셀렉터 2종 (designer → frontend-engineer)
 - [ ] D7. E2E (qa-engineer)
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리 (/bts-domain)
+
+- **BC**: issue-tracking (단일 BC, 격리 위반 없음 — versions·issues 모두 같은 모듈)
+- **새 용어**: 없음. glossary.md 이미 정의 — "버전 (Version) — 릴리스 단위. fix/affects 관계로 이슈에 연결"
+- **영향 엔티티**:
+  - `Issue` (애그리거트) — `affectsVersionIds: List<UUID>`, `fixVersionIds: List<UUID>` 신규 필드 (기존 `componentIds` 패턴 동형)
+  - `Version` (읽기 참조만 — 검증 시 프로젝트·존재 확인)
+  - 신규 조인 테이블 2개: `issue_affects_versions`, `issue_fix_versions`
+- **선례 (정확한 동형 패턴)**: 이슈↔컴포넌트 연결 (FR-CM-02/03)
+  - 조인 테이블: `V012__issue_components.sql` (issue_id, component_id PK, ON DELETE CASCADE, FK 인덱스는 후미 컬럼만)
+  - 도메인: `Issue.componentIds` + `assignComponents()`/`clearComponents()` + `create(componentIds=)`
+  - API: `PATCH /api/v1/issues/{key}/components` + `ChangeComponentsRequest{componentIds, expectedVersion}` (전체 교체, OCC 낙관적 잠금)
+  - 검증: `IssueApplicationService.validateComponents` — 프로젝트 불일치/비활성 시 422
+  - 응답: `IssueResponse.componentIds` (단건 경로에서만 채움)
+  - repo: `IssueRepository.insertComponents` (배치 INSERT)
+- **기존 결정 충돌**: 없음
+- **관련 ADR**:
+  - `docs/adr/2026-06-03-version-model-and-permission-deferral.md` (Version 모델 + 권한 이연 — VersionPermissionResolver 포트)
+  - `docs/adr/2026-06-10-version-status-and-transitions.md` (버전 상태 전이)
+  - 신규 ADR 후보: affects/fix 연결 정책 (ARCHIVED 허용 + 권한 재사용) — bts-spec/plan에서 판단
+
+### Maxi 확정 결정 (2026-06-10)
+1. **생성 시점 미지원** — PATCH 교체만 (`/affects-versions`, `/fix-versions`). 생성 시 지정은 후속 이연. FR-VR-02와 동일 결의 범위.
+2. **ARCHIVED 정책** — API는 삭제 안 된 모든 버전(UNRELEASED/RELEASED/ARCHIVED) 연결 허용. 프론트 셀렉터에서만 ARCHIVED 기본 숨김 (Jira 정석). 이미 연결된 ARCHIVED 링크는 보존.
+
+### 기본값 (선례 따름, 미질의)
+- **두 엔드포인트 분리** — affects/fix는 독립 관계이므로 `/affects-versions`, `/fix-versions` 별도 PATCH (컴포넌트 1관계 1엔드포인트 패턴 확장).
+- **전체 교체 + OCC** — `{versionIds, expectedVersion}`, changeComponents와 동일하게 expectedVersion 필수 + version bump.
+- **타 프로젝트 버전 422** — 이슈 프로젝트 ≠ 버전 프로젝트면 422 (컴포넌트 validateComponents 동형).
+- **읽기 측 노출** — `IssueResponse`에 `affectsVersionIds`/`fixVersionIds` 단건 경로 채움 (D6 프론트 표시용).
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
