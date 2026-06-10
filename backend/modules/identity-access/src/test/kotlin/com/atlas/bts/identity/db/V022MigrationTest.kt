@@ -23,7 +23,6 @@ import java.sql.DriverManager
  */
 @Testcontainers
 class V022MigrationTest {
-
     companion object {
         @Container
         @JvmStatic
@@ -231,12 +230,13 @@ class V022MigrationTest {
                     "DELETE FROM users WHERE id = '00000000-0000-0000-0000-0000000000a2'",
                 ).execute()
 
-                val count = conn.prepareStatement(
-                    "SELECT COUNT(*) FROM totp_secrets WHERE user_id = '00000000-0000-0000-0000-0000000000a2'",
-                ).executeQuery().use { rs ->
-                    rs.next()
-                    rs.getInt(1)
-                }
+                val count =
+                    conn.prepareStatement(
+                        "SELECT COUNT(*) FROM totp_secrets WHERE user_id = '00000000-0000-0000-0000-0000000000a2'",
+                    ).executeQuery().use { rs ->
+                        rs.next()
+                        rs.getInt(1)
+                    }
 
                 conn.rollback()
                 return count == 0
