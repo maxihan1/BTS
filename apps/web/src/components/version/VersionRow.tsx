@@ -45,13 +45,12 @@ function formatDate(date: string | null): string {
 // 상태 뱃지 Tailwind 클래스 매핑
 // ─────────────────────────────────────────────────────────────────────────────
 
+const BADGE_BASE = 'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold'
+
 const STATUS_BADGE_CLASS: Record<VersionStatus, string> = {
-  UNRELEASED:
-    'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold bg-secondary text-secondary-foreground',
-  RELEASED:
-    'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold bg-primary text-primary-foreground',
-  ARCHIVED:
-    'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold text-muted-foreground',
+  UNRELEASED: `${BADGE_BASE} bg-secondary text-secondary-foreground`,
+  RELEASED: `${BADGE_BASE} bg-primary text-primary-foreground`,
+  ARCHIVED: `${BADGE_BASE} text-muted-foreground`,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
