@@ -81,8 +81,9 @@ class IssueRepositoryReleaseNotesTest : IssueTestcontainersBase() {
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
+    private fun requireTaskTypeId(): IssueTypeId {
+        return requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
+    }
 
     /** 이슈 1건을 삽입하고 반환한다. version=1 로 시작. */
     private fun insertIssue(
