@@ -87,15 +87,15 @@ class ReleaseNotesService(
         )
 
         val issues = rows.map { row -> mapToReleaseNoteIssue(row, resolutionMap) }
-        val markdown = ReleaseNotesGenerator.generate(
+        val input =
             ReleaseNotesInput(
                 projectKey = projectKey,
                 versionName = version.name,
                 versionStatus = version.status.name,
                 releaseDate = version.releaseDate,
                 issues = issues,
-            ),
-        )
+            )
+        val markdown = ReleaseNotesGenerator.generate(input)
 
         return ReleaseNotes(
             versionId = versionId,

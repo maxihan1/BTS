@@ -52,31 +52,33 @@ class ReleaseNotesServiceTest : DescribeSpec({
     val fixedInstant = Instant.parse("2026-06-10T12:00:00Z")
     val fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
 
-    val sut = ReleaseNotesService(
-        projectLookup = projectLookup,
-        projectLookupRepository = projectLookupRepo,
-        versionRepository = versionRepo,
-        issueRepository = issueRepo,
-        resolutionRepository = resolutionRepo,
-        clock = fixedClock,
-    )
+    val sut =
+        ReleaseNotesService(
+            projectLookup = projectLookup,
+            projectLookupRepository = projectLookupRepo,
+            versionRepository = versionRepo,
+            issueRepository = issueRepo,
+            resolutionRepository = resolutionRepo,
+            clock = fixedClock,
+        )
 
     val actorId = UUID.randomUUID()
     val projectId = UUID.randomUUID()
     val versionId = UUID.randomUUID()
     val resolutionId = UUID.randomUUID()
 
-    val activeVersion = Version(
-        id = versionId,
-        projectId = projectId,
-        name = "v1.0.0",
-        description = null,
-        startDate = null,
-        releaseDate = LocalDate.of(2026, 6, 10),
-        status = VersionStatus.UNRELEASED,
-        releasedAt = null,
-        deletedAt = null,
-    )
+    val activeVersion =
+        Version(
+            id = versionId,
+            projectId = projectId,
+            name = "v1.0.0",
+            description = null,
+            startDate = null,
+            releaseDate = LocalDate.of(2026, 6, 10),
+            status = VersionStatus.UNRELEASED,
+            releasedAt = null,
+            deletedAt = null,
+        )
 
     beforeEach {
         clearMocks(projectLookup, projectLookupRepo, versionRepo, issueRepo, resolutionRepo)
@@ -100,7 +102,10 @@ class ReleaseNotesServiceTest : DescribeSpec({
     )
 
     /** Resolution 도메인 객체 생성 헬퍼 (id 명시). */
-    fun resolution(id: UUID, name: String): Resolution =
+    fun resolution(
+        id: UUID,
+        name: String,
+    ): Resolution =
         Resolution(
             id = id,
             key = name.lowercase().replace(" ", ""),
@@ -210,10 +215,11 @@ class ReleaseNotesServiceTest : DescribeSpec({
             }
 
             it("versionStatus, releaseDate 가 ReleaseNotes 에 올바르게 매핑된다") {
-                val releasedVersion = activeVersion.copy(
-                    status = VersionStatus.RELEASED,
-                    releaseDate = LocalDate.of(2026, 6, 10),
-                )
+                val releasedVersion =
+                    activeVersion.copy(
+                        status = VersionStatus.RELEASED,
+                        releaseDate = LocalDate.of(2026, 6, 10),
+                    )
 
                 every { projectLookup.resolve("BTS") } returns projectId
                 every { versionRepo.findById(versionId, projectId) } returns releasedVersion
@@ -228,11 +234,12 @@ class ReleaseNotesServiceTest : DescribeSpec({
             }
 
             it("resolutionRepo.findAllActive() 는 1회만 호출된다 (N+1 회피)") {
-                val rows = listOf(
-                    bugRow("BTS-1", resolutionId = resolutionId),
-                    bugRow("BTS-2", resolutionId = resolutionId),
-                    bugRow("BTS-3", resolutionId = null),
-                )
+                val rows =
+                    listOf(
+                        bugRow("BTS-1", resolutionId = resolutionId),
+                        bugRow("BTS-2", resolutionId = resolutionId),
+                        bugRow("BTS-3", resolutionId = null),
+                    )
 
                 every { projectLookup.resolve("BTS") } returns projectId
                 every { versionRepo.findById(versionId, projectId) } returns activeVersion
