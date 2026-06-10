@@ -106,9 +106,12 @@ describe('AccountLinkList — 목록 렌더', () => {
 
   it('lastLoginAt이 있으면 날짜를 렌더한다', () => {
     render(<AccountLinkList links={[LDAP_LINK]} onUnlink={vi.fn()} onAddLink={vi.fn()} />)
-    // 2026 포함 날짜 텍스트 확인
+    // 마지막 로그인 라벨 다음 dd 요소에 연도 포함 여부 확인
     const cardEl = screen.getByTestId(`account-link-card-${LDAP_LINK.id}`)
-    expect(within(cardEl).getByText(/2026/)).toBeInTheDocument()
+    // LDAP_LINK.lastLoginAt = '2026-06-01T10:00:00Z' → KST 2026년 6월 포함
+    const lastLoginDt = within(cardEl).getByText('마지막 로그인')
+    const lastLoginDd = lastLoginDt.nextElementSibling
+    expect(lastLoginDd?.textContent).toMatch(/2026/)
   })
 
   it('lastLoginAt이 null이면 "로그인 기록 없음"을 렌더한다', () => {

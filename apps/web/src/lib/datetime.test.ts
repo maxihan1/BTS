@@ -23,7 +23,8 @@ describe('formatDateTime', () => {
   })
 
   it('연도가 4자리 숫자로 포함된다', () => {
-    const result = formatDateTime('2025-12-31T23:59:59Z')
-    expect(result).toContain('2025')
+    // UTC 기준 2026-06 — KST 변환 후에도 2026 유지
+    const result = formatDateTime('2026-06-15T10:00:00Z')
+    expect(result).toContain('2026')
   })
 })
