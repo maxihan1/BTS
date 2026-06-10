@@ -83,7 +83,7 @@ worktree 내부 plan 파일의 `## 도메인 정리` 섹션을 채운다.
 ## 출력 형식
 
 ```
-🔄 [2/7] /bts-domain
+🔄 [2/8] /bts-domain
    ├─ BC: issue-tracking
    ├─ grill-with-docs: 신규 용어 1개 (멘션), 기존 결정 충돌 없음
    ├─ ADR: docs/decisions/2026-05-19-issue-mention-notify.md

@@ -130,7 +130,7 @@ BODY
 ## 출력 형식
 
 ```
-🔄 [1/7] /bts-start
+🔄 [1/8] /bts-start
    ├─ 분류: type=feature, agent=backend-engineer, tasks=4 (cached)
    ├─ Worktree: .worktrees/issue-mention-notify (feat/issue-mention-notify)
    ├─ Plan 스텁: docs/plans/2026-05-19-issue-mention-notify.md

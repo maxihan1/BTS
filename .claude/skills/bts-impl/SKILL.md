@@ -11,7 +11,7 @@ plan의 task를 sub-agent에게 위임. **TDD 강제 (red → green → refactor
 
 controller(메인 에이전트)는 다음 4개를 **세션당 1회만 Read**하고, 모든 implementer/verifier prompt에 본문 인라인 주입.
 
-- `DEVELOPMENT.md` (절대 규칙 18개)
+- `DEVELOPMENT.md` (절대 규칙 19개)
 - `DATA.md` (데이터 무결성 5원칙)
 - `Maxi_wiki/BTS/domain/<bc>.md` (해당 BC 노트)
 - 작업 관련 `Maxi_wiki/BTS/decisions/<adr>.md` (있을 때)
@@ -242,7 +242,7 @@ pnpm test:e2e                       # (qa-engineer 추가 시)
 ## 출력 형식
 
 ```
-🔄 [6/7] /bts-impl (4 tasks, 2 waves)
+🔄 [6/8] /bts-impl (4 tasks, 2 waves)
    ├─ wave 1 (병렬 dispatch)
    │   ├─ Task 1. parse @username — backend-engineer ✅ PASS (TDD 3 커밋)
    │   └─ Task 3. 권한 체크 — security-engineer ⚠️ DRIFT 1회 → 재dispatch ✅ PASS

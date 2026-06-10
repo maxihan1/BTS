@@ -43,7 +43,7 @@
 |---|---|
 | 단순 질문 / 코드 설명 | 그냥 답변 (`/bts` 진입 안 함) |
 | 워크플로우 / 작업 시작 | 이 파일 §워크플로우 + `.claude/skills/bts/SKILL.md` |
-| 절대 규칙 18개 / 코드 스타일 | `DEVELOPMENT.md` |
+| 절대 규칙 19개 / 코드 스타일 | `DEVELOPMENT.md` |
 | DB / 마이그레이션 / 트랜잭션 / 이슈키 영속성 | `DATA.md` |
 | 도메인 비전 / 기술 결정 / 26개 챕터 | `docs/sdd/README.md` |
 | 도메인 용어 사전 (DDD) | `Maxi_wiki/BTS/glossary.md` (Obsidian) |
@@ -111,13 +111,9 @@ docker-compose -f infra/docker-compose.dev.yml up postgres redis minio
 
 ## 사용자 커뮤니케이션 스타일
 
-- **개발 비전문자 기준으로 설명**. Maxi는 깊은 개발 지식이 없음. 도메인/코드 용어 첫 등장 시 한 줄 비유/풀이 동반. 예. "worktree (같은 책상에 여러 작업 가지를 동시에 펼쳐놓는 Git 기능)".
-- **무엇 + 왜 같이**. "라인 205 삭제" 보다 "공백을 잘못 처리하는 한 줄을 지워서 정상 사용자명이 통과하게" 형태로.
-- **약어/영어 풀이**. PR (Pull Request — 코드 변경 제안), BC (Bounded Context — 책임 범위로 나눈 도메인 단위), ADR (Architecture Decision Record — 기술 결정 기록) 등 첫 등장 시 한 번 풀이. Testcontainers (테스트용 DB를 도커로 자동 실행하는 라이브러리), Flyway (DB 스키마 변경을 버전 관리하는 도구), jOOQ (SQL을 코드로 안전하게 작성하는 라이브러리) 등 처음 보는 영어 도구명도 한 줄 소개.
-- **BTS 고유 용어도 풀이 대상**. BC, worktree per 작업, wave 병렬 dispatch, TDD red→green→refactor, classify-task, pgmq (PostgreSQL 기반 메시지 큐) 등.
+- **글로벌 `~/.claude/CLAUDE.md` §Explanation Style·§5 준수 (정본)**. 비전문자 기준 설명, 무엇+왜 같이, 용어/약어 첫 등장 시 한 줄 풀이·비유, 콜론으로 문장 끝내지 않기. 상세 규칙은 글로벌 파일 참조.
+- **BTS 고유 용어도 풀이 대상**. BC (Bounded Context — 책임 범위로 나눈 도메인 단위), worktree per 작업, wave 병렬 dispatch, TDD red→green→refactor, classify-task, pgmq (PostgreSQL 기반 메시지 큐) 등. Testcontainers (테스트용 DB를 도커로 자동 실행하는 라이브러리), Flyway (DB 스키마 버전 관리 도구), jOOQ (SQL을 코드로 안전하게 작성하는 라이브러리) 같은 도구명도 첫 등장 시 한 줄 소개.
 - **갈림길에서는 옵션 2~3개 제시**. 추측 구현 금지 (§컨텍스트 효율). 옵션마다 한 줄 trade-off.
-- **콜론으로 문장 끝내지 않기**. 글로벌 `~/.claude/CLAUDE.md` §5 재확인. 리스트/예시 앞이어도 마침표로 끝낼 것.
-- **글로벌 `~/.claude/CLAUDE.md` §Explanation Style과 일관**. BTS에서는 BTS 고유 용어 풀이를 추가로 강조.
 
 ## 비상시
 

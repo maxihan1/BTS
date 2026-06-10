@@ -109,7 +109,7 @@ worktree plan 파일의 `## Plan` 섹션이 위 형식으로 채워짐.
 ## 출력 형식
 
 ```
-🔄 [4/7] /bts-plan
+🔄 [4/8] /bts-plan
    ├─ writing-plans → docs/plans/2026-05-19-issue-mention-notify.md
    ├─ task 수: 4 (각 TDD 사이클)
    ├─ 예상 시간: 약 12분
