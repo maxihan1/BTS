@@ -59,9 +59,16 @@ interface AddAccountDialogProps {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * RadioGroup value 문자열로 사용할 provider 고유 식별자를 반환한다.
- * - LDAP: `ldap::{providerId}`
- * - SAML/OIDC: `sso::{registrationId}`
+ * RadioGroup의 `value` prop에 사용할 provider 고유 식별자 문자열을 반환한다.
+ *
+ * - LDAP: `ldap::{providerId}` — UUID 기반 식별자
+ * - SAML/OIDC: `sso::{registrationId}` — Spring Security registration ID 기반
+ *
+ * kind 접두어를 붙이는 이유: providerId와 registrationId는 서로 다른 공간의 값이므로
+ * 충돌 가능성을 원천 차단한다.
+ *
+ * @param provider 연결 가능한 공급자 discriminated union 항목
+ * @returns RadioGroup value 문자열
  */
 function providerRadioValue(provider: LinkableProvider): string {
   if (provider.kind === 'LDAP') return `ldap::${provider.providerId}`
@@ -193,13 +200,19 @@ export function AddAccountDialog({
 
   const { data: providers } = useLinkableProvidersQuery(open)
 
-  /** 선택된 value에 해당하는 provider를 찾아 반환한다. */
+  /**
+   * 현재 selectedValue에 해당하는 LinkableProvider를 반환한다.
+   * selectedValue가 null이거나 providers가 아직 로드되지 않았으면 null을 반환한다.
+   */
   function findSelected(): LinkableProvider | null {
     if (selectedValue === null || providers === undefined) return null
     return providers.find((p) => providerRadioValue(p) === selectedValue) ?? null
   }
 
-  /** 다이얼로그 닫힐 때 내부 상태를 초기화한다. */
+  /**
+   * 다이얼로그 닫힐 때 LDAP 폼 입력 상태를 초기화한다.
+   * 비밀번호가 메모리에 잔류하지 않도록 닫힘 시점에 즉시 제거한다.
+   */
   function handleOpenChange(next: boolean): void {
     if (!next) {
       setSelectedValue(null)
@@ -209,7 +222,15 @@ export function AddAccountDialog({
     onOpenChange(next)
   }
 
-  /** "연결" 버튼 클릭 — provider 종류에 따라 분기 호출 */
+  /**
+   * "연결" 버튼 제출 핸들러.
+   *
+   * - LDAP: username/password 유효성 확인 후 `onLink` 호출 (부모가 step-up 게이팅+linkAccount)
+   * - SSO: `onSsoStart` 호출 (부모가 step-up 게이팅+ssoLinkStart+리다이렉트)
+   *
+   * 빈 username/password로 제출하면 아무 동작을 하지 않는다.
+   * HTML `required` 대신 명시적 가드로 처리해 커스텀 메시지 표시 여지를 남긴다.
+   */
   function handleSubmit(e: FormEvent<HTMLFormElement>): void {
     e.preventDefault()
     const selected = findSelected()
@@ -221,7 +242,7 @@ export function AddAccountDialog({
       return
     }
 
-    // SAML or OIDC
+    // SAML 또는 OIDC — 입력 폼 없이 즉시 SSO 흐름 위임
     onSsoStart({ registrationId: selected.registrationId, providerType: selected.kind })
   }
 
