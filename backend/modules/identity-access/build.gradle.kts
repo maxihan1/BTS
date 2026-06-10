@@ -90,6 +90,9 @@ dependencies {
     // EC-29 Caffeine 캐시 — SidRevokeJwtConverter 5s TTL 캐시 (Task 34)
     implementation("com.github.ben-manes.caffeine:caffeine:3.1.8")
 
+    // FR-MF-01 TOTP — secret 생성 + otpauth URI + QR(ZXing) + RFC 6238 시간윈도우 검증 (Maxi 승인, 절대규칙 #17)
+    implementation("dev.samstevens.totp:totp:1.7.1")
+
     // Kotlin 기본
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
