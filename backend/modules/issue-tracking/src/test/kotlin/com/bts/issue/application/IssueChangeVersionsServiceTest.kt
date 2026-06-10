@@ -121,18 +121,28 @@ class IssueChangeVersionsServiceTest : DescribeSpec({
     describe("changeAffectsVersions") {
 
         context("happy path — 모든 버전 활성, 권한 OK") {
-            val request = AppChangeVersionsRequest(versionIds = listOf(v1, v2), expectedVersion = existingVersion)
+            val request =
+                AppChangeVersionsRequest(
+                    versionIds = listOf(v1, v2),
+                    expectedVersion = existingVersion,
+                )
             val existingIssue = makeIssue()
             val response = makeResponse()
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.UPDATE,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { versionRepository.findById(v1, projectId) } returns mockk()
                 every { versionRepository.findById(v2, projectId) } returns mockk()
-                every { repo.replaceAffectsVersions(issueKey, issueId, listOf(v1, v2), existingVersion) } returns 1
+                every {
+                    repo.replaceAffectsVersions(issueKey, issueId, listOf(v1, v2), existingVersion)
+                } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns response
                 every { repo.findActiveComponentIdsByIssue(issueId) } returns emptyList()
             }
@@ -151,24 +161,35 @@ class IssueChangeVersionsServiceTest : DescribeSpec({
         }
 
         context("중복 ID 정규화 — [V1, V1, V2] 입력이 도메인 assignAffectsVersions 경유로 distinct됨") {
-            val request = AppChangeVersionsRequest(versionIds = listOf(v1, v1, v2), expectedVersion = existingVersion)
+            val request =
+                AppChangeVersionsRequest(
+                    versionIds = listOf(v1, v1, v2),
+                    expectedVersion = existingVersion,
+                )
             val existingIssue = makeIssue()
             val response = makeResponse()
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.UPDATE,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { versionRepository.findById(v1, projectId) } returns mockk()
                 every { versionRepository.findById(v2, projectId) } returns mockk()
-                every { repo.replaceAffectsVersions(issueKey, issueId, listOf(v1, v2), existingVersion) } returns 1
+                every {
+                    repo.replaceAffectsVersions(issueKey, issueId, listOf(v1, v2), existingVersion)
+                } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns response
                 every { repo.findActiveComponentIdsByIssue(issueId) } returns emptyList()
             }
 
             it("replaceAffectsVersions 에 distinct 된 목록 [V1, V2] 가 전달된다") {
                 sut.changeAffectsVersions(actor, issueKey, request)
+                // [V1, V1, V2] 가 raw로 전달되면 stub 미매칭으로 MockK 에러 발생 → 정규화 확인
                 verify(exactly = 1) {
                     repo.replaceAffectsVersions(issueKey, issueId, listOf(v1, v2), existingVersion)
                 }
@@ -177,12 +198,20 @@ class IssueChangeVersionsServiceTest : DescribeSpec({
 
         context("422 — 타 프로젝트/삭제 버전 포함") {
             val unknownId = UUID.fromString("00000000-0000-4000-8000-000000000099")
-            val request = AppChangeVersionsRequest(versionIds = listOf(v1, unknownId), expectedVersion = existingVersion)
+            val request =
+                AppChangeVersionsRequest(
+                    versionIds = listOf(v1, unknownId),
+                    expectedVersion = existingVersion,
+                )
             val existingIssue = makeIssue()
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.UPDATE,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { versionRepository.findById(v1, projectId) } returns mockk()
@@ -205,18 +234,28 @@ class IssueChangeVersionsServiceTest : DescribeSpec({
 
         context("ARCHIVED 버전 — deleted_at IS NULL 이면 통과") {
             // ARCHIVED 는 status만 다르고 deleted_at=null 이므로 findById 가 Version 을 반환한다.
-            val request = AppChangeVersionsRequest(versionIds = listOf(v1), expectedVersion = existingVersion)
+            val request =
+                AppChangeVersionsRequest(
+                    versionIds = listOf(v1),
+                    expectedVersion = existingVersion,
+                )
             val existingIssue = makeIssue()
             val response = makeResponse()
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.UPDATE,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
                 // ARCHIVED Version — versionRepository 는 deleted_at IS NULL 조건만 적용하므로 반환된다.
                 every { versionRepository.findById(v1, projectId) } returns mockk()
-                every { repo.replaceAffectsVersions(issueKey, issueId, listOf(v1), existingVersion) } returns 1
+                every {
+                    repo.replaceAffectsVersions(issueKey, issueId, listOf(v1), existingVersion)
+                } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns response
                 every { repo.findActiveComponentIdsByIssue(issueId) } returns emptyList()
             }
@@ -228,16 +267,26 @@ class IssueChangeVersionsServiceTest : DescribeSpec({
         }
 
         context("409 — 낙관락 충돌 (replaceAffectsVersions 0 반환)") {
-            val request = AppChangeVersionsRequest(versionIds = listOf(v1), expectedVersion = existingVersion)
+            val request =
+                AppChangeVersionsRequest(
+                    versionIds = listOf(v1),
+                    expectedVersion = existingVersion,
+                )
             val existingIssue = makeIssue()
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.UPDATE,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { versionRepository.findById(v1, projectId) } returns mockk()
-                every { repo.replaceAffectsVersions(issueKey, issueId, listOf(v1), existingVersion) } returns 0
+                every {
+                    repo.replaceAffectsVersions(issueKey, issueId, listOf(v1), existingVersion)
+                } returns 0
             }
 
             it("IssueVersionConflictException 을 던진다") {
@@ -248,11 +297,19 @@ class IssueChangeVersionsServiceTest : DescribeSpec({
         }
 
         context("404 — 이슈 미존재") {
-            val request = AppChangeVersionsRequest(versionIds = listOf(v1), expectedVersion = existingVersion)
+            val request =
+                AppChangeVersionsRequest(
+                    versionIds = listOf(v1),
+                    expectedVersion = existingVersion,
+                )
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.UPDATE,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKey(issueKey) } returns null
             }
@@ -265,11 +322,19 @@ class IssueChangeVersionsServiceTest : DescribeSpec({
         }
 
         context("403 — 권한 없음") {
-            val request = AppChangeVersionsRequest(versionIds = listOf(v1), expectedVersion = existingVersion)
+            val request =
+                AppChangeVersionsRequest(
+                    versionIds = listOf(v1),
+                    expectedVersion = existingVersion,
+                )
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.UPDATE,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns false
             }
 
@@ -291,18 +356,28 @@ class IssueChangeVersionsServiceTest : DescribeSpec({
     describe("changeFixVersions") {
 
         context("happy path — 모든 버전 활성, 권한 OK") {
-            val request = AppChangeVersionsRequest(versionIds = listOf(v1, v2), expectedVersion = existingVersion)
+            val request =
+                AppChangeVersionsRequest(
+                    versionIds = listOf(v1, v2),
+                    expectedVersion = existingVersion,
+                )
             val existingIssue = makeIssue()
             val response = makeResponse()
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.UPDATE,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { versionRepository.findById(v1, projectId) } returns mockk()
                 every { versionRepository.findById(v2, projectId) } returns mockk()
-                every { repo.replaceFixVersions(issueKey, issueId, listOf(v1, v2), existingVersion) } returns 1
+                every {
+                    repo.replaceFixVersions(issueKey, issueId, listOf(v1, v2), existingVersion)
+                } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns response
                 every { repo.findActiveComponentIdsByIssue(issueId) } returns emptyList()
             }
@@ -321,24 +396,35 @@ class IssueChangeVersionsServiceTest : DescribeSpec({
         }
 
         context("중복 ID 정규화 — [V1, V1, V2] 입력이 도메인 assignFixVersions 경유로 distinct됨") {
-            val request = AppChangeVersionsRequest(versionIds = listOf(v1, v1, v2), expectedVersion = existingVersion)
+            val request =
+                AppChangeVersionsRequest(
+                    versionIds = listOf(v1, v1, v2),
+                    expectedVersion = existingVersion,
+                )
             val existingIssue = makeIssue()
             val response = makeResponse()
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.UPDATE,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { versionRepository.findById(v1, projectId) } returns mockk()
                 every { versionRepository.findById(v2, projectId) } returns mockk()
-                every { repo.replaceFixVersions(issueKey, issueId, listOf(v1, v2), existingVersion) } returns 1
+                every {
+                    repo.replaceFixVersions(issueKey, issueId, listOf(v1, v2), existingVersion)
+                } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns response
                 every { repo.findActiveComponentIdsByIssue(issueId) } returns emptyList()
             }
 
             it("replaceFixVersions 에 distinct 된 목록 [V1, V2] 가 전달된다") {
                 sut.changeFixVersions(actor, issueKey, request)
+                // [V1, V1, V2] 가 raw로 전달되면 stub 미매칭으로 MockK 에러 발생 → 정규화 확인
                 verify(exactly = 1) {
                     repo.replaceFixVersions(issueKey, issueId, listOf(v1, v2), existingVersion)
                 }
@@ -347,12 +433,20 @@ class IssueChangeVersionsServiceTest : DescribeSpec({
 
         context("422 — 타 프로젝트/삭제 버전 포함") {
             val unknownId = UUID.fromString("00000000-0000-4000-8000-000000000099")
-            val request = AppChangeVersionsRequest(versionIds = listOf(v1, unknownId), expectedVersion = existingVersion)
+            val request =
+                AppChangeVersionsRequest(
+                    versionIds = listOf(v1, unknownId),
+                    expectedVersion = existingVersion,
+                )
             val existingIssue = makeIssue()
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.UPDATE,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { versionRepository.findById(v1, projectId) } returns mockk()
@@ -374,16 +468,26 @@ class IssueChangeVersionsServiceTest : DescribeSpec({
         }
 
         context("409 — 낙관락 충돌 (replaceFixVersions 0 반환)") {
-            val request = AppChangeVersionsRequest(versionIds = listOf(v1), expectedVersion = existingVersion)
+            val request =
+                AppChangeVersionsRequest(
+                    versionIds = listOf(v1),
+                    expectedVersion = existingVersion,
+                )
             val existingIssue = makeIssue()
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.UPDATE,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns true
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { versionRepository.findById(v1, projectId) } returns mockk()
-                every { repo.replaceFixVersions(issueKey, issueId, listOf(v1), existingVersion) } returns 0
+                every {
+                    repo.replaceFixVersions(issueKey, issueId, listOf(v1), existingVersion)
+                } returns 0
             }
 
             it("IssueVersionConflictException 을 던진다") {
@@ -394,11 +498,19 @@ class IssueChangeVersionsServiceTest : DescribeSpec({
         }
 
         context("403 — 권한 없음") {
-            val request = AppChangeVersionsRequest(versionIds = listOf(v1), expectedVersion = existingVersion)
+            val request =
+                AppChangeVersionsRequest(
+                    versionIds = listOf(v1),
+                    expectedVersion = existingVersion,
+                )
 
             beforeEach {
                 every {
-                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.UPDATE,
+                        IssueScope.Issue(issueKey.value),
+                    )
                 } returns false
             }
 

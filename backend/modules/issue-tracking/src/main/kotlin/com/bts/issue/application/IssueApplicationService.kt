@@ -17,6 +17,7 @@ import com.bts.issue.domain.IssueComponentNotFoundException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueImpact
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.domain.IssueLinkedVersionNotFoundException
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssuePriority
 import com.bts.issue.domain.IssueProjectNotFoundException
@@ -38,6 +39,7 @@ import com.bts.issue.resolution.domain.ResolutionNotFoundException
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.domain.IssueTypeNotFoundException
 import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.FieldKind
@@ -99,6 +101,9 @@ class IssueApplicationService(
     private val userLookupPort: UserLookupPort,
     private val componentRepository: ComponentRepository,
     private val projectLeadRepository: ProjectLeadRepository,
+    // versionRepository: 기존 테스트 호환을 위해 null 허용. Spring 컨텍스트에서는 Bean 주입.
+    // null 이면 버전 존재 검증을 수행하지 않는다(기존 테스트 backward-compat).
+    private val versionRepository: VersionRepository? = null,
     // customFieldDefinitionRepository: 기존 테스트 호환을 위해 null 허용. Spring 컨텍스트에서는 Bean 주입.
     // null 이면 커스텀 필드 검증을 수행하지 않는다(기존 테스트 backward-compat).
     private val customFieldDefinitionRepository: CustomFieldDefinitionRepository? = null,
@@ -742,6 +747,90 @@ class IssueApplicationService(
     }
 
     /**
+     * 이슈에 연결된 "영향받는 버전" 목록을 교체한다 (FR-VR-03).
+     *
+     * 도메인 [Issue.assignAffectsVersions] 를 경유하여 distinct 정규화 후 영속한다.
+     * repository 에 raw 입력을 직행시키지 않아 도메인 불변식 검증이 우회되지 않는다
+     * (메모리 patch-merge-도메인-우회).
+     *
+     * @param actor 변경 행위자.
+     * @param key 대상 이슈 키.
+     * @param request 새 버전 UUID 목록 + expectedVersion.
+     * @return 변경된 이슈의 [IssueResponse].
+     * @throws IssueAccessDeniedException 권한 없을 때.
+     * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우.
+     * @throws IssueLinkedVersionNotFoundException 타 프로젝트/삭제 버전 포함 시.
+     * @throws IssueVersionConflictException 낙관락 충돌 시.
+     */
+    @Suppress("ThrowsCount")
+    fun changeAffectsVersions(
+        actor: ActorId,
+        key: IssueKey,
+        request: AppChangeVersionsRequest,
+    ): IssueResponse {
+        assertPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(key.value))
+        val existing = repo.findByKey(key) ?: throw IssueNotFoundException(key)
+        val normalized = existing.assignAffectsVersions(request.versionIds)
+        validateVersions(normalized.affectsVersionIds, existing.projectId)
+        val rows =
+            repo.replaceAffectsVersions(
+                key,
+                existing.id.value,
+                normalized.affectsVersionIds,
+                request.expectedVersion,
+            )
+        if (rows == 0) throw IssueVersionConflictException(key, existing.version)
+        log.info(
+            "issue_affects_versions_changed key={} count={} actor={}",
+            key.value,
+            normalized.affectsVersionIds.size,
+            actor.value,
+        )
+        return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
+    }
+
+    /**
+     * 이슈에 연결된 "수정 예정 버전" 목록을 교체한다 (FR-VR-03).
+     *
+     * [changeAffectsVersions] 와 완전 동형 — fix 버전 필드/메서드/테이블만 다르다.
+     *
+     * @param actor 변경 행위자.
+     * @param key 대상 이슈 키.
+     * @param request 새 버전 UUID 목록 + expectedVersion.
+     * @return 변경된 이슈의 [IssueResponse].
+     * @throws IssueAccessDeniedException 권한 없을 때.
+     * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우.
+     * @throws IssueLinkedVersionNotFoundException 타 프로젝트/삭제 버전 포함 시.
+     * @throws IssueVersionConflictException 낙관락 충돌 시.
+     */
+    @Suppress("ThrowsCount")
+    fun changeFixVersions(
+        actor: ActorId,
+        key: IssueKey,
+        request: AppChangeVersionsRequest,
+    ): IssueResponse {
+        assertPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(key.value))
+        val existing = repo.findByKey(key) ?: throw IssueNotFoundException(key)
+        val normalized = existing.assignFixVersions(request.versionIds)
+        validateVersions(normalized.fixVersionIds, existing.projectId)
+        val rows =
+            repo.replaceFixVersions(
+                key,
+                existing.id.value,
+                normalized.fixVersionIds,
+                request.expectedVersion,
+            )
+        if (rows == 0) throw IssueVersionConflictException(key, existing.version)
+        log.info(
+            "issue_fix_versions_changed key={} count={} actor={}",
+            key.value,
+            normalized.fixVersionIds.size,
+            actor.value,
+        )
+        return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
+    }
+
+    /**
      * 프로젝트의 활성 이슈 목록을 페이지로 조회한다.
      *
      * 단건 VIEW 와 달리 목록은 BROWSE 권한(Project 범위)을 검사하며, 미인가 시 403 을 유지한다
@@ -1152,6 +1241,27 @@ class IssueApplicationService(
     ) {
         componentIds.forEach { id ->
             componentRepository.findById(id, projectId) ?: throw IssueComponentNotFoundException(id)
+        }
+    }
+
+    /**
+     * 버전 UUID 목록이 모두 프로젝트 내 활성(deleted_at IS NULL) 버전인지 검증한다.
+     *
+     * 하나라도 null(타 프로젝트 또는 소프트 삭제) 이면 [IssueLinkedVersionNotFoundException] 을 던진다.
+     * ARCHIVED 상태 버전은 deleted_at=null 이므로 이 검증을 통과한다.
+     * [versionRepository] 가 null 이면 검증을 수행하지 않는다(기존 테스트 backward-compat).
+     *
+     * @param versionIds 검증할 버전 UUID 목록 (distinct 정규화 완료 상태).
+     * @param projectId 소속 프로젝트 UUID.
+     * @throws IssueLinkedVersionNotFoundException 타 프로젝트/삭제 버전이 포함된 경우.
+     */
+    private fun validateVersions(
+        versionIds: List<UUID>,
+        projectId: UUID,
+    ) {
+        val verRepo = versionRepository ?: return
+        versionIds.forEach { id ->
+            verRepo.findById(id, projectId) ?: throw IssueLinkedVersionNotFoundException(id)
         }
     }
 
