@@ -4,6 +4,7 @@ package com.bts.issue.version.repository
 import com.bts.issue.jooq.tables.records.VersionsRecord
 import com.bts.issue.jooq.tables.references.VERSIONS
 import com.bts.issue.version.domain.Version
+import com.bts.issue.version.domain.VersionStatus
 import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
@@ -21,7 +22,7 @@ import java.util.UUID
  * - [insert] — 새 버전을 삽입하고 DB 생성 값(id, createdAt, updatedAt)을 포함한 [Version] 반환.
  * - [findById] — 버전 id + project_id 소속 + 활성(deleted_at IS NULL) 조건으로 조회.
  * - [findByProject] — 프로젝트 소속 활성 버전을 name 오름차순으로 반환.
- * - [update] — name, description, startDate, releaseDate 를 갱신하고 [Version] 반환.
+ * - [update] — name, description, startDate, releaseDate, status, releasedAt 을 갱신하고 [Version] 반환.
  * - [softDelete] — deleted_at 를 현재 UTC 시각으로 설정. 물리 삭제 금지 (DATA.md §3).
  *
  * 동시 생성 race(23505 중복키 오류) 처리는 상위 서비스/컨트롤러 책임.
@@ -53,6 +54,8 @@ class VersionRepository(
                 .set(VERSIONS.DESCRIPTION, version.description)
                 .set(VERSIONS.START_DATE, version.startDate)
                 .set(VERSIONS.RELEASE_DATE, version.releaseDate)
+                .set(VERSIONS.STATUS, version.status.name)
+                .set(VERSIONS.RELEASED_AT, version.releasedAt?.let { OffsetDateTime.ofInstant(it, ZoneOffset.UTC) })
                 .set(VERSIONS.CREATED_AT, now)
                 .set(VERSIONS.UPDATED_AT, now)
                 .returning()
@@ -118,6 +121,8 @@ class VersionRepository(
             .set(VERSIONS.DESCRIPTION, version.description)
             .set(VERSIONS.START_DATE, version.startDate)
             .set(VERSIONS.RELEASE_DATE, version.releaseDate)
+            .set(VERSIONS.STATUS, version.status.name)
+            .set(VERSIONS.RELEASED_AT, version.releasedAt?.let { OffsetDateTime.ofInstant(it, ZoneOffset.UTC) })
             .set(VERSIONS.UPDATED_AT, now)
             .where(VERSIONS.ID.eq(id))
             .and(VERSIONS.PROJECT_ID.eq(version.projectId))
@@ -154,6 +159,9 @@ class VersionRepository(
 
     /**
      * [VersionsRecord] 를 도메인 [Version] 으로 변환한다.
+     *
+     * status 는 DB VARCHAR 값을 [VersionStatus.valueOf] 로 변환한다.
+     * DB CHECK 제약이 유효한 값만 허용하므로 변환 실패 시 프로그래밍 오류다.
      */
     private fun toVersion(record: VersionsRecord): Version =
         Version(
@@ -163,6 +171,11 @@ class VersionRepository(
             description = record.description,
             startDate = record.startDate,
             releaseDate = record.releaseDate,
+            status =
+                VersionStatus.valueOf(
+                    record.status ?: error("versions.status must not be null after DB read"),
+                ),
+            releasedAt = record.releasedAt?.toInstant(),
             deletedAt = record.deletedAt?.toInstant(),
         )
 }

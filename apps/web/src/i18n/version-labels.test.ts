@@ -106,6 +106,10 @@ describe('versionErrorMessage', () => {
     )
   })
 
+  it('VERSION_TRANSITION_NOT_ALLOWED → 전이 불허 메시지를 반환한다', () => {
+    expect(versionErrorMessage('VERSION_TRANSITION_NOT_ALLOWED')).toBeTruthy()
+  })
+
   it('알 수 없는 코드 → 기본 메시지를 반환한다', () => {
     expect(versionErrorMessage('UNKNOWN_CODE')).toBe(
       '요청을 처리하지 못했습니다.',
@@ -114,5 +118,48 @@ describe('versionErrorMessage', () => {
 
   it('null → 기본 메시지를 반환한다', () => {
     expect(versionErrorMessage(null)).toBe('요청을 처리하지 못했습니다.')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// versionStatusLabel / versionTransitionLabel — FR-VR-02 Task 5 RED
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('versionStatusLabel', () => {
+  it('UNRELEASED 상태 한국어 라벨을 반환한다', async () => {
+    const { versionStatusLabel } = await import('./version-labels')
+    expect(versionStatusLabel('UNRELEASED')).toBeTruthy()
+  })
+
+  it('RELEASED 상태 한국어 라벨을 반환한다', async () => {
+    const { versionStatusLabel } = await import('./version-labels')
+    expect(versionStatusLabel('RELEASED')).toBeTruthy()
+  })
+
+  it('ARCHIVED 상태 한국어 라벨을 반환한다', async () => {
+    const { versionStatusLabel } = await import('./version-labels')
+    expect(versionStatusLabel('ARCHIVED')).toBeTruthy()
+  })
+})
+
+describe('versionTransitionLabel', () => {
+  it('release 전이 한국어 라벨을 반환한다', async () => {
+    const { versionTransitionLabel } = await import('./version-labels')
+    expect(versionTransitionLabel('release')).toBeTruthy()
+  })
+
+  it('unrelease 전이 한국어 라벨을 반환한다', async () => {
+    const { versionTransitionLabel } = await import('./version-labels')
+    expect(versionTransitionLabel('unrelease')).toBeTruthy()
+  })
+
+  it('archive 전이 한국어 라벨을 반환한다', async () => {
+    const { versionTransitionLabel } = await import('./version-labels')
+    expect(versionTransitionLabel('archive')).toBeTruthy()
+  })
+
+  it('unarchive 전이 한국어 라벨을 반환한다', async () => {
+    const { versionTransitionLabel } = await import('./version-labels')
+    expect(versionTransitionLabel('unarchive')).toBeTruthy()
   })
 })

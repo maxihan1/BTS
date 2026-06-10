@@ -1,10 +1,10 @@
-// 버전 단일 행 — 이름/설명/날짜 표시 + 수정/삭제 인라인 확인 액션 + 권한 게이팅 (FR-VR-01, FR-PM-03)
+// 버전 단일 행 — 상태 뱃지 + 전이 버튼 + 수정/삭제 + ARCHIVED 비활성화 (FR-VR-01, FR-VR-02)
 import { useState } from 'react'
 import type { JSX } from 'react'
 import { Button } from '@/components/ui/button'
-import { useDeleteVersion } from '@/hooks/use-versions'
-import { versionLabels } from '@/i18n/version-labels'
-import type { Version } from '@/api/versions.types'
+import { useDeleteVersion, useChangeVersionStatus } from '@/hooks/use-versions'
+import { versionLabels, versionStatusLabel, versionTransitionLabel } from '@/i18n/version-labels'
+import type { Version, VersionStatus } from '@/api/versions.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -39,6 +39,66 @@ interface VersionRowProps {
  */
 function formatDate(date: string | null): string {
   return date ?? '—'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 상태 뱃지 Tailwind 클래스 매핑
+// ─────────────────────────────────────────────────────────────────────────────
+
+const BADGE_BASE = 'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold'
+
+const STATUS_BADGE_CLASS: Record<VersionStatus, string> = {
+  UNRELEASED: `${BADGE_BASE} bg-secondary text-secondary-foreground`,
+  RELEASED: `${BADGE_BASE} bg-primary text-primary-foreground`,
+  ARCHIVED: `${BADGE_BASE} text-muted-foreground`,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 전이 액션 맵 — 현재 상태 → 가능한 전이 목록
+// backend 전이 그래프와 1:1 미러 (FR-VR-02)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface TransitionAction {
+  /** 전이 대상 상태 */
+  targetStatus: VersionStatus
+  /** 버튼 라벨 */
+  label: string
+  /** 버튼 variant */
+  variant: 'outline' | 'secondary'
+}
+
+const TRANSITION_ACTIONS: Record<VersionStatus, readonly TransitionAction[]> = {
+  UNRELEASED: [
+    {
+      targetStatus: 'RELEASED',
+      label: versionTransitionLabel('release'),
+      variant: 'outline',
+    },
+    {
+      targetStatus: 'ARCHIVED',
+      label: versionTransitionLabel('archive'),
+      variant: 'outline',
+    },
+  ],
+  RELEASED: [
+    {
+      targetStatus: 'UNRELEASED',
+      label: versionTransitionLabel('unrelease'),
+      variant: 'outline',
+    },
+    {
+      targetStatus: 'ARCHIVED',
+      label: versionTransitionLabel('archive'),
+      variant: 'outline',
+    },
+  ],
+  ARCHIVED: [
+    {
+      targetStatus: 'UNRELEASED',
+      label: versionTransitionLabel('unarchive'),
+      variant: 'outline',
+    },
+  ],
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,9 +145,12 @@ function DeleteConfirm({ onConfirm, onCancel, isDeleting }: DeleteConfirmProps):
  * 버전 단일 행 컴포넌트.
  *
  * - 이름 · 설명 표시
+ * - 상태 뱃지 (UNRELEASED/RELEASED/ARCHIVED)
  * - 날짜 2열: startDate / releaseDate (null → "—")
+ * - 전이 버튼: 현재 상태에서 가능한 전이만 — TRANSITION_ACTIONS 맵
  * - 수정 버튼: onEdit(version) 호출 → 상위에서 VersionFormDialog를 엶
  * - 삭제 버튼: 인라인 확인 UI → useDeleteVersion.mutate → onDelete(id) 호출
+ * - ARCHIVED 상태에서 수정/삭제 버튼 disabled (읽기 전용)
  * - 행 단위 aria-label (E2E strict mode 회피)
  * - 토스트는 hook 레이어(use-versions)에서 발사 — 행에서 중복 발사 금지
  */
@@ -101,8 +164,13 @@ export function VersionRow({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const deleteMutation = useDeleteVersion(projectKey)
+  const statusMutation = useChangeVersionStatus(projectKey)
 
   const { actions } = versionLabels
+
+  const isArchived = version.status === 'ARCHIVED'
+  // ARCHIVED이면 수정/삭제 불가 (canManage 무관)
+  const canEditOrDelete = canManage && !isArchived
 
   function handleEditClick(): void {
     onEdit(version)
@@ -128,11 +196,22 @@ export function VersionRow({
     setShowDeleteConfirm(false)
   }
 
+  function handleTransition(targetStatus: VersionStatus): void {
+    statusMutation.mutate({ id: version.id, status: targetStatus })
+  }
+
+  const transitionActions = TRANSITION_ACTIONS[version.status]
+
   return (
     <li className="flex flex-col gap-3 rounded-md border px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
-      {/* 이름 + 설명 */}
+      {/* 이름 + 설명 + 상태 뱃지 */}
       <div className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{version.name}</span>
+        <div className="flex items-center gap-2">
+          <span className="block truncate text-sm font-medium">{version.name}</span>
+          <span className={STATUS_BADGE_CLASS[version.status]}>
+            {versionStatusLabel(version.status)}
+          </span>
+        </div>
         {version.description !== null && (
           <span className="block truncate text-xs text-muted-foreground">
             {version.description}
@@ -154,6 +233,20 @@ export function VersionRow({
 
       {/* 액션 영역 */}
       <div className="flex items-center gap-2 shrink-0">
+        {/* 전이 버튼 — 현재 상태에서 가능한 전이만 */}
+        {transitionActions.map((action) => (
+          <Button
+            key={action.targetStatus}
+            variant={action.variant}
+            size="sm"
+            disabled={!canManage || statusMutation.isPending}
+            aria-label={`${version.name} ${action.label}`}
+            onClick={() => handleTransition(action.targetStatus)}
+          >
+            {action.label}
+          </Button>
+        ))}
+
         {showDeleteConfirm ? (
           <DeleteConfirm
             onConfirm={handleDeleteConfirm}
@@ -166,8 +259,14 @@ export function VersionRow({
               variant="outline"
               size="sm"
               aria-label={`${version.name} ${actions.editButton}`}
-              disabled={!canManage}
-              title={!canManage ? versionLabels.actions.noPermission : undefined}
+              disabled={!canEditOrDelete}
+              title={
+                isArchived
+                  ? 'ARCHIVED 버전은 수정할 수 없습니다.'
+                  : !canManage
+                    ? versionLabels.actions.noPermission
+                    : undefined
+              }
               onClick={handleEditClick}
             >
               {actions.editButton}
@@ -176,8 +275,14 @@ export function VersionRow({
               variant="destructive"
               size="sm"
               aria-label={`${version.name} ${actions.deleteButton}`}
-              disabled={!canManage}
-              title={!canManage ? versionLabels.actions.noPermission : undefined}
+              disabled={!canEditOrDelete}
+              title={
+                isArchived
+                  ? 'ARCHIVED 버전은 삭제할 수 없습니다.'
+                  : !canManage
+                    ? versionLabels.actions.noPermission
+                    : undefined
+              }
               onClick={handleDeleteClick}
             >
               {actions.deleteButton}

@@ -6,6 +6,7 @@ import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
@@ -21,6 +22,8 @@ import java.util.UUID
  * - [Version.rename], [Version.changeDescription], [Version.changeDates], [Version.softDelete] 도메인 메서드
  * - softDelete 멱등성 — 이미 삭제된 버전 재삭제 거부
  * - changeDates — 순서 미강제(startDate > releaseDate 허용)
+ * - 상태 전이 — release/unrelease/archive/unarchive 5종 + releasedAt 불변식
+ * - 거부 케이스 — self-transition, 그래프 외 전이, ARCHIVED 읽기 전용
  */
 class VersionTest : DescribeSpec({
 
@@ -328,6 +331,182 @@ class VersionTest : DescribeSpec({
             original.softDelete()
 
             original.deletedAt.shouldBeNull()
+        }
+    }
+
+    describe("Version.create — 상태 초기값") {
+
+        it("create 로 생성된 버전의 status 는 UNRELEASED 이다") {
+            val version = Version.create(projectId = projectId, name = "1.0.0")
+
+            version.status shouldBe VersionStatus.UNRELEASED
+        }
+
+        it("create 로 생성된 버전의 releasedAt 은 null 이다") {
+            val version = Version.create(projectId = projectId, name = "1.0.0")
+
+            version.releasedAt.shouldBeNull()
+        }
+    }
+
+    describe("Version.release — UNRELEASED → RELEASED") {
+
+        it("UNRELEASED 상태에서 release 호출 시 status 가 RELEASED 로 변경된다") {
+            val fixedNow = Instant.parse("2026-06-10T00:00:00Z")
+            val version = Version.create(projectId = projectId, name = "1.0.0")
+            val released = version.release(fixedNow)
+
+            released.status shouldBe VersionStatus.RELEASED
+        }
+
+        it("UNRELEASED 상태에서 release 호출 시 releasedAt 이 전달한 now 로 설정된다") {
+            val fixedNow = Instant.parse("2026-06-10T00:00:00Z")
+            val version = Version.create(projectId = projectId, name = "1.0.0")
+            val released = version.release(fixedNow)
+
+            released.releasedAt shouldBe fixedNow
+        }
+
+        it("RELEASED 상태에서 release 호출 시 VersionTransitionNotAllowedException 을 던진다 (self-transition)") {
+            val fixedNow = Instant.parse("2026-06-10T00:00:00Z")
+            val version = Version.create(projectId = projectId, name = "1.0.0").release(fixedNow)
+
+            shouldThrow<VersionTransitionNotAllowedException> {
+                version.release(fixedNow)
+            }
+        }
+
+        it("ARCHIVED 상태에서 release 호출 시 VersionTransitionNotAllowedException 을 던진다 (그래프 외 전이)") {
+            val fixedNow = Instant.parse("2026-06-10T00:00:00Z")
+            val version = Version.create(projectId = projectId, name = "1.0.0").archive()
+
+            shouldThrow<VersionTransitionNotAllowedException> {
+                version.release(fixedNow)
+            }
+        }
+    }
+
+    describe("Version.unrelease — RELEASED → UNRELEASED") {
+
+        it("RELEASED 상태에서 unrelease 호출 시 status 가 UNRELEASED 로 변경된다") {
+            val fixedNow = Instant.parse("2026-06-10T00:00:00Z")
+            val version = Version.create(projectId = projectId, name = "1.0.0").release(fixedNow)
+            val unreleased = version.unrelease()
+
+            unreleased.status shouldBe VersionStatus.UNRELEASED
+        }
+
+        it("RELEASED 상태에서 unrelease 호출 시 releasedAt 이 null 로 클리어된다") {
+            val fixedNow = Instant.parse("2026-06-10T00:00:00Z")
+            val version = Version.create(projectId = projectId, name = "1.0.0").release(fixedNow)
+            val unreleased = version.unrelease()
+
+            unreleased.releasedAt.shouldBeNull()
+        }
+
+        it("UNRELEASED 상태에서 unrelease 호출 시 VersionTransitionNotAllowedException 을 던진다 (self-transition)") {
+            val version = Version.create(projectId = projectId, name = "1.0.0")
+
+            shouldThrow<VersionTransitionNotAllowedException> {
+                version.unrelease()
+            }
+        }
+    }
+
+    describe("Version.archive — UNRELEASED/RELEASED → ARCHIVED") {
+
+        it("UNRELEASED 상태에서 archive 호출 시 status 가 ARCHIVED 로 변경된다") {
+            val version = Version.create(projectId = projectId, name = "1.0.0")
+            val archived = version.archive()
+
+            archived.status shouldBe VersionStatus.ARCHIVED
+        }
+
+        it("UNRELEASED 에서 archive 하면 releasedAt 은 null 로 유지된다") {
+            val version = Version.create(projectId = projectId, name = "1.0.0")
+            val archived = version.archive()
+
+            archived.releasedAt.shouldBeNull()
+        }
+
+        it("RELEASED 에서 archive 하면 releasedAt 이 유지된다") {
+            val fixedNow = Instant.parse("2026-06-10T00:00:00Z")
+            val version = Version.create(projectId = projectId, name = "1.0.0").release(fixedNow)
+            val archived = version.archive()
+
+            archived.releasedAt shouldBe fixedNow
+        }
+
+        it("ARCHIVED 상태에서 archive 호출 시 VersionTransitionNotAllowedException 을 던진다 (self-transition)") {
+            val version = Version.create(projectId = projectId, name = "1.0.0").archive()
+
+            shouldThrow<VersionTransitionNotAllowedException> {
+                version.archive()
+            }
+        }
+    }
+
+    describe("Version.unarchive — ARCHIVED → UNRELEASED") {
+
+        it("ARCHIVED 상태에서 unarchive 호출 시 status 가 UNRELEASED 로 변경된다") {
+            val version = Version.create(projectId = projectId, name = "1.0.0").archive()
+            val unarchived = version.unarchive()
+
+            unarchived.status shouldBe VersionStatus.UNRELEASED
+        }
+
+        it("ARCHIVED 상태에서 unarchive 호출 시 releasedAt 이 null 로 클리어된다") {
+            val fixedNow = Instant.parse("2026-06-10T00:00:00Z")
+            val version =
+                Version.create(projectId = projectId, name = "1.0.0")
+                    .release(fixedNow)
+                    .archive()
+            val unarchived = version.unarchive()
+
+            unarchived.releasedAt.shouldBeNull()
+        }
+
+        it("UNRELEASED 상태에서 unarchive 호출 시 VersionTransitionNotAllowedException 을 던진다") {
+            val version = Version.create(projectId = projectId, name = "1.0.0")
+
+            shouldThrow<VersionTransitionNotAllowedException> {
+                version.unarchive()
+            }
+        }
+    }
+
+    describe("ARCHIVED 읽기 전용 불변식") {
+
+        it("ARCHIVED 버전에 rename 호출 시 VersionTransitionNotAllowedException 을 던진다") {
+            val version = Version.create(projectId = projectId, name = "1.0.0").archive()
+
+            shouldThrow<VersionTransitionNotAllowedException> {
+                version.rename("2.0.0")
+            }
+        }
+
+        it("ARCHIVED 버전에 changeDescription 호출 시 VersionTransitionNotAllowedException 을 던진다") {
+            val version = Version.create(projectId = projectId, name = "1.0.0").archive()
+
+            shouldThrow<VersionTransitionNotAllowedException> {
+                version.changeDescription("새 설명")
+            }
+        }
+
+        it("ARCHIVED 버전에 changeDates 호출 시 VersionTransitionNotAllowedException 을 던진다") {
+            val version = Version.create(projectId = projectId, name = "1.0.0").archive()
+
+            shouldThrow<VersionTransitionNotAllowedException> {
+                version.changeDates(LocalDate.of(2026, 1, 1), null)
+            }
+        }
+
+        it("ARCHIVED 버전에 softDelete 호출 시 VersionTransitionNotAllowedException 을 던진다") {
+            val version = Version.create(projectId = projectId, name = "1.0.0").archive()
+
+            shouldThrow<VersionTransitionNotAllowedException> {
+                version.softDelete()
+            }
         }
     }
 })

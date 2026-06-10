@@ -8,6 +8,8 @@ import com.bts.issue.version.domain.Version
 import com.bts.issue.version.domain.VersionAccessDeniedException
 import com.bts.issue.version.domain.VersionNotFoundException
 import com.bts.issue.version.domain.VersionProjectNotFoundException
+import com.bts.issue.version.domain.VersionStatus
+import com.bts.issue.version.domain.VersionTransitionNotAllowedException
 import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.permission.VersionPermission
 import com.bts.shared.permission.VersionPermissionResolver
@@ -15,6 +17,8 @@ import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Clock
+import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
@@ -35,7 +39,7 @@ private const val SQL_STATE_UNIQUE_VIOLATION = "23505"
  * 클래스 레벨 `@Transactional` 이 기본(읽기/쓰기 모두). 읽기 전용 메서드는
  * `@Transactional(readOnly = true)` 를 오버라이드한다.
  *
- * 공개 메서드 6개 + private 헬퍼 6개 = 12개. TooManyFunctions 임계값 11 초과이나
+ * 공개 메서드 7개 + private 헬퍼 9개 = 16개. TooManyFunctions 임계값 11 초과이나
  * 명세 요구 메서드 수로 파일 분리는 과도 — Suppress 처리.
  */
 @Suppress("TooManyFunctions")
@@ -45,6 +49,7 @@ class VersionApplicationService(
     private val permissionResolver: VersionPermissionResolver,
     private val projectLookup: ProjectLookup,
     private val repo: VersionRepository,
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -195,9 +200,59 @@ class VersionApplicationService(
     ) {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, VersionPermission.DELETE, projectId)
-        findActiveVersion(versionId, projectId)
+        val existing = findActiveVersion(versionId, projectId)
+        assertNotArchivedForDelete(existing)
         repo.softDelete(versionId, projectId)
         log.info("version_deleted id={} projectId={} actor={}", versionId, projectId, actorId)
+    }
+
+    /**
+     * 버전의 상태를 전이한다.
+     *
+     * 흐름.
+     * 1. 프로젝트 resolve — 미존재 시 [VersionProjectNotFoundException].
+     * 2. UPDATE 권한 검증 — 거부 시 [VersionAccessDeniedException].
+     * 3. 버전 존재 확인 — 미존재 시 [VersionNotFoundException].
+     * 4. 도메인 전이 메서드 호출 — 불허 전이 시 [VersionTransitionNotAllowedException].
+     * 5. [VersionRepository.update] 위임.
+     *
+     * 전이 그래프.
+     * ```
+     * UNRELEASED ──release──▶ RELEASED      (releasedAt = Instant.now(clock))
+     * RELEASED   ─unrelease─▶ UNRELEASED    (releasedAt = null)
+     * UNRELEASED ──archive──▶ ARCHIVED      (releasedAt 유지)
+     * RELEASED   ──archive──▶ ARCHIVED      (releasedAt 유지)
+     * ARCHIVED   ─unarchive─▶ UNRELEASED    (releasedAt = null)
+     * ```
+     *
+     * @param actorId 전이 행위자 UUID.
+     * @param projectIdOrKey 프로젝트 UUID 또는 projectKey.
+     * @param versionId 전이할 버전 UUID.
+     * @param target 목표 [VersionStatus].
+     * @return 전이 후 [Version].
+     * @throws VersionProjectNotFoundException 프로젝트가 존재하지 않을 때.
+     * @throws VersionAccessDeniedException 권한이 없을 때.
+     * @throws VersionNotFoundException 버전이 존재하지 않을 때.
+     * @throws VersionTransitionNotAllowedException 전이 그래프에 없는 전이 또는 self-transition 시.
+     */
+    fun changeStatus(
+        actorId: UUID,
+        projectIdOrKey: String,
+        versionId: UUID,
+        target: VersionStatus,
+    ): Version {
+        val projectId = resolveProject(projectIdOrKey)
+        assertPermission(actorId, VersionPermission.UPDATE, projectId)
+        val existing = findActiveVersion(versionId, projectId)
+        val updated = applyTransition(existing, target)
+        log.info(
+            "version_status_changed id={} projectId={} actor={} status={}",
+            versionId,
+            projectId,
+            actorId,
+            target,
+        )
+        return repo.update(updated)
     }
 
     /**
@@ -275,6 +330,49 @@ class VersionApplicationService(
     ): Version =
         repo.findById(versionId, projectId)
             ?: throw VersionNotFoundException(versionId)
+
+    /**
+     * ARCHIVED 버전 삭제 시도를 서비스 레벨에서 차단한다.
+     *
+     * 기존 [delete] 는 [VersionRepository.softDelete] 로 직행하여 도메인의 ARCHIVED 가드를 우회한다.
+     * (메모리 patch-merge-domain-bypass 참조). 도메인 softDelete 의 ARCHIVED 가드는 안전망으로 유지하되,
+     * 서비스 레벨에서도 명시적으로 거부한다.
+     *
+     * @param version 삭제 대상 버전.
+     * @throws VersionTransitionNotAllowedException ARCHIVED 버전 삭제 시도 시.
+     */
+    private fun assertNotArchivedForDelete(version: Version) {
+        if (version.status == VersionStatus.ARCHIVED) {
+            throw VersionTransitionNotAllowedException(
+                "Cannot delete an ARCHIVED version (id=${version.id}). Unarchive first.",
+            )
+        }
+    }
+
+    /**
+     * target [VersionStatus] 에 따라 도메인 전이 메서드를 선택해 적용한다.
+     *
+     * 허용 전이 그래프는 도메인 메서드가 검증하므로 불허 경우는 [VersionTransitionNotAllowedException].
+     *
+     * @param version 현재 상태의 [Version].
+     * @param target 목표 상태.
+     * @return 전이 후 새 [Version] 인스턴스.
+     */
+    private fun applyTransition(
+        version: Version,
+        target: VersionStatus,
+    ): Version =
+        when (target) {
+            VersionStatus.RELEASED -> version.release(Instant.now(clock))
+            VersionStatus.UNRELEASED -> {
+                if (version.status == VersionStatus.ARCHIVED) {
+                    version.unarchive()
+                } else {
+                    version.unrelease()
+                }
+            }
+            VersionStatus.ARCHIVED -> version.archive()
+        }
 
     /**
      * name/description null-safe 도메인 메서드 적용 — null 이면 기존 값 유지 (3-state PATCH).

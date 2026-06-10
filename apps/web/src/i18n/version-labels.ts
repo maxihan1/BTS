@@ -1,4 +1,5 @@
-// 버전 관리 UI의 한국어 라벨 + errorCode → 사용자 메시지 단일 출처
+// 버전 관리 UI의 한국어 라벨 + errorCode → 사용자 메시지 단일 출처 (FR-VR-01, FR-VR-02)
+import type { VersionStatus } from '@/api/versions.types'
 
 /**
  * 버전 관리 UI가 노출하는 한국어 라벨/텍스트.
@@ -76,7 +77,41 @@ export function versionErrorMessage(errorCode: string | null): string {
       return '입력값을 확인해 주세요.'
     case 'VERSION_ACCESS_DENIED':
       return '버전을 수정할 권한이 없습니다.'
+    case 'VERSION_TRANSITION_NOT_ALLOWED':
+      return '이 상태에서는 해당 전이를 수행할 수 없습니다.'
     default:
       return '요청을 처리하지 못했습니다.'
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 상태 / 전이 라벨 — FR-VR-02
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 버전 상태 → 한국어 뱃지 라벨 */
+export function versionStatusLabel(status: VersionStatus): string {
+  switch (status) {
+    case 'UNRELEASED':
+      return '미출시'
+    case 'RELEASED':
+      return '출시됨'
+    case 'ARCHIVED':
+      return '보관됨'
+  }
+}
+
+/** 전이 동사 → 한국어 버튼 라벨 */
+export function versionTransitionLabel(
+  transition: 'release' | 'unrelease' | 'archive' | 'unarchive',
+): string {
+  switch (transition) {
+    case 'release':
+      return '릴리스'
+    case 'unrelease':
+      return '되돌리기'
+    case 'archive':
+      return '보관'
+    case 'unarchive':
+      return '보관 해제'
   }
 }

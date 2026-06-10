@@ -277,8 +277,9 @@ CREATE UNIQUE INDEX ux_components_project_id_name_active
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- V010: versions 테이블 (FR-VR-01 프로젝트별 버전)
--- 원본: db/migration/issue-tracking/V010__versions.sql
--- jOOQ: Versions.ID/PROJECT_ID/NAME/DESCRIPTION/START_DATE/RELEASE_DATE/CREATED_AT/UPDATED_AT/DELETED_AT 생성 대상
+-- V016: status / released_at 컬럼 + ck_versions_status (FR-VR-02 버전 상태 전이)
+-- 원본: db/migration/issue-tracking/V010__versions.sql + V016__version_status.sql
+-- jOOQ: Versions.ID/PROJECT_ID/NAME/DESCRIPTION/START_DATE/RELEASE_DATE/STATUS/RELEASED_AT/CREATED_AT/UPDATED_AT/DELETED_AT 생성 대상
 -- ═══════════════════════════════════════════════════════════════════════════
 
 CREATE TABLE versions (
@@ -288,9 +289,12 @@ CREATE TABLE versions (
     description   TEXT         NULL,
     start_date    DATE         NULL,
     release_date  DATE         NULL,
+    status        VARCHAR(20)  NOT NULL DEFAULT 'UNRELEASED',
+    released_at   TIMESTAMPTZ  NULL,
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    deleted_at    TIMESTAMPTZ  NULL
+    deleted_at    TIMESTAMPTZ  NULL,
+    CONSTRAINT ck_versions_status CHECK (status IN ('UNRELEASED', 'RELEASED', 'ARCHIVED'))
 );
 COMMENT ON TABLE  versions              IS '프로젝트별 버전(릴리스 단위). 같은 BC 라 projects 실 FK 적용 (FR-VR-01).';
 COMMENT ON COLUMN versions.project_id   IS '소속 프로젝트 (projects.id). 같은 BC(issue-tracking) 이므로 실 FK 적용.';
@@ -298,6 +302,8 @@ COMMENT ON COLUMN versions.name         IS '버전 이름. 활성(deleted_at IS 
 COMMENT ON COLUMN versions.description  IS '버전 설명 (선택).';
 COMMENT ON COLUMN versions.start_date   IS '버전 시작 예정일 (선택). 날짜 단위라 DATE.';
 COMMENT ON COLUMN versions.release_date IS '버전 릴리스 예정일 (선택). 날짜 단위라 DATE.';
+COMMENT ON COLUMN versions.status       IS '버전 상태 (UNRELEASED/RELEASED/ARCHIVED). 신규 버전은 UNRELEASED 로 시작 (FR-VR-02).';
+COMMENT ON COLUMN versions.released_at  IS 'RELEASED 진입 시각 (Clock 주입). UNRELEASED 진입 시 NULL, ARCHIVED 진입 시 직전값 유지 (FR-VR-02).';
 COMMENT ON COLUMN versions.deleted_at   IS 'NULL=활성, NOT NULL=삭제됨. 소프트 삭제 (DATA.md §3). 삭제 후 동명 재생성 허용.';
 
 CREATE INDEX idx_versions_project_id ON versions(project_id);

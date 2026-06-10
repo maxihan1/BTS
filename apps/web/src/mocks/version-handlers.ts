@@ -1,6 +1,6 @@
-// 버전 BC MSW 핸들러 — stateful CRUD + RFC 7807 ProblemDetail 에러 (FR-VR-01)
+// 버전 BC MSW 핸들러 — stateful CRUD + 상태 전이 + RFC 7807 ProblemDetail 에러 (FR-VR-01, FR-VR-02)
 import { http, HttpResponse } from 'msw'
-import type { Version } from '../api/versions.types'
+import type { Version, VersionStatus } from '../api/versions.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 저장소 타입 — 프로젝트별 버전 Map
@@ -9,6 +9,18 @@ import type { Version } from '../api/versions.types'
 interface StoredVersion extends Version {
   projectIdOrKey: string
   deleted: boolean
+  // status/releasedAt은 Version에서 상속됨 (FR-VR-02 추가)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 전이 그래프 — backend 전이 규칙과 1:1 미러 (FR-VR-02)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 현재 상태에서 전이 가능한 상태 집합 */
+const ALLOWED_TRANSITIONS: Record<VersionStatus, ReadonlySet<VersionStatus>> = {
+  UNRELEASED: new Set<VersionStatus>(['RELEASED', 'ARCHIVED']),
+  RELEASED: new Set<VersionStatus>(['UNRELEASED', 'ARCHIVED']),
+  ARCHIVED: new Set<VersionStatus>(['UNRELEASED']),
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -90,15 +102,25 @@ function versionNotFound(id: string): HttpResponse<ProblemDetail> {
 // 목록을 name 오름차순으로 정렬해 반환하는 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * StoredVersion을 Version 응답 형태로 변환한다.
+ * releasedAt은 @JsonInclude(NON_NULL) 정책 미러 — null/undefined이면 키 자체 제외.
+ */
 function toVersion(stored: StoredVersion): Version {
-  return {
+  const base: Version = {
     id: stored.id,
     projectId: stored.projectId,
     name: stored.name,
     description: stored.description,
     startDate: stored.startDate,
     releaseDate: stored.releaseDate,
+    status: stored.status,
   }
+  // releasedAt이 null/undefined이면 키 자체 없음 (@JsonInclude(NON_NULL) 미러)
+  if (stored.releasedAt != null) {
+    return { ...base, releasedAt: stored.releasedAt }
+  }
+  return base
 }
 
 function sortedByName(versions: StoredVersion[]): Version[] {
@@ -114,11 +136,15 @@ function sortedByName(versions: StoredVersion[]): Version[] {
 /**
  * 활성 버전 목록 조회 — name 오름차순 정렬.
  * C2: 전역 GET 목록은 항상 200 반환 (PROJECT_NOT_FOUND 자체발행 금지).
+ * X-MSW-Reset-Versions: true 헤더 포함 시 저장소를 초기화한 뒤 목록을 반환한다 (E2E 격리용).
  * 성공 → 200 { data: Version[] }
  */
 const listVersionsHandler = http.get(
   '/api/v1/projects/:projectIdOrKey/versions',
-  ({ params }) => {
+  ({ request, params }) => {
+    if (request.headers.get('X-MSW-Reset-Versions') === 'true') {
+      resetVersionStore()
+    }
     const projectIdOrKey = params['projectIdOrKey'] as string
     const items = Array.from(versionStore.values()).filter(
       (v) => v.projectIdOrKey === projectIdOrKey && !v.deleted,
@@ -170,6 +196,8 @@ const createVersionHandler = http.post(
       description: body.description ?? null,
       startDate: body.startDate ?? null,
       releaseDate: body.releaseDate ?? null,
+      status: 'UNRELEASED',
+      releasedAt: undefined,
       projectIdOrKey,
       deleted: false,
     }
@@ -292,6 +320,65 @@ const deleteVersionHandler = http.delete(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/v1/projects/:projectIdOrKey/versions/:id/status — FR-VR-02
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 버전 상태 전이.
+ * 전이 그래프(ALLOWED_TRANSITIONS)와 self-transition을 검증하고,
+ * released_at 규칙(backend FR-3 미러)을 적용한다.
+ *
+ * 에러 분기 순서 (백엔드와 동일).
+ * 1. 버전 미존재 또는 삭제됨 → 404 VERSION_NOT_FOUND
+ * 2. self-transition 또는 그래프 외 전이 → 409 VERSION_TRANSITION_NOT_ALLOWED
+ * 성공 → 200 { data: Version }
+ */
+const changeStatusHandler = http.patch(
+  '/api/v1/projects/:projectIdOrKey/versions/:id/status',
+  async ({ request, params }) => {
+    const id = params['id'] as string
+    const stored = versionStore.get(id)
+    if (stored === undefined || stored.deleted) {
+      return versionNotFound(id)
+    }
+
+    const body = (await request.json()) as { status: VersionStatus }
+    const targetStatus: VersionStatus = body.status
+    const currentStatus = stored.status
+
+    // self-transition 또는 그래프 외 전이 거부
+    if (!ALLOWED_TRANSITIONS[currentStatus].has(targetStatus)) {
+      return problemDetail(
+        409,
+        'version-transition-not-allowed',
+        'Version Transition Not Allowed',
+        'VERSION_TRANSITION_NOT_ALLOWED',
+        `${currentStatus} → ${targetStatus} 전이는 허용되지 않습니다.`,
+      )
+    }
+
+    // releasedAt 규칙 (backend FR-3 미러)
+    // null을 undefined로 정규화 (StoredVersion은 undefined 사용)
+    let releasedAt: string | undefined = stored.releasedAt ?? undefined
+    if (targetStatus === 'RELEASED') {
+      releasedAt = new Date().toISOString()
+    } else if (targetStatus === 'UNRELEASED') {
+      releasedAt = undefined
+    }
+    // ARCHIVED: releasedAt 직전값 유지 (그대로 둠)
+
+    const updated: StoredVersion = {
+      ...stored,
+      status: targetStatus,
+      releasedAt,
+    }
+    versionStore.set(id, updated)
+
+    return HttpResponse.json({ data: toVersion(updated) })
+  },
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Export
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -302,5 +389,6 @@ export const versionHandlers = [
   getVersionHandler,
   updateVersionHandler,
   changeDatesHandler,
+  changeStatusHandler,
   deleteVersionHandler,
 ]

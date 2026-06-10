@@ -37,6 +37,7 @@ const VERSION_A = {
   description: '첫 번째 릴리즈',
   startDate: null,
   releaseDate: null,
+  status: 'UNRELEASED',
 }
 
 const VERSION_B = {
@@ -46,6 +47,7 @@ const VERSION_B = {
   description: '두 번째 릴리즈',
   startDate: null,
   releaseDate: null,
+  status: 'UNRELEASED',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

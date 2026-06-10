@@ -244,13 +244,13 @@
 
 **우선순위**. 필수 | **선행**. §3.2.1 | **Plan slug**. `issue/versions-status`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — 상태 전이 규칙 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `versions.status` (책임. db-engineer)
-- [ ] D4. 백엔드 — 상태 전이 API + 가드 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. backend-engineer) — PR #105 (`VersionStatus` enum 3종 + `Version.status`/`releasedAt` 필드 + release/unrelease/archive/unarchive 전이 메서드 + assertNotArchived 가드. 도메인은 `Instant` 수신, Clock은 서비스 주입)
+- [x] D2. 명세 — 상태 전이 규칙 (책임. backend-engineer) — PR #105 (ADR docs/adr/2026-06-10-version-status-and-transitions.md, Jira 정석 그래프 UNRELEASED⇄RELEASED·둘다→ARCHIVED·ARCHIVED→UNRELEASED, self/그래프외 409, ARCHIVED 읽기전용, released_at 자동)
+- [x] D3. 데이터 모델 — `versions.status` (책임. db-engineer) — PR #105 (V016 status VARCHAR(20) NOT NULL DEFAULT 'UNRELEASED' + released_at TIMESTAMPTZ + ck_versions_status CHECK, init_codegen 미러)
+- [x] D4. 백엔드 — 상태 전이 API + 가드 (책임. backend-engineer) — PR #105 (PATCH /{id}/status changeStatus + applyTransition when, VersionPermission.UPDATE 재사용, 409 VERSION_TRANSITION_NOT_ALLOWED, delete ARCHIVED 명시 차단(repo 직행 우회 방지))
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #105 (도메인 전이/거부 + repo status/released_at 왕복 + service changeStatus + 통합 S1~S7 + 마이그레이션, 136 그린)
+- [x] D6. 프론트 UI (책임. designer → frontend-engineer) — PR #105 (VersionRow 상태 뱃지 + TRANSITION_ACTIONS 전이 버튼 + ARCHIVED 수정/삭제 disabled, Zod status/releasedAt(NON_NULL .nullable().optional()), useChangeVersionStatus invalidate-only, MSW stateful 전이그래프)
+- [x] D7. E2E (책임. qa-engineer) — PR #105 (version-status.spec.ts 4시나리오 + 기존 version-management 5 회귀. session-fixtures loginAsAlice FR-AU-07 2단계 hot-fix. issue/workflow fixture 1단계 회귀는 별도 PR)
 
 #### §3.2.3 FR-VR-03 — Affects/Fix Version 연결
 

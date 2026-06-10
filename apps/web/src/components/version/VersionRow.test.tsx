@@ -28,7 +28,7 @@ vi.mock('sonner', () => ({
 
 const PROJECT_KEY = 'ATLAS'
 
-/** 날짜가 모두 지정된 버전 픽스처 */
+/** 날짜가 모두 지정된 버전 픽스처 (UNRELEASED) */
 const versionWithDates: Version = {
   id: 'a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5',
   projectId: 'f1e2d3c4-b5a6-4f7e-8d9c-0b1a2c3d4e5f',
@@ -36,9 +36,10 @@ const versionWithDates: Version = {
   description: '첫 번째 정식 릴리즈',
   startDate: '2026-01-01',
   releaseDate: '2026-03-31',
+  status: 'UNRELEASED',
 }
 
-/** 날짜가 모두 null인 버전 픽스처 */
+/** 날짜가 모두 null인 버전 픽스처 (UNRELEASED) */
 const versionNoDates: Version = {
   id: 'b2c3d4e5-f6a7-4b8c-9d0e-f1a2b3c4d5e6',
   projectId: 'f1e2d3c4-b5a6-4f7e-8d9c-0b1a2c3d4e5f',
@@ -46,6 +47,30 @@ const versionNoDates: Version = {
   description: null,
   startDate: null,
   releaseDate: null,
+  status: 'UNRELEASED',
+}
+
+/** RELEASED 버전 픽스처 */
+const versionReleased: Version = {
+  id: 'c3d4e5f6-a7b8-4c9d-0e1f-a2b3c4d5e6f7',
+  projectId: 'f1e2d3c4-b5a6-4f7e-8d9c-0b1a2c3d4e5f',
+  name: 'v1.0.0-released',
+  description: null,
+  startDate: null,
+  releaseDate: null,
+  status: 'RELEASED',
+  releasedAt: '2026-06-10T12:00:00Z',
+}
+
+/** ARCHIVED 버전 픽스처 */
+const versionArchived: Version = {
+  id: 'd4e5f6a7-b8c9-4d0e-1f2a-b3c4d5e6f7a8',
+  projectId: 'f1e2d3c4-b5a6-4f7e-8d9c-0b1a2c3d4e5f',
+  name: 'v0.9.0-archived',
+  description: null,
+  startDate: null,
+  releaseDate: null,
+  status: 'ARCHIVED',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -381,6 +406,161 @@ describe('VersionRow — http.delete 통합', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // VersionRow — 권한 게이팅 (FR-PM-03 D6)
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VersionRow — 상태 뱃지 (FR-VR-02 Task 5 RED)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('VersionRow — 상태 뱃지', () => {
+  it('UNRELEASED 상태 뱃지를 표시한다', () => {
+    const Wrapper = createWrapper()
+    render(
+      <VersionRow
+        version={versionWithDates}
+        projectKey={PROJECT_KEY}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        canManage={true}
+      />,
+      { wrapper: Wrapper },
+    )
+    // 상태 뱃지가 있어야 한다 (정확한 텍스트 매칭으로 중복 방지)
+    const row = screen.getByRole('listitem')
+    expect(within(row).getByText('미출시')).toBeInTheDocument()
+  })
+
+  it('RELEASED 상태 뱃지를 표시한다', () => {
+    const Wrapper = createWrapper()
+    render(
+      <VersionRow
+        version={versionReleased}
+        projectKey={PROJECT_KEY}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        canManage={true}
+      />,
+      { wrapper: Wrapper },
+    )
+    const row = screen.getByRole('listitem')
+    expect(within(row).getByText('출시됨')).toBeInTheDocument()
+  })
+
+  it('ARCHIVED 상태 뱃지를 표시한다', () => {
+    const Wrapper = createWrapper()
+    render(
+      <VersionRow
+        version={versionArchived}
+        projectKey={PROJECT_KEY}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        canManage={true}
+      />,
+      { wrapper: Wrapper },
+    )
+    const row = screen.getByRole('listitem')
+    expect(within(row).getByText('보관됨')).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VersionRow — 전이 버튼 (FR-VR-02 Task 5 RED)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('VersionRow — 전이 버튼', () => {
+  it('UNRELEASED 상태에서 릴리스/보관 버튼이 노출된다', () => {
+    const Wrapper = createWrapper()
+    render(
+      <VersionRow
+        version={versionWithDates}
+        projectKey={PROJECT_KEY}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        canManage={true}
+      />,
+      { wrapper: Wrapper },
+    )
+    const row = screen.getByRole('listitem')
+    // 릴리스 버튼
+    expect(within(row).getByRole('button', { name: /릴리스/i })).toBeInTheDocument()
+    // 보관 버튼
+    expect(within(row).getByRole('button', { name: /보관/i })).toBeInTheDocument()
+  })
+
+  it('RELEASED 상태에서 되돌리기/보관 버튼이 노출된다', () => {
+    const Wrapper = createWrapper()
+    render(
+      <VersionRow
+        version={versionReleased}
+        projectKey={PROJECT_KEY}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        canManage={true}
+      />,
+      { wrapper: Wrapper },
+    )
+    const row = screen.getByRole('listitem')
+    expect(within(row).getByRole('button', { name: /되돌리기/i })).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: /보관/i })).toBeInTheDocument()
+  })
+
+  it('ARCHIVED 상태에서 보관 해제 버튼이 노출된다', () => {
+    const Wrapper = createWrapper()
+    render(
+      <VersionRow
+        version={versionArchived}
+        projectKey={PROJECT_KEY}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        canManage={true}
+      />,
+      { wrapper: Wrapper },
+    )
+    const row = screen.getByRole('listitem')
+    expect(within(row).getByRole('button', { name: /보관 해제/i })).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VersionRow — ARCHIVED 비활성화 (FR-VR-02 Task 5 RED)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('VersionRow — ARCHIVED 읽기 전용', () => {
+  it('ARCHIVED 상태에서 수정 버튼이 비활성화된다', () => {
+    const Wrapper = createWrapper()
+    render(
+      <VersionRow
+        version={versionArchived}
+        projectKey={PROJECT_KEY}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        canManage={true}
+      />,
+      { wrapper: Wrapper },
+    )
+    const row = screen.getByRole('listitem')
+    expect(
+      within(row).getByRole('button', { name: `${versionArchived.name} 수정` }),
+    ).toBeDisabled()
+  })
+
+  it('ARCHIVED 상태에서 삭제 버튼이 비활성화된다', () => {
+    const Wrapper = createWrapper()
+    render(
+      <VersionRow
+        version={versionArchived}
+        projectKey={PROJECT_KEY}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        canManage={true}
+      />,
+      { wrapper: Wrapper },
+    )
+    const row = screen.getByRole('listitem')
+    expect(
+      within(row).getByRole('button', { name: `${versionArchived.name} 삭제` }),
+    ).toBeDisabled()
+  })
+})
 
 describe('VersionRow — 권한 게이팅', () => {
   it('canManage=true이면 수정/삭제 버튼이 활성화된다', () => {

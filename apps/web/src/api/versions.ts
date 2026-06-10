@@ -1,4 +1,4 @@
-// 버전 BC REST API 클라이언트 — CRUD + 날짜 변경 + X-XSRF-TOKEN + errorCode 추출 헬퍼 (FR-VR-01)
+// 버전 BC REST API 클라이언트 — CRUD + 날짜 변경 + 상태 전이 + X-XSRF-TOKEN + errorCode 추출 헬퍼 (FR-VR-01, FR-VR-02)
 import { z } from 'zod'
 import { apiGet, apiFetch, ApiError } from './client'
 import { readXsrfToken } from './sessions'
@@ -9,9 +9,18 @@ import {
   type CreateVersionInput,
   type UpdateVersionInput,
   type ChangeDatesInput,
+  type VersionStatus,
+  type ChangeVersionStatusInput,
 } from './versions.types'
 
-export type { Version, CreateVersionInput, UpdateVersionInput, ChangeDatesInput } from './versions.types'
+export type {
+  Version,
+  CreateVersionInput,
+  UpdateVersionInput,
+  ChangeDatesInput,
+  VersionStatus,
+  ChangeVersionStatusInput,
+} from './versions.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 상수
@@ -176,6 +185,40 @@ export async function deleteVersion(projectIdOrKey: string, id: string): Promise
     const errorBody: unknown = await res.json().catch(() => ({}))
     throw new ApiError(res.status, errorBody)
   }
+}
+
+/**
+ * 버전 상태를 전이한다.
+ *
+ * PATCH /api/v1/projects/{projectIdOrKey}/versions/{id}/status → `{ data: ... }` 언래핑 후 반환.
+ * CSRF 방어를 위해 X-XSRF-TOKEN 헤더를 포함한다.
+ * changeDates 서브리소스 패턴 동형.
+ *
+ * @param projectIdOrKey 프로젝트 UUID 또는 키
+ * @param id 버전 UUID
+ * @param status 전이 대상 상태 (UNRELEASED | RELEASED | ARCHIVED)
+ * @returns 전이된 Version
+ * @throws ApiError(409, VERSION_TRANSITION_NOT_ALLOWED) 불허 전이 시
+ * @throws ApiError(404) 버전 미존재 시
+ */
+export async function changeVersionStatus(
+  projectIdOrKey: string,
+  id: string,
+  status: VersionStatus,
+): Promise<Version> {
+  const input: ChangeVersionStatusInput = { status }
+  const res = await apiFetch(`${basePath(projectIdOrKey)}/${id}/status`, {
+    method: 'PATCH',
+    body: input,
+    headers: { 'X-XSRF-TOKEN': readXsrfToken() },
+  })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const raw: unknown = await res.json()
+  const wrapped = versionDataSchema.parse(raw)
+  return wrapped.data
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

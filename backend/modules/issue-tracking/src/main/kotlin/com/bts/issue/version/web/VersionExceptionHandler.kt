@@ -1,4 +1,4 @@
-// 버전 BC 도메인 예외를 RFC 7807 ProblemDetail 응답으로 변환하는 핸들러 (FR-VR-01)
+// 버전 BC 도메인 예외를 RFC 7807 ProblemDetail 응답으로 변환하는 핸들러 (FR-VR-01 + FR-VR-02)
 
 package com.bts.issue.version.web
 
@@ -6,9 +6,11 @@ import com.bts.issue.version.domain.DuplicateVersionNameException
 import com.bts.issue.version.domain.VersionAccessDeniedException
 import com.bts.issue.version.domain.VersionNotFoundException
 import com.bts.issue.version.domain.VersionProjectNotFoundException
+import com.bts.issue.version.domain.VersionTransitionNotAllowedException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
+import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -23,9 +25,11 @@ import java.time.Instant
  *
  * 매핑 규칙.
  * - [MethodArgumentNotValidException] → 400 + [VersionErrorCodes.VALIDATION_FAILED]
+ * - [HttpMessageNotReadableException] → 400 + [VersionErrorCodes.VALIDATION_FAILED] (enum 역직렬화 실패 포함)
  * - [VersionProjectNotFoundException] → 404 + [VersionErrorCodes.PROJECT_NOT_FOUND]
  * - [VersionNotFoundException] → 404 + [VersionErrorCodes.VERSION_NOT_FOUND]
  * - [DuplicateVersionNameException] → 409 + [VersionErrorCodes.VERSION_NAME_DUPLICATE]
+ * - [VersionTransitionNotAllowedException] → 409 + [VersionErrorCodes.VERSION_TRANSITION_NOT_ALLOWED]
  * - [VersionAccessDeniedException] → 403 + [VersionErrorCodes.ACCESS_DENIED]
  * - [Exception] (fallback) → 500 + [VersionErrorCodes.INTERNAL_ERROR]
  */
@@ -51,6 +55,25 @@ class VersionExceptionHandler {
             title = "Validation Failed",
             errorCode = VersionErrorCodes.VALIDATION_FAILED,
             detail = fieldErrors.ifBlank { "요청 값 검증에 실패했습니다." },
+        )
+    }
+
+    /**
+     * Jackson 역직렬화 실패 — 400.
+     *
+     * status 필드에 정의되지 않은 enum 문자열("FOO" 등)이 전달되면 이 핸들러가 잡는다.
+     *
+     * @param ex 메시지 읽기 실패 예외.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleMessageNotReadable(ex: HttpMessageNotReadableException): ProblemDetail {
+        log.info("VERSION_400 message_not_readable message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "version-validation-failed",
+            title = "Validation Failed",
+            errorCode = VersionErrorCodes.VALIDATION_FAILED,
+            detail = "요청 바디를 읽을 수 없습니다. 필드 값을 확인해 주세요.",
         )
     }
 
@@ -110,6 +133,25 @@ class VersionExceptionHandler {
             type = "version-not-found",
             title = "Version Not Found",
             errorCode = VersionErrorCodes.VERSION_NOT_FOUND,
+            detail = ex.message,
+        )
+    }
+
+    // ── 409 VERSION_TRANSITION_NOT_ALLOWED ───────────────────────────────────
+
+    /**
+     * [VersionTransitionNotAllowedException] — 불허 전이 또는 ARCHIVED 읽기전용 위반 — 409.
+     *
+     * @param ex 전이 거부 사유를 포함하는 예외.
+     */
+    @ExceptionHandler(VersionTransitionNotAllowedException::class)
+    fun handleTransitionNotAllowed(ex: VersionTransitionNotAllowedException): ProblemDetail {
+        log.info("VERSION_409 transition_not_allowed message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.CONFLICT,
+            type = "version-transition-not-allowed",
+            title = "Version Transition Not Allowed",
+            errorCode = VersionErrorCodes.VERSION_TRANSITION_NOT_ALLOWED,
             detail = ex.message,
         )
     }

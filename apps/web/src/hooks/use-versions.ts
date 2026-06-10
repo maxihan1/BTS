@@ -1,4 +1,4 @@
-// 버전 BC TanStack Query 훅 — CRUD invalidate-only + 에러 토스트 (FR-VR-01)
+// 버전 BC TanStack Query 훅 — CRUD invalidate-only + 에러 토스트 (FR-VR-01, FR-VR-02)
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -7,10 +7,17 @@ import {
   updateVersion,
   changeVersionDates,
   deleteVersion,
+  changeVersionStatus,
   extractVersionErrorCode,
 } from '@/api/versions'
 import { versionErrorMessage } from '@/i18n/version-labels'
-import type { Version, CreateVersionInput, UpdateVersionInput, ChangeDatesInput } from '@/api/versions'
+import type {
+  Version,
+  CreateVersionInput,
+  UpdateVersionInput,
+  ChangeDatesInput,
+  VersionStatus,
+} from '@/api/versions'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // queryKey 팩토리 — 매직 문자열 방지
@@ -145,6 +152,41 @@ export function useChangeVersionDates(projectKey: string) {
       const input: ChangeDatesInput = { startDate, releaseDate }
       return changeVersionDates(projectKey, id, input)
     },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: listKey })
+    },
+    onError: (error) => {
+      notifyVersionError(error)
+    },
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useChangeVersionStatus — 상태 전이 (FR-VR-02)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 버전 상태 전이 mutation 입력 타입 */
+export interface ChangeVersionStatusMutationInput {
+  id: string
+  status: VersionStatus
+}
+
+/**
+ * 버전 상태를 전이한다.
+ *
+ * PATCH /api/v1/projects/{projectKey}/versions/{id}/status → 200 Version
+ *
+ * onSuccess → invalidateQueries (invalidate-only, setQueryData 금지)
+ * onError   → toast.error
+ *
+ * @param projectKey 프로젝트 키
+ */
+export function useChangeVersionStatus(projectKey: string) {
+  const queryClient = useQueryClient()
+  const listKey = VERSION_KEYS.list(projectKey)
+
+  return useMutation<Version, unknown, ChangeVersionStatusMutationInput>({
+    mutationFn: ({ id, status }) => changeVersionStatus(projectKey, id, status),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: listKey })
     },
