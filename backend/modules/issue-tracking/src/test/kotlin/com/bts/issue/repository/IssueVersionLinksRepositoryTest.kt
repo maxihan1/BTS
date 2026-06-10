@@ -1,4 +1,4 @@
-// IssueVersionLinksRepositoryTest — replaceAffectsVersions / replaceFixVersions / 독립 읽기쿼리 Testcontainers 통합 테스트 (FR-VR-03 Task 3).
+// IssueVersionLinksRepositoryTest — 버전 연결(affects/fix) replace + 독립 읽기쿼리 통합 테스트 (FR-VR-03 Task 3).
 
 package com.bts.issue.repository
 
@@ -36,12 +36,8 @@ import java.util.UUID
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class IssueVersionLinksRepositoryTest : IssueTestcontainersBase() {
-
     /** V003 seed task 타입 id. value class 는 lateinit 불가 → nullable var. */
     private var taskTypeId: IssueTypeId? = null
-
-    override fun configureFlyway(builder: org.flywaydb.core.api.configuration.FluentConfiguration) =
-        super.configureFlyway(builder)
 
     // ── setup ─────────────────────────────────────────────────────────────────
 
@@ -82,8 +78,7 @@ class IssueVersionLinksRepositoryTest : IssueTestcontainersBase() {
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
+    private fun requireTaskTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
 
     /** 이슈 1건을 삽입하고 반환한다. version=1 로 시작. */
     private fun insertIssue(key: IssueKey): Issue =
@@ -103,7 +98,10 @@ class IssueVersionLinksRepositoryTest : IssueTestcontainersBase() {
      * versions 테이블에 버전 1건을 삽입하고 UUID 를 반환한다.
      * [status] 를 ARCHIVED 로 지정하면 ARCHIVED 버전 링크 테스트에 활용한다.
      */
-    private fun insertVersion(name: String, status: String = "UNRELEASED"): UUID {
+    private fun insertVersion(
+        name: String,
+        status: String = "UNRELEASED",
+    ): UUID {
         val pg = IssueTestcontainersBase.postgres
         val id = UUID.randomUUID()
         DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { conn ->
