@@ -8,15 +8,8 @@
 //     issue-fixtures.ts 의 구식 1단계 loginAsAlice 는 FR-AU-07 이후 깨진 상태이며
 //     별도 PR 대상이다. 이 파일은 session-fixtures.ts 를 사용한다.
 //
-// [B] 라우트 미배선 — issues.$key.tsx 에 useVersions/useChangeAffectsVersions/
-//     useChangeFixVersions 호출이 없어 IssueMetaPanel 에 versions=[], affectsVersionIds=[],
-//     fixVersionIds=[] 기본값이 전달된다.
-//     결과: 체크박스 목록이 빈 상태로 렌더되므로 "버전 선택→칩 표시→교체→해제" 전체
-//     happy path 는 라우트 배선 완료 후 통과된다.
-//     현재 이 파일에서 검증 가능한 시나리오:
-//       - S0  : 이슈 상세 진입 시 affects/fix 버전 섹션(data-testid)이 렌더됨
-//       - S0b : 각 섹션에 검색 input(aria-label)이 비활성 아님을 확인 (canEdit=true)
-//       - S1~S4: 라우트 배선 완료 후 통과 예정 (현재 skip)
+// [B] 라우트 배선 완료 — issues.$key.tsx 에 useVersions/useChangeAffectsVersions/
+//     useChangeFixVersions 가 배선됐다. S0~S5 전체 시나리오 실행 가능.
 //
 // [C] issue-components.spec.ts 로그인 회귀 — 별도 PR 대상 (loginAsAlice 회귀).
 //     session-fixtures.ts 의 loginAsAlice 는 정상.
@@ -215,7 +208,7 @@ test.describe('FR-VR-03 이슈 버전 연결 (IssueMetaPanel > VersionMultiSelec
   //
   // NOTE: 이 테스트는 라우트 배선 완료 후 unskip 필요
   // ───────────────────────────────────────────────────────────────────────────
-  test.skip('S1 Fix 버전 할당 — 버전 선택 후 칩 1개 표시 (라우트 배선 완료 후 unskip)', async ({ page }) => {
+  test('S1 Fix 버전 할당 — 버전 선택 후 칩 1개 표시', async ({ page }) => {
     // 사전조건: VER_B seed
     await createVersionInStore(page, VER_B)
 
@@ -245,7 +238,7 @@ test.describe('FR-VR-03 이슈 버전 연결 (IssueMetaPanel > VersionMultiSelec
   // When    Affects 버전 섹션에서 VER_A 체크박스 체크
   // Then    affects-versions-section 에 version-chip 이 1개(VER_A 이름) 표시됨
   // ───────────────────────────────────────────────────────────────────────────
-  test.skip('S2 Affects 버전 할당 — 버전 선택 후 칩 1개 표시 (라우트 배선 완료 후 unskip)', async ({ page }) => {
+  test('S2 Affects 버전 할당 — 버전 선택 후 칩 1개 표시', async ({ page }) => {
     await createVersionInStore(page, VER_A)
     await navigateToIssueDetail(page)
 
@@ -268,7 +261,7 @@ test.describe('FR-VR-03 이슈 버전 연결 (IssueMetaPanel > VersionMultiSelec
   // When    VER_B 해제 → VER_A 선택
   // Then    fix-versions-section 에 version-chip 이 1개(VER_A 이름)만 표시됨
   // ───────────────────────────────────────────────────────────────────────────
-  test.skip('S3 버전 교체 — VER_B 해제 후 VER_A 선택 시 칩 교체 (라우트 배선 완료 후 unskip)', async ({ page }) => {
+  test('S3 버전 교체 — VER_B 해제 후 VER_A 선택 시 칩 교체', async ({ page }) => {
     await createVersionInStore(page, VER_A)
     await createVersionInStore(page, VER_B)
     await navigateToIssueDetail(page)
@@ -300,7 +293,7 @@ test.describe('FR-VR-03 이슈 버전 연결 (IssueMetaPanel > VersionMultiSelec
   // When    VER_A 체크박스 해제
   // Then    affects-versions-section 에 version-chip 0개 (version-chip-list 미렌더)
   // ───────────────────────────────────────────────────────────────────────────
-  test.skip('S4 버전 해제 — VER_A 해제 후 칩 0개 (라우트 배선 완료 후 unskip)', async ({ page }) => {
+  test('S4 버전 해제 — VER_A 해제 후 칩 0개', async ({ page }) => {
     await createVersionInStore(page, VER_A)
     await navigateToIssueDetail(page)
 
@@ -332,7 +325,7 @@ test.describe('FR-VR-03 이슈 버전 연결 (IssueMetaPanel > VersionMultiSelec
   // Then    VER_A 체크박스는 보임, VER_ARCHIVED 체크박스는 미표시
   //         (단, 이미 연결된 ARCHIVED 는 표시 — Jira 정석, 이 테스트는 미연결 케이스)
   // ───────────────────────────────────────────────────────────────────────────
-  test.skip('S5 ARCHIVED 버전 미표시 — 드롭다운에서 ARCHIVED 버전이 안 보임 (라우트 배선 완료 후 unskip)', async ({ page }) => {
+  test('S5 ARCHIVED 버전 미표시 — 드롭다운에서 ARCHIVED 버전이 안 보임', async ({ page }) => {
     // 사전조건: VER_A seed + VER_ARCHIVED seed → ARCHIVED 전이
     await createVersionInStore(page, VER_A)
     const archivedId = await createVersionInStore(page, VER_ARCHIVED)
