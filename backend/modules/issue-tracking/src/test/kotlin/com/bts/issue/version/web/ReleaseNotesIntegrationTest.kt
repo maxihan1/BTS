@@ -90,7 +90,6 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ReleaseNotesIntegrationTest {
-
     // ── Spring Bean 구성 — 최소 필요 컴포넌트만 명시적 등록 ─────────────────────
     @Configuration
     @EnableWebMvc
@@ -191,7 +190,6 @@ class ReleaseNotesIntegrationTest {
             versionRepository: VersionRepository,
             issueRepository: IssueRepository,
             resolutionRepository: ResolutionRepository,
-            clock: Clock,
         ): ReleaseNotesService =
             ReleaseNotesService(
                 projectLookup = projectLookup,
@@ -199,12 +197,13 @@ class ReleaseNotesIntegrationTest {
                 versionRepository = versionRepository,
                 issueRepository = issueRepository,
                 resolutionRepository = resolutionRepository,
-                clock = clock,
+                clock = clock(),
             )
 
         @Bean
-        open fun releaseNotesController(service: ReleaseNotesService): ReleaseNotesController =
-            ReleaseNotesController(service)
+        open fun releaseNotesController(service: ReleaseNotesService): ReleaseNotesController {
+            return ReleaseNotesController(service)
+        }
 
         @Bean
         open fun versionController(service: VersionApplicationService): VersionController = VersionController(service)
