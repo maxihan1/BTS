@@ -76,6 +76,13 @@ class AuthnProviderConfigRepository(
         }.associateBy { it.id }
     }
 
+    /**
+     * 주어진 type 중 enabled=true 인 Provider 들을 [AuthnProviderInfo] 리스트로 반환한다 (FR-AU-08).
+     *
+     * linkable-providers 엔드포인트가 연결 가능한 LDAP 목록을 취득할 때 소비한다.
+     * enabled=false row 와 다른 type row 는 SQL 의 (type = :type AND enabled = TRUE) 로 제외된다.
+     * 해당 type 의 enabled row 가 없으면 빈 리스트를 반환한다.
+     */
     fun findEnabledByType(type: ProviderType): List<AuthnProviderInfo> {
         val params = MapSqlParameterSource("type", type.name)
         return jdbc.query(SQL_FIND_ENABLED_BY_TYPE, params) { rs, _ ->
