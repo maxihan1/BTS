@@ -167,13 +167,15 @@
 
 **우선순위**. 필수 | **선행**. §2.1 | **Plan slug**. `identity/audit-log`
 
-- [ ] D1. 도메인 — AuthEvent (성공/실패/세션종료/권한변경) (책임. security-engineer)
-- [ ] D2. 명세 — 보존 1년 (SDD §2.3.3) (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `auth_audit_logs(event_type, ip, user_agent, ...)` (책임. db-engineer)
-- [ ] D4. 백엔드 — 모든 인증/권한 변경 이벤트 emit (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 — 이벤트 누락 0 (책임. security-engineer)
+- [x] D1. 도메인 — AuthEvent (성공/실패/세션종료/권한변경) (책임. security-engineer)
+- [x] D2. 명세 — 보존 1년 (SDD §2.3.3) (책임. security-engineer)
+- [x] D3. 데이터 모델 — `auth_audit_logs(event_type, ip, user_agent, ...)` (책임. db-engineer)
+- [x] D4. 백엔드 — 모든 인증/권한 변경 이벤트 emit (책임. security-engineer)
+- [x] D5. 백엔드 테스트 — 이벤트 누락 0 (책임. security-engineer)
 - [ ] D6. 프론트 UI — 관리자 감사 로그 조회 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
+
+> **FR-AU-10 백엔드 1차 완료 (2026-06-10, PR #108)**. 기존 `audit/` 골격(AuthEventType 12종·AuthAuditLog·AuthAuditLogService·InMemory)을 DB 영속화 — `JdbcAuthAuditLogService`(@Service @Transactional, NamedParameterJdbcTemplate, JSONB metadata는 PAT scopes 선례 재사용) + V021 `auth_audit_logs`(파티셔닝 없는 append-only 단순 테이블 + 인덱스 3종, FK 없음). **emit 12종 전수 배선** — 기존 4종(PAT/PROJECT_*)에 8종 갭(LOGIN_SUCCESS는 AuthController+OIDC+SAML 3곳, LOGIN_FAILURE/LOGOUT, LOGOUT_ALL_DEVICES, TOKEN_REFRESHED, SUSPICIOUS_REFRESH_REPLAY, USER_PROVISIONED, LDAP_UNAVAILABLE) 추가. `AuthEventEmitCoverageTest`가 누락 0 회귀 가드. **결정** — B-1: web 레이어 emit best-effort(try-catch+에러로그, 로그인 가용성 우선) / service 레이어 트랜잭션 동기. C-5: refresh replay+race-loser 둘 다 SUSPICIOUS_REFRESH_REPLAY. **DATA.md §3 충돌 해소** — 감사 로그 append-only 영구 보존("보존 1년"은 최소 floor), @Scheduled 삭제 작업 드롭. `AuthAuditLog.userId` nullable화(LOGIN_FAILURE/LDAP_UNAVAILABLE 사용자 미상), USER_PROVISIONED는 `xmax=0` 신규 판정(기존 재로그인 비-emit), LOGIN_FAILURE 계정열거 차단(userId=null, username 역조회 금지). 검증 — identity-access 1540 테스트 0실패, ktlint/detekt green, 리뷰 2종(code-reviewer PASS + 보안 적대적 BLOCKER0/CONCERN0). ADR [2026-06-10-auth-audit-log-persistence](../../decisions/2026-06-10-auth-audit-log-persistence.md). **D6 관리자 조회 UI + D7 E2E는 후속 PR**(조회 API 포함).
 
 ## §3 다중 요소 인증 (FR-MF, 5개)
 

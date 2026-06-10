@@ -182,9 +182,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
           <div><span class="dot dot-done"></span> 완료 <b>38</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>2</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>3</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>82</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>81</b></div>
         </div>
       </div>
     </div>
@@ -1289,9 +1289,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:75%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 18</div>
-        <div>🔄 진행중 0</div>
+        <div>🔄 진행중 1</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 6</div>
+        <div>⬜ 대기 5</div>
       </div>
     </div>
     <h2>세부 기능 (24개)</h2>
@@ -1421,13 +1421,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc">세션/토큰 관리 (<span class="term" data-def="&quot;디지털 출입증&quot; 로그인 성공 시 발급받는 암호화된 방문증. 이거 하나면 매번 비밀번호를 안 쳐도 됩니다.">JWT</span> + Refresh + <span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>)</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — Session/AccessToken/RefreshToken/<span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span> 분리</li><li><span class="step-icon">✅</span> D2 — 명세 — TTL, 회전 정책, 세션 강제 종료</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `sessions`, `refresh_tokens`, `<span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">pat</span>s(scope, revoked_at)`</li><li><span class="step-icon">✅</span> D4 — 백엔드 — <span class="term" data-def="&quot;디지털 출입증&quot; 로그인 성공 시 발급받는 암호화된 방문증. 이거 하나면 매번 비밀번호를 안 쳐도 됩니다.">JWT</span> 발급/검증 + 세션 + <span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span> API + 세션 목록 조회/강제 종료 API</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 토큰 만료/회전/취소</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 활성 세션 목록 + 강제 로그아웃 (책임. frontend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer). **DEVELOPMENT.md §1.17 — 토큰 localStorage 금지 (sessionStorage 강제)**</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-진행중">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">🔄</span>
         <span class="fr-id">FR-AU-10</span>
         <span class="fr-desc">인증 감사 로그</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — AuthEvent (성공/실패/세션종료/권한변경)</li><li><span class="step-icon">⬜</span> D2 — 명세 — 보존 1년 (SDD §2.3.3)</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `auth_audit_logs(event_type, ip, user_agent, ...)`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — 모든 인증/권한 변경 이벤트 emit</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — 이벤트 누락 0</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 관리자 감사 로그 조회</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — AuthEvent (성공/실패/세션종료/권한변경)</li><li><span class="step-icon">✅</span> D2 — 명세 — 보존 1년 (SDD §2.3.3)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `auth_audit_logs(event_type, ip, user_agent, ...)`</li><li><span class="step-icon">✅</span> D4 — 백엔드 — 모든 인증/권한 변경 이벤트 emit</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 이벤트 누락 0</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 관리자 감사 로그 조회</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
