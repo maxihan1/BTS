@@ -424,9 +424,9 @@ describe('VersionRow — 상태 뱃지', () => {
       />,
       { wrapper: Wrapper },
     )
-    // 상태 뱃지가 있어야 한다
+    // 상태 뱃지가 있어야 한다 (정확한 텍스트 매칭으로 중복 방지)
     const row = screen.getByRole('listitem')
-    expect(within(row).getByText(/미출시|UNRELEASED/i)).toBeInTheDocument()
+    expect(within(row).getByText('미출시')).toBeInTheDocument()
   })
 
   it('RELEASED 상태 뱃지를 표시한다', () => {
@@ -442,7 +442,7 @@ describe('VersionRow — 상태 뱃지', () => {
       { wrapper: Wrapper },
     )
     const row = screen.getByRole('listitem')
-    expect(within(row).getByText(/출시됨|RELEASED/i)).toBeInTheDocument()
+    expect(within(row).getByText('출시됨')).toBeInTheDocument()
   })
 
   it('ARCHIVED 상태 뱃지를 표시한다', () => {
@@ -458,7 +458,7 @@ describe('VersionRow — 상태 뱃지', () => {
       { wrapper: Wrapper },
     )
     const row = screen.getByRole('listitem')
-    expect(within(row).getByText(/보관됨|ARCHIVED/i)).toBeInTheDocument()
+    expect(within(row).getByText('보관됨')).toBeInTheDocument()
   })
 })
 

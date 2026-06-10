@@ -1,16 +1,28 @@
-// 버전 BC Zod 스키마 + 추론 타입 정의 — backend VersionResponse DTO 1:1 대응 (FR-VR-01)
+// 버전 BC Zod 스키마 + 추론 타입 정의 — backend VersionResponse DTO 1:1 대응 (FR-VR-01, FR-VR-02)
 import { z } from 'zod'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VersionStatus enum (backend VersionStatus.kt 1:1 대응)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 버전 상태 enum — backend VersionStatus 3종과 1:1 대응 */
+export const versionStatusSchema = z.enum(['UNRELEASED', 'RELEASED', 'ARCHIVED'])
+
+/** 버전 상태 타입 */
+export type VersionStatus = z.infer<typeof versionStatusSchema>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zod 스키마
 // backend VersionResponse DTO 직렬화 형태와 1:1 대응.
-// createdAt/updatedAt 추가 금지 — VersionResponse.kt 는 6필드뿐.
+// FR-VR-02: status(항상 존재) + releasedAt(@JsonInclude(NON_NULL) → null이면 필드 자체 없음).
 // 날짜는 @JsonFormat("yyyy-MM-dd") 문자열로 직렬화됨 (z.date 아닌 z.string).
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * 버전 단건 응답 Zod 스키마.
- * backend VersionResponse(id, projectId, name, description?, startDate?, releaseDate?) 1:1 대응.
+ * backend VersionResponse(id, projectId, name, description?, startDate?, releaseDate?,
+ * status, releasedAt?) 1:1 대응.
+ * releasedAt: @JsonInclude(NON_NULL) → null이면 JSON 키 자체 없음 → z.string().nullable().optional()
  */
 export const versionResponseSchema = z.object({
   id: z.string().uuid(),
@@ -19,6 +31,8 @@ export const versionResponseSchema = z.object({
   description: z.string().nullable(),
   startDate: z.string().nullable(),
   releaseDate: z.string().nullable(),
+  status: versionStatusSchema,
+  releasedAt: z.string().nullable().optional(),
 })
 
 /** backend `{ data: T }` 응답 래퍼 Zod 스키마 헬퍼 */
@@ -50,4 +64,9 @@ export interface UpdateVersionInput {
 export interface ChangeDatesInput {
   startDate: string | null
   releaseDate: string | null
+}
+
+/** 버전 상태 전이 입력 타입 — FR-VR-02 */
+export interface ChangeVersionStatusInput {
+  status: VersionStatus
 }

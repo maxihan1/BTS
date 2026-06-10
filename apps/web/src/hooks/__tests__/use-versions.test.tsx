@@ -76,6 +76,7 @@ describe('useVersions', () => {
               description: null,
               startDate: null,
               releaseDate: null,
+              status: 'UNRELEASED',
             },
           ],
         }),

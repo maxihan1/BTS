@@ -29,6 +29,7 @@ const EXISTING_VERSION: Version = {
   description: '첫 릴리즈',
   startDate: '2026-01-01',
   releaseDate: '2026-06-30',
+  status: 'UNRELEASED',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
