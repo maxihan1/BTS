@@ -3,6 +3,7 @@ package com.bts.issue.version.repository
 
 import com.bts.issue.repository.IssueTestcontainersBase
 import com.bts.issue.version.domain.Version
+import com.bts.issue.version.domain.VersionStatus
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.jooq.exception.DataAccessException
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.MethodOrderer
 import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
+import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
@@ -229,5 +231,72 @@ class VersionRepositoryTest : IssueTestcontainersBase() {
         assertThat(second.id).isNotEqualTo(first.id)
         assertThat(second.name).isEqualTo("Reborn")
         assertThat(second.deletedAt as Any?).isNull()
+    }
+
+    // ── T7. status/released_at 왕복 보존 ─────────────────────────────────────
+
+    @Test
+    @Order(12)
+    fun `insert 후 findById 는 status UNRELEASED 와 releasedAt null 을 반환해야 한다`() {
+        val version = Version.create(projectId = testProjectId, name = "status-default")
+
+        val saved = versionRepository.insert(version)
+
+        assertThat(saved.status).isEqualTo(VersionStatus.UNRELEASED)
+        assertThat(saved.releasedAt).isNull()
+
+        val found = versionRepository.findById(saved.id!!, testProjectId)
+        assertThat(found).isNotNull()
+        assertThat(found!!.status).isEqualTo(VersionStatus.UNRELEASED)
+        assertThat(found.releasedAt).isNull()
+    }
+
+    @Test
+    @Order(13)
+    fun `update 에 RELEASED status 와 releasedAt 을 넣으면 findById 에서 왕복 보존되어야 한다`() {
+        val saved = versionRepository.insert(Version.create(projectId = testProjectId, name = "status-released"))
+        val releasedAt = Instant.parse("2026-06-10T12:00:00Z")
+
+        val updated = saved.copy(status = VersionStatus.RELEASED, releasedAt = releasedAt)
+        versionRepository.update(updated)
+
+        val found = versionRepository.findById(saved.id!!, testProjectId)
+        assertThat(found).isNotNull()
+        assertThat(found!!.status).isEqualTo(VersionStatus.RELEASED)
+        assertThat(found.releasedAt).isEqualTo(releasedAt)
+    }
+
+    @Test
+    @Order(14)
+    fun `update 에 ARCHIVED status 와 releasedAt null 을 넣으면 findById 에서 왕복 보존되어야 한다`() {
+        val saved = versionRepository.insert(Version.create(projectId = testProjectId, name = "status-archived"))
+
+        val updated = saved.copy(status = VersionStatus.ARCHIVED, releasedAt = null)
+        versionRepository.update(updated)
+
+        val found = versionRepository.findById(saved.id!!, testProjectId)
+        assertThat(found).isNotNull()
+        assertThat(found!!.status).isEqualTo(VersionStatus.ARCHIVED)
+        assertThat(found.releasedAt).isNull()
+    }
+
+    @Test
+    @Order(15)
+    fun `findByProject 는 status 와 releasedAt 을 올바르게 매핑해야 한다`() {
+        val releasedAt = Instant.parse("2026-06-10T09:00:00Z")
+
+        val saved1 = versionRepository.insert(Version.create(projectId = testProjectId, name = "fp-unreleased"))
+        val saved2 = versionRepository.insert(Version.create(projectId = testProjectId, name = "fp-released"))
+        versionRepository.update(saved2.copy(status = VersionStatus.RELEASED, releasedAt = releasedAt))
+
+        val result = versionRepository.findByProject(testProjectId)
+
+        val unreleased = result.first { it.name == "fp-unreleased" }
+        assertThat(unreleased.status).isEqualTo(VersionStatus.UNRELEASED)
+        assertThat(unreleased.releasedAt).isNull()
+
+        val released = result.first { it.name == "fp-released" }
+        assertThat(released.status).isEqualTo(VersionStatus.RELEASED)
+        assertThat(released.releasedAt).isEqualTo(releasedAt)
     }
 }

@@ -8,19 +8,25 @@ import com.bts.issue.version.domain.Version
 import com.bts.issue.version.domain.VersionAccessDeniedException
 import com.bts.issue.version.domain.VersionNotFoundException
 import com.bts.issue.version.domain.VersionProjectNotFoundException
+import com.bts.issue.version.domain.VersionStatus
+import com.bts.issue.version.domain.VersionTransitionNotAllowedException
 import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.permission.VersionPermission
 import com.bts.shared.permission.VersionPermissionResolver
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.springframework.dao.DataIntegrityViolationException
 import java.sql.SQLException
+import java.time.Clock
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 import java.util.UUID
 
 /**
@@ -33,7 +39,8 @@ import java.util.UUID
  * - create: 날짜 有/無, 프로젝트 미존재, 권한 없음, 이름 중복(23505)
  * - update: name/description 변경, 미존재 케이스
  * - changeDates: 날짜 지정/해제, 미존재 케이스
- * - delete: 권한→존재→softDelete
+ * - delete: 권한→존재→softDelete, ARCHIVED 거부(결함 A 회귀 가드)
+ * - changeStatus: RELEASED/UNRELEASED/ARCHIVED 전이, 불허 전이 거부
  * - getById: 존재검증→반환
  * - listByProject: 프로젝트 존재→목록 반환
  */
@@ -44,11 +51,16 @@ class VersionApplicationServiceTest : DescribeSpec({
     val projectLookup = mockk<ProjectLookup>()
     val repo = mockk<VersionRepository>()
 
+    /** 결정론적 Clock — 2026-06-10T12:00:00Z 고정. */
+    val fixedInstant = Instant.parse("2026-06-10T12:00:00Z")
+    val fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
+
     val sut =
         VersionApplicationService(
             permissionResolver = permissionResolver,
             projectLookup = projectLookup,
             repo = repo,
+            clock = fixedClock,
         )
 
     val actorId = UUID.randomUUID()
@@ -381,6 +393,161 @@ class VersionApplicationServiceTest : DescribeSpec({
 
                 shouldThrow<VersionProjectNotFoundException> {
                     sut.delete(actorId, projectIdOrKey, versionId)
+                }
+            }
+        }
+
+        context("오류 경로 — ARCHIVED 버전 삭제 시도 (결함 A 회귀 가드)") {
+            it("VersionTransitionNotAllowedException 발생, repo.softDelete 미호출") {
+                val archivedVersion = activeVersion.copy(status = VersionStatus.ARCHIVED)
+                every { permissionResolver.hasPermission(actorId, VersionPermission.DELETE, projectId) } returns true
+                every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                every { repo.findById(versionId, projectId) } returns archivedVersion
+
+                shouldThrow<VersionTransitionNotAllowedException> {
+                    sut.delete(actorId, projectIdOrKey, versionId)
+                }
+                verify(exactly = 0) { repo.softDelete(any(), any()) }
+            }
+        }
+    }
+
+    // ── changeStatus ──────────────────────────────────────────────────────────
+
+    describe("changeStatus") {
+        context("정상 경로 — UNRELEASED → RELEASED") {
+            it("도메인 release() 경유, releasedAt=fixedInstant, repo.update 호출") {
+                val unreleasedVersion = activeVersion.copy(status = VersionStatus.UNRELEASED, releasedAt = null)
+                val expectedReleased = unreleasedVersion.copy(
+                    status = VersionStatus.RELEASED,
+                    releasedAt = fixedInstant,
+                )
+                every { permissionResolver.hasPermission(actorId, VersionPermission.UPDATE, projectId) } returns true
+                every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                every { repo.findById(versionId, projectId) } returns unreleasedVersion
+                every { repo.update(any()) } returns expectedReleased
+
+                val result = sut.changeStatus(actorId, projectIdOrKey, versionId, VersionStatus.RELEASED)
+
+                result.status shouldBe VersionStatus.RELEASED
+                result.releasedAt shouldBe fixedInstant
+                verify(exactly = 1) { repo.update(match { it.status == VersionStatus.RELEASED && it.releasedAt == fixedInstant }) }
+            }
+        }
+
+        context("정상 경로 — RELEASED → UNRELEASED (unrelease)") {
+            it("도메인 unrelease() 경유, releasedAt=null, repo.update 호출") {
+                val releasedVersion = activeVersion.copy(status = VersionStatus.RELEASED, releasedAt = fixedInstant)
+                val expectedUnreleased = releasedVersion.copy(status = VersionStatus.UNRELEASED, releasedAt = null)
+                every { permissionResolver.hasPermission(actorId, VersionPermission.UPDATE, projectId) } returns true
+                every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                every { repo.findById(versionId, projectId) } returns releasedVersion
+                every { repo.update(any()) } returns expectedUnreleased
+
+                val result = sut.changeStatus(actorId, projectIdOrKey, versionId, VersionStatus.UNRELEASED)
+
+                result.status shouldBe VersionStatus.UNRELEASED
+                result.releasedAt shouldBe null
+                verify(exactly = 1) { repo.update(match { it.status == VersionStatus.UNRELEASED && it.releasedAt == null }) }
+            }
+        }
+
+        context("정상 경로 — RELEASED → ARCHIVED") {
+            it("도메인 archive() 경유, releasedAt 유지, repo.update 호출") {
+                val releasedVersion = activeVersion.copy(status = VersionStatus.RELEASED, releasedAt = fixedInstant)
+                val expectedArchived = releasedVersion.copy(status = VersionStatus.ARCHIVED)
+                every { permissionResolver.hasPermission(actorId, VersionPermission.UPDATE, projectId) } returns true
+                every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                every { repo.findById(versionId, projectId) } returns releasedVersion
+                every { repo.update(any()) } returns expectedArchived
+
+                val result = sut.changeStatus(actorId, projectIdOrKey, versionId, VersionStatus.ARCHIVED)
+
+                result.status shouldBe VersionStatus.ARCHIVED
+                result.releasedAt shouldNotBe null
+                verify(exactly = 1) { repo.update(match { it.status == VersionStatus.ARCHIVED }) }
+            }
+        }
+
+        context("정상 경로 — ARCHIVED → UNRELEASED (unarchive)") {
+            it("도메인 unarchive() 경유, releasedAt=null, repo.update 호출") {
+                val archivedVersion = activeVersion.copy(status = VersionStatus.ARCHIVED, releasedAt = null)
+                val expectedUnreleased = archivedVersion.copy(status = VersionStatus.UNRELEASED, releasedAt = null)
+                every { permissionResolver.hasPermission(actorId, VersionPermission.UPDATE, projectId) } returns true
+                every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                every { repo.findById(versionId, projectId) } returns archivedVersion
+                every { repo.update(any()) } returns expectedUnreleased
+
+                val result = sut.changeStatus(actorId, projectIdOrKey, versionId, VersionStatus.UNRELEASED)
+
+                result.status shouldBe VersionStatus.UNRELEASED
+                result.releasedAt shouldBe null
+                verify(exactly = 1) { repo.update(any()) }
+            }
+        }
+
+        context("오류 경로 — 불허 전이 (ARCHIVED → RELEASED)") {
+            it("VersionTransitionNotAllowedException 발생, repo.update 미호출") {
+                val archivedVersion = activeVersion.copy(status = VersionStatus.ARCHIVED, releasedAt = null)
+                every { permissionResolver.hasPermission(actorId, VersionPermission.UPDATE, projectId) } returns true
+                every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                every { repo.findById(versionId, projectId) } returns archivedVersion
+
+                shouldThrow<VersionTransitionNotAllowedException> {
+                    sut.changeStatus(actorId, projectIdOrKey, versionId, VersionStatus.RELEASED)
+                }
+                verify(exactly = 0) { repo.update(any()) }
+            }
+        }
+
+        context("오류 경로 — ARCHIVED 버전 update(rename) 시도") {
+            it("도메인 assertNotArchived 가드가 VersionTransitionNotAllowedException 던짐") {
+                val archivedVersion = activeVersion.copy(status = VersionStatus.ARCHIVED)
+                every { permissionResolver.hasPermission(actorId, VersionPermission.UPDATE, projectId) } returns true
+                every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                every { repo.findById(versionId, projectId) } returns archivedVersion
+
+                shouldThrow<VersionTransitionNotAllowedException> {
+                    sut.update(actorId, projectIdOrKey, versionId, "new-name", null)
+                }
+                verify(exactly = 0) { repo.update(any()) }
+            }
+        }
+
+        context("오류 경로 — ARCHIVED 버전 changeDates 시도") {
+            it("도메인 assertNotArchived 가드가 VersionTransitionNotAllowedException 던짐") {
+                val archivedVersion = activeVersion.copy(status = VersionStatus.ARCHIVED)
+                every { permissionResolver.hasPermission(actorId, VersionPermission.UPDATE, projectId) } returns true
+                every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                every { repo.findById(versionId, projectId) } returns archivedVersion
+
+                shouldThrow<VersionTransitionNotAllowedException> {
+                    sut.changeDates(actorId, projectIdOrKey, versionId, null, null)
+                }
+                verify(exactly = 0) { repo.update(any()) }
+            }
+        }
+
+        context("오류 경로 — 버전 미존재") {
+            it("VersionNotFoundException 발생") {
+                every { permissionResolver.hasPermission(actorId, VersionPermission.UPDATE, projectId) } returns true
+                every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                every { repo.findById(versionId, projectId) } returns null
+
+                shouldThrow<VersionNotFoundException> {
+                    sut.changeStatus(actorId, projectIdOrKey, versionId, VersionStatus.RELEASED)
+                }
+                verify(exactly = 0) { repo.update(any()) }
+            }
+        }
+
+        context("오류 경로 — 권한 없음") {
+            it("VersionAccessDeniedException 발생") {
+                every { permissionResolver.hasPermission(actorId, VersionPermission.UPDATE, projectId) } returns false
+                every { projectLookup.resolve(projectIdOrKey) } returns projectId
+
+                shouldThrow<VersionAccessDeniedException> {
+                    sut.changeStatus(actorId, projectIdOrKey, versionId, VersionStatus.RELEASED)
                 }
             }
         }
