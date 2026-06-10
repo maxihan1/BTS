@@ -190,15 +190,15 @@ class UserRepositoryTest {
 
     @Test
     fun `provisionFromExternal — 신규 사용자 UPSERT 후 User 반환`() {
-        val user = repo.provisionFromExternal(
+        val result = repo.provisionFromExternal(
             username = "henry",
             email = "henry@ldap.bts.local",
             displayName = "Henry LDAP",
         )
 
-        assertThat(user.username).isEqualTo("henry")
-        assertThat(user.email).isEqualTo("henry@ldap.bts.local")
-        assertThat(user.id).isNotNull()
+        assertThat(result.user.username).isEqualTo("henry")
+        assertThat(result.user.email).isEqualTo("henry@ldap.bts.local")
+        assertThat(result.user.id).isNotNull()
     }
 
     @Test
@@ -206,8 +206,26 @@ class UserRepositoryTest {
         val first = repo.provisionFromExternal("ivy", "ivy@ldap.bts.local", "Ivy")
         val second = repo.provisionFromExternal("ivy", "ivy-updated@ldap.bts.local", "Ivy Updated")
 
-        assertThat(second.id).isEqualTo(first.id)
-        assertThat(second.displayName).isEqualTo("Ivy Updated")
+        assertThat(second.user.id).isEqualTo(first.user.id)
+        assertThat(second.user.displayName).isEqualTo("Ivy Updated")
+    }
+
+    // ── provisionFromExternal isNew 플래그 (FR-AU-10 — USER_PROVISIONED 신규 판정) ──
+
+    @Test
+    fun `provisionFromExternal — 신규 INSERT 시 isNew=true (xmax=0)`() {
+        val result = repo.provisionFromExternal("noah", "noah@ldap.bts.local", "Noah")
+
+        assertThat(result.isNew).isTrue()
+    }
+
+    @Test
+    fun `provisionFromExternal — 동일 username 재호출 시 isNew=false (ON CONFLICT UPDATE)`() {
+        repo.provisionFromExternal("olivia", "olivia@ldap.bts.local", "Olivia")
+        val second = repo.provisionFromExternal("olivia", "olivia-updated@ldap.bts.local", "Olivia Updated")
+
+        assertThat(second.isNew).isFalse()
+        assertThat(second.user.displayName).isEqualTo("Olivia Updated")
     }
 
     // ── findByIds ─────────────────────────────────────────────────────────────
