@@ -423,7 +423,6 @@ const getReleaseNotesHandler = http.get(
   '/api/v1/projects/:projectIdOrKey/versions/:id/release-notes',
   ({ params }) => {
     const id = params['id'] as string
-    const projectIdOrKey = params['projectIdOrKey'] as string
     const stored = versionStore.get(id)
     if (stored === undefined || stored.deleted) {
       return versionNotFound(id)
@@ -436,7 +435,7 @@ const getReleaseNotesHandler = http.get(
     return HttpResponse.json({
       data: {
         versionId: stored.id,
-        projectKey: stored.projectIdOrKey === projectIdOrKey ? projectIdOrKey : stored.projectIdOrKey,
+        projectKey: stored.projectIdOrKey,
         versionName: stored.name,
         versionStatus: stored.status,
         releaseDate: stored.releaseDate,
