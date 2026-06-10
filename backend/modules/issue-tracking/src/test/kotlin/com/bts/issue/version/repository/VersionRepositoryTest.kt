@@ -285,7 +285,7 @@ class VersionRepositoryTest : IssueTestcontainersBase() {
     fun `findByProject 는 status 와 releasedAt 을 올바르게 매핑해야 한다`() {
         val releasedAt = Instant.parse("2026-06-10T09:00:00Z")
 
-        val saved1 = versionRepository.insert(Version.create(projectId = testProjectId, name = "fp-unreleased"))
+        versionRepository.insert(Version.create(projectId = testProjectId, name = "fp-unreleased"))
         val saved2 = versionRepository.insert(Version.create(projectId = testProjectId, name = "fp-released"))
         versionRepository.update(saved2.copy(status = VersionStatus.RELEASED, releasedAt = releasedAt))
 

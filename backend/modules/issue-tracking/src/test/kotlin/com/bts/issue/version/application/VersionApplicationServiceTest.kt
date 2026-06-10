@@ -432,7 +432,9 @@ class VersionApplicationServiceTest : DescribeSpec({
 
                 result.status shouldBe VersionStatus.RELEASED
                 result.releasedAt shouldBe fixedInstant
-                verify(exactly = 1) { repo.update(match { it.status == VersionStatus.RELEASED && it.releasedAt == fixedInstant }) }
+                verify(exactly = 1) {
+                    repo.update(match { it.status == VersionStatus.RELEASED && it.releasedAt == fixedInstant })
+                }
             }
         }
 
@@ -449,7 +451,9 @@ class VersionApplicationServiceTest : DescribeSpec({
 
                 result.status shouldBe VersionStatus.UNRELEASED
                 result.releasedAt shouldBe null
-                verify(exactly = 1) { repo.update(match { it.status == VersionStatus.UNRELEASED && it.releasedAt == null }) }
+                verify(exactly = 1) {
+                    repo.update(match { it.status == VersionStatus.UNRELEASED && it.releasedAt == null })
+                }
             }
         }
 
