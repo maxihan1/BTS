@@ -27,7 +27,7 @@ function renderFilters(
 }
 
 describe('AuditLogFilters', () => {
-  let onFilterChange: ReturnType<typeof vi.fn>
+  let onFilterChange: (partial: Partial<AuditLogQueryParams>) => void
 
   beforeEach(() => {
     onFilterChange = vi.fn()

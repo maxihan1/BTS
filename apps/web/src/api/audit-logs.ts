@@ -66,7 +66,7 @@ export const auditLogEntrySchema = z.object({
   /** User-Agent 문자열 — 헤더 부재 시 null/키 없음 */
   userAgent: z.string().nullish(),
   /** 이벤트 부가 정보 — 항상 존재 (빈 맵 {} 포함) */
-  metadata: z.record(z.string()),
+  metadata: z.record(z.string(), z.string()),
   /** 이벤트 발생 시각 (ISO 8601) — 항상 존재 */
   createdAt: z.string(),
 })

@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 21개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 7 + settings 3 + 사용자 생성 1 + workflow detail 1)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 22개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 7 + settings 3 + 사용자 생성 1 + 감사 로그 1 + workflow detail 1)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -23,6 +23,7 @@ import { ProjectCustomFieldsSettingsRouteAdapter } from './routes/projects.$proj
 import { ProjectFieldPermissionsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.field-permissions'
 import { ProjectLeadSettingsRouteAdapter } from './routes/projects.$projectKey.settings.project-lead'
 import { AdminUsersNewRouteAdapter } from './routes/admin.users.new'
+import { AdminAuditLogsRouteAdapter } from './routes/admin.audit-logs'
 import { SessionsSettingsRouteAdapter } from './routes/settings.sessions'
 import { PasswordSettingsRouteAdapter } from './routes/settings.password'
 import { AccountLinksSettingsRouteAdapter } from './routes/settings.account-links'
@@ -189,6 +190,15 @@ const settingsSessionsRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
+/** 감사 로그 관리자 조회 라우트 — /admin/audit-logs, requireAuth + requireSystemAdmin */
+const adminAuditLogsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin/audit-logs',
+  component: AdminAuditLogsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: composeGuards(requireAuth, requireSystemAdmin),
+})
+
 /** 사용자 생성 라우트 — /admin/users/new, requireAuth + requireSystemAdmin + requirePasswordChanged */
 const adminUsersNewRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -225,9 +235,9 @@ const settingsAccountLinksRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 21개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 22개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
- *   · /admin/users/new
+ *   · /admin/users/new · /admin/audit-logs
  *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
  *   · /projects/:projectKey/settings/components · /projects/:projectKey/settings/versions
  *   · /projects/:projectKey/settings/custom-fields · /projects/:projectKey/settings/field-permissions
@@ -248,6 +258,8 @@ export const routeTree = rootRoute.addChildren([
   adminWorkflowSchemesRoute,
   adminWorkflowSchemesNewRoute,
   adminWorkflowSchemesDetailRoute,
+  // identity-access BC — 감사 로그 관리자 조회
+  adminAuditLogsRoute,
   // identity-access BC — 사용자 생성 (/admin/users/new)
   adminUsersNewRoute,
   // project-workflow BC — 프로젝트별 스킴 할당
