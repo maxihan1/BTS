@@ -172,6 +172,53 @@ class AuthnProviderConfigRepositoryTest {
         assertThat(result.keys).containsExactly(ldapId)
     }
 
+    // ── findEnabledByType (FR-AU-08-d6-d7 linkable-providers — LDAP 목록 취득) ───
+
+    @Test
+    fun `findEnabledByType — enabled LDAP row 만 AuthnProviderInfo 리스트로 반환`() {
+        val ldap1 = insertProviderReturningId(ProviderType.LDAP, enabled = true, sortOrder = 0)
+        val ldap2 = insertProviderReturningId(ProviderType.LDAP, enabled = true, sortOrder = 1)
+
+        val result = repo.findEnabledByType(ProviderType.LDAP)
+
+        assertThat(result.map { it.id }).containsExactlyInAnyOrder(ldap1, ldap2)
+        assertThat(result).allSatisfy {
+            assertThat(it.type).isEqualTo(ProviderType.LDAP)
+            assertThat(it.enabled).isTrue()
+            assertThat(it.name).isNotBlank()
+        }
+    }
+
+    @Test
+    fun `findEnabledByType — disabled LDAP row 는 제외`() {
+        val enabled = insertProviderReturningId(ProviderType.LDAP, enabled = true, sortOrder = 0)
+        insertProviderReturningId(ProviderType.LDAP, enabled = false, sortOrder = 1)
+
+        val result = repo.findEnabledByType(ProviderType.LDAP)
+
+        assertThat(result.map { it.id }).containsExactly(enabled)
+    }
+
+    @Test
+    fun `findEnabledByType — 다른 type row 는 제외`() {
+        val ldap = insertProviderReturningId(ProviderType.LDAP, enabled = true, sortOrder = 0)
+        insertProviderReturningId(ProviderType.LOCAL, enabled = true, sortOrder = 1)
+        // SAML/OIDC 는 V010/V011 seed 로 존재하지만 LDAP 조회에 섞이면 안 된다.
+
+        val result = repo.findEnabledByType(ProviderType.LDAP)
+
+        assertThat(result.map { it.id }).containsExactly(ldap)
+    }
+
+    @Test
+    fun `findEnabledByType — 해당 type 의 enabled row 가 없으면 빈 리스트`() {
+        insertProviderReturningId(ProviderType.LDAP, enabled = false, sortOrder = 0)
+
+        val result = repo.findEnabledByType(ProviderType.LDAP)
+
+        assertThat(result).isEmpty()
+    }
+
     private fun insertProviderReturningId(
         type: ProviderType,
         enabled: Boolean,

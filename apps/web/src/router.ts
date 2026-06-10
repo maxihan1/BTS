@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 20개 라우트 (이슈 7 + 워크플로우 스킴 4 + settings 3 + 멤버 1 + 컴포넌트 1 + 버전 1 + 커스텀 필드 1 + 사용자 생성 1 + 필드 권한 1)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 21개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 7 + settings 3 + 사용자 생성 1 + workflow detail 1)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -25,6 +25,7 @@ import { ProjectLeadSettingsRouteAdapter } from './routes/projects.$projectKey.s
 import { AdminUsersNewRouteAdapter } from './routes/admin.users.new'
 import { SessionsSettingsRouteAdapter } from './routes/settings.sessions'
 import { PasswordSettingsRouteAdapter } from './routes/settings.password'
+import { AccountLinksSettingsRouteAdapter } from './routes/settings.account-links'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -207,16 +208,31 @@ const settingsPasswordRoute = createRoute({
   beforeLoad: requireAuth,
 })
 
+/** 계정 연결 설정 라우트 — /settings/account-links, requireAuth + mustChangePassword 차단 */
+const settingsAccountLinksRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/account-links',
+  component: AccountLinksSettingsRouteAdapter,
+  staticData: { requireAuth: true },
+  // settings.sessions 동급 가드 — mustChangePassword 사용자 선차단 (settings.password의 requireAuth 단독 아님)
+  beforeLoad: requireAuthAndPasswordChanged,
+  // ?link= / ?reauth= 콜백 쿼리 파라미터 타입 선언 — window.location.search 직접 파싱 대신 (issuesIndexRoute 선례)
+  validateSearch: (search: Record<string, unknown>): { link?: string; reauth?: string } => ({
+    link: typeof search['link'] === 'string' ? search['link'] : undefined,
+    reauth: typeof search['reauth'] === 'string' ? search['reauth'] : undefined,
+  }),
+})
+
 /**
  * 전체 라우트 트리.
- * 19개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 21개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new
  *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
  *   · /projects/:projectKey/settings/components · /projects/:projectKey/settings/versions
  *   · /projects/:projectKey/settings/custom-fields · /projects/:projectKey/settings/field-permissions
  *   · /projects/:projectKey/settings/project-lead
- *   · /settings/sessions · /settings/password
+ *   · /settings/sessions · /settings/password · /settings/account-links
  * requireAuth 라우트: /dashboard · /issues · /issues/* · /admin/* · /projects/*\/settings/* · /settings/*
  */
 export const routeTree = rootRoute.addChildren([
@@ -252,6 +268,8 @@ export const routeTree = rootRoute.addChildren([
   settingsSessionsRoute,
   // identity-access BC — 비밀번호 변경
   settingsPasswordRoute,
+  // identity-access BC — 계정 연결 관리 (FR-AU-08/08b)
+  settingsAccountLinksRoute,
   // workflows (레거시 workflow 상세 — 향후 마이그레이션 예정)
   workflowsKeyRoute,
 ])
