@@ -2,12 +2,16 @@
 
 package com.atlas.bts.identity.provider.ldap
 
+import com.atlas.bts.identity.audit.AuthAuditLog
+import com.atlas.bts.identity.audit.AuthAuditLogService
+import com.atlas.bts.identity.audit.AuthEventType
 import com.atlas.bts.identity.spi.AuthnResult
 import com.atlas.bts.identity.spi.Credential
 import com.atlas.bts.identity.spi.FailureReason
 import com.atlas.bts.identity.spi.ProviderType
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -30,6 +34,7 @@ class LdapProviderUnitTest {
     private lateinit var externalAccountRepo: ExternalAccountRepository
     private lateinit var autoProvisionService: AutoProvisionService
     private lateinit var ldapTemplate: LdapTemplate
+    private lateinit var auditLog: AuthAuditLogService
     private lateinit var clock: Clock
     private lateinit var provider: LdapProvider
 
@@ -73,8 +78,10 @@ class LdapProviderUnitTest {
         externalAccountRepo = mockk(relaxed = true)
         autoProvisionService = mockk(relaxed = true)
         ldapTemplate = mockk()
+        auditLog = mockk(relaxed = true)
         clock = Clock.fixed(fixedNow, ZoneOffset.UTC)
-        provider = LdapProvider(configService, externalAccountRepo, autoProvisionService, ldapTemplate, clock)
+        provider =
+            LdapProvider(configService, externalAccountRepo, autoProvisionService, ldapTemplate, auditLog, clock)
     }
 
     @Test
@@ -272,5 +279,83 @@ class LdapProviderUnitTest {
 
         // wipe 후 배열은 공백 문자로 채워짐
         assertThat(password).containsOnly(' ')
+    }
+
+    // ── FR-AU-10 Task 9: LDAP_UNAVAILABLE 감사 emit (spec §5 매핑표, §6 EC-2) ──
+
+    @Test
+    fun `LDAP 미설정 — LDAP_UNAVAILABLE emit (userId=null, reason=config_missing)`() {
+        every { configService.findEnabledLdapConfig() } returns null
+
+        val captured = slot<AuthAuditLog>()
+        every { auditLog.record(capture(captured)) } returns Unit
+
+        provider.authenticate(Credential.LdapBind("alice", "Test1234!".toCharArray()))
+
+        verify { auditLog.record(any()) }
+        assertThat(captured.captured.eventType).isEqualTo(AuthEventType.LDAP_UNAVAILABLE)
+        // EC-2: 인증 전이라 주체 미상 — 더미 UUID 금지
+        assertThat(captured.captured.userId).isNull()
+        assertThat(captured.captured.metadata["reason"]).isEqualTo("config_missing")
+    }
+
+    @Test
+    fun `bind password 미설정 — LDAP_UNAVAILABLE emit (userId=null, reason=bind_password_missing, providerId)`() {
+        val configWithMissingEnv =
+            sampleConfig.copy(
+                bindPasswordEnv = "BTS_LDAP_BIND_PASSWORD_TEST_NONEXISTENT_XYZ_123456",
+            )
+        every { configService.findEnabledLdapConfig() } returns Pair(providerId, configWithMissingEnv)
+
+        val captured = slot<AuthAuditLog>()
+        every { auditLog.record(capture(captured)) } returns Unit
+
+        provider.authenticate(Credential.LdapBind("alice", "Test1234!".toCharArray()))
+
+        verify { auditLog.record(any()) }
+        assertThat(captured.captured.eventType).isEqualTo(AuthEventType.LDAP_UNAVAILABLE)
+        assertThat(captured.captured.userId).isNull()
+        assertThat(captured.captured.providerId).isEqualTo(providerId.toString())
+        assertThat(captured.captured.metadata["reason"]).isEqualTo("bind_password_missing")
+    }
+
+    @Test
+    fun `CommunicationException — LDAP_UNAVAILABLE emit (userId=null, reason=communication_error, exception)`() {
+        every { configService.findEnabledLdapConfig() } returns Pair(providerId, sampleConfig)
+        every {
+            ldapTemplate.authenticate(any<String>(), any<String>(), any<String>())
+        } throws CommunicationException(javax.naming.CommunicationException("connection refused"))
+        every {
+            externalAccountRepo.findByProviderIdAndExternalSubject(providerId, any())
+        } returns sampleAccount
+
+        val captured = slot<AuthAuditLog>()
+        every { auditLog.record(capture(captured)) } returns Unit
+
+        provider.authenticate(Credential.LdapBind("alice", "Test1234!".toCharArray()))
+
+        verify { auditLog.record(any()) }
+        assertThat(captured.captured.eventType).isEqualTo(AuthEventType.LDAP_UNAVAILABLE)
+        assertThat(captured.captured.userId).isNull()
+        assertThat(captured.captured.providerId).isEqualTo(providerId.toString())
+        assertThat(captured.captured.metadata["reason"]).isEqualTo("communication_error")
+        // exception 클래스명만 기록 (PII 무관 — DEVELOPMENT.md §1.2)
+        assertThat(captured.captured.metadata["exception"]).isEqualTo(CommunicationException::class.java.simpleName)
+    }
+
+    @Test
+    fun `자격증명 실패 — LDAP_UNAVAILABLE emit 안 함 (무중복, EC-11)`() {
+        every { configService.findEnabledLdapConfig() } returns Pair(providerId, sampleConfig)
+        every {
+            ldapTemplate.authenticate(any<String>(), any<String>(), any<String>())
+        } throws AuthenticationException(javax.naming.AuthenticationException("bad credentials"))
+        every {
+            externalAccountRepo.findByProviderIdAndExternalSubject(providerId, any())
+        } returns sampleAccount
+
+        provider.authenticate(Credential.LdapBind("alice", "wrong".toCharArray()))
+
+        // 자격증명 실패는 LDAP_UNAVAILABLE 아님 — vacuous green 회피용 비-emit 가드
+        verify(exactly = 0) { auditLog.record(any()) }
     }
 }
