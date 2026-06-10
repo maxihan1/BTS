@@ -92,6 +92,35 @@ data class IssueFieldPatch(
 )
 
 /**
+ * 릴리즈 노트 생성용 이슈 읽기 결과 행.
+ *
+ * [IssueRepository.findFixVersionIssuesForReleaseNotes] 가 단일 쿼리로 반환하는 평면 결과.
+ * Service 레이어가 [com.bts.issue.version.releasenotes.ReleaseNoteIssue] 로 매핑한다.
+ *
+ * cartesian product 안전성 근거 (learnings PR#31 적용).
+ * - `issue_fix_versions`: versionId 필터 시 이슈당 최대 1행 (복합 PK issue_id, version_id).
+ * - `issue_types`: issues.type_id 1:1 FK — 이슈당 1행.
+ * → 총 이슈당 1행 보장.
+ *
+ * @property key 이슈 전역 식별자 문자열 (예: "BTS-1").
+ * @property summary 이슈 제목.
+ * @property typeId 이슈 유형 BIGINT id.
+ * @property typeKey 이슈 유형 키 (예: "bug", "task").
+ * @property typeName 이슈 유형 표시 이름 (예: "Bug", "Task").
+ * @property hierarchyLevel 이슈 유형 계층 깊이. epic=1, task/story/bug=0, subtask=-1.
+ * @property resolutionId 해결 완료 UUID. 미해결 또는 resolution 미지정 시 null.
+ */
+data class ReleaseNoteIssueRow(
+    val key: String,
+    val summary: String,
+    val typeId: Long,
+    val typeKey: String,
+    val typeName: String,
+    val hierarchyLevel: Int,
+    val resolutionId: UUID?,
+)
+
+/**
  * 이슈 Repository.
  *
  * jOOQ DSLContext 를 통해 issues / projects 테이블에 접근한다.
@@ -104,6 +133,7 @@ data class IssueFieldPatch(
  * - [softDelete] — deleted_at 를 NOW() 로 설정.
  * - [list] — 프로젝트별 활성 이슈 페이지 조회.
  * - [incrementKeySequence] — pg_advisory_xact_lock 으로 동시성 제어 후 key_sequence +1 RETURNING.
+ * - [findFixVersionIssuesForReleaseNotes] — 버전 UUID → fix version 연결 활성 이슈 목록 반환.
  */
 
 @Repository
@@ -806,6 +836,55 @@ class IssueRepository(
             .and(VERSIONS.DELETED_AT.isNull)
             .fetch(ISSUE_FIX_VERSIONS.VERSION_ID)
             .filterNotNull()
+    }
+
+    /**
+     * 특정 버전을 fix version 으로 가진 활성 이슈 목록을 릴리즈 노트 생성용으로 반환한다.
+     *
+     * 단일 쿼리로 ISSUE_FIX_VERSIONS → ISSUES(deleted_at IS NULL) → ISSUE_TYPES 를 JOIN 한다.
+     *
+     * cartesian product 안전성 근거 (learnings PR#31).
+     * - issue_fix_versions 는 (issue_id, version_id) 복합 PK. versionId 필터 시 이슈당 최대 1행.
+     * - issue_types 는 issues.type_id 1:1 FK. 이슈당 1행.
+     * → 총 이슈당 1행 보장.
+     *
+     * 정렬은 호출자(Service/Generator) 책임이므로 raw 반환.
+     *
+     * @param versionId 릴리즈 노트를 생성할 버전 UUID.
+     * @return fix version 연결 활성 이슈의 [ReleaseNoteIssueRow] 목록. 없으면 빈 리스트.
+     */
+    @Transactional(readOnly = true)
+    fun findFixVersionIssuesForReleaseNotes(versionId: UUID): List<ReleaseNoteIssueRow> {
+        log.debug("findFixVersionIssuesForReleaseNotes versionId={}", versionId)
+        return dsl.select(
+            ISSUES.KEY,
+            ISSUES.SUMMARY,
+            ISSUES.RESOLUTION_ID,
+            ISSUE_TYPES.ID.`as`("type_id"),
+            ISSUE_TYPES.KEY.`as`("type_key"),
+            ISSUE_TYPES.NAME.`as`("type_name"),
+            ISSUE_TYPES.HIERARCHY_LEVEL,
+        )
+            .from(ISSUE_FIX_VERSIONS)
+            .join(ISSUES).on(ISSUE_FIX_VERSIONS.ISSUE_ID.eq(ISSUES.ID))
+            .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
+            .where(ISSUE_FIX_VERSIONS.VERSION_ID.eq(versionId))
+            .and(ISSUES.DELETED_AT.isNull)
+            .fetch { record ->
+                ReleaseNoteIssueRow(
+                    key = record.get(ISSUES.KEY) ?: error("issues.key must not be null"),
+                    summary = record.get(ISSUES.SUMMARY) ?: error("issues.summary must not be null"),
+                    resolutionId = record.get(ISSUES.RESOLUTION_ID),
+                    typeId = record.get("type_id", Long::class.java)
+                        ?: error("issue_types.id must not be null in join result"),
+                    typeKey = record.get("type_key", String::class.java)
+                        ?: error("issue_types.key must not be null in join result"),
+                    typeName = record.get("type_name", String::class.java)
+                        ?: error("issue_types.name must not be null in join result"),
+                    hierarchyLevel = record.get(ISSUE_TYPES.HIERARCHY_LEVEL)
+                        ?: error("issue_types.hierarchy_level must not be null in join result"),
+                )
+            }
     }
 
     /**
