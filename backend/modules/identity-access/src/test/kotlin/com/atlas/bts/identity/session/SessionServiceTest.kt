@@ -123,6 +123,43 @@ class SessionServiceTest {
         assertThat(result).isEqualTo(savedSlot.captured)
     }
 
+    // ── create — mfaVerified 전파 (FR-MF-01 GAP-1) ───────────────────────────────
+
+    @Test
+    fun `create — mfaVerified 기본값은 false 다 (기존 호출처 무회귀)`() {
+        val savedSlot = slot<Session>()
+        justRun { repo.save(capture(savedSlot)) }
+
+        // mfaVerified 미전달 = 기존 로그인 흐름(1차 인증만). 기본 false 유지.
+        service.create(
+            userId = userId,
+            providerId = "local",
+            ipAddress = "127.0.0.1",
+            userAgent = "Mozilla/5.0",
+        )
+
+        assertThat(savedSlot.captured.mfaVerified).isFalse()
+    }
+
+    @Test
+    fun `create — mfaVerified=true 를 전달하면 저장 세션과 반환 세션 모두 true 다`() {
+        val savedSlot = slot<Session>()
+        justRun { repo.save(capture(savedSlot)) }
+
+        // 2차 요소(TOTP) 통과 후 정식 세션 발급 = mfaVerified=true.
+        val result =
+            service.create(
+                userId = userId,
+                providerId = "local",
+                ipAddress = "127.0.0.1",
+                userAgent = "Mozilla/5.0",
+                mfaVerified = true,
+            )
+
+        assertThat(savedSlot.captured.mfaVerified).isTrue()
+        assertThat(result.mfaVerified).isTrue()
+    }
+
     // ── lookup ────────────────────────────────────────────────────────────────
 
     @Test
@@ -169,6 +206,18 @@ class SessionServiceTest {
 
         assertThat(found.isActive(fixedNow)).isFalse()
         assertThat(found.isExpired(fixedNow)).isTrue()
+    }
+
+    @Test
+    fun `lookup — mfaVerified=true 세션은 조회 결과에도 true 로 노출된다 (FR-MF-01 GAP-1)`() {
+        // refresh 회전(RefreshTokenService.rotate)이 lookup 으로 세션을 읽어 mfa_verified 를
+        // JWT 클레임으로 다시 발급하므로, 조회 경로가 이 플래그를 보존해야 한다.
+        val mfaSession = buildActiveSession(mfaVerified = true)
+        every { repo.findById(mfaSession.id) } returns mfaSession
+
+        val found = service.lookup(mfaSession.id)!!
+
+        assertThat(found.mfaVerified).isTrue()
     }
 
     // ── revoke ────────────────────────────────────────────────────────────────
@@ -297,7 +346,10 @@ class SessionServiceTest {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private fun buildActiveSession(id: UUID = UUID.randomUUID()): Session =
+    private fun buildActiveSession(
+        id: UUID = UUID.randomUUID(),
+        mfaVerified: Boolean = false,
+    ): Session =
         Session(
             id = id,
             userId = userId,
@@ -310,5 +362,6 @@ class SessionServiceTest {
             lastSeenAt = fixedNow,
             revokedAt = null,
             revokeReason = null,
+            mfaVerified = mfaVerified,
         )
 }
