@@ -121,41 +121,22 @@ class Saml2AuthenticationSuccessHandler(
             )
 
         issueTokens(request, response, account.userId)
-        // 일반 로그인 경로에서만 LOGIN_SUCCESS 기록 — 연결 모드 early-return 은 위에서 처리되어 도달하지 않는다(C-3).
-        recordLoginSuccess(request, account.userId)
-
-        val target = relayStateValidator.resolve(request.getParameter(RELAY_STATE_PARAM))
-        log.debug("SAML 인증 성공 — providerId={}, registrationId={}", providerId, registrationId)
-        response.sendRedirect(target)
-    }
-
-    /**
-     * LOGIN_SUCCESS 감사 이벤트를 best-effort 로 기록한다 (FR-AU-10 Task 8 / spec §5, EC-12, NFR-3 B-1).
-     *
-     * **연결 모드 비-emit (C-3)**: 이 헬퍼는 일반 로그인 경로([onAuthenticationSuccess] 의 [issueTokens] 직후)
-     * 에서만 호출된다. 연결 모드는 그 위에서 early-return 으로 분기되므로 여기에 도달하지 않는다 — 연결은 로그인이 아니다.
-     *
-     * **best-effort (B-1)**: 이 핸들러는 web 레이어이고 @Transactional 이 아니므로(클래스 KDoc 참조), 감사 INSERT 실패가
-     * 로그인 가용성을 인질로 잡으면 안 된다. [recordAuditBestEffort] 로 감싸 실패해도 발급/리다이렉트 흐름은 계속한다.
-     *
-     * userId=프로비저닝된 주체, providerId="saml", ip/userAgent=요청에서 캡처(PII 는 로그 미출력).
-     *
-     * @param request IP/UserAgent 캡처용 HTTP 요청
-     * @param userId 프로비저닝된 주체 사용자 ID
-     */
-    private fun recordLoginSuccess(
-        request: HttpServletRequest,
-        userId: UUID,
-    ) {
+        // 일반 로그인 경로에서만 LOGIN_SUCCESS 기록(C-3) — 연결 모드 early-return 은 위에서 처리되어 도달하지 않는다.
+        // best-effort(B-1) — 감사 INSERT 실패가 로그인 가용성을 인질로 잡지 않도록 recordAuditBestEffort 로 감싼다.
+        // providerId="saml", ip/userAgent 는 요청에서 캡처(PII 는 로그 미출력).
         recordAuditBestEffort(
             AuthAuditLog(
-                userId = userId,
+                userId = account.userId,
                 eventType = AuthEventType.LOGIN_SUCCESS,
                 providerId = PROVIDER_ID,
                 ipAddress = request.remoteAddr.takeIf { it.isNotBlank() },
                 userAgent = request.getHeader(HttpHeaders.USER_AGENT),
             ),
         )
+
+        val target = relayStateValidator.resolve(request.getParameter(RELAY_STATE_PARAM))
+        log.debug("SAML 인증 성공 — providerId={}, registrationId={}", providerId, registrationId)
+        response.sendRedirect(target)
     }
 
     /**
