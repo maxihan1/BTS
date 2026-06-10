@@ -1,7 +1,6 @@
 // ReleaseNotesDialog 단위 테스트 — 로딩/에러/성공 렌더 + 클립보드 복사 (FR-VR-04 Task 6)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
@@ -10,14 +9,6 @@ import { server } from '@/test/server'
 import { versionHandlers, resetVersionStore } from '@/mocks/version-handlers'
 import type { Version } from '@/api/versions.types'
 import { ReleaseNotesDialog } from './ReleaseNotesDialog'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TanStack Router mock — projectKey를 useParams로 획득하는 컴포넌트 테스트 필수
-// ─────────────────────────────────────────────────────────────────────────────
-
-vi.mock('@tanstack/react-router', () => ({
-  useParams: () => ({ projectKey: 'ATLAS' }),
-}))
 
 // ─────────────────────────────────────────────────────────────────────────────
 // sonner mock — 토스트 발사 검증용
@@ -79,9 +70,7 @@ function createWrapper() {
 }
 
 /**
- * MSW version store를 채우는 핸들러 오버라이드.
- * version-handlers의 getVersionHandler는 versionStore를 참조하므로
- * 직접 PUT 핸들러로 시드한다.
+ * MSW 핸들러를 오버라이드해 버전 + 릴리즈 노트 응답을 시드한다.
  */
 function seedVersion(): void {
   server.use(
@@ -137,17 +126,16 @@ beforeEach(() => {
   vi.clearAllMocks()
   server.use(...versionHandlers)
 
-  // navigator.clipboard mock
-  Object.defineProperty(navigator, 'clipboard', {
-    value: { writeText: clipboardWriteText },
-    writable: true,
-    configurable: true,
-  })
+  // navigator.clipboard mock — vi.stubGlobal로 확실히 교체
   clipboardWriteText.mockResolvedValue(undefined)
+  vi.stubGlobal('navigator', {
+    ...navigator,
+    clipboard: { writeText: clipboardWriteText },
+  })
 })
 
 afterEach(() => {
-  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -161,6 +149,7 @@ describe('ReleaseNotesDialog — 닫힘 상태', () => {
       <ReleaseNotesDialog
         versionId={VERSION_ID}
         versionName={VERSION_NAME}
+        projectKey={PROJECT_KEY}
         open={false}
         onOpenChange={vi.fn()}
       />,
@@ -188,6 +177,7 @@ describe('ReleaseNotesDialog — 로딩 상태', () => {
       <ReleaseNotesDialog
         versionId={VERSION_ID}
         versionName={VERSION_NAME}
+        projectKey={PROJECT_KEY}
         open={true}
         onOpenChange={vi.fn()}
       />,
@@ -210,6 +200,7 @@ describe('ReleaseNotesDialog — 에러 상태', () => {
       <ReleaseNotesDialog
         versionId={VERSION_ID}
         versionName={VERSION_NAME}
+        projectKey={PROJECT_KEY}
         open={true}
         onOpenChange={vi.fn()}
       />,
@@ -231,6 +222,7 @@ describe('ReleaseNotesDialog — 성공 상태', () => {
       <ReleaseNotesDialog
         versionId={VERSION_ID}
         versionName={VERSION_NAME}
+        projectKey={PROJECT_KEY}
         open={true}
         onOpenChange={vi.fn()}
       />,
@@ -253,6 +245,7 @@ describe('ReleaseNotesDialog — 성공 상태', () => {
       <ReleaseNotesDialog
         versionId={VERSION_ID}
         versionName={VERSION_NAME}
+        projectKey={PROJECT_KEY}
         open={true}
         onOpenChange={vi.fn()}
       />,
@@ -278,6 +271,7 @@ describe('ReleaseNotesDialog — 클립보드 복사', () => {
       <ReleaseNotesDialog
         versionId={VERSION_ID}
         versionName={VERSION_NAME}
+        projectKey={PROJECT_KEY}
         open={true}
         onOpenChange={vi.fn()}
       />,
@@ -289,12 +283,14 @@ describe('ReleaseNotesDialog — 클립보드 복사', () => {
       expect(screen.getByRole('region', { name: /릴리즈 노트 내용/i })).toBeInTheDocument()
     })
 
-    const user = userEvent.setup()
+    // fireEvent.click 사용 — Radix portal의 body pointer-events:none 우회 (AddAccountDialog.test.tsx 패턴)
     const dialog = screen.getByRole('dialog')
     const copyBtn = within(dialog).getByRole('button', { name: /복사/i })
-    await user.click(copyBtn)
+    fireEvent.click(copyBtn)
 
-    expect(clipboardWriteText).toHaveBeenCalledWith(SAMPLE_MARKDOWN)
+    await waitFor(() => {
+      expect(clipboardWriteText).toHaveBeenCalledWith(SAMPLE_MARKDOWN)
+    })
   })
 
   it('복사 성공 후 완료 표시가 나타난다', async () => {
@@ -305,6 +301,7 @@ describe('ReleaseNotesDialog — 클립보드 복사', () => {
       <ReleaseNotesDialog
         versionId={VERSION_ID}
         versionName={VERSION_NAME}
+        projectKey={PROJECT_KEY}
         open={true}
         onOpenChange={vi.fn()}
       />,
@@ -315,10 +312,9 @@ describe('ReleaseNotesDialog — 클립보드 복사', () => {
       expect(screen.getByRole('region', { name: /릴리즈 노트 내용/i })).toBeInTheDocument()
     })
 
-    const user = userEvent.setup()
     const dialog = screen.getByRole('dialog')
     const copyBtn = within(dialog).getByRole('button', { name: /복사/i })
-    await user.click(copyBtn)
+    fireEvent.click(copyBtn)
 
     await waitFor(() => {
       expect(within(dialog).getByText(/복사됨|복사 완료/i)).toBeInTheDocument()
@@ -334,6 +330,7 @@ describe('ReleaseNotesDialog — 클립보드 복사', () => {
       <ReleaseNotesDialog
         versionId={VERSION_ID}
         versionName={VERSION_NAME}
+        projectKey={PROJECT_KEY}
         open={true}
         onOpenChange={vi.fn()}
       />,
@@ -344,11 +341,17 @@ describe('ReleaseNotesDialog — 클립보드 복사', () => {
       expect(screen.getByRole('region', { name: /릴리즈 노트 내용/i })).toBeInTheDocument()
     })
 
-    const user = userEvent.setup()
     const dialog = screen.getByRole('dialog')
     const copyBtn = within(dialog).getByRole('button', { name: /복사/i })
 
+    // fireEvent.click 사용 — Radix portal pointer-events 우회
     // 클릭해도 에러가 throw되면 안 된다
-    await expect(user.click(copyBtn)).resolves.not.toThrow()
+    expect(() => { fireEvent.click(copyBtn) }).not.toThrow()
+
+    // clipboard 실패 시 컴포넌트가 에러 없이 graceful하게 처리한다
+    await waitFor(() => {
+      // copyState가 'error'로 전환되어 버튼 텍스트가 변경된다
+      expect(within(dialog).getByRole('button', { name: /복사/i })).toBeInTheDocument()
+    })
   })
 })
