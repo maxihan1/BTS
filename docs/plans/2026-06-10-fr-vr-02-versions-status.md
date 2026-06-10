@@ -59,9 +59,21 @@ ARCHIVED   ─unarchive─▶ UNRELEASED    (released_at = null)
 - 선행 ADR: docs/adr/2026-06-03-version-model-and-permission-deferral.md (D5에서 이연)
 - glossary 추가 대기: "버전 상태"(VersionStatus) — Maxi 승인 후 Obsidian 반영 (게이트 1에서 확인)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-10-fr-vr-02-versions-status.md](../specs/2026-06-10-fr-vr-02-versions-status.md)
+
+핵심 시나리오 요약.
+- 버전 상태 UNRELEASED/RELEASED/ARCHIVED + 전이 5종(release/unrelease/archive/unarchive), self·그래프외 전이는 409.
+- `PATCH .../versions/{id}/status` body `{status}` — VersionPermission.UPDATE 재사용, released_at 자동(Clock).
+- ARCHIVED는 읽기 전용(rename/changeDates/delete 409), unarchive만 허용. VersionResponse에 status/releasedAt 추가.
+
+## Brainstorming Check
+
+✅ 통과 (self-review 1회, 치명적 누락 없음). plan 보강점 3건.
+- VersionResponse 확장의 Zod/MSW 전수 파급 → grep 검증 task.
+- ARCHIVED 읽기전용은 도메인에서 강제(softDelete 가드 포함).
+- V016 번호 머지 직전 재확인.
 
 ## Plan (← /bts-plan 채움)
 
