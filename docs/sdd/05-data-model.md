@@ -247,7 +247,7 @@ workflow:
 | Session | 활성 세션 | 19.6 |
 | PersonalAccessToken | PAT | 19.6 |
 | UserMfa | 2FA 설정 | 19.7 |
-| auth_audit_log | 인증 감사 로그 | 19.10 |
+| auth_audit_logs | 인증 감사 로그 | 19.10 |
 | UserProfile | 프로필 | 20.2 |
 | UserPreferences | 환경 설정 | 20.3 |
 | NotificationSubscription | 알림 구독 | 20.4 |
@@ -299,7 +299,7 @@ workflow:
 | issue | B-Tree on rank (백로그 정렬) |
 | issue_history | (issue_id, created_at DESC) |
 | worklog | (issue_id), (author_id, started_at) |
-| auth_audit_log | (user_id, created_at DESC), (event_type) — 월 단위 파티션 |
+| auth_audit_logs | (user_id, created_at DESC), (event_type), (created_at) — 인덱스 3종(파티셔닝 없음, 1K 규모; ADR [2026-06-10-auth-audit-log-persistence](../decisions/2026-06-10-auth-audit-log-persistence.md)) |
 | notification | (user_id, is_read, created_at DESC) |
 
 ## 5.15 ERD 개념도

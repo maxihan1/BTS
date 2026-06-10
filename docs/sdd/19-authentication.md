@@ -176,7 +176,9 @@ data class AuthAuditLog(
 )
 ```
 
-월 단위 파티션, 1년 보존.
+단순 테이블 + 인덱스 3종((user_id, created_at DESC) · (event_type) · (created_at)), 파티셔닝 없음. **append-only 영구 보존**(DATA.md §3 — 감사 로그 절대 삭제 금지). "1년 보존"은 최소 보존 floor로 해석하며 영구 보존이 충족한다. 파티셔닝 일탈 근거 — ADR [2026-06-10-auth-audit-log-persistence](../decisions/2026-06-10-auth-audit-log-persistence.md).
+
+> 위 `data class AuthAuditLog` 표기의 `id: Long`/`userId: Long?` 은 원안 스케치다. 실제 구현은 PK `id: Long`(BIGINT IDENTITY)이되 `userId: UUID?`(users.id 가 UUID), `metadata: Map<String, String>`(JSONB), `createdAt: Instant` 이다(FR-AU-10).
 
 ## 19.10 보안 이벤트 알림
 
