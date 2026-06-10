@@ -65,7 +65,7 @@ function AuditLogRow({ entry }: AuditLogRowProps): JSX.Element {
         {subject}
       </td>
       <td className="px-4 py-2 whitespace-nowrap text-muted-foreground">
-        {entry.providerId}
+        {entry.providerId || auditLogLabels.fallback.unknownProvider}
       </td>
       <td className="px-4 py-2 whitespace-nowrap tabular-nums text-muted-foreground">
         {ip}

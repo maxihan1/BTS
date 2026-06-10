@@ -190,13 +190,14 @@ const settingsSessionsRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
-/** 감사 로그 관리자 조회 라우트 — /admin/audit-logs, requireAuth + requireSystemAdmin */
+/** 감사 로그 관리자 조회 라우트 — /admin/audit-logs, requireAuth + requireSystemAdmin + requirePasswordChanged */
 const adminAuditLogsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/admin/audit-logs',
   component: AdminAuditLogsRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: composeGuards(requireAuth, requireSystemAdmin),
+  // requirePasswordChanged 포함 — 강제변경 미완료 관리자가 admin 라우트로 우회 못 하게 adminUsersNewRoute 와 일관.
+  beforeLoad: composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged),
 })
 
 /** 사용자 생성 라우트 — /admin/users/new, requireAuth + requireSystemAdmin + requirePasswordChanged */
