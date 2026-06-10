@@ -22,7 +22,23 @@ FR-AU-10 — 인증 감사 로그 (identity-access BC, 우선순위 필수, SDD 
 
 classify-task가 제목 끝 "조회 UI" 키워드로 `ui/frontend-engineer` 오분류 → product 문서 D1~D5 = security-engineer 책임이므로 `auth/security-engineer`로 정정.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**: identity-access
+- **핵심 발견**: FR-AU-10은 그린필드가 아님. 감사 시스템 골격이 이미 존재 (`audit/` 패키지).
+  - `AuthEventType` (이벤트 12종 enum), `AuthAuditLog` (데이터 클래스, `userId: UUID`), `AuthAuditLogService` (record/findRecent 인터페이스), `InMemoryAuthAuditLogService` (`@Service` 인메모리 임시 구현)
+  - 본 작업 = `InMemory`가 KDoc에 명시한 "후속 PR: `JdbcAuthAuditLogService` + DB 테이블"의 그 후속.
+- **영향 엔티티**: AuthAuditLog (기존), 신규 `auth_audit_logs` 테이블, 신규 DB-backed 서비스 구현체.
+- **새 용어**: 없음 (도메인 모델 이미 정립, glossary 추가 불필요).
+- **emit 갭 (D4 핵심 작업량)**: enum 12종 중 현재 4종만 emit (PAT_USED, PROJECT_MEMBER_ADDED/REMOVED, PROJECT_ROLE_CHANGED). 나머지 8종 갭 (LOGIN_SUCCESS/FAILURE, LOGOUT, LOGOUT_ALL_DEVICES, TOKEN_REFRESHED, SUSPICIOUS_REFRESH_REPLAY, USER_PROVISIONED, LDAP_UNAVAILABLE).
+- **SDD 모순 해소**: §19.9("월 단위 파티션") ↔ §5.14("1M 규모 파티셔닝 불필요"). → 단순 테이블 채택 (1K 규모).
+- **Maxi 결정 (2026-06-10)**:
+  1. D3 — **파티셔닝 없는 단순 테이블 + 인덱스 3종** ((user_id, created_at DESC), (event_type), (created_at)). SDD §19.9 일탈, §5.14 정합.
+  2. D4 — **enum 12종 전수 emit 배선** (이벤트 누락 0). FR-AU-05/08이 위임한 비번변경/계정연결 이벤트는 enum 미정의 → 별도 후속.
+  3. D2 — **보존 1년 enforcement = `@Scheduled` 1년 경과 행 삭제** (파티션 DROP 대신).
+  4. **동기 record() 패턴 유지** (투기적 async 미도입).
+- **기존 결정 충돌**: SDD §19.9 파티셔닝 일탈 (ADR로 근거 기록). 그 외 충돌 없음.
+- **관련 ADR**: [docs/decisions/2026-06-10-auth-audit-log-persistence.md](../decisions/2026-06-10-auth-audit-log-persistence.md) (생성됨)
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
