@@ -26,7 +26,7 @@ import java.time.ZoneOffset
  * 직접 계산한다 — 하드코딩 상수에 의존하지 않고 samstevens 동작과 정합을 검증한다.
  */
 class TotpServiceTest {
-    private val fixedNow: Instant = Instant.parse("2024-06-10T07:33:20Z") // epochSecond=1718000000
+    private val fixedNow: Instant = Instant.parse("2024-06-10T07:33:20Z") // epochSecond=1718004800
     private val clock: Clock = Clock.fixed(fixedNow, ZoneOffset.UTC)
     private val service = TotpService(clock)
 
@@ -140,7 +140,7 @@ class TotpServiceTest {
 
     @Test
     fun `currentTimeStep 은 epochSecond를 30으로 나눈 몫이다`() {
-        // fixedNow.epochSecond = 1718000000, 1718000000 / 30 = 57266666
-        assertThat(service.currentTimeStep(fixedNow)).isEqualTo(57266666L)
+        // fixedNow.epochSecond = 1718004800, 1718004800 / 30 = 57266826
+        assertThat(service.currentTimeStep(fixedNow)).isEqualTo(57266826L)
     }
 }
