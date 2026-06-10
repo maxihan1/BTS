@@ -96,7 +96,7 @@ export const issueKey = (input: string): IssueKey | null => { ... };
 
 | 실수 | 대신 |
 |---|---|
-| 라이브러리 임의 도입 | SDD/Skills 명시 라이브러리만 (§1.16) |
+| 라이브러리 임의 도입 | SDD/Skills 명시 라이브러리만 (§1.17) |
 | 잘 작동하는 코드를 "더 좋게" 리팩토링 | 요청받은 것만 |
 | 테스트 없이 큰 변경 | TDD 강제 (§1.14) |
 | `any` 타입 회피 | `unknown` 또는 정확한 타입 |

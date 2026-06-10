@@ -129,7 +129,7 @@ worktree의 plan 파일에서 다음 섹션 채움.
 ## 출력 형식
 
 ```
-🔄 [3/7] /bts-spec
+🔄 [3/8] /bts-spec
    ├─ Phase A: office-hours → docs/specs/2026-05-19-issue-mention-notify.md
    ├─ Phase B: brainstorming → gap 1건 발견 (권한 체크)
    ├─ Phase A (재): office-hours 보강 → 권한 체크 시나리오 추가

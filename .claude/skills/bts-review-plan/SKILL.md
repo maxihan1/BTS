@@ -114,7 +114,7 @@ AskUserQuestion으로 응답 수집.
 ## 출력 형식
 
 ```
-🔄 [5/7] /bts-review-plan
+🔄 [5/8] /bts-review-plan
    ├─ 타입: feature (task=4) → /autoplan
    ├─ /autoplan: 자동 결정 8건, taste 0건
    └─ 다음. 게이트 1 (Maxi 검토)

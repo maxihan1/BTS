@@ -11,7 +11,7 @@ PR 단위 1회 코드 리뷰. **두 종류의 리뷰를 병행**.
 
 **모두 컨텍스트에 이미 있음. 재로드 금지** (`/bts` 진입 시 + `/bts-impl` controller inject로 로드 완료).
 - `Maxi_wiki/BTS/learnings.md` — `/bts` Phase B에서 로드됨
-- `DEVELOPMENT.md` 절대 규칙 18개 — `/bts-impl` controller가 inject
+- `DEVELOPMENT.md` 절대 규칙 19개 — `/bts-impl` controller가 inject
 - `DATA.md` 데이터 무결성 5원칙 — `/bts-impl` controller가 inject (`auth`/`migration` 시)
 
 Step 2 agent prompt에 본문 inline 첨부할 때도 컨텍스트 내 내용을 그대로 사용 (재 Read 불필요).
@@ -33,13 +33,13 @@ Agent({
   subagent_type: "superpowers:code-reviewer",
   description: "<slug> PR 코드 리뷰",
   prompt: """
-BTS 프로젝트 PR 리뷰. 절대 규칙 18개 (DEVELOPMENT.md §1) + 데이터 무결성 5원칙 (DATA.md §1) 위반 여부 중점 검증.
+BTS 프로젝트 PR 리뷰. 절대 규칙 19개 (DEVELOPMENT.md §1) + 데이터 무결성 5원칙 (DATA.md §1) 위반 여부 중점 검증.
 
 작업 영역. <type> (예. auth, backend, ui, migration)
 plan 파일. docs/plans/<date>-<slug>.md
 PR diff. <PR_DIFF>
 
-**중점 검증**. DEVELOPMENT.md §1 절대 규칙 18개 (NEVER-1~18) + DATA.md §1 데이터 무결성 5원칙 전부 위반 여부 검증. auth/migration 시 §1.1 보안 + §1.2 데이터 무결성 추가 강조. agent prompt에 DEVELOPMENT.md / DATA.md / learnings.md 본문 전체를 인라인 첨부 (controller가 주입).
+**중점 검증**. DEVELOPMENT.md §1 절대 규칙 19개 (NEVER-1~19) + DATA.md §1 데이터 무결성 5원칙 전부 위반 여부 검증. auth/migration 시 §1.1 보안 + §1.2 데이터 무결성 추가 강조. agent prompt에 DEVELOPMENT.md / DATA.md / learnings.md 본문 전체를 인라인 첨부 (controller가 주입).
 
 보고. PASS / CONCERNS (수정 권장) / BLOCKER (수정 필수).
 """
@@ -117,7 +117,7 @@ AskUserQuestion으로 응답 수집.
 ## 출력 형식
 
 ```
-🔄 [7/7] /bts-codereview
+🔄 [7/8] /bts-codereview
    ├─ code-reviewer agent: PASS
    ├─ /review (gstack): CONCERNS 2건
    ├─ /plan-ceo-review: skip (type=feature)

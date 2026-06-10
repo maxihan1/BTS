@@ -5,7 +5,7 @@ description: Use when user gives a natural-language coding request for BTS — f
 
 # /bts
 
-BTS 모든 코드 작업의 **단일 진입점**. 7단계 스킬을 자연어 1줄로 압축.
+BTS 모든 코드 작업의 **단일 진입점**. 8단계 스킬을 자연어 1줄로 압축.
 
 ## 언제 호출되나
 
@@ -21,7 +21,7 @@ BTS 모든 코드 작업의 **단일 진입점**. 7단계 스킬을 자연어 1�
 
 ```
 /bts <자연어>
-   ↓ [자동 선행 읽기] Maxi_wiki/BTS/_index + history(최근10) + learnings(최근5)
+   ↓ [자동 선행 읽기] Maxi_wiki/BTS/_index + history(최근 50줄) + learnings
 [1] /bts-start         → classify + worktree + Draft PR
 [2] /bts-domain        → grill-with-docs
 [3] /bts-spec          → office-hours (A) → brainstorming (B)
@@ -31,7 +31,7 @@ BTS 모든 코드 작업의 **단일 진입점**. 7단계 스킬을 자연어 1�
 [6] /bts-impl          → subagent-driven + TDD 강제
 [7] /bts-codereview    → code-reviewer + /review (gstack)
 🛑 게이트 2 — Maxi 검토 (BLOCKER)
-[자동] verify → merge → worktree 정리 + sync-obsidian
+[8] /bts-merge       → verify → merge → worktree 정리 → dashboard → Obsidian sync
 ```
 
 `auth`/`migration`/큰 변경도 두 번 멈춤. **자동이라도 사용자 동의 없이 머지 안 감**.
@@ -111,7 +111,7 @@ ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefNa
 
 | 응답 | bts 컨트롤러 동작 |
 |---|---|
-| `승인` | `bts-codereview`의 "머지 후 자동 처리" 섹션 실행 (gh pr merge → worktree 정리 → sync-obsidian) |
+| `승인` | `Skill({skill: "bts-merge"})` 호출 (verify → merge → worktree 정리 → dashboard → Obsidian sync) |
 | `수정 후 재리뷰` | concerns 첨부해 `Skill({skill: "bts-impl"})` 재호출 → `bts-codereview` 재호출 → 게이트 2 재진입 |
 | `보류` | 워크플로우 일시 중단. draft PR + worktree 유지 (다음 `/bts` 호출 시 Phase A-0 복원 경로로 재진입) |
 
@@ -120,10 +120,10 @@ ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefNa
 각 자동 단계마다 1줄 출력 (사용자가 black box 느낌 방지).
 
 ```
-🔄 [1/7] 분류 중... → type=feature, agent=backend-engineer, tasks=4 (cached)
-🔄 [2/7] 도메인 정리 중... → glossary 신규 용어 0건, ADR 0건
-🔄 [3/7] 스펙 작성 중 (Phase A office-hours)...
-🔄 [3/7] 스펙 검증 중 (Phase B brainstorming)...
+🔄 [1/8] 분류 중... → type=feature, agent=backend-engineer, tasks=4 (cached)
+🔄 [2/8] 도메인 정리 중... → glossary 신규 용어 0건, ADR 0건
+🔄 [3/8] 스펙 작성 중 (Phase A office-hours)...
+🔄 [3/8] 스펙 검증 중 (Phase B brainstorming)...
 ...
 ```
 
