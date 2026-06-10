@@ -51,6 +51,7 @@
     <ID>VarCouldBeVal:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$@Autowired private lateinit var restTemplate: TestRestTemplate</ID>
     <ID>VarCouldBeVal:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$@Autowired private lateinit var userRepository: UserRepository</ID>
     <ID>VarCouldBeVal:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$@LocalServerPort private var port: Int = 0</ID>
+    <ID>VarCouldBeVal:AuthAuditLogsSchemaTest.kt$AuthAuditLogsSchemaTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:AuthnProviderConfigRepositoryTest.kt$AuthnProviderConfigRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:AuthnProviderConfigRepositoryTest.kt$AuthnProviderConfigRepositoryTest$@Autowired private lateinit var repo: AuthnProviderConfigRepository</ID>
     <ID>VarCouldBeVal:ChangePasswordServiceTest.kt$ChangePasswordServiceMustChangeIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
