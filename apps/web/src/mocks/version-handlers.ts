@@ -136,11 +136,15 @@ function sortedByName(versions: StoredVersion[]): Version[] {
 /**
  * 활성 버전 목록 조회 — name 오름차순 정렬.
  * C2: 전역 GET 목록은 항상 200 반환 (PROJECT_NOT_FOUND 자체발행 금지).
+ * X-MSW-Reset-Versions: true 헤더 포함 시 저장소를 초기화한 뒤 목록을 반환한다 (E2E 격리용).
  * 성공 → 200 { data: Version[] }
  */
 const listVersionsHandler = http.get(
   '/api/v1/projects/:projectIdOrKey/versions',
-  ({ params }) => {
+  ({ request, params }) => {
+    if (request.headers.get('X-MSW-Reset-Versions') === 'true') {
+      resetVersionStore()
+    }
     const projectIdOrKey = params['projectIdOrKey'] as string
     const items = Array.from(versionStore.values()).filter(
       (v) => v.projectIdOrKey === projectIdOrKey && !v.deleted,

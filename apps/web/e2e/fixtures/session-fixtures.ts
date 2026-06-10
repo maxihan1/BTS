@@ -48,14 +48,30 @@ export const bobSessionSid = '33333333-3333-3333-8333-333333333333'
 /**
  * alice (Local provider) 로 로그인하고 /dashboard 진입까지 완료한다.
  *
+ * FR-AU-07 identifier-first 2단계 흐름 반영.
+ * 1단계: example.com 이메일 입력 → "계속" → routeStore 미매칭 → 2단계 폼 진입.
+ * 2단계: Local provider 선택 → username=alice + password 입력 → 로그인.
+ *
  * MSW dev mock 환경 가정 — auth-handlers.ts 의 loginHandler/whoamiHandler 가 처리.
- * issue-fixtures.ts 의 loginAsAlice 와 동일 패턴.
  *
  * @param page Playwright Page 객체
  */
 export async function loginAsAlice(page: Page): Promise<void> {
   await page.goto('/login')
   await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
+
+  // 1단계: 이메일 입력 + "계속" — example.com 미등록 도메인 → 2단계 진입
+  await page.getByLabel('이메일').fill('alice@example.com')
+  await page.getByRole('button', { name: '계속', exact: true }).click()
+
+  // 2단계: provider 드롭다운 대기 후 Local 선택
+  const providerSelect = page.getByRole('combobox', { name: '로그인 방식' })
+  await expect(providerSelect).toBeVisible()
+  await expect(providerSelect).not.toBeDisabled()
+  await providerSelect.click()
+  await page.getByRole('option', { name: 'Local', exact: true }).click()
+
+  // 2단계: username + password 입력 후 로그인
   await page.getByLabel('사용자명').fill('alice')
   await page.getByLabel('비밀번호').fill('password')
   await page.getByRole('button', { name: '로그인', exact: true }).click()
