@@ -11,7 +11,9 @@ import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.jooq.tables.records.IssuesRecord
 import com.bts.issue.jooq.tables.references.COMPONENTS
 import com.bts.issue.jooq.tables.references.ISSUES
+import com.bts.issue.jooq.tables.references.ISSUE_AFFECTS_VERSIONS
 import com.bts.issue.jooq.tables.references.ISSUE_COMPONENTS
+import com.bts.issue.jooq.tables.references.ISSUE_FIX_VERSIONS
 import com.bts.issue.jooq.tables.references.ISSUE_TYPES
 import com.bts.issue.jooq.tables.references.PROJECTS
 import com.bts.shared.issue.IssueTypeId
@@ -21,6 +23,9 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import org.jooq.Condition
 import org.jooq.DSLContext
 import org.jooq.JSONB
+import org.jooq.Record
+import org.jooq.Table
+import org.jooq.TableField
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
@@ -680,6 +685,124 @@ class IssueRepository(
     }
 
     /**
+     * 이슈의 "영향받는 버전" 연결 목록을 원자적으로 교체한다 (낙관락 OCC).
+     *
+     * [replaceComponents] 와 동형 패턴.
+     * 실행 순서.
+     * ① [bumpVersionOrZero] — version+1 UPDATE. rowcount 0 이면 즉시 0 반환.
+     * ② `DELETE FROM issue_affects_versions WHERE issue_id=?` — 기존 연결 전부 삭제.
+     * ③ versionIds 가 비어 있지 않으면 batch INSERT (issue_id, version_id).
+     *
+     * CONCERN-3: affects 와 fix 를 동시에 JOIN 하지 않는다 — 이 메서드는 issue_affects_versions 만 다룬다.
+     * CONCERN-4: versions.status / deleted_at 필터 미적용 — 조인 테이블 행을 그대로 유지한다.
+     *
+     * @param key 이슈 키 (낙관락 WHERE 조건).
+     * @param issueId DELETE / INSERT 에 사용할 이슈 UUID.
+     * @param versionIds 교체 후 최종 버전 UUID 목록. 빈 리스트면 전부 삭제.
+     * @param expectedVersion 현재 버전. DB 버전과 일치해야 업데이트가 실행된다.
+     * @return 성공=1, 낙관락 충돌(stale version)=0.
+     */
+    @Transactional
+    fun replaceAffectsVersions(
+        key: IssueKey,
+        issueId: UUID,
+        versionIds: List<UUID>,
+        expectedVersion: Long,
+    ): Int {
+        log.debug(
+            "replaceAffectsVersions key={} issueId={} versionCount={} expectedVersion={}",
+            key.value,
+            issueId,
+            versionIds.size,
+            expectedVersion,
+        )
+        return replaceVersionLinks(
+            key = key,
+            issueId = issueId,
+            versionIds = versionIds,
+            expectedVersion = expectedVersion,
+            table = ISSUE_AFFECTS_VERSIONS,
+            issueIdField = ISSUE_AFFECTS_VERSIONS.ISSUE_ID,
+            versionIdField = ISSUE_AFFECTS_VERSIONS.VERSION_ID,
+        )
+    }
+
+    /**
+     * 이슈의 "수정 예정 버전" 연결 목록을 원자적으로 교체한다 (낙관락 OCC).
+     *
+     * [replaceAffectsVersions] 와 완전 동형 — issue_fix_versions 테이블만 다르다.
+     *
+     * @param key 이슈 키 (낙관락 WHERE 조건).
+     * @param issueId DELETE / INSERT 에 사용할 이슈 UUID.
+     * @param versionIds 교체 후 최종 버전 UUID 목록. 빈 리스트면 전부 삭제.
+     * @param expectedVersion 현재 버전. DB 버전과 일치해야 업데이트가 실행된다.
+     * @return 성공=1, 낙관락 충돌(stale version)=0.
+     */
+    @Transactional
+    fun replaceFixVersions(
+        key: IssueKey,
+        issueId: UUID,
+        versionIds: List<UUID>,
+        expectedVersion: Long,
+    ): Int {
+        log.debug(
+            "replaceFixVersions key={} issueId={} versionCount={} expectedVersion={}",
+            key.value,
+            issueId,
+            versionIds.size,
+            expectedVersion,
+        )
+        return replaceVersionLinks(
+            key = key,
+            issueId = issueId,
+            versionIds = versionIds,
+            expectedVersion = expectedVersion,
+            table = ISSUE_FIX_VERSIONS,
+            issueIdField = ISSUE_FIX_VERSIONS.ISSUE_ID,
+            versionIdField = ISSUE_FIX_VERSIONS.VERSION_ID,
+        )
+    }
+
+    /**
+     * 이슈에 연결된 "영향받는 버전" UUID 목록을 반환한다.
+     *
+     * CONCERN-3: fix 버전과 동시 JOIN 금지 — 독립 단일-컬렉션 SELECT.
+     * CONCERN-4: versions.status / deleted_at 필터 미적용.
+     *            ARCHIVED 버전 링크도 반드시 반환해야 하므로 versions 테이블 조인 자체를 하지 않는다.
+     *
+     * @param issueId 조회할 이슈 UUID.
+     * @return 연결된 버전 UUID 목록. 없으면 빈 리스트.
+     */
+    @Transactional(readOnly = true)
+    fun findAffectsVersionIdsByIssue(issueId: UUID): List<UUID> {
+        log.debug("findAffectsVersionIdsByIssue issueId={}", issueId)
+        return dsl.select(ISSUE_AFFECTS_VERSIONS.VERSION_ID)
+            .from(ISSUE_AFFECTS_VERSIONS)
+            .where(ISSUE_AFFECTS_VERSIONS.ISSUE_ID.eq(issueId))
+            .fetch(ISSUE_AFFECTS_VERSIONS.VERSION_ID)
+            .filterNotNull()
+    }
+
+    /**
+     * 이슈에 연결된 "수정 예정 버전" UUID 목록을 반환한다.
+     *
+     * CONCERN-3: affects 버전과 동시 JOIN 금지 — 독립 단일-컬렉션 SELECT.
+     * CONCERN-4: versions.status / deleted_at 필터 미적용.
+     *
+     * @param issueId 조회할 이슈 UUID.
+     * @return 연결된 버전 UUID 목록. 없으면 빈 리스트.
+     */
+    @Transactional(readOnly = true)
+    fun findFixVersionIdsByIssue(issueId: UUID): List<UUID> {
+        log.debug("findFixVersionIdsByIssue issueId={}", issueId)
+        return dsl.select(ISSUE_FIX_VERSIONS.VERSION_ID)
+            .from(ISSUE_FIX_VERSIONS)
+            .where(ISSUE_FIX_VERSIONS.ISSUE_ID.eq(issueId))
+            .fetch(ISSUE_FIX_VERSIONS.VERSION_ID)
+            .filterNotNull()
+    }
+
+    /**
      * 이슈 보안 등급을 갱신한다 (낙관락 OCC UPDATE).
      *
      * WHERE key=? AND version=? AND deleted_at IS NULL 조건으로 UPDATE.
@@ -744,6 +867,44 @@ class IssueRepository(
 
     /** 활성 이슈를 key 로 필터하는 jOOQ Condition. */
     private fun activeByKey(key: IssueKey): Condition = ISSUES.KEY.eq(key.value).and(ISSUES.DELETED_AT.isNull)
+
+    /**
+     * 이슈↔버전 조인 테이블의 연결 목록을 원자적으로 교체한다 (낙관락 OCC).
+     *
+     * [replaceAffectsVersions] / [replaceFixVersions] 공통 구현.
+     * ① [bumpVersionOrZero] → 0 이면 즉시 0 반환.
+     * ② DELETE FROM <table> WHERE issue_id=?.
+     * ③ versionIds 가 비어 있지 않으면 batch INSERT.
+     *
+     * @param key 이슈 키 (낙관락 WHERE 조건).
+     * @param issueId DELETE / INSERT 에 사용할 이슈 UUID.
+     * @param versionIds 교체 후 최종 버전 UUID 목록.
+     * @param expectedVersion 현재 버전.
+     * @param table jOOQ 조인 테이블 참조 (ISSUE_AFFECTS_VERSIONS 또는 ISSUE_FIX_VERSIONS).
+     * @param issueIdField 조인 테이블의 issue_id 필드.
+     * @param versionIdField 조인 테이블의 version_id 필드.
+     * @return 성공=1, 낙관락 충돌=0.
+     */
+    private fun <R : Record> replaceVersionLinks(
+        key: IssueKey,
+        issueId: UUID,
+        versionIds: List<UUID>,
+        expectedVersion: Long,
+        table: Table<R>,
+        issueIdField: TableField<R, UUID?>,
+        versionIdField: TableField<R, UUID?>,
+    ): Int {
+        if (bumpVersionOrZero(key, expectedVersion) == 0) return 0
+        dsl.deleteFrom(table)
+            .where(issueIdField.eq(issueId))
+            .execute()
+        if (versionIds.isNotEmpty()) {
+            val insert = dsl.insertInto(table, issueIdField, versionIdField)
+            versionIds.forEach { versionId -> insert.values(issueId, versionId) }
+            insert.execute()
+        }
+        return 1
+    }
 
     /**
      * 낙관락 version bump 를 시도하고 영향 행 수(성공=1, 충돌=0)를 반환한다.
