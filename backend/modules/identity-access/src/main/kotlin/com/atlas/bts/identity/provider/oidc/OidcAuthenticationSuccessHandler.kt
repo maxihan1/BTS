@@ -5,6 +5,9 @@ package com.atlas.bts.identity.provider.oidc
 import com.atlas.bts.identity.account.SsoLinkingCallbackProcessor
 import com.atlas.bts.identity.account.SsoLinkingIntent
 import com.atlas.bts.identity.account.SsoLinkingIntentStore
+import com.atlas.bts.identity.audit.AuthAuditLog
+import com.atlas.bts.identity.audit.AuthAuditLogService
+import com.atlas.bts.identity.audit.AuthEventType
 import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.provider.ldap.AutoProvisionService
 import com.atlas.bts.identity.provider.ldap.LdapProvisionAttrs
@@ -82,6 +85,7 @@ class OidcAuthenticationSuccessHandler(
     private val jwtIssuer: JwtIssuer,
     private val callbackProcessor: SsoLinkingCallbackProcessor,
     private val intentStore: SsoLinkingIntentStore,
+    private val auditLogService: AuthAuditLogService,
     private val clock: Clock = Clock.systemUTC(),
 ) : AuthenticationSuccessHandler {
     private val log = LoggerFactory.getLogger(OidcAuthenticationSuccessHandler::class.java)
@@ -122,10 +126,64 @@ class OidcAuthenticationSuccessHandler(
             )
 
         issueTokens(request, response, account.userId)
+        // 일반 로그인 경로에서만 LOGIN_SUCCESS 기록 — 연결 모드 early-return 은 위에서 처리되어 도달하지 않는다(C-3).
+        recordLoginSuccess(request, account.userId)
 
         val target = relayStateValidator.resolve(request.getParameter(RETURN_PARAM))
         log.debug("OIDC 인증 성공 — providerId={}, registrationId={}", providerId, registrationId)
         response.sendRedirect(target)
+    }
+
+    /**
+     * LOGIN_SUCCESS 감사 이벤트를 best-effort 로 기록한다 (FR-AU-10 Task 8 / spec §5, EC-12, NFR-3 B-1).
+     *
+     * **연결 모드 비-emit (C-3)**: 이 헬퍼는 일반 로그인 경로([onAuthenticationSuccess] 의 [issueTokens] 직후)
+     * 에서만 호출된다. 연결 모드는 그 위에서 early-return 으로 분기되므로 여기에 도달하지 않는다 — 연결은 로그인이 아니다.
+     *
+     * **best-effort (B-1)**: 이 핸들러는 web 레이어이고 @Transactional 이 아니므로(클래스 KDoc 참조), 감사 INSERT 실패가
+     * 로그인 가용성을 인질로 잡으면 안 된다. [recordAuditBestEffort] 로 감싸 실패해도 발급/리다이렉트 흐름은 계속한다.
+     *
+     * userId=프로비저닝된 주체, providerId="oidc", ip/userAgent=요청에서 캡처(PII 는 로그 미출력).
+     *
+     * @param request IP/UserAgent 캡처용 HTTP 요청
+     * @param userId 프로비저닝된 주체 사용자 ID
+     */
+    private fun recordLoginSuccess(
+        request: HttpServletRequest,
+        userId: UUID,
+    ) {
+        recordAuditBestEffort(
+            AuthAuditLog(
+                userId = userId,
+                eventType = AuthEventType.LOGIN_SUCCESS,
+                providerId = PROVIDER_ID,
+                ipAddress = request.remoteAddr.takeIf { it.isNotBlank() },
+                userAgent = request.getHeader(HttpHeaders.USER_AGENT),
+            ),
+        )
+    }
+
+    /**
+     * 감사 이벤트를 best-effort 로 기록한다 (NFR-3 B-1 — web 레이어 emit 정책, AuthController 동형).
+     *
+     * SSO 성공 핸들러는 의도적 무-트랜잭션이므로(클래스 KDoc 참조), 감사 INSERT 실패가 로그인 가용성을
+     * 인질로 잡으면 안 된다. 따라서 [record][AuthAuditLogService.record] 예외를 catch 해 흐름을 계속한다.
+     * 단 **silent 삼킴은 금지** — high-severity 에러 로그로 감사 갭을 탐지 가능하게 한다. 로그에는
+     * PII(ip/userAgent/sub)를 출력하지 않고 이벤트 유형만 남긴다(DEVELOPMENT.md §1.2).
+     *
+     * `TooGenericExceptionCaught` 억제 — B-1 가용성 우선 정책상 어떤 RuntimeException 이든(DataAccess/
+     * 직렬화/타임아웃 등) 흐름을 계속해야 하며, error 로그로 감사 갭을 경보하므로 generic catch 가 의도적이다.
+     *
+     * @param event 기록할 감사 이벤트
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun recordAuditBestEffort(event: AuthAuditLog) {
+        try {
+            auditLogService.record(event)
+        } catch (ex: RuntimeException) {
+            // 감사 갭 경보 — 가용성 우선이라 흐름은 계속하되 silent 삼킴은 아니다(B-1). PII 미출력.
+            log.error("audit emit failed (availability preserved): eventType={}", event.eventType, ex)
+        }
     }
 
     /**
