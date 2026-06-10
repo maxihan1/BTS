@@ -1,9 +1,10 @@
-// UserLookupAdapter 통합 테스트 — 실제 PostgreSQL 에서 사용자 존재 여부 검증 (FR-IS-03 Task 3)
+// UserLookupAdapter 통합 테스트 — 실제 PostgreSQL 에서 사용자 존재 여부 및 username 일괄 해석 검증 (FR-IS-03 Task 3 / FR-MN-01 Task 3)
 
 package com.atlas.bts.identity.user
 
 import com.bts.shared.user.UserLookupPort
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.MapAssert
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -16,12 +17,11 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import java.util.UUID
 
 /**
- * [UserLookupAdapter] 통합 테스트 (FR-IS-03 Task 3 / ADR 2026-06-01-issue-assignee-user-lookup-port).
+ * [UserLookupAdapter] 통합 테스트 (FR-IS-03 Task 3 / FR-MN-01 Task 3 / ADR 2026-06-01-issue-assignee-user-lookup-port).
  *
  * ## 목적
- * [UserLookupPort.exists] 가 실제 PostgreSQL + Flyway 스키마 위에서 올바르게 동작하는지 검증한다.
- * - 존재하는 사용자 UUID → true
- * - 존재하지 않는 UUID → false
+ * [UserLookupPort.exists] 및 [UserLookupPort.findIdsByUsernames] 가 실제 PostgreSQL + Flyway 스키마 위에서
+ * 올바르게 동작하는지 검증한다.
  *
  * ## 테스트 환경
  * - `@SpringBootTest(RANDOM_PORT)` — 실제 Spring Boot 컨텍스트 전체 구동.
@@ -33,6 +33,8 @@ import java.util.UUID
  * |---|---|---|
  * | T-01 | 존재하는 사용자 UUID 조회 | true |
  * | T-02 | 존재하지 않는 랜덤 UUID 조회 | false |
+ * | T-03 | alice/bob 삽입 후 alice+bob+ghost 로 일괄 조회 | alice/bob 각 id 포함, ghost 제외 |
+ * | T-04 | 빈 입력으로 일괄 조회 | 빈 맵 |
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -77,6 +79,10 @@ class UserLookupAdapterIntegrationTest {
     /** 각 테스트 전 시드 사용자 삽입 — UPSERT 이므로 멱등 */
     private lateinit var seededUserId: UUID
 
+    /** T-03/T-04 용 시드 사용자 id */
+    private lateinit var aliceId: UUID
+    private lateinit var bobId: UUID
+
     @BeforeEach
     fun prepareSeedUser() {
         val user =
@@ -86,7 +92,25 @@ class UserLookupAdapterIntegrationTest {
                 displayName = "Lookup Test User",
             )
         seededUserId = user.id
+
+        // T-03 용 고정 username 시드 — UUID suffix 로 충돌 방지
+        val suffix = UUID.randomUUID().toString().take(8)
+        aliceId = userRepository.save(
+            username = "alice-$suffix",
+            email = "alice-$suffix@example.com",
+            displayName = "Alice",
+        ).id
+        bobId = userRepository.save(
+            username = "bob-$suffix",
+            email = "bob-$suffix@example.com",
+            displayName = "Bob",
+        ).id
+
+        // T-03 에서 실제 username 으로 조회하기 위해 suffix 저장
+        aliceSuffix = suffix
     }
+
+    private lateinit var aliceSuffix: String
 
     /**
      * T-01: 존재하는 사용자 UUID 로 [UserLookupPort.exists] 호출 시 true 를 반환한다.
@@ -112,5 +136,43 @@ class UserLookupAdapterIntegrationTest {
         assertThat(result)
             .`as`("미존재 UUID=%s 에 대해 exists()=false 를 기대했으나 true 를 반환했습니다.", randomId)
             .isFalse()
+    }
+
+    /**
+     * T-03: alice/bob 삽입 후 alice+bob+ghost username 으로 [UserLookupPort.findIdsByUsernames] 호출 시
+     * alice 와 bob 각자의 id 가 포함되고, 미존재 username(ghost-suffix) 은 결과에서 제외된다.
+     */
+    @Test
+    fun `T-03 findIdsByUsernames returns alice and bob ids and excludes ghost`() {
+        val suffix = aliceSuffix
+        val aliceUsername = "alice-$suffix"
+        val bobUsername = "bob-$suffix"
+        val ghostUsername = "ghost-$suffix"
+
+        val result = userLookupPort.findIdsByUsernames(setOf(aliceUsername, bobUsername, ghostUsername))
+
+        @Suppress("UNCHECKED_CAST")
+        val mapAssert = assertThat(result) as MapAssert<String, UUID>
+        mapAssert.containsOnlyKeys(aliceUsername, bobUsername)
+        assertThat(result[aliceUsername])
+            .`as`("alice 의 id 가 시드와 일치해야 합니다.")
+            .isEqualTo(aliceId)
+        assertThat(result[bobUsername])
+            .`as`("bob 의 id 가 시드와 일치해야 합니다.")
+            .isEqualTo(bobId)
+        mapAssert.doesNotContainKey(ghostUsername)
+    }
+
+    /**
+     * T-04: 빈 집합으로 [UserLookupPort.findIdsByUsernames] 호출 시 빈 맵을 반환한다 (DB 쿼리 생략).
+     */
+    @Test
+    fun `T-04 findIdsByUsernames returns empty map for empty input`() {
+        val result = userLookupPort.findIdsByUsernames(emptySet())
+
+        @Suppress("UNCHECKED_CAST")
+        (assertThat(result) as MapAssert<String, UUID>)
+            .`as`("빈 입력에 대해 emptyMap 을 기대했으나 결과가 있습니다.")
+            .isEmpty()
     }
 }
