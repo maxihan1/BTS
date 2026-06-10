@@ -45,12 +45,12 @@
 ### S6. 타 프로젝트 버전 (거부)
 - **Given** 이슈 PROJ-10(프로젝트 PROJ), 버전 vX는 프로젝트 OTHER 소속
 - **When** `PATCH .../fix-versions { versionIds: [vX], expectedVersion: N }`
-- **Then** 422 Unprocessable Entity, error code `ISSUE_VERSION_NOT_FOUND` — 이슈 프로젝트에 속하지 않는 버전.
+- **Then** 422 Unprocessable Entity, error code `ISSUE_LINKED_VERSION_NOT_FOUND` — 이슈 프로젝트에 속하지 않는 버전.
 
 ### S7. 소프트 삭제된 버전 (거부)
 - **Given** 버전 vDel이 소프트 삭제됨(deleted_at != null)
 - **When** 연결 시도
-- **Then** 422 `ISSUE_VERSION_NOT_FOUND` — findById가 deleted_at IS NULL만 조회하므로 검증 실패.
+- **Then** 422 `ISSUE_LINKED_VERSION_NOT_FOUND` — findById가 deleted_at IS NULL만 조회하므로 검증 실패.
 
 ### S8. 낙관적 잠금 충돌
 - **Given** 이슈 PROJ-10의 현재 version = 3
@@ -80,7 +80,7 @@
 - **FR1.** `PATCH /api/v1/issues/{key}/affects-versions` — affects 버전 목록 전체 교체.
 - **FR2.** `PATCH /api/v1/issues/{key}/fix-versions` — fix 버전 목록 전체 교체.
 - **FR3.** 두 엔드포인트 모두 `{ versionIds: List<UUID>, expectedVersion: Long }` 바디, expectedVersion 필수(OCC).
-- **FR4.** 검증 — 각 versionId가 이슈 프로젝트에 속하고 삭제되지 않았는지 확인. 위반 시 422 `ISSUE_VERSION_NOT_FOUND`. ARCHIVED는 통과(허용).
+- **FR4.** 검증 — 각 versionId가 이슈 프로젝트에 속하고 삭제되지 않았는지 확인. 위반 시 422 `ISSUE_LINKED_VERSION_NOT_FOUND`. ARCHIVED는 통과(허용).
 - **FR5.** distinct 정규화 — 중복 versionId 자동 제거.
 - **FR6.** 단건 조회(`GET /issues/{key}`)에 `affectsVersionIds`, `fixVersionIds` 노출. 목록 경로는 빈 목록.
 - **FR7.** 권한 — `IssuePermission.UPDATE` 재사용 (신규 권한 코드 없음).
@@ -90,7 +90,7 @@
 
 - **NFR1.** 트랜잭션 — 연결 교체 + version bump는 한 트랜잭션 (replaceXxxVersions 내 DELETE+INSERT+UPDATE version).
 - **NFR2.** 조인 테이블 FK 인덱스 — 역방향 조회(버전→이슈) 위해 후미 컬럼(version_id) 단독 인덱스 (DATA.md §7, V012 패턴).
-- **NFR3.** 동명 예외 회피 — issue-side 예외는 `IssueVersionLink*` 또는 `IssueVersionNotFoundException` 명명으로 version 패키지의 `VersionNotFoundException`과 구분(메모리 duplicate-exception-name 함정).
+- **NFR3.** 동명 예외 회피 — issue-side 예외는 **`IssueLinkedVersionNotFoundException`** (com.bts.issue.domain), 에러코드 **`ISSUE_LINKED_VERSION_NOT_FOUND`** 로 확정. version 패키지의 `VersionNotFoundException`과 구분(메모리 duplicate-exception-name), 동시에 OCC 충돌(`IssueVersionConflictException`/`ISSUE_VERSION_CONFLICT`)의 "version" 의미 중복도 회피. IssueExceptionHandler basePackages(`com.bts.issue.adapter.inbound.rest`)가 IssueController를 커버하므로 422 매핑 정상.
 - **NFR4.** init_codegen 미러 — 신규 테이블은 jOOQ 코드 생성용 `init_codegen.sql`에도 반영(메모리 jooq-init-codegen-mirror).
 
 ## API 인터페이스 (REST)
@@ -99,7 +99,7 @@
 PATCH /api/v1/issues/{key}/affects-versions
   body: { "versionIds": ["uuid", ...], "expectedVersion": 0 }
   200 → IssueResponse (단건, affectsVersionIds/fixVersionIds 채워짐)
-  403 권한 없음 | 404 이슈 없음 | 409 ISSUE_VERSION_CONFLICT | 422 ISSUE_VERSION_NOT_FOUND
+  403 권한 없음 | 404 이슈 없음 | 409 ISSUE_VERSION_CONFLICT | 422 ISSUE_LINKED_VERSION_NOT_FOUND
 
 PATCH /api/v1/issues/{key}/fix-versions
   body: { "versionIds": ["uuid", ...], "expectedVersion": 0 }

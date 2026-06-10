@@ -113,7 +113,7 @@ Plan slug(정본): issue/versions-link
 - depends-on: [1, 2]   # 테이블(jOOQ codegen) + 도메인 필드 필요
 
 **RED**: `IssueVersionLinksRepositoryTest` — replaceAffectsVersions(key, issueId, ids, expectedVersion) DELETE+INSERT+version bump 왕복, expectedVersion 불일치 시 rows=0, findByKeyWithType이 affects/fixVersionIds 채움. fix 변형 동일. (선례: `IssueComponentsRepositoryTest.kt`)
-**GREEN**: jOOQ로 `replaceAffectsVersions`/`replaceFixVersions` (replaceComponents 동형 — DELETE FROM issue_affects_versions WHERE issue_id + batch INSERT + UPDATE issues SET version=version+1 WHERE id AND version=expectedVersion, 반환 rows). 단건 조회 경로(findByKeyWithType/withSingleDetail)에 두 조인 테이블 SELECT 추가(별도 쿼리, cartesian product 회피 — 메모리 cartesian-product-jooq-leftjoin-count).
+**GREEN**: jOOQ로 `replaceAffectsVersions`/`replaceFixVersions` (replaceComponents 동형 — DELETE FROM issue_affects_versions WHERE issue_id + batch INSERT + UPDATE issues SET version=version+1 WHERE id AND version=expectedVersion, 반환 rows). 단건 조회 경로(withSingleDetail)에 **affects/fix 각각 독립 단일-컬렉션 SELECT 2개** (`findAffectsVersionIdsByIssue`, `findFixVersionIdsByIssue` — componentIds의 `findActiveComponentIdsByIssue` 동형). **한 쿼리에서 두 조인 테이블 동시 LEFT JOIN 금지**(곱집합 — 메모리 cartesian-product-jooq-leftjoin-count, CONCERN-3). **읽기 쿼리는 `versions.deleted_at` 필터 미적용 + status 필터 절대 금지** — ARCHIVED 링크는 반드시 보여야 함(EC8). dangling 소프트삭제 링크는 프론트가 이름 미해소로 graceful(CONCERN-4).
 **REFACTOR**: 공통 헬퍼 추출 고려(affects/fix 거의 동일 — 테이블 인자화). 단, 가독성 우선.
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*IssueVersionLinksRepositoryTest"`
 
@@ -148,7 +148,7 @@ Plan slug(정본): issue/versions-link
 - files: [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/integration/IssueVersionLinksIntegrationTest.kt`]
 - depends-on: [5]
 
-**RED→GREEN**: 스펙 S1~S12 end-to-end (실 repo + 시드). ARCHIVED 허용(S5), 타 프로젝트 422(S6), 소프트삭제 422(S7), OCC 409(S8), distinct(S11), 단건 조회 노출(S12), affects/fix 독립(EC7). FK CASCADE cleanup 주의(메모리 join-table-fk-cascade-testcontainers-cleanup). (선례: `IssueComponentsIntegrationTest.kt`)
+**RED→GREEN**: 스펙 S1~S12 end-to-end (실 repo + 시드). ARCHIVED 허용(S5), 타 프로젝트 422(S6), 소프트삭제 422(S7), OCC 409(S8), distinct(S11), 단건 조회 노출(S12), affects/fix 독립(EC7). **422/409 응답은 HTTP 바디의 `errorCode` 문자열까지 단언** (`ISSUE_LINKED_VERSION_NOT_FOUND` / `ISSUE_VERSION_CONFLICT`) — 도메인예외가 잘못된 핸들러로 새어 500 변질되는지 검출(CONCERN-2, 메모리 domain-exception-http-handler-basepackage-scope). FK CASCADE cleanup 주의(메모리 join-table-fk-cascade-testcontainers-cleanup). (선례: `IssueComponentsIntegrationTest.kt`)
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*IssueVersionLinksIntegrationTest"`
 
 ### Task 7. 프론트 — VersionMultiSelect 2종 + api 훅 + Zod + MSW + IssueMetaPanel 배선
@@ -192,4 +192,22 @@ Plan slug(정본): issue/versions-link
 - 신규 권한 코드: 없음 → FR-PM 권한 시드 카운트 테스트 영향 0
 - 추가 검증: ktlint, detekt(baseline 동결), vitest, playwright
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과 (/bts-review-plan)
+
+### eng 집중 독립 리뷰 (Plan 에이전트, 2026-06-10)
+type=backend → autoplan 대신 독립 엔지니어링 리뷰 (메모리 bts-review-plan-autoplan-overkill). 코드 대조 기반.
+
+- 🔴 **BLOCKER-1 (해소됨)** — 에러코드 spec/plan 불일치 (`ISSUE_VERSION_NOT_FOUND` vs `ISSUE_LINKED_VERSION_NOT_FOUND`). T5/T6 테스트가 다른 코드 단언 → 게이트 결정적 차단 위험. **해소: spec 4곳 + NFR3을 `ISSUE_LINKED_VERSION_NOT_FOUND` / `IssueLinkedVersionNotFoundException`로 통일** (ISSUE_VERSION_CONFLICT는 보존).
+- 🟡 **CONCERN-2 (반영)** — T6 통합 테스트에서 422/409 HTTP 바디 `errorCode` 문자열까지 단언 (도메인예외 500 변질 검출). → T6 GREEN에 명시.
+- 🟡 **CONCERN-3 (반영)** — 읽기측 affects/fix를 각각 독립 SELECT 2개로 (한 쿼리 동시 LEFT JOIN 곱집합). → T3 GREEN에 명시.
+- 🟡 **CONCERN-4 (반영)** — 버전 읽기 쿼리 deleted_at 필터 미적용 + status 필터 절대 금지(ARCHIVED 표시 보장). → T3 GREEN에 명시.
+- ✅ **확인됨 (안전)**:
+  - CONCERN-1 — `VersionRepository.findById`가 `deleted_at IS NULL` 필터(코드 확인) → S7(소프트삭제 422) 정상, ARCHIVED는 통과(S5). BLOCKER 아님.
+  - CONCERN-5 — `replaceComponents` @Transactional 단일 메서드, version bump 정확히 1회, partial update 차단. 자동 담당자 제외로 이중 bump 위험 원천 없음.
+  - SUGGESTION-1 — V017 정확(최신 V016 다음), init_codegen 미러는 V012 형식 따름.
+  - SUGGESTION-2 — T6(gradle)/T7(pnpm) 파일 겹침 0, 병렬 안전. depends-on 정확.
+  - SUGGESTION-3 — T7 Zod 2필드는 optional+default emptyArray, 기존 fixture 회귀 방지 명시됨.
+
+- **종합 판정**: BLOCKER 해소 + CONCERN 3건 plan 반영 완료 → **승인 가능**.
+
+### plan-eng-review BLOCKER: 없음 (해소 후)
