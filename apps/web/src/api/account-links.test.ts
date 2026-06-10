@@ -23,7 +23,7 @@ import { ApiError } from './client'
 // ─────────────────────────────────────────────────────────────────────────────
 const linkFixture = {
   id: 'a1b2c3d4-e5f6-4890-abcd-ef1234567890',
-  providerId: 'b2c3d4e5-f6a7-5901-bcde-f01234567891',
+  providerId: 'b2c3d4e5-f6a7-4901-8cde-f01234567891',
   providerName: 'LDAP 사내',
   providerType: 'LDAP',
   providerEnabled: true,
@@ -33,8 +33,8 @@ const linkFixture = {
 }
 
 const linkFixtureNullable = {
-  id: 'c3d4e5f6-a7b8-6012-cdef-012345678902',
-  providerId: 'd4e5f6a7-b8c9-7123-def0-123456789013',
+  id: 'c3d4e5f6-a7b8-4012-8def-012345678902',
+  providerId: 'd4e5f6a7-b8c9-4123-9ef0-123456789013',
   providerName: null,
   providerType: null,
   providerEnabled: false,
@@ -58,7 +58,7 @@ const ssoLinkStartResponseFixture = {
 
 const ldapLinkableProvider = {
   kind: 'LDAP',
-  providerId: 'e5f6a7b8-c9d0-8234-ef01-234567890124',
+  providerId: 'e5f6a7b8-c9d0-4234-8f01-234567890124',
   displayName: 'LDAP 사내',
 }
 
@@ -136,7 +136,7 @@ describe('accountLinkSchema', () => {
   it('T1-a: 모든 필드가 있는 링크를 파싱한다', () => {
     const result = accountLinkSchema.parse(linkFixture)
     expect(result.id).toBe('a1b2c3d4-e5f6-4890-abcd-ef1234567890')
-    expect(result.providerId).toBe('b2c3d4e5-f6a7-5901-bcde-f01234567891')
+    expect(result.providerId).toBe('b2c3d4e5-f6a7-4901-8cde-f01234567891')
     expect(result.providerName).toBe('LDAP 사내')
     expect(result.providerType).toBe('LDAP')
     expect(result.providerEnabled).toBe(true)
@@ -222,7 +222,7 @@ describe('linkableProviderSchema', () => {
     const result = linkableProviderSchema.parse(ldapLinkableProvider)
     expect(result.kind).toBe('LDAP')
     if (result.kind === 'LDAP') {
-      expect(result.providerId).toBe('e5f6a7b8-c9d0-8234-ef01-234567890124')
+      expect(result.providerId).toBe('e5f6a7b8-c9d0-4234-8f01-234567890124')
       expect(result.displayName).toBe('LDAP 사내')
       // LDAP엔 registrationId 필드가 없어야 함
       expect('registrationId' in result).toBe(false)
@@ -372,7 +372,7 @@ describe('reauth', () => {
 describe('linkAccount', () => {
   it('T9-a: LDAP 계정을 연결하고 AccountLinkResponse를 반환한다', async () => {
     const result = await linkAccount({
-      providerId: 'b2c3d4e5-f6a7-5901-bcde-f01234567891',
+      providerId: 'b2c3d4e5-f6a7-4901-8cde-f01234567891',
       username: 'johndoe',
       password: 'secret123',
     })
@@ -389,7 +389,7 @@ describe('linkAccount', () => {
       }),
     )
     await linkAccount({
-      providerId: 'b2c3d4e5-f6a7-5901-bcde-f01234567891',
+      providerId: 'b2c3d4e5-f6a7-4901-8cde-f01234567891',
       username: 'johndoe',
       password: 'secret123',
     })
@@ -403,7 +403,7 @@ describe('linkAccount', () => {
       }),
     )
     const err = await linkAccount({
-      providerId: 'b2c3d4e5-f6a7-5901-bcde-f01234567891',
+      providerId: 'b2c3d4e5-f6a7-4901-8cde-f01234567891',
       username: 'johndoe',
       password: 'secret123',
     }).catch((e: unknown) => e)
@@ -418,7 +418,7 @@ describe('linkAccount', () => {
       }),
     )
     const err = await linkAccount({
-      providerId: 'b2c3d4e5-f6a7-5901-bcde-f01234567891',
+      providerId: 'b2c3d4e5-f6a7-4901-8cde-f01234567891',
       username: 'johndoe',
       password: 'secret123',
     }).catch((e: unknown) => e)
