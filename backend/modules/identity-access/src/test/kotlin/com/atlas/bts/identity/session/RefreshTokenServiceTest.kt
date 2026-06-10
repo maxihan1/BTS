@@ -2,6 +2,9 @@
 
 package com.atlas.bts.identity.session
 
+import com.atlas.bts.identity.audit.AuthAuditLog
+import com.atlas.bts.identity.audit.AuthAuditLogService
+import com.atlas.bts.identity.audit.AuthEventType
 import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.systemrole.SystemRoleAssignmentRepository
 import io.mockk.every
@@ -37,6 +40,7 @@ class RefreshTokenServiceTest {
     private lateinit var sessionService: SessionService
     private lateinit var jwtIssuer: JwtIssuer
     private lateinit var systemRoleAssignmentRepository: SystemRoleAssignmentRepository
+    private lateinit var auditLog: AuthAuditLogService
     private lateinit var service: RefreshTokenService
 
     private val fixedNow: Instant = Instant.parse("2026-05-21T10:00:00Z")
@@ -64,9 +68,11 @@ class RefreshTokenServiceTest {
         sessionService = mockk()
         jwtIssuer = mockk()
         systemRoleAssignmentRepository = mockk()
+        auditLog = mockk(relaxed = true)
         // 기본값: 전역 역할 없음 (일반 사용자). 역할 의존 케이스는 개별 테스트에서 재정의.
         every { systemRoleAssignmentRepository.findRolesByUser(any()) } returns emptySet()
-        service = RefreshTokenService(repo, sessionService, jwtIssuer, systemRoleAssignmentRepository, clock)
+        service =
+            RefreshTokenService(repo, sessionService, jwtIssuer, systemRoleAssignmentRepository, auditLog, clock)
     }
 
     // ── rotate 성공 ───────────────────────────────────────────────────────────
@@ -233,6 +239,77 @@ class RefreshTokenServiceTest {
         verify(exactly = 1) { sessionService.revoke(sessionId, "REFRESH_REPLAY") }
         // access token 미발급
         verify(exactly = 0) { jwtIssuer.issue(any(), any(), any(), any(), any()) }
+    }
+
+    // ── FR-AU-10 감사 emit ────────────────────────────────────────────────────
+
+    @Test
+    fun `FR-AU-10 — rotate 성공 시 TOKEN_REFRESHED 를 emit 한다 (session userId + old new tokenId)`() {
+        val oldToken = buildUsableToken()
+        val newIdSlot = slot<UUID>()
+        val eventSlot = slot<AuthAuditLog>()
+
+        every { repo.findByTokenHash("a".repeat(64)) } returns oldToken
+        every { sessionService.lookup(sessionId) } returns buildSession()
+        every { repo.save(any()) } answers { Unit }
+        every { repo.markUsedAndChain(oldId = oldTokenId, newId = capture(newIdSlot)) } returns oldTokenId
+        every { jwtIssuer.issue(any(), sessionId, any(), any(), any()) } returns "access.jwt.token"
+        justRun { auditLog.record(capture(eventSlot)) }
+
+        service.rotate("a".repeat(64))
+
+        verify(exactly = 1) { auditLog.record(any()) }
+        val event = eventSlot.captured
+        assertThat(event.eventType).isEqualTo(AuthEventType.TOKEN_REFRESHED)
+        assertThat(event.userId).isEqualTo(userId)
+        assertThat(event.providerId).isEqualTo("local")
+        assertThat(event.metadata["oldTokenId"]).isEqualTo(oldTokenId.toString())
+        assertThat(event.metadata["newTokenId"]).isEqualTo(newIdSlot.captured.toString())
+    }
+
+    @Test
+    fun `FR-AU-10 — replay 분기에서 SUSPICIOUS_REFRESH_REPLAY 를 emit 한다 (reason=replay)`() {
+        val usedToken = buildUsableToken().copy(
+            usedAt = fixedNow.minus(5, ChronoUnit.MINUTES),
+            replacedBy = UUID.randomUUID(),
+        )
+        val eventSlot = slot<AuthAuditLog>()
+
+        every { repo.findByTokenHash("a".repeat(64)) } returns usedToken
+        every { sessionService.lookup(sessionId) } returns buildSession()
+        every { repo.revokeChainFromSession(sessionId) } returns 1
+        justRun { sessionService.revoke(sessionId, "REFRESH_REPLAY") }
+        justRun { auditLog.record(capture(eventSlot)) }
+
+        service.rotate("a".repeat(64))
+
+        verify(exactly = 1) { auditLog.record(any()) }
+        val event = eventSlot.captured
+        assertThat(event.eventType).isEqualTo(AuthEventType.SUSPICIOUS_REFRESH_REPLAY)
+        assertThat(event.userId).isEqualTo(userId)
+        assertThat(event.metadata["reason"]).isEqualTo("replay")
+    }
+
+    @Test
+    fun `FR-AU-10 — race-loser 분기에서 SUSPICIOUS_REFRESH_REPLAY 를 emit 한다 (reason=race) (C-5)`() {
+        val oldToken = buildUsableToken()
+        val eventSlot = slot<AuthAuditLog>()
+
+        every { repo.findByTokenHash("a".repeat(64)) } returns oldToken
+        every { sessionService.lookup(sessionId) } returns buildSession()
+        every { repo.save(any()) } answers { Unit }
+        every { repo.markUsedAndChain(any(), any()) } returns null
+        every { repo.revokeChainFromSession(sessionId) } returns 1
+        justRun { sessionService.revoke(sessionId, "REFRESH_REPLAY") }
+        justRun { auditLog.record(capture(eventSlot)) }
+
+        service.rotate("a".repeat(64))
+
+        verify(exactly = 1) { auditLog.record(any()) }
+        val event = eventSlot.captured
+        assertThat(event.eventType).isEqualTo(AuthEventType.SUSPICIOUS_REFRESH_REPLAY)
+        assertThat(event.userId).isEqualTo(userId)
+        assertThat(event.metadata["reason"]).isEqualTo("race")
     }
 
     // ── 존재하지 않는 토큰 ────────────────────────────────────────────────────
