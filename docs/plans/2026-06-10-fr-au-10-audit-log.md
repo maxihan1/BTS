@@ -241,6 +241,15 @@ classify-task가 제목 끝 "조회 UI" 키워드로 `ui/frontend-engineer` 오�
 - **G-1 주입 파급**: T4~T9 각 task의 `files`에 해당 빈의 기존 단위테스트 포함. 통합테스트는 Jdbc @Service 자동 배선이라 공유 TestConfig 수술 불요(공유 파일 충돌 회피) — 단위테스트 mock은 각 task 자기 테스트 파일에만.
 - TDD 강제: yes (red→green→refactor, `test:` 커밋 선행 검증)
 - 추가 검증: 모듈 ktlint/detekt(`--rerun-tasks`), 기존 로그인/세션/리프레시/프로비저닝 회귀 0.
+- ⚠️ gradle 모듈 경로는 `:modules:identity-access`(위 검증 명령의 `:backend:identity-access`는 오기 — 실 실행은 `:modules:` 사용).
+
+## 구현 결과 (2026-06-10)
+
+- **10 task 전부 완료** (T1~T9 + T11, T10 드롭). 각 TDD red→green→refactor 3커밋.
+- **emit 12종 전수 배선 완료**. AuthEventEmitCoverageTest(T11)가 enum 12종 production 배선을 회귀 가드(더미 enum으로 vacuous 실측 후 제거).
+- **모듈 전체 검증** — identity-access 1,539 테스트 0 실패/0 에러(167 클래스), ktlint+detekt+detektTest green(`--rerun-tasks`). 누적 6개 생성자 주입이 통합테스트(Postgres/LDAP/Keycloak 풀 부팅) 회귀 0.
+- **D7 E2E 생략 사유**. 본 PR은 백엔드 전용(신규 HTTP 엔드포인트 0, UI 0). 감사 emit은 내부 배선이라 Playwright E2E가 새로 검증할 표면이 없음. 조회 API/관리자 UI(D6) + E2E(D7)는 후속 PR. 기존 로그인/세션 E2E는 frontend라 본 변경과 무관(모듈 통합테스트로 백엔드 회귀 0 확인).
+- **controller hot-fix 2건**(에이전트 파일범위 밖이라 controller 처리): T1 detekt VarCouldBeVal baseline 동결, T3 인터페이스 KDoc 영속 전환 정정.
 
 ## 리뷰 결과
 
