@@ -143,11 +143,13 @@ SDD 참조: §3.2.4
 
 **검증**: `./gradlew :backend:modules:issue-tracking:test --tests '*ReleaseNotesServiceTest'`
 
-### Task 4. GET 엔드포인트 + ReleaseNotesResponse DTO + 통합/MVC 테스트
+### Task 4. GET 엔드포인트 (별도 ReleaseNotesController) + ReleaseNotesResponse DTO + 통합테스트
+
+> eng-review 결정: VersionController에 끼워넣지 않고 **별도 컨트롤러**로 분리. 이유 — (1) VersionController는 이미 7 엔드포인트+`TooManyFunctions` Suppress 상태, (2) 생성자에 ReleaseNotesService 주입 시 기존 VersionControllerIntegrationTest 파급(메모리 plan-files-constructor-injection). 별도 컨트롤러는 단일 책임 + 기존 테스트 완전 무영향.
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/version/web/VersionController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/version/web/dto/ReleaseNotesResponse.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/version/web/ReleaseNotesIntegrationTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/version/web/ReleaseNotesController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/version/web/dto/ReleaseNotesResponse.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/version/web/ReleaseNotesIntegrationTest.kt`]
 - depends-on: [3]
 
 **RED**:
@@ -161,10 +163,10 @@ SDD 참조: §3.2.4
 - 실패: 엔드포인트 미존재 404 라우팅.
 
 **GREEN**:
-- `VersionController` 에 `@GetMapping("/{id}/release-notes") fun getReleaseNotes(...)` 추가 — `ReleaseNotesService.generate` 위임, `DataResponse(ReleaseNotesResponse.from(releaseNotes))`.
+- `@RestController @RequestMapping("/api/v1/projects/{projectIdOrKey}/versions/{versionId}/release-notes") class ReleaseNotesController(service: ReleaseNotesService)` + `@GetMapping fun get(...)` — `ReleaseNotesService.generate` 위임, `DataResponse(ReleaseNotesResponse.from(releaseNotes))`. actorId는 `SYSTEM_ACTOR_UUID` placeholder(VersionController 패턴 동일).
 - `ReleaseNotesResponse`(versionId, projectKey, versionName, versionStatus, releaseDate, issueCount, generatedAt, markdown) + `from(ReleaseNotes)`.
 
-**REFACTOR**: KDoc(@throws 404 종류), 컨트롤러는 트랜잭션 경계 없음 확인.
+**REFACTOR**: KDoc(@throws 404 종류), 컨트롤러는 트랜잭션 경계 없음 확인(서비스 `@Transactional(readOnly=true)`가 담당).
 
 **검증**: `./gradlew :backend:modules:issue-tracking:test --tests '*ReleaseNotesIntegrationTest'` + 전체 모듈 그린.
 
@@ -235,4 +237,27 @@ SDD 참조: §3.2.4
 - BC 격리: issue-tracking 단일 BC. cross-BC 호출 없음(워크플로우 상태 미조회).
 - 신규 테이블/마이그레이션: 없음.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-10, 집중 독립 리뷰 — autoplan overkill 회피)
+
+- ✅ TDD 구조: 7 task 모두 RED/GREEN/REFACTOR + 검증 명시.
+- ✅ 메타 블록: agent/files/depends-on 완비, 순환 없음 (T1∥T2 → T3 → T4 → T5 → T6 → T7).
+- ✅ 파일 겹침 자동 직렬화: T5·T7이 version-handlers.ts 공유하나 depends-on 직렬이라 동일 wave 회피.
+- ✅ cartesian product 회피: versionId 필터 시 issue당 fix_versions 최대 1행(복합 PK), ISSUE_TYPES는 1:1 — 안전. plan에 명시.
+- ✅ Clock 주입(T3 generatedAt 결정적), READ 게이트 없음(getById 정책 일치, spec 정정 반영), 도메인 mutation 없음(읽기 전용).
+- ✅ N+1 회피: resolution은 findAllActive() 맵 1회.
+- **🔧 개선 반영 (BLOCKER 아님)**: T4를 VersionController 끼워넣기 → **별도 ReleaseNotesController** 분리. VersionController TooManyFunctions Suppress + 생성자 주입 기존 테스트 파급(메모리 plan-files-constructor-injection) 회피.
+- ⚠️ 주의(impl 인계): (a) T1 ProjectIdRepository 메서드 추가는 ProjectLookupTest 무영향(생성자 불변)이나 새 메서드 테스트 추가. (b) ReleaseNotesGenerator 그룹핑 로직 detekt Complexity/MaxLineLength 가능 — RED 단계에서 의식. (c) ReleaseNoteIssueRow(repository row)와 ReleaseNoteIssue(generator 입력)는 layer 분리상 의도적 별도 모델.
+- BLOCKER: 없음.
+
+### plan-devex-review (2026-06-10)
+
+- ✅ 엔드포인트 경로 `/api/v1/projects/{projectIdOrKey}/versions/{id}/release-notes` — VersionController 매핑 일관.
+- ✅ 응답 DataResponse 래핑, 에러코드 기존 VersionErrorCodes 재사용(신규 0) — BC 일관.
+- ✅ 신규 엔드포인트라 API 호환성 breaking 없음.
+- ✅ Zod 계약(T5)은 spec §4 정확 일치 강제(메모리 frontend-zod-backend-dto-contract-gap) + 필드 grep 대조.
+- ⚠️ 주의: 클립보드 복사는 secure-context 필요 — localhost는 Playwright에서 secure 처리, E2E grantPermissions 명시(T7).
+- BLOCKER: 없음.
+
+**종합: BLOCKER 0건. 개선 1건(별도 컨트롤러) plan 반영 완료. 게이트 1 진입 가능.**
