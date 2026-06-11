@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.PostgreSQLContainer
@@ -37,6 +38,8 @@ import java.util.UUID
  * | T-04 | 빈 입력으로 일괄 조회 | 빈 맵 |
  * | T-05 | bob(소문자) 삽입 후 "Bob"/"BOB" 으로 조회 | 대소문자 무시 — bob 의 id 로 매칭 |
  * | T-06 | "Carol"/"carol" 동시 존재 → "carol" 조회 | 과다매칭 허용 — 2개 id 반환 |
+ * | T-07 | A(display_name="홍길동") + B(display_name=null) + 미존재 id 로 표시명 일괄 조회 | A→"홍길동"(표시명), B→username 폴백, 미존재 제외 |
+ * | T-08 | 빈 입력으로 표시명 일괄 조회 | 빈 맵 (DB 쿼리 생략) |
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -77,6 +80,13 @@ class UserLookupAdapterIntegrationTest {
 
     @Autowired
     lateinit var userRepository: UserRepository
+
+    /**
+     * T-07 의 display_name=null 사용자 시드용 — [UserRepository.save] 는 displayName 이 non-null 이라
+     * null 표시명을 만들 수 없으므로, 테스트에서 직접 INSERT 한다 (named parameter 바인딩).
+     */
+    @Autowired
+    lateinit var jdbc: NamedParameterJdbcTemplate
 
     /** 각 테스트 전 시드 사용자 삽입 — UPSERT 이므로 멱등 */
     private lateinit var seededUserId: UUID
@@ -244,5 +254,69 @@ class UserLookupAdapterIntegrationTest {
                 lowerUsername,
             )
             .containsExactlyInAnyOrder(savedUpper.id, savedLower.id)
+    }
+
+    /**
+     * display_name 이 null 인 사용자를 직접 INSERT 한다 — [UserRepository.save] 는 displayName non-null 이라
+     * COALESCE 폴백 검증용 null 표시명을 만들 수 없으므로 named parameter INSERT 로 시드한다.
+     *
+     * @return INSERT 된 사용자 UUID
+     */
+    private fun insertUserWithNullDisplayName(
+        username: String,
+        email: String,
+    ): UUID {
+        val id = UUID.randomUUID()
+        jdbc.update(
+            "INSERT INTO users (id, username, email, display_name) VALUES (:id, :username, :email, NULL)",
+            mapOf("id" to id, "username" to username, "email" to email),
+        )
+        return id
+    }
+
+    /**
+     * T-07: A(display_name="홍길동") + B(display_name=null) + 미존재 id 로
+     * [UserLookupPort.findDisplayNamesByIds] 호출 시,
+     * A 는 표시명("홍길동"), B 는 display_name 이 null 이라 username 으로 폴백된 값을 반환하고,
+     * 미존재 id 는 결과 맵에서 제외된다 (COALESCE(display_name, username) — Jira 식 표시명).
+     */
+    @Test
+    fun `T-07 findDisplayNamesByIds returns display_name with username fallback and excludes missing`() {
+        val suffix = UUID.randomUUID().toString().take(8)
+        val userA =
+            userRepository.save(
+                username = "hong-$suffix",
+                email = "hong-$suffix@example.com",
+                displayName = "홍길동",
+            )
+        val bobUsername = "bob-$suffix"
+        val userBId = insertUserWithNullDisplayName(bobUsername, "bob-$suffix@example.com")
+        val ghostId = UUID.randomUUID()
+
+        val result = userLookupPort.findDisplayNamesByIds(setOf(userA.id, userBId, ghostId))
+
+        @Suppress("UNCHECKED_CAST")
+        val mapAssert = assertThat(result) as MapAssert<UUID, String>
+        mapAssert.containsOnlyKeys(userA.id, userBId)
+        assertThat(result[userA.id])
+            .`as`("display_name 이 있는 A 는 표시명 '홍길동' 을 반환해야 합니다.")
+            .isEqualTo("홍길동")
+        assertThat(result[userBId])
+            .`as`("display_name 이 null 인 B 는 username '%s' 으로 폴백되어야 합니다.", bobUsername)
+            .isEqualTo(bobUsername)
+        mapAssert.doesNotContainKey(ghostId)
+    }
+
+    /**
+     * T-08: 빈 집합으로 [UserLookupPort.findDisplayNamesByIds] 호출 시 빈 맵을 반환한다 (DB 쿼리 생략).
+     */
+    @Test
+    fun `T-08 findDisplayNamesByIds returns empty map for empty input`() {
+        val result = userLookupPort.findDisplayNamesByIds(emptySet())
+
+        @Suppress("UNCHECKED_CAST")
+        (assertThat(result) as MapAssert<UUID, String>)
+            .`as`("빈 입력에 대해 emptyMap 을 기대했으나 결과가 있습니다.")
+            .isEmpty()
     }
 }
