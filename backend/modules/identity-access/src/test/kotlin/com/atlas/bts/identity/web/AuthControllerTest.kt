@@ -10,6 +10,10 @@ import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
 import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
+import com.atlas.bts.identity.mfa.MfaChallengeClaims
+import com.atlas.bts.identity.mfa.MfaChallengeTokenService
+import com.atlas.bts.identity.mfa.MfaService
+import com.atlas.bts.identity.mfa.MfaService.VerifyResult
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.provider.ldap.ProviderUnavailableException
 import com.atlas.bts.identity.session.RefreshTokenRepository
@@ -107,6 +111,13 @@ class AuthControllerTest {
     /** raw refresh token — 64자 소문자 hex */
     private val refreshTokenRaw = "ab".repeat(32)
 
+    // FR-MF-01 Task 10 공용 고정값 (로그인 2단계 / verify 테스트).
+    private val USER_ID: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
+    private val SESSION_ID: UUID = UUID.fromString("22222222-2222-2222-2222-222222222222")
+    private val ACCESS_TOKEN = "eyJhbGciOiJSUzI1NiJ9.test.access"
+    private val CHALLENGE_TOKEN = "eyJhbGciOiJSUzI1NiJ9.challenge.token"
+    private val JTI = "33333333-3333-3333-3333-333333333333"
+
     @TestConfiguration
     class SecurityBeans {
         @Bean
@@ -162,11 +173,26 @@ class AuthControllerTest {
     @MockBean
     lateinit var authAuditLogService: AuthAuditLogService
 
+    @MockBean
+    lateinit var mfaService: MfaService
+
+    @MockBean
+    lateinit var mfaChallengeTokenService: MfaChallengeTokenService
+
     /** 기본값: 전역 역할 없음 (일반 사용자). 역할 의존 케이스는 개별 테스트에서 재정의. */
     @org.junit.jupiter.api.BeforeEach
     fun stubSystemRoles() {
         `when`(systemRoleAssignmentRepository.findRolesByUser(anyUuid()))
             .thenReturn(emptySet<SystemRole>())
+    }
+
+    /**
+     * 기본값: TOTP 미활성 (isEnabled=false) — 기존 로그인 흐름이 2단계로 빠지지 않게 한다(회귀 0).
+     * TOTP 활성 케이스는 개별 테스트에서 `when(mfaService.isEnabled(...)).thenReturn(true)` 로 재정의한다.
+     */
+    @org.junit.jupiter.api.BeforeEach
+    fun stubMfaDisabledByDefault() {
+        `when`(mfaService.isEnabled(anyUuid())).thenReturn(false)
     }
 
     // ── login 성공 (provider=local) — 디스패처 위임 (FR-AU-06 Task 3) ───────────
@@ -204,6 +230,7 @@ class AuthControllerTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.nullable(String::class.java),
                 org.mockito.ArgumentMatchers.nullable(String::class.java),
+                anyBool(),
             ),
         ).thenReturn(mockSession)
         `when`(
@@ -213,6 +240,7 @@ class AuthControllerTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.anyList(),
+                anyBool(),
             ),
         ).thenReturn(accessToken)
 
@@ -369,6 +397,237 @@ class AuthControllerTest {
         )
             .andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.error").value("mfa_required"))
+    }
+
+    // ── FR-MF-01 로그인 2단계 게이트 + /auth/mfa/verify (Task 10) ─────────────────
+
+    /**
+     * (a) TOTP 미활성 사용자가 login 하면 기존 토큰 응답을 그대로 받는다 (회귀 0).
+     *
+     * isEnabled=false(기본 stub) 이면 `mfaService.isEnabled` 가 false 라 1단계 통과 즉시 정식 세션을
+     * 발급한다. 응답은 기존 200 TokenResponse 형태이며 `mfa_required` 필드가 없어야 한다.
+     * 또한 챌린지 토큰은 발급되지 않아야 한다(`issueChallenge` 미호출).
+     */
+    @Test
+    fun `login with TOTP disabled returns normal token response without mfa_required (no regression)`() {
+        stubLoginSuccess(USER_ID, SESSION_ID, ACCESS_TOKEN)
+        `when`(mfaService.isEnabled(USER_ID)).thenReturn(false)
+
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"provider":"local","username":"alice","password":"secret"}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.access_token").value(ACCESS_TOKEN))
+            .andExpect(jsonPath("$.token_type").value("Bearer"))
+            .andExpect(jsonPath("$.mfa_required").doesNotExist())
+            .andExpect(cookie().exists("refresh_token"))
+
+        verify(mfaChallengeTokenService, never()).issueChallenge(anyUuid(), org.mockito.ArgumentMatchers.anyString())
+    }
+
+    /**
+     * (b) TOTP 활성 사용자가 login 하면 정식 세션 대신 200 mfa_required + 챌린지 토큰을 받는다.
+     *
+     * isEnabled=true 면 1단계(pw) 통과 후 정식 세션을 발급하지 않고 단명 챌린지 토큰을 발급한다.
+     * 응답은 `{mfa_required:true, mfa_challenge_token, expires_in}` 이며, 정식 세션/refresh 쿠키는
+     * 발급되지 않아야 한다(`sessionService.create`·`refreshTokenRepository.save` 미호출, refresh_token 쿠키 부재).
+     */
+    @Test
+    fun `login with TOTP enabled returns 200 mfa_required with challenge token and no session`() {
+        stubLoginSuccess(USER_ID, SESSION_ID, ACCESS_TOKEN)
+        `when`(mfaService.isEnabled(USER_ID)).thenReturn(true)
+        `when`(mfaChallengeTokenService.issueChallenge(USER_ID, "local")).thenReturn(CHALLENGE_TOKEN)
+
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"provider":"local","username":"alice","password":"secret"}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.mfa_required").value(true))
+            .andExpect(jsonPath("$.mfa_challenge_token").value(CHALLENGE_TOKEN))
+            .andExpect(jsonPath("$.expires_in").exists())
+            .andExpect(jsonPath("$.access_token").doesNotExist())
+            .andExpect(cookie().doesNotExist("refresh_token"))
+
+        verify(mfaChallengeTokenService).issueChallenge(USER_ID, "local")
+        // 정식 세션/refresh 토큰은 발급되지 않는다(2단계 통과 전).
+        verify(sessionService, never()).create(
+            anyUuid(),
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
+            anyBool(),
+        )
+    }
+
+    /**
+     * (c) /auth/mfa/verify 정답 코드 → 200 access_token + refresh 쿠키 + 세션 mfaVerified=true.
+     *
+     * 챌린지 토큰 validate 성공 + consume(일회용) 통과 + `mfaService.verifyLogin` Success 면
+     * `issueTokens(mfaVerified=true)` 로 정식 세션을 발급한다. 세션 생성이 `mfaVerified=true` 인자로
+     * 호출됐는지 ArgumentCaptor 로 단언한다(JWT mfa_verified 클레임 원천).
+     */
+    @Test
+    fun `verify with correct code returns 200 access_token and creates session with mfaVerified true`() {
+        val mockSession =
+            mock(Session::class.java).also {
+                `when`(it.id).thenReturn(SESSION_ID)
+                `when`(it.userId).thenReturn(USER_ID)
+                `when`(it.providerId).thenReturn("local")
+            }
+        `when`(mfaChallengeTokenService.validate(CHALLENGE_TOKEN))
+            .thenReturn(MfaChallengeClaims(userId = USER_ID, providerId = "local", jti = JTI))
+        `when`(mfaChallengeTokenService.consume(JTI)).thenReturn(true)
+        `when`(mfaService.verifyLogin(USER_ID, "123456")).thenReturn(VerifyResult.Success)
+        `when`(
+            sessionService.create(
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                anyBool(),
+            ),
+        ).thenReturn(mockSession)
+        `when`(
+            jwtIssuer.issue(
+                anyUuid(),
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.anyList(),
+                anyBool(),
+            ),
+        ).thenReturn(ACCESS_TOKEN)
+
+        mockMvc.perform(
+            post("/api/v1/auth/mfa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"mfa_challenge_token":"$CHALLENGE_TOKEN","code":"123456"}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.access_token").value(ACCESS_TOKEN))
+            .andExpect(jsonPath("$.token_type").value("Bearer"))
+            .andExpect(cookie().exists("refresh_token"))
+            .andExpect(cookie().httpOnly("refresh_token", true))
+            .andExpect(cookie().secure("refresh_token", true))
+
+        // 세션이 mfaVerified=true 로 생성됐는지 — JWT mfa_verified 클레임 원천 (FR-MF-01 GAP-1).
+        val mfaVerifiedCaptor = ArgumentCaptor.forClass(Boolean::class.java)
+        verify(sessionService).create(
+            anyUuid(),
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
+            captureBool(mfaVerifiedCaptor),
+        )
+        assertThat(mfaVerifiedCaptor.value).isTrue()
+    }
+
+    /**
+     * (d-1) verify 오답 코드 → 401 invalid_code. verifyLogin 이 InvalidCode 면 정식 세션 미발급.
+     */
+    @Test
+    fun `verify with wrong code returns 401 invalid_code`() {
+        `when`(mfaChallengeTokenService.validate(CHALLENGE_TOKEN))
+            .thenReturn(MfaChallengeClaims(userId = USER_ID, providerId = "local", jti = JTI))
+        `when`(mfaChallengeTokenService.consume(JTI)).thenReturn(true)
+        `when`(mfaService.verifyLogin(USER_ID, "000000")).thenReturn(VerifyResult.InvalidCode)
+
+        mockMvc.perform(
+            post("/api/v1/auth/mfa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"mfa_challenge_token":"$CHALLENGE_TOKEN","code":"000000"}"""),
+        )
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.error").value("invalid_code"))
+
+        verify(sessionService, never()).create(
+            anyUuid(),
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
+            anyBool(),
+        )
+    }
+
+    /**
+     * (d-2) verify 만료/위조 토큰 → 401. validate 가 null 이면 코드 검증 없이 거부하고 verifyLogin 미호출.
+     */
+    @Test
+    fun `verify with expired or forged challenge token returns 401`() {
+        `when`(mfaChallengeTokenService.validate(CHALLENGE_TOKEN)).thenReturn(null)
+
+        mockMvc.perform(
+            post("/api/v1/auth/mfa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"mfa_challenge_token":"$CHALLENGE_TOKEN","code":"123456"}"""),
+        )
+            .andExpect(status().isUnauthorized)
+
+        verify(mfaService, never()).verifyLogin(anyUuid(), org.mockito.ArgumentMatchers.anyString())
+    }
+
+    /**
+     * (d-3) 이미 소비된(재사용) 챌린지 토큰 → 401. validate 성공이라도 consume 이 false 면 일회용 위반으로
+     * 거부하고 verifyLogin 을 호출하지 않는다 (C1 replay 방어).
+     */
+    @Test
+    fun `verify with already-consumed challenge token returns 401 and skips verifyLogin`() {
+        `when`(mfaChallengeTokenService.validate(CHALLENGE_TOKEN))
+            .thenReturn(MfaChallengeClaims(userId = USER_ID, providerId = "local", jti = JTI))
+        `when`(mfaChallengeTokenService.consume(JTI)).thenReturn(false)
+
+        mockMvc.perform(
+            post("/api/v1/auth/mfa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"mfa_challenge_token":"$CHALLENGE_TOKEN","code":"123456"}"""),
+        )
+            .andExpect(status().isUnauthorized)
+
+        verify(mfaService, never()).verifyLogin(anyUuid(), org.mockito.ArgumentMatchers.anyString())
+    }
+
+    /**
+     * (d-4) limiter 차단 → 429 too_many_attempts. verifyLogin 이 TooManyAttempts 면 429 로 매핑한다.
+     * catch-all 핸들러가 429 를 500 으로 변질시키지 않아야 한다.
+     */
+    @Test
+    fun `verify when rate-limited returns 429 too_many_attempts`() {
+        `when`(mfaChallengeTokenService.validate(CHALLENGE_TOKEN))
+            .thenReturn(MfaChallengeClaims(userId = USER_ID, providerId = "local", jti = JTI))
+        `when`(mfaChallengeTokenService.consume(JTI)).thenReturn(true)
+        `when`(mfaService.verifyLogin(USER_ID, "123456")).thenReturn(VerifyResult.TooManyAttempts)
+
+        mockMvc.perform(
+            post("/api/v1/auth/mfa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"mfa_challenge_token":"$CHALLENGE_TOKEN","code":"123456"}"""),
+        )
+            .andExpect(status().isTooManyRequests)
+            .andExpect(jsonPath("$.error").value("too_many_attempts"))
+    }
+
+    /**
+     * (BLOCKER-1) /auth/mfa/verify POST 는 CSRF 토큰 없이 403 이 아니어야 한다.
+     *
+     * SecurityConfig(Task 9)가 verify 를 `csrf.ignoringRequestMatchers` 에 등록했으므로 CSRF 필터가
+     * POST 를 막지 않는다. CSRF 미등록이면 정식 세션 전(JWT 없음)이라 oauth2 자동 skip 도 적용되지 않아
+     * 403 이 났을 것이다. validate=null 로 401 을 유도해 "403(CSRF 차단)이 아님" 을 확인한다.
+     */
+    @Test
+    fun `verify POST without csrf token is not blocked by CSRF filter`() {
+        `when`(mfaChallengeTokenService.validate(org.mockito.ArgumentMatchers.anyString())).thenReturn(null)
+
+        mockMvc.perform(
+            post("/api/v1/auth/mfa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"mfa_challenge_token":"any","code":"123456"}"""),
+        )
+            // 핵심 단언 — CSRF 로 막혔다면 403 이다. 401(검증 실패)이면 CSRF 필터를 통과한 것.
+            .andExpect(status().isUnauthorized)
     }
 
     // ── logout 성공 ────────────────────────────────────────────────────────────
@@ -895,6 +1154,7 @@ class AuthControllerTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.nullable(String::class.java),
                 org.mockito.ArgumentMatchers.nullable(String::class.java),
+                anyBool(),
             ),
         ).thenReturn(mockSession)
         `when`(
@@ -904,6 +1164,7 @@ class AuthControllerTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.anyList(),
+                anyBool(),
             ),
         ).thenReturn("eyJhbGciOiJSUzI1NiJ9.test.access")
 
@@ -1045,6 +1306,7 @@ class AuthControllerTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.nullable(String::class.java),
                 org.mockito.ArgumentMatchers.nullable(String::class.java),
+                anyBool(),
             ),
         ).thenReturn(mockSession)
         `when`(
@@ -1054,6 +1316,7 @@ class AuthControllerTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.anyList(),
+                anyBool(),
             ),
         ).thenReturn("eyJhbGciOiJSUzI1NiJ9.test.access")
         doThrow(RuntimeException("audit DB down")).`when`(authAuditLogService)
@@ -1107,6 +1370,71 @@ class AuthControllerTest {
      * UUID 파라미터의 Mockito any() 매처 — Kotlin non-null UUID 에 null 전달 방지.
      */
     private fun anyUuid(): UUID = org.mockito.ArgumentMatchers.any(UUID::class.java) ?: UUID.randomUUID()
+
+    /**
+     * Boolean 파라미터의 Mockito anyBoolean() 매처 — sessionService.create 의 mfaVerified 인자에 사용한다.
+     * anyBoolean() 은 primitive boolean 을 반환하므로 null 가드가 불필요하다.
+     */
+    private fun anyBool(): Boolean = org.mockito.ArgumentMatchers.anyBoolean()
+
+    /**
+     * Boolean ArgumentCaptor.capture() 의 Kotlin primitive 가드.
+     * capture() 는 boxed null 을 반환할 수 있어 Kotlin primitive Boolean 파라미터에서 NPE 를 유발한다.
+     * 부수효과(인자 기록)는 유지하면서 placeholder false 로 치환한다.
+     */
+    private fun captureBool(captor: ArgumentCaptor<Boolean>): Boolean = captor.capture() ?: false
+
+    /**
+     * 1단계(pw) 인증 성공 + 세션/JWT 발급 stub 을 구성한다 (FR-MF-01 로그인 2단계 테스트 공용).
+     *
+     * 디스패처가 [AuthnResult.Success] 를 반환하고, 세션 생성/JWT 발급이 정해진 값을 돌려주도록 stub 한다.
+     * MFA 분기(isEnabled)는 각 테스트가 별도로 stub 한다.
+     */
+    private fun stubLoginSuccess(
+        userId: UUID,
+        sessionId: UUID,
+        accessToken: String,
+    ) {
+        val principal =
+            Principal(
+                userId = userId,
+                providerType = ProviderType.LOCAL,
+                displayName = "Alice",
+                externalSubject = null,
+            )
+        val mockSession =
+            mock(Session::class.java).also {
+                `when`(it.id).thenReturn(sessionId)
+                `when`(it.userId).thenReturn(userId)
+                `when`(it.providerId).thenReturn("local")
+            }
+        `when`(
+            authenticationManager.authenticate(
+                eqStr("local"),
+                org.mockito.ArgumentMatchers.anyString(),
+                anyCharArray(),
+            ),
+        ).thenReturn(AuthnResult.Success(principal))
+        `when`(
+            sessionService.create(
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                anyBool(),
+            ),
+        ).thenReturn(mockSession)
+        `when`(
+            jwtIssuer.issue(
+                anyUuid(),
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.anyList(),
+                anyBool(),
+            ),
+        ).thenReturn(accessToken)
+    }
 
     /**
      * AuthAuditLog 파라미터의 Mockito any() 매처 — Kotlin non-null record(AuthAuditLog) 에 null 전달 방지.
