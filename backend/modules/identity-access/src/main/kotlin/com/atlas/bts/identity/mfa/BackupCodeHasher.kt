@@ -53,8 +53,9 @@ class BackupCodeHasher {
      * 백업 코드를 대문자화 + 하이픈/공백 제거로 정규화한다.
      * 사용자 입력 형식 변형(대소문자/하이픈/공백)을 흡수해 같은 코드를 같은 문자열로 수렴시킨다.
      */
-    private fun normalize(plain: String): String =
-        plain.uppercase().replace(STRIP_PATTERN, "")
+    private fun normalize(plain: String): String {
+        return plain.uppercase().replace(STRIP_PATTERN, "")
+    }
 
     internal companion object {
         /** 단방향 해시 알고리즘 — 32바이트 출력(64자 hex). */
