@@ -22,7 +22,6 @@ import java.util.UUID
  * 검증 라이브러리: nimbus-jose-jwt [SignedJWT] 직접 파싱 (JwtDecoder = Task 12 책임).
  */
 class JwtIssuerTest {
-
     private val keyProvider = DevMemoryKeyProvider()
     private val issuerUri = "https://bts.example.com"
 

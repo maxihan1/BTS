@@ -235,7 +235,7 @@ class MfaEnforcementClaimIntegrationTest {
         return restTemplate.exchange(
             "http://localhost:$port/api/v1/auth/refresh",
             HttpMethod.POST,
-            HttpEntity<Void>(headers),
+            HttpEntity<Any?>(null, headers),
             Map::class.java,
         )
     }
@@ -248,7 +248,7 @@ class MfaEnforcementClaimIntegrationTest {
             ?.substringAfter("refresh_token=")
             ?.substringBefore(";")
             ?.trim()
-            ?: ""
+            .orEmpty()
     }
 
     /**
