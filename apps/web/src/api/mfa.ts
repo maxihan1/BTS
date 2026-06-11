@@ -1,0 +1,148 @@
+// MFA(TOTP) API 클라이언트 — setup/status/enable/disable/verify 5개 함수
+import { apiFetch, apiGet, ApiError } from './client'
+import { readXsrfToken } from './sessions'
+import {
+  MfaSetupResponseSchema,
+  MfaStatusResponseSchema,
+  TokenResponseSchema,
+  type MfaSetupResponse,
+  type MfaStatusResponse,
+  type TokenResponse,
+} from './schemas'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 에러 코드 상수 — 백엔드 MfaErrorCode.kt 와 1:1 (소문자 스네이크, plan §REFACTOR)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** MFA 백엔드 에러 코드 */
+export const MfaErrorCode = {
+  INVALID_CODE: 'invalid_code',
+  TOO_MANY_ATTEMPTS: 'too_many_attempts',
+  NO_PENDING_SETUP: 'no_pending_setup',
+  ALREADY_ENABLED: 'already_enabled',
+  NOT_ENABLED: 'not_enabled',
+} as const
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API 함수
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * TOTP setup을 시작한다 — QR PNG data URI와 secret_base32를 반환한다.
+ *
+ * `POST /api/v1/auth/mfa/totp/setup`
+ * - 상태 변경 요청이므로 X-XSRF-TOKEN 헤더를 포함한다 (double submit cookie 패턴).
+ * - ACTIVE 상태에서 호출 시 409 already_enabled → ApiError(409) throw.
+ *
+ * @returns MfaSetupResponse (otpauth_uri, qr_png_data_uri, secret_base32)
+ * @throws ApiError(409) 이미 TOTP 활성화된 경우
+ * @throws ApiError(401) 미인증
+ */
+export async function setupMfa(): Promise<MfaSetupResponse> {
+  const res = await apiFetch('/api/v1/auth/mfa/totp/setup', {
+    method: 'POST',
+    headers: {
+      'X-XSRF-TOKEN': readXsrfToken(),
+    },
+  })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  return MfaSetupResponseSchema.parse(await res.json())
+}
+
+/**
+ * 현재 사용자의 TOTP 활성화 여부를 조회한다.
+ *
+ * `GET /api/v1/auth/mfa/totp`
+ * - 읽기 요청이므로 CSRF 헤더 불요 — apiGet 사용.
+ *
+ * @returns MfaStatusResponse (enabled)
+ * @throws ApiError(401) 미인증
+ */
+export async function getMfaStatus(): Promise<MfaStatusResponse> {
+  return apiGet('/api/v1/auth/mfa/totp', MfaStatusResponseSchema)
+}
+
+/**
+ * TOTP 활성화를 확정한다 — 6자리 코드를 검증해 PENDING → ACTIVE 전환.
+ *
+ * `POST /api/v1/auth/mfa/totp/enable { code }`
+ * - 상태 변경 요청이므로 X-XSRF-TOKEN 헤더를 포함한다.
+ * - 204 No Content 성공 — Zod parse 없이 반환.
+ *
+ * @param code Authenticator 앱의 6자리 TOTP 코드
+ * @returns void
+ * @throws ApiError(400) invalid_code — 코드 불일치
+ * @throws ApiError(409) no_pending_setup — setup 없이 enable 시도
+ * @throws ApiError(429) too_many_attempts — rate limit
+ * @throws ApiError(401) 미인증
+ */
+export async function enableMfa(code: string): Promise<void> {
+  const res = await apiFetch('/api/v1/auth/mfa/totp/enable', {
+    method: 'POST',
+    body: { code },
+    headers: {
+      'X-XSRF-TOKEN': readXsrfToken(),
+    },
+  })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+}
+
+/**
+ * TOTP를 비활성화한다 — step-up 코드 검증 후 ACTIVE → 비활성 전환.
+ *
+ * `DELETE /api/v1/auth/mfa/totp { code }`
+ * - 상태 변경 요청이므로 X-XSRF-TOKEN 헤더를 포함한다.
+ * - 204 No Content 성공 — Zod parse 없이 반환.
+ *
+ * @param code step-up용 현재 TOTP 코드
+ * @returns void
+ * @throws ApiError(400) invalid_code
+ * @throws ApiError(404) not_enabled — TOTP 미활성 상태
+ * @throws ApiError(429) too_many_attempts
+ * @throws ApiError(401) 미인증
+ */
+export async function disableMfa(code: string): Promise<void> {
+  const res = await apiFetch('/api/v1/auth/mfa/totp', {
+    method: 'DELETE',
+    body: { code },
+    headers: {
+      'X-XSRF-TOKEN': readXsrfToken(),
+    },
+  })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+}
+
+/**
+ * MFA 챌린지 코드를 검증해 정식 세션 토큰을 발급받는다.
+ *
+ * `POST /api/v1/auth/mfa/verify { mfa_challenge_token, code }`
+ * - permitAll + CSRF-ignore 경로이므로 X-XSRF-TOKEN 헤더를 포함하지 않는다.
+ *   챌린지 토큰 자체가 인증 증명이다.
+ * - apiPost 사용 (CSRF 자동 주입 없음 — client.ts 설계 참조).
+ *
+ * @param challengeToken login 200 mfa_required 응답의 mfa_challenge_token
+ * @param code Authenticator 앱의 6자리 TOTP 코드
+ * @returns TokenResponse (access_token, token_type, expires_in)
+ * @throws ApiError(401) invalid_code 또는 챌린지 만료
+ * @throws ApiError(429) too_many_attempts
+ */
+export async function verifyMfa(challengeToken: string, code: string): Promise<TokenResponse> {
+  const res = await apiFetch('/api/v1/auth/mfa/verify', {
+    method: 'POST',
+    body: { mfa_challenge_token: challengeToken, code },
+  })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  return TokenResponseSchema.parse(await res.json())
+}
