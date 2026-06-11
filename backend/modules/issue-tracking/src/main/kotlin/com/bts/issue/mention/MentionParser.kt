@@ -36,15 +36,17 @@ object MentionParser {
     /**
      * `@username` 멘션 추출 정규식.
      *
-     * - `(?<![A-Za-z0-9._-])` — negative lookbehind: 앞 문자가 username 허용 문자이면 비매칭.
-     *   이메일(`user@example.com`)의 `@` 는 앞에 문자가 있으므로 매칭되지 않는다.
+     * - `(?<![A-Za-z0-9._@\-])` — negative lookbehind: 앞 문자가 username 허용 문자이거나 `@` 이면 비매칭.
+     *   이메일(`user@example.com`)의 `@` 는 앞에 영숫자가 있으므로 매칭되지 않는다.
+     *   `@@bob` 의 두 번째 `@` 는 바로 앞에 `@` 가 있으므로 매칭되지 않는다 (EC-11: `@@` 과대추출 차단).
+     *   character class 안에서 `-` 를 이스케이프(`\-`)하여 range 오해석을 방지한다.
      * - `@` — 리터럴 at sign.
      * - `([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)` — 캡처 그룹:
      *   영숫자로 시작하고 영숫자로 끝나는 username. 가운데에는 `.`, `_`, `-` 허용.
      *   길이 1인 경우(단일 영숫자)도 매칭된다.
      *   마지막 문자가 문장부호(`@alice.`)이면 영숫자 경계에서 잘려 `alice` 만 캡처된다.
      */
-    private val MENTION_PATTERN = Regex("(?<![A-Za-z0-9._-])@([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)")
+    private val MENTION_PATTERN = Regex("(?<![A-Za-z0-9._@\\-])@([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)")
 
     /**
      * 주어진 텍스트에서 `@username` 멘션 집합을 추출한다.
