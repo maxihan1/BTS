@@ -317,8 +317,11 @@ const LoginStep2 = ({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MFA step — TOTP 코드 입력 화면 (3단계)
+// MFA step — TOTP / 백업 코드 입력 화면 (3단계)
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** MFA 인증 방식. 'totp'는 Authenticator 앱 6자리 코드, 'backup_code'는 비상 백업 코드 */
+type MfaMode = 'totp' | 'backup_code'
 
 interface MfaStepProps {
   /** login 200 응답에서 받은 5분 단명 챌린지 토큰 */
@@ -329,12 +332,17 @@ interface MfaStepProps {
   onBackToLogin: () => void
 }
 
-/** MFA 코드 입력 Zod 스키마 — 6자리 숫자 문자열 */
-const mfaCodeSchema = z.object({
+/** TOTP 모드 Zod 스키마 — 6자리 숫자 문자열 */
+const totpSchema = z.object({
   code: z.string().length(6, '6자리 코드를 입력하세요.'),
 })
 
-type MfaCodeFormValues = z.infer<typeof mfaCodeSchema>
+/** 백업 코드 모드 Zod 스키마 — 비어 있지 않으면 허용 (형식 검증은 백엔드 위임) */
+const backupCodeSchema = z.object({
+  code: z.string().trim().min(1, '백업 코드를 입력하세요.'),
+})
+
+type MfaCodeFormValues = { code: string }
 
 /**
  * resolveVerifyErrorMessage는 ApiError body의 error 코드를 mfaErrorMessage로 변환한다.
@@ -351,24 +359,47 @@ function resolveVerifyErrorMessage(error: unknown): string {
 }
 
 /**
- * MFA step (3단계): Authenticator 앱 6자리 코드 입력 → verify → 성공 시 세션 저장.
- *
- * 챌린지 토큰은 prop으로 받아 컴포넌트 메모리에만 보관한다(authStore/sessionStorage 영속 금지 — NFR-1).
- * verify 성공 후 세션 저장 + whoami 조회는 1단계 성공 경로와 동일한 흐름으로 수렴한다.
+ * mode에 대응하는 Zod 스키마를 반환한다.
+ * CONCERN-2: zodResolver는 useForm 첫 렌더에 고정되므로 key={mode}로 재마운트해
+ * 스키마를 갱신한다. 이 함수는 재마운트된 컴포넌트 내에서 호출된다.
  */
-const LoginMfaStep = ({ challengeToken, onSuccess, onBackToLogin }: MfaStepProps) => {
+function resolveSchema(mode: MfaMode) {
+  return mode === 'totp' ? totpSchema : backupCodeSchema
+}
+
+interface MfaCodeInputProps {
+  /** 현재 MFA 인증 방식 */
+  mode: MfaMode
+  challengeToken: string
+  onSuccess?: () => void
+  onBackToLogin: () => void
+  onToggleMode: () => void
+}
+
+/**
+ * MFA 코드 입력 폼.
+ * mode별로 다른 zodResolver가 필요하므로 부모(LoginMfaStep)에서 key={mode}로 재마운트된다.
+ * 재마운트 시 useForm + zodResolver가 새로 초기화되어 스키마가 올바르게 적용된다.
+ */
+const MfaCodeInput = ({
+  mode,
+  challengeToken,
+  onSuccess,
+  onBackToLogin,
+  onToggleMode,
+}: MfaCodeInputProps) => {
   const setAccessToken = useAuthStore((s) => s.setAccessToken)
   const setSession = useAuthStore((s) => s.setSession)
   const clearSession = useAuthStore((s) => s.clearSession)
 
   const form = useForm<MfaCodeFormValues>({
-    resolver: zodResolver(mfaCodeSchema),
+    resolver: zodResolver(resolveSchema(mode)),
     defaultValues: { code: '' },
   })
 
   const verifyMutation = useMutation({
     mutationFn: async (code: string) => {
-      const tokenData = await verifyMfa(challengeToken, code)
+      const tokenData = await verifyMfa(challengeToken, code, mode)
 
       // verify 성공 — 기존 로그인 성공 경로와 동일하게 세션 저장
       setAccessToken(tokenData.access_token)
@@ -392,6 +423,9 @@ const LoginMfaStep = ({ challengeToken, onSuccess, onBackToLogin }: MfaStepProps
   })
 
   const serverError = form.formState.errors.root?.message ?? null
+  const isTotp = mode === 'totp'
+  const guideText = isTotp ? mfaStrings.loginStepGuide : mfaStrings.loginBackupStepGuide
+  const codeLabel = isTotp ? mfaStrings.loginCodeLabel : mfaStrings.loginBackupCodeLabel
 
   function onSubmit(values: MfaCodeFormValues) {
     form.clearErrors('root')
@@ -401,21 +435,21 @@ const LoginMfaStep = ({ challengeToken, onSuccess, onBackToLogin }: MfaStepProps
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="space-y-4">
-        <p className="text-sm text-muted-foreground">{mfaStrings.loginStepGuide}</p>
+        <p className="text-sm text-muted-foreground">{guideText}</p>
 
         <FormField
           control={form.control}
           name="code"
           render={({ field }) => (
             <FormItem>
-              <FormLabel htmlFor="mfa-code">{mfaStrings.loginCodeLabel}</FormLabel>
+              <FormLabel htmlFor="mfa-code">{codeLabel}</FormLabel>
               <FormControl>
                 <Input
                   id="mfa-code"
                   type="text"
-                  inputMode="numeric"
-                  maxLength={6}
-                  autoComplete="one-time-code"
+                  inputMode={isTotp ? 'numeric' : 'text'}
+                  maxLength={isTotp ? 6 : undefined}
+                  autoComplete={isTotp ? 'one-time-code' : 'off'}
                   aria-required="true"
                   {...field}
                 />
@@ -439,6 +473,16 @@ const LoginMfaStep = ({ challengeToken, onSuccess, onBackToLogin }: MfaStepProps
           type="button"
           variant="ghost"
           className="w-full"
+          onClick={onToggleMode}
+          disabled={verifyMutation.isPending}
+        >
+          {isTotp ? mfaStrings.loginUseBackupCode : mfaStrings.loginUseTotp}
+        </Button>
+
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full"
           onClick={onBackToLogin}
           disabled={verifyMutation.isPending}
         >
@@ -446,6 +490,33 @@ const LoginMfaStep = ({ challengeToken, onSuccess, onBackToLogin }: MfaStepProps
         </Button>
       </form>
     </Form>
+  )
+}
+
+/**
+ * MFA step (3단계): mode state를 들고 MfaCodeInput을 key={mode}로 분기 렌더한다.
+ *
+ * CONCERN-2 대응: zodResolver는 useForm 첫 렌더에 고정되므로,
+ * mode가 바뀔 때 key={mode}로 MfaCodeInput을 재마운트해 resolver를 갱신한다.
+ *
+ * 챌린지 토큰은 prop으로 받아 컴포넌트 메모리에만 보관한다(authStore/sessionStorage 영속 금지 — NFR-1).
+ */
+const LoginMfaStep = ({ challengeToken, onSuccess, onBackToLogin }: MfaStepProps) => {
+  const [mode, setMode] = useState<MfaMode>('totp')
+
+  function handleToggleMode() {
+    setMode((prev) => (prev === 'totp' ? 'backup_code' : 'totp'))
+  }
+
+  return (
+    <MfaCodeInput
+      key={mode}
+      mode={mode}
+      challengeToken={challengeToken}
+      onSuccess={onSuccess}
+      onBackToLogin={onBackToLogin}
+      onToggleMode={handleToggleMode}
+    />
   )
 }
 
