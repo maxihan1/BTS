@@ -5,6 +5,7 @@ package com.bts.issue.project.web
 import com.bts.issue.project.domain.Require2faForbiddenException
 import com.bts.issue.project.domain.Require2faProjectNotFoundException
 import org.slf4j.LoggerFactory
+import org.springframework.core.Ordered
 import org.springframework.core.annotation.Order
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -30,15 +31,20 @@ internal object Require2faErrorCodes {
 /**
  * require_2fa 토글 BC 도메인 예외를 RFC 7807 ProblemDetail 형식으로 변환하는 핸들러.
  *
- * [assignableTypes] 를 [ProjectRequire2faController] 로 한정하여 다른 컨트롤러의 예외를 잡지 않는다
- * (memory: catch-all-exceptionhandler-swallows-responsestatusexception — scope 좁게).
+ * `assignableTypes = [ProjectRequire2faController::class]` 로 스코프를 좁혀 다른 컨트롤러의
+ * 예외를 잡지 않는다 (memory: catch-all-exceptionhandler-swallows-responsestatusexception).
+ *
+ * `@Order(Ordered.HIGHEST_PRECEDENCE)` — [ProjectLeadExceptionHandler] 의 `Exception::class`
+ * fallback 이 `Require2faForbiddenException` 을 500 으로 삼키는 것을 방지한다.
+ * 이 핸들러가 먼저 매칭되어 도메인 예외와 [ResponseStatusException] 을 올바른 상태 코드로 변환한다.
  *
  * ## 매핑 규칙
+ * - [ResponseStatusException] → 원래 상태 코드 (401 등)
  * - [Require2faForbiddenException] → 403 + [Require2faErrorCodes.FORBIDDEN]
  * - [Require2faProjectNotFoundException] → 404 + [Require2faErrorCodes.PROJECT_NOT_FOUND]
  */
 @RestControllerAdvice(assignableTypes = [ProjectRequire2faController::class])
-@Order(org.springframework.core.Ordered.HIGHEST_PRECEDENCE)
+@Order(Ordered.HIGHEST_PRECEDENCE)
 class ProjectRequire2faExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
 
