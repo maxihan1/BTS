@@ -73,6 +73,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
             projectLeadRepository = projectLeadRepository,
             versionRepository = mockk(relaxed = true),
             clock = clock,
+            historyRecorder = mockk(relaxed = true),
         )
 
     val actor = ActorId(UUID.randomUUID())

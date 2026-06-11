@@ -77,6 +77,7 @@ class IssueApplicationServiceTest : DescribeSpec({
             projectLeadRepository = mockk(relaxed = true),
             versionRepository = mockk(relaxed = true),
             clock = clock,
+            historyRecorder = mockk(relaxed = true),
         )
 
     val actor = ActorId(UUID.randomUUID())

@@ -319,6 +319,7 @@ class IssueTransitionResolutionIntegrationTest {
                 projectLeadRepository = mockk(relaxed = true),
                 versionRepository = mockk(relaxed = true),
                 clock = clock,
+                historyRecorder = io.mockk.mockk(relaxed = true),
             )
 
         @Bean

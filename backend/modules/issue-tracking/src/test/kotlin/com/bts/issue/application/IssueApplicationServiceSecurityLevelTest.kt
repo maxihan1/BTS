@@ -69,6 +69,7 @@ class IssueApplicationServiceSecurityLevelTest : DescribeSpec({
             versionRepository = mockk(relaxed = true),
             securityDirectory = securityDirectory,
             clock = clock,
+            historyRecorder = mockk(relaxed = true),
         )
 
     val actor = ActorId(UUID.fromString("00000000-0000-0000-0000-000000000099"))

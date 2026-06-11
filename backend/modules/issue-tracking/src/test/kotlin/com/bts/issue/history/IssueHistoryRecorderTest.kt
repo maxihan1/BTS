@@ -7,6 +7,7 @@ import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.shared.issue.IssueTypeId
 import io.kotest.core.spec.style.DescribeSpec
+import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -29,6 +30,10 @@ class IssueHistoryRecorderTest : DescribeSpec({
     val actor = ActorId(UUID.randomUUID())
     val issueId = IssueId(UUID.randomUUID())
     val issueKey = IssueKey("BTS-1")
+
+    beforeTest {
+        clearAllMocks()
+    }
 
     fun makeIssue(id: IssueId = issueId, key: IssueKey = issueKey): com.bts.issue.domain.Issue =
         com.bts.issue.domain.Issue(

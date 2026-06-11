@@ -4,12 +4,14 @@ package com.bts.issue.application
 
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
+import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueSoftDeleted
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -53,13 +55,33 @@ class IssueApplicationServiceSoftDeleteTest : DescribeSpec({
             projectLeadRepository = mockk(relaxed = true),
             versionRepository = mockk(relaxed = true),
             clock = clock,
+            historyRecorder = mockk(relaxed = true),
         )
 
     val actor = ActorId(UUID.randomUUID())
     val issueKey = IssueKey("BTS-1")
+    val projectId = UUID.randomUUID()
+
+    // softDeleteIssue 가 이력 기록을 위해 삭제 전 이슈를 조회하므로 최소 fixture 제공
+    val existingIssue = com.bts.issue.domain.Issue(
+        id = IssueId(UUID.randomUUID()),
+        key = issueKey,
+        projectId = projectId,
+        summary = "sample",
+        reporterId = ActorId(UUID.randomUUID()),
+        currentStateKey = "open",
+        version = 1L,
+        deletedAt = null,
+        createdAt = Instant.now(),
+        updatedAt = Instant.now(),
+        typeId = IssueTypeId(1L),
+    )
 
     beforeEach {
         clearMocks(repo, eventPublisher, permissionResolver, answers = false)
+        // historyRecorder 가 relaxed mock 이므로 실제 이력 기록은 no-op.
+        // softDeleteIssue 내 repo.findByKey 호출은 항상 stub 이 필요하다.
+        every { repo.findByKey(issueKey) } returns existingIssue
     }
 
     describe("softDeleteIssue") {

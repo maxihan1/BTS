@@ -31,6 +31,7 @@ import com.bts.issue.event.IssueSoftDeleted
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.event.IssueUpdated
 import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
+import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.markdown.MarkdownRenderer
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueFieldPatch
@@ -114,6 +115,7 @@ class IssueApplicationService(
     // prod 컨텍스트에서는 IdentityAccessFieldPermissionResolver(@Profile("prod")) 또는
     // AlwaysAllowFieldPermissionResolver(@Profile("!prod")) Bean이 타입으로 주입돼 이 기본값을 대체한다.
     private val fieldPermissionResolver: FieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
+    private val historyRecorder: IssueHistoryRecorder,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -219,6 +221,7 @@ class IssueApplicationService(
                 occurredAt = Instant.now(clock),
             ),
         )
+        recordHistory(before = null, after = saved, actor = actor, projectId = projectId)
         log.info("issue_created key={} typeId={} actor={}", saved.key.value, resolvedTypeId.value, actor.value)
         return saved
     }
@@ -442,6 +445,8 @@ class IssueApplicationService(
                 occurredAt = Instant.now(clock),
             ),
         )
+        val afterIssue = repo.findByKey(key)
+        recordHistory(before = existing, after = afterIssue, actor = actor, projectId = existing.projectId)
         log.info("issue_updated key={} fields={} actor={}", key.value, changedFields, actor.value)
         return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
     }
@@ -579,6 +584,12 @@ class IssueApplicationService(
                 occurredAt = Instant.now(clock),
             ),
         )
+        // after 는 전이 결과를 issue.copy 로 구성 — 재조회 대신 in-memory 구성하여 쿼리를 줄인다.
+        val afterTransitioned = issue.copy(
+            currentStateKey = plan.toStateKey,
+            resolutionId = validatedResolutionId,
+        )
+        recordHistory(before = issue, after = afterTransitioned, actor = actor, projectId = issue.projectId)
         log.info(
             "issue_transitioned key={} from={} to={} actor={}",
             key.value,
@@ -607,6 +618,8 @@ class IssueApplicationService(
         key: IssueKey,
     ) {
         assertPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Issue(key.value))
+        // 이력 기록을 위해 삭제 전 이슈 상태를 미리 조회한다.
+        val existing = repo.findByKey(key)
         val deletedRows = repo.softDelete(key)
         if (deletedRows == 0) {
             throw IssueNotFoundException(key)
@@ -617,6 +630,7 @@ class IssueApplicationService(
                 occurredAt = Instant.now(clock),
             ),
         )
+        recordHistory(before = existing, after = null, actor = actor, projectId = existing?.projectId)
         log.info("issue_soft_deleted key={} actor={}", key.value, actor.value)
     }
 
@@ -678,6 +692,7 @@ class IssueApplicationService(
         if (updatedRows == 0) {
             throw IssueVersionConflictException(key, existing.version)
         }
+        recordHistory(before = existing, after = updated, actor = actor, projectId = existing.projectId)
         log.info("issue_assignee_changed key={} assigneeId={} actor={}", key.value, assigneeId, actor.value)
         return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
     }
@@ -721,11 +736,14 @@ class IssueApplicationService(
 
         // 자동 담당자 배정 (FR-CM-03 Task 5) — assignee null 일 때만 발동.
         // replaceComponents 가 이미 version +1 했으므로 setAssignee(no-bump) 를 사용한다.
+        // after 스냅샷: 자동배정된 assignee 까지 반영해야 components + assignee 두 item 이 모두 기록된다.
+        var afterComponents: Issue = normalized
         if (existing.assigneeId == null) {
             val resolved = resolveDefaultAssignee(existing.projectId, normalized.componentIds, current = null)
             if (resolved != null) {
                 val withAssignee = existing.assignTo(resolved)
                 repo.setAssignee(existing.id.value, withAssignee.assigneeId?.value)
+                afterComponents = normalized.copy(assigneeId = resolved)
                 log.info(
                     "issue_components_auto_assigned key={} assigneeId={} actor={}",
                     key.value,
@@ -735,6 +753,7 @@ class IssueApplicationService(
             }
         }
 
+        recordHistory(before = existing, after = afterComponents, actor = actor, projectId = existing.projectId)
         log.info(
             "issue_components_changed key={} count={} actor={}",
             key.value,
@@ -778,6 +797,7 @@ class IssueApplicationService(
                 request.expectedVersion,
             )
         if (rows == 0) throw IssueVersionConflictException(key, existing.version)
+        recordHistory(before = existing, after = normalized, actor = actor, projectId = existing.projectId)
         log.info(
             "issue_affects_versions_changed key={} count={} actor={}",
             key.value,
@@ -819,6 +839,7 @@ class IssueApplicationService(
                 request.expectedVersion,
             )
         if (rows == 0) throw IssueVersionConflictException(key, existing.version)
+        recordHistory(before = existing, after = normalized, actor = actor, projectId = existing.projectId)
         log.info(
             "issue_fix_versions_changed key={} count={} actor={}",
             key.value,
@@ -1487,6 +1508,28 @@ class IssueApplicationService(
                 "편집 권한이 없는 필드가 포함되어 있습니다.",
             )
         }
+    }
+
+    /**
+     * 이슈 변경 이력을 기록하는 private 헬퍼.
+     *
+     * [IssueHistoryRecorder.record] 에 위임한다.
+     * [projectId] 가 null 이면 기록하지 않는다 (이슈 미조회 경로에서의 방어).
+     *
+     * **self-invocation 금지** — 이 메서드는 같은 클래스 안에 있으므로 @Transactional 이 동작하지 않는다.
+     * 트랜잭션은 historyRecorder(별도 @Service 빈)가 제공한다 (메모리 트랜잭션-self-invocation-REQUIRES_NEW).
+     */
+    private fun recordHistory(
+        before: Issue?,
+        after: Issue?,
+        actor: ActorId?,
+        projectId: UUID?,
+    ) {
+        if (projectId == null) {
+            log.warn("history_record_skipped: projectId null (issueKey={})", before?.key?.value ?: after?.key?.value)
+            return
+        }
+        historyRecorder.record(before = before, after = after, actor = actor, projectId = projectId)
     }
 
     /**

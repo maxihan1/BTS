@@ -4,6 +4,7 @@ package com.bts.issue.history
 
 import com.bts.issue.domain.Issue
 import org.slf4j.LoggerFactory
+import org.springframework.stereotype.Component
 import java.util.UUID
 
 /** customFields 필드명 prefix. */
@@ -34,6 +35,7 @@ private const val LIFECYCLE_DELETED = "deleted"
  * val deleted = detector.deleted(issue)
  * ```
  */
+@Component
 class IssueChangeDetector {
 
     private val log = LoggerFactory.getLogger(javaClass)

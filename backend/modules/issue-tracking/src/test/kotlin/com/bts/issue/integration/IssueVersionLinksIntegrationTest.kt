@@ -138,6 +138,7 @@ class IssueVersionLinksIntegrationTest {
                 projectLeadRepository = realProjectLeadRepositoryForLinks,
                 versionRepository = realVersionRepositoryForLinks,
                 clock = clock,
+                historyRecorder = io.mockk.mockk(relaxed = true),
             )
     }
 

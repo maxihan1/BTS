@@ -107,6 +107,7 @@ class IssueCreateComponentAutoAssignIntegrationTest {
                 projectLeadRepository = projectLeadRepository,
                 versionRepository = versionRepository,
                 clock = clock,
+                historyRecorder = io.mockk.mockk(relaxed = true),
             )
     }
 

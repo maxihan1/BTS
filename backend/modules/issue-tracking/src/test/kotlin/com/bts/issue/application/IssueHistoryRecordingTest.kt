@@ -30,6 +30,7 @@ import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowStartState
 import com.bts.shared.workflow.WorkflowTransitionPort
 import io.kotest.core.spec.style.DescribeSpec
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
@@ -110,8 +111,21 @@ class IssueHistoryRecordingTest : DescribeSpec({
     fun makeResponseMock(): IssueResponse = mockk(relaxed = true)
 
     beforeTest {
+        // mock 상태 초기화 — 이전 test 의 stub 누적이 value class 매처 등록 시 MockK internal state 를 오염시키는 것을 방지한다.
+        clearMocks(repo, permissionResolver, workflowPort, workflowKeyResolver, historyRecorder)
         every { permissionResolver.hasPermission(any(), any(), any()) } returns true
         justRun { historyRecorder.record(any(), any(), any(), any()) }
+        // withSingleDetail() 내 repo 추가 호출 stub — relaxed mock 이 아닌 repo 에 필요
+        every { repo.findActiveComponentIdsByIssue(any()) } returns emptyList()
+        every { repo.findAffectsVersionIdsByIssue(any()) } returns emptyList()
+        every { repo.findFixVersionIdsByIssue(any()) } returns emptyList()
+        // assertEditableOrForbidden 내 repo.findProjectIdByKey stub
+        every { repo.findProjectIdByKey(any()) } returns projectId
+        // resolveDefaultAssignee 에서 projectLeadRepository.findLeadUserId 가 null 을 반환하도록 강제.
+        // relaxed mock 은 UUID? 에 대해 non-null UUID 를 반환하여 자동배정 side-effect 를 유발한다.
+        every { projectLeadRepository.findLeadUserId(any()) } returns null
+        // changeComponents 자동배정 side-effect (resolved non-null 시) 방어 stub
+        every { repo.setAssignee(any(), any()) } returns Unit
     }
 
     // ── createIssue ────────────────────────────────────────────────────────────
@@ -157,9 +171,10 @@ class IssueHistoryRecordingTest : DescribeSpec({
 
         beforeTest {
             every { repo.findByKey(issueKey) } returns existing
-            every {
-                repo.updateFields(key = any(), patch = any(), expectedVersion = any())
-            } returns 1
+            // IssueKey value class 를 any() 매처로 stub 하면 MockK recording 시
+            // IssueKey constructor 를 랜덤 값으로 호출해 regex 검증 오류가 발생한다.
+            // 실제 key 값을 직접 지정해 우회한다.
+            every { repo.updateFields(issueKey, any(), any()) } returns 1
             every { repo.findByKeyWithType(issueKey) } returns responseMock
         }
 

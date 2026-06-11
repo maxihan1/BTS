@@ -66,6 +66,7 @@ class IssueChangeVersionsServiceTest : DescribeSpec({
             projectLeadRepository = projectLeadRepository,
             versionRepository = versionRepository,
             clock = clock,
+            historyRecorder = io.mockk.mockk(relaxed = true),
         )
 
     val actor = ActorId(UUID.fromString("00000000-0000-4000-8000-000000000001"))
