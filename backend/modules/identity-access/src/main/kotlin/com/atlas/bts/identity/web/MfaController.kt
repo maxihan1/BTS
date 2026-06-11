@@ -159,8 +159,10 @@ class MfaController(
      * @param userId 설정 주체 사용자 UUID.
      * @return email → username → userId.toString() 순으로 해소된 label.
      */
-    private fun resolveLabel(userId: UUID): String =
-        userRepo.findById(userId)?.let { it.email ?: it.username } ?: userId.toString()
+    private fun resolveLabel(userId: UUID): String {
+        val user = userRepo.findById(userId) ?: return userId.toString()
+        return user.email ?: user.username
+    }
 
     /** `{"error": <code>}` 본문을 가진 [status] 응답을 생성한다 (AuthController 에러 응답 일원화 선례). */
     private fun errorResponse(
