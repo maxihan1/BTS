@@ -221,3 +221,10 @@ classify 결과: type=backend, agent=backend-engineer, primary_bc=notification(�
 - **H2/C-1 해소**: IN 유지(cap으로 안전 + findByIds 선례 일치) + 문서 정합 — `UserLookupPort.kt` KDoc·spec N2/cross-BC절·plan GREEN을 모두 `IN (:names)`로 정정.
 - **G1 해소**: updateIssue 멘션 발행 Testcontainers 통합테스트 추가(실 pgmq `q_issue_events` enqueue 검증) — qa-engineer.
 - **M2 수용**: 불균형 백틱 best-effort, KDoc 한계 명시 유지. **C-2**: ThrowsCount @Suppress는 LongMethod와 함께 유지(국소 일관성, baseline 중복은 무해).
+
+### 게이트 2 재진입 후 추가 수정 (2026-06-11, Maxi 요청 3건)
+
+- **M2 강화**: 인라인 코드 정규식 `` `[^`\r\n]*?` ``로 명시화(stray 백틱이 줄 넘어 멘션 삼킴 차단, 불균형 시 과대추출 bias) + 불균형 백틱 회귀 테스트 추가. (`test`→`fix` 커밋)
+- **대소문자 무시 매칭**: `UserLookupAdapter`를 `WHERE LOWER(username) IN (:names)`(입력 lowercase)로 변경 → `@Bob`이 `bob` 해석. 엣지(대소문자만 다른 username 복수 존재 시 과다매칭) 테스트로 고정. KDoc·spec 정합. (`test`→`feat`→`refactor`)
+- **C-2 ThrowsCount 제거 시도 → 원복(불가 확정)**: detekt `--rerun-tasks` 시 ThrowsCount 재flag — baseline의 updateIssue 항목이 본 PR 라인시프트로 stale해져 inline `@Suppress("ThrowsCount")`가 실제로 필요(중복 아님). baseline 무리한 재생성은 보류. → `@Suppress("LongMethod","ThrowsCount")` 유지.
+- 멘션 상한: Maxi 결정 **50 유지**.

@@ -99,7 +99,7 @@
   fun findIdsByUsernames(usernames: Set<String>): Map<String, UUID>
   ```
   - 빈 입력 → 빈 맵 (쿼리 생략).
-  - username 대소문자: `users.username`은 대소문자 구분 UNIQUE → 정확 매칭(원문 보존). (대소문자 무시 매칭은 비범위)
+  - username 대소문자: **대소문자 무시 매칭**(`WHERE LOWER(username) IN (:names)`, 입력 lowercase 변환). `@Bob`이 DB `bob`을 찾는다. 단 `users.username` UNIQUE는 대소문자를 구분하므로 `Carol`/`carol`이 동시 존재하면 둘 다 매칭(과다매칭 — 알려진 트레이드오프, 둘 다 알림). 멘션은 cap(50) bound라 LOWER() 함수 인덱스 우회 허용.
 - identity-access `UserLookupAdapter` 구현: `SELECT id, username FROM users WHERE username IN (:names)` (named param 컬렉션 바인딩, 프로젝트 `findByIds` 선례 일치, 읽기 전용). 결과를 `username -> id` 맵으로 수집. (`= ANY(:array)`는 드라이버 배열 바인딩 의존이라 미채택 — distinct 멘션은 cap(50)으로 bound되어 IN 파라미터 수는 안전.)
 - ADR 참조: 기존 `2026-06-01-issue-assignee-user-lookup-port` 포트의 메서드 추가 — 신규 ADR 불요(동일 포트 확장), plan에 기록.
 
