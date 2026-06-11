@@ -219,6 +219,36 @@ class IdentityAccessIssueSecurityDirectoryIntegrationTest {
         assertThat(access.assigneeLevelIds).isEmpty()
     }
 
+    // ── findLevelNames — cross-BC 표시명 박제 (FR-HS-01 보강 Task 3) ────────────
+
+    /**
+     * 시드한 등급 id 들은 이름으로 역방향 일괄 조회되고, 미존재 id 는 결과 맵에서 제외된다.
+     *
+     * 이슈 변경 이력(audit trail) 기록 시점에 securityLevel 표시명을 박제하기 위한 prod 구현이다.
+     * non-prod AlwaysAllow stub 은 default(빈 맵)를 상속하므로, 실 조회 정확성은 여기 prod 에서만 검증된다.
+     */
+    @Test
+    fun `findLevelNames — 시드한 등급 id 는 이름으로 조회되고 미존재 id 는 제외된다`() {
+        seedScheme()
+        seedLevel(userLevelId, "임원 전용")
+        seedLevel(groupLevelId, "내부용")
+        val missingLevelId = UUID.fromString("22222222-0000-0000-0000-0000000000ff")
+
+        val names = directory.findLevelNames(setOf(userLevelId, groupLevelId, missingLevelId))
+
+        assertThat(names).containsOnly(
+            org.assertj.core.api.Assertions.entry(userLevelId, "임원 전용"),
+            org.assertj.core.api.Assertions.entry(groupLevelId, "내부용"),
+        )
+        assertThat(names).doesNotContainKey(missingLevelId)
+    }
+
+    /** 빈 입력은 빈 맵을 반환한다(쿼리 단락). */
+    @Test
+    fun `findLevelNames — 빈 입력은 emptyMap`() {
+        assertThat(directory.findLevelNames(emptySet())).isEmpty()
+    }
+
     // ── levelBelongsToProjectScheme ────────────────────────────────────────────
 
     @Test
