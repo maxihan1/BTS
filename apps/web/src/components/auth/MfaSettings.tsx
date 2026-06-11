@@ -48,6 +48,8 @@ function MfaSetupView({ setup }: MfaSetupViewProps): JSX.Element {
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface MfaCodeFormProps {
+  /** 입력 필드 id — 같은 페이지 내 중복 방지용 고유 값 */
+  readonly inputId: string
   /** 입력 필드 레이블 */
   readonly label: string
   /** 제출 버튼 레이블 */
@@ -66,6 +68,7 @@ interface MfaCodeFormProps {
  * @param props MfaCodeFormProps
  */
 function MfaCodeForm({
+  inputId,
   label,
   submitLabel,
   errorMessage,
@@ -93,9 +96,9 @@ function MfaCodeForm({
       )}
 
       <div className="space-y-1.5">
-        <Label htmlFor="mfa-code">{label}</Label>
+        <Label htmlFor={inputId}>{label}</Label>
         <Input
-          id="mfa-code"
+          id={inputId}
           type="text"
           inputMode="numeric"
           autoComplete="one-time-code"
@@ -279,6 +282,7 @@ export function MfaSettings(): JSX.Element {
             <div className="space-y-6">
               <MfaSetupView setup={setupData} />
               <MfaCodeForm
+                inputId="mfa-enable-code"
                 label={mfaStrings.codeLabel}
                 submitLabel="활성화 확인"
                 errorMessage={enableError}
@@ -304,6 +308,7 @@ export function MfaSettings(): JSX.Element {
 
           {showDisableForm && (
             <MfaCodeForm
+              inputId="mfa-disable-code"
               label="현재 인증 코드 (6자리)"
               submitLabel="비활성화 확인"
               errorMessage={disableError}
