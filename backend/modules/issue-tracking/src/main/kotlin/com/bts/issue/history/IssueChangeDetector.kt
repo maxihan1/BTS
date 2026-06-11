@@ -38,6 +38,25 @@ class IssueChangeDetector {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
+    companion object {
+        /**
+         * 스칼라 필드명 → Issue 값 추출 함수 매핑 테이블.
+         * 새 스칼라 필드 추가 시 이 목록에만 추가하면 된다.
+         */
+        private val SCALAR_FIELD_EXTRACTORS: List<Pair<String, (Issue) -> String?>> = listOf(
+            "summary" to { it.summary },
+            "type" to { it.typeId.value.toString() },
+            "status" to { it.currentStateKey },
+            "description" to { it.description },
+            "priority" to { it.priority.toString() },
+            "environment" to { it.environment },
+            "impact" to { it.impact?.toString() },
+            "assignee" to { it.assigneeId?.value?.toString() },
+            "resolution" to { it.resolutionId?.toString() },
+            "securityLevel" to { it.securityLevelId?.toString() },
+        )
+    }
+
     /**
      * 이슈 생성 시 lifecycle 마커를 반환한다.
      *
@@ -88,16 +107,9 @@ class IssueChangeDetector {
         after: Issue,
         items: MutableList<IssueChangeItem>,
     ) {
-        addIfChanged(items, "summary", before.summary, after.summary)
-        addIfChanged(items, "type", before.typeId.value.toString(), after.typeId.value.toString())
-        addIfChanged(items, "status", before.currentStateKey, after.currentStateKey)
-        addIfChanged(items, "description", before.description, after.description)
-        addIfChanged(items, "priority", before.priority.toString(), after.priority.toString())
-        addIfChanged(items, "environment", before.environment, after.environment)
-        addIfChanged(items, "impact", before.impact?.toString(), after.impact?.toString())
-        addIfChanged(items, "assignee", before.assigneeId?.value?.toString(), after.assigneeId?.value?.toString())
-        addIfChanged(items, "resolution", before.resolutionId?.toString(), after.resolutionId?.toString())
-        addIfChanged(items, "securityLevel", before.securityLevelId?.toString(), after.securityLevelId?.toString())
+        SCALAR_FIELD_EXTRACTORS.forEach { (field, extract) ->
+            addIfChanged(items, field, extract(before), extract(after))
+        }
     }
 
     private fun detectCollectionFields(
