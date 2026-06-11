@@ -202,8 +202,4 @@ class NotificationPolicyRepository(
         )
     }
 
-    /**
-     * [OffsetDateTime] 의 확장 함수 — DB 에서 읽은 타임스탬프를 [Instant] 로 변환한다.
-     */
-    private fun OffsetDateTime.toInstant(): Instant = this.toInstant()
 }
