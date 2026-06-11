@@ -2,7 +2,10 @@
 
 package com.atlas.bts.identity.jwt
 
+import com.atlas.bts.identity.mfa.MfaEnforcementPolicy
 import com.nimbusds.jwt.SignedJWT
+import io.mockk.every
+import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -32,6 +35,9 @@ import java.util.UUID
 class JwtIssuerSignatureRegressionTest {
     private val keyProvider = DevMemoryKeyProvider()
     private val issuerUri = "https://bts.example.com"
+
+    /** MFA 강제 정책 fake (FR-MF-04) — 본 회귀 가드는 mfa_verified 만 검증하므로 false 고정. */
+    private val mfaEnforcementPolicy: MfaEnforcementPolicy = mockk()
     private lateinit var jwtIssuer: JwtIssuer
 
     private val userId = UUID.fromString("33333333-0000-0000-0000-000000000003")
@@ -39,7 +45,8 @@ class JwtIssuerSignatureRegressionTest {
 
     @BeforeEach
     fun setUp() {
-        jwtIssuer = JwtIssuer(keyProvider, issuerUri)
+        every { mfaEnforcementPolicy.evaluate(any()) } returns false
+        jwtIssuer = JwtIssuer(keyProvider, issuerUri, mfaEnforcementPolicy)
     }
 
     @Test
