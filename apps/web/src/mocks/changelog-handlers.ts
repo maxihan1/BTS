@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw'
 import {
   DENIED_CHANGELOG_KEYS,
   atlasOneChangelogFixture,
+  paginationChangelogFixture,
   type ChangeGroupFixture,
 } from './changelog-fixtures'
 
@@ -17,6 +18,8 @@ import {
  */
 const fixtureStore: Map<string, ChangeGroupFixture[]> = new Map([
   ['ATLAS-1', atlasOneChangelogFixture],
+  // ATLAS-2 — "더 보기" 페이징 E2E 검증용 21그룹(런타임 시드 없이 사전 등록)
+  ['ATLAS-2', paginationChangelogFixture],
 ])
 
 /**

@@ -155,3 +155,20 @@ export const atlasOneChangelogFixture: ChangeGroupFixture[] = [
 
 /** changelog 조회 시 404를 반환할 이슈 key 집합 (권한 없음 / 미존재 시뮬) */
 export const DENIED_CHANGELOG_KEYS: ReadonlySet<string> = new Set(['DENIED-1', 'DENIED-2'])
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 페이지네이션 검증용 fixture — priority 변경 21건(기본 size=20 초과 → page=0에서 last=false)
+// ATLAS-2 에 사전 등록되어 E2E "더 보기" 시나리오를 런타임 시드 없이 검증한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** "더 보기" 페이징 검증용 — priority 변경 21그룹(최신순) */
+export const paginationChangelogFixture: ChangeGroupFixture[] = Array.from(
+  { length: 21 },
+  (_, i) =>
+    buildChangeGroup({
+      actorId: ACTOR_ALICE_ID,
+      actorName: 'Alice',
+      createdAt: `2026-06-11T${String(20 - i).padStart(2, '0')}:00:00Z`,
+      items: [buildChangeItem('priority', '1', '3')],
+    }),
+)
