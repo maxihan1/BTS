@@ -3,7 +3,7 @@
 -- ── notification_policies ─────────────────────────────────────────────────────
 CREATE TABLE notification_policies (
     id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id      UUID,
+    project_key     VARCHAR(64),
     event_type      VARCHAR(64)  NOT NULL,
     recipient_role  VARCHAR(32)  NOT NULL,
     channel         VARCHAR(16)  NOT NULL,
@@ -12,9 +12,9 @@ CREATE TABLE notification_policies (
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     CONSTRAINT uq_notification_policy
-        UNIQUE NULLS NOT DISTINCT (project_id, event_type, recipient_role, channel)
+        UNIQUE NULLS NOT DISTINCT (project_key, event_type, recipient_role, channel)
 );
 
 CREATE INDEX idx_notification_policy_lookup
-    ON notification_policies (event_type, project_id)
+    ON notification_policies (event_type, project_key)
     WHERE enabled = TRUE;

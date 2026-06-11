@@ -39,7 +39,7 @@ fr-index. `| FR-NT-01 | 이벤트별 알림 정책 | 필수 | notification-dashb
 전체 스펙. [docs/specs/2026-06-11-fr-nt-01-notification.md](../specs/2026-06-11-fr-nt-01-notification.md)
 
 핵심 3줄 요약.
-- notification 새 BC 모듈 부트스트랩 + `notification_policies(project_id?, event_type, recipient_role, channel, enabled)` 테이블 + SDD §9.1.2 매트릭스 시드(IN_APP)
+- notification 새 BC 모듈 부트스트랩 + `notification_policies(project_key?, event_type, recipient_role, channel, enabled)` 테이블 + SDD §9.1.2 매트릭스 시드(IN_APP)
 - 3 enum(EventType 9종/RecipientRole/Channel 5종) + 정책 CRUD API 4종 + 카탈로그 API + 평가 엔진(전역/프로젝트 override = event_type 단위 replace)
 - 모든 CRUD 권한 = SYSTEM_ADMIN(`SystemPermissionResolver`). 실제 전달/소비는 FR-NT-02+로 분리. 백엔드 D1~D5 (UI/E2E 후속 분리 권장)
 
@@ -66,7 +66,7 @@ fr-index. `| FR-NT-01 | 이벤트별 알림 정책 | 필수 | notification-dashb
 - `settings.gradle.kts`에 `include(":modules:notification")` 추가
 - `build.gradle.kts` — project-workflow 템플릿 복제. jOOQ codegen 패키지 `com.bts.notification.jooq`, target `src/generated/jooq`, Testcontainers jdbc:tc URL로 `db/codegen/init_codegen.sql` 초기화. Flyway `classpath:db/migration/notification`. detekt baseline.
 - `V400__notification_policies.sql` — 스펙 §4 DDL (테이블 + UNIQUE NULLS NOT DISTINCT + 부분 인덱스). `gen_random_uuid()` 사용(pgcrypto/PG13+). **V400** = DATA.md §4.1 새 BC 범위(V400~V499).
-- `V401__seed_default_policies.sql` — SDD §9.1.2 매트릭스 19행(전역 project_id=NULL, 채널 IN_APP). memory: enum 카운트가드 영향 없음(타 모듈 무관).
+- `V401__seed_default_policies.sql` — SDD §9.1.2 매트릭스 19행(전역 project_key=NULL, 채널 IN_APP). memory: enum 카운트가드 영향 없음(타 모듈 무관).
 - `init_codegen.sql` — V400 테이블 DDL 미러 (시드 제외 — codegen은 구조만 필요). memory: jooq-init-codegen-mirror.
 - `DATA.md` §4.1 표 — `| notification | V400~V499 | V400, V401 |` 행 추가 (CLAUDE.md 전수 동기화 규칙).
 - `NotificationBcArchTest.kt` — BC 격리(issue-tracking/project-workflow/identity-access 내부 패키지 import 금지) + jOOQ repository 화이트리스트 + @Transactional+@Service 룰. memory: archunit-vacuous-rule-silent-pass — 빈 모듈이라 vacuous PASS 위험, 일부러 위반 클래스 1개 넣어 룰 동작 확인 후 제거.
@@ -83,7 +83,7 @@ fr-index. `| FR-NT-01 | 이벤트별 알림 정책 | 필수 | notification-dashb
 **RED**: enum 카탈로그 + 도메인 불변식 테스트
 - `NotificationEventType`: 9종 존재 + 문자열 매핑(`issue.created` 등) + `publishable` 메타(스펙 §3.1 표) + `fromString` 역매핑(미존재→null/예외)
 - `RecipientRole`: 9종, `Channel`: 5종
-- `NotificationPolicy`: (id, projectId?, eventType, recipientRole, channel, enabled, ...) 생성 + `toggle(enabled)` 불변식
+- `NotificationPolicy`: (id, projectKey?, eventType, recipientRole, channel, enabled, ...) 생성 + `toggle(enabled)` 불변식
 
 **GREEN**: enum 3종 + NotificationPolicy 데이터 클래스 최소 구현
 
@@ -100,9 +100,9 @@ fr-index. `| FR-NT-01 | 이벤트별 알림 정책 | 필수 | notification-dashb
 
 **RED**: Testcontainers 통합 테스트 (memory: concurrent-testcontainers-suite-flaky / singleton 패턴 `.apply { start() }`)
 - insert/findAll(projectKey?)/findById/toggle(enabled)/delete
-- UNIQUE 멱등 — 동일 (projectId NULL, event, role, channel) 재삽입 → 충돌(예외 또는 ON CONFLICT). memory: pg-null-distinct-on-conflict-idempotency
+- UNIQUE 멱등 — 동일 (projectKey NULL, event, role, channel) 재삽입 → 충돌(예외 또는 ON CONFLICT). memory: pg-null-distinct-on-conflict-idempotency
 - 시드 검증 — V401 시드된 전역 정책 19행 중 `issue.created` 전역 정책 조회 확인
-- 평가용 조회 — `findEnabledByEventType(eventType, projectId?)`
+- 평가용 조회 — `findEnabledByEventType(eventType, projectKey?)`
 
 **GREEN**: jOOQ Repository 구현 (`com.bts.notification.jooq` 화이트리스트 — repository 레이어만)
 
@@ -196,10 +196,10 @@ fr-index. `| FR-NT-01 | 이벤트별 알림 정책 | 필수 | notification-dashb
 ### plan-eng-review (2026-06-11) — eng 집중 독립 리뷰 (autoplan 스킵, memory: bts-review-plan-autoplan-overkill)
 
 - **Scope challenge** ✅ — 새 BC라 파일 수 많지만 부트스트랩의 필연(overbuilt 아님). SystemPermissionResolver·project-workflow 빌드 템플릿 재사용 양호. UI/E2E 후속 분리로 범위 축소.
-- **아키텍처** ✅ — BC 격리(ArchUnit), pgmq 소비측 분리, 평가 엔진 REST 비노출, SystemPermissionResolver 소비. project_id FK 부재는 BC 격리상 의도(orphan은 평가서 호출 안 됨).
+- **아키텍처** ✅ — BC 격리(ArchUnit), pgmq 소비측 분리, 평가 엔진 REST 비노출, SystemPermissionResolver 소비. project_key FK 부재 (FK 없음)는 BC 격리상 의도(orphan은 평가서 호출 안 됨).
 - **코드품질** ✅ — 레이어 분리 명확, 예외 매핑(409/400/403/404), 메모리 함정(catch-all 핸들러·동명예외·guard 메시지 누출) plan 반영.
 - **테스트** ✅ — 각 task RED 명시, Testcontainers singleton, end-to-end(Task 7), 시드 검증(Task 3).
-- **성능** ✅ — 평가 단일 쿼리 + (event_type, project_id) 부분 인덱스, p95<50ms. 캐시는 FR-NT-02로 분리.
+- **성능** ✅ — 평가 단일 쿼리 + (event_type, project_key) 부분 인덱스, p95<50ms. 캐시는 FR-NT-02로 분리.
 - **발견 1건 (해소)** — 평가 엔진 override의 enabled 판정 모호(프로젝트 행 보유+전부 비활성 시 동작). Maxi 결정으로 확정: 행 존재=독자관리→전역 무시, 활성 행만 반환(전부 비활성=빈 목록). spec §6·EC2·plan Task 4 반영.
 - **BLOCKER**: 없음
 

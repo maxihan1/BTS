@@ -1,10 +1,10 @@
 -- 전역 기본 알림 정책 시드 (FR-NT-01 V401) — SDD §9.1.2 매트릭스 19행, project_id=NULL, channel=IN_APP
 
--- project_id=NULL: 전역 기본 정책 (모든 프로젝트에 적용, 프로젝트 전용 정책이 없을 때 폴백).
+-- project_key=NULL: 전역 기본 정책 (모든 프로젝트에 적용, 프로젝트 전용 정책이 없을 때 폴백).
 -- created_by=NULL: 시스템 시드 (사람이 만든 정책이 아님).
 -- ON CONFLICT DO NOTHING: 재실행 시 멱등 보장.
 
-INSERT INTO notification_policies (event_type, recipient_role, channel, enabled, project_id, created_by)
+INSERT INTO notification_policies (event_type, recipient_role, channel, enabled, project_key, created_by)
 VALUES
     -- issue.created: 이슈 생성 시 알림
     ('issue.created',      'REPORTER',       'IN_APP', TRUE, NULL, NULL),

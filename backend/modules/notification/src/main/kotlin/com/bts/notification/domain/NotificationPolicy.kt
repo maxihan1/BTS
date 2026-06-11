@@ -8,8 +8,13 @@ import java.util.UUID
 /**
  * 알림 정책 Aggregate Root.
  *
- * `project_id=null` 이면 시스템 기본(전역) 정책이며,
- * `project_id` 가 있으면 해당 프로젝트에서 전역 기본을 덮어쓰는 프로젝트 전용 정책이다.
+ * `projectKey=null` 이면 시스템 기본(전역) 정책이며,
+ * `projectKey` 가 있으면 해당 프로젝트에서 전역 기본을 덮어쓰는 프로젝트 전용 정책이다.
+ *
+ * ## projectKey(문자열)를 쓰는 이유
+ * notification BC 는 BC 격리상 issue-tracking 의 projects 테이블을 조회할 수 없어
+ * projectKey→projectId(UUID) 변환이 불가하다. 정책을 소비하는 이벤트 payload(예: IssueMentioned)도
+ * projectKey(문자열)만 담으므로, 변환 없이 직접 매칭하려면 projectKey 로 저장/평가한다.
  *
  * ## 불변식
  * - 모든 필드는 `val` 로 선언해 한 번 생성된 이후 변경 불가.
@@ -18,7 +23,7 @@ import java.util.UUID
  *   (Clock 의존 제거로 테스트 결정성 보장 — memory: AuthController revokeSession time-bomb 교훈)
  *
  * @param id 정책 식별자
- * @param projectId 프로젝트 UUID (null = 전역 기본 정책)
+ * @param projectKey 프로젝트 키 문자열 (null = 전역 기본 정책)
  * @param eventType 이 정책이 적용되는 이벤트 유형
  * @param recipientRole 알림을 수신할 역할
  * @param channel 알림 전송 채널
@@ -29,7 +34,7 @@ import java.util.UUID
  */
 data class NotificationPolicy(
     val id: UUID,
-    val projectId: UUID?,
+    val projectKey: String?,
     val eventType: NotificationEventType,
     val recipientRole: RecipientRole,
     val channel: Channel,
@@ -41,9 +46,9 @@ data class NotificationPolicy(
     /**
      * 이 정책이 전역(시스템 기본) 정책인지 확인한다.
      *
-     * @return `projectId` 가 null 이면 `true`, 특정 프로젝트에 속하면 `false`
+     * @return `projectKey` 가 null 이면 `true`, 특정 프로젝트에 속하면 `false`
      */
-    fun isGlobal(): Boolean = projectId == null
+    fun isGlobal(): Boolean = projectKey == null
 
     /**
      * [enabled] 상태를 전환한 새 [NotificationPolicy] 인스턴스를 반환한다.

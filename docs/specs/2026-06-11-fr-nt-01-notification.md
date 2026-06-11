@@ -43,7 +43,7 @@
 
 ## 2. 기능 요구사항 (FR)
 
-- **FR-1**. NotificationPolicy 도메인 — (project_id?, event_type, recipient_role, channel, enabled) 불변식: 동일 (project_id, event_type, recipient_role, channel) 중복 금지.
+- **FR-1**. NotificationPolicy 도메인 — (project_key?, event_type, recipient_role, channel, enabled) 불변식: 동일 (project_key, event_type, recipient_role, channel) 중복 금지.
 - **FR-2**. event_type 카탈로그 = `NotificationEventType` enum (SDD §9.1.2, 9종). 각 항목에 `publishable` 메타.
 - **FR-3**. recipient_role 카탈로그 = `RecipientRole` enum (SDD §9.1.2 등장 역할).
 - **FR-4**. channel 카탈로그 = `Channel` enum (SDD §9.1.1 / product FR-NT-02, 5종).
@@ -85,7 +85,7 @@
 ```sql
 CREATE TABLE notification_policies (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id      UUID,                       -- NULL = 전역 기본, 값 = 프로젝트별 override
+    project_key     VARCHAR(64),                -- NULL = 전역 기본, 값 = 프로젝트별 override (issue-tracking projects.key 문자열)
     event_type      VARCHAR(64)  NOT NULL,      -- NotificationEventType
     recipient_role  VARCHAR(32)  NOT NULL,      -- RecipientRole
     channel         VARCHAR(16)  NOT NULL,      -- Channel
@@ -94,22 +94,23 @@ CREATE TABLE notification_policies (
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     CONSTRAINT uq_notification_policy
-        UNIQUE NULLS NOT DISTINCT (project_id, event_type, recipient_role, channel)
+        UNIQUE NULLS NOT DISTINCT (project_key, event_type, recipient_role, channel)
 );
 
 CREATE INDEX idx_notification_policy_lookup
-    ON notification_policies (event_type, project_id) WHERE enabled = TRUE;
+    ON notification_policies (event_type, project_key) WHERE enabled = TRUE;
 ```
 
-- **NULLS NOT DISTINCT** 필수 — project_id NULL(전역)인 중복 정책을 UNIQUE가 잡도록 (memory: pg-null-distinct-on-conflict-idempotency).
-- project_id는 **FK를 걸지 않는다** (BC 격리 — issue-tracking의 projects를 직접 참조하지 않음). 단순 UUID 참조.
+- **project_key(문자열) 사용 이유** — notification BC는 BC 격리상 issue-tracking의 projects 테이블 조회 불가 → projectKey→project_id(UUID) 변환 경로 없음. 소비 이벤트 payload(IssueMentioned)도 projectKey 문자열만 담음. 변환 없이 직접 매칭하려면 project_key로 저장/평가.
+- **NULLS NOT DISTINCT** 필수 — project_key NULL(전역)인 중복 정책을 UNIQUE가 잡도록 (memory: pg-null-distinct-on-conflict-idempotency).
+- project_key는 **FK를 걸지 않는다** (BC 격리). 단순 문자열 참조.
 - jOOQ codegen 미러 — `db/codegen/init_codegen.sql`에 동일 DDL 미러 (memory: jooq-init-codegen-mirror).
 
 ### 4.1 시드 (V401)
 
 > **마이그레이션 번호 — V400부터** (DATA.md §4.1: 새 BC는 V400+ 범위. cross-BC classpath 합쳐질 때 V001 충돌 방지). V400=테이블, V401=시드. 같은 PR에서 DATA.md §4.1 표에 `notification | V400~V499` 행 등록.
 
-SDD §9.1.2 매트릭스를 전역 기본(project_id=NULL) 정책으로 시드. 채널 IN_APP. 예:
+SDD §9.1.2 매트릭스를 전역 기본(project_key=NULL) 정책으로 시드. 채널 IN_APP. 예:
 `(NULL, 'issue.created', 'REPORTER', 'IN_APP', true)`, `(NULL, 'issue.created', 'WATCHER', 'IN_APP', true)`, … (전 이벤트×SDD 기본 수신자).
 
 ## 5. API 인터페이스 (REST)
@@ -136,12 +137,12 @@ evaluate(eventType: NotificationEventType, projectKey: String?): List<PolicyMatc
 
 알고리즘 (projectKey 우선, replace 방식):
 1. projectKey가 주어지고, 그 프로젝트가 `eventType`에 대해 정책 행을 **1개 이상 보유(enabled 무관)** 하면 → 그 프로젝트의 **활성(enabled=true)** 정책만 반환. 전역은 완전 무시(replace). 행은 있으나 전부 enabled=false면 → **빈 목록**(그 프로젝트는 해당 이벤트 알림 안 함 = 독자 관리, Maxi 확정).
-2. 프로젝트가 해당 eventType 행이 0개 → 전역 기본(project_id IS NULL, enabled=true) 반환.
+2. 프로젝트가 해당 eventType 행이 0개 → 전역 기본(project_key IS NULL, enabled=true) 반환.
 3. 알 수 없는 / 전역도 0개인 eventType → 빈 목록.
 
 ## 7. 비기능 요구사항 (NFR)
 
-- 정책 평가 조회 p95 < 50ms (event_type+project_id 인덱스). 캐시는 본 FR 범위 밖(FR-NT-02 consumer 성능 시 검토).
+- 정책 평가 조회 p95 < 50ms (event_type+project_key 인덱스). 캐시는 본 FR 범위 밖(FR-NT-02 consumer 성능 시 검토).
 - ArchUnit — notification BC 격리(issue-tracking/project-workflow/identity-access 내부 패키지 직접 import 금지), jOOQ repository 화이트리스트, @Transactional+@Service 룰.
 - 테스트 — 단위(도메인 불변식 + 평가 엔진 분기) + 통합(Testcontainers: CRUD + UNIQUE 멱등 + override replace + 권한 403).
 

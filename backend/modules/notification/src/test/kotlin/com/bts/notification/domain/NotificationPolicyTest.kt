@@ -14,16 +14,16 @@ class NotificationPolicyTest : DescribeSpec({
     val laterNow: Instant = Instant.parse("2026-06-11T01:00:00Z")
 
     val sampleId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
-    val sampleProjectId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000002")
+    val sampleProjectKey = "ATLAS"
     val sampleCreatedBy: UUID = UUID.fromString("00000000-0000-0000-0000-000000000003")
 
     fun buildPolicy(
-        projectId: UUID? = sampleProjectId,
+        projectKey: String? = sampleProjectKey,
         enabled: Boolean = true,
     ): NotificationPolicy =
         NotificationPolicy(
             id = sampleId,
-            projectId = projectId,
+            projectKey = projectKey,
             eventType = NotificationEventType.ISSUE_CREATED,
             recipientRole = RecipientRole.ASSIGNEE,
             channel = Channel.IN_APP,
@@ -37,7 +37,7 @@ class NotificationPolicyTest : DescribeSpec({
         it("모든 필드가 주어진 값으로 초기화된다") {
             val policy = buildPolicy()
             policy.id shouldBe sampleId
-            policy.projectId shouldBe sampleProjectId
+            policy.projectKey shouldBe sampleProjectKey
             policy.eventType shouldBe NotificationEventType.ISSUE_CREATED
             policy.recipientRole shouldBe RecipientRole.ASSIGNEE
             policy.channel shouldBe Channel.IN_APP
@@ -49,13 +49,13 @@ class NotificationPolicyTest : DescribeSpec({
     }
 
     describe("isGlobal()") {
-        it("projectId 가 null 이면 전역 정책이다") {
-            val global = buildPolicy(projectId = null)
+        it("projectKey 가 null 이면 전역 정책이다") {
+            val global = buildPolicy(projectKey = null)
             global.isGlobal() shouldBe true
         }
 
-        it("projectId 가 non-null 이면 프로젝트 전용 정책이다") {
-            val projectScoped = buildPolicy(projectId = sampleProjectId)
+        it("projectKey 가 non-null 이면 프로젝트 전용 정책이다") {
+            val projectScoped = buildPolicy(projectKey = sampleProjectKey)
             projectScoped.isGlobal() shouldBe false
         }
     }
@@ -93,7 +93,7 @@ class NotificationPolicyTest : DescribeSpec({
             val policy = buildPolicy()
             val toggled = policy.toggle(newEnabled = false, now = laterNow)
             toggled.id shouldBe policy.id
-            toggled.projectId shouldBe policy.projectId
+            toggled.projectKey shouldBe policy.projectKey
             toggled.eventType shouldBe policy.eventType
             toggled.recipientRole shouldBe policy.recipientRole
             toggled.channel shouldBe policy.channel
