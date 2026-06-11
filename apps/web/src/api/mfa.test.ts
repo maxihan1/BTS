@@ -8,8 +8,8 @@ import {
   MfaStatusResponseSchema,
   MfaRequiredResponseSchema,
   LoginOrMfaResponseSchema,
+  TokenResponseSchema,
 } from './schemas'
-import { TokenResponseSchema } from './schemas'
 import {
   setupMfa,
   getMfaStatus,
@@ -102,8 +102,10 @@ describe('MfaRequiredResponseSchema', () => {
 describe('LoginOrMfaResponseSchema', () => {
   it('T-MFA-S7: mfa_required:true이면 MfaRequiredResponse로 파싱된다', () => {
     const result = LoginOrMfaResponseSchema.parse(mfaRequiredFixture)
-    expect(result.mfa_required).toBe(true)
-    if (result.mfa_required) {
+    // 'mfa_required' in 가드로 union narrowing
+    expect('mfa_required' in result).toBe(true)
+    if ('mfa_required' in result) {
+      expect(result.mfa_required).toBe(true)
       expect(result.mfa_challenge_token).toBe('challenge.jwt.token')
     }
   })
@@ -120,8 +122,10 @@ describe('LoginOrMfaResponseSchema', () => {
     // access_token이 있어도 mfa_required:true면 MfaRequired 경로로 파싱해야 한다
     const ambiguous = { ...mfaRequiredFixture, ...tokenResponseFixture }
     const result = LoginOrMfaResponseSchema.parse(ambiguous)
-    expect(result.mfa_required).toBe(true)
-    if (result.mfa_required) {
+    // union의 첫 번째 후보(MfaRequiredResponseSchema)가 먼저 매칭돼야 한다
+    expect('mfa_required' in result).toBe(true)
+    if ('mfa_required' in result) {
+      expect(result.mfa_required).toBe(true)
       expect(result.mfa_challenge_token).toBe('challenge.jwt.token')
     }
   })
