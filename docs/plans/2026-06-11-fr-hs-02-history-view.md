@@ -82,16 +82,17 @@ FR-HS-01은 `IssueChangeHistoryRepository.findByIssue(issueId): List<IssueChange
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueChangelogServiceTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueChangelogService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueChangelogServiceTest.kt`]
 - depends-on: [B1]
+- **설계 변경(impl 단계 발견)**: `IssueApplicationService` 생성자 수정 금지 — 읽기 repo 추가 시 기존 테스트 30개 깨짐(learning `plan-files-constructor-injection-existing-tests`). 대신 **신규 `IssueChangelogService`(@Service)** 생성. VIEW 가드는 `IssueApplicationService.findByKey`(public, `IssueResponse.id:UUID` 노출) 호출로 재사용(코드베이스 분리-빈 패턴 정합 — historyRecorder도 별도 빈).
 
 **RED**: 서비스 단위 테스트 —
   (a) VIEW 권한 없거나 미존재/소프트삭제 시 `IssueNotFoundException`(단건 조회 `findByKey` 가드 재사용),
   (b) actorId 있는 그룹에 `UserLookupPort.findDisplayNamesByIds`로 actorName 채워짐,
   (c) actorId=null(시스템) 또는 lookup 결과 없음 → actorName=null로 graceful degrade(이력은 반환),
   (d) 페이징 위임(limit/offset 변환) + 총건수.
-**GREEN**: `IssueApplicationService`에 `@Transactional(readOnly=true) fun findChangelog(actor, key: IssueKey, pageable: Pageable): Page<ChangeGroupView>` 추가. 흐름 (eng-review C3 명시) —
-  1. `findByKey(actor, key)` 호출(VIEW 가드 재사용, 미인가/미존재/소프트삭제=`IssueNotFoundException`). 반환 `IssueResponse`에 `.id`(UUID) 노출됨(`IssueResponse.kt`) → 이 UUID로 이슈 식별.
+**GREEN**: 신규 `IssueChangelogService`(@Service)에 `@Transactional(readOnly=true) fun findChangelog(actor, key: IssueKey, pageable: Pageable): Page<ChangeGroupView>` 추가. 생성자 = (issueApplicationService, changeHistoryRepository, userLookupPort). 흐름 (eng-review C3 명시) —
+  1. `issueApplicationService.findByKey(actor, key)` 호출(VIEW 가드 재사용, 미인가/미존재/소프트삭제=`IssueNotFoundException`). 반환 `IssueResponse.id`(UUID, IssueResponse.kt:59) → 이 UUID로 이슈 식별.
   2. `repo.findByIssuePaged(issueId, size, page*size)` + `repo.countByIssue(issueId)`.
   3. actorId 집합을 한 번에 `userLookupPort.findDisplayNamesByIds(ids)`로 해석 — **#120 `IssueChangeLabelResolver.kt:164-166`의 try/catch + log.warn graceful degrade 패턴 재사용**(실패 시 actorName=null, 이력은 반환). prod 바인딩은 `identity-access/UserLookupAdapter.kt:91` 확인됨(eng-review B2 검증 — fail-open 아님).
   4. 뷰 모델 매핑 → `PageImpl`. (DTO 직렬화는 B3, 서비스는 뷰 모델 또는 도메인+해석맵 반환, cross-BC 직접 import 금지)
