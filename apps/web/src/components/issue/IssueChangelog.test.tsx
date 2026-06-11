@@ -387,6 +387,128 @@ describe('IssueChangelog', () => {
   })
 
   // ─────────────────────────────────────────────────────────────────────────
+  // P2-b: 로드모어 페이지 에러 시 재시도 가능 — 버튼 영구 소실 방지
+  // ─────────────────────────────────────────────────────────────────────────
+
+  it('P2-b: 로드모어 페이지(page≥1) 에러 시 재시도 버튼이 남아있고 클릭하면 재요청된다', async () => {
+    let page1CallCount = 0
+
+    server.use(
+      http.get('/api/v1/issues/:key/changelog', ({ request, params }) => {
+        const key = params['key'] as string
+        if (key !== 'ATLAS-RETRY') {
+          return HttpResponse.json({ content: [], totalElements: 0, totalPages: 0, size: 20, number: 0, first: true, last: true, empty: true })
+        }
+        const url = new URL(request.url)
+        const page = parseInt(url.searchParams.get('page') ?? '0', 10)
+
+        if (page === 0) {
+          const page0Groups = atlasOneChangelogFixture.slice(0, 3)
+          return HttpResponse.json({
+            content: page0Groups,
+            totalElements: 6,
+            totalPages: 2,
+            size: 3,
+            number: 0,
+            first: true,
+            last: false,
+            empty: false,
+          })
+        }
+
+        // page=1: 첫 번째 요청은 에러, 두 번째는 성공
+        page1CallCount++
+        if (page1CallCount === 1) {
+          return HttpResponse.json({ status: 500 }, { status: 500 })
+        }
+        const page1Groups = atlasOneChangelogFixture.slice(3)
+        return HttpResponse.json({
+          content: page1Groups,
+          totalElements: 6,
+          totalPages: 2,
+          size: 3,
+          number: 1,
+          first: false,
+          last: true,
+          empty: false,
+        })
+      }),
+    )
+
+    const user = userEvent.setup()
+    const Wrapper = createWrapper()
+    render(
+      <IssueChangelog issueKey="ATLAS-RETRY" refs={defaultRefs} />,
+      { wrapper: Wrapper },
+    )
+
+    // 첫 페이지 로드 → "더 보기" 버튼 등장
+    const loadMoreBtn = await screen.findByRole('button', {
+      name: issueDetailStrings.changelogLoadMore,
+    })
+    await user.click(loadMoreBtn)
+
+    // page=1 에러 후에도 재시도 버튼이 표시되어야 한다
+    const retryBtn = await screen.findByRole('button', {
+      name: issueDetailStrings.changelogLoadMore,
+    })
+    expect(retryBtn).toBeInTheDocument()
+
+    // 재시도 클릭 → page=1 두 번째 요청 → 성공
+    await user.click(retryBtn)
+
+    // 성공 후 "더 보기" 버튼이 사라진다 (last=true)
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: issueDetailStrings.changelogLoadMore }),
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // P2-c: createdAt Invalid Date 방어
+  // ─────────────────────────────────────────────────────────────────────────
+
+  it('P2-c: createdAt이 유효하지 않은 날짜 문자열이면 "Invalid Date"가 렌더되지 않는다', async () => {
+    server.use(
+      http.get('/api/v1/issues/:key/changelog', ({ params }) => {
+        const key = params['key'] as string
+        if (key !== 'ATLAS-BADDATE') {
+          return HttpResponse.json({ content: [], totalElements: 0, totalPages: 0, size: 20, number: 0, first: true, last: true, empty: true })
+        }
+        return HttpResponse.json({
+          content: [
+            buildChangeGroup({
+              actorId: ACTOR_ALICE_ID,
+              actorName: 'Alice',
+              createdAt: 'not-a-date',
+              items: [buildChangeItem('summary', '이전', '이후')],
+            }),
+          ],
+          totalElements: 1,
+          totalPages: 1,
+          size: 20,
+          number: 0,
+          first: true,
+          last: true,
+          empty: false,
+        })
+      }),
+    )
+
+    const Wrapper = createWrapper()
+    render(
+      <IssueChangelog issueKey="ATLAS-BADDATE" refs={defaultRefs} />,
+      { wrapper: Wrapper },
+    )
+
+    await screen.findByText('Alice')
+
+    // "Invalid Date" 문자열이 어디에도 표시되어서는 안 된다
+    expect(screen.queryByText(/Invalid Date/i)).not.toBeInTheDocument()
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
   // actorId가 있는 그룹 헤더의 접근성
   // ─────────────────────────────────────────────────────────────────────────
 

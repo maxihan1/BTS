@@ -1,4 +1,4 @@
-// 이슈 변경 이력 조회 훅 단위 테스트 — RED phase (FR-HS-02 Task-F1)
+// 이슈 변경 이력 조회 훅 단위 테스트 — P2 fix 포함 (FR-HS-02)
 import React from 'react'
 import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -135,5 +135,38 @@ describe('useIssueChangelog — 에러', () => {
     expect(result.current.error).toBeInstanceOf(ApiError)
     if (!(result.current.error instanceof ApiError)) throw new Error('type guard missed')
     expect(result.current.error.status).toBe(404)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P2-a: refetchOnWindowFocus=false + staleTime>0 옵션 검증
+// ─────────────────────────────────────────────────────────────────────────────
+describe('useIssueChangelog — P2-a 옵션 검증', () => {
+  it('T-CLH-P2a: refetchOnWindowFocus가 false이고 staleTime이 0보다 크다', async () => {
+    const { fetchIssueChangelog } = await import('@/api/changelog')
+    vi.mocked(fetchIssueChangelog).mockResolvedValueOnce(pageFixture)
+
+    const { client, wrapper } = createWrapper()
+    const { result } = renderHook(() => useIssueChangelog('ATLAS-1', 0), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    const queryKey = ['issue-changelog', 'ATLAS-1', 0]
+    const queryState = client.getQueryCache().find({ queryKey })
+    // staleTime은 훅 옵션에서 직접 검증하기 위해 캐시 상태 확인 —
+    // 데이터 수신 직후 isStale()=false이어야 staleTime>0이 적용된 것
+    expect(queryState?.isStale()).toBe(false)
+
+    // refetchOnWindowFocus=false 검증:
+    // QueryObserver 옵션에 refetchOnWindowFocus가 false로 등록됐는지 확인
+    // → 훅이 반환하는 result에 직접 접근하는 대신, 훅 파일 단위 동작 검증으로 대체:
+    // 마운트 직후 focus 이벤트를 발생시켜도 fetchIssueChangelog가 추가 호출되지 않아야 함
+    const callsBefore = vi.mocked(fetchIssueChangelog).mock.calls.length
+
+    // window focus 이벤트 시뮬레이션
+    window.dispatchEvent(new Event('focus'))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(vi.mocked(fetchIssueChangelog).mock.calls.length).toBe(callsBefore)
   })
 })
