@@ -366,13 +366,13 @@
 
 **우선순위**. 필수 | **선행**. §5.1.1 | **Plan slug**. `issue/history-ui`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — 페이지네이션, 필드 필터 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/issues/{key}/history` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 타임라인 형식 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — FR-HS-01 변경 모델(IssueChangeGroup/Item) 재활용, 조회 전용 `IssueChangelogService` 추가 (책임. backend-engineer) — PR #122 (생성자 폭발반경 0 위해 신규 @Service 분리, VIEW 가드는 IssueApplicationService.findByKey 재사용)
+- [x] D2. 명세 — 페이징(page/size, 최신순) (책임. backend-engineer) — PR #122 (**deviation**: 계획의 "필드 필터"는 범위 외 — 페이징만 제공. 권한별 보안등급 필드 마스킹은 응답단 처리. 소프트삭제·미존재·권한없음 모두 404로 존재 probe 차단)
+- [x] D3. 데이터 모델 — (활용) FR-HS-01 `issue_change_group`+`issue_change_item` 읽기 전용 조회 (책임. db-engineer) — PR #122 (`findByIssuePaged`+`countByIssue` 추가, 조인 읽기 시 부모 deleted_at 필터)
+- [x] D4. 백엔드 — `GET /api/v1/issues/{key}/changelog` 페이징 조회 (책임. backend-engineer) — PR #122 (**deviation**: 계획·SDD §11-api-design의 `/{key}/history` → `/{key}/changelog`. changelog 서비스/프론트 명명 일관 위해 채택(spec/plan 리뷰 확정). 단건조회와 동일 VIEW 가드 404, actor 표시명 UserLookupPort graceful 해석)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #122 (IssueChangelogServiceTest + IssueChangelogControllerIntegrationTest + JdbcIssueChangeHistoryRepositoryIntegrationTest, 권한/페이징/필드마스킹 회귀)
+- [x] D6. 프론트 UI — 타임라인 형식 (책임. designer → frontend-engineer) — PR #122 (상세페이지 통합, 필드/값 라벨 한글 해석, 더보기 페이징+에러 재시도, InvalidDate 방어, refetchOnWindowFocus)
+- [x] D7. E2E (책임. qa-engineer) — PR #122 (issue-changelog.spec.ts 6 시나리오: 타임라인 렌더·페이징·권한·빈상태)
 
 ### §5.2 템플릿 (FR-TM, 2개)
 

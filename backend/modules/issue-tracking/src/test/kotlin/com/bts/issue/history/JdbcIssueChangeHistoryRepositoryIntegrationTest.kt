@@ -255,4 +255,172 @@ class JdbcIssueChangeHistoryRepositoryIntegrationTest {
         val result = repository.findByIssue(UUID.randomUUID())
         assertThat(result).hasSize(0)
     }
+
+    // ── findByIssuePaged + countByIssue (FR-HS-02 Task B1) ───────────────────
+
+    /**
+     * 3개 그룹 시드 후 페이지 경계 검증.
+     * limit=2 offset=0 → 2건 (가장 최신 2개).
+     * limit=2 offset=2 → 1건 (나머지 1개).
+     */
+    @Test
+    fun `findByIssuePaged는 limit과 offset을 정확히 적용하여 그룹을 반환한다`() {
+        val issueId = UUID.randomUUID()
+        val actorId = UUID.randomUUID()
+
+        // 3개 그룹을 순서대로 기록 (created_at 순서를 보장하기 위해 1ms 간격)
+        repeat(3) { index ->
+            repository.record(
+                IssueChangeGroup(
+                    issueId = issueId,
+                    issueKey = "BTS-PAGED-$index",
+                    actorId = actorId,
+                    items =
+                        listOf(
+                            IssueChangeItem(
+                                field = "status",
+                                fromValue = "open",
+                                toValue = "group$index",
+                                fromLabel = null,
+                                toLabel = null,
+                            ),
+                        ),
+                ),
+            )
+            Thread.sleep(2)
+        }
+
+        // 첫 번째 페이지: limit=2 offset=0 → 2건 반환
+        val page1 = repository.findByIssuePaged(issueId, limit = 2, offset = 0)
+        assertThat(page1).hasSize(2)
+
+        // 두 번째 페이지: limit=2 offset=2 → 1건 반환
+        val page2 = repository.findByIssuePaged(issueId, limit = 2, offset = 2)
+        assertThat(page2).hasSize(1)
+
+        // 전체 3건이 분리되어 조회되어야 한다 (중복 없음)
+        val allKeys = (page1 + page2).map { it.issueKey }.toSet()
+        assertThat(allKeys).hasSize(3)
+    }
+
+    @Test
+    fun `findByIssuePaged는 created_at DESC id DESC 순으로 반환한다`() {
+        val issueId = UUID.randomUUID()
+
+        repeat(3) { index ->
+            repository.record(
+                IssueChangeGroup(
+                    issueId = issueId,
+                    issueKey = "BTS-ORDER-$index",
+                    actorId = null,
+                    items = emptyList(),
+                ),
+            )
+            Thread.sleep(2)
+        }
+
+        val page = repository.findByIssuePaged(issueId, limit = 3, offset = 0)
+        assertThat(page).hasSize(3)
+
+        // created_at DESC 순 → 마지막으로 기록된 그룹이 첫 번째
+        assertThat(page[0].issueKey).isEqualTo("BTS-ORDER-2")
+        assertThat(page[1].issueKey).isEqualTo("BTS-ORDER-1")
+        assertThat(page[2].issueKey).isEqualTo("BTS-ORDER-0")
+    }
+
+    @Test
+    fun `findByIssuePaged는 그룹에 속한 items를 정확히 매핑한다`() {
+        val issueId = UUID.randomUUID()
+        val actorId = UUID.randomUUID()
+
+        val items =
+            listOf(
+                IssueChangeItem(
+                    field = "status",
+                    fromValue = "open",
+                    toValue = "done",
+                    fromLabel = "열림",
+                    toLabel = "완료",
+                ),
+                IssueChangeItem(
+                    field = "priority",
+                    fromValue = "LOW",
+                    toValue = "HIGH",
+                    fromLabel = null,
+                    toLabel = null,
+                ),
+            )
+        repository.record(
+            IssueChangeGroup(
+                issueId = issueId,
+                issueKey = "BTS-ITEMS",
+                actorId = actorId,
+                items = items,
+            ),
+        )
+
+        val page = repository.findByIssuePaged(issueId, limit = 1, offset = 0)
+        assertThat(page).hasSize(1)
+
+        val group = page.first()
+        assertThat(group.issueId).isEqualTo(issueId)
+        assertThat(group.actorId).isEqualTo(actorId)
+        assertThat(group.items).hasSize(2)
+
+        val statusItem = group.items.first { it.field == "status" }
+        assertThat(statusItem.fromValue).isEqualTo("open")
+        assertThat(statusItem.toValue).isEqualTo("done")
+        assertThat(statusItem.fromLabel).isEqualTo("열림")
+        assertThat(statusItem.toLabel).isEqualTo("완료")
+    }
+
+    @Test
+    fun `findByIssuePaged offset이 총 그룹 수를 초과하면 빈 리스트를 반환한다`() {
+        val issueId = UUID.randomUUID()
+        repository.record(
+            IssueChangeGroup(
+                issueId = issueId,
+                issueKey = "BTS-OFFSET-OVER",
+                actorId = null,
+                items = emptyList(),
+            ),
+        )
+
+        val result = repository.findByIssuePaged(issueId, limit = 10, offset = 100)
+        assertThat(result).isEmpty()
+    }
+
+    @Test
+    fun `countByIssue는 해당 이슈의 변경 그룹 총 수를 반환한다`() {
+        val issueId = UUID.randomUUID()
+        val otherIssueId = UUID.randomUUID()
+
+        repeat(3) { index ->
+            repository.record(
+                IssueChangeGroup(
+                    issueId = issueId,
+                    issueKey = "BTS-COUNT-$index",
+                    actorId = null,
+                    items = emptyList(),
+                ),
+            )
+        }
+        // 다른 이슈 그룹 — count에 포함되지 않아야 함
+        repository.record(
+            IssueChangeGroup(
+                issueId = otherIssueId,
+                issueKey = "BTS-OTHER",
+                actorId = null,
+                items = emptyList(),
+            ),
+        )
+
+        assertThat(repository.countByIssue(issueId)).isEqualTo(3L)
+        assertThat(repository.countByIssue(otherIssueId)).isEqualTo(1L)
+    }
+
+    @Test
+    fun `countByIssue는 이력이 없으면 0을 반환한다`() {
+        assertThat(repository.countByIssue(UUID.randomUUID())).isEqualTo(0L)
+    }
 }

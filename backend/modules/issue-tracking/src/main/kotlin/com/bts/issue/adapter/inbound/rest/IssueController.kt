@@ -6,6 +6,7 @@ import com.bts.issue.application.AppChangeAssigneeRequest
 import com.bts.issue.application.AppChangeComponentsRequest
 import com.bts.issue.application.AppChangeVersionsRequest
 import com.bts.issue.application.IssueApplicationService
+import com.bts.issue.application.IssueChangelogService
 import com.bts.issue.application.SecurityLevelPatch
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.pdf.IssuePdfRenderer
@@ -48,6 +49,7 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
  * - PATCH  /api/v1/issues/{key} — 이슈 수정 (T15)
  * - POST   /api/v1/issues/{key}/transition — 이슈 상태 전이 실행 (T15, T6)
  * - GET    /api/v1/issues/{key}/transitions — 가용 전이 목록 조회 (T4)
+ * - GET    /api/v1/issues/{key}/changelog — 변경 이력 페이지 조회 (FR-HS-02 T B3)
  * - PATCH  /api/v1/issues/{key}/assignee — 담당자 변경/해제 (FR-IS-03 T8)
  * - PATCH  /api/v1/issues/{key}/components — 컴포넌트 목록 교체 (FR-CM-02 T5)
  * - PATCH  /api/v1/issues/{key}/affects-versions — 영향 버전 목록 교체 (FR-VR-03 T5)
@@ -74,6 +76,9 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
  *
  * @param service 이슈 유스케이스 서비스
  * @param pdfRenderer 이슈 PDF 바이너리 렌더러
+ * @param changelogService 이슈 변경 이력 조회 서비스. 기본값은 기존 슬라이스 테스트 호환을 위한 null.
+ *   Spring production 컨텍스트에서는 항상 Bean 이 주입된다.
+ *   [changelog] 엔드포인트는 이 서비스가 non-null 일 때만 정상 동작한다.
  */
 @Suppress("TooManyFunctions")
 @RestController
@@ -83,6 +88,8 @@ class IssueController(
     // 기본값은 Spring이 관리하지 않는 컨텍스트(기존 슬라이스 테스트 호환)를 위한 fallback이다.
     // Spring production 컨텍스트에서는 항상 @Component Bean이 주입된다.
     private val pdfRenderer: IssuePdfRenderer = IssuePdfRenderer(IssuePdfTemplate()),
+    // changelog 엔드포인트(FR-HS-02) 전용. 기존 슬라이스 테스트는 이 파라미터를 주입하지 않으므로 null 기본값.
+    private val changelogService: IssueChangelogService? = null,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -259,6 +266,47 @@ class IssueController(
         val issueKey = IssueKey(key)
         val views = service.availableTransitions(actor, issueKey)
         return ResponseEntity.ok(DataResponse(data = AvailableTransitionsResponse.from(views)))
+    }
+
+    /**
+     * 이슈 변경 이력을 페이지 단위로 조회한다 (FR-HS-02).
+     *
+     * ### 권한 정책
+     * [CurrentActor.current] 로 actor 를 추출한 뒤 [IssueChangelogService.findChangelog] 가
+     * 내부적으로 [com.bts.issue.application.IssueApplicationService.findByKey] 를 호출해
+     * VIEW 권한 + 이슈 존재 여부를 검증한다.
+     * 미존재·소프트삭제·VIEW 미인가 모두 404 로 응답한다 (단건 조회와 동일한 동작).
+     *
+     * ### 페이지네이션
+     * [Pageable] 파라미터로 `?page=0&size=20` 형태를 받는다.
+     * 기본값은 [@PageableDefault] 로 size=20, page=0 이 적용된다.
+     *
+     * ### 라벨 박제
+     * 응답의 items[].fromLabel/toLabel 에는 PR #120 [com.bts.issue.history.IssueChangeLabelResolver]
+     * 가 변경 기록 시점에 박제한 라벨이 그대로 반환된다.
+     *
+     * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
+     * @param pageable 페이지 정보. 기본값 size=20, page=0.
+     * @return 200 OK + [Page]<[IssueChangelogResponse]>
+     * @throws com.bts.issue.domain.IssueNotFoundException 이슈 미존재·소프트 삭제·VIEW 미인가 → 404
+     */
+    @GetMapping("/{key}/changelog")
+    fun changelog(
+        @PathVariable key: String,
+        @PageableDefault(size = 20) pageable: Pageable,
+    ): ResponseEntity<Page<IssueChangelogResponse>> {
+        log.info("IssueController.changelog key={} pageable={}", key, pageable)
+
+        val actor = CurrentActor.current()
+        val issueKey = IssueKey(key)
+        val service =
+            requireNotNull(changelogService) {
+                "IssueChangelogService 가 주입되지 않았습니다. Spring 컨텍스트 구성을 확인하세요."
+            }
+        val page =
+            service.findChangelog(actor, issueKey, pageable)
+                .map { IssueChangelogResponse.from(it) }
+        return ResponseEntity.ok(page)
     }
 
     /**

@@ -37,4 +37,31 @@ interface IssueChangeHistoryRepository {
      * @return 변경 그룹 목록. 이력이 없으면 빈 리스트.
      */
     fun findByIssue(issueId: UUID): List<IssueChangeGroup>
+
+    /**
+     * 특정 이슈의 변경 이력 그룹을 페이지 단위로 최신순 조회한다.
+     *
+     * [created_at DESC, id DESC] 순으로 정렬하며 [limit]/[offset]으로 페이지를 구분한다.
+     * 각 그룹에 속한 [IssueChangeItem] 목록이 함께 반환된다.
+     *
+     * @param issueId 조회할 이슈의 UUID.
+     * @param limit 한 페이지에 반환할 최대 그룹 수.
+     * @param offset 건너뛸 그룹 수. 첫 페이지는 0.
+     * @return 변경 그룹 목록(items 포함). 결과가 없으면 빈 리스트.
+     */
+    fun findByIssuePaged(
+        issueId: UUID,
+        limit: Int,
+        offset: Int,
+    ): List<IssueChangeGroup>
+
+    /**
+     * 특정 이슈의 변경 이력 그룹 총 개수를 반환한다.
+     *
+     * 페이지네이션의 totalCount 계산에 사용된다.
+     *
+     * @param issueId 조회할 이슈의 UUID.
+     * @return 변경 그룹 수. 이력이 없으면 0.
+     */
+    fun countByIssue(issueId: UUID): Long
 }

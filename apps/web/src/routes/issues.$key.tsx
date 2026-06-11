@@ -16,6 +16,7 @@ import { useChangeAffectsVersions, useChangeFixVersions } from '@/api/issue-vers
 import { fetchComponents } from '@/api/components'
 import { useVersions } from '@/hooks/use-versions'
 import { useIssueTypes } from '@/hooks/use-issue-types'
+import { useCustomFields } from '@/hooks/use-custom-fields'
 import { useIssueTransitions, issueTransitionKeys } from '@/hooks/use-issue-transitions'
 import { useUsers, useUsersByIds } from '@/hooks/use-users'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -25,6 +26,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { downloadIssuePdf } from '@/api/issues'
 import { triggerBlobDownload } from '@/lib/download'
+import { IssueChangelog } from '@/components/issue/IssueChangelog'
 import { IssueDescription } from '@/components/issue/IssueDescription'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
@@ -150,6 +152,12 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
 
   /** 프로젝트 버전 목록 — issue 로드 후 projectKey 기준으로 조회 */
   const { data: projectVersions = [] } = useVersions(issue?.projectKey ?? '')
+
+  /** 커스텀 필드 정의 목록 — changelog refs 주입용. issue 로드 후 활성화 */
+  const { data: customFieldDefinitions = [] } = useCustomFields(
+    issue?.projectKey ?? '',
+    { enabled: issue !== undefined },
+  )
 
   const {
     data: transitions = [],
@@ -653,6 +661,19 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
           />
         )}
       </div>
+
+      {/* 변경 이력 섹션 — 2단 grid 바깥 전체폭 (FR-HS-02 Task F5) */}
+      <IssueChangelog
+        issueKey={issue.key}
+        refs={{
+          types: availableTypes,
+          components: projectComponents,
+          versions: projectVersions,
+          priorityMap: issueDetailStrings.priorityNames as Record<number, string>,
+          impactMap: issueDetailStrings.impactNames as Record<number, string>,
+          customFieldDefinitions,
+        }}
+      />
 
       {/* DONE 전이 시 Resolution 선택 모달 (B9) */}
       <ResolutionModal

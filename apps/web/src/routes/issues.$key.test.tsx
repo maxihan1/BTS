@@ -1453,6 +1453,7 @@ describe('IssueDetailPage — PDF 다운로드 버튼 (FR-IS-08)', () => {
 // FR-PM-05 Task-5 — 권한없는 이슈 404 → not-found 화면 (회귀 가드)
 // ─────────────────────────────────────────────────────────────────────────────
 import { addPermissionDeniedKey, clearPermissionDeniedKeys } from '@/mocks/issue-handlers'
+import { changelogHandlers } from '@/mocks/changelog-handlers'
 
 /**
  * addPermissionDeniedKey 로 issue-handlers.ts 기본 핸들러에 권한없음 시나리오를 세팅한 뒤
@@ -1502,6 +1503,75 @@ describe('FR-PM-05 Task-5 — 권한없는 이슈 404 → not-found 화면', () 
     renderPage('ATLAS-1')
 
     await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
+    })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task F5 — 이슈 상세 페이지 하단 변경 이력 섹션 통합
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDetailPage — Task F5 (변경 이력 섹션 통합)', () => {
+  beforeEach(() => {
+    // changelog 핸들러 포함 — ATLAS-1 fixture가 기본 등록됨
+    server.use(
+      ...changelogHandlers,
+      ...issueTypeHandlers,
+    )
+    setupIssueFoundHandler(issueAtlas1Fixture)
+  })
+
+  /**
+   * TF5-1: 이슈 상세 페이지 로드 시 하단에 "변경 이력" 섹션이 렌더된다.
+   * IssueChangelog 컴포넌트가 aria-label="변경 이력" section으로 마운트되어야 한다.
+   */
+  it('TF5-1: 이슈 상세 페이지 하단에 변경 이력 섹션이 렌더된다', async () => {
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('region', { name: issueDetailStrings.changelogSectionTitle }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  /**
+   * TF5-2: 변경 이력 섹션이 2단 grid 레이아웃 바깥(전체폭)에 위치해야 한다.
+   * IssueChangelog section이 main·aside와 형제 레벨이 아닌 그 부모 아래에 있어야 한다.
+   * "변경 이력" h2 헤딩이 섹션 내에 렌더된다.
+   */
+  it('TF5-2: 변경 이력 섹션에 h2 헤딩이 렌더된다', async () => {
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    await waitFor(() => {
+      const changelogSection = screen.getByRole('region', {
+        name: issueDetailStrings.changelogSectionTitle,
+      })
+      const heading = within(changelogSection).getByRole('heading', { level: 2 })
+      expect(heading).toHaveTextContent(issueDetailStrings.changelogSectionTitle)
+    })
+  })
+
+  /**
+   * TF5-3: 기존 이슈 상세 렌더(breadcrumb/제목/메타패널)에 회귀가 없어야 한다.
+   * changelog 섹션 추가 후에도 기존 요소가 정상 렌더된다.
+   */
+  it('TF5-3: changelog 섹션 추가 후 기존 breadcrumb·제목·메타패널이 회귀 없이 렌더된다', async () => {
+    renderPage('ATLAS-1')
+
+    await waitFor(() => {
+      const nav = screen.getByRole('navigation', { name: '이동 경로' })
+      expect(within(nav).getByText('ATLAS')).toBeInTheDocument()
+      expect(within(nav).getByText('ATLAS-1')).toBeInTheDocument()
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
     })
   })

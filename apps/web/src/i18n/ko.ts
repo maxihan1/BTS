@@ -268,6 +268,46 @@ export const issueDetailStrings = {
   customFieldsSaveAriaLabel: '커스텀 필드 저장',
   /** required 필드 빈값 저장 시도 경고 메시지 (스펙 E-3) */
   customFieldRequiredEmpty: '필수 항목을 모두 입력해 주세요.',
+
+  // ── 변경 이력(changelog) — FR-HS-02 ─────────────────────────────────────
+  /** 변경 이력 섹션 — 필드명 표시 (field 키 → 한글) */
+  changelogFieldLabels: {
+    lifecycle: '생명주기',
+    summary: '제목',
+    description: '본문',
+    priority: '우선순위',
+    labels: '라벨',
+    environment: '환경',
+    impact: '영향도',
+    type: '유형',
+    assignee: '담당자',
+    status: '상태',
+    resolution: '해결 결과',
+    components: '컴포넌트',
+    affectsVersions: '영향 버전',
+    fixVersions: '수정 버전',
+    securityLevel: '보안등급',
+  } as Record<string, string>,
+  /** 변경 이력 — 생명주기 "created" 표시 문자열 */
+  changelogLifecycleCreated: '이슈를 생성했습니다',
+  /** 변경 이력 — 생명주기 "deleted" 표시 문자열 */
+  changelogLifecycleDeleted: '이슈를 삭제했습니다',
+  /** 변경 이력 — 값 없음 표시 */
+  changelogValueNone: '(없음)',
+  /** 변경 이력 — 삭제된 엔티티 폴백 표시 */
+  changelogDeletedEntity: '(삭제됨)',
+  /** 변경 이력 섹션 제목 */
+  changelogSectionTitle: '변경 이력',
+  /** 변경 이력 없을 때 빈 상태 메시지 */
+  changelogEmpty: '변경 이력이 없습니다.',
+  /** 더 보기 버튼 텍스트 */
+  changelogLoadMore: '더 보기',
+  /** 로딩 중 aria-label */
+  changelogLoading: '변경 이력 로딩 중',
+  /** 에러 메시지 */
+  changelogError: '변경 이력을 불러오지 못했습니다.',
+  /** actorName=null일 때 표시 — 시스템 이벤트 */
+  changelogSystemActor: '시스템',
 } as const
 
 /** 2단계 인증(TOTP) 설정 및 로그인 2단계 UI 문자열 */
