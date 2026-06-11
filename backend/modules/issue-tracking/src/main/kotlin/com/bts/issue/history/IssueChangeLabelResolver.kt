@@ -41,6 +41,9 @@ import java.util.UUID
  * @see IssueChangeItem
  * @see IssueChangeDetector
  */
+// 지원 필드(type/resolution/components/affectsVersions/fixVersions/assignee/securityLevel) 각 1개 + 공통 헬퍼.
+// 필드당 resolver + lookup 분리는 단일 책임 원칙과 graceful degrade 정책을 위해 유지한다.
+@Suppress("TooManyFunctions")
 @Service
 class IssueChangeLabelResolver(
     private val issueTypeRepository: IssueTypeRepository,
