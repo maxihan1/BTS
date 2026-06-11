@@ -10,13 +10,16 @@ package com.bts.issue.mention
  *
  * ## 선처리 순서
  * 1. 펜스 코드 블록(`` ``` ... ``` ``) 제거 — 코드 내 `@` 는 멘션 아님.
- * 2. 인라인 코드 스팬(`` `...` ``) 제거 — 동일 이유.
+ * 2. 인라인 코드 스팬(`` `...` ``) 제거 — 동일 이유. 한 줄 내로 한정한다.
  * 3. 멘션 정규식으로 username 캡처.
  *
- * ## 한계 (best-effort)
- * 불균형 백틱(예: `` `unclosed ``) 이 있으면 코드 스팬 제거가 의도대로 동작하지 않을 수 있다.
- * 이 경우 오추출된 username 은 [UserLookupPort.findIdsByUsernames] 해석 실패로 자동 드롭되므로
- * 기능적 오동작은 없지만, 멘션이 무시될 수 있다. v1 수용 — 정밀 파서는 FR-MN-02(렌더링)에서 도입.
+ * ## 불균형/stray 백틱 처리
+ * 인라인 코드 스팬 패턴은 백틱과 줄바꿈 문자를 내부에 포함하지 않는 `[^`\r\n]*` 문자 클래스를
+ * 사용하여 한 줄 내로 명시적으로 한정한다. 이로써 stray 또는 불균형 백틱이 줄바꿈을 넘어
+ * 다음 줄의 멘션을 삼키는 것을 방지한다.
+ * 불균형 백틱이 있어도 코드 스팬이 아닌 영역의 멘션은 보존된다(과대추출 bias).
+ * 미존재 username 은 [UserLookupPort.findIdsByUsernames] 해석 시 자동 드롭되므로
+ * 과대추출은 무해하다. 완전한 markdown 파서는 아님 — 정밀 파싱은 FR-MN-02(렌더링)에서 도입.
  */
 object MentionParser {
     /**
@@ -27,11 +30,14 @@ object MentionParser {
     private val FENCE_CODE_BLOCK = Regex("```.*?```", setOf(RegexOption.DOT_MATCHES_ALL))
 
     /**
-     * 인라인 코드 스팬 패턴 — 단일 백틱으로 감싼 텍스트(non-greedy).
+     * 인라인 코드 스팬 패턴 — 단일 백틱으로 감싼 한 줄 내 텍스트.
      *
+     * `[^`\r\n]*?` 문자 클래스는 역틱과 줄바꿈 문자를 명시적으로 제외한다.
+     * 이로써 stray 백틱이 줄바꿈을 넘어 다음 줄 멘션을 삼키는 것을 방지하고,
+     * 불균형 백틱이 있을 때 과대추출 bias(멘션 누락 방지)를 보장한다.
      * 펜스 코드 블록 제거 후에 적용하여 오동작을 방지한다.
      */
-    private val INLINE_CODE_SPAN = Regex("`.*?`")
+    private val INLINE_CODE_SPAN = Regex("`[^`\\r\\n]*?`")
 
     /**
      * `@username` 멘션 추출 정규식.
