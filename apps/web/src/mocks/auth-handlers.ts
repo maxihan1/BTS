@@ -1,6 +1,12 @@
 // identity-access BC MSW mock handlers (alice/bob 두 사용자 + 401 invalid + 200 happy + me 조회)
 import { http, HttpResponse } from 'msw'
-import { AUTH_USERS, LDAP_VALID_PASSWORDS, VALID_PASSWORDS, mockAccessToken } from './auth-fixtures'
+import {
+  AUTH_USERS,
+  LDAP_VALID_PASSWORDS,
+  MFA_E2E_ENABLED_KEY,
+  VALID_PASSWORDS,
+  mockAccessToken,
+} from './auth-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // E2E 시나리오 토글용 localStorage 키 — FR-AU-05 Task 9
@@ -51,6 +57,19 @@ const loginHandler = http.post('/api/v1/auth/login', async ({ request }) => {
   const validPassword = validPasswordMap[username]
   if (validPassword === undefined || password !== validPassword) {
     return HttpResponse.json({ error: 'invalid_credentials' }, { status: 401 })
+  }
+
+  // E2E 시나리오 토글 — localStorage 플래그가 true이면 MFA 챌린지 응답 반환
+  // (msw-derived-behavior-shared-store-e2e, fr-mf-01-totp-backend-done)
+  const mfaEnabled =
+    globalThis.localStorage?.getItem(MFA_E2E_ENABLED_KEY) === 'true'
+
+  if (mfaEnabled) {
+    return HttpResponse.json({
+      mfa_required: true,
+      mfa_challenge_token: `mock-mfa-challenge-token-${username}`,
+      expires_in: 300,
+    })
   }
 
   return HttpResponse.json({

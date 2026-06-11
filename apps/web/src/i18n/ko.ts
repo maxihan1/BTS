@@ -23,7 +23,6 @@ export const loginStrings = {
 
   /** 백엔드 에러 코드 → 사용자 메시지 */
   errorInvalidCredentials: '사용자명 또는 비밀번호가 올바르지 않습니다.',
-  errorMfaRequired: '추가 인증이 필요합니다. 관리자에게 문의하세요.',
   errorUnknownProvider: '지원하지 않는 로그인 방식입니다. 다시 시도해 주세요.',
   errorDefault: '로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
 
@@ -270,6 +269,72 @@ export const issueDetailStrings = {
   /** required 필드 빈값 저장 시도 경고 메시지 (스펙 E-3) */
   customFieldRequiredEmpty: '필수 항목을 모두 입력해 주세요.',
 } as const
+
+/** 2단계 인증(TOTP) 설정 및 로그인 2단계 UI 문자열 */
+export const mfaStrings = {
+  // ── 설정 화면(/settings/mfa) ──────────────────────────────────────────
+  /** 페이지 h1 제목 */
+  settingsTitle: '2단계 인증',
+  /** 페이지 설명 문구 */
+  settingsDescription: 'Authenticator 앱을 사용해 계정 보안을 강화하세요.',
+  /** TOTP 활성화 상태 표시 배지 */
+  statusEnabled: '활성화됨',
+  /** TOTP 비활성화 상태 표시 배지 */
+  statusDisabled: '비활성화됨',
+  /** 활성화 시작 버튼 */
+  enableButton: '2단계 인증 활성화',
+  /** 비활성화 버튼 (step-up 코드 확인 후 실행) */
+  disableButton: '2단계 인증 비활성화',
+  /** QR 코드 스캔 안내 문구 */
+  qrScanGuide: 'Authenticator 앱으로 아래 QR 코드를 스캔하세요.',
+  /** secret 수동 입력 안내 문구 (QR 스캔 불가 환경용) */
+  secretManualGuide: 'QR 스캔이 어려우면 아래 코드를 Authenticator 앱에 직접 입력하세요.',
+  /** 설정 코드 입력 필드 레이블 */
+  codeLabel: '인증 코드 (6자리)',
+  /** 설정 코드 입력 필드 placeholder */
+  codePlaceholder: '000000',
+  /** 활성화 폼 제출 버튼 레이블 */
+  enableConfirmButton: '활성화 확인',
+  /** 비활성화 폼 — step-up 코드 입력 필드 레이블 */
+  disableCodeLabel: '현재 인증 코드 (6자리)',
+  /** 비활성화 폼 제출 버튼 레이블 */
+  disableConfirmButton: '비활성화 확인',
+
+  // ── 로그인 2단계 ──────────────────────────────────────────────────────
+  /** TOTP 코드 입력 화면 안내 문구 */
+  loginStepGuide: 'Authenticator 앱에 표시된 6자리 코드를 입력하세요.',
+  /** 로그인 2단계 코드 입력 필드 레이블 */
+  loginCodeLabel: '인증 코드',
+  /** 로그인 2단계 검증 버튼 */
+  loginVerifyButton: '확인',
+  /** 로그인 1단계로 돌아가는 링크/버튼 문구 */
+  loginBackToLogin: '다시 로그인',
+} as const
+
+/**
+ * MFA 관련 백엔드 에러 코드를 사용자 노출 메시지로 변환한다.
+ * ProblemDetail detail 필드는 직접 노출하지 않으며 이 함수가 단일 출처다.
+ * 계정 열거 방지를 위해 invalid_code / too_many_attempts는 원인 과노출 없는 일반 톤을 유지한다.
+ *
+ * @param errorCode - 백엔드 ProblemDetail 의 error 필드 값
+ * @returns 사용자에게 노출할 한국어 메시지
+ */
+export function mfaErrorMessage(errorCode: string): string {
+  switch (errorCode) {
+    case 'invalid_code':
+      return '코드가 올바르지 않습니다.'
+    case 'too_many_attempts':
+      return '시도가 너무 많습니다. 잠시 후 다시 시도하세요.'
+    case 'no_pending_setup':
+      return '진행 중인 설정이 없습니다. 다시 시도해 주세요.'
+    case 'already_enabled':
+      return '이미 2단계 인증이 활성화되어 있습니다.'
+    case 'not_enabled':
+      return '2단계 인증이 활성화되어 있지 않습니다.'
+    default:
+      return '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+  }
+}
 
 /** 이슈 생성 폼 관련 문자열 */
 export const issueCreateStrings = {

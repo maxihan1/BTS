@@ -71,6 +71,10 @@ class SecurityConfig(
     private val corsConfigurationSource: CorsConfigurationSource,
     private val personalAccessTokenService: PersonalAccessTokenService,
 ) {
+    // LongMethod 억제 — 단일 SecurityFilterChain DSL 빌더는 필터 등록 순서 의존성 때문에 한 메서드에
+    // 응집돼야 하며, csrf/authorizeHttpRequests 설정을 임의 헬퍼로 분해하면 가독성과 순서 보장이 깨진다.
+    // FR-MF-01 에서 verify 를 CSRF-ignore + permitAll 양쪽에 등록(BLOCKER-1)하며 임계(60)를 1줄 넘었다.
+    @Suppress("LongMethod")
     @Bean
     @Order(API_CHAIN_ORDER)
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
@@ -122,6 +126,8 @@ class SecurityConfig(
                 csrf.ignoringRequestMatchers(
                     "/api/v1/auth/login",
                     "/api/v1/auth/refresh",
+                    // FR-MF-01: 로그인 2단계 검증 — 정식 세션 전(JWT 없음)이라 login 처럼 명시적 CSRF skip (BLOCKER-1).
+                    MFA_VERIFY_PATH,
                     "/.well-known/jwks.json",
                     "/actuator/**",
                 )
@@ -143,6 +149,8 @@ class SecurityConfig(
                     // /api/v1/auth/route 는 이 STATELESS API 체인(Order=3)에 안전히 떨어진다(체인 충돌 없음).
                     // 도메인만으로 라우트 존재 여부만 판단하며 자격증명을 취급하지 않는다 (DomainRouteController KDoc 참조).
                     ROUTE_PATH,
+                    // FR-MF-01: 2단계 검증은 정식 세션 전 호출이라 permitAll (totp/** 는 permitAll 아님 — authenticated).
+                    MFA_VERIFY_PATH,
                     "/.well-known/jwks.json",
                     "/actuator/health",
                 ).permitAll()
@@ -179,5 +187,11 @@ class SecurityConfig(
 
         /** 로그인 전 호출되는 도메인 기반 SSO 라우트 조회 엔드포인트 (permitAll, [com.atlas.bts.identity.web.DomainRouteController]). */
         const val ROUTE_PATH = "/api/v1/auth/route"
+
+        /**
+         * 로그인 2단계 TOTP 검증 엔드포인트 (FR-MF-01, Task 10 구현 예정).
+         * 1단계(pw) 통과 후 정식 세션 발급 전에 호출되므로 permitAll + CSRF-ignore 양쪽에 등록한다(BLOCKER-1).
+         */
+        const val MFA_VERIFY_PATH = "/api/v1/auth/mfa/verify"
     }
 }

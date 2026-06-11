@@ -142,6 +142,7 @@ class JdbcSessionRepository(
                 "lastSeenAt" to Timestamp.from(session.lastSeenAt),
                 "revokedAt" to session.revokedAt?.let { Timestamp.from(it) },
                 "revokeReason" to session.revokeReason,
+                "mfaVerified" to session.mfaVerified,
             ),
         )
     }
@@ -188,7 +189,7 @@ class JdbcSessionRepository(
     private companion object {
         const val SQL_FIND_BY_ID = """
             SELECT id, user_id, provider_id, device_fingerprint, ip_address, user_agent,
-                   created_at, expires_at, last_seen_at, revoked_at, revoke_reason
+                   created_at, expires_at, last_seen_at, revoked_at, revoke_reason, mfa_verified
             FROM sessions
             WHERE id = :id
         """
@@ -202,7 +203,7 @@ class JdbcSessionRepository(
          */
         const val SQL_FIND_ACTIVE_BY_USER_ID = """
             SELECT id, user_id, provider_id, device_fingerprint, ip_address, user_agent,
-                   created_at, expires_at, last_seen_at, revoked_at, revoke_reason
+                   created_at, expires_at, last_seen_at, revoked_at, revoke_reason, mfa_verified
             FROM sessions
             WHERE user_id = :userId
               AND revoked_at IS NULL
@@ -212,10 +213,10 @@ class JdbcSessionRepository(
         const val SQL_INSERT = """
             INSERT INTO sessions (
                 id, user_id, provider_id, device_fingerprint, ip_address, user_agent,
-                created_at, expires_at, last_seen_at, revoked_at, revoke_reason
+                created_at, expires_at, last_seen_at, revoked_at, revoke_reason, mfa_verified
             ) VALUES (
                 :id, :userId, :providerId, :deviceFingerprint, :ipAddress::INET, :userAgent,
-                :createdAt, :expiresAt, :lastSeenAt, :revokedAt, :revokeReason
+                :createdAt, :expiresAt, :lastSeenAt, :revokedAt, :revokeReason, :mfaVerified
             )
         """
 
@@ -282,5 +283,6 @@ private object SessionRowMapper : RowMapper<Session> {
             lastSeenAt = rs.getTimestamp("last_seen_at").toInstant(),
             revokedAt = rs.getTimestamp("revoked_at")?.toInstant(),
             revokeReason = rs.getString("revoke_reason"),
+            mfaVerified = rs.getBoolean("mfa_verified"),
         )
 }

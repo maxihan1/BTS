@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 22개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 7 + settings 3 + 사용자 생성 1 + 감사 로그 1 + workflow detail 1)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 23개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 7 + settings 4 + 사용자 생성 1 + 감사 로그 1 + workflow detail 1)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -27,6 +27,7 @@ import { AdminAuditLogsRouteAdapter } from './routes/admin.audit-logs'
 import { SessionsSettingsRouteAdapter } from './routes/settings.sessions'
 import { PasswordSettingsRouteAdapter } from './routes/settings.password'
 import { AccountLinksSettingsRouteAdapter } from './routes/settings.account-links'
+import { MfaSettingsRouteAdapter } from './routes/settings.mfa'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -219,6 +220,15 @@ const settingsPasswordRoute = createRoute({
   beforeLoad: requireAuth,
 })
 
+/** 2단계 인증 설정 라우트 — /settings/mfa, requireAuth (password 라우트와 동일 가드 체인) */
+const settingsMfaRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/mfa',
+  component: MfaSettingsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuth,
+})
+
 /** 계정 연결 설정 라우트 — /settings/account-links, requireAuth + mustChangePassword 차단 */
 const settingsAccountLinksRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -236,14 +246,14 @@ const settingsAccountLinksRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 22개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 23개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs
  *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
  *   · /projects/:projectKey/settings/components · /projects/:projectKey/settings/versions
  *   · /projects/:projectKey/settings/custom-fields · /projects/:projectKey/settings/field-permissions
  *   · /projects/:projectKey/settings/project-lead
- *   · /settings/sessions · /settings/password · /settings/account-links
+ *   · /settings/sessions · /settings/password · /settings/account-links · /settings/mfa
  * requireAuth 라우트: /dashboard · /issues · /issues/* · /admin/* · /projects/*\/settings/* · /settings/*
  */
 export const routeTree = rootRoute.addChildren([
@@ -283,6 +293,8 @@ export const routeTree = rootRoute.addChildren([
   settingsPasswordRoute,
   // identity-access BC — 계정 연결 관리 (FR-AU-08/08b)
   settingsAccountLinksRoute,
+  // identity-access BC — 2단계 인증 설정 (FR-MF-01)
+  settingsMfaRoute,
   // workflows (레거시 workflow 상세 — 향후 마이그레이션 예정)
   workflowsKeyRoute,
 ])

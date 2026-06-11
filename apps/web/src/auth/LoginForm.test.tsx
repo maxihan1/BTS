@@ -308,12 +308,16 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
     await screen.findByText('사용자명 또는 비밀번호가 올바르지 않습니다.')
   })
 
-  it('401 mfa_required 응답 시 MFA 에러 메시지가 표시된다', async () => {
+  it('login 200 mfa_required:true 응답 시 MFA 코드 입력 화면으로 전환된다', async () => {
     const user = userEvent.setup({ delay: null })
 
     server.use(
       http.post('/api/v1/auth/login', () =>
-        HttpResponse.json({ error: 'mfa_required' }, { status: 401 }),
+        HttpResponse.json({
+          mfa_required: true,
+          mfa_challenge_token: 'challenge-token-xyz',
+          expires_in: 300,
+        }),
       ),
     )
 
@@ -324,7 +328,10 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
     await user.type(screen.getByLabelText('비밀번호'), 'password')
     await user.click(screen.getByRole('button', { name: '로그인' }))
 
-    await screen.findByText('추가 인증이 필요합니다. 관리자에게 문의하세요.')
+    // MFA 코드 입력 필드가 나타나야 한다
+    await screen.findByLabelText('인증 코드')
+    // 로그인 폼 필드는 사라져야 한다
+    expect(screen.queryByLabelText('비밀번호')).toBeNull()
   })
 
   it('providers API 응답 기반으로 드롭다운 항목이 동적 렌더된다', async () => {
@@ -478,6 +485,36 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
   })
 
+  it('login mfa_required 응답 후 MFA step에서 "다시 로그인" 클릭 시 이메일 입력 1단계로 복귀한다', async () => {
+    const user = userEvent.setup({ delay: null })
+
+    server.use(
+      http.post('/api/v1/auth/login', () =>
+        HttpResponse.json({
+          mfa_required: true,
+          mfa_challenge_token: 'challenge-token-xyz',
+          expires_in: 300,
+        }),
+      ),
+    )
+
+    renderLoginForm()
+
+    await goToStep2(user)
+    await waitForProvidersLoaded()
+    await user.type(screen.getByLabelText('비밀번호'), 'password')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+
+    // MFA step 진입 확인
+    await screen.findByLabelText('인증 코드')
+
+    // "다시 로그인" 클릭 → 1단계(이메일 입력) 복귀
+    await user.click(screen.getByRole('button', { name: '다시 로그인' }))
+
+    await screen.findByLabelText('이메일')
+    expect(screen.queryByLabelText('인증 코드')).toBeNull()
+  })
+
   it('키보드 탐색 — label/aria-invalid/aria-describedby 접근성을 충족한다', async () => {
     const user = userEvent.setup({ delay: null })
     renderLoginForm()
@@ -502,5 +539,123 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
 
     const formControl = usernameInput.closest('[data-slot="form-control"]')
     expect(formControl).toHaveAttribute('aria-describedby')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MFA step — 코드 입력, verify, 에러 처리
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** MFA step까지 진입하는 헬퍼 — login API가 mfa_required:true를 반환해야 한다 */
+async function goToMfaStep(user: ReturnType<typeof userEvent.setup>) {
+  server.use(
+    http.post('/api/v1/auth/login', () =>
+      HttpResponse.json({
+        mfa_required: true,
+        mfa_challenge_token: 'challenge-token-xyz',
+        expires_in: 300,
+      }),
+    ),
+  )
+  await goToStep2(user)
+  await waitForProvidersLoaded()
+  await user.type(screen.getByLabelText('비밀번호'), 'password')
+  await user.click(screen.getByRole('button', { name: '로그인' }))
+  await screen.findByLabelText('인증 코드')
+}
+
+describe('LoginForm — MFA step (3단계)', () => {
+  it('MFA step에서 올바른 코드 입력 후 verify 성공 시 onSuccess 콜백이 호출되고 세션이 저장된다', async () => {
+    const user = userEvent.setup({ delay: null })
+
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', () =>
+        HttpResponse.json({
+          access_token: 'mfa-session-token',
+          token_type: 'Bearer',
+          expires_in: 3600,
+        }),
+      ),
+      http.get('/api/v1/users/me/whoami', () =>
+        HttpResponse.json({
+          username: 'alice',
+          email: 'alice@bts.local',
+          authMethod: 'local',
+          userId: '00000000-0000-4000-8000-000000000001',
+          mustChangePassword: false,
+          isSystemAdmin: false,
+        }),
+      ),
+    )
+
+    const onSuccess = vi.fn()
+    renderLoginForm(onSuccess)
+
+    await goToMfaStep(user)
+
+    // 6자리 코드 입력
+    await user.type(screen.getByLabelText('인증 코드'), '123456')
+    await user.click(screen.getByRole('button', { name: '확인' }))
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
+    // 세션이 저장되어야 한다
+    expect(useAuthStore.getState().accessToken).toBe('mfa-session-token')
+    expect(useAuthStore.getState().user).not.toBeNull()
+  })
+
+  it('MFA step — 코드 입력 필드는 inputMode="numeric"이고 maxLength가 6이다', async () => {
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await goToMfaStep(user)
+
+    const codeInput = screen.getByLabelText('인증 코드')
+    expect(codeInput).toHaveAttribute('inputmode', 'numeric')
+    expect(codeInput).toHaveAttribute('maxlength', '6')
+  })
+
+  it('MFA step에서 verify 401 invalid_code 응답 시 인라인 에러가 표시되고 코드 입력 필드가 유지된다', async () => {
+    // 프로덕션 동등 조건 — refresh가 401을 반환해도 invalid_code 메시지가 표시되어야 한다.
+    // verifyMfa가 apiFetch를 사용하면 refresh 시도 후 clearSession()이 호출되어
+    // "코드가 올바르지 않습니다." 대신 generic 에러 또는 세션 소멸이 발생한다.
+    let refreshCallCount = 0
+    const user = userEvent.setup({ delay: null })
+
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', () =>
+        HttpResponse.json({ error: 'invalid_code' }, { status: 401 }),
+      ),
+      // 프로덕션 조건 시뮬레이션 — verify 전에는 세션이 없으므로 refresh도 401
+      http.post('/api/v1/auth/refresh', () => {
+        refreshCallCount++
+        return HttpResponse.json({ error: 'unauthorized' }, { status: 401 })
+      }),
+    )
+
+    renderLoginForm()
+
+    await goToMfaStep(user)
+
+    await user.type(screen.getByLabelText('인증 코드'), '000000')
+    await user.click(screen.getByRole('button', { name: '확인' }))
+
+    // 인라인 에러 메시지 확인 — refresh 우회로 원래 에러가 그대로 전파되어야 한다
+    await screen.findByText('코드가 올바르지 않습니다.')
+    // 코드 입력 필드가 유지되어야 한다 (MFA step 유지)
+    expect(screen.getByLabelText('인증 코드')).toBeInTheDocument()
+    // refresh가 단 한 번도 호출되지 않아야 한다 (raw fetch는 refresh를 우회)
+    expect(refreshCallCount).toBe(0)
+  })
+
+  it('MFA step에서 "다시 로그인" 클릭 시 이메일 입력 1단계로 복귀한다', async () => {
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await goToMfaStep(user)
+
+    await user.click(screen.getByRole('button', { name: '다시 로그인' }))
+
+    await screen.findByLabelText('이메일')
+    expect(screen.queryByLabelText('인증 코드')).toBeNull()
   })
 })

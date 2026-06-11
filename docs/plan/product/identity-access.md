@@ -185,13 +185,13 @@
 
 **우선순위**. 필수 | **선행**. §2.5, §2.9 | **Plan slug**. `identity/mfa-totp`
 
-- [ ] D1. 도메인 — TotpSecret VO (책임. security-engineer)
-- [ ] D2. 명세 — QR 코드 등록 + 6자리 코드 검증 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `user_mfa_totp(secret_encrypted)` (책임. db-engineer)
-- [ ] D4. 백엔드 — `aerogear-otp-java` 또는 자체 RFC 6238 (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 — clock drift ±1 step 허용 (책임. security-engineer)
-- [ ] D6. 프론트 UI — QR 표시 + 6자리 입력 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — TotpSecret VO (책임. security-engineer)
+- [x] D2. 명세 — QR 코드 등록 + 6자리 코드 검증 (책임. security-engineer)
+- [x] D3. 데이터 모델 — `totp_secrets(secret_cipher)` (V022, 책임. db-engineer)
+- [x] D4. 백엔드 — `dev.samstevens.totp:1.7.1` (RFC 6238, 책임. security-engineer)
+- [x] D5. 백엔드 테스트 — clock drift ±1 step 허용 (책임. security-engineer)
+- [x] D6. 프론트 UI — QR 표시 + 6자리 입력 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ### §3.2 FR-MF-02 — 백업 코드 (Recovery Codes)
 

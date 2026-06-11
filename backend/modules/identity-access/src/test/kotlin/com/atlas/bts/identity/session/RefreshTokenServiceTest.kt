@@ -138,6 +138,46 @@ class RefreshTokenServiceTest {
         }
     }
 
+    // ── FR-MF-01 GAP-1: mfa_verified 회전 전파 ─────────────────────────────────
+
+    @Test
+    fun `GAP-1 — mfaVerified=true 세션의 rotate 는 jwtIssuer issue 를 mfaVerified=true 로 호출한다`() {
+        val oldToken = buildUsableToken()
+        val mfaVerifiedSlot = slot<Boolean>()
+
+        every { repo.findByTokenHash("a".repeat(64)) } returns oldToken
+        // 2차 요소(TOTP)까지 통과해 발급된 세션 — refresh 회전에서도 클레임이 보존돼야 한다.
+        every { sessionService.lookup(sessionId) } returns buildSession(mfaVerified = true)
+        every { repo.save(any()) } answers { Unit }
+        every { repo.markUsedAndChain(oldId = oldTokenId, newId = any()) } returns oldTokenId
+        every {
+            jwtIssuer.issue(any(), sessionId, any(), any(), any(), capture(mfaVerifiedSlot))
+        } returns "access.jwt.token"
+
+        service.rotate("a".repeat(64))
+
+        assertThat(mfaVerifiedSlot.captured).isTrue()
+    }
+
+    @Test
+    fun `GAP-1 — mfaVerified=false 세션의 rotate 는 jwtIssuer issue 를 mfaVerified=false 로 호출한다`() {
+        val oldToken = buildUsableToken()
+        val mfaVerifiedSlot = slot<Boolean>()
+
+        every { repo.findByTokenHash("a".repeat(64)) } returns oldToken
+        // 1차 인증만 거친 세션 — mfa_verified 가 false 로 유지돼야 한다 (회귀 0).
+        every { sessionService.lookup(sessionId) } returns buildSession(mfaVerified = false)
+        every { repo.save(any()) } answers { Unit }
+        every { repo.markUsedAndChain(oldId = oldTokenId, newId = any()) } returns oldTokenId
+        every {
+            jwtIssuer.issue(any(), sessionId, any(), any(), any(), capture(mfaVerifiedSlot))
+        } returns "access.jwt.token"
+
+        service.rotate("a".repeat(64))
+
+        assertThat(mfaVerifiedSlot.captured).isFalse()
+    }
+
     // ── EC-04 만료 ────────────────────────────────────────────────────────────
 
     @Test
@@ -331,7 +371,10 @@ class RefreshTokenServiceTest {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private fun buildSession(revoked: Boolean = false): com.atlas.bts.identity.session.Session =
+    private fun buildSession(
+        revoked: Boolean = false,
+        mfaVerified: Boolean = false,
+    ): com.atlas.bts.identity.session.Session =
         Session(
             id = sessionId,
             userId = userId,
@@ -344,5 +387,6 @@ class RefreshTokenServiceTest {
             lastSeenAt = fixedNow,
             revokedAt = if (revoked) fixedNow.minus(30, ChronoUnit.SECONDS) else null,
             revokeReason = if (revoked) "test_revoke" else null,
+            mfaVerified = mfaVerified,
         )
 }

@@ -56,6 +56,9 @@ class SessionService(
      * @param providerId 인증 Provider 식별자 (예: "local", "ldap-corp")
      * @param ipAddress 클라이언트 IP (보안 감사 로그용). null 허용
      * @param userAgent User-Agent 헤더 (보안 감사 로그용). null 허용
+     * @param mfaVerified 2차 요소(TOTP) 통과 여부 (FR-MF-01). 기본 `false` — 1차 인증만 거친
+     *   기존 로그인 흐름은 미전달 시 `false` 가 유지된다(회귀 0). TOTP 검증 성공 후 발급되는
+     *   정식 세션만 `true` 로 생성한다. [Session.mfaVerified] → JWT `mfa_verified` 클레임 원천.
      * @return 저장된 [Session]
      */
     @Transactional
@@ -64,6 +67,7 @@ class SessionService(
         providerId: String,
         ipAddress: String?,
         userAgent: String?,
+        mfaVerified: Boolean = false,
     ): Session {
         val now = Instant.now(clock)
         val session =
@@ -79,6 +83,7 @@ class SessionService(
                 lastSeenAt = now,
                 revokedAt = null,
                 revokeReason = null,
+                mfaVerified = mfaVerified,
             )
         repo.save(session)
         return session
