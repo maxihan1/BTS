@@ -73,7 +73,6 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueChangeHistoryE2EIntegrationTest {
-
     /**
      * 실 이력 빈을 wire 하는 보조 설정.
      *
@@ -84,7 +83,6 @@ class IssueChangeHistoryE2EIntegrationTest {
     @Configuration
     @Suppress("LongParameterList")
     open class HistoryE2EConfig {
-
         @Bean
         open fun realNamedParameterJdbcTemplate(dataSource: DriverManagerDataSource): NamedParameterJdbcTemplate =
             NamedParameterJdbcTemplate(dataSource)
@@ -222,14 +220,15 @@ class IssueChangeHistoryE2EIntegrationTest {
      */
     @Test
     fun `createIssue 호출 후 lifecycle created 이력이 기록된다`() {
-        val issue = issueApplicationService.createIssue(
-            ACTOR_ID,
-            CreateIssueRequest(
-                projectKey = PROJECT_KEY,
-                summary = "g 시나리오 생성 이슈",
-                reporterId = ACTOR_ID,
-            ),
-        )
+        val issue =
+            issueApplicationService.createIssue(
+                ACTOR_ID,
+                CreateIssueRequest(
+                    projectKey = PROJECT_KEY,
+                    summary = "g 시나리오 생성 이슈",
+                    reporterId = ACTOR_ID,
+                ),
+            )
 
         val groups = historyRepository.findByIssue(issue.id.value)
         assertThat(groups).hasSize(1)
@@ -253,14 +252,15 @@ class IssueChangeHistoryE2EIntegrationTest {
      */
     @Test
     fun `다필드 PATCH 시 1 그룹에 N 아이템이 기록된다`() {
-        val issue = issueApplicationService.createIssue(
-            ACTOR_ID,
-            CreateIssueRequest(
-                projectKey = PROJECT_KEY,
-                summary = "a 시나리오 원본 이슈",
-                reporterId = ACTOR_ID,
-            ),
-        )
+        val issue =
+            issueApplicationService.createIssue(
+                ACTOR_ID,
+                CreateIssueRequest(
+                    projectKey = PROJECT_KEY,
+                    summary = "a 시나리오 원본 이슈",
+                    reporterId = ACTOR_ID,
+                ),
+            )
         // createIssue 이력 초기화
         cleanHistoryOnly()
 
@@ -269,7 +269,8 @@ class IssueChangeHistoryE2EIntegrationTest {
             IssueKey(issue.key.value),
             UpdateIssueRequest(
                 summary = "a 시나리오 수정 이슈",
-                priority = 1, // 기본값(3)과 다른 값으로 변경해야 아이템이 생성됨
+                // 기본값(3)과 다른 값으로 변경해야 아이템이 생성됨
+                priority = 1,
                 expectedVersion = issue.version,
             ),
         )
@@ -297,14 +298,15 @@ class IssueChangeHistoryE2EIntegrationTest {
      */
     @Test
     fun `no-op 변경 시 이력이 기록되지 않는다`() {
-        val issue = issueApplicationService.createIssue(
-            ACTOR_ID,
-            CreateIssueRequest(
-                projectKey = PROJECT_KEY,
-                summary = "b 시나리오 노옵 이슈",
-                reporterId = ACTOR_ID,
-            ),
-        )
+        val issue =
+            issueApplicationService.createIssue(
+                ACTOR_ID,
+                CreateIssueRequest(
+                    projectKey = PROJECT_KEY,
+                    summary = "b 시나리오 노옵 이슈",
+                    reporterId = ACTOR_ID,
+                ),
+            )
         cleanHistoryOnly()
 
         // summary 를 기존값 그대로 전달 — 변경 없음
@@ -334,14 +336,15 @@ class IssueChangeHistoryE2EIntegrationTest {
      */
     @Test
     fun `소프트 삭제 후에도 이력이 보존되고 lifecycle deleted 아이템이 기록된다`() {
-        val issue = issueApplicationService.createIssue(
-            ACTOR_ID,
-            CreateIssueRequest(
-                projectKey = PROJECT_KEY,
-                summary = "c 시나리오 삭제 이슈",
-                reporterId = ACTOR_ID,
-            ),
-        )
+        val issue =
+            issueApplicationService.createIssue(
+                ACTOR_ID,
+                CreateIssueRequest(
+                    projectKey = PROJECT_KEY,
+                    summary = "c 시나리오 삭제 이슈",
+                    reporterId = ACTOR_ID,
+                ),
+            )
 
         issueApplicationService.softDeleteIssue(ACTOR_ID, IssueKey(issue.key.value))
 
@@ -373,14 +376,15 @@ class IssueChangeHistoryE2EIntegrationTest {
      */
     @Test
     fun `assignee 변경 이력 아이템은 label 이 null 이다`() {
-        val issue = issueApplicationService.createIssue(
-            ACTOR_ID,
-            CreateIssueRequest(
-                projectKey = PROJECT_KEY,
-                summary = "d 시나리오 담당자 이슈",
-                reporterId = ACTOR_ID,
-            ),
-        )
+        val issue =
+            issueApplicationService.createIssue(
+                ACTOR_ID,
+                CreateIssueRequest(
+                    projectKey = PROJECT_KEY,
+                    summary = "d 시나리오 담당자 이슈",
+                    reporterId = ACTOR_ID,
+                ),
+            )
         cleanHistoryOnly()
 
         val newAssigneeId = UUID.fromString("00000000-0000-4000-8000-000000000202")
@@ -411,19 +415,21 @@ class IssueChangeHistoryE2EIntegrationTest {
      */
     @Test
     fun `type 변경 이력 아이템에 IssueType 이름이 박제된다`() {
-        val issue = issueApplicationService.createIssue(
-            ACTOR_ID,
-            CreateIssueRequest(
-                projectKey = PROJECT_KEY,
-                summary = "d2 시나리오 타입 변경 이슈",
-                reporterId = ACTOR_ID,
-            ),
-        )
+        val issue =
+            issueApplicationService.createIssue(
+                ACTOR_ID,
+                CreateIssueRequest(
+                    projectKey = PROJECT_KEY,
+                    summary = "d2 시나리오 타입 변경 이슈",
+                    reporterId = ACTOR_ID,
+                ),
+            )
         cleanHistoryOnly()
 
         // bug 타입 ID 조회 (V003 마이그레이션으로 삽입된 bug 타입)
-        val bugTypeId = fetchIssueTypeId("bug")
-            ?: return // bug 타입 없으면 스킵 (환경 의존 방어)
+        val bugTypeId =
+            fetchIssueTypeId("bug")
+                ?: return // bug 타입 없으면 스킵 (환경 의존 방어)
 
         issueApplicationService.updateIssue(
             ACTOR_ID,
@@ -457,14 +463,15 @@ class IssueChangeHistoryE2EIntegrationTest {
      */
     @Test
     fun `updateIssue 성공 직후 이력을 즉시 조회할 수 있다`() {
-        val issue = issueApplicationService.createIssue(
-            ACTOR_ID,
-            CreateIssueRequest(
-                projectKey = PROJECT_KEY,
-                summary = "e 시나리오 트랜잭션 이슈",
-                reporterId = ACTOR_ID,
-            ),
-        )
+        val issue =
+            issueApplicationService.createIssue(
+                ACTOR_ID,
+                CreateIssueRequest(
+                    projectKey = PROJECT_KEY,
+                    summary = "e 시나리오 트랜잭션 이슈",
+                    reporterId = ACTOR_ID,
+                ),
+            )
         cleanHistoryOnly()
 
         issueApplicationService.updateIssue(
@@ -497,14 +504,15 @@ class IssueChangeHistoryE2EIntegrationTest {
      */
     @Test
     fun `changeComponents 자동 배정 시 components 와 assignee 두 아이템이 모두 기록된다`() {
-        val issue = issueApplicationService.createIssue(
-            ACTOR_ID,
-            CreateIssueRequest(
-                projectKey = PROJECT_KEY,
-                summary = "f 시나리오 자동 배정 이슈",
-                reporterId = ACTOR_ID,
-            ),
-        )
+        val issue =
+            issueApplicationService.createIssue(
+                ACTOR_ID,
+                CreateIssueRequest(
+                    projectKey = PROJECT_KEY,
+                    summary = "f 시나리오 자동 배정 이슈",
+                    reporterId = ACTOR_ID,
+                ),
+            )
         cleanHistoryOnly()
 
         issueApplicationService.changeComponents(
@@ -542,14 +550,15 @@ class IssueChangeHistoryE2EIntegrationTest {
      */
     @Test
     fun `components 변경 이력 아이템에 컴포넌트 이름이 박제된다`() {
-        val issue = issueApplicationService.createIssue(
-            ACTOR_ID,
-            CreateIssueRequest(
-                projectKey = PROJECT_KEY,
-                summary = "f2 시나리오 컴포넌트 라벨 이슈",
-                reporterId = ACTOR_ID,
-            ),
-        )
+        val issue =
+            issueApplicationService.createIssue(
+                ACTOR_ID,
+                CreateIssueRequest(
+                    projectKey = PROJECT_KEY,
+                    summary = "f2 시나리오 컴포넌트 라벨 이슈",
+                    reporterId = ACTOR_ID,
+                ),
+            )
         cleanHistoryOnly()
 
         issueApplicationService.changeComponents(
@@ -582,14 +591,15 @@ class IssueChangeHistoryE2EIntegrationTest {
      */
     @Test
     fun `transitionIssue 호출 시 status 변경 이력이 기록된다`() {
-        val issue = issueApplicationService.createIssue(
-            ACTOR_ID,
-            CreateIssueRequest(
-                projectKey = PROJECT_KEY,
-                summary = "a2 시나리오 상태 전이 이슈",
-                reporterId = ACTOR_ID,
-            ),
-        )
+        val issue =
+            issueApplicationService.createIssue(
+                ACTOR_ID,
+                CreateIssueRequest(
+                    projectKey = PROJECT_KEY,
+                    summary = "a2 시나리오 상태 전이 이슈",
+                    reporterId = ACTOR_ID,
+                ),
+            )
         cleanHistoryOnly()
 
         issueApplicationService.transitionIssue(
@@ -651,15 +661,16 @@ class IssueChangeHistoryE2EIntegrationTest {
                 stmt.executeUpdate()
             }
 
-            val wfId = c.prepareStatement(
-                "INSERT INTO workflows (key, name) VALUES ('software-default', '소프트웨어 개발 기본 워크플로우') " +
-                    "ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
-            ).use { stmt ->
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getObject(1) as UUID
+            val wfId =
+                c.prepareStatement(
+                    "INSERT INTO workflows (key, name) VALUES ('software-default', '소프트웨어 개발 기본 워크플로우') " +
+                        "ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as UUID
+                    }
                 }
-            }
 
             val openId = insertWorkflowState(c, wfId, "open", "Open", "TODO", 0)
             val inProgressId = insertWorkflowState(c, wfId, "in_progress", "In Progress", "IN_PROGRESS", 1)

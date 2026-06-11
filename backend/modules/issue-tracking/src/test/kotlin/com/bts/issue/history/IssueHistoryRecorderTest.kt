@@ -20,11 +20,12 @@ class IssueHistoryRecorderTest : DescribeSpec({
     val resolver = mockk<IssueChangeLabelResolver>()
     val repository = mockk<IssueChangeHistoryRepository>()
 
-    val sut = IssueHistoryRecorder(
-        detector = detector,
-        resolver = resolver,
-        repository = repository,
-    )
+    val sut =
+        IssueHistoryRecorder(
+            detector = detector,
+            resolver = resolver,
+            repository = repository,
+        )
 
     val projectId = UUID.randomUUID()
     val actor = ActorId(UUID.randomUUID())
@@ -35,7 +36,10 @@ class IssueHistoryRecorderTest : DescribeSpec({
         clearAllMocks()
     }
 
-    fun makeIssue(id: IssueId = issueId, key: IssueKey = issueKey): com.bts.issue.domain.Issue =
+    fun makeIssue(
+        id: IssueId = issueId,
+        key: IssueKey = issueKey,
+    ): com.bts.issue.domain.Issue =
         com.bts.issue.domain.Issue(
             id = id,
             key = key,

@@ -2,8 +2,8 @@
 
 package com.bts.issue.history
 
-import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.component.domain.Component
+import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.resolution.domain.Resolution
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.domain.IssueType
@@ -40,7 +40,10 @@ class IssueChangeLabelResolverTest : DescribeSpec({
 
     // ── 픽스처 헬퍼 ─────────────────────────────────────────────────────────────
 
-    fun makeIssueType(id: Long, name: String): IssueType =
+    fun makeIssueType(
+        id: Long,
+        name: String,
+    ): IssueType =
         IssueType(
             id = IssueTypeId(id),
             key = IssueTypeKey("key-$id"),
@@ -54,7 +57,10 @@ class IssueChangeLabelResolverTest : DescribeSpec({
             deletedAt = null,
         )
 
-    fun makeResolution(id: UUID, name: String): Resolution =
+    fun makeResolution(
+        id: UUID,
+        name: String,
+    ): Resolution =
         Resolution(
             id = id,
             key = "key",
@@ -67,7 +73,10 @@ class IssueChangeLabelResolverTest : DescribeSpec({
             deletedAt = null,
         )
 
-    fun makeComponent(id: UUID, name: String): Component =
+    fun makeComponent(
+        id: UUID,
+        name: String,
+    ): Component =
         Component(
             id = id,
             projectId = projectId,
@@ -77,7 +86,10 @@ class IssueChangeLabelResolverTest : DescribeSpec({
             deletedAt = null,
         )
 
-    fun makeVersion(id: UUID, name: String): Version =
+    fun makeVersion(
+        id: UUID,
+        name: String,
+    ): Version =
         Version(
             id = id,
             projectId = projectId,
@@ -98,9 +110,10 @@ class IssueChangeLabelResolverTest : DescribeSpec({
             val issueType = makeIssueType(typeId, "Bug")
             every { issueTypeRepo.findById(IssueTypeId(typeId)) } returns issueType
 
-            val items = listOf(
-                IssueChangeItem(field = "type", fromValue = null, toValue = typeId.toString()),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "type", fromValue = null, toValue = typeId.toString()),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].fromLabel shouldBe null
@@ -111,9 +124,10 @@ class IssueChangeLabelResolverTest : DescribeSpec({
             val typeId = 99L
             every { issueTypeRepo.findById(IssueTypeId(typeId)) } returns null
 
-            val items = listOf(
-                IssueChangeItem(field = "type", fromValue = typeId.toString(), toValue = null),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "type", fromValue = typeId.toString(), toValue = null),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].fromLabel shouldBe null
@@ -121,9 +135,10 @@ class IssueChangeLabelResolverTest : DescribeSpec({
         }
 
         it("값이 숫자가 아닌 경우 label 은 null(graceful)") {
-            val items = listOf(
-                IssueChangeItem(field = "type", fromValue = "not-a-number", toValue = null),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "type", fromValue = "not-a-number", toValue = null),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].fromLabel shouldBe null
@@ -138,9 +153,10 @@ class IssueChangeLabelResolverTest : DescribeSpec({
             val resolution = makeResolution(resId, "Fixed")
             every { resolutionRepo.findById(resId) } returns resolution
 
-            val items = listOf(
-                IssueChangeItem(field = "resolution", fromValue = null, toValue = resId.toString()),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "resolution", fromValue = null, toValue = resId.toString()),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].toLabel shouldBe "Fixed"
@@ -150,18 +166,20 @@ class IssueChangeLabelResolverTest : DescribeSpec({
             val resId = UUID.randomUUID()
             every { resolutionRepo.findById(resId) } returns null
 
-            val items = listOf(
-                IssueChangeItem(field = "resolution", fromValue = resId.toString(), toValue = null),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "resolution", fromValue = resId.toString(), toValue = null),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].fromLabel shouldBe null
         }
 
         it("값이 UUID 가 아닌 경우 label 은 null(graceful)") {
-            val items = listOf(
-                IssueChangeItem(field = "resolution", fromValue = "invalid-uuid", toValue = null),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "resolution", fromValue = "invalid-uuid", toValue = null),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].fromLabel shouldBe null
@@ -178,9 +196,10 @@ class IssueChangeLabelResolverTest : DescribeSpec({
             every { componentRepo.findById(id2, projectId) } returns makeComponent(id2, "API")
 
             val idsJson = """["$id1","$id2"]"""
-            val items = listOf(
-                IssueChangeItem(field = "components", fromValue = null, toValue = idsJson),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "components", fromValue = null, toValue = idsJson),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             // 이름 정렬 배열 — "API", "Backend" 순
@@ -195,18 +214,20 @@ class IssueChangeLabelResolverTest : DescribeSpec({
             every { componentRepo.findById(id2, projectId) } returns null
 
             val idsJson = """["$id1","$id2"]"""
-            val items = listOf(
-                IssueChangeItem(field = "components", fromValue = idsJson, toValue = null),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "components", fromValue = idsJson, toValue = null),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].fromLabel shouldBe "[Frontend]"
         }
 
         it("JSON 파싱 실패 시 label 은 null(graceful)") {
-            val items = listOf(
-                IssueChangeItem(field = "components", fromValue = "not-json", toValue = null),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "components", fromValue = "not-json", toValue = null),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].fromLabel shouldBe null
@@ -223,9 +244,10 @@ class IssueChangeLabelResolverTest : DescribeSpec({
             every { versionRepo.findById(id2, projectId) } returns makeVersion(id2, "v1.0")
 
             val idsJson = """["$id1","$id2"]"""
-            val items = listOf(
-                IssueChangeItem(field = "affectsVersions", fromValue = null, toValue = idsJson),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "affectsVersions", fromValue = null, toValue = idsJson),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].toLabel shouldBe "[v1.0, v2.0]"
@@ -238,9 +260,10 @@ class IssueChangeLabelResolverTest : DescribeSpec({
             every { versionRepo.findById(verId, projectId) } returns makeVersion(verId, "v3.0")
 
             val idsJson = """["$verId"]"""
-            val items = listOf(
-                IssueChangeItem(field = "fixVersions", fromValue = idsJson, toValue = null),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "fixVersions", fromValue = idsJson, toValue = null),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].fromLabel shouldBe "[v3.0]"
@@ -251,9 +274,10 @@ class IssueChangeLabelResolverTest : DescribeSpec({
 
     describe("label=null 유지 필드") {
         it("assignee 필드는 fromLabel/toLabel 이 null") {
-            val items = listOf(
-                IssueChangeItem(field = "assignee", fromValue = "alice", toValue = "bob"),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "assignee", fromValue = "alice", toValue = "bob"),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].fromLabel shouldBe null
@@ -261,18 +285,20 @@ class IssueChangeLabelResolverTest : DescribeSpec({
         }
 
         it("securityLevel 필드는 fromLabel/toLabel 이 null") {
-            val items = listOf(
-                IssueChangeItem(field = "securityLevel", fromValue = UUID.randomUUID().toString(), toValue = null),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "securityLevel", fromValue = UUID.randomUUID().toString(), toValue = null),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].fromLabel shouldBe null
         }
 
         it("status 필드는 fromLabel/toLabel 이 null") {
-            val items = listOf(
-                IssueChangeItem(field = "status", fromValue = "open", toValue = "in_progress"),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "status", fromValue = "open", toValue = "in_progress"),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].fromLabel shouldBe null
@@ -280,9 +306,10 @@ class IssueChangeLabelResolverTest : DescribeSpec({
         }
 
         it("summary 스칼라 필드는 fromLabel/toLabel 이 null") {
-            val items = listOf(
-                IssueChangeItem(field = "summary", fromValue = "old", toValue = "new"),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "summary", fromValue = "old", toValue = "new"),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].fromLabel shouldBe null
@@ -290,9 +317,10 @@ class IssueChangeLabelResolverTest : DescribeSpec({
         }
 
         it("customField:* 필드는 fromLabel/toLabel 이 null") {
-            val items = listOf(
-                IssueChangeItem(field = "customField:my_field", fromValue = "x", toValue = "y"),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "customField:my_field", fromValue = "x", toValue = "y"),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].fromLabel shouldBe null
@@ -300,9 +328,10 @@ class IssueChangeLabelResolverTest : DescribeSpec({
         }
 
         it("lifecycle 필드는 fromLabel/toLabel 이 null") {
-            val items = listOf(
-                IssueChangeItem(field = "lifecycle", fromValue = "created", toValue = null),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "lifecycle", fromValue = "created", toValue = null),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].fromLabel shouldBe null
@@ -317,11 +346,12 @@ class IssueChangeLabelResolverTest : DescribeSpec({
             val issueType = makeIssueType(typeId, "Task")
             every { issueTypeRepo.findById(IssueTypeId(typeId)) } returns issueType
 
-            val items = listOf(
-                IssueChangeItem(field = "type", fromValue = null, toValue = typeId.toString()),
-                IssueChangeItem(field = "summary", fromValue = "old", toValue = "new"),
-                IssueChangeItem(field = "assignee", fromValue = "alice", toValue = null),
-            )
+            val items =
+                listOf(
+                    IssueChangeItem(field = "type", fromValue = null, toValue = typeId.toString()),
+                    IssueChangeItem(field = "summary", fromValue = "old", toValue = "new"),
+                    IssueChangeItem(field = "assignee", fromValue = "alice", toValue = null),
+                )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].toLabel shouldBe "Task"

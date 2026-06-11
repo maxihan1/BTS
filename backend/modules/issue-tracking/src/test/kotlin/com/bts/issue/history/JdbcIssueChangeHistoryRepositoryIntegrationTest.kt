@@ -169,7 +169,8 @@ class JdbcIssueChangeHistoryRepositoryIntegrationTest {
             IssueChangeGroup(
                 issueId = issueId,
                 issueKey = "BTS-2",
-                actorId = null, // 시스템 자동 변경 — actorId null
+                // 시스템 자동 변경 — actorId null
+                actorId = null,
                 items = items,
             )
 

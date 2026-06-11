@@ -52,30 +52,32 @@ class IssueHistoryRecorder(
         actor: ActorId?,
         projectId: UUID,
     ) {
-        val (issue, items) = when {
-            before == null && after != null -> after to detector.created(after)
-            after == null && before != null -> before to detector.deleted(before)
-            before != null && after != null -> {
-                val detected = detector.detect(before, after)
-                if (detected.isEmpty()) {
-                    log.debug("history_record_noop issueKey={}", before.key.value)
+        val (issue, items) =
+            when {
+                before == null && after != null -> after to detector.created(after)
+                after == null && before != null -> before to detector.deleted(before)
+                before != null && after != null -> {
+                    val detected = detector.detect(before, after)
+                    if (detected.isEmpty()) {
+                        log.debug("history_record_noop issueKey={}", before.key.value)
+                        return
+                    }
+                    after to detected
+                }
+                else -> {
+                    log.warn("history_record_skipped: before 와 after 모두 null — 기록 대상 없음")
                     return
                 }
-                after to detected
             }
-            else -> {
-                log.warn("history_record_skipped: before 와 after 모두 null — 기록 대상 없음")
-                return
-            }
-        }
 
         val resolvedItems = resolver.resolveLabels(items, projectId)
-        val group = IssueChangeGroup(
-            issueId = issue.id.value,
-            issueKey = issue.key.value,
-            actorId = actor?.value,
-            items = resolvedItems,
-        )
+        val group =
+            IssueChangeGroup(
+                issueId = issue.id.value,
+                issueKey = issue.key.value,
+                actorId = actor?.value,
+                items = resolvedItems,
+            )
         repository.record(group)
         log.info(
             "history_recorded issueKey={} actor={} itemCount={}",

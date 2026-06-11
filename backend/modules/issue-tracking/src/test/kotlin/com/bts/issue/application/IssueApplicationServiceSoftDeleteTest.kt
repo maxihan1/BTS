@@ -63,19 +63,20 @@ class IssueApplicationServiceSoftDeleteTest : DescribeSpec({
     val projectId = UUID.randomUUID()
 
     // softDeleteIssue 가 이력 기록을 위해 삭제 전 이슈를 조회하므로 최소 fixture 제공
-    val existingIssue = com.bts.issue.domain.Issue(
-        id = IssueId(UUID.randomUUID()),
-        key = issueKey,
-        projectId = projectId,
-        summary = "sample",
-        reporterId = ActorId(UUID.randomUUID()),
-        currentStateKey = "open",
-        version = 1L,
-        deletedAt = null,
-        createdAt = Instant.now(),
-        updatedAt = Instant.now(),
-        typeId = IssueTypeId(1L),
-    )
+    val existingIssue =
+        com.bts.issue.domain.Issue(
+            id = IssueId(UUID.randomUUID()),
+            key = issueKey,
+            projectId = projectId,
+            summary = "sample",
+            reporterId = ActorId(UUID.randomUUID()),
+            currentStateKey = "open",
+            version = 1L,
+            deletedAt = null,
+            createdAt = Instant.now(),
+            updatedAt = Instant.now(),
+            typeId = IssueTypeId(1L),
+        )
 
     beforeEach {
         clearMocks(repo, eventPublisher, permissionResolver, answers = false)

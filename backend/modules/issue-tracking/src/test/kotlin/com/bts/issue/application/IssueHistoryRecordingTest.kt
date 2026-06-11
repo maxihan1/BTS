@@ -17,9 +17,7 @@ import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeKey
-import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
-import com.bts.shared.permission.IssueScope
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.DomainEvent
 import com.bts.shared.workflow.FieldChange
@@ -65,21 +63,22 @@ class IssueHistoryRecordingTest : DescribeSpec({
     val historyRecorder = mockk<IssueHistoryRecorder>()
     val clock = Clock.fixed(Instant.parse("2026-06-11T00:00:00Z"), ZoneOffset.UTC)
 
-    val sut = IssueApplicationService(
-        repo = repo,
-        issueTypeRepository = issueTypeRepository,
-        resolutionRepository = resolutionRepository,
-        eventPublisher = eventPublisher,
-        permissionResolver = permissionResolver,
-        workflowPort = workflowPort,
-        workflowKeyResolver = workflowKeyResolver,
-        userLookupPort = userLookupPort,
-        componentRepository = componentRepository,
-        projectLeadRepository = projectLeadRepository,
-        versionRepository = versionRepository,
-        clock = clock,
-        historyRecorder = historyRecorder,
-    )
+    val sut =
+        IssueApplicationService(
+            repo = repo,
+            issueTypeRepository = issueTypeRepository,
+            resolutionRepository = resolutionRepository,
+            eventPublisher = eventPublisher,
+            permissionResolver = permissionResolver,
+            workflowPort = workflowPort,
+            workflowKeyResolver = workflowKeyResolver,
+            userLookupPort = userLookupPort,
+            componentRepository = componentRepository,
+            projectLeadRepository = projectLeadRepository,
+            versionRepository = versionRepository,
+            clock = clock,
+            historyRecorder = historyRecorder,
+        )
 
     val actor = ActorId(UUID.randomUUID())
     val projectId = UUID.randomUUID()
@@ -92,20 +91,21 @@ class IssueHistoryRecordingTest : DescribeSpec({
         state: String = "open",
         assigneeId: ActorId? = null,
         version: Long = 1L,
-    ): Issue = Issue(
-        id = IssueId(UUID.randomUUID()),
-        key = key,
-        projectId = projectId,
-        summary = "test summary",
-        reporterId = ActorId(UUID.randomUUID()),
-        currentStateKey = state,
-        version = version,
-        deletedAt = null,
-        createdAt = Instant.now(clock),
-        updatedAt = Instant.now(clock),
-        typeId = taskTypeId,
-        assigneeId = assigneeId,
-    )
+    ): Issue =
+        Issue(
+            id = IssueId(UUID.randomUUID()),
+            key = key,
+            projectId = projectId,
+            summary = "test summary",
+            reporterId = ActorId(UUID.randomUUID()),
+            currentStateKey = state,
+            version = version,
+            deletedAt = null,
+            createdAt = Instant.now(clock),
+            updatedAt = Instant.now(clock),
+            typeId = taskTypeId,
+            assigneeId = assigneeId,
+        )
 
     /** IssueResponse mock — withSingleDetail() 은 private extension 이므로 relaxed mock 사용. */
     fun makeResponseMock(): IssueResponse = mockk(relaxed = true)
@@ -145,11 +145,12 @@ class IssueHistoryRecordingTest : DescribeSpec({
         }
 
         it("before=null, after=생성된 이슈로 recorder.record 를 호출한다") {
-            val request = CreateIssueRequest(
-                projectKey = "BTS",
-                summary = "test summary",
-                reporterId = actor,
-            )
+            val request =
+                CreateIssueRequest(
+                    projectKey = "BTS",
+                    summary = "test summary",
+                    reporterId = actor,
+                )
             sut.createIssue(actor, request)
 
             verify {

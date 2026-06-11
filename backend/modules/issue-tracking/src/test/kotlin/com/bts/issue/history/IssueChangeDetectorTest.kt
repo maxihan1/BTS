@@ -32,7 +32,8 @@ class IssueChangeDetectorTest : DescribeSpec({
     val reporterId = ActorId(UUID.randomUUID())
     val typeId = IssueTypeId(1L)
 
-    /** 기본 Issue 픽스처. */
+    /** 기본 Issue 픽스처. 테스트 빌더 역할이므로 파라미터 수 임계치(6) 초과는 의도적. */
+    @Suppress("LongParameterList")
     fun baseIssue(
         id: UUID = UUID.randomUUID(),
         summary: String = "기본 요약",
@@ -50,31 +51,32 @@ class IssueChangeDetectorTest : DescribeSpec({
         securityLevelId: UUID? = null,
         typeIdValue: Long = 1L,
         customFields: Map<String, Any?> = emptyMap(),
-    ): Issue = Issue(
-        id = IssueId(id),
-        key = IssueKey("ATLAS-1"),
-        projectId = projectId,
-        summary = summary,
-        reporterId = reporterId,
-        currentStateKey = currentStateKey,
-        version = 1L,
-        deletedAt = null,
-        createdAt = Instant.now(),
-        updatedAt = Instant.now(),
-        typeId = IssueTypeId(typeIdValue),
-        description = description,
-        priority = priority,
-        labels = labels,
-        environment = environment,
-        impact = impact,
-        assigneeId = if (assigneeId != null) ActorId(assigneeId) else null,
-        resolutionId = resolutionId,
-        componentIds = componentIds,
-        affectsVersionIds = affectsVersionIds,
-        fixVersionIds = fixVersionIds,
-        securityLevelId = securityLevelId,
-        customFields = customFields,
-    )
+    ): Issue =
+        Issue(
+            id = IssueId(id),
+            key = IssueKey("ATLAS-1"),
+            projectId = projectId,
+            summary = summary,
+            reporterId = reporterId,
+            currentStateKey = currentStateKey,
+            version = 1L,
+            deletedAt = null,
+            createdAt = Instant.now(),
+            updatedAt = Instant.now(),
+            typeId = IssueTypeId(typeIdValue),
+            description = description,
+            priority = priority,
+            labels = labels,
+            environment = environment,
+            impact = impact,
+            assigneeId = if (assigneeId != null) ActorId(assigneeId) else null,
+            resolutionId = resolutionId,
+            componentIds = componentIds,
+            affectsVersionIds = affectsVersionIds,
+            fixVersionIds = fixVersionIds,
+            securityLevelId = securityLevelId,
+            customFields = customFields,
+        )
 
     // ── 라이프사이클 마커 ───────────────────────────────────────────────────────
 
@@ -387,12 +389,13 @@ class IssueChangeDetectorTest : DescribeSpec({
         it("IssueChangeGroup 생성 — actorId nullable") {
             val issue = baseIssue()
             val items = listOf(IssueChangeItem(field = "priority", fromValue = "3", toValue = "1"))
-            val group = IssueChangeGroup(
-                issueId = issue.id.value,
-                issueKey = issue.key.value,
-                actorId = null,
-                items = items,
-            )
+            val group =
+                IssueChangeGroup(
+                    issueId = issue.id.value,
+                    issueKey = issue.key.value,
+                    actorId = null,
+                    items = items,
+                )
 
             group.issueId shouldBe issue.id.value
             group.issueKey shouldBe issue.key.value
@@ -402,12 +405,13 @@ class IssueChangeDetectorTest : DescribeSpec({
 
         it("IssueChangeGroup 생성 — actorId 지정") {
             val actorId = UUID.randomUUID()
-            val group = IssueChangeGroup(
-                issueId = UUID.randomUUID(),
-                issueKey = "ATLAS-1",
-                actorId = actorId,
-                items = emptyList(),
-            )
+            val group =
+                IssueChangeGroup(
+                    issueId = UUID.randomUUID(),
+                    issueKey = "ATLAS-1",
+                    actorId = actorId,
+                    items = emptyList(),
+                )
 
             group.actorId shouldBe actorId
         }

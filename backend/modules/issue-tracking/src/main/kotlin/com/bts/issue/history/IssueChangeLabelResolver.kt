@@ -48,7 +48,7 @@ class IssueChangeLabelResolver(
     private val log = LoggerFactory.getLogger(javaClass)
 
     /** ID 배열 JSON 파싱에 사용하는 패턴 — `"uuid"` 형태의 토큰 추출. */
-    private val UUID_TOKEN_REGEX = Regex(""""([0-9a-fA-F\-]{36})"""")
+    private val uuidTokenRegex = Regex(""""([0-9a-fA-F\-]{36})"""")
 
     /**
      * [items] 목록에서 issue-tracking 소유 필드의 라벨을 채운 새 목록을 반환한다.
@@ -66,12 +66,12 @@ class IssueChangeLabelResolver(
         projectId: UUID,
     ): List<IssueChangeItem> =
         items.map { item ->
-            when {
-                item.field == FIELD_TYPE -> resolveType(item)
-                item.field == FIELD_RESOLUTION -> resolveResolution(item)
-                item.field == FIELD_COMPONENTS -> resolveComponents(item, projectId)
-                item.field == FIELD_AFFECTS_VERSIONS -> resolveVersions(item, projectId)
-                item.field == FIELD_FIX_VERSIONS -> resolveVersions(item, projectId)
+            when (item.field) {
+                FIELD_TYPE -> resolveType(item)
+                FIELD_RESOLUTION -> resolveResolution(item)
+                FIELD_COMPONENTS -> resolveCollectionField(item, ::lookupComponentNames, projectId)
+                FIELD_AFFECTS_VERSIONS -> resolveCollectionField(item, ::lookupVersionNames, projectId)
+                FIELD_FIX_VERSIONS -> resolveCollectionField(item, ::lookupVersionNames, projectId)
                 else -> item
             }
         }
@@ -90,42 +90,46 @@ class IssueChangeLabelResolver(
             toLabel = lookupResolutionName(item.toValue),
         )
 
-    private fun resolveComponents(
+    /**
+     * 컬렉션 필드(components, affectsVersions, fixVersions) 라벨을 조회 함수를 통해 채운다.
+     * components 와 versions 가 동형 구조이므로 [lookup] 함수를 파라미터로 받아 통합한다.
+     *
+     * @param item 원본 변경 항목.
+     * @param lookup 단일 값(raw JSON 배열)을 표시 라벨로 변환하는 함수.
+     * @return 라벨이 채워진 새 [IssueChangeItem].
+     */
+    private fun resolveCollectionField(
         item: IssueChangeItem,
+        lookup: (String?, UUID) -> String?,
         projectId: UUID,
     ): IssueChangeItem =
         item.copy(
-            fromLabel = lookupComponentNames(item.fromValue, projectId),
-            toLabel = lookupComponentNames(item.toValue, projectId),
-        )
-
-    private fun resolveVersions(
-        item: IssueChangeItem,
-        projectId: UUID,
-    ): IssueChangeItem =
-        item.copy(
-            fromLabel = lookupVersionNames(item.fromValue, projectId),
-            toLabel = lookupVersionNames(item.toValue, projectId),
+            fromLabel = lookup(item.fromValue, projectId),
+            toLabel = lookup(item.toValue, projectId),
         )
 
     // ── lookup 헬퍼 ──────────────────────────────────────────────────────────────
 
+    // 라벨 lookup 실패는 예외 종류에 관계없이 label=null graceful degrade 정책 — 이력 기록을 막으면 안 됨.
+    @Suppress("TooGenericExceptionCaught")
     private fun lookupTypeName(value: String?): String? {
         val id = value?.toLongOrNull() ?: return null
         return try {
             issueTypeRepository.findById(IssueTypeId(id))?.name
         } catch (e: Exception) {
-            log.warn("IssueType lookup failed for id={}: {}", id, e.message)
+            log.warn("IssueType lookup failed for id={}", id, e)
             null
         }
     }
 
+    // 라벨 lookup 실패는 예외 종류에 관계없이 label=null graceful degrade 정책 — 이력 기록을 막으면 안 됨.
+    @Suppress("TooGenericExceptionCaught")
     private fun lookupResolutionName(value: String?): String? {
         val uuid = parseUuidOrNull(value) ?: return null
         return try {
             resolutionRepository.findById(uuid)?.name
         } catch (e: Exception) {
-            log.warn("Resolution lookup failed for id={}: {}", uuid, e.message)
+            log.warn("Resolution lookup failed for id={}", uuid, e)
             null
         }
     }
@@ -137,14 +141,16 @@ class IssueChangeLabelResolver(
         val ids = parseUuidArrayOrNull(value) ?: return null
         val names =
             ids.mapNotNull { id ->
+                // 라벨 lookup 실패는 예외 종류에 관계없이 label=null graceful degrade 정책 — 이력 기록을 막으면 안 됨.
+                @Suppress("TooGenericExceptionCaught")
                 try {
                     componentRepository.findById(id, projectId)?.name
                 } catch (e: Exception) {
-                    log.warn("Component lookup failed for id={} projectId={}: {}", id, projectId, e.message)
+                    log.warn("Component lookup failed for id={} projectId={}", id, projectId, e)
                     null
                 }
             }.sorted()
-        return if (names.isEmpty()) null else "[${ names.joinToString(", ") }]"
+        return if (names.isEmpty()) null else "[${names.joinToString(", ")}]"
     }
 
     private fun lookupVersionNames(
@@ -154,18 +160,22 @@ class IssueChangeLabelResolver(
         val ids = parseUuidArrayOrNull(value) ?: return null
         val names =
             ids.mapNotNull { id ->
+                // 라벨 lookup 실패는 예외 종류에 관계없이 label=null graceful degrade 정책 — 이력 기록을 막으면 안 됨.
+                @Suppress("TooGenericExceptionCaught")
                 try {
                     versionRepository.findById(id, projectId)?.name
                 } catch (e: Exception) {
-                    log.warn("Version lookup failed for id={} projectId={}: {}", id, projectId, e.message)
+                    log.warn("Version lookup failed for id={} projectId={}", id, projectId, e)
                     null
                 }
             }.sorted()
-        return if (names.isEmpty()) null else "[${ names.joinToString(", ") }]"
+        return if (names.isEmpty()) null else "[${names.joinToString(", ")}]"
     }
 
     // ── 파싱 헬퍼 ─────────────────────────────────────────────────────────────────
 
+    // UUID 파싱 실패는 정상 제어 흐름 — 형식 불일치 시 null 반환이 의도이므로 예외를 로그 없이 무시한다.
+    @Suppress("SwallowedException")
     private fun parseUuidOrNull(value: String?): UUID? {
         if (value == null) return null
         return try {
@@ -178,12 +188,12 @@ class IssueChangeLabelResolver(
     private fun parseUuidArrayOrNull(value: String?): List<UUID>? {
         if (value == null) return null
         return try {
-            UUID_TOKEN_REGEX.findAll(value)
+            uuidTokenRegex.findAll(value)
                 .map { UUID.fromString(it.groupValues[1]) }
                 .toList()
                 .takeIf { it.isNotEmpty() }
-        } catch (e: Exception) {
-            log.warn("UUID array parse failed for value='{}': {}", value, e.message)
+        } catch (e: IllegalArgumentException) {
+            log.warn("UUID array parse failed for value='{}'", value, e)
             null
         }
     }

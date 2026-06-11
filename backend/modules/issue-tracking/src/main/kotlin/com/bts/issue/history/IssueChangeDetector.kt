@@ -5,7 +5,6 @@ package com.bts.issue.history
 import com.bts.issue.domain.Issue
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
-import java.util.UUID
 
 /** customFields 필드명 prefix. */
 private const val CUSTOM_FIELD_PREFIX = "customField:"
@@ -37,7 +36,6 @@ private const val LIFECYCLE_DELETED = "deleted"
  */
 @Component
 class IssueChangeDetector {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     companion object {
@@ -45,18 +43,19 @@ class IssueChangeDetector {
          * 스칼라 필드명 → Issue 값 추출 함수 매핑 테이블.
          * 새 스칼라 필드 추가 시 이 목록에만 추가하면 된다.
          */
-        private val SCALAR_FIELD_EXTRACTORS: List<Pair<String, (Issue) -> String?>> = listOf(
-            "summary" to { it.summary },
-            "type" to { it.typeId.value.toString() },
-            "status" to { it.currentStateKey },
-            "description" to { it.description },
-            "priority" to { it.priority.toString() },
-            "environment" to { it.environment },
-            "impact" to { it.impact?.toString() },
-            "assignee" to { it.assigneeId?.value?.toString() },
-            "resolution" to { it.resolutionId?.toString() },
-            "securityLevel" to { it.securityLevelId?.toString() },
-        )
+        private val SCALAR_FIELD_EXTRACTORS: List<Pair<String, (Issue) -> String?>> =
+            listOf(
+                "summary" to { it.summary },
+                "type" to { it.typeId.value.toString() },
+                "status" to { it.currentStateKey },
+                "description" to { it.description },
+                "priority" to { it.priority.toString() },
+                "environment" to { it.environment },
+                "impact" to { it.impact?.toString() },
+                "assignee" to { it.assigneeId?.value?.toString() },
+                "resolution" to { it.resolutionId?.toString() },
+                "securityLevel" to { it.securityLevelId?.toString() },
+            )
     }
 
     /**
@@ -92,7 +91,10 @@ class IssueChangeDetector {
      * @param after 변경 후 이슈 상태.
      * @return 변경된 필드만 담은 [IssueChangeItem] 리스트.
      */
-    fun detect(before: Issue, after: Issue): List<IssueChangeItem> {
+    fun detect(
+        before: Issue,
+        after: Issue,
+    ): List<IssueChangeItem> {
         val items = mutableListOf<IssueChangeItem>()
 
         detectScalarFields(before, after, items)
@@ -120,9 +122,24 @@ class IssueChangeDetector {
         items: MutableList<IssueChangeItem>,
     ) {
         addIfCollectionChanged(items, "labels", before.labels.map { it }, after.labels.map { it })
-        addIfCollectionChanged(items, "components", before.componentIds.map { it.toString() }, after.componentIds.map { it.toString() })
-        addIfCollectionChanged(items, "affectsVersions", before.affectsVersionIds.map { it.toString() }, after.affectsVersionIds.map { it.toString() })
-        addIfCollectionChanged(items, "fixVersions", before.fixVersionIds.map { it.toString() }, after.fixVersionIds.map { it.toString() })
+        addIfCollectionChanged(
+            items,
+            "components",
+            before.componentIds.map { it.toString() },
+            after.componentIds.map { it.toString() },
+        )
+        addIfCollectionChanged(
+            items,
+            "affectsVersions",
+            before.affectsVersionIds.map { it.toString() },
+            after.affectsVersionIds.map { it.toString() },
+        )
+        addIfCollectionChanged(
+            items,
+            "fixVersions",
+            before.fixVersionIds.map { it.toString() },
+            after.fixVersionIds.map { it.toString() },
+        )
     }
 
     private fun detectCustomFields(
@@ -181,8 +198,9 @@ class IssueChangeDetector {
     }
 
     /** 문자열 리스트를 정렬된 JSON 배열 문자열로 직렬화한다. 예: `["a","b"]`. */
-    private fun toJsonArray(list: List<String>): String =
-        list.joinToString(separator = ",", prefix = "[", postfix = "]") { "\"$it\"" }
+    private fun toJsonArray(list: List<String>): String {
+        return list.joinToString(separator = ",", prefix = "[", postfix = "]") { "\"$it\"" }
+    }
 
     /**
      * customFields 의 단일 값을 문자열로 직렬화한다.
@@ -190,10 +208,11 @@ class IssueChangeDetector {
      * - String → 값 그대로
      * - 그 외 복합 타입 → toString() (T3 이후 필요 시 JSON 직렬화로 고도화 가능)
      */
-    private fun serializeCustomFieldValue(value: Any?): String? =
-        when (value) {
+    private fun serializeCustomFieldValue(value: Any?): String? {
+        return when (value) {
             null -> null
             is String -> value
             else -> value.toString()
         }
+    }
 }

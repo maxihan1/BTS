@@ -375,16 +375,7 @@ class IssueApplicationService(
 
         // 보안 등급 변경(FR-PM-06) — Unchanged 외에는 SET_SECURITY 가드 + (Assign 시) 스킴 소속 422 를
         // 부수 효과(field update) 이전에 fail-fast 로 검증한다. 미보유 403, 미소속 422.
-        if (request.securityLevel is SecurityLevelPatch.Assign) {
-            assertSecurityLevelAssignable(
-                actor = actor,
-                scope = IssueScope.Issue(key.value),
-                projectKey = key.projectPrefix,
-                levelId = request.securityLevel.levelId,
-            )
-        } else if (request.securityLevel is SecurityLevelPatch.Clear) {
-            assertPermission(actor, IssuePermission.SET_SECURITY, IssueScope.Issue(key.value))
-        }
+        assertSecurityLevelPatch(actor, key, request.securityLevel)
 
         // typeId non-null 이면 활성 타입 존재 검증. null=변경없음 (resolveTypeId 의 null=fallback 과 다른 시맨틱).
         if (request.typeId != null) {
@@ -585,10 +576,11 @@ class IssueApplicationService(
             ),
         )
         // after 는 전이 결과를 issue.copy 로 구성 — 재조회 대신 in-memory 구성하여 쿼리를 줄인다.
-        val afterTransitioned = issue.copy(
-            currentStateKey = plan.toStateKey,
-            resolutionId = validatedResolutionId,
-        )
+        val afterTransitioned =
+            issue.copy(
+                currentStateKey = plan.toStateKey,
+                resolutionId = validatedResolutionId,
+            )
         recordHistory(before = issue, after = afterTransitioned, actor = actor, projectId = issue.projectId)
         log.info(
             "issue_transitioned key={} from={} to={} actor={}",
@@ -1180,6 +1172,37 @@ class IssueApplicationService(
         assertPermission(actor, IssuePermission.SET_SECURITY, scope)
         if (!securityDirectory.levelBelongsToProjectScheme(levelId, projectKey)) {
             throw IssueSecurityLevelNotInSchemeException(levelId)
+        }
+    }
+
+    /**
+     * 보안 등급 PATCH 의도에 따라 권한을 사전 검증한다 (fail-fast, FR-PM-06).
+     *
+     * - [SecurityLevelPatch.Unchanged] — 검증 불필요.
+     * - [SecurityLevelPatch.Clear] — SET_SECURITY 권한 검증만 수행.
+     * - [SecurityLevelPatch.Assign] — SET_SECURITY 권한 + 스킴 소속 검증.
+     *
+     * @param actor 행위자.
+     * @param key 대상 이슈 키.
+     * @param patch 보안 등급 수정 의도.
+     */
+    private fun assertSecurityLevelPatch(
+        actor: ActorId,
+        key: IssueKey,
+        patch: SecurityLevelPatch,
+    ) {
+        when (patch) {
+            is SecurityLevelPatch.Assign -> {
+                assertSecurityLevelAssignable(
+                    actor = actor,
+                    scope = IssueScope.Issue(key.value),
+                    projectKey = key.projectPrefix,
+                    levelId = patch.levelId,
+                )
+            }
+            is SecurityLevelPatch.Clear ->
+                assertPermission(actor, IssuePermission.SET_SECURITY, IssueScope.Issue(key.value))
+            is SecurityLevelPatch.Unchanged -> Unit
         }
     }
 
