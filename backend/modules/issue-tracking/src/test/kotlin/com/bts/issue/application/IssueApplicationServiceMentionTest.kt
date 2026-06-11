@@ -26,7 +26,6 @@ import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.slot
 import io.mockk.verify
 import java.time.Clock
 import java.time.Instant
@@ -162,8 +161,9 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
                 object : UserLookupPort {
                     override fun exists(userId: UUID): Boolean = true
 
-                    override fun findIdsByUsernames(usernames: Set<String>): Map<String, UUID> =
-                        manyIds.filterKeys { it in usernames }
+                    override fun findIdsByUsernames(usernames: Set<String>): Map<String, UUID> {
+                        return manyIds.filterKeys { it in usernames }
+                    }
                 }
 
             val bulkRepo = mockk<IssueRepository>()
@@ -189,11 +189,12 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
             // 51개 멘션 본문 구성 — 기존 description null
             val bulkDescription = manyUsernames.joinToString(" ") { "@$it" }
             val existingIssue = makeIssue(description = null)
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                description = bulkDescription,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    description = bulkDescription,
+                )
 
             beforeEach {
                 every { bulkRepo.findActiveComponentIdsByIssue(any()) } returns emptyList()
