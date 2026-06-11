@@ -112,11 +112,11 @@ class AuthControllerTest {
     private val refreshTokenRaw = "ab".repeat(32)
 
     // FR-MF-01 Task 10 공용 고정값 (로그인 2단계 / verify 테스트).
-    private val USER_ID: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
-    private val SESSION_ID: UUID = UUID.fromString("22222222-2222-2222-2222-222222222222")
-    private val ACCESS_TOKEN = "eyJhbGciOiJSUzI1NiJ9.test.access"
-    private val CHALLENGE_TOKEN = "eyJhbGciOiJSUzI1NiJ9.challenge.token"
-    private val JTI = "33333333-3333-3333-3333-333333333333"
+    private val mfaUserId: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
+    private val mfaSessionId: UUID = UUID.fromString("22222222-2222-2222-2222-222222222222")
+    private val mfaAccessToken = "eyJhbGciOiJSUzI1NiJ9.test.access"
+    private val mfaChallengeTokenValue = "eyJhbGciOiJSUzI1NiJ9.challenge.token"
+    private val mfaJti = "33333333-3333-3333-3333-333333333333"
 
     @TestConfiguration
     class SecurityBeans {
@@ -410,8 +410,8 @@ class AuthControllerTest {
      */
     @Test
     fun `login with TOTP disabled returns normal token response without mfa_required (no regression)`() {
-        stubLoginSuccess(USER_ID, SESSION_ID, ACCESS_TOKEN)
-        `when`(mfaService.isEnabled(USER_ID)).thenReturn(false)
+        stubLoginSuccess(mfaUserId, mfaSessionId, mfaAccessToken)
+        `when`(mfaService.isEnabled(mfaUserId)).thenReturn(false)
 
         mockMvc.perform(
             post("/api/v1/auth/login")
@@ -419,7 +419,7 @@ class AuthControllerTest {
                 .content("""{"provider":"local","username":"alice","password":"secret"}"""),
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.access_token").value(ACCESS_TOKEN))
+            .andExpect(jsonPath("$.access_token").value(mfaAccessToken))
             .andExpect(jsonPath("$.token_type").value("Bearer"))
             .andExpect(jsonPath("$.mfa_required").doesNotExist())
             .andExpect(cookie().exists("refresh_token"))
@@ -436,9 +436,9 @@ class AuthControllerTest {
      */
     @Test
     fun `login with TOTP enabled returns 200 mfa_required with challenge token and no session`() {
-        stubLoginSuccess(USER_ID, SESSION_ID, ACCESS_TOKEN)
-        `when`(mfaService.isEnabled(USER_ID)).thenReturn(true)
-        `when`(mfaChallengeTokenService.issueChallenge(USER_ID, "local")).thenReturn(CHALLENGE_TOKEN)
+        stubLoginSuccess(mfaUserId, mfaSessionId, mfaAccessToken)
+        `when`(mfaService.isEnabled(mfaUserId)).thenReturn(true)
+        `when`(mfaChallengeTokenService.issueChallenge(mfaUserId, "local")).thenReturn(mfaChallengeTokenValue)
 
         mockMvc.perform(
             post("/api/v1/auth/login")
@@ -447,12 +447,12 @@ class AuthControllerTest {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.mfa_required").value(true))
-            .andExpect(jsonPath("$.mfa_challenge_token").value(CHALLENGE_TOKEN))
+            .andExpect(jsonPath("$.mfa_challenge_token").value(mfaChallengeTokenValue))
             .andExpect(jsonPath("$.expires_in").exists())
             .andExpect(jsonPath("$.access_token").doesNotExist())
             .andExpect(cookie().doesNotExist("refresh_token"))
 
-        verify(mfaChallengeTokenService).issueChallenge(USER_ID, "local")
+        verify(mfaChallengeTokenService).issueChallenge(mfaUserId, "local")
         // 정식 세션/refresh 토큰은 발급되지 않는다(2단계 통과 전).
         verify(sessionService, never()).create(
             anyUuid(),
@@ -474,14 +474,14 @@ class AuthControllerTest {
     fun `verify with correct code returns 200 access_token and creates session with mfaVerified true`() {
         val mockSession =
             mock(Session::class.java).also {
-                `when`(it.id).thenReturn(SESSION_ID)
-                `when`(it.userId).thenReturn(USER_ID)
+                `when`(it.id).thenReturn(mfaSessionId)
+                `when`(it.userId).thenReturn(mfaUserId)
                 `when`(it.providerId).thenReturn("local")
             }
-        `when`(mfaChallengeTokenService.validate(CHALLENGE_TOKEN))
-            .thenReturn(MfaChallengeClaims(userId = USER_ID, providerId = "local", jti = JTI))
-        `when`(mfaChallengeTokenService.consume(JTI)).thenReturn(true)
-        `when`(mfaService.verifyLogin(USER_ID, "123456")).thenReturn(VerifyResult.Success)
+        `when`(mfaChallengeTokenService.validate(mfaChallengeTokenValue))
+            .thenReturn(MfaChallengeClaims(userId = mfaUserId, providerId = "local", jti = mfaJti))
+        `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(true)
+        `when`(mfaService.verifyLogin(mfaUserId, "123456")).thenReturn(VerifyResult.Success)
         `when`(
             sessionService.create(
                 anyUuid(),
@@ -500,15 +500,15 @@ class AuthControllerTest {
                 org.mockito.ArgumentMatchers.anyList(),
                 anyBool(),
             ),
-        ).thenReturn(ACCESS_TOKEN)
+        ).thenReturn(mfaAccessToken)
 
         mockMvc.perform(
             post("/api/v1/auth/mfa/verify")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"mfa_challenge_token":"$CHALLENGE_TOKEN","code":"123456"}"""),
+                .content("""{"mfa_challenge_token":"$mfaChallengeTokenValue","code":"123456"}"""),
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.access_token").value(ACCESS_TOKEN))
+            .andExpect(jsonPath("$.access_token").value(mfaAccessToken))
             .andExpect(jsonPath("$.token_type").value("Bearer"))
             .andExpect(cookie().exists("refresh_token"))
             .andExpect(cookie().httpOnly("refresh_token", true))
@@ -531,15 +531,15 @@ class AuthControllerTest {
      */
     @Test
     fun `verify with wrong code returns 401 invalid_code`() {
-        `when`(mfaChallengeTokenService.validate(CHALLENGE_TOKEN))
-            .thenReturn(MfaChallengeClaims(userId = USER_ID, providerId = "local", jti = JTI))
-        `when`(mfaChallengeTokenService.consume(JTI)).thenReturn(true)
-        `when`(mfaService.verifyLogin(USER_ID, "000000")).thenReturn(VerifyResult.InvalidCode)
+        `when`(mfaChallengeTokenService.validate(mfaChallengeTokenValue))
+            .thenReturn(MfaChallengeClaims(userId = mfaUserId, providerId = "local", jti = mfaJti))
+        `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(true)
+        `when`(mfaService.verifyLogin(mfaUserId, "000000")).thenReturn(VerifyResult.InvalidCode)
 
         mockMvc.perform(
             post("/api/v1/auth/mfa/verify")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"mfa_challenge_token":"$CHALLENGE_TOKEN","code":"000000"}"""),
+                .content("""{"mfa_challenge_token":"$mfaChallengeTokenValue","code":"000000"}"""),
         )
             .andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.error").value("invalid_code"))
@@ -558,12 +558,12 @@ class AuthControllerTest {
      */
     @Test
     fun `verify with expired or forged challenge token returns 401`() {
-        `when`(mfaChallengeTokenService.validate(CHALLENGE_TOKEN)).thenReturn(null)
+        `when`(mfaChallengeTokenService.validate(mfaChallengeTokenValue)).thenReturn(null)
 
         mockMvc.perform(
             post("/api/v1/auth/mfa/verify")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"mfa_challenge_token":"$CHALLENGE_TOKEN","code":"123456"}"""),
+                .content("""{"mfa_challenge_token":"$mfaChallengeTokenValue","code":"123456"}"""),
         )
             .andExpect(status().isUnauthorized)
 
@@ -576,14 +576,14 @@ class AuthControllerTest {
      */
     @Test
     fun `verify with already-consumed challenge token returns 401 and skips verifyLogin`() {
-        `when`(mfaChallengeTokenService.validate(CHALLENGE_TOKEN))
-            .thenReturn(MfaChallengeClaims(userId = USER_ID, providerId = "local", jti = JTI))
-        `when`(mfaChallengeTokenService.consume(JTI)).thenReturn(false)
+        `when`(mfaChallengeTokenService.validate(mfaChallengeTokenValue))
+            .thenReturn(MfaChallengeClaims(userId = mfaUserId, providerId = "local", jti = mfaJti))
+        `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(false)
 
         mockMvc.perform(
             post("/api/v1/auth/mfa/verify")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"mfa_challenge_token":"$CHALLENGE_TOKEN","code":"123456"}"""),
+                .content("""{"mfa_challenge_token":"$mfaChallengeTokenValue","code":"123456"}"""),
         )
             .andExpect(status().isUnauthorized)
 
@@ -596,15 +596,15 @@ class AuthControllerTest {
      */
     @Test
     fun `verify when rate-limited returns 429 too_many_attempts`() {
-        `when`(mfaChallengeTokenService.validate(CHALLENGE_TOKEN))
-            .thenReturn(MfaChallengeClaims(userId = USER_ID, providerId = "local", jti = JTI))
-        `when`(mfaChallengeTokenService.consume(JTI)).thenReturn(true)
-        `when`(mfaService.verifyLogin(USER_ID, "123456")).thenReturn(VerifyResult.TooManyAttempts)
+        `when`(mfaChallengeTokenService.validate(mfaChallengeTokenValue))
+            .thenReturn(MfaChallengeClaims(userId = mfaUserId, providerId = "local", jti = mfaJti))
+        `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(true)
+        `when`(mfaService.verifyLogin(mfaUserId, "123456")).thenReturn(VerifyResult.TooManyAttempts)
 
         mockMvc.perform(
             post("/api/v1/auth/mfa/verify")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"mfa_challenge_token":"$CHALLENGE_TOKEN","code":"123456"}"""),
+                .content("""{"mfa_challenge_token":"$mfaChallengeTokenValue","code":"123456"}"""),
         )
             .andExpect(status().isTooManyRequests)
             .andExpect(jsonPath("$.error").value("too_many_attempts"))
