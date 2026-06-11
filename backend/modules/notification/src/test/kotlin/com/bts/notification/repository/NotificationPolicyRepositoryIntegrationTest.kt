@@ -9,10 +9,10 @@ import com.bts.notification.domain.RecipientRole
 import com.bts.notification.support.NotificationTestcontainersBase
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.jooq.exception.DataAccessException
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
 import org.junit.jupiter.api.MethodOrderer
-import org.springframework.dao.DuplicateKeyException
 import java.time.Instant
 import java.util.UUID
 
@@ -214,8 +214,11 @@ class NotificationPolicyRepositoryIntegrationTest : NotificationTestcontainersBa
             updatedAt = now,
         )
 
-        // NULLS NOT DISTINCT UNIQUE 제약에 의해 전역 중복도 잡힘 (memory: pg-null-distinct-on-conflict-idempotency)
+        // NULLS NOT DISTINCT UNIQUE 제약에 의해 전역 중복도 잡힘 (memory: pg-null-distinct-on-conflict-idempotency).
+        // 통합 테스트는 순수 jOOQ DSLContext 를 사용하므로 Spring 예외 변환 체인이 없다.
+        // jOOQ 가 던지는 DataAccessException (IntegrityConstraintViolationException 상위) 을 직접 검증.
+        // 프로덕션 환경(Spring DataSource + SQLExceptionTranslator 연결)에서는 DuplicateKeyException 으로 변환된다.
         assertThatThrownBy { repository.insert(duplicate) }
-            .isInstanceOf(DuplicateKeyException::class.java)
+            .isInstanceOf(DataAccessException::class.java)
     }
 }
