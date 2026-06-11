@@ -45,9 +45,20 @@ FR-HS-01은 `IssueChangeHistoryRepository.findByIssue(issueId): List<IssueChange
 5. 정렬/페이징 — 최신순 + 페이징 필요 여부
 6. 생명주기 이벤트(created/soft_deleted) 표시 방식
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-11-fr-hs-02-history-view.md](../specs/2026-06-11-fr-hs-02-history-view.md)
+
+핵심 요약.
+- backend `GET /api/v1/issues/{key}/changelog` (페이징·최신순) + 단건 조회와 동일 view 권한 가드(실패 404). actor 표시명은 백엔드가 `UserLookupPort`로 해석(actorName, graceful degrade).
+- DTO = Spring Page<ChangeGroupResponse>{ actorId, actorName, createdAt, items[{field, fromValue, toValue, fromLabel, toLabel}] }. 기존 `GET /api/v1/issues` list 응답의 Page 직렬화 형식에 1:1로 맞춤.
+- 프론트 = 이슈 상세 하단 전체폭 "변경 이력" 섹션(접기/펼치기), 그룹별 타임라인, "더 보기" 누적 페이징.
+- 값 표시명 = #120 박제 label(assignee/securityLevel) 우선, 나머지(priority·impact·type·components·versions·resolution)는 **프론트가 페이지 로드 참조 데이터로 read-time 해석**(삭제 엔티티 폴백). lifecycle(created/deleted) 특수 렌더.
+- Maxi 결정 3건(2026-06-11): actor=백엔드 해석 / UI=하단 전체폭 / 로딩=페이징. gap 결정 1건: 라벨 없는 필드=프론트 해석.
+
+## Brainstorming Check
+
+✅ 통과 (1 iteration). gap — 라벨 미박제 필드(priority Int·type ID·UUID 등) raw 노출 → Maxi 결정으로 프론트 read-time 해석 채택해 해소.
 
 ## Plan (← /bts-plan 채움)
 
