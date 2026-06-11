@@ -106,6 +106,12 @@ class MfaTotpIntegrationTest {
         /** MFA salt — `Encryptors.stronger` 가 hex 문자열을 요구하므로 유효 hex 리터럴. */
         private const val MFA_TEST_SALT = "deadbeefcafef00d"
 
+        /** RFC 6238 time-step 길이(초) — 운영 TotpService.PERIOD_SECONDS 와 동일. */
+        const val TOTP_PERIOD_SECONDS = 30L
+
+        /** RFC 6238 코드 자릿수 — 운영 TotpService.DIGITS 와 동일. */
+        const val TOTP_DIGITS = 6
+
         @DynamicPropertySource
         @JvmStatic
         fun configureProperties(registry: DynamicPropertyRegistry) {
@@ -431,13 +437,5 @@ class MfaTotpIntegrationTest {
             .find(json)
             ?.groupValues
             ?.get(1) == "true"
-    }
-
-    private companion object {
-        /** RFC 6238 time-step 길이(초) — 운영 TotpService.PERIOD_SECONDS 와 동일. */
-        const val TOTP_PERIOD_SECONDS = 30L
-
-        /** RFC 6238 코드 자릿수 — 운영 TotpService.DIGITS 와 동일. */
-        const val TOTP_DIGITS = 6
     }
 }
