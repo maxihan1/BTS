@@ -1,5 +1,5 @@
 // NotificationPolicyTable 컴포넌트 단위 테스트 — 라벨·토글·인라인삭제·빈상태
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { NotificationPolicy } from '@/api/notification-policies'
@@ -44,12 +44,12 @@ const policyUnknown: NotificationPolicy = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('NotificationPolicyTable', () => {
-  let onToggle: ReturnType<typeof vi.fn>
-  let onDelete: ReturnType<typeof vi.fn>
+  let onToggle: Mock<(id: string, nextEnabled: boolean) => void>
+  let onDelete: Mock<(id: string) => void>
 
   beforeEach(() => {
-    onToggle = vi.fn()
-    onDelete = vi.fn()
+    onToggle = vi.fn<(id: string, nextEnabled: boolean) => void>()
+    onDelete = vi.fn<(id: string) => void>()
   })
 
   // ── 빈 상태 ──────────────────────────────────────────────────────────────
