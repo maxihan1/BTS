@@ -47,7 +47,11 @@ import java.util.UUID
  * - E2E-6. GET /catalog → 9 eventTypes + publishable 포함
  */
 @SpringBootTest(
-    classes = [NotificationTestBootApplication::class],
+    classes = [
+        NotificationTestBootApplication::class,
+        NotificationTestcontainersConfig::class,
+        TestPermissionConfig::class,
+    ],
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
 )
 @ActiveProfiles("test")
