@@ -34,9 +34,18 @@ fr-index. `| FR-NT-01 | 이벤트별 알림 정책 | 필수 | notification-dashb
 - **기존 결정 충돌**: 없음 (notification BC 첫 ADR)
 - **관련 ADR**: [docs/decisions/2026-06-11-notification-policy-bc-bootstrap.md](../decisions/2026-06-11-notification-policy-bc-bootstrap.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-11-fr-nt-01-notification.md](../specs/2026-06-11-fr-nt-01-notification.md)
+
+핵심 3줄 요약.
+- notification 새 BC 모듈 부트스트랩 + `notification_policies(project_id?, event_type, recipient_role, channel, enabled)` 테이블 + SDD §9.1.2 매트릭스 시드(IN_APP)
+- 3 enum(EventType 9종/RecipientRole/Channel 5종) + 정책 CRUD API 4종 + 카탈로그 API + 평가 엔진(전역/프로젝트 override = event_type 단위 replace)
+- 모든 CRUD 권한 = SYSTEM_ADMIN(`SystemPermissionResolver`). 실제 전달/소비는 FR-NT-02+로 분리. 백엔드 D1~D5 (UI/E2E 후속 분리 권장)
+
+## Brainstorming Check
+
+✅ 통과 (self-review 1회 iteration). 발견 gap 1건 — 프로젝트별 정책 권한 배선이 cross-BC(identity-access prod adapter 추가)가 되어 "한 PR=한 BC" 충돌. Maxi 결정으로 해소(모든 CRUD = SYSTEM_ADMIN, 단일 BC). 데이터 모델 프로젝트별 override는 유지.
 
 ## Plan (← /bts-plan 채움)
 
