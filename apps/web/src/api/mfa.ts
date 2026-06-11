@@ -1,4 +1,4 @@
-// MFA(TOTP) API 클라이언트 — setup/status/enable/disable/verify 5개 함수
+// MFA API 클라이언트 — TOTP(setup/enable/disable) + 백업코드(generate/status) + verify
 import { apiFetch, apiGet, ApiError } from './client'
 import { readXsrfToken } from './sessions'
 import {
