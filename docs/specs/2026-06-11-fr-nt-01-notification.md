@@ -132,11 +132,10 @@ evaluate(eventType: NotificationEventType, projectKey: String?): List<PolicyMatc
   PolicyMatch = (recipientRole, channel)
 ```
 
-알고리즘:
-1. projectKey가 주어지고, 그 프로젝트가 `eventType`에 대해 정책을 **1개 이상** 가지면 → 그 프로젝트 정책(enabled=true)만 반환 (전역 무시, replace).
-2. 아니면 → 전역 기본(project_id IS NULL, enabled=true) 반환.
-3. enabled=false는 항상 제외.
-4. 알 수 없는/정책 없는 eventType → 빈 목록.
+알고리즘 (projectKey 우선, replace 방식):
+1. projectKey가 주어지고, 그 프로젝트가 `eventType`에 대해 정책 행을 **1개 이상 보유(enabled 무관)** 하면 → 그 프로젝트의 **활성(enabled=true)** 정책만 반환. 전역은 완전 무시(replace). 행은 있으나 전부 enabled=false면 → **빈 목록**(그 프로젝트는 해당 이벤트 알림 안 함 = 독자 관리, Maxi 확정).
+2. 프로젝트가 해당 eventType 행이 0개 → 전역 기본(project_id IS NULL, enabled=true) 반환.
+3. 알 수 없는 / 전역도 0개인 eventType → 빈 목록.
 
 ## 7. 비기능 요구사항 (NFR)
 
@@ -147,7 +146,7 @@ evaluate(eventType: NotificationEventType, projectKey: String?): List<PolicyMatc
 ## 8. 엣지 케이스
 
 - **EC1**. 동일 (project, event, role, channel) 중복 생성 → 409 (UNIQUE NULLS NOT DISTINCT).
-- **EC2**. 프로젝트 override는 event_type 단위 replace — 프로젝트가 그 event_type에 정책 0개면 전역 fallback.
+- **EC2**. 프로젝트 override는 event_type 단위 replace — 프로젝트가 그 event_type에 행 0개면 전역 fallback. 행 보유(전부 비활성 포함)면 전역 무시(독자 관리), 활성 행만 반환(전부 비활성=빈 목록).
 - **EC3**. enabled=false 정책 — 행 보존, 평가 제외.
 - **EC4**. publishable=false event_type 정책 정의 허용 (S6).
 - **EC5**. 평가 시 알 수 없는 event_type / 정책 0개 → 빈 목록 (예외 아님).

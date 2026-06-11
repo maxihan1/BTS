@@ -119,6 +119,7 @@ fr-index. `| FR-NT-01 | 이벤트별 알림 정책 | 필수 | notification-dashb
 **RED**: 평가 분기 테스트 (스펙 §6 알고리즘)
 - 전역 기본 반환 (projectKey 없음 / 프로젝트가 해당 event_type 정책 0개)
 - 프로젝트 override **replace** — 프로젝트가 event_type 정책 1개+ 보유 시 전역 완전 무시
+- 프로젝트가 event_type 행 보유하나 **전부 enabled=false → 빈 목록**(전역 무시=독자관리, Maxi 확정). eng-review 발견
 - enabled=false 제외
 - 알 수 없는 / 정책 0개 event_type → 빈 목록(예외 아님)
 
@@ -189,4 +190,33 @@ fr-index. `| FR-NT-01 | 이벤트별 알림 정책 | 필수 | notification-dashb
 - 추가 검증: ktlint, detekt(모듈 baseline 동결 — memory: detekt-baseline-module-pattern), 전체 backend 회귀 (`./gradlew :modules:notification:test`)
 - D6 UI / D7 E2E: 후속 PR 분리 권장 (게이트1 Maxi 확인)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-11) — eng 집중 독립 리뷰 (autoplan 스킵, memory: bts-review-plan-autoplan-overkill)
+
+- **Scope challenge** ✅ — 새 BC라 파일 수 많지만 부트스트랩의 필연(overbuilt 아님). SystemPermissionResolver·project-workflow 빌드 템플릿 재사용 양호. UI/E2E 후속 분리로 범위 축소.
+- **아키텍처** ✅ — BC 격리(ArchUnit), pgmq 소비측 분리, 평가 엔진 REST 비노출, SystemPermissionResolver 소비. project_id FK 부재는 BC 격리상 의도(orphan은 평가서 호출 안 됨).
+- **코드품질** ✅ — 레이어 분리 명확, 예외 매핑(409/400/403/404), 메모리 함정(catch-all 핸들러·동명예외·guard 메시지 누출) plan 반영.
+- **테스트** ✅ — 각 task RED 명시, Testcontainers singleton, end-to-end(Task 7), 시드 검증(Task 3).
+- **성능** ✅ — 평가 단일 쿼리 + (event_type, project_id) 부분 인덱스, p95<50ms. 캐시는 FR-NT-02로 분리.
+- **발견 1건 (해소)** — 평가 엔진 override의 enabled 판정 모호(프로젝트 행 보유+전부 비활성 시 동작). Maxi 결정으로 확정: 행 존재=독자관리→전역 무시, 활성 행만 반환(전부 비활성=빈 목록). spec §6·EC2·plan Task 4 반영.
+- **BLOCKER**: 없음
+
+### NOT in scope (명시적 제외)
+
+- pgmq consumer + 실제 채널 전달(EMAIL/IN_APP/SLACK 발송) → FR-NT-02
+- 수신자 역할 → 사용자 목록 해석(RecipientResolver) → FR-NT-03
+- 사용자별 구독 override → FR-NT-04, Inbox 기록 → FR-UX-03
+- 프로젝트 관리자에게 정책 위임(현재 전원 SYSTEM_ADMIN) → 후속 FR
+- 정책 평가 캐시 → FR-NT-02 consumer 성능 단계
+- UI(D6) / E2E(D7) → 후속 PR (게이트1 Maxi 확인)
+
+### What already exists (재사용)
+
+- `SystemPermissionResolver.isSystemAdmin()` (shared-kernel + identity-access prod adapter FR-PM-08) — 권한 게이트 재사용, 신규 0
+- project-workflow `build.gradle.kts` / ArchUnit / jOOQ codegen 패턴 — 모듈 부트스트랩 템플릿
+- issue-tracking/project-workflow pgmq 발행 인프라 — 소비 대상(본 FR은 정책만, 소비는 FR-NT-02)
+
+### 병렬화 (worktree)
+
+단일 notification 모듈 = 단일 컴파일 단위. 별도 worktree 병렬화 이득 없음. wave 내 병렬(T4/T5)은 bts-impl이 처리.
