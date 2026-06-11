@@ -365,6 +365,7 @@ class IssueApplicationService(
      * @throws IssueVersionConflictException 낙관락 충돌 시.
      * @throws IllegalArgumentException priority 가 1..5 범위 밖이거나 impact 가 1..3 범위 밖일 때.
      */
+    @Suppress("LongMethod") // 보안등급 단독 변경 이력 분기 추가로 60줄 한도 초과 — 로직 응집도 유지
     fun updateIssue(
         actor: ActorId,
         key: IssueKey,
@@ -407,7 +408,25 @@ class IssueApplicationService(
         val securityChanged = versionAfterSecurity != request.expectedVersion
         val changedFields = buildChangedFields(existing, request, normalizedLabels, mergedCustomFields)
         if (changedFields.isEmpty()) {
-            log.info("issue_update_noop key={} actor={} securityChanged={}", key.value, actor.value, securityChanged)
+            if (securityChanged) {
+                // 코어 필드 무변경 + 보안 등급 단독 변경 —
+                // updateFields/이벤트는 스킵하되 이력은 기록(감사 누락 방지).
+                val afterSecurityOnly = repo.findByKey(key) ?: throw IssueNotFoundException(key)
+                recordHistory(
+                    before = existing,
+                    after = afterSecurityOnly,
+                    actor = actor,
+                    projectId = existing.projectId,
+                )
+                log.info("issue_security_level_only_updated key={} actor={}", key.value, actor.value)
+            } else {
+                log.info(
+                    "issue_update_noop key={} actor={} securityChanged={}",
+                    key.value,
+                    actor.value,
+                    securityChanged,
+                )
+            }
             return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
         }
         val updatedRows =
