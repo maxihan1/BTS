@@ -7,6 +7,7 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.event.IssueDomainEvent
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueMentioned
 import com.bts.issue.event.IssueUpdated
@@ -21,9 +22,11 @@ import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowTransitionPort
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import java.time.Clock
 import java.time.Instant
@@ -144,6 +147,85 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
             )
         } returns true
         every { eventPublisher.publish(any()) } returns Unit
+    }
+
+    describe("updateIssue — 멘션 상한 (FR-MN-01 H1)") {
+
+        // H1: distinct 멘션 51개 → 발행된 mentionedUserIds.size 가 50 이하
+        context("H1 — distinct 멘션 51개: 발행 이벤트 대상이 상한(50) 이하로 잘린다") {
+            // user0..user50 — 51개. actor(aliceActor) 는 목록 외이므로 자기 제외 없이 전원 대상.
+            val manyUsernames = (0..50).map { "user$it" }
+            val manyIds = manyUsernames.associateWith { UUID.nameUUIDFromBytes(it.toByteArray()) }
+
+            // 51개 모두 해석하는 fake — 기존 userLookupFake 와 별도로 구성
+            val bulkUserLookupFake =
+                object : UserLookupPort {
+                    override fun exists(userId: UUID): Boolean = true
+
+                    override fun findIdsByUsernames(usernames: Set<String>): Map<String, UUID> =
+                        manyIds.filterKeys { it in usernames }
+                }
+
+            val bulkRepo = mockk<IssueRepository>()
+            val bulkEventPublisher = mockk<IssueEventPublisher>()
+            val bulkPermissionResolver = mockk<IssuePermissionResolver>()
+
+            val bulkSut =
+                IssueApplicationService(
+                    repo = bulkRepo,
+                    issueTypeRepository = mockk(relaxed = true),
+                    resolutionRepository = mockk(relaxed = true),
+                    eventPublisher = bulkEventPublisher,
+                    permissionResolver = bulkPermissionResolver,
+                    workflowPort = mockk(relaxed = true),
+                    workflowKeyResolver = mockk(relaxed = true),
+                    userLookupPort = bulkUserLookupFake,
+                    componentRepository = mockk(relaxed = true),
+                    projectLeadRepository = mockk(relaxed = true),
+                    versionRepository = mockk(relaxed = true),
+                    clock = fixedClock,
+                )
+
+            // 51개 멘션 본문 구성 — 기존 description null
+            val bulkDescription = manyUsernames.joinToString(" ") { "@$it" }
+            val existingIssue = makeIssue(description = null)
+            val request = UpdateIssueRequest(
+                summary = null,
+                expectedVersion = existingVersion,
+                description = bulkDescription,
+            )
+
+            beforeEach {
+                every { bulkRepo.findActiveComponentIdsByIssue(any()) } returns emptyList()
+                every { bulkRepo.findAffectsVersionIdsByIssue(any()) } returns emptyList()
+                every { bulkRepo.findFixVersionIdsByIssue(any()) } returns emptyList()
+                every { bulkRepo.findProjectIdByKey(issueKey.projectPrefix) } returns anyProjectId
+                every {
+                    bulkPermissionResolver.hasPermission(
+                        aliceActor.value,
+                        IssuePermission.UPDATE,
+                        IssueScope.Issue(issueKey.value),
+                    )
+                } returns true
+                every { bulkRepo.findByKey(issueKey) } returns existingIssue
+                every {
+                    bulkRepo.updateFields(issueKey, IssueFieldPatch(description = bulkDescription), existingVersion)
+                } returns 1
+                every { bulkRepo.findByKeyWithType(issueKey) } returns makeResponse()
+                every { bulkEventPublisher.publish(any()) } returns Unit
+            }
+
+            it("IssueMentioned 의 mentionedUserIds.size 가 50 이하다") {
+                val capturedEvents = mutableListOf<IssueDomainEvent>()
+                every { bulkEventPublisher.publish(capture(capturedEvents)) } returns Unit
+
+                bulkSut.updateIssue(aliceActor, issueKey, request)
+
+                val mentioned = capturedEvents.filterIsInstance<IssueMentioned>()
+                // 현재 구현은 상한이 없어 51개가 모두 포함될 것이므로 이 단언이 실패해야 한다
+                mentioned.single().mentionedUserIds.size shouldBe 50
+            }
+        }
     }
 
     describe("updateIssue — 멘션 발행 (FR-MN-01)") {
