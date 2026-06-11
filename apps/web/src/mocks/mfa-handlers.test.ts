@@ -18,12 +18,8 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   resetMfaStore()
-  // localStorage E2E 플래그 초기화
-  try {
-    localStorage.removeItem(MFA_E2E_ENABLED_KEY)
-  } catch {
-    // node 환경에서 localStorage 없음 — 무시
-  }
+  // E2E 토글 플래그 초기화 — jsdom 환경에서 localStorage 사용 가능
+  localStorage.removeItem(MFA_E2E_ENABLED_KEY)
 })
 afterAll(() => server.close())
 
@@ -315,12 +311,7 @@ describe('authHandlers — login mfa_required 분기', () => {
   })
 
   it('MFA_E2E_ENABLED_KEY = "true" → { mfa_required:true, mfa_challenge_token, expires_in:300 }', async () => {
-    try {
-      localStorage.setItem(MFA_E2E_ENABLED_KEY, 'true')
-    } catch {
-      // node에 localStorage 없으면 이 테스트는 브라우저 환경 전용
-      return
-    }
+    localStorage.setItem(MFA_E2E_ENABLED_KEY, 'true')
 
     const res = await postLogin('alice')
 

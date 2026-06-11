@@ -1,8 +1,8 @@
-// 로그인 폼 컴포넌트 — identifier-first 2단계 (1단계: 이메일, 2단계: provider+username+password)
+// 로그인 폼 컴포넌트 — identifier-first 2단계 + MFA 3단계 (이메일 → provider+pw → TOTP 코드)
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,7 +25,12 @@ import { useLoginMutation } from './useLoginMutation'
 import { SamlIdpButtons } from './SamlIdpButtons'
 import { OidcIdpButtons } from './OidcIdpButtons'
 import { ssoEntryUrl } from './ssoEntryUrl'
-import { loginStrings } from '@/i18n/ko'
+import { loginStrings, mfaStrings, mfaErrorMessage } from '@/i18n/ko'
+import { verifyMfa } from '@/api/mfa'
+import { ApiError } from '@/api/client'
+import { ApiErrorResponseSchema, WhoamiResponseSchema } from '@/api/schemas'
+import { apiGet } from '@/api/client'
+import { useAuthStore } from './authStore'
 import { fetchSamlIdps } from '@/api/saml'
 import { fetchOidcProviders } from '@/api/oidc'
 import { fetchProviders } from '@/api/providers'
@@ -144,6 +149,8 @@ interface Step2Props {
   /** 1단계에서 입력한 이메일 — username 필드에 프리필 */
   prefillEmail: string
   onSuccess?: () => void
+  /** login 응답이 mfa_required:true일 때 챌린지 토큰을 전달하며 MFA step으로 진입 */
+  onMfaRequired: (challengeToken: string) => void
   providers: readonly ProviderEntry[]
   isProvidersLoading: boolean
   samlIdps: SamlIdp[]
@@ -164,6 +171,7 @@ interface Step2Props {
 const LoginStep2 = ({
   prefillEmail,
   onSuccess,
+  onMfaRequired,
   providers,
   isProvidersLoading,
   samlIdps,
@@ -200,7 +208,13 @@ const LoginStep2 = ({
   function onSubmit(values: LoginFormValues) {
     form.clearErrors('root')
     mutation.mutate(values, {
-      onSuccess: () => {
+      onSuccess: (data) => {
+        if (data.kind === 'mfa_required') {
+          // MFA 챌린지 진입 — 챌린지 토큰을 부모에게 전달하고 MFA step으로 전환
+          onMfaRequired(data.challengeToken)
+          return
+        }
+        // 정상 로그인 완료 — 기존 성공 경로
         onSuccess?.()
       },
       onError: (error: unknown) => {
@@ -304,6 +318,139 @@ const LoginStep2 = ({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MFA step — TOTP 코드 입력 화면 (3단계)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface MfaStepProps {
+  /** login 200 응답에서 받은 5분 단명 챌린지 토큰 */
+  challengeToken: string
+  /** verify 성공 시 기존 로그인 성공 핸들러와 동일 경로 수렴 */
+  onSuccess?: () => void
+  /** 1단계(이메일)로 복귀하는 콜백 */
+  onBackToLogin: () => void
+}
+
+/** MFA 코드 입력 Zod 스키마 — 6자리 숫자 문자열 */
+const mfaCodeSchema = z.object({
+  code: z.string().length(6, '6자리 코드를 입력하세요.'),
+})
+
+type MfaCodeFormValues = z.infer<typeof mfaCodeSchema>
+
+/**
+ * resolveVerifyErrorMessage는 ApiError body의 error 코드를 mfaErrorMessage로 변환한다.
+ * 알 수 없는 에러면 mfaErrorMessage default 케이스 메시지를 반환한다.
+ */
+function resolveVerifyErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    const parsed = ApiErrorResponseSchema.safeParse(error.body)
+    if (parsed.success) {
+      return mfaErrorMessage(parsed.data.error)
+    }
+  }
+  return mfaErrorMessage('')
+}
+
+/**
+ * MFA step (3단계): Authenticator 앱 6자리 코드 입력 → verify → 성공 시 세션 저장.
+ *
+ * 챌린지 토큰은 prop으로 받아 컴포넌트 메모리에만 보관한다(authStore/sessionStorage 영속 금지 — NFR-1).
+ * verify 성공 후 세션 저장 + whoami 조회는 1단계 성공 경로와 동일한 흐름으로 수렴한다.
+ */
+const LoginMfaStep = ({ challengeToken, onSuccess, onBackToLogin }: MfaStepProps) => {
+  const setAccessToken = useAuthStore((s) => s.setAccessToken)
+  const setSession = useAuthStore((s) => s.setSession)
+  const clearSession = useAuthStore((s) => s.clearSession)
+
+  const form = useForm<MfaCodeFormValues>({
+    resolver: zodResolver(mfaCodeSchema),
+    defaultValues: { code: '' },
+  })
+
+  const verifyMutation = useMutation({
+    mutationFn: async (code: string) => {
+      const tokenData = await verifyMfa(challengeToken, code)
+
+      // verify 성공 — 기존 로그인 성공 경로와 동일하게 세션 저장
+      setAccessToken(tokenData.access_token)
+
+      const user = await apiGet('/api/v1/users/me/whoami', WhoamiResponseSchema).catch(
+        (err: unknown) => {
+          clearSession()
+          throw err
+        },
+      )
+
+      setSession({ accessToken: tokenData.access_token, user })
+      return { accessToken: tokenData.access_token, user }
+    },
+    onSuccess: () => {
+      onSuccess?.()
+    },
+    onError: (error: unknown) => {
+      form.setError('root', { message: resolveVerifyErrorMessage(error) })
+    },
+  })
+
+  const serverError = form.formState.errors.root?.message ?? null
+
+  function onSubmit(values: MfaCodeFormValues) {
+    form.clearErrors('root')
+    verifyMutation.mutate(values.code)
+  }
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="space-y-4">
+        <p className="text-sm text-muted-foreground">{mfaStrings.loginStepGuide}</p>
+
+        <FormField
+          control={form.control}
+          name="code"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel htmlFor="mfa-code">{mfaStrings.loginCodeLabel}</FormLabel>
+              <FormControl>
+                <Input
+                  id="mfa-code"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  autoComplete="one-time-code"
+                  aria-required="true"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {serverError !== null && (
+          <p role="alert" className="text-destructive text-sm">
+            {serverError}
+          </p>
+        )}
+
+        <Button type="submit" className="w-full" disabled={verifyMutation.isPending}>
+          {mfaStrings.loginVerifyButton}
+        </Button>
+
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full"
+          onClick={onBackToLogin}
+          disabled={verifyMutation.isPending}
+        >
+          {mfaStrings.loginBackToLogin}
+        </Button>
+      </form>
+    </Form>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // LoginForm — 오케스트레이터 (단계 전환 + route 조회 담당)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -312,7 +459,7 @@ interface LoginFormProps {
 }
 
 /**
- * identifier-first 2단계 로그인 폼.
+ * identifier-first 로그인 폼. step 상태로 3단계를 오케스트레이션한다.
  *
  * 1단계: 이메일 입력 → "계속"
  * - 이메일에 @가 있으면 도메인으로 route 조회
@@ -320,12 +467,17 @@ interface LoginFormProps {
  * - matched:false / 조회 에러 / @없음 → 2단계 폼으로 fall-through
  *
  * 2단계: provider 드롭다운 + username(이메일 프리필) + password
+ * - login 200 mfa_required:true → 3단계 MFA 진입 (챌린지 토큰 컴포넌트 메모리 보관)
+ *
+ * 3단계: TOTP 코드 입력 → verify → 성공 시 기존 성공 경로 수렴
  */
 export const LoginForm = ({ onSuccess }: LoginFormProps) => {
-  // step: 'email' | 'form'
-  const [step, setStep] = useState<'email' | 'form'>('email')
+  // step: 'email' | 'form' | 'mfa'
+  const [step, setStep] = useState<'email' | 'form' | 'mfa'>('email')
   const [prefillEmail, setPrefillEmail] = useState('')
   const [isRouting, setIsRouting] = useState(false)
+  // 챌린지 토큰은 컴포넌트 메모리에만 보관한다(authStore/sessionStorage 영속 금지 — NFR-1)
+  const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null)
 
   const {
     data: providers,
@@ -393,8 +545,30 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
     setStep('form')
   }
 
+  /** MFA 챌린지 수신 시 MFA step으로 전환한다. 챌린지 토큰은 메모리에만 보관 */
+  function handleMfaRequired(challengeToken: string) {
+    setMfaChallengeToken(challengeToken)
+    setStep('mfa')
+  }
+
+  /** MFA step에서 "다시 로그인" 클릭 시 1단계로 복귀하고 챌린지 토큰을 초기화한다 */
+  function handleBackToLogin() {
+    setMfaChallengeToken(null)
+    setStep('email')
+  }
+
   if (step === 'email') {
     return <LoginStep1 onContinue={handleEmailContinue} isPending={isRouting} />
+  }
+
+  if (step === 'mfa' && mfaChallengeToken !== null) {
+    return (
+      <LoginMfaStep
+        challengeToken={mfaChallengeToken}
+        onSuccess={onSuccess}
+        onBackToLogin={handleBackToLogin}
+      />
+    )
   }
 
   return (
@@ -402,6 +576,7 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
       key={prefillEmail}
       prefillEmail={prefillEmail}
       onSuccess={onSuccess}
+      onMfaRequired={handleMfaRequired}
       providers={effectiveProviders}
       isProvidersLoading={isProvidersLoading}
       samlIdps={samlIdps ?? []}
