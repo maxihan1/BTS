@@ -16,16 +16,23 @@ import java.util.UUID
 class IssueSecurityDirectoryDefaultTest {
     @Test
     fun `findLevelNames default 는 빈 맵을 반환한다`() {
-        val directory = object : IssueSecurityDirectory {
-            override fun levelBelongsToProjectScheme(levelId: UUID, projectKey: String) = false
-            override fun accessibleLevels(actorId: UUID, projectKey: String) =
-                IssueSecurityAccess(
+        val directory =
+            object : IssueSecurityDirectory {
+                override fun levelBelongsToProjectScheme(
+                    levelId: UUID,
+                    projectKey: String,
+                ) = false
+
+                override fun accessibleLevels(
+                    actorId: UUID,
+                    projectKey: String,
+                ) = IssueSecurityAccess(
                     unrestricted = true,
                     staticLevelIds = emptySet(),
                     reporterLevelIds = emptySet(),
                     assigneeLevelIds = emptySet(),
                 )
-        }
+            }
         assertThat(directory.findLevelNames(setOf(UUID.randomUUID()))).isEmpty()
     }
 }

@@ -16,9 +16,10 @@ import java.util.UUID
 class UserLookupPortDefaultTest {
     @Test
     fun `findDisplayNamesByIds default 는 빈 맵을 반환한다`() {
-        val port = object : UserLookupPort {
-            override fun exists(userId: UUID) = false
-        }
+        val port =
+            object : UserLookupPort {
+                override fun exists(userId: UUID) = false
+            }
         assertThat(port.findDisplayNamesByIds(setOf(UUID.randomUUID()))).isEmpty()
     }
 }
