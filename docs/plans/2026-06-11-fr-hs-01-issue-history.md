@@ -20,7 +20,31 @@
   - issue-tracking 최신 마이그레이션 V017(FR-VR-03 조인테이블)까지 확인. 새 마이그레이션은 FR-MN-01이 선점할 번호를 피해 배정.
   - 본 작업은 **백엔드 전용**(이력 기록 리스너 + 테이블) — FR-MN-01의 이슈 상세 프론트와 표면 비중첩.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**. issue-tracking (단일, 명확)
+- **영향 엔티티**. Issue(기존, 변경 메서드에 이력 호출 추가), IssueChangeGroup(신규), IssueChangeItem(신규)
+- **용어**. domain/issue-tracking.md가 이미 `IssueHistory`를 핵심 엔티티로 등재 → 신규 용어 아님. 하위 모델명 IssueChangeGroup/IssueChangeItem는 glossary 갱신 후보(머지 시 Obsidian sync).
+- **기존 결정 충돌**. 없음. domain "이슈+히스토리+알림 한 트랜잭션" 규칙 + DATA.md append-only와 정합.
+- **재사용 선례**. FR-AU-10 `auth_audit_logs`(append-only, BIGINT IDENTITY, FK 없음, JSONB, NamedParameterJdbcTemplate).
+
+### 확정된 도메인 결정 (Maxi, 2026-06-11)
+
+| # | 결정 | 선택 | 비고 |
+|---|---|---|---|
+| 1 | 기록 메커니즘 | **서비스 레이어 동기 기록** (같은 트랜잭션) | 이전값→새값 정확 + 이벤트 미발행 경로 커버 |
+| 2 | 데이터 모델 | **Jira식 2테이블** (change_group + change_item) | 한 PATCH=1그룹, 필드별 from→to=N아이템 |
+| 3 | 추적 범위 | **전 필드 + 생명주기** | 전 편집 필드 + 생성/소프트삭제 |
+| 4 | 보존 | **append-only** | 삭제/수정 금지, 이슈 소프트삭제 후에도 보존 |
+
+### 구현 시 ground truth (조사 결과)
+
+- **변경 진입점**(이력 호출 추가 대상). `IssueApplicationService.updateIssue:365` / `transitionIssue:531` / `changeAssignee:645` / `changeComponents:710` / `changeAffectsVersions:764` / `changeFixVersions:805` / `assignSecurityLevel`(updateIssue 내) / `createIssue:149`(생성) / `softDeleteIssue:605`(삭제).
+- **갭**. changeAssignee/Components/Versions는 현재 pgmq 이벤트 미발행 → 동기 기록 방식이 이를 자연 커버.
+- **변경 감지**. `IssueApplicationService.buildChangedFields:1021`가 이미 existing↔request 비교 로직 보유 → from/to 추출에 확장 활용.
+- **마이그레이션**. issue-tracking 최신 V017. FR-MN-01(PR #114) worktree 새 마이그레이션 없음 확인 → **V018 후보**. 단 FR-MN-01이 먼저 V018을 쓰면 rebase 필요(머지 직전 재확인).
+
+- **관련 ADR**. [docs/adr/2026-06-11-issue-change-history-model.md](../adr/2026-06-11-issue-change-history-model.md) (생성됨)
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
