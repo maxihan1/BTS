@@ -36,7 +36,7 @@ import org.testcontainers.utility.DockerImageName
  * ```
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-abstract class NotificationTestcontainersBase {
+open class NotificationTestcontainersBase {
     companion object {
         /**
          * JVM 단위 singleton PostgreSQL container.

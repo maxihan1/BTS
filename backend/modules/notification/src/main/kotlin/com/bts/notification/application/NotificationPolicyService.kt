@@ -70,7 +70,9 @@ class NotificationPolicyService(
      * @throws NotificationPolicyDuplicateException 동일 조합 정책 중복
      */
     @Transactional
-    @Suppress("LongParameterList") // 도메인 조합 키 6종 — 각각 독립 의미를 가지며 커맨드 객체 도입 시 오히려 과설계
+    // LongParameterList — 도메인 조합 키 6종, 각각 독립 의미. 커맨드 객체 도입 시 오히려 과설계.
+    // ThrowsCount — UNIQUE 위반의 3경로(Spring DuplicateKey/DataIntegrity + jOOQ native) 변환은 본질적 다중 throw.
+    @Suppress("LongParameterList", "ThrowsCount")
     fun create(
         actorId: UUID,
         projectKey: String?,
@@ -104,19 +106,42 @@ class NotificationPolicyService(
             channel,
         )
 
+        val duplicateMessage =
+            "동일한 알림 정책이 이미 존재합니다. " +
+                "eventType=${eventType.wireValue}, role=$recipientRole, channel=$channel"
+
         return try {
             repository.insert(policy)
         } catch (ex: DuplicateKeyException) {
-            throw NotificationPolicyDuplicateException(
-                "동일한 알림 정책이 이미 존재합니다. eventType=${eventType.wireValue}, role=$recipientRole, channel=$channel",
-                ex,
-            )
+            // Spring ExceptionTranslator 활성 컨텍스트(운영 조립체) — DuplicateKeyException 으로 도착.
+            throw NotificationPolicyDuplicateException(duplicateMessage, ex)
         } catch (ex: DataIntegrityViolationException) {
-            throw NotificationPolicyDuplicateException(
-                "동일한 알림 정책이 이미 존재합니다. eventType=${eventType.wireValue}, role=$recipientRole, channel=$channel",
-                ex,
-            )
+            // Spring ExceptionTranslator 활성 컨텍스트 — 다른 무결성 위반도 중복으로 처리.
+            throw NotificationPolicyDuplicateException(duplicateMessage, ex)
+        } catch (ex: org.jooq.exception.DataAccessException) {
+            // Spring ExceptionTranslator 비활성 컨텍스트(예: plain DSL.using()) — jOOQ native 로 도착.
+            // SQLState 23505(unique_violation)만 중복으로 변환, 그 외는 그대로 전파.
+            // (project-workflow SchemeIssueTypeMappingRepository 동형 — 조립 환경 무관 409 보장)
+            if (isUniqueViolation(ex)) {
+                throw NotificationPolicyDuplicateException(duplicateMessage, ex)
+            }
+            throw ex
         }
+    }
+
+    /**
+     * jOOQ native [org.jooq.exception.DataAccessException] 의 cause chain 에서
+     * SQLState `23505`(unique_violation)를 찾아 UNIQUE 위반인지 판정한다.
+     *
+     * @param ex 검사할 jOOQ 예외
+     * @return cause chain 에 SQLState 23505 SQLException 이 있으면 true
+     */
+    private fun isUniqueViolation(ex: org.jooq.exception.DataAccessException): Boolean {
+        val sqlEx =
+            generateSequence(ex as Throwable?) { it.cause }
+                .filterIsInstance<java.sql.SQLException>()
+                .firstOrNull()
+        return sqlEx?.sqlState == SQL_STATE_UNIQUE_VIOLATION
     }
 
     /**
@@ -182,5 +207,10 @@ class NotificationPolicyService(
         }
 
         log.info("알림 정책 삭제 — id={}", id)
+    }
+
+    private companion object {
+        /** PostgreSQL UNIQUE 제약 위반 SQLState (unique_violation). */
+        private const val SQL_STATE_UNIQUE_VIOLATION = "23505"
     }
 }

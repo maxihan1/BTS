@@ -178,6 +178,43 @@ class NotificationPolicyServiceTest : DescribeSpec({
         }
     }
 
+    describe("create — jOOQ native DataAccessException (Spring 변환기 비활성 컨텍스트) 경로") {
+
+        it("SQLState 23505(unique_violation) → NotificationPolicyDuplicateException 변환") {
+            val sqlEx = java.sql.SQLException("duplicate key value", "23505")
+            every { repository.insert(any()) } throws
+                org.jooq.exception.DataAccessException("unique violation", sqlEx)
+
+            shouldThrow<NotificationPolicyDuplicateException> {
+                service.create(
+                    actorId = adminActorId,
+                    projectKey = null,
+                    eventType = NotificationEventType.ISSUE_CREATED,
+                    recipientRole = RecipientRole.REPORTER,
+                    channel = Channel.IN_APP,
+                    enabled = true,
+                )
+            }
+        }
+
+        it("SQLState 23505 아님 → 원본 DataAccessException 그대로 전파(중복으로 오판하지 않음)") {
+            val sqlEx = java.sql.SQLException("connection failure", "08006")
+            every { repository.insert(any()) } throws
+                org.jooq.exception.DataAccessException("connection", sqlEx)
+
+            shouldThrow<org.jooq.exception.DataAccessException> {
+                service.create(
+                    actorId = adminActorId,
+                    projectKey = null,
+                    eventType = NotificationEventType.ISSUE_CREATED,
+                    recipientRole = RecipientRole.REPORTER,
+                    channel = Channel.IN_APP,
+                    enabled = true,
+                )
+            }
+        }
+    }
+
     describe("list — admin 위임") {
 
         it("repository.findAll(projectKey) 결과를 그대로 반환") {
