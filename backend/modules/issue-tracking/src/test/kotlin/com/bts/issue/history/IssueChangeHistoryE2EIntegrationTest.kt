@@ -58,7 +58,7 @@ import java.util.UUID
  * - (a) 다필드 PATCH → 1 그룹 N 아이템
  * - (b) no-op 변경 → 이력 0 (그룹 미생성)
  * - (c) 소프트 삭제 후에도 과거 이력 보존 + lifecycle=deleted 아이템
- * - (d) 라벨 박제 — type/component 는 from_label/to_label 에 이름 박제, assignee 는 label=null
+ * - (d) 라벨 박제 — type/component 는 from_label/to_label 에 이름 박제, assignee 는 표시명 박제
  * - (e) 트랜잭션 — 이슈 변경 성공 시 이력도 같은 트랜잭션에 존재
  * - (f) changeComponents 자동 배정(FR-CM-03) → components + assignee 두 아이템 모두 기록
  * - (g) createIssue → lifecycle=created 아이템
@@ -180,6 +180,12 @@ class IssueChangeHistoryE2EIntegrationTest {
 
         /** 자동 배정 리드 UUID (f 시나리오용) */
         val ALICE_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000201")
+
+        /** assignee 박제 stub 맵에 등록된 UUID — 표시명 "Alice" */
+        val NEW_ASSIGNEE_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000202")
+
+        /** stub 맵에 없는 UUID — graceful degrade 검증용 */
+        val UNKNOWN_ASSIGNEE_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000999")
 
         private var bootstrapped = false
 
@@ -369,18 +375,22 @@ class IssueChangeHistoryE2EIntegrationTest {
         assertThat(createdItem!!.toValue).isEqualTo("created")
     }
 
-    // ── (d) 라벨 박제 — type 이름 박제, assignee label=null ─────────────────────
+    // ── (d) 라벨 박제 — type 이름 박제, assignee 표시명 박제 ─────────────────────
 
     /**
      * (d) type 필드 변경 시 from_label/to_label 에 IssueType 이름이 박제된다.
-     * assignee 필드 변경 시에는 label=null 을 유지한다(cross-BC 조회 금지).
+     * assignee 필드 변경 시에는 UserLookupPort.findDisplayNamesByIds 를 통해
+     * 표시명(display_name)이 to_label/from_label 에 박제된다.
+     *
+     * stub 맵: NEW_ASSIGNEE_ID -> "Alice" 로 등록해 표시명 박제를 검증한다.
      *
      * Given  이슈 1건
-     * When   changeAssignee(assigneeId=UUID) 호출 (assignee 변경)
-     * Then   assignee 아이템 fromLabel=null, toLabel=null
+     * When   changeAssignee(assigneeId=NEW_ASSIGNEE_ID) 호출 (assignee 변경)
+     * Then   assignee 아이템 fromLabel=null (이전 담당자 없음)
+     * And    assignee 아이템 toLabel="Alice" (stub 표시명 박제)
      */
     @Test
-    fun `assignee 변경 이력 아이템은 label 이 null 이다`() {
+    fun `assignee 변경 이력 아이템 toLabel 에 표시명이 박제된다`() {
         val issue =
             issueApplicationService.createIssue(
                 ACTOR_ID,
@@ -392,12 +402,11 @@ class IssueChangeHistoryE2EIntegrationTest {
             )
         cleanHistoryOnly()
 
-        val newAssigneeId = UUID.fromString("00000000-0000-4000-8000-000000000202")
         issueApplicationService.changeAssignee(
             ACTOR_ID,
             IssueKey(issue.key.value),
             AppChangeAssigneeRequest(
-                assigneeId = newAssigneeId,
+                assigneeId = NEW_ASSIGNEE_ID,
                 expectedVersion = issue.version,
             ),
         )
@@ -407,8 +416,100 @@ class IssueChangeHistoryE2EIntegrationTest {
 
         val assigneeItem = groups.first().items.find { it.field == "assignee" }
         assertThat(assigneeItem).isNotNull
+        // 이전 담당자 없음 — fromLabel null
         assertThat(assigneeItem!!.fromLabel).isNull()
-        assertThat(assigneeItem.toLabel).isNull()
+        // stub 맵에 NEW_ASSIGNEE_ID -> "Alice" 등록 — 표시명 박제
+        assertThat(assigneeItem.toLabel).isEqualTo("Alice")
+    }
+
+    /**
+     * (d-3) assignee 가 stub 맵에 없는 미존재 user 로 변경 시 label=null graceful degrade.
+     *
+     * Given  이슈 1건
+     * When   changeAssignee(assigneeId=UNKNOWN_ASSIGNEE_ID) 호출 (stub 맵 미등록 UUID)
+     * Then   assignee 아이템 toLabel=null (graceful degrade)
+     * And    예외 없이 이력 row 정상 저장
+     */
+    @Test
+    fun `stub 맵에 없는 assignee 변경 시 toLabel 은 null 이다 graceful degrade`() {
+        val issue =
+            issueApplicationService.createIssue(
+                ACTOR_ID,
+                CreateIssueRequest(
+                    projectKey = PROJECT_KEY,
+                    summary = "d3 시나리오 미존재 담당자 이슈",
+                    reporterId = ACTOR_ID,
+                ),
+            )
+        cleanHistoryOnly()
+
+        issueApplicationService.changeAssignee(
+            ACTOR_ID,
+            IssueKey(issue.key.value),
+            AppChangeAssigneeRequest(
+                assigneeId = UNKNOWN_ASSIGNEE_ID,
+                expectedVersion = issue.version,
+            ),
+        )
+
+        val groups = historyRepository.findByIssue(issue.id.value)
+        assertThat(groups).hasSize(1)
+
+        val assigneeItem = groups.first().items.find { it.field == "assignee" }
+        assertThat(assigneeItem).isNotNull
+        assertThat(assigneeItem!!.toLabel).isNull()
+    }
+
+    /**
+     * (d-4) unassign(assigneeId=null) 시 toLabel=null.
+     *
+     * Given  이슈 1건 (NEW_ASSIGNEE_ID 담당자 배정 후)
+     * When   changeAssignee(assigneeId=null) 호출 (unassign)
+     * Then   assignee 아이템 toLabel=null
+     * And    fromLabel="Alice" (이전 담당자 표시명 박제)
+     */
+    @Test
+    fun `unassign 시 toLabel 은 null 이다`() {
+        val issue =
+            issueApplicationService.createIssue(
+                ACTOR_ID,
+                CreateIssueRequest(
+                    projectKey = PROJECT_KEY,
+                    summary = "d4 시나리오 언어사인 이슈",
+                    reporterId = ACTOR_ID,
+                ),
+            )
+        // 먼저 NEW_ASSIGNEE_ID 로 배정
+        val assigned =
+            issueApplicationService.changeAssignee(
+                ACTOR_ID,
+                IssueKey(issue.key.value),
+                AppChangeAssigneeRequest(
+                    assigneeId = NEW_ASSIGNEE_ID,
+                    expectedVersion = issue.version,
+                ),
+            )
+        cleanHistoryOnly()
+
+        // unassign
+        issueApplicationService.changeAssignee(
+            ACTOR_ID,
+            IssueKey(issue.key.value),
+            AppChangeAssigneeRequest(
+                assigneeId = null,
+                expectedVersion = assigned.version,
+            ),
+        )
+
+        val groups = historyRepository.findByIssue(issue.id.value)
+        assertThat(groups).hasSize(1)
+
+        val assigneeItem = groups.first().items.find { it.field == "assignee" }
+        assertThat(assigneeItem).isNotNull
+        // unassign → toValue=null → toLabel=null
+        assertThat(assigneeItem!!.toLabel).isNull()
+        // 이전 담당자 = NEW_ASSIGNEE_ID → fromLabel="Alice"
+        assertThat(assigneeItem.fromLabel).isEqualTo("Alice")
     }
 
     /**
@@ -542,6 +643,8 @@ class IssueChangeHistoryE2EIntegrationTest {
             .describedAs("자동 배정에 의한 assignee 변경 아이템이 기록되어야 한다")
             .isNotNull
         assertThat(assigneeItem!!.toValue).isEqualTo(ALICE_ID.toString())
+        // stub 맵에 ALICE_ID -> "Alice Lead" 등록 — 자동 배정 표시명 박제
+        assertThat(assigneeItem.toLabel).isEqualTo("Alice Lead")
     }
 
     // ── (f-2) component 라벨 박제 확인 ─────────────────────────────────────────
