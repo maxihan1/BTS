@@ -64,6 +64,7 @@ class MfaBackupCodeService(
      * @return 발급된 평문 코드([GenerateResult.Generated]) 또는 [GenerateResult.NotActive].
      */
     fun generateOrRegenerate(userId: UUID): GenerateResult {
+        // fail-closed — secret 부재(null)·PENDING 모두 NotActive 로 거부(ACTIVE 일 때만 발급).
         if (totpRepo.findByUser(userId)?.status != TotpStatus.ACTIVE) {
             return GenerateResult.NotActive
         }
