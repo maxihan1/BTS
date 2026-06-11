@@ -18,6 +18,7 @@ import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.issue.version.repository.VersionRepository
+import com.bts.shared.permission.IssueSecurityDirectory
 import com.bts.shared.user.UserLookupPort
 import com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter
 import com.bts.workflow.scheme.adapter.inbound.WorkflowKeyResolverImpl
@@ -97,12 +98,16 @@ class IssueChangeHistoryE2EIntegrationTest {
             resolutionRepository: ResolutionRepository,
             componentRepository: ComponentRepository,
             versionRepository: VersionRepository,
+            userLookupPort: UserLookupPort,
+            issueSecurityDirectory: IssueSecurityDirectory,
         ): IssueChangeLabelResolver =
             IssueChangeLabelResolver(
                 issueTypeRepository = issueTypeRepository,
                 resolutionRepository = resolutionRepository,
                 componentRepository = componentRepository,
                 versionRepository = versionRepository,
+                userLookupPort = userLookupPort,
+                issueSecurityDirectory = issueSecurityDirectory,
             )
 
         @Bean
