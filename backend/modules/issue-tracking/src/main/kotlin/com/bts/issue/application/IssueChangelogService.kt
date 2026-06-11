@@ -9,7 +9,9 @@ import com.bts.issue.history.IssueChangeGroup
 import com.bts.issue.history.IssueChangeHistoryRepository
 import com.bts.issue.history.IssueChangeItem
 import com.bts.issue.repository.IssueRepository
+import com.bts.shared.permission.FieldKind
 import com.bts.shared.permission.FieldPermissionResolver
+import com.bts.shared.permission.FieldRef
 import com.bts.shared.user.UserLookupPort
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
@@ -64,6 +66,27 @@ class IssueChangelogService(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
+    companion object {
+        /** changelog 의 assignee 변경 item field 키. */
+        private const val ASSIGNEE_FIELD = "assignee"
+
+        /** 단건 마스킹 candidate 의 담당자 CORE 키([IssueApplicationService.buildCoreCandidates] 와 일치). */
+        private const val ASSIGNEE_ID_KEY = "assigneeId"
+
+        /** changelog 의 커스텀 필드 item field prefix([IssueChangeDetector] 와 동일). */
+        private const val CUSTOM_FIELD_PREFIX = "customField:"
+
+        /**
+         * 단건 상세가 마스킹하는 코어 필드 중 changelog field 키와 동일명인 것.
+         *
+         * assignee(→assigneeId)·customField 는 별도 매핑이므로 제외한다.
+         * status·type·resolution·securityLevel·components·affectsVersions·fixVersions·lifecycle 은
+         * 단건도 마스킹하지 않으므로 changelog 도 노출 유지 — 이 집합에 넣지 않는다.
+         */
+        private val MASKABLE_CORE_FIELDS =
+            setOf("description", "environment", "impact", "labels", "summary", "priority")
+    }
+
     /**
      * 이슈 변경 이력을 페이지 단위로 조회한다.
      *
@@ -90,16 +113,111 @@ class IssueChangelogService(
         val issueId = issue.id
 
         val limit = pageable.pageSize
-        val offset = pageable.pageNumber * pageable.pageSize
+        // pageNumber * pageSize 를 Int 로 곱하면 오버플로로 음수 OFFSET 이 되어 Postgres 가 500 을 던진다.
+        // Long 으로 곱한 뒤 repository offset(Int) 범위로 안전하게 클램프한다(코드리뷰 P2).
+        val offset = (pageable.pageNumber.toLong() * pageable.pageSize).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
 
         val groups = changeHistoryRepository.findByIssuePaged(issueId, limit, offset)
         val total = changeHistoryRepository.countByIssue(issueId)
 
         val displayNames = resolveActorNames(groups)
 
-        val views = groups.map { group -> group.toView(displayNames) }
+        val maskedGroups = maskInvisibleFields(actor, issue.projectKey, groups)
+
+        val views = maskedGroups.map { group -> group.toView(displayNames) }
         return PageImpl(views, pageable, total)
     }
+
+    // ──────────────────────────────────────────────────────────────────────────────
+    // 필드 수준 마스킹 (FR-PM-07, 코드리뷰 P1)
+    // ──────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 변경 이력 항목을 단건 상세([IssueApplicationService.maskFieldsForSingle])와 **동일한 필드 수준
+     * 마스킹 정책**으로 필터한다.
+     *
+     * **왜 단건과 같은 정책인가.**
+     * 단건 상세는 [FieldPermissionResolver.visibleFields] 로 안 보이는 필드의 현재값을 가린다(FR-PM-07).
+     * changelog 가 같은 필드의 과거 from/to 값·박제 라벨을 그대로 노출하면 VIEW 권한만으로
+     * 특정 필드가 제한된 사용자에게 과거 민감값이 누출된다. 두 경로의 마스킹 집합을 일치시켜
+     * "현재값은 가리는데 과거값은 보이는" 비대칭을 제거한다.
+     *
+     * **값 가림 + 필드 존재 유지.**
+     * 단건은 필드 존재는 남기되 값을 가린다([IssueResponse.maskInvisible] 의 restrictedFields 시맨틱).
+     * changelog 도 동형으로, 안 보이는 필드 item 은 통째로 제거하지 않고 [IssueChangeItem.field] 는 남긴 채
+     * [IssueChangeItem.fromValue]/[IssueChangeItem.toValue]/[IssueChangeItem.fromLabel]/[IssueChangeItem.toLabel]
+     * 만 null 로 치환한다. item 을 제거하면 "변경이 있었다"는 사실까지 숨겨 단건과 비대칭이 된다.
+     *
+     * **fail-open 금지.**
+     * projectId 를 찾지 못하면 단건([IssueApplicationService.maskFieldsForSingle]:1430)과 동일하게 원본을
+     * 그대로 반환한다(방어적). prod 에서는 실제 resolver 가 주입되며, 비주입 시 기본값은 비prod 전용
+     * [AlwaysAllowFieldPermissionResolver] 다.
+     *
+     * @param actor 조회 행위자.
+     * @param projectKey 이슈가 속한 프로젝트 키.
+     * @param groups 마스킹 전 변경 그룹 목록.
+     * @return 안 보이는 필드의 값이 마스킹된 그룹 목록.
+     */
+    private fun maskInvisibleFields(
+        actor: ActorId,
+        projectKey: String,
+        groups: List<IssueChangeGroup>,
+    ): List<IssueChangeGroup> {
+        if (groups.isEmpty()) return groups
+        val projectId = issueRepository.findProjectIdByKey(projectKey) ?: return groups
+
+        // 페이지 내 모든 item 의 마스킹 candidate 합집합 — resolver 를 1회만 호출(N+1 회피).
+        val candidates =
+            groups
+                .flatMap { it.items }
+                .mapNotNull { maskableFieldRef(it.field) }
+                .toSet()
+        if (candidates.isEmpty()) return groups
+
+        val visible = fieldPermissionResolver.visibleFields(actor.value, projectId, candidates)
+
+        return groups.map { group ->
+            group.copy(items = group.items.map { item -> maskItemIfInvisible(item, visible) })
+        }
+    }
+
+    /**
+     * 변경 item 1건을 [visible] 기준으로 마스킹한다.
+     *
+     * item 의 [IssueChangeItem.field] 가 마스킹 대상이고 [visible] 에 없으면 값·라벨 4종을 null 로 치환한다.
+     * 마스킹 대상이 아니거나(예: status·type) 보이는 필드면 원본을 그대로 반환한다.
+     */
+    private fun maskItemIfInvisible(
+        item: IssueChangeItem,
+        visible: Set<FieldRef>,
+    ): IssueChangeItem {
+        val ref = maskableFieldRef(item.field) ?: return item
+        if (ref in visible) return item
+        return item.copy(fromValue = null, toValue = null, fromLabel = null, toLabel = null)
+    }
+
+    /**
+     * changelog item 의 field 키를 단건 마스킹 candidate 와 동일한 [FieldRef] 로 매핑한다.
+     *
+     * 마스킹 대상이 아닌 필드(status·type·resolution·securityLevel·components·affectsVersions·
+     * fixVersions·lifecycle)는 null 을 반환해 항상 노출시킨다 — 단건 상세도 이 필드들은 마스킹하지 않으므로 정합.
+     *
+     * 매핑 규칙.
+     * - `"assignee"` → `FieldRef(CORE, "assigneeId")` (단건 candidate 의 코어 키와 일치시킴)
+     * - `"customField:<key>"` → `FieldRef(CUSTOM, key)`
+     * - 그 외 마스킹 대상 동일명(description·environment·impact·labels·summary·priority) → `FieldRef(CORE, name)`
+     *
+     * @param field changelog item 의 field 키.
+     * @return 마스킹 대상이면 대응 [FieldRef], 아니면 null(노출 유지).
+     */
+    private fun maskableFieldRef(field: String): FieldRef? =
+        when {
+            field == ASSIGNEE_FIELD -> FieldRef(FieldKind.CORE, ASSIGNEE_ID_KEY)
+            field.startsWith(CUSTOM_FIELD_PREFIX) ->
+                FieldRef(FieldKind.CUSTOM, field.removePrefix(CUSTOM_FIELD_PREFIX))
+            field in MASKABLE_CORE_FIELDS -> FieldRef(FieldKind.CORE, field)
+            else -> null
+        }
 
     // ──────────────────────────────────────────────────────────────────────────────
     // 헬퍼
