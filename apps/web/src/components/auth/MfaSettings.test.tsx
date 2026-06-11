@@ -341,7 +341,10 @@ describe('T3-S7: 백업코드 섹션 노출 여부', () => {
     await waitFor(() => {
       expect(screen.getByText(mfaStrings.backupSectionTitle)).toBeInTheDocument()
     })
-    expect(screen.getByRole('button', { name: mfaStrings.backupGenerateButton })).toBeInTheDocument()
+    // backup-codes status 쿼리도 완료될 때까지 대기
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: mfaStrings.backupGenerateButton })).toBeInTheDocument()
+    })
   })
 
   it('T3-S7-2: TOTP 미활성(enabled=false) 시 백업코드 섹션이 노출되지 않는다', async () => {
@@ -419,6 +422,9 @@ describe('T3-S8: 백업코드 생성 플로우', () => {
 
   it('T3-S8-2: 복사 버튼 클릭 → navigator.clipboard.writeText가 코드들로 호출된다', async () => {
     const user = userEvent.setup({ delay: null })
+    // vi.spyOn으로 spy 생성 — Object.defineProperty 단순 할당은 vitest spy가 아님
+    const writeTextSpy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
+
     server.use(
       mockStatus(true),
       http.get('/api/v1/auth/mfa/backup-codes', () =>
@@ -442,7 +448,8 @@ describe('T3-S8: 백업코드 생성 플로우', () => {
 
     await user.click(screen.getByRole('button', { name: mfaStrings.backupCopyButton }))
 
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(CODES.join('\n'))
+    expect(writeTextSpy).toHaveBeenCalledWith(CODES.join('\n'))
+    writeTextSpy.mockRestore()
   })
 
   it('T3-S8-3: 다운로드 버튼 클릭 → URL.createObjectURL이 호출된다', async () => {
@@ -550,8 +557,8 @@ describe('T3-S9: 백업코드 상태 표시', () => {
     await waitFor(() => {
       expect(screen.getByText(mfaStrings.backupLowWarning)).toBeInTheDocument()
     })
-    // 남은 개수 텍스트 포함 확인
-    expect(screen.getByText(/2/)).toBeInTheDocument()
+    // 남은 개수 숫자를 span에서 찾는다 (다른 2 텍스트와 중복 방지)
+    expect(screen.getByText('2', { selector: 'span' })).toBeInTheDocument()
     // 재생성 버튼이 노출된다
     expect(screen.getByRole('button', { name: mfaStrings.backupRegenerateButton })).toBeInTheDocument()
   })
