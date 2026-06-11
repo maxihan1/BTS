@@ -54,13 +54,8 @@ interface NotificationPolicyFormProps {
 // 헬퍼 — 카탈로그 → SelectItem 배열
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * 이벤트 타입 카탈로그 항목을 SelectItem 배열로 변환한다.
- * 한국어 라벨은 eventTypeLabels 맵에서 조회하며, 미지 값은 원문 fallback.
- */
-function buildEventTypeOptions(
-  eventTypes: PolicyCatalog['eventTypes'],
-): JSX.Element[] {
+/** 이벤트 타입 카탈로그 → SelectItem 배열. 미지 값은 원문 fallback. */
+function buildEventTypeOptions(eventTypes: PolicyCatalog['eventTypes']): JSX.Element[] {
   return eventTypes.map((item) => (
     <SelectItem key={item.value} value={item.value}>
       {labelFor(eventTypeLabels, item.value)}
@@ -68,13 +63,8 @@ function buildEventTypeOptions(
   ))
 }
 
-/**
- * 수신자 역할 카탈로그를 SelectItem 배열로 변환한다.
- * 한국어 라벨은 recipientRoleLabels 맵에서 조회하며, 미지 값은 원문 fallback.
- */
-function buildRecipientRoleOptions(
-  recipientRoles: PolicyCatalog['recipientRoles'],
-): JSX.Element[] {
+/** 수신자 역할 카탈로그 → SelectItem 배열. 미지 값은 원문 fallback. */
+function buildRecipientRoleOptions(recipientRoles: PolicyCatalog['recipientRoles']): JSX.Element[] {
   return recipientRoles.map((role) => (
     <SelectItem key={role} value={role}>
       {labelFor(recipientRoleLabels, role)}
@@ -82,13 +72,8 @@ function buildRecipientRoleOptions(
   ))
 }
 
-/**
- * 채널 카탈로그를 SelectItem 배열로 변환한다.
- * 한국어 라벨은 channelLabels 맵에서 조회하며, 미지 값은 원문 fallback.
- */
-function buildChannelOptions(
-  channels: PolicyCatalog['channels'],
-): JSX.Element[] {
+/** 채널 카탈로그 → SelectItem 배열. 미지 값은 원문 fallback. */
+function buildChannelOptions(channels: PolicyCatalog['channels']): JSX.Element[] {
   return channels.map((ch) => (
     <SelectItem key={ch} value={ch}>
       {labelFor(channelLabels, ch)}
