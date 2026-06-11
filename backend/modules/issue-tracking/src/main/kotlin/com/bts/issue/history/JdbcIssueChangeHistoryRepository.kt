@@ -102,7 +102,11 @@ class JdbcIssueChangeHistoryRepository(
      * @return 변경 그룹 목록(items 포함). 결과가 없으면 빈 리스트.
      */
     @Transactional(readOnly = true)
-    override fun findByIssuePaged(issueId: UUID, limit: Int, offset: Int): List<IssueChangeGroup> {
+    override fun findByIssuePaged(
+        issueId: UUID,
+        limit: Int,
+        offset: Int,
+    ): List<IssueChangeGroup> {
         val params = mapOf("issueId" to issueId, "limit" to limit, "offset" to offset)
         val groups = jdbc.query(SQL_FIND_GROUPS_BY_ISSUE_PAGED, params, groupRowMapper)
         if (groups.isEmpty()) return emptyList()

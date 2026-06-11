@@ -275,15 +275,16 @@ class JdbcIssueChangeHistoryRepositoryIntegrationTest {
                     issueId = issueId,
                     issueKey = "BTS-PAGED-$index",
                     actorId = actorId,
-                    items = listOf(
-                        IssueChangeItem(
-                            field = "status",
-                            fromValue = "open",
-                            toValue = "group$index",
-                            fromLabel = null,
-                            toLabel = null,
+                    items =
+                        listOf(
+                            IssueChangeItem(
+                                field = "status",
+                                fromValue = "open",
+                                toValue = "group$index",
+                                fromLabel = null,
+                                toLabel = null,
+                            ),
                         ),
-                    ),
                 ),
             )
             Thread.sleep(2)
@@ -332,10 +333,23 @@ class JdbcIssueChangeHistoryRepositoryIntegrationTest {
         val issueId = UUID.randomUUID()
         val actorId = UUID.randomUUID()
 
-        val items = listOf(
-            IssueChangeItem(field = "status", fromValue = "open", toValue = "done", fromLabel = "열림", toLabel = "완료"),
-            IssueChangeItem(field = "priority", fromValue = "LOW", toValue = "HIGH", fromLabel = null, toLabel = null),
-        )
+        val items =
+            listOf(
+                IssueChangeItem(
+                    field = "status",
+                    fromValue = "open",
+                    toValue = "done",
+                    fromLabel = "열림",
+                    toLabel = "완료",
+                ),
+                IssueChangeItem(
+                    field = "priority",
+                    fromValue = "LOW",
+                    toValue = "HIGH",
+                    fromLabel = null,
+                    toLabel = null,
+                ),
+            )
         repository.record(
             IssueChangeGroup(
                 issueId = issueId,

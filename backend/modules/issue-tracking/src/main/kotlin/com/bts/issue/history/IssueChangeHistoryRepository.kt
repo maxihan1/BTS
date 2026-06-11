@@ -49,7 +49,11 @@ interface IssueChangeHistoryRepository {
      * @param offset 건너뛸 그룹 수. 첫 페이지는 0.
      * @return 변경 그룹 목록(items 포함). 결과가 없으면 빈 리스트.
      */
-    fun findByIssuePaged(issueId: UUID, limit: Int, offset: Int): List<IssueChangeGroup>
+    fun findByIssuePaged(
+        issueId: UUID,
+        limit: Int,
+        offset: Int,
+    ): List<IssueChangeGroup>
 
     /**
      * 특정 이슈의 변경 이력 그룹 총 개수를 반환한다.
