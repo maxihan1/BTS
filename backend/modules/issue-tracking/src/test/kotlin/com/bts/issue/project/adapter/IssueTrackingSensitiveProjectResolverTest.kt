@@ -101,7 +101,7 @@ class IssueTrackingSensitiveProjectResolverTest : IssueTestcontainersBase() {
 
     @Test
     fun `T2-E 빈 집합 전달 시 즉시 false 반환`() {
-        val result = resolver.anyRequiresMfa(emptySet<UUID>())
+        val result = resolver.anyRequiresMfa(emptySet())
         assertThat(result).isFalse()
     }
 }
