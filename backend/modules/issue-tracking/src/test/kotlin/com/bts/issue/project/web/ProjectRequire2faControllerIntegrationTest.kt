@@ -44,11 +44,11 @@ import java.util.UUID
  * ## 검증 시나리오
  * - I1. SYSTEM_ADMIN (fake resolver true) → 200 + DB require_2fa=true 영속 확인
  * - I2. 비관리자 (fake resolver false) → 403 ISSUE_REQUIRE_2FA_FORBIDDEN
- * - I3. 미인증 → 401 (SecurityConfig가 /api/** authenticated 보장)
+ * - I3. 미인증 → 401 (SecurityConfig가 api 하위 경로 authenticated 보장)
  * - I4. 미존재 프로젝트 키 → 404
  *
  * ## SecurityContext 설정 방식
- * [IssueTrackingApplication] 의 SecurityConfig 가 /api/** 를 authenticated 로 보호하므로,
+ * IssueTrackingApplication 의 SecurityConfig 가 api 하위를 authenticated 로 보호하므로,
  * MOCK 환경에서도 SecurityContextHolder 에 UsernamePasswordAuthenticationToken 을 주입하여
  * 인증/미인증을 시뮬레이션한다.
  * (memory: identity-access-prod-randomport-boot-recipe)
