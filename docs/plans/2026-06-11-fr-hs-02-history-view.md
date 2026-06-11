@@ -74,6 +74,7 @@ FR-HS-01은 `IssueChangeHistoryRepository.findByIssue(issueId): List<IssueChange
 
 **RED**: 통합 테스트 — `findByIssuePaged(issueId, limit, offset)`가 created_at DESC,id DESC 순 N건만 반환 + `countByIssue(issueId)`가 총 그룹 수 반환. (시드 데이터로 페이지 경계 검증)
 **GREEN**: 인터페이스에 `findByIssuePaged(issueId: UUID, limit: Int, offset: Int): List<IssueChangeGroup>` + `countByIssue(issueId: UUID): Long` 추가(default 구현 X — 추상). Jdbc에 기존 `findByIssue`의 `ORDER BY created_at DESC, id DESC` 쿼리에 `LIMIT ? OFFSET ?` + count 쿼리 추가. 기존 `findByIssue`는 유지(타 호출 영향 없음).
+- **⚠️ items 로딩(eng-review C2)**: group 페이지 조회 후 items는 **기존 `fetchItemsByGroupIds(groupIds)` 배치 패턴 재사용**. group↔item을 단일 LEFT JOIN으로 합치지 말 것 — cartesian product 위험(learning `cartesian-product-jooq-leftjoin-count`). 즉 "페이지 group N건 조회 → 그 group ids로 items 배치 조회" 2-step 유지.
 **REFACTOR**: SQL 상수 추출 + KDoc. 인터페이스 추가 메서드로 인한 인라인 fake 구현 영향 확인(learning `interface-extension-default-method` — 단, 여기선 prod repo 1개라 추상 추가 안전, 테스트 fake 있으면 grep).
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*JdbcIssueChangeHistoryRepositoryIntegrationTest*"`
 
@@ -89,7 +90,11 @@ FR-HS-01은 `IssueChangeHistoryRepository.findByIssue(issueId): List<IssueChange
   (b) actorId 있는 그룹에 `UserLookupPort.findDisplayNamesByIds`로 actorName 채워짐,
   (c) actorId=null(시스템) 또는 lookup 결과 없음 → actorName=null로 graceful degrade(이력은 반환),
   (d) 페이징 위임(limit/offset 변환) + 총건수.
-**GREEN**: `IssueApplicationService`에 `@Transactional(readOnly=true) fun findChangelog(actor, key: IssueKey, pageable: Pageable): Page<ChangeGroupView>` 추가. 흐름 — findByKey와 동일 가드로 이슈+UUID 확보(VIEW 미인가=404) → `repo.findByIssuePaged`/`countByIssue` → actorId 집합 한 번에 `userLookupPort.findDisplayNamesByIds` 해석 → 뷰 모델 매핑 → `PageImpl`. (DTO 직렬화는 B3, 서비스는 뷰 모델 또는 도메인+해석맵 반환 — 구현자 판단, 단 cross-BC 직접 import 금지)
+**GREEN**: `IssueApplicationService`에 `@Transactional(readOnly=true) fun findChangelog(actor, key: IssueKey, pageable: Pageable): Page<ChangeGroupView>` 추가. 흐름 (eng-review C3 명시) —
+  1. `findByKey(actor, key)` 호출(VIEW 가드 재사용, 미인가/미존재/소프트삭제=`IssueNotFoundException`). 반환 `IssueResponse`에 `.id`(UUID) 노출됨(`IssueResponse.kt`) → 이 UUID로 이슈 식별.
+  2. `repo.findByIssuePaged(issueId, size, page*size)` + `repo.countByIssue(issueId)`.
+  3. actorId 집합을 한 번에 `userLookupPort.findDisplayNamesByIds(ids)`로 해석 — **#120 `IssueChangeLabelResolver.kt:164-166`의 try/catch + log.warn graceful degrade 패턴 재사용**(실패 시 actorName=null, 이력은 반환). prod 바인딩은 `identity-access/UserLookupAdapter.kt:91` 확인됨(eng-review B2 검증 — fail-open 아님).
+  4. 뷰 모델 매핑 → `PageImpl`. (DTO 직렬화는 B3, 서비스는 뷰 모델 또는 도메인+해석맵 반환, cross-BC 직접 import 금지)
 **REFACTOR**: actor 해석 헬퍼 추출 + KDoc(왜 graceful degrade인지 #120 선례 인용).
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*IssueChangelogServiceTest*"`
 **보안 노트**: VIEW 가드는 findByKey 경로 재사용(신규 인증 로직 0). codereview에서 security-engineer가 존재 probe 방지(actor 추출이 조회보다 먼저, learning `auth-extraction-before-resource-lookup`) + 404 일관 확인.
@@ -146,7 +151,8 @@ FR-HS-01은 `IssueChangeHistoryRepository.findByIssue(issueId): List<IssueChange
   (b) 값 해석 우선순위: 박제 label > 참조 데이터 해석 > raw 폴백 > "(없음)",
   (c) priority(Int)→i18n 라벨, type→types 맵, components/versions(UUID JSON 배열)→이름 맵, 삭제 엔티티 "(삭제됨)" 폴백,
   (d) lifecycle(created/deleted) 특수 문자열.
-**GREEN**: `changelog-labels.ts` — 순수 함수 `resolveFieldLabel(field, refs)` / `resolveValueLabel(item, side, refs)` (refs = {types, components, versions, priorityMap, ...}). 표준 필드 라벨은 `i18n/ko.ts`에 추가(기존 issueDetailStrings 톤). 컴포넌트에 로직 X(테스트 용이).
+**GREEN**: `changelog-labels.ts` — 순수 함수 `resolveFieldLabel(field, refs)` / `resolveValueLabel(item, side, refs)` (refs = {types, components, versions, priorityMap, impactMap, customFieldDefinitions}). 표준 필드 라벨은 `i18n/ko.ts`에 추가(기존 issueDetailStrings 톤). 컴포넌트에 로직 X(테스트 용이).
+- **customField(eng-review C5)**: `customField:<key>` 표시명은 refs.customFieldDefinitions(프론트 `use-custom-fields` 훅으로 로드, `api/custom-fields.ts` 정의명)에서 조회, 못 찾으면 key 원문 폴백. 정의 로드는 F4/F5에서 주입.
 **REFACTOR**: refs 타입 정의 + 매핑 테이블 상수화.
 **검증**: `pnpm --filter web test changelog-labels && pnpm --filter web typecheck`
 
@@ -157,7 +163,7 @@ FR-HS-01은 `IssueChangeHistoryRepository.findByIssue(issueId): List<IssueChange
 - files: [`apps/web/src/components/issue/IssueChangelog.tsx`, `apps/web/src/components/issue/IssueChangelog.test.tsx`]
 - depends-on: [F1, F2, F3]
 
-**RED**: 컴포넌트 테스트 (스펙 S1~S6) — 그룹별 "actorName · 상대시각" 헤더 + 필드별 `표시명: from → to`, 박제 label 우선, lifecycle 특수 렌더, "더 보기" 누적 페이징(다음 페이지 fetch), 마지막 페이지 버튼 숨김, 빈 상태, actorName=null→"시스템". props로 refs(types/components/versions/priorityMap) 주입(순수, `IssueAssigneeSelect` 선례 — useState 초기화 금지 learning `react-usestate-stale-key-prop`).
+**RED**: 컴포넌트 테스트 (스펙 S1~S6) — 그룹별 "actorName · 상대시각" 헤더 + 필드별 `표시명: from → to`, 박제 label 우선, lifecycle 특수 렌더, "더 보기" 누적 페이징(다음 페이지 fetch), 마지막 페이지 버튼 숨김, 빈 상태, actorName=null→"시스템". props로 refs(types/components/versions/priorityMap/impactMap/customFieldDefinitions) 주입(순수, `IssueAssigneeSelect` 선례 — useState 초기화 금지 learning `react-usestate-stale-key-prop`).
 **GREEN**: `IssueChangelog.tsx` — `useIssueChangelog` 훅 + `resolveFieldLabel`/`resolveValueLabel` 사용. shadcn/Radix 컴포넌트 재사용(신규 라이브러리 0). 접기/펼치기. 텍스트 중복 시 컨테이너 한정(learning `playwright-getbyrole-exact-strict-mode` 대비 test 작성).
 **REFACTOR**: 서브 컴포넌트(ChangeGroupRow/ChangeItemRow) 분리 + 접근성(aria).
 **검증**: `pnpm --filter web test IssueChangelog && pnpm --filter web typecheck`
@@ -169,8 +175,8 @@ FR-HS-01은 `IssueChangeHistoryRepository.findByIssue(issueId): List<IssueChange
 - files: [`apps/web/src/routes/issues.$key.tsx`, `apps/web/src/routes/issues.$key.test.tsx`]
 - depends-on: [F4]
 
-**RED**: 라우트 테스트 — 상세 페이지 2단 레이아웃 하단 전체폭에 `IssueChangelog` 렌더 + 페이지가 이미 로드한 refs(availableTypes/projectComponents/projectVersions/priority) 주입 + 이슈 key 전달. 기존 상세 페이지 테스트 회귀 0.
-**GREEN**: `issues.$key.tsx`의 2단 grid `</div>`(line~655) 아래 전체폭 `<section>` 추가 + `IssueChangelog` 배치(props로 refs/issueKey). 기존 코드 최소 수정(surgical).
+**RED**: 라우트 테스트 — 상세 페이지 2단 레이아웃 하단 전체폭에 `IssueChangelog` 렌더 + 페이지가 이미 로드한 refs(availableTypes/projectComponents/projectVersions/priorityMap/impactMap) + customFieldDefinitions(`use-custom-fields` 추가 로드) 주입 + 이슈 key 전달. 기존 상세 페이지 테스트 회귀 0.
+**GREEN**: `issues.$key.tsx`의 2단 grid `</div>`(line~655) 아래 전체폭 `<section>` 추가 + `IssueChangelog` 배치(props로 refs/issueKey). customField 정의가 페이지에 아직 없으면 `use-custom-fields` 훅으로 추가 로드(eng-review C5). 기존 코드 최소 수정(surgical).
 **REFACTOR**: 섹션 래퍼 + 제목 i18n.
 **검증**: `pnpm --filter web test "issues.\$key" && pnpm --filter web typecheck && pnpm --filter web lint`
 
@@ -196,4 +202,19 @@ FR-HS-01은 `IssueChangeHistoryRepository.findByIssue(issueId): List<IssueChange
 - BC: 단일 issue-tracking. backend read 엔드포인트는 same-BC view-layer 예외(learning `2026-05-22`). cross-BC 직접 import 0.
 - 데이터 모델/마이그레이션 변경 없음(읽기 전용, repo 페이징 메서드만 추가).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### eng 독립 리뷰 (2026-06-11, Explore 에이전트 적대적 검증)
+
+**BLOCKER: 없음** (리뷰어 제기 2건 모두 기각/검증 통과)
+- ~~B1 (findChangelog 메서드 부재)~~ → **오탐**. plan 단계라 코드 미작성이 정상(구현은 bts-impl). plan이 신규 코드를 올바르게 기술 중.
+- ~~B2 (UserLookupPort prod 바인딩 미확인)~~ → **검증 통과**. `identity-access/UserLookupAdapter.kt:91`이 prod override 구현. #120 `IssueChangeLabelResolver.kt:164-166`이 이미 같은 포트로 graceful degrade 사용 중(fail-open 아님). B2에 패턴 재사용 명시 반영.
+
+**CONCERN 반영**
+- ✅ C2 (items 배치 로딩 cartesian product 위험) → B1 GREEN에 `fetchItemsByGroupIds` 2-step 배치 유지 명시.
+- ✅ C3 (findByKey UUID 추출 흐름 모호) → B2 GREEN에 `findByKey`→`IssueResponse.id` 흐름 4단계 명시.
+- ✅ C5 (customField 정의 로드 경로 누락) → F3/F4/F5에 `use-custom-fields` 경유 customFieldDefinitions ref 명시.
+- 🔸 C1 (Page 직렬화 형식) → B3 통합 테스트가 기존 list 엔드포인트와 동일 `PageImpl` 패턴 사용으로 핀다운(프론트 `pageSchema`: content/totalElements/totalPages/size/number/first/last/empty 확인). 신규 형식 발명 금지.
+- 🔸 C4 (공유 파일 겹침) → 본 PR 내 F1/F2/F3는 서로 다른 파일 수정(F2=handlers.ts, F3=i18n/ko.ts — 상호 겹침 0)이라 wave 병렬 안전. 단 병행 worktree(FR-NT-01/FR-MF-02)가 handlers.ts/i18n/ko.ts 동시 수정 시 머지 시점 충돌 가능 → bts-merge 전 `git pull --rebase origin main`로 해소(learning `migration-vnumber-concurrent-branch-collision` 유사).
+
+**총평**: 도메인/스펙/API 정의 우수. eng 리뷰 반영 후 backend 정합성(권한 가드 재사용·actor degrade·페이징 N+1 회피) 명시 완료. 진행 가능.
