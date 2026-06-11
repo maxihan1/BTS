@@ -163,11 +163,14 @@ const verifyHandler = http.post('/api/v1/auth/mfa/verify', async ({ request }) =
 // CSRF 필수. TOTP 미활성 → 409. 성공 → 10개 더미 코드 반환 + store 갱신.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 백업코드 더미 10개 생성 — xxxxx-xxxxx 형식 고정 (mock 전용). */
+/**
+ * 백업코드 더미 10개 생성 — xxxxx-xxxxx 형식 고정 (mock 전용).
+ * 실제 난수가 아닌 순번 기반 고정값으로 테스트 재현성을 보장한다.
+ */
 function generateBackupCodes(): string[] {
   return Array.from({ length: 10 }, (_, i) => {
-    const idx = String(i).padStart(5, '0')
-    return `${idx}a-${idx}b`
+    const part = String(i + 1).padStart(5, '0')
+    return `${part}-${part}`
   })
 }
 
