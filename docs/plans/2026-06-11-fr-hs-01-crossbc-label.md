@@ -41,9 +41,21 @@ BTS FR-HS-01(PR #115)은 BC 격리 때문에 cross-BC 필드(assignee·securityL
 - best-effort catch에 권한 예외 포함 금지(메모리 best-effort-loop-permission-exception) — 단 여기선 표시명 조회라 권한 예외 무관, graceful degrade 적정.
 - 기록 트랜잭션 안 cross-BC 호출 추가 → self-invocation/트랜잭션 경계 점검(메모리 transaction-self-invocation-requires-new).
 
-## 스펙 (← /bts-spec 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec 채움)
+전체 스펙. [docs/specs/2026-06-11-fr-hs-01-crossbc-label.md](../specs/2026-06-11-fr-hs-01-crossbc-label.md)
+
+핵심 요약.
+- `IssueChangeLabelResolver`가 assignee(→display_name?:username)·securityLevel(→IssueSecurityLevel.name)을 기록 시점에 표시명 박제. detector가 채운 from/to 값(UUID)을 cross-BC port로 resolve.
+- cross-BC port는 shared-kernel 인터페이스에 **default 메서드**로 역방향 추가(UserLookupPort.findDisplayNamesByIds, IssueSecurityDirectory.findLevelNames) → 기존 fake 다수 보호 + fail-safe(빈 Map→label=null). 구현은 identity-access.
+- 조회 실패 graceful degrade(label=null, 기록 진행). 기록 트랜잭션 참여(readOnly port). BC 격리 유지(직접 import 0).
+- FR-HS-01 기존 테스트(label=null 가정) → 박제 검증으로 갱신. ADR 보강. 테이블 변경 없음(마이그레이션 불요).
+
+## Brainstorming Check
+
+✅ 통과 (직접 sanity check — 완료 FR 보강이라 office-hours/brainstorming 대화형 생략, 메모리 bts-spec-office-hours-mismatch 학습).
+- 검토 gap: actor 표시명 박제(→PR2 조회에서 처리), status 박제(Maxi 범위 제외, project-workflow BC), prod 구현 오버라이드 누락 시 fail-safe(label=null 보안 무영향), 통합테스트는 실 repo로 가짜그린 회피.
+- 모두 의도적 범위 분리이거나 완료기준으로 커버됨. 신규 BLOCKER 없음.
 
 ## Plan (← /bts-plan 채움)
 
