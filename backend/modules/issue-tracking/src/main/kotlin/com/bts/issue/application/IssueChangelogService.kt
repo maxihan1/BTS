@@ -52,6 +52,12 @@ data class ChangelogGroupView(
  * [UserLookupPort.findDisplayNamesByIds] 호출이 실패해도 이력 조회를 막으면 안 된다.
  * PR #120 [IssueChangeLabelResolver] 의 `fetchDisplayNames` 와 동형의 try/catch 패턴을 사용해
  * 실패 시 actorName=null 로 degrade 하고 이력은 정상 반환한다(line 164-166 선례).
+ *
+ * **필드 수준 마스킹(FR-PM-07).**
+ * VIEW 권한만으로는 부족하다. 단건 상세가 안 보이는 필드의 현재값을 가리므로([IssueApplicationService.maskFieldsForSingle]),
+ * changelog 도 같은 필드의 과거 from/to 값·박제 라벨을 가려야 한다. 그렇지 않으면 특정 필드가 제한된
+ * 사용자에게 과거 민감값이 누출된다. [maskInvisibleFields] 가 [FieldPermissionResolver.visibleFields] 로
+ * 단건과 동일한 마스킹 정책을 적용한다.
  */
 @Service
 class IssueChangelogService(
@@ -94,10 +100,12 @@ class IssueChangelogService(
      * 1. [IssueApplicationService.findByKey] 로 VIEW 권한 + 이슈 존재 검증.
      *    실패 시 [com.bts.issue.domain.IssueNotFoundException] 전파.
      * 2. [IssueChangeHistoryRepository.findByIssuePaged] + [IssueChangeHistoryRepository.countByIssue] 로 페이지 조회.
+     *    offset 은 Long 곱 후 Int 범위로 클램프해 오버플로 음수 OFFSET 을 방지한다(코드리뷰 P2).
      * 3. actorId 집합을 [UserLookupPort.findDisplayNamesByIds] 로 일괄 해석. 실패 시 emptyMap graceful degrade.
-     * 4. [ChangelogGroupView] 뷰 모델로 매핑해 [PageImpl] 반환.
+     * 4. [maskInvisibleFields] 로 안 보이는 필드의 변경 값을 마스킹한다(단건과 동일 정책, 코드리뷰 P1).
+     * 5. [ChangelogGroupView] 뷰 모델로 매핑해 [PageImpl] 반환.
      *
-     * @param actor 조회 행위자. VIEW 권한 검증에 사용.
+     * @param actor 조회 행위자. VIEW 권한 검증 + 필드 수준 마스킹에 사용.
      * @param key 조회할 이슈 키.
      * @param pageable 페이지 정보. pageSize=limit, pageNumber*pageSize=offset 으로 변환.
      * @return 변경 이력 [Page]. 이력 없으면 빈 Page.
@@ -158,6 +166,7 @@ class IssueChangelogService(
      * @param groups 마스킹 전 변경 그룹 목록.
      * @return 안 보이는 필드의 값이 마스킹된 그룹 목록.
      */
+    @Suppress("ReturnCount") // empty guard + projectId miss guard + candidates 비어있음 guard — 의도적 조기 반환
     private fun maskInvisibleFields(
         actor: ActorId,
         projectKey: String,
@@ -187,6 +196,7 @@ class IssueChangelogService(
      * item 의 [IssueChangeItem.field] 가 마스킹 대상이고 [visible] 에 없으면 값·라벨 4종을 null 로 치환한다.
      * 마스킹 대상이 아니거나(예: status·type) 보이는 필드면 원본을 그대로 반환한다.
      */
+    @Suppress("ReturnCount") // 비마스킹대상 guard + visible guard + 마스킹 반환 — 의도적 조기 반환
     private fun maskItemIfInvisible(
         item: IssueChangeItem,
         visible: Set<FieldRef>,
