@@ -10,13 +10,20 @@ import {
 } from './notification-policies'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// queryKey 상수
+// queryKey 상수 — 캐시 키 문자열을 한 곳에서 관리해 오타·drift 방지
+// mutation onSuccess에서 invalidateQueries를 호출할 때 이 상수를 직접 참조한다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 알림 정책 목록 TanStack Query 캐시 키 */
+/**
+ * 알림 정책 목록 TanStack Query 캐시 키.
+ * mutation(create/toggle/delete) onSuccess → invalidateQueries 대상.
+ */
 export const NOTIFICATION_POLICIES_QUERY_KEY = ['notification-policies'] as const
 
-/** 알림 정책 카탈로그 TanStack Query 캐시 키 */
+/**
+ * 알림 정책 카탈로그 TanStack Query 캐시 키.
+ * 서버 enum 변경 시에만 invalidate 필요 (서버 배포 주기와 동일).
+ */
 export const NOTIFICATION_CATALOG_QUERY_KEY = ['notification-catalog'] as const
 
 // ─────────────────────────────────────────────────────────────────────────────
