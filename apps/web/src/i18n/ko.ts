@@ -308,8 +308,11 @@ export const mfaStrings = {
 
 /**
  * MFA 관련 백엔드 에러 코드를 사용자 노출 메시지로 변환한다.
- * 계정 열거 방지를 위해 invalid_code / too_many_attempts 메시지는 일반 톤으로 작성한다.
  * ProblemDetail detail 필드는 직접 노출하지 않으며 이 함수가 단일 출처다.
+ * 계정 열거 방지를 위해 invalid_code / too_many_attempts는 원인 과노출 없는 일반 톤을 유지한다.
+ *
+ * @param errorCode - 백엔드 ProblemDetail 의 error 필드 값
+ * @returns 사용자에게 노출할 한국어 메시지
  */
 export function mfaErrorMessage(errorCode: string): string {
   switch (errorCode) {
