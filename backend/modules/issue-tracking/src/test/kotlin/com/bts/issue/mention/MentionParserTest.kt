@@ -53,6 +53,24 @@ class MentionParserTest : DescribeSpec({
             }
         }
 
+        describe("@@ 과대추출 차단 (EC-11)") {
+            it("@@bob 은 멘션으로 추출하지 않는다") {
+                MentionParser.extract("@@bob") shouldBe emptySet()
+            }
+
+            it("x@@y 도 멘션으로 추출하지 않는다") {
+                MentionParser.extract("x@@y") shouldBe emptySet()
+            }
+
+            it("@bob 은 여전히 정상 추출된다 (회귀)") {
+                MentionParser.extract("@bob") shouldBe setOf("bob")
+            }
+
+            it("이메일 회피도 여전히 동작한다 (회귀)") {
+                MentionParser.extract("alice@corp.com") shouldBe emptySet()
+            }
+        }
+
         describe("문장부호 경계 (EC-10)") {
             it("@alice. 처럼 마침표로 끝나면 alice 만 추출한다") {
                 MentionParser.extract("@alice.") shouldBe setOf("alice")
