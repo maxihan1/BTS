@@ -63,4 +63,19 @@ interface IssueSecurityDirectory {
         actorId: UUID,
         projectKey: String,
     ): IssueSecurityAccess
+
+    /**
+     * 주어진 보안 등급 UUID 집합을 등급 이름으로 역방향 일괄 조회한다.
+     *
+     * 이슈 변경 이력(audit trail) 기록 시점에 securityLevel 표시명을 박제(스냅샷)하기 위해 사용된다.
+     * 미존재 id 는 결과 맵에서 제외된다.
+     *
+     * 기본 구현은 빈 맵을 반환한다(fail-safe).
+     * 빈 맵 반환은 표시명 미박제를 의미하며, 보안 접근 판단에는 영향을 주지 않는다.
+     * production 환경에서는 반드시 override 해야 한다.
+     *
+     * @param levelIds 이름을 조회할 보안 등급 UUID 집합
+     * @return 실재하는 levelId 만 포함한 [UUID] to 등급명 맵 (순서 미보장)
+     */
+    fun findLevelNames(levelIds: Set<UUID>): Map<UUID, String> = emptyMap()
 }

@@ -74,6 +74,32 @@ class UserLookupAdapter(
         }.toMap()
     }
 
+    /**
+     * 주어진 사용자 UUID 집합을 표시명으로 역방향 일괄 해석한다 (FR-HS-01 Task 2).
+     *
+     * 빈 입력 시 DB 쿼리 없이 emptyMap 을 즉시 반환한다.
+     * `WHERE id IN (:ids)` 단일 쿼리로 N+1 없이 조회하며, 미존재 id 는 결과에서 자동으로 제외된다.
+     * 표시명은 `COALESCE(display_name, username)` 로 결정한다 — display_name 이 null 이면
+     * username 으로 폴백한다 (Jira 식 표시명 규약). users.display_name 은 V001 스키마에서 nullable 이다.
+     *
+     * SQL 인젝션 방어: named parameter `:ids` 바인딩 (문자열 결합 금지, DEVELOPMENT.md §1.3).
+     *
+     * @param ids 표시명을 조회할 사용자 UUID 집합
+     * @return 실재하는 id 만 포함한 `UUID -> 표시명` 맵 (순서 미보장)
+     */
+    @Transactional(readOnly = true)
+    override fun findDisplayNamesByIds(ids: Set<UUID>): Map<UUID, String> {
+        if (ids.isEmpty()) return emptyMap()
+        return jdbc.query(
+            SQL_FIND_DISPLAY_NAMES_BY_IDS,
+            mapOf("ids" to ids),
+        ) { rs, _ ->
+            val id = rs.getObject("id", UUID::class.java)
+            val displayName = rs.getString("dn")
+            id to displayName
+        }.toMap()
+    }
+
     private companion object {
         /**
          * users 행 존재 여부 확인 — EXISTS 를 사용해 불필요한 행 스캔을 방지한다.
@@ -107,6 +133,22 @@ class UserLookupAdapter(
             SELECT id, username
             FROM users
             WHERE LOWER(username) IN (:names)
+        """
+
+        /**
+         * 사용자 UUID 집합을 표시명으로 일괄 해석 (FR-HS-01 Task 2).
+         *
+         * `COALESCE(display_name, username) AS dn` — display_name 이 null 이면 username 으로 폴백한다.
+         * display_name 은 V001 스키마에서 nullable 이므로 null 폴백이 필요하다 (Jira 식 표시명).
+         * NamedParameterJdbcTemplate 이 Collection 을 IN 절 플레이스홀더로 자동 확장한다.
+         * 미존재 id 는 결과에 포함되지 않는다.
+         *
+         * SQL 인젝션 방어: named parameter :ids 바인딩 (문자열 결합 없음, DEVELOPMENT.md §1.3).
+         */
+        const val SQL_FIND_DISPLAY_NAMES_BY_IDS = """
+            SELECT id, COALESCE(display_name, username) AS dn
+            FROM users
+            WHERE id IN (:ids)
         """
     }
 }

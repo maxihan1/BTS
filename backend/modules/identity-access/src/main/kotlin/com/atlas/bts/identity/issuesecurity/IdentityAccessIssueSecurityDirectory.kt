@@ -8,7 +8,9 @@ import com.atlas.bts.identity.project.ProjectMembershipRepository
 import com.bts.shared.permission.IssueSecurityAccess
 import com.bts.shared.permission.IssueSecurityDirectory
 import org.springframework.context.annotation.Profile
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Component
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
@@ -47,6 +49,7 @@ class IdentityAccessIssueSecurityDirectory(
     private val schemeRepo: IssueSecuritySchemeRepository,
     private val membershipRepo: ProjectMembershipRepository,
     private val userGroupRepo: UserGroupRepository,
+    private val jdbc: NamedParameterJdbcTemplate,
 ) : IssueSecurityDirectory {
     override fun levelBelongsToProjectScheme(
         levelId: UUID,
@@ -54,6 +57,14 @@ class IdentityAccessIssueSecurityDirectory(
     ): Boolean {
         val projectId = projectDirectory.resolveKeyToId(projectKey) ?: return false
         return schemeRepo.levelBelongsToProjectScheme(levelId, projectId)
+    }
+
+    @Transactional(readOnly = true)
+    override fun findLevelNames(levelIds: Set<UUID>): Map<UUID, String> {
+        if (levelIds.isEmpty()) return emptyMap()
+        return jdbc.query(SQL_LEVEL_NAMES_BY_IDS, mapOf("ids" to levelIds)) { rs, _ ->
+            rs.getObject("id", UUID::class.java) to rs.getString("name")
+        }.toMap()
     }
 
     // ReturnCount: guard-clause early return 2개(프로젝트 미존재·적용 스킴 없음 → UNRESTRICTED) + 본문 1.
@@ -110,6 +121,17 @@ class IdentityAccessIssueSecurityDirectory(
         }
 
     private companion object {
+        /**
+         * 등급 id 집합 → 이름 역방향 일괄 조회 SQL.
+         * `IN (:ids)` 는 NamedParameterJdbcTemplate 가 컬렉션을 prepared statement 플레이스홀더로
+         * 자동 확장하므로 SQL 인젝션 안전(문자열 결합 없음).
+         */
+        const val SQL_LEVEL_NAMES_BY_IDS = """
+            SELECT id, name
+            FROM issue_security_levels
+            WHERE id IN (:ids)
+        """
+
         /** 적용 스킴이 없을 때 반환하는 무제한 접근(필터 미적용) 빠른 경로 값. */
         val UNRESTRICTED =
             IssueSecurityAccess(

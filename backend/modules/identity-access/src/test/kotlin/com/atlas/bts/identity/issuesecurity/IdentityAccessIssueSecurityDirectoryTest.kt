@@ -12,6 +12,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import java.time.Instant
 import java.util.UUID
 
@@ -30,6 +31,7 @@ class IdentityAccessIssueSecurityDirectoryTest {
     private val schemeRepo: IssueSecuritySchemeRepository = mockk()
     private val membershipRepo: ProjectMembershipRepository = mockk()
     private val userGroupRepo: UserGroupRepository = mockk()
+    private val jdbc: NamedParameterJdbcTemplate = mockk()
 
     private val directory =
         IdentityAccessIssueSecurityDirectory(
@@ -38,6 +40,7 @@ class IdentityAccessIssueSecurityDirectoryTest {
             schemeRepo,
             membershipRepo,
             userGroupRepo,
+            jdbc,
         )
 
     private val actorId = UUID.fromString("00000000-aaaa-0000-0000-000000000001")

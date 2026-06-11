@@ -119,6 +119,7 @@ class IssueBcArchTest {
      * - `com.atlas.bts.identity.pat..` — PAT 내부
      * - `com.atlas.bts.identity.web..` — identity 웹 레이어 내부
      * - `com.atlas.bts.identity.application..` — identity 애플리케이션 서비스 내부
+     * - `com.atlas.bts.identity.issuesecurity..` — 보안 등급 도메인/레포지토리 내부 (FR-HS-01 T4 추가)
      *
      * 근거. ADR 2026-06-01-issue-assignee-user-lookup-port + CLAUDE.md §BC 격리.
      */
@@ -139,6 +140,7 @@ class IssueBcArchTest {
                     "com.atlas.bts.identity.web..",
                     "com.atlas.bts.identity.application..",
                     "com.atlas.bts.identity.permission..",
+                    "com.atlas.bts.identity.issuesecurity..",
                 )
                 .because(
                     "issue-tracking BC 는 identity-access 내부를 직접 참조할 수 없다. " +

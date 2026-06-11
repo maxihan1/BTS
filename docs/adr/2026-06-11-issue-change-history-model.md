@@ -50,3 +50,32 @@
 - 신규 마이그레이션 2테이블(V018 후보 — FR-MN-01 PR #114와 V번호 조율). init_codegen 미러 필요.
 - `IssueApplicationService`의 변경 메서드들이 이력 기록 호출을 추가(같은 트랜잭션). 기존 변경 동작/OCC 불변.
 - from/to 값의 직렬화 형식(ID vs 표시값)과 actor 출처는 spec에서 확정.
+
+## 보강 (2026-06-11) — cross-BC 라벨 박제
+
+### 배경
+
+PR #115(FR-HS-01 초기 구현)에서 §결정1 "기록 시 cross-BC 호출 회피"를 근거로 assignee/securityLevel 필드의 표시명(label)을 null로 남겼다. Maxi가 "완전 Jira식"을 선택함에 따라(2026-06-11), 두 필드에 한해 이 결정을 부분적으로 뒤집는다.
+
+### 변경 결정
+
+assignee 및 securityLevel 필드의 표시명을 **변경 당시 기록 시점에 박제**한다(Jira의 fromString/toString 정석).
+
+- **assignee** — 변경 당시 담당자의 `display_name`을 박제. 조회 실패 시 `username` 폴백. 그것도 실패 시 label=null로 graceful degrade하며 이력 기록은 진행한다.
+- **securityLevel** — 변경 당시 보안등급의 레벨명을 박제. 조회 실패 시 label=null로 graceful degrade하며 이력 기록은 진행한다.
+
+### BC 격리 유지
+
+cross-BC read는 기존 shared-kernel 포트를 경유한다. 직접 import는 없다.
+
+- **assignee 표시명** — `UserLookupPort`(역방향: identity-access→issue-tracking 방향의 기존 포트)를 통해 userId로 표시명 조회.
+- **securityLevel 레벨명** — `IssueSecurityDirectory.findLevelNames`(issue-tracking 내부 포트)를 통해 levelId로 레벨명 조회.
+
+### 범위 밖
+
+- **status 필드**(project-workflow BC 소관)는 이번 보강 범위가 아니다. status label 박제는 project-workflow와의 별도 협의가 필요하며, 현재로서는 null 유지.
+
+### 단계 분할
+
+- **PR1(기록 보강, 현 작업)** — assignee/securityLevel 표시명 박제 구현.
+- **PR2(FR-HS-02 조회 UI)** — 박제된 label을 타임라인에 표시하는 조회 UI 구현.
