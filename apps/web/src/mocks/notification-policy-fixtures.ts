@@ -24,8 +24,8 @@ export interface NotificationPolicyFixture {
 export const SEED_POLICY_IDS = {
   p1: 'a1b2c3d4-e5f6-4789-abcd-ef0123456701',
   p2: 'b2c3d4e5-f6a7-4890-bcde-f01234567802',
-  p3: 'c3d4e5f6-a7b8-4901-cdef-012345678903',
-  p4: 'd4e5f6a7-b8c9-4012-def0-123456789004',
+  p3: 'c3d4e5f6-a7b8-4901-8efa-012345678903',
+  p4: 'd4e5f6a7-b8c9-4012-9ef0-123456789004',
 } as const
 
 // ─────────────────────────────────────────────────────────────────────────────
