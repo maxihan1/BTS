@@ -116,6 +116,18 @@ describe('Header', () => {
     expect(link).toHaveAttribute('href', '/admin/audit-logs')
   })
 
+  it('isSystemAdmin=true이면 관리 nav 안에 알림 정책 링크가 존재한다', () => {
+    useAuthStore.setState({
+      accessToken: 'test-token',
+      user: { username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: true },
+    })
+    renderHeader()
+
+    const link = screen.getByRole('link', { name: '알림 정책' })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute('href', '/admin/notification-policies')
+  })
+
   it('isSystemAdmin=false이면 관리 메뉴 nav가 렌더되지 않는다', () => {
     // beforeEach에서 isSystemAdmin: false로 설정됨
     renderHeader()
@@ -123,6 +135,7 @@ describe('Header', () => {
     expect(screen.queryByRole('navigation', { name: '관리 메뉴' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '워크플로우 스킴' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '감사 로그' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '알림 정책' })).not.toBeInTheDocument()
   })
 
   it('isSystemAdmin=false이면 로그아웃 드롭다운은 정상 노출된다', () => {
