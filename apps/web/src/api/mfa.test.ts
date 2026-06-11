@@ -383,6 +383,37 @@ describe('verifyMfa', () => {
     expect(thrown.status).toBe(401)
   })
 
+  it('T-MFA-5d-prod: refresh가 401을 반환하는 프로덕션 조건에서도 verify 401 invalid_code가 그대로 전파된다', async () => {
+    // 프로덕션 환경 시뮬레이션 — 아직 세션이 없어 refresh도 401을 반환한다.
+    // verifyMfa가 apiFetch를 사용하면 refresh 시도 → refresh 401 → clearSession 부수효과 + ApiError(401 from refresh)가 throw된다.
+    // raw fetch를 사용하면 refresh를 전혀 호출하지 않으므로 verify 원래 401 invalid_code가 그대로 throw된다.
+    let refreshCallCount = 0
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', () =>
+        HttpResponse.json({ error: 'invalid_code' }, { status: 401 }),
+      ),
+      http.post('/api/v1/auth/refresh', () => {
+        refreshCallCount++
+        return HttpResponse.json({ error: 'unauthorized' }, { status: 401 })
+      }),
+    )
+
+    let thrown: unknown
+    try {
+      await verifyMfa('challenge.jwt.token', '000000')
+    } catch (e) {
+      thrown = e
+    }
+
+    // refresh가 단 한 번도 호출되지 않아야 한다 (raw fetch는 refresh를 우회)
+    expect(refreshCallCount).toBe(0)
+    // verify 원래 에러 코드가 그대로 전파되어야 한다
+    expect(thrown).toBeInstanceOf(ApiError)
+    if (!(thrown instanceof ApiError)) throw new Error('type guard missed')
+    expect(thrown.status).toBe(401)
+    expect((thrown.body as Record<string, unknown> | null)?.error).toBe('invalid_code')
+  })
+
   it('T-MFA-5e: 429 too_many_attempts → ApiError(429) throw', async () => {
     server.use(
       http.post('/api/v1/auth/mfa/verify', () =>

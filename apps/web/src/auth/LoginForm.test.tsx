@@ -615,12 +615,21 @@ describe('LoginForm — MFA step (3단계)', () => {
   })
 
   it('MFA step에서 verify 401 invalid_code 응답 시 인라인 에러가 표시되고 코드 입력 필드가 유지된다', async () => {
+    // 프로덕션 동등 조건 — refresh가 401을 반환해도 invalid_code 메시지가 표시되어야 한다.
+    // verifyMfa가 apiFetch를 사용하면 refresh 시도 후 clearSession()이 호출되어
+    // "코드가 올바르지 않습니다." 대신 generic 에러 또는 세션 소멸이 발생한다.
+    let refreshCallCount = 0
     const user = userEvent.setup({ delay: null })
 
     server.use(
       http.post('/api/v1/auth/mfa/verify', () =>
         HttpResponse.json({ error: 'invalid_code' }, { status: 401 }),
       ),
+      // 프로덕션 조건 시뮬레이션 — verify 전에는 세션이 없으므로 refresh도 401
+      http.post('/api/v1/auth/refresh', () => {
+        refreshCallCount++
+        return HttpResponse.json({ error: 'unauthorized' }, { status: 401 })
+      }),
     )
 
     renderLoginForm()
@@ -630,10 +639,12 @@ describe('LoginForm — MFA step (3단계)', () => {
     await user.type(screen.getByLabelText('인증 코드'), '000000')
     await user.click(screen.getByRole('button', { name: '확인' }))
 
-    // 인라인 에러 메시지 확인
+    // 인라인 에러 메시지 확인 — refresh 우회로 원래 에러가 그대로 전파되어야 한다
     await screen.findByText('코드가 올바르지 않습니다.')
     // 코드 입력 필드가 유지되어야 한다 (MFA step 유지)
     expect(screen.getByLabelText('인증 코드')).toBeInTheDocument()
+    // refresh가 단 한 번도 호출되지 않아야 한다 (raw fetch는 refresh를 우회)
+    expect(refreshCallCount).toBe(0)
   })
 
   it('MFA step에서 "다시 로그인" 클릭 시 이메일 입력 1단계로 복귀한다', async () => {
