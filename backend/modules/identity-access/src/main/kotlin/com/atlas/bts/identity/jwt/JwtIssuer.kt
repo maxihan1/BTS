@@ -61,7 +61,12 @@ class JwtIssuer(
      * @param mfaVerified MFA 2차 인증 통과 여부 ([CLAIM_MFA_VERIFIED]). 기본 `false` (FR-MF-01).
      *   미전달 호출처(SSO 성공 핸들러 등)는 `false` 가 유지된다.
      * @return 서명된 JWT 문자열 (header.payload.signature)
+     *
+     * LongParameterList 억제 — 모든 파라미터가 독립적인 JWT 클레임 입력(sub/sid/providerId/scopes/
+     * roles/mfa_verified)이라 임의 그룹핑(파라미터 객체)은 클레임 매핑 가독성을 해친다. FR-MF-01 에서
+     * mfaVerified 추가로 6개가 됐다(기본값으로 기존 호출처 무회귀).
      */
+    @Suppress("LongParameterList")
     fun issue(
         userId: UUID,
         sessionId: UUID,

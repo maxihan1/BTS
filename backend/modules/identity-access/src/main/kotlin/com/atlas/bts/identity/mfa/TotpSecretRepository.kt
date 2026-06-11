@@ -58,7 +58,9 @@ class TotpSecretRepository(
      * @return 일치하는 [TotpSecret], 없으면 `null`.
      */
     @Transactional(readOnly = true)
-    fun findByUser(userId: UUID): TotpSecret? = jdbc.query(SQL_FIND_BY_USER, mapOf("userId" to userId), rowMapper).firstOrNull()
+    fun findByUser(userId: UUID): TotpSecret? {
+        return jdbc.query(SQL_FIND_BY_USER, mapOf("userId" to userId), rowMapper).firstOrNull()
+    }
 
     /**
      * PENDING secret 을 ACTIVE 로 전이하고 confirmed_at 을 채운다(enable 확인 완료).

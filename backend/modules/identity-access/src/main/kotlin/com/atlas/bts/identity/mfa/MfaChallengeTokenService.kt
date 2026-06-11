@@ -121,7 +121,11 @@ class MfaChallengeTokenService(
      *
      * @param token 챌린지 JWT 문자열.
      * @return 검증된 [MfaChallengeClaims], 또는 검증 실패 시 `null`.
+     *
+     * ReturnCount 억제 — 각 return 은 서명/만료/purpose/subject/providerId/jti 별 **명시적 fail-closed
+     * 거부**다. 단일 return 으로 합치면 보안 가드의 가독성이 떨어지고 누락 위험이 커진다(early-return 권장).
      */
+    @Suppress("ReturnCount")
     fun validate(token: String): MfaChallengeClaims? {
         val claims = parseVerified(token) ?: return null
 

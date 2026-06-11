@@ -1,4 +1,4 @@
-// V022 Flyway 마이그레이션 검증 — totp_secrets 테이블(5컬럼 + status CHECK + users FK CASCADE) + sessions.mfa_verified NOT NULL DEFAULT false 확인 (FR-MF-01)
+// V022 마이그레이션 검증 — totp_secrets 테이블 + sessions.mfa_verified 컬럼 (FR-MF-01)
 
 package com.atlas.bts.identity.db
 

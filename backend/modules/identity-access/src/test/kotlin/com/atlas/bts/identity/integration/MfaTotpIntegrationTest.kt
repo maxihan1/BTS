@@ -185,7 +185,11 @@ class MfaTotpIntegrationTest {
      *
      * 흐름이 상태(secret PENDING→ACTIVE→삭제, 세션 발급)에 강하게 의존하므로 한 테스트에서 순차 검증한다.
      * 각 단계의 단언은 위 KDoc 표(S1~S9)에 대응한다.
+     *
+     * LongMethod 억제 — TOTP 전체 흐름은 상태(secret PENDING→ACTIVE→삭제 + 세션 발급)에 강하게
+     * 의존하는 단일 e2e 시나리오라, 분할하면 단계 간 상태 전달 비용이 커지고 흐름 가독성이 떨어진다.
      */
+    @Suppress("LongMethod")
     @Test
     fun `TOTP 전체 흐름 — setup·enable·login 2단계·verify·refresh 유지·disable`() {
         // 1단계 로그인으로 JWT 확보(setup/enable/disable 은 JWT 전용 self-service).
