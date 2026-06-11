@@ -23,7 +23,6 @@ import java.util.UUID
  */
 @TestConfiguration
 class TestPermissionConfig {
-
     companion object {
         /** 관리자로 판정될 UUID — 테스트에서 직접 참조하지 않고 문자열로 동기화한다 */
         val ADMIN_ACTOR_ID: UUID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")

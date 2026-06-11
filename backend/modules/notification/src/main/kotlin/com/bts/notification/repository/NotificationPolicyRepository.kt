@@ -13,7 +13,6 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
-import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
 
@@ -31,7 +30,6 @@ import java.util.UUID
 class NotificationPolicyRepository(
     private val dsl: DSLContext,
 ) {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
@@ -45,20 +43,26 @@ class NotificationPolicyRepository(
      */
     @Transactional
     fun insert(policy: NotificationPolicy): NotificationPolicy {
-        log.debug("알림 정책 삽입 — projectKey={}, eventType={}, role={}, channel={}",
-            policy.projectKey, policy.eventType.wireValue, policy.recipientRole, policy.channel)
+        log.debug(
+            "알림 정책 삽입 — projectKey={}, eventType={}, role={}, channel={}",
+            policy.projectKey,
+            policy.eventType.wireValue,
+            policy.recipientRole,
+            policy.channel,
+        )
 
-        val record = dsl.insertInto(NOTIFICATION_POLICIES)
-            .set(NOTIFICATION_POLICIES.ID, policy.id)
-            .set(NOTIFICATION_POLICIES.PROJECT_KEY, policy.projectKey)
-            .set(NOTIFICATION_POLICIES.EVENT_TYPE, policy.eventType.wireValue)
-            .set(NOTIFICATION_POLICIES.RECIPIENT_ROLE, policy.recipientRole.name)
-            .set(NOTIFICATION_POLICIES.CHANNEL, policy.channel.name)
-            .set(NOTIFICATION_POLICIES.ENABLED, policy.enabled)
-            .set(NOTIFICATION_POLICIES.CREATED_BY, policy.createdBy)
-            .returning()
-            .fetchOne()
-            ?: error("INSERT 후 행 반환 실패 — id=${policy.id}")
+        val record =
+            dsl.insertInto(NOTIFICATION_POLICIES)
+                .set(NOTIFICATION_POLICIES.ID, policy.id)
+                .set(NOTIFICATION_POLICIES.PROJECT_KEY, policy.projectKey)
+                .set(NOTIFICATION_POLICIES.EVENT_TYPE, policy.eventType.wireValue)
+                .set(NOTIFICATION_POLICIES.RECIPIENT_ROLE, policy.recipientRole.name)
+                .set(NOTIFICATION_POLICIES.CHANNEL, policy.channel.name)
+                .set(NOTIFICATION_POLICIES.ENABLED, policy.enabled)
+                .set(NOTIFICATION_POLICIES.CREATED_BY, policy.createdBy)
+                .returning()
+                .fetchOne()
+                ?: error("INSERT 후 행 반환 실패 — id=${policy.id}")
 
         return toDomain(record)
     }
@@ -88,11 +92,12 @@ class NotificationPolicyRepository(
      */
     @Transactional(readOnly = true)
     fun findAll(projectKey: String?): List<NotificationPolicy> {
-        val condition = if (projectKey == null) {
-            NOTIFICATION_POLICIES.PROJECT_KEY.isNull
-        } else {
-            NOTIFICATION_POLICIES.PROJECT_KEY.eq(projectKey)
-        }
+        val condition =
+            if (projectKey == null) {
+                NOTIFICATION_POLICIES.PROJECT_KEY.isNull
+            } else {
+                NOTIFICATION_POLICIES.PROJECT_KEY.eq(projectKey)
+            }
 
         return dsl.selectFrom(NOTIFICATION_POLICIES)
             .where(condition)
@@ -114,12 +119,16 @@ class NotificationPolicyRepository(
      * @return 조건에 맞는 정책 목록 (enabled 무관 전체)
      */
     @Transactional(readOnly = true)
-    fun findByEventTypeAndProjectKey(eventType: String, projectKey: String?): List<NotificationPolicy> {
-        val projectCondition = if (projectKey == null) {
-            NOTIFICATION_POLICIES.PROJECT_KEY.isNull
-        } else {
-            NOTIFICATION_POLICIES.PROJECT_KEY.eq(projectKey)
-        }
+    fun findByEventTypeAndProjectKey(
+        eventType: String,
+        projectKey: String?,
+    ): List<NotificationPolicy> {
+        val projectCondition =
+            if (projectKey == null) {
+                NOTIFICATION_POLICIES.PROJECT_KEY.isNull
+            } else {
+                NOTIFICATION_POLICIES.PROJECT_KEY.eq(projectKey)
+            }
 
         return dsl.selectFrom(NOTIFICATION_POLICIES)
             .where(NOTIFICATION_POLICIES.EVENT_TYPE.eq(eventType))
@@ -137,7 +146,11 @@ class NotificationPolicyRepository(
      * @return 영향받은 행 수 (0 이면 해당 id 미존재)
      */
     @Transactional
-    fun toggle(id: UUID, enabled: Boolean, now: Instant): Int {
+    fun toggle(
+        id: UUID,
+        enabled: Boolean,
+        now: Instant,
+    ): Int {
         log.debug("알림 정책 toggle — id={}, enabled={}", id, enabled)
 
         return dsl.update(NOTIFICATION_POLICIES)
@@ -174,32 +187,41 @@ class NotificationPolicyRepository(
      * @throws IllegalStateException DB 에 알 수 없는 enum 문자열이 저장된 경우 (데이터 손상)
      */
     private fun toDomain(record: NotificationPoliciesRecord): NotificationPolicy {
-        val eventType = NotificationEventType.fromWire(record.eventType)
-            ?: throw IllegalStateException("알 수 없는 event_type 값: ${record.eventType} — DB 데이터 손상")
+        val eventType =
+            NotificationEventType.fromWire(record.eventType)
+                ?: error("알 수 없는 event_type 값: ${record.eventType} — DB 데이터 손상")
 
-        val recipientRole = RecipientRole.fromWire(record.recipientRole)
-            ?: throw IllegalStateException("알 수 없는 recipient_role 값: ${record.recipientRole} — DB 데이터 손상")
+        val recipientRole =
+            RecipientRole.fromWire(record.recipientRole)
+                ?: error("알 수 없는 recipient_role 값: ${record.recipientRole} — DB 데이터 손상")
 
-        val channel = Channel.fromWire(record.channel)
-            ?: throw IllegalStateException("알 수 없는 channel 값: ${record.channel} — DB 데이터 손상")
+        val channel =
+            Channel.fromWire(record.channel)
+                ?: error("알 수 없는 channel 값: ${record.channel} — DB 데이터 손상")
 
-        val createdAt = record.createdAt?.toInstant()
-            ?: throw IllegalStateException("created_at 이 null — id=${record.id}")
+        val createdAt =
+            record.createdAt?.toInstant()
+                ?: error("created_at 이 null — id=${record.id}")
 
-        val updatedAt = record.updatedAt?.toInstant()
-            ?: throw IllegalStateException("updated_at 이 null — id=${record.id}")
+        val updatedAt =
+            record.updatedAt?.toInstant()
+                ?: error("updated_at 이 null — id=${record.id}")
+
+        val id =
+            record.id ?: error("id 가 null — DB 데이터 손상")
+        val enabled =
+            record.enabled ?: error("enabled 가 null — id=${record.id}")
 
         return NotificationPolicy(
-            id = record.id ?: throw IllegalStateException("id 가 null — DB 데이터 손상"),
+            id = id,
             projectKey = record.projectKey,
             eventType = eventType,
             recipientRole = recipientRole,
             channel = channel,
-            enabled = record.enabled ?: throw IllegalStateException("enabled 가 null — id=${record.id}"),
+            enabled = enabled,
             createdBy = record.createdBy,
             createdAt = createdAt,
             updatedAt = updatedAt,
         )
     }
-
 }

@@ -38,7 +38,6 @@ import javax.sql.DataSource
  */
 @TestConfiguration
 class NotificationTestcontainersConfig {
-
     companion object {
         /**
          * JVM 단위 singleton PostgreSQL 16-alpine container.
@@ -63,7 +62,11 @@ class NotificationTestcontainersConfig {
          * 동일 JVM 에서 여러 테스트 클래스가 이 설정을 공유해도 migrate 는 한 번만 수행된다.
          */
         @Synchronized
-        fun migrateOnce(jdbcUrl: String, username: String, password: String) {
+        fun migrateOnce(
+            jdbcUrl: String,
+            username: String,
+            password: String,
+        ) {
             if (migrated) return
             Flyway.configure()
                 .dataSource(jdbcUrl, username, password)
@@ -107,10 +110,11 @@ class NotificationTestcontainersConfig {
      */
     @Bean
     fun dslContext(dataSource: DataSource): DSLContext {
-        val configuration = DefaultConfiguration()
-            .set(DataSourceConnectionProvider(TransactionAwareDataSourceProxy(dataSource)))
-            .set(SQLDialect.POSTGRES)
-            .set(DefaultExecuteListenerProvider(JooqExceptionTranslator()))
+        val configuration =
+            DefaultConfiguration()
+                .set(DataSourceConnectionProvider(TransactionAwareDataSourceProxy(dataSource)))
+                .set(SQLDialect.POSTGRES)
+                .set(DefaultExecuteListenerProvider(JooqExceptionTranslator()))
         return DefaultDSLContext(configuration)
     }
 
@@ -123,6 +127,7 @@ class NotificationTestcontainersConfig {
      * @return [PlatformTransactionManager] 구현체
      */
     @Bean
-    fun transactionManager(dataSource: DataSource): PlatformTransactionManager =
-        DataSourceTransactionManager(dataSource)
+    fun transactionManager(dataSource: DataSource): PlatformTransactionManager {
+        return DataSourceTransactionManager(dataSource)
+    }
 }

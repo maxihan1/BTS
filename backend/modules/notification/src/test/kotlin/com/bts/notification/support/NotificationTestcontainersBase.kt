@@ -37,7 +37,6 @@ import org.testcontainers.utility.DockerImageName
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 abstract class NotificationTestcontainersBase {
-
     companion object {
         /**
          * JVM 단위 singleton PostgreSQL container.
@@ -83,11 +82,12 @@ abstract class NotificationTestcontainersBase {
             Flyway.configure().dataSource(postgres.jdbcUrl, postgres.username, postgres.password),
         ).load().migrate()
 
-        val dataSource = DriverManagerDataSource(
-            postgres.jdbcUrl,
-            postgres.username,
-            postgres.password,
-        )
+        val dataSource =
+            DriverManagerDataSource(
+                postgres.jdbcUrl,
+                postgres.username,
+                postgres.password,
+            )
 
         // jOOQ DSLContext — SQL 을 코드로 안전하게 작성하는 라이브러리의 핵심 진입점
         dsl = DSL.using(dataSource, SQLDialect.POSTGRES)

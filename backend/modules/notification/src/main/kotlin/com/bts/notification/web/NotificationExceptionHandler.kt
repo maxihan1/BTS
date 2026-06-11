@@ -83,7 +83,9 @@ class NotificationExceptionHandler {
      * [NotificationPolicyForbiddenException] — 권한 없음 — 403.
      */
     @ExceptionHandler(NotificationPolicyForbiddenException::class)
-    fun handleForbidden(@Suppress("UnusedParameter") ex: NotificationPolicyForbiddenException): ProblemDetail {
+    fun handleForbidden(
+        @Suppress("UnusedParameter") ex: NotificationPolicyForbiddenException,
+    ): ProblemDetail {
         log.warn("NOTIF_403 forbidden")
         return problem(
             status = HttpStatus.FORBIDDEN,

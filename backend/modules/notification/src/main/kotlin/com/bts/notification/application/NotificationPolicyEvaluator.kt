@@ -29,7 +29,6 @@ import org.springframework.transaction.annotation.Transactional
 class NotificationPolicyEvaluator(
     private val repository: NotificationPolicyRepository,
 ) {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
@@ -43,37 +42,48 @@ class NotificationPolicyEvaluator(
      * @return 활성 정책에서 추출한 [PolicyMatch] 목록 (비어 있을 수 있음)
      */
     @Transactional(readOnly = true)
-    fun evaluate(eventType: NotificationEventType, projectKey: String?): List<PolicyMatch> {
+    fun evaluate(
+        eventType: NotificationEventType,
+        projectKey: String?,
+    ): List<PolicyMatch> {
         if (projectKey != null) {
-            val projectPolicies = repository.findByEventTypeAndProjectKey(eventType.wireValue, projectKey)
+            val projectPolicies =
+                repository.findByEventTypeAndProjectKey(eventType.wireValue, projectKey)
 
             if (projectPolicies.isNotEmpty()) {
                 // 프로젝트가 독자 관리 중 — replace 방식. 전역은 무시.
-                val matches = projectPolicies
-                    .filter { it.enabled }
-                    .map { PolicyMatch(recipientRole = it.recipientRole, channel = it.channel) }
+                val matches =
+                    projectPolicies
+                        .filter { it.enabled }
+                        .map { PolicyMatch(recipientRole = it.recipientRole, channel = it.channel) }
 
                 log.debug(
                     "프로젝트 정책 평가 완료 — projectKey={}, eventType={}, 전체={}, 활성={}",
-                    projectKey, eventType.wireValue, projectPolicies.size, matches.size,
+                    projectKey,
+                    eventType.wireValue,
+                    projectPolicies.size,
+                    matches.size,
                 )
                 return matches
             }
 
             log.debug(
                 "프로젝트 정책 없음 — 전역 폴백 — projectKey={}, eventType={}",
-                projectKey, eventType.wireValue,
+                projectKey,
+                eventType.wireValue,
             )
         }
 
         // 전역 정책 평가 (projectKey==null 이거나 프로젝트 행 0개)
-        val globalMatches = repository.findByEventTypeAndProjectKey(eventType.wireValue, null)
-            .filter { it.enabled }
-            .map { PolicyMatch(recipientRole = it.recipientRole, channel = it.channel) }
+        val globalMatches =
+            repository.findByEventTypeAndProjectKey(eventType.wireValue, null)
+                .filter { it.enabled }
+                .map { PolicyMatch(recipientRole = it.recipientRole, channel = it.channel) }
 
         log.debug(
             "전역 정책 평가 완료 — eventType={}, 활성={}",
-            eventType.wireValue, globalMatches.size,
+            eventType.wireValue,
+            globalMatches.size,
         )
         return globalMatches
     }

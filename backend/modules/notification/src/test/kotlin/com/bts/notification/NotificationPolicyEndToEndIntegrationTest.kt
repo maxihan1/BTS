@@ -57,7 +57,6 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class NotificationPolicyEndToEndIntegrationTest {
-
     @Autowired
     lateinit var webApplicationContext: WebApplicationContext
 
@@ -105,25 +104,28 @@ class NotificationPolicyEndToEndIntegrationTest {
 
     @Test
     fun `E2E-2 admin이 전역 정책 생성 시 201 반환되고 DB에 반영된다`() {
-        val body = mapOf(
-            "projectKey" to null,
-            "eventType" to "issue.overdue",
-            "recipientRole" to "PROJECT_ADMIN",
-            "channel" to "EMAIL",
-            "enabled" to true,
-        )
+        val body =
+            mapOf(
+                "projectKey" to null,
+                "eventType" to "issue.overdue",
+                "recipientRole" to "PROJECT_ADMIN",
+                "channel" to "EMAIL",
+                "enabled" to true,
+            )
 
-        val result = mockMvc.perform(
-            post("/api/v1/notification-policies")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(body)),
-        )
-            .andExpect(status().isCreated)
-            .andExpect(jsonPath("$.data.id").exists())
-            .andExpect(jsonPath("$.data.eventType").value("issue.overdue"))
-            .andExpect(jsonPath("$.data.recipientRole").value("PROJECT_ADMIN"))
-            .andExpect(jsonPath("$.data.channel").value("EMAIL"))
-            .andReturn()
+        val result =
+            mockMvc
+                .perform(
+                    post("/api/v1/notification-policies")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(body)),
+                )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.data.id").exists())
+                .andExpect(jsonPath("$.data.eventType").value("issue.overdue"))
+                .andExpect(jsonPath("$.data.recipientRole").value("PROJECT_ADMIN"))
+                .andExpect(jsonPath("$.data.channel").value("EMAIL"))
+                .andReturn()
 
         // DB 반영 확인: GET으로 재조회 시 생성된 정책 포함
         val responseBody = mapper.readTree(result.response.contentAsString)
@@ -136,13 +138,14 @@ class NotificationPolicyEndToEndIntegrationTest {
     @Test
     fun `E2E-3 ATLAS issue_created 정책 POST 후 evaluate가 ATLAS 정책만 반환하고 전역을 무시한다`() {
         // ATLAS 프로젝트 issue.created 정책 생성
-        val body = mapOf(
-            "projectKey" to "ATLAS_E2E",
-            "eventType" to "issue.created",
-            "recipientRole" to "ASSIGNEE",
-            "channel" to "IN_APP",
-            "enabled" to true,
-        )
+        val body =
+            mapOf(
+                "projectKey" to "ATLAS_E2E",
+                "eventType" to "issue.created",
+                "recipientRole" to "ASSIGNEE",
+                "channel" to "IN_APP",
+                "enabled" to true,
+            )
 
         mockMvc.perform(
             post("/api/v1/notification-policies")
@@ -166,13 +169,14 @@ class NotificationPolicyEndToEndIntegrationTest {
     fun `E2E-4 비admin actor가 정책 생성 시 403 NOTIF_FORBIDDEN 반환`() {
         setRegularAuth()
 
-        val body = mapOf(
-            "projectKey" to null,
-            "eventType" to "issue.created",
-            "recipientRole" to "REPORTER",
-            "channel" to "EMAIL",
-            "enabled" to true,
-        )
+        val body =
+            mapOf(
+                "projectKey" to null,
+                "eventType" to "issue.created",
+                "recipientRole" to "REPORTER",
+                "channel" to "EMAIL",
+                "enabled" to true,
+            )
 
         mockMvc.perform(
             post("/api/v1/notification-policies")
@@ -187,13 +191,14 @@ class NotificationPolicyEndToEndIntegrationTest {
 
     @Test
     fun `E2E-5 동일한 정책을 두 번 POST하면 두 번째는 409 NOTIF_POLICY_DUPLICATE 반환`() {
-        val body = mapOf(
-            "projectKey" to null,
-            "eventType" to "automation.failed",
-            "recipientRole" to "RULE_OWNER",
-            "channel" to "EMAIL",
-            "enabled" to true,
-        )
+        val body =
+            mapOf(
+                "projectKey" to null,
+                "eventType" to "automation.failed",
+                "recipientRole" to "RULE_OWNER",
+                "channel" to "EMAIL",
+                "enabled" to true,
+            )
 
         // 첫 번째 생성 — 201
         mockMvc.perform(

@@ -41,7 +41,8 @@ class NotificationPolicyServiceTest : DescribeSpec({
     val adminActorId: UUID = UUID.randomUUID()
     val nonAdminActorId: UUID = UUID.randomUUID()
 
-    /** 테스트용 NotificationPolicy 빌더 */
+    /** 테스트용 NotificationPolicy 빌더 — 모든 필드를 선택적으로 커스터마이즈할 수 있도록 다인자, 기본값 제공 */
+    @Suppress("LongParameterList") // 테스트 빌더: 각 파라미터가 독립 시나리오 축, 기본값 제공으로 호출부 간결
     fun buildPolicy(
         id: UUID = UUID.randomUUID(),
         projectKey: String? = null,

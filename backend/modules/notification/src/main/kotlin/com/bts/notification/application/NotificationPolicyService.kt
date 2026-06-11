@@ -70,6 +70,7 @@ class NotificationPolicyService(
      * @throws NotificationPolicyDuplicateException 동일 조합 정책 중복
      */
     @Transactional
+    @Suppress("LongParameterList") // 도메인 조합 키 6종 — 각각 독립 의미를 가지며 커맨드 객체 도입 시 오히려 과설계
     fun create(
         actorId: UUID,
         projectKey: String?,
@@ -108,10 +109,12 @@ class NotificationPolicyService(
         } catch (ex: DuplicateKeyException) {
             throw NotificationPolicyDuplicateException(
                 "동일한 알림 정책이 이미 존재합니다. eventType=${eventType.wireValue}, role=$recipientRole, channel=$channel",
+                ex,
             )
         } catch (ex: DataIntegrityViolationException) {
             throw NotificationPolicyDuplicateException(
                 "동일한 알림 정책이 이미 존재합니다. eventType=${eventType.wireValue}, role=$recipientRole, channel=$channel",
+                ex,
             )
         }
     }

@@ -33,9 +33,12 @@ class NotificationPolicyNotFoundException(
  *
  * HTTP 응답 코드 409에 매핑된다 (Task 6 컨트롤러에서 처리).
  * UNIQUE 제약(uq_notification_policy) 위반을 서비스 계층에서 도메인 예외로 변환한 결과다.
+ * cause 를 보존하여 원본 스택 트레이스 유실을 방지한다 (SwallowedException 방지).
  *
  * @param message 중복 내용을 설명하는 메시지
+ * @param cause 원본 DB 예외 (스택 트레이스 보존용)
  */
 class NotificationPolicyDuplicateException(
     message: String,
-) : RuntimeException(message)
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)

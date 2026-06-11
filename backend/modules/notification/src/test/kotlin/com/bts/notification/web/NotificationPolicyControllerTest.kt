@@ -10,7 +10,6 @@ import com.bts.notification.domain.Channel
 import com.bts.notification.domain.NotificationEventType
 import com.bts.notification.domain.NotificationPolicy
 import com.bts.notification.domain.RecipientRole
-
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
@@ -81,9 +80,8 @@ class NotificationPolicyControllerTest {
         open fun notificationPolicyService(): NotificationPolicyService = mockk(relaxed = true)
 
         @Bean
-        open fun notificationPolicyController(
-            service: NotificationPolicyService,
-        ): NotificationPolicyController = NotificationPolicyController(service)
+        open fun notificationPolicyController(service: NotificationPolicyService): NotificationPolicyController =
+            NotificationPolicyController(service)
 
         @Bean
         open fun notificationExceptionHandler(): NotificationExceptionHandler = NotificationExceptionHandler()

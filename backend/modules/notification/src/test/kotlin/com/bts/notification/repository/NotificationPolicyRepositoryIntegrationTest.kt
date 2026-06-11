@@ -10,9 +10,9 @@ import com.bts.notification.support.NotificationTestcontainersBase
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.jooq.exception.DataAccessException
+import org.junit.jupiter.api.MethodOrderer
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
-import org.junit.jupiter.api.MethodOrderer
 import java.time.Instant
 import java.util.UUID
 
@@ -23,7 +23,6 @@ import java.util.UUID
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class NotificationPolicyRepositoryIntegrationTest : NotificationTestcontainersBase() {
-
     private val repository: NotificationPolicyRepository by lazy {
         NotificationPolicyRepository(dsl)
     }
@@ -36,17 +35,18 @@ class NotificationPolicyRepositoryIntegrationTest : NotificationTestcontainersBa
         eventType: NotificationEventType = NotificationEventType.ISSUE_CREATED,
         recipientRole: RecipientRole = RecipientRole.ASSIGNEE,
         channel: Channel = Channel.EMAIL,
-    ): NotificationPolicy = NotificationPolicy(
-        id = UUID.randomUUID(),
-        projectKey = projectKey,
-        eventType = eventType,
-        recipientRole = recipientRole,
-        channel = channel,
-        enabled = true,
-        createdBy = testCreatedBy,
-        createdAt = now,
-        updatedAt = now,
-    )
+    ): NotificationPolicy =
+        NotificationPolicy(
+            id = UUID.randomUUID(),
+            projectKey = projectKey,
+            eventType = eventType,
+            recipientRole = recipientRole,
+            channel = channel,
+            enabled = true,
+            createdBy = testCreatedBy,
+            createdAt = now,
+            updatedAt = now,
+        )
 
     // ── insert + findById 라운드트립 ─────────────────────────────────────────────
 
@@ -83,9 +83,10 @@ class NotificationPolicyRepositoryIntegrationTest : NotificationTestcontainersBa
         assertThat(globals).hasSizeGreaterThanOrEqualTo(19)
 
         // issue.created 전역 3행 존재 확인 (REPORTER / WATCHER / COMPONENT_LEAD, IN_APP)
-        val issueCreatedGlobals = globals.filter {
-            it.eventType == NotificationEventType.ISSUE_CREATED && it.projectKey == null
-        }
+        val issueCreatedGlobals =
+            globals.filter {
+                it.eventType == NotificationEventType.ISSUE_CREATED && it.projectKey == null
+            }
         assertThat(issueCreatedGlobals).hasSize(3)
 
         val roles = issueCreatedGlobals.map { it.recipientRole }.toSet()
@@ -103,8 +104,12 @@ class NotificationPolicyRepositoryIntegrationTest : NotificationTestcontainersBa
     @Test
     fun `findAll("ATLAS")는 ATLAS 프로젝트 정책만 반환하고 전역 행은 포함하지 않는다`() {
         // ATLAS 프로젝트 전용 정책 2건 삽입
-        repository.insert(buildPolicy(projectKey = "ATLAS", recipientRole = RecipientRole.ASSIGNEE, channel = Channel.IN_APP))
-        repository.insert(buildPolicy(projectKey = "ATLAS", recipientRole = RecipientRole.REPORTER, channel = Channel.EMAIL))
+        repository.insert(
+            buildPolicy(projectKey = "ATLAS", recipientRole = RecipientRole.ASSIGNEE, channel = Channel.IN_APP),
+        )
+        repository.insert(
+            buildPolicy(projectKey = "ATLAS", recipientRole = RecipientRole.REPORTER, channel = Channel.EMAIL),
+        )
 
         val atlasOnly = repository.findAll("ATLAS")
 
@@ -129,9 +134,23 @@ class NotificationPolicyRepositoryIntegrationTest : NotificationTestcontainersBa
     @Test
     fun `findByEventTypeAndProjectKey("issue_created", "ATLAS")는 ATLAS issue_created 행만 반환한다`() {
         // ATLAS issue.created EMAIL 정책 삽입
-        repository.insert(buildPolicy(projectKey = "ATLAS", eventType = NotificationEventType.ISSUE_CREATED, recipientRole = RecipientRole.ASSIGNEE, channel = Channel.EMAIL))
+        repository.insert(
+            buildPolicy(
+                projectKey = "ATLAS",
+                eventType = NotificationEventType.ISSUE_CREATED,
+                recipientRole = RecipientRole.ASSIGNEE,
+                channel = Channel.EMAIL,
+            ),
+        )
         // 다른 이벤트 행 삽입 (조회 결과에 포함되면 안 됨)
-        repository.insert(buildPolicy(projectKey = "ATLAS", eventType = NotificationEventType.ISSUE_ASSIGNED, recipientRole = RecipientRole.ASSIGNEE, channel = Channel.EMAIL))
+        repository.insert(
+            buildPolicy(
+                projectKey = "ATLAS",
+                eventType = NotificationEventType.ISSUE_ASSIGNED,
+                recipientRole = RecipientRole.ASSIGNEE,
+                channel = Channel.EMAIL,
+            ),
+        )
 
         val results = repository.findByEventTypeAndProjectKey("issue.created", "ATLAS")
 
@@ -145,12 +164,13 @@ class NotificationPolicyRepositoryIntegrationTest : NotificationTestcontainersBa
     @Test
     fun `findByEventTypeAndProjectKey는 enabled=false 행도 반환한다 (평가 엔진용)`() {
         // enabled=false 인 ATLAS 정책 삽입
-        val disabledPolicy = buildPolicy(
-            projectKey = "ATLAS",
-            eventType = NotificationEventType.ISSUE_CREATED,
-            recipientRole = RecipientRole.ASSIGNEE,
-            channel = Channel.IN_APP,
-        ).copy(enabled = false)
+        val disabledPolicy =
+            buildPolicy(
+                projectKey = "ATLAS",
+                eventType = NotificationEventType.ISSUE_CREATED,
+                recipientRole = RecipientRole.ASSIGNEE,
+                channel = Channel.IN_APP,
+            ).copy(enabled = false)
         repository.insert(disabledPolicy)
 
         val results = repository.findByEventTypeAndProjectKey("issue.created", "ATLAS")
@@ -202,17 +222,19 @@ class NotificationPolicyRepositoryIntegrationTest : NotificationTestcontainersBa
     @Test
     fun `시드와 동일한 전역 정책(issue_created, REPORTER, IN_APP) 삽입 시 예외가 발생한다`() {
         // V401 시드: (NULL, 'issue.created', 'REPORTER', 'IN_APP') 이미 존재
-        val duplicate = NotificationPolicy(
-            id = UUID.randomUUID(),
-            projectKey = null,          // 전역
-            eventType = NotificationEventType.ISSUE_CREATED,
-            recipientRole = RecipientRole.REPORTER,
-            channel = Channel.IN_APP,
-            enabled = true,
-            createdBy = testCreatedBy,  // 시드와 달리 non-null — cleanNonSeedPolicies 대상이 됨
-            createdAt = now,
-            updatedAt = now,
-        )
+        // projectKey = null (전역), createdBy = non-null (cleanNonSeedPolicies 대상)
+        val duplicate =
+            NotificationPolicy(
+                id = UUID.randomUUID(),
+                projectKey = null,
+                eventType = NotificationEventType.ISSUE_CREATED,
+                recipientRole = RecipientRole.REPORTER,
+                channel = Channel.IN_APP,
+                enabled = true,
+                createdBy = testCreatedBy,
+                createdAt = now,
+                updatedAt = now,
+            )
 
         // NULLS NOT DISTINCT UNIQUE 제약에 의해 전역 중복도 잡힘 (memory: pg-null-distinct-on-conflict-idempotency).
         // 통합 테스트는 순수 jOOQ DSLContext 를 사용하므로 Spring 예외 변환 체인이 없다.
