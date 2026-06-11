@@ -46,9 +46,21 @@
 
 - **관련 ADR**. [docs/adr/2026-06-11-issue-change-history-model.md](../adr/2026-06-11-issue-change-history-model.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-11-fr-hs-01-issue-history.md](../specs/2026-06-11-fr-hs-01-issue-history.md)
+
+핵심 요약.
+- **기록만** 담당(부수효과). 공개 조회 API/UI는 FR-HS-02. 검증은 통합테스트가 변경 후 이력 테이블 직접 조회.
+- 8개 변경 진입점(create/update/transition/assignee/components/affects·fixVersions/softDelete)에서 **이슈 변경과 같은 트랜잭션**에 이력 INSERT.
+- 모델: `issue_change_group`(actor/issue/created_at) + `issue_change_item`(field/from_value/to_value/**from_label/to_label**). 한 변경=1그룹, 바뀐 필드별 N아이템. no-op이면 이력 0.
+- 값=원시 ID/스칼라, 라벨=변경 당시 표시 이름 박제(Jira식). customFields는 키별 분해. 컬렉션은 정렬 JSON 배열. lifecycle은 created/deleted 단일 마커.
+- append-only(UPDATE/DELETE 부재), 이슈 소프트삭제 후에도 보존. FK는 group→item만, issues로의 FK 없음.
+- 마이그레이션 V018(FR-MN-01 #114와 조율) + init_codegen 미러.
+
+## Brainstorming Check
+
+✅ 통과 (셀프 적대적 sanity check 1회). gap 2건(표시값 손실·customFields 입자) Maxi 확정 해소.
 
 ## Plan (← /bts-plan 채움)
 
