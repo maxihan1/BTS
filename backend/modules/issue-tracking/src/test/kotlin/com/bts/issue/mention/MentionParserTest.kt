@@ -88,5 +88,34 @@ class MentionParserTest : DescribeSpec({
                 MentionParser.extract("@alice-bob @x.y_z") shouldBe setOf("alice-bob", "x.y_z")
             }
         }
+
+        describe("불균형/stray 백틱 처리 — 과대추출 bias (unbalanced backtick invariant)") {
+            it("닫힌 코드 스팬 밖의 멘션은 보존되고, 닫히지 않은 백틱 뒤 멘션도 추출된다") {
+                // "`code` @alice and `stray @bob" — 첫 스팬은 균형(제거), 두 번째 백틱은 stray
+                // stray 백틱이 남은 텍스트를 통째로 삼키면 @alice, @bob 이 모두 누락 → 불변식 위반
+                MentionParser.extract("`code` @alice and `stray @bob") shouldBe setOf("alice", "bob")
+            }
+
+            it("트레일링 stray 백틱이 있는 경우 앞의 멘션을 보존한다") {
+                MentionParser.extract("@alice `") shouldBe setOf("alice")
+            }
+
+            it("인라인 백틱이 줄을 넘어 다음 줄 멘션을 삼키지 않는다") {
+                // 열린 백틱이 줄바꿈을 넘어 다음 줄의 @bob 을 삼키면 누락 → 불변식 위반
+                MentionParser.extract("`open @alice\n@bob") shouldBe setOf("alice", "bob")
+            }
+
+            it("펜스 코드 블록은 여러 줄에 걸쳐 멘션을 제거한다 (기존 동작 유지)") {
+                MentionParser.extract("```\n@alice\n@bob\n```") shouldBe emptySet()
+            }
+
+            it("균형 인라인 코드 스팬 안의 멘션은 여전히 제거된다 (회귀)") {
+                MentionParser.extract("`@bob`") shouldBe emptySet()
+            }
+
+            it("펜스 블록 바깥 멘션은 여전히 추출된다 (회귀)") {
+                MentionParser.extract("@alice\n```\n@bob\n```") shouldBe setOf("alice")
+            }
+        }
     }
 })
