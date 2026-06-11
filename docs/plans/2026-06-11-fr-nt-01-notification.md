@@ -47,6 +47,146 @@ fr-index. `| FR-NT-01 | 이벤트별 알림 정책 | 필수 | notification-dashb
 
 ✅ 통과 (self-review 1회 iteration). 발견 gap 1건 — 프로젝트별 정책 권한 배선이 cross-BC(identity-access prod adapter 추가)가 되어 "한 PR=한 BC" 충돌. Maxi 결정으로 해소(모든 CRUD = SYSTEM_ADMIN, 단일 BC). 데이터 모델 프로젝트별 override는 유지.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 범위: 백엔드 D1~D5 (UI D6 / E2E D7은 후속 PR — 게이트1에서 Maxi 확인).
+> 제약: 새 notification 모듈은 단일 컴파일 단위 → wave 병렬 이득 제한적, 의존 체인 직렬 위주.
+> 모든 코드는 완제품 품질 (PoC 금지). TDD red→green→refactor (Task 1 부트스트랩만 빌드검증).
+
+### Task 1. notification 모듈 부트스트랩 + 마이그레이션 (인프라)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/settings.gradle.kts`, `backend/modules/notification/build.gradle.kts`, `backend/modules/notification/detekt-baseline.xml`, `backend/modules/notification/src/main/resources/application.yml`, `backend/modules/notification/src/main/resources/db/migration/notification/V001__notification_policies.sql`, `backend/modules/notification/src/main/resources/db/migration/notification/V002__seed_default_policies.sql`, `backend/modules/notification/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/notification/src/test/kotlin/com/bts/notification/architecture/NotificationBcArchTest.kt`]
+- depends-on: []
+
+**비-TDD (인프라 task)**. 모듈 빌드 설정은 단위 테스트로 검증 불가 → 빌드 성공 + ArchUnit 그린으로 검증. 단 ArchUnit 룰은 "테스트 먼저" 역할(빈 모듈에 격리 룰 작성 후 코드가 그 위에 쌓임).
+
+**구현**:
+- `settings.gradle.kts`에 `include(":modules:notification")` 추가
+- `build.gradle.kts` — project-workflow 템플릿 복제. jOOQ codegen 패키지 `com.bts.notification.jooq`, target `src/generated/jooq`, Testcontainers jdbc:tc URL로 `db/codegen/init_codegen.sql` 초기화. Flyway `classpath:db/migration/notification`. detekt baseline.
+- `V001__notification_policies.sql` — 스펙 §4 DDL (테이블 + UNIQUE NULLS NOT DISTINCT + 부분 인덱스). `gen_random_uuid()` 사용(pgcrypto/PG13+).
+- `V002__seed_default_policies.sql` — SDD §9.1.2 매트릭스 19행(전역 project_id=NULL, 채널 IN_APP). memory: enum 카운트가드 영향 없음(타 모듈 무관).
+- `init_codegen.sql` — V001 테이블 DDL 미러 (시드 제외 — codegen은 구조만 필요). memory: jooq-init-codegen-mirror.
+- `NotificationBcArchTest.kt` — BC 격리(issue-tracking/project-workflow/identity-access 내부 패키지 import 금지) + jOOQ repository 화이트리스트 + @Transactional+@Service 룰. memory: archunit-vacuous-rule-silent-pass — 빈 모듈이라 vacuous PASS 위험, 일부러 위반 클래스 1개 넣어 룰 동작 확인 후 제거.
+
+**검증**: `./gradlew :modules:notification:generateJooq :modules:notification:compileKotlin :modules:notification:test --tests '*NotificationBcArchTest'`
+
+### Task 2. enum 3종 + NotificationPolicy 도메인 (TDD)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/domain/NotificationEventType.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/domain/RecipientRole.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/domain/Channel.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/domain/NotificationPolicy.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/domain/NotificationPolicyTest.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/domain/NotificationEventTypeTest.kt`]
+- depends-on: [1]
+
+**RED**: enum 카탈로그 + 도메인 불변식 테스트
+- `NotificationEventType`: 9종 존재 + 문자열 매핑(`issue.created` 등) + `publishable` 메타(스펙 §3.1 표) + `fromString` 역매핑(미존재→null/예외)
+- `RecipientRole`: 9종, `Channel`: 5종
+- `NotificationPolicy`: (id, projectId?, eventType, recipientRole, channel, enabled, ...) 생성 + `toggle(enabled)` 불변식
+
+**GREEN**: enum 3종 + NotificationPolicy 데이터 클래스 최소 구현
+
+**REFACTOR**: KDoc(파일 L1 한국어 주석 포함), publishable 상수화
+
+**검증**: `./gradlew :modules:notification:test --tests 'com.bts.notification.domain.*'`
+
+### Task 3. NotificationPolicyRepository (jOOQ) — CRUD + 조회 (TDD 통합)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/repository/NotificationPolicyRepository.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/repository/NotificationPolicyRepositoryIntegrationTest.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/support/NotificationTestcontainersBase.kt`]
+- depends-on: [1, 2]
+
+**RED**: Testcontainers 통합 테스트 (memory: concurrent-testcontainers-suite-flaky / singleton 패턴 `.apply { start() }`)
+- insert/findAll(projectKey?)/findById/toggle(enabled)/delete
+- UNIQUE 멱등 — 동일 (projectId NULL, event, role, channel) 재삽입 → 충돌(예외 또는 ON CONFLICT). memory: pg-null-distinct-on-conflict-idempotency
+- 시드 검증 — V002 시드된 전역 정책 19행 중 `issue.created` 전역 정책 조회 확인
+- 평가용 조회 — `findEnabledByEventType(eventType, projectId?)`
+
+**GREEN**: jOOQ Repository 구현 (`com.bts.notification.jooq` 화이트리스트 — repository 레이어만)
+
+**REFACTOR**: 쿼리 상수화 + KDoc
+
+**검증**: `./gradlew :modules:notification:test --tests '*NotificationPolicyRepositoryIntegrationTest'`
+
+### Task 4. NotificationPolicyEvaluator — 평가 엔진 (TDD)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/application/NotificationPolicyEvaluator.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/application/PolicyMatch.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/application/NotificationPolicyEvaluatorTest.kt`]
+- depends-on: [2, 3]
+
+**RED**: 평가 분기 테스트 (스펙 §6 알고리즘)
+- 전역 기본 반환 (projectKey 없음 / 프로젝트가 해당 event_type 정책 0개)
+- 프로젝트 override **replace** — 프로젝트가 event_type 정책 1개+ 보유 시 전역 완전 무시
+- enabled=false 제외
+- 알 수 없는 / 정책 0개 event_type → 빈 목록(예외 아님)
+
+**GREEN**: `evaluate(eventType, projectKey?): List<PolicyMatch>` — repository 조회 + replace 병합
+
+**REFACTOR**: 병합 로직 분리 + KDoc. `@Transactional(readOnly=true)` + `@Service`(ArchUnit 룰)
+
+**검증**: `./gradlew :modules:notification:test --tests '*NotificationPolicyEvaluatorTest'`
+
+### Task 5. NotificationPolicyService — CRUD + SYSTEM_ADMIN 권한 (TDD)
+
+**메타**.
+- agent: `backend-engineer` (권한 게이트는 codereview에서 security-engineer 검토)
+- files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/application/NotificationPolicyService.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/application/NotificationPolicyServiceTest.kt`]
+- depends-on: [2, 3]
+
+**RED**: CRUD + 권한 테스트 (SystemPermissionResolver mock)
+- create/list/toggle/delete — 정상 흐름
+- 비-SYSTEM_ADMIN actor → 403 성격 예외 (memory: fr-pm-04-guard-exception-message-http-leak — message 일반화)
+- 중복 생성 → 409 성격 예외 (UNIQUE 위반 매핑)
+- 잘못된 enum → 400 성격 예외
+
+**GREEN**: `NotificationPolicyService` — `SystemPermissionResolver.isSystemAdmin()` 게이트 + repository 위임. `@Service` + `@Transactional`
+
+**REFACTOR**: 예외 타입 정리(동명 예외 cross-package 주의 — memory: duplicate-exception-name-cross-package-status) + KDoc
+
+**검증**: `./gradlew :modules:notification:test --tests '*NotificationPolicyServiceTest'`
+
+### Task 6. REST 컨트롤러 + DTO + 카탈로그 API (TDD MVC)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/web/NotificationPolicyController.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/web/dto/NotificationPolicyDto.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/web/dto/NotificationPolicyCatalogDto.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/web/NotificationExceptionHandler.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/web/NotificationPolicyControllerTest.kt`]
+- depends-on: [5, 2]
+
+**RED**: MVC 테스트 (스펙 §5)
+- GET `/catalog` → enum 목록 + publishable (인증 사용자)
+- GET/POST/PATCH/DELETE `/api/v1/notification-policies` → 정상 + 403(비admin)/409(중복)/400(enum)/404(미존재)
+- actor 추출이 리소스 조회보다 먼저 (memory: auth-extraction-before-resource-lookup)
+- catch-all 핸들러가 ResponseStatusException 삼키지 않게 (memory: catch-all-exceptionhandler-swallows-responsestatusexception)
+
+**GREEN**: Controller + DTO + 카탈로그 + 예외→HTTP 상태 매핑
+
+**REFACTOR**: DTO ↔ 도메인 매핑 분리 + KDoc. `@JsonInclude(NON_NULL)` ↔ 응답 스키마 정합
+
+**검증**: `./gradlew :modules:notification:test --tests '*NotificationPolicyControllerTest'`
+
+### Task 7. end-to-end 통합 테스트 (HTTP → DB)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/notification/src/test/kotlin/com/bts/notification/NotificationPolicyEndToEndIntegrationTest.kt`]
+- depends-on: [6]
+
+**RED→GREEN**: 실 Testcontainers + MockMvc end-to-end
+- 정책 생성(HTTP) → 평가 엔진 반영 확인
+- 프로젝트 override replace end-to-end
+- 권한 403 / 중복 409 실제 HTTP 응답
+- 시드된 전역 기본 정책 조회
+
+**검증**: `./gradlew :modules:notification:test` (전체 그린)
+
+## Plan 메타
+
+- task 수: 7
+- 예상 wave (bts-impl 계산): 1 → 2 → 3 → {4, 5} → 6 → 7 (약 6 wave). 단일 모듈 컴파일 공유로 사실상 직렬에 가까움 (memory: bts-plan-wave-gradle-module-compile).
+- TDD 강제: yes (Task 1 부트스트랩만 빌드검증 예외 — git log 검증 시 ArchUnit test 커밋이 코드보다 먼저)
+- 추가 검증: ktlint, detekt(모듈 baseline 동결 — memory: detekt-baseline-module-pattern), 전체 backend 회귀 (`./gradlew :modules:notification:test`)
+- D6 UI / D7 E2E: 후속 PR 분리 권장 (게이트1 Maxi 확인)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
