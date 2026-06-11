@@ -1,9 +1,9 @@
-// MFA 설정 화면 단위 테스트 — status 조회·활성화·비활성화·에러·secret 상태 정리 검증
+// MFA 설정 화면 단위 테스트 — status 조회·활성화·비활성화·에러·secret 상태 정리·백업코드 섹션 검증
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { server } from '@/test/server'
 import { useAuthStore } from '@/auth/authStore'
 import { mfaStrings } from '@/i18n/ko'
@@ -320,5 +320,390 @@ describe('T3-S6: 로딩 상태', () => {
 
     // 로딩 중엔 스켈레톤이나 aria-label이 있어야 함
     expect(screen.getByRole('status')).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T3-S7: 백업코드 섹션 — 노출 여부
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T3-S7: 백업코드 섹션 노출 여부', () => {
+  it('T3-S7-1: TOTP 활성(enabled=true) + 백업코드 미생성 상태에서 섹션이 노출된다', async () => {
+    server.use(
+      mockStatus(true),
+      http.get('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ generated: false, remaining: 0 }),
+      ),
+    )
+
+    renderMfaSettings()
+
+    await waitFor(() => {
+      expect(screen.getByText(mfaStrings.backupSectionTitle)).toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: mfaStrings.backupGenerateButton })).toBeInTheDocument()
+  })
+
+  it('T3-S7-2: TOTP 미활성(enabled=false) 시 백업코드 섹션이 노출되지 않는다', async () => {
+    server.use(mockStatus(false))
+
+    renderMfaSettings()
+
+    await waitFor(() => {
+      expect(screen.getByText('비활성화됨')).toBeInTheDocument()
+    })
+    expect(screen.queryByText(mfaStrings.backupSectionTitle)).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T3-S8: 백업코드 생성 플로우
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T3-S8: 백업코드 생성 플로우', () => {
+  const CODES = Array.from({ length: 10 }, (_, i) => `code-${String(i).padStart(2, '0')}`)
+
+  beforeEach(() => {
+    // navigator.clipboard.writeText mock
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      writable: true,
+      configurable: true,
+    })
+    // URL API mock (다운로드)
+    Object.defineProperty(URL, 'createObjectURL', {
+      value: vi.fn().mockReturnValue('blob:mock'),
+      writable: true,
+      configurable: true,
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      value: vi.fn(),
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  it('T3-S8-1: generated=false → "백업 코드 생성" 버튼 → generateBackupCodes 호출 → 평문 10개 + 저장 경고 표시', async () => {
+    const user = userEvent.setup({ delay: null })
+    server.use(
+      mockStatus(true),
+      http.get('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ generated: false, remaining: 0 }),
+      ),
+      http.post('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ codes: CODES }),
+      ),
+    )
+
+    renderMfaSettings()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: mfaStrings.backupGenerateButton })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: mfaStrings.backupGenerateButton }))
+
+    await waitFor(() => {
+      expect(screen.getByText(mfaStrings.backupSaveWarning)).toBeInTheDocument()
+    })
+
+    // 평문 코드 10개가 화면에 노출된다
+    for (const code of CODES) {
+      expect(screen.getByText(code)).toBeInTheDocument()
+    }
+
+    // 복사 + 다운로드 버튼이 노출된다
+    expect(screen.getByRole('button', { name: mfaStrings.backupCopyButton })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: mfaStrings.backupDownloadButton })).toBeInTheDocument()
+  })
+
+  it('T3-S8-2: 복사 버튼 클릭 → navigator.clipboard.writeText가 코드들로 호출된다', async () => {
+    const user = userEvent.setup({ delay: null })
+    server.use(
+      mockStatus(true),
+      http.get('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ generated: false, remaining: 0 }),
+      ),
+      http.post('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ codes: CODES }),
+      ),
+    )
+
+    renderMfaSettings()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: mfaStrings.backupGenerateButton })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: mfaStrings.backupGenerateButton }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: mfaStrings.backupCopyButton })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: mfaStrings.backupCopyButton }))
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(CODES.join('\n'))
+  })
+
+  it('T3-S8-3: 다운로드 버튼 클릭 → URL.createObjectURL이 호출된다', async () => {
+    const user = userEvent.setup({ delay: null })
+
+    // anchor click을 intercept하기 위해 document.createElement를 부분 mock
+    const mockClick = vi.fn()
+    const originalCreateElement = document.createElement.bind(document)
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      if (tagName === 'a') {
+        const anchor = originalCreateElement('a')
+        anchor.click = mockClick
+        return anchor
+      }
+      return originalCreateElement(tagName)
+    })
+
+    server.use(
+      mockStatus(true),
+      http.get('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ generated: false, remaining: 0 }),
+      ),
+      http.post('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ codes: CODES }),
+      ),
+    )
+
+    renderMfaSettings()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: mfaStrings.backupGenerateButton })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: mfaStrings.backupGenerateButton }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: mfaStrings.backupDownloadButton })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: mfaStrings.backupDownloadButton }))
+
+    expect(URL.createObjectURL).toHaveBeenCalled()
+    expect(mockClick).toHaveBeenCalled()
+
+    vi.restoreAllMocks()
+  })
+
+  it('T3-S8-4: generate 성공 후 invalidateQueries([mfa, backup-codes])가 호출된다', async () => {
+    const user = userEvent.setup({ delay: null })
+    const queryClientRef = { current: null as QueryClient | null }
+
+    // QueryClient를 캡처하는 래퍼
+    function CapturingWrapper({ children }: { children: React.ReactNode }) {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      })
+      queryClientRef.current = client
+      return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    }
+
+    server.use(
+      mockStatus(true),
+      http.get('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ generated: false, remaining: 0 }),
+      ),
+      http.post('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ codes: CODES }),
+      ),
+    )
+
+    render(<MfaSettings />, { wrapper: CapturingWrapper })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: mfaStrings.backupGenerateButton })).toBeInTheDocument()
+    })
+
+    const invalidateSpy = vi.spyOn(queryClientRef.current!, 'invalidateQueries')
+
+    await user.click(screen.getByRole('button', { name: mfaStrings.backupGenerateButton }))
+
+    await waitFor(() => {
+      expect(screen.getByText(mfaStrings.backupSaveWarning)).toBeInTheDocument()
+    })
+
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['mfa', 'backup-codes'] }),
+    )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T3-S9: 백업코드 상태 표시 (generated=true)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T3-S9: 백업코드 상태 표시', () => {
+  it('T3-S9-1: generated=true, remaining=2 → 남은 개수 표시 + backupLowWarning 배너', async () => {
+    server.use(
+      mockStatus(true),
+      http.get('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ generated: true, remaining: 2 }),
+      ),
+    )
+
+    renderMfaSettings()
+
+    await waitFor(() => {
+      expect(screen.getByText(mfaStrings.backupLowWarning)).toBeInTheDocument()
+    })
+    // 남은 개수 텍스트 포함 확인
+    expect(screen.getByText(/2/)).toBeInTheDocument()
+    // 재생성 버튼이 노출된다
+    expect(screen.getByRole('button', { name: mfaStrings.backupRegenerateButton })).toBeInTheDocument()
+  })
+
+  it('T3-S9-2: generated=true, remaining=0 → backupNoneWarning 배너 표시', async () => {
+    server.use(
+      mockStatus(true),
+      http.get('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ generated: true, remaining: 0 }),
+      ),
+    )
+
+    renderMfaSettings()
+
+    await waitFor(() => {
+      expect(screen.getByText(mfaStrings.backupNoneWarning)).toBeInTheDocument()
+    })
+  })
+
+  it('T3-S9-3: generated=true, remaining=5 → 경고 배너 없음, 재생성 버튼만 노출', async () => {
+    server.use(
+      mockStatus(true),
+      http.get('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ generated: true, remaining: 5 }),
+      ),
+    )
+
+    renderMfaSettings()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: mfaStrings.backupRegenerateButton })).toBeInTheDocument()
+    })
+    expect(screen.queryByText(mfaStrings.backupLowWarning)).not.toBeInTheDocument()
+    expect(screen.queryByText(mfaStrings.backupNoneWarning)).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T3-S10: 백업코드 재생성 — 인라인 확인 플로우
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T3-S10: 백업코드 재생성 인라인 확인 플로우', () => {
+  const REGEN_CODES = Array.from({ length: 10 }, (_, i) => `regen-${String(i).padStart(2, '0')}`)
+
+  beforeEach(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      writable: true,
+      configurable: true,
+    })
+    Object.defineProperty(URL, 'createObjectURL', {
+      value: vi.fn().mockReturnValue('blob:mock'),
+      writable: true,
+      configurable: true,
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      value: vi.fn(),
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  it('T3-S10-1: "백업 코드 재생성" 클릭 → 인라인 확인 박스(경고문 + 재생성/취소 버튼) 노출', async () => {
+    const user = userEvent.setup({ delay: null })
+    server.use(
+      mockStatus(true),
+      http.get('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ generated: true, remaining: 5 }),
+      ),
+    )
+
+    renderMfaSettings()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: mfaStrings.backupRegenerateButton })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: mfaStrings.backupRegenerateButton }))
+
+    await waitFor(() => {
+      expect(screen.getByText(mfaStrings.backupRegenerateConfirmBody)).toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: mfaStrings.backupRegenerateConfirmButton })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: mfaStrings.backupRegenerateCancelButton })).toBeInTheDocument()
+  })
+
+  it('T3-S10-2: 확인 박스에서 "취소" 클릭 → generateBackupCodes 미호출, 확인 박스 닫힘', async () => {
+    const user = userEvent.setup({ delay: null })
+    const generateSpy = vi.fn().mockResolvedValue({ codes: REGEN_CODES })
+
+    server.use(
+      mockStatus(true),
+      http.get('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ generated: true, remaining: 5 }),
+      ),
+      http.post('/api/v1/auth/mfa/backup-codes', generateSpy),
+    )
+
+    renderMfaSettings()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: mfaStrings.backupRegenerateButton })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: mfaStrings.backupRegenerateButton }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: mfaStrings.backupRegenerateCancelButton })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: mfaStrings.backupRegenerateCancelButton }))
+
+    // 확인 박스가 닫힌다
+    await waitFor(() => {
+      expect(screen.queryByText(mfaStrings.backupRegenerateConfirmBody)).not.toBeInTheDocument()
+    })
+    // generateBackupCodes API는 호출되지 않는다
+    expect(generateSpy).not.toHaveBeenCalled()
+  })
+
+  it('T3-S10-3: 확인 박스에서 "재생성" 확인 → generateBackupCodes 호출 → 평문 코드 표시', async () => {
+    const user = userEvent.setup({ delay: null })
+    server.use(
+      mockStatus(true),
+      http.get('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ generated: true, remaining: 5 }),
+      ),
+      http.post('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ codes: REGEN_CODES }),
+      ),
+    )
+
+    renderMfaSettings()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: mfaStrings.backupRegenerateButton })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: mfaStrings.backupRegenerateButton }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: mfaStrings.backupRegenerateConfirmButton })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: mfaStrings.backupRegenerateConfirmButton }))
+
+    await waitFor(() => {
+      expect(screen.getByText(mfaStrings.backupSaveWarning)).toBeInTheDocument()
+    })
+
+    for (const code of REGEN_CODES) {
+      expect(screen.getByText(code)).toBeInTheDocument()
+    }
   })
 })
