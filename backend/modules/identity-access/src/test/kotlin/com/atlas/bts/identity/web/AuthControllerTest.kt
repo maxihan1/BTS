@@ -10,6 +10,7 @@ import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
 import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
+import com.atlas.bts.identity.mfa.MfaBackupCodeService
 import com.atlas.bts.identity.mfa.MfaChallengeClaims
 import com.atlas.bts.identity.mfa.MfaChallengeTokenService
 import com.atlas.bts.identity.mfa.MfaService
@@ -178,6 +179,9 @@ class AuthControllerTest {
 
     @MockBean
     lateinit var mfaChallengeTokenService: MfaChallengeTokenService
+
+    @MockBean
+    lateinit var mfaBackupCodeService: MfaBackupCodeService
 
     /** 기본값: 전역 역할 없음 (일반 사용자). 역할 의존 케이스는 개별 테스트에서 재정의. */
     @org.junit.jupiter.api.BeforeEach
@@ -628,6 +632,295 @@ class AuthControllerTest {
         )
             // 핵심 단언 — CSRF 로 막혔다면 403 이다. 401(검증 실패)이면 CSRF 필터를 통과한 것.
             .andExpect(status().isUnauthorized)
+    }
+
+    // ── FR-MF-02 통합 verify — method=backup_code 분기 (Task 8) ──────────────────
+
+    /**
+     * (T8-a) method=backup_code 정답 → 200 access_token + 세션 mfaVerified=true (EC-10, C-3).
+     *
+     * 챌린지 토큰 validate/consume 통과 후 method 가 `backup_code` 면 [MfaBackupCodeService.verifyAndConsume]
+     * 로 분기한다. Success 면 TOTP 와 동일하게 `issueTokens(mfaVerified=true)` 로 정식 세션을 발급한다.
+     * 세션이 mfaVerified=true 로 생성됐는지 ArgumentCaptor 로 단언해 EC-10(백업코드 로그인도 동일 세션 효과)을 가드한다.
+     * method 가 backup_code 이므로 TOTP 경로([MfaService.verifyLogin])는 호출되지 않아야 한다.
+     */
+    @Test
+    fun `verify with backup_code success returns 200 and creates session with mfaVerified true`() {
+        val mockSession =
+            mock(Session::class.java).also {
+                `when`(it.id).thenReturn(mfaSessionId)
+                `when`(it.userId).thenReturn(mfaUserId)
+                `when`(it.providerId).thenReturn("local")
+            }
+        `when`(mfaChallengeTokenService.validate(mfaChallengeTokenValue))
+            .thenReturn(MfaChallengeClaims(userId = mfaUserId, providerId = "local", jti = mfaJti))
+        `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(true)
+        `when`(mfaBackupCodeService.verifyAndConsume(mfaUserId, "ABCDE-FGHJK"))
+            .thenReturn(MfaBackupCodeService.VerifyResult.Success)
+        `when`(
+            sessionService.create(
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                anyBool(),
+            ),
+        ).thenReturn(mockSession)
+        `when`(
+            jwtIssuer.issue(
+                anyUuid(),
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.anyList(),
+                anyBool(),
+            ),
+        ).thenReturn(mfaAccessToken)
+
+        mockMvc.perform(
+            post("/api/v1/auth/mfa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """{"mfa_challenge_token":"$mfaChallengeTokenValue","code":"ABCDE-FGHJK","method":"backup_code"}""",
+                ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.access_token").value(mfaAccessToken))
+            .andExpect(jsonPath("$.token_type").value("Bearer"))
+            .andExpect(cookie().exists("refresh_token"))
+            .andExpect(cookie().httpOnly("refresh_token", true))
+            .andExpect(cookie().secure("refresh_token", true))
+
+        // C-3/EC-10 — 백업코드 로그인도 세션 mfaVerified=true (TOTP 와 동일 세션 효과).
+        val mfaVerifiedCaptor = ArgumentCaptor.forClass(Boolean::class.java)
+        verify(sessionService).create(
+            anyUuid(),
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
+            captureBool(mfaVerifiedCaptor),
+        )
+        assertThat(mfaVerifiedCaptor.value).isTrue()
+        // method=backup_code 면 TOTP 경로는 타지 않는다(분기 격리).
+        verify(mfaService, never()).verifyLogin(anyUuid(), org.mockito.ArgumentMatchers.anyString())
+    }
+
+    /**
+     * (T8-b) method=backup_code 오답(InvalidCode) → 401 invalid_code. 정식 세션 미발급.
+     *
+     * [MfaBackupCodeService.VerifyResult.InvalidCode] 는 TOTP 오답과 동일하게 401 invalid_code 로 매핑한다.
+     */
+    @Test
+    fun `verify with backup_code invalid returns 401 invalid_code`() {
+        `when`(mfaChallengeTokenService.validate(mfaChallengeTokenValue))
+            .thenReturn(MfaChallengeClaims(userId = mfaUserId, providerId = "local", jti = mfaJti))
+        `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(true)
+        `when`(mfaBackupCodeService.verifyAndConsume(mfaUserId, "00000-00000"))
+            .thenReturn(MfaBackupCodeService.VerifyResult.InvalidCode)
+
+        mockMvc.perform(
+            post("/api/v1/auth/mfa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """{"mfa_challenge_token":"$mfaChallengeTokenValue","code":"00000-00000","method":"backup_code"}""",
+                ),
+        )
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.error").value("invalid_code"))
+
+        verify(sessionService, never()).create(
+            anyUuid(),
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
+            anyBool(),
+        )
+    }
+
+    /**
+     * (T8-c) method=backup_code rate-limit(TooManyAttempts) → 429 too_many_attempts.
+     *
+     * 백업 전용 limiter 차단 시 [MfaBackupCodeService.VerifyResult.TooManyAttempts] 를 429 로 매핑한다.
+     * catch-all 핸들러가 429 를 500 으로 변질시키지 않아야 한다.
+     */
+    @Test
+    fun `verify with backup_code rate-limited returns 429 too_many_attempts`() {
+        `when`(mfaChallengeTokenService.validate(mfaChallengeTokenValue))
+            .thenReturn(MfaChallengeClaims(userId = mfaUserId, providerId = "local", jti = mfaJti))
+        `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(true)
+        `when`(mfaBackupCodeService.verifyAndConsume(mfaUserId, "ABCDE-FGHJK"))
+            .thenReturn(MfaBackupCodeService.VerifyResult.TooManyAttempts)
+
+        mockMvc.perform(
+            post("/api/v1/auth/mfa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """{"mfa_challenge_token":"$mfaChallengeTokenValue","code":"ABCDE-FGHJK","method":"backup_code"}""",
+                ),
+        )
+            .andExpect(status().isTooManyRequests)
+            .andExpect(jsonPath("$.error").value("too_many_attempts"))
+    }
+
+    /**
+     * (T8-d) method 생략 → 기존 TOTP 경로 그대로 (회귀 0). verifyLogin 으로 분기하고 backupCodeService 미호출.
+     *
+     * `MfaVerifyRequest.method` 기본값이 `"totp"` 라 method 필드가 없는 기존 클라이언트 요청은 TOTP 경로를 탄다.
+     */
+    @Test
+    fun `verify without method field uses TOTP path (no regression)`() {
+        val mockSession =
+            mock(Session::class.java).also {
+                `when`(it.id).thenReturn(mfaSessionId)
+                `when`(it.userId).thenReturn(mfaUserId)
+                `when`(it.providerId).thenReturn("local")
+            }
+        `when`(mfaChallengeTokenService.validate(mfaChallengeTokenValue))
+            .thenReturn(MfaChallengeClaims(userId = mfaUserId, providerId = "local", jti = mfaJti))
+        `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(true)
+        `when`(mfaService.verifyLogin(mfaUserId, "123456")).thenReturn(VerifyResult.Success)
+        `when`(
+            sessionService.create(
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                anyBool(),
+            ),
+        ).thenReturn(mockSession)
+        `when`(
+            jwtIssuer.issue(
+                anyUuid(),
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.anyList(),
+                anyBool(),
+            ),
+        ).thenReturn(mfaAccessToken)
+
+        mockMvc.perform(
+            post("/api/v1/auth/mfa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"mfa_challenge_token":"$mfaChallengeTokenValue","code":"123456"}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.access_token").value(mfaAccessToken))
+
+        verify(mfaService).verifyLogin(mfaUserId, "123456")
+        verify(mfaBackupCodeService, never()).verifyAndConsume(anyUuid(), org.mockito.ArgumentMatchers.anyString())
+    }
+
+    /**
+     * (T8-e) method=totp 명시 → TOTP 경로 그대로. verifyLogin 으로 분기하고 backupCodeService 미호출.
+     */
+    @Test
+    fun `verify with method totp uses TOTP path`() {
+        val mockSession =
+            mock(Session::class.java).also {
+                `when`(it.id).thenReturn(mfaSessionId)
+                `when`(it.userId).thenReturn(mfaUserId)
+                `when`(it.providerId).thenReturn("local")
+            }
+        `when`(mfaChallengeTokenService.validate(mfaChallengeTokenValue))
+            .thenReturn(MfaChallengeClaims(userId = mfaUserId, providerId = "local", jti = mfaJti))
+        `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(true)
+        `when`(mfaService.verifyLogin(mfaUserId, "123456")).thenReturn(VerifyResult.Success)
+        `when`(
+            sessionService.create(
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                anyBool(),
+            ),
+        ).thenReturn(mockSession)
+        `when`(
+            jwtIssuer.issue(
+                anyUuid(),
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.anyList(),
+                anyBool(),
+            ),
+        ).thenReturn(mfaAccessToken)
+
+        mockMvc.perform(
+            post("/api/v1/auth/mfa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"mfa_challenge_token":"$mfaChallengeTokenValue","code":"123456","method":"totp"}"""),
+        )
+            .andExpect(status().isOk)
+
+        verify(mfaService).verifyLogin(mfaUserId, "123456")
+        verify(mfaBackupCodeService, never()).verifyAndConsume(anyUuid(), org.mockito.ArgumentMatchers.anyString())
+    }
+
+    /**
+     * (T8-f) 미지원 method → 400 invalid_method (fail-safe, totp fallback 금지).
+     *
+     * 토큰 validate/consume 까지는 공통이지만, 알 수 없는 method 는 어느 검증 경로로도 떨어뜨리지 않고
+     * 명시적으로 거부한다(불명은 거부). 두 검증 서비스 모두 호출되지 않아야 한다.
+     */
+    @Test
+    fun `verify with unsupported method returns 400 invalid_method (fail-safe)`() {
+        `when`(mfaChallengeTokenService.validate(mfaChallengeTokenValue))
+            .thenReturn(MfaChallengeClaims(userId = mfaUserId, providerId = "local", jti = mfaJti))
+        `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(true)
+
+        mockMvc.perform(
+            post("/api/v1/auth/mfa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"mfa_challenge_token":"$mfaChallengeTokenValue","code":"123456","method":"sms"}"""),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error").value("invalid_method"))
+
+        verify(mfaService, never()).verifyLogin(anyUuid(), org.mockito.ArgumentMatchers.anyString())
+        verify(mfaBackupCodeService, never()).verifyAndConsume(anyUuid(), org.mockito.ArgumentMatchers.anyString())
+    }
+
+    /**
+     * (T8-g / EC-12) backup_code 오답이라도 챌린지 토큰은 검증 전 consume 으로 소진된다 → 같은 토큰 재제출 401.
+     *
+     * 1차 제출: consume=true 라 backupCodeService 가 InvalidCode 를 돌려 401. 이 시점에 토큰은 이미 소비됐다.
+     * 2차 제출(같은 토큰): consume=false(이미 소비) 라 코드 검증 없이 401(재로그인 필요, TOTP 동일).
+     * 토큰 소비가 method/결과와 무관하게 검증 전 1회만 일어남을 가드한다.
+     */
+    @Test
+    fun `verify backup_code wrong then resubmit same token returns 401 (EC-12 token already consumed)`() {
+        `when`(mfaChallengeTokenService.validate(mfaChallengeTokenValue))
+            .thenReturn(MfaChallengeClaims(userId = mfaUserId, providerId = "local", jti = mfaJti))
+        // 1차: consume 성공 → 토큰 소진. 2차: consume 실패(이미 소진).
+        `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(true).thenReturn(false)
+        `when`(mfaBackupCodeService.verifyAndConsume(mfaUserId, "00000-00000"))
+            .thenReturn(MfaBackupCodeService.VerifyResult.InvalidCode)
+
+        val firstAttempt =
+            post("/api/v1/auth/mfa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """{"mfa_challenge_token":"$mfaChallengeTokenValue","code":"00000-00000","method":"backup_code"}""",
+                )
+        mockMvc.perform(firstAttempt)
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.error").value("invalid_code"))
+
+        // 같은 토큰 재제출 — 토큰이 이미 소진돼 코드 검증 전에 401.
+        val secondAttempt =
+            post("/api/v1/auth/mfa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """{"mfa_challenge_token":"$mfaChallengeTokenValue","code":"00000-00000","method":"backup_code"}""",
+                )
+        mockMvc.perform(secondAttempt)
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.error").value("invalid_code"))
+
+        // backupCodeService 는 토큰이 살아있던 1차에서만 호출(2차는 토큰 소진으로 미도달).
+        verify(mfaBackupCodeService, org.mockito.Mockito.times(1))
+            .verifyAndConsume(mfaUserId, "00000-00000")
     }
 
     // ── logout 성공 ────────────────────────────────────────────────────────────

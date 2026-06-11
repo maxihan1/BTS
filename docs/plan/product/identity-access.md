@@ -197,11 +197,11 @@
 
 **우선순위**. 필수 | **선행**. §3.1 | **Plan slug**. `identity/mfa-backup`
 
-- [ ] D1. 도메인 (책임. security-engineer)
-- [ ] D2. 명세 — 10개 1회용 코드 생성 + 해시 저장 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `user_mfa_backup_codes(code_hash, used_at)` (책임. db-engineer)
-- [ ] D4. 백엔드 — 코드 생성/검증/소진 (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 (책임. security-engineer)
+- [x] D1. 도메인 (책임. security-engineer) (PR #117)
+- [x] D2. 명세 — 10개 1회용 코드 생성 + 해시 저장 (책임. security-engineer) (PR #117)
+- [x] D3. 데이터 모델 — `user_mfa_backup_codes(code_hash, used_at)` (책임. db-engineer) (V023, PR #117)
+- [x] D4. 백엔드 — 코드 생성/검증/소진 (책임. security-engineer) (PR #117)
+- [x] D5. 백엔드 테스트 (책임. security-engineer) (PR #117)
 - [ ] D6. 프론트 UI — 코드 다운로드/인쇄 + 1회용 안내 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 

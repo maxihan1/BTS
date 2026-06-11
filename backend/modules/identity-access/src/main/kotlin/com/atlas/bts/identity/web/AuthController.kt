@@ -7,6 +7,8 @@ import com.atlas.bts.identity.audit.AuthAuditLogService
 import com.atlas.bts.identity.audit.AuthEventType
 import com.atlas.bts.identity.auth.CompositeAuthenticationManager
 import com.atlas.bts.identity.jwt.JwtIssuer
+import com.atlas.bts.identity.mfa.MfaBackupCodeService
+import com.atlas.bts.identity.mfa.MfaChallengeClaims
 import com.atlas.bts.identity.mfa.MfaChallengeTokenService
 import com.atlas.bts.identity.mfa.MfaService
 import com.atlas.bts.identity.mfa.MfaService.VerifyResult
@@ -90,6 +92,7 @@ class AuthController(
     private val authAuditLogService: AuthAuditLogService,
     private val mfaService: MfaService,
     private val mfaChallengeTokenService: MfaChallengeTokenService,
+    private val mfaBackupCodeService: MfaBackupCodeService,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(AuthController::class.java)
@@ -186,19 +189,28 @@ class AuthController(
     }
 
     /**
-     * POST /api/v1/auth/mfa/verify — 로그인 2단계 TOTP 검증 후 정식 세션 발급 (FR-MF-01, SDD §19.7.4).
+     * POST /api/v1/auth/mfa/verify — 로그인 2단계(TOTP 또는 백업 코드) 검증 후 정식 세션 발급
+     * (FR-MF-01 / FR-MF-02, SDD §19.7.4).
      *
      * 1. [MfaChallengeTokenService.validate] 로 챌린지 토큰을 검증한다. 만료/위조/purpose 불일치면 `null`
      *    → **401 `invalid_code`**(불명은 거부, 내부 사정 비노출).
      * 2. [MfaChallengeTokenService.consume] 으로 토큰을 일회용 소비한다. 이미 소비된 토큰(재사용)이면
      *    **401 `invalid_code`** (C1 replay 방어 — 코드 검증 전에 차단).
-     * 3. [MfaService.verifyLogin] 으로 TOTP 코드를 검증한다.
-     *    - Success → [issueTokens]`(mfaVerified=true)` → **200** access_token + refresh 쿠키.
-     *    - InvalidCode → **401 `invalid_code`** / TooManyAttempts → **429 `too_many_attempts`** /
-     *      NotEnabled → **401 `invalid_code`**(2단계 미적용 사용자가 verify 호출 — 존재 비노출).
+     * 3. [MfaVerifyRequest.method] 로 검증기를 분기한다([verifyByMethod]).
+     *    - `"totp"`(기본값) → [MfaService.verifyLogin] (FR-MF-01 경로 그대로 — 회귀 0).
+     *    - `"backup_code"` → [MfaBackupCodeService.verifyAndConsume] (FR-MF-02 — 1회용 백업 코드 소진).
+     *    - 그 외(미지원) → **400 `invalid_method`** (fail-safe — totp 로의 자동 fallback 금지, 불명은 거부).
+     *    어느 경로든 성공이면 [issueTokens]`(mfaVerified=true)` 로 정식 세션을 발급한다(EC-10 — 백업 코드
+     *    로그인도 TOTP 와 동일한 세션 효과: JWT `mfa_verified=true`).
+     *
+     * ## 토큰 소비 순서 (method 무관 공통, EC-12)
+     * 토큰 validate/consume 은 **method 분기보다 먼저** 수행한다. 따라서 코드(백업/TOTP)가 오답이어도
+     * 챌린지 토큰은 이미 1회 소비된 상태가 되어, 같은 토큰 재제출은 (2)에서 `invalid_code` 로 거부된다
+     * (재로그인 필요). method 가 미지원(`invalid_method`)이어도 토큰은 소비된다 — 정상 로그인 흐름에서
+     * 클라이언트가 보내는 method 는 둘 중 하나뿐이라, 미지원 method 는 비정상 요청이므로 토큰 폐기가 안전하다.
      *
      * ## 인증·CSRF
-     * SecurityConfig(Task 9)가 이 경로를 `permitAll` + `csrf.ignoringRequestMatchers` 양쪽에 등록한다.
+     * SecurityConfig 가 이 경로를 `permitAll` + `csrf.ignoringRequestMatchers` 양쪽에 등록한다(FR-MF-01).
      * 정식 세션 발급 전(JWT 없음)이라 인증을 요구하지 않으며, 토큰 자체가 1단계 통과 증명이다.
      *
      * ## 4xx/429 직접 매핑 (catch-all 변질 회귀 가드)
@@ -207,10 +219,10 @@ class AuthController(
      * 비밀값(토큰/코드)은 로깅하지 않는다(§1.1.2).
      *
      * @param request IP/UserAgent 추출용 HTTP 요청
-     * @param body 챌린지 토큰 + TOTP 코드
-     * @return 200 TokenResponse + Set-Cookie / 401 invalid_code / 429 too_many_attempts
+     * @param body 챌린지 토큰 + 코드 + method(생략 시 "totp")
+     * @return 200 TokenResponse + Set-Cookie / 400 invalid_method / 401 invalid_code / 429 too_many_attempts
      *
-     * ReturnCount 억제 — 토큰 무효/재사용/코드 결과별 guard early return 이 중첩 if 보다 가독성 우수.
+     * ReturnCount 억제 — 토큰 무효/재사용 guard early return 이 중첩 if 보다 가독성 우수.
      */
     @Suppress("ReturnCount")
     @PostMapping("/mfa/verify")
@@ -222,17 +234,69 @@ class AuthController(
             mfaChallengeTokenService.validate(body.mfaChallengeToken)
                 ?: return errorResponse(HttpStatus.UNAUTHORIZED, "invalid_code")
         if (!mfaChallengeTokenService.consume(claims.jti)) {
-            // C1 — 이미 소비된 토큰(재사용). 코드 검증 없이 거부한다.
+            // C1 — 이미 소비된 토큰(재사용). 코드 검증 없이 거부한다(EC-12 재로그인 필요).
             return errorResponse(HttpStatus.UNAUTHORIZED, "invalid_code")
         }
 
-        return when (mfaService.verifyLogin(claims.userId, body.code)) {
+        return verifyByMethod(request, claims, body)
+    }
+
+    /**
+     * [MfaVerifyRequest.method] 에 따라 2차 요소를 검증하고 결과를 [ResponseEntity] 로 매핑한다.
+     *
+     * 토큰 validate/consume 통과 후에만 호출된다([verifyMfa]). `totp`/`backup_code` 각 도메인 결과를
+     * 동일한 HTTP 의미(성공→세션 발급, 오답→401 invalid_code, rate-limit→429 too_many_attempts)로
+     * 통일한다. 미지원 method 는 어느 검증 경로로도 떨어뜨리지 않고 **400 invalid_method** 로 명시 거부한다
+     * (fail-safe — totp 자동 fallback 금지).
+     *
+     * @param request IP/UserAgent 추출용 HTTP 요청
+     * @param claims 검증된 챌린지 토큰 클레임(userId/providerId)
+     * @param body method + 코드
+     * @return 200/400/401/429 응답
+     */
+    private fun verifyByMethod(
+        request: HttpServletRequest,
+        claims: MfaChallengeClaims,
+        body: MfaVerifyRequest,
+    ): ResponseEntity<*> =
+        when (body.method) {
+            METHOD_TOTP -> mapTotpResult(request, claims, mfaService.verifyLogin(claims.userId, body.code))
+            METHOD_BACKUP_CODE ->
+                mapBackupResult(request, claims, mfaBackupCodeService.verifyAndConsume(claims.userId, body.code))
+            else -> errorResponse(HttpStatus.BAD_REQUEST, "invalid_method")
+        }
+
+    /** TOTP 검증 결과를 HTTP 응답으로 매핑한다(Success→세션, InvalidCode/NotEnabled→401, TooManyAttempts→429). */
+    private fun mapTotpResult(
+        request: HttpServletRequest,
+        claims: MfaChallengeClaims,
+        result: VerifyResult,
+    ): ResponseEntity<*> =
+        when (result) {
             VerifyResult.Success -> issueTokens(request, claims.userId, claims.providerId, mfaVerified = true)
             VerifyResult.InvalidCode, VerifyResult.NotEnabled ->
                 errorResponse(HttpStatus.UNAUTHORIZED, "invalid_code")
             VerifyResult.TooManyAttempts -> errorResponse(HttpStatus.TOO_MANY_REQUESTS, "too_many_attempts")
         }
-    }
+
+    /**
+     * 백업 코드 검증 결과를 HTTP 응답으로 매핑한다(EC-10 — Success 시 TOTP 와 동일하게 mfaVerified=true 세션).
+     *
+     * InvalidCode(오답/이미 사용/미발급)→401 invalid_code, TooManyAttempts→429 로 TOTP 와 동일 의미로 통일한다.
+     */
+    private fun mapBackupResult(
+        request: HttpServletRequest,
+        claims: MfaChallengeClaims,
+        result: MfaBackupCodeService.VerifyResult,
+    ): ResponseEntity<*> =
+        when (result) {
+            MfaBackupCodeService.VerifyResult.Success ->
+                issueTokens(request, claims.userId, claims.providerId, mfaVerified = true)
+            MfaBackupCodeService.VerifyResult.InvalidCode ->
+                errorResponse(HttpStatus.UNAUTHORIZED, "invalid_code")
+            MfaBackupCodeService.VerifyResult.TooManyAttempts ->
+                errorResponse(HttpStatus.TOO_MANY_REQUESTS, "too_many_attempts")
+        }
 
     /**
      * LOGIN_SUCCESS 감사 이벤트를 best-effort 로 기록한다 (FR-AU-10 Task 4 / spec §5, NFR-3 B-1).
@@ -661,6 +725,12 @@ class AuthController(
          */
         const val MFA_CHALLENGE_TTL_SECONDS = 300L
 
+        /** [MfaVerifyRequest.method] — TOTP 검증(기본값, FR-MF-01 경로). */
+        const val METHOD_TOTP = "totp"
+
+        /** [MfaVerifyRequest.method] — 1회용 백업 코드 검증(FR-MF-02). */
+        const val METHOD_BACKUP_CODE = "backup_code"
+
         /** logout 세션 폐기 사유 — 감사 로그 검색 키 */
         const val REVOKE_REASON_LOGOUT = "logout"
 
@@ -727,16 +797,19 @@ data class TokenResponse(
 )
 
 /**
- * POST /api/v1/auth/mfa/verify 요청 body (FR-MF-01 / SDD §19.7.4).
+ * POST /api/v1/auth/mfa/verify 요청 body (FR-MF-01 / FR-MF-02, SDD §19.7.4).
  *
- * 1단계(비밀번호) 통과 시 받은 챌린지 토큰과 Authenticator 앱이 표시한 코드를 함께 보낸다.
+ * 1단계(비밀번호) 통과 시 받은 챌린지 토큰과 2차 요소 코드(Authenticator 앱 TOTP 또는 백업 코드)를 함께 보낸다.
  *
  * @param mfaChallengeToken [login] 2단계 응답([MfaRequiredResponse])의 챌린지 토큰 (역직렬화 키: mfa_challenge_token)
- * @param code 사용자가 입력한 6자리 TOTP 코드 — 검증은 [MfaService] 가 수행한다(컨트롤러는 로깅하지 않음)
+ * @param code 사용자가 입력한 코드 — TOTP 6자리 또는 백업 코드(xxxxx-xxxxx). 검증은 서비스가 수행한다(컨트롤러는 로깅하지 않음)
+ * @param method 검증 방식 — `"totp"`(기본값) 또는 `"backup_code"`. 기본값을 둬 method 를 보내지 않는 기존
+ *   클라이언트는 TOTP 경로를 그대로 탄다(회귀 0). 미지원 값은 컨트롤러가 400 invalid_method 로 거부한다.
  */
 data class MfaVerifyRequest(
     @JsonProperty("mfa_challenge_token") val mfaChallengeToken: String,
     val code: String,
+    val method: String = "totp",
 )
 
 /**

@@ -5,6 +5,9 @@ package com.atlas.bts.identity.web
 import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
+import com.atlas.bts.identity.mfa.MfaBackupCodeService
+import com.atlas.bts.identity.mfa.MfaBackupCodeService.BackupCodeStatus
+import com.atlas.bts.identity.mfa.MfaBackupCodeService.GenerateResult
 import com.atlas.bts.identity.mfa.MfaService
 import com.atlas.bts.identity.mfa.MfaService.DisableResult
 import com.atlas.bts.identity.mfa.MfaService.EnableResult
@@ -60,6 +63,11 @@ import java.util.UUID
  * - DELETE /totp — 오답 코드 → 400 invalid_code
  * - DELETE /totp — 미활성 → 404 not_enabled
  * - DELETE /totp — rate-limit 차단 → 429 too_many_attempts
+ * - POST /backup-codes — JWT + TOTP ACTIVE → 200 + {codes:[10개]} (평문 1회 노출, FR-MF-02 Task 7)
+ * - POST /backup-codes — TOTP 미활성 → 409 totp_not_active
+ * - POST /backup-codes — PAT → 403 / 미인증 → 401
+ * - GET /backup-codes — JWT → 200 + {generated, remaining}
+ * - GET /backup-codes — PAT → 403 / 미인증 → 401
  * - PAT 인증(Jwt null) → 403 session_management_requires_interactive_login (listSessions 선례 동일)
  * - 미인증 → 401 (Spring Security 필터)
  * - POST /api/v1/auth/mfa/verify (Task 10 경로) — CSRF 토큰 없이도 403 아님
@@ -125,6 +133,9 @@ class MfaControllerTest {
 
     @MockBean
     lateinit var userRepository: UserRepository
+
+    @MockBean
+    lateinit var backupCodeService: MfaBackupCodeService
 
     private val userId = UUID.fromString("11111111-1111-1111-1111-111111111111")
 
@@ -410,6 +421,82 @@ class MfaControllerTest {
             .andExpect(jsonPath("$.error").value("session_management_requires_interactive_login"))
 
         verify(mfaService, never()).disable(anyUuid(), anyStr())
+    }
+
+    // ── POST /backup-codes ──────────────────────────────────────────────────────
+
+    @Test
+    fun `POST backup-codes with JWT and active TOTP returns 200 with ten plaintext codes`() {
+        val codes = (1..10).map { "code-%02d".format(it) }
+        `when`(backupCodeService.generateOrRegenerate(anyUuid()))
+            .thenReturn(GenerateResult.Generated(codes))
+
+        mockMvc.perform(post("/api/v1/auth/mfa/backup-codes").with(jwtFor(userId)).with(csrf()))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.codes.length()").value(10))
+            .andExpect(jsonPath("$.codes[0]").value("code-01"))
+            .andExpect(jsonPath("$.codes[9]").value("code-10"))
+    }
+
+    @Test
+    fun `POST backup-codes when TOTP not active returns 409 totp_not_active`() {
+        `when`(backupCodeService.generateOrRegenerate(anyUuid())).thenReturn(GenerateResult.NotActive)
+
+        mockMvc.perform(post("/api/v1/auth/mfa/backup-codes").with(jwtFor(userId)).with(csrf()))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.error").value("totp_not_active"))
+    }
+
+    @Test
+    fun `POST backup-codes with PAT returns 403`() {
+        mockMvc.perform(post("/api/v1/auth/mfa/backup-codes").with(user("pat-user-id")).with(csrf()))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.error").value("session_management_requires_interactive_login"))
+
+        verify(backupCodeService, never()).generateOrRegenerate(anyUuid())
+    }
+
+    @Test
+    fun `POST backup-codes without authentication returns 401`() {
+        mockMvc.perform(post("/api/v1/auth/mfa/backup-codes").with(csrf()))
+            .andExpect(status().isUnauthorized)
+    }
+
+    // ── GET /backup-codes ───────────────────────────────────────────────────────
+
+    @Test
+    fun `GET backup-codes returns 200 with generated and remaining`() {
+        `when`(backupCodeService.status(anyUuid())).thenReturn(BackupCodeStatus(generated = true, remaining = 7))
+
+        mockMvc.perform(get("/api/v1/auth/mfa/backup-codes").with(jwtFor(userId)))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.generated").value(true))
+            .andExpect(jsonPath("$.remaining").value(7))
+    }
+
+    @Test
+    fun `GET backup-codes when none generated returns 200 with generated false`() {
+        `when`(backupCodeService.status(anyUuid())).thenReturn(BackupCodeStatus(generated = false, remaining = 0))
+
+        mockMvc.perform(get("/api/v1/auth/mfa/backup-codes").with(jwtFor(userId)))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.generated").value(false))
+            .andExpect(jsonPath("$.remaining").value(0))
+    }
+
+    @Test
+    fun `GET backup-codes with PAT returns 403`() {
+        mockMvc.perform(get("/api/v1/auth/mfa/backup-codes").with(user("pat-user-id")))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.error").value("session_management_requires_interactive_login"))
+
+        verify(backupCodeService, never()).status(anyUuid())
+    }
+
+    @Test
+    fun `GET backup-codes without authentication returns 401`() {
+        mockMvc.perform(get("/api/v1/auth/mfa/backup-codes"))
+            .andExpect(status().isUnauthorized)
     }
 
     // ── verify 경로 라우팅 (Task 10 핸들러는 더미) — BLOCKER-1 가드 ───────────────

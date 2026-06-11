@@ -8,6 +8,7 @@
     <ID>ForbiddenVoid:FieldPermissionControllerTest.kt$FieldPermissionControllerTest$Void</ID>
     <ID>ForbiddenVoid:IssueSecurityIntegrationTest.kt$IssueSecurityIntegrationTest$Void</ID>
     <ID>ForbiddenVoid:LocalAuthFlowIntegrationTest.kt$LocalAuthFlowIntegrationTest$Void</ID>
+    <ID>ForbiddenVoid:MfaTotpIntegrationTest.kt$MfaTotpIntegrationTest$Void</ID>
     <ID>ForbiddenVoid:PatAndConcurrencyIntegrationTest.kt$PatAndConcurrencyIntegrationTest$Void</ID>
     <ID>ForbiddenVoid:ProjectMemberFlowIntegrationTest.kt$ProjectMemberFlowIntegrationTest$Void</ID>
     <ID>ForbiddenVoid:SsoAccountLinkingIntegrationTest.kt$SsoAccountLinkingIntegrationTest$Void</ID>
@@ -46,6 +47,10 @@
     <ID>UseOrEmpty:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$(resp.body?.get("links") as? List&lt;Map&lt;*, *&gt;&gt;) ?: emptyList()</ID>
     <ID>UseOrEmpty:LocalAuthFlowIntegrationTest.kt$LocalAuthFlowIntegrationTest$cookie .split(";") .firstOrNull { it.trim().startsWith("refresh_token=") } ?.substringAfter("refresh_token=") ?.trim() ?: ""</ID>
     <ID>UseOrEmpty:LocalCredentialsMigrationTest.kt$LocalCredentialsMigrationTest$rs.getString("column_default") ?: ""</ID>
+    <ID>UseOrEmpty:MfaControllerTest.kt$MfaControllerTest$org.mockito.ArgumentMatchers.anyString() ?: ""</ID>
+    <ID>UseOrEmpty:MfaTotpIntegrationTest.kt$MfaTotpIntegrationTest$URI(otpauthUri).query ?: ""</ID>
+    <ID>UseOrEmpty:MfaTotpIntegrationTest.kt$MfaTotpIntegrationTest$cookies .firstOrNull { it.startsWith("refresh_token=") } ?.substringAfter("refresh_token=") ?.substringBefore(";") ?.trim() ?: ""</ID>
+    <ID>UseOrEmpty:V022MigrationTest.kt$V022MigrationTest$rs.getString(1) ?: ""</ID>
     <ID>VarCouldBeVal:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$@Autowired private lateinit var localCredentialService: LocalCredentialService</ID>
     <ID>VarCouldBeVal:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$@Autowired private lateinit var restTemplate: TestRestTemplate</ID>
@@ -82,6 +87,8 @@
     <ID>VarCouldBeVal:IdentityAccessWorkflowSchemePermissionResolverIntegrationTest.kt$IdentityAccessWorkflowSchemePermissionResolverIntegrationTest$/** prod 프로파일에서 IdentityAccessWorkflowSchemePermissionResolver 가 주입되어야 한다. */ @Autowired private lateinit var resolver: WorkflowSchemePermissionResolver</ID>
     <ID>VarCouldBeVal:IdentityAccessWorkflowSchemePermissionResolverIntegrationTest.kt$IdentityAccessWorkflowSchemePermissionResolverIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:IssueSecuritySchemaMigrationTest.kt$IssueSecuritySchemaMigrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:JdbcAuthAuditLogAdminQueryRepositoryIntegrationTest.kt$JdbcAuthAuditLogAdminQueryRepositoryIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:JdbcAuthAuditLogAdminQueryRepositoryIntegrationTest.kt$JdbcAuthAuditLogAdminQueryRepositoryIntegrationTest$@Autowired private lateinit var repository: JdbcAuthAuditLogAdminQueryRepository</ID>
     <ID>VarCouldBeVal:JdbcAuthAuditLogServiceIntegrationTest.kt$JdbcAuthAuditLogServiceIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:JdbcAuthAuditLogServiceIntegrationTest.kt$JdbcAuthAuditLogServiceIntegrationTest$@Autowired private lateinit var service: JdbcAuthAuditLogService</ID>
     <ID>VarCouldBeVal:JdbcIssueSecurityLookupIntegrationTest.kt$JdbcIssueSecurityLookupIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
@@ -154,6 +161,8 @@
     <ID>VarCouldBeVal:SystemAdminInfraIntegrationTest.kt$SystemAdminInfraIntegrationTest$/** 실 [JdbcSystemRoleAssignmentRepository] 가 주입되어야 한다(mock 아님). */ @Autowired private lateinit var roleAssignmentRepository: SystemRoleAssignmentRepository</ID>
     <ID>VarCouldBeVal:SystemAdminInfraIntegrationTest.kt$SystemAdminInfraIntegrationTest$/** 실 [JwtIssuer] — S3 토큰 발급 클레임 검증용. */ @Autowired private lateinit var jwtIssuer: JwtIssuer</ID>
     <ID>VarCouldBeVal:SystemAdminInfraIntegrationTest.kt$SystemAdminInfraIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:TotpSecretRepositoryTest.kt$TotpSecretRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:TotpSecretRepositoryTest.kt$TotpSecretRepositoryTest$@Autowired private lateinit var repo: TotpSecretRepository</ID>
     <ID>VarCouldBeVal:UserGroupSchemaMigrationTest.kt$UserGroupSchemaMigrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:UserRepositoryTest.kt$UserRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:UserRepositoryTest.kt$UserRepositoryTest$@Autowired private lateinit var repo: UserRepository</ID>

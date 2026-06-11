@@ -55,6 +55,7 @@ class MfaServiceTest {
     private lateinit var encryptor: MfaSecretEncryptor
     private lateinit var limiter: MfaAttemptLimiter
     private lateinit var auditLog: AuthAuditLogService
+    private lateinit var backupCodeRepo: MfaBackupCodeRepository
     private lateinit var service: MfaService
 
     private val userId: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
@@ -70,7 +71,8 @@ class MfaServiceTest {
         encryptor = mockk()
         limiter = mockk(relaxed = true)
         auditLog = mockk(relaxed = true)
-        service = MfaService(totpService, repo, encryptor, limiter, auditLog, clock)
+        backupCodeRepo = mockk(relaxed = true)
+        service = MfaService(totpService, repo, backupCodeRepo, encryptor, limiter, auditLog, clock)
     }
 
     /** 현재 fixed time-step 의 정답 코드. */
@@ -330,6 +332,21 @@ class MfaServiceTest {
     }
 
     @Test
+    fun `disable — step-up 검증 성공 시 백업 코드도 cascade 삭제한다 (같은 트랜잭션)`() {
+        every { limiter.isBlocked(userId) } returns false
+        every { repo.findByUser(userId) } returns activeSecret()
+        every { encryptor.decrypt(cipher) } returns knownSecret
+        every { repo.deleteByUser(userId) } returns true
+
+        val result = service.disable(userId, validCode())
+
+        assertThat(result).isEqualTo(MfaService.DisableResult.Success)
+        // 2FA 해제 = 2차 요소 전체 정리 — TOTP secret 삭제와 같은 게이트(성공) 뒤에서
+        // 백업 코드도 전량 삭제해 dead data 가 남지 않게 한다(FR-MF-02 Task 6, 갭-1).
+        verify(exactly = 1) { backupCodeRepo.deleteAllByUser(userId) }
+    }
+
+    @Test
     fun `disable — 오답 코드면 InvalidCode 를 반환하고 삭제하지 않는다 (무단 비활성화 차단)`() {
         every { limiter.isBlocked(userId) } returns false
         every { repo.findByUser(userId) } returns activeSecret()
@@ -341,6 +358,8 @@ class MfaServiceTest {
         verify(exactly = 0) { repo.deleteByUser(userId) }
         verify(exactly = 1) { limiter.recordFailure(userId) }
         verify(exactly = 0) { auditLog.record(any()) }
+        // 코드 검증 게이트 뒤에서만 백업 코드를 지운다(service→repo 직행 우회 금지).
+        verify(exactly = 0) { backupCodeRepo.deleteAllByUser(any()) }
     }
 
     @Test
@@ -352,6 +371,7 @@ class MfaServiceTest {
 
         assertThat(result).isEqualTo(MfaService.DisableResult.NotEnabled)
         verify(exactly = 0) { repo.deleteByUser(userId) }
+        verify(exactly = 0) { backupCodeRepo.deleteAllByUser(any()) }
     }
 
     @Test
@@ -363,6 +383,7 @@ class MfaServiceTest {
 
         assertThat(result).isEqualTo(MfaService.DisableResult.NotEnabled)
         verify(exactly = 0) { repo.deleteByUser(userId) }
+        verify(exactly = 0) { backupCodeRepo.deleteAllByUser(any()) }
     }
 
     @Test
@@ -373,6 +394,7 @@ class MfaServiceTest {
 
         assertThat(result).isEqualTo(MfaService.DisableResult.TooManyAttempts)
         verify(exactly = 0) { repo.deleteByUser(userId) }
+        verify(exactly = 0) { backupCodeRepo.deleteAllByUser(any()) }
     }
 
     // ── isEnabled ─────────────────────────────────────────────────────────────
