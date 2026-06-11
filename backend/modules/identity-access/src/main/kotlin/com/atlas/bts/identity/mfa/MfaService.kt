@@ -91,8 +91,9 @@ class MfaService(
      * @param userId 활성화 주체 사용자.
      * @param code 사용자가 입력한 6자리 코드.
      * @return [EnableResult] (Success / InvalidCode / TooManyAttempts / NoPending).
+     *
+     * ReturnCount 억제 — rate-limit·PENDING 부재·오답 guard early-return 이 본문보다 명확하다.
      */
-    // ReturnCount 억제 — rate-limit·PENDING 부재·오답 guard early-return 이 본문보다 명확.
     @Suppress("ReturnCount")
     fun enable(
         userId: UUID,
@@ -122,8 +123,9 @@ class MfaService(
      * @param userId 검증 주체 사용자.
      * @param code 사용자가 입력한 6자리 코드.
      * @return [VerifyResult] (Success / InvalidCode / TooManyAttempts / NotEnabled).
+     *
+     * ReturnCount 억제 — rate-limit·ACTIVE 부재·검증실패 guard early-return 이 본문보다 명확하다.
      */
-    // ReturnCount 억제 — rate-limit·ACTIVE 부재·검증실패 guard early-return 이 본문보다 명확.
     @Suppress("ReturnCount")
     fun verifyLogin(
         userId: UUID,
@@ -155,8 +157,9 @@ class MfaService(
      * @param userId 비활성화 주체 사용자.
      * @param code 사용자가 입력한 6자리 코드.
      * @return [DisableResult] (Success / InvalidCode / TooManyAttempts / NotEnabled).
+     *
+     * ReturnCount 억제 — rate-limit·ACTIVE 부재·오답 guard early-return 이 본문보다 명확하다.
      */
-    // ReturnCount 억제 — rate-limit·ACTIVE 부재·오답 guard early-return 이 본문보다 명확.
     @Suppress("ReturnCount")
     fun disable(
         userId: UUID,
