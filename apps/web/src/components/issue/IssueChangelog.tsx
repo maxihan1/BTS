@@ -107,11 +107,11 @@ interface ChangeGroupRowProps {
  * 단건 변경 그룹 렌더.
  * "actorName · 상대시각" 헤더 + 그룹 내 변경 항목 목록을 표시한다.
  * actorName=null이면 "시스템"을 표시한다.
+ * createdAt이 파싱 불가한 값이면 원문을 그대로 표시한다 (Invalid Date 방어).
  */
 export function ChangeGroupRow({ group, refs }: ChangeGroupRowProps): JSX.Element {
   const actorDisplay = group.actorName ?? issueDetailStrings.changelogSystemActor
-  const parsedDate = new Date(group.createdAt)
-  const timeDisplay = isNaN(parsedDate.getTime())
+  const timeDisplay = isNaN(new Date(group.createdAt).getTime())
     ? group.createdAt
     : formatDateTime(group.createdAt)
   const groupLabel = `${actorDisplay} · ${timeDisplay}`
@@ -193,6 +193,7 @@ interface ChangelogPageProps {
  *
  * - 첫 페이지(page=0)에서 로딩/에러/빈 상태를 처리한다.
  * - isLastRequested=true이고 data.last=false이면 "더 보기" 버튼을 표시한다.
+ * - 비-0 페이지 에러 시 "더 보기" 버튼을 유지해 사용자가 재시도할 수 있도록 한다.
  */
 function ChangelogPage({
   issueKey,
