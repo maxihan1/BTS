@@ -273,3 +273,21 @@ classify. type=auth, agent=security-engineer, primary_bc=identity-access
 **검증된 정합(견고)**. SecurityConfig 무변경 / MfaVerifyRequest 라인 737 회귀 0 / V023 무충돌 / disable cascade 도메인 우회 아님 / MfaService 생성자 주입 기존 테스트 포함.
 
 **종합**. C-2(rate-limit 공유) Maxi 게이트 결정만 남음. 그 외 BLOCKER/CONCERN 모두 plan/spec 보강 완료.
+
+### PR 단위 코드리뷰 (2026-06-11, 게이트 2 직전, PR #117)
+
+**code-reviewer ground-truth 독립 리뷰** — 코드 전수 대조.
+- BLOCKER 0 / CONCERN 0 / NIT 2(주석 stale, AuthEventEmitCoverageTest 16종→18종 수정 완료 / MfaController KDoc 과거형 — 무해)
+- plan 약속 8개 전부 ✅: SHA-256 해시·평문미저장 / TOTP ACTIVE 선행·10개·평문1회 / atomic 소진 race 실측 / 별도 limiter(빈충돌0) / disable cascade 게이트뒤 / verify method 분기 회귀0+mfa_verified=true / 전량교체 / 감사 2종 emit
+- learnings 회귀 0(catch-all 직접매핑·PAT JWT전용·atomic단일UPDATE·비밀값미로깅·생성자주입 기존테스트)
+
+**/review (gstack BTS checklist)** — Pre-Landing Review: No issues found.
+- Pass 0: PRE_EXISTING(detekt 13건/ktlint +3 baseline 동결 표기) · detekt --rerun-tasks BUILD SUCCESSFUL · 잔여물 clean · verify-master-plan PASS(FR 122/122)
+- Pass 1 BTS 고유: init_codegen 미러 불요(identity-access raw SQL, V022 선례) · V023 무충돌 · 도메인핸들러 신규0 · jOOQ 아님(raw SQL) · 권한 fail-closed
+- Pass 2: 빈 catch 0 · KDoc 정합 · plan↔spec drift 0 · 에러코드 snake_case(identity-access 관례)
+
+**stale base 처리**: fr-hs-01(#115, issue-tracking) 머지 발견 → origin/main(2203d67a) rebase(충돌0, BC 격리) → 컴파일 SUCCESSFUL.
+
+**최종 검증**: test 186 suite 0실패 · ktlint/detekt BUILD SUCCESSFUL.
+
+**종합 판정. PASS** — BLOCKER/CONCERN 0. 머지 가능.
