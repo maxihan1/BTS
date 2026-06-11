@@ -118,7 +118,7 @@ classify 결과: type=backend, agent=backend-engineer, primary_bc=notification(�
 
 **GREEN**:
 - `UserLookupPort.kt`: `fun findIdsByUsernames(usernames: Set<String>): Map<String, UUID> = emptyMap()` **default 메서드**(인라인 fake 보호). KDoc로 "미존재 username은 결과 제외, 실제 구현은 UserLookupAdapter" 명시.
-- `UserLookupAdapter.kt`: override. 빈 입력 → `emptyMap()` 즉시 반환. 아니면 `SELECT id, username FROM users WHERE username = ANY(:names)` (named param, `Array` 바인딩) → `RowMapper`로 `username->id` 수집. `@Transactional(readOnly = true)`.
+- `UserLookupAdapter.kt`: override. 빈 입력 → `emptyMap()` 즉시 반환. 아니면 `SELECT id, username FROM users WHERE username IN (:names)` (named param 컬렉션 바인딩, findByIds 선례) → `RowMapper`로 `username->id` 수집. `@Transactional(readOnly = true)`.
 
 **REFACTOR**:
 - SQL 상수 `SQL_FIND_IDS_BY_USERNAMES` companion. KDoc.
@@ -197,3 +197,27 @@ classify 결과: type=backend, agent=backend-engineer, primary_bc=notification(�
 - O1. `q_issue_events` 무소비자 — 기존 모든 이슈 이벤트와 동일 패턴, 회귀 아님. 큐 retention/소비는 FR-NT 책임.
 
 **BLOCKER: 없음.**
+
+### PR 단위 리뷰 (2026-06-11, 게이트 2)
+
+**code-reviewer agent**: PASS, BLOCKER 0. CONCERNS — C-1(UserLookupPort KDoc가 `ANY`인데 실제 `IN`), C-2(updateIssue `@Suppress("ThrowsCount")` baseline 중복). SQL injection·cross-BC·fail-open·트랜잭션·ReDoS 전부 PASS.
+
+**/review (gstack adversarial)**: 추가 실질 발견.
+- **G1 (갭)**: spec 완료기준 #4(updateIssue Testcontainers 통합테스트, 실 pgmq+IN바인딩 검증)가 미구현 — `IssueApplicationServiceMentionTest`는 MockK 단위(인라인 fake). 실제 IN바인딩+pgmq.send E2E 커버리지 0.
+- **H1 (High)**: 멘션 개수 무상한. `UpdateIssueRequest.description` max 65535자 → 최대 ~14k distinct 멘션 → `IN (:names)` ~14k 바인드 파라미터(PG 65535 미만이라 throw 안 됨, 그러나 거대 IN 파싱+거대 mentionedUserIds payload). spec EC-7은 throttle을 FR-NT에 위임했으나 그건 본 FR의 DB쿼리/직렬화 비용을 안 막음.
+- **H2/C-1 (High/문서)**: spec L80·L103·plan L121은 `= ANY(:names)`(array 바인딩 1파라미터), 구현은 `IN (:names)`(N파라미터). 어댑터 자체 KDoc은 IN 사유 설명하나 shared-kernel `UserLookupPort.kt` KDoc은 여전히 `ANY` (사실과 불일치). ANY↔IN이 H1 폭발 여부를 결정.
+- **M1 (Med)**: `@@bob`→`bob` 과대추출(lookbehind에 `@` 미포함). fix: `(?<![A-Za-z0-9._-@])`.
+- **M2 (Med, 수용)**: 불균형 백틱 코드제거 best-effort — 문서화된 v1 한계.
+- 검증된 비이슈: 트랜잭션 안전·extract(null) 가드·빈 IN 단락·결정적 정렬·유니코드 비매칭 OK.
+
+**Pass 0 실검증**: detekt `--rerun-tasks` BUILD SUCCESSFUL(캐시 false-green 아님), git status 깨끗, 마이그레이션 없어 init_codegen/V번호 N/A.
+
+**권장**: 머지 전 G1(통합테스트)·H1(멘션 상한)·M1(`@@` lookbehind)·H2/C-1(ANY 채택 또는 KDoc/spec을 IN으로 정정) 수정. M2 수용, C-2 선택.
+
+### 게이트 2 수정 해소 (2026-06-11, Maxi "핵심 수정 후 재리뷰" 선택)
+
+- **M1 해소**: MentionParser lookbehind `(?<![A-Za-z0-9._@\-])`로 `@` 포함 → `@@bob`/`x@@y` 미추출. (`test`→`fix` 커밋, 17 케이스 통과)
+- **H1 해소**: `publishMentions`에 `MAX_MENTIONS_PER_EVENT = 50` cap — `added`를 DB 조회 전 결정적(정렬 후 take)으로 자르고 드롭 수 `log.warn`. IN 파라미터·payload 둘 다 ≤50으로 bound.
+- **H2/C-1 해소**: IN 유지(cap으로 안전 + findByIds 선례 일치) + 문서 정합 — `UserLookupPort.kt` KDoc·spec N2/cross-BC절·plan GREEN을 모두 `IN (:names)`로 정정.
+- **G1 해소**: updateIssue 멘션 발행 Testcontainers 통합테스트 추가(실 pgmq `q_issue_events` enqueue 검증) — qa-engineer.
+- **M2 수용**: 불균형 백틱 best-effort, KDoc 한계 명시 유지. **C-2**: ThrowsCount @Suppress는 LongMethod와 함께 유지(국소 일관성, baseline 중복은 무해).

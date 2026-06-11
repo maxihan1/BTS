@@ -42,8 +42,8 @@ interface UserLookupPort {
      * 빈 입력 시 DB 쿼리 없이 빈 맵을 즉시 반환한다.
      *
      * ### 실제 구현
-     * [com.atlas.bts.identity.user.UserLookupAdapter] 가 `SELECT id, username FROM users WHERE username = ANY(:names)`
-     * 단일 쿼리로 구현한다. production 환경에서 이 default 구현이 호출되면 안 된다.
+     * [com.atlas.bts.identity.user.UserLookupAdapter] 가 `SELECT id, username FROM users WHERE username IN (:names)`
+     * 단일 쿼리로 구현한다 (NamedParameterJdbcTemplate 컬렉션 바인딩, findByIds 선례). production 환경에서 이 default 구현이 호출되면 안 된다.
      *
      * ### 기본값 = emptyMap() 의 의미
      * 기존 테스트 파일 ~35 개가 `object : UserLookupPort { override fun exists(...) }` 인라인으로

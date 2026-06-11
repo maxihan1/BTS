@@ -77,7 +77,7 @@
 ## 비기능 요구사항 (NFR)
 
 - **N1 — 보안**: username 해석은 named parameter 바인딩(SQL 인젝션 금지, 기존 `UserLookupAdapter` 패턴). 멘션이 권한을 우회해 비공개 이슈 존재를 노출하지 않음 — 이벤트는 큐 내부 데이터이며 전달 단계(FR-NT)에서 수신자 권한 필터링 책임(이 FR 범위 아님, 단 §제약에 명시).
-- **N2 — 성능**: 멘션 해석은 본문당 1회 `WHERE username = ANY(:names)` 단일 쿼리(N+1 금지). 멘션 개수 상한 = 본문에서 추출된 distinct username 수(자연 상한, 별도 캡 불요하나 §EC-7 참고).
+- **N2 — 성능**: 멘션 해석은 본문당 1회 `WHERE username IN (:names)` 단일 쿼리(N+1 금지). distinct 멘션은 본문당 `MAX_MENTIONS_PER_EVENT`(50)으로 cap — 초과분은 결정적(정렬 후 take)으로 드롭 + `log.warn`. IN 파라미터 수와 `mentionedUserIds` payload 크기를 둘 다 bound (H1 방어).
 - **N3 — 결정성**: `mentionedUserIds`는 정렬 고정(예: UUID 오름차순)으로 직렬화 — 테스트 안정성.
 - **N4 — 회귀 0**: 기존 `updateIssue` 동작(필드 병합/OCC/IssueUpdated 발행) 불변. 멘션 로직은 부가 side-effect로만 추가.
 
@@ -100,7 +100,7 @@
   ```
   - 빈 입력 → 빈 맵 (쿼리 생략).
   - username 대소문자: `users.username`은 대소문자 구분 UNIQUE → 정확 매칭(원문 보존). (대소문자 무시 매칭은 비범위)
-- identity-access `UserLookupAdapter` 구현: `SELECT id, username FROM users WHERE username = ANY(:names)` (named param, 읽기 전용). 결과를 `username -> id` 맵으로 수집.
+- identity-access `UserLookupAdapter` 구현: `SELECT id, username FROM users WHERE username IN (:names)` (named param 컬렉션 바인딩, 프로젝트 `findByIds` 선례 일치, 읽기 전용). 결과를 `username -> id` 맵으로 수집. (`= ANY(:array)`는 드라이버 배열 바인딩 의존이라 미채택 — distinct 멘션은 cap(50)으로 bound되어 IN 파라미터 수는 안전.)
 - ADR 참조: 기존 `2026-06-01-issue-assignee-user-lookup-port` 포트의 메서드 추가 — 신규 ADR 불요(동일 포트 확장), plan에 기록.
 
 ## 엣지 케이스
