@@ -7,6 +7,9 @@ import com.atlas.bts.identity.audit.AuthAuditLogService
 import com.atlas.bts.identity.audit.AuthEventType
 import com.atlas.bts.identity.auth.CompositeAuthenticationManager
 import com.atlas.bts.identity.jwt.JwtIssuer
+import com.atlas.bts.identity.mfa.MfaChallengeTokenService
+import com.atlas.bts.identity.mfa.MfaService
+import com.atlas.bts.identity.mfa.MfaService.VerifyResult
 import com.atlas.bts.identity.provider.ldap.ProviderUnavailableException
 import com.atlas.bts.identity.session.RefreshToken
 import com.atlas.bts.identity.session.RefreshTokenRepository
@@ -85,6 +88,8 @@ class AuthController(
     private val jwtIssuer: JwtIssuer,
     private val systemRoleAssignmentRepository: SystemRoleAssignmentRepository,
     private val authAuditLogService: AuthAuditLogService,
+    private val mfaService: MfaService,
+    private val mfaChallengeTokenService: MfaChallengeTokenService,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(AuthController::class.java)
@@ -95,9 +100,11 @@ class AuthController(
      * 1. `body.provider` 필수 — blank/누락이면 **400 `provider_required`** (디스패처 미진입).
      * 2. [CompositeAuthenticationManager.authenticate]`(provider, username, password)` 로 위임.
      *    명시 선택만 수행하며 자동 fallback 은 없다 (CompositeAuthenticationManager 보안 결정 참조).
-     * 3. [AuthnResult.Success] → [issueTokens] (Session/RefreshToken/JWT 발급) → 200 + Set-Cookie.
+     * 3. [AuthnResult.Success] → [completeLogin] 으로 2단계(TOTP) 필요 여부를 분기한다 (FR-MF-01).
+     *    TOTP 미활성이면 [issueTokens] (Session/RefreshToken/JWT 발급) → 200 + Set-Cookie,
+     *    TOTP 활성이면 정식 세션 대신 챌린지 토큰만 발급 → 200 `mfa_required`.
      * 4. [AuthnResult.Failure] → **401 `invalid_credentials`** (reason 무관 — 계정/구성 열거 방지 NFR-06-01).
-     * 5. [AuthnResult.RequiresMfa] → 401 `mfa_required`.
+     * 5. [AuthnResult.RequiresMfa] → 401 `mfa_required` (디스패처 챌린지 — 현재 provider 미반환 dead path, 보존).
      *
      * ## 503 처리 (catch-all @ExceptionHandler 우회)
      * 디스패처가 전파하는 [ProviderUnavailableException](LDAP/디렉터리 장애)을 이 메서드 안에서 직접
@@ -138,13 +145,92 @@ class AuthController(
         return when (result) {
             is AuthnResult.Success -> {
                 recordLoginSuccess(request, result.principal)
-                issueTokens(request, result.principal)
+                completeLogin(request, result.principal)
             }
             is AuthnResult.Failure -> {
                 recordLoginFailure(request, provider, body.username, result.reason)
                 errorResponse(HttpStatus.UNAUTHORIZED, "invalid_credentials")
             }
             is AuthnResult.RequiresMfa -> errorResponse(HttpStatus.UNAUTHORIZED, "mfa_required")
+        }
+    }
+
+    /**
+     * 1단계(비밀번호) 인증을 통과한 [principal] 에 대해 2단계(TOTP) 필요 여부에 따라 응답을 분기한다 (FR-MF-01).
+     *
+     * - TOTP **활성**([MfaService.isEnabled] true): 정식 세션을 발급하지 않고 단명 챌린지 토큰만 발급해
+     *   **200** `{mfa_required:true, mfa_challenge_token, expires_in}` 으로 응답한다. 클라이언트는 이 토큰과
+     *   TOTP 코드를 `POST /mfa/verify` 로 보내 2단계를 마쳐야 정식 세션을 받는다.
+     * - TOTP **미활성**: 기존 흐름 그대로 [issueTokens] 로 정식 세션(`mfaVerified=false`)을 발급한다(회귀 0).
+     *
+     * ## C7 타이밍 누출 방지
+     * [MfaService.isEnabled] 조회는 1단계 Success 이후에만 수행한다(이 헬퍼는 Success 분기에서만 호출).
+     * 비밀번호 오답(Failure) 경로는 isEnabled 를 조회하지 않으므로 MFA 보유 여부가 노출되지 않는다.
+     *
+     * @param request IP/UserAgent 추출용 HTTP 요청
+     * @param principal 1단계 인증을 통과한 주체
+     * @return TOTP 활성 시 200 [MfaRequiredResponse], 미활성 시 200 [TokenResponse] + Set-Cookie
+     */
+    private fun completeLogin(
+        request: HttpServletRequest,
+        principal: Principal,
+    ): ResponseEntity<*> {
+        if (!mfaService.isEnabled(principal.userId)) {
+            return issueTokens(request, principal.userId, principal.providerType.name.lowercase())
+        }
+        val challengeToken =
+            mfaChallengeTokenService.issueChallenge(principal.userId, principal.providerType.name.lowercase())
+        return ResponseEntity.ok(
+            MfaRequiredResponse(mfaChallengeToken = challengeToken, expiresIn = MFA_CHALLENGE_TTL_SECONDS),
+        )
+    }
+
+    /**
+     * POST /api/v1/auth/mfa/verify — 로그인 2단계 TOTP 검증 후 정식 세션 발급 (FR-MF-01, SDD §19.7.4).
+     *
+     * 1. [MfaChallengeTokenService.validate] 로 챌린지 토큰을 검증한다. 만료/위조/purpose 불일치면 `null`
+     *    → **401 `invalid_code`**(불명은 거부, 내부 사정 비노출).
+     * 2. [MfaChallengeTokenService.consume] 으로 토큰을 일회용 소비한다. 이미 소비된 토큰(재사용)이면
+     *    **401 `invalid_code`** (C1 replay 방어 — 코드 검증 전에 차단).
+     * 3. [MfaService.verifyLogin] 으로 TOTP 코드를 검증한다.
+     *    - Success → [issueTokens]`(mfaVerified=true)` → **200** access_token + refresh 쿠키.
+     *    - InvalidCode → **401 `invalid_code`** / TooManyAttempts → **429 `too_many_attempts`** /
+     *      NotEnabled → **401 `invalid_code`**(2단계 미적용 사용자가 verify 호출 — 존재 비노출).
+     *
+     * ## 인증·CSRF
+     * SecurityConfig(Task 9)가 이 경로를 `permitAll` + `csrf.ignoringRequestMatchers` 양쪽에 등록한다.
+     * 정식 세션 발급 전(JWT 없음)이라 인증을 요구하지 않으며, 토큰 자체가 1단계 통과 증명이다.
+     *
+     * ## 4xx/429 직접 매핑 (catch-all 변질 회귀 가드)
+     * 도메인 결과를 컨트롤러에서 직접 [ResponseEntity] 로 매핑하고 예외를 throw 하지 않아, catch-all
+     * @ExceptionHandler 가 401/429 를 500 으로 변질시키지 않는다(catch-all-exceptionhandler 교훈).
+     * 비밀값(토큰/코드)은 로깅하지 않는다(§1.1.2).
+     *
+     * @param request IP/UserAgent 추출용 HTTP 요청
+     * @param body 챌린지 토큰 + TOTP 코드
+     * @return 200 TokenResponse + Set-Cookie / 401 invalid_code / 429 too_many_attempts
+     *
+     * ReturnCount 억제 — 토큰 무효/재사용/코드 결과별 guard early return 이 중첩 if 보다 가독성 우수.
+     */
+    @Suppress("ReturnCount")
+    @PostMapping("/mfa/verify")
+    fun verifyMfa(
+        request: HttpServletRequest,
+        @RequestBody body: MfaVerifyRequest,
+    ): ResponseEntity<*> {
+        val claims =
+            mfaChallengeTokenService.validate(body.mfaChallengeToken)
+                ?: return errorResponse(HttpStatus.UNAUTHORIZED, "invalid_code")
+        if (!mfaChallengeTokenService.consume(claims.jti)) {
+            // C1 — 이미 소비된 토큰(재사용). 코드 검증 없이 거부한다.
+            return errorResponse(HttpStatus.UNAUTHORIZED, "invalid_code")
+        }
+
+        return when (mfaService.verifyLogin(claims.userId, body.code)) {
+            VerifyResult.Success -> issueTokens(request, claims.userId, claims.providerId, mfaVerified = true)
+            VerifyResult.InvalidCode, VerifyResult.NotEnabled ->
+                errorResponse(HttpStatus.UNAUTHORIZED, "invalid_code")
+            VerifyResult.TooManyAttempts -> errorResponse(HttpStatus.TOO_MANY_REQUESTS, "too_many_attempts")
         }
     }
 
@@ -205,28 +291,38 @@ class AuthController(
     }
 
     /**
-     * 인증 성공한 [principal] 에 대해 Session 생성 → RefreshToken 발급 → JWT 발급 후 200 응답을 만든다.
+     * 인증 성공한 사용자에 대해 Session 생성 → RefreshToken 발급 → JWT 발급 후 200 응답을 만든다.
      *
      * Session INSERT, RefreshToken save, JwtIssuer.issue 를 순서대로 수행하고
      * refresh_token HttpOnly Secure SameSite=Strict 쿠키를 Set-Cookie 로 내려준다 (현행 발급 로직 유지).
      *
+     * 1단계 로그인([login])과 2단계 검증([verifyMfa]) 양쪽이 공유한다. 1단계는 [providerId] 를
+     * `principal.providerType.name.lowercase()` 로, 2단계는 챌린지 토큰의 providerId 로 전달한다.
+     * [Principal] 전체가 아니라 식별자만 받아, 챌린지 토큰만 가진 2단계 경로도 재구성 없이 재사용한다.
+     *
      * @param request IP/UserAgent 추출용 HTTP 요청
-     * @param principal 디스패처가 인증한 사용자 주체
+     * @param userId 인증된 사용자 UUID
+     * @param providerId 인증 공급자 식별자(소문자, e.g. "local")
+     * @param mfaVerified 2차 요소(TOTP) 통과 여부 (FR-MF-01). 1단계 로그인은 기본 `false`,
+     *   [verifyMfa] 성공 경로만 `true`. [Session.mfaVerified] → JWT `mfa_verified` 클레임 원천이다.
      * @return 200 + [TokenResponse] + Set-Cookie refresh_token
      */
     private fun issueTokens(
         request: HttpServletRequest,
-        principal: Principal,
+        userId: UUID,
+        providerId: String,
+        mfaVerified: Boolean = false,
     ): ResponseEntity<*> {
         val ipAddress = request.remoteAddr.takeIf { it.isNotBlank() }
         val userAgent = request.getHeader(HttpHeaders.USER_AGENT)
 
         val session =
             sessionService.create(
-                userId = principal.userId,
-                providerId = principal.providerType.name.lowercase(),
+                userId = userId,
+                providerId = providerId,
                 ipAddress = ipAddress,
                 userAgent = userAgent,
+                mfaVerified = mfaVerified,
             )
 
         val rawToken = generateRawToken()
@@ -251,6 +347,7 @@ class AuthController(
                 providerId = session.providerId,
                 scopes = emptyList(),
                 roles = roles,
+                mfaVerified = session.mfaVerified,
             )
 
         return ResponseEntity.ok()
@@ -558,6 +655,12 @@ class AuthController(
         /** CSPRNG 토큰 바이트 수 — 32 바이트 = 256비트 엔트로피 */
         const val TOKEN_BYTES = 32
 
+        /**
+         * MFA 챌린지 토큰 유효 기간 (초) — 5분. [MfaRequiredResponse.expiresIn] 으로 클라이언트에 안내한다.
+         * 실제 만료는 [MfaChallengeTokenService] 의 `CHALLENGE_TTL`(5분)이 강제하며 이 값은 표시용이다.
+         */
+        const val MFA_CHALLENGE_TTL_SECONDS = 300L
+
         /** logout 세션 폐기 사유 — 감사 로그 검색 키 */
         const val REVOKE_REASON_LOGOUT = "logout"
 
@@ -621,4 +724,33 @@ data class TokenResponse(
     @JsonProperty("access_token") val accessToken: String,
     @JsonProperty("token_type") val tokenType: String = "Bearer",
     @JsonProperty("expires_in") val expiresIn: Long = JwtIssuer.ACCESS_TOKEN_TTL_SECONDS,
+)
+
+/**
+ * POST /api/v1/auth/mfa/verify 요청 body (FR-MF-01 / SDD §19.7.4).
+ *
+ * 1단계(비밀번호) 통과 시 받은 챌린지 토큰과 Authenticator 앱이 표시한 코드를 함께 보낸다.
+ *
+ * @param mfaChallengeToken [login] 2단계 응답([MfaRequiredResponse])의 챌린지 토큰 (역직렬화 키: mfa_challenge_token)
+ * @param code 사용자가 입력한 6자리 TOTP 코드 — 검증은 [MfaService] 가 수행한다(컨트롤러는 로깅하지 않음)
+ */
+data class MfaVerifyRequest(
+    @JsonProperty("mfa_challenge_token") val mfaChallengeToken: String,
+    val code: String,
+)
+
+/**
+ * TOTP 활성 사용자의 login 2단계 응답 body (FR-MF-01 GAP-3 — login 200 discriminated union).
+ *
+ * 1단계(비밀번호) 통과 후 정식 세션 대신 내려가며, 클라이언트는 [mfaRequired] 가 true 임을 보고
+ * MFA 코드 입력 단계로 전환한다. [TokenResponse] 와 구분되도록 `mfa_required` 식별 필드를 둔다.
+ *
+ * @param mfaRequired 항상 true (직렬화 키: mfa_required) — 클라이언트 분기용 식별 필드
+ * @param mfaChallengeToken `POST /mfa/verify` 에 다시 보낼 단명 챌린지 토큰 (직렬화 키: mfa_challenge_token)
+ * @param expiresIn 챌린지 토큰 유효 기간(초) — 표시용 (직렬화 키: expires_in)
+ */
+data class MfaRequiredResponse(
+    @JsonProperty("mfa_required") val mfaRequired: Boolean = true,
+    @JsonProperty("mfa_challenge_token") val mfaChallengeToken: String,
+    @JsonProperty("expires_in") val expiresIn: Long,
 )

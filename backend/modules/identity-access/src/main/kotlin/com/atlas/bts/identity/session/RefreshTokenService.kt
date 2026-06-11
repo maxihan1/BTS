@@ -139,6 +139,8 @@ class RefreshTokenService(
         }
 
         // 7. Access token 발급 — 전역 시스템 역할(roles)을 함께 주입 (FR-PM-08)
+        //    GAP-1 (FR-MF-01): 세션의 mfa_verified 를 그대로 전파해야 회전 후에도 2차 인증 상태가 보존된다.
+        //    이를 누락하면 refresh 회전 시 mfa_verified 클레임이 기본 false 로 떨어진다.
         val roles = systemRoleAssignmentRepository.findRolesByUser(session.userId).map { it.name }
         val accessToken = jwtIssuer.issue(
             userId = session.userId,
@@ -146,6 +148,7 @@ class RefreshTokenService(
             providerId = session.providerId,
             scopes = emptyList(),
             roles = roles,
+            mfaVerified = session.mfaVerified,
         )
 
         // FR-AU-10 — rotation 성공 감사. tokenId 만 기록(raw token / hash 절대 금지, §1.1 규칙 2).

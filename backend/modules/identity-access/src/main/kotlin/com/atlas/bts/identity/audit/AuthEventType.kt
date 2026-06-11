@@ -1,9 +1,9 @@
-// 인증 감사 이벤트 유형 enum — 12종 (FR-09-31 + FR-PM-01)
+// 인증 감사 이벤트 유형 enum — 16종 (FR-09-31 + FR-PM-01 + FR-MF-01)
 
 package com.atlas.bts.identity.audit
 
 /**
- * BTS 인증 감사 로그에 기록되는 이벤트 유형 12종 (FR-09-31 + FR-PM-01).
+ * BTS 인증 감사 로그에 기록되는 이벤트 유형 16종 (FR-09-31 + FR-PM-01 + FR-MF-01).
  *
  * - [LOGIN_SUCCESS]: 로그인 성공
  * - [LOGIN_FAILURE]: 로그인 실패 (잘못된 자격증명, 계정 잠금 등)
@@ -17,6 +17,10 @@ package com.atlas.bts.identity.audit
  * - [PROJECT_MEMBER_ADDED]: 프로젝트 멤버 추가 (부트스트랩 포함)
  * - [PROJECT_ROLE_CHANGED]: 프로젝트 멤버 역할 변경
  * - [PROJECT_MEMBER_REMOVED]: 프로젝트 멤버 제거
+ * - [MFA_ENABLED]: TOTP(2FA) 활성화 완료 (enable 코드 검증 성공)
+ * - [MFA_CHALLENGE_SUCCESS]: 로그인 2단계 TOTP 코드 검증 성공
+ * - [MFA_CHALLENGE_FAILURE]: 로그인 2단계 TOTP 코드 검증 실패 (오답)
+ * - [MFA_DISABLED]: TOTP(2FA) 비활성화 (현재 코드 검증 후 해제)
  */
 enum class AuthEventType {
     LOGIN_SUCCESS,
@@ -31,4 +35,8 @@ enum class AuthEventType {
     PROJECT_MEMBER_ADDED,
     PROJECT_ROLE_CHANGED,
     PROJECT_MEMBER_REMOVED,
+    MFA_ENABLED,
+    MFA_CHALLENGE_SUCCESS,
+    MFA_CHALLENGE_FAILURE,
+    MFA_DISABLED,
 }

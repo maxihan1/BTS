@@ -113,8 +113,24 @@ class JwtIssuerTest {
     }
 
     @Test
-    fun `mfa_verified claim 은 false 더미값이다 (FR-09-15)`() {
+    fun `mfa_verified claim 은 mfaVerified 미전달 시 false 이다 (FR-MF-01)`() {
         val claims = parseClaims(jwtIssuer.issue(userId, sessionId, providerId, scopes))
+
+        assertThat(claims.getBooleanClaim("mfa_verified")).isFalse()
+    }
+
+    @Test
+    fun `mfa_verified claim 은 mfaVerified=true 전달 시 true 이다 (FR-MF-01)`() {
+        val token = jwtIssuer.issue(userId, sessionId, providerId, scopes, mfaVerified = true)
+        val claims = parseClaims(token)
+
+        assertThat(claims.getBooleanClaim("mfa_verified")).isTrue()
+    }
+
+    @Test
+    fun `mfa_verified claim 은 mfaVerified=false 명시 전달 시 false 이다 (FR-MF-01)`() {
+        val token = jwtIssuer.issue(userId, sessionId, providerId, scopes, mfaVerified = false)
+        val claims = parseClaims(token)
 
         assertThat(claims.getBooleanClaim("mfa_verified")).isFalse()
     }
