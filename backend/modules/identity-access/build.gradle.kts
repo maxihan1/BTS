@@ -92,6 +92,10 @@ dependencies {
 
     // FR-MF-01 TOTP — secret 생성 + otpauth URI + QR(ZXing) + RFC 6238 시간윈도우 검증 (Maxi 승인, 절대규칙 #17)
     implementation("dev.samstevens.totp:totp:1.7.1")
+    // ZXing — TotpService 가 직접 import 하는 QR 인코딩 의존(core: BarcodeFormat/QRCodeWriter, javase: MatrixToImageWriter).
+    // samstevens:totp 가 3.4.0 을 transitive 로 끌어오나, 직접 import 하므로 절대규칙 #17(직접 의존 명시 선언)에 따라 명시한다.
+    implementation("com.google.zxing:core:3.4.0")
+    implementation("com.google.zxing:javase:3.4.0")
 
     // Kotlin 기본
     implementation("org.jetbrains.kotlin:kotlin-reflect")

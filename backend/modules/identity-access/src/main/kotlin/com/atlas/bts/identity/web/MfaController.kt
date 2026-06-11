@@ -6,6 +6,7 @@ import com.atlas.bts.identity.mfa.MfaService
 import com.atlas.bts.identity.mfa.MfaService.DisableResult
 import com.atlas.bts.identity.mfa.MfaService.EnableResult
 import com.atlas.bts.identity.mfa.MfaService.SetupResult
+import com.atlas.bts.identity.user.UserRepository
 import com.fasterxml.jackson.annotation.JsonProperty
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -53,22 +54,32 @@ import java.util.UUID
 @RequestMapping("/api/v1/auth/mfa")
 class MfaController(
     private val mfaService: MfaService,
+    private val userRepo: UserRepository,
 ) {
     /**
      * POST /api/v1/auth/mfa/totp/setup — secret 생성(PENDING) + Authenticator 앱 provisioning 반환.
      *
+     * otpauth label 은 Authenticator 앱 표시명이므로 UUID 가 아니라 사람이 식별 가능한 값으로 해소한다
+     * (email 우선, 없으면 username — spec FR-2/GAP-4). label 해소는 web 레이어 책임이고
+     * [MfaService.setup] 시그니처(userId, label)는 유지한다.
+     *
      * @param jwt 인증된 JWT principal. PAT 인증 시 null → 403.
-     * @return 200 `{otpauth_uri, qr_png_data_uri}` / 409 `already_enabled` / 403 PAT / 401 미인증.
+     * @return 200 `{otpauth_uri, qr_png_data_uri, secret_base32}` / 409 `already_enabled` / 403 PAT / 401 미인증.
      */
     @PostMapping("/totp/setup")
     fun setup(
         @AuthenticationPrincipal jwt: Jwt?,
     ): ResponseEntity<*> {
         val userId = userIdOrNull(jwt) ?: return PAT_FORBIDDEN_RESPONSE
-        return when (val result = mfaService.setup(userId, label = userId.toString())) {
+        val label = resolveLabel(userId)
+        return when (val result = mfaService.setup(userId, label = label)) {
             is SetupResult.Created ->
                 ResponseEntity.ok(
-                    SetupResponse(otpauthUri = result.otpauthUri, qrPngDataUri = result.qrPngDataUri),
+                    SetupResponse(
+                        otpauthUri = result.otpauthUri,
+                        qrPngDataUri = result.qrPngDataUri,
+                        secretBase32 = result.secretBase32,
+                    ),
                 )
             SetupResult.AlreadyEnabled -> errorResponse(HttpStatus.CONFLICT, "already_enabled")
         }
@@ -138,6 +149,19 @@ class MfaController(
      */
     private fun userIdOrNull(jwt: Jwt?): UUID? = jwt?.subject?.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
+    /**
+     * otpauth label 을 해소한다 — email 우선, 없으면 username, 사용자 미조회 시 userId 문자열 fallback.
+     *
+     * Authenticator 앱은 이 label 을 계정 표시명으로 쓰므로 UUID 대신 사람이 식별 가능한 값을 노출한다
+     * (spec FR-2/GAP-4). 인증된 userId 라 findById 가 null 일 일은 사실상 없으나, 이론상 부재 시
+     * userId 문자열로 안전하게 fallback 한다.
+     *
+     * @param userId 설정 주체 사용자 UUID.
+     * @return email → username → userId.toString() 순으로 해소된 label.
+     */
+    private fun resolveLabel(userId: UUID): String =
+        userRepo.findById(userId)?.let { it.email ?: it.username } ?: userId.toString()
+
     /** `{"error": <code>}` 본문을 가진 [status] 응답을 생성한다 (AuthController 에러 응답 일원화 선례). */
     private fun errorResponse(
         status: HttpStatus,
@@ -164,14 +188,17 @@ data class MfaCodeRequest(
 /**
  * [MfaController.setup] 200 응답 — Authenticator 앱 provisioning 정보.
  *
- * 평문 secret 은 [otpauthUri] 안에만 포함되며 별도 필드로 저장/노출하지 않는다(§1.1.1).
+ * 평문 secret 은 [otpauthUri] 안과 [secretBase32] 필드에 노출되지만, 어느 쪽도 저장하지 않는다(§1.1.1).
+ * [secretBase32] 는 QR 스캔 불가 환경의 수동입력 fallback 전용이며 로그에 절대 담지 않는다(§1.1.2).
  *
  * @param otpauthUri Authenticator 앱이 스캔할 otpauth:// provisioning URI (직렬화 키: otpauth_uri).
  * @param qrPngDataUri [otpauthUri] 를 인코딩한 QR PNG data URI (직렬화 키: qr_png_data_uri).
+ * @param secretBase32 평문 base32 secret — 수동입력 fallback 용 (직렬화 키: secret_base32).
  */
 data class SetupResponse(
     @JsonProperty("otpauth_uri") val otpauthUri: String,
     @JsonProperty("qr_png_data_uri") val qrPngDataUri: String,
+    @JsonProperty("secret_base32") val secretBase32: String,
 )
 
 /**

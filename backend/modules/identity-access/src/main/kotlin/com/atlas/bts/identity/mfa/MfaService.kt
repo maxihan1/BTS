@@ -82,6 +82,7 @@ class MfaService(
         return SetupResult.Created(
             otpauthUri = otpauthUri,
             qrPngDataUri = totpService.qrPngDataUri(otpauthUri),
+            secretBase32 = secret,
         )
     }
 
@@ -225,10 +226,13 @@ class MfaService(
          *
          * @property otpauthUri Authenticator 앱이 스캔할 provisioning URI.
          * @property qrPngDataUri [otpauthUri] 를 인코딩한 QR PNG data URI.
+         * @property secretBase32 평문 base32 secret. QR 스캔 불가 환경의 수동입력 fallback 용으로 응답에만 노출하며,
+         *   저장·로그에는 절대 담지 않는다(§1.1.1/§1.1.2). [otpauthUri] 의 `secret` 파라미터와 동일한 값이다.
          */
         data class Created(
             val otpauthUri: String,
             val qrPngDataUri: String,
+            val secretBase32: String,
         ) : SetupResult
 
         /** 이미 ACTIVE 라 활성 secret 을 덮어쓰지 않음. */
