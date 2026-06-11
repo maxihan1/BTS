@@ -96,7 +96,7 @@ describe('T3-S1: 미활성 상태 초기 렌더', () => {
 
 describe('T3-S2: 활성화 플로우', () => {
   it('T3-S2-1: 활성화 버튼 클릭 → setup 호출 → QR img와 secret_base32 표시', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     server.use(mockStatus(false), mockSetupOk())
 
     renderMfaSettings()
@@ -117,21 +117,20 @@ describe('T3-S2: 활성화 플로우', () => {
   })
 
   it('T3-S2-2: 코드 입력 → enable → 활성 상태로 전환 + QR/secret DOM에서 사라진다', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
 
-    // enable 성공 후 status refetch → enabled:true
-    let enableCalled = false
+    // 최초 1회는 false, enable 성공 후 refetch 시 true를 반환하도록 핸들러 설정
+    let fetchCount = 0
     server.use(
-      mockStatus(false),
       mockSetupOk(),
-      http.post('/api/v1/auth/mfa/totp/enable', () => {
-        enableCalled = true
-        return new HttpResponse(null, { status: 204 })
-      }),
-      // status 재조회 시 enabled:true 반환
+      http.post('/api/v1/auth/mfa/totp/enable', () =>
+        new HttpResponse(null, { status: 204 }),
+      ),
       http.get('/api/v1/auth/mfa/totp', () => {
-        if (enableCalled) return HttpResponse.json({ enabled: true })
-        return HttpResponse.json({ enabled: false })
+        fetchCount += 1
+        // 최초 조회는 비활성, 이후(enable 후 invalidate refetch)는 활성
+        if (fetchCount === 1) return HttpResponse.json({ enabled: false })
+        return HttpResponse.json({ enabled: true })
       }),
     )
 
@@ -148,7 +147,7 @@ describe('T3-S2: 활성화 플로우', () => {
     })
 
     const codeInput = screen.getByLabelText('인증 코드 (6자리)')
-    await user.type(codeInput, '123456', { delay: null })
+    await user.type(codeInput, '123456')
 
     const submitBtn = screen.getByRole('button', { name: '활성화 확인' })
     await user.click(submitBtn)
@@ -192,7 +191,7 @@ describe('T3-S3: 활성 상태 초기 렌더', () => {
 
 describe('T3-S4: 비활성화 플로우', () => {
   it('T3-S4-1: 비활성화 버튼 클릭 → step-up 코드 입력 영역 노출', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     server.use(mockStatus(true))
 
     renderMfaSettings()
@@ -209,16 +208,16 @@ describe('T3-S4: 비활성화 플로우', () => {
   })
 
   it('T3-S4-2: step-up 코드 입력 → disable → 비활성 상태로 전환', async () => {
-    const user = userEvent.setup()
-    let disableCalled = false
+    const user = userEvent.setup({ delay: null })
+    let fetchCount = 0
     server.use(
-      http.delete('/api/v1/auth/mfa/totp', () => {
-        disableCalled = true
-        return new HttpResponse(null, { status: 204 })
-      }),
+      http.delete('/api/v1/auth/mfa/totp', () =>
+        new HttpResponse(null, { status: 204 }),
+      ),
       http.get('/api/v1/auth/mfa/totp', () => {
-        if (disableCalled) return HttpResponse.json({ enabled: false })
-        return HttpResponse.json({ enabled: true })
+        fetchCount += 1
+        if (fetchCount === 1) return HttpResponse.json({ enabled: true })
+        return HttpResponse.json({ enabled: false })
       }),
     )
 
@@ -234,7 +233,7 @@ describe('T3-S4: 비활성화 플로우', () => {
       expect(screen.getByLabelText('현재 인증 코드 (6자리)')).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('현재 인증 코드 (6자리)'), '123456', { delay: null })
+    await user.type(screen.getByLabelText('현재 인증 코드 (6자리)'), '123456')
     await user.click(screen.getByRole('button', { name: '비활성화 확인' }))
 
     await waitFor(() => {
@@ -250,7 +249,7 @@ describe('T3-S4: 비활성화 플로우', () => {
 
 describe('T3-S5: 에러 처리', () => {
   it('T3-S5-1: enable 400 invalid_code → 인라인 에러 메시지 표시, 코드 입력 필드 유지', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     server.use(mockStatus(false), mockSetupOk(), mockEnableError(400, 'invalid_code'))
 
     renderMfaSettings()
@@ -265,7 +264,7 @@ describe('T3-S5: 에러 처리', () => {
       expect(screen.getByLabelText('인증 코드 (6자리)')).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('인증 코드 (6자리)'), '000000', { delay: null })
+    await user.type(screen.getByLabelText('인증 코드 (6자리)'), '000000')
     await user.click(screen.getByRole('button', { name: '활성화 확인' }))
 
     await waitFor(() => {
@@ -277,7 +276,7 @@ describe('T3-S5: 에러 처리', () => {
   })
 
   it('T3-S5-2: enable 429 too_many_attempts → rate-limit 메시지 표시', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     server.use(mockStatus(false), mockSetupOk(), mockEnableError(429, 'too_many_attempts'))
 
     renderMfaSettings()
@@ -292,7 +291,7 @@ describe('T3-S5: 에러 처리', () => {
       expect(screen.getByLabelText('인증 코드 (6자리)')).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('인증 코드 (6자리)'), '111111', { delay: null })
+    await user.type(screen.getByLabelText('인증 코드 (6자리)'), '111111')
     await user.click(screen.getByRole('button', { name: '활성화 확인' }))
 
     await waitFor(() => {
