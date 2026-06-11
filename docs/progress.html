@@ -182,9 +182,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
           <div><span class="dot dot-done"></span> 완료 <b>40</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>2</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>3</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>80</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>79</b></div>
         </div>
       </div>
     </div>
@@ -475,9 +475,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:58%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 18</div>
-        <div>🔄 진행중 2</div>
+        <div>🔄 진행중 3</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 11</div>
+        <div>⬜ 대기 10</div>
       </div>
     </div>
     <h2>세부 기능 (31개)</h2>
@@ -607,13 +607,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc"><span class="term" data-def="릴리스 단위. fix/affects 관계로 이슈에 연결">버전</span> 릴리즈 노트 자동 생성</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — Markdown 템플릿</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — (활용)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `GET /api/v1/<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>oject</span>s/{projectIdOrKey}/<span class="term" data-def="릴리스 단위. fix/affects 관계로 이슈에 연결">version</span>s/{id}/release-notes`</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 미리보기 + 복사</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-진행중">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">🔄</span>
         <span class="fr-id">FR-MN-01</span>
         <span class="fr-desc">본문/댓글 @멘션 + 즉시 알림</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — Mention 이벤트</li><li><span class="step-icon">⬜</span> D2 — 명세 — `@username` 파싱 규칙</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — (notification 이벤트 발행만)</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — 본문/댓글 저장 시 mention 추출 → <span class="term" data-def="PostgreSQL 기반 메시지 큐 (Kafka 대체)">pgmq</span> 이벤트</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 멘션 렌더링 (강조)</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 멘션 → Inbox 도착</li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — Mention 이벤트</li><li><span class="step-icon">✅</span> D2 — 명세 — `@username` 파싱 규칙</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — (notification 이벤트 발행만)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — 본문 저장 시 mention 추출 → <span class="term" data-def="PostgreSQL 기반 메시지 큐 (Kafka 대체)">pgmq</span> 이벤트</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 멘션 렌더링 (강조)</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 멘션 → Inbox 도착</li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
