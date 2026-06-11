@@ -339,7 +339,7 @@ const totpSchema = z.object({
 
 /** 백업 코드 모드 Zod 스키마 — 비어 있지 않으면 허용 (형식 검증은 백엔드 위임) */
 const backupCodeSchema = z.object({
-  code: z.string().trim().min(1, '백업 코드를 입력하세요.'),
+  code: z.string().trim().min(1, mfaStrings.loginBackupCodeRequired),
 })
 
 type MfaCodeFormValues = { code: string }

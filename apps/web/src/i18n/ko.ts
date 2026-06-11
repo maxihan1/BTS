@@ -357,6 +357,12 @@ export const mfaStrings = {
   loginBackupCodeLabel: '백업 코드',
   /** 백업코드 입력 화면 안내 문구 */
   loginBackupStepGuide: '백업 코드 중 하나를 입력하세요.',
+  /** 백업코드 입력 검증 실패(빈 값) 메시지 */
+  loginBackupCodeRequired: '백업 코드를 입력하세요.',
+  /** 평문 백업코드 목록 aria-label */
+  backupCodesListLabel: '백업 코드 목록',
+  /** 남은 백업코드 개수 단위 접미사 */
+  backupRemainingUnit: '개',
 } as const
 
 /**

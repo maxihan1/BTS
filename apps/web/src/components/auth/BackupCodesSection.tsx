@@ -83,7 +83,7 @@ function CodesRevealBox({ codes, onClose }: CodesRevealBoxProps): JSX.Element {
       </p>
 
       {/* 평문 코드 그리드 */}
-      <ul className="grid grid-cols-2 gap-1" aria-label="백업 코드 목록">
+      <ul className="grid grid-cols-2 gap-1" aria-label={mfaStrings.backupCodesListLabel}>
         {codes.map((code) => (
           <li key={code}>
             <code className="block rounded bg-white px-2 py-1 text-sm font-mono dark:bg-neutral-900">
@@ -272,7 +272,7 @@ export function BackupCodesSection(): JSX.Element {
           <p className="text-sm">
             {mfaStrings.backupRemainingPrefix}
             {': '}
-            <span className="font-medium">{remaining}</span>개
+            <span className="font-medium">{remaining}</span>{mfaStrings.backupRemainingUnit}
           </p>
 
           {/* remaining=0 강조 경고 */}
