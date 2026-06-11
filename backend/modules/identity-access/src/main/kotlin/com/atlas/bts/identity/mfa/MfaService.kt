@@ -53,6 +53,7 @@ import java.util.UUID
 class MfaService(
     private val totpService: TotpService,
     private val repo: TotpSecretRepository,
+    private val backupCodeRepo: MfaBackupCodeRepository,
     private val encryptor: MfaSecretEncryptor,
     private val limiter: MfaAttemptLimiter,
     private val auditLog: AuthAuditLogService,
@@ -176,6 +177,7 @@ class MfaService(
             return DisableResult.InvalidCode
         }
         repo.deleteByUser(userId)
+        backupCodeRepo.deleteAllByUser(userId)
         limiter.reset(userId)
         emit(userId, AuthEventType.MFA_DISABLED)
         return DisableResult.Success
