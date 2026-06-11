@@ -4,9 +4,12 @@ package com.bts.issue.application
 
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
 import com.bts.issue.history.IssueChangeGroup
 import com.bts.issue.history.IssueChangeHistoryRepository
 import com.bts.issue.history.IssueChangeItem
+import com.bts.issue.repository.IssueRepository
+import com.bts.shared.permission.FieldPermissionResolver
 import com.bts.shared.user.UserLookupPort
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
@@ -53,6 +56,11 @@ class IssueChangelogService(
     private val issueApplicationService: IssueApplicationService,
     private val changeHistoryRepository: IssueChangeHistoryRepository,
     private val userLookupPort: UserLookupPort,
+    private val issueRepository: IssueRepository,
+    // 기본값은 Spring 이 관리하지 않는 단위 테스트 컨텍스트 호환용 fallback 이다(IssueApplicationService 와 동형).
+    // prod 컨텍스트에서는 IdentityAccessFieldPermissionResolver(@Profile("prod")) 또는
+    // AlwaysAllowFieldPermissionResolver(@Profile("!prod")) Bean 이 타입으로 주입돼 이 기본값을 대체한다.
+    private val fieldPermissionResolver: FieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 

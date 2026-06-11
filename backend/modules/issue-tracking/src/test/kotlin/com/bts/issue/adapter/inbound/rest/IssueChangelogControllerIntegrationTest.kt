@@ -15,6 +15,8 @@ import com.bts.issue.pdf.IssuePdfTemplate
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.shared.permission.FieldPermissionResolver
+import com.bts.shared.permission.FieldRef
 import com.bts.shared.user.UserLookupPort
 import com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter
 import com.bts.workflow.scheme.adapter.inbound.WorkflowKeyResolverImpl
@@ -205,16 +207,43 @@ class IssueChangelogControllerIntegrationTest {
                 historyRecorder = mockk(relaxed = true),
             )
 
+        /**
+         * description CORE 필드만 안 보이게 하는 stub resolver.
+         *
+         * 단건 [com.bts.issue.adapter.inbound.rest.IssueResponse.maskInvisible] 가
+         * `field_permissions` 규칙으로 특정 필드를 가리는 prod 동작을 통합테스트 레벨에서 시뮬레이션한다.
+         * 이 resolver 가 주입되면 changelog 도 description 변경 item 의 값을 마스킹해야 한다(코드리뷰 P1).
+         */
+        @Bean
+        open fun fieldPermissionResolver(): FieldPermissionResolver =
+            object : FieldPermissionResolver {
+                override fun visibleFields(
+                    actorId: UUID,
+                    projectId: UUID,
+                    candidates: Set<FieldRef>,
+                ): Set<FieldRef> = candidates.filterNot { it.key == "description" }.toSet()
+
+                override fun editableFields(
+                    actorId: UUID,
+                    projectId: UUID,
+                    candidates: Set<FieldRef>,
+                ): Set<FieldRef> = candidates
+            }
+
         @Bean
         open fun issueChangelogService(
             issueApplicationService: IssueApplicationService,
             historyRepository: IssueChangeHistoryRepository,
             userLookupPort: UserLookupPort,
+            issueRepository: IssueRepository,
+            fieldPermissionResolver: FieldPermissionResolver,
         ): IssueChangelogService =
             IssueChangelogService(
                 issueApplicationService = issueApplicationService,
                 changeHistoryRepository = historyRepository,
                 userLookupPort = userLookupPort,
+                issueRepository = issueRepository,
+                fieldPermissionResolver = fieldPermissionResolver,
             )
 
         @Bean
@@ -439,6 +468,61 @@ class IssueChangelogControllerIntegrationTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.content.length()").value(1))
             .andExpect(jsonPath("$.totalPages").value(3))
+    }
+
+    // ── S6. 필드 수준 마스킹 — description 안 보임 actor 는 값이 마스킹된다 (코드리뷰 P1) ──
+
+    /**
+     * S6 필드 수준 마스킹 — description 변경 item 값 차단.
+     *
+     * Given  description 을 안 보이게 하는 [ChangelogTestConfig.fieldPermissionResolver] +
+     *        description 변경 그룹 1건(fromValue/toValue/fromLabel/toLabel 셋) + priority 변경 그룹 1건
+     * When   GET /api/v1/issues/{key}/changelog
+     * Then   description item 은 field 만 남고 fromValue/toValue/fromLabel/toLabel 키가 응답에서 제거(NON_NULL)
+     *        priority item 의 값은 그대로 노출
+     *
+     * 단건 [com.bts.issue.adapter.inbound.rest.IssueResponse.maskInvisible] 와 동일하게
+     * "필드는 보이되 값 가림" — 변경이 있었다는 사실(field)은 남기되 민감 값만 차단한다.
+     */
+    @Test
+    fun `S6 description 안 보임 actor — description item 값 마스킹, priority item 값은 노출`() {
+        val issueKey = insertIssue(PROJECT_KEY, "S6 마스킹 이슈")
+        val issueId = fetchIssueId(issueKey)
+        insertChangeGroup(issueId, issueKey, ACTOR_UUID, "description", "민감 이전", "민감 이후", "이전 라벨", "이후 라벨")
+        insertChangeGroup(issueId, issueKey, ACTOR_UUID, "priority", "3", "1", null, null)
+
+        val result =
+            mockMvc.perform(
+                get("/api/v1/issues/$issueKey/changelog")
+                    .param("page", "0")
+                    .param("size", "20"),
+            )
+                .andExpect(status().isOk)
+                .andReturn()
+
+        val responseNode = mapper.readTree(result.response.contentAsString)
+        val content = responseNode.path("content")
+
+        // 그룹은 createdAt DESC 정렬 — 어느 그룹이 description/priority 인지 field 로 식별한다.
+        val items = (0 until content.size()).flatMap { gi -> content.get(gi).path("items").toList() }
+        val descriptionItem = items.first { it.path("field").asText() == "description" }
+        val priorityItem = items.first { it.path("field").asText() == "priority" }
+
+        // description item — 값/라벨 4종이 NON_NULL 로 응답에서 제거(마스킹)되어야 한다.
+        assert(!descriptionItem.has("fromValue")) { "description fromValue 가 마스킹되지 않고 노출됨." }
+        assert(!descriptionItem.has("toValue")) { "description toValue 가 마스킹되지 않고 노출됨." }
+        assert(!descriptionItem.has("fromLabel")) { "description fromLabel 이 마스킹되지 않고 노출됨." }
+        assert(!descriptionItem.has("toLabel")) { "description toLabel 이 마스킹되지 않고 노출됨." }
+        // field 자체는 남아 변경 사실을 보존한다.
+        assert(descriptionItem.has("field")) { "description item 의 field 키까지 사라지면 단건과 비대칭." }
+
+        // priority item — 마스킹 대상 아님(보임) 이므로 값이 그대로 노출되어야 한다.
+        assert(priorityItem.path("fromValue").asText() == "3") {
+            "priority fromValue 가 노출되어야 하지만 실제: ${priorityItem.path("fromValue").asText()}"
+        }
+        assert(priorityItem.path("toValue").asText() == "1") {
+            "priority toValue 가 노출되어야 하지만 실제: ${priorityItem.path("toValue").asText()}"
+        }
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
