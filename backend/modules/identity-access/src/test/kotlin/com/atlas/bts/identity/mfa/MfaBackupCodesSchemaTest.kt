@@ -1,4 +1,4 @@
-// V023 마이그레이션 검증 — MFA 백업 코드 테이블 존재 + 부분 인덱스(used_at IS NULL) + UNIQUE(user_id, code_hash) + FK CASCADE 확인 (FR-MF-02 task-1)
+// V023 마이그레이션 검증 — MFA 백업 코드 테이블/부분 인덱스/UNIQUE/FK CASCADE 확인 (FR-MF-02 task-1)
 
 package com.atlas.bts.identity.mfa
 
