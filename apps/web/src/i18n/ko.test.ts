@@ -1,7 +1,7 @@
 // issueDetailStrings 신규 키 존재 여부를 타입 레벨에서 검증하는 테스트
 
-import { describe, it, expectTypeOf } from 'vitest'
-import { issueDetailStrings } from './ko'
+import { describe, it, expect, expectTypeOf } from 'vitest'
+import { issueDetailStrings, mfaStrings, mfaErrorMessage } from './ko'
 
 // IssueDetailStrings 타입을 추론해서 키 존재를 검증한다.
 // 키가 없으면 expectTypeOf(...).toHaveProperty() 가 타입 에러를 발생시킨다.
@@ -116,5 +116,131 @@ describe('issueDetailStrings — 본문/메타필드 신규 키 존재 검증', 
 
   it('impactNames[1]은 문자열이다', () => {
     expectTypeOf(issueDetailStrings.impactNames[1]).toBeString()
+  })
+})
+
+// ── mfaStrings ──────────────────────────────────────────────────────────────
+
+type MfaStrings = typeof mfaStrings
+
+describe('mfaStrings — 2FA UI 문자열 키 존재 검증', () => {
+  // 설정 화면
+  it('settingsTitle 키가 존재한다', () => {
+    expectTypeOf<MfaStrings>().toHaveProperty('settingsTitle')
+  })
+
+  it('settingsDescription 키가 존재한다', () => {
+    expectTypeOf<MfaStrings>().toHaveProperty('settingsDescription')
+  })
+
+  it('statusEnabled 키가 존재한다', () => {
+    expectTypeOf<MfaStrings>().toHaveProperty('statusEnabled')
+  })
+
+  it('statusDisabled 키가 존재한다', () => {
+    expectTypeOf<MfaStrings>().toHaveProperty('statusDisabled')
+  })
+
+  it('enableButton 키가 존재한다', () => {
+    expectTypeOf<MfaStrings>().toHaveProperty('enableButton')
+  })
+
+  it('disableButton 키가 존재한다', () => {
+    expectTypeOf<MfaStrings>().toHaveProperty('disableButton')
+  })
+
+  it('qrScanGuide 키가 존재한다', () => {
+    expectTypeOf<MfaStrings>().toHaveProperty('qrScanGuide')
+  })
+
+  it('secretManualGuide 키가 존재한다', () => {
+    expectTypeOf<MfaStrings>().toHaveProperty('secretManualGuide')
+  })
+
+  it('codeLabel 키가 존재한다', () => {
+    expectTypeOf<MfaStrings>().toHaveProperty('codeLabel')
+  })
+
+  it('codePlaceholder 키가 존재한다', () => {
+    expectTypeOf<MfaStrings>().toHaveProperty('codePlaceholder')
+  })
+
+  // 로그인 2단계
+  it('loginStepGuide 키가 존재한다', () => {
+    expectTypeOf<MfaStrings>().toHaveProperty('loginStepGuide')
+  })
+
+  it('loginCodeLabel 키가 존재한다', () => {
+    expectTypeOf<MfaStrings>().toHaveProperty('loginCodeLabel')
+  })
+
+  it('loginVerifyButton 키가 존재한다', () => {
+    expectTypeOf<MfaStrings>().toHaveProperty('loginVerifyButton')
+  })
+
+  it('loginBackToLogin 키가 존재한다', () => {
+    expectTypeOf<MfaStrings>().toHaveProperty('loginBackToLogin')
+  })
+
+  // 런타임 값 smoke — 공백이 아닌 문자열
+  it('settingsTitle은 비어 있지 않은 문자열이다', () => {
+    expect(mfaStrings.settingsTitle).toBeTruthy()
+  })
+
+  it('enableButton은 비어 있지 않은 문자열이다', () => {
+    expect(mfaStrings.enableButton).toBeTruthy()
+  })
+
+  it('모든 문자열 값은 콜론으로 끝나지 않는다', () => {
+    for (const value of Object.values(mfaStrings)) {
+      if (typeof value === 'string') {
+        expect(value, `"${value}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+      }
+    }
+  })
+})
+
+// ── mfaErrorMessage ─────────────────────────────────────────────────────────
+
+describe('mfaErrorMessage — 에러 코드 → 한국어 메시지 매핑', () => {
+  it('invalid_code → 코드가 올바르지 않다는 메시지를 반환한다', () => {
+    expect(mfaErrorMessage('invalid_code')).toBe('코드가 올바르지 않습니다.')
+  })
+
+  it('too_many_attempts → 잠시 후 재시도 안내 메시지를 반환한다', () => {
+    expect(mfaErrorMessage('too_many_attempts')).toBe(
+      '시도가 너무 많습니다. 잠시 후 다시 시도하세요.',
+    )
+  })
+
+  it('no_pending_setup → 진행 중인 설정 없음 메시지를 반환한다', () => {
+    expect(mfaErrorMessage('no_pending_setup')).toBeTruthy()
+  })
+
+  it('already_enabled → 이미 활성화됨 메시지를 반환한다', () => {
+    expect(mfaErrorMessage('already_enabled')).toBeTruthy()
+  })
+
+  it('not_enabled → 활성화되지 않음 메시지를 반환한다', () => {
+    expect(mfaErrorMessage('not_enabled')).toBeTruthy()
+  })
+
+  it('알 수 없는 코드 → 일반 fallback 메시지를 반환한다', () => {
+    expect(mfaErrorMessage('UNKNOWN_CODE')).toBeTruthy()
+  })
+
+  it('모든 코드의 반환 메시지는 콜론으로 끝나지 않는다', () => {
+    const codes = [
+      'invalid_code',
+      'too_many_attempts',
+      'no_pending_setup',
+      'already_enabled',
+      'not_enabled',
+      'UNKNOWN',
+    ] as const
+    for (const code of codes) {
+      const msg = mfaErrorMessage(code)
+      expect(msg, `"${msg}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+    }
   })
 })
