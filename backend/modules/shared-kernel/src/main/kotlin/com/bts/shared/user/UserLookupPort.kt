@@ -65,4 +65,6 @@ interface UserLookupPort {
      * @return 실재하는 username 만 포함한 `username -> UUID` 맵 (순서 미보장, 키는 DB 원문 케이스)
      */
     fun findIdsByUsernames(usernames: Set<String>): Map<String, UUID> = emptyMap()
+
+    fun findDisplayNamesByIds(ids: Set<UUID>): Map<UUID, String> = emptyMap()
 }

@@ -63,4 +63,6 @@ interface IssueSecurityDirectory {
         actorId: UUID,
         projectKey: String,
     ): IssueSecurityAccess
+
+    fun findLevelNames(levelIds: Set<UUID>): Map<UUID, String> = emptyMap()
 }
