@@ -151,11 +151,7 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
         // S1: null → "@bob" 변경 → bob ID 포함 IssueMentioned 1회 발행
         context("S1 — description null→\"@bob\" 변경: 신규 멘션 1개") {
             val existingIssue = makeIssue(description = null)
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                description = "@bob",
-            )
+            val request = UpdateIssueRequest(summary = null, expectedVersion = existingVersion, description = "@bob")
 
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existingIssue
@@ -165,7 +161,7 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
                 every { repo.findByKeyWithType(issueKey) } returns makeResponse()
             }
 
-            it("IssueMentioned 가 1회 발행되고 mentionedUserIds=[bobId], sourceField=\"description\", actorId=aliceActor 이다") {
+            it("IssueMentioned 1회 발행: mentionedUserIds=[bobId], sourceField=description, actorId=aliceActor") {
                 sut.updateIssue(aliceActor, issueKey, request)
                 verify(exactly = 1) {
                     eventPublisher.publish(
@@ -195,11 +191,8 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
         context("S2 — description \"@bob\"→\"@bob 추가설명\": 멘션 동일, 신규 없음") {
             val existingIssue = makeIssue(description = "@bob")
             val newDescription = "@bob 추가설명"
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                description = newDescription,
-            )
+            val request =
+                UpdateIssueRequest(summary = null, expectedVersion = existingVersion, description = newDescription)
 
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existingIssue
@@ -232,11 +225,8 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
         context("S3 — description \"@bob\"→\"@bob @carol\": carol 이 신규 추가") {
             val existingIssue = makeIssue(description = "@bob")
             val newDescription = "@bob @carol"
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                description = newDescription,
-            )
+            val request =
+                UpdateIssueRequest(summary = null, expectedVersion = existingVersion, description = newDescription)
 
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existingIssue
@@ -262,11 +252,7 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
         // S4: actor=alice 가 본문에 "@alice" 추가 → 자기 제외 후 빈집합 → 미발행
         context("S4 — actor=alice 가 \"@alice\" 추가: 자기 멘션 제외 후 빈집합") {
             val existingIssue = makeIssue(description = null)
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                description = "@alice",
-            )
+            val request = UpdateIssueRequest(summary = null, expectedVersion = existingVersion, description = "@alice")
 
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existingIssue
@@ -287,11 +273,7 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
         // S5: "@ghost" — findIdsByUsernames 빈맵 반환 → 미발행
         context("S5 — \"@ghost\": 존재하지 않는 username, 해석 결과 빈맵") {
             val existingIssue = makeIssue(description = null)
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                description = "@ghost",
-            )
+            val request = UpdateIssueRequest(summary = null, expectedVersion = existingVersion, description = "@ghost")
 
             beforeEach {
                 every { repo.findByKey(issueKey) } returns existingIssue

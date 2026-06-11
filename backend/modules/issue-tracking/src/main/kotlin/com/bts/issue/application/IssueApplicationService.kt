@@ -31,9 +31,9 @@ import com.bts.issue.event.IssueMentioned
 import com.bts.issue.event.IssueSoftDeleted
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.event.IssueUpdated
-import com.bts.issue.mention.MentionParser
 import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
 import com.bts.issue.markdown.MarkdownRenderer
+import com.bts.issue.mention.MentionParser
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
@@ -364,6 +364,7 @@ class IssueApplicationService(
      * @throws IssueVersionConflictException 낙관락 충돌 시.
      * @throws IllegalArgumentException priority 가 1..5 범위 밖이거나 impact 가 1..3 범위 밖일 때.
      */
+    @Suppress("LongMethod", "ThrowsCount")
     fun updateIssue(
         actor: ActorId,
         key: IssueKey,
