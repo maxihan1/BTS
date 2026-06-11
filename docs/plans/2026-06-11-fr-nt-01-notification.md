@@ -57,7 +57,7 @@ fr-index. `| FR-NT-01 | 이벤트별 알림 정책 | 필수 | notification-dashb
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/settings.gradle.kts`, `backend/modules/notification/build.gradle.kts`, `backend/modules/notification/detekt-baseline.xml`, `backend/modules/notification/src/main/resources/application.yml`, `backend/modules/notification/src/main/resources/db/migration/notification/V001__notification_policies.sql`, `backend/modules/notification/src/main/resources/db/migration/notification/V002__seed_default_policies.sql`, `backend/modules/notification/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/notification/src/test/kotlin/com/bts/notification/architecture/NotificationBcArchTest.kt`]
+- files: [`backend/settings.gradle.kts`, `DATA.md`, `backend/modules/notification/build.gradle.kts`, `backend/modules/notification/detekt-baseline.xml`, `backend/modules/notification/src/main/resources/application.yml`, `backend/modules/notification/src/main/resources/db/migration/notification/V400__notification_policies.sql`, `backend/modules/notification/src/main/resources/db/migration/notification/V401__seed_default_policies.sql`, `backend/modules/notification/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/notification/src/test/kotlin/com/bts/notification/architecture/NotificationBcArchTest.kt`]
 - depends-on: []
 
 **비-TDD (인프라 task)**. 모듈 빌드 설정은 단위 테스트로 검증 불가 → 빌드 성공 + ArchUnit 그린으로 검증. 단 ArchUnit 룰은 "테스트 먼저" 역할(빈 모듈에 격리 룰 작성 후 코드가 그 위에 쌓임).
@@ -65,9 +65,10 @@ fr-index. `| FR-NT-01 | 이벤트별 알림 정책 | 필수 | notification-dashb
 **구현**:
 - `settings.gradle.kts`에 `include(":modules:notification")` 추가
 - `build.gradle.kts` — project-workflow 템플릿 복제. jOOQ codegen 패키지 `com.bts.notification.jooq`, target `src/generated/jooq`, Testcontainers jdbc:tc URL로 `db/codegen/init_codegen.sql` 초기화. Flyway `classpath:db/migration/notification`. detekt baseline.
-- `V001__notification_policies.sql` — 스펙 §4 DDL (테이블 + UNIQUE NULLS NOT DISTINCT + 부분 인덱스). `gen_random_uuid()` 사용(pgcrypto/PG13+).
-- `V002__seed_default_policies.sql` — SDD §9.1.2 매트릭스 19행(전역 project_id=NULL, 채널 IN_APP). memory: enum 카운트가드 영향 없음(타 모듈 무관).
-- `init_codegen.sql` — V001 테이블 DDL 미러 (시드 제외 — codegen은 구조만 필요). memory: jooq-init-codegen-mirror.
+- `V400__notification_policies.sql` — 스펙 §4 DDL (테이블 + UNIQUE NULLS NOT DISTINCT + 부분 인덱스). `gen_random_uuid()` 사용(pgcrypto/PG13+). **V400** = DATA.md §4.1 새 BC 범위(V400~V499).
+- `V401__seed_default_policies.sql` — SDD §9.1.2 매트릭스 19행(전역 project_id=NULL, 채널 IN_APP). memory: enum 카운트가드 영향 없음(타 모듈 무관).
+- `init_codegen.sql` — V400 테이블 DDL 미러 (시드 제외 — codegen은 구조만 필요). memory: jooq-init-codegen-mirror.
+- `DATA.md` §4.1 표 — `| notification | V400~V499 | V400, V401 |` 행 추가 (CLAUDE.md 전수 동기화 규칙).
 - `NotificationBcArchTest.kt` — BC 격리(issue-tracking/project-workflow/identity-access 내부 패키지 import 금지) + jOOQ repository 화이트리스트 + @Transactional+@Service 룰. memory: archunit-vacuous-rule-silent-pass — 빈 모듈이라 vacuous PASS 위험, 일부러 위반 클래스 1개 넣어 룰 동작 확인 후 제거.
 
 **검증**: `./gradlew :modules:notification:generateJooq :modules:notification:compileKotlin :modules:notification:test --tests '*NotificationBcArchTest'`
@@ -100,7 +101,7 @@ fr-index. `| FR-NT-01 | 이벤트별 알림 정책 | 필수 | notification-dashb
 **RED**: Testcontainers 통합 테스트 (memory: concurrent-testcontainers-suite-flaky / singleton 패턴 `.apply { start() }`)
 - insert/findAll(projectKey?)/findById/toggle(enabled)/delete
 - UNIQUE 멱등 — 동일 (projectId NULL, event, role, channel) 재삽입 → 충돌(예외 또는 ON CONFLICT). memory: pg-null-distinct-on-conflict-idempotency
-- 시드 검증 — V002 시드된 전역 정책 19행 중 `issue.created` 전역 정책 조회 확인
+- 시드 검증 — V401 시드된 전역 정책 19행 중 `issue.created` 전역 정책 조회 확인
 - 평가용 조회 — `findEnabledByEventType(eventType, projectId?)`
 
 **GREEN**: jOOQ Repository 구현 (`com.bts.notification.jooq` 화이트리스트 — repository 레이어만)

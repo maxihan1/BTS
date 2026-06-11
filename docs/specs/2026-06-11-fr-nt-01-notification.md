@@ -105,7 +105,9 @@ CREATE INDEX idx_notification_policy_lookup
 - project_id는 **FK를 걸지 않는다** (BC 격리 — issue-tracking의 projects를 직접 참조하지 않음). 단순 UUID 참조.
 - jOOQ codegen 미러 — `db/codegen/init_codegen.sql`에 동일 DDL 미러 (memory: jooq-init-codegen-mirror).
 
-### 4.1 시드 (V001 또는 별도 V002)
+### 4.1 시드 (V401)
+
+> **마이그레이션 번호 — V400부터** (DATA.md §4.1: 새 BC는 V400+ 범위. cross-BC classpath 합쳐질 때 V001 충돌 방지). V400=테이블, V401=시드. 같은 PR에서 DATA.md §4.1 표에 `notification | V400~V499` 행 등록.
 
 SDD §9.1.2 매트릭스를 전역 기본(project_id=NULL) 정책으로 시드. 채널 IN_APP. 예:
 `(NULL, 'issue.created', 'REPORTER', 'IN_APP', true)`, `(NULL, 'issue.created', 'WATCHER', 'IN_APP', true)`, … (전 이벤트×SDD 기본 수신자).
@@ -158,13 +160,13 @@ evaluate(eventType: NotificationEventType, projectKey: String?): List<PolicyMatc
 
 - notification 새 모듈 부트스트랩 (project-workflow 템플릿: settings.gradle.kts 등록, build.gradle.kts jOOQ/Flyway, db/migration/notification, com.bts.notification 패키지, ArchUnit).
 - 다른 BC 직접 import 금지. 사용자/프로젝트 권한 확인은 shared-kernel 포트 경유 (memory: crossbc-permission-resolver-not-role-lookup).
-- V번호 — notification 모듈 자체 디렉토리에서 시작(다른 BC와 격리). 머지 직전 충돌 재확인 (memory: migration-vnumber-concurrent-branch-collision).
+- V번호 — **V400부터** (DATA.md §4.1 새 BC 범위 V400~V499). DATA.md §4.1 표 등록 필수. 머지 직전 충돌 재확인 (memory: migration-vnumber-concurrent-branch-collision).
 - 완제품 품질 (PoC 금지). TDD red→green→refactor.
 
 ## 10. 측정 가능한 완료 기준
 
 - [ ] notification 모듈 부트스트랩 — `./gradlew :modules:notification:build` 통과, jOOQ codegen, ArchUnit 그린
-- [ ] notification_policies 테이블 + V001 마이그레이션 + init_codegen 미러 + SDD §9.1.2 시드
+- [ ] notification_policies 테이블 + V400 마이그레이션 + V401 시드 + init_codegen 미러 + DATA.md §4.1 표 등록
 - [ ] NotificationPolicy 도메인 + 3 enum(EventType/RecipientRole/Channel)
 - [ ] 정책 CRUD API 4종 + 카탈로그 API — 통합 테스트(Testcontainers) 그린
 - [ ] 평가 엔진 — 전역/프로젝트 override replace + enabled 필터, 단위 테스트 분기 커버
@@ -174,7 +176,7 @@ evaluate(eventType: NotificationEventType, projectKey: String?): List<PolicyMatc
 ## 11. 미해결 / 게이트1 확인 포인트
 
 - **권한 배선** ✅ 해소 — 모든 정책 CRUD = SYSTEM_ADMIN. `SystemPermissionResolver.isSystemAdmin()`(shared-kernel 기존 + identity-access prod adapter) 소비. notification 단일 BC 완결, cross-BC 수정 없음.
-- **시드 위치**. V001(테이블)과 동일 마이그레이션 vs 별도 V002. (plan에서 결정 — 권장: V001 테이블 + V002 시드 분리해 codegen init 단순화)
+- **시드 위치**. V400(테이블) + V401(시드) 분리 (codegen init 단순화 — codegen은 V400 구조만 필요).
 - **D6 UI / D7 E2E**. 본 PR 포함 vs 후속 분리 — PR 크기 보고 게이트1에서 Maxi 판단 (권장: 백엔드 D1~D5 먼저, UI/E2E 후속 PR. 멘션 PR #114 선례 동일).
 
 ## Brainstorming Check
