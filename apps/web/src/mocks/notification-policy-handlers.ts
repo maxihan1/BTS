@@ -89,17 +89,31 @@ function generateUuidV4(): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 시드 복원 헬퍼
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 시드 데이터의 깊은 복사본을 생성한다.
+ * store 초기화 시 항상 이 헬퍼를 통해 불변 시드를 복사하므로,
+ * 시드 원본이 의도치 않게 변이되는 일을 방지한다.
+ */
+function buildSeedStore(): NotificationPolicyFixture[] {
+  return notificationPolicySeedData.map((p) => ({ ...p }))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 모듈 스코프 가변 store — resetNotificationPolicyStore()로 테스트/E2E 격리
 // ─────────────────────────────────────────────────────────────────────────────
 
-let policyStore: NotificationPolicyFixture[] = [...notificationPolicySeedData]
+let policyStore: NotificationPolicyFixture[] = buildSeedStore()
 
 /**
  * store를 시드 상태로 초기화한다.
  * Vitest 단위 테스트 전용 — E2E는 GET 헤더 트리거를 사용할 것.
+ * (msw-mutation-stateful-refetch, msw-derived-behavior-shared-store)
  */
 export function resetNotificationPolicyStore(): void {
-  policyStore = [...notificationPolicySeedData]
+  policyStore = buildSeedStore()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -108,7 +122,8 @@ export function resetNotificationPolicyStore(): void {
 
 /**
  * 정책의 유니크 조합 키를 반환한다.
- * eventType + recipientRole + channel + projectKey(null/undefined을 "" 통일).
+ * eventType + recipientRole + channel + projectKey(null/undefined은 "" 통일).
+ * 백엔드 UNIQUE 제약(event_type, recipient_role, channel, project_key NULLS NOT DISTINCT)과 동형.
  */
 function policyCompositeKey(
   eventType: string,
