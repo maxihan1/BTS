@@ -41,9 +41,19 @@ interface UserLookupPort {
      * 미존재 username 은 결과 맵에서 제외된다 — 호출자가 명시적으로 드롭 처리.
      * 빈 입력 시 DB 쿼리 없이 빈 맵을 즉시 반환한다.
      *
+     * ### 대소문자 무시(case-insensitive) 매칭
+     * 구현체는 `WHERE LOWER(username) IN (:names)` LOWER 비교로 매칭하므로,
+     * "Bob" 입력이 DB 의 "bob" 을 찾는다.
+     * username UNIQUE 제약이 대소문자를 구분하므로 "Carol"/"carol" 이 동시에 존재할 수 있고,
+     * 이 경우 "carol" 조회 시 두 row 가 모두 매칭된다(과다매칭). 이 동작은 알려진 트레이드오프로 고정한다.
+     *
+     * ### 성능
+     * 멘션은 cap 50 으로 N 이 매우 작아 LOWER() 함수 인덱스 우회를 허용한다. 대량 호출 아님(cap 50).
+     *
      * ### 실제 구현
-     * [com.atlas.bts.identity.user.UserLookupAdapter] 가 `SELECT id, username FROM users WHERE username IN (:names)`
-     * 단일 쿼리로 구현한다 (NamedParameterJdbcTemplate 컬렉션 바인딩, findByIds 선례). production 환경에서 이 default 구현이 호출되면 안 된다.
+     * [com.atlas.bts.identity.user.UserLookupAdapter] 가
+     * `SELECT id, username FROM users WHERE LOWER(username) IN (:names)`
+     * 단일 쿼리로 구현한다 (NamedParameterJdbcTemplate 컬렉션 바인딩). production 환경에서 이 default 구현이 호출되면 안 된다.
      *
      * ### 기본값 = emptyMap() 의 의미
      * 기존 테스트 파일 ~35 개가 `object : UserLookupPort { override fun exists(...) }` 인라인으로
@@ -51,8 +61,8 @@ interface UserLookupPort {
      * default `emptyMap()` 은 기존 fake 들을 보호하는 fail-safe 이며, 멘션 0건(미발행)으로 안전하게 동작한다.
      * production 유일 구현체는 [com.atlas.bts.identity.user.UserLookupAdapter] 로 override 한다.
      *
-     * @param usernames 해석할 username 집합 (대소문자 원문 보존, users.username 정확 매칭)
-     * @return 실재하는 username 만 포함한 `username -> UUID` 맵 (순서 미보장)
+     * @param usernames 해석할 username 집합 (대소문자 무시 매칭 — LOWER 비교)
+     * @return 실재하는 username 만 포함한 `username -> UUID` 맵 (순서 미보장, 키는 DB 원문 케이스)
      */
     fun findIdsByUsernames(usernames: Set<String>): Map<String, UUID> = emptyMap()
 }
