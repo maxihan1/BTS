@@ -52,6 +52,10 @@ class NotificationBcArchTest {
      * `com.bts.issue.*` 패키지를 직접 import 하는 것은 BC 경계 위반이다.
      *
      * 허용 예외. `com.bts.notification.jooq..` (jOOQ 생성 코드).
+     *
+     * [allowEmptyShould] true — 초기 부트스트랩 단계처럼 모듈에 프로덕션 클래스가 없을 때
+     * ArchUnit 이 vacuous PASS 에러를 내지 않고 통과하도록 허용한다.
+     * 클래스가 추가되면 자동으로 검사 대상에 포함된다.
      */
     @Test
     fun mustNotImportIssueTracking() {
@@ -59,7 +63,7 @@ class NotificationBcArchTest {
             sourcePackage = "com.bts.notification",
             targetPackage = "com.bts.issue..",
             bcName = "issue-tracking",
-        ).check(importedClasses)
+        ).allowEmptyShould(true).check(importedClasses)
     }
 
     /**
@@ -69,6 +73,8 @@ class NotificationBcArchTest {
      * `com.bts.workflow.*` 패키지를 직접 import 하는 것은 BC 경계 위반이다.
      *
      * 허용 예외. `com.bts.notification.jooq..` (jOOQ 생성 코드).
+     *
+     * [allowEmptyShould] true — 초기 부트스트랩 단계에서 빈 모듈 vacuous 오류 방지.
      */
     @Test
     fun mustNotImportProjectWorkflow() {
@@ -76,7 +82,7 @@ class NotificationBcArchTest {
             sourcePackage = "com.bts.notification",
             targetPackage = "com.bts.workflow..",
             bcName = "project-workflow",
-        ).check(importedClasses)
+        ).allowEmptyShould(true).check(importedClasses)
     }
 
     /**
@@ -86,6 +92,8 @@ class NotificationBcArchTest {
      * `com.atlas.bts.identity.*` 패키지를 직접 import 하는 것은 BC 경계 위반이다.
      *
      * 허용 예외. `com.bts.notification.jooq..` (jOOQ 생성 코드).
+     *
+     * [allowEmptyShould] true — 초기 부트스트랩 단계에서 빈 모듈 vacuous 오류 방지.
      */
     @Test
     fun mustNotImportIdentityAccess() {
@@ -93,7 +101,7 @@ class NotificationBcArchTest {
             sourcePackage = "com.bts.notification",
             targetPackage = "com.atlas.bts.identity..",
             bcName = "identity-access",
-        ).check(importedClasses)
+        ).allowEmptyShould(true).check(importedClasses)
     }
 
     /**
@@ -105,6 +113,8 @@ class NotificationBcArchTest {
      * 위반 시 fail 메시지에 어느 파일이 jOOQ 클래스를 import 했는지 명시된다.
      * 수정 방법. jOOQ 참조를 repository 레이어로 이동.
      * 근거. hexagonal 경계 — 도메인/애플리케이션 레이어는 DB 스키마에 독립적이어야 한다.
+     *
+     * [allowEmptyShould] true — 초기 부트스트랩 단계에서 빈 모듈 vacuous 오류 방지.
      */
     @Test
     fun jooqGeneratedMustOnlyBeUsedInRepositoryLayer() {
@@ -117,7 +127,7 @@ class NotificationBcArchTest {
             .because(
                 "jOOQ 생성 코드는 repository layer 만 접촉 가능 " +
                     "(hexagonal 경계, ADR workflow-bc-cross-bc-port 와 동일 정신).",
-            ).check(importedClasses)
+            ).allowEmptyShould(true).check(importedClasses)
     }
 
     /**
@@ -126,10 +136,12 @@ class NotificationBcArchTest {
      *
      * 근거. Spring AOP 는 Bean 으로 등록된 클래스에만 트랜잭션 어드바이스를 적용한다.
      * `@Transactional` 만 있고 `@Service`/`@Component` 가 없으면 트랜잭션이 무음 실패한다.
+     *
+     * [allowEmptyShould] true — 초기 부트스트랩 단계에서 빈 모듈 vacuous 오류 방지.
      */
     @Test
     fun transactionalClassesMustBeServiceOrComponent() {
-        annotationRule.check(importedClasses)
+        annotationRule.allowEmptyShould(true).check(importedClasses)
     }
 
     companion object {
