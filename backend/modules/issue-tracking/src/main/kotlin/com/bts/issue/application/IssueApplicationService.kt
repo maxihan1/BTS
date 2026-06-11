@@ -365,7 +365,6 @@ class IssueApplicationService(
      * @throws IssueVersionConflictException 낙관락 충돌 시.
      * @throws IllegalArgumentException priority 가 1..5 범위 밖이거나 impact 가 1..3 범위 밖일 때.
      */
-    @Suppress("LongMethod") // 보안등급 단독 변경 이력 분기 추가로 60줄 한도 초과 — 로직 응집도 유지
     fun updateIssue(
         actor: ActorId,
         key: IssueKey,
@@ -378,28 +377,9 @@ class IssueApplicationService(
         // 부수 효과(field update) 이전에 fail-fast 로 검증한다. 미보유 403, 미소속 422.
         assertSecurityLevelPatch(actor, key, request.securityLevel)
 
-        // typeId non-null 이면 활성 타입 존재 검증. null=변경없음 (resolveTypeId 의 null=fallback 과 다른 시맨틱).
-        if (request.typeId != null) {
-            issueTypeRepository.findById(request.typeId) ?: throw IssueTypeNotFoundException(request.typeId)
-        }
-
-        validatePriorityImpactRanges(request.priority, request.impact)
-
-        // 라벨 도메인 검증 + 정규화 — null=무변경(스킵), non-null=도메인 권위 검증 필수.
-        // BLOCKER 1: PATCH 경로에서 도메인 validateAndNormalizeLabels 를 우회하는 경로를 차단한다.
-        val normalizedLabels: List<String>? = request.labels?.let { Issue.normalizeLabels(it) }
-
-        // FR-PM-07 Task-8 — 편집 게이트: 실제로 값이 바뀌는 필드를 먼저 계산하고,
-        // editableFields 에 없는 필드 변경이 있으면 403. mergeCustomFieldsAndValidate 전에 수행하여
-        // 커스텀 필드 병합 비용을 차단하고 domain-bypass 를 방지한다.
-        val coreChangedForGate = buildCoreChangedFieldRefs(existing, request, normalizedLabels)
-        val customChangedForGate = buildCustomChangedFieldRefs(existing, request)
-        val allChangedForGate = coreChangedForGate + customChangedForGate
-        assertEditableOrForbidden(actor, key, allChangedForGate)
-
-        // FR-IS-10 E11 커스텀 필드 필드단위 병합 — null=무변경, 맵 명시=키단위 병합, 키값 null=제거.
-        // 병합 후 최종 상태를 기준으로 required 검증 수행 (patch-merge-domain-bypass 방지).
-        val mergedCustomFields: Map<String, Any?>? = mergeCustomFieldsAndValidate(existing, request)
+        val validated = validateAndNormalizeUpdateRequest(actor, key, existing, request)
+        val normalizedLabels = validated.normalizedLabels
+        val mergedCustomFields = validated.mergedCustomFields
 
         // 보안 등급 변경을 field update 보다 먼저 적용해 OCC version 체인을 단일화한다.
         // 변경이 적용되면 version 이 +1 되므로 후속 field update 는 갱신된 version 을 사용해야 한다.
@@ -408,26 +388,7 @@ class IssueApplicationService(
         val securityChanged = versionAfterSecurity != request.expectedVersion
         val changedFields = buildChangedFields(existing, request, normalizedLabels, mergedCustomFields)
         if (changedFields.isEmpty()) {
-            if (securityChanged) {
-                // 코어 필드 무변경 + 보안 등급 단독 변경 —
-                // updateFields/이벤트는 스킵하되 이력은 기록(감사 누락 방지).
-                val afterSecurityOnly = repo.findByKey(key) ?: throw IssueNotFoundException(key)
-                recordHistory(
-                    before = existing,
-                    after = afterSecurityOnly,
-                    actor = actor,
-                    projectId = existing.projectId,
-                )
-                log.info("issue_security_level_only_updated key={} actor={}", key.value, actor.value)
-            } else {
-                log.info(
-                    "issue_update_noop key={} actor={} securityChanged={}",
-                    key.value,
-                    actor.value,
-                    securityChanged,
-                )
-            }
-            return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
+            return handleCoreFieldsUnchanged(key, existing, actor, securityChanged)
         }
         val updatedRows =
             repo.updateFields(
@@ -1553,6 +1514,42 @@ class IssueApplicationService(
     }
 
     /**
+     * 코어 필드 변경이 없는 경우(changedFields.isEmpty())의 두 분기를 처리한다.
+     *
+     * - 보안 등급 단독 변경: updateFields/이벤트는 스킵, 이력만 기록(감사 누락 방지).
+     * - 완전 noop: 로그만 남기고 현재 상태 반환.
+     *
+     * 호출자(updateIssue)의 @Transactional 안에서 실행되므로 별도 트랜잭션 어노테이션 불필요.
+     */
+    private fun handleCoreFieldsUnchanged(
+        key: IssueKey,
+        existing: Issue,
+        actor: ActorId,
+        securityChanged: Boolean,
+    ): IssueResponse {
+        if (securityChanged) {
+            // 코어 필드 무변경 + 보안 등급 단독 변경 —
+            // updateFields/이벤트는 스킵하되 이력은 기록(감사 누락 방지).
+            val afterSecurityOnly = repo.findByKey(key) ?: throw IssueNotFoundException(key)
+            recordHistory(
+                before = existing,
+                after = afterSecurityOnly,
+                actor = actor,
+                projectId = existing.projectId,
+            )
+            log.info("issue_security_level_only_updated key={} actor={}", key.value, actor.value)
+        } else {
+            log.info(
+                "issue_update_noop key={} actor={} securityChanged={}",
+                key.value,
+                actor.value,
+                securityChanged,
+            )
+        }
+        return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
+    }
+
+    /**
      * 이슈 변경 이력을 기록하는 private 헬퍼.
      *
      * [IssueHistoryRecorder.record] 에 위임한다.
@@ -1572,6 +1569,52 @@ class IssueApplicationService(
             return
         }
         historyRecorder.record(before = before, after = after, actor = actor, projectId = projectId)
+    }
+
+    /**
+     * updateIssue 내 타입/우선순위/라벨/편집게이트/커스텀필드 검증·정규화 결과를 담는 내부 타입.
+     * updateIssue 메서드 길이를 LongMethod 임계치(60줄) 이하로 유지하기 위해 분리.
+     */
+    private data class UpdateValidated(
+        val normalizedLabels: List<String>?,
+        val mergedCustomFields: Map<String, Any?>?,
+    )
+
+    /**
+     * updateIssue 에서 타입 검증, 우선순위/영향도 범위 검증, 라벨 정규화,
+     * 편집 게이트(FR-PM-07 Task-8), 커스텀 필드 병합·검증을 수행한다.
+     *
+     * 호출자(updateIssue)의 @Transactional 안에서 실행된다.
+     */
+    private fun validateAndNormalizeUpdateRequest(
+        actor: ActorId,
+        key: IssueKey,
+        existing: Issue,
+        request: UpdateIssueRequest,
+    ): UpdateValidated {
+        // typeId non-null 이면 활성 타입 존재 검증. null=변경없음 (resolveTypeId 의 null=fallback 과 다른 시맨틱).
+        if (request.typeId != null) {
+            issueTypeRepository.findById(request.typeId) ?: throw IssueTypeNotFoundException(request.typeId)
+        }
+
+        validatePriorityImpactRanges(request.priority, request.impact)
+
+        // 라벨 도메인 검증 + 정규화 — null=무변경(스킵), non-null=도메인 권위 검증 필수.
+        // BLOCKER 1: PATCH 경로에서 도메인 validateAndNormalizeLabels 를 우회하는 경로를 차단한다.
+        val normalizedLabels: List<String>? = request.labels?.let { Issue.normalizeLabels(it) }
+
+        // FR-PM-07 Task-8 — 편집 게이트: 실제로 값이 바뀌는 필드를 먼저 계산하고,
+        // editableFields 에 없는 필드 변경이 있으면 403. mergeCustomFieldsAndValidate 전에 수행하여
+        // 커스텀 필드 병합 비용을 차단하고 domain-bypass 를 방지한다.
+        val coreChangedForGate = buildCoreChangedFieldRefs(existing, request, normalizedLabels)
+        val customChangedForGate = buildCustomChangedFieldRefs(existing, request)
+        assertEditableOrForbidden(actor, key, coreChangedForGate + customChangedForGate)
+
+        // FR-IS-10 E11 커스텀 필드 필드단위 병합 — null=무변경, 맵 명시=키단위 병합, 키값 null=제거.
+        // 병합 후 최종 상태를 기준으로 required 검증 수행 (patch-merge-domain-bypass 방지).
+        val mergedCustomFields: Map<String, Any?>? = mergeCustomFieldsAndValidate(existing, request)
+
+        return UpdateValidated(normalizedLabels = normalizedLabels, mergedCustomFields = mergedCustomFields)
     }
 
     /**
