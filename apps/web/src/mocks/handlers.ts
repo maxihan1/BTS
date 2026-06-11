@@ -3,6 +3,7 @@ import { accountLinkHandlers } from './account-link-handlers'
 import { adminUserHandlers } from './admin-user-handlers'
 import { auditLogHandlers } from './audit-log-handlers'
 import { authHandlers } from './auth-handlers'
+import { changelogHandlers } from './changelog-handlers'
 import { bulkOperationHandlers } from './bulk-operation-handlers'
 import { componentHandlers } from './component-handlers'
 import { customFieldHandlers } from './custom-field-handlers'
@@ -40,6 +41,7 @@ export const handlers = [
   ...auditLogHandlers,
   ...authHandlers,
   ...bulkOperationHandlers,
+  ...changelogHandlers,
   ...componentHandlers,
   ...customFieldHandlers,
   ...fieldPermissionHandlers,
