@@ -63,12 +63,14 @@ class JdbcMfaBackupCodeRepository(
         ) > 0
 
     @Transactional(readOnly = true)
-    override fun countUnused(userId: UUID): Int =
-        jdbc.queryForObject(SQL_COUNT_UNUSED, mapOf("userId" to userId), Int::class.java) ?: 0
+    override fun countUnused(userId: UUID): Int {
+        return jdbc.queryForObject(SQL_COUNT_UNUSED, mapOf("userId" to userId), Int::class.java) ?: 0
+    }
 
     @Transactional(readOnly = true)
-    override fun countTotal(userId: UUID): Int =
-        jdbc.queryForObject(SQL_COUNT_TOTAL, mapOf("userId" to userId), Int::class.java) ?: 0
+    override fun countTotal(userId: UUID): Int {
+        return jdbc.queryForObject(SQL_COUNT_TOTAL, mapOf("userId" to userId), Int::class.java) ?: 0
+    }
 
     override fun deleteAllByUser(userId: UUID) {
         jdbc.update(SQL_DELETE_ALL, mapOf("userId" to userId))
