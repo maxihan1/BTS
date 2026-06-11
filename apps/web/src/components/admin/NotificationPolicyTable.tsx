@@ -11,9 +11,7 @@ import {
 } from '@/i18n/notification-policy-labels'
 import { Button } from '@/components/ui/button'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 행 서브컴포넌트
-// ─────────────────────────────────────────────────────────────────────────────
+// ── 행 서브컴포넌트 ───────────────────────────────────────────────────────────
 
 interface NotificationPolicyRowProps {
   /** 렌더할 알림 정책 단건 */
@@ -47,23 +45,6 @@ function NotificationPolicyRow({
   const channelLabel = labelFor(channelLabels, policy.channel)
 
   const { actions } = notificationPolicyLabels
-
-  function handleToggle(): void {
-    onToggle(policy.id, !policy.enabled)
-  }
-
-  function handleDeleteClick(): void {
-    setConfirmingDelete(true)
-  }
-
-  function handleConfirmDelete(): void {
-    setConfirmingDelete(false)
-    onDelete(policy.id)
-  }
-
-  function handleCancelDelete(): void {
-    setConfirmingDelete(false)
-  }
 
   const toggleAriaLabel = policy.enabled
     ? `${eventLabel} 정책 비활성화`
@@ -111,7 +92,7 @@ function NotificationPolicyRow({
             size="sm"
             disabled={isMutating}
             aria-label={toggleAriaLabel}
-            onClick={handleToggle}
+            onClick={() => { onToggle(policy.id, !policy.enabled) }}
           >
             {policy.enabled ? actions.toggleDisable : actions.toggleEnable}
           </Button>
@@ -124,7 +105,7 @@ function NotificationPolicyRow({
                 size="sm"
                 disabled={isMutating}
                 aria-label={`${eventLabel} 정책 삭제 확인`}
-                onClick={handleConfirmDelete}
+                onClick={() => { setConfirmingDelete(false); onDelete(policy.id) }}
               >
                 {actions.confirmButton}
               </Button>
@@ -132,7 +113,7 @@ function NotificationPolicyRow({
                 variant="outline"
                 size="sm"
                 aria-label={`${eventLabel} 정책 삭제 취소`}
-                onClick={handleCancelDelete}
+                onClick={() => { setConfirmingDelete(false) }}
               >
                 {actions.cancelButton}
               </Button>
@@ -142,7 +123,7 @@ function NotificationPolicyRow({
               variant="destructive"
               size="sm"
               aria-label={`${eventLabel} 정책 삭제`}
-              onClick={handleDeleteClick}
+              onClick={() => { setConfirmingDelete(true) }}
             >
               {actions.deleteButton}
             </Button>
@@ -153,9 +134,7 @@ function NotificationPolicyRow({
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 테이블 컴포넌트
-// ─────────────────────────────────────────────────────────────────────────────
+// ── 테이블 컴포넌트 ───────────────────────────────────────────────────────────
 
 interface NotificationPolicyTableProps {
   /** 렌더할 알림 정책 목록 */
