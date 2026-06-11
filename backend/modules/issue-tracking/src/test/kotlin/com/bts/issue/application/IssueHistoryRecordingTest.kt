@@ -192,6 +192,40 @@ class IssueHistoryRecordingTest : DescribeSpec({
                 )
             }
         }
+
+        // ── 보안등급 단독 변경 — 이력 누락 회귀 방지 (FR-HS-01 코드리뷰 버그) ──────────────────
+        // 재현 조건: securityLevel 단독 변경 시 changedFields 가 비어 early return 진입.
+        // early return 경로에서도 securityChanged=true 면 recordHistory 가 호출돼야 한다.
+
+        context("보안등급 단독 변경 (Clear) — 코어 필드 무변경, securityChanged=true") {
+            val securityOnlyExisting = makeIssue(version = 2L)
+
+            beforeTest {
+                // 보안등급 단독 변경 시 repo.findByKey 첫 호출 = existing, 두 번째 = after(적용 후)
+                every { repo.findByKey(issueKey) } returns securityOnlyExisting
+                // Clear: updateSecurityLevel(null, expectedVersion=2) → 성공, version 3 으로 증가
+                every { repo.updateSecurityLevel(issueKey, null, 2L) } returns 1
+            }
+
+            it("recorder.record 를 호출한다 (감사 누락 방지)") {
+                val request =
+                    UpdateIssueRequest(
+                        summary = null,
+                        expectedVersion = 2L,
+                        securityLevel = SecurityLevelPatch.Clear,
+                    )
+                sut.updateIssue(actor, issueKey, request)
+
+                verify(exactly = 1) {
+                    historyRecorder.record(
+                        before = securityOnlyExisting,
+                        after = any(),
+                        actor = actor,
+                        projectId = projectId,
+                    )
+                }
+            }
+        }
     }
 
     // ── transitionIssue ────────────────────────────────────────────────────────
