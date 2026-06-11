@@ -88,6 +88,48 @@ class JdbcIssueChangeHistoryRepository(
         }
     }
 
+    /**
+     * 특정 이슈의 변경 이력 그룹을 페이지 단위로 최신순 조회한다.
+     *
+     * [SQL_FIND_GROUPS_BY_ISSUE_PAGED] 로 limit/offset 적용 후
+     * [fetchItemsByGroupIds] 배치 패턴으로 items 를 채운다.
+     * JOIN 방식의 cartesian product 를 피하기 위해 2-step 조회를 유지한다
+     * (learnings: jOOQ-cartesian-product).
+     *
+     * @param issueId 조회할 이슈의 UUID.
+     * @param limit 한 페이지에 반환할 최대 그룹 수.
+     * @param offset 건너뛸 그룹 수.
+     * @return 변경 그룹 목록(items 포함). 결과가 없으면 빈 리스트.
+     */
+    @Transactional(readOnly = true)
+    override fun findByIssuePaged(issueId: UUID, limit: Int, offset: Int): List<IssueChangeGroup> {
+        val params = mapOf("issueId" to issueId, "limit" to limit, "offset" to offset)
+        val groups = jdbc.query(SQL_FIND_GROUPS_BY_ISSUE_PAGED, params, groupRowMapper)
+        if (groups.isEmpty()) return emptyList()
+
+        val groupIds = groups.map { it.first }
+        val itemsByGroupId = fetchItemsByGroupIds(groupIds)
+
+        return groups.map { (groupId, group) ->
+            group.copy(items = itemsByGroupId[groupId] ?: emptyList())
+        }
+    }
+
+    /**
+     * 특정 이슈의 변경 이력 그룹 총 개수를 반환한다.
+     *
+     * @param issueId 조회할 이슈의 UUID.
+     * @return 변경 그룹 수. 이력이 없으면 0.
+     */
+    @Transactional(readOnly = true)
+    override fun countByIssue(issueId: UUID): Long {
+        return jdbc.queryForObject(
+            SQL_COUNT_GROUPS_BY_ISSUE,
+            mapOf("issueId" to issueId),
+            Long::class.java,
+        ) ?: 0L
+    }
+
     // ── private 헬퍼 ──────────────────────────────────────────────────────────
 
     /**
@@ -242,6 +284,29 @@ class JdbcIssueChangeHistoryRepository(
             FROM issue_change_item
             WHERE group_id IN (:groupIds)
             ORDER BY id ASC
+        """
+
+        /**
+         * 이슈 ID로 변경 그룹 목록을 최신순 페이지 조회.
+         * [SQL_FIND_GROUPS_BY_ISSUE] 와 동일 정렬, LIMIT/OFFSET 추가.
+         * named parameter :limit, :offset 으로 SQL 인젝션 방어.
+         */
+        const val SQL_FIND_GROUPS_BY_ISSUE_PAGED = """
+            SELECT id, issue_id, issue_key, actor_id, created_at
+            FROM issue_change_group
+            WHERE issue_id = :issueId
+            ORDER BY created_at DESC, id DESC
+            LIMIT :limit OFFSET :offset
+        """
+
+        /**
+         * 이슈 ID에 해당하는 변경 그룹 총 개수 조회.
+         * 페이지네이션의 totalCount 계산에 사용.
+         */
+        const val SQL_COUNT_GROUPS_BY_ISSUE = """
+            SELECT COUNT(*)
+            FROM issue_change_group
+            WHERE issue_id = :issueId
         """
     }
 }
