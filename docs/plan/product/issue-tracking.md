@@ -355,7 +355,7 @@
 **우선순위**. 필수 | **선행**. §2.1.1 | **Plan slug**. `issue/history`
 
 - [x] D1. 도메인 — IssueChangeGroup/IssueChangeItem/IssueChangeDetector (책임. backend-engineer) — PR #115 (Jira식 변경 그룹+항목. ADR 2026-06-11-issue-change-history-model)
-- [x] D2. 명세 — 전 필드 + 생명주기 기록, no-op 이력0, 부분 라벨 박제 (책임. backend-engineer) — PR #115 (8개 변경 진입점. 값=원시ID, 라벨=변경 당시 표시명 박제. assignee/securityLevel은 cross-BC라 label=null, 조회는 FR-HS-02)
+- [x] D2. 명세 — 전 필드 + 생명주기 기록, no-op 이력0, 부분 라벨 박제 (책임. backend-engineer) — PR #115 (8개 변경 진입점. 값=원시ID, 라벨=변경 당시 표시명 박제. assignee/securityLevel cross-BC 표시명은 기록 시점 박제(PR #120 보강, 완전 Jira식). status는 project-workflow BC 소관으로 label=null 유지. 조회 UI는 FR-HS-02)
 - [x] D3. 데이터 모델 — `issue_change_group` + `issue_change_item`(field/from·to_value/from·to_label) 2테이블, append-only (책임. db-engineer) — PR #115 (**deviation**: 계획의 단일 `issue_history` → Jira식 2테이블. V018, FK는 item→group만(issues FK 없음=이력 보존), init_codegen 미러)
 - [x] D4. 백엔드 — 서비스 레이어 동기 기록 (IssueHistoryRecorder facade) (책임. backend-engineer) — PR #115 (**deviation**: 계획의 pgmq consumer → 이슈 변경과 **같은 트랜잭션** 동기 기록. recordChange private=self-invocation 회피, 자동배정 2차변경 캡처)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #115 (디텍터 22 + 라벨리졸버 18 + repository 5 + recorder + 서비스배선 + e2e 10 시나리오, 보안등급 단독변경 회귀 포함)
