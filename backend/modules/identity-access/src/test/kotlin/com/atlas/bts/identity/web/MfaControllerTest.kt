@@ -11,6 +11,8 @@ import com.atlas.bts.identity.mfa.MfaService.EnableResult
 import com.atlas.bts.identity.mfa.MfaService.SetupResult
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.session.SessionService
+import com.atlas.bts.identity.user.User
+import com.atlas.bts.identity.user.UserRepository
 import io.mockk.mockk
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.never
@@ -46,7 +48,8 @@ import java.util.UUID
  * MfaController WebMvcTest 슬라이스 테스트 (FR-MF-01 Task 9).
  *
  * ## 검증 시나리오
- * - POST /totp/setup — JWT → 200 + otpauth_uri/secret_base32 없음(QR/uri만)/qr_png_data_uri
+ * - POST /totp/setup — JWT → 200 + otpauth_uri/qr_png_data_uri/secret_base32 (수동입력 fallback)
+ * - POST /totp/setup — otpauth label 이 UUID 가 아니라 email(없으면 username)로 해소 (C-b)
  * - POST /totp/setup — 이미 ACTIVE → 409 already_enabled
  * - POST /totp/enable — 정답 코드 → 204
  * - POST /totp/enable — 오답 코드 → **400 invalid_code (500 아님 — catch-all 변질 회귀 가드)**
@@ -120,7 +123,24 @@ class MfaControllerTest {
     @MockBean
     lateinit var mfaService: MfaService
 
+    @MockBean
+    lateinit var userRepository: UserRepository
+
     private val userId = UUID.fromString("11111111-1111-1111-1111-111111111111")
+
+    /** otpauth label 해소용 User — email 우선, 없으면 username fallback (C-b). */
+    private fun userWith(
+        email: String?,
+        username: String = "alice-login",
+    ): User =
+        User(
+            id = userId,
+            username = username,
+            email = email,
+            displayName = "Alice",
+            createdAt = Instant.parse("2026-06-11T10:00:00Z"),
+            updatedAt = Instant.parse("2026-06-11T10:00:00Z"),
+        )
 
     private fun jwtFor(uid: UUID) =
         jwt().jwt { builder ->
@@ -130,12 +150,14 @@ class MfaControllerTest {
     // ── POST /totp/setup ────────────────────────────────────────────────────────
 
     @Test
-    fun `POST setup with JWT returns 200 with otpauth uri and qr data uri`() {
+    fun `POST setup with JWT returns 200 with otpauth uri qr and secret_base32`() {
+        `when`(userRepository.findById(anyUuid())).thenReturn(userWith(email = "alice@example.com"))
         `when`(mfaService.setup(anyUuid(), anyStr()))
             .thenReturn(
                 SetupResult.Created(
                     otpauthUri = "otpauth://totp/BTS:alice?secret=ABCDEF&issuer=BTS",
                     qrPngDataUri = "data:image/png;base64,AAAA",
+                    secretBase32 = "ABCDEF",
                 ),
             )
 
@@ -143,10 +165,51 @@ class MfaControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.otpauth_uri").value("otpauth://totp/BTS:alice?secret=ABCDEF&issuer=BTS"))
             .andExpect(jsonPath("$.qr_png_data_uri").value("data:image/png;base64,AAAA"))
+            // QR 스캔 불가 환경의 수동입력 fallback — secret_base32 응답 필드 (C-c, spec §API).
+            .andExpect(jsonPath("$.secret_base32").value("ABCDEF"))
+    }
+
+    @Test
+    fun `POST setup resolves otpauth label from email`() {
+        `when`(userRepository.findById(anyUuid())).thenReturn(userWith(email = "alice@example.com"))
+        `when`(mfaService.setup(anyUuid(), anyStr()))
+            .thenReturn(
+                SetupResult.Created(
+                    otpauthUri = "otpauth://totp/BTS:alice?secret=ABCDEF&issuer=BTS",
+                    qrPngDataUri = "data:image/png;base64,AAAA",
+                    secretBase32 = "ABCDEF",
+                ),
+            )
+
+        mockMvc.perform(post("/api/v1/auth/mfa/totp/setup").with(jwtFor(userId)).with(csrf()))
+            .andExpect(status().isOk)
+
+        // label 은 UUID 가 아니라 사용자 email 로 해소돼야 한다(C-b, spec FR-2/GAP-4).
+        verify(mfaService).setup(eqUuid(userId), eqStr("alice@example.com"))
+    }
+
+    @Test
+    fun `POST setup falls back to username when email is null`() {
+        `when`(userRepository.findById(anyUuid())).thenReturn(userWith(email = null, username = "alice-login"))
+        `when`(mfaService.setup(anyUuid(), anyStr()))
+            .thenReturn(
+                SetupResult.Created(
+                    otpauthUri = "otpauth://totp/BTS:alice-login?secret=ABCDEF&issuer=BTS",
+                    qrPngDataUri = "data:image/png;base64,AAAA",
+                    secretBase32 = "ABCDEF",
+                ),
+            )
+
+        mockMvc.perform(post("/api/v1/auth/mfa/totp/setup").with(jwtFor(userId)).with(csrf()))
+            .andExpect(status().isOk)
+
+        // email 이 없으면 username 으로 label 을 해소한다(C-b).
+        verify(mfaService).setup(eqUuid(userId), eqStr("alice-login"))
     }
 
     @Test
     fun `POST setup when already enabled returns 409 already_enabled`() {
+        `when`(userRepository.findById(anyUuid())).thenReturn(userWith(email = "alice@example.com"))
         `when`(mfaService.setup(anyUuid(), anyStr())).thenReturn(SetupResult.AlreadyEnabled)
 
         mockMvc.perform(post("/api/v1/auth/mfa/totp/setup").with(jwtFor(userId)).with(csrf()))
@@ -369,4 +432,10 @@ class MfaControllerTest {
 
     /** Kotlin non-null String 파라미터용 Mockito any() 매처. */
     private fun anyStr(): String = org.mockito.ArgumentMatchers.anyString() ?: ""
+
+    /** Kotlin non-null UUID 파라미터용 Mockito eq() 매처. */
+    private fun eqUuid(value: UUID): UUID = org.mockito.ArgumentMatchers.eq(value) ?: value
+
+    /** Kotlin non-null String 파라미터용 Mockito eq() 매처. */
+    private fun eqStr(value: String): String = org.mockito.ArgumentMatchers.eq(value) ?: value
 }

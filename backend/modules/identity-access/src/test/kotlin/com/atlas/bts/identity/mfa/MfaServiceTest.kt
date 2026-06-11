@@ -109,6 +109,10 @@ class MfaServiceTest {
         val created = result as MfaService.SetupResult.Created
         assertThat(created.otpauthUri).startsWith("otpauth://totp/BTS:alice%40example.com?")
         assertThat(created.qrPngDataUri).startsWith("data:image/png;base64,")
+        // 평문 secret(base32)을 setup 응답에 그대로 노출해 QR 스캔 불가 환경의 수동입력 fallback 을 지원한다(spec §API).
+        assertThat(created.secretBase32).isNotBlank()
+        // 응답 secret 과 otpauth URI 의 secret 파라미터가 동일해야 한다(같은 secret).
+        assertThat(created.otpauthUri).contains("secret=${created.secretBase32}")
         // 저장된 값은 암호문이어야 한다(평문 secret 저장 금지 — §1.1.1).
         assertThat(cipherSlot.captured).isEqualTo(cipher)
         verify(exactly = 1) { repo.upsertPending(userId, cipher) }

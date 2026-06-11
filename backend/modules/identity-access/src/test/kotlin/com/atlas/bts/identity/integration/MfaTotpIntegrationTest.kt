@@ -71,7 +71,7 @@ import java.util.UUID
  * ## 검증 시나리오
  * | 번호 | 시나리오 | 기대 결과 |
  * |---|---|---|
- * | S1 | setup(JWT) | 200 + otpauth_uri/qr_png_data_uri |
+ * | S1 | setup(JWT) | 200 + otpauth_uri/qr_png_data_uri/secret_base32 |
  * | S2 | secret 평문 미저장 | DB totp_secrets.secret_cipher ≠ 평문 secret(암호문) |
  * | S3 | enable(정답 코드) | 204 + status ACTIVE |
  * | S4 | login(TOTP 활성 사용자) | 200 mfa_required:true + challenge_token (정식 세션 미발급) |
@@ -211,6 +211,10 @@ class MfaTotpIntegrationTest {
 
         val secret = extractSecretFromOtpauthUri(otpauthUri)
         assertThat(secret).isNotBlank()
+        // secret_base32 — QR 스캔 불가 환경 수동입력 fallback (C-c, spec §API). otpauth secret 과 동일해야 한다.
+        assertThat(setupBody["secret_base32"] as String?)
+            .withFailMessage("setup 응답에 secret_base32 가 otpauth secret 과 동일하게 포함돼야 합니다.")
+            .isEqualTo(secret)
 
         // ── S2. secret 평문 미저장 — DB 암호문 컬럼이 평문 secret 과 달라야 한다 ────
         val storedCipher = readSecretCipher(testUserId)
