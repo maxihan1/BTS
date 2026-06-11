@@ -72,7 +72,7 @@ import java.util.UUID
     controllers = [MfaController::class, MfaControllerTest.VerifyProbe::class],
     excludeAutoConfiguration = [OAuth2ClientAutoConfiguration::class],
 )
-@Import(SecurityConfig::class, MfaControllerTest.SecurityBeans::class)
+@Import(SecurityConfig::class, MfaControllerTest.SecurityBeans::class, MfaControllerTest.VerifyProbe::class)
 class MfaControllerTest {
     /**
      * Task 10 의 `/api/v1/auth/mfa/verify` 더미 핸들러.
@@ -82,6 +82,11 @@ class MfaControllerTest {
      */
     @RestController
     class VerifyProbe {
+        /**
+         * 라우팅 탐침용 더미 핸들러 — SecurityConfig 통과 시 200 을 반환할 뿐 실제 검증은 없다(Task 10 소관).
+         * FunctionOnlyReturningConstant 억제 — 상수 반환은 의도된 probe 동작이다(SecurityConfigTest.ProbeController 선례).
+         */
+        @Suppress("FunctionOnlyReturningConstant")
         @PostMapping("/api/v1/auth/mfa/verify")
         fun verify(): String = "ok"
     }
@@ -101,8 +106,9 @@ class MfaControllerTest {
         }
 
         @Bean
-        fun corsConfigurationSource(): CorsConfigurationSource =
-            CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        fun corsConfigurationSource(): CorsConfigurationSource {
+            return CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        }
 
         @Bean
         fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)
@@ -117,7 +123,9 @@ class MfaControllerTest {
     private val userId = UUID.fromString("11111111-1111-1111-1111-111111111111")
 
     private fun jwtFor(uid: UUID) =
-        jwt().jwt { builder -> builder.subject(uid.toString()).claim("sid", UUID.randomUUID().toString()) }
+        jwt().jwt { builder ->
+            builder.subject(uid.toString()).claim("sid", UUID.randomUUID().toString())
+        }
 
     // ── POST /totp/setup ────────────────────────────────────────────────────────
 
