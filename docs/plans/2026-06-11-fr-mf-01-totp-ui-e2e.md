@@ -101,11 +101,18 @@ FR-IS-10 선례처럼 이 프론트 PR 머지 시 FR-MF-01 완료 마킹 (현재
 - `disableMfa(code)` → `DELETE .../totp {code}` → 204.
 - `verifyMfa(token, code)` → `POST /api/v1/auth/mfa/verify {mfa_challenge_token, code}` → TokenResponse.
 - login 응답 union: `mfa_required` 분기 스키마 parse 테스트(TokenResponse vs MfaRequiredResponse).
+- **(BLOCKER-CSRF)** setup/enable/disable 요청에 **`X-XSRF-TOKEN` 헤더가 포함**되는지 검증(선례 `users.test.ts` T-US-4b `capturedXsrf` 패턴). verify/status 요청에는 CSRF 헤더 **없음**을 검증(verify=permitAll+ignore, status=읽기).
 - MSW로 응답 mock. 실패 메시지(예상): `mfa.ts`/스키마 없음.
 
 **GREEN**:
 - `schemas.ts`에 `MfaSetupResponseSchema`, `MfaStatusResponseSchema`, `MfaRequiredResponseSchema`(snake_case 필드 그대로), `LoginOrMfaResponseSchema`(discriminated union, `mfa_required` 유무로 분기).
-- `mfa.ts`에 5개 함수 — 기존 `apiPost`/`apiGet`/`apiFetch`(client.ts) 재사용. enable/disable는 204라 Zod parse 없이 ok 처리.
+- `mfa.ts`에 5개 함수. **(BLOCKER-CSRF 해소)** client.ts의 `apiPost`/`apiGet`은 CSRF 토큰을 자동 주입하지 **않으므로**, 상태 변경 호출은 `password.ts` 선례대로 `apiFetch` + 수동 `'X-XSRF-TOKEN': readXsrfToken()`(`sessions.ts` 공유 헬퍼, 중복 구현 금지)으로 작성:
+  - `setupMfa()` POST → apiFetch + X-XSRF-TOKEN
+  - `enableMfa(code)` POST → apiFetch + X-XSRF-TOKEN + body `{code}`
+  - `disableMfa(code)` DELETE → apiFetch + X-XSRF-TOKEN + body `{code}`
+  - `getMfaStatus()` GET → `apiGet`(읽기, CSRF 불요)
+  - `verifyMfa(token, code)` POST → `apiPost`(permitAll+CSRF-ignore 경로, **X-XSRF-TOKEN 넣지 말 것** — 챌린지 토큰이 인증 증명)
+  - enable/disable는 204라 Zod parse 없이 ok 처리.
 
 **REFACTOR**: 에러 코드 문자열 상수화(`invalid_code` 등), 함수 JSDoc.
 
@@ -144,7 +151,7 @@ FR-IS-10 선례처럼 이 프론트 PR 머지 시 FR-MF-01 완료 마킹 (현재
 - 활성(`enabled:true`) → 비활성화 버튼 → step-up 코드 → disable → 비활성 전환.
 - 에러: enable 400 `invalid_code` → 인라인 에러(필드 유지), 429 → rate-limit 메시지.
 
-**GREEN**: `MfaSettings` 컴포넌트(useQuery status + useMutation setup/enable/disable, mutation 성공 후 invalidate/refetch — 메모리 mutation-setquerydata-partial-response-flicker 따라 invalidate-only). `settings.mfa.tsx`(Page + RouteAdapter, `settings.password.tsx` 레이아웃). `router.ts`에 `settingsMfaRoute`(requireAuth 가드, password/account-links 인근). 설정 진입점에 "2단계 인증" 링크.
+**GREEN**: `MfaSettings` 컴포넌트(useQuery status + useMutation setup/enable/disable, mutation 성공 후 invalidate/refetch — 메모리 mutation-setquerydata-partial-response-flicker 따라 invalidate-only). **(CONCERN-state)** enable 204 성공 후 setup 응답(`secret_base32`/`qr_png_data_uri`/`otpauth_uri`)을 담은 컴포넌트 state를 **명시적으로 `null` 리셋**(조건부 렌더로 숨기기만 하면 state·메모리에 secret 잔존). enable/disable 코드 입력 폼도 성공/실패 후 reset. `settings.mfa.tsx`(Page + RouteAdapter, `settings.password.tsx` 레이아웃). `router.ts`에 `settingsMfaRoute`(requireAuth 가드, password/account-links 인근). 설정 진입점에 "2단계 인증" 링크.
 
 **REFACTOR**: QR/secret 표시를 하위 컴포넌트로 분리, 코드 입력 폼 공통화.
 
@@ -161,6 +168,7 @@ FR-IS-10 선례처럼 이 프론트 PR 머지 시 FR-MF-01 완료 마킹 (현재
 
 **RED**:
 - `useLoginMutation.test.ts` — login 200 `mfa_required` 응답을 **에러가 아니라** 2단계 진입 신호로 분기(parse 전 플래그 검사). 기존 `LOGIN_ERROR_MESSAGES.mfa_required` 에러 경로 제거에 따른 테스트 수정.
+- **(CONCERN-union)** 음성 테스트 — `mfa_required:true`이면 응답에 `access_token`이 동봉돼 있어도 **MFA step으로 진입(토큰 무시)**. 분기는 반드시 `mfa_required === true` 우선 검사 → true면 `MfaRequiredResponseSchema.parse`, 아니면 `TokenResponseSchema.parse`. "access_token 존재 여부"로 분기 금지(fail-safe, MFA 우회 회귀 차단).
 - `LoginForm.test.tsx` — mfa_required 후 MFA 코드 입력 step 렌더(getByLabel 접근), 코드 입력 → verify 호출 → 성공 시 기존 성공 핸들러(세션 저장+whoami+navigate) 호출. verify 401 `invalid_code` → 인라인 에러(필드 유지). 반복 401/만료 → "다시 로그인" 복귀.
 - TOTP 미활성 사용자 기존 로그인 흐름 회귀 없음(기존 happy-path 테스트 유지).
 
@@ -179,7 +187,7 @@ FR-IS-10 선례처럼 이 프론트 PR 머지 시 FR-MF-01 완료 마킹 (현재
 - files: [`apps/web/src/mocks/mfa-handlers.ts`, `apps/web/src/mocks/handlers.ts`, `apps/web/src/mocks/auth-handlers.ts`, `apps/web/src/mocks/auth-fixtures.ts`]
 - depends-on: [1]
 
-**RED**: `mfa-handlers` 동작 테스트(또는 MfaSettings/E2E에서 소비). 핸들러가 setup/status/enable/disable/verify 응답 + **stateful**(enable 성공 후 status `enabled:true`, disable 후 `false` — 브라우저 시드 가능 공유 store, 메모리 msw-derived-behavior-shared-store-e2e). 고정 유효코드 `123456` 성공/그 외 실패. login 핸들러가 localStorage 플래그(`__bts_e2e_mfa_enabled`)일 때 `mfa_required` 분기.
+**RED**: `mfa-handlers` 동작 테스트(또는 MfaSettings/E2E에서 소비). 핸들러가 setup/status/enable/disable/verify 응답 + **stateful**(enable 성공 후 status `enabled:true`, disable 후 `false` — 브라우저 시드 가능 공유 store, 메모리 msw-derived-behavior-shared-store-e2e). 고정 유효코드 `123456` 성공/그 외 실패. login 핸들러가 localStorage 플래그(`__bts_e2e_mfa_enabled`)일 때 `mfa_required` 분기. **(BLOCKER-CSRF 가짜그린 차단)** setup/enable/disable 핸들러는 `X-XSRF-TOKEN` 헤더 존재를 검사(선례 field-permission-handlers)해, 프론트가 CSRF 헤더를 빠뜨리면 MSW에서도 실패하도록 — 실서버 403을 단위/E2E가 못 잡는 가짜 그린 방지.
 
 **GREEN**: `mfa-handlers.ts`(공유 store + 핸들러), `handlers.ts`에 등록, `auth-handlers.ts` login에 mfa 분기 토글, `auth-fixtures.ts`에 플래그 키/시드 helper.
 
@@ -216,4 +224,26 @@ FR-IS-10 선례처럼 이 프론트 PR 머지 시 FR-MF-01 완료 마킹 (현재
 - 추가 검증: typecheck, lint, vitest, playwright, `pnpm verify`
 - 파일 충돌: 없음(T3=components/routes/router, T4=src/auth, T5=src/mocks 분리). schemas.ts=T1만, ko.ts=T2만, router.ts=T3만, handlers.ts=T5만.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### security-engineer 독립 리뷰 (2026-06-11)
+
+백엔드 계약(#113)·프론트 선례 실측 대조. 7개 보안 관점 점검.
+
+| # | 항목 | 판정 |
+|---|---|---|
+| 1 | 챌린지 토큰 비영속(authStore 제외) | ✅ PASS |
+| 2 | discriminated union 분기 | ⚠️ CONCERN → T4 음성 테스트 반영 |
+| 3 | 계정 열거(일반 메시지) | ✅ PASS |
+| 4 | **CSRF 헤더 수동 주입** | 🛑 BLOCKER → T1/T5 반영 |
+| 5 | rate-limit UX | ✅ PASS |
+| 6 | 민감정보 state 정리 | ⚠️ CONCERN → T3 state reset 반영 |
+| 7 | E2E 시뮬레이션 적정성 | ✅ PASS |
+
+**🛑 BLOCKER (CSRF) — 해소됨(plan 반영)**. `client.ts`의 apiPost/apiGet/apiFetch는 CSRF 토큰을 자동 주입하지 않음. setup(POST)/enable(POST)/disable(DELETE)은 백엔드 authenticated+CSRF 적용이라 `X-XSRF-TOKEN: readXsrfToken()`(`sessions.ts` 공유, `password.ts` 선례) 수동 주입 필수. verify는 permitAll+CSRF-ignore라 헤더 불필요. → **T1 GREEN/RED 수정**(수동 주입 + 헤더 단위 테스트), **T5 수정**(MSW CSRF 검사로 가짜그린 차단).
+
+**⚠️ CONCERN 2건 — 같은 PR 반영됨**.
+- union 분기: `mfa_required` 우선 신뢰(access_token 존재로 분기 금지). → T4 RED 음성 테스트.
+- 민감정보: enable 후 setup 응답 state 명시적 `null` reset(조건부 렌더만으론 잔존). → T3 GREEN.
+
+머지 차단 BLOCKER 1건은 plan 수정으로 해소. auth 작업이라 BLOCKER 무시 옵션 없음 — 구현 시 강제.
