@@ -218,12 +218,12 @@
     <file name="src/test/kotlin/com/atlas/bts/identity/audit/AuthAuditLogServiceTest.kt">
         <error line="11" column="1" source="standard:no-empty-first-line-in-class-body" />
         <error line="23" column="24" source="standard:multiline-expression-wrapping" />
-        <error line="51" column="21" source="standard:multiline-expression-wrapping" />
-        <error line="117" column="18" source="standard:trailing-comma-on-call-site" />
-        <error line="132" column="23" source="standard:multiline-expression-wrapping" />
-        <error line="139" column="22" source="standard:trailing-comma-on-call-site" />
-        <error line="154" column="21" source="standard:multiline-expression-wrapping" />
-        <error line="189" column="21" source="standard:multiline-expression-wrapping" />
+        <error line="54" column="21" source="standard:multiline-expression-wrapping" />
+        <error line="120" column="18" source="standard:trailing-comma-on-call-site" />
+        <error line="135" column="23" source="standard:multiline-expression-wrapping" />
+        <error line="142" column="22" source="standard:trailing-comma-on-call-site" />
+        <error line="157" column="21" source="standard:multiline-expression-wrapping" />
+        <error line="192" column="21" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="src/test/kotlin/com/atlas/bts/identity/config/CorsConfigTest.kt">
         <error line="26" column="1" source="standard:no-empty-first-line-in-class-body" />

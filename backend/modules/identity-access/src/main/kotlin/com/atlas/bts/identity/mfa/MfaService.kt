@@ -47,10 +47,12 @@ import java.util.UUID
  * best-effort 가 아니라 같은 트랜잭션에 묶어, 상태 변경(activate/delete)과 감사가 함께 commit/rollback 된다.
  *
  * @param clock replay 방어용 현재 time-step 계산 기준. 테스트는 `Clock.fixed` 로 고정한다.
+ *
+ * ## LongParameterList 억제
+ * 7개 의존성은 모두 단일 책임 협력자(연산/TOTP영속/백업코드영속/암호화/rate-limit/감사/시계)로,
+ * 묶을 응집 단위가 없어 그대로 주입한다. backupCodeRepo 는 FR-MF-02 Task 6 에서
+ * disable cascade 삭제용으로 추가됐다.
  */
-// LongParameterList 억제 — 7개 의존성은 모두 단일 책임 협력자(연산/TOTP영속/백업코드영속/암호화/
-// rate-limit/감사/시계)로, 묶을 응집 단위가 없어 그대로 주입한다. backupCodeRepo 는 FR-MF-02 Task 6
-// 에서 disable cascade 삭제용으로 추가됐다.
 @Suppress("LongParameterList")
 @Service
 @Transactional
