@@ -342,7 +342,7 @@ class MfaBackupCodeLoginIntegrationTest {
         restTemplate.exchange(
             "http://localhost:$port/api/v1/auth/mfa/totp/setup",
             HttpMethod.POST,
-            HttpEntity<Void>(bearer(accessToken)),
+            HttpEntity<Unit>(bearer(accessToken)),
             Map::class.java,
         )
 
@@ -395,6 +395,6 @@ class MfaBackupCodeLoginIntegrationTest {
             ?.substringAfter("refresh_token=")
             ?.substringBefore(";")
             ?.trim()
-            ?: ""
+            .orEmpty()
     }
 }
