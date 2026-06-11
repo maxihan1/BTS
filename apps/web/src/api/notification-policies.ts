@@ -16,7 +16,7 @@ import { readXsrfToken } from './sessions'
 
 /**
  * 백엔드 NotificationEventType enum의 프론트 미러 (wireValue 형식).
- * 서버에서 "issue.created" 형태로 내려옴 — enum NAME이 아닌 wirValue.
+ * 서버에서 "issue.created" 형태로 내려옴 — enum NAME이 아닌 wireValue.
  * 라벨 키 출처 + 카탈로그 select 옵션으로 사용한다.
  */
 export const NOTIFICATION_EVENT_TYPES = [

@@ -107,17 +107,18 @@ describe('GET /notification-policies (목록)', () => {
 
 describe('POST → 201, 후속 GET 반영', () => {
   it('새 정책을 생성하면 201을 반환하고 목록에 반영된다', async () => {
+    // 시드에 없는 조합을 사용한다
     const { status, body } = await postPolicy({
-      eventType: 'issue.created',
-      recipientRole: 'REPORTER',
-      channel: 'EMAIL',
+      eventType: 'automation.failed',
+      recipientRole: 'MENTIONED',
+      channel: 'WEBHOOK',
     })
 
     expect(status).toBe(201)
 
     const created = (body as { data: { id: string; eventType: string } }).data
     expect(created.id).toBeTruthy()
-    expect(created.eventType).toBe('issue.created')
+    expect(created.eventType).toBe('automation.failed')
 
     // 후속 GET에서 반영
     const listRes = (await fetchPolicies()) as { data: { id: string }[] }
@@ -132,11 +133,12 @@ describe('POST → 201, 후속 GET 반영', () => {
 
 describe('POST 중복 조합 → 409', () => {
   it('동일 조합(eventType+recipientRole+channel+projectKey)을 두 번 POST하면 409를 반환한다', async () => {
-    await postPolicy({ eventType: 'issue.created', recipientRole: 'REPORTER', channel: 'EMAIL' })
+    // 시드에 없는 조합을 생성 후 동일 조합으로 재시도
+    await postPolicy({ eventType: 'automation.failed', recipientRole: 'RULE_OWNER', channel: 'TEAMS' })
     const { status, body } = await postPolicy({
-      eventType: 'issue.created',
-      recipientRole: 'REPORTER',
-      channel: 'EMAIL',
+      eventType: 'automation.failed',
+      recipientRole: 'RULE_OWNER',
+      channel: 'TEAMS',
     })
 
     expect(status).toBe(409)
@@ -146,11 +148,12 @@ describe('POST 중복 조합 → 409', () => {
   })
 
   it('projectKey가 다르면 중복이 아니다', async () => {
-    await postPolicy({ eventType: 'issue.created', recipientRole: 'REPORTER', channel: 'EMAIL', projectKey: null })
+    // 시드에 없는 조합으로 projectKey만 다르게 생성
+    await postPolicy({ eventType: 'issue.overdue', recipientRole: 'COMPONENT_LEAD', channel: 'TEAMS', projectKey: null })
     const { status } = await postPolicy({
-      eventType: 'issue.created',
-      recipientRole: 'REPORTER',
-      channel: 'EMAIL',
+      eventType: 'issue.overdue',
+      recipientRole: 'COMPONENT_LEAD',
+      channel: 'TEAMS',
       projectKey: 'ATLAS',
     })
     expect(status).toBe(201)
