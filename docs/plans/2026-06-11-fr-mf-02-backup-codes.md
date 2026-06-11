@@ -96,6 +96,162 @@ classify. type=auth, agent=security-engineer, primary_bc=identity-access
 - 갭-1. TOTP disable 시 백업 코드 dead data → FR-9/EC-11로 cascade 삭제 보강
 - 갭-2. AuthEventType/MfaChallenge enum 추가가 카운트 가드 위협 → 제약에 전 모듈 grep 명시 (MfaChallenge는 실제 사용처 확인 후 결정)
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 단일 모듈(identity-access) 백엔드. SHA-256은 JDK `MessageDigest`(신규 의존성 0).
+> 코드 형식 = Crockford base32 10자(혼동문자 제외) `xxxxx-xxxxx`, 32^10≈50bit(≥40bit 충족). 검증 시 대소문자/하이픈 정규화 후 해시.
+> **사전 확정(plan grep)**: ① `MfaChallenge` enum 추가 불요(placeholder, verify는 method 문자열 분기) ② `auth_audit_logs.event_type`은 VARCHAR(40) CHECK 없음 → enum 추가가 마이그레이션 무관, KDoc "16종"만 갱신.
+
+### Task 1. V023 마이그레이션 + 스키마 검증
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/identity-access/src/main/resources/db/migration/V023__mfa_backup_codes.sql`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/mfa/MfaBackupCodesSchemaTest.kt`]
+- depends-on: []
+
+**RED**. Flyway V001~V023 적용 후 `user_mfa_backup_codes` 테이블 + `idx_mfa_backup_codes_user_active`(부분, used_at IS NULL) + `uq_mfa_backup_codes_user_hash`(UNIQUE) + FK CASCADE 존재 검증(실패: 테이블 없음). `IssueSecuritySchemaMigrationTest`/V022 선례 따름.
+
+**GREEN**. spec §데이터 모델의 DDL 그대로. COMMENT에 `identity-access raw SQL(init_codegen 미러 불요)` 명시(V022 선례).
+
+**REFACTOR**. COMMENT 보강.
+
+**검증**. `./gradlew :identity-access:test --tests '*MfaBackupCodesSchemaTest'`
+
+### Task 2. BackupCodeGenerator — 10개 고엔트로피 코드 생성
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/mfa/BackupCodeGenerator.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/mfa/BackupCodeGeneratorTest.kt`]
+- depends-on: []
+
+**RED**. `generate()` → 정확히 10개, 각 `xxxxx-xxxxx` Crockford base32(혼동문자 0/O/1/I/L 제외), 10개 상호 고유, `SecureRandom` 사용(실패: 클래스 없음).
+
+**GREEN**. `SecureRandom` + Crockford 알파벳에서 문자 추출.
+
+**REFACTOR**. 알파벳/개수/길이 상수화 + KDoc(엔트로피 근거).
+
+**검증**. `./gradlew :identity-access:test --tests '*BackupCodeGeneratorTest'`
+
+### Task 3. BackupCodeHasher — SHA-256
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/mfa/BackupCodeHasher.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/mfa/BackupCodeHasherTest.kt`]
+- depends-on: []
+
+**RED**. `hash(plain)` → 64자 hex, 같은 입력 같은 출력(결정적), 입력 정규화(대문자·하이픈 제거 후 동일 해시: `a3k9f-2m7qx` == `A3K9F2M7QX`)(실패: 클래스 없음).
+
+**GREEN**. `MessageDigest.getInstance("SHA-256")` + 정규화. 평문/해시 미로깅(§1.1.2).
+
+**REFACTOR**. 정규화 규칙 KDoc.
+
+**검증**. `./gradlew :identity-access:test --tests '*BackupCodeHasherTest'`
+
+### Task 4. MfaBackupCodeRepository — JDBC(전량교체/atomic 소진/카운트)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/mfa/MfaBackupCodeRepository.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/mfa/JdbcMfaBackupCodeRepository.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/mfa/JdbcMfaBackupCodeRepositoryIntegrationTest.kt`]
+- depends-on: [1]
+
+**RED** (통합, 실 PostgreSQL). `replaceAll(userId, hashes)`=기존 전량 DELETE+10 INSERT(단일 트랜잭션), `consumeIfUnused(userId, hash)`=`UPDATE...WHERE used_at IS NULL RETURNING id`(1행 true/0행 false), 같은 hash 2회 consume→2번째 false(멱등), `countUnused(userId)`, `deleteAllByUser(userId)`.
+
+**GREEN**. `JdbcTemplate` raw SQL. consume은 spec의 atomic UPDATE(advisory-lock-bigint-toctou 교훈 — lock 밖 read-then-write 금지).
+
+**REFACTOR**. SQL 상수화 + KDoc.
+
+**검증**. `./gradlew :identity-access:test --tests '*JdbcMfaBackupCodeRepositoryIntegrationTest'`
+
+### Task 5. AuthEventType — 백업 코드 감사 이벤트 추가
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/audit/AuthEventType.kt`]
+- depends-on: []
+
+**RED**. `AuthEventType.MFA_BACKUP_CODES_GENERATED` / `MFA_BACKUP_CODE_USED` 참조 테스트(실패: 값 없음). (명시 카운트 가드 부재 확인됨 — DB CHECK 없음.)
+
+**GREEN**. enum 2값 추가 + KDoc 항목 + 상단 주석 `16종`→`18종`.
+
+**REFACTOR**. 없음(최소 변경).
+
+**검증**. `./gradlew :identity-access:compileTestKotlin` (참조 컴파일) + 기존 audit 테스트 회귀.
+
+### Task 6. MfaBackupCodeService — 생성/검증소진/재생성/상태 오케스트레이션
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/mfa/MfaBackupCodeService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/mfa/MfaBackupCodeServiceTest.kt`]
+- depends-on: [2, 3, 4, 5]
+
+**RED**. `@Transactional` 서비스.
+- `generateOrRegenerate(userId)`: TOTP ACTIVE 아니면 `NotActive`(`TotpSecretRepository.findByUser().status==ACTIVE` 확인). ACTIVE면 generator 10개 → hasher → `repo.replaceAll`(전량교체) → 평문 10개 반환(`Generated(codes)`) + 감사 `MFA_BACKUP_CODES_GENERATED`.
+- `verifyAndConsume(userId, plain)`: limiter 차단 시 `TooManyAttempts`. hasher→`repo.consumeIfUnused` true면 `Success`+limiter.reset+감사 `MFA_BACKUP_CODE_USED`, false면 `InvalidCode`+limiter.recordFailure.
+- `status(userId)`: `{generated: countTotal>0, remaining: countUnused}`.
+
+**GREEN**. generator+hasher+repo+limiter+auditLog+totpRepo 조립. sealed interface 결과(MfaService 패턴).
+
+**REFACTOR**. KDoc(보안 불변식: 평문 미저장/미로깅, fail-closed).
+
+**검증**. `./gradlew :identity-access:test --tests '*MfaBackupCodeServiceTest'`
+
+### Task 7. MfaService.disable 백업 코드 cascade 삭제 (갭-1)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/mfa/MfaService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/mfa/MfaServiceTest.kt`]
+- depends-on: [4]
+
+**RED**. `MfaService.disable` 성공 시 `backupCodeRepo.deleteAllByUser(userId)` 호출 검증(같은 트랜잭션). 기존 MfaServiceTest 생성자 mock에 `MfaBackupCodeRepository` 추가(plan-files-constructor-injection-existing-tests 교훈 — 기존 테스트도 files 포함).
+
+**GREEN**. `MfaService` 생성자에 `backupCodeRepo: MfaBackupCodeRepository` 주입 + `disable` 성공 분기에 `deleteAllByUser` 추가.
+
+**REFACTOR**. KDoc에 cascade 사유(2FA 해제=2차 요소 전체 정리).
+
+**검증**. `./gradlew :identity-access:test --tests '*MfaServiceTest'`
+
+### Task 8. MfaController — 백업 코드 엔드포인트 (POST/GET /mfa/backup-codes)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/MfaController.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/MfaControllerTest.kt`]
+- depends-on: [6]
+
+**RED**. `POST /api/v1/auth/mfa/backup-codes`: 200 `{codes:[10개]}` / 409 `totp_not_active` / 403 PAT / 401. `GET`: 200 `{generated, remaining}` / 403 PAT. JWT 전용(userIdOrNull→PAT 403, 기존 패턴 재사용).
+
+**GREEN**. 컨트롤러 메서드 2개 + DTO(`BackupCodesResponse`, `BackupCodesStatusResponse`). 도메인 결과→ResponseEntity 직접 매핑(catch-all 변질 가드).
+
+**REFACTOR**. KDoc(JWT 전용/4xx 직접 매핑 사유, 기존 MfaController 스타일).
+
+**검증**. `./gradlew :identity-access:test --tests '*MfaControllerTest'`
+
+### Task 9. AuthController.verifyMfa — method 분기 + 통합/race 테스트
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/AuthController.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/AuthControllerTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/integration/MfaBackupCodeLoginIntegrationTest.kt`]
+- depends-on: [6]
+
+**RED**.
+- `MfaVerifyRequest`에 `method: String = "totp"` 추가(기본값 → 기존 클라이언트 회귀 0). 직렬화 키 `method`.
+- `method="backup_code"` → `backupCodeService.verifyAndConsume` → Success면 `issueTokens(mfaVerified=true)`, InvalidCode 401, TooManyAttempts 429.
+- `method` 생략/`"totp"` → 기존 `mfaService.verifyLogin` 경로(회귀 0).
+- 미지원 `method` → 400 `invalid_method`(fail-safe, totp fallback 금지).
+- 통합. race(동시 같은 코드 2제출→1건만 200), end-to-end(생성→로그인 backup_code→소진→재사용 401).
+
+**GREEN**. `verifyMfa`에 챌린지 토큰 validate/consume 이후 `when(body.method)` 분기. 토큰 검증은 method 무관 공통.
+
+**REFACTOR**. KDoc(method 분기/회귀 0/invalid_method).
+
+**검증**. `./gradlew :identity-access:test --tests '*AuthControllerTest' --tests '*MfaBackupCodeLoginIntegrationTest'`
+
+## Plan 메타
+
+- task 수: 9
+- 예상 wave (depends-on 그래프). W1[T1,T2,T3,T5] → W2[T4] → W3[T6,T7] → W4[T8,T9]
+  - 단, 단일 모듈 test 컴파일 직렬(bts-plan-wave-gradle-module-compile 교훈) → 실제는 거의 순차. 그래프는 의존성 정확 표기용.
+- TDD 강제: yes (test 커밋 먼저)
+- 추가 검증: 모듈 전체 ktlintMain/Test + detekt + test --rerun-tasks (subagent-ktlint-false-green → controller 직접 검증), verify-master-plan.sh (FR 카운트 동기화)
+- 프론트/E2E(D6/D7): 후속 PR (이번 범위 외)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
