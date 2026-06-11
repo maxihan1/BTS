@@ -83,4 +83,137 @@ FR-IS-10 선례처럼 이 프론트 PR 머지 시 FR-MF-01 완료 마킹 (현재
 
 ## Plan (← /bts-plan 채움)
 
+## Plan
+
+> 모든 경로는 `apps/web/` 기준. 백엔드 변경 없음. TDD red→green→refactor 강제.
+
+### Task 1. MFA API 클라이언트 + Zod 스키마
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/schemas.ts`, `apps/web/src/api/mfa.ts`, `apps/web/src/api/mfa.test.ts`]
+- depends-on: []
+
+**RED**: `apps/web/src/api/mfa.test.ts`
+- `setupMfa()` → `POST /api/v1/auth/mfa/totp/setup`, 응답 `{otpauth_uri, qr_png_data_uri, secret_base32}` Zod parse.
+- `getMfaStatus()` → `GET /api/v1/auth/mfa/totp` → `{enabled}`.
+- `enableMfa(code)` → `POST .../enable {code}` → 204(본문 없음).
+- `disableMfa(code)` → `DELETE .../totp {code}` → 204.
+- `verifyMfa(token, code)` → `POST /api/v1/auth/mfa/verify {mfa_challenge_token, code}` → TokenResponse.
+- login 응답 union: `mfa_required` 분기 스키마 parse 테스트(TokenResponse vs MfaRequiredResponse).
+- MSW로 응답 mock. 실패 메시지(예상): `mfa.ts`/스키마 없음.
+
+**GREEN**:
+- `schemas.ts`에 `MfaSetupResponseSchema`, `MfaStatusResponseSchema`, `MfaRequiredResponseSchema`(snake_case 필드 그대로), `LoginOrMfaResponseSchema`(discriminated union, `mfa_required` 유무로 분기).
+- `mfa.ts`에 5개 함수 — 기존 `apiPost`/`apiGet`/`apiFetch`(client.ts) 재사용. enable/disable는 204라 Zod parse 없이 ok 처리.
+
+**REFACTOR**: 에러 코드 문자열 상수화(`invalid_code` 등), 함수 JSDoc.
+
+**검증**: `pnpm test src/api/mfa`, `pnpm typecheck`
+
+---
+
+### Task 2. i18n mfaStrings + 에러 코드 매핑
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/i18n/ko.ts`, `apps/web/src/i18n/ko.test.ts`(있으면 수정, 없으면 미생성)]
+- depends-on: []
+
+**RED**: `mfaStrings` 키(설정 제목/설명, 활성화·비활성화 버튼, QR 안내, 코드 라벨, 로그인 2단계 안내 등) 존재 + `mfaErrorMessage(code)`가 6종 코드(`invalid_code`/`too_many_attempts`/`no_pending_setup`/`already_enabled`/`not_enabled` + fallback)를 한국어로 매핑하는 테스트.
+
+**GREEN**: `mfaStrings` 객체 + `mfaErrorMessage` 매핑 함수(원인 과노출 금지, 일반 메시지). `loginStrings`와 동일 패턴.
+
+**REFACTOR**: 메시지 톤 일관화(콜론 종결 금지 — 글로벌 §5).
+
+**검증**: `pnpm test src/i18n`(테스트 있을 때), `pnpm typecheck`
+
+---
+
+### Task 3. MFA 설정 화면(`/settings/mfa`) + 라우터/진입점 등록
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/auth/MfaSettings.tsx`, `apps/web/src/components/auth/MfaSettings.test.tsx`, `apps/web/src/routes/settings.mfa.tsx`, `apps/web/src/router.ts`, (설정 네비/메뉴 진입점 파일 — impl서 grep 확정)]
+- depends-on: [1, 2]
+
+**RED**: `MfaSettings.test.tsx`(vitest + testing-library, MSW)
+- 미활성(`enabled:false`) → "비활성화됨" + 활성화 버튼.
+- 활성화 클릭 → setup 호출 → QR `<img>`(alt 존재) + secret_base32 + 코드 입력 필드 노출.
+- 코드 입력 → enable → 성공 시 status refetch로 활성 상태 전환 + QR/secret 화면 정리.
+- 활성(`enabled:true`) → 비활성화 버튼 → step-up 코드 → disable → 비활성 전환.
+- 에러: enable 400 `invalid_code` → 인라인 에러(필드 유지), 429 → rate-limit 메시지.
+
+**GREEN**: `MfaSettings` 컴포넌트(useQuery status + useMutation setup/enable/disable, mutation 성공 후 invalidate/refetch — 메모리 mutation-setquerydata-partial-response-flicker 따라 invalidate-only). `settings.mfa.tsx`(Page + RouteAdapter, `settings.password.tsx` 레이아웃). `router.ts`에 `settingsMfaRoute`(requireAuth 가드, password/account-links 인근). 설정 진입점에 "2단계 인증" 링크.
+
+**REFACTOR**: QR/secret 표시를 하위 컴포넌트로 분리, 코드 입력 폼 공통화.
+
+**검증**: `pnpm test src/components/auth/MfaSettings`, `pnpm typecheck`
+
+---
+
+### Task 4. 로그인 2단계 분기(useLoginMutation union + LoginForm MFA step + verify)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/auth/useLoginMutation.ts`, `apps/web/src/auth/useLoginMutation.test.ts`, `apps/web/src/auth/LoginForm.tsx`, `apps/web/src/auth/LoginForm.test.tsx`]
+- depends-on: [1, 2]
+
+**RED**:
+- `useLoginMutation.test.ts` — login 200 `mfa_required` 응답을 **에러가 아니라** 2단계 진입 신호로 분기(parse 전 플래그 검사). 기존 `LOGIN_ERROR_MESSAGES.mfa_required` 에러 경로 제거에 따른 테스트 수정.
+- `LoginForm.test.tsx` — mfa_required 후 MFA 코드 입력 step 렌더(getByLabel 접근), 코드 입력 → verify 호출 → 성공 시 기존 성공 핸들러(세션 저장+whoami+navigate) 호출. verify 401 `invalid_code` → 인라인 에러(필드 유지). 반복 401/만료 → "다시 로그인" 복귀.
+- TOTP 미활성 사용자 기존 로그인 흐름 회귀 없음(기존 happy-path 테스트 유지).
+
+**GREEN**: `useLoginMutation`에 union 분기(`LoginOrMfaResponseSchema`). `LoginForm`에 `step: 'mfa'` 상태 + 챌린지 토큰 컴포넌트 메모리 보관(authStore 영속 금지 — NFR-1) + verify mutation + 성공 시 기존 onSuccess 경로 수렴.
+
+**REFACTOR**: MFA step UI를 작은 컴포넌트로, 에러 매핑은 T2 `mfaErrorMessage` 재사용.
+
+**검증**: `pnpm test src/auth/LoginForm src/auth/useLoginMutation`, `pnpm typecheck`
+
+---
+
+### Task 5. MSW MFA 핸들러 + fixture(stateful + E2E 토글)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/mocks/mfa-handlers.ts`, `apps/web/src/mocks/handlers.ts`, `apps/web/src/mocks/auth-handlers.ts`, `apps/web/src/mocks/auth-fixtures.ts`]
+- depends-on: [1]
+
+**RED**: `mfa-handlers` 동작 테스트(또는 MfaSettings/E2E에서 소비). 핸들러가 setup/status/enable/disable/verify 응답 + **stateful**(enable 성공 후 status `enabled:true`, disable 후 `false` — 브라우저 시드 가능 공유 store, 메모리 msw-derived-behavior-shared-store-e2e). 고정 유효코드 `123456` 성공/그 외 실패. login 핸들러가 localStorage 플래그(`__bts_e2e_mfa_enabled`)일 때 `mfa_required` 분기.
+
+**GREEN**: `mfa-handlers.ts`(공유 store + 핸들러), `handlers.ts`에 등록, `auth-handlers.ts` login에 mfa 분기 토글, `auth-fixtures.ts`에 플래그 키/시드 helper.
+
+**REFACTOR**: 코드 검증 helper 공통화, store 초기화(beforeEach) 정리.
+
+**검증**: `pnpm test`(MSW 의존 테스트 green), `pnpm typecheck`
+
+---
+
+### Task 6. E2E(Playwright) — 활성화/비활성화/로그인 2단계
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/mfa-settings.spec.ts`, `apps/web/e2e/mfa-login.spec.ts`]
+- depends-on: [3, 4, 5]
+
+**RED**: 시나리오 작성(처음엔 실패/미통과).
+- `mfa-settings.spec.ts` — 로그인(loginAsAlice 선례) → `/settings/mfa` → 활성화(QR 표시 확인 → 코드 `123456` 입력 → 활성 상태) → 비활성화(step-up 코드 → 비활성 상태).
+- `mfa-login.spec.ts` — `addInitScript`로 `__bts_e2e_mfa_enabled` 세팅 → 로그인 1단계 → MFA 코드 입력 화면 → `123456` → dashboard 도달. 실패 1종(잘못된 코드 → 인라인 에러).
+- getByRole/getByLabel 사용, 텍스트 중복 시 컨테이너 한정(메모리 playwright-getbyrole-exact-strict-mode).
+
+**GREEN**: 기존 구현/MSW로 통과. CSRF 쿠키 수동 시드·SPA 내부 이동 등 메모리 worktree-stale-base-rebase-and-e2e-msw-traps 준수.
+
+**REFACTOR**: 공통 step helper 추출(가능 시).
+
+**검증**: `pnpm test:e2e -- mfa-settings mfa-login`, 기존 E2E 회귀 0(`pnpm test:e2e`).
+
+## Plan 메타
+
+- task 수: 6
+- 예상 wave: 3 (Wave1 T1·T2 / Wave2 T3·T4·T5 / Wave3 T6)
+- TDD 강제: yes (프론트 vitest red→green, E2E 시나리오 red→green)
+- agent: frontend-engineer(T1~5) + qa-engineer(T6). security-engineer는 plan/codereview에서 인증 흐름 검토.
+- 추가 검증: typecheck, lint, vitest, playwright, `pnpm verify`
+- 파일 충돌: 없음(T3=components/routes/router, T4=src/auth, T5=src/mocks 분리). schemas.ts=T1만, ko.ts=T2만, router.ts=T3만, handlers.ts=T5만.
+
 ## 리뷰 결과 (← /bts-review-plan 채움)
