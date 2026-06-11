@@ -69,6 +69,6 @@ class BackupCodeGeneratorTest {
         val second = generator.generate().toSet()
 
         // SecureRandom 사용 시 두 호출의 전체 일치 확률은 무시 가능(엔트로피 ~50bit/코드).
-        assertThat(first).isNotEqualTo(second)
+        assertThat(first == second).isFalse()
     }
 }
