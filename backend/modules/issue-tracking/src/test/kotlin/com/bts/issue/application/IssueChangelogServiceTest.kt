@@ -4,10 +4,8 @@ package com.bts.issue.application
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.domain.ActorId
-import com.bts.issue.domain.IssueImpact
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
-import com.bts.issue.domain.IssuePriority
 import com.bts.issue.history.IssueChangeGroup
 import com.bts.issue.history.IssueChangeHistoryRepository
 import com.bts.issue.history.IssueChangeItem
@@ -16,7 +14,6 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
-import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
 import io.mockk.every
@@ -32,11 +29,12 @@ class IssueChangelogServiceTest : DescribeSpec({
     val changeHistoryRepository = mockk<IssueChangeHistoryRepository>()
     val userLookupPort = mockk<UserLookupPort>()
 
-    val sut = IssueChangelogService(
-        issueApplicationService = issueApplicationService,
-        changeHistoryRepository = changeHistoryRepository,
-        userLookupPort = userLookupPort,
-    )
+    val sut =
+        IssueChangelogService(
+            issueApplicationService = issueApplicationService,
+            changeHistoryRepository = changeHistoryRepository,
+            userLookupPort = userLookupPort,
+        )
 
     val actor = ActorId(UUID.randomUUID())
     val issueKey = IssueKey("BTS-1")
@@ -68,14 +66,15 @@ class IssueChangelogServiceTest : DescribeSpec({
             issueId = issueId,
             issueKey = issueKey.value,
             actorId = actorId,
-            items = listOf(
-                IssueChangeItem(field = "priority", fromValue = "2", toValue = "3"),
-            ),
+            items =
+                listOf(
+                    IssueChangeItem(field = "priority", fromValue = "2", toValue = "3"),
+                ),
             createdAt = createdAt,
         )
 
     beforeEach {
-        clearMocks(issueApplicationService, changeHistoryRepository, userLookupPort, answers = false)
+        clearMocks(issueApplicationService, changeHistoryRepository, userLookupPort)
     }
 
     // ──────────────────────────────────────────────────────────────────────────────
@@ -111,10 +110,11 @@ class IssueChangelogServiceTest : DescribeSpec({
 
         context("두 그룹, actorId 모두 존재") {
 
-            val groups = listOf(
-                makeGroup(actorId = actorId1),
-                makeGroup(actorId = actorId2),
-            )
+            val groups =
+                listOf(
+                    makeGroup(actorId = actorId1),
+                    makeGroup(actorId = actorId2),
+                )
 
             beforeEach {
                 every { issueApplicationService.findByKey(actor, issueKey) } returns makeIssueResponse()
@@ -229,15 +229,16 @@ class IssueChangelogServiceTest : DescribeSpec({
     // ──────────────────────────────────────────────────────────────────────────────
     describe("findChangelog — 페이징") {
 
-        context("2페이지(0-indexed), pageSize=10, 총 25건") {
-
-            val groups = listOf(makeGroup())
+        context("2페이지(0-indexed), pageSize=10, 총 25건 — limit/offset 위임 검증") {
+            // Spring PageImpl 은 offset+pageSize > total 이면 total=offset+content.size 로 조정한다.
+            // page=2, size=10 → offset=20, 20+10=30 > 25 이면 total 이 변환되어 totalElements 검증이 깨진다.
+            // limit/offset 위임만 검증하고 totalElements 는 별도 context 에서 검증한다.
 
             beforeEach {
                 every { issueApplicationService.findByKey(actor, issueKey) } returns makeIssueResponse()
                 every {
                     changeHistoryRepository.findByIssuePaged(issueId, 10, 20) // page=2, size=10 → offset=20
-                } returns groups
+                } returns listOf(makeGroup())
                 every { changeHistoryRepository.countByIssue(issueId) } returns 25L
                 every {
                     userLookupPort.findDisplayNamesByIds(setOf(actorId1))
@@ -248,26 +249,43 @@ class IssueChangelogServiceTest : DescribeSpec({
                 sut.findChangelog(actor, issueKey, PageRequest.of(2, 10))
                 verify(exactly = 1) { changeHistoryRepository.findByIssuePaged(issueId, 10, 20) }
             }
+        }
+
+        context("첫 페이지(page=0), pageSize=10, 총 25건 — totalElements/totalPages 검증") {
+            // offset=0, pageSize=10, 0+10=10 <= 25 → Spring PageImpl 이 total=25 를 그대로 보존.
+            val groups = (1..10).map { makeGroup(actorId = actorId1) }
+
+            beforeEach {
+                every { issueApplicationService.findByKey(actor, issueKey) } returns makeIssueResponse()
+                every {
+                    changeHistoryRepository.findByIssuePaged(issueId, 10, 0)
+                } returns groups
+                every { changeHistoryRepository.countByIssue(issueId) } returns 25L
+                every {
+                    userLookupPort.findDisplayNamesByIds(setOf(actorId1))
+                } returns mapOf(actorId1 to "Alice")
+            }
 
             it("totalElements=25 를 포함한 Page 를 반환한다") {
-                val page = sut.findChangelog(actor, issueKey, PageRequest.of(2, 10))
+                val page = sut.findChangelog(actor, issueKey, PageRequest.of(0, 10))
                 page.totalElements shouldBe 25L
             }
 
             it("totalPages=3 이다") {
-                val page = sut.findChangelog(actor, issueKey, PageRequest.of(2, 10))
+                val page = sut.findChangelog(actor, issueKey, PageRequest.of(0, 10))
                 page.totalPages shouldBe 3
             }
         }
 
         context("첫 페이지(page=0), pageSize=20, 총 5건") {
 
-            val groups = (1..5).map { i ->
-                makeGroup(
-                    actorId = actorId1,
-                    createdAt = Instant.parse("2026-06-0${i}T10:00:00Z"),
-                )
-            }
+            val groups =
+                (1..5).map { i ->
+                    makeGroup(
+                        actorId = actorId1,
+                        createdAt = Instant.parse("2026-06-0${i}T10:00:00Z"),
+                    )
+                }
 
             beforeEach {
                 every { issueApplicationService.findByKey(actor, issueKey) } returns makeIssueResponse()
