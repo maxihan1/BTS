@@ -1,6 +1,6 @@
-// TOTP MFA MSW 핸들러 — stateful store 기반 setup/status/enable/disable/verify (FR-MF-01)
+// TOTP MFA MSW 핸들러 — stateful store 기반 setup/status/enable/disable/verify/backup-codes (FR-MF-01/02)
 import { http, HttpResponse } from 'msw'
-import { mfaStore, MFA_VALID_CODE } from './auth-fixtures'
+import { mfaStore, MFA_VALID_CODE, MFA_VALID_BACKUP_CODE } from './auth-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 헬퍼 — CSRF 검사
@@ -125,21 +125,83 @@ const disableHandler = http.delete('/api/v1/auth/mfa/totp', async ({ request }) 
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * MFA 챌린지 검증 — 유효코드 확인 후 정식 access_token 반환.
+ * MFA 챌린지 검증 — method 분기 지원.
+ * - method:"backup_code" → MFA_VALID_BACKUP_CODE 비교 + 소진 시 remaining 차감.
+ * - method:"totp" 또는 생략 → 기존 MFA_VALID_CODE(TOTP) 비교.
  * CSRF 헤더 불요 (permitAll 경로, 챌린지 토큰이 인증 증명).
  * mfa_challenge_token 값 자체는 mock에서 검증하지 않는다 (단명 JWT 서명 불필요).
  */
 const verifyHandler = http.post('/api/v1/auth/mfa/verify', async ({ request }) => {
-  const body = await request.json() as { mfa_challenge_token?: unknown; code?: unknown }
+  const body = await request.json() as {
+    mfa_challenge_token?: unknown
+    code?: unknown
+    method?: unknown
+  }
 
-  if (!isValidCode(body.code)) {
-    return HttpResponse.json({ error: 'invalid_code' }, { status: 401 })
+  const method = body.method === 'backup_code' ? 'backup_code' : 'totp'
+
+  if (method === 'backup_code') {
+    if (body.code !== MFA_VALID_BACKUP_CODE) {
+      return HttpResponse.json({ error: 'invalid_code' }, { status: 401 })
+    }
+    mfaStore.backupCodesRemaining = Math.max(0, mfaStore.backupCodesRemaining - 1)
+  } else {
+    if (!isValidCode(body.code)) {
+      return HttpResponse.json({ error: 'invalid_code' }, { status: 401 })
+    }
   }
 
   return HttpResponse.json({
     access_token: 'mock-access-token-alice',
     token_type: 'Bearer',
     expires_in: 900,
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/auth/mfa/backup-codes (생성)
+// CSRF 필수. TOTP 미활성 → 409. 성공 → 10개 더미 코드 반환 + store 갱신.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 백업코드 더미 10개 생성 — xxxxx-xxxxx 형식 고정 (mock 전용). */
+function generateBackupCodes(): string[] {
+  return Array.from({ length: 10 }, (_, i) => {
+    const idx = String(i).padStart(5, '0')
+    return `${idx}a-${idx}b`
+  })
+}
+
+/**
+ * 백업코드 생성 — 10개 더미 코드를 반환하고 store를 갱신한다.
+ * TOTP 활성화 상태에서만 허용 (비활성이면 409 totp_not_active).
+ */
+const backupCodesGenerateHandler = http.post('/api/v1/auth/mfa/backup-codes', ({ request }) => {
+  if (!checkCsrf(request)) return csrfMissingResponse()
+
+  if (!mfaStore.enabled) {
+    return HttpResponse.json({ error: 'totp_not_active' }, { status: 409 })
+  }
+
+  const codes = generateBackupCodes()
+  mfaStore.backupCodesGenerated = true
+  mfaStore.backupCodesRemaining = codes.length
+
+  return HttpResponse.json({ codes })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/auth/mfa/backup-codes (상태 조회)
+// CSRF 불요 (읽기 전용). 현재 store 상태 반환.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 백업코드 상태 조회 — { generated, remaining } 반환.
+ * CSRF 헤더 불요 (GET 읽기 전용).
+ */
+const backupCodesStatusHandler = http.get('/api/v1/auth/mfa/backup-codes', () => {
+  return HttpResponse.json({
+    generated: mfaStore.backupCodesGenerated,
+    remaining: mfaStore.backupCodesRemaining,
   })
 })
 
@@ -153,4 +215,6 @@ export const mfaHandlers = [
   enableHandler,
   disableHandler,
   verifyHandler,
+  backupCodesGenerateHandler,
+  backupCodesStatusHandler,
 ]
