@@ -4,14 +4,29 @@
 package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
+import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
+import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.IssueChangelogService
+import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.history.IssueChangeHistoryRepository
 import com.bts.issue.history.JdbcIssueChangeHistoryRepository
+import com.bts.issue.pdf.IssuePdfRenderer
+import com.bts.issue.pdf.IssuePdfTemplate
+import com.bts.issue.repository.IssueRepository
+import com.bts.issue.resolution.repository.ResolutionRepository
+import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.user.UserLookupPort
+import com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter
+import com.bts.workflow.scheme.adapter.inbound.WorkflowKeyResolverImpl
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.mockk.mockk
 import org.flywaydb.core.Flyway
+import org.jooq.DSLContext
+import org.jooq.SQLDialect
+import org.jooq.impl.DSL
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
@@ -21,8 +36,12 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.context.annotation.Primary
+import org.springframework.context.annotation.Profile
+import org.springframework.data.web.config.EnableSpringDataWebSupport
+import org.springframework.http.converter.HttpMessageConverter
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
@@ -36,15 +55,23 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.annotation.EnableTransactionManagement
 import org.springframework.web.context.WebApplicationContext
+import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import java.sql.DriverManager
+import java.time.Clock
 import java.util.UUID
 
 /**
  * GET /api/v1/issues/{key}/changelog HTTP 통합 테스트.
  *
- * 실제 Testcontainers PostgreSQL + [TestConfig] 전체 스택 위에서 검증한다.
- * [TestConfig] 를 재사용하고, [ChangelogControllerConfig] 로 changelog 전용 빈을 추가 wire 한다.
+ * 실제 Testcontainers PostgreSQL + 전용 [ChangelogTestConfig] 전체 스택 위에서 검증한다.
+ * [TestConfig] 의 singleton Testcontainers postgres 를 재사용하되,
+ * Spring 컨텍스트는 [ChangelogTestConfig] 에서 독자적으로 구성한다.
+ * 이유: TestConfig 와 동일 컨텍스트에서 IssueController 빈 2개를 등록하면
+ * Spring MVC URL 매핑 충돌이 발생하므로 독립 컨텍스트로 분리한다.
  *
  * ## 검증 시나리오
  * - S1. 이슈 + 변경 그룹 2건 삽입 → 200 + content 2건 + items 포함
@@ -54,52 +81,133 @@ import java.util.UUID
  * - S5. 페이지 경계 — size=1 로 요청 시 totalPages > 1
  *
  * ## 인증 패턴
- * [TestConfig] 의 AlwaysAllowIssuePermissionResolver 로 권한을 일괄 허용한 뒤,
+ * [ChangelogTestConfig] 의 AlwaysAllowIssuePermissionResolver 로 권한을 일괄 허용한 뒤,
  * S4 에서는 소프트 삭제(deleted_at 셋)로 404 를 유발한다.
- *
- * @see TestConfig 공유 Spring 컨텍스트 (Testcontainers singleton + MockMvc + 두 BC wire)
  */
 @ExtendWith(SpringExtension::class)
-@ContextConfiguration(
-    classes = [
-        TestConfig::class,
-        IssueChangelogControllerIntegrationTest.ChangelogControllerConfig::class,
-    ],
-)
+@ContextConfiguration(classes = [IssueChangelogControllerIntegrationTest.ChangelogTestConfig::class])
 @WebAppConfiguration
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueChangelogControllerIntegrationTest {
     /**
-     * changelog 전용 빈 추가 구성.
+     * changelog 전용 Spring 컨텍스트.
      *
-     * [TestConfig] 가 historyRecorder=mockk(relaxed=true) 로 등록하므로
-     * JdbcIssueChangeHistoryRepository 는 별도로 wire 한다.
-     * IssueController 에 changelogService 를 주입하기 위해 @Primary 로 교체한다.
+     * TestConfig 의 postgres singleton 을 재사용하여 별도 컨테이너 기동 없이 동일 DB 위에서 동작한다.
+     * IssueController 를 changelogService 포함 버전으로 단일 등록한다.
+     *
+     * LongParameterList: TestConfiguration Bean 메서드는 분리 불가한 단일 구성 단위이므로 Suppress 처리.
      */
     @Configuration
-    open class ChangelogControllerConfig {
+    @EnableWebMvc
+    @EnableSpringDataWebSupport
+    @EnableTransactionManagement(proxyTargetClass = true)
+    @Suppress("LongParameterList")
+    open class ChangelogTestConfig : WebMvcConfigurer {
         @Bean
-        open fun changelogNamedParameterJdbcTemplate(dataSource: DriverManagerDataSource): NamedParameterJdbcTemplate =
+        open fun dataSource(): DriverManagerDataSource =
+            DriverManagerDataSource(
+                TestConfig.postgres.jdbcUrl,
+                TestConfig.postgres.username,
+                TestConfig.postgres.password,
+            )
+
+        @Bean
+        open fun transactionManager(dataSource: DriverManagerDataSource): PlatformTransactionManager =
+            DataSourceTransactionManager(dataSource)
+
+        @Bean
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext = DSL.using(dataSource, SQLDialect.POSTGRES)
+
+        @Bean
+        open fun objectMapper(): ObjectMapper =
+            ObjectMapper()
+                .registerKotlinModule()
+                .registerModule(JavaTimeModule())
+
+        /**
+         * @EnableWebMvc 기본 Jackson 컨버터는 Instant 를 epoch timestamp 로 직렬화한다.
+         * 기존 컨버터를 교체하지 않고(= Spring 의 ProblemDetail 믹스인·errorCode 직렬화 보존)
+         * 매퍼 설정만 보강해 Instant(createdAt) 가 ISO-8601 로 나오게 한다.
+         * Spring Boot 의 기본 Jackson 설정과 동등 — prod 직렬화 형식을 통합테스트가 검증한다(ReleaseNotesIntegrationTest 선례).
+         */
+        override fun extendMessageConverters(converters: MutableList<HttpMessageConverter<*>>) {
+            converters.filterIsInstance<MappingJackson2HttpMessageConverter>().forEach { converter ->
+                converter.objectMapper
+                    .registerModule(JavaTimeModule())
+                    .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            }
+        }
+
+        @Bean
+        open fun namedParameterJdbcTemplate(dataSource: DriverManagerDataSource): NamedParameterJdbcTemplate =
             NamedParameterJdbcTemplate(dataSource)
 
-        @Bean
-        open fun changelogIssueChangeHistoryRepository(
-            jdbc: NamedParameterJdbcTemplate,
-        ): IssueChangeHistoryRepository = JdbcIssueChangeHistoryRepository(jdbc)
+        // ── issue-tracking 빈 ──────────────────────────────────────────────────
 
         @Bean
-        open fun changelogUserLookupPort(): UserLookupPort =
+        open fun issueRepository(dsl: DSLContext): IssueRepository = IssueRepository(dsl)
+
+        @Bean
+        open fun issueTypeRepository(dsl: DSLContext): IssueTypeRepository = IssueTypeRepository(dsl)
+
+        @Bean
+        open fun resolutionRepository(dsl: DSLContext): ResolutionRepository = ResolutionRepository(dsl)
+
+        @Bean
+        open fun issueEventPublisher(
+            dsl: DSLContext,
+            objectMapper: ObjectMapper,
+        ): IssueEventPublisher = IssueEventPublisher(dsl, objectMapper)
+
+        @Bean
+        @Profile("test")
+        open fun alwaysAllowIssuePermissionResolver() = AlwaysAllowIssuePermissionResolver()
+
+        @Bean
+        open fun issueChangeHistoryRepository(jdbc: NamedParameterJdbcTemplate): IssueChangeHistoryRepository =
+            JdbcIssueChangeHistoryRepository(jdbc)
+
+        @Bean
+        open fun clock(): Clock = Clock.systemUTC()
+
+        @Bean
+        open fun userLookupPort(): UserLookupPort =
             object : UserLookupPort {
                 override fun exists(userId: UUID): Boolean = true
 
-                override fun findDisplayNamesByIds(ids: Set<UUID>): Map<UUID, String> =
-                    ids.associateWith { "테스터" }
+                override fun findDisplayNamesByIds(ids: Set<UUID>): Map<UUID, String> = ids.associateWith { "테스터" }
             }
 
         @Bean
+        open fun issueApplicationService(
+            repo: IssueRepository,
+            issueTypeRepository: IssueTypeRepository,
+            resolutionRepository: ResolutionRepository,
+            eventPublisher: IssueEventPublisher,
+            permissionResolver: AlwaysAllowIssuePermissionResolver,
+            userLookupPort: UserLookupPort,
+            clock: Clock,
+        ): IssueApplicationService =
+            IssueApplicationService(
+                repo = repo,
+                issueTypeRepository = issueTypeRepository,
+                resolutionRepository = resolutionRepository,
+                eventPublisher = eventPublisher,
+                permissionResolver = permissionResolver,
+                workflowPort = mockk<WorkflowTransitionAdapter>(relaxed = true),
+                workflowKeyResolver = mockk<WorkflowKeyResolverImpl>(relaxed = true),
+                userLookupPort = userLookupPort,
+                componentRepository = mockk(relaxed = true),
+                projectLeadRepository = mockk(relaxed = true),
+                versionRepository = mockk(relaxed = true),
+                clock = clock,
+                historyRecorder = mockk(relaxed = true),
+            )
+
+        @Bean
         open fun issueChangelogService(
-            issueApplicationService: com.bts.issue.application.IssueApplicationService,
+            issueApplicationService: IssueApplicationService,
             historyRepository: IssueChangeHistoryRepository,
             userLookupPort: UserLookupPort,
         ): IssueChangelogService =
@@ -109,20 +217,21 @@ class IssueChangelogControllerIntegrationTest {
                 userLookupPort = userLookupPort,
             )
 
-        /**
-         * IssueController 를 changelogService 포함 버전으로 교체한다.
-         *
-         * TestConfig 의 issueController 빈보다 @Primary 로 우선 적용한다.
-         * changelog 엔드포인트는 changelogService 가 non-null 이어야 동작하므로
-         * 실 서비스를 주입한다.
-         */
         @Bean
-        @Primary
-        open fun issueControllerWithChangelog(
-            service: com.bts.issue.application.IssueApplicationService,
-            pdfRenderer: com.bts.issue.pdf.IssuePdfRenderer,
+        open fun issuePdfTemplate(): IssuePdfTemplate = IssuePdfTemplate()
+
+        @Bean
+        open fun issuePdfRenderer(template: IssuePdfTemplate): IssuePdfRenderer = IssuePdfRenderer(template)
+
+        @Bean
+        open fun issueController(
+            service: IssueApplicationService,
+            pdfRenderer: IssuePdfRenderer,
             changelogService: IssueChangelogService,
         ): IssueController = IssueController(service, pdfRenderer, changelogService)
+
+        @Bean
+        open fun issueExceptionHandler(): IssueExceptionHandler = IssueExceptionHandler()
     }
 
     @Autowired
