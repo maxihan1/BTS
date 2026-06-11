@@ -1,4 +1,4 @@
-// AuthAuditLogService 단위 테스트 — 16종 enum + record/findRecent 계약 검증 (FR-09-31 + FR-PM-01 + FR-MF-01)
+// AuthAuditLogService 단위 테스트 — 18종 enum + record/findRecent 계약 검증 (FR-09-31 + FR-PM-01 + FR-MF-01 + FR-MF-02)
 
 package com.atlas.bts.identity.audit
 
@@ -16,10 +16,10 @@ class AuthAuditLogServiceTest {
         service = InMemoryAuthAuditLogService()
     }
 
-    // ── AuthEventType 16종 enum 망라 ──────────────────────────────
+    // ── AuthEventType 18종 enum 망라 ──────────────────────────────
 
     @Test
-    fun `AuthEventType 은 16종을 정확히 포함한다`() {
+    fun `AuthEventType 은 18종을 정확히 포함한다`() {
         val expected = setOf(
             "LOGIN_SUCCESS",
             "LOGIN_FAILURE",
@@ -38,6 +38,9 @@ class AuthAuditLogServiceTest {
             "MFA_CHALLENGE_SUCCESS",
             "MFA_CHALLENGE_FAILURE",
             "MFA_DISABLED",
+            // FR-MF-02 — 백업 코드 이벤트 2종
+            "MFA_BACKUP_CODES_GENERATED",
+            "MFA_BACKUP_CODE_USED",
         )
         val actual = AuthEventType.entries.map { it.name }.toSet()
         assertThat(actual).isEqualTo(expected)
@@ -104,7 +107,7 @@ class AuthAuditLogServiceTest {
     // ── 각 EventType 별 record 가능 확인 ────────────────────────
 
     @Test
-    fun `모든 16종 EventType 을 record 할 수 있다`() {
+    fun `모든 18종 EventType 을 record 할 수 있다`() {
         val userId = UUID.randomUUID()
 
         AuthEventType.entries.forEach { eventType ->
@@ -119,7 +122,7 @@ class AuthAuditLogServiceTest {
         }
 
         val logs = service.findRecent(userId, limit = 20)
-        assertThat(logs).hasSize(16)
+        assertThat(logs).hasSize(18)
         val recordedTypes = logs.map { it.eventType }.toSet()
         assertThat(recordedTypes).isEqualTo(AuthEventType.entries.toSet())
     }
