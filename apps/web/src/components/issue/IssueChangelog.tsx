@@ -51,7 +51,9 @@ function normalizeItem(item: ChangeItem): LabelsChangeItem {
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface ChangeItemRowProps {
+  /** 변경 항목 데이터 */
   readonly item: ChangeItem
+  /** 값 표시명 해석용 참조 데이터 */
   readonly refs: ChangelogRefs
 }
 
@@ -60,7 +62,7 @@ interface ChangeItemRowProps {
  * lifecycle 필드는 "이슈를 생성/삭제했습니다"로 특수 렌더하고,
  * 나머지는 "필드명: from → to" 형태로 표시한다.
  */
-function ChangeItemRow({ item, refs }: ChangeItemRowProps): JSX.Element {
+export function ChangeItemRow({ item, refs }: ChangeItemRowProps): JSX.Element {
   const normalized = normalizeItem(item)
   const fieldLabel = resolveFieldLabel(normalized.field, refs)
 
@@ -95,7 +97,9 @@ function ChangeItemRow({ item, refs }: ChangeItemRowProps): JSX.Element {
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface ChangeGroupRowProps {
+  /** 변경 그룹 데이터 */
   readonly group: ChangeGroup
+  /** 값 표시명 해석용 참조 데이터 */
   readonly refs: ChangelogRefs
 }
 
@@ -104,7 +108,7 @@ interface ChangeGroupRowProps {
  * "actorName · 상대시각" 헤더 + 그룹 내 변경 항목 목록을 표시한다.
  * actorName=null이면 "시스템"을 표시한다.
  */
-function ChangeGroupRow({ group, refs }: ChangeGroupRowProps): JSX.Element {
+export function ChangeGroupRow({ group, refs }: ChangeGroupRowProps): JSX.Element {
   const actorDisplay = group.actorName ?? issueDetailStrings.changelogSystemActor
   const timeDisplay = formatDateTime(group.createdAt)
   const groupLabel = `${actorDisplay} · ${timeDisplay}`
@@ -116,13 +120,20 @@ function ChangeGroupRow({ group, refs }: ChangeGroupRowProps): JSX.Element {
       className="border-l-2 border-border pl-4 py-2"
     >
       <p className="text-xs text-muted-foreground mb-1 font-medium">
-        {actorDisplay}
+        <span>{actorDisplay}</span>
         <span className="mx-1" aria-hidden="true">·</span>
         <time dateTime={group.createdAt}>{timeDisplay}</time>
       </p>
-      <ul className="space-y-0.5">
+      <ul
+        aria-label={`${actorDisplay}의 변경 항목`}
+        className="space-y-0.5"
+      >
         {group.items.map((item, idx) => (
-          <ChangeItemRow key={`${item.field}-${idx}`} item={item} refs={refs} />
+          <ChangeItemRow
+            key={`${item.field}-${idx}`}
+            item={item}
+            refs={refs}
+          />
         ))}
       </ul>
     </div>
@@ -135,6 +146,7 @@ function ChangeGroupRow({ group, refs }: ChangeGroupRowProps): JSX.Element {
 
 /**
  * 변경 이력 로딩 중 스켈레톤 UI.
+ * role=status으로 스크린 리더에 로딩 상태를 알린다.
  */
 function ChangelogSkeleton(): JSX.Element {
   return (
@@ -154,106 +166,52 @@ function ChangelogSkeleton(): JSX.Element {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ChangelogContent — 페이지 데이터를 받아 목록+더보기 렌더
+// ChangelogPage — 단일 페이지 fetch + 렌더
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface ChangelogContentProps {
+interface ChangelogPageProps {
+  /** 이슈 식별 키 */
   readonly issueKey: string
+  /** 값 표시명 해석용 참조 데이터 */
   readonly refs: ChangelogRefs
-}
-
-/**
- * 변경 이력 목록 + "더 보기" 누적 렌더.
- * page 0부터 시작해 "더 보기" 클릭마다 다음 페이지를 추가 fetch하고 누적 표시한다.
- */
-function ChangelogContent({ issueKey, refs }: ChangelogContentProps): JSX.Element {
-  // 현재까지 로드한 최대 페이지 번호 (0-base)
-  const [maxPage, setMaxPage] = useState(0)
-
-  // 페이지별 결과를 개별 훅으로 조회한다. "더 보기" 시 maxPage를 증가시켜 새 훅을 마운트한다.
-  const pages = Array.from({ length: maxPage + 1 }, (_, i) => i)
-
-  return (
-    <ChangelogPages
-      issueKey={issueKey}
-      refs={refs}
-      pages={pages}
-      onLoadMore={() => setMaxPage((prev) => prev + 1)}
-    />
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ChangelogPages — 여러 페이지를 순서대로 렌더
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface ChangelogPagesProps {
-  readonly issueKey: string
-  readonly refs: ChangelogRefs
-  readonly pages: number[]
-  readonly onLoadMore: () => void
-}
-
-/**
- * pages 배열에 해당하는 각 페이지 데이터를 useIssueChangelog로 fetch하고 순서대로 누적 렌더한다.
- * 마지막 페이지가 `last=true`이면 "더 보기" 버튼을 숨긴다.
- */
-function ChangelogPages({
-  issueKey,
-  refs,
-  pages,
-  onLoadMore,
-}: ChangelogPagesProps): JSX.Element {
-  return (
-    <>
-      {pages.map((page) => (
-        <ChangelogPageSection
-          key={page}
-          issueKey={issueKey}
-          refs={refs}
-          page={page}
-          isLastRequested={page === pages[pages.length - 1]}
-          onLoadMore={onLoadMore}
-        />
-      ))}
-    </>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ChangelogPageSection — 단일 페이지 fetch + 렌더
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface ChangelogPageSectionProps {
-  readonly issueKey: string
-  readonly refs: ChangelogRefs
+  /** 0-base 페이지 번호 */
   readonly page: number
-  /** 현재 컴포넌트가 마지막으로 요청된 페이지인지 여부 — "더 보기" 버튼 표시 결정에 사용 */
+  /**
+   * 현재 컴포넌트가 마지막으로 요청된 페이지인지 여부.
+   * true + data.last=false 조합에서 "더 보기" 버튼을 표시한다.
+   */
   readonly isLastRequested: boolean
+  /** "더 보기" 클릭 핸들러 */
   readonly onLoadMore: () => void
 }
 
 /**
- * 단일 페이지를 fetch하고 그룹 목록을 렌더한다.
- * isLastRequested=true이고 last=false이면 "더 보기" 버튼을 표시한다.
- * 첫 페이지에서 에러/빈 상태를 처리한다 (이후 페이지는 부분 에러이므로 조용히 처리).
+ * 단일 페이지 변경 이력을 fetch하고 ChangeGroupRow 목록을 렌더한다.
+ *
+ * - 첫 페이지(page=0)에서 로딩/에러/빈 상태를 처리한다.
+ * - isLastRequested=true이고 data.last=false이면 "더 보기" 버튼을 표시한다.
  */
-function ChangelogPageSection({
+function ChangelogPage({
   issueKey,
   refs,
   page,
   isLastRequested,
   onLoadMore,
-}: ChangelogPageSectionProps): JSX.Element {
+}: ChangelogPageProps): JSX.Element {
   const { data, isLoading, isError } = useIssueChangelog(issueKey, page)
 
   if (isLoading) {
-    // 첫 페이지만 스켈레톤 표시, 이후 페이지는 로딩 중 표시 최소화
-    return page === 0 ? <ChangelogSkeleton /> : (
-      <div role="status" aria-label={issueDetailStrings.changelogLoading} className="py-2">
-        <div className="h-3 w-32 rounded bg-muted animate-pulse" />
-      </div>
-    )
+    return page === 0
+      ? <ChangelogSkeleton />
+      : (
+        <div
+          role="status"
+          aria-label={issueDetailStrings.changelogLoading}
+          className="py-2"
+        >
+          <div className="h-3 w-32 rounded bg-muted animate-pulse" />
+        </div>
+      )
   }
 
   if (isError || data === undefined) {
@@ -264,6 +222,7 @@ function ChangelogPageSection({
         </div>
       )
     }
+    // 이후 페이지 에러는 빈 렌더 (이전 페이지 데이터는 유지)
     return <></>
   }
 
@@ -303,7 +262,7 @@ function ChangelogPageSection({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// IssueChangelog — 공개 컴포넌트 (섹션 래퍼 + 접기/펼치기)
+// IssueChangelog — 공개 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -319,6 +278,9 @@ function ChangelogPageSection({
  */
 export function IssueChangelog({ issueKey, refs }: IssueChangelogProps): JSX.Element {
   const [isOpen, setIsOpen] = useState(true)
+  // 현재까지 로드한 최대 페이지 번호 (0-base). "더 보기" 클릭마다 1씩 증가.
+  const [maxPage, setMaxPage] = useState(0)
+  const pages = Array.from({ length: maxPage + 1 }, (_, i) => i)
 
   return (
     <section
@@ -330,6 +292,7 @@ export function IssueChangelog({ issueKey, refs }: IssueChangelogProps): JSX.Ele
         type="button"
         className="flex items-center gap-2 w-full text-left mb-3"
         aria-expanded={isOpen}
+        aria-controls="changelog-content"
         onClick={() => setIsOpen((prev) => !prev)}
       >
         <h2 className="text-base font-semibold">
@@ -341,8 +304,17 @@ export function IssueChangelog({ issueKey, refs }: IssueChangelogProps): JSX.Ele
       </button>
 
       {isOpen && (
-        <div className="space-y-2">
-          <ChangelogContent issueKey={issueKey} refs={refs} />
+        <div id="changelog-content" className="space-y-2">
+          {pages.map((page) => (
+            <ChangelogPage
+              key={page}
+              issueKey={issueKey}
+              refs={refs}
+              page={page}
+              isLastRequested={page === pages[pages.length - 1]}
+              onLoadMore={() => setMaxPage((prev) => prev + 1)}
+            />
+          ))}
         </div>
       )}
     </section>
