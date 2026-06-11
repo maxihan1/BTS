@@ -56,7 +56,7 @@
 ## 비기능 요구사항 (NFR)
 
 - **NFR-1 (보안)**. 평문 코드 미저장(§1.1.1). 코드/해시 미로깅(§1.1.2). 검증 시 상수시간 비교 불필요(해시 매칭은 DB 인덱스 조회, 평문 비교 아님) — 단, 에러 응답은 `invalid_code` 일반화로 존재 비노출.
-- **NFR-2 (rate-limit)**. 백업 코드 검증에 `MfaAttemptLimiter` 재사용 — brute-force 차단. 차단 시 429 `too_many_attempts`.
+- **NFR-2 (rate-limit)**. 백업 코드 검증에 `MfaAttemptLimiter` 재사용 — brute-force 차단. 차단 시 429 `too_many_attempts`. **⚠️ 리뷰 C-2 (게이트 1 Maxi 결정 대기)**: limiter는 userId 단일 키라 TOTP 실패와 백업코드 실패가 같은 카운터(MAX 5/5분)에 누적된다. TOTP 5회 오답으로 잠기면 백업코드(분실 시 최후 수단)도 막히는 부작용 vs 공유가 보안상 보수적. 게이트 1에서 [공유 유지 / 별도 키 분리] 확정 후 반영.
 - **NFR-3 (동시성)**. 같은 코드 동시 제출 race는 atomic `UPDATE ... WHERE used_at IS NULL`로 1건만 성공(advisory-lock-bigint-toctou 교훈 — lock 밖 read-then-write 금지).
 - **NFR-4 (인증)**. 생성/조회/재생성은 JWT 전용. PAT 시 403 `session_management_requires_interactive_login` (MfaController 기존 패턴). `/mfa/verify`는 기존대로 permitAll(챌린지 토큰이 1단계 증명).
 - **NFR-5 (트랜잭션)**. 생성/재생성/소진은 단일 트랜잭션. 감사는 같은 트랜잭션에 묶음(MfaService 선례).
@@ -126,6 +126,8 @@ RETURNING id;   -- 1행이면 검증 성공+소진 완료, 0행이면 실패/이
 - **EC-9**. verify `method` 오타/미지원 값 → 400 `invalid_method` (또는 totp fallback 금지, 명시 거부 — fail-safe).
 - **EC-10**. 백업 코드 검증 성공 시 `MfaAttemptLimiter.reset` + `sessions.mfa_verified=true`(TOTP와 동일 세션 효과).
 - **EC-11 (갭-1)**. TOTP disable → `user_mfa_backup_codes` 전량 삭제(같은 트랜잭션). 이후 재-setup→enable 시 백업 코드는 0개(재생성 전까지 없음).
+- **EC-12 (리뷰 C-4)**. 백업 코드 오답 시 챌린지 토큰은 **이미 소비**된 상태(verify는 코드 검증 전 `consume`) → 사용자는 1단계(비밀번호)부터 재로그인. TOTP와 동일 fail-closed 동작이나, 백업코드는 10자라 오타 가능성이 높음을 UI(후속 PR)에서 안내. 백엔드는 401 `invalid_code`.
+- **EC-13 (리뷰 누락)**. TOTP ACTIVE가 아닌 사용자가 `method:"backup_code"`로 verify 시도 → 챌린지 토큰 자체가 TOTP ACTIVE에서만 발급되므로 도달 불가. 방어적으로 매칭 0 → 401 `invalid_code`(회귀 가드 테스트).
 
 ## 제약 조건
 
