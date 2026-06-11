@@ -68,9 +68,22 @@ mfaEnrollmentRequired    = mfaRequired(user) AND NOT mfaEnrolled(user)
 
 - [docs/decisions/2026-06-12-mfa-enforcement-policy.md](../decisions/2026-06-12-mfa-enforcement-policy.md) (이 PR에서 생성)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-12-fr-mf-04-mfa-require-2fa.md](../specs/2026-06-12-fr-mf-04-mfa-require-2fa.md)
+
+핵심 시나리오 3줄 요약.
+- 관리자/민감프로젝트 멤버가 MFA 미설정으로 로그인하면 access JWT 클레임 `mfa_enrollment_required=true` → 게이트가 MFA등록/whoami/logout/refresh 외 전부 403 차단.
+- MFA 활성화 후 `/auth/refresh`로 토큰 갱신하면 클레임 false → 게이트 해제 (등록→refresh 흐름).
+- require_2fa는 SYSTEM_ADMIN만 토글, issue-tracking projects 컬럼, SensitiveProjectResolver 포트로 cross-BC 평가.
+
+추가 결정 (Maxi 2026-06-12).
+- 게이트 평가 = JWT 클레임 + 짧은 TTL (매 요청 DB 0, require_2fa 변경은 다음 refresh까지 지연).
+- 토글 권한 = SYSTEM_ADMIN 전용.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration, gap 2건 발견 후 Maxi 결정 반영 — 게이트 평가 방식 + 토글 권한).
 
 ## Plan (← /bts-plan 채움)
 
