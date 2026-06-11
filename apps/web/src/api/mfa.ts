@@ -127,7 +127,12 @@ export async function disableMfa(code: string): Promise<void> {
  * `POST /api/v1/auth/mfa/verify { mfa_challenge_token, code }`
  * - permitAll + CSRF-ignore 경로이므로 X-XSRF-TOKEN 헤더를 포함하지 않는다.
  *   챌린지 토큰 자체가 인증 증명이다.
- * - apiPost 사용 (CSRF 자동 주입 없음 — client.ts 설계 참조).
+ * - apiFetch 대신 fetch 직접 사용 — apiFetch는 401 응답 시 /refresh를 자동 시도하는데,
+ *   로그인 MFA 2단계에서는 아직 세션이 없으므로 refresh 대상이 아니다. bypass하지 않으면
+ *   잘못된 코드(401 invalid_code) 입력 시 spurious /refresh → refresh 실패 → clearSession()
+ *   부수효과 + 에러가 generic으로 변질되어 "코드가 올바르지 않습니다." 메시지가 절대 안 뜬다.
+ *   (useLoginMutation.ts:79-81 동일 패턴 참조)
+ * - 성공 시 백엔드가 Set-Cookie refresh_token을 발급하므로 credentials:'include' 필수.
  *
  * @param challengeToken login 200 mfa_required 응답의 mfa_challenge_token
  * @param code Authenticator 앱의 6자리 TOTP 코드
@@ -136,9 +141,11 @@ export async function disableMfa(code: string): Promise<void> {
  * @throws ApiError(429) too_many_attempts
  */
 export async function verifyMfa(challengeToken: string, code: string): Promise<TokenResponse> {
-  const res = await apiFetch('/api/v1/auth/mfa/verify', {
+  const res = await fetch('/api/v1/auth/mfa/verify', {
     method: 'POST',
-    body: { mfa_challenge_token: challengeToken, code },
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mfa_challenge_token: challengeToken, code }),
   })
   if (!res.ok) {
     const errorBody: unknown = await res.json().catch(() => ({}))

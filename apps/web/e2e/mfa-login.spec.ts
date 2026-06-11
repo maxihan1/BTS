@@ -10,7 +10,7 @@
 // loginHandler가 정식 토큰 대신 mfa_required:true 응답을 반환한다.
 
 import { test, expect } from '@playwright/test'
-import { loginStrings, mfaStrings } from '../src/i18n/ko'
+import { loginStrings, mfaStrings, mfaErrorMessage } from '../src/i18n/ko'
 
 /** MFA E2E 토글 키 — src/mocks/auth-fixtures.ts MFA_E2E_ENABLED_KEY와 동일 (역방향 import 금지) */
 const MFA_E2E_ENABLED_KEY = '__bts_e2e_mfa_enabled'
@@ -113,8 +113,13 @@ test.describe('S4 MFA 잘못된 코드 → 인라인 에러 (FR-MF-01)', () => {
     await page.getByLabel(mfaStrings.loginCodeLabel, { exact: true }).fill('000000')
     await page.getByRole('button', { name: mfaStrings.loginVerifyButton, exact: true }).click()
 
-    // Then. 인라인 에러 메시지 표시 (role="alert")
-    await expect(page.getByRole('alert')).toBeVisible()
+    // Then. 인라인 에러 메시지 표시 (role="alert") + 정확한 텍스트 검증
+    // 텍스트 검증이 없으면 generic fallback 메시지("요청을 처리하지 못했습니다.")가 표시돼도 통과한다.
+    // verifyMfa가 apiFetch를 사용해 /refresh를 트리거하면 에러가 generic으로 변질되므로
+    // 이 검증이 회귀를 잡아낸다.
+    const alert = page.getByRole('alert')
+    await expect(alert).toBeVisible()
+    await expect(alert).toContainText(mfaErrorMessage('invalid_code'))
 
     // Then. 코드 입력 필드가 유지됨 (화면이 유지, /dashboard 미전환)
     await expect(page.getByLabel(mfaStrings.loginCodeLabel, { exact: true })).toBeVisible()
