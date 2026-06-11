@@ -86,6 +86,7 @@ class IssueFieldVisibilityTest : DescribeSpec({
             versionRepository = mockk(relaxed = true),
             clock = clock,
             fieldPermissionResolver = fieldPermissionResolver,
+            historyRecorder = io.mockk.mockk(relaxed = true),
         )
 
     /** description·environment·impact·assigneeId·labels·customField "secret" 이 모두 채워진 응답 픽스처. */
@@ -517,6 +518,7 @@ class IssueFieldVisibilityTest : DescribeSpec({
                 versionRepository = mockk(relaxed = true),
                 clock = clock,
                 // fieldPermissionResolver 미전달 — 기본값 사용
+                historyRecorder = io.mockk.mockk(relaxed = true),
             )
 
         it("기본값 fieldPermissionResolver 는 AlwaysAllowFieldPermissionResolver 인스턴스여야 한다(non-null, null-skip 금지)") {

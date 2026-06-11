@@ -354,13 +354,13 @@
 
 **우선순위**. 필수 | **선행**. §2.1.1 | **Plan slug**. `issue/history`
 
-- [ ] D1. 도메인 — IssueHistoryEntry (책임. backend-engineer)
-- [ ] D2. 명세 — 무엇을 기록하고 무엇을 기록 안 하는지 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `issue_history(field, old_value, new_value, changed_by)` (책임. db-engineer)
-- [ ] D4. 백엔드 — `IssueEventListener` (pgmq consumer) (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — (조회는 §5.1.2) (책임. frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — IssueChangeGroup/IssueChangeItem/IssueChangeDetector (책임. backend-engineer) — PR #115 (Jira식 변경 그룹+항목. ADR 2026-06-11-issue-change-history-model)
+- [x] D2. 명세 — 전 필드 + 생명주기 기록, no-op 이력0, 부분 라벨 박제 (책임. backend-engineer) — PR #115 (8개 변경 진입점. 값=원시ID, 라벨=변경 당시 표시명 박제. assignee/securityLevel은 cross-BC라 label=null, 조회는 FR-HS-02)
+- [x] D3. 데이터 모델 — `issue_change_group` + `issue_change_item`(field/from·to_value/from·to_label) 2테이블, append-only (책임. db-engineer) — PR #115 (**deviation**: 계획의 단일 `issue_history` → Jira식 2테이블. V018, FK는 item→group만(issues FK 없음=이력 보존), init_codegen 미러)
+- [x] D4. 백엔드 — 서비스 레이어 동기 기록 (IssueHistoryRecorder facade) (책임. backend-engineer) — PR #115 (**deviation**: 계획의 pgmq consumer → 이슈 변경과 **같은 트랜잭션** 동기 기록. recordChange private=self-invocation 회피, 자동배정 2차변경 캡처)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #115 (디텍터 22 + 라벨리졸버 18 + repository 5 + recorder + 서비스배선 + e2e 10 시나리오, 보안등급 단독변경 회귀 포함)
+- [x] D6. 프론트 UI — 해당 없음 (FR-HS-01은 기록 전용, 조회 UI는 §5.1.2 FR-HS-02 소관) (책임. —) — PR #115
+- [x] D7. E2E — 백엔드 e2e 통합테스트 (책임. backend-engineer) — PR #115 (IssueChangeHistoryE2EIntegrationTest: 다필드/no-op/소프트삭제 보존/라벨박제/트랜잭션/자동배정 2차변경. 프론트 없어 Playwright 해당없음)
 
 #### §5.1.2 FR-HS-02 — 히스토리 조회 UI
 

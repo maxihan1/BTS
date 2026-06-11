@@ -82,6 +82,7 @@ class IssueCustomFieldsTest : DescribeSpec({
             versionRepository = mockk(relaxed = true),
             customFieldDefinitionRepository = customFieldDefinitionRepository,
             clock = clock,
+            historyRecorder = io.mockk.mockk(relaxed = true),
         )
 
     val actor = ActorId(UUID.randomUUID())

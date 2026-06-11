@@ -82,6 +82,7 @@ class IssueFieldEditGateTest : DescribeSpec({
             versionRepository = mockk(relaxed = true),
             clock = clock,
             fieldPermissionResolver = fieldPermissionResolver,
+            historyRecorder = io.mockk.mockk(relaxed = true),
         )
 
     val actor = ActorId(UUID.randomUUID())
@@ -472,6 +473,7 @@ class IssueFieldEditGateTest : DescribeSpec({
                 versionRepository = mockk(relaxed = true),
                 clock = clock,
                 // fieldPermissionResolver 미전달 — 기본값 사용
+                historyRecorder = io.mockk.mockk(relaxed = true),
             )
 
         it("기본값 fieldPermissionResolver 는 AlwaysAllowFieldPermissionResolver 인스턴스여야 한다(non-null, null-skip 금지)") {

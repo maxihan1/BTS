@@ -451,3 +451,49 @@ COMMENT ON COLUMN issue_fix_versions.created_at IS '연결 생성 시각. TIMEST
 
 -- FK 인덱스 (DATA.md §7). version_id 만 추가(복합 PK 후미 컬럼).
 CREATE INDEX idx_issue_fix_versions_version_id ON issue_fix_versions(version_id);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V018: issue_change_group / issue_change_item 이슈 변경 이력 테이블 (FR-HS-01)
+-- 원본: db/migration/issue-tracking/V018__issue_change_history.sql
+-- 이 2테이블은 NamedParameterJdbcTemplate 접근(jOOQ 미사용)이지만, 프로젝트 동기화 규칙상 미러 필수.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- append-only — soft-delete/updated_at 없음. 이력 보존 우선으로 issues/users FK 미적용 (FR-AU-10 패턴).
+CREATE TABLE issue_change_group (
+    id          BIGINT       GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    issue_id    UUID         NOT NULL,
+    issue_key   VARCHAR(20)  NOT NULL,
+    actor_id    UUID         NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+COMMENT ON TABLE  issue_change_group            IS '이슈 변경 그룹(한 트랜잭션 단위). append-only — 수정/삭제 불가 (FR-HS-01, DATA.md §3).';
+COMMENT ON COLUMN issue_change_group.issue_id   IS '변경된 이슈 (issues.id 대응). 이력 보존 우선으로 FK 미적용 (FR-AU-10 패턴).';
+COMMENT ON COLUMN issue_change_group.issue_key  IS '기록 시점 이슈 키 (예: BTS-1). 이슈 이동 후에도 당시 키 보존.';
+COMMENT ON COLUMN issue_change_group.actor_id   IS '변경 주체 (users.id 대응). NULL=시스템 자동 변경. FK 미적용.';
+COMMENT ON COLUMN issue_change_group.created_at IS '변경 발생 시각. TIMESTAMPTZ (DATA.md §4).';
+
+CREATE INDEX idx_issue_change_group_issue ON issue_change_group (issue_id, created_at DESC, id DESC);
+
+-- FK 는 group_id → issue_change_group(id) 하나만. issues/users FK 없음 (이력 보존 우선).
+CREATE TABLE issue_change_item (
+    id          BIGINT       GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    group_id    BIGINT       NOT NULL REFERENCES issue_change_group(id),
+    field       VARCHAR(64)  NOT NULL,
+    from_value  TEXT         NULL,
+    to_value    TEXT         NULL,
+    from_label  TEXT         NULL,
+    to_label    TEXT         NULL
+);
+COMMENT ON TABLE  issue_change_item            IS '변경 그룹 내 개별 필드 변경 항목. append-only (FR-HS-01).';
+COMMENT ON COLUMN issue_change_item.group_id   IS '소속 변경 그룹 (issue_change_group.id). 같은 테이블군 내 실 FK 적용.';
+COMMENT ON COLUMN issue_change_item.field      IS '변경된 필드 식별자 (예: status, assignee). 64자 제한.';
+COMMENT ON COLUMN issue_change_item.from_value IS '변경 전 원시 값 (예: state key, user id). NULL=값 없음.';
+COMMENT ON COLUMN issue_change_item.to_value   IS '변경 후 원시 값. NULL=값 없음(필드 비움).';
+COMMENT ON COLUMN issue_change_item.from_label IS '변경 전 표시용 라벨 (사람이 읽는 값). NULL=라벨 없음.';
+COMMENT ON COLUMN issue_change_item.to_label   IS '변경 후 표시용 라벨. NULL=라벨 없음.';
+
+-- FK 인덱스 (DATA.md §7). 그룹→항목 조인용.
+CREATE INDEX idx_issue_change_item_group ON issue_change_item (group_id);
+
+-- 필드별 이력 필터 인덱스.
+CREATE INDEX idx_issue_change_item_field ON issue_change_item (field);

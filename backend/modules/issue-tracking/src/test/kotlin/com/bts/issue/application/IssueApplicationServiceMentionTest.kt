@@ -89,6 +89,7 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
             projectLeadRepository = mockk(relaxed = true),
             versionRepository = mockk(relaxed = true),
             clock = fixedClock,
+            historyRecorder = mockk(relaxed = true),
         )
 
     /**
@@ -184,6 +185,7 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
                     projectLeadRepository = mockk(relaxed = true),
                     versionRepository = mockk(relaxed = true),
                     clock = fixedClock,
+                    historyRecorder = mockk(relaxed = true),
                 )
 
             // 51개 멘션 본문 구성 — 기존 description null

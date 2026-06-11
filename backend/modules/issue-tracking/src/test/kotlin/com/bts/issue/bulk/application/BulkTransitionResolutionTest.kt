@@ -312,6 +312,7 @@ class BulkTransitionResolutionTest {
                 projectLeadRepository = mockk(relaxed = true),
                 versionRepository = mockk(relaxed = true),
                 clock = clock,
+                historyRecorder = io.mockk.mockk(relaxed = true),
             )
 
         // ── Bulk 빈 ──────────────────────────────────────────────────────────

@@ -323,6 +323,7 @@ class IssueMentionPublishIntegrationTest {
                 projectLeadRepository = mockk(relaxed = true),
                 versionRepository = mockk(relaxed = true),
                 clock = clock,
+                historyRecorder = mockk(relaxed = true),
             )
     }
 
