@@ -27,11 +27,13 @@ import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.event.IssueMentioned
 import com.bts.issue.event.IssueSoftDeleted
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.event.IssueUpdated
 import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
 import com.bts.issue.markdown.MarkdownRenderer
+import com.bts.issue.mention.MentionParser
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
@@ -362,6 +364,7 @@ class IssueApplicationService(
      * @throws IssueVersionConflictException 낙관락 충돌 시.
      * @throws IllegalArgumentException priority 가 1..5 범위 밖이거나 impact 가 1..3 범위 밖일 때.
      */
+    @Suppress("LongMethod", "ThrowsCount")
     fun updateIssue(
         actor: ActorId,
         key: IssueKey,
@@ -442,6 +445,9 @@ class IssueApplicationService(
                 occurredAt = Instant.now(clock),
             ),
         )
+        if ("description" in changedFields) {
+            publishMentions(key, existing, request, actor)
+        }
         log.info("issue_updated key={} fields={} actor={}", key.value, changedFields, actor.value)
         return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
     }
@@ -1063,6 +1069,83 @@ class IssueApplicationService(
     ): Boolean {
         if (requestValue == null) return false
         return existingValue != requestValue
+    }
+
+    /**
+     * description 변경 시 새로 추가된 멘션을 해석해 [IssueMentioned] 이벤트를 발행한다 (FR-MN-01).
+     *
+     * diff 기반 처리.
+     * - 기존 description 에 이미 있던 멘션은 신규가 아니므로 제외한다.
+     * - 자기 멘션(actor == 대상 userId) 은 제외한다. 알림 발행 시 자기 자신에게 알림을 보내지 않아야 하기 때문이다.
+     * - 미존재 username(findIdsByUsernames 에서 드롭된 username) 은 자동 제외된다.
+     * - 신규 멘션 username 집합이 [MAX_MENTIONS_PER_EVENT] 를 초과하면 알파벳 오름차순 앞부분만 취한다.
+     *   이유: IN 파라미터 비대 + 거대 payload 방지 (H1). 드롭된 수는 WARN 로그로 기록한다.
+     * - 남은 대상이 없으면 이벤트를 발행하지 않는다.
+     * - mentionedUserIds 는 UUID 오름차순 정렬로 결정적 직렬화를 보장한다 (IssueMentioned KDoc N3).
+     *
+     * 이 메서드는 호출자(updateIssue)의 클래스 레벨 @Transactional 트랜잭션 안에서 실행되므로
+     * [IssueEventPublisher](Propagation.MANDATORY) 가 정상 동작한다.
+     *
+     * @param key 멘션이 발생한 이슈 키.
+     * @param existing 변경 전 이슈 (description 이전 값 참조용).
+     * @param request 수정 요청 DTO (description 새 값 참조용).
+     * @param actor 멘션을 작성한 행위자.
+     */
+    private fun publishMentions(
+        key: IssueKey,
+        existing: Issue,
+        request: UpdateIssueRequest,
+        actor: ActorId,
+    ) {
+        val added = MentionParser.extract(request.description) - MentionParser.extract(existing.description)
+        if (added.isEmpty()) return
+
+        val capped = capMentions(added, key)
+        val resolved = userLookupPort.findIdsByUsernames(capped)
+        val targets = (resolved.values.toSet() - actor.value).sorted()
+        if (targets.isEmpty()) return
+
+        eventPublisher.publish(
+            IssueMentioned(
+                issueKey = key,
+                projectKey = key.projectPrefix,
+                mentionedUserIds = targets,
+                actorId = actor,
+                sourceField = "description",
+                occurredAt = Instant.now(clock),
+            ),
+        )
+    }
+
+    /**
+     * 신규 멘션 username 집합을 [MAX_MENTIONS_PER_EVENT] 이하로 제한한다 (H1).
+     *
+     * 초과 시 알파벳 오름차순 앞부분을 결정적으로 선택하고, 드롭된 수를 WARN 로그로 기록한다.
+     * DB IN 파라미터 비대 및 이벤트 payload 크기를 bound 하기 위한 보호 장치다.
+     *
+     * @param added 신규 멘션 username 집합.
+     * @param key 로그 컨텍스트용 이슈 키.
+     * @return 상한 이하로 잘린 username 집합.
+     */
+    private fun capMentions(
+        added: Set<String>,
+        key: IssueKey,
+    ): Set<String> {
+        if (added.size <= MAX_MENTIONS_PER_EVENT) return added
+        val dropped = added.size - MAX_MENTIONS_PER_EVENT
+        log.warn(
+            "mention_cap_exceeded key={} total={} cap={} dropped={}",
+            key.value,
+            added.size,
+            MAX_MENTIONS_PER_EVENT,
+            dropped,
+        )
+        return added.sorted().take(MAX_MENTIONS_PER_EVENT).toSet()
+    }
+
+    companion object {
+        /** 이벤트 1건당 최대 멘션 수. IN 파라미터 비대 및 payload 크기를 bound 한다 (H1). */
+        private const val MAX_MENTIONS_PER_EVENT = 50
     }
 
     /**

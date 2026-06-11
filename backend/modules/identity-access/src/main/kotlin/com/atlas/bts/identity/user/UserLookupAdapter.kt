@@ -1,4 +1,4 @@
-// UserLookupPort shared-kernel 구현체 — users 테이블 행 존재 여부를 JDBC 로 확인 (FR-IS-03 Task 3)
+// UserLookupPort shared-kernel 구현체 — users 테이블 행 존재 여부 확인 및 username 일괄 해석 (FR-IS-03 Task 3 / FR-MN-01 Task 3)
 
 package com.atlas.bts.identity.user
 
@@ -9,14 +9,15 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
- * [UserLookupPort] JDBC 구현체 (FR-IS-03 Task 3 / ADR 2026-06-01-issue-assignee-user-lookup-port).
+ * [UserLookupPort] JDBC 구현체 (FR-IS-03 Task 3 / FR-MN-01 Task 3 / ADR 2026-06-01-issue-assignee-user-lookup-port).
  *
- * users 테이블에서 `SELECT EXISTS` 를 실행해 사용자 UUID 가 실재하는지 확인한다.
+ * users 테이블에서 `SELECT EXISTS` 를 실행해 사용자 UUID 가 실재하는지 확인하고,
+ * username 집합을 `username -> UUID` 맵으로 일괄 해석한다.
  * jOOQ 를 사용하지 않는다 — identity-access 는 [NamedParameterJdbcTemplate] + SQL 상수 패턴을
  * [JdbcUserRepository] 선례와 동일하게 따른다.
  *
  * ### SQL 인젝션 방어
- * 모든 파라미터를 named parameter `:id` 로 바인딩한다.
+ * 모든 파라미터를 named parameter (`:id`, `:names`) 로 바인딩한다.
  * SQL 문자열 결합 금지 (DEVELOPMENT.md §1.3).
  *
  * ### "실재" 정의
@@ -46,6 +47,33 @@ class UserLookupAdapter(
             Boolean::class.java,
         ) ?: false
 
+    /**
+     * 주어진 username 집합을 실재 사용자 id 로 일괄 해석한다 (FR-MN-01 Task 3).
+     *
+     * 빈 입력 시 DB 쿼리 없이 emptyMap 을 즉시 반환한다.
+     * `WHERE LOWER(username) IN (:names)` 단일 쿼리로 N+1 없이 대소문자 무시 매칭한다.
+     * 바인딩 직전 입력을 모두 lowercase 로 변환해 LOWER(username) 비교와 정합한다.
+     * 미존재 username 은 결과에서 자동으로 제외된다 — 호출자가 명시적으로 드롭 처리한다.
+     *
+     * SQL 인젝션 방어: named parameter `:names` 바인딩 (문자열 결합 금지, DEVELOPMENT.md §1.3).
+     *
+     * @param usernames 해석할 username 집합 (대소문자 무시 매칭 — LOWER 비교)
+     * @return 실재하는 username 만 포함한 `username -> UUID` 맵 (순서 미보장, 키는 DB 원문 케이스)
+     */
+    @Transactional(readOnly = true)
+    override fun findIdsByUsernames(usernames: Set<String>): Map<String, UUID> {
+        if (usernames.isEmpty()) return emptyMap()
+        val lowercaseNames = usernames.map { it.lowercase() }
+        return jdbc.query(
+            SQL_FIND_IDS_BY_USERNAMES,
+            mapOf("names" to lowercaseNames),
+        ) { rs, _ ->
+            val username = rs.getString("username")
+            val id = rs.getObject("id", UUID::class.java)
+            username to id
+        }.toMap()
+    }
+
     private companion object {
         /**
          * users 행 존재 여부 확인 — EXISTS 를 사용해 불필요한 행 스캔을 방지한다.
@@ -57,6 +85,28 @@ class UserLookupAdapter(
                 FROM users
                 WHERE id = :id
             )
+        """
+
+        /**
+         * username 집합을 id 로 일괄 해석 — 대소문자 무시(LOWER 비교) (FR-MN-01 Task 3).
+         *
+         * `WHERE LOWER(username) IN (:names)` — 호출 전 입력을 lowercase 로 변환해 바인딩하므로
+         * DB 에 "Bob" 이 저장되어 있어도 "bob" 입력으로 매칭된다.
+         * NamedParameterJdbcTemplate 이 Collection 을 IN 절 플레이스홀더로 자동 확장한다.
+         * 미존재 username 은 결과에 포함되지 않는다.
+         *
+         * SQL 인젝션 방어: named parameter :names 바인딩 (문자열 결합 없음, DEVELOPMENT.md §1.3).
+         *
+         * 주의: `= ANY(:names)` 는 PostgreSQL 배열 바인딩이 필요해 드라이버 호환성에 의존하므로,
+         * NamedParameterJdbcTemplate 의 표준 컬렉션 바인딩(`IN (:names)`)을 채택한다.
+         *
+         * 성능: LOWER(username) 는 username 컬럼 B-Tree 인덱스를 우회할 수 있으나,
+         * 멘션은 cap 50 으로 N 이 매우 작아 함수 인덱스 추가 없이 허용한다.
+         */
+        const val SQL_FIND_IDS_BY_USERNAMES = """
+            SELECT id, username
+            FROM users
+            WHERE LOWER(username) IN (:names)
         """
     }
 }

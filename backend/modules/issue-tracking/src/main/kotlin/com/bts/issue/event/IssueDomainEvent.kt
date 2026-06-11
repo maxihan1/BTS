@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.annotation.JsonTypeName
 import java.time.Instant
+import java.util.UUID
 
 /**
  * 이슈 도메인 이벤트 루트 타입.
@@ -25,6 +26,7 @@ import java.time.Instant
     JsonSubTypes.Type(value = IssueUpdated::class, name = "issue.updated"),
     JsonSubTypes.Type(value = IssueTransitioned::class, name = "issue.transitioned"),
     JsonSubTypes.Type(value = IssueSoftDeleted::class, name = "issue.soft_deleted"),
+    JsonSubTypes.Type(value = IssueMentioned::class, name = "issue.mentioned"),
 )
 sealed interface IssueDomainEvent
 
@@ -87,5 +89,29 @@ data class IssueTransitioned(
 @JsonTypeName("issue.soft_deleted")
 data class IssueSoftDeleted(
     val issueKey: IssueKey,
+    val occurredAt: Instant,
+) : IssueDomainEvent
+
+/**
+ * 이슈 본문(또는 향후 댓글)에서 @멘션이 감지되었을 때 발행되는 이벤트.
+ *
+ * diff 기반 발행 — 기존 본문에 이미 있던 멘션은 제외하고 신규 추가된 멘션 대상만 포함.
+ * 자기 자신([actorId])은 [mentionedUserIds]에서 제외된다.
+ * 알림 전달 및 수신자 권한 검증은 소비자(FR-NT 워커) 책임.
+ *
+ * @property issueKey 멘션이 발생한 이슈의 키.
+ * @property projectKey 소속 프로젝트 키. 예: `ATLAS`
+ * @property mentionedUserIds 멘션 대상 사용자 UUID 목록 (해석·dedup·자기제외 후, UUID 오름차순 정렬 — 결정적 직렬화).
+ * @property actorId 멘션을 작성한 행위자 ID.
+ * @property sourceField 멘션이 포함된 필드명. 현재 `"description"`, 향후 댓글 지원 시 `"comment"`.
+ * @property occurredAt 이벤트 발생 시각 (UTC).
+ */
+@JsonTypeName("issue.mentioned")
+data class IssueMentioned(
+    val issueKey: IssueKey,
+    val projectKey: String,
+    val mentionedUserIds: List<UUID>,
+    val actorId: ActorId,
+    val sourceField: String,
     val occurredAt: Instant,
 ) : IssueDomainEvent

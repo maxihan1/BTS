@@ -1,9 +1,10 @@
-// UserLookupAdapter 통합 테스트 — 실제 PostgreSQL 에서 사용자 존재 여부 검증 (FR-IS-03 Task 3)
+// UserLookupAdapter 통합 테스트 — 실제 PostgreSQL 에서 사용자 존재 여부 및 username 일괄 해석 검증 (FR-IS-03 Task 3 / FR-MN-01 Task 3)
 
 package com.atlas.bts.identity.user
 
 import com.bts.shared.user.UserLookupPort
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.MapAssert
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -16,12 +17,11 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import java.util.UUID
 
 /**
- * [UserLookupAdapter] 통합 테스트 (FR-IS-03 Task 3 / ADR 2026-06-01-issue-assignee-user-lookup-port).
+ * [UserLookupAdapter] 통합 테스트 (FR-IS-03 Task 3 / FR-MN-01 Task 3 / ADR 2026-06-01-issue-assignee-user-lookup-port).
  *
  * ## 목적
- * [UserLookupPort.exists] 가 실제 PostgreSQL + Flyway 스키마 위에서 올바르게 동작하는지 검증한다.
- * - 존재하는 사용자 UUID → true
- * - 존재하지 않는 UUID → false
+ * [UserLookupPort.exists] 및 [UserLookupPort.findIdsByUsernames] 가 실제 PostgreSQL + Flyway 스키마 위에서
+ * 올바르게 동작하는지 검증한다.
  *
  * ## 테스트 환경
  * - `@SpringBootTest(RANDOM_PORT)` — 실제 Spring Boot 컨텍스트 전체 구동.
@@ -33,6 +33,10 @@ import java.util.UUID
  * |---|---|---|
  * | T-01 | 존재하는 사용자 UUID 조회 | true |
  * | T-02 | 존재하지 않는 랜덤 UUID 조회 | false |
+ * | T-03 | alice/bob 삽입 후 alice+bob+ghost 로 일괄 조회 | alice/bob 각 id 포함, ghost 제외 |
+ * | T-04 | 빈 입력으로 일괄 조회 | 빈 맵 |
+ * | T-05 | bob(소문자) 삽입 후 "Bob"/"BOB" 으로 조회 | 대소문자 무시 — bob 의 id 로 매칭 |
+ * | T-06 | "Carol"/"carol" 동시 존재 → "carol" 조회 | 과다매칭 허용 — 2개 id 반환 |
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -77,6 +81,10 @@ class UserLookupAdapterIntegrationTest {
     /** 각 테스트 전 시드 사용자 삽입 — UPSERT 이므로 멱등 */
     private lateinit var seededUserId: UUID
 
+    /** T-03/T-04 용 시드 사용자 id */
+    private lateinit var aliceId: UUID
+    private lateinit var bobId: UUID
+
     @BeforeEach
     fun prepareSeedUser() {
         val user =
@@ -86,7 +94,29 @@ class UserLookupAdapterIntegrationTest {
                 displayName = "Lookup Test User",
             )
         seededUserId = user.id
+
+        // T-03 용 고정 username 시드 — UUID suffix 로 충돌 방지
+        val suffix = UUID.randomUUID().toString().take(8)
+        val alice =
+            userRepository.save(
+                username = "alice-$suffix",
+                email = "alice-$suffix@example.com",
+                displayName = "Alice",
+            )
+        val bob =
+            userRepository.save(
+                username = "bob-$suffix",
+                email = "bob-$suffix@example.com",
+                displayName = "Bob",
+            )
+        aliceId = alice.id
+        bobId = bob.id
+
+        // T-03 에서 실제 username 으로 조회하기 위해 suffix 저장
+        aliceSuffix = suffix
     }
+
+    private lateinit var aliceSuffix: String
 
     /**
      * T-01: 존재하는 사용자 UUID 로 [UserLookupPort.exists] 호출 시 true 를 반환한다.
@@ -112,5 +142,107 @@ class UserLookupAdapterIntegrationTest {
         assertThat(result)
             .`as`("미존재 UUID=%s 에 대해 exists()=false 를 기대했으나 true 를 반환했습니다.", randomId)
             .isFalse()
+    }
+
+    /**
+     * T-03: alice/bob 삽입 후 alice+bob+ghost username 으로 [UserLookupPort.findIdsByUsernames] 호출 시
+     * alice 와 bob 각자의 id 가 포함되고, 미존재 username(ghost-suffix) 은 결과에서 제외된다.
+     */
+    @Test
+    fun `T-03 findIdsByUsernames returns alice and bob ids and excludes ghost`() {
+        val suffix = aliceSuffix
+        val aliceUsername = "alice-$suffix"
+        val bobUsername = "bob-$suffix"
+        val ghostUsername = "ghost-$suffix"
+
+        val result = userLookupPort.findIdsByUsernames(setOf(aliceUsername, bobUsername, ghostUsername))
+
+        @Suppress("UNCHECKED_CAST")
+        val mapAssert = assertThat(result) as MapAssert<String, UUID>
+        mapAssert.containsOnlyKeys(aliceUsername, bobUsername)
+        assertThat(result[aliceUsername])
+            .`as`("alice 의 id 가 시드와 일치해야 합니다.")
+            .isEqualTo(aliceId)
+        assertThat(result[bobUsername])
+            .`as`("bob 의 id 가 시드와 일치해야 합니다.")
+            .isEqualTo(bobId)
+        mapAssert.doesNotContainKey(ghostUsername)
+    }
+
+    /**
+     * T-04: 빈 집합으로 [UserLookupPort.findIdsByUsernames] 호출 시 빈 맵을 반환한다 (DB 쿼리 생략).
+     */
+    @Test
+    fun `T-04 findIdsByUsernames returns empty map for empty input`() {
+        val result = userLookupPort.findIdsByUsernames(emptySet())
+
+        @Suppress("UNCHECKED_CAST")
+        (assertThat(result) as MapAssert<String, UUID>)
+            .`as`("빈 입력에 대해 emptyMap 을 기대했으나 결과가 있습니다.")
+            .isEmpty()
+    }
+
+    /**
+     * T-05: DB 에 소문자 "bob-suffix" 로 저장된 사용자를 "Bob-suffix" / "BOB-suffix" 로 조회해도
+     * 대소문자 무시(LOWER 비교) 매칭으로 bob 의 id 를 반환한다 (FR-MN-01 case-insensitive 변경).
+     */
+    @Test
+    fun `T-05 findIdsByUsernames matches case-insensitively`() {
+        val suffix = UUID.randomUUID().toString().take(8)
+        val lowerUsername = "bob-$suffix"
+        val savedBob =
+            userRepository.save(
+                username = lowerUsername,
+                email = "bob-ci-$suffix@example.com",
+                displayName = "Bob CI",
+            )
+
+        val upperInput = lowerUsername.uppercase()
+        val capitalInput = lowerUsername.replaceFirstChar { it.uppercase() }
+
+        val result = userLookupPort.findIdsByUsernames(setOf(upperInput, capitalInput))
+
+        assertThat(result.values)
+            .`as`("대소문자만 다른 입력 '%s', '%s' 이 bob 의 id 로 매칭되어야 합니다.", upperInput, capitalInput)
+            .containsOnly(savedBob.id)
+    }
+
+    /**
+     * T-06: DB 에 "Carol-suffix"(대문자 C) 와 "carol-suffix"(소문자 c) 두 사용자가 동시 존재할 때,
+     * "carol-suffix" 로 조회하면 LOWER 비교 과다매칭으로 두 id 가 모두 반환된다.
+     *
+     * 이 동작은 알려진 트레이드오프로 고정한다 — username UNIQUE 제약이 대소문자를 구분하므로
+     * 두 row 가 공존할 수 있고, LOWER IN 쿼리는 둘 다 매칭한다.
+     * 호출자(publishMentions)는 id 집합만 사용하므로 멘션 알림이 두 사용자에게 모두 전달된다.
+     */
+    @Test
+    fun `T-06 findIdsByUsernames returns both ids when uppercase and lowercase username coexist`() {
+        val suffix = UUID.randomUUID().toString().take(8)
+        val upperUsername = "Carol-$suffix"
+        val lowerUsername = "carol-$suffix"
+
+        val savedUpper =
+            userRepository.save(
+                username = upperUsername,
+                email = "carol-upper-$suffix@example.com",
+                displayName = "Carol Upper",
+            )
+        val savedLower =
+            userRepository.save(
+                username = lowerUsername,
+                email = "carol-lower-$suffix@example.com",
+                displayName = "Carol Lower",
+            )
+
+        val result = userLookupPort.findIdsByUsernames(setOf(lowerUsername))
+
+        assertThat(result.values)
+            .`as`(
+                "대소문자만 다른 '%s'/'%s' 가 동시 존재할 때 '%s' 조회 시 두 id 가 모두 반환되어야 합니다.",
+                upperUsername,
+                lowerUsername,
+                lowerUsername,
+            )
+            .containsExactlyInAnyOrder(savedUpper.id, savedLower.id)
     }
 }

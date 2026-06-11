@@ -284,13 +284,15 @@
 
 **우선순위**. 필수 | **선행**. §2.1.4, §4.3.1 | **Plan slug**. `issue/mentions`
 
-- [ ] D1. 도메인 — Mention 이벤트 (책임. backend-engineer)
-- [ ] D2. 명세 — `@username` 파싱 규칙 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (notification 이벤트 발행만) (책임. db-engineer)
-- [ ] D4. 백엔드 — 본문/댓글 저장 시 mention 추출 → pgmq 이벤트 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 멘션 렌더링 (강조) (책임. designer → frontend-engineer)
-- [ ] D7. E2E — 멘션 → Inbox 도착 (책임. qa-engineer)
+> **범위(2026-06-11, PR #114, Maxi 옵션 A 확정)**. 백엔드 발행분(D1~D5)만 본 PR로 완료 — **본문(description) 멘션 추출 → `IssueMentioned`(issue.mentioned) pgmq 발행**까지. **댓글 멘션은 댓글 기능 부재로 제외**(댓글 FR 도입 시 sourceField="comment"로 확장), **그룹 멘션(@team)은 FR-PM-09 user_groups 소비 별도 단위로 제외**. D6(렌더링)·D7(Inbox 도착 E2E)은 **알림 전달/Inbox(FR-NT·FR-UX-03) 인프라 부재로 deferred** — 그 FR과 함께 진행.
+
+- [x] D1. 도메인 — Mention 이벤트 (책임. backend-engineer) (완료. PR #114 — `IssueMentioned`(issue.mentioned) sealed subtype + 직렬화 라운드트립)
+- [x] D2. 명세 — `@username` 파싱 규칙 (책임. backend-engineer) (완료. PR #114 — `MentionParser` object: lookbehind 이메일/`@@` 회피·영숫자 경계·코드스팬(인라인 한 줄 한정)/펜스블록 제거·dedup)
+- [x] D3. 데이터 모델 — (notification 이벤트 발행만) (책임. db-engineer) (완료. PR #114 — 마이그레이션 없음, 기존 `q_issue_events` pgmq 큐 재사용)
+- [x] D4. 백엔드 — 본문 저장 시 mention 추출 → pgmq 이벤트 (책임. backend-engineer) (완료. PR #114 — `updateIssue`에서 description 변경 시 diff기반 신규멘션만·자기제외·UUID정렬·cap 50, cross-BC `UserLookupPort.findIdsByUsernames`(대소문자 무시) 해석, 같은 트랜잭션 outbox. 댓글은 제외)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) (완료. PR #114 — MentionParser 단위·UserLookupAdapter 통합(대소문자/과다매칭)·updateIssue 멘션 단위(S1~S5+cap)·pgmq enqueue Testcontainers 통합)
+- [ ] D6. 프론트 UI — 멘션 렌더링 (강조) (책임. designer → frontend-engineer) — **deferred** (Inbox/렌더링 FR과 함께)
+- [ ] D7. E2E — 멘션 → Inbox 도착 (책임. qa-engineer) — **deferred** (FR-UX-03 Inbox 부재)
 
 #### §4.1.2 FR-MN-02 — 멘션 자동완성
 
