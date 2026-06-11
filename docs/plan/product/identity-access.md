@@ -202,8 +202,8 @@
 - [x] D3. 데이터 모델 — `user_mfa_backup_codes(code_hash, used_at)` (책임. db-engineer) (V023, PR #117)
 - [x] D4. 백엔드 — 코드 생성/검증/소진 (책임. security-engineer) (PR #117)
 - [x] D5. 백엔드 테스트 (책임. security-engineer) (PR #117)
-- [ ] D6. 프론트 UI — 코드 다운로드/인쇄 + 1회용 안내 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 코드 복사/다운로드(.txt) + 1회용 안내 (책임. frontend-engineer) (PR #121)
+- [x] D7. E2E (책임. qa-engineer) (PR #121)
 
 ### §3.3 FR-MF-03 — WebAuthn (Passkey/하드웨어 키)
 

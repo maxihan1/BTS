@@ -300,6 +300,46 @@ export const mfaStrings = {
   /** 비활성화 폼 제출 버튼 레이블 */
   disableConfirmButton: '비활성화 확인',
 
+  // ── 백업코드 설정 섹션 ─────────────────────────────────────────────────
+  /** 백업코드 섹션 제목 */
+  backupSectionTitle: '백업 코드',
+  /** 백업코드 섹션 설명 문구 */
+  backupSectionDescription: '2단계 인증 기기를 분실했을 때 백업 코드로 로그인할 수 있습니다. 각 코드는 1회만 사용 가능합니다.',
+  /** 백업코드 최초 생성 버튼 */
+  backupGenerateButton: '백업 코드 생성',
+  /** 백업코드 재생성 버튼 */
+  backupRegenerateButton: '백업 코드 재생성',
+  /** 남은 백업코드 개수 앞 안내 텍스트 */
+  backupRemainingPrefix: '남은 백업 코드',
+  /** 백업코드 소진 임박 경고 메시지 */
+  backupLowWarning: '백업 코드가 얼마 남지 않았습니다. 재생성을 권장합니다.',
+  /** 백업코드 모두 소진 경고 메시지 */
+  backupNoneWarning: '남은 백업 코드가 없습니다. 새로 생성하세요.',
+  /** 백업코드 저장 안내 — 화면 닫으면 재확인 불가 */
+  backupSaveWarning: '지금 저장하세요. 이 화면을 닫으면 다시 볼 수 없습니다.',
+  /** 코드 복사 버튼 레이블 */
+  backupCopyButton: '복사',
+  /** 복사 완료 상태 레이블 */
+  backupCopiedLabel: '복사됨',
+  /** 코드 다운로드 버튼 레이블 */
+  backupDownloadButton: '다운로드',
+  /** 저장 완료 후 Dialog 닫기 버튼 레이블 */
+  backupCloseButton: '저장 완료',
+  /** 클립보드 복사 실패 안내 메시지 */
+  backupCopyFailed: '복사에 실패했습니다. 코드를 직접 선택해 복사하세요.',
+  /** 다운로드 파일명 */
+  backupDownloadFileName: 'bts-backup-codes.txt',
+  /** 다운로드 파일 헤더 */
+  backupDownloadHeader: 'BTS 백업 코드 (각 코드는 1회만 사용 가능)',
+  /** 재생성 확인 Dialog 제목 */
+  backupRegenerateConfirmTitle: '백업 코드 재생성',
+  /** 재생성 확인 Dialog 본문 */
+  backupRegenerateConfirmBody: '기존 백업 코드가 모두 무효화됩니다. 계속하시겠습니까?',
+  /** 재생성 확인 버튼 레이블 */
+  backupRegenerateConfirmButton: '재생성',
+  /** 재생성 취소 버튼 레이블 */
+  backupRegenerateCancelButton: '취소',
+
   // ── 로그인 2단계 ──────────────────────────────────────────────────────
   /** TOTP 코드 입력 화면 안내 문구 */
   loginStepGuide: 'Authenticator 앱에 표시된 6자리 코드를 입력하세요.',
@@ -309,6 +349,20 @@ export const mfaStrings = {
   loginVerifyButton: '확인',
   /** 로그인 1단계로 돌아가는 링크/버튼 문구 */
   loginBackToLogin: '다시 로그인',
+  /** 백업코드 로그인으로 전환하는 링크/버튼 문구 */
+  loginUseBackupCode: '백업 코드로 로그인',
+  /** TOTP 코드 로그인으로 돌아가는 링크/버튼 문구 */
+  loginUseTotp: 'Authenticator 코드로 돌아가기',
+  /** 백업코드 입력 필드 레이블 */
+  loginBackupCodeLabel: '백업 코드',
+  /** 백업코드 입력 화면 안내 문구 */
+  loginBackupStepGuide: '백업 코드 중 하나를 입력하세요.',
+  /** 백업코드 입력 검증 실패(빈 값) 메시지 */
+  loginBackupCodeRequired: '백업 코드를 입력하세요.',
+  /** 평문 백업코드 목록 aria-label */
+  backupCodesListLabel: '백업 코드 목록',
+  /** 남은 백업코드 개수 단위 접미사 */
+  backupRemainingUnit: '개',
 } as const
 
 /**
@@ -331,6 +385,9 @@ export function mfaErrorMessage(errorCode: string): string {
       return '이미 2단계 인증이 활성화되어 있습니다.'
     case 'not_enabled':
       return '2단계 인증이 활성화되어 있지 않습니다.'
+    case 'totp_not_active':
+      return '먼저 Authenticator 앱(2단계 인증)을 활성화하세요.'
+    case 'invalid_method':
     default:
       return '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.'
   }

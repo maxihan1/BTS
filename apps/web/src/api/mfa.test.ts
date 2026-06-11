@@ -443,3 +443,195 @@ describe('TokenResponseSchema (재활용)', () => {
     expect(result.expires_in).toBe(900)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-MFA-BC-S. 백업코드 Zod 스키마 파싱 검증
+// ─────────────────────────────────────────────────────────────────────────────
+import {
+  BackupCodesResponseSchema,
+  BackupCodesStatusResponseSchema,
+} from './schemas'
+import {
+  generateBackupCodes,
+  getBackupCodesStatus,
+} from './mfa'
+
+const backupCodesFixture = {
+  codes: [
+    'AAAA-BBBB-1111',
+    'CCCC-DDDD-2222',
+    'EEEE-FFFF-3333',
+    'GGGG-HHHH-4444',
+    'IIII-JJJJ-5555',
+    'KKKK-LLLL-6666',
+    'MMMM-NNNN-7777',
+    'OOOO-PPPP-8888',
+    'QQQQ-RRRR-9999',
+    'SSSS-TTTT-0000',
+  ],
+}
+
+const backupCodesStatusFixture = {
+  generated: true,
+  remaining: 7,
+}
+
+describe('BackupCodesResponseSchema', () => {
+  it('T-MFA-BC-S1: 10개 코드 배열을 파싱한다', () => {
+    const result = BackupCodesResponseSchema.parse(backupCodesFixture)
+    expect(result.codes).toHaveLength(10)
+    expect(result.codes[0]).toBe('AAAA-BBBB-1111')
+  })
+
+  it('T-MFA-BC-S2: 빈 배열이면 ZodError를 throw한다', () => {
+    expect(() => BackupCodesResponseSchema.parse({ codes: [] })).toThrow()
+  })
+
+  it('T-MFA-BC-S3: codes 필드 누락 시 ZodError를 throw한다', () => {
+    expect(() => BackupCodesResponseSchema.parse({})).toThrow()
+  })
+})
+
+describe('BackupCodesStatusResponseSchema', () => {
+  it('T-MFA-BC-S4: generated:true + remaining 숫자를 파싱한다', () => {
+    const result = BackupCodesStatusResponseSchema.parse(backupCodesStatusFixture)
+    expect(result.generated).toBe(true)
+    expect(result.remaining).toBe(7)
+  })
+
+  it('T-MFA-BC-S5: generated:false + remaining:0을 파싱한다', () => {
+    const result = BackupCodesStatusResponseSchema.parse({ generated: false, remaining: 0 })
+    expect(result.generated).toBe(false)
+    expect(result.remaining).toBe(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-MFA-7. generateBackupCodes — POST /api/v1/auth/mfa/backup-codes
+// ─────────────────────────────────────────────────────────────────────────────
+describe('generateBackupCodes', () => {
+  it('T-MFA-7a: 200 응답 → BackupCodesResponse 반환', async () => {
+    server.use(
+      http.post('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json(backupCodesFixture, { status: 200 }),
+      ),
+    )
+    const result = await generateBackupCodes()
+    expect(result.codes).toHaveLength(10)
+    expect(result.codes[0]).toBe('AAAA-BBBB-1111')
+  })
+
+  it('T-MFA-7b: X-XSRF-TOKEN 헤더가 요청에 포함된다', async () => {
+    let capturedXsrf: string | null = null
+    server.use(
+      http.post('/api/v1/auth/mfa/backup-codes', ({ request }) => {
+        capturedXsrf = request.headers.get('x-xsrf-token')
+        return HttpResponse.json(backupCodesFixture, { status: 200 })
+      }),
+    )
+    await generateBackupCodes()
+    expect(capturedXsrf).toBe(XSRF_COOKIE_VALUE)
+  })
+
+  it('T-MFA-7c: 409 totp_not_active → ApiError(409) throw', async () => {
+    server.use(
+      http.post('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ error: 'totp_not_active' }, { status: 409 }),
+      ),
+    )
+    let thrown: unknown
+    try {
+      await generateBackupCodes()
+    } catch (e) {
+      thrown = e
+    }
+    expect(thrown).toBeInstanceOf(ApiError)
+    if (!(thrown instanceof ApiError)) throw new Error('type guard missed')
+    expect(thrown.status).toBe(409)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-MFA-8. getBackupCodesStatus — GET /api/v1/auth/mfa/backup-codes
+// ─────────────────────────────────────────────────────────────────────────────
+describe('getBackupCodesStatus', () => {
+  it('T-MFA-8a: generated:true + remaining 응답을 파싱한다', async () => {
+    server.use(
+      http.get('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json(backupCodesStatusFixture),
+      ),
+    )
+    const result = await getBackupCodesStatus()
+    expect(result.generated).toBe(true)
+    expect(result.remaining).toBe(7)
+  })
+
+  it('T-MFA-8b: generated:false + remaining:0 응답을 파싱한다', async () => {
+    server.use(
+      http.get('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ generated: false, remaining: 0 }),
+      ),
+    )
+    const result = await getBackupCodesStatus()
+    expect(result.generated).toBe(false)
+    expect(result.remaining).toBe(0)
+  })
+
+  it('T-MFA-8c: X-XSRF-TOKEN 헤더가 요청에 포함되지 않는다 (GET 읽기 요청)', async () => {
+    let capturedXsrf: string | null = null
+    server.use(
+      http.get('/api/v1/auth/mfa/backup-codes', ({ request }) => {
+        capturedXsrf = request.headers.get('x-xsrf-token')
+        return HttpResponse.json(backupCodesStatusFixture)
+      }),
+    )
+    await getBackupCodesStatus()
+    expect(capturedXsrf).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-MFA-9. verifyMfa — method 파라미터 확장 (하위호환 검증)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('verifyMfa — method 파라미터', () => {
+  it('T-MFA-9a: method 생략 시 body에 method:"totp"가 포함된다', async () => {
+    let capturedBody: unknown = null
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json(tokenResponseFixture, { status: 200 })
+      }),
+    )
+    await verifyMfa('challenge.jwt.token', '123456')
+    const body = capturedBody as Record<string, unknown> | null
+    expect(body?.method).toBe('totp')
+  })
+
+  it('T-MFA-9b: method:"backup_code" 전달 시 body에 method:"backup_code"가 포함된다', async () => {
+    let capturedBody: unknown = null
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json(tokenResponseFixture, { status: 200 })
+      }),
+    )
+    await verifyMfa('challenge.jwt.token', 'AAAA-BBBB-1111', 'backup_code')
+    const body = capturedBody as Record<string, unknown> | null
+    expect(body?.method).toBe('backup_code')
+    expect(body?.mfa_challenge_token).toBe('challenge.jwt.token')
+    expect(body?.code).toBe('AAAA-BBBB-1111')
+  })
+
+  it('T-MFA-9c: method:"totp" 명시 전달 시 body에 method:"totp"가 포함된다', async () => {
+    let capturedBody: unknown = null
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json(tokenResponseFixture, { status: 200 })
+      }),
+    )
+    await verifyMfa('challenge.jwt.token', '123456', 'totp')
+    const body = capturedBody as Record<string, unknown> | null
+    expect(body?.method).toBe('totp')
+  })
+})

@@ -659,3 +659,137 @@ describe('LoginForm — MFA step (3단계)', () => {
     expect(screen.queryByLabelText('인증 코드')).toBeNull()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MFA step — 백업 코드 토글
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('LoginForm — MFA step 백업 코드 토글 (task-3)', () => {
+  it('MFA step에 "백업 코드로 로그인" 링크가 표시된다', async () => {
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await goToMfaStep(user)
+
+    expect(screen.getByRole('button', { name: '백업 코드로 로그인' })).toBeInTheDocument()
+  })
+
+  it('"백업 코드로 로그인" 클릭 시 라벨/안내가 백업 코드 모드로 전환되고 "Authenticator 코드로 돌아가기"가 표시된다', async () => {
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await goToMfaStep(user)
+
+    await user.click(screen.getByRole('button', { name: '백업 코드로 로그인' }))
+
+    // 라벨이 '백업 코드'로 바뀌어야 한다
+    expect(screen.getByLabelText('백업 코드')).toBeInTheDocument()
+    // 안내 문구가 백업 코드 안내로 바뀌어야 한다
+    expect(screen.getByText('백업 코드 중 하나를 입력하세요.')).toBeInTheDocument()
+    // 되돌아가기 링크가 표시되어야 한다
+    expect(screen.getByRole('button', { name: 'Authenticator 코드로 돌아가기' })).toBeInTheDocument()
+    // 기존 TOTP 전환 링크는 사라져야 한다
+    expect(screen.queryByRole('button', { name: '백업 코드로 로그인' })).toBeNull()
+  })
+
+  it('백업 코드 모드에서 입력 후 확인 시 verifyMfa(token, code, "backup_code")가 호출된다', async () => {
+    const user = userEvent.setup({ delay: null })
+
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', () =>
+        HttpResponse.json({
+          access_token: 'backup-session-token',
+          token_type: 'Bearer',
+          expires_in: 3600,
+        }),
+      ),
+      http.get('/api/v1/users/me/whoami', () =>
+        HttpResponse.json({
+          username: 'alice',
+          email: 'alice@bts.local',
+          authMethod: 'local',
+          userId: '00000000-0000-4000-8000-000000000001',
+          mustChangePassword: false,
+          isSystemAdmin: false,
+        }),
+      ),
+    )
+
+    const onSuccess = vi.fn()
+    renderLoginForm(onSuccess)
+
+    await goToMfaStep(user)
+    await user.click(screen.getByRole('button', { name: '백업 코드로 로그인' }))
+
+    // 백업 코드 입력 후 확인
+    await user.type(screen.getByLabelText('백업 코드'), 'ABCD-1234')
+    await user.click(screen.getByRole('button', { name: '확인' }))
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
+    expect(useAuthStore.getState().accessToken).toBe('backup-session-token')
+  })
+
+  it('TOTP 모드는 기존대로 verifyMfa(token, code, "totp")를 호출한다(회귀 없음)', async () => {
+    const user = userEvent.setup({ delay: null })
+
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', () =>
+        HttpResponse.json({
+          access_token: 'totp-session-token',
+          token_type: 'Bearer',
+          expires_in: 3600,
+        }),
+      ),
+      http.get('/api/v1/users/me/whoami', () =>
+        HttpResponse.json({
+          username: 'alice',
+          email: 'alice@bts.local',
+          authMethod: 'local',
+          userId: '00000000-0000-4000-8000-000000000001',
+          mustChangePassword: false,
+          isSystemAdmin: false,
+        }),
+      ),
+    )
+
+    const onSuccess = vi.fn()
+    renderLoginForm(onSuccess)
+
+    await goToMfaStep(user)
+
+    // 토글 없이 바로 6자리 코드 입력
+    await user.type(screen.getByLabelText('인증 코드'), '654321')
+    await user.click(screen.getByRole('button', { name: '확인' }))
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
+    expect(useAuthStore.getState().accessToken).toBe('totp-session-token')
+  })
+
+  it('모드 전환 시 입력값과 에러가 초기화된다', async () => {
+    const user = userEvent.setup({ delay: null })
+
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', () =>
+        HttpResponse.json({ error: 'invalid_code' }, { status: 401 }),
+      ),
+      http.post('/api/v1/auth/refresh', () =>
+        HttpResponse.json({ error: 'unauthorized' }, { status: 401 }),
+      ),
+    )
+
+    renderLoginForm()
+
+    await goToMfaStep(user)
+
+    // TOTP 오답 입력 → 에러 표시
+    await user.type(screen.getByLabelText('인증 코드'), '000000')
+    await user.click(screen.getByRole('button', { name: '확인' }))
+    await screen.findByText('코드가 올바르지 않습니다.')
+
+    // 백업 코드 모드로 전환 → 에러/입력값 초기화
+    await user.click(screen.getByRole('button', { name: '백업 코드로 로그인' }))
+
+    expect(screen.queryByText('코드가 올바르지 않습니다.')).toBeNull()
+    expect(screen.getByLabelText('백업 코드')).toHaveValue('')
+  })
+})

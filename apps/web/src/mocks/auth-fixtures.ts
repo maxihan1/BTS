@@ -20,6 +20,12 @@ export const MFA_E2E_ENABLED_KEY = '__bts_e2e_mfa_enabled'
  */
 export const MFA_VALID_CODE = '123456'
 
+/**
+ * 백업코드 고정 유효 코드 — MSW mock 전용.
+ * verify method:"backup_code" 요청에서 이 코드만 성공으로 처리한다.
+ */
+export const MFA_VALID_BACKUP_CODE = 'aaaaa-bbbbb'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MFA 인메모리 store — mfa-handlers.ts 와 공유하는 단일 진실 출처
 // ─────────────────────────────────────────────────────────────────────────────
@@ -32,21 +38,29 @@ export interface MfaStore {
   enabled: boolean
   /** setup 호출 후 pending 상태 여부 (enable 성공 전까지 true) */
   hasPendingSetup: boolean
+  /** 백업코드가 한 번이라도 생성된 여부 */
+  backupCodesGenerated: boolean
+  /** 소진되지 않은 백업코드 잔여 개수 */
+  backupCodesRemaining: number
 }
 
 /** MFA 인메모리 store — 초기값 비활성 */
 export const mfaStore: MfaStore = {
   enabled: false,
   hasPendingSetup: false,
+  backupCodesGenerated: false,
+  backupCodesRemaining: 0,
 }
 
 /**
- * MFA store를 초기 상태(비활성, pending 없음)로 리셋한다.
+ * MFA store를 초기 상태(비활성, pending 없음, 백업코드 없음)로 리셋한다.
  * 테스트 afterEach 또는 E2E 시드 전 호출해 테스트 간 격리를 보장한다.
  */
 export function resetMfaStore(): void {
   mfaStore.enabled = false
   mfaStore.hasPendingSetup = false
+  mfaStore.backupCodesGenerated = false
+  mfaStore.backupCodesRemaining = 0
 }
 
 /** alice fixture — backend DB seed 사용자와 일치 (userId는 UUID v4 고정값) */

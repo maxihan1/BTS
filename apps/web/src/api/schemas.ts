@@ -72,6 +72,24 @@ export const LoginOrMfaResponseSchema = z.union([
   TokenResponseSchema,
 ])
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 백업코드 관련 스키마 — 백엔드 #117 snake_case 필드명 그대로 사용
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 백업코드 생성 응답 스키마 — POST /api/v1/auth/mfa/backup-codes 200 */
+export const BackupCodesResponseSchema = z.object({
+  /** 새로 생성된 백업코드 배열 (10개). 이 화면을 닫으면 다시 볼 수 없다. */
+  codes: z.array(z.string().min(1)).min(1),
+})
+
+/** 백업코드 상태 조회 응답 스키마 — GET /api/v1/auth/mfa/backup-codes 200 */
+export const BackupCodesStatusResponseSchema = z.object({
+  /** 백업코드를 한 번이라도 생성했는지 여부 */
+  generated: z.boolean(),
+  /** 남은(미사용) 백업코드 개수 */
+  remaining: z.number(),
+})
+
 export type LoginRequest = z.infer<typeof LoginRequestSchema>
 export type TokenResponse = z.infer<typeof TokenResponseSchema>
 export type WhoamiResponse = z.infer<typeof WhoamiResponseSchema>
@@ -80,3 +98,5 @@ export type MfaSetupResponse = z.infer<typeof MfaSetupResponseSchema>
 export type MfaStatusResponse = z.infer<typeof MfaStatusResponseSchema>
 export type MfaRequiredResponse = z.infer<typeof MfaRequiredResponseSchema>
 export type LoginOrMfaResponse = z.infer<typeof LoginOrMfaResponseSchema>
+export type BackupCodesResponse = z.infer<typeof BackupCodesResponseSchema>
+export type BackupCodesStatusResponse = z.infer<typeof BackupCodesStatusResponseSchema>

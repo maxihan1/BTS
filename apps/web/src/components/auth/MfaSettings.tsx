@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { setupMfa, getMfaStatus, enableMfa, disableMfa } from '@/api/mfa'
 import type { MfaSetupResponse } from '@/api/schemas'
+import { BackupCodesSection } from './BackupCodesSection'
 import { ApiError } from '@/api/client'
 import { extractErrorCode } from '@/lib/extract-error-code'
 import { mfaStrings, mfaErrorMessage } from '@/i18n/ko'
@@ -294,7 +295,7 @@ export function MfaSettings(): JSX.Element {
         </div>
       )}
 
-      {/* 활성 상태: 비활성화 플로우 */}
+      {/* 활성 상태: 비활성화 플로우 + 백업코드 섹션 */}
       {isEnabled && (
         <div className="space-y-6">
           {!showDisableForm && (
@@ -316,6 +317,9 @@ export function MfaSettings(): JSX.Element {
               onSubmit={handleDisableSubmit}
             />
           )}
+
+          {/* 백업코드 섹션 — TOTP 활성 시에만 노출 */}
+          <BackupCodesSection />
         </div>
       )}
     </div>
