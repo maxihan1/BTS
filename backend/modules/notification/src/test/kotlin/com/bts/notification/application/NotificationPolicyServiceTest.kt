@@ -26,14 +26,17 @@ class NotificationPolicyServiceTest : DescribeSpec({
     val permissionResolver: SystemPermissionResolver = mockk()
 
     // 고정 시각 주입 — AuthController revokeSession time-bomb 교훈 (Clock 의존성 주입)
-    val fixedInstant: Instant = Instant.parse("2026-06-11T12:00:00Z")
-    val fixedClock: Clock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
+    val fixedInstant: Instant =
+        Instant.parse("2026-06-11T12:00:00Z")
+    val fixedClock: Clock =
+        Clock.fixed(fixedInstant, ZoneOffset.UTC)
 
-    val service = NotificationPolicyService(
-        repository = repository,
-        systemPermissionResolver = permissionResolver,
-        clock = fixedClock,
-    )
+    val service =
+        NotificationPolicyService(
+            repository = repository,
+            systemPermissionResolver = permissionResolver,
+            clock = fixedClock,
+        )
 
     val adminActorId: UUID = UUID.randomUUID()
     val nonAdminActorId: UUID = UUID.randomUUID()
@@ -47,17 +50,18 @@ class NotificationPolicyServiceTest : DescribeSpec({
         channel: Channel = Channel.IN_APP,
         enabled: Boolean = true,
         createdBy: UUID? = adminActorId,
-    ): NotificationPolicy = NotificationPolicy(
-        id = id,
-        projectKey = projectKey,
-        eventType = eventType,
-        recipientRole = recipientRole,
-        channel = channel,
-        enabled = enabled,
-        createdBy = createdBy,
-        createdAt = fixedInstant,
-        updatedAt = fixedInstant,
-    )
+    ): NotificationPolicy =
+        NotificationPolicy(
+            id = id,
+            projectKey = projectKey,
+            eventType = eventType,
+            recipientRole = recipientRole,
+            channel = channel,
+            enabled = enabled,
+            createdBy = createdBy,
+            createdAt = fixedInstant,
+            updatedAt = fixedInstant,
+        )
 
     beforeEach {
         every { permissionResolver.isSystemAdmin(adminActorId) } returns true
@@ -108,14 +112,15 @@ class NotificationPolicyServiceTest : DescribeSpec({
             val savedPolicy = buildPolicy()
             every { repository.insert(any()) } returns savedPolicy
 
-            val result = service.create(
-                actorId = adminActorId,
-                projectKey = null,
-                eventType = NotificationEventType.ISSUE_CREATED,
-                recipientRole = RecipientRole.REPORTER,
-                channel = Channel.IN_APP,
-                enabled = true,
-            )
+            val result =
+                service.create(
+                    actorId = adminActorId,
+                    projectKey = null,
+                    eventType = NotificationEventType.ISSUE_CREATED,
+                    recipientRole = RecipientRole.REPORTER,
+                    channel = Channel.IN_APP,
+                    enabled = true,
+                )
 
             result shouldBe savedPolicy
             verify(exactly = 1) {
@@ -137,14 +142,15 @@ class NotificationPolicyServiceTest : DescribeSpec({
             val savedPolicy = buildPolicy(projectKey = "PROJ-A")
             every { repository.insert(any()) } returns savedPolicy
 
-            val result = service.create(
-                actorId = adminActorId,
-                projectKey = "PROJ-A",
-                eventType = NotificationEventType.ISSUE_ASSIGNED,
-                recipientRole = RecipientRole.ASSIGNEE,
-                channel = Channel.EMAIL,
-                enabled = false,
-            )
+            val result =
+                service.create(
+                    actorId = adminActorId,
+                    projectKey = "PROJ-A",
+                    eventType = NotificationEventType.ISSUE_ASSIGNED,
+                    recipientRole = RecipientRole.ASSIGNEE,
+                    channel = Channel.EMAIL,
+                    enabled = false,
+                )
 
             result shouldBe savedPolicy
             verify(exactly = 1) {

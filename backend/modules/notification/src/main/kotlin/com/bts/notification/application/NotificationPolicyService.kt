@@ -36,7 +36,6 @@ class NotificationPolicyService(
     private val systemPermissionResolver: SystemPermissionResolver,
     private val clock: Clock = Clock.systemUTC(),
 ) {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
@@ -82,21 +81,26 @@ class NotificationPolicyService(
         requireSystemAdmin(actorId)
 
         val now = clock.instant()
-        val policy = NotificationPolicy(
-            id = UUID.randomUUID(),
-            projectKey = projectKey,
-            eventType = eventType,
-            recipientRole = recipientRole,
-            channel = channel,
-            enabled = enabled,
-            createdBy = actorId,
-            createdAt = now,
-            updatedAt = now,
-        )
+        val policy =
+            NotificationPolicy(
+                id = UUID.randomUUID(),
+                projectKey = projectKey,
+                eventType = eventType,
+                recipientRole = recipientRole,
+                channel = channel,
+                enabled = enabled,
+                createdBy = actorId,
+                createdAt = now,
+                updatedAt = now,
+            )
 
         log.info(
             "알림 정책 생성 — actorId={}, projectKey={}, eventType={}, role={}, channel={}",
-            actorId, projectKey, eventType.wireValue, recipientRole, channel,
+            actorId,
+            projectKey,
+            eventType.wireValue,
+            recipientRole,
+            channel,
         )
 
         return try {
@@ -121,7 +125,10 @@ class NotificationPolicyService(
      * @throws NotificationPolicyForbiddenException 권한 없음
      */
     @Transactional(readOnly = true)
-    fun list(actorId: UUID, projectKey: String?): List<NotificationPolicy> {
+    fun list(
+        actorId: UUID,
+        projectKey: String?,
+    ): List<NotificationPolicy> {
         requireSystemAdmin(actorId)
         return repository.findAll(projectKey)
     }
@@ -136,7 +143,11 @@ class NotificationPolicyService(
      * @throws NotificationPolicyNotFoundException 해당 id 정책 미존재
      */
     @Transactional
-    fun toggle(actorId: UUID, id: UUID, enabled: Boolean) {
+    fun toggle(
+        actorId: UUID,
+        id: UUID,
+        enabled: Boolean,
+    ) {
         requireSystemAdmin(actorId)
 
         val affected = repository.toggle(id, enabled, clock.instant())
@@ -156,7 +167,10 @@ class NotificationPolicyService(
      * @throws NotificationPolicyNotFoundException 해당 id 정책 미존재
      */
     @Transactional
-    fun delete(actorId: UUID, id: UUID) {
+    fun delete(
+        actorId: UUID,
+        id: UUID,
+    ) {
         requireSystemAdmin(actorId)
 
         val affected = repository.delete(id)
