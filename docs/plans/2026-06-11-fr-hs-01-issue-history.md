@@ -86,7 +86,7 @@
 - depends-on: []
 
 **RED**: `IssueChangeDetectorTest` — (a) priority 3→1 ⇒ item 1개(field='priority', from='3', to='1'), (b) summary+priority 동시 변경 ⇒ item 2개, (c) no-op ⇒ empty, (d) 컬렉션 순서만 다르고 집합 동일 ⇒ empty(정렬 비교), (e) components [A]→[A,B] ⇒ item 1개(JSON 배열), (f) customFields 키별 분해(field='customField:&lt;key&gt;'), (g) description null↔"" 구분, (h) lifecycle created/deleted 마커. **label은 이 단계에서 null**(value만).
-**GREEN**: 이전 Issue 상태 + 새 상태(변경 요청) 비교. 필드별 비교 표. 컬렉션은 도메인 `distinct`/정렬 후 비교. 변경분만 `IssueChangeItem(field, fromValue, toValue)` 생성.
+**GREEN**: 이전 Issue 상태 + 새 상태(변경 요청) 비교. 필드별 비교 표. 컬렉션은 도메인 `distinct`/정렬 후 비교. 변경분만 `IssueChangeItem(field, fromValue, toValue)` 생성. **참고**: 기존 `buildChangedFields:1027`은 updateIssue 코어 필드의 **이름 Set만** 반환(from/to·다른 진입점 미포함) → 디텍터는 신규 구현, `isTextFieldChanged:1060`의 null↔"" 3-state 로직만 차용.
 **REFACTOR**: 필드 비교를 `(field, prev→raw, next→raw)` 매핑 테이블로 추출.
 **검증**: `./gradlew :backend:issue-tracking:test --tests '*IssueChangeDetectorTest'`
 
@@ -97,8 +97,8 @@
 - files: [`M/src/main/.../history/IssueChangeLabelResolver.kt`, `M/src/test/.../history/IssueChangeLabelResolverTest.kt`]
 - depends-on: [2]
 
-**RED**: `IssueChangeLabelResolverTest`(lookup mock) — assignee id→username, type id→타입명, resolution id→resolution명, components ids→이름 정렬배열, versions ids→이름, securityLevel id→레벨명. status는 stateKey passthrough(label=value). 값 자체가 표시인 필드(summary/priority/...)는 label=value.
-**GREEN**: field별 분기. issue-tracking 내 name lookup(type/resolution/component/version/securityLevel) + assignee는 기존 user lookup 포트 재사용. 변경 시점 서비스 보유 표시값 우선, 부족분만 조회.
+**RED**: `IssueChangeLabelResolverTest`(lookup mock) — **부분 박제(Maxi 확정)**. type id→타입명, resolution id→resolution명, components ids→이름 정렬배열, versions ids→이름. **assignee·securityLevel은 label=null**(cross-BC, id만 — FR-HS-02 조회 해석). status는 stateKey passthrough(label=value). 값 자체가 표시인 필드(summary/priority/...)는 label=null.
+**GREEN**: field별 분기. **issue-tracking 내 name lookup만**(type=IssueType.name / resolution=Resolution.name / component=Component.name / version=Version.name). Component/Version `findById`는 **projectId 인자 + `deleted_at IS NULL` 필터**(변경 시점 박제라 OK, 사후 재해석 불가). assignee·securityLevel은 cross-BC라 박제 제외(UserLookupPort는 `exists()`만 제공 — 이름 조회 없음).
 **REFACTOR**: field→resolver 전략 맵.
 **검증**: `./gradlew :backend:issue-tracking:test --tests '*IssueChangeLabelResolverTest'`
 
@@ -118,11 +118,12 @@
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`M/src/main/.../application/IssueApplicationService.kt`, `M/src/test/.../application/IssueApplicationServiceTest.kt`(기존 — 생성자 주입 파급 갱신), `M/src/test/.../application/IssueHistoryRecordingTest.kt`]
+- files: [`M/src/main/.../application/IssueApplicationService.kt`, **`IssueApplicationService(...)` 생성자를 호출하는 기존 테스트 전수(grep으로 확정 — 리뷰 실측 26개: IssueApplicationServiceUpdateTest·IssueChangeComponentsServiceTest·IssueChangeVersionsServiceTest·IssueApplicationServiceSoftDeleteTest·BulkOperationIntegrationTest·IssueControllerTransitionIntegrationTest 등)**, `M/src/test/.../application/IssueHistoryRecordingTest.kt`(신규)]
+  - 전수 확정: `grep -rln 'IssueApplicationService(' M/src/test`
 - depends-on: [2, 3, 4]
 
-**RED**: `IssueHistoryRecordingTest`(mock repository) — createIssue/updateIssue/transitionIssue/changeAssignee/changeComponents/changeAffectsVersions/changeFixVersions/softDeleteIssue 각각 호출 후 `repository.record`가 올바른 group+items로 1회 호출됨 검증. no-op update ⇒ record 미호출. **기존 IssueApplicationServiceTest는 새 의존성 주입으로 생성자 변경 → 동일 PR에서 갱신**(메모리: plan-files-constructor-injection-existing-tests).
-**GREEN**: 각 메서드에서 변경 전 스냅샷 확보 → detector → labelResolver로 label 채움 → `repository.record`(이슈 변경과 **같은 트랜잭션** 내). actor=각 메서드 인증 주체(부재 시 nullable). 기록 호출을 private 헬퍼로 집약.
+**RED**: `IssueHistoryRecordingTest`(mock repository) — createIssue/updateIssue/transitionIssue/changeAssignee/changeComponents/changeAffectsVersions/changeFixVersions/softDeleteIssue 각각 호출 후 `repository.record`가 올바른 group+items로 1회 호출됨 검증. no-op update ⇒ record 미호출. **새 의존성은 required 주입**(기본값 no-op 금지 — 26개 기존 테스트가 silent skip으로 false-green 나는 것 차단). **생성자 변경된 26개 테스트 전부 동일 PR에서 갱신**(메모리: plan-files-constructor-injection-existing-tests).
+**GREEN**: 각 메서드에서 변경 전 스냅샷(`existing`/`findByKeyForUpdate`) 확보 → detector → labelResolver로 label 채움 → `repository.record`(이슈 변경과 **같은 트랜잭션** 내). actor=각 메서드의 `actor: ActorId`(8개 메서드 모두 명시 인자로 받음 — 리뷰 OK). **self-invocation 제약**: `recordChange()`는 **같은 클래스 private 메서드로 유지**(별도 `@Transactional` 빈/REQUIRES_NEW 금지 — 같은 트랜잭션 보장, 메모리 transaction-self-invocation). **changeComponents 자동배정 2차 변경 캡처**: FR-CM-03 자동배정이 `repo.setAssignee`로 assignee를 추가 변경(re-read 없음)하므로, after 스냅샷에 자동배정 결과를 반영해 **components + assignee 두 item 모두 기록**(누락 금지).
 **REFACTOR**: `recordChange(issueBefore, issueAfter, actor)` 헬퍼 1곳으로 8개 진입점 중복 제거.
 **검증**: `./gradlew :backend:issue-tracking:test --tests '*IssueHistoryRecordingTest' --tests '*IssueApplicationServiceTest'`
 
@@ -133,7 +134,7 @@
 - files: [`M/src/test/.../history/IssueChangeHistoryE2EIntegrationTest.kt`]
 - depends-on: [5]
 
-**RED**: Testcontainers 실 repository로 8개 진입점 각각 변경 → 이력 테이블 직접 조회 검증. (a) 한 PATCH 다필드 ⇒ 1그룹 N아이템, (b) no-op ⇒ 이력 0, (c) 이슈 소프트삭제 후에도 과거 이력 조회 가능(보존), (d) 라벨 박제 영속(이후 이름 변경 가정해도 박제값 유지), (e) 트랜잭션 — 이력 기록 실패 시 이슈 변경 롤백.
+**RED**: Testcontainers 실 repository로 8개 진입점 각각 변경 → 이력 테이블 직접 조회 검증. (a) 한 PATCH 다필드 ⇒ 1그룹 N아이템, (b) no-op ⇒ 이력 0, (c) 이슈 소프트삭제 후에도 과거 이력 조회 가능(보존), (d) 라벨 박제 영속(issue-tracking 소유 필드 — type/component 개명 가정해도 박제값 유지; assignee/securityLevel은 label=null 확인), (e) 트랜잭션 — 이력 기록 실패 시 이슈 변경 롤백, (f) **changeComponents가 자동배정 유발 시 components + assignee 두 item 모두 기록**(2차 변경 누락 0).
 **GREEN**: Task 5 배선으로 통과(검증 강화 task).
 **REFACTOR**: 시나리오 헬퍼.
 **검증**: `./gradlew :backend:issue-tracking:test --tests '*IssueChangeHistoryE2EIntegrationTest'` + 풀 모듈 `./gradlew :backend:issue-tracking:test --rerun-tasks` + `ktlintCheck detekt`
@@ -147,4 +148,22 @@
 - 추가 검증: init_codegen 미러(T1), 풀 모듈 `--rerun-tasks` + ktlint/detekt(T6). 프론트/E2E 없음(백엔드 전용).
 - 충돌 주의: FR-MN-01(PR #114) 같은 모듈 — V018 선점 시 rebase, IssueApplicationService 동시수정 시 머지 충돌 가능(머지 직전 재확인).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### ground-truth 독립 리뷰 (2026-06-11, eng 집중 — 코드 실측 대조)
+
+백엔드 단일 BC라 autoplan 대신 코드 실측 ground-truth 리뷰(메모리: bts-review-plan-autoplan-overkill). 8개 진입점 시그니처(모두 `actor: ActorId` 명시 인자)·트랜잭션 경계(클래스 `@Transactional`)·V018 가용(FR-MN-01 미점유)·init_codegen 패턴·마이그레이션 prefix 정책 모두 **실측 OK**.
+
+**🛑 BLOCKER (1건, 해소됨)**.
+- 라벨 박제 cross-BC 소스 부재. `UserLookupPort.exists()`는 Boolean만(이름 조회 없음), `IssueSecurityDirectory`는 레벨명 없음 → assignee·securityLevel 이름은 identity-access 소유라 issue-tracking 내 박제 불가.
+- **해소**. Maxi 결정 = **부분 박제**. issue-tracking 소유 필드(type/resolution/component/version)만 이름 박제, assignee·securityLevel은 id만 저장 + FR-HS-02 조회 해석. 한 PR=한 BC 유지. → spec 라벨 규칙 + plan T3 갱신 완료.
+
+**⚠️ CONCERN (6건, 전부 plan/ADR/spec 반영 완료)**.
+1. 생성자 주입 파급 — `IssueApplicationService(...)` 호출 테스트 26개. → T5 files를 grep 전수 + **required 주입(false-green 차단)**으로 갱신.
+2. changeComponents 자동배정(FR-CM-03) 2차 변경이 이력에서 누락 위험. → T5 GREEN(after 스냅샷 반영) + T6 케이스 (f) 추가.
+3. buildChangedFields 재사용 과장(이름 Set만 반환). → T2 GREEN "디텍터는 신규 구현"으로 정정.
+4. Component/Version `findById`는 projectId+deleted 필터. → T3 GREEN 명시(박제는 변경 시점이라 OK).
+5. ADR↔spec FK drift(ADR이 group→issues FK라 오기). → ADR 정정(group→item FK만, issues FK 없음).
+6. self-invocation 제약 — recordChange를 같은 클래스 private 유지(REQUIRES_NEW 금지). → T5 GREEN 명시.
+
+**판정**. BLOCKER 해소 + CONCERN 전부 반영 → 게이트 1 진입 가능.

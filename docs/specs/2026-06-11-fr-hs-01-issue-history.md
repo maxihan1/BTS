@@ -91,10 +91,11 @@ CREATE INDEX idx_issue_change_item_field ON issue_change_item (field);
 - customFields: **변경된 키별로** field='customField:&lt;fieldKey&gt;', value=해당 키의 이전/새 값(스칼라는 문자열, 복합은 JSON 문자열).
 - lifecycle: to_value ∈ {'created','deleted'}, from_value=null.
 
-**라벨(label) — 변경 당시 표시 이름 박제 (Jira식).**
-- 변경 시점에 사람이 읽을 표시값을 함께 INSERT(영구 박제). 이후 이름 변경/삭제와 무관.
-- assignee → username/displayName. status → 상태 표시명. type → 타입명. resolution → resolution명. components/versions → 이름의 정렬 배열 문자열. securityLevel → 레벨명.
-- 표시 이름이 본질적으로 값 자체인 필드(summary/description/priority/impact/environment/labels)는 label=value로 동일 저장(또는 label=null 허용 — 구현 시 단순화). **plan에서 라벨 해석 헬퍼 1곳 집약**(서비스가 변경 시점에 이미 보유한 표시값 우선 활용, 추가 조회 최소화).
+**라벨(label) — 변경 당시 표시 이름 박제 (Jira식, 부분 박제 — Maxi 확정).**
+- **issue-tracking 소유 필드만** 변경 당시 이름을 함께 INSERT(영구 박제, 이후 개명/삭제와 무관). type → 타입명, resolution → resolution명, components/versions → 이름의 정렬 배열 문자열.
+- **cross-BC 소유 필드는 박제 안 함**(label=null, value=id만 저장). assignee(username은 identity-access 소유)·securityLevel(레벨명은 identity-access 소유)은 표시 이름을 **FR-HS-02 조회 시 해석**. 근거: identity-access 이름 조회는 cross-BC라 "한 PR=한 BC"와 충돌 — 이력 1FR에 포트 확장은 과함(ground-truth 리뷰 BLOCKER). BTS는 소프트삭제라 대개 조회 시 해석 가능, 개명/완전삭제 후엔 id 표시.
+- status → stateKey passthrough(label=value). 값 자체가 표시인 필드(summary/description/priority/impact/environment/labels)는 label=null(value가 곧 표시).
+- **라벨 해석 헬퍼 1곳 집약**(issue-tracking 내 type/resolution/component/version name lookup만). Component/Version `findById`는 projectId 인자 + `deleted_at IS NULL` 필터 — 박제는 변경 시점 수행이라 OK.
 
 ## 비기능 요구사항 (NFR)
 

@@ -37,7 +37,7 @@
 
 ### 4. 보존 — append-only
 
-이력은 삭제/수정하지 않는다(DATA.md 감사 정책 정합). 이슈가 소프트 삭제돼도 이력은 보존. `issue_change_group`은 `issues`에 FK를 두되 이력 보존을 위해 ON DELETE 제약은 소프트 삭제 정책상 무의미(이슈 물리 삭제 없음) — issue_id + issue_key 동시 저장으로 이동/리다이렉트에도 추적 가능.
+이력은 삭제/수정하지 않는다(DATA.md 감사 정책 정합). 이슈가 소프트 삭제돼도 이력은 보존. FK는 `issue_change_item → issue_change_group`(부모-자식 무결성)에만 둔다. `issue_change_group`은 **`issues`로의 FK를 두지 않는다**(FR-AU-10 `auth_audit_logs` 패턴, 이력 보존 우선) — issue_id + issue_key 동시 저장으로 이동/리다이렉트에도 추적 가능.
 
 ## 대안 (기각)
 
