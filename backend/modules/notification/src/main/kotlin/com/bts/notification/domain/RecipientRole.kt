@@ -46,7 +46,8 @@ enum class RecipientRole {
          * @param name DB에 저장된 enum 이름 문자열
          * @return 매핑된 enum 상수, 없으면 `null`
          */
-        fun fromWire(name: String): RecipientRole? =
-            runCatching { valueOf(name) }.getOrNull()
+        fun fromWire(name: String): RecipientRole? {
+            return runCatching { valueOf(name) }.getOrNull()
+        }
     }
 }

@@ -56,6 +56,8 @@ data class NotificationPolicy(
      * @param now 변경 시각 (호출자 Clock 에서 주입)
      * @return enabled 와 updatedAt 이 갱신된 새 인스턴스
      */
-    fun toggle(newEnabled: Boolean, now: Instant): NotificationPolicy =
-        copy(enabled = newEnabled, updatedAt = now)
+    fun toggle(
+        newEnabled: Boolean,
+        now: Instant,
+    ): NotificationPolicy = copy(enabled = newEnabled, updatedAt = now)
 }

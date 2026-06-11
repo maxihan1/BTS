@@ -17,7 +17,10 @@ class NotificationPolicyTest : DescribeSpec({
     val sampleProjectId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000002")
     val sampleCreatedBy: UUID = UUID.fromString("00000000-0000-0000-0000-000000000003")
 
-    fun buildPolicy(projectId: UUID? = sampleProjectId, enabled: Boolean = true): NotificationPolicy =
+    fun buildPolicy(
+        projectId: UUID? = sampleProjectId,
+        enabled: Boolean = true,
+    ): NotificationPolicy =
         NotificationPolicy(
             id = sampleId,
             projectId = projectId,

@@ -34,7 +34,8 @@ enum class Channel {
          * @param name DB에 저장된 enum 이름 문자열
          * @return 매핑된 enum 상수, 없으면 `null`
          */
-        fun fromWire(name: String): Channel? =
-            runCatching { valueOf(name) }.getOrNull()
+        fun fromWire(name: String): Channel? {
+            return runCatching { valueOf(name) }.getOrNull()
+        }
     }
 }

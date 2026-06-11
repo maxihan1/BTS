@@ -52,9 +52,10 @@ class NotificationEventTypeTest : DescribeSpec({
                 NotificationEventType.ISSUE_TRANSITIONED.publishable shouldBe true
             }
             it("나머지 7종은 publishable == false") {
-                val nonPublishable = NotificationEventType.entries.filter {
-                    it != NotificationEventType.ISSUE_CREATED && it != NotificationEventType.ISSUE_TRANSITIONED
-                }
+                val nonPublishable =
+                    NotificationEventType.entries.filter {
+                        it != NotificationEventType.ISSUE_CREATED && it != NotificationEventType.ISSUE_TRANSITIONED
+                    }
                 nonPublishable.size shouldBe 7
                 nonPublishable.forEach { eventType ->
                     eventType.publishable shouldBe false
@@ -82,10 +83,11 @@ class NotificationEventTypeTest : DescribeSpec({
         }
 
         it("모든 enum명이 entries에 포함된다") {
-            val expected = setOf(
-                "REPORTER", "ASSIGNEE", "PREVIOUS_ASSIGNEE", "WATCHER",
-                "COMPONENT_LEAD", "MENTIONED", "PROJECT_MEMBER", "RULE_OWNER", "PROJECT_ADMIN",
-            )
+            val expected =
+                setOf(
+                    "REPORTER", "ASSIGNEE", "PREVIOUS_ASSIGNEE", "WATCHER",
+                    "COMPONENT_LEAD", "MENTIONED", "PROJECT_MEMBER", "RULE_OWNER", "PROJECT_ADMIN",
+                )
             RecipientRole.entries.map { it.name }.toSet() shouldBe expected
         }
 

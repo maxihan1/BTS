@@ -56,7 +56,8 @@ enum class NotificationEventType(
          * @param value DB / 메시지 페이로드에서 읽은 문자열
          * @return 매핑된 enum 상수, 없으면 `null`
          */
-        fun fromWire(value: String): NotificationEventType? =
-            entries.firstOrNull { it.wireValue == value }
+        fun fromWire(value: String): NotificationEventType? {
+            return entries.firstOrNull { it.wireValue == value }
+        }
     }
 }
