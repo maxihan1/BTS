@@ -18,7 +18,11 @@ import java.util.UUID
  * 가지는 역할([ProjectRole])을 CRUD한다.
  *
  * 구현체: [JdbcProjectMembershipRepository].
+ *
+ * CRUD/카운트/락/조인 조회 + 사용자별 프로젝트 id 조회([listProjectIdsByUser])가 한 영속
+ * 책임에 응집한다. 멤버십 영속 경계를 인위로 쪼개면 트랜잭션 결합만 늘어나므로 TooManyFunctions 억제.
  */
+@Suppress("TooManyFunctions")
 interface ProjectMembershipRepository {
 
     /**
@@ -145,6 +149,7 @@ interface ProjectMembershipRepository {
  */
 @Repository
 @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED)
+@Suppress("TooManyFunctions")
 class JdbcProjectMembershipRepository(
     private val jdbc: NamedParameterJdbcTemplate,
 ) : ProjectMembershipRepository {
@@ -179,7 +184,8 @@ class JdbcProjectMembershipRepository(
         jdbc.query(
             SQL_LIST_PROJECT_IDS_BY_USER,
             mapOf("userId" to userId),
-        ) { rs, _ -> rs.getObject("project_id", UUID::class.java) }
+            ProjectIdRowMapper,
+        )
 
     @Transactional(readOnly = true)
     override fun listByProject(projectId: UUID): List<ProjectMembership> =
@@ -416,4 +422,9 @@ private object MemberViewRowMapper : RowMapper<ProjectMemberView> {
             displayName = rs.getString("display_name"),
             username = rs.getString("username"),
         )
+}
+
+/** project_id 단일 컬럼 RowMapper — listProjectIdsByUser 용 (MFA 강제 정책 멤버십 조회). */
+private object ProjectIdRowMapper : RowMapper<UUID> {
+    override fun mapRow(rs: ResultSet, rowNum: Int): UUID = rs.getObject("project_id", UUID::class.java)
 }
