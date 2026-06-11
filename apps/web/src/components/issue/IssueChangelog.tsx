@@ -110,7 +110,10 @@ interface ChangeGroupRowProps {
  */
 export function ChangeGroupRow({ group, refs }: ChangeGroupRowProps): JSX.Element {
   const actorDisplay = group.actorName ?? issueDetailStrings.changelogSystemActor
-  const timeDisplay = formatDateTime(group.createdAt)
+  const parsedDate = new Date(group.createdAt)
+  const timeDisplay = isNaN(parsedDate.getTime())
+    ? group.createdAt
+    : formatDateTime(group.createdAt)
   const groupLabel = `${actorDisplay} · ${timeDisplay}`
 
   return (
@@ -198,7 +201,7 @@ function ChangelogPage({
   isLastRequested,
   onLoadMore,
 }: ChangelogPageProps): JSX.Element {
-  const { data, isLoading, isError } = useIssueChangelog(issueKey, page)
+  const { data, isLoading, isError, refetch } = useIssueChangelog(issueKey, page)
 
   if (isLoading) {
     return page === 0
@@ -222,8 +225,20 @@ function ChangelogPage({
         </div>
       )
     }
-    // 이후 페이지 에러는 빈 렌더 (이전 페이지 데이터는 유지)
-    return <></>
+    // 비-0 페이지 에러: 재시도 가능하도록 "더 보기" 버튼을 유지한다.
+    // 클릭 시 refetch()로 같은 페이지를 재요청한다.
+    return (
+      <div className="pt-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => { void refetch() }}
+        >
+          {issueDetailStrings.changelogLoadMore}
+        </Button>
+      </div>
+    )
   }
 
   if (page === 0 && data.empty) {

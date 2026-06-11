@@ -30,7 +30,10 @@ export const CHANGELOG_KEYS = {
  * GET /api/v1/issues/{key}/changelog?page={page}&size={DEFAULT_PAGE_SIZE}
  *
  * "더 보기" 패턴에서 page를 증가시켜 호출하면 별도 캐시로 관리된다.
- * staleTime 0 — 이력은 항상 최신 데이터를 반영해야 하므로 캐시를 유지하지 않는다.
+ *
+ * staleTime 30_000 — 이력은 append-only이므로 30초 캐시 유지. 창 포커스 복귀 시
+ * offset 기반 다중 페이지가 동시에 재조회되어 경계 그룹 중복/누락이 발생하는
+ * 것을 방지하기 위해 refetchOnWindowFocus를 false로 고정한다.
  *
  * @param issueKey 이슈 식별 키 (예: "ATLAS-1")
  * @param page 0-based 페이지 번호 (기본값: 0)
@@ -39,7 +42,8 @@ export function useIssueChangelog(issueKey: string, page: number = 0) {
   return useQuery<ChangelogPage, unknown>({
     queryKey: CHANGELOG_KEYS.list(issueKey, page),
     queryFn: () => fetchIssueChangelog(issueKey, page, DEFAULT_PAGE_SIZE),
-    staleTime: 0,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
     retry: false,
   })
 }
