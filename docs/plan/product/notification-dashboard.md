@@ -31,11 +31,11 @@
 
 **우선순위**. 필수 | **선행**. §0 | **Plan slug**. `notify/policy`
 
-- [ ] D1. 도메인 — NotificationPolicy (책임. backend-engineer)
-- [ ] D2. 명세 — 이벤트 종류 × 수신자 × 채널 매트릭스 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `notification_policies(event_type, recipient_role, channel)` (책임. db-engineer)
-- [ ] D4. 백엔드 — 정책 CRUD + 평가 엔진 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 — NotificationPolicy (책임. backend-engineer) — PR #118
+- [x] D2. 명세 — 이벤트 종류 × 수신자 × 채널 매트릭스 (책임. backend-engineer) — PR #118 (event_type=SDD §9.1.2 9종)
+- [x] D3. 데이터 모델 — `notification_policies(project_key?, event_type, recipient_role, channel, enabled)` (책임. db-engineer) — PR #118 (V400~V401, project_key 문자열=BC 격리)
+- [x] D4. 백엔드 — 정책 CRUD + 평가 엔진 (책임. backend-engineer) — PR #118 (전역/프로젝트 override replace, SYSTEM_ADMIN)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #118 (단위+통합+ArchUnit+e2e)
 - [ ] D6. 프론트 UI — 관리자 정책 페이지 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
