@@ -129,6 +129,37 @@ class IssueChangeHistoryE2EIntegrationTest {
         @Bean
         open fun realVersionRepositoryForHistory(dsl: DSLContext): VersionRepository = VersionRepository(dsl)
 
+        /**
+         * IssueSecurityDirectory stub — AlwaysAllow 인라인.
+         * findLevelNames default 구현(빈 맵)으로 securityLevel label=null graceful 검증.
+         */
+        @Bean
+        open fun historyE2EIssueSecurityDirectory(): IssueSecurityDirectory =
+            com.bts.issue.adapter.outbound.AlwaysAllowIssueSecurityDirectory()
+
+        /**
+         * UserLookupPort stub — assignee 표시명 박제 검증용.
+         * NEW_ASSIGNEE_ID -> "Alice", ALICE_ID -> "Alice Lead".
+         * 그 외 id 는 결과 맵에서 제외 -> label=null graceful.
+         */
+        @Bean
+        @Primary
+        open fun historyE2EUserLookupPort(): UserLookupPort =
+            object : UserLookupPort {
+                private val displayNames =
+                    mapOf(
+                        NEW_ASSIGNEE_ID to "Alice",
+                        ALICE_ID to "Alice Lead",
+                    )
+
+                // exists=true: 모든 UUID 를 실재 user 로 허용해 changeAssignee 를 통과시킨다.
+                // 표시명이 없는 경우 findDisplayNamesByIds 에서 제외 -> label=null graceful degrade.
+                override fun exists(userId: UUID): Boolean = true
+
+                override fun findDisplayNamesByIds(ids: Set<UUID>): Map<UUID, String> =
+                    ids.mapNotNull { id -> displayNames[id]?.let { id to it } }.toMap()
+            }
+
         @Bean
         @Primary
         @Suppress("LongParameterList")
