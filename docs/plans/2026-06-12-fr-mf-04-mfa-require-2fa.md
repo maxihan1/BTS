@@ -115,13 +115,15 @@ mfaEnrollmentRequired    = mfaRequired(user) AND NOT mfaEnrolled(user)
 
 ### Task 3. issue-tracking SYSTEM_ADMIN require_2fa 토글 엔드포인트
 
+> **리뷰 B3 반영.** issue-tracking 은 `SystemPermissionResolver` 소비처 0 + 실 actor 추출/SecurityContext 인프라가 컨트롤러 슬라이스 테스트에 없음(`ProjectLeadController` 는 `SYSTEM_ACTOR_UUID` placeholder). 따라서 (1) prod-assembled 는 identity-access 의 `IdentityAccessSystemPermissionResolver` 빈을 받지만, (2) issue-tracking **단독 테스트 컨텍스트**엔 그 빈이 없으므로 notification 선례(`TestPermissionConfig` fake `SystemPermissionResolver`) + `@SpringBootTest` 풀부팅 테스트가 필요. non-prod 단독 부팅 가용성을 위해 `@Profile("!prod")` fallback 빈도 추가(기존 `AlwaysAllow*Resolver` 선례).
+
 **메타**.
 - agent: `backend-engineer`  (SYSTEM_ADMIN 게이트는 security-engineer 검토)
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/project/web/ProjectRequire2faController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/project/web/dto/ChangeRequire2faRequest.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/project/application/ProjectRequire2faApplicationService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/project/repository/ProjectRequire2faRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/project/web/ProjectRequire2faControllerIntegrationTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/project/web/ProjectRequire2faController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/project/web/dto/ChangeRequire2faRequest.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/project/application/ProjectRequire2faApplicationService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/project/repository/ProjectRequire2faRepository.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/project/adapter/NonProdAllowSystemAdminResolver.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/project/web/ProjectRequire2faControllerIntegrationTest.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/project/web/Require2faTestPermissionConfig.kt`]
 - depends-on: [1]
 
-**RED**: HTTP 통합 테스트 — `PATCH /api/v1/projects/{key}/require-2fa {requireTwoFactor:true}`: SYSTEM_ADMIN → 200 + 영속 확인, 비관리자 → 403, 미인증 → 401. (테스트 컨텍스트에 `SystemPermissionResolver` test bean 주입.)
-**GREEN**: `CurrentActor.current()` 로 actorId 추출 → `SystemPermissionResolver.isSystemAdmin(actor.value)` false 면 403(`@Transactional` ApplicationService) → repository UPDATE require_2fa. 에러 메시지 내부 상세 누출 금지(learnings guard-exception-message-http-leak).
+**RED**: `@SpringBootTest`(풀부팅, 슬라이스 아님 — SecurityContext 필요) HTTP 통합 — `PATCH /api/v1/projects/{key}/require-2fa {requireTwoFactor:true}`: SYSTEM_ADMIN(fake resolver true) → 200 + 영속 확인, 비관리자(fake false) → 403, 미인증 → 401. fake `SystemPermissionResolver` 는 `Require2faTestPermissionConfig` 로 주입(admin/비admin 토글 가능 — notification `TestPermissionConfig` 선례).
+**GREEN**: `CurrentActor.current()` 로 actorId 추출 → `SystemPermissionResolver.isSystemAdmin(actor.value)` false 면 403(`@Transactional` ApplicationService) → repository UPDATE require_2fa. 에러 메시지 내부 상세 누출 금지(learnings guard-exception-message-http-leak). non-prod 단독 부팅용 `@Profile("!prod")` `NonProdAllowSystemAdminResolver`(기존 AlwaysAllow 선례) — prod 는 assembled identity-access 실 빈 사용.
 **REFACTOR**: ExceptionHandler 정합(403 코드 `require_2fa_forbidden` 등) + KDoc.
 **검증**: `./gradlew :backend:modules:issue-tracking:test --tests '*ProjectRequire2fa*'`.
 
@@ -133,20 +135,22 @@ mfaEnrollmentRequired    = mfaRequired(user) AND NOT mfaEnrolled(user)
 - depends-on: [2]
 
 **RED**: `MfaEnforcementPolicy` 단위 테스트(fake: SystemPermissionResolver / SensitiveProjectResolver / MfaService / 멤버십). 분기 — (a)관리자+미설정→required, (b)민감멤버+미설정→required, (c)일반+미설정→false, (d)관리자+이미설정→false(EC9), (e)멤버십0→false(EC3), (f)다중프로젝트 하나만 민감→required(EC4).
-**GREEN**: `mfaRequired = isSystemAdmin(uid) OR sensitiveResolver.anyRequiresMfa(membershipRepo.listProjectIdsByUser(uid))`; `mfaEnrollmentRequired = mfaRequired && !mfaService.isEnabled(uid)`. `ProjectMembershipRepository.listProjectIdsByUser(userId): List<UUID>` 신규(in-BC 조회). identity-access 단독 부팅용 `@ConditionalOnMissingBean NonProdSensitiveProjectResolver`(안전 기본 false) — prod 는 issue-tracking 실 impl 사용(assembled). **fail-open 금지**: prod 프로파일에서 fallback 이 실 빈을 가리지 않도록 `@Profile("!prod")` + 부팅 가드(learnings crossbc-resolver-nullable-fail-open / profile-scoped-bean-boot-failure).
+**GREEN**: `mfaRequired = isSystemAdmin(uid) OR sensitiveResolver.anyRequiresMfa(membershipRepo.listProjectIdsByUser(uid))`; `mfaEnrollmentRequired = mfaRequired && !mfaService.isEnabled(uid)`. `ProjectMembershipRepository.listProjectIdsByUser(userId): List<UUID>` 신규(in-BC 조회). identity-access 단독 부팅용 `NonProdSensitiveProjectResolver`(`@Profile("!prod")`, 안전 기본 false). **fail-open 금지 — 단일 명확 가드(CEO-3)**: prod 는 issue-tracking 실 impl 을 assembled 로 받고, prod 부팅 시 실 빈 부재면 Spring DI 가 loud 하게 실패(silent 우회 금지). 별도 3중 방어 대신 "non-prod fallback(false) + prod 실빈 필수"로 단순화(learnings crossbc-resolver-nullable-fail-open / profile-scoped-bean-boot-failure).
 **REFACTOR**: `@Service` 부착 확인(ArchUnit) + KDoc.
 **검증**: `./gradlew :backend:modules:identity-access:test --tests '*MfaEnforcementPolicy*'`.
 
-### Task 5. access JWT 클레임 `mfa_enrollment_required` (JwtIssuer + issueTokens + refresh rotate)
+### Task 5. access JWT 클레임 `mfa_enrollment_required` — JwtIssuer 내부 계산 (전 발급 경로 단일 chokepoint)
+
+> **리뷰 B1/B2 반영.** `jwtIssuer.issue` 호출은 4곳(AuthController.issueTokens, RefreshTokenService.rotate, OidcAuthenticationSuccessHandler, Saml2AuthenticationSuccessHandler). 호출처마다 클레임을 넣으면 누락 위험(SSO 관리자 우회=B1). **`JwtIssuer.issue` 가 첫 파라미터 `userId: UUID` 를 이미 받으므로**, JwtIssuer 내부에서 `MfaEnforcementPolicy.evaluate(userId)` 를 호출해 클레임을 박는다 → 4 경로 전부 시그니처 변경 0으로 자동 포괄. 호출처/그 테스트 무변경(B2 축소 — JwtIssuer 자체 테스트 2개만 보정).
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/jwt/JwtIssuer.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/AuthController.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/session/RefreshTokenService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/jwt/JwtIssuerTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/integration/MfaEnforcementClaimIntegrationTest.kt`]
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/jwt/JwtIssuer.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/jwt/JwtIssuerTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/jwt/JwtIssuerSignatureRegressionTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/integration/MfaEnforcementClaimIntegrationTest.kt`]
 - depends-on: [4]
 
-**RED**: (a) JwtIssuer 단위 — `issue(..., mfaEnrollmentRequired=true)` → 클레임 존재. (b) 로그인 통합 — 강제대상 미설정 사용자 login → access 토큰 클레임 true, 일반 사용자 → false. (c) refresh 통합 — rotate 후 토큰도 클레임 반영.
-**GREEN**: `JwtIssuer.issue` 에 `mfaEnrollmentRequired: Boolean` 파라미터 + `.claim(CLAIM_MFA_ENROLLMENT_REQUIRED, ...)`(false 여도 명시 — 기존토큰 부재는 false 해석). `AuthController.issueTokens` 가 `MfaEnforcementPolicy` 계산해 전달. **`RefreshTokenService.rotate` 도 JwtIssuer 호출 지점에서 정책 재평가**(refresh 가 토큰 재발급 원천 — 누락 시 등록→refresh 해제 흐름 깨짐).
-**REFACTOR**: 상수 `CLAIM_MFA_ENROLLMENT_REQUIRED` companion + KDoc claims 표 갱신.
+**RED**: (a) JwtIssuer 단위 — fake `MfaEnforcementPolicy` 가 true 반환하도록 두면 발급 토큰에 클레임 `mfa_enrollment_required=true`, false면 false 명시. (b) 로컬 로그인 통합 — 강제대상 미설정 login → 토큰 클레임 true, 일반 → false. (c) **refresh 통합** — rotate 후 토큰도 클레임 반영. (d) **SSO 통합(B1)** — OIDC/SAML 성공 핸들러 발급 토큰도 클레임 포함(SSO 관리자 미설정 → true). 기존 JwtIssuer 직접 생성 테스트 2개(`JwtIssuerTest`, `JwtIssuerSignatureRegressionTest`)는 생성자 인자 추가로 컴파일 실패(보정 대상).
+**GREEN**: `JwtIssuer` 생성자에 `MfaEnforcementPolicy` 주입. `issue()` 내부에서 `.claim(CLAIM_MFA_ENROLLMENT_REQUIRED, mfaEnforcementPolicy.evaluate(userId))`(false 여도 명시 — 부재=false 해석 일관). **issue() 시그니처·호출처 무변경** → AuthController/RefreshTokenService/Oidc·Saml 핸들러 및 그 테스트 모두 무변경(B1 전 경로 자동 포괄, B2 회귀 차단). 정책 평가가 발급 경로를 throw 로 막지 않도록 주의(resolver prod 실 impl, non-prod fallback false — login 가용성).
+**REFACTOR**: 상수 `CLAIM_MFA_ENROLLMENT_REQUIRED` companion + KDoc claims 표 갱신(발급 chokepoint 설계 명시).
 **검증**: `./gradlew :backend:modules:identity-access:test --tests '*JwtIssuer*' --tests '*MfaEnforcementClaim*'`.
 
 ### Task 6. whoami `mfaEnrollmentRequired` 노출 (클레임 출처)
@@ -168,7 +172,7 @@ mfaEnrollmentRequired    = mfaRequired(user) AND NOT mfaEnrolled(user)
 - files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/config/MfaEnrollmentGateFilter.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/config/SecurityConfig.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/integration/MfaEnrollmentGateIntegrationTest.kt`]
 - depends-on: [5]
 
-**RED**: 게이트 통합(양방향) — 클레임 true 토큰: (a) 임의 보호 API(`GET /api/v1/issues/...` 또는 가용 보호 경로) → 403 `mfa_enrollment_required`, (b) allow-list(`/api/v1/auth/mfa/**`, `/api/v1/users/me/whoami`, `/api/v1/auth/logout`, `/api/v1/auth/refresh`) → 통과. 클레임 false 토큰 → 모든 API 통과(회귀 0). PAT(클레임 부재) → 통과.
+**RED**(리뷰 C3/C4 반영): 게이트 통합(양방향) — 클레임 true 토큰: (a) **identity-access 컨텍스트 내 가용한 보호 경로**(예 `GET /api/v1/auth/sessions` — authenticated, allow-list 외) → 403 `mfa_enrollment_required`. (`/api/v1/issues`는 identity-access 단독 컨텍스트에 부재하므로 RED 대상으로 쓰지 않음 — C4.) (b) allow-list 통과를 **명시적 경로별로** 검증(C3 영구 락 방지): `POST /api/v1/auth/mfa/totp/setup`·`/totp/enable`, `GET /api/v1/auth/mfa/totp`, `DELETE /api/v1/auth/mfa/totp`, `POST/GET /api/v1/auth/mfa/backup-codes`, `GET /api/v1/users/me/whoami`, `POST /api/v1/auth/logout`, `POST /api/v1/auth/refresh` → 전부 통과. 클레임 false 토큰 → 모든 API 통과(회귀 0). PAT(클레임 부재) → 통과.
 **GREEN**: `OncePerRequestFilter` — 인증 후(JWT 필터 뒤) 실행, principal 의 클레임 `mfa_enrollment_required=true` && 요청 경로 ∉ allow-list → 403 + 바디 `{error:"mfa_enrollment_required"}`. SecurityConfig `addFilterAfter` 로 등록(미인증은 기존 401 유지). allow-list 상수화.
 **REFACTOR**: allow-list AntPathMatcher 상수 + KDoc(영구 락 방지 — allow-list 누락 위험 명시).
 **검증**: `./gradlew :backend:modules:identity-access:test --tests '*MfaEnrollmentGate*'`.
@@ -180,9 +184,9 @@ mfaEnrollmentRequired    = mfaRequired(user) AND NOT mfaEnrolled(user)
 - files: [`backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/integration/MfaEnforcementEndToEndTest.kt`]
 - depends-on: [3, 6, 7]
 
-**RED→GREEN**: end-to-end — (S1/S2) 관리자 미설정 login → whoami required → 보호 API 403 → MFA enable → refresh → 보호 API 200 + whoami false. (S3) 민감 프로젝트 멤버(test fake resolver true) 미설정 → required. (S4) 일반 사용자 → 영향 0(회귀). (S5) 이미 설정 관리자 → 무영향. test @TestConfiguration 으로 SensitiveProjectResolver fake 주입(identity-access 단독 컨텍스트).
+**RED→GREEN**: end-to-end — (S1/S2) 관리자 미설정 login → whoami required → 보호 API 403 → MFA enable → refresh → 보호 API 200 + whoami false. (S3) 민감 프로젝트 멤버(test fake resolver true) 미설정 → required. (S4) 일반 사용자 → 영향 0(회귀). (S5) 이미 설정 관리자 → 무영향. **(B1) SSO(OIDC/SAML) 로그인 관리자 미설정 → 토큰 클레임 true → 게이트 403**(발급 chokepoint 검증). test @TestConfiguration 으로 SensitiveProjectResolver fake 주입(identity-access 단독 컨텍스트).
 **REFACTOR**: 시나리오 헬퍼 추출.
-**검증**: `./gradlew :backend:modules:identity-access:test --tests '*MfaEnforcementEndToEnd*'` + 모듈 전체 회귀 `./gradlew :backend:modules:identity-access:test :backend:modules:issue-tracking:test`.
+**검증**(리뷰 CEO-1 — 게이트 필터는 공유 SecurityFilterChain 변경, blast radius 큼): 모듈 표적 + **전체 백엔드 회귀** `./gradlew test`(기존 MFA/인증 통합테스트 그린 확인). 기존 E2E 회귀는 bts-codereview/merge 게이트에서 확인.
 
 ### Task 9. FR-MF-04 백엔드 D단계 마킹 + 전수 동기화
 
@@ -201,6 +205,32 @@ mfaEnrollmentRequired    = mfaRequired(user) AND NOT mfaEnrolled(user)
 - 예상 wave: 의존 그래프상 임계 경로 T1→T2→T4→T5→{T6,T7}→T8→T9 (약 7 wave). T3 는 T2 와 병렬(둘 다 T1 후), T6·T7 병렬.
 - TDD 강제: yes (T9 docs 제외)
 - 추가 검증: ktlint/detekt(모듈 baseline), 모듈 전체 회귀, init_codegen 미러 정합, verify-master-plan
-- 회귀 표면: whoami JSON additive(프론트 D6 소비) / 게이트 allow-list 정밀 / refresh rotate 클레임 누락 금지 / fail-open 금지
+- 회귀 표면: whoami JSON additive(프론트 D6 소비) / 게이트 allow-list 정밀 / fail-open 금지 / **JWT 발급 chokepoint(T5)=전 경로(SSO 포함) 자동 포괄, 호출처 무변경**
+- 리뷰 반영: B1(SSO우회)→JwtIssuer 내부계산 / B2(생성자주입)→시그니처 무변경 / B3(토글 인프라)→fake config+풀부팅+fallback / C3·C4(게이트 테스트) / CEO-1(회귀 sweep 확대)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 독립 eng/보안 리뷰 (security-engineer agent, 2026-06-12) — 코드 대조
+
+**BLOCKER 3건 (모두 plan 반영 완료, auth라 무시 불가)**.
+- **B1 (보안 치명)** — JWT 발급 4경로(local·refresh·OIDC·SAML) 중 plan이 2곳만 다뤄 SSO 관리자 토큰에 클레임 부재 → 게이트 우회. **해결**: JwtIssuer 내부에서 `MfaEnforcementPolicy.evaluate(userId)` 계산(발급 chokepoint) → 4경로 자동 포괄(T5 재작성). T8에 SSO 관리자 게이트 케이스 추가.
+- **B2** — T5 생성자 주입이 `RefreshTokenServiceTest`(직접 생성) 컴파일 깸. **해결**: JwtIssuer 내부 계산으로 issue() 시그니처 무변경 → 호출처 테스트 무변경. JwtIssuer 자체 테스트 2개(`JwtIssuerTest`/`JwtIssuerSignatureRegressionTest`)만 보정, T5 files 포함.
+- **B3** — issue-tracking 토글(T3)의 SYSTEM_ADMIN 게이트 인프라(actor 추출·resolver 소비·fake config) 부재. **해결(Maxi: 이번 PR 완성)**: notification `TestPermissionConfig` 선례 fake + `@SpringBootTest` 풀부팅 + non-prod fallback 빈 추가(T3 files 확장).
+
+**CONCERN**.
+- C1 — "SystemPermissionResolver 선례와 동일" 표현 부정확(impl은 identity-access). 방향 자체(impl=데이터 소유 BC)는 타당. prod assembled 조립 가정은 기존 전 resolver 공통(아래 한계 참조).
+- C2 — staleness(권한 추가 ≤15분 지연)는 fail-safe 방향(강제가 늦게 켜짐, 꺼지지 않음) → 수용. EC10 revoke 경로 실재.
+- C3 — allow-list 경로별 명시 테스트로 영구 락 방지(T7 반영).
+- C4 — T7 RED 대상은 identity-access 컨텍스트 내 보호 경로(`/api/v1/auth/sessions`)로 확정(`/api/v1/issues`는 단독 컨텍스트 부재)(T7 반영).
+
+### CEO/제품 리뷰 (Plan agent, 2026-06-12)
+
+- 종합: **진행 가능** — 범위 절제됨, 위험한 단순화는 이미 옳게 됨. 분할 불요.
+- 자동결정 4: 단일 PR 유지(선형 의존, 게이트 전엔 dead code) / T8 e2e 풀 시나리오 유지(영구 락 안전망) / fallback+가드 유지 / T3 in-PR.
+- taste 3 → 처리: ① 회귀 sweep 확대(T8 전체 `./gradlew test` 반영) ② T3 in-PR(**Maxi 확정**) ③ fail-open 가드 단일화(T4 반영).
+
+### 알려진 한계 (Maxi 인지 — 기존 패턴 답습)
+
+- **prod cross-BC 조립**: identity-access 가 prod 에서 issue-tracking 의 `SensitiveProjectResolver` 실 빈을 받으려면 단일 assembled 부팅이 전제. 현재 `no-cross-bc-deployment-assembly`(test-assembled 표준)로, 이는 기존 모든 cross-BC resolver(System/Field/Component 등)와 동일 조건 — 본 FR가 새로 만든 문제 아님. 동일 패턴(non-prod fallback + test-assembled)으로 진행.
+
+### BLOCKER 상태: 없음 (3건 전부 plan 반영 완료)
