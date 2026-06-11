@@ -10,7 +10,7 @@ import com.bts.notification.domain.Channel
 import com.bts.notification.domain.NotificationEventType
 import com.bts.notification.domain.NotificationPolicy
 import com.bts.notification.domain.RecipientRole
-import com.bts.notification.web.dto.NotificationPolicyCatalogDto
+
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
@@ -174,7 +174,14 @@ class NotificationPolicyControllerTest {
     fun `POST notification-policies 정상 입력이면 201 + response body`() {
         val created = samplePolicy()
         every {
-            notificationPolicyService.create(actorId, null, NotificationEventType.ISSUE_CREATED, RecipientRole.REPORTER, Channel.EMAIL, true)
+            notificationPolicyService.create(
+                actorId,
+                null,
+                NotificationEventType.ISSUE_CREATED,
+                RecipientRole.REPORTER,
+                Channel.EMAIL,
+                true,
+            )
         } returns created
 
         val body =
@@ -327,7 +334,9 @@ class NotificationPolicyControllerTest {
     @Test
     fun `PATCH notification-policies id service가 NotFoundException이면 404`() {
         val policyId = UUID.randomUUID()
-        every { notificationPolicyService.toggle(actorId, policyId, any()) } throws NotificationPolicyNotFoundException(policyId)
+        every {
+            notificationPolicyService.toggle(actorId, policyId, any())
+        } throws NotificationPolicyNotFoundException(policyId)
 
         val body = mapOf("enabled" to false)
 
@@ -355,7 +364,9 @@ class NotificationPolicyControllerTest {
     @Test
     fun `DELETE notification-policies id service가 NotFoundException이면 404`() {
         val policyId = UUID.randomUUID()
-        every { notificationPolicyService.delete(actorId, policyId) } throws NotificationPolicyNotFoundException(policyId)
+        every {
+            notificationPolicyService.delete(actorId, policyId)
+        } throws NotificationPolicyNotFoundException(policyId)
 
         mockMvc.perform(delete("/api/v1/notification-policies/$policyId"))
             .andExpect(status().isNotFound)
