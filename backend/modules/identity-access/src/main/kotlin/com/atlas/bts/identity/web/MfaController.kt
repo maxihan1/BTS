@@ -2,6 +2,8 @@
 
 package com.atlas.bts.identity.web
 
+import com.atlas.bts.identity.mfa.MfaBackupCodeService
+import com.atlas.bts.identity.mfa.MfaBackupCodeService.GenerateResult
 import com.atlas.bts.identity.mfa.MfaService
 import com.atlas.bts.identity.mfa.MfaService.DisableResult
 import com.atlas.bts.identity.mfa.MfaService.EnableResult
@@ -31,6 +33,8 @@ import java.util.UUID
  * - [enable]  POST /totp/enable — 첫 코드 검증 → ACTIVE 전이.
  * - [status]  GET  /totp — ACTIVE 여부.
  * - [disable] DELETE /totp — 현재 코드 검증(step-up) 후 비활성화.
+ * - [generateBackupCodes] POST /backup-codes — 1회용 백업 코드 10개 발급/재발급(평문 1회 노출, FR-MF-02 Task 7).
+ * - [backupCodesStatus]   GET  /backup-codes — 백업 코드 발급 여부 + 남은 미사용 개수.
  *
  * ## JWT 전용 (PAT 차단)
  * 2FA self-service 는 본인 세션 관리에 준하는 민감 작업이므로 대화형 로그인(JWT)만 허용한다.
@@ -55,6 +59,7 @@ import java.util.UUID
 class MfaController(
     private val mfaService: MfaService,
     private val userRepo: UserRepository,
+    private val backupCodeService: MfaBackupCodeService,
 ) {
     /**
      * POST /api/v1/auth/mfa/totp/setup — secret 생성(PENDING) + Authenticator 앱 provisioning 반환.
@@ -142,6 +147,48 @@ class MfaController(
     }
 
     /**
+     * POST /api/v1/auth/mfa/backup-codes — 1회용 백업 코드 10개 발급/재발급(기존 묶음 전량 교체).
+     *
+     * Authenticator 앱/하드웨어 키 분실 시의 로그인 복구 수단이다. 평문 코드 10개는 본 응답
+     * ([BackupCodesResponse.codes])에만 한 번 노출되고 저장은 해시만이다(§1.1.1) — 이후 재확인이 불가하므로
+     * 사용자에게 안전 보관을 안내한다. 평문 코드는 로깅하지 않으며(§1.1.2) 본 컨트롤러는 로거를 두지 않는다.
+     * 2FA 가 켜진(TOTP ACTIVE) 사용자에게만 부여하므로 미활성 시 409 `totp_not_active` 로 거부한다(fail-closed).
+     *
+     * @param jwt 인증된 JWT principal. PAT 인증 시 null → 403.
+     * @return 200 `{codes:[10개]}` / 409 `totp_not_active` / 403 PAT / 401 미인증.
+     */
+    @PostMapping("/backup-codes")
+    fun generateBackupCodes(
+        @AuthenticationPrincipal jwt: Jwt?,
+    ): ResponseEntity<*> {
+        val userId = userIdOrNull(jwt) ?: return PAT_FORBIDDEN_RESPONSE
+        return when (val result = backupCodeService.generateOrRegenerate(userId)) {
+            is GenerateResult.Generated -> ResponseEntity.ok(BackupCodesResponse(codes = result.codes))
+            GenerateResult.NotActive -> errorResponse(HttpStatus.CONFLICT, "totp_not_active")
+        }
+    }
+
+    /**
+     * GET /api/v1/auth/mfa/backup-codes — 백업 코드 발급 여부 + 남은 미사용 개수 조회(상태 표시용).
+     *
+     * 평문 코드는 노출하지 않고 발급 여부([BackupCodesStatusResponse.generated])와 남은 개수
+     * ([BackupCodesStatusResponse.remaining])만 반환한다 — UI 의 "백업 코드 N개 남음" 표시 및 재발급 유도용이다.
+     *
+     * @param jwt 인증된 JWT principal. PAT 인증 시 null → 403.
+     * @return 200 `{generated, remaining}` / 403 PAT / 401 미인증.
+     */
+    @GetMapping("/backup-codes")
+    fun backupCodesStatus(
+        @AuthenticationPrincipal jwt: Jwt?,
+    ): ResponseEntity<*> {
+        val userId = userIdOrNull(jwt) ?: return PAT_FORBIDDEN_RESPONSE
+        val status = backupCodeService.status(userId)
+        return ResponseEntity.ok(
+            BackupCodesStatusResponse(generated = status.generated, remaining = status.remaining),
+        )
+    }
+
+    /**
      * JWT subject(UUID) 를 추출한다. PAT(=[jwt] null) 또는 subject 가 UUID 가 아니면 null.
      *
      * @param jwt nullable JWT principal ([Jwt] 타입 아니면 PAT).
@@ -210,4 +257,27 @@ data class SetupResponse(
  */
 data class StatusResponse(
     val enabled: Boolean,
+)
+
+/**
+ * [MfaController.generateBackupCodes] 200 응답 — 새로 발급한 1회용 백업 코드 평문 묶음.
+ *
+ * 평문 10개는 이 응답에만 한 번 노출되고 저장은 해시만이다(§1.1.1). 사용자가 안전 보관하지 않으면
+ * 재확인이 불가하며, 분실 시 재발급으로 새 묶음을 받아야 한다.
+ *
+ * @param codes 1회용 백업 코드 평문 10개 (직렬화 키: codes).
+ */
+data class BackupCodesResponse(
+    val codes: List<String>,
+)
+
+/**
+ * [MfaController.backupCodesStatus] 200 응답 — 백업 코드 발급 여부와 남은 미사용 개수.
+ *
+ * @param generated 백업 코드가 한 번이라도 발급됐으면 true (직렬화 키: generated).
+ * @param remaining 아직 사용하지 않은 백업 코드 수 (직렬화 키: remaining).
+ */
+data class BackupCodesStatusResponse(
+    val generated: Boolean,
+    val remaining: Int,
 )
