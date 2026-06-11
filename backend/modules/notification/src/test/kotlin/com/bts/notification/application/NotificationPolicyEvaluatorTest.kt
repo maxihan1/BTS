@@ -11,6 +11,7 @@ import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -21,6 +22,9 @@ class NotificationPolicyEvaluatorTest : DescribeSpec({
 
     val repository: NotificationPolicyRepository = mockk()
     val evaluator = NotificationPolicyEvaluator(repository)
+
+    // 각 테스트 전에 mock 호출 기록과 stub을 초기화해 이전 테스트 오염을 방지한다.
+    beforeEach { clearMocks(repository) }
 
     val fixedNow: Instant = Instant.parse("2026-06-11T00:00:00Z")
     val eventType = NotificationEventType.ISSUE_CREATED
