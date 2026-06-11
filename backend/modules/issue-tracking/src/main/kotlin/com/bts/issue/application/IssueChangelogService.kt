@@ -119,11 +119,20 @@ class IssueChangelogService(
         }
     }
 
+    /**
+     * [IssueChangeGroup] 도메인 객체를 [ChangelogGroupView] 뷰 모델로 변환한다.
+     *
+     * DB 에서 로드된 그룹의 [IssueChangeGroup.createdAt] 은 반드시 non-null 이어야 한다.
+     * [displayNames] 맵에 [IssueChangeGroup.actorId] 가 없으면 actorName=null 로 graceful degrade.
+     */
     private fun IssueChangeGroup.toView(displayNames: Map<UUID, String>): ChangelogGroupView =
         ChangelogGroupView(
             actorId = actorId,
             actorName = actorId?.let { displayNames[it] },
-            createdAt = requireNotNull(createdAt) { "IssueChangeGroup.createdAt must not be null after DB load" },
+            createdAt =
+                requireNotNull(createdAt) {
+                    "IssueChangeGroup.createdAt must not be null after DB load (issueId=$issueId)"
+                },
             items = items,
         )
 }
