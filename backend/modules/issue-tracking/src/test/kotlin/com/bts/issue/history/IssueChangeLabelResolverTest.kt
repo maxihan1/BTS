@@ -13,6 +13,8 @@ import com.bts.issue.version.domain.VersionStatus
 import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeKey
+import com.bts.shared.permission.IssueSecurityDirectory
+import com.bts.shared.user.UserLookupPort
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -33,8 +35,18 @@ class IssueChangeLabelResolverTest : DescribeSpec({
     val resolutionRepo = mockk<ResolutionRepository>()
     val componentRepo = mockk<ComponentRepository>()
     val versionRepo = mockk<VersionRepository>()
+    val userLookupPort = mockk<UserLookupPort>()
+    val issueSecurityDirectory = mockk<IssueSecurityDirectory>()
 
-    val sut = IssueChangeLabelResolver(issueTypeRepo, resolutionRepo, componentRepo, versionRepo)
+    val sut =
+        IssueChangeLabelResolver(
+            issueTypeRepo,
+            resolutionRepo,
+            componentRepo,
+            versionRepo,
+            userLookupPort,
+            issueSecurityDirectory,
+        )
 
     val projectId = UUID.randomUUID()
 
@@ -270,30 +282,126 @@ class IssueChangeLabelResolverTest : DescribeSpec({
         }
     }
 
-    // ── label=null 유지 필드 ─────────────────────────────────────────────────────
+    // ── assignee 필드 — 표시명 박제 ─────────────────────────────────────────────
 
-    describe("label=null 유지 필드") {
-        it("assignee 필드는 fromLabel/toLabel 이 null") {
+    describe("field=assignee") {
+        it("from/to UUID 를 표시명으로 박제한다") {
+            val uuidA = UUID.randomUUID()
+            val uuidB = UUID.randomUUID()
+            every { userLookupPort.findDisplayNamesByIds(setOf(uuidA, uuidB)) } returns
+                mapOf(uuidA to "홍길동", uuidB to "김철수")
+
             val items =
                 listOf(
-                    IssueChangeItem(field = "assignee", fromValue = "alice", toValue = "bob"),
+                    IssueChangeItem(
+                        field = "assignee",
+                        fromValue = uuidA.toString(),
+                        toValue = uuidB.toString(),
+                    ),
                 )
             val result = sut.resolveLabels(items, projectId)
 
-            result[0].fromLabel shouldBe null
+            result[0].fromLabel shouldBe "홍길동"
+            result[0].toLabel shouldBe "김철수"
+        }
+
+        it("unassign(toValue=null) 시 toLabel=null, fromLabel 박제") {
+            val uuidA = UUID.randomUUID()
+            every { userLookupPort.findDisplayNamesByIds(setOf(uuidA)) } returns
+                mapOf(uuidA to "홍길동")
+
+            val items =
+                listOf(
+                    IssueChangeItem(
+                        field = "assignee",
+                        fromValue = uuidA.toString(),
+                        toValue = null,
+                    ),
+                )
+            val result = sut.resolveLabels(items, projectId)
+
+            result[0].fromLabel shouldBe "홍길동"
             result[0].toLabel shouldBe null
         }
 
-        it("securityLevel 필드는 fromLabel/toLabel 이 null") {
+        it("맵 미존재(fake miss) 시 label=null(graceful)") {
+            val uuidA = UUID.randomUUID()
+            every { userLookupPort.findDisplayNamesByIds(setOf(uuidA)) } returns emptyMap()
+
             val items =
                 listOf(
-                    IssueChangeItem(field = "securityLevel", fromValue = UUID.randomUUID().toString(), toValue = null),
+                    IssueChangeItem(
+                        field = "assignee",
+                        fromValue = uuidA.toString(),
+                        toValue = null,
+                    ),
                 )
             val result = sut.resolveLabels(items, projectId)
 
             result[0].fromLabel shouldBe null
         }
 
+        it("값이 UUID 형식이 아닌 경우 label=null(graceful)") {
+            every { userLookupPort.findDisplayNamesByIds(emptySet()) } returns emptyMap()
+
+            val items =
+                listOf(
+                    IssueChangeItem(
+                        field = "assignee",
+                        fromValue = "not-a-uuid",
+                        toValue = null,
+                    ),
+                )
+            val result = sut.resolveLabels(items, projectId)
+
+            result[0].fromLabel shouldBe null
+        }
+    }
+
+    // ── securityLevel 필드 — 레벨명 박제 ────────────────────────────────────────
+
+    describe("field=securityLevel") {
+        it("from/to UUID 를 레벨명으로 박제한다") {
+            val lvl1 = UUID.randomUUID()
+            val lvl2 = UUID.randomUUID()
+            every { issueSecurityDirectory.findLevelNames(setOf(lvl1, lvl2)) } returns
+                mapOf(lvl1 to "Internal", lvl2 to "Confidential")
+
+            val items =
+                listOf(
+                    IssueChangeItem(
+                        field = "securityLevel",
+                        fromValue = lvl1.toString(),
+                        toValue = lvl2.toString(),
+                    ),
+                )
+            val result = sut.resolveLabels(items, projectId)
+
+            result[0].fromLabel shouldBe "Internal"
+            result[0].toLabel shouldBe "Confidential"
+        }
+
+        it("맵 미존재 시 label=null(graceful)") {
+            val lvl1 = UUID.randomUUID()
+            every { issueSecurityDirectory.findLevelNames(setOf(lvl1)) } returns emptyMap()
+
+            val items =
+                listOf(
+                    IssueChangeItem(
+                        field = "securityLevel",
+                        fromValue = lvl1.toString(),
+                        toValue = null,
+                    ),
+                )
+            val result = sut.resolveLabels(items, projectId)
+
+            result[0].fromLabel shouldBe null
+        }
+    }
+
+    // ── label=null 유지 필드 ─────────────────────────────────────────────────────
+
+    describe("label=null 유지 필드") {
         it("status 필드는 fromLabel/toLabel 이 null") {
             val items =
                 listOf(
@@ -345,6 +453,8 @@ class IssueChangeLabelResolverTest : DescribeSpec({
             val typeId = 3L
             val issueType = makeIssueType(typeId, "Task")
             every { issueTypeRepo.findById(IssueTypeId(typeId)) } returns issueType
+            // assignee fromValue 가 UUID 형식이 아니므로 빈 집합으로 batch 조회
+            every { userLookupPort.findDisplayNamesByIds(emptySet()) } returns emptyMap()
 
             val items =
                 listOf(
@@ -356,6 +466,7 @@ class IssueChangeLabelResolverTest : DescribeSpec({
 
             result[0].toLabel shouldBe "Task"
             result[1].toLabel shouldBe null
+            // "alice" 는 UUID 파싱 불가 → graceful null
             result[2].fromLabel shouldBe null
         }
     }
