@@ -40,6 +40,18 @@ interface ProjectMembershipRepository {
     fun findByProjectAndUser(projectId: UUID, userId: UUID): ProjectMembership?
 
     /**
+     * 사용자가 멤버로 속한 모든 프로젝트의 id 목록을 반환한다 (FR-MF-04 Task 4).
+     *
+     * MFA 강제 정책([com.atlas.bts.identity.mfa.MfaEnforcementPolicy])이 '민감 프로젝트 소속'을
+     * 판정하기 위해 사용한다. project_memberships 는 hard delete 정책(ADR D6)이라
+     * `deleted_at` 컬럼이 없으므로 soft-delete 필터가 필요 없다.
+     *
+     * @param userId 조회할 사용자 ID
+     * @return 멤버십이 없으면 빈 목록
+     */
+    fun listProjectIdsByUser(userId: UUID): List<UUID>
+
+    /**
      * 프로젝트에 속한 모든 멤버십 목록을 반환한다.
      *
      * @return 멤버십이 없으면 빈 목록
@@ -163,6 +175,13 @@ class JdbcProjectMembershipRepository(
         ).firstOrNull()
 
     @Transactional(readOnly = true)
+    override fun listProjectIdsByUser(userId: UUID): List<UUID> =
+        jdbc.query(
+            SQL_LIST_PROJECT_IDS_BY_USER,
+            mapOf("userId" to userId),
+        ) { rs, _ -> rs.getObject("project_id", UUID::class.java) }
+
+    @Transactional(readOnly = true)
     override fun listByProject(projectId: UUID): List<ProjectMembership> =
         jdbc.query(
             SQL_LIST_BY_PROJECT,
@@ -276,6 +295,16 @@ class JdbcProjectMembershipRepository(
             FROM project_memberships
             WHERE project_id = :projectId
               AND user_id = :userId
+        """
+
+        /**
+         * 사용자가 멤버로 속한 프로젝트 id 목록 — MFA 강제 정책의 '민감 프로젝트 소속' 판정용.
+         * project_memberships 는 hard delete 라 soft-delete 필터가 불필요하다 (ADR D6).
+         */
+        const val SQL_LIST_PROJECT_IDS_BY_USER = """
+            SELECT project_id
+            FROM project_memberships
+            WHERE user_id = :userId
         """
 
         const val SQL_LIST_BY_PROJECT = """
