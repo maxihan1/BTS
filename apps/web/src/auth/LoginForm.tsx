@@ -367,6 +367,28 @@ function resolveSchema(mode: MfaMode) {
   return mode === 'totp' ? totpSchema : backupCodeSchema
 }
 
+/** mode에 대응하는 UI 문자열(가이드·라벨·토글 텍스트·inputMode·maxLength)을 반환한다. */
+function resolveMfaUiConfig(mode: MfaMode) {
+  if (mode === 'totp') {
+    return {
+      guideText: mfaStrings.loginStepGuide,
+      codeLabel: mfaStrings.loginCodeLabel,
+      toggleText: mfaStrings.loginUseBackupCode,
+      inputMode: 'numeric' as const,
+      maxLength: 6,
+      autoComplete: 'one-time-code',
+    }
+  }
+  return {
+    guideText: mfaStrings.loginBackupStepGuide,
+    codeLabel: mfaStrings.loginBackupCodeLabel,
+    toggleText: mfaStrings.loginUseTotp,
+    inputMode: 'text' as const,
+    maxLength: undefined,
+    autoComplete: 'off',
+  }
+}
+
 interface MfaCodeInputProps {
   /** 현재 MFA 인증 방식 */
   mode: MfaMode
@@ -423,9 +445,8 @@ const MfaCodeInput = ({
   })
 
   const serverError = form.formState.errors.root?.message ?? null
-  const isTotp = mode === 'totp'
-  const guideText = isTotp ? mfaStrings.loginStepGuide : mfaStrings.loginBackupStepGuide
-  const codeLabel = isTotp ? mfaStrings.loginCodeLabel : mfaStrings.loginBackupCodeLabel
+  const { guideText, codeLabel, toggleText, inputMode, maxLength, autoComplete } =
+    resolveMfaUiConfig(mode)
 
   function onSubmit(values: MfaCodeFormValues) {
     form.clearErrors('root')
@@ -447,9 +468,9 @@ const MfaCodeInput = ({
                 <Input
                   id="mfa-code"
                   type="text"
-                  inputMode={isTotp ? 'numeric' : 'text'}
-                  maxLength={isTotp ? 6 : undefined}
-                  autoComplete={isTotp ? 'one-time-code' : 'off'}
+                  inputMode={inputMode}
+                  maxLength={maxLength}
+                  autoComplete={autoComplete}
                   aria-required="true"
                   {...field}
                 />
@@ -476,7 +497,7 @@ const MfaCodeInput = ({
           onClick={onToggleMode}
           disabled={verifyMutation.isPending}
         >
-          {isTotp ? mfaStrings.loginUseBackupCode : mfaStrings.loginUseTotp}
+          {toggleText}
         </Button>
 
         <Button
