@@ -105,7 +105,9 @@ describe('NotificationPolicyTable', () => {
         isMutating={false}
       />,
     )
-    expect(screen.getByText('활성')).toBeInTheDocument()
+    // 헤더 th와 중복 — 행 컨테이너 한정으로 검색
+    const row = screen.getByRole('row', { name: /이슈 생성/ })
+    expect(within(row).getByText('활성')).toBeInTheDocument()
   })
 
   it('enabled=false 행은 "비활성" 상태를 표시한다', () => {
@@ -117,7 +119,8 @@ describe('NotificationPolicyTable', () => {
         isMutating={false}
       />,
     )
-    expect(screen.getByText('비활성')).toBeInTheDocument()
+    const row = screen.getByRole('row', { name: /스프린트 시작/ })
+    expect(within(row).getByText('비활성')).toBeInTheDocument()
   })
 
   // ── 토글 버튼 ─────────────────────────────────────────────────────────────
