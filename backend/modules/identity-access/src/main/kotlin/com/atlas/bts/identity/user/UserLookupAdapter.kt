@@ -74,6 +74,19 @@ class UserLookupAdapter(
         }.toMap()
     }
 
+    @Transactional(readOnly = true)
+    override fun findDisplayNamesByIds(ids: Set<UUID>): Map<UUID, String> {
+        if (ids.isEmpty()) return emptyMap()
+        return jdbc.query(
+            "SELECT id, COALESCE(display_name, username) AS dn FROM users WHERE id IN (:ids)",
+            mapOf("ids" to ids),
+        ) { rs, _ ->
+            val id = rs.getObject("id", UUID::class.java)
+            val dn = rs.getString("dn")
+            id to dn
+        }.toMap()
+    }
+
     private companion object {
         /**
          * users 행 존재 여부 확인 — EXISTS 를 사용해 불필요한 행 스캔을 방지한다.
