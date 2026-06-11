@@ -2,6 +2,7 @@
 
 package com.atlas.bts.identity.jwt
 
+import com.atlas.bts.identity.mfa.MfaEnforcementPolicy
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.crypto.RSASSASigner
@@ -47,6 +48,7 @@ import java.util.UUID
 class JwtIssuer(
     private val keyProvider: JwtKeyProvider,
     @Value("\${bts.auth.issuer-uri}") private val issuerUri: String,
+    private val mfaEnforcementPolicy: MfaEnforcementPolicy,
 ) {
     private val signer = RSASSASigner(keyProvider.privateKey)
 
@@ -93,6 +95,8 @@ class JwtIssuer(
                 .jwtID(UUID.randomUUID().toString())
                 .claim(CLAIM_SID, sessionId.toString())
                 .claim(CLAIM_MFA_VERIFIED, mfaVerified)
+                // MFA 강제 등록 필요 여부 — 발급 chokepoint. false 여도 명시(부재=false 해석과 일관). FR-MF-04.
+                .claim(CLAIM_MFA_ENROLLMENT_REQUIRED, mfaEnforcementPolicy.evaluate(userId))
                 .claim(CLAIM_PROVIDER_ID, providerId)
                 .claim(CLAIM_SCOPES, scopes)
                 // roles 가 비어 있으면 claim 자체를 생략한다 (일반 사용자 토큰은 roles 미포함).
@@ -114,6 +118,12 @@ class JwtIssuer(
         // BTS 확장 claim 키 상수
         const val CLAIM_SID = "sid"
         const val CLAIM_MFA_VERIFIED = "mfa_verified"
+
+        /**
+         * MFA 강제 등록 필요 여부 claim 키 (FR-MF-04) — 발급 chokepoint.
+         * 게이트 필터·whoami 가 이 클레임 값(부재=false)으로 강제 차단을 판정한다.
+         */
+        const val CLAIM_MFA_ENROLLMENT_REQUIRED = "mfa_enrollment_required"
         const val CLAIM_PROVIDER_ID = "providerId"
         const val CLAIM_SCOPES = "scopes"
 
