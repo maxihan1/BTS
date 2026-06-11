@@ -2,15 +2,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { http, HttpResponse } from 'msw'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
 import { server } from '@/test/server'
-import { http, HttpResponse } from 'msw'
 import { useAuthStore } from '@/auth/authStore'
-import {
-  resetNotificationPolicyStore,
-} from '@/mocks/notification-policy-handlers'
-import { SEED_POLICY_IDS } from '@/mocks/notification-policy-fixtures'
 import {
   NOTIFICATION_POLICIES_QUERY_KEY,
   useCatalogQuery,
@@ -27,6 +23,164 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
   },
 }))
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T4 전용 인라인 fixture — Zod v4 UUID RFC4122 검증 통과 보장
+// T3 notification-policy-fixtures.ts UUID 일부가 variant bits 조건 미충족
+// (zod-v4-uuid-fixture-strictness memory) — T4 테스트는 올바른 UUID로 독립 운용
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** T4 테스트 전용 올바른 RFC4122 v4 UUID */
+const T4_IDS = {
+  p1: 'a1b2c3d4-e5f6-4789-a123-ef0123456701',
+  p2: 'b2c3d4e5-f6a7-4890-b234-f01234567802',
+  p3: 'c3d4e5f6-a7b8-4901-8efa-012345678903',
+  p4: 'd4e5f6a7-b8c9-4012-9ef0-123456789004',
+  newId: 'e5f6a7b8-c9d0-4123-af01-23456789abcd',
+} as const
+
+/** T4 테스트 전용 정책 시드 — RFC4122 호환 UUID */
+const T4_SEED = [
+  {
+    id: T4_IDS.p1,
+    eventType: 'issue.created',
+    recipientRole: 'REPORTER',
+    channel: 'EMAIL',
+    enabled: true,
+    createdAt: '2026-06-01T10:00:00Z',
+    updatedAt: '2026-06-01T10:00:00Z',
+  },
+  {
+    id: T4_IDS.p2,
+    eventType: 'issue.assigned',
+    recipientRole: 'ASSIGNEE',
+    channel: 'IN_APP',
+    enabled: true,
+    createdAt: '2026-06-01T10:01:00Z',
+    updatedAt: '2026-06-01T10:01:00Z',
+  },
+  {
+    id: T4_IDS.p3,
+    eventType: 'issue.transitioned',
+    recipientRole: 'WATCHER',
+    channel: 'EMAIL',
+    enabled: false,
+    createdAt: '2026-06-01T10:02:00Z',
+    updatedAt: '2026-06-01T10:02:00Z',
+  },
+  {
+    id: T4_IDS.p4,
+    eventType: 'sprint.started',
+    recipientRole: 'PROJECT_ADMIN',
+    channel: 'SLACK',
+    enabled: true,
+    createdAt: '2026-06-01T10:03:00Z',
+    updatedAt: '2026-06-01T10:03:00Z',
+  },
+] as const
+
+type T4Policy = {
+  id: string
+  eventType: string
+  recipientRole: string
+  channel: string
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+  projectKey?: string
+}
+
+/** T4 테스트 전용 카탈로그 응답 — 백엔드 enum 1:1 */
+const T4_CATALOG = {
+  eventTypes: [
+    { value: 'issue.created', publishable: true },
+    { value: 'issue.assigned', publishable: false },
+    { value: 'issue.transitioned', publishable: true },
+    { value: 'issue.commented', publishable: false },
+    { value: 'issue.due_soon', publishable: false },
+    { value: 'issue.overdue', publishable: false },
+    { value: 'sprint.started', publishable: false },
+    { value: 'sprint.ended', publishable: false },
+    { value: 'automation.failed', publishable: false },
+  ],
+  recipientRoles: [
+    'REPORTER', 'ASSIGNEE', 'PREVIOUS_ASSIGNEE', 'WATCHER', 'COMPONENT_LEAD',
+    'MENTIONED', 'PROJECT_MEMBER', 'RULE_OWNER', 'PROJECT_ADMIN',
+  ],
+  channels: ['EMAIL', 'IN_APP', 'SLACK', 'TEAMS', 'WEBHOOK'],
+}
+
+/** T4 테스트 전용 stateful store — T3 store와 독립 */
+let t4Store: T4Policy[] = []
+
+function resetT4Store(): void {
+  t4Store = T4_SEED.map((p) => ({ ...p }))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T4 전용 MSW 핸들러 (stateful)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const t4CatalogHandler = http.get('/api/v1/notification-policies/catalog', () =>
+  HttpResponse.json({ data: T4_CATALOG }),
+)
+
+const t4ListHandler = http.get('/api/v1/notification-policies', () =>
+  HttpResponse.json({ data: [...t4Store] }),
+)
+
+const t4CreateHandler = http.post('/api/v1/notification-policies', async ({ request }) => {
+  const body = (await request.json()) as {
+    eventType: string
+    recipientRole: string
+    channel: string
+    enabled?: boolean
+    projectKey?: string | null
+  }
+
+  const now = new Date().toISOString()
+  const newPolicy: T4Policy = {
+    id: T4_IDS.newId,
+    eventType: body.eventType,
+    recipientRole: body.recipientRole,
+    channel: body.channel,
+    enabled: body.enabled ?? true,
+    createdAt: now,
+    updatedAt: now,
+  }
+  if (body.projectKey != null) {
+    newPolicy.projectKey = body.projectKey
+  }
+  t4Store.push(newPolicy)
+  return HttpResponse.json({ data: newPolicy }, { status: 201 })
+})
+
+const t4ToggleHandler = http.patch('/api/v1/notification-policies/:id', async ({ request, params }) => {
+  const id = params['id'] as string
+  const body = (await request.json()) as { enabled: boolean }
+  const index = t4Store.findIndex((p) => p.id === id)
+  if (index === -1) {
+    return HttpResponse.json({ errorCode: 'NOTIF_POLICY_NOT_FOUND' }, { status: 404 })
+  }
+  const existing = t4Store[index]
+  if (existing === undefined) {
+    return HttpResponse.json({ errorCode: 'NOTIF_POLICY_NOT_FOUND' }, { status: 404 })
+  }
+  t4Store[index] = { ...existing, enabled: body.enabled, updatedAt: new Date().toISOString() }
+  return new HttpResponse(null, { status: 204 })
+})
+
+const t4DeleteHandler = http.delete('/api/v1/notification-policies/:id', ({ params }) => {
+  const id = params['id'] as string
+  const index = t4Store.findIndex((p) => p.id === id)
+  if (index === -1) {
+    return HttpResponse.json({ errorCode: 'NOTIF_POLICY_NOT_FOUND' }, { status: 404 })
+  }
+  t4Store.splice(index, 1)
+  return new HttpResponse(null, { status: 204 })
+})
+
+const t4Handlers = [t4CatalogHandler, t4ListHandler, t4CreateHandler, t4ToggleHandler, t4DeleteHandler]
 
 // ─────────────────────────────────────────────────────────────────────────────
 // QueryClient wrapper 헬퍼
@@ -52,8 +206,10 @@ describe('useNotificationPolicies 훅 묶음', () => {
         mutations: { retry: false },
       },
     })
-    // MSW store를 시드 상태로 초기화하여 테스트 간 격리
-    resetNotificationPolicyStore()
+    // T4 전용 MSW 핸들러 등록 (T3 핸들러와 독립, UUID 정합 보장)
+    server.use(...t4Handlers)
+    // T4 store 초기화
+    resetT4Store()
     useAuthStore.setState({ accessToken: 'test-token', user: null })
     vi.clearAllMocks()
   })
@@ -181,19 +337,19 @@ describe('useNotificationPolicies 훅 묶음', () => {
     })
 
     it('성공 후 목록을 재조회하면 새 정책이 포함된다', async () => {
-      const { result: listResult } = renderHook(() => usePoliciesQuery(), {
-        wrapper: createWrapper(queryClient),
-      })
-      await waitFor(() => expect(listResult.current.isSuccess).toBe(true))
+      // 두 훅을 같은 래퍼에서 실행해야 QueryClient 캐시 이벤트를 공유한다
+      const wrapper = createWrapper(queryClient)
+      const { result } = renderHook(
+        () => ({ list: usePoliciesQuery(), create: useCreatePolicy() }),
+        { wrapper },
+      )
 
-      const beforeCount = listResult.current.data?.length ?? 0
+      await waitFor(() => expect(result.current.list.isSuccess).toBe(true))
 
-      const { result: createResult } = renderHook(() => useCreatePolicy(), {
-        wrapper: createWrapper(queryClient),
-      })
+      const beforeCount = result.current.list.data?.length ?? 0
 
       await act(async () => {
-        await createResult.current.mutateAsync({
+        await result.current.create.mutateAsync({
           eventType: 'sprint.ended',
           recipientRole: 'RULE_OWNER',
           channel: 'TEAMS',
@@ -201,21 +357,27 @@ describe('useNotificationPolicies 훅 묶음', () => {
         })
       })
 
-      await waitFor(() => expect(createResult.current.isSuccess).toBe(true))
+      await waitFor(() => expect(result.current.create.isSuccess).toBe(true))
 
       // invalidate 후 refetch를 기다린다
       await waitFor(() => {
-        expect(listResult.current.data?.length).toBe(beforeCount + 1)
+        expect(result.current.list.data?.length).toBe(beforeCount + 1)
       })
     })
 
     it('중복(409) 시 mutation이 에러 상태가 된다', async () => {
+      // 409 응답을 내려주는 오버라이드 핸들러
+      server.use(
+        http.post('/api/v1/notification-policies', () =>
+          HttpResponse.json({ errorCode: 'NOTIF_POLICY_DUPLICATE' }, { status: 409 }),
+        ),
+      )
+
       const { result } = renderHook(() => useCreatePolicy(), {
         wrapper: createWrapper(queryClient),
       })
 
       await act(async () => {
-        // 시드에 이미 존재하는 조합 — 409 NOTIF_POLICY_DUPLICATE
         result.current.mutate({
           eventType: 'issue.created',
           recipientRole: 'REPORTER',
@@ -262,7 +424,7 @@ describe('useNotificationPolicies 훅 묶음', () => {
       })
 
       await act(async () => {
-        await result.current.mutateAsync({ id: SEED_POLICY_IDS.p1, enabled: false })
+        await result.current.mutateAsync({ id: T4_IDS.p1, enabled: false })
       })
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
@@ -272,24 +434,24 @@ describe('useNotificationPolicies 훅 묶음', () => {
     })
 
     it('토글 후 목록을 재조회하면 enabled 값이 반영된다', async () => {
-      const { result: listResult } = renderHook(() => usePoliciesQuery(), {
-        wrapper: createWrapper(queryClient),
-      })
-      await waitFor(() => expect(listResult.current.isSuccess).toBe(true))
+      // 두 훅을 같은 래퍼에서 실행해야 QueryClient 캐시 이벤트를 공유한다
+      const wrapper = createWrapper(queryClient)
+      const { result } = renderHook(
+        () => ({ list: usePoliciesQuery(), toggle: useTogglePolicy() }),
+        { wrapper },
+      )
 
-      // p3은 시드에서 enabled=false
-      const { result: toggleResult } = renderHook(() => useTogglePolicy(), {
-        wrapper: createWrapper(queryClient),
-      })
+      await waitFor(() => expect(result.current.list.isSuccess).toBe(true))
 
+      // p3는 시드에서 enabled=false
       await act(async () => {
-        await toggleResult.current.mutateAsync({ id: SEED_POLICY_IDS.p3, enabled: true })
+        await result.current.toggle.mutateAsync({ id: T4_IDS.p3, enabled: true })
       })
 
-      await waitFor(() => expect(toggleResult.current.isSuccess).toBe(true))
+      await waitFor(() => expect(result.current.toggle.isSuccess).toBe(true))
 
       await waitFor(() => {
-        const p3 = listResult.current.data?.find((p) => p.id === SEED_POLICY_IDS.p3)
+        const p3 = result.current.list.data?.find((p) => p.id === T4_IDS.p3)
         expect(p3?.enabled).toBe(true)
       })
     })
@@ -323,7 +485,7 @@ describe('useNotificationPolicies 훅 묶음', () => {
       })
 
       await act(async () => {
-        await result.current.mutateAsync(SEED_POLICY_IDS.p2)
+        await result.current.mutateAsync(T4_IDS.p2)
       })
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
@@ -333,26 +495,26 @@ describe('useNotificationPolicies 훅 묶음', () => {
     })
 
     it('삭제 후 목록을 재조회하면 해당 정책이 사라진다', async () => {
-      const { result: listResult } = renderHook(() => usePoliciesQuery(), {
-        wrapper: createWrapper(queryClient),
-      })
-      await waitFor(() => expect(listResult.current.isSuccess).toBe(true))
+      // 두 훅을 같은 래퍼에서 실행해야 QueryClient 캐시 이벤트를 공유한다
+      const wrapper = createWrapper(queryClient)
+      const { result } = renderHook(
+        () => ({ list: usePoliciesQuery(), del: useDeletePolicy() }),
+        { wrapper },
+      )
 
-      const beforeCount = listResult.current.data?.length ?? 0
+      await waitFor(() => expect(result.current.list.isSuccess).toBe(true))
 
-      const { result: deleteResult } = renderHook(() => useDeletePolicy(), {
-        wrapper: createWrapper(queryClient),
-      })
+      const beforeCount = result.current.list.data?.length ?? 0
 
       await act(async () => {
-        await deleteResult.current.mutateAsync(SEED_POLICY_IDS.p4)
+        await result.current.del.mutateAsync(T4_IDS.p4)
       })
 
-      await waitFor(() => expect(deleteResult.current.isSuccess).toBe(true))
+      await waitFor(() => expect(result.current.del.isSuccess).toBe(true))
 
       await waitFor(() => {
-        expect(listResult.current.data?.length).toBe(beforeCount - 1)
-        const p4 = listResult.current.data?.find((p) => p.id === SEED_POLICY_IDS.p4)
+        expect(result.current.list.data?.length).toBe(beforeCount - 1)
+        const p4 = result.current.list.data?.find((p) => p.id === T4_IDS.p4)
         expect(p4).toBeUndefined()
       })
     })
@@ -378,7 +540,7 @@ describe('useNotificationPolicies 훅 묶음', () => {
       })
 
       await act(async () => {
-        await result.current.mutateAsync(SEED_POLICY_IDS.p1)
+        await result.current.mutateAsync(T4_IDS.p1)
       })
 
       expect(spy).not.toHaveBeenCalledWith(NOTIFICATION_POLICIES_QUERY_KEY, expect.anything())
