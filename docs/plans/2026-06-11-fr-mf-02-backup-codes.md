@@ -177,10 +177,10 @@ classify. type=auth, agent=security-engineer, primary_bc=identity-access
 - (감사 이벤트) `AuthEventType.MFA_BACKUP_CODES_GENERATED` / `MFA_BACKUP_CODE_USED` 추가 + `AuthAuditLogServiceTest`의 16종 이름 set·`hasSize(16)`→`18`로 갱신.
 - (서비스) `@Transactional` 서비스.
   - `generateOrRegenerate(userId)`: TOTP ACTIVE 아니면 `NotActive`(`TotpSecretRepository.findByUser().status==ACTIVE` 확인). ACTIVE면 generator 10개 → hasher → `repo.replaceAll`(전량교체) → 평문 10개 반환(`Generated(codes)`) + 감사 `MFA_BACKUP_CODES_GENERATED` emit.
-  - `verifyAndConsume(userId, plain)`: limiter 차단 시 `TooManyAttempts`. hasher→`repo.consumeIfUnused` true면 `Success`+limiter.reset+감사 `MFA_BACKUP_CODE_USED` emit, false면 `InvalidCode`+limiter.recordFailure.
+  - `verifyAndConsume(userId, plain)`: **백업 코드 전용 limiter**(C-2 별도 키 분리) 차단 시 `TooManyAttempts`. hasher→`repo.consumeIfUnused` true면 `Success`+limiter.reset+감사 `MFA_BACKUP_CODE_USED` emit, false면 `InvalidCode`+limiter.recordFailure. **TOTP limiter와 카운터 독립**(TOTP 잠김이 백업코드 차단 안 함) 단언.
   - `status(userId)`: `{generated: countTotal>0, remaining: countUnused}`.
 
-**GREEN**. enum 2값 추가(KDoc 항목 + 상단 주석 `16종`→`18종`) + service가 generator+hasher+repo+limiter+auditLog+totpRepo 조립하며 두 이벤트 emit(coverage 가드 green). sealed interface 결과(MfaService 패턴).
+**GREEN**. enum 2값 추가(KDoc 항목 + 상단 주석 `16종`→`18종`) + service가 generator+hasher+repo+(백업전용)limiter+auditLog+totpRepo 조립하며 두 이벤트 emit(coverage 가드 green). 백업 전용 limiter = `MfaAttemptLimiter` 별도 인스턴스(`@Bean`+`@Qualifier("backupCodeAttemptLimiter")` 또는 전용 컴포넌트, files에 config 추가). sealed interface 결과(MfaService 패턴).
 
 **REFACTOR**. KDoc(보안 불변식: 평문 미저장/미로깅, fail-closed).
 
@@ -259,7 +259,7 @@ classify. type=auth, agent=security-engineer, primary_bc=identity-access
 
 **CONCERN**.
 - C-1 (해소). atomic 소진 단일성은 UNIQUE 인덱스 의존 → Task 4 RED에 명시, DB race는 Task 8 통합.
-- C-2 (⚠️ **게이트 1 Maxi 결정 대기**). rate-limit 공유 — TOTP 실패로 잠기면 백업코드(최후수단)도 막힘. [공유 유지 / 별도 키 분리] 확정 필요.
+- C-2 (해소 — **Maxi 게이트 1 = 별도 키 분리**). 백업 코드 전용 rate-limit 카운터(`MfaAttemptLimiter` 별도 인스턴스). TOTP 잠김이 백업코드 차단 안 함. Task 5 GREEN + spec NFR-2 반영.
 - C-3 (해소). Task 8 RED에 backup_code 성공 시 `mfa_verified=true` 단언 추가.
 - C-4 (해소). 오답 시 챌린지 토큰 소진→재로그인. spec EC-12 명시 + Task 8 RED 회귀 가드.
 

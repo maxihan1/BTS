@@ -56,7 +56,7 @@
 ## 비기능 요구사항 (NFR)
 
 - **NFR-1 (보안)**. 평문 코드 미저장(§1.1.1). 코드/해시 미로깅(§1.1.2). 검증 시 상수시간 비교 불필요(해시 매칭은 DB 인덱스 조회, 평문 비교 아님) — 단, 에러 응답은 `invalid_code` 일반화로 존재 비노출.
-- **NFR-2 (rate-limit)**. 백업 코드 검증에 `MfaAttemptLimiter` 재사용 — brute-force 차단. 차단 시 429 `too_many_attempts`. **⚠️ 리뷰 C-2 (게이트 1 Maxi 결정 대기)**: limiter는 userId 단일 키라 TOTP 실패와 백업코드 실패가 같은 카운터(MAX 5/5분)에 누적된다. TOTP 5회 오답으로 잠기면 백업코드(분실 시 최후 수단)도 막히는 부작용 vs 공유가 보안상 보수적. 게이트 1에서 [공유 유지 / 별도 키 분리] 확정 후 반영.
+- **NFR-2 (rate-limit)**. 백업 코드 검증은 brute-force 차단을 위해 rate-limit하되, **TOTP와 분리된 별도 카운터**를 쓴다(차단 시 429 `too_many_attempts`). **리뷰 C-2 = 별도 키 분리 (Maxi 게이트 1 확정)**: TOTP 실패로 잠겨도 백업 코드(분실 시 최후 수단)는 독립적으로 시도 가능. 백업 코드도 자체 MAX 5/5분으로 brute-force는 동일하게 차단. 구현 — `MfaAttemptLimiter` 클래스를 재사용하되 백업 코드 전용 별도 인스턴스(`@Bean` + `@Qualifier` 또는 전용 컴포넌트)로 카운터 공간 분리.
 - **NFR-3 (동시성)**. 같은 코드 동시 제출 race는 atomic `UPDATE ... WHERE used_at IS NULL`로 1건만 성공(advisory-lock-bigint-toctou 교훈 — lock 밖 read-then-write 금지).
 - **NFR-4 (인증)**. 생성/조회/재생성은 JWT 전용. PAT 시 403 `session_management_requires_interactive_login` (MfaController 기존 패턴). `/mfa/verify`는 기존대로 permitAll(챌린지 토큰이 1단계 증명).
 - **NFR-5 (트랜잭션)**. 생성/재생성/소진은 단일 트랜잭션. 감사는 같은 트랜잭션에 묶음(MfaService 선례).
