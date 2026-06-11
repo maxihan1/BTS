@@ -20,7 +20,7 @@ import java.util.UUID
  * - [setup]: secret 생성 → 암호화 저장(PENDING) → Authenticator 앱용 otpauth/QR 반환.
  * - [enable]: 첫 코드 검증 성공 시 PENDING → ACTIVE 전이(2단계 로그인 적용 시작).
  * - [verifyLogin]: 로그인 2단계에서 코드 검증(+ replay 방어).
- * - [disable]: 현재 코드 검증(step-up)을 거쳐 secret 삭제.
+ * - [disable]: 현재 코드 검증(step-up)을 거쳐 secret + 백업 코드 삭제(2차 요소 전체 정리).
  * - [isEnabled]: ACTIVE 여부.
  *
  * ## 보안 불변식 (DEVELOPMENT.md §1.1)
@@ -48,6 +48,10 @@ import java.util.UUID
  *
  * @param clock replay 방어용 현재 time-step 계산 기준. 테스트는 `Clock.fixed` 로 고정한다.
  */
+// LongParameterList 억제 — 7개 의존성은 모두 단일 책임 협력자(연산/TOTP영속/백업코드영속/암호화/
+// rate-limit/감사/시계)로, 묶을 응집 단위가 없어 그대로 주입한다. backupCodeRepo 는 FR-MF-02 Task 6
+// 에서 disable cascade 삭제용으로 추가됐다.
+@Suppress("LongParameterList")
 @Service
 @Transactional
 class MfaService(
@@ -152,9 +156,17 @@ class MfaService(
     }
 
     /**
-     * 현재 TOTP 코드를 검증(step-up)한 뒤 secret 을 삭제해 2FA 를 비활성화한다.
+     * 현재 TOTP 코드를 검증(step-up)한 뒤 secret 과 백업 코드를 삭제해 2FA 를 비활성화한다.
      *
      * 무단 비활성화 차단을 위해 코드 검증 없이는 삭제하지 않는다(민감 작업 step-up).
+     *
+     * ## 백업 코드 cascade 삭제 (FR-MF-02 Task 6, 갭-1)
+     * 2FA 해제는 2차 요소(second factor) 전체를 정리하는 작업이므로, TOTP secret 삭제와
+     * 동일한 검증 게이트(코드 성공) 뒤에서 [MfaBackupCodeRepository.deleteAllByUser] 로
+     * 백업 코드도 전량 삭제한다. 이를 빠뜨리면 secret 이 사라진 뒤에도 백업 코드만 남아
+     * "2FA 가 꺼졌는데 백업 코드로는 우회 가능"한 dead data·잔여 인증 수단이 된다.
+     * 삭제는 코드 검증 성공 분기 안에서만 일어나 도메인 게이트를 우회하지 않으며,
+     * 클래스 레벨 [Transactional] 로 secret 삭제와 같은 트랜잭션에 묶여 함께 commit/rollback 된다.
      *
      * @param userId 비활성화 주체 사용자.
      * @param code 사용자가 입력한 6자리 코드.
