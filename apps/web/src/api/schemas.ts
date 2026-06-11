@@ -28,7 +28,55 @@ export const ApiErrorResponseSchema = z.object({
   error: z.string(),
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MFA(TOTP) 관련 스키마 — 백엔드 #113 snake_case 필드명 그대로 사용 (NFR-2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** TOTP setup 응답 스키마 — POST /api/v1/auth/mfa/totp/setup 200 */
+export const MfaSetupResponseSchema = z.object({
+  /** otpauth URI — Authenticator 앱 QR 연동용 */
+  otpauth_uri: z.string().min(1),
+  /** PNG data URI — `<img src={...}>` 로 직접 표시 */
+  qr_png_data_uri: z.string().min(1),
+  /** Base32 인코딩된 TOTP secret — QR 스캔 불가 환경 수동입력 fallback */
+  secret_base32: z.string().min(1),
+})
+
+/** TOTP 상태 조회 응답 스키마 — GET /api/v1/auth/mfa/totp 200 */
+export const MfaStatusResponseSchema = z.object({
+  /** TOTP 활성화 여부 */
+  enabled: z.boolean(),
+})
+
+/**
+ * MFA 챌린지 응답 스키마 — 로그인 200 응답 중 MFA 인증이 필요한 경우.
+ * mfa_required: true 가 literal로 고정돼 discriminated union 분기의 기준이 된다.
+ */
+export const MfaRequiredResponseSchema = z.object({
+  mfa_required: z.literal(true),
+  /** 5분 단명 챌린지 JWT — POST /api/v1/auth/mfa/verify 에서 사용 */
+  mfa_challenge_token: z.string().min(1),
+  /** 챌린지 만료 초 (300) */
+  expires_in: z.number(),
+})
+
+/**
+ * 로그인 응답 discriminated union 스키마.
+ * mfa_required 필드 존재 여부와 값을 기준으로 분기한다.
+ * - mfa_required:true → MfaRequiredResponse (MFA 챌린지 진입)
+ * - 없음 → TokenResponse (정식 세션)
+ * 분기 순서: mfa_required 우선 (access_token 존재 여부로 분기 금지 — security review CONCERN-union)
+ */
+export const LoginOrMfaResponseSchema = z.union([
+  MfaRequiredResponseSchema,
+  TokenResponseSchema,
+])
+
 export type LoginRequest = z.infer<typeof LoginRequestSchema>
 export type TokenResponse = z.infer<typeof TokenResponseSchema>
 export type WhoamiResponse = z.infer<typeof WhoamiResponseSchema>
 export type ApiErrorResponse = z.infer<typeof ApiErrorResponseSchema>
+export type MfaSetupResponse = z.infer<typeof MfaSetupResponseSchema>
+export type MfaStatusResponse = z.infer<typeof MfaStatusResponseSchema>
+export type MfaRequiredResponse = z.infer<typeof MfaRequiredResponseSchema>
+export type LoginOrMfaResponse = z.infer<typeof LoginOrMfaResponseSchema>

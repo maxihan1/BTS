@@ -12,6 +12,7 @@ import { issueHandlers } from './issue-handlers'
 import { issuePermissionHandlers } from './issue-permission-handlers'
 import { issueTypeHandlers } from './issue-type-handlers'
 import { labelHandlers } from './label-handlers'
+import { mfaHandlers } from './mfa-handlers'
 import { passwordHandlers } from './password-handlers'
 import { projectLeadHandlers } from './project-lead-handlers'
 import { projectMemberHandlers } from './project-member-handlers'
@@ -47,6 +48,7 @@ export const handlers = [
   ...issuePermissionHandlers,
   ...issueTypeHandlers,
   ...labelHandlers,
+  ...mfaHandlers,
   ...passwordHandlers,
   ...projectLeadHandlers,
   ...projectMemberHandlers,
