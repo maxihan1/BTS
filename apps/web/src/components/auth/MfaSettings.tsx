@@ -284,7 +284,7 @@ export function MfaSettings(): JSX.Element {
               <MfaCodeForm
                 inputId="mfa-enable-code"
                 label={mfaStrings.codeLabel}
-                submitLabel="활성화 확인"
+                submitLabel={mfaStrings.enableConfirmButton}
                 errorMessage={enableError}
                 isPending={enableMutation.isPending}
                 onSubmit={handleEnableSubmit}
@@ -309,8 +309,8 @@ export function MfaSettings(): JSX.Element {
           {showDisableForm && (
             <MfaCodeForm
               inputId="mfa-disable-code"
-              label="현재 인증 코드 (6자리)"
-              submitLabel="비활성화 확인"
+              label={mfaStrings.disableCodeLabel}
+              submitLabel={mfaStrings.disableConfirmButton}
               errorMessage={disableError}
               isPending={disableMutation.isPending}
               onSubmit={handleDisableSubmit}

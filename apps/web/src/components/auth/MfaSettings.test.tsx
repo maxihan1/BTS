@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { server } from '@/test/server'
 import { useAuthStore } from '@/auth/authStore'
+import { mfaStrings } from '@/i18n/ko'
 import { MfaSettings } from './MfaSettings'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -149,7 +150,7 @@ describe('T3-S2: 활성화 플로우', () => {
     const codeInput = screen.getByLabelText('인증 코드 (6자리)')
     await user.type(codeInput, '123456')
 
-    const submitBtn = screen.getByRole('button', { name: '활성화 확인' })
+    const submitBtn = screen.getByRole('button', { name: mfaStrings.enableConfirmButton })
     await user.click(submitBtn)
 
     // 활성 상태로 전환 확인
@@ -203,7 +204,7 @@ describe('T3-S4: 비활성화 플로우', () => {
     await user.click(screen.getByRole('button', { name: '2단계 인증 비활성화' }))
 
     await waitFor(() => {
-      expect(screen.getByLabelText('현재 인증 코드 (6자리)')).toBeInTheDocument()
+      expect(screen.getByLabelText(mfaStrings.disableCodeLabel)).toBeInTheDocument()
     })
   })
 
@@ -230,11 +231,11 @@ describe('T3-S4: 비활성화 플로우', () => {
     await user.click(screen.getByRole('button', { name: '2단계 인증 비활성화' }))
 
     await waitFor(() => {
-      expect(screen.getByLabelText('현재 인증 코드 (6자리)')).toBeInTheDocument()
+      expect(screen.getByLabelText(mfaStrings.disableCodeLabel)).toBeInTheDocument()
     })
 
-    await user.type(screen.getByLabelText('현재 인증 코드 (6자리)'), '123456')
-    await user.click(screen.getByRole('button', { name: '비활성화 확인' }))
+    await user.type(screen.getByLabelText(mfaStrings.disableCodeLabel), '123456')
+    await user.click(screen.getByRole('button', { name: mfaStrings.disableConfirmButton }))
 
     await waitFor(() => {
       expect(screen.getByText('비활성화됨')).toBeInTheDocument()
@@ -265,7 +266,7 @@ describe('T3-S5: 에러 처리', () => {
     })
 
     await user.type(screen.getByLabelText('인증 코드 (6자리)'), '000000')
-    await user.click(screen.getByRole('button', { name: '활성화 확인' }))
+    await user.click(screen.getByRole('button', { name: mfaStrings.enableConfirmButton }))
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument()
@@ -292,7 +293,7 @@ describe('T3-S5: 에러 처리', () => {
     })
 
     await user.type(screen.getByLabelText('인증 코드 (6자리)'), '111111')
-    await user.click(screen.getByRole('button', { name: '활성화 확인' }))
+    await user.click(screen.getByRole('button', { name: mfaStrings.enableConfirmButton }))
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument()

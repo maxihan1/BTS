@@ -23,7 +23,6 @@ export const loginStrings = {
 
   /** 백엔드 에러 코드 → 사용자 메시지 */
   errorInvalidCredentials: '사용자명 또는 비밀번호가 올바르지 않습니다.',
-  errorMfaRequired: '추가 인증이 필요합니다. 관리자에게 문의하세요.',
   errorUnknownProvider: '지원하지 않는 로그인 방식입니다. 다시 시도해 주세요.',
   errorDefault: '로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
 
@@ -294,6 +293,12 @@ export const mfaStrings = {
   codeLabel: '인증 코드 (6자리)',
   /** 설정 코드 입력 필드 placeholder */
   codePlaceholder: '000000',
+  /** 활성화 폼 제출 버튼 레이블 */
+  enableConfirmButton: '활성화 확인',
+  /** 비활성화 폼 — step-up 코드 입력 필드 레이블 */
+  disableCodeLabel: '현재 인증 코드 (6자리)',
+  /** 비활성화 폼 제출 버튼 레이블 */
+  disableConfirmButton: '비활성화 확인',
 
   // ── 로그인 2단계 ──────────────────────────────────────────────────────
   /** TOTP 코드 입력 화면 안내 문구 */

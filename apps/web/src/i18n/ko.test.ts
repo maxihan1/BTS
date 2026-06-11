@@ -165,6 +165,18 @@ describe('mfaStrings — 2FA UI 문자열 키 존재 검증', () => {
     expectTypeOf<MfaStrings>().toHaveProperty('codePlaceholder')
   })
 
+  it('enableConfirmButton 키가 존재한다', () => {
+    expectTypeOf<MfaStrings>().toHaveProperty('enableConfirmButton')
+  })
+
+  it('disableCodeLabel 키가 존재한다', () => {
+    expectTypeOf<MfaStrings>().toHaveProperty('disableCodeLabel')
+  })
+
+  it('disableConfirmButton 키가 존재한다', () => {
+    expectTypeOf<MfaStrings>().toHaveProperty('disableConfirmButton')
+  })
+
   // 로그인 2단계
   it('loginStepGuide 키가 존재한다', () => {
     expectTypeOf<MfaStrings>().toHaveProperty('loginStepGuide')

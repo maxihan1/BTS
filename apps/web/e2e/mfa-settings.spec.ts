@@ -74,7 +74,7 @@ test.describe('S1 MFA 활성화 플로우 (FR-MF-01)', () => {
 
     // When. 코드 입력 + "활성화 확인" 버튼 클릭 → POST /api/v1/auth/mfa/totp/enable 호출
     await codeInput.fill('123456')
-    await page.getByRole('button', { name: '활성화 확인', exact: true }).click()
+    await page.getByRole('button', { name: mfaStrings.enableConfirmButton, exact: true }).click()
 
     // Then. "활성화됨" 배지로 전환 (invalidateQueries → GET status refetch)
     await expect(page.getByText(mfaStrings.statusEnabled, { exact: true })).toBeVisible()
@@ -106,16 +106,15 @@ test.describe('S2 MFA 비활성화 플로우 (FR-MF-01)', () => {
     await page.getByRole('button', { name: mfaStrings.enableButton, exact: true }).click()
     await expect(page.getByRole('img', { name: 'TOTP QR 코드' })).toBeVisible()
     await page.getByLabel(mfaStrings.codeLabel, { exact: true }).fill('123456')
-    await page.getByRole('button', { name: '활성화 확인', exact: true }).click()
+    await page.getByRole('button', { name: mfaStrings.enableConfirmButton, exact: true }).click()
     await expect(page.getByText(mfaStrings.statusEnabled, { exact: true })).toBeVisible()
 
     // When. 비활성화 버튼 클릭
     await page.getByRole('button', { name: mfaStrings.disableButton, exact: true }).click()
 
     // Then. step-up 코드 입력 폼 표시
-    // 비활성화 폼 입력 필드 레이블: "현재 인증 코드 (6자리)"
-    await expect(page.getByLabel('현재 인증 코드 (6자리)', { exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: '비활성화 확인', exact: true })).toBeVisible()
+    await expect(page.getByLabel(mfaStrings.disableCodeLabel, { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: mfaStrings.disableConfirmButton, exact: true })).toBeVisible()
   })
 
   test('Given step-up 폼 When 코드 123456 입력 → 비활성화 확인 Then 비활성화됨 배지로 전환', async ({ page }) => {
@@ -126,14 +125,14 @@ test.describe('S2 MFA 비활성화 플로우 (FR-MF-01)', () => {
     await page.getByRole('button', { name: mfaStrings.enableButton, exact: true }).click()
     await expect(page.getByRole('img', { name: 'TOTP QR 코드' })).toBeVisible()
     await page.getByLabel(mfaStrings.codeLabel, { exact: true }).fill('123456')
-    await page.getByRole('button', { name: '활성화 확인', exact: true }).click()
+    await page.getByRole('button', { name: mfaStrings.enableConfirmButton, exact: true }).click()
     await expect(page.getByText(mfaStrings.statusEnabled, { exact: true })).toBeVisible()
     await page.getByRole('button', { name: mfaStrings.disableButton, exact: true }).click()
-    await expect(page.getByLabel('현재 인증 코드 (6자리)', { exact: true })).toBeVisible()
+    await expect(page.getByLabel(mfaStrings.disableCodeLabel, { exact: true })).toBeVisible()
 
     // When. step-up 코드 입력 → 비활성화 확인
-    await page.getByLabel('현재 인증 코드 (6자리)', { exact: true }).fill('123456')
-    await page.getByRole('button', { name: '비활성화 확인', exact: true }).click()
+    await page.getByLabel(mfaStrings.disableCodeLabel, { exact: true }).fill('123456')
+    await page.getByRole('button', { name: mfaStrings.disableConfirmButton, exact: true }).click()
 
     // Then. "비활성화됨" 배지로 전환
     await expect(page.getByText(mfaStrings.statusDisabled, { exact: true })).toBeVisible()
