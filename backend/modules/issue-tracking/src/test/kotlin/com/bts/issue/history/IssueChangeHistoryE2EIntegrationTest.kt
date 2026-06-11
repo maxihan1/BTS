@@ -269,7 +269,7 @@ class IssueChangeHistoryE2EIntegrationTest {
             IssueKey(issue.key.value),
             UpdateIssueRequest(
                 summary = "a 시나리오 수정 이슈",
-                priority = 3,
+                priority = 1, // 기본값(3)과 다른 값으로 변경해야 아이템이 생성됨
                 expectedVersion = issue.version,
             ),
         )
@@ -661,14 +661,10 @@ class IssueChangeHistoryE2EIntegrationTest {
                 }
             }
 
-            c.prepareStatement(
-                "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) " +
-                    "VALUES (?, 'open', 'Open', 'TODO', 0) " +
-                    "ON CONFLICT (workflow_id, key) DO UPDATE SET display_order = EXCLUDED.display_order",
-            ).use { stmt ->
-                stmt.setObject(1, wfId)
-                stmt.executeUpdate()
-            }
+            val openId = insertWorkflowState(c, wfId, "open", "Open", "TODO", 0)
+            val inProgressId = insertWorkflowState(c, wfId, "in_progress", "In Progress", "IN_PROGRESS", 1)
+            // open → in_progress 전이 삽입 (transitionIssue 시나리오용)
+            insertWorkflowTransition(c, wfId, openId, inProgressId, "Start Work")
 
             c.createStatement().use { stmt ->
                 stmt.execute(
@@ -757,6 +753,50 @@ class IssueChangeHistoryE2EIntegrationTest {
                 }
             }
         }
+
+    @Suppress("LongParameterList")
+    private fun insertWorkflowState(
+        conn: java.sql.Connection,
+        wfId: UUID,
+        key: String,
+        name: String,
+        category: String,
+        displayOrder: Int,
+    ): UUID =
+        conn.prepareStatement(
+            "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) " +
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT (workflow_id, key) " +
+                "DO UPDATE SET display_order = EXCLUDED.display_order RETURNING id",
+        ).use { stmt ->
+            stmt.setObject(1, wfId)
+            stmt.setString(2, key)
+            stmt.setString(3, name)
+            stmt.setString(4, category)
+            stmt.setInt(5, displayOrder)
+            stmt.executeQuery().use { rs ->
+                rs.next()
+                rs.getObject(1) as UUID
+            }
+        }
+
+    private fun insertWorkflowTransition(
+        conn: java.sql.Connection,
+        wfId: UUID,
+        fromId: UUID,
+        toId: UUID,
+        transitionName: String,
+    ) {
+        conn.prepareStatement(
+            "INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name) " +
+                "VALUES (?, ?, ?, ?) ON CONFLICT (workflow_id, from_state_id, to_state_id) DO NOTHING",
+        ).use { stmt ->
+            stmt.setObject(1, wfId)
+            stmt.setObject(2, fromId)
+            stmt.setObject(3, toId)
+            stmt.setString(4, transitionName)
+            stmt.executeUpdate()
+        }
+    }
 
     private fun conn() =
         DriverManager.getConnection(
