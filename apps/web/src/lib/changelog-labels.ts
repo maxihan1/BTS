@@ -67,6 +67,19 @@ const LIFECYCLE_DELETED = 'deleted'
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * 필드에 따라 UUID → name lookup Map을 빌드한다.
+ * components 필드는 refs.components, 나머지(affectsVersions/fixVersions)는 refs.versions를 사용한다.
+ */
+function buildUuidLookup(field: string, refs: ChangelogRefs): ReadonlyMap<string, string> {
+  const map = new Map<string, string>()
+  const items = field === 'components' ? refs.components : refs.versions
+  for (const item of items) {
+    map.set(item.id, item.name)
+  }
+  return map
+}
+
+/**
  * UUID 배열 JSON 문자열을 name 배열로 변환한다.
  * 맵에 없는 UUID는 "(삭제됨)"으로 폴백한다.
  * 빈 배열은 "(없음)"을 반환한다.
@@ -194,17 +207,7 @@ export function resolveValueLabel(
   }
 
   if (UUID_ARRAY_FIELDS.has(item.field)) {
-    const lookupMap = new Map<string, string>()
-    if (item.field === 'components') {
-      for (const c of refs.components) {
-        lookupMap.set(c.id, c.name)
-      }
-    } else {
-      for (const v of refs.versions) {
-        lookupMap.set(v.id, v.name)
-      }
-    }
-    return resolveUuidArrayValue(raw, lookupMap)
+    return resolveUuidArrayValue(raw, buildUuidLookup(item.field, refs))
   }
 
   // status / resolution / 나머지 — raw 그대로
