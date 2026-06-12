@@ -47,6 +47,12 @@ dependencies {
     // MVC + REST controller
     implementation("org.springframework:spring-webmvc")
     implementation("org.springframework:spring-web")
+
+    // STOMP over WebSocket — 인앱 알림 실시간 푸시 (FR-NT-02)
+    // spring-boot-starter-websocket: spring-websocket + spring-messaging(STOMP/ChannelInterceptor) 제공
+    implementation("org.springframework.boot:spring-boot-starter-websocket")
+    // JwtDecoder 등 OAuth2 JOSE 타입 — STOMP CONNECT 의 JWT 검증에 사용 (eng-review C1)
+    implementation("org.springframework.security:spring-security-oauth2-jose")
     // Servlet API — spring-webmvc 가 참조. 실제 구현은 런타임 컨테이너(Tomcat 등)가 제공
     compileOnly("jakarta.servlet:jakarta.servlet-api")
     // Jakarta Validation API — @Valid, @NotBlank 등
