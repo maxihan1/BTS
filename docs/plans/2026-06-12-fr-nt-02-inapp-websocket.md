@@ -168,7 +168,7 @@
 - depends-on: []
 
 **RED**(단위). CONNECT frame `Authorization: Bearer <jwt>` → 기존 JWT 디코더 검증 → `Principal`(userId) 설정. 미검증/만료 → CONNECT 거부(예외). PAT(pat_ prefix) 거부.
-**GREEN**. `@EnableWebSocketMessageBroker` config(endpoint `/ws`, broker `/queue`, user prefix `/user`). `StompAuthChannelInterceptor.preSend`(CONNECT command 시 인증). `spring-boot-starter-websocket` 의존성 추가. 기존 `JwtDecoder`(identity-access) 재사용 — BC 격리상 shared-kernel 포트 또는 공용 JWT 검증 경유(구현 시 결정, security 검토).
+**GREEN**. `@EnableWebSocketMessageBroker` config(endpoint `/ws`, broker `/queue`, user prefix `/user`). `StompAuthChannelInterceptor.preSend`(CONNECT command 시 인증). 의존성 추가: `spring-boot-starter-websocket` + **`spring-security-oauth2-jose`**(eng-review C1 — JwtDecoder 타입 제공 패키지가 현 build.gradle에 없음). JWT 검증 = Spring 표준 `org.springframework.security.oauth2.jwt.JwtDecoder` 빈 주입(identity-access JwtConfig가 제공, 런타임 동일 ApplicationContext) — **Spring 타입이라 BTS 패키지 import 0, BC 격리 위반 아님**(다른 모듈이 SecurityContextHolder 읽는 선례와 동형).
 **REFACTOR**. 보안 KDoc(STATELESS 근거, 세션쿠키 불가).
 **검증**. `./gradlew :notification:test --tests "*StompAuthChannelInterceptorTest"`.
 
@@ -180,7 +180,7 @@
 - depends-on: [3, 4, 7, 8]
 
 **RED**(단위, 협력자 mock). 이벤트 소비→`NotificationPolicyEvaluator.evaluate`→`EventRecipientResolver`→`NotificationRepository.insert`(멱등)→삽입된 건만 `NotificationChannelSender.send`. 성공 시 `pgmq.delete`, 예외 시 미삭제, `read_ct>MAX`→`pgmq.archive`. `@Transactional` 미부착.
-**GREEN**. `@Component` + `@Scheduled(fixedDelay)` `pgmq.read` 폴링. `BulkOperationWorker` 패턴 답습. 이벤트 역직렬화(Jackson 다형성, `IssueDomainEvent`는 shared 계약 — JSON 파싱).
+**GREEN**. `@Component` + `@Scheduled(fixedDelay)` `pgmq.read` 폴링. **폴링 주기 ≤ 500ms**(eng-review C2 — 알림 지연 p95<1s NFR1 충족 위해 BulkOperationWorker 1000ms보다 짧게, 설정 프로퍼티 + 근거 KDoc). `BulkOperationWorker` 패턴 답습. 이벤트 역직렬화(Jackson 다형성, `IssueDomainEvent`는 shared 계약 — JSON 파싱).
 **REFACTOR**. KDoc 처리 흐름(BulkOperationWorker 스타일), vt/MAX 상수 + 근거.
 **검증**. `./gradlew :notification:test --tests "*NotificationWorkerTest"`.
 
@@ -217,4 +217,27 @@
 - TDD 강제: yes. agent 분담: db(T1), security(T9), qa(T11), 나머지 backend.
 - 추가 검증: ktlint/detekt(--rerun-tasks, baseline 동결), ArchUnit BC 격리, verify-master-plan.sh.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-12) — 백엔드 집중 독립 리뷰
+
+**Scope Challenge**. ✅ 적절. 신규 클래스 다수(8종)이나 발송 인프라 그린필드라 불가피. 이미 "인앱 slice"로 축소 + PR 분할 확정(backend/frontend). over-engineering 없음.
+
+**BLOCKER: 없음.**
+
+**CONCERN (plan 반영 완료)**.
+- C1 [Architecture, 8/10] cross-BC JWT 검증. notification build.gradle에 `spring-security-oauth2-jose`(JwtDecoder 타입) 미포함 → **T9 GREEN에 의존성 추가 명시**. 검증은 Spring 표준 `JwtDecoder` 빈 주입(identity-access 제공) — BTS 패키지 import 0이라 BC 격리 OK(타 모듈 SecurityContextHolder 선례와 동형). 실측 확인.
+- C2 [Performance, 7/10] pgmq 폴링 주기가 알림 지연 p95<1s(NFR1) 좌우 → **T10 GREEN에 폴링 주기 ≤500ms 명시**.
+- C3 [Architecture, 6/10] `issue.transitioned` 담당자=포트 조회 시점의 현재 담당자(이벤트 발생시점과 race 가능). 영향 작음(알림은 best-effort), 수용. 통합테스트에서 시드 고정으로 결정적 검증.
+- C4 [Test, 7/10] T11 STOMP 통합테스트 flaky 위험(Testcontainers+실 WS). 수용 — 단독 재실행으로 확정(learnings: concurrent-testcontainers-suite-flaky).
+- C5 [Scope/일관성, 6/10] `Channel` enum은 5종(IN_APP/EMAIL/SLACK/TEAMS/WEBHOOK) 유지 — 카탈로그라 미구현 채널 표현 무방. ADR 결정2의 "직접 담당 3종"은 발송 구현체/문서 레벨. T12에서 문서만 정정, enum 코드 변경 없음. 일관성 확인 완료.
+
+**실패 모드(critical gap 점검)**. (1) JWT 검증 실패→CONNECT 거부(테스트 O, 에러 O, 사용자에 ERROR frame). (2) 이슈 조회 실패→빈 수신자 fail-safe(테스트 O, 에러 처리 O, silent 미발송 — 알림이라 허용). (3) push 실패→기록은 SENT, 실시간 유실(FR-UX-03 Inbox 보완, E7). **critical gap(테스트X+에러처리X+silent) 0건.**
+
+**병렬화**. Lane A=notification 모듈(T1·2·3·4·7·8·10·11 — 같은 test 컴파일 단위, 일부 직렬) / Lane B=shared-kernel(T5) / Lane C=issue-tracking(T6) / Lane D=security(T9, notification). B·C·D는 A와 독립 병렬. bts-impl이 wave+files 겹침으로 계산.
+
+**NOT in scope(명시 deferral)**. 이메일/Webhook 채널(동일 추상 후속 PR), RecipientResolver 워처/role 해석(FR-NT-03), UserSubscription override(FR-NT-04), Inbox 조회 UI/카운트(FR-UX-03), frontend STOMP 클라+토스트+E2E(D6/D7 후속 PR), Teams 채널(범위 제외).
+
+**What already exists(재사용)**. `NotificationPolicyEvaluator`(평가 엔진, T10 재사용), `Channel`/`NotificationEventType`/`RecipientRole` enum(T4서 issue.mentioned만 보강), `sonner`(후속 PR), `BulkOperationWorker`(consumer 패턴 템플릿), `UserLookupPort`(포트 선례), `SecurityContextHolder`/`CurrentActor`(인증 읽기 선례).
+
+**verdict**. CLEARED — 아키텍처/테스트/성능 검토 통과, BLOCKER 0, CONCERN 5건 전부 plan 반영. 구현 진입 가능.
