@@ -9,6 +9,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer
+import org.springframework.web.socket.config.annotation.WebSocketTransportRegistration
 
 /**
  * 인앱 알림 실시간 푸시를 위한 STOMP over WebSocket 서버 설정 (FR-NT-02).
@@ -47,9 +48,34 @@ class WebSocketConfig(
         registration.interceptors(StompAuthChannelInterceptor(jwtDecoder))
     }
 
+    /**
+     * WebSocket 전송 백프레셔 한도를 설정한다 (DoS 방어).
+     *
+     * 느린/악의적 클라이언트가 서버 메모리를 고갈시키지 못하도록 수신 메시지 크기·단건 송신 타임아웃·
+     * 세션별 송신 버퍼를 제한한다. 한도 초과 세션은 Spring 이 닫는다. 인앱 알림 프레임은 제목+이슈키
+     * 수준이라 작아 64KB 면 충분하다. 한도 미설정 시 Spring 기본값은 관대해 슬로우 클라이언트가 힙을
+     * 고갈시킬 수 있다(eng-review P2 백프레셔 지적).
+     *
+     * @param registration WebSocket 전송 레지스트레이션
+     */
+    override fun configureWebSocketTransport(registration: WebSocketTransportRegistration) {
+        registration.setMessageSizeLimit(MESSAGE_SIZE_LIMIT_BYTES)
+        registration.setSendTimeLimit(SEND_TIME_LIMIT_MS)
+        registration.setSendBufferSizeLimit(SEND_BUFFER_SIZE_LIMIT_BYTES)
+    }
+
     private companion object {
         const val WS_ENDPOINT = "/ws"
         const val QUEUE_PREFIX = "/queue"
         const val USER_PREFIX = "/user"
+
+        /** 수신 STOMP 메시지 최대 크기 (64KB) — 인앱 알림 프레임은 작아 충분. 초과 시 세션 종료. */
+        const val MESSAGE_SIZE_LIMIT_BYTES = 64 * 1024
+
+        /** 단건 메시지 송신 제한 시간 (10초) — 느린 클라이언트의 송신 스레드 점유 방지. */
+        const val SEND_TIME_LIMIT_MS = 10 * 1000
+
+        /** 세션별 송신 버퍼 상한 (512KB) — 백프레셔. 초과 시 세션 종료해 메모리 고갈 차단. */
+        const val SEND_BUFFER_SIZE_LIMIT_BYTES = 512 * 1024
     }
 }
