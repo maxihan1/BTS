@@ -7,6 +7,7 @@ import com.atlas.bts.identity.audit.AuthAuditLogService
 import com.atlas.bts.identity.audit.AuthEventType
 import com.atlas.bts.identity.credential.StoredPasswordCredentialRepository
 import com.atlas.bts.identity.dto.WhoamiResponse
+import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.user.UserRepository
@@ -87,6 +88,9 @@ class WhoamiController(
             // local_credentials 행이 없는 SSO(LDAP/OIDC/SAML) 사용자는 강제 변경 대상이 아님 → false
             val mustChangePassword =
                 storedPasswordCredentialRepository.findByUserId(userId)?.mustChangePassword ?: false
+            // FR-MF-04: 발급 chokepoint(JwtIssuer)가 박은 클레임을 그대로 읽음(부재=false). 게이트 필터와 단일 출처 일치 → EC7.
+            val mfaEnrollmentRequired =
+                jwt.getClaim<Boolean>(JwtIssuer.CLAIM_MFA_ENROLLMENT_REQUIRED) ?: false
             return WhoamiResponse(
                 username = user.username,
                 email = user.email.orEmpty(),
@@ -94,6 +98,7 @@ class WhoamiController(
                 userId = user.id,
                 mustChangePassword = mustChangePassword,
                 isSystemAdmin = systemPermissionResolver.isSystemAdmin(userId),
+                mfaEnrollmentRequired = mfaEnrollmentRequired,
             )
         }
 
@@ -129,6 +134,7 @@ class WhoamiController(
         // PAT 분기는 비밀번호 변경 흐름·시스템 역할 컨텍스트를 노출하지 않는다.
         // 강제 변경(mustChangePassword)은 대화형 로그인(JWT) 사용자만의 관심사이며,
         // 시스템 관리자 판정(isSystemAdmin) 또한 JWT 세션에서만 의미가 있으므로 둘 다 false 고정.
+        // MFA 강제 등록(mfaEnrollmentRequired)도 봇 컨텍스트(PAT)와 무관하므로 false 고정.
         return WhoamiResponse(
             username = "",
             email = "",
@@ -136,6 +142,7 @@ class WhoamiController(
             userId = pat.userId,
             mustChangePassword = false,
             isSystemAdmin = false,
+            mfaEnrollmentRequired = false,
         )
     }
 
