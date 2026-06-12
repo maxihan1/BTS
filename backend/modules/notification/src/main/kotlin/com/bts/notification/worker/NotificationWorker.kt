@@ -438,6 +438,14 @@ class NotificationWorker(
         /**
          * pgmq 이슈 이벤트 큐 이름 — issue-tracking BC 의 이벤트 발행 큐와 일치해야 한다.
          * V401 마이그레이션에서 생성된 큐.
+         *
+         * ## 단일 큐 경쟁 소비 경고
+         * 이 큐는 NotificationWorker 전용 경쟁 소비(competing-consumer) 큐다. pgmq.read 로 읽고
+         * 처리 성공 시 pgmq.delete 로 제거하므로, 같은 큐를 읽는 consumer 가 2종 이상이면 먼저 처리한
+         * 쪽이 메시지를 delete 해 다른 쪽은 그 이벤트를 영영 못 본다. 따라서 모든 이벤트를 받아야 하는
+         * 다른 용도의 consumer 를 이 큐에 추가하면 안 된다 — fan-out 이 필요하면 용도별 큐를 분리할 것.
+         * (NotificationWorker 인스턴스 수평 확장은 안전 — 각 이벤트가 정확히 한 인스턴스에서만 처리된다.)
+         * 용도별 큐 분리는 ADR 결정5 대로 현 단계에선 시기상조이므로 지금은 경고만 남긴다.
          */
         const val QUEUE_NAME = "q_issue_events"
 
