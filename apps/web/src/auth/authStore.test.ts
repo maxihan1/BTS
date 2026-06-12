@@ -10,6 +10,7 @@ const MOCK_USER: WhoamiResponse = {
   userId: 'user-001',
   mustChangePassword: false,
   isSystemAdmin: false,
+  mfaEnrollmentRequired: false,
 }
 
 const MOCK_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.test.token'

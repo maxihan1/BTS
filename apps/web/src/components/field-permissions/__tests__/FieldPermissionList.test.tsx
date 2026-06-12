@@ -49,6 +49,7 @@ describe('FieldPermissionList', () => {
         authMethod: 'local',
         mustChangePassword: false,
         isSystemAdmin: false,
+        mfaEnrollmentRequired: false,
       },
     })
     // XSRF-TOKEN 쿠키 설정 — API client가 X-XSRF-TOKEN 헤더로 재전송하는 double submit cookie 패턴

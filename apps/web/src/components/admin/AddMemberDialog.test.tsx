@@ -59,7 +59,7 @@ async function openDialog(user: ReturnType<typeof userEvent.setup>) {
 beforeEach(() => {
   useAuthStore.setState({
     accessToken: 'test-token',
-    user: { userId: 'fixture-alice-uuid', username: 'alice', email: 'alice@example.com', authMethod: 'local', mustChangePassword: false, isSystemAdmin: false },
+    user: { userId: 'fixture-alice-uuid', username: 'alice', email: 'alice@example.com', authMethod: 'local', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
   })
   vi.clearAllMocks()
 })

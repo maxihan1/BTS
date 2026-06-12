@@ -69,6 +69,7 @@ beforeEach(() => {
       userId: 'u-alice',
       mustChangePassword: false,
       isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
     },
   })
 })

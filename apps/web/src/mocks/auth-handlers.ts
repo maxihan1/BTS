@@ -113,8 +113,9 @@ const whoamiHandler = http.get('/api/v1/users/me/whoami', ({ request }) => {
     globalThis.localStorage?.getItem(E2E_IS_SYSTEM_ADMIN_KEY) === 'true'
       ? true
       : user.isSystemAdmin
+  const mfaEnrollmentRequired = user.mfaEnrollmentRequired
 
-  return HttpResponse.json({ ...user, mustChangePassword, isSystemAdmin })
+  return HttpResponse.json({ ...user, mustChangePassword, isSystemAdmin, mfaEnrollmentRequired })
 })
 
 /**

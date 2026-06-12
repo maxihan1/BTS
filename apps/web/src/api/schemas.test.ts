@@ -128,6 +128,7 @@ describe('WhoamiResponseSchema', () => {
       userId: 'usr-0001',
       mustChangePassword: false,
       isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
     })
     expect(result.success).toBe(true)
   })
@@ -139,6 +140,7 @@ describe('WhoamiResponseSchema', () => {
       userId: 'usr-0001',
       mustChangePassword: false,
       isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
     })
     expect(result.success).toBe(false)
   })
@@ -150,6 +152,7 @@ describe('WhoamiResponseSchema', () => {
       authMethod: 'local',
       mustChangePassword: false,
       isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
     })
     expect(result.success).toBe(false)
   })
@@ -161,6 +164,7 @@ describe('WhoamiResponseSchema', () => {
       authMethod: 'local',
       userId: 'usr-0001',
       isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
     })
     expect(result.success).toBe(false)
   })
@@ -172,6 +176,7 @@ describe('WhoamiResponseSchema', () => {
       authMethod: 'local',
       userId: 'usr-0001',
       mustChangePassword: false,
+      mfaEnrollmentRequired: false,
     })
     expect(result.success).toBe(false)
   })
@@ -184,6 +189,7 @@ describe('WhoamiResponseSchema', () => {
       userId: 'usr-0001',
       mustChangePassword: true,
       isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
     })
     expect(result.success).toBe(true)
   })
@@ -196,6 +202,7 @@ describe('WhoamiResponseSchema', () => {
       userId: 'usr-0001',
       mustChangePassword: false,
       isSystemAdmin: true,
+      mfaEnrollmentRequired: false,
     })
     expect(result.success).toBe(true)
   })

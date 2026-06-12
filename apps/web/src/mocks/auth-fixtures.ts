@@ -71,6 +71,7 @@ export const aliceUser: WhoamiResponse = {
   userId: '00000000-0000-0000-0000-000000000001',
   mustChangePassword: false,
   isSystemAdmin: false,
+  mfaEnrollmentRequired: false,
 }
 
 /** bob fixture — 추가 fixture 사용자 */
@@ -81,6 +82,7 @@ export const bobUser: WhoamiResponse = {
   userId: '00000000-0000-0000-0000-000000000002',
   mustChangePassword: false,
   isSystemAdmin: false,
+  mfaEnrollmentRequired: false,
 }
 
 /** username → fixture 사용자 맵 */
