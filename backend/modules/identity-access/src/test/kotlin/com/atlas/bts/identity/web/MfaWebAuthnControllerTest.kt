@@ -48,7 +48,7 @@ import java.util.UUID
  *
  * ## 검증 시나리오
  * - POST /webauthn/register/start — JWT → 200 등록 옵션 JSON (PAT → 403)
- * - POST /webauthn/register/finish — Success → 201 {id,name} / InvalidRegistration → 400 / AlreadyRegistered → 409 / Expired → 400
+ * - POST /webauthn/register/finish — Success → 201 / InvalidRegistration·Expired → 400 / AlreadyRegistered → 409
  * - GET  /webauthn — JWT → 200 키 목록 (PAT → 403)
  * - DELETE /webauthn/{id} — 소유 일치 → 204 / 미존재·타인 소유 → 404 not_found (PAT → 403)
  * - POST /webauthn/authenticate/start — 챌린지 토큰만으로(세션 없이) permitAll 도달 → 200 옵션 / 만료 → 401
@@ -68,7 +68,11 @@ import java.util.UUID
     controllers = [MfaController::class, MfaWebAuthnControllerTest.VerifyProbe::class],
     excludeAutoConfiguration = [OAuth2ClientAutoConfiguration::class],
 )
-@Import(SecurityConfig::class, MfaWebAuthnControllerTest.SecurityBeans::class, MfaWebAuthnControllerTest.VerifyProbe::class)
+@Import(
+    SecurityConfig::class,
+    MfaWebAuthnControllerTest.SecurityBeans::class,
+    MfaWebAuthnControllerTest.VerifyProbe::class,
+)
 class MfaWebAuthnControllerTest {
     /**
      * `/api/v1/auth/mfa/verify` 더미 핸들러 — verify 검증 로직은 AuthController 소관이므로,

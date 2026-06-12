@@ -204,8 +204,9 @@ class AuthController(
      * @param userId 1단계 인증을 통과한 사용자
      * @return TOTP 또는 보안키 중 하나라도 활성이면 true
      */
-    private fun isAnyMfaEnabled(userId: UUID): Boolean =
-        mfaService.isEnabled(userId) || webAuthnSecurityKeyService.hasActiveKey(userId)
+    private fun isAnyMfaEnabled(userId: UUID): Boolean {
+        return mfaService.isEnabled(userId) || webAuthnSecurityKeyService.hasActiveKey(userId)
+    }
 
     /**
      * POST /api/v1/auth/mfa/verify — 로그인 2단계(TOTP 또는 백업 코드) 검증 후 정식 세션 발급
@@ -286,19 +287,19 @@ class AuthController(
                 mapWebauthnResult(
                     request,
                     claims,
-                    webAuthnSecurityKeyService.verifyLogin(claims.userId, requireCredentialJson(body)),
+                    webAuthnSecurityKeyService.verifyLogin(claims.userId, credentialJsonOf(body)),
                 )
             else -> errorResponse(HttpStatus.BAD_REQUEST, "invalid_method")
         }
 
     /**
-     * webauthn 검증에 넘길 assertion JSON 을 구성한다.
+     * webauthn 검증에 넘길 assertion JSON 문자열을 추출한다.
      *
      * [MfaVerifyRequest.credential] 은 보안키 인증 응답(JSON 트리)이며, 다시 직렬화해
      * [WebAuthnSecurityKeyService.verifyLogin] 에 문자열로 넘긴다. credential 부재 시 빈 문자열을 넘기면
      * 서비스가 파싱 실패로 fail-closed([WebAuthnSecurityKeyService.VerifyResult.InvalidAssertion]) 처리한다.
      */
-    private fun requireCredentialJson(body: MfaVerifyRequest): String = body.credential?.toString() ?: ""
+    private fun credentialJsonOf(body: MfaVerifyRequest): String = body.credential?.toString() ?: ""
 
     /** TOTP 검증 결과를 HTTP 응답으로 매핑한다(Success→세션, InvalidCode/NotEnabled→401, TooManyAttempts→429). */
     private fun mapTotpResult(
