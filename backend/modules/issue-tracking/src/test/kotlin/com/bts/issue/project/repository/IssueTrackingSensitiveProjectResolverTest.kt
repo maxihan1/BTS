@@ -1,6 +1,6 @@
 // SensitiveProjectResolver issue-tracking adapter 통합 테스트 — jOOQ + Testcontainers PostgreSQL (FR-MF-04)
 
-package com.bts.issue.project.adapter
+package com.bts.issue.project.repository
 
 import com.bts.issue.repository.IssueTestcontainersBase
 import org.assertj.core.api.Assertions.assertThat
@@ -25,7 +25,6 @@ import java.util.UUID
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueTrackingSensitiveProjectResolverTest : IssueTestcontainersBase() {
-
     private lateinit var resolver: IssueTrackingSensitiveProjectResolver
 
     /** 각 테스트용 프로젝트 UUID 들 — @BeforeEach 에서 매번 재삽입 */
@@ -67,7 +66,8 @@ class IssueTrackingSensitiveProjectResolverTest : IssueTestcontainersBase() {
             // T2-D용: require_2fa=true 이지만 soft-deleted
             deletedSensitiveId = UUID.randomUUID()
             conn.prepareStatement(
-                "INSERT INTO projects (id, key, name, require_2fa, deleted_at) VALUES (?,'DELSENS','Deleted Sensitive',true,NOW())",
+                "INSERT INTO projects (id, key, name, require_2fa, deleted_at) " +
+                    "VALUES (?,'DELSENS','Deleted Sensitive',true,NOW())",
             ).use { stmt ->
                 stmt.setObject(1, deletedSensitiveId)
                 stmt.executeUpdate()

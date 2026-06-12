@@ -38,7 +38,7 @@ import java.util.UUID
  * ## 결정 — fallback 을 `@ConditionalOnMissingBean` 으로 (프로파일 무관)
  * fallback 을 `@ConditionalOnMissingBean(SensitiveProjectResolver::class)` 로 바꿔, 실 adapter 가
  * 부재한 단독 부팅(프로파일 무관)에서 등록되게 한다. assembled 부팅에서는 실
- * [com.bts.issue.project.adapter.IssueTrackingSensitiveProjectResolver] 가 존재하므로 fallback 은
+ * [com.bts.issue.project.repository.IssueTrackingSensitiveProjectResolver] 가 존재하므로 fallback 은
  * 등록되지 않는다(assembled 우선). 배포 모델(no-cross-bc-deployment-assembly)상 standalone-prod
  * 시나리오가 없어 loud-fail 로 막을 대상이 없으므로 부팅 가용성을 택한다.
  *

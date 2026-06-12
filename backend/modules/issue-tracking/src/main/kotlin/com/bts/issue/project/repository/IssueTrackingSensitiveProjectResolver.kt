@@ -1,6 +1,6 @@
 // SensitiveProjectResolver issue-tracking adapter — projects.require_2fa jOOQ 조회 (FR-MF-04)
 
-package com.bts.issue.project.adapter
+package com.bts.issue.project.repository
 
 import com.bts.issue.jooq.tables.references.PROJECTS
 import com.bts.shared.permission.SensitiveProjectResolver
@@ -24,7 +24,6 @@ import java.util.UUID
 class IssueTrackingSensitiveProjectResolver(
     private val dsl: DSLContext,
 ) : SensitiveProjectResolver {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**

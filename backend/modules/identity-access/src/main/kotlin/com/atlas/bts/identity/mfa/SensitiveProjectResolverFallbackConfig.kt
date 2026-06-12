@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Configuration
  *
  * `@ConditionalOnMissingBean(SensitiveProjectResolver::class)` 으로 **실 adapter 가 부재할 때만**
  * [NonProdSensitiveProjectResolver] 를 빈으로 등록한다. assembled 부팅에서는 issue-tracking 의
- * 실 adapter([com.bts.issue.project.adapter.IssueTrackingSensitiveProjectResolver])가 존재하므로
+ * 실 adapter([com.bts.issue.project.repository.IssueTrackingSensitiveProjectResolver])가 존재하므로
  * 이 `@Bean` 은 등록되지 않는다(assembled-first). identity-access 단독 부팅(프로파일 무관)에서는
  * 실 빈이 부재하므로 fallback 이 등록되어 부팅 가용성을 확보한다.
  *

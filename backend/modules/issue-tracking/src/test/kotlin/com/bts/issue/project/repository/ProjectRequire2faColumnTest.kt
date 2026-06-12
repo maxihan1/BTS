@@ -11,6 +11,7 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
+import java.sql.ResultSet
 
 /**
  * Flyway V001~V019 마이그레이션 적용 후 projects.require_2fa 컬럼을 검증한다.
@@ -70,18 +71,20 @@ class ProjectRequire2faColumnTest {
                     " WHERE table_schema = 'public' AND table_name = 'projects' AND column_name = ?",
             ).use { stmt ->
                 stmt.setString(1, columnName)
-                stmt.executeQuery().use { rs ->
-                    if (!rs.next()) {
-                        null
-                    } else {
-                        ColumnMeta(
-                            dataType = rs.getString("data_type"),
-                            isNullable = rs.getString("is_nullable"),
-                            columnDefault = rs.getString("column_default"),
-                        )
-                    }
-                }
+                stmt.executeQuery().use { rs -> rs.toColumnMeta() }
             }
+        }
+
+    // ResultSet 의 첫 행을 ColumnMeta 로 매핑 — 행이 없으면 null.
+    private fun ResultSet.toColumnMeta(): ColumnMeta? =
+        if (!next()) {
+            null
+        } else {
+            ColumnMeta(
+                dataType = getString("data_type"),
+                isNullable = getString("is_nullable"),
+                columnDefault = getString("column_default"),
+            )
         }
 
     private data class ColumnMeta(

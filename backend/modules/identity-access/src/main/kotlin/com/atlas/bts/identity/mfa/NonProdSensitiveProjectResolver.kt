@@ -16,7 +16,7 @@ import java.util.UUID
  *
  * ## 등록 조건 — 실 adapter 우선(assembled-first)
  * '민감 프로젝트(require_2fa=true)' 데이터는 issue-tracking BC 소유다. assembled 부팅에서는
- * issue-tracking 의 실 adapter([com.bts.issue.project.adapter.IssueTrackingSensitiveProjectResolver])
+ * issue-tracking 의 실 adapter([com.bts.issue.project.repository.IssueTrackingSensitiveProjectResolver])
  * 가 [SensitiveProjectResolver] 빈으로 존재하므로 이 fallback 은 **등록되지 않는다** — 운영의 실
  * 강제 평가는 그대로 동작한다. 반대로 identity-access 단독 부팅(prod/비prod 테스트·dev,
  * issue-tracking 없음)에서는 실 빈이 부재하므로 이 fallback 이 등록되어 부팅 가용성을 확보한다.

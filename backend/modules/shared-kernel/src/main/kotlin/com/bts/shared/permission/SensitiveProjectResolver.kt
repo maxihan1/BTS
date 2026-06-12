@@ -8,7 +8,7 @@ import java.util.UUID
  * 민감 프로젝트 여부 판정 outbound port — 전 BC 공용.
  *
  * "주어진 프로젝트 집합 중 MFA(2FA) 강제 대상(require_2fa=true)인 것이 하나라도 있는가"를 판정한다.
- * issue-tracking BC 가 [com.bts.issue.project.adapter.IssueTrackingSensitiveProjectResolver]
+ * issue-tracking BC 가 [com.bts.issue.project.repository.IssueTrackingSensitiveProjectResolver]
  * 로 adapter 를 제공한다 (FR-MF-04).
  *
  * ## 소비처
