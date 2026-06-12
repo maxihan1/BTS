@@ -21,11 +21,8 @@ import { extractIssueTemplateErrorCode } from '@/api/issue-templates'
 
 const createFormSchema = z.object({
   // valueAsNumber: true 옵션이 빈 select를 NaN으로 변환하므로
-  // z.preprocess로 NaN → undefined 변환 후 required 체크
-  issueTypeId: z.preprocess(
-    (val) => (typeof val === 'number' && isNaN(val) ? undefined : val),
-    z.number({ required_error: '이슈 타입을 선택해주세요.' }).int().positive('이슈 타입을 선택해주세요.'),
-  ),
+  // .positive()가 NaN을 실패시켜 동일하게 에러 메시지를 표시한다 (CustomFieldFormDialog 선례)
+  issueTypeId: z.number().int().positive('이슈 타입을 선택해주세요.'),
   name: z
     .string()
     .min(1, '이름은 필수입니다.')
