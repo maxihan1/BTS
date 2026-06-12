@@ -248,7 +248,10 @@ class MfaEnrollmentGateIntegrationTest {
                 email = "mfa-gate-pat-$suffix@example.com",
                 displayName = "MfaGatePatUser",
             )
-        val rawToken = PersonalAccessToken.TOKEN_PREFIX + UUID.randomUUID().toString().replace("-", "") + "abcdef0123456789"
+        val rawToken =
+            PersonalAccessToken.TOKEN_PREFIX +
+                UUID.randomUUID().toString().replace("-", "") +
+                "abcdef0123456789"
         patRepository.save(
             PersonalAccessToken(
                 id = UUID.randomUUID(),
@@ -330,7 +333,10 @@ class MfaEnrollmentGateIntegrationTest {
         val blockedByGate =
             response.statusCode == HttpStatus.FORBIDDEN && errorCode(response) == GATE_ERROR_CODE
         assertThat(blockedByGate)
-            .withFailMessage("allow-list 경로는 게이트를 통과해야 합니다(영구 락 방지). 실제 status=${response.statusCode}, body=${response.body}")
+            .withFailMessage(
+                "allow-list 경로는 게이트를 통과해야 합니다(영구 락 방지). " +
+                    "실제 status=${response.statusCode}, body=${response.body}",
+            )
             .isFalse()
     }
 }

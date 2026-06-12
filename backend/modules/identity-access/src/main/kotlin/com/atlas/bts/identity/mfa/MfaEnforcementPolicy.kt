@@ -30,11 +30,13 @@ import java.util.UUID
  * 관리자는 멤버십·민감 프로젝트 조회 없이 단락한다 — 불필요한 in-BC 쿼리와 cross-BC 호출을 줄인다.
  *
  * ## fail-safe (fail-open 금지)
- * [sensitiveResolver] 는 prod 에서 issue-tracking 의 실제 adapter 를 assembled 로 주입받는다.
- * prod 에 실 빈이 없으면 Spring DI 가 부팅 시 loud 하게 실패하도록 둔다(silent 우회 금지).
- * non-prod 단독 부팅 가용성은 [NonProdSensitiveProjectResolver]([SensitiveProjectResolver]
- * `@Profile("!prod")` fallback, 항상 false)가 담당한다. 즉, '민감 여부 불명'은 코드 경로상
- * 발생하지 않으며(빈은 항상 존재), prod 누락은 부팅 차단으로 수렴한다
+ * [sensitiveResolver] 는 assembled 부팅에서 issue-tracking 의 실제 adapter 를 주입받아 실 강제를
+ * 평가한다. identity-access 단독 부팅(프로파일 무관)에서는 실 adapter 가 부재하므로
+ * [NonProdSensitiveProjectResolver](`@ConditionalOnMissingBean` fallback, 항상 false)가 등록되어
+ * 빈이 항상 존재한다. 즉, '민감 여부 불명'은 코드 경로상 발생하지 않으며(non-null 보장),
+ * fallback 은 강제를 '덜 켜는'(false) 방향이라 fail-safe 다. 배포 모델상 standalone-prod 시나리오가
+ * 없어 과거의 loud-fail(prod 빈 미해소 → BeanCreationException)은 폐기됐다 — 막을 대상이 없고
+ * 오히려 단독 prod 통합테스트 부팅을 깨뜨렸다
  * (learnings: crossbc-resolver-nullable-fail-open / profile-scoped-bean-boot-failure).
  *
  * ## 로그인 가용성
