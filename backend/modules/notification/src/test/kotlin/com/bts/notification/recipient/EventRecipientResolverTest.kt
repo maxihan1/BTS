@@ -33,6 +33,7 @@ class EventRecipientResolverTest : DescribeSpec({
     val issueKey = "ATLAS-42"
     val fixedNow: Instant = Instant.parse("2026-06-12T00:00:00Z")
 
+    @Suppress("LongParameterList")
     fun buildEvent(
         eventType: NotificationEventType = NotificationEventType.ISSUE_CREATED,
         issueKey: String? = "ATLAS-42",
@@ -55,11 +56,12 @@ class EventRecipientResolverTest : DescribeSpec({
 
     describe("MENTIONED 역할 해석") {
         it("mentionedUserIds 각각에 대해 ResolvedRecipient를 생성한다") {
-            val event = buildEvent(
-                eventType = NotificationEventType.ISSUE_MENTIONED,
-                mentionedUserIds = listOf(mentionedA, mentionedB),
-                actorId = null,
-            )
+            val event =
+                buildEvent(
+                    eventType = NotificationEventType.ISSUE_MENTIONED,
+                    mentionedUserIds = listOf(mentionedA, mentionedB),
+                    actorId = null,
+                )
             val matches = listOf(PolicyMatch(RecipientRole.MENTIONED, Channel.IN_APP))
 
             val result = resolver.resolve(event, matches)
@@ -70,10 +72,11 @@ class EventRecipientResolverTest : DescribeSpec({
         }
 
         it("멘션 목록이 비어 있으면 빈 목록을 반환한다") {
-            val event = buildEvent(
-                eventType = NotificationEventType.ISSUE_MENTIONED,
-                mentionedUserIds = emptyList(),
-            )
+            val event =
+                buildEvent(
+                    eventType = NotificationEventType.ISSUE_MENTIONED,
+                    mentionedUserIds = emptyList(),
+                )
             val matches = listOf(PolicyMatch(RecipientRole.MENTIONED, Channel.IN_APP))
 
             val result = resolver.resolve(event, matches)
@@ -82,11 +85,12 @@ class EventRecipientResolverTest : DescribeSpec({
         }
 
         it("멘션된 사용자 중 actorId와 동일한 경우 제외한다") {
-            val event = buildEvent(
-                eventType = NotificationEventType.ISSUE_MENTIONED,
-                mentionedUserIds = listOf(actor, mentionedA),
-                actorId = actor,
-            )
+            val event =
+                buildEvent(
+                    eventType = NotificationEventType.ISSUE_MENTIONED,
+                    mentionedUserIds = listOf(actor, mentionedA),
+                    actorId = actor,
+                )
             val matches = listOf(PolicyMatch(RecipientRole.MENTIONED, Channel.IN_APP))
 
             val result = resolver.resolve(event, matches)
@@ -191,10 +195,11 @@ class EventRecipientResolverTest : DescribeSpec({
     describe("REPORTER + ASSIGNEE 동시 요청 시 N+1 회피") {
         it("포트를 1회만 호출하고 두 역할 모두 해석한다") {
             val event = buildEvent(reporterId = null, issueKey = issueKey, actorId = null)
-            val matches = listOf(
-                PolicyMatch(RecipientRole.REPORTER, Channel.IN_APP),
-                PolicyMatch(RecipientRole.ASSIGNEE, Channel.IN_APP),
-            )
+            val matches =
+                listOf(
+                    PolicyMatch(RecipientRole.REPORTER, Channel.IN_APP),
+                    PolicyMatch(RecipientRole.ASSIGNEE, Channel.IN_APP),
+                )
 
             every { port.findRecipients(issueKey) } returns
                 IssueRecipients(reporterId = reporter, assigneeId = assignee)
@@ -233,10 +238,11 @@ class EventRecipientResolverTest : DescribeSpec({
         it("동일 (userId, channel) 쌍은 1개로 합친다") {
             // reporter와 assignee가 동일 사용자인 경우
             val event = buildEvent(reporterId = null, issueKey = issueKey, actorId = null)
-            val matches = listOf(
-                PolicyMatch(RecipientRole.REPORTER, Channel.IN_APP),
-                PolicyMatch(RecipientRole.ASSIGNEE, Channel.IN_APP),
-            )
+            val matches =
+                listOf(
+                    PolicyMatch(RecipientRole.REPORTER, Channel.IN_APP),
+                    PolicyMatch(RecipientRole.ASSIGNEE, Channel.IN_APP),
+                )
 
             every { port.findRecipients(issueKey) } returns
                 IssueRecipients(reporterId = reporter, assigneeId = reporter)
@@ -250,10 +256,11 @@ class EventRecipientResolverTest : DescribeSpec({
 
         it("채널이 다르면 별도 항목으로 유지한다") {
             val event = buildEvent(reporterId = reporter, actorId = null)
-            val matches = listOf(
-                PolicyMatch(RecipientRole.REPORTER, Channel.IN_APP),
-                PolicyMatch(RecipientRole.REPORTER, Channel.EMAIL),
-            )
+            val matches =
+                listOf(
+                    PolicyMatch(RecipientRole.REPORTER, Channel.IN_APP),
+                    PolicyMatch(RecipientRole.REPORTER, Channel.EMAIL),
+                )
 
             val result = resolver.resolve(event, matches)
 

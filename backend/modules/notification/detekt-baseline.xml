@@ -1,5 +1,7 @@
 <?xml version="1.0" ?>
 <SmellBaseline>
   <ManuallySuppressedIssues></ManuallySuppressedIssues>
-  <CurrentIssues></CurrentIssues>
+  <CurrentIssues>
+    <ID>LongParameterList:NotificationTest.kt$NotificationTest$( id: UUID = UUID.fromString("00000000-0000-0000-0000-000000000010"), recipientUserId: UUID = recipientId, eventType: NotificationEventType = NotificationEventType.ISSUE_ASSIGNED, channel: Channel = Channel.IN_APP, issueKey: String? = "ATLAS-42", title: String = "이슈가 할당되었습니다", body: String? = "담당자로 지정되었습니다.", payload: String? = """{"issueId":"abc"}""", status: NotificationStatus = NotificationStatus.PENDING, dedupKey: String = "fixedkey", readAt: Instant? = null, createdAt: Instant = fixedNow, )</ID>
+  </CurrentIssues>
 </SmellBaseline>
