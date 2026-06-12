@@ -31,6 +31,7 @@ class IssueDomainEventTest : DescribeSpec({
                 projectKey = "ATLAS",
                 summary = "첫 번째 이슈",
                 reporterId = actorId,
+                actorId = actorId,
                 occurredAt = now,
             )
 
@@ -72,6 +73,7 @@ class IssueDomainEventTest : DescribeSpec({
                 issueKey = issueKey,
                 fromState = "open",
                 toState = "IN_PROGRESS",
+                actorId = actorId,
                 occurredAt = now,
             )
 
@@ -147,6 +149,7 @@ class IssueDomainEventTest : DescribeSpec({
                   "projectKey": "ATLAS",
                   "summary": "첫 번째 이슈",
                   "reporterId": {"value": "11111111-1111-1111-1111-111111111111"},
+                  "actorId": {"value": "11111111-1111-1111-1111-111111111111"},
                   "occurredAt": "2026-01-01T00:00:00Z"
                 }
                 """.trimIndent()
@@ -176,6 +179,7 @@ class IssueDomainEventTest : DescribeSpec({
                   "issueKey": "ATLAS-1",
                   "fromState": "open",
                   "toState": "IN_PROGRESS",
+                  "actorId": {"value": "11111111-1111-1111-1111-111111111111"},
                   "occurredAt": "2026-01-01T00:00:00Z"
                 }
                 """.trimIndent()

@@ -48,7 +48,7 @@ import java.util.UUID
  * Spring Security 컨텍스트는 [SecurityContextHolder] 에 직접 UUID 기반 Authentication 을 주입해 사용한다.
  *
  * ### 테스트 케이스
- * - CAT-1. GET /catalog — 9 eventTypes + 9 recipientRoles + 5 channels 반환 → 200
+ * - CAT-1. GET /catalog — 10 eventTypes + 9 recipientRoles + 5 channels 반환 → 200
  * - CAT-2. GET /catalog — publishable 메타 포함 확인
  * - LIST-1. GET ?projectKey=ATLAS — service.list 에 actorId 가 전달됨 → 200
  * - LIST-2. GET (projectKey 없음) — 전역 정책 목록 조회 → 200
@@ -113,10 +113,10 @@ class NotificationPolicyControllerTest {
         SecurityContextHolder.getContext().authentication = auth
     }
 
-    // ── CAT-1. GET /catalog — 9 eventTypes + 9 roles + 5 channels ───────────
+    // ── CAT-1. GET /catalog — 10 eventTypes + 9 roles + 5 channels ───────────
 
     @Test
-    fun `GET catalog — eventTypes 9개 recipientRoles 9개 channels 5개 반환`() {
+    fun `GET catalog — eventTypes 10개 recipientRoles 9개 channels 5개 반환`() {
         mockMvc.perform(get("/api/v1/notification-policies/catalog").accept(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.eventTypes.length()").value(NotificationEventType.entries.size))

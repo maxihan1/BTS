@@ -55,7 +55,7 @@
 | FR ID | 한 줄 | 우선순위 | BC | 본문 위치 |
 |---|---|---|---|---|
 | FR-NT-01 | 이벤트별 알림 정책 | 필수 | notification-dashboard | §2.1 |
-| FR-NT-02 | 채널 (이메일/인앱/Slack/Teams/Webhook) | 필수 | notification-dashboard | §2.2 |
+| FR-NT-02 | 채널 (이메일/인앱/Webhook, Slack=slack-integration BC) | 필수 | notification-dashboard | §2.2 |
 | FR-NT-03 | 수신자 정책 (R/A/W/Lead/역할) | 필수 | notification-dashboard | §2.3 |
 | FR-NT-04 | 사용자별 알림 구독 설정 | 높음 | notification-dashboard | §2.4 |
 

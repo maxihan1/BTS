@@ -230,6 +230,7 @@ class IssueApplicationService(
                 projectKey = request.projectKey,
                 summary = saved.summary,
                 reporterId = saved.reporterId,
+                actorId = actor,
                 occurredAt = Instant.now(clock),
             ),
         )
@@ -303,6 +304,7 @@ class IssueApplicationService(
                 projectKey = projectKey,
                 summary = saved.summary,
                 reporterId = saved.reporterId,
+                actorId = actor,
                 occurredAt = Instant.now(clock),
             ),
         )
@@ -589,6 +591,7 @@ class IssueApplicationService(
                 issueKey = key,
                 fromState = issue.currentStateKey,
                 toState = plan.toStateKey,
+                actorId = actor,
                 occurredAt = Instant.now(clock),
             ),
         )
