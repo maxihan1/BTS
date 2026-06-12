@@ -497,3 +497,26 @@ CREATE INDEX idx_issue_change_item_group ON issue_change_item (group_id);
 
 -- 필드별 이력 필터 인덱스.
 CREATE INDEX idx_issue_change_item_field ON issue_change_item (field);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V019: issue_templates 테이블 (FR-TM-01 프로젝트+타입별 이슈 본문 템플릿)
+-- 원본: db/migration/issue-tracking/V019__issue_templates.sql
+-- jOOQ: IssueTemplates 테이블 + ID/PROJECT_ID/ISSUE_TYPE_ID/NAME/CONTENT/... 상수 생성 대상
+--       (이 미러가 빠지면 상수/테이블 미생성 → repository 컴파일 불가 — jooq-init-codegen-mirror)
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- 프로젝트+이슈 타입 조합별 이슈 본문 템플릿. 같은 BC 라 projects/issue_types 실 FK 적용. deleted_at 소프트 삭제.
+CREATE TABLE issue_templates (
+    id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id    UUID         NOT NULL REFERENCES projects(id),
+    issue_type_id BIGINT       NOT NULL REFERENCES issue_types(id),
+    name          VARCHAR(100) NOT NULL,
+    content       TEXT         NOT NULL,
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    deleted_at    TIMESTAMPTZ  NULL
+);
+CREATE INDEX idx_issue_templates_project_id    ON issue_templates(project_id);
+CREATE INDEX idx_issue_templates_issue_type_id ON issue_templates(issue_type_id);
+CREATE UNIQUE INDEX ux_issue_templates_project_type_active
+    ON issue_templates(project_id, issue_type_id) WHERE deleted_at IS NULL;

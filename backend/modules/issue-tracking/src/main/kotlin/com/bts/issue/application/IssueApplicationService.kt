@@ -118,6 +118,10 @@ class IssueApplicationService(
     // AlwaysAllowFieldPermissionResolver(@Profile("!prod")) Bean이 타입으로 주입돼 이 기본값을 대체한다.
     private val fieldPermissionResolver: FieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
     private val historyRecorder: IssueHistoryRecorder,
+    // 이슈 생성 시 description 안전망(옵션 C, FR-TM-01 Task 7). null 이면 템플릿 미적용(benign).
+    // Spring 컨텍스트에서는 IssueTemplateRepository Bean 이 주입된다.
+    // 기존 단위 테스트 호환을 위해 null 기본값 유지 (customFieldDefinitionRepository 패턴 동형).
+    private val issueTemplateRepository: com.bts.issue.template.repository.IssueTemplateRepository? = null,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -134,13 +138,16 @@ class IssueApplicationService(
      * 6. [resolveDefaultAssignee] — 컴포넌트 리드 중 이름 오름차순 첫 번째를 담당자로 결정.
      * 7. [WorkflowKeyResolver.resolveStart] 로 초기 상태 키 결정
      *    — WorkflowSchemeNoDefaultException 발생 시 [IssueWorkflowNotConfiguredException] 으로 변환 (BC 격리)
-     * 8. Issue.create (assigneeId + componentIds 포함)
-     * 9. DB INSERT (issues)
-     * 10. [IssueRepository.insertComponents] — issue_components batch INSERT (version bump 없음)
-     * 11. IssueCreated 이벤트 발행
+     * 8. [resolveDescription] — 옵션 C 안전망 (FR-TM-01 Task 7):
+     *    request.description non-blank → 요청 값 사용, null/blank → 활성 템플릿 content 조회 (없으면 null).
+     * 9. Issue.create (assigneeId + componentIds + description 포함)
+     * 10. DB INSERT (issues)
+     * 11. [IssueRepository.insertComponents] — issue_components batch INSERT (version bump 없음)
+     * 12. IssueCreated 이벤트 발행
      *
      * @param actor 이슈를 생성하는 행위자.
      * @param request 생성 요청 DTO. typeId null 이면 task 타입으로 fallback.
+     *   request.description non-blank 이면 그 값 사용, null/blank 이면 활성 템플릿 content 를 안전망으로 주입.
      * @return 삽입된 [Issue].
      * @throws IssueAccessDeniedException 권한 없을 때.
      * @throws IssueTypeNotFoundException request.typeId 가 non-null 이지만 활성 타입이 없을 때.
@@ -198,6 +205,8 @@ class IssueApplicationService(
             validateCustomFields(definitions, customFieldValues)
         }
 
+        val resolvedDescription = resolveDescription(request.description, projectId, resolvedTypeId)
+
         val issue =
             Issue.create(
                 id = IssueId(UUID.randomUUID()),
@@ -211,6 +220,7 @@ class IssueApplicationService(
                 componentIds = normalizedComponentIds,
                 securityLevelId = request.securityLevelId,
                 customFields = customFieldValues,
+                description = resolvedDescription,
             )
         val saved = repo.insert(issue)
         repo.insertComponents(saved.id.value, normalizedComponentIds)
@@ -311,6 +321,27 @@ class IssueApplicationService(
         request: CloneIssueRequest,
         source: Issue,
     ): String = request.summaryOverride?.takeIf { it.isNotBlank() } ?: source.summary
+
+    /**
+     * 이슈 생성 시 description 을 결정한다 (FR-TM-01 옵션 C 안전망).
+     *
+     * - [requested] 가 non-blank 이면 요청 값을 그대로 사용한다. 템플릿을 조회하지 않는다.
+     * - null 또는 blank 이면 [issueTemplateRepository] 에서 (projectId, issueTypeId) 활성 템플릿 content 를 조회한다.
+     *   - 템플릿이 있으면 그 content 를 사용한다.
+     *   - 템플릿이 없거나 [issueTemplateRepository] 가 null 이면 null 을 반환한다.
+     *
+     * @param requested 요청 DTO 의 description 값. null 허용.
+     * @param projectId 이슈가 속할 프로젝트 UUID.
+     * @param resolvedTypeId 이슈 타입 식별자 VO.
+     * @return 최종 결정된 description 문자열. null 이면 이슈 생성 시 description 없음.
+     */
+    private fun resolveDescription(
+        requested: String?,
+        projectId: java.util.UUID,
+        resolvedTypeId: IssueTypeId,
+    ): String? =
+        requested?.takeIf { it.isNotBlank() }
+            ?: issueTemplateRepository?.findActiveContentByProjectAndType(projectId, resolvedTypeId.value)
 
     /**
      * 이슈 단건을 조회한다.

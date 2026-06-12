@@ -19,6 +19,7 @@
     <ID>ThrowsCount:IssueApplicationService.kt$IssueApplicationService$fun updateIssue( actor: ActorId, key: IssueKey, request: UpdateIssueRequest, ): IssueResponse</ID>
     <ID>TooManyFunctions:CustomFieldDefinitionRepository.kt$CustomFieldDefinitionRepository</ID>
     <ID>TooManyFunctions:CustomFieldValueValidator.kt$CustomFieldValueValidator</ID>
+    <ID>TooManyFunctions:IssueTemplateApplicationService.kt$IssueTemplateApplicationService</ID>
     <ID>LargeClass:IssueTest.kt$IssueTest</ID>
     <ID>MaxLineLength:IssueTest.kt$// Issue Aggregate Root 단위 테스트 — factory, invariants, version, deletedAt, typeId 필수, 5필드 불변식, assigneeId, componentIds, affectsVersionIds, fixVersionIds</ID>
   </CurrentIssues>
