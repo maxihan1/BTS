@@ -311,6 +311,7 @@ class NotificationWorkerTest : DescribeSpec({
  *
  * message JSON 구조: issue.mentioned 이벤트 페이로드.
  */
+@Suppress("LongParameterList") // 테스트 스텁 헬퍼 — 모든 파라미터가 필수 검증 요소
 private fun stubMentionMessage(
     dsl: DSLContext,
     actorId: UUID,
