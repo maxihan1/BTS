@@ -1,6 +1,7 @@
 -- 기본 스킴에 이슈 템플릿 관리 권한 추가 (FR-TM-01, PROJECT_ADMIN 전용)
 --
 -- 권한 코드 MANAGE_TEMPLATES 는 SDD 12.3(12-permissions.md) 정본.
+-- Kotlin 상수 정본: com.bts.shared.permission.TemplatePermission.MANAGE_TEMPLATES (이 리터럴과 일치해야 함).
 -- Jira 식 도메인당 단일 관리 권한 — 이슈 템플릿 정의 CRUD 3종을 단일 MANAGE_TEMPLATES 로 묶는다.
 -- MEMBER 에는 부여하지 않는다(행정 성격, Jira 'Administer Projects' 계열) → MEMBER CRUD 시 403.
 -- prod 판정기: IdentityAccessTemplatePermissionResolver (V017 MANAGE_CUSTOM_FIELDS 패턴 동형).
