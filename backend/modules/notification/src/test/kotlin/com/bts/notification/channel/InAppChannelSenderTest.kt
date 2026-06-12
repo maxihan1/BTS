@@ -30,7 +30,6 @@ import java.util.UUID
  * - SUPPORTS-3. supports(SLACK) = false
  */
 class InAppChannelSenderTest {
-
     private val messagingTemplate = mockk<SimpMessagingTemplate>(relaxed = true)
     private val sender = InAppChannelSender(messagingTemplate)
 
