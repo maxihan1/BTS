@@ -17,6 +17,7 @@ const projectPermissionsFixture = {
     MANAGE_VERSIONS: true,
     MANAGE_CUSTOM_FIELDS: true,
     MANAGE_FIELD_PERMISSIONS: true,
+    MANAGE_TEMPLATES: true,
   },
 }
 
@@ -28,6 +29,7 @@ const projectPermissionsFixtureFalse = {
     MANAGE_VERSIONS: false,
     MANAGE_CUSTOM_FIELDS: false,
     MANAGE_FIELD_PERMISSIONS: false,
+    MANAGE_TEMPLATES: false,
   },
 }
 
@@ -40,6 +42,16 @@ describe('projectPermissionsSchema', () => {
     const result = projectPermissionsSchema.parse(projectPermissionsFixture)
     expect(result.projectKey).toBe('ATLAS')
     expect(result.permissions.CREATE).toBe(true)
+  })
+
+  it('MANAGE_TEMPLATES:true를 파싱한다', () => {
+    const result = projectPermissionsSchema.parse(projectPermissionsFixture)
+    expect(result.permissions.MANAGE_TEMPLATES).toBe(true)
+  })
+
+  it('MANAGE_TEMPLATES:false를 파싱한다', () => {
+    const result = projectPermissionsSchema.parse(projectPermissionsFixtureFalse)
+    expect(result.permissions.MANAGE_TEMPLATES).toBe(false)
   })
 
   it('CREATE가 false인 경우도 파싱한다', () => {
