@@ -1,4 +1,4 @@
-// issue-tracking V019 마이그레이션 검증 — projects.require_2fa BOOLEAN NOT NULL DEFAULT false 컬럼 존재 + 기본값 검증 (FR-MF-04)
+// issue-tracking V020 마이그레이션 검증 — projects.require_2fa BOOLEAN NOT NULL DEFAULT false 컬럼 존재 + 기본값 검증 (FR-MF-04)
 
 package com.bts.issue.project.repository
 
@@ -14,7 +14,7 @@ import java.sql.DriverManager
 import java.sql.ResultSet
 
 /**
- * Flyway V001~V019 마이그레이션 적용 후 projects.require_2fa 컬럼을 검증한다.
+ * Flyway V001~V020 마이그레이션 적용 후 projects.require_2fa 컬럼을 검증한다.
  * Testcontainers PostgreSQL 을 직접 사용하며 Spring 컨텍스트 없이 실행한다.
  *
  * 검증 범위 (FR-MF-04 Task 1).
@@ -96,12 +96,12 @@ class ProjectRequire2faColumnTest {
     // ── 컬럼 존재/타입/기본값 검증 ─────────────────────────────────────────────
 
     @Test
-    fun `V019 projects require_2fa 컬럼 존재`() {
+    fun `V020 projects require_2fa 컬럼 존재`() {
         assertThat(columnMetadata("require_2fa")).isNotNull()
     }
 
     @Test
-    fun `V019 projects require_2fa 는 boolean NOT NULL DEFAULT false`() {
+    fun `V020 projects require_2fa 는 boolean NOT NULL DEFAULT false`() {
         val meta = columnMetadata("require_2fa")
         assertThat(meta).isNotNull()
         requireNotNull(meta)

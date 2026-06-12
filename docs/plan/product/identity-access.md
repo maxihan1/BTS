@@ -223,7 +223,7 @@
 
 - [x] D1. 도메인 — MfaEnforcementPolicy 평가 서비스 (책임. security-engineer) (PR #123)
 - [x] D2. 명세 — 관리자 + 민감 프로젝트 멤버 강제, whoami `mfaEnrollmentRequired` 노출 (책임. security-engineer) (PR #123)
-- [x] D3. 데이터 모델 — `projects.require_2fa BOOLEAN DEFAULT false` (issue-tracking V019) + `SensitiveProjectResolver` shared-kernel 포트 (책임. db-engineer) (PR #123)
+- [x] D3. 데이터 모델 — `projects.require_2fa BOOLEAN DEFAULT false` (issue-tracking V020) + `SensitiveProjectResolver` shared-kernel 포트 (책임. db-engineer) (PR #123)
 - [x] D4. 백엔드 — whoami 필드 + 백엔드 게이트(미등록 강제 대상 차단, enrollment/whoami/logout allow-list) (책임. security-engineer) (PR #123)
 - [x] D5. 백엔드 테스트 — `MfaEnforcementEndToEndTest` 통합 + 단위 (책임. security-engineer) (PR #123)
 - [ ] D6. 프론트 UI — MFA 미등록 시 step-up 페이지 (책임. designer → frontend-engineer)

@@ -119,7 +119,7 @@ JWT 클레임:
 - 일반 사용자: 권장
 - 외부 협력사: 강제 검토
 
-**구현 (FR-MF-04, PR #123)**. `require_2fa` 컬럼은 issue-tracking `projects`(V019). 평가는 shared-kernel `SensitiveProjectResolver` 포트 경유(BC 격리). whoami `mfaEnrollmentRequired` 필드 + 백엔드 게이트(미등록 강제 대상 차단). ADR [2026-06-12-mfa-enforcement-policy](../decisions/2026-06-12-mfa-enforcement-policy.md).
+**구현 (FR-MF-04, PR #123)**. `require_2fa` 컬럼은 issue-tracking `projects`(V020). 평가는 shared-kernel `SensitiveProjectResolver` 포트 경유(BC 격리). whoami `mfaEnrollmentRequired` 필드 + 백엔드 게이트(미등록 강제 대상 차단). ADR [2026-06-12-mfa-enforcement-policy](../decisions/2026-06-12-mfa-enforcement-policy.md).
 
 ### 19.7.3 신뢰 디바이스 (FR-MF-05)
 

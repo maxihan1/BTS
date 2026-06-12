@@ -89,11 +89,11 @@ mfaEnrollmentRequired    = mfaRequired(user) AND NOT mfaEnrolled(user)
 
 > 모듈 컴파일 의존: shared-kernel(포트) → issue-tracking(impl·column·toggle) → identity-access(policy·claim·gate·whoami). 모듈 경계 넘는 task는 test 컴파일도 직렬화(learnings: wave Gradle 모듈).
 
-### Task 1. issue-tracking `projects.require_2fa` 마이그레이션 (V019) + jOOQ init_codegen 미러
+### Task 1. issue-tracking `projects.require_2fa` 마이그레이션 (V020) + jOOQ init_codegen 미러
 
 **메타**.
 - agent: `db-engineer`
-- files: [`backend/modules/issue-tracking/src/main/resources/db/migration/issue-tracking/V019__project_require_2fa.sql`, `backend/modules/issue-tracking/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/project/repository/ProjectRequire2faColumnTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/resources/db/migration/issue-tracking/V020__project_require_2fa.sql`, `backend/modules/issue-tracking/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/project/repository/ProjectRequire2faColumnTest.kt`]
 - depends-on: []
 
 **RED**: 통합 테스트가 시드 프로젝트의 `require_2fa` 기본값 false 를 읽음 → 컬럼 부재로 실패.
