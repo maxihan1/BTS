@@ -225,47 +225,6 @@ const listIssueTemplatesHandler = http.get(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/v1/projects/:projectIdOrKey/issue-templates/resolve?issueTypeId=
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 이슈 타입에 해당하는 템플릿 본문 resolve.
- * 성공 → 200 { content: string } 또는 204 No Content (템플릿 미존재)
- *
- * 주의: /:templateId 핸들러보다 먼저 등록해야 "resolve"를 ID로 오인하지 않는다.
- */
-const resolveIssueTemplateHandler = http.get(
-  '/api/v1/projects/:projectIdOrKey/issue-templates/resolve',
-  ({ params, request }) => {
-    const projectIdOrKey = params['projectIdOrKey'] as string
-    const url = new URL(request.url)
-    const issueTypeIdParam = url.searchParams.get('issueTypeId')
-
-    if (issueTypeIdParam === null) {
-      return new HttpResponse(null, { status: 204 })
-    }
-
-    const issueTypeId = parseInt(issueTypeIdParam, 10)
-    if (isNaN(issueTypeId)) {
-      return new HttpResponse(null, { status: 204 })
-    }
-
-    const template = Array.from(issueTemplateStore.values()).find(
-      (t) =>
-        t.projectIdOrKey === projectIdOrKey &&
-        t.issueTypeId === issueTypeId &&
-        !t.deleted,
-    )
-
-    if (template === undefined) {
-      return new HttpResponse(null, { status: 204 })
-    }
-
-    return HttpResponse.json({ content: template.content })
-  },
-)
-
-// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/projects/:projectIdOrKey/issue-templates/:templateId
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -297,7 +256,8 @@ const getIssueTemplateHandler = http.get(
  *
  * 에러 분기 순서 (백엔드와 동일).
  * 0. localStorage 플래그(msw-issue-template-403) → 403 ISSUE_TEMPLATE_ACCESS_DENIED (E2E 권한 토글)
- * 1. 같은 (project, issueTypeId) 조합 중복 → 409 ISSUE_TEMPLATE_DUPLICATE
+ * 1. name 또는 content가 공백 → 422 ISSUE_TEMPLATE_INVALID (@NotBlank 정합)
+ * 2. 같은 (project, issueTypeId) 조합 중복 → 409 ISSUE_TEMPLATE_DUPLICATE
  * 성공 → 201 { data: IssueTemplateData }
  */
 const createIssueTemplateHandler = http.post(
@@ -316,7 +276,27 @@ const createIssueTemplateHandler = http.post(
       content: string
     }
 
-    // (1) 같은 (project, issueTypeId) 중복 확인
+    // (1) 공백 name/content 검증 — @NotBlank 정합
+    if (body.name.trim() === '') {
+      return problemDetail(
+        422,
+        'issue-template-invalid',
+        'Issue Template Invalid',
+        'ISSUE_TEMPLATE_INVALID',
+        '템플릿 이름은 공백일 수 없습니다.',
+      )
+    }
+    if (body.content.trim() === '') {
+      return problemDetail(
+        422,
+        'issue-template-invalid',
+        'Issue Template Invalid',
+        'ISSUE_TEMPLATE_INVALID',
+        '템플릿 본문은 공백일 수 없습니다.',
+      )
+    }
+
+    // (2) 같은 (project, issueTypeId) 중복 확인
     const duplicate = Array.from(issueTemplateStore.values()).find(
       (t) =>
         t.projectIdOrKey === projectIdOrKey &&
@@ -452,13 +432,9 @@ const deleteIssueTemplateHandler = http.delete(
 // Export
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * 이슈 템플릿 BC MSW 핸들러 배열.
- * 순서 주의 — resolveIssueTemplateHandler는 getIssueTemplateHandler보다 먼저 등록한다.
- */
+/** 이슈 템플릿 BC MSW 핸들러 배열 */
 export const issueTemplateHandlers = [
   listIssueTemplatesHandler,
-  resolveIssueTemplateHandler,
   getIssueTemplateHandler,
   createIssueTemplateHandler,
   updateIssueTemplateHandler,

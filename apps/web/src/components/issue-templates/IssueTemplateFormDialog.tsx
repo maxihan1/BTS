@@ -25,17 +25,19 @@ const createFormSchema = z.object({
   issueTypeId: z.number().int().positive('이슈 타입을 선택해주세요.'),
   name: z
     .string()
+    .trim()
     .min(1, '이름은 필수입니다.')
     .max(100, '이름은 100자 이내여야 합니다.'),
-  content: z.string().min(1, '본문은 필수입니다.'),
+  content: z.string().trim().min(1, '본문은 필수입니다.'),
 })
 
 const editFormSchema = z.object({
   name: z
     .string()
+    .trim()
     .min(1, '이름은 필수입니다.')
     .max(100, '이름은 100자 이내여야 합니다.'),
-  content: z.string().min(1, '본문은 필수입니다.'),
+  content: z.string().trim().min(1, '본문은 필수입니다.'),
 })
 
 type CreateFormValues = z.infer<typeof createFormSchema>

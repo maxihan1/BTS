@@ -1,4 +1,4 @@
-// 이슈 템플릿 BC REST API 클라이언트 — CRUD + resolve + X-XSRF-TOKEN + errorCode 추출 헬퍼 (FR-TM-01)
+// 이슈 템플릿 BC REST API 클라이언트 — CRUD + X-XSRF-TOKEN + errorCode 추출 헬퍼 (FR-TM-01)
 import { z } from 'zod'
 import { apiGet, apiFetch, ApiError } from './client'
 import { readXsrfToken } from './sessions'
@@ -19,9 +19,6 @@ export type { IssueTemplate, CreateIssueTemplateInput, UpdateIssueTemplateInput 
 /** 이슈 템플릿 단건 + 목록 응답 래퍼 스키마 — 내부 전용 */
 const templateDataSchema = dataResponseSchema(issueTemplateResponseSchema)
 const templateListDataSchema = dataResponseSchema(z.array(issueTemplateResponseSchema))
-
-/** resolve 200 응답 스키마 — { content: string } */
-const resolveResponseSchema = z.object({ content: z.string() })
 
 /** 기본 경로 헬퍼 */
 function basePath(projectIdOrKey: string): string {
@@ -146,35 +143,6 @@ export async function deleteIssueTemplate(projectIdOrKey: string, templateId: st
     const errorBody: unknown = await res.json().catch(() => ({}))
     throw new ApiError(res.status, errorBody)
   }
-}
-
-/**
- * 이슈 타입에 매핑된 템플릿 본문을 조회한다 (옵션 C 프리필용).
- *
- * GET /api/v1/projects/{projectIdOrKey}/issue-templates/resolve?issueTypeId={number}
- * - 200: `{ content: string }` → content 반환
- * - 204: 템플릿 없음 → null 반환
- *
- * @param projectIdOrKey 프로젝트 UUID 또는 키
- * @param issueTypeId 이슈 타입 ID
- * @returns 템플릿 본문 문자열 또는 null (템플릿 미존재 시)
- * @throws ApiError(404) 프로젝트 미존재 시
- */
-export async function resolveIssueTemplateContent(
-  projectIdOrKey: string,
-  issueTypeId: number,
-): Promise<string | null> {
-  const res = await apiFetch(`${basePath(projectIdOrKey)}/resolve?issueTypeId=${issueTypeId}`)
-  if (res.status === 204) {
-    return null
-  }
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
-  const raw: unknown = await res.json()
-  const parsed = resolveResponseSchema.parse(raw)
-  return parsed.content
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

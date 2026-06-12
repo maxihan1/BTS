@@ -8,7 +8,6 @@ import {
   createIssueTemplate,
   updateIssueTemplate,
   deleteIssueTemplate,
-  resolveIssueTemplateContent,
   extractIssueTemplateErrorCode,
 } from '../issue-templates'
 import { ApiError } from '../client'
@@ -186,32 +185,6 @@ describe('deleteIssueTemplate', () => {
       ),
     )
     await expect(deleteIssueTemplate('ATLAS', templateFixture.id)).rejects.toBeInstanceOf(ApiError)
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// resolveIssueTemplateContent
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('resolveIssueTemplateContent', () => {
-  it('200 응답의 content 를 반환한다', async () => {
-    server.use(
-      http.get('/api/v1/projects/:projectIdOrKey/issue-templates/resolve', () =>
-        HttpResponse.json({ content: '## 재현 단계\n\n## 기대 결과' }),
-      ),
-    )
-    const result = await resolveIssueTemplateContent('ATLAS', 1)
-    expect(result).toBe('## 재현 단계\n\n## 기대 결과')
-  })
-
-  it('204 응답 시 null 을 반환한다', async () => {
-    server.use(
-      http.get('/api/v1/projects/:projectIdOrKey/issue-templates/resolve', () =>
-        new HttpResponse(null, { status: 204 }),
-      ),
-    )
-    const result = await resolveIssueTemplateContent('ATLAS', 99)
-    expect(result).toBeNull()
   })
 })
 
