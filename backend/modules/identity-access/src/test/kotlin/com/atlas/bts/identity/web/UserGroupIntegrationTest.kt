@@ -3,6 +3,7 @@
 package com.atlas.bts.identity.web
 
 import com.atlas.bts.identity.credential.LocalCredentialService
+import com.atlas.bts.identity.mfa.MfaSecretEncryptor
 import com.atlas.bts.identity.provider.ldap.AutoProvisionService
 import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
 import com.atlas.bts.identity.provider.ldap.LdapProvider
@@ -10,6 +11,8 @@ import com.atlas.bts.identity.provider.ldap.LdapProviderConfigService
 import com.atlas.bts.identity.systemrole.SystemRole
 import com.atlas.bts.identity.systemrole.SystemRoleAssignmentRepository
 import com.atlas.bts.identity.user.UserRepository
+import dev.samstevens.totp.code.DefaultCodeGenerator
+import dev.samstevens.totp.code.HashingAlgorithm
 import org.assertj.core.api.Assertions.assertThat
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.junit.jupiter.api.BeforeEach
@@ -35,6 +38,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import java.nio.file.Files
 import java.security.KeyPairGenerator
 import java.security.Security
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -104,6 +108,9 @@ class UserGroupIntegrationTest {
             registry.add("spring.ldap.base") { "dc=bts,dc=local" }
             // prod 프로파일에서 PemFileKeyProvider 가 PEM 파일 경로를 @Value 로 요구한다.
             registry.add("bts.auth.jwt.private-key-pem-path") { pemFilePath }
+            // FR-MF-04 게이트 정합 — admin 의 ACTIVE TOTP 시드/검증에 MfaSecretEncryptor 키가 필요하다.
+            registry.add("bts.mfa.encryption.key") { MFA_TEST_KEY }
+            registry.add("bts.mfa.encryption.salt") { MFA_TEST_SALT }
         }
 
         /**
@@ -128,6 +135,24 @@ class UserGroupIntegrationTest {
                 Files.writeString(tmpFile, pemContent)
                 tmpFile.toAbsolutePath().toString()
             }
+
+        /** MFA 암호화 테스트 키 — MfaSecretEncryptor 가 secret 암복호화에 요구. */
+        private const val MFA_TEST_KEY = "test-app-encryption-key-for-mfa-totp"
+
+        /** MFA salt — `Encryptors.stronger` 가 hex 문자열을 요구하므로 유효 hex 리터럴. */
+        private const val MFA_TEST_SALT = "deadbeefcafef00d"
+
+        /**
+         * admin ACTIVE TOTP 시드용 고정 base32 secret(테스트 전용).
+         * login 2단계(verify) 에서 이 secret 으로 정답 코드를 산출해 게이트 통과 토큰을 받는다.
+         */
+        private const val ADMIN_TOTP_SECRET = "JBSWY3DPEHPK3PXP"
+
+        /** RFC 6238 time-step 길이(초) — 운영 TotpService.PERIOD_SECONDS 와 동일. */
+        private const val TOTP_PERIOD_SECONDS = 30L
+
+        /** RFC 6238 코드 자릿수 — 운영 TotpService.DIGITS 와 동일. */
+        private const val TOTP_DIGITS = 6
     }
 
     // LDAP Bean 목킹 — 실제 LDAP 서버 없이 prod 컨텍스트 부팅 (두 선례 동일)
@@ -157,6 +182,9 @@ class UserGroupIntegrationTest {
     lateinit var roleAssignmentRepository: SystemRoleAssignmentRepository
 
     @Autowired
+    lateinit var mfaSecretEncryptor: MfaSecretEncryptor
+
+    @Autowired
     lateinit var jdbc: NamedParameterJdbcTemplate
 
     // ── 픽스처 ──────────────────────────────────────────────────────────────────
@@ -173,6 +201,10 @@ class UserGroupIntegrationTest {
         seedUsers()
         // admin 사용자에게만 전역 SYSTEM_ADMIN 부여 (실 repository 경유 — prod resolver 가 DB 로 판정).
         roleAssignmentRepository.assign(adminId, SystemRole.SYSTEM_ADMIN)
+        // FR-MF-04 게이트 정합 — SYSTEM_ADMIN 은 MFA 강제 대상이므로, 보호 API 를 쓰려면 MFA 가 등록(ACTIVE)돼
+        // 있어야 게이트(MfaEnrollmentGateFilter)를 통과한다. login 토큰 발급 전에 admin 의 TOTP 를 ACTIVE 로
+        // 시드해 MfaEnforcementPolicy.evaluate=false → 클레임 mfa_enrollment_required=false 로 만든다.
+        seedActiveMfa(adminId)
     }
 
     // ── S1. 그룹 생성 ─────────────────────────────────────────────────────────────
@@ -380,10 +412,28 @@ class UserGroupIntegrationTest {
             mapOf("prefix" to "fr-pm-09-t6-%"),
         )
         jdbc.update("DELETE FROM system_role_assignments", emptyMap<String, Any>())
+        jdbc.update("DELETE FROM totp_secrets", emptyMap<String, Any>())
         jdbc.update("DELETE FROM local_credentials", emptyMap<String, Any>())
         jdbc.update(
             "DELETE FROM users WHERE username IN ('fr_pm_09_admin', 'fr_pm_09_member')",
             emptyMap<String, Any>(),
+        )
+    }
+
+    /**
+     * 사용자의 TOTP secret 을 ACTIVE 상태로 직접 시드한다(FR-MF-04 게이트 통과용).
+     *
+     * 실제 enable 흐름(setup→ACTIVE 전이) 후의 DB 상태를 그대로 재현한다 — 게이트는 끄지 않고 admin 을
+     * enrolled 로 만들어 통과시킨다. secret 은 운영과 동일하게 [MfaSecretEncryptor] 로 암호화해 저장하므로
+     * (평문 미저장, §1.1.1), login 2단계 검증에서 서버가 같은 키로 복호화해 코드를 대조할 수 있다.
+     */
+    private fun seedActiveMfa(userId: UUID) {
+        jdbc.update(
+            """
+            INSERT INTO totp_secrets (user_id, secret_cipher, status, confirmed_at)
+            VALUES (:uid, :cipher, 'ACTIVE', now())
+            """.trimIndent(),
+            mapOf("uid" to userId, "cipher" to mfaSecretEncryptor.encrypt(ADMIN_TOTP_SECRET)),
         )
     }
 
@@ -406,6 +456,9 @@ class UserGroupIntegrationTest {
      * POST /api/v1/auth/login 으로 JWT access_token 을 발급받는다.
      *
      * login 은 SecurityConfig 에서 CSRF skip 이므로 X-XSRF-TOKEN 불필요.
+     *
+     * MFA(ACTIVE TOTP) 사용자는 1단계 login 이 access_token 대신 `mfa_required` 챌린지를 반환하므로
+     * (admin 은 게이트 정합 시드로 MFA enrolled), 그 경우 2단계 verify 까지 마쳐 정식 access_token 을 받는다.
      */
     private fun loginJwt(
         username: String,
@@ -421,7 +474,37 @@ class UserGroupIntegrationTest {
                 Map::class.java,
             )
         check(resp.statusCode == HttpStatus.OK) { "loginJwt 실패 ($username): ${resp.statusCode}" }
+        val loginBody = resp.body as Map<*, *>
+        return if (loginBody["mfa_required"] == true) {
+            completeMfaLogin(loginBody["mfa_challenge_token"] as String)
+        } else {
+            loginBody["access_token"] as String
+        }
+    }
+
+    /**
+     * MFA 2단계 — challenge 토큰 + 현재 코드로 verify 해 정식 access_token 을 받는다(게이트 통과 토큰).
+     *
+     * 코드는 시드된 [ADMIN_TOTP_SECRET] 으로 운영과 동일 파라미터(SHA1·6자리·30초)에서 산출한다.
+     */
+    private fun completeMfaLogin(challengeToken: String): String {
+        val headers = HttpHeaders().apply { contentType = MediaType.APPLICATION_JSON }
+        val body = """{"mfa_challenge_token":"$challengeToken","code":"${currentTotpCode(ADMIN_TOTP_SECRET)}"}"""
+        val resp =
+            restTemplate.exchange(
+                url("/api/v1/auth/mfa/verify"),
+                HttpMethod.POST,
+                HttpEntity(body, headers),
+                Map::class.java,
+            )
+        check(resp.statusCode == HttpStatus.OK) { "mfa verify 실패: ${resp.statusCode}" }
         return (resp.body as Map<*, *>)["access_token"] as String
+    }
+
+    /** 서버의 현재 시각 기준으로 [secret] 의 정답 TOTP 코드를 산출한다(운영과 동일 SHA1·6자리·30초). */
+    private fun currentTotpCode(secret: String): String {
+        val timeStep = Instant.now().epochSecond / TOTP_PERIOD_SECONDS
+        return DefaultCodeGenerator(HashingAlgorithm.SHA1, TOTP_DIGITS).generate(secret, timeStep)
     }
 
     /** Authorization: Bearer + JSON Content-Type 헤더를 만든다. */
