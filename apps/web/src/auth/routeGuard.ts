@@ -1,4 +1,4 @@
-// 라우트 가드 헬퍼 — requireAuth / redirectIfAuth / isSafeReturnTo / requirePasswordChanged / requireSystemAdmin / composeGuards
+// 라우트 가드 헬퍼 — requireAuth / redirectIfAuth / isSafeReturnTo / requirePasswordChanged / requireMfaEnrolled / requireSystemAdmin / composeGuards
 import { redirect } from '@tanstack/react-router'
 import { useAuthStore } from './authStore'
 
@@ -89,6 +89,27 @@ export function requirePasswordChanged({ location }: GuardContext): void {
   if (location.pathname === '/settings/password') return
   if (user.mustChangePassword === true) {
     throw redirect({ to: '/settings/password' })
+  }
+}
+
+/**
+ * MFA 등록 강제 가드. 보호된 라우트에서 requirePasswordChanged 다음에 체인한다.
+ *
+ * - user.mfaEnrollmentRequired === true이면 /settings/mfa 로 throw redirect.
+ * - 현재 경로가 /settings/mfa이면 통과 (무한 redirect 방지).
+ * - user null이면 통과 (미인증 상태는 requireAuth가 이미 처리).
+ *
+ * 사용 예.
+ * ```ts
+ * beforeLoad: (ctx) => { requireAuth(ctx); requirePasswordChanged(ctx); requireMfaEnrolled(ctx) }
+ * ```
+ */
+export function requireMfaEnrolled({ location }: GuardContext): void {
+  const user = useAuthStore.getState().user
+  if (user === null) return
+  if (location.pathname === '/settings/mfa') return
+  if (user.mfaEnrollmentRequired === true) {
+    throw redirect({ to: '/settings/mfa' })
   }
 }
 
