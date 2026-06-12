@@ -2,6 +2,7 @@
 
 package com.atlas.bts.identity.jwt
 
+import com.atlas.bts.identity.mfa.MfaEnforcementPolicy
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.crypto.RSASSASigner
@@ -30,9 +31,18 @@ import java.util.UUID
  * | jti | 고유 UUID (재사용 방지) |
  * | sid | sessionId (UUID 문자열) |
  * | mfa_verified | MFA 2차 인증 통과 여부 ([mfaVerified] 파라미터, 기본 false) — FR-MF-01 |
+ * | mfa_enrollment_required | MFA 강제 등록 필요 여부 — 발급 시 [mfaEnforcementPolicy] 가 sub(userId)로 계산. false 여도 명시 (FR-MF-04) |
  * | providerId | 인증 공급자 식별자 (e.g. "local", "ldap") |
  * | scopes | 허용 스코프 목록 |
  * | roles | 전역 시스템 역할 목록 (e.g. ["SYSTEM_ADMIN"]) — 비어 있으면 claim 생략 (FR-PM-08) |
+ *
+ * ## mfa_enrollment_required 발급 chokepoint (FR-MF-04, 리뷰 B1)
+ * [issue] 호출처는 4곳(AuthController.issueTokens / RefreshTokenService.rotate /
+ * OidcAuthenticationSuccessHandler / Saml2AuthenticationSuccessHandler)이다. 클레임을 호출처마다
+ * 주입하면 한 경로(특히 SSO)라도 누락 시 관리자 게이트 우회가 발생한다. 따라서 이 클레임은
+ * **발급 단일 지점인 [issue] 내부**에서 [mfaEnforcementPolicy] 를 호출해 박는다 — [issue] 가 이미
+ * 첫 파라미터로 [userId] 를 받으므로 호출처 시그니처·코드 변경 없이 전 발급 경로(SSO 포함)를 자동
+ * 포괄한다. 부재=false 로 해석되는 게이트와 일관되도록 false 여도 명시한다.
  *
  * ## 키 교체 (Key Rotation)
  * JWS 헤더에 [JwtKeyProvider.kid] 를 포함하여 다중 키 공존을 지원한다.
@@ -41,12 +51,14 @@ import java.util.UUID
  * ## 참조
  * - FR-AU-09, FR-09-1~5 (claims 명세)
  * - FR-MF-01 (mfa_verified 실체화 — [mfaVerified] 파라미터)
- * - SDD §19.5 (login response body)
+ * - FR-MF-04 (mfa_enrollment_required 발급 chokepoint — [mfaEnforcementPolicy])
+ * - SDD §19.5 (login response body), SDD §19.7.2 (MFA 강제 정책)
  */
 @Service
 class JwtIssuer(
     private val keyProvider: JwtKeyProvider,
     @Value("\${bts.auth.issuer-uri}") private val issuerUri: String,
+    private val mfaEnforcementPolicy: MfaEnforcementPolicy,
 ) {
     private val signer = RSASSASigner(keyProvider.privateKey)
 
@@ -93,6 +105,8 @@ class JwtIssuer(
                 .jwtID(UUID.randomUUID().toString())
                 .claim(CLAIM_SID, sessionId.toString())
                 .claim(CLAIM_MFA_VERIFIED, mfaVerified)
+                // MFA 강제 등록 필요 여부 — 발급 chokepoint. false 여도 명시(부재=false 해석과 일관). FR-MF-04.
+                .claim(CLAIM_MFA_ENROLLMENT_REQUIRED, mfaEnforcementPolicy.evaluate(userId))
                 .claim(CLAIM_PROVIDER_ID, providerId)
                 .claim(CLAIM_SCOPES, scopes)
                 // roles 가 비어 있으면 claim 자체를 생략한다 (일반 사용자 토큰은 roles 미포함).
@@ -114,6 +128,12 @@ class JwtIssuer(
         // BTS 확장 claim 키 상수
         const val CLAIM_SID = "sid"
         const val CLAIM_MFA_VERIFIED = "mfa_verified"
+
+        /**
+         * MFA 강제 등록 필요 여부 claim 키 (FR-MF-04) — 발급 chokepoint.
+         * 게이트 필터·whoami 가 이 클레임 값(부재=false)으로 강제 차단을 판정한다.
+         */
+        const val CLAIM_MFA_ENROLLMENT_REQUIRED = "mfa_enrollment_required"
         const val CLAIM_PROVIDER_ID = "providerId"
         const val CLAIM_SCOPES = "scopes"
 

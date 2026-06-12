@@ -18,7 +18,11 @@ import java.util.UUID
  * 가지는 역할([ProjectRole])을 CRUD한다.
  *
  * 구현체: [JdbcProjectMembershipRepository].
+ *
+ * CRUD/카운트/락/조인 조회 + 사용자별 프로젝트 id 조회([listProjectIdsByUser])가 한 영속
+ * 책임에 응집한다. 멤버십 영속 경계를 인위로 쪼개면 트랜잭션 결합만 늘어나므로 TooManyFunctions 억제.
  */
+@Suppress("TooManyFunctions")
 interface ProjectMembershipRepository {
 
     /**
@@ -38,6 +42,18 @@ interface ProjectMembershipRepository {
      * @return 존재하면 [ProjectMembership], 없으면 null
      */
     fun findByProjectAndUser(projectId: UUID, userId: UUID): ProjectMembership?
+
+    /**
+     * 사용자가 멤버로 속한 모든 프로젝트의 id 목록을 반환한다 (FR-MF-04 Task 4).
+     *
+     * MFA 강제 정책([com.atlas.bts.identity.mfa.MfaEnforcementPolicy])이 '민감 프로젝트 소속'을
+     * 판정하기 위해 사용한다. project_memberships 는 hard delete 정책(ADR D6)이라
+     * `deleted_at` 컬럼이 없으므로 soft-delete 필터가 필요 없다.
+     *
+     * @param userId 조회할 사용자 ID
+     * @return 멤버십이 없으면 빈 목록
+     */
+    fun listProjectIdsByUser(userId: UUID): List<UUID>
 
     /**
      * 프로젝트에 속한 모든 멤버십 목록을 반환한다.
@@ -133,6 +149,7 @@ interface ProjectMembershipRepository {
  */
 @Repository
 @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED)
+@Suppress("TooManyFunctions")
 class JdbcProjectMembershipRepository(
     private val jdbc: NamedParameterJdbcTemplate,
 ) : ProjectMembershipRepository {
@@ -161,6 +178,14 @@ class JdbcProjectMembershipRepository(
             mapOf("projectId" to projectId, "userId" to userId),
             MembershipRowMapper,
         ).firstOrNull()
+
+    @Transactional(readOnly = true)
+    override fun listProjectIdsByUser(userId: UUID): List<UUID> =
+        jdbc.query(
+            SQL_LIST_PROJECT_IDS_BY_USER,
+            mapOf("userId" to userId),
+            ProjectIdRowMapper,
+        )
 
     @Transactional(readOnly = true)
     override fun listByProject(projectId: UUID): List<ProjectMembership> =
@@ -278,6 +303,16 @@ class JdbcProjectMembershipRepository(
               AND user_id = :userId
         """
 
+        /**
+         * 사용자가 멤버로 속한 프로젝트 id 목록 — MFA 강제 정책의 '민감 프로젝트 소속' 판정용.
+         * project_memberships 는 hard delete 라 soft-delete 필터가 불필요하다 (ADR D6).
+         */
+        const val SQL_LIST_PROJECT_IDS_BY_USER = """
+            SELECT project_id
+            FROM project_memberships
+            WHERE user_id = :userId
+        """
+
         const val SQL_LIST_BY_PROJECT = """
             SELECT project_id, user_id, role, created_at, updated_at
             FROM project_memberships
@@ -387,4 +422,9 @@ private object MemberViewRowMapper : RowMapper<ProjectMemberView> {
             displayName = rs.getString("display_name"),
             username = rs.getString("username"),
         )
+}
+
+/** project_id 단일 컬럼 RowMapper — listProjectIdsByUser 용 (MFA 강제 정책 멤버십 조회). */
+private object ProjectIdRowMapper : RowMapper<UUID> {
+    override fun mapRow(rs: ResultSet, rowNum: Int): UUID = rs.getObject("project_id", UUID::class.java)
 }

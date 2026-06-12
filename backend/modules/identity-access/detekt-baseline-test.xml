@@ -144,6 +144,7 @@
     <ID>VarCouldBeVal:SamlAuthFlowIntegrationTest.kt$SamlAuthFlowIntegrationTest$@Autowired private lateinit var samlSuccessHandler: Saml2AuthenticationSuccessHandler</ID>
     <ID>VarCouldBeVal:SamlIdpConfigRepositoryTest.kt$SamlIdpConfigRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:SamlIdpConfigRepositoryTest.kt$SamlIdpConfigRepositoryTest$@Autowired private lateinit var repo: SamlIdpConfigRepository</ID>
+    <ID>VarCouldBeVal:SensitiveProjectResolverFallbackBootTest.kt$SensitiveProjectResolverFallbackBootTest$/** 단독 prod 부팅에서 fallback 이 [SensitiveProjectResolver] 빈으로 주입되어야 한다. */ @Autowired private lateinit var sensitiveProjectResolver: SensitiveProjectResolver</ID>
     <ID>VarCouldBeVal:SessionRepositoryTest.kt$SessionRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:SessionRepositoryTest.kt$SessionRepositoryTest$@Autowired private lateinit var repo: SessionRepository</ID>
     <ID>VarCouldBeVal:SsoAccountLinkingIntegrationTest.kt$SsoAccountLinkingIntegrationTest$@Autowired private lateinit var accountLinkService: AccountLinkService</ID>

@@ -7,6 +7,7 @@ import com.atlas.bts.identity.audit.AuthAuditLogService
 import com.atlas.bts.identity.audit.AuthEventType
 import com.atlas.bts.identity.credential.StoredPasswordCredentialRepository
 import com.atlas.bts.identity.dto.WhoamiResponse
+import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.user.UserRepository
@@ -21,21 +22,25 @@ import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
- * 현재 인증된 사용자 정보를 반환하는 whoami 엔드포인트 (PR #2 기반 + Task 24 PAT 확장 + FR-AU-05 Task 5).
+ * 현재 인증된 사용자 정보를 반환하는 whoami 엔드포인트
+ * (PR #2 기반 + Task 24 PAT 확장 + FR-AU-05 Task 5 + FR-MF-04 Task 6).
  *
  * ## 인증 방식 분기
  *
  * - **JWT**: Spring Security 필터 체인이 검증한 [Jwt] 객체를 [AuthenticationPrincipal] 로 주입받는다.
- *   `authMethod = "jwt"` 를 반환한다. 추가로 강제 비밀번호 변경 필요 여부와 시스템 관리자 여부를 채운다.
- *   강제 변경 플래그는 [StoredPasswordCredentialRepository.findByUserId] 로 조회하며, local_credentials
- *   행이 없는 SSO(LDAP/OIDC/SAML) 사용자는 false 로 귀결된다. 시스템 관리자 여부는
- *   [SystemPermissionResolver.isSystemAdmin] 판정을 반영한다.
+ *   `authMethod = "jwt"` 를 반환한다. 추가로 강제 비밀번호 변경 필요 여부·시스템 관리자 여부·MFA 강제 등록
+ *   필요 여부를 채운다. 강제 변경 플래그는 [StoredPasswordCredentialRepository.findByUserId] 로 조회하며,
+ *   local_credentials 행이 없는 SSO(LDAP/OIDC/SAML) 사용자는 false 로 귀결된다. 시스템 관리자 여부는
+ *   [SystemPermissionResolver.isSystemAdmin] 판정을 반영한다. MFA 강제 등록 필요 여부(`mfaEnrollmentRequired`)는
+ *   access JWT 의 [JwtIssuer.CLAIM_MFA_ENROLLMENT_REQUIRED] 클레임 값(부재=false)을 그대로 읽어 노출한다
+ *   (FR-MF-04). 발급 chokepoint([JwtIssuer])가 박은 클레임을 백엔드 게이트 필터와 **단일 출처**로 공유하므로
+ *   whoami 노출 값과 게이트 차단 판정이 항상 일치하며, whoami 가 정책을 라이브 재계산하지 않는다(EC7).
  *
  * - **PAT**: `Authorization: Bearer pat_xxx` 형식의 요청을 감지하여 [PersonalAccessTokenService.verify] 로
  *   검증한다. 검증 성공 시 `authMethod = "pat"` + `userId` 를 반환하고,
  *   [AuthEventType.PAT_USED] 감사 이벤트를 기록한다.
  *   검증 실패(만료·revoke·미존재) 시 401 을 반환한다.
- *   강제 변경·시스템 관리자 플래그는 PAT 컨텍스트와 무관하므로 둘 다 false 로 고정한다.
+ *   강제 변경·시스템 관리자·MFA 강제 등록 플래그는 봇 컨텍스트(PAT)와 무관하므로 모두 false 로 고정한다.
  *
  * ## EC-26 prefix 검사
  *
@@ -61,7 +66,7 @@ class WhoamiController(
      *
      * @param request HTTP 요청 (Authorization 헤더 직접 파싱용)
      * @param jwt Spring Security 필터 체인이 주입한 JWT Principal (PAT 요청 시 null)
-     * @return 사용자 식별 정보 + authMethod + mustChangePassword + isSystemAdmin
+     * @return 사용자 식별 정보 + authMethod + mustChangePassword + isSystemAdmin + mfaEnrollmentRequired
      */
     @GetMapping("/api/v1/users/me/whoami")
     fun whoami(
@@ -87,6 +92,9 @@ class WhoamiController(
             // local_credentials 행이 없는 SSO(LDAP/OIDC/SAML) 사용자는 강제 변경 대상이 아님 → false
             val mustChangePassword =
                 storedPasswordCredentialRepository.findByUserId(userId)?.mustChangePassword ?: false
+            // FR-MF-04: 발급 chokepoint(JwtIssuer)가 박은 클레임을 그대로 읽음(부재=false). 게이트 필터와 단일 출처 일치 → EC7.
+            val mfaEnrollmentRequired =
+                jwt.getClaim<Boolean>(JwtIssuer.CLAIM_MFA_ENROLLMENT_REQUIRED) ?: false
             return WhoamiResponse(
                 username = user.username,
                 email = user.email.orEmpty(),
@@ -94,6 +102,7 @@ class WhoamiController(
                 userId = user.id,
                 mustChangePassword = mustChangePassword,
                 isSystemAdmin = systemPermissionResolver.isSystemAdmin(userId),
+                mfaEnrollmentRequired = mfaEnrollmentRequired,
             )
         }
 
@@ -129,6 +138,7 @@ class WhoamiController(
         // PAT 분기는 비밀번호 변경 흐름·시스템 역할 컨텍스트를 노출하지 않는다.
         // 강제 변경(mustChangePassword)은 대화형 로그인(JWT) 사용자만의 관심사이며,
         // 시스템 관리자 판정(isSystemAdmin) 또한 JWT 세션에서만 의미가 있으므로 둘 다 false 고정.
+        // MFA 강제 등록(mfaEnrollmentRequired)도 봇 컨텍스트(PAT)와 무관하므로 false 고정.
         return WhoamiResponse(
             username = "",
             email = "",
@@ -136,6 +146,7 @@ class WhoamiController(
             userId = pat.userId,
             mustChangePassword = false,
             isSystemAdmin = false,
+            mfaEnrollmentRequired = false,
         )
     }
 

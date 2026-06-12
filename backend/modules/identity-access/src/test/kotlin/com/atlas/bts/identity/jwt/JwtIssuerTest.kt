@@ -2,7 +2,10 @@
 
 package com.atlas.bts.identity.jwt
 
+import com.atlas.bts.identity.mfa.MfaEnforcementPolicy
 import com.nimbusds.jwt.SignedJWT
+import io.mockk.every
+import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -14,13 +17,19 @@ import java.util.UUID
  * - FR-AU-09: Access Token 발급 (nimbus-jose-jwt 자체 발급, Spring Authorization Server 미도입)
  * - FR-09-1~5: claims 6종 (sub, iss, aud, exp, iat, jti) + BTS 확장 (sid, mfa_verified, providerId, scopes)
  * - FR-09-15: mfa_verified=false 더미 claim 포함
+ * - FR-MF-04: mfa_enrollment_required claim — 발급 chokepoint(전 발급 경로 자동 포괄)
  *
  * 검증 라이브러리: nimbus-jose-jwt [SignedJWT] 직접 파싱 (JwtDecoder = Task 12 책임).
  */
 class JwtIssuerTest {
-
     private val keyProvider = DevMemoryKeyProvider()
     private val issuerUri = "https://bts.example.com"
+
+    /**
+     * MFA 강제 정책 fake (FR-MF-04). 기본은 `false`(강제 아님) — 기존 claims 검증에 영향 없음.
+     * mfa_enrollment_required 전용 테스트는 [setMfaEnrollmentRequired] 로 반환값을 토글한다.
+     */
+    private val mfaEnforcementPolicy: MfaEnforcementPolicy = mockk()
     private lateinit var jwtIssuer: JwtIssuer
 
     private val userId = UUID.fromString("11111111-0000-0000-0000-000000000001")
@@ -30,7 +39,14 @@ class JwtIssuerTest {
 
     @BeforeEach
     fun setUp() {
-        jwtIssuer = JwtIssuer(keyProvider, issuerUri)
+        // 기본값 false — mfa_enrollment_required 전용 테스트 외에는 강제 아님으로 고정.
+        every { mfaEnforcementPolicy.evaluate(any()) } returns false
+        jwtIssuer = JwtIssuer(keyProvider, issuerUri, mfaEnforcementPolicy)
+    }
+
+    /** [mfaEnforcementPolicy] 의 evaluate 반환값을 토글한다(mfa_enrollment_required claim 검증용). */
+    private fun setMfaEnrollmentRequired(required: Boolean) {
+        every { mfaEnforcementPolicy.evaluate(any()) } returns required
     }
 
     // ── 기본 발급 ────────────────────────────────────────────────────────────
@@ -133,6 +149,50 @@ class JwtIssuerTest {
         val claims = parseClaims(token)
 
         assertThat(claims.getBooleanClaim("mfa_verified")).isFalse()
+    }
+
+    // ── mfa_enrollment_required claim (FR-MF-04 — 발급 chokepoint) ────────────
+
+    @Test
+    fun `mfa_enrollment_required claim 은 정책이 true 면 true 이다 (FR-MF-04)`() {
+        setMfaEnrollmentRequired(true)
+
+        val claims = parseClaims(jwtIssuer.issue(userId, sessionId, providerId, scopes))
+
+        assertThat(claims.getBooleanClaim("mfa_enrollment_required")).isTrue()
+    }
+
+    @Test
+    fun `mfa_enrollment_required claim 은 정책이 false 면 false 로 명시된다 (FR-MF-04)`() {
+        setMfaEnrollmentRequired(false)
+
+        val claims = parseClaims(jwtIssuer.issue(userId, sessionId, providerId, scopes))
+
+        // 부재가 아니라 명시 false — '클레임 부재=false 해석'과 일관(게이트 T7 단일 해석).
+        assertThat(claims.getBooleanClaim("mfa_enrollment_required")).isFalse()
+    }
+
+    @Test
+    fun `mfa_enrollment_required claim 은 mfaVerified 인자 생략 호출(SSO 방식)에도 항상 박힌다 (FR-MF-04 chokepoint)`() {
+        // 핵심(B1): issue() 호출이 어떤 형태든(인자 생략·roles 포함 등) 클레임이 항상 박힌다.
+        // 발급 chokepoint 가 JwtIssuer 내부 1곳에 있으므로 SSO 핸들러 같은 호출처가 누락할 수 없다.
+        setMfaEnrollmentRequired(true)
+
+        // SSO 성공 핸들러와 동일 방식(mfaVerified 생략, roles 포함) 호출 재현.
+        val token = jwtIssuer.issue(userId, sessionId, "oidc", scopes, roles = listOf("SYSTEM_ADMIN"))
+        val claims = parseClaims(token)
+
+        assertThat(claims.getBooleanClaim("mfa_enrollment_required")).isTrue()
+    }
+
+    @Test
+    fun `mfa_enrollment_required claim 은 sub(userId)로 정책을 평가한다 (FR-MF-04)`() {
+        // 클레임 출처 = sub 사용자의 강제 여부. evaluate 가 userId 로 호출됨을 토큰 결과로 고정.
+        every { mfaEnforcementPolicy.evaluate(userId) } returns true
+
+        val claims = parseClaims(jwtIssuer.issue(userId, sessionId, providerId, scopes))
+
+        assertThat(claims.getBooleanClaim("mfa_enrollment_required")).isTrue()
     }
 
     @Test
