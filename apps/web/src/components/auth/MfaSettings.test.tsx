@@ -9,6 +9,21 @@ import { useAuthStore } from '@/auth/authStore'
 import { mfaStrings } from '@/i18n/ko'
 import { MfaSettings } from './MfaSettings'
 
+// TanStack Router useNavigate mock — 라우터 컨텍스트 없이 단위 테스트 가능
+const mockNavigate = vi.fn()
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => mockNavigate,
+}))
+
+// refreshSession mock — client.ts 모듈 경로 별칭
+vi.mock('@/api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/client')>()
+  return {
+    ...actual,
+    refreshSession: vi.fn(),
+  }
+})
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MSW 핸들러 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
@@ -713,5 +728,158 @@ describe('T3-S10: 백업코드 재생성 인라인 확인 플로우', () => {
     for (const code of REGEN_CODES) {
       expect(screen.getByText(code)).toBeInTheDocument()
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T4-S1: 강제 안내 배너 (FR-D6-3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T4-S1: 강제 안내 배너', () => {
+  it('T4-S1-1: mfaEnrollmentRequired=true 사용자에게 안내 배너(role=status)가 노출된다', async () => {
+    useAuthStore.setState({
+      accessToken: 'test-token',
+      user: {
+        username: 'alice',
+        email: 'alice@bts.local',
+        authMethod: 'local',
+        userId: 'u-alice',
+        mustChangePassword: false,
+        isSystemAdmin: false,
+        mfaEnrollmentRequired: true,
+      },
+    })
+    server.use(mockStatus(false))
+
+    renderMfaSettings()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '2단계 인증 활성화' })).toBeInTheDocument()
+    })
+
+    const banner = screen.getByRole('status', { name: /강제/ })
+    expect(banner).toBeInTheDocument()
+    expect(banner).toHaveAttribute('aria-live', 'polite')
+  })
+
+  it('T4-S1-2: mfaEnrollmentRequired=false 사용자에게는 안내 배너가 노출되지 않는다', async () => {
+    // beforeEach에서 false로 초기화됨 — 추가 setState 불필요
+    server.use(mockStatus(false))
+
+    renderMfaSettings()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '2단계 인증 활성화' })).toBeInTheDocument()
+    })
+
+    expect(screen.queryByText(mfaStrings.enforcementBanner)).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T4-S2: 등록 후 게이트 해제 (FR-D6-4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T4-S2: 등록 후 게이트 해제', () => {
+  it('T4-S2-1: 강제모드 enable 성공 → refreshSession + navigate(/dashboard) 호출', async () => {
+    const { refreshSession } = await import('@/api/client')
+    const refreshSessionMock = vi.mocked(refreshSession)
+    refreshSessionMock.mockResolvedValue({
+      username: 'alice',
+      email: 'alice@bts.local',
+      authMethod: 'local',
+      userId: 'u-alice',
+      mustChangePassword: false,
+      isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
+    })
+    mockNavigate.mockReset()
+
+    useAuthStore.setState({
+      accessToken: 'test-token',
+      user: {
+        username: 'alice',
+        email: 'alice@bts.local',
+        authMethod: 'local',
+        userId: 'u-alice',
+        mustChangePassword: false,
+        isSystemAdmin: false,
+        mfaEnrollmentRequired: true,
+      },
+    })
+
+    const user = userEvent.setup({ delay: null })
+    server.use(
+      mockSetupOk(),
+      http.post('/api/v1/auth/mfa/totp/enable', () =>
+        new HttpResponse(null, { status: 204 }),
+      ),
+      http.get('/api/v1/auth/mfa/totp', () => HttpResponse.json({ enabled: false })),
+    )
+
+    renderMfaSettings()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '2단계 인증 활성화' })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: '2단계 인증 활성화' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('img')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText('인증 코드 (6자리)'), '123456')
+    await user.click(screen.getByRole('button', { name: mfaStrings.enableConfirmButton }))
+
+    await waitFor(() => {
+      expect(refreshSessionMock).toHaveBeenCalledTimes(1)
+    })
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/dashboard' })
+  })
+
+  it('T4-S2-2: 비강제모드 enable 성공 → refreshSession / navigate 미호출', async () => {
+    const { refreshSession } = await import('@/api/client')
+    const refreshSessionMock = vi.mocked(refreshSession)
+    refreshSessionMock.mockReset()
+    mockNavigate.mockReset()
+
+    // beforeEach에서 mfaEnrollmentRequired: false로 초기화됨
+
+    const user = userEvent.setup({ delay: null })
+    let fetchCount = 0
+    server.use(
+      mockSetupOk(),
+      http.post('/api/v1/auth/mfa/totp/enable', () =>
+        new HttpResponse(null, { status: 204 }),
+      ),
+      http.get('/api/v1/auth/mfa/totp', () => {
+        fetchCount += 1
+        if (fetchCount === 1) return HttpResponse.json({ enabled: false })
+        return HttpResponse.json({ enabled: true })
+      }),
+    )
+
+    renderMfaSettings()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '2단계 인증 활성화' })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: '2단계 인증 활성화' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('img')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText('인증 코드 (6자리)'), '123456')
+    await user.click(screen.getByRole('button', { name: mfaStrings.enableConfirmButton }))
+
+    await waitFor(() => {
+      expect(screen.getByText('활성화됨')).toBeInTheDocument()
+    })
+
+    expect(refreshSessionMock).not.toHaveBeenCalled()
+    expect(mockNavigate).not.toHaveBeenCalled()
   })
 })
