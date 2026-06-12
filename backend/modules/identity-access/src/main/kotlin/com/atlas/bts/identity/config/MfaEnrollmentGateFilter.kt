@@ -46,13 +46,12 @@ import org.springframework.web.filter.OncePerRequestFilter
  * 차단 시 403 + `{"error":"mfa_enrollment_required"}` (에러 코드만 — 내부 상세 누출 금지).
  */
 class MfaEnrollmentGateFilter : OncePerRequestFilter() {
-
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
         filterChain: FilterChain,
     ) {
-        if (isEnrollmentRequired(request) && !isAllowed(request)) {
+        if (isEnrollmentRequired() && !isAllowed(request)) {
             writeForbidden(response)
             return
         }
@@ -66,7 +65,7 @@ class MfaEnrollmentGateFilter : OncePerRequestFilter() {
      *
      * @return 강제 등록이 필요한 요청이면 true.
      */
-    private fun isEnrollmentRequired(request: HttpServletRequest): Boolean {
+    private fun isEnrollmentRequired(): Boolean {
         val principal = SecurityContextHolder.getContext().authentication?.principal
         if (principal !is Jwt) return false
         return principal.getClaim<Boolean>(JwtIssuer.CLAIM_MFA_ENROLLMENT_REQUIRED) == true
