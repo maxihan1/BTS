@@ -1,4 +1,4 @@
-// 알림 이벤트 유형 enum — DB 저장용 wireValue 와 publishable 메타를 포함한 9종 카탈로그
+// 알림 이벤트 유형 enum — DB 저장용 wireValue 와 publishable 메타를 포함한 10종 카탈로그
 
 package com.bts.notification.domain
 
@@ -44,6 +44,9 @@ enum class NotificationEventType(
 
     /** 자동화 룰 실행 실패 */
     AUTOMATION_FAILED("automation.failed", false),
+
+    /** 이슈 멘션 — 인앱 내부 채널 전용 (publishable=false) */
+    ISSUE_MENTIONED("issue.mentioned", false),
     ;
 
     companion object {
