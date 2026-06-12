@@ -55,6 +55,14 @@ class WebAuthnServiceTest {
     /** 16바이트 user handle(WebAuthn 권장 user.id 길이). */
     private fun userHandle(): ByteArray = ByteArray(USER_HANDLE_BYTES) { it.toByte() }
 
+    /** 서비스가 만든 등록 옵션 JSON 을 가상 클라이언트에 넘길 객체로 역직렬화한다. */
+    private fun readCreationOptions(json: String): PublicKeyCredentialCreationOptions =
+        objectConverter.jsonConverter.readValue(json, PublicKeyCredentialCreationOptions::class.java)!!
+
+    /** 서비스가 만든 인증 옵션 JSON 을 가상 클라이언트에 넘길 객체로 역직렬화한다. */
+    private fun readRequestOptions(json: String): PublicKeyCredentialRequestOptions =
+        objectConverter.jsonConverter.readValue(json, PublicKeyCredentialRequestOptions::class.java)!!
+
     /**
      * 가상 등록 → 서버 검증 → CredentialRecord 로 환원하는 공통 헬퍼.
      *
@@ -67,7 +75,7 @@ class WebAuthnServiceTest {
         platform: ClientPlatform,
     ): CredentialRecord {
         val optionsJson = service.registrationOptionsJson(challenge, userHandle(), "alice", "Alice", emptyList())
-        val options = objectConverter.jsonConverter.readValue(optionsJson, PublicKeyCredentialCreationOptions::class.java)!!
+        val options = readCreationOptions(optionsJson)
         val credential = platform.create(options)
         val responseJson = objectConverter.jsonConverter.writeValueAsString(credential)
         val registrationData = service.verifyRegistration(responseJson, challenge)
@@ -83,17 +91,15 @@ class WebAuthnServiceTest {
     @Test
     fun `registrationOptionsJson 으로 가상 등록 후 verifyRegistration 이 성공한다`() {
         val challenge = DefaultChallenge()
+        val optionsJson = service.registrationOptionsJson(challenge, userHandle(), "alice", "Alice", emptyList())
+        val credential = client().create(readCreationOptions(optionsJson))
+        val responseJson = objectConverter.jsonConverter.writeValueAsString(credential)
 
-        val registrationData = run {
-            val optionsJson = service.registrationOptionsJson(challenge, userHandle(), "alice", "Alice", emptyList())
-            val options = objectConverter.jsonConverter.readValue(optionsJson, PublicKeyCredentialCreationOptions::class.java)!!
-            val credential = client().create(options)
-            val responseJson = objectConverter.jsonConverter.writeValueAsString(credential)
-            service.verifyRegistration(responseJson, challenge)
-        }
+        val registrationData = service.verifyRegistration(responseJson, challenge)
 
         assertThat(registrationData.attestationObject).isNotNull
-        assertThat(registrationData.attestationObject!!.authenticatorData.attestedCredentialData).isNotNull
+        val attestedCredentialData = registrationData.attestationObject!!.authenticatorData.attestedCredentialData
+        assertThat(attestedCredentialData).isNotNull
     }
 
     /** (b) 등록된 credential 로 인증 옵션 → 가상 인증 → 서버 검증 round-trip 이 성공한다. */
@@ -106,7 +112,7 @@ class WebAuthnServiceTest {
 
         val authChallenge = DefaultChallenge()
         val optionsJson = service.authenticationOptionsJson(authChallenge, listOf(credentialId))
-        val options = objectConverter.jsonConverter.readValue(optionsJson, PublicKeyCredentialRequestOptions::class.java)!!
+        val options = readRequestOptions(optionsJson)
         val credential = platform.get(options)
         val responseJson = objectConverter.jsonConverter.writeValueAsString(credential)
 
@@ -120,7 +126,7 @@ class WebAuthnServiceTest {
     fun `다른 origin 응답이면 verifyRegistration 이 거부된다`() {
         val challenge = DefaultChallenge()
         val optionsJson = service.registrationOptionsJson(challenge, userHandle(), "alice", "Alice", emptyList())
-        val options = objectConverter.jsonConverter.readValue(optionsJson, PublicKeyCredentialCreationOptions::class.java)!!
+        val options = readCreationOptions(optionsJson)
         val credential = client(origin = "https://evil.example.com").create(options)
         val responseJson = objectConverter.jsonConverter.writeValueAsString(credential)
 

@@ -180,8 +180,9 @@ class WebAuthnService(
      * @param data 직렬화할 attested credential data.
      * @return CBOR 인코딩 ByteArray(DB BYTEA 등에 저장).
      */
-    fun serializeAttestedCredentialData(data: AttestedCredentialData): ByteArray =
-        attestedCredentialDataConverter.convert(data)
+    fun serializeAttestedCredentialData(data: AttestedCredentialData): ByteArray {
+        return attestedCredentialDataConverter.convert(data)
+    }
 
     /**
      * [serializeAttestedCredentialData] 가 만든 ByteArray 를 [AttestedCredentialData] 로 복원한다.
@@ -189,8 +190,9 @@ class WebAuthnService(
      * @param bytes CBOR 인코딩 ByteArray(저장된 credential).
      * @return 복원된 [AttestedCredentialData] (인증 검증의 공개키 출처).
      */
-    fun deserializeAttestedCredentialData(bytes: ByteArray): AttestedCredentialData =
-        attestedCredentialDataConverter.convert(bytes)
+    fun deserializeAttestedCredentialData(bytes: ByteArray): AttestedCredentialData {
+        return attestedCredentialDataConverter.convert(bytes)
+    }
 
     /** userVerification=preferred · residentKey=discouraged 인증기 선택 기준. */
     private val authenticatorSelection: AuthenticatorSelectionCriteria =
@@ -202,9 +204,14 @@ class WebAuthnService(
 
     /** 옵션의 (exclude/allow) credential 목록 항목 — type=public-key, transports 미지정. */
     private fun descriptor(credentialId: ByteArray): PublicKeyCredentialDescriptor =
-        PublicKeyCredentialDescriptor(PublicKeyCredentialType.PUBLIC_KEY, credentialId, emptySet<AuthenticatorTransport>())
+        PublicKeyCredentialDescriptor(
+            PublicKeyCredentialType.PUBLIC_KEY,
+            credentialId,
+            emptySet<AuthenticatorTransport>(),
+        )
 
     /** origin/rpId/challenge 로 검증 기준 [ServerProperty] 를 만든다(피싱·replay 방어 기준값). */
-    private fun serverProperty(challenge: Challenge): ServerProperty =
-        ServerProperty(Origin(properties.origin), properties.rpId, challenge)
+    private fun serverProperty(challenge: Challenge): ServerProperty {
+        return ServerProperty(Origin(properties.origin), properties.rpId, challenge)
+    }
 }
