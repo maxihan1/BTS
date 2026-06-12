@@ -2,9 +2,11 @@
 import { http, HttpResponse } from 'msw'
 import {
   AUTH_USERS,
+  E2E_MFA_ENFORCEMENT_KEY,
   LDAP_VALID_PASSWORDS,
   MFA_E2E_ENABLED_KEY,
   VALID_PASSWORDS,
+  mfaStore,
   mockAccessToken,
 } from './auth-fixtures'
 
@@ -113,7 +115,13 @@ const whoamiHandler = http.get('/api/v1/users/me/whoami', ({ request }) => {
     globalThis.localStorage?.getItem(E2E_IS_SYSTEM_ADMIN_KEY) === 'true'
       ? true
       : user.isSystemAdmin
-  const mfaEnrollmentRequired = user.mfaEnrollmentRequired
+
+  // FR-MF-04 강제 게이트 파생 — 플래그 ON + mfaStore.enabled=false 이면 true.
+  // 등록(mfaStore.enabled=true) 후 false 로 자동 전환 — refresh 핸들러가 이 값을 반환한다.
+  // 플래그 OFF(기본)이면 user fixture 기본값(false) 유지 → 기존 E2E 동작 불변.
+  const enforcementOn =
+    globalThis.localStorage?.getItem(E2E_MFA_ENFORCEMENT_KEY) === 'true'
+  const mfaEnrollmentRequired = enforcementOn ? !mfaStore.enabled : user.mfaEnrollmentRequired
 
   return HttpResponse.json({ ...user, mustChangePassword, isSystemAdmin, mfaEnrollmentRequired })
 })
@@ -124,6 +132,26 @@ const whoamiHandler = http.get('/api/v1/users/me/whoami', ({ request }) => {
  */
 const logoutHandler = http.post('/api/v1/auth/logout', () => {
   return new HttpResponse(null, { status: 204 })
+})
+
+/**
+ * POST /api/v1/auth/refresh — 액세스 토큰 갱신.
+ *
+ * 실제 백엔드는 httpOnly refresh_token 쿠키로 검증하지만, mock 환경에서는
+ * 항상 alice 기준으로 새 토큰을 발급한다 (단일 사용자 mock 가정).
+ *
+ * FR-MF-04 E2E-3 시나리오에서 MFA 등록 완료 후 refreshSession 이 이 핸들러를 호출한다.
+ * 이후 whoami 재조회 시 mfaStore.enabled=true 이므로 mfaEnrollmentRequired=false 가 파생된다.
+ *
+ * 응답 schema: backend AuthController.TokenResponse
+ * (auth-pre-session-401-raw-fetch 교훈 — refresh 는 apiFetch 가 아닌 raw fetch 가 호출)
+ */
+const refreshHandler = http.post('/api/v1/auth/refresh', () => {
+  return HttpResponse.json({
+    access_token: mockAccessToken('alice'),
+    token_type: 'Bearer',
+    expires_in: 900,
+  })
 })
 
 /**
@@ -160,4 +188,4 @@ const providersHandler = http.get('/api/v1/auth/providers', () => {
   })
 })
 
-export const authHandlers = [loginHandler, whoamiHandler, logoutHandler, providersHandler]
+export const authHandlers = [loginHandler, whoamiHandler, logoutHandler, refreshHandler, providersHandler]
