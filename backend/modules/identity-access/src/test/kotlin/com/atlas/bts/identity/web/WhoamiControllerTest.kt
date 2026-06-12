@@ -9,6 +9,7 @@ import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
 import com.atlas.bts.identity.credential.StoredPasswordCredential
 import com.atlas.bts.identity.credential.StoredPasswordCredentialRepository
+import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
 import com.atlas.bts.identity.pat.PatVerificationException
 import com.atlas.bts.identity.pat.PersonalAccessToken
@@ -367,6 +368,92 @@ class WhoamiControllerTest {
             .andExpect(jsonPath("$.authMethod").value("pat"))
             .andExpect(jsonPath("$.mustChangePassword").value(false))
             .andExpect(jsonPath("$.isSystemAdmin").value(false))
+            // FR-MF-04: PAT 분기는 MFA 강제 컨텍스트와 무관하므로 mfaEnrollmentRequired 도 false 고정
+            .andExpect(jsonPath("$.mfaEnrollmentRequired").value(false))
+    }
+
+    // ── Task 6: mfaEnrollmentRequired (FR-MF-04) — JWT 클레임 출처 노출 ────────────
+
+    @Test
+    fun `whoami JWT 클레임 mfa_enrollment_required true 이면 mfaEnrollmentRequired true 반영`() {
+        val userId = UUID.fromString("00000000-0000-0000-0000-000000000005")
+        val now = Instant.parse("2026-05-21T10:00:00Z")
+        every { userRepository.findById(userId) } returns
+            User(
+                id = userId,
+                username = "mfa-target",
+                email = "mfa-target@bts.local",
+                displayName = "Mfa Target",
+                createdAt = now,
+                updatedAt = now,
+            )
+        every { storedPasswordCredentialRepository.findByUserId(userId) } returns credential(userId, mustChange = false)
+        every { systemPermissionResolver.isSystemAdmin(userId) } returns true
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder ->
+                    builder.subject(userId.toString())
+                    builder.claim(JwtIssuer.CLAIM_MFA_ENROLLMENT_REQUIRED, true)
+                },
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.mfaEnrollmentRequired").value(true))
+    }
+
+    @Test
+    fun `whoami JWT 클레임 mfa_enrollment_required false 이면 mfaEnrollmentRequired false 반영`() {
+        val userId = UUID.fromString("00000000-0000-0000-0000-000000000006")
+        val now = Instant.parse("2026-05-21T10:00:00Z")
+        every { userRepository.findById(userId) } returns
+            User(
+                id = userId,
+                username = "mfa-enrolled",
+                email = "mfa-enrolled@bts.local",
+                displayName = "Mfa Enrolled",
+                createdAt = now,
+                updatedAt = now,
+            )
+        every { storedPasswordCredentialRepository.findByUserId(userId) } returns credential(userId, mustChange = false)
+        every { systemPermissionResolver.isSystemAdmin(userId) } returns false
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder ->
+                    builder.subject(userId.toString())
+                    builder.claim(JwtIssuer.CLAIM_MFA_ENROLLMENT_REQUIRED, false)
+                },
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.mfaEnrollmentRequired").value(false))
+    }
+
+    @Test
+    fun `whoami JWT 클레임 mfa_enrollment_required 부재이면 mfaEnrollmentRequired false`() {
+        val userId = UUID.fromString("00000000-0000-0000-0000-000000000007")
+        val now = Instant.parse("2026-05-21T10:00:00Z")
+        every { userRepository.findById(userId) } returns
+            User(
+                id = userId,
+                username = "no-claim",
+                email = "no-claim@bts.local",
+                displayName = "No Claim",
+                createdAt = now,
+                updatedAt = now,
+            )
+        every { storedPasswordCredentialRepository.findByUserId(userId) } returns credential(userId, mustChange = false)
+        every { systemPermissionResolver.isSystemAdmin(userId) } returns false
+
+        // 클레임을 박지 않은 토큰 — 부재 → false 로 귀결
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder -> builder.subject(userId.toString()) },
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.mfaEnrollmentRequired").value(false))
     }
 
     /** local_credentials 행 픽스처 — mustChangePassword 플래그만 변주 */
