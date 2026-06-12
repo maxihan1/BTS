@@ -262,7 +262,7 @@ class MfaWebauthnIntegrationTest {
         assertThat(registerSecurityKey(platform, name = "키").statusCode).isEqualTo(HttpStatus.CREATED)
 
         // 첫 정상 인증 — 성공해야 한다(카운터 전진).
-        val firstChallenge = (performLogin(testUsername, testPassword).body as Map<*, *>)["mfa_challenge_token"] as String
+        val firstChallenge = loginAndGetChallengeToken()
         assertThat(authenticateAndVerify(platform, firstChallenge).statusCode)
             .withFailMessage("첫 보안키 인증은 성공(200)해야 합니다.")
             .isEqualTo(HttpStatus.OK)
@@ -271,7 +271,7 @@ class MfaWebauthnIntegrationTest {
         bumpStoredSignCount(testUserId, CLONE_GUARD_SIGN_COUNT)
 
         // 새 정상 인증 — 가상 인증기 카운터는 저장값보다 작으므로 clone 으로 판정돼 거부돼야 한다.
-        val cloneChallenge = (performLogin(testUsername, testPassword).body as Map<*, *>)["mfa_challenge_token"] as String
+        val cloneChallenge = loginAndGetChallengeToken()
         val cloneResp = authenticateAndVerify(platform, cloneChallenge)
         assertThat(cloneResp.statusCode)
             .withFailMessage("저장값 이하 signCount 재제출(clone 의심)은 401 로 거부돼야 합니다. 실제: ${cloneResp.statusCode}")
@@ -358,6 +358,18 @@ class MfaWebauthnIntegrationTest {
         return ClientPlatform(Origin(WEBAUTHN_ORIGIN), adaptor)
     }
 
+    /** 서버가 만든 등록 옵션 JSON 을 가상 클라이언트에 넘길 객체로 역직렬화한다(WebAuthnServiceTest 선례). */
+    private fun readCreationOptions(json: String): PublicKeyCredentialCreationOptions =
+        objectConverter.jsonConverter.readValue(json, PublicKeyCredentialCreationOptions::class.java)!!
+
+    /** 서버가 만든 인증 옵션 JSON 을 가상 클라이언트에 넘길 객체로 역직렬화한다. */
+    private fun readRequestOptions(json: String): PublicKeyCredentialRequestOptions =
+        objectConverter.jsonConverter.readValue(json, PublicKeyCredentialRequestOptions::class.java)!!
+
+    /** 보안키 활성 사용자로 1단계 로그인해 mfa_challenge_token 을 얻는다(정식 세션 미발급). */
+    private fun loginAndGetChallengeToken(): String =
+        (performLogin(testUsername, testPassword).body as Map<*, *>)["mfa_challenge_token"] as String
+
     /**
      * 보안키 등록 ceremony 전체 — 1단계 로그인(JWT)→register/start→(가상 서명)→register/finish 를 수행한다.
      *
@@ -380,8 +392,7 @@ class MfaWebauthnIntegrationTest {
         platform: ClientPlatform,
         name: String,
     ): ResponseEntity<Map<*, *>> {
-        val optionsJson = webAuthnRegisterStart(accessToken)
-        val options = objectConverter.jsonConverter.readValue(optionsJson, PublicKeyCredentialCreationOptions::class.java)
+        val options = readCreationOptions(webAuthnRegisterStart(accessToken))
         val credential = platform.create(options)
         val credentialJson = objectConverter.jsonConverter.writeValueAsString(credential)
         return webAuthnRegisterFinish(accessToken, credentialJson, name)
@@ -397,8 +408,7 @@ class MfaWebauthnIntegrationTest {
         platform: ClientPlatform,
         challengeToken: String,
     ): ResponseEntity<Map<*, *>> {
-        val optionsJson = webAuthnAuthenticateStart(challengeToken)
-        val options = objectConverter.jsonConverter.readValue(optionsJson, PublicKeyCredentialRequestOptions::class.java)
+        val options = readRequestOptions(webAuthnAuthenticateStart(challengeToken))
         val credential = platform.get(options)
         val credentialJson = objectConverter.jsonConverter.writeValueAsString(credential)
         return mfaVerifyWebauthn(challengeToken, credentialJson)
@@ -411,7 +421,7 @@ class MfaWebauthnIntegrationTest {
      * 등록에 쓴 인증기 인스턴스로 2단계 인증을 마쳐 목록/삭제 호출용 JWT 를 확보한다(목록/삭제 self-service).
      */
     private fun accessTokenViaWebauthn(platform: ClientPlatform): String {
-        val challengeToken = (performLogin(testUsername, testPassword).body as Map<*, *>)["mfa_challenge_token"] as String
+        val challengeToken = loginAndGetChallengeToken()
         val verifyResp = authenticateAndVerify(platform, challengeToken)
         assertThat(verifyResp.statusCode)
             .withFailMessage("등록 키로 2단계 인증해 access_token 을 받아야 합니다. 실제: ${verifyResp.statusCode}")
@@ -431,8 +441,7 @@ class MfaWebauthnIntegrationTest {
         localCredentialService.store(otherUser.id, testPassword.toCharArray())
         val otherLogin = performLoginRaw("wak-other-$suffix", testPassword)
         val accessToken = (otherLogin.body as Map<*, *>)["access_token"] as String
-        val optionsJson = webAuthnRegisterStart(accessToken)
-        val options = objectConverter.jsonConverter.readValue(optionsJson, PublicKeyCredentialCreationOptions::class.java)
+        val options = readCreationOptions(webAuthnRegisterStart(accessToken))
         val credential = newClientPlatform().create(options)
         val credentialJson = objectConverter.jsonConverter.writeValueAsString(credential)
         assertThat(webAuthnRegisterFinish(accessToken, credentialJson, "남의키").statusCode)
