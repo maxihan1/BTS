@@ -380,11 +380,11 @@
 
 **우선순위**. 필수 | **선행**. §2.1.1, §2.1.4 | **Plan slug**. `issue/templates`
 
-- [ ] D1. 도메인 — IssueTemplate (책임. backend-engineer)
-- [ ] D2. 명세 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `issue_templates(project_id, issue_type_id, content)` (프로젝트+타입당 1개, 활성 UNIQUE) (책임. db-engineer)
-- [ ] D4. 백엔드 — CRUD API + 이슈 생성 시 적용 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 — IssueTemplate (책임. backend-engineer) — PR #125
+- [x] D2. 명세 — 적용방식 옵션 C(프론트 프리필+서버 안전망), (project,type)당 1개 (책임. backend-engineer) — PR #125 (ADR `2026-06-12-issue-template-model-and-application`)
+- [x] D3. 데이터 모델 — `issue_templates(project_id, issue_type_id, content)` (프로젝트+타입당 1개, 활성 UNIQUE) (책임. db-engineer) — PR #125
+- [x] D4. 백엔드 — CRUD API + 이슈 생성 시 적용(서버 안전망) (책임. backend-engineer) — PR #125 (cross-BC: identity-access MANAGE_TEMPLATES resolver/시드)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #125
 - [ ] D6. 프론트 UI — 템플릿 관리 페이지 + 생성 시 자동 적용 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
