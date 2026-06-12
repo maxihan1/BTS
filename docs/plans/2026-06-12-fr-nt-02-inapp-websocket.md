@@ -36,9 +36,27 @@
 - **관련 ADR**. [docs/decisions/2026-06-12-notification-inapp-channel-delivery.md](../decisions/2026-06-12-notification-inapp-channel-delivery.md) (생성됨, 결정 1~6)
 - **미해결(스펙에서 확정)**. (a) 담당자/리포터 해석 = 포트 조회 vs 이벤트 payload 확장, (b) WebSocket 인증 방식(세션 쿠키 vs STOMP CONNECT JWT, security 검토), (c) notifications 멱등 키 설계, (d) q_issue_events 단일 consumer 미래 fanout.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-12-fr-nt-02-inapp-websocket.md](../specs/2026-06-12-fr-nt-02-inapp-websocket.md)
+
+핵심 시나리오 요약.
+- 멘션/담당자/리포터 이벤트 → NotificationWorker(q_issue_events 소비) → 정책 평가 → Notification 기록 + STOMP 실시간 푸시 → sonner 토스트 (지연 p95 < 1s).
+- 수신자 = 멘션 payload + 담당/리포터(IssueRecipientLookupPort cross-BC 조회). 워처/role은 FR-NT-03.
+- WebSocket 인증 = STOMP CONNECT frame JWT(기존 디코더 재사용, STATELESS라 세션쿠키 불가, security 검토).
+- 멱등 = notifications.dedup_key UNIQUE(재전달 중복 0). 메시지 생명주기 = delete/archive/vt 재전달.
+
+확정된 기술 결정(미해결 4건).
+- (a) 담당/리포터 = cross-BC `IssueRecipientLookupPort`(shared-kernel) 조회. 이벤트 payload 확장 아님(BC 격리).
+- (b) WebSocket 인증 = STOMP CONNECT JWT(STATELESS 제약상 유일). security-engineer 검토.
+- (c) 멱등 키 = hash(event_type+issue_key+occurredAt+recipient+channel) UNIQUE.
+- (d) 큐 = q_issue_events 단일 consumer. 미래 automation/slack fanout은 후속.
+
+신규 의존성. `@stomp/stompjs`(1종, Maxi 승인) + `spring-boot-starter-websocket`(Spring 공식). `reconnecting-websocket` 미도입.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). 신규 의존성 reconnecting-websocket 불필요(stompjs 내장) 발견 → Maxi 1종 승인. 렌더링 간단화/status 의미/CAS 불요/E2E WS 전략 보강. 상세는 스펙 파일 §Brainstorming Check.
 
 ## Plan (← /bts-plan 채움)
 
