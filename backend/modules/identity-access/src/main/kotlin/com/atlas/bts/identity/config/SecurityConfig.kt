@@ -162,6 +162,13 @@ class SecurityConfig(
                 PatAuthenticationFilter(personalAccessTokenService),
                 BearerTokenAuthenticationFilter::class.java,
             )
+            // FR-MF-04: MFA 등록 게이트 — 인증 필터(BearerToken·PAT) 뒤에 등록해 principal 이 가용할 때 동작.
+            // 클레임 mfa_enrollment_required=true 인 강제대상 미등록 요청을 allow-list 외 경로에서 403 차단(DB 0).
+            // 미인증은 손대지 않고 통과 → 기존 401 흐름 유지(게이트가 401 을 403 으로 바꾸지 않음).
+            .addFilterAfter(
+                MfaEnrollmentGateFilter(),
+                BearerTokenAuthenticationFilter::class.java,
+            )
             // FR-09-11: SidRevokeJwtConverter — sid claim 으로 세션 revoke 여부 확인 후 인증 토큰 발급
             // bearerTokenResolver: pat_ prefix 토큰은 null 반환하여 JWT 필터가 처리하지 않도록 한다
             .oauth2ResourceServer { rs ->
