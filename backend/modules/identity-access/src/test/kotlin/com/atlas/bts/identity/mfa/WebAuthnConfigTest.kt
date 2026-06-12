@@ -6,6 +6,7 @@ import com.webauthn4j.WebAuthnManager
 import com.webauthn4j.converter.util.ObjectConverter
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.springframework.boot.autoconfigure.AutoConfigurations
 import org.springframework.boot.autoconfigure.context.ConfigurationPropertiesAutoConfiguration
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 
@@ -25,10 +26,8 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner
 class WebAuthnConfigTest {
     private val contextRunner =
         ApplicationContextRunner()
-            .withConfiguration(
-                org.springframework.boot.autoconfigure.AutoConfigurations
-                    .of(ConfigurationPropertiesAutoConfiguration::class.java),
-            ).withUserConfiguration(WebAuthnConfig::class.java)
+            .withConfiguration(AutoConfigurations.of(ConfigurationPropertiesAutoConfiguration::class.java))
+            .withUserConfiguration(WebAuthnConfig::class.java)
 
     /** `bts.webauthn.*` 프로퍼티가 [WebAuthnProperties] data class 로 바인딩된다. */
     @Test
