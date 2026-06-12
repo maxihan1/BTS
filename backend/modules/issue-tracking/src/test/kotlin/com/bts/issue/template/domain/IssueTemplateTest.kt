@@ -8,18 +8,18 @@ import org.junit.jupiter.api.assertThrows
 import java.util.UUID
 
 class IssueTemplateTest {
-
     private val projectId = UUID.randomUUID()
     private val issueTypeId = 1L
 
     @Test
     fun `create 성공 — 유효한 인자로 IssueTemplate 반환`() {
-        val template = IssueTemplate.create(
-            projectId = projectId,
-            issueTypeId = issueTypeId,
-            name = "기본 버그 리포트",
-            content = "## 재현 방법\n\n## 기대 결과\n\n## 실제 결과",
-        )
+        val template =
+            IssueTemplate.create(
+                projectId = projectId,
+                issueTypeId = issueTypeId,
+                name = "기본 버그 리포트",
+                content = "## 재현 방법\n\n## 기대 결과\n\n## 실제 결과",
+            )
 
         assertNotNull(template.id)
         assertEquals(projectId, template.projectId)
@@ -59,12 +59,13 @@ class IssueTemplateTest {
     @Test
     fun `create 성공 — name 이 정확히 100자이면 생성된다`() {
         val maxName = "a".repeat(100)
-        val template = IssueTemplate.create(
-            projectId = projectId,
-            issueTypeId = issueTypeId,
-            name = maxName,
-            content = "유효한 내용",
-        )
+        val template =
+            IssueTemplate.create(
+                projectId = projectId,
+                issueTypeId = issueTypeId,
+                name = maxName,
+                content = "유효한 내용",
+            )
         assertEquals(maxName, template.name)
     }
 
