@@ -116,6 +116,9 @@ class MfaWebauthnIntegrationTest {
         /** WebAuthn 허용 origin — 가상 ClientPlatform origin 과 동일해야 검증 통과. */
         const val WEBAUTHN_ORIGIN = "http://localhost:5173"
 
+        /** clone 판정 모사용 — 저장 sign_count 를 이 값으로 올려 가상 인증기 카운터가 항상 더 작게 만든다. */
+        const val CLONE_GUARD_SIGN_COUNT = 1_000_000L
+
         @DynamicPropertySource
         @JvmStatic
         fun configureProperties(registry: DynamicPropertyRegistry) {
@@ -283,11 +286,19 @@ class MfaWebauthnIntegrationTest {
      */
     @Test
     fun `WebAuthn 다중 키 — 2건 등록·1건 삭제 204·타인 키 삭제 404`() {
-        // 같은 사용자, 서로 다른 가상 인증기로 2건 등록(credentialId 가 달라 중복 등록 아님).
-        assertThat(registerSecurityKey(newClientPlatform(), name = "키1").statusCode).isEqualTo(HttpStatus.CREATED)
-        assertThat(registerSecurityKey(newClientPlatform(), name = "키2").statusCode).isEqualTo(HttpStatus.CREATED)
+        // 첫 키는 MFA 미활성 상태(1단계 로그인=정식 세션)에서 등록한다.
+        val firstKey = newClientPlatform()
+        assertThat(registerSecurityKey(firstKey, name = "키1").statusCode).isEqualTo(HttpStatus.CREATED)
 
-        val accessToken = loginAndGetAccessTokenViaWebauthn()
+        // 첫 키 등록으로 사용자는 MFA 활성 — 이후 self-service(2번째 키 등록·목록·삭제)는 보안키 2단계로 얻은
+        // JWT 로 호출해야 한다(1단계 로그인은 mfa_required). 첫 키로 2단계 인증해 JWT 를 확보한다.
+        val accessToken = accessTokenViaWebauthn(firstKey)
+
+        // 같은 사용자, 다른 가상 인증기로 2번째 키 등록(credentialId 가 달라 중복 등록 아님).
+        assertThat(registerSecurityKeyWith(accessToken, newClientPlatform(), name = "키2").statusCode)
+            .withFailMessage("MFA 활성 상태에서도 추가 보안키 등록은 가능해야 합니다(2번째 키).")
+            .isEqualTo(HttpStatus.CREATED)
+
         val keys = listKeys(accessToken)
         assertThat(keys)
             .withFailMessage("2건 등록 후 목록은 2건이어야 합니다. 실제: $keys")
@@ -348,17 +359,27 @@ class MfaWebauthnIntegrationTest {
     }
 
     /**
-     * 보안키 등록 ceremony 전체 — login(JWT)→register/start→(가상 서명)→register/finish 를 수행한다.
+     * 보안키 등록 ceremony 전체 — 1단계 로그인(JWT)→register/start→(가상 서명)→register/finish 를 수행한다.
      *
-     * register/start·finish 는 JWT 전용 self-service 라 1단계 로그인으로 JWT 를 확보한 뒤 호출한다.
-     * 등록 직후 사용자는 보안키 활성 상태가 되므로 이후 같은 사용자의 1단계 로그인은 mfa_required 가 된다
-     * (그래서 등록용 JWT 는 보안키 등록 전 발급분을 쓴다).
+     * register/start·finish 는 JWT 전용 self-service 다. 이 헬퍼는 **MFA 미활성**(첫 키 등록) 상황 전용으로,
+     * 1단계 로그인이 곧 정식 세션이라 그 JWT 로 등록한다. MFA 활성 상태에서 추가 등록할 때는 보안키 2단계로
+     * 얻은 JWT 를 넘기는 [registerSecurityKeyWith] 를 쓴다.
      */
     private fun registerSecurityKey(
         platform: ClientPlatform,
         name: String,
+    ): ResponseEntity<Map<*, *>> = registerSecurityKeyWith(freshAccessTokenBeforeMfa(), platform, name)
+
+    /**
+     * 주어진 [accessToken] 으로 register/start→(가상 서명)→register/finish 를 수행한다.
+     *
+     * MFA 활성 상태에서 추가 보안키를 등록할 때(2번째 키), 보안키 2단계로 미리 받은 JWT 를 그대로 넘긴다.
+     */
+    private fun registerSecurityKeyWith(
+        accessToken: String,
+        platform: ClientPlatform,
+        name: String,
     ): ResponseEntity<Map<*, *>> {
-        val accessToken = freshAccessTokenBeforeMfa()
         val optionsJson = webAuthnRegisterStart(accessToken)
         val options = objectConverter.jsonConverter.readValue(optionsJson, PublicKeyCredentialCreationOptions::class.java)
         val credential = platform.create(options)
@@ -383,21 +404,19 @@ class MfaWebauthnIntegrationTest {
         return mfaVerifyWebauthn(challengeToken, credentialJson)
     }
 
-    /** 보안키 1건 등록 + 1단계 로그인 + webauthn 인증으로 정식 세션 access_token 을 얻는다(목록/삭제 호출용). */
-    private fun loginAndGetAccessTokenViaWebauthn(): String {
-        val platform = registerAndKeepPlatform()
+    /**
+     * 이미 등록된 [platform] 으로 1단계 로그인 + webauthn 2단계 인증을 거쳐 정식 세션 access_token 을 얻는다.
+     *
+     * 보안키가 등록된(=MFA 활성) 사용자는 1단계 로그인만으론 JWT 를 받지 못하므로(mfa_required),
+     * 등록에 쓴 인증기 인스턴스로 2단계 인증을 마쳐 목록/삭제 호출용 JWT 를 확보한다(목록/삭제 self-service).
+     */
+    private fun accessTokenViaWebauthn(platform: ClientPlatform): String {
         val challengeToken = (performLogin(testUsername, testPassword).body as Map<*, *>)["mfa_challenge_token"] as String
         val verifyResp = authenticateAndVerify(platform, challengeToken)
-        assertThat(verifyResp.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(verifyResp.statusCode)
+            .withFailMessage("등록 키로 2단계 인증해 access_token 을 받아야 합니다. 실제: ${verifyResp.statusCode}")
+            .isEqualTo(HttpStatus.OK)
         return (verifyResp.body as Map<*, *>)["access_token"] as String
-    }
-
-    /** W5 의 access_token 확보용 — 이미 2건 등록된 상태이므로 기존 키 중 하나로 인증한다. */
-    private fun registerAndKeepPlatform(): ClientPlatform {
-        // W5 는 등록을 마친 뒤 호출되므로, 인증에 쓸 인증기를 새로 등록해 그 인스턴스로 인증한다.
-        val platform = newClientPlatform()
-        assertThat(registerSecurityKey(platform, name = "인증용").statusCode).isEqualTo(HttpStatus.CREATED)
-        return platform
     }
 
     /** 타인 사용자(별도 user)를 만들고 보안키 1건을 등록한 뒤 그 자격증명 PK 를 반환한다(IDOR 404 검증용). */
@@ -604,10 +623,5 @@ class MfaWebauthnIntegrationTest {
             .find(json)
             ?.groupValues
             ?.get(1) == "true"
-    }
-
-    private companion object {
-        /** clone 판정 모사용 — 저장 sign_count 를 이 값으로 올려 가상 인증기 카운터가 항상 더 작게 만든다. */
-        const val CLONE_GUARD_SIGN_COUNT = 1_000_000L
     }
 }
