@@ -54,8 +54,9 @@ class JdbcWebAuthnCredentialRepository(
     }
 
     @Transactional(readOnly = true)
-    override fun findByUser(userId: UUID): List<WebAuthnCredential> =
-        jdbc.query(SQL_FIND_BY_USER, mapOf("userId" to userId), rowMapper)
+    override fun findByUser(userId: UUID): List<WebAuthnCredential> {
+        return jdbc.query(SQL_FIND_BY_USER, mapOf("userId" to userId), rowMapper)
+    }
 
     @Transactional(readOnly = true)
     override fun findByCredentialId(credentialId: String): WebAuthnCredential? =
