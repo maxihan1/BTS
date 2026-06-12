@@ -7,6 +7,7 @@ import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { issueTemplateHandlers, resetIssueTemplateStore } from '@/mocks/issue-template-handlers'
 import { projectPermissionHandlers } from '@/mocks/project-permission-handlers'
+import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
 import { useAuthStore } from '@/auth/authStore'
 import { IssueTemplateList } from '@/components/issue-templates/IssueTemplateList'
 
@@ -38,7 +39,7 @@ describe('IssueTemplateList', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     resetIssueTemplateStore()
-    server.use(...issueTemplateHandlers, ...projectPermissionHandlers)
+    server.use(...issueTemplateHandlers, ...projectPermissionHandlers, ...issueTypeHandlers)
     useAuthStore.setState({
       accessToken: 'mock-access-token-alice',
       user: {
