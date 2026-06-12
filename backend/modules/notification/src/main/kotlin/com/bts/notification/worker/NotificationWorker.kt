@@ -316,8 +316,13 @@ class NotificationWorker(
         val issueKey = node.path("issueKey").asText(null).takeIf { it?.isNotBlank() == true }
         val projectKey = node.path("projectKey").asText(null).takeIf { it?.isNotBlank() == true }
         // occurredAt 은 모든 프로듀서 이벤트가 항상 포함한다(ISO-8601 문자열). dedup_key 의 결정성이
-        // occurredAt 에 의존하므로 부재 시 now() 폴백은 멱등을 깨뜨릴 수 있다(현 프로듀서에선 미발생).
-        val occurredAt = parseInstant(node.path("occurredAt").asText(null)) ?: Instant.now()
+        // occurredAt 에 의존하므로 now() 폴백은 멱등을 깨뜨린다(같은 이벤트 재전달 시 dedupKey 가 달라져
+        // 중복 알림 발송). 부재/파싱불가 이벤트는 malformed 로 간주해 예외를 던진다 → processMessage 가
+        // catch → delete 안 함 → 재전달 → read_ct>MAX 시 archive(dead-letter).
+        val occurredAt =
+            requireNotNull(parseInstant(node.path("occurredAt").asText(null))) {
+                "event missing or invalid occurredAt: type=$eventType"
+            }
         val actorId = parseActorId(node.path("actorId"))
 
         val mentionedUserIds =

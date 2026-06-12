@@ -327,6 +327,26 @@ class NotificationWorkerTest : DescribeSpec({
             }
         }
     }
+
+    // ── POLL-9: occurredAt 누락(malformed) → 예외 → delete 미호출 ────────────────
+
+    describe("POLL-9 occurredAt 누락 이벤트 (malformed)") {
+        val msgId = 9L
+
+        beforeEach {
+            stubMentionMessageWithoutOccurredAt(dsl, actorId, mentionedId, msgId)
+        }
+
+        it("occurredAt 부재 시 예외 → dispatch·delete 미호출 (재전달 — dedup 결정성 보호)") {
+            worker.pollAndProcess()
+
+            verify(exactly = 0) { policyEvaluator.evaluate(any(), any()) }
+            verify(exactly = 0) { repository.insertIfAbsent(any()) }
+            verify(exactly = 0) {
+                dsl.execute(match<String> { it.contains("pgmq.delete") }, any(), any<Long>())
+            }
+        }
+    }
 })
 
 // ── test helpers ───────────────────────────────────────────────────────────────
@@ -354,6 +374,32 @@ private fun stubMentionMessage(
           "actorId": { "value": "$actorId" },
           "mentionedUserIds": ["$mentionedId"],
           "occurredAt": "$occurredAt"
+        }
+        """.trimIndent()
+
+    stubReadResult(dsl, msgId, json, readCt)
+}
+
+/**
+ * occurredAt 필드가 없는 멘션 이벤트 메시지 1건을 반환하도록 dsl.fetch 를 스텁한다.
+ *
+ * P2#3 회귀 — 워커가 now() 폴백 대신 예외를 던져 재전달되는지 검증한다.
+ */
+private fun stubMentionMessageWithoutOccurredAt(
+    dsl: DSLContext,
+    actorId: UUID,
+    mentionedId: UUID,
+    msgId: Long,
+    readCt: Int = 1,
+) {
+    val json =
+        """
+        {
+          "type": "issue.mentioned",
+          "issueKey": "ATLAS-1",
+          "projectKey": "ATLAS",
+          "actorId": { "value": "$actorId" },
+          "mentionedUserIds": ["$mentionedId"]
         }
         """.trimIndent()
 
