@@ -167,18 +167,17 @@ class IssueTemplateApplicationServiceTest : DescribeSpec({
 
     describe("update") {
         context("정상 경로") {
-            it("권한 OK + 존재 → update 후 반환") {
+            it("권한 OK + 존재 → update 후 변경된 객체 반환") {
                 every {
                     permissionResolver.hasPermission(actorId, TemplatePermission.UPDATE, projectId)
                 } returns true
                 every { repo.findById(templateId) } returns existingTemplate
-                val updated = existingTemplate.copy(name = "수정된 리포트")
                 every { repo.update(templateId, "수정된 리포트", existingTemplate.content) } returns Unit
-                every { repo.findById(templateId) } returnsMany listOf(existingTemplate, updated)
 
                 val result = sut.update(actorId, projectId, templateId, "수정된 리포트", existingTemplate.content)
 
-                result shouldBe updated
+                result.name shouldBe "수정된 리포트"
+                result.content shouldBe existingTemplate.content
                 verify(exactly = 1) { repo.update(templateId, "수정된 리포트", existingTemplate.content) }
             }
         }

@@ -116,10 +116,10 @@ class IssueTemplateApplicationService(
         content: String,
     ): IssueTemplate {
         assertPermission(actorId, TemplatePermission.UPDATE, projectId)
-        findActiveTemplate(templateId)
+        val existing = findActiveTemplate(templateId)
         repo.update(templateId, name, content)
         log.info("issue_template_updated id={} projectId={} actor={}", templateId, projectId, actorId)
-        return findActiveTemplate(templateId)
+        return existing.copy(name = name, content = content)
     }
 
     /**
