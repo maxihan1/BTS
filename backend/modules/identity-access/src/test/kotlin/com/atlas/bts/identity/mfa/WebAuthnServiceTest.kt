@@ -55,11 +55,20 @@ class WebAuthnServiceTest {
     /** 16바이트 user handle(WebAuthn 권장 user.id 길이). */
     private fun userHandle(): ByteArray = ByteArray(USER_HANDLE_BYTES) { it.toByte() }
 
-    /** 가상 등록 → 서버 검증 → CredentialRecord 로 환원하는 공통 헬퍼. */
-    private fun registerCredential(challenge: Challenge): CredentialRecord {
+    /**
+     * 가상 등록 → 서버 검증 → CredentialRecord 로 환원하는 공통 헬퍼.
+     *
+     * 실제 환경(같은 보안키로 등록 후 인증)을 모사하기 위해 호출자가 넘긴 [platform] 하나(=가상
+     * 인증기 1개)를 등록·인증에 공유한다. 매번 새 인증기를 만들면 등록 키를 인증기가 몰라
+     * `NotAllowedException` 이 나므로 인스턴스를 공유해야 한다.
+     */
+    private fun registerCredential(
+        challenge: Challenge,
+        platform: ClientPlatform,
+    ): CredentialRecord {
         val optionsJson = service.registrationOptionsJson(challenge, userHandle(), "alice", "Alice", emptyList())
         val options = objectConverter.jsonConverter.readValue(optionsJson, PublicKeyCredentialCreationOptions::class.java)!!
-        val credential = client().create(options)
+        val credential = platform.create(options)
         val responseJson = objectConverter.jsonConverter.writeValueAsString(credential)
         val registrationData = service.verifyRegistration(responseJson, challenge)
         return CredentialRecordImpl(
@@ -90,14 +99,15 @@ class WebAuthnServiceTest {
     /** (b) 등록된 credential 로 인증 옵션 → 가상 인증 → 서버 검증 round-trip 이 성공한다. */
     @Test
     fun `authenticationOptionsJson 으로 가상 인증 후 verifyAuthentication 이 성공한다`() {
+        val platform = client()
         val regChallenge = DefaultChallenge()
-        val credentialRecord = registerCredential(regChallenge)
+        val credentialRecord = registerCredential(regChallenge, platform)
         val credentialId = credentialRecord.attestedCredentialData.credentialId
 
         val authChallenge = DefaultChallenge()
         val optionsJson = service.authenticationOptionsJson(authChallenge, listOf(credentialId))
         val options = objectConverter.jsonConverter.readValue(optionsJson, PublicKeyCredentialRequestOptions::class.java)!!
-        val credential = client().get(options)
+        val credential = platform.get(options)
         val responseJson = objectConverter.jsonConverter.writeValueAsString(credential)
 
         val authenticationData = service.verifyAuthentication(responseJson, credentialRecord, authChallenge)
@@ -122,7 +132,7 @@ class WebAuthnServiceTest {
     @Test
     fun `serializeCredential 과 deserializeCredential 이 round-trip 된다`() {
         val challenge = DefaultChallenge()
-        val credentialRecord = registerCredential(challenge)
+        val credentialRecord = registerCredential(challenge, client())
         val attestedCredentialData = credentialRecord.attestedCredentialData
 
         val serialized = service.serializeAttestedCredentialData(attestedCredentialData)
