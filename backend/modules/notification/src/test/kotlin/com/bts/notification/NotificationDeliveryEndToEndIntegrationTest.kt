@@ -164,15 +164,14 @@ class NotificationDeliveryEndToEndIntegrationTest {
         val connectHeaders = StompHeaders()
         stompClient.connectAsync(wsUrl, WebSocketHttpHeaders(), connectHeaders, handler)
 
-        // 연결 거부 확인 — 짧은 대기 후 연결 미완료 또는 에러 발생
+        // 연결 거부 확인 — 인터셉터가 CONNECT 를 throw 로 거부하면 세션이 종료되어
+        // 클라이언트의 handleTransportError/handleException 으로 에러가 전달된다.
+        // 약한 단언(!connectedFlag 가 초기값으로 즉시 참)을 피하고, 실제 거부 신호(error 도착)를 요구한다.
         await()
             .atMost(5, TimeUnit.SECONDS)
-            .until {
-                // 연결이 거부되면 transport error 가 큐에 들어오거나 connectedFlag 가 false 유지
-                errorQueue.isNotEmpty() || !connectedFlag.get()
-            }
+            .untilAsserted { assertThat(errorQueue).isNotEmpty() }
 
-        // 연결이 수립되지 않았음을 확인
+        // 거부로 인해 연결이 끝내 수립되지 않았음을 확인
         assertThat(connectedFlag.get()).isFalse()
     }
 
@@ -359,7 +358,7 @@ class NotificationDeliveryEndToEndIntegrationTest {
               "type": "issue.mentioned",
               "issueKey": "$issueKey",
               "projectKey": "ATLAS",
-              "actorId": "$ACTOR_USER_ID",
+              "actorId": { "value": "$ACTOR_USER_ID" },
               "mentionedUserIds": ["$RECIPIENT_USER_ID"],
               "sourceField": "description",
               "occurredAt": "$occurredAt"

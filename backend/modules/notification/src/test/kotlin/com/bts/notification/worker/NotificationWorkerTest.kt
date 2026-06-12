@@ -142,6 +142,17 @@ class NotificationWorkerTest : DescribeSpec({
 
             assertThat(notificationSlot.captured.status).isEqualTo(NotificationStatus.SENT)
         }
+
+        it("실제 프로듀서의 nested actorId({value:uuid})를 파싱해 NotificationSourceEvent.actorId 로 전달한다 (B1 회귀)") {
+            val sourceSlot = slot<NotificationSourceEvent>()
+            every { recipientResolver.resolve(capture(sourceSlot), matches) } returns listOf(recipient)
+
+            worker.pollAndProcess()
+
+            // ActorId 는 issue-tracking 의 일반 data class 라 nested {"value":...} 로 직렬화된다.
+            // flat 문자열로 파싱하면 actorId 가 null 이 되어 resolver 의 actor 자기제외가 무력화된다.
+            assertThat(sourceSlot.captured.actorId).isEqualTo(actorId)
+        }
     }
 
     // ── POLL-4: 성공 후 delete ─────────────────────────────────────────────────
@@ -326,7 +337,7 @@ private fun stubMentionMessage(
           "type": "issue.mentioned",
           "issueKey": "ATLAS-1",
           "projectKey": "ATLAS",
-          "actorId": "$actorId",
+          "actorId": { "value": "$actorId" },
           "mentionedUserIds": ["$mentionedId"],
           "occurredAt": "$occurredAt"
         }
