@@ -4,6 +4,7 @@ package com.bts.issue.template.application
 
 import com.bts.issue.template.domain.DuplicateIssueTemplateException
 import com.bts.issue.template.domain.IssueTemplate
+import com.bts.issue.template.domain.IssueTemplateAccessDeniedException
 import com.bts.issue.template.domain.IssueTemplateNotFoundException
 import com.bts.issue.template.repository.IssueTemplateRepository
 import com.bts.issue.type.domain.IssueTypeNotFoundException

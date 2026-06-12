@@ -42,3 +42,14 @@ class DuplicateIssueTemplateException(name: String) :
  */
 class InvalidIssueTemplateException(reason: String) :
     IssueTemplateDomainException("Invalid issue template: $reason")
+
+/**
+ * 이슈 템플릿 mutation(create/update/delete) 에 필요한 권한이 없을 때.
+ *
+ * HTTP 403 매핑은 예외 핸들러에서 처리한다.
+ *
+ * @param actorId 권한 거부된 행위자 UUID.
+ * @param projectId 대상 프로젝트 UUID.
+ */
+class IssueTemplateAccessDeniedException(actorId: java.util.UUID, projectId: java.util.UUID) :
+    IssueTemplateDomainException("Access denied for actor=$actorId on project=$projectId")
