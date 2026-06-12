@@ -209,13 +209,15 @@
 
 **우선순위**. 선택 | **선행**. §3.1 | **Plan slug**. `identity/mfa-webauthn`
 
-- [ ] D1. 도메인 (책임. security-engineer)
-- [ ] D2. 명세 — FIDO2 attestation + assertion (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `user_webauthn_credentials(credential_id, public_key)` (책임. db-engineer)
-- [ ] D4. 백엔드 — `webauthn4j` 라이브러리 (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 — 가상 Authenticator (책임. security-engineer)
+- [x] D1. 도메인 (책임. security-engineer) (PR #129)
+- [x] D2. 명세 — FIDO2 attestation + assertion (책임. security-engineer) (PR #129)
+- [x] D3. 데이터 모델 — `user_webauthn_credentials(credential_id, public_key)` (책임. db-engineer) (PR #129)
+- [x] D4. 백엔드 — `webauthn4j` 라이브러리 (책임. security-engineer) (PR #129)
+- [x] D5. 백엔드 테스트 — 가상 Authenticator (책임. security-engineer) (PR #129)
 - [ ] D6. 프론트 UI — `navigator.credentials` API (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
+
+> **FR-MF-03 백엔드 D1~D5 완료 (2026-06-12, PR #129)**. WebAuthn(Passkey/하드웨어 키) 2차 인증 백엔드 — 등록(attestation)/인증(assertion) 챌린지·검증·자격증명 관리. **핵심 결정**(ADR `docs/decisions/2026-06-12-webauthn-second-factor.md`) — `webauthn4j` 0.28.4(Jackson2 ObjectMapper 버전 고정으로 직렬화 호환성 확보), attestation `none`(서버는 제조사 검증 없이 등록 수락 — 2차 인증 용도라 신뢰성 충분), credential은 사용자당 N개 등록 가능(전역 `credential_id` UNIQUE로 중복/이관 방지), `sign_count` 단조 증가 검증으로 자격증명 복제(clone) 공격 방어, 등록/인증 challenge는 Caffeine 인메모리 캐시(단기 TTL), 공개키는 평문 저장(비밀값 아님 — `attested_credential_data`에 base64 직렬화로 포함). DB는 `webauthn_credentials`(V025, SDD 원안 명세 표기 `user_webauthn_credentials`에서 실제 테이블명은 `webauthn_credentials`). `MfaChallenge.WEBAUTHN` enum 추가 + `isAnyMfaEnabled` 합성(TOTP/백업코드/WebAuthn 중 하나라도 등록 시 true). 감사 이벤트 `MFA_WEBAUTHN_REGISTERED`/`MFA_WEBAUTHN_REMOVED`. **deviation** — (1) `WebAuthnProperties`(rpId/rpName/origin)는 빈 문자열 기본값으로 두어 미설정 시에도 부팅 안전성 확보(prod는 실제 값 주입 필요), (2) credential에 별도 `status` 컬럼 없음 — 검증 통과 후 INSERT 자체가 활성화를 의미(soft-disable 불필요). **후속** — D6 프론트 UI(`navigator.credentials`)/D7 E2E는 후속 PR.
 
 ### §3.4 FR-MF-04 — 강제 정책 (관리자 + 민감 프로젝트)
 

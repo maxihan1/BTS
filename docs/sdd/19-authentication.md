@@ -110,7 +110,9 @@ JWT 클레임:
 |---|---|---|
 | TOTP (Authenticator 앱) | 필수 | RFC 6238, Google Authenticator 호환 |
 | 백업 코드 | 필수 | 10개, 1회용, 해시 저장 |
-| WebAuthn (Passkey) | 선택 | Phase 4 |
+| WebAuthn (Passkey) | 선택 | webauthn4j 0.28.4, attestation none, 사용자당 N개 |
+
+**구현 (FR-MF-03, PR #129, 백엔드 D1~D5)**. 등록(attestation)/인증(assertion) 챌린지·검증. credential은 `webauthn_credentials`(V025, 전역 `credential_id` UNIQUE, `sign_count` 단조 증가로 clone 방어, 공개키는 `attested_credential_data`에 base64 직렬화 평문 포함). challenge는 Caffeine 인메모리. `MfaChallenge.WEBAUTHN` + `isAnyMfaEnabled` 합성. ADR [2026-06-12-webauthn-second-factor](../decisions/2026-06-12-webauthn-second-factor.md). 프론트(D6)/E2E(D7)는 후속.
 
 ### 19.7.2 강제 정책
 
