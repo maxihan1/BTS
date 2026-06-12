@@ -382,7 +382,7 @@
 
 - [ ] D1. 도메인 — IssueTemplate (책임. backend-engineer)
 - [ ] D2. 명세 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `issue_templates(project_id, type_id, body)` (책임. db-engineer)
+- [ ] D3. 데이터 모델 — `issue_templates(project_id, issue_type_id, content)` (프로젝트+타입당 1개, 활성 UNIQUE) (책임. db-engineer)
 - [ ] D4. 백엔드 — CRUD API + 이슈 생성 시 적용 (책임. backend-engineer)
 - [ ] D5. 백엔드 테스트 (책임. backend-engineer)
 - [ ] D6. 프론트 UI — 템플릿 관리 페이지 + 생성 시 자동 적용 (책임. designer → frontend-engineer)

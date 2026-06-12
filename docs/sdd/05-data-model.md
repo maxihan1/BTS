@@ -128,11 +128,13 @@ workflow:
 ### IssueTemplate
 | 필드 | 타입 | 설명 |
 |---|---|---|
-| id | BIGINT (PK) | ID |
-| project_id | BIGINT (FK) | 프로젝트 |
+| id | UUID (PK) | ID |
+| project_id | UUID (FK) | 프로젝트 |
 | issue_type_id | BIGINT (FK) | 이슈 타입 |
 | name | VARCHAR(100) | 템플릿명 |
 | content | TEXT | 본문 템플릿 (Markdown + 변수) |
+
+> (project_id, issue_type_id) 활성 UNIQUE — 프로젝트+타입당 본문 템플릿 1개 (FR-TM-01).
 
 ### IssueLink
 | 필드 | 타입 | 설명 |
