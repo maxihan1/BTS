@@ -1,4 +1,4 @@
-// AuthAuditLogService 단위 테스트 — 20종 enum + record/findRecent 계약 검증 (FR-09-31 + FR-PM-01 + FR-MF-01 + FR-MF-02 + FR-MF-03)
+// AuthAuditLogService 단위 테스트 — 20종 enum + record/findRecent 계약 검증 (FR-09-31 외 MFA 3종)
 
 package com.atlas.bts.identity.audit
 

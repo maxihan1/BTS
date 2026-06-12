@@ -78,6 +78,8 @@ class WebAuthnSecurityKeyServiceTest {
         limiter = mockk(relaxed = true)
         every { limiter.isBlocked(any()) } returns false
         every { repo.findByUser(any()) } returns emptyList()
+        // relaxed mock 은 nullable 반환에도 더미를 줄 수 있어 "미등록" 기본값을 명시한다(전역 중복 오판 방지).
+        every { repo.findByCredentialId(any()) } returns null
         service =
             WebAuthnSecurityKeyService(
                 webAuthnService = webAuthnService,
@@ -377,9 +379,9 @@ class WebAuthnSecurityKeyServiceTest {
 
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────────
 
-    /** registerAndStore 로 mock repo 에 심긴 credential 을 credentialId 로 되찾는다. */
+    /** registerAndStore 로 mock repo 에 심긴 credential 을 credentialId 로 되찾는다(stub 으로 non-null 보장). */
     private fun repoStoredFor(credentialId: String): WebAuthnCredential =
-        repo.findByCredentialId(credentialId)!!
+        requireNotNull(repo.findByCredentialId(credentialId)) { "stored credential not stubbed for $credentialId" }
 
     /** 등록 안 된 별도 인증기로 인증 응답을 만들어 "미등록 credentialId" 케이스를 모사한다. */
     private fun authResponseJsonForUnknown(): String {
