@@ -385,8 +385,8 @@
 - [x] D3. 데이터 모델 — `issue_templates(project_id, issue_type_id, content)` (프로젝트+타입당 1개, 활성 UNIQUE) (책임. db-engineer) — PR #125
 - [x] D4. 백엔드 — CRUD API + 이슈 생성 시 적용(서버 안전망) (책임. backend-engineer) — PR #125 (cross-BC: identity-access MANAGE_TEMPLATES resolver/시드)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #125
-- [ ] D6. 프론트 UI — 템플릿 관리 페이지 + 생성 시 자동 적용 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 템플릿 관리 페이지 + 생성 시 자동 적용 (책임. frontend-engineer) — PR #127 (**deviation**: Maxi 확정 옵션 B = 관리 페이지 중심. 템플릿 관리 CRUD(`/projects/{key}/settings/issue-templates`, 커스텀필드 동형) + `MANAGE_TEMPLATES` 권한 게이팅/노출. **생성폼 프리필 UI는 분리** — "생성 시 자동 적용"은 머지된 서버 안전망(D4 #125)이 description blank 시 주입으로 담당. 설정 nav는 기존 7종과 동형 직접 URL 진입)
+- [x] D7. E2E (책임. qa-engineer) — PR #127 (issue-templates.spec.ts 7 시나리오: 생성·중복409·수정·삭제·권한게이팅)
 
 #### §5.2.2 FR-TM-02 — 템플릿 변수 (작성자/일자/프로젝트)
 

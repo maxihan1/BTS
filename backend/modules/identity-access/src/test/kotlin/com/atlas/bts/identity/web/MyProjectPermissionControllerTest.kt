@@ -15,6 +15,8 @@ import com.bts.shared.permission.CustomFieldPermissionResolver
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import com.bts.shared.permission.TemplatePermission
+import com.bts.shared.permission.TemplatePermissionResolver
 import com.bts.shared.permission.VersionPermission
 import com.bts.shared.permission.VersionPermissionResolver
 import io.mockk.every
@@ -38,6 +40,7 @@ import java.util.UUID
  * - (a) MANAGE_CUSTOM_FIELDS 보유 actor → `permissions["MANAGE_CUSTOM_FIELDS"] == true`
  * - (b) 미보유 actor → `false`
  * - (c) 프로젝트 미존재(resolveKeyToId null) → `false` (404 아님, 기존 미존재 정책 일관)
+ * - (d) MANAGE_TEMPLATES 보유/미보유/프로젝트 미존재 (FR-TM-01 D6 게이팅) — (a)~(c)와 동형
  *
  * MANAGE_COMPONENTS 와 완전 동형이므로 컴포넌트 리졸버와 같은 패턴으로 mock 한다.
  *
@@ -49,6 +52,7 @@ class MyProjectPermissionControllerTest {
     private lateinit var componentPermissionResolver: ComponentPermissionResolver
     private lateinit var versionPermissionResolver: VersionPermissionResolver
     private lateinit var customFieldPermissionResolver: CustomFieldPermissionResolver
+    private lateinit var templatePermissionResolver: TemplatePermissionResolver
     private lateinit var projectDirectory: ProjectDirectory
     private lateinit var membershipRepository: ProjectMembershipRepository
     private lateinit var permissionSchemeRepository: PermissionSchemeRepository
@@ -65,6 +69,7 @@ class MyProjectPermissionControllerTest {
         componentPermissionResolver = mockk()
         versionPermissionResolver = mockk()
         customFieldPermissionResolver = mockk()
+        templatePermissionResolver = mockk()
         projectDirectory = mockk()
         membershipRepository = mockk()
         permissionSchemeRepository = mockk()
@@ -75,6 +80,7 @@ class MyProjectPermissionControllerTest {
                 componentPermissionResolver = componentPermissionResolver,
                 versionPermissionResolver = versionPermissionResolver,
                 customFieldPermissionResolver = customFieldPermissionResolver,
+                templatePermissionResolver = templatePermissionResolver,
                 projectDirectory = projectDirectory,
                 membershipRepository = membershipRepository,
                 permissionSchemeRepository = permissionSchemeRepository,
@@ -93,6 +99,9 @@ class MyProjectPermissionControllerTest {
         } returns false
         every {
             customFieldPermissionResolver.hasPermission(actorId, CustomFieldPermission.CREATE, projectId)
+        } returns false
+        every {
+            templatePermissionResolver.hasPermission(actorId, TemplatePermission.CREATE, projectId)
         } returns false
         // MANAGE_FIELD_PERMISSIONS 기본 — 비멤버(membership null). 각 테스트가 필요 시 override.
         every { membershipRepository.findByProjectAndUser(projectId, actorId) } returns null
@@ -141,6 +150,39 @@ class MyProjectPermissionControllerTest {
         val response = controller.getProjectPermissions(MockHttpServletRequest(), jwtFor(actorId), projectKey)
 
         assertThat(response.permissions["MANAGE_CUSTOM_FIELDS"]).isFalse()
+    }
+
+    @Test
+    fun `MANAGE_TEMPLATES 보유 actor — permissions MANAGE_TEMPLATES true`() {
+        every { projectDirectory.resolveKeyToId(projectKey) } returns projectId
+        every {
+            templatePermissionResolver.hasPermission(actorId, TemplatePermission.CREATE, projectId)
+        } returns true
+
+        val response = controller.getProjectPermissions(MockHttpServletRequest(), jwtFor(actorId), projectKey)
+
+        assertThat(response.permissions["MANAGE_TEMPLATES"]).isTrue()
+    }
+
+    @Test
+    fun `MANAGE_TEMPLATES 미보유 actor — permissions MANAGE_TEMPLATES false`() {
+        every { projectDirectory.resolveKeyToId(projectKey) } returns projectId
+        every {
+            templatePermissionResolver.hasPermission(actorId, TemplatePermission.CREATE, projectId)
+        } returns false
+
+        val response = controller.getProjectPermissions(MockHttpServletRequest(), jwtFor(actorId), projectKey)
+
+        assertThat(response.permissions["MANAGE_TEMPLATES"]).isFalse()
+    }
+
+    @Test
+    fun `프로젝트 미존재(resolveKeyToId null) — permissions MANAGE_TEMPLATES false`() {
+        every { projectDirectory.resolveKeyToId(projectKey) } returns null
+
+        val response = controller.getProjectPermissions(MockHttpServletRequest(), jwtFor(actorId), projectKey)
+
+        assertThat(response.permissions["MANAGE_TEMPLATES"]).isFalse()
     }
 
     @Test

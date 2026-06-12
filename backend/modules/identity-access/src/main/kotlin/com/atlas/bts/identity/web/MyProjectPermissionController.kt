@@ -15,6 +15,8 @@ import com.bts.shared.permission.CustomFieldPermissionResolver
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import com.bts.shared.permission.TemplatePermission
+import com.bts.shared.permission.TemplatePermissionResolver
 import com.bts.shared.permission.VersionPermission
 import com.bts.shared.permission.VersionPermissionResolver
 import jakarta.servlet.http.HttpServletRequest
@@ -74,6 +76,7 @@ class MyProjectPermissionController(
     private val componentPermissionResolver: ComponentPermissionResolver,
     private val versionPermissionResolver: VersionPermissionResolver,
     private val customFieldPermissionResolver: CustomFieldPermissionResolver,
+    private val templatePermissionResolver: TemplatePermissionResolver,
     private val projectDirectory: ProjectDirectory,
     private val membershipRepository: ProjectMembershipRepository,
     private val permissionSchemeRepository: PermissionSchemeRepository,
@@ -91,6 +94,9 @@ class MyProjectPermissionController(
 
         /** UI 커스텀 필드 관리 버튼 게이팅 권한 키 (FR-IS-10 D6). */
         const val MANAGE_CUSTOM_FIELDS_KEY = "MANAGE_CUSTOM_FIELDS"
+
+        /** UI 이슈 템플릿 관리 버튼 게이팅 권한 키 (FR-TM-01 D6, V024 시드 PROJECT_ADMIN MANAGE_TEMPLATES). */
+        const val MANAGE_TEMPLATES_KEY = "MANAGE_TEMPLATES"
 
         /** UI 필드 권한 규칙 관리 버튼 게이팅 권한 키 (FR-PM-07 PR-B, V018 시드 PROJECT_ADMIN 전용). */
         const val MANAGE_FIELD_PERMISSIONS_KEY = "MANAGE_FIELD_PERMISSIONS"
@@ -151,6 +157,7 @@ class MyProjectPermissionController(
                     MANAGE_COMPONENTS_KEY to false,
                     MANAGE_VERSIONS_KEY to false,
                     MANAGE_CUSTOM_FIELDS_KEY to false,
+                    MANAGE_TEMPLATES_KEY to false,
                     MANAGE_FIELD_PERMISSIONS_KEY to false,
                 )
         return mapOf(
@@ -160,6 +167,8 @@ class MyProjectPermissionController(
                 versionPermissionResolver.hasPermission(actorId, VersionPermission.CREATE, projectId),
             MANAGE_CUSTOM_FIELDS_KEY to
                 customFieldPermissionResolver.hasPermission(actorId, CustomFieldPermission.CREATE, projectId),
+            MANAGE_TEMPLATES_KEY to
+                templatePermissionResolver.hasPermission(actorId, TemplatePermission.CREATE, projectId),
             MANAGE_FIELD_PERMISSIONS_KEY to
                 hasManageFieldPermissions(actorId, projectId),
         )
