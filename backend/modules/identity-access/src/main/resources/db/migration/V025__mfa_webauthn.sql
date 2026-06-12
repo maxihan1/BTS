@@ -1,4 +1,4 @@
--- FR-MF-03 WebAuthn(Passkey) 2차 인증 — 검증 후 INSERT=즉시 활성(status 컬럼 없음). credential_id 전역 UNIQUE. SDD §19.8
+-- FR-MF-03 WebAuthn(Passkey) 2차 인증 — 검증 후 INSERT=즉시 활성(status 컬럼 없음). credential_id 전역 UNIQUE. SDD §19.7.1
 
 CREATE TABLE webauthn_credentials (
     id                       UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -18,7 +18,7 @@ CREATE UNIQUE INDEX uq_webauthn_credential_id ON webauthn_credentials(credential
 -- FK 인덱스 — 사용자별 자격증명 조회/CASCADE 삭제 성능(PostgreSQL은 FK 인덱스 자동 생성 안 함).
 CREATE INDEX idx_webauthn_credentials_user ON webauthn_credentials(user_id);
 
-COMMENT ON TABLE  webauthn_credentials                          IS 'FR-MF-03 WebAuthn(Passkey) 자격증명(사용자당 N건). 검증 통과 후 INSERT=즉시 활성(status 컬럼 없음). SDD §19.8. identity-access raw SQL(init_codegen 미러 불요)';
+COMMENT ON TABLE  webauthn_credentials                          IS 'FR-MF-03 WebAuthn(Passkey) 자격증명(사용자당 N건). 검증 통과 후 INSERT=즉시 활성(status 컬럼 없음). SDD §19.7.1. identity-access raw SQL(init_codegen 미러 불요)';
 COMMENT ON COLUMN webauthn_credentials.id                       IS '자격증명 행 PK(gen_random_uuid). pgcrypto 확장 필요(V001에서 활성화)';
 COMMENT ON COLUMN webauthn_credentials.user_id                  IS 'BTS 사용자 FK(V001 users.id). ON DELETE CASCADE — 사용자 삭제 시 자격증명 연쇄 삭제';
 COMMENT ON COLUMN webauthn_credentials.credential_id            IS 'base64url(rawId). WebAuthn 명세상 전역 고유 — uq_webauthn_credential_id UNIQUE(복합 아님)';
