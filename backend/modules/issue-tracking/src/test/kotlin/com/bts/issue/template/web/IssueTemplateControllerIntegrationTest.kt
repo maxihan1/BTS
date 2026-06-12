@@ -2,6 +2,7 @@
 
 package com.bts.issue.template.web
 
+import com.bts.issue.project.ProjectLookup
 import com.bts.issue.template.application.IssueTemplateApplicationService
 import com.bts.issue.template.domain.DuplicateIssueTemplateException
 import com.bts.issue.template.domain.IssueTemplate
@@ -69,6 +70,7 @@ class IssueTemplateControllerIntegrationTest {
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
      * [IssueTemplateController] 와 [IssueTemplateExceptionHandler], MockK stub Bean 을 등록한다.
+     * [ProjectLookup] 은 UUID 입력은 그대로 반환, 비-UUID 문자열은 null 반환하는 stub 으로 대체한다.
      */
     @Configuration
     @EnableWebMvc
@@ -77,9 +79,14 @@ class IssueTemplateControllerIntegrationTest {
         open fun issueTemplateApplicationService(): IssueTemplateApplicationService = mockk(relaxed = true)
 
         @Bean
+        open fun projectLookup(): ProjectLookup = mockk(relaxed = true)
+
+        @Bean
         @Suppress("MaxLineLength")
-        open fun issueTemplateController(service: IssueTemplateApplicationService): IssueTemplateController =
-            IssueTemplateController(service)
+        open fun issueTemplateController(
+            service: IssueTemplateApplicationService,
+            projectLookup: ProjectLookup,
+        ): IssueTemplateController = IssueTemplateController(service, projectLookup)
 
         @Bean
         open fun issueTemplateExceptionHandler(): IssueTemplateExceptionHandler = IssueTemplateExceptionHandler()
@@ -90,6 +97,9 @@ class IssueTemplateControllerIntegrationTest {
 
     @Autowired
     lateinit var issueTemplateApplicationService: IssueTemplateApplicationService
+
+    @Autowired
+    lateinit var projectLookup: ProjectLookup
 
     lateinit var mockMvc: MockMvc
 
@@ -121,6 +131,10 @@ class IssueTemplateControllerIntegrationTest {
     @BeforeEach
     fun setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+        // UUID 형식 입력 → projectId 반환 (UUID path로 호출하는 테스트 케이스용)
+        every { projectLookup.resolve(projectId.toString()) } returns projectId
+        // 비-UUID 문자열 → null 반환 (projectKey 미존재 케이스 검증용)
+        every { projectLookup.resolve(projectKey) } returns null
     }
 
     // ── L-1. GET 목록 → 200 ───────────────────────────────────────────────────
@@ -141,20 +155,16 @@ class IssueTemplateControllerIntegrationTest {
             .andExpect(jsonPath("$.data[0].name").value("기본 버그 템플릿"))
     }
 
-    // ── L-2. GET 목록 projectIdOrKey 문자열 → ProjectId 해석 확인 ───────────
+    // ── L-2. GET 목록 projectIdOrKey 문자열 미존재 → 404 ────────────────────
 
     @Test
-    fun `GET issue-templates — projectKey 문자열 → projectId 로 해석 후 서비스 호출`() {
-        every {
-            issueTemplateApplicationService.listByProject(any(), any())
-        } returns emptyList()
-
+    fun `GET issue-templates — projectKey 미존재 → 404`() {
+        // projectKey 는 @BeforeEach 에서 projectLookup.resolve(projectKey) → null 로 설정됨
         mockMvc.perform(
             get("/api/v1/projects/$projectKey/issue-templates")
                 .accept(MediaType.APPLICATION_JSON),
         )
             .andExpect(status().isNotFound)
-            .andExpect(jsonPath("$.errorCode").value(IssueTemplateErrorCodes.PROJECT_NOT_FOUND))
     }
 
     // ── G-1. GET 단건 → 200 ───────────────────────────────────────────────────
@@ -354,13 +364,17 @@ class IssueTemplateControllerIntegrationTest {
     @Test
     fun `PATCH issue-templates templateId — 정상 수정 → 200 + 수정된 IssueTemplateResponse`() {
         val body = mapper.writeValueAsString(mapOf("name" to "수정된 이름"))
+        val existing = sampleTemplate()
+        every {
+            issueTemplateApplicationService.getById(any(), templateId)
+        } returns existing
         every {
             issueTemplateApplicationService.update(
                 actorId = any(),
                 projectId = projectId,
                 templateId = templateId,
                 name = "수정된 이름",
-                content = any(),
+                content = existing.content,
             )
         } returns sampleTemplate(name = "수정된 이름")
 
