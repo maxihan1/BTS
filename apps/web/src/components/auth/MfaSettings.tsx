@@ -157,6 +157,11 @@ function MfaCodeForm({
  * - enable 성공 후 setup 응답(secret_base32, qr_png_data_uri)을 null 리셋
  *   (CONCERN-state: 조건부 렌더로 숨기기만 하면 React state·메모리에 secret 잔존).
  * - mutation 성공 후 invalidateQueries로만 status 갱신(setQueryData 부분응답 금지).
+ *
+ * FR-MF-04 게이팅.
+ * - mfaEnrollmentRequired=true 사용자에게 상단에 MfaEnforcementBanner를 노출한다 (FR-D6-3).
+ * - enable 성공 시 강제 모드였으면 refreshSession() → 클레임 재계산 → /dashboard 이동 (FR-D6-4).
+ *   이를 생략하면 store가 stale(true) 상태로 남아 requireMfaEnrolled 가드가 영구 리다이렉트한다.
  */
 export function MfaSettings(): JSX.Element {
   const queryClient = useQueryClient()
