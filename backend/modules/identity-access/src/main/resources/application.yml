@@ -58,6 +58,13 @@ bts:
     # 이미 SYSTEM_ADMIN 보유자가 있으면 멱등 skip 하므로 재기동마다 재부여하지 않는다.
     # prod: BTS_BOOTSTRAP_ADMIN_USERNAME 환경변수로 주입 (Spring relaxed binding).
     admin-username: ${BTS_BOOTSTRAP_ADMIN_USERNAME:}
+  webauthn:
+    # WebAuthn(패스키/보안키) Relying Party 설정 (FR-MF-03).
+    # rp-id: RP 식별 도메인(포트/스킴 미포함). origin: 허용 origin(스킴+호스트+포트).
+    # dev 기본값은 로컬 SPA(5173) 기준. prod 는 BTS_WEBAUTHN_* 환경변수로 override (Spring relaxed binding).
+    rp-id: ${BTS_WEBAUTHN_RP_ID:localhost}
+    rp-name: ${BTS_WEBAUTHN_RP_NAME:BTS}
+    origin: ${BTS_WEBAUTHN_ORIGIN:http://localhost:5173}
 
 logging:
   level:
