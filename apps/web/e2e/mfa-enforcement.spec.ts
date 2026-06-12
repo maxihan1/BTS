@@ -80,9 +80,11 @@ test.describe('E2E-1 MFA 강제 게이트 — 리다이렉트 + 배너 + 활성�
       // Then. /settings/mfa 도달 확인
       await expect(page).toHaveURL(/\/settings\/mfa/)
 
-      // Then. 강제 안내 배너(role="status") 노출
-      await expect(page.getByRole('status')).toBeVisible()
-      await expect(page.getByRole('status')).toContainText(mfaStrings.enforcementBanner)
+      // Then. 강제 안내 배너(role="status") 노출 — 로딩 스켈레톤·백업코드 등 다른 status와의
+      //        strict-mode 다중 매칭을 피하려 배너 문구로 한정한다(playwright-getbyrole-exact-strict-mode).
+      await expect(
+        page.getByRole('status').filter({ hasText: mfaStrings.enforcementBanner })
+      ).toBeVisible()
 
       // Then. 페이지 제목 표시 (EC-1 — 레이아웃 403 소음에도 기본 UI 정상)
       await expect(
@@ -125,8 +127,10 @@ test.describe('E2E-2 MFA 강제 게이트 — /dashboard 이동 시도 시 /sett
       // Then. requireMfaEnrolled 가드가 /settings/mfa 로 되돌림
       await expect(page).toHaveURL(/\/settings\/mfa/)
 
-      // Then. 배너 여전히 노출 (게이트 해제 안 됨)
-      await expect(page.getByRole('status')).toBeVisible()
+      // Then. 배너 여전히 노출 (게이트 해제 안 됨) — 배너 문구로 한정
+      await expect(
+        page.getByRole('status').filter({ hasText: mfaStrings.enforcementBanner })
+      ).toBeVisible()
     }
   )
 })
@@ -154,8 +158,10 @@ test.describe('E2E-3 MFA 등록 후 강제 게이트 해제 (FR-MF-04)', () => {
       await loginAsAliceWithEnforcement(page)
       await expect(page).toHaveURL(/\/settings\/mfa/)
 
-      // Given. 배너 노출 확인 (강제 게이트 활성)
-      await expect(page.getByRole('status')).toBeVisible()
+      // Given. 배너 노출 확인 (강제 게이트 활성) — 배너 문구로 한정
+      await expect(
+        page.getByRole('status').filter({ hasText: mfaStrings.enforcementBanner })
+      ).toBeVisible()
 
       // Given. "2단계 인증 활성화" 버튼 대기
       await expect(

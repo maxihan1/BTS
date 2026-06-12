@@ -31,7 +31,7 @@ function MfaEnforcementBanner(): JSX.Element {
       role="status"
       aria-live="polite"
       aria-label="강제 MFA 등록 안내"
-      className="rounded-lg bg-warning/10 border border-warning/30 px-4 py-3 text-sm text-warning-foreground"
+      className="rounded-lg bg-primary/10 border border-primary/30 px-4 py-3 text-sm text-primary"
     >
       {mfaStrings.enforcementBanner}
     </div>
@@ -216,9 +216,14 @@ export function MfaSettings(): JSX.Element {
 
       // FR-D6-4: 강제 모드였다면 토큰 refresh → 클레임 재계산 → 게이트 해제 → /dashboard
       if (user?.mfaEnrollmentRequired === true) {
-        void refreshSession().then(() => {
-          void navigate({ to: '/dashboard' })
-        })
+        void refreshSession()
+          .then(() => {
+            void navigate({ to: '/dashboard' })
+          })
+          .catch(() => {
+            // refresh 실패 시 doRefresh 내부 clearSession이 이미 세션을 비워 다음 가드가
+            // /login으로 유도한다(spec EC-3). 여기선 추가 처리 없이 미처리 rejection만 차단.
+          })
       }
     },
     onError: (err) => {
