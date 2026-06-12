@@ -81,10 +81,9 @@ class WebAuthnChallengeStore(
      * @param userId challenge 를 소비할 사용자 UUID.
      * @return 유효한 [Challenge], 또는 부재/만료/재소비 시 `null`.
      */
-    fun consume(userId: UUID): Challenge? {
+    fun consume(userId: UUID): Challenge? =
         // asMap().remove 는 매핑이 있으면 그 값을 돌려주며 제거하고, 없으면 null 을 돌려준다(원자적).
-        return challenges.asMap().remove(userId)
-    }
+        challenges.asMap().remove(userId)
 
     internal companion object {
         /** WebAuthn challenge 유효 기간 — 5분. 등록/인증 응답이 그 안에 와야 한다. */
