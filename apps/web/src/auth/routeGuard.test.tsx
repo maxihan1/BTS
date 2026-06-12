@@ -1,8 +1,8 @@
-// 라우트 가드 헬퍼 단위 테스트 — requireAuth / redirectIfAuth / isSafeReturnTo / requirePasswordChanged / requireSystemAdmin
+// 라우트 가드 헬퍼 단위 테스트 — requireAuth / redirectIfAuth / isSafeReturnTo / requirePasswordChanged / requireSystemAdmin / requireMfaEnrolled
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { isRedirect } from '@tanstack/react-router'
 import { useAuthStore } from './authStore'
-import { requireAuth, redirectIfAuth, isSafeReturnTo, requirePasswordChanged, requireSystemAdmin } from './routeGuard'
+import { requireAuth, redirectIfAuth, isSafeReturnTo, requirePasswordChanged, requireSystemAdmin, requireMfaEnrolled } from './routeGuard'
 import { makeWhoami } from '@/mocks/auth-fixtures'
 
 // TanStack Router beforeLoad 컨텍스트 중 가드에서 사용하는 최소 형태
@@ -254,6 +254,54 @@ describe('requirePasswordChanged', () => {
     useAuthStore.setState({ accessToken: null, user: null })
 
     expect(() => requirePasswordChanged(makeCtx('/dashboard'))).not.toThrow()
+  })
+})
+
+// ─────────────────────────────────────────────
+// requireMfaEnrolled
+// ─────────────────────────────────────────────
+describe('requireMfaEnrolled', () => {
+  it('user null이면 통과 (requireAuth가 먼저 처리)', () => {
+    useAuthStore.setState({ accessToken: null, user: null })
+
+    expect(() => requireMfaEnrolled(makeCtx('/dashboard'))).not.toThrow()
+  })
+
+  it('이미 /settings/mfa 경로이면 mfaEnrollmentRequired=true여도 통과 (무한 redirect 방지)', () => {
+    useAuthStore.setState({
+      accessToken: 'valid-token',
+      user: makeWhoami({ mfaEnrollmentRequired: true }),
+    })
+
+    expect(() => requireMfaEnrolled(makeCtx('/settings/mfa'))).not.toThrow()
+  })
+
+  it('mfaEnrollmentRequired=true인 유저가 다른 경로 접근 → /settings/mfa 로 redirect', () => {
+    useAuthStore.setState({
+      accessToken: 'valid-token',
+      user: makeWhoami({ mfaEnrollmentRequired: true }),
+    })
+
+    let thrown: unknown
+    try {
+      requireMfaEnrolled(makeCtx('/dashboard'))
+    } catch (e) {
+      thrown = e
+    }
+
+    expect(thrown).toBeDefined()
+    expect(isRedirect(thrown)).toBe(true)
+    const r = thrown as RedirectResponse
+    expect(r.options.to).toBe('/settings/mfa')
+  })
+
+  it('mfaEnrollmentRequired=false인 유저 → throw 없음 (통과)', () => {
+    useAuthStore.setState({
+      accessToken: 'valid-token',
+      user: makeWhoami({ mfaEnrollmentRequired: false }),
+    })
+
+    expect(() => requireMfaEnrolled(makeCtx('/dashboard'))).not.toThrow()
   })
 })
 
