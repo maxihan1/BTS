@@ -57,10 +57,11 @@ class NotificationRepositoryIntegrationTest : NotificationTestcontainersBase() {
         val inserted = repo.insertIfAbsent(notification)
 
         assertThat(inserted).isTrue()
-        val count = dsl.fetchOne(
-            "SELECT COUNT(*) AS cnt FROM notifications WHERE dedup_key = ?",
-            "dedup-idempotent-first",
-        )?.get("cnt", Long::class.java)
+        val count =
+            dsl.fetchOne(
+                "SELECT COUNT(*) AS cnt FROM notifications WHERE dedup_key = ?",
+                "dedup-idempotent-first",
+            )?.get("cnt", Long::class.java)
         assertThat(count).isEqualTo(1L)
     }
 
@@ -71,10 +72,11 @@ class NotificationRepositoryIntegrationTest : NotificationTestcontainersBase() {
         val secondResult = repo.insertIfAbsent(notification.copy(id = UUID.randomUUID()))
 
         assertThat(secondResult).isFalse()
-        val count = dsl.fetchOne(
-            "SELECT COUNT(*) AS cnt FROM notifications WHERE dedup_key = ?",
-            "dedup-idempotent-second",
-        )?.get("cnt", Long::class.java)
+        val count =
+            dsl.fetchOne(
+                "SELECT COUNT(*) AS cnt FROM notifications WHERE dedup_key = ?",
+                "dedup-idempotent-second",
+            )?.get("cnt", Long::class.java)
         assertThat(count).isEqualTo(1L)
     }
 
@@ -101,10 +103,12 @@ class NotificationRepositoryIntegrationTest : NotificationTestcontainersBase() {
         val t1 = Instant.parse("2026-06-12T08:00:00Z")
         val t2 = Instant.parse("2026-06-12T09:00:00Z")
 
-        val older = buildNotification(recipientUserId = recipientId, dedupKey = "dedup-sort-old")
-            .copy(createdAt = t1)
-        val newer = buildNotification(recipientUserId = recipientId, dedupKey = "dedup-sort-new")
-            .copy(createdAt = t2)
+        val older =
+            buildNotification(recipientUserId = recipientId, dedupKey = "dedup-sort-old")
+                .copy(createdAt = t1)
+        val newer =
+            buildNotification(recipientUserId = recipientId, dedupKey = "dedup-sort-new")
+                .copy(createdAt = t2)
 
         repo.insertIfAbsent(older)
         repo.insertIfAbsent(newer)
