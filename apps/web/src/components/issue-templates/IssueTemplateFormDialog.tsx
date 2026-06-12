@@ -1,5 +1,6 @@
 // 이슈 템플릿 생성/수정 겸용 Dialog — radix Dialog 직접 import, RHF+Zod, key prop 재마운트
 import type { JSX } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -383,10 +384,12 @@ function FormBody({
  * - radix-ui Dialog 직접 import — shadcn 래퍼 부재(FR-AU-08 D6/D7 선례).
  * - create 모드: 이슈 타입 select + 이름 + 본문 입력 → useCreateIssueTemplate 뮤테이션.
  * - edit 모드: 이슈 타입 disabled(issueTypeId 불변) + 이름/본문 프리필 → useUpdateIssueTemplate 뮤테이션.
- * - submitError 는 상위에서 내려받아 폼 내 인라인 표시 — dead-path 방지(dialog-submiterror-ownership-dead-path 교훈).
+ * - submitError 우선순위: 부모 prop(externalSubmitError) > 내부 state(internalSubmitError).
+ *   부모가 직접 관리하면 외부 prop을 쓰고, 관리하지 않으면 컴포넌트가 내부 state로 인라인 표시.
+ *   dead-path 방지 — dialog-submiterror-ownership-dead-path 교훈.
  * - initial.id가 바뀌면 key prop으로 FormBody를 재마운트해 stale state 방지
  *   (react-usestate-stale-key-prop 교훈).
- * - 에러코드 → 메시지 매핑은 issueTemplateErrorMessage(labels)를 통해 단일 출처 유지
+ * - 에러코드 → 메시지 매핑은 issueTemplateErrorMessage를 통해 단일 출처 유지
  *   (error-key 매핑 공유 util 교훈).
  */
 export const IssueTemplateFormDialog = ({
@@ -403,16 +406,11 @@ export const IssueTemplateFormDialog = ({
   // initial.id가 바뀌면 FormBody를 재마운트해 폼 state 초기화
   const formKey = initial?.id ?? 'new'
 
-  /**
-   * submitError 상태는 부모가 소유한다.
-   * 이 컴포넌트 내부에서 mutation 에러가 발생하면 onServerError를 통해
-   * 부모에게 에러 메시지를 전달한다.
-   * 단, 부모가 submitError prop을 관리하지 않는 경우를 위해
-   * 컴포넌트 내부에서도 간단히 보관해 표시할 수 있도록 한다.
-   *
-   * 현재 구조: onServerError → FormBody 내부에서 직접 처리(인라인 표시 용도로 prop으로 올리지 않음).
-   * 부모가 submitError를 직접 관리할 때는 외부 prop이 우선한다.
-   */
+  // 부모가 submitError를 관리하지 않는 경우를 위한 내부 상태
+  const [internalSubmitError, setInternalSubmitError] = useState<string | null>(null)
+
+  // 외부 prop이 있으면 우선 사용, 없으면 내부 state — dead-path 방지
+  const effectiveSubmitError = externalSubmitError ?? internalSubmitError
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
@@ -435,11 +433,8 @@ export const IssueTemplateFormDialog = ({
             initial={initial}
             onSubmitSuccess={onSubmitSuccess}
             onOpenChange={onOpenChange}
-            submitError={externalSubmitError}
-            onServerError={() => {
-              // 부모가 submitError를 관리하지 않는 경우 noop.
-              // 실제 submitError 표시는 FormBody 내부 mutation onError에서 처리된다.
-            }}
+            submitError={effectiveSubmitError}
+            onServerError={setInternalSubmitError}
           />
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
