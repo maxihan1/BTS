@@ -152,7 +152,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 <aside class="sidebar">
     <div class="sidebar-head">
       <div class="logo">🏢 BTS Dashboard</div>
-      <div class="updated">2026-06-11 갱신</div>
+      <div class="updated">2026-06-12 갱신</div>
     </div>
     <nav>
       <ul class="nav-top">
@@ -182,9 +182,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
           <div><span class="dot dot-done"></span> 완료 <b>45</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>3</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>4</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>74</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>73</b></div>
         </div>
       </div>
     </div>
@@ -475,9 +475,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:65%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 20</div>
-        <div>🔄 진행중 3</div>
+        <div>🔄 진행중 4</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 8</div>
+        <div>⬜ 대기 7</div>
       </div>
     </div>
     <h2>세부 기능 (31개)</h2>
@@ -635,13 +635,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc">히스토리 조회 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span></span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — FR-HS-01 변경 모델(<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>ChangeGroup/Item) 재활용, 조회 전용 `IssueChangelogService` 추가</li><li><span class="step-icon">✅</span> D2 — 명세 — 페이징(page/size, 최신순)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — (활용) FR-HS-01 `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_change_group`+`issue_change_item` 읽기 전용 조회</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `GET /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s/{key}/changelog` 페이징 조회</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 타임라인 형식</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-진행중">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">🔄</span>
         <span class="fr-id">FR-TM-01</span>
         <span class="fr-desc"><span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">프로젝트</span>+타입별 본문 템플릿</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>Template</li><li><span class="step-icon">⬜</span> D2 — 명세</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_templates(<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">project</span>_id, type_id, body)`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — CRUD API + <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 생성 시 적용</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 템플릿 관리 페이지 + 생성 시 자동 적용</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>Template (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — PR #125</li><li><span class="step-icon">✅</span> D2 — 명세 — 적용방식 옵션 C(프론트 프리필+서버 안전망), (<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>oject</span>,type)당 1개</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_templates(<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">project</span>_id, issue_type_id, content)` (프로젝트+타입당 1개, 활성 UNIQUE) (책임. db-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — PR #125</li><li><span class="step-icon">✅</span> D4 — 백엔드 — CRUD API + <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 생성 시 적용(서버 안전망)</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #125</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 템플릿 관리 페이지 + 생성 시 자동 적용</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
