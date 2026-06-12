@@ -8,10 +8,10 @@ import io.kotest.matchers.shouldBe
 
 class NotificationEventTypeTest : DescribeSpec({
 
-    describe("NotificationEventType — 9종 존재 및 메타 검증") {
+    describe("NotificationEventType — 10종 존재 및 메타 검증") {
 
-        it("enum 상수가 정확히 9종이어야 한다") {
-            NotificationEventType.entries.size shouldBe 9
+        it("enum 상수가 정확히 10종이어야 한다") {
+            NotificationEventType.entries.size shouldBe 10
         }
 
         context("wireValue 검증") {
@@ -42,6 +42,9 @@ class NotificationEventTypeTest : DescribeSpec({
             it("AUTOMATION_FAILED.wireValue == \"automation.failed\"") {
                 NotificationEventType.AUTOMATION_FAILED.wireValue shouldBe "automation.failed"
             }
+            it("ISSUE_MENTIONED.wireValue == \"issue.mentioned\"") {
+                NotificationEventType.ISSUE_MENTIONED.wireValue shouldBe "issue.mentioned"
+            }
         }
 
         context("publishable 메타 — ISSUE_CREATED / ISSUE_TRANSITIONED 만 true") {
@@ -51,12 +54,15 @@ class NotificationEventTypeTest : DescribeSpec({
             it("ISSUE_TRANSITIONED.publishable == true") {
                 NotificationEventType.ISSUE_TRANSITIONED.publishable shouldBe true
             }
-            it("나머지 7종은 publishable == false") {
+            it("ISSUE_MENTIONED.publishable == false") {
+                NotificationEventType.ISSUE_MENTIONED.publishable shouldBe false
+            }
+            it("나머지 8종은 publishable == false") {
                 val nonPublishable =
                     NotificationEventType.entries.filter {
                         it != NotificationEventType.ISSUE_CREATED && it != NotificationEventType.ISSUE_TRANSITIONED
                     }
-                nonPublishable.size shouldBe 7
+                nonPublishable.size shouldBe 8
                 nonPublishable.forEach { eventType ->
                     eventType.publishable shouldBe false
                 }
@@ -69,6 +75,9 @@ class NotificationEventTypeTest : DescribeSpec({
             }
             it("fromWire(\"automation.failed\") == AUTOMATION_FAILED") {
                 NotificationEventType.fromWire("automation.failed") shouldBe NotificationEventType.AUTOMATION_FAILED
+            }
+            it("fromWire(\"issue.mentioned\") == ISSUE_MENTIONED") {
+                NotificationEventType.fromWire("issue.mentioned") shouldBe NotificationEventType.ISSUE_MENTIONED
             }
             it("fromWire(\"nonexistent\") == null (예외 아님)") {
                 NotificationEventType.fromWire("nonexistent").shouldBeNull()

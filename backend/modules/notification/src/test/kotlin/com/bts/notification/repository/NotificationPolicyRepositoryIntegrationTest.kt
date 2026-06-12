@@ -76,11 +76,11 @@ class NotificationPolicyRepositoryIntegrationTest : NotificationTestcontainersBa
     // ── findAll — 전역(null) 조회 ────────────────────────────────────────────────
 
     @Test
-    fun `findAll(null)은 V401 전역 시드 19행을 포함한다`() {
+    fun `findAll(null)은 V401 전역 시드 19행 + V403 멘션 시드 1행을 포함한다`() {
         val globals = repository.findAll(null)
 
-        // V401 시드: 전역 정책 19행
-        assertThat(globals).hasSizeGreaterThanOrEqualTo(19)
+        // V401 시드: 전역 정책 19행 + V403 시드: issue.mentioned 1행 = 20행
+        assertThat(globals).hasSizeGreaterThanOrEqualTo(20)
 
         // issue.created 전역 3행 존재 확인 (REPORTER / WATCHER / COMPONENT_LEAD, IN_APP)
         val issueCreatedGlobals =
@@ -97,6 +97,24 @@ class NotificationPolicyRepositoryIntegrationTest : NotificationTestcontainersBa
         )
         // 채널은 모두 IN_APP
         assertThat(issueCreatedGlobals.map { it.channel }).containsOnly(Channel.IN_APP)
+    }
+
+    // ── V403 시드 — issue.mentioned 전역 정책 존재 ───────────────────────────────
+
+    @Test
+    fun `V403 시드로 issue_mentioned MENTIONED IN_APP 전역 정책이 존재한다`() {
+        val globals = repository.findAll(null)
+
+        val mentionedPolicy =
+            globals.find {
+                it.eventType == NotificationEventType.ISSUE_MENTIONED &&
+                    it.recipientRole == RecipientRole.MENTIONED &&
+                    it.channel == Channel.IN_APP &&
+                    it.projectKey == null
+            }
+
+        assertThat(mentionedPolicy).isNotNull
+        assertThat(mentionedPolicy!!.enabled).isTrue()
     }
 
     // ── findAll — 프로젝트 키 조회 ───────────────────────────────────────────────

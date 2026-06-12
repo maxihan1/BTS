@@ -39,12 +39,12 @@ import java.util.UUID
  * [TestPermissionConfig] 가 fake [SystemPermissionResolver] 를 제공한다.
  *
  * ## 검증 시나리오
- * - E2E-1. GET /api/v1/notification-policies (admin) → V401 시드 전역 19행 이상 + issue.created 포함
+ * - E2E-1. GET /api/v1/notification-policies (admin) → V401+V403 시드 전역 20행 이상 + issue.created 포함
  * - E2E-2. POST 전역 정책 생성 (admin) → 201 + DB 반영 확인
  * - E2E-3. 프로젝트 override replace — ATLAS issue.created POST → evaluate()가 ATLAS 정책만 반환
  * - E2E-4. 비-admin actorId로 POST → 403 NOTIF_FORBIDDEN
  * - E2E-5. 중복 정책 두 번 POST → 두 번째 409 NOTIF_POLICY_DUPLICATE
- * - E2E-6. GET /catalog → 9 eventTypes + publishable 포함
+ * - E2E-6. GET /catalog → 10 eventTypes + publishable 포함
  */
 @SpringBootTest(
     classes = [
@@ -84,17 +84,17 @@ class NotificationPolicyEndToEndIntegrationTest {
         SecurityContextHolder.clearContext()
     }
 
-    // ── E2E-1. GET /api/v1/notification-policies (admin) → V401 시드 전역 19행 이상 ─
+    // ── E2E-1. GET /api/v1/notification-policies (admin) → V401+V403 시드 전역 20행 이상 ─
 
     @Test
-    fun `E2E-1 admin이 전역 정책 목록 조회 시 V401 시드 19행 이상과 issue created 정책이 포함된다`() {
+    fun `E2E-1 admin이 전역 정책 목록 조회 시 V401 V403 시드 20행 이상과 issue created 정책이 포함된다`() {
         mockMvc.perform(
             get("/api/v1/notification-policies")
                 .accept(MediaType.APPLICATION_JSON),
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data").isArray)
-            .andExpect(jsonPath("$.data.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(19)))
+            .andExpect(jsonPath("$.data.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(20)))
             .andExpect(
                 jsonPath("$.data[?(@.eventType == 'issue.created')]").exists(),
             )
