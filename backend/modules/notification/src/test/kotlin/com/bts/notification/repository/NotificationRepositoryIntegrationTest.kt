@@ -2,21 +2,119 @@
 
 package com.bts.notification.repository
 
+import com.bts.notification.domain.Channel
+import com.bts.notification.domain.Notification
+import com.bts.notification.domain.NotificationEventType
+import com.bts.notification.domain.NotificationStatus
 import com.bts.notification.support.NotificationTestcontainersBase
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import java.time.Instant
+import java.util.UUID
 
 /**
- * `notifications` 테이블(V402) 스키마 통합 테스트.
+ * notifications 테이블(V402) 스키마 통합 테스트 + NotificationRepository 동작 검증.
  *
  * Testcontainers PG16-alpine 위에서 V400~V402 마이그레이션 체인 적용 후
- * 테이블 존재 · 필수 컬럼 · 컬럼 타입(TIMESTAMPTZ 강제) · UNIQUE(dedup_key) ·
+ * 테이블 존재, 필수 컬럼, 컬럼 타입(TIMESTAMPTZ 강제), UNIQUE(dedup_key),
  * 수신자 조회 인덱스를 information_schema / pg_catalog 로 검증한다.
  *
- * 스키마 단위 검증이므로 Repository 클래스에 의존하지 않고 순수 jOOQ DSLContext 로
- * 시스템 카탈로그를 조회한다(V402 DDL 자체가 검증 대상).
+ * 추가로 NotificationRepository.insertIfAbsent 멱등성과
+ * findByRecipient 조회를 통합 검증한다.
  */
 class NotificationRepositoryIntegrationTest : NotificationTestcontainersBase() {
+    // ── NotificationRepository 헬퍼 ─────────────────────────────────────────────
+
+    /** 테스트마다 새로 생성 — DSLContext 는 bootstrap() 이후 확정된다. */
+    private val repo get() = NotificationRepository(dsl)
+
+    private fun buildNotification(
+        recipientUserId: UUID = UUID.randomUUID(),
+        dedupKey: String = "dedup-${UUID.randomUUID()}",
+    ): Notification {
+        val now = Instant.parse("2026-06-12T09:00:00Z")
+        return Notification(
+            id = UUID.randomUUID(),
+            recipientUserId = recipientUserId,
+            eventType = NotificationEventType.ISSUE_CREATED,
+            channel = Channel.IN_APP,
+            issueKey = "ATLAS-1",
+            title = "새 이슈가 생성되었습니다",
+            body = null,
+            payload = null,
+            status = NotificationStatus.PENDING,
+            dedupKey = dedupKey,
+            readAt = null,
+            createdAt = now,
+        )
+    }
+
+    // ── insertIfAbsent 멱등 테스트 ───────────────────────────────────────────────
+
+    @Test
+    fun `동일 dedup_key 첫 번째 삽입은 true를 반환하고 행이 1개 생성된다`() {
+        val notification = buildNotification(dedupKey = "dedup-idempotent-first")
+        val inserted = repo.insertIfAbsent(notification)
+
+        assertThat(inserted).isTrue()
+        val count = dsl.fetchOne(
+            "SELECT COUNT(*) AS cnt FROM notifications WHERE dedup_key = ?",
+            "dedup-idempotent-first",
+        )?.get("cnt", Long::class.java)
+        assertThat(count).isEqualTo(1L)
+    }
+
+    @Test
+    fun `동일 dedup_key 두 번째 삽입은 false를 반환하고 행이 여전히 1개다`() {
+        val notification = buildNotification(dedupKey = "dedup-idempotent-second")
+        repo.insertIfAbsent(notification)
+        val secondResult = repo.insertIfAbsent(notification.copy(id = UUID.randomUUID()))
+
+        assertThat(secondResult).isFalse()
+        val count = dsl.fetchOne(
+            "SELECT COUNT(*) AS cnt FROM notifications WHERE dedup_key = ?",
+            "dedup-idempotent-second",
+        )?.get("cnt", Long::class.java)
+        assertThat(count).isEqualTo(1L)
+    }
+
+    // ── findByRecipient 조회 테스트 ───────────────────────────────────────────────
+
+    @Test
+    fun `recipient_user_id로 조회하면 해당 수신자의 알림만 반환된다`() {
+        val aliceId = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        val bobId = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+
+        repo.insertIfAbsent(buildNotification(recipientUserId = aliceId, dedupKey = "dedup-alice-1"))
+        repo.insertIfAbsent(buildNotification(recipientUserId = aliceId, dedupKey = "dedup-alice-2"))
+        repo.insertIfAbsent(buildNotification(recipientUserId = bobId, dedupKey = "dedup-bob-1"))
+
+        val aliceNotifications = repo.findByRecipient(aliceId)
+
+        assertThat(aliceNotifications).hasSize(2)
+        assertThat(aliceNotifications).allMatch { it.recipientUserId == aliceId }
+    }
+
+    @Test
+    fun `findByRecipient는 created_at 내림차순으로 정렬한다`() {
+        val recipientId = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccccc")
+        val t1 = Instant.parse("2026-06-12T08:00:00Z")
+        val t2 = Instant.parse("2026-06-12T09:00:00Z")
+
+        val older = buildNotification(recipientUserId = recipientId, dedupKey = "dedup-sort-old")
+            .copy(createdAt = t1)
+        val newer = buildNotification(recipientUserId = recipientId, dedupKey = "dedup-sort-new")
+            .copy(createdAt = t2)
+
+        repo.insertIfAbsent(older)
+        repo.insertIfAbsent(newer)
+
+        val results = repo.findByRecipient(recipientId)
+
+        assertThat(results).hasSize(2)
+        assertThat(results[0].dedupKey).isEqualTo("dedup-sort-new")
+        assertThat(results[1].dedupKey).isEqualTo("dedup-sort-old")
+    }
     // ── 테이블 존재 ───────────────────────────────────────────────────────────────
 
     @Test
