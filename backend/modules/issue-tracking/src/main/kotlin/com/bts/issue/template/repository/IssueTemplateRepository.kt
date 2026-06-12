@@ -1,6 +1,7 @@
 // 이슈 템플릿 Repository — issue_templates 테이블 jOOQ DSL 접근
 package com.bts.issue.template.repository
 
+import com.bts.issue.jooq.tables.records.IssueTemplatesRecord
 import com.bts.issue.jooq.tables.references.ISSUE_TEMPLATES
 import com.bts.issue.template.domain.IssueTemplate
 import org.jooq.DSLContext
@@ -194,7 +195,7 @@ class IssueTemplateRepository(
     // ── private helpers ───────────────────────────────────────────────────────
 
     /**
-     * jOOQ [com.bts.issue.jooq.tables.records.IssueTemplatesRecord] 를
+     * jOOQ [IssueTemplatesRecord] 를
      * [IssueTemplate] 도메인 객체로 변환한다.
      *
      * NOT NULL 컬럼(id, project_id, issue_type_id, name, content)이 null 이면 DB 정합 이상이므로
@@ -203,7 +204,7 @@ class IssueTemplateRepository(
      * @param record 변환할 jOOQ 레코드.
      * @return 변환된 [IssueTemplate].
      */
-    private fun toTemplate(record: com.bts.issue.jooq.tables.records.IssueTemplatesRecord): IssueTemplate =
+    private fun toTemplate(record: IssueTemplatesRecord): IssueTemplate =
         IssueTemplate(
             id = record.id ?: error("issue_templates.id must not be null"),
             projectId = record.projectId ?: error("issue_templates.project_id must not be null"),
