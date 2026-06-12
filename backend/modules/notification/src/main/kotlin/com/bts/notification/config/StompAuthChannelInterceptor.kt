@@ -22,6 +22,12 @@ import org.springframework.security.oauth2.jwt.JwtException
  * 기존 Access Token 을 그대로 전달한다. 이 인터셉터가 CONNECT 시점에 한 번만 검증한 뒤
  * Principal 을 세션에 박제하므로, 이후 SUBSCRIBE/SEND frame 은 재검증 없이 통과한다.
  *
+ * ## 트레이드오프 — JWT 만료 vs 장수명 세션
+ * CONNECT 1회 검증 모델상 JWT 가 만료돼도 기존 WebSocket 세션은 살아 푸시를 계속 받는다(장수명
+ * 연결의 알려진 트레이드오프). 이번 PR 은 서버→클라이언트 푸시 전용(클라이언트→서버 SEND 없음)이라
+ * 폭발 반경이 작다. 향후 클라이언트→서버 SEND(예: 읽음 처리)를 도입하면 heartbeat 기반 토큰
+ * 재검증 또는 세션 만료가 필요하다.
+ *
  * ## 검증 규칙 (fail-closed)
  * - CONNECT 가 아닌 frame 은 검증 없이 통과 (이미 인증된 세션).
  * - `Authorization` 헤더 없음 / `Bearer ` prefix 없음 → 거부.
