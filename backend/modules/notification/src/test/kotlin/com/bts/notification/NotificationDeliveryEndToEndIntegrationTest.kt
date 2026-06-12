@@ -64,7 +64,6 @@ import java.util.concurrent.TimeUnit
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class NotificationDeliveryEndToEndIntegrationTest {
-
     @LocalServerPort
     private var port: Int = 0
 

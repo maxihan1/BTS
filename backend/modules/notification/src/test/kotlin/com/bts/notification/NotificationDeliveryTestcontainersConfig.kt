@@ -8,8 +8,6 @@ import com.bts.shared.issue.IssueRecipients
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.PlainJWT
 import org.flywaydb.core.Flyway
-import org.springframework.security.config.annotation.web.builders.HttpSecurity
-import org.springframework.security.web.SecurityFilterChain
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DataSourceConnectionProvider
@@ -23,9 +21,11 @@ import org.springframework.context.annotation.Primary
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.jdbc.datasource.TransactionAwareDataSourceProxy
+import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.JwtException
+import org.springframework.security.web.SecurityFilterChain
 import org.springframework.transaction.PlatformTransactionManager
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
@@ -53,7 +53,6 @@ import javax.sql.DataSource
  */
 @TestConfiguration
 class NotificationDeliveryTestcontainersConfig {
-
     companion object {
         /**
          * JVM 단위 singleton PostgreSQL container — pgmq 확장 사전 설치 이미지.
@@ -142,8 +141,9 @@ class NotificationDeliveryTestcontainersConfig {
      * Spring 트랜잭션 매니저 빈.
      */
     @Bean
-    fun transactionManager(dataSource: DataSource): PlatformTransactionManager =
-        DataSourceTransactionManager(dataSource)
+    fun transactionManager(dataSource: DataSource): PlatformTransactionManager {
+        return DataSourceTransactionManager(dataSource)
+    }
 
     /**
      * 테스트 전용 SecurityFilterChain — /ws WebSocket 업그레이드 경로를 permitAll 한다.

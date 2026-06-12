@@ -4,7 +4,6 @@ package com.bts.notification
 
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.PropertySource
 import org.springframework.scheduling.annotation.EnableScheduling
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler
 
@@ -23,7 +22,6 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler
 @TestConfiguration
 @EnableScheduling
 class NotificationDeliverySchedulingConfig {
-
     /**
      * 스케줄러 스레드 풀 빈.
      *
