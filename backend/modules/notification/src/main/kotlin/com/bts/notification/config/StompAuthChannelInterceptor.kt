@@ -20,16 +20,19 @@ import org.springframework.security.oauth2.jwt.JwtException
  * BTS 는 `SessionCreationPolicy.STATELESS` + JWT Bearer 라 세션 쿠키로 WebSocket 을 인증할 수 없다.
  * 클라이언트는 STOMP CONNECT frame 의 native header `Authorization: Bearer <accessToken>` 로
  * 기존 Access Token 을 그대로 전달한다. 이 인터셉터가 CONNECT 시점에 한 번만 검증한 뒤
- * Principal 을 세션에 박제하므로, 이후 SUBSCRIBE/SEND frame 은 재검증 없이 통과한다.
+ * Principal 을 세션에 박제하므로, 이후 SUBSCRIBE/UNSUBSCRIBE/DISCONNECT frame 은 재검증 없이
+ * 통과한다. 단, 인앱 알림은 서버→클라이언트 푸시 전용이라 클라이언트 SEND 는 거부한다(아래 규칙).
  *
  * ## 트레이드오프 — JWT 만료 vs 장수명 세션
  * CONNECT 1회 검증 모델상 JWT 가 만료돼도 기존 WebSocket 세션은 살아 푸시를 계속 받는다(장수명
- * 연결의 알려진 트레이드오프). 이번 PR 은 서버→클라이언트 푸시 전용(클라이언트→서버 SEND 없음)이라
- * 폭발 반경이 작다. 향후 클라이언트→서버 SEND(예: 읽음 처리)를 도입하면 heartbeat 기반 토큰
- * 재검증 또는 세션 만료가 필요하다.
+ * 연결의 알려진 트레이드오프). 이번 PR 은 서버→클라이언트 푸시 전용이며 클라이언트 SEND 를
+ * 인터셉터가 거부하므로 폭발 반경이 작다. 향후 클라이언트→서버 SEND(예: 읽음 처리)를 도입하면
+ * 해당 destination 의 메시지 레벨 인가 + heartbeat 기반 토큰 재검증/세션 만료가 필요하다.
  *
  * ## 검증 규칙 (fail-closed)
- * - CONNECT 가 아닌 frame 은 검증 없이 통과 (이미 인증된 세션).
+ * - CONNECT 외 SUBSCRIBE/UNSUBSCRIBE/DISCONNECT 등은 통과 (이미 인증된 세션).
+ * - SEND frame → 거부. @MessageMapping 핸들러가 없고 simple broker 라 클라이언트 SEND 가 브로커
+ *   destination 으로 직행해 타 사용자에게 위조 알림을 주입할 수 있어 메시지 레벨에서 차단한다.
  * - `Authorization` 헤더 없음 / `Bearer ` prefix 없음 → 거부.
  * - `pat_` prefix(Personal Access Token) → 거부. WebSocket 은 JWT 전용이다.
  * - [JwtDecoder.decode] 실패(만료·서명 불일치 등) → 거부.
@@ -55,12 +58,20 @@ class StompAuthChannelInterceptor(
         // 인바운드 메시지의 기존 mutable accessor 를 제자리 수정한다.
         // wrap()+재조립 패턴은 user 헤더를 세션으로 전파하지 못해 SimpUserRegistry 가 비어
         // user destination 해석이 실패한다(원인: DefaultUserDestinationResolver 가 빈 레지스트리 조회).
-        val accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor::class.java)
-        if (accessor == null || StompCommand.CONNECT != accessor.command) {
-            return message
+        val accessor =
+            MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor::class.java)
+                ?: return message
+        when (accessor.command) {
+            StompCommand.CONNECT -> accessor.user = authenticate(extractBearerToken(accessor))
+            StompCommand.SEND -> {
+                // 인앱 알림은 서버→클라이언트 푸시 전용이다. @MessageMapping 핸들러가 없고 simple
+                // broker 라 클라이언트 SEND 는 브로커 destination 으로 직행해 타 사용자에게 위조 알림을
+                // 주입할 수 있다(메시지 레벨 인가 부재). 따라서 클라이언트 SEND 를 거부한다.
+                log.debug("STOMP SEND 거부 — 인앱 알림은 푸시 전용(클라이언트 SEND 불가)")
+                throw StompAuthenticationException("client SEND not allowed (push-only notification channel)")
+            }
+            else -> Unit // SUBSCRIBE/UNSUBSCRIBE/DISCONNECT/heartbeat 등은 인증된 세션이므로 통과
         }
-        val token = extractBearerToken(accessor)
-        accessor.user = authenticate(token)
         return message
     }
 

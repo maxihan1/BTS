@@ -30,7 +30,8 @@ import java.util.UUID
  * - CONNECT-3. PAT(pat_ prefix) 토큰 → 거부(JWT 전용, decode 호출 안 함)
  * - CONNECT-4. 만료/무효 JWT(decode 예외) → 거부
  * - CONNECT-5. Bearer prefix 없는 헤더 → 거부
- * - NON-CONNECT. SEND/SUBSCRIBE 등은 검증 없이 통과(이미 인증된 세션)
+ * - SEND. 클라이언트 SEND → 거부(인앱 알림은 푸시 전용, 위조 주입 차단)
+ * - SUBSCRIBE. 검증 없이 통과(이미 인증된 세션)
  */
 class StompAuthChannelInterceptorTest {
     private val jwtDecoder = mockk<JwtDecoder>()
@@ -135,12 +136,10 @@ class StompAuthChannelInterceptorTest {
     }
 
     @Test
-    fun `NON-CONNECT SEND frame 은 검증 없이 그대로 통과시킨다`() {
-        val message = frameMessage(StompCommand.SEND)
-
-        val result = interceptor.preSend(message, channel)
-
-        assertThat(result).isSameAs(message)
+    fun `SEND frame 은 거부한다 (인앱 알림은 푸시 전용, 위조 주입 차단)`() {
+        assertThatThrownBy {
+            interceptor.preSend(frameMessage(StompCommand.SEND), channel)
+        }.isInstanceOf(StompAuthenticationException::class.java)
     }
 
     @Test
