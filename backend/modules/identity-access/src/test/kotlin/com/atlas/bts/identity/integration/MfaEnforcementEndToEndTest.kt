@@ -159,8 +159,7 @@ class MfaEnforcementEndToEndTest {
         @Primary
         fun fakeSensitiveProjectResolver(): SensitiveProjectResolver =
             object : SensitiveProjectResolver {
-                override fun anyRequiresMfa(projectIds: Set<UUID>): Boolean =
-                    SENSITIVE_PROJECT_ID in projectIds
+                override fun anyRequiresMfa(projectIds: Set<UUID>): Boolean = SENSITIVE_PROJECT_ID in projectIds
             }
     }
 
@@ -347,8 +346,9 @@ class MfaEnforcementEndToEndTest {
     }
 
     /** 응답 바디의 access_token 을 추출한다. */
-    private fun accessTokenOf(response: ResponseEntity<Map<*, *>>): String =
-        (response.body as Map<*, *>)["access_token"] as String
+    private fun accessTokenOf(response: ResponseEntity<Map<*, *>>): String {
+        return (response.body as Map<*, *>)["access_token"] as String
+    }
 
     /** whoami 를 호출해 mfaEnrollmentRequired 플래그를 읽는다(클레임 단일 출처 노출 검증). */
     private fun whoamiMfaEnrollmentRequired(accessToken: String): Boolean {
