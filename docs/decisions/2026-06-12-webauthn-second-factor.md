@@ -44,7 +44,7 @@ WebAuthn은 비밀번호 통과 후 거치는 **추가 인증 단계**로만 도
 
 ### D3. credential은 사용자당 N개 (다중 등록)
 
-TOTP는 사용자당 1개(`totp_secrets` PK=user_id)지만, WebAuthn은 **사용자당 여러 개**를 등록할 수 있다(집 노트북 지문 + 회사 데스크톱 + USB 보안키…). 따라서 `webauthn_credentials`는 user당 N행, PK=id(surrogate), `UNIQUE(user_id, credential_id)`로 중복 등록을 차단한다.
+TOTP는 사용자당 1개(`totp_secrets` PK=user_id)지만, WebAuthn은 **사용자당 여러 개**를 등록할 수 있다(집 노트북 지문 + 회사 데스크톱 + USB 보안키…). 따라서 `webauthn_credentials`는 user당 N행, PK=id(surrogate), **`UNIQUE(credential_id)` 전역 유일**로 중복 등록을 차단한다(WebAuthn credentialId는 전역적으로 유일하게 발급되므로 user 복합이 아닌 전역 UNIQUE가 표준 — spec 데이터 모델 정본).
 
 clone 방어. authenticator가 매 인증마다 증가시키는 `sign_count`를 저장하고, 검증 시 저장값보다 큰지 확인해 복제된 기기를 탐지한다(TOTP `last_verified_step` 단조 증가 방어와 같은 정신).
 
@@ -55,9 +55,9 @@ FIDO2의 attestation·assertion·CBOR 파싱을 직접 구현하는 것은 보�
 **버전 = 0.28.4.RELEASE 고정(Jackson 2 호환).** webauthn4j는 **0.31.0.RELEASE(2026-02-01)부터 Jackson 3**(`tools.jackson`)에 의존한다. BTS는 **Spring Boot 3.3.5 = Jackson 2.x**(`com.fasterxml.jackson`)이므로 0.31+는 클래스패스 충돌/이중 Jackson을 유발한다. 따라서 0.31 미만(Maven 공개 최신 안정판 0.28.4)을 채택한다. Spring Boot가 Jackson 3(SB 4+)로 상향되는 시점에 webauthn4j 0.31+로 동반 상향. 진입점은 `WebAuthnManager.createNonStrictWebAuthnManager()`(attestation 미검증=none 일치). 테스트는 `webauthn4j-test`(EmulatorAuthenticator)로 가상 ceremony.
 
 기존 MFA 인프라를 재사용한다.
-- 시도 제한. `MfaAttemptLimiter` 패턴.
-- 감사. `AuthAuditLogService`(method="webauthn").
-- 로그인 2단계 진입권. `MfaChallengeTokenService` 재사용(method로 분기).
+- 시도 제한. 기존 `MfaAttemptLimiter` 빈 **공유**(새 limiter 빈 신설 안 함). WebAuthn은 서명 검증이라 추측 brute-force가 불가능해 rate-limit 우선순위가 낮으나, challenge 재발급 남용·DoS 방어 + method 교차 lockout(공격자가 method를 바꿔가며 우회하는 것 차단)이라는 보수적 방향으로 공유한다.
+- 감사. `AuthAuditLogService`. **MfaService와 동일하게 상태변경과 같은 트랜잭션에 묶는다**(best-effort 아님 — 등록/삭제 INSERT·DELETE와 감사가 함께 commit/rollback). WebAuthn 로그인 verify 경로는 `MFA_CHALLENGE_SUCCESS/FAILURE`를 emit해야 하는데, 이 두 이벤트는 기존 `MfaService.verifyLogin` 내부에서만 emit되므로 **`WebAuthnSecurityKeyService.verifyLogin`에 동일 emit을 명시적으로 배선**한다(우회 시 WebAuthn 로그인 감사 누락 + coverage 가짜 통과).
+- 로그인 2단계 진입권. `MfaChallengeTokenService` 재사용(method로 분기). 등록 신규 이벤트는 `MFA_WEBAUTHN_REGISTERED/REMOVED`.
 
 **공개키 = 평문 저장(확정).** WebAuthn 공개키는 비밀이 아니므로 암호화/해시하지 않는다(표준 관행). `attestedCredentialData`를 `AttestedCredentialDataConverter`로 byte[] 직렬화 후 base64 TEXT로 보존한다(TOTP secret 암호화·백업코드 해시와 다름). `MfaSecretEncryptor`는 WebAuthn에 사용하지 않는다.
 

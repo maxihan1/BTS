@@ -150,7 +150,7 @@
 
 **GREEN**. `WebAuthnService`(WebAuthnManager + WebAuthnProperties + ObjectConverter 주입).
 - `registrationOptionsJson(challenge, user, excludeCredentialIds): String` — `PublicKeyCredentialCreationOptions`(rpId/rpName, user handle=userId 16바이트, pubKeyCredParams=[ES256(-7),RS256(-257)], attestation=none, userVerification=preferred, residentKey=discouraged, excludeCredentials) 생성 후 **ObjectConverter로 JSON 직렬화**(NFR-9).
-- `verifyRegistration(responseJson, challenge): RegistrationData` — `ServerProperty(origin, rpId, challenge)` + `RegistrationParameters` → `verifyRegistrationResponseJSON`.
+- `verifyRegistration(responseJson, challenge): RegistrationData` — `ServerProperty(origin, rpId, challenge)` + `RegistrationParameters(serverProperty, pubKeyCredParams, userVerificationRequired=false, userPresenceRequired=true)` → `verifyRegistrationResponseJSON`(0.28.4 인자 매핑은 RED 가상 ceremony로 강제 검증 — userVerification=preferred ⇒ uvRequired=false).
 - `authenticationOptionsJson(challenge, allowCredentialIds): String` — `PublicKeyCredentialRequestOptions` 직렬화.
 - `verifyAuthentication(responseJson, credentialRecord, challenge): AuthenticationData` — `AuthenticationParameters`(serverProperty, credentialRecord, allowCredentials, userVerificationRequired, userPresenceRequired) → `verifyAuthenticationResponseJSON`.
 - credential 직렬화 헬퍼. `AttestedCredentialDataConverter(objectConverter)` ↔ base64.
@@ -165,24 +165,24 @@
 
 **메타**.
 - agent: `security-engineer`
-- files: [`«main»/mfa/WebAuthnSecurityKeyService.kt`, `«main»/audit/AuthEventType.kt`, `«test»/mfa/WebAuthnSecurityKeyServiceTest.kt`, `«test»/audit/AuthEventEmitCoverageTest.kt`(있으면 갱신)]
+- files: [`«main»/mfa/WebAuthnSecurityKeyService.kt`, `«main»/audit/AuthEventType.kt`, `«test»/mfa/WebAuthnSecurityKeyServiceTest.kt`, `«test»/audit/AuthAuditLogServiceTest.kt`, `«test»/audit/AuthEventEmitCoverageTest.kt`]
 - depends-on: [3, 4, 5]
 
-**RED**. `WebAuthnSecurityKeyServiceTest` — registerStart/registerFinish(성공·challenge만료·검증실패)·authenticateStart·verifyLogin(성공·signCount clone거부·실패)·listKeys·deleteKey(소유검증) sealed result. 가상 authenticator(webauthn4j-test) + mock repo/challenge store.
+**RED**. `WebAuthnSecurityKeyServiceTest` — registerStart/registerFinish(성공·challenge만료·검증실패·credentialId UNIQUE 충돌 409)·authenticateStart·verifyLogin(성공·signCount clone거부·signCount=0 정상기기 허용·실패)·listKeys·deleteKey(소유검증) sealed result. 가상 authenticator(webauthn4j-test) + mock repo/challenge store. **verifyLogin 성공/실패 시 `MFA_CHALLENGE_SUCCESS`/`MFA_CHALLENGE_FAILURE` emit 검증**.
 
 **GREEN**.
-- `AuthEventType`에 `MFA_WEBAUTHN_REGISTERED`, `MFA_WEBAUTHN_REMOVED` 추가(emit coverage 가드 동반 갱신 — 메모리 enum-add-breaks-crossmodule-count-guard).
-- `WebAuthnSecurityKeyService`(@Service @Transactional). 의존: WebAuthnService·WebAuthnCredentialRepository·WebAuthnChallengeStore·AuthAuditLogService·MfaAttemptLimiter.
+- `AuthEventType`에 `MFA_WEBAUTHN_REGISTERED`, `MFA_WEBAUTHN_REMOVED` 추가. **회귀 가드 동반 갱신(BLOCKER — 리뷰 실측)**: (1) `AuthEventType.kt`의 L1 주석/KDoc "18종"→"20종", (2) **`AuthAuditLogServiceTest.kt`의 하드코딩 `setOf(18종)` isEqualTo 단언을 20종으로 갱신**(메모리 enum-add-breaks-crossmodule-count-guard — 이 하드코딩 테스트가 실제 차단 지점), (3) `AuthEventEmitCoverageTest` 갱신.
+- `WebAuthnSecurityKeyService`(@Service @Transactional). 의존: WebAuthnService·WebAuthnCredentialRepository·WebAuthnChallengeStore·AuthAuditLogService·**기존 MfaAttemptLimiter 빈 공유**(새 limiter 신설 안 함, ADR).
   - `registerStart(userId): String`(challenge issue + options json, excludeCredentials=기존 키)
-  - `registerFinish(userId, responseJson, name): RegisterResult`(challenge consume → verifyRegistration → credentialId UNIQUE 충돌=409 → insert → MFA_WEBAUTHN_REGISTERED). sealed.
-  - `authenticateStart(userId): String`(challenge issue + options json, allowCredentials=등록 키)
-  - `verifyLogin(userId, responseJson): VerifyResult`(challenge consume → credential 복원 → verifyAuthentication → advanceSignCount(clone 거부) → touchLastUsed). VerifyResult.Success/InvalidAssertion/TooManyAttempts(MfaAttemptLimiter).
-  - `listKeys(userId)`, `deleteKey(userId, id): Boolean`(소유검증 + MFA_WEBAUTHN_REMOVED), `hasActiveKey(userId): Boolean`.
-- webauthn4j 검증 예외 → sealed result 변환(catch-all 500 변질 방지, NFR-7).
+  - `registerFinish(userId, responseJson, name): RegisterResult`(challenge consume → verifyRegistration → credentialId 전역 UNIQUE 충돌=409 → insert → `MFA_WEBAUTHN_REGISTERED` 감사). sealed.
+  - `authenticateStart(userId): String`(challenge issue + options json, allowCredentials=등록 키). **챌린지 토큰은 여기서 consume하지 않음**(verify에서만 소비, 아래 Task 7 참조).
+  - `verifyLogin(userId, responseJson): VerifyResult`(WebAuthn challenge consume → credential 복원 → verifyAuthentication → advanceSignCount(clone 거부, signCount=0 정상기기 허용) → touchLastUsed → **`MFA_CHALLENGE_SUCCESS` emit**). 실패 시 **`MFA_CHALLENGE_FAILURE` emit**. VerifyResult.Success/InvalidAssertion/TooManyAttempts(공유 MfaAttemptLimiter).
+  - `listKeys(userId)`, `deleteKey(userId, id): Boolean`(소유검증 + `MFA_WEBAUTHN_REMOVED` 감사), `hasActiveKey(userId): Boolean`.
+- webauthn4j 검증 예외 → sealed result 변환(catch-all 500 변질 방지, NFR-7). 검증 실패 원인은 내부 로그(WARN)에만, 응답은 일반 메시지(Guard 예외 message 누출 방지).
 
-**REFACTOR**. result 매핑 헬퍼, KDoc, best-effort 감사(권한예외 포함 금지 — 메모리 best-effort-loop-permission-exception-nonprod-mask).
+**REFACTOR**. result 매핑 헬퍼, KDoc. **감사는 MfaService 선례대로 상태변경과 같은 트랜잭션**(best-effort 아님 — 등록/삭제 INSERT·DELETE와 함께 commit/rollback). 로그인 verify 경로의 감사도 동일.
 
-**검증**. `./gradlew :backend:modules:identity-access:test --tests "*WebAuthnSecurityKeyServiceTest" --tests "*AuthEventEmitCoverageTest"`
+**검증**. `./gradlew :backend:modules:identity-access:test --tests "*WebAuthnSecurityKeyServiceTest" --tests "*AuthAuditLogServiceTest" --tests "*AuthEventEmitCoverageTest"`
 
 ---
 
@@ -190,19 +190,22 @@
 
 **메타**.
 - agent: `security-engineer`
-- files: [`«main»/web/MfaController.kt`, `«main»/web/AuthController.kt`, `«main»/spi/MfaChallenge.kt`, `«test»/web/MfaWebAuthnControllerTest.kt`]
+- files: [`«main»/web/MfaController.kt`, `«main»/web/AuthController.kt`, `«main»/spi/MfaChallenge.kt`, `«main»/config/SecurityConfig.kt`, `«test»/web/MfaWebAuthnControllerTest.kt`]
 - depends-on: [6]
 
-**RED**. `MfaWebAuthnControllerTest`(@WebMvcTest 또는 slice) — register/start·finish·GET·DELETE·authenticate/start·verify(method=webauthn) 상태코드/PAT 403/소유검증 404. 엔드포인트 부재로 실패.
+**RED**. `MfaWebAuthnControllerTest`(@WebMvcTest 또는 slice) — register/start·finish·GET·DELETE·authenticate/start·verify(method=webauthn) 상태코드/PAT 403/소유검증 404. **authenticate/start·verify가 챌린지 토큰만으로(세션 없이) 도달 가능**한지(permitAll) 검증. 엔드포인트 부재로 실패.
 
 **GREEN**.
+- **`SecurityConfig.kt`(BLOCKER — 리뷰 실측)**. `webauthn/authenticate/start`와 verify 확장 경로는 정식 세션 발급 전(챌린지 토큰 기반) 호출이라, 기존 `MFA_VERIFY_PATH` 선례대로 **permitAll + `csrf.ignoringRequestMatchers` 양쪽에 등록**한다. 미등록 시 `/api/**` authenticated 규칙에 걸려 401. register/finish·GET·DELETE는 JWT 인증 경로(등록 불요).
 - `MfaChallenge`에 `WEBAUTHN` 추가(NOT_IMPLEMENTED_YET 정리).
-- `MfaController`. `POST /webauthn/register/start`(200 options json), `POST /webauthn/register/finish`(201 {id,name}/400/409), `GET /webauthn`(키 목록), `DELETE /webauthn/{id}`(204/404), `POST /webauthn/authenticate/start`(200 options/401). JWT 전용(PAT 403). options는 `String` produces=application/json(NFR-9).
-- `AuthController`. (1) line 181 `mfaService.isEnabled` → `isAnyMfaEnabled`(TOTP `isEnabled` OR `webauthnSecurityKeyService.hasActiveKey`)로 합성. (2) `/mfa/verify`의 method 분기에 `webauthn` 추가 → `mapWebauthnResult`(Success→issueTokens mfaVerified=true / InvalidAssertion→401 invalid_code / TooManyAttempts→429). 도메인 결과 직접 ResponseEntity 매핑(catch-all 회귀 방지).
+- `MfaController`. `POST /webauthn/register/start`(200 options json), `POST /webauthn/register/finish`(201 {id,name}/400/409), `GET /webauthn`(키 목록), `DELETE /webauthn/{id}`(204/404), `POST /webauthn/authenticate/start`(200 options/401). register/list/delete는 JWT 전용(PAT 403). options는 `String` produces=application/json(NFR-9).
+- `AuthController`.
+  (1) line 181 `mfaService.isEnabled` → `isAnyMfaEnabled`(TOTP `isEnabled` **OR** `webauthnSecurityKeyService.hasActiveKey`)로 합성. C7 타이밍 누출 가드 유지(Success 이후에만 조회). OR 단락 평가 순서는 기존 TOTP 우선(회귀 최소).
+  (2) `/mfa/verify`의 method 분기에 `webauthn` 추가 → `mapWebauthnResult`(Success→issueTokens mfaVerified=true / InvalidAssertion→401 invalid_code / TooManyAttempts→429). **챌린지 토큰 consume은 기존 verifyByMethod 진입부에서 1회(method 분기 전, 기존 EC-12 동작 유지) — start에서는 consume 안 함**. WebAuthn challenge(nonce) consume은 `WebAuthnSecurityKeyService.verifyLogin` 내부에서 별도 1회용. 토큰은 소비됐는데 nonce 검증 실패 시 재로그인 필요(명시적 동작). 도메인 결과 직접 ResponseEntity 매핑(catch-all 회귀 방지).
 
-**REFACTOR**. DTO(WebAuthnRegisterFinishRequest{credential,name}, WebAuthnVerify는 기존 MfaVerifyRequest 확장), KDoc.
+**REFACTOR**. DTO(WebAuthnRegisterFinishRequest{credential,name}, verify는 기존 MfaVerifyRequest에 credential 필드 확장), KDoc.
 
-**검증**. `./gradlew :backend:modules:identity-access:test --tests "*MfaWebAuthnControllerTest" --tests "*AuthControllerTest"`(기존 회귀 0)
+**검증**. `./gradlew :backend:modules:identity-access:test --tests "*MfaWebAuthnControllerTest" --tests "*AuthControllerTest" --tests "*SecurityConfig*"`(기존 회귀 0)
 
 ---
 
@@ -248,4 +251,30 @@
 - 추가 검증: ktlint/detekt(--rerun-tasks), 통합테스트 prod 부팅 레시피, verify-master-plan.sh
 - 프론트(D6)·E2E(D7)는 후속 PR (본 PR 범위 외)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-12, security-engineer 독립 adversarial, 기존 코드 실측)
+
+**판정: 수정후진행 → 수정 완료.** BLOCKER 3건 + CONCERN 8건 모두 plan/spec/ADR에 반영.
+
+**BLOCKER (실측 차단/회귀 — 모두 해소)**.
+- B1. `authenticate/start`·`verify`(챌린지토큰 기반, 세션 전)가 `SecurityConfig` permitAll+CSRF 제외 미등록 시 401 → **Task 7 files에 `config/SecurityConfig.kt` 추가 + 양쪽 등록 명시**.
+- B2. `AuthAuditLogServiceTest.kt`가 AuthEventType "18종"을 하드코딩 setOf isEqualTo → enum 2종 추가 시 즉시 fail → **Task 6 files에 `AuthAuditLogServiceTest.kt` 추가 + "18→20종" 주석/단언 갱신 명시**.
+- B3. `MFA_CHALLENGE_SUCCESS/FAILURE`가 `MfaService.verifyLogin` 내부에서만 emit → WebAuthn 경로 우회 시 감사 누락 + coverage 가짜 통과 → **Task 6에 `WebAuthnSecurityKeyService.verifyLogin` 감사 emit 배선 명시**.
+
+**CONCERN (반영)**.
+- C1. ADR D3 `UNIQUE(user_id, credential_id)` ↔ spec `UNIQUE(credential_id)` 충돌 → **ADR을 전역 유일로 정정**(spec 정본).
+- C2. 챌린지토큰/nonce 두 1회용 순서 → **spec EC-11/EC-12 + Task 7에 start=validate만/verify=consume 명시**.
+- C3. 감사 same-tx vs best-effort 혼재 → **ADR·Task 6 REFACTOR를 MfaService 선례(same-tx)로 통일**.
+- C4. MfaAttemptLimiter 공유/별도 미결 → **기존 빈 공유 확정**(ADR·spec NFR-5, 새 빈 0).
+- C5. `isAnyMfaEnabled` 합성 시 C7 타이밍 가드 유지 + OR 단락(TOTP 우선) → Task 7 명시.
+- C6. Task 5 `verifyRegistration` userVerificationRequired=false 명시 + RED 가상 ceremony 강제 검증.
+
+**NIT**. fr-index 부분완료 표기는 FR-MF-01/02/04 선례 답습(Task 9), glossary 7개 용어 게이트1 전 Maxi 확정, signCount=0 정상기기 테스트 커버(Task 6/8), 검증 실패 원인 WARN 로그만(응답 일반 메시지).
+
+**건전 판정**. 설계 방향(2차 인증 only·attestation none·Caffeine nonce·webauthn4j 0.28.4 Jackson2 고정)·TDD 분해·depends-on 그래프는 건전.
+
+### plan-ceo-review (범위/가치 — Maxi 기확정)
+
+- 범위. 백엔드 slice D1~D5만(프론트/E2E 후속) — FR-MF-01/02/04 동일 패턴, Maxi 확정. ✅
+- 가치/우선순위. WebAuthn은 '선택'·Phase 4 작업을 당겨 진행(Maxi 명시 요청). 게이트1에서 재확인 항목. ⚠️(범위 자체는 합의됨)

@@ -87,7 +87,7 @@
 - **NFR-2 (challenge 1회용·단기)** challenge는 Caffeine에 TTL 5분·key=userId로 저장하고 finish/verify 성공 시 즉시 소비(삭제). 재사용·만료 challenge는 거부. 단일 호스트 in-memory(기존 `MfaChallengeTokenService`/`MfaAttemptLimiter` 선례).
 - **NFR-3 (replay/clone 방어)** challenge nonce(매 ceremony 신규) + signCount 단조 증가 검증(조건부 UPDATE, TOCTOU 차단 — 메모리 advisory-lock-bigint-toctou 정신).
 - **NFR-4 (origin/rpId 엄격 검증)** `ServerProperty`의 origin·rpId가 어긋나면 webauthn4j가 검증 실패. 환경별 설정 누락 시 모든 검증이 실패하므로 설정값 부팅 로깅(secret 아님).
-- **NFR-5 (rate-limit)** assertion verify 실패를 기존 `MfaAttemptLimiter` 패턴으로 집계(5회/5분 → 429 `too_many_attempts`). TOTP 카운터와 통합 또는 병렬(구현 시 결정, 사용자별).
+- **NFR-5 (rate-limit)** assertion verify 실패를 **기존 `MfaAttemptLimiter` 빈 공유**로 집계(5회/5분 → 429 `too_many_attempts`, 사용자별). 새 limiter 빈 신설 안 함. WebAuthn은 서명 검증이라 추측 brute-force가 불가능해 우선순위는 낮으나, method 교차 lockout(공격자가 method를 바꿔 우회 차단)·challenge 재발급 남용 방어로 공유한다(ADR).
 - **NFR-6 (계정 열거 방지)** register/list/delete는 JWT 인증 필수(본인만, PAT 403). 로그인 assertion start/verify는 챌린지 토큰 기반, 실패는 원인 무관 일반 메시지.
 - **NFR-7 (가용성)** 감사 INSERT 실패가 흐름을 막지 않음(best-effort). webauthn4j 검증 예외는 도메인 결과(sealed)로 변환해 catch-all 500 변질 방지(메모리 catch-all-exceptionhandler-swallows-responsestatusexception).
 - **NFR-8 (시각 의존)** last_used_at 등 시각 기록은 주입된 `Clock` 사용(메모리 authcontroller-revokesession-timebomb).
@@ -149,6 +149,8 @@ CREATE INDEX idx_webauthn_credentials_user ON webauthn_credentials(user_id);
 - **EC-8** PAT로 register/list/delete → 403(세션 관리 선례).
 - **EC-9** 동시 verify(두 탭) → challenge 1회용 소비로 한쪽만 성공(Caffeine atomic invalidate).
 - **EC-10** 마지막 보안 키 삭제(TOTP도 없음) → MFA 완전 해제(비번 로그인 복귀). 강제 대상이면 FR-MF-04 게이트가 재등록 유도(본 PR은 삭제 자체를 막지 않음).
+- **EC-11** 챌린지 토큰(2단계 진입권)과 WebAuthn challenge(nonce) **두 1회용의 순서** — `authenticate/start`는 챌린지 토큰을 **validate만**(consume 안 함) 하고 nonce를 발급한다. `/mfa/verify`는 기존 EC-12대로 진입부에서 챌린지 토큰을 1회 consume한 뒤 method 분기로 들어가고, WebAuthn nonce는 `verifyLogin` 내부에서 별도 1회용 consume한다. 토큰이 소비된 뒤 nonce 검증이 실패하면 처음부터 재로그인이 필요하다(명시적 동작, 토큰 롤백 안 함).
+- **EC-12** 같은 챌린지 토큰으로 `authenticate/start`를 여러 번 호출 → 매 호출 새 nonce 발급(이전 nonce 무효화). 토큰 만료(5분) 내 재시도 허용. nonce 남용은 1회용·단기 TTL로 제한.
 
 ## 제약 조건
 
