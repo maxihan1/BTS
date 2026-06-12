@@ -132,6 +132,7 @@ class IssueEventPublisherTest : DescribeSpec({
                         projectKey = "ATLAS",
                         summary = "첫 번째 이슈",
                         reporterId = ActorId(UUID.fromString("11111111-1111-1111-1111-111111111111")),
+                        actorId = ActorId(UUID.fromString("11111111-1111-1111-1111-111111111111")),
                         occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
                     )
 
@@ -169,6 +170,7 @@ class IssueEventPublisherTest : DescribeSpec({
                         issueKey = IssueKey("ATLAS-2"),
                         fromState = "open",
                         toState = "IN_PROGRESS",
+                        actorId = ActorId(UUID.fromString("22222222-2222-2222-2222-222222222222")),
                         occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
                     )
 

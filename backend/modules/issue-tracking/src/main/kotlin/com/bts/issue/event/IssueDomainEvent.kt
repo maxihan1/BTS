@@ -37,6 +37,7 @@ sealed interface IssueDomainEvent
  * @property projectKey 소속 프로젝트 키. 예: `ATLAS`
  * @property summary 이슈 제목.
  * @property reporterId 생성자 행위자 ID.
+ * @property actorId 이 이벤트를 유발한 행위자 ID(생성 시점엔 reporterId 와 동일). 알림 수신자 자기제외에 사용.
  * @property occurredAt 이벤트 발생 시각 (UTC).
  */
 @JsonTypeName("issue.created")
@@ -45,6 +46,7 @@ data class IssueCreated(
     val projectKey: String,
     val summary: String,
     val reporterId: ActorId,
+    val actorId: ActorId,
     val occurredAt: Instant,
 ) : IssueDomainEvent
 
@@ -68,6 +70,7 @@ data class IssueUpdated(
  * @property issueKey 전이된 이슈의 키.
  * @property fromState 전이 전 상태 이름. 예: `"open"`
  * @property toState 전이 후 상태 이름. 예: `"in_progress"`
+ * @property actorId 전이를 수행한 행위자 ID. 알림 수신자 자기제외에 사용.
  * @property occurredAt 이벤트 발생 시각 (UTC).
  */
 @JsonTypeName("issue.transitioned")
@@ -75,6 +78,7 @@ data class IssueTransitioned(
     val issueKey: IssueKey,
     val fromState: String,
     val toState: String,
+    val actorId: ActorId,
     val occurredAt: Instant,
 ) : IssueDomainEvent
 
