@@ -80,6 +80,23 @@ class NotificationRepositoryIntegrationTest : NotificationTestcontainersBase() {
         assertThat(count).isEqualTo(1L)
     }
 
+    // ── markSent 상태 전이 테스트 ─────────────────────────────────────────────────
+
+    @Test
+    fun `markSent는 PENDING 행을 SENT로 갱신한다`() {
+        val notification = buildNotification(dedupKey = "dedup-mark-sent")
+        repo.insertIfAbsent(notification)
+
+        repo.markSent(notification.id)
+
+        val status =
+            dsl.fetchOne(
+                "SELECT status FROM notifications WHERE id = ?",
+                notification.id,
+            )?.get("status", String::class.java)
+        assertThat(status).isEqualTo("SENT")
+    }
+
     // ── findByRecipient 조회 테스트 ───────────────────────────────────────────────
 
     @Test

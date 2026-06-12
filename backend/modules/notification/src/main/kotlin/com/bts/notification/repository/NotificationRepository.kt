@@ -72,6 +72,22 @@ class NotificationRepository(
     }
 
     /**
+     * 알림 1건의 상태를 SENT 로 갱신한다 (실시간 푸시 성공 직후 호출).
+     *
+     * 알림 행은 먼저 PENDING 으로 삽입되고, 채널 전송이 성공한 뒤에만 이 메서드로 SENT 로 전이한다.
+     * 푸시가 실패하면 PENDING 으로 남아 Inbox(FR-UX-03)가 영속 fallback 이 된다(at-least-once 미보장 푸시).
+     *
+     * @param id 갱신할 알림 ID
+     */
+    @Transactional
+    fun markSent(id: UUID) {
+        dsl.update(NOTIFICATIONS)
+            .set(NOTIFICATIONS.STATUS, NotificationStatus.SENT.name)
+            .where(NOTIFICATIONS.ID.eq(id))
+            .execute()
+    }
+
+    /**
      * 수신자 UUID 로 알림 목록을 최신순으로 조회한다.
      *
      * deleted 개념이 없으므로 전체 행을 반환한다. 페이지네이션은 상위 서비스 레이어에서 처리.

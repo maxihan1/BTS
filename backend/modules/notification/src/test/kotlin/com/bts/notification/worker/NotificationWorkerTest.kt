@@ -93,6 +93,7 @@ class NotificationWorkerTest : DescribeSpec({
             every { repository.insertIfAbsent(any()) } returns true
             every { channelSender.supports(Channel.IN_APP) } returns true
             justRun { channelSender.send(any()) }
+            justRun { repository.markSent(any()) }
             every { dsl.execute(any<String>(), NotificationWorker.QUEUE_NAME, msgId) } returns 1
         }
 
@@ -134,13 +135,25 @@ class NotificationWorkerTest : DescribeSpec({
             assertThat(notificationSlot.captured.recipientUserId).isEqualTo(mentionedId)
         }
 
-        it("Notification 의 status 가 SENT 이다 (신규 발송)") {
+        it("Notification 은 PENDING 으로 삽입되고 발송 성공 후 markSent 로 SENT 전이된다") {
             val notificationSlot = slot<Notification>()
             every { repository.insertIfAbsent(capture(notificationSlot)) } returns true
 
             worker.pollAndProcess()
 
-            assertThat(notificationSlot.captured.status).isEqualTo(NotificationStatus.SENT)
+            assertThat(notificationSlot.captured.status).isEqualTo(NotificationStatus.PENDING)
+            verify(exactly = 1) { repository.markSent(notificationSlot.captured.id) }
+        }
+
+        it("push 실패 시 markSent 미호출(PENDING 유지)·메시지 delete (best-effort, Inbox fallback)") {
+            every { channelSender.send(any()) } throws RuntimeException("push failed")
+
+            worker.pollAndProcess()
+
+            verify(exactly = 0) { repository.markSent(any()) }
+            verify(exactly = 1) {
+                dsl.execute(match<String> { it.contains("pgmq.delete") }, NotificationWorker.QUEUE_NAME, msgId)
+            }
         }
 
         it("실제 프로듀서의 nested actorId({value:uuid})를 파싱해 NotificationSourceEvent.actorId 로 전달한다 (B1 회귀)") {
@@ -169,6 +182,7 @@ class NotificationWorkerTest : DescribeSpec({
             every { repository.insertIfAbsent(any()) } returns true
             every { channelSender.supports(Channel.IN_APP) } returns true
             justRun { channelSender.send(any()) }
+            justRun { repository.markSent(any()) }
             every { dsl.execute(any<String>(), NotificationWorker.QUEUE_NAME, msgId) } returns 1
         }
 
