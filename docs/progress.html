@@ -182,9 +182,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
           <div><span class="dot dot-done"></span> 완료 <b>45</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>4</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>5</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>73</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>72</b></div>
         </div>
       </div>
     </div>
@@ -1289,9 +1289,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:88%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 21</div>
-        <div>🔄 진행중 0</div>
+        <div>🔄 진행중 1</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 3</div>
+        <div>⬜ 대기 2</div>
       </div>
     </div>
     <h2>세부 기능 (24개)</h2>
@@ -1449,13 +1449,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc">WebAuthn (Passkey/하드웨어 키)</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인</li><li><span class="step-icon">⬜</span> D2 — 명세 — FIDO2 attestation + assertion</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `user_webauthn_credentials(credential_id, public_key)`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `webauthn4j` 라이브러리</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — 가상 Authenticator</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — `navigator.credentials` API</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-진행중">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">🔄</span>
         <span class="fr-id">FR-MF-04</span>
         <span class="fr-desc">강제 정책 (관리자 + 민감 <span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">프로젝트</span>)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — <span class="term" data-def="&quot;2단계 인증&quot; 비밀번호 치고, 핸드폰 앱이나 문자로 숫자 6자리를 한 번 더 쳐야만 들어갈 수 있는 2중 보안입니다.">Mfa</span>Policy</li><li><span class="step-icon">⬜</span> D2 — 명세 — 역할/<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">프로젝트</span> 단위 강제</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `<span class="term" data-def="&quot;2단계 인증&quot; 비밀번호 치고, 핸드폰 앱이나 문자로 숫자 6자리를 한 번 더 쳐야만 들어갈 수 있는 2중 보안입니다.">mfa</span>_poli<span class="term" data-def="&quot;자동화된 공장 컨베이어 벨트&quot; 코드를 수정하면 자동으로 테스트를 거쳐 이상이 없으면 실제 서비스되는 서버에 알아서 배포까지 해주는 자동화 시스템입니다.">ci</span>es(scope, req<span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">ui</span>red)`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — 인증 중간 단계에서 <span class="term" data-def="&quot;2단계 인증&quot; 비밀번호 치고, 핸드폰 앱이나 문자로 숫자 6자리를 한 번 더 쳐야만 들어갈 수 있는 2중 보안입니다.">MFA</span> 등록 강제</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="&quot;2단계 인증&quot; 비밀번호 치고, 핸드폰 앱이나 문자로 숫자 6자리를 한 번 더 쳐야만 들어갈 수 있는 2중 보안입니다.">MFA</span> 미등록 시 step-up 페이지</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="&quot;2단계 인증&quot; 비밀번호 치고, 핸드폰 앱이나 문자로 숫자 6자리를 한 번 더 쳐야만 들어갈 수 있는 2중 보안입니다.">Mfa</span>EnforcementPolicy 평가 서비스</li><li><span class="step-icon">✅</span> D2 — 명세 — 관리자 + 민감 <span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">프로젝트</span> 멤버 강제, whoami `<span class="term" data-def="&quot;2단계 인증&quot; 비밀번호 치고, 핸드폰 앱이나 문자로 숫자 6자리를 한 번 더 쳐야만 들어갈 수 있는 2중 보안입니다.">mfa</span>EnrollmentReq<span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">ui</span>red` 노출</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>oject</span>s.req<span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">ui</span>re_<span class="term" data-def="TOTP + 백업 코드 (필수), WebAuthn (선택)">2fa</span> BOOLEAN DEFAULT false` (<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>-tracking V020) + `SensitiveProjectResolver` shared-kernel 포트</li><li><span class="step-icon">✅</span> D4 — 백엔드 — whoami 필드 + 백엔드 <span class="term" data-def="Gate. 전이에 걸린 조건 (권한/필드/검증)">게이트</span>(미등록 강제 대상 차단, enrollment/whoami/logout allow-list)</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — `<span class="term" data-def="&quot;2단계 인증&quot; 비밀번호 치고, 핸드폰 앱이나 문자로 숫자 6자리를 한 번 더 쳐야만 들어갈 수 있는 2중 보안입니다.">Mfa</span>EnforcementEndToEndTest` 통합 + 단위</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="&quot;2단계 인증&quot; 비밀번호 치고, 핸드폰 앱이나 문자로 숫자 6자리를 한 번 더 쳐야만 들어갈 수 있는 2중 보안입니다.">MFA</span> 미등록 시 step-up 페이지</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
