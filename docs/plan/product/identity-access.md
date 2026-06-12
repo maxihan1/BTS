@@ -221,13 +221,15 @@
 
 **우선순위**. 필수 | **선행**. §3.1, §3.2 | **Plan slug**. `identity/mfa-enforce`
 
-- [ ] D1. 도메인 — MfaPolicy (책임. security-engineer)
-- [ ] D2. 명세 — 역할/프로젝트 단위 강제 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `mfa_policies(scope, required)` (책임. db-engineer)
-- [ ] D4. 백엔드 — 인증 중간 단계에서 MFA 등록 강제 (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 (책임. security-engineer)
+- [x] D1. 도메인 — MfaEnforcementPolicy 평가 서비스 (책임. security-engineer) (PR #123)
+- [x] D2. 명세 — 관리자 + 민감 프로젝트 멤버 강제, whoami `mfaEnrollmentRequired` 노출 (책임. security-engineer) (PR #123)
+- [x] D3. 데이터 모델 — `projects.require_2fa BOOLEAN DEFAULT false` (issue-tracking V019) + `SensitiveProjectResolver` shared-kernel 포트 (책임. db-engineer) (PR #123)
+- [x] D4. 백엔드 — whoami 필드 + 백엔드 게이트(미등록 강제 대상 차단, enrollment/whoami/logout allow-list) (책임. security-engineer) (PR #123)
+- [x] D5. 백엔드 테스트 — `MfaEnforcementEndToEndTest` 통합 + 단위 (책임. security-engineer) (PR #123)
 - [ ] D6. 프론트 UI — MFA 미등록 시 step-up 페이지 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
+
+> **FR-MF-04 백엔드 D1~D5 완료 (2026-06-12, PR #123)**. MFA 강제 정책 평가 + JWT 클레임 + 게이트 + whoami + issue-tracking `require_2fa` 컬럼/토글/resolver. **핵심 결정**(ADR `docs/decisions/2026-06-12-mfa-enforcement-policy.md`) — `require_2fa`는 issue-tracking `projects`에, shared-kernel `SensitiveProjectResolver` 포트로 cross-BC 평가(BC 격리 유지). `MfaEnforcementPolicy`(관리자 역할 OR 민감 프로젝트 멤버) + whoami `mfaEnrollmentRequired` 필드 + 백엔드 게이트(미등록 강제 대상은 enrollment/whoami/logout 외 차단). `@ConditionalOnMissingBean` fallback(`NonProdSensitiveProjectResolver`, `anyRequiresMfa`=false) — identity-access 단독 부팅 가용성 확보, prod fallback 제거 후 WARN 로그로 misassembled 관측. **deviation** — 원안 `mfa_policies(scope, required)` 별도 테이블 대신 `projects.require_2fa` 컬럼(자연스러운 프로젝트 설정 위치, ADR D2). D6/D7 프론트 게이팅 UI + E2E는 후속 PR.
 
 ### §3.5 FR-MF-05 — 신뢰 디바이스 (30일 면제)
 
