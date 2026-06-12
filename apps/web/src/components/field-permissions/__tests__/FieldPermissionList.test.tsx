@@ -146,6 +146,7 @@ describe('FieldPermissionList', () => {
             MANAGE_VERSIONS: false,
             MANAGE_CUSTOM_FIELDS: false,
             MANAGE_FIELD_PERMISSIONS: false,
+            MANAGE_TEMPLATES: false,
           },
         }),
       ),
