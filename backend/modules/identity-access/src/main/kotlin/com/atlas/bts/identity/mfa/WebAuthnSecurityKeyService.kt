@@ -124,10 +124,11 @@ class WebAuthnSecurityKeyService(
     ): RegisterResult {
         val challenge = challengeStore.consume(userId) ?: return RegisterResult.Expired
         val data = verifyRegistration(responseJson, challenge) ?: return RegisterResult.InvalidRegistration
-        val attested = data.attestationObject!!.authenticatorData.attestedCredentialData!!
+        val authenticatorData = data.attestationObject?.authenticatorData ?: return RegisterResult.InvalidRegistration
+        val attested = authenticatorData.attestedCredentialData ?: return RegisterResult.InvalidRegistration
         val credentialId = Base64UrlUtil.encodeToString(attested.credentialId)
         if (repo.findByCredentialId(credentialId) != null) return RegisterResult.AlreadyRegistered
-        repo.insert(buildCredential(userId, attested, data, credentialId, name))
+        repo.insert(buildCredential(userId, attested, authenticatorData.signCount, credentialId, name))
         emit(userId, AuthEventType.MFA_WEBAUTHN_REGISTERED)
         return RegisterResult.Success
     }
@@ -164,9 +165,8 @@ class WebAuthnSecurityKeyService(
         val challenge = challengeStore.consume(userId) ?: return failAssertion(userId)
         val record = resolveOwnedCredential(userId, responseJson) ?: return failAssertion(userId)
         val authData = verifyAuthentication(responseJson, record.record, challenge) ?: return failAssertion(userId)
-        if (!repo.advanceSignCount(record.credential.id, authData.authenticatorData!!.signCount)) {
-            return failAssertion(userId)
-        }
+        val newSignCount = authData.authenticatorData?.signCount ?: return failAssertion(userId)
+        if (!repo.advanceSignCount(record.credential.id, newSignCount)) return failAssertion(userId)
         repo.touchLastUsed(record.credential.id, clock.instant())
         limiter.reset(userId)
         emit(userId, AuthEventType.MFA_CHALLENGE_SUCCESS)
@@ -280,11 +280,11 @@ class WebAuthnSecurityKeyService(
             null,
         )
 
-    /** 등록 검증 결과로 영속 [WebAuthnCredential] 을 조립한다(공개키 base64·signCount·aaguid 추출). */
+    /** 등록 검증 결과로 영속 [WebAuthnCredential] 을 조립한다(공개키 base64·signCount·aaguid 박제). */
     private fun buildCredential(
         userId: UUID,
         attested: AttestedCredentialData,
-        data: RegistrationData,
+        signCount: Long,
         credentialId: String,
         name: String?,
     ): WebAuthnCredential {
@@ -295,7 +295,7 @@ class WebAuthnSecurityKeyService(
             userId = userId,
             credentialId = credentialId,
             attestedCredentialData = Base64Util.encodeToString(attestedBytes),
-            signCount = data.attestationObject!!.authenticatorData.signCount,
+            signCount = signCount,
             name = name,
             aaguid = attested.aaguid.value?.toString(),
             lastUsedAt = null,
