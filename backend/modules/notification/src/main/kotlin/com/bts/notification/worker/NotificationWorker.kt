@@ -285,8 +285,10 @@ class NotificationWorker(
     ): NotificationSourceEvent {
         val issueKey = node.path("issueKey").asText(null).takeIf { it?.isNotBlank() == true }
         val projectKey = node.path("projectKey").asText(null).takeIf { it?.isNotBlank() == true }
+        // occurredAt 은 모든 프로듀서 이벤트가 항상 포함한다(ISO-8601 문자열). dedup_key 의 결정성이
+        // occurredAt 에 의존하므로 부재 시 now() 폴백은 멱등을 깨뜨릴 수 있다(현 프로듀서에선 미발생).
         val occurredAt = parseInstant(node.path("occurredAt").asText(null)) ?: Instant.now()
-        val actorId = parseUuid(node.path("actorId").asText(null))
+        val actorId = parseActorId(node.path("actorId"))
 
         val mentionedUserIds =
             if (eventType == NotificationEventType.ISSUE_MENTIONED) {
@@ -297,7 +299,7 @@ class NotificationWorker(
 
         val reporterId =
             if (eventType == NotificationEventType.ISSUE_CREATED) {
-                parseUuid(node.path("reporterId").asText(null))
+                parseActorId(node.path("reporterId"))
             } else {
                 null
             }
@@ -324,6 +326,22 @@ class NotificationWorker(
     private fun parseUuid(value: String?): UUID? {
         if (value.isNullOrBlank()) return null
         return runCatching { UUID.fromString(value) }.getOrNull()
+    }
+
+    /**
+     * 행위자/리포터 식별자 노드를 UUID 로 파싱한다.
+     *
+     * issue-tracking 의 `ActorId` 는 일반 data class 라 Jackson 이 nested `{"value":"<uuid>"}` 로
+     * 직렬화한다(value class `IssueKey` 의 flat 문자열과 대비). nested `value` 를 우선 추출하고,
+     * 계약 변경/flat 형태에도 견디도록 노드 자체의 텍스트도 방어적으로 시도한다.
+     *
+     * @param node `actorId` / `reporterId` 필드 노드(없으면 MissingNode)
+     * @return 파싱된 UUID 또는 null
+     */
+    private fun parseActorId(node: JsonNode): UUID? {
+        val valueNode = node.path("value")
+        val raw = if (valueNode.isMissingNode) node.asText(null) else valueNode.asText(null)
+        return parseUuid(raw)
     }
 
     /** Instant 문자열을 파싱한다. 실패 시 null 반환. */
