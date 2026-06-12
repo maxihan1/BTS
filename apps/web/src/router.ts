@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 24개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 7 + settings 4 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 25개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + settings 4 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -20,6 +20,7 @@ import { ProjectMembersSettingsRouteAdapter } from './routes/projects.$projectKe
 import { ProjectComponentsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.components'
 import { ProjectVersionsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.versions'
 import { ProjectCustomFieldsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.custom-fields'
+import { ProjectIssueTemplatesSettingsRouteAdapter } from './routes/projects.$projectKey.settings.issue-templates'
 import { ProjectFieldPermissionsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.field-permissions'
 import { ProjectLeadSettingsRouteAdapter } from './routes/projects.$projectKey.settings.project-lead'
 import { AdminUsersNewRouteAdapter } from './routes/admin.users.new'
@@ -156,6 +157,15 @@ const projectCustomFieldsSettingsRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
+/** 프로젝트 이슈 템플릿 설정 라우트 — /projects/$projectKey/settings/issue-templates, requireAuth */
+const projectIssueTemplatesSettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects/$projectKey/settings/issue-templates',
+  component: ProjectIssueTemplatesSettingsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
 /** 프로젝트 필드 권한 규칙 설정 라우트 — /projects/$projectKey/settings/field-permissions, requireAuth */
 const projectFieldPermissionsSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -257,13 +267,13 @@ const settingsAccountLinksRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 24개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 25개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
  *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
  *   · /projects/:projectKey/settings/components · /projects/:projectKey/settings/versions
- *   · /projects/:projectKey/settings/custom-fields · /projects/:projectKey/settings/field-permissions
- *   · /projects/:projectKey/settings/project-lead
+ *   · /projects/:projectKey/settings/custom-fields · /projects/:projectKey/settings/issue-templates
+ *   · /projects/:projectKey/settings/field-permissions · /projects/:projectKey/settings/project-lead
  *   · /settings/sessions · /settings/password · /settings/account-links · /settings/mfa
  * requireAuth 라우트: /dashboard · /issues · /issues/* · /admin/* · /projects/*\/settings/* · /settings/*
  */
@@ -296,6 +306,8 @@ export const routeTree = rootRoute.addChildren([
   projectVersionsSettingsRoute,
   // issue-tracking BC — 커스텀 필드 관리
   projectCustomFieldsSettingsRoute,
+  // issue-tracking BC — 이슈 템플릿 관리 (FR-TM-01)
+  projectIssueTemplatesSettingsRoute,
   // project-workflow BC — 필드 권한 규칙 관리
   projectFieldPermissionsSettingsRoute,
   // issue-tracking BC — 프로젝트 리드 설정 (project 서브도메인, 권한만 MANAGE_COMPONENTS 재사용)
