@@ -3,6 +3,8 @@
 
 package com.bts.notification
 
+import com.bts.shared.issue.IssueRecipientLookupPort
+import com.bts.shared.issue.IssueRecipients
 import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
@@ -16,6 +18,8 @@ import org.springframework.context.annotation.Bean
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.jdbc.datasource.TransactionAwareDataSourceProxy
+import org.springframework.security.oauth2.jwt.JwtDecoder
+import org.springframework.security.oauth2.jwt.JwtException
 import org.springframework.transaction.PlatformTransactionManager
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
@@ -130,4 +134,29 @@ class NotificationTestcontainersConfig {
     fun transactionManager(dataSource: DataSource): PlatformTransactionManager {
         return DataSourceTransactionManager(dataSource)
     }
+
+    /**
+     * WebSocketConfig 가 요구하는 [JwtDecoder] 빈.
+     *
+     * [NotificationTestBootApplication] 의 컴포넌트 스캔이 `com.bts.notification.config.WebSocketConfig`
+     * 를 로드하므로 컨텍스트 기동에 [JwtDecoder] 빈이 필요하다. 이 테스트는 정책 HTTP 경로만 검증하고
+     * STOMP WebSocket 트래픽이 없어 decode 가 호출되지 않으므로, 호출 시 fail-closed 로 거부하는 stub 을 둔다.
+     */
+    @Bean
+    fun jwtDecoder(): JwtDecoder {
+        return JwtDecoder { throw JwtException("WebSocket JWT not exercised in policy E2E test") }
+    }
+
+    /**
+     * EventRecipientResolver / NotificationWorker 가 요구하는 cross-BC [IssueRecipientLookupPort] 빈.
+     *
+     * 프로덕션 구현체는 issue-tracking BC 의 adapter 이나 notification 단독 테스트 컨텍스트에는 없다.
+     * 이 테스트는 정책 HTTP 경로만 검증하고 워커 fanout 을 호출하지 않으므로 빈 수신자를 반환하는
+     * fail-safe stub 을 둔다. (memory: crossbc-resolver-nullable-fail-open — 빈 부재 시 fail-open 위험 차단.)
+     */
+    @Bean
+    fun issueRecipientLookupPort(): IssueRecipientLookupPort =
+        object : IssueRecipientLookupPort {
+            override fun findRecipients(issueKey: String): IssueRecipients = IssueRecipients.empty()
+        }
 }
