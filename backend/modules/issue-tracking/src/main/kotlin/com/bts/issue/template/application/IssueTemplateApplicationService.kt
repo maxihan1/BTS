@@ -81,12 +81,13 @@ class IssueTemplateApplicationService(
         assertPermission(actorId, TemplatePermission.CREATE, projectId)
         assertIssueTypeExists(issueTypeId)
 
-        val domain = IssueTemplate.create(
-            projectId = projectId,
-            issueTypeId = issueTypeId,
-            name = name,
-            content = content,
-        )
+        val domain =
+            IssueTemplate.create(
+                projectId = projectId,
+                issueTypeId = issueTypeId,
+                name = name,
+                content = content,
+            )
         return tryInsert(domain, name)
     }
 

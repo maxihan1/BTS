@@ -65,7 +65,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [IssueTemplateControllerIntegrationTest.TestMvcConfig::class])
 @WebAppConfiguration
 class IssueTemplateControllerIntegrationTest {
-
     /**
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
