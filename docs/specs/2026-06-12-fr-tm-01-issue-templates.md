@@ -39,7 +39,7 @@
 - **FR-TM-01.4** `CreateIssueRequest`(REST + application)에 `description: String?` 추가 → `Issue.create` 전달.
 - **FR-TM-01.5** createIssue 서버 안전망 — `request.description.isNullOrBlank()` 이고 (projectId, resolvedTypeId) 활성 템플릿 존재 시 description = 템플릿 content.
 - **FR-TM-01.6** 권한 판정 — shared-kernel `TemplatePermission`(CREATE/UPDATE/DELETE→MANAGE_TEMPLATES) + `TemplatePermissionResolver` port. 비-prod = AlwaysAllow(issue-tracking), prod = IdentityAccessTemplatePermissionResolver(identity-access) + role_permissions 시드(PROJECT_ADMIN).
-- **FR-TM-01.7** D6 버튼 게이팅 대비 — identity-access `MyProjectPermissionController` 권한 요약에 `manageTemplates` 플래그 노출(메모리 ui-permission-gating-needs-summary-api-exposure: resolver+요약API 둘 다 필요). 지금 노출해 D6 PR 의 identity-access 재터치 회피.
+- **FR-TM-01.7 (D6 연기)** UI 버튼 게이팅용 `MyProjectPermissionController` `manageTemplates` 요약 노출은 **D6 PR로 연기**(plan-eng-review BLOCKER-2 반영). 컨트롤러가 이미 8 파라미터+@Suppress 라 9번째 주입은 D1~D5 범위 밖 view 관심사. CRUD 권한 게이팅은 resolver(FR-TM-01.6)로 이미 완결. 메모리 ui-permission-gating-needs-summary-api-exposure 는 D6 에서 충족(resolver 이미 존재 + 요약 노출 추가).
 - **FR-TM-01.8** 검증 — name NotBlank ≤100, content NotBlank. PATCH 는 부분 수정(name?/content?, null=무변경, custom-fields PATCH 동형). `Issue.create` 는 이미 `description: String? = null` 파라미터 보유(line 161) → 도메인 변경 불요, createIssue 가 resolvedDescription 전달만.
 
 ## 비기능 요구사항 (NFR)
@@ -83,7 +83,7 @@ CREATE UNIQUE INDEX ux_issue_templates_project_type_active
 ```
 
 ```sql
--- identity-access 권한 시드 V025 (FR-MF-04 V024 충돌 경계 — 머지 직전 재확인). init_codegen 미러 불요(JdbcTemplate).
+-- identity-access 권한 시드 V024 (현재 최신 V023 → V024, 머지 직전 재확인). init_codegen 미러 불요(JdbcTemplate).
 INSERT INTO role_permissions (scheme_id, role, permission_code)
 VALUES ('00000000-0000-0000-0000-000000000001', 'PROJECT_ADMIN', 'MANAGE_TEMPLATES');
 ```
@@ -105,7 +105,7 @@ VALUES ('00000000-0000-0000-0000-000000000001', 'PROJECT_ADMIN', 'MANAGE_TEMPLAT
 ## 제약 조건
 
 - **cross-BC**: identity-access prod resolver + 권한 시드 + PermissionSchemaMigrationTest 카운트(+1) 같은 PR 동기화(권한 resolver 패턴, FR-IS-10 #96 선례).
-- **마이그레이션 V번호**: issue-tracking V019, identity-access V025(추정) — FR-MF-04 동시 진행으로 머지 직전 재확인(메모리 migration-vnumber-concurrent-branch-collision).
+- **마이그레이션 V번호**: issue-tracking V019(최신 V018), identity-access V024(최신 V023) — 머지 직전 `ls .../migration | sort -V | tail -1` 재확인(메모리 migration-vnumber-concurrent-branch-collision). FR-MF-04(#123)는 identity-access 마이그레이션 미추가(실측 V023 동일).
 - **init_codegen 미러**: issue_templates 테이블을 issue-tracking init_codegen.sql 에 미러(메모리 jooq-init-codegen-mirror).
 - **생성자 주입**: IssueApplicationService 에 IssueTemplateRepository nullable-default 주입(customFieldDefinitionRepository 선례) → 기존 생성 테스트 호환. 단 prod 빈은 Spring 배선.
 - **정본 동기화**: SDD §5.7(UNIQUE 명시 + 필드 타입 실제화 주석) ↔ product D3(`content` 필드명 + 1개 명시) ↔ fr-index ↔ ADR 같은 PR 동기화(§전수 동기화 규칙, verify-master-plan).

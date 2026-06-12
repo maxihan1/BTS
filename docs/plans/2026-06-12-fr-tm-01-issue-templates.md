@@ -88,7 +88,7 @@ classify 결과: type=backend, agent=backend-engineer, primary_bc=issue-tracking
 - depends-on: []
 
 **작업(비-TDD 마이그레이션)**: issue_templates 테이블(스펙 §데이터 모델 DDL 그대로) — UUID PK, project_id UUID FK→projects, issue_type_id BIGINT FK→issue_types, name VARCHAR(100), content TEXT, created/updated/deleted_at. FK 인덱스 2개 + 활성 부분 UNIQUE(project_id, issue_type_id) WHERE deleted_at IS NULL. **init_codegen.sql 에 동일 테이블 미러 필수**(jOOQ codegen).
-**검증**: `./gradlew :backend:modules:issue-tracking:generateJooq` 성공 + `ISSUE_TEMPLATES` jOOQ 테이블 생성 확인. 머지 직전 V번호 재확인(FR-MF-04 충돌 경계).
+**검증**: `./gradlew :backend:modules:issue-tracking:generateJooq` 성공 + `ISSUE_TEMPLATES` jOOQ 테이블 생성 확인. issue-tracking 최신 V018 다음 = V019(실측). 머지 직전 `ls .../migration/issue-tracking | sort -V | tail -1` 재확인.
 
 ### Task 4. issue-tracking — IssueTemplateRepository (jOOQ)
 
@@ -109,8 +109,8 @@ classify 결과: type=backend, agent=backend-engineer, primary_bc=issue-tracking
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/template/application/IssueTemplateApplicationService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/template/adapter/AlwaysAllowTemplatePermissionResolver.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/template/application/IssueTemplateApplicationServiceTest.kt`]
 - depends-on: [1, 2, 4]
 
-**RED**: 서비스 테스트(mockk repo+resolver) — create(권한OK→insert, 중복→409, 권한없음→403), update/delete(미존재→404), resolve(활성 content/없으면 null), READ 미게이트. 실패.
-**GREEN**: `@Service @Transactional`. 각 mutation 진입 직후 `resolver.hasPermission(actor.value, TemplatePermission.X, projectId)` 검증(false→권한 예외). resolve/list/get 미게이트. `AlwaysAllowTemplatePermissionResolver`(@Component @Profile("!prod")) stub. CustomFieldApplicationService 동형.
+**RED**: 서비스 테스트(mockk repo+resolver) — create(권한OK→insert, 중복→409, 권한없음→403, **미존재 issueTypeId→404/422**), update/delete(미존재→404), resolve(활성 content/없으면 null), READ 미게이트. 실패.
+**GREEN**: `@Service @Transactional`. 각 mutation 진입 직후 `resolver.hasPermission(actor.value, TemplatePermission.X, projectId)` 검증(false→권한 예외). create 시 **issueTypeId 활성 존재 선검증**(FK 위반 전, 기존 IssueType lookup 재사용 — `IssueTypeLookupAdapter`/repo 확인 후, 미존재→도메인 예외→404/422). **중복(409) 변환은 서비스 레이어에서** — `DataIntegrityViolationException` + SQLState `23505` 두 경로 catch → `DuplicateIssueTemplateException`(메모리 jooq-exception-translator-409-dependency, custom-field 동형). resolve/list/get 미게이트. `AlwaysAllowTemplatePermissionResolver`(@Component @Profile("!prod")) stub. CustomFieldApplicationService 동형.
 **REFACTOR**: 권한 가드 헬퍼, KDoc.
 **검증**: `./gradlew :backend:modules:issue-tracking:test --tests IssueTemplateApplicationServiceTest`
 
@@ -134,21 +134,23 @@ classify 결과: type=backend, agent=backend-engineer, primary_bc=issue-tracking
 - depends-on: [4]
 
 **RED**: `IssueApplicationServiceTemplateApplyTest`(mockk, 새 파일) — 스펙 S4 5케이스(blank+템플릿→주입 / non-blank→요청우선 / 템플릿없음→null / ""+템플릿→주입 / cloneIssue 무영향). 실패.
-**GREEN**: REST/application `CreateIssueRequest` 에 `description: String?` 추가 + IssueController 매핑 전달. `IssueApplicationService` 에 `issueTemplateRepository: IssueTemplateRepository? = null` **nullable-default 주입**(customFieldDefinitionRepository 동형 — 기존 테스트 호환). createIssue 에서 `val resolvedDescription = request.description?.takeIf { it.isNotBlank() } ?: issueTemplateRepository?.findActiveContentByProjectAndType(projectId, resolvedTypeId.value)` → `Issue.create(..., description = resolvedDescription)`. cloneIssue 미변경.
+**GREEN**: REST/application `CreateIssueRequest` 에 `description: String?` 추가 + IssueController 매핑 전달. `IssueApplicationService` 에 `issueTemplateRepository: IssueTemplateRepository? = null` **nullable-default 주입** — 생성자 **맨 끝**(historyRecorder 등 required 뒤)에 배치(customFieldDefinitionRepository 패턴). createIssue 에서 `val resolvedDescription = request.description?.takeIf { it.isNotBlank() } ?: issueTemplateRepository?.findActiveContentByProjectAndType(projectId, resolvedTypeId.value)` → `Issue.create(..., description = resolvedDescription)`. cloneIssue 미변경.
 **REFACTOR**: 헬퍼 추출, KDoc(옵션C/blank 시맨틱).
-**검증**: `./gradlew :backend:modules:issue-tracking:test --tests IssueApplicationServiceTemplateApplyTest` + 기존 `IssueApplicationServiceTest`/`IssueControllerIntegrationTest` 회귀 0.
+**검증**: `./gradlew :backend:modules:issue-tracking:test --tests IssueApplicationServiceTemplateApplyTest` + 기존 `IssueApplicationServiceTest`/`IssueControllerIntegrationTest` 회귀 0. **생성자 변경 주의**(메모리 plan-files-constructor-injection-existing-tests): default-then-required 혼합이라 `grep -rn "IssueApplicationService(" backend/modules/issue-tracking/src` 로 전 호출부가 named-arg 인지 확인(아니면 named-arg 로 보정).
 
-### Task 8. identity-access — prod resolver + 권한시드 + 카운트테스트 + MyProjectPermission 노출
+### Task 8. identity-access — prod resolver + 권한시드 + 카운트테스트
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/permission/IdentityAccessTemplatePermissionResolver.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/permission/DevAllowTemplatePermissionResolver.kt`, `backend/modules/identity-access/src/main/resources/db/migration/V025__manage_templates_permission.sql`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/MyProjectPermissionController.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/permission/PermissionSchemaMigrationTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/permission/IdentityAccessTemplatePermissionResolverTest.kt`]
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/permission/IdentityAccessTemplatePermissionResolver.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/permission/DevAllowTemplatePermissionResolver.kt`, `backend/modules/identity-access/src/main/resources/db/migration/V024__manage_templates_permission.sql`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/permission/PermissionSchemaMigrationTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/permission/IdentityAccessTemplatePermissionResolverTest.kt`]
 - depends-on: [1]
 
-**RED**: `IdentityAccessTemplatePermissionResolverTest`(Testcontainers) — PROJECT_ADMIN→MANAGE_TEMPLATES true, MEMBER→false. `PermissionSchemaMigrationTest` 카운트 +1 기대로 수정 → 시드 전엔 실패.
-**GREEN**: `IdentityAccessTemplatePermissionResolver`(@Profile("prod"), role_permissions 조회) + `DevAllowTemplatePermissionResolver`(@Profile("!prod"), 단 identity는 dev-allow 패턴 — custom-field 동형 확인 후 미러) + `V025__manage_templates_permission.sql`(PROJECT_ADMIN, MANAGE_TEMPLATES INSERT, init_codegen 미러 불요) + `MyProjectPermissionController` 요약에 `manageTemplates` 플래그 추가.
+**RED**: `IdentityAccessTemplatePermissionResolverTest`(Testcontainers) — PROJECT_ADMIN→MANAGE_TEMPLATES true, MEMBER→false. `PermissionSchemaMigrationTest` 카운트 **15→16** + MANAGE_TEMPLATES 전용 테스트(MANAGE_CUSTOM_FIELDS 메서드 동형) → 시드 전엔 실패.
+**GREEN**: `IdentityAccessTemplatePermissionResolver`(@Profile("prod"), role_permissions 조회, IdentityAccessCustomFieldPermissionResolver 동형) + `DevAllowTemplatePermissionResolver`(@Profile("!prod"), DevAllowCustomFieldPermissionResolver 동형 — identity-access component-scan 채워 !prod 부팅 보장) + `V024__manage_templates_permission.sql`(PROJECT_ADMIN, MANAGE_TEMPLATES INSERT, init_codegen 미러 불요 — JdbcTemplate).
 **REFACTOR**: KDoc, 권한코드 상수 참조.
-**검증**: `./gradlew :backend:modules:identity-access:test --tests "IdentityAccessTemplatePermissionResolverTest" --tests "PermissionSchemaMigrationTest"`. **V번호 머지 직전 재확인(FR-MF-04)**. 권한코드 카운트 가드 전 모듈 grep.
+**검증**: `./gradlew :backend:modules:identity-access:test --tests "IdentityAccessTemplatePermissionResolverTest" --tests "PermissionSchemaMigrationTest"`. **V번호 머지 직전 재확인**(현재 최신 V023 → V024). 권한코드 카운트 가드 전 모듈 grep(enum-add-breaks-crossmodule-count-guard).
+
+> **D6 연기 메모**. UI 버튼 게이팅용 `MyProjectPermissionController` `manageTemplates` 요약 노출은 **D6(프론트) PR로 연기**. 이유. 컨트롤러가 이미 8 파라미터+@Suppress 상태라 9번째 resolver 주입은 D1~D5 범위 밖 view 관심사(speculative). CRUD 권한 게이팅은 T5+T8 resolver 로 이미 완결. D6 에서 9번째 주입 + `MANAGE_TEMPLATES_KEY` + null-projectKey 분기 false 추가(마이그레이션 불요).
 
 ### Task 9. 정본 동기화 (docs)
 
@@ -157,7 +159,7 @@ classify 결과: type=backend, agent=backend-engineer, primary_bc=issue-tracking
 - files: [`docs/sdd/05-data-model.md`, `docs/plan/product/issue-tracking.md`]
 - depends-on: []
 
-**작업(비-TDD docs)**: SDD §5.7 IssueTemplate — 실제 구현 타입 주석(project_id UUID, id UUID) + `UNIQUE(project_id, issue_type_id)` 명시. product §5.2.1 D3 — `body`→`content` 필드명 정정 + "(프로젝트,타입)당 1개" 명시 + ADR 링크. **D1~D5 체크박스 마킹 + dashboard regen 은 bts-merge 에서**(PR #125 주석). fr-index 카운트 변화 없음(FR-TM-01 기존 등재).
+**작업(비-TDD docs)**: SDD §5.7 IssueTemplate 표 — id/project_id 를 `BIGINT`→`UUID`(실제 구현 정합, content/name 은 이미 일치) + `UNIQUE(project_id, issue_type_id)` 행 추가. product §5.2.1 D3 — `body`→`content` 필드명 정정 + "(프로젝트,타입)당 1개" 명시 + ADR 링크. **D1~D5 체크박스 마킹 + dashboard regen 은 bts-merge 에서**(PR #125 주석). fr-index 카운트 변화 없음(FR-TM-01 기존 등재, 손대지 않음).
 **검증**: `bash scripts/verify-master-plan.sh` 통과(FR ID 정합 + 카운트 drift 0).
 
 ## Plan 메타
@@ -168,6 +170,26 @@ classify 결과: type=backend, agent=backend-engineer, primary_bc=issue-tracking
 - 예상 시간: 약 16분(4 wave 병렬)
 - TDD 강제: yes (T3·T9 제외)
 - cross-BC: identity-access 권한 판정(포트 경유, 직접 import 0 — ArchUnit 강제)
-- 주의: init_codegen 미러(T3) · V번호 충돌 재확인(T3·T8) · nullable-default 주입(T7) · 카운트 가드(T8) · lint-staged 자기파일만 stage(병렬 race)
+- 주의: init_codegen 미러(T3) · V번호(issue-tracking V019 / identity-access V024, 머지 직전 재확인) · nullable-default 주입 named-arg(T7) · 카운트 15→16 가드(T8) · lint-staged 자기파일만 stage(병렬 race)
+- D6 연기: MyProjectPermissionController manageTemplates 노출(프론트 버튼 게이팅, 마이그레이션 불요)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 독립 eng 리뷰 (2026-06-12, general-purpose 에이전트)
+
+backend type → autoplan 대신 독립 eng 집중 리뷰(메모리 bts-review-plan-autoplan-overkill). 실측 근거 기반 적대적 검토.
+
+**BLOCKER 2건 — 모두 해소**.
+- B1. identity-access V025 오류 → **V024 정정**. 실측: main·FR-MF-04 worktree 둘 다 최신 V023, FR-MF-04는 identity-access 마이그레이션 미추가 → "충돌 경계" 근거 없음, 프레이밍 제거.
+- B2. MyProjectPermissionController 9번째 의존성 주입+부팅 fallback 누락 → **FR-TM-01.7을 D6로 연기**. 컨트롤러 이미 8 파라미터+@Suppress, 노출은 view 관심사(D1~D5 범위 밖). CRUD 게이팅은 resolver 로 완결.
+
+**CONCERN 4건 반영**.
+- C1. T7 nullable-default 생성자 default-then-required 혼합 → 맨끝 배치 + 전 호출부 named-arg grep 검증 추가.
+- C2. SDD §5.7 id/project_id BIGINT→UUID 정정 추가(T9).
+- C3. 409 변환을 서비스 레이어 2경로 catch(23505+DataIntegrityViolation) 명시(T5).
+- C4. create 시 issueTypeId 활성 존재 선검증(EC3, FK 위반 전) 추가(T5).
+- C5(완화됨). W3 T5/T7 병렬 lint-staged race — plan 에 자기파일만 stage 규율 이미 명시.
+
+**OK(강점)**. 권한 포트/스텁 2종 분리/마이그레이션 DDL/카운트 15→16/정본 동기화 판정 — custom-field 선례 정확 미러 확인.
+
+BLOCKER: 0 (정정 완료). 게이트1 진입 가능.
