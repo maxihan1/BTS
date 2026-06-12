@@ -2,6 +2,8 @@
 /// <reference types="vite/client" />
 import type { ZodSchema } from 'zod'
 import { useAuthStore } from '@/auth/authStore'
+import { WhoamiResponseSchema } from '@/api/schemas'
+import type { WhoamiResponse } from '@/api/schemas'
 
 export interface ApiFetchOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
@@ -142,4 +144,25 @@ export async function apiPost<T>(path: string, body: unknown, schema: ZodSchema<
 export async function apiGet<T>(path: string, schema: ZodSchema<T>): Promise<T> {
   const res = await apiFetch(path, { method: 'GET' })
   return parseResponse(res, schema)
+}
+
+/**
+ * refresh_token 쿠키로 access token을 갱신하고 whoami를 재조회해
+ * store의 세션을 최신 클레임으로 업데이트한다 (FR-MF-04 D6-4 게이트 해제).
+ *
+ * 동작 순서.
+ * 1. `doRefresh()`(race lock 포함) — 새 access token 발급 + store에 저장.
+ * 2. 새 토큰으로 `GET /api/v1/users/me/whoami` 호출 → WhoamiResponseSchema 파싱.
+ * 3. `setSession({ accessToken, user })` — store 갱신.
+ * 4. 갱신된 WhoamiResponse 반환.
+ *
+ * 실패 시 doRefresh 내부의 clearSession이 전파되며 에러를 삼키지 않는다.
+ *
+ * @returns 갱신된 WhoamiResponse
+ */
+export async function refreshSession(): Promise<WhoamiResponse> {
+  const newToken = await doRefresh()
+  const user = await apiGet('/api/v1/users/me/whoami', WhoamiResponseSchema)
+  useAuthStore.getState().setSession({ accessToken: newToken, user })
+  return user
 }

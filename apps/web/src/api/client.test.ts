@@ -48,7 +48,7 @@ describe('apiFetch', () => {
   it('accessToken 있을 때 Authorization: Bearer 헤더 추가', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'test-access-token',
-      user: { username: 'alice', email: 'alice@example.com', authMethod: 'local', userId: '1', mustChangePassword: false, isSystemAdmin: false },
+      user: { username: 'alice', email: 'alice@example.com', authMethod: 'local', userId: '1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
     })
 
     let capturedAuth: string | null = null

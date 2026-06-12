@@ -112,6 +112,7 @@ describe('authHandlers — GET /api/v1/users/me/whoami', () => {
       userId: string
       mustChangePassword: boolean
       isSystemAdmin: boolean
+      mfaEnrollmentRequired: boolean
     }
     expect(body.username).toBe('alice')
     expect(body.email).toBeTypeOf('string')
@@ -119,6 +120,7 @@ describe('authHandlers — GET /api/v1/users/me/whoami', () => {
     expect(body.userId).toBeTypeOf('string')
     expect(body.mustChangePassword).toBeTypeOf('boolean')
     expect(body.isSystemAdmin).toBeTypeOf('boolean')
+    expect(body.mfaEnrollmentRequired).toBeTypeOf('boolean')
   })
 
   it('Authorization 헤더 없음 → 401', async () => {

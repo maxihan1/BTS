@@ -55,6 +55,7 @@ describe('ProjectMembersSettingsPage', () => {
         authMethod: 'local',
         mustChangePassword: false,
         isSystemAdmin: false,
+        mfaEnrollmentRequired: false,
       },
     })
   })

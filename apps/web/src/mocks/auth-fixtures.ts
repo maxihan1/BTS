@@ -15,6 +15,19 @@ import type { WhoamiResponse } from '@/api/schemas'
 export const MFA_E2E_ENABLED_KEY = '__bts_e2e_mfa_enabled'
 
 /**
+ * E2E 테스트 전용 localStorage 플래그 키 (FR-MF-04).
+ * 이 키가 'true'이면 whoami 핸들러가 mfaEnrollmentRequired 를
+ * mfaStore.enabled 상태로 파생한다.
+ * - 플래그 ON + mfaStore.enabled=false → mfaEnrollmentRequired:true (강제 게이트 활성)
+ * - 플래그 ON + mfaStore.enabled=true  → mfaEnrollmentRequired:false (등록 후 해제)
+ * - 플래그 OFF(기본)                   → mfaEnrollmentRequired:false (비강제 기존 동작)
+ *
+ * Playwright addInitScript 로 goto 전에 플래그를 설정하면
+ * 첫 whoami fetch 시점부터 적용된다 (e2e-msw-scenario-toggle-localstorage-flag).
+ */
+export const E2E_MFA_ENFORCEMENT_KEY = '__bts_e2e_mfa_enforcement'
+
+/**
  * MFA 고정 유효 코드 — MSW mock 전용.
  * 이 코드만 enable/disable/verify에서 성공으로 처리한다.
  */
@@ -71,6 +84,7 @@ export const aliceUser: WhoamiResponse = {
   userId: '00000000-0000-0000-0000-000000000001',
   mustChangePassword: false,
   isSystemAdmin: false,
+  mfaEnrollmentRequired: false,
 }
 
 /** bob fixture — 추가 fixture 사용자 */
@@ -81,6 +95,7 @@ export const bobUser: WhoamiResponse = {
   userId: '00000000-0000-0000-0000-000000000002',
   mustChangePassword: false,
   isSystemAdmin: false,
+  mfaEnrollmentRequired: false,
 }
 
 /** username → fixture 사용자 맵 */

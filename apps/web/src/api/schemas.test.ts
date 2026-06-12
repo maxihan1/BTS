@@ -128,6 +128,7 @@ describe('WhoamiResponseSchema', () => {
       userId: 'usr-0001',
       mustChangePassword: false,
       isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
     })
     expect(result.success).toBe(true)
   })
@@ -139,6 +140,7 @@ describe('WhoamiResponseSchema', () => {
       userId: 'usr-0001',
       mustChangePassword: false,
       isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
     })
     expect(result.success).toBe(false)
   })
@@ -150,6 +152,7 @@ describe('WhoamiResponseSchema', () => {
       authMethod: 'local',
       mustChangePassword: false,
       isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
     })
     expect(result.success).toBe(false)
   })
@@ -161,6 +164,7 @@ describe('WhoamiResponseSchema', () => {
       authMethod: 'local',
       userId: 'usr-0001',
       isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
     })
     expect(result.success).toBe(false)
   })
@@ -172,6 +176,7 @@ describe('WhoamiResponseSchema', () => {
       authMethod: 'local',
       userId: 'usr-0001',
       mustChangePassword: false,
+      mfaEnrollmentRequired: false,
     })
     expect(result.success).toBe(false)
   })
@@ -184,6 +189,7 @@ describe('WhoamiResponseSchema', () => {
       userId: 'usr-0001',
       mustChangePassword: true,
       isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
     })
     expect(result.success).toBe(true)
   })
@@ -196,8 +202,24 @@ describe('WhoamiResponseSchema', () => {
       userId: 'usr-0001',
       mustChangePassword: false,
       isSystemAdmin: true,
+      mfaEnrollmentRequired: false,
     })
     expect(result.success).toBe(true)
+  })
+
+  it('whoami 스키마는 mfaEnrollmentRequired(boolean)를 필수로 요구한다', () => {
+    const base = {
+      username: 'alice',
+      email: 'a@bts.local',
+      authMethod: 'jwt',
+      userId: '00000000-0000-0000-0000-000000000001',
+      mustChangePassword: false,
+      isSystemAdmin: false,
+    }
+    expect(() => WhoamiResponseSchema.parse(base)).toThrow()
+    expect(
+      WhoamiResponseSchema.parse({ ...base, mfaEnrollmentRequired: true }).mfaEnrollmentRequired,
+    ).toBe(true)
   })
 })
 

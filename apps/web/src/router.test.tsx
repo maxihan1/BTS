@@ -43,7 +43,7 @@ describe('Router', () => {
   it('/dashboard 라우트 마운트 (인증 상태) → DashboardPage placeholder 렌더', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'test-access-token',
-      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false },
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
     })
     renderWithRoute('/dashboard')
     expect(await screen.findByText(/환영합니다/)).toBeInTheDocument()
@@ -60,7 +60,7 @@ describe('Router', () => {
   it('/issues 라우트 마운트 (인증 상태) → IssueListRouteAdapter 렌더', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'test-access-token',
-      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false },
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
     })
     renderWithRoute('/issues')
     expect(await screen.findByText(/이슈 목록/)).toBeInTheDocument()
@@ -75,7 +75,7 @@ describe('Router', () => {
   it('/issues/new 라우트 마운트 (인증 상태) → IssueCreateRouteAdapter 렌더', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'test-access-token',
-      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false },
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
     })
     renderWithRoute('/issues/new')
     expect(await screen.findByText(/이슈 생성/)).toBeInTheDocument()
@@ -84,7 +84,7 @@ describe('Router', () => {
   it('/issues/$key 라우트 마운트 (인증 상태) → IssueDetailRouteAdapter 렌더', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'test-access-token',
-      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false },
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
     })
     renderWithRoute('/issues/ATLAS-1')
     expect(await screen.findByText(/이슈 상세/)).toBeInTheDocument()
@@ -93,12 +93,53 @@ describe('Router', () => {
   it('dashboard에 /issues 네비 링크 1개 존재', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'test-access-token',
-      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false },
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
     })
     renderWithRoute('/dashboard')
     await screen.findByText(/환영합니다/)
     const issueLinks = screen.getAllByRole('link', { name: /이슈/ })
     expect(issueLinks).toHaveLength(1)
     expect(issueLinks[0]).toHaveAttribute('href', '/issues')
+  })
+
+  // ─── Task 3: MFA 등록 강제 게이트 라우터 합성 ────────────────────────────────
+
+  it('mfaEnrollmentRequired:true 세션에서 보호 라우트(/dashboard) 접근 시 /settings/mfa 로 리다이렉트', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'test-access-token',
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: true },
+    })
+    renderWithRoute('/dashboard')
+    // MFA 등록 설정 페이지로 리다이렉트됨
+    expect(await screen.findByText(/2단계 인증/)).toBeInTheDocument()
+  })
+
+  it('mfaEnrollmentRequired:true 세션에서 /settings/mfa 라우트 자신은 통과(리다이렉트 루프 없음)', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'test-access-token',
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: true },
+    })
+    renderWithRoute('/settings/mfa')
+    // /settings/mfa 자신은 통과해야 함 — MFA 설정 페이지 렌더됨
+    expect(await screen.findByText(/2단계 인증/)).toBeInTheDocument()
+  })
+
+  it('mustChangePassword:true 이고 mfaEnrollmentRequired:true 이면 비밀번호 변경이 우선(/settings/password 로 리다이렉트)', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'test-access-token',
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: true, isSystemAdmin: false, mfaEnrollmentRequired: true },
+    })
+    renderWithRoute('/dashboard')
+    // requirePasswordChanged 가 requireMfaEnrolled 보다 먼저 실행 — 비밀번호 변경 페이지로 리다이렉트
+    expect(await screen.findByRole('heading', { name: /비밀번호 변경/, level: 1 }, { timeout: 3000 })).toBeInTheDocument()
+  })
+
+  it('mfaEnrollmentRequired:false 세션에서 보호 라우트(/issues) 접근 시 정상 렌더', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'test-access-token',
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
+    })
+    renderWithRoute('/issues')
+    expect(await screen.findByText(/이슈 목록/)).toBeInTheDocument()
   })
 })

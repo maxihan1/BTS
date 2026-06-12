@@ -1,9 +1,9 @@
 // TanStack Router 라우트 트리 정의 — code-based 패턴, 25개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + settings 4 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
-import { requireAuth, redirectIfAuth, requirePasswordChanged, requireSystemAdmin, composeGuards } from './auth/routeGuard'
+import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
-/** 대부분의 보호 라우트에 적용하는 기본 가드 체인 — 미인증 차단 + 비밀번호 변경 강제 */
-const requireAuthAndPasswordChanged = composeGuards(requireAuth, requirePasswordChanged)
+/** 대부분의 보호 라우트에 적용하는 기본 가드 체인 — 미인증 차단 + 비밀번호 변경 강제 + MFA 등록 강제 (FR-MF-04) */
+const requireAuthAndPasswordChanged = composeGuards(requireAuth, requirePasswordChanged, requireMfaEnrolled)
 import { RootLayout } from './routes/__root'
 import { IndexPage } from './routes/index'
 import { LoginPage } from './routes/login'
@@ -208,8 +208,8 @@ const adminAuditLogsRoute = createRoute({
   path: '/admin/audit-logs',
   component: AdminAuditLogsRouteAdapter,
   staticData: { requireAuth: true },
-  // requirePasswordChanged 포함 — 강제변경 미완료 관리자가 admin 라우트로 우회 못 하게 adminUsersNewRoute 와 일관.
-  beforeLoad: composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged),
+  // requirePasswordChanged + requireMfaEnrolled 포함 — 강제변경 미완료 관리자가 admin 라우트로 우회 못 하게 adminUsersNewRoute 와 일관. (FR-MF-04)
+  beforeLoad: composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged, requireMfaEnrolled),
 })
 
 /** 알림 정책 관리자 조회 라우트 — /admin/notification-policies, requireAuth + requireSystemAdmin + requirePasswordChanged */
@@ -218,8 +218,8 @@ const adminNotificationPoliciesRoute = createRoute({
   path: '/admin/notification-policies',
   component: AdminNotificationPoliciesRouteAdapter,
   staticData: { requireAuth: true },
-  // requirePasswordChanged 포함 — adminAuditLogsRoute 와 완전 1:1 (강제변경 미완료 관리자 우회 차단).
-  beforeLoad: composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged),
+  // requirePasswordChanged + requireMfaEnrolled 포함 — adminAuditLogsRoute 와 완전 1:1 (강제변경 미완료 관리자 우회 차단). (FR-MF-04)
+  beforeLoad: composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged, requireMfaEnrolled),
 })
 
 /** 사용자 생성 라우트 — /admin/users/new, requireAuth + requireSystemAdmin + requirePasswordChanged */
@@ -228,8 +228,8 @@ const adminUsersNewRoute = createRoute({
   path: '/admin/users/new',
   component: AdminUsersNewRouteAdapter,
   staticData: { requireAuth: true },
-  // requirePasswordChanged 포함 (CONCERN-2) — 강제변경 미완료 관리자가 계정 생성으로 우회 못 하게 다른 보호 라우트와 일관.
-  beforeLoad: composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged),
+  // requirePasswordChanged + requireMfaEnrolled 포함 (CONCERN-2) — 강제변경 미완료 관리자가 계정 생성으로 우회 못 하게 다른 보호 라우트와 일관. (FR-MF-04)
+  beforeLoad: composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged, requireMfaEnrolled),
 })
 
 /** 비밀번호 변경 라우트 — /settings/password, requireAuth */

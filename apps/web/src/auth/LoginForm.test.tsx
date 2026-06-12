@@ -256,6 +256,7 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
           userId: 'u1',
           mustChangePassword: false,
           isSystemAdmin: false,
+          mfaEnrollmentRequired: false,
         }),
       ),
     )
@@ -415,6 +416,7 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
           userId: '00000000-0000-4000-8000-000000000001',
           mustChangePassword: false,
           isSystemAdmin: false,
+          mfaEnrollmentRequired: false,
         }),
       ),
     )
@@ -460,6 +462,7 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
           userId: '00000000-0000-4000-8000-000000000001',
           mustChangePassword: false,
           isSystemAdmin: false,
+          mfaEnrollmentRequired: false,
         }),
       ),
     )
@@ -584,6 +587,7 @@ describe('LoginForm — MFA step (3단계)', () => {
           userId: '00000000-0000-4000-8000-000000000001',
           mustChangePassword: false,
           isSystemAdmin: false,
+          mfaEnrollmentRequired: false,
         }),
       ),
     )
@@ -711,6 +715,7 @@ describe('LoginForm — MFA step 백업 코드 토글 (task-3)', () => {
           userId: '00000000-0000-4000-8000-000000000001',
           mustChangePassword: false,
           isSystemAdmin: false,
+          mfaEnrollmentRequired: false,
         }),
       ),
     )
@@ -748,6 +753,7 @@ describe('LoginForm — MFA step 백업 코드 토글 (task-3)', () => {
           userId: '00000000-0000-4000-8000-000000000001',
           mustChangePassword: false,
           isSystemAdmin: false,
+          mfaEnrollmentRequired: false,
         }),
       ),
     )

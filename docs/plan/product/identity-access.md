@@ -226,10 +226,12 @@
 - [x] D3. 데이터 모델 — `projects.require_2fa BOOLEAN DEFAULT false` (issue-tracking V020) + `SensitiveProjectResolver` shared-kernel 포트 (책임. db-engineer) (PR #123)
 - [x] D4. 백엔드 — whoami 필드 + 백엔드 게이트(미등록 강제 대상 차단, enrollment/whoami/logout allow-list) (책임. security-engineer) (PR #123)
 - [x] D5. 백엔드 테스트 — `MfaEnforcementEndToEndTest` 통합 + 단위 (책임. security-engineer) (PR #123)
-- [ ] D6. 프론트 UI — MFA 미등록 시 step-up 페이지 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — MFA 미등록 강제 게이트(기존 `/settings/mfa` 리다이렉트 + 안내 배너, Option A2) (책임. frontend-engineer) (PR #128)
+- [x] D7. E2E (책임. qa-engineer) (PR #128)
 
-> **FR-MF-04 백엔드 D1~D5 완료 (2026-06-12, PR #123)**. MFA 강제 정책 평가 + JWT 클레임 + 게이트 + whoami + issue-tracking `require_2fa` 컬럼/토글/resolver. **핵심 결정**(ADR `docs/decisions/2026-06-12-mfa-enforcement-policy.md`) — `require_2fa`는 issue-tracking `projects`에, shared-kernel `SensitiveProjectResolver` 포트로 cross-BC 평가(BC 격리 유지). `MfaEnforcementPolicy`(관리자 역할 OR 민감 프로젝트 멤버) + whoami `mfaEnrollmentRequired` 필드 + 백엔드 게이트(미등록 강제 대상은 enrollment/whoami/logout 외 차단). `@ConditionalOnMissingBean` fallback(`NonProdSensitiveProjectResolver`, `anyRequiresMfa`=false) — identity-access 단독 부팅 가용성 확보, prod fallback 제거 후 WARN 로그로 misassembled 관측. **deviation** — 원안 `mfa_policies(scope, required)` 별도 테이블 대신 `projects.require_2fa` 컬럼(자연스러운 프로젝트 설정 위치, ADR D2). D6/D7 프론트 게이팅 UI + E2E는 후속 PR.
+> **FR-MF-04 백엔드 D1~D5 완료 (2026-06-12, PR #123)**. MFA 강제 정책 평가 + JWT 클레임 + 게이트 + whoami + issue-tracking `require_2fa` 컬럼/토글/resolver. **핵심 결정**(ADR `docs/decisions/2026-06-12-mfa-enforcement-policy.md`) — `require_2fa`는 issue-tracking `projects`에, shared-kernel `SensitiveProjectResolver` 포트로 cross-BC 평가(BC 격리 유지). `MfaEnforcementPolicy`(관리자 역할 OR 민감 프로젝트 멤버) + whoami `mfaEnrollmentRequired` 필드 + 백엔드 게이트(미등록 강제 대상은 enrollment/whoami/logout 외 차단). `@ConditionalOnMissingBean` fallback(`NonProdSensitiveProjectResolver`, `anyRequiresMfa`=false) — identity-access 단독 부팅 가용성 확보, prod fallback 제거 후 WARN 로그로 misassembled 관측. **deviation** — 원안 `mfa_policies(scope, required)` 별도 테이블 대신 `projects.require_2fa` 컬럼(자연스러운 프로젝트 설정 위치, ADR D2).
+
+> **FR-MF-04 D6/D7 완료 (2026-06-12, PR #128)**. 프론트 게이팅 UI + E2E. whoami `mfaEnrollmentRequired` 소비 — `requireMfaEnrolled` 라우트 가드(`requirePasswordChanged` 동형)가 강제대상 미등록을 `/settings/mfa`로 리다이렉트(공유 가드 const + admin 3라우트 합성). **deviation(원안 "step-up 페이지" → Option A2)** — 별도 페이지 신설 대신 기존 MFA 설정 페이지 재사용 + 강제 안내 배너(신규 라우트 0, Maxi 확정). **정합성 핵심** — whoami/게이트가 JWT 클레임을 읽기만 하므로 등록 후 토큰 refresh + whoami 재조회(`refreshSession`)로 클레임 재계산해야 게이트가 풀림(미적용 시 store stale로 영구 락). 백엔드 변경 0(계약 소비). E2E 4 시나리오(강제 리다이렉트/게이트 고정/등록 후 해제/비강제 회귀) + MSW refresh 핸들러 신설. 검증 — typecheck/lint/단위 2399/E2E 4신규+기존 회귀 0.
 
 ### §3.5 FR-MF-05 — 신뢰 디바이스 (30일 면제)
 

@@ -34,7 +34,7 @@ beforeEach(() => {
   mockNavigate.mockReset()
   useAuthStore.setState({
     accessToken: 'test-token',
-    user: { username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false },
+    user: { username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
   })
 })
 
@@ -94,7 +94,7 @@ describe('Header', () => {
   it('isSystemAdmin=true이면 관리 nav 안에 워크플로우 스킴 링크가 존재한다', () => {
     useAuthStore.setState({
       accessToken: 'test-token',
-      user: { username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: true },
+      user: { username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: true, mfaEnrollmentRequired: false },
     })
     renderHeader()
 
@@ -107,7 +107,7 @@ describe('Header', () => {
   it('isSystemAdmin=true이면 관리 nav 안에 감사 로그 링크가 존재한다', () => {
     useAuthStore.setState({
       accessToken: 'test-token',
-      user: { username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: true },
+      user: { username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: true, mfaEnrollmentRequired: false },
     })
     renderHeader()
 
@@ -119,7 +119,7 @@ describe('Header', () => {
   it('isSystemAdmin=true이면 관리 nav 안에 알림 정책 링크가 존재한다', () => {
     useAuthStore.setState({
       accessToken: 'test-token',
-      user: { username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: true },
+      user: { username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: true, mfaEnrollmentRequired: false },
     })
     renderHeader()
 
