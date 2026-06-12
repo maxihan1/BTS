@@ -27,6 +27,9 @@ object IssueTemplateErrorCodes {
     /** 권한 없음 — 403. */
     const val ACCESS_DENIED = "ISSUE_TEMPLATE_ACCESS_DENIED"
 
+    /** 도메인 불변식 위반(name/content blank 등) — 422. */
+    const val TEMPLATE_INVALID = "ISSUE_TEMPLATE_INVALID"
+
     /** 분류되지 않은 내부 오류 — 500. */
     const val INTERNAL_ERROR = "INTERNAL_ERROR"
 }

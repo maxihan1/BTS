@@ -164,7 +164,9 @@ class IssueTemplateController(
     /**
      * 이슈 템플릿의 name 과 content 를 수정한다.
      *
-     * null 필드 = 무변경 (sentinel 정책). issueTypeId 는 불변.
+     * null 필드 = 무변경(sentinel 정책). issueTypeId 는 불변.
+     * 도메인 [com.bts.issue.template.domain.IssueTemplate.withChanges] 가 불변식 검증을
+     * 수행하므로 blank 값은 422 로 거부된다.
      *
      * @param projectIdOrKey path variable 프로젝트 UUID 또는 projectKey.
      * @param templateId path variable 템플릿 UUID.
@@ -172,6 +174,7 @@ class IssueTemplateController(
      * @return 200 OK + 수정된 [IssueTemplateResponse] body.
      * @throws com.bts.issue.template.domain.IssueTemplateNotFoundException 템플릿 미존재 → 404
      * @throws com.bts.issue.template.domain.IssueTemplateAccessDeniedException 권한 없음 → 403
+     * @throws com.bts.issue.template.domain.InvalidIssueTemplateException name/content 불변식 위반 → 422
      */
     @PatchMapping("/{templateId}")
     fun update(
@@ -181,14 +184,13 @@ class IssueTemplateController(
     ): ResponseEntity<DataResponse<IssueTemplateResponse>> {
         log.info("IssueTemplateController.update projectIdOrKey={} templateId={}", projectIdOrKey, templateId)
         val projectId = resolveProjectId(projectIdOrKey)
-        val existing = service.getById(SYSTEM_ACTOR_UUID, templateId)
         val template =
             service.update(
                 actorId = SYSTEM_ACTOR_UUID,
                 projectId = projectId,
                 templateId = templateId,
-                name = request.name ?: existing.name,
-                content = request.content ?: existing.content,
+                name = request.name,
+                content = request.content,
             )
         return ResponseEntity.ok(DataResponse(data = IssueTemplateResponse.from(template)))
     }

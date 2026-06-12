@@ -3,6 +3,7 @@
 package com.bts.issue.template.web
 
 import com.bts.issue.template.domain.DuplicateIssueTemplateException
+import com.bts.issue.template.domain.InvalidIssueTemplateException
 import com.bts.issue.template.domain.IssueTemplateAccessDeniedException
 import com.bts.issue.template.domain.IssueTemplateNotFoundException
 import com.bts.issue.type.domain.IssueTypeNotFoundException
@@ -36,6 +37,7 @@ import java.time.Instant
  * - [IssueTemplateNotFoundException] → 404 + [IssueTemplateErrorCodes.TEMPLATE_NOT_FOUND]
  * - [IssueTypeNotFoundException] → 404 + [IssueTemplateErrorCodes.ISSUE_TYPE_NOT_FOUND]
  * - [DuplicateIssueTemplateException] → 409 + [IssueTemplateErrorCodes.TEMPLATE_DUPLICATE]
+ * - [InvalidIssueTemplateException] → 422 + [IssueTemplateErrorCodes.TEMPLATE_INVALID]
  * - [Exception] (fallback) → 500 + [IssueTemplateErrorCodes.INTERNAL_ERROR]
  */
 @RestControllerAdvice(basePackages = ["com.bts.issue.template.web"])
@@ -139,6 +141,28 @@ class IssueTemplateExceptionHandler {
             type = "issue-template-duplicate",
             title = "Issue Template Duplicate",
             errorCode = IssueTemplateErrorCodes.TEMPLATE_DUPLICATE,
+            detail = ex.message,
+        )
+    }
+
+    // ── 422 TEMPLATE_INVALID ──────────────────────────────────────────────────
+
+    /**
+     * [InvalidIssueTemplateException] — 도메인 불변식 위반(name/content blank 등) — 422.
+     *
+     * PATCH 로 blank 값이 전달되면 도메인 [com.bts.issue.template.domain.IssueTemplate.withChanges]
+     * 가 이 예외를 던진다. DTO 검증(@field:*)은 1차 방어이며 도메인 검증이 최종 보루다.
+     *
+     * @param ex 불변식 위반 내용을 포함하는 예외.
+     */
+    @ExceptionHandler(InvalidIssueTemplateException::class)
+    fun handleTemplateInvalid(ex: InvalidIssueTemplateException): ProblemDetail {
+        log.info("ISSUE_TEMPLATE_422 template_invalid message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.UNPROCESSABLE_ENTITY,
+            type = "issue-template-invalid",
+            title = "Invalid Issue Template",
+            errorCode = IssueTemplateErrorCodes.TEMPLATE_INVALID,
             detail = ex.message,
         )
     }

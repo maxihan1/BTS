@@ -94,33 +94,38 @@ class IssueTemplateApplicationService(
     /**
      * 이슈 템플릿의 name 과 content 를 수정한다.
      *
+     * null = 무변경(sentinel 정책). 도메인 [IssueTemplate.withChanges] 를 경유하여
+     * create 와 동일한 불변식 검증이 적용된다. (메모리: patch-merge-domain-bypass)
+     *
      * 흐름.
      * 1. UPDATE 권한 검증.
      * 2. 기존 템플릿 조회 — 미존재 시 [IssueTemplateNotFoundException].
-     * 3. [IssueTemplateRepository.update] 위임.
-     * 4. 갱신된 템플릿 재조회 후 반환.
+     * 3. [IssueTemplate.withChanges] — 불변식 위반 시 [com.bts.issue.template.domain.InvalidIssueTemplateException].
+     * 4. [IssueTemplateRepository.update] 위임.
      *
      * @param actorId 수정 행위자 UUID.
      * @param projectId 대상 프로젝트 UUID.
      * @param templateId 수정할 템플릿 UUID.
-     * @param name 새 템플릿 이름.
-     * @param content 새 템플릿 본문 내용.
+     * @param name 새 템플릿 이름. null 이면 기존 유지. 전달 시 blank 는 422 거부됨.
+     * @param content 새 템플릿 본문 내용. null 이면 기존 유지. 전달 시 blank 는 422 거부됨.
      * @return 수정된 [IssueTemplate].
      * @throws IssueTemplateAccessDeniedException UPDATE 권한이 없을 때.
      * @throws IssueTemplateNotFoundException 템플릿이 존재하지 않을 때.
+     * @throws com.bts.issue.template.domain.InvalidIssueTemplateException name/content 불변식 위반 시.
      */
     fun update(
         actorId: UUID,
         projectId: UUID,
         templateId: UUID,
-        name: String,
-        content: String,
+        name: String?,
+        content: String?,
     ): IssueTemplate {
         assertPermission(actorId, TemplatePermission.UPDATE, projectId)
         val existing = findActiveTemplate(templateId)
-        repo.update(templateId, name, content)
+        val updated = existing.withChanges(name = name, content = content)
+        repo.update(templateId, updated.name, updated.content)
         log.info("issue_template_updated id={} projectId={} actor={}", templateId, projectId, actorId)
-        return existing.copy(name = name, content = content)
+        return updated
     }
 
     /**

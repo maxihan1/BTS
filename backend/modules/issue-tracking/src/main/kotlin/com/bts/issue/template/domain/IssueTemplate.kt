@@ -70,6 +70,32 @@ data class IssueTemplate(
             )
         }
     }
+
+    /**
+     * 변경 가능한 필드(name / content)를 교체하여 새 [IssueTemplate] 인스턴스를 반환한다.
+     *
+     * null = 무변경. copy() 를 직접 사용하지 않고 이 메서드를 경유함으로써
+     * create 와 동일한 불변식 검증([validateName], [validateContent])이 항상 적용된다.
+     * (메모리: patch-merge-domain-bypass)
+     *
+     * @param name 새 이름. null 이면 기존 유지. 전달 시 blank 는 422 거부됨.
+     * @param content 새 본문 내용. null 이면 기존 유지. 전달 시 blank 는 422 거부됨.
+     * @return 변경된 [IssueTemplate] 인스턴스.
+     * @throws InvalidIssueTemplateException name 또는 content 불변식 위반 시.
+     */
+    fun withChanges(
+        name: String? = null,
+        content: String? = null,
+    ): IssueTemplate {
+        val newName = name ?: this.name
+        val newContent = content ?: this.content
+        validateName(newName)
+        validateContent(newContent)
+        return copy(
+            name = newName.trim(),
+            content = newContent.trim(),
+        )
+    }
 }
 
 /**

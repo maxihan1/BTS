@@ -32,7 +32,6 @@ import java.util.UUID
  * - [findByProject] — 프로젝트 소속 활성 템플릿 목록 조회.
  * - [update] — name/content 갱신.
  * - [softDelete] — deleted_at 설정 (물리 삭제 금지).
- * - [existsActive] — (projectId, issueTypeId) 조합으로 활성 템플릿 존재 여부 확인.
  * - [findActiveContentByProjectAndType] — 활성 1건의 content 반환 (이슈 생성 안전망용).
  */
 @Repository
@@ -147,26 +146,6 @@ class IssueTemplateRepository(
             .and(ISSUE_TEMPLATES.DELETED_AT.isNull)
             .execute()
     }
-
-    /**
-     * (projectId, issueTypeId) 조합으로 활성 템플릿 존재 여부를 확인한다.
-     *
-     * @param projectId 확인할 프로젝트 UUID.
-     * @param issueTypeId 확인할 이슈 타입 BIGINT.
-     * @return 활성 템플릿이 존재하면 true, 없으면 false.
-     */
-    @Transactional(readOnly = true)
-    fun existsActive(
-        projectId: UUID,
-        issueTypeId: Long,
-    ): Boolean =
-        dsl.fetchExists(
-            dsl.selectOne()
-                .from(ISSUE_TEMPLATES)
-                .where(ISSUE_TEMPLATES.PROJECT_ID.eq(projectId))
-                .and(ISSUE_TEMPLATES.ISSUE_TYPE_ID.eq(issueTypeId))
-                .and(ISSUE_TEMPLATES.DELETED_AT.isNull),
-        )
 
     /**
      * (projectId, issueTypeId) 조합의 활성 템플릿 content 를 반환한다.

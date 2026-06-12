@@ -27,9 +27,8 @@ import java.util.UUID
  * - T5: findByProject — 소프트 삭제된 템플릿 제외.
  * - T6: 부분 유니크 위반 시 [DataAccessException] 전파.
  * - T7: softDelete 후 동일 (project, type) 재생성 허용.
- * - T8: existsActive — 활성 존재 true, 삭제 후 false.
- * - T9: findActiveContentByProjectAndType — 활성 content 반환, 없으면 null.
- * - T10: findByProject — 다른 프로젝트 템플릿 포함하지 않음.
+ * - T8: findActiveContentByProjectAndType — 활성 content 반환, 없으면 null.
+ * - T9: findByProject — 다른 프로젝트 템플릿 포함하지 않음.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class IssueTemplateRepositoryIntegrationTest : IssueTestcontainersBase() {
@@ -235,34 +234,10 @@ class IssueTemplateRepositoryIntegrationTest : IssueTestcontainersBase() {
         assertThat(second.name).isEqualTo("재생성 템플릿")
     }
 
-    // ── T8. existsActive ────────────────────────────────────────────────────
+    // ── T8. findActiveContentByProjectAndType ────────────────────────────────
 
     @Test
     @Order(8)
-    fun `existsActive 는 활성 템플릿이 있으면 true, 소프트 삭제 후에는 false 를 반환해야 한다`() {
-        assertThat(repo.existsActive(testProjectId, testIssueTypeId)).isFalse()
-
-        val inserted =
-            repo.insert(
-                IssueTemplate.create(
-                    projectId = testProjectId,
-                    issueTypeId = testIssueTypeId,
-                    name = "존재 확인 템플릿",
-                    content = "내용",
-                ),
-            )
-
-        assertThat(repo.existsActive(testProjectId, testIssueTypeId)).isTrue()
-
-        repo.softDelete(inserted.id)
-
-        assertThat(repo.existsActive(testProjectId, testIssueTypeId)).isFalse()
-    }
-
-    // ── T9. findActiveContentByProjectAndType ────────────────────────────────
-
-    @Test
-    @Order(9)
     fun `findActiveContentByProjectAndType 는 활성 content 를 반환하고 없으면 null 을 반환해야 한다`() {
         assertThat(repo.findActiveContentByProjectAndType(testProjectId, testIssueTypeId)).isNull()
 
@@ -284,10 +259,10 @@ class IssueTemplateRepositoryIntegrationTest : IssueTestcontainersBase() {
         assertThat(repo.findActiveContentByProjectAndType(testProjectId, testIssueTypeId)).isNull()
     }
 
-    // ── T10. findByProject — 다른 프로젝트 미포함 ───────────────────────────
+    // ── T9. findByProject — 다른 프로젝트 미포함 ───────────────────────────
 
     @Test
-    @Order(10)
+    @Order(9)
     fun `findByProject 는 다른 프로젝트의 템플릿을 포함하지 않아야 한다`() {
         val otherProjectId: UUID =
             dsl
