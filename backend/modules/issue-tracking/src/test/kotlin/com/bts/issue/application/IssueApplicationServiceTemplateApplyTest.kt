@@ -24,6 +24,7 @@ import com.bts.shared.workflow.WorkflowTransitionPort
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.nulls.shouldBeNull
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -97,10 +98,11 @@ class IssueApplicationServiceTemplateApplyTest : DescribeSpec({
             deletedAt = null,
         )
 
-    /** 공통 인프라 stub 설정 — 각 케이스에서 재사용. */
+    /** 공통 인프라 stub 설정 — 각 케이스에서 재사용. 케이스 간 templateRepo stub/call-count 누적을 방지하기 위해 clearMocks 선행. */
     fun stubCommonInfra() {
+        clearMocks(templateRepo)
         every {
-            permissionResolver.check(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey))
+            permissionResolver.hasPermission(actor.value, IssuePermission.CREATE, IssueScope.Project(projectKey))
         } returns true
         every { repo.incrementKeySequence(projectKey) } returns 1L
         every { repo.findProjectIdByKey(projectKey) } returns projectId
@@ -231,7 +233,7 @@ class IssueApplicationServiceTemplateApplyTest : DescribeSpec({
             stubCommonInfra()
             stubInsert()
             every {
-                permissionResolver.check(actor.value, IssuePermission.VIEW, IssueScope.Issue(sourceKey.value))
+                permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(sourceKey.value))
             } returns true
             every { repo.findByKey(sourceKey) } returns sourceIssue
             every { repo.incrementKeySequence(projectKey) } returns 2L

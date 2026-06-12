@@ -118,6 +118,10 @@ class IssueApplicationService(
     // AlwaysAllowFieldPermissionResolver(@Profile("!prod")) Bean이 타입으로 주입돼 이 기본값을 대체한다.
     private val fieldPermissionResolver: FieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
     private val historyRecorder: IssueHistoryRecorder,
+    // 이슈 생성 시 description 안전망(옵션 C, FR-TM-01 Task 7). null 이면 템플릿 미적용(benign).
+    // Spring 컨텍스트에서는 IssueTemplateRepository Bean 이 주입된다.
+    // 기존 단위 테스트 호환을 위해 null 기본값 유지 (customFieldDefinitionRepository 패턴 동형).
+    private val issueTemplateRepository: com.bts.issue.template.repository.IssueTemplateRepository? = null,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -198,6 +202,8 @@ class IssueApplicationService(
             validateCustomFields(definitions, customFieldValues)
         }
 
+        val resolvedDescription = resolveDescription(request.description, projectId, resolvedTypeId)
+
         val issue =
             Issue.create(
                 id = IssueId(UUID.randomUUID()),
@@ -211,6 +217,7 @@ class IssueApplicationService(
                 componentIds = normalizedComponentIds,
                 securityLevelId = request.securityLevelId,
                 customFields = customFieldValues,
+                description = resolvedDescription,
             )
         val saved = repo.insert(issue)
         repo.insertComponents(saved.id.value, normalizedComponentIds)
@@ -311,6 +318,27 @@ class IssueApplicationService(
         request: CloneIssueRequest,
         source: Issue,
     ): String = request.summaryOverride?.takeIf { it.isNotBlank() } ?: source.summary
+
+    /**
+     * 이슈 생성 시 description 을 결정한다 (FR-TM-01 옵션 C 안전망).
+     *
+     * - [requested] 가 non-blank 이면 요청 값을 그대로 사용한다. 템플릿을 조회하지 않는다.
+     * - null 또는 blank 이면 [issueTemplateRepository] 에서 (projectId, issueTypeId) 활성 템플릿 content 를 조회한다.
+     *   - 템플릿이 있으면 그 content 를 사용한다.
+     *   - 템플릿이 없거나 [issueTemplateRepository] 가 null 이면 null 을 반환한다.
+     *
+     * @param requested 요청 DTO 의 description 값. null 허용.
+     * @param projectId 이슈가 속할 프로젝트 UUID.
+     * @param resolvedTypeId 이슈 타입 식별자 VO.
+     * @return 최종 결정된 description 문자열. null 이면 이슈 생성 시 description 없음.
+     */
+    private fun resolveDescription(
+        requested: String?,
+        projectId: java.util.UUID,
+        resolvedTypeId: IssueTypeId,
+    ): String? =
+        requested?.takeIf { it.isNotBlank() }
+            ?: issueTemplateRepository?.findActiveContentByProjectAndType(projectId, resolvedTypeId.value)
 
     /**
      * 이슈 단건을 조회한다.

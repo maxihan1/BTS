@@ -114,6 +114,7 @@ class IssueController(
                 summary = request.summary,
                 reporterId = actor,
                 typeId = request.typeId?.let { IssueTypeId(it) },
+                description = request.description,
                 componentIds = request.componentIds,
                 securityLevelId = request.securityLevelId,
             )

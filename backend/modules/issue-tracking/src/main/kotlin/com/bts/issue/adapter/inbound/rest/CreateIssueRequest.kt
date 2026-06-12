@@ -19,6 +19,8 @@ import java.util.UUID
  * @property componentIds 이슈에 연결할 컴포넌트 UUID 목록. 생략 시 빈 목록으로 처리한다 (FR-CM-03).
  * @property securityLevelId 이슈에 지정할 보안 등급 UUID (FR-PM-06). 생략/null 이면 등급 없음(공개).
  *   non-null 이면 서비스가 SET_ISSUE_SECURITY 권한 + 적용 스킴 소속(422)을 검증한다.
+ * @property description 이슈 설명 (Markdown). null 또는 공백이면 서비스가 템플릿으로 대체한다 (FR-TM-01 옵션 C).
+ *   non-blank 이면 요청 값을 그대로 사용하고 템플릿을 조회하지 않는다.
  * @property customFields 커스텀 필드 값 맵 (FR-IS-10). null 이면 빈 맵으로 처리한다.
  *   값 검증(타입/required/미정의키)은 ApplicationService 가 수행한다.
  */
@@ -30,6 +32,7 @@ data class CreateIssueRequest(
     @field:NotBlank(message = "summary는 비어 있을 수 없습니다.")
     @field:Size(max = 200, message = "summary는 200자 이하여야 합니다.")
     val summary: String,
+    val description: String? = null,
     val componentIds: List<UUID> = emptyList(),
     val securityLevelId: UUID? = null,
     val customFields: Map<String, Any?>? = null,

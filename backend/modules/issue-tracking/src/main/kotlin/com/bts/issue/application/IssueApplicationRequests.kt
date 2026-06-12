@@ -13,6 +13,8 @@ import java.util.UUID
  * @param typeId 이슈 유형 식별자 VO. null 이면 서비스가 task 타입으로 fallback 한다 (FR-6).
  * @param summary 이슈 제목. 1~255자.
  * @param reporterId 이슈 생성자 ActorId.
+ * @param description 이슈 설명 (Markdown). null 또는 공백이면 서비스가 템플릿으로 대체한다 (FR-TM-01 옵션 C).
+ *   non-blank 이면 요청 값을 그대로 사용하고 템플릿을 조회하지 않는다.
  * @param componentIds 이슈 생성 시 연결할 컴포넌트 UUID 목록. 빈 목목이면 컴포넌트 미연결로 생성한다 (FR-CM-03).
  * @param securityLevelId 이슈에 지정할 보안 등급 UUID (FR-PM-06). null 이면 등급 없음(공개).
  *   non-null 이면 서비스가 SET_SECURITY 권한 + 적용 스킴 소속을 검증한다.
@@ -24,6 +26,7 @@ data class CreateIssueRequest(
     val summary: String,
     val reporterId: ActorId,
     val typeId: IssueTypeId? = null,
+    val description: String? = null,
     val componentIds: List<UUID> = emptyList(),
     val securityLevelId: UUID? = null,
     val customFields: Map<String, Any?>? = null,
