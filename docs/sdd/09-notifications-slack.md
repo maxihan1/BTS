@@ -10,7 +10,6 @@
 | 인앱 (Inbox) | 모든 알림, WebSocket 실시간 |
 | Slack DM | 즉시성 높은 알림 (멘션, 할당) |
 | Slack 채널 | 프로젝트별 활동 피드 |
-| Teams | (선택) Microsoft Teams Webhook |
 | Webhook | 외부 시스템 통지 |
 
 ### 9.1.2 이벤트별 알림 정책 (FR-NT-01)

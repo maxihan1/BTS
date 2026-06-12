@@ -39,7 +39,7 @@
 - [x] D6. 프론트 UI — 관리자 정책 페이지 (책임. designer → frontend-engineer) — PR #124 (`/admin/notification-policies`, SYSTEM_ADMIN, 전역 정책 CRUD)
 - [x] D7. E2E (책임. qa-engineer) — PR #124 (S1~S5 + 비관리자 차단, MSW 헤더 reset)
 
-### §2.2 FR-NT-02 — 채널 (이메일/인앱/Slack/Teams/Webhook)
+### §2.2 FR-NT-02 — 채널 (이메일/인앱/Webhook, Slack=slack-integration BC)
 
 **우선순위**. 필수 | **선행**. §1, §2.1 | **Plan slug**. `notify/channels`
 
