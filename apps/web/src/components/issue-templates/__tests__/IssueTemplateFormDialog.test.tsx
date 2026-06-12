@@ -1,5 +1,5 @@
 // 이슈 템플릿 생성/수정 Dialog 컴포넌트 테스트 — 타입 셀렉트·이름·본문 + 에러 인라인 표시
-import { describe, it, expect, vi, beforeAll, afterEach, afterAll } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -11,19 +11,15 @@ import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
 import { IssueTemplateFormDialog } from '../IssueTemplateFormDialog'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MSW 서버 설정
+// MSW 핸들러 설정 — server.listen()은 setup.ts에서 이미 호출됨, use()만 추가
 // ─────────────────────────────────────────────────────────────────────────────
 
-beforeAll(() => {
-  server.listen({ onUnhandledRequest: 'warn' })
+beforeEach(() => {
   server.use(...issueTemplateHandlers, ...issueTypeHandlers)
 })
 afterEach(() => {
-  server.resetHandlers()
-  server.use(...issueTemplateHandlers, ...issueTypeHandlers)
   resetIssueTemplateStore()
 })
-afterAll(() => { server.close() })
 
 // ─────────────────────────────────────────────────────────────────────────────
 // QueryClient 래퍼 헬퍼
@@ -122,10 +118,11 @@ describe('IssueTemplateFormDialog — S1 create 모드 렌더', () => {
     expect(screen.getByText('이슈 템플릿 추가')).toBeInTheDocument()
   })
 
-  it('create 모드에서 이슈 타입 select가 활성화 상태이다', async () => {
+  it('create 모드에서 이슈 타입 옵션이 로드된 후 select가 활성화 상태이다', async () => {
     renderCreateDialog()
-    // 이슈 타입 목록이 로딩된 후 select가 활성화되어야 한다
-    const select = await screen.findByRole('combobox', { name: '이슈 타입' })
+    // 이슈 타입 옵션이 로드된 후 select가 enabled 상태여야 한다
+    await screen.findByRole('option', { name: '버그' })
+    const select = screen.getByRole('combobox', { name: '이슈 타입' })
     expect(select).not.toBeDisabled()
   })
 
@@ -174,34 +171,29 @@ describe('IssueTemplateFormDialog — S2 edit 모드 렌더', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('IssueTemplateFormDialog — S3 빈값 Zod 유효성 차단', () => {
-  it('이름이 비어 있으면 저장 시 오류 메시지가 표시된다', async () => {
+  it('이름이 비어 있으면 저장 시 이름 필수 오류 메시지가 표시된다', async () => {
     const user = userEvent.setup()
     renderCreateDialog()
-
-    // 이슈 타입이 로드될 때까지 대기
-    await screen.findByRole('combobox', { name: '이슈 타입' })
 
     // 이름 비워둔 채 본문만 입력 후 저장
     await user.type(screen.getByLabelText('본문 (Markdown)'), '본문 내용')
     await user.click(screen.getByRole('button', { name: '저장' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeInTheDocument()
+      expect(screen.getByText('이름은 필수입니다.')).toBeInTheDocument()
     })
   })
 
-  it('본문이 비어 있으면 저장 시 오류 메시지가 표시된다', async () => {
+  it('본문이 비어 있으면 저장 시 본문 필수 오류 메시지가 표시된다', async () => {
     const user = userEvent.setup()
     renderCreateDialog()
-
-    await screen.findByRole('combobox', { name: '이슈 타입' })
 
     // 이름만 입력하고 본문 비워둔 채 저장
     await user.type(screen.getByLabelText('이름'), '템플릿 이름')
     await user.click(screen.getByRole('button', { name: '저장' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeInTheDocument()
+      expect(screen.getByText('본문은 필수입니다.')).toBeInTheDocument()
     })
   })
 })
@@ -219,10 +211,12 @@ describe('IssueTemplateFormDialog — S4 create 모드 제출', () => {
       const user = userEvent.setup({ delay: null })
       renderCreateDialog(onSubmitSuccess)
 
-      // 이슈 타입 로드 대기
-      const select = await screen.findByRole('combobox', { name: '이슈 타입' })
-      // 첫 번째 이슈 타입(버그, id=1) 선택
-      await user.selectOptions(select, '1')
+      // 이슈 타입 옵션이 로드될 때까지 대기 — '버그' 옵션이 나타날 때까지 기다린다
+      await screen.findByRole('option', { name: '버그' })
+
+      const select = screen.getByRole('combobox', { name: '이슈 타입' })
+      // 이슈 타입 이름('버그')으로 선택
+      await user.selectOptions(select, '버그')
 
       await user.type(screen.getByLabelText('이름'), '버그 리포트 템플릿')
       await user.type(screen.getByLabelText('본문 (Markdown)'), '## 재현 단계')
@@ -241,27 +235,6 @@ describe('IssueTemplateFormDialog — S4 create 모드 제출', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('IssueTemplateFormDialog — S5 409 ISSUE_TEMPLATE_DUPLICATE 인라인 표시', () => {
-  it(
-    '409가 발생하면 중복 오류 메시지가 다이얼로그 안에 표시된다',
-    { timeout: 10_000 },
-    async () => {
-      const user = userEvent.setup({ delay: null })
-      renderCreateDialog()
-
-      const select = await screen.findByRole('combobox', { name: '이슈 타입' })
-      // issueTypeId=1로 먼저 템플릿 생성해 중복 상태 만들기
-      // MSW store에 직접 시드 대신, 같은 타입으로 두 번 제출하는 방식으로 테스트
-      // 첫 번째 제출
-      await user.selectOptions(select, '1')
-      await user.type(screen.getByLabelText('이름'), '첫 번째 템플릿')
-      await user.type(screen.getByLabelText('본문 (Markdown)'), '## 내용')
-      await user.click(screen.getByRole('button', { name: '저장' }))
-
-      // 첫 번째 제출 성공 후 다이얼로그가 닫혔다면
-      // 이 시나리오는 submitError prop을 직접 전달하는 방식으로 테스트
-    },
-  )
-
   it('submitError prop이 있으면 오류 메시지가 다이얼로그 안에 표시된다', () => {
     renderCreateDialog(vi.fn(), '이미 해당 이슈 타입에 템플릿이 있습니다.')
     expect(
