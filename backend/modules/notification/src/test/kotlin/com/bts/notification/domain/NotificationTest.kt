@@ -15,6 +15,7 @@ class NotificationTest : DescribeSpec({
     val fixedNow: Instant = Instant.parse("2026-06-12T00:00:00Z")
     val laterNow: Instant = Instant.parse("2026-06-12T01:00:00Z")
 
+    @Suppress("LongParameterList")
     fun buildNotification(
         id: UUID = UUID.fromString("00000000-0000-0000-0000-000000000010"),
         recipientUserId: UUID = recipientId,
@@ -103,160 +104,177 @@ class NotificationTest : DescribeSpec({
 
         context("computeDedupKey — 동일 입력이면 항상 동일한 키를 반환한다") {
             it("같은 eventType/issueKey/occurredAt/recipientUserId/channel → 같은 dedupKey") {
-                val key1 = Notification.computeDedupKey(
-                    eventType = NotificationEventType.ISSUE_ASSIGNED,
-                    issueKey = "ATLAS-42",
-                    occurredAt = fixedNow,
-                    recipientUserId = recipientId,
-                    channel = Channel.IN_APP,
-                )
-                val key2 = Notification.computeDedupKey(
-                    eventType = NotificationEventType.ISSUE_ASSIGNED,
-                    issueKey = "ATLAS-42",
-                    occurredAt = fixedNow,
-                    recipientUserId = recipientId,
-                    channel = Channel.IN_APP,
-                )
+                val key1 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_ASSIGNED,
+                        issueKey = "ATLAS-42",
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                    )
+                val key2 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_ASSIGNED,
+                        issueKey = "ATLAS-42",
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                    )
                 key1 shouldBe key2
             }
 
             it("issueKey 가 null 이어도 결정적으로 계산된다") {
-                val key1 = Notification.computeDedupKey(
-                    eventType = NotificationEventType.SPRINT_STARTED,
-                    issueKey = null,
-                    occurredAt = fixedNow,
-                    recipientUserId = recipientId,
-                    channel = Channel.IN_APP,
-                )
-                val key2 = Notification.computeDedupKey(
-                    eventType = NotificationEventType.SPRINT_STARTED,
-                    issueKey = null,
-                    occurredAt = fixedNow,
-                    recipientUserId = recipientId,
-                    channel = Channel.IN_APP,
-                )
+                val key1 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.SPRINT_STARTED,
+                        issueKey = null,
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                    )
+                val key2 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.SPRINT_STARTED,
+                        issueKey = null,
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                    )
                 key1 shouldBe key2
             }
         }
 
         context("computeDedupKey — 입력이 다르면 키가 달라야 한다") {
             it("eventType 이 다르면 키가 다르다") {
-                val key1 = Notification.computeDedupKey(
-                    eventType = NotificationEventType.ISSUE_ASSIGNED,
-                    issueKey = "ATLAS-42",
-                    occurredAt = fixedNow,
-                    recipientUserId = recipientId,
-                    channel = Channel.IN_APP,
-                )
-                val key2 = Notification.computeDedupKey(
-                    eventType = NotificationEventType.ISSUE_CREATED,
-                    issueKey = "ATLAS-42",
-                    occurredAt = fixedNow,
-                    recipientUserId = recipientId,
-                    channel = Channel.IN_APP,
-                )
+                val key1 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_ASSIGNED,
+                        issueKey = "ATLAS-42",
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                    )
+                val key2 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_CREATED,
+                        issueKey = "ATLAS-42",
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                    )
                 key1 shouldNotBe key2
             }
 
             it("issueKey 가 다르면 키가 다르다") {
-                val key1 = Notification.computeDedupKey(
-                    eventType = NotificationEventType.ISSUE_ASSIGNED,
-                    issueKey = "ATLAS-42",
-                    occurredAt = fixedNow,
-                    recipientUserId = recipientId,
-                    channel = Channel.IN_APP,
-                )
-                val key2 = Notification.computeDedupKey(
-                    eventType = NotificationEventType.ISSUE_ASSIGNED,
-                    issueKey = "ATLAS-99",
-                    occurredAt = fixedNow,
-                    recipientUserId = recipientId,
-                    channel = Channel.IN_APP,
-                )
+                val key1 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_ASSIGNED,
+                        issueKey = "ATLAS-42",
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                    )
+                val key2 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_ASSIGNED,
+                        issueKey = "ATLAS-99",
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                    )
                 key1 shouldNotBe key2
             }
 
             it("occurredAt 이 다르면 키가 다르다") {
-                val key1 = Notification.computeDedupKey(
-                    eventType = NotificationEventType.ISSUE_ASSIGNED,
-                    issueKey = "ATLAS-42",
-                    occurredAt = fixedNow,
-                    recipientUserId = recipientId,
-                    channel = Channel.IN_APP,
-                )
-                val key2 = Notification.computeDedupKey(
-                    eventType = NotificationEventType.ISSUE_ASSIGNED,
-                    issueKey = "ATLAS-42",
-                    occurredAt = laterNow,
-                    recipientUserId = recipientId,
-                    channel = Channel.IN_APP,
-                )
+                val key1 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_ASSIGNED,
+                        issueKey = "ATLAS-42",
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                    )
+                val key2 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_ASSIGNED,
+                        issueKey = "ATLAS-42",
+                        occurredAt = laterNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                    )
                 key1 shouldNotBe key2
             }
 
             it("recipientUserId 가 다르면 키가 다르다") {
-                val key1 = Notification.computeDedupKey(
-                    eventType = NotificationEventType.ISSUE_ASSIGNED,
-                    issueKey = "ATLAS-42",
-                    occurredAt = fixedNow,
-                    recipientUserId = recipientId,
-                    channel = Channel.IN_APP,
-                )
-                val key2 = Notification.computeDedupKey(
-                    eventType = NotificationEventType.ISSUE_ASSIGNED,
-                    issueKey = "ATLAS-42",
-                    occurredAt = fixedNow,
-                    recipientUserId = otherId,
-                    channel = Channel.IN_APP,
-                )
+                val key1 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_ASSIGNED,
+                        issueKey = "ATLAS-42",
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                    )
+                val key2 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_ASSIGNED,
+                        issueKey = "ATLAS-42",
+                        occurredAt = fixedNow,
+                        recipientUserId = otherId,
+                        channel = Channel.IN_APP,
+                    )
                 key1 shouldNotBe key2
             }
 
             it("channel 이 다르면 키가 다르다") {
-                val key1 = Notification.computeDedupKey(
-                    eventType = NotificationEventType.ISSUE_ASSIGNED,
-                    issueKey = "ATLAS-42",
-                    occurredAt = fixedNow,
-                    recipientUserId = recipientId,
-                    channel = Channel.IN_APP,
-                )
-                val key2 = Notification.computeDedupKey(
-                    eventType = NotificationEventType.ISSUE_ASSIGNED,
-                    issueKey = "ATLAS-42",
-                    occurredAt = fixedNow,
-                    recipientUserId = recipientId,
-                    channel = Channel.EMAIL,
-                )
+                val key1 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_ASSIGNED,
+                        issueKey = "ATLAS-42",
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                    )
+                val key2 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_ASSIGNED,
+                        issueKey = "ATLAS-42",
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.EMAIL,
+                    )
                 key1 shouldNotBe key2
             }
 
             it("issueKey null 과 non-null 은 키가 다르다") {
-                val key1 = Notification.computeDedupKey(
-                    eventType = NotificationEventType.ISSUE_ASSIGNED,
-                    issueKey = null,
-                    occurredAt = fixedNow,
-                    recipientUserId = recipientId,
-                    channel = Channel.IN_APP,
-                )
-                val key2 = Notification.computeDedupKey(
-                    eventType = NotificationEventType.ISSUE_ASSIGNED,
-                    issueKey = "ATLAS-42",
-                    occurredAt = fixedNow,
-                    recipientUserId = recipientId,
-                    channel = Channel.IN_APP,
-                )
+                val key1 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_ASSIGNED,
+                        issueKey = null,
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                    )
+                val key2 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_ASSIGNED,
+                        issueKey = "ATLAS-42",
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                    )
                 key1 shouldNotBe key2
             }
         }
 
         it("computeDedupKey 결과는 SHA-256 hex — 64자 소문자 hex 문자열이어야 한다") {
-            val key = Notification.computeDedupKey(
-                eventType = NotificationEventType.ISSUE_ASSIGNED,
-                issueKey = "ATLAS-1",
-                occurredAt = fixedNow,
-                recipientUserId = recipientId,
-                channel = Channel.IN_APP,
-            )
+            val key =
+                Notification.computeDedupKey(
+                    eventType = NotificationEventType.ISSUE_ASSIGNED,
+                    issueKey = "ATLAS-1",
+                    occurredAt = fixedNow,
+                    recipientUserId = recipientId,
+                    channel = Channel.IN_APP,
+                )
             key.length shouldBe 64
             key shouldBe key.lowercase()
         }

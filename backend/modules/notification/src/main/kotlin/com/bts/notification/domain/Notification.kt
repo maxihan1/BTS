@@ -70,14 +70,15 @@ data class Notification(
             recipientUserId: UUID,
             channel: Channel,
         ): String {
-            val raw = listOf(
-                eventType.wireValue,
-                issueKey ?: "",
-                occurredAt.toString(),
-                recipientUserId.toString(),
-                channel.name,
-            ).joinToString(DEDUP_SEPARATOR)
-
+            val parts =
+                listOf(
+                    eventType.wireValue,
+                    issueKey ?: "",
+                    occurredAt.toString(),
+                    recipientUserId.toString(),
+                    channel.name,
+                )
+            val raw = parts.joinToString(DEDUP_SEPARATOR)
             val digest = MessageDigest.getInstance(DEDUP_ALGORITHM)
             val hashBytes = digest.digest(raw.toByteArray(Charsets.UTF_8))
             return hashBytes.joinToString("") { "%02x".format(it) }
