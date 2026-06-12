@@ -12,7 +12,6 @@ import com.bts.shared.issue.IssueRecipients
 import com.bts.shared.issue.IssueTypeId
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import java.sql.DriverManager
@@ -35,7 +34,6 @@ import java.util.UUID
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueRecipientLookupAdapterIntegrationTest : IssueTestcontainersBase() {
-
     private lateinit var adapter: IssueRecipientLookupAdapter
 
     /** V003 seed 에서 task 타입 id 를 DB 에서 직접 조회. value class 특성상 var+null 허용 초기화. */
@@ -61,8 +59,9 @@ class IssueRecipientLookupAdapterIntegrationTest : IssueTestcontainersBase() {
         }
     }
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 초기화 전 접근 — setupAdapter 확인" }
+    private fun requireTaskTypeId(): IssueTypeId {
+        return requireNotNull(taskTypeId) { "taskTypeId 초기화 전 접근 — setupAdapter 확인" }
+    }
 
     /**
      * 이슈를 삽입하고 반환된 Issue 를 제공하는 헬퍼.
