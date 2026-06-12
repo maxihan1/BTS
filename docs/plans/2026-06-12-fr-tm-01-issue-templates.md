@@ -32,9 +32,24 @@ classify 결과: type=backend, agent=backend-engineer, primary_bc=issue-tracking
 - **관련 ADR**: [docs/adr/2026-06-12-issue-template-model-and-application.md](../adr/2026-06-12-issue-template-model-and-application.md) (생성됨)
 - **선례 참조**: CustomFieldPermission.kt(권한 동형), IssueApplicationService.createIssue(적용 지점), 2026-06-02-issue-clone-semantics(생성 시 필드 채움)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-12-fr-tm-01-issue-templates.md](../specs/2026-06-12-fr-tm-01-issue-templates.md)
+
+핵심 요약.
+- issue_templates(project_id UUID, issue_type_id BIGINT, name, content) + 소프트삭제 + 활성 UNIQUE(project,type) 1개.
+- CRUD API `/api/v1/projects/{key}/issue-templates` (CUD=MANAGE_TEMPLATES, READ/resolve 미게이트) + resolve 엔드포인트.
+- CreateIssueRequest 에 description 추가 + createIssue 안전망(blank이고 템플릿 존재 시 서버 주입).
+- cross-BC: identity-access prod resolver + 권한시드 + PermissionSchemaMigrationTest 카운트+1 + MyProjectPermission 노출.
+
+주의(plan 단계 강조).
+- 마이그레이션 V번호: issue-tracking V019 + identity-access V025(추정, FR-MF-04 V024 충돌 경계 — 머지 직전 재확인).
+- init_codegen.sql 미러(issue_templates), IssueApplicationService nullable-default 주입(기존 테스트 호환).
+- 정본 동기화: SDD §5.7 ↔ product D3 ↔ fr-index ↔ ADR.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration, 자체 gap 분석). MyProjectPermission 노출·cloneIssue 무영향·content NotBlank 보강. Maxi 결정 필요 gap 없음(멀티플리시티·적용방식은 도메인 단계 확정).
 
 ## Plan (← /bts-plan 채움)
 
