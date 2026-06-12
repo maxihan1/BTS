@@ -5,6 +5,7 @@ package com.bts.issue.template.web
 import com.bts.issue.project.ProjectLookup
 import com.bts.issue.template.application.IssueTemplateApplicationService
 import com.bts.issue.template.domain.DuplicateIssueTemplateException
+import com.bts.issue.template.domain.InvalidIssueTemplateException
 import com.bts.issue.template.domain.IssueTemplate
 import com.bts.issue.template.domain.IssueTemplateAccessDeniedException
 import com.bts.issue.template.domain.IssueTemplateNotFoundException
@@ -363,17 +364,13 @@ class IssueTemplateControllerIntegrationTest {
     @Test
     fun `PATCH issue-templates templateId — 정상 수정 → 200 + 수정된 IssueTemplateResponse`() {
         val body = mapper.writeValueAsString(mapOf("name" to "수정된 이름"))
-        val existing = sampleTemplate()
-        every {
-            issueTemplateApplicationService.getById(any(), templateId)
-        } returns existing
         every {
             issueTemplateApplicationService.update(
                 actorId = any(),
                 projectId = projectId,
                 templateId = templateId,
                 name = "수정된 이름",
-                content = existing.content,
+                content = null,
             )
         } returns sampleTemplate(name = "수정된 이름")
 
@@ -384,6 +381,24 @@ class IssueTemplateControllerIntegrationTest {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.name").value("수정된 이름"))
+    }
+
+    // ── U-4. PATCH content blank → 422 ────────────────────────────────────────
+
+    @Test
+    fun `PATCH issue-templates templateId — content 빈 문자열 → 422 ISSUE_TEMPLATE_INVALID`() {
+        val body = mapper.writeValueAsString(mapOf("content" to ""))
+        every {
+            issueTemplateApplicationService.update(any(), any(), any(), any(), any())
+        } throws InvalidIssueTemplateException("content must not be blank")
+
+        mockMvc.perform(
+            patch("/api/v1/projects/$projectId/issue-templates/$templateId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isUnprocessableEntity)
+            .andExpect(jsonPath("$.errorCode").value(IssueTemplateErrorCodes.TEMPLATE_INVALID))
     }
 
     // ── U-2. PATCH 미존재 → 404 ───────────────────────────────────────────────

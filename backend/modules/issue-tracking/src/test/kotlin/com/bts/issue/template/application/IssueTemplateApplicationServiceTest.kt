@@ -3,6 +3,7 @@
 package com.bts.issue.template.application
 
 import com.bts.issue.template.domain.DuplicateIssueTemplateException
+import com.bts.issue.template.domain.InvalidIssueTemplateException
 import com.bts.issue.template.domain.IssueTemplate
 import com.bts.issue.template.domain.IssueTemplateAccessDeniedException
 import com.bts.issue.template.domain.IssueTemplateNotFoundException
@@ -166,7 +167,7 @@ class IssueTemplateApplicationServiceTest : DescribeSpec({
     // ── update ────────────────────────────────────────────────────────────────
 
     describe("update") {
-        context("정상 경로") {
+        context("정상 경로 — name 변경, content null") {
             it("권한 OK + 존재 → update 후 변경된 객체 반환") {
                 every {
                     permissionResolver.hasPermission(actorId, TemplatePermission.UPDATE, projectId)
@@ -174,7 +175,7 @@ class IssueTemplateApplicationServiceTest : DescribeSpec({
                 every { repo.findById(templateId) } returns existingTemplate
                 every { repo.update(templateId, "수정된 리포트", existingTemplate.content) } returns Unit
 
-                val result = sut.update(actorId, projectId, templateId, "수정된 리포트", existingTemplate.content)
+                val result = sut.update(actorId, projectId, templateId, "수정된 리포트", null)
 
                 result.name shouldBe "수정된 리포트"
                 result.content shouldBe existingTemplate.content
@@ -206,6 +207,50 @@ class IssueTemplateApplicationServiceTest : DescribeSpec({
                     sut.update(actorId, projectId, templateId, "수정", "내용")
                 }
                 verify(exactly = 0) { repo.update(any(), any(), any()) }
+            }
+        }
+
+        context("오류 경로 — content 빈 문자열(도메인 불변식 위반)") {
+            it("InvalidIssueTemplateException 발생, repo.update 미호출") {
+                every {
+                    permissionResolver.hasPermission(actorId, TemplatePermission.UPDATE, projectId)
+                } returns true
+                every { repo.findById(templateId) } returns existingTemplate
+
+                shouldThrow<InvalidIssueTemplateException> {
+                    sut.update(actorId, projectId, templateId, null, "")
+                }
+                verify(exactly = 0) { repo.update(any(), any(), any()) }
+            }
+        }
+
+        context("오류 경로 — name 빈 문자열(도메인 불변식 위반)") {
+            it("InvalidIssueTemplateException 발생, repo.update 미호출") {
+                every {
+                    permissionResolver.hasPermission(actorId, TemplatePermission.UPDATE, projectId)
+                } returns true
+                every { repo.findById(templateId) } returns existingTemplate
+
+                shouldThrow<InvalidIssueTemplateException> {
+                    sut.update(actorId, projectId, templateId, "", null)
+                }
+                verify(exactly = 0) { repo.update(any(), any(), any()) }
+            }
+        }
+
+        context("정상 경로 — name null 은 기존 name 유지") {
+            it("repo.update 에 기존 name 전달") {
+                every {
+                    permissionResolver.hasPermission(actorId, TemplatePermission.UPDATE, projectId)
+                } returns true
+                every { repo.findById(templateId) } returns existingTemplate
+                every { repo.update(templateId, existingTemplate.name, "새 내용") } returns Unit
+
+                val result = sut.update(actorId, projectId, templateId, null, "새 내용")
+
+                result.name shouldBe existingTemplate.name
+                result.content shouldBe "새 내용"
+                verify(exactly = 1) { repo.update(templateId, existingTemplate.name, "새 내용") }
             }
         }
     }
