@@ -199,6 +199,21 @@ describe('WhoamiResponseSchema', () => {
     })
     expect(result.success).toBe(true)
   })
+
+  it('whoami 스키마는 mfaEnrollmentRequired(boolean)를 필수로 요구한다', () => {
+    const base = {
+      username: 'alice',
+      email: 'a@bts.local',
+      authMethod: 'jwt',
+      userId: '00000000-0000-0000-0000-000000000001',
+      mustChangePassword: false,
+      isSystemAdmin: false,
+    }
+    expect(() => WhoamiResponseSchema.parse(base)).toThrow()
+    expect(
+      WhoamiResponseSchema.parse({ ...base, mfaEnrollmentRequired: true }).mfaEnrollmentRequired,
+    ).toBe(true)
+  })
 })
 
 describe('ApiErrorResponseSchema', () => {
