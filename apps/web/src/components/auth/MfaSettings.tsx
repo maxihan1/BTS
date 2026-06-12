@@ -2,15 +2,41 @@
 import type { JSX, FormEvent } from 'react'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 import { setupMfa, getMfaStatus, enableMfa, disableMfa } from '@/api/mfa'
 import type { MfaSetupResponse } from '@/api/schemas'
 import { BackupCodesSection } from './BackupCodesSection'
-import { ApiError } from '@/api/client'
+import { ApiError, refreshSession } from '@/api/client'
 import { extractErrorCode } from '@/lib/extract-error-code'
 import { mfaStrings, mfaErrorMessage } from '@/i18n/ko'
+import { useAuthUser } from '@/auth/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MFA 등록 강제 안내 배너 (FR-MF-04 D6-3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * MFA 등록 강제 정책이 적용된 사용자에게 상단에 노출하는 안내 배너.
+ * `mfaEnrollmentRequired === true`인 경우에만 부모가 조건부로 렌더한다.
+ *
+ * - role="status": 상태 알림 영역 (스크린 리더 접근성)
+ * - aria-live="polite": 강제로 포커스를 빼앗지 않고 안내만 전달
+ */
+function MfaEnforcementBanner(): JSX.Element {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label="강제 MFA 등록 안내"
+      className="rounded-lg bg-warning/10 border border-warning/30 px-4 py-3 text-sm text-warning-foreground"
+    >
+      {mfaStrings.enforcementBanner}
+    </div>
+  )
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // QR + Secret 표시 하위 컴포넌트
@@ -134,6 +160,8 @@ function MfaCodeForm({
  */
 export function MfaSettings(): JSX.Element {
   const queryClient = useQueryClient()
+  const user = useAuthUser()
+  const navigate = useNavigate()
 
   // ── status 조회 ──────────────────────────────────────────────────────────
   const {
@@ -180,6 +208,13 @@ export function MfaSettings(): JSX.Element {
       setSetupData(null)
       setEnableError(null)
       void queryClient.invalidateQueries({ queryKey: ['mfa', 'status'] })
+
+      // FR-D6-4: 강제 모드였다면 토큰 refresh → 클레임 재계산 → 게이트 해제 → /dashboard
+      if (user?.mfaEnrollmentRequired === true) {
+        void refreshSession().then(() => {
+          void navigate({ to: '/dashboard' })
+        })
+      }
     },
     onError: (err) => {
       if (err instanceof ApiError) {
@@ -252,6 +287,11 @@ export function MfaSettings(): JSX.Element {
 
   return (
     <div className="space-y-6">
+      {/* FR-D6-3: MFA 등록 강제 안내 배너 — mfaEnrollmentRequired=true 시에만 노출 */}
+      {user?.mfaEnrollmentRequired === true && (
+        <MfaEnforcementBanner />
+      )}
+
       {/* 현재 상태 표시 */}
       <div className="flex items-center gap-3">
         <span

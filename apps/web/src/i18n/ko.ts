@@ -403,6 +403,10 @@ export const mfaStrings = {
   backupCodesListLabel: '백업 코드 목록',
   /** 남은 백업코드 개수 단위 접미사 */
   backupRemainingUnit: '개',
+
+  // ── MFA 강제 정책(FR-MF-04) ──────────────────────────────────────────────
+  /** MFA 등록 강제 게이트 안내 배너 문구 (mfaEnrollmentRequired=true 시 노출) */
+  enforcementBanner: '보안 정책에 따라 2단계 인증 등록이 필요합니다. 등록을 완료해야 계속할 수 있습니다.',
 } as const
 
 /**
