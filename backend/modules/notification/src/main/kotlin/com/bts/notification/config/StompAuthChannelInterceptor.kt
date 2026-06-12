@@ -8,6 +8,7 @@ import org.springframework.messaging.MessageChannel
 import org.springframework.messaging.simp.stomp.StompCommand
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor
 import org.springframework.messaging.support.ChannelInterceptor
+import org.springframework.messaging.support.MessageHeaderAccessor
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.JwtException
@@ -45,15 +46,16 @@ class StompAuthChannelInterceptor(
         message: Message<*>,
         channel: MessageChannel,
     ): Message<*> {
-        val accessor = StompHeaderAccessor.wrap(message)
-        if (StompCommand.CONNECT != accessor.command) {
+        // 인바운드 메시지의 기존 mutable accessor 를 제자리 수정한다.
+        // wrap()+재조립 패턴은 user 헤더를 세션으로 전파하지 못해 SimpUserRegistry 가 비어
+        // user destination 해석이 실패한다(원인: DefaultUserDestinationResolver 가 빈 레지스트리 조회).
+        val accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor::class.java)
+        if (accessor == null || StompCommand.CONNECT != accessor.command) {
             return message
         }
         val token = extractBearerToken(accessor)
         accessor.user = authenticate(token)
-        accessor.setLeaveMutable(true)
-        return org.springframework.messaging.support.MessageBuilder
-            .createMessage(message.payload, accessor.messageHeaders)
+        return message
     }
 
     /**
