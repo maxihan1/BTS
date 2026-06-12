@@ -93,7 +93,15 @@ export function requirePasswordChanged({ location }: GuardContext): void {
 }
 
 /**
- * MFA 등록 강제 가드. 보호된 라우트에서 requirePasswordChanged 다음에 체인한다.
+ * MFA 등록 강제 가드 (FR-MF-04). 보호된 라우트에서 requirePasswordChanged 다음에 체인한다.
+ *
+ * 결정 근거. docs/decisions/2026-06-12-mfa-enforcement-policy.md D4 — 백엔드 게이트(MfaEnrollmentGateFilter)
+ * 와 동형으로 프론트도 강제 리다이렉트를 적용해 UX 단락을 방지한다. 권위 출처는 백엔드(403)이며,
+ * 이 가드는 additive UX 편의 계층이다.
+ *
+ * 순서 관계. requirePasswordChanged 다음에 위치해야 한다.
+ * mustChangePassword 조건이 mfaEnrollmentRequired보다 우선하므로,
+ * 비밀번호 변경 강제가 먼저 처리된 후 MFA 등록 강제가 실행된다.
  *
  * - user.mfaEnrollmentRequired === true이면 /settings/mfa 로 throw redirect.
  * - 현재 경로가 /settings/mfa이면 통과 (무한 redirect 방지).
