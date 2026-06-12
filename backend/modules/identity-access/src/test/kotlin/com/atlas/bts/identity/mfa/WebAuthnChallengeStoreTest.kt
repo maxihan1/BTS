@@ -47,10 +47,14 @@ class WebAuthnChallengeStoreTest {
     }
 
     @Test
-    fun `발급한 challenge 는 SecureRandom 기반 32바이트 nonce 다`() {
-        val issued = store.issue(userId)
+    fun `발급한 challenge 는 SecureRandom 기반의 충분한 엔트로피 nonce 다`() {
+        // webauthn4j DefaultChallenge() 는 SecureRandom 기반 16바이트 nonce 를 생성한다
+        // (WebAuthn 권장 최소 엔트로피). 매 발급마다 값이 달라야 한다(상수/예측 불가).
+        val first = store.issue(userId)
+        val second = store.issue(userId)
 
-        assertThat(issued.value).hasSize(32)
+        assertThat(first.value).hasSizeGreaterThanOrEqualTo(16)
+        assertThat(second.value).isNotEqualTo(first.value)
     }
 
     @Test
