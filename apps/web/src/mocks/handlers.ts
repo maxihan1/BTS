@@ -11,6 +11,7 @@ import { fieldPermissionHandlers } from './field-permission-handlers'
 import { groupHandlers } from './group-handlers'
 import { issueHandlers } from './issue-handlers'
 import { issuePermissionHandlers } from './issue-permission-handlers'
+import { issueTemplateHandlers } from './issue-template-handlers'
 import { issueTypeHandlers } from './issue-type-handlers'
 import { labelHandlers } from './label-handlers'
 import { mfaHandlers } from './mfa-handlers'
@@ -49,6 +50,7 @@ export const handlers = [
   ...groupHandlers,
   ...issueHandlers,
   ...issuePermissionHandlers,
+  ...issueTemplateHandlers,
   ...issueTypeHandlers,
   ...labelHandlers,
   ...mfaHandlers,
