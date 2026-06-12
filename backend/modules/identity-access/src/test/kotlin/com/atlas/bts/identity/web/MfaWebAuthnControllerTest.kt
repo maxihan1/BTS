@@ -6,6 +6,8 @@ import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
 import com.atlas.bts.identity.mfa.MfaBackupCodeService
+import com.atlas.bts.identity.mfa.MfaChallengeClaims
+import com.atlas.bts.identity.mfa.MfaChallengeTokenService
 import com.atlas.bts.identity.mfa.MfaService
 import com.atlas.bts.identity.mfa.WebAuthnSecurityKeyService
 import com.atlas.bts.identity.mfa.WebAuthnSecurityKeyService.KeySummary
@@ -120,6 +122,9 @@ class MfaWebAuthnControllerTest {
 
     @MockBean
     lateinit var webAuthnSecurityKeyService: WebAuthnSecurityKeyService
+
+    @MockBean
+    lateinit var challengeTokenService: MfaChallengeTokenService
 
     private val userId = UUID.fromString("11111111-1111-1111-1111-111111111111")
     private val keyId = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
@@ -306,6 +311,8 @@ class MfaWebAuthnControllerTest {
      */
     @Test
     fun `POST authenticate start without auth or csrf is not forbidden (permitAll + csrf-ignore)`() {
+        `when`(challengeTokenService.validate("any"))
+            .thenReturn(MfaChallengeClaims(userId = userId, providerId = "local", jti = "jti-1"))
         `when`(webAuthnSecurityKeyService.authenticateStart(anyUuid())).thenReturn("""{"challenge":"abc"}""")
 
         mockMvc.perform(
@@ -322,6 +329,8 @@ class MfaWebAuthnControllerTest {
      */
     @Test
     fun `POST authenticate start with expired challenge token returns 401`() {
+        `when`(challengeTokenService.validate("expired")).thenReturn(null)
+
         mockMvc.perform(
             post("/api/v1/auth/mfa/webauthn/authenticate/start")
                 .contentType(MediaType.APPLICATION_JSON)
