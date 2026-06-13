@@ -1,0 +1,197 @@
+// FR-TM-02 D7 E2E — 이슈 템플릿 변수 삽입 UI 시나리오 E1·E2·E3
+//
+// 배경.
+//   D6(FR-TM-02)이 IssueTemplateFormDialog에 TemplateContentField를 도입했다.
+//   본문 라벨 아래 "+ 작성자" / "+ 일자" / "+ 프로젝트" 버튼을 클릭하면
+//   textarea 커서 위치에 {{author}}/{{date}}/{{project}} 토큰이 삽입된다.
+//   "사용 가능 변수 …" 도움말도 표시된다.
+//
+// MSW 핵심 교훈 반영.
+//   - e2e-msw-serviceworker-block: serviceWorkers:'block' 금지 — playwright.config.ts 그대로
+//   - msw-mutation-stateful-refetch: POST → store 영속 → GET refetch → 목록 표시 확인
+//   - playwright-getbyrole-exact-strict-mode: 버튼은 정확 aria-label로 한정
+//   - e2e-fixture-whoami-userid-alignment: alice(00000000-...-001) adminProjectPermissions 정합
+//
+// 시나리오 격리.
+//   각 테스트는 page 단위로 새 MSW store 인스턴스를 받으므로 이름 접두사로 충분히 격리된다.
+import { test, expect } from '@playwright/test'
+import { loginAsAlice } from './fixtures/session-fixtures'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 상수 — 기존 issue-templates.spec.ts 패턴 그대로 미러
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PROJECT_KEY = 'ATLAS'
+const SETTINGS_URL = `/projects/${PROJECT_KEY}/settings/issue-templates`
+
+/** 이슈 타입 ID — issue-type-fixtures.ts 정합 */
+const ISSUE_TYPE_BUG_ID = 1   // name='버그'
+
+/** 관리 페이지 라벨 상수 — issue-template-labels.ts 정본값과 일치 */
+const labels = {
+  pageHeading: '이슈 템플릿 설정',
+  addButton: '템플릿 추가',
+  saveButton: '저장',
+  contentLabel: '본문 (Markdown)',
+  issueTypeLabel: '이슈 타입',
+  nameLabel: '이름',
+  /** 변수 삽입 버튼 aria-label — variableInsertAria(label) = `${label} 변수 삽입` */
+  authorInsertAria: '작성자 변수 삽입',
+  dateInsertAria: '일자 변수 삽입',
+  projectInsertAria: '프로젝트 변수 삽입',
+  /** 도움말 문구 앞부분 — variableHelpPrefix */
+  helpPrefix: '사용 가능 변수',
+  /** 도움말에 노출되는 토큰 */
+  authorToken: '{{author}}',
+} as const
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E1 — 커서 위치 삽입
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('E1 변수 삽입 — 커서 위치에 토큰 삽입 (FR-TM-02)', () => {
+  // Given  alice 로그인 → 이슈 템플릿 설정 페이지
+  // When   "템플릿 추가" 다이얼로그 → 본문에 '보고자: ' 입력
+  //        → "작성자 변수 삽입" 버튼 클릭
+  // Then   본문 textarea 값이 '보고자: {{author}}' 임
+
+  test.beforeEach(async ({ page }) => {
+    await loginAsAlice(page)
+    await page.goto(SETTINGS_URL)
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+  })
+
+  test('E1 본문에 보고자: 입력 후 작성자 변수 삽입 버튼 클릭 → {{author}} 토큰 삽입', async ({ page }) => {
+    // Given. 생성 다이얼로그 열기
+    await page.getByRole('button', { name: labels.addButton }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+
+    // When. 본문에 '보고자: ' 입력 — fill은 커서를 끝에 위치시킨다
+    await page.getByLabel(labels.contentLabel).fill('보고자: ')
+
+    // When. 작성자 변수 삽입 버튼 클릭
+    // playwright-getbyrole-exact-strict-mode: aria-label 정확히 일치
+    await page.getByRole('button', { name: labels.authorInsertAria }).click()
+
+    // Then. 본문 textarea 값에 {{author}} 토큰이 커서 위치(끝)에 삽입됨
+    await expect(page.getByLabel(labels.contentLabel)).toHaveValue('보고자: {{author}}')
+  })
+
+  test('E1-date 일자 변수 삽입 버튼 → {{date}} 토큰 삽입', async ({ page }) => {
+    // Given. 생성 다이얼로그 열기
+    await page.getByRole('button', { name: labels.addButton }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+
+    // When. 본문에 '생성일: ' 입력
+    await page.getByLabel(labels.contentLabel).fill('생성일: ')
+
+    // When. 일자 변수 삽입
+    await page.getByRole('button', { name: labels.dateInsertAria }).click()
+
+    // Then. {{date}} 삽입됨
+    await expect(page.getByLabel(labels.contentLabel)).toHaveValue('생성일: {{date}}')
+  })
+
+  test('E1-project 프로젝트 변수 삽입 버튼 → {{project}} 토큰 삽입', async ({ page }) => {
+    // Given. 생성 다이얼로그 열기
+    await page.getByRole('button', { name: labels.addButton }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+
+    // When. 본문에 '프로젝트: ' 입력
+    await page.getByLabel(labels.contentLabel).fill('프로젝트: ')
+
+    // When. 프로젝트 변수 삽입
+    await page.getByRole('button', { name: labels.projectInsertAria }).click()
+
+    // Then. {{project}} 삽입됨
+    await expect(page.getByLabel(labels.contentLabel)).toHaveValue('프로젝트: {{project}}')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E2 — 라운드트립 (토큰 전송·저장·프리필 입증)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('E2 변수 라운드트립 — create → store → refetch → edit 프리필 (FR-TM-02)', () => {
+  // Given  alice 로그인 → 이슈 템플릿 설정 페이지
+  // When   생성 다이얼로그: 이슈 타입(버그) + 이름 입력 + 본문에 {{author}} 토큰 삽입 → 저장
+  // Then   다이얼로그 닫힘, 목록에 이름 표시 (msw stateful store + refetch)
+  // When   같은 행 "수정" 클릭
+  // Then   수정 다이얼로그 본문 프리필에 {{author}} 토큰이 잔존함
+  //        (create 시 토큰이 실제로 전송·저장됐음을 end-to-end 입증)
+
+  test.beforeEach(async ({ page }) => {
+    await loginAsAlice(page)
+    await page.goto(SETTINGS_URL)
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+  })
+
+  test('E2 생성 시 {{author}} 토큰 저장 → 수정 다이얼로그 프리필에 잔존', async ({ page }) => {
+    const templateName = 'E2-라운드트립 변수 템플릿'
+    const contentWithToken = '보고자: {{author}}'
+
+    // Given. 생성 다이얼로그 열기
+    await page.getByRole('button', { name: labels.addButton }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+
+    // When. 이슈 타입 선택 (버그, id=1)
+    await page.getByLabel(labels.issueTypeLabel).selectOption(String(ISSUE_TYPE_BUG_ID))
+
+    // When. 이름 입력
+    await page.getByLabel(labels.nameLabel).fill(templateName)
+
+    // When. 본문에 '보고자: ' 입력 후 작성자 변수 삽입 버튼 클릭
+    await page.getByLabel(labels.contentLabel).fill('보고자: ')
+    await page.getByRole('button', { name: labels.authorInsertAria }).click()
+    // 삽입 결과 확인 — 토큰 삽입이 정상 동작해야 저장 의미가 있다
+    await expect(page.getByLabel(labels.contentLabel)).toHaveValue(contentWithToken)
+
+    // When. 저장
+    await page.getByRole('button', { name: labels.saveButton }).click()
+
+    // Then. 다이얼로그 닫힘
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+
+    // Then. 목록에 이름 표시 (msw-mutation-stateful-refetch 교훈)
+    await expect(page.getByText(templateName, { exact: true })).toBeVisible()
+
+    // When. 같은 행 "수정" 클릭 — aria-label="{이름} 수정"
+    await page.getByRole('button', { name: `${templateName} 수정` }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+
+    // Then. 수정 다이얼로그 본문 프리필에 {{author}} 토큰 잔존
+    // — 토큰이 실제로 MSW store에 저장됐다가 edit 시 반환됐음을 입증
+    await expect(page.getByLabel(labels.contentLabel)).toHaveValue(contentWithToken)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E3 — 도움말 표시
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('E3 변수 도움말 표시 (FR-TM-02)', () => {
+  // Given  alice 로그인 → 이슈 템플릿 설정 페이지
+  // When   "템플릿 추가" 다이얼로그 열기
+  // Then   "사용 가능 변수" 문구가 보임
+  //        {{author}} 토큰 텍스트가 도움말에 표시됨
+
+  test.beforeEach(async ({ page }) => {
+    await loginAsAlice(page)
+    await page.goto(SETTINGS_URL)
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+  })
+
+  test('E3 생성 다이얼로그 — 사용 가능 변수 도움말 + {{author}} 토큰 표시', async ({ page }) => {
+    // Given. 생성 다이얼로그 열기
+    await page.getByRole('button', { name: labels.addButton }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+
+    // Then. "사용 가능 변수" 도움말 문구가 보임 (variableHelpPrefix)
+    // 도움말 <p> 안에 포함된 텍스트 — 다이얼로그 내로 한정해 strict mode violation 방지
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByText(labels.helpPrefix, { exact: false })).toBeVisible()
+
+    // Then. {{author}} 토큰이 도움말에 표시됨 — code 요소로 렌더링
+    await expect(dialog.locator('code', { hasText: labels.authorToken })).toBeVisible()
+  })
+})
