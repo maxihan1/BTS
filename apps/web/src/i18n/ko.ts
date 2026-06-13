@@ -467,12 +467,12 @@ export const mfaStrings = {
   trustedDevicesConfirmButton: '확인',
   /** 신뢰 해제 인라인 확인 박스 — 취소 버튼 */
   trustedDevicesCancelButton: '취소',
-  /** 기기 행 — 등록일 레이블 (값에 콜론 포함) */
-  trustedDevicesRegisteredLabel: '등록:',
-  /** 기기 행 — 마지막 사용 레이블 (값에 콜론 포함) */
-  trustedDevicesLastUsedLabel: '마지막 사용:',
-  /** 기기 행 — 만료일 레이블 (값에 콜론 포함) */
-  trustedDevicesExpiresLabel: '만료:',
+  /** 기기 행 — 등록일 레이블 (콜론은 JSX에서 부착) */
+  trustedDevicesRegisteredLabel: '등록',
+  /** 기기 행 — 마지막 사용 레이블 (콜론은 JSX에서 부착) */
+  trustedDevicesLastUsedLabel: '마지막 사용',
+  /** 기기 행 — 만료일 레이블 (콜론은 JSX에서 부착) */
+  trustedDevicesExpiresLabel: '만료',
   /** 목록 로드 실패 에러 메시지 */
   trustedDevicesLoadError: '기기 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
 } as const

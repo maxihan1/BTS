@@ -118,13 +118,13 @@ function DeviceRow({
         <div className="min-w-0 space-y-1">
           <p className="truncate text-sm font-medium">{label}</p>
           <p className="text-xs text-muted-foreground">
-            {mfaStrings.trustedDevicesRegisteredLabel} {formatDate(device.createdAt)}
+            {mfaStrings.trustedDevicesRegisteredLabel}: {formatDate(device.createdAt)}
           </p>
           <p className="text-xs text-muted-foreground">
-            {mfaStrings.trustedDevicesLastUsedLabel} <span>{lastUsed}</span>
+            {mfaStrings.trustedDevicesLastUsedLabel}: <span>{lastUsed}</span>
           </p>
           <p className="text-xs text-muted-foreground">
-            {mfaStrings.trustedDevicesExpiresLabel} {formatDate(device.expiresAt)}
+            {mfaStrings.trustedDevicesExpiresLabel}: {formatDate(device.expiresAt)}
           </p>
         </div>
         {!isConfirming && (
