@@ -8,7 +8,6 @@ import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.link.domain.IssueLink
 import com.bts.issue.link.domain.LinkType
-import com.bts.issue.repository.IssueRepository
 import com.bts.issue.repository.IssueTestcontainersBase
 import com.bts.shared.issue.IssueTypeId
 import org.assertj.core.api.Assertions.assertThat
@@ -39,7 +38,6 @@ import java.util.UUID
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class IssueLinkRepositoryTest : IssueTestcontainersBase() {
-
     /** V003 seed task 타입 id. value class 는 lateinit 불가 → nullable var. */
     private var taskTypeId: IssueTypeId? = null
 
@@ -49,29 +47,36 @@ class IssueLinkRepositoryTest : IssueTestcontainersBase() {
 
     /**
      * 부모 [IssueTestcontainersBase.bootstrap] 이 @BeforeAll 로 먼저 실행된다.
-     * 각 테스트 전 IssueLinkRepository 초기화 + taskTypeId 조회 + issue_links 초기화.
+     * 각 테스트 전 IssueLinkRepository 초기화 + taskTypeId 조회.
      */
     @BeforeEach
     fun setupLinkRepository() {
         linkRepository = IssueLinkRepository(dsl)
-
         if (taskTypeId == null) {
-            DriverManager.getConnection(
-                IssueTestcontainersBase.postgres.jdbcUrl,
-                IssueTestcontainersBase.postgres.username,
-                IssueTestcontainersBase.postgres.password,
-            ).use { conn ->
-                conn.prepareStatement(
-                    "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1",
-                ).use { stmt ->
-                    stmt.executeQuery().use { rs ->
-                        check(rs.next()) { "V003 마이그레이션에서 task 타입이 없습니다." }
-                        taskTypeId = IssueTypeId(rs.getLong(1))
-                    }
+            taskTypeId = loadTaskTypeId()
+        }
+    }
+
+    /**
+     * V003 시드에서 'task' 이슈 타입 id 를 조회한다.
+     * 중첩 깊이를 낮추기 위해 setupLinkRepository 에서 분리.
+     */
+    @Suppress("NestedBlockDepth")
+    private fun loadTaskTypeId(): IssueTypeId =
+        DriverManager.getConnection(
+            IssueTestcontainersBase.postgres.jdbcUrl,
+            IssueTestcontainersBase.postgres.username,
+            IssueTestcontainersBase.postgres.password,
+        ).use { conn ->
+            conn.prepareStatement(
+                "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1",
+            ).use { stmt ->
+                stmt.executeQuery().use { rs ->
+                    check(rs.next()) { "V003 마이그레이션에서 task 타입이 없습니다." }
+                    IssueTypeId(rs.getLong(1))
                 }
             }
         }
-    }
 
     /** 각 테스트 전 issue_links 전체 삭제. issues 는 부모 cleanIssues() 가 처리. */
     @BeforeEach
@@ -87,8 +92,9 @@ class IssueLinkRepositoryTest : IssueTestcontainersBase() {
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
+    private fun requireTaskTypeId(): IssueTypeId {
+        return requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
+    }
 
     /** 이슈 1건을 삽입하고 반환한다. */
     private fun insertIssue(seqNum: Long): Issue =
