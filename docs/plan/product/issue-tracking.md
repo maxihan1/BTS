@@ -397,8 +397,8 @@
 - [x] D3. 데이터 모델 — (활용. issue_templates.content 그대로, 신규 스키마 0) (책임. db-engineer) — PR #132
 - [x] D4. 백엔드 — 변수 치환 엔진(단일 패스 정규식, fail-safe 리터럴 유지) + resolveDescription 배선 (책임. backend-engineer) — PR #132 (author=reporter display_name(UserLookupPort 재사용)·date=clock yyyy-MM-dd·project=projectKey)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #132 (Substitutor 10 + 안전망 통합 4 + 기존 회귀 5 보존)
-- [ ] D6. 프론트 UI — 변수 자동완성 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 변수 자동완성 (책임. frontend-engineer) — PR #133 (옵션 A. 본문 편집기 `IssueTemplateFormDialog` create/edit 두 모드에 `[+작성자][+일자][+프로젝트]` 삽입 버튼 + "사용 가능 변수" 도움말. `TemplateContentField` 공유 컴포넌트(삽입버튼+도움말+caret 삽입). 토큰 상수는 백엔드 `TemplateVariable` enum 수동 미러+드리프트 가드 테스트. RHF setValue 단일출처. 리뷰 hot-fix F2(실브라우저 selectionStart=0 prepend→`document.activeElement` 분기+버튼 mousedown preventDefault로 caret 보존, 미포커스 끝 append)·F1(rAF detached 가드)·F3(`{...registration}` prop 보존)·F4(IME 조합 중 끝 append))
+- [x] D7. E2E (책임. qa-engineer) — PR #133 (issue-template-variables.spec.ts 6 시나리오: E1 작성자/일자/프로젝트 커서삽입·E2 create→store→refetch→edit 라운드트립(토큰 전송 입증)·E3 도움말·E4 미포커스 끝 append(F2 회귀). 기존 issue-templates.spec.ts 7 회귀 동반 통과)
 
 ### §5.3 링크 (FR-LK, 2개)
 

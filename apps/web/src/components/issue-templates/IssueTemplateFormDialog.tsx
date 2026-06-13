@@ -14,6 +14,7 @@ import {
 import { useIssueTypes } from '@/hooks/use-issue-types'
 import { issueTemplateLabels, issueTemplateErrorMessage } from '@/i18n/issue-template-labels'
 import { extractIssueTemplateErrorCode } from '@/api/issue-templates'
+import { TemplateContentField } from './TemplateContentField'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 폼 스키마
@@ -179,7 +180,7 @@ function FormBody({
   // ── create 모드 렌더 ──────────────────────────────────────────────────────
 
   if (mode === 'create') {
-    const { register, handleSubmit, formState: { errors } } = createForm
+    const { register, handleSubmit, setValue, formState: { errors } } = createForm
 
     return (
       <form onSubmit={handleSubmit(onCreateValid)} noValidate>
@@ -230,25 +231,14 @@ function FormBody({
           )}
         </div>
 
-        {/* 본문 */}
-        <div className="mb-4">
-          <label htmlFor="it-content" className="block text-sm font-medium mb-1">
-            {labels.contentLabel}
-          </label>
-          <textarea
-            id="it-content"
-            aria-label={labels.contentLabel}
-            placeholder="Markdown 형식으로 본문을 입력하세요."
-            rows={6}
-            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground resize-y"
-            {...register('content')}
-          />
-          {errors.content !== undefined && (
-            <p className="text-xs text-destructive mt-1" role="alert">
-              {errors.content.message}
-            </p>
-          )}
-        </div>
+        {/* 본문 — TemplateContentField로 변수 삽입 버튼 + 도움말 포함 */}
+        <TemplateContentField
+          textareaId="it-content"
+          label={labels.contentLabel}
+          registration={register('content')}
+          errorMessage={errors.content?.message}
+          setFieldValue={(next) => { setValue('content', next, { shouldDirty: true, shouldValidate: true }) }}
+        />
 
         {/* 서버 오류 */}
         {submitError !== undefined && submitError !== null && (
@@ -277,7 +267,7 @@ function FormBody({
 
   // ── edit 모드 렌더 ────────────────────────────────────────────────────────
 
-  const { register, handleSubmit, formState: { errors } } = editForm
+  const { register, handleSubmit, setValue, formState: { errors } } = editForm
 
   return (
     <form onSubmit={handleSubmit(onEditValid)} noValidate>
@@ -328,25 +318,14 @@ function FormBody({
         )}
       </div>
 
-      {/* 본문 */}
-      <div className="mb-4">
-        <label htmlFor="it-content-edit" className="block text-sm font-medium mb-1">
-          {labels.contentLabel}
-        </label>
-        <textarea
-          id="it-content-edit"
-          aria-label={labels.contentLabel}
-          placeholder="Markdown 형식으로 본문을 입력하세요."
-          rows={6}
-          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground resize-y"
-          {...register('content')}
-        />
-        {errors.content !== undefined && (
-          <p className="text-xs text-destructive mt-1" role="alert">
-            {errors.content.message}
-          </p>
-        )}
-      </div>
+      {/* 본문 — TemplateContentField로 변수 삽입 버튼 + 도움말 포함 */}
+      <TemplateContentField
+        textareaId="it-content-edit"
+        label={labels.contentLabel}
+        registration={register('content')}
+        errorMessage={errors.content?.message}
+        setFieldValue={(next) => { setValue('content', next, { shouldDirty: true, shouldValidate: true }) }}
+      />
 
       {/* 서버 오류 */}
       {submitError !== undefined && submitError !== null && (
@@ -383,6 +362,8 @@ function FormBody({
  * - radix-ui Dialog 직접 import — shadcn 래퍼 부재(FR-AU-08 D6/D7 선례).
  * - create 모드: 이슈 타입 select + 이름 + 본문 입력 → useCreateIssueTemplate 뮤테이션.
  * - edit 모드: 이슈 타입 disabled(issueTypeId 불변) + 이름/본문 프리필 → useUpdateIssueTemplate 뮤테이션.
+ * - 본문 영역은 TemplateContentField로 분리되어 create/edit 모드가 공유한다.
+ *   변수 삽입 버튼({{author}}/{{date}}/{{project}})과 도움말 문구가 두 모드에서 동일하게 노출된다.
  * - submitError 우선순위: 부모 prop(externalSubmitError) > 내부 state(internalSubmitError).
  *   부모가 직접 관리하면 외부 prop을 쓰고, 관리하지 않으면 컴포넌트가 내부 state로 인라인 표시.
  *   dead-path 방지 — dialog-submiterror-ownership-dead-path 교훈.
