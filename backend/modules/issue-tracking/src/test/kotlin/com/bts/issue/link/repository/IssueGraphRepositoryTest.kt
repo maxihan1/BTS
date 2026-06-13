@@ -72,8 +72,7 @@ class IssueGraphRepositoryTest : IssueTestcontainersBase() {
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
+    private fun requireTaskTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
 
     /** 이슈 1건을 삽입하고 반환한다. */
     private fun insertIssue(seqNum: Long): Issue =
@@ -95,7 +94,10 @@ class IssueGraphRepositoryTest : IssueTestcontainersBase() {
      * @param childId 자식 이슈 UUID.
      * @param parentId 설정할 부모 이슈 UUID.
      */
-    private fun setParent(childId: UUID, parentId: UUID) {
+    private fun setParent(
+        childId: UUID,
+        parentId: UUID,
+    ) {
         DriverManager.getConnection(
             IssueTestcontainersBase.postgres.jdbcUrl,
             IssueTestcontainersBase.postgres.username,
