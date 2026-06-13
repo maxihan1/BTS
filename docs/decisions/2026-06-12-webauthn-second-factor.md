@@ -83,6 +83,7 @@ TOTP는 setup(PENDING secret 저장 → QR 표시)→enable(코드 검증 → AC
 ## 위험 / 후속
 
 - **RP ID/origin 환경별 설정** — WebAuthn은 Relying Party ID(도메인)와 origin 검증이 필수다. `@ConfigurationProperties("bts.webauthn")`(rpId·rpName·origin) + 환경별 application yml/환경변수. 잘못/누락 설정 시 모든 검증 실패하므로 빈은 항상 등록·값은 사용 시점 검증(부팅 안전성). spec NFR-4/FR-10/EC-7.
+  - **prod fail-fast는 D6(프론트) 배포 전 후속**(code-review CONCERN-1, Maxi 결정). 현재는 base `application.yml`이 `${BTS_WEBAUTHN_RP_ID:localhost}` 기본값을 가져 prod에서 환경변수 누락 시 localhost로 silent fallback될 수 있다. application-prod.yml에 기본값 없는 placeholder(issuer-uri 선례)로 fail-fast를 걸면 **22개 `@ActiveProfiles("prod")` 통합테스트가 회귀**(`WebAuthnProperties`는 부팅 시 즉시 바인딩되는 `@ConfigurationProperties`라 issuer-uri의 lazy 해석과 다름)하므로, 지금은 **경량 WARN 안전망**으로 대체한다 — prod 프로필 + rpId/origin이 기본 localhost면 부팅 시 WARN 로그(`WebAuthnConfig`의 `SmartInitializingSingleton`, `NonProdSensitiveProjectResolver` WARN 패턴 답습, fail-fast 아님 → 회귀 0). WebAuthn은 프론트(D6 `navigator.credentials`)가 없으면 prod 실사용이 0이므로, fail-fast 강제는 D6 PR에서 prod 통합테스트 베이스 정비와 함께 도입한다.
 - **webauthn4j 객체 직렬화 함정** — `PublicKeyCredentialCreationOptions`/`RequestOptions`를 Spring 기본 ObjectMapper로 직렬화하면 표준 JSON이 깨진다. webauthn4j `ObjectConverter`로 직렬화해 String 반환(전역 컨버터 교체 금지). spec NFR-9.
 - **가상 authenticator 테스트** — `webauthn4j-test`(EmulatorAuthenticator/ClientPlatform)로 실기기 없이 ceremony 생성. 통합 테스트 부팅 레시피(identity-access prod+RANDOM_PORT)는 기존 MFA 통합테스트 재사용.
 - D6/D7 프론트(`navigator.credentials`) + E2E(가상 authenticator) 후속.
