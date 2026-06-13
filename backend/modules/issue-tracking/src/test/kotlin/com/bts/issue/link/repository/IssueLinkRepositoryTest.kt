@@ -349,4 +349,85 @@ class IssueLinkRepositoryTest : IssueTestcontainersBase() {
         // FK ON DELETE CASCADE 로 링크 행도 삭제되었어야 함
         assertThat(rawLinkExists(linkId)).isFalse()
     }
+
+    // ── T5-J. findOutwardWithIssue — 단일 JOIN 으로 상대 이슈 요약 조회 ─────────
+
+    /**
+     * Given  A blocks B, A relates C 두 링크 삽입
+     * When   findOutwardWithIssue(A.id)
+     * Then   두 행 반환. 각 행에 상대 이슈 key/summary/state 포함.
+     * And    소프트삭제된 상대 이슈는 제외.
+     */
+    @Test
+    @Order(10)
+    fun `T5-J - findOutwardWithIssue - 단일 JOIN 으로 상대 이슈 요약 조회 및 소프트삭제 제외`() {
+        val issueA = insertIssue(1L)
+        val issueB = insertIssue(2L)
+        val issueC = insertIssue(3L)
+
+        linkRepository.insert(IssueLink.create(issueA.id.value, issueB.id.value, LinkType.BLOCKS))
+        linkRepository.insert(IssueLink.create(issueA.id.value, issueC.id.value, LinkType.RELATES))
+
+        // 소프트삭제 — issueC 를 삭제
+        DriverManager.getConnection(
+            IssueTestcontainersBase.postgres.jdbcUrl,
+            IssueTestcontainersBase.postgres.username,
+            IssueTestcontainersBase.postgres.password,
+        ).use { conn ->
+            conn.prepareStatement("UPDATE issues SET deleted_at = NOW() WHERE id = ?").use { stmt ->
+                stmt.setObject(1, issueC.id.value)
+                stmt.executeUpdate()
+            }
+        }
+
+        val results = linkRepository.findOutwardWithIssue(issueA.id.value)
+
+        // 소프트삭제된 issueC 는 제외되어 issueB 만 반환
+        assertThat(results).hasSize(1)
+        val row = results[0]
+        assertThat(row.otherIssueId).isEqualTo(issueB.id.value)
+        assertThat(row.otherIssueKey).isEqualTo(issueB.key.value)
+        assertThat(row.otherIssueSummary).isEqualTo(issueB.summary)
+        assertThat(row.linkType).isEqualTo(LinkType.BLOCKS)
+    }
+
+    // ── T5-K. findInwardWithIssue — 단일 JOIN 으로 inward 상대 이슈 조회 ────────
+
+    /**
+     * Given  A blocks C, B relates C 두 링크 삽입
+     * When   findInwardWithIssue(C.id)
+     * Then   두 행 반환. A 는 blocks, B 는 relates.
+     * And    소프트삭제된 source 이슈(A)는 제외.
+     */
+    @Test
+    @Order(11)
+    fun `T5-K - findInwardWithIssue - 단일 JOIN 으로 inward 상대 이슈 조회 및 소프트삭제 제외`() {
+        val issueA = insertIssue(1L)
+        val issueB = insertIssue(2L)
+        val issueC = insertIssue(3L)
+
+        linkRepository.insert(IssueLink.create(issueA.id.value, issueC.id.value, LinkType.BLOCKS))
+        linkRepository.insert(IssueLink.create(issueB.id.value, issueC.id.value, LinkType.RELATES))
+
+        // issueA 소프트삭제
+        DriverManager.getConnection(
+            IssueTestcontainersBase.postgres.jdbcUrl,
+            IssueTestcontainersBase.postgres.username,
+            IssueTestcontainersBase.postgres.password,
+        ).use { conn ->
+            conn.prepareStatement("UPDATE issues SET deleted_at = NOW() WHERE id = ?").use { stmt ->
+                stmt.setObject(1, issueA.id.value)
+                stmt.executeUpdate()
+            }
+        }
+
+        val results = linkRepository.findInwardWithIssue(issueC.id.value)
+
+        // 소프트삭제된 issueA 제외 → issueB 만 반환
+        assertThat(results).hasSize(1)
+        val row = results[0]
+        assertThat(row.otherIssueId).isEqualTo(issueB.id.value)
+        assertThat(row.otherIssueKey).isEqualTo(issueB.key.value)
+        assertThat(row.linkType).isEqualTo(LinkType.RELATES)
+    }
 }
