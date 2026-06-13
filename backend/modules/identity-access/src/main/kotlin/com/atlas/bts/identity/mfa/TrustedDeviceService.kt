@@ -38,7 +38,7 @@ import java.util.UUID
 @Transactional
 class TrustedDeviceService(
     private val repo: TrustedDeviceRepository,
-    private val clock: Clock,
+    private val clock: Clock = Clock.systemUTC(),
     private val auditLog: AuthAuditLogService,
 ) {
     /**
