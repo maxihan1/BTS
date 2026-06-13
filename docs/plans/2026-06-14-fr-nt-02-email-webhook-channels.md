@@ -61,9 +61,19 @@ FR-NT-02(알림 채널)의 인앱 채널은 이미 머지됨(PR #126 백엔드 +
 - **재시도 정책**: 채널별 능동 재시도 없음. pgmq at-least-once + dead-letter(ADR 결정5) + send 실패 시
   PENDING fallback(`deliver()` best-effort)으로 일관. SDD §9에 채널별 재시도 명세 없음 확인.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-14-fr-nt-02-email-webhook-channels.md](../specs/2026-06-14-fr-nt-02-email-webhook-channels.md)
+
+핵심 요약.
+- `EmailChannelSender`(supports(EMAIL)) — `MimeMessageHelper`(UTF-8)로 수신자 이메일에 발송, 제목=notification.title.
+- `UserLookupPort.findEmailById(userId): String?` default 메서드 추가(identity-access adapter override).
+- 실패(이메일 부재/SMTP 다운)는 예외→`deliver()` best-effort PENDING(워커/재시도/스키마 무변경).
+- MailHog Testcontainers로 SMTP 발송→수신 + 한국어 제목 보존 검증.
+
+## Brainstorming Check
+
+✅ 통과 (1회, 직접 적대적 점검). gap 4건 보강 — 한국어 인코딩(MimeMessageHelper), from 주소, SMTP 타임아웃, FAILED 미사용 명시. 미해결: 신규 mail 의존성(절대규칙#17, 게이트1 승인).
 
 ## Plan (← /bts-plan 채움)
 
