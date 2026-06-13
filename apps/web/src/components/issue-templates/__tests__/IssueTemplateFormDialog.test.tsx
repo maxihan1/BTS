@@ -1,8 +1,9 @@
-// 이슈 템플릿 생성/수정 Dialog 컴포넌트 테스트 — 타입 셀렉트·이름·본문 + 에러 인라인 표시
+// 이슈 템플릿 생성/수정 Dialog 컴포넌트 테스트 — 타입 셀렉트·이름·본문 + 에러 인라인 표시 + 변수 삽입 버튼
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { http, HttpResponse } from 'msw'
 import type { JSX } from 'react'
 import type { IssueTemplate } from '@/api/issue-templates.types'
 import { server } from '@/test/server'
@@ -257,6 +258,134 @@ describe('IssueTemplateFormDialog — S6 422 ISSUE_TEMPLATE_INVALID 인라인 �
     renderEditDialog(FIXTURE_TEMPLATE, vi.fn(), '템플릿 내용이 올바르지 않습니다.')
     expect(screen.getByText('템플릿 내용이 올바르지 않습니다.')).toBeInTheDocument()
   })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S6b — 변수 삽입 버튼 + 도움말
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueTemplateFormDialog — S6b 변수 삽입 버튼 + 도움말', () => {
+  it('create 모드에서 "작성자 변수 삽입" 버튼이 렌더된다', () => {
+    renderCreateDialog()
+    expect(screen.getByRole('button', { name: '작성자 변수 삽입' })).toBeInTheDocument()
+  })
+
+  it('create 모드에서 변수 도움말 문구가 표시된다', () => {
+    renderCreateDialog()
+    expect(screen.getByText(/사용 가능 변수/)).toBeInTheDocument()
+  })
+
+  it('edit 모드에서 "일자 변수 삽입" 버튼이 렌더된다', () => {
+    renderEditDialog()
+    expect(screen.getByRole('button', { name: '일자 변수 삽입' })).toBeInTheDocument()
+  })
+
+  it('edit 모드에서 변수 도움말 문구가 표시된다', () => {
+    renderEditDialog()
+    expect(screen.getByText(/사용 가능 변수/)).toBeInTheDocument()
+  })
+
+  it(
+    'create 모드에서 "작성자 변수 삽입" 클릭 후 저장하면 payload content에 {{author}}가 포함된다',
+    { timeout: 10_000 },
+    async () => {
+      const onSubmitSuccess = vi.fn()
+      const user = userEvent.setup({ delay: null })
+
+      // MSW POST 핸들러가 저장된 content를 검증할 수 있도록 intercepted 값을 캡처한다
+      let capturedContent: string | undefined
+
+      server.use(
+        http.post('/api/v1/projects/:projectIdOrKey/issue-templates', async ({ request }) => {
+          const body = (await request.json()) as { issueTypeId: number; name: string; content: string }
+          capturedContent = body.content
+          // 성공 응답 반환 (기존 핸들러 동작 동형)
+          return HttpResponse.json(
+            {
+              data: {
+                id: 'dddddddd-dddd-4ddd-dddd-dddddddddddd',
+                projectId: 'eeeeeeee-eeee-4eee-eeee-eeeeeeeeeeee',
+                issueTypeId: body.issueTypeId,
+                name: body.name,
+                content: body.content,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            },
+            { status: 201 },
+          )
+        }),
+      )
+
+      renderCreateDialog(onSubmitSuccess)
+
+      // 이슈 타입 옵션 로드 대기
+      await screen.findByRole('option', { name: '버그' })
+      const select = screen.getByRole('combobox', { name: '이슈 타입' })
+      await user.selectOptions(select, '버그')
+
+      await user.type(screen.getByLabelText('이름'), '작성자 변수 테스트')
+
+      // 작성자 변수 삽입 버튼 클릭 — {{author}} 삽입
+      await user.click(screen.getByRole('button', { name: '작성자 변수 삽입' }))
+
+      await user.click(screen.getByRole('button', { name: '저장' }))
+
+      await waitFor(() => {
+        expect(onSubmitSuccess).toHaveBeenCalledOnce()
+      })
+
+      expect(capturedContent).toContain('{{author}}')
+    },
+  )
+
+  it(
+    'edit 모드에서 "일자 변수 삽입" 클릭 후 저장하면 payload content에 기존 본문과 {{date}}가 포함된다',
+    { timeout: 10_000 },
+    async () => {
+      const onSubmitSuccess = vi.fn()
+      const user = userEvent.setup({ delay: null })
+
+      let capturedContent: string | undefined
+
+      // edit 모드용 PATCH 인터셉터 — 저장 payload를 캡처한다
+      server.use(
+        http.patch(
+          '/api/v1/projects/:projectIdOrKey/issue-templates/:templateId',
+          async ({ request }) => {
+            const body = (await request.json()) as { name?: string; content?: string }
+            capturedContent = body.content
+            return HttpResponse.json({
+              data: {
+                id: FIXTURE_TEMPLATE.id,
+                projectId: FIXTURE_TEMPLATE.projectId,
+                issueTypeId: FIXTURE_TEMPLATE.issueTypeId,
+                name: body.name ?? FIXTURE_TEMPLATE.name,
+                content: body.content ?? FIXTURE_TEMPLATE.content,
+                createdAt: FIXTURE_TEMPLATE.createdAt,
+                updatedAt: new Date().toISOString(),
+              },
+            })
+          },
+        ),
+      )
+
+      renderEditDialog(FIXTURE_TEMPLATE, onSubmitSuccess)
+
+      // 일자 변수 삽입 버튼 클릭 — 기존 본문 끝에 {{date}} 추가
+      await user.click(screen.getByRole('button', { name: '일자 변수 삽입' }))
+
+      await user.click(screen.getByRole('button', { name: '저장' }))
+
+      await waitFor(() => {
+        expect(onSubmitSuccess).toHaveBeenCalledOnce()
+      })
+
+      // 기존 본문 일부 + {{date}} 모두 포함되어야 한다
+      expect(capturedContent).toContain('## 재현 방법')
+      expect(capturedContent).toContain('{{date}}')
+    },
+  )
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
