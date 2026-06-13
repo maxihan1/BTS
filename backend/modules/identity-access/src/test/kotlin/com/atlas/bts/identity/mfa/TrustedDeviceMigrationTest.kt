@@ -109,7 +109,7 @@ class TrustedDeviceMigrationTest {
                 stmt.setString(2, columnName)
                 stmt.executeQuery().use { rs ->
                     rs.next()
-                    return rs.getString(1) ?: ""
+                    return rs.getString(1).orEmpty()
                 }
             }
         }
@@ -130,7 +130,7 @@ class TrustedDeviceMigrationTest {
                 stmt.setString(1, tableName)
                 stmt.executeQuery().use { rs ->
                     rs.next()
-                    return rs.getString(1) ?: ""
+                    return rs.getString(1).orEmpty()
                 }
             }
         }
