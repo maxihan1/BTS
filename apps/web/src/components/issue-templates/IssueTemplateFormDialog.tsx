@@ -362,6 +362,8 @@ function FormBody({
  * - radix-ui Dialog 직접 import — shadcn 래퍼 부재(FR-AU-08 D6/D7 선례).
  * - create 모드: 이슈 타입 select + 이름 + 본문 입력 → useCreateIssueTemplate 뮤테이션.
  * - edit 모드: 이슈 타입 disabled(issueTypeId 불변) + 이름/본문 프리필 → useUpdateIssueTemplate 뮤테이션.
+ * - 본문 영역은 TemplateContentField로 분리되어 create/edit 모드가 공유한다.
+ *   변수 삽입 버튼({{author}}/{{date}}/{{project}})과 도움말 문구가 두 모드에서 동일하게 노출된다.
  * - submitError 우선순위: 부모 prop(externalSubmitError) > 내부 state(internalSubmitError).
  *   부모가 직접 관리하면 외부 prop을 쓰고, 관리하지 않으면 컴포넌트가 내부 state로 인라인 표시.
  *   dead-path 방지 — dialog-submiterror-ownership-dead-path 교훈.
