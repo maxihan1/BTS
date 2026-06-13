@@ -228,12 +228,12 @@ describe('webauthnRegisterFinish', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T-WA-3. listWebauthnKeys — GET /api/v1/auth/mfa/webauthn/keys
+// T-WA-3. listWebauthnKeys — GET /api/v1/auth/mfa/webauthn
 // ─────────────────────────────────────────────────────────────────────────────
 describe('listWebauthnKeys', () => {
   it('T-WA-3a: 200 응답 → WebauthnKeysResponse 반환 (Zod 파싱)', async () => {
     server.use(
-      http.get('/api/v1/auth/mfa/webauthn/keys', () =>
+      http.get('/api/v1/auth/mfa/webauthn', () =>
         HttpResponse.json(webauthnKeysFixture),
       ),
     )
@@ -246,7 +246,7 @@ describe('listWebauthnKeys', () => {
   it('T-WA-3b: GET 메서드를 사용한다', async () => {
     let capturedMethod: string | null = null
     server.use(
-      http.get('/api/v1/auth/mfa/webauthn/keys', ({ request }) => {
+      http.get('/api/v1/auth/mfa/webauthn', ({ request }) => {
         capturedMethod = request.method
         return HttpResponse.json(webauthnKeysFixture)
       }),
@@ -258,7 +258,7 @@ describe('listWebauthnKeys', () => {
   it('T-WA-3c: X-XSRF-TOKEN 헤더가 요청에 포함되지 않는다 (GET 읽기 요청)', async () => {
     let capturedXsrf: string | null = null
     server.use(
-      http.get('/api/v1/auth/mfa/webauthn/keys', ({ request }) => {
+      http.get('/api/v1/auth/mfa/webauthn', ({ request }) => {
         capturedXsrf = request.headers.get('x-xsrf-token')
         return HttpResponse.json(webauthnKeysFixture)
       }),
@@ -269,7 +269,7 @@ describe('listWebauthnKeys', () => {
 
   it('T-WA-3d: 401 → ApiError(401) throw', async () => {
     server.use(
-      http.get('/api/v1/auth/mfa/webauthn/keys', () =>
+      http.get('/api/v1/auth/mfa/webauthn', () =>
         HttpResponse.json({ error: 'unauthorized' }, { status: 401 }),
       ),
     )
@@ -284,14 +284,14 @@ describe('listWebauthnKeys', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T-WA-4. deleteWebauthnKey — DELETE /api/v1/auth/mfa/webauthn/keys/{id}
+// T-WA-4. deleteWebauthnKey — DELETE /api/v1/auth/mfa/webauthn/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 describe('deleteWebauthnKey', () => {
   const KEY_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
 
   it('T-WA-4a: 204 No Content → void 반환', async () => {
     server.use(
-      http.delete(`/api/v1/auth/mfa/webauthn/keys/${KEY_ID}`, () =>
+      http.delete(`/api/v1/auth/mfa/webauthn/${KEY_ID}`, () =>
         new HttpResponse(null, { status: 204 }),
       ),
     )
@@ -301,7 +301,7 @@ describe('deleteWebauthnKey', () => {
   it('T-WA-4b: X-XSRF-TOKEN 헤더가 요청에 포함된다', async () => {
     let capturedXsrf: string | null = null
     server.use(
-      http.delete(`/api/v1/auth/mfa/webauthn/keys/${KEY_ID}`, ({ request }) => {
+      http.delete(`/api/v1/auth/mfa/webauthn/${KEY_ID}`, ({ request }) => {
         capturedXsrf = request.headers.get('x-xsrf-token')
         return new HttpResponse(null, { status: 204 })
       }),
@@ -313,18 +313,18 @@ describe('deleteWebauthnKey', () => {
   it('T-WA-4c: 올바른 경로로 DELETE 요청을 보낸다', async () => {
     let capturedPath: string | null = null
     server.use(
-      http.delete(`/api/v1/auth/mfa/webauthn/keys/${KEY_ID}`, ({ request }) => {
+      http.delete(`/api/v1/auth/mfa/webauthn/${KEY_ID}`, ({ request }) => {
         capturedPath = new URL(request.url).pathname
         return new HttpResponse(null, { status: 204 })
       }),
     )
     await deleteWebauthnKey(KEY_ID)
-    expect(capturedPath).toBe(`/api/v1/auth/mfa/webauthn/keys/${KEY_ID}`)
+    expect(capturedPath).toBe(`/api/v1/auth/mfa/webauthn/${KEY_ID}`)
   })
 
   it('T-WA-4d: 404 not_found → ApiError(404) throw', async () => {
     server.use(
-      http.delete(`/api/v1/auth/mfa/webauthn/keys/${KEY_ID}`, () =>
+      http.delete(`/api/v1/auth/mfa/webauthn/${KEY_ID}`, () =>
         HttpResponse.json({ error: 'not_found' }, { status: 404 }),
       ),
     )

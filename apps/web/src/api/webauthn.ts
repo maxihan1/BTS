@@ -75,20 +75,20 @@ export async function webauthnRegisterFinish(
 /**
  * 현재 사용자의 등록된 WebAuthn 보안 키 목록을 조회한다.
  *
- * `GET /api/v1/auth/mfa/webauthn/keys`
+ * `GET /api/v1/auth/mfa/webauthn`
  * - 읽기 요청이므로 CSRF 헤더 불요 — apiGet 사용.
  *
  * @returns WebauthnKeysResponse (keys: WebauthnKey[])
  * @throws ApiError(401) 미인증
  */
 export async function listWebauthnKeys(): Promise<WebauthnKeysResponse> {
-  return apiGet('/api/v1/auth/mfa/webauthn/keys', WebauthnKeysResponseSchema)
+  return apiGet('/api/v1/auth/mfa/webauthn', WebauthnKeysResponseSchema)
 }
 
 /**
  * 지정한 WebAuthn 보안 키를 삭제한다.
  *
- * `DELETE /api/v1/auth/mfa/webauthn/keys/{id}` → 204 No Content
+ * `DELETE /api/v1/auth/mfa/webauthn/{id}` → 204 No Content
  * - 상태 변경 요청이므로 X-XSRF-TOKEN 헤더를 포함한다.
  *
  * @param id 삭제할 보안 키 UUID
@@ -97,7 +97,7 @@ export async function listWebauthnKeys(): Promise<WebauthnKeysResponse> {
  * @throws ApiError(401) 미인증
  */
 export async function deleteWebauthnKey(id: string): Promise<void> {
-  const res = await apiFetch(`/api/v1/auth/mfa/webauthn/keys/${id}`, {
+  const res = await apiFetch(`/api/v1/auth/mfa/webauthn/${id}`, {
     method: 'DELETE',
     headers: {
       'X-XSRF-TOKEN': readXsrfToken(),

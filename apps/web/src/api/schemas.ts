@@ -109,7 +109,7 @@ export const WebauthnKeySchema = z.object({
   lastUsedAt: z.string().nullable(),
 })
 
-/** 등록된 보안 키 목록 응답 스키마 — GET /api/v1/auth/mfa/webauthn/keys */
+/** 등록된 보안 키 목록 응답 스키마 — GET /api/v1/auth/mfa/webauthn */
 export const WebauthnKeysResponseSchema = z.object({
   keys: z.array(WebauthnKeySchema),
 })
