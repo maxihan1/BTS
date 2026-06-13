@@ -1,4 +1,4 @@
-// 이벤트 누락 0 커버리지 캡스톤 — AuthEventType 22종 전부 main 소스 emit 배선 회귀 가드 (FR-AU-10 Task 11 + FR-MF-01 Task 8 + FR-MF-02 Task 5 + FR-MF-05 Task 4)
+// 이벤트 누락 0 커버리지 캡스톤 — AuthEventType 22종 전부 main 소스 emit 배선 회귀 가드 (FR-AU-10 + FR-MF-01/02/05)
 
 package com.atlas.bts.identity.audit
 
