@@ -10,7 +10,6 @@ import com.bts.issue.repository.IssueRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.util.UUID
 
 /**
  * 이슈 부모-자식 관계를 설정하거나 해제하는 서비스.
@@ -56,14 +55,14 @@ class IssueParentService(
             issueRepository.findByKey(childKey)
                 ?: run {
                     log.debug("setParent: child not found key={}", childKey.value)
-                    throw LinkedIssueNotFoundException(issueKeyToSentinelUUID(childKey))
+                    throw LinkedIssueNotFoundException(childKey)
                 }
 
         val parent =
             issueRepository.findByKey(parentKey)
                 ?: run {
                     log.debug("setParent: parent not found key={}", parentKey.value)
-                    throw LinkedIssueNotFoundException(issueKeyToSentinelUUID(parentKey))
+                    throw LinkedIssueNotFoundException(parentKey)
                 }
 
         val childId = child.id.value
@@ -101,22 +100,11 @@ class IssueParentService(
             issueRepository.findByKey(childKey)
                 ?: run {
                     log.debug("clearParent: child not found key={}", childKey.value)
-                    throw LinkedIssueNotFoundException(issueKeyToSentinelUUID(childKey))
+                    throw LinkedIssueNotFoundException(childKey)
                 }
 
         val childId = child.id.value
         log.debug("clearParent: childId={}", childId)
         issueRepository.updateParent(childId, null)
-    }
-
-    /**
-     * 이슈 키를 [LinkedIssueNotFoundException] 생성에 필요한 결정론적 UUID 로 변환한다.
-     *
-     * [LinkedIssueNotFoundException] 은 `UUID` 를 받으므로, key 기반 조회 실패 시
-     * key 문자열을 UTF-8 바이트 기반의 name-UUID(v3) 로 변환해 전달한다.
-     * 이 UUID 는 오류 메시지에만 사용되며 DB 식별자로 사용되지 않는다.
-     */
-    private fun issueKeyToSentinelUUID(key: IssueKey): UUID {
-        return UUID.nameUUIDFromBytes(key.value.toByteArray(Charsets.UTF_8))
     }
 }

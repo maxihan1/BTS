@@ -3,13 +3,18 @@
 package com.bts.issue.link.web.dto
 
 import com.bts.issue.domain.Issue
+import com.fasterxml.jackson.annotation.JsonInclude
 
 /**
  * `PATCH /api/v1/issues/{key}/parent` 응답 바디.
  *
+ * `parent` 가 null 이면 [JsonInclude.Include.NON_NULL] 로 응답 키 자체가 제거된다
+ * (형제 DTO 컨벤션 + 프론트 Zod nullish 정합 — prod ObjectMapper 기본값에 의존하지 않음).
+ *
  * @property key 이슈 키 (예: "BTS-1").
  * @property parent 설정된 부모 이슈 요약. 부모 없으면 null (JSON 필드 미포함).
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 data class IssueParentResponse(
     val key: String,
     val parent: ParentDto?,

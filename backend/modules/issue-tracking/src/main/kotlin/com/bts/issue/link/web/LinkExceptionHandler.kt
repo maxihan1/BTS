@@ -23,8 +23,10 @@ import java.time.Instant
  * 이슈 링크 BC 도메인 예외를 RFC 7807 ProblemDetail 형식으로 변환하는 핸들러.
  *
  * [basePackages] 를 `com.bts.issue.link.web` 로 한정하여 타 컨트롤러 경로의 예외를 잡지 않는다.
- * catch-all [Exception] 핸들러는 이 스코프 안에서만 동작하므로 다른 BC 의
- * ResponseStatusException(401 등)을 삼키지 않는다.
+ * catch-all [Exception] 핸들러는 이 스코프(link 컨트롤러) 안에서만 동작한다.
+ * IssueLinkController 는 actor 를 추출하지 않아 401 ResponseStatusException 을 던지지 않으며
+ * (인증 실패는 SecurityFilterChain 이 디스패치 이전에 401 처리), 따라서 catch-all 이
+ * 401 을 500 으로 변질시킬 경로가 구조적으로 없다.
  *
  * 매핑 규칙.
  * - [MethodArgumentNotValidException] → 400 + [LinkErrorCodes.VALIDATION_FAILED]

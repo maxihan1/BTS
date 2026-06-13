@@ -2,6 +2,7 @@
 
 package com.bts.issue.link.domain
 
+import com.bts.issue.domain.IssueKey
 import java.util.UUID
 
 /**
@@ -16,14 +17,18 @@ import java.util.UUID
 sealed class LinkDomainException(message: String) : RuntimeException(message)
 
 /**
- * 링크 대상 이슈를 찾을 수 없을 때.
+ * 링크 대상(source/target/parent/base) 이슈를 찾을 수 없을 때.
  *
  * 의도 HTTP 상태: 404 Not Found
  *
- * @param issueId 존재하지 않는 이슈 UUID
+ * 서비스는 이슈 자연키(IssueKey)만 알고 UUID 는 모르므로, 형제
+ * [com.bts.issue.domain.IssueNotFoundException] 와 동일하게 key 를 담는다
+ * (placeholder UUID 노출·서비스 간 불일치 회피).
+ *
+ * @param issueKey 존재하지 않는 이슈 키
  */
-class LinkedIssueNotFoundException(issueId: UUID) :
-    LinkDomainException("Issue not found: $issueId")
+class LinkedIssueNotFoundException(issueKey: IssueKey) :
+    LinkDomainException("Issue not found: ${issueKey.value}")
 
 /**
  * 이슈가 자기 자신을 링크 대상으로 지정할 때.
