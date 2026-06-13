@@ -1,4 +1,4 @@
-// UserLookupAdapter 통합 테스트 — 실제 PostgreSQL 에서 사용자 존재 여부 및 username 일괄 해석 검증 (FR-IS-03 Task 3 / FR-MN-01 Task 3)
+// UserLookupAdapter 통합 테스트 — 실제 PostgreSQL 에서 사용자 존재 여부 및 username 일괄 해석 및 이메일 조회 검증 (FR-IS-03 Task 3 / FR-MN-01 Task 3 / FR-NT-02 Task 2)
 
 package com.atlas.bts.identity.user
 
@@ -40,6 +40,8 @@ import java.util.UUID
  * | T-06 | "Carol"/"carol" 동시 존재 → "carol" 조회 | 과다매칭 허용 — 2개 id 반환 |
  * | T-07 | A(display_name="홍길동") + B(display_name=null) + 미존재 id 로 표시명 일괄 조회 | A→"홍길동"(표시명), B→username 폴백, 미존재 제외 |
  * | T-08 | 빈 입력으로 표시명 일괄 조회 | 빈 맵 (DB 쿼리 생략) |
+ * | T-09 | 삽입된 사용자 id 로 findEmailById 조회 | 삽입 시 지정한 email 반환 |
+ * | T-10 | 미존재 랜덤 UUID 로 findEmailById 조회 | null 반환 |
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -318,5 +320,37 @@ class UserLookupAdapterIntegrationTest {
         (assertThat(result) as MapAssert<UUID, String>)
             .`as`("빈 입력에 대해 emptyMap 을 기대했으나 결과가 있습니다.")
             .isEmpty()
+    }
+
+    /**
+     * T-09: 삽입된 사용자 UUID 로 [UserLookupPort.findEmailById] 호출 시 해당 email 을 반환한다 (FR-NT-02 Task 2).
+     *
+     * [BeforeEach] 에서 seededUserId 와 함께 "lookup@example.com" 이 삽입된다.
+     * findEmailById(seededUserId) 가 그 이메일을 반환해야 한다.
+     */
+    @Test
+    fun `T-09 findEmailById returns email for an existing user`() {
+        val result = userLookupPort.findEmailById(seededUserId)
+
+        assertThat(result)
+            .`as`("삽입된 사용자 UUID=%s 에 대해 email='lookup@example.com' 을 기대했으나 '%s' 을 반환했습니다.", seededUserId, result)
+            .isEqualTo("lookup@example.com")
+    }
+
+    /**
+     * T-10: DB 에 없는 랜덤 UUID 로 [UserLookupPort.findEmailById] 호출 시 null 을 반환한다 (FR-NT-02 Task 2).
+     *
+     * 행 부재 시 null 을 반환하는 것이 [UserLookupPort.findEmailById] 의 계약이다.
+     * default 구현(null)이 아닌 실제 DB 조회 후 null 을 반환하는지 검증한다.
+     */
+    @Test
+    fun `T-10 findEmailById returns null for a non-existent user`() {
+        val nonExistentId = UUID.randomUUID()
+
+        val result = userLookupPort.findEmailById(nonExistentId)
+
+        assertThat(result)
+            .`as`("미존재 UUID=%s 에 대해 null 을 기대했으나 '%s' 을 반환했습니다.", nonExistentId, result)
+            .isNull()
     }
 }
