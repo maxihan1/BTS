@@ -40,6 +40,8 @@ CREATE TABLE issues (
     reporter_id        UUID         NOT NULL,
     current_state_key  VARCHAR(50)  NOT NULL,
     version            BIGINT       NOT NULL DEFAULT 1,
+    -- parent_id: V021 미러 (FR-LK-01). 구조적 parent-child 자기참조 FK. NULL=최상위.
+    parent_id          UUID         NULL REFERENCES issues(id),
     created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     deleted_at         TIMESTAMPTZ  NULL
@@ -50,9 +52,12 @@ COMMENT ON COLUMN issues.reporter_id         IS 'identity-access BC users.id 대
 COMMENT ON COLUMN issues.current_state_key   IS 'project-workflow BC workflow_states.key 대응. BC 격리로 FK 미적용.';
 COMMENT ON COLUMN issues.version             IS '낙관적 잠금 카운터. 동시 수정 충돌 감지용.';
 COMMENT ON COLUMN issues.deleted_at          IS 'NULL=활성, NOT NULL=삭제됨. 소프트 삭제 (DATA.md §3). key 는 삭제 후에도 UNIQUE 제약 유지.';
+COMMENT ON COLUMN issues.parent_id           IS '부모 이슈 (issues.id 자기참조). NULL=최상위. 구조적 계층 — 링크(issue_links)와 별개 (FR-LK-01, V021 미러).';
 
 CREATE INDEX idx_issues_project_id ON issues(project_id);
 CREATE INDEX idx_issues_project_id_deleted_at ON issues(project_id, deleted_at) WHERE deleted_at IS NULL;
+-- V021 미러 (FR-LK-01): parent_id FK 인덱스 — 부모→자식(서브태스크) 조회용.
+CREATE INDEX idx_issues_parent_id ON issues(parent_id);
 
 -- 4. issue_key_redirects 테이블
 CREATE TABLE issue_key_redirects (
@@ -522,3 +527,35 @@ CREATE INDEX idx_issue_templates_project_id    ON issue_templates(project_id);
 CREATE INDEX idx_issue_templates_issue_type_id ON issue_templates(issue_type_id);
 CREATE UNIQUE INDEX ux_issue_templates_project_type_active
     ON issue_templates(project_id, issue_type_id) WHERE deleted_at IS NULL;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V021: issue_links 테이블 + issues.parent_id 컬럼 (FR-LK-01 이슈 링크/계층)
+-- 원본: db/migration/issue-tracking/V021__issue_links_and_parent.sql
+-- jOOQ: IssueLinks 테이블 + ID/SOURCE_ID/TARGET_ID/LINK_TYPE/CREATED_AT 상수 생성 대상.
+--       issues.PARENT_ID 컬럼 상수도 추가 (이 미러가 빠지면 상수/테이블 미생성 → repository 컴파일 불가 — jooq-init-codegen-mirror).
+-- 주의: parent_id 컬럼 + idx_issues_parent_id 는 위 issues 테이블 정의/인덱스에 인라인 미러됨 (V020 require_2fa 동형).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- 이슈↔이슈 방향성 링크(blocks/relates/duplicates/clones). 관계 테이블이라 소프트 삭제 없음(해제 = 행 DELETE).
+-- issues 양쪽 실 FK + ON DELETE CASCADE (순수 관계라 이슈 하드 삭제 시 고아 링크 자동 정리. prod 소프트삭제라 미발화).
+-- created_by 없음(SDD §5.7 정합). source/target 은 issues.id 가 UUID 라 UUID FK (ADR deviation).
+CREATE TABLE issue_links (
+    id         BIGINT      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    source_id  UUID        NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+    target_id  UUID        NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+    link_type  VARCHAR(30) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_issue_links_no_self CHECK (source_id <> target_id),
+    CONSTRAINT chk_issue_links_type    CHECK (link_type IN ('blocks', 'relates', 'duplicates', 'clones')),
+    CONSTRAINT uq_issue_links          UNIQUE (source_id, target_id, link_type)
+);
+COMMENT ON TABLE  issue_links            IS '이슈↔이슈 방향성 링크 (blocks/relates/duplicates/clones). 관계 테이블이라 소프트 삭제 없음 (FR-LK-01).';
+COMMENT ON COLUMN issue_links.id         IS '링크 식별자 (IDENTITY). parent-child 와 달리 링크는 다대다라 별도 PK 필요.';
+COMMENT ON COLUMN issue_links.source_id  IS '링크 출발 이슈 (issues.id). 같은 BC 라 실 FK + ON DELETE CASCADE.';
+COMMENT ON COLUMN issue_links.target_id  IS '링크 도착 이슈 (issues.id). 같은 BC 라 실 FK + ON DELETE CASCADE.';
+COMMENT ON COLUMN issue_links.link_type  IS '링크 종류 — blocks/relates/duplicates/clones 4종 (CHECK 제약으로 고정).';
+COMMENT ON COLUMN issue_links.created_at IS '링크 생성 시각. TIMESTAMPTZ (DATA.md §4).';
+
+-- FK 인덱스 (DATA.md §7). source/target 양쪽 단독 조회(나가는/들어오는 링크)에 쓰여 둘 다 추가.
+CREATE INDEX idx_issue_links_source_id ON issue_links(source_id);
+CREATE INDEX idx_issue_links_target_id ON issue_links(target_id);
