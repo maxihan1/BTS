@@ -9,6 +9,7 @@
     <ID>ForbiddenVoid:IssueSecurityIntegrationTest.kt$IssueSecurityIntegrationTest$Void</ID>
     <ID>ForbiddenVoid:LocalAuthFlowIntegrationTest.kt$LocalAuthFlowIntegrationTest$Void</ID>
     <ID>ForbiddenVoid:MfaTotpIntegrationTest.kt$MfaTotpIntegrationTest$Void</ID>
+    <ID>ForbiddenVoid:MfaWebauthnIntegrationTest.kt$MfaWebauthnIntegrationTest$Void</ID>
     <ID>ForbiddenVoid:PatAndConcurrencyIntegrationTest.kt$PatAndConcurrencyIntegrationTest$Void</ID>
     <ID>ForbiddenVoid:ProjectMemberFlowIntegrationTest.kt$ProjectMemberFlowIntegrationTest$Void</ID>
     <ID>ForbiddenVoid:SsoAccountLinkingIntegrationTest.kt$SsoAccountLinkingIntegrationTest$Void</ID>
@@ -50,6 +51,7 @@
     <ID>UseOrEmpty:MfaControllerTest.kt$MfaControllerTest$org.mockito.ArgumentMatchers.anyString() ?: ""</ID>
     <ID>UseOrEmpty:MfaTotpIntegrationTest.kt$MfaTotpIntegrationTest$URI(otpauthUri).query ?: ""</ID>
     <ID>UseOrEmpty:MfaTotpIntegrationTest.kt$MfaTotpIntegrationTest$cookies .firstOrNull { it.startsWith("refresh_token=") } ?.substringAfter("refresh_token=") ?.substringBefore(";") ?.trim() ?: ""</ID>
+    <ID>UseOrEmpty:MfaWebAuthnControllerTest.kt$MfaWebAuthnControllerTest$org.mockito.ArgumentMatchers.anyString() ?: ""</ID>
     <ID>UseOrEmpty:V022MigrationTest.kt$V022MigrationTest$rs.getString(1) ?: ""</ID>
     <ID>VarCouldBeVal:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$@Autowired private lateinit var localCredentialService: LocalCredentialService</ID>

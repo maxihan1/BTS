@@ -2,6 +2,7 @@
 
 package com.atlas.bts.identity.credential
 
+import com.atlas.bts.identity.mfa.TrustedDeviceService
 import com.atlas.bts.identity.session.RefreshTokenRepository
 import com.atlas.bts.identity.session.Session
 import com.atlas.bts.identity.session.SessionService
@@ -38,12 +39,14 @@ class ChangePasswordServiceTest {
     private val localCredentialService = mockk<LocalCredentialService>(relaxed = true)
     private val sessionService = mockk<SessionService>(relaxed = true)
     private val refreshTokenRepository = mockk<RefreshTokenRepository>(relaxed = true)
+    private val trustedDeviceService = mockk<TrustedDeviceService>(relaxed = true)
 
     private val sut =
         ChangePasswordService(
             localCredentialService = localCredentialService,
             sessionService = sessionService,
             refreshTokenRepository = refreshTokenRepository,
+            trustedDeviceService = trustedDeviceService,
         )
 
     private val userId = UUID.randomUUID()
@@ -72,7 +75,7 @@ class ChangePasswordServiceTest {
 
     @BeforeEach
     fun setUp() {
-        clearMocks(localCredentialService, sessionService, refreshTokenRepository)
+        clearMocks(localCredentialService, sessionService, refreshTokenRepository, trustedDeviceService)
     }
 
     // ── 1. 정책 위반 ──────────────────────────────────────────────────────────
@@ -90,6 +93,8 @@ class ChangePasswordServiceTest {
         verify(exactly = 0) { localCredentialService.rotate(any(), any(), any()) }
         verify(exactly = 0) { sessionService.revoke(any(), any()) }
         verify(exactly = 0) { refreshTokenRepository.revokeChainFromSession(any()) }
+        // 비번이 실제로 바뀌지 않은 실패 경로 — 신뢰 디바이스 자동폐기 미발생 (FR-MF-05 Task 7).
+        verify(exactly = 0) { trustedDeviceService.revokeAll(any()) }
     }
 
     // ── 2. new == current 평문 동일 ──────────────────────────────────────────
@@ -104,6 +109,8 @@ class ChangePasswordServiceTest {
         assertThat(result).isEqualTo(ChangePasswordResult.SameAsCurrent)
 
         verify(exactly = 0) { localCredentialService.rotate(any(), any(), any()) }
+        // rotate 미발생(비번 미변경) — 신뢰 디바이스 자동폐기 미발생 (C1: SameAsCurrent 누락 금지).
+        verify(exactly = 0) { trustedDeviceService.revokeAll(any()) }
     }
 
     // ── 3. current 불일치 (rotate = false) ──────────────────────────────────
@@ -118,6 +125,8 @@ class ChangePasswordServiceTest {
 
         verify(exactly = 0) { sessionService.revoke(any(), any()) }
         verify(exactly = 0) { refreshTokenRepository.revokeChainFromSession(any()) }
+        // 현재 비번 불일치(비번 미변경) — 신뢰 디바이스 자동폐기 미발생 (FR-MF-05 Task 7).
+        verify(exactly = 0) { trustedDeviceService.revokeAll(any()) }
     }
 
     // ── 4. 성공 — 다른 세션 무효화 ───────────────────────────────────────────
@@ -147,6 +156,9 @@ class ChangePasswordServiceTest {
         verify(exactly = 1) { refreshTokenRepository.revokeChainFromSession(otherSid1) }
         verify(exactly = 1) { sessionService.revoke(otherSid2, ChangePasswordService.REVOKE_REASON) }
         verify(exactly = 1) { refreshTokenRepository.revokeChainFromSession(otherSid2) }
+
+        // 비번 변경 성공 = 보안 이벤트 — 신뢰 디바이스 전량 자동폐기 (FR-MF-05 Task 7, ADR D5).
+        verify(exactly = 1) { trustedDeviceService.revokeAll(userId) }
     }
 
     // ── 5. 성공 — 다른 세션 0개 ─────────────────────────────────────────────
@@ -286,6 +298,8 @@ class ChangePasswordServiceMustChangeIntegrationTest {
         val localCredentialService = LocalCredentialService(repo)
         val sessionService = mockk<SessionService>(relaxed = true)
         val refreshTokenRepository = mockk<RefreshTokenRepository>(relaxed = true)
+        // 신뢰 디바이스 자동폐기는 mustChange 자동해제와 무관 — relaxed mock 으로 무해하게 통과
+        val trustedDeviceService = mockk<TrustedDeviceService>(relaxed = true)
         // 세션 무효화 단계는 자동해제와 무관 — 활성 세션 없음으로 무해하게 통과
         every { sessionService.findActiveByUser(userId) } returns emptyList()
 
@@ -294,6 +308,7 @@ class ChangePasswordServiceMustChangeIntegrationTest {
                 localCredentialService = localCredentialService,
                 sessionService = sessionService,
                 refreshTokenRepository = refreshTokenRepository,
+                trustedDeviceService = trustedDeviceService,
             )
     }
 

@@ -1,4 +1,4 @@
-// 이벤트 누락 0 커버리지 캡스톤 — AuthEventType 18종 전부 main 소스 emit 배선 회귀 가드 (FR-AU-10 Task 11 + FR-MF-01 Task 8 + FR-MF-02 Task 5)
+// 이벤트 누락 0 커버리지 캡스톤 — AuthEventType 22종 전부 main 소스 emit 배선 회귀 가드 (FR-AU-10 + FR-MF-01/02/05)
 
 package com.atlas.bts.identity.audit
 
@@ -11,7 +11,7 @@ import java.nio.file.Paths
  * FR-AU-10 Task 11 — "이벤트 누락 0" 커버리지 캡스톤 (회귀 가드).
  *
  * ## 목적
- * [AuthEventType] enum 18종 **전부**가 production(main) 소스에서 1개 이상 emit 경로를 가지는지
+ * [AuthEventType] enum 22종 **전부**가 production(main) 소스에서 1개 이상 emit 경로를 가지는지
  * 검증한다. 누군가 새 이벤트 유형을 enum 에 추가하고 emit 배선을 빠뜨리면 — 즉 감사 로그에
  * 절대 기록되지 않는 "유령 이벤트"가 생기면 — 이 테스트가 **fail** 하여 누락을 막는다.
  *
@@ -21,7 +21,7 @@ import java.nio.file.Paths
  * 단어 경계(`\b`)로 묶어 `LOGOUT` 과 `LOGOUT_ALL_DEVICES` 같은 접두 충돌을 정확히 구분한다.
  *
  * ## vacuous(공허한 통과) 회피
- * 18종이 모두 이미 배선된 상태라 단순히 두면 항상 통과해 가드 역할을 못 한다.
+ * 22종이 모두 이미 배선된 상태라 단순히 두면 항상 통과해 가드 역할을 못 한다.
  * 본 테스트는 enum 에 미배선 값을 추가하면 즉시 fail 하도록 설계됐다 — 구현 시 임시 더미 enum
  * 값을 넣어 fail 을 실측 확인했다(`archunit-vacuous-rule-silent-pass` 회귀 방지).
  *

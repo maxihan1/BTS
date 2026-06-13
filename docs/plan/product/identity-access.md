@@ -241,13 +241,15 @@
 
 **우선순위**. 높음 | **선행**. §3.1 | **Plan slug**. `identity/trusted-devices`
 
-- [ ] D1. 도메인 — TrustedDevice (책임. security-engineer)
-- [ ] D2. 명세 — 사용자 동의 + 30일 TTL + 취소 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `trusted_devices(device_fingerprint, expires_at)` (책임. db-engineer)
-- [ ] D4. 백엔드 — fingerprint 발급 + MFA 우회 검증 (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 — TTL 만료 + 명시적 취소 (책임. security-engineer)
+- [x] D1. 도메인 — TrustedDevice (책임. security-engineer) — PR #131
+- [x] D2. 명세 — 사용자 동의 + 30일 TTL + 취소 (책임. security-engineer) — PR #131
+- [x] D3. 데이터 모델 — `trusted_devices(token_hash, expires_at)` (책임. db-engineer) — PR #131 (V026. 컬럼명 일탈 `device_fingerprint`→`token_hash`: 기존 `Session.deviceFingerprint`(약한 UA+IP 핑거프린트)와 혼동 회피. init_codegen 미러 불요 — jdbc-only)
+- [x] D4. 백엔드 — fingerprint 발급 + MFA 우회 검증 (책임. security-engineer) — PR #131
+- [x] D5. 백엔드 테스트 — TTL 만료 + 명시적 취소 (책임. security-engineer) — PR #131
 - [ ] D6. 프론트 UI — "이 디바이스 신뢰" 체크박스 + 디바이스 관리 페이지 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
+
+> **FR-MF-05 백엔드 D1~D5 완료 (2026-06-13, PR #131)**. 신뢰 디바이스 30일 MFA 면제. **식별 = 서버 불투명 토큰**(MFA verify 성공 + `trust_device=true` 동의 시 32바이트 난수 hex → `Set-Cookie trusted_device` HttpOnly·Secure·SameSite=Strict·Path=/api/v1/auth·30일, DB `trusted_devices.token_hash`=SHA-256만 저장·평문 비영속). 다음 로그인 시 `completeLogin`이 쿠키를 `verifyAndTouch`(user-bound + 미만료 + 갱신 1행)로 검증해 통과하면 챌린지 생략·`issueTokens(mfaVerified=true)`, 아니면 기존 `mfa_required` 폴백(fail-safe). **클라이언트 핑거프린트 기각**(위조/충돌/프라이버시). **취소** = 수동(`GET`/`DELETE {id}`(IDOR 404)/`DELETE` 전체, JWT 전용·PAT 403) + 자동(비밀번호 변경·TOTP 비활성 시 `revokeAll`). 고정 30일(sliding 아님). 감사 `TRUSTED_DEVICE_ADDED`/`REVOKED`(AuthEventType 20→22, 카운트가드 전수 갱신). **우회 경계 = password(local/LDAP) 로그인 전용**(SSO success handler 비대상 — IdP MFA 관할), 단건 세션 종료(`revokeSession`)도 비트리거(세션≠신뢰, SDD '전체 만료'는 명시 전체취소+비번변경 자동폐기로 충족). JWT 클레임 미도입(`mfa_verified` 재사용). **검증** — identity-access 모듈 test+ktlint+detekt+detektTest 전부 `--rerun-tasks` 그린, prod Testcontainers 통합 9 시나리오(S1~S7·EC2·PAT) ground-truth. code-review BLOCKER 0, 적대적 패스 P2(verifyAndTouch TOCTOU→updateLastUsedAt 0행 false)·P3(User-Agent 라벨 256자 cap) 동반 수정. P0 부팅결함(TrustedDeviceService Clock 기본값 누락→full-context 부팅 차단) 통합테스트가 적발·수정. ADR [2026-06-13-trusted-device-mfa-exemption](../../decisions/2026-06-13-trusted-device-mfa-exemption.md). **D6 프론트/D7 E2E는 후속 PR**(FR-MF-01~04 동일 분할).
 
 ## §4 권한 관리 (FR-PM, 9개)
 
