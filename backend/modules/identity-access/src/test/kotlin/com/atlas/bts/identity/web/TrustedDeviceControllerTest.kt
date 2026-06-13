@@ -76,8 +76,9 @@ class TrustedDeviceControllerTest {
         }
 
         @Bean
-        fun corsConfigurationSource(): CorsConfigurationSource =
-            CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        fun corsConfigurationSource(): CorsConfigurationSource {
+            return CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        }
 
         @Bean
         fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)
@@ -195,7 +196,9 @@ class TrustedDeviceControllerTest {
 
     @Test
     fun `DELETE trusted-device with PAT returns 403`() {
-        mockMvc.perform(delete("/api/v1/auth/mfa/trusted-devices/{id}", deviceId).with(user("pat-user-id")).with(csrf()))
+        mockMvc.perform(
+            delete("/api/v1/auth/mfa/trusted-devices/{id}", deviceId).with(user("pat-user-id")).with(csrf()),
+        )
             .andExpect(status().isForbidden)
             .andExpect(jsonPath("$.error").value("session_management_requires_interactive_login"))
 
