@@ -77,11 +77,23 @@ import java.util.UUID
  * - EC-23 (replay 탐지): RotateResult.Failure(Replay) → 401 + "refresh_token_reused"
  * - EC-22 (race loser): RotateResult.Failure(Race) → 401 + "refresh_token_reused" (replay 와 동일 응답)
  * - EC-18 (logout idempotent): Authorization 헤더 없으면 Spring Security 가 401 반환 (Controller 미도달)
+ *
+ * ## 신뢰 디바이스 30일 MFA 면제 (FR-MF-05, ADR 2026-06-13)
+ * - **등록**([issueMfaVerifiedSession]) — verify 성공 + `trust_device=true` 면 [TrustedDeviceService.trust]
+ *   로 신뢰 토큰을 발급해 trusted_device 쿠키([buildTrustedDeviceCookie])를 refresh 쿠키와 병존시킨다.
+ * - **우회**([completeLogin] → [isTrustedDevice]) — MFA 활성이라도 trusted_device 쿠키가 user 일치 +
+ *   미만료면 챌린지 없이 `issueTokens(mfaVerified=true)` 정식 세션을 발급한다.
+ * - **user-bound** — 토큰 해시가 일치해도 소유 user 가 다르면 우회하지 않는다([TrustedDeviceService.verifyAndTouch]).
+ * - **fail-safe** — 쿠키 부재/만료/타인/미상은 모두 우회하지 않고 기존 mfa_required 챌린지로 폴백한다.
+ * - **best-effort 등록** — 신뢰 등록(token_hash UNIQUE) 극저확률 실패가 세션 발급을 막지 않는다(쿠키만 누락).
+ * - **SSO 비대상** — 우회는 password(local/LDAP) [completeLogin] 전용. SSO success handler 는 IdP 가
+ *   2차 인증을 관할하므로 신뢰 우회를 이식하지 않는다(회귀 표면 차단).
  */
 @RestController
 @RequestMapping("/api/v1/auth")
 // LongParameterList 억제 — 모두 생성자 의존성 주입(DI)이며 임의 그룹핑은 응집도를 해친다.
-// FR-PM-08 에서 systemRoleAssignmentRepository, FR-MF-03 에서 webAuthnSecurityKeyService 가 추가됐다.
+// FR-PM-08 에서 systemRoleAssignmentRepository, FR-MF-03 에서 webAuthnSecurityKeyService,
+// FR-MF-05 에서 trustedDeviceService 가 추가됐다.
 // TooManyFunctions 억제 — login/logout/refresh/sessions/revokeSession 엔드포인트 + 응집된 private 헬퍼.
 // FR-AU-06 에서 login 을 30줄 이내로 유지하려 issueTokens/errorResponse 헬퍼를 분리해 12개가 됐다.
 @Suppress("LongParameterList", "TooManyFunctions")
@@ -180,10 +192,17 @@ class AuthController(
      * MFA 활성 조회는 1단계 Success 이후에만 수행한다(이 헬퍼는 Success 분기에서만 호출).
      * 비밀번호 오답(Failure) 경로는 조회하지 않으므로 MFA 보유 여부가 노출되지 않는다.
      *
+     * ## 신뢰 디바이스 우회 (FR-MF-05)
+     * MFA 활성이라도 trusted_device 쿠키가 user 일치 + 미만료([isTrustedDevice])면 챌린지 대신
+     * `issueTokens(mfaVerified=true)` 정식 세션을 발급한다(우회). 쿠키 부재/만료/타인은 챌린지로 폴백(fail-safe).
+     *
      * @param request IP/UserAgent 추출용 HTTP 요청
      * @param principal 1단계 인증을 통과한 주체
-     * @return MFA 활성 시 200 [MfaRequiredResponse], 미활성 시 200 [TokenResponse] + Set-Cookie
+     * @return MFA 미활성 또는 신뢰 우회 시 200 [TokenResponse] + Set-Cookie, 그 외 MFA 활성 시 200 [MfaRequiredResponse]
+     *
+     * ReturnCount 억제 — MFA 미활성 / 신뢰 우회 / 챌린지 3분기 guard early return 이 중첩 if 보다 가독성 우수.
      */
+    @Suppress("ReturnCount")
     private fun completeLogin(
         request: HttpServletRequest,
         principal: Principal,
@@ -837,9 +856,7 @@ class AuthController(
      *
      * @param value 발급된 raw 신뢰 토큰 — **로그 기록 금지**(§1.1.2)
      */
-    private fun buildTrustedDeviceCookie(
-        value: String,
-    ): String =
+    private fun buildTrustedDeviceCookie(value: String): String =
         "$TRUSTED_DEVICE_COOKIE=$value; HttpOnly; Secure; SameSite=Strict; Path=$COOKIE_PATH; Max-Age=$TRUST_MAX_AGE"
 
     /** [TOKEN_BYTES] 바이트 CSPRNG 난수를 hex 문자열로 인코딩한다. */
