@@ -59,9 +59,21 @@ occurredAt: Instant      — ISO 8601 문자열
 - ❌ `@stomp/stompjs` **미설치** → 신규 의존성 추가 필요 (절대 규칙 #17 — 새 라이브러리 Maxi 확인)
 - ⚠️ E2E의 STOMP/WebSocket 처리 전략 미결 → spec 단계에서 결정 (MSW WebSocket vs Playwright routeWebSocket vs 실 백엔드)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙: [docs/specs/2026-06-13-fr-nt-02-d6-d7-stomp-sonner-e2e.md](../specs/2026-06-13-fr-nt-02-d6-d7-stomp-sonner-e2e.md)
+
+핵심 요약.
+- D6: `@stomp/stompjs`로 `/ws` 연결(CONNECT 헤더 `Authorization: Bearer`) → `/user/queue/notifications` 구독 → 수신 payload Zod 파싱 → sonner `toast`. 인증 상태 연동(연결/해제), 재연결 시 토큰 갱신.
+- D7: Playwright `routeWebSocket`으로 STOMP 핸드셰이크+MESSAGE 프레임 주입 → 토스트 표시 검증.
+
+**Maxi 확정 결정 2건.**
+- ① `@stomp/stompjs` 신규 의존성 추가 승인(절대 규칙 #17).
+- ② E2E 전략 = Playwright `routeWebSocket`(실 클라 경로 관통, 백엔드 불필요).
+
+## Brainstorming Check
+
+✅ 통과 (직접 gap 점검 — 완료 FR 후속 D6/D7 경량). Maxi 결정 필요 gap 없음. 구현 디테일(brokerURL/connectHeaders 동적갱신/__root 마운트/중복구독 방지)은 plan에서 해소.
 
 ## Plan (← /bts-plan 채움)
 
