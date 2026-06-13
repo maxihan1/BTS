@@ -42,13 +42,15 @@ enum class LinkType(
         /**
          * DB 저장 코드 문자열로 [LinkType]을 조회한다.
          *
-         * @param code DB에 저장된 link_type 코드 (예: "blocks")
+         * `entries.firstOrNull`을 사용하여 향후 enum 값 추가 시 DDL CHECK 정합 가드
+         * (`LinkTypeTest`)가 자동으로 drift를 잡을 수 있도록 한다.
+         *
+         * @param code DB에 저장된 link_type 코드 (예: "blocks", "relates", "duplicates", "clones")
          * @return 매칭된 [LinkType]
          * @throws InvalidLinkTypeCodeException 코드가 알 수 없는 값일 때
          */
-        fun fromCode(code: String): LinkType {
-            return entries.firstOrNull { it.code == code }
+        fun fromCode(code: String): LinkType =
+            entries.firstOrNull { it.code == code }
                 ?: throw InvalidLinkTypeCodeException(code)
-        }
     }
 }
