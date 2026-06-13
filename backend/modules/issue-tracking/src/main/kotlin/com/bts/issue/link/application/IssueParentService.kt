@@ -47,6 +47,7 @@ class IssueParentService(
      * @throws ParentCycleException parent 의 조상 체인에 child 가 포함되어 순환이 형성되는 경우(409).
      */
     @Transactional
+    @Suppress("ThrowsCount") // child 404 / parent 404 / self 422 / cycle 409 — 검증 단계별 명시적 throw 4개, 리팩토링 시 복잡도 증가
     fun setParent(
         childKey: IssueKey,
         parentKey: IssueKey,
