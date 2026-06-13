@@ -777,6 +777,52 @@ describe('T4-S1: 강제 안내 배너', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// T5-S1: WebauthnSection — TOTP 미활성 상태에서도 항상 노출 (FR-1/D-A)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T5-S1: WebauthnSection은 TOTP 활성 여부와 무관하게 항상 노출된다', () => {
+  it('T5-S1-1: TOTP 미활성 + WebAuthn 키 없음 → 보안 키 섹션 헤더와 "보안 키 추가" 버튼이 노출된다', async () => {
+    server.use(mockStatus(false))
+
+    renderMfaSettings()
+
+    // TOTP 비활성 상태 텍스트 확인
+    await waitFor(() => {
+      expect(screen.getByText('비활성화됨')).toBeInTheDocument()
+    })
+
+    // 보안 키 섹션 헤더 노출 — WebauthnSection이 isEnabled 분기 밖에 있어야 통과
+    await waitFor(() => {
+      expect(screen.getByText(mfaStrings.webauthnSectionTitle)).toBeInTheDocument()
+    })
+    // "보안 키 추가" 버튼 노출
+    expect(screen.getByRole('button', { name: mfaStrings.webauthnAddButton })).toBeInTheDocument()
+    // 백업코드 섹션은 미노출 (TOTP 비활성)
+    expect(screen.queryByText(mfaStrings.backupSectionTitle)).not.toBeInTheDocument()
+  })
+
+  it('T5-S1-2: TOTP 활성 → 보안 키 섹션 + 백업코드 섹션 모두 노출된다', async () => {
+    server.use(
+      mockStatus(true),
+      http.get('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ generated: false, remaining: 0 }),
+      ),
+    )
+
+    renderMfaSettings()
+
+    // 보안 키 섹션 헤더 노출
+    await waitFor(() => {
+      expect(screen.getByText(mfaStrings.webauthnSectionTitle)).toBeInTheDocument()
+    })
+    // 백업코드 섹션 노출
+    await waitFor(() => {
+      expect(screen.getByText(mfaStrings.backupSectionTitle)).toBeInTheDocument()
+    })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // T4-S2: 등록 후 게이트 해제 (FR-D6-4)
 // ─────────────────────────────────────────────────────────────────────────────
 
