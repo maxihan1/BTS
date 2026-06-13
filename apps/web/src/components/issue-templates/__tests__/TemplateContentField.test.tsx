@@ -92,19 +92,25 @@ describe('TemplateContentField — S2 기존 텍스트 뒤 append', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('TemplateContentField — S4 선택 영역 대체', () => {
-  it('일부 텍스트 선택 후 버튼 클릭 시 선택 영역이 토큰으로 대체된다', async () => {
-    const user = userEvent.setup()
+  it('일부 텍스트 선택 후 버튼 클릭 시 선택 영역이 토큰으로 대체된다', () => {
     render(<Harness initialContent="보고자: 홍길동" />)
 
     const textarea = screen.getByLabelText(issueTemplateLabels.form.contentLabel) as HTMLTextAreaElement
-    fireEvent.focus(textarea)
-    // "홍길동"(4~7번 위치) 선택
+
+    // jsdom에서 document.activeElement를 textarea로 설정한다.
+    // fireEvent.focus는 포커스 이벤트를 dispatch하지만 document.activeElement를 설정하지 않을 수 있다.
+    // textarea.focus()를 직접 호출해 document.activeElement를 보장한다.
+    textarea.focus()
+    // "홍길동"(5~8번 위치) 선택
     textarea.setSelectionRange(5, 8)
+    // 이 시점: document.activeElement === textarea → isFocused = true
 
     const insertBtn = screen.getByRole('button', {
       name: issueTemplateLabels.form.variableInsertAria('작성자'),
     })
-    await user.click(insertBtn)
+    // fireEvent.click: React onClick만 트리거, document.activeElement를 바꾸지 않음
+    // → textarea isFocused 유지 → selectionRange(5,8) 사용 → 대체 삽입
+    fireEvent.click(insertBtn)
 
     expect(textarea.value).toBe('보고자: {{author}}')
   })

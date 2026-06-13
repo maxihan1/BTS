@@ -47,20 +47,18 @@ const HELP_ID_SUFFIX = '-var-help'
  *
  * @param currentValue - 삽입 전 textarea 전체 값
  * @param token - 삽입할 변수 토큰 (예: `{{author}}`)
- * @param selectionStart - 선택 시작 위치 (null이면 끝에 append)
- * @param selectionEnd - 선택 끝 위치 (null이면 끝에 append)
+ * @param selectionStart - 선택 시작 위치
+ * @param selectionEnd - 선택 끝 위치
  * @returns 토큰이 삽입된 새 문자열과 삽입 직후 caret 위치
  */
 function spliceToken(
   currentValue: string,
   token: string,
-  selectionStart: number | null,
-  selectionEnd: number | null,
+  selectionStart: number,
+  selectionEnd: number,
 ): { next: string; caretPos: number } {
-  const start = selectionStart ?? currentValue.length
-  const end = selectionEnd ?? currentValue.length
-  const next = currentValue.slice(0, start) + token + currentValue.slice(end)
-  return { next, caretPos: start + token.length }
+  const next = currentValue.slice(0, selectionStart) + token + currentValue.slice(selectionEnd)
+  return { next, caretPos: selectionStart + token.length }
 }
 
 /**
@@ -69,9 +67,14 @@ function spliceToken(
  * DOM 업데이트(RHF setValue 반영)가 페인트 이전에 완료되길 보장하기 위해
  * rAF을 사용한다. jsdom 환경에서는 rAF이 즉시 실행되지 않아 테스트에서는
  * caret 위치를 직접 단언하지 않는다.
+ *
+ * F1: 삽입 직후 다이얼로그가 닫히면(Esc/overlay) 언마운트된 노드에 focus()를
+ * 거는 race를 막기 위해 isConnected를 검사한다.
  */
 function restoreCaretAfterFrame(el: HTMLTextAreaElement, caretPos: number): void {
   requestAnimationFrame(() => {
+    // F1: 언마운트된 노드에 focus() 거는 race 방지
+    if (!el.isConnected) return
     el.focus()
     el.setSelectionRange(caretPos, caretPos)
   })
@@ -117,19 +120,24 @@ export const TemplateContentField = ({
 
   /**
    * 변수 삽입 핸들러.
-   * spliceToken으로 새 값·caret 위치를 계산하고, setFieldValue로 RHF에 동기화한 후
-   * restoreCaretAfterFrame으로 포커스와 caret을 복원한다.
+   *
+   * F2: 삽입 위치를 포커스 여부로 결정한다.
+   * - 포커스 상태(onMouseDown preventDefault로 보존됨): 실제 caret 위치에 삽입.
+   * - 포커스 없음(textarea를 한 번도 누르지 않은 상태): 끝에 append.
+   *
+   * 실 브라우저에서 포커스 없는 textarea의 selectionStart = 0이므로
+   * selectionStart ?? length fallback은 0을 그대로 사용해 prepend가 된다.
+   * isFocused 분기로 이 문제를 방어한다.
    */
   function handleInsert(token: string): void {
     const el = textareaRef.current
     if (el === null) return
 
-    const { next, caretPos } = spliceToken(
-      el.value,
-      token,
-      el.selectionStart,
-      el.selectionEnd,
-    )
+    const isFocused = document.activeElement === el
+    const start = isFocused ? el.selectionStart : el.value.length
+    const end = isFocused ? el.selectionEnd : el.value.length
+
+    const { next, caretPos } = spliceToken(el.value, token, start, end)
     setFieldValue(next)
     restoreCaretAfterFrame(el, caretPos)
   }
@@ -149,6 +157,9 @@ export const TemplateContentField = ({
             variant="outline"
             size="sm"
             aria-label={labels.variableInsertAria(variable.insertLabel)}
+            // F2: mousedown에서 preventDefault → textarea가 blur되지 않아 caret/포커스가 보존된다.
+            // onClick은 그대로 fire되므로 handleInsert가 정상 실행됨.
+            onMouseDown={(e) => { e.preventDefault() }}
             onClick={() => { handleInsert(variable.token) }}
           >
             + {variable.insertLabel}
@@ -156,17 +167,15 @@ export const TemplateContentField = ({
         ))}
       </div>
 
-      {/* 본문 textarea — ref는 병합 콜백으로 교체, 나머지 RHF 속성은 명시 전달 */}
+      {/* 본문 textarea — F3: registration 스프레드로 RHF props 전체 보존 후 ref 덮어쓰기 */}
       <textarea
+        {...registration}
         id={textareaId}
         aria-label={label}
         aria-describedby={helpId}
         placeholder="Markdown 형식으로 본문을 입력하세요."
         rows={6}
         className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground resize-y"
-        name={registration.name}
-        onChange={registration.onChange}
-        onBlur={registration.onBlur}
         ref={mergedRef}
       />
 
