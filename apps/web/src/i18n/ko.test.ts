@@ -1,7 +1,7 @@
 // issueDetailStrings 신규 키 존재 여부를 타입 레벨에서 검증하는 테스트
 
 import { describe, it, expect, expectTypeOf } from 'vitest'
-import { issueDetailStrings, mfaStrings, mfaErrorMessage } from './ko'
+import { issueDetailStrings, mfaStrings, mfaErrorMessage, issueLinkStrings } from './ko'
 
 // IssueDetailStrings 타입을 추론해서 키 존재를 검증한다.
 // 키가 없으면 expectTypeOf(...).toHaveProperty() 가 타입 에러를 발생시킨다.
@@ -253,6 +253,18 @@ describe('mfaErrorMessage — 에러 코드 → 한국어 메시지 매핑', () 
     for (const code of codes) {
       const msg = mfaErrorMessage(code)
       expect(msg, `"${msg}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+    }
+  })
+})
+
+// ── issueLinkStrings ──────────────────────────────────────────────────────────
+
+describe('issueLinkStrings — 이슈 링크 패널 문자열 (FR-LK-01 D6)', () => {
+  it('모든 문자열 값은 콜론으로 끝나지 않는다 (글로벌 §5)', () => {
+    for (const value of Object.values(issueLinkStrings)) {
+      if (typeof value === 'string') {
+        expect(value, `"${value}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+      }
     }
   })
 })

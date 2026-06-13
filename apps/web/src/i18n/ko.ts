@@ -559,6 +559,10 @@ export const issueLinkStrings = {
   /** 링크 행 제거 버튼 aria-label */
   removeLinkButton: '링크 제거',
 
+  // ── 로딩 ─────────────────────────────────────────────────────────────
+  /** 링크 목록 로딩 중 표시 */
+  loadingState: '로딩 중...',
+
   // ── 에러 메시지 (인라인, 토스트 아님) ───────────────────────────────
   /** LINK_SELF_REFERENCE — 자기 자신에게 링크할 수 없음 */
   errorLinkSelfReference: '자기 자신에게 링크할 수 없습니다.',

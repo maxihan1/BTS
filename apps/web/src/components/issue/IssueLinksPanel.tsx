@@ -390,7 +390,7 @@ export function IssueLinksPanel({
 
         {/* 링크 목록 */}
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">로딩 중...</p>
+          <p className="text-sm text-muted-foreground">{issueLinkStrings.loadingState}</p>
         ) : hasLinks ? (
           <ul className="flex flex-col divide-y divide-border">
             {outward.map((link) => (
