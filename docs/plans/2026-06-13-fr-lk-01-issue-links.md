@@ -44,9 +44,20 @@ FR-LK-01 — 이슈 간 링크. blocks / relates / duplicates / clones / parent-
 - 관련 ADR. [docs/decisions/2026-06-13-issue-link-vs-parent-child-separation.md](../decisions/2026-06-13-issue-link-vs-parent-child-separation.md) (생성됨)
 - 관련 마이그레이션. issue-tracking 다음 버전 **V021**(현재 최신 V020), init_codegen 미러 필수.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-13-fr-lk-01-issue-links.md](../specs/2026-06-13-fr-lk-01-issue-links.md)
+
+핵심 요약.
+- 링크(issue_links, 4종 blocks/relates/duplicates/clones, UUID source/target, surrogate BIGINT id) — POST/GET/DELETE `/api/v1/issues/{key}/links`.
+- parent-child(issues.parent_id) — PATCH `/api/v1/issues/{key}/parent` 2-state(set/clear). 구조만 강제(단일부모·acyclic·self금지), hierarchy_level 위계 이연(Maxi 확정 B).
+- 불변식 7종(자기링크·중복 409·blocks 순환 409 전이탐색·self-parent 422·부모 순환 409·소프트삭제 404·링크id 404).
+- 마이그레이션 V021(issue_links 테이블 + issues.parent_id 컬럼) + init_codegen 미러.
+- 비목표. 이력·알림 미발행, 권한 placeholder resolver, 프론트 D6/D7 후속.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). well-specified 백엔드 FR → 직접 기술 스펙. gap 1건(hierarchy_level 위계) Maxi 확정 B(구조만)로 해소. 나머지는 선례·범위 기반 자기 결정.
 
 ## Plan (← /bts-plan 채움)
 
