@@ -27,6 +27,7 @@ import { Input } from '@/components/ui/input'
 import { downloadIssuePdf } from '@/api/issues'
 import { triggerBlobDownload } from '@/lib/download'
 import { IssueChangelog } from '@/components/issue/IssueChangelog'
+import { IssueLinksPanel } from '@/components/issue/IssueLinksPanel'
 import { IssueDescription } from '@/components/issue/IssueDescription'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
@@ -661,6 +662,13 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
           />
         )}
       </div>
+
+      {/* 이슈 링크 패널 — 2단 grid 바깥 전체폭, 변경 이력 상단 (FR-LK-01 D6) */}
+      <IssueLinksPanel
+        issueKey={issue.key}
+        parent={issue.parent ?? null}
+        disabled={!canEdit}
+      />
 
       {/* 변경 이력 섹션 — 2단 grid 바깥 전체폭 (FR-HS-02 Task F5) */}
       <IssueChangelog

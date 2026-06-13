@@ -235,13 +235,17 @@ describe('IssueDetailPage — 성공 레이아웃', () => {
   it('T7-5: 메타패널에 상태 배지가 렌더되고 상태 전이 드롭다운이 없다', async () => {
     setupIssueFoundHandler()
 
-    renderPage('ATLAS-1')
+    const { container } = renderPage('ATLAS-1')
 
     await waitFor(() => {
       // 상태 배지가 렌더되어야 함
       expect(screen.getByTestId('issue-state-badge')).toBeInTheDocument()
-      // 유형 셀렉터가 있어야 함 (Task-6에서 추가)
-      expect(screen.getByRole('combobox', { name: /유형/ })).toBeInTheDocument()
+      // 유형 셀렉터가 있어야 함 (Task-6에서 추가) — IssueLinksPanel의 "링크 유형" select와
+      // 충돌하지 않도록 aside(메타패널) 안으로 범위 좁힘 (playwright-getbyrole-exact-strict-mode)
+      const aside = container.querySelector('aside')
+      expect(aside).not.toBeNull()
+      if (aside === null) return
+      expect(within(aside).getByRole('combobox', { name: /유형/ })).toBeInTheDocument()
     })
   })
 
