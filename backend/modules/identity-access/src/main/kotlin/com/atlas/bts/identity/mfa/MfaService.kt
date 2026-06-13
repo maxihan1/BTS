@@ -49,9 +49,10 @@ import java.util.UUID
  * @param clock replay 방어용 현재 time-step 계산 기준. 테스트는 `Clock.fixed` 로 고정한다.
  *
  * ## LongParameterList 억제
- * 7개 의존성은 모두 단일 책임 협력자(연산/TOTP영속/백업코드영속/암호화/rate-limit/감사/시계)로,
+ * 8개 의존성은 모두 단일 책임 협력자(연산/TOTP영속/백업코드영속/암호화/rate-limit/감사/신뢰디바이스/시계)로,
  * 묶을 응집 단위가 없어 그대로 주입한다. backupCodeRepo 는 FR-MF-02 Task 6 에서
- * disable cascade 삭제용으로 추가됐다.
+ * disable cascade 삭제용으로, trustedDeviceService 는 FR-MF-05 Task 7 에서
+ * disable 자동폐기용으로 추가됐다.
  */
 @Suppress("LongParameterList")
 @Service
@@ -63,6 +64,7 @@ class MfaService(
     private val encryptor: MfaSecretEncryptor,
     private val limiter: MfaAttemptLimiter,
     private val auditLog: AuthAuditLogService,
+    private val trustedDeviceService: TrustedDeviceService,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     /**
@@ -192,6 +194,8 @@ class MfaService(
         }
         repo.deleteByUser(userId)
         backupCodeRepo.deleteAllByUser(userId)
+        // TOTP 비활성화 = 보안 이벤트 — 신뢰 디바이스 전량 자동폐기 (FR-MF-05)
+        trustedDeviceService.revokeAll(userId)
         limiter.reset(userId)
         emit(userId, AuthEventType.MFA_DISABLED)
         return DisableResult.Success

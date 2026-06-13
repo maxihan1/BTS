@@ -2,6 +2,7 @@
 
 package com.atlas.bts.identity.credential
 
+import com.atlas.bts.identity.mfa.TrustedDeviceService
 import com.atlas.bts.identity.session.RefreshTokenRepository
 import com.atlas.bts.identity.session.SessionService
 import org.springframework.stereotype.Service
@@ -52,12 +53,14 @@ sealed interface ChangePasswordResult {
  * @param localCredentialService 패스워드 rotate 담당
  * @param sessionService 세션 revoke 담당
  * @param refreshTokenRepository refresh chain revoke 담당
+ * @param trustedDeviceService 비밀번호 변경 성공 시 신뢰 디바이스 전량 자동폐기 담당 (FR-MF-05)
  */
 @Service
 class ChangePasswordService(
     private val localCredentialService: LocalCredentialService,
     private val sessionService: SessionService,
     private val refreshTokenRepository: RefreshTokenRepository,
+    private val trustedDeviceService: TrustedDeviceService,
 ) {
     /**
      * 비밀번호를 변경하고 현재 세션 외 다른 세션을 무효화한다.
@@ -104,6 +107,9 @@ class ChangePasswordService(
                     sessionService.revoke(session.id, REVOKE_REASON)
                     refreshTokenRepository.revokeChainFromSession(session.id)
                 }
+
+            // (5) 신뢰 디바이스 전량 자동폐기 — 비밀번호 변경 = 보안 이벤트 (FR-MF-05)
+            trustedDeviceService.revokeAll(userId)
 
             return ChangePasswordResult.Success
         } finally {
