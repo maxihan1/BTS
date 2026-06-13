@@ -6,6 +6,7 @@ import com.bts.issue.jooq.tables.references.ISSUE_LINKS
 import com.bts.issue.link.domain.IssueLink
 import com.bts.issue.link.domain.LinkType
 import org.jooq.DSLContext
+import org.jooq.Record
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
@@ -183,7 +184,7 @@ class IssueLinkRepository(
     /**
      * jOOQ [IssueLinksRecord] 를 도메인 [IssueLink] 로 변환한다.
      */
-    private fun toIssueLink(record: org.jooq.Record): IssueLink {
+    private fun toIssueLink(record: Record): IssueLink {
         val tbl = ISSUE_LINKS
         return IssueLink(
             id = record.get(tbl.ID),
