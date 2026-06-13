@@ -95,6 +95,7 @@ occurredAt: Instant      — ISO 8601 문자열
   - `onConnect` 콜백 실행 시 `client.subscribe('/user/queue/notifications', cb)` 호출.
   - 구독 콜백에 유효 JSON 프레임(`{ body: JSON.stringify(payload) }`) 전달 시 `inAppNotificationSchema` 파싱 후 `onMessage(parsed)` 호출.
   - body가 스키마 불일치/비JSON이면 `onMessage` 미호출 + `console.warn` 1회(앱 크래시 금지).
+  - **C1(토큰 재연결)**: `beforeConnect` 호출 시 `client.connectHeaders.Authorization`이 `getToken()` 최신값으로 재평가됨(만료 토큰 재사용 0, S5). brokerURL 기대값은 jsdom `location.host` 실측 사용(C3 — `ws://localhost:3000/ws` 류, 하드코딩 금지).
 - 실패(예상): `createNotificationStream`/`inAppNotificationSchema` 미존재.
 
 **GREEN**:
@@ -122,6 +123,7 @@ occurredAt: Instant      — ISO 8601 문자열
   - body=null → `toast(title, { description: undefined })`(S2, description 미표시).
   - 미인증이면 스트림 생성/활성화 안 함(S3).
   - 언마운트 시 `deactivate` 호출(S4). 재연결 토큰 갱신은 getToken이 store 최신값 읽음으로 보장(S5).
+  - **C2(StrictMode)**: mount→unmount→mount 재실행 시 `activate`가 살아있는 연결을 중복 생성하지 않음(useRef 가드) + 각 unmount마다 `deactivate` 호출(좀비 연결 0).
 - 실패(예상): `useNotificationStream` 미존재.
 
 **GREEN**:
@@ -178,4 +180,23 @@ occurredAt: Instant      — ISO 8601 문자열
 - TDD 강제: yes (각 task RED→GREEN→REFACTOR).
 - 추가 검증: tsc(tsconfig.app.json) 필수 동반(vitest 타입무시), playwright(Task4).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### eng 관점 리뷰 (2026-06-13, 직접 — design-review 대체)
+
+`type=ui`지만 새 시각 요소 없음(기존 sonner 토스트 재사용) → design-review는 vacuous. 실질 리스크는 STOMP 통합/생명주기/E2E 프레임이라 eng 관점 적대적 리뷰 수행(선례 `bts-review-plan autoplan overkill`).
+
+**BLOCKER: 없음.**
+
+**CONCERN (impl 반영 — 일부 task RED에 보강 완료).**
+- **C1 토큰 재연결 갱신**: `@stomp/stompjs`의 `connectHeaders`는 정적 객체라 재연결 시 만료 토큰 재사용 위험(S5 위배). 정석은 `beforeConnect`에서 `client.connectHeaders = { Authorization: 'Bearer '+getToken() }` 재평가. → Task1 RED에 명시.
+- **C2 StrictMode double-invoke**: main.tsx `<StrictMode>` 확인됨 → dev에서 hook useEffect가 mount→unmount→mount 2회. cleanup `deactivate` + `useRef` 가드 없으면 좀비 STOMP 연결. → Task2 RED에 "재마운트 시 중복 activate 0 + cleanup deactivate" 검증 추가.
+- **C3 jsdom location**: Task1 brokerURL 단위테스트 기대값은 jsdom 기본 location(`http://localhost:3000`)에 의존 → `ws://localhost:3000/ws`(또는 location stub). `ws://localhost/ws` 하드코딩 오기 주의.
+- **C4 vite proxy target 관례(마이너)**: `/ws` proxy는 `target:'http://localhost:8080', ws:true`가 vite 관례(http target에서 ws 업그레이드). `ws://` 직접 지정도 동작하나 http로 통일 권장.
+- **C5 E2E STOMP 프레임 정확성**: CONNECTED 프레임에 `version:1.2` 헤더 + heartbeat `0,0` + null terminator `\x00` 필요. @stomp/stompjs가 CONNECT 시 `accept-version`/`heart-beat` 전송 → fixture가 정확히 응답해야 연결 성립. → Task4에서 실측 디버깅.
+
+**확인 사항.**
+- BC 격리 ✅ (notification 프론트만, 다른 BC import 없음)
+- 신규 의존성 @stomp/stompjs ✅ (Maxi 승인 2026-06-13)
+- TDD 형식 ✅ (4 task 모두 RED/GREEN/REFACTOR + 메타)
+- 검증에 tsc 동반 ✅ (vitest 타입무시 교훈 반영)
