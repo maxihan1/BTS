@@ -32,10 +32,50 @@ export interface TemplateContentFieldProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 도움말 id 상수 — textareaId에 suffix를 붙여 고유성 확보
+// 상수
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** textarea aria-describedby 연결용 suffix — textareaId에 붙여 고유 id 생성 */
 const HELP_ID_SUFFIX = '-var-help'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 순수 헬퍼
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 현재 커서/선택 영역 위치에 token을 삽입한 새 문자열을 반환한다.
+ *
+ * @param currentValue - 삽입 전 textarea 전체 값
+ * @param token - 삽입할 변수 토큰 (예: `{{author}}`)
+ * @param selectionStart - 선택 시작 위치 (null이면 끝에 append)
+ * @param selectionEnd - 선택 끝 위치 (null이면 끝에 append)
+ * @returns 토큰이 삽입된 새 문자열과 삽입 직후 caret 위치
+ */
+function spliceToken(
+  currentValue: string,
+  token: string,
+  selectionStart: number | null,
+  selectionEnd: number | null,
+): { next: string; caretPos: number } {
+  const start = selectionStart ?? currentValue.length
+  const end = selectionEnd ?? currentValue.length
+  const next = currentValue.slice(0, start) + token + currentValue.slice(end)
+  return { next, caretPos: start + token.length }
+}
+
+/**
+ * requestAnimationFrame 이후 textarea에 포커스를 두고 caret을 지정 위치로 복원한다.
+ *
+ * DOM 업데이트(RHF setValue 반영)가 페인트 이전에 완료되길 보장하기 위해
+ * rAF을 사용한다. jsdom 환경에서는 rAF이 즉시 실행되지 않아 테스트에서는
+ * caret 위치를 직접 단언하지 않는다.
+ */
+function restoreCaretAfterFrame(el: HTMLTextAreaElement, caretPos: number): void {
+  requestAnimationFrame(() => {
+    el.focus()
+    el.setSelectionRange(caretPos, caretPos)
+  })
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TemplateContentField
@@ -77,28 +117,21 @@ export const TemplateContentField = ({
 
   /**
    * 변수 삽입 핸들러.
-   * 1. textarea가 없으면 즉시 return.
-   * 2. selectionStart/End를 읽고, 포커스가 없어 null이면 끝 위치로 fallback.
-   * 3. 선택 영역을 token으로 대체한 새 값을 setFieldValue로 RHF에 동기화.
-   * 4. requestAnimationFrame으로 DOM 업데이트 후 caret을 삽입 끝으로 복원.
+   * spliceToken으로 새 값·caret 위치를 계산하고, setFieldValue로 RHF에 동기화한 후
+   * restoreCaretAfterFrame으로 포커스와 caret을 복원한다.
    */
   function handleInsert(token: string): void {
     const el = textareaRef.current
     if (el === null) return
 
-    const start = el.selectionStart ?? el.value.length
-    const end = el.selectionEnd ?? el.value.length
-    const next = el.value.slice(0, start) + token + el.value.slice(end)
-
+    const { next, caretPos } = spliceToken(
+      el.value,
+      token,
+      el.selectionStart,
+      el.selectionEnd,
+    )
     setFieldValue(next)
-
-    // RHF setValue는 비제어 textarea의 DOM el.value를 갱신하므로(Approach A)
-    // rAF 후 el.value가 갱신된 상태에서 caret을 복원한다.
-    const caretPos = start + token.length
-    requestAnimationFrame(() => {
-      el.focus()
-      el.setSelectionRange(caretPos, caretPos)
-    })
+    restoreCaretAfterFrame(el, caretPos)
   }
 
   return (
