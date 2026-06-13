@@ -83,4 +83,22 @@ interface UserLookupPort {
      * @return 실재하는 id 만 포함한 [UUID] to display_name 맵 (순서 미보장)
      */
     fun findDisplayNamesByIds(ids: Set<UUID>): Map<UUID, String> = emptyMap()
+
+    /**
+     * 주어진 사용자 UUID 의 이메일 주소를 조회한다.
+     *
+     * 알림(notification) BC 가 수신자 userId 로 이메일을 cross-BC 조회할 때 사용한다.
+     * 미존재 id 이거나 이메일이 없으면 null 을 반환한다(fail-safe).
+     * null 반환은 이메일 발송 생략을 의미하며, 보안 판단에 영향을 주지 않는다.
+     *
+     * ### 기본값 = null 의 의미
+     * 기존 fake(약 35개)가 exists 만 구현한 anonymous object 형태이므로
+     * default 구현으로 추가해 컴파일 에러 없이 보호한다.
+     * production 환경에서 이 default 구현이 호출되면 안 된다.
+     * production 유일 구현체는 [com.atlas.bts.identity.user.UserLookupAdapter] 가 override 한다.
+     *
+     * @param userId 이메일을 조회할 사용자 UUID
+     * @return 해당 사용자의 이메일 주소, 미존재 시 null
+     */
+    fun findEmailById(userId: UUID): String? = null
 }
