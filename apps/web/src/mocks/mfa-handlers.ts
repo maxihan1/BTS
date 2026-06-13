@@ -1,6 +1,7 @@
 // TOTP MFA MSW 핸들러 — stateful store 기반 setup/status/enable/disable/verify/backup-codes (FR-MF-01/02)
 import { http, HttpResponse } from 'msw'
 import { mfaStore, MFA_VALID_CODE, MFA_VALID_BACKUP_CODE } from './auth-fixtures'
+import { markTrustedThisBrowser } from './trusted-devices-handlers'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 헬퍼 — CSRF 검사
@@ -138,12 +139,17 @@ const verifyHandler = http.post('/api/v1/auth/mfa/verify', async ({ request }) =
     code?: unknown
     method?: unknown
     credential?: unknown
+    trust_device?: unknown
   }
 
   if (body.method === 'webauthn') {
     // credential이 객체로 존재하면 성공, 없으면 401
     if (body.credential === null || typeof body.credential !== 'object') {
       return HttpResponse.json({ error: 'invalid_code' }, { status: 401 })
+    }
+    // trust_device 처리 — TOTP/backup_code/webauthn 공통 (eng-review C1)
+    if (body.trust_device === true) {
+      markTrustedThisBrowser()
     }
     return HttpResponse.json({
       access_token: 'mock-access-token-alice',
@@ -163,6 +169,11 @@ const verifyHandler = http.post('/api/v1/auth/mfa/verify', async ({ request }) =
     if (!isValidCode(body.code)) {
       return HttpResponse.json({ error: 'invalid_code' }, { status: 401 })
     }
+  }
+
+  // trust_device 처리 — TOTP/backup_code/webauthn 공통 (eng-review C1)
+  if (body.trust_device === true) {
+    markTrustedThisBrowser()
   }
 
   return HttpResponse.json({

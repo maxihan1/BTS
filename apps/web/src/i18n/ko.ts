@@ -443,6 +443,26 @@ export const mfaStrings = {
   webauthnLastUsedLabel: '마지막 사용',
   /** 등록 진행 중 안내 문구 */
   webauthnRegisteringGuide: '브라우저 안내에 따라 보안 키를 터치하거나 인증을 완료하세요.',
+
+  // ── 신뢰 디바이스(FR-MF-05) ──────────────────────────────────────────────
+  /** 신뢰 디바이스 섹션 제목 */
+  trustedDevicesSectionTitle: '신뢰한 기기',
+  /** 신뢰 디바이스 섹션 설명 문구 */
+  trustedDevicesSectionDescription: '30일간 MFA 인증을 건너뜀으로 설정된 기기 목록입니다.',
+  /** 신뢰 디바이스가 없을 때 빈 상태 메시지 */
+  trustedDevicesEmptyState: '신뢰한 기기가 없습니다.',
+  /** 단건 신뢰 해제 버튼 레이블 */
+  trustedDevicesRevokeButton: '신뢰 해제',
+  /** 전체 신뢰 해제 버튼 레이블 */
+  trustedDevicesRevokeAllButton: '모든 기기 신뢰 해제',
+  /** 신뢰 해제 확인 문구 */
+  trustedDevicesRevokeConfirm: '이 기기의 신뢰를 해제하시겠습니까.',
+  /** 기기명이 없을 때 대체 표시 문구 */
+  trustedDevicesLabelFallback: '알 수 없는 기기',
+  /** 마지막 사용 기록이 없을 때 표시 문구 */
+  trustedDevicesLastUsedNever: '사용 기록 없음',
+  /** 로그인 시 기기 신뢰 체크박스 레이블 */
+  trustedDevicesLoginCheckboxLabel: '이 기기를 30일간 신뢰',
 } as const
 
 /**

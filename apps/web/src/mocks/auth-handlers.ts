@@ -9,6 +9,7 @@ import {
   mfaStore,
   mockAccessToken,
 } from './auth-fixtures'
+import { trustedThisBrowser } from './trusted-devices-handlers'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // E2E 시나리오 토글용 localStorage 키 — FR-AU-05 Task 9
@@ -67,6 +68,16 @@ const loginHandler = http.post('/api/v1/auth/login', async ({ request }) => {
     globalThis.localStorage?.getItem(MFA_E2E_ENABLED_KEY) === 'true'
 
   if (mfaEnabled) {
+    // trustedThisBrowser 플래그가 true이면 신뢰 기기 쿠키 우회를 재현 —
+    // mfa_required 없이 바로 토큰 발급 (eng-review C1, fr-mf-05-trusted-devices-done)
+    if (trustedThisBrowser) {
+      return HttpResponse.json({
+        access_token: mockAccessToken(username),
+        token_type: 'Bearer',
+        expires_in: 900,
+      })
+    }
+
     return HttpResponse.json({
       mfa_required: true,
       mfa_challenge_token: `mock-mfa-challenge-token-${username}`,
