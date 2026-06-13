@@ -73,6 +73,27 @@ private const val SQL_LABELS_BY_PREFIX_FILTER =
 /** 라벨 자동완성 기본 반환 한도. */
 private const val LABEL_AUTOCOMPLETE_DEFAULT_LIMIT = 20
 
+// ── 부모 계층 SQL ─────────────────────────────────────────────────────────────
+// WITH RECURSIVE CTE 로 parent_id 체인을 따라 최상위까지 조상 UUID 를 수집한다.
+// UNION (not UNION ALL) 을 사용해 cycle 발생 시 동일 행 재삽입 없이 자동 탈출 (cycle-safe).
+// 실제 데이터에서 cycle 은 발생하지 않는다 — Task 6 서비스 계층이 cycle 생성을 거부한다.
+// parent_id IS NOT NULL 조건: anchor 에서 자기 자신을 제외하고, 재귀 절에서 최상위 도달 시 중단.
+private const val SQL_COLLECT_ANCESTORS =
+    """
+    WITH RECURSIVE ancestors AS (
+        SELECT parent_id AS ancestor_id
+        FROM issues
+        WHERE id = ?
+          AND parent_id IS NOT NULL
+        UNION
+        SELECT i.parent_id
+        FROM issues i
+        INNER JOIN ancestors a ON i.id = a.ancestor_id
+        WHERE i.parent_id IS NOT NULL
+    )
+    SELECT ancestor_id FROM ancestors
+    """
+
 /**
  * 이슈 필드 부분 업데이트 요청. [IssueRepository.updateFields] 파라미터 그룹화용.
  *
@@ -965,22 +986,7 @@ class IssueRepository(
     @Transactional(readOnly = true)
     fun collectAncestors(issueId: UUID): List<UUID> {
         log.debug("collectAncestors issueId={}", issueId)
-        // UNION(not UNION ALL)으로 cycle-safe: 이미 방문한 parent_id 는 재삽입 안 됨
-        val sql = """
-            WITH RECURSIVE ancestors AS (
-                SELECT parent_id AS ancestor_id
-                FROM issues
-                WHERE id = ?
-                  AND parent_id IS NOT NULL
-                UNION
-                SELECT i.parent_id
-                FROM issues i
-                INNER JOIN ancestors a ON i.id = a.ancestor_id
-                WHERE i.parent_id IS NOT NULL
-            )
-            SELECT ancestor_id FROM ancestors
-        """
-        return dsl.fetch(sql, issueId)
+        return dsl.fetch(SQL_COLLECT_ANCESTORS.trimIndent(), issueId)
             .mapNotNull { record -> record.get("ancestor_id", UUID::class.java) }
     }
 
