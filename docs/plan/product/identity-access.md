@@ -214,10 +214,12 @@
 - [x] D3. 데이터 모델 — `user_webauthn_credentials(credential_id, public_key)` (책임. db-engineer) (PR #129)
 - [x] D4. 백엔드 — `webauthn4j` 라이브러리 (책임. security-engineer) (PR #129)
 - [x] D5. 백엔드 테스트 — 가상 Authenticator (책임. security-engineer) (PR #129)
-- [ ] D6. 프론트 UI — `navigator.credentials` API (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — `navigator.credentials` API (책임. frontend-engineer) (PR #130)
+- [x] D7. E2E (책임. qa-engineer) (PR #130)
 
 > **FR-MF-03 백엔드 D1~D5 완료 (2026-06-12, PR #129)**. WebAuthn(Passkey/하드웨어 키) 2차 인증 백엔드 — 등록(attestation)/인증(assertion) 챌린지·검증·자격증명 관리. **핵심 결정**(ADR `docs/decisions/2026-06-12-webauthn-second-factor.md`) — `webauthn4j` 0.28.4(Jackson2 ObjectMapper 버전 고정으로 직렬화 호환성 확보), attestation `none`(서버는 제조사 검증 없이 등록 수락 — 2차 인증 용도라 신뢰성 충분), credential은 사용자당 N개 등록 가능(전역 `credential_id` UNIQUE로 중복/이관 방지), `sign_count` 단조 증가 검증으로 자격증명 복제(clone) 공격 방어, 등록/인증 challenge는 Caffeine 인메모리 캐시(단기 TTL), 공개키는 평문 저장(비밀값 아님 — `attested_credential_data`에 base64 직렬화로 포함). DB는 `webauthn_credentials`(V025, SDD 원안 명세 표기 `user_webauthn_credentials`에서 실제 테이블명은 `webauthn_credentials`). `MfaChallenge.WEBAUTHN` enum 추가 + `isAnyMfaEnabled` 합성(TOTP/백업코드/WebAuthn 중 하나라도 등록 시 true). 감사 이벤트 `MFA_WEBAUTHN_REGISTERED`/`MFA_WEBAUTHN_REMOVED`. **deviation** — (1) `WebAuthnProperties`(rpId/rpName/origin)는 빈 문자열 기본값으로 두어 미설정 시에도 부팅 안전성 확보(prod는 실제 값 주입 필요), (2) credential에 별도 `status` 컬럼 없음 — 검증 통과 후 INSERT 자체가 활성화를 의미(soft-disable 불필요). **후속** — D6 프론트 UI(`navigator.credentials`)/D7 E2E는 후속 PR.
+
+> **FR-MF-03 D6/D7 완료 (2026-06-13, PR #130)**. 프론트 UI + E2E. **백엔드 변경 0(계약 소비)**. **Maxi 결정** — (1) 설정 `/settings/mfa`에 보안 키를 TOTP와 독립된 섹션으로 **항상 노출**(백엔드 `isAnyMfaEnabled`가 WebAuthn을 OR로 포함 → TOTP 없이도 등록 가능, 백업코드와 다름), (2) 로그인 2단계에 "보안 키로 인증" **독립 액션 버튼**(코드 입력 폼과 병렬 — mfa_required가 보유 요소 미노출이라 선택지 모두 제시, MfaCodeInput 세 번째 mode 아님으로 zodResolver 함정 회피), (3) base64url↔ArrayBuffer 변환은 `@simplewebauthn/browser`(신규 의존성, 절대규칙 #17 승인) 사용 — webauthn4j `verify*ResponseJSON`과 W3C 표준 형식 호환, (4) E2E는 `navigator.credentials` addInitScript stub(MSW 결정적 패턴, CDP 가상 authenticator 미사용). **구조** — `api/webauthn.ts`(register/list/delete + authenticate/verify 오케스트레이션) · `WebauthnSection.tsx`(설정 독립 섹션) · `LoginForm` 보안 키 버튼 · MSW `webauthn-handlers.ts`. **클레임-read 게이트(FR-MF-04 연동)** — 보안 키 등록 성공 후 `mfaEnrollmentRequired` 강제 대상이면 `refreshSession`으로 클레임 재계산(미적용 시 등록하고도 영구 락). **eng-review 적발 BLOCKER 5** — finish 빈 201(parse 금지)·start JSON 문자열→res.json()·verify `credentials:'include'` 필수·credential 객체 단일 직렬화·취소 시 챌린지 토큰 보존(authenticate/start 미소비). PRE_EXISTING typecheck 부채(#128이 누락한 whoami 인라인 픽스처 2건 `mfaEnrollmentRequired`) 본 PR에서 동반 수정.
 
 ### §3.4 FR-MF-04 — 강제 정책 (관리자 + 민감 프로젝트)
 
