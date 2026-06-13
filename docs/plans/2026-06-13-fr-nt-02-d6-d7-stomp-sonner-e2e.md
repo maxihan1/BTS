@@ -55,7 +55,7 @@ occurredAt: Instant      — ISO 8601 문자열
 - ✅ `sonner@2.0.7` 설치 + `<Toaster />` `main.tsx`에 마운트됨 (`components/ui/sonner.tsx`)
 - ✅ accessToken = `auth/authStore.ts` (Zustand + sessionStorage). STOMP connect 토큰은 `useAuthStore.getState().accessToken`
 - ✅ FR-NT-01(#124) 선례 — `api/notification-policies.ts` (enum 미러 `issue.assigned` 등 / 대문자 errorCode 관례)
-- ✅ E2E 로그인 fixture `loginAsAlice` (`e2e/fixtures/session-fixtures.ts`)
+- ✅ E2E 로그인 fixture `loginAsAlice` (구현 시 `e2e/fixtures/issue-fixtures.ts` 채택 — FR-AU-07 2단계 흐름 구현된 안전한 출처, `e2e-loginasalice-fixture-fr-au-07-regression`)
 - ❌ `@stomp/stompjs` **미설치** → 신규 의존성 추가 필요 (절대 규칙 #17 — 새 라이브러리 Maxi 확인)
 - ⚠️ E2E의 STOMP/WebSocket 처리 전략 미결 → spec 단계에서 결정 (MSW WebSocket vs Playwright routeWebSocket vs 실 백엔드)
 

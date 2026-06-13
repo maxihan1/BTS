@@ -152,9 +152,10 @@ test.describe('S2 body=null 알림 → title만 표시, 깨짐 없음 (FR-NT-02)
       const toaster = page.locator('[data-sonner-toaster]')
       await expect(toaster.getByText('이슈 상태 변경됨', { exact: true })).toBeVisible()
 
-      // Then. body 텍스트가 없으므로 토스트가 비정상 렌더되지 않음 — 페이지 오류 없음
-      await expect(page.locator('body')).not.toContainText('undefined')
-      await expect(page.locator('body')).not.toContainText('null')
+      // Then. body=null이 토스트에 문자 그대로 렌더되지 않음 — 토스터 컨테이너로 한정
+      // (page.locator('body') 전역 단언은 무관 콘텐츠에 'null'/'undefined'가 끼면 거짓 실패)
+      await expect(toaster).not.toContainText('undefined')
+      await expect(toaster).not.toContainText('null')
     },
   )
 })
