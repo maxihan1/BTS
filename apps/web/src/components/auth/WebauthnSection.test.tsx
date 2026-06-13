@@ -461,6 +461,37 @@ describe('T4-WA-S5: 에러 처리', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('이미 등록된 보안 키')
   })
 
+  it('T4-WA-S5-2b: InvalidStateError(이미 등록된 인증기) → "이미 등록된 보안 키" 메시지', async () => {
+    // @simplewebauthn은 excludeCredentials에 매칭되는 인증기를 재등록하면 register/finish 요청
+    // 전에 navigator.credentials.create가 InvalidStateError를 던진다(name 보존). 백엔드 409가
+    // 트리거되지 않으므로 이 name을 already_registered 메시지로 매핑해야 한다.
+    const { registerSecurityKey } = await import('@/api/webauthn')
+    const invalidStateError = new Error('authenticator already registered')
+    invalidStateError.name = 'InvalidStateError'
+    vi.mocked(registerSecurityKey).mockRejectedValue(invalidStateError)
+
+    const user = userEvent.setup({ delay: null })
+
+    renderWebauthnSection()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: mfaStrings.webauthnAddButton })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: mfaStrings.webauthnAddButton }))
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(mfaStrings.webauthnNameLabel)).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: mfaStrings.webauthnAddButton }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent('이미 등록된 보안 키')
+  })
+
   it('T4-WA-S5-3: EC-3 미지원 브라우저(browserSupportsWebAuthn=false) → 추가 버튼 비활성 + 안내 문구', async () => {
     const { browserSupportsWebAuthn } = await import('@simplewebauthn/browser')
     vi.mocked(browserSupportsWebAuthn).mockReturnValue(false)

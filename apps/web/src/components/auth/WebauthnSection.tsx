@@ -227,6 +227,10 @@ export function WebauthnSection(): JSX.Element {
       if (err instanceof ApiError) {
         const code = extractErrorCode(err.body)
         setRegisterError(mfaErrorMessage(code ?? ''))
+      } else if (err instanceof Error && err.name === 'InvalidStateError') {
+        // @simplewebauthn은 excludeCredentials에 매칭되는 인증기를 재등록하면 register/finish
+        // 요청 전에 InvalidStateError를 던진다(백엔드 409 미트리거). already_registered로 매핑한다.
+        setRegisterError(mfaErrorMessage('already_registered'))
       } else if (err instanceof Error && err.name === 'NotAllowedError') {
         // 사용자 취소 또는 타임아웃 — 일반 에러 메시지 표시
         setRegisterError(mfaErrorMessage(''))
