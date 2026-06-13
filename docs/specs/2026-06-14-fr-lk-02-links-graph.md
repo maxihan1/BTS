@@ -24,7 +24,7 @@
 ## 기능 요구사항 (FR)
 
 - **FR1**. 엔드포인트 `GET /api/v1/issues/{key}/graph`. 인증 필요(SecurityFilterChain 401 보장).
-- **FR2**. 쿼리 파라미터 `depth`(선택, 기본 `2`, 허용 `1..3`). 범위 밖 → 400.
+- **FR2**. 쿼리 파라미터 `depth`(선택, 기본 `2`, 허용 `1..3`). **컨트롤러는 `String?`로 받아 서비스가 파싱·검증**한다(비정수·범위 밖 모두 `InvalidGraphDepthException` → 400 `INVALID_DEPTH`로 단일화. `Int` 바인딩 시 발생하는 전역 `MethodArgumentTypeMismatchException`이 같은 패키지의 타 컨트롤러 errorCode를 오라벨하는 문제 회피).
 - **FR3**. 중심 이슈에서 시작하는 BFS로 노드를 수집한다. 깊이 `d < depth`인 노드만 확장(이웃 조회)한다.
 - **FR4**. 한 노드의 이웃 = (a) outward 링크 target, (b) inward 링크 source, (c) parent, (d) children. 소프트삭제된 이웃은 제외.
 - **FR5**. 엣지 종류(`type`): `blocks`/`relates`/`duplicates`/`clones`(링크) + `parent`(부모-자식). 모두 소문자.
@@ -86,12 +86,12 @@ GET /api/v1/issues/{key}/graph?depth=2
 - **E3**. depth=maxDepth인 두 노드 사이 엣지 — 둘 다 확장되지 않으므로 발견되지 않을 수 있음(깊이 제한 그래프의 의도된 한계). 최소 한쪽이 확장된 엣지만 응답.
 - **E4**. 노드 상한 도달 후 발견된 엣지 — 끝점 중 하나가 노드 집합 밖이면 응답에서 제외(FR7).
 - **E5**. 중심 이슈는 있으나 이웃 전부 소프트삭제 — 노드 1개 + 엣지 0개.
-- **E6**. depth 파라미터 비정수(예: `?depth=abc`) — Spring `MethodArgumentTypeMismatchException` 발생. `LinkExceptionHandler`에 이 핸들러가 없으면 catch-all이 500으로 변질시키므로(brainstorming 발견), **타입 불일치 핸들러를 400 `INVALID_DEPTH`로 추가**한다. 범위 밖(0, 4, 음수)은 서비스가 `InvalidGraphDepthException` → 400 `INVALID_DEPTH`.
+- **E6**. depth 파라미터 비정수(예: `?depth=abc`)·범위 밖(0, 4, 음수)·공백 — 컨트롤러가 `String?`로 받고 서비스 `resolveDepth()`가 파싱한다. null/blank → 기본 2. `toIntOrNull()` 실패 또는 1..3 밖 → `InvalidGraphDepthException` → 400 `INVALID_DEPTH`. (단일 예외 경로 — 전역 타입 불일치 핸들러 불필요, brainstorming 후속 정정.)
 
 ## 제약 조건
 
 - 한 PR = 한 BC(issue-tracking). cross-BC 호출 없음.
-- 그래프 컨트롤러는 `com.bts.issue.link.web` 패키지에 두어 `LinkExceptionHandler`(basePackages `com.bts.issue.link.web`)의 404/400/500 매핑을 재사용한다. `INVALID_DEPTH`(400)만 핸들러에 신규 추가.
+- 그래프 컨트롤러는 `com.bts.issue.link.web` 패키지에 두어 `LinkExceptionHandler`(basePackages `com.bts.issue.link.web`)의 404/500 매핑을 재사용한다. `InvalidGraphDepthException` → 400 `INVALID_DEPTH` 핸들러 1개만 신규 추가(depth는 String 파싱이라 전역 타입 불일치 핸들러 불필요).
 - actor 추출 없음(graph는 읽기 전용, created_by 미보존) → catch-all이 401을 500으로 변질시킬 경로 구조적 부재(FR-LK-01과 동일).
 - 권한 게이팅은 GET /links와 동일 수준 유지(이슈 열람 추가 게이팅 없음 — 후속 과제).
 
@@ -109,7 +109,7 @@ GET /api/v1/issues/{key}/graph?depth=2
 ## Brainstorming Check
 
 ✅ 통과 (1회 iteration). 발견·보강한 gap 2건.
-1. **depth 타입 불일치 → 500 변질 위험**(E6). `Int` 파라미터 비정수 입력은 `MethodArgumentTypeMismatchException`인데 LinkExceptionHandler에 핸들러가 없어 catch-all 500이 됨 → 400 `INVALID_DEPTH` 핸들러 추가로 보강.
+1. **depth 타입 불일치 → 500 변질 위험**(E6). `Int` 파라미터 비정수 입력은 `MethodArgumentTypeMismatchException`인데 LinkExceptionHandler에 핸들러가 없어 catch-all 500이 됨. → **plan에서 더 정정**: `depth`를 `String?`로 받아 서비스에서 파싱(비정수·범위 밖 모두 `InvalidGraphDepthException` 단일화). 전역 타입 불일치 핸들러를 두면 같은 패키지의 `DELETE /links/{linkId}` 오류 errorCode까지 오라벨되므로 회피.
 2. **응답 결정성 모호**(NFR2). 기존 링크 쿼리에 ORDER BY 부재 → 서비스 최종 정렬 규칙(노드 depth↑·key↑, 엣지 from·to·type) 명시.
 
 추가 확인(gap 아님, 의도 확정).

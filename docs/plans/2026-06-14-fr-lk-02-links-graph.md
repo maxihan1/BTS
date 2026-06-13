@@ -59,6 +59,108 @@ FR-LK-02 (§5.3.2) — 링크 그래프 시각화. FR-LK-01(완료, #135/#136)�
 1. depth 타입 불일치 → catch-all 500 변질 위험 → 400 `INVALID_DEPTH` 타입미스매치 핸들러 추가.
 2. 응답 결정성(ORDER BY 부재) → 서비스 최종 정렬(노드 depth↑·key↑, 엣지 from·to·type) 명시.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 3개 TDD task. 단일 Gradle 모듈(issue-tracking)이라 wave는 의존 체인대로 직렬(T1→T2→T3).
+> 파일 겹침 없음. 기존 링크 테스트 3계층 구조(repository/application/web) 미러.
+
+### Task 1. 그래프 read 저장소 — 부모 1건 + 자식 N건 (소프트삭제 제외)
+
+**메타**.
+- agent: `backend-engineer`
+- files:
+  - `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/link/repository/IssueGraphRepository.kt`
+  - `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/link/repository/GraphNeighborRow.kt`
+  - `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/link/repository/IssueGraphRepositoryTest.kt`
+- depends-on: []
+
+**RED**: `IssueGraphRepositoryTest`(Testcontainers 통합, `IssueLinkRepositoryTest` 패턴 미러).
+- `findParent`는 parent_id 가 가리키는 부모 행(id/key/summary/statusKey)을 반환한다.
+- parent_id 가 NULL 이면 `findParent` 는 null.
+- 부모가 소프트삭제(deleted_at)면 `findParent` 는 null(쿼리 단 제외).
+- `findChildren`은 parent_id = issueId 인 자식들을 반환(소프트삭제 자식 제외, key ASC).
+
+**GREEN**: `IssueGraphRepository`(`@Repository`, `DSLContext`).
+- `GraphNeighborRow(id: UUID, key: String, summary: String, statusKey: String)`.
+- `findParent(childId): GraphNeighborRow?` — issues self LEFT JOIN parent on `issues.parent_id`, `parent.deleted_at IS NULL`.
+- `findChildren(parentId): List<GraphNeighborRow>` — `WHERE parent_id = ? AND deleted_at IS NULL ORDER BY key`.
+- 모든 메서드 `@Transactional(readOnly = true)`, jOOQ DSL(파라미터 바인딩, injection 0).
+
+**REFACTOR**: KDoc(메서드 책임·소프트삭제 정책), 컬럼 참조 상수화.
+
+**검증**: `./gradlew :backend:issue-tracking:test --tests '*IssueGraphRepositoryTest'` (backend/ 하위에서 실행).
+
+---
+
+### Task 2. 그래프 BFS 서비스 — depth/cap/dedup/sort + depth 파싱
+
+**메타**.
+- agent: `backend-engineer`
+- files:
+  - `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/link/application/IssueGraphService.kt`
+  - `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/link/domain/LinkExceptions.kt` (추가: `InvalidGraphDepthException`)
+  - `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/link/application/IssueGraphServiceTest.kt`
+- depends-on: [1]
+
+**RED**: `IssueGraphServiceTest`(mockk — `IssueRepository`, `IssueLinkRepository`, `IssueGraphRepository` 페이크). `LinkApplicationServiceTest` 패턴.
+- 중심 이슈 없음/소프트삭제 → `LinkedIssueNotFoundException`.
+- 링크 1-hop(outward blocks / inward) + parent + children 이 노드/엣지로 정확히 수집(방향: 링크=저장방향, parent=부모→자식).
+- depth=1 vs 2 차이(2-hop 이슈 포함/제외).
+- 같은 링크가 양쪽에서 발견돼도 엣지 1개(linkId dedup), parent 엣지 (from,to) dedup.
+- 노드 상한 초과 → 상한까지만 + `truncated=true`, 상한 밖 끝점 엣지 제외.
+- 정렬: 노드 `depth ASC, key ASC`, 엣지 `from,to,type ASC`.
+- `resolveDepth`: null/blank→2, "abc"→`InvalidGraphDepthException`, "0"/"4"/"-1"→`InvalidGraphDepthException`, "3"→3.
+
+**GREEN**: `IssueGraphService`(`@Service`).
+- `data class GraphNodeModel(key, summary, statusKey, depth)`, `GraphEdgeModel(fromKey, toKey, type)`, `IssueGraphResult(centerKey, depth, nodes, edges, truncated)` (파일 상단, `LinkResult` 동형).
+- `companion object { const val DEFAULT_DEPTH=2; const val MAX_DEPTH=3; const val NODE_CAP=100 }`.
+- `buildGraph(centerKey: IssueKey, rawDepth: String?): IssueGraphResult` — `@Transactional(readOnly=true)`.
+  - depth 파싱·검증 → 중심 findByKey(404) → BFS(큐 `(id,key,summary,statusKey,depth)`, `visited:Set<UUID>`).
+  - depth < maxDepth 인 노드만 확장: `findOutwardWithIssue`/`findInwardWithIssue`(링크) + `findParent`/`findChildren`(parent).
+  - 후보 엣지 수집(fromId/toId 포함) → 최종 `visited` 양끝 필터 + dedup + sort.
+- `InvalidGraphDepthException(raw: String?)`를 `LinkExceptions.kt`에 추가(다른 링크 예외 형제).
+
+**REFACTOR**: BFS 확장부 private helper 분리(detekt 복잡도), KDoc(불변식·상한·정렬 규칙).
+
+**검증**: `./gradlew :backend:issue-tracking:test --tests '*IssueGraphServiceTest'`.
+
+---
+
+### Task 3. 웹 계층 — 컨트롤러 + DTO + 400 핸들러 + HTTP 통합 테스트
+
+**메타**.
+- agent: `backend-engineer`
+- files:
+  - `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/link/web/IssueGraphController.kt`
+  - `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/link/web/dto/GraphResponse.kt`
+  - `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/link/web/LinkExceptionHandler.kt` (추가: `InvalidGraphDepthException`→400)
+  - `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/link/web/LinkErrorCodes.kt` (추가: `INVALID_DEPTH`)
+  - `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/link/web/IssueGraphControllerIntegrationTest.kt`
+- depends-on: [2]
+
+**RED**: `IssueGraphControllerIntegrationTest`(@SpringBootTest + Testcontainers, `IssueLinkControllerIntegrationTest` 패턴, 실 DB 시드).
+- 200: 시드된 그래프(blocks + parent + 2-hop)로 nodes/edges/depth/truncated 검증.
+- `?depth=1` vs 미지정(2) 차이.
+- 404 `ISSUE_NOT_FOUND`: 미존재 키.
+- 400 `INVALID_DEPTH`: `?depth=abc`, `?depth=0`, `?depth=4`.
+- 엣지 type 소문자(blocks/parent), parent from=부모/to=자식.
+
+**GREEN**:
+- `IssueGraphController`(`com.bts.issue.link.web`, `@GetMapping("/api/v1/issues/{key}/graph")`, `@RequestParam(name="depth", required=false) depth: String?`) → `IssueGraphService.buildGraph` → `DataResponse(GraphResponse.from(result))`.
+- `GraphResponse(center, depth, nodes: List<GraphNodeDto>, edges: List<GraphEdgeDto>, truncated)` + `GraphNodeDto(key, summary, statusKey, depth)` + `GraphEdgeDto(from, to, type)` + `from(result)`.
+- `LinkErrorCodes.INVALID_DEPTH = "INVALID_DEPTH"`.
+- `LinkExceptionHandler`에 `@ExceptionHandler(InvalidGraphDepthException::class)` → 400 + `INVALID_DEPTH`(기존 `problem()` 헬퍼 재사용, `@Suppress("TooManyFunctions")` 유지).
+
+**REFACTOR**: KDoc(엔드포인트·depth 파싱 위임), import 정리.
+
+**검증**: `./gradlew :backend:issue-tracking:test --tests '*IssueGraphControllerIntegrationTest'` → 모듈 전체 `:backend:issue-tracking:test` + `ktlintCheck` + `detekt`.
+
+## Plan 메타
+
+- task 수: 3 (각 TDD 사이클)
+- wave: 의존 체인 직렬(T1→T2→T3), 단일 모듈 컴파일 단위라 병렬 이득 적음
+- TDD 강제: yes (test 커밋 먼저)
+- 신규 스키마/마이그레이션: 없음(D3 활용)
+- 추가 검증: ktlint, detekt(aggregate), 모듈 test 그린
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
