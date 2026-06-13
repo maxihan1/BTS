@@ -73,7 +73,7 @@ FR-LK-01 — 이슈 간 링크. blocks / relates / duplicates / clones / parent-
 **RED**. `IssueLinkSchemaTest`(Testcontainers) — DSL/`information_schema`로 `issue_links` 테이블(컬럼·UNIQUE·CHECK)과 `issues.parent_id` 컬럼 존재 단언. 실패. 테이블/컬럼 없음.
 
 **GREEN**. V021 DDL 작성.
-- `issue_links(id BIGINT identity PK, source_id UUID FK→issues ON DELETE CASCADE, target_id UUID FK→issues ON DELETE CASCADE, link_type VARCHAR(30), created_by UUID, created_at TIMESTAMPTZ)` + `CHECK(source_id<>target_id)` + `CHECK(link_type IN (...4종))` + `UNIQUE(source_id,target_id,link_type)` + idx(source_id), idx(target_id).
+- `issue_links(id BIGINT identity PK, source_id UUID FK→issues ON DELETE CASCADE, target_id UUID FK→issues ON DELETE CASCADE, link_type VARCHAR(30), created_at TIMESTAMPTZ)` + `CHECK(source_id<>target_id)` + `CHECK(link_type IN (...4종))` + `UNIQUE(source_id,target_id,link_type)` + idx(source_id), idx(target_id). **created_by 없음**(eng-review 교정 — SDD §5.7·V017 정합, FR-PM-03 후속).
 - `ALTER TABLE issues ADD COLUMN parent_id UUID NULL REFERENCES issues(id)` + idx(parent_id).
 - **`CG/init_codegen.sql`에 동일 미러**(메모리 jooq-init-codegen-mirror — 누락 시 jOOQ 클래스 미생성).
 
@@ -141,8 +141,8 @@ FR-LK-01 — 이슈 간 링크. blocks / relates / duplicates / clones / parent-
 - depends-on: [3]
 
 **RED**. `LinkApplicationServiceTest`(mockk repo — 검증 분기 집중) —
-- `createLink`. target 미존재/소프트삭제→`LinkedIssueNotFoundException`(404), self→422, 중복(existsLink)→`DuplicateLinkException`(409), blocks이고 `existsBlocksPath(target,source)` true→`LinkCycleException`(409). created_by=actor.
-- `listLinks`. outward(source=key)+inward(target=key), 소프트삭제 상대 이슈 제외, relates 대칭 라벨.
+- `createLink`. base 이슈 미존재/소프트삭제→404, target 미존재/소프트삭제→`LinkedIssueNotFoundException`(404), self→422, 중복(existsLink)→`DuplicateLinkException`(409), blocks이고 `existsBlocksPath(target,source)` true→`LinkCycleException`(409).
+- `listLinks`. outward(source=key)+inward(target=key), **issues 단일 LEFT JOIN으로 상대 summary/state 동시조회**(N+1 금지), 소프트삭제 상대 이슈 제외, relates 대칭 라벨.
 - `deleteLink`. 미존재→`LinkNotFoundException`(404).
 
 **GREEN**. `@Service @Transactional` — IssueLinkRepository + IssueRepository(존재/삭제 조회) 주입. relates는 순환검사 skip(blocks만).
@@ -197,4 +197,26 @@ FR-LK-01 — 이슈 간 링크. blocks / relates / duplicates / clones / parent-
 - 추가 검증: generateJooq(T1 후), 모듈 ktlintCheck/detekt, 기존 IssueRepository/Service 회귀
 - 비목표 재확인: 이력·알림 미발행, 권한 placeholder, 프론트 D6/D7 후속
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-13, 백엔드 집중 독립 리뷰)
+
+**Step 0 범위**. 수용(scope-as-is). 7 태스크/신규 link/ 서브패키지+코어 2파일은 component/ 선례 동형, 과설계 아님. 재사용. V017 조인 컨벤션·component/ CRUD 형태·IssueRepository.
+
+**아키텍처**. 1건 — `issue_links.created_by` 제거(SDD §5.7·V017 미보유 + FR-PM-03 placeholder 가짜데이터). 스펙 정합 교정으로 반영. BLOCKER 0.
+
+**코드 품질**. parent 로직을 IssueParentService(link/)로 분리 — IssueApplicationService 비대화 회피, cohesion 정당. 링크 예외 link 패키지 로컬(핸들러 스코프 500 트랩 회피). BLOCKER 0.
+
+**테스트**. 커버리지 양호 — schema/enum-DDL정합/도메인/repo(Testcontainers)/service(mockk)/controller(HTTP status 통합) 7파일. 회귀 가드. Task 4 `Issue(` 생성자 grep + 기존 read 매핑 정합(IRON 회귀룰). gap 0(자기링크·중복·blocks순환·self-parent·부모순환·소프트삭제·linkid 7불변식 모두 테스트).
+
+**성능**. listLinks 단일 LEFT JOIN으로 N+1 차단(가드 반영). blocks 순환 CTE 그래프 bound. cartesian 무위험(방향당 단일 조인). BLOCKER 0.
+
+**NOT in scope**. 이력(FR-HS)·알림(notification) 미발행, 권한 실게이팅(FR-PM 이연, placeholder resolver), 링크 그래프 시각화(FR-LK-02), hierarchy_level 위계(Subtask FR 이연), created_by 실 actor(FR-PM-03), 프론트 D6/D7.
+
+**What already exists**. V017 issue_version_links(조인+CASCADE+부모 deleted_at 필터 패턴), component/(기능 서브패키지 CRUD 형태), IssueRepository(이슈 조회). 모두 재사용, 재구축 없음.
+
+**Failure modes**. (1) parent_id 추가가 기존 Issue 생성 깸 → 기본값 null+grep 가드. (2) 도메인예외 타 컨트롤러 경로 500 변질 → link 로컬 예외+HTTP 통합테스트. (3) init_codegen 미러 누락→jOOQ 클래스 미생성 → Task 1 검증에 generateJooq. 모두 테스트+가드 보유, 침묵 실패 critical gap 0.
+
+**병렬화**. 단일 모듈(issue-tracking) — test 컴파일 직렬(메모리 bts-plan-wave-gradle-module-compile). bts-impl이 depends-on/files로 4 wave 계산(wave1 T1·T2 / wave2 T3·T4 / wave3 T5·T6 / wave4 T7).
+
+**BLOCKER. 없음.** 발견 1건(created_by) 스펙 교정으로 해소, 가드 3건 plan 흡수.

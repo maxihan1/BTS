@@ -95,7 +95,6 @@ CREATE TABLE issue_links (
     source_id  UUID        NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
     target_id  UUID        NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
     link_type  VARCHAR(30) NOT NULL,
-    created_by UUID        NOT NULL,             -- users.id 대응, BC격리 FK 미적용
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_issue_links_no_self CHECK (source_id <> target_id),
     CONSTRAINT chk_issue_links_type CHECK (link_type IN ('blocks','relates','duplicates','clones')),
@@ -106,6 +105,7 @@ CREATE INDEX idx_issue_links_target_id ON issue_links(target_id);  -- 역방향(
 CREATE INDEX idx_issue_links_source_id ON issue_links(source_id);
 ```
 > SDD §5.7은 source/target을 BIGINT로 표기했으나 실제 issues.id가 UUID라 UUID로 구현(ADR deviation). id는 SDD대로 BIGINT surrogate.
+> **eng-review 교정**. `created_by` 컬럼 제거 — SDD §5.7(4필드)·형제 V017(created_at만)에 없고, FR-PM-03 actorId 실추출 이연으로 placeholder 저장은 가짜 데이터. created_at만 유지(정렬용, V017 정합). 실 actor 기록은 FR-PM-03 통합 시 후속 추가.
 
 ### 신규 컬럼 `issues.parent_id` (V021)
 ```sql
@@ -125,6 +125,11 @@ CREATE INDEX idx_issues_parent_id ON issues(parent_id);
 - 같은 두 이슈에 서로 다른 type 링크 공존 가능(blocks + relates). uq 제약이 type 포함.
 - blocks 역방향(A blocks B 있는데 B blocks A 추가) = 길이 2 순환 → 409.
 - 부모 변경(이미 부모 있는데 다른 부모로 PATCH) = 덮어쓰기 허용(단일 부모 유지).
+- **base 이슈 미존재/소프트삭제** — POST/GET/DELETE/PATCH 모두 `{key}` 이슈 자체가 없거나 deleted_at NOT NULL이면 404(actor 추출·리소스 조회 순서는 메모리 auth-extraction-before-resource-lookup 따름).
+
+### 성능 가드 (eng-review)
+- `listLinks`. outward/inward 각각 issues **단일 LEFT JOIN**으로 상대 이슈 summary/current_state_key 동시 조회(N+1 금지). 방향당 단일 조인이라 cartesian 무위험(메모리 cartesian-product-jooq-leftjoin-count — 다중 조인 아님).
+- blocks 순환 CTE는 그래프 크기 bound(1K 규모 무problem).
 
 ## 제약 조건 / 비목표 (non-goals)
 - **이력(FR-HS)·알림(notification) 미발행** — 링크/부모 변경은 본 FR에서 issue history 기록·watcher 알림 대상 아님(product D-stage 미언급, 범위 집중). 필요 시 후속 FR.
