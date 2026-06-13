@@ -513,6 +513,81 @@ export function mfaErrorMessage(errorCode: string): string {
   }
 }
 
+/** 이슈 링크 패널(IssueLinksPanel) 관련 문자열 — FR-LK-01 D6 */
+export const issueLinkStrings = {
+  // ── 섹션 제목 ─────────────────────────────────────────────────────────
+  /** 링크 섹션 제목 */
+  linksSectionTitle: '링크',
+  /** 부모 섹션 제목 */
+  parentSectionTitle: '부모 이슈',
+
+  // ── 링크 유형 표시명 ─────────────────────────────────────────────────
+  /** 링크 유형 — blocks */
+  linkTypeBlocks: '막음',
+  /** 링크 유형 — relates */
+  linkTypeRelates: '관련',
+  /** 링크 유형 — duplicates */
+  linkTypeDuplicates: '중복',
+  /** 링크 유형 — clones */
+  linkTypeClones: '복제',
+
+  // ── 추가 폼 ──────────────────────────────────────────────────────────
+  /** 링크 유형 select aria-label */
+  linkTypeSelectLabel: '링크 유형',
+  /** 대상 이슈 키 input placeholder */
+  targetKeyPlaceholder: '이슈 키 (예: ATLAS-1)',
+  /** 대상 이슈 키 input aria-label */
+  targetKeyLabel: '대상 이슈 키',
+  /** 링크 추가 버튼 텍스트 */
+  addLinkButton: '링크 추가',
+
+  // ── 부모 지정 폼 ─────────────────────────────────────────────────────
+  /** 부모 이슈 키 input placeholder */
+  parentKeyPlaceholder: '부모 이슈 키 (예: ATLAS-1)',
+  /** 부모 이슈 키 input aria-label */
+  parentKeyLabel: '부모 이슈 키',
+  /** 부모 지정 버튼 텍스트 */
+  setParentButton: '부모 지정',
+  /** 부모 해제 버튼 텍스트 */
+  clearParentButton: '해제',
+
+  // ── 빈 상태 ─────────────────────────────────────────────────────────
+  /** 링크가 없을 때 빈 상태 메시지 */
+  emptyState: '링크가 없습니다.',
+
+  // ── 행 액션 ─────────────────────────────────────────────────────────
+  /** 링크 행 제거 버튼 aria-label */
+  removeLinkButton: '링크 제거',
+
+  // ── 에러 메시지 (인라인, 토스트 아님) ───────────────────────────────
+  /** LINK_SELF_REFERENCE — 자기 자신에게 링크할 수 없음 */
+  errorLinkSelfReference: '자기 자신에게 링크할 수 없습니다.',
+  /** DUPLICATE_LINK — 이미 동일한 링크가 존재함 */
+  errorDuplicateLink: '이미 동일한 링크가 존재합니다.',
+  /** ISSUE_NOT_FOUND — 대상 이슈를 찾을 수 없음 */
+  errorIssueNotFound: '이슈를 찾을 수 없습니다.',
+  /** LINK_CYCLE — 링크 순환 참조 */
+  errorLinkCycle: '순환 링크는 허용되지 않습니다.',
+  /** LINK_NOT_FOUND — 링크를 찾을 수 없음 */
+  errorLinkNotFound: '링크를 찾을 수 없습니다.',
+  /** PARENT_SELF_REFERENCE — 자기 자신을 부모로 설정할 수 없음 */
+  errorParentSelfReference: '자기 자신을 부모로 설정할 수 없습니다.',
+  /** PARENT_CYCLE — 부모 설정 순환 참조 */
+  errorParentCycle: '순환 계층 구조는 허용되지 않습니다.',
+  /** 기타 알 수 없는 에러 fallback */
+  errorDefault: '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+
+  // ── 성공 토스트 ──────────────────────────────────────────────────────
+  /** 링크 추가 성공 토스트 */
+  addLinkSuccess: '링크가 추가되었습니다.',
+  /** 링크 제거 성공 토스트 */
+  removeLinkSuccess: '링크가 제거되었습니다.',
+  /** 부모 지정 성공 토스트 */
+  setParentSuccess: '부모 이슈가 지정되었습니다.',
+  /** 부모 해제 성공 토스트 */
+  clearParentSuccess: '부모 이슈가 해제되었습니다.',
+} as const
+
 /** 이슈 생성 폼 관련 문자열 */
 export const issueCreateStrings = {
   /** 폼 레이블 */

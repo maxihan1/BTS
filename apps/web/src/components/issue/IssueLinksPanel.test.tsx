@@ -1,15 +1,11 @@
 // IssueLinksPanel 컨테이너 컴포넌트 단위 테스트 — FR-LK-01 D6 Task-4
-import { describe, it, expect, afterEach, createElement } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import type { ReactNode } from 'react'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
-import {
-  seedIssueLinks,
-  resetIssueLinkStore,
-} from '@/mocks/issue-link-handlers'
 import { IssueLinksPanel } from './IssueLinksPanel'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -21,13 +17,9 @@ function createWrapper() {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return function Wrapper({ children }: { readonly children: ReactNode }) {
-    return createElement(QueryClientProvider, { client: queryClient }, children)
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   }
 }
-
-afterEach(() => {
-  resetIssueLinkStore()
-})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // S1. 목록 렌더 — outward/inward 링크 + 빈 상태
@@ -35,15 +27,25 @@ afterEach(() => {
 
 describe('IssueLinksPanel — S1 목록 렌더', () => {
   it('S1a: outward 링크가 label + 상대 이슈 key/summary/statusKey 로 표시된다', async () => {
-    seedIssueLinks('ATLAS-1', [
-      {
-        id: 1,
-        linkType: 'blocks',
-        direction: 'OUTWARD',
-        label: 'blocks',
-        otherIssue: { key: 'ATLAS-2', summary: '차단된 이슈', statusKey: 'open' },
-      },
-    ])
+    // server.use()로 직접 seed — linkStore module 인스턴스 공유 신뢰 대신 핸들러 override 방식
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json({
+          data: {
+            outward: [
+              {
+                id: 1,
+                linkType: 'BLOCKS',
+                direction: 'OUTWARD',
+                label: 'blocks',
+                otherIssue: { key: 'ATLAS-2', summary: '차단된 이슈', statusKey: 'open' },
+              },
+            ],
+            inward: [],
+          },
+        }),
+      ),
+    )
     const Wrapper = createWrapper()
     render(<IssueLinksPanel issueKey="ATLAS-1" parent={null} />, { wrapper: Wrapper })
 
@@ -53,15 +55,24 @@ describe('IssueLinksPanel — S1 목록 렌더', () => {
   })
 
   it('S1b: inward 링크가 label + 상대 이슈 정보로 표시된다', async () => {
-    seedIssueLinks('ATLAS-1', [
-      {
-        id: 2,
-        linkType: 'relates',
-        direction: 'INWARD',
-        label: 'is related to',
-        otherIssue: { key: 'ATLAS-3', summary: '연관 이슈', statusKey: 'in_progress' },
-      },
-    ])
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json({
+          data: {
+            outward: [],
+            inward: [
+              {
+                id: 2,
+                linkType: 'RELATES',
+                direction: 'INWARD',
+                label: 'is related to',
+                otherIssue: { key: 'ATLAS-3', summary: '연관 이슈', statusKey: 'in_progress' },
+              },
+            ],
+          },
+        }),
+      ),
+    )
     const Wrapper = createWrapper()
     render(<IssueLinksPanel issueKey="ATLAS-1" parent={null} />, { wrapper: Wrapper })
 
@@ -71,6 +82,11 @@ describe('IssueLinksPanel — S1 목록 렌더', () => {
   })
 
   it('S1c: 링크가 없으면 빈 상태 메시지가 표시된다', async () => {
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
+    )
     const Wrapper = createWrapper()
     render(<IssueLinksPanel issueKey="ATLAS-1" parent={null} />, { wrapper: Wrapper })
 
@@ -85,13 +101,53 @@ describe('IssueLinksPanel — S1 목록 렌더', () => {
 describe('IssueLinksPanel — S2 링크 추가 happy path', () => {
   it('S2a: 유형 선택 + 대상 키 입력 후 추가 버튼 클릭 시 링크가 목록에 나타난다', async () => {
     const user = userEvent.setup()
+    // stateful mock — GET 호출 횟수로 응답 분기
+    let getCallCount = 0
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () => {
+        getCallCount++
+        if (getCallCount === 1) {
+          return HttpResponse.json({ data: { outward: [], inward: [] } })
+        }
+        // invalidate 후 두 번째 GET — 생성된 링크 포함
+        return HttpResponse.json({
+          data: {
+            outward: [
+              {
+                id: 1,
+                linkType: 'BLOCKS',
+                direction: 'OUTWARD',
+                label: 'blocks',
+                otherIssue: { key: 'ATLAS-2', summary: 'ATLAS-2 이슈', statusKey: 'open' },
+              },
+            ],
+            inward: [],
+          },
+        })
+      }),
+      http.post('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json(
+          {
+            data: {
+              id: 1,
+              linkType: 'BLOCKS',
+              direction: 'OUTWARD',
+              label: 'blocks',
+              otherIssue: { key: 'ATLAS-2', summary: 'ATLAS-2 이슈', statusKey: 'open' },
+            },
+          },
+          { status: 201 },
+        ),
+      ),
+    )
+
     const Wrapper = createWrapper()
     render(<IssueLinksPanel issueKey="ATLAS-1" parent={null} />, { wrapper: Wrapper })
 
     // 로딩 완료 대기
     await screen.findByText(/링크가 없습니다/)
 
-    // 유형 select — "blocks" 선택
+    // 유형 select — "blocks" 선택 (native select이므로 selectOptions 사용 가능)
     const linkTypeSelect = screen.getByRole('combobox', { name: /링크 유형/ })
     await user.selectOptions(linkTypeSelect, 'blocks')
 
@@ -108,6 +164,11 @@ describe('IssueLinksPanel — S2 링크 추가 happy path', () => {
   })
 
   it('S2b: 대상 키가 비어있으면 추가 버튼이 disabled 된다', async () => {
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
+    )
     const Wrapper = createWrapper()
     render(<IssueLinksPanel issueKey="ATLAS-1" parent={null} />, { wrapper: Wrapper })
 
@@ -125,8 +186,10 @@ describe('IssueLinksPanel — S2 링크 추가 happy path', () => {
 describe('IssueLinksPanel — S3 에러 인라인 표시', () => {
   it('S3a: LINK_SELF_REFERENCE(422) → 자기 참조 에러 메시지가 인라인 표시된다', async () => {
     const user = userEvent.setup()
-    // 자기 자신 참조 시뮬레이션 — targetKey === issueKey
     server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
       http.post('/api/v1/issues/ATLAS-1/links', () =>
         HttpResponse.json(
           { errorCode: 'LINK_SELF_REFERENCE', message: '' },
@@ -149,6 +212,9 @@ describe('IssueLinksPanel — S3 에러 인라인 표시', () => {
   it('S3b: DUPLICATE_LINK(409) → 중복 링크 에러 메시지가 인라인 표시된다', async () => {
     const user = userEvent.setup()
     server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
       http.post('/api/v1/issues/ATLAS-1/links', () =>
         HttpResponse.json(
           { errorCode: 'DUPLICATE_LINK', message: '' },
@@ -171,6 +237,9 @@ describe('IssueLinksPanel — S3 에러 인라인 표시', () => {
   it('S3c: ISSUE_NOT_FOUND(404) → 이슈 없음 에러 메시지가 인라인 표시된다', async () => {
     const user = userEvent.setup()
     server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
       http.post('/api/v1/issues/ATLAS-1/links', () =>
         HttpResponse.json(
           { errorCode: 'ISSUE_NOT_FOUND', message: '' },
@@ -193,6 +262,9 @@ describe('IssueLinksPanel — S3 에러 인라인 표시', () => {
   it('S3d: LINK_CYCLE(409) → 순환 참조 에러 메시지가 인라인 표시된다', async () => {
     const user = userEvent.setup()
     server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
       http.post('/api/v1/issues/ATLAS-1/links', () =>
         HttpResponse.json(
           { errorCode: 'LINK_CYCLE', message: '' },
@@ -220,23 +292,33 @@ describe('IssueLinksPanel — S3 에러 인라인 표시', () => {
 describe('IssueLinksPanel — S7 링크 제거', () => {
   it('S7a: 행 제거 버튼 클릭 시 해당 링크가 목록에서 사라진다', async () => {
     const user = userEvent.setup()
-    seedIssueLinks('ATLAS-1', [
+    let linkList = [
       {
         id: 10,
-        linkType: 'clones',
+        linkType: 'CLONES',
         direction: 'OUTWARD',
         label: 'clones',
         otherIssue: { key: 'ATLAS-5', summary: '클론 대상', statusKey: 'open' },
       },
-    ])
+    ]
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json({ data: { outward: linkList, inward: [] } }),
+      ),
+      http.delete('/api/v1/issues/ATLAS-1/links/:linkId', ({ params }) => {
+        const id = parseInt(params['linkId'] as string, 10)
+        linkList = linkList.filter((l) => l.id !== id)
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
     const Wrapper = createWrapper()
     render(<IssueLinksPanel issueKey="ATLAS-1" parent={null} />, { wrapper: Wrapper })
 
     // 링크 렌더 대기
     await screen.findByText('ATLAS-5')
 
-    // 제거 버튼 클릭 (aria-label 또는 텍스트)
-    const removeButton = screen.getByRole('button', { name: /링크 제거|삭제/ })
+    // 제거 버튼 클릭
+    const removeButton = screen.getByRole('button', { name: /링크 제거/ })
     await user.click(removeButton)
 
     // 링크 사라짐 확인
@@ -251,22 +333,33 @@ describe('IssueLinksPanel — S7 링크 제거', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('IssueLinksPanel — S8 부모 이슈 섹션', () => {
-  it('S8a: parent prop이 있으면 "부모: KEY (요약)" + 해제 버튼이 표시된다', async () => {
+  it('S8a: parent prop이 있으면 KEY + 요약 + 해제 버튼이 표시된다', async () => {
+    server.use(
+      http.get('/api/v1/issues/ATLAS-2/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
+    )
     const Wrapper = createWrapper()
     render(
       <IssueLinksPanel
         issueKey="ATLAS-2"
-        parent={{ key: 'ATLAS-1', summary: '부모 이슈' }}
+        parent={{ key: 'ATLAS-1', summary: '상위 이슈 제목' }}
       />,
       { wrapper: Wrapper },
     )
 
+    // ATLAS-1 링크 텍스트 확인
     expect(await screen.findByText('ATLAS-1')).toBeInTheDocument()
-    expect(screen.getByText('부모 이슈')).toBeInTheDocument()
+    expect(screen.getByText('상위 이슈 제목')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /해제/ })).toBeInTheDocument()
   })
 
   it('S8b: parent prop이 null이면 키 input + 지정 버튼이 표시된다', async () => {
+    server.use(
+      http.get('/api/v1/issues/ATLAS-2/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
+    )
     const Wrapper = createWrapper()
     render(<IssueLinksPanel issueKey="ATLAS-2" parent={null} />, { wrapper: Wrapper })
 
@@ -278,6 +371,9 @@ describe('IssueLinksPanel — S8 부모 이슈 섹션', () => {
   it('S8c: 부모 해제 버튼 클릭 시 clearParent mutation이 호출된다', async () => {
     const user = userEvent.setup()
     server.use(
+      http.get('/api/v1/issues/ATLAS-2/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
       http.patch('/api/v1/issues/ATLAS-2/parent', () =>
         HttpResponse.json({ data: { key: 'ATLAS-2' } }),
       ),
@@ -286,16 +382,16 @@ describe('IssueLinksPanel — S8 부모 이슈 섹션', () => {
     render(
       <IssueLinksPanel
         issueKey="ATLAS-2"
-        parent={{ key: 'ATLAS-1', summary: '부모 이슈' }}
+        parent={{ key: 'ATLAS-1', summary: '상위 이슈 제목' }}
       />,
       { wrapper: Wrapper },
     )
 
-    await screen.findByText('ATLAS-1')
+    expect(await screen.findByText('ATLAS-1'))
     const clearButton = screen.getByRole('button', { name: /해제/ })
     await user.click(clearButton)
 
-    // 해제 후 input 폼이 나타나야 함 (또는 에러 없이 완료)
+    // 에러 없이 완료 (PARENT_ 에러코드가 표시되지 않음)
     await waitFor(() => {
       expect(screen.queryByText(/PARENT_/)).not.toBeInTheDocument()
     })
@@ -304,6 +400,9 @@ describe('IssueLinksPanel — S8 부모 이슈 섹션', () => {
   it('S8d: PARENT_SELF_REFERENCE(422) → 자기 참조 에러 메시지가 인라인 표시된다', async () => {
     const user = userEvent.setup()
     server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
       http.patch('/api/v1/issues/ATLAS-1/parent', () =>
         HttpResponse.json(
           { errorCode: 'PARENT_SELF_REFERENCE', message: '' },
@@ -326,6 +425,9 @@ describe('IssueLinksPanel — S8 부모 이슈 섹션', () => {
   it('S8e: PARENT_CYCLE(409) → 순환 참조 에러 메시지가 인라인 표시된다', async () => {
     const user = userEvent.setup()
     server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
       http.patch('/api/v1/issues/ATLAS-1/parent', () =>
         HttpResponse.json(
           { errorCode: 'PARENT_CYCLE', message: '' },
@@ -348,6 +450,9 @@ describe('IssueLinksPanel — S8 부모 이슈 섹션', () => {
   it('S8f: parent 404 에러 → 이슈 없음 에러 메시지가 인라인 표시된다', async () => {
     const user = userEvent.setup()
     server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
       http.patch('/api/v1/issues/ATLAS-1/parent', () =>
         HttpResponse.json(
           { errorCode: 'ISSUE_NOT_FOUND', message: '' },
@@ -374,6 +479,11 @@ describe('IssueLinksPanel — S8 부모 이슈 섹션', () => {
 
 describe('IssueLinksPanel — S9 disabled', () => {
   it('S9a: disabled=true이면 추가 버튼과 input이 비활성화된다', async () => {
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
+    )
     const Wrapper = createWrapper()
     render(<IssueLinksPanel issueKey="ATLAS-1" parent={null} disabled />, { wrapper: Wrapper })
 
@@ -387,11 +497,16 @@ describe('IssueLinksPanel — S9 disabled', () => {
   })
 
   it('S9b: disabled=true + parent prop 있으면 해제 버튼이 비활성화된다', async () => {
+    server.use(
+      http.get('/api/v1/issues/ATLAS-2/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
+    )
     const Wrapper = createWrapper()
     render(
       <IssueLinksPanel
         issueKey="ATLAS-2"
-        parent={{ key: 'ATLAS-1', summary: '부모 이슈' }}
+        parent={{ key: 'ATLAS-1', summary: '상위 이슈' }}
         disabled
       />,
       { wrapper: Wrapper },
@@ -413,6 +528,9 @@ describe('IssueLinksPanel — S10 linkType 소문자 전송', () => {
     let capturedLinkType: string | undefined
 
     server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
       http.post('/api/v1/issues/ATLAS-1/links', async ({ request }) => {
         const body = (await request.json()) as { targetKey?: string; linkType?: string }
         capturedLinkType = body.linkType
@@ -455,23 +573,33 @@ describe('IssueLinksPanel — S10 linkType 소문자 전송', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('IssueLinksPanel — S11 다중 링크 렌더', () => {
-  it('S11a: outward 와 inward 링크가 각각 섹션에 나뉘어 표시된다', async () => {
-    seedIssueLinks('ATLAS-1', [
-      {
-        id: 1,
-        linkType: 'blocks',
-        direction: 'OUTWARD',
-        label: 'blocks',
-        otherIssue: { key: 'ATLAS-2', summary: '아웃바운드 이슈', statusKey: 'open' },
-      },
-      {
-        id: 2,
-        linkType: 'relates',
-        direction: 'INWARD',
-        label: 'is related to',
-        otherIssue: { key: 'ATLAS-3', summary: '인바운드 이슈', statusKey: 'done' },
-      },
-    ])
+  it('S11a: outward 와 inward 링크가 함께 표시된다', async () => {
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json({
+          data: {
+            outward: [
+              {
+                id: 1,
+                linkType: 'BLOCKS',
+                direction: 'OUTWARD',
+                label: 'blocks',
+                otherIssue: { key: 'ATLAS-2', summary: '아웃바운드 이슈', statusKey: 'open' },
+              },
+            ],
+            inward: [
+              {
+                id: 2,
+                linkType: 'RELATES',
+                direction: 'INWARD',
+                label: 'is related to',
+                otherIssue: { key: 'ATLAS-3', summary: '인바운드 이슈', statusKey: 'done' },
+              },
+            ],
+          },
+        }),
+      ),
+    )
 
     const Wrapper = createWrapper()
     render(<IssueLinksPanel issueKey="ATLAS-1" parent={null} />, { wrapper: Wrapper })
@@ -489,22 +617,31 @@ describe('IssueLinksPanel — S11 다중 링크 렌더', () => {
 
 describe('IssueLinksPanel — S12 행별 제거 버튼 격리', () => {
   it('S12a: 각 링크 행에 독립된 제거 버튼이 존재한다', async () => {
-    seedIssueLinks('ATLAS-1', [
-      {
-        id: 11,
-        linkType: 'blocks',
-        direction: 'OUTWARD',
-        label: 'blocks',
-        otherIssue: { key: 'ATLAS-10', summary: '첫 번째', statusKey: 'open' },
-      },
-      {
-        id: 12,
-        linkType: 'blocks',
-        direction: 'OUTWARD',
-        label: 'blocks',
-        otherIssue: { key: 'ATLAS-11', summary: '두 번째', statusKey: 'open' },
-      },
-    ])
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json({
+          data: {
+            outward: [
+              {
+                id: 11,
+                linkType: 'BLOCKS',
+                direction: 'OUTWARD',
+                label: 'blocks',
+                otherIssue: { key: 'ATLAS-10', summary: '첫 번째', statusKey: 'open' },
+              },
+              {
+                id: 12,
+                linkType: 'BLOCKS',
+                direction: 'OUTWARD',
+                label: 'blocks',
+                otherIssue: { key: 'ATLAS-11', summary: '두 번째', statusKey: 'open' },
+              },
+            ],
+            inward: [],
+          },
+        }),
+      ),
+    )
 
     const Wrapper = createWrapper()
     render(<IssueLinksPanel issueKey="ATLAS-1" parent={null} />, { wrapper: Wrapper })
@@ -518,7 +655,7 @@ describe('IssueLinksPanel — S12 행별 제거 버튼 격리', () => {
     const firstRow = rows[0]
     expect(firstRow).toBeDefined()
     if (firstRow !== undefined) {
-      expect(within(firstRow).getByRole('button', { name: /링크 제거|삭제/ })).toBeInTheDocument()
+      expect(within(firstRow).getByRole('button', { name: /링크 제거/ })).toBeInTheDocument()
     }
   })
 })
