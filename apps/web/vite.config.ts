@@ -19,6 +19,12 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      // STOMP WebSocket 프록시 — dev 서버(5173)에서 백엔드(8080)로 WS 업그레이드 (C4)
+      '/ws': {
+        target: 'http://localhost:8080',
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
 })

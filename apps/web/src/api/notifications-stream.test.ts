@@ -57,11 +57,14 @@ let mockInstance: MockInstance
 
 beforeEach(() => {
   mockInstance = makeInstance()
-  MockedClient.mockImplementation((config: Record<string, unknown>) => {
-    // 생성자 config를 인스턴스에 복사 (brokerURL, connectHeaders 등)
-    Object.assign(mockInstance, config)
-    return mockInstance as unknown as InstanceType<typeof Client>
-  })
+  // vi.fn() 생성자 mock은 function 키워드 필수 — arrow function은 new 호출 불가
+  // StompConfig 타입을 그대로 받아 mockInstance에 복사
+  MockedClient.mockImplementation(
+    function (this: unknown, config: unknown) {
+      Object.assign(mockInstance, config)
+      return mockInstance as unknown as InstanceType<typeof Client>
+    } as unknown as typeof Client,
+  )
 })
 
 afterEach(() => {
