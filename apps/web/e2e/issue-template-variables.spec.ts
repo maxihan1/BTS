@@ -166,6 +166,49 @@ test.describe('E2 변수 라운드트립 — create → store → refetch → ed
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// E4 — edit 프리필 + 본문 미포커스 → 끝에 append (실브라우저 selectionStart=0 버그 회귀 방지)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('E4 edit 프리필 + 본문 미포커스 → 끝에 append (FR-TM-02 F2 회귀)', () => {
+  // 재현 시나리오.
+  //   실브라우저에서 포커스 안 한 textarea의 selectionStart = 0 (jsdom은 null).
+  //   수정 전 코드는 selectionStart ?? length fallback이 null에만 동작해
+  //   브라우저에서 0으로 읽히면 fallback 없이 맨 앞 prepend가 되는 버그가 있었다.
+  //
+  // Given  alice 로그인 → 이슈 템플릿 설정 페이지
+  //        (MSW store에 본문 "## 재현 방법" 템플릿이 시드되어 있는 상황을 생성으로 흉내)
+  // When   "템플릿 추가" 다이얼로그 → 본문을 fill("## 재현 방법")로 채움
+  //        → 이름 input에 포커스를 옮겨 textarea 포커스를 해제
+  //        → "일자 변수 삽입" 버튼 클릭
+  // Then   본문이 "## 재현 방법{{date}}" (끝에 append) — "{{date}}## 재현 방법" 아님
+
+  test.beforeEach(async ({ page }) => {
+    await loginAsAlice(page)
+    await page.goto(SETTINGS_URL)
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+  })
+
+  test('E4 본문 미포커스 상태에서 일자 변수 삽입 버튼 클릭 → 끝에 append', async ({ page }) => {
+    // Given. 생성 다이얼로그 열기
+    await page.getByRole('button', { name: labels.addButton }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+
+    // Given. 본문을 채운다 (edit 다이얼로그의 프리필 상황과 동일 조건)
+    await page.getByLabel(labels.contentLabel).fill('## 재현 방법')
+
+    // Given. 이름 input에 포커스를 옮겨 textarea 포커스를 해제한다
+    //        → 실브라우저에서 blur 후 selectionStart = 0 (jsdom에서는 null)
+    await page.getByLabel(labels.nameLabel).focus()
+
+    // When. 본문을 클릭하지 않은 채 "일자 변수 삽입" 버튼 클릭
+    await page.getByRole('button', { name: labels.dateInsertAria }).click()
+
+    // Then. 끝에 append: "## 재현 방법{{date}}" (prepend "{{date}}## 재현 방법" 아님)
+    await expect(page.getByLabel(labels.contentLabel)).toHaveValue('## 재현 방법{{date}}')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // E3 — 도움말 표시
 // ─────────────────────────────────────────────────────────────────────────────
 
