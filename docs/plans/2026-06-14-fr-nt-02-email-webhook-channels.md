@@ -126,14 +126,14 @@ FR-NT-02(알림 채널)의 인앱 채널은 이미 머지됨(PR #126 백엔드 +
 - `EmailChannelSenderTest`(단위, MockK) — `JavaMailSender`/`UserLookupPort` mock.
   - SEND-1. email 존재 시 `MimeMessage` 생성·발송, 제목=title, from=설정값, to=조회 email.
   - SEND-2. email 부재(port null) → 발송 안 함 + 예외 throw(deliver PENDING 계약).
-  - SEND-3. JavaMailSender 부재(ObjectProvider 비어있음) → 예외 throw.
   - SUPPORTS-1/2. supports(EMAIL)=true, supports(IN_APP)=false.
 - 실패: `EmailChannelSender` 없음.
 
 **GREEN**:
-- build.gradle.kts에 `org.springframework:spring-context-support` + `org.eclipse.angus:angus-mail` 추가(신규 의존성=절대규칙#17, 게이트1 승인 전제). **대안 spring-boot-starter-mail은 eng-review에서 확정.**
-- `MailConfig`(@Configuration) — `JavaMailSenderImpl` 빈 무조건 생성(host/port/from 프로퍼티, 기본값 제공 → 부팅 견고성 NFR-2), SMTP connection/read 타임아웃 설정(NFR-6).
-- `EmailChannelSender`(@Component) — `ObjectProvider<JavaMailSender>` + `UserLookupPort` + from 프로퍼티 주입. `supports(EMAIL)`. `send()`: port.findEmailById → 없으면 throw, JavaMailSender 부재 시 throw, `MimeMessageHelper`(UTF-8)로 제목/본문 작성 후 발송. 이메일 주소는 로그 마스킹(NFR-4).
+- build.gradle.kts에 `org.springframework:spring-context-support` + `org.eclipse.angus:angus-mail` 추가(신규 의존성=절대규칙#17, 게이트1 승인 전제. 버전은 Boot BOM 관리 — 모듈이 starter-websocket로 dependency-management 적용 중). **대안 spring-boot-starter-mail은 eng-review에서 확정.**
+- `MailConfig`(@Configuration) — `JavaMailSenderImpl` 빈 **무조건 생성**(host/port/from 프로퍼티, 기본값 제공 → 부팅 견고성 NFR-2 충족), SMTP connection/read/write 타임아웃 설정(`mail.smtp.connectiontimeout`/`timeout`/`writetimeout`, NFR-6).
+- `EmailChannelSender`(@Component) — `JavaMailSender`(MailConfig가 항상 제공하므로 **직접 주입**, ObjectProvider 불요) + `UserLookupPort` + from 프로퍼티 주입. `supports(EMAIL)`. `send()`: port.findEmailById → 없으면 throw(PENDING), `MimeMessageHelper`(UTF-8)로 제목/본문 작성 후 발송(SMTP 실패=예외 전파→PENDING). 이메일 주소는 로그 마스킹(NFR-4).
+- **eng-review CONCERN-1 반영**: 빈 무조건 생성과 ObjectProvider 병용 모순 제거 → 무조건 생성 + 직접 주입 단일화(부재 분기 죽은코드 삭제).
 
 **REFACTOR**:
 - destination/from 상수, KDoc, InAppChannelSender 톤 일치.
@@ -150,6 +150,7 @@ FR-NT-02(알림 채널)의 인앱 채널은 이미 머지됨(PR #126 백엔드 +
 **RED**:
 - MailHog `GenericContainer("mailhog/mailhog:v1.0.1")`(SMTP 1025/HTTP 8025), `@DynamicPropertySource`로 `spring.mail.host/port` 주입.
 - 통합테스트 — `channel=EMAIL` Notification을 EmailChannelSender로 발송 → MailHog HTTP API `/api/v2/messages`에서 수신 확인 + **한국어 제목 보존**(NFR-5) + (end-to-end 경로면 notifications 행 `SENT` 전이). email 부재 시 PENDING(S2).
+- **eng-review CONCERN-2 반영**: MailHog가 저장한 Subject 헤더는 MIME encoded-word(`=?UTF-8?...?=`)일 수 있다. 한국어 단언은 **디코드 후**(`jakarta.mail.internet.MimeUtility.decodeText` 또는 본문 part 비교) 수행 — 인코딩 형태로 단언하면 실제 깨짐을 못 잡는 거짓그린.
 - 실패: EmailChannelSender 발송 경로 미완/인코딩 깨짐.
 
 **GREEN**:
@@ -183,4 +184,18 @@ FR-NT-02(알림 채널)의 인앱 채널은 이미 머지됨(PR #126 백엔드 +
 - 신규 의존성(mail): 절대규칙#17 — 게이트1 Maxi 승인 대상.
 - 추가 검증: ktlint/detekt(신규 파일 baseline 밖), ArchUnit BC 격리, 기존 notification 통합/단위 회귀.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### eng 집중 독립 리뷰 (2026-06-14) — backend plan, autoplan 생략(메모리 bts-review-plan-autoplan-overkill)
+
+7개 점검 포인트 + 일반 엔지니어링 적대적 리뷰.
+
+- **BLOCKER: 없음.**
+- **CONCERN-1 (②) — 해소**: `MailConfig` 빈 무조건 생성 + `ObjectProvider<JavaMailSender>` 병용은 모순(부재 분기 죽은코드·테스트불가). → 무조건 생성 + 직접 주입으로 단일화, SEND-3 제거(Task 3 반영 완료).
+- **CONCERN-2 (⑤) — 해소**: MailHog Subject는 MIME encoded-word. 한국어 검증은 디코드 후 단언(Task 4 반영 완료, 거짓그린 방지).
+- **NOTE (①)**: mail 의존성 신규 = 절대규칙#17 → 게이트1 Maxi 승인. spring-context-support+angus-mail 버전은 Boot dependency-management(starter-websocket 경유) 관리 확인. spring-boot-starter-mail 대안도 가능 — 구현 중 컴파일/버전 이슈 시 전환.
+- ✅ **③ 실패→PENDING 계약**: send() throw→deliver() best-effort PENDING, dedup이 재호출 차단(반복 throw 없음). 인앱과 일관.
+- ✅ **④ 포트 default 확장**: `findEmailById = null` default가 기존 fake ~35개 보호(findIdsByUsernames/findDisplayNamesByIds 선례 동일).
+- ✅ **⑥ 무변경 제약**: 워커/resolver/평가기/스키마 변경 없음. sender 빈 + 포트 default + MailConfig + 의존성만.
+- ✅ **⑦ ArchUnit BC 격리**: notification→identity-access 직접 import 없음, 이메일 조회는 shared-kernel 포트 경유.
+- **추가 NOTE**: notification 모듈 mail 프로퍼티(host/port/from) 기본값은 모듈 resources에, 실값은 배포 조립 시점 주입(현 표준 test-assembled, 메모리 no-cross-bc-deployment-assembly). 통합테스트는 @DynamicPropertySource. notification 통합테스트에 test `UserLookupPort` fake 빈(알려진 email) 제공 필요(Task 4).
