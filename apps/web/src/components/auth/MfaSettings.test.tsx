@@ -933,3 +933,49 @@ describe('T4-S2: 등록 후 게이트 해제', () => {
     expect(mockNavigate).not.toHaveBeenCalled()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T5-S2: TrustedDevicesSection — TOTP 활성 여부와 무관하게 항상 노출
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T5-S2: TrustedDevicesSection은 TOTP 활성 여부와 무관하게 항상 노출된다', () => {
+  function mockTrustedDevicesEmpty() {
+    return http.get('/api/v1/auth/mfa/trusted-devices', () =>
+      HttpResponse.json([]),
+    )
+  }
+
+  it('T5-S2-1: TOTP 미활성 상태에서 신뢰 디바이스 섹션 헤더가 노출된다', async () => {
+    server.use(mockStatus(false), mockTrustedDevicesEmpty())
+
+    renderMfaSettings()
+
+    await waitFor(() => {
+      expect(screen.getByText('비활성화됨')).toBeInTheDocument()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText(mfaStrings.trustedDevicesSectionTitle)).toBeInTheDocument()
+    })
+  })
+
+  it('T5-S2-2: TOTP 활성 상태에서도 신뢰 디바이스 섹션 헤더가 노출된다', async () => {
+    server.use(
+      mockStatus(true),
+      http.get('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ generated: false, remaining: 0 }),
+      ),
+      mockTrustedDevicesEmpty(),
+    )
+
+    renderMfaSettings()
+
+    await waitFor(() => {
+      expect(screen.getByText('활성화됨')).toBeInTheDocument()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText(mfaStrings.trustedDevicesSectionTitle)).toBeInTheDocument()
+    })
+  })
+})

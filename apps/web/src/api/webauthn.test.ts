@@ -567,3 +567,106 @@ describe('authenticateWithSecurityKey', () => {
     expect(result.token_type).toBe('Bearer')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-WA-9. verifyWebauthn — trustDevice 인자 (FR-MF-05 신뢰 디바이스)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('verifyWebauthn — trustDevice 인자', () => {
+  it('T-WA-9a: trustDevice:true 전달 시 body에 trust_device:true가 포함된다 (실경로 — verifyWebauthn 직접 검증)', async () => {
+    let capturedBody: unknown = null
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json(tokenResponseFixture, { status: 200 })
+      }),
+    )
+    await verifyWebauthn('challenge.jwt.token', authenticationCredentialFixture, true)
+    const body = capturedBody as Record<string, unknown> | null
+    expect(body?.trust_device).toBe(true)
+  })
+
+  it('T-WA-9b: trustDevice 생략(기본값) 시 body에 trust_device:false가 포함된다 (하위호환)', async () => {
+    let capturedBody: unknown = null
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json(tokenResponseFixture, { status: 200 })
+      }),
+    )
+    await verifyWebauthn('challenge.jwt.token', authenticationCredentialFixture)
+    const body = capturedBody as Record<string, unknown> | null
+    expect(body?.trust_device).toBe(false)
+  })
+
+  it('T-WA-9c: verifyWebauthn trustDevice:true 전달해도 /refresh를 호출하지 않는다 (raw fetch 유지 — NFR-2 회귀)', async () => {
+    let refreshCallCount = 0
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', () =>
+        HttpResponse.json({ error: 'invalid_code' }, { status: 401 }),
+      ),
+      http.post('/api/v1/auth/refresh', () => {
+        refreshCallCount++
+        return HttpResponse.json({ error: 'unauthorized' }, { status: 401 })
+      }),
+    )
+    let thrown: unknown
+    try {
+      await verifyWebauthn('challenge.jwt.token', authenticationCredentialFixture, true)
+    } catch (e) {
+      thrown = e
+    }
+    expect(refreshCallCount).toBe(0)
+    expect(thrown).toBeInstanceOf(ApiError)
+    if (!(thrown instanceof ApiError)) throw new Error('type guard missed')
+    expect(thrown.status).toBe(401)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-WA-10. authenticateWithSecurityKey — trustDevice 전파 (FR-MF-05)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('authenticateWithSecurityKey — trustDevice 전파', () => {
+  it('T-WA-10a: trustDevice:true 전달 시 최종 verify body에 trust_device:true가 포함된다', async () => {
+    const simplewebauthn = await import('@simplewebauthn/browser')
+    vi.mocked(simplewebauthn.startAuthentication).mockResolvedValue(
+      authenticationCredentialFixture as Awaited<ReturnType<typeof simplewebauthn.startAuthentication>>,
+    )
+
+    let capturedBody: unknown = null
+    server.use(
+      http.post('/api/v1/auth/mfa/webauthn/authenticate/start', () =>
+        HttpResponse.json(authenticationOptionsFixture, { status: 200 }),
+      ),
+      http.post('/api/v1/auth/mfa/verify', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json(tokenResponseFixture, { status: 200 })
+      }),
+    )
+
+    await authenticateWithSecurityKey('challenge.jwt.token', true)
+    const body = capturedBody as Record<string, unknown> | null
+    expect(body?.trust_device).toBe(true)
+  })
+
+  it('T-WA-10b: 기존 1인자 호출(기본 false) 시 trust_device:false가 포함된다 (하위호환)', async () => {
+    const simplewebauthn = await import('@simplewebauthn/browser')
+    vi.mocked(simplewebauthn.startAuthentication).mockResolvedValue(
+      authenticationCredentialFixture as Awaited<ReturnType<typeof simplewebauthn.startAuthentication>>,
+    )
+
+    let capturedBody: unknown = null
+    server.use(
+      http.post('/api/v1/auth/mfa/webauthn/authenticate/start', () =>
+        HttpResponse.json(authenticationOptionsFixture, { status: 200 }),
+      ),
+      http.post('/api/v1/auth/mfa/verify', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json(tokenResponseFixture, { status: 200 })
+      }),
+    )
+
+    await authenticateWithSecurityKey('challenge.jwt.token')
+    const body = capturedBody as Record<string, unknown> | null
+    expect(body?.trust_device).toBe(false)
+  })
+})

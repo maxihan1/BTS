@@ -30,6 +30,7 @@ vi.mock('@/api/webauthn', () => ({
   authenticateWithSecurityKey: vi.fn(),
 }))
 
+
 function createWrapper() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -877,8 +878,8 @@ describe('LoginForm — MFA step 보안 키로 인증 (task-6)', () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
     expect(useAuthStore.getState().accessToken).toBe('webauthn-session-token')
     expect(useAuthStore.getState().user).not.toBeNull()
-    // authenticateWithSecurityKey가 challengeToken으로 호출되어야 한다
-    expect(vi.mocked(authenticateWithSecurityKey)).toHaveBeenCalledWith('challenge-token-xyz')
+    // authenticateWithSecurityKey가 challengeToken, trustDevice=false(기본값)으로 호출되어야 한다
+    expect(vi.mocked(authenticateWithSecurityKey)).toHaveBeenCalledWith('challenge-token-xyz', false)
   })
 
   it('EC-1: 사용자 취소(NotAllowedError) → 인라인 에러 + 화면 유지 + challengeToken 보존(재클릭 가능)', async () => {
@@ -926,9 +927,9 @@ describe('LoginForm — MFA step 보안 키로 인증 (task-6)', () => {
     await user.click(screen.getByRole('button', { name: '보안 키로 인증' }))
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
-    // authenticateWithSecurityKey가 동일 challengeToken으로 2회 호출
+    // authenticateWithSecurityKey가 동일 challengeToken으로 2회 호출 (trustDevice=false 기본값)
     expect(vi.mocked(authenticateWithSecurityKey)).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(authenticateWithSecurityKey)).toHaveBeenNthCalledWith(2, 'challenge-token-xyz')
+    expect(vi.mocked(authenticateWithSecurityKey)).toHaveBeenNthCalledWith(2, 'challenge-token-xyz', false)
   })
 
   it('EC-4: ApiError 401 invalid_code → 인라인 에러 + 화면 유지 + challengeToken 보존', async () => {
@@ -984,5 +985,204 @@ describe('LoginForm — MFA step 보안 키로 인증 (task-6)', () => {
     expect(screen.queryByRole('button', { name: '보안 키로 인증' })).toBeNull()
     // TOTP 코드 입력 필드는 그대로 표시되어야 한다
     expect(screen.getByLabelText('인증 코드')).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MFA step — 신뢰 디바이스 체크박스 (task-6, FR-MF-05)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('LoginForm — MFA step 신뢰 디바이스 체크박스 (task-6)', () => {
+  it('MFA step에 "이 기기를 30일간 신뢰" 체크박스가 기본 미체크로 표시된다', async () => {
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await goToMfaStep(user)
+
+    const checkbox = screen.getByRole('checkbox', { name: '이 기기를 30일간 신뢰' })
+    expect(checkbox).toBeInTheDocument()
+    expect(checkbox).not.toBeChecked()
+  })
+
+  // S6 — 체크박스 미체크 상태로 verifyMfa 호출 시 trustDevice=false
+  it('S6: 체크박스 미체크 → 코드 검증 시 verifyMfa(token, code, mode, false)가 호출된다', async () => {
+    const user = userEvent.setup({ delay: null })
+    const mfaModule = await import('@/api/mfa')
+    const verifySpy = vi.spyOn(mfaModule, 'verifyMfa')
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', () =>
+        HttpResponse.json({
+          access_token: 's6-token',
+          token_type: 'Bearer',
+          expires_in: 3600,
+        }),
+      ),
+      http.get('/api/v1/users/me/whoami', () =>
+        HttpResponse.json({
+          username: 'alice',
+          email: 'alice@bts.local',
+          authMethod: 'local',
+          userId: '00000000-0000-4000-8000-000000000001',
+          mustChangePassword: false,
+          isSystemAdmin: false,
+          mfaEnrollmentRequired: false,
+        }),
+      ),
+    )
+
+    renderLoginForm()
+    await goToMfaStep(user)
+
+    // 체크박스 미체크 상태 확인
+    const checkbox = screen.getByRole('checkbox', { name: '이 기기를 30일간 신뢰' })
+    expect(checkbox).not.toBeChecked()
+
+    await user.type(screen.getByLabelText('인증 코드'), '123456')
+    await user.click(screen.getByRole('button', { name: '확인' }))
+
+    await waitFor(() => {
+      expect(verifySpy).toHaveBeenCalledWith(
+        'challenge-token-xyz',
+        '123456',
+        'totp',
+        false,
+      )
+    })
+  })
+
+  // S5 — 체크박스 체크 후 verifyMfa trustDevice=true
+  it('S5: 체크박스 체크 → 코드 검증 시 verifyMfa(token, code, mode, true)가 호출된다', async () => {
+    const user = userEvent.setup({ delay: null })
+    const mfaModule = await import('@/api/mfa')
+    const verifySpy = vi.spyOn(mfaModule, 'verifyMfa')
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', () =>
+        HttpResponse.json({
+          access_token: 's5-token',
+          token_type: 'Bearer',
+          expires_in: 3600,
+        }),
+      ),
+      http.get('/api/v1/users/me/whoami', () =>
+        HttpResponse.json({
+          username: 'alice',
+          email: 'alice@bts.local',
+          authMethod: 'local',
+          userId: '00000000-0000-4000-8000-000000000001',
+          mustChangePassword: false,
+          isSystemAdmin: false,
+          mfaEnrollmentRequired: false,
+        }),
+      ),
+    )
+
+    renderLoginForm()
+    await goToMfaStep(user)
+
+    await user.click(screen.getByRole('checkbox', { name: '이 기기를 30일간 신뢰' }))
+    expect(screen.getByRole('checkbox', { name: '이 기기를 30일간 신뢰' })).toBeChecked()
+
+    await user.type(screen.getByLabelText('인증 코드'), '654321')
+    await user.click(screen.getByRole('button', { name: '확인' }))
+
+    await waitFor(() => {
+      expect(verifySpy).toHaveBeenCalledWith(
+        'challenge-token-xyz',
+        '654321',
+        'totp',
+        true,
+      )
+    })
+  })
+
+  // E6 — 핵심: mode 토글 후에도 체크 상태가 부모(LoginMfaStep)에 보존되어야 한다
+  it('E6(핵심): 체크박스 체크 → mode 토글(TOTP→백업코드) → 체크 상태 유지 + verifyMfa trustDevice=true 전달', async () => {
+    const user = userEvent.setup({ delay: null })
+    const mfaModule = await import('@/api/mfa')
+    const verifySpy = vi.spyOn(mfaModule, 'verifyMfa')
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', () =>
+        HttpResponse.json({
+          access_token: 'e6-token',
+          token_type: 'Bearer',
+          expires_in: 3600,
+        }),
+      ),
+      http.get('/api/v1/users/me/whoami', () =>
+        HttpResponse.json({
+          username: 'alice',
+          email: 'alice@bts.local',
+          authMethod: 'local',
+          userId: '00000000-0000-4000-8000-000000000001',
+          mustChangePassword: false,
+          isSystemAdmin: false,
+          mfaEnrollmentRequired: false,
+        }),
+      ),
+    )
+
+    renderLoginForm()
+    await goToMfaStep(user)
+
+    // TOTP 모드에서 체크박스 체크
+    await user.click(screen.getByRole('checkbox', { name: '이 기기를 30일간 신뢰' }))
+    expect(screen.getByRole('checkbox', { name: '이 기기를 30일간 신뢰' })).toBeChecked()
+
+    // mode 토글 — 백업코드 모드로 전환 (MfaCodeInput 재마운트)
+    await user.click(screen.getByRole('button', { name: '백업 코드로 로그인' }))
+
+    // 재마운트 후에도 체크박스 체크 상태가 유지되어야 한다 (부모 보관)
+    const checkboxAfterToggle = screen.getByRole('checkbox', { name: '이 기기를 30일간 신뢰' })
+    expect(checkboxAfterToggle).toBeChecked()
+
+    // 백업코드 입력 후 검증 → trustDevice=true 전달 확인
+    await user.type(screen.getByLabelText('백업 코드'), 'ABCD-5678')
+    await user.click(screen.getByRole('button', { name: '확인' }))
+
+    await waitFor(() => {
+      expect(verifySpy).toHaveBeenCalledWith(
+        'challenge-token-xyz',
+        'ABCD-5678',
+        'backup_code',
+        true,
+      )
+    })
+  })
+
+  // S7 — 체크박스 체크 후 보안 키 인증 시 authenticateWithSecurityKey trustDevice=true
+  it('S7: 체크박스 체크 → "보안 키로 인증" 클릭 → authenticateWithSecurityKey(token, true)가 호출된다', async () => {
+    const user = userEvent.setup({ delay: null })
+    const webauthnModule = await import('@/api/webauthn')
+    vi.mocked(webauthnModule.authenticateWithSecurityKey).mockResolvedValueOnce({
+      access_token: 's7-token',
+      token_type: 'Bearer',
+      expires_in: 3600,
+    })
+    server.use(
+      http.get('/api/v1/users/me/whoami', () =>
+        HttpResponse.json({
+          username: 'alice',
+          email: 'alice@bts.local',
+          authMethod: 'webauthn',
+          userId: '00000000-0000-4000-8000-000000000001',
+          mustChangePassword: false,
+          isSystemAdmin: false,
+          mfaEnrollmentRequired: false,
+        }),
+      ),
+    )
+
+    renderLoginForm()
+    await goToMfaStep(user)
+
+    await user.click(screen.getByRole('checkbox', { name: '이 기기를 30일간 신뢰' }))
+    await user.click(screen.getByRole('button', { name: '보안 키로 인증' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(webauthnModule.authenticateWithSecurityKey)).toHaveBeenCalledWith(
+        'challenge-token-xyz',
+        true,
+      )
+    })
   })
 })
