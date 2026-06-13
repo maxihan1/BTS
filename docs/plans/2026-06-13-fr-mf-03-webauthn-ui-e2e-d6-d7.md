@@ -58,7 +58,9 @@ FR-MF-03 WebAuthn(Passkey/하드웨어 키) 2차 인증의 프론트 UI(D6) + E2
 **RED**: `schemas.test.ts` — `WebauthnKeysResponseSchema.parse({keys:[{id:<uuid>, name, createdAt:<iso>, lastUsedAt:null}]})` 성공 + `lastUsedAt` nullable + `name` nullable 검증. 빈 keys 배열 허용. (Zod v4 UUID는 RFC4122 — fixture는 v4 형식 uuid 사용, zod-v4-uuid-fixture-strictness.)
 **실패(예상)**: `WebauthnKeysResponseSchema` 미존재.
 **GREEN**:
-- `schemas.ts` — `WebauthnKeySchema`(id uuid, name nullable, createdAt/lastUsedAt — 기존 Instant 컨버전 패턴 따름), `WebauthnKeysResponseSchema`({keys: array}).
+- `schemas.ts` — `WebauthnKeySchema`(id `z.string().uuid()`, name `.nullable()`, createdAt `z.string()`, lastUsedAt `z.string().nullable()`), `WebauthnKeysResponseSchema`({keys: array}).
+  - **C-2**: timestamp는 `z.string()` 무변환(sessions.ts:21·audit-logs.ts 선례 — Instant→Date 변환 패턴 없음, transform invent 금지).
+  - **C-1**: `WebAuthnKeyResponse`는 백엔드 NON_NULL 미적용 → `name`/`lastUsedAt` 키 보존 → `.nullable()` 충분(`.nullish()`/`.optional()` 쓰지 말 것 — 같은 BC NON_NULL DTO와 혼동 금지).
 - `mfa.ts` `MfaErrorCode` — `INVALID_REGISTRATION:'invalid_registration'`, `ALREADY_REGISTERED:'already_registered'`, `NOT_FOUND:'not_found'`, `MFA_CHALLENGE_EXPIRED:'mfa_challenge_expired'` 추가.
 - `i18n/ko.ts` `mfaStrings` — webauthn 섹션/버튼/등록/삭제/에러 문자열. `mfaErrorMessage` 매핑에 신규 에러코드 케이스.
 **REFACTOR**: 문자열 그룹 KDoc. lastUsedAt null 표시용 라벨 포함.
@@ -72,16 +74,27 @@ FR-MF-03 WebAuthn(Passkey/하드웨어 키) 2차 인증의 프론트 UI(D6) + E2
 - depends-on: [1]
 
 **선행**: `pnpm --filter web add @simplewebauthn/browser`(버전 고정 — R-1, 현행 v13.x). worktree 설치이므로 typecheck로 해석 확인(R-3 worktree-node-modules-partial-install — 깨지면 controller 보고).
+
+**fetch 방식 대비표 (C-4 — 혼동 금지)**.
+| 함수 | 엔드포인트 | fetch | CSRF | credentials |
+|---|---|---|---|---|
+| `webauthnRegisterStart` | POST register/start | **apiFetch** | X-XSRF-TOKEN | (apiFetch 기본) |
+| `webauthnRegisterFinish` | POST register/finish | **apiFetch** | X-XSRF-TOKEN | (apiFetch 기본) |
+| `listWebauthnKeys` | GET webauthn | **apiGet** | — | (apiGet 기본) |
+| `deleteWebauthnKey` | DELETE webauthn/{id} | **apiFetch** | X-XSRF-TOKEN | (apiFetch 기본) |
+| `webauthnAuthenticateStart` | POST authenticate/start | **raw fetch** | 불요 | 불요 |
+| `verifyWebauthn` | POST mfa/verify | **raw fetch** | 불요 | **`include` 필수** |
+
 **RED**: `webauthn.test.ts` —
-- `webauthnRegisterStart()` POST `/webauthn/register/start` + `X-XSRF-TOKEN` 헤더(NFR-3), 200 옵션 반환.
-- `webauthnRegisterFinish(cred, name)` POST `/finish` `{credential, name}`, 201 처리.
-- `listWebauthnKeys()` GET `/webauthn` → `WebauthnKeysResponseSchema.parse`.
-- `deleteWebauthnKey(id)` DELETE `/webauthn/{id}` 204.
-- `webauthnAuthenticateStart(token)` — **raw fetch**(NFR-2), `apiFetch` 미사용 검증(refresh 미호출 — `auth-pre-session-401-raw-fetch`, refreshCallCount=0).
-- `verifyWebauthn(token, credential)` — **raw fetch** POST `/mfa/verify` `{mfa_challenge_token, method:'webauthn', credential}` → `TokenResponseSchema`. 401 invalid_code 시 refresh 미호출.
+- `webauthnRegisterStart()` apiFetch + `X-XSRF-TOKEN`(C-4). **B-2**: 응답을 `await res.json()`으로 **옵션 객체**화해 반환(text 아님 — 백엔드가 JSON 문자열 바디를 application/json으로 내려보냄).
+- `webauthnRegisterFinish(credential, name)` apiFetch POST `/finish` body `{credential, name}`. **B-1**: 빈 201(No Content) — `res.ok`만 보고 **void 반환**(parse 금지). **B-4**: credential은 객체 그대로(이중 직렬화 금지 — body 한 번만 JSON.stringify).
+- `listWebauthnKeys()` apiGet → `WebauthnKeysResponseSchema`.
+- `deleteWebauthnKey(id)` apiFetch DELETE 204.
+- `webauthnAuthenticateStart(token)` — **raw fetch**(NFR-2), credentials/CSRF 불요. **B-2**: `await res.json()`로 옵션 객체화. 401 시 `apiFetch` 미사용으로 refresh 미호출(`auth-pre-session-401-raw-fetch`, refreshCallCount=0). 401 `mfa_challenge_expired` 구분.
+- `verifyWebauthn(token, credential)` — **raw fetch** POST `/mfa/verify`, **B-3**: `credentials:'include'` + `Content-Type: application/json`(verifyMfa mfa.ts:158-163 동형). **B-4**: body `{mfa_challenge_token, code:'', method:'webauthn', credential}`를 한 번만 `JSON.stringify`(credential 객체 보존). → `TokenResponseSchema`. 401 invalid_code 시 refresh 미호출.
 **실패(예상)**: `webauthn.ts` 미존재.
-**GREEN**: 6개 함수 구현. `@simplewebauthn/browser`의 `startRegistration({optionsJSON})`/`startAuthentication({optionsJSON})` 래핑은 컴포넌트가 호출하는 상위 헬퍼(예: `registerSecurityKey(name)`, `authenticateWithSecurityKey(token)`)로 캡슐화 — start→start*→finish/verify 오케스트레이션. NotAllowedError 등 의식 실패는 throw 보존(컴포넌트가 매핑).
-**REFACTOR**: 헬퍼 KDoc(raw fetch 사유, 의식 실패 전파).
+**GREEN**: 6개 함수 구현. `@simplewebauthn/browser`의 `startRegistration({optionsJSON: <res.json 객체>})`/`startAuthentication({optionsJSON: <res.json 객체>})` 래핑은 상위 헬퍼(`registerSecurityKey(name)`: start→`res.json()`→startRegistration→finish, `authenticateWithSecurityKey(token)`: authenticate/start→`res.json()`→startAuthentication→`verifyWebauthn(token, 반환객체)`)로 캡슐화. startAuthentication 반환 객체를 그대로 verifyWebauthn credential 인자에. NotAllowedError 등 의식 실패는 throw 보존(컴포넌트가 매핑).
+**REFACTOR**: 헬퍼 KDoc(raw fetch 사유·credentials:include 필수·credential 객체 직렬화·의식 실패 전파).
 **검증**: `pnpm --filter web test -- webauthn.test.ts` + typecheck.
 
 ### Task 3. MSW webauthn 핸들러 + verify 확장
@@ -91,12 +104,17 @@ FR-MF-03 WebAuthn(Passkey/하드웨어 키) 2차 인증의 프론트 UI(D6) + E2
 - files: [`apps/web/src/mocks/webauthn-handlers.ts`, `apps/web/src/mocks/webauthn-handlers.test.ts`, `apps/web/src/mocks/mfa-handlers.ts`, `apps/web/src/mocks/handlers.ts`]
 - depends-on: []
 
+**핵심 요건 (B-1/B-2/B-4 — MSW는 백엔드 실제 응답 형식과 바이트 단위 일치. 느슨하면 가짜 그린)**.
+- `register/start`·`authenticate/start`는 **`HttpResponse.json(<옵션 객체>)`**(text 아님, B-2). 옵션 객체는 @simplewebauthn가 디코드하는 필드 포함 — `challenge`(base64url), `rp`, `user`(id base64url), `pubKeyCredParams`, authenticate는 `allowCredentials`/`rpId`. R-2 stub과 짝.
+- `register/finish`는 **빈 201**(`new HttpResponse(null,{status:201})`, B-1 — `{id,name}` 본문 금지).
+- verify webauthn 분기는 `body.credential`이 **객체로 존재**하는지만 확인 후 200(B-4).
+
 **RED**: `webauthn-handlers.test.ts` — stateful store 기반.
-- `register/start` 200 옵션(가짜 base64url 옵션 JSON), `register/finish` 201 + store에 키 추가, 중복이면 409.
-- `GET /webauthn` 현재 store 목록 반환.
+- `register/start` 200 옵션 **객체**(B-2), `register/finish` **빈 201**(B-1) + store에 키 추가, 중복이면 409.
+- `GET /webauthn` 현재 store 목록 반환(WebauthnKeyResponse 형태 — name/lastUsedAt 키 보존, C-1).
 - `DELETE /webauthn/{id}` 204 + store 제거, 없으면 404.
-- `authenticate/start` 200 옵션, 만료 토큰이면 401.
-- (`mfa-handlers.ts`) `verifyHandler`가 `method:'webauthn'` 분기 추가 — 가짜 credential 존재 시 200 토큰(기존 totp/backup 분기 회귀 0).
+- `authenticate/start` 200 옵션 **객체**(B-2), 만료 토큰이면 401 `mfa_challenge_expired`.
+- (`mfa-handlers.ts`) `verifyHandler`가 `method:'webauthn'` 분기 추가 — `body.credential` 객체 존재 시 200 토큰(기존 totp/backup 분기 회귀 0).
 **실패(예상)**: webauthn-handlers 미존재 / verify가 webauthn을 totp로 처리해 실패.
 **GREEN**: 핸들러 + store 구현. `handlers.ts` 배열에 webauthnHandlers 등록(공유 파일 — 본 task 단독 소유, parallel-fr-overlapping-frontend-infra-collision). MSW 변이는 `X-XSRF-TOKEN` 검증(기존 mfa-handlers 패턴). stateful store는 브라우저 시드 가능 구조(E2E 공유, msw-derived-behavior-shared-store-e2e).
 **REFACTOR**: store reset export(테스트 격리, msw-mutation-stateful-refetch).
@@ -140,9 +158,14 @@ FR-MF-03 WebAuthn(Passkey/하드웨어 키) 2차 인증의 프론트 UI(D6) + E2
 - files: [`apps/web/src/auth/LoginForm.tsx`, `apps/web/src/auth/LoginForm.test.tsx`]
 - depends-on: [2, 3]
 
-**RED**: `LoginForm.test.tsx`(기존 확장) — MFA step에서 "보안 키로 인증" 버튼 표시. 클릭 → `authenticateWithSecurityKey(challengeToken)` → 성공 시 setSession + onSuccess(기존 verify 성공 경로 수렴). EC-4 verify 401 → "보안 키 인증 실패" 인라인 + 화면 유지. EC-5 401 mfa_challenge_expired → 안내. 기존 TOTP/백업코드 토글 회귀 0.
+**RED**: `LoginForm.test.tsx`(기존 확장) — MFA step에서 "보안 키로 인증" 버튼 표시. 클릭 → `authenticateWithSecurityKey(challengeToken)` → 성공 시 setSession + onSuccess(기존 verify 성공 경로 수렴).
+- **EC-4** verify 401 invalid_code → "보안 키 인증 실패" 인라인 + 화면 유지 + **challengeToken 보존**(재클릭 재시도 — B-5, authenticate/start가 토큰 미소비).
+- **EC-1** 사용자 취소(NotAllowedError throw) → 인라인 에러 + 화면 유지 + **challengeToken 보존**(재시도).
+- **EC-5** authenticate/start 401 `mfa_challenge_expired` → 토큰 실제 만료 → 안내 + 로그인 복귀(handleBackToLogin, 토큰 폐기).
+- **C-3** `browserSupportsWebAuthn()` false(미지원) → "보안 키로 인증" 버튼 미표시/비활성.
+- 기존 TOTP/백업코드 토글 회귀 0.
 **실패(예상)**: 버튼 미존재.
-**GREEN**: `LoginMfaStep`에 "보안 키로 인증" **독립 액션 버튼**(FR-5 — MfaCodeInput 세 번째 mode 아님, zodResolver 불요). 클릭 핸들러가 webauthn 오케스트레이션 호출. 챌린지 토큰은 메모리만(NFR-1). 성공 시 access token 저장 + whoami + setSession(기존 MfaCodeInput 동형).
+**GREEN**: `LoginMfaStep`에 "보안 키로 인증" **독립 액션 버튼**(FR-5 — MfaCodeInput 세 번째 mode 아님, zodResolver 불요). 클릭 핸들러가 webauthn 오케스트레이션 호출. 챌린지 토큰은 메모리만(NFR-1). **B-5 토큰 생명주기**: 취소/EC-4는 토큰 유지(재시도), EC-5만 폐기·복귀. 성공 시 access token 저장 + whoami + setSession(기존 MfaCodeInput 동형, credentials:'include'로 받은 refresh 쿠키 의존).
 **REFACTOR**: webauthn 핸들러 분리, i18n 사용.
 **검증**: `pnpm --filter web test -- LoginForm.test.tsx`.
 
@@ -178,4 +201,22 @@ FR-MF-03 WebAuthn(Passkey/하드웨어 키) 2차 인증의 프론트 UI(D6) + E2
 - 추가 검증: pnpm verify(lint+typecheck+test+build), playwright(qa), verify-master-plan(D6/D7 [x])
 - 신규 의존성: `@simplewebauthn/browser`(절대규칙 #17 Maxi 승인 — Task 2)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (독립 security-engineer 적대 dispatch, 2026-06-13)
+
+백엔드 계약(MfaController/AuthController/WebAuthnService/WebAuthnSecurityKeyService/MfaEnrollmentGateFilter) + 프론트 선례 실측 대조. **BLOCKER 5 + CONCERN 4 적발 → 전부 plan 반영(아래 §반영).** auth라 BLOCKER 무시 불가.
+
+- **B-1** `register/finish` 응답은 빈 201(No Content). `MfaController.kt:248` `…build<Unit>()` — KDoc `{id,name}`은 죽은 주석. → finish는 parse 금지·void 반환, MSW도 빈 201, 목록은 invalidate-only.
+- **B-2** `register/start`·`authenticate/start`는 webauthn4j 직렬화 **JSON 문자열** 반환(`WebAuthnService.kt:107`, `produces=json`). 프론트는 `res.json()`으로 **객체화**해 `@simplewebauthn` `optionsJSON`에 전달. MSW도 `HttpResponse.json(객체)` + @simplewebauthn 디코드 필드(challenge base64url/rp/user/pubKeyCredParams, auth는 allowCredentials/rpId) 갖춤.
+- **B-3** `verify`는 `credentials:'include'` 필수(Set-Cookie refresh_token 수신, `mfa.ts:160` 선례), `authenticate/start`는 credentials·CSRF 불요. 비대칭 명시(verify에 include 누락 시 이후 refresh 전부 실패).
+- **B-4** `MfaVerifyRequest.credential`은 `JsonNode?`(`AuthController.kt:871`), `credentialJsonOf`가 `.toString()`(line 302) → 프론트는 credential을 **객체 그대로** 실어 body 한 번만 `JSON.stringify`(이중 직렬화 금지, 문자열화 시 401).
+- **B-5** `authenticate/start`는 토큰 validate만·consume 안 함(`MfaController.kt:296` KDoc) → webauthn 취소/EC-4(verify 401)는 challengeToken **보존**(재클릭 재시도), EC-5(authenticate/start 401 mfa_challenge_expired)만 로그인 복귀.
+- **C-1** `WebAuthnKeyResponse`는 NON_NULL 미적용 → `name`/`lastUsedAt` 키 보존 → `.nullable()` 충분(`.nullish()`·`.optional()` 불요).
+- **C-2** schemas에 Instant→Date 변환 패턴 없음 — timestamp는 `z.string()`(sessions.ts:21·audit-logs.ts 선례). "Instant 컨버전 패턴" 표현 정정.
+- **C-3** Task 6에 브라우저 미지원(`browserSupportsWebAuthn()` false) 버튼 미표시/비활성 케이스 추가.
+- **C-4** register/start·finish·list·delete는 **apiFetch + X-XSRF-TOKEN**(세션 있음, 401 자동 refresh 정상). raw fetch는 authenticate/start·verify(세션 전)뿐. 대비 명시.
+
+**OK(검증됨)**: FR-8 P0 게이트(`isAnyMfaEnabled`가 WebAuthn OR 포함 `AuthController.kt:207`, GateFilter ALLOW_LIST에 `/mfa/**`·refresh), 독립 액션 버튼(FR-5), 평문 비영속(NFR-1), method=webauthn 백엔드 경로 존재, verifyMfa 시그니처 불변 회귀 0.
+
+### §반영 — BLOCKER/CONCERN 9건 모두 Task 1/2/3/6에 인라인 보강(아래 Task 본문 갱신). 게이트1 진입 가능.
