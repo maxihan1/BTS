@@ -7,6 +7,7 @@ import { setupMfa, getMfaStatus, enableMfa, disableMfa } from '@/api/mfa'
 import type { MfaSetupResponse } from '@/api/schemas'
 import { BackupCodesSection } from './BackupCodesSection'
 import { WebauthnSection } from './WebauthnSection'
+import { TrustedDevicesSection } from './TrustedDevicesSection'
 import { ApiError, refreshSession } from '@/api/client'
 import { extractErrorCode } from '@/lib/extract-error-code'
 import { mfaStrings, mfaErrorMessage } from '@/i18n/ko'
@@ -376,6 +377,9 @@ export function MfaSettings(): JSX.Element {
 
       {/* 보안 키 섹션 — TOTP 활성 여부와 무관하게 항상 노출 (FR-1/D-A) */}
       <WebauthnSection />
+
+      {/* 신뢰 디바이스 섹션 — TOTP 활성 여부 무관 항상 노출 */}
+      <TrustedDevicesSection />
     </div>
   )
 }
