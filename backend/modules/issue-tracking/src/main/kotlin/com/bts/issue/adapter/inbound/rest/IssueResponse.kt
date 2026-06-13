@@ -278,6 +278,7 @@ data class IssueResponse(
          * @param resolution 현재 할당된 Resolution 요약. null 이면 미설정. 기본값 null.
          * @param parent 부모 이슈 요약(key, summary). 단건 경로에서 self LEFT JOIN 결과로 채운다. 기본값 null.
          */
+        @Suppress("LongParameterList") // issue Aggregate + type 요약 + 경로별 선택 파라미터 조합이 불가피
         fun from(
             issue: Issue,
             projectKey: String,

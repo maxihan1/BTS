@@ -9,7 +9,6 @@ import com.bts.issue.domain.IssueKey
 import com.bts.shared.issue.IssueTypeId
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.data.domain.PageRequest
 import java.sql.DriverManager
@@ -44,8 +43,7 @@ class IssueRepositoryParentResponseTest : IssueTestcontainersBase() {
         }
     }
 
-    private fun requireTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 미초기화 — resolveTaskTypeId 확인" }
+    private fun requireTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 미초기화 — resolveTaskTypeId 확인" }
 
     /** 테스트용 이슈를 생성·삽입하고 DB 반환값을 돌려준다. */
     private fun insertIssue(
@@ -118,11 +116,12 @@ class IssueRepositoryParentResponseTest : IssueTestcontainersBase() {
 
         repository.updateParent(issueId = child.id.value, parentId = parent.id.value)
 
-        val page = repository.listWithType(
-            projectKey = "TPRJ",
-            pageable = PageRequest.of(0, 20),
-            actor = UUID.randomUUID(),
-        )
+        val page =
+            repository.listWithType(
+                projectKey = "TPRJ",
+                pageable = PageRequest.of(0, 20),
+                actor = UUID.randomUUID(),
+            )
 
         assertThat(page.content).hasSize(2)
         assertThat(page.content.all { it.parent == null }).isTrue()
