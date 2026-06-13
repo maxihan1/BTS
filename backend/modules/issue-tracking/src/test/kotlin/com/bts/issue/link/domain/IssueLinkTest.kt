@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test
 import java.util.UUID
 
 class IssueLinkTest {
-
     @Test
     fun `sourceId와 targetId가 같으면 LinkSelfReferenceException을 던진다`() {
         val sameId = UUID.randomUUID()

@@ -963,7 +963,10 @@ class IssueRepository(
      * @param parentId 지정할 부모 이슈 UUID. null 이면 최상위로 승격(부모 해제).
      */
     @Transactional
-    fun updateParent(issueId: UUID, parentId: UUID?) {
+    fun updateParent(
+        issueId: UUID,
+        parentId: UUID?,
+    ) {
         log.debug("updateParent issueId={} parentId={}", issueId, parentId)
         dsl.update(ISSUES)
             .set(ISSUES.PARENT_ID, parentId)

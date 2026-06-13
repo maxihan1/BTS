@@ -41,20 +41,20 @@ class IssueRepositoryParentTest : IssueTestcontainersBase() {
         }
     }
 
-    private fun requireTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 미초기화 — resolveTaskTypeId 확인" }
+    private fun requireTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 미초기화 — resolveTaskTypeId 확인" }
 
     /** 테스트용 이슈를 생성·삽입하고 DB 반환값을 돌려준다. */
     private fun insertIssue(seq: Long): Issue {
-        val issue = Issue.create(
-            id = IssueId(UUID.randomUUID()),
-            key = IssueKey.of("TPRJ", seq),
-            projectId = testProjectId,
-            typeId = requireTypeId(),
-            summary = "테스트 이슈 $seq",
-            reporterId = ActorId(UUID.randomUUID()),
-            currentStateKey = "open",
-        )
+        val issue =
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = IssueKey.of("TPRJ", seq),
+                projectId = testProjectId,
+                typeId = requireTypeId(),
+                summary = "테스트 이슈 $seq",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+            )
         return repository.insert(issue)
     }
 

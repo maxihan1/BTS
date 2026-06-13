@@ -120,7 +120,11 @@ class LinkApplicationService(
      * @throws LinkCycleException BLOCKS 순환이 탐지된 경우.
      */
     @Transactional
-    fun createLink(sourceKey: IssueKey, targetKey: IssueKey, linkTypeCode: String): LinkResult {
+    fun createLink(
+        sourceKey: IssueKey,
+        targetKey: IssueKey,
+        linkTypeCode: String,
+    ): LinkResult {
         log.debug(
             "createLink sourceKey={} targetKey={} linkTypeCode={}",
             sourceKey.value,
@@ -156,17 +160,23 @@ class LinkApplicationService(
      * @throws LinkCycleException BLOCKS 순환.
      */
     @Suppress("ThrowsCount")
-    private fun resolveAndValidateLink(sourceKey: IssueKey, targetKey: IssueKey, linkType: LinkType): IssueLink {
-        val sourceIssue = issueRepository.findByKey(sourceKey)
-            ?: throw LinkedIssueNotFoundException(UNKNOWN_ISSUE_ID)
+    private fun resolveAndValidateLink(
+        sourceKey: IssueKey,
+        targetKey: IssueKey,
+        linkType: LinkType,
+    ): IssueLink {
+        val sourceIssue =
+            issueRepository.findByKey(sourceKey)
+                ?: throw LinkedIssueNotFoundException(UNKNOWN_ISSUE_ID)
 
         // IssueKey 레벨 자기참조 조기 차단 — target 조회 전 빠른 실패
         if (sourceKey.value == targetKey.value) {
             throw com.bts.issue.link.domain.LinkSelfReferenceException(sourceIssue.id.value)
         }
 
-        val targetIssue = issueRepository.findByKey(targetKey)
-            ?: throw LinkedIssueNotFoundException(UNKNOWN_ISSUE_ID)
+        val targetIssue =
+            issueRepository.findByKey(targetKey)
+                ?: throw LinkedIssueNotFoundException(UNKNOWN_ISSUE_ID)
 
         // 도메인 팩토리 경유 — UUID 레벨 자기참조 검증 포함 (patch-merge-domain-bypass 방지)
         val link = IssueLink.create(sourceIssue.id.value, targetIssue.id.value, linkType)
@@ -197,8 +207,9 @@ class LinkApplicationService(
     fun listLinks(key: IssueKey): LinkListResult {
         log.debug("listLinks key={}", key.value)
 
-        val issue = issueRepository.findByKey(key)
-            ?: throw LinkedIssueNotFoundException(UNKNOWN_ISSUE_ID)
+        val issue =
+            issueRepository.findByKey(key)
+                ?: throw LinkedIssueNotFoundException(UNKNOWN_ISSUE_ID)
 
         val outwardRows = linkRepository.findOutwardWithIssue(issue.id.value)
         val inwardRows = linkRepository.findInwardWithIssue(issue.id.value)
@@ -220,7 +231,10 @@ class LinkApplicationService(
      * @throws LinkNotFoundException 링크 id 에 해당하는 행이 없는 경우.
      */
     @Transactional
-    fun deleteLink(key: IssueKey, linkId: Long) {
+    fun deleteLink(
+        key: IssueKey,
+        linkId: Long,
+    ) {
         log.debug("deleteLink key={} linkId={}", key.value, linkId)
 
         issueRepository.findByKey(key)

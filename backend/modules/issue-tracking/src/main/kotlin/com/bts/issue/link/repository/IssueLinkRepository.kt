@@ -2,8 +2,8 @@
 
 package com.bts.issue.link.repository
 
-import com.bts.issue.jooq.tables.references.ISSUE_LINKS
 import com.bts.issue.jooq.tables.references.ISSUES
+import com.bts.issue.jooq.tables.references.ISSUE_LINKS
 import com.bts.issue.link.domain.IssueLink
 import com.bts.issue.link.domain.LinkType
 import org.jooq.DSLContext
@@ -215,14 +215,16 @@ class IssueLinkRepository(
             .fetch { record ->
                 LinkedIssueRow(
                     linkId = record.get(ISSUE_LINKS.ID) ?: error("issue_links.id must not be null"),
-                    linkType = LinkType.fromCode(
-                        record.get(ISSUE_LINKS.LINK_TYPE) ?: error("issue_links.link_type must not be null"),
-                    ),
+                    linkType =
+                        LinkType.fromCode(
+                            record.get(ISSUE_LINKS.LINK_TYPE) ?: error("issue_links.link_type must not be null"),
+                        ),
                     otherIssueId = record.get(target.ID) ?: error("issues.id must not be null"),
                     otherIssueKey = record.get(target.KEY) ?: error("issues.key must not be null"),
                     otherIssueSummary = record.get(target.SUMMARY) ?: error("issues.summary must not be null"),
-                    otherCurrentStateKey = record.get(target.CURRENT_STATE_KEY)
-                        ?: error("issues.current_state_key must not be null"),
+                    otherCurrentStateKey =
+                        record.get(target.CURRENT_STATE_KEY)
+                            ?: error("issues.current_state_key must not be null"),
                 )
             }
     }
@@ -260,14 +262,16 @@ class IssueLinkRepository(
             .fetch { record ->
                 LinkedIssueRow(
                     linkId = record.get(ISSUE_LINKS.ID) ?: error("issue_links.id must not be null"),
-                    linkType = LinkType.fromCode(
-                        record.get(ISSUE_LINKS.LINK_TYPE) ?: error("issue_links.link_type must not be null"),
-                    ),
+                    linkType =
+                        LinkType.fromCode(
+                            record.get(ISSUE_LINKS.LINK_TYPE) ?: error("issue_links.link_type must not be null"),
+                        ),
                     otherIssueId = record.get(source.ID) ?: error("issues.id must not be null"),
                     otherIssueKey = record.get(source.KEY) ?: error("issues.key must not be null"),
                     otherIssueSummary = record.get(source.SUMMARY) ?: error("issues.summary must not be null"),
-                    otherCurrentStateKey = record.get(source.CURRENT_STATE_KEY)
-                        ?: error("issues.current_state_key must not be null"),
+                    otherCurrentStateKey =
+                        record.get(source.CURRENT_STATE_KEY)
+                            ?: error("issues.current_state_key must not be null"),
                 )
             }
     }

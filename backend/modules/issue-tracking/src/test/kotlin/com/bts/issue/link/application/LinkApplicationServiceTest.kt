@@ -24,7 +24,6 @@ import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import java.time.Instant
 import java.util.UUID
 
 /**
@@ -38,10 +37,11 @@ class LinkApplicationServiceTest : DescribeSpec({
     val issueRepository = mockk<IssueRepository>()
     val linkRepository = mockk<IssueLinkRepository>()
 
-    val sut = LinkApplicationService(
-        issueRepository = issueRepository,
-        linkRepository = linkRepository,
-    )
+    val sut =
+        LinkApplicationService(
+            issueRepository = issueRepository,
+            linkRepository = linkRepository,
+        )
 
     // ── 공통 픽스처 ─────────────────────────────────────────────────────────────
 
@@ -51,15 +51,19 @@ class LinkApplicationServiceTest : DescribeSpec({
     val targetId = UUID.fromString("00000000-0000-4000-8000-000000000002")
     val linkTypeCode = "blocks"
 
-    fun makeIssue(id: UUID, key: IssueKey): Issue = Issue.create(
-        id = IssueId(id),
-        key = key,
-        projectId = UUID.fromString("00000000-0000-4000-8000-100000000000"),
-        typeId = IssueTypeId(1L),
-        summary = "테스트 이슈 ${key.value}",
-        reporterId = ActorId(UUID.fromString("00000000-0000-4000-8000-200000000000")),
-        currentStateKey = "open",
-    )
+    fun makeIssue(
+        id: UUID,
+        key: IssueKey,
+    ): Issue =
+        Issue.create(
+            id = IssueId(id),
+            key = key,
+            projectId = UUID.fromString("00000000-0000-4000-8000-100000000000"),
+            typeId = IssueTypeId(1L),
+            summary = "테스트 이슈 ${key.value}",
+            reporterId = ActorId(UUID.fromString("00000000-0000-4000-8000-200000000000")),
+            currentStateKey = "open",
+        )
 
     val sourceIssue = makeIssue(sourceId, sourceKey)
     val targetIssue = makeIssue(targetId, targetKey)
@@ -140,12 +144,13 @@ class LinkApplicationServiceTest : DescribeSpec({
                 every {
                     linkRepository.existsLink(sourceId, targetId, LinkType.RELATES)
                 } returns false
-                val savedLink = IssueLink(
-                    id = 1L,
-                    sourceId = sourceId,
-                    targetId = targetId,
-                    linkType = LinkType.RELATES,
-                )
+                val savedLink =
+                    IssueLink(
+                        id = 1L,
+                        sourceId = sourceId,
+                        targetId = targetId,
+                        linkType = LinkType.RELATES,
+                    )
                 every { linkRepository.insert(any()) } returns savedLink
 
                 val result = sut.createLink(sourceKey, targetKey, relatesCode)
@@ -164,12 +169,13 @@ class LinkApplicationServiceTest : DescribeSpec({
                     linkRepository.existsLink(sourceId, targetId, LinkType.BLOCKS)
                 } returns false
                 every { linkRepository.existsBlocksPath(targetId, sourceId) } returns false
-                val savedLink = IssueLink(
-                    id = 42L,
-                    sourceId = sourceId,
-                    targetId = targetId,
-                    linkType = LinkType.BLOCKS,
-                )
+                val savedLink =
+                    IssueLink(
+                        id = 42L,
+                        sourceId = sourceId,
+                        targetId = targetId,
+                        linkType = LinkType.BLOCKS,
+                    )
                 every { linkRepository.insert(any()) } returns savedLink
 
                 val result = sut.createLink(sourceKey, targetKey, linkTypeCode)
@@ -192,22 +198,24 @@ class LinkApplicationServiceTest : DescribeSpec({
                 val otherKey = "BTS-3"
                 val otherId = UUID.fromString("00000000-0000-4000-8000-000000000003")
 
-                val outwardRow = LinkedIssueRow(
-                    linkId = 1L,
-                    linkType = LinkType.BLOCKS,
-                    otherIssueId = targetId,
-                    otherIssueKey = targetKey.value,
-                    otherIssueSummary = "타겟 이슈",
-                    otherCurrentStateKey = "open",
-                )
-                val inwardRow = LinkedIssueRow(
-                    linkId = 2L,
-                    linkType = LinkType.RELATES,
-                    otherIssueId = otherId,
-                    otherIssueKey = otherKey,
-                    otherIssueSummary = "다른 이슈",
-                    otherCurrentStateKey = "in-progress",
-                )
+                val outwardRow =
+                    LinkedIssueRow(
+                        linkId = 1L,
+                        linkType = LinkType.BLOCKS,
+                        otherIssueId = targetId,
+                        otherIssueKey = targetKey.value,
+                        otherIssueSummary = "타겟 이슈",
+                        otherCurrentStateKey = "open",
+                    )
+                val inwardRow =
+                    LinkedIssueRow(
+                        linkId = 2L,
+                        linkType = LinkType.RELATES,
+                        otherIssueId = otherId,
+                        otherIssueKey = otherKey,
+                        otherIssueSummary = "다른 이슈",
+                        otherCurrentStateKey = "in-progress",
+                    )
 
                 every { linkRepository.findOutwardWithIssue(sourceId) } returns listOf(outwardRow)
                 every { linkRepository.findInwardWithIssue(sourceId) } returns listOf(inwardRow)

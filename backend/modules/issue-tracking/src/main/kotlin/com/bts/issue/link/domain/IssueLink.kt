@@ -41,7 +41,11 @@ data class IssueLink(
          * @return 검증된 [IssueLink] 인스턴스
          * @throws LinkSelfReferenceException sourceId == targetId 일 때
          */
-        fun create(sourceId: UUID, targetId: UUID, linkType: LinkType): IssueLink {
+        fun create(
+            sourceId: UUID,
+            targetId: UUID,
+            linkType: LinkType,
+        ): IssueLink {
             if (sourceId == targetId) {
                 throw LinkSelfReferenceException(sourceId)
             }

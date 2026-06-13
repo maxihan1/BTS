@@ -7,7 +7,6 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
 class LinkTypeTest {
-
     @Test
     fun `fromCode는 'blocks' 코드를 BLOCKS 로 변환한다`() {
         assertThat(LinkType.fromCode("blocks")).isEqualTo(LinkType.BLOCKS)
