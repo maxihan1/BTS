@@ -99,8 +99,7 @@ describe('inAppNotificationSchema', () => {
   })
 
   it('title이 없으면 파싱 실패한다', () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { title: _title, ...withoutTitle } = validPayload
+    const withoutTitle = { ...validPayload, title: undefined }
     const result = inAppNotificationSchema.safeParse(withoutTitle)
     expect(result.success).toBe(false)
   })
