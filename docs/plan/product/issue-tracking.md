@@ -420,11 +420,11 @@
 
 **우선순위**. 중간 | **선행**. §5.3.1 | **Plan slug**. `issue/links-graph`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — 노드/엣지 표현 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/issues/{key}/graph` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 (책임. backend-engineer) — PR #138 (그래프 노드/엣지 읽기 모델, 신규 엔티티 0)
+- [x] D2. 명세 — 노드/엣지 표현 (책임. backend-engineer) — PR #138 (깊이 제한 BFS, edge.type 대문자 link 4종+PARENT)
+- [x] D3. 데이터 모델 — (활용) (책임. db-engineer) — PR #138 (신규 스키마 없음, issue_links+parent_id 읽기 쿼리만)
+- [x] D4. 백엔드 — `GET /api/v1/issues/{key}/graph` (책임. backend-engineer) — PR #138 (?depth=1..3 기본 2, 노드 상한 100+truncated)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #138 (repo 통합/service 단위/controller HTTP 통합, 400 INVALID_DEPTH 스코프 검증)
 - [ ] D6. 프론트 UI — SVG 또는 force-directed lib (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 

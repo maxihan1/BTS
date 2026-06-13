@@ -108,3 +108,13 @@ class ParentCycleException(issueId: UUID, parentId: UUID) :
  */
 class InvalidLinkTypeCodeException(code: String) :
     LinkDomainException("Unknown link type code: $code")
+
+/**
+ * 그래프 조회 depth 파라미터가 유효하지 않을 때.
+ *
+ * 의도 HTTP 상태: 400 Bad Request
+ *
+ * @param rawValue 클라이언트가 전달한 원본 depth 문자열 (null 가능)
+ */
+class InvalidGraphDepthException(val rawValue: String?) :
+    LinkDomainException("유효하지 않은 depth 값입니다. 1~3 사이 정수여야 합니다 (입력: $rawValue).")

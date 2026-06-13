@@ -3,6 +3,7 @@
 package com.bts.issue.link.web
 
 import com.bts.issue.link.domain.DuplicateLinkException
+import com.bts.issue.link.domain.InvalidGraphDepthException
 import com.bts.issue.link.domain.InvalidLinkTypeCodeException
 import com.bts.issue.link.domain.LinkCycleException
 import com.bts.issue.link.domain.LinkNotFoundException
@@ -31,6 +32,7 @@ import java.time.Instant
  * 매핑 규칙.
  * - [MethodArgumentNotValidException] → 400 + [LinkErrorCodes.VALIDATION_FAILED]
  * - [InvalidLinkTypeCodeException] → 400 + [LinkErrorCodes.INVALID_LINK_TYPE]
+ * - [InvalidGraphDepthException] → 400 + [LinkErrorCodes.INVALID_DEPTH]
  * - [LinkedIssueNotFoundException] → 404 + [LinkErrorCodes.ISSUE_NOT_FOUND]
  * - [LinkNotFoundException] → 404 + [LinkErrorCodes.LINK_NOT_FOUND]
  * - [DuplicateLinkException] → 409 + [LinkErrorCodes.DUPLICATE_LINK]
@@ -59,6 +61,19 @@ class LinkExceptionHandler {
             title = "Validation Failed",
             errorCode = LinkErrorCodes.VALIDATION_FAILED,
             detail = fieldErrors.ifBlank { "요청 값 검증에 실패했습니다." },
+        )
+    }
+
+    /** [InvalidGraphDepthException] — 유효하지 않은 graph depth — 400. */
+    @ExceptionHandler(InvalidGraphDepthException::class)
+    fun handleInvalidGraphDepth(ex: InvalidGraphDepthException): ProblemDetail {
+        log.info("LINK_400 invalid_graph_depth rawValue='{}'", ex.rawValue)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "graph-invalid-depth",
+            title = "Invalid Graph Depth",
+            errorCode = LinkErrorCodes.INVALID_DEPTH,
+            detail = ex.message,
         )
     }
 
