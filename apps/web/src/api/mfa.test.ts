@@ -591,6 +591,60 @@ describe('getBackupCodesStatus', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// T-MFA-10. verifyMfa — trustDevice 인자 (FR-MF-05 신뢰 디바이스)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('verifyMfa — trustDevice 인자', () => {
+  it('T-MFA-10a: trustDevice:true 전달 시 body에 trust_device:true가 포함된다', async () => {
+    let capturedBody: unknown = null
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json(tokenResponseFixture, { status: 200 })
+      }),
+    )
+    await verifyMfa('challenge.jwt.token', '123456', 'totp', true)
+    const body = capturedBody as Record<string, unknown> | null
+    expect(body?.trust_device).toBe(true)
+  })
+
+  it('T-MFA-10b: trustDevice 생략(기본값) 시 body에 trust_device:false가 포함된다 (하위호환)', async () => {
+    let capturedBody: unknown = null
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json(tokenResponseFixture, { status: 200 })
+      }),
+    )
+    await verifyMfa('challenge.jwt.token', '123456')
+    const body = capturedBody as Record<string, unknown> | null
+    expect(body?.trust_device).toBe(false)
+  })
+
+  it('T-MFA-10c: trustDevice:true 전달해도 /refresh를 호출하지 않는다 (raw fetch 유지 — NFR-2 회귀)', async () => {
+    let refreshCallCount = 0
+    server.use(
+      http.post('/api/v1/auth/mfa/verify', () =>
+        HttpResponse.json({ error: 'invalid_code' }, { status: 401 }),
+      ),
+      http.post('/api/v1/auth/refresh', () => {
+        refreshCallCount++
+        return HttpResponse.json({ error: 'unauthorized' }, { status: 401 })
+      }),
+    )
+    let thrown: unknown
+    try {
+      await verifyMfa('challenge.jwt.token', '000000', 'totp', true)
+    } catch (e) {
+      thrown = e
+    }
+    expect(refreshCallCount).toBe(0)
+    expect(thrown).toBeInstanceOf(ApiError)
+    if (!(thrown instanceof ApiError)) throw new Error('type guard missed')
+    expect(thrown.status).toBe(401)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // T-MFA-9. verifyMfa — method 파라미터 확장 (하위호환 검증)
 // ─────────────────────────────────────────────────────────────────────────────
 describe('verifyMfa — method 파라미터', () => {
