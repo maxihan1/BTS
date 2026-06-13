@@ -117,4 +117,21 @@ class TemplateVariableSubstitutorTest {
             )
         assertEquals("{{Author}}", result)
     }
+
+    // ── enum ↔ 정규식 정합 가드 (C1: 이중 정의 drift 차단) ──────────────────────
+
+    @Test
+    fun `모든 TemplateVariable 토큰을 substitute 가 인식하고 치환한다`() {
+        // TOKEN_PATTERN 정규식(author|date|project)과 enum closed set이 이중 정의되어 있다.
+        // enum에 항목을 추가하고 정규식을 갱신하지 않으면 새 토큰이 조용히 치환 안 됨 — 이 가드가 즉시 적발한다.
+        // 메모리 enum-add-breaks-crossmodule-count-guard 와 같은 결의 drift 트랩 차단.
+        TemplateVariable.entries.forEach { variable ->
+            val result =
+                TemplateVariableSubstitutor.substitute(
+                    content = variable.token,
+                    bindings = mapOf(variable to "REPLACED"),
+                )
+            assertEquals("REPLACED", result, "${variable.name} 토큰(${variable.token}) 미치환 — 정규식↔enum drift")
+        }
+    }
 }

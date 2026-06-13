@@ -43,10 +43,12 @@ object TemplateVariableSubstitutor {
         bindings: Map<TemplateVariable, String>,
     ): String {
         return TOKEN_PATTERN.replace(content) { matchResult ->
-            // 정규식이 closed set(author|date|project)만 캡처하므로 entries.first는 항상 성공한다.
+            // 정규식이 캡처한 변수명을 enum으로 역매핑한다. 정규식과 enum이 이중 정의(C1)되어 있으므로,
+            // 둘이 어긋나 매칭 enum이 없더라도 entries.first(예외)가 아닌 firstOrNull + 리터럴 폴백으로
+            // fail-safe 를 보장한다 — 치환 실패는 절대 이슈 생성을 막지 않는다(ADR §4). 정합은 가드 테스트로 강제.
             val variableName = matchResult.groupValues[1]
-            val variable = TemplateVariable.entries.first { it.name.lowercase() == variableName }
-            bindings[variable] ?: matchResult.value
+            val variable = TemplateVariable.entries.firstOrNull { it.name.lowercase() == variableName }
+            variable?.let { bindings[it] } ?: matchResult.value
         }
     }
 }
