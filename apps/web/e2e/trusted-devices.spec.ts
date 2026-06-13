@@ -207,36 +207,59 @@ test.describe('신뢰 디바이스 설정 화면 (FR-MF-05)', () => {
   })
 
   // ─────────────────────────────────────────────────────────────────────────
-  // S4 — 0건 시드 → 빈 상태 안내
+  // S4 — 0건 상태 → 빈 상태 안내 + SPA 재진입 후에도 유지
   //
-  // Given   MSW store 리셋 후 전체 취소(DELETE /api/v1/auth/mfa/trusted-devices) 시드
-  //         → GET 응답이 빈 배열
-  //         alice 로그인 → /settings/mfa 진입
-  // When    TrustedDevicesSection 로딩 완료
-  // Then    "신뢰한 기기가 없습니다." 안내 표시
+  // Given   alice 로그인 → /settings/mfa SPA 내부 이동 → UI 전체 취소 → 빈 상태
+  // When    /dashboard SPA 내부 이동 → "2단계 인증" 링크 클릭 → /settings/mfa 재진입
+  // Then    "신뢰한 기기가 없습니다." 안내 여전히 표시
   //         "신뢰 해제" 버튼 없음
   //         "모든 기기 신뢰 해제" 버튼 없음
+  //
+  // 주의 — S3 과 차이점.
+  //   S3 은 "전체 취소 후 같은 페이지에서 빈 상태" 검증.
+  //   S4 는 "빈 상태에서 다른 페이지로 이동 후 재진입해도 빈 상태 지속" 검증
+  //   (SPA 라우팅 + QueryClient staleTime 만료 전 캐시 무효화 → refetch 정합).
+  //
+  // 구현 노트 — MSW 메모리 초기화 함정.
+  //   page.goto('/settings/mfa') 는 full page reload 로 앱 컨텍스트(revokedIds Set)가
+  //   초기화된다. 따라서 S4 는 SPA 내부 이동(링크 클릭)으로 페이지를 오가야 한다.
   // ─────────────────────────────────────────────────────────────────────────
 
-  test('S4 — Given 0건 시드 When 설정 화면 진입 Then 빈 상태 안내 표시', async ({ page }) => {
-    // Given. 브라우저 컨텍스트에서 전체 취소 API 를 직접 호출해 빈 상태 시드
-    // MSW revokeAllDevicesHandler 가 처리 → 이후 GET 이 빈 배열 반환
-    await page.evaluate(async () => {
-      await fetch('/api/v1/auth/mfa/trusted-devices', {
-        method: 'DELETE',
-        headers: { 'X-XSRF-TOKEN': 'e2e-test' },
-      })
-    })
-
-    // Given. alice 로그인 → /settings/mfa
+  test('S4 — Given 전체 취소 후 SPA 재진입 When 설정 화면 재진입 Then 빈 상태 여전히 표시', async ({ page }) => {
+    // Given. alice 로그인 후 계정 메뉴 → "2단계 인증" 링크로 SPA 내부 이동
     await loginAsAlice(page)
-    await page.goto('/settings/mfa')
+
+    // /dashboard 에서 계정 메뉴 클릭 → 2단계 인증 링크 클릭 (SPA 내부 이동)
+    await page.getByRole('button', { name: 'alice 계정 메뉴' }).click()
+    await page.getByRole('menuitem', { name: '2단계 인증', exact: true }).click()
+
+    // Given. /settings/mfa TrustedDevicesSection 로딩 완료
+    await expect(page.getByText('Chrome on macOS', { exact: true })).toBeVisible()
+
+    // Given. "모든 기기 신뢰 해제" → 인라인 확인 → "확인" (S3 과 동일한 전체 취소 플로우)
+    await page.getByRole('button', { name: mfaStrings.trustedDevicesRevokeAllButton, exact: true }).click()
+    await expect(page.getByText(mfaStrings.trustedDevicesRevokeConfirm, { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: issueDetailStrings.confirmButton, exact: true }).click()
+    await expect(page.getByText(mfaStrings.trustedDevicesEmptyState, { exact: true })).toBeVisible()
+
+    // When. /dashboard SPA 내부 이동 (로고 클릭 또는 URL 직접 이동 대신 window.history)
+    // SPA 내부 이동이어야 revokedIds 가 유지된다.
+    await page.evaluate(() => { window.history.pushState({}, '', '/dashboard') })
+    await page.waitForURL('**/dashboard')
+
+    // When. 계정 메뉴 → "2단계 인증" 링크로 /settings/mfa 재진입 (SPA 내부 이동)
+    await page.getByRole('button', { name: 'alice 계정 메뉴' }).click()
+    await page.getByRole('menuitem', { name: '2단계 인증', exact: true }).click()
 
     // Then. MFA 설정 페이지 로딩 완료
     await expect(page.getByRole('heading', { name: mfaStrings.settingsTitle, exact: true })).toBeVisible()
 
-    // Then. 빈 상태 안내 메시지 표시
+    // Then. 빈 상태 안내 메시지 여전히 표시 (QueryClient refetch → MSW 빈 배열 반환)
     await expect(page.getByText(mfaStrings.trustedDevicesEmptyState, { exact: true })).toBeVisible()
+
+    // Then. 섹션 제목/설명은 빈 상태에서도 표시 (섹션 자체는 항상 렌더)
+    await expect(page.getByText(mfaStrings.trustedDevicesSectionTitle, { exact: true })).toBeVisible()
+    await expect(page.getByText(mfaStrings.trustedDevicesSectionDescription, { exact: true })).toBeVisible()
 
     // Then. "신뢰 해제" 버튼 없음 (기기가 없으므로)
     await expect(page.getByRole('button', { name: mfaStrings.trustedDevicesRevokeButton, exact: true })).toHaveCount(0)
