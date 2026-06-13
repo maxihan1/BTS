@@ -7,8 +7,8 @@ import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.link.domain.InvalidGraphDepthException
-import com.bts.issue.link.domain.LinkedIssueNotFoundException
 import com.bts.issue.link.domain.LinkType
+import com.bts.issue.link.domain.LinkedIssueNotFoundException
 import com.bts.issue.link.repository.GraphNeighborRow
 import com.bts.issue.link.repository.IssueGraphRepository
 import com.bts.issue.link.repository.IssueLinkRepository
@@ -38,11 +38,12 @@ class IssueGraphServiceTest : DescribeSpec({
     val linkRepository = mockk<IssueLinkRepository>()
     val graphRepository = mockk<IssueGraphRepository>()
 
-    val sut = IssueGraphService(
-        issueRepository = issueRepository,
-        linkRepository = linkRepository,
-        graphRepository = graphRepository,
-    )
+    val sut =
+        IssueGraphService(
+            issueRepository = issueRepository,
+            linkRepository = linkRepository,
+            graphRepository = graphRepository,
+        )
 
     // ── 공통 픽스처 ─────────────────────────────────────────────────────────────
 
@@ -55,18 +56,22 @@ class IssueGraphServiceTest : DescribeSpec({
         id: UUID,
         key: String,
         status: String = "open",
-    ): Issue = Issue.create(
-        id = IssueId(id),
-        key = IssueKey(key),
-        projectId = projectId,
-        typeId = IssueTypeId(1L),
-        summary = "이슈 $key",
-        reporterId = reporterId,
-        currentStateKey = status,
-    )
+    ): Issue =
+        Issue.create(
+            id = IssueId(id),
+            key = IssueKey(key),
+            projectId = projectId,
+            typeId = IssueTypeId(1L),
+            summary = "이슈 $key",
+            reporterId = reporterId,
+            currentStateKey = status,
+        )
 
-    fun makeNeighborRow(id: UUID, key: String, status: String = "open"): GraphNeighborRow =
-        GraphNeighborRow(id = id, key = key, summary = "이슈 $key", statusKey = status)
+    fun makeNeighborRow(
+        id: UUID,
+        key: String,
+        status: String = "open",
+    ): GraphNeighborRow = GraphNeighborRow(id = id, key = key, summary = "이슈 $key", statusKey = status)
 
     fun makeLinkRow(
         linkId: Long,
@@ -74,14 +79,15 @@ class IssueGraphServiceTest : DescribeSpec({
         otherId: UUID,
         otherKey: String,
         otherStatus: String = "open",
-    ): LinkedIssueRow = LinkedIssueRow(
-        linkId = linkId,
-        linkType = linkType,
-        otherIssueId = otherId,
-        otherIssueKey = otherKey,
-        otherIssueSummary = "이슈 $otherKey",
-        otherCurrentStateKey = otherStatus,
-    )
+    ): LinkedIssueRow =
+        LinkedIssueRow(
+            linkId = linkId,
+            linkType = linkType,
+            otherIssueId = otherId,
+            otherIssueKey = otherKey,
+            otherIssueSummary = "이슈 $otherKey",
+            otherCurrentStateKey = otherStatus,
+        )
 
     val centerId = uuid(1)
     val centerKey = IssueKey("BTS-1")
@@ -124,19 +130,16 @@ class IssueGraphServiceTest : DescribeSpec({
             every { issueRepository.findByKey(centerKey) } returns centerIssue
 
             // center 확장
-            every { linkRepository.findOutwardWithIssue(centerId) } returns listOf(
-                makeLinkRow(1L, LinkType.BLOCKS, outId, "BTS-2"),
-            )
-            every { linkRepository.findInwardWithIssue(centerId) } returns listOf(
-                makeLinkRow(2L, LinkType.RELATES, inId, "BTS-3"),
-            )
-            every { graphRepository.findParent(centerId) } returns makeNeighborRow(parentId, "BTS-4")
-            every { graphRepository.findChildren(centerId) } returns listOf(
-                makeNeighborRow(childId, "BTS-5"),
-            )
+            every { linkRepository.findOutwardWithIssue(centerId) } returns
+                listOf(makeLinkRow(1L, LinkType.BLOCKS, outId, "BTS-2"))
+            every { linkRepository.findInwardWithIssue(centerId) } returns
+                listOf(makeLinkRow(2L, LinkType.RELATES, inId, "BTS-3"))
+            every { graphRepository.findParent(centerId) } returns
+                makeNeighborRow(parentId, "BTS-4")
+            every { graphRepository.findChildren(centerId) } returns
+                listOf(makeNeighborRow(childId, "BTS-5"))
 
-            // 이웃 노드는 depth=1 이므로 확장 안 함 (default depth=2 이지만 이웃 자신의 depth=1 < 2 이므로 확장)
-            // 이웃 노드들은 depth=1, 테스트 depth=1 로 호출하여 이웃 확장 불필요하게 설정
+            // 이웃 노드들은 depth=1 로 호출하여 이웃 확장 불필요하게 설정
             every { linkRepository.findOutwardWithIssue(outId) } returns emptyList()
             every { linkRepository.findInwardWithIssue(outId) } returns emptyList()
             every { graphRepository.findParent(outId) } returns null
@@ -194,17 +197,15 @@ class IssueGraphServiceTest : DescribeSpec({
         it("depth=1 이면 2-hop 이웃을 포함하지 않는다") {
             every { issueRepository.findByKey(centerKey) } returns centerIssue
 
-            every { linkRepository.findOutwardWithIssue(centerId) } returns listOf(
-                makeLinkRow(10L, LinkType.RELATES, hop1Id, "BTS-2"),
-            )
+            every { linkRepository.findOutwardWithIssue(centerId) } returns
+                listOf(makeLinkRow(10L, LinkType.RELATES, hop1Id, "BTS-2"))
             every { linkRepository.findInwardWithIssue(centerId) } returns emptyList()
             every { graphRepository.findParent(centerId) } returns null
             every { graphRepository.findChildren(centerId) } returns emptyList()
 
             // depth=1 이므로 hop1 은 확장하지 않아야 하지만 stub 은 넣어두고 결과로 검증
-            every { linkRepository.findOutwardWithIssue(hop1Id) } returns listOf(
-                makeLinkRow(11L, LinkType.RELATES, hop2Id, "BTS-3"),
-            )
+            every { linkRepository.findOutwardWithIssue(hop1Id) } returns
+                listOf(makeLinkRow(11L, LinkType.RELATES, hop2Id, "BTS-3"))
             every { linkRepository.findInwardWithIssue(hop1Id) } returns emptyList()
             every { graphRepository.findParent(hop1Id) } returns null
             every { graphRepository.findChildren(hop1Id) } returns emptyList()
@@ -218,16 +219,14 @@ class IssueGraphServiceTest : DescribeSpec({
         it("depth=2 이면 2-hop 이웃을 포함한다") {
             every { issueRepository.findByKey(centerKey) } returns centerIssue
 
-            every { linkRepository.findOutwardWithIssue(centerId) } returns listOf(
-                makeLinkRow(10L, LinkType.RELATES, hop1Id, "BTS-2"),
-            )
+            every { linkRepository.findOutwardWithIssue(centerId) } returns
+                listOf(makeLinkRow(10L, LinkType.RELATES, hop1Id, "BTS-2"))
             every { linkRepository.findInwardWithIssue(centerId) } returns emptyList()
             every { graphRepository.findParent(centerId) } returns null
             every { graphRepository.findChildren(centerId) } returns emptyList()
 
-            every { linkRepository.findOutwardWithIssue(hop1Id) } returns listOf(
-                makeLinkRow(11L, LinkType.RELATES, hop2Id, "BTS-3"),
-            )
+            every { linkRepository.findOutwardWithIssue(hop1Id) } returns
+                listOf(makeLinkRow(11L, LinkType.RELATES, hop2Id, "BTS-3"))
             every { linkRepository.findInwardWithIssue(hop1Id) } returns emptyList()
             every { graphRepository.findParent(hop1Id) } returns null
             every { graphRepository.findChildren(hop1Id) } returns emptyList()
@@ -249,19 +248,17 @@ class IssueGraphServiceTest : DescribeSpec({
             every { issueRepository.findByKey(centerKey) } returns centerIssue
 
             // center → nodeA (outward, linkId=99)
-            every { linkRepository.findOutwardWithIssue(centerId) } returns listOf(
-                makeLinkRow(99L, LinkType.BLOCKS, nodeAId, "BTS-2"),
-            )
+            every { linkRepository.findOutwardWithIssue(centerId) } returns
+                listOf(makeLinkRow(99L, LinkType.BLOCKS, nodeAId, "BTS-2"))
             every { linkRepository.findInwardWithIssue(centerId) } returns emptyList()
             every { graphRepository.findParent(centerId) } returns null
             every { graphRepository.findChildren(centerId) } returns emptyList()
 
             // nodeA → center (inward 조회 시 같은 linkId=99 로 반환될 수 있음)
             every { linkRepository.findOutwardWithIssue(nodeAId) } returns emptyList()
-            every { linkRepository.findInwardWithIssue(nodeAId) } returns listOf(
-                // linkId=99, otherIssueId=centerId (nodeA 입장에서 center 가 source)
-                makeLinkRow(99L, LinkType.BLOCKS, centerId, "BTS-1"),
-            )
+            // linkId=99, otherIssueId=centerId (nodeA 입장에서 center 가 source)
+            every { linkRepository.findInwardWithIssue(nodeAId) } returns
+                listOf(makeLinkRow(99L, LinkType.BLOCKS, centerId, "BTS-1"))
             every { graphRepository.findParent(nodeAId) } returns null
             every { graphRepository.findChildren(nodeAId) } returns emptyList()
 
@@ -301,11 +298,12 @@ class IssueGraphServiceTest : DescribeSpec({
             every { issueRepository.findByKey(centerKey) } returns centerIssue
 
             // center 에서 3개 이웃 (key 가 역순으로 반환되게 stub)
-            every { linkRepository.findOutwardWithIssue(centerId) } returns listOf(
-                makeLinkRow(30L, LinkType.RELATES, idC, "BTS-4"),
-                makeLinkRow(31L, LinkType.RELATES, idA, "BTS-2"),
-                makeLinkRow(32L, LinkType.RELATES, idB, "BTS-3"),
-            )
+            every { linkRepository.findOutwardWithIssue(centerId) } returns
+                listOf(
+                    makeLinkRow(30L, LinkType.RELATES, idC, "BTS-4"),
+                    makeLinkRow(31L, LinkType.RELATES, idA, "BTS-2"),
+                    makeLinkRow(32L, LinkType.RELATES, idB, "BTS-3"),
+                )
             every { linkRepository.findInwardWithIssue(centerId) } returns emptyList()
             every { graphRepository.findParent(centerId) } returns null
             every { graphRepository.findChildren(centerId) } returns emptyList()
@@ -322,10 +320,11 @@ class IssueGraphServiceTest : DescribeSpec({
         it("edges 는 fromKey ASC, toKey ASC, type ASC 정렬이어야 한다") {
             every { issueRepository.findByKey(centerKey) } returns centerIssue
 
-            every { linkRepository.findOutwardWithIssue(centerId) } returns listOf(
-                makeLinkRow(40L, LinkType.RELATES, idC, "BTS-4"),
-                makeLinkRow(41L, LinkType.BLOCKS, idA, "BTS-2"),
-            )
+            every { linkRepository.findOutwardWithIssue(centerId) } returns
+                listOf(
+                    makeLinkRow(40L, LinkType.RELATES, idC, "BTS-4"),
+                    makeLinkRow(41L, LinkType.BLOCKS, idA, "BTS-2"),
+                )
             every { linkRepository.findInwardWithIssue(centerId) } returns emptyList()
             every { graphRepository.findParent(centerId) } returns null
             every { graphRepository.findChildren(centerId) } returns emptyList()
