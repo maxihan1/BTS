@@ -425,46 +425,76 @@ class IssueRepository(
     }
 
     /**
-     * 활성 이슈를 key 로 조회하고, issue_types 와 1:1 JOIN 하여 type 요약을 포함한 [IssueResponse] 를 반환한다.
+     * 활성 이슈를 key 로 조회하고, issue_types 와 1:1 JOIN, 부모 이슈와 self LEFT JOIN 하여
+     * type 요약과 부모 요약을 포함한 [IssueResponse] 를 반환한다.
      *
      * issues.type_id = issue_types.id 단건 JOIN — cartesian product 위험 없음 (learnings PR#31).
      *
+     * 부모 이슈 self LEFT JOIN.
+     * - [PARENT_ALIAS] (`issues AS parent`) 로 issues 테이블 자기참조. 본 컬럼과 이름 충돌 차단.
+     * - JOIN ON `issues.parent_id = parent.id AND parent.deleted_at IS NULL`.
+     * - parent_id 가 null 이면 LEFT JOIN 결과가 모두 null → [IssueResponse.parent] = null.
+     * - parent 컬럼은 [PARENT_KEY_ALIAS] / [PARENT_SUMMARY_ALIAS] 로 명시 alias 해 record 에서 읽는다.
+     *
+     * **parent 는 단건 조회([findByKeyWithType]) 경로에서만 채워진다.**
+     * 목록 경로([listWithType])는 N+1/비용 회피를 위해 조인 없이 parent=null 반환한다. FR-LK-01 Task 1.
+     *
      * @param key 조회할 이슈 키.
-     * @return type 요약(typeId/typeKey/typeName) 이 포함된 [IssueResponse]. 이슈가 없으면 null.
+     * @return type 요약(typeId/typeKey/typeName) + 부모 요약(key/summary) 이 포함된 [IssueResponse].
+     *   이슈가 없으면 null.
      */
     @Transactional(readOnly = true)
-    fun findByKeyWithType(key: IssueKey): IssueResponse? =
-        dsl.select(
+    @Suppress("CyclomaticComplexity") // 명시 alias + LEFT JOIN + null 분기 불가피
+    fun findByKeyWithType(key: IssueKey): IssueResponse? {
+        // issues self LEFT JOIN — 부모 이슈 key/summary 조회. PARENT_ALIAS 로 컬럼 충돌 차단.
+        val parentAlias = ISSUES.`as`(PARENT_ALIAS)
+        return dsl.select(
             ISSUES.fields().toList() +
                 listOf(
-                    ISSUE_TYPES.ID.`as`("type_id"),
-                    ISSUE_TYPES.KEY.`as`("type_key"),
-                    ISSUE_TYPES.NAME.`as`("type_name"),
+                    ISSUE_TYPES.ID.`as`(TYPE_ID_ALIAS),
+                    ISSUE_TYPES.KEY.`as`(TYPE_KEY_ALIAS),
+                    ISSUE_TYPES.NAME.`as`(TYPE_NAME_ALIAS),
+                    parentAlias.KEY.`as`(PARENT_KEY_ALIAS),
+                    parentAlias.SUMMARY.`as`(PARENT_SUMMARY_ALIAS),
                 ),
         )
             .from(ISSUES)
             .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
+            .leftJoin(parentAlias).on(
+                ISSUES.PARENT_ID.eq(parentAlias.ID)
+                    .and(parentAlias.DELETED_AT.isNull),
+            )
             .where(activeByKey(key))
             .fetchOne()
             ?.let { record ->
                 val issueRecord = record.into(ISSUES)
+                val parentKey = record.get(PARENT_KEY_ALIAS, String::class.java)
+                val parentSummary = record.get(PARENT_SUMMARY_ALIAS, String::class.java)
+                val parentSummaryDto =
+                    if (parentKey != null && parentSummary != null) {
+                        IssueResponse.ParentSummary(key = parentKey, summary = parentSummary)
+                    } else {
+                        null
+                    }
                 IssueResponse.from(
                     issue = issueRecord.toIssue(),
                     projectKey = key.projectPrefix,
                     typeInfo =
                         IssueResponse.IssueTypeInfo(
                             id =
-                                record.get("type_id", Long::class.java)
+                                record.get(TYPE_ID_ALIAS, Long::class.java)
                                     ?: error("issue_types.id must not be null in join result"),
                             key =
-                                record.get("type_key", String::class.java)
+                                record.get(TYPE_KEY_ALIAS, String::class.java)
                                     ?: error("issue_types.key must not be null in join result"),
                             name =
-                                record.get("type_name", String::class.java)
+                                record.get(TYPE_NAME_ALIAS, String::class.java)
                                     ?: error("issue_types.name must not be null in join result"),
                         ),
+                    parent = parentSummaryDto,
                 )
             }
+    }
 
     /**
      * 프로젝트별 활성 이슈 목록을 페이지 단위로 조회하고, issue_types JOIN 으로 type 요약을 포함한다.
@@ -618,6 +648,29 @@ class IssueRepository(
                 reporterLevelIds = emptySet(),
                 assigneeLevelIds = emptySet(),
             )
+
+        // ── findByKeyWithType self LEFT JOIN alias 상수 ─────────────────────────
+        // ISSUES.as(PARENT_ALIAS) 로 생성된 alias 테이블을 통해 부모 이슈 self 참조.
+        // 본 컬럼명(key, summary)과 충돌하지 않도록 결과 컬럼에 명시 alias 를 붙인다.
+        // parent 는 단건 조회([findByKeyWithType]) 경로에서만 채움 — 목록 경로는 null.
+
+        /** issues self JOIN 에서 부모 이슈를 참조하는 테이블 alias. */
+        private const val PARENT_ALIAS = "parent"
+
+        /** issue_types.id 결과 컬럼 alias. */
+        private const val TYPE_ID_ALIAS = "type_id"
+
+        /** issue_types.key 결과 컬럼 alias. */
+        private const val TYPE_KEY_ALIAS = "type_key"
+
+        /** issue_types.name 결과 컬럼 alias. */
+        private const val TYPE_NAME_ALIAS = "type_name"
+
+        /** 부모 이슈 key 결과 컬럼 alias. */
+        private const val PARENT_KEY_ALIAS = "parent_key"
+
+        /** 부모 이슈 summary 결과 컬럼 alias. */
+        private const val PARENT_SUMMARY_ALIAS = "parent_summary"
     }
 
     /**

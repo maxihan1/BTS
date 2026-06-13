@@ -8,6 +8,7 @@ import com.bts.issue.domain.IssuePriority
 import com.bts.issue.markdown.MarkdownRenderer
 import com.bts.shared.permission.FieldKind
 import com.bts.shared.permission.FieldRef
+import com.fasterxml.jackson.annotation.JsonInclude
 import java.time.Instant
 import java.util.UUID
 
@@ -53,6 +54,10 @@ import java.util.UUID
  * @property noneditableFields actor 에게 열람은 허용되지만 편집 권한이 없는 필드 키 목록. FR-PM-07 Task-1.
  *   [restrictedFields](숨김) 에 포함된 키는 이 목록에 중복 수록되지 않는다.
  *   편집 제한이 없으면 빈 리스트. 클라이언트는 이 목록으로 입력 필드를 미리 비활성화할 수 있다.
+ * @property parent 부모 이슈 요약(key, summary). **단건 조회([findByKeyWithType]) 경로에서만 채워진다.**
+ *   목록 조회([listWithType]) 경로에서는 N+1/비용 회피를 위해 항상 null 로 반환된다.
+ *   null 이면 JSON 키 자체를 생략한다([JsonInclude.Include.NON_NULL] 적용) — 프론트 Zod `.nullish()` 정합.
+ *   FR-LK-01 Task 1.
  */
 data class IssueResponse(
     val key: String,
@@ -86,6 +91,9 @@ data class IssueResponse(
     val customFields: Map<String, Any?> = emptyMap(),
     val restrictedFields: List<String> = emptyList(),
     val noneditableFields: List<String> = emptyList(),
+    /** 단건 조회 경로에서만 채워짐. 목록 경로는 null. null 이면 JSON 키 생략. */
+    @field:JsonInclude(JsonInclude.Include.NON_NULL)
+    val parent: ParentSummary? = null,
 ) {
     /**
      * [visible] 집합을 기준으로 열람 불가 필드를 마스킹하고, [editable] 집합을 기준으로
@@ -232,6 +240,17 @@ data class IssueResponse(
      */
     data class ResolutionSummary(val id: UUID, val key: String, val name: String)
 
+    /**
+     * 부모 이슈 요약 정보. 단건 조회 경로에서만 채워진다 (FR-LK-01 Task 1).
+     *
+     * issues.parent_id → parent 이슈 self LEFT JOIN 결과를 담는다.
+     * null 이면 이슈가 최상위(부모 없음)를 의미한다.
+     *
+     * @property key 부모 이슈 전역 식별자 문자열. 예: `"ATLAS-10"`.
+     * @property summary 부모 이슈 제목.
+     */
+    data class ParentSummary(val key: String, val summary: String)
+
     companion object {
         /** DB DEFAULT 3 (Medium) 과 동기화. */
         private const val DEFAULT_PRIORITY = 3
@@ -249,11 +268,15 @@ data class IssueResponse(
          * FR-PM-06 PR-B — [IssueResponse.securityLevelId] 는 [Issue.securityLevelId] 에서 직접 매핑된다.
          * 단건/목록 경로 모두 동일하게 노출된다.
          *
+         * FR-LK-01 Task 1 — [parent] 는 단건 조회([IssueRepository.findByKeyWithType]) 경로에서만
+         * 채워진다. 목록 경로([IssueRepository.listWithType])는 null 로 호출한다(N+1/비용 회피).
+         *
          * @param issue 변환할 이슈 Aggregate.
          * @param projectKey 이슈가 속한 프로젝트 키 문자열.
          * @param typeInfo 이슈 타입 요약 (id, key, name).
          * @param renderHtml true 이면 descriptionHtml 을 렌더. 단건 경로에서만 true 로 호출한다. 기본값 false.
          * @param resolution 현재 할당된 Resolution 요약. null 이면 미설정. 기본값 null.
+         * @param parent 부모 이슈 요약(key, summary). 단건 경로에서 self LEFT JOIN 결과로 채운다. 기본값 null.
          */
         fun from(
             issue: Issue,
@@ -261,6 +284,7 @@ data class IssueResponse(
             typeInfo: IssueTypeInfo,
             renderHtml: Boolean = false,
             resolution: ResolutionSummary? = null,
+            parent: ParentSummary? = null,
         ): IssueResponse =
             IssueResponse(
                 key = issue.key.value,
@@ -288,6 +312,7 @@ data class IssueResponse(
                 resolutionId = issue.resolutionId,
                 securityLevelId = issue.securityLevelId,
                 customFields = issue.customFields,
+                parent = parent,
             )
     }
 }
