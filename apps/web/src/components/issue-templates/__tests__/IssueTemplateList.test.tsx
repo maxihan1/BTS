@@ -49,6 +49,7 @@ describe('IssueTemplateList', () => {
         authMethod: 'local',
         mustChangePassword: false,
         isSystemAdmin: false,
+        mfaEnrollmentRequired: false,
       },
     })
   })
