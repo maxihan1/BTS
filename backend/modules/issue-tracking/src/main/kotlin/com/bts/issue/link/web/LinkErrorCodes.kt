@@ -36,6 +36,9 @@ object LinkErrorCodes {
     /** Bean Validation 실패 — 400. */
     const val VALIDATION_FAILED = "VALIDATION_FAILED"
 
+    /** 유효하지 않은 graph depth — 400. */
+    const val INVALID_DEPTH = "INVALID_DEPTH"
+
     /** 분류되지 않은 내부 오류 — 500. */
     const val INTERNAL_ERROR = "INTERNAL_ERROR"
 }
