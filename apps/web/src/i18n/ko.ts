@@ -441,10 +441,6 @@ export const mfaStrings = {
   webauthnLastUsedLabel: '마지막 사용',
   /** 등록 진행 중 안내 문구 */
   webauthnRegisteringGuide: '브라우저 안내에 따라 보안 키를 터치하거나 인증을 완료하세요.',
-  /** 등록 완료 메시지 */
-  webauthnRegisteredSuccess: '보안 키가 등록되었습니다.',
-  /** 보안 키 삭제 완료 메시지 */
-  webauthnDeletedSuccess: '보안 키가 삭제되었습니다.',
 } as const
 
 /**
