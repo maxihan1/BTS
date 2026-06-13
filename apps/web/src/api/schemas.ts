@@ -91,6 +91,29 @@ export const BackupCodesStatusResponseSchema = z.object({
   remaining: z.number(),
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WebAuthn(보안 키) 관련 스키마 — 백엔드 #129 WebAuthnKeyResponse와 1:1 정합
+// NON_NULL 미적용이므로 name/lastUsedAt 키가 응답에 포함됨 → .nullable() 사용
+// timestamp는 z.string() 무변환 (sessions.ts 선례 — Instant→Date transform 금지)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 등록된 보안 키 단건 응답 스키마 */
+export const WebauthnKeySchema = z.object({
+  /** 보안 키 식별자 (UUID) */
+  id: z.string().uuid(),
+  /** 사용자가 지정한 보안 키 별칭 — 미지정 시 null */
+  name: z.string().nullable(),
+  /** 보안 키 등록 시각 (ISO 8601) */
+  createdAt: z.string(),
+  /** 보안 키 마지막 사용 시각 (ISO 8601) — 미사용 시 null */
+  lastUsedAt: z.string().nullable(),
+})
+
+/** 등록된 보안 키 목록 응답 스키마 — GET /api/v1/auth/mfa/webauthn/keys */
+export const WebauthnKeysResponseSchema = z.object({
+  keys: z.array(WebauthnKeySchema),
+})
+
 export type LoginRequest = z.infer<typeof LoginRequestSchema>
 export type TokenResponse = z.infer<typeof TokenResponseSchema>
 export type WhoamiResponse = z.infer<typeof WhoamiResponseSchema>
@@ -101,3 +124,5 @@ export type MfaRequiredResponse = z.infer<typeof MfaRequiredResponseSchema>
 export type LoginOrMfaResponse = z.infer<typeof LoginOrMfaResponseSchema>
 export type BackupCodesResponse = z.infer<typeof BackupCodesResponseSchema>
 export type BackupCodesStatusResponse = z.infer<typeof BackupCodesStatusResponseSchema>
+export type WebauthnKey = z.infer<typeof WebauthnKeySchema>
+export type WebauthnKeysResponse = z.infer<typeof WebauthnKeysResponseSchema>

@@ -407,6 +407,44 @@ export const mfaStrings = {
   // ── MFA 강제 정책(FR-MF-04) ──────────────────────────────────────────────
   /** MFA 등록 강제 게이트 안내 배너 문구 (mfaEnrollmentRequired=true 시 노출) */
   enforcementBanner: '보안 정책에 따라 2단계 인증 등록이 필요합니다. 등록을 완료해야 계속할 수 있습니다.',
+
+  // ── 보안 키(WebAuthn/FIDO2) 설정 섹션 (FR-MF-03) ─────────────────────────
+  /** 보안 키 섹션 제목 */
+  webauthnSectionTitle: '보안 키',
+  /** 보안 키 섹션 설명 문구 */
+  webauthnSectionDescription: '하드웨어 보안 키나 기기 내장 인증(Face ID, 지문 등)으로 2단계 인증을 수행합니다.',
+  /** 보안 키 추가 버튼 */
+  webauthnAddButton: '보안 키 추가',
+  /** 보안 키 별칭 입력 필드 레이블 */
+  webauthnNameLabel: '별칭',
+  /** 보안 키 별칭 입력 필드 placeholder */
+  webauthnNamePlaceholder: '예: 회사 노트북',
+  /** 등록된 보안 키가 없을 때 빈 상태 메시지 */
+  webauthnEmptyState: '등록된 보안 키가 없습니다.',
+  /** 보안 키 삭제 버튼 레이블 */
+  webauthnDeleteButton: '삭제',
+  /** 보안 키 삭제 확인 Dialog 제목 */
+  webauthnDeleteConfirmTitle: '보안 키 삭제',
+  /** 보안 키 삭제 확인 Dialog 본문 */
+  webauthnDeleteConfirmBody: '이 보안 키를 삭제하시겠습니까? 삭제 후에는 해당 키로 인증할 수 없습니다.',
+  /** 보안 키 삭제 확인 버튼 레이블 */
+  webauthnDeleteConfirmButton: '삭제',
+  /** 보안 키 삭제 취소 버튼 레이블 */
+  webauthnDeleteCancelButton: '취소',
+  /** 로그인 2단계 — 보안 키로 인증 버튼 */
+  webauthnVerifyButton: '보안 키로 인증',
+  /** WebAuthn API 미지원 브라우저 안내 문구 */
+  webauthnUnsupportedBrowser: '이 브라우저는 보안 키를 지원하지 않습니다. 최신 브라우저를 사용하세요.',
+  /** lastUsedAt이 null인 경우 표시 문구 */
+  webauthnLastUsedNever: '사용 안 함',
+  /** lastUsedAt 앞 레이블 */
+  webauthnLastUsedLabel: '마지막 사용',
+  /** 등록 진행 중 안내 문구 */
+  webauthnRegisteringGuide: '브라우저 안내에 따라 보안 키를 터치하거나 인증을 완료하세요.',
+  /** 등록 완료 메시지 */
+  webauthnRegisteredSuccess: '보안 키가 등록되었습니다.',
+  /** 보안 키 삭제 완료 메시지 */
+  webauthnDeletedSuccess: '보안 키가 삭제되었습니다.',
 } as const
 
 /**
@@ -431,6 +469,14 @@ export function mfaErrorMessage(errorCode: string): string {
       return '2단계 인증이 활성화되어 있지 않습니다.'
     case 'totp_not_active':
       return '먼저 Authenticator 앱(2단계 인증)을 활성화하세요.'
+    case 'invalid_registration':
+      return '보안 키 등록에 실패했습니다. 다시 시도해 주세요.'
+    case 'already_registered':
+      return '이미 등록된 보안 키입니다.'
+    case 'not_found':
+      return '보안 키를 찾을 수 없습니다.'
+    case 'mfa_challenge_expired':
+      return '인증 요청이 만료되었습니다. 다시 시도해 주세요.'
     case 'invalid_method':
     default:
       return '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.'

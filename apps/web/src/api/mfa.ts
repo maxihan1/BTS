@@ -27,6 +27,11 @@ export const MfaErrorCode = {
   NO_PENDING_SETUP: 'no_pending_setup',
   TOO_MANY_ATTEMPTS: 'too_many_attempts',
   TOTP_NOT_ACTIVE: 'totp_not_active',
+  // WebAuthn(보안 키) 전용 에러 코드 — 백엔드 #129 WebAuthnErrorCode.kt 와 1:1
+  INVALID_REGISTRATION: 'invalid_registration',
+  ALREADY_REGISTERED: 'already_registered',
+  NOT_FOUND: 'not_found',
+  MFA_CHALLENGE_EXPIRED: 'mfa_challenge_expired',
 } as const
 
 // ─────────────────────────────────────────────────────────────────────────────
