@@ -10,13 +10,13 @@ import com.bts.shared.user.UserLookupPort
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import jakarta.mail.internet.MimeMessage
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.springframework.mail.javamail.JavaMailSender
 import java.time.Instant
 import java.util.UUID
-import jakarta.mail.internet.MimeMessage
 
 /**
  * [EmailChannelSender] 단위 테스트.
@@ -35,11 +35,12 @@ class EmailChannelSenderTest {
     private val userLookupPort = mockk<UserLookupPort>()
     private val fromAddress = "no-reply@bts.local"
 
-    private val sender = EmailChannelSender(
-        javaMailSender = javaMailSender,
-        userLookupPort = userLookupPort,
-        from = fromAddress,
-    )
+    private val sender =
+        EmailChannelSender(
+            javaMailSender = javaMailSender,
+            userLookupPort = userLookupPort,
+            from = fromAddress,
+        )
 
     private val recipientId: UUID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
     private val notificationId: UUID = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")

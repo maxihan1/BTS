@@ -7,3 +7,24 @@ spring:
     baseline-on-migrate: true
     # ${} 플레이스홀더를 Flyway 변수 치환으로 오인하지 않도록 비활성화
     placeholder-replacement: false
+
+  # ── 이메일 발송 설정 (EmailChannelSender — FR-NT-02) ─────────────────────
+  # MailSenderAutoConfiguration 이 spring.mail.host 설정 시 JavaMailSender 빈을 자동 생성한다.
+  # 별도 @Bean 정의 없이 autoconfig 만으로 빈이 구성된다.
+  mail:
+    host: localhost
+    port: 1025
+    properties:
+      mail:
+        smtp:
+          # SMTP 연결/응답/쓰기 타임아웃 — 워커 스레드 블로킹 상한 5초
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+# ── BTS notification 커스텀 설정 ──────────────────────────────────────────
+bts:
+  notification:
+    email:
+      # 발신 이메일 주소 — 운영 환경에서는 환경변수 또는 외부 설정으로 오버라이드
+      from: no-reply@bts.local
