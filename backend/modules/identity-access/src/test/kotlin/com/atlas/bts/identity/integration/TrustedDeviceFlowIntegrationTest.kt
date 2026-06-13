@@ -187,7 +187,9 @@ class TrustedDeviceFlowIntegrationTest {
      * 같은 인스턴스를 컨텍스트 전 서비스에 주입한 뒤 [advance] 로 instant 를 밀어, 벽시계 sleep 없이 TTL
      * 만료를 결정적으로 검증한다(time-bomb 회귀 방지). [reset] 으로 다음 테스트를 위해 기준 시각을 되돌린다.
      */
-    class MutableClock(@Volatile private var current: Instant) : Clock() {
+    class MutableClock(
+        @Volatile private var current: Instant,
+    ) : Clock() {
         private val base: Instant = current
 
         override fun instant(): Instant = current
@@ -508,6 +510,9 @@ class TrustedDeviceFlowIntegrationTest {
         password: String,
         secret: String,
     ): String {
+        // verifyLogin 은 time-step 단조 증가 replay 방어가 있어, 직전 verify 와 같은 step 이면 거부된다.
+        // 가변 Clock 을 한 time-step 전진시켜 새 step 의 코드를 산출한다(replay 회피, TTL 무영향).
+        advanceOneTotpStep()
         val challenge = (performLogin(testUsername, password).body as Map<*, *>)["mfa_challenge_token"] as String
         val verifyResp = mfaVerify(challenge, currentTotpCode(secret), trustDevice = false)
         assertThat(verifyResp.statusCode).isEqualTo(HttpStatus.OK)
@@ -519,6 +524,8 @@ class TrustedDeviceFlowIntegrationTest {
      * 값(`name=value`)을 반환한다.
      */
     private fun registerTrustedDevice(secret: String): String {
+        // enable(verify) 와 다른 time-step 으로 verifyLogin 하도록 한 step 전진(replay 방어 회피, TTL 무영향).
+        advanceOneTotpStep()
         val challenge = (performLogin(testUsername, testPassword).body as Map<*, *>)["mfa_challenge_token"] as String
         val verifyResp = mfaVerify(challenge, currentTotpCode(secret), trustDevice = true)
         assertThat(verifyResp.statusCode)
@@ -589,7 +596,7 @@ class TrustedDeviceFlowIntegrationTest {
         restTemplate.exchange(
             url("/api/v1/auth/mfa/totp/setup"),
             HttpMethod.POST,
-            HttpEntity<Void>(bearer(accessToken)),
+            HttpEntity<Unit>(bearer(accessToken)),
             Map::class.java,
         )
 
@@ -632,7 +639,7 @@ class TrustedDeviceFlowIntegrationTest {
         restTemplate.exchange(
             url(TRUSTED_DEVICES_PATH),
             HttpMethod.GET,
-            HttpEntity<Void>(bearer(token)),
+            HttpEntity<Unit>(bearer(token)),
             Map::class.java,
         )
 
@@ -643,7 +650,7 @@ class TrustedDeviceFlowIntegrationTest {
         restTemplate.exchange(
             url("$TRUSTED_DEVICES_PATH/$id"),
             HttpMethod.DELETE,
-            HttpEntity<Void>(bearer(token)),
+            HttpEntity<Unit>(bearer(token)),
             Map::class.java,
         )
 
@@ -651,7 +658,7 @@ class TrustedDeviceFlowIntegrationTest {
         restTemplate.exchange(
             url(TRUSTED_DEVICES_PATH),
             HttpMethod.DELETE,
-            HttpEntity<Void>(bearer(token)),
+            HttpEntity<Unit>(bearer(token)),
             Map::class.java,
         )
 
@@ -661,7 +668,12 @@ class TrustedDeviceFlowIntegrationTest {
         code: String,
     ): ResponseEntity<Map<*, *>> {
         headers.contentType = MediaType.APPLICATION_JSON
-        return restTemplate.exchange(url(path), HttpMethod.POST, HttpEntity("""{"code":"$code"}""", headers), Map::class.java)
+        return restTemplate.exchange(
+            url(path),
+            HttpMethod.POST,
+            HttpEntity("""{"code":"$code"}""", headers),
+            Map::class.java,
+        )
     }
 
     /**
@@ -709,24 +721,34 @@ class TrustedDeviceFlowIntegrationTest {
         return DefaultCodeGenerator(HashingAlgorithm.SHA1, TOTP_DIGITS).generate(secret, timeStep)
     }
 
+    /**
+     * 공유 Clock 을 한 TOTP time-step 만큼 전진시킨다 — 연속 verifyLogin 사이 replay 방어(단조 증가 step)를
+     * 회피한다. 전진폭(31초)은 30일 TTL·+31일 만료 시나리오에 영향이 없다.
+     */
+    private fun advanceOneTotpStep() {
+        sharedClock.advance(Duration.ofSeconds(TOTP_PERIOD_SECONDS + 1))
+    }
+
     /** otpauth:// URI 의 `secret` 쿼리 파라미터를 추출한다. */
     private fun extractSecretFromOtpauthUri(otpauthUri: String): String =
-        (URI(otpauthUri).query ?: "")
+        URI(otpauthUri)
+            .query
+            .orEmpty()
             .split("&")
             .first { it.startsWith("secret=") }
             .substringAfter("secret=")
 
     /** 응답 Set-Cookie 에서 trusted_device 쿠키를 `name=value` 형태로 추출한다(없으면 빈 문자열). */
     private fun extractTrustedDeviceCookie(response: ResponseEntity<*>): String {
-        val cookies = response.headers[HttpHeaders.SET_COOKIE] ?: return ""
         val value =
-            cookies
+            response.headers[HttpHeaders.SET_COOKIE]
+                .orEmpty()
                 .firstOrNull { it.startsWith("$TRUSTED_DEVICE_COOKIE=") }
                 ?.substringAfter("$TRUSTED_DEVICE_COOKIE=")
                 ?.substringBefore(";")
                 ?.trim()
-                ?: return ""
-        return "$TRUSTED_DEVICE_COOKIE=$value"
+                .orEmpty()
+        return if (value.isEmpty()) "" else "$TRUSTED_DEVICE_COOKIE=$value"
     }
 
     /**
