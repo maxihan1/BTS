@@ -91,3 +91,13 @@ SDD §9.1.3의 3·4단계(notifications 기록 + WebSocket 푸시)를 이번 PR�
 - glossary 추가 후보: NotificationWorker(알림 워커), Fanout(수신자 복제), Channel 발송 추상, 인앱 채널(In-App). Maxi 승인 후 반영.
 - WebSocket 인증 방식(세션 쿠키 vs STOMP CONNECT JWT)은 security-engineer 검토로 스펙에서 확정.
 - FR drift 전수 동기화(결정 2) 필수.
+
+## Amendment (2026-06-14) — 이메일 채널 구현 + Webhook을 전용 후속 FR로 분리
+
+이메일 채널을 동일 `NotificationChannelSender` 추상 위 `EmailChannelSender`로 구현했다(Spring Mail/`MimeMessageHelper` UTF-8, `UserLookupPort.findEmailById` cross-BC 조회, Testcontainers MailHog 검증, 실패=`deliver()` best-effort PENDING). 워커/resolver/스키마 무변경.
+
+**결정 2(채널 집합) 보완 — Webhook을 FR-NT-02에서 분리해 전용 후속 FR로**. 코드 실측 결과 두 가지가 드러났다(Maxi 확정 2026-06-14).
+1. 알림 모델은 per-recipient-user(`notifications.recipientUserId`)인데 Webhook은 외부 URL 대상이라 **per-user 모델과 맞지 않고**, 현재 스키마에 webhook URL 저장 위치가 없다.
+2. Webhook은 `NotificationChannelSender`가 아니라 워크플로우 전이 post-action(`CallWebhookPostAction`)이 발행하는 **`WebhookRequested` 이벤트 디스패처**로 구현하는 것이 선례에 부합하나, 그 이벤트는 **현재 어느 pgmq 큐에도 발행되지 않는다**(전이 API 응답 `TransitionResponseDto.events`에만 존재). 제대로 하려면 ① project-workflow BC에 전이 emitEvents 발행 파이프라인(4종 post-action 공통), ② notification BC 소비+HTTP 디스패처가 필요 → cross-BC, FR-NT-02 한 PR 범위 초과.
+
+따라서 Webhook 채널은 **전이-이벤트 발행 파이프라인 설계를 포함한 전용 후속 FR**로 분리한다(FR ID는 해당 FR spec 시점에 mint). FR-NT-02 채널 집합 = 인앱 + 이메일(notification BC 직접 담당), Webhook은 후속 FR, Slack=slack-integration BC, Teams=범위 밖. FR-NT-02 전체는 Webhook 후속이라 부분완료(`[~]`) 유지, FR 총수 불변(122).

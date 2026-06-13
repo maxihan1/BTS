@@ -43,13 +43,13 @@
 
 **우선순위**. 필수 | **선행**. §1, §2.1 | **Plan slug**. `notify/channels`
 
-**범위(이번 PR)**. 인앱(WebSocket) slice — 발송 코어(notifications + NotificationWorker pgmq consumer + NotificationChannelSender 추상) + STOMP 서버/JWT 인증 + 멘션·담당·리포터 수신. `[~]`(D1·D4·D5)는 인앱 채널만 완료이며 이메일/Webhook 채널은 동일 추상 위 후속 PR. D6·D7(프론트/E2E)은 인앱 채널 기준 완료(PR #137). FR-NT-02 전체는 이메일/Webhook 채널 후속이라 여전히 부분완료.
+**범위(누적)**. 인앱(WebSocket) slice(PR #126/#137) + **이메일 채널**(EmailChannelSender — Spring Mail/MimeMessageHelper UTF-8 + Testcontainers MailHog, 이 PR). `[~]`(D1·D4·D5)는 인앱+이메일 채널 완료. **Webhook 채널은 전용 후속 FR로 분리**(per-user 알림 모델과 맞지 않아 `WebhookRequested` 이벤트 디스패처로 재설계 필요 + 전이-이벤트 발행 파이프라인이 미구현이라 cross-BC, ADR 2026-06-12 amendment 참조). Slack=slack-integration BC, Teams=범위 밖. D6·D7(프론트/E2E)은 인앱 채널 기준 완료(PR #137). FR-NT-02 전체는 Webhook 채널 후속이라 여전히 부분완료.
 
-- [~] D1. 도메인 — Channel 추상 + 5종 구현 (책임. backend-engineer)
+- [~] D1. 도메인 — Channel 추상 + 인앱·이메일 구현 (Webhook=전용 후속 FR) (책임. backend-engineer)
 - [x] D2. 명세 — fanout + 재시도 정책 (책임. backend-engineer)
 - [x] D3. 데이터 모델 — `notifications(payload, channel, status)` (책임. db-engineer)
-- [~] D4. 백엔드 — pgmq consumer → 이메일(Spring Mail) + WebSocket(STOMP) + (Slack은 slack-integration BC) + Webhook (책임. backend-engineer)
-- [~] D5. 백엔드 테스트 — Testcontainers MailHog (책임. backend-engineer)
+- [~] D4. 백엔드 — pgmq consumer → 인앱(STOMP) + 이메일(Spring Mail). Webhook=전용 후속 FR(WebhookRequested 디스패처), Slack=slack-integration BC (책임. backend-engineer)
+- [~] D5. 백엔드 테스트 — Testcontainers MailHog (이메일 발송→수신 + 한국어 제목 보존 검증) (책임. backend-engineer)
 - [x] D6. 프론트 UI — STOMP 클라이언트 + 토스트 (sonner) (책임. frontend-engineer) — PR #137 (`/ws` 연결 + `/user/queue/notifications` 구독 + Zod 파싱 + sonner 토스트, 인증 연동 hook)
 - [x] D7. E2E (책임. qa-engineer) — PR #137 (Playwright routeWebSocket STOMP 핸드셰이크 mock, S1 title+body / S2 body=null)
 
