@@ -67,7 +67,6 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueGraphControllerIntegrationTest {
-
     @Configuration
     @EnableWebMvc
     @EnableTransactionManagement(proxyTargetClass = true)
@@ -98,8 +97,7 @@ class IssueGraphControllerIntegrationTest {
             DataSourceTransactionManager(dataSource)
 
         @Bean
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext =
-            DSL.using(dataSource, SQLDialect.POSTGRES)
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext = DSL.using(dataSource, SQLDialect.POSTGRES)
 
         @Bean
         open fun objectMapper(): ObjectMapper =
@@ -123,8 +121,7 @@ class IssueGraphControllerIntegrationTest {
         ): LinkApplicationService = LinkApplicationService(issueRepository, issueLinkRepository)
 
         @Bean
-        open fun issueParentService(issueRepository: IssueRepository): IssueParentService =
-            IssueParentService(issueRepository)
+        open fun issueParentService(issueRepository: IssueRepository): IssueParentService = IssueParentService(issueRepository)
 
         @Bean
         open fun issueGraphService(
@@ -134,8 +131,7 @@ class IssueGraphControllerIntegrationTest {
         ): IssueGraphService = IssueGraphService(issueRepository, issueLinkRepository, issueGraphRepository)
 
         @Bean
-        open fun issueGraphController(issueGraphService: IssueGraphService): IssueGraphController =
-            IssueGraphController(issueGraphService)
+        open fun issueGraphController(issueGraphService: IssueGraphService): IssueGraphController = IssueGraphController(issueGraphService)
 
         @Bean
         open fun issueLinkController(
@@ -200,7 +196,7 @@ class IssueGraphControllerIntegrationTest {
         val hop2Key = createIssue("Hop2")
 
         createLink(centerKey, hop1Key, "blocks") // center blocks hop1
-        createLink(hop1Key, hop2Key, "blocks")   // hop1 blocks hop2
+        createLink(hop1Key, hop2Key, "blocks") // hop1 blocks hop2
 
         mockMvc.perform(get("/api/v1/issues/$centerKey/graph"))
             .andExpect(status().isOk)
