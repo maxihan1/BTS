@@ -392,11 +392,11 @@
 
 **우선순위**. 높음 | **선행**. §5.2.1 | **Plan slug**. `issue/template-vars`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — 변수 종류 + 치환 시점 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — 변수 치환 엔진 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 — TemplateVariable enum(closed set 3종) + TemplateVariableSubstitutor (책임. backend-engineer) — PR #132 (ADR `2026-06-13-issue-template-variable-substitution`)
+- [x] D2. 명세 — 변수 종류({{author}}/{{date}}/{{project}} 영문) + 치환 시점(createIssue 서버 안전망에서만, 사용자 입력 비치환) (책임. backend-engineer) — PR #132
+- [x] D3. 데이터 모델 — (활용. issue_templates.content 그대로, 신규 스키마 0) (책임. db-engineer) — PR #132
+- [x] D4. 백엔드 — 변수 치환 엔진(단일 패스 정규식, fail-safe 리터럴 유지) + resolveDescription 배선 (책임. backend-engineer) — PR #132 (author=reporter display_name(UserLookupPort 재사용)·date=clock yyyy-MM-dd·project=projectKey)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #132 (Substitutor 10 + 안전망 통합 4 + 기존 회귀 5 보존)
 - [ ] D6. 프론트 UI — 변수 자동완성 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
