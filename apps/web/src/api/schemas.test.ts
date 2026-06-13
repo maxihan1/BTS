@@ -6,6 +6,7 @@ import {
   TokenResponseSchema,
   WhoamiResponseSchema,
   ApiErrorResponseSchema,
+  WebauthnKeysResponseSchema,
 } from './schemas'
 
 describe('LoginRequestSchema', () => {
@@ -247,5 +248,72 @@ describe('ApiErrorResponseSchema', () => {
   it('error 필드 누락 → safeParse fail', () => {
     const result = ApiErrorResponseSchema.safeParse({})
     expect(result.success).toBe(false)
+  })
+})
+
+describe('WebauthnKeysResponseSchema', () => {
+  const validKey = {
+    id: '550e8400-e29b-41d4-a716-446655440000',
+    name: '회사 노트북',
+    createdAt: '2026-06-13T10:00:00Z',
+    lastUsedAt: null,
+  }
+
+  it('정상 WebauthnKeysResponse → parse 성공', () => {
+    const result = WebauthnKeysResponseSchema.parse({ keys: [validKey] })
+    expect(result.keys).toHaveLength(1)
+    expect(result.keys[0]?.id).toBe('550e8400-e29b-41d4-a716-446655440000')
+    expect(result.keys[0]?.name).toBe('회사 노트북')
+    expect(result.keys[0]?.lastUsedAt).toBeNull()
+  })
+
+  it('name이 null인 키 → parse 성공', () => {
+    const result = WebauthnKeysResponseSchema.parse({
+      keys: [{ ...validKey, name: null }],
+    })
+    expect(result.keys[0]?.name).toBeNull()
+  })
+
+  it('lastUsedAt에 ISO 문자열이 있는 키 → parse 성공', () => {
+    const result = WebauthnKeysResponseSchema.parse({
+      keys: [{ ...validKey, lastUsedAt: '2026-06-12T08:30:00Z' }],
+    })
+    expect(result.keys[0]?.lastUsedAt).toBe('2026-06-12T08:30:00Z')
+  })
+
+  it('빈 keys 배열 → parse 성공', () => {
+    const result = WebauthnKeysResponseSchema.parse({ keys: [] })
+    expect(result.keys).toHaveLength(0)
+  })
+
+  it('id가 유효하지 않은 UUID → safeParse fail', () => {
+    const result = WebauthnKeysResponseSchema.safeParse({
+      keys: [{ ...validKey, id: 'not-a-uuid' }],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('id 누락 → safeParse fail', () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id: _id, ...withoutId } = validKey
+    const result = WebauthnKeysResponseSchema.safeParse({ keys: [withoutId] })
+    expect(result.success).toBe(false)
+  })
+
+  it('createdAt 누락 → safeParse fail', () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { createdAt: _createdAt, ...withoutCreatedAt } = validKey
+    const result = WebauthnKeysResponseSchema.safeParse({ keys: [withoutCreatedAt] })
+    expect(result.success).toBe(false)
+  })
+
+  it('keys 필드 누락 → safeParse fail', () => {
+    const result = WebauthnKeysResponseSchema.safeParse({})
+    expect(result.success).toBe(false)
+  })
+
+  it('createdAt은 string 무변환 — Date 객체로 변환하지 않는다', () => {
+    const result = WebauthnKeysResponseSchema.parse({ keys: [validKey] })
+    expect(typeof result.keys[0]?.createdAt).toBe('string')
   })
 })
