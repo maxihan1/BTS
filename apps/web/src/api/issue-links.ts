@@ -288,6 +288,39 @@ export function useSetParent(key: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 에러 코드 상수 — backend IssueLinkErrorCode / ParentErrorCode 열거 미러
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 이슈 링크 BC errorCode 상수.
+ * 호출 측(패널 컴포넌트)이 switch/if 분기에서 사용한다.
+ * (error-key drift 방지 — PR #106 교훈, 공유 util 경유)
+ */
+export const ISSUE_LINK_ERROR_CODES = {
+  /** 이슈를 찾을 수 없음 */
+  ISSUE_NOT_FOUND: 'ISSUE_NOT_FOUND',
+  /** 자기 자신에게 링크할 수 없음 */
+  LINK_SELF_REFERENCE: 'LINK_SELF_REFERENCE',
+  /** 이미 동일한 링크 존재 */
+  DUPLICATE_LINK: 'DUPLICATE_LINK',
+  /** 링크 순환 참조 */
+  LINK_CYCLE: 'LINK_CYCLE',
+  /** 링크를 찾을 수 없음 */
+  LINK_NOT_FOUND: 'LINK_NOT_FOUND',
+  /** 자기 자신을 부모로 설정할 수 없음 */
+  PARENT_SELF_REFERENCE: 'PARENT_SELF_REFERENCE',
+  /** 부모 설정 순환 참조 */
+  PARENT_CYCLE: 'PARENT_CYCLE',
+  /** 유효하지 않은 링크 타입 */
+  INVALID_LINK_TYPE: 'INVALID_LINK_TYPE',
+  /** 요청 유효성 검사 실패 */
+  VALIDATION_FAILED: 'VALIDATION_FAILED',
+} as const
+
+/** 이슈 링크 BC errorCode 유니온 타입 */
+export type IssueLinkErrorCode = (typeof ISSUE_LINK_ERROR_CODES)[keyof typeof ISSUE_LINK_ERROR_CODES]
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 에러 코드 추출 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
