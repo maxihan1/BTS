@@ -13,7 +13,6 @@ import org.junit.jupiter.api.Test
  * Spring 컨텍스트 없이 순수 단위 테스트로 실행한다.
  */
 class IssueRecipientLookupPortDefaultTest {
-
     @Test
     fun `findRecipients default 는 빈 수신자를 반환한다`() {
         val port = object : IssueRecipientLookupPort {}

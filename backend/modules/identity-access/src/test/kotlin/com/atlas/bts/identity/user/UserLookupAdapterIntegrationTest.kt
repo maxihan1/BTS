@@ -1,4 +1,4 @@
-// UserLookupAdapter 통합 테스트 — 실제 PostgreSQL 에서 사용자 존재 여부 및 username 일괄 해석 및 이메일 조회 검증 (FR-IS-03 Task 3 / FR-MN-01 Task 3 / FR-NT-02 Task 2)
+// UserLookupAdapter 통합 테스트 — 사용자 존재/username 해석/이메일 조회 검증 (FR-IS-03·FR-MN-01·FR-NT-02)
 
 package com.atlas.bts.identity.user
 

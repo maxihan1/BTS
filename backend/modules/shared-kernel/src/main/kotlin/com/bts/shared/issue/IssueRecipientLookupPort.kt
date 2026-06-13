@@ -23,7 +23,6 @@ import java.util.UUID
  * 알림 누락(누락이 과발송보다 안전)으로 처리한다.
  */
 interface IssueRecipientLookupPort {
-
     /**
      * 주어진 이슈 키의 현재 리포터·담당자 ID 를 반환한다.
      *

@@ -5,6 +5,7 @@ package com.bts.notification
 
 import com.bts.shared.issue.IssueRecipientLookupPort
 import com.bts.shared.issue.IssueRecipients
+import com.bts.shared.user.UserLookupPort
 import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
@@ -158,5 +159,19 @@ class NotificationTestcontainersConfig {
     fun issueRecipientLookupPort(): IssueRecipientLookupPort =
         object : IssueRecipientLookupPort {
             override fun findRecipients(issueKey: String): IssueRecipients = IssueRecipients.empty()
+        }
+
+    /**
+     * 테스트 전용 UserLookupPort fail-safe stub 빈.
+     *
+     * EmailChannelSender(@Component) 가 cross-BC [UserLookupPort] 를 주입받으므로
+     * 전체 컨텍스트를 띄우는 이 테스트도 빈이 필요하다. 이 테스트는 정책 HTTP 경로만 검증하고
+     * 이메일 채널을 발송하지 않으므로 exists=false / findEmailById=null(default) fail-safe stub 으로 충분하다.
+     * 프로덕션 구현체는 identity-access 의 UserLookupAdapter 다.
+     */
+    @Bean
+    fun userLookupPort(): UserLookupPort =
+        object : UserLookupPort {
+            override fun exists(userId: java.util.UUID): Boolean = false
         }
 }

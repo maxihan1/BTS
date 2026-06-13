@@ -102,7 +102,6 @@ class EmailChannelSenderIntegrationTestConfig {
                 .migrate()
             migrated = true
         }
-
     }
 
     /**
@@ -155,8 +154,7 @@ class EmailChannelSenderIntegrationTestConfig {
     @Bean
     fun userLookupPort(): UserLookupPort =
         object : UserLookupPort {
-            override fun exists(userId: UUID): Boolean =
-                userId == EmailChannelSenderIntegrationTest.KNOWN_RECIPIENT_ID
+            override fun exists(userId: UUID): Boolean = userId == EmailChannelSenderIntegrationTest.KNOWN_RECIPIENT_ID
 
             override fun findEmailById(userId: UUID): String? =
                 when (userId) {

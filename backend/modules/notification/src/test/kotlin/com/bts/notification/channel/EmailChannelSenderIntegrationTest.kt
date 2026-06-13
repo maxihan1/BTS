@@ -188,17 +188,22 @@ class EmailChannelSenderIntegrationTest {
         if (response.statusCode() != 200) return emptyList()
         val body = response.body()
 
-        // items 배열 유무 확인 — 빈 배열("[  ]") 이면 빈 리스트 반환
+        // items 배열 유무 확인 — 빈 배열("[]") 이면 수신 메시지 없음
         val itemsStart = body.indexOf("\"items\"")
         val arrayStart = body.indexOf("[", itemsStart)
         val arrayEnd = body.lastIndexOf("]")
-        if (arrayStart < 0 || arrayEnd < 0 || arrayEnd <= arrayStart) return emptyList()
-        if (body.substring(arrayStart, arrayEnd + 1).trim() == "[]") return emptyList()
+        val hasItems =
+            arrayStart >= 0 && arrayEnd > arrayStart &&
+                body.substring(arrayStart, arrayEnd + 1).trim() != "[]"
 
-        // 수신 메시지가 1건 이상 — Subject/To 헤더를 정규식으로 추출
-        val subject = SUBJECT_PATTERN.find(body)?.groupValues?.get(1) ?: ""
-        val to = TO_PATTERN.find(body)?.groupValues?.get(1) ?: ""
-        return listOf(MailhogMessage(subject = subject, to = to))
+        // 수신 메시지가 1건 이상이면 Subject/To 헤더를 정규식으로 추출
+        return if (!hasItems) {
+            emptyList()
+        } else {
+            val subject = SUBJECT_PATTERN.find(body)?.groupValues?.get(1) ?: ""
+            val to = TO_PATTERN.find(body)?.groupValues?.get(1) ?: ""
+            listOf(MailhogMessage(subject = subject, to = to))
+        }
     }
 
     /**
