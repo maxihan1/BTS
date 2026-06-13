@@ -221,6 +221,7 @@ class IssueLinkSchemaTest {
         }
 
     // 테스트용 이슈 1건을 삽입하고 그 id 를 반환 (CHECK 제약 위반 INSERT 검증용 픽스처).
+    // type_id 는 V005 에서 NOT NULL FK 라 'task' 표준 시드(V003)를 조회해 채운다.
     @Suppress("NestedBlockDepth")
     private fun insertIssueFixture(key: String): UUID =
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
@@ -237,13 +238,22 @@ class IssueLinkSchemaTest {
                     }
                 }
 
+            val taskTypeId =
+                conn.prepareStatement("SELECT id FROM issue_types WHERE key = 'task'").use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getLong(1)
+                    }
+                }
+
             conn.prepareStatement(
-                "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key)" +
-                    " VALUES (?, ?, 'fixture', ?, 'open') RETURNING id",
+                "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, type_id)" +
+                    " VALUES (?, ?, 'fixture', ?, 'open', ?) RETURNING id",
             ).use { stmt ->
                 stmt.setString(1, key)
                 stmt.setObject(2, projectId)
                 stmt.setObject(3, UUID.randomUUID())
+                stmt.setLong(4, taskTypeId)
                 stmt.executeQuery().use { rs ->
                     rs.next()
                     rs.getObject(1) as UUID
