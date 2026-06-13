@@ -433,6 +433,8 @@ export const mfaStrings = {
   webauthnDeleteCancelButton: '취소',
   /** 로그인 2단계 — 보안 키로 인증 버튼 */
   webauthnVerifyButton: '보안 키로 인증',
+  /** 로그인 2단계 — 보안 키 인증 실패(코드 입력이 아닌 키 흐름이므로 전용 문구) */
+  webauthnVerifyFailed: '보안 키 인증에 실패했습니다. 다시 시도하거나 다시 로그인해 주세요.',
   /** WebAuthn API 미지원 브라우저 안내 문구 */
   webauthnUnsupportedBrowser: '이 브라우저는 보안 키를 지원하지 않습니다. 최신 브라우저를 사용하세요.',
   /** lastUsedAt이 null인 경우 표시 문구 */

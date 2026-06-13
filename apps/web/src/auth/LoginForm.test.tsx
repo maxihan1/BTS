@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
+import { mfaStrings } from '@/i18n/ko'
 import { LoginForm } from './LoginForm'
 import { useAuthStore } from './authStore'
 
@@ -944,8 +945,11 @@ describe('LoginForm — MFA step 보안 키로 인증 (task-6)', () => {
 
     await user.click(screen.getByRole('button', { name: '보안 키로 인증' }))
 
-    // 인라인 에러 + 화면 유지
-    await screen.findByRole('alert')
+    // 인라인 에러 + 화면 유지. 코드 입력이 아닌 보안 키 흐름이라 전용 문구를 쓴다
+    // ("코드가 올바르지 않습니다"는 부적합 — /review 적대적 패스 지적).
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(mfaStrings.webauthnVerifyFailed)
+    expect(alert).not.toHaveTextContent('코드가 올바르지 않습니다')
     expect(screen.getByLabelText('인증 코드')).toBeInTheDocument()
   })
 

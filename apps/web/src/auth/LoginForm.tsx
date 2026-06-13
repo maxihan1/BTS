@@ -579,13 +579,18 @@ const LoginMfaStep = ({ challengeToken, onSuccess, onBackToLogin }: MfaStepProps
           return
         }
 
-        // EC-4: invalid_code 등 → 인라인 에러 + 화면 유지 + challengeToken 보존
-        setWebauthnError(mfaErrorMessage(errorCode))
+        // EC-4: verify 실패. 코드 입력이 아닌 보안 키 흐름이라 webauthn 전용 문구를 쓴다
+        // ("코드가 올바르지 않습니다"는 부적합). rate-limit은 의미가 분명하므로 그대로 노출한다.
+        setWebauthnError(
+          errorCode === 'too_many_attempts'
+            ? mfaErrorMessage('too_many_attempts')
+            : mfaStrings.webauthnVerifyFailed,
+        )
         return
       }
 
-      // EC-1: NotAllowedError(사용자 취소) 등 브라우저 예외 → 인라인 에러 + 화면 유지
-      setWebauthnError(mfaErrorMessage(''))
+      // EC-1: NotAllowedError(사용자 취소) 등 브라우저 의식 예외 → 보안 키 전용 문구 + 화면 유지
+      setWebauthnError(mfaStrings.webauthnVerifyFailed)
     } finally {
       setIsWebauthnPending(false)
     }
