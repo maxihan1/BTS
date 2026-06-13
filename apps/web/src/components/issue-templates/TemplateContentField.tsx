@@ -104,6 +104,15 @@ export const TemplateContentField = ({
   // 자체 ref — caret 복원·selectionStart 읽기에 필요
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
+  /**
+   * F4: IME 조합 상태 추적 ref.
+   * 한글/일본어 입력 시 브라우저는 compositionstart→compositionend 사이에
+   * selectionStart를 조합 중인 글자 위치로 가리킨다. 이 상태에서 splice하면
+   * half-composed jamo를 끊거나 위치가 어긋날 수 있다.
+   * ref를 쓰는 이유: 상태 변경으로 리렌더링을 유발할 필요 없이 플래그만 추적하면 충분.
+   */
+  const isComposingRef = useRef(false)
+
   // RHF ref와 자체 ref 병합 콜백 — 두 ref에 모두 DOM 요소를 할당한다
   const mergedRef = useCallback(
     (el: HTMLTextAreaElement | null) => {
@@ -125,17 +134,19 @@ export const TemplateContentField = ({
    * - 포커스 상태(onMouseDown preventDefault로 보존됨): 실제 caret 위치에 삽입.
    * - 포커스 없음(textarea를 한 번도 누르지 않은 상태): 끝에 append.
    *
-   * 실 브라우저에서 포커스 없는 textarea의 selectionStart = 0이므로
-   * selectionStart ?? length fallback은 0을 그대로 사용해 prepend가 된다.
-   * isFocused 분기로 이 문제를 방어한다.
+   * F4: 조합 중(isComposingRef.current === true)에는 caret을 무시하고 끝에 append.
+   * 한글/일본어 IME 조합 중 selectionStart는 조합 영역 내부를 가리키므로
+   * splice하면 half-composed jamo를 끊을 수 있다. 조합이 끝난 뒤에는 정상 caret 사용.
    */
   function handleInsert(token: string): void {
     const el = textareaRef.current
     if (el === null) return
 
     const isFocused = document.activeElement === el
-    const start = isFocused ? el.selectionStart : el.value.length
-    const end = isFocused ? el.selectionEnd : el.value.length
+    const composing = isComposingRef.current
+    // F4: 조합 중에는 selectionStart가 조합 영역을 가리켜 jamo를 끊을 수 있으므로 끝에 append
+    const start = (isFocused && !composing) ? el.selectionStart : el.value.length
+    const end = (isFocused && !composing) ? el.selectionEnd : el.value.length
 
     const { next, caretPos } = spliceToken(el.value, token, start, end)
     setFieldValue(next)
@@ -168,6 +179,10 @@ export const TemplateContentField = ({
       </div>
 
       {/* 본문 textarea — F3: registration 스프레드로 RHF props 전체 보존 후 ref 덮어쓰기 */}
+      {/*
+        F4: onCompositionStart/End는 registration(RHF register)이 제공하지 않으므로 명시 추가.
+        register는 이 이벤트를 미사용하므로 충돌 없음.
+      */}
       <textarea
         {...registration}
         id={textareaId}
@@ -177,6 +192,8 @@ export const TemplateContentField = ({
         rows={6}
         className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground resize-y"
         ref={mergedRef}
+        onCompositionStart={() => { isComposingRef.current = true }}
+        onCompositionEnd={() => { isComposingRef.current = false }}
       />
 
       {/* 필드 에러 */}
