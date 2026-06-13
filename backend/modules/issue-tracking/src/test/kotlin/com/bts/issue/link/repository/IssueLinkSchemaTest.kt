@@ -11,7 +11,9 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
+import java.sql.Connection
 import java.sql.DriverManager
+import java.sql.ResultSet
 import java.sql.SQLException
 import java.util.UUID
 
@@ -66,158 +68,138 @@ class IssueLinkSchemaTest {
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
 
-    private fun tableExists(tableName: String): Boolean =
+    // connection/statement/resultset 보일러플레이트를 한 곳에 모으는 공유 쿼리 헬퍼.
+    // 파라미터를 순서대로 바인딩한 뒤 ResultSet 을 map 람다로 변환해 반환한다.
+    // 중첩 깊이를 낮추려고 connection→statement 까지만 .use 로 감싸고
+    // ResultSet 처리는 mapResultSet 으로 분리한다 (detekt NestedBlockDepth 회피).
+    private fun <T> query(
+        sql: String,
+        vararg params: String,
+        map: (ResultSet) -> T,
+    ): T =
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.prepareStatement(
-                "SELECT COUNT(*) FROM information_schema.tables" +
-                    " WHERE table_schema = 'public' AND table_name = ?",
-            ).use { stmt ->
-                stmt.setString(1, tableName)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getInt(1) > 0
-                }
-            }
+            mapResultSet(conn, sql, params, map)
         }
+
+    // 주어진 connection 에서 statement 를 준비·바인딩·실행하고 ResultSet 을 map 으로 변환한다.
+    private fun <T> mapResultSet(
+        conn: Connection,
+        sql: String,
+        params: Array<out String>,
+        map: (ResultSet) -> T,
+    ): T =
+        conn.prepareStatement(sql).use { stmt ->
+            params.forEachIndexed { idx, value -> stmt.setString(idx + 1, value) }
+            stmt.executeQuery().use(map)
+        }
+
+    private fun tableExists(tableName: String): Boolean =
+        query(
+            "SELECT COUNT(*) FROM information_schema.tables" +
+                " WHERE table_schema = 'public' AND table_name = ?",
+            tableName,
+        ) { rs -> rs.next() && rs.getInt(1) > 0 }
 
     private fun columnDataType(
         tableName: String,
         columnName: String,
     ): String? =
-        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.prepareStatement(
-                "SELECT data_type FROM information_schema.columns" +
-                    " WHERE table_schema = 'public' AND table_name = ? AND column_name = ?",
-            ).use { stmt ->
-                stmt.setString(1, tableName)
-                stmt.setString(2, columnName)
-                stmt.executeQuery().use { rs ->
-                    if (rs.next()) rs.getString(1) else null
-                }
-            }
-        }
+        query(
+            "SELECT data_type FROM information_schema.columns" +
+                " WHERE table_schema = 'public' AND table_name = ? AND column_name = ?",
+            tableName,
+            columnName,
+        ) { rs -> if (rs.next()) rs.getString(1) else null }
 
     private fun columnIsNullable(
         tableName: String,
         columnName: String,
     ): Boolean? =
-        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.prepareStatement(
-                "SELECT is_nullable FROM information_schema.columns" +
-                    " WHERE table_schema = 'public' AND table_name = ? AND column_name = ?",
-            ).use { stmt ->
-                stmt.setString(1, tableName)
-                stmt.setString(2, columnName)
-                stmt.executeQuery().use { rs ->
-                    if (rs.next()) rs.getString(1) == "YES" else null
-                }
-            }
-        }
+        query(
+            "SELECT is_nullable FROM information_schema.columns" +
+                " WHERE table_schema = 'public' AND table_name = ? AND column_name = ?",
+            tableName,
+            columnName,
+        ) { rs -> if (rs.next()) rs.getString(1) == "YES" else null }
 
     private fun indexExists(indexName: String): Boolean =
-        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.prepareStatement(
-                "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname = ?",
-            ).use { stmt ->
-                stmt.setString(1, indexName)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getInt(1) > 0
-                }
-            }
-        }
+        query(
+            "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname = ?",
+            indexName,
+        ) { rs -> rs.next() && rs.getInt(1) > 0 }
 
     // 주어진 테이블의 FK 가 (로컬 컬럼 → 참조 테이블 + 삭제 규칙) 형태로 존재하는지 확인.
-    @Suppress("NestedBlockDepth")
     private fun foreignKeyDeleteRule(
         tableName: String,
         column: String,
         referencedTable: String,
     ): String? =
-        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.prepareStatement(
-                """
-                SELECT rc.delete_rule
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                  ON tc.constraint_name = kcu.constraint_name
-                 AND tc.table_schema = kcu.table_schema
-                JOIN information_schema.constraint_column_usage ccu
-                  ON tc.constraint_name = ccu.constraint_name
-                 AND tc.table_schema = ccu.table_schema
-                JOIN information_schema.referential_constraints rc
-                  ON tc.constraint_name = rc.constraint_name
-                 AND tc.table_schema = rc.constraint_schema
-                WHERE tc.table_schema = 'public'
-                  AND tc.table_name = ?
-                  AND tc.constraint_type = 'FOREIGN KEY'
-                  AND kcu.column_name = ?
-                  AND ccu.table_name = ?
-                """.trimIndent(),
-            ).use { stmt ->
-                stmt.setString(1, tableName)
-                stmt.setString(2, column)
-                stmt.setString(3, referencedTable)
-                stmt.executeQuery().use { rs ->
-                    if (rs.next()) rs.getString(1) else null
-                }
-            }
-        }
+        query(
+            """
+            SELECT rc.delete_rule
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            JOIN information_schema.constraint_column_usage ccu
+              ON tc.constraint_name = ccu.constraint_name
+             AND tc.table_schema = ccu.table_schema
+            JOIN information_schema.referential_constraints rc
+              ON tc.constraint_name = rc.constraint_name
+             AND tc.table_schema = rc.constraint_schema
+            WHERE tc.table_schema = 'public'
+              AND tc.table_name = ?
+              AND tc.constraint_type = 'FOREIGN KEY'
+              AND kcu.column_name = ?
+              AND ccu.table_name = ?
+            """.trimIndent(),
+            tableName,
+            column,
+            referencedTable,
+        ) { rs -> if (rs.next()) rs.getString(1) else null }
 
     // 주어진 테이블의 UNIQUE 제약이 정확히 지정한 컬럼 집합으로 존재하는지 확인.
-    @Suppress("NestedBlockDepth")
     private fun hasUniqueConstraintOn(
         tableName: String,
         columns: Set<String>,
     ): Boolean =
-        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.prepareStatement(
-                """
-                SELECT tc.constraint_name, kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                  ON tc.constraint_name = kcu.constraint_name
-                 AND tc.table_schema = kcu.table_schema
-                WHERE tc.table_schema = 'public'
-                  AND tc.table_name = ?
-                  AND tc.constraint_type = 'UNIQUE'
-                """.trimIndent(),
-            ).use { stmt ->
-                stmt.setString(1, tableName)
-                stmt.executeQuery().use { rs ->
-                    val byConstraint = mutableMapOf<String, MutableSet<String>>()
-                    while (rs.next()) {
-                        byConstraint
-                            .getOrPut(rs.getString(1)) { mutableSetOf() }
-                            .add(rs.getString(2))
-                    }
-                    byConstraint.values.any { it == columns }
-                }
+        query(
+            """
+            SELECT tc.constraint_name, kcu.column_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            WHERE tc.table_schema = 'public'
+              AND tc.table_name = ?
+              AND tc.constraint_type = 'UNIQUE'
+            """.trimIndent(),
+            tableName,
+        ) { rs ->
+            val byConstraint = mutableMapOf<String, MutableSet<String>>()
+            while (rs.next()) {
+                byConstraint.getOrPut(rs.getString(1)) { mutableSetOf() }.add(rs.getString(2))
             }
+            byConstraint.values.any { it == columns }
         }
 
     // 주어진 테이블의 CHECK 제약 정의 문자열들을 반환 (pg_get_constraintdef 로 원본 표현 조회).
-    @Suppress("NestedBlockDepth")
     private fun checkConstraintDefs(tableName: String): List<String> =
-        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.prepareStatement(
-                """
-                SELECT pg_get_constraintdef(c.oid)
-                FROM pg_constraint c
-                JOIN pg_class t ON c.conrelid = t.oid
-                JOIN pg_namespace n ON t.relnamespace = n.oid
-                WHERE n.nspname = 'public'
-                  AND t.relname = ?
-                  AND c.contype = 'c'
-                """.trimIndent(),
-            ).use { stmt ->
-                stmt.setString(1, tableName)
-                stmt.executeQuery().use { rs ->
-                    val defs = mutableListOf<String>()
-                    while (rs.next()) defs.add(rs.getString(1))
-                    defs
-                }
-            }
+        query(
+            """
+            SELECT pg_get_constraintdef(c.oid)
+            FROM pg_constraint c
+            JOIN pg_class t ON c.conrelid = t.oid
+            JOIN pg_namespace n ON t.relnamespace = n.oid
+            WHERE n.nspname = 'public'
+              AND t.relname = ?
+              AND c.contype = 'c'
+            """.trimIndent(),
+            tableName,
+        ) { rs ->
+            val defs = mutableListOf<String>()
+            while (rs.next()) defs.add(rs.getString(1))
+            defs
         }
 
     // 테스트용 이슈 1건을 삽입하고 그 id 를 반환 (CHECK 제약 위반 INSERT 검증용 픽스처).
