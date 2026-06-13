@@ -284,10 +284,11 @@ describe('T3-S5: 에러 처리', () => {
     await user.type(screen.getByLabelText('인증 코드 (6자리)'), '000000')
     await user.click(screen.getByRole('button', { name: mfaStrings.enableConfirmButton }))
 
+    // TOTP 에러 alert — WebauthnSection의 미지원 브라우저 alert와 공존할 수 있으므로 텍스트로 특정
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeInTheDocument()
+      expect(screen.getByText('코드가 올바르지 않습니다.')).toBeInTheDocument()
     })
-    expect(screen.getByRole('alert')).toHaveTextContent('코드가 올바르지 않습니다.')
+    expect(screen.getByText('코드가 올바르지 않습니다.').closest('[role="alert"]')).toBeInTheDocument()
     // 필드 유지 확인
     expect(screen.getByLabelText('인증 코드 (6자리)')).toBeInTheDocument()
   })
@@ -311,10 +312,13 @@ describe('T3-S5: 에러 처리', () => {
     await user.type(screen.getByLabelText('인증 코드 (6자리)'), '111111')
     await user.click(screen.getByRole('button', { name: mfaStrings.enableConfirmButton }))
 
+    // TOTP 에러 alert — WebauthnSection의 미지원 브라우저 alert와 공존할 수 있으므로 텍스트로 특정
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeInTheDocument()
+      expect(screen.getByText('시도가 너무 많습니다. 잠시 후 다시 시도하세요.')).toBeInTheDocument()
     })
-    expect(screen.getByRole('alert')).toHaveTextContent('시도가 너무 많습니다.')
+    expect(
+      screen.getByText('시도가 너무 많습니다. 잠시 후 다시 시도하세요.').closest('[role="alert"]'),
+    ).toBeInTheDocument()
   })
 })
 

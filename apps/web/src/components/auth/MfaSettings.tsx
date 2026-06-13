@@ -6,6 +6,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { setupMfa, getMfaStatus, enableMfa, disableMfa } from '@/api/mfa'
 import type { MfaSetupResponse } from '@/api/schemas'
 import { BackupCodesSection } from './BackupCodesSection'
+import { WebauthnSection } from './WebauthnSection'
 import { ApiError, refreshSession } from '@/api/client'
 import { extractErrorCode } from '@/lib/extract-error-code'
 import { mfaStrings, mfaErrorMessage } from '@/i18n/ko'
@@ -372,6 +373,9 @@ export function MfaSettings(): JSX.Element {
           <BackupCodesSection />
         </div>
       )}
+
+      {/* 보안 키 섹션 — TOTP 활성 여부와 무관하게 항상 노출 (FR-1/D-A) */}
+      <WebauthnSection />
     </div>
   )
 }
