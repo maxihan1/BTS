@@ -7,7 +7,11 @@ import { http, HttpResponse } from 'msw'
 import type { JSX } from 'react'
 import type { IssueTemplate } from '@/api/issue-templates.types'
 import { server } from '@/test/server'
-import { issueTemplateHandlers, resetIssueTemplateStore } from '@/mocks/issue-template-handlers'
+import {
+  issueTemplateHandlers,
+  resetIssueTemplateStore,
+  getActiveIssueTemplates,
+} from '@/mocks/issue-template-handlers'
 import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
 import { IssueTemplateFormDialog } from '../IssueTemplateFormDialog'
 
@@ -292,31 +296,6 @@ describe('IssueTemplateFormDialog — S6b 변수 삽입 버튼 + 도움말', () 
       const onSubmitSuccess = vi.fn()
       const user = userEvent.setup({ delay: null })
 
-      // MSW POST 핸들러가 저장된 content를 검증할 수 있도록 intercepted 값을 캡처한다
-      let capturedContent: string | undefined
-
-      server.use(
-        http.post('/api/v1/projects/:projectIdOrKey/issue-templates', async ({ request }) => {
-          const body = (await request.json()) as { issueTypeId: number; name: string; content: string }
-          capturedContent = body.content
-          // 성공 응답 반환 (기존 핸들러 동작 동형)
-          return HttpResponse.json(
-            {
-              data: {
-                id: 'dddddddd-dddd-4ddd-dddd-dddddddddddd',
-                projectId: 'eeeeeeee-eeee-4eee-eeee-eeeeeeeeeeee',
-                issueTypeId: body.issueTypeId,
-                name: body.name,
-                content: body.content,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-              },
-            },
-            { status: 201 },
-          )
-        }),
-      )
-
       renderCreateDialog(onSubmitSuccess)
 
       // 이슈 타입 옵션 로드 대기
@@ -331,11 +310,15 @@ describe('IssueTemplateFormDialog — S6b 변수 삽입 버튼 + 도움말', () 
 
       await user.click(screen.getByRole('button', { name: '저장' }))
 
+      // 저장 성공 대기
       await waitFor(() => {
         expect(onSubmitSuccess).toHaveBeenCalledOnce()
       })
 
-      expect(capturedContent).toContain('{{author}}')
+      // MSW stateful store에 저장된 content에 {{author}}가 포함되어야 한다
+      const saved = getActiveIssueTemplates(PROJECT_KEY)
+      const lastSaved = saved[saved.length - 1]
+      expect(lastSaved?.content).toContain('{{author}}')
     },
   )
 
