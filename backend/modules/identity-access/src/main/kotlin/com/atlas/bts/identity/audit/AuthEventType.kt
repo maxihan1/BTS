@@ -1,9 +1,9 @@
-// 인증 감사 이벤트 유형 enum — 18종 (FR-09-31 + FR-PM-01 + FR-MF-01 + FR-MF-02)
+// 인증 감사 이벤트 유형 enum — 20종 (FR-09-31 + FR-PM-01 + FR-MF-01 + FR-MF-02 + FR-MF-03)
 
 package com.atlas.bts.identity.audit
 
 /**
- * BTS 인증 감사 로그에 기록되는 이벤트 유형 18종 (FR-09-31 + FR-PM-01 + FR-MF-01 + FR-MF-02).
+ * BTS 인증 감사 로그에 기록되는 이벤트 유형 20종 (FR-09-31 + FR-PM-01 + FR-MF-01 + FR-MF-02 + FR-MF-03).
  *
  * - [LOGIN_SUCCESS]: 로그인 성공
  * - [LOGIN_FAILURE]: 로그인 실패 (잘못된 자격증명, 계정 잠금 등)
@@ -23,6 +23,8 @@ package com.atlas.bts.identity.audit
  * - [MFA_DISABLED]: TOTP(2FA) 비활성화 (현재 코드 검증 후 해제)
  * - [MFA_BACKUP_CODES_GENERATED]: MFA 백업 코드 발급/재발급 (기존 묶음 전량 교체)
  * - [MFA_BACKUP_CODE_USED]: MFA 백업 코드 1회용 소진 (로그인 복구에 사용)
+ * - [MFA_WEBAUTHN_REGISTERED]: WebAuthn(보안키/패스키) 자격증명 등록 완료
+ * - [MFA_WEBAUTHN_REMOVED]: WebAuthn(보안키/패스키) 자격증명 삭제 (소유자 본인)
  */
 enum class AuthEventType {
     LOGIN_SUCCESS,
@@ -43,4 +45,6 @@ enum class AuthEventType {
     MFA_DISABLED,
     MFA_BACKUP_CODES_GENERATED,
     MFA_BACKUP_CODE_USED,
+    MFA_WEBAUTHN_REGISTERED,
+    MFA_WEBAUTHN_REMOVED,
 }

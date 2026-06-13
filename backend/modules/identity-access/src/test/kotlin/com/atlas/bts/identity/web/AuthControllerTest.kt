@@ -15,6 +15,7 @@ import com.atlas.bts.identity.mfa.MfaChallengeClaims
 import com.atlas.bts.identity.mfa.MfaChallengeTokenService
 import com.atlas.bts.identity.mfa.MfaService
 import com.atlas.bts.identity.mfa.MfaService.VerifyResult
+import com.atlas.bts.identity.mfa.WebAuthnSecurityKeyService
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.provider.ldap.ProviderUnavailableException
 import com.atlas.bts.identity.session.RefreshTokenRepository
@@ -183,6 +184,9 @@ class AuthControllerTest {
     @MockBean
     lateinit var mfaBackupCodeService: MfaBackupCodeService
 
+    @MockBean
+    lateinit var webAuthnSecurityKeyService: WebAuthnSecurityKeyService
+
     /** 기본값: 전역 역할 없음 (일반 사용자). 역할 의존 케이스는 개별 테스트에서 재정의. */
     @org.junit.jupiter.api.BeforeEach
     fun stubSystemRoles() {
@@ -191,12 +195,13 @@ class AuthControllerTest {
     }
 
     /**
-     * 기본값: TOTP 미활성 (isEnabled=false) — 기존 로그인 흐름이 2단계로 빠지지 않게 한다(회귀 0).
-     * TOTP 활성 케이스는 개별 테스트에서 `when(mfaService.isEnabled(...)).thenReturn(true)` 로 재정의한다.
+     * 기본값: 모든 2단계 요소 미활성 (TOTP isEnabled=false + 보안키 hasActiveKey=false) — 기존 로그인
+     * 흐름이 2단계로 빠지지 않게 한다(회귀 0). 활성 케이스는 개별 테스트에서 해당 stub 을 재정의한다.
      */
     @org.junit.jupiter.api.BeforeEach
     fun stubMfaDisabledByDefault() {
         `when`(mfaService.isEnabled(anyUuid())).thenReturn(false)
+        `when`(webAuthnSecurityKeyService.hasActiveKey(anyUuid())).thenReturn(false)
     }
 
     // ── login 성공 (provider=local) — 디스패처 위임 (FR-AU-06 Task 3) ───────────

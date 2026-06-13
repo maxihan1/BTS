@@ -12,6 +12,7 @@ import com.atlas.bts.identity.mfa.MfaChallengeClaims
 import com.atlas.bts.identity.mfa.MfaChallengeTokenService
 import com.atlas.bts.identity.mfa.MfaService
 import com.atlas.bts.identity.mfa.MfaService.VerifyResult
+import com.atlas.bts.identity.mfa.WebAuthnSecurityKeyService
 import com.atlas.bts.identity.provider.ldap.ProviderUnavailableException
 import com.atlas.bts.identity.session.RefreshToken
 import com.atlas.bts.identity.session.RefreshTokenRepository
@@ -25,6 +26,7 @@ import com.atlas.bts.identity.spi.Principal
 import com.atlas.bts.identity.systemrole.SystemRoleAssignmentRepository
 import com.atlas.bts.identity.web.dto.SessionResponse
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.databind.JsonNode
 import jakarta.servlet.http.HttpServletRequest
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpHeaders
@@ -78,7 +80,7 @@ import java.util.UUID
 @RestController
 @RequestMapping("/api/v1/auth")
 // LongParameterList 억제 — 모두 생성자 의존성 주입(DI)이며 임의 그룹핑은 응집도를 해친다.
-// FR-PM-08 에서 systemRoleAssignmentRepository 추가로 8개(주입 7 + Clock)가 됐다.
+// FR-PM-08 에서 systemRoleAssignmentRepository, FR-MF-03 에서 webAuthnSecurityKeyService 가 추가됐다.
 // TooManyFunctions 억제 — login/logout/refresh/sessions/revokeSession 엔드포인트 + 응집된 private 헬퍼.
 // FR-AU-06 에서 login 을 30줄 이내로 유지하려 issueTokens/errorResponse 헬퍼를 분리해 12개가 됐다.
 @Suppress("LongParameterList", "TooManyFunctions")
@@ -93,6 +95,7 @@ class AuthController(
     private val mfaService: MfaService,
     private val mfaChallengeTokenService: MfaChallengeTokenService,
     private val mfaBackupCodeService: MfaBackupCodeService,
+    private val webAuthnSecurityKeyService: WebAuthnSecurityKeyService,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(AuthController::class.java)
@@ -161,24 +164,29 @@ class AuthController(
     /**
      * 1단계(비밀번호) 인증을 통과한 [principal] 에 대해 2단계(TOTP) 필요 여부에 따라 응답을 분기한다 (FR-MF-01).
      *
-     * - TOTP **활성**([MfaService.isEnabled] true): 정식 세션을 발급하지 않고 단명 챌린지 토큰만 발급해
-     *   **200** `{mfa_required:true, mfa_challenge_token, expires_in}` 으로 응답한다. 클라이언트는 이 토큰과
-     *   TOTP 코드를 `POST /mfa/verify` 로 보내 2단계를 마쳐야 정식 세션을 받는다.
-     * - TOTP **미활성**: 기존 흐름 그대로 [issueTokens] 로 정식 세션(`mfaVerified=false`)을 발급한다(회귀 0).
+     * - MFA **활성**(TOTP [MfaService.isEnabled] 또는 보안키 [WebAuthnSecurityKeyService.hasActiveKey]):
+     *   정식 세션을 발급하지 않고 단명 챌린지 토큰만 발급해 **200** `{mfa_required:true, mfa_challenge_token,
+     *   expires_in}` 으로 응답한다. 클라이언트는 이 토큰과 2차 요소(TOTP/백업코드/보안키)를 `POST /mfa/verify`
+     *   (보안키는 `webauthn/authenticate/start` 후 verify)로 보내 2단계를 마쳐야 정식 세션을 받는다.
+     * - MFA **미활성**: 기존 흐름 그대로 [issueTokens] 로 정식 세션(`mfaVerified=false`)을 발급한다(회귀 0).
+     *
+     * ## MFA 활성 판정 — OR 합성(TOTP 우선 단락, FR-MF-03)
+     * TOTP 또는 보안키 중 하나라도 활성이면 2단계로 진입한다. [MfaService.isEnabled] 를 먼저 평가해
+     * TOTP 활성이면 [WebAuthnSecurityKeyService.hasActiveKey] 조회를 단락(short-circuit)한다(불필요한 DB 조회 회피).
      *
      * ## C7 타이밍 누출 방지
-     * [MfaService.isEnabled] 조회는 1단계 Success 이후에만 수행한다(이 헬퍼는 Success 분기에서만 호출).
-     * 비밀번호 오답(Failure) 경로는 isEnabled 를 조회하지 않으므로 MFA 보유 여부가 노출되지 않는다.
+     * MFA 활성 조회는 1단계 Success 이후에만 수행한다(이 헬퍼는 Success 분기에서만 호출).
+     * 비밀번호 오답(Failure) 경로는 조회하지 않으므로 MFA 보유 여부가 노출되지 않는다.
      *
      * @param request IP/UserAgent 추출용 HTTP 요청
      * @param principal 1단계 인증을 통과한 주체
-     * @return TOTP 활성 시 200 [MfaRequiredResponse], 미활성 시 200 [TokenResponse] + Set-Cookie
+     * @return MFA 활성 시 200 [MfaRequiredResponse], 미활성 시 200 [TokenResponse] + Set-Cookie
      */
     private fun completeLogin(
         request: HttpServletRequest,
         principal: Principal,
     ): ResponseEntity<*> {
-        if (!mfaService.isEnabled(principal.userId)) {
+        if (!isAnyMfaEnabled(principal.userId)) {
             return issueTokens(request, principal.userId, principal.providerType.name.lowercase())
         }
         val challengeToken =
@@ -186,6 +194,18 @@ class AuthController(
         return ResponseEntity.ok(
             MfaRequiredResponse(mfaChallengeToken = challengeToken, expiresIn = MFA_CHALLENGE_TTL_SECONDS),
         )
+    }
+
+    /**
+     * 사용자가 2단계 인증 요소(TOTP 또는 보안키)를 하나라도 활성화했는지 판정한다 (FR-MF-03).
+     *
+     * TOTP([MfaService.isEnabled]) 를 먼저 평가해 활성이면 보안키 조회를 단락한다(OR short-circuit).
+     *
+     * @param userId 1단계 인증을 통과한 사용자
+     * @return TOTP 또는 보안키 중 하나라도 활성이면 true
+     */
+    private fun isAnyMfaEnabled(userId: UUID): Boolean {
+        return mfaService.isEnabled(userId) || webAuthnSecurityKeyService.hasActiveKey(userId)
     }
 
     /**
@@ -263,8 +283,23 @@ class AuthController(
             METHOD_TOTP -> mapTotpResult(request, claims, mfaService.verifyLogin(claims.userId, body.code))
             METHOD_BACKUP_CODE ->
                 mapBackupResult(request, claims, mfaBackupCodeService.verifyAndConsume(claims.userId, body.code))
+            METHOD_WEBAUTHN ->
+                mapWebauthnResult(
+                    request,
+                    claims,
+                    webAuthnSecurityKeyService.verifyLogin(claims.userId, credentialJsonOf(body)),
+                )
             else -> errorResponse(HttpStatus.BAD_REQUEST, "invalid_method")
         }
+
+    /**
+     * webauthn 검증에 넘길 assertion JSON 문자열을 추출한다.
+     *
+     * [MfaVerifyRequest.credential] 은 보안키 인증 응답(JSON 트리)이며, 다시 직렬화해
+     * [WebAuthnSecurityKeyService.verifyLogin] 에 문자열로 넘긴다. credential 부재 시 빈 문자열을 넘기면
+     * 서비스가 파싱 실패로 fail-closed([WebAuthnSecurityKeyService.VerifyResult.InvalidAssertion]) 처리한다.
+     */
+    private fun credentialJsonOf(body: MfaVerifyRequest): String = body.credential?.toString() ?: ""
 
     /** TOTP 검증 결과를 HTTP 응답으로 매핑한다(Success→세션, InvalidCode/NotEnabled→401, TooManyAttempts→429). */
     private fun mapTotpResult(
@@ -295,6 +330,27 @@ class AuthController(
             MfaBackupCodeService.VerifyResult.InvalidCode ->
                 errorResponse(HttpStatus.UNAUTHORIZED, "invalid_code")
             MfaBackupCodeService.VerifyResult.TooManyAttempts ->
+                errorResponse(HttpStatus.TOO_MANY_REQUESTS, "too_many_attempts")
+        }
+
+    /**
+     * 보안키(assertion) 검증 결과를 HTTP 응답으로 매핑한다 (FR-MF-03).
+     *
+     * Success 면 TOTP/백업코드와 동일하게 `issueTokens(mfaVerified=true)` 로 정식 세션을 발급한다(동일 세션 효과).
+     * 만료/검증실패/미등록/타인소유/clone 의심은 모두 [WebAuthnSecurityKeyService.VerifyResult.InvalidAssertion]
+     * 로 수렴하며 **401 invalid_code** 로 일반화한다(원인 비노출 fail-closed). rate-limit→429 too_many_attempts.
+     */
+    private fun mapWebauthnResult(
+        request: HttpServletRequest,
+        claims: MfaChallengeClaims,
+        result: WebAuthnSecurityKeyService.VerifyResult,
+    ): ResponseEntity<*> =
+        when (result) {
+            WebAuthnSecurityKeyService.VerifyResult.Success ->
+                issueTokens(request, claims.userId, claims.providerId, mfaVerified = true)
+            WebAuthnSecurityKeyService.VerifyResult.InvalidAssertion ->
+                errorResponse(HttpStatus.UNAUTHORIZED, "invalid_code")
+            WebAuthnSecurityKeyService.VerifyResult.TooManyAttempts ->
                 errorResponse(HttpStatus.TOO_MANY_REQUESTS, "too_many_attempts")
         }
 
@@ -731,6 +787,9 @@ class AuthController(
         /** [MfaVerifyRequest.method] — 1회용 백업 코드 검증(FR-MF-02). */
         const val METHOD_BACKUP_CODE = "backup_code"
 
+        /** [MfaVerifyRequest.method] — 보안키(assertion) 검증(FR-MF-03). */
+        const val METHOD_WEBAUTHN = "webauthn"
+
         /** logout 세션 폐기 사유 — 감사 로그 검색 키 */
         const val REVOKE_REASON_LOGOUT = "logout"
 
@@ -802,14 +861,18 @@ data class TokenResponse(
  * 1단계(비밀번호) 통과 시 받은 챌린지 토큰과 2차 요소 코드(Authenticator 앱 TOTP 또는 백업 코드)를 함께 보낸다.
  *
  * @param mfaChallengeToken [login] 2단계 응답([MfaRequiredResponse])의 챌린지 토큰 (역직렬화 키: mfa_challenge_token)
- * @param code 사용자가 입력한 코드 — TOTP 6자리 또는 백업 코드(xxxxx-xxxxx). 검증은 서비스가 수행한다(컨트롤러는 로깅하지 않음)
- * @param method 검증 방식 — `"totp"`(기본값) 또는 `"backup_code"`. 기본값을 둬 method 를 보내지 않는 기존
- *   클라이언트는 TOTP 경로를 그대로 탄다(회귀 0). 미지원 값은 컨트롤러가 400 invalid_method 로 거부한다.
+ * @param code 사용자가 입력한 코드 — TOTP 6자리 또는 백업 코드(xxxxx-xxxxx). webauthn 은 빈 값 허용(credential 사용).
+ *   검증은 서비스가 수행한다(컨트롤러는 로깅하지 않음).
+ * @param method 검증 방식 — `"totp"`(기본값) / `"backup_code"` / `"webauthn"`. 기본값을 둬 method 를
+ *   보내지 않는 기존 클라이언트는 TOTP 경로를 그대로 탄다(회귀 0). 미지원 값은 400 invalid_method 로 거부한다.
+ * @param credential 보안키(assertion) 인증 응답 JSON 트리 — `method="webauthn"` 일 때만 사용한다. nullable +
+ *   기본 null 이라 totp/backup_code 요청(credential 부재)은 그대로 호환된다(회귀 0). 검증은 서비스가 수행한다.
  */
 data class MfaVerifyRequest(
     @JsonProperty("mfa_challenge_token") val mfaChallengeToken: String,
-    val code: String,
+    val code: String = "",
     val method: String = "totp",
+    val credential: JsonNode? = null,
 )
 
 /**

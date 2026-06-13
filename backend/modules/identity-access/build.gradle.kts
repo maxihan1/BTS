@@ -97,6 +97,11 @@ dependencies {
     implementation("com.google.zxing:core:3.4.0")
     implementation("com.google.zxing:javase:3.4.0")
 
+    // FR-MF-03 WebAuthn — webauthn4j-core: 등록(attestation)/인증(assertion) 검증 + ObjectConverter(JSON/CBOR).
+    // 버전 0.28.4.RELEASE 고정 — 0.31.0+ 는 Jackson 3 의존이라 Spring Boot 3.3.5(Jackson 2) 클래스패스와 충돌한다.
+    implementation("com.webauthn4j:webauthn4j-core:0.28.4.RELEASE")
+    testImplementation("com.webauthn4j:webauthn4j-test:0.28.4.RELEASE")
+
     // Kotlin 기본
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")

@@ -127,7 +127,10 @@ class SecurityConfig(
                     "/api/v1/auth/login",
                     "/api/v1/auth/refresh",
                     // FR-MF-01: 로그인 2단계 검증 — 정식 세션 전(JWT 없음)이라 login 처럼 명시적 CSRF skip (BLOCKER-1).
+                    // method=webauthn 도 동일 경로(MFA_VERIFY_PATH)를 쓰므로 별도 등록 불요 (FR-MF-03).
                     MFA_VERIFY_PATH,
+                    // FR-MF-03: 보안키 인증(assertion) 시작 — 정식 세션 전(챌린지 토큰만)이라 verify 와 동일하게 CSRF skip.
+                    WEBAUTHN_AUTHENTICATE_START_PATH,
                     "/.well-known/jwks.json",
                     "/actuator/**",
                 )
@@ -150,7 +153,11 @@ class SecurityConfig(
                     // 도메인만으로 라우트 존재 여부만 판단하며 자격증명을 취급하지 않는다 (DomainRouteController KDoc 참조).
                     ROUTE_PATH,
                     // FR-MF-01: 2단계 검증은 정식 세션 전 호출이라 permitAll (totp/** 는 permitAll 아님 — authenticated).
+                    // method=webauthn 도 동일 경로를 쓰므로 별도 등록 불요 (FR-MF-03).
                     MFA_VERIFY_PATH,
+                    // FR-MF-03: 보안키 인증 시작도 정식 세션 전(챌린지 토큰만) 호출이라 permitAll
+                    // (webauthn/register/** 와 GET/DELETE /webauthn 은 permitAll 아님 — /api/** authenticated).
+                    WEBAUTHN_AUTHENTICATE_START_PATH,
                     "/.well-known/jwks.json",
                     "/actuator/health",
                 ).permitAll()
@@ -196,9 +203,16 @@ class SecurityConfig(
         const val ROUTE_PATH = "/api/v1/auth/route"
 
         /**
-         * 로그인 2단계 TOTP 검증 엔드포인트 (FR-MF-01, Task 10 구현 예정).
+         * 로그인 2단계 검증 엔드포인트 (FR-MF-01 TOTP/백업코드, FR-MF-03 보안키 — method 로 분기).
          * 1단계(pw) 통과 후 정식 세션 발급 전에 호출되므로 permitAll + CSRF-ignore 양쪽에 등록한다(BLOCKER-1).
          */
         const val MFA_VERIFY_PATH = "/api/v1/auth/mfa/verify"
+
+        /**
+         * 로그인 2단계 보안키 인증(assertion) 시작 엔드포인트 (FR-MF-03).
+         * 1단계(pw) 통과 후 정식 세션 발급 전(챌린지 토큰만)에 호출되므로 [MFA_VERIFY_PATH] 선례대로
+         * permitAll + CSRF-ignore 양쪽에 등록한다. allowCredentials 옵션 발급만 하며 자격증명을 취급하지 않는다.
+         */
+        const val WEBAUTHN_AUTHENTICATE_START_PATH = "/api/v1/auth/mfa/webauthn/authenticate/start"
     }
 }

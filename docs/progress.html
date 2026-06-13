@@ -182,9 +182,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
           <div><span class="dot dot-done"></span> 완료 <b>47</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>4</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>5</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>71</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>70</b></div>
         </div>
       </div>
     </div>
@@ -1289,9 +1289,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:92%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 22</div>
-        <div>🔄 진행중 0</div>
+        <div>🔄 진행중 1</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 2</div>
+        <div>⬜ 대기 1</div>
       </div>
     </div>
     <h2>세부 기능 (24개)</h2>
@@ -1442,13 +1442,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc">백업 코드 (Recovery Codes)</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — 10개 1회용 코드 생성 + 해시 저장</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `user_<span class="term" data-def="&quot;2단계 인증&quot; 비밀번호 치고, 핸드폰 앱이나 문자로 숫자 6자리를 한 번 더 쳐야만 들어갈 수 있는 2중 보안입니다.">mfa</span>_backup_codes(code_<span class="term" data-def="&quot;비밀번호 요리법&quot; 비밀번호에 의미 없는 무작위 문자(Salt)를 치고, 잘게 썰어서(Hash), 수백 번 반복해서 볶아(Iteration) 원래 모양을 없앱니다.">hash</span>, used_at)`</li><li><span class="step-icon">✅</span> D4 — 백엔드 — 코드 생성/검증/소진</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 코드 복사/다운로드(.txt) + 1회용 안내</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-진행중">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">🔄</span>
         <span class="fr-id">FR-MF-03</span>
         <span class="fr-desc">WebAuthn (Passkey/하드웨어 키)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인</li><li><span class="step-icon">⬜</span> D2 — 명세 — FIDO2 attestation + assertion</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `user_webauthn_credentials(credential_id, public_key)`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `webauthn4j` 라이브러리</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — 가상 Authenticator</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — `navigator.credentials` API</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — FIDO2 attestation + assertion</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `user_webauthn_credentials(credential_id, public_key)`</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `webauthn4j` 라이브러리</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 가상 Authenticator</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — `navigator.credentials` API</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-완료">
       <summary>
         <span class="fr-status">✅</span>

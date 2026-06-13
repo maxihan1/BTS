@@ -8,10 +8,12 @@ import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
 import com.atlas.bts.identity.mfa.MfaBackupCodeService
 import com.atlas.bts.identity.mfa.MfaBackupCodeService.BackupCodeStatus
 import com.atlas.bts.identity.mfa.MfaBackupCodeService.GenerateResult
+import com.atlas.bts.identity.mfa.MfaChallengeTokenService
 import com.atlas.bts.identity.mfa.MfaService
 import com.atlas.bts.identity.mfa.MfaService.DisableResult
 import com.atlas.bts.identity.mfa.MfaService.EnableResult
 import com.atlas.bts.identity.mfa.MfaService.SetupResult
+import com.atlas.bts.identity.mfa.WebAuthnSecurityKeyService
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.user.User
@@ -136,6 +138,12 @@ class MfaControllerTest {
 
     @MockBean
     lateinit var backupCodeService: MfaBackupCodeService
+
+    @MockBean
+    lateinit var webAuthnSecurityKeyService: WebAuthnSecurityKeyService
+
+    @MockBean
+    lateinit var challengeTokenService: MfaChallengeTokenService
 
     private val userId = UUID.fromString("11111111-1111-1111-1111-111111111111")
 
