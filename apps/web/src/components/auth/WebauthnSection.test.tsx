@@ -1,10 +1,8 @@
 // WebAuthn 보안 키 설정 섹션 단위 테스트 — 목록·등록·삭제·FR-8 refreshSession·에러·미지원 브라우저 검증
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { http, HttpResponse } from 'msw'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { server } from '@/test/server'
 import { useAuthStore } from '@/auth/authStore'
 import { mfaStrings } from '@/i18n/ko'
 import { WebauthnSection } from './WebauthnSection'
@@ -15,7 +13,7 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mockNavigate,
 }))
 
-// refreshSession mock
+// refreshSession mock — vi.mock 팩토리는 호이스팅되므로 외부 변수 참조 금지
 vi.mock('@/api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/client')>()
   return {
@@ -24,18 +22,25 @@ vi.mock('@/api/client', async (importOriginal) => {
   }
 })
 
-// @simplewebauthn/browser mock — jsdom은 PublicKeyCredential 미정의라
-// browserSupportsWebAuthn()이 자연적으로 false를 반환하지만, 등록 성공 케이스에서는
-// registerSecurityKey를 직접 mock해 브라우저 지원 여부와 무관하게 동작하도록 한다.
-vi.mock('@/api/webauthn', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/webauthn')>()
-  return {
-    ...actual,
-    registerSecurityKey: vi.fn(),
-    deleteWebauthnKey: vi.fn(),
-    listWebauthnKeys: vi.fn(),
-  }
-})
+// @simplewebauthn/browser mock — jsdom은 PublicKeyCredential 미정의라 false 반환.
+// 대부분의 테스트에서 지원 환경을 가정하므로 vi.fn()으로 등록하고 beforeEach에서 true로 설정한다.
+vi.mock('@simplewebauthn/browser', () => ({
+  browserSupportsWebAuthn: vi.fn(),
+  startRegistration: vi.fn(),
+  startAuthentication: vi.fn(),
+}))
+
+// @/api/webauthn mock — listWebauthnKeys·registerSecurityKey·deleteWebauthnKey를 vi.fn으로 교체
+vi.mock('@/api/webauthn', () => ({
+  listWebauthnKeys: vi.fn(),
+  registerSecurityKey: vi.fn(),
+  deleteWebauthnKey: vi.fn(),
+  webauthnRegisterStart: vi.fn(),
+  webauthnRegisterFinish: vi.fn(),
+  webauthnAuthenticateStart: vi.fn(),
+  verifyWebauthn: vi.fn(),
+  authenticateWithSecurityKey: vi.fn(),
+}))
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처
@@ -53,22 +58,6 @@ const KEY_2 = {
   name: null,
   createdAt: '2024-02-01T12:00:00Z',
   lastUsedAt: null,
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MSW 핸들러 헬퍼
-// ─────────────────────────────────────────────────────────────────────────────
-
-function mockListKeys(keys: typeof KEY_1[]) {
-  return http.get('/api/v1/auth/mfa/webauthn', () =>
-    HttpResponse.json({ keys }),
-  )
-}
-
-function mockDeleteKeyOk(id: string) {
-  return http.delete(`/api/v1/auth/mfa/webauthn/${id}`, () =>
-    new HttpResponse(null, { status: 204 }),
-  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -93,7 +82,22 @@ function renderWebauthnSection() {
 // 인증 상태 초기화
 // ─────────────────────────────────────────────────────────────────────────────
 
-beforeEach(() => {
+beforeEach(async () => {
+  // 이전 테스트의 mock 호출 카운트를 초기화한다 (구현은 유지, 호출 기록만 삭제).
+  vi.clearAllMocks()
+
+  // @simplewebauthn/browser: 기본적으로 지원 환경으로 설정
+  const { browserSupportsWebAuthn } = await import('@simplewebauthn/browser')
+  vi.mocked(browserSupportsWebAuthn).mockReturnValue(true)
+
+  // @/api/webauthn: 기본값 설정
+  const { listWebauthnKeys, registerSecurityKey, deleteWebauthnKey } = await import('@/api/webauthn')
+  vi.mocked(listWebauthnKeys).mockResolvedValue({ keys: [] })
+  vi.mocked(registerSecurityKey).mockResolvedValue(undefined)
+  vi.mocked(deleteWebauthnKey).mockResolvedValue(undefined)
+
+  mockNavigate.mockReset()
+
   useAuthStore.setState({
     accessToken: 'test-token',
     user: {
@@ -114,29 +118,31 @@ beforeEach(() => {
 
 describe('T4-WA-S1: 보안 키 목록 표시', () => {
   it('T4-WA-S1-1: 키 2개 조회 시 이름과 등록일이 표시된다', async () => {
-    server.use(mockListKeys([KEY_1, KEY_2]))
+    const { listWebauthnKeys } = await import('@/api/webauthn')
+    vi.mocked(listWebauthnKeys).mockResolvedValue({ keys: [KEY_1, KEY_2] })
 
     renderWebauthnSection()
 
     await waitFor(() => {
-      expect(screen.getByText(KEY_1.name!)).toBeInTheDocument()
+      expect(screen.getByText(KEY_1.name)).toBeInTheDocument()
     })
-    // KEY_2는 name=null → fallback 이름이나 id가 표시되어야 한다
     expect(screen.getAllByRole('listitem').length).toBe(2)
   })
 
   it('T4-WA-S1-2: lastUsedAt=null인 키는 "사용 안 함" 텍스트를 표시한다', async () => {
-    server.use(mockListKeys([KEY_2]))
+    const { listWebauthnKeys } = await import('@/api/webauthn')
+    vi.mocked(listWebauthnKeys).mockResolvedValue({ keys: [KEY_2] })
 
     renderWebauthnSection()
 
     await waitFor(() => {
-      expect(screen.getByText(mfaStrings.webauthnLastUsedNever)).toBeInTheDocument()
+      // "사용 안 함"은 <span> 안에 있어 부모 텍스트에서 분리되므로 span 선택자로 조회한다
+      expect(screen.getByText(mfaStrings.webauthnLastUsedNever, { selector: 'span' })).toBeInTheDocument()
     })
   })
 
   it('T4-WA-S1-3: 키가 0개이면 "등록된 보안 키가 없습니다." 빈 상태 메시지를 표시한다', async () => {
-    server.use(mockListKeys([]))
+    // beforeEach에서 listWebauthnKeys: { keys: [] }로 초기화됨
 
     renderWebauthnSection()
 
@@ -153,7 +159,6 @@ describe('T4-WA-S1: 보안 키 목록 표시', () => {
 describe('T4-WA-S2: 보안 키 등록 플로우', () => {
   it('T4-WA-S2-1: "보안 키 추가" 버튼 클릭 → 별칭 입력 필드 노출', async () => {
     const user = userEvent.setup({ delay: null })
-    server.use(mockListKeys([]))
 
     renderWebauthnSection()
 
@@ -170,19 +175,7 @@ describe('T4-WA-S2: 보안 키 등록 플로우', () => {
 
   it('T4-WA-S2-2: 별칭 입력 후 등록 성공 → registerSecurityKey가 name과 함께 호출되고 목록이 invalidateQueries로 갱신된다', async () => {
     const { registerSecurityKey } = await import('@/api/webauthn')
-    const registerMock = vi.mocked(registerSecurityKey)
-    registerMock.mockResolvedValue(undefined)
-
     const user = userEvent.setup({ delay: null })
-
-    let listCallCount = 0
-    server.use(
-      http.get('/api/v1/auth/mfa/webauthn', () => {
-        listCallCount += 1
-        if (listCallCount === 1) return HttpResponse.json({ keys: [] })
-        return HttpResponse.json({ keys: [KEY_1] })
-      }),
-    )
 
     const queryClientRef = { current: null as QueryClient | null }
     function CapturingWrapper({ children }: { children: React.ReactNode }) {
@@ -209,11 +202,11 @@ describe('T4-WA-S2: 보안 키 등록 플로우', () => {
 
     const invalidateSpy = vi.spyOn(queryClientRef.current!, 'invalidateQueries')
 
-    const submitBtn = screen.getByRole('button', { name: /등록|확인/i })
-    await user.click(submitBtn)
+    // 폼 제출 버튼 클릭 (form 내부의 submit 버튼 — type="submit")
+    await user.click(screen.getByRole('button', { name: mfaStrings.webauthnAddButton }))
 
     await waitFor(() => {
-      expect(registerMock).toHaveBeenCalledWith('회사 노트북')
+      expect(vi.mocked(registerSecurityKey)).toHaveBeenCalledWith('회사 노트북')
     })
 
     await waitFor(() => {
@@ -230,17 +223,17 @@ describe('T4-WA-S2: 보안 키 등록 플로우', () => {
 
 describe('T4-WA-S3: 보안 키 삭제 플로우', () => {
   it('T4-WA-S3-1: 삭제 버튼 클릭 → 인라인 삭제 확인 박스 노출', async () => {
+    const { listWebauthnKeys } = await import('@/api/webauthn')
+    vi.mocked(listWebauthnKeys).mockResolvedValue({ keys: [KEY_1] })
     const user = userEvent.setup({ delay: null })
-    server.use(mockListKeys([KEY_1]))
 
     renderWebauthnSection()
 
     await waitFor(() => {
-      expect(screen.getByText(KEY_1.name!)).toBeInTheDocument()
+      expect(screen.getByText(KEY_1.name)).toBeInTheDocument()
     })
 
-    const deleteBtn = screen.getByRole('button', { name: mfaStrings.webauthnDeleteButton })
-    await user.click(deleteBtn)
+    await user.click(screen.getByRole('button', { name: mfaStrings.webauthnDeleteButton }))
 
     await waitFor(() => {
       expect(screen.getByText(mfaStrings.webauthnDeleteConfirmBody)).toBeInTheDocument()
@@ -250,12 +243,11 @@ describe('T4-WA-S3: 보안 키 삭제 플로우', () => {
   })
 
   it('T4-WA-S3-2: 삭제 취소 → deleteWebauthnKey 미호출, 확인 박스 닫힘', async () => {
-    const { deleteWebauthnKey } = await import('@/api/webauthn')
-    const deleteMock = vi.mocked(deleteWebauthnKey)
-    deleteMock.mockReset()
+    const { listWebauthnKeys, deleteWebauthnKey } = await import('@/api/webauthn')
+    vi.mocked(listWebauthnKeys).mockResolvedValue({ keys: [KEY_1] })
+    vi.mocked(deleteWebauthnKey).mockReset()
 
     const user = userEvent.setup({ delay: null })
-    server.use(mockListKeys([KEY_1]))
 
     renderWebauthnSection()
 
@@ -274,16 +266,14 @@ describe('T4-WA-S3: 보안 키 삭제 플로우', () => {
     await waitFor(() => {
       expect(screen.queryByText(mfaStrings.webauthnDeleteConfirmBody)).not.toBeInTheDocument()
     })
-    expect(deleteMock).not.toHaveBeenCalled()
+    expect(vi.mocked(deleteWebauthnKey)).not.toHaveBeenCalled()
   })
 
   it('T4-WA-S3-3: 삭제 확인 → deleteWebauthnKey 호출 → 목록 invalidateQueries', async () => {
-    const { deleteWebauthnKey } = await import('@/api/webauthn')
-    const deleteMock = vi.mocked(deleteWebauthnKey)
-    deleteMock.mockResolvedValue(undefined)
+    const { listWebauthnKeys, deleteWebauthnKey } = await import('@/api/webauthn')
+    vi.mocked(listWebauthnKeys).mockResolvedValue({ keys: [KEY_1] })
 
     const user = userEvent.setup({ delay: null })
-    server.use(mockListKeys([KEY_1]), mockDeleteKeyOk(KEY_1.id))
 
     const queryClientRef = { current: null as QueryClient | null }
     function CapturingWrapper({ children }: { children: React.ReactNode }) {
@@ -311,7 +301,7 @@ describe('T4-WA-S3: 보안 키 삭제 플로우', () => {
     await user.click(screen.getByRole('button', { name: mfaStrings.webauthnDeleteConfirmButton }))
 
     await waitFor(() => {
-      expect(deleteMock).toHaveBeenCalledWith(KEY_1.id)
+      expect(vi.mocked(deleteWebauthnKey)).toHaveBeenCalledWith(KEY_1.id)
     })
 
     await waitFor(() => {
@@ -329,8 +319,7 @@ describe('T4-WA-S3: 보안 키 삭제 플로우', () => {
 describe('T4-WA-S4: FR-8 등록 후 클레임 게이트 해제', () => {
   it('T4-WA-S4-1: mfaEnrollmentRequired=true 사용자가 등록 성공 시 refreshSession이 호출된다', async () => {
     const { refreshSession } = await import('@/api/client')
-    const refreshSessionMock = vi.mocked(refreshSession)
-    refreshSessionMock.mockResolvedValue({
+    vi.mocked(refreshSession).mockResolvedValue({
       username: 'alice',
       email: 'alice@bts.local',
       authMethod: 'local',
@@ -339,7 +328,6 @@ describe('T4-WA-S4: FR-8 등록 후 클레임 게이트 해제', () => {
       isSystemAdmin: false,
       mfaEnrollmentRequired: false,
     })
-    mockNavigate.mockReset()
 
     useAuthStore.setState({
       accessToken: 'test-token',
@@ -354,12 +342,7 @@ describe('T4-WA-S4: FR-8 등록 후 클레임 게이트 해제', () => {
       },
     })
 
-    const { registerSecurityKey } = await import('@/api/webauthn')
-    const registerMock = vi.mocked(registerSecurityKey)
-    registerMock.mockResolvedValue(undefined)
-
     const user = userEvent.setup({ delay: null })
-    server.use(mockListKeys([]))
 
     renderWebauthnSection()
 
@@ -375,29 +358,22 @@ describe('T4-WA-S4: FR-8 등록 후 클레임 게이트 해제', () => {
 
     await user.type(screen.getByLabelText(mfaStrings.webauthnNameLabel), '보안 키')
 
-    const submitBtn = screen.getByRole('button', { name: /등록|확인/i })
-    await user.click(submitBtn)
+    await user.click(screen.getByRole('button', { name: mfaStrings.webauthnAddButton }))
 
     await waitFor(() => {
-      expect(refreshSessionMock).toHaveBeenCalledTimes(1)
+      expect(vi.mocked(refreshSession)).toHaveBeenCalledTimes(1)
     })
     expect(mockNavigate).toHaveBeenCalledWith({ to: '/dashboard' })
   })
 
   it('T4-WA-S4-2: mfaEnrollmentRequired=false 사용자가 등록 성공 시 refreshSession이 호출되지 않는다', async () => {
     const { refreshSession } = await import('@/api/client')
-    const refreshSessionMock = vi.mocked(refreshSession)
-    refreshSessionMock.mockReset()
-    mockNavigate.mockReset()
+    const { registerSecurityKey } = await import('@/api/webauthn')
+    vi.mocked(refreshSession).mockReset()
 
     // beforeEach에서 mfaEnrollmentRequired: false로 초기화됨
 
-    const { registerSecurityKey } = await import('@/api/webauthn')
-    const registerMock = vi.mocked(registerSecurityKey)
-    registerMock.mockResolvedValue(undefined)
-
     const user = userEvent.setup({ delay: null })
-    server.use(mockListKeys([]))
 
     renderWebauthnSection()
 
@@ -413,15 +389,13 @@ describe('T4-WA-S4: FR-8 등록 후 클레임 게이트 해제', () => {
 
     await user.type(screen.getByLabelText(mfaStrings.webauthnNameLabel), '보안 키')
 
-    const submitBtn = screen.getByRole('button', { name: /등록|확인/i })
-    await user.click(submitBtn)
+    await user.click(screen.getByRole('button', { name: mfaStrings.webauthnAddButton }))
 
     await waitFor(() => {
-      // 등록 성공 후 폼이 닫히거나 성공 상태로 전환됨을 확인
-      expect(registerMock).toHaveBeenCalledTimes(1)
+      expect(vi.mocked(registerSecurityKey)).toHaveBeenCalledTimes(1)
     })
 
-    expect(refreshSessionMock).not.toHaveBeenCalled()
+    expect(vi.mocked(refreshSession)).not.toHaveBeenCalled()
     expect(mockNavigate).not.toHaveBeenCalled()
   })
 })
@@ -433,13 +407,11 @@ describe('T4-WA-S4: FR-8 등록 후 클레임 게이트 해제', () => {
 describe('T4-WA-S5: 에러 처리', () => {
   it('T4-WA-S5-1: EC-1 NotAllowedError (사용자 취소) → 인라인 에러 메시지 + 화면 유지', async () => {
     const { registerSecurityKey } = await import('@/api/webauthn')
-    const registerMock = vi.mocked(registerSecurityKey)
     const notAllowedError = new Error('The operation either timed out or was not allowed.')
     notAllowedError.name = 'NotAllowedError'
-    registerMock.mockRejectedValue(notAllowedError)
+    vi.mocked(registerSecurityKey).mockRejectedValue(notAllowedError)
 
     const user = userEvent.setup({ delay: null })
-    server.use(mockListKeys([]))
 
     renderWebauthnSection()
 
@@ -453,8 +425,7 @@ describe('T4-WA-S5: 에러 처리', () => {
       expect(screen.getByLabelText(mfaStrings.webauthnNameLabel)).toBeInTheDocument()
     })
 
-    const submitBtn = screen.getByRole('button', { name: /등록|확인/i })
-    await user.click(submitBtn)
+    await user.click(screen.getByRole('button', { name: mfaStrings.webauthnAddButton }))
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument()
@@ -466,11 +437,9 @@ describe('T4-WA-S5: 에러 처리', () => {
   it('T4-WA-S5-2: EC-2 ApiError 409 already_registered → "이미 등록된 보안 키" 메시지', async () => {
     const { registerSecurityKey } = await import('@/api/webauthn')
     const { ApiError } = await import('@/api/client')
-    const registerMock = vi.mocked(registerSecurityKey)
-    registerMock.mockRejectedValue(new ApiError(409, { error: 'already_registered' }))
+    vi.mocked(registerSecurityKey).mockRejectedValue(new ApiError(409, { error: 'already_registered' }))
 
     const user = userEvent.setup({ delay: null })
-    server.use(mockListKeys([]))
 
     renderWebauthnSection()
 
@@ -484,8 +453,7 @@ describe('T4-WA-S5: 에러 처리', () => {
       expect(screen.getByLabelText(mfaStrings.webauthnNameLabel)).toBeInTheDocument()
     })
 
-    const submitBtn = screen.getByRole('button', { name: /등록|확인/i })
-    await user.click(submitBtn)
+    await user.click(screen.getByRole('button', { name: mfaStrings.webauthnAddButton }))
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument()
@@ -494,26 +462,16 @@ describe('T4-WA-S5: 에러 처리', () => {
   })
 
   it('T4-WA-S5-3: EC-3 미지원 브라우저(browserSupportsWebAuthn=false) → 추가 버튼 비활성 + 안내 문구', async () => {
-    // jsdom에서는 PublicKeyCredential이 없어 browserSupportsWebAuthn()이 false를 반환한다.
-    // 이 케이스는 컴포넌트가 @simplewebauthn/browser의 browserSupportsWebAuthn을 호출하고
-    // false일 때 버튼을 disabled 처리하거나 안내를 표시하는지 검증한다.
-    server.use(mockListKeys([]))
-
-    // WebAuthn mock을 재설정해 원본 browserSupportsWebAuthn을 사용하도록 한다
-    // (vi.mock은 @/api/webauthn만 대상 — @simplewebauthn/browser는 별도 mock)
-    vi.mock('@simplewebauthn/browser', () => ({
-      browserSupportsWebAuthn: vi.fn().mockReturnValue(false),
-      startRegistration: vi.fn(),
-      startAuthentication: vi.fn(),
-    }))
+    const { browserSupportsWebAuthn } = await import('@simplewebauthn/browser')
+    vi.mocked(browserSupportsWebAuthn).mockReturnValue(false)
 
     renderWebauthnSection()
 
     await waitFor(() => {
-      // 안내 문구 또는 버튼 비활성 확인
-      const addBtn = screen.queryByRole('button', { name: mfaStrings.webauthnAddButton })
-      const unsupportedMsg = screen.queryByText(mfaStrings.webauthnUnsupportedBrowser)
-      expect(addBtn === null || addBtn.hasAttribute('disabled') || unsupportedMsg !== null).toBe(true)
+      expect(screen.getByText(mfaStrings.webauthnUnsupportedBrowser)).toBeInTheDocument()
     })
+
+    const addBtn = screen.getByRole('button', { name: mfaStrings.webauthnAddButton })
+    expect(addBtn).toBeDisabled()
   })
 })
