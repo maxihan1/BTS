@@ -3,6 +3,7 @@
 package com.bts.issue.link.repository
 
 import com.bts.issue.jooq.tables.references.ISSUE_LINKS
+import com.bts.issue.jooq.tables.references.ISSUES
 import com.bts.issue.link.domain.IssueLink
 import com.bts.issue.link.domain.LinkType
 import org.jooq.DSLContext
@@ -47,10 +48,12 @@ private const val SQL_EXISTS_BLOCKS_PATH =
  * - [existsLink] — (sourceId, targetId, linkType) 중복 여부 확인.
  * - [deleteById] — 링크 id 로 행 삭제. 삭제 성공 true / 존재하지 않으면 false.
  * - [existsBlocksPath] — blocks 그래프 재귀 CTE 로 도달 가능성 탐색.
+ * - [findOutwardWithIssue] — source=issueId 인 링크를 issues 와 단일 JOIN 해 [LinkedIssueRow] 반환 (N+1 방지).
+ * - [findInwardWithIssue] — target=issueId 인 링크를 issues 와 단일 JOIN 해 [LinkedIssueRow] 반환 (N+1 방지).
  *
  * ## 소프트 삭제 없음
  * `issue_links` 는 관계 테이블이라 링크 해제 = 행 물리 삭제 (DATA.md §3).
- * 상대 이슈의 `deleted_at` 필터는 Task 5 서비스 책임이다.
+ * [findOutwardWithIssue] / [findInwardWithIssue] 는 상대 이슈의 `deleted_at IS NULL` 필터를 쿼리 단에 포함한다.
  */
 @Repository
 class IssueLinkRepository(
@@ -177,6 +180,96 @@ class IssueLinkRepository(
     ): Boolean {
         log.debug("Checking blocks path from={} to={}", fromId, toId)
         return dsl.fetchValue(SQL_EXISTS_BLOCKS_PATH.trimIndent(), fromId, toId) as? Boolean ?: false
+    }
+
+    /**
+     * `source_id = issueId` 인 링크를 `issues` 테이블과 단일 LEFT JOIN 해
+     * 상대(target) 이슈의 핵심 필드를 함께 가져온다.
+     *
+     * ## N+1 방지
+     * 단일 쿼리로 링크 + 상대 이슈 정보를 한 번에 조회한다.
+     * `issues.deleted_at IS NULL` 조건으로 소프트삭제된 상대 이슈를 쿼리 단에서 제외한다.
+     *
+     * ## cartesian product 안전성
+     * issue_links(source_id 조건) 당 target 이슈는 1:1이므로 행 폭증 없음.
+     *
+     * @param issueId 링크 출발 이슈(source) UUID.
+     * @return 소프트삭제되지 않은 target 이슈 정보를 포함한 [LinkedIssueRow] 목록.
+     */
+    @Transactional(readOnly = true)
+    fun findOutwardWithIssue(issueId: UUID): List<LinkedIssueRow> {
+        log.debug("findOutwardWithIssue issueId={}", issueId)
+        val target = ISSUES.`as`("target")
+        return dsl.select(
+            ISSUE_LINKS.ID,
+            ISSUE_LINKS.LINK_TYPE,
+            target.ID,
+            target.KEY,
+            target.SUMMARY,
+            target.CURRENT_STATE_KEY,
+        )
+            .from(ISSUE_LINKS)
+            .join(target).on(ISSUE_LINKS.TARGET_ID.eq(target.ID))
+            .where(ISSUE_LINKS.SOURCE_ID.eq(issueId))
+            .and(target.DELETED_AT.isNull)
+            .fetch { record ->
+                LinkedIssueRow(
+                    linkId = record.get(ISSUE_LINKS.ID) ?: error("issue_links.id must not be null"),
+                    linkType = LinkType.fromCode(
+                        record.get(ISSUE_LINKS.LINK_TYPE) ?: error("issue_links.link_type must not be null"),
+                    ),
+                    otherIssueId = record.get(target.ID) ?: error("issues.id must not be null"),
+                    otherIssueKey = record.get(target.KEY) ?: error("issues.key must not be null"),
+                    otherIssueSummary = record.get(target.SUMMARY) ?: error("issues.summary must not be null"),
+                    otherCurrentStateKey = record.get(target.CURRENT_STATE_KEY)
+                        ?: error("issues.current_state_key must not be null"),
+                )
+            }
+    }
+
+    /**
+     * `target_id = issueId` 인 링크를 `issues` 테이블과 단일 LEFT JOIN 해
+     * 상대(source) 이슈의 핵심 필드를 함께 가져온다.
+     *
+     * ## N+1 방지
+     * 단일 쿼리로 링크 + 상대 이슈 정보를 한 번에 조회한다.
+     * `issues.deleted_at IS NULL` 조건으로 소프트삭제된 상대 이슈를 쿼리 단에서 제외한다.
+     *
+     * ## cartesian product 안전성
+     * issue_links(target_id 조건) 당 source 이슈는 1:1이므로 행 폭증 없음.
+     *
+     * @param issueId 링크 도착 이슈(target) UUID.
+     * @return 소프트삭제되지 않은 source 이슈 정보를 포함한 [LinkedIssueRow] 목록.
+     */
+    @Transactional(readOnly = true)
+    fun findInwardWithIssue(issueId: UUID): List<LinkedIssueRow> {
+        log.debug("findInwardWithIssue issueId={}", issueId)
+        val source = ISSUES.`as`("source")
+        return dsl.select(
+            ISSUE_LINKS.ID,
+            ISSUE_LINKS.LINK_TYPE,
+            source.ID,
+            source.KEY,
+            source.SUMMARY,
+            source.CURRENT_STATE_KEY,
+        )
+            .from(ISSUE_LINKS)
+            .join(source).on(ISSUE_LINKS.SOURCE_ID.eq(source.ID))
+            .where(ISSUE_LINKS.TARGET_ID.eq(issueId))
+            .and(source.DELETED_AT.isNull)
+            .fetch { record ->
+                LinkedIssueRow(
+                    linkId = record.get(ISSUE_LINKS.ID) ?: error("issue_links.id must not be null"),
+                    linkType = LinkType.fromCode(
+                        record.get(ISSUE_LINKS.LINK_TYPE) ?: error("issue_links.link_type must not be null"),
+                    ),
+                    otherIssueId = record.get(source.ID) ?: error("issues.id must not be null"),
+                    otherIssueKey = record.get(source.KEY) ?: error("issues.key must not be null"),
+                    otherIssueSummary = record.get(source.SUMMARY) ?: error("issues.summary must not be null"),
+                    otherCurrentStateKey = record.get(source.CURRENT_STATE_KEY)
+                        ?: error("issues.current_state_key must not be null"),
+                )
+            }
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
