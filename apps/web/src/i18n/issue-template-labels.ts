@@ -54,6 +54,12 @@ export const issueTemplateLabels = {
     submitButton: '저장',
     /** 취소 버튼 visible 텍스트 */
     cancelButton: '취소',
+    /** 변수 도움말 앞 문구 — "사용 가능 변수:" 앞부분 */
+    variableHelpPrefix: '사용 가능 변수',
+    /** 변수 도움말 뒷 문구 — 치환 시점 안내 */
+    variableHelpSuffix: '이슈 생성 시 실제 값으로 치환됩니다',
+    /** 변수 삽입 버튼 aria-label 생성 함수 */
+    variableInsertAria: (label: string) => `${label} 변수 삽입`,
   },
 } as const
 
