@@ -126,6 +126,7 @@ const disableHandler = http.delete('/api/v1/auth/mfa/totp', async ({ request }) 
 
 /**
  * MFA 챌린지 검증 — method 분기 지원.
+ * - method:"webauthn" → credential 객체 존재 여부 검증. 객체 존재 시 200 토큰 반환.
  * - method:"backup_code" → MFA_VALID_BACKUP_CODE 비교 + 소진 시 remaining 차감.
  * - method:"totp" 또는 생략 → 기존 MFA_VALID_CODE(TOTP) 비교.
  * CSRF 헤더 불요 (permitAll 경로, 챌린지 토큰이 인증 증명).
@@ -136,6 +137,19 @@ const verifyHandler = http.post('/api/v1/auth/mfa/verify', async ({ request }) =
     mfa_challenge_token?: unknown
     code?: unknown
     method?: unknown
+    credential?: unknown
+  }
+
+  if (body.method === 'webauthn') {
+    // credential이 객체로 존재하면 성공, 없으면 401
+    if (body.credential === null || typeof body.credential !== 'object') {
+      return HttpResponse.json({ error: 'invalid_code' }, { status: 401 })
+    }
+    return HttpResponse.json({
+      access_token: 'mock-access-token-alice',
+      token_type: 'Bearer',
+      expires_in: 900,
+    })
   }
 
   const method = body.method === 'backup_code' ? 'backup_code' : 'totp'
