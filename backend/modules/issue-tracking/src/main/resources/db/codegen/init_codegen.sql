@@ -52,6 +52,7 @@ COMMENT ON COLUMN issues.reporter_id         IS 'identity-access BC users.id 대
 COMMENT ON COLUMN issues.current_state_key   IS 'project-workflow BC workflow_states.key 대응. BC 격리로 FK 미적용.';
 COMMENT ON COLUMN issues.version             IS '낙관적 잠금 카운터. 동시 수정 충돌 감지용.';
 COMMENT ON COLUMN issues.deleted_at          IS 'NULL=활성, NOT NULL=삭제됨. 소프트 삭제 (DATA.md §3). key 는 삭제 후에도 UNIQUE 제약 유지.';
+COMMENT ON COLUMN issues.parent_id           IS '부모 이슈 (issues.id 자기참조). NULL=최상위. 구조적 계층 — 링크(issue_links)와 별개 (FR-LK-01, V021 미러).';
 
 CREATE INDEX idx_issues_project_id ON issues(project_id);
 CREATE INDEX idx_issues_project_id_deleted_at ON issues(project_id, deleted_at) WHERE deleted_at IS NULL;
@@ -548,6 +549,12 @@ CREATE TABLE issue_links (
     CONSTRAINT chk_issue_links_type    CHECK (link_type IN ('blocks', 'relates', 'duplicates', 'clones')),
     CONSTRAINT uq_issue_links          UNIQUE (source_id, target_id, link_type)
 );
+COMMENT ON TABLE  issue_links            IS '이슈↔이슈 방향성 링크 (blocks/relates/duplicates/clones). 관계 테이블이라 소프트 삭제 없음 (FR-LK-01).';
+COMMENT ON COLUMN issue_links.id         IS '링크 식별자 (IDENTITY). parent-child 와 달리 링크는 다대다라 별도 PK 필요.';
+COMMENT ON COLUMN issue_links.source_id  IS '링크 출발 이슈 (issues.id). 같은 BC 라 실 FK + ON DELETE CASCADE.';
+COMMENT ON COLUMN issue_links.target_id  IS '링크 도착 이슈 (issues.id). 같은 BC 라 실 FK + ON DELETE CASCADE.';
+COMMENT ON COLUMN issue_links.link_type  IS '링크 종류 — blocks/relates/duplicates/clones 4종 (CHECK 제약으로 고정).';
+COMMENT ON COLUMN issue_links.created_at IS '링크 생성 시각. TIMESTAMPTZ (DATA.md §4).';
 
 -- FK 인덱스 (DATA.md §7). source/target 양쪽 단독 조회(나가는/들어오는 링크)에 쓰여 둘 다 추가.
 CREATE INDEX idx_issue_links_source_id ON issue_links(source_id);
