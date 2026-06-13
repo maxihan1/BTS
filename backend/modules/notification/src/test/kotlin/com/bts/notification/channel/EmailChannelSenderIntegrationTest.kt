@@ -41,9 +41,11 @@ import java.util.concurrent.TimeUnit
  *   MailHog 에 메일 미수신.
  *
  * ## 인프라
- * - [EmailChannelSenderIntegrationTestConfig] — MailHog 컨테이너 + @DynamicPropertySource +
- *   UserLookupPort fake + IssueRecipientLookupPort stub + JwtDecoder stub 제공.
+ * - [EmailChannelSenderIntegrationTestConfig] — MailHog 컨테이너 + UserLookupPort fake +
+ *   IssueRecipientLookupPort stub + JwtDecoder stub 제공.
  * - MailHog HTTP API 조회: JDK `java.net.http.HttpClient` (신규 의존성 불필요).
+ * - `@DynamicPropertySource` — MailHog SMTP 좌표를 `spring.mail.*` 으로 주입.
+ *   TestConfiguration 내부가 아닌 테스트 클래스 companion object 에 선언해야 Spring 이 인식한다.
  *
  * ## 주의
  * - Subject 헤더는 MIME encoded-word (`=?UTF-8?...?=`) 형태일 수 있으므로
@@ -62,43 +64,6 @@ import java.util.concurrent.TimeUnit
 class EmailChannelSenderIntegrationTest {
     @Autowired
     lateinit var emailChannelSender: EmailChannelSender
-
-    companion object {
-        /** fake UserLookupPort 가 이메일을 알고 있는 수신자 UUID */
-        val KNOWN_RECIPIENT_ID: UUID = UUID.fromString("dddddddd-dddd-dddd-dddd-dddddddddddd")
-
-        /** fake UserLookupPort 가 이메일을 모르는(null 반환) 수신자 UUID */
-        val UNKNOWN_RECIPIENT_ID: UUID = UUID.fromString("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
-
-        /** KNOWN_RECIPIENT_ID 에 매핑되는 수신자 이메일 주소 */
-        const val KNOWN_RECIPIENT_EMAIL = "recipient@bts-test.local"
-
-        /** MailHog HTTP API base URL — MailHog 컨테이너의 매핑 포트를 참조한다 */
-        fun mailhogApiUrl(): String {
-            val port = EmailChannelSenderIntegrationTestConfig.mailhog.getMappedPort(8025)
-            return "http://localhost:$port"
-        }
-
-        /**
-         * MailHog SMTP 좌표를 Spring 프로퍼티로 주입한다.
-         *
-         * [org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration] 이
-         * `spring.mail.host/port` 를 읽어 [org.springframework.mail.javamail.JavaMailSender] 를 자동 생성한다.
-         * `@DynamicPropertySource` 는 테스트 클래스 또는 그 상위 클래스에 선언해야 Spring 이 인식한다.
-         * (TestConfiguration 내부에 두면 무시된다.)
-         */
-        @JvmStatic
-        @DynamicPropertySource
-        fun configureMailProperties(registry: DynamicPropertyRegistry) {
-            registry.add("spring.mail.host") { EmailChannelSenderIntegrationTestConfig.mailhog.host }
-            registry.add("spring.mail.port") {
-                EmailChannelSenderIntegrationTestConfig.mailhog.getMappedPort(1025)
-            }
-            registry.add("spring.mail.properties.mail.smtp.auth") { "false" }
-            registry.add("spring.mail.properties.mail.smtp.starttls.enable") { "false" }
-            registry.add("bts.notification.email.from") { "no-reply@bts-test.local" }
-        }
-    }
 
     /** 각 테스트 전 MailHog 메일함을 비워 테스트 간 격리를 보장한다 */
     @BeforeEach
@@ -141,13 +106,11 @@ class EmailChannelSenderIntegrationTest {
         val firstMessage = messages.first()
 
         // Subject: MIME encoded-word 형태일 수 있으므로 MimeUtility.decodeText 로 디코딩 후 비교
-        val rawSubject = extractSubject(firstMessage)
-        val decodedSubject = MimeUtility.decodeText(rawSubject)
+        val decodedSubject = MimeUtility.decodeText(firstMessage.subject)
         assertThat(decodedSubject).isEqualTo(koreanTitle)
 
         // To: 수신자 이메일 일치
-        val toAddress = extractTo(firstMessage)
-        assertThat(toAddress).contains(KNOWN_RECIPIENT_EMAIL)
+        assertThat(firstMessage.to).contains(KNOWN_RECIPIENT_EMAIL)
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -172,8 +135,7 @@ class EmailChannelSenderIntegrationTest {
         // 발송이 없었으므로 MailHog 메일함은 비어 있어야 한다
         // 짧게 대기 후 확인 (혹시 비동기로 도달할 수 있는 경우에 대비)
         Thread.sleep(500)
-        val messages = fetchMailhogMessages()
-        assertThat(messages).isEmpty()
+        assertThat(fetchMailhogMessages()).isEmpty()
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -209,9 +171,12 @@ class EmailChannelSenderIntegrationTest {
     /**
      * MailHog HTTP API `GET /api/v2/messages` 를 호출해 수신된 메시지 목록을 반환한다.
      *
-     * @return MailHog 응답 JSON 에서 파싱된 메시지 맵 목록
+     * MailHog JSON 응답 구조: `{ "total": N, "count": N, "start": 0, "items": [...] }`.
+     * ObjectMapper 의존 없이 JDK HttpClient + 정규식으로 Subject/To 를 직접 추출한다.
+     *
+     * @return [MailhogMessage] 목록 (메시지 없으면 빈 리스트)
      */
-    private fun fetchMailhogMessages(): List<Map<*, *>> {
+    private fun fetchMailhogMessages(): List<MailhogMessage> {
         val client = HttpClient.newHttpClient()
         val request =
             HttpRequest.newBuilder()
@@ -221,54 +186,73 @@ class EmailChannelSenderIntegrationTest {
         val response = client.send(request, HttpResponse.BodyHandlers.ofString())
 
         if (response.statusCode() != 200) return emptyList()
-
         val body = response.body()
-        // MailHog JSON 구조: { "total": N, "count": N, "start": 0, "items": [...] }
-        // 간단한 문자열 파싱 대신 ObjectMapper 없이 Kotlin + JDK 로 처리:
-        // "items" 배열이 비어 있으면 빈 리스트 반환, 있으면 raw content 를 맵으로 파싱
-        if (!body.contains("\"items\"")) return emptyList()
 
-        // items 배열 유무 확인 — ObjectMapper 없이 단순 체크
+        // items 배열 유무 확인 — 빈 배열("[  ]") 이면 빈 리스트 반환
         val itemsStart = body.indexOf("\"items\"")
         val arrayStart = body.indexOf("[", itemsStart)
         val arrayEnd = body.lastIndexOf("]")
-
         if (arrayStart < 0 || arrayEnd < 0 || arrayEnd <= arrayStart) return emptyList()
+        if (body.substring(arrayStart, arrayEnd + 1).trim() == "[]") return emptyList()
 
-        val itemsArray = body.substring(arrayStart, arrayEnd + 1)
-        // 빈 배열이면 빈 리스트
-        if (itemsArray.trim() == "[]") return emptyList()
-
-        // 최소한 1개 이상의 메시지가 있으면 단순히 raw JSON 을 담은 맵 1개로 표현
-        // 실제 필드 파싱은 extractSubject / extractTo 에서 수행
-        return listOf(mapOf("raw" to body))
+        // 수신 메시지가 1건 이상 — Subject/To 헤더를 정규식으로 추출
+        val subject = SUBJECT_PATTERN.find(body)?.groupValues?.get(1) ?: ""
+        val to = TO_PATTERN.find(body)?.groupValues?.get(1) ?: ""
+        return listOf(MailhogMessage(subject = subject, to = to))
     }
 
     /**
-     * MailHog 응답 JSON 에서 첫 번째 메시지의 Subject 헤더를 추출한다.
+     * MailHog 메시지에서 추출한 주요 헤더를 담는 값 객체.
      *
-     * MailHog API 응답 구조에서 Subject 를 추출하기 위해 JSON 문자열 파싱을 사용한다.
-     * Subject 헤더는 `"Subject":["..."]` 형태로 items[0].Content.Headers 안에 있다.
-     *
-     * @param message [fetchMailhogMessages] 가 반환한 맵 (raw JSON 포함)
-     * @return Subject 헤더 원문 (encoded-word 포함 가능)
+     * @param subject Subject 헤더 원문 (MIME encoded-word 포함 가능)
+     * @param to To 헤더 원문
      */
-    private fun extractSubject(message: Map<*, *>): String {
-        val raw = message["raw"] as? String ?: return ""
-        // MailHog JSON 에서 "Subject":["값"] 패턴을 추출
-        val subjectPattern = Regex(""""Subject"\s*:\s*\["([^"]+)"\]""")
-        return subjectPattern.find(raw)?.groupValues?.get(1) ?: ""
-    }
+    private data class MailhogMessage(
+        val subject: String,
+        val to: String,
+    )
 
-    /**
-     * MailHog 응답 JSON 에서 첫 번째 메시지의 To 주소를 추출한다.
-     *
-     * @param message [fetchMailhogMessages] 가 반환한 맵
-     * @return To 헤더 원문
-     */
-    private fun extractTo(message: Map<*, *>): String {
-        val raw = message["raw"] as? String ?: return ""
-        val toPattern = Regex(""""To"\s*:\s*\["([^"]+)"\]""")
-        return toPattern.find(raw)?.groupValues?.get(1) ?: ""
+    companion object {
+        /** MailHog JSON 에서 `"Subject":["값"]` 패턴 추출 — Regex 재사용으로 컴파일 1회 */
+        private val SUBJECT_PATTERN = Regex(""""Subject"\s*:\s*\["([^"]+)"\]""")
+
+        /** MailHog JSON 에서 `"To":["값"]` 패턴 추출 */
+        private val TO_PATTERN = Regex(""""To"\s*:\s*\["([^"]+)"\]""")
+
+        /** fake UserLookupPort 가 이메일을 알고 있는 수신자 UUID */
+        val KNOWN_RECIPIENT_ID: UUID = UUID.fromString("dddddddd-dddd-dddd-dddd-dddddddddddd")
+
+        /** fake UserLookupPort 가 이메일을 모르는(null 반환) 수신자 UUID */
+        val UNKNOWN_RECIPIENT_ID: UUID = UUID.fromString("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
+
+        /** KNOWN_RECIPIENT_ID 에 매핑되는 수신자 이메일 주소 */
+        const val KNOWN_RECIPIENT_EMAIL = "recipient@bts-test.local"
+
+        /** MailHog HTTP API base URL — MailHog 컨테이너의 8025 포트를 참조한다 */
+        fun mailhogApiUrl(): String {
+            val port = EmailChannelSenderIntegrationTestConfig.mailhog.getMappedPort(8025)
+            return "http://localhost:$port"
+        }
+
+        /**
+         * MailHog SMTP 좌표를 Spring 프로퍼티로 주입한다.
+         *
+         * [org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration] 이
+         * `spring.mail.host/port` 를 읽어 [org.springframework.mail.javamail.JavaMailSender] 를 자동 생성한다.
+         *
+         * `@DynamicPropertySource` 는 테스트 클래스(또는 상위 클래스) companion object 에 선언해야 Spring 이 인식한다.
+         * `@TestConfiguration` 내부에 두면 무시된다 (Spring Framework 6.x 동작).
+         */
+        @JvmStatic
+        @DynamicPropertySource
+        fun configureMailProperties(registry: DynamicPropertyRegistry) {
+            registry.add("spring.mail.host") { EmailChannelSenderIntegrationTestConfig.mailhog.host }
+            registry.add("spring.mail.port") {
+                EmailChannelSenderIntegrationTestConfig.mailhog.getMappedPort(1025)
+            }
+            registry.add("spring.mail.properties.mail.smtp.auth") { "false" }
+            registry.add("spring.mail.properties.mail.smtp.starttls.enable") { "false" }
+            registry.add("bts.notification.email.from") { "no-reply@bts-test.local" }
+        }
     }
 }
