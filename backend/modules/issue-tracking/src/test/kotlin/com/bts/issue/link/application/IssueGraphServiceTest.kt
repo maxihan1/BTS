@@ -284,6 +284,27 @@ class IssueGraphServiceTest : DescribeSpec({
             result.truncated.shouldBeFalse()
             result.nodes shouldHaveSize 1
         }
+
+        it("이웃이 NODE_CAP(100)을 초과하면 truncated=true 이고 노드는 상한까지만 담는다") {
+            every { issueRepository.findByKey(centerKey) } returns centerIssue
+
+            // center 에 120개 outward 이웃 → NODE_CAP=100 초과 (center 1 + 이웃 99 = 100 에서 절단)
+            val manyRows =
+                (2..121).map { n ->
+                    makeLinkRow(n.toLong(), LinkType.RELATES, uuid(n), "BTS-$n")
+                }
+            every { linkRepository.findOutwardWithIssue(centerId) } returns manyRows
+            every { linkRepository.findInwardWithIssue(centerId) } returns emptyList()
+            every { graphRepository.findParent(centerId) } returns null
+            every { graphRepository.findChildren(centerId) } returns emptyList()
+
+            val result = sut.buildGraph(centerKey, "1")
+
+            result.truncated.shouldBeTrue()
+            result.nodes shouldHaveSize IssueGraphService.NODE_CAP
+            // 상한 밖 이웃으로 향하는 엣지는 양끝 visited 필터로 제외 → 담긴 노드(center 제외) 수와 일치
+            result.edges shouldHaveSize IssueGraphService.NODE_CAP - 1
+        }
     }
 
     // ── 케이스 6: 정렬 검증 ───────────────────────────────────────────────────────

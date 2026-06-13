@@ -38,10 +38,10 @@ class IssueGraphRepository(
      * [childId] 이슈의 부모를 [GraphNeighborRow] 로 반환한다.
      *
      * ## 쿼리 로직
-     * `issues child LEFT JOIN issues parent ON child.parent_id = parent.id` self-join 으로
-     * 부모 행을 가져온다. 다음 두 경우에 null 을 반환한다.
-     * - `child.parent_id IS NULL` — 부모가 설정되지 않은 루트 이슈.
-     * - 부모의 `deleted_at IS NOT NULL` — 부모가 소프트삭제됨.
+     * `issues child JOIN issues parent ON child.parent_id = parent.id` self inner-join 으로
+     * 부모 행을 가져온다. 다음 두 경우에 매칭 행이 없어 null 을 반환한다.
+     * - `child.parent_id IS NULL` — 부모가 설정되지 않은 루트 이슈(조인 미매칭).
+     * - 부모의 `deleted_at IS NOT NULL` — 부모가 소프트삭제됨(WHERE `parent.deleted_at IS NULL` 제외).
      *
      * ## cartesian product 안전성
      * child:parent = N:1(또는 N:0) 이므로 행 폭증 없음.

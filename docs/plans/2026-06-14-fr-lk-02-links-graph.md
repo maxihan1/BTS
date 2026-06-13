@@ -48,9 +48,9 @@ FR-LK-02 (§5.3.2) — 링크 그래프 시각화. FR-LK-01(완료, #135/#136)�
 
 핵심 결정 요약.
 - `GET /api/v1/issues/{key}/graph?depth={1..3}`(기본 2). 깊이 제한 BFS, 노드 상한 100, `truncated` 플래그.
-- 엣지 = link 4종(blocks/relates/duplicates/clones) + parent. `edge.type` 소문자. 링크는 저장 방향, parent는 from=부모/to=자식.
+- 엣지 = link 4종(blocks/relates/duplicates/clones) + parent. 링크는 저장 방향, parent는 from=부모/to=자식.
 - 응답 `DataResponse<{center, depth, nodes:[{key,summary,statusKey,depth}], edges:[{from,to,type}], truncated}>`. `edge.type` 대문자(BLOCKS/RELATES/DUPLICATES/CLONES/PARENT — GET /links 컨벤션 통일).
-- 그래프 컨트롤러를 `com.bts.issue.link.web`에 두어 `LinkExceptionHandler`(404/400/500) 재사용. `INVALID_DEPTH`(400) + `MethodArgumentTypeMismatchException`(400) 핸들러만 신규.
+- 그래프 컨트롤러를 `com.bts.issue.link.web`에 두어 `LinkExceptionHandler`(404/500) 재사용. depth는 컨트롤러가 `String?`로 받아 서비스 파싱 → `InvalidGraphDepthException`→400 `INVALID_DEPTH` 핸들러 1개만 신규(전역 타입미스매치 핸들러 불요).
 - 신규 테이블/마이그레이션 없음(D3 활용). 읽기 쿼리(부모 1건·자식 N건)만 추가.
 
 ## Brainstorming Check
@@ -88,7 +88,7 @@ FR-LK-02 (§5.3.2) — 링크 그래프 시각화. FR-LK-01(완료, #135/#136)�
 
 **REFACTOR**: KDoc(메서드 책임·소프트삭제 정책), 컬럼 참조 상수화.
 
-**검증**: `./gradlew :backend:issue-tracking:test --tests '*IssueGraphRepositoryTest'` (backend/ 하위에서 실행).
+**검증**: `./gradlew :modules:issue-tracking:test --tests '*IssueGraphRepositoryTest'` (backend/ 하위에서 실행).
 
 ---
 
@@ -122,7 +122,7 @@ FR-LK-02 (§5.3.2) — 링크 그래프 시각화. FR-LK-01(완료, #135/#136)�
 
 **REFACTOR**: BFS 확장부 private helper 분리(detekt 복잡도), KDoc(불변식·상한·정렬 규칙).
 
-**검증**: `./gradlew :backend:issue-tracking:test --tests '*IssueGraphServiceTest'`.
+**검증**: `./gradlew :modules:issue-tracking:test --tests '*IssueGraphServiceTest'`.
 
 ---
 
@@ -153,7 +153,7 @@ FR-LK-02 (§5.3.2) — 링크 그래프 시각화. FR-LK-01(완료, #135/#136)�
 
 **REFACTOR**: KDoc(엔드포인트·depth 파싱 위임), import 정리.
 
-**검증**: `./gradlew :backend:issue-tracking:test --tests '*IssueGraphControllerIntegrationTest'` → 모듈 전체 `:backend:issue-tracking:test` + `ktlintCheck` + `detekt`.
+**검증**: `./gradlew :modules:issue-tracking:test --tests '*IssueGraphControllerIntegrationTest'` → 모듈 전체 `:modules:issue-tracking:test` + `ktlintCheck` + `detekt`.
 
 ## Plan 메타
 
