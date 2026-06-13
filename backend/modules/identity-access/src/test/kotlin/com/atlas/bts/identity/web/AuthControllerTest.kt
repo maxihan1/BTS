@@ -15,6 +15,7 @@ import com.atlas.bts.identity.mfa.MfaChallengeClaims
 import com.atlas.bts.identity.mfa.MfaChallengeTokenService
 import com.atlas.bts.identity.mfa.MfaService
 import com.atlas.bts.identity.mfa.MfaService.VerifyResult
+import com.atlas.bts.identity.mfa.TrustedDeviceService
 import com.atlas.bts.identity.mfa.WebAuthnSecurityKeyService
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.provider.ldap.ProviderUnavailableException
@@ -186,6 +187,9 @@ class AuthControllerTest {
 
     @MockBean
     lateinit var webAuthnSecurityKeyService: WebAuthnSecurityKeyService
+
+    @MockBean
+    lateinit var trustedDeviceService: TrustedDeviceService
 
     /** 기본값: 전역 역할 없음 (일반 사용자). 역할 의존 케이스는 개별 테스트에서 재정의. */
     @org.junit.jupiter.api.BeforeEach
@@ -928,6 +932,203 @@ class AuthControllerTest {
             .verifyAndConsume(mfaUserId, "00000-00000")
     }
 
+    // ── FR-MF-05 신뢰 디바이스 — completeLogin 우회 + verifyMfa trust_device opt-in (Task 6) ──
+
+    /**
+     * (TD-a) MFA 활성 + 유효한 trusted_device 쿠키 → 챌린지 없이 정식 세션(200 TokenResponse).
+     *
+     * 1단계(pw) Success 후 MFA 활성이라도, trusted_device 쿠키가 있고 verifyAndTouch 가 true 면
+     * 챌린지 토큰을 발급하지 않고 issueTokens 로 정식 세션을 발급한다(신뢰 우회). 챌린지 토큰 발급
+     * (issueChallenge)은 호출되지 않아야 한다.
+     */
+    @Test
+    fun `login with MFA enabled and valid trusted_device cookie bypasses challenge and returns 200 token`() {
+        stubLoginSuccess(mfaUserId, mfaSessionId, mfaAccessToken)
+        `when`(mfaService.isEnabled(mfaUserId)).thenReturn(true)
+        `when`(trustedDeviceService.verifyAndTouch(mfaUserId, "raw-trusted-token")).thenReturn(true)
+
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .cookie(Cookie("trusted_device", "raw-trusted-token"))
+                .content("""{"provider":"local","username":"alice","password":"secret"}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.access_token").value(mfaAccessToken))
+            .andExpect(jsonPath("$.token_type").value("Bearer"))
+            .andExpect(jsonPath("$.mfa_required").doesNotExist())
+            .andExpect(cookie().exists("refresh_token"))
+
+        // 신뢰 우회 — 챌린지 토큰은 발급되지 않는다.
+        verify(mfaChallengeTokenService, never()).issueChallenge(anyUuid(), org.mockito.ArgumentMatchers.anyString())
+        verify(trustedDeviceService).verifyAndTouch(mfaUserId, "raw-trusted-token")
+    }
+
+    /**
+     * (TD-b) MFA 활성 + trusted_device 쿠키 부재 → 기존 mfa_required 챌린지(회귀 0).
+     *
+     * 쿠키가 없으면 신뢰 우회 분기를 타지 않고 기존대로 챌린지 토큰을 발급한다.
+     */
+    @Test
+    fun `login with MFA enabled and no trusted_device cookie returns mfa_required (no regression)`() {
+        stubLoginSuccess(mfaUserId, mfaSessionId, mfaAccessToken)
+        `when`(mfaService.isEnabled(mfaUserId)).thenReturn(true)
+        `when`(mfaChallengeTokenService.issueChallenge(mfaUserId, "local")).thenReturn(mfaChallengeTokenValue)
+
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"provider":"local","username":"alice","password":"secret"}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.mfa_required").value(true))
+            .andExpect(jsonPath("$.mfa_challenge_token").value(mfaChallengeTokenValue))
+            .andExpect(cookie().doesNotExist("refresh_token"))
+
+        verify(mfaChallengeTokenService).issueChallenge(mfaUserId, "local")
+        // 쿠키 부재 시 verifyAndTouch 는 호출되지 않는다.
+        verify(trustedDeviceService, never()).verifyAndTouch(anyUuid(), org.mockito.ArgumentMatchers.anyString())
+    }
+
+    /**
+     * (TD-c) MFA 활성 + trusted_device 쿠키 무효(verifyAndTouch=false) → 기존 mfa_required 챌린지.
+     *
+     * 쿠키가 있어도 만료/타인/미상이면 verifyAndTouch 가 false 라 우회하지 않고 챌린지로 폴백한다(fail-safe).
+     */
+    @Test
+    fun `login with MFA enabled and invalid trusted_device cookie returns mfa_required (fail-safe)`() {
+        stubLoginSuccess(mfaUserId, mfaSessionId, mfaAccessToken)
+        `when`(mfaService.isEnabled(mfaUserId)).thenReturn(true)
+        `when`(trustedDeviceService.verifyAndTouch(mfaUserId, "stale-token")).thenReturn(false)
+        `when`(mfaChallengeTokenService.issueChallenge(mfaUserId, "local")).thenReturn(mfaChallengeTokenValue)
+
+        mockMvc.perform(
+            post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .cookie(Cookie("trusted_device", "stale-token"))
+                .content("""{"provider":"local","username":"alice","password":"secret"}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.mfa_required").value(true))
+            .andExpect(jsonPath("$.mfa_challenge_token").value(mfaChallengeTokenValue))
+            .andExpect(cookie().doesNotExist("refresh_token"))
+
+        verify(mfaChallengeTokenService).issueChallenge(mfaUserId, "local")
+    }
+
+    /**
+     * (TD-d) verify 성공 + trust_device=true → Set-Cookie trusted_device + trustedDeviceService.trust 1회.
+     *
+     * 2차 요소 검증 성공 + trust_device opt-in 이면 trust() 로 raw 토큰을 받아 trusted_device 쿠키를
+     * 내려준다. 기존 refresh 쿠키와 병존해야 한다(복수 Set-Cookie).
+     */
+    @Test
+    fun `verify with trust_device true sets trusted_device cookie and registers trust`() {
+        val mockSession =
+            mock(Session::class.java).also {
+                `when`(it.id).thenReturn(mfaSessionId)
+                `when`(it.userId).thenReturn(mfaUserId)
+                `when`(it.providerId).thenReturn("local")
+            }
+        `when`(mfaChallengeTokenService.validate(mfaChallengeTokenValue))
+            .thenReturn(MfaChallengeClaims(userId = mfaUserId, providerId = "local", jti = mfaJti))
+        `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(true)
+        `when`(mfaService.verifyLogin(mfaUserId, "123456")).thenReturn(VerifyResult.Success)
+        // User-Agent 헤더는 본 요청에서 설정하지 않아 null 일 수 있으므로 nullable 매처로 받는다.
+        `when`(trustedDeviceService.trust(eqUuid(mfaUserId), org.mockito.ArgumentMatchers.nullable(String::class.java)))
+            .thenReturn("new-raw-trusted-token")
+        `when`(
+            sessionService.create(
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                anyBool(),
+            ),
+        ).thenReturn(mockSession)
+        `when`(
+            jwtIssuer.issue(
+                anyUuid(),
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.anyList(),
+                anyBool(),
+            ),
+        ).thenReturn(mfaAccessToken)
+
+        mockMvc.perform(
+            post("/api/v1/auth/mfa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """{"mfa_challenge_token":"$mfaChallengeTokenValue","code":"123456","trust_device":true}""",
+                ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.access_token").value(mfaAccessToken))
+            // refresh 쿠키와 trusted_device 쿠키가 병존한다.
+            .andExpect(cookie().exists("refresh_token"))
+            .andExpect(cookie().exists("trusted_device"))
+            .andExpect(cookie().value("trusted_device", "new-raw-trusted-token"))
+            .andExpect(cookie().httpOnly("trusted_device", true))
+            .andExpect(cookie().secure("trusted_device", true))
+            .andExpect(cookie().path("trusted_device", "/api/v1/auth"))
+            .andExpect(cookie().maxAge("trusted_device", 2592000))
+
+        verify(trustedDeviceService).trust(eqUuid(mfaUserId), org.mockito.ArgumentMatchers.nullable(String::class.java))
+    }
+
+    /**
+     * (TD-e) verify 성공 + trust_device 생략 → trusted_device 쿠키 없음 + trust 미호출 (회귀 0).
+     *
+     * trust_device 필드 기본값이 false 라 보내지 않는 기존 클라이언트는 신뢰 등록을 하지 않는다.
+     */
+    @Test
+    fun `verify without trust_device does not set trusted_device cookie nor register trust (no regression)`() {
+        val mockSession =
+            mock(Session::class.java).also {
+                `when`(it.id).thenReturn(mfaSessionId)
+                `when`(it.userId).thenReturn(mfaUserId)
+                `when`(it.providerId).thenReturn("local")
+            }
+        `when`(mfaChallengeTokenService.validate(mfaChallengeTokenValue))
+            .thenReturn(MfaChallengeClaims(userId = mfaUserId, providerId = "local", jti = mfaJti))
+        `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(true)
+        `when`(mfaService.verifyLogin(mfaUserId, "123456")).thenReturn(VerifyResult.Success)
+        `when`(
+            sessionService.create(
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                anyBool(),
+            ),
+        ).thenReturn(mockSession)
+        `when`(
+            jwtIssuer.issue(
+                anyUuid(),
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.anyList(),
+                anyBool(),
+            ),
+        ).thenReturn(mfaAccessToken)
+
+        mockMvc.perform(
+            post("/api/v1/auth/mfa/verify")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"mfa_challenge_token":"$mfaChallengeTokenValue","code":"123456"}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.access_token").value(mfaAccessToken))
+            .andExpect(cookie().exists("refresh_token"))
+            .andExpect(cookie().doesNotExist("trusted_device"))
+
+        verify(trustedDeviceService, never())
+            .trust(anyUuid(), org.mockito.ArgumentMatchers.nullable(String::class.java))
+    }
+
     // ── logout 성공 ────────────────────────────────────────────────────────────
 
     @Test
@@ -1668,6 +1869,12 @@ class AuthControllerTest {
      * UUID 파라미터의 Mockito any() 매처 — Kotlin non-null UUID 에 null 전달 방지.
      */
     private fun anyUuid(): UUID = org.mockito.ArgumentMatchers.any(UUID::class.java) ?: UUID.randomUUID()
+
+    /**
+     * UUID 파라미터의 Mockito eq() 매처 — eq() 가 null 을 반환해 Kotlin non-null UUID 에서 NPE 가 나는
+     * 것을 Elvis 로 방지한다. trustedDeviceService.trust(userId, ...) userId 인자 단언에 사용한다.
+     */
+    private fun eqUuid(value: UUID): UUID = org.mockito.ArgumentMatchers.eq(value) ?: value
 
     /**
      * Boolean 파라미터의 Mockito anyBoolean() 매처 — sessionService.create 의 mfaVerified 인자에 사용한다.
