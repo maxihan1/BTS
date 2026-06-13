@@ -18,6 +18,8 @@ import org.junit.jupiter.api.TestInstance
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ActiveProfiles
+import org.springframework.test.context.DynamicPropertyRegistry
+import org.springframework.test.context.DynamicPropertySource
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -71,10 +73,30 @@ class EmailChannelSenderIntegrationTest {
         /** KNOWN_RECIPIENT_ID 에 매핑되는 수신자 이메일 주소 */
         const val KNOWN_RECIPIENT_EMAIL = "recipient@bts-test.local"
 
-        /** MailHog HTTP API base URL — @DynamicPropertySource 로 주입된 포트를 참조한다 */
+        /** MailHog HTTP API base URL — MailHog 컨테이너의 매핑 포트를 참조한다 */
         fun mailhogApiUrl(): String {
             val port = EmailChannelSenderIntegrationTestConfig.mailhog.getMappedPort(8025)
             return "http://localhost:$port"
+        }
+
+        /**
+         * MailHog SMTP 좌표를 Spring 프로퍼티로 주입한다.
+         *
+         * [org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration] 이
+         * `spring.mail.host/port` 를 읽어 [org.springframework.mail.javamail.JavaMailSender] 를 자동 생성한다.
+         * `@DynamicPropertySource` 는 테스트 클래스 또는 그 상위 클래스에 선언해야 Spring 이 인식한다.
+         * (TestConfiguration 내부에 두면 무시된다.)
+         */
+        @JvmStatic
+        @DynamicPropertySource
+        fun configureMailProperties(registry: DynamicPropertyRegistry) {
+            registry.add("spring.mail.host") { EmailChannelSenderIntegrationTestConfig.mailhog.host }
+            registry.add("spring.mail.port") {
+                EmailChannelSenderIntegrationTestConfig.mailhog.getMappedPort(1025)
+            }
+            registry.add("spring.mail.properties.mail.smtp.auth") { "false" }
+            registry.add("spring.mail.properties.mail.smtp.starttls.enable") { "false" }
+            registry.add("bts.notification.email.from") { "no-reply@bts-test.local" }
         }
     }
 
