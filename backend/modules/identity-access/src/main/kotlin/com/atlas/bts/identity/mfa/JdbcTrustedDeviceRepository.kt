@@ -69,8 +69,10 @@ class JdbcTrustedDeviceRepository(
     override fun listByUser(
         userId: UUID,
         now: Instant,
-    ): List<TrustedDevice> =
-        jdbc.query(SQL_LIST_BY_USER, mapOf("userId" to userId, "now" to Timestamp.from(now)), rowMapper)
+    ): List<TrustedDevice> {
+        val params = mapOf("userId" to userId, "now" to Timestamp.from(now))
+        return jdbc.query(SQL_LIST_BY_USER, params, rowMapper)
+    }
 
     override fun deleteByIdAndUser(
         userId: UUID,

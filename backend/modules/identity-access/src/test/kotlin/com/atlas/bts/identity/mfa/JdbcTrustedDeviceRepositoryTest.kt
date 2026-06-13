@@ -88,18 +88,16 @@ class JdbcTrustedDeviceRepositoryTest {
 
     private fun newDevice(
         owner: UUID = userId,
-        tokenHash: String = randomHash(),
         label: String? = "회사 노트북 (Chrome / macOS)",
-        createdAt: Instant = now,
         expiresAt: Instant = now.plus(30, ChronoUnit.DAYS),
         lastUsedAt: Instant? = null,
     ): TrustedDevice =
         TrustedDevice(
             id = UUID.randomUUID(),
             userId = owner,
-            tokenHash = tokenHash,
+            tokenHash = randomHash(),
             label = label,
-            createdAt = createdAt,
+            createdAt = now,
             expiresAt = expiresAt,
             lastUsedAt = lastUsedAt,
         )
@@ -120,7 +118,7 @@ class JdbcTrustedDeviceRepositoryTest {
 
     @Test
     fun `insert한 신뢰 디바이스를 findByTokenHash로 재조회한다`() {
-        val device = newDevice(lastUsedAt = null)
+        val device = newDevice()
         repo.insert(device)
 
         val found = repo.findByTokenHash(device.tokenHash)
@@ -162,7 +160,7 @@ class JdbcTrustedDeviceRepositoryTest {
 
     @Test
     fun `updateLastUsedAt은 last_used_at을 지정 시각으로 갱신한다`() {
-        val device = newDevice(lastUsedAt = null)
+        val device = newDevice()
         repo.insert(device)
         assertThat(repo.findByTokenHash(device.tokenHash)!!.lastUsedAt).isNull()
 
