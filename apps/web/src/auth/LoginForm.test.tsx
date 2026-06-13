@@ -30,15 +30,6 @@ vi.mock('@/api/webauthn', () => ({
   authenticateWithSecurityKey: vi.fn(),
 }))
 
-// @/api/mfa mock — verifyMfa를 vi.fn으로 교체해 trustDevice 인자 검증.
-// vi.mock 호이스팅 규칙: 팩토리 내부에서 외부 변수 참조 금지.
-vi.mock('@/api/mfa', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/mfa')>()
-  return {
-    ...actual,
-    verifyMfa: vi.fn(),
-  }
-})
 
 function createWrapper() {
   const client = new QueryClient({
@@ -107,10 +98,6 @@ beforeEach(async () => {
   // authenticateWithSecurityKey mock을 매 테스트마다 초기화한다.
   const webauthnModule = await import('@/api/webauthn')
   vi.mocked(webauthnModule.authenticateWithSecurityKey).mockReset()
-  // verifyMfa mock을 매 테스트마다 초기화한다. 기본 구현은 성공(MSW 핸들러로 위임하지 않고
-  // 직접 mock으로 제어) — trustDevice 인자 검증이 목적이므로 기본 성공 경로를 mock으로 구성.
-  const mfaModule = await import('@/api/mfa')
-  vi.mocked(mfaModule.verifyMfa).mockReset()
 })
 
 afterEach(() => {
@@ -891,8 +878,8 @@ describe('LoginForm — MFA step 보안 키로 인증 (task-6)', () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
     expect(useAuthStore.getState().accessToken).toBe('webauthn-session-token')
     expect(useAuthStore.getState().user).not.toBeNull()
-    // authenticateWithSecurityKey가 challengeToken으로 호출되어야 한다
-    expect(vi.mocked(authenticateWithSecurityKey)).toHaveBeenCalledWith('challenge-token-xyz')
+    // authenticateWithSecurityKey가 challengeToken, trustDevice=false(기본값)으로 호출되어야 한다
+    expect(vi.mocked(authenticateWithSecurityKey)).toHaveBeenCalledWith('challenge-token-xyz', false)
   })
 
   it('EC-1: 사용자 취소(NotAllowedError) → 인라인 에러 + 화면 유지 + challengeToken 보존(재클릭 가능)', async () => {
@@ -940,9 +927,9 @@ describe('LoginForm — MFA step 보안 키로 인증 (task-6)', () => {
     await user.click(screen.getByRole('button', { name: '보안 키로 인증' }))
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
-    // authenticateWithSecurityKey가 동일 challengeToken으로 2회 호출
+    // authenticateWithSecurityKey가 동일 challengeToken으로 2회 호출 (trustDevice=false 기본값)
     expect(vi.mocked(authenticateWithSecurityKey)).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(authenticateWithSecurityKey)).toHaveBeenNthCalledWith(2, 'challenge-token-xyz')
+    expect(vi.mocked(authenticateWithSecurityKey)).toHaveBeenNthCalledWith(2, 'challenge-token-xyz', false)
   })
 
   it('EC-4: ApiError 401 invalid_code → 인라인 에러 + 화면 유지 + challengeToken 보존', async () => {
@@ -1021,12 +1008,15 @@ describe('LoginForm — MFA step 신뢰 디바이스 체크박스 (task-6)', () 
   it('S6: 체크박스 미체크 → 코드 검증 시 verifyMfa(token, code, mode, false)가 호출된다', async () => {
     const user = userEvent.setup({ delay: null })
     const mfaModule = await import('@/api/mfa')
-    vi.mocked(mfaModule.verifyMfa).mockResolvedValueOnce({
-      access_token: 's6-token',
-      token_type: 'Bearer',
-      expires_in: 3600,
-    })
+    const verifySpy = vi.spyOn(mfaModule, 'verifyMfa')
     server.use(
+      http.post('/api/v1/auth/mfa/verify', () =>
+        HttpResponse.json({
+          access_token: 's6-token',
+          token_type: 'Bearer',
+          expires_in: 3600,
+        }),
+      ),
       http.get('/api/v1/users/me/whoami', () =>
         HttpResponse.json({
           username: 'alice',
@@ -1051,7 +1041,7 @@ describe('LoginForm — MFA step 신뢰 디바이스 체크박스 (task-6)', () 
     await user.click(screen.getByRole('button', { name: '확인' }))
 
     await waitFor(() => {
-      expect(vi.mocked(mfaModule.verifyMfa)).toHaveBeenCalledWith(
+      expect(verifySpy).toHaveBeenCalledWith(
         'challenge-token-xyz',
         '123456',
         'totp',
@@ -1064,12 +1054,15 @@ describe('LoginForm — MFA step 신뢰 디바이스 체크박스 (task-6)', () 
   it('S5: 체크박스 체크 → 코드 검증 시 verifyMfa(token, code, mode, true)가 호출된다', async () => {
     const user = userEvent.setup({ delay: null })
     const mfaModule = await import('@/api/mfa')
-    vi.mocked(mfaModule.verifyMfa).mockResolvedValueOnce({
-      access_token: 's5-token',
-      token_type: 'Bearer',
-      expires_in: 3600,
-    })
+    const verifySpy = vi.spyOn(mfaModule, 'verifyMfa')
     server.use(
+      http.post('/api/v1/auth/mfa/verify', () =>
+        HttpResponse.json({
+          access_token: 's5-token',
+          token_type: 'Bearer',
+          expires_in: 3600,
+        }),
+      ),
       http.get('/api/v1/users/me/whoami', () =>
         HttpResponse.json({
           username: 'alice',
@@ -1093,7 +1086,7 @@ describe('LoginForm — MFA step 신뢰 디바이스 체크박스 (task-6)', () 
     await user.click(screen.getByRole('button', { name: '확인' }))
 
     await waitFor(() => {
-      expect(vi.mocked(mfaModule.verifyMfa)).toHaveBeenCalledWith(
+      expect(verifySpy).toHaveBeenCalledWith(
         'challenge-token-xyz',
         '654321',
         'totp',
@@ -1106,12 +1099,15 @@ describe('LoginForm — MFA step 신뢰 디바이스 체크박스 (task-6)', () 
   it('E6(핵심): 체크박스 체크 → mode 토글(TOTP→백업코드) → 체크 상태 유지 + verifyMfa trustDevice=true 전달', async () => {
     const user = userEvent.setup({ delay: null })
     const mfaModule = await import('@/api/mfa')
-    vi.mocked(mfaModule.verifyMfa).mockResolvedValueOnce({
-      access_token: 'e6-token',
-      token_type: 'Bearer',
-      expires_in: 3600,
-    })
+    const verifySpy = vi.spyOn(mfaModule, 'verifyMfa')
     server.use(
+      http.post('/api/v1/auth/mfa/verify', () =>
+        HttpResponse.json({
+          access_token: 'e6-token',
+          token_type: 'Bearer',
+          expires_in: 3600,
+        }),
+      ),
       http.get('/api/v1/users/me/whoami', () =>
         HttpResponse.json({
           username: 'alice',
@@ -1144,7 +1140,7 @@ describe('LoginForm — MFA step 신뢰 디바이스 체크박스 (task-6)', () 
     await user.click(screen.getByRole('button', { name: '확인' }))
 
     await waitFor(() => {
-      expect(vi.mocked(mfaModule.verifyMfa)).toHaveBeenCalledWith(
+      expect(verifySpy).toHaveBeenCalledWith(
         'challenge-token-xyz',
         'ABCD-5678',
         'backup_code',

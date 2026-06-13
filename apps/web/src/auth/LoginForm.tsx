@@ -398,6 +398,8 @@ interface MfaCodeInputProps {
   onSuccess?: () => void
   onBackToLogin: () => void
   onToggleMode: () => void
+  /** 이 디바이스를 30일간 신뢰할지 여부 — 부모(LoginMfaStep)에서 관리한다 */
+  trustDevice: boolean
 }
 
 /**
@@ -411,6 +413,7 @@ const MfaCodeInput = ({
   onSuccess,
   onBackToLogin,
   onToggleMode,
+  trustDevice,
 }: MfaCodeInputProps) => {
   const setAccessToken = useAuthStore((s) => s.setAccessToken)
   const setSession = useAuthStore((s) => s.setSession)
@@ -423,7 +426,7 @@ const MfaCodeInput = ({
 
   const verifyMutation = useMutation({
     mutationFn: async (code: string) => {
-      const tokenData = await verifyMfa(challengeToken, code, mode)
+      const tokenData = await verifyMfa(challengeToken, code, mode, trustDevice)
 
       // verify 성공 — 기존 로그인 성공 경로와 동일하게 세션 저장
       setAccessToken(tokenData.access_token)
@@ -531,6 +534,10 @@ const LoginMfaStep = ({ challengeToken, onSuccess, onBackToLogin }: MfaStepProps
   const [mode, setMode] = useState<MfaMode>('totp')
   const [webauthnError, setWebauthnError] = useState<string | null>(null)
   const [isWebauthnPending, setIsWebauthnPending] = useState(false)
+  // E6 핵심: trustDevice는 부모(LoginMfaStep)에 보관한다.
+  // MfaCodeInput은 mode가 바뀔 때 key={mode}로 재마운트되므로
+  // 자식 안에 두면 체크 상태가 리셋된다 (react-usestate-stale-key-prop 역패턴).
+  const [trustDevice, setTrustDevice] = useState(false)
 
   const setAccessToken = useAuthStore((s) => s.setAccessToken)
   const setSession = useAuthStore((s) => s.setSession)
@@ -554,7 +561,7 @@ const LoginMfaStep = ({ challengeToken, onSuccess, onBackToLogin }: MfaStepProps
     setWebauthnError(null)
     setIsWebauthnPending(true)
     try {
-      const tokenData = await authenticateWithSecurityKey(challengeToken)
+      const tokenData = await authenticateWithSecurityKey(challengeToken, trustDevice)
 
       // 성공 경로 — MfaCodeInput 성공 경로와 동형
       setAccessToken(tokenData.access_token)
@@ -598,6 +605,19 @@ const LoginMfaStep = ({ challengeToken, onSuccess, onBackToLogin }: MfaStepProps
 
   return (
     <>
+      {/* 체크박스는 MfaCodeInput 바깥에 배치 — key={mode} 재마운트에 영향받지 않도록 한다 (E6) */}
+      <div className="flex items-center gap-2 py-1">
+        <input
+          id="trust-device-checkbox"
+          type="checkbox"
+          checked={trustDevice}
+          onChange={(e) => { setTrustDevice(e.target.checked) }}
+          className="h-4 w-4 cursor-pointer"
+        />
+        <label htmlFor="trust-device-checkbox" className="text-sm cursor-pointer select-none">
+          {mfaStrings.trustedDevicesLoginCheckboxLabel}
+        </label>
+      </div>
       <MfaCodeInput
         key={mode}
         mode={mode}
@@ -605,6 +625,7 @@ const LoginMfaStep = ({ challengeToken, onSuccess, onBackToLogin }: MfaStepProps
         onSuccess={onSuccess}
         onBackToLogin={onBackToLogin}
         onToggleMode={handleToggleMode}
+        trustDevice={trustDevice}
       />
       {isWebauthnSupported && (
         <div className="mt-2 space-y-2">
