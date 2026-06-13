@@ -119,7 +119,7 @@ FR-NT-02(알림 채널)의 인앱 채널은 이미 머지됨(PR #126 백엔드 +
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/notification/build.gradle.kts`, `backend/modules/notification/.../channel/EmailChannelSender.kt`, `backend/modules/notification/.../config/MailConfig.kt`, notification `application.yml`/properties, `backend/modules/notification/.../channel/EmailChannelSenderTest.kt`]
+- files: [`backend/modules/notification/build.gradle.kts`, `backend/modules/notification/.../channel/EmailChannelSender.kt`, `backend/modules/notification/src/main/resources/application.yml`, `backend/modules/notification/.../channel/EmailChannelSenderTest.kt`]
 - depends-on: [1]
 
 **RED**:
@@ -129,11 +129,11 @@ FR-NT-02(알림 채널)의 인앱 채널은 이미 머지됨(PR #126 백엔드 +
   - SUPPORTS-1/2. supports(EMAIL)=true, supports(IN_APP)=false.
 - 실패: `EmailChannelSender` 없음.
 
-**GREEN**:
-- build.gradle.kts에 `org.springframework:spring-context-support` + `org.eclipse.angus:angus-mail` 추가(신규 의존성=절대규칙#17, 게이트1 승인 전제. 버전은 Boot BOM 관리 — 모듈이 starter-websocket로 dependency-management 적용 중). **대안 spring-boot-starter-mail은 eng-review에서 확정.**
-- `MailConfig`(@Configuration) — `JavaMailSenderImpl` 빈 **무조건 생성**(host/port/from 프로퍼티, 기본값 제공 → 부팅 견고성 NFR-2 충족), SMTP connection/read/write 타임아웃 설정(`mail.smtp.connectiontimeout`/`timeout`/`writetimeout`, NFR-6).
-- `EmailChannelSender`(@Component) — `JavaMailSender`(MailConfig가 항상 제공하므로 **직접 주입**, ObjectProvider 불요) + `UserLookupPort` + from 프로퍼티 주입. `supports(EMAIL)`. `send()`: port.findEmailById → 없으면 throw(PENDING), `MimeMessageHelper`(UTF-8)로 제목/본문 작성 후 발송(SMTP 실패=예외 전파→PENDING). 이메일 주소는 로그 마스킹(NFR-4).
-- **eng-review CONCERN-1 반영**: 빈 무조건 생성과 ObjectProvider 병용 모순 제거 → 무조건 생성 + 직접 주입 단일화(부재 분기 죽은코드 삭제).
+**GREEN** (Maxi 확정: `spring-boot-starter-mail` + Boot autoconfig 사용).
+- build.gradle.kts에 `org.springframework.boot:spring-boot-starter-mail` 추가(신규 의존성=절대규칙#17, 게이트1 승인됨). JavaMailSender 타입 + angus-mail 구현 동반.
+- **별도 MailConfig 빈 만들지 않음** — `NotificationTestBootApplication`이 `@SpringBootApplication`(autoconfig 활성, Flyway/DataSource만 제외)이라 `MailSenderAutoConfiguration`이 `spring.mail.host` 설정 시 `JavaMailSender`를 자동 생성한다. 별도 빈 정의 시 **중복 빈 충돌** → autoconfig에 위임(CONCERN-1 자연 해소: 빈 항상 존재 → 직접 주입, 부재 분기 없음).
+- `application.yml`에 `spring.mail.host`(기본값 예: `localhost`)·`port` + `spring.mail.properties.mail.smtp.connectiontimeout`/`timeout`/`writetimeout`(예 5000, NFR-6) + `bts.notification.email.from`(기본 `no-reply@bts.local`, FR-7) 추가. 기본 host로 어느 컨텍스트든 빈 생성 → 부팅 견고성(NFR-2).
+- `EmailChannelSender`(@Component) — `JavaMailSender` + `UserLookupPort` **직접 주입** + `@Value("\${bts.notification.email.from}")`. `supports(EMAIL)`. `send()`: port.findEmailById → 없으면 throw(PENDING), `MimeMessageHelper`(UTF-8)로 제목/본문 작성 후 발송(SMTP 실패=예외 전파→PENDING). 이메일 주소는 로그 마스킹(NFR-4).
 
 **REFACTOR**:
 - destination/from 상수, KDoc, InAppChannelSender 톤 일치.
