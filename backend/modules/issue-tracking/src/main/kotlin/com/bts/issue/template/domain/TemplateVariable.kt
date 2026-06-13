@@ -12,7 +12,7 @@ package com.bts.issue.template.domain
  * @property token content 내에서 치환 대상이 되는 `{{변수명}}` 형태의 문자열
  */
 enum class TemplateVariable(val token: String) {
-    /** 이슈 작성자 username. 예: `{{author}}` */
+    /** 이슈 작성자(reporter)의 표시 이름(display_name). 예: `{{author}}` */
     AUTHOR("{{author}}"),
 
     /** 이슈 생성 날짜. 예: `{{date}}` */
