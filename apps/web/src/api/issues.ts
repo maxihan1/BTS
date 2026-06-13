@@ -109,6 +109,16 @@ export const issueResponseSchema = z.object({
    * (zod-schema-strengthen-inline-mock-fanout 교훈 — componentIds 패턴과 동일).
    */
   fixVersionIds: z.array(z.string()).optional().default([]),
+  /**
+   * FR-LK-01 — 현재 이슈의 부모 이슈 요약 정보 (parent-child 계층 구조).
+   * 백엔드 IssueResponse.parent: ParentRef? — @JsonInclude(NON_NULL) 적용으로
+   * null이면 JSON 키 자체가 생략된다. 따라서 `.nullish()`(= nullable + optional)를 사용한다.
+   * 단건 GET 경로에서만 채워지며 목록 API에서는 키가 생략된다.
+   */
+  parent: z.object({
+    key: z.string(),
+    summary: z.string(),
+  }).nullish(),
 })
 
 /** Spring Page 응답 Zod 스키마 — 래퍼 없음 (DataResponse 감싸지 않음) */
