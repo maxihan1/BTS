@@ -49,7 +49,7 @@ MFA(2단계 인증)를 켠 사용자가 MFA verify 성공 시 "이 기기 30일 
 ## 기능 요구사항 (FR)
 
 - **FR-1**. MFA verify 성공 + `trust_device=true` 시 신뢰 토큰 발급·저장·쿠키 설정. `trust_device` 생략/false면 기존 동작 그대로(회귀 0).
-- **FR-2**. 신뢰 토큰 = 암호학적 난수 32바이트(base64url rawToken). DB는 `SHA-256(rawToken)` hex 64자(`token_hash`)만 저장. 평문 비영속·비로깅.
+- **FR-2**. 신뢰 토큰 = 암호학적 난수 32바이트(hex 64자 rawToken, RefreshToken 선례 동일 인코딩). DB는 `SHA-256(rawToken)` hex 64자(`token_hash`)만 저장. 평문 비영속·비로깅.
 - **FR-3**. 로그인 1단계 통과 후, MFA 활성이고 `trusted_device` 쿠키가 유효(token_hash 일치 + `user_id` 일치 + `expires_at > now`)하면 챌린지 생략하고 `issueTokens(mfaVerified=true)`.
 - **FR-4**. 신뢰 우회 성공 시 `last_used_at = now` 갱신(표시용). `expires_at`는 갱신하지 않음(고정 30일).
 - **FR-5**. 신뢰 토큰 발급은 모든 2차 요소 성공 경로(TOTP/백업코드/WebAuthn) 공통(verify 성공 + trust_device=true).

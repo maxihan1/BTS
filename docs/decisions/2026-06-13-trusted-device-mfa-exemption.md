@@ -86,5 +86,6 @@ SDD 스케치의 "디바이스 핑거프린트 + JWT 클레임"에서 JWT 클레
 - **쿠키 Path/SameSite** — `trusted_device` 쿠키는 refresh 선례와 동일하게 `Path=/api/v1/auth; HttpOnly; Secure; SameSite=Strict`. login·verify가 모두 이 path 아래라 정상 전송. SameSite=Strict라 cross-site 자동전송 차단(CSRF 표면 최소).
 - **만료 행 물리 정리** — 조회 술어로 무효화하므로 기능상 문제 없으나, 누적 시 테이블 비대. 정리 배치는 후속 운영 과제.
 - **로그아웃 시 신뢰 쿠키 비해제(의도)** — `logout`은 refresh 쿠키만 만료시키고 `trusted_device` 쿠키는 건드리지 않는다. 로그아웃은 신뢰를 해제하는 행위가 아니다(다음 로그인에 우회 의도). 신뢰 해제는 명시 취소/보안 이벤트 자동 폐기로만 일어난다. "logout인데 쿠키 잔존" 혼란 방지를 위해 명문화.
+- **단건 세션 강제 종료(`revokeSession`)는 신뢰 비트리거(의도)** — `DELETE /sessions/{sid}`는 해당 세션+refresh chain만 revoke하고 신뢰 디바이스는 폐기하지 않는다. 세션≠신뢰 디바이스(독립 수명)이며, 단건 세션 정리까지 전체 신뢰를 날리면 과하고 놀라운 UX다(세션↔신뢰 연결이 없어 선택 폐기 불가, 전량만 가능). SDD "분실/해킹 의심 시 모든 신뢰 즉시 만료"는 명시 엔드포인트 `DELETE /api/v1/auth/mfa/trusted-devices`(전체 취소) + 비밀번호 변경/TOTP 비활성 자동폐기로 이미 충족된다. 코드리뷰 적대적 패스 P1 — Maxi 확정(의도적 범위제외).
 - **WebAuthn-only 사용자의 TOTP disable 자동폐기** — TOTP disable 시 전량 revoke하나, 사용자가 WebAuthn 키를 별도 보유하면 MFA는 여전히 활성이다. 보수적으로 TOTP disable도 전량 revoke한다(신뢰의 근거가 된 요소 변경 = 재신뢰 요구). spec에서 정밀화.
 - D6/D7 프론트 체크박스 + 관리 페이지 + E2E 후속.
