@@ -93,6 +93,9 @@ beforeEach(async () => {
   // 기본적으로 WebAuthn 지원 환경으로 설정한다.
   const { browserSupportsWebAuthn } = await import('@simplewebauthn/browser')
   vi.mocked(browserSupportsWebAuthn).mockReturnValue(true)
+  // authenticateWithSecurityKey mock을 매 테스트마다 초기화한다.
+  const webauthnModule = await import('@/api/webauthn')
+  vi.mocked(webauthnModule.authenticateWithSecurityKey).mockReset()
 })
 
 afterEach(() => {
