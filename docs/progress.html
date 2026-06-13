@@ -182,9 +182,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
           <div><span class="dot dot-done"></span> 완료 <b>50</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>4</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>5</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>68</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>67</b></div>
         </div>
       </div>
     </div>
@@ -475,9 +475,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:71%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 22</div>
-        <div>🔄 진행중 3</div>
+        <div>🔄 진행중 4</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 6</div>
+        <div>⬜ 대기 5</div>
       </div>
     </div>
     <h2>세부 기능 (31개)</h2>
@@ -649,13 +649,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc">템플릿 변수 (작성자/일자/<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">프로젝트</span>)</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — TemplateVariable enum(closed set 3종) + TemplateVariableSubstitutor</li><li><span class="step-icon">✅</span> D2 — 명세 — 변수 종류({{author}}/{{date}}/{{<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>oject</span>}} 영문) + 치환 시점(create<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span> 서버 안전망에서만, 사용자 입력 비치환) (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — PR #132</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — (활용. <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_templates.content 그대로, 신규 <span class="term" data-def="&quot;데이터 엑셀 양식&quot; 이름은 문자, 나이는 숫자 등 데이터베이스에 정보를 어떤 모양으로 저장할지 정해둔 도면입니다.">스키마</span> 0) (책임. db-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — PR #132</li><li><span class="step-icon">✅</span> D4 — 백엔드 — 변수 치환 엔진(단일 패스 정규식, fail-safe 리터럴 유지) + resolveDescription 배선</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 변수 자동완성</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-진행중">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">🔄</span>
         <span class="fr-id">FR-LK-01</span>
         <span class="fr-desc"><span class="term" data-def="Link. 이슈 간 의존/연관 (blocks, relates to, duplicates 등)">링크</span> (blocks/relates/duplicates/clones/parent-child)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — LinkType</li><li><span class="step-icon">⬜</span> D2 — 명세 — 양방향성 + cycle 검출</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_links(src, dst, link_type)`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `POST/DELETE /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s/{key}/links`</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — cycle 케이스</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="Link. 이슈 간 의존/연관 (blocks, relates to, duplicates 등)">링크</span> 추가/제거 패널</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — LinkType (4종 blocks/relates/duplicates/clones) (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #135</li><li><span class="step-icon">✅</span> D2 — 명세 — 양방향성(역방향 라벨 계산) + cycle 검출 (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #135</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_links(source_id, target_id, link_type)` U<span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span>D FK + `issues.parent_id` (책임. db-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer, V021) — PR #135</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `POST/GET/DELETE /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s/{key}/links` + `<span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>CH /api/v1/issues/{key}/parent` (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — PR #135</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — cycle 케이스(blocks <span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span>·부모 조상) (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #135</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="Link. 이슈 간 의존/연관 (blocks, relates to, duplicates 등)">링크</span> 추가/제거 패널</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
@@ -1460,7 +1460,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <summary>
         <span class="fr-status">✅</span>
         <span class="fr-id">FR-MF-05</span>
-        <span class="fr-desc">신뢰 디바이스 (30일 면제)</span>
+        <span class="fr-desc"><span class="term" data-def="Trusted Device. MFA verify 시 사용자 동의(opt-in)로 등록한 기기에 30일간 2차 인증을 면제. 식별=서버 발급 불투명 토큰(HttpOnly 쿠키, DB는 SHA-256 해시만, 클라이언트 핑거프린트 기각). 우회=password 로그인 전용(SSO 비대상). 취소=수동(설정 목록/전체)+자동(비번변경·TOTP비활성) (FR-MF-05)">신뢰 디바이스</span> (30일 면제)</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — TrustedDevice (책임. security-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #131</li><li><span class="step-icon">✅</span> D2 — 명세 — 사용자 동의 + 30일 TTL + 취소 (책임. security-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #131</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `trusted_devices(token_<span class="term" data-def="&quot;비밀번호 요리법&quot; 비밀번호에 의미 없는 무작위 문자(Salt)를 치고, 잘게 썰어서(Hash), 수백 번 반복해서 볶아(Iteration) 원래 모양을 없앱니다.">hash</span>, expires_at)`</li><li><span class="step-icon">✅</span> D4 — 백엔드 — finger<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>int 발급 + <span class="term" data-def="&quot;2단계 인증&quot; 비밀번호 치고, 핸드폰 앱이나 문자로 숫자 6자리를 한 번 더 쳐야만 들어갈 수 있는 2중 보안입니다.">MFA</span> 우회 검증 (책임. security-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — PR #131</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — TTL 만료 + 명시적 취소 (책임. security-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #131</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — &quot;이 디바이스 신뢰&quot; 체크박스 + 디바이스 관리 페이지 (책임. designer → frontend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #134</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> (책임. qa-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #134</li></ol>
     </details></div>
@@ -1661,6 +1661,10 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">2FA</div>
       <div class="term-cat">도메인 — 인증</div>
       <div class="term-def">TOTP + 백업 코드 (필수), WebAuthn (선택)</div>
+    </div><div class="term-item" data-cat="도메인 — 인증" data-search="신뢰 디바이스 trusted device. mfa verify 시 사용자 동의(opt-in)로 등록한 기기에 30일간 2차 인증을 면제. 식별=서버 발급 불투명 토큰(httponly 쿠키, db는 sha-256 해시만, 클라이언트 핑거프린트 기각). 우회=password 로그인 전용(sso 비대상). 취소=수동(설정 목록/전체)+자동(비번변경·totp비활성) (fr-mf-05)">
+      <div class="term-name">신뢰 디바이스</div>
+      <div class="term-cat">도메인 — 인증</div>
+      <div class="term-def">Trusted Device. MFA verify 시 사용자 동의(opt-in)로 등록한 기기에 30일간 2차 인증을 면제. 식별=서버 발급 불투명 토큰(HttpOnly 쿠키, DB는 SHA-256 해시만, 클라이언트 핑거프린트 기각). 우회=password 로그인 전용(SSO 비대상). 취소=수동(설정 목록/전체)+자동(비번변경·TOTP비활성) (FR-MF-05)</div>
     </div><div class="term-item" data-cat="도메인 — 인증" data-search="sp service provider — idp의 보증을 받아 로그인시키는 쪽. bts 자신">
       <div class="term-name">SP</div>
       <div class="term-cat">도메인 — 인증</div>
