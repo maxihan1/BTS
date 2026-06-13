@@ -75,6 +75,112 @@ FR-NT-02(알림 채널)의 인앱 채널은 이미 머지됨(PR #126 백엔드 +
 
 ✅ 통과 (1회, 직접 적대적 점검). gap 4건 보강 — 한국어 인코딩(MimeMessageHelper), from 주소, SMTP 타임아웃, FAILED 미사용 명시. 미해결: 신규 mail 의존성(절대규칙#17, 게이트1 승인).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+### Task 1. UserLookupPort.findEmailById default 메서드 추가 (shared-kernel)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/user/UserLookupPort.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/user/UserLookupPortDefaultTest.kt`]
+- depends-on: []
+
+**RED**:
+- `UserLookupPortDefaultTest`에 케이스 추가 — `exists`만 구현한 anonymous `UserLookupPort`의 `findEmailById(randomUUID)`가 `null`을 반환(default fail-safe, 기존 fake 보호).
+- 실패: `findEmailById` 메서드 없음(컴파일 에러).
+
+**GREEN**:
+- `UserLookupPort`에 `fun findEmailById(userId: UUID): String? = null` 추가(추상 아님, default). KDoc — fail-safe 의미 + production은 UserLookupAdapter override 명시(learnings `interface-extension-default-method`).
+
+**REFACTOR**:
+- KDoc 정리. 기존 `findDisplayNamesByIds`와 톤 일치.
+
+**검증**: `./gradlew :backend:modules:shared-kernel:test --tests *UserLookupPortDefaultTest`
+
+### Task 2. UserLookupAdapter.findEmailById override + 통합테스트 (identity-access)
+
+**메타**.
+- agent: `backend-engineer` (identity-access 파일 — gate 2에서 security-engineer 검토. 단순 read 쿼리, auth 로직 아님)
+- files: [`backend/modules/identity-access/.../user/UserLookupAdapter.kt`, identity-access UserLookupAdapter 통합테스트(기존 파일 확장 또는 신규)]
+- depends-on: [1]
+
+**RED**:
+- Testcontainers 통합테스트 — users 행 시드 후 `findEmailById(id)`가 그 email 반환, 미존재 id는 `null`.
+- 실패: adapter가 default(null) 사용 → 시드한 email 불일치.
+
+**GREEN**:
+- `UserLookupAdapter`에 `findEmailById` override — `SELECT email FROM users WHERE id = ?`(NamedParameterJdbcTemplate, 기존 쿼리 스타일 일치). 0행이면 null.
+
+**REFACTOR**:
+- 쿼리 상수화 + KDoc.
+
+**검증**: identity-access 통합테스트 그린 (`./gradlew :backend:modules:identity-access:test --tests *UserLookup*`)
+
+### Task 3. EmailChannelSender + 단위테스트 + mail 의존성 + JavaMailSender 설정 (notification)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/notification/build.gradle.kts`, `backend/modules/notification/.../channel/EmailChannelSender.kt`, `backend/modules/notification/.../config/MailConfig.kt`, notification `application.yml`/properties, `backend/modules/notification/.../channel/EmailChannelSenderTest.kt`]
+- depends-on: [1]
+
+**RED**:
+- `EmailChannelSenderTest`(단위, MockK) — `JavaMailSender`/`UserLookupPort` mock.
+  - SEND-1. email 존재 시 `MimeMessage` 생성·발송, 제목=title, from=설정값, to=조회 email.
+  - SEND-2. email 부재(port null) → 발송 안 함 + 예외 throw(deliver PENDING 계약).
+  - SEND-3. JavaMailSender 부재(ObjectProvider 비어있음) → 예외 throw.
+  - SUPPORTS-1/2. supports(EMAIL)=true, supports(IN_APP)=false.
+- 실패: `EmailChannelSender` 없음.
+
+**GREEN**:
+- build.gradle.kts에 `org.springframework:spring-context-support` + `org.eclipse.angus:angus-mail` 추가(신규 의존성=절대규칙#17, 게이트1 승인 전제). **대안 spring-boot-starter-mail은 eng-review에서 확정.**
+- `MailConfig`(@Configuration) — `JavaMailSenderImpl` 빈 무조건 생성(host/port/from 프로퍼티, 기본값 제공 → 부팅 견고성 NFR-2), SMTP connection/read 타임아웃 설정(NFR-6).
+- `EmailChannelSender`(@Component) — `ObjectProvider<JavaMailSender>` + `UserLookupPort` + from 프로퍼티 주입. `supports(EMAIL)`. `send()`: port.findEmailById → 없으면 throw, JavaMailSender 부재 시 throw, `MimeMessageHelper`(UTF-8)로 제목/본문 작성 후 발송. 이메일 주소는 로그 마스킹(NFR-4).
+
+**REFACTOR**:
+- destination/from 상수, KDoc, InAppChannelSender 톤 일치.
+
+**검증**: `./gradlew :backend:modules:notification:test --tests *EmailChannelSenderTest`
+
+### Task 4. MailHog Testcontainers 통합테스트 (notification)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/notification/src/test/.../EmailChannelSenderIntegrationTest.kt`(신규), `backend/modules/notification/src/test/.../NotificationDeliveryTestcontainersConfig.kt`(MailHog 컨테이너 추가) 또는 신규 config]
+- depends-on: [3]
+
+**RED**:
+- MailHog `GenericContainer("mailhog/mailhog:v1.0.1")`(SMTP 1025/HTTP 8025), `@DynamicPropertySource`로 `spring.mail.host/port` 주입.
+- 통합테스트 — `channel=EMAIL` Notification을 EmailChannelSender로 발송 → MailHog HTTP API `/api/v2/messages`에서 수신 확인 + **한국어 제목 보존**(NFR-5) + (end-to-end 경로면 notifications 행 `SENT` 전이). email 부재 시 PENDING(S2).
+- 실패: EmailChannelSender 발송 경로 미완/인코딩 깨짐.
+
+**GREEN**:
+- Task 3 구현으로 통과. 필요한 테스트용 `UserLookupPort` fake 빈(알려진 email 반환) 제공.
+
+**REFACTOR**:
+- MailHog API 폴링 헬퍼 추출, 컨테이너 reuse 설정.
+
+**검증**: `./gradlew :backend:modules:notification:test --tests *EmailChannelSenderIntegrationTest` (단독 재실행으로 flaky 확정, 메모리 `concurrent-testcontainers-suite-flaky`)
+
+### Task 5. 문서 전수 동기화 (ADR 보완 + product + verify)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`docs/decisions/2026-06-12-notification-inapp-channel-delivery.md`(보완), `docs/plan/product/notification-dashboard.md`(§2.2 이메일 부분), 필요 시 `docs/plan/fr-index.md`/`docs/plan/README.md`/SDD §9]
+- depends-on: [1, 2, 3, 4]
+
+**RED/GREEN(문서)**:
+- ADR 2026-06-12 결정2에 amendment 단락 — Webhook을 전용 후속 FR로 분리(URL 출처/전이-이벤트 발행 파이프라인 미설계 근거), 이번 PR=이메일 채널.
+- product §2.2 — 이메일 채널 완료 반영(D1·D4·D5 이메일 부분 진행 표기), Webhook은 별도 FR 주석. FR-NT-02 전체 부분완료(`[~]`) 유지.
+- FR 카운트 불변(122) 확인 — 신규 FR ID는 이번에 mint하지 않음(Webhook FR는 후속 spec에서).
+
+**검증**: `bash scripts/verify-master-plan.sh` 통과(종료 0).
+
+## Plan 메타
+
+- task 수: 5
+- 모듈 컴파일 의존(메모리 `bts-plan-wave-gradle-module-compile`): shared-kernel(T1) → identity-access(T2)·notification(T3,T4). T3는 자체 build.gradle에 mail 의존 추가 + 포트(T1) 사용 → depends-on [1].
+- 예상 wave: W1[T1] → W2[T2, T3] → W3[T4] → W4[T5] (T2·T3 다른 모듈/파일이라 병렬 가능, 단 T1 선행 컴파일).
+- TDD 강제: yes (T1·T2·T3·T4). T5는 문서.
+- 신규 의존성(mail): 절대규칙#17 — 게이트1 Maxi 승인 대상.
+- 추가 검증: ktlint/detekt(신규 파일 baseline 밖), ArchUnit BC 격리, 기존 notification 통합/단위 회귀.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
