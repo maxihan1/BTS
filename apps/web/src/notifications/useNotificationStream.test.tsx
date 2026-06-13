@@ -64,6 +64,7 @@ afterEach(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('useNotificationStream — 인증 상태', () => {
   it('accessToken이 있으면 createNotificationStream을 호출하고 activate한다', () => {
+    // renderHook 전에 store 시드 → useEffect 첫 실행 시 이미 인증 상태
     useAuthStore.setState({ accessToken: 'test-access-token', user: null })
 
     renderHook(() => useNotificationStream())
@@ -149,17 +150,14 @@ describe('useNotificationStream — StrictMode 중복 방지 (C2)', () => {
     // 첫 번째 마운트
     const { unmount: unmount1 } = renderHook(() => useNotificationStream())
 
-    // 첫 번째 언마운트 (cleanup → deactivate)
+    // 첫 번째 언마운트 (cleanup → deactivate, streamRef 초기화)
     unmount1()
 
-    // 두 번째 마운트
+    // 두 번째 마운트 (새 hook 인스턴스, streamRef 초기화 상태)
     renderHook(() => useNotificationStream())
 
-    // activate는 각 mount마다 1회: 첫 mount + 재mount = 2회
-    // 하지만 useRef 가드가 있어야 1회로 제한된다는 것이 plan 의도.
-    // 실제 StrictMode는 같은 hook 인스턴스 내에서 재마운트가 일어나므로
-    // 별도 renderHook 호출은 새 인스턴스 → 각각 1회 activate가 맞음.
-    // 중요한 것: 각 instance마다 activate 1회 이하 (useRef 가드로 중복 0).
+    // 별도 renderHook = 별도 인스턴스 → 각각 1회 activate가 맞음.
+    // 중요: 각 인스턴스 내에서 useRef 가드가 중복 activate를 차단함.
     expect(mockActivate).toHaveBeenCalledTimes(2) // 각 renderHook 인스턴스 1회씩
   })
 
