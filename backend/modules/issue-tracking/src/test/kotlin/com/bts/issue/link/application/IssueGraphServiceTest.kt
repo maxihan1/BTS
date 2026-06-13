@@ -242,7 +242,6 @@ class IssueGraphServiceTest : DescribeSpec({
 
     describe("buildGraph — 엣지 중복 제거") {
         val nodeAId = uuid(2)
-        val nodeBId = uuid(3)
 
         it("같은 linkId 가 양쪽 확장에서 나타나도 엣지는 1개여야 한다") {
             every { issueRepository.findByKey(centerKey) } returns centerIssue

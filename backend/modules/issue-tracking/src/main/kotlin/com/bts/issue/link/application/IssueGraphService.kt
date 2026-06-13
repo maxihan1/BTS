@@ -210,11 +210,8 @@ class IssueGraphService(
      * outward/inward 링크와 parent/child 관계를 각각 조회해 엣지 후보를 수집하고,
      * 미방문 이웃을 노드 목록·visited·큐에 추가한다.
      *
-     * detekt ThrowsCount 예외 없음 — 이 함수 자체는 throw 하지 않는다.
-     *
      * @return 누적 truncated 값 (기존 true 이면 유지, 새로 cap 초과면 true 로 갱신).
      */
-    @Suppress("LongMethod") // BFS 확장부는 단일 흐름으로 유지. 분리 시 QueueItem/리스트 파편화
     private fun expandNode(
         current: QueueItem,
         visited: MutableSet<UUID>,
@@ -227,7 +224,7 @@ class IssueGraphService(
         var wasTruncated = truncated
         val nextDepth = current.depth + 1
 
-        // outward 링크: current → neighbor (type=linkType.name)
+        // outward 링크: current → neighbor
         linkRepository.findOutwardWithIssue(current.id).forEach { row ->
             edgeCandidates.add(
                 EdgeCandidate(
@@ -239,19 +236,18 @@ class IssueGraphService(
                     dedupKey = "L:${row.linkId}",
                 ),
             )
-            if (row.otherIssueId !in visited) {
-                if (visited.size < NODE_CAP) {
-                    val item = QueueItem(row.otherIssueId, row.otherIssueKey, row.otherIssueSummary, row.otherCurrentStateKey, nextDepth)
-                    visited.add(row.otherIssueId)
-                    nodes.add(item)
-                    if (nextDepth < depth) queue.add(item)
-                } else {
-                    wasTruncated = true
-                }
-            }
+            val neighbor =
+                QueueItem(
+                    id = row.otherIssueId,
+                    key = row.otherIssueKey,
+                    summary = row.otherIssueSummary,
+                    statusKey = row.otherCurrentStateKey,
+                    depth = nextDepth,
+                )
+            wasTruncated = tryEnqueue(neighbor, visited, nodes, queue, depth, wasTruncated)
         }
 
-        // inward 링크: neighbor → current (type=linkType.name)
+        // inward 링크: neighbor → current
         linkRepository.findInwardWithIssue(current.id).forEach { row ->
             edgeCandidates.add(
                 EdgeCandidate(
@@ -263,19 +259,18 @@ class IssueGraphService(
                     dedupKey = "L:${row.linkId}",
                 ),
             )
-            if (row.otherIssueId !in visited) {
-                if (visited.size < NODE_CAP) {
-                    val item = QueueItem(row.otherIssueId, row.otherIssueKey, row.otherIssueSummary, row.otherCurrentStateKey, nextDepth)
-                    visited.add(row.otherIssueId)
-                    nodes.add(item)
-                    if (nextDepth < depth) queue.add(item)
-                } else {
-                    wasTruncated = true
-                }
-            }
+            val neighbor =
+                QueueItem(
+                    id = row.otherIssueId,
+                    key = row.otherIssueKey,
+                    summary = row.otherIssueSummary,
+                    statusKey = row.otherCurrentStateKey,
+                    depth = nextDepth,
+                )
+            wasTruncated = tryEnqueue(neighbor, visited, nodes, queue, depth, wasTruncated)
         }
 
-        // 부모: parent → current (type="PARENT")
+        // 부모: parent → current
         graphRepository.findParent(current.id)?.let { parent ->
             edgeCandidates.add(
                 EdgeCandidate(
@@ -287,19 +282,10 @@ class IssueGraphService(
                     dedupKey = "P:${parent.id}->${current.id}",
                 ),
             )
-            if (parent.id !in visited) {
-                if (visited.size < NODE_CAP) {
-                    val item = parent.toQueueItem(nextDepth)
-                    visited.add(parent.id)
-                    nodes.add(item)
-                    if (nextDepth < depth) queue.add(item)
-                } else {
-                    wasTruncated = true
-                }
-            }
+            wasTruncated = tryEnqueue(parent.toQueueItem(nextDepth), visited, nodes, queue, depth, wasTruncated)
         }
 
-        // 자식: current → child (type="PARENT")
+        // 자식: current → child
         graphRepository.findChildren(current.id).forEach { child ->
             edgeCandidates.add(
                 EdgeCandidate(
@@ -311,19 +297,42 @@ class IssueGraphService(
                     dedupKey = "P:${current.id}->${child.id}",
                 ),
             )
-            if (child.id !in visited) {
-                if (visited.size < NODE_CAP) {
-                    val item = child.toQueueItem(nextDepth)
-                    visited.add(child.id)
-                    nodes.add(item)
-                    if (nextDepth < depth) queue.add(item)
-                } else {
-                    wasTruncated = true
-                }
-            }
+            wasTruncated = tryEnqueue(child.toQueueItem(nextDepth), visited, nodes, queue, depth, wasTruncated)
         }
 
         return wasTruncated
+    }
+
+    /**
+     * 이웃 노드가 미방문이고 [NODE_CAP] 미만이면 visited·nodes·queue 에 추가한다.
+     *
+     * 노드 상한 초과 시 해당 이웃을 건너뛰고 [truncated]=true 를 반환한다.
+     *
+     * @param item 추가할 이웃 [QueueItem].
+     * @param visited 이미 방문한 노드 UUID 집합.
+     * @param nodes 결과 노드 목록 (누적).
+     * @param queue BFS 대기 큐.
+     * @param depth 요청된 최대 홉 거리.
+     * @param truncated 기존 truncated 값.
+     * @return 갱신된 truncated 값.
+     */
+    private fun tryEnqueue(
+        item: QueueItem,
+        visited: MutableSet<UUID>,
+        nodes: MutableList<QueueItem>,
+        queue: LinkedList<QueueItem>,
+        depth: Int,
+        truncated: Boolean,
+    ): Boolean {
+        if (item.id in visited) return truncated
+        return if (visited.size < NODE_CAP) {
+            visited.add(item.id)
+            nodes.add(item)
+            if (item.depth < depth) queue.add(item)
+            truncated
+        } else {
+            true
+        }
     }
 
     /**
