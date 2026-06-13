@@ -66,6 +66,16 @@ data class LinkListResult(
     val inward: List<LinkEntry>,
 )
 
+// ── 상수 ──────────────────────────────────────────────────────────────────────
+
+/**
+ * 이슈 미존재 예외 [LinkedIssueNotFoundException] 에 전달하는 플레이스홀더 UUID.
+ *
+ * [LinkedIssueNotFoundException] 의 생성자는 UUID 를 요구하지만 서비스 계층에서는
+ * key 로만 식별하므로 nil UUID 를 사용한다. 예외 메시지는 호출부에서 key 를 포함해 로깅한다.
+ */
+private val UNKNOWN_ISSUE_ID: UUID = UUID(0L, 0L)
+
 // ── 서비스 ────────────────────────────────────────────────────────────────────
 
 /**
@@ -148,7 +158,7 @@ class LinkApplicationService(
     @Suppress("ThrowsCount")
     private fun resolveAndValidateLink(sourceKey: IssueKey, targetKey: IssueKey, linkType: LinkType): IssueLink {
         val sourceIssue = issueRepository.findByKey(sourceKey)
-            ?: throw LinkedIssueNotFoundException(UUID.randomUUID())
+            ?: throw LinkedIssueNotFoundException(UNKNOWN_ISSUE_ID)
 
         // IssueKey 레벨 자기참조 조기 차단 — target 조회 전 빠른 실패
         if (sourceKey.value == targetKey.value) {
@@ -156,7 +166,7 @@ class LinkApplicationService(
         }
 
         val targetIssue = issueRepository.findByKey(targetKey)
-            ?: throw LinkedIssueNotFoundException(UUID.randomUUID())
+            ?: throw LinkedIssueNotFoundException(UNKNOWN_ISSUE_ID)
 
         // 도메인 팩토리 경유 — UUID 레벨 자기참조 검증 포함 (patch-merge-domain-bypass 방지)
         val link = IssueLink.create(sourceIssue.id.value, targetIssue.id.value, linkType)
@@ -188,7 +198,7 @@ class LinkApplicationService(
         log.debug("listLinks key={}", key.value)
 
         val issue = issueRepository.findByKey(key)
-            ?: throw LinkedIssueNotFoundException(UUID.randomUUID())
+            ?: throw LinkedIssueNotFoundException(UNKNOWN_ISSUE_ID)
 
         val outwardRows = linkRepository.findOutwardWithIssue(issue.id.value)
         val inwardRows = linkRepository.findInwardWithIssue(issue.id.value)
@@ -214,7 +224,7 @@ class LinkApplicationService(
         log.debug("deleteLink key={} linkId={}", key.value, linkId)
 
         issueRepository.findByKey(key)
-            ?: throw LinkedIssueNotFoundException(UUID.randomUUID())
+            ?: throw LinkedIssueNotFoundException(UNKNOWN_ISSUE_ID)
 
         val deleted = linkRepository.deleteById(linkId)
         if (!deleted) {
