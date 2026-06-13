@@ -68,6 +68,7 @@ MFA(2단계 인증)를 켠 사용자가 MFA verify 성공 시 "이 기기 30일 
 - **NFR-보안-4**. fail-safe — 쿠키 부재/위조/만료/타인 시 우회하지 않고 챌린지로 폴백(보안 강화 방향). 절대 우회를 "기본 허용"하지 않음.
 - **NFR-보안-5**. 관리 엔드포인트 JWT 전용·PAT 403(MFA self-service 일관). 단건 취소 404 IDOR 은닉.
 - **NFR-테스트-1**. TTL 만료/30일 계산은 주입된 `Clock` 기반 — 테스트가 시각 시뮬레이션으로 결정적 검증(authcontroller-revokesession-timebomb 선례).
+- **NFR-보안-6 (우회 경계)**. 신뢰 우회는 `AuthController.completeLogin`(local/LDAP password 로그인) 전용. SSO(SAML/OIDC) success handler는 별도 경로(`completeLogin` 미경유)이며 IdP가 2차 인증 관할 → 우회 의도적 비대상.
 - **NFR-격리**. identity-access 단일 BC. cross-BC 없음.
 
 ## API 인터페이스 (REST)
@@ -122,6 +123,9 @@ CREATE INDEX idx_trusted_devices_user ON trusted_devices(user_id);
 - **EC9 (다중 디바이스)**. user별 다행 허용. 각 브라우저가 독립 쿠키. 목록은 전부 표시.
 - **EC10 (Clock 경계)**. `expires_at == now`는 만료로 간주(`> now`만 유효). `created_at`/`expires_at` 모두 주입 Clock 기반으로 INSERT(DB `now()` default 혼용 금지 — 테스트 결정성).
 - **EC11 (enum 카운트 가드)**. `AuthEventType`에 2종 추가 시 enum 카운트를 검증하는 타 모듈/테스트(예: `AuthEventType` 개수 단언, 매핑 테이블)가 깨질 수 있음 → 전 모듈 grep으로 동반 갱신(enum-add-breaks-crossmodule-count-guard 선례).
+- **EC12 (로그아웃 잔존 쿠키)**. `logout`은 `trusted_device` 쿠키를 만료시키지 않음(신뢰 비해제 = 의도). 다음 로그인에 우회 유지. 신뢰 해제는 명시 취소/자동 폐기로만.
+- **EC13 (SSO 로그인)**. SSO(SAML/OIDC)는 `completeLogin` 미경유 → 신뢰 쿠키가 있어도 우회 적용 안 됨(IdP MFA 관할, 비대상).
+- **EC14 (trust 등록 실패)**. verify 성공 후 trust 등록이 실패(token_hash UNIQUE 극저확률 충돌)해도 정식 세션은 발급(쿠키만 누락, best-effort fail-safe). 세션 발급 500 금지.
 
 ## 제약 조건
 

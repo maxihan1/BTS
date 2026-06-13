@@ -51,6 +51,10 @@ trusted_devices(
 
 신뢰 우회 세션도 `mfa_verified=true`다 — 과거 MFA 통과로 신뢰가 성립했으므로 동일 세션 효과(다운스트림 `mfa_verified` 가드 일관).
 
+**보안 경계 — 신뢰 우회는 password(local/LDAP) 로그인 전용.** `AuthController.completeLogin`은 local/LDAP password 로그인 경로다. SSO(SAML/OIDC)는 `Saml2AuthenticationSuccessHandler`/`OidcAuthenticationSuccessHandler`의 독립 `issueTokens` 경로로 세션을 발급하며 `completeLogin`을 거치지 않는다(이 SSO issueTokens에는 `mfaVerified` 파라미터도 없다). SSO는 IdP가 2차 인증을 관할하므로 신뢰 우회 **의도적 비대상**이다 — SSO success handler에 신뢰 우회를 이식하지 않는다(회귀 표면 차단).
+
+**trust 등록 best-effort.** verify 성공 시 trust 등록(`token_hash` UNIQUE)이 극저확률로 실패해도 정식 세션 발급을 막지 않는다 — 실패 시 쿠키만 누락하고 세션은 발급한다(로그인 가용성 우선, fail-safe).
+
 ### D4. 만료 = 고정 30일(sliding 아님)
 
 `expires_at = created_at + 30일`로 고정한다. 신뢰 우회 로그인이 창을 연장하지 않는다("30일 면제" 문자 그대로 + 추적 상태 단순 + 무기한 신뢰 방지). `last_used_at`은 표시용으로만 갱신한다.
@@ -58,7 +62,7 @@ trusted_devices(
 ### D5. 취소 = 수동(단건+전체) + 보안 이벤트 자동 폐기
 
 - **수동.** `DELETE /api/v1/auth/mfa/trusted-devices/{id}`(단건, 소유 검증 — 타인/미존재 404 IDOR 선례), `DELETE /api/v1/auth/mfa/trusted-devices`(본인 전체). 목록 `GET /api/v1/auth/mfa/trusted-devices`(D6 관리 화면용, JWT 전용·PAT 403 — MFA self-service 일관).
-- **자동.** 비밀번호 변경 성공(`LocalCredentialService`/`PasswordController` 경로) + TOTP 비활성화(`MfaService.disable`) 시 해당 user의 신뢰 디바이스를 전량 revoke한다. SDD "분실/해킹 의심 시 모든 신뢰 디바이스 즉시 만료" 정신을 보안 이벤트에 결합한 것. 결합 방식은 서비스 메서드에 revoke 호출 추가(BC 내부, cross-BC 아님).
+- **자동.** 비밀번호 변경 성공(`ChangePasswordService.change`의 `Success` 분기 — `SameAsCurrent`/`PolicyViolation`/`CurrentMismatch`는 비대상) + TOTP 비활성화(`MfaService.disable` `Success`) 시 해당 user의 신뢰 디바이스를 전량 revoke한다. SDD "분실/해킹 의심 시 모든 신뢰 디바이스 즉시 만료" 정신을 보안 이벤트에 결합한 것. 결합 방식은 서비스 메서드에 revoke 호출 추가(BC 내부, cross-BC 아님).
 
 ### D6. JWT 클레임 미도입 (SDD 스케치 일탈)
 
@@ -81,5 +85,6 @@ SDD 스케치의 "디바이스 핑거프린트 + JWT 클레임"에서 JWT 클레
 - **자동 폐기 누락 위험** — 비번 변경/TOTP 비활성 경로에 revoke 호출을 빠뜨리면 stale 신뢰가 잔존한다. 통합 테스트로 양 경로 revoke를 ground-truth 검증.
 - **쿠키 Path/SameSite** — `trusted_device` 쿠키는 refresh 선례와 동일하게 `Path=/api/v1/auth; HttpOnly; Secure; SameSite=Strict`. login·verify가 모두 이 path 아래라 정상 전송. SameSite=Strict라 cross-site 자동전송 차단(CSRF 표면 최소).
 - **만료 행 물리 정리** — 조회 술어로 무효화하므로 기능상 문제 없으나, 누적 시 테이블 비대. 정리 배치는 후속 운영 과제.
+- **로그아웃 시 신뢰 쿠키 비해제(의도)** — `logout`은 refresh 쿠키만 만료시키고 `trusted_device` 쿠키는 건드리지 않는다. 로그아웃은 신뢰를 해제하는 행위가 아니다(다음 로그인에 우회 의도). 신뢰 해제는 명시 취소/보안 이벤트 자동 폐기로만 일어난다. "logout인데 쿠키 잔존" 혼란 방지를 위해 명문화.
 - **WebAuthn-only 사용자의 TOTP disable 자동폐기** — TOTP disable 시 전량 revoke하나, 사용자가 WebAuthn 키를 별도 보유하면 MFA는 여전히 활성이다. 보수적으로 TOTP disable도 전량 revoke한다(신뢰의 근거가 된 요소 변경 = 재신뢰 요구). spec에서 정밀화.
 - D6/D7 프론트 체크박스 + 관리 페이지 + E2E 후속.

@@ -82,7 +82,7 @@ classify: type=auth, agent=security-engineer, primary_bc=identity-access
 - depends-on: []
 
 **RED**: 단위 테스트 —
-- `TrustedDeviceToken.generate()` → rawToken(base64url, 32바이트=43자 무패딩) + `hash`(SHA-256 hex 64자, RefreshToken 선례 동일). 동일 rawToken 재해시 동일값, 서로 다른 토큰 다른 해시.
+- `TrustedDeviceToken.generate()` → rawToken(**hex 64자 = 32바이트**, RefreshToken `generateRawToken` 선례와 동일 인코딩 — base64url 혼용 금지) + `hash`(SHA-256 hex 64자). 동일 rawToken 재해시 동일값, 서로 다른 토큰 다른 해시.
 - `TrustedDevice.isExpired(now)` — `expires_at == now`는 만료(`> now`만 유효, EC10 경계).
 
 **GREEN**: `TrustedDevice` 데이터 클래스(id/userId/tokenHash/label/createdAt/expiresAt/lastUsedAt + `isExpired`). `TrustedDeviceToken`(난수 생성 `SecureRandom` + `sha256Hex`). rawToken 비로깅.
@@ -117,9 +117,14 @@ classify: type=auth, agent=security-engineer, primary_bc=identity-access
 - `trust(userId, userAgent)` → rawToken 반환 + repo.insert(hash, `expiresAt=clock.now()+30일`, `createdAt=clock.now()`, label=userAgent) + `TRUSTED_DEVICE_ADDED` emit.
 - `verifyAndTouch(userId, rawToken)` → 유효(user 일치+미만료) true + `updateLastUsedAt`; 만료/타인user/미상 false(touch 없음).
 - `list(userId)`, `revoke(userId,id)`(소유 true/타인 false), `revokeAll(userId)`(count>0이면 `TRUSTED_DEVICE_REVOKED` emit, 0이면 미emit).
-- `AuthAuditLogServiceTest` 기대 enum 집합에 2종 추가(L48), `AuthEventEmitCoverageTest`가 2종 emit 사이트 인식.
+- `AuthAuditLogServiceTest` 기대 enum 집합에 2종 추가, `AuthEventEmitCoverageTest`가 2종 emit 사이트 인식.
 
-**GREEN**: `@Service` `TrustedDeviceService`(repo+Clock+AuthAuditLogService 주입). `AuthEventType`에 `TRUSTED_DEVICE_ADDED`/`TRUSTED_DEVICE_REVOKED` 추가. 감사 metadata엔 count만(비밀값 X). **전 모듈 grep**(`grep -rn "AuthEventType.entries\|AuthEventType.values" backend/`)으로 카운트 단언 추가 동반 갱신(enum-add-breaks-crossmodule-count-guard).
+**GREEN**: `@Service` `TrustedDeviceService`(repo+Clock+AuthAuditLogService 주입). `AuthEventType`에 `TRUSTED_DEVICE_ADDED`/`TRUSTED_DEVICE_REVOKED` 추가. **`TRUSTED_DEVICE_ADDED`는 `trust()`에서, `TRUSTED_DEVICE_REVOKED`는 `revokeAll()`/수동 revoke 경로에서 main 소스에 실제 record 호출**(AuthEventEmitCoverageTest 자동 통과 조건). 감사 metadata엔 count만(비밀값 X).
+**카운트 주석/단언 전수 갱신** (현재 "20종" → "22종"):
+  - `AuthEventType.kt` L1 주석 + L6 KDoc "20종"
+  - `AuthAuditLogServiceTest.kt` L1/L19 주석 · 테스트 제목 "20종" · 명시 expected 집합(L23~47에 2종 추가)
+  - `AuthEventEmitCoverageTest.kt` L1/L14 주석(현재 stale "18종" → 정확한 카운트로 정정, drift 해소)
+  - 전 모듈 grep 확인: `grep -rn "AuthEventType.entries\|AuthEventType.values\|[0-9]\+종" backend/` (enum-add-breaks-crossmodule-count-guard).
 
 **REFACTOR**: 30일 상수(`TRUST_TTL_DAYS=30`) + KDoc(fail-safe·user-bound).
 
@@ -132,7 +137,7 @@ classify: type=auth, agent=security-engineer, primary_bc=identity-access
 - files: [`.../web/TrustedDeviceController.kt`, `src/test/.../web/TrustedDeviceControllerTest.kt`]
 - depends-on: [4]
 
-**RED**: web 테스트 —
+**RED**: web 테스트 — **`@WebMvcTest` 슬라이스 + Mockito `@MockBean TrustedDeviceService`**(MfaControllerTest/AuthControllerTest 선례 — companion object 보유 Bean MockK 등록 시 ByteBuddy 문제 회피 KDoc 일관). MockK 직접 생성 금지.
 - `GET /api/v1/auth/mfa/trusted-devices` → 200 `{devices:[{id,label,createdAt,lastUsedAt,expiresAt}]}`(token_hash 비노출), PAT(jwt null) 403 `session_management_requires_interactive_login`.
 - `DELETE /…/{id}` → 204(소유), 404(타인/미존재 IDOR), PAT 403.
 - `DELETE /…` → 204(전체), PAT 403.
@@ -150,13 +155,20 @@ classify: type=auth, agent=security-engineer, primary_bc=identity-access
 - files: [`.../web/AuthController.kt`, `src/test/.../web/AuthControllerTest.kt`]
 - depends-on: [4]
 
-**RED**: AuthController 테스트(MockK TrustedDeviceService) —
-- `completeLogin`: MFA 활성 + 유효 `trusted_device` 쿠키 → 챌린지 미발급, `issueTokens(mfaVerified=true)`. 쿠키 무효/부재 → 기존 `mfa_required`(회귀 0).
-- `verifyMfa`: `trust_device=true` + 성공 → 응답에 `Set-Cookie trusted_device`(refresh 쿠키 병존) + `trustedDeviceService.trust` 호출. `trust_device` 생략/false → 쿠키 없음(기존 동작).
+**RED**: AuthController 테스트 — **`@WebMvcTest` 슬라이스라 Mockito `@MockBean TrustedDeviceService` 추가**(MockK 금지 — AuthControllerTest.kt L101 KDoc 회피 사유). 기존 `@MockBean` 목록에 1종 추가.
+- `completeLogin`: MFA 활성 + 유효 `trusted_device` 쿠키(`verifyAndTouch` true stub) → 챌린지 미발급, `issueTokens(mfaVerified=true)` + TokenResponse 200. 쿠키 무효/부재(false stub) → 기존 `mfa_required`(회귀 0).
+- `verifyMfa`: `trust_device=true` + 성공 → 응답에 `Set-Cookie trusted_device`(refresh 쿠키 병존) + `trustedDeviceService.trust` 1회 호출. `trust_device` 생략/false → trust 미호출·쿠키 없음(기존 동작 회귀 0).
 
-**GREEN**: `MfaVerifyRequest`에 `@JsonProperty("trust_device") trustDevice: Boolean = false` 추가. `completeLogin`에 쿠키 조회→`verifyAndTouch` 분기. `verifyMfa` 성공 매핑에 trust 등록 + `buildTrustedDeviceCookie`(refresh `buildRefreshCookie` 선례, `Path=/api/v1/auth;HttpOnly;Secure;SameSite=Strict;Max-Age=2592000`). `issueTokens`가 선택적 trusted_device 쿠키 함께 싣도록 결선(추가 Set-Cookie 헤더). `TrustedDeviceService` 생성자 주입.
+**GREEN** (B1 — 시그니처 전파 명시):
+1. `MfaVerifyRequest`에 `@JsonProperty("trust_device") trustDevice: Boolean = false` 추가(기본 false=회귀 0).
+2. `issueTokens`에 파라미터 추가: `issueTokens(request, userId, providerId, mfaVerified=false, trustedDeviceCookie: String? = null)`. 본문에서 `trustedDeviceCookie != null`이면 `.header(SET_COOKIE, it)` 추가(refresh Set-Cookie와 복수 헤더 병존).
+3. **3개 매퍼 시그니처에 `body`(또는 미리 계산한 쿠키) 전파**: `mapTotpResult`/`mapBackupResult`/`mapWebauthnResult`가 성공 시 — `body.trustDevice`면 `trustedDeviceService.trust(userId, request UA)`로 rawToken 받아 `buildTrustedDeviceCookie(rawToken)` 생성해 `issueTokens(...,trustedDeviceCookie=cookie)`. `verifyByMethod`도 `body` 전파 유지.
+4. `completeLogin`: `request.cookies`에서 `trusted_device` 읽어 `verifyAndTouch(principal.userId, raw)` true면 `issueTokens(...,mfaVerified=true)`(우회), 아니면 기존 챌린지.
+5. `buildTrustedDeviceCookie`(refresh `buildRefreshCookie` 선례 — `Path=/api/v1/auth;HttpOnly;Secure;SameSite=Strict;Max-Age=2592000`). `TrustedDeviceService` 생성자 주입.
+6. **C3 — trust 등록 best-effort**: `trustedDeviceService.trust` 실패(예: token_hash UNIQUE 극저확률 충돌)가 정식 세션 발급을 막지 않도록 — 실패 시 쿠키만 누락하고 세션은 발급(로그인 가용성 우선, fail-safe). KDoc 명시.
+7. **B3 경계**: 우회는 `completeLogin`(local/LDAP password 경로) 전용. SSO success handler는 본 task 비대상(건드리지 않음).
 
-**REFACTOR**: 쿠키 상수(`TRUSTED_DEVICE_COOKIE`, `TRUST_MAX_AGE`) + KDoc(우회 user-bound·fail-safe).
+**REFACTOR**: 쿠키 상수(`TRUSTED_DEVICE_COOKIE`, `TRUST_MAX_AGE=2592000`) + KDoc(우회 user-bound·fail-safe·best-effort 등록·SSO 비대상).
 
 **검증**: `./gradlew :backend:modules:identity-access:test --tests '*AuthControllerTest'`
 
@@ -167,11 +179,11 @@ classify: type=auth, agent=security-engineer, primary_bc=identity-access
 - files: [`.../credential/ChangePasswordService.kt`, `.../mfa/MfaService.kt`, `src/test/.../credential/ChangePasswordServiceTest.kt`, `src/test/.../mfa/MfaServiceTest.kt`]
 - depends-on: [4]
 
-**RED**: 서비스 테스트(MockK TrustedDeviceService) —
-- `ChangePasswordService.change` Success → `trustedDeviceService.revokeAll(userId)` 1회. 실패(PolicyViolation/CurrentMismatch) → 미호출.
+**RED**: 서비스 테스트(MockK TrustedDeviceService — 두 서비스 모두 생성자 직접 생성 패턴) —
+- `ChangePasswordService.change` Success → `trustedDeviceService.revokeAll(userId)` 1회. **실패 3종 전부 미호출**: `PolicyViolation`/`CurrentMismatch`/**`SameAsCurrent`**(ChangePasswordResult 4종 — rotate 미발생 케이스 누락 금지).
 - `MfaService.disable` Success → `revokeAll(userId)` 1회. 실패(InvalidCode/NotEnabled/TooManyAttempts) → 미호출.
 
-**GREEN**: 두 서비스에 `TrustedDeviceService` 생성자 주입 + Success 경로에 `revokeAll` 호출. **생성자 주입 fanout** — `grep -rn "MfaService(\|ChangePasswordService(" backend/modules/identity-access/src/test/`로 모든 인스턴스화(real/MockK) 갱신(plan-files-constructor-injection-existing-tests). 통합 테스트 부팅 빈도 확인.
+**GREEN**: 두 서비스에 `TrustedDeviceService` 생성자 주입 + **Success 분기에만** `revokeAll` 호출 (`ChangePasswordService.change` Success 직전 L108 지점, `LocalCredentialService.rotate`가 아님 — ADR D5 정정 반영). **생성자 주입 fanout** — `grep -rn "MfaService(\|ChangePasswordService(" backend/modules/identity-access/src/test/`로 모든 인스턴스화(real/MockK) 갱신(plan-files-constructor-injection-existing-tests). 통합 테스트 부팅 빈도 확인.
 
 **REFACTOR**: 호출부 KDoc(보안 이벤트 자동 폐기 사유 + ADR D5 링크).
 
@@ -209,4 +221,24 @@ classify: type=auth, agent=security-engineer, primary_bc=identity-access
 - 추가 검증: 모듈 전체 test(--rerun-tasks, false-green 회피) + ktlint + detekt. 프론트/E2E 없음(D6/D7 후속)
 - 주의: ① enum 2종 추가 카운트가드 동반(T4) ② 생성자 주입 fanout(T6/T7) ③ ktlint/detekt baseline 라인시프트(import/주석 추가 시 블록만 교체) ④ prod 통합테스트 non-prod AlwaysAllow 마스킹 주의 — ground-truth는 prod 프로파일
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 독립 eng+보안 리뷰 (security-engineer, 2026-06-13)
+
+autoplan 대신 독립 리뷰어가 실제 코드 grep/read로 통합 지점 검증(bts-review-plan-autoplan-overkill). **종합: plan 수정 후 진행** → 아래 전부 반영 완료.
+
+**BLOCKER (3건, 모두 해소)**.
+- B1 — `issueTokens`가 추가 Set-Cookie/trustDevice 전파 구조 미정의(mapper 4종 시그니처). → T6 GREEN에 `issueTokens(...,trustedDeviceCookie)` 파라미터 + 3 매퍼 `body` 전파 명시.
+- B2 — `AuthControllerTest`/web 테스트는 `@WebMvcTest`+Mockito `@MockBean` 패턴(MockK 회피 KDoc)인데 plan이 "MockK"라 가짜 RED 위험. → T5/T6 RED를 `@MockBean`으로 정정(서비스 테스트 T4/T7만 MockK).
+- B3 — SSO(SAML/OIDC) success handler는 `completeLogin` 미경유 → 신뢰 우회 password 전용 경계 미명문. → ADR D3 + spec NFR-보안-6 + EC13에 "SSO 비대상" 명문화.
+
+**CONCERN (해소/기록)**.
+- C1 — `ChangePasswordResult` 4종 중 `SameAsCurrent` 누락. → T7 RED에 실패 3종(SameAsCurrent 포함) 미호출 명시 + ADR D5 훅 위치를 `ChangePasswordService.change` Success로 정정.
+- C2 — enum "20종" 주석 전수 갱신 대상(AuthEventType.kt L1/L6, AuthAuditLogServiceTest, AuthEventEmitCoverageTest stale "18종"). → T4 GREEN에 전수 명시.
+- C3 — token_hash UNIQUE 충돌 시 trust 등록 실패가 세션 발급 막으면 안 됨. → T6 best-effort 명시 + spec EC14 + ADR.
+- C4 — 로그아웃 시 신뢰 쿠키 비해제(의도). → ADR 위험/후속 + spec EC12 명문화.
+- C5 — 쿠키 Path=/api/v1/auth는 refresh 선례 동일 최선(변경 불요, 기록).
+
+**NIT**. T2 토큰 인코딩 hex 64자로 통일(base64url 혼용 제거, RefreshToken 선례) → T2 정정. mfa_verified 우회/정상 구분 불가는 의도(동일 세션 효과).
+
+**보안 정합 판정**. fail-safe·user-bound 조회·SHA-256 해시 저장·IDOR 404·PAT 403 견고. depends-on 순환 없음.
