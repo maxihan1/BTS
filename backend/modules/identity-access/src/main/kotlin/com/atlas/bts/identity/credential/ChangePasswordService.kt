@@ -65,6 +65,15 @@ class ChangePasswordService(
     /**
      * 비밀번호를 변경하고 현재 세션 외 다른 세션을 무효화한다.
      *
+     * ## 신뢰 디바이스 자동 폐기 (FR-MF-05, ADR D5)
+     * 변경 성공(rotate 완료) 직후 [TrustedDeviceService.revokeAll] 로 해당 사용자의 신뢰 디바이스를
+     * 전량 폐기한다. 비밀번호 변경은 "분실/탈취 의심"이 짙은 보안 이벤트이므로, MFA 면제를 받던
+     * 신뢰 디바이스를 모두 무효화해 다음 로그인부터 다시 2차 요소를 강제한다.
+     * rotate 가 일어나지 않은 실패 경로([ChangePasswordResult.PolicyViolation]/[SameAsCurrent]/
+     * [CurrentMismatch])에서는 호출하지 않는다 — 비밀번호가 실제로 바뀌지 않았으므로 신뢰를 깰 이유가 없다.
+     * 호출은 본 메서드의 [Transactional] 경계 안에 있어 rotate·세션무효화와 함께 commit/rollback 된다.
+     * 결합 근거: docs/decisions/2026-06-13-trusted-device-mfa-exemption.md (D5).
+     *
      * @param userId     변경 대상 사용자 ID
      * @param currentSid 현재 요청을 보낸 세션 ID — 이 세션은 무효화에서 제외된다
      * @param current    현재 비밀번호 평문 — 반환 후 wipe

@@ -172,6 +172,14 @@ class MfaService(
      * 삭제는 코드 검증 성공 분기 안에서만 일어나 도메인 게이트를 우회하지 않으며,
      * 클래스 레벨 [Transactional] 로 secret 삭제와 같은 트랜잭션에 묶여 함께 commit/rollback 된다.
      *
+     * ## 신뢰 디바이스 자동 폐기 (FR-MF-05, ADR D5)
+     * 비활성화 성공 분기에서 [TrustedDeviceService.revokeAll] 로 해당 사용자의 신뢰 디바이스를 전량 폐기한다.
+     * 신뢰의 근거가 됐던 2차 요소(TOTP)를 끄는 행위는 보안 이벤트이므로, MFA 면제를 받던 신뢰 디바이스를
+     * 모두 무효화한다(WebAuthn 등 다른 요소가 남아 MFA 가 여전히 활성이어도 보수적으로 재신뢰를 요구).
+     * 실패 경로([DisableResult.InvalidCode]/[NotEnabled]/[TooManyAttempts])에서는 호출하지 않는다.
+     * 백업 코드 cascade 삭제와 동일하게 코드 검증 게이트 뒤·같은 [Transactional] 경계 안에 있다.
+     * 결합 근거: docs/decisions/2026-06-13-trusted-device-mfa-exemption.md (D5).
+     *
      * @param userId 비활성화 주체 사용자.
      * @param code 사용자가 입력한 6자리 코드.
      * @return [DisableResult] (Success / InvalidCode / TooManyAttempts / NotEnabled).
