@@ -148,6 +148,7 @@ export async function webauthnAuthenticateStart(challengeToken: string): Promise
  *
  * @param challengeToken 로그인 응답의 mfa_challenge_token
  * @param credential startAuthentication()이 반환한 AuthenticationResponseJSON 객체
+ * @param trustDevice 이 디바이스를 30일간 신뢰할지 여부 (기본 false). FR-MF-05 신뢰 디바이스.
  * @returns TokenResponse (access_token, token_type, expires_in)
  * @throws ApiError(401) invalid_code 또는 챌린지 만료
  * @throws ApiError(429) too_many_attempts
@@ -155,6 +156,7 @@ export async function webauthnAuthenticateStart(challengeToken: string): Promise
 export async function verifyWebauthn(
   challengeToken: string,
   credential: AuthenticationResponseJSON,
+  trustDevice = false,
 ): Promise<TokenResponse> {
   const res = await fetch('/api/v1/auth/mfa/verify', {
     method: 'POST',
@@ -165,6 +167,7 @@ export async function verifyWebauthn(
       code: '',
       method: 'webauthn',
       credential,
+      trust_device: trustDevice,
     }),
   })
   if (!res.ok) {
@@ -204,14 +207,18 @@ export async function registerSecurityKey(name: string): Promise<void> {
  * 컴포넌트에서 catch해 사용자 친화적 메시지로 매핑할 것.
  *
  * @param challengeToken 로그인 응답의 mfa_challenge_token
+ * @param trustDevice 이 디바이스를 30일간 신뢰할지 여부 (기본 false). FR-MF-05 신뢰 디바이스.
  * @returns TokenResponse (access_token, token_type, expires_in)
  * @throws Error (NotAllowedError 등) 브라우저 WebAuthn 거부
  * @throws ApiError 백엔드 비-2xx 응답
  */
-export async function authenticateWithSecurityKey(challengeToken: string): Promise<TokenResponse> {
+export async function authenticateWithSecurityKey(
+  challengeToken: string,
+  trustDevice = false,
+): Promise<TokenResponse> {
   const optionsJSON = await webauthnAuthenticateStart(challengeToken)
   const credential = await startAuthentication({
     optionsJSON: optionsJSON as Parameters<typeof startAuthentication>[0]['optionsJSON'],
   })
-  return verifyWebauthn(challengeToken, credential)
+  return verifyWebauthn(challengeToken, credential, trustDevice)
 }

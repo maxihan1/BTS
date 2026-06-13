@@ -146,10 +146,12 @@ export async function disableMfa(code: string): Promise<void> {
  * - 성공 시 백엔드가 Set-Cookie refresh_token을 발급하므로 credentials:'include' 필수.
  * - method 기본값 'totp' — 기존 호출(LoginForm.tsx) 은 인자 변경 없이 하위호환.
  *   백업코드 로그인 시 'backup_code' 전달.
+ * - trustDevice 기본값 false — FR-MF-05 신뢰 디바이스. true 전달 시 30일 MFA 면제 쿠키를 발급한다.
  *
  * @param challengeToken login 200 mfa_required 응답의 mfa_challenge_token
  * @param code Authenticator 앱의 6자리 TOTP 코드 또는 백업코드
  * @param method 인증 방식. 'totp'(기본) 또는 'backup_code'
+ * @param trustDevice 이 디바이스를 30일간 신뢰할지 여부 (기본 false)
  * @returns TokenResponse (access_token, token_type, expires_in)
  * @throws ApiError(400) invalid_method
  * @throws ApiError(401) invalid_code 또는 챌린지 만료
@@ -159,12 +161,13 @@ export async function verifyMfa(
   challengeToken: string,
   code: string,
   method: 'totp' | 'backup_code' = 'totp',
+  trustDevice = false,
 ): Promise<TokenResponse> {
   const res = await fetch('/api/v1/auth/mfa/verify', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mfa_challenge_token: challengeToken, code, method }),
+    body: JSON.stringify({ mfa_challenge_token: challengeToken, code, method, trust_device: trustDevice }),
   })
   if (!res.ok) {
     const errorBody: unknown = await res.json().catch(() => ({}))
