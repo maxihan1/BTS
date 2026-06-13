@@ -91,6 +91,20 @@ class TrustedDeviceServiceTest {
     }
 
     @Test
+    fun `trust — 256자를 넘는 User-Agent 는 256자로 잘라 label 로 저장한다 (저장형 XSS 표면 축소)`() {
+        val deviceSlot = slot<TrustedDevice>()
+        justRun { repo.insert(capture(deviceSlot)) }
+        // 길이 300 의 적대적 User-Agent — defense-in-depth 로 백엔드에서 256자 cap.
+        val longUserAgent = "x".repeat(300)
+
+        service.trust(userId, longUserAgent)
+
+        val inserted = deviceSlot.captured
+        assertThat(inserted.label).hasSize(256)
+        assertThat(inserted.label).isEqualTo("x".repeat(256))
+    }
+
+    @Test
     fun `trust — TRUSTED_DEVICE_ADDED 를 emit 하고 비밀값을 metadata 에 담지 않는다`() {
         val eventSlot = slot<AuthAuditLog>()
         justRun { auditLog.record(capture(eventSlot)) }
@@ -107,15 +121,33 @@ class TrustedDeviceServiceTest {
     // ── verifyAndTouch ─────────────────────────────────────────────────────
 
     @Test
-    fun `verifyAndTouch — user 일치 + 미만료면 true 이고 updateLastUsedAt 호출`() {
+    fun `verifyAndTouch — user 일치 + 미만료 + 갱신 1행이면 true 이고 updateLastUsedAt 호출`() {
         val raw = "a".repeat(64)
         val hash = TrustedDeviceToken.hash(raw)
         val found = device(tokenHash = hash, expiresAt = now.plus(Duration.ofDays(1)))
         every { repo.findByTokenHash(hash) } returns found
+        // 행이 여전히 존재 → 갱신 1행 → 우회 허용.
+        every { repo.updateLastUsedAt(found.id, now) } returns 1
 
         val result = service.verifyAndTouch(userId, raw)
 
         assertThat(result).isTrue()
+        verify(exactly = 1) { repo.updateLastUsedAt(found.id, now) }
+    }
+
+    @Test
+    fun `verifyAndTouch — 읽기 후 행이 삭제되어 갱신 0행이면 false 이다 (TOCTOU 우회 차단)`() {
+        val raw = "a".repeat(64)
+        val hash = TrustedDeviceToken.hash(raw)
+        val found = device(tokenHash = hash, expiresAt = now.plus(Duration.ofDays(1)))
+        every { repo.findByTokenHash(hash) } returns found
+        // findByTokenHash 읽기와 updateLastUsedAt 쓰기 사이 revoke/revokeAll(DELETE) 커밋 → 0행.
+        every { repo.updateLastUsedAt(found.id, now) } returns 0
+
+        val result = service.verifyAndTouch(userId, raw)
+
+        // 행이 그 사이 사라졌으므로 우회 불가 — fail-safe 로 거부한다.
+        assertThat(result).isFalse()
         verify(exactly = 1) { repo.updateLastUsedAt(found.id, now) }
     }
 

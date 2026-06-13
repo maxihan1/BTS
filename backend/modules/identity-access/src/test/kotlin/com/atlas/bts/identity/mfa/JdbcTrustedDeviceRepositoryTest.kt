@@ -159,15 +159,23 @@ class JdbcTrustedDeviceRepositoryTest {
     // ── updateLastUsedAt ──────────────────────────────────────────────────────────────
 
     @Test
-    fun `updateLastUsedAt은 last_used_at을 지정 시각으로 갱신한다`() {
+    fun `updateLastUsedAt은 last_used_at을 지정 시각으로 갱신하고 영향 행 수 1을 반환한다`() {
         val device = newDevice()
         repo.insert(device)
         assertThat(repo.findByTokenHash(device.tokenHash)!!.lastUsedAt).isNull()
 
         val usedAt = now.plus(1, ChronoUnit.HOURS)
-        repo.updateLastUsedAt(device.id, usedAt)
+        // 존재하는 행을 갱신하면 영향 행 수 1 — 호출 측(verifyAndTouch)이 TOCTOU race 닫기에 쓴다.
+        assertThat(repo.updateLastUsedAt(device.id, usedAt)).isEqualTo(1)
 
         assertThat(repo.findByTokenHash(device.tokenHash)!!.lastUsedAt).isEqualTo(usedAt)
+    }
+
+    @Test
+    fun `updateLastUsedAt은 행이 없으면(그 사이 삭제됨) 0을 반환한다 (TOCTOU 우회 차단)`() {
+        // findByTokenHash 읽기와 updateLastUsedAt 쓰기 사이에 revoke/revokeAll(DELETE)이 커밋되면
+        // 대상 id 의 행이 사라진다. 그 경우 0행 → 호출 측이 우회를 거부할 수 있어야 한다.
+        assertThat(repo.updateLastUsedAt(UUID.randomUUID(), now)).isEqualTo(0)
     }
 
     // ── listByUser (미만료만, 소유 한정) ─────────────────────────────────────────────
