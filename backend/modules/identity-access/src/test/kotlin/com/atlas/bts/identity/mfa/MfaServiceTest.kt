@@ -56,6 +56,7 @@ class MfaServiceTest {
     private lateinit var limiter: MfaAttemptLimiter
     private lateinit var auditLog: AuthAuditLogService
     private lateinit var backupCodeRepo: MfaBackupCodeRepository
+    private lateinit var trustedDeviceService: TrustedDeviceService
     private lateinit var service: MfaService
 
     private val userId: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
@@ -72,7 +73,18 @@ class MfaServiceTest {
         limiter = mockk(relaxed = true)
         auditLog = mockk(relaxed = true)
         backupCodeRepo = mockk(relaxed = true)
-        service = MfaService(totpService, repo, backupCodeRepo, encryptor, limiter, auditLog, clock)
+        trustedDeviceService = mockk(relaxed = true)
+        service =
+            MfaService(
+                totpService,
+                repo,
+                backupCodeRepo,
+                encryptor,
+                limiter,
+                auditLog,
+                trustedDeviceService,
+                clock,
+            )
     }
 
     /** 현재 fixed time-step 의 정답 코드. */
@@ -329,6 +341,8 @@ class MfaServiceTest {
         verify(exactly = 1) { limiter.reset(userId) }
         assertThat(eventSlot.captured.eventType).isEqualTo(AuthEventType.MFA_DISABLED)
         assertThat(eventSlot.captured.userId).isEqualTo(userId)
+        // TOTP 비활성화 성공 = 보안 이벤트 — 신뢰 디바이스 전량 자동폐기 (FR-MF-05 Task 7, ADR D5).
+        verify(exactly = 1) { trustedDeviceService.revokeAll(userId) }
     }
 
     @Test
@@ -360,6 +374,8 @@ class MfaServiceTest {
         verify(exactly = 0) { auditLog.record(any()) }
         // 코드 검증 게이트 뒤에서만 백업 코드를 지운다(service→repo 직행 우회 금지).
         verify(exactly = 0) { backupCodeRepo.deleteAllByUser(any()) }
+        // 비활성화 실패(코드 오답) — 신뢰 디바이스 자동폐기 미발생 (FR-MF-05 Task 7).
+        verify(exactly = 0) { trustedDeviceService.revokeAll(any()) }
     }
 
     @Test
@@ -372,6 +388,8 @@ class MfaServiceTest {
         assertThat(result).isEqualTo(MfaService.DisableResult.NotEnabled)
         verify(exactly = 0) { repo.deleteByUser(userId) }
         verify(exactly = 0) { backupCodeRepo.deleteAllByUser(any()) }
+        // 비활성화 실패(미활성) — 신뢰 디바이스 자동폐기 미발생 (FR-MF-05 Task 7).
+        verify(exactly = 0) { trustedDeviceService.revokeAll(any()) }
     }
 
     @Test
@@ -395,6 +413,8 @@ class MfaServiceTest {
         assertThat(result).isEqualTo(MfaService.DisableResult.TooManyAttempts)
         verify(exactly = 0) { repo.deleteByUser(userId) }
         verify(exactly = 0) { backupCodeRepo.deleteAllByUser(any()) }
+        // 비활성화 실패(rate-limit 차단) — 신뢰 디바이스 자동폐기 미발생 (FR-MF-05 Task 7).
+        verify(exactly = 0) { trustedDeviceService.revokeAll(any()) }
     }
 
     // ── isEnabled ─────────────────────────────────────────────────────────────
