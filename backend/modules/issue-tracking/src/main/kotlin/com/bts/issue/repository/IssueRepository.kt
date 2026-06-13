@@ -134,6 +134,8 @@ data class ReleaseNoteIssueRow(
  * - [list] — 프로젝트별 활성 이슈 페이지 조회.
  * - [incrementKeySequence] — pg_advisory_xact_lock 으로 동시성 제어 후 key_sequence +1 RETURNING.
  * - [findFixVersionIssuesForReleaseNotes] — 버전 UUID → fix version 연결 활성 이슈 목록 반환.
+ * - [updateParent] — issues.parent_id 설정 또는 해제.
+ * - [collectAncestors] — parent_id 체인 상향 수집 (WITH RECURSIVE CTE).
  */
 
 @Repository
@@ -931,6 +933,58 @@ class IssueRepository(
     }
 
     /**
+     * 이슈의 부모를 설정하거나 해제한다.
+     *
+     * `UPDATE issues SET parent_id = ? WHERE id = ?` — version·updated_at 변경 없음.
+     * cycle-free 보장은 호출자(서비스 계층)의 책임이다 (Task 6 collectAncestors 활용).
+     *
+     * @param issueId 대상 이슈 UUID.
+     * @param parentId 지정할 부모 이슈 UUID. null 이면 최상위로 승격(부모 해제).
+     */
+    @Transactional
+    fun updateParent(issueId: UUID, parentId: UUID?) {
+        log.debug("updateParent issueId={} parentId={}", issueId, parentId)
+        dsl.update(ISSUES)
+            .set(ISSUES.PARENT_ID, parentId)
+            .where(ISSUES.ID.eq(issueId))
+            .execute()
+    }
+
+    /**
+     * 지정 이슈의 모든 조상 UUID 를 parent_id 체인 순서로 반환한다 (자기 자신 제외).
+     *
+     * `WITH RECURSIVE` CTE 로 parent_id 를 타고 올라가며 최상위(parent_id IS NULL)까지 수집한다.
+     * UNION(중복 제거)을 사용해 순환(cycle) 발생 시 동일 행을 두 번 방문하면 자동으로 탈출한다.
+     * 실제 데이터에서는 Task 6 서비스 계층이 cycle 생성을 거부하므로 순환이 없다.
+     *
+     * 반환 순서: 직계 부모부터 최상위 조상 순 (재귀 CTE 탐색 순서와 일치).
+     *
+     * @param issueId 조상을 수집할 대상 이슈 UUID.
+     * @return 조상 UUID 목록. 최상위 이슈이면 빈 리스트.
+     */
+    @Transactional(readOnly = true)
+    fun collectAncestors(issueId: UUID): List<UUID> {
+        log.debug("collectAncestors issueId={}", issueId)
+        // UNION(not UNION ALL)으로 cycle-safe: 이미 방문한 parent_id 는 재삽입 안 됨
+        val sql = """
+            WITH RECURSIVE ancestors AS (
+                SELECT parent_id AS ancestor_id
+                FROM issues
+                WHERE id = ?
+                  AND parent_id IS NOT NULL
+                UNION
+                SELECT i.parent_id
+                FROM issues i
+                INNER JOIN ancestors a ON i.id = a.ancestor_id
+                WHERE i.parent_id IS NOT NULL
+            )
+            SELECT ancestor_id FROM ancestors
+        """
+        return dsl.fetch(sql, issueId)
+            .mapNotNull { record -> record.get("ancestor_id", UUID::class.java) }
+    }
+
+    /**
      * 활성 이슈(deleted_at IS NULL)의 라벨을 prefix 로 필터해 빈도 순으로 반환한다.
      *
      * 라벨 배열(labels TEXT[])을 UNNEST 해 행으로 전개한 뒤 COUNT(DISTINCT id) 로
@@ -1095,6 +1149,8 @@ private fun IssuesRecord.toIssue(): Issue {
         resolutionId = resolutionId,
         securityLevelId = securityLevelId,
         customFields = customFields.toCustomFieldsMap(),
+        // parent_id 컬럼 매핑 — null = 최상위 이슈 (FR-LK-01, V021)
+        parentId = parentId,
     )
 }
 
