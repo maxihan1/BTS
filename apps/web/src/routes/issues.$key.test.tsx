@@ -235,13 +235,17 @@ describe('IssueDetailPage — 성공 레이아웃', () => {
   it('T7-5: 메타패널에 상태 배지가 렌더되고 상태 전이 드롭다운이 없다', async () => {
     setupIssueFoundHandler()
 
-    renderPage('ATLAS-1')
+    const { container } = renderPage('ATLAS-1')
 
     await waitFor(() => {
       // 상태 배지가 렌더되어야 함
       expect(screen.getByTestId('issue-state-badge')).toBeInTheDocument()
-      // 유형 셀렉터가 있어야 함 (Task-6에서 추가)
-      expect(screen.getByRole('combobox', { name: /유형/ })).toBeInTheDocument()
+      // 유형 셀렉터가 있어야 함 (Task-6에서 추가) — IssueLinksPanel의 "링크 유형" select와
+      // 충돌하지 않도록 aside(메타패널) 안으로 범위 좁힘 (playwright-getbyrole-exact-strict-mode)
+      const aside = container.querySelector('aside')
+      expect(aside).not.toBeNull()
+      if (aside === null) return
+      expect(within(aside).getByRole('combobox', { name: /유형/ })).toBeInTheDocument()
     })
   })
 
@@ -1573,6 +1577,108 @@ describe('IssueDetailPage — Task F5 (변경 이력 섹션 통합)', () => {
       expect(within(nav).getByText('ATLAS')).toBeInTheDocument()
       expect(within(nav).getByText('ATLAS-1')).toBeInTheDocument()
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
+    })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 5 — IssueLinksPanel 라우트 통합 (FR-LK-01 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { resetIssueLinkStore } from '@/mocks/issue-link-handlers'
+
+describe('IssueDetailPage — Task 5 (IssueLinksPanel 통합)', () => {
+  beforeEach(() => {
+    resetIssueLinkStore()
+    server.use(...issueTypeHandlers)
+    setupIssueFoundHandler(issueAtlas1Fixture)
+    server.use(
+      // 전이 목록 — 패널과 무관하나 useIssueTransitions가 호출됨
+      http.get('/api/v1/issues/ATLAS-1/transitions', () =>
+        HttpResponse.json({ data: { transitions: [] } }),
+      ),
+    )
+    setupUsersHandler()
+  })
+
+  afterEach(() => {
+    resetIssueLinkStore()
+  })
+
+  /**
+   * TLK5-1: IssueLinksPanel이 이슈 상세 페이지에 렌더된다.
+   * `data-testid="links-section"` 과 `data-testid="parent-section"` 두 섹션이 모두
+   * 변경이력(IssueChangelog) 상단 또는 본문 하단에 마운트되어야 한다.
+   *
+   * RED 조건: IssueLinksPanel이 routes 파일에 배치되지 않아 두 섹션이 보이지 않음.
+   */
+  it('TLK5-1: IssueLinksPanel의 links-section과 parent-section이 렌더된다', async () => {
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    await waitFor(() => {
+      // IssueLinksPanel 내부 두 섹션이 DOM에 존재해야 한다
+      expect(screen.getByTestId('links-section')).toBeInTheDocument()
+      expect(screen.getByTestId('parent-section')).toBeInTheDocument()
+    })
+  })
+
+  /**
+   * TLK5-2: issueKey가 이슈 쿼리 키와 동일하게 패널에 전달된다.
+   * 패널 내부의 AddLinkForm이 사용하는 대상 이슈 키 input의 aria-label이 렌더되어야 한다.
+   * (IssueLinksPanel이 issueKey props를 받아 내부에서 AddLinkForm을 마운트하는 증거)
+   *
+   * RED 조건: 패널 미배치 → aria-label 없음.
+   */
+  it('TLK5-2: 패널의 대상 이슈 키 input(AddLinkForm)이 렌더된다', async () => {
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    await waitFor(() => {
+      // AddLinkForm 내부 Input의 aria-label — issueLinkStrings.targetKeyLabel
+      // IssueLinksPanel이 올바른 issueKey='ATLAS-1'을 받아 AddLinkForm을 마운트하면 나타남
+      expect(screen.getByRole('textbox', { name: '대상 이슈 키' })).toBeInTheDocument()
+    })
+  })
+
+  /**
+   * TLK5-3: 이슈 쿼리의 parent가 있으면 패널에 부모 키와 요약이 표시된다.
+   * issue fixture에 parent 필드를 포함해 MSW를 override하고,
+   * ParentSection이 parent.key와 parent.summary를 화면에 표시하는지 검증.
+   *
+   * RED 조건: IssueLinksPanel이 배치되지 않아 parent가 표시되지 않음.
+   */
+  it('TLK5-3: 이슈에 parent가 있으면 parent-section에 부모 키와 요약이 표시된다', async () => {
+    const fixtureWithParent = {
+      ...issueAtlas1Fixture,
+      parent: { key: 'ATLAS-0', summary: '부모 이슈 — 에픽' },
+    }
+    server.use(
+      http.get('/api/v1/issues/:key', ({ params }) => {
+        if (params['key'] === 'ATLAS-1') {
+          return HttpResponse.json({ data: fixtureWithParent })
+        }
+        return HttpResponse.json({ message: '이슈를 찾을 수 없습니다' }, { status: 404 })
+      }),
+    )
+
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    await waitFor(() => {
+      const parentSection = screen.getByTestId('parent-section')
+      // ParentSection — hasParent=true 분기에서 parent.key와 parent.summary가 렌더됨
+      expect(within(parentSection).getByText('ATLAS-0')).toBeInTheDocument()
+      expect(within(parentSection).getByText('부모 이슈 — 에픽')).toBeInTheDocument()
     })
   })
 })

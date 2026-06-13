@@ -411,10 +411,10 @@
 - [x] D3. 데이터 모델 — `issue_links(source_id, target_id, link_type)` UUID FK + `issues.parent_id` (책임. db-engineer, V021) — PR #135
 - [x] D4. 백엔드 — `POST/GET/DELETE /api/v1/issues/{key}/links` + `PATCH /api/v1/issues/{key}/parent` (책임. backend-engineer) — PR #135
 - [x] D5. 백엔드 테스트 — cycle 케이스(blocks 전이·부모 조상) (책임. backend-engineer) — PR #135
-- [ ] D6. 프론트 UI — 링크 추가/제거 패널 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 링크 추가/제거 패널 + parent-child set/clear (책임. frontend-engineer) — PR #136
+- [x] D7. E2E (책임. qa-engineer) — PR #136
 
-> **deviation (PR #135, ADR `2026-06-13-issue-link-vs-parent-child-separation`)**. 링크와 parent-child를 **별개 메커니즘**으로 분리(Maxi 확정 B). `issue_links`는 `link_type ∈ {blocks,relates,duplicates,clones}` 4종(SDD §5.7 일치), parent-child는 `issues.parent_id` 구조적 계층(SDD §5.8). 따라서 D4가 `PATCH /parent` 엔드포인트를 추가(원 표기는 `/links`만). SDD §5.7 `source_id/target_id`는 BIGINT 표기였으나 실제 `issues.id`가 UUID라 **UUID FK**로 구현. parent-child는 구조 불변식(단일 부모·acyclic·self 금지)만 강제, hierarchy_level 위계는 후속(FR-IS-02 parent_id 강제 이연). 이력·알림·권한 게이팅·프론트(D6/D7)는 후속 PR.
+> **deviation (PR #135, ADR `2026-06-13-issue-link-vs-parent-child-separation`)**. 링크와 parent-child를 **별개 메커니즘**으로 분리(Maxi 확정 B). `issue_links`는 `link_type ∈ {blocks,relates,duplicates,clones}` 4종(SDD §5.7 일치), parent-child는 `issues.parent_id` 구조적 계층(SDD §5.8). 따라서 D4가 `PATCH /parent` 엔드포인트를 추가(원 표기는 `/links`만). SDD §5.7 `source_id/target_id`는 BIGINT 표기였으나 실제 `issues.id`가 UUID라 **UUID FK**로 구현. parent-child는 구조 불변식(단일 부모·acyclic·self 금지)만 강제, hierarchy_level 위계는 후속(FR-IS-02 parent_id 강제 이연). 이력·알림·권한 게이팅은 후속 PR (프론트 D6/D7은 PR #136 완료 — 대상 이슈 키 직접 입력 + IssueResponse.parent 단건 노출).
 
 #### §5.3.2 FR-LK-02 — 링크 그래프 시각화
 

@@ -1024,6 +1024,67 @@ const cloneIssueHandler = http.post('/api/v1/issues/:key/clone', async ({ params
   return HttpResponse.json({ data: cloned }, { status: 201 })
 })
 
+/**
+ * PATCH /api/v1/issues/:key/parent — 부모 이슈 설정/해제 핸들러 (FR-LK-01).
+ *
+ * issueOverrides에 parent 필드를 직접 변이하여 영속한다.
+ * 이렇게 해야 이슈 쿼리 invalidate/refetch 후에도 parent 상태가 유지된다.
+ * (이게 안 되면 가짜그린 — 새로고침 시 parent 사라짐)
+ *
+ * 분기 순서 (backend 일치):
+ *   (1) 이슈 not-found → 404 ISSUE_NOT_FOUND
+ *   (2) parentKey === key → 422 PARENT_SELF_REFERENCE
+ *   (3) 성공 → 200 { data: { key, parent?: { key, summary } } }
+ *       parentKey가 null이면 parent 키 자체 생략 (@JsonInclude(NON_NULL) 미러)
+ */
+const setParentHandler = http.patch('/api/v1/issues/:key/parent', async ({ params, request }) => {
+  const key = params['key'] as string
+  const found = resolveIssue(key)
+  if (found === undefined) {
+    return HttpResponse.json(
+      { errorCode: 'ISSUE_NOT_FOUND', message: `이슈를 찾을 수 없습니다: ${key}` },
+      { status: 404 },
+    )
+  }
+
+  const body = (await request.clone().json()) as { parentKey?: string | null }
+  const parentKey = body.parentKey ?? null
+
+  // 자기 자신을 부모로 설정 방지
+  if (parentKey !== null && parentKey === key) {
+    return HttpResponse.json(
+      { errorCode: 'PARENT_SELF_REFERENCE', message: '자기 자신을 부모로 설정할 수 없습니다' },
+      { status: 422 },
+    )
+  }
+
+  // issueOverrides에 parent 변이 영속 (invalidate refetch 후 롤백 방지 — 설계 주석 참조)
+  let parentRef: { key: string; summary: string } | undefined = undefined
+  if (parentKey !== null) {
+    // 부모 이슈를 조회해 summary를 채운다. 없으면 기본 summary 사용.
+    const parentIssue = resolveIssue(parentKey)
+    parentRef = {
+      key: parentKey,
+      summary: parentIssue?.summary ?? `${parentKey} 이슈`,
+    }
+  }
+
+  const updated: IssueResponse = {
+    ...found,
+    parent: parentRef,
+  }
+  issueOverrides.set(key, updated)
+  if (createdIssues.has(key)) {
+    createdIssues.set(key, updated)
+  }
+
+  // 응답 구성 — parentKey가 null이면 parent 키 자체 생략 (@JsonInclude(NON_NULL) 미러)
+  if (parentRef !== undefined) {
+    return HttpResponse.json({ data: { key, parent: parentRef } })
+  }
+  return HttpResponse.json({ data: { key } })
+})
+
 export const issueHandlers = [
   listIssuesHandler,
   getIssueHandler,
@@ -1039,4 +1100,5 @@ export const issueHandlers = [
   bulkAvailableTransitionsHandler,
   downloadIssuePdfHandler,
   cloneIssueHandler,
+  setParentHandler,
 ]
