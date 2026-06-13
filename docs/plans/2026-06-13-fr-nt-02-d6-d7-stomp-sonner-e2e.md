@@ -75,6 +75,107 @@ occurredAt: Instant      — ISO 8601 문자열
 
 ✅ 통과 (직접 gap 점검 — 완료 FR 후속 D6/D7 경량). Maxi 결정 필요 gap 없음. 구현 디테일(brokerURL/connectHeaders 동적갱신/__root 마운트/중복구독 방지)은 plan에서 해소.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 분해 방식: 직접 TDD 분해(선례 `bts-review-plan autoplan overkill`와 일관 — 완료 FR 후속 D6/D7). BTS 형식(메타+RED/GREEN/REFACTOR) 준수.
+> 백엔드 계약은 `## 도메인 정리` 표 참조. brokerURL = `${location.protocol==='https:'?'wss:':'ws:'}//${location.host}/ws` (dev=vite `/ws` 프록시, prod=동일 호스트).
+
+### Task 1. @stomp/stompjs + vite /ws 프록시 + Zod 스키마 + STOMP 클라이언트 추상
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/package.json`, `apps/web/pnpm-lock.yaml`, `apps/web/vite.config.ts`, `apps/web/src/api/notifications-stream.ts`, `apps/web/src/api/notifications-stream.test.ts`]
+- depends-on: []
+
+**RED**:
+- 파일: `apps/web/src/api/notifications-stream.test.ts`
+- `@stomp/stompjs`의 `Client`를 mock(`vi.mock('@stomp/stompjs')`). `createNotificationStream({ getToken, onMessage })` 검증:
+  - Client가 `brokerURL` = `ws://localhost/ws`(jsdom `location.host` 기반)로 생성된다.
+  - `connectHeaders.Authorization` === `Bearer <getToken()>`.
+  - `onConnect` 콜백 실행 시 `client.subscribe('/user/queue/notifications', cb)` 호출.
+  - 구독 콜백에 유효 JSON 프레임(`{ body: JSON.stringify(payload) }`) 전달 시 `inAppNotificationSchema` 파싱 후 `onMessage(parsed)` 호출.
+  - body가 스키마 불일치/비JSON이면 `onMessage` 미호출 + `console.warn` 1회(앱 크래시 금지).
+- 실패(예상): `createNotificationStream`/`inAppNotificationSchema` 미존재.
+
+**GREEN**:
+- `apps/web/src/api/notifications-stream.ts` — `inAppNotificationSchema`(스펙 §3) + `createNotificationStream` 구현. `Client({ brokerURL, connectHeaders: ()=>... 또는 beforeConnect 토큰 갱신, reconnectDelay, onConnect: subscribe })`. 메시지 핸들러에서 `JSON.parse`→`safeParse`→성공 시 onMessage, 실패 시 warn.
+- `vite.config.ts` proxy에 `'/ws': { target: 'ws://localhost:8080', ws: true, changeOrigin: true }` 추가.
+- `package.json`에 `@stomp/stompjs` 추가 후 `pnpm install`로 lockfile 갱신.
+
+**REFACTOR**:
+- 상수 추출(`WS_PATH='/ws'`, `DESTINATION='/user/queue/notifications'`). 파일 L1 한글 헤더 주석. KDoc.
+
+**검증**: `pnpm --filter web test notifications-stream` + `pnpm --filter web exec tsc -p tsconfig.app.json --noEmit`
+
+### Task 2. useNotificationStream hook (인증 연동 + toast)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/notifications/useNotificationStream.ts`, `apps/web/src/notifications/useNotificationStream.test.tsx`]
+- depends-on: [1]
+
+**RED**:
+- 파일: `apps/web/src/notifications/useNotificationStream.test.tsx`
+- `createNotificationStream`(Task1) + `sonner`의 `toast` mock. 검증:
+  - 인증 상태(`useAuthStore` 시드 accessToken)면 `createNotificationStream` 활성화(`activate` 호출).
+  - 스트림 `onMessage(payload)` → `toast(payload.title, { description: payload.body ?? undefined })`(S1).
+  - body=null → `toast(title, { description: undefined })`(S2, description 미표시).
+  - 미인증이면 스트림 생성/활성화 안 함(S3).
+  - 언마운트 시 `deactivate` 호출(S4). 재연결 토큰 갱신은 getToken이 store 최신값 읽음으로 보장(S5).
+- 실패(예상): `useNotificationStream` 미존재.
+
+**GREEN**:
+- `apps/web/src/notifications/useNotificationStream.ts` — `useEffect`(deps: isAuthenticated)로 인증 시 `createNotificationStream({ getToken: ()=>useAuthStore.getState().accessToken, onMessage: p=>toast(...) })` 1회 생성(`useRef`로 중복 방지), cleanup에서 `deactivate`.
+
+**REFACTOR**:
+- toast 매핑 분리(작은 순수 함수). 파일 L1 한글 헤더 주석.
+
+**검증**: `pnpm --filter web test useNotificationStream` + tsc
+
+### Task 3. __root.tsx 마운트 (인증 시 스트림 활성)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/__root.tsx`, `apps/web/src/routes/__root.test.tsx`]
+- depends-on: [2]
+
+**RED**:
+- 파일: `apps/web/src/routes/__root.test.tsx`(없으면 신규)
+- `useNotificationStream` mock. `RootLayout` 렌더 시 `useNotificationStream`이 호출되는지 검증(hook이 내부에서 인증 가드). 기존 라우팅/Header 동작 회귀 0.
+- 실패(예상): `RootLayout`이 hook 미호출.
+
+**GREEN**:
+- `RootLayout`에 `useNotificationStream()` 한 줄 추가(hook 내부에서 isAuthenticated 판정).
+
+**REFACTOR**: 불필요 시 생략.
+
+**검증**: `pnpm --filter web test __root` + `pnpm --filter web test`(전체 단위 회귀) + tsc
+
+### Task 4. E2E — routeWebSocket STOMP 알림 수신 → 토스트
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/fixtures/stomp-fixtures.ts`, `apps/web/e2e/fr-nt-02-inapp-notification.spec.ts`]
+- depends-on: [3]
+
+**RED/E2E**(Playwright는 실패→통과 사이클을 spec 작성으로):
+- `stomp-fixtures.ts` — STOMP 1.2 프레임 빌더: `connectedFrame()`, `messageFrame(destination, subId, jsonBody)`. 프레임 종료 `\x00`.
+- `fr-nt-02-inapp-notification.spec.ts`:
+  - `page.routeWebSocket('**/ws', ws => { ws.onMessage(frame => { CONNECT→ws.send(connectedFrame()); SUBSCRIBE→subId 캡처 }) })`.
+  - `loginAsAlice(page)` 후, 테스트가 `messageFrame('/user/queue/notifications', subId, payload)` 푸시.
+  - S1: title+body 토스트 표시 검증(`getByText` 컨테이너 한정, strict mode 회피 — `ui-pr-defer-e2e-regression-latent`).
+  - S2: body=null → title만, 깨짐 없음.
+- 기존 E2E 회귀 확인: 신규 spec이라 기존 셀렉터 영향 없음 — `pnpm --filter web exec playwright test`로 인접 spec 그린 확인.
+
+**검증**: `pnpm --filter web exec playwright test fr-nt-02-inapp-notification` + 기존 E2E 회귀 0
+
+## Plan 메타
+
+- task 수: 4
+- 의존성: 1→2→3→4 (프론트 특성상 자연 직렬 — 클라 추상→hook→마운트→E2E). 파일 겹침 없음.
+- 예상 wave 수: 4 (직렬). 병렬 여지 적음.
+- agent: Task1~3 frontend-engineer, Task4 qa-engineer.
+- TDD 강제: yes (각 task RED→GREEN→REFACTOR).
+- 추가 검증: tsc(tsconfig.app.json) 필수 동반(vitest 타입무시), playwright(Task4).
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
