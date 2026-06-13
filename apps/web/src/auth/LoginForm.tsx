@@ -34,6 +34,8 @@ import { fetchSamlIdps } from '@/api/saml'
 import { fetchOidcProviders } from '@/api/oidc'
 import { fetchProviders } from '@/api/providers'
 import { fetchRoute } from '@/api/route'
+import { authenticateWithSecurityKey } from '@/api/webauthn'
+import { browserSupportsWebAuthn } from '@simplewebauthn/browser'
 import type { SamlIdp } from '@/api/saml'
 import type { OidcProvider } from '@/api/oidc'
 import type { ProviderEntry } from '@/api/providers'
@@ -521,23 +523,108 @@ const MfaCodeInput = ({
  * mode가 바뀔 때 key={mode}로 MfaCodeInput을 재마운트해 resolver를 갱신한다.
  *
  * 챌린지 토큰은 prop으로 받아 컴포넌트 메모리에만 보관한다(authStore/sessionStorage 영속 금지 — NFR-1).
+ *
+ * "보안 키로 인증" 버튼은 MfaCodeInput의 세 번째 mode가 아니라 독립 액션 버튼으로 배치한다.
+ * 코드 입력 없이 webauthn 오케스트레이션만 수행하므로 zodResolver/useForm 불요.
  */
 const LoginMfaStep = ({ challengeToken, onSuccess, onBackToLogin }: MfaStepProps) => {
   const [mode, setMode] = useState<MfaMode>('totp')
+  const [webauthnError, setWebauthnError] = useState<string | null>(null)
+  const [isWebauthnPending, setIsWebauthnPending] = useState(false)
+
+  const setAccessToken = useAuthStore((s) => s.setAccessToken)
+  const setSession = useAuthStore((s) => s.setSession)
+  const clearSession = useAuthStore((s) => s.clearSession)
+
+  const isWebauthnSupported = browserSupportsWebAuthn()
 
   function handleToggleMode() {
     setMode((prev) => (prev === 'totp' ? 'backup_code' : 'totp'))
   }
 
+  /**
+   * 보안 키로 MFA 인증을 수행한다.
+   *
+   * B-5 토큰 생명주기 규칙.
+   * - EC-1 NotAllowedError: 인라인 에러 + 화면 유지 + challengeToken 보존 (재시도 가능)
+   * - EC-4 401 invalid_code: 인라인 에러 + 화면 유지 + challengeToken 보존 (재시도 가능)
+   * - EC-5 401 mfa_challenge_expired: 토큰 실제 만료 → onBackToLogin으로 1단계 복귀
+   */
+  async function handleWebauthnVerify() {
+    setWebauthnError(null)
+    setIsWebauthnPending(true)
+    try {
+      const tokenData = await authenticateWithSecurityKey(challengeToken)
+
+      // 성공 경로 — MfaCodeInput 성공 경로와 동형
+      setAccessToken(tokenData.access_token)
+
+      const user = await apiGet('/api/v1/users/me/whoami', WhoamiResponseSchema).catch(
+        (err: unknown) => {
+          clearSession()
+          throw err
+        },
+      )
+
+      setSession({ accessToken: tokenData.access_token, user })
+      onSuccess?.()
+    } catch (err: unknown) {
+      if (err instanceof ApiError) {
+        const parsed = ApiErrorResponseSchema.safeParse(err.body)
+        const errorCode = parsed.success ? parsed.data.error : ''
+
+        if (errorCode === 'mfa_challenge_expired') {
+          // EC-5: 토큰 만료 → 1단계 복귀 (challengeToken 폐기는 부모의 handleBackToLogin이 담당)
+          onBackToLogin()
+          return
+        }
+
+        // EC-4: verify 실패. 코드 입력이 아닌 보안 키 흐름이라 webauthn 전용 문구를 쓴다
+        // ("코드가 올바르지 않습니다"는 부적합). rate-limit은 의미가 분명하므로 그대로 노출한다.
+        setWebauthnError(
+          errorCode === 'too_many_attempts'
+            ? mfaErrorMessage('too_many_attempts')
+            : mfaStrings.webauthnVerifyFailed,
+        )
+        return
+      }
+
+      // EC-1: NotAllowedError(사용자 취소) 등 브라우저 의식 예외 → 보안 키 전용 문구 + 화면 유지
+      setWebauthnError(mfaStrings.webauthnVerifyFailed)
+    } finally {
+      setIsWebauthnPending(false)
+    }
+  }
+
   return (
-    <MfaCodeInput
-      key={mode}
-      mode={mode}
-      challengeToken={challengeToken}
-      onSuccess={onSuccess}
-      onBackToLogin={onBackToLogin}
-      onToggleMode={handleToggleMode}
-    />
+    <>
+      <MfaCodeInput
+        key={mode}
+        mode={mode}
+        challengeToken={challengeToken}
+        onSuccess={onSuccess}
+        onBackToLogin={onBackToLogin}
+        onToggleMode={handleToggleMode}
+      />
+      {isWebauthnSupported && (
+        <div className="mt-2 space-y-2">
+          {webauthnError !== null && (
+            <p role="alert" className="text-destructive text-sm">
+              {webauthnError}
+            </p>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={() => void handleWebauthnVerify()}
+            disabled={isWebauthnPending}
+          >
+            {mfaStrings.webauthnVerifyButton}
+          </Button>
+        </div>
+      )}
+    </>
   )
 }
 

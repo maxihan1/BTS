@@ -284,10 +284,11 @@ describe('T3-S5: 에러 처리', () => {
     await user.type(screen.getByLabelText('인증 코드 (6자리)'), '000000')
     await user.click(screen.getByRole('button', { name: mfaStrings.enableConfirmButton }))
 
+    // TOTP 에러 alert — WebauthnSection의 미지원 브라우저 alert와 공존할 수 있으므로 텍스트로 특정
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeInTheDocument()
+      expect(screen.getByText('코드가 올바르지 않습니다.')).toBeInTheDocument()
     })
-    expect(screen.getByRole('alert')).toHaveTextContent('코드가 올바르지 않습니다.')
+    expect(screen.getByText('코드가 올바르지 않습니다.').closest('[role="alert"]')).toBeInTheDocument()
     // 필드 유지 확인
     expect(screen.getByLabelText('인증 코드 (6자리)')).toBeInTheDocument()
   })
@@ -311,10 +312,13 @@ describe('T3-S5: 에러 처리', () => {
     await user.type(screen.getByLabelText('인증 코드 (6자리)'), '111111')
     await user.click(screen.getByRole('button', { name: mfaStrings.enableConfirmButton }))
 
+    // TOTP 에러 alert — WebauthnSection의 미지원 브라우저 alert와 공존할 수 있으므로 텍스트로 특정
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeInTheDocument()
+      expect(screen.getByText('시도가 너무 많습니다. 잠시 후 다시 시도하세요.')).toBeInTheDocument()
     })
-    expect(screen.getByRole('alert')).toHaveTextContent('시도가 너무 많습니다.')
+    expect(
+      screen.getByText('시도가 너무 많습니다. 잠시 후 다시 시도하세요.').closest('[role="alert"]'),
+    ).toBeInTheDocument()
   })
 })
 
@@ -773,6 +777,52 @@ describe('T4-S1: 강제 안내 배너', () => {
     })
 
     expect(screen.queryByText(mfaStrings.enforcementBanner)).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T5-S1: WebauthnSection — TOTP 미활성 상태에서도 항상 노출 (FR-1/D-A)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T5-S1: WebauthnSection은 TOTP 활성 여부와 무관하게 항상 노출된다', () => {
+  it('T5-S1-1: TOTP 미활성 + WebAuthn 키 없음 → 보안 키 섹션 헤더와 "보안 키 추가" 버튼이 노출된다', async () => {
+    server.use(mockStatus(false))
+
+    renderMfaSettings()
+
+    // TOTP 비활성 상태 텍스트 확인
+    await waitFor(() => {
+      expect(screen.getByText('비활성화됨')).toBeInTheDocument()
+    })
+
+    // 보안 키 섹션 헤더 노출 — WebauthnSection이 isEnabled 분기 밖에 있어야 통과
+    await waitFor(() => {
+      expect(screen.getByText(mfaStrings.webauthnSectionTitle)).toBeInTheDocument()
+    })
+    // "보안 키 추가" 버튼 노출
+    expect(screen.getByRole('button', { name: mfaStrings.webauthnAddButton })).toBeInTheDocument()
+    // 백업코드 섹션은 미노출 (TOTP 비활성)
+    expect(screen.queryByText(mfaStrings.backupSectionTitle)).not.toBeInTheDocument()
+  })
+
+  it('T5-S1-2: TOTP 활성 → 보안 키 섹션 + 백업코드 섹션 모두 노출된다', async () => {
+    server.use(
+      mockStatus(true),
+      http.get('/api/v1/auth/mfa/backup-codes', () =>
+        HttpResponse.json({ generated: false, remaining: 0 }),
+      ),
+    )
+
+    renderMfaSettings()
+
+    // 보안 키 섹션 헤더 노출
+    await waitFor(() => {
+      expect(screen.getByText(mfaStrings.webauthnSectionTitle)).toBeInTheDocument()
+    })
+    // 백업코드 섹션 노출
+    await waitFor(() => {
+      expect(screen.getByText(mfaStrings.backupSectionTitle)).toBeInTheDocument()
+    })
   })
 })
 

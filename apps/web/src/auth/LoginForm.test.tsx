@@ -4,8 +4,31 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
+import { mfaStrings } from '@/i18n/ko'
 import { LoginForm } from './LoginForm'
 import { useAuthStore } from './authStore'
+
+// @simplewebauthn/browser mock — jsdom은 PublicKeyCredential 미정의라 false 반환.
+// 대부분의 테스트에서 지원 환경을 가정하므로 vi.fn()으로 등록하고 beforeEach에서 true로 설정한다.
+// vi.mock 호이스팅 규칙: 팩토리 내부에서 외부 변수 참조 금지.
+vi.mock('@simplewebauthn/browser', () => ({
+  browserSupportsWebAuthn: vi.fn(),
+  startRegistration: vi.fn(),
+  startAuthentication: vi.fn(),
+}))
+
+// @/api/webauthn mock — authenticateWithSecurityKey를 vi.fn으로 교체.
+// vi.mock 호이스팅 규칙: 팩토리 내부에서 외부 변수 참조 금지.
+vi.mock('@/api/webauthn', () => ({
+  listWebauthnKeys: vi.fn(),
+  registerSecurityKey: vi.fn(),
+  deleteWebauthnKey: vi.fn(),
+  webauthnRegisterStart: vi.fn(),
+  webauthnRegisterFinish: vi.fn(),
+  webauthnAuthenticateStart: vi.fn(),
+  verifyWebauthn: vi.fn(),
+  authenticateWithSecurityKey: vi.fn(),
+}))
 
 function createWrapper() {
   const client = new QueryClient({
@@ -60,7 +83,7 @@ const defaultRouteHandler = http.get('/api/v1/auth/route', () =>
   HttpResponse.json({ matched: false }),
 )
 
-beforeEach(() => {
+beforeEach(async () => {
   useAuthStore.setState({ accessToken: null, user: null })
   vi.spyOn(window, 'location', 'get').mockReturnValue({
     ...window.location,
@@ -68,6 +91,12 @@ beforeEach(() => {
   } as unknown as Location)
   // providers/route useQuery가 미핸들 MSW 에러로 폼을 깨뜨리지 않도록 기본 핸들러를 등록한다.
   server.use(defaultProvidersHandler, defaultRouteHandler)
+  // 기본적으로 WebAuthn 지원 환경으로 설정한다.
+  const { browserSupportsWebAuthn } = await import('@simplewebauthn/browser')
+  vi.mocked(browserSupportsWebAuthn).mockReturnValue(true)
+  // authenticateWithSecurityKey mock을 매 테스트마다 초기화한다.
+  const webauthnModule = await import('@/api/webauthn')
+  vi.mocked(webauthnModule.authenticateWithSecurityKey).mockReset()
 })
 
 afterEach(() => {
@@ -797,5 +826,163 @@ describe('LoginForm — MFA step 백업 코드 토글 (task-3)', () => {
 
     expect(screen.queryByText('코드가 올바르지 않습니다.')).toBeNull()
     expect(screen.getByLabelText('백업 코드')).toHaveValue('')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MFA step — 보안 키로 인증 (task-6, FR-MF-03)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('LoginForm — MFA step 보안 키로 인증 (task-6)', () => {
+  it('지원 브라우저에서 MFA step에 "보안 키로 인증" 버튼이 표시된다', async () => {
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await goToMfaStep(user)
+
+    expect(screen.getByRole('button', { name: '보안 키로 인증' })).toBeInTheDocument()
+  })
+
+  it('"보안 키로 인증" 버튼 클릭 → authenticateWithSecurityKey 성공 → setSession + onSuccess 호출', async () => {
+    const user = userEvent.setup({ delay: null })
+
+    const { authenticateWithSecurityKey } = await import('@/api/webauthn')
+    vi.mocked(authenticateWithSecurityKey).mockResolvedValueOnce({
+      access_token: 'webauthn-session-token',
+      token_type: 'Bearer',
+      expires_in: 3600,
+    })
+
+    server.use(
+      http.get('/api/v1/users/me/whoami', () =>
+        HttpResponse.json({
+          username: 'alice',
+          email: 'alice@bts.local',
+          authMethod: 'webauthn',
+          userId: '00000000-0000-4000-8000-000000000001',
+          mustChangePassword: false,
+          isSystemAdmin: false,
+          mfaEnrollmentRequired: false,
+        }),
+      ),
+    )
+
+    const onSuccess = vi.fn()
+    renderLoginForm(onSuccess)
+
+    await goToMfaStep(user)
+
+    await user.click(screen.getByRole('button', { name: '보안 키로 인증' }))
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
+    expect(useAuthStore.getState().accessToken).toBe('webauthn-session-token')
+    expect(useAuthStore.getState().user).not.toBeNull()
+    // authenticateWithSecurityKey가 challengeToken으로 호출되어야 한다
+    expect(vi.mocked(authenticateWithSecurityKey)).toHaveBeenCalledWith('challenge-token-xyz')
+  })
+
+  it('EC-1: 사용자 취소(NotAllowedError) → 인라인 에러 + 화면 유지 + challengeToken 보존(재클릭 가능)', async () => {
+    const user = userEvent.setup({ delay: null })
+
+    const { authenticateWithSecurityKey } = await import('@/api/webauthn')
+    // 첫 번째 클릭: NotAllowedError (취소)
+    // 두 번째 클릭: 성공 (재시도 가능 확인)
+    vi.mocked(authenticateWithSecurityKey)
+      .mockRejectedValueOnce(new DOMException('User cancelled', 'NotAllowedError'))
+      .mockResolvedValueOnce({
+        access_token: 'webauthn-session-token',
+        token_type: 'Bearer',
+        expires_in: 3600,
+      })
+
+    server.use(
+      http.get('/api/v1/users/me/whoami', () =>
+        HttpResponse.json({
+          username: 'alice',
+          email: 'alice@bts.local',
+          authMethod: 'webauthn',
+          userId: '00000000-0000-4000-8000-000000000001',
+          mustChangePassword: false,
+          isSystemAdmin: false,
+          mfaEnrollmentRequired: false,
+        }),
+      ),
+    )
+
+    const onSuccess = vi.fn()
+    renderLoginForm(onSuccess)
+
+    await goToMfaStep(user)
+
+    // 첫 클릭 → 취소 에러
+    await user.click(screen.getByRole('button', { name: '보안 키로 인증' }))
+
+    // 인라인 에러 표시 + 화면(인증 코드 필드) 유지
+    await screen.findByRole('alert')
+    expect(screen.getByLabelText('인증 코드')).toBeInTheDocument()
+    expect(onSuccess).not.toHaveBeenCalled()
+
+    // 재클릭 → 성공 (challengeToken이 보존되어 재시도 가능)
+    await user.click(screen.getByRole('button', { name: '보안 키로 인증' }))
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
+    // authenticateWithSecurityKey가 동일 challengeToken으로 2회 호출
+    expect(vi.mocked(authenticateWithSecurityKey)).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(authenticateWithSecurityKey)).toHaveBeenNthCalledWith(2, 'challenge-token-xyz')
+  })
+
+  it('EC-4: ApiError 401 invalid_code → 인라인 에러 + 화면 유지 + challengeToken 보존', async () => {
+    const user = userEvent.setup({ delay: null })
+    const { ApiError } = await import('@/api/client')
+    const { authenticateWithSecurityKey } = await import('@/api/webauthn')
+    vi.mocked(authenticateWithSecurityKey).mockRejectedValueOnce(
+      new ApiError(401, { error: 'invalid_code' }),
+    )
+
+    renderLoginForm()
+
+    await goToMfaStep(user)
+
+    await user.click(screen.getByRole('button', { name: '보안 키로 인증' }))
+
+    // 인라인 에러 + 화면 유지. 코드 입력이 아닌 보안 키 흐름이라 전용 문구를 쓴다
+    // ("코드가 올바르지 않습니다"는 부적합 — /review 적대적 패스 지적).
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(mfaStrings.webauthnVerifyFailed)
+    expect(alert).not.toHaveTextContent('코드가 올바르지 않습니다')
+    expect(screen.getByLabelText('인증 코드')).toBeInTheDocument()
+  })
+
+  it('EC-5: ApiError 401 mfa_challenge_expired → 로그인 1단계로 복귀(이메일 입력 화면)', async () => {
+    const user = userEvent.setup({ delay: null })
+    const { ApiError } = await import('@/api/client')
+    const { authenticateWithSecurityKey } = await import('@/api/webauthn')
+    vi.mocked(authenticateWithSecurityKey).mockRejectedValueOnce(
+      new ApiError(401, { error: 'mfa_challenge_expired' }),
+    )
+
+    renderLoginForm()
+
+    await goToMfaStep(user)
+
+    await user.click(screen.getByRole('button', { name: '보안 키로 인증' }))
+
+    // 로그인 1단계로 복귀 — 이메일 입력 화면
+    await screen.findByLabelText('이메일')
+    expect(screen.queryByLabelText('인증 코드')).toBeNull()
+  })
+
+  it('C-3: browserSupportsWebAuthn()=false → "보안 키로 인증" 버튼 미표시', async () => {
+    const { browserSupportsWebAuthn } = await import('@simplewebauthn/browser')
+    vi.mocked(browserSupportsWebAuthn).mockReturnValue(false)
+
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await goToMfaStep(user)
+
+    expect(screen.queryByRole('button', { name: '보안 키로 인증' })).toBeNull()
+    // TOTP 코드 입력 필드는 그대로 표시되어야 한다
+    expect(screen.getByLabelText('인증 코드')).toBeInTheDocument()
   })
 })

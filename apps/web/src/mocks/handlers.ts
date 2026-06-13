@@ -25,6 +25,7 @@ import { schemeHandlers } from './scheme-handlers'
 import { sessionHandlers } from './session-handlers'
 import { userHandlers } from './user-handlers'
 import { versionHandlers } from './version-handlers'
+import { webauthnHandlers } from './webauthn-handlers'
 import { workflowHandlers } from './workflow-handlers'
 import { samlHandlers } from './saml-handlers'
 import { oidcHandlers } from './oidc-handlers'
@@ -68,5 +69,6 @@ export const handlers = [
   ...sessionHandlers,
   ...userHandlers,
   ...versionHandlers,
+  ...webauthnHandlers,
   ...workflowHandlers,
 ]
