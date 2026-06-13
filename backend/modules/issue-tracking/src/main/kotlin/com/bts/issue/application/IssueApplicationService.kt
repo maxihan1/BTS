@@ -40,6 +40,8 @@ import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.domain.ResolutionNotFoundException
 import com.bts.issue.resolution.repository.ResolutionRepository
+import com.bts.issue.template.domain.TemplateVariable
+import com.bts.issue.template.domain.TemplateVariableSubstitutor
 import com.bts.issue.type.domain.IssueTypeNotFoundException
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.issue.version.repository.VersionRepository
@@ -68,8 +70,6 @@ import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import com.bts.issue.template.domain.TemplateVariable
-import com.bts.issue.template.domain.TemplateVariableSubstitutor
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -350,14 +350,11 @@ class IssueApplicationService(
         resolvedTypeId: IssueTypeId,
         reporterId: ActorId,
         projectKey: String,
-    ): String? {
-        val userProvided = requested?.takeIf { it.isNotBlank() }
-        if (userProvided != null) return userProvided
-        val template =
-            issueTemplateRepository?.findActiveContentByProjectAndType(projectId, resolvedTypeId.value)
-                ?: return null
-        return substituteTemplateVariables(template, reporterId, projectKey)
-    }
+    ): String? =
+        requested?.takeIf { it.isNotBlank() }
+            ?: issueTemplateRepository
+                ?.findActiveContentByProjectAndType(projectId, resolvedTypeId.value)
+                ?.let { substituteTemplateVariables(it, reporterId, projectKey) }
 
     /**
      * 템플릿 content 의 변수 토큰을 실제 값으로 치환한다 (FR-TM-02).
@@ -375,14 +372,15 @@ class IssueApplicationService(
         reporterId: ActorId,
         projectKey: String,
     ): String {
-        val bindings = buildMap<TemplateVariable, String> {
-            put(TemplateVariable.DATE, LocalDate.now(clock).format(DATE_FORMATTER))
-            put(TemplateVariable.PROJECT, projectKey)
-            if (content.contains(TemplateVariable.AUTHOR.token)) {
-                val displayName = userLookupPort.findDisplayNamesByIds(setOf(reporterId.value))[reporterId.value]
-                if (displayName != null) put(TemplateVariable.AUTHOR, displayName)
+        val bindings =
+            buildMap<TemplateVariable, String> {
+                put(TemplateVariable.DATE, LocalDate.now(clock).format(DATE_FORMATTER))
+                put(TemplateVariable.PROJECT, projectKey)
+                if (content.contains(TemplateVariable.AUTHOR.token)) {
+                    val displayName = userLookupPort.findDisplayNamesByIds(setOf(reporterId.value))[reporterId.value]
+                    if (displayName != null) put(TemplateVariable.AUTHOR, displayName)
+                }
             }
-        }
         return TemplateVariableSubstitutor.substitute(content, bindings)
     }
 
