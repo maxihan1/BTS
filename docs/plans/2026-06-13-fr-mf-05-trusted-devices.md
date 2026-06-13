@@ -38,9 +38,21 @@ classify: type=auth, agent=security-engineer, primary_bc=identity-access
 - **관련 ADR**: docs/decisions/2026-06-13-trusted-device-mfa-exemption.md (생성됨), 선행 2026-06-12-mfa-enforcement-policy.md
 - **glossary 갱신 대기**: "신뢰 디바이스", "신뢰 토큰" (§인증 — Maxi 승인 필요, 자동 갱신 안 함)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. docs/specs/2026-06-13-fr-mf-05-trusted-devices.md
+
+핵심 시나리오 요약.
+- MFA verify 성공 + `trust_device=true` → 서버 불투명 토큰 발급(HttpOnly 쿠키) + `trusted_devices` 행 INSERT(SHA-256 해시, 30일 만료).
+- 다음 로그인 시 쿠키 유효(user 일치+미만료)면 챌린지 생략하고 정식 세션(mfa_verified=true), `last_used_at` 갱신.
+- 취소 = 수동(단건 `DELETE /mfa/trusted-devices/{id}`·전체 `DELETE /mfa/trusted-devices`, 목록 `GET`) + 자동(비번변경·TOTP비활성 전량 revoke).
+- 감사 로그 `TRUSTED_DEVICE_ADDED`/`TRUSTED_DEVICE_REVOKED` 2종(MFA self-service 일관).
+
+엔드포인트. login/verify 수정 + trusted-devices GET/DELETE(단건)/DELETE(전체) 3 신규(JWT 전용·PAT 403).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). 감사 로그 누락 발견→FR-11 보강, Clock 출처 명시, user-bound 우회 차단·fail-safe 폴백 명시. 상세는 spec 파일 §Brainstorming Check.
 
 ## Plan (← /bts-plan 채움)
 
