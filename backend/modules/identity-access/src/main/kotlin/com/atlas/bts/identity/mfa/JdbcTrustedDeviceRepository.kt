@@ -61,9 +61,7 @@ class JdbcTrustedDeviceRepository(
     override fun updateLastUsedAt(
         id: UUID,
         now: Instant,
-    ) {
-        jdbc.update(SQL_UPDATE_LAST_USED_AT, mapOf("id" to id, "now" to Timestamp.from(now)))
-    }
+    ): Int = jdbc.update(SQL_UPDATE_LAST_USED_AT, mapOf("id" to id, "now" to Timestamp.from(now)))
 
     @Transactional(readOnly = true)
     override fun listByUser(

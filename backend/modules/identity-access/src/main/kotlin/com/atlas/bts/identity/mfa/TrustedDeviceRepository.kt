@@ -42,13 +42,18 @@ interface TrustedDeviceRepository {
     /**
      * 신뢰 우회 로그인 성공 시 마지막 사용 시각을 갱신한다(`expires_at` 은 갱신하지 않음 — 고정 30일).
      *
+     * 영향 행 수를 반환해 호출 측([TrustedDeviceService.verifyAndTouch])이 TOCTOU race 를 닫게 한다 —
+     * findByTokenHash 읽기와 본 쓰기 사이에 revoke/revokeAll(DELETE)이 커밋되면 0행이 되고, 그때 호출 측은
+     * 우회를 거부해야 한다(1회 우회창 차단).
+     *
      * @param id 대상 신뢰 디바이스 PK
      * @param now 갱신할 시각(주입 Clock 기반, 호출 측 전달)
+     * @return 갱신된 행 수 — 행이 존재하면 1, 그 사이 삭제됐으면 0
      */
     fun updateLastUsedAt(
         id: UUID,
         now: Instant,
-    )
+    ): Int
 
     /**
      * 사용자별 **미만료** 신뢰 디바이스 목록 조회(`expires_at > :now` — 만료 행 제외).

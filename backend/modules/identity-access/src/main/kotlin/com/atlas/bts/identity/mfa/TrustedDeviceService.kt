@@ -63,7 +63,8 @@ class TrustedDeviceService(
                 id = UUID.randomUUID(),
                 userId = userId,
                 tokenHash = token.hash,
-                label = userAgent,
+                // User-Agent 는 신뢰할 수 없는 클라이언트 입력 — D6 UI 저장형 XSS 표면을 줄이려 길이를 cap 한다(§1.1).
+                label = userAgent?.take(LABEL_MAX_LENGTH),
                 createdAt = createdAt,
                 expiresAt = createdAt.plus(Duration.ofDays(TRUST_TTL_DAYS)),
                 lastUsedAt = null,
@@ -80,11 +81,15 @@ class TrustedDeviceService(
      * (`expiresAt > now`) 세 조건을 모두 만족할 때만 true 다. 하나라도 어긋나면 — 부재·타인 토큰·만료 — 갱신 없이
      * false 로 거부한다(fail-safe — 불명은 우회하지 않고 챌린지로 폴백). 만료는 연장하지 않는다(고정 TTL).
      *
+     * **TOCTOU race 닫기.** findByTokenHash 읽기와 [TrustedDeviceRepository.updateLastUsedAt] 쓰기 사이에
+     * revoke/revokeAll(DELETE)이 커밋되면 그 행이 사라진다. 이때 updateLastUsedAt 의 영향 행 수가 0이 되며,
+     * 본 메서드는 false 로 거부한다 — 읽은 값만 보고 무조건 true 를 돌려주던 1회 우회창을 닫는다.
+     *
      * @param userId 우회를 시도하는 로그인 주체.
      * @param rawToken 클라이언트 쿠키의 raw 토큰 평문. **로그 기록 금지.**
-     * @return user 일치 + 미만료면 true(챌린지 생략 가능), 아니면 false.
+     * @return user 일치 + 미만료 + 갱신 1행이면 true(챌린지 생략 가능), 아니면 false.
      *
-     * ReturnCount 억제 — 부재/타인/만료 guard early-return 이 본문보다 명확하다.
+     * ReturnCount 억제 — 부재/타인/만료/0행 guard early-return 이 본문보다 명확하다.
      */
     @Suppress("ReturnCount")
     fun verifyAndTouch(
@@ -94,8 +99,8 @@ class TrustedDeviceService(
         val device = repo.findByTokenHash(TrustedDeviceToken.hash(rawToken)) ?: return false
         if (device.userId != userId) return false
         if (device.isExpired(clock.instant())) return false
-        repo.updateLastUsedAt(device.id, clock.instant())
-        return true
+        // 읽기와 쓰기 사이 삭제됐다면(0행) 우회 불가 — fail-safe 로 거부한다(TOCTOU 1회 우회창 차단).
+        return repo.updateLastUsedAt(device.id, clock.instant()) > 0
     }
 
     /** 사용자의 **미만료** 신뢰 디바이스 목록(관리 화면용). 만료 행은 [TrustedDeviceRepository.listByUser] 가 제외한다. */
@@ -158,5 +163,8 @@ class TrustedDeviceService(
 
         /** MFA 감사 이벤트의 providerId 라벨(SSO provider 아님 — 백업 코드 선례와 동일). */
         const val AUDIT_PROVIDER_ID = "mfa"
+
+        /** User-Agent 라벨 최대 길이 — 신뢰할 수 없는 입력의 저장형 XSS 표면 축소(defense-in-depth). */
+        const val LABEL_MAX_LENGTH = 256
     }
 }
