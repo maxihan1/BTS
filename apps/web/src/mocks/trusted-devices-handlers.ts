@@ -1,21 +1,13 @@
 // FR-MF-05 신뢰 디바이스 MSW 핸들러 — stateful store + GET/DELETE + cross-handler 플래그
 import { http, HttpResponse } from 'msw'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 신뢰 디바이스 타입
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface TrustedDevice {
-  id: string
-  label: string | null
-  lastUsedAt: string | null
-  createdAt: string
-}
+import type { TrustedDevice } from '@/api/trusted-devices'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fixture 데이터 — 기기 2개 (label 있는 것 + null, lastUsedAt 있는 것 + null)
 // UUID 값은 RFC4122 v4 형식: 3번째 그룹 4xxx, 4번째 그룹 [89ab]xxx
 // (zod-v4-uuid-fixture-strictness, session-handlers 선례)
+// TrustedDevice 타입은 api/trusted-devices.ts의 z.infer 타입을 import해 drift 원천 차단
+// (frontend-zod-backend-dto-contract-gap, fixture 옵션 B)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DEVICE_A_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -27,12 +19,14 @@ const fixtureDevices: readonly TrustedDevice[] = [
     label: 'Chrome on macOS',
     lastUsedAt: '2026-06-10T09:00:00Z',
     createdAt: '2026-06-01T09:00:00Z',
+    expiresAt: '2026-07-01T09:00:00Z',
   },
   {
     id: DEVICE_B_ID,
     label: null,
     lastUsedAt: null,
     createdAt: '2026-06-05T14:00:00Z',
+    expiresAt: '2026-07-05T14:00:00Z',
   },
 ]
 
