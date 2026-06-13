@@ -68,8 +68,12 @@ import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import com.bts.issue.template.domain.TemplateVariable
+import com.bts.issue.template.domain.TemplateVariableSubstitutor
 import java.time.Clock
 import java.time.Instant
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 /**
@@ -205,7 +209,8 @@ class IssueApplicationService(
             validateCustomFields(definitions, customFieldValues)
         }
 
-        val resolvedDescription = resolveDescription(request.description, projectId, resolvedTypeId)
+        val resolvedDescription =
+            resolveDescription(request.description, projectId, resolvedTypeId, request.reporterId, request.projectKey)
 
         val issue =
             Issue.create(
@@ -325,25 +330,61 @@ class IssueApplicationService(
     ): String = request.summaryOverride?.takeIf { it.isNotBlank() } ?: source.summary
 
     /**
-     * 이슈 생성 시 description 을 결정한다 (FR-TM-01 옵션 C 안전망).
+     * 이슈 생성 시 description 을 결정한다 (FR-TM-01 옵션 C 안전망 + FR-TM-02 변수 치환).
      *
-     * - [requested] 가 non-blank 이면 요청 값을 그대로 사용한다. 템플릿을 조회하지 않는다.
+     * - [requested] 가 non-blank 이면 요청 값을 그대로 사용한다. 템플릿 조회·치환 없음.
      * - null 또는 blank 이면 [issueTemplateRepository] 에서 (projectId, issueTypeId) 활성 템플릿 content 를 조회한다.
-     *   - 템플릿이 있으면 그 content 를 사용한다.
      *   - 템플릿이 없거나 [issueTemplateRepository] 가 null 이면 null 을 반환한다.
+     *   - 템플릿이 있으면 [substituteTemplateVariables] 로 변수 치환 후 반환한다.
      *
      * @param requested 요청 DTO 의 description 값. null 허용.
      * @param projectId 이슈가 속할 프로젝트 UUID.
      * @param resolvedTypeId 이슈 타입 식별자 VO.
+     * @param reporterId 이슈 작성자 ActorId — author 토큰 치환에 사용.
+     * @param projectKey 프로젝트 키 문자열 — project 토큰 치환에 사용.
      * @return 최종 결정된 description 문자열. null 이면 이슈 생성 시 description 없음.
      */
     private fun resolveDescription(
         requested: String?,
-        projectId: java.util.UUID,
+        projectId: UUID,
         resolvedTypeId: IssueTypeId,
-    ): String? =
-        requested?.takeIf { it.isNotBlank() }
-            ?: issueTemplateRepository?.findActiveContentByProjectAndType(projectId, resolvedTypeId.value)
+        reporterId: ActorId,
+        projectKey: String,
+    ): String? {
+        val userProvided = requested?.takeIf { it.isNotBlank() }
+        if (userProvided != null) return userProvided
+        val template =
+            issueTemplateRepository?.findActiveContentByProjectAndType(projectId, resolvedTypeId.value)
+                ?: return null
+        return substituteTemplateVariables(template, reporterId, projectKey)
+    }
+
+    /**
+     * 템플릿 content 의 변수 토큰을 실제 값으로 치환한다 (FR-TM-02).
+     *
+     * author 토큰 최적화: content 에 [TemplateVariable.AUTHOR.token] 이 없으면 [userLookupPort] 를 호출하지 않는다.
+     * author 조회 결과가 없으면 바인딩에 추가하지 않고 [TemplateVariableSubstitutor] 의 fail-safe 에 위임한다.
+     *
+     * @param content 활성 템플릿 본문 (non-null, non-blank).
+     * @param reporterId author 토큰 치환용 사용자 ID.
+     * @param projectKey project 토큰 치환값.
+     * @return 변수 치환이 적용된 content. 미정의 토큰은 리터럴로 유지된다.
+     */
+    private fun substituteTemplateVariables(
+        content: String,
+        reporterId: ActorId,
+        projectKey: String,
+    ): String {
+        val bindings = buildMap<TemplateVariable, String> {
+            put(TemplateVariable.DATE, LocalDate.now(clock).format(DATE_FORMATTER))
+            put(TemplateVariable.PROJECT, projectKey)
+            if (content.contains(TemplateVariable.AUTHOR.token)) {
+                val displayName = userLookupPort.findDisplayNamesByIds(setOf(reporterId.value))[reporterId.value]
+                if (displayName != null) put(TemplateVariable.AUTHOR, displayName)
+            }
+        }
+        return TemplateVariableSubstitutor.substitute(content, bindings)
+    }
 
     /**
      * 이슈 단건을 조회한다.
@@ -1173,6 +1214,9 @@ class IssueApplicationService(
     companion object {
         /** 이벤트 1건당 최대 멘션 수. IN 파라미터 비대 및 payload 크기를 bound 한다 (H1). */
         private const val MAX_MENTIONS_PER_EVENT = 50
+
+        /** 템플릿 date 토큰 포맷 — ISO-8601 날짜(yyyy-MM-dd). */
+        private val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
     }
 
     /**
