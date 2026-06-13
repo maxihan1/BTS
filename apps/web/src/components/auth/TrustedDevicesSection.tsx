@@ -9,7 +9,6 @@ import {
   type TrustedDevice,
 } from '@/api/trusted-devices'
 import { mfaStrings } from '@/i18n/ko'
-import { issueDetailStrings } from '@/i18n/ko'
 import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,7 +67,7 @@ function InlineConfirmBox({
           disabled={isPending}
           onClick={onConfirm}
         >
-          {issueDetailStrings.confirmButton}
+          {mfaStrings.trustedDevicesConfirmButton}
         </Button>
         <Button
           variant="outline"
@@ -76,7 +75,7 @@ function InlineConfirmBox({
           disabled={isPending}
           onClick={onCancel}
         >
-          {issueDetailStrings.cancelButton}
+          {mfaStrings.trustedDevicesCancelButton}
         </Button>
       </div>
     </div>
@@ -119,13 +118,13 @@ function DeviceRow({
         <div className="min-w-0 space-y-1">
           <p className="truncate text-sm font-medium">{label}</p>
           <p className="text-xs text-muted-foreground">
-            등록: {formatDate(device.createdAt)}
+            {mfaStrings.trustedDevicesRegisteredLabel} {formatDate(device.createdAt)}
           </p>
           <p className="text-xs text-muted-foreground">
-            마지막 사용: <span>{lastUsed}</span>
+            {mfaStrings.trustedDevicesLastUsedLabel} <span>{lastUsed}</span>
           </p>
           <p className="text-xs text-muted-foreground">
-            만료: {formatDate(device.expiresAt)}
+            {mfaStrings.trustedDevicesExpiresLabel} {formatDate(device.expiresAt)}
           </p>
         </div>
         {!isConfirming && (
@@ -268,7 +267,7 @@ export function TrustedDevicesSection(): JSX.Element {
           role="alert"
           className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
         >
-          기기 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
+          {mfaStrings.trustedDevicesLoadError}
         </div>
       )}
 

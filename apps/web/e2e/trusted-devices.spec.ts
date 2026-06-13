@@ -16,7 +16,7 @@
 
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
-import { mfaStrings, issueDetailStrings, loginStrings } from '../src/i18n/ko'
+import { mfaStrings, loginStrings } from '../src/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — auth-fixtures.ts 의 MFA_E2E_ENABLED_KEY 와 동일 (역방향 import 금지)
@@ -158,7 +158,7 @@ test.describe('신뢰 디바이스 설정 화면 (FR-MF-05)', () => {
     await expect(page.getByText(mfaStrings.trustedDevicesRevokeConfirm, { exact: true })).toBeVisible()
 
     // When. "확인" 버튼 클릭 → DELETE API 호출 → invalidateQueries
-    await page.getByRole('button', { name: issueDetailStrings.confirmButton, exact: true }).click()
+    await page.getByRole('button', { name: mfaStrings.trustedDevicesConfirmButton, exact: true }).click()
 
     // Then. Chrome on macOS 기기 행이 목록에서 사라짐
     await expect(page.getByText('Chrome on macOS', { exact: true })).not.toBeVisible()
@@ -193,7 +193,7 @@ test.describe('신뢰 디바이스 설정 화면 (FR-MF-05)', () => {
     await expect(page.getByText(mfaStrings.trustedDevicesRevokeConfirm, { exact: true })).toBeVisible()
 
     // When. "확인" 버튼 클릭 → DELETE /api/v1/auth/mfa/trusted-devices (전체)
-    await page.getByRole('button', { name: issueDetailStrings.confirmButton, exact: true }).click()
+    await page.getByRole('button', { name: mfaStrings.trustedDevicesConfirmButton, exact: true }).click()
 
     // Then. "신뢰한 기기가 없습니다." 빈 상태 메시지 표시
     await expect(page.getByText(mfaStrings.trustedDevicesEmptyState, { exact: true })).toBeVisible()
@@ -239,7 +239,7 @@ test.describe('신뢰 디바이스 설정 화면 (FR-MF-05)', () => {
     // Given. "모든 기기 신뢰 해제" → 인라인 확인 → "확인" (S3 과 동일한 전체 취소 플로우)
     await page.getByRole('button', { name: mfaStrings.trustedDevicesRevokeAllButton, exact: true }).click()
     await expect(page.getByText(mfaStrings.trustedDevicesRevokeConfirm, { exact: true })).toBeVisible()
-    await page.getByRole('button', { name: issueDetailStrings.confirmButton, exact: true }).click()
+    await page.getByRole('button', { name: mfaStrings.trustedDevicesConfirmButton, exact: true }).click()
     await expect(page.getByText(mfaStrings.trustedDevicesEmptyState, { exact: true })).toBeVisible()
 
     // When. /dashboard SPA 내부 이동 (로고 클릭 또는 URL 직접 이동 대신 window.history)

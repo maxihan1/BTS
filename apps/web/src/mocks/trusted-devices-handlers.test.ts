@@ -5,6 +5,7 @@ import { trustedDevicesHandlers, resetTrustedDevicesStore } from './trusted-devi
 import { mfaHandlers } from './mfa-handlers'
 import { authHandlers } from './auth-handlers'
 import { trustedDeviceSchema } from '@/api/trusted-devices'
+import { mfaStrings } from '@/i18n/ko'
 import { MFA_E2E_ENABLED_KEY, resetMfaStore } from './auth-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -243,5 +244,56 @@ describe('trustedDevicesHandlers — DELETE 전체 취소', () => {
     const listRes = await getDevices()
     const body = await listRes.json() as { devices: unknown[] }
     expect(body.devices).toHaveLength(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// i18n 키 존재 확인 (가짜그린 방지)
+// __tests__/trusted-devices-handlers.test.ts 에서 흡수 — 중복 파일 제거
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('i18n — mfaStrings 신뢰 디바이스 키 전수 확인', () => {
+  const trustedKeys = [
+    'trustedDevicesSectionTitle',
+    'trustedDevicesSectionDescription',
+    'trustedDevicesEmptyState',
+    'trustedDevicesRevokeButton',
+    'trustedDevicesRevokeAllButton',
+    'trustedDevicesRevokeConfirm',
+    'trustedDevicesLabelFallback',
+    'trustedDevicesLastUsedNever',
+    'trustedDevicesLoginCheckboxLabel',
+    'trustedDevicesConfirmButton',
+    'trustedDevicesCancelButton',
+    'trustedDevicesRegisteredLabel',
+    'trustedDevicesLastUsedLabel',
+    'trustedDevicesExpiresLabel',
+    'trustedDevicesLoadError',
+  ] as const
+
+  it.each(trustedKeys)('"%s" 키가 존재하고 비어 있지 않다', (key) => {
+    expect(mfaStrings[key]).toBeTypeOf('string')
+    expect(mfaStrings[key].length).toBeGreaterThan(0)
+  })
+
+  it('신뢰 디바이스 키 값 중 문장을 콜론(:)으로 끝내는 항목이 없다 (레이블 콜론은 허용)', () => {
+    // 레이블 키(끝에 콜론이 의도적으로 붙는 것)는 제외, 나머지 문장형 키 검사
+    const sentenceKeys = [
+      'trustedDevicesSectionTitle',
+      'trustedDevicesSectionDescription',
+      'trustedDevicesEmptyState',
+      'trustedDevicesRevokeButton',
+      'trustedDevicesRevokeAllButton',
+      'trustedDevicesRevokeConfirm',
+      'trustedDevicesLabelFallback',
+      'trustedDevicesLastUsedNever',
+      'trustedDevicesLoginCheckboxLabel',
+      'trustedDevicesConfirmButton',
+      'trustedDevicesCancelButton',
+      'trustedDevicesLoadError',
+    ] as const
+    for (const key of sentenceKeys) {
+      expect(mfaStrings[key].endsWith(':')).toBe(false)
+    }
   })
 })

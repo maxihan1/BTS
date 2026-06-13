@@ -463,6 +463,18 @@ export const mfaStrings = {
   trustedDevicesLastUsedNever: '사용 기록 없음',
   /** 로그인 시 기기 신뢰 체크박스 레이블 */
   trustedDevicesLoginCheckboxLabel: '이 기기를 30일간 신뢰',
+  /** 신뢰 해제 인라인 확인 박스 — 확인 버튼 */
+  trustedDevicesConfirmButton: '확인',
+  /** 신뢰 해제 인라인 확인 박스 — 취소 버튼 */
+  trustedDevicesCancelButton: '취소',
+  /** 기기 행 — 등록일 레이블 (값에 콜론 포함) */
+  trustedDevicesRegisteredLabel: '등록:',
+  /** 기기 행 — 마지막 사용 레이블 (값에 콜론 포함) */
+  trustedDevicesLastUsedLabel: '마지막 사용:',
+  /** 기기 행 — 만료일 레이블 (값에 콜론 포함) */
+  trustedDevicesExpiresLabel: '만료:',
+  /** 목록 로드 실패 에러 메시지 */
+  trustedDevicesLoadError: '기기 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
 } as const
 
 /**
