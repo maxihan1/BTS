@@ -9,6 +9,12 @@ import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
+// ── 오류 메시지 상수 ───────────────────────────────────────────────────────────
+private const val ERR_ID = "issues.id must not be null"
+private const val ERR_KEY = "issues.key must not be null"
+private const val ERR_SUMMARY = "issues.summary must not be null"
+private const val ERR_STATE_KEY = "issues.current_state_key must not be null"
+
 /**
  * 이슈 그래프 시각화용 읽기 전용 저장소.
  *
@@ -60,11 +66,10 @@ class IssueGraphRepository(
             .and(parent.DELETED_AT.isNull)
             .fetchOne { record ->
                 GraphNeighborRow(
-                    id = record.get(parent.ID) ?: error("issues.id must not be null"),
-                    key = record.get(parent.KEY) ?: error("issues.key must not be null"),
-                    summary = record.get(parent.SUMMARY) ?: error("issues.summary must not be null"),
-                    statusKey = record.get(parent.CURRENT_STATE_KEY)
-                        ?: error("issues.current_state_key must not be null"),
+                    id = record.get(parent.ID) ?: error(ERR_ID),
+                    key = record.get(parent.KEY) ?: error(ERR_KEY),
+                    summary = record.get(parent.SUMMARY) ?: error(ERR_SUMMARY),
+                    statusKey = record.get(parent.CURRENT_STATE_KEY) ?: error(ERR_STATE_KEY),
                 )
             }
     }
@@ -94,11 +99,10 @@ class IssueGraphRepository(
             .orderBy(ISSUES.KEY.asc())
             .fetch { record ->
                 GraphNeighborRow(
-                    id = record.get(ISSUES.ID) ?: error("issues.id must not be null"),
-                    key = record.get(ISSUES.KEY) ?: error("issues.key must not be null"),
-                    summary = record.get(ISSUES.SUMMARY) ?: error("issues.summary must not be null"),
-                    statusKey = record.get(ISSUES.CURRENT_STATE_KEY)
-                        ?: error("issues.current_state_key must not be null"),
+                    id = record.get(ISSUES.ID) ?: error(ERR_ID),
+                    key = record.get(ISSUES.KEY) ?: error(ERR_KEY),
+                    summary = record.get(ISSUES.SUMMARY) ?: error(ERR_SUMMARY),
+                    statusKey = record.get(ISSUES.CURRENT_STATE_KEY) ?: error(ERR_STATE_KEY),
                 )
             }
     }
