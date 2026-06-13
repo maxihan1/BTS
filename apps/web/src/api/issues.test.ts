@@ -877,6 +877,27 @@ describe('createIssue — FR-IS-10 customFields', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// T1-20. issueResponseSchema — FR-LK-01 parent nullish 필드 파싱 회귀가드
+// ─────────────────────────────────────────────────────────────────────────────
+describe('issueResponseSchema — FR-LK-01 parent 필드', () => {
+  it('T1-20a: parent { key, summary } 가 포함된 응답을 파싱하고 값이 채워진다', () => {
+    const result = issueResponseSchema.parse({
+      ...issueFixture,
+      parent: { key: 'BTS-5', summary: '부모 이슈' },
+    })
+    expect(result.parent).toEqual({ key: 'BTS-5', summary: '부모 이슈' })
+    expect(result.parent?.key).toBe('BTS-5')
+    expect(result.parent?.summary).toBe('부모 이슈')
+  })
+
+  it('T1-20b: parent 키가 생략된(undefined) 응답도 파싱 성공한다 — nullish()', () => {
+    const result = issueResponseSchema.parse(issueFixture)
+    // parent 키 자체가 없으므로 undefined 또는 null 모두 허용
+    expect(result.parent == null).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // T1-19. updateIssue — FR-IS-10 customFields PATCH body 직렬화 검증
 // ─────────────────────────────────────────────────────────────────────────────
 describe('updateIssue — FR-IS-10 customFields', () => {
