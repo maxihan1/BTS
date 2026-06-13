@@ -27,7 +27,7 @@
 - **FR2**. 쿼리 파라미터 `depth`(선택, 기본 `2`, 허용 `1..3`). **컨트롤러는 `String?`로 받아 서비스가 파싱·검증**한다(비정수·범위 밖 모두 `InvalidGraphDepthException` → 400 `INVALID_DEPTH`로 단일화. `Int` 바인딩 시 발생하는 전역 `MethodArgumentTypeMismatchException`이 같은 패키지의 타 컨트롤러 errorCode를 오라벨하는 문제 회피).
 - **FR3**. 중심 이슈에서 시작하는 BFS로 노드를 수집한다. 깊이 `d < depth`인 노드만 확장(이웃 조회)한다.
 - **FR4**. 한 노드의 이웃 = (a) outward 링크 target, (b) inward 링크 source, (c) parent, (d) children. 소프트삭제된 이웃은 제외.
-- **FR5**. 엣지 종류(`type`): `blocks`/`relates`/`duplicates`/`clones`(링크) + `parent`(부모-자식). 모두 소문자.
+- **FR5**. 엣지 종류(`type`): `BLOCKS`/`RELATES`/`DUPLICATES`/`CLONES`(링크) + `PARENT`(부모-자식). **모두 대문자** — `GET /links` 응답의 `linkType`(대문자) 컨벤션과 통일(devex CONCERN-1). 링크는 `LinkType.name`, parent는 리터럴 `"PARENT"`.
   - 링크 엣지: `from`=source 키, `to`=target 키(저장된 방향 보존).
   - parent 엣지: `from`=부모 키, `to`=자식 키.
 - **FR6**. 노드 상한 `NODE_CAP=100`. BFS 중 상한 도달 시 추가 노드를 담지 않고 `truncated=true`.
@@ -57,9 +57,9 @@ GET /api/v1/issues/{key}/graph?depth=2
       { "key": "BTS-5", "summary": "...", "statusKey": "done",        "depth": 2 }
     ],
     "edges": [
-      { "from": "BTS-1", "to": "BTS-2", "type": "blocks" },
-      { "from": "BTS-3", "to": "BTS-1", "type": "parent" },
-      { "from": "BTS-2", "to": "BTS-5", "type": "relates" }
+      { "from": "BTS-1", "to": "BTS-2", "type": "BLOCKS" },
+      { "from": "BTS-3", "to": "BTS-1", "type": "PARENT" },
+      { "from": "BTS-2", "to": "BTS-5", "type": "RELATES" }
     ],
     "truncated": false
   }

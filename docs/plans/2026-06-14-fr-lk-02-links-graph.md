@@ -49,7 +49,7 @@ FR-LK-02 (§5.3.2) — 링크 그래프 시각화. FR-LK-01(완료, #135/#136)�
 핵심 결정 요약.
 - `GET /api/v1/issues/{key}/graph?depth={1..3}`(기본 2). 깊이 제한 BFS, 노드 상한 100, `truncated` 플래그.
 - 엣지 = link 4종(blocks/relates/duplicates/clones) + parent. `edge.type` 소문자. 링크는 저장 방향, parent는 from=부모/to=자식.
-- 응답 `DataResponse<{center, depth, nodes:[{key,summary,statusKey,depth}], edges:[{from,to,type}], truncated}>`.
+- 응답 `DataResponse<{center, depth, nodes:[{key,summary,statusKey,depth}], edges:[{from,to,type}], truncated}>`. `edge.type` 대문자(BLOCKS/RELATES/DUPLICATES/CLONES/PARENT — GET /links 컨벤션 통일).
 - 그래프 컨트롤러를 `com.bts.issue.link.web`에 두어 `LinkExceptionHandler`(404/400/500) 재사용. `INVALID_DEPTH`(400) + `MethodArgumentTypeMismatchException`(400) 핸들러만 신규.
 - 신규 테이블/마이그레이션 없음(D3 활용). 읽기 쿼리(부모 1건·자식 N건)만 추가.
 
@@ -143,7 +143,7 @@ FR-LK-02 (§5.3.2) — 링크 그래프 시각화. FR-LK-01(완료, #135/#136)�
 - `?depth=1` vs 미지정(2) 차이.
 - 404 `ISSUE_NOT_FOUND`: 미존재 키.
 - 400 `INVALID_DEPTH`: `?depth=abc`, `?depth=0`, `?depth=4`.
-- 엣지 type 소문자(blocks/parent), parent from=부모/to=자식.
+- 엣지 type 대문자(BLOCKS/PARENT, GET /links 컨벤션 통일), parent from=부모/to=자식.
 
 **GREEN**:
 - `IssueGraphController`(`com.bts.issue.link.web`, `@GetMapping("/api/v1/issues/{key}/graph")`, `@RequestParam(name="depth", required=false) depth: String?`) → `IssueGraphService.buildGraph` → `DataResponse(GraphResponse.from(result))`.
@@ -163,4 +163,19 @@ FR-LK-02 (§5.3.2) — 링크 그래프 시각화. FR-LK-01(완료, #135/#136)�
 - 신규 스키마/마이그레이션: 없음(D3 활용)
 - 추가 검증: ktlint, detekt(aggregate), 모듈 test 그린
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-14, 백엔드 집중 독립 리뷰)
+- ✅ 트랜잭션 경계: repo/service `@Transactional(readOnly=true)`, 컨트롤러 무경계.
+- ✅ cartesian/N+1 안전: `findParent`=1:1 self-join, `findChildren`=단순 WHERE, 링크는 기존 안전 메서드 재사용.
+- ✅ 소프트삭제: 중심=findByKey(null→404), 이웃=쿼리 단 필터.
+- ✅ 예외 핸들러 스코프 정렬 + T3 HTTP 통합테스트가 400/404 실매핑 검증(`domain-exception-http-handler-basepackage-scope`).
+- ✅ TDD: 각 task RED→GREEN, test 커밋 선행.
+- ⚠️ NOTE(perf): BFS 노드당 4쿼리×최대 100노드=최대 400쿼리. 상한으로 폭주 차단, 후속 perf 여지(현 범위 허용).
+- BLOCKER: 없음.
+
+### plan-devex-review (2026-06-14, API 계약)
+- ✅ `DataResponse<GraphResponse>` 래퍼 형제 일관, `depth`/`truncated` 에코로 클라가 데이터 완전성 인지.
+- ✅ `/graph` 서브리소스 네이밍, depth 파싱 단일 예외 경로.
+- CONCERN-1 (해소): `edge.type` 소문자 → **대문자**로 통일(`GET /links` 응답 `linkType` 대문자 컨벤션 일치). spec FR5 + plan T2/T3 반영 완료.
+- BLOCKER: 없음.
