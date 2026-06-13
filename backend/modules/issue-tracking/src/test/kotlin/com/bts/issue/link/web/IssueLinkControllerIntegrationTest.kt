@@ -3,13 +3,9 @@
 
 package com.bts.issue.link.web
 
-import com.bts.issue.adapter.inbound.rest.DataResponse
-import com.bts.issue.domain.IssueKey
 import com.bts.issue.link.application.IssueParentService
 import com.bts.issue.link.application.LinkApplicationService
 import com.bts.issue.link.repository.IssueLinkRepository
-import com.bts.issue.link.web.dto.CreateLinkRequest
-import com.bts.issue.link.web.dto.SetParentRequest
 import com.bts.issue.repository.IssueRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
@@ -79,7 +75,6 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueLinkControllerIntegrationTest {
-
     @Configuration
     @EnableWebMvc
     @EnableTransactionManagement(proxyTargetClass = true)
@@ -540,6 +535,7 @@ class IssueLinkControllerIntegrationTest {
             .migrate()
     }
 
+    @Suppress("NestedBlockDepth") // JDBC try-with-resources(conn→stmt→rs) 시드 보일러플레이트 — 테스트 1회성 setup
     private fun seedProjectAndType() {
         conn().use { c ->
             c.prepareStatement(

@@ -116,5 +116,7 @@ class IssueParentService(
      * key 문자열을 UTF-8 바이트 기반의 name-UUID(v3) 로 변환해 전달한다.
      * 이 UUID 는 오류 메시지에만 사용되며 DB 식별자로 사용되지 않는다.
      */
-    private fun issueKeyToSentinelUUID(key: IssueKey): UUID = UUID.nameUUIDFromBytes(key.value.toByteArray(Charsets.UTF_8))
+    private fun issueKeyToSentinelUUID(key: IssueKey): UUID {
+        return UUID.nameUUIDFromBytes(key.value.toByteArray(Charsets.UTF_8))
+    }
 }
