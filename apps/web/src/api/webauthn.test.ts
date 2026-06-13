@@ -60,7 +60,7 @@ const registrationCredentialFixture = {
     attestationObject: 'YXR0ZXN0YXRpb24=',
     clientDataJSON: 'Y2xpZW50RGF0YQ==',
   },
-  type: 'public-key',
+  type: 'public-key' as const,
   clientExtensionResults: {},
 }
 
@@ -82,9 +82,9 @@ const authenticationCredentialFixture = {
     authenticatorData: 'YXV0aERhdGE=',
     clientDataJSON: 'Y2xpZW50RGF0YQ==',
     signature: 'c2lnbmF0dXJl',
-    userHandle: null,
+    userHandle: undefined,
   },
-  type: 'public-key',
+  type: 'public-key' as const,
   clientExtensionResults: {},
 }
 
