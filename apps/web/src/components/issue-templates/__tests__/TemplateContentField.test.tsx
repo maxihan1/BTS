@@ -151,6 +151,48 @@ describe('TemplateContentField — FR-D6-1 버튼 type="button"', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// S7 — selectionStart=0(브라우저 미포커스 시뮬레이션) → 끝에 append (F2 회귀 방지)
+//
+// 배경.
+//   실브라우저에서 포커스 없는 textarea의 selectionStart = 0 (jsdom에서는 null).
+//   수정 전(selectionStart ?? length): 0이 truthy가 아닌 nullish check라 0도 0으로 사용 → prepend.
+//   더 정확히: selectionStart=0이면 ?? fallback이 동작하지 않아 splice(value, token, 0, 0) = prepend.
+//   수정 후(isFocused 분기): 포커스 없으면 항상 length → 끝에 append.
+//
+//   jsdom에서는 포커스 없는 textarea.selectionStart = null이라 기존 코드도 통과하지만,
+//   실 브라우저 동작(selectionStart=0)을 시뮬레이션하기 위해
+//   selectionStart를 0으로 강제 설정한 뒤 비포커스 상태로 버튼을 클릭한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('TemplateContentField — S7 selectionStart=0 시뮬레이션 → 끝에 append (F2 회귀)', () => {
+  it('selectionStart=0(미포커스 브라우저 동작) 상태에서 버튼 클릭 시 끝에 append된다', () => {
+    render(<Harness initialContent="## 재현 방법" />)
+
+    const textarea = screen.getByLabelText(issueTemplateLabels.form.contentLabel) as HTMLTextAreaElement
+
+    // 실 브라우저의 "포커스 없이 selectionStart=0" 상태를 jsdom에서 시뮬레이션.
+    // textarea에 포커스를 주되, selectionStart=0으로 강제 설정한 뒤 blur.
+    // — jsdom에서 blur 후에도 setSelectionRange로 지정한 위치가 유지됨.
+    fireEvent.focus(textarea)
+    textarea.setSelectionRange(0, 0)
+    fireEvent.blur(textarea)
+    // 이 시점: selectionStart=0, document.activeElement !== textarea
+
+    const insertBtn = screen.getByRole('button', {
+      name: issueTemplateLabels.form.variableInsertAria('일자'),
+    })
+    // fireEvent.click: React onClick 트리거, 포커스 이동 없음 → textarea isFocused=false 유지
+    fireEvent.click(insertBtn)
+
+    // 수정 전(selectionStart ?? length): selectionStart=0 → fallback 없이 0 사용 → prepend
+    //   결과: "{{date}}## 재현 방법" (RED)
+    // 수정 후(isFocused 분기): isFocused=false → length 사용 → 끝에 append
+    //   결과: "## 재현 방법{{date}}" (GREEN)
+    expect(textarea.value).toBe('## 재현 방법{{date}}')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 에러 메시지 렌더
 // ─────────────────────────────────────────────────────────────────────────────
 

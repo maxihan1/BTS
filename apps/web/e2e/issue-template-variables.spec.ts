@@ -193,11 +193,16 @@ test.describe('E4 edit 프리필 + 본문 미포커스 → 끝에 append (FR-TM-
     await page.getByRole('button', { name: labels.addButton }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
 
-    // Given. 본문을 채운다 (edit 다이얼로그의 프리필 상황과 동일 조건)
+    // Given. 본문을 채운다
     await page.getByLabel(labels.contentLabel).fill('## 재현 방법')
 
-    // Given. 이름 input에 포커스를 옮겨 textarea 포커스를 해제한다
-    //        → 실브라우저에서 blur 후 selectionStart = 0 (jsdom에서는 null)
+    // Given. 실 브라우저의 "포커스 없이 selectionStart=0" 상태를 재현한다.
+    //   page.evaluate로 selectionStart를 0으로 강제 설정한 뒤 이름 input에 포커스를 이동.
+    //   — 이후 버튼 클릭 시: 수정 전(selectionStart ?? length)은 0을 그대로 사용 → prepend
+    //                         수정 후(isFocused 분기)는 isFocused=false → length → append
+    await page.getByLabel(labels.contentLabel).evaluate((el) => {
+      ;(el as HTMLTextAreaElement).setSelectionRange(0, 0)
+    })
     await page.getByLabel(labels.nameLabel).focus()
 
     // When. 본문을 클릭하지 않은 채 "일자 변수 삽입" 버튼 클릭
