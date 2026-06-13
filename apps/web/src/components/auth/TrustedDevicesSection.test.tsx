@@ -94,7 +94,8 @@ describe('T4-TD-E2: lastUsedAt=null → "사용 기록 없음" 표시', () => {
     renderSection()
 
     await waitFor(() => {
-      expect(screen.getByText(mfaStrings.trustedDevicesLastUsedNever)).toBeInTheDocument()
+      // "마지막 사용: " 접두어와 같은 span 안에 있어 selector로 조회한다 (WebauthnSection 패턴 동형)
+      expect(screen.getByText(mfaStrings.trustedDevicesLastUsedNever, { selector: 'span' })).toBeInTheDocument()
     })
   })
 })
