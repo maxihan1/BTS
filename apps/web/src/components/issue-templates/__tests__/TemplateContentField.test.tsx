@@ -154,35 +154,26 @@ describe('TemplateContentField — FR-D6-1 버튼 type="button"', () => {
 // 에러 메시지 렌더
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * errorMessage 표시 전용 래퍼 — Harness와 동일 구조지만 errorMessage를 고정 주입한다.
+ * useForm을 컴포넌트 바깥에서 직접 호출할 수 없으므 별도 함수형 컴포넌트로 정의한다.
+ */
+function ErrorHarness(): JSX.Element {
+  const { register, setValue } = useForm<TestFormValues>({ defaultValues: { content: '' } })
+  return (
+    <TemplateContentField
+      textareaId="test-error"
+      label="본문"
+      registration={register('content')}
+      errorMessage="본문은 필수입니다."
+      setFieldValue={(next) => { setValue('content', next) }}
+    />
+  )
+}
+
 describe('TemplateContentField — 에러 메시지', () => {
   it('errorMessage prop이 있으면 role="alert"로 렌더된다', () => {
-    const { register, setValue } = (() => {
-      // 직접 useForm 훅을 컴포넌트 외부에서 쓸 수 없으므로 래퍼 인라인 정의
-      let capturedRegister: ReturnType<ReturnType<typeof useForm<TestFormValues>>['register']> | undefined
-      let capturedSetValue: ReturnType<typeof useForm<TestFormValues>>['setValue'] | undefined
-
-      function ErrorHarness(): JSX.Element {
-        const form = useForm<TestFormValues>({ defaultValues: { content: '' } })
-        capturedRegister = form.register
-        capturedSetValue = form.setValue
-        return (
-          <TemplateContentField
-            textareaId="test-error"
-            label="본문"
-            registration={form.register('content')}
-            errorMessage="본문은 필수입니다."
-            setFieldValue={(next) => { form.setValue('content', next) }}
-          />
-        )
-      }
-      render(<ErrorHarness />)
-      return { register: capturedRegister, setValue: capturedSetValue }
-    })()
-
-    // register/setValue 는 이 테스트에서 불필요 — 렌더 결과만 검증
-    void register
-    void setValue
-
+    render(<ErrorHarness />)
     expect(screen.getByRole('alert')).toHaveTextContent('본문은 필수입니다.')
   })
 })
