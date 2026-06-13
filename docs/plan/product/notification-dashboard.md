@@ -43,15 +43,15 @@
 
 **우선순위**. 필수 | **선행**. §1, §2.1 | **Plan slug**. `notify/channels`
 
-**범위(이번 PR)**. 인앱(WebSocket) slice — 발송 코어(notifications + NotificationWorker pgmq consumer + NotificationChannelSender 추상) + STOMP 서버/JWT 인증 + 멘션·담당·리포터 수신. `[~]`(D1·D4·D5)는 인앱 채널만 완료이며 이메일/Webhook 채널은 동일 추상 위 후속 PR. D6·D7(프론트/E2E)도 후속 PR.
+**범위(이번 PR)**. 인앱(WebSocket) slice — 발송 코어(notifications + NotificationWorker pgmq consumer + NotificationChannelSender 추상) + STOMP 서버/JWT 인증 + 멘션·담당·리포터 수신. `[~]`(D1·D4·D5)는 인앱 채널만 완료이며 이메일/Webhook 채널은 동일 추상 위 후속 PR. D6·D7(프론트/E2E)은 인앱 채널 기준 완료(PR #137). FR-NT-02 전체는 이메일/Webhook 채널 후속이라 여전히 부분완료.
 
 - [~] D1. 도메인 — Channel 추상 + 5종 구현 (책임. backend-engineer)
 - [x] D2. 명세 — fanout + 재시도 정책 (책임. backend-engineer)
 - [x] D3. 데이터 모델 — `notifications(payload, channel, status)` (책임. db-engineer)
 - [~] D4. 백엔드 — pgmq consumer → 이메일(Spring Mail) + WebSocket(STOMP) + (Slack은 slack-integration BC) + Webhook (책임. backend-engineer)
 - [~] D5. 백엔드 테스트 — Testcontainers MailHog (책임. backend-engineer)
-- [ ] D6. 프론트 UI — STOMP 클라이언트 + 토스트 (sonner) (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — STOMP 클라이언트 + 토스트 (sonner) (책임. frontend-engineer) — PR #137 (`/ws` 연결 + `/user/queue/notifications` 구독 + Zod 파싱 + sonner 토스트, 인증 연동 hook)
+- [x] D7. E2E (책임. qa-engineer) — PR #137 (Playwright routeWebSocket STOMP 핸드셰이크 mock, S1 title+body / S2 body=null)
 
 | 항목 | 임계 | 실측 (p95) |
 |---|---|---|
