@@ -12,6 +12,7 @@ import com.atlas.bts.identity.mfa.MfaChallengeClaims
 import com.atlas.bts.identity.mfa.MfaChallengeTokenService
 import com.atlas.bts.identity.mfa.MfaService
 import com.atlas.bts.identity.mfa.MfaService.VerifyResult
+import com.atlas.bts.identity.mfa.TrustedDeviceService
 import com.atlas.bts.identity.mfa.WebAuthnSecurityKeyService
 import com.atlas.bts.identity.provider.ldap.ProviderUnavailableException
 import com.atlas.bts.identity.session.RefreshToken
@@ -96,6 +97,7 @@ class AuthController(
     private val mfaChallengeTokenService: MfaChallengeTokenService,
     private val mfaBackupCodeService: MfaBackupCodeService,
     private val webAuthnSecurityKeyService: WebAuthnSecurityKeyService,
+    private val trustedDeviceService: TrustedDeviceService,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(AuthController::class.java)
@@ -186,14 +188,41 @@ class AuthController(
         request: HttpServletRequest,
         principal: Principal,
     ): ResponseEntity<*> {
+        val providerId = principal.providerType.name.lowercase()
         if (!isAnyMfaEnabled(principal.userId)) {
-            return issueTokens(request, principal.userId, principal.providerType.name.lowercase())
+            return issueTokens(request, principal.userId, providerId)
         }
-        val challengeToken =
-            mfaChallengeTokenService.issueChallenge(principal.userId, principal.providerType.name.lowercase())
+        if (isTrustedDevice(request, principal.userId)) {
+            // 신뢰 디바이스 우회 — 과거 MFA 통과로 신뢰가 성립했으므로 mfaVerified=true 세션을 발급한다.
+            return issueTokens(request, principal.userId, providerId, mfaVerified = true)
+        }
+        val challengeToken = mfaChallengeTokenService.issueChallenge(principal.userId, providerId)
         return ResponseEntity.ok(
             MfaRequiredResponse(mfaChallengeToken = challengeToken, expiresIn = MFA_CHALLENGE_TTL_SECONDS),
         )
+    }
+
+    /**
+     * 요청의 [TRUSTED_DEVICE_COOKIE] 쿠키가 [userId] 의 미만료 신뢰 디바이스와 일치하는지 판정한다 (FR-MF-05).
+     *
+     * 쿠키가 없으면 false 로 폴백해 기존 챌린지 경로를 탄다(쿠키 부재/차단 환경 fail-safe). 쿠키가 있으면
+     * [TrustedDeviceService.verifyAndTouch] 로 user-bound + 미만료를 판정하며, 만료/타인/미상은 모두 false 로
+     * 수렴한다(불명은 우회하지 않고 챌린지로 폴백). 쿠키 raw 값은 로깅하지 않는다(§1.1.2).
+     *
+     * @param request trusted_device 쿠키 추출용 HTTP 요청
+     * @param userId 1단계 인증을 통과한 사용자(우회 user-bound 판정 기준)
+     * @return user 일치 + 미만료 신뢰 디바이스면 true(우회 가능), 아니면 false
+     */
+    private fun isTrustedDevice(
+        request: HttpServletRequest,
+        userId: UUID,
+    ): Boolean {
+        val rawToken =
+            request.cookies
+                ?.firstOrNull { it.name == TRUSTED_DEVICE_COOKIE }
+                ?.value
+                ?: return false
+        return trustedDeviceService.verifyAndTouch(userId, rawToken)
     }
 
     /**
@@ -280,13 +309,14 @@ class AuthController(
         body: MfaVerifyRequest,
     ): ResponseEntity<*> =
         when (body.method) {
-            METHOD_TOTP -> mapTotpResult(request, claims, mfaService.verifyLogin(claims.userId, body.code))
+            METHOD_TOTP -> mapTotpResult(request, claims, body, mfaService.verifyLogin(claims.userId, body.code))
             METHOD_BACKUP_CODE ->
-                mapBackupResult(request, claims, mfaBackupCodeService.verifyAndConsume(claims.userId, body.code))
+                mapBackupResult(request, claims, body, mfaBackupCodeService.verifyAndConsume(claims.userId, body.code))
             METHOD_WEBAUTHN ->
                 mapWebauthnResult(
                     request,
                     claims,
+                    body,
                     webAuthnSecurityKeyService.verifyLogin(claims.userId, credentialJsonOf(body)),
                 )
             else -> errorResponse(HttpStatus.BAD_REQUEST, "invalid_method")
@@ -305,10 +335,11 @@ class AuthController(
     private fun mapTotpResult(
         request: HttpServletRequest,
         claims: MfaChallengeClaims,
+        body: MfaVerifyRequest,
         result: VerifyResult,
     ): ResponseEntity<*> =
         when (result) {
-            VerifyResult.Success -> issueTokens(request, claims.userId, claims.providerId, mfaVerified = true)
+            VerifyResult.Success -> issueMfaVerifiedSession(request, claims, body)
             VerifyResult.InvalidCode, VerifyResult.NotEnabled ->
                 errorResponse(HttpStatus.UNAUTHORIZED, "invalid_code")
             VerifyResult.TooManyAttempts -> errorResponse(HttpStatus.TOO_MANY_REQUESTS, "too_many_attempts")
@@ -322,11 +353,12 @@ class AuthController(
     private fun mapBackupResult(
         request: HttpServletRequest,
         claims: MfaChallengeClaims,
+        body: MfaVerifyRequest,
         result: MfaBackupCodeService.VerifyResult,
     ): ResponseEntity<*> =
         when (result) {
             MfaBackupCodeService.VerifyResult.Success ->
-                issueTokens(request, claims.userId, claims.providerId, mfaVerified = true)
+                issueMfaVerifiedSession(request, claims, body)
             MfaBackupCodeService.VerifyResult.InvalidCode ->
                 errorResponse(HttpStatus.UNAUTHORIZED, "invalid_code")
             MfaBackupCodeService.VerifyResult.TooManyAttempts ->
@@ -343,16 +375,60 @@ class AuthController(
     private fun mapWebauthnResult(
         request: HttpServletRequest,
         claims: MfaChallengeClaims,
+        body: MfaVerifyRequest,
         result: WebAuthnSecurityKeyService.VerifyResult,
     ): ResponseEntity<*> =
         when (result) {
             WebAuthnSecurityKeyService.VerifyResult.Success ->
-                issueTokens(request, claims.userId, claims.providerId, mfaVerified = true)
+                issueMfaVerifiedSession(request, claims, body)
             WebAuthnSecurityKeyService.VerifyResult.InvalidAssertion ->
                 errorResponse(HttpStatus.UNAUTHORIZED, "invalid_code")
             WebAuthnSecurityKeyService.VerifyResult.TooManyAttempts ->
                 errorResponse(HttpStatus.TOO_MANY_REQUESTS, "too_many_attempts")
         }
+
+    /**
+     * 2차 요소 검증 성공 시 mfaVerified=true 정식 세션을 발급하고, [MfaVerifyRequest.trustDevice] opt-in 이면
+     * 신뢰 디바이스를 등록해 trusted_device 쿠키를 함께 내려준다 (FR-MF-05, 3개 매퍼 공용).
+     *
+     * trust_device 가 false(기본값)면 기존 [issueTokens] 응답 그대로다(회귀 0). true 면
+     * [TrustedDeviceService.trust] 로 raw 토큰을 받아 [buildTrustedDeviceCookie] 쿠키를 만들어 refresh 쿠키와
+     * 병존시킨다.
+     *
+     * ## C3 best-effort 등록 (로그인 가용성 우선, fail-safe)
+     * 신뢰 등록은 정식 세션 발급의 부가 기능이다. token_hash UNIQUE 충돌 같은 극저확률 실패가 정식 세션
+     * 발급을 막으면 안 되므로, [TrustedDeviceService.trust] 예외를 catch 해 흐름을 계속한다 — 실패 시
+     * trusted_device 쿠키만 누락하고 정식 세션은 그대로 발급한다. raw 토큰/쿠키 값은 로깅하지 않는다(§1.1.2).
+     *
+     * `TooGenericExceptionCaught` 억제 — 가용성 우선 정책상 어떤 RuntimeException(DataAccess/UNIQUE 충돌 등)
+     * 이든 세션 발급은 계속해야 하며, error 로그로 등록 갭을 경보하므로 generic catch 가 의도적이다(B-1 선례 일관).
+     *
+     * @param request IP/UserAgent 추출용 HTTP 요청(User-Agent 는 신뢰 라벨로도 쓰인다)
+     * @param claims 검증된 챌린지 토큰 클레임(userId/providerId)
+     * @param body trust_device opt-in 여부
+     * @return 200 + [TokenResponse] + refresh 쿠키 (+ trust_device 동의 시 trusted_device 쿠키)
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun issueMfaVerifiedSession(
+        request: HttpServletRequest,
+        claims: MfaChallengeClaims,
+        body: MfaVerifyRequest,
+    ): ResponseEntity<*> {
+        val trustedDeviceCookie =
+            if (body.trustDevice) {
+                try {
+                    val rawToken = trustedDeviceService.trust(claims.userId, request.getHeader(HttpHeaders.USER_AGENT))
+                    buildTrustedDeviceCookie(rawToken)
+                } catch (ex: RuntimeException) {
+                    // 신뢰 등록 실패는 세션 발급을 막지 않는다(C3 fail-safe). 쿠키만 누락. raw 토큰 미로깅.
+                    log.error("trusted device registration failed (session still issued)", ex)
+                    null
+                }
+            } else {
+                null
+            }
+        return issueTokens(request, claims.userId, claims.providerId, mfaVerified = true, trustedDeviceCookie)
+    }
 
     /**
      * LOGIN_SUCCESS 감사 이벤트를 best-effort 로 기록한다 (FR-AU-10 Task 4 / spec §5, NFR-3 B-1).
@@ -424,14 +500,18 @@ class AuthController(
      * @param userId 인증된 사용자 UUID
      * @param providerId 인증 공급자 식별자(소문자, e.g. "local")
      * @param mfaVerified 2차 요소(TOTP) 통과 여부 (FR-MF-01). 1단계 로그인은 기본 `false`,
-     *   [verifyMfa] 성공 경로만 `true`. [Session.mfaVerified] → JWT `mfa_verified` 클레임 원천이다.
-     * @return 200 + [TokenResponse] + Set-Cookie refresh_token
+     *   [verifyMfa] 성공 경로·신뢰 디바이스 우회([completeLogin])만 `true`.
+     *   [Session.mfaVerified] → JWT `mfa_verified` 클레임 원천이다.
+     * @param trustedDeviceCookie trusted_device Set-Cookie 헤더 값 (FR-MF-05). null(기본)이면 부착하지
+     *   않는다(회귀 0). non-null 이면 refresh_token Set-Cookie 와 **병존**시켜 복수 Set-Cookie 헤더로 내린다.
+     * @return 200 + [TokenResponse] + Set-Cookie refresh_token (+ trusted_device 동의 시 trusted_device)
      */
     private fun issueTokens(
         request: HttpServletRequest,
         userId: UUID,
         providerId: String,
         mfaVerified: Boolean = false,
+        trustedDeviceCookie: String? = null,
     ): ResponseEntity<*> {
         val ipAddress = request.remoteAddr.takeIf { it.isNotBlank() }
         val userAgent = request.getHeader(HttpHeaders.USER_AGENT)
@@ -470,9 +550,11 @@ class AuthController(
                 mfaVerified = session.mfaVerified,
             )
 
-        return ResponseEntity.ok()
-            .header(HttpHeaders.SET_COOKIE, buildRefreshCookie(rawToken, REFRESH_MAX_AGE))
-            .body(TokenResponse(accessToken = accessToken))
+        val builder =
+            ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, buildRefreshCookie(rawToken, REFRESH_MAX_AGE))
+        trustedDeviceCookie?.let { builder.header(HttpHeaders.SET_COOKIE, it) }
+        return builder.body(TokenResponse(accessToken = accessToken))
     }
 
     /** `{"error": <code>}` 본문을 가진 [status] 응답을 생성한다 (login 에러 응답 일원화). */
@@ -746,6 +828,20 @@ class AuthController(
         maxAge: Int,
     ): String = "$REFRESH_COOKIE_NAME=$value; HttpOnly; Secure; SameSite=Strict; Path=$COOKIE_PATH; Max-Age=$maxAge"
 
+    /**
+     * trusted_device Set-Cookie 헤더 값을 생성한다 (FR-MF-05).
+     *
+     * refresh_token 쿠키 선례와 동일 속성 — HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth;
+     * Max-Age=30일([TRUST_MAX_AGE]). login·verify 가 모두 이 Path 아래라 다음 로그인에 자동 전송된다.
+     * SameSite=Strict 라 cross-site 자동전송을 차단해 CSRF 표면을 최소화한다(ADR 2026-06-13).
+     *
+     * @param value 발급된 raw 신뢰 토큰 — **로그 기록 금지**(§1.1.2)
+     */
+    private fun buildTrustedDeviceCookie(
+        value: String,
+    ): String =
+        "$TRUSTED_DEVICE_COOKIE=$value; HttpOnly; Secure; SameSite=Strict; Path=$COOKIE_PATH; Max-Age=$TRUST_MAX_AGE"
+
     /** [TOKEN_BYTES] 바이트 CSPRNG 난수를 hex 문자열로 인코딩한다. */
     private fun generateRawToken(): String {
         val bytes = ByteArray(TOKEN_BYTES)
@@ -771,6 +867,12 @@ class AuthController(
 
         /** Refresh Token 유효 기간 — 14일 (RefreshTokenService 와 동일) */
         const val REFRESH_TTL_DAYS = 14L
+
+        /** 신뢰 디바이스 쿠키 이름 — login 우회 조회 / verify 발급 공용 (FR-MF-05) */
+        const val TRUSTED_DEVICE_COOKIE = "trusted_device"
+
+        /** trusted_device Cookie Max-Age 30일 (초) — TrustedDeviceService TRUST_TTL_DAYS 와 동일 (FR-MF-05) */
+        const val TRUST_MAX_AGE = 2592000
 
         /** CSPRNG 토큰 바이트 수 — 32 바이트 = 256비트 엔트로피 */
         const val TOKEN_BYTES = 32
@@ -867,12 +969,16 @@ data class TokenResponse(
  *   보내지 않는 기존 클라이언트는 TOTP 경로를 그대로 탄다(회귀 0). 미지원 값은 400 invalid_method 로 거부한다.
  * @param credential 보안키(assertion) 인증 응답 JSON 트리 — `method="webauthn"` 일 때만 사용한다. nullable +
  *   기본 null 이라 totp/backup_code 요청(credential 부재)은 그대로 호환된다(회귀 0). 검증은 서비스가 수행한다.
+ * @param trustDevice "이 기기 30일 면제" 동의 여부 (FR-MF-05, 역직렬화 키: trust_device). 기본값 false 라
+ *   필드를 보내지 않는 기존 클라이언트는 신뢰 디바이스를 등록하지 않는다(회귀 0). true 면 검증 성공 시
+ *   서버가 신뢰 토큰을 발급해 trusted_device 쿠키로 내려준다.
  */
 data class MfaVerifyRequest(
     @JsonProperty("mfa_challenge_token") val mfaChallengeToken: String,
     val code: String = "",
     val method: String = "totp",
     val credential: JsonNode? = null,
+    @JsonProperty("trust_device") val trustDevice: Boolean = false,
 )
 
 /**
