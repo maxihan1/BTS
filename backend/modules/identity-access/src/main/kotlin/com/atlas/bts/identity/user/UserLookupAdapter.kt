@@ -75,6 +75,26 @@ class UserLookupAdapter(
     }
 
     /**
+     * 주어진 사용자 UUID 의 이메일 주소를 users 테이블에서 조회한다 (FR-NT-02 Task 2).
+     *
+     * `SELECT email FROM users WHERE id = :id` — 행이 없으면 null 을 반환한다.
+     * [UserLookupPort.findEmailById] 계약에 따라 미존재 시 null 반환이 정상 동작이다.
+     * [org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate.query] 를 사용해
+     * 0행에 null 을 안전하게 반환한다 (queryForObject 는 0행에 EmptyResultDataAccessException 을 던짐).
+     *
+     * SQL 인젝션 방어: named parameter :id 바인딩 (문자열 결합 금지, DEVELOPMENT.md §1.3).
+     *
+     * @param userId 이메일을 조회할 사용자 UUID
+     * @return 해당 사용자의 이메일 주소, 미존재 시 null
+     */
+    @Transactional(readOnly = true)
+    override fun findEmailById(userId: UUID): String? =
+        jdbc.query(
+            SQL_FIND_EMAIL_BY_ID,
+            mapOf("id" to userId),
+        ) { rs, _ -> rs.getString("email") }.firstOrNull()
+
+    /**
      * 주어진 사용자 UUID 집합을 표시명으로 역방향 일괄 해석한다 (FR-HS-01 Task 2).
      *
      * 빈 입력 시 DB 쿼리 없이 emptyMap 을 즉시 반환한다.
@@ -133,6 +153,18 @@ class UserLookupAdapter(
             SELECT id, username
             FROM users
             WHERE LOWER(username) IN (:names)
+        """
+
+        /**
+         * 단일 사용자 UUID 로 이메일 주소 조회 (FR-NT-02 Task 2).
+         *
+         * `WHERE id = :id` — 0행이면 결과 리스트가 비어 있으므로 호출자가 firstOrNull() 로 null 처리한다.
+         * named parameter :id 바인딩으로 SQL 인젝션을 방어한다.
+         */
+        const val SQL_FIND_EMAIL_BY_ID = """
+            SELECT email
+            FROM users
+            WHERE id = :id
         """
 
         /**
