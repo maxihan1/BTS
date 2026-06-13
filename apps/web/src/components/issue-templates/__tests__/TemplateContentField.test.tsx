@@ -199,6 +199,67 @@ describe('TemplateContentField — S7 selectionStart=0 시뮬레이션 → 끝�
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// S8 — IME 조합 중 삽입 → 끝에 append (F4 IME 가드)
+//
+// 배경.
+//   한글/일본어 IME 조합 중(예: "ㄱ"→"가" 완성 전)에 변수 버튼을 클릭하면
+//   selectionStart가 조합 영역 내부를 가리켜 half-composed jamo를 끊거나
+//   위치가 어긋날 수 있다. 조합 중에는 selectionStart 무시하고 끝에 append.
+//
+// 검증 전략.
+//   fireEvent.compositionStart → 포커스+caret=2 상태로 버튼 클릭
+//   → 조합 중이므로 caret(2)을 무시하고 끝에 append되어야 한다.
+//   compositionEnd 후에는 다시 caret 위치(2)에 삽입.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('TemplateContentField — S8 IME 조합 중 삽입 가드 (F4)', () => {
+  it('compositionStart 후 버튼 클릭 시 caret(2) 무시하고 끝에 append된다', () => {
+    render(<Harness initialContent="가나다" />)
+
+    const textarea = screen.getByLabelText(issueTemplateLabels.form.contentLabel) as HTMLTextAreaElement
+
+    // textarea 포커스 + caret을 중간(2)에 배치
+    textarea.focus()
+    textarea.setSelectionRange(2, 2)
+
+    // IME 조합 시작 — 이 시점부터 isComposingRef.current = true
+    fireEvent.compositionStart(textarea)
+
+    const insertBtn = screen.getByRole('button', {
+      name: issueTemplateLabels.form.variableInsertAria('작성자'),
+    })
+    // fireEvent.click: document.activeElement를 바꾸지 않아 isFocused=true 유지
+    // 그러나 composing=true이므로 caret(2) 대신 끝(3)에 append해야 한다
+    fireEvent.click(insertBtn)
+
+    // 수정 전: caret(2) 사용 → "가나{{author}}다" (RED)
+    // 수정 후: composing 중 → 끝에 append → "가나다{{author}}" (GREEN)
+    expect(textarea.value).toBe('가나다{{author}}')
+  })
+
+  it('compositionEnd 후 버튼 클릭 시 caret(2) 위치에 삽입된다', () => {
+    render(<Harness initialContent="가나다" />)
+
+    const textarea = screen.getByLabelText(issueTemplateLabels.form.contentLabel) as HTMLTextAreaElement
+
+    textarea.focus()
+    textarea.setSelectionRange(2, 2)
+
+    // 조합 시작 후 바로 종료 — isComposingRef.current 다시 false
+    fireEvent.compositionStart(textarea)
+    fireEvent.compositionEnd(textarea)
+
+    const insertBtn = screen.getByRole('button', {
+      name: issueTemplateLabels.form.variableInsertAria('작성자'),
+    })
+    fireEvent.click(insertBtn)
+
+    // composing=false → isFocused(true) && !composing → caret(2) 사용 → 중간 삽입
+    expect(textarea.value).toBe('가나{{author}}다')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 에러 메시지 렌더
 // ─────────────────────────────────────────────────────────────────────────────
 
