@@ -56,6 +56,84 @@ fr-index(FR-NT 4→5·합계 122→123·§A.2 카운트·상단 주석) + SDD(§
 
 ✅ 통과 (직접 비판적 gap 분석 — backend 직접 스펙). 코드 실측 검증: TransitionResult→emitEvents 운반·KDoc 계약 확인, bulk 단일 변경점, createIssue 범위 밖, 전용 큐 필요, IT 참조 패턴 확보.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+### Task 1. q_transition_events 큐(V022 + init_codegen 미러) + TransitionEventPublisher
+
+**메타**.
+- agent: `backend-engineer`
+- files:
+  - `backend/modules/issue-tracking/src/main/resources/db/migration/issue-tracking/V022__pgmq_queue_transition_events.sql` (신규)
+  - `backend/modules/issue-tracking/src/main/resources/db/codegen/init_codegen.sql` (수정 — pgmq 큐 미러)
+  - `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/event/TransitionEventPublisher.kt` (신규)
+  - `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/event/TransitionEventPublisherTest.kt` (신규)
+- depends-on: []
+
+**RED**: `TransitionEventPublisherTest` (Testcontainers `quay.io/tembo/pg16-pgmq:latest`, `IssueEventPublisherTest` 1:1 미러). `publish(DomainEvent("WebhookRequested", {...}))` → `pgmq.read('q_transition_events')`로 메시지 1건 + `type`/`payload` JSON 필드 검증. MANDATORY 트랜잭션 강제(수동 트랜잭션/커넥션 공유 — IssueEventPublisherTest 동일 방식). 실패: `TransitionEventPublisher` 클래스 없음 + 큐 없음.
+
+**GREEN**:
+- V022: `CREATE EXTENSION IF NOT EXISTS pgmq CASCADE;` + `SELECT pgmq.create('q_transition_events');` (V002 패턴 그대로).
+- init_codegen.sql: V022 큐 생성 미러 단락 추가(메모리 jooq-init-codegen-mirror — codegen 시점 DB에 큐 존재해야).
+- `TransitionEventPublisher`(@Component, `DSLContext`+`ObjectMapper`, `@Transactional(MANDATORY)`, `dsl.execute("SELECT pgmq.send(?, ?::jsonb)", QUEUE_NAME, json)`). `QUEUE_NAME="q_transition_events"`. shared-kernel `DomainEvent{type,payload}` 직렬화.
+
+**REFACTOR**: KDoc(IssueEventPublisher 톤), QUEUE_NAME const + V022 주석 일치.
+
+**검증**: `cd backend && ./gradlew :modules:issue-tracking:test --tests '*TransitionEventPublisherTest*'`
+
+### Task 2. transitionIssue() emitEvents 발행 배선 + end-to-end 통합
+
+**메타**.
+- agent: `backend-engineer`
+- files:
+  - `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt` (수정)
+  - `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueApplicationServiceTransitionTest.kt` (수정 — 단위)
+  - `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/integration/TransitionEmitEventsPublishIntegrationTest.kt` (신규 — 통합)
+- depends-on: [1]
+
+**RED**:
+- 통합: `TransitionEmitEventsPublishIntegrationTest` (참조 `IssueTransitionValidatorEndToEndIntegrationTest` 시드 패턴 + pg16-pgmq). 전이에 CallWebhook post-action을 시드(`workflow_post_actions` INSERT) → `transitionIssue` 실행 → `q_transition_events`에서 `WebhookRequested` 1건 read. 추가: 버전 충돌 롤백 → 큐 0건, dry-run(`POST /workflows/{key}/transitions`만) → 0건, post-action 미설정 → 0건(+IssueTransitioned는 q_issue_events 정상). 실패: emitEvents가 버려져 큐 0건.
+- 단위: `IssueApplicationServiceTransitionTest`에 mock `TransitionEventPublisher` 주입 → emitEvents 보유 plan 전이 시 `publish` 호출 검증, emitEvents 빈 plan은 미호출. 실패: 미배선.
+
+**GREEN**:
+- 생성자에 **trailing nullable 기본값** `transitionEventPublisher: TransitionEventPublisher? = null` 추가(securityDirectory/issueTemplateRepository 패턴 동형 — **33개 기존 생성 지점 변경 0**, 메모리 plan-files-constructor-injection-existing-tests 회피).
+- `transitionIssue()`: `repo.applyTransition` 성공(updatedRows≠0) 직후, IssueTransitioned 발행 인근에서 `transitionEventPublisher?.let { p -> plan.emitEvents.forEach { p.publish(it) } }` (같은 클래스-레벨 @Transactional REQUIRED 안 → outbox 정합). dry-run 경로(WorkflowController.plan)는 transitionIssue 미경유라 자동 미발행.
+
+**REFACTOR**: 발행 루프를 private helper(`publishTransitionEvents(plan)`)로 추출 + KDoc. nullable fail-safe 사유 주석(prod @Component 주입, 통합테스트가 실 배선 발행 가드).
+
+**검증**: `cd backend && ./gradlew :modules:issue-tracking:test --tests '*TransitionEmitEventsPublish*' --tests '*IssueApplicationServiceTransitionTest*'`
+
+### Task 3. FR-NT-05 신규 FR 전수 동기화
+
+**메타**.
+- agent: `backend-engineer`
+- files:
+  - `docs/plan/fr-index.md`
+  - `docs/sdd/02-requirements.md`
+  - `docs/sdd/09-notification*.md` (notification 챕터 — 정확명 grep)
+  - `docs/plan/product/notification-dashboard.md`
+  - `docs/plan/README.md`
+  - `CLAUDE.md`
+- depends-on: []
+
+**RED**: `bash scripts/verify-master-plan.sh` — FR-NT-05를 일부 정본에만 추가하면 카운트 drift(exit 4). 목표는 모든 정본 123 정합 후 exit 0.
+
+**GREEN** (전수 동기화):
+- fr-index: 알림 §헤더 `(FR-NT, 4개)`→`5개`, FR-NT-05 행 추가, 합계 122→123, §A.2 notification 카운트 +1, 상단 주석 `122개`→`123개`, **FR-NT-02 행 "채널 (이메일/인앱/Webhook…)"의 stale Webhook 표기 정정**(인앱/이메일만, Webhook=FR-NT-05).
+- SDD: `02-requirements.md` FR 표에 FR-NT-05 행 + notification 챕터(§9)에 FR-NT-05 절(전이 post-action 이벤트 발행→Webhook 디스패처, PR1/PR2 분할 명시).
+- product `notification-dashboard.md`: FR-NT-05 § 추가(소속 FR 카운트·§헤더 `(FR-XX,N개)` 갱신, D단계 — PR1=발행 issue-tracking, PR2=디스패처 notification, 부분완료 마킹).
+- README §1 BC 테이블 합계(122→123, notification 행).
+- CLAUDE.md: `122 FR`/`122개` 표기 → 123.
+
+**REFACTOR**: 링크/표 정렬 일관.
+
+**검증**: `bash scripts/verify-master-plan.sh` (exit 0). 새 카운트 표기를 verify가 못 잡으면 같은 PR에서 verify 스크립트 확장(CLAUDE.md §전수 동기화).
+
+## Plan 메타
+
+- task 수: 3
+- depends-on 그래프: T1→T2 (publisher 의존), T3 독립(docs).
+- 예상 wave: Wave1 = T1(code)+T3(docs) 병렬, Wave2 = T2. 단 T1·T2는 issue-tracking test 컴파일 단위 공유라 실질 직렬(메모리 bts-plan-wave-gradle-module-compile).
+- TDD 강제: yes (T1/T2). T3는 verify-master-plan green이 게이트.
+- 추가 검증: ktlintCheck/detekt --rerun-tasks(메모리 — 에이전트 lint false-green 불신, controller 직접 재검증), verify-master-plan.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
