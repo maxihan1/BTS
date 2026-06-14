@@ -20,12 +20,13 @@ const CENTER_CLASS = 'centerNode'
 
 /**
  * center 노드 mermaid classDef 선언 라인.
- * fill-opacity 분리 형식으로 mermaid 11 flowchart 파서 안전성 확보.
- * 상대 oklch(from ...) 구문은 파서가 내부 공백/슬래시를 쉼표로 오인해 Syntax error를 낸다.
- * var(--primary)는 SVG DOM 주입 후 :root 토큰으로 해석된다(WorkflowDiagram 선례 동일).
+ * mermaid flowchart classDef는 var()/oklch() 등 CSS 함수를 지원하지 않는다(stateDiagram 파서와 다름).
+ * `(-` 조합에서 토큰 오류가 발생하므로 DESIGN 토큰 대신 hex 절대값을 사용한다. 라이트 모드 전용.
+ * - fill: #e4e4e7 (zinc-200, 중립 하이라이트 틴트)
+ * - stroke: #18181b (zinc-900, --primary oklch(0.205 0 0) 근사)
  */
 const CENTER_CLASS_DEF =
-  `classDef ${CENTER_CLASS} fill:var(--primary),fill-opacity:0.15,stroke:var(--primary),stroke-width:2px`
+  `classDef ${CENTER_CLASS} fill:#e4e4e7,stroke:#18181b,stroke-width:2px`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 출력 타입
