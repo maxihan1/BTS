@@ -37,9 +37,24 @@ fr-index(FR-NT 4→5·합계 122→123·§A.2 카운트·상단 주석) + SDD(§
 - **관련 ADR**: [docs/decisions/2026-06-14-fr-nt-05-transition-event-outbox.md](../decisions/2026-06-14-fr-nt-05-transition-event-outbox.md) (생성) · [2026-06-12-notification-inapp-channel-delivery.md](../decisions/2026-06-12-notification-inapp-channel-delivery.md) (정정 노트 추가)
 - **PR 2(후속)**: notification BC가 발행된 WebhookRequested를 소비 + 외부 URL HTTP POST 디스패처.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-14-fr-nt-05-transition-event-publish.md](../specs/2026-06-14-fr-nt-05-transition-event-publish.md)
+
+핵심 요약.
+- `transitionIssue()`가 `applyTransition` 성공 직후 같은 트랜잭션에서 `plan.emitEvents` **전부**를 신규 큐 `q_transition_events`에 발행(generic outbox). 현재는 버려짐.
+- 신규 `TransitionEventPublisher`(@Component, MANDATORY) — `IssueEventPublisher` 1:1 미러. Flyway V022로 `q_transition_events` 큐 생성 + init_codegen 미러.
+- bulk 전이는 `transitionIssue()` 경유라 자동 커버. dry-run·롤백은 미발행. post-action 미설정 시 no-op(현 default).
+- 신규 FR → fr-index/SDD/product/README/CLAUDE 전수 동기화(FR-NT 4→5, 122→123) + verify-master-plan 통과.
+
+**Maxi 확인 포인트(게이트 1)**:
+- (1) generic 발행(모든 emitEvents 4종) vs WebhookRequested만 — 권장 generic(ADR "4종 공통"+근본 결함 수정, shared-kernel KDoc 계약).
+- (2) 전용 큐 `q_transition_events` 신규 — 권장(q_issue_events 오염 회피).
+- (3) post-action fieldChanges 미적용은 범위 밖(별개 기능)으로 분리.
+
+## Brainstorming Check
+
+✅ 통과 (직접 비판적 gap 분석 — backend 직접 스펙). 코드 실측 검증: TransitionResult→emitEvents 운반·KDoc 계약 확인, bulk 단일 변경점, createIssue 범위 밖, 전용 큐 필요, IT 참조 패턴 확보.
 
 ## Plan (← /bts-plan 채움)
 
