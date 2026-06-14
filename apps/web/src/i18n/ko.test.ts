@@ -268,3 +268,95 @@ describe('issueLinkStrings — 이슈 링크 패널 문자열 (FR-LK-01 D6)', ()
     }
   })
 })
+
+// ── linkGraphStrings ───────────────────────────────────────────────────────────
+
+import { linkGraphStrings } from './ko'
+
+type LinkGraphStrings = typeof linkGraphStrings
+
+describe('linkGraphStrings — 링크 그래프 UI 문자열 (FR-LK-02 D6)', () => {
+  it('sectionTitle 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('sectionTitle')
+  })
+
+  it('expandLabel 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('expandLabel')
+  })
+
+  it('collapseLabel 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('collapseLabel')
+  })
+
+  it('depthLabel 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('depthLabel')
+  })
+
+  it('depthOption1 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('depthOption1')
+  })
+
+  it('depthOption2 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('depthOption2')
+  })
+
+  it('depthOption3 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('depthOption3')
+  })
+
+  it('emptyState 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('emptyState')
+  })
+
+  it('truncatedNotice 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('truncatedNotice')
+  })
+
+  it('loadingState 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('loadingState')
+  })
+
+  it('renderError 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('renderError')
+  })
+
+  it('loadError 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('loadError')
+  })
+
+  it('notFound 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('notFound')
+  })
+
+  it('edgeBlocks 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('edgeBlocks')
+  })
+
+  it('edgeRelates 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('edgeRelates')
+  })
+
+  it('edgeDuplicates 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('edgeDuplicates')
+  })
+
+  it('edgeClones 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('edgeClones')
+  })
+
+  it('edgeParent 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('edgeParent')
+  })
+
+  it('nodeAriaLabel 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('nodeAriaLabel')
+  })
+
+  it('모든 문자열 값은 콜론으로 끝나지 않는다 (글로벌 §5)', () => {
+    for (const value of Object.values(linkGraphStrings)) {
+      if (typeof value === 'string') {
+        expect(value, `"${value}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+      }
+    }
+  })
+})
