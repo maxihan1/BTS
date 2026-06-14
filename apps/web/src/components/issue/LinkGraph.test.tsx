@@ -8,7 +8,10 @@ import type { JSX, ReactNode } from 'react'
 // ─────────────────────────────────────────────────────────────────────────────
 // mermaid mock — jsdom 환경에서 실제 SVG 렌더 불가
 // WorkflowDiagram.test.tsx 패턴 그대로.
-// 실제 flowchart 출력 구조를 모사: 노드 <g class="node" data-id="node_0"> + 키 텍스트
+// 실제 mermaid v11.15.0 출력 구조 반영:
+//   - id = "link-graph-<timestamp>-flowchart-node_N-0" (mermaid.render id prefix 포함)
+//   - data-id 속성 없음 (mermaid v11.15.0 미출력)
+// 이 형식에서 ^flowchart- 앵커는 prefix 때문에 불일치 → 앵커 제거 후 suffix 매칭 필요.
 // ─────────────────────────────────────────────────────────────────────────────
 
 vi.mock('mermaid', () => ({
@@ -16,10 +19,10 @@ vi.mock('mermaid', () => ({
     initialize: vi.fn(),
     render: vi.fn().mockResolvedValue({
       svg: `<svg>
-        <g class="node" data-id="node_0" id="flowchart-node_0-1">
+        <g class="node" id="link-graph-1781446390512-flowchart-node_0-0">
           <text>ATLAS-1</text>
         </g>
-        <g class="node" data-id="node_1" id="flowchart-node_1-2">
+        <g class="node" id="link-graph-1781446390512-flowchart-node_1-0">
           <text>ATLAS-2</text>
         </g>
       </svg>`,
@@ -316,15 +319,15 @@ describe('LinkGraph', () => {
     await renderLinkGraph()
     await userEvent.click(screen.getByRole('button', { name: '그래프 펼치기' }))
 
-    // mermaid SVG 주입 대기
+    // mermaid SVG 주입 대기 — 핸들러가 바인딩돼 role=link가 부여될 때까지
     await waitFor(() => {
-      // 모의 SVG의 node_1은 ATLAS-2 (비center)
-      const node1 = document.querySelector('[data-id="node_1"]')
+      // 모의 SVG의 node_1은 ATLAS-2 (비center) — 핸들러 바인딩 후 role=link 부여됨
+      const node1 = document.querySelector('[role="link"]')
       expect(node1).not.toBeNull()
     })
 
-    // 비 center 노드(ATLAS-2, node_1) 클릭
-    const node1 = document.querySelector('[data-id="node_1"]')
+    // 비 center 노드(ATLAS-2, node_1) 클릭 — role=link가 바인딩된 노드
+    const node1 = document.querySelector('[role="link"]')
     if (node1 === null) throw new Error('node_1 not found')
     fireEvent.click(node1)
 
@@ -333,9 +336,9 @@ describe('LinkGraph', () => {
       params: { key: 'ATLAS-2' },
     })
 
-    // center 노드(ATLAS-1, node_0) 클릭 → no-op
+    // center 노드(ATLAS-1, node_0) 클릭 → no-op (role=link 없음)
     mockNavigate.mockClear()
-    const node0 = document.querySelector('[data-id="node_0"]')
+    const node0 = document.querySelector('g.node:not([role="link"])')
     if (node0 === null) throw new Error('node_0 not found')
     fireEvent.click(node0)
 
@@ -354,11 +357,11 @@ describe('LinkGraph', () => {
     await userEvent.click(screen.getByRole('button', { name: '그래프 펼치기' }))
 
     await waitFor(() => {
-      const node1 = document.querySelector('[data-id="node_1"]')
+      const node1 = document.querySelector('[role="link"]')
       expect(node1).not.toBeNull()
     })
 
-    const node1 = document.querySelector('[data-id="node_1"]')
+    const node1 = document.querySelector('[role="link"]')
     if (node1 === null) throw new Error('node_1 not found')
 
     // a11y 속성 확인
