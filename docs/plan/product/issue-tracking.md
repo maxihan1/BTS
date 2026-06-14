@@ -425,8 +425,8 @@
 - [x] D3. 데이터 모델 — (활용) (책임. db-engineer) — PR #138 (신규 스키마 없음, issue_links+parent_id 읽기 쿼리만)
 - [x] D4. 백엔드 — `GET /api/v1/issues/{key}/graph` (책임. backend-engineer) — PR #138 (?depth=1..3 기본 2, 노드 상한 100+truncated)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #138 (repo 통합/service 단위/controller HTTP 통합, 400 INVALID_DEPTH 스코프 검증)
-- [ ] D6. 프론트 UI — SVG 또는 force-directed lib (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — mermaid flowchart 시각화 (책임. frontend-engineer) — PR #142 (ADR mermaid 채택, lazy 펼침+depth 1~3+노드 클릭 내비게이션+a11y, 새 의존성 0)
+- [x] D7. E2E (책임. qa-engineer) — PR #142 (펼치기/depth 전환/빈/truncated/노드 클릭·키보드 이동 6 시나리오, mermaid flowchart 실렌더 결함 3건 적발·hot-fix)
 
 ## §6 이슈 이동 (FR-MV, 2개)
 
