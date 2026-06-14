@@ -231,27 +231,30 @@ function bindNodeHandlers(
 }
 
 /**
- * SVG <g class="node"> 요소에서 sanitizedId를 추출한다.
+ * SVG `<g class="node">` 요소에서 sanitizedId를 추출한다.
  *
- * - `data-id` 속성 존재 시 그 값을 반환.
- * - 없으면 `id` 속성에서 `flowchart-<sanitizedId>-<n>` 패턴으로 추출.
+ * - `data-id` 속성 존재 시 그 값을 반환 (mermaid v11 표준 경로).
+ * - 없으면 `id` 속성에서 `flowchart-<sanitizedId>-<n>` 패턴으로 추출 (fallback).
  *
- * @param el SVG <g> 요소
- * @returns sanitizedId 문자열 (node_N) 또는 null
+ * mermaid는 노드 id를 `data-id` 에 원본 값으로 보존하므로 이를 우선한다.
+ * 구버전 또는 일부 렌더 출력에서 `data-id` 가 없을 때 `id` 속성 fallback이 작동한다.
+ *
+ * @param el SVG `<g class="node">` 요소
+ * @returns sanitizedId 문자열 (node_N 형식) 또는 null
  */
 function resolveSanitizedId(el: SVGGElement): string | null {
+  // data-id 우선 사용
   const dataId = el.getAttribute('data-id')
   if (dataId !== null && dataId.length > 0) {
     return dataId
   }
 
-  // id 속성에서 flowchart-<sanitizedId>-<n> 패턴 추출
+  // id 속성 fallback: "flowchart-node_N-숫자" 패턴에서 node_N 부분 추출
   const idAttr = el.getAttribute('id')
   if (idAttr === null) {
     return null
   }
 
-  // 패턴: flowchart-node_N-숫자
   const match = /^flowchart-(node_\d+)-\d+$/.exec(idAttr)
   if (match === null) {
     return null
