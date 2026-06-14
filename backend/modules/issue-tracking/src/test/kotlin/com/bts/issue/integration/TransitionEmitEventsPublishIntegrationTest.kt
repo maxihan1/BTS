@@ -95,7 +95,6 @@ import java.util.concurrent.Executors
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TransitionEmitEventsPublishIntegrationTest {
-
     // ── Spring Bean 구성 ──────────────────────────────────────────────────────
 
     @Configuration
@@ -606,6 +605,8 @@ class TransitionEmitEventsPublishIntegrationTest {
             }
         }
 
+    // workflow_states 컬럼과 1:1 대응하는 테스트 시드 헬퍼라 파라미터 수가 컬럼 수를 따른다.
+    @Suppress("LongParameterList")
     private fun insertWorkflowState(
         conn: Connection,
         workflowId: UUID,

@@ -113,7 +113,15 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
     )
 
     beforeEach {
-        clearMocks(repo, eventPublisher, permissionResolver, workflowPort, workflowKeyResolver, transitionEventPublisher, answers = false)
+        clearMocks(
+            repo,
+            eventPublisher,
+            permissionResolver,
+            workflowPort,
+            workflowKeyResolver,
+            transitionEventPublisher,
+            answers = false,
+        )
         // withSingleDetail() 내부에서 findActiveComponentIdsByIssue 호출 — 단건 응답 테스트 기본 stub
         every { repo.findActiveComponentIdsByIssue(any()) } returns emptyList()
         every { repo.findAffectsVersionIdsByIssue(any()) } returns emptyList()
