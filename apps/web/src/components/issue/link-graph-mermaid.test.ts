@@ -152,27 +152,19 @@ describe('generateGraphMermaidCode', () => {
       expect(code).toContain(`class ${centerId!} centerNode`)
     })
 
-    it('centerNode classDef는 파서 안전 형식이다 — fill-opacity 분리, oklch(from ... 없음', () => {
+    it('centerNode classDef는 flowchart 파서 안전 형식이다 — CSS 함수(var/oklch/rgb 등) 금지, fill은 hex', () => {
       const result = generateGraphMermaidCode(SIMPLE_GRAPH, EDGE_LABELS)
       expect(result).not.toBeNull()
       const { code } = result!
-      // 파서 안전성 회귀 가드 1: 상대 oklch 구문이 없어야 한다
-      expect(code).not.toContain('oklch(from')
-      // 파서 안전성 회귀 가드 2: classDef 라인의 각 style 값에 내부 공백이 없어야 한다
       const classDefLine = code.split('\n').find((l) => l.includes('classDef centerNode'))
       expect(classDefLine).toBeDefined()
-      // "classDef centerNode " 이후 style 블록 추출
-      const styleBlock = classDefLine!.replace(/^\s*classDef\s+centerNode\s+/, '')
-      // 콤마로 나눈 각 key:value 쌍에서 value 부분에 공백이 없어야 한다
-      for (const pair of styleBlock.split(',')) {
-        const colonIdx = pair.indexOf(':')
-        if (colonIdx !== -1) {
-          const value = pair.slice(colonIdx + 1)
-          expect(value).not.toMatch(/\s/)
-        }
-      }
-      // 파서 안전성 회귀 가드 3: 새 형식(fill-opacity 속성)을 포함한다
-      expect(code).toContain('fill-opacity:')
+      // 회귀 가드 1: classDef 라인에 `(` 문자가 없어야 한다
+      // var(...), oklch(...), rgb(...) 등 CSS 함수는 mermaid flowchart 파서가 지원하지 않는다.
+      // stateDiagram 파서와 달리 flowchart 파서는 `(-` 조합에서 토큰 오류를 낸다.
+      expect(classDefLine).not.toContain('(')
+      // 회귀 가드 2: fill 값이 hex(#)로 시작한다
+      const fillMatch = /fill:(#[0-9a-fA-F]+)/.exec(classDefLine!)
+      expect(fillMatch).not.toBeNull()
     })
   })
 
