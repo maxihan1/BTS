@@ -183,3 +183,16 @@ classify 결과: type=ui(E2E 키워드로 qa 오판정 → ui 교정, FR-LK-01 �
 - N1. 노드 라벨은 이슈 키만 표시(summary 미표시). 단순성 우선으로 적절. 필요 시 summary를 mermaid 노드 tooltip으로 보강 가능(후속).
 
 **BLOCKER: 없음.**
+
+### 구현 중 발견 결함 (E2E가 적발, hot-fix 완료)
+
+> CONCERN C1(노드 id 변형) + D7 E2E가 실브라우저에서 잡은 mermaid flowchart 결함 3건. 단위테스트(mermaid mock)는 모두 통과했으나 실 mermaid v11.15.0에서 드러남 — **시각화는 E2E 실렌더 검증이 필수**라는 교훈.
+
+1. **flowchart classDef가 `oklch(from var(--primary) ...)` 상대 색상 거부** — 값 내부 공백/함수로 파싱 실패(SVG 미렌더). 1차 hot-fix: var() 형식으로 교체(de3bb871). → 여전히 실패.
+2. **flowchart classDef가 `var()`/`oklch()` CSS 함수 자체를 거부** — flowchart 파서는 stateDiagram 파서(WorkflowDiagram)와 별개로 CSS 함수 미지원. `var(` 의 `(--` 토큰화 실패. 2차 hot-fix: **hex 절대값** `fill:#e4e4e7,stroke:#18181b,stroke-width:2px`(2fae8a07). 회귀 가드: classDef 값에 `(` 문자 금지. **deviation**: mermaid flowchart classDef는 DESIGN 토큰(var/oklch) 사용 불가 → hex(라이트 모드 전용, NFR-4).
+3. **`resolveSanitizedId` 정규식 `^flowchart-...$` 앵커가 실 mermaid 노드 id와 불일치** — `mermaid.render(id, code)`에 넘긴 `id`가 노드 id의 prefix로 붙어(`link-graph-<ts>-flowchart-node_0-0`) `^` 앵커가 실패 + v11.15.0은 `data-id` 미출력. hot-fix: 앵커 제거(suffix 매칭, 887911dc) + **단위테스트 mock을 실 mermaid id 형식으로 교정**(앵커 버그를 단위테스트로도 재현 → 회귀 본질 차단).
+
+최종: E2E 6/6(G5 노드 클릭·G6 키보드 실검증 포함) + 회귀 9/9, 단위 2768/2768, lint/typecheck 클린.
+
+### NOTE 추가 (codereview 검토)
+- `LinkGraph.tsx` 452줄로 §2.2 컴포넌트 200줄 가이드 초과 — codereview에서 서브컴포넌트/DOM helper 분리 검토.
