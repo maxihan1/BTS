@@ -13,6 +13,7 @@ import com.bts.workflow.postaction.PostActionValidationException
 import com.bts.workflow.scheme.web.WorkflowSchemeExceptionHandler
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
@@ -103,6 +104,7 @@ class PostActionControllerTest {
     @BeforeEach
     fun setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(wac).build()
+        clearMocks(service, permissionResolver)
     }
 
     // ── GET ───────────────────────────────────────────────────────────────────
