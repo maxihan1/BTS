@@ -16,7 +16,20 @@
 
 classify 결과: type=ui(E2E 키워드로 qa 오판정 → ui 교정, FR-LK-01 선례), agent=frontend-engineer, primary_bc=issue-tracking.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**: issue-tracking (프론트엔드)
+- **영향 엔티티**: 없음 (읽기 전용 시각화 — 백엔드 graph 엔드포인트 #138 소비만)
+- **새 용어**: 없음. glossary "링크"(이슈 간 의존/연관) 그대로 사용. 그래프=center 이슈 기준 depth 제한 BFS 이웃.
+- **백엔드 계약 (확정, #138)**:
+  - `GET /api/v1/issues/{key}/graph?depth={1..3}` (기본 2)
+  - 응답 `DataResponse<{ center, depth, nodes:[{key,summary,statusKey,depth}], edges:[{from,to,type}], truncated }>`
+  - edge.type 대문자 5종: BLOCKS / RELATES / DUPLICATES / CLONES / PARENT (parent 엣지는 from=부모/to=자식)
+  - node depth = BFS 최단거리(center=0). NODE_CAP=100 초과 시 truncated=true
+  - 비정수/범위밖 depth → 400 INVALID_DEPTH, 이슈 없음 → 404 ISSUE_NOT_FOUND
+- **시각화 기술 결정**: **mermaid flowchart** (Maxi 확정 2026-06-14). 새 의존성 0(mermaid ^11.4.0 기설치), WorkflowDiagram 패턴(동적 import→SVG 주입→fallback→aria-label) 재사용. force-directed lib는 새 의존성+jsdom 테스트 곤란으로 폐기.
+- **기존 결정 충돌**: 없음. [[2026-06-13-issue-link-vs-parent-child-separation]] 위에서 graph는 issue_links 4종 + parent_id를 모두 엣지로 통합 표시(읽기 전용이라 충돌 없음).
+- **관련 ADR**: [docs/decisions/2026-06-14-link-graph-mermaid-visualization.md](../decisions/2026-06-14-link-graph-mermaid-visualization.md) (생성됨)
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
