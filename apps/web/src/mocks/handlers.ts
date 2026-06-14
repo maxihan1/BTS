@@ -18,6 +18,7 @@ import { issueTypeHandlers } from './issue-type-handlers'
 import { labelHandlers } from './label-handlers'
 import { mfaHandlers } from './mfa-handlers'
 import { notificationPolicyHandlers } from './notification-policy-handlers'
+import { postActionHandlers } from './post-action-handlers'
 import { passwordHandlers } from './password-handlers'
 import { projectLeadHandlers } from './project-lead-handlers'
 import { projectMemberHandlers } from './project-member-handlers'
@@ -61,6 +62,7 @@ export const handlers = [
   ...labelHandlers,
   ...mfaHandlers,
   ...notificationPolicyHandlers,
+  ...postActionHandlers,
   ...passwordHandlers,
   ...projectLeadHandlers,
   ...projectMemberHandlers,

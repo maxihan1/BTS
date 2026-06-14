@@ -1,0 +1,221 @@
+// FR-NT-05 D7 E2E — 워크플로우 전이 post-action CRUD + 비admin 게이팅
+import { test, expect } from '@playwright/test'
+import { postActionLabels } from '../src/i18n/post-action-labels'
+import { E2E_IS_SYSTEM_ADMIN_KEY } from '../src/mocks/auth-handlers'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 상수
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 테스트에 사용할 워크플로우 키 — workflow-fixtures.ts의 simple 워크플로우 (3전이로 select 선택 단순) */
+const WORKFLOW_KEY = 'simple'
+
+/**
+ * simple 워크플로우의 첫 번째 전이 display name — 전이 선택 드롭다운에서 이 텍스트 선택.
+ * workflow-fixtures.ts: { key: 'todo__doing', name: 'Start', ... }
+ */
+const TRANSITION_NAME = 'Start'
+
+const labels = postActionLabels
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 헬퍼 — FR-AU-07 identifier-first 2단계 로그인
+// session-fixtures.ts의 loginAsAlice 패턴과 동일 (2단계 흐름)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * alice(Local provider)로 2단계 로그인 후 /dashboard 도달.
+ * auth-fixtures.ts: alice.isSystemAdmin=false (기본값).
+ * isSystemAdmin 토글이 필요한 경우 addInitScript로 localStorage 플래그 선설정 후 호출.
+ */
+async function loginAsAlice(page: import('@playwright/test').Page): Promise<void> {
+  await page.goto('/login')
+  await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
+
+  // 1단계: 이메일 입력 + "계속" — example.com 미등록 도메인 → 2단계 진입
+  await page.getByLabel('이메일').fill('alice@example.com')
+  await page.getByRole('button', { name: '계속', exact: true }).click()
+
+  // 2단계: provider 드롭다운 대기 후 Local 선택
+  const providerSelect = page.getByRole('combobox', { name: '로그인 방식' })
+  await expect(providerSelect).toBeVisible()
+  await expect(providerSelect).not.toBeDisabled()
+  await providerSelect.click()
+  await page.getByRole('option', { name: 'Local', exact: true }).click()
+
+  // 2단계: username + password 입력 후 로그인
+  await page.getByLabel('사용자명').fill('alice')
+  await page.getByLabel('비밀번호').fill('password')
+  await page.getByRole('button', { name: '로그인', exact: true }).click()
+  await page.waitForURL('**/dashboard')
+}
+
+/**
+ * MSW post-action store를 초기화한다.
+ * GET 요청에 X-MSW-Reset-Post-Actions: true 헤더를 포함해 호출.
+ * 각 테스트 beforeEach에서 호출해 테스트 격리 보장.
+ */
+async function resetPostActionStore(page: import('@playwright/test').Page): Promise<void> {
+  await page.evaluate(async () => {
+    await fetch(
+      `/api/v1/workflows/simple/transitions/todo__doing/post-actions`,
+      { headers: { 'X-MSW-Reset-Post-Actions': 'true' } },
+    )
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 시나리오 1 — SYSTEM_ADMIN CRUD 전체 경로
+//
+// Given: SYSTEM_ADMIN 사용자(alice + E2E_IS_SYSTEM_ADMIN 플래그)로 로그인
+// When: /workflows/simple 진입 → post-action 섹션 노출 확인
+//       → 전이 선택 → Webhook 추가 → url/method 저장
+//       → 목록에 행 표시 → 행 수정(url 변경) → 반영 확인 → 삭제 → 목록에서 사라짐
+// Then: 각 단계 assertion 통과
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('FR-NT-05 post-action CRUD (SYSTEM_ADMIN)', () => {
+  test.beforeEach(async ({ page }) => {
+    // isSystemAdmin 플래그를 goto 전에 심어 whoami 핸들러가 true 반환
+    // (e2e-msw-scenario-toggle-localstorage-flag, msw-derived-behavior-shared-store-e2e)
+    await page.addInitScript((key) => {
+      localStorage.setItem(key, 'true')
+    }, E2E_IS_SYSTEM_ADMIN_KEY)
+
+    await loginAsAlice(page)
+
+    // store 초기화 — 테스트 격리
+    await resetPostActionStore(page)
+  })
+
+  test.afterEach(async ({ page }) => {
+    // isSystemAdmin 플래그 정리 — 다른 테스트에 누수되지 않도록
+    await page.evaluate((key) => {
+      localStorage.removeItem(key)
+    }, E2E_IS_SYSTEM_ADMIN_KEY)
+  })
+
+  test('T1 post-action 섹션이 SYSTEM_ADMIN에게 노출된다', async ({ page }) => {
+    // Given: SYSTEM_ADMIN으로 로그인 완료 (beforeEach)
+    // When: /workflows/simple 진입
+    await page.goto(`/workflows/${WORKFLOW_KEY}`)
+
+    // 워크플로우 다이어그램 렌더 대기
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('단순 워크플로우')
+
+    // Then: post-action 섹션 제목 노출
+    await expect(page.getByText(labels.section.title)).toBeVisible()
+
+    // Then: 전이 선택 드롭다운 노출
+    await expect(page.getByLabel(labels.section.transitionSelectLabel)).toBeVisible()
+
+    // Then: "Webhook 추가" 버튼 노출
+    await expect(
+      page.getByRole('button', { name: labels.section.addWebhookButton, exact: true }),
+    ).toBeVisible()
+  })
+
+  test('T2 Webhook 추가 → 목록 표시 → 수정 → 삭제 전체 CRUD', async ({ page }) => {
+    // Given: SYSTEM_ADMIN으로 로그인, /workflows/simple 진입
+    await page.goto(`/workflows/${WORKFLOW_KEY}`)
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('단순 워크플로우')
+    await expect(page.getByText(labels.section.title)).toBeVisible()
+
+    // ── When 1. 전이 선택 ─────────────────────────────────────────────────
+    const transitionSelect = page.getByLabel(labels.section.transitionSelectLabel)
+    await transitionSelect.selectOption({ label: TRANSITION_NAME })
+
+    // Then 1. 빈 상태 안내 노출 (아직 post-action 없음)
+    await expect(page.getByText(labels.list.emptyState)).toBeVisible()
+
+    // ── When 2. "Webhook 추가" 클릭 → 다이얼로그 오픈 ────────────────────
+    await page.getByRole('button', { name: labels.section.addWebhookButton, exact: true }).click()
+
+    // Then 2. create 다이얼로그 제목 노출
+    await expect(page.getByText(labels.dialog.createTitle)).toBeVisible()
+
+    // ── When 3. url + method 입력 후 저장 ───────────────────────────────
+    const webhookUrl = 'https://hooks.example.com/test-webhook'
+    await page.getByLabel(labels.form.urlLabel).fill(webhookUrl)
+
+    // method select — POST 선택
+    const methodSelect = page.getByLabel(labels.form.methodLabel)
+    await methodSelect.selectOption('POST')
+
+    await page.getByRole('button', { name: labels.dialog.createButton, exact: true }).click()
+
+    // Then 3. 다이얼로그 닫힘 + 목록에 새 행 표시
+    await expect(page.getByText(labels.dialog.createTitle)).not.toBeVisible()
+
+    // 목록 테이블 헤더 노출 (행이 생긴 것)
+    await expect(page.getByText(labels.list.typeColumn)).toBeVisible()
+
+    // CALL_WEBHOOK 행 노출
+    await expect(page.getByText('CALL_WEBHOOK')).toBeVisible()
+
+    // url이 config 컬럼에 요약 표시
+    await expect(page.getByText(webhookUrl, { exact: false })).toBeVisible()
+
+    // ── When 4. 수정 버튼 클릭 → edit 다이얼로그 오픈 ──────────────────
+    // "수정" 버튼이 여럿일 수 있으나 현재는 1개 — aria-label 활용
+    await page.getByRole('button', { name: /post-action 수정/, exact: false }).click()
+
+    // Then 4. edit 다이얼로그 제목 + url 프리필 확인
+    await expect(page.getByText(labels.dialog.editTitle)).toBeVisible()
+    const urlInput = page.getByLabel(labels.form.urlLabel)
+    await expect(urlInput).toHaveValue(webhookUrl)
+
+    // ── When 5. url 변경 후 저장 ─────────────────────────────────────────
+    const updatedUrl = 'https://hooks.example.com/updated-webhook'
+    await urlInput.fill(updatedUrl)
+    await page.getByRole('button', { name: labels.dialog.saveButton, exact: true }).click()
+
+    // Then 5. 다이얼로그 닫힘 + 목록에 변경된 url 반영
+    await expect(page.getByText(labels.dialog.editTitle)).not.toBeVisible()
+    await expect(page.getByText(updatedUrl, { exact: false })).toBeVisible()
+    await expect(page.getByText(webhookUrl, { exact: false })).not.toBeVisible()
+
+    // ── When 6. 삭제 버튼 클릭 ──────────────────────────────────────────
+    await page.getByRole('button', { name: /post-action 삭제/, exact: false }).click()
+
+    // Then 6. 목록에서 사라지고 빈 상태 안내 재노출
+    await expect(page.getByText('CALL_WEBHOOK')).not.toBeVisible()
+    await expect(page.getByText(labels.list.emptyState)).toBeVisible()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 시나리오 2 — 비admin(isSystemAdmin=false) 미노출
+//
+// Given: alice(isSystemAdmin=false 기본값)로 로그인
+// When: /workflows/simple 진입
+// Then: post-action 섹션 미노출, 다이어그램은 정상 표시
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('FR-NT-05 post-action 섹션 비admin 미노출', () => {
+  test('T3 비admin 사용자에게는 post-action 섹션이 노출되지 않는다', async ({ page }) => {
+    // Given: isSystemAdmin 플래그 없이 기본 alice(isSystemAdmin=false)로 로그인
+    await loginAsAlice(page)
+
+    // When: /workflows/simple 진입
+    await page.goto(`/workflows/${WORKFLOW_KEY}`)
+
+    // 다이어그램은 정상 노출 (read-only는 누구나 볼 수 있음)
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('단순 워크플로우')
+    await page.waitForSelector('[aria-label*="다이어그램"] svg', {
+      state: 'visible',
+      timeout: 10_000,
+    })
+
+    // Then: post-action 섹션 제목 미노출
+    await expect(page.getByText(labels.section.title)).not.toBeVisible()
+
+    // Then: "Webhook 추가" 버튼 미노출
+    await expect(
+      page.getByRole('button', { name: labels.section.addWebhookButton, exact: true }),
+    ).not.toBeVisible()
+
+    // Then: 전이 선택 드롭다운 미노출
+    await expect(page.getByLabel(labels.section.transitionSelectLabel)).not.toBeVisible()
+  })
+})
