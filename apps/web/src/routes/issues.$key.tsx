@@ -28,6 +28,7 @@ import { downloadIssuePdf } from '@/api/issues'
 import { triggerBlobDownload } from '@/lib/download'
 import { IssueChangelog } from '@/components/issue/IssueChangelog'
 import { IssueLinksPanel } from '@/components/issue/IssueLinksPanel'
+import { LinkGraph } from '@/components/issue/LinkGraph'
 import { IssueDescription } from '@/components/issue/IssueDescription'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
@@ -669,6 +670,9 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
         parent={issue.parent ?? null}
         disabled={!canEdit}
       />
+
+      {/* 링크 그래프 섹션 — 2단 grid 바깥 전체폭 (FR-LK-02 D6) */}
+      <LinkGraph issueKey={issue.key} />
 
       {/* 변경 이력 섹션 — 2단 grid 바깥 전체폭 (FR-HS-02 Task F5) */}
       <IssueChangelog
