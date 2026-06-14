@@ -4,9 +4,11 @@
  * post-action(CALL_WEBHOOK) 폼/다이얼로그 UI가 E2E 셀렉터로 노출하는 한국어 라벨/텍스트.
  *
  * - PR #22 §F4 학습 — E2E 가 i18n 정본 참조해 hardcoded string drift 차단
- * - 그룹 — dialog / form
+ * - 그룹 — dialog / form / section / list
  *   - dialog: 제목·버튼 계열 (E2E getByRole 기준)
  *   - form: 필드 라벨·placeholder·에러 메시지 (E2E getByLabelText·getByText 기준)
+ *   - section: PostActionConfigSection 제목·전이선택·추가버튼 계열
+ *   - list: 목록 테이블 헤더·빈 상태·수정/삭제 버튼 계열
  */
 export const postActionLabels = {
   /** 다이얼로그 제목 및 액션 버튼 텍스트 */
@@ -39,6 +41,36 @@ export const postActionLabels = {
     errorUrlInvalid: 'URL은 http:// 또는 https://로 시작해야 합니다.',
     /** method 필드 — 빈값 에러 메시지 */
     errorMethodRequired: '메서드를 선택해 주세요.',
+  },
+
+  /** 섹션 제목·전이 선택·버튼 계열 (PostActionConfigSection 기준) */
+  section: {
+    /** 섹션 제목 */
+    title: 'Post-Action 설정',
+    /** 전이 선택 select label */
+    transitionSelectLabel: '전이 선택',
+    /** 전이 미선택 시 placeholder 옵션 텍스트 */
+    transitionSelectPlaceholder: '전이를 선택하세요',
+    /** Webhook 추가 버튼 텍스트 */
+    addWebhookButton: 'Webhook 추가',
+  },
+
+  /** post-action 목록 테이블 헤더·빈 상태 (PostActionConfigSection 기준) */
+  list: {
+    /** type 컬럼 헤더 */
+    typeColumn: '유형',
+    /** config 컬럼 헤더 (url/method 요약) */
+    configColumn: '설정',
+    /** displayOrder 컬럼 헤더 */
+    orderColumn: '순서',
+    /** 액션 컬럼 헤더 */
+    actionColumn: '액션',
+    /** 0건일 때 빈 상태 안내 문구 */
+    emptyState: '등록된 post-action이 없습니다.',
+    /** 행 수정 버튼 텍스트 */
+    editButton: '수정',
+    /** 행 삭제 버튼 텍스트 */
+    deleteButton: '삭제',
   },
 } as const
 
