@@ -83,16 +83,16 @@
 
 ### §2.5 FR-NT-05 — Webhook 알림 채널 (전이 post-action 이벤트 발행 + HTTP POST 디스패처)
 
-**우선순위**. 중간 | **선행**. §2.1, §2.2 | **분리 근거**. FR-NT-02에서 분리 (ADR `2026-06-14-fr-nt-05-transition-event-outbox.md`) | **Plan slug**. `fr-nt-05-transition-event-publish`
+**우선순위**. 중간 | **선행**. §2.1, §2.2 | **분리 근거**. FR-NT-02에서 분리 (ADR `2026-06-14-fr-nt-05-transition-event-outbox.md`) | **Plan slug**. `fr-nt-05-transition-event-publish`(PR1) · `fr-nt-05-webhook-dispatcher`(PR2)
 
-**범위**. cross-BC라 PR 2개로 분할. PR 1 (issue-tracking BC) — 전이 post-action emitEvents를 `q_transition_events` pgmq 큐에 발행하는 파이프라인. PR 2 (notification BC) — `WebhookRequested` 소비 + 외부 URL HTTP POST 디스패처.
+**범위**. cross-BC라 PR 2개로 분할. PR 1 (issue-tracking BC) — 전이 post-action emitEvents를 `q_transition_events` pgmq 큐에 발행하는 파이프라인. PR 2 (notification BC) — `WebhookRequested` 소비 + 외부 URL HTTP POST 디스패처. **백엔드(D1~D5)는 PR2로 완성.** D6/D7(워크플로우 post-action 설정 UI)은 project-workflow BC post-action CRUD API 신설이 선행 필요(현재 YAML seed 전용)하여 후속 PR로 분리 — FR-NT-05는 그때까지 `[~]`(백엔드 완성).
 
-- [~] D1. 도메인 — TransitionEventPublisher (책임. backend-engineer) — PR #140 (PR 1, issue-tracking)
-- [~] D2. 명세 — 큐/이벤트 계약 (`q_transition_events`, DomainEvent 직렬화) (책임. backend-engineer) — PR #140
-- [~] D3. 데이터 모델 — Flyway V022 `q_transition_events` 큐 생성 + init_codegen 미러 (책임. db-engineer) — PR #140
-- [~] D4. 백엔드 — `transitionIssue()` emitEvents 배선 (PR 1) + WebhookRequested HTTP POST 디스패처 (PR 2, notification BC) (책임. backend-engineer)
-- [~] D5. 백엔드 테스트 — Testcontainers: 전이→큐 enqueue 확인, 롤백→0건, dry-run→0건 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 워크플로우 post-action 설정 UI (책임. designer → frontend-engineer)
+- [x] D1. 도메인 — TransitionEventPublisher (책임. backend-engineer) — PR #140 (PR 1, issue-tracking)
+- [x] D2. 명세 — 큐/이벤트 계약 (`q_transition_events`, DomainEvent 직렬화) (책임. backend-engineer) — PR #140
+- [x] D3. 데이터 모델 — Flyway V022 `q_transition_events` 큐 생성 + init_codegen 미러 (책임. db-engineer) — PR #140
+- [x] D4. 백엔드 — `transitionIssue()` emitEvents 배선 (PR 1) + WebhookRequested HTTP POST 디스패처 (PR 2, notification BC: WebhookDispatchWorker/WebhookDispatcher/WebhookUrlValidator) (책임. backend-engineer) — PR2
+- [x] D5. 백엔드 테스트 — Testcontainers: 전이→큐 enqueue 확인(PR1) + WebhookRequested 소비→HTTP POST/SSRF 차단/생명주기(PR2) (책임. backend-engineer) — PR2
+- [ ] D6. 프론트 UI — 워크플로우 post-action 설정 UI (선행. project-workflow post-action CRUD API 신설) (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
 ## §3 대시보드 (FR-DB, 3개)
