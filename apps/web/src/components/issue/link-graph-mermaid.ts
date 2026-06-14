@@ -19,17 +19,13 @@ const NODE_ID_PREFIX = 'node_'
 const CENTER_CLASS = 'centerNode'
 
 /**
- * center 노드 classDef 스타일 fill — primary 색 20% 투명도.
- * DESIGN.md OKLCH 토큰 기반, WorkflowDiagram category_in_progress 선례 참조.
- */
-const CENTER_FILL = 'oklch(from var(--primary) l c h / 0.20)'
-
-/**
  * center 노드 mermaid classDef 선언 라인.
- * flowchart LR 코드 말미에 한 번 삽입된다.
+ * fill-opacity 분리 형식으로 mermaid 11 flowchart 파서 안전성 확보.
+ * 상대 oklch(from ...) 구문은 파서가 내부 공백/슬래시를 쉼표로 오인해 Syntax error를 낸다.
+ * var(--primary)는 SVG DOM 주입 후 :root 토큰으로 해석된다(WorkflowDiagram 선례 동일).
  */
 const CENTER_CLASS_DEF =
-  `classDef ${CENTER_CLASS} fill:${CENTER_FILL},stroke:var(--primary),stroke-width:2px`
+  `classDef ${CENTER_CLASS} fill:var(--primary),fill-opacity:0.15,stroke:var(--primary),stroke-width:2px`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 출력 타입
