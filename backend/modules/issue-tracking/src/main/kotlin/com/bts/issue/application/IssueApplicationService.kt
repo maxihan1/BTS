@@ -31,6 +31,7 @@ import com.bts.issue.event.IssueMentioned
 import com.bts.issue.event.IssueSoftDeleted
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.event.IssueUpdated
+import com.bts.issue.event.TransitionEventPublisher
 import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.markdown.MarkdownRenderer
@@ -126,6 +127,11 @@ class IssueApplicationService(
     // Spring 컨텍스트에서는 IssueTemplateRepository Bean 이 주입된다.
     // 기존 단위 테스트 호환을 위해 null 기본값 유지 (customFieldDefinitionRepository 패턴 동형).
     private val issueTemplateRepository: com.bts.issue.template.repository.IssueTemplateRepository? = null,
+    // 전이 post-action 이벤트(plan.emitEvents)를 q_transition_events 큐에 enqueue 하는 어댑터.
+    // prod 컨텍스트에서는 TransitionEventPublisher(@Component) Bean 이 주입된다.
+    // null 이면 발행을 skip 한다(기존 단위 테스트 호환용 fallback — customFieldDefinitionRepository 패턴 동형).
+    // 통합 테스트에서는 실 Bean 을 주입해 enqueue 경로 전체를 검증한다.
+    private val transitionEventPublisher: TransitionEventPublisher? = null,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -634,6 +640,7 @@ class IssueApplicationService(
                 occurredAt = Instant.now(clock),
             ),
         )
+        transitionEventPublisher?.let { publisher -> plan.emitEvents.forEach { publisher.publish(it) } }
         // after 는 전이 결과를 issue.copy 로 구성 — 재조회 대신 in-memory 구성하여 쿼리를 줄인다.
         val afterTransitioned =
             issue.copy(
