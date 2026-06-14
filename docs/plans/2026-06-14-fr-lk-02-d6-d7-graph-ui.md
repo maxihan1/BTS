@@ -45,6 +45,122 @@ classify 결과: type=ui(E2E 키워드로 qa 오판정 → ui 교정, FR-LK-01 �
 
 ✅ 통과 (집중 사니티 체크 1회). 발견 gap 1건 — "그래프 노드 클릭 내비게이션 포함 여부" → Maxi 결정 "포함"(2026-06-14). FR-8 + S7 + EC-8 + 완료기준에 반영. office-hours/design-shotgun은 contract-고정 FR 연속 작업이라 스킵(bts-spec-office-hours-mismatch 교훈).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> WorkflowDiagram.tsx(mermaid 동적 import→SVG 주입→fallback) + issue-links.ts(apiFetch+Zod+lazy query) 선례 재사용.
+> 단위테스트는 `vi.mock('mermaid')`(jsdom getBBox 미구현 — learnings 2026-05-23). 실제 렌더는 D7 E2E.
+
+### Task 1. i18n linkGraphStrings 추가
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/i18n/ko.ts`, `apps/web/src/i18n/ko.test.ts`]
+- depends-on: []
+
+**RED**: `ko.test.ts`에 `linkGraphStrings`가 필수 키(sectionTitle, expandLabel, collapseLabel, depthLabel, depthOptionN, emptyState, truncatedNotice, loadingState, renderError, loadError, notFound, edgeBlocks/edgeRelates/edgeDuplicates/edgeClones/edgeParent, nodeAriaLabel)를 갖는지 + 기존 콜론종결 검증에 포함되는지 단언 → `linkGraphStrings` 없어 실패.
+
+**GREEN**: `ko.ts`에 `linkGraphStrings` 객체 추가(콜론 종결 금지). edge type 라벨 5종은 대문자 enum→한국어 매핑.
+
+**REFACTOR**: 그룹 주석 + 기존 `issueLinkStrings` 인접 배치.
+
+**검증**: `pnpm test ko.test`
+
+### Task 2. graph API 클라이언트 + Zod + lazy query 훅
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/issue-graph.ts`, `apps/web/src/api/issue-graph.test.ts`]
+- depends-on: []
+
+**RED**: `fetchIssueGraph(key, depth)` — `GET /api/v1/issues/{key}/graph?depth={n}` 호출+`{data}` 언랩, Zod 스키마 parse(center/depth/nodes[{key,summary,statusKey,depth}]/edges[{from,to,type}]/truncated), 400·404 시 ApiError throw, `useIssueGraph(key, depth, enabled)` 훅이 `enabled=false`면 미조회. → 모듈 없어 실패.
+
+**GREEN**: `issue-links.ts` 패턴 그대로 — 로컬 `dataResponseSchema`, `apiFetch`, Zod 1:1 미러, `useQuery({ enabled })` lazy 게이트, `issueGraphKey(key, depth)`.
+
+**REFACTOR**: KDoc + edge type 상수(대문자 5종) export(helper·component 공유).
+
+**검증**: `pnpm test issue-graph`
+
+### Task 3. mermaid 코드 생성 + ID sanitize/역매핑 helper (순수 함수)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/issue/link-graph-mermaid.ts`, `apps/web/src/components/issue/link-graph-mermaid.test.ts`]
+- depends-on: [2]   # IssueGraphResponse 타입 import (type-only)
+
+**RED**: `generateGraphMermaidCode(graph, edgeLabels)` →
+- `flowchart LR` 코드 + center 노드 classDef 강조
+- 엣지 `from -->|label| to` 방향 보존(PARENT는 부모→자식), edgeLabels 주입(i18n은 component가 전달 — helper 순수 유지)
+- 노드 ID sanitize(이슈 키 `ATLAS-1`의 하이픈/숫자 → mermaid 안전 ID, learnings 2026-05-23 보수적 식별자), 라벨엔 원래 키
+- 반환 `{ code, idToKey }`(클릭 내비용 역매핑)
+- center만 있고 엣지 0 → `null`(빈 그래프 신호)
+→ 모듈 없어 실패.
+
+**GREEN**: 순수 함수 구현. 노드 dedup, sanitize 맵 빌드.
+
+**REFACTOR**: sanitize 정규식 상수화 + KDoc.
+
+**검증**: `pnpm test link-graph-mermaid`
+
+### Task 4. LinkGraph 컴포넌트 (렌더 + 5상태 + depth + lazy 펼침 + 노드 클릭 + a11y)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/issue/LinkGraph.tsx`, `apps/web/src/components/issue/LinkGraph.test.tsx`]
+- depends-on: [1, 2, 3]
+
+**RED** (`vi.mock('mermaid')`로 node 포함 가짜 SVG 반환):
+- 기본 접힘 — 펼치기 전 `useIssueGraph` 미조회(enabled=false)
+- 펼침 → depth=2 조회 → mermaid SVG 주입(aria-label 부여)
+- 빈 그래프(helper null) → "연결된 이슈가 없습니다", mermaid 미렌더
+- 로딩 상태 표시
+- 로드 에러 — 404→notFound, 그 외→loadError (role=alert)
+- 렌더 실패(mermaid throw) → renderError (role=alert)
+- truncated=true → truncatedNotice 표시
+- depth 컨트롤 2→3 변경 → depth=3 재조회
+- 노드 클릭 → `navigate({to:'/issues/$key'})`(useNavigate mock), center 노드 클릭 no-op
+- 키보드 — 노드에 tabindex=0/role=link/aria-label, Enter keydown → navigate
+→ 컴포넌트 없어 실패.
+
+**GREEN**: WorkflowDiagram 패턴(동적 `import('mermaid')`→`render`→innerHTML 주입). 렌더 후 `g.node` 요소에 idToKey로 클릭/keydown 핸들러+tabindex/role 바인딩(securityLevel 변경 없이). depth/expand `useState`, 재렌더 시 핸들러 재바인딩(누수 없이 cleanup).
+
+**REFACTOR**: 빈/에러/로딩 분기 서브컴포넌트화 + KDoc. 코드 생성 helper named export 회귀 가드.
+
+**검증**: `pnpm test LinkGraph`
+
+### Task 5. issues.$key.tsx 배선 + 기존 상세 회귀
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/issues.$key.tsx`, `apps/web/src/routes/issues.$key.test.tsx`]
+- depends-on: [4]
+
+**RED**: 이슈 상세에 "링크 그래프" 섹션(LinkGraph, issueKey 전달, 기본 접힘)이 IssueLinksPanel 인근 전체폭에 렌더되는지 단언 → 미배선 실패.
+
+**GREEN**: `import { LinkGraph }` + IssueLinksPanel 아래 전체폭 섹션 배치.
+
+**REFACTOR**: 섹션 주석.
+
+**검증**: `pnpm test "issues.\$key"` — 기존 상세 단위테스트 회귀 0.
+
+### Task 6. E2E + MSW graph 핸들러/픽스처
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/issue-link-graph.spec.ts`, `apps/web/src/mocks/issue-graph-handlers.ts`, `apps/web/src/mocks/handlers.ts`]
+- depends-on: [5]
+
+**RED**: E2E 시나리오 작성(핸들러/배선 없어 실패) — 펼치기→그래프 SVG 렌더(`.node`/svg 셀렉터, learnings: flowchart 노드 셀렉터 실측 후 확정)→depth 전환→빈 그래프→truncated→노드 클릭 시 이슈 이동.
+
+**GREEN**: `issue-graph-handlers.ts`(GET /graph MSW 핸들러+depth별 픽스처+truncated/빈 시나리오) 작성 + `handlers.ts` 등록.
+
+**검증**: `pnpm exec playwright test issue-link-graph` + 기존 issue E2E(`issue-links`, `issue-ui-regression`) 회귀 0(텍스트 중복 셀렉터 컨테이너 한정 — learnings 2026-05-31).
+
+## Plan 메타
+
+- task 수: 6
+- 예상 wave: 5 (W1: T1‖T2 병렬, W2: T3, W3: T4, W4: T5, W5: T6)
+- TDD 강제: yes (test 커밋이 feat 커밋보다 먼저)
+- 병렬 dispatch: T1·T2 file 겹침 0 + depends-on [] → 단일 wave 병렬. 나머지는 의존 직렬
+- 추가 검증: typecheck(tsconfig.app), vitest, playwright(qa), pnpm verify. mermaid 단위는 mock, 실렌더는 E2E
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
