@@ -41,7 +41,7 @@ export interface GraphMermaidResult {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 내부 helper — 노드 ID sanitize
+// 내부 helper — 노드 ID sanitize + mermaid 라벨 escape
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -54,6 +54,22 @@ export interface GraphMermaidResult {
  */
 function sanitizeNodeId(index: number): string {
   return `${NODE_ID_PREFIX}${index}`
+}
+
+/**
+ * mermaid 노드/엣지 라벨에 들어갈 문자열에서 구문 위험 문자를 escape한다.
+ *
+ * - `"` → `&quot;` (mermaid flowchart 라벨 따옴표 탈출)
+ * - `\n`, `\r` → 공백 (개행 삽입 시 mermaid 구문 깨짐 방지)
+ *
+ * 정상 백엔드 이슈 키(영문+숫자+하이픈)는 위험 문자를 포함하지 않으나,
+ * 계약 위반 방어로 처리한다.
+ *
+ * @param value 원본 문자열
+ * @returns escape된 문자열
+ */
+function escapeMermaidLabel(value: string): string {
+  return value.replace(/"/g, '&quot;').replace(/[\n\r]/g, ' ')
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -70,7 +86,7 @@ function sanitizeNodeId(index: number): string {
  * - i18n을 직접 import하지 않고 edgeLabels 인자로 주입받아 순수 함수로 유지한다
  *
  * @param graph 이슈 그래프 응답 (issue-graph.ts의 IssueGraphResponse)
- * @param edgeLabels edge.type(대문자) → 표시 라벨 맵 (component가 주입)
+ * @param edgeLabels edge.type(대문자) → 표시 라벨 맵 (component가 주입). 조회 시 edge.type을 toUpperCase()로 정규화하므로 키는 대문자여야 한다.
  * @returns mermaid 코드 + idToKey 역매핑, 또는 엣지가 없으면 null
  */
 export function generateGraphMermaidCode(
@@ -118,9 +134,9 @@ export function generateGraphMermaidCode(
   // ── 3단계: mermaid 코드 라인 조립 ────────────────────────────────────────
   const lines: string[] = ['flowchart LR']
 
-  // 노드 정의 — 라벨은 따옴표로 감싸 특수문자 안전 처리
+  // 노드 정의 — 라벨은 따옴표로 감싸고 mermaid 구문 위험 문자를 escape한다
   for (const [key, id] of keyToId.entries()) {
-    lines.push(`  ${id}["${key}"]`)
+    lines.push(`  ${id}["${escapeMermaidLabel(key)}"]`)
   }
 
   // 엣지 정의 — from/to 방향을 백엔드 그대로 보존
@@ -132,8 +148,11 @@ export function generateGraphMermaidCode(
     if (fromId === undefined || toId === undefined) {
       continue
     }
-    const label = edgeLabels[edge.type] ?? edge.type
-    lines.push(`  ${fromId} -->|"${label}"| ${toId}`)
+    // edge.type을 대문자로 정규화해 edgeLabels 조회한다(백엔드 소문자 회귀 방어).
+    // 미지 type은 원문을 fallback으로 사용한다(fail-safe).
+    const upperType = edge.type.toUpperCase()
+    const label = edgeLabels[upperType] ?? edge.type
+    lines.push(`  ${fromId} -->|"${escapeMermaidLabel(label)}"| ${toId}`)
   }
 
   // classDef 정의 — center 노드 강조 스타일
