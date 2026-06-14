@@ -2,13 +2,13 @@
 
 package com.bts.notification.webhook
 
+import com.bts.notification.config.WebhookHttpClientConfig
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.sun.net.httpserver.HttpServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
-import org.springframework.web.client.RestClient
 import java.net.InetSocketAddress
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -17,12 +17,14 @@ import java.util.concurrent.atomic.AtomicReference
  * [WebhookDispatcher] 단위 테스트.
  *
  * JDK 내장 [HttpServer]를 로컬 stub 서버로 사용 — 신규 의존성 0.
+ * stub 서버가 127.0.0.1에서 동작하므로 URL 검증은 MockK stub으로 대체한다.
+ * SSRF 차단 자체는 [WebhookUrlValidatorTest]에서 별도 검증한다.
  *
  * ### 검증 항목
  * - D-1. 2xx 응답 → Sent, 요청 method=POST, Content-Type=application/json, 엔벨로프 body 검증
  * - D-2. 5xx 응답 → Failed
  * - D-3. 3xx(302) → 리다이렉트 미추적, Failed, 타깃 서버 hit=0 (FR8 리다이렉트 차단)
- * - D-4. SSRF 차단 URL(127.0.0.1) → Rejected, stub hit=0 (전송 안 함)
+ * - D-4. SSRF 차단 URL → Rejected, stub hit=0 (전송 안 함)
  * - D-5. blank URL → Rejected
  * - D-6. 비-http 스킴 → Rejected
  * - D-7. method=PUT → 실제 PUT 전송 검증
@@ -30,10 +32,9 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class WebhookDispatcherTest : DescribeSpec({
 
-    // 로컬 stub 서버 — 모든 테스트가 공유하는 싱글 인스턴스
+    // 로컬 stub 서버 — 실제 HTTP 요청을 수신
     val hitCount = AtomicInteger(0)
     val lastMethod = AtomicReference<String>()
-    val lastPath = AtomicReference<String>()
     val lastBody = AtomicReference<String>()
     val lastContentType = AtomicReference<String>()
 
@@ -43,7 +44,6 @@ class WebhookDispatcherTest : DescribeSpec({
     stubServer.createContext("/hook") { exchange ->
         hitCount.incrementAndGet()
         lastMethod.set(exchange.requestMethod)
-        lastPath.set(exchange.requestURI.path)
         lastContentType.set(exchange.requestHeaders.getFirst("Content-Type"))
         val body = exchange.requestBody.bufferedReader().readText()
         lastBody.set(body)
@@ -64,12 +64,6 @@ class WebhookDispatcherTest : DescribeSpec({
 
     // 302 리다이렉트 서버
     val redirectServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
-    redirectServer.createContext("/redirect") { exchange ->
-        val targetPort = targetServer.address.port
-        exchange.responseHeaders.add("Location", "http://127.0.0.1:$targetPort/target")
-        exchange.sendResponseHeaders(302, -1)
-        exchange.responseBody.close()
-    }
 
     stubServer.executor = null
     targetServer.executor = null
@@ -78,18 +72,36 @@ class WebhookDispatcherTest : DescribeSpec({
     targetServer.start()
     redirectServer.start()
 
+    val stubPort = stubServer.address.port
+    val redirectPort = redirectServer.address.port
+    val targetPort = targetServer.address.port
+
+    redirectServer.createContext("/redirect") { exchange ->
+        exchange.responseHeaders.add("Location", "http://127.0.0.1:$targetPort/target")
+        exchange.sendResponseHeaders(302, -1)
+        exchange.responseBody.close()
+    }
+
     val objectMapper = ObjectMapper()
-    val validator = WebhookUrlValidator()
+
+    // validator를 mock — stub 서버(127.0.0.1)는 Allowed로, SSRF 테스트 URL은 Blocked로 설정
+    val validator = mockk<WebhookUrlValidator>()
     val restClient = WebhookHttpClientConfig().webhookRestClient()
     val dispatcher = WebhookDispatcher(validator, restClient, objectMapper)
 
-    val stubPort = stubServer.address.port
-    val redirectPort = redirectServer.address.port
+    // stub 서버 URL → Allowed (SSRF 검증은 WebhookUrlValidatorTest에서 별도 검증)
+    every { validator.check(match { it.contains(":$stubPort/") || it.contains(":$redirectPort/") }) } returns UrlCheck.Allowed
+
+    // SSRF 차단 URL → Blocked
+    every { validator.check("http://192.168.99.99/hook") } returns UrlCheck.Blocked("내부망 차단")
+    // blank URL → Malformed
+    every { validator.check("") } returns UrlCheck.Malformed("URL이 비어 있습니다")
+    // 비-http 스킴 → Blocked
+    every { validator.check("ftp://host/path") } returns UrlCheck.Blocked("비-http 스킴")
 
     beforeEach {
         hitCount.set(0)
         lastMethod.set(null)
-        lastPath.set(null)
         lastBody.set(null)
         lastContentType.set(null)
         redirectTargetHits.set(0)
@@ -152,7 +164,6 @@ class WebhookDispatcherTest : DescribeSpec({
     }
 
     describe("D-4 SSRF 차단 URL — Rejected, 전송 안 함") {
-        // 주의: 127.0.0.1은 SSRF 차단 대상이므로 stub 서버 URL(127.0.0.1)은 아래 직접 사용
         it("SSRF 차단 URL이면 Rejected를 반환한다") {
             val result = dispatcher.dispatch("http://192.168.99.99/hook", "POST", "PROJ-1")
             assertThat(result).isInstanceOf(WebhookDispatchResult.Rejected::class.java)
