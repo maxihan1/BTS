@@ -36,7 +36,9 @@ class TransitionEventPublisher(
      */
     @Transactional(propagation = Propagation.MANDATORY)
     fun publish(event: DomainEvent) {
-        TODO("RED — GREEN 단계에서 구현")
+        val payload = objectMapper.writeValueAsString(event)
+        dsl.execute("SELECT pgmq.send(?, ?::jsonb)", QUEUE_NAME, payload)
+        log.info("event_published queue={} type={}", QUEUE_NAME, event.type)
     }
 
     companion object {
