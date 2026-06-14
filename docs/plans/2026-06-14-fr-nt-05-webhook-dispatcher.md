@@ -135,17 +135,19 @@ Maxi 게이트 결정. D1=내부망 차단 리스트, D2=JSON 엔벨로프.
 
 **검증**: `./gradlew :backend:modules:notification:test --tests "*WebhookDispatchEndToEndIntegrationTest*"` + 모듈 전체 `:backend:modules:notification:test`(회귀 0).
 
-### Task 5. FR-NT-05 완료 전수 동기화 (문서)
+### Task 5. FR-NT-05 백엔드 완성 문서 동기화 (문서)
+
+> **범위 정정 (Maxi 게이트, 2026-06-14)**. D6(워크플로우 post-action 설정 프론트 UI)·D7(E2E)이 프론트 전용이 아니라 **project-workflow BC post-action CRUD API 신설까지 필요한 multi-BC 작업**으로 실측됨(현재 post-action은 YAML seed 전용, 런타임 편집 API 부재). Maxi 결정 = "PR2 머지 후 이 세션서 D6/D7 연속(BC별 분리 PR)". **따라서 PR2는 FR-NT-05 백엔드(D1~D5)만 완성하고 `[~]` 유지.** D6/D7은 후속 PR(project-workflow API → 프론트+E2E).
 
 **메타**.
-- agent: `backend-engineer`
-- files: [`docs/plan/fr-index.md`, `docs/plan/product/notification-dashboard.md`, `docs/plan/README.md`, `CLAUDE.md`, `docs/sdd/09-notifications-slack.md`, `docs/sdd/02-requirements.md`]
+- agent: `backend-engineer` (controller 직접 수행)
+- files: [`docs/plan/product/notification-dashboard.md`, `docs/decisions/2026-06-14-fr-nt-05-webhook-dispatch-ssrf.md`]
 - depends-on: []
 
-**작업** (TDD 비대상 — 문서 동기화. CLAUDE.md §명세/범위 변경 전수 동기화).
-- FR-NT-05 `[~]`(부분완료) → 완료로 전환. product `notification-dashboard.md` §2.5 D단계 체크박스 마킹.
-- fr-index/README/CLAUDE/SDD의 FR-NT-05 상태·카운트 정합(122/123 불변, 상태만 변경).
-- ADR — **신규 ADR `docs/decisions/2026-06-14-fr-nt-05-webhook-dispatch-ssrf.md` 작성**(review-plan 확정). 첫 백엔드 아웃바운드 HTTP 패턴 + SSRF 가드 정책 + RestClient/리다이렉트 차단은 향후 BC가 참조할 재사용 결정이라 독립 ADR이 적합. files에 추가.
+**작업** (TDD 비대상 — 문서 동기화).
+- §2.5 **D1~D5 [x] 마킹**(D4 디스패처 PR2 완료 반영), **D6/D7 [ ] 유지**, **FR-NT-05 `[~]` 유지**(백엔드 완성·프론트 후속). Plan slug에 PR2(`fr-nt-05-webhook-dispatcher`) 추가.
+- 카운트 **123 불변**(FR-NT-05는 PR1서 이미 카운트). fr-index/README/CLAUDE/SDD 카운트 변경 없음 → 편집 불요.
+- ADR **신규 `docs/decisions/2026-06-14-fr-nt-05-webhook-dispatch-ssrf.md` 작성**. 첫 백엔드 아웃바운드 HTTP + SSRF 가드 정책 + RestClient/리다이렉트 차단(재사용 결정).
 
 **검증**: `bash scripts/verify-master-plan.sh` exit 0.
 
