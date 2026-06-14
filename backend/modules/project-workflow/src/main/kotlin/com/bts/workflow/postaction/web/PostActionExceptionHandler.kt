@@ -35,14 +35,8 @@ class PostActionExceptionHandler {
     @ExceptionHandler(WorkflowSchemeAccessDeniedException::class)
     fun handleAccessDenied(ex: WorkflowSchemeAccessDeniedException): ResponseEntity<PostActionErrorResponse> {
         log.info("POST_ACTION_403 access_denied detail='{}'", ex.message)
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
-            PostActionErrorResponse(
-                error = PostActionErrorBody(
-                    code = "WORKFLOW_SCHEME_ACCESS_DENIED",
-                    message = "이 작업을 수행할 권한이 없습니다.",
-                ),
-            ),
-        )
+        val errorBody = PostActionErrorBody(code = "WORKFLOW_SCHEME_ACCESS_DENIED", message = "이 작업을 수행할 권한이 없습니다.")
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(PostActionErrorResponse(errorBody))
     }
 
     /**
@@ -53,14 +47,9 @@ class PostActionExceptionHandler {
     @ExceptionHandler(PostActionValidationException::class)
     fun handleValidation(ex: PostActionValidationException): ResponseEntity<PostActionErrorResponse> {
         log.info("POST_ACTION_400 reason='{}'", ex.reason)
-        return ResponseEntity.badRequest().body(
-            PostActionErrorResponse(
-                error = PostActionErrorBody(
-                    code = "WORKFLOW_POST_ACTION_INVALID",
-                    message = "post-action 설정이 유효하지 않습니다.",
-                ),
-            ),
-        )
+        val errorBody =
+            PostActionErrorBody(code = "WORKFLOW_POST_ACTION_INVALID", message = "post-action 설정이 유효하지 않습니다.")
+        return ResponseEntity.badRequest().body(PostActionErrorResponse(errorBody))
     }
 
     /**
@@ -71,14 +60,9 @@ class PostActionExceptionHandler {
     @ExceptionHandler(PostActionNotFoundException::class)
     fun handleNotFound(ex: PostActionNotFoundException): ResponseEntity<PostActionErrorResponse> {
         log.info("POST_ACTION_404 detail='{}'", ex.detail)
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
-            PostActionErrorResponse(
-                error = PostActionErrorBody(
-                    code = "WORKFLOW_POST_ACTION_NOT_FOUND",
-                    message = "post-action 또는 전이를 찾을 수 없습니다.",
-                ),
-            ),
-        )
+        val errorBody =
+            PostActionErrorBody(code = "WORKFLOW_POST_ACTION_NOT_FOUND", message = "post-action 또는 전이를 찾을 수 없습니다.")
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(PostActionErrorResponse(errorBody))
     }
 }
 

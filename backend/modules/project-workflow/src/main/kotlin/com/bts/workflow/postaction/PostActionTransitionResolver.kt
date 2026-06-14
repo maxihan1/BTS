@@ -35,32 +35,36 @@ class PostActionTransitionResolver(
      * @param toStateKey 도착 상태 키.
      * @return 전이 UUID, 미존재 시 null.
      */
+    @Suppress("ReturnCount")
     @Transactional(readOnly = true)
     fun resolveTransitionId(
         workflowKey: String,
         fromStateKey: String,
         toStateKey: String,
     ): UUID? {
-        val workflowId = resolveWorkflowId(workflowKey) ?: run {
-            log.debug("PostActionTransitionResolver: workflow 미존재 key={}", workflowKey)
-            return null
-        }
-        val fromStateId = resolveStateId(workflowId, fromStateKey) ?: run {
-            log.debug(
-                "PostActionTransitionResolver: fromState 미존재 workflowKey={} fromStateKey={}",
-                workflowKey,
-                fromStateKey,
-            )
-            return null
-        }
-        val toStateId = resolveStateId(workflowId, toStateKey) ?: run {
-            log.debug(
-                "PostActionTransitionResolver: toState 미존재 workflowKey={} toStateKey={}",
-                workflowKey,
-                toStateKey,
-            )
-            return null
-        }
+        val workflowId =
+            resolveWorkflowId(workflowKey) ?: run {
+                log.debug("PostActionTransitionResolver: workflow 미존재 key={}", workflowKey)
+                return null
+            }
+        val fromStateId =
+            resolveStateId(workflowId, fromStateKey) ?: run {
+                log.debug(
+                    "PostActionTransitionResolver: fromState 미존재 workflowKey={} fromStateKey={}",
+                    workflowKey,
+                    fromStateKey,
+                )
+                return null
+            }
+        val toStateId =
+            resolveStateId(workflowId, toStateKey) ?: run {
+                log.debug(
+                    "PostActionTransitionResolver: toState 미존재 workflowKey={} toStateKey={}",
+                    workflowKey,
+                    toStateKey,
+                )
+                return null
+            }
         return dsl
             .select(WORKFLOW_TRANSITIONS.ID)
             .from(WORKFLOW_TRANSITIONS)

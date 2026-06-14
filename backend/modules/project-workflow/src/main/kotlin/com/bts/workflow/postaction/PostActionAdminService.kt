@@ -100,6 +100,7 @@ class PostActionAdminService(
      * @throws PostActionNotFoundException 전이 또는 id 미존재 시.
      * @throws PostActionValidationException 미지원 type, 필수키 누락, 비-http url 시.
      */
+    @Suppress("LongParameterList")
     @Transactional
     fun update(
         workflowKey: String,
@@ -196,7 +197,8 @@ class PostActionAdminService(
      * type + config 검증.
      *
      * 1. CALL_WEBHOOK 은 url http/https 스킴 추가 체크.
-     * 2. [WorkflowPostActionFactory.create] dry-run — [IllegalArgumentException] 을 [PostActionValidationException] 로 변환.
+     * 2. [WorkflowPostActionFactory.create] dry-run — [IllegalArgumentException] 을
+     *    [PostActionValidationException] 로 변환.
      *
      * @throws PostActionValidationException 검증 실패 시.
      */
@@ -215,7 +217,7 @@ class PostActionAdminService(
         try {
             factory.create(type, config)
         } catch (ex: IllegalArgumentException) {
-            throw PostActionValidationException(ex.message ?: "검증 실패")
+            throw PostActionValidationException(ex.message ?: "검증 실패", ex)
         }
     }
 }

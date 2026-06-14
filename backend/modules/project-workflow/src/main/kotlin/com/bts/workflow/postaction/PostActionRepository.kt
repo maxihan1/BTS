@@ -51,13 +51,19 @@ class PostActionRepository(
             .orderBy(WORKFLOW_POST_ACTIONS.DISPLAY_ORDER.asc())
             .fetch()
             .map { record ->
+                val id =
+                    record.get(WORKFLOW_POST_ACTIONS.ID)
+                        ?: error("workflow_post_actions.id null — transitionId=$transitionId")
+                val transitionId =
+                    record.get(WORKFLOW_POST_ACTIONS.TRANSITION_ID)
+                        ?: error("workflow_post_actions.transition_id null")
+                val type =
+                    record.get(WORKFLOW_POST_ACTIONS.TYPE)
+                        ?: error("workflow_post_actions.type null")
                 PostActionRow(
-                    id = record.get(WORKFLOW_POST_ACTIONS.ID)
-                        ?: error("workflow_post_actions.id null — transitionId=$transitionId"),
-                    transitionId = record.get(WORKFLOW_POST_ACTIONS.TRANSITION_ID)
-                        ?: error("workflow_post_actions.transition_id null"),
-                    type = record.get(WORKFLOW_POST_ACTIONS.TYPE)
-                        ?: error("workflow_post_actions.type null"),
+                    id = id,
+                    transitionId = transitionId,
+                    type = type,
                     config = parseJsonb(record.get(WORKFLOW_POST_ACTIONS.CONFIG)),
                     displayOrder = record.get(WORKFLOW_POST_ACTIONS.DISPLAY_ORDER) ?: 0,
                 )
@@ -130,8 +136,9 @@ class PostActionRepository(
                 .fetchOne()
                 ?: error("workflow_post_actions UPDATE 실패 — id=$id 가 존재하지 않음")
 
-        val transitionId = updated.value1()
-            ?: error("workflow_post_actions.transition_id null after UPDATE")
+        val transitionId =
+            updated.value1()
+                ?: error("workflow_post_actions.transition_id null after UPDATE")
 
         log.debug("PostActionRepository.update id={} type={}", id, type)
         return PostActionRow(

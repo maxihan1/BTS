@@ -7,7 +7,6 @@ import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
 import com.bts.workflow.postaction.web.PostActionController
 import com.bts.workflow.postaction.web.PostActionExceptionHandler
-import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.web.WorkflowSchemeExceptionHandler
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -24,7 +23,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
 import org.springframework.http.MediaType
 import org.springframework.security.core.context.SecurityContextHolder
-import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -55,7 +53,6 @@ import java.sql.DriverManager
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class PostActionE2EIntegrationTest {
-
     companion object {
         private val temboImage: DockerImageName =
             DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
@@ -80,6 +77,7 @@ class PostActionE2EIntegrationTest {
 
         @BeforeAll
         @JvmStatic
+        @Suppress("LongMethod")
         fun setup() {
             // 1단계: V200 까지 적용
             Flyway.configure()
@@ -137,7 +135,10 @@ class PostActionE2EIntegrationTest {
 
                 val workflowId: String =
                     conn.prepareStatement("SELECT id FROM workflows WHERE key='$WORKFLOW_KEY'").use { ps ->
-                        ps.executeQuery().use { rs -> rs.next(); rs.getString("id") }
+                        ps.executeQuery().use { rs ->
+                            rs.next()
+                            rs.getString("id")
+                        }
                     }
 
                 conn.createStatement().use { stmt ->
@@ -155,12 +156,22 @@ class PostActionE2EIntegrationTest {
                 val todoId: String =
                     conn.prepareStatement(
                         "SELECT id FROM workflow_states WHERE workflow_id='$workflowId'::uuid AND key='todo'",
-                    ).use { ps -> ps.executeQuery().use { rs -> rs.next(); rs.getString("id") } }
+                    ).use { ps ->
+                        ps.executeQuery().use { rs ->
+                            rs.next()
+                            rs.getString("id")
+                        }
+                    }
 
                 val doingId: String =
                     conn.prepareStatement(
                         "SELECT id FROM workflow_states WHERE workflow_id='$workflowId'::uuid AND key='doing'",
-                    ).use { ps -> ps.executeQuery().use { rs -> rs.next(); rs.getString("id") } }
+                    ).use { ps ->
+                        ps.executeQuery().use { rs ->
+                            rs.next()
+                            rs.getString("id")
+                        }
+                    }
 
                 conn.prepareStatement(
                     """
@@ -225,10 +236,10 @@ class PostActionE2EIntegrationTest {
 
     @Test
     @Order(10)
+    @Suppress("MaxLineLength")
     fun `POST - CALL_WEBHOOK 생성 201`() {
         withActor {
-            val body =
-                """{"type":"CALL_WEBHOOK","config":{"url":"https://hook.example.com","method":"POST"},"displayOrder":0}"""
+            val body = """{"type":"CALL_WEBHOOK","config":{"url":"https://hook.example.com","method":"POST"},"displayOrder":0}"""
 
             mockMvc.perform(
                 post(basePath)
@@ -261,6 +272,7 @@ class PostActionE2EIntegrationTest {
 
     @Test
     @Order(30)
+    @Suppress("MaxLineLength")
     fun `PUT - 수정 200 + 캐시 무효화`() {
         withActor {
             val listResult =

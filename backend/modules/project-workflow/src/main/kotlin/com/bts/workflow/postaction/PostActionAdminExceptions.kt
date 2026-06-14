@@ -2,8 +2,6 @@
 
 package com.bts.workflow.postaction
 
-import java.util.UUID
-
 /**
  * post-action 요청 검증 실패 예외 (HTTP 400).
  *
@@ -13,7 +11,8 @@ import java.util.UUID
  */
 class PostActionValidationException(
     val reason: String,
-) : RuntimeException("post-action 검증 실패: $reason")
+    cause: Throwable? = null,
+) : RuntimeException("post-action 검증 실패: $reason", cause)
 
 /**
  * post-action 또는 전이가 존재하지 않을 때 던지는 예외 (HTTP 404).

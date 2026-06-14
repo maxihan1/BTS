@@ -352,6 +352,7 @@ class YamlSeedServiceTest {
      */
     @Test
     @Order(7)
+    @Suppress("LongMethod", "MaxLineLength", "NestedBlockDepth")
     fun `공존 B - 런타임 post-action 추가 후 재시드 시 보존된다`() {
         val dataSource =
             DriverManagerDataSource(
@@ -375,8 +376,11 @@ class YamlSeedServiceTest {
                     """.trimIndent(),
                 ).use { ps ->
                     ps.executeQuery().use { rs ->
-                        if (rs.next()) java.util.UUID.fromString(rs.getString("id"))
-                        else error("simple 워크플로우 todo→doing 전이 없음 — Order(1) 이 먼저 실행되어야 함")
+                        if (rs.next()) {
+                            java.util.UUID.fromString(rs.getString("id"))
+                        } else {
+                            error("simple 워크플로우 todo→doing 전이 없음 — Order(1) 이 먼저 실행되어야 함")
+                        }
                     }
                 }
             }
@@ -403,11 +407,12 @@ class YamlSeedServiceTest {
             com.fasterxml.jackson.databind.ObjectMapper(
                 com.fasterxml.jackson.dataformat.yaml.YAMLFactory(),
             ).registerKotlinModule()
+        // ModifiedSimpleWorkflowResourceLoader 는 Order(3) 와 동일 내용 → no-op 기대
         val serviceToReseed =
             YamlSeedService(
                 WorkflowRepository(dsl),
                 dsl,
-                ModifiedSimpleWorkflowResourceLoader(), // Order(3) 와 동일 내용 → no-op 기대
+                ModifiedSimpleWorkflowResourceLoader(),
                 yamlMapper,
                 mockk(relaxed = true),
                 mockk(relaxed = true),

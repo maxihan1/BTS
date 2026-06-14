@@ -5,8 +5,8 @@ package com.bts.workflow.postaction.web
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.shared.permission.WorkflowSchemeScope
-import com.bts.workflow.postaction.PostActionAdminService
 import com.bts.workflow.port.outbound.toUuid
+import com.bts.workflow.postaction.PostActionAdminService
 import com.bts.workflow.scheme.web.DataEnvelope
 import com.bts.workflow.web.CurrentActor
 import org.slf4j.LoggerFactory
@@ -50,6 +50,15 @@ class PostActionController(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
+    private fun requireManageScheme() {
+        val actor = CurrentActor.current()
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.MANAGE_SCHEME,
+            WorkflowSchemeScope.Global,
+        )
+    }
+
     /**
      * 전이에 속한 post-action 목록을 반환한다.
      *
@@ -62,8 +71,7 @@ class PostActionController(
         @PathVariable workflowKey: String,
         @PathVariable transitionKey: String,
     ): ResponseEntity<DataEnvelope<List<PostActionResponse>>> {
-        val actor = CurrentActor.current()
-        permissionResolver.requirePermission(actor.toUuid(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        requireManageScheme()
         log.debug("PostActionController.list workflowKey={} transitionKey={}", workflowKey, transitionKey)
         val rows = service.listForTransition(workflowKey, transitionKey)
         return ResponseEntity.ok(DataEnvelope(rows.map { PostActionResponse.from(it) }))
@@ -83,8 +91,7 @@ class PostActionController(
         @PathVariable transitionKey: String,
         @RequestBody request: PostActionRequest,
     ): ResponseEntity<DataEnvelope<PostActionResponse>> {
-        val actor = CurrentActor.current()
-        permissionResolver.requirePermission(actor.toUuid(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        requireManageScheme()
         log.info(
             "PostActionController.create workflowKey={} transitionKey={} type={}",
             workflowKey,
@@ -111,8 +118,7 @@ class PostActionController(
         @PathVariable id: UUID,
         @RequestBody request: PostActionRequest,
     ): ResponseEntity<DataEnvelope<PostActionResponse>> {
-        val actor = CurrentActor.current()
-        permissionResolver.requirePermission(actor.toUuid(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        requireManageScheme()
         log.info(
             "PostActionController.update workflowKey={} transitionKey={} id={} type={}",
             workflowKey,
@@ -138,8 +144,7 @@ class PostActionController(
         @PathVariable transitionKey: String,
         @PathVariable id: UUID,
     ) {
-        val actor = CurrentActor.current()
-        permissionResolver.requirePermission(actor.toUuid(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        requireManageScheme()
         log.info(
             "PostActionController.delete workflowKey={} transitionKey={} id={}",
             workflowKey,

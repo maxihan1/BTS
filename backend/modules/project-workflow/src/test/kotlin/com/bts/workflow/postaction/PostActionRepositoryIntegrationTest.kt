@@ -36,7 +36,6 @@ import java.util.UUID
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class PostActionRepositoryIntegrationTest {
-
     companion object {
         private val temboImage: DockerImageName =
             DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
@@ -56,6 +55,7 @@ class PostActionRepositoryIntegrationTest {
 
         @BeforeAll
         @JvmStatic
+        @Suppress("LongMethod", "CyclomaticComplexMethod")
         fun setup() {
             // 1단계: V200 까지 적용 (cross-BC issue-tracking 포함)
             Flyway.configure()
@@ -135,17 +135,32 @@ class PostActionRepositoryIntegrationTest {
                 val fromStateId: String =
                     conn.prepareStatement(
                         "SELECT id FROM workflow_states WHERE workflow_id='$workflowId'::uuid AND key='open'",
-                    ).use { ps -> ps.executeQuery().use { rs -> rs.next(); rs.getString("id") } }
+                    ).use { ps ->
+                        ps.executeQuery().use { rs ->
+                            rs.next()
+                            rs.getString("id")
+                        }
+                    }
 
                 val toStateId: String =
                     conn.prepareStatement(
                         "SELECT id FROM workflow_states WHERE workflow_id='$workflowId'::uuid AND key='in_progress'",
-                    ).use { ps -> ps.executeQuery().use { rs -> rs.next(); rs.getString("id") } }
+                    ).use { ps ->
+                        ps.executeQuery().use { rs ->
+                            rs.next()
+                            rs.getString("id")
+                        }
+                    }
 
                 val doneStateId: String =
                     conn.prepareStatement(
                         "SELECT id FROM workflow_states WHERE workflow_id='$workflowId'::uuid AND key='done'",
-                    ).use { ps -> ps.executeQuery().use { rs -> rs.next(); rs.getString("id") } }
+                    ).use { ps ->
+                        ps.executeQuery().use { rs ->
+                            rs.next()
+                            rs.getString("id")
+                        }
+                    }
 
                 // post-action 이 있을 전이
                 conn.prepareStatement(
@@ -261,7 +276,7 @@ class PostActionRepositoryIntegrationTest {
     @Order(50)
     fun `displayOrder ASC 정렬 - 여러 건 삽입 시 순서대로 반환`() {
         // 기존 데이터 정리 후 별도 빈 전이 확보
-        val sortTransitionId = emptyTransitionId  // 이전에 항목을 추가하지 않은 전이
+        val sortTransitionId = emptyTransitionId // 이전에 항목을 추가하지 않은 전이
 
         repository.insert(sortTransitionId, "SET_FIELD", mapOf("field" to "assignee"), 30)
         repository.insert(sortTransitionId, "ADD_WATCHER", mapOf("watcher" to "actor"), 10)

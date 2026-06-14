@@ -30,7 +30,6 @@ import java.util.UUID
  * - 전이 미존재: PostActionNotFoundException(404)
  */
 class PostActionAdminServiceTest {
-
     private lateinit var repository: PostActionRepository
     private lateinit var factory: WorkflowPostActionFactory
     private lateinit var transitionResolver: PostActionTransitionResolver
@@ -60,15 +59,16 @@ class PostActionAdminServiceTest {
 
     @Test
     fun `listForTransition - transitionId 로 repository 위임 후 목록 반환`() {
-        val rows = listOf(
-            PostActionRow(
-                id = postActionId,
-                transitionId = transitionId,
-                type = "CALL_WEBHOOK",
-                config = mapOf("url" to "https://x.com", "method" to "POST"),
-                displayOrder = 0,
-            ),
-        )
+        val rows =
+            listOf(
+                PostActionRow(
+                    id = postActionId,
+                    transitionId = transitionId,
+                    type = "CALL_WEBHOOK",
+                    config = mapOf("url" to "https://x.com", "method" to "POST"),
+                    displayOrder = 0,
+                ),
+            )
         every { repository.findByTransitionId(transitionId) } returns rows
 
         val result = service.listForTransition(workflowKey, transitionKey)
@@ -83,13 +83,14 @@ class PostActionAdminServiceTest {
     @Test
     fun `create - factory 검증 통과 후 insert + 캐시 무효화`() {
         val config = mapOf("url" to "https://hook.example.com", "method" to "POST")
-        val inserted = PostActionRow(
-            id = postActionId,
-            transitionId = transitionId,
-            type = "CALL_WEBHOOK",
-            config = config,
-            displayOrder = 0,
-        )
+        val inserted =
+            PostActionRow(
+                id = postActionId,
+                transitionId = transitionId,
+                type = "CALL_WEBHOOK",
+                config = config,
+                displayOrder = 0,
+            )
         every { factory.create("CALL_WEBHOOK", config) } returns mockk()
         every { repository.insert(transitionId, "CALL_WEBHOOK", config, 0) } returns inserted
 
@@ -113,7 +114,7 @@ class PostActionAdminServiceTest {
 
     @Test
     fun `create - 필수 config 키 누락이면 PostActionValidationException(400) 발생`() {
-        val config = mapOf("url" to "https://x.com")  // method 누락
+        val config = mapOf("url" to "https://x.com") // method 누락
         every { factory.create("CALL_WEBHOOK", config) } throws
             IllegalArgumentException("PostAction config 에 필수 키 'method' 가 없습니다")
 
@@ -147,13 +148,14 @@ class PostActionAdminServiceTest {
     @Test
     fun `update - 존재하는 id 수정 후 캐시 무효화`() {
         val config = mapOf("url" to "https://updated.com", "method" to "PUT")
-        val updated = PostActionRow(
-            id = postActionId,
-            transitionId = transitionId,
-            type = "CALL_WEBHOOK",
-            config = config,
-            displayOrder = 10,
-        )
+        val updated =
+            PostActionRow(
+                id = postActionId,
+                transitionId = transitionId,
+                type = "CALL_WEBHOOK",
+                config = config,
+                displayOrder = 10,
+            )
         every { factory.create("CALL_WEBHOOK", config) } returns mockk()
         every { repository.findByTransitionId(transitionId) } returns
             listOf(PostActionRow(postActionId, transitionId, "CALL_WEBHOOK", emptyMap(), 0))

@@ -57,7 +57,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [PostActionControllerTest.TestMvcConfig::class])
 @WebAppConfiguration
 class PostActionControllerTest {
-
     @Configuration(proxyBeanMethods = false)
     @EnableWebMvc
     open class TestMvcConfig {
@@ -112,17 +111,22 @@ class PostActionControllerTest {
     @Test
     @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
     fun `GET post-actions - 200 목록 반환`() {
-        val rows = listOf(
-            PostActionRow(
-                id = postActionId,
-                transitionId = transitionId,
-                type = "CALL_WEBHOOK",
-                config = mapOf("url" to "https://x.com", "method" to "POST"),
-                displayOrder = 0,
-            ),
-        )
+        val rows =
+            listOf(
+                PostActionRow(
+                    id = postActionId,
+                    transitionId = transitionId,
+                    type = "CALL_WEBHOOK",
+                    config = mapOf("url" to "https://x.com", "method" to "POST"),
+                    displayOrder = 0,
+                ),
+            )
         justRun {
-            permissionResolver.requirePermission(any(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+            permissionResolver.requirePermission(
+                any(),
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
         }
         every { service.listForTransition(workflowKey, transitionKey) } returns rows
 
@@ -138,20 +142,26 @@ class PostActionControllerTest {
     @Test
     @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
     fun `POST post-actions - 201 Created`() {
-        val requestBody = mapOf(
-            "type" to "CALL_WEBHOOK",
-            "config" to mapOf("url" to "https://hook.example.com", "method" to "POST"),
-            "displayOrder" to 0,
-        )
-        val created = PostActionRow(
-            id = postActionId,
-            transitionId = transitionId,
-            type = "CALL_WEBHOOK",
-            config = mapOf("url" to "https://hook.example.com", "method" to "POST"),
-            displayOrder = 0,
-        )
+        val requestBody =
+            mapOf(
+                "type" to "CALL_WEBHOOK",
+                "config" to mapOf("url" to "https://hook.example.com", "method" to "POST"),
+                "displayOrder" to 0,
+            )
+        val created =
+            PostActionRow(
+                id = postActionId,
+                transitionId = transitionId,
+                type = "CALL_WEBHOOK",
+                config = mapOf("url" to "https://hook.example.com", "method" to "POST"),
+                displayOrder = 0,
+            )
         justRun {
-            permissionResolver.requirePermission(any(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+            permissionResolver.requirePermission(
+                any(),
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
         }
         every {
             service.create(workflowKey, transitionKey, "CALL_WEBHOOK", any(), 0)
@@ -172,20 +182,26 @@ class PostActionControllerTest {
     @Test
     @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
     fun `PUT post-actions - 200 수정된 행 반환`() {
-        val requestBody = mapOf(
-            "type" to "CALL_WEBHOOK",
-            "config" to mapOf("url" to "https://updated.example.com", "method" to "PUT"),
-            "displayOrder" to 10,
-        )
-        val updated = PostActionRow(
-            id = postActionId,
-            transitionId = transitionId,
-            type = "CALL_WEBHOOK",
-            config = mapOf("url" to "https://updated.example.com", "method" to "PUT"),
-            displayOrder = 10,
-        )
+        val requestBody =
+            mapOf(
+                "type" to "CALL_WEBHOOK",
+                "config" to mapOf("url" to "https://updated.example.com", "method" to "PUT"),
+                "displayOrder" to 10,
+            )
+        val updated =
+            PostActionRow(
+                id = postActionId,
+                transitionId = transitionId,
+                type = "CALL_WEBHOOK",
+                config = mapOf("url" to "https://updated.example.com", "method" to "PUT"),
+                displayOrder = 10,
+            )
         justRun {
-            permissionResolver.requirePermission(any(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+            permissionResolver.requirePermission(
+                any(),
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
         }
         every {
             service.update(workflowKey, transitionKey, postActionId, "CALL_WEBHOOK", any(), 10)
@@ -207,7 +223,11 @@ class PostActionControllerTest {
     @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
     fun `DELETE post-actions - 204 No Content`() {
         justRun {
-            permissionResolver.requirePermission(any(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+            permissionResolver.requirePermission(
+                any(),
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
         }
         justRun { service.delete(workflowKey, transitionKey, postActionId) }
 
@@ -221,12 +241,17 @@ class PostActionControllerTest {
     @WithMockUser(username = "22222222-2222-2222-2222-222222222222")
     fun `권한 없음 - POST 진입 직후 403 (service 미호출)`() {
         every {
-            permissionResolver.requirePermission(any(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
-        } throws WorkflowSchemeAccessDeniedException(
-            actorId = UUID.fromString("22222222-2222-2222-2222-222222222222"),
-            permission = WorkflowSchemePermission.MANAGE_SCHEME,
-            scope = WorkflowSchemeScope.Global,
-        )
+            permissionResolver.requirePermission(
+                any(),
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
+        } throws
+            WorkflowSchemeAccessDeniedException(
+                actorId = UUID.fromString("22222222-2222-2222-2222-222222222222"),
+                permission = WorkflowSchemePermission.MANAGE_SCHEME,
+                scope = WorkflowSchemeScope.Global,
+            )
 
         val requestBody = mapOf("type" to "CALL_WEBHOOK", "config" to emptyMap<String, Any>(), "displayOrder" to 0)
 
@@ -244,12 +269,17 @@ class PostActionControllerTest {
     @WithMockUser(username = "22222222-2222-2222-2222-222222222222")
     fun `권한 없음 - GET 도 403`() {
         every {
-            permissionResolver.requirePermission(any(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
-        } throws WorkflowSchemeAccessDeniedException(
-            actorId = UUID.fromString("22222222-2222-2222-2222-222222222222"),
-            permission = WorkflowSchemePermission.MANAGE_SCHEME,
-            scope = WorkflowSchemeScope.Global,
-        )
+            permissionResolver.requirePermission(
+                any(),
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
+        } throws
+            WorkflowSchemeAccessDeniedException(
+                actorId = UUID.fromString("22222222-2222-2222-2222-222222222222"),
+                permission = WorkflowSchemePermission.MANAGE_SCHEME,
+                scope = WorkflowSchemeScope.Global,
+            )
 
         mockMvc.perform(get(basePath))
             .andExpect(status().isForbidden)
@@ -263,7 +293,11 @@ class PostActionControllerTest {
     @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
     fun `전이 미존재 - GET 404`() {
         justRun {
-            permissionResolver.requirePermission(any(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+            permissionResolver.requirePermission(
+                any(),
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
         }
         every {
             service.listForTransition(workflowKey, transitionKey)
@@ -279,7 +313,11 @@ class PostActionControllerTest {
     @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
     fun `검증 실패 - POST 400`() {
         justRun {
-            permissionResolver.requirePermission(any(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+            permissionResolver.requirePermission(
+                any(),
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Global,
+            )
         }
         every {
             service.create(any(), any(), any(), any(), any())
