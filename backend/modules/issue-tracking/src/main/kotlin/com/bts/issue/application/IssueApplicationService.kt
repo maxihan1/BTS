@@ -31,6 +31,7 @@ import com.bts.issue.event.IssueMentioned
 import com.bts.issue.event.IssueSoftDeleted
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.event.IssueUpdated
+import com.bts.issue.event.TransitionEventPublisher
 import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.markdown.MarkdownRenderer
@@ -126,6 +127,11 @@ class IssueApplicationService(
     // Spring 컨텍스트에서는 IssueTemplateRepository Bean 이 주입된다.
     // 기존 단위 테스트 호환을 위해 null 기본값 유지 (customFieldDefinitionRepository 패턴 동형).
     private val issueTemplateRepository: com.bts.issue.template.repository.IssueTemplateRepository? = null,
+    // 전이 post-action 이벤트(plan.emitEvents)를 q_transition_events 큐에 enqueue 하는 어댑터.
+    // prod 컨텍스트에서는 TransitionEventPublisher(@Component) Bean 이 주입된다.
+    // null 이면 발행을 skip 한다(기존 단위 테스트 호환용 fallback — customFieldDefinitionRepository 패턴 동형).
+    // 통합 테스트에서는 실 Bean 을 주입해 enqueue 경로 전체를 검증한다.
+    private val transitionEventPublisher: TransitionEventPublisher? = null,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -563,7 +569,10 @@ class IssueApplicationService(
      * 6. [IssueRepository.applyTransition] 호출 — resolutionId 함께 UPDATE.
      *    null 이면 DB NULL(비DONE 재전이 clear), non-null 이면 지정값 SET.
      *    0 row 면 IssueVersionConflictException.
-     * 7. IssueTransitioned 이벤트 발행
+     * 7. IssueTransitioned 이벤트 발행 (q_issue_events 큐)
+     * 8. [publishTransitionEvents] — plan.emitEvents 를 q_transition_events 큐에 발행 (FR-NT-05).
+     *    [transitionEventPublisher] 가 null 이면 skip (단위 테스트 호환 fallback).
+     *    상태 변경과 같은 트랜잭션 = outbox 정합 (DATA.md §7.2).
      *
      * 클래스 레벨 @Transactional(REQUIRED) 이 적용되므로 workflowKeyResolver.resolveStart (MANDATORY),
      * workflowPort.plan (MANDATORY) 호출 모두 만족한다.
@@ -634,6 +643,7 @@ class IssueApplicationService(
                 occurredAt = Instant.now(clock),
             ),
         )
+        publishTransitionEvents(plan)
         // after 는 전이 결과를 issue.copy 로 구성 — 재조회 대신 in-memory 구성하여 쿼리를 줄인다.
         val afterTransitioned =
             issue.copy(
@@ -1181,6 +1191,22 @@ class IssueApplicationService(
                 occurredAt = Instant.now(clock),
             ),
         )
+    }
+
+    /**
+     * [TransitionPlan.emitEvents] 를 [TransitionEventPublisher] 로 발행한다.
+     *
+     * [transitionEventPublisher] 가 null 이면 발행 없이 조용히 종료한다(기존 단위 테스트 호환 fallback).
+     * [transitionEventPublisher] 가 주입된 경우 각 [com.bts.shared.workflow.DomainEvent] 를 순서대로 발행한다.
+     * 호출 시점은 [transitionIssue] 의 클래스 레벨 @Transactional(REQUIRED) 트랜잭션 안이므로
+     * 상태 변경([IssueRepository.applyTransition])과 enqueue 가 원자적으로 커밋된다 (outbox 정합, DATA.md §7.2).
+     *
+     * @param plan [WorkflowTransitionPort.plan] 이 반환한 전이 실행 계획.
+     */
+    private fun publishTransitionEvents(plan: TransitionPlan) {
+        transitionEventPublisher?.let { publisher ->
+            plan.emitEvents.forEach { publisher.publish(it) }
+        }
     }
 
     /**

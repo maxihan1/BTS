@@ -1,8 +1,8 @@
-<!-- notification-dashboard BC — 알림/대시보드/가젯/리포트/Inbox 13 FR + STOMP WebSocket PoC -->
+<!-- notification-dashboard BC — 알림/대시보드/가젯/리포트/Inbox 14 FR + STOMP WebSocket PoC -->
 
 # notification-dashboard BC
 
-**소속 FR**. 13개 (NT 4 + DB 3 + RP 4 + UX-02,03 2).
+**소속 FR**. 14개 (NT 5 + DB 3 + RP 4 + UX-02,03 2).
 **책임**. 알림 정책/채널/수신자/구독 + 대시보드/가젯/리포트 + 즐겨찾기/Inbox.
 **SDD 참조**. 09장 (알림), 14장 (대시보드/리포트).
 **다른 BC와의 경계**. 모든 BC의 pgmq 이벤트 수신자. Slack은 별도 BC(slack-integration).
@@ -25,7 +25,7 @@
 - [ ] 네트워크 분리/복귀 시나리오 통합 테스트 통과
 - [ ] 알림 지연 p95 < 1s
 
-## §2 알림 (FR-NT, 4개)
+## §2 알림 (FR-NT, 5개)
 
 ### §2.1 FR-NT-01 — 이벤트별 알림 정책
 
@@ -39,7 +39,7 @@
 - [x] D6. 프론트 UI — 관리자 정책 페이지 (책임. designer → frontend-engineer) — PR #124 (`/admin/notification-policies`, SYSTEM_ADMIN, 전역 정책 CRUD)
 - [x] D7. E2E (책임. qa-engineer) — PR #124 (S1~S5 + 비관리자 차단, MSW 헤더 reset)
 
-### §2.2 FR-NT-02 — 채널 (이메일/인앱/Webhook, Slack=slack-integration BC)
+### §2.2 FR-NT-02 — 채널 (이메일/인앱, Slack=slack-integration BC)
 
 **우선순위**. 필수 | **선행**. §1, §2.1 | **Plan slug**. `notify/channels`
 
@@ -79,6 +79,20 @@
 - [ ] D4. 백엔드 — `GET/PATCH /api/v1/users/me/notifications` (책임. backend-engineer)
 - [ ] D5. 백엔드 테스트 (책임. backend-engineer)
 - [ ] D6. 프론트 UI — 개인 설정 페이지 (책임. designer → frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
+### §2.5 FR-NT-05 — Webhook 알림 채널 (전이 post-action 이벤트 발행 + HTTP POST 디스패처)
+
+**우선순위**. 중간 | **선행**. §2.1, §2.2 | **분리 근거**. FR-NT-02에서 분리 (ADR `2026-06-14-fr-nt-05-transition-event-outbox.md`) | **Plan slug**. `fr-nt-05-transition-event-publish`
+
+**범위**. cross-BC라 PR 2개로 분할. PR 1 (issue-tracking BC) — 전이 post-action emitEvents를 `q_transition_events` pgmq 큐에 발행하는 파이프라인. PR 2 (notification BC) — `WebhookRequested` 소비 + 외부 URL HTTP POST 디스패처.
+
+- [~] D1. 도메인 — TransitionEventPublisher (책임. backend-engineer) — PR #140 (PR 1, issue-tracking)
+- [~] D2. 명세 — 큐/이벤트 계약 (`q_transition_events`, DomainEvent 직렬화) (책임. backend-engineer) — PR #140
+- [~] D3. 데이터 모델 — Flyway V022 `q_transition_events` 큐 생성 + init_codegen 미러 (책임. db-engineer) — PR #140
+- [~] D4. 백엔드 — `transitionIssue()` emitEvents 배선 (PR 1) + WebhookRequested HTTP POST 디스패처 (PR 2, notification BC) (책임. backend-engineer)
+- [~] D5. 백엔드 테스트 — Testcontainers: 전이→큐 enqueue 확인, 롤백→0건, dry-run→0건 (책임. backend-engineer)
+- [ ] D6. 프론트 UI — 워크플로우 post-action 설정 UI (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
 ## §3 대시보드 (FR-DB, 3개)
@@ -213,7 +227,7 @@
 
 ### BC 완료 조건
 
-- [ ] §2~§5 (13 FR) 모두 `[x]` 마킹
+- [ ] §2~§5 (14 FR) 모두 `[x]` 마킹
 - [ ] §NFR 측정표 모든 항목 임계 통과
 - [ ] CHANGELOG.md 정리
 - [ ] README.md §7 변경 이력에 "notification-dashboard BC 완료 — YYYY-MM-DD" 추가

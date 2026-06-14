@@ -20,7 +20,7 @@ SDD (docs/sdd/, v0.5.0 봉인)                           ← 설계 명세 26개
    │
 docs/plan/  ← 이 디렉토리                              ← 기능 구현 진척 (이 문서)
    ├ README.md       (이 파일 — 인덱스 + NFR 게이트 + 변경 이력)
-   ├ fr-index.md     (121 FR 역인덱스 + BC 매핑)
+   ├ fr-index.md     (122 FR 역인덱스 + BC 매핑)
    └ product/        (9개 BC 파일 — 각 BC가 자기 FR을 완전 추적)
    │
 docs/poc/   (dependencies.md, checklist.md, context-notes.md)  ← 의존성 도입 순서
@@ -108,17 +108,17 @@ identity-access  ─┐
 | project-workflow | [product/project-workflow.md](product/project-workflow.md) | 3 (WF 3) | 워크플로우 FSM + pgmq 트랜잭션 | ☐ |
 | agile-planning | [product/agile-planning.md](product/agile-planning.md) | 14 (BD 3 + BL 2 + EP 2 + TL 3 + TT 2 + PL 2) | LexoRank + @dnd-kit 1K + Gantt 비교 | ☐ |
 | automation | [product/automation.md](product/automation.md) | 7 (AT 7) | (없음) | ☐ |
-| notification-dashboard | [product/notification-dashboard.md](product/notification-dashboard.md) | 13 (NT 4 + DB 3 + RP 4 + UX-02,03 2) | STOMP WebSocket | ☐ |
+| notification-dashboard | [product/notification-dashboard.md](product/notification-dashboard.md) | 14 (NT 5 + DB 3 + RP 4 + UX-02,03 2) | STOMP WebSocket | ☐ |
 | slack-integration | [product/slack-integration.md](product/slack-integration.md) | 6 (SL 6) | (없음) | ☐ |
 | personalization | [product/personalization.md](product/personalization.md) | 12 (PR 4 + PF 3 + CA 2 + UX-01,04,05 3) | (없음) | ☐ |
 | search-export-import | [product/search-export-import.md](product/search-export-import.md) | 12 (SR 4 + EX 2 + IM 2 + API 4) | AQL 파서 + ANTLR 4 | ☐ |
 | (메타) | (이 README §0~§6) | — | CLAUDE.md/Skills/검토 사이클 — Maxi 관찰 | 진행중 |
 
-**합계**. 122 FR.
+**합계**. 123 FR.
 
 ## §A. 부록
 
-→ [fr-index.md](fr-index.md) — 122 FR 역인덱스 (FR ID → BC → §x.y) + Open Questions.
+→ [fr-index.md](fr-index.md) — 123 FR 역인덱스 (FR ID → BC → §x.y) + Open Questions.
 
 ## §6. NFR 검증 3중 게이트
 

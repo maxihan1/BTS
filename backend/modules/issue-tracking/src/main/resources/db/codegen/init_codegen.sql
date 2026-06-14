@@ -559,3 +559,15 @@ COMMENT ON COLUMN issue_links.created_at IS '링크 생성 시각. TIMESTAMPTZ (
 -- FK 인덱스 (DATA.md §7). source/target 양쪽 단독 조회(나가는/들어오는 링크)에 쓰여 둘 다 추가.
 CREATE INDEX idx_issue_links_source_id ON issue_links(source_id);
 CREATE INDEX idx_issue_links_target_id ON issue_links(target_id);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V022: pgmq 큐 — q_transition_events (FR-NT-05 워크플로우 전이 post-action 이벤트 발행)
+-- 원본: db/migration/issue-tracking/V022__pgmq_queue_transition_events.sql
+-- 이미지: quay.io/tembo/pg16-pgmq:latest — pgmq 사전 설치됨 (ADR 2026-05-22-pgmq-postgres-image).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- pgmq extension 보장 (V002 에서 이미 적용됐으나 멱등 실행)
+CREATE EXTENSION IF NOT EXISTS pgmq CASCADE;
+
+-- 큐 생성 — q_transition_events
+SELECT pgmq.create('q_transition_events');

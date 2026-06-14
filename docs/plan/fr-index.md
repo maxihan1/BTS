@@ -1,11 +1,11 @@
-<!-- 122개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
+<!-- 123개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
 
 # FR 역인덱스 + Open Questions
 
-## §A.1 FR 역인덱스 (121개 전수)
+## §A.1 FR 역인덱스 (122개 전수)
 
 > 출처. SDD `docs/sdd/02-requirements.md` §2.2 "기능 요구사항 (FR) 상세".
-> 검증. `scripts/verify-master-plan.sh` — 122개 모두 product/*.md에 등장해야 함.
+> 검증. `scripts/verify-master-plan.sh` — 123개 모두 product/*.md에 등장해야 함.
 
 ### 이슈 관리 (FR-IS, 10개)
 
@@ -50,14 +50,15 @@
 | FR-AT-06 | YAML 가져오기/내보내기 (GitOps) | 높음 | automation | §2.6 |
 | FR-AT-07 | PR 머지 연동 (Fix Version 자동) | 높음 | automation | §2.7 |
 
-### 알림 (FR-NT, 4개)
+### 알림 (FR-NT, 5개)
 
 | FR ID | 한 줄 | 우선순위 | BC | 본문 위치 |
 |---|---|---|---|---|
 | FR-NT-01 | 이벤트별 알림 정책 | 필수 | notification-dashboard | §2.1 |
-| FR-NT-02 | 채널 (이메일/인앱/Webhook, Slack=slack-integration BC) | 필수 | notification-dashboard | §2.2 |
+| FR-NT-02 | 채널 (이메일/인앱, Slack=slack-integration BC) | 필수 | notification-dashboard | §2.2 |
 | FR-NT-03 | 수신자 정책 (R/A/W/Lead/역할) | 필수 | notification-dashboard | §2.3 |
 | FR-NT-04 | 사용자별 알림 구독 설정 | 높음 | notification-dashboard | §2.4 |
+| FR-NT-05 | Webhook 알림 채널 — 전이 post-action 이벤트 발행 + 외부 URL HTTP POST 디스패처 | 중간 | notification-dashboard | §2.5 |
 
 ### 멘션 / 히스토리 (FR-MN, FR-HS, 4개)
 
@@ -223,11 +224,11 @@
 | project-workflow | 3 | WF(3) |
 | agile-planning | 14 | BD(3) + BL(2) + EP(2) + TL(3) + TT(2) + PL(2) |
 | automation | 7 | AT(7) |
-| notification-dashboard | 13 | NT(4) + DB(3) + RP(4) + UX-02,03(2) |
+| notification-dashboard | 14 | NT(5) + DB(3) + RP(4) + UX-02,03(2) |
 | slack-integration | 6 | SL(6) |
 | personalization | 12 | PR(4) + PF(3) + CA(2) + UX-01,04,05(3) |
 | search-export-import | 12 | SR(4) + EX(2) + IM(2) + API(4) |
-| **합계** | **122** | |
+| **합계** | **123** | |
 
 ## §A.3 미해결 결정 (Open Questions)
 
@@ -249,3 +250,4 @@
 - 2026-05-20. **재편성**. SDD 17장 Phase 0~4 분할 폐기, BC 단위 완제품 매핑으로 전환. Phase 컬럼 → BC 컬럼.
 - 2026-05-20. 초안. SDD `02-requirements.md`에서 117개 FR ID 전수 추출. Open Questions 8건 등재.
 - 2026-06-08. **FR-IS-10 신설**. 커스텀 필드 인프라 (issue-tracking). 합계 121→122.
+- 2026-06-14. **FR-NT-05 신설**. Webhook 알림 채널 (notification-dashboard, FR-NT-02에서 분리). 합계 122→123. FR-NT-02 "Webhook" 표기 정정(이메일/인앱만).

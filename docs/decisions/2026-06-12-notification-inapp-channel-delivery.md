@@ -101,3 +101,5 @@ SDD §9.1.3의 3·4단계(notifications 기록 + WebSocket 푸시)를 이번 PR�
 2. Webhook은 `NotificationChannelSender`가 아니라 워크플로우 전이 post-action(`CallWebhookPostAction`)이 발행하는 **`WebhookRequested` 이벤트 디스패처**로 구현하는 것이 선례에 부합하나, 그 이벤트는 **현재 어느 pgmq 큐에도 발행되지 않는다**(전이 API 응답 `TransitionResponseDto.events`에만 존재). 제대로 하려면 ① project-workflow BC에 전이 emitEvents 발행 파이프라인(4종 post-action 공통), ② notification BC 소비+HTTP 디스패처가 필요 → cross-BC, FR-NT-02 한 PR 범위 초과.
 
 따라서 Webhook 채널은 **전이-이벤트 발행 파이프라인 설계를 포함한 전용 후속 FR**로 분리한다(FR ID는 해당 FR spec 시점에 mint). FR-NT-02 채널 집합 = 인앱 + 이메일(notification BC 직접 담당), Webhook은 후속 FR, Slack=slack-integration BC, Teams=범위 밖. FR-NT-02 전체는 Webhook 후속이라 부분완료(`[~]`) 유지, FR 총수 불변(122).
+
+> **정정(2026-06-14, FR-NT-05 도메인 분석)**: 위 ①의 "**project-workflow BC**에 전이 emitEvents 발행 파이프라인" 표현은 부정확하다. 코드 실측상 post-action은 계산만(GAP-2), 실행(이벤트 발행)은 **호출자 BC = issue-tracking** 책임이며, 발행은 상태 변경(`repo.applyTransition`)을 소유한 `IssueApplicationService.transitionIssue()` 트랜잭션 안에서 이뤄져야 outbox 정합이 유지된다(project-workflow `plan()`은 dry-run 겸용이라 오발사 위험). 새 FR는 **FR-NT-05**로 mint(122→123). 상세 근거는 [2026-06-14-fr-nt-05-transition-event-outbox.md](2026-06-14-fr-nt-05-transition-event-outbox.md).
