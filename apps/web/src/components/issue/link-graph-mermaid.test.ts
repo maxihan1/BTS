@@ -9,7 +9,7 @@ import type { IssueGraphResponse } from '@/api/issue-graph'
 
 /** 엣지 라벨 맵 — component가 linkGraphStrings에서 생성해 전달하는 형태 */
 const EDGE_LABELS: Record<string, string> = {
-  BLOCKS: '차단',
+  BLOCKS: '막음',
   RELATES: '관련',
   DUPLICATES: '중복',
   CLONES: '복제',
@@ -172,8 +172,8 @@ describe('generateGraphMermaidCode', () => {
     it('엣지를 from -->|"라벨"| to 형식으로 렌더링한다', () => {
       const result = generateGraphMermaidCode(SIMPLE_GRAPH, EDGE_LABELS)
       expect(result).not.toBeNull()
-      // 엣지 라인에 edgeLabels 주입 라벨 사용
-      expect(result!.code).toContain('-->|"차단"|')
+      // 엣지 라인에 edgeLabels 주입 라벨 사용 (C1 통일 후: BLOCKS='막음')
+      expect(result!.code).toContain('-->|"막음"|')
     })
 
     it('PARENT 엣지의 from/to 방향이 그대로 보존된다', () => {
@@ -235,6 +235,92 @@ describe('generateGraphMermaidCode', () => {
       const ids = Object.keys(result!.idToKey)
       for (const id of ids) {
         expect(id).toMatch(/^[a-zA-Z_][a-zA-Z0-9_]*$/)
+      }
+    })
+  })
+
+  // ── P2: edge.type 대문자 정규화 + mermaid 라벨 escape ──────────────────────
+
+  describe('P2: edge.type 대문자 정규화', () => {
+    it('소문자 edge.type(blocks)도 EDGE_LABELS 대문자 키로 조회해 한국어 라벨을 사용한다', () => {
+      const lowerTypeGraph: IssueGraphResponse = {
+        center: 'ATLAS-1',
+        depth: 1,
+        nodes: [
+          { key: 'ATLAS-1', summary: '센터', statusKey: 'TODO', depth: 0 },
+          { key: 'ATLAS-2', summary: '대상', statusKey: 'TODO', depth: 1 },
+        ],
+        edges: [{ from: 'ATLAS-1', to: 'ATLAS-2', type: 'blocks' }],
+        truncated: false,
+      }
+      const result = generateGraphMermaidCode(lowerTypeGraph, EDGE_LABELS)
+      expect(result).not.toBeNull()
+      // 소문자 'blocks'가 toUpperCase()로 'BLOCKS' 조회 → '막음' 라벨
+      expect(result!.code).toContain('-->|"막음"|')
+    })
+
+    it('미지 소문자 type은 원문 소문자 그대로 fallback으로 사용한다', () => {
+      const unknownLowerGraph: IssueGraphResponse = {
+        center: 'ATLAS-1',
+        depth: 1,
+        nodes: [
+          { key: 'ATLAS-1', summary: '센터', statusKey: 'TODO', depth: 0 },
+          { key: 'ATLAS-2', summary: '대상', statusKey: 'TODO', depth: 1 },
+        ],
+        edges: [{ from: 'ATLAS-1', to: 'ATLAS-2', type: 'future_type' }],
+        truncated: false,
+      }
+      const result = generateGraphMermaidCode(unknownLowerGraph, EDGE_LABELS)
+      expect(result).not.toBeNull()
+      // 'future_type'.toUpperCase() = 'FUTURE_TYPE' → EDGE_LABELS에 없으므로 원문 'future_type' fallback
+      expect(result!.code).toContain('-->|"future_type"|')
+    })
+  })
+
+  describe('P2: mermaid 라벨 escape', () => {
+    it('이슈 키에 따옴표가 포함된 경우 노드 라벨 내부에 raw 따옴표가 남지 않는다', () => {
+      const quoteKeyGraph: IssueGraphResponse = {
+        center: 'ATLAS-1',
+        depth: 1,
+        nodes: [
+          { key: 'ATLAS-1', summary: '센터', statusKey: 'TODO', depth: 0 },
+          // 이상 키 — 계약 위반 방어 (실제 키는 정규식상 안전하나 방어용)
+          { key: 'AT"LAS-2', summary: '대상', statusKey: 'TODO', depth: 1 },
+        ],
+        edges: [{ from: 'ATLAS-1', to: 'AT"LAS-2', type: 'BLOCKS' }],
+        truncated: false,
+      }
+      const result = generateGraphMermaidCode(quoteKeyGraph, EDGE_LABELS)
+      expect(result).not.toBeNull()
+      // 노드 정의 라인에 raw " 가 라벨 내부에 없어야 한다
+      // 허용: ["AT&quot;LAS-2"] 또는 ["AT#quot;LAS-2"]
+      // 금지: ["AT"LAS-2"]
+      const nodeLines = result!.code.split('\n').filter((l) => l.includes('['))
+      for (const line of nodeLines) {
+        // 라벨 부분(["...]")에서 내부 raw " 는 없어야 함
+        const labelMatch = /\["(.*?)"\]/.exec(line)
+        if (labelMatch !== null) {
+          expect(labelMatch[1] ?? '').not.toContain('"')
+        }
+      }
+    })
+
+    it('개행 문자가 포함된 키에서 노드 라벨 내부에 개행이 남지 않는다', () => {
+      const newlineKeyGraph: IssueGraphResponse = {
+        center: 'ATLAS-1',
+        depth: 1,
+        nodes: [
+          { key: 'ATLAS-1', summary: '센터', statusKey: 'TODO', depth: 0 },
+          { key: 'ATLAS\n2', summary: '대상', statusKey: 'TODO', depth: 1 },
+        ],
+        edges: [{ from: 'ATLAS-1', to: 'ATLAS\n2', type: 'BLOCKS' }],
+        truncated: false,
+      }
+      const result = generateGraphMermaidCode(newlineKeyGraph, EDGE_LABELS)
+      expect(result).not.toBeNull()
+      const nodeLines = result!.code.split('\n').filter((l) => l.includes('['))
+      for (const line of nodeLines) {
+        expect(line).not.toContain('\n')
       }
     })
   })
