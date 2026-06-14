@@ -136,4 +136,21 @@ fr-index(FR-NT 4→5·합계 122→123·§A.2 카운트·상단 주석) + SDD(§
 - TDD 강제: yes (T1/T2). T3는 verify-master-plan green이 게이트.
 - 추가 검증: ktlintCheck/detekt --rerun-tasks(메모리 — 에이전트 lint false-green 불신, controller 직접 재검증), verify-master-plan.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-14) — eng 집중 독립 리뷰 (autoplan 생략, 메모리 bts-review-plan-autoplan-overkill)
+
+**BLOCKER: 0.** 코드 실측 기반 4섹션 검토.
+
+- **Step 0 스코프**: 기존 흐름(`plan.emitEvents` 계산 + `IssueEventPublisher`/outbox 패턴) 재사용 — 병렬 구축 아님. 신규 클래스 1개(`TransitionEventPublisher`), 코드 ~4파일 + docs. 복잡도 smell 없음(<8파일, <2 신규 클래스). 스코프 축소 불요.
+- **아키텍처 ✅**: 발행 BC 배치(issue-tracking)가 shared-kernel `TransitionPlan` KDoc 계약("호출자 BC가 emitEvents를 outbox에 INSERT")과 일치. outbox = boring/proven(Layer 1). blast radius 작음(휴면 인프라 + nullable no-op + 전용 큐 격리).
+- **C1 (P3, DRY)**: `TransitionEventPublisher`가 `IssueEventPublisher`·`WorkflowSchemeEventPublisher`와 거의 동일 → pgmq publisher 3번째 사본. 공유 베이스(`PgmqEventPublisher(queueName)`) 추출 후보. **이번 PR은 일관 복제**(기존 2사본 패턴 따름), 추출은 후속 TODO(범위 밖).
+- **C2 (수용)**: webhook 이벤트 enqueue 실패 → 전이 트랜잭션 롤백(outbox 결합). 기존 `IssueTransitioned` 발행과 **동일 속성**이라 신규 리스크 아님. DATA.md §7.2 정합 우선.
+- **C3 (P3, 테스트)**: bulk 전이 통합 커버리지 — `BulkItemApplier`가 `transitionIssue()` 경유라 단건 통합테스트가 메커니즘 증명. bulk 전용 assertion은 선택적(동일 코드패스).
+- **C4 (수용)**: nullable 기본값 fail-safe 리스크는 통합테스트(실 Spring 배선 발행 검증)가 가드 → 배선 회귀 시 CI fail.
+
+**테스트 커버리지**: 발행(happy)/롤백(0)/dry-run(0)/post-action 미설정 회귀(0)/단위(MANDATORY). 회귀 가드 포함. GAP 0(C3 bulk만 선택적 P3).
+
+**NOT in scope**: Webhook HTTP 디스패처(PR2 notification) · webhook 설정 UI(워크플로우 post-action 정의 메커니즘) · post-action fieldChanges 적용(별개 기능) · pgmq publisher 베이스 추출(C1, 후속) · 재시도/DLQ(PR2).
+
+**What already exists (재사용)**: `TransitionPlan.emitEvents`(계산 완료, project-workflow) · `IssueEventPublisher`/outbox 패턴 · `IssueTransitionValidatorEndToEndIntegrationTest`(IT 시드 패턴) · pgmq 인프라(pg16-pgmq).
