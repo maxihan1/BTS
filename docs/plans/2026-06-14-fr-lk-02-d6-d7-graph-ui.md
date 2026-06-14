@@ -31,9 +31,19 @@ classify 결과: type=ui(E2E 키워드로 qa 오판정 → ui 교정, FR-LK-01 �
 - **기존 결정 충돌**: 없음. [[2026-06-13-issue-link-vs-parent-child-separation]] 위에서 graph는 issue_links 4종 + parent_id를 모두 엣지로 통합 표시(읽기 전용이라 충돌 없음).
 - **관련 ADR**: [docs/decisions/2026-06-14-link-graph-mermaid-visualization.md](../decisions/2026-06-14-link-graph-mermaid-visualization.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-14-fr-lk-02-d6-d7-graph-ui.md](../specs/2026-06-14-fr-lk-02-d6-d7-graph-ui.md)
+
+핵심 시나리오 요약.
+- 이슈 상세 "링크 그래프" 섹션을 펼치면(기본 접힘, lazy 조회) `GET /graph?depth=2` 호출 → mermaid flowchart로 center 강조 + edge.type 라벨 렌더
+- depth 컨트롤(1/2/3)로 범위 전환, truncated=true면 "일부 생략" 안내, 빈 그래프는 메시지
+- 노드 클릭(또는 Enter)으로 해당 이슈 상세로 이동(center는 no-op), mermaid securityLevel 변경 없이 DOM 바인딩
+- 단위테스트는 mermaid mock, 실제 렌더는 D7 E2E
+
+## Brainstorming Check
+
+✅ 통과 (집중 사니티 체크 1회). 발견 gap 1건 — "그래프 노드 클릭 내비게이션 포함 여부" → Maxi 결정 "포함"(2026-06-14). FR-8 + S7 + EC-8 + 완료기준에 반영. office-hours/design-shotgun은 contract-고정 FR 연속 작업이라 스킵(bts-spec-office-hours-mismatch 교훈).
 
 ## Plan (← /bts-plan 채움)
 
