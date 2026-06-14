@@ -1,7 +1,7 @@
 // issueDetailStrings 신규 키 존재 여부를 타입 레벨에서 검증하는 테스트
 
 import { describe, it, expect, expectTypeOf } from 'vitest'
-import { issueDetailStrings, mfaStrings, mfaErrorMessage, issueLinkStrings } from './ko'
+import { issueDetailStrings, mfaStrings, mfaErrorMessage, issueLinkStrings, linkGraphStrings } from './ko'
 
 // IssueDetailStrings 타입을 추론해서 키 존재를 검증한다.
 // 키가 없으면 expectTypeOf(...).toHaveProperty() 가 타입 에러를 발생시킨다.
@@ -270,8 +270,6 @@ describe('issueLinkStrings — 이슈 링크 패널 문자열 (FR-LK-01 D6)', ()
 })
 
 // ── linkGraphStrings ───────────────────────────────────────────────────────────
-
-import { linkGraphStrings } from './ko'
 
 type LinkGraphStrings = typeof linkGraphStrings
 
