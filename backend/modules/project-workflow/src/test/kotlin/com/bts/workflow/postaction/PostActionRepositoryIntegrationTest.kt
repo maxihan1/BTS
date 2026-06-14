@@ -271,6 +271,6 @@ class PostActionRepositoryIntegrationTest {
 
         assertThat(result).hasSizeGreaterThanOrEqualTo(3)
         val orders = result.map { it.displayOrder }
-        assertThat(orders).isSorted
+        assertThat(orders).isEqualTo(orders.sorted())
     }
 }
