@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import { useState, useId } from 'react'
 import { Dialog } from 'radix-ui'
 import { cn } from '@/lib/utils'
+import { postActionLabels } from '@/i18n/post-action-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -13,25 +14,6 @@ const HTTP_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const
 
 /** URL이 반드시 http:// 또는 https://로 시작해야 한다는 제약 — 백엔드 검증과 정합 */
 const URL_PREFIX_PATTERN = /^https?:\/\//
-
-// ─────────────────────────────────────────────────────────────────────────────
-// i18n 라벨 — post-action 폼 전용
-// ─────────────────────────────────────────────────────────────────────────────
-
-const labels = {
-  createTitle: 'Post-Action 추가',
-  editTitle: 'Post-Action 수정',
-  urlLabel: 'Webhook URL',
-  urlPlaceholder: 'https://example.com/webhook',
-  methodLabel: '메서드 (HTTP Method)',
-  saveButton: '저장',
-  createButton: '추가',
-  cancelButton: '취소',
-  submittingButton: '처리 중...',
-  errorUrlRequired: 'URL을 입력해 주세요.',
-  errorUrlInvalid: 'URL은 http:// 또는 https://로 시작해야 합니다.',
-  errorMethodRequired: '메서드를 선택해 주세요.',
-} as const
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입 정의
@@ -81,13 +63,13 @@ function validateForm(values: PostActionFormValues): FormErrors {
   const errors: FormErrors = {}
 
   if (!values.url.trim()) {
-    errors.url = labels.errorUrlRequired
+    errors.url = postActionLabels.form.errorUrlRequired
   } else if (!URL_PREFIX_PATTERN.test(values.url)) {
-    errors.url = labels.errorUrlInvalid
+    errors.url = postActionLabels.form.errorUrlInvalid
   }
 
   if (!values.method.trim()) {
-    errors.method = labels.errorMethodRequired
+    errors.method = postActionLabels.form.errorMethodRequired
   }
 
   return errors
@@ -124,12 +106,12 @@ export function PostActionFormDialog({
   const [method, setMethod] = useState(initialValues?.method ?? '')
   const [errors, setErrors] = useState<FormErrors>({})
 
-  const title = mode === 'create' ? labels.createTitle : labels.editTitle
+  const title = mode === 'create' ? postActionLabels.dialog.createTitle : postActionLabels.dialog.editTitle
   const submitLabel = submitting
-    ? labels.submittingButton
+    ? postActionLabels.dialog.submittingButton
     : mode === 'create'
-      ? labels.createButton
-      : labels.saveButton
+      ? postActionLabels.dialog.createButton
+      : postActionLabels.dialog.saveButton
 
   /** 저장 버튼 클릭 — 검증 후 onSubmit 호출 */
   function handleSubmit() {
@@ -203,14 +185,14 @@ export function PostActionFormDialog({
                 htmlFor={urlId}
                 className="text-sm font-medium text-foreground"
               >
-                {labels.urlLabel}
+                {postActionLabels.form.urlLabel}
               </label>
               <input
                 id={urlId}
                 type="url"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder={labels.urlPlaceholder}
+                placeholder={postActionLabels.form.urlPlaceholder}
                 aria-invalid={errors.url !== undefined}
                 className={cn(
                   'w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none',
@@ -226,7 +208,7 @@ export function PostActionFormDialog({
                 htmlFor={methodId}
                 className="text-sm font-medium text-foreground"
               >
-                {labels.methodLabel}
+                {postActionLabels.form.methodLabel}
               </label>
               <select
                 id={methodId}
@@ -260,7 +242,7 @@ export function PostActionFormDialog({
                   'hover:bg-muted transition-colors',
                 )}
               >
-                {labels.cancelButton}
+                {postActionLabels.dialog.cancelButton}
               </button>
             </Dialog.Close>
             <button
