@@ -2,9 +2,7 @@
 
 package com.bts.workflow.postaction
 
-import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
-import com.bts.shared.permission.WorkflowSchemeScope
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
 import com.bts.workflow.postaction.web.PostActionController
@@ -16,7 +14,6 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.verify
-import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -26,7 +23,8 @@ import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
 import org.springframework.http.MediaType
-import org.springframework.security.test.context.support.WithMockUser
+import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -35,13 +33,11 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
-import org.springframework.web.filter.CharacterEncodingFilter
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
-import java.util.UUID
 
 /**
  * post-action CRUD E2E 통합 테스트.
@@ -52,9 +48,9 @@ import java.util.UUID
  * 검증 범위.
  * - CALL_WEBHOOK 생성(POST 201) → GET 목록 조회 → PUT 수정 → DELETE 삭제
  * - 캐시 무효화 호출 확인(workflowKey 기준)
- * - 권한 거부 403 (permissionResolver stub 이 예외를 던지는 경우)
- * - 미지원 transitionKey 404
- * - 모듈 전체 회귀 0 (이 테스트 이후 전체 suite 에서 확인)
+ * - 미존재 transitionKey 404
+ * - 비-http url 검증 실패 400
+ * - 미지원 type 400
  */
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
@@ -75,11 +71,10 @@ class PostActionE2EIntegrationTest {
 
         lateinit var mockMvc: MockMvc
         lateinit var workflowCache: WorkflowCache
-        lateinit var permissionResolver: WorkflowSchemePermissionResolver
-        lateinit var postActionRepository: PostActionRepository
 
         private const val WORKFLOW_KEY = "simple"
         private const val TRANSITION_KEY = "todo__doing"
+        private const val ACTOR_UUID = "11111111-1111-1111-1111-111111111111"
         private val basePath =
             "/api/v1/workflows/$WORKFLOW_KEY/transitions/$TRANSITION_KEY/post-actions"
 
@@ -176,7 +171,7 @@ class PostActionE2EIntegrationTest {
                 ).use { it.execute() }
             }
 
-            // 빈 구성 — 실 컴포넌트 조립
+            // 컴포넌트 조립
             val dataSource =
                 org.springframework.jdbc.datasource.DriverManagerDataSource(
                     postgres.jdbcUrl,
@@ -186,28 +181,43 @@ class PostActionE2EIntegrationTest {
             val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
             val objectMapper = ObjectMapper().registerKotlinModule()
 
-            postActionRepository = PostActionRepository(dsl, objectMapper)
+            val postActionRepository = PostActionRepository(dsl, objectMapper)
             val factory = DefaultWorkflowPostActionFactory()
             val resolver = PostActionTransitionResolver(dsl)
 
-            val workflowRepo = WorkflowRepository(dsl)
             workflowCache = mockk()
             justRun { workflowCache.invalidate(any()) }
 
             val service = PostActionAdminService(postActionRepository, factory, resolver, workflowCache)
 
-            permissionResolver = mockk(relaxed = true)
+            // permissionResolver — relaxed mock (always allow)
+            val permissionResolver: WorkflowSchemePermissionResolver = mockk(relaxed = true)
 
             val controller = PostActionController(service, permissionResolver)
 
             mockMvc =
                 MockMvcBuilders.standaloneSetup(controller)
-                    .addFilters<MockMvc>(CharacterEncodingFilter("UTF-8", true))
                     .setControllerAdvice(
                         PostActionExceptionHandler(),
                         WorkflowSchemeExceptionHandler(),
                     )
                     .build()
+        }
+
+        /** 각 테스트에서 SecurityContext 에 UUID principal 을 설정하는 헬퍼. */
+        private fun withActor(block: () -> Unit) {
+            val auth =
+                org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                    ACTOR_UUID,
+                    null,
+                    emptyList(),
+                )
+            SecurityContextHolder.getContext().authentication = auth
+            try {
+                block()
+            } finally {
+                SecurityContextHolder.clearContext()
+            }
         }
     }
 
@@ -215,133 +225,142 @@ class PostActionE2EIntegrationTest {
 
     @Test
     @Order(10)
-    @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
     fun `POST - CALL_WEBHOOK 생성 201`() {
-        val body = """{"type":"CALL_WEBHOOK","config":{"url":"https://hook.example.com","method":"POST"},"displayOrder":0}"""
+        withActor {
+            val body =
+                """{"type":"CALL_WEBHOOK","config":{"url":"https://hook.example.com","method":"POST"},"displayOrder":0}"""
 
-        mockMvc.perform(
-            post(basePath)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(body),
-        )
-            .andExpect(status().isCreated)
-            .andExpect(jsonPath("$.data.type").value("CALL_WEBHOOK"))
-            .andExpect(jsonPath("$.data.id").isNotEmpty)
+            mockMvc.perform(
+                post(basePath)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body),
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.data.type").value("CALL_WEBHOOK"))
+                .andExpect(jsonPath("$.data.id").isNotEmpty)
 
-        verify(atLeast = 1) { workflowCache.invalidate(WORKFLOW_KEY) }
+            verify(atLeast = 1) { workflowCache.invalidate(WORKFLOW_KEY) }
+        }
     }
 
     // ── GET 200 ───────────────────────────────────────────────────────────────
 
     @Test
     @Order(20)
-    @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
     fun `GET - 목록 조회 200`() {
-        mockMvc.perform(get(basePath))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data").isArray)
-            .andExpect(jsonPath("$.data.length()").value(1))
-            .andExpect(jsonPath("$.data[0].type").value("CALL_WEBHOOK"))
+        withActor {
+            mockMvc.perform(get(basePath))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data").isArray)
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].type").value("CALL_WEBHOOK"))
+        }
     }
 
     // ── PUT 200 ───────────────────────────────────────────────────────────────
 
     @Test
     @Order(30)
-    @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
     fun `PUT - 수정 200 + 캐시 무효화`() {
-        // GET 에서 id 를 가져온다
-        val result =
-            mockMvc.perform(get(basePath))
+        withActor {
+            val listResult =
+                mockMvc.perform(get(basePath))
+                    .andExpect(status().isOk)
+                    .andReturn()
+            val id =
+                ObjectMapper().readTree(listResult.response.contentAsString)
+                    .get("data").get(0).get("id").asText()
+
+            val body =
+                """{"type":"CALL_WEBHOOK","config":{"url":"https://updated.example.com","method":"PUT"},"displayOrder":5}"""
+
+            mockMvc.perform(
+                put("$basePath/$id")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body),
+            )
                 .andExpect(status().isOk)
-                .andReturn()
-        val id =
-            ObjectMapper().readTree(result.response.contentAsString)
-                .get("data").get(0).get("id").asText()
+                .andExpect(jsonPath("$.data.displayOrder").value(5))
+                .andExpect(jsonPath("$.data.config.url").value("https://updated.example.com"))
 
-        val body = """{"type":"CALL_WEBHOOK","config":{"url":"https://updated.example.com","method":"PUT"},"displayOrder":5}"""
-
-        mockMvc.perform(
-            put("$basePath/$id")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(body),
-        )
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.displayOrder").value(5))
-            .andExpect(jsonPath("$.data.config.url").value("https://updated.example.com"))
-
-        verify(atLeast = 2) { workflowCache.invalidate(WORKFLOW_KEY) }
+            verify(atLeast = 2) { workflowCache.invalidate(WORKFLOW_KEY) }
+        }
     }
 
     // ── DELETE 204 ────────────────────────────────────────────────────────────
 
     @Test
     @Order(40)
-    @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
     fun `DELETE - 삭제 204 + 이후 GET 은 빈 목록`() {
-        val listResult =
+        withActor {
+            val listResult =
+                mockMvc.perform(get(basePath))
+                    .andExpect(status().isOk)
+                    .andReturn()
+            val id =
+                ObjectMapper().readTree(listResult.response.contentAsString)
+                    .get("data").get(0).get("id").asText()
+
+            mockMvc.perform(delete("$basePath/$id"))
+                .andExpect(status().isNoContent)
+
             mockMvc.perform(get(basePath))
                 .andExpect(status().isOk)
-                .andReturn()
-        val id =
-            ObjectMapper().readTree(listResult.response.contentAsString)
-                .get("data").get(0).get("id").asText()
-
-        mockMvc.perform(delete("$basePath/$id"))
-            .andExpect(status().isNoContent)
-
-        mockMvc.perform(get(basePath))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.length()").value(0))
+                .andExpect(jsonPath("$.data.length()").value(0))
+        }
     }
 
     // ── 미존재 transitionKey 404 ──────────────────────────────────────────────
 
     @Test
     @Order(50)
-    @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
     fun `미존재 transitionKey - GET 404`() {
-        mockMvc.perform(get("/api/v1/workflows/$WORKFLOW_KEY/transitions/open__nonexistent/post-actions"))
-            .andExpect(status().isNotFound)
+        withActor {
+            mockMvc.perform(get("/api/v1/workflows/$WORKFLOW_KEY/transitions/open__nonexistent/post-actions"))
+                .andExpect(status().isNotFound)
+        }
     }
 
     // ── transitionKey 형식 오류 404 ───────────────────────────────────────────
 
     @Test
     @Order(60)
-    @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
     fun `transitionKey 형식 오류 - GET 404`() {
-        mockMvc.perform(get("/api/v1/workflows/$WORKFLOW_KEY/transitions/malformed/post-actions"))
-            .andExpect(status().isNotFound)
+        withActor {
+            mockMvc.perform(get("/api/v1/workflows/$WORKFLOW_KEY/transitions/malformed/post-actions"))
+                .andExpect(status().isNotFound)
+        }
     }
 
     // ── 검증 실패 400 ─────────────────────────────────────────────────────────
 
     @Test
     @Order(70)
-    @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
     fun `비-http url - POST 400`() {
-        val body = """{"type":"CALL_WEBHOOK","config":{"url":"ftp://bad.com","method":"POST"},"displayOrder":0}"""
+        withActor {
+            val body = """{"type":"CALL_WEBHOOK","config":{"url":"ftp://bad.com","method":"POST"},"displayOrder":0}"""
 
-        mockMvc.perform(
-            post(basePath)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(body),
-        )
-            .andExpect(status().isBadRequest)
+            mockMvc.perform(
+                post(basePath)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body),
+            )
+                .andExpect(status().isBadRequest)
+        }
     }
 
     @Test
     @Order(80)
-    @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
     fun `미지원 type - POST 400`() {
-        val body = """{"type":"UNKNOWN_TYPE","config":{},"displayOrder":0}"""
+        withActor {
+            val body = """{"type":"UNKNOWN_TYPE","config":{},"displayOrder":0}"""
 
-        mockMvc.perform(
-            post(basePath)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(body),
-        )
-            .andExpect(status().isBadRequest)
+            mockMvc.perform(
+                post(basePath)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body),
+            )
+                .andExpect(status().isBadRequest)
+        }
     }
 }
