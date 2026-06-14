@@ -15,11 +15,10 @@
 //   - ATLAS-4, ATLAS-5는 issue-handlers.ts에 fixture가 있어 이슈 상세 정상 렌더됨
 //
 // mermaid flowchart 렌더 실검증 현황.
-//   - E2E-G5(C1)/E2E-G6(C2) 노드 클릭/키보드는 mermaid가 실제 SVG를 렌더해야 검증 가능.
-//   - link-graph-mermaid.ts의 CENTER_CLASS_DEF에 포함된 CSS 변수
-//     fill:oklch(from var(--primary) l c h / 0.20) 구문이 mermaid 11.x 파싱 오류를 유발한다.
-//   - 이는 구현 코드(link-graph-mermaid.ts) 문제이므로 QA 영역 수정 불가.
-//     G5/G6 시나리오는 SKIPPED 처리 — 구현 수정 후 활성화 필요.
+//   - E2E-G5(C1)/E2E-G6(C2) 노드 클릭/키보드 — 활성화 (6개 전부 실행).
+//   - 커밋 2fae8a07: CENTER_CLASS_DEF hex 절대값으로 교체 (CSS 변수 파싱 오류 해소).
+//   - 커밋 887911dc: resolveSanitizedId 정규식 ^ 앵커 제거($ suffix 매칭으로 prefix 대응).
+//   - 위 두 fix 이후 mermaid SVG 렌더 + role=link 바인딩이 정상 동작해 G5/G6 활성화.
 //   - G1~G4는 mermaid 렌더 여부와 무관한 상위 레벨 UI 상태를 검증한다.
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
@@ -226,21 +225,23 @@ test.describe('FR-LK-02 이슈 링크 그래프 패널 (LinkGraph)', () => {
   // ─────────────────────────────────────────────────────────────────────────
   // E2E-G5 (C1) 노드 클릭 → 이슈 이동
   //
-  // SKIPPED — mermaid 렌더 의존
+  // Given   alice로 로그인, ATLAS-1 이슈 상세 → 그래프 펼침 (depth=2 기본값)
+  //         mermaid SVG가 렌더되고 비-center 노드(ATLAS-2)에
+  //         role=link, tabindex=0, aria-label이 부여된 상태
+  // When    ATLAS-2 노드 클릭
+  // Then    URL이 /issues/ATLAS-2 로 이동
+  //         center 노드(ATLAS-1)는 role=link 없음 (no-op)
   //
-  // 원인: link-graph-mermaid.ts CENTER_CLASS_DEF에서
-  //   fill:oklch(from var(--primary) l c h / 0.20)
-  //   CSS 변수 상대 구문이 mermaid 11.x 파서에서 Syntax error를 유발한다.
-  //   이는 구현 코드 문제 → QA 수정 불가 → mermaid SVG 미렌더 → g.node[role="link"] 없음.
-  //
-  // 수정 경로: link-graph-mermaid.ts의 CENTER_FILL을 절대값(#색코드 또는 oklch 함수 직접값)으로
-  //   교체 후 활성화. 이 시나리오는 구현 수정 후 주석 해제.
+  // 전제: 커밋 887911dc(resolveSanitizedId $-앵커) +
+  //       커밋 2fae8a07(CENTER_CLASS_DEF hex 절대값)으로 mermaid 렌더 정상화됨.
   // ─────────────────────────────────────────────────────────────────────────
-  test.skip('E2E-G5 (C1) 비-center 노드 클릭 → 이슈 이동 [mermaid CSS 변수 파싱 오류로 SKIPPED]', async ({ page }) => {
+  test('E2E-G5 (C1) 비-center 노드 클릭 → 이슈 이동', async ({ page }) => {
+    // Given.
     await navigateToIssueDetail(page)
     await expandLinkGraph(page)
 
-    // mermaid 렌더 성공 전제 (g.node[role="link"] 존재)
+    // Given. mermaid SVG가 렌더되고 비-center 노드에 role=link 부여될 때까지 대기
+    // (mermaid 비동기 렌더 특성상 polling 방식 사용 — sleep 대신 toPass)
     await expect(async () => {
       const hasLinkNode = await page.evaluate(() => {
         const container = document.querySelector('[aria-label="링크 그래프"]')
@@ -248,23 +249,46 @@ test.describe('FR-LK-02 이슈 링크 그래프 패널 (LinkGraph)', () => {
         return container.querySelectorAll('g.node[role="link"]').length > 0
       })
       expect(hasLinkNode).toBe(true)
-    }).toPass({ timeout: 10_000 })
+    }).toPass({ timeout: 12_000 })
 
+    // Given. ATLAS-2 노드에 aria-label 부여됨 확인
     const atlas2Node = page.locator(`[aria-label="${linkGraphStrings.nodeAriaLabel('ATLAS-2')}"]`)
     await expect(atlas2Node).toBeVisible()
+
+    // Then. center(ATLAS-1) 노드는 role=link 없음 (no-op 확인)
+    const centerLinkRoles = await page.evaluate(() => {
+      const container = document.querySelector('[aria-label="링크 그래프"]')
+      if (!container) return 0
+      // data-id="node_0"인 노드(center=ATLAS-1, 첫 번째 노드)의 role 확인
+      const centerNode = container.querySelector('g.node[data-id="node_0"]')
+      if (!centerNode) return -1 // data-id 없으면 -1 (id fallback 경로)
+      return centerNode.getAttribute('role') === 'link' ? 1 : 0
+    })
+    // center 노드에 role=link가 없어야 함 (0 또는 -1: -1은 fallback 경로라 data-id 부재)
+    expect(centerLinkRoles).not.toBe(1)
+
+    // When. ATLAS-2 노드 클릭
     await atlas2Node.click()
-    await page.waitForURL('**/issues/ATLAS-2', { timeout: 5_000 })
+
+    // Then. /issues/ATLAS-2 로 이동
+    await page.waitForURL('**/issues/ATLAS-2', { timeout: 8_000 })
   })
 
   // ─────────────────────────────────────────────────────────────────────────
   // E2E-G6 (C2) 키보드 Enter로 노드 이슈 이동
   //
-  // SKIPPED — mermaid 렌더 의존 (G5와 동일 원인)
+  // Given   alice로 로그인, ATLAS-1 이슈 상세 → 그래프 펼침 (depth=2 기본값)
+  //         ATLAS-2 노드에 tabindex=0, role=link, aria-label 부여됨
+  // When    ATLAS-2 노드 포커스 → Enter 키 입력
+  // Then    URL이 /issues/ATLAS-2 로 이동
+  //         aria-label 값이 nodeAriaLabel('ATLAS-2') 와 일치
   // ─────────────────────────────────────────────────────────────────────────
-  test.skip('E2E-G6 (C2) 키보드 Enter로 비-center 노드 이슈 이동 [mermaid CSS 변수 파싱 오류로 SKIPPED]', async ({ page }) => {
+  test('E2E-G6 (C2) 키보드 Enter로 비-center 노드 이슈 이동', async ({ page }) => {
+    // Given.
     await navigateToIssueDetail(page)
     await expandLinkGraph(page)
 
+    // Given. mermaid 렌더 + role=link 바인딩 대기
     await expect(async () => {
       const hasLinkNode = await page.evaluate(() => {
         const container = document.querySelector('[aria-label="링크 그래프"]')
@@ -272,12 +296,20 @@ test.describe('FR-LK-02 이슈 링크 그래프 패널 (LinkGraph)', () => {
         return container.querySelectorAll('g.node[role="link"]').length > 0
       })
       expect(hasLinkNode).toBe(true)
-    }).toPass({ timeout: 10_000 })
+    }).toPass({ timeout: 12_000 })
 
+    // Given. ATLAS-2 노드 — aria-label 확인 (C2 검증)
     const atlas2Node = page.locator(`[aria-label="${linkGraphStrings.nodeAriaLabel('ATLAS-2')}"]`)
     await expect(atlas2Node).toBeVisible()
+
+    // Given. tabindex=0 확인 (포커스 가능)
+    await expect(atlas2Node).toHaveAttribute('tabindex', '0')
+
+    // When. 포커스 + Enter
     await atlas2Node.focus()
     await page.keyboard.press('Enter')
-    await page.waitForURL('**/issues/ATLAS-2', { timeout: 5_000 })
+
+    // Then. /issues/ATLAS-2 로 이동
+    await page.waitForURL('**/issues/ATLAS-2', { timeout: 8_000 })
   })
 })
