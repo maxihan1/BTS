@@ -1,6 +1,6 @@
 // LinkGraph 컴포넌트 단위 테스트 — 5상태 + depth 변경 + 노드 클릭 + a11y (FR-LK-02 D6)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { JSX, ReactNode } from 'react'
@@ -141,6 +141,8 @@ describe('LinkGraph', () => {
       error: null,
     })
 
+    const mermaidMod = await import('mermaid')
+
     await renderLinkGraph()
 
     // 펼치기 버튼 클릭
@@ -154,10 +156,7 @@ describe('LinkGraph', () => {
 
     // mermaid 렌더 후 SVG가 주입됐는지 대기
     await waitFor(() => {
-      const mermaidMod = vi.mocked(
-        (await import('mermaid')).default
-      )
-      expect(mermaidMod.render).toHaveBeenCalled()
+      expect(vi.mocked(mermaidMod.default.render)).toHaveBeenCalled()
     })
   })
 
@@ -273,6 +272,8 @@ describe('LinkGraph', () => {
     const mermaidMod = await import('mermaid')
     vi.mocked(mermaidMod.default.render).mockResolvedValueOnce({
       svg: '<svg><g class="node" data-id="node_0"><text>ATLAS-1</text></g></svg>',
+      diagramType: 'flowchart',
+      bindFunctions: undefined,
     })
 
     await renderLinkGraph()
@@ -294,9 +295,11 @@ describe('LinkGraph', () => {
     await renderLinkGraph()
     await userEvent.click(screen.getByRole('button', { name: '그래프 펼치기' }))
 
-    // depth select 변경
+    // depth select 변경 — act로 감싸 React 상태 업데이트 동기화
     const depthSelect = screen.getByRole('combobox', { name: '깊이' })
-    fireEvent.change(depthSelect, { target: { value: '3' } })
+    await act(async () => {
+      fireEvent.change(depthSelect, { target: { value: '3' } })
+    })
 
     // depth=3로 재호출됐는지 확인
     expect(mockUseIssueGraph).toHaveBeenCalledWith('ATLAS-1', 3, true)
