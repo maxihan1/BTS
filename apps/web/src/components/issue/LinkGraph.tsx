@@ -255,7 +255,7 @@ function resolveSanitizedId(el: SVGGElement): string | null {
     return null
   }
 
-  const match = /^flowchart-(node_\d+)-\d+$/.exec(idAttr)
+  const match = /flowchart-(node_\d+)-\d+$/.exec(idAttr)
   if (match === null) {
     return null
   }
