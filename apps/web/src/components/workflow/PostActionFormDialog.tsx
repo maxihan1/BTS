@@ -161,8 +161,14 @@ export function PostActionFormDialog({
             'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
           )}
         />
+        {/*
+          aria-describedby={undefined} — Radix Dialog.Description 불필요 경고 억제.
+          이 폼은 제목(Dialog.Title)만으로 맥락이 충분하며, 폼 필드 자체가 설명 역할을 한다.
+          Radix 공식 권고: https://radix-ui.com/primitives/docs/components/dialog
+        */}
         <Dialog.Content
           aria-labelledby={titleId}
+          aria-describedby={undefined}
           className={cn(
             'fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2',
             'rounded-xl border border-border bg-background p-6 shadow-lg',
