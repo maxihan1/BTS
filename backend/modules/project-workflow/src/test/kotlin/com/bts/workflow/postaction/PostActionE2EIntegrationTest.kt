@@ -3,16 +3,13 @@
 package com.bts.workflow.postaction
 
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
-import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
 import com.bts.workflow.postaction.web.PostActionController
 import com.bts.workflow.postaction.web.PostActionExceptionHandler
 import com.bts.workflow.scheme.web.WorkflowSchemeExceptionHandler
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import io.mockk.justRun
 import io.mockk.mockk
-import io.mockk.verify
 import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -45,10 +42,12 @@ import java.sql.DriverManager
  *
  * 검증 범위.
  * - CALL_WEBHOOK 생성(POST 201) → GET 목록 조회 → PUT 수정 → DELETE 삭제
- * - 캐시 무효화 호출 확인(workflowKey 기준)
  * - 미존재 transitionKey 404
  * - 비-http url 검증 실패 400
  * - 미지원 type 400
+ *
+ * 주의: post-action 은 전이 실행 시 DB 직접 조회(WorkflowCache 비캐시 대상)이므로
+ * WorkflowCache mock 및 캐시 무효화 검증이 불필요하다.
  */
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
@@ -67,7 +66,6 @@ class PostActionE2EIntegrationTest {
                 .withPassword("bts_test")
 
         lateinit var mockMvc: MockMvc
-        lateinit var workflowCache: WorkflowCache
 
         private const val WORKFLOW_KEY = "simple"
         private const val TRANSITION_KEY = "todo__doing"
@@ -196,10 +194,7 @@ class PostActionE2EIntegrationTest {
             val factory = DefaultWorkflowPostActionFactory()
             val resolver = PostActionTransitionResolver(dsl)
 
-            workflowCache = mockk()
-            justRun { workflowCache.invalidate(any()) }
-
-            val service = PostActionAdminService(postActionRepository, factory, resolver, workflowCache)
+            val service = PostActionAdminService(postActionRepository, factory, resolver)
 
             // permissionResolver — relaxed mock (always allow)
             val permissionResolver: WorkflowSchemePermissionResolver = mockk(relaxed = true)
@@ -249,8 +244,6 @@ class PostActionE2EIntegrationTest {
                 .andExpect(status().isCreated)
                 .andExpect(jsonPath("$.data.type").value("CALL_WEBHOOK"))
                 .andExpect(jsonPath("$.data.id").isNotEmpty)
-
-            verify(atLeast = 1) { workflowCache.invalidate(WORKFLOW_KEY) }
         }
     }
 
@@ -273,7 +266,7 @@ class PostActionE2EIntegrationTest {
     @Test
     @Order(30)
     @Suppress("MaxLineLength")
-    fun `PUT - 수정 200 + 캐시 무효화`() {
+    fun `PUT - 수정 200`() {
         withActor {
             val listResult =
                 mockMvc.perform(get(basePath))
@@ -294,8 +287,6 @@ class PostActionE2EIntegrationTest {
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.data.displayOrder").value(5))
                 .andExpect(jsonPath("$.data.config.url").value("https://updated.example.com"))
-
-            verify(atLeast = 2) { workflowCache.invalidate(WORKFLOW_KEY) }
         }
     }
 

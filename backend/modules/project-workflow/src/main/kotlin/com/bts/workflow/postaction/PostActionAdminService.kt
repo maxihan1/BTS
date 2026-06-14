@@ -1,8 +1,7 @@
-// 워크플로우 전이 post-action 관리 서비스 — 검증·전이해석·캐시무효화
+// 워크플로우 전이 post-action 관리 서비스 — 검증·전이해석
 
 package com.bts.workflow.postaction
 
-import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.engine.WorkflowPostActionFactory
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -14,7 +13,11 @@ import java.util.UUID
  *
  * URL path 의 transitionKey(`fromStateKey__toStateKey`) 를 전이 UUID 로 해석하고,
  * [WorkflowPostActionFactory] 로 검증 후 [PostActionRepository] 에 영속한다.
- * 변이 성공 후 [WorkflowCache.invalidate] 로 캐시를 무효화해 다음 전이 실행에 반영한다.
+ *
+ * **캐시 무효화 불필요**: post-action 은 전이 실행 시
+ * `DefaultWorkflowDefinitionRepository.findPostActions` 가 DB 직접 조회(WorkflowEngine.kt:302 경유)한다.
+ * [com.bts.workflow.cache.WorkflowCache] 가 캐싱하는 `Workflow` aggregate 에는 post-action 필드가 없으므로
+ * 별도 캐시 무효화가 불필요하다(WorkflowCache 는 states/transitions/validator 만 캐싱, post-action 비캐시).
  *
  * ### 검증 순서 (create/update)
  * 1. transitionKey `__` 분리 → 형식 오류 시 [PostActionNotFoundException].
@@ -25,14 +28,12 @@ import java.util.UUID
  * @param repository post-action CRUD jOOQ 리포지토리.
  * @param factory post-action type 검증용 팩토리.
  * @param transitionResolver transitionKey → transition_id UUID 해석기.
- * @param workflowCache 변이 후 무효화할 워크플로우 캐시.
  */
 @Service
 class PostActionAdminService(
     private val repository: PostActionRepository,
     private val factory: WorkflowPostActionFactory,
     private val transitionResolver: PostActionTransitionResolver,
-    private val workflowCache: WorkflowCache,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -54,7 +55,7 @@ class PostActionAdminService(
     }
 
     /**
-     * post-action 을 생성하고 캐시를 무효화한다.
+     * post-action 을 생성한다.
      *
      * @param workflowKey 워크플로우 식별 키.
      * @param transitionKey `fromStateKey__toStateKey` 형식의 전이 자연키.
@@ -76,7 +77,6 @@ class PostActionAdminService(
         val transitionId = resolveOrThrow(workflowKey, transitionKey)
         validateConfig(type, config)
         val row = repository.insert(transitionId, type, config, displayOrder)
-        workflowCache.invalidate(workflowKey)
         log.info(
             "PostActionAdminService.create id={} workflowKey={} transitionKey={} type={}",
             row.id,
@@ -88,7 +88,7 @@ class PostActionAdminService(
     }
 
     /**
-     * post-action 을 수정하고 캐시를 무효화한다.
+     * post-action 을 수정한다.
      *
      * @param workflowKey 워크플로우 식별 키.
      * @param transitionKey `fromStateKey__toStateKey` 형식의 전이 자연키.
@@ -114,7 +114,6 @@ class PostActionAdminService(
         ensurePostActionBelongsToTransition(id, transitionId)
         validateConfig(type, config)
         val row = repository.update(id, type, config, displayOrder)
-        workflowCache.invalidate(workflowKey)
         log.info(
             "PostActionAdminService.update id={} workflowKey={} transitionKey={} type={}",
             id,
@@ -126,7 +125,7 @@ class PostActionAdminService(
     }
 
     /**
-     * post-action 을 삭제하고 캐시를 무효화한다.
+     * post-action 을 삭제한다.
      *
      * @param workflowKey 워크플로우 식별 키.
      * @param transitionKey `fromStateKey__toStateKey` 형식의 전이 자연키.
@@ -142,7 +141,6 @@ class PostActionAdminService(
         val transitionId = resolveOrThrow(workflowKey, transitionKey)
         ensurePostActionBelongsToTransition(id, transitionId)
         repository.deleteById(id)
-        workflowCache.invalidate(workflowKey)
         log.info(
             "PostActionAdminService.delete id={} workflowKey={} transitionKey={}",
             id,

@@ -42,7 +42,7 @@
 - **FR2.** 전이 식별 = URL path `{workflowKey}/transitions/{transitionKey}` where transitionKey=`{fromStateKey}__{toStateKey}`(기존 transition.key 관례, learnings fixture 옵션B). 전이 미존재 → 404.
 - **FR3.** 영속 전 `DefaultWorkflowPostActionFactory.create(type, config)` 검증. CALL_WEBHOOK은 url http/https 스킴 추가 체크.
 - **FR4.** 모든 변이(POST/PUT/DELETE)에 `MANAGE_SCHEME + Global` Guard(컨트롤러 진입 직후, 리소스 조회 전). GET도 동일 권한(설정 화면 admin 전용).
-- **FR5.** 변이 성공 후 워크플로우 캐시 무효화(전이 실행이 새 post-action을 반영하도록). 기존 캐시 무효화 메커니즘 재사용.
+- **FR5.** (정정) 별도 캐시 무효화 불필요. post-action은 전이 실행 시 `DefaultWorkflowDefinitionRepository.findPostActions`가 DB 직접 조회(WorkflowEngine.kt:302 경유)한다. `WorkflowCache`가 캐싱하는 `Workflow` aggregate에는 post-action 필드가 없으므로 캐시 무효화는 무효과다(WorkflowCache는 states/transitions/validator만 캐싱, post-action 비캐시 대상).
 - **FR6.** `YamlSeedService.isDirty`에서 `differsInPostActions` 제거(공존 B) + 관련 헬퍼(`fetchPostActionTypesByTransition` 등) 미사용 시 정리. **seed의 post-action INSERT 자체는 유지하되**(최초 시드 시 YAML에 post_action 있으면 적재) dirty 비교에서만 제외 — 단, YAML이 0건이라 실질 영향은 비교 제외뿐. (구현 시 정확히: dirty 트리거에서 빼고, deleteWorkflow→reinsert 경로는 그대로. 따라서 structural 변경 시 소실은 한계.)
 
 ## 비기능 요구사항 (NFR)
@@ -86,7 +86,7 @@ POST/PUT body: {"type":"CALL_WEBHOOK","config":{"url":"https://...","method":"PO
 
 ## 측정 가능한 완료 기준
 
-1. POST/GET/PUT/DELETE 통합 시나리오(Testcontainers) — CALL_WEBHOOK 추가→조회→수정→삭제 + 캐시 무효화 검증.
+1. POST/GET/PUT/DELETE 통합 시나리오(Testcontainers) — CALL_WEBHOOK 추가→조회→수정→삭제.
 2. 권한 거부(MANAGE_SCHEME 없음 → 403, 리소스 조회 전).
 3. 검증 실패(미지원 type/필수키 누락/비-http url → 400).
 4. **공존 회귀 테스트** — 런타임 post-action 추가 후 YamlSeedService 재시드 호출 → 런타임 행 보존(differsInPostActions 제거 효과). 기존 4워크플로우 재시드 회귀 0.
@@ -95,7 +95,7 @@ POST/PUT body: {"type":"CALL_WEBHOOK","config":{"url":"https://...","method":"PO
 ## Brainstorming Check
 
 ✅ 통과 (직접 sanity check). 구현 시 주의(Maxi 결정 불요).
-- **캐시 무효화 배선** — `WorkflowController` `/cache/invalidate` 선례의 실제 서비스 메서드를 찾아 변이 후 호출(impl서 grep 확정).
+- **캐시 무효화 불필요(정정)** — post-action은 전이 실행 시 DB 직접 조회(WorkflowCache 비캐시 대상). `WorkflowCache` 의존성 및 `invalidate` 호출 불필요. codereview CONCERN-1 반영.
 - **FR6 정밀** — `isDirty`에서 `differsInPostActions` 한 줄 제거 + 미사용 `fetchPostActionTypesByTransition` detekt 대비 정리. insertWorkflow의 post-action 적재 경로는 유지(YAML 0건 no-op). structural reinsert 소실=한계 문서화.
 - **감사 로그(FR-AU-10)** — post-action 변경 감사는 cross-BC라 PR-A 범위 외(후속).
 - **GET 권한** — 기존 GET /workflows는 비보호지만, post-action 조회는 admin 설정 화면용이라 MANAGE_SCHEME 적용(webhook URL 민감).

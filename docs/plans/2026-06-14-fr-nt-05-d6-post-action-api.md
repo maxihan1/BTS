@@ -73,8 +73,8 @@ Maxi 게이트. 공존=B(런타임 전용), 권한=MANAGE_SCHEME+Global, type=5�
 - files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/postaction/PostActionAdminService.kt`, `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/postaction/PostActionAdminExceptions.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/postaction/PostActionAdminServiceTest.kt`]
 - depends-on: [1]
 
-**RED** (MockK: repository + factory + 캐시 무효화 포트). transitionKey→transition_id 해석(미존재 404 예외), create는 factory.create() 검증 후 insert+캐시무효화, 미지원type/필수키누락/비-http url→400 예외, update/delete→캐시무효화, post-action id 미존재→404.
-**GREEN**. transitionKey `from__to` 파싱→workflowKey로 transition_id 조회(기존 repository/조회 재사용). `DefaultWorkflowPostActionFactory.create(type,config)`로 검증(예외→400 매핑). CALL_WEBHOOK url http/https 스킴 추가 체크. 변이 후 캐시 무효화(기존 메커니즘 grep해 재사용).
+**RED** (MockK: repository + factory). transitionKey→transition_id 해석(미존재 404 예외), create는 factory.create() 검증 후 insert, 미지원type/필수키누락/비-http url→400 예외, post-action id 미존재→404.
+**GREEN**. transitionKey `from__to` 파싱→workflowKey로 transition_id 조회(기존 repository/조회 재사용). `DefaultWorkflowPostActionFactory.create(type,config)`로 검증(예외→400 매핑). CALL_WEBHOOK url http/https 스킴 추가 체크. 캐시 무효화 불필요(post-action은 전이 실행 시 DB 직접 조회, WorkflowCache 비캐시 대상 — codereview CONCERN-1).
 **REFACTOR**. 예외 계층 + KDoc.
 **검증**: `./gradlew :modules:project-workflow:test --tests "*PostActionAdminServiceTest*"`
 
@@ -109,7 +109,7 @@ Maxi 게이트. 공존=B(런타임 전용), 권한=MANAGE_SCHEME+Global, type=5�
 - files: [`backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/postaction/PostActionE2EIntegrationTest.kt`]
 - depends-on: [3, 4]
 
-**RED→GREEN** (Testcontainers + 실 컨트롤러/서비스/repo). admin이 CALL_WEBHOOK 추가→GET 조회→PUT 수정→DELETE, 캐시 무효화 호출 확인, 권한 거부 403. 모듈 전체 회귀 0.
+**RED→GREEN** (Testcontainers + 실 컨트롤러/서비스/repo). admin이 CALL_WEBHOOK 추가→GET 조회→PUT 수정→DELETE, 권한 거부 403. 모듈 전체 회귀 0. 캐시 무효화 mock/verify 불필요(post-action DB 직접 조회, WorkflowCache 비캐시 대상 — codereview CONCERN-1).
 **검증**: `./gradlew :modules:project-workflow:test`(전체).
 
 ## Plan 메타

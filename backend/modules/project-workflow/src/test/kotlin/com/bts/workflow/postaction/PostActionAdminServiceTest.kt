@@ -1,11 +1,9 @@
-// PostActionAdminService 단위 테스트 — MockK: repository + factory + 캐시 무효화 검증
+// PostActionAdminService 단위 테스트 — MockK: repository + factory 검증
 
 package com.bts.workflow.postaction
 
-import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.engine.WorkflowPostActionFactory
 import io.mockk.every
-import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
@@ -19,21 +17,23 @@ import java.util.UUID
  *
  * 검증 범위.
  * - listForTransition: repository.findByTransitionId 위임, transitionId 해석 정상
- * - create: factory 검증 통과 후 insert + 캐시 무효화
+ * - create: factory 검증 통과 후 insert
  * - create 미지원 type: factory 예외 → PostActionValidationException(400)
  * - create 필수키 누락: factory 예외 → PostActionValidationException(400)
  * - create CALL_WEBHOOK 비-http url: PostActionValidationException(400)
- * - update: update + 캐시 무효화
+ * - update: update 수행
  * - update 미존재 id: PostActionNotFoundException(404)
- * - delete: deleteById + 캐시 무효화
+ * - delete: deleteById 수행
  * - transitionKey 형식 오류(__ 없음): PostActionNotFoundException(404)
  * - 전이 미존재: PostActionNotFoundException(404)
+ *
+ * 주의: post-action 은 전이 실행 시 DB 직접 조회(WorkflowCache 비캐시 대상)이므로
+ * WorkflowCache 의존성이 없고 캐시 무효화 단언도 불필요하다.
  */
 class PostActionAdminServiceTest {
     private lateinit var repository: PostActionRepository
     private lateinit var factory: WorkflowPostActionFactory
     private lateinit var transitionResolver: PostActionTransitionResolver
-    private lateinit var workflowCache: WorkflowCache
     private lateinit var service: PostActionAdminService
 
     private val workflowKey = "test-wf"
@@ -46,13 +46,10 @@ class PostActionAdminServiceTest {
         repository = mockk()
         factory = mockk()
         transitionResolver = mockk()
-        workflowCache = mockk()
-        service = PostActionAdminService(repository, factory, transitionResolver, workflowCache)
+        service = PostActionAdminService(repository, factory, transitionResolver)
 
         // 기본 stub: transitionKey 해석 성공
         every { transitionResolver.resolveTransitionId(workflowKey, "open", "in_progress") } returns transitionId
-        // 기본 stub: 캐시 무효화 no-op
-        justRun { workflowCache.invalidate(workflowKey) }
     }
 
     // ── listForTransition ─────────────────────────────────────────────────────
@@ -81,7 +78,7 @@ class PostActionAdminServiceTest {
     // ── create ────────────────────────────────────────────────────────────────
 
     @Test
-    fun `create - factory 검증 통과 후 insert + 캐시 무효화`() {
+    fun `create - factory 검증 통과 후 insert`() {
         val config = mapOf("url" to "https://hook.example.com", "method" to "POST")
         val inserted =
             PostActionRow(
@@ -98,7 +95,7 @@ class PostActionAdminServiceTest {
 
         assertThat(result.id).isEqualTo(postActionId)
         verify(exactly = 1) { factory.create("CALL_WEBHOOK", config) }
-        verify(exactly = 1) { workflowCache.invalidate(workflowKey) }
+        verify(exactly = 1) { repository.insert(transitionId, "CALL_WEBHOOK", config, 0) }
     }
 
     @Test
@@ -146,7 +143,7 @@ class PostActionAdminServiceTest {
     // ── update ────────────────────────────────────────────────────────────────
 
     @Test
-    fun `update - 존재하는 id 수정 후 캐시 무효화`() {
+    fun `update - 존재하는 id 수정`() {
         val config = mapOf("url" to "https://updated.com", "method" to "PUT")
         val updated =
             PostActionRow(
@@ -164,7 +161,7 @@ class PostActionAdminServiceTest {
         val result = service.update(workflowKey, transitionKey, postActionId, "CALL_WEBHOOK", config, 10)
 
         assertThat(result.config["url"]).isEqualTo("https://updated.com")
-        verify(exactly = 1) { workflowCache.invalidate(workflowKey) }
+        verify(exactly = 1) { repository.update(postActionId, "CALL_WEBHOOK", config, 10) }
     }
 
     @Test
@@ -182,15 +179,14 @@ class PostActionAdminServiceTest {
     // ── delete ────────────────────────────────────────────────────────────────
 
     @Test
-    fun `delete - 존재하는 id 삭제 후 캐시 무효화`() {
+    fun `delete - 존재하는 id 삭제`() {
         every { repository.findByTransitionId(transitionId) } returns
             listOf(PostActionRow(postActionId, transitionId, "CALL_WEBHOOK", emptyMap(), 0))
-        justRun { repository.deleteById(postActionId) }
+        io.mockk.justRun { repository.deleteById(postActionId) }
 
         service.delete(workflowKey, transitionKey, postActionId)
 
         verify(exactly = 1) { repository.deleteById(postActionId) }
-        verify(exactly = 1) { workflowCache.invalidate(workflowKey) }
     }
 
     @Test
