@@ -19,12 +19,17 @@ const NODE_ID_PREFIX = 'node_'
 const CENTER_CLASS = 'centerNode'
 
 /**
- * center 노드 classDef 스타일.
- * DESIGN.md OKLCH 토큰 기반 — WorkflowDiagram의 category_in_progress(primary 계열) 참조.
- * center는 fill을 primary 색으로, stroke를 primary로 강조한다.
+ * center 노드 classDef 스타일 fill — primary 색 20% 투명도.
+ * DESIGN.md OKLCH 토큰 기반, WorkflowDiagram category_in_progress 선례 참조.
+ */
+const CENTER_FILL = 'oklch(from var(--primary) l c h / 0.20)'
+
+/**
+ * center 노드 mermaid classDef 선언 라인.
+ * flowchart LR 코드 말미에 한 번 삽입된다.
  */
 const CENTER_CLASS_DEF =
-  `classDef ${CENTER_CLASS} fill:oklch(from var(--primary) l c h / 0.20),stroke:var(--primary),stroke-width:2px`
+  `classDef ${CENTER_CLASS} fill:${CENTER_FILL},stroke:var(--primary),stroke-width:2px`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 출력 타입
@@ -125,7 +130,8 @@ export function generateGraphMermaidCode(
   for (const edge of graph.edges) {
     const fromId = keyToId.get(edge.from)
     const toId = keyToId.get(edge.to)
-    // 이전 단계에서 모두 등록했으므로 undefined는 발생하지 않지만 가드
+    // 위 단계에서 엣지의 from/to를 모두 keyToId에 등록했으므로 undefined는 발생하지 않는다.
+    // noUncheckedIndexedAccess 요건상 명시 가드를 추가한다.
     if (fromId === undefined || toId === undefined) {
       continue
     }
