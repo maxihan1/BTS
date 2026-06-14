@@ -357,4 +357,22 @@ describe('linkGraphStrings — 링크 그래프 UI 문자열 (FR-LK-02 D6)', () 
       }
     }
   })
+
+  // ── C1 회귀: 그래프 엣지 라벨이 링크 패널과 일치하는지 값까지 단언 ──
+  it('C1: edgeBlocks는 issueLinkStrings.linkTypeBlocks(막음)와 일치한다', () => {
+    expect(linkGraphStrings.edgeBlocks).toBe(issueLinkStrings.linkTypeBlocks)
+  })
+
+  it('C1: edgeRelates는 issueLinkStrings.linkTypeRelates(관련)와 일치한다', () => {
+    expect(linkGraphStrings.edgeRelates).toBe(issueLinkStrings.linkTypeRelates)
+  })
+
+  it('C1: edgeParent는 부모 이슈 컨셉(부모)와 일치한다', () => {
+    expect(linkGraphStrings.edgeParent).toBe('부모')
+  })
+
+  it('C1: edgeDuplicates(중복)와 edgeClones(복제)는 변경 없이 유지된다', () => {
+    expect(linkGraphStrings.edgeDuplicates).toBe(issueLinkStrings.linkTypeDuplicates)
+    expect(linkGraphStrings.edgeClones).toBe(issueLinkStrings.linkTypeClones)
+  })
 })

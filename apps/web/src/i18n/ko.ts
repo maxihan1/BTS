@@ -629,16 +629,16 @@ export const linkGraphStrings = {
   notFound: '이슈를 찾을 수 없습니다.',
 
   // ── 엣지 유형 표시명 (백엔드 대문자 enum → 한국어) ──────────────────
-  /** 엣지 유형 — BLOCKS */
-  edgeBlocks: '차단',
-  /** 엣지 유형 — RELATES */
-  edgeRelates: '연관',
+  /** 엣지 유형 — BLOCKS (issueLinkStrings.linkTypeBlocks와 통일) */
+  edgeBlocks: '막음',
+  /** 엣지 유형 — RELATES (issueLinkStrings.linkTypeRelates와 통일) */
+  edgeRelates: '관련',
   /** 엣지 유형 — DUPLICATES */
   edgeDuplicates: '중복',
   /** 엣지 유형 — CLONES */
   edgeClones: '복제',
-  /** 엣지 유형 — PARENT */
-  edgeParent: '상위',
+  /** 엣지 유형 — PARENT (부모 이슈 컨셉과 통일) */
+  edgeParent: '부모',
 
   // ── 접근성 ───────────────────────────────────────────────────────────
   /** 그래프 노드 aria-label (이슈 키를 포함하는 함수형) */
