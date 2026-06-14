@@ -135,6 +135,13 @@ val workflowYamlValidation: Validation<WorkflowYamlDto> =
  * 해시 저장 테이블 없이 dirty-diff (DB row vs YAML 내용 비교) 를 사용하므로
  * 별도 마이그레이션 추가가 필요 없다. 표준 4 워크플로우 한정이므로 성능 영향 미미.
  *
+ * ### post-action 공존 정책 (FR-NT-05 D6)
+ * post-action 은 런타임 API(PostActionAdminService) 로만 관리되며, YAML dirty 비교에서 제외된다.
+ * 따라서 평상시(YAML 무변경) 재시드 시 런타임 post-action 이 보존된다.
+ * 단, YAML structural 변경(state 추가/삭제 등) 으로 deleteWorkflow→reinsert 가 발생하면
+ * CASCADE 로 런타임 post-action 이 소실된다 — 알려진 한계. YAML 변경 시 운영팀이 post-action 을
+ * 재설정해야 한다.
+ *
  * @param workflowRepository 워크플로우 aggregate 조회/저장 리포지토리.
  * @param dsl jOOQ DSLContext. 전이/상태/validator/postAction 직접 INSERT 에 사용한다.
  * @param resourceLoader classpath YAML 파일 접근용 Spring ResourceLoader.
@@ -304,9 +311,10 @@ class YamlSeedService(
     /**
      * 기존 [Workflow] aggregate 와 [WorkflowYamlDto] 를 비교해 dirty 여부를 반환한다.
      *
-     * validator/post_action 변경도 dirty 판정에 포함된다.
-     * 전이별 (fromStateKey, toStateKey) 기준으로 DB validators/post_actions type 목록과 YAML 정의를 비교하며,
-     * cascade 재삽입이 필요한 경우 true 를 반환한다.
+     * post-action 은 런타임 전용(API 관리) 이므로 dirty 비교에서 제외한다.
+     * YAML structural 변경(state/transition) 으로 deleteWorkflow→reinsert 가 발생하면
+     * CASCADE 로 런타임 post-action 이 소실되는 것은 알려진 한계(공존 B 결정, FR-NT-05 D6).
+     * 평상시(YAML 무변경)에는 재시드가 트리거되지 않아 런타임 post-action 이 보존된다.
      *
      * @return 변경이 있으면 true, 없으면 false
      */
@@ -319,8 +327,7 @@ class YamlSeedService(
             differsInStateSet(existing, dto) ||
             differsInStateDetails(existing, dto) ||
             differsInTransitions(existing, dto) ||
-            differsInValidators(existing, dto) ||
-            differsInPostActions(existing, dto)
+            differsInValidators(existing, dto)
 
     private fun differsInName(
         existing: Workflow,
@@ -379,22 +386,6 @@ class YamlSeedService(
     }
 
     /**
-     * DB 에 저장된 workflow_post_actions 와 YAML 정의를 전이별로 비교해 변경 여부를 반환한다.
-     */
-    private fun differsInPostActions(
-        existing: Workflow,
-        dto: WorkflowYamlDto,
-    ): Boolean {
-        val dbPostActionsByTransition = fetchPostActionTypesByTransition(existing.key)
-        return dto.transitions.any { transition ->
-            val key = transition.from to transition.to
-            val dbTypes = dbPostActionsByTransition[key] ?: emptyList()
-            val dtoTypes = transition.postActions.map { it.type }
-            dbTypes != dtoTypes
-        }
-    }
-
-    /**
      * 워크플로우 키에 속한 모든 전이의 validator type 목록을 (fromStateKey, toStateKey) 기준으로
      * 그루핑해 반환한다. display_order ASC 정렬.
      *
@@ -422,36 +413,6 @@ class YamlSeedService(
             .mapNotNull { (transitionId, records) ->
                 val stateKeys = transitionKeyMap[transitionId] ?: return@mapNotNull null
                 stateKeys to records.map { it.get(WORKFLOW_VALIDATORS.TYPE) ?: "" }
-            }
-            .toMap()
-    }
-
-    /**
-     * 워크플로우 키에 속한 모든 전이의 post_action type 목록을 (fromStateKey, toStateKey) 기준으로
-     * 그루핑해 반환한다. display_order ASC 정렬.
-     */
-    private fun fetchPostActionTypesByTransition(workflowKey: String): Map<Pair<String, String>, List<String>> {
-        val rows =
-            dsl.select(
-                WORKFLOW_TRANSITIONS.ID,
-                WORKFLOW_POST_ACTIONS.TYPE,
-                WORKFLOW_POST_ACTIONS.DISPLAY_ORDER,
-            )
-                .from(WORKFLOW_POST_ACTIONS)
-                .join(WORKFLOW_TRANSITIONS)
-                .on(WORKFLOW_POST_ACTIONS.TRANSITION_ID.eq(WORKFLOW_TRANSITIONS.ID))
-                .join(WORKFLOWS)
-                .on(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(WORKFLOWS.ID))
-                .where(WORKFLOWS.KEY.eq(workflowKey))
-                .orderBy(WORKFLOW_POST_ACTIONS.DISPLAY_ORDER.asc())
-                .fetch()
-
-        val transitionKeyMap = fetchTransitionStateKeys(workflowKey)
-        return rows
-            .groupBy { it.get(WORKFLOW_TRANSITIONS.ID) }
-            .mapNotNull { (transitionId, records) ->
-                val stateKeys = transitionKeyMap[transitionId] ?: return@mapNotNull null
-                stateKeys to records.map { it.get(WORKFLOW_POST_ACTIONS.TYPE) ?: "" }
             }
             .toMap()
     }

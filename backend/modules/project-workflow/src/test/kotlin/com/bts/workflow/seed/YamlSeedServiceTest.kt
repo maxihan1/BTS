@@ -329,6 +329,106 @@ class YamlSeedServiceTest {
 
         log.info("시나리오 5 통과 — @Transactional + @EventListener 어노테이션 존재 확인")
     }
+
+    // ── 시나리오 7. 공존 B — 런타임 post-action 이 재시드 후에도 보존된다 ─────────────
+
+    /**
+     * 공존(B) 검증.
+     *
+     * `isDirty` 에서 `differsInPostActions` 가 제거되면 YAML 이 동일한 한
+     * 재시드가 트리거되지 않아 런타임 post-action 이 보존된다.
+     *
+     * 제거 전(현재 상태): DB post-action 이 있지만 YAML 에 없으면 isDirty=true → 재시드 → 소실 → RED.
+     * 제거 후: YAML state/transition 이 동일하면 isDirty=false → skip → 런타임 행 보존 → GREEN.
+     *
+     * simple 워크플로우를 선택한 이유.
+     * - 상태 3개 / 전이 3개의 가장 단순한 구조.
+     * - YAML post_action 이 0건이라 런타임 추가 행이 유일한 DB 행.
+     * - Order(3) 에서 이름이 변경되어 재적재된 뒤 Order(7) 에서 재시드 = same-YAML no-op.
+     *
+     * 주의: Order(3) 이 "simple" 워크플로우 이름을 변경해 재적재했으므로,
+     * 이 시나리오는 수정된 이름(단순 워크플로우 변경됨) 기준으로 실행된다.
+     * 재시드 ResourceLoader 가 동일 내용 → no-op 기대.
+     */
+    @Test
+    @Order(7)
+    @Suppress("LongMethod", "MaxLineLength", "NestedBlockDepth")
+    fun `공존 B - 런타임 post-action 추가 후 재시드 시 보존된다`() {
+        val dataSource =
+            DriverManagerDataSource(
+                postgres.jdbcUrl,
+                postgres.username,
+                postgres.password,
+            )
+        val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
+
+        // simple 워크플로우의 todo→doing 전이 id 를 직접 조회 (jOOQ 없이 SQL)
+        val transitionId: java.util.UUID =
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.prepareStatement(
+                    """
+                    SELECT wt.id
+                    FROM workflow_transitions wt
+                    JOIN workflow_states fs ON wt.from_state_id = fs.id
+                    JOIN workflow_states ts ON wt.to_state_id = ts.id
+                    JOIN workflows w ON wt.workflow_id = w.id
+                    WHERE w.key = 'simple' AND fs.key = 'todo' AND ts.key = 'doing'
+                    """.trimIndent(),
+                ).use { ps ->
+                    ps.executeQuery().use { rs ->
+                        if (rs.next()) {
+                            java.util.UUID.fromString(rs.getString("id"))
+                        } else {
+                            error("simple 워크플로우 todo→doing 전이 없음 — Order(1) 이 먼저 실행되어야 함")
+                        }
+                    }
+                }
+            }
+
+        // 런타임 post-action 직접 삽입
+        dsl.execute(
+            "INSERT INTO workflow_post_actions (transition_id, type, config, display_order) VALUES (?::uuid, ?, ?::jsonb, ?)",
+            transitionId.toString(),
+            "CALL_WEBHOOK",
+            """{"url":"https://runtime.example.com","method":"POST"}""",
+            0,
+        )
+
+        // 삽입 확인
+        val countBefore =
+            dsl.fetchValue(
+                "SELECT COUNT(*) FROM workflow_post_actions WHERE transition_id = ?::uuid",
+                transitionId.toString(),
+            ) as Long
+        assertThat(countBefore).isGreaterThanOrEqualTo(1L)
+
+        // 동일 YAML 로 재시드 — differsInPostActions 제거 전에는 isDirty=true 로 재적재하여 소실
+        val yamlMapper =
+            com.fasterxml.jackson.databind.ObjectMapper(
+                com.fasterxml.jackson.dataformat.yaml.YAMLFactory(),
+            ).registerKotlinModule()
+        // ModifiedSimpleWorkflowResourceLoader 는 Order(3) 와 동일 내용 → no-op 기대
+        val serviceToReseed =
+            YamlSeedService(
+                WorkflowRepository(dsl),
+                dsl,
+                ModifiedSimpleWorkflowResourceLoader(),
+                yamlMapper,
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+            )
+        serviceToReseed.seedAll()
+
+        // 런타임 post-action 보존 확인 (differsInPostActions 제거 후 GREEN)
+        val countAfter =
+            dsl.fetchValue(
+                "SELECT COUNT(*) FROM workflow_post_actions WHERE transition_id = ?::uuid",
+                transitionId.toString(),
+            ) as Long
+        assertThat(countAfter)
+            .withFailMessage("공존 B 실패 — 재시드로 런타임 post-action 이 소실됨 (countBefore=%d, countAfter=%d)", countBefore, countAfter)
+            .isGreaterThanOrEqualTo(countBefore)
+    }
 }
 
 // ── 테스트 헬퍼 ResourceLoader ──────────────────────────────────────────────────
