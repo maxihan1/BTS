@@ -44,11 +44,11 @@ class WebhookHttpClientConfig {
     ): RestClient = buildRestClient(connectTimeoutMs, readTimeoutMs)
 
     /**
-     * 테스트 및 직접 생성 시 사용하는 팩토리 — 기본 타임아웃(connect=3s, read=5s).
+     * 테스트 및 직접 생성 시 사용하는 팩토리 — 기본 타임아웃(connect=[DEFAULT_CONNECT_TIMEOUT_MS]ms, read=[DEFAULT_READ_TIMEOUT_MS]ms).
      *
      * @return 리다이렉트 차단 설정된 [RestClient]
      */
-    fun webhookRestClient(): RestClient = buildRestClient(3000L, 5000L)
+    fun webhookRestClient(): RestClient = buildRestClient(DEFAULT_CONNECT_TIMEOUT_MS, DEFAULT_READ_TIMEOUT_MS)
 
     private fun buildRestClient(
         connectTimeoutMs: Long,
@@ -64,5 +64,13 @@ class WebhookHttpClientConfig {
         return RestClient.builder()
             .requestFactory(requestFactory)
             .build()
+    }
+
+    companion object {
+        /** 기본 HTTP 연결 타임아웃 (ms). */
+        const val DEFAULT_CONNECT_TIMEOUT_MS = 3000L
+
+        /** 기본 HTTP 읽기 타임아웃 (ms). */
+        const val DEFAULT_READ_TIMEOUT_MS = 5000L
     }
 }

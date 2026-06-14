@@ -90,7 +90,9 @@ class WebhookDispatcherTest : DescribeSpec({
     val dispatcher = WebhookDispatcher(validator, restClient, objectMapper)
 
     // stub 서버 URL → Allowed (SSRF 검증은 WebhookUrlValidatorTest에서 별도 검증)
-    every { validator.check(match { it.contains(":$stubPort/") || it.contains(":$redirectPort/") }) } returns UrlCheck.Allowed
+    every {
+        validator.check(match { it.contains(":$stubPort/") || it.contains(":$redirectPort/") })
+    } returns UrlCheck.Allowed
 
     // SSRF 차단 URL → Blocked
     every { validator.check("http://192.168.99.99/hook") } returns UrlCheck.Blocked("내부망 차단")

@@ -38,6 +38,7 @@ class WebhookUrlValidator {
      * @param url 검사할 Webhook URL 문자열
      * @return [UrlCheck.Allowed], [UrlCheck.Blocked], 또는 [UrlCheck.Malformed]
      */
+    @Suppress("ReturnCount") // 보안 검증 함수 특성상 단계별 early return이 로직을 명확하게 함
     fun check(url: String): UrlCheck {
         if (url.isBlank()) return UrlCheck.Malformed("URL이 비어 있습니다")
 
@@ -78,6 +79,7 @@ class WebhookUrlValidator {
      * @param addr 검사할 [InetAddress]
      * @return 내부망 주소이면 true
      */
+    @Suppress("ReturnCount", "MagicNumber") // IPv6 플래그 검사 특성상 early return + bitmask 필수
     private fun isInternal(addr: InetAddress): Boolean {
         if (addr.isLoopbackAddress) return true
         if (addr.isLinkLocalAddress) return true
@@ -90,20 +92,34 @@ class WebhookUrlValidator {
         // IPv6 ULA 검사: fc00::/7 — 첫 바이트의 상위 7비트가 0b1111110
         if (raw.size == 16 && (raw[0].toInt() and 0xFE) == 0xFC) return true
 
-        // IPv4-mapped IPv6 언래핑: ::ffff:x.x.x.x (10바이트 0x00 + 2바이트 0xFF + 4바이트 IPv4)
-        if (raw.size == 16 &&
-            raw[0] == 0.toByte() && raw[1] == 0.toByte() &&
-            raw[2] == 0.toByte() && raw[3] == 0.toByte() &&
-            raw[4] == 0.toByte() && raw[5] == 0.toByte() &&
-            raw[6] == 0.toByte() && raw[7] == 0.toByte() &&
-            raw[8] == 0.toByte() && raw[9] == 0.toByte() &&
-            raw[10] == 0xFF.toByte() && raw[11] == 0xFF.toByte()
-        ) {
-            val ipv4Bytes = raw.copyOfRange(12, 16)
-            val mappedAddr = runCatching { InetAddress.getByAddress(ipv4Bytes) }.getOrNull()
-            if (mappedAddr != null && isInternal(mappedAddr)) return true
-        }
+        // IPv4-mapped IPv6 언래핑: ::ffff:x.x.x.x
+        val mapped = extractMappedIpv4(raw)
+        if (mapped != null && isInternal(mapped)) return true
 
         return false
+    }
+
+    /**
+     * IPv4-mapped IPv6 주소(::ffff:x.x.x.x)에서 IPv4 부분을 추출한다.
+     *
+     * RFC 4291 §2.5.5 고정 포맷: 10바이트 0x00 + 2바이트 0xFF + 4바이트 IPv4.
+     * 해당 형식이 아니면 null 반환.
+     *
+     * @param raw IPv6 주소 바이트 배열 (16바이트)
+     * @return 추출된 IPv4 [InetAddress] 또는 null
+     */
+    @Suppress("MagicNumber", "ReturnCount") // 바이트 인덱스는 RFC 4291 §2.5.5 고정값 / 검증 단계별 early return 필수
+    private fun extractMappedIpv4(raw: ByteArray): InetAddress? {
+        if (raw.size != 16) return null
+        val isZeroPrefix =
+            raw[0] == 0.toByte() && raw[1] == 0.toByte() &&
+                raw[2] == 0.toByte() && raw[3] == 0.toByte() &&
+                raw[4] == 0.toByte() && raw[5] == 0.toByte() &&
+                raw[6] == 0.toByte() && raw[7] == 0.toByte() &&
+                raw[8] == 0.toByte() && raw[9] == 0.toByte()
+        val isFFFF = raw[10] == 0xFF.toByte() && raw[11] == 0xFF.toByte()
+        if (!isZeroPrefix || !isFFFF) return null
+        val ipv4Bytes = raw.copyOfRange(12, 16)
+        return runCatching { InetAddress.getByAddress(ipv4Bytes) }.getOrNull()
     }
 }

@@ -14,7 +14,8 @@ import org.springframework.web.client.RestClientException
  * Webhook URL 로 HTTP 요청을 전송하는 디스패처.
  *
  * ## 처리 흐름
- * 1. [WebhookUrlValidator.check] 로 URL 검증 → [UrlCheck.Blocked] / [UrlCheck.Malformed] 이면 [WebhookDispatchResult.Rejected] 반환(전송 X)
+ * 1. [WebhookUrlValidator.check] 로 URL 검증 → [UrlCheck.Blocked] / [UrlCheck.Malformed] 이면
+ *    [WebhookDispatchResult.Rejected] 반환 (전송 X)
  * 2. 엔벨로프 body 구성: `{"event":"WebhookRequested","issueKey":"<key>"}`
  * 3. [RestClient] 로 HTTP 전송 (method=POST 기본, PUT 지원, 그 외는 POST fallback)
  * 4. 2xx → [WebhookDispatchResult.Sent], 3xx/4xx/5xx → [WebhookDispatchResult.Failed]
@@ -45,7 +46,7 @@ class WebhookDispatcher(
      * @param issueKey 알림 페이로드에 포함할 이슈 키
      * @return [WebhookDispatchResult.Sent], [WebhookDispatchResult.Rejected], 또는 [WebhookDispatchResult.Failed]
      */
-    @Suppress("TooGenericExceptionCaught")
+    @Suppress("TooGenericExceptionCaught", "ReturnCount") // 검증→전송→응답 3단계 분기 early return 필수
     fun dispatch(
         url: String,
         method: String,
@@ -76,11 +77,22 @@ class WebhookDispatcher(
                         response.statusCode.value()
                     }
 
+            @Suppress("MagicNumber")
             if (statusCode in 200..299) {
-                log.info("webhook_dispatched url_host={} issueKey={} status={}", extractHost(url), issueKey, statusCode)
+                log.info(
+                    "webhook_dispatched url_host={} issueKey={} status={}",
+                    extractHost(url),
+                    issueKey,
+                    statusCode,
+                )
                 WebhookDispatchResult.Sent
             } else {
-                log.warn("webhook_dispatch_non2xx url_host={} issueKey={} status={}", extractHost(url), issueKey, statusCode)
+                log.warn(
+                    "webhook_dispatch_non2xx url_host={} issueKey={} status={}",
+                    extractHost(url),
+                    issueKey,
+                    statusCode,
+                )
                 WebhookDispatchResult.Failed("non-2xx status: $statusCode")
             }
         } catch (e: RestClientException) {

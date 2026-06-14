@@ -20,7 +20,8 @@ import org.springframework.stereotype.Component
  * 3. payload.url / method / issueKey 파싱 → [WebhookDispatcher.dispatch] 호출
  * 4. [WebhookDispatchResult.Sent] → `pgmq.delete`
  * 5. [WebhookDispatchResult.Rejected] → `pgmq.delete` (영구 거부, 재시도 무의미)
- * 6. [WebhookDispatchResult.Failed] → delete 안 함(vt 만료 재전달, at-least-once). read_ct > [MAX_RECEIVE_COUNT] 이면 `pgmq.archive`(dead-letter)
+ * 6. [WebhookDispatchResult.Failed] → delete 안 함(vt 만료 재전달, at-least-once).
+ *    read_ct > [MAX_RECEIVE_COUNT] 이면 `pgmq.archive`(dead-letter)
  *
  * ## dead-letter (poison 메시지)
  * JSON 파싱 실패 또는 처리 중 예외 → read_ct > [MAX_RECEIVE_COUNT] 면 archive.
@@ -88,7 +89,7 @@ class WebhookDispatchWorker(
      * @param messageJson pgmq 메시지 JSON 문자열
      * @param readCt pgmq 메시지 수신 횟수
      */
-    @Suppress("TooGenericExceptionCaught")
+    @Suppress("TooGenericExceptionCaught", "ReturnCount") // early return 구조가 로직을 명확하게 함 (NotificationWorker 동일 패턴)
     private fun processMessage(
         msgId: Long,
         messageJson: String,
@@ -119,7 +120,13 @@ class WebhookDispatchWorker(
             return
         }
 
-        log.info("webhook_worker_received msgId={} url_host={} issueKey={} readCt={}", msgId, extractHost(url), issueKey, readCt)
+        log.info(
+            "webhook_worker_received msgId={} url_host={} issueKey={} readCt={}",
+            msgId,
+            extractHost(url),
+            issueKey,
+            readCt,
+        )
 
         try {
             val result = dispatcher.dispatch(url, method, issueKey)

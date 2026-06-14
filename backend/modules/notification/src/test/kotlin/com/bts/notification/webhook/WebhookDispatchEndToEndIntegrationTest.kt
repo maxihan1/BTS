@@ -10,7 +10,6 @@ import com.bts.shared.issue.IssueRecipients
 import com.bts.shared.user.UserLookupPort
 import com.sun.net.httpserver.HttpServer
 import org.assertj.core.api.Assertions.assertThat
-import org.awaitility.Awaitility.await
 import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
@@ -41,7 +40,6 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
 import java.net.InetSocketAddress
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import javax.sql.DataSource
@@ -74,7 +72,6 @@ import javax.sql.DataSource
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Suppress("DEPRECATION") // JooqExceptionTranslator: Spring Boot 3.3 deprecated, package-private 후계 미공개
 class WebhookDispatchEndToEndIntegrationTest {
-
     @Autowired
     lateinit var dsl: DSLContext
 
@@ -232,8 +229,9 @@ class WebhookDispatchEndToEndIntegrationTest {
         }
 
         @Bean
-        open fun transactionManager(dataSource: DataSource): PlatformTransactionManager =
-            DataSourceTransactionManager(dataSource)
+        open fun transactionManager(dataSource: DataSource): PlatformTransactionManager {
+            return DataSourceTransactionManager(dataSource)
+        }
 
         @Bean
         open fun taskScheduler(): ThreadPoolTaskScheduler =
