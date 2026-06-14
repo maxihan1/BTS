@@ -1582,6 +1582,45 @@ describe('IssueDetailPage — Task F5 (변경 이력 섹션 통합)', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Task 5 (FR-LK-02) — LinkGraph 섹션 라우트 통합
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { linkGraphStrings } from '@/i18n/ko'
+
+describe('IssueDetailPage — Task 5 FR-LK-02 (LinkGraph 섹션 통합)', () => {
+  beforeEach(() => {
+    server.use(...issueTypeHandlers)
+    setupIssueFoundHandler(issueAtlas1Fixture)
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/transitions', () =>
+        HttpResponse.json({ data: { transitions: [] } }),
+      ),
+    )
+    setupUsersHandler()
+  })
+
+  /**
+   * TLK02-1: LinkGraph 섹션(접힘 상태)의 토글 버튼이 이슈 상세 페이지에 렌더된다.
+   * LinkGraph는 기본 접힘 — 펼치기 버튼(expandLabel)이 DOM에 존재해야 한다.
+   *
+   * RED 조건: LinkGraph가 routes 파일에 배선되지 않아 버튼이 없음.
+   */
+  it('TLK02-1: LinkGraph 섹션 토글 버튼이 이슈 상세 페이지에 렌더된다', async () => {
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: linkGraphStrings.expandLabel }),
+      ).toBeInTheDocument()
+    })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Task 5 — IssueLinksPanel 라우트 통합 (FR-LK-01 D6)
 // ─────────────────────────────────────────────────────────────────────────────
 

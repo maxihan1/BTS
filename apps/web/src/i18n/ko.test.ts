@@ -1,7 +1,7 @@
 // issueDetailStrings 신규 키 존재 여부를 타입 레벨에서 검증하는 테스트
 
 import { describe, it, expect, expectTypeOf } from 'vitest'
-import { issueDetailStrings, mfaStrings, mfaErrorMessage, issueLinkStrings } from './ko'
+import { issueDetailStrings, mfaStrings, mfaErrorMessage, issueLinkStrings, linkGraphStrings } from './ko'
 
 // IssueDetailStrings 타입을 추론해서 키 존재를 검증한다.
 // 키가 없으면 expectTypeOf(...).toHaveProperty() 가 타입 에러를 발생시킨다.
@@ -266,5 +266,113 @@ describe('issueLinkStrings — 이슈 링크 패널 문자열 (FR-LK-01 D6)', ()
         expect(value, `"${value}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
       }
     }
+  })
+})
+
+// ── linkGraphStrings ───────────────────────────────────────────────────────────
+
+type LinkGraphStrings = typeof linkGraphStrings
+
+describe('linkGraphStrings — 링크 그래프 UI 문자열 (FR-LK-02 D6)', () => {
+  it('sectionTitle 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('sectionTitle')
+  })
+
+  it('expandLabel 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('expandLabel')
+  })
+
+  it('collapseLabel 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('collapseLabel')
+  })
+
+  it('depthLabel 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('depthLabel')
+  })
+
+  it('depthOption1 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('depthOption1')
+  })
+
+  it('depthOption2 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('depthOption2')
+  })
+
+  it('depthOption3 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('depthOption3')
+  })
+
+  it('emptyState 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('emptyState')
+  })
+
+  it('truncatedNotice 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('truncatedNotice')
+  })
+
+  it('loadingState 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('loadingState')
+  })
+
+  it('renderError 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('renderError')
+  })
+
+  it('loadError 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('loadError')
+  })
+
+  it('notFound 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('notFound')
+  })
+
+  it('edgeBlocks 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('edgeBlocks')
+  })
+
+  it('edgeRelates 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('edgeRelates')
+  })
+
+  it('edgeDuplicates 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('edgeDuplicates')
+  })
+
+  it('edgeClones 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('edgeClones')
+  })
+
+  it('edgeParent 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('edgeParent')
+  })
+
+  it('nodeAriaLabel 키가 존재한다', () => {
+    expectTypeOf<LinkGraphStrings>().toHaveProperty('nodeAriaLabel')
+  })
+
+  it('모든 문자열 값은 콜론으로 끝나지 않는다 (글로벌 §5)', () => {
+    for (const value of Object.values(linkGraphStrings)) {
+      if (typeof value === 'string') {
+        expect(value, `"${value}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+      }
+    }
+  })
+
+  // ── C1 회귀: 그래프 엣지 라벨이 링크 패널과 일치하는지 값까지 단언 ──
+  it('C1: edgeBlocks는 issueLinkStrings.linkTypeBlocks(막음)와 일치한다', () => {
+    expect(linkGraphStrings.edgeBlocks).toBe(issueLinkStrings.linkTypeBlocks)
+  })
+
+  it('C1: edgeRelates는 issueLinkStrings.linkTypeRelates(관련)와 일치한다', () => {
+    expect(linkGraphStrings.edgeRelates).toBe(issueLinkStrings.linkTypeRelates)
+  })
+
+  it('C1: edgeParent는 부모 이슈 컨셉(부모)와 일치한다', () => {
+    expect(linkGraphStrings.edgeParent).toBe('부모')
+  })
+
+  it('C1: edgeDuplicates(중복)와 edgeClones(복제)는 변경 없이 유지된다', () => {
+    expect(linkGraphStrings.edgeDuplicates).toBe(issueLinkStrings.linkTypeDuplicates)
+    expect(linkGraphStrings.edgeClones).toBe(issueLinkStrings.linkTypeClones)
   })
 })

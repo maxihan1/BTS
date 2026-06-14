@@ -592,6 +592,59 @@ export const issueLinkStrings = {
   clearParentSuccess: '부모 이슈가 해제되었습니다.',
 } as const
 
+/** 링크 그래프 패널(IssueLinkGraph) 관련 문자열 — FR-LK-02 D6 */
+export const linkGraphStrings = {
+  // ── 섹션 제목 ─────────────────────────────────────────────────────────
+  /** 그래프 섹션 제목 */
+  sectionTitle: '링크 그래프',
+
+  // ── 패널 토글 ─────────────────────────────────────────────────────────
+  /** 패널 펼치기 버튼 레이블 */
+  expandLabel: '그래프 펼치기',
+  /** 패널 접기 버튼 레이블 */
+  collapseLabel: '그래프 접기',
+
+  // ── 깊이 선택 ─────────────────────────────────────────────────────────
+  /** 깊이 셀렉터 레이블 */
+  depthLabel: '깊이',
+  /** 깊이 1단계 옵션 */
+  depthOption1: '1단계',
+  /** 깊이 2단계 옵션 */
+  depthOption2: '2단계',
+  /** 깊이 3단계 옵션 */
+  depthOption3: '3단계',
+
+  // ── 상태 메시지 ───────────────────────────────────────────────────────
+  /** 그래프 노드가 없을 때 빈 상태 메시지 */
+  emptyState: '연결된 이슈가 없습니다.',
+  /** 노드 수가 상한(100개)을 초과해 그래프가 잘렸을 때 안내 메시지 */
+  truncatedNotice: '노드가 너무 많아 일부만 표시됩니다.',
+  /** 그래프 로딩 중 표시 문구 */
+  loadingState: '그래프를 불러오는 중입니다.',
+  /** 그래프 렌더링 오류 메시지 */
+  renderError: '그래프를 렌더링하지 못했습니다.',
+  /** 데이터 로드 실패 메시지 */
+  loadError: '그래프 데이터를 불러오지 못했습니다.',
+  /** 기준 이슈를 찾을 수 없을 때 메시지 */
+  notFound: '이슈를 찾을 수 없습니다.',
+
+  // ── 엣지 유형 표시명 (백엔드 대문자 enum → 한국어) ──────────────────
+  /** 엣지 유형 — BLOCKS (issueLinkStrings.linkTypeBlocks와 통일) */
+  edgeBlocks: '막음',
+  /** 엣지 유형 — RELATES (issueLinkStrings.linkTypeRelates와 통일) */
+  edgeRelates: '관련',
+  /** 엣지 유형 — DUPLICATES */
+  edgeDuplicates: '중복',
+  /** 엣지 유형 — CLONES */
+  edgeClones: '복제',
+  /** 엣지 유형 — PARENT (부모 이슈 컨셉과 통일) */
+  edgeParent: '부모',
+
+  // ── 접근성 ───────────────────────────────────────────────────────────
+  /** 그래프 노드 aria-label (이슈 키를 포함하는 함수형) */
+  nodeAriaLabel: (issueKey: string) => `이슈 ${issueKey} 노드`,
+} as const
+
 /** 이슈 생성 폼 관련 문자열 */
 export const issueCreateStrings = {
   /** 폼 레이블 */
