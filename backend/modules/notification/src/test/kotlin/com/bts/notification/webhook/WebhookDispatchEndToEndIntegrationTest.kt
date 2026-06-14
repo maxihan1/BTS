@@ -4,11 +4,15 @@ package com.bts.notification.webhook
 
 import com.bts.notification.NotificationTestBootApplication
 import com.bts.notification.TestPermissionConfig
+import com.bts.notification.config.WebhookHttpClientConfig
 import com.bts.notification.worker.WebhookDispatchWorker
 import com.bts.shared.issue.IssueRecipientLookupPort
 import com.bts.shared.issue.IssueRecipients
 import com.bts.shared.user.UserLookupPort
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.sun.net.httpserver.HttpServer
+import io.mockk.every
+import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
@@ -30,7 +34,6 @@ import org.springframework.context.annotation.Primary
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.jdbc.datasource.TransactionAwareDataSourceProxy
-import org.springframework.scheduling.annotation.EnableScheduling
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler
 import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.JwtException
@@ -53,8 +56,12 @@ import javax.sql.DataSource
  * - JDK 내장 [HttpServer] 를 외부 Webhook stub 으로 사용 — 신규 의존성 0.
  *
  * ## 검증 시나리오
- * - E2E-1. pgmq에 WebhookRequested 발행 → 워커 pollAndProcess() → stub 서버 POST 수신 + 메시지 delete.
- * - E2E-2. 부팅 안전: 신규 @Component(worker/dispatcher/validator/RestClient 빈)가 전체 컨텍스트 부팅을 깨지 않음.
+ * - E2E-A. 전달 happy-path: pgmq 발행 → testWorker(validator mock 우회) pollAndProcess()
+ *   → stub 서버가 POST + 엔벨로프 실수신 + 큐 비어있음(delete 확인).
+ * - E2E-B. SSRF 차단 경로: 실 validator(autowired worker)가 127.0.0.1 차단
+ *   → Rejected → delete. stub 전송 0회.
+ * - E2E-C. 부팅 안전: 신규 @Component(worker/dispatcher/validator/RestClient 빈)가
+ *   전체 컨텍스트 부팅을 깨지 않음.
  *
  * ## 주의 (memory: concurrent-testcontainers-suite-flaky)
  * 이 클래스를 다른 Testcontainers 클래스와 동시에 실행하면 워커 크래시가 발생할 수 있다.
@@ -75,6 +82,10 @@ class WebhookDispatchEndToEndIntegrationTest {
     @Autowired
     lateinit var dsl: DSLContext
 
+    /**
+     * Spring 컨텍스트가 조립한 autowired 워커 — 실 [WebhookUrlValidator]를 사용한다.
+     * E2E-B(SSRF 차단) 시나리오 전용.
+     */
     @Autowired
     lateinit var worker: WebhookDispatchWorker
 
@@ -109,16 +120,32 @@ class WebhookDispatchEndToEndIntegrationTest {
         stubServer.stop(0)
     }
 
-    // ── E2E-1. pgmq 발행 → 워커 소비 → stub 수신 ──────────────────────────────
+    // ── E2E-A. happy-path 전달 ─────────────────────────────────────────────────
 
+    /**
+     * 실 파이프라인(실 pgmq → 실 worker → 실 dispatcher → 실 RestClient → 실 HTTP POST → stub 수신)을 검증한다.
+     *
+     * ## SSRF validator mock 우회 이유
+     * stub 서버는 loopback(127.0.0.1)에서 실행되므로 실 [WebhookUrlValidator]가 "내부망 주소 차단"으로
+     * 거부한다. 따라서 happy-path 전달 파이프라인을 검증하려면 validator를 permissive mock으로 교체해야 한다.
+     *
+     * validator의 실제 SSRF 탐지 로직은 [WebhookUrlValidatorTest](T1~T5)가 완전 검증한다.
+     * 이 테스트에서는 "validator가 Allowed를 반환했을 때 메시지가 stub까지 전달되는가"를 검증한다.
+     */
     @Test
-    fun `E2E-1 WebhookRequested 메시지 발행 후 pollAndProcess 호출 시 stub 서버가 POST 수신한다`() {
-        // WebhookUrlValidator가 127.0.0.1을 SSRF 차단하므로 bts.notification.webhook URL에
-        // stub 서버 URL(127.0.0.1:port)을 사용하면 차단된다.
-        // E2E에서는 validator를 우회하지 않으므로, 공인 IP처럼 보이게 하는 대신
-        // 워커를 직접 호출하고 dispatcher를 실 구현으로 쓰되 validator mock은 테스트 config에서 처리한다.
-        // 테스트 단순화: dsl로 pgmq 큐에 직접 insert 후 pollAndProcess() 직접 호출.
+    fun `E2E-A WebhookRequested 발행 후 pollAndProcess 호출 시 stub 서버가 POST와 엔벨로프를 실수신한다`() {
         val webhookUrl = "http://127.0.0.1:$stubPort/webhook"
+
+        // SSRF validator를 permissive mock으로 교체 — loopback stub 허용
+        val permissiveValidator = mockk<WebhookUrlValidator>()
+        every { permissiveValidator.check(any()) } returns UrlCheck.Allowed
+
+        // 실 RestClient — 리다이렉트 NEVER + 기본 타임아웃 적용 (WebhookHttpClientConfig 팩토리 메서드 사용)
+        val testRestClient = WebhookHttpClientConfig().webhookRestClient()
+
+        // 워커를 직접 조립 — validator만 mock, 나머지(dispatcher/RestClient/ObjectMapper)는 실 구현
+        val testDispatcher = WebhookDispatcher(permissiveValidator, testRestClient, ObjectMapper())
+        val testWorker = WebhookDispatchWorker(dsl, testDispatcher, ObjectMapper())
 
         // pgmq 큐에 WebhookRequested 메시지 발행
         dsl.execute(
@@ -127,15 +154,29 @@ class WebhookDispatchEndToEndIntegrationTest {
             """{"type":"WebhookRequested","payload":{"issueKey":"TEST-1","url":"$webhookUrl","method":"POST"}}""",
         )
 
-        // validator는 127.0.0.1을 차단하므로, 이 E2E 테스트는 stub 서버로 실제 전송보다는
-        // 부팅 안전 + 큐 소비 흐름을 검증한다.
-        // 실제 외부 URL 전송은 WebhookDispatcherTest(단위)에서 validator mock으로 검증됨.
-        // 워커는 SSRF 차단 URL → dispatcher=Rejected → delete 처리하는 흐름을 검증한다.
+        // testWorker(permissive validator) 로 폴링 → stub으로 HTTP POST 전송됨
+        testWorker.pollAndProcess()
 
-        // pollAndProcess 호출 → 메시지가 처리(delete)됨
-        worker.pollAndProcess()
+        // stub 서버가 POST + 엔벨로프를 실수신했는지 검증
+        assertThat(stubHitCount.get())
+            .describedAs("stub 서버가 정확히 1회 HTTP 요청을 수신해야 한다")
+            .isEqualTo(1)
 
-        // 처리 후 큐가 비어있음을 확인
+        assertThat(stubLastMethod.get())
+            .describedAs("stub 서버가 POST 메서드를 수신해야 한다")
+            .isEqualTo("POST")
+
+        // 엔벨로프 JSON 검증 — 키 순서 무관하게 파싱 비교
+        val mapper = ObjectMapper()
+        val receivedNode = mapper.readTree(stubLastBody.get())
+        assertThat(receivedNode.path("event").asText())
+            .describedAs("엔벨로프 event 필드가 WebhookRequested 이어야 한다")
+            .isEqualTo("WebhookRequested")
+        assertThat(receivedNode.path("issueKey").asText())
+            .describedAs("엔벨로프 issueKey 필드가 TEST-1 이어야 한다")
+            .isEqualTo("TEST-1")
+
+        // 처리 후 큐가 비어있음(delete 완료) 확인
         val remaining =
             dsl.fetch(
                 "SELECT * FROM pgmq.read(?, ?, ?)",
@@ -143,13 +184,56 @@ class WebhookDispatchEndToEndIntegrationTest {
                 1,
                 10,
             )
-        assertThat(remaining.isEmpty).isTrue()
+        assertThat(remaining.isEmpty())
+            .describedAs("pollAndProcess 후 큐가 비어있어야 한다 (메시지 delete 완료)")
+            .isTrue()
     }
 
+    // ── E2E-B. SSRF 차단 경로 ─────────────────────────────────────────────────
+
+    /**
+     * 실 [WebhookUrlValidator](autowired worker)가 127.0.0.1을 SSRF로 차단한다.
+     *
+     * 차단 흐름: Rejected → pgmq.delete (영구 거부, 재전달 없음).
+     * stub 서버는 전송을 수신하지 않아야 한다.
+     */
     @Test
-    fun `E2E-2 부팅 안전 — WebhookDispatchWorker 및 관련 빈이 컨텍스트를 깨지 않는다`() {
-        // 이 테스트는 컨텍스트 로드 자체가 성공하면 통과
-        // worker 빈이 주입되어 있음을 확인
+    fun `E2E-B 실 validator가 127-0-0-1을 차단하면 stub에 전송하지 않고 큐를 비운다`() {
+        val webhookUrl = "http://127.0.0.1:$stubPort/webhook"
+
+        // pgmq 큐에 WebhookRequested 메시지 발행
+        dsl.execute(
+            "SELECT pgmq.send(?, ?::jsonb)",
+            WebhookDispatchWorker.QUEUE_NAME,
+            """{"type":"WebhookRequested","payload":{"issueKey":"TEST-2","url":"$webhookUrl","method":"POST"}}""",
+        )
+
+        // autowired worker(실 validator) 호출 → SSRF 차단 → Rejected → delete
+        worker.pollAndProcess()
+
+        // stub 서버에 전송이 없어야 한다 (SSRF 차단 확인)
+        assertThat(stubHitCount.get())
+            .describedAs("SSRF 차단 시 stub 서버에 전송이 없어야 한다")
+            .isEqualTo(0)
+
+        // Rejected 후 큐가 비어있음(delete 완료) 확인
+        val remaining =
+            dsl.fetch(
+                "SELECT * FROM pgmq.read(?, ?, ?)",
+                WebhookDispatchWorker.QUEUE_NAME,
+                1,
+                10,
+            )
+        assertThat(remaining.isEmpty())
+            .describedAs("Rejected 처리 후 큐가 비어있어야 한다 (영구 거부, delete 완료)")
+            .isTrue()
+    }
+
+    // ── E2E-C. 부팅 안전 ──────────────────────────────────────────────────────
+
+    @Test
+    fun `E2E-C 부팅 안전 — WebhookDispatchWorker 및 관련 빈이 컨텍스트를 깨지 않는다`() {
+        // 컨텍스트 로드 자체가 성공하면 통과 — worker 빈 주입 확인
         assertThat(worker).isNotNull()
     }
 
@@ -162,11 +246,12 @@ class WebhookDispatchEndToEndIntegrationTest {
      * `quay.io/tembo/pg16-pgmq:latest` — pgmq 확장 사전 설치.
      * `q_transition_events` 큐를 수동 생성 ([NotificationDeliveryTestcontainersConfig]의 `q_issue_events` 선례).
      *
-     * ## 스케줄링
-     * [EnableScheduling] 활성화 + poll-interval 50ms (pollAndProcess 직접 호출로 대체 가능).
+     * ## @EnableScheduling 제거 이유
+     * `@Scheduled` 워커가 백그라운드에서 폴링을 시작하면 `testWorker.pollAndProcess()` 호출 전에
+     * autowired `worker`(실 validator)가 메시지를 먼저 소비하는 경쟁이 발생한다.
+     * 모든 폴링은 테스트 메서드 안에서 명시적으로 호출하므로 스케줄링이 불필요하다.
      */
     @TestConfiguration
-    @EnableScheduling
     @Suppress("DEPRECATION")
     open class WebhookE2EConfig {
         companion object {
@@ -244,7 +329,7 @@ class WebhookDispatchEndToEndIntegrationTest {
         @Bean
         @Primary
         open fun jwtDecoder(): JwtDecoder =
-            JwtDecoder { token ->
+            JwtDecoder { _ ->
                 throw JwtException("test stub: no JWT decoding needed for webhook e2e")
             }
 
