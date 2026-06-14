@@ -151,6 +151,29 @@ describe('generateGraphMermaidCode', () => {
       expect(centerId).toBeDefined()
       expect(code).toContain(`class ${centerId!} centerNode`)
     })
+
+    it('centerNode classDef는 파서 안전 형식이다 — fill-opacity 분리, oklch(from ... 없음', () => {
+      const result = generateGraphMermaidCode(SIMPLE_GRAPH, EDGE_LABELS)
+      expect(result).not.toBeNull()
+      const { code } = result!
+      // 파서 안전성 회귀 가드 1: 상대 oklch 구문이 없어야 한다
+      expect(code).not.toContain('oklch(from')
+      // 파서 안전성 회귀 가드 2: classDef 라인의 각 style 값에 내부 공백이 없어야 한다
+      const classDefLine = code.split('\n').find((l) => l.includes('classDef centerNode'))
+      expect(classDefLine).toBeDefined()
+      // "classDef centerNode " 이후 style 블록 추출
+      const styleBlock = classDefLine!.replace(/^\s*classDef\s+centerNode\s+/, '')
+      // 콤마로 나눈 각 key:value 쌍에서 value 부분에 공백이 없어야 한다
+      for (const pair of styleBlock.split(',')) {
+        const colonIdx = pair.indexOf(':')
+        if (colonIdx !== -1) {
+          const value = pair.slice(colonIdx + 1)
+          expect(value).not.toMatch(/\s/)
+        }
+      }
+      // 파서 안전성 회귀 가드 3: 새 형식(fill-opacity 속성)을 포함한다
+      expect(code).toContain('fill-opacity:')
+    })
   })
 
   describe('엣지 렌더링', () => {
