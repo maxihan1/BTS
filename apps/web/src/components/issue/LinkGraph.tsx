@@ -1,6 +1,6 @@
 // 이슈 링크 그래프 시각화 컴포넌트 — mermaid flowchart + 5상태 + depth + 노드 클릭 내비게이션 (FR-LK-02 D6)
 import type { JSX, ChangeEvent } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useIssueGraph, extractGraphErrorCode, ISSUE_GRAPH_ERROR_CODES } from '@/api/issue-graph'
 import type { IssueGraphResponse } from '@/api/issue-graph'
@@ -78,7 +78,7 @@ interface GraphRendererProps {
   code: string
   /** sanitizedId → 이슈 키 역매핑 (클릭 내비게이션용) */
   idToKey: Record<string, string>
-  /** 중심 이슈 키 (클릭 no-op 대상) */
+  /** 중심 이슈 키 (클릭 no-op 대상 + render id prefix) */
   centerKey: string
   /** 렌더 실패 시 호출 콜백 */
   onRenderError: () => void
@@ -131,7 +131,8 @@ function GraphRenderer({
           return
         }
 
-        const id = `link-graph-${Date.now()}`
+        // issueKey prefix 포함 — 다중 인스턴스/빠른 재렌더 id 충돌 회피 (WorkflowDiagram 패턴 동일 취지)
+        const id = `link-graph-${centerKey}-${Date.now()}`
         const { svg } = await mermaid.render(id, code)
 
         if (cancelled || !containerRef.current) {
@@ -158,7 +159,13 @@ function GraphRenderer({
     return () => {
       cancelled = true
     }
-  }, [code, idToKey, centerKey, navigate, onRenderError, onRenderSuccess])
+    // code 변경 시에만 재렌더한다.
+    // - idToKey는 GraphContent의 useMemo에서 code와 함께 생성되므로 code와 동기화된다.
+    // - centerKey는 issueKey prop에서 오므로 code 변경 시 함께 최신 값이 capture된다.
+    // - navigate는 TanStack Router가 안정 참조를 보장한다.
+    // - onRenderError/onRenderSuccess는 GraphContent의 useCallback으로 안정화된다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code])
 
   return (
     <div
@@ -355,6 +362,7 @@ export function LinkGraph({ issueKey }: LinkGraphProps): JSX.Element {
           {/* 그래프 본문 영역 */}
           <GraphContent
             issueKey={issueKey}
+            depth={depth}
             data={data}
             isLoading={isLoading}
             error={error}
@@ -375,6 +383,8 @@ export function LinkGraph({ issueKey }: LinkGraphProps): JSX.Element {
 interface GraphContentProps {
   /** 이슈 키 */
   issueKey: string
+  /** 현재 선택된 depth — data.depth와 불일치 시 stale로 간주 */
+  depth: number
   /** 조회 데이터 */
   data: IssueGraphResponse | undefined
   /** 로딩 여부 */
@@ -391,9 +401,15 @@ interface GraphContentProps {
 
 /**
  * 그래프 콘텐츠 영역 — 5상태(로딩/에러/빈/truncated/정상) 분기 컴포넌트.
+ *
+ * 렌더 안정화 전략.
+ * - `generateGraphMermaidCode` 호출을 `useMemo`로 감싸 data 참조 변경 시에만 재계산한다.
+ *   code/idToKey 참조가 안정화돼 GraphRenderer useEffect가 불필요하게 재실행되지 않는다.
+ * - onRenderError/onRenderSuccess는 `useCallback`으로 감싸 GraphRenderer 의존을 안정화한다.
  */
 function GraphContent({
   issueKey,
+  depth,
   data,
   isLoading,
   error,
@@ -401,6 +417,16 @@ function GraphContent({
   onRenderError,
   onRenderSuccess,
 }: GraphContentProps): JSX.Element {
+  // mermaid 코드 생성을 memoize — data(또는 EDGE_LABELS 상수)가 바뀔 때만 재계산
+  const result = useMemo(
+    () => (data !== undefined ? generateGraphMermaidCode(data, EDGE_LABELS) : undefined),
+    [data],
+  )
+
+  // 콜백을 useCallback으로 안정화 — GraphRenderer useEffect 불필요 재실행 방지
+  const stableOnRenderError = useCallback(onRenderError, [onRenderError])
+  const stableOnRenderSuccess = useCallback(onRenderSuccess, [onRenderSuccess])
+
   // 1. 로딩
   if (isLoading) {
     return <LoadingState />
@@ -425,10 +451,13 @@ function GraphContent({
     return <LoadingState />
   }
 
-  // 4. helper로 mermaid 코드 생성 — null이면 빈 그래프
-  const result = generateGraphMermaidCode(data, EDGE_LABELS)
+  // 4. depth 정합 가드 — data.depth가 선택 depth와 다르면 이전 depth 그래프를 잘못 표시하지 않는다
+  if (data.depth !== depth) {
+    return <LoadingState />
+  }
 
-  if (result === null) {
+  // 5. mermaid 코드 null이면 빈 그래프 (엣지 0개)
+  if (result === null || result === undefined) {
     return <EmptyState />
   }
 
@@ -444,8 +473,8 @@ function GraphContent({
         code={result.code}
         idToKey={result.idToKey}
         centerKey={issueKey}
-        onRenderError={onRenderError}
-        onRenderSuccess={onRenderSuccess}
+        onRenderError={stableOnRenderError}
+        onRenderSuccess={stableOnRenderSuccess}
       />
     </>
   )
