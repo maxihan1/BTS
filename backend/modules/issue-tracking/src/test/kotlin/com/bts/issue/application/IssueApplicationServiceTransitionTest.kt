@@ -13,6 +13,7 @@ import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueTransitioned
+import com.bts.issue.event.TransitionEventPublisher
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
@@ -20,6 +21,7 @@ import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import com.bts.shared.user.UserLookupPort
+import com.bts.shared.workflow.DomainEvent
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.TransitionPlan
 import com.bts.shared.workflow.TransitionResult
@@ -50,6 +52,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
     val workflowPort = mockk<WorkflowTransitionPort>()
     val workflowKeyResolver = mockk<WorkflowKeyResolver>()
     val userLookupPort = mockk<UserLookupPort>(relaxed = true)
+    val transitionEventPublisher = mockk<TransitionEventPublisher>(relaxed = true)
     val clock = Clock.fixed(Instant.parse("2026-05-24T00:00:00Z"), ZoneOffset.UTC)
 
     val sut =
@@ -67,6 +70,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             versionRepository = mockk(relaxed = true),
             clock = clock,
             historyRecorder = mockk(relaxed = true),
+            transitionEventPublisher = transitionEventPublisher,
         )
 
     val actor = ActorId(UUID.randomUUID())
@@ -456,6 +460,151 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
             it("workflowPort 가 호출되지 않는다") {
                 runCatching { sut.transitionIssue(actor, issueKey, request) }
                 verify(exactly = 0) { workflowPort.plan(any()) }
+            }
+        }
+
+        context("T1 — emitEvents 포함 plan 전이 시 TransitionEventPublisher.publish 호출") {
+            val webhookEvent =
+                DomainEvent(
+                    type = "WebhookRequested",
+                    payload = mapOf("issueKey" to "BTS-1", "url" to "https://example.test/hook", "method" to "POST"),
+                )
+            val planWithEvents =
+                TransitionPlan(
+                    toStateKey = "IN_PROGRESS",
+                    fieldChanges = emptyList(),
+                    emitEvents = listOf(webhookEvent),
+                )
+            val request =
+                TransitionIssueRequest(
+                    toStateKey = "IN_PROGRESS",
+                    expectedVersion = existingVersion,
+                )
+            val updatedResponse = makeResponse(state = "IN_PROGRESS", version = existingVersion + 1)
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.TRANSITION,
+                        IssueScope.Issue(issueKey.value),
+                    )
+                } returns true
+                every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
+                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "open")
+                every { workflowPort.plan(any()) } returns TransitionResult.Success(planWithEvents)
+                every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion, null) } returns 1
+                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+                every { eventPublisher.publish(any()) } returns Unit
+            }
+
+            it("plan.emitEvents 이벤트를 TransitionEventPublisher.publish 로 발행한다") {
+                sut.transitionIssue(actor, issueKey, request)
+                verify(exactly = 1) {
+                    transitionEventPublisher.publish(
+                        match { it.type == "WebhookRequested" },
+                    )
+                }
+            }
+        }
+
+        context("T2 — emitEvents 빈 plan 전이 시 TransitionEventPublisher.publish 미호출") {
+            val emptyPlan =
+                TransitionPlan(
+                    toStateKey = "IN_PROGRESS",
+                    fieldChanges = emptyList(),
+                    emitEvents = emptyList(),
+                )
+            val request =
+                TransitionIssueRequest(
+                    toStateKey = "IN_PROGRESS",
+                    expectedVersion = existingVersion,
+                )
+            val updatedResponse = makeResponse(state = "IN_PROGRESS", version = existingVersion + 1)
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.TRANSITION,
+                        IssueScope.Issue(issueKey.value),
+                    )
+                } returns true
+                every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
+                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "open")
+                every { workflowPort.plan(any()) } returns TransitionResult.Success(emptyPlan)
+                every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion, null) } returns 1
+                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+                every { eventPublisher.publish(any()) } returns Unit
+            }
+
+            it("plan.emitEvents 가 비어있으면 TransitionEventPublisher.publish 를 호출하지 않는다") {
+                sut.transitionIssue(actor, issueKey, request)
+                verify(exactly = 0) { transitionEventPublisher.publish(any()) }
+            }
+        }
+
+        context("T3 — transitionEventPublisher null (기존 단위 테스트 호환)") {
+            val sutNoPublisher =
+                IssueApplicationService(
+                    repo = repo,
+                    issueTypeRepository = issueTypeRepository,
+                    resolutionRepository = resolutionRepository,
+                    eventPublisher = eventPublisher,
+                    permissionResolver = permissionResolver,
+                    workflowPort = workflowPort,
+                    workflowKeyResolver = workflowKeyResolver,
+                    userLookupPort = userLookupPort,
+                    componentRepository = mockk(relaxed = true),
+                    projectLeadRepository = mockk(relaxed = true),
+                    versionRepository = mockk(relaxed = true),
+                    clock = clock,
+                    historyRecorder = mockk(relaxed = true),
+                    // transitionEventPublisher 기본값 null — 기존 단위 테스트 호환 경로
+                )
+            val webhookEvent =
+                DomainEvent(
+                    type = "WebhookRequested",
+                    payload = mapOf("issueKey" to "BTS-1", "url" to "https://example.test/hook", "method" to "POST"),
+                )
+            val planWithEvents =
+                TransitionPlan(
+                    toStateKey = "IN_PROGRESS",
+                    fieldChanges = emptyList(),
+                    emitEvents = listOf(webhookEvent),
+                )
+            val request =
+                TransitionIssueRequest(
+                    toStateKey = "IN_PROGRESS",
+                    expectedVersion = existingVersion,
+                )
+            val updatedResponse = makeResponse(state = "IN_PROGRESS", version = existingVersion + 1)
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.TRANSITION,
+                        IssueScope.Issue(issueKey.value),
+                    )
+                } returns true
+                every { repo.findByKeyForUpdate(issueKey) } returns makeIssue()
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
+                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "open")
+                every { workflowPort.plan(any()) } returns TransitionResult.Success(planWithEvents)
+                every { repo.applyTransition(issueKey, "IN_PROGRESS", existingVersion, null) } returns 1
+                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+                every { eventPublisher.publish(any()) } returns Unit
+            }
+
+            it("transitionEventPublisher 가 null 이어도 예외 없이 정상 전이한다") {
+                val result = sutNoPublisher.transitionIssue(actor, issueKey, request)
+                result.currentStateKey shouldBe "IN_PROGRESS"
             }
         }
     }
