@@ -10,7 +10,7 @@
 | 인앱 (Inbox) | 모든 알림, WebSocket 실시간 |
 | Slack DM | 즉시성 높은 알림 (멘션, 할당) |
 | Slack 채널 | 프로젝트별 활동 피드 |
-| Webhook | 외부 시스템 통지 |
+| Webhook | 외부 시스템 통지 (FR-NT-05 — 전이 post-action 이벤트 발행 파이프라인 기반) |
 
 ### 9.1.2 이벤트별 알림 정책 (FR-NT-01)
 
@@ -153,7 +153,25 @@ NotificationSubscription:
   timezone: "Asia/Seoul"
 ```
 
-## 9.6 다음 챕터
+## 9.6 Webhook 알림 채널 (FR-NT-05)
+
+FR-NT-02에서 분리된 전용 FR. 워크플로우 전이 후처리(post-action)가 생성하는 이벤트를 외부 URL로 HTTP POST 하는 채널이다.
+
+**구현 분할 (cross-BC).**
+- **PR 1 (issue-tracking)**: `IssueApplicationService.transitionIssue()`가 `repo.applyTransition()` 성공 직후 `plan.emitEvents`를 pgmq 큐 `q_transition_events`에 발행(transaction outbox 정합). 신규 `TransitionEventPublisher`(@Component, `@Transactional(MANDATORY)`) 담당.
+- **PR 2 (notification BC)**: `WebhookRequested` 이벤트 소비 + 외부 URL HTTP POST 디스패처.
+
+**이벤트 계약.**
+
+| 큐 | 메시지 형식 |
+|---|---|
+| `q_transition_events` | `{ "type": "<이벤트 type>", "payload": { ... } }` |
+
+PR 2 디스패처는 `type == "WebhookRequested"`만 처리하고 나머지(WatcherAdded/NotificationRequested/AutomationRequested)는 미래 FR 소비처를 위해 무시한다.
+
+**ADR**: [2026-06-14-fr-nt-05-transition-event-outbox.md](../decisions/2026-06-14-fr-nt-05-transition-event-outbox.md)
+
+## 9.7 다음 챕터
 
 - 검색 → [10. 검색/Export/Import](10-search-export-import.md)
 - 권한 → [12. 권한 모델](12-permissions.md)

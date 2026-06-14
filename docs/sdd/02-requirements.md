@@ -111,9 +111,10 @@
 | ID | 요구사항 | 우선순위 |
 |---|---|---|
 | FR-NT-01 | 이벤트별 알림 정책: 생성/수정/할당/전이/종료/댓글 | 필수 |
-| FR-NT-02 | 채널: 이메일/인앱/Webhook (Slack=slack-integration BC) | 필수 |
+| FR-NT-02 | 채널: 이메일/인앱 (Slack=slack-integration BC) | 필수 |
 | FR-NT-03 | 수신자 정책: R/A/W/Lead/역할 | 필수 |
 | FR-NT-04 | 사용자별 알림 구독 설정 | 높음 |
+| FR-NT-05 | Webhook 알림 채널: 전이 post-action 이벤트 발행 + 외부 URL HTTP POST 디스패처 (FR-NT-02에서 분리) | 중간 |
 | FR-MN-01 | 본문/댓글 @멘션 + 즉시 알림 | 필수 |
 | FR-MN-02 | 멘션 자동완성 | 높음 |
 | FR-HS-01 | 이슈 변경 이력 (필드/댓글/첨부/전이) | 필수 |
