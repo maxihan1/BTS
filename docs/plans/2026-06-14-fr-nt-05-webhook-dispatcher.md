@@ -62,10 +62,12 @@ Maxi 게이트 결정. D1=내부망 차단 리스트, D2=JSON 엔벨로프.
 - `http://93.184.216.34/` (리터럴 공인 IP) → Allowed
 - `ftp://host/`, `file:///etc/passwd` → Malformed/Blocked(비-http 스킴)
 - `""`(blank), `"not a url"` → Malformed
+- **S3(리뷰 보강)**. `http://[fc00::1]/`(IPv6 ULA), `http://[::1]/`(IPv6 loopback), `http://[::ffff:127.0.0.1]/`(IPv4-mapped) → Blocked. `http://2130706433/`(정수형 127.0.0.1) → Blocked(getByName이 실제 IP로 해석).
 - 실패 메시지(예상): `WebhookUrlValidator` 클래스 없음
 
 **GREEN**.
-- `WebhookUrlValidator`(@Component): URL 파싱 → 스킴 http/https 검사 → `InetAddress.getAllByName(host)`로 해석 → 각 IP가 `isLoopbackAddress || isLinkLocalAddress || isSiteLocalAddress || isAnyLocalAddress || isMulticastAddress` 또는 private 대역이면 Blocked. (Kotlin `java.net.InetAddress` 사용.)
+- `WebhookUrlValidator`(@Component): URL 파싱 → 스킴 http/https 검사 → `InetAddress.getAllByName(host)`로 해석 → 각 IP `isInternal`이면 Blocked. (Kotlin `java.net.InetAddress` 사용.)
+- **S3(리뷰 보강) `isInternal`**: `isLoopbackAddress || isLinkLocalAddress || isSiteLocalAddress || isAnyLocalAddress || isMulticastAddress` **+ IPv6 ULA(fc00::/7, `address[0] and 0xFE == 0xFC`) + IPv4-mapped IPv6 언래핑 후 재검사**. 내장 플래그만으로는 ULA/mapped를 못 잡으므로 명시 추가.
 
 **REFACTOR**. 차단 판정을 `private fun isInternal(addr): Boolean`로 추출 + KDoc에 G2(TOCTOU/DNS rebinding 한계) 명시.
 
@@ -113,7 +115,8 @@ Maxi 게이트 결정. D1=내부망 차단 리스트, D2=JSON 엔벨로프.
 - W-7. JSON 파싱 실패(poison) → read_ct>MAX시 archive, 미만시 재전달 대기.
 
 **GREEN**.
-- `WebhookDispatchWorker`(@Component, dsl + dispatcher + objectMapper): `@Scheduled(fixedDelayString="\${bts.notification.webhook.poll-interval-ms:500}")` → `pgmq.read(q_transition_events, VT, BATCH)` → 각 메시지 type 분기. `@Transactional` 없음(NotificationWorker 선례). 상수 QUEUE_NAME/VT/BATCH/MAX는 NotificationWorker 값 차용.
+- `WebhookDispatchWorker`(@Component, dsl + dispatcher + objectMapper): `@Scheduled(fixedDelayString="\${bts.notification.webhook.poll-interval-ms:500}")` → `pgmq.read(q_transition_events, VT, BATCH)` → 각 메시지 type 분기. `@Transactional` 없음(NotificationWorker 선례).
+- **E4(리뷰 보강) 상수**. QUEUE_NAME=`q_transition_events`. **VT_SECONDS=60, BATCH_SIZE=5**(NotificationWorker의 30/10 그대로 차용 금지 — webhook read 타임아웃 5s×배치가 vt를 넘기면 처리 중 재전달→중복 POST. 5×5s=25s<60s 여유). MAX_RECEIVE_COUNT=5는 차용.
 
 **REFACTOR**. delete/archive 헬퍼 + KDoc(생명주기·BC격리·@Transactional 부재 사유).
 
@@ -142,7 +145,7 @@ Maxi 게이트 결정. D1=내부망 차단 리스트, D2=JSON 엔벨로프.
 **작업** (TDD 비대상 — 문서 동기화. CLAUDE.md §명세/범위 변경 전수 동기화).
 - FR-NT-05 `[~]`(부분완료) → 완료로 전환. product `notification-dashboard.md` §2.5 D단계 체크박스 마킹.
 - fr-index/README/CLAUDE/SDD의 FR-NT-05 상태·카운트 정합(122/123 불변, 상태만 변경).
-- ADR — PR2 신규 결정(SSRF 가드·RestClient·리다이렉트 차단)을 PR1 ADR에 Amendment로 추가하거나 신규 ADR 작성(review-plan서 판단).
+- ADR — **신규 ADR `docs/decisions/2026-06-14-fr-nt-05-webhook-dispatch-ssrf.md` 작성**(review-plan 확정). 첫 백엔드 아웃바운드 HTTP 패턴 + SSRF 가드 정책 + RestClient/리다이렉트 차단은 향후 BC가 참조할 재사용 결정이라 독립 ADR이 적합. files에 추가.
 
 **검증**: `bash scripts/verify-master-plan.sh` exit 0.
 
@@ -154,4 +157,15 @@ Maxi 게이트 결정. D1=내부망 차단 리스트, D2=JSON 엔벨로프.
 - TDD 강제: T1~T4 yes (test 커밋이 feat 커밋보다 먼저).
 - 추가 검증: ktlint/detekt(--rerun-tasks 직접 재검증 — 메모리 subagent-ktlint-false-green), verify-master-plan.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### eng + 적대적 보안 리뷰 (2026-06-14, 직접 — backend 타입은 autoplan 과적용 회피, 메모리 bts-review-plan-autoplan-overkill)
+
+- ✅ 레이어 분리(validator/dispatcher/worker/config) 깔끔, TDD 커버리지 충분, BC 격리(wire JSON 파싱)·@Transactional 부재(NotificationWorker 선례) 정합.
+- ✅ 부팅 안전 — 신규 빈 전부 notification-내부, @Scheduled는 test 프로파일 비활성(SchedulingConfigurationTest 확인). 신규 prod/test 의존성 0(RestClient=spring-web, stub=JDK HttpServer).
+- ⚠️ **CONCERN E4 (반영)**. VT/BATCH를 NotificationWorker(30s/10)에서 그대로 차용 금지 — webhook read 5s×배치10=50s>30s면 처리 중 vt 만료→중복 POST. **VT=60/BATCH=5로 조정**(T3 GREEN 반영).
+- ⚠️ **CONCERN S3 (반영)**. `InetAddress` 내장 플래그가 IPv6 ULA(fc00::/7)·IPv4-mapped를 못 잡음 → validator `isInternal`에 명시 추가(T1 반영).
+- 📌 **수용 한계 G2**. TOCTOU/DNS rebinding은 resolve-then-connect 구조 한계. admin-controlled URL+PR2 범위 수용, KDoc 명시. 완전 차단(연결 IP 핀잉)은 후속.
+- 📌 4xx도 Failed로 재전달(영구실패 즉시 폐기 안 함)은 단순화 — 수용(dead-letter가 종착).
+- 📌 ADR 신규 작성 확정(T5) — 첫 아웃바운드 HTTP+SSRF 정책 재사용 결정.
+- **BLOCKER: 없음.**
