@@ -345,6 +345,107 @@ describe('LinkGraph', () => {
     expect(mockNavigate).not.toHaveBeenCalled()
   })
 
+  // P1-a: depth 불일치 data → 그래프 미렌더 (LoadingState 표시)
+  it('P1-a: data.depth가 현재 depth와 다르면 stale로 간주해 loadingState를 표시한다', async () => {
+    // depth=3으로 응답이 왔지만 현재 선택 depth=2인 stale 시나리오
+    const staleDepthData = {
+      ...normalGraphData,
+      depth: 3, // 응답 depth가 선택 depth(2)와 다름
+    }
+    mockUseIssueGraph.mockReturnValue({
+      data: staleDepthData,
+      isLoading: false,
+      error: null,
+    })
+
+    await renderLinkGraph()
+    await userEvent.click(screen.getByRole('button', { name: '그래프 펼치기' }))
+
+    // depth 불일치 → LoadingState 표시, mermaid.render 미호출
+    await waitFor(() => {
+      expect(screen.getByText('그래프를 불러오는 중입니다.')).toBeInTheDocument()
+    })
+
+    const mermaidMod = await import('mermaid')
+    expect(mermaidMod.default.render).not.toHaveBeenCalled()
+  })
+
+  // P1-b: 동일 data로 부모가 리렌더되어도 mermaid.render 호출 횟수 증가 없음
+  it('P1-b: 동일 data로 부모 리렌더 시 mermaid.render 추가 호출 없음 (useMemo 안정화)', async () => {
+    mockUseIssueGraph.mockReturnValue({
+      data: normalGraphData,
+      isLoading: false,
+      error: null,
+    })
+
+    const mermaidMod = await import('mermaid')
+    // mockResolvedValueOnce를 2번 등록해 persistent 오염 방지
+    vi.mocked(mermaidMod.default.render)
+      .mockResolvedValueOnce({
+        svg: '<svg><g class="node" data-id="node_0"><text>ATLAS-1</text></g></svg>',
+        diagramType: 'flowchart',
+        bindFunctions: undefined,
+      })
+      .mockResolvedValueOnce({
+        svg: '<svg><g class="node" data-id="node_0"><text>ATLAS-1</text></g></svg>',
+        diagramType: 'flowchart',
+        bindFunctions: undefined,
+      })
+
+    const { LinkGraph } = await import('./LinkGraph')
+    const Wrapper = createWrapper()
+    const { rerender } = render(<LinkGraph issueKey="ATLAS-1" />, { wrapper: Wrapper })
+
+    await userEvent.click(screen.getByRole('button', { name: '그래프 펼치기' }))
+
+    // 첫 렌더 완료 대기
+    await waitFor(() => {
+      expect(vi.mocked(mermaidMod.default.render)).toHaveBeenCalledTimes(1)
+    })
+
+    const callCountAfterFirst = vi.mocked(mermaidMod.default.render).mock.calls.length
+
+    // 동일 props로 부모 리렌더 (issueKey 동일)
+    rerender(<LinkGraph issueKey="ATLAS-1" />)
+
+    // 약간 기다린 후 추가 호출 없음 확인
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+
+    expect(vi.mocked(mermaidMod.default.render).mock.calls.length).toBe(callCountAfterFirst)
+  })
+
+  // P1-c: render id에 issueKey prefix 포함 → resolveSanitizedId 동작 회귀 없음
+  it('P1-c: render id에 issueKey prefix가 포함되어 생성된다', async () => {
+    mockUseIssueGraph.mockReturnValue({
+      data: normalGraphData,
+      isLoading: false,
+      error: null,
+    })
+
+    const mermaidMod = await import('mermaid')
+    vi.mocked(mermaidMod.default.render).mockResolvedValueOnce({
+      svg: `<svg>
+        <g class="node" id="link-graph-ATLAS-1-1700000000000-flowchart-node_0-0"><text>ATLAS-1</text></g>
+        <g class="node" id="link-graph-ATLAS-1-1700000000000-flowchart-node_1-0"><text>ATLAS-2</text></g>
+      </svg>`,
+      diagramType: 'flowchart',
+      bindFunctions: undefined,
+    })
+
+    await renderLinkGraph()
+    await userEvent.click(screen.getByRole('button', { name: '그래프 펼치기' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(mermaidMod.default.render)).toHaveBeenCalled()
+    })
+
+    // mermaid.render 호출 id가 issueKey를 포함해야 함
+    const [callId] = vi.mocked(mermaidMod.default.render).mock.calls[0] ?? []
+    expect(callId).toContain('ATLAS-1')
+  })
+
   // 10. 노드 Enter keydown → navigate, 노드에 tabindex/role/aria-label 존재
   it('T10: 노드 Enter keydown → navigate, tabindex=0 + role=link + aria-label 확인', async () => {
     mockUseIssueGraph.mockReturnValue({
