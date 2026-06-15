@@ -34,3 +34,8 @@ bts:
     access-key: ${BTS_MINIO_ACCESS_KEY:minioadmin}
     secret-key: ${BTS_MINIO_SECRET_KEY:minioadmin}
     bucket: ${BTS_MINIO_BUCKET:bts-attachments-test}
+  # ClamAV 안티바이러스 데몬 — Testcontainers 가 런타임에 동적 포트를 주입하므로 기본값만 둔다.
+  # AttachmentClamavTestcontainersBase 의 @DynamicPropertySource 가 bts.clamav.host/port 를 override.
+  clamav:
+    host: ${BTS_CLAMAV_HOST:localhost}
+    port: ${BTS_CLAMAV_PORT:3310}

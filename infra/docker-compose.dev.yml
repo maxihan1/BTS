@@ -40,5 +40,26 @@ services:
       retries: 12
       start_period: 30s
 
+  clamav:
+    # ClamAV 안티바이러스 데몬 — 첨부 업로드 바이러스 스캔용 (FR-AC-01 D2).
+    # CLAMAV_NO_FRESHCLAMD: freshclam(바이러스 DB 자동 업데이트) 비활성화 → 번들 DB로 dev 기동 빠름.
+    # prod 은 freshclam 활성화 + 버전 태그 고정 필요.
+    image: clamav/clamav:latest
+    container_name: bts-clamav-dev
+    environment:
+      CLAMAV_NO_FRESHCLAMD: "true"
+    ports:
+      - "3310:3310"
+    volumes:
+      - ./clamav/clamd.conf:/etc/clamav/clamd.conf:ro
+    healthcheck:
+      # clamd PING/PONG 응답으로 데몬 준비 확인.
+      # start_period 넉넉히 설정 — 번들 DB 로드에 30~60초 소요.
+      test: ["CMD-SHELL", "echo PING | nc -w 5 localhost 3310 | grep -q PONG"]
+      interval: 10s
+      timeout: 6s
+      retries: 10
+      start_period: 60s
+
 volumes:
   bts-postgres-data:
