@@ -34,3 +34,9 @@ bts:
     access-key: ${BTS_MINIO_ACCESS_KEY:minioadmin}
     secret-key: ${BTS_MINIO_SECRET_KEY:minioadmin}
     bucket: ${BTS_MINIO_BUCKET:bts-attachments-test}
+  # ClamAV 안티바이러스 데몬 — 기본값(localhost:3310)은 전체 ApplicationContext 통합테스트에서
+  # ClamavConfig 의 host fail-fast(check(hasText))를 통과시켜 부팅이 깨지지 않게 하는 용도다(lazy connect 라 미가동이어도 빈 생성 성공).
+  # 실 clamd 통합테스트(ClamdInstreamScannerIntegrationTest)는 컨테이너의 동적 매핑 포트로 ClamdInstreamScanner 를 직접 생성하므로 이 설정을 쓰지 않는다.
+  clamav:
+    host: ${BTS_CLAMAV_HOST:localhost}
+    port: ${BTS_CLAMAV_PORT:3310}

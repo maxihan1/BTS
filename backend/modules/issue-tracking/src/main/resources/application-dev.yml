@@ -41,3 +41,8 @@ bts:
     access-key: ${BTS_MINIO_ACCESS_KEY:minioadmin}
     secret-key: ${BTS_MINIO_SECRET_KEY:minioadmin}
     bucket: ${BTS_MINIO_BUCKET:bts-attachments}
+  # ClamAV 안티바이러스 데몬 — docker-compose.dev.yml 의 clamav 서비스 기준 (localhost:3310).
+  # prod 은 BTS_CLAMAV_HOST / BTS_CLAMAV_PORT 환경변수로 주입.
+  clamav:
+    host: ${BTS_CLAMAV_HOST:localhost}
+    port: ${BTS_CLAMAV_PORT:3310}

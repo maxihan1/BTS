@@ -7,6 +7,8 @@ import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTe
 import com.bts.issue.attachment.adapter.MinioStorageAdapter
 import com.bts.issue.attachment.adapter.MinioStorageConfig
 import com.bts.issue.attachment.application.IssueAttachmentService
+import com.bts.issue.attachment.application.ScanVerdict
+import com.bts.issue.attachment.application.VirusScanPort
 import com.bts.issue.attachment.repository.AttachmentRepository
 import com.bts.issue.attachment.web.AttachmentExceptionHandler
 import com.bts.issue.attachment.web.IssueAttachmentController
@@ -147,13 +149,26 @@ class IssueAttachmentIntegrationTest {
         @Bean
         open fun attachmentRepository(dsl: DSLContext): AttachmentRepository = AttachmentRepository(dsl)
 
+        /**
+         * stub [VirusScanPort] — 업로드 end-to-end 플로우를 스캔 로직과 격리하기 위해 항상 CLEAN 반환한다.
+         * 실 clamd 와의 INSTREAM 상호작용(clean/EICAR)은 [ClamdInstreamScannerIntegrationTest] 가
+         * Testcontainers clamd 로 별도 검증한다(분리가 최종 설계 — 여기서 무거운 clamd 컨테이너를 띄우지 않는다).
+         */
+        @Bean
+        open fun virusScanPort(): VirusScanPort =
+            object : VirusScanPort {
+                override fun scan(input: java.io.InputStream): ScanVerdict = ScanVerdict.CLEAN
+            }
+
         /** [IssueAttachmentService] — upload/list/download/delete 유스케이스 서비스. */
         @Bean
+        @Suppress("LongParameterList") // scanPort 추가로 6개 — 테스트 조립 함수라 분리 불요
         open fun issueAttachmentService(
             storagePort: MinioStorageAdapter,
             attachmentRepository: AttachmentRepository,
             permissionResolver: IssuePermissionResolver,
             issueRepository: IssueRepository,
+            virusScanPort: VirusScanPort,
             clock: Clock,
         ): IssueAttachmentService =
             IssueAttachmentService(
@@ -161,6 +176,7 @@ class IssueAttachmentIntegrationTest {
                 attachmentRepository = attachmentRepository,
                 permissionResolver = permissionResolver,
                 issueRepository = issueRepository,
+                scanPort = virusScanPort,
                 clock = clock,
             )
 

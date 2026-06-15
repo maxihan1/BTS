@@ -2,6 +2,8 @@
 
 package com.bts.issue.attachment.web
 
+import com.bts.issue.attachment.application.AttachmentInfectedException
+import com.bts.issue.attachment.application.AttachmentScanUnavailableException
 import com.bts.issue.attachment.application.UnsupportedAttachmentTypeException
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueNotFoundException
@@ -30,6 +32,8 @@ import java.time.Instant
  * - [MultipartException] → 400 Bad Request (file part 누락 포함)
  * - [IssueNotFoundException] → 404 Not Found
  * - [IssueAccessDeniedException] → 403 Forbidden
+ * - [AttachmentInfectedException] → 422 Unprocessable Entity (바이러스 시그니처 비노출)
+ * - [AttachmentScanUnavailableException] → 503 Service Unavailable (fail-closed)
  */
 @RestControllerAdvice(assignableTypes = [IssueAttachmentController::class])
 class AttachmentExceptionHandler {
@@ -141,6 +145,51 @@ class AttachmentExceptionHandler {
             title = "Access Denied",
             errorCode = "ISSUE_ACCESS_DENIED",
             detail = "이 작업을 수행할 권한이 없습니다.",
+        )
+    }
+
+    // ── 422 ATTACHMENT_INFECTED ───────────────────────────────────────────────
+
+    /**
+     * 바이러스 스캔에서 악성코드 탐지 — 422.
+     *
+     * ClamAV 가 감염 판정을 내린 첨부 업로드 시도 시 발생한다.
+     * 응답 메시지에 바이러스 시그니처명·파일명 등 진단 정보를 노출하지 않는다.
+     * 진단 목적 filename 은 서버 로그에만 기록한다.
+     *
+     * @param ex 감염 판정 예외 (filename 진단용 필드 보유).
+     */
+    @ExceptionHandler(AttachmentInfectedException::class)
+    fun handleInfected(ex: AttachmentInfectedException): ProblemDetail {
+        log.info("ISSUE_422 attachment_infected filename='{}'", ex.filename)
+        return problem(
+            status = HttpStatus.UNPROCESSABLE_ENTITY,
+            type = "attachment-infected",
+            title = "Attachment Infected",
+            errorCode = "ISSUE_ATTACHMENT_INFECTED",
+            detail = "보안 검사에서 차단된 파일입니다.",
+        )
+    }
+
+    // ── 503 SCAN_UNAVAILABLE ──────────────────────────────────────────────────
+
+    /**
+     * 바이러스 스캔 불가 (fail-closed) — 503.
+     *
+     * ClamAV 데몬 미가용·타임아웃·미상 응답 시 발생한다. fail-closed 정책에 따라
+     * 스캔 불가 상태에서 업로드를 허용하지 않는다.
+     *
+     * @param ex 스캔 불가 원인 메시지를 포함하는 예외.
+     */
+    @ExceptionHandler(AttachmentScanUnavailableException::class)
+    fun handleScanUnavailable(ex: AttachmentScanUnavailableException): ProblemDetail {
+        log.warn("ISSUE_503 attachment_scan_unavailable message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.SERVICE_UNAVAILABLE,
+            type = "attachment-scan-unavailable",
+            title = "Scan Unavailable",
+            errorCode = "ISSUE_ATTACHMENT_SCAN_UNAVAILABLE",
+            detail = "보안 검사를 일시적으로 수행할 수 없습니다. 잠시 후 다시 시도해 주세요.",
         )
     }
 

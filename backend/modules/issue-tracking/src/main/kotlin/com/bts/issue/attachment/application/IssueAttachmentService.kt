@@ -15,6 +15,9 @@ import com.bts.shared.permission.IssueScope
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.io.InputStream
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.time.Clock
 import java.util.UUID
 
@@ -45,6 +48,7 @@ import java.util.UUID
  * @param attachmentRepository 첨부 메타데이터 저장소.
  * @param permissionResolver 이슈 권한 판정 port.
  * @param issueRepository 이슈 키 → ID 변환에 사용 (View 권한 검증 미포함 — 첨부 서비스가 직접 권한 처리).
+ * @param scanPort 바이러스 스캔 outbound port. fail-closed — 미가용 시 업로드 거부.
  * @param clock 첨부 생성 시각 결정. 테스트에서 고정 시각 주입 가능.
  */
 @Service
@@ -55,6 +59,7 @@ class IssueAttachmentService(
     private val attachmentRepository: AttachmentRepository,
     private val permissionResolver: IssuePermissionResolver,
     private val issueRepository: IssueRepository,
+    private val scanPort: VirusScanPort,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -62,8 +67,22 @@ class IssueAttachmentService(
     /**
      * 첨부 파일을 업로드한다.
      *
-     * 권한 검증 → 타입 검증 → 이슈 조회 → storagePort.put → repository.insert 순서로 실행.
-     * insert 실패 시 storagePort.remove 로 고아 객체를 보상 삭제한다.
+     * ## 스캔 게이트 (fail-closed)
+     *
+     * inbound 스트림을 임시파일에 1회 복사한 뒤 [scanPort] 로 바이러스 스캔을 수행한다.
+     * INFECTED → [AttachmentInfectedException], 스캐너 미가용 → [AttachmentScanUnavailableException].
+     * 두 경우 모두 MinIO put 및 DB insert 가 호출되지 않는다.
+     *
+     * ## 임시파일 생명주기
+     *
+     * 임시파일은 `Files.createTempFile` 직후 `try/finally` 로 감싸
+     * INFECTED / UNAVAILABLE / put 실패 / insert 실패 / 정상 성공 모든 경로에서 삭제된다.
+     * 100 MB 파일을 메모리에 적재하지 않기 위해 디스크 임시파일을 사용한다.
+     *
+     * ## 실행 순서
+     *
+     * 권한 검증 → 타입 검증 → 이슈 조회 → 임시파일 복사 → ClamAV 스캔 → storagePort.put → repository.insert.
+     * insert 실패 시 storagePort.remove 로 고아 객체를 보상 삭제한다(기존 관례 유지).
      *
      * @param actor 업로드를 수행하는 행위자.
      * @param issueKey 첨부할 이슈 키.
@@ -75,6 +94,8 @@ class IssueAttachmentService(
      * @throws IssueAccessDeniedException UPDATE 권한 미보유 시.
      * @throws UnsupportedAttachmentTypeException 허용되지 않은 MIME/확장자 시([AttachmentTypePolicy]).
      * @throws IssueNotFoundException 이슈 미존재 또는 소프트 삭제 시.
+     * @throws AttachmentInfectedException 바이러스 스캔에서 악성코드가 탐지된 경우.
+     * @throws AttachmentScanUnavailableException ClamAV 미가용·타임아웃·미상 응답 (fail-closed).
      */
     @Suppress("LongParameterList")
     fun upload(
@@ -105,18 +126,32 @@ class IssueAttachmentService(
                 createdAt = clock.instant(),
             )
 
-        storagePort.put(storageKey, input, sizeBytes, contentType)
-
+        // inbound 스트림을 임시파일로 복사 — finally 로 모든 경로에서 삭제 보장.
+        val temp = writeTempFile(input)
         try {
-            attachmentRepository.insert(attachment)
-        } catch (e: Exception) {
-            log.warn("insert 실패 — storageKey={} 보상 삭제 시도. cause={}", storageKey, e.message)
-            try {
-                storagePort.remove(storageKey)
-            } catch (removeEx: Exception) {
-                log.error("보상 삭제 실패 — storageKey={} 고아 객체 잔존. cause={}", storageKey, removeEx.message)
+            scanAndGuard(temp, filename)
+            // 임시파일 스트림을 use 로 즉시 닫는다 — MinIO SDK 는 입력 스트림을 close 하지 않으므로
+            // 여기서 닫지 않으면 FD 누수 + finally 의 임시파일 삭제가 (Windows 등) 열린 핸들로 실패한다.
+            temp.toFile().inputStream().use { stream ->
+                storagePort.put(storageKey, stream, sizeBytes, contentType)
             }
-            throw e
+            try {
+                attachmentRepository.insert(attachment)
+            } catch (e: Exception) {
+                log.warn("insert 실패 — storageKey={} 보상 삭제 시도. cause={}", storageKey, e.message)
+                try {
+                    storagePort.remove(storageKey)
+                } catch (removeEx: Exception) {
+                    log.error(
+                        "보상 삭제 실패 — storageKey={} 고아 객체 잔존. cause={}",
+                        storageKey,
+                        removeEx.message,
+                    )
+                }
+                throw e
+            }
+        } finally {
+            deleteTempFile(temp)
         }
 
         return attachment
@@ -198,6 +233,46 @@ class IssueAttachmentService(
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * inbound [InputStream] 을 시스템 임시 디렉토리의 임시파일로 복사한다.
+     *
+     * 대용량 파일을 메모리에 적재하지 않기 위해 디스크 임시파일을 사용한다.
+     * 호출자는 반드시 [deleteTempFile] 로 삭제해야 한다.
+     */
+    private fun writeTempFile(input: InputStream): Path {
+        val temp = Files.createTempFile("bts-attachment-", ".tmp")
+        Files.copy(input, temp, StandardCopyOption.REPLACE_EXISTING)
+        return temp
+    }
+
+    /**
+     * 임시파일을 삭제한다. 삭제 실패는 로그 후 무시한다(이미 삭제됐거나 경쟁 조건).
+     */
+    private fun deleteTempFile(temp: Path) {
+        try {
+            Files.deleteIfExists(temp)
+        } catch (e: Exception) {
+            log.warn("임시파일 삭제 실패 — path={} cause={}", temp, e.message)
+        }
+    }
+
+    /**
+     * [scanPort] 로 바이러스 스캔을 수행하고 [ScanVerdict.INFECTED] 이면 [AttachmentInfectedException] 을 던진다.
+     *
+     * [AttachmentScanUnavailableException] 은 스캐너 미가용을 나타내므로 그대로 전파한다 (fail-closed).
+     */
+    private fun scanAndGuard(
+        temp: Path,
+        filename: String,
+    ) {
+        val verdict = temp.toFile().inputStream().use { scanPort.scan(it) }
+        if (verdict == ScanVerdict.INFECTED) {
+            // filename 값은 HTTP 응답에 노출하지 않는다 — 로그에도 원본값 출력 금지(보안 정책).
+            log.info("바이러스 스캔 결과: INFECTED — 업로드 차단")
+            throw AttachmentInfectedException(filename)
+        }
+    }
 
     /**
      * 권한이 없으면 [IssueAccessDeniedException] 을 던진다.
