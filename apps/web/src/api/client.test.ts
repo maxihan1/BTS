@@ -233,11 +233,13 @@ describe('apiFetch — FormData body 분기 (Task-1)', () => {
   })
 
   it('T1-B: body가 FormData면 JSON.stringify 없이 FormData 원본 그대로 전달된다', async () => {
-    let receivedFormData: FormData | null = null
+    let receivedMetaValue: FormDataEntryValue | null = null
 
     server.use(
       http.post('/api/v1/test-formdata-raw', async ({ request }) => {
-        receivedFormData = await request.formData()
+        const fd = await request.formData()
+        // msw formData() 반환 타입이 환경에 따라 다를 수 있으므로 즉시 get으로 추출
+        receivedMetaValue = fd.get('meta')
         return HttpResponse.json({ ok: true }, { status: 200 })
       }),
     )
@@ -249,7 +251,7 @@ describe('apiFetch — FormData body 분기 (Task-1)', () => {
     await apiFetch('/api/v1/test-formdata-raw', { method: 'POST', body: formData })
 
     // FormData 원본이 그대로 전달됐다면 'meta' 필드를 파싱할 수 있다
-    expect(receivedFormData?.get('meta')).toBe('test-value')
+    expect(receivedMetaValue).toBe('test-value')
   })
 
   it('T1-C: body가 일반 객체(JSON)면 Content-Type: application/json 자동 설정 (기존 동작 불변)', async () => {

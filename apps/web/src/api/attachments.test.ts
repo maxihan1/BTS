@@ -137,11 +137,13 @@ describe('fetchAttachments', () => {
 
 describe('uploadAttachment', () => {
   it('T-AT-2-1: POST /api/v1/issues/{key}/attachments multipart, part명 "file" 전송 후 201 응답 파싱', async () => {
-    let capturedFormData: FormData | null = null
+    let capturedFile: File | null = null
 
     server.use(
       http.post('/api/v1/issues/ATLAS-1/attachments', async ({ request }) => {
-        capturedFormData = await request.formData()
+        const fd = await request.formData()
+        // FormData.get() 반환 타입이 msw 환경에서 File | string | null
+        capturedFile = fd.get('file') as File | null
         return HttpResponse.json({ data: attachmentFixture }, { status: 201 })
       }),
     )
@@ -150,7 +152,7 @@ describe('uploadAttachment', () => {
     const result = await uploadAttachment('ATLAS-1', file)
 
     // FormData part명이 'file' 이어야 한다
-    expect(capturedFormData?.get('file')).not.toBeNull()
+    expect(capturedFile).not.toBeNull()
     // 응답이 AttachmentResponse 스키마로 파싱된다
     expect(result.id).toBe(attachmentFixture.id)
     expect(result.filename).toBe('report.pdf')
