@@ -4,6 +4,7 @@ package com.bts.issue.attachment
 
 import com.bts.issue.attachment.application.AttachmentStoragePort
 import com.bts.issue.attachment.application.IssueAttachmentService
+import com.bts.issue.attachment.application.UnsupportedAttachmentTypeException
 import com.bts.issue.attachment.domain.Attachment
 import com.bts.issue.attachment.repository.AttachmentRepository
 import com.bts.issue.domain.ActorId
@@ -156,6 +157,25 @@ class IssueAttachmentServiceTest : DescribeSpec({
                 storagePort.put(any(), any(), any(), any())
                 attachmentRepository.insert(any())
             }
+        }
+
+        it("허용되지 않은 MIME/확장자는 UnsupportedAttachmentTypeException 던지고 put·insert 미호출") {
+            stubIssueExists()
+            stubPermission(IssuePermission.UPDATE, true)
+
+            shouldThrow<UnsupportedAttachmentTypeException> {
+                sut.upload(
+                    actor = actor,
+                    issueKey = issueKey,
+                    filename = "evil.html",
+                    contentType = "text/html",
+                    sizeBytes = 100L,
+                    input = ByteArrayInputStream(ByteArray(0)),
+                )
+            }
+
+            verify(exactly = 0) { storagePort.put(any(), any(), any(), any()) }
+            verify(exactly = 0) { attachmentRepository.insert(any()) }
         }
 
         it("insert 실패 시 storagePort.remove 보상 호출 후 예외를 전파한다") {

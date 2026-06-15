@@ -4,6 +4,7 @@ package com.bts.issue.attachment
 
 import com.bts.issue.attachment.application.AttachmentDownloadResult
 import com.bts.issue.attachment.application.IssueAttachmentService
+import com.bts.issue.attachment.application.UnsupportedAttachmentTypeException
 import com.bts.issue.attachment.domain.Attachment
 import com.bts.issue.attachment.web.AttachmentExceptionHandler
 import com.bts.issue.attachment.web.IssueAttachmentController
@@ -159,6 +160,37 @@ class IssueAttachmentControllerTest {
             .andExpect(header().string("Location", "/api/v1/issues/ATLAS-1/attachments/$attachmentId"))
             .andExpect(jsonPath("$.data.id").value(attachmentId.toString()))
             .andExpect(jsonPath("$.data.filename").value("테스트파일.png"))
+    }
+
+    // ── C-1b. POST 허용되지 않은 타입 → 415 ────────────────────────────────────
+
+    /**
+     * C-1b. 허용되지 않은 MIME/확장자 업로드 → 415 Unsupported Media Type + 표준 errorCode.
+     *
+     * Given  service.upload 가 UnsupportedAttachmentTypeException 을 던짐
+     * When   POST /api/v1/issues/ATLAS-1/attachments (multipart file=evil.html)
+     * Then   415 + errorCode=ISSUE_UNSUPPORTED_FILE_TYPE
+     */
+    @Test
+    fun `POST 허용되지 않은 타입 — 415 Unsupported Media Type`() {
+        every {
+            issueAttachmentService.upload(
+                actor = ActorId(actorUuid),
+                issueKey = IssueKey("ATLAS-1"),
+                filename = "evil.html",
+                contentType = "text/html",
+                sizeBytes = any(),
+                input = any(),
+            )
+        } throws UnsupportedAttachmentTypeException("text/html", "evil.html")
+
+        val file = MockMultipartFile("file", "evil.html", "text/html", "<script>".toByteArray())
+
+        mockMvc.perform(
+            multipart("/api/v1/issues/ATLAS-1/attachments").file(file),
+        )
+            .andExpect(status().isUnsupportedMediaType)
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_UNSUPPORTED_FILE_TYPE"))
     }
 
     // ── C-2. GET 목록 → 200 ──────────────────────────────────────────────────
