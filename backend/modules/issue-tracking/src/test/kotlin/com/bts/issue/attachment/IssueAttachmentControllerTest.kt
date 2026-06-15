@@ -3,6 +3,8 @@
 package com.bts.issue.attachment
 
 import com.bts.issue.attachment.application.AttachmentDownloadResult
+import com.bts.issue.attachment.application.AttachmentInfectedException
+import com.bts.issue.attachment.application.AttachmentScanUnavailableException
 import com.bts.issue.attachment.application.IssueAttachmentService
 import com.bts.issue.attachment.application.UnsupportedAttachmentTypeException
 import com.bts.issue.attachment.domain.Attachment
@@ -62,6 +64,8 @@ import java.util.UUID
  * - C-6. 400: file part 누락 → 400 (MultipartException)
  * - C-7. IssueNotFoundException → 404
  * - C-8. IssueAccessDeniedException → 403
+ * - C-9. AttachmentInfectedException → 422 + ISSUE_ATTACHMENT_INFECTED (시그니처 비노출)
+ * - C-10. AttachmentScanUnavailableException → 503 + ISSUE_ATTACHMENT_SCAN_UNAVAILABLE
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [IssueAttachmentControllerTest.TestMvcConfig::class])
@@ -373,5 +377,70 @@ class IssueAttachmentControllerTest {
 
         mockMvc.perform(get("/api/v1/issues/ATLAS-1/attachments"))
             .andExpect(status().isForbidden)
+    }
+
+    // ── C-9. 422 AttachmentInfectedException ─────────────────────────────────
+
+    /**
+     * C-9. service 가 AttachmentInfectedException → 422 + ISSUE_ATTACHMENT_INFECTED.
+     *
+     * 응답 detail 에 바이러스 시그니처명(파일명 포함 진단 정보)이 노출되지 않음을 함께 검증한다.
+     *
+     * Given  service.upload 가 AttachmentInfectedException("virus.exe") 를 throw
+     * When   POST /api/v1/issues/ATLAS-1/attachments
+     * Then   422, errorCode=ISSUE_ATTACHMENT_INFECTED, detail 에 "virus.exe" 미포함
+     */
+    @Test
+    fun `POST 감염 파일 — 422 plus ISSUE_ATTACHMENT_INFECTED plus 시그니처 비노출`() {
+        every {
+            issueAttachmentService.upload(
+                actor = ActorId(actorUuid),
+                issueKey = IssueKey("ATLAS-1"),
+                filename = "virus.exe",
+                contentType = MediaType.APPLICATION_OCTET_STREAM_VALUE,
+                sizeBytes = any(),
+                input = any(),
+            )
+        } throws AttachmentInfectedException("virus.exe")
+
+        val file = MockMultipartFile("file", "virus.exe", MediaType.APPLICATION_OCTET_STREAM_VALUE, "EICAR".toByteArray())
+
+        mockMvc.perform(
+            multipart("/api/v1/issues/ATLAS-1/attachments").file(file),
+        )
+            .andExpect(status().isUnprocessableEntity)
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_ATTACHMENT_INFECTED"))
+            .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("virus.exe"))))
+    }
+
+    // ── C-10. 503 AttachmentScanUnavailableException ──────────────────────────
+
+    /**
+     * C-10. service 가 AttachmentScanUnavailableException → 503 + ISSUE_ATTACHMENT_SCAN_UNAVAILABLE.
+     *
+     * Given  service.upload 가 AttachmentScanUnavailableException 을 throw
+     * When   POST /api/v1/issues/ATLAS-1/attachments
+     * Then   503, errorCode=ISSUE_ATTACHMENT_SCAN_UNAVAILABLE
+     */
+    @Test
+    fun `POST 스캔 불가 — 503 plus ISSUE_ATTACHMENT_SCAN_UNAVAILABLE`() {
+        every {
+            issueAttachmentService.upload(
+                actor = ActorId(actorUuid),
+                issueKey = IssueKey("ATLAS-1"),
+                filename = "file.png",
+                contentType = "image/png",
+                sizeBytes = any(),
+                input = any(),
+            )
+        } throws AttachmentScanUnavailableException("clamd 연결 거부")
+
+        val file = MockMultipartFile("file", "file.png", "image/png", "data".toByteArray())
+
+        mockMvc.perform(
+            multipart("/api/v1/issues/ATLAS-1/attachments").file(file),
+        )
+            .andExpect(status().isServiceUnavailable)
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_ATTACHMENT_SCAN_UNAVAILABLE"))
     }
 }
