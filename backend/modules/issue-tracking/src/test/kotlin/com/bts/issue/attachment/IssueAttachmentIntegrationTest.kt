@@ -20,6 +20,8 @@ import jakarta.servlet.FilterChain
 import jakarta.servlet.ServletRequest
 import jakarta.servlet.ServletResponse
 import jakarta.servlet.http.HttpServletRequest
+import jakarta.servlet.http.HttpServletResponse
+import org.springframework.mock.web.MockMultipartHttpServletRequest
 import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.junit.jupiter.api.AfterEach
@@ -48,7 +50,6 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
-import org.springframework.web.multipart.MaxUploadSizeExceededException
 import java.sql.DriverManager
 import java.time.Clock
 import java.util.UUID
@@ -241,9 +242,11 @@ class IssueAttachmentIntegrationTest {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
         // (c) 크기 한도 전용 MockMvc — SizeLimitFilter(1MB) 장착.
         // prod 100MB 값은 application-test.yml 에 보존 (설정값 검증은 주석으로 명시, 명세 CONCERN-B).
-        mockMvcWithSizeFilter = MockMvcBuilders.webAppContextSetup(webApplicationContext)
-            .addFilter(SizeLimitFilter(maxBytes = 1 * 1024 * 1024L))
-            .build()
+        val sizeLimitBuilder = MockMvcBuilders.webAppContextSetup(webApplicationContext)
+        sizeLimitBuilder.addFilters<org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder>(
+            SizeLimitFilter(maxBytes = 1 * 1024 * 1024L),
+        )
+        mockMvcWithSizeFilter = sizeLimitBuilder.build()
         // 정상 액터로 SecurityContext 를 초기화한다.
         // DENY_ACTOR 시나리오는 개별 테스트에서 교체한다.
         setActor(ACTOR_UUID)
@@ -661,15 +664,33 @@ class IssueAttachmentIntegrationTest {
  *
  * MockMvc 는 실제 서블릿 컨테이너 없이 동작하므로 `spring.servlet.multipart.max-file-size` 속성이
  * [org.springframework.web.multipart.MaxUploadSizeExceededException] 을 자동 발생시키지 않는다.
- * 이 필터는 `Content-Length` 헤더를 확인해 [maxBytes] 초과 시 예외를 발생시켜 413 경로를 실증한다.
+ * 이 필터는 multipart 파트의 합산 크기를 확인해 [maxBytes] 초과 시 413 응답을 직접 작성한다.
  *
- * @param maxBytes 허용 최대 바이트 수. 이 값을 초과하는 Content-Length 는 거부된다.
+ * 필터에서 예외를 throw 하면 MockMvc 가 DispatcherServlet 을 거치지 않아
+ * [AttachmentExceptionHandler] 가 처리할 수 없다. 따라서 413 상태 코드를 직접 응답에 설정한다.
+ *
+ * `Content-Length` 헤더는 MockMvc [MockMultipartHttpServletRequest] 에서 신뢰할 수 없으므로
+ * [MockMultipartHttpServletRequest.getFiles] 의 파일 크기 합산을 사용한다.
+ *
+ * @param maxBytes 허용 최대 바이트 수. 이 값을 초과하는 multipart 요청은 413 으로 거부된다.
  */
 class SizeLimitFilter(private val maxBytes: Long) : Filter {
     override fun doFilter(request: ServletRequest, response: ServletResponse, chain: FilterChain) {
-        val contentLength = (request as HttpServletRequest).contentLengthLong
-        if (contentLength > maxBytes) {
-            throw MaxUploadSizeExceededException(maxBytes)
+        val httpRequest = request as HttpServletRequest
+        // MockMultipartHttpServletRequest 에서 파일 크기 합산 (Content-Length 는 -1 일 수 있음).
+        val totalSize: Long = if (httpRequest is MockMultipartHttpServletRequest) {
+            httpRequest.fileMap.values.sumOf { it.size }
+        } else {
+            httpRequest.contentLengthLong.takeIf { it >= 0L } ?: 0L
+        }
+        if (totalSize > maxBytes) {
+            // 필터에서 예외를 throw 하면 MockMvc 가 DispatcherServlet 밖에서 잡아 핸들러가 동작 못 함.
+            // 413 Payload Too Large 를 응답에 직접 기록한다.
+            (response as HttpServletResponse).sendError(
+                HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE,
+                "File size exceeds limit of $maxBytes bytes",
+            )
+            return
         }
         chain.doFilter(request, response)
     }
