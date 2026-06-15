@@ -2,10 +2,9 @@
 
 package com.bts.issue.attachment.adapter
 
-import io.minio.BucketExistsArgs
-import io.minio.MakeBucketArgs
 import io.minio.MinioClient
 import org.slf4j.LoggerFactory
+import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
@@ -85,8 +84,8 @@ class MinioStorageConfig {
      * @return [org.springframework.boot.ApplicationRunner] — bucket 보장 로직 실행.
      */
     @Bean
-    fun minioBucketEnsurer(adapter: MinioStorageAdapter): org.springframework.boot.ApplicationRunner =
-        org.springframework.boot.ApplicationRunner {
+    fun minioBucketEnsurer(adapter: MinioStorageAdapter): ApplicationRunner =
+        ApplicationRunner {
             adapter.ensureBucket()
         }
 }
