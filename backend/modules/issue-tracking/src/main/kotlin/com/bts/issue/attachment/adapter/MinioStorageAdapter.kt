@@ -34,6 +34,9 @@ import java.io.InputStream
  * @param properties MinIO 접속 설정 (bucket 이름 포함).
  */
 @Component
+// MinIO SDK는 다양한 체크 예외(MinioException/IOException/NoSuchAlgorithmException 등)를 던지므로,
+// 모두 MinioStorageException 으로 변환하기 위해 generic catch 를 사용한다(기존 BulkItemExecutor 등 동일 관례).
+@Suppress("TooGenericExceptionCaught")
 class MinioStorageAdapter(
     private val minioClient: MinioClient,
     private val properties: MinioStorageConfig.Properties,

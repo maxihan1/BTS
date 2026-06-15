@@ -18,6 +18,8 @@ import org.testcontainers.containers.MinIOContainer
  * - [minioContainer] 의 동적 endpoint/credentail 를 자식 테스트에서 주입해 사용한다.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+// 상속 base — 자식이 companion 의 minioContainer 를 사용한다. object 로 만들면 상속 불가(detekt 오탐).
+@Suppress("UtilityClassWithPublicConstructor")
 abstract class AttachmentMinioTestcontainersBase {
     companion object {
         /**

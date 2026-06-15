@@ -89,6 +89,8 @@ class AttachmentSchemaMigrationTest {
         }
 
     // 주어진 테이블의 모든 컬럼명을 반환.
+    // JDBC try-with-resources(.use) 중첩이 깊으나 테스트 헬퍼라 가독성 영향 적다.
+    @Suppress("NestedBlockDepth")
     private fun columnsOf(tableName: String): List<String> =
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.prepareStatement(

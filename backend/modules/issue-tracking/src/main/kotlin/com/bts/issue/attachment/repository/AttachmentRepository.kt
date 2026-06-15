@@ -102,9 +102,10 @@ class AttachmentRepository(
     @Transactional
     fun deleteById(id: UUID): Boolean {
         log.debug("deleteById id={}", id)
-        val rows = dsl.deleteFrom(ISSUE_ATTACHMENTS)
-            .where(ISSUE_ATTACHMENTS.ID.eq(id))
-            .execute()
+        val rows =
+            dsl.deleteFrom(ISSUE_ATTACHMENTS)
+                .where(ISSUE_ATTACHMENTS.ID.eq(id))
+                .execute()
         return rows > 0
     }
 
@@ -121,16 +122,23 @@ class AttachmentRepository(
             id = record.get(t.ID) ?: error("issue_attachments.id must not be null after DB read"),
             issueId = record.get(t.ISSUE_ID) ?: error("issue_attachments.issue_id must not be null after DB read"),
             filename = record.get(t.FILENAME) ?: error("issue_attachments.filename must not be null after DB read"),
-            contentType = record.get(t.CONTENT_TYPE)
-                ?: error("issue_attachments.content_type must not be null after DB read"),
-            sizeBytes = record.get(t.SIZE_BYTES)
-                ?: error("issue_attachments.size_bytes must not be null after DB read"),
-            storageKey = record.get(t.STORAGE_KEY)
-                ?: error("issue_attachments.storage_key must not be null after DB read"),
-            uploadedBy = record.get(t.UPLOADED_BY)
-                ?: error("issue_attachments.uploaded_by must not be null after DB read"),
-            createdAt = (record.get(t.CREATED_AT)
-                ?: error("issue_attachments.created_at must not be null after DB read")).toInstant(),
+            contentType =
+                record.get(t.CONTENT_TYPE)
+                    ?: error("issue_attachments.content_type must not be null after DB read"),
+            sizeBytes =
+                record.get(t.SIZE_BYTES)
+                    ?: error("issue_attachments.size_bytes must not be null after DB read"),
+            storageKey =
+                record.get(t.STORAGE_KEY)
+                    ?: error("issue_attachments.storage_key must not be null after DB read"),
+            uploadedBy =
+                record.get(t.UPLOADED_BY)
+                    ?: error("issue_attachments.uploaded_by must not be null after DB read"),
+            createdAt =
+                (
+                    record.get(t.CREATED_AT)
+                        ?: error("issue_attachments.created_at must not be null after DB read")
+                ).toInstant(),
         )
     }
 }

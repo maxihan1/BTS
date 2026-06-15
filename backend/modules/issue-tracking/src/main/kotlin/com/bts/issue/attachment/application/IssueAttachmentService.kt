@@ -48,6 +48,8 @@ import java.util.UUID
  * @param clock 첨부 생성 시각 결정. 테스트에서 고정 시각 주입 가능.
  */
 @Service
+// 보상 삭제/best-effort 정리에서 모든 예외를 잡아 로그/전파하기 위해 generic catch 사용(기존 관례 동일).
+@Suppress("TooGenericExceptionCaught")
 class IssueAttachmentService(
     private val storagePort: AttachmentStoragePort,
     private val attachmentRepository: AttachmentRepository,
@@ -73,6 +75,7 @@ class IssueAttachmentService(
      * @throws IssueAccessDeniedException UPDATE 권한 미보유 시.
      * @throws IssueNotFoundException 이슈 미존재 또는 소프트 삭제 시.
      */
+    @Suppress("LongParameterList")
     fun upload(
         actor: ActorId,
         issueKey: IssueKey,
@@ -85,16 +88,17 @@ class IssueAttachmentService(
         val issueId = resolveIssueId(issueKey)
         val attachmentId = UUID.randomUUID()
         val storageKey = "issues/$issueId/$attachmentId"
-        val attachment = Attachment(
-            id = attachmentId,
-            issueId = issueId,
-            filename = filename,
-            contentType = contentType,
-            sizeBytes = sizeBytes,
-            storageKey = storageKey,
-            uploadedBy = actor.value,
-            createdAt = clock.instant(),
-        )
+        val attachment =
+            Attachment(
+                id = attachmentId,
+                issueId = issueId,
+                filename = filename,
+                contentType = contentType,
+                sizeBytes = sizeBytes,
+                storageKey = storageKey,
+                uploadedBy = actor.value,
+                createdAt = clock.instant(),
+            )
 
         storagePort.put(storageKey, input, sizeBytes, contentType)
 
@@ -122,7 +126,10 @@ class IssueAttachmentService(
      * @throws IssueAccessDeniedException VIEW 권한 미보유 시.
      * @throws IssueNotFoundException 이슈 미존재 또는 소프트 삭제 시.
      */
-    fun list(actor: ActorId, issueKey: IssueKey): List<Attachment> {
+    fun list(
+        actor: ActorId,
+        issueKey: IssueKey,
+    ): List<Attachment> {
         checkPermission(actor, IssuePermission.VIEW, issueKey)
         val issueId = resolveIssueId(issueKey)
         return attachmentRepository.findByIssueId(issueId)
@@ -140,7 +147,11 @@ class IssueAttachmentService(
      * @throws IssueAccessDeniedException VIEW 권한 미보유 시.
      * @throws IssueNotFoundException 첨부 미존재 또는 교차 이슈(issueId 불일치) 시.
      */
-    fun download(actor: ActorId, issueKey: IssueKey, attachmentId: UUID): AttachmentDownloadResult {
+    fun download(
+        actor: ActorId,
+        issueKey: IssueKey,
+        attachmentId: UUID,
+    ): AttachmentDownloadResult {
         checkPermission(actor, IssuePermission.VIEW, issueKey)
         val issueId = resolveIssueId(issueKey)
         val attachment = findAttachmentForIssue(attachmentId, issueId, issueKey)
@@ -159,7 +170,11 @@ class IssueAttachmentService(
      * @throws IssueAccessDeniedException UPDATE 권한 미보유 시.
      * @throws IssueNotFoundException 첨부 미존재 또는 교차 이슈(issueId 불일치) 시.
      */
-    fun delete(actor: ActorId, issueKey: IssueKey, attachmentId: UUID) {
+    fun delete(
+        actor: ActorId,
+        issueKey: IssueKey,
+        attachmentId: UUID,
+    ) {
         checkPermission(actor, IssuePermission.UPDATE, issueKey)
         val issueId = resolveIssueId(issueKey)
         val attachment = findAttachmentForIssue(attachmentId, issueId, issueKey)
@@ -184,12 +199,17 @@ class IssueAttachmentService(
      *
      * 이슈 존재 probe 방지를 위해 이슈 조회 전에 호출한다.
      */
-    private fun checkPermission(actor: ActorId, permission: IssuePermission, issueKey: IssueKey) {
-        val allowed = permissionResolver.hasPermission(
-            actorId = actor.value,
-            permission = permission,
-            scope = IssueScope.Issue(issueKey.value),
-        )
+    private fun checkPermission(
+        actor: ActorId,
+        permission: IssuePermission,
+        issueKey: IssueKey,
+    ) {
+        val allowed =
+            permissionResolver.hasPermission(
+                actorId = actor.value,
+                permission = permission,
+                scope = IssueScope.Issue(issueKey.value),
+            )
         if (!allowed) {
             throw IssueAccessDeniedException(actor, permission, IssueScope.Issue(issueKey.value))
         }
@@ -209,7 +229,11 @@ class IssueAttachmentService(
      * 첨부 미존재 또는 issueId 불일치(교차 이슈) 시 [IssueNotFoundException] 을 던진다.
      * 교차 이슈 존재 여부를 노출하지 않기 위해 404 를 사용한다(존재 probe 방지).
      */
-    private fun findAttachmentForIssue(attachmentId: UUID, issueId: UUID, issueKey: IssueKey): Attachment {
+    private fun findAttachmentForIssue(
+        attachmentId: UUID,
+        issueId: UUID,
+        issueKey: IssueKey,
+    ): Attachment {
         val attachment = attachmentRepository.findById(attachmentId) ?: throw IssueNotFoundException(issueKey)
         if (attachment.issueId != issueId) {
             throw IssueNotFoundException(issueKey)

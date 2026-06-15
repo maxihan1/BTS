@@ -2,6 +2,7 @@
 
 package com.bts.issue.attachment.adapter
 
+import com.bts.issue.attachment.MinioStorageException
 import io.minio.MinioClient
 import org.slf4j.LoggerFactory
 import org.springframework.boot.ApplicationRunner
@@ -80,12 +81,24 @@ class MinioStorageConfig {
      * [MinioStorageAdapter] 가 의존 주입된 뒤 [MinioStorageAdapter.ensureBucket] 을 호출한다.
      * 이 빈은 기동 시점에 자동 실행된다.
      *
+     * ## best-effort 기동 (회귀 방지)
+     * MinIO 미가용 시에도 앱 기동을 막지 않는다. bucket 보장 실패는 warn 으로 로그하고 진행하며,
+     * 실제 업로드 시점에 [MinioStorageException] 으로 드러난다. MinIO 를 사용하지 않는 다른 통합
+     * 테스트/기능까지 MinIO 가용성에 묶어 부팅을 깨는 것을 방지한다(과결합 차단).
+     *
      * @param adapter [MinioStorageAdapter] 인스턴스.
      * @return [org.springframework.boot.ApplicationRunner] — bucket 보장 로직 실행.
      */
     @Bean
     fun minioBucketEnsurer(adapter: MinioStorageAdapter): ApplicationRunner =
         ApplicationRunner {
-            adapter.ensureBucket()
+            try {
+                adapter.ensureBucket()
+            } catch (e: MinioStorageException) {
+                log.warn(
+                    "MinIO bucket 보장 실패 — MinIO 미가용 가능. 앱 기동은 계속하며 업로드 시점에 재확인된다. cause={}",
+                    e.message,
+                )
+            }
         }
 }

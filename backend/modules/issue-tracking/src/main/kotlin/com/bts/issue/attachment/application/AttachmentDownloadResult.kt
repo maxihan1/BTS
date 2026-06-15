@@ -1,4 +1,4 @@
-// 첨부 파일 서비스 응답 DTO — download 반환 타입(메타+스트림 묶음)
+// 첨부 파일 다운로드 결과 DTO — 메타데이터 + 바이트 스트림 묶음
 
 package com.bts.issue.attachment.application
 

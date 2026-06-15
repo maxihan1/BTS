@@ -72,9 +72,10 @@ class IssueAttachmentController(
         @PathVariable key: String,
         file: MultipartFile?,
     ): ResponseEntity<DataResponse<AttachmentResponse>> {
-        val resolvedFile = file ?: throw MultipartException(
-            "Required request part 'file' is not present",
-        )
+        val resolvedFile =
+            file ?: throw MultipartException(
+                "Required request part 'file' is not present",
+            )
         log.info(
             "IssueAttachmentController.upload key={} filename={} size={}",
             key,
@@ -83,14 +84,15 @@ class IssueAttachmentController(
         )
 
         val actor = CurrentActor.current()
-        val attachment = service.upload(
-            actor = actor,
-            issueKey = IssueKey(key),
-            filename = resolvedFile.originalFilename ?: resolvedFile.name,
-            contentType = resolvedFile.contentType ?: "application/octet-stream",
-            sizeBytes = resolvedFile.size,
-            input = resolvedFile.inputStream,
-        )
+        val attachment =
+            service.upload(
+                actor = actor,
+                issueKey = IssueKey(key),
+                filename = resolvedFile.originalFilename ?: resolvedFile.name,
+                contentType = resolvedFile.contentType ?: "application/octet-stream",
+                sizeBytes = resolvedFile.size,
+                input = resolvedFile.inputStream,
+            )
         val response = AttachmentResponse.from(attachment)
         val location = URI.create("/api/v1/issues/$key/attachments/${attachment.id}")
         return ResponseEntity.created(location).body(DataResponse(data = response))
@@ -139,9 +141,10 @@ class IssueAttachmentController(
         val result = service.download(actor, IssueKey(key), attachmentId)
         val attachment = result.attachment
 
-        val contentDisposition = ContentDisposition.attachment()
-            .filename(attachment.filename, StandardCharsets.UTF_8)
-            .build()
+        val contentDisposition =
+            ContentDisposition.attachment()
+                .filename(attachment.filename, StandardCharsets.UTF_8)
+                .build()
 
         return ResponseEntity.ok()
             .header(HttpHeaders.CONTENT_TYPE, attachment.contentType)

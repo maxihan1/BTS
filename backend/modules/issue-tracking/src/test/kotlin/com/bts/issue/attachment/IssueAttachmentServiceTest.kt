@@ -24,7 +24,6 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.mockk.verifyOrder
 import java.io.ByteArrayInputStream
-import java.io.InputStream
 import java.time.Instant
 import java.util.UUID
 
@@ -47,12 +46,13 @@ class IssueAttachmentServiceTest : DescribeSpec({
     val permissionResolver = mockk<IssuePermissionResolver>()
     val issueRepository = mockk<IssueRepository>()
 
-    val sut = IssueAttachmentService(
-        storagePort = storagePort,
-        attachmentRepository = attachmentRepository,
-        permissionResolver = permissionResolver,
-        issueRepository = issueRepository,
-    )
+    val sut =
+        IssueAttachmentService(
+            storagePort = storagePort,
+            attachmentRepository = attachmentRepository,
+            permissionResolver = permissionResolver,
+            issueRepository = issueRepository,
+        )
 
     val actor = ActorId(UUID.randomUUID())
     val issueKey = IssueKey("PROJ-1")
@@ -68,22 +68,26 @@ class IssueAttachmentServiceTest : DescribeSpec({
         every { issueRepository.findByKey(issueKey) } returns null
     }
 
-    fun stubPermission(permission: IssuePermission, allowed: Boolean) {
+    fun stubPermission(
+        permission: IssuePermission,
+        allowed: Boolean,
+    ) {
         every {
             permissionResolver.hasPermission(actor.value, permission, IssueScope.Issue(issueKey.value))
         } returns allowed
     }
 
-    fun makeAttachment(attachmentIssueId: UUID = issueId): Attachment = Attachment(
-        id = UUID.randomUUID(),
-        issueId = attachmentIssueId,
-        filename = "test.pdf",
-        contentType = "application/pdf",
-        sizeBytes = 1024L,
-        storageKey = "issues/$attachmentIssueId/${UUID.randomUUID()}",
-        uploadedBy = actor.value,
-        createdAt = Instant.now(),
-    )
+    fun makeAttachment(attachmentIssueId: UUID = issueId): Attachment =
+        Attachment(
+            id = UUID.randomUUID(),
+            issueId = attachmentIssueId,
+            filename = "test.pdf",
+            contentType = "application/pdf",
+            sizeBytes = 1024L,
+            storageKey = "issues/$attachmentIssueId/${UUID.randomUUID()}",
+            uploadedBy = actor.value,
+            createdAt = Instant.now(),
+        )
 
     afterEach { clearMocks(storagePort, attachmentRepository, permissionResolver, issueRepository) }
 
@@ -134,14 +138,15 @@ class IssueAttachmentServiceTest : DescribeSpec({
             justRun { storagePort.put(any(), any(), any(), any()) }
             justRun { attachmentRepository.insert(any()) }
 
-            val result = sut.upload(
-                actor = actor,
-                issueKey = issueKey,
-                filename = "report.pdf",
-                contentType = "application/pdf",
-                sizeBytes = 2048L,
-                input = ByteArrayInputStream(ByteArray(0)),
-            )
+            val result =
+                sut.upload(
+                    actor = actor,
+                    issueKey = issueKey,
+                    filename = "report.pdf",
+                    contentType = "application/pdf",
+                    sizeBytes = 2048L,
+                    input = ByteArrayInputStream(ByteArray(0)),
+                )
 
             result.issueId shouldBe issueId
             result.filename shouldBe "report.pdf"

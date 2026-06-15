@@ -2,7 +2,6 @@
 
 package com.bts.issue.attachment
 
-import com.bts.issue.adapter.inbound.rest.CurrentActor
 import com.bts.issue.attachment.application.AttachmentDownloadResult
 import com.bts.issue.attachment.application.IssueAttachmentService
 import com.bts.issue.attachment.domain.Attachment
@@ -67,7 +66,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [IssueAttachmentControllerTest.TestMvcConfig::class])
 @WebAppConfiguration
 class IssueAttachmentControllerTest {
-
     /**
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
@@ -80,8 +78,9 @@ class IssueAttachmentControllerTest {
         open fun issueAttachmentService(): IssueAttachmentService = mockk(relaxed = true)
 
         @Bean
-        open fun issueAttachmentController(service: IssueAttachmentService): IssueAttachmentController =
-            IssueAttachmentController(service)
+        open fun issueAttachmentController(service: IssueAttachmentService): IssueAttachmentController {
+            return IssueAttachmentController(service)
+        }
 
         @Bean
         open fun attachmentExceptionHandler(): AttachmentExceptionHandler = AttachmentExceptionHandler()
@@ -100,16 +99,17 @@ class IssueAttachmentControllerTest {
     private val issueId = UUID.fromString("33333333-3333-4333-8333-333333333333")
     private val fixedNow: Instant = Instant.parse("2026-06-15T00:00:00Z")
 
-    private val sampleAttachment = Attachment(
-        id = attachmentId,
-        issueId = issueId,
-        filename = "테스트파일.png",
-        contentType = "image/png",
-        sizeBytes = 1024L,
-        storageKey = "issues/$issueId/$attachmentId",
-        uploadedBy = actorUuid,
-        createdAt = fixedNow,
-    )
+    private val sampleAttachment =
+        Attachment(
+            id = attachmentId,
+            issueId = issueId,
+            filename = "테스트파일.png",
+            contentType = "image/png",
+            sizeBytes = 1024L,
+            storageKey = "issues/$issueId/$attachmentId",
+            uploadedBy = actorUuid,
+            createdAt = fixedNow,
+        )
 
     @BeforeEach
     fun setUp() {
@@ -196,10 +196,11 @@ class IssueAttachmentControllerTest {
         val bytes = ByteArray(1024) { 0 }
         every {
             issueAttachmentService.download(ActorId(actorUuid), IssueKey("ATLAS-1"), attachmentId)
-        } returns AttachmentDownloadResult(
-            attachment = sampleAttachment,
-            stream = ByteArrayInputStream(bytes),
-        )
+        } returns
+            AttachmentDownloadResult(
+                attachment = sampleAttachment,
+                stream = ByteArrayInputStream(bytes),
+            )
 
         mockMvc.perform(get("/api/v1/issues/ATLAS-1/attachments/$attachmentId"))
             .andExpect(status().isOk)
@@ -311,11 +312,12 @@ class IssueAttachmentControllerTest {
     fun `GET 권한 없음 — 403 Forbidden`() {
         every {
             issueAttachmentService.list(any(), IssueKey("ATLAS-1"))
-        } throws IssueAccessDeniedException(
-            actor = ActorId(actorUuid),
-            permission = com.bts.shared.permission.IssuePermission.VIEW,
-            scope = com.bts.shared.permission.IssueScope.Issue("ATLAS-1"),
-        )
+        } throws
+            IssueAccessDeniedException(
+                actor = ActorId(actorUuid),
+                permission = com.bts.shared.permission.IssuePermission.VIEW,
+                scope = com.bts.shared.permission.IssueScope.Issue("ATLAS-1"),
+            )
 
         mockMvc.perform(get("/api/v1/issues/ATLAS-1/attachments"))
             .andExpect(status().isForbidden)
