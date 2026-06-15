@@ -21,7 +21,7 @@ function storeKey(workflowKey: string, transitionKey: string): string {
 
 /**
  * store를 완전 초기화한다.
- * E2E 테스트 beforeEach에서 X-MSW-Reset-Post-Actions: true 헤더로 호출해 격리.
+ * E2E 테스트 beforeEach에서 전용 reset 라우트(DELETE /api/v1/__e2e__/post-actions/reset)로 호출해 격리.
  */
 export function resetPostActionStore(): void {
   postActionStore.clear()
@@ -55,20 +55,12 @@ export const postActionHandlers = [
   /**
    * GET /api/v1/workflows/:workflowKey/transitions/:transitionKey/post-actions
    * → 200 { data: PostActionResponse[] }
-   *
-   * X-MSW-Reset-Post-Actions: true 헤더 시 store 초기화 후 빈 배열 반환.
    */
   http.get(
     '/api/v1/workflows/:workflowKey/transitions/:transitionKey/post-actions',
-    ({ params, request }) => {
+    ({ params }) => {
       const wKey = params['workflowKey'] as string
       const tKey = params['transitionKey'] as string
-
-      // E2E 테스트 격리 — reset 헤더 지원
-      if (request.headers.get('X-MSW-Reset-Post-Actions') === 'true') {
-        resetPostActionStore()
-        return HttpResponse.json({ data: [] })
-      }
 
       const key = storeKey(wKey, tKey)
       const items = postActionStore.get(key) ?? []
