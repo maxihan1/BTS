@@ -189,4 +189,15 @@ export const postActionHandlers = [
       return new HttpResponse(null, { status: 204 })
     },
   ),
+
+  /**
+   * DELETE /api/v1/__e2e__/post-actions/reset
+   * E2E 전용 store 완전 초기화 라우트 — GET 헤더 방식보다 명시적.
+   * beforeEach 에서 호출해 테스트 간 격리를 보장한다.
+   * 프로덕션 MSW 핸들러 배열에 포함되지 않으면 실서버에 영향 없음.
+   */
+  http.delete('/api/v1/__e2e__/post-actions/reset', () => {
+    resetPostActionStore()
+    return new HttpResponse(null, { status: 204 })
+  }),
 ]

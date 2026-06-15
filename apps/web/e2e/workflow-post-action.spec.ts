@@ -51,16 +51,14 @@ async function loginAsAlice(page: import('@playwright/test').Page): Promise<void
 }
 
 /**
- * MSW post-action store를 초기화한다.
- * GET 요청에 X-MSW-Reset-Post-Actions: true 헤더를 포함해 호출.
- * 각 테스트 beforeEach에서 호출해 테스트 격리 보장.
+ * MSW post-action store를 완전 초기화한다.
+ * 전용 E2E reset 라우트(DELETE /api/v1/__e2e__/post-actions/reset)를 호출한다.
+ * 각 테스트 beforeEach에서 호출해 테스트 간 store 누수를 차단한다.
+ * (D8 — 전용 라우트가 GET 헤더 방식보다 누락 위험이 낮음)
  */
 async function resetPostActionStore(page: import('@playwright/test').Page): Promise<void> {
   await page.evaluate(async () => {
-    await fetch(
-      `/api/v1/workflows/simple/transitions/todo__doing/post-actions`,
-      { headers: { 'X-MSW-Reset-Post-Actions': 'true' } },
-    )
+    await fetch('/api/v1/__e2e__/post-actions/reset', { method: 'DELETE' })
   })
 }
 
@@ -182,6 +180,64 @@ test.describe('FR-NT-05 post-action CRUD (SYSTEM_ADMIN)', () => {
     await expect(page.getByText('CALL_WEBHOOK')).not.toBeVisible()
     await expect(page.getByText(labels.list.emptyState)).toBeVisible()
   })
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // T4 — B1(다중 행 stale 프리필) 검증
+  //
+  // Given: SYSTEM_ADMIN, /workflows/simple 진입, 전이 선택
+  // When: url_a로 Webhook A 생성 → url_b로 Webhook B 생성
+  //       → A 행의 "수정" 버튼 클릭
+  // Then: 다이얼로그에 url_a가 프리필됨 (B의 url_b 새지 않음)
+  //       Fix-A key 재마운트가 올바르면 통과
+  // ─────────────────────────────────────────────────────────────────────────────
+  test('T4 2행 시나리오 — A 수정 다이얼로그에 A url 프리필됨 (B url 새지 않음)', async ({ page }) => {
+    // Given: /workflows/simple 진입 + 전이 선택
+    await page.goto(`/workflows/${WORKFLOW_KEY}`)
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('단순 워크플로우')
+    await expect(page.getByText(labels.section.title)).toBeVisible()
+
+    const transitionSelect = page.getByLabel(labels.section.transitionSelectLabel)
+    await transitionSelect.selectOption({ label: TRANSITION_NAME })
+    await expect(page.getByText(labels.list.emptyState)).toBeVisible()
+
+    // ── When 1. Webhook A(url_a) 추가 ───────────────────────────────────
+    const urlA = 'https://hooks.example.com/webhook-a'
+    await page.getByRole('button', { name: labels.section.addWebhookButton, exact: true }).click()
+    await expect(page.getByText(labels.dialog.createTitle)).toBeVisible()
+    await page.getByLabel(labels.form.urlLabel).fill(urlA)
+    await page.getByLabel(labels.form.methodLabel).selectOption('POST')
+    await page.getByRole('button', { name: labels.dialog.createButton, exact: true }).click()
+    await expect(page.getByText(labels.dialog.createTitle)).not.toBeVisible()
+
+    // Then 1. url_a가 목록에 표시됨
+    await expect(page.getByText(urlA, { exact: false })).toBeVisible()
+
+    // ── When 2. Webhook B(url_b) 추가 ───────────────────────────────────
+    const urlB = 'https://hooks.example.com/webhook-b'
+    await page.getByRole('button', { name: labels.section.addWebhookButton, exact: true }).click()
+    await expect(page.getByText(labels.dialog.createTitle)).toBeVisible()
+    await page.getByLabel(labels.form.urlLabel).fill(urlB)
+    await page.getByLabel(labels.form.methodLabel).selectOption('POST')
+    await page.getByRole('button', { name: labels.dialog.createButton, exact: true }).click()
+    await expect(page.getByText(labels.dialog.createTitle)).not.toBeVisible()
+
+    // Then 2. url_a, url_b 둘 다 목록에 표시됨
+    await expect(page.getByText(urlA, { exact: false })).toBeVisible()
+    await expect(page.getByText(urlB, { exact: false })).toBeVisible()
+
+    // ── When 3. A 행 "수정" 버튼 클릭 (첫 번째 행 — url_a 행) ──────────
+    // aria-label 패턴: "post-action 수정 <id>" — 첫 번째 행을 first()로 한정
+    const editButtons = page.getByRole('button', { name: /post-action 수정/, exact: false })
+    await editButtons.first().click()
+
+    // Then 3. 다이얼로그에 url_a가 프리필됨 — url_b가 새지 않음
+    await expect(page.getByText(labels.dialog.editTitle)).toBeVisible()
+    await expect(page.getByLabel(labels.form.urlLabel)).toHaveValue(urlA)
+
+    // 취소 후 정리
+    await page.getByRole('button', { name: labels.dialog.cancelButton, exact: true }).click()
+    await expect(page.getByText(labels.dialog.editTitle)).not.toBeVisible()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -193,9 +249,14 @@ test.describe('FR-NT-05 post-action CRUD (SYSTEM_ADMIN)', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('FR-NT-05 post-action 섹션 비admin 미노출', () => {
-  test('T3 비admin 사용자에게는 post-action 섹션이 노출되지 않는다', async ({ page }) => {
-    // Given: isSystemAdmin 플래그 없이 기본 alice(isSystemAdmin=false)로 로그인
+  test.beforeEach(async ({ page }) => {
+    // D8 — 비admin 시나리오도 store 초기화해 다른 테스트의 잔류 데이터 차단
     await loginAsAlice(page)
+    await resetPostActionStore(page)
+  })
+
+  test('T3 비admin 사용자에게는 post-action 섹션이 노출되지 않는다', async ({ page }) => {
+    // Given: isSystemAdmin 플래그 없는 기본 alice(isSystemAdmin=false) — beforeEach에서 로그인 완료
 
     // When: /workflows/simple 진입
     await page.goto(`/workflows/${WORKFLOW_KEY}`)
@@ -206,6 +267,14 @@ test.describe('FR-NT-05 post-action 섹션 비admin 미노출', () => {
       state: 'visible',
       timeout: 10_000,
     })
+
+    // D3 — whoami 해결 보장.
+    // Header.tsx가 whoami 결과(user.username)로 "alice 계정 메뉴" 버튼을 렌더한다.
+    // 다이어그램은 별도 fetchWorkflow 쿼리라 whoami 해결을 보장하지 않는다.
+    // 이 버튼이 보이면 whoami가 해결됐음(비admin)이 확정되므로 그 다음 섹션 미노출 단언이 진짜 비admin 게이팅을 검증한다.
+    await expect(
+      page.getByRole('button', { name: /alice 계정 메뉴/, exact: false }),
+    ).toBeVisible()
 
     // Then: post-action 섹션 제목 미노출
     await expect(page.getByText(labels.section.title)).not.toBeVisible()
