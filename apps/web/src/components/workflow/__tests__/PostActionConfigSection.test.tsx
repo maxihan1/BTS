@@ -680,6 +680,200 @@ describe('PostActionConfigSection — C2 displayOrder 중복 방지', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PACS-D6: transitionKey '__' 모호성 방어 가드
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PostActionConfigSection — D6 ambiguous transitionKey 가드', () => {
+  beforeEach(() => {
+    useAuthStore.setState({
+      accessToken: 'token',
+      user: {
+        userId: 'u1',
+        username: 'admin',
+        email: 'admin@bts.local',
+        authMethod: 'local',
+        mustChangePassword: false,
+        isSystemAdmin: true,
+        mfaEnrollmentRequired: false,
+      },
+    })
+  })
+
+  const ambiguousTransitions: WorkflowTransitionView[] = [
+    // fromStateKey에 '__'가 포함된 전이 — 합성키가 3+ 조각으로 쪼개짐
+    { key: 'in__review__done', name: '리뷰 완료', fromStateKey: 'in__review', toStateKey: 'done' },
+    // toStateKey에 '__'가 포함된 전이
+    { key: 'open__in__review', name: '리뷰 시작', fromStateKey: 'open', toStateKey: 'in__review' },
+    // 정상 전이 — 영향 없어야 함
+    { key: 'open__in-progress', name: '진행 시작', fromStateKey: 'open', toStateKey: 'in-progress' },
+  ]
+
+  /**
+   * PACS-D6a. '__' 포함 전이 옵션은 disabled 속성을 가진다.
+   */
+  it('PACS-D6a: fromStateKey에 __ 포함 전이 option이 disabled다', () => {
+    renderSection({ transitions: ambiguousTransitions })
+
+    // '리뷰 완료' 옵션 — fromStateKey='in__review'
+    const opt = screen.getByRole('option', { name: '리뷰 완료' }) as HTMLOptionElement
+    expect(opt.disabled).toBe(true)
+  })
+
+  /**
+   * PACS-D6b. toStateKey에 '__' 포함된 전이 옵션도 disabled다.
+   */
+  it('PACS-D6b: toStateKey에 __ 포함 전이 option이 disabled다', () => {
+    renderSection({ transitions: ambiguousTransitions })
+
+    const opt = screen.getByRole('option', { name: '리뷰 시작' }) as HTMLOptionElement
+    expect(opt.disabled).toBe(true)
+  })
+
+  /**
+   * PACS-D6c. 정상 전이('open__in-progress')는 disabled가 아니다.
+   */
+  it('PACS-D6c: 정상 전이 option은 disabled가 아니다', () => {
+    renderSection({ transitions: ambiguousTransitions })
+
+    const opt = screen.getByRole('option', { name: '진행 시작' }) as HTMLOptionElement
+    expect(opt.disabled).toBe(false)
+  })
+
+  /**
+   * PACS-D6d. ambiguous 전이가 있으면 안내 문구가 렌더된다.
+   */
+  it('PACS-D6d: ambiguous 전이가 있으면 안내 문구가 노출된다', () => {
+    renderSection({ transitions: ambiguousTransitions })
+
+    // 안내 문구 — '일부 전이는 키 형식 제약으로 설정할 수 없습니다' 류
+    expect(screen.getByText(/키 형식 제약/)).toBeInTheDocument()
+  })
+
+  /**
+   * PACS-D6e. ambiguous 전이가 없으면 안내 문구가 렌더되지 않는다.
+   */
+  it('PACS-D6e: ambiguous 전이가 없으면 안내 문구가 노출되지 않는다', () => {
+    renderSection({ transitions: sampleTransitions })
+
+    expect(screen.queryByText(/키 형식 제약/)).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PACS-D7: configSummary 60자 절단 시 말줄임 + title 전체
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PostActionConfigSection — D7 configSummary 절단 표시', () => {
+  beforeEach(() => {
+    useAuthStore.setState({
+      accessToken: 'token',
+      user: {
+        userId: 'u1',
+        username: 'admin',
+        email: 'admin@bts.local',
+        authMethod: 'local',
+        mustChangePassword: false,
+        isSystemAdmin: true,
+        mfaEnrollmentRequired: false,
+      },
+    })
+  })
+
+  /**
+   * PACS-D7a. 60자 초과 config는 '…' 말줄임 텍스트를 포함한다.
+   */
+  it('PACS-D7a: 60자 초과 config 셀에 말줄임(…)이 표시된다', async () => {
+    const longConfig = {
+      key1: 'a'.repeat(30),
+      key2: 'b'.repeat(30),
+    }
+    const actionWithLongConfig = {
+      id: '550e8400-e29b-41d4-a716-446655440010',
+      type: 'OTHER_TYPE',
+      config: longConfig,
+      displayOrder: 0,
+    }
+
+    server.use(
+      http.get(BASE_PATH, () => HttpResponse.json({ data: [actionWithLongConfig] })),
+    )
+
+    renderSection()
+
+    const select = screen.getByRole('combobox')
+    fireEvent.change(select, { target: { value: TX_KEY } })
+
+    await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
+
+    // config 셀에 '…' 말줄임이 포함돼야 함
+    expect(screen.getByText(/…/)).toBeInTheDocument()
+  })
+
+  /**
+   * PACS-D7b. 절단된 config 셀의 title 속성에 전체 JSON이 담긴다.
+   * querySelector로 JSON을 CSS selector에 넣으면 이스케이프 이슈가 있으므로
+   * DOM 탐색 방식으로 검증한다.
+   */
+  it('PACS-D7b: 절단된 config 셀의 title에 전체 JSON이 담긴다', async () => {
+    const longConfig = {
+      key1: 'a'.repeat(30),
+      key2: 'b'.repeat(30),
+    }
+    const actionWithLongConfig = {
+      id: '550e8400-e29b-41d4-a716-446655440010',
+      type: 'OTHER_TYPE',
+      config: longConfig,
+      displayOrder: 0,
+    }
+
+    server.use(
+      http.get(BASE_PATH, () => HttpResponse.json({ data: [actionWithLongConfig] })),
+    )
+
+    renderSection()
+
+    const select = screen.getByRole('combobox')
+    fireEvent.change(select, { target: { value: TX_KEY } })
+
+    await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
+
+    // title 속성에 전체 JSON이 담겨야 함 — querySelectorAll로 td 전수 순회
+    const fullJson = JSON.stringify(longConfig)
+    const cells = Array.from(document.querySelectorAll('td'))
+    const cellWithTitle = cells.find((el) => el.getAttribute('title') === fullJson)
+    expect(cellWithTitle).toBeDefined()
+  })
+
+  /**
+   * PACS-D7c. 60자 이하 config는 '…' 없이 그대로 표시된다.
+   */
+  it('PACS-D7c: 60자 이하 config는 말줄임 없이 표시된다', async () => {
+    const shortConfig = { key: 'val' }
+    const actionWithShortConfig = {
+      id: '550e8400-e29b-41d4-a716-446655440011',
+      type: 'OTHER_TYPE',
+      config: shortConfig,
+      displayOrder: 0,
+    }
+
+    server.use(
+      http.get(BASE_PATH, () => HttpResponse.json({ data: [actionWithShortConfig] })),
+    )
+
+    renderSection()
+
+    const select = screen.getByRole('combobox')
+    fireEvent.change(select, { target: { value: TX_KEY } })
+
+    await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
+
+    // 단순 텍스트는 그대로 — '…' 없어야 함
+    expect(screen.queryByText(/…/)).not.toBeInTheDocument()
+    expect(screen.getByText(JSON.stringify(shortConfig))).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PACS-10: create 모드 onSubmit → mutation 호출
 // ─────────────────────────────────────────────────────────────────────────────
 
