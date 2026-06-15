@@ -291,4 +291,66 @@ describe('apiFetch — FormData body 분기 (Task-1)', () => {
 
     expect(capturedAuth).toBe('Bearer fd-test-token')
   })
+
+  it(
+    'T1-E: 401 → refresh → retry 시 FormData body가 그대로 전송된다 (ReadableStream으로 교체 시 회귀 가드)',
+    async () => {
+      // 초기 토큰을 stale-token으로 세팅
+      useAuthStore.getState().setSession({
+        accessToken: 'stale-token',
+        user: { username: 'alice', email: 'alice@example.com', authMethod: 'local', userId: '1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
+      })
+
+      // 수집 배열: 1차(401) 요청, 2차(retry) 요청의 Content-Type 및 formData
+      const capturedRequests: Array<{ auth: string | null; contentType: string | null; metaValue: string | null }> = []
+
+      server.use(
+        // /refresh 엔드포인트 — 새 토큰 반환
+        http.post('/api/v1/auth/refresh', () =>
+          HttpResponse.json({ access_token: 'fresh-token' }),
+        ),
+        http.post('/api/v1/test-formdata-retry', async ({ request }) => {
+          const auth = request.headers.get('authorization')
+          const contentType = request.headers.get('content-type')
+          let metaValue: string | null = null
+          try {
+            // FormData 파싱 시도 (multipart면 성공, JSON이면 실패)
+            const fd = await request.formData()
+            metaValue = fd.get('meta') as string | null
+          } catch {
+            metaValue = null
+          }
+          capturedRequests.push({ auth, contentType, metaValue })
+
+          // 첫 번째 요청만 401 반환, 이후는 200
+          if (capturedRequests.length === 1) {
+            return new HttpResponse(null, { status: 401 })
+          }
+          return HttpResponse.json({ ok: true }, { status: 200 })
+        }),
+      )
+
+      const formData = new FormData()
+      formData.append('file', new Blob(['data'], { type: 'application/octet-stream' }), 'data.bin')
+      formData.append('meta', 'retry-guard-value')
+
+      await apiFetch('/api/v1/test-formdata-retry', { method: 'POST', body: formData })
+
+      // 요청이 정확히 2회 발생해야 한다 (1차 401 + retry)
+      expect(capturedRequests).toHaveLength(2)
+
+      // retry(2차) 요청 검증
+      const retryRequest = capturedRequests[1]
+      expect(retryRequest).toBeDefined()
+
+      // FormData가 그대로 전송됐다면 meta 필드를 파싱할 수 있어야 한다
+      expect(retryRequest!.metaValue).toBe('retry-guard-value')
+
+      // Content-Type은 application/json이 아니어야 한다 (FormData → multipart/form-data)
+      expect(retryRequest!.contentType).not.toContain('application/json')
+
+      // refresh 후 새 토큰으로 Authorization이 갱신되어야 한다
+      expect(retryRequest!.auth).toBe('Bearer fresh-token')
+    },
+  )
 })

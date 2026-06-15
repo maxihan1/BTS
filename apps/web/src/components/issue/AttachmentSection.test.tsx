@@ -290,6 +290,59 @@ describe('AttachmentSection — 삭제 인라인 확인', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// (f) 드롭존 키보드 접근성 — Space preventDefault + 업로드 중 비활성
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('DropZone — 키보드 접근성', () => {
+  it('Space 키 누름 시 preventDefault가 호출되고 파일 선택 다이얼로그가 트리거된다', async () => {
+    vi.mocked(useUploadAttachment).mockReturnValue(
+      uploadStub() as unknown as ReturnType<typeof useUploadAttachment>,
+    )
+
+    const user = userEvent.setup()
+    renderSection('ATLAS-1', true)
+
+    const dropzone = await screen.findByRole('button', { name: attachmentLabels.dropzoneHint })
+
+    // 포커스 후 Space 키 → preventDefault 여부를 keyDown 이벤트로 캡처
+    let preventDefaultCalled = false
+    dropzone.addEventListener('keydown', (e) => {
+      if (e.key === ' ' && e.defaultPrevented) preventDefaultCalled = true
+    })
+
+    await user.tab() // dropzone으로 포커스 이동
+    await user.keyboard(' ') // Space 키 입력
+
+    expect(preventDefaultCalled).toBe(true)
+  })
+
+  it('업로드 중(isPending=true) 에 Space 키를 눌러도 handleClick이 호출되지 않는다', async () => {
+    // isPending=true 상태 stub
+    vi.mocked(useUploadAttachment).mockReturnValue({
+      ...uploadStub(),
+      isPending: true,
+    } as unknown as ReturnType<typeof useUploadAttachment>)
+
+    const user = userEvent.setup()
+    renderSection('ATLAS-1', true)
+
+    // 드롭존이 aria-disabled=true인 상태
+    const dropzone = await screen.findByRole('button', { name: attachmentLabels.dropzoneHint })
+    expect(dropzone).toHaveAttribute('aria-disabled', 'true')
+
+    // Space 키를 눌러도 fileInputRef.click이 트리거되지 않아야 함
+    // (숨겨진 input에 click 이벤트가 발생하면 안 됨)
+    const fileInput = screen.getByLabelText(attachmentLabels.fileInputLabel)
+    const clickSpy = vi.spyOn(fileInput, 'click')
+
+    dropzone.focus()
+    await user.keyboard(' ')
+
+    expect(clickSpy).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // (e) 100MB 초과 파일 선택 — 토스트 + 업로드 안 함
 // ─────────────────────────────────────────────────────────────────────────────
 

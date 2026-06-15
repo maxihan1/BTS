@@ -175,6 +175,56 @@ describe('useUploadAttachment', () => {
 
     expect(toast.error).toHaveBeenCalled()
   })
+
+  it('T-UA-2-3: 403 실패 시 toast 메시지에 파일명이 포함된다', async () => {
+    server.use(
+      http.post('/api/v1/issues/ATLAS-1/attachments', () =>
+        HttpResponse.json({ errorCode: 'FORBIDDEN' }, { status: 403 }),
+      ),
+    )
+
+    const { toast } = await import('sonner')
+    vi.mocked(toast.error).mockClear()
+
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useUploadAttachment('ATLAS-1'), { wrapper })
+
+    const file = new File(['x'], 'secret-doc.pdf', { type: 'application/pdf' })
+
+    await act(async () => {
+      result.current.mutate(file)
+      await waitFor(() => expect(result.current.isError).toBe(true))
+    })
+
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining('secret-doc.pdf'),
+    )
+  })
+
+  it('T-UA-2-4: 413 실패 시 toast 메시지에 파일명이 포함된다', async () => {
+    server.use(
+      http.post('/api/v1/issues/ATLAS-1/attachments', () =>
+        HttpResponse.json({ errorCode: 'PAYLOAD_TOO_LARGE' }, { status: 413 }),
+      ),
+    )
+
+    const { toast } = await import('sonner')
+    vi.mocked(toast.error).mockClear()
+
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useUploadAttachment('ATLAS-1'), { wrapper })
+
+    const file = new File(['x'], 'huge-video.mp4', { type: 'video/mp4' })
+
+    await act(async () => {
+      result.current.mutate(file)
+      await waitFor(() => expect(result.current.isError).toBe(true))
+    })
+
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining('huge-video.mp4'),
+    )
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
