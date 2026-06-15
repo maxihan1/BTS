@@ -113,10 +113,13 @@ export function AttachmentPreviewModal({
       )
     }
     if (category === 'pdf') {
+      // sandbox 미부여(G3). sandbox=""는 브라우저 내장 PDF 뷰어를 막아 빈 화면이 된다.
+      // XSS 방어는 (1) 1차 화이트리스트(text/html·svg는 previewCategory가 null이라 여기 도달 불가)와
+      // (2) blob URL이 선언 MIME(application/pdf)으로만 렌더되고 콘텐츠 스니핑하지 않는다는 점에 둔다.
+      // HTML을 application/pdf로 위장 업로드해도 PDF 뷰어가 파싱 실패할 뿐 스크립트는 실행되지 않는다.
       return (
         <iframe
           src={blobUrl}
-          sandbox=""
           title={attachment.filename}
           className="w-full h-[70vh]"
         />

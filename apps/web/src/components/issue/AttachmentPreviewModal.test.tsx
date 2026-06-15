@@ -95,7 +95,7 @@ describe('TC-1: image 첨부', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('TC-2: pdf 첨부', () => {
-  it('open=true 시 비동기 로드 후 <iframe> 렌더 (sandbox 속성 존재, title=filename)', async () => {
+  it('open=true 시 비동기 로드 후 <iframe> 렌더 (title=filename, blob src). sandbox 미부여(G3)', async () => {
     const { downloadAttachment } = await import('@/api/attachments')
     vi.mocked(downloadAttachment).mockResolvedValue(new Blob(['%PDF'], { type: 'application/pdf' }))
 
@@ -109,7 +109,9 @@ describe('TC-2: pdf 첨부', () => {
 
     const iframe = await screen.findByTitle('document.pdf')
     expect(iframe.tagName).toBe('IFRAME')
-    expect(iframe).toHaveAttribute('sandbox')
+    expect(iframe).toHaveAttribute('src', 'blob:mock')
+    // sandbox=""는 브라우저 PDF 뷰어를 막으므로 부여하지 않는다 (G3). 화이트리스트가 1차 방어선.
+    expect(iframe).not.toHaveAttribute('sandbox')
   })
 })
 

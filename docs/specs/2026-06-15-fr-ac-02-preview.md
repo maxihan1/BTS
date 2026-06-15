@@ -32,8 +32,8 @@ PDF      application/pdf
 
 **방어층 (정확한 모델 — C2 반영)**. 미리보기 blob은 `downloadAttachment()`의 `res.blob()`로 받으며, 이 blob의 `type`은 서버가 내려준 `Content-Type`(= 저장된 `contentType`)을 그대로 반영한다. 따라서 "blob type 재지정으로 위조를 막는다"는 것은 부정확하다 — 실질 방어선은 두 가지다.
 1. **화이트리스트 게이팅(1차)** — 렌더러 선택을 `previewCategory(contentType)`로만 결정. SVG/HTML 등 스크립트 실행 가능 타입은 애초에 미리보기 진입 불가(버튼 미노출).
-2. **렌더러별 격리(2차)** — 이미지는 `<img>`(스크립트 미실행 컨텍스트). PDF는 `<iframe sandbox>`(allow-scripts 미부여)로 격리. 만약 공격자가 HTML을 `contentType=application/pdf`로 위장 업로드해도, 브라우저 내장 PDF 뷰어가 `application/pdf`로 처리하므로 HTML 스크립트가 실행되지 않는다(렌더 실패는 안전한 실패). `<video>`도 디코드 실패 시 안전.
-- G3 주의. `sandbox`가 일부 브라우저 내장 PDF 뷰어를 막을 수 있어 E2E(S2)로 실렌더 확인 후, 깨지면 sandbox를 완화하되 1차 화이트리스트 방어선은 유지한다.
+2. **렌더러별 격리(2차)** — 이미지는 `<img>`(스크립트 미실행 컨텍스트). PDF는 `<iframe>`로 브라우저 내장 PDF 뷰어 사용. 만약 공격자가 HTML을 `contentType=application/pdf`로 위장 업로드해도, blob URL은 선언 MIME(application/pdf)으로만 렌더되고 콘텐츠 스니핑하지 않으므로 PDF 뷰어가 파싱 실패할 뿐 HTML 스크립트는 실행되지 않는다(렌더 실패는 안전한 실패). `<video>`도 디코드 실패 시 안전.
+- **G3 해소(구현 확정)**. 초기 `<iframe sandbox="">`는 브라우저 내장 PDF 뷰어를 막아 빈 미리보기가 되어(Task 4 E2E qa 확인) **sandbox 속성을 제거**했다. PDF의 XSS 방어는 1차 화이트리스트(text/html·svg는 애초에 미리보기 진입 불가)와 blob의 MIME-typed 렌더(스니핑 없음)로 충분하다. allow-scripts/allow-same-origin을 둘 다 줘야 뷰어가 동작하는 sandbox는 격리 효과가 없어 채택하지 않는다.
 
 ## 3. 사용자 시나리오 (Given-When-Then)
 
