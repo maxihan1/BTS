@@ -53,8 +53,16 @@ export const attachmentLabels = {
   /** 업로드 권한 없음 */
   uploadForbidden: '첨부 파일 업로드 권한이 없습니다.',
 
+  /** 업로드 권한 없음 — 파일명 포함 (다중 업로드 시 어느 파일인지 식별) */
+  uploadForbiddenNamed: (filename: string) =>
+    `${filename} 업로드 권한이 없습니다.`,
+
   /** 업로드 파일 크기 초과 (100MB) */
   uploadTooLarge: '파일 크기가 너무 큽니다. 100MB 이하의 파일만 업로드할 수 있습니다.',
+
+  /** 업로드 파일 크기 초과 — 파일명 포함 (다중 업로드 시 어느 파일인지 식별) */
+  uploadTooLargeNamed: (filename: string) =>
+    `${filename}: 파일 크기가 너무 큽니다. 100MB 이하의 파일만 업로드할 수 있습니다.`,
 
   /** 업로드 기본 에러 */
   uploadDefault: '파일 업로드 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',

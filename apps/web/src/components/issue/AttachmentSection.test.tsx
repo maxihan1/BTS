@@ -1,6 +1,6 @@
 // AttachmentSection 컴포넌트 단위 테스트 — FR-AC-01 D6 Task 4 TDD RED
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -299,21 +299,14 @@ describe('DropZone — 키보드 접근성', () => {
       uploadStub() as unknown as ReturnType<typeof useUploadAttachment>,
     )
 
-    const user = userEvent.setup()
     renderSection('ATLAS-1', true)
 
     const dropzone = await screen.findByRole('button', { name: attachmentLabels.dropzoneHint })
 
-    // 포커스 후 Space 키 → preventDefault 여부를 keyDown 이벤트로 캡처
-    let preventDefaultCalled = false
-    dropzone.addEventListener('keydown', (e) => {
-      if (e.key === ' ' && e.defaultPrevented) preventDefaultCalled = true
-    })
-
-    await user.tab() // dropzone으로 포커스 이동
-    await user.keyboard(' ') // Space 키 입력
-
-    expect(preventDefaultCalled).toBe(true)
+    // fireEvent.keyDown으로 네이티브 이벤트 발생 — React handler 내 e.preventDefault() 호출 시
+    // 반환값은 "defaultPrevented가 아님" 여부이므로 false 반환 = preventDefault 호출됨
+    const notPrevented = fireEvent.keyDown(dropzone, { key: ' ', code: 'Space' })
+    expect(notPrevented).toBe(false)
   })
 
   it('업로드 중(isPending=true) 에 Space 키를 눌러도 handleClick이 호출되지 않는다', async () => {

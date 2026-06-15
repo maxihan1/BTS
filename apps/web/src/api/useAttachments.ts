@@ -64,12 +64,12 @@ export function useUploadAttachment(key: string) {
       await queryClient.invalidateQueries({ queryKey: ATTACHMENTS_QUERY_KEY(key) })
     },
 
-    onError: (error: unknown) => {
+    onError: (error: unknown, file: File) => {
       if (error instanceof ApiError) {
         if (error.status === 403) {
-          toast.error(attachmentLabels.uploadForbidden)
+          toast.error(attachmentLabels.uploadForbiddenNamed(file.name))
         } else if (error.status === 413) {
-          toast.error(attachmentLabels.uploadTooLarge)
+          toast.error(attachmentLabels.uploadTooLargeNamed(file.name))
         } else {
           toast.error(attachmentLabels.uploadDefault)
         }
