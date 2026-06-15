@@ -21,7 +21,6 @@ import jakarta.servlet.ServletRequest
 import jakarta.servlet.ServletResponse
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
-import org.springframework.mock.web.MockMultipartHttpServletRequest
 import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.junit.jupiter.api.AfterEach
@@ -35,6 +34,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Primary
 import org.springframework.mock.web.MockMultipartFile
+import org.springframework.mock.web.MockMultipartHttpServletRequest
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
@@ -72,9 +72,9 @@ import java.util.UUID
  * [AttachmentTestConfig] 는 MinIO 빈(MinioClient, MinioStorageAdapter) +
  * 첨부 서비스/컨트롤러/예외 핸들러를 추가 등록한다.
  *
- * ## 크기 한도 오버라이드 (CONCERN-B)
- * 실제 100MB 스트림 생성은 비현실적이므로 [TestPropertySource] 로 max-file-size=1MB 로 축소한다.
- * prod 설정(100MB)은 `application-test.yml` 에 존재하며 이 테스트만 오버라이드한다.
+ * ## 크기 한도 검증 (CONCERN-B)
+ * 실제 100MB 스트림 생성은 비현실적이므로 [SizeLimitFilter](1MB) 를 MockMvc 에 장착한 [mockMvcWithSizeFilter]
+ * 로 413 경로를 실증한다. prod 설정(100MB)은 `application-test.yml` 에 존재한다.
  *
  * ## 권한 거부 패턴
  * [AttachmentTestConfig.denyablePermissionResolver] 가 [DENY_ACTOR_UUID] 를 거부하는
@@ -92,23 +92,21 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueAttachmentIntegrationTest {
-
     /**
      * 첨부 파일 통합 테스트 전용 추가 설정.
      *
      * [TestConfig] 의 Postgres/jOOQ/IssueRepository 위에 다음 빈을 추가 등록한다.
      * - [MinioClient] — MinIO 컨테이너 동적 endpoint/credentials 주입
      * - [MinioStorageConfig.Properties] — bucket 이름 포함
-     * - [MinioStorageAdapter] — [AttachmentStoragePort] 구현체
+     * - [MinioStorageAdapter] — AttachmentStoragePort 구현체
      * - [AttachmentRepository] — 첨부 메타데이터 jOOQ 저장소
      * - [IssueAttachmentService] — 첨부 유스케이스 서비스
      * - [IssueAttachmentController] — REST 컨트롤러
      * - [AttachmentExceptionHandler] — 예외→HTTP 변환 핸들러
-     * - [denyablePermissionResolver] — DENY_ACTOR 거부, 나머지 허용 (@Primary로 AlwaysAllow 대체)
+     * - [denyablePermissionResolver] — DENY_ACTOR 거부, 나머지 허용 (@Primary 로 AlwaysAllow 대체)
      */
     @Configuration
     open class AttachmentTestConfig {
-
         /**
          * MinIO 접속 설정.
          * [AttachmentMinioTestcontainersBase.minioContainer] 의 동적 endpoint/credentials 를 바인딩한다.
@@ -131,9 +129,9 @@ class IssueAttachmentIntegrationTest {
                 .build()
 
         /**
-         * [MinioStorageAdapter] — [AttachmentStoragePort] 구현체.
+         * [MinioStorageAdapter] — AttachmentStoragePort 구현체.
          * [ensureBucket] 을 직접 호출해 bucket 을 보장한다.
-         * (ApplicationRunner 의존 없이 테스트 컨텍스트에서 bucket 을 사전 생성.)
+         * ApplicationRunner 의존 없이 테스트 컨텍스트에서 bucket 을 사전 생성한다.
          */
         @Bean
         open fun minioStorageAdapter(
@@ -147,8 +145,7 @@ class IssueAttachmentIntegrationTest {
 
         /** [AttachmentRepository] — issue_attachments 테이블 jOOQ 저장소. */
         @Bean
-        open fun attachmentRepository(dsl: DSLContext): AttachmentRepository =
-            AttachmentRepository(dsl)
+        open fun attachmentRepository(dsl: DSLContext): AttachmentRepository = AttachmentRepository(dsl)
 
         /** [IssueAttachmentService] — upload/list/download/delete 유스케이스 서비스. */
         @Bean
@@ -169,13 +166,11 @@ class IssueAttachmentIntegrationTest {
 
         /** [IssueAttachmentController] — 4개 엔드포인트 컨트롤러. */
         @Bean
-        open fun issueAttachmentController(service: IssueAttachmentService): IssueAttachmentController =
-            IssueAttachmentController(service)
+        open fun issueAttachmentController(service: IssueAttachmentService): IssueAttachmentController = IssueAttachmentController(service)
 
         /** [AttachmentExceptionHandler] — 예외→HTTP 변환 핸들러. */
         @Bean
-        open fun attachmentExceptionHandler(): AttachmentExceptionHandler =
-            AttachmentExceptionHandler()
+        open fun attachmentExceptionHandler(): AttachmentExceptionHandler = AttachmentExceptionHandler()
 
         /**
          * @Primary IssuePermissionResolver — [DENY_ACTOR_UUID] 는 모든 권한을 거부하고, 나머지는 허용.
@@ -204,7 +199,7 @@ class IssueAttachmentIntegrationTest {
      * (c) 크기 한도 검증 전용 MockMvc — [SizeLimitFilter](1MB) 를 추가.
      *
      * MockMvc 는 실제 서블릿 컨테이너 없이 동작하므로 Spring 의 `max-file-size` 설정이 발동하지 않는다.
-     * [SizeLimitFilter] 가 Content-Length 를 확인해 1MB 초과 시 [MaxUploadSizeExceededException] 을 발생시킨다.
+     * [SizeLimitFilter] 가 multipart 파트 크기를 확인해 1MB 초과 시 413 응답을 직접 작성한다.
      */
     private lateinit var mockMvcWithSizeFilter: MockMvc
 
@@ -288,14 +283,15 @@ class IssueAttachmentIntegrationTest {
         val file = MockMultipartFile("file", "round-trip.bin", "application/octet-stream", fileBytes)
 
         // POST 업로드 → 201
-        val uploadResult = mockMvc.perform(
-            multipart("/api/v1/issues/$issueKey/attachments").file(file),
-        )
-            .andExpect(status().isCreated)
-            .andExpect(jsonPath("$.data.id").exists())
-            .andExpect(jsonPath("$.data.filename").value("round-trip.bin"))
-            .andExpect(jsonPath("$.data.sizeBytes").value(512))
-            .andReturn()
+        val uploadResult =
+            mockMvc.perform(
+                multipart("/api/v1/issues/$issueKey/attachments").file(file),
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.data.id").exists())
+                .andExpect(jsonPath("$.data.filename").value("round-trip.bin"))
+                .andExpect(jsonPath("$.data.sizeBytes").value(512))
+                .andReturn()
 
         val attachmentId = extractAttachmentId(uploadResult.response.contentAsString)
 
@@ -307,9 +303,10 @@ class IssueAttachmentIntegrationTest {
             .andExpect(jsonPath("$.data[0].id").value(attachmentId.toString()))
 
         // GET /{id} 다운로드 → 200, 바이트 동일성 단언
-        val downloadResult = mockMvc.perform(get("/api/v1/issues/$issueKey/attachments/$attachmentId"))
-            .andExpect(status().isOk)
-            .andReturn()
+        val downloadResult =
+            mockMvc.perform(get("/api/v1/issues/$issueKey/attachments/$attachmentId"))
+                .andExpect(status().isOk)
+                .andReturn()
 
         val downloadedBytes = downloadResult.response.contentAsByteArray
         assert(downloadedBytes.contentEquals(fileBytes)) {
@@ -359,28 +356,27 @@ class IssueAttachmentIntegrationTest {
     /**
      * (c) 크기 한도 초과 → 413 Payload Too Large.
      *
-     * MockMvc 환경에서는 Spring의 `spring.servlet.multipart.max-file-size` 속성이 실제 서블릿 컨테이너
+     * MockMvc 환경에서는 Spring 의 `spring.servlet.multipart.max-file-size` 속성이 실제 서블릿 컨테이너
      * 없이는 발동하지 않는다(MockHttpServletRequest 는 getParts() 크기 검증을 생략).
      * 따라서 이 테스트는 `mockMvcWithSizeFilter` — [SizeLimitFilter] 를 통해 1MB 임계값을 초과하는
-     * 요청을 받으면 [MaxUploadSizeExceededException] 을 직접 발생시키는 전용 MockMvc 인스턴스 — 를 사용한다.
-     *
-     * [AttachmentExceptionHandler] 는 [MaxUploadSizeExceededException] → 413 으로 변환한다.
+     * 요청에 직접 413 을 응답하는 전용 MockMvc 인스턴스 — 를 사용한다.
      *
      * prod 설정값(100MB)은 `application-test.yml` 에 존재한다(실제 100MB 스트림 생성 금지).
      *
-     * @see application-test.yml (spring.servlet.multipart.max-file-size=100MB — prod 기본값)
-     * @see SizeLimitFilter 테스트 전용 크기 제한 필터 (Content-Length 기반 1MB 임계값)
+     * @see application-test.yml spring.servlet.multipart.max-file-size=100MB — prod 기본값
+     * @see SizeLimitFilter 테스트 전용 크기 제한 필터 (1MB 임계값)
      */
     @Test
     fun `(c) 크기 한도 초과 — 413 Payload Too Large`() {
         val issueKey = insertIssue(PROJECT_A, "크기 한도 검증 이슈")
         // 2MB = 테스트 전용 1MB 한도(SizeLimitFilter) 초과. prod 100MB 스트림 생성 금지.
-        val oversizedFile = MockMultipartFile(
-            "file",
-            "big.bin",
-            "application/octet-stream",
-            ByteArray(2 * 1024 * 1024) { 0 },
-        )
+        val oversizedFile =
+            MockMultipartFile(
+                "file",
+                "big.bin",
+                "application/octet-stream",
+                ByteArray(2 * 1024 * 1024) { 0 },
+            )
 
         // mockMvc 대신 SizeLimitFilter 가 장착된 전용 인스턴스를 사용한다.
         mockMvcWithSizeFilter.perform(
@@ -470,7 +466,7 @@ class IssueAttachmentIntegrationTest {
      *
      * Given  이슈 A 에 첨부를 업로드, 이슈 B 존재
      * When   GET /api/v1/issues/{issueB}/attachments/{attachmentId-of-A}
-     * Then   404 — issueId 불일치로 [IssueNotFoundException] 발생
+     * Then   404 — issueId 불일치로 IssueNotFoundException 발생
      */
     @Test
     fun `(e-1) 교차 이슈 다운로드 — 이슈 B 경로로 이슈 A 첨부 접근 404`() {
@@ -548,34 +544,40 @@ class IssueAttachmentIntegrationTest {
      * @param summary 이슈 제목.
      * @return 생성된 이슈 키 (예: "ATTCH-1").
      */
-    private fun insertIssue(projectKey: String, summary: String): String {
-        return conn().use { c ->
+    private fun insertIssue(
+        projectKey: String,
+        summary: String,
+    ): String =
+        conn().use { c ->
             c.autoCommit = false
-            val seq = c.prepareStatement(
-                "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
-            ).use { stmt ->
-                stmt.setString(1, projectKey)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getLong(1)
+            val seq =
+                c.prepareStatement(
+                    "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
+                ).use { stmt ->
+                    stmt.setString(1, projectKey)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getLong(1)
+                    }
                 }
-            }
             val issueKey = "$projectKey-$seq"
-            val projectId = c.prepareStatement("SELECT id FROM projects WHERE key = ?").use { stmt ->
-                stmt.setString(1, projectKey)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getObject(1) as UUID
+            val projectId =
+                c.prepareStatement("SELECT id FROM projects WHERE key = ?").use { stmt ->
+                    stmt.setString(1, projectKey)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as UUID
+                    }
                 }
-            }
-            val taskTypeId = c.prepareStatement(
-                "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1",
-            ).use { stmt ->
-                stmt.executeQuery().use { rs ->
-                    check(rs.next()) { "task 타입 없음 — V003 마이그레이션 확인 필요." }
-                    rs.getLong(1)
+            val taskTypeId =
+                c.prepareStatement(
+                    "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        check(rs.next()) { "task 타입 없음 — V003 마이그레이션 확인 필요." }
+                        rs.getLong(1)
+                    }
                 }
-            }
             c.prepareStatement(
                 "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version, type_id) " +
                     "VALUES (?, ?, ?, ?, 'open', 1, ?)",
@@ -590,7 +592,6 @@ class IssueAttachmentIntegrationTest {
             c.commit()
             issueKey
         }
-    }
 
     /**
      * 작은 파일(64바이트)을 업로드하고 [UUID] 를 반환하는 헬퍼.
@@ -600,17 +601,19 @@ class IssueAttachmentIntegrationTest {
      * @return 업로드된 첨부 UUID.
      */
     private fun uploadSmallFile(issueKey: String): UUID {
-        val file = MockMultipartFile(
-            "file",
-            "small.txt",
-            "text/plain",
-            buildTestBytes(size = 64),
-        )
-        val result = mockMvc.perform(
-            multipart("/api/v1/issues/$issueKey/attachments").file(file),
-        )
-            .andExpect(status().isCreated)
-            .andReturn()
+        val file =
+            MockMultipartFile(
+                "file",
+                "small.txt",
+                "text/plain",
+                buildTestBytes(size = 64),
+            )
+        val result =
+            mockMvc.perform(
+                multipart("/api/v1/issues/$issueKey/attachments").file(file),
+            )
+                .andExpect(status().isCreated)
+                .andReturn()
         return extractAttachmentId(result.response.contentAsString)
     }
 
@@ -622,8 +625,9 @@ class IssueAttachmentIntegrationTest {
      */
     private fun extractAttachmentId(json: String): UUID {
         // {"data":{"id":"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",...}}
-        val match = Regex(""""id"\s*:\s*"([0-9a-f\-]{36})"""").find(json)
-            ?: error("응답 JSON 에서 data.id 를 찾을 수 없음: $json")
+        val match =
+            Regex(""""id"\s*:\s*"([0-9a-f\-]{36})"""").find(json)
+                ?: error("응답 JSON 에서 data.id 를 찾을 수 없음: $json")
         return UUID.fromString(match.groupValues[1])
     }
 
@@ -634,8 +638,7 @@ class IssueAttachmentIntegrationTest {
      * @param size 생성할 바이트 수.
      * @return 고정 패턴 바이트 배열.
      */
-    private fun buildTestBytes(size: Int): ByteArray =
-        ByteArray(size) { idx -> (idx % 256).toByte() }
+    private fun buildTestBytes(size: Int): ByteArray = ByteArray(size) { idx -> (idx % 256).toByte() }
 
     /**
      * SecurityContext 의 인증 주체를 교체한다.
@@ -652,22 +655,23 @@ class IssueAttachmentIntegrationTest {
     }
 
     /** [TestConfig.postgres] 에 직접 연결하는 JDBC 커넥션을 반환한다. */
-    private fun conn() = DriverManager.getConnection(
-        TestConfig.postgres.jdbcUrl,
-        TestConfig.postgres.username,
-        TestConfig.postgres.password,
-    )
+    private fun conn() =
+        DriverManager.getConnection(
+            TestConfig.postgres.jdbcUrl,
+            TestConfig.postgres.username,
+            TestConfig.postgres.password,
+        )
 }
 
 /**
  * (c) 크기 한도 시나리오 전용 MockMvc 필터.
  *
  * MockMvc 는 실제 서블릿 컨테이너 없이 동작하므로 `spring.servlet.multipart.max-file-size` 속성이
- * [org.springframework.web.multipart.MaxUploadSizeExceededException] 을 자동 발생시키지 않는다.
+ * MaxUploadSizeExceededException 을 자동 발생시키지 않는다.
  * 이 필터는 multipart 파트의 합산 크기를 확인해 [maxBytes] 초과 시 413 응답을 직접 작성한다.
  *
  * 필터에서 예외를 throw 하면 MockMvc 가 DispatcherServlet 을 거치지 않아
- * [AttachmentExceptionHandler] 가 처리할 수 없다. 따라서 413 상태 코드를 직접 응답에 설정한다.
+ * AttachmentExceptionHandler 가 처리할 수 없다. 따라서 413 상태 코드를 직접 응답에 설정한다.
  *
  * `Content-Length` 헤더는 MockMvc [MockMultipartHttpServletRequest] 에서 신뢰할 수 없으므로
  * [MockMultipartHttpServletRequest.getFiles] 의 파일 크기 합산을 사용한다.
@@ -675,14 +679,19 @@ class IssueAttachmentIntegrationTest {
  * @param maxBytes 허용 최대 바이트 수. 이 값을 초과하는 multipart 요청은 413 으로 거부된다.
  */
 class SizeLimitFilter(private val maxBytes: Long) : Filter {
-    override fun doFilter(request: ServletRequest, response: ServletResponse, chain: FilterChain) {
+    override fun doFilter(
+        request: ServletRequest,
+        response: ServletResponse,
+        chain: FilterChain,
+    ) {
         val httpRequest = request as HttpServletRequest
         // MockMultipartHttpServletRequest 에서 파일 크기 합산 (Content-Length 는 -1 일 수 있음).
-        val totalSize: Long = if (httpRequest is MockMultipartHttpServletRequest) {
-            httpRequest.fileMap.values.sumOf { it.size }
-        } else {
-            httpRequest.contentLengthLong.takeIf { it >= 0L } ?: 0L
-        }
+        val totalSize: Long =
+            if (httpRequest is MockMultipartHttpServletRequest) {
+                httpRequest.fileMap.values.sumOf { it.size }
+            } else {
+                httpRequest.contentLengthLong.takeIf { it >= 0L } ?: 0L
+            }
         if (totalSize > maxBytes) {
             // 필터에서 예외를 throw 하면 MockMvc 가 DispatcherServlet 밖에서 잡아 핸들러가 동작 못 함.
             // 413 Payload Too Large 를 응답에 직접 기록한다.
