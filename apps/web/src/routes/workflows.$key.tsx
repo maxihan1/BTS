@@ -1,9 +1,10 @@
-// 워크플로우 상세 페이지 (FR-WF-01 read-only 다이어그램)
+// 워크플로우 상세 페이지 (FR-WF-01 read-only 다이어그램 + FR-NT-05 post-action 설정)
 import type { JSX } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { WorkflowDiagram } from '@/components/workflow/WorkflowDiagram'
 import { fetchWorkflow } from '@/api/workflows'
+import { PostActionConfigSection } from '@/components/workflow/PostActionConfigSection'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // router.ts 등록 방법 (code-based 패턴 — PR #11 컨벤션).
@@ -80,6 +81,9 @@ export function WorkflowDetailPage({ workflowKey }: WorkflowDetailPageProps): JS
 
       {/* 워크플로우 FSM 다이어그램 (FR-WF-01 read-only, spec S1) */}
       <WorkflowDiagram workflow={data} />
+
+      {/* post-action 설정 섹션 (FR-NT-05) — isSystemAdmin 게이팅은 PostActionConfigSection 내부에서 수행 */}
+      <PostActionConfigSection workflowKey={workflowKey} transitions={data.transitions} />
     </div>
   )
 }
