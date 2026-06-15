@@ -214,8 +214,10 @@ describe('downloadAttachment', () => {
 
     const blob = await downloadAttachment('ATLAS-1', '550e8400-e29b-41d4-a716-446655440000')
 
-    expect(blob).toBeInstanceOf(Blob)
+    // jsdom 환경에서 MSW Blob과 global Blob의 생성자 클래스가 다를 수 있으므로 duck-typing으로 검증
+    expect(blob).toBeDefined()
     expect(blob.size).toBeGreaterThan(0)
+    expect(typeof blob.arrayBuffer).toBe('function')
   })
 
   it('T-AT-3-2: 404 응답 → ApiError(404) throw', async () => {
