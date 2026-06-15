@@ -50,3 +50,21 @@ describe('previewCategory', () => {
     expect(previewCategory(mime)).toBeNull()
   })
 })
+
+describe('MIME 정규화 (P1 — 대문자/파라미터 변종)', () => {
+  it.each([
+    ['IMAGE/PNG', true],
+    ['Image/Png', true],
+    ['image/png; charset=binary', true],
+    ['application/pdf; version=1.4', true],
+    ['  video/mp4  ', true],
+    ['image/svg+xml; charset=utf-8', false],
+  ])('isPreviewable(%s) === %s', (mime, expected) => {
+    expect(isPreviewable(mime)).toBe(expected)
+  })
+
+  it('대문자+파라미터 변종도 카테고리를 정규화해 반환한다', () => {
+    expect(previewCategory('APPLICATION/PDF; version=1.7')).toBe('pdf')
+    expect(previewCategory('IMAGE/JPEG')).toBe('image')
+  })
+})

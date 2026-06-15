@@ -49,8 +49,12 @@ export function AttachmentPreviewModal({
   const [hasError, setHasError] = useState(false)
 
   useEffect(() => {
-    // open=false 이거나 attachment가 없으면 아무것도 하지 않는다
+    // 닫힐 때 이전 에러/blobUrl 상태를 리셋한다(P2 — 닫은 뒤 재열기 시 stale 에러 방지).
+    // 직전 effect cleanup이 objectURL revoke를 담당하므로 여기서는 state만 정리한다.
     if (!open) {
+      setHasError(false)
+      setBlobUrl(null)
+      setIsLoading(false)
       return
     }
 
