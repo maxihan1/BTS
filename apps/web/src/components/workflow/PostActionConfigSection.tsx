@@ -49,18 +49,34 @@ function extractWebhookValues(config: Record<string, unknown>): PostActionFormVa
   return null
 }
 
+/** configSummary 반환 타입 — 절단 여부와 전체 원본을 함께 반환 */
+interface ConfigSummaryResult {
+  /** 화면에 표시할 요약 문자열 (절단 시 '…' 포함) */
+  display: string
+  /**
+   * hover title에 노출할 전체 원본 문자열.
+   * url 케이스(절단 없음)나 60자 이하이면 undefined.
+   */
+  fullTitle: string | undefined
+}
+
 /**
  * config에서 표시용 요약 문자열을 만든다 (테이블 config 컬럼용).
  * url이 있으면 "[method] url" 형식, 없으면 JSON 요약.
+ * 60자 초과 시 말줄임(…)과 함께 전체 값을 fullTitle로 반환한다 (데이터 손실 방지).
  */
-function configSummary(config: Record<string, unknown>): string {
+function configSummary(config: Record<string, unknown>): ConfigSummaryResult {
   const url = config['url']
   const method = config['method']
   if (typeof url === 'string') {
     const methodStr = typeof method === 'string' ? `[${method}] ` : ''
-    return `${methodStr}${url}`
+    return { display: `${methodStr}${url}`, fullTitle: undefined }
   }
-  return JSON.stringify(config).slice(0, 60)
+  const full = JSON.stringify(config)
+  if (full.length <= 60) {
+    return { display: full, fullTitle: undefined }
+  }
+  return { display: `${full.slice(0, 60)}…`, fullTitle: full }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -102,11 +118,16 @@ function PostActionTable({ actions, onEditClick, onDeleteClick, isDeleting }: Po
         {actions.map((action) => {
           const canEdit = action.type === 'CALL_WEBHOOK' && extractWebhookValues(action.config) !== null
 
+          const summary = configSummary(action.config)
+
           return (
             <tr key={action.id} className="border-b border-border transition-colors hover:bg-muted/30">
               <td className="px-4 py-2.5 font-mono text-xs text-foreground">{action.type}</td>
-              <td className="max-w-[280px] truncate px-4 py-2.5 text-muted-foreground">
-                {configSummary(action.config)}
+              <td
+                className="max-w-[280px] truncate px-4 py-2.5 text-muted-foreground"
+                title={summary.fullTitle}
+              >
+                {summary.display}
               </td>
               <td className="px-4 py-2.5 text-right text-muted-foreground">{action.displayOrder}</td>
               <td className="px-4 py-2.5">
@@ -323,13 +344,23 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
           <option value="">{postActionLabels.section.transitionSelectPlaceholder}</option>
           {transitions.map((t) => {
             const tKey = transitionKey(t.fromStateKey, t.toStateKey)
+            // D6 방어 가드: fromStateKey 또는 toStateKey에 '__'가 포함되면 선택 비활성.
+            // 근본 원인 — transitionKey()는 `${from}__${to}` 형식이며, 백엔드 WorkflowTransition.kt도
+            // 동일 구분자로 split(정확히 2조각 요구)한다. 구분자 변경은 cross-BC 후속 작업.
+            const isAmbiguous = t.fromStateKey.includes('__') || t.toStateKey.includes('__')
             return (
-              <option key={tKey} value={tKey}>
+              <option key={tKey} value={tKey} disabled={isAmbiguous}>
                 {t.name}
               </option>
             )
           })}
         </select>
+        {/* D6: ambiguous 전이가 하나라도 있으면 안내 문구 노출 */}
+        {transitions.some((t) => t.fromStateKey.includes('__') || t.toStateKey.includes('__')) && (
+          <p className="text-xs text-muted-foreground">
+            {postActionLabels.section.ambiguousKeyHint}
+          </p>
+        )}
       </div>
 
       {/* 목록 영역 — 전이 선택 시만 표시 */}
