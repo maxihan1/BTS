@@ -403,14 +403,24 @@ class IssueAttachmentControllerTest {
             )
         } throws AttachmentInfectedException("virus.exe")
 
-        val file = MockMultipartFile("file", "virus.exe", MediaType.APPLICATION_OCTET_STREAM_VALUE, "EICAR".toByteArray())
+        val file =
+            MockMultipartFile(
+                "file",
+                "virus.exe",
+                MediaType.APPLICATION_OCTET_STREAM_VALUE,
+                "EICAR".toByteArray(),
+            )
 
         mockMvc.perform(
             multipart("/api/v1/issues/ATLAS-1/attachments").file(file),
         )
             .andExpect(status().isUnprocessableEntity)
             .andExpect(jsonPath("$.errorCode").value("ISSUE_ATTACHMENT_INFECTED"))
-            .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("virus.exe"))))
+            .andExpect(
+                jsonPath("$.detail").value(
+                    org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("virus.exe")),
+                ),
+            )
     }
 
     // ── C-10. 503 AttachmentScanUnavailableException ──────────────────────────
