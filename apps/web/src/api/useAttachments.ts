@@ -8,6 +8,7 @@ import {
 } from './attachments'
 import type { AttachmentResponse } from './attachments'
 import { ApiError } from './client'
+import { attachmentLabels } from '@/i18n/attachment-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 쿼리 키 헬퍼
@@ -21,19 +22,6 @@ import { ApiError } from './client'
  * @returns TanStack Query queryKey 배열 (예: `["attachments", "ATLAS-1"]`)
  */
 export const ATTACHMENTS_QUERY_KEY = (key: string): [string, string] => ['attachments', key]
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 에러 메시지 (Task 4에서 i18n 키로 교체 예정)
-// ─────────────────────────────────────────────────────────────────────────────
-
-const ERROR_MESSAGES = {
-  uploadForbidden: '첨부 파일 업로드 권한이 없습니다.',
-  uploadTooLarge: '파일 크기가 너무 큽니다. 100MB 이하의 파일만 업로드할 수 있습니다.',
-  uploadDefault: '파일 업로드 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
-  deleteForbidden: '첨부 파일 삭제 권한이 없습니다.',
-  deleteNotFound: '삭제하려는 첨부 파일을 찾을 수 없습니다.',
-  deleteDefault: '첨부 파일 삭제 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
-} as const
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 훅
@@ -79,14 +67,14 @@ export function useUploadAttachment(key: string) {
     onError: (error: unknown) => {
       if (error instanceof ApiError) {
         if (error.status === 403) {
-          toast.error(ERROR_MESSAGES.uploadForbidden)
+          toast.error(attachmentLabels.uploadForbidden)
         } else if (error.status === 413) {
-          toast.error(ERROR_MESSAGES.uploadTooLarge)
+          toast.error(attachmentLabels.uploadTooLarge)
         } else {
-          toast.error(ERROR_MESSAGES.uploadDefault)
+          toast.error(attachmentLabels.uploadDefault)
         }
       } else {
-        toast.error(ERROR_MESSAGES.uploadDefault)
+        toast.error(attachmentLabels.uploadDefault)
       }
     },
   })
@@ -117,14 +105,14 @@ export function useDeleteAttachment(key: string) {
     onError: (error: unknown) => {
       if (error instanceof ApiError) {
         if (error.status === 403) {
-          toast.error(ERROR_MESSAGES.deleteForbidden)
+          toast.error(attachmentLabels.deleteForbidden)
         } else if (error.status === 404) {
-          toast.error(ERROR_MESSAGES.deleteNotFound)
+          toast.error(attachmentLabels.deleteNotFound)
         } else {
-          toast.error(ERROR_MESSAGES.deleteDefault)
+          toast.error(attachmentLabels.deleteDefault)
         }
       } else {
-        toast.error(ERROR_MESSAGES.deleteDefault)
+        toast.error(attachmentLabels.deleteDefault)
       }
     },
   })

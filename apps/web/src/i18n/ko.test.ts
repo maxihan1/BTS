@@ -2,6 +2,7 @@
 
 import { describe, it, expect, expectTypeOf } from 'vitest'
 import { issueDetailStrings, mfaStrings, mfaErrorMessage, issueLinkStrings, linkGraphStrings } from './ko'
+import { attachmentLabels } from './attachment-labels'
 
 // IssueDetailStrings 타입을 추론해서 키 존재를 검증한다.
 // 키가 없으면 expectTypeOf(...).toHaveProperty() 가 타입 에러를 발생시킨다.
@@ -374,5 +375,45 @@ describe('linkGraphStrings — 링크 그래프 UI 문자열 (FR-LK-02 D6)', () 
   it('C1: edgeDuplicates(중복)와 edgeClones(복제)는 변경 없이 유지된다', () => {
     expect(linkGraphStrings.edgeDuplicates).toBe(issueLinkStrings.linkTypeDuplicates)
     expect(linkGraphStrings.edgeClones).toBe(issueLinkStrings.linkTypeClones)
+  })
+})
+
+// ── attachmentLabels ──────────────────────────────────────────────────────────
+
+describe('attachmentLabels — 첨부 파일 섹션 UI 문자열 (FR-AC-01 D6)', () => {
+  it('모든 문자열 값은 콜론으로 끝나지 않는다 (글로벌 §5)', () => {
+    for (const value of Object.values(attachmentLabels)) {
+      if (typeof value === 'string') {
+        expect(value, `"${value}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+      }
+    }
+  })
+
+  it('sectionTitle 키가 존재한다', () => {
+    expectTypeOf(attachmentLabels).toHaveProperty('sectionTitle')
+  })
+
+  it('emptyState 키가 존재한다', () => {
+    expectTypeOf(attachmentLabels).toHaveProperty('emptyState')
+  })
+
+  it('dropzoneHint 키가 존재한다', () => {
+    expectTypeOf(attachmentLabels).toHaveProperty('dropzoneHint')
+  })
+
+  it('deleteWarning 키가 존재한다', () => {
+    expectTypeOf(attachmentLabels).toHaveProperty('deleteWarning')
+  })
+
+  it('deleteButton 키가 존재한다', () => {
+    expectTypeOf(attachmentLabels).toHaveProperty('deleteButton')
+  })
+
+  it('deleteConfirmButton 키가 존재한다', () => {
+    expectTypeOf(attachmentLabels).toHaveProperty('deleteConfirmButton')
+  })
+
+  it('deleteCancelButton 키가 존재한다', () => {
+    expectTypeOf(attachmentLabels).toHaveProperty('deleteCancelButton')
   })
 })
