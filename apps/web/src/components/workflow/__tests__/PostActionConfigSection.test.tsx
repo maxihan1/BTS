@@ -410,7 +410,9 @@ describe('PostActionConfigSection — B1 stale 프리필 방지', () => {
 
     // A행 수정 버튼들 중 첫 번째(A행) 클릭
     const editBtns = screen.getAllByRole('button', { name: /CALL_WEBHOOK post-action 수정/ })
-    fireEvent.click(editBtns[0])
+    const firstEditBtn = editBtns[0]
+    if (firstEditBtn === undefined) throw new Error('A행 수정 버튼을 찾을 수 없음')
+    fireEvent.click(firstEditBtn)
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
 
@@ -424,7 +426,9 @@ describe('PostActionConfigSection — B1 stale 프리필 방지', () => {
 
     // B행 수정 버튼(두 번째) 클릭
     const editBtnsAfterClose = screen.getAllByRole('button', { name: /CALL_WEBHOOK post-action 수정/ })
-    fireEvent.click(editBtnsAfterClose[1])
+    const secondEditBtn = editBtnsAfterClose[1]
+    if (secondEditBtn === undefined) throw new Error('B행 수정 버튼을 찾을 수 없음')
+    fireEvent.click(secondEditBtn)
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
 
