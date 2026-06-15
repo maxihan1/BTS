@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.multipart.MultipartException
 import org.springframework.web.multipart.MultipartFile
 import java.net.URI
 import java.nio.charset.StandardCharsets
@@ -71,7 +72,7 @@ class IssueAttachmentController(
         @PathVariable key: String,
         file: MultipartFile?,
     ): ResponseEntity<DataResponse<AttachmentResponse>> {
-        val resolvedFile = file ?: throw org.springframework.web.multipart.MultipartException(
+        val resolvedFile = file ?: throw MultipartException(
             "Required request part 'file' is not present",
         )
         log.info(
