@@ -113,8 +113,10 @@ export function PostActionFormDialog({
       ? postActionLabels.dialog.createButton
       : postActionLabels.dialog.saveButton
 
-  /** 저장 버튼 클릭 — 검증 후 onSubmit 호출 */
+  /** 저장 버튼 클릭 — 중복 제출 방지 가드 후 검증, onSubmit 호출 */
   function handleSubmit() {
+    // D5: in-flight 상태에서 재진입 차단 — disabled 버튼 programmatic click 방어
+    if (submitting) return
     const validationErrors = validateForm({ url, method })
     setErrors(validationErrors)
     if (Object.keys(validationErrors).length > 0) {
@@ -194,9 +196,11 @@ export function PostActionFormDialog({
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder={postActionLabels.form.urlPlaceholder}
                 aria-invalid={errors.url !== undefined}
+                disabled={submitting}
                 className={cn(
                   'w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none',
                   'placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+                  'disabled:cursor-not-allowed disabled:opacity-50',
                   errors.url && 'border-destructive focus-visible:border-destructive',
                 )}
               />
@@ -215,9 +219,11 @@ export function PostActionFormDialog({
                 value={method}
                 onChange={(e) => setMethod(e.target.value)}
                 aria-invalid={errors.method !== undefined}
+                disabled={submitting}
                 className={cn(
                   'w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none',
                   'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+                  'disabled:cursor-not-allowed disabled:opacity-50',
                   errors.method && 'border-destructive focus-visible:border-destructive',
                 )}
               >
@@ -237,9 +243,10 @@ export function PostActionFormDialog({
               <button
                 type="button"
                 onClick={onCancel}
+                disabled={submitting}
                 className={cn(
                   'rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground',
-                  'hover:bg-muted transition-colors',
+                  'hover:bg-muted transition-colors disabled:cursor-not-allowed disabled:opacity-50',
                 )}
               >
                 {postActionLabels.dialog.cancelButton}

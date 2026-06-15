@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
+import * as sonner from 'sonner'
 import { server } from '@/test/server'
 import { useAuthStore } from '@/auth/authStore'
 import type { WorkflowTransitionView } from '@/components/workflow/workflow.types'
@@ -251,9 +252,21 @@ describe('PostActionConfigSection — Webhook 추가', () => {
 
   /**
    * PACS-7. "Webhook 추가" 버튼 클릭 시 PostActionFormDialog(create 모드)가 열린다.
+   * D1 수정 이후: 전이를 먼저 선택해야 버튼이 활성화된다.
    */
-  it('PACS-7: 추가 버튼 클릭 시 dialog가 열린다', () => {
+  it('PACS-7: 추가 버튼 클릭 시 dialog가 열린다', async () => {
+    server.use(
+      http.get(BASE_PATH, () => HttpResponse.json({ data: [] })),
+    )
+
     renderSection()
+
+    // D1: 전이 선택 후에만 버튼 활성화
+    const select = screen.getByRole('combobox')
+    fireEvent.change(select, { target: { value: TX_KEY } })
+
+    // 빈 상태가 렌더될 때까지 대기
+    await waitFor(() => expect(screen.queryByRole('table')).not.toBeInTheDocument())
 
     fireEvent.click(screen.getByRole('button', { name: /Webhook 추가/ }))
 
@@ -489,8 +502,7 @@ describe('PostActionConfigSection — C1 mutation 에러 toast', () => {
    * PACS-C1a. add mutation 실패 시 toast.error가 호출된다.
    */
   it('PACS-C1a: add mutation 실패 시 toast.error가 호출된다', async () => {
-    const toastError = vi.fn()
-    vi.mock('sonner', () => ({ toast: { error: toastError } }))
+    const toastErrorSpy = vi.spyOn(sonner.toast, 'error').mockImplementation(() => '')
 
     server.use(
       http.get(BASE_PATH, () => HttpResponse.json({ data: [] })),
@@ -518,9 +530,9 @@ describe('PostActionConfigSection — C1 mutation 에러 toast', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /추가/ }))
 
-    await waitFor(() => expect(toastError).toHaveBeenCalled())
+    await waitFor(() => expect(toastErrorSpy).toHaveBeenCalled())
 
-    vi.restoreAllMocks()
+    toastErrorSpy.mockRestore()
   })
 
   /**
@@ -533,8 +545,7 @@ describe('PostActionConfigSection — C1 mutation 에러 toast', () => {
       config: { url: 'https://example.com/hook', method: 'POST' },
       displayOrder: 0,
     }
-    const toastError = vi.fn()
-    vi.mock('sonner', () => ({ toast: { error: toastError } }))
+    const toastErrorSpy = vi.spyOn(sonner.toast, 'error').mockImplementation(() => '')
 
     server.use(
       http.get(BASE_PATH, () => HttpResponse.json({ data: [sampleActionForError] })),
@@ -552,9 +563,9 @@ describe('PostActionConfigSection — C1 mutation 에러 toast', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /CALL_WEBHOOK post-action 삭제/ }))
 
-    await waitFor(() => expect(toastError).toHaveBeenCalled())
+    await waitFor(() => expect(toastErrorSpy).toHaveBeenCalled())
 
-    vi.restoreAllMocks()
+    toastErrorSpy.mockRestore()
   })
 
   /**

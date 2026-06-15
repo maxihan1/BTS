@@ -72,6 +72,20 @@ export const postActionLabels = {
     /** 행 삭제 버튼 텍스트 */
     deleteButton: '삭제',
   },
+
+  /** 에러 메시지 — mutation 실패 toast, list query 에러 UI */
+  error: {
+    /** 목록 조회 실패 안내 문구 */
+    loadFailed: 'post-action 목록을 불러오지 못했습니다. 다시 시도해 주세요.',
+    /** 추가 실패 toast 메시지 */
+    addFailed: 'post-action 추가에 실패했습니다.',
+    /** 수정 실패 toast 메시지 */
+    updateFailed: 'post-action 수정에 실패했습니다.',
+    /** 삭제 실패 toast 메시지 */
+    removeFailed: 'post-action 삭제에 실패했습니다.',
+    /** 전이 미선택 시 추가 버튼 비활성 안내 */
+    selectTransitionFirst: '전이를 먼저 선택하세요.',
+  },
 } as const
 
 /** 라벨 const 의 추론 타입 — 호출자 타입 안전성 */

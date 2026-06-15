@@ -1,6 +1,7 @@
 // 워크플로우 전이별 post-action 목록 + Webhook 추가/수정/삭제 섹션 — isSystemAdmin 게이팅
 import type { JSX } from 'react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { useAuthUser } from '@/auth/authStore'
 import {
   usePostActions,
@@ -196,7 +197,7 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
   const [selectedTxKey, setSelectedTxKey] = useState<string>('')
   const [dialog, setDialog] = useState<DialogState>(CLOSED_DIALOG)
 
-  const { data: actions = [], isLoading } = usePostActions(workflowKey, selectedTxKey)
+  const { data: actions = [], isLoading, isError } = usePostActions(workflowKey, selectedTxKey)
 
   // 모든 mutation hook은 컴포넌트 최상단에서 호출 (hook 규칙)
   const addMutation = useAddPostAction(workflowKey, selectedTxKey)
@@ -223,7 +224,12 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
   }
 
   function handleDeleteClick(id: string) {
-    removeMutation.mutate(id)
+    // C1: 삭제 실패 toast
+    removeMutation.mutate(id, {
+      onError: () => {
+        toast.error(postActionLabels.error.removeFailed)
+      },
+    })
   }
 
   function handleDialogCancel() {
@@ -231,16 +237,27 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
   }
 
   function handleDialogSubmit(values: PostActionFormValues) {
-    const currentDisplayOrder = actions.length
+    // C2/D2: 중간 행 삭제 후 추가 시 기존 order와 충돌 방지
+    // actions.length 대신 max(displayOrder)+1 사용
+    const nextDisplayOrder =
+      actions.length > 0
+        ? Math.max(...actions.map((a) => a.displayOrder)) + 1
+        : 0
 
     if (dialog.mode === 'create') {
       addMutation.mutate(
         {
           type: 'CALL_WEBHOOK',
           config: { url: values.url, method: values.method },
-          displayOrder: currentDisplayOrder,
+          displayOrder: nextDisplayOrder,
         },
-        { onSuccess: () => setDialog(CLOSED_DIALOG) },
+        {
+          onSuccess: () => setDialog(CLOSED_DIALOG),
+          // C1: 추가 실패 toast
+          onError: () => {
+            toast.error(postActionLabels.error.addFailed)
+          },
+        },
       )
     } else {
       const existingOrder = actions.find((a) => a.id === dialog.editingId)?.displayOrder ?? 0
@@ -250,7 +267,13 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
           config: { url: values.url, method: values.method },
           displayOrder: existingOrder,
         },
-        { onSuccess: () => setDialog(CLOSED_DIALOG) },
+        {
+          onSuccess: () => setDialog(CLOSED_DIALOG),
+          // C1: 수정 실패 toast
+          onError: () => {
+            toast.error(postActionLabels.error.updateFailed)
+          },
+        },
       )
     }
   }
@@ -266,13 +289,17 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
         <h3 className="text-sm font-semibold text-foreground">
           {postActionLabels.section.title}
         </h3>
+        {/* D1: 전이 미선택 시 disabled + 안내 텍스트 */}
         <button
           type="button"
           onClick={handleAddClick}
+          disabled={selectedTxKey === ''}
           aria-label={postActionLabels.section.addWebhookButton}
+          title={selectedTxKey === '' ? postActionLabels.error.selectTransitionFirst : undefined}
           className={cn(
             'rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground',
             'hover:bg-primary/90 transition-colors',
+            'disabled:cursor-not-allowed disabled:opacity-50',
           )}
         >
           {postActionLabels.section.addWebhookButton}
@@ -312,6 +339,14 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
             <div className="px-4 py-6 text-center text-sm text-muted-foreground">
               로딩 중...
             </div>
+          ) : isError ? (
+            // D9: 목록 조회 실패 에러 UI
+            <div
+              role="alert"
+              className="px-4 py-6 text-center text-sm text-destructive"
+            >
+              {postActionLabels.error.loadFailed}
+            </div>
           ) : actions.length === 0 ? (
             <div className="px-4 py-6 text-center text-sm text-muted-foreground">
               {postActionLabels.list.emptyState}
@@ -327,8 +362,9 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
         </div>
       )}
 
-      {/* Dialog */}
+      {/* Dialog — B1: key prop으로 열릴 때마다/대상 바뀔 때마다 재마운트해 stale state 방지 */}
       <PostActionFormDialog
+        key={dialog.open ? `${dialog.mode}-${dialog.editingId !== '' ? dialog.editingId : 'new'}` : 'closed'}
         open={dialog.open}
         mode={dialog.mode}
         initialValues={dialog.initialValues}
