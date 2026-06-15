@@ -1,4 +1,4 @@
-// 첨부 파일 BC MSW 핸들러 — stateful in-memory store (FR-AC-01 D6/D7)
+// 첨부 파일 BC MSW 핸들러 — stateful in-memory store (FR-AC-01 D6/D7, FR-AC-02 미리보기 바이트)
 // 업로드/삭제가 목록 조회에 즉시 반영되도록 모듈 스코프 Map으로 관리한다.
 import { http, HttpResponse } from 'msw'
 import type { AttachmentResponse } from '@/api/attachments'
@@ -166,13 +166,103 @@ const uploadAttachmentHandler = http.post(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 미리보기용 최소 유효 바이트 생성 헬퍼 (FR-AC-02 C4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 1×1 투명 PNG 최소 바이트 (base64 → Uint8Array).
+ * <img> 태그가 실제로 렌더하려면 유효한 이미지 바이트가 필요하다.
+ */
+const MINIMAL_PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
+function minimalPngBytes(): Uint8Array {
+  const binary = atob(MINIMAL_PNG_BASE64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return bytes
+}
+
+/**
+ * 최소 유효 PDF 바이트 — 1페이지 PDF.
+ * <iframe> 또는 브라우저 PDF 뷰어가 로드할 수 있는 최소 구조.
+ */
+function minimalPdfBytes(): Uint8Array {
+  const pdfStr = [
+    '%PDF-1.4',
+    '1 0 obj<</Type /Catalog /Pages 2 0 R>>endobj',
+    '2 0 obj<</Type /Pages /Kids[3 0 R] /Count 1>>endobj',
+    '3 0 obj<</Type /Page /Parent 2 0 R /MediaBox[0 0 3 3]>>endobj',
+    'xref',
+    '0 4',
+    '0000000000 65535 f ',
+    '0000000009 00000 n ',
+    '0000000058 00000 n ',
+    '0000000115 00000 n ',
+    'trailer<</Size 4 /Root 1 0 R>>',
+    'startxref',
+    '190',
+    '%%EOF',
+  ].join('\n')
+  return new TextEncoder().encode(pdfStr)
+}
+
+/**
+ * 최소 MP4 ftyp 박스 바이트.
+ * <video> 태그가 src를 로드 시도할 수 있을 정도의 최소 구조.
+ * 실제 재생은 불필요 — src 설정 + 로드 시도만 되면 된다.
+ */
+function minimalMp4Bytes(): Uint8Array {
+  // ftyp 박스: size(4) + 'ftyp'(4) + 'isom'(4) + version(4) + 'isom'(4)
+  const box = new Uint8Array(20)
+  // size = 20 (빅엔디언)
+  box[0] = 0x00; box[1] = 0x00; box[2] = 0x00; box[3] = 0x14
+  // 'ftyp'
+  box[4] = 0x66; box[5] = 0x74; box[6] = 0x79; box[7] = 0x70
+  // 'isom'
+  box[8] = 0x69; box[9] = 0x73; box[10] = 0x6f; box[11] = 0x6d
+  // version = 0
+  box[12] = 0x00; box[13] = 0x00; box[14] = 0x00; box[15] = 0x00
+  // compatible brand 'isom'
+  box[16] = 0x69; box[17] = 0x73; box[18] = 0x6f; box[19] = 0x6d
+  return box
+}
+
+/**
+ * MIME 타입에 따라 미리보기에 적합한 최소 바이트 Blob을 생성한다.
+ *
+ * - image/*      → 1×1 투명 PNG 유효 바이트
+ * - application/pdf → 최소 유효 PDF
+ * - video/mp4    → 최소 ftyp 박스
+ * - 그 외        → 기존 'mock-content' 텍스트 (비미리보기 타입, 불변 유지)
+ */
+function buildResponseBlob(contentType: string): Blob {
+  if (contentType.startsWith('image/')) {
+    return new Blob([minimalPngBytes()], { type: contentType })
+  }
+  if (contentType === 'application/pdf') {
+    return new Blob([minimalPdfBytes()], { type: contentType })
+  }
+  if (contentType === 'video/mp4') {
+    return new Blob([minimalMp4Bytes()], { type: contentType })
+  }
+  // 그 외 (zip, text/plain, octet-stream 등) — 기존 동작 유지 (회귀 0)
+  return new Blob(['mock-content'], { type: contentType })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/issues/:key/attachments/:attachmentId — 다운로드
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * 첨부 파일 다운로드 핸들러.
- * 성공 → 200 Blob (최소 1바이트, Content-Disposition: attachment)
+ * 성공 → 200 Blob (미리보기 가능 타입은 유효 최소 바이트, 그 외 mock-content)
  * 미존재 → 404
+ *
+ * FR-AC-02 C4: image/png·jpeg·gif·webp → 1×1 PNG, application/pdf → 최소 PDF,
+ * video/mp4 → ftyp 박스. 비미리보기 타입 경로는 기존과 동일(회귀 0).
  */
 const downloadAttachmentHandler = http.get(
   '/api/v1/issues/:key/attachments/:attachmentId',
@@ -190,7 +280,7 @@ const downloadAttachmentHandler = http.get(
       )
     }
 
-    return new HttpResponse(new Blob(['mock-content'], { type: att.contentType }), {
+    return new HttpResponse(buildResponseBlob(att.contentType), {
       status: 200,
       headers: {
         'Content-Disposition': `attachment; filename="${att.filename}"`,
