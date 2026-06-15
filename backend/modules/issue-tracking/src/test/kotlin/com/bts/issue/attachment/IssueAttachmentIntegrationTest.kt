@@ -7,6 +7,8 @@ import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTe
 import com.bts.issue.attachment.adapter.MinioStorageAdapter
 import com.bts.issue.attachment.adapter.MinioStorageConfig
 import com.bts.issue.attachment.application.IssueAttachmentService
+import com.bts.issue.attachment.application.ScanVerdict
+import com.bts.issue.attachment.application.VirusScanPort
 import com.bts.issue.attachment.repository.AttachmentRepository
 import com.bts.issue.attachment.web.AttachmentExceptionHandler
 import com.bts.issue.attachment.web.IssueAttachmentController
@@ -147,6 +149,16 @@ class IssueAttachmentIntegrationTest {
         @Bean
         open fun attachmentRepository(dsl: DSLContext): AttachmentRepository = AttachmentRepository(dsl)
 
+        /**
+         * stub [VirusScanPort] — 통합테스트에서 항상 CLEAN 반환.
+         * Task 6 담당: 실 Testcontainers clamd 교체 예정.
+         */
+        @Bean
+        open fun virusScanPort(): VirusScanPort =
+            object : VirusScanPort {
+                override fun scan(input: java.io.InputStream): ScanVerdict = ScanVerdict.CLEAN
+            }
+
         /** [IssueAttachmentService] — upload/list/download/delete 유스케이스 서비스. */
         @Bean
         open fun issueAttachmentService(
@@ -154,6 +166,7 @@ class IssueAttachmentIntegrationTest {
             attachmentRepository: AttachmentRepository,
             permissionResolver: IssuePermissionResolver,
             issueRepository: IssueRepository,
+            virusScanPort: VirusScanPort,
             clock: Clock,
         ): IssueAttachmentService =
             IssueAttachmentService(
@@ -161,6 +174,7 @@ class IssueAttachmentIntegrationTest {
                 attachmentRepository = attachmentRepository,
                 permissionResolver = permissionResolver,
                 issueRepository = issueRepository,
+                scanPort = virusScanPort,
                 clock = clock,
             )
 
