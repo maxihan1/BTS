@@ -185,14 +185,15 @@ class IssueAttachmentControllerTest {
     // ── C-3. GET /{id} 다운로드 → 200 ────────────────────────────────────────
 
     /**
-     * C-3. 첨부 다운로드 → 200 + Content-Disposition(attachment) + Content-Type + Content-Length.
+     * C-3. 첨부 다운로드 → 200 + Content-Disposition(attachment) + Content-Type + Content-Length + nosniff.
      *
      * Given  service.download 가 AttachmentDownloadResult 를 반환함
      * When   GET /api/v1/issues/ATLAS-1/attachments/{id}
-     * Then   200, Content-Type=image/png, Content-Length=1024, Content-Disposition contains filename
+     * Then   200, Content-Type=image/png, Content-Length=1024, Content-Disposition contains filename,
+     *        X-Content-Type-Options=nosniff (브라우저 MIME 스니핑 차단 — 미리보기/다운로드 콘텐츠 타입 신뢰 강화)
      */
     @Test
-    fun `GET 다운로드 — 200 plus Content-Disposition plus Content-Type plus Content-Length`() {
+    fun `GET 다운로드 — 200 plus Content-Disposition plus Content-Type plus Content-Length plus nosniff`() {
         val bytes = ByteArray(1024) { 0 }
         every {
             issueAttachmentService.download(ActorId(actorUuid), IssueKey("ATLAS-1"), attachmentId)
@@ -208,6 +209,7 @@ class IssueAttachmentControllerTest {
             .andExpect(header().string("Content-Length", "1024"))
             .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("attachment")))
             .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("filename")))
+            .andExpect(header().string("X-Content-Type-Options", "nosniff"))
     }
 
     /**
