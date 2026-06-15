@@ -62,7 +62,7 @@ class IssueAttachmentService(
     /**
      * 첨부 파일을 업로드한다.
      *
-     * 권한 검증 → 이슈 조회 → storagePort.put → repository.insert 순서로 실행.
+     * 권한 검증 → 타입 검증 → 이슈 조회 → storagePort.put → repository.insert 순서로 실행.
      * insert 실패 시 storagePort.remove 로 고아 객체를 보상 삭제한다.
      *
      * @param actor 업로드를 수행하는 행위자.
@@ -73,6 +73,7 @@ class IssueAttachmentService(
      * @param input 업로드 바이트 스트림. 호출자가 close 책임.
      * @return 저장된 [Attachment] 메타데이터.
      * @throws IssueAccessDeniedException UPDATE 권한 미보유 시.
+     * @throws UnsupportedAttachmentTypeException 허용되지 않은 MIME/확장자 시([AttachmentTypePolicy]).
      * @throws IssueNotFoundException 이슈 미존재 또는 소프트 삭제 시.
      */
     @Suppress("LongParameterList")
@@ -85,6 +86,10 @@ class IssueAttachmentService(
         input: InputStream,
     ): Attachment {
         checkPermission(actor, IssuePermission.UPDATE, issueKey)
+        // 허용 타입 검증 — 권한 확인 직후, MinIO put·DB insert 이전(고아 객체·불필요 I/O 방지).
+        if (!AttachmentTypePolicy.isAllowed(contentType, filename)) {
+            throw UnsupportedAttachmentTypeException(contentType, filename)
+        }
         val issueId = resolveIssueId(issueKey)
         val attachmentId = UUID.randomUUID()
         val storageKey = "issues/$issueId/$attachmentId"

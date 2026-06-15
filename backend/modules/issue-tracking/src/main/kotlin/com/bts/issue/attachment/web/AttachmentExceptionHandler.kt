@@ -2,6 +2,7 @@
 
 package com.bts.issue.attachment.web
 
+import com.bts.issue.attachment.application.UnsupportedAttachmentTypeException
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueNotFoundException
 import org.slf4j.LoggerFactory
@@ -52,6 +53,28 @@ class AttachmentExceptionHandler {
             title = "File Too Large",
             errorCode = "ISSUE_FILE_TOO_LARGE",
             detail = "업로드 파일 크기가 최대 허용 크기를 초과했습니다.",
+        )
+    }
+
+    // ── 415 UNSUPPORTED_MEDIA_TYPE ────────────────────────────────────────────
+
+    /**
+     * 허용되지 않은 첨부 타입 — 415.
+     *
+     * [com.bts.issue.attachment.application.AttachmentTypePolicy] 화이트리스트에 없는 MIME/확장자
+     * 업로드 시 발생한다. 응답 메시지에는 내부 정책 상세를 노출하지 않고 일반 안내만 제공한다.
+     *
+     * @param ex 거부된 contentType/filename 정보를 포함하는 예외.
+     */
+    @ExceptionHandler(UnsupportedAttachmentTypeException::class)
+    fun handleUnsupportedType(ex: UnsupportedAttachmentTypeException): ProblemDetail {
+        log.info("ISSUE_415 unsupported_file_type contentType='{}' filename='{}'", ex.contentType, ex.filename)
+        return problem(
+            status = HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+            type = "unsupported-file-type",
+            title = "Unsupported Media Type",
+            errorCode = "ISSUE_UNSUPPORTED_FILE_TYPE",
+            detail = "허용되지 않은 파일 형식입니다. 이미지·문서·압축·미디어 등 허용된 형식만 업로드할 수 있습니다.",
         )
     }
 
