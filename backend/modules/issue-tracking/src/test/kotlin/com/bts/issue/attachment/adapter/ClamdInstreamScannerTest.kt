@@ -47,8 +47,9 @@ class ClamdInstreamScannerTest : DescribeSpec({
      * @param consumeStream 청크 스트림을 끝까지 소비할지 여부 (기본 true).
      * @param readFramingInto 프레이밍 바이트를 캡처할 가변 리스트 (null 이면 캡처 안 함).
      * @param block 서버가 준비된 뒤 실행할 블록 (포트를 인자로 받음).
+     *
+     * in-JVM 가짜 clamd 소켓 — 청크 소비·캡처 분기가 복잡도를 높여 CyclomaticComplexMethod 억제.
      */
-    // in-JVM 가짜 clamd 소켓 — 청크 소비·캡처 분기가 복잡도를 높이므로 억제
     @Suppress("CyclomaticComplexMethod")
     fun withFakeClam(
         response: ByteArray,
