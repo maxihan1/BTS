@@ -161,6 +161,7 @@ class IssueAttachmentIntegrationTest {
 
         /** [IssueAttachmentService] — upload/list/download/delete 유스케이스 서비스. */
         @Bean
+        @Suppress("LongParameterList") // scanPort 추가로 6개 — 테스트 조립 함수라 분리 불요
         open fun issueAttachmentService(
             storagePort: MinioStorageAdapter,
             attachmentRepository: AttachmentRepository,

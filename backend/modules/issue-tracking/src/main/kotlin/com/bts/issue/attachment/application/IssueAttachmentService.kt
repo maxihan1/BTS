@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service
 import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.time.Clock
 import java.util.UUID
 
@@ -237,7 +238,7 @@ class IssueAttachmentService(
      */
     private fun writeTempFile(input: InputStream): Path {
         val temp = Files.createTempFile("bts-attachment-", ".tmp")
-        Files.copy(input, temp, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        Files.copy(input, temp, StandardCopyOption.REPLACE_EXISTING)
         return temp
     }
 
@@ -263,7 +264,8 @@ class IssueAttachmentService(
     ) {
         val verdict = temp.toFile().inputStream().use { scanPort.scan(it) }
         if (verdict == ScanVerdict.INFECTED) {
-            log.info("바이러스 스캔 탐지 — filename 진단 전용 기록 완료")
+            // filename 값은 HTTP 응답에 노출하지 않는다 — 로그에도 원본값 출력 금지(보안 정책).
+            log.info("바이러스 스캔 결과: INFECTED — 업로드 차단")
             throw AttachmentInfectedException(filename)
         }
     }
