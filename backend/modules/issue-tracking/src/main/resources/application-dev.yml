@@ -29,3 +29,11 @@ spring:
     # PR #10 learning — Flyway 가 ${...} 패턴을 변수로 치환하려 해서 SQL 파싱 오류 발생.
     # placeholder-replacement: false 로 비활성화해 순수 SQL 그대로 실행.
     placeholder-replacement: false
+
+# MinIO 오브젝트 스토리지 — docker-compose.dev.yml 의 minio 서비스 기준 (localhost:9000)
+bts:
+  minio:
+    endpoint: ${BTS_MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${BTS_MINIO_ACCESS_KEY:minioadmin}
+    secret-key: ${BTS_MINIO_SECRET_KEY:minioadmin}
+    bucket: ${BTS_MINIO_BUCKET:bts-attachments}
