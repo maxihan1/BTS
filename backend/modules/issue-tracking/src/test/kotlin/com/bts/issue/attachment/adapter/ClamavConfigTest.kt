@@ -41,12 +41,13 @@ class ClamavConfigTest : DescribeSpec({
     describe("정상 host/port — VirusScanPort 빈 생성") {
         it("유효한 host/port 설정 시 ClamdInstreamScanner 인스턴스가 반환된다") {
             val config = ClamavConfig()
-            val props = ClamavConfig.Properties(
-                host = "127.0.0.1",
-                port = 3310,
-                connectTimeoutMs = 5000,
-                readTimeoutMs = 60_000,
-            )
+            val props =
+                ClamavConfig.Properties(
+                    host = "127.0.0.1",
+                    port = 3310,
+                    connectTimeoutMs = 5000,
+                    readTimeoutMs = 60_000,
+                )
 
             val port: VirusScanPort = config.virusScanPort(props)
 
