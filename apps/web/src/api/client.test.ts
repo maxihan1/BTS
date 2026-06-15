@@ -1,4 +1,4 @@
-// apiFetch / apiPost / apiGet / ApiError 단위 테스트 — msw로 HTTP 가로채기
+// apiFetch / apiPost / apiGet / ApiError 단위 테스트 — msw로 HTTP 가로채기 + FormData 분기 검증
 import { describe, it, expect, afterEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
@@ -204,5 +204,89 @@ describe('apiGet (Zod 파싱)', () => {
     )
 
     await expect(apiGet('/api/v1/test', SimpleSchema)).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+// ─────────────────────────────────────────────
+// Task-1: apiFetch FormData body 분기
+// ─────────────────────────────────────────────
+
+describe('apiFetch — FormData body 분기 (Task-1)', () => {
+  it('T1-A: body가 FormData면 Content-Type 헤더를 자동으로 application/json으로 설정하지 않는다', async () => {
+    let capturedContentType: string | null = 'placeholder'
+
+    server.use(
+      http.post('/api/v1/test-formdata', ({ request }) => {
+        capturedContentType = request.headers.get('content-type')
+        return HttpResponse.json({ ok: true }, { status: 200 })
+      }),
+    )
+
+    const formData = new FormData()
+    formData.append('file', new Blob(['hello'], { type: 'text/plain' }), 'hello.txt')
+
+    await apiFetch('/api/v1/test-formdata', { method: 'POST', body: formData })
+
+    // 브라우저가 'multipart/form-data; boundary=...' 를 자동 설정하도록 위임해야 한다.
+    // application/json 이 들어가면 안 된다.
+    expect(capturedContentType).not.toContain('application/json')
+  })
+
+  it('T1-B: body가 FormData면 JSON.stringify 없이 FormData 원본 그대로 전달된다', async () => {
+    let receivedFormData: FormData | null = null
+
+    server.use(
+      http.post('/api/v1/test-formdata-raw', async ({ request }) => {
+        receivedFormData = await request.formData()
+        return HttpResponse.json({ ok: true }, { status: 200 })
+      }),
+    )
+
+    const formData = new FormData()
+    formData.append('file', new Blob(['world'], { type: 'application/octet-stream' }), 'world.bin')
+    formData.append('meta', 'test-value')
+
+    await apiFetch('/api/v1/test-formdata-raw', { method: 'POST', body: formData })
+
+    // FormData 원본이 그대로 전달됐다면 'meta' 필드를 파싱할 수 있다
+    expect(receivedFormData?.get('meta')).toBe('test-value')
+  })
+
+  it('T1-C: body가 일반 객체(JSON)면 Content-Type: application/json 자동 설정 (기존 동작 불변)', async () => {
+    let capturedContentType: string | null = null
+
+    server.use(
+      http.post('/api/v1/test-json-body', ({ request }) => {
+        capturedContentType = request.headers.get('content-type')
+        return HttpResponse.json({ ok: true }, { status: 200 })
+      }),
+    )
+
+    await apiFetch('/api/v1/test-json-body', { method: 'POST', body: { summary: 'hello' } })
+
+    expect(capturedContentType).toContain('application/json')
+  })
+
+  it('T1-D: FormData body 전송 시 Authorization 헤더는 정상 포함된다 (401 refresh 인프라 불변)', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'fd-test-token',
+      user: { username: 'alice', email: 'alice@example.com', authMethod: 'local', userId: '1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
+    })
+
+    let capturedAuth: string | null = null
+
+    server.use(
+      http.post('/api/v1/test-formdata-auth', ({ request }) => {
+        capturedAuth = request.headers.get('authorization')
+        return HttpResponse.json({ ok: true }, { status: 200 })
+      }),
+    )
+
+    const formData = new FormData()
+    formData.append('file', new Blob(['auth'], { type: 'text/plain' }), 'auth.txt')
+
+    await apiFetch('/api/v1/test-formdata-auth', { method: 'POST', body: formData })
+
+    expect(capturedAuth).toBe('Bearer fd-test-token')
   })
 })
