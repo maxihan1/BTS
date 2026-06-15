@@ -85,18 +85,22 @@ classify 결과. type=backend, agent=backend-engineer, primary_bc=issue-tracking
 - files: [`apps/web/src/components/issue/AttachmentPreviewModal.tsx`, `apps/web/src/components/issue/AttachmentPreviewModal.test.tsx`, `apps/web/src/i18n/attachment-labels.ts`]
 - depends-on: [1]
 
-**RED**: `AttachmentPreviewModal.test.tsx` (`vi.mock('@/api/attachments')`로 `downloadAttachment` → Blob, `vi.stubGlobal('URL', {createObjectURL, revokeObjectURL})` — `download.test.ts` 패턴)
+**RED**: `AttachmentPreviewModal.test.tsx` (`vi.mock('@/api/attachments')`로 `downloadAttachment` → Blob)
+- **objectURL mock(C3)**: `URL` 전체 교체 금지(URL.parse 등 소실). `vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn().mockReturnValue('blob:x'), revokeObjectURL: vi.fn() })` 또는 `Object.defineProperty`(MfaSettings.test 선례)로 **두 메서드만** 교체.
 - image 첨부 + open=true → `<img>` 렌더 (alt=filename)
 - pdf → `<iframe>` 렌더 (sandbox 속성, src=objectURL)
 - video → `<video controls>` 렌더
 - 로딩 중 → 로딩 표시 / 다운로드 reject → 에러 표시
-- 닫기(onOpenChange false) → `revokeObjectURL` 호출 (G4: 언마운트 cleanup도 revoke)
+- 닫기(onOpenChange false) → `revokeObjectURL` 호출
+- **G4/C1 prop 전환**: open=true 유지한 채 `attachment` prop이 바뀌면 → 이전 objectURL `revokeObjectURL` 호출 후 새 blob 로드 (연속 미리보기 누수 차단)
+- 언마운트 → cleanup에서 `revokeObjectURL` 호출
 - 실패: `AttachmentPreviewModal` 없음
 
 **GREEN**: `AttachmentPreviewModal.tsx`
 - `import { Dialog as DialogPrimitive } from 'radix-ui'` (기존 CloneIssueDialog 패턴)
 - props: `{ issueKey, attachment(AttachmentResponse), open, onOpenChange }`
-- `useEffect`(open) → `downloadAttachment` → `URL.createObjectURL(blob)` → state. cleanup에서 `revokeObjectURL`(G4 가드 — 진행 중 닫힘/언마운트 안전)
+- `useEffect` deps=`[open, attachment.id]` → `downloadAttachment` → `URL.createObjectURL(blob)` → state. **cleanup에서 직전 objectURL `revokeObjectURL`**(G4/C1 — open 유지 prop 전환·진행 중 닫힘·언마운트 모두 한 경로로 해제). 진행 중 비동기 완료가 언마운트 후 setState 안 하도록 `ignore` ref 가드.
+- **blob type(C2)**: 별도 type 재지정 안 함(blob.type은 이미 서버 Content-Type). 렌더러는 `previewCategory(attachment.contentType)`로만 선택 — 화이트리스트가 1차 방어, iframe sandbox가 2차. `downloadAttachment` 수정 불요.
 - `previewCategory(attachment.contentType)` 분기: image→`<img>`, pdf→`<iframe sandbox>`, video→`<video controls>`
 - 로딩/에러 상태 UI
 - i18n 라벨 추가(콜론 종결 금지): `previewButton`, `previewTitle(filename)`, `previewLoading`, `previewError`, `previewClose`
@@ -135,10 +139,12 @@ classify 결과. type=backend, agent=backend-engineer, primary_bc=issue-tracking
 - depends-on: [3]
 
 **RED→GREEN** (E2E는 실패→통과 시나리오 기준):
-- MSW download 핸들러(G1) 확장 — 시드 첨부별 Content-Type + 실제 더미 바이트(작은 png/pdf/mp4) 반환. 기존 stateful 시드 패턴(`X-MSW-Seed-Attachment`) 유지
-- `issue-attachment-preview.spec.ts`: S1 이미지 미리보기 모달(`<img>` 표시) / S2 PDF(`<iframe>`) / S3 동영상(`<video>`) / S4 화이트리스트 밖(zip) 버튼 미노출 / S6 다운로드 실패 에러 / S7 Esc 닫기
-- G3: PDF iframe sandbox 실렌더 확인(깨지면 sandbox 완화)
-- 기존 `issue-attachments.spec.ts`(FR-AC-01) 회귀 0 동반 실행
+- MSW download 핸들러(G1) 확장 — 시드 첨부별 Content-Type + 실제 더미 바이트(작은 png/pdf/**mp4**) 반환. 기존 stateful 시드 패턴(`X-MSW-Seed-Attachment`) 유지.
+- **C4 회귀 가드**: 기존 download 핸들러의 단위 테스트 경로(`mock-content` blob 응답)는 **불변**으로 유지. 미리보기용 실바이트는 미리보기 시드 첨부에 한정한 **additive 분기**로 추가 → Task 3 `AttachmentSection.test.tsx` 회귀 0.
+- `issue-attachment-preview.spec.ts`: S1 이미지 미리보기 모달(`<img>` 표시) / S2 PDF(`<iframe>`) / S3 동영상(`<video>`, **video/mp4로 한정 — C6: Playwright Chromium 번들 webm 코덱 불확실, mp4만 사용**) / S4 화이트리스트 밖(zip) 버튼 미노출 / S6 다운로드 실패 에러 / S7 Esc 닫기.
+- **C5 S5 생략 사유**: S5(권한 없는 사용자 403·목록 진입 불가)는 기존 FR-AC-01 `issue-attachments.spec.ts`/권한 E2E가 이미 커버하므로 FR-AC-02 E2E에서 생략.
+- G3: PDF iframe sandbox 실렌더 확인(깨지면 sandbox 완화).
+- 기존 `issue-attachments.spec.ts`(FR-AC-01) 회귀 0 동반 실행.
 
 **검증**: `pnpm --filter web test:e2e issue-attachment-preview` + `pnpm --filter web test:e2e issue-attachments`
 
@@ -151,4 +157,18 @@ classify 결과. type=backend, agent=backend-engineer, primary_bc=issue-tracking
 - 백엔드 변경: 0 (D4/D5 해당 없음 — Maxi D-1 결정)
 - 추가 검증: typecheck, lint, vitest, playwright, `pnpm verify`, package.json diff 0(의존성 추가 없음)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 독립 eng 리뷰 (frontend-engineer, 2026-06-15)
+
+- **BLOCKER: 없음.**
+- **CONCERN 6건 — 전부 반영 완료**.
+  - C1. 연속 미리보기(open 유지+attachment prop 전환) 시 이전 objectURL revoke 누락 → Task 2 RED/GREEN에 `useEffect deps=[open, attachment.id]` + cleanup revoke 명시.
+  - C2. "blob type 재지정으로 위조 차단" 서술 부정확(blob.type=서버 Content-Type) → spec §2 방어층 정확화(1차 화이트리스트 게이팅 + 2차 iframe sandbox), Task 2 GREEN에 type 재지정 안 함 명시.
+  - C3. objectURL mock으로 `URL` 전체 교체 시 URL.parse 등 소실 → Task 2 RED에 `{...URL, createObjectURL, revokeObjectURL}` 부분 교체 가이드(MfaSettings.test 선례).
+  - C4. MSW download 핸들러 변경이 단위 테스트 회귀 유발 위험 → Task 4에 기존 `mock-content` 경로 불변 + 미리보기 시드 한정 additive 분기 명시.
+  - C5. E2E S5(권한) 누락 → Task 4에 "기존 FR-AC-01 권한 E2E가 커버, 생략" 사유 명시.
+  - C6. video/webm Playwright Chromium 코덱 불확실 → S3을 video/mp4로 한정.
+- **잘된 점**. blob type+iframe sandbox 이중 방어층, G4 누수 가드 선제, classify 정정+단일 직렬 wave로 race 위험 최소.
+
+> autoplan 4종 대신 eng 집중 독립 리뷰 1회(메모리 `bts-review-plan-autoplan-overkill`). 보안 민감(인라인 렌더 XSS) 차원이 design보다 핵심이라 eng 관점 채택.

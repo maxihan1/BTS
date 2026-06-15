@@ -29,7 +29,11 @@ PDF      application/pdf
 - **text/html 제외** — 인라인 실행 위험.
 - 판정 기준은 첨부 메타데이터의 `contentType`(서버가 업로드 시 저장, FR-AC-01 `AttachmentResponse.contentType`).
 - 화이트리스트 밖 타입(application/zip, application/octet-stream 등)은 미리보기 버튼을 **렌더하지 않는다** → 기존 다운로드 버튼만.
-- blob URL 생성 시 blob의 `type`을 화이트리스트의 정규 MIME으로 명시 → 위조 콘텐츠(예: HTML을 pdf로 위장)가 의도와 다른 렌더러로 실행되는 것을 차단. PDF `<iframe>`에는 `sandbox`(allow-scripts 미부여) 적용으로 추가 격리.
+
+**방어층 (정확한 모델 — C2 반영)**. 미리보기 blob은 `downloadAttachment()`의 `res.blob()`로 받으며, 이 blob의 `type`은 서버가 내려준 `Content-Type`(= 저장된 `contentType`)을 그대로 반영한다. 따라서 "blob type 재지정으로 위조를 막는다"는 것은 부정확하다 — 실질 방어선은 두 가지다.
+1. **화이트리스트 게이팅(1차)** — 렌더러 선택을 `previewCategory(contentType)`로만 결정. SVG/HTML 등 스크립트 실행 가능 타입은 애초에 미리보기 진입 불가(버튼 미노출).
+2. **렌더러별 격리(2차)** — 이미지는 `<img>`(스크립트 미실행 컨텍스트). PDF는 `<iframe sandbox>`(allow-scripts 미부여)로 격리. 만약 공격자가 HTML을 `contentType=application/pdf`로 위장 업로드해도, 브라우저 내장 PDF 뷰어가 `application/pdf`로 처리하므로 HTML 스크립트가 실행되지 않는다(렌더 실패는 안전한 실패). `<video>`도 디코드 실패 시 안전.
+- G3 주의. `sandbox`가 일부 브라우저 내장 PDF 뷰어를 막을 수 있어 E2E(S2)로 실렌더 확인 후, 깨지면 sandbox를 완화하되 1차 화이트리스트 방어선은 유지한다.
 
 ## 3. 사용자 시나리오 (Given-When-Then)
 
