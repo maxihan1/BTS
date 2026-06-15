@@ -32,9 +32,20 @@ FR-AC-01 — 이슈에 파일 첨부 업로드. 최대 100MB/파일. issue-track
 - 관련 ADR: [docs/adr/2026-06-15-fr-ac-01-attachment-storage.md](../adr/2026-06-15-fr-ac-01-attachment-storage.md) (생성됨)
 
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-15-fr-ac-01-attachment-upload.md](../specs/2026-06-15-fr-ac-01-attachment-upload.md)
+
+핵심 요약.
+- 별도 `IssueAttachmentController` (`/api/v1/issues/{key}/attachments`) — 업로드(POST)/목록(GET)/다운로드(GET {id})/삭제(DELETE {id})
+- 권한: 업로드·삭제=UPDATE(EDIT_ISSUE), 목록·다운로드=VIEW(VIEW_ISSUE+보안등급 게이트). enum 무변경
+- MinIO 서버 경유 스트리밍, 100MB 상한(413), 다운로드 Content-Disposition: attachment
+- V023 `issue_attachments` (UUID PK/FK, 하드 삭제 = deleted_at 없음, FK ON DELETE CASCADE)
+- 신규 의존성 io.minio:minio + testcontainers:minio
+
+## Brainstorming Check
+
+✅ 통과 (직접 sanity check 1회). bucket 보장 정책 누락 발견 → NFR-6 보강. 메모리 함정 사전 반영.
 
 ## Plan (← /bts-plan 채움)
 

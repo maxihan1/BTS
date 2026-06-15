@@ -37,28 +37,45 @@ FR-AC-01 문구는 "업로드"만 명시하나, 업로드만으로는 실사용 
 
 근거. 첨부 한 사이클(올리고/받고/보고/지움)이 완결돼야 production 기준을 충족. 미리보기(인라인 렌더/썸네일)는 별도 관심사라 FR-AC-02로 분리.
 
-### 4. 데이터 모델 — UUID PK/FK, 소프트 삭제
+### 4. 권한 — 기존 IssuePermission 재사용 (enum 무변경)
 
-`issue_attachments` 테이블(Flyway V023). 컬럼은 SDD §05.7 따르되 PK/FK는 `issues`와 정합되게 **UUID**.
+| 동작 | 권한 | 매트릭스 코드 |
+|---|---|---|
+| 업로드 | `IssuePermission.UPDATE` | EDIT_ISSUE |
+| 목록/다운로드 | `IssuePermission.VIEW` | VIEW_ISSUE (+ 보안등급 게이트) |
+| 삭제 | `IssuePermission.UPDATE` | EDIT_ISSUE |
+
+근거(Maxi 확정 2026-06-15). 신규 `ATTACH` enum 추가는 shared-kernel enum + `toCodeOrNull` 매핑 + 권한 코드 시드 마이그레이션 + role_permissions 매트릭스 + `PermissionSchemaMigrationTest` 카운트까지 파급(폭발 반경 큼). 1K 규모 단순화 지향상 "이슈 편집 권한 = 첨부 추가/삭제 권한"으로 충분. 다운로드/목록은 이슈 조회 권한(VIEW)에 귀속 — 이슈를 볼 수 있으면 첨부도 본다(보안등급 게이트 동일 적용).
+
+### 5. 삭제 — 하드 삭제 (DB row + MinIO 객체 즉시 제거)
+
+삭제 요청 시 `issue_attachments` row를 물리 DELETE하고 MinIO 객체도 즉시 제거한다(Maxi 확정 2026-06-15). 따라서 `deleted_at` 컬럼을 두지 않는다.
+
+근거. 첨부는 큰 바이너리라 소프트 삭제로 보존하면 스토리지가 단조 누적된다. 이슈 키(`PROJ-123`)와 달리 첨부는 외부 영구 인용이 약해 보존 가치가 낮다. **domain "DELETE는 소프트 삭제 우선" 규칙의 의도적 deviation** — 첨부 도메인 특성(대용량 바이너리·약한 외부 참조)에 한정. 트랜잭션 순서는 spec에서 확정(DB 커밋 ↔ MinIO 제거 정합).
+
+### 6. 데이터 모델 — UUID PK/FK
+
+`issue_attachments` 테이블(Flyway V023). 컬럼은 SDD §05.7 따르되 PK/FK는 `issues`와 정합되게 **UUID**, 하드 삭제라 `deleted_at` 없음.
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | id | UUID PK | `gen_random_uuid()` |
-| issue_id | UUID FK → issues(id) | 대상 이슈 |
+| issue_id | UUID FK → issues(id) ON DELETE CASCADE | 대상 이슈 |
 | filename | VARCHAR(500) | 원본 파일명 |
 | content_type | VARCHAR(100) | MIME 타입 |
 | size_bytes | BIGINT | 크기(바이트) |
 | storage_key | VARCHAR(500) | MinIO 객체 키 |
 | uploaded_by | UUID | 업로더 사용자 ID |
 | created_at | TIMESTAMPTZ | 업로드 시각 |
-| deleted_at | TIMESTAMPTZ NULL | 소프트 삭제 시각 |
 
-근거. (a) issues PK가 UUID라 FK 정합, (b) domain "DELETE는 소프트 삭제 우선" 규칙 → `deleted_at`. MinIO 객체는 삭제 시 즉시/지연 정리는 spec에서 확정. (c) SDD §05.7의 `uploaded_by`/`size_bytes`/`mime_type`/`storage_key`를 코드 컨벤션(`content_type` 등)으로 매핑.
+근거. (a) issues PK가 UUID라 FK 정합, (b) 이슈가 하드 삭제될 경로는 현재 없으나(SOFT_DELETE만) FK는 무결성상 CASCADE 표기 — 단, 이슈 소프트 삭제 시 첨부 정리는 spec에서 확정, (c) SDD §05.7의 `uploaded_by`/`size_bytes`/`mime_type`/`storage_key`를 코드 컨벤션(`content_type` 등)으로 매핑.
 
 ## Deviation 기록
 
 - SDD §05.7 Attachment 테이블 `id/issue_id BIGINT` → 실제 `UUID`(issues 정합). SDD 표기가 stale.
 - SDD §11에 첨부 API 미정의 → 본 작업에서 신규 설계(spec §API).
+- SDD §12 `ATTACH_FILE` 별도 권한 → 기존 `EDIT_ISSUE`(UPDATE) 재사용으로 대체(Maxi 확정).
+- domain "소프트 삭제 우선" → 첨부는 하드 삭제(대용량 바이너리·약한 외부 참조, Maxi 확정).
 
 ## 결과
 
