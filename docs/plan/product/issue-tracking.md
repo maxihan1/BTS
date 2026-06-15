@@ -315,7 +315,7 @@
 > **구현 deviation (#145, ADR `2026-06-15-fr-ac-01-attachment-storage`, Maxi 확정)**. D4를 Presigned URL → **서버 경유 멀티파트 스트리밍**으로 변경(권한 일원화·고아객체 회피). scope를 업로드만 → **업로드+다운로드+목록+삭제**로 확장(실사용 완결). 삭제=하드삭제(DATA.md §3 동기화). 권한은 신규 권한 대신 `IssuePermission.UPDATE/VIEW` 재사용(enum 무변경). MIME 화이트리스트/ClamAV 바이러스 스캔은 미적용(다운로드 `Content-Disposition: attachment`로 인라인 실행 차단)·후속. 프론트 D6 표기 "react-dropzone + 직접 PUT"은 deviation으로 **네이티브 HTML5 파일선택(의존성0) + 서버경유 멀티파트**로 변경(Maxi 확정 2026-06-15). **전체 완료(백엔드 #145 + 프론트/E2E #146).**
 
 - [x] D1. 도메인 — Attachment (책임. backend-engineer)
-- [~] D2. 명세 — 크기 제한(100MB) 적용 / MIME 화이트리스트·바이러스 스캔(ClamAV)은 미적용·후속 (Content-Disposition: attachment로 인라인 실행 차단) (책임. backend-engineer + security-engineer)
+- [~] D2. 명세 — 크기 제한(100MB) 적용 / **MIME 화이트리스트 적용(#149 — Content-Type+확장자 독립 allowlist, 광범위 화이트리스트, 위반 415)** / 바이러스 스캔(ClamAV)만 미적용·후속 (다운로드 Content-Disposition: attachment + nosniff(#148)로 인라인 실행 차단) (책임. backend-engineer + security-engineer)
 - [x] D3. 데이터 모델 — `issue_attachments(storage_key)` V023 (UUID PK/FK, 하드삭제) (책임. db-engineer)
 - [x] D4. 백엔드 — 서버 경유 스트리밍 `POST/GET/DELETE /api/v1/issues/{key}/attachments` (업로드/다운로드/목록/삭제) (책임. backend-engineer + security-engineer)
 - [x] D5. 백엔드 테스트 — Testcontainers MinIO (책임. backend-engineer)
