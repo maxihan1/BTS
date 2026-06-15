@@ -571,3 +571,36 @@ CREATE EXTENSION IF NOT EXISTS pgmq CASCADE;
 
 -- 큐 생성 — q_transition_events
 SELECT pgmq.create('q_transition_events');
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V023: issue_attachments 테이블 (FR-AC-01 이슈 첨부 파일 메타데이터)
+-- 원본: db/migration/issue-tracking/V023__issue_attachments.sql
+-- jOOQ: IssueAttachments 테이블 + ID/ISSUE_ID/FILENAME/CONTENT_TYPE/SIZE_BYTES/STORAGE_KEY/UPLOADED_BY/CREATED_AT 상수 생성 대상.
+--       이 미러가 빠지면 상수/테이블 미생성 → AttachmentRepository 컴파일 불가 (jooq-init-codegen-mirror).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- 이슈 첨부 파일 메타데이터. 바이너리는 MinIO, 메타만 DB. 첨부는 하드 삭제라 deleted_at 없음 (ADR §5).
+-- issue_id 실 FK + ON DELETE CASCADE (같은 BC). uploaded_by 는 BC 격리로 FK 미적용.
+-- id/issue_id 는 issues.id 가 UUID 라 UUID PK/FK (ADR deviation — SDD §05.7 BIGINT 표기 stale).
+CREATE TABLE issue_attachments (
+    id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    issue_id     UUID         NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+    filename     VARCHAR(500) NOT NULL,
+    content_type VARCHAR(100) NOT NULL,
+    size_bytes   BIGINT       NOT NULL,
+    storage_key  VARCHAR(500) NOT NULL,
+    uploaded_by  UUID         NOT NULL,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+COMMENT ON TABLE  issue_attachments              IS '이슈 첨부 파일 메타데이터. 바이너리는 MinIO, 메타만 DB. 하드 삭제 — deleted_at 없음 (FR-AC-01).';
+COMMENT ON COLUMN issue_attachments.id           IS '첨부 식별자 (UUID). gen_random_uuid() 기본값.';
+COMMENT ON COLUMN issue_attachments.issue_id     IS '대상 이슈 (issues.id). 같은 BC 라 실 FK + ON DELETE CASCADE.';
+COMMENT ON COLUMN issue_attachments.filename     IS '원본 파일명. 다운로드 시 Content-Disposition 에 사용.';
+COMMENT ON COLUMN issue_attachments.content_type IS 'MIME 타입 (예: image/png). 다운로드 시 Content-Type 에 사용.';
+COMMENT ON COLUMN issue_attachments.size_bytes   IS '파일 크기 (바이트). 다운로드 시 Content-Length 에 사용.';
+COMMENT ON COLUMN issue_attachments.storage_key  IS 'MinIO 객체 키. 외부 비노출 (응답 DTO 제외).';
+COMMENT ON COLUMN issue_attachments.uploaded_by  IS '업로더 사용자 ID (identity-access users.id 대응). BC 격리로 FK 미적용.';
+COMMENT ON COLUMN issue_attachments.created_at   IS '업로드 시각. TIMESTAMPTZ (DATA.md §4).';
+
+-- FK 인덱스 (DATA.md §7). issue_id 단독 조회(이슈별 첨부 목록)에 사용.
+CREATE INDEX idx_issue_attachments_issue_id ON issue_attachments(issue_id);

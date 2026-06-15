@@ -167,6 +167,12 @@ dependencies {
     // ArchUnit — 아키텍처 규칙(BC 격리 등) 자동 검증
     testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
 
+    // MinIO Java SDK — 오브젝트 스토리지 첨부파일 저장 (Maxi 승인 2026-06-15, FR-AC-01)
+    implementation("io.minio:minio:8.5.17")
+
+    // Testcontainers MinIO 모듈 — MinioStorageAdapterTest 통합 테스트용
+    testImplementation("org.testcontainers:minio:1.20.3")
+
     // ── Markdown 렌더링 + XSS sanitization ────────────────────────────────────
     // flexmark — Markdown → HTML 변환 (SDD 03-tech-stack 명시)
     implementation("com.vladsch.flexmark:flexmark:0.64.8")
