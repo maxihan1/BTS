@@ -50,18 +50,66 @@ export function seedAttachments(issueKey: string, attachments: AttachmentRespons
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/v1/issues/:key/attachments — 목록 조회
+// GET /api/v1/issues/:key/attachments — 목록 조회 (+ E2E 시드/리셋 지원)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * 이슈 첨부 파일 목록 조회 핸들러.
  * 성공 → 200 { data: AttachmentResponse[] }
  * 이슈 없거나 첨부 없으면 빈 배열 반환 (VIEW 권한 검증은 생략).
+ *
+ * E2E 전용 헤더 지원 (msw-derived-behavior-shared-store-e2e 교훈 반영).
+ *
+ * X-MSW-Reset-Attachments: true
+ *   → 이슈 키의 첨부 목록을 초기화하고 빈 배열 반환.
+ *   → 이슈 키를 생략하면 전체 store 초기화.
+ *
+ * X-MSW-Seed-Attachment: true (+ 부가 헤더)
+ *   → 헤더값으로 첨부 파일 하나를 store에 추가한다.
+ *   X-MSW-Seed-Id:          UUID (필수)
+ *   X-MSW-Seed-Filename:    파일명 (필수)
+ *   X-MSW-Seed-ContentType: MIME 타입 (기본 application/octet-stream)
+ *   X-MSW-Seed-SizeBytes:   바이트 수 (기본 0)
+ *   X-MSW-Seed-UploadedBy:  업로더 UUID (기본 mock UUID)
+ *   X-MSW-Seed-CreatedAt:   ISO 8601 (기본 현재 시각)
  */
 const listAttachmentsHandler = http.get(
   '/api/v1/issues/:key/attachments',
-  ({ params }) => {
+  ({ params, request }) => {
     const issueKey = params['key'] as string
+
+    // E2E 시드 경로 — X-MSW-Seed-Attachment: true
+    if (request.headers.get('X-MSW-Seed-Attachment') === 'true') {
+      const id = request.headers.get('X-MSW-Seed-Id') ?? generateUuidV4()
+      const filename = request.headers.get('X-MSW-Seed-Filename') ?? 'seeded-file'
+      const contentType =
+        request.headers.get('X-MSW-Seed-ContentType') ?? 'application/octet-stream'
+      const sizeBytes = Number(request.headers.get('X-MSW-Seed-SizeBytes') ?? '0')
+      const uploadedBy =
+        request.headers.get('X-MSW-Seed-UploadedBy') ??
+        '00000000-0000-4000-a000-000000000001'
+      const createdAt =
+        request.headers.get('X-MSW-Seed-CreatedAt') ?? new Date().toISOString()
+
+      const seeded: AttachmentResponse = {
+        id,
+        filename,
+        contentType,
+        sizeBytes,
+        uploadedBy,
+        createdAt,
+      }
+      const existing = attachmentStore.get(issueKey) ?? []
+      attachmentStore.set(issueKey, [...existing, seeded])
+      return HttpResponse.json({ data: attachmentStore.get(issueKey) })
+    }
+
+    // E2E 리셋 경로 — X-MSW-Reset-Attachments: true
+    if (request.headers.get('X-MSW-Reset-Attachments') === 'true') {
+      attachmentStore.set(issueKey, [])
+      return HttpResponse.json({ data: [] })
+    }
+
     const list = attachmentStore.get(issueKey) ?? []
     return HttpResponse.json({ data: list })
   },
