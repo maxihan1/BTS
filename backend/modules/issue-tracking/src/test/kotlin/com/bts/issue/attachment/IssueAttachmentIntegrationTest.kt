@@ -280,7 +280,8 @@ class IssueAttachmentIntegrationTest {
     fun `(a) 라운드트립 — 업로드 후 목록 1건 + 다운로드 바이트 동일 + 삭제 204`() {
         val issueKey = insertIssue(PROJECT_A, "라운드트립 검증 이슈")
         val fileBytes = buildTestBytes(size = 512)
-        val file = MockMultipartFile("file", "round-trip.bin", "application/octet-stream", fileBytes)
+        // 허용 타입(image/png + .png) 사용 — MIME 화이트리스트(FR-AC-01 D2) 도입으로 octet-stream/.bin 은 거부됨.
+        val file = MockMultipartFile("file", "round-trip.png", "image/png", fileBytes)
 
         // POST 업로드 → 201
         val uploadResult =
@@ -289,7 +290,7 @@ class IssueAttachmentIntegrationTest {
             )
                 .andExpect(status().isCreated)
                 .andExpect(jsonPath("$.data.id").exists())
-                .andExpect(jsonPath("$.data.filename").value("round-trip.bin"))
+                .andExpect(jsonPath("$.data.filename").value("round-trip.png"))
                 .andExpect(jsonPath("$.data.sizeBytes").value(512))
                 .andReturn()
 
@@ -316,6 +317,33 @@ class IssueAttachmentIntegrationTest {
         // DELETE → 204
         mockMvc.perform(delete("/api/v1/issues/$issueKey/attachments/$attachmentId"))
             .andExpect(status().isNoContent)
+    }
+
+    // ── (a-2) 허용되지 않은 타입 차단 ─────────────────────────────────────────────
+
+    /**
+     * (a-2) 허용되지 않은 MIME/확장자 업로드 → 415 + 저장 안 됨(FR-AC-01 D2).
+     *
+     * Given  이슈 1건
+     * When   POST 업로드 (text/html + .html)
+     * Then   415 ISSUE_UNSUPPORTED_FILE_TYPE
+     * And    목록 0건(DB insert 미발생). 타입 검증이 MinIO put 이전이라 고아 오브젝트도 없음.
+     */
+    @Test
+    fun `(a-2) 허용되지 않은 타입 업로드 — 415 plus 저장 안 됨`() {
+        val issueKey = insertIssue(PROJECT_A, "허용되지 않은 타입 검증 이슈")
+        val file = MockMultipartFile("file", "evil.html", "text/html", "<script>alert(1)</script>".toByteArray())
+
+        mockMvc.perform(
+            multipart("/api/v1/issues/$issueKey/attachments").file(file),
+        )
+            .andExpect(status().isUnsupportedMediaType)
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_UNSUPPORTED_FILE_TYPE"))
+
+        // 저장 안 됨 — 목록 0건(DB insert·MinIO put 모두 미발생)
+        mockMvc.perform(get("/api/v1/issues/$issueKey/attachments"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.length()").value(0))
     }
 
     // ── (b) 삭제 후 부재 ──────────────────────────────────────────────────────────
