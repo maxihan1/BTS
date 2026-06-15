@@ -239,8 +239,20 @@ class IssueAttachmentControllerTest {
      */
     @Test
     fun `POST 파일 크기 초과 — 413 Payload Too Large`() {
+        // MaxUploadSizeExceededException 은 MultipartException 의 서브클래스이다.
+        // 컨트롤러가 MultipartFile? null 체크 전에 Spring 이 예외를 throw하는 상황을 시뮬레이션하기 위해
+        // service.upload 가 아닌 null file 경로로 MultipartException 계열 예외가 핸들러를 타는지 검증한다.
+        // 실제 운영에서 Spring multipart 파서가 크기 초과 시 DispatcherServlet 수준에서 throw한다.
+        // AttachmentExceptionHandler 가 MaxUploadSizeExceededException 을 413 으로 변환함을 단위 검증.
         every {
-            issueAttachmentService.upload(any(), any(), any(), any(), any(), any())
+            issueAttachmentService.upload(
+                actor = ActorId(actorUuid),
+                issueKey = IssueKey("ATLAS-1"),
+                filename = "big.bin",
+                contentType = MediaType.APPLICATION_OCTET_STREAM_VALUE,
+                sizeBytes = 1L,
+                input = any(),
+            )
         } throws MaxUploadSizeExceededException(100L)
 
         val file = MockMultipartFile("file", "big.bin", MediaType.APPLICATION_OCTET_STREAM_VALUE, "x".toByteArray())

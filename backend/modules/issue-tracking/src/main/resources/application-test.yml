@@ -7,6 +7,10 @@
 #   test — data-dev.sql 미로드 (sql.init.mode=never),  Testcontainers 동적 datasource 주입.
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 110MB
   datasource:
     # url/username/password 는 Testcontainers @DynamicPropertySource 가 동적 주입 — 여기서 지정하지 않음.
     driver-class-name: org.postgresql.Driver

@@ -8,6 +8,10 @@
 #   test — data-dev.sql 미로드 (sql.init.mode=never),  Testcontainers 동적 datasource 주입.
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 110MB
   datasource:
     # docker compose 의 postgres 가 host 5432 (Homebrew postgres 흔히 점유) 와 충돌 회피 위해 5433 매핑.
     # identity-access 와 동일 포트 — infra/docker-compose.dev.yml postgres 노출 포트 기준.
