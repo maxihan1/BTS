@@ -1,6 +1,6 @@
 // AttachmentSection 컴포넌트 단위 테스트 — FR-AC-01 D6 Task 4 TDD RED + FR-AC-02 Task 3 미리보기 버튼
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -358,17 +358,21 @@ vi.mock('./AttachmentPreviewModal', () => ({
 describe('AttachmentSection — 미리보기 버튼 게이팅', () => {
   it('image/png 첨부 행에 미리보기 버튼이 렌더된다', async () => {
     // ATTACHMENT_2 는 contentType: 'image/png' (isPreviewable = true)
+    // 단독 목록으로 설정해 중복 버튼 충돌 없이 단언한다
+    vi.mocked(useAttachmentList).mockReturnValue(
+      listStub([ATTACHMENT_2]) as unknown as ReturnType<typeof useAttachmentList>,
+    )
+
     renderSection('ATLAS-1', false)
 
-    // 파일명 행 컨테이너를 기준으로 같은 행의 버튼을 찾는다
     await waitFor(() => {
       expect(screen.getByText('한글파일.png')).toBeInTheDocument()
     })
 
+    // 행 컨테이너(tr) 안에서 미리보기 버튼 확인
+    const row = screen.getByRole('row', { name: /한글파일\.png/ })
     expect(
-      screen.getByRole('button', {
-        name: new RegExp(attachmentLabels.previewButton),
-      }),
+      within(row).getByRole('button', { name: new RegExp(attachmentLabels.previewButton) }),
     ).toBeInTheDocument()
   })
 
@@ -398,7 +402,11 @@ describe('AttachmentSection — 미리보기 버튼 게이팅', () => {
   })
 
   it('미리보기 버튼 클릭 시 모달이 열린다', async () => {
-    // ATTACHMENT_2(image/png)가 포함된 기본 목록 사용
+    // image/png 단독 목록으로 미리보기 버튼 1개만 렌더
+    vi.mocked(useAttachmentList).mockReturnValue(
+      listStub([ATTACHMENT_2]) as unknown as ReturnType<typeof useAttachmentList>,
+    )
+
     const user = userEvent.setup()
     renderSection('ATLAS-1', false)
 

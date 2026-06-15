@@ -1,4 +1,4 @@
-// 이슈 첨부 파일 섹션 컴포넌트 — 업로드(드롭존)/목록/다운로드/삭제 (FR-AC-01 D6)
+// 이슈 첨부 파일 섹션 컴포넌트 — 업로드(드롭존)/목록/다운로드/삭제/미리보기 (FR-AC-01 D6, FR-AC-02 Task 3)
 import type { JSX, DragEvent, ChangeEvent } from 'react'
 import { useState, useRef } from 'react'
 import { toast } from 'sonner'
@@ -7,6 +7,8 @@ import type { AttachmentResponse } from '@/api/attachments'
 import { downloadAttachment, MAX_ATTACHMENT_BYTES } from '@/api/attachments'
 import { triggerBlobDownload } from '@/lib/download'
 import { attachmentLabels } from '@/i18n/attachment-labels'
+import { isPreviewable } from '@/lib/attachment-preview'
+import { AttachmentPreviewModal } from './AttachmentPreviewModal'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 파일 크기 포맷 헬퍼
@@ -77,7 +79,9 @@ interface AttachmentRowProps {
 function AttachmentRow({ attachment, issueKey, canDelete }: AttachmentRowProps): JSX.Element {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
   const { mutate: deleteMutate, isPending: isDeleting } = useDeleteAttachment(issueKey)
+  const canPreview = isPreviewable(attachment.contentType)
 
   async function handleDownload(): Promise<void> {
     setIsDownloading(true)
@@ -125,6 +129,18 @@ function AttachmentRow({ attachment, issueKey, canDelete }: AttachmentRowProps):
       </td>
       <td className="py-2 text-right">
         <div className="flex items-center justify-end gap-1">
+          {/* 미리보기 버튼 — isPreviewable 타입만 표시 */}
+          {canPreview && (
+            <button
+              type="button"
+              onClick={() => { setPreviewOpen(true) }}
+              aria-label={`${attachment.filename} ${attachmentLabels.previewButton}`}
+              className="text-xs text-primary hover:underline focus:outline-none focus:ring-1 focus:ring-ring px-1.5 py-1 min-h-[32px]"
+            >
+              {attachmentLabels.previewButton}
+            </button>
+          )}
+
           {/* 다운로드 버튼 */}
           <button
             type="button"
@@ -178,6 +194,16 @@ function AttachmentRow({ attachment, issueKey, canDelete }: AttachmentRowProps):
           )}
         </div>
       </td>
+
+      {/* 미리보기 모달 — isPreviewable 타입만 마운트 */}
+      {canPreview && (
+        <AttachmentPreviewModal
+          issueKey={issueKey}
+          attachment={attachment}
+          open={previewOpen}
+          onOpenChange={setPreviewOpen}
+        />
+      )}
     </tr>
   )
 }
