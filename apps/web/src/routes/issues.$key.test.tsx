@@ -1721,3 +1721,48 @@ describe('IssueDetailPage — Task 5 (IssueLinksPanel 통합)', () => {
     })
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 5 — AttachmentSection 배선 검증 (FR-AC-01 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDetailPage — AttachmentSection 배선', () => {
+  /**
+   * T-AC-1: 이슈 상세 페이지에 AttachmentSection(첨부 파일 섹션)이 렌더된다.
+   * MSW attachment-handlers의 목록 핸들러가 등록되어 있어야 성공한다.
+   */
+  it('T-AC-1: 이슈 상세 화면에 첨부 파일 섹션이 렌더된다', async () => {
+    setupIssueFoundHandler()
+
+    renderPage('ATLAS-1')
+
+    // 제목 렌더 대기 (이슈 로드 완료 신호)
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    // 첨부 파일 섹션이 존재한다 (aria-label로 식별)
+    expect(screen.getByRole('region', { name: '첨부 파일' })).toBeInTheDocument()
+  })
+
+  /**
+   * T-AC-2: canUpdate 플래그(permissions.UPDATE) 전달 검증.
+   * UPDATE=true → 드롭존(파일 업로드 안내) 표시.
+   */
+  it('T-AC-2: UPDATE 권한이 있으면 드롭존이 표시된다', async () => {
+    setupIssueFoundHandler()
+
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    // 드롭존 — 파일 끌어다 놓거나 클릭 안내 텍스트
+    await waitFor(() => {
+      expect(
+        screen.getByText(/파일을 여기에 끌어다 놓거나 클릭해서 선택하세요/),
+      ).toBeInTheDocument()
+    })
+  })
+})
