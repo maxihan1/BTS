@@ -324,15 +324,17 @@
 
 #### §4.2.2 FR-AC-02 — 첨부 미리보기 (이미지/PDF/동영상)
 
-**우선순위**. 높음 | **선행**. §4.2.1 | **Plan slug**. `issue/attachments-preview`
+**우선순위**. 높음 | **선행**. §4.2.1 | **Plan slug**. `issue/attachments-preview` (실제 `fr-ac-02-preview`)
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — MIME 별 렌더러 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — Presigned GET URL (책임. backend-engineer + security-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — react-pdf + img + video.js (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+> **구현 deviation (#147, Maxi 확정 2026-06-15)**. D4를 Presigned GET URL → **기존 download 엔드포인트 blob 재사용**(`URL.createObjectURL`)으로 변경 → **백엔드 신규 0**(D4/D5 해당 없음). FR-AC-01이 이미 presigned 폐기·서버경유 일관. D6 "react-pdf + video.js"를 **네이티브 HTML5(img/iframe/video) + 의존성 0**으로 변경(FR-AC-01 "의존성 0" 기조, DEVELOPMENT.md §17). 보안=미리보기 MIME 화이트리스트(image 4종+pdf+mp4/webm, SVG/HTML 제외) 1차 + iframe MIME-typed 렌더 2차. **G3**: PDF iframe sandbox 제거(빈 미리보기 회피, 화이트리스트가 1차 방어). **후속**: 다운로드 응답 `X-Content-Type-Options: nosniff` 헤더는 FR-AC-01 백엔드 결함이라 **별도 후속 PR로 분리**(Maxi 확정). **전체 완료(프론트 전용, 백엔드 변경 0).**
+
+- [x] D1. 도메인 — Attachment(FR-AC-01) 재활용, 신규 엔티티 0 (책임. frontend-engineer) — PR #147
+- [x] D2. 명세 — MIME별 렌더러(image→img, pdf→iframe, video→video) + 미리보기 화이트리스트 (책임. frontend-engineer) — PR #147
+- [x] D3. 데이터 모델 — (활용) `issue_attachments.content_type` 읽기, 변경 0 (책임. —) — PR #147
+- [x] D4. 백엔드 — **deviation. 신규 0**(기존 `GET /api/v1/issues/{key}/attachments/{id}` blob 재사용) (책임. —) — PR #147
+- [x] D5. 백엔드 테스트 — **해당 없음**(백엔드 변경 0) (책임. —) — PR #147
+- [x] D6. 프론트 UI — **deviation. 네이티브 HTML5**(img/iframe/video) + radix Dialog 미리보기 모달, objectURL 생명주기 (책임. frontend-engineer) — PR #147
+- [x] D7. E2E — issue-attachment-preview.spec.ts 6시나리오(이미지/PDF/동영상/화이트리스트밖/닫기), MSW 실바이트, FR-AC-01 회귀 0 (책임. qa-engineer) — PR #147
 
 ### §4.3 Watcher (FR-WT, 1개)
 

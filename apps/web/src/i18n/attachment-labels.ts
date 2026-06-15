@@ -93,6 +93,23 @@ export const attachmentLabels = {
 
   /** Megabytes 단위 suffix */
   sizeMB: 'MB',
+
+  // ── 미리보기 모달 (FR-AC-02) ──────────────────────────────────────────────
+
+  /** 미리보기 모달 열기 버튼 */
+  previewButton: '미리보기',
+
+  /** 미리보기 모달 제목 (파일명 포함) */
+  previewTitle: (filename: string) => `${filename} 미리보기`,
+
+  /** 미리보기 로딩 중 안내 텍스트 */
+  previewLoading: '미리보기 불러오는 중',
+
+  /** 미리보기 로드 실패 에러 텍스트 */
+  previewError: '미리보기를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
+
+  /** 미리보기 모달 닫기 버튼 */
+  previewClose: '닫기',
 } as const
 
 /** 라벨 const 추론 타입 */

@@ -1,6 +1,6 @@
-// AttachmentSection 컴포넌트 단위 테스트 — FR-AC-01 D6 Task 4 TDD RED
+// AttachmentSection 컴포넌트 단위 테스트 — FR-AC-01 D6 Task 4 TDD RED + FR-AC-02 Task 3 미리보기 버튼
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -332,6 +332,92 @@ describe('DropZone — 키보드 접근성', () => {
     await user.keyboard(' ')
 
     expect(clickSpy).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (g) 미리보기 버튼 게이팅 + 모달 열림 (FR-AC-02 Task 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// AttachmentPreviewModal을 mock해 실제 Blob 다운로드 없이 모달 열림만 검증한다.
+vi.mock('./AttachmentPreviewModal', () => ({
+  AttachmentPreviewModal: ({
+    open,
+    attachment,
+  }: {
+    open: boolean
+    attachment: { filename: string }
+  }) =>
+    open ? (
+      <div role="dialog" aria-label={`${attachment.filename} 미리보기`}>
+        mock-preview-modal
+      </div>
+    ) : null,
+}))
+
+describe('AttachmentSection — 미리보기 버튼 게이팅', () => {
+  it('image/png 첨부 행에 미리보기 버튼이 렌더된다', async () => {
+    // ATTACHMENT_2 는 contentType: 'image/png' (isPreviewable = true)
+    // 단독 목록으로 설정해 중복 버튼 충돌 없이 단언한다
+    vi.mocked(useAttachmentList).mockReturnValue(
+      listStub([ATTACHMENT_2]) as unknown as ReturnType<typeof useAttachmentList>,
+    )
+
+    renderSection('ATLAS-1', false)
+
+    await waitFor(() => {
+      expect(screen.getByText('한글파일.png')).toBeInTheDocument()
+    })
+
+    // 행 컨테이너(tr) 안에서 미리보기 버튼 확인
+    const row = screen.getByRole('row', { name: /한글파일\.png/ })
+    expect(
+      within(row).getByRole('button', { name: new RegExp(attachmentLabels.previewButton) }),
+    ).toBeInTheDocument()
+  })
+
+  it('application/zip 첨부 행에는 미리보기 버튼이 렌더되지 않는다', async () => {
+    // zip만 단독 목록으로 설정
+    const ZIP_ATTACHMENT = {
+      id: 'aa000000-0000-4000-a000-000000000003',
+      filename: 'archive.zip',
+      contentType: 'application/zip',
+      sizeBytes: 512,
+      uploadedBy: 'bb000000-0000-4000-b000-000000000001',
+      createdAt: '2026-06-15T11:00:00Z',
+    }
+    vi.mocked(useAttachmentList).mockReturnValue(
+      listStub([ZIP_ATTACHMENT]) as unknown as ReturnType<typeof useAttachmentList>,
+    )
+
+    renderSection('ATLAS-1', false)
+
+    await waitFor(() => {
+      expect(screen.getByText('archive.zip')).toBeInTheDocument()
+    })
+
+    expect(
+      screen.queryByRole('button', { name: new RegExp(attachmentLabels.previewButton) }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('미리보기 버튼 클릭 시 모달이 열린다', async () => {
+    // image/png 단독 목록으로 미리보기 버튼 1개만 렌더
+    vi.mocked(useAttachmentList).mockReturnValue(
+      listStub([ATTACHMENT_2]) as unknown as ReturnType<typeof useAttachmentList>,
+    )
+
+    const user = userEvent.setup()
+    renderSection('ATLAS-1', false)
+
+    const previewBtn = await screen.findByRole('button', {
+      name: new RegExp(attachmentLabels.previewButton),
+    })
+    await user.click(previewBtn)
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
   })
 })
 
