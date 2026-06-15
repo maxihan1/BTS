@@ -16,16 +16,19 @@ import org.springframework.util.StringUtils
  * [Properties] 를 통해 `bts.clamav.*` 설정값을 바인딩하고,
  * [VirusScanPort] 빈([ClamdInstreamScanner])을 등록한다.
  *
- * ## host fail-fast
+ * ## host fail-fast (설정 누락 = 부팅 중단)
  *
  * `bts.clamav.host` 가 빈 문자열이면 기동 시점에 [IllegalStateException] 을 던진다.
- * 스캔 설정이 누락된 상태에서 서비스가 기동되어 첨부 업로드 보안 게이트가 무력화되는 것을 방지한다.
- * (런타임 데몬 다운은 별개 — [AttachmentScanUnavailableException] 으로 503 처리한다.)
+ * 스캔 설정이 누락된 채 서비스가 기동되면 첨부 업로드 보안 게이트가 무력화된다.
  *
- * ## fail-closed 원칙
+ * MinIO 의 best-effort bucket 보장 패턴(미가용 시 warn 후 기동 계속)과 의도적으로 다르다.
+ * clamd 는 fail-closed 정책이므로 설정 누락 자체가 보안 갭이며 기동을 허용하지 않는다.
  *
- * MinIO 의 best-effort bucket 보장 패턴(미가용 시 warn 후 기동 계속)과 달리,
- * clamd 설정 누락은 보안 갭이므로 기동 자체를 중단한다.
+ * ## 런타임 데몬 미가용
+ *
+ * 기동 후 데몬이 다운된 경우는 별개 경로다. [ClamdInstreamScanner] 가
+ * [com.bts.issue.attachment.application.AttachmentScanUnavailableException] 을 던지고
+ * ExceptionHandler 가 503 으로 응답한다(Task 4 처리).
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(ClamavConfig.Properties::class)
@@ -36,8 +39,10 @@ class ClamavConfig {
      * ClamAV clamd 접속 설정 바인딩 데이터 클래스.
      *
      * 환경변수 우선순위 (BTS_* prefix, DEVELOPMENT.md §6).
-     * - `BTS_CLAMAV_HOST` → host
-     * - `BTS_CLAMAV_PORT` → port
+     * - `BTS_CLAMAV_HOST` → host (필수, 미설정 시 부팅 fail-fast)
+     * - `BTS_CLAMAV_PORT` → port (선택, 기본 3310)
+     * - `BTS_CLAMAV_CONNECT_TIMEOUT_MS` → connectTimeoutMs
+     * - `BTS_CLAMAV_READ_TIMEOUT_MS` → readTimeoutMs
      *
      * @param host clamd 데몬 호스트 주소 (예: "127.0.0.1" 또는 "clamav").
      * @param port clamd 데몬 포트 (기본 3310).
