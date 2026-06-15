@@ -347,6 +347,324 @@ describe('PostActionConfigSection — 수정/삭제', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PACS-B1: stale 프리필 회귀 테스트
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PostActionConfigSection — B1 stale 프리필 방지', () => {
+  beforeEach(() => {
+    useAuthStore.setState({
+      accessToken: 'token',
+      user: {
+        userId: 'u1',
+        username: 'admin',
+        email: 'admin@bts.local',
+        authMethod: 'local',
+        mustChangePassword: false,
+        isSystemAdmin: true,
+        mfaEnrollmentRequired: false,
+      },
+    })
+  })
+
+  /**
+   * PACS-B1. A행으로 edit dialog를 열었다가 닫은 뒤, B행으로 edit dialog를 열면
+   * B의 url이 프리필되어야 한다 (A의 값이 남으면 안 된다).
+   */
+  it('PACS-B1: A행 edit 후 B행 edit 시 B 값이 프리필된다', async () => {
+    const actionA = {
+      id: '550e8400-e29b-41d4-a716-446655440001',
+      type: 'CALL_WEBHOOK',
+      config: { url: 'https://action-a.example.com/hook', method: 'POST' },
+      displayOrder: 0,
+    }
+    const actionB = {
+      id: '550e8400-e29b-41d4-a716-446655440002',
+      type: 'CALL_WEBHOOK',
+      config: { url: 'https://action-b.example.com/hook', method: 'PUT' },
+      displayOrder: 1,
+    }
+
+    server.use(
+      http.get(BASE_PATH, () => HttpResponse.json({ data: [actionA, actionB] })),
+    )
+
+    renderSection()
+
+    const select = screen.getByRole('combobox')
+    fireEvent.change(select, { target: { value: TX_KEY } })
+
+    await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
+
+    // A행 수정 버튼들 중 첫 번째(A행) 클릭
+    const editBtns = screen.getAllByRole('button', { name: /CALL_WEBHOOK post-action 수정/ })
+    fireEvent.click(editBtns[0])
+
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+
+    // A의 url이 프리필됐는지 확인
+    const urlInputAfterA = screen.getByLabelText(/URL/i) as HTMLInputElement
+    expect(urlInputAfterA.value).toBe('https://action-a.example.com/hook')
+
+    // 취소로 닫음
+    fireEvent.click(screen.getByRole('button', { name: /취소/ }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    // B행 수정 버튼(두 번째) 클릭
+    const editBtnsAfterClose = screen.getAllByRole('button', { name: /CALL_WEBHOOK post-action 수정/ })
+    fireEvent.click(editBtnsAfterClose[1])
+
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+
+    // B의 url이 프리필되어야 함 (A값이 stale하게 남으면 안 됨)
+    const urlInputAfterB = screen.getByLabelText(/URL/i) as HTMLInputElement
+    expect(urlInputAfterB.value).toBe('https://action-b.example.com/hook')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PACS-D1: 전이 미선택 시 Webhook 추가 버튼 disabled
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PostActionConfigSection — D1 전이 미선택 시 추가 버튼 disabled', () => {
+  beforeEach(() => {
+    useAuthStore.setState({
+      accessToken: 'token',
+      user: {
+        userId: 'u1',
+        username: 'admin',
+        email: 'admin@bts.local',
+        authMethod: 'local',
+        mustChangePassword: false,
+        isSystemAdmin: true,
+        mfaEnrollmentRequired: false,
+      },
+    })
+  })
+
+  /**
+   * PACS-D1a. 전이 미선택 상태에서 "Webhook 추가" 버튼이 disabled다.
+   */
+  it('PACS-D1a: 전이 미선택 시 추가 버튼이 disabled다', () => {
+    renderSection()
+
+    const addBtn = screen.getByRole('button', { name: /Webhook 추가/ })
+    expect(addBtn).toBeDisabled()
+  })
+
+  /**
+   * PACS-D1b. 전이 선택 후 "Webhook 추가" 버튼이 enabled된다.
+   */
+  it('PACS-D1b: 전이 선택 후 추가 버튼이 enabled된다', () => {
+    renderSection()
+
+    const select = screen.getByRole('combobox')
+    fireEvent.change(select, { target: { value: TX_KEY } })
+
+    const addBtn = screen.getByRole('button', { name: /Webhook 추가/ })
+    expect(addBtn).not.toBeDisabled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PACS-C1: mutation 에러 시 toast.error 노출
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PostActionConfigSection — C1 mutation 에러 toast', () => {
+  beforeEach(() => {
+    useAuthStore.setState({
+      accessToken: 'token',
+      user: {
+        userId: 'u1',
+        username: 'admin',
+        email: 'admin@bts.local',
+        authMethod: 'local',
+        mustChangePassword: false,
+        isSystemAdmin: true,
+        mfaEnrollmentRequired: false,
+      },
+    })
+  })
+
+  /**
+   * PACS-C1a. add mutation 실패 시 toast.error가 호출된다.
+   */
+  it('PACS-C1a: add mutation 실패 시 toast.error가 호출된다', async () => {
+    const toastError = vi.fn()
+    vi.mock('sonner', () => ({ toast: { error: toastError } }))
+
+    server.use(
+      http.get(BASE_PATH, () => HttpResponse.json({ data: [] })),
+      http.post(BASE_PATH, () =>
+        HttpResponse.json({ error: { code: 'FORBIDDEN' } }, { status: 403 }),
+      ),
+    )
+
+    renderSection()
+
+    const select = screen.getByRole('combobox')
+    fireEvent.change(select, { target: { value: TX_KEY } })
+
+    await waitFor(() => expect(screen.queryByRole('table')).not.toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /Webhook 추가/ }))
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByLabelText(/URL/i), {
+      target: { value: 'https://example.com/webhook' },
+    })
+    fireEvent.change(screen.getByLabelText(/메서드|Method/i), {
+      target: { value: 'POST' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /추가/ }))
+
+    await waitFor(() => expect(toastError).toHaveBeenCalled())
+
+    vi.restoreAllMocks()
+  })
+
+  /**
+   * PACS-C1b. delete mutation 실패 시 toast.error가 호출된다.
+   */
+  it('PACS-C1b: delete mutation 실패 시 toast.error가 호출된다', async () => {
+    const sampleActionForError = {
+      id: '550e8400-e29b-41d4-a716-446655440001',
+      type: 'CALL_WEBHOOK',
+      config: { url: 'https://example.com/hook', method: 'POST' },
+      displayOrder: 0,
+    }
+    const toastError = vi.fn()
+    vi.mock('sonner', () => ({ toast: { error: toastError } }))
+
+    server.use(
+      http.get(BASE_PATH, () => HttpResponse.json({ data: [sampleActionForError] })),
+      http.delete(`${BASE_PATH}/${sampleActionForError.id}`, () =>
+        HttpResponse.json({ error: { code: 'FORBIDDEN' } }, { status: 403 }),
+      ),
+    )
+
+    renderSection()
+
+    const select = screen.getByRole('combobox')
+    fireEvent.change(select, { target: { value: TX_KEY } })
+
+    await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /CALL_WEBHOOK post-action 삭제/ }))
+
+    await waitFor(() => expect(toastError).toHaveBeenCalled())
+
+    vi.restoreAllMocks()
+  })
+
+  /**
+   * PACS-D9. list query 에러 시 에러 UI가 렌더된다.
+   * 에러 문구는 에러 상황임을 알리는 텍스트 — role=alert 또는 특정 문자 패턴.
+   */
+  it('PACS-D9: list query 에러 시 에러 UI가 렌더된다', async () => {
+    server.use(
+      http.get(BASE_PATH, () =>
+        HttpResponse.json({ error: { code: 'INTERNAL_ERROR' } }, { status: 500 }),
+      ),
+    )
+
+    renderSection()
+
+    const select = screen.getByRole('combobox')
+    fireEvent.change(select, { target: { value: TX_KEY } })
+
+    // 에러 UI — role=alert 또는 에러 관련 텍스트 존재
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toBeInTheDocument(),
+    )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PACS-C2: displayOrder 충돌 방지
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PostActionConfigSection — C2 displayOrder 중복 방지', () => {
+  beforeEach(() => {
+    useAuthStore.setState({
+      accessToken: 'token',
+      user: {
+        userId: 'u1',
+        username: 'admin',
+        email: 'admin@bts.local',
+        authMethod: 'local',
+        mustChangePassword: false,
+        isSystemAdmin: true,
+        mfaEnrollmentRequired: false,
+      },
+    })
+  })
+
+  /**
+   * PACS-C2. order [0, 2] 상태(1이 삭제된 상태)에서 추가 시
+   * displayOrder=3이 POST body에 담겨야 한다 (length=2가 아님).
+   */
+  it('PACS-C2: order [0,2] 상태에서 추가 시 displayOrder=3으로 POST된다', async () => {
+    const actionsWithGap = [
+      {
+        id: '550e8400-e29b-41d4-a716-446655440001',
+        type: 'CALL_WEBHOOK',
+        config: { url: 'https://a.example.com', method: 'POST' },
+        displayOrder: 0,
+      },
+      {
+        id: '550e8400-e29b-41d4-a716-446655440003',
+        type: 'CALL_WEBHOOK',
+        config: { url: 'https://c.example.com', method: 'POST' },
+        displayOrder: 2,
+      },
+    ]
+
+    let capturedDisplayOrder: number | undefined
+
+    server.use(
+      http.get(BASE_PATH, () => HttpResponse.json({ data: actionsWithGap })),
+      http.post(BASE_PATH, async ({ request }) => {
+        const body = await request.json() as Record<string, unknown>
+        capturedDisplayOrder = body['displayOrder'] as number
+        return HttpResponse.json(
+          {
+            data: {
+              id: '550e8400-e29b-41d4-a716-446655440099',
+              type: 'CALL_WEBHOOK',
+              config: { url: 'https://new.example.com', method: 'POST' },
+              displayOrder: capturedDisplayOrder,
+            },
+          },
+          { status: 201 },
+        )
+      }),
+    )
+
+    renderSection()
+
+    const select = screen.getByRole('combobox')
+    fireEvent.change(select, { target: { value: TX_KEY } })
+
+    await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /Webhook 추가/ }))
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByLabelText(/URL/i), {
+      target: { value: 'https://new.example.com/webhook' },
+    })
+    fireEvent.change(screen.getByLabelText(/메서드|Method/i), {
+      target: { value: 'POST' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /추가/ }))
+
+    await waitFor(() => expect(capturedDisplayOrder).toBe(3))
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PACS-10: create 모드 onSubmit → mutation 호출
 // ─────────────────────────────────────────────────────────────────────────────
 

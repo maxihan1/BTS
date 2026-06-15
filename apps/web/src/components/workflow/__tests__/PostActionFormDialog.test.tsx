@@ -242,3 +242,78 @@ describe('PostActionFormDialog — 접근성', () => {
     expect(hasLabel).toBe(true)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAFD-D5: 더블서밋 방지
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PostActionFormDialog — D5 더블서밋 방지', () => {
+  /**
+   * PAFD-D5a. submitting=true 시 handleSubmit이 onSubmit을 재호출하지 않는다.
+   */
+  it('PAFD-D5a: submitting=true일 때 저장 버튼 클릭해도 onSubmit이 호출되지 않는다', () => {
+    const onSubmit = vi.fn()
+    render(
+      <PostActionFormDialog
+        {...defaultProps}
+        submitting={true}
+        onSubmit={onSubmit}
+        initialValues={{ url: 'https://example.com/hook', method: 'POST' }}
+      />,
+    )
+
+    const saveBtn = screen.getByRole('button', { name: /처리 중/ })
+    // disabled지만 programmatic click 시도
+    fireEvent.click(saveBtn)
+
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  /**
+   * PAFD-D5b. submitting=true 시 url 입력 필드가 disabled다.
+   */
+  it('PAFD-D5b: submitting=true이면 URL 입력 필드가 disabled다', () => {
+    render(
+      <PostActionFormDialog
+        {...defaultProps}
+        submitting={true}
+        initialValues={{ url: 'https://example.com/hook', method: 'POST' }}
+      />,
+    )
+
+    const urlInput = screen.getByLabelText(/URL/i)
+    expect(urlInput).toBeDisabled()
+  })
+
+  /**
+   * PAFD-D5c. submitting=true 시 메서드 select가 disabled다.
+   */
+  it('PAFD-D5c: submitting=true이면 메서드 select가 disabled다', () => {
+    render(
+      <PostActionFormDialog
+        {...defaultProps}
+        submitting={true}
+        initialValues={{ url: 'https://example.com/hook', method: 'POST' }}
+      />,
+    )
+
+    const methodSelect = screen.getByLabelText(/메서드|Method/i)
+    expect(methodSelect).toBeDisabled()
+  })
+
+  /**
+   * PAFD-D5d. submitting=true 시 취소 버튼이 disabled다.
+   */
+  it('PAFD-D5d: submitting=true이면 취소 버튼이 disabled다', () => {
+    render(
+      <PostActionFormDialog
+        {...defaultProps}
+        submitting={true}
+        initialValues={{ url: 'https://example.com/hook', method: 'POST' }}
+      />,
+    )
+
+    const cancelBtn = screen.getByRole('button', { name: /취소/ })
+    expect(cancelBtn).toBeDisabled()
+  })
+})
