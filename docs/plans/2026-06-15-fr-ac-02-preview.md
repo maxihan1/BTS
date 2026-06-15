@@ -53,4 +53,102 @@ classify 결과. type=backend, agent=backend-engineer, primary_bc=issue-tracking
 
 ## Plan (← /bts-plan 채움)
 
+## Plan
+
+> 전 task frontend(백엔드 변경 0). TDD red→green→refactor 강제. 단위는 `downloadAttachment`를 `vi.mock`으로 Blob 반환(MSW 비의존), E2E(Task 4)만 MSW 실바이트.
+
+### Task 1. 미리보기 화이트리스트 헬퍼 (isPreviewable + previewCategory)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/lib/attachment-preview.ts`, `apps/web/src/lib/attachment-preview.test.ts`]
+- depends-on: []
+
+**RED**: `attachment-preview.test.ts`
+- `isPreviewable('image/png'|'image/jpeg'|'image/gif'|'image/webp'|'application/pdf'|'video/mp4'|'video/webm')` === true (7종)
+- `isPreviewable('image/svg+xml'|'text/html'|'application/zip'|'application/octet-stream')` === false
+- `previewCategory('image/png')` === `'image'`, `previewCategory('application/pdf')` === `'pdf'`, `previewCategory('video/mp4')` === `'video'`, 비화이트리스트 === `null`
+- 실패: `attachment-preview` 모듈 없음
+
+**GREEN**: `attachment-preview.ts`
+- `PREVIEWABLE_MIME` 맵(MIME → category) `as const` 단일 출처
+- `isPreviewable(contentType): boolean`, `previewCategory(contentType): 'image'|'pdf'|'video'|null`
+
+**REFACTOR**: 파일 L1 한국어 헤더 주석, JSDoc, 카테고리 타입 export(`PreviewCategory`)
+
+**검증**: `pnpm --filter web test attachment-preview`
+
+### Task 2. AttachmentPreviewModal 컴포넌트 + i18n 라벨
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/issue/AttachmentPreviewModal.tsx`, `apps/web/src/components/issue/AttachmentPreviewModal.test.tsx`, `apps/web/src/i18n/attachment-labels.ts`]
+- depends-on: [1]
+
+**RED**: `AttachmentPreviewModal.test.tsx` (`vi.mock('@/api/attachments')`로 `downloadAttachment` → Blob, `vi.stubGlobal('URL', {createObjectURL, revokeObjectURL})` — `download.test.ts` 패턴)
+- image 첨부 + open=true → `<img>` 렌더 (alt=filename)
+- pdf → `<iframe>` 렌더 (sandbox 속성, src=objectURL)
+- video → `<video controls>` 렌더
+- 로딩 중 → 로딩 표시 / 다운로드 reject → 에러 표시
+- 닫기(onOpenChange false) → `revokeObjectURL` 호출 (G4: 언마운트 cleanup도 revoke)
+- 실패: `AttachmentPreviewModal` 없음
+
+**GREEN**: `AttachmentPreviewModal.tsx`
+- `import { Dialog as DialogPrimitive } from 'radix-ui'` (기존 CloneIssueDialog 패턴)
+- props: `{ issueKey, attachment(AttachmentResponse), open, onOpenChange }`
+- `useEffect`(open) → `downloadAttachment` → `URL.createObjectURL(blob)` → state. cleanup에서 `revokeObjectURL`(G4 가드 — 진행 중 닫힘/언마운트 안전)
+- `previewCategory(attachment.contentType)` 분기: image→`<img>`, pdf→`<iframe sandbox>`, video→`<video controls>`
+- 로딩/에러 상태 UI
+- i18n 라벨 추가(콜론 종결 금지): `previewButton`, `previewTitle(filename)`, `previewLoading`, `previewError`, `previewClose`
+
+**REFACTOR**: 파일 L1 한국어 헤더, JSDoc, blob type 명시(`new Blob([buf],{type})` 불요 — fetch blob이 이미 Content-Type 보유, 단 안전상 category 기준 렌더만)
+
+**검증**: `pnpm --filter web test AttachmentPreviewModal` + `pnpm --filter web test ko` (콜론 검증)
+
+### Task 3. AttachmentSection/Row 미리보기 버튼 통합
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/issue/AttachmentSection.tsx`, `apps/web/src/components/issue/AttachmentSection.test.tsx`]
+- depends-on: [1, 2]
+
+**RED**: `AttachmentSection.test.tsx`
+- image/png 첨부 행 → "미리보기" 버튼 렌더
+- application/zip 첨부 행 → "미리보기" 버튼 미렌더 (다운로드만)
+- 미리보기 버튼 클릭 → 모달 open (selected attachment 전달)
+- 기존 업로드/다운로드/삭제 테스트 회귀 0
+
+**GREEN**: `AttachmentSection.tsx`
+- `AttachmentRow`에 `isPreviewable(attachment.contentType)` 게이팅 "미리보기" 버튼 추가
+- 미리보기 모달 open 상태 + selected attachment state(섹션 또는 행 수준), `AttachmentPreviewModal` 배선
+- 기존 다운로드/삭제 버튼·레이아웃 보존
+
+**REFACTOR**: 버튼 그룹 정리, aria-label(파일명 포함)
+
+**검증**: `pnpm --filter web test AttachmentSection`
+
+### Task 4. E2E + MSW 바이트 서빙 확장
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/src/mocks/attachment-handlers.ts`, `apps/web/e2e/issue-attachment-preview.spec.ts`]
+- depends-on: [3]
+
+**RED→GREEN** (E2E는 실패→통과 시나리오 기준):
+- MSW download 핸들러(G1) 확장 — 시드 첨부별 Content-Type + 실제 더미 바이트(작은 png/pdf/mp4) 반환. 기존 stateful 시드 패턴(`X-MSW-Seed-Attachment`) 유지
+- `issue-attachment-preview.spec.ts`: S1 이미지 미리보기 모달(`<img>` 표시) / S2 PDF(`<iframe>`) / S3 동영상(`<video>`) / S4 화이트리스트 밖(zip) 버튼 미노출 / S6 다운로드 실패 에러 / S7 Esc 닫기
+- G3: PDF iframe sandbox 실렌더 확인(깨지면 sandbox 완화)
+- 기존 `issue-attachments.spec.ts`(FR-AC-01) 회귀 0 동반 실행
+
+**검증**: `pnpm --filter web test:e2e issue-attachment-preview` + `pnpm --filter web test:e2e issue-attachments`
+
+## Plan 메타
+
+- task 수: 4 (전 TDD 사이클)
+- 의존성 체인: 1 → 2 → 3 → 4 (대부분 직렬, frontend 단일 영역). 예상 wave 4
+- 예상 시간: 약 12~16분
+- TDD 강제: yes (단위 red→green, E2E 시나리오)
+- 백엔드 변경: 0 (D4/D5 해당 없음 — Maxi D-1 결정)
+- 추가 검증: typecheck, lint, vitest, playwright, `pnpm verify`, package.json diff 0(의존성 추가 없음)
+
 ## 리뷰 결과 (← /bts-review-plan 채움)
