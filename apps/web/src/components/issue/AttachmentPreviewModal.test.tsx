@@ -1,6 +1,5 @@
 // AttachmentPreviewModal 단위 테스트 — 렌더/revoke/prop 전환/cleanup 검증
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { AttachmentResponse } from '@/api/attachments'
 import { AttachmentPreviewModal } from './AttachmentPreviewModal'
@@ -171,17 +170,33 @@ describe('TC-4: 로딩/에러 상태', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('TC-5: 닫기 시 revoke', () => {
-  it('닫기 버튼 클릭 시 revokeObjectURL이 호출된다', async () => {
-    const user = userEvent.setup()
-    const onOpenChange = vi.fn()
+  it('open을 false로 전환하면 revokeObjectURL이 호출된다', async () => {
+    // 닫기 버튼은 Radix DialogPrimitive.Close → onOpenChange(false) 호출
+    // 테스트에서 실제 open prop 변경이 이뤄져야 useEffect cleanup이 실행된다
+    const attachment = makeAttachment()
+    const { rerender } = render(
+      <AttachmentPreviewModal
+        issueKey="ATLAS-1"
+        attachment={attachment}
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
 
-    renderModal({ onOpenChange })
-
-    // blob URL이 생성될 때까지 대기
+    // blob URL 생성 완료 대기
     await screen.findByRole('img', { name: 'test-image.png' })
+    expect(createSpy).toHaveBeenCalledOnce()
+    expect(revokeSpy).not.toHaveBeenCalled()
 
-    const closeButton = screen.getByRole('button', { name: '닫기' })
-    await user.click(closeButton)
+    // open=false로 rerender → useEffect cleanup 실행
+    rerender(
+      <AttachmentPreviewModal
+        issueKey="ATLAS-1"
+        attachment={attachment}
+        open={false}
+        onOpenChange={vi.fn()}
+      />,
+    )
 
     expect(revokeSpy).toHaveBeenCalledWith('blob:mock')
   })
