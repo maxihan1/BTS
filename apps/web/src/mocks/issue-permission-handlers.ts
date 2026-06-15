@@ -8,6 +8,24 @@ import {
 import { AUTH_USERS } from './auth-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// E2E 전용 localStorage 플래그
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * E2E 테스트 전용 localStorage 플래그 키 — 이 키가 'true'이면 UPDATE:false를 반환한다.
+ *
+ * 권한 없는 사용자(읽기 전용) 시나리오를 검증할 때 사용한다.
+ * Playwright addInitScript 로 goto 전에 플래그를 설정하면 첫 권한 fetch 시점부터
+ * UPDATE:false 가 반환된다. dev/test 빌드 전용(production 미포함).
+ *
+ * 사용 예:
+ *   await page.addInitScript((key) => {
+ *     window.localStorage.setItem(key, 'true')
+ *   }, E2E_FORCE_READONLY_ISSUE_KEY)
+ */
+export const E2E_FORCE_READONLY_ISSUE_KEY = '__bts_e2e_force_readonly_issue'
+
+// ─────────────────────────────────────────────────────────────────────────────
 // username → 권한 매핑
 //
 // project-member-fixtures.ts 기준.
@@ -76,6 +94,14 @@ const getIssuePermissionsHandler = http.get(
         { error: 'issueKey_required' },
         { status: 400 },
       )
+    }
+
+    // E2E 전용: localStorage 플래그가 'true'이면 UPDATE:false 반환 (읽기 전용 게이팅 검증용)
+    if (globalThis.localStorage?.getItem(E2E_FORCE_READONLY_ISSUE_KEY) === 'true') {
+      return HttpResponse.json({
+        issueKey,
+        permissions: { UPDATE: false, SOFT_DELETE: false, TRANSITION: false },
+      })
     }
 
     const permissions = PERMISSION_BY_USERNAME[username] ?? {

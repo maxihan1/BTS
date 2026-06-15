@@ -83,10 +83,14 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}): Pro
   // 절대 URL이면 그대로, 아니면 base URL 앞에 붙임
   const url = path.startsWith('http://') || path.startsWith('https://') ? path : `${getBaseUrl()}${path}`
 
+  // FormData면 브라우저가 multipart/form-data; boundary=... 를 자동 설정하므로
+  // Content-Type 수동 설정을 건너뛰고 직렬화도 생략한다.
+  const isFormData = body instanceof FormData
+
   const buildHeaders = (token: string | null): Headers => {
     const headers = new Headers(extraHeaders)
-    // body가 있고 Content-Type이 아직 미설정인 경우에만 자동 추가
-    if (body !== undefined && !headers.has('content-type')) {
+    // body가 있고 FormData가 아닌 경우에만 Content-Type: application/json 자동 추가
+    if (body !== undefined && !isFormData && !headers.has('content-type')) {
       headers.set('Content-Type', 'application/json')
     }
     // accessToken이 있을 때만 Authorization 헤더 추가
@@ -99,7 +103,8 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}): Pro
   const fetchOptions = {
     method,
     credentials: 'include' as const,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    // FormData면 그대로 전달, 일반 body면 JSON.stringify
+    body: body !== undefined ? (isFormData ? body : JSON.stringify(body)) : undefined,
   }
 
   const res = await fetch(url, { ...fetchOptions, headers: buildHeaders(useAuthStore.getState().accessToken) })

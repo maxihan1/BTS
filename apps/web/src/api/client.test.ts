@@ -1,4 +1,4 @@
-// apiFetch / apiPost / apiGet / ApiError 단위 테스트 — msw로 HTTP 가로채기
+// apiFetch / apiPost / apiGet / ApiError 단위 테스트 — msw로 HTTP 가로채기 + FormData 분기 검증
 import { describe, it, expect, afterEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
@@ -205,4 +205,152 @@ describe('apiGet (Zod 파싱)', () => {
 
     await expect(apiGet('/api/v1/test', SimpleSchema)).rejects.toBeInstanceOf(ApiError)
   })
+})
+
+// ─────────────────────────────────────────────
+// Task-1: apiFetch FormData body 분기
+// ─────────────────────────────────────────────
+
+describe('apiFetch — FormData body 분기 (Task-1)', () => {
+  it('T1-A: body가 FormData면 Content-Type 헤더를 자동으로 application/json으로 설정하지 않는다', async () => {
+    let capturedContentType: string | null = 'placeholder'
+
+    server.use(
+      http.post('/api/v1/test-formdata', ({ request }) => {
+        capturedContentType = request.headers.get('content-type')
+        return HttpResponse.json({ ok: true }, { status: 200 })
+      }),
+    )
+
+    const formData = new FormData()
+    formData.append('file', new Blob(['hello'], { type: 'text/plain' }), 'hello.txt')
+
+    await apiFetch('/api/v1/test-formdata', { method: 'POST', body: formData })
+
+    // 브라우저가 'multipart/form-data; boundary=...' 를 자동 설정하도록 위임해야 한다.
+    // application/json 이 들어가면 안 된다.
+    expect(capturedContentType).not.toContain('application/json')
+  })
+
+  it('T1-B: body가 FormData면 JSON.stringify 없이 FormData 원본 그대로 전달된다', async () => {
+    let receivedMetaValue: FormDataEntryValue | null = null
+
+    server.use(
+      http.post('/api/v1/test-formdata-raw', async ({ request }) => {
+        const fd = await request.formData()
+        // msw formData() 반환 타입이 환경에 따라 다를 수 있으므로 즉시 get으로 추출
+        receivedMetaValue = fd.get('meta')
+        return HttpResponse.json({ ok: true }, { status: 200 })
+      }),
+    )
+
+    const formData = new FormData()
+    formData.append('file', new Blob(['world'], { type: 'application/octet-stream' }), 'world.bin')
+    formData.append('meta', 'test-value')
+
+    await apiFetch('/api/v1/test-formdata-raw', { method: 'POST', body: formData })
+
+    // FormData 원본이 그대로 전달됐다면 'meta' 필드를 파싱할 수 있다
+    expect(receivedMetaValue).toBe('test-value')
+  })
+
+  it('T1-C: body가 일반 객체(JSON)면 Content-Type: application/json 자동 설정 (기존 동작 불변)', async () => {
+    let capturedContentType: string | null = null
+
+    server.use(
+      http.post('/api/v1/test-json-body', ({ request }) => {
+        capturedContentType = request.headers.get('content-type')
+        return HttpResponse.json({ ok: true }, { status: 200 })
+      }),
+    )
+
+    await apiFetch('/api/v1/test-json-body', { method: 'POST', body: { summary: 'hello' } })
+
+    expect(capturedContentType).toContain('application/json')
+  })
+
+  it('T1-D: FormData body 전송 시 Authorization 헤더는 정상 포함된다 (401 refresh 인프라 불변)', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'fd-test-token',
+      user: { username: 'alice', email: 'alice@example.com', authMethod: 'local', userId: '1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
+    })
+
+    let capturedAuth: string | null = null
+
+    server.use(
+      http.post('/api/v1/test-formdata-auth', ({ request }) => {
+        capturedAuth = request.headers.get('authorization')
+        return HttpResponse.json({ ok: true }, { status: 200 })
+      }),
+    )
+
+    const formData = new FormData()
+    formData.append('file', new Blob(['auth'], { type: 'text/plain' }), 'auth.txt')
+
+    await apiFetch('/api/v1/test-formdata-auth', { method: 'POST', body: formData })
+
+    expect(capturedAuth).toBe('Bearer fd-test-token')
+  })
+
+  it(
+    'T1-E: 401 → refresh → retry 시 FormData body가 그대로 전송된다 (ReadableStream으로 교체 시 회귀 가드)',
+    async () => {
+      // 초기 토큰을 stale-token으로 세팅
+      useAuthStore.getState().setSession({
+        accessToken: 'stale-token',
+        user: { username: 'alice', email: 'alice@example.com', authMethod: 'local', userId: '1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
+      })
+
+      // 수집 배열: 1차(401) 요청, 2차(retry) 요청의 Content-Type 및 formData
+      const capturedRequests: Array<{ auth: string | null; contentType: string | null; metaValue: string | null }> = []
+
+      server.use(
+        // /refresh 엔드포인트 — 새 토큰 반환
+        http.post('/api/v1/auth/refresh', () =>
+          HttpResponse.json({ access_token: 'fresh-token' }),
+        ),
+        http.post('/api/v1/test-formdata-retry', async ({ request }) => {
+          const auth = request.headers.get('authorization')
+          const contentType = request.headers.get('content-type')
+          let metaValue: string | null = null
+          try {
+            // FormData 파싱 시도 (multipart면 성공, JSON이면 실패)
+            const fd = await request.formData()
+            metaValue = fd.get('meta') as string | null
+          } catch {
+            metaValue = null
+          }
+          capturedRequests.push({ auth, contentType, metaValue })
+
+          // 첫 번째 요청만 401 반환, 이후는 200
+          if (capturedRequests.length === 1) {
+            return new HttpResponse(null, { status: 401 })
+          }
+          return HttpResponse.json({ ok: true }, { status: 200 })
+        }),
+      )
+
+      const formData = new FormData()
+      formData.append('file', new Blob(['data'], { type: 'application/octet-stream' }), 'data.bin')
+      formData.append('meta', 'retry-guard-value')
+
+      await apiFetch('/api/v1/test-formdata-retry', { method: 'POST', body: formData })
+
+      // 요청이 정확히 2회 발생해야 한다 (1차 401 + retry)
+      expect(capturedRequests).toHaveLength(2)
+
+      // retry(2차) 요청 검증
+      const retryRequest = capturedRequests[1]
+      expect(retryRequest).toBeDefined()
+
+      // FormData가 그대로 전송됐다면 meta 필드를 파싱할 수 있어야 한다
+      expect(retryRequest!.metaValue).toBe('retry-guard-value')
+
+      // Content-Type은 application/json이 아니어야 한다 (FormData → multipart/form-data)
+      expect(retryRequest!.contentType).not.toContain('application/json')
+
+      // refresh 후 새 토큰으로 Authorization이 갱신되어야 한다
+      expect(retryRequest!.auth).toBe('Bearer fresh-token')
+    },
+  )
 })
