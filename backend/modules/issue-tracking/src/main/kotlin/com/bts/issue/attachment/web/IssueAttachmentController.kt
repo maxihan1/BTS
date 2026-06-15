@@ -150,6 +150,9 @@ class IssueAttachmentController(
             .header(HttpHeaders.CONTENT_TYPE, attachment.contentType)
             .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition.toString())
             .header(HttpHeaders.CONTENT_LENGTH, attachment.sizeBytes.toString())
+            // 브라우저 MIME 스니핑 차단 — 저장된 contentType을 무시하고 다른 타입으로 해석하는 것을 막아
+            // 미리보기(FR-AC-02)·다운로드의 콘텐츠 타입 신뢰를 보장한다.
+            .header("X-Content-Type-Options", "nosniff")
             .body(InputStreamResource(result.stream))
     }
 
