@@ -147,9 +147,15 @@ const listStub = (data = [ATTACHMENT_1, ATTACHMENT_2]) => ({
 // ─────────────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
-  vi.mocked(useAttachmentList).mockReturnValue(listStub() as ReturnType<typeof useAttachmentList>)
-  vi.mocked(useUploadAttachment).mockReturnValue(uploadStub() as ReturnType<typeof useUploadAttachment>)
-  vi.mocked(useDeleteAttachment).mockReturnValue(deleteStub() as ReturnType<typeof useDeleteAttachment>)
+  vi.mocked(useAttachmentList).mockReturnValue(
+    listStub() as unknown as ReturnType<typeof useAttachmentList>,
+  )
+  vi.mocked(useUploadAttachment).mockReturnValue(
+    uploadStub() as unknown as ReturnType<typeof useUploadAttachment>,
+  )
+  vi.mocked(useDeleteAttachment).mockReturnValue(
+    deleteStub() as unknown as ReturnType<typeof useDeleteAttachment>,
+  )
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -192,7 +198,9 @@ describe('AttachmentSection — 목록 렌더', () => {
 
 describe('AttachmentSection — 빈 상태', () => {
   it('첨부 없으면 빈 상태 메시지를 표시한다', async () => {
-    vi.mocked(useAttachmentList).mockReturnValue(listStub([]) as ReturnType<typeof useAttachmentList>)
+    vi.mocked(useAttachmentList).mockReturnValue(
+      listStub([]) as unknown as ReturnType<typeof useAttachmentList>,
+    )
     renderSection('ATLAS-1', true)
     await waitFor(() => {
       expect(screen.getByText(attachmentLabels.emptyState)).toBeInTheDocument()
@@ -233,7 +241,7 @@ describe('AttachmentSection — 삭제 인라인 확인', () => {
     vi.mocked(useDeleteAttachment).mockReturnValue({
       ...deleteStub(),
       mutate: mockMutate,
-    } as ReturnType<typeof useDeleteAttachment>)
+    } as unknown as ReturnType<typeof useDeleteAttachment>)
 
     const user = userEvent.setup()
     renderSection('ATLAS-1', true)
@@ -261,7 +269,7 @@ describe('AttachmentSection — 삭제 인라인 확인', () => {
     vi.mocked(useDeleteAttachment).mockReturnValue({
       ...deleteStub(),
       mutate: mockMutate,
-    } as ReturnType<typeof useDeleteAttachment>)
+    } as unknown as ReturnType<typeof useDeleteAttachment>)
 
     const user = userEvent.setup()
     renderSection('ATLAS-1', true)
@@ -291,7 +299,7 @@ describe('AttachmentSection — 100MB 초과 파일 사전 검증', () => {
     vi.mocked(useUploadAttachment).mockReturnValue({
       ...uploadStub(),
       mutate: mockMutate,
-    } as ReturnType<typeof useUploadAttachment>)
+    } as unknown as ReturnType<typeof useUploadAttachment>)
 
     const user = userEvent.setup()
     renderSection('ATLAS-1', true)

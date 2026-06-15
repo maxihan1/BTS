@@ -30,6 +30,7 @@ import { IssueChangelog } from '@/components/issue/IssueChangelog'
 import { IssueLinksPanel } from '@/components/issue/IssueLinksPanel'
 import { LinkGraph } from '@/components/issue/LinkGraph'
 import { IssueDescription } from '@/components/issue/IssueDescription'
+import { AttachmentSection } from '@/components/issue/AttachmentSection'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
 import { ResolutionModal } from '@/components/issue/ResolutionModal'
@@ -602,6 +603,9 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
               noneditableFields={issue.noneditableFields}
             />
           </div>
+
+          {/* 첨부 파일 섹션 — IssueDescription 하단 (FR-AC-01 D6) */}
+          <AttachmentSection issueKey={issue.key} canUpdate={canEdit} />
         </main>
 
         {/* 우측 메타패널 + 삭제 확인 UI */}
