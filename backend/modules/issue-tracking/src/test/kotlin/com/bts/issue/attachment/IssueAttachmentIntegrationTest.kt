@@ -150,8 +150,9 @@ class IssueAttachmentIntegrationTest {
         open fun attachmentRepository(dsl: DSLContext): AttachmentRepository = AttachmentRepository(dsl)
 
         /**
-         * stub [VirusScanPort] — 통합테스트에서 항상 CLEAN 반환.
-         * Task 6 담당: 실 Testcontainers clamd 교체 예정.
+         * stub [VirusScanPort] — 업로드 end-to-end 플로우를 스캔 로직과 격리하기 위해 항상 CLEAN 반환한다.
+         * 실 clamd 와의 INSTREAM 상호작용(clean/EICAR)은 [ClamdInstreamScannerIntegrationTest] 가
+         * Testcontainers clamd 로 별도 검증한다(분리가 최종 설계 — 여기서 무거운 clamd 컨테이너를 띄우지 않는다).
          */
         @Bean
         open fun virusScanPort(): VirusScanPort =

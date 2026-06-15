@@ -130,7 +130,11 @@ class IssueAttachmentService(
         val temp = writeTempFile(input)
         try {
             scanAndGuard(temp, filename)
-            storagePort.put(storageKey, temp.toFile().inputStream(), sizeBytes, contentType)
+            // 임시파일 스트림을 use 로 즉시 닫는다 — MinIO SDK 는 입력 스트림을 close 하지 않으므로
+            // 여기서 닫지 않으면 FD 누수 + finally 의 임시파일 삭제가 (Windows 등) 열린 핸들로 실패한다.
+            temp.toFile().inputStream().use { stream ->
+                storagePort.put(storageKey, stream, sizeBytes, contentType)
+            }
             try {
                 attachmentRepository.insert(attachment)
             } catch (e: Exception) {

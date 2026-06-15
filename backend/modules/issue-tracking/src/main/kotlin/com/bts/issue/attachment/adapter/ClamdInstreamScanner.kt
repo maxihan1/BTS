@@ -8,6 +8,7 @@ import com.bts.issue.attachment.application.VirusScanPort
 import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.io.InputStream
+import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.ByteBuffer
@@ -74,16 +75,7 @@ class ClamdInstreamScanner(
                 out.flush()
 
                 // 2. 청크 단위로 파일 내용 전송
-                val buffer = ByteArray(CHUNK_SIZE)
-                val lenBuf = ByteBuffer.allocate(LEN_FIELD_SIZE).order(ByteOrder.BIG_ENDIAN)
-                var bytesRead = input.read(buffer)
-                while (bytesRead > 0) {
-                    lenBuf.clear()
-                    lenBuf.putInt(bytesRead)
-                    out.write(lenBuf.array())
-                    out.write(buffer, 0, bytesRead)
-                    bytesRead = input.read(buffer)
-                }
+                streamChunks(input, out)
 
                 // 3. 길이 0 종결자 송신
                 out.write(TERMINATOR)
@@ -102,6 +94,30 @@ class ClamdInstreamScanner(
         } catch (ex: Exception) {
             log.warn("clamd 스캔 중 예상치 못한 오류 — host={} port={}", host, port, ex)
             throw AttachmentScanUnavailableException("clamd 스캔 오류: ${ex.message}", ex)
+        }
+    }
+
+    /**
+     * 입력 스트림을 INSTREAM 청크(`<4바이트 big-endian 길이><데이터>`)로 [out] 에 전송한다.
+     *
+     * EOF(-1)까지 읽는다. read()가 0 을 반환해도(비표준 스트림) 루프를 끝내지 않고 계속 읽어,
+     * 스트림이 잘린 채 전송돼 뒷부분이 미스캔(fail-open)되는 것을 막는다.
+     */
+    private fun streamChunks(
+        input: InputStream,
+        out: OutputStream,
+    ) {
+        val buffer = ByteArray(CHUNK_SIZE)
+        val lenBuf = ByteBuffer.allocate(LEN_FIELD_SIZE).order(ByteOrder.BIG_ENDIAN)
+        var bytesRead = input.read(buffer)
+        while (bytesRead != -1) {
+            if (bytesRead > 0) {
+                lenBuf.clear()
+                lenBuf.putInt(bytesRead)
+                out.write(lenBuf.array())
+                out.write(buffer, 0, bytesRead)
+            }
+            bytesRead = input.read(buffer)
         }
     }
 
