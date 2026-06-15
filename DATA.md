@@ -41,7 +41,7 @@ AIG의 "자금 손실 5원칙"과 동일 패턴. 위반 시 즉시 PR BLOCKER.
 
 ### 적용 대상
 
-- `issues`, `comments`, `attachments`, `projects`, `users` — 모두 `deleted_at TIMESTAMPTZ NULL`
+- `issues`, `comments`, `projects`, `users` — 모두 `deleted_at TIMESTAMPTZ NULL`
 - jOOQ 기본 쿼리는 `deleted_at IS NULL` 필터 자동 첨부 (`SoftDeleteFilter` 래퍼)
 
 ### 하드 삭제 허용 영역 (예외)
@@ -49,6 +49,7 @@ AIG의 "자금 손실 5원칙"과 동일 패턴. 위반 시 즉시 PR BLOCKER.
 - **세션/임시 토큰** (`sessions`, `refresh_tokens`) — TTL 만료 후 GC
 - **알림** (`notifications`) — 사용자가 읽고 30일 경과 시 삭제 가능
 - **감사 로그 (`audit_logs`)** — 절대 삭제 금지 (소프트도 안 함, append-only)
+- **첨부** (`issue_attachments`) — 삭제 시 DB row + MinIO 객체 즉시 제거. 대용량 바이너리(스토리지 누적 회피) + 이슈 키와 달리 외부 영구 인용이 약해 보존 가치 낮음. `deleted_at` 컬럼 없음. ADR `2026-06-15-fr-ac-01-attachment-storage` (FR-AC-01, Maxi 확정)
 
 ### 영구 삭제 (GDPR 등 법적 요청)
 

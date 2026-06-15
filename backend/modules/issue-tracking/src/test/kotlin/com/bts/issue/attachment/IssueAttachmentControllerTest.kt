@@ -210,6 +210,24 @@ class IssueAttachmentControllerTest {
             .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("filename")))
     }
 
+    /**
+     * C-3b. MinIO I/O 실패 → 500 + BC 표준 errorCode (catch-all 핸들러 검증).
+     *
+     * Given  service.download 가 MinioStorageException 을 던짐
+     * When   GET /api/v1/issues/ATLAS-1/attachments/{id}
+     * Then   500 + errorCode=ISSUE_INTERNAL_ERROR (Spring 기본 /error 가 아닌 ProblemDetail 포맷)
+     */
+    @Test
+    fun `GET 다운로드 — MinIO 실패 시 500 plus 표준 errorCode`() {
+        every {
+            issueAttachmentService.download(ActorId(actorUuid), IssueKey("ATLAS-1"), attachmentId)
+        } throws MinioStorageException("오브젝트 다운로드 실패", RuntimeException("boom"))
+
+        mockMvc.perform(get("/api/v1/issues/ATLAS-1/attachments/$attachmentId"))
+            .andExpect(status().isInternalServerError)
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_INTERNAL_ERROR"))
+    }
+
     // ── C-4. DELETE → 204 ────────────────────────────────────────────────────
 
     /**

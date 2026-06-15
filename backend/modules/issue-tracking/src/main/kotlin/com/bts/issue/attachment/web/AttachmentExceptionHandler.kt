@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.multipart.MaxUploadSizeExceededException
 import org.springframework.web.multipart.MultipartException
+import org.springframework.web.server.ResponseStatusException
 import java.net.URI
 import java.time.Instant
 
@@ -117,6 +118,35 @@ class AttachmentExceptionHandler {
             title = "Access Denied",
             errorCode = "ISSUE_ACCESS_DENIED",
             detail = "이 작업을 수행할 권한이 없습니다.",
+        )
+    }
+
+    // ── 500 INTERNAL_ERROR (fallback) ─────────────────────────────────────────
+
+    /**
+     * 분류되지 않은 모든 예외 — 500.
+     *
+     * MinIO I/O 실패([com.bts.issue.attachment.MinioStorageException]) 등이 여기로 떨어진다.
+     * 형제 핸들러(IssueTemplateExceptionHandler)와 동일하게 BC 표준 ProblemDetail 포맷으로 변환해
+     * Spring Boot 기본 `/error` 포맷으로 새는 것을 막는다.
+     *
+     * [ResponseStatusException](예: [com.bts.issue.web.CurrentActor] 미인증 401)은 Spring 이
+     * 처리하도록 re-throw 한다(401/403 이 500 으로 변질되는 것을 방지).
+     *
+     * @param ex 처리되지 않은 예외.
+     */
+    @ExceptionHandler(Exception::class)
+    fun handleInternalError(ex: Exception): ProblemDetail {
+        if (ex is ResponseStatusException) {
+            throw ex
+        }
+        log.error("ISSUE_ATTACHMENT_500 internal_error", ex)
+        return problem(
+            status = HttpStatus.INTERNAL_SERVER_ERROR,
+            type = "attachment-internal-error",
+            title = "Internal Server Error",
+            errorCode = "ISSUE_INTERNAL_ERROR",
+            detail = "서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
         )
     }
 
