@@ -1,0 +1,311 @@
+// 이슈 첨부 파일 REST 컨트롤러 MockMvc 슬라이스 테스트
+
+package com.bts.issue.attachment
+
+import com.bts.issue.adapter.inbound.rest.CurrentActor
+import com.bts.issue.attachment.application.AttachmentDownloadResult
+import com.bts.issue.attachment.application.IssueAttachmentService
+import com.bts.issue.attachment.domain.Attachment
+import com.bts.issue.attachment.web.AttachmentExceptionHandler
+import com.bts.issue.attachment.web.IssueAttachmentController
+import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.IssueAccessDeniedException
+import com.bts.issue.domain.IssueKey
+import com.bts.issue.domain.IssueNotFoundException
+import io.mockk.clearMocks
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.ExtendWith
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+import org.springframework.http.MediaType
+import org.springframework.mock.web.MockMultipartFile
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.authority.SimpleGrantedAuthority
+import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.test.context.ContextConfiguration
+import org.springframework.test.context.junit.jupiter.SpringExtension
+import org.springframework.test.context.web.WebAppConfiguration
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import org.springframework.web.context.WebApplicationContext
+import org.springframework.web.multipart.MaxUploadSizeExceededException
+import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import java.io.ByteArrayInputStream
+import java.time.Instant
+import java.util.UUID
+
+/**
+ * IssueAttachmentController MockMvc 슬라이스 테스트.
+ *
+ * [IssueAttachmentService] 는 MockK stub으로 대체한다.
+ * [AttachmentExceptionHandler] 를 컨텍스트에 등록하여 예외→HTTP 변환을 검증한다.
+ *
+ * 테스트 케이스.
+ * - C-1. POST multipart → 201 Created + Location 헤더 + body.data.id
+ * - C-2. GET 목록 → 200 OK + body.data 배열
+ * - C-3. GET /{id} 다운로드 → 200 + Content-Disposition(attachment) + Content-Type + Content-Length
+ * - C-4. DELETE /{id} → 204 No Content
+ * - C-5. 413: MaxUploadSizeExceededException → 413
+ * - C-6. 400: file part 누락 → 400 (MultipartException)
+ * - C-7. IssueNotFoundException → 404
+ * - C-8. IssueAccessDeniedException → 403
+ */
+@ExtendWith(SpringExtension::class)
+@ContextConfiguration(classes = [IssueAttachmentControllerTest.TestMvcConfig::class])
+@WebAppConfiguration
+class IssueAttachmentControllerTest {
+
+    /**
+     * 테스트 전용 Spring MVC 최소 컨텍스트.
+     *
+     * [IssueAttachmentController], [AttachmentExceptionHandler], MockK stub Bean 을 등록한다.
+     */
+    @Configuration
+    @EnableWebMvc
+    open class TestMvcConfig {
+        @Bean
+        open fun issueAttachmentService(): IssueAttachmentService = mockk(relaxed = true)
+
+        @Bean
+        open fun issueAttachmentController(service: IssueAttachmentService): IssueAttachmentController =
+            IssueAttachmentController(service)
+
+        @Bean
+        open fun attachmentExceptionHandler(): AttachmentExceptionHandler = AttachmentExceptionHandler()
+    }
+
+    @Autowired
+    lateinit var webApplicationContext: WebApplicationContext
+
+    @Autowired
+    lateinit var issueAttachmentService: IssueAttachmentService
+
+    lateinit var mockMvc: MockMvc
+
+    private val actorUuid = UUID.fromString("11111111-1111-4111-8111-111111111111")
+    private val attachmentId = UUID.fromString("22222222-2222-4222-8222-222222222222")
+    private val issueId = UUID.fromString("33333333-3333-4333-8333-333333333333")
+    private val fixedNow: Instant = Instant.parse("2026-06-15T00:00:00Z")
+
+    private val sampleAttachment = Attachment(
+        id = attachmentId,
+        issueId = issueId,
+        filename = "테스트파일.png",
+        contentType = "image/png",
+        sizeBytes = 1024L,
+        storageKey = "issues/$issueId/$attachmentId",
+        uploadedBy = actorUuid,
+        createdAt = fixedNow,
+    )
+
+    @BeforeEach
+    fun setUp() {
+        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+        SecurityContextHolder.getContext().authentication =
+            UsernamePasswordAuthenticationToken(
+                actorUuid.toString(),
+                null,
+                listOf(SimpleGrantedAuthority("ROLE_USER")),
+            )
+    }
+
+    @AfterEach
+    fun tearDown() {
+        clearMocks(issueAttachmentService)
+        SecurityContextHolder.clearContext()
+    }
+
+    // ── C-1. POST multipart → 201 ─────────────────────────────────────────────
+
+    /**
+     * C-1. 유효한 multipart 파일 업로드 → 201 Created + Location + body.
+     *
+     * Given  service.upload 가 sampleAttachment 를 반환함
+     * When   POST /api/v1/issues/ATLAS-1/attachments (multipart file=image.png)
+     * Then   201, Location: /api/v1/issues/ATLAS-1/attachments/{id}, body.data.id 포함
+     */
+    @Test
+    fun `POST multipart 업로드 — 201 Created plus Location plus body`() {
+        every {
+            issueAttachmentService.upload(
+                actor = ActorId(actorUuid),
+                issueKey = IssueKey("ATLAS-1"),
+                filename = "image.png",
+                contentType = "image/png",
+                sizeBytes = 4L,
+                input = any(),
+            )
+        } returns sampleAttachment
+
+        val file = MockMultipartFile("file", "image.png", "image/png", "data".toByteArray())
+
+        mockMvc.perform(
+            multipart("/api/v1/issues/ATLAS-1/attachments").file(file),
+        )
+            .andExpect(status().isCreated)
+            .andExpect(header().string("Location", "/api/v1/issues/ATLAS-1/attachments/$attachmentId"))
+            .andExpect(jsonPath("$.data.id").value(attachmentId.toString()))
+            .andExpect(jsonPath("$.data.filename").value("테스트파일.png"))
+    }
+
+    // ── C-2. GET 목록 → 200 ──────────────────────────────────────────────────
+
+    /**
+     * C-2. 첨부 목록 조회 → 200 OK + body.data 배열.
+     *
+     * Given  service.list 가 [sampleAttachment] 를 반환함
+     * When   GET /api/v1/issues/ATLAS-1/attachments
+     * Then   200 OK, body.data 배열에 항목 1건
+     */
+    @Test
+    fun `GET 목록 — 200 OK plus data 배열`() {
+        every {
+            issueAttachmentService.list(ActorId(actorUuid), IssueKey("ATLAS-1"))
+        } returns listOf(sampleAttachment)
+
+        mockMvc.perform(get("/api/v1/issues/ATLAS-1/attachments"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data").isArray)
+            .andExpect(jsonPath("$.data[0].id").value(attachmentId.toString()))
+    }
+
+    // ── C-3. GET /{id} 다운로드 → 200 ────────────────────────────────────────
+
+    /**
+     * C-3. 첨부 다운로드 → 200 + Content-Disposition(attachment) + Content-Type + Content-Length.
+     *
+     * Given  service.download 가 AttachmentDownloadResult 를 반환함
+     * When   GET /api/v1/issues/ATLAS-1/attachments/{id}
+     * Then   200, Content-Type=image/png, Content-Length=1024, Content-Disposition contains filename
+     */
+    @Test
+    fun `GET 다운로드 — 200 plus Content-Disposition plus Content-Type plus Content-Length`() {
+        val bytes = ByteArray(1024) { 0 }
+        every {
+            issueAttachmentService.download(ActorId(actorUuid), IssueKey("ATLAS-1"), attachmentId)
+        } returns AttachmentDownloadResult(
+            attachment = sampleAttachment,
+            stream = ByteArrayInputStream(bytes),
+        )
+
+        mockMvc.perform(get("/api/v1/issues/ATLAS-1/attachments/$attachmentId"))
+            .andExpect(status().isOk)
+            .andExpect(content().contentType("image/png"))
+            .andExpect(header().string("Content-Length", "1024"))
+            .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("attachment")))
+            .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("filename")))
+    }
+
+    // ── C-4. DELETE → 204 ────────────────────────────────────────────────────
+
+    /**
+     * C-4. 첨부 삭제 → 204 No Content.
+     *
+     * Given  service.delete 가 정상 반환
+     * When   DELETE /api/v1/issues/ATLAS-1/attachments/{id}
+     * Then   204 No Content
+     */
+    @Test
+    fun `DELETE — 204 No Content`() {
+        every { issueAttachmentService.delete(ActorId(actorUuid), IssueKey("ATLAS-1"), attachmentId) } returns Unit
+
+        mockMvc.perform(delete("/api/v1/issues/ATLAS-1/attachments/$attachmentId"))
+            .andExpect(status().isNoContent)
+
+        verify(exactly = 1) { issueAttachmentService.delete(ActorId(actorUuid), IssueKey("ATLAS-1"), attachmentId) }
+    }
+
+    // ── C-5. 413 MaxUploadSizeExceededException ───────────────────────────────
+
+    /**
+     * C-5. 최대 업로드 크기 초과 → 413 Payload Too Large.
+     *
+     * Given  service.upload 가 MaxUploadSizeExceededException 을 throw
+     * When   POST /api/v1/issues/ATLAS-1/attachments
+     * Then   413
+     */
+    @Test
+    fun `POST 파일 크기 초과 — 413 Payload Too Large`() {
+        every {
+            issueAttachmentService.upload(any(), any(), any(), any(), any(), any())
+        } throws MaxUploadSizeExceededException(100L)
+
+        val file = MockMultipartFile("file", "big.bin", MediaType.APPLICATION_OCTET_STREAM_VALUE, "x".toByteArray())
+
+        mockMvc.perform(
+            multipart("/api/v1/issues/ATLAS-1/attachments").file(file),
+        )
+            .andExpect(status().isPayloadTooLarge)
+    }
+
+    // ── C-6. 400 file part 누락 ───────────────────────────────────────────────
+
+    /**
+     * C-6. file part 없이 요청 → 400 Bad Request.
+     *
+     * When   POST /api/v1/issues/ATLAS-1/attachments (multipart 없이 일반 POST)
+     * Then   400
+     */
+    @Test
+    fun `POST file part 누락 — 400 Bad Request`() {
+        mockMvc.perform(
+            multipart("/api/v1/issues/ATLAS-1/attachments"),
+        )
+            .andExpect(status().isBadRequest)
+    }
+
+    // ── C-7. 404 IssueNotFoundException ──────────────────────────────────────
+
+    /**
+     * C-7. service 가 IssueNotFoundException → 404 Not Found.
+     *
+     * Given  service.list 가 IssueNotFoundException 을 throw
+     * When   GET /api/v1/issues/ATLAS-99/attachments
+     * Then   404
+     */
+    @Test
+    fun `GET 이슈 미존재 — 404 Not Found`() {
+        every {
+            issueAttachmentService.list(any(), IssueKey("ATLAS-99"))
+        } throws IssueNotFoundException(IssueKey("ATLAS-99"))
+
+        mockMvc.perform(get("/api/v1/issues/ATLAS-99/attachments"))
+            .andExpect(status().isNotFound)
+    }
+
+    // ── C-8. 403 IssueAccessDeniedException ──────────────────────────────────
+
+    /**
+     * C-8. service 가 IssueAccessDeniedException → 403 Forbidden.
+     *
+     * Given  service.list 가 IssueAccessDeniedException 을 throw
+     * When   GET /api/v1/issues/ATLAS-1/attachments
+     * Then   403
+     */
+    @Test
+    fun `GET 권한 없음 — 403 Forbidden`() {
+        every {
+            issueAttachmentService.list(any(), IssueKey("ATLAS-1"))
+        } throws IssueAccessDeniedException(
+            actor = ActorId(actorUuid),
+            permission = com.bts.shared.permission.IssuePermission.VIEW,
+            scope = com.bts.shared.permission.IssueScope.Issue("ATLAS-1"),
+        )
+
+        mockMvc.perform(get("/api/v1/issues/ATLAS-1/attachments"))
+            .andExpect(status().isForbidden)
+    }
+}
