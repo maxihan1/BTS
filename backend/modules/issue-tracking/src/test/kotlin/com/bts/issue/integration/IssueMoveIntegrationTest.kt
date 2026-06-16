@@ -102,7 +102,6 @@ import java.util.UUID
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Suppress("LongMethod", "TooManyFunctions")
 class IssueMoveIntegrationTest {
-
     /**
      * Thread-local 기반 스위처블 권한 resolver.
      *
@@ -116,7 +115,9 @@ class IssueMoveIntegrationTest {
         private val denyCreateProject = ThreadLocal<String?>()
 
         fun denyUpdateForProject(projectKey: String) = denyUpdateProject.set(projectKey)
+
         fun denyCreateForProject(projectKey: String) = denyCreateProject.set(projectKey)
+
         fun resetPermissions() {
             denyUpdateProject.remove()
             denyCreateProject.remove()
@@ -127,11 +128,10 @@ class IssueMoveIntegrationTest {
             permission: IssuePermission,
             scope: IssueScope,
         ): Boolean {
-            if (scope is IssueScope.Project) {
-                if (permission == IssuePermission.UPDATE && scope.key == denyUpdateProject.get()) return false
-                if (permission == IssuePermission.CREATE && scope.key == denyCreateProject.get()) return false
-            }
-            return true
+            if (scope !is IssueScope.Project) return true
+            val deniedUpdate = permission == IssuePermission.UPDATE && scope.key == denyUpdateProject.get()
+            val deniedCreate = permission == IssuePermission.CREATE && scope.key == denyCreateProject.get()
+            return !(deniedUpdate || deniedCreate)
         }
     }
 
@@ -146,7 +146,6 @@ class IssueMoveIntegrationTest {
     @Configuration
     @Suppress("LongParameterList")
     open class IssueMoveConfig {
-
         /**
          * 권한 거부 모드를 Thread-local로 제어하는 테스트 전용 resolver.
          * @Primary로 TestConfig의 AlwaysAllowIssuePermissionResolver를 대체한다.
@@ -156,28 +155,25 @@ class IssueMoveIntegrationTest {
         open fun switchablePermissionResolver(): SwitchablePermissionResolver = SwitchablePermissionResolver()
 
         @Bean
-        open fun issueKeyRedirectRepository(dsl: DSLContext): IssueKeyRedirectRepository =
-            IssueKeyRedirectRepository(dsl)
+        open fun issueKeyRedirectRepository(dsl: DSLContext): IssueKeyRedirectRepository {
+            return IssueKeyRedirectRepository(dsl)
+        }
 
         @Bean
-        open fun moveComponentRepository(dsl: DSLContext): ComponentRepository =
-            ComponentRepository(dsl)
+        open fun moveComponentRepository(dsl: DSLContext): ComponentRepository = ComponentRepository(dsl)
 
         @Bean
-        open fun moveVersionRepository(dsl: DSLContext): VersionRepository =
-            VersionRepository(dsl)
+        open fun moveVersionRepository(dsl: DSLContext): VersionRepository = VersionRepository(dsl)
 
         @Bean
-        open fun moveProjectLeadRepository(dsl: DSLContext): ProjectLeadRepository =
-            ProjectLeadRepository(dsl)
+        open fun moveProjectLeadRepository(dsl: DSLContext): ProjectLeadRepository = ProjectLeadRepository(dsl)
 
         @Bean
         open fun moveCustomFieldDefinitionRepository(dsl: DSLContext): CustomFieldDefinitionRepository =
             CustomFieldDefinitionRepository(dsl)
 
         @Bean
-        open fun moveIssueWatcherRepository(dsl: DSLContext): IssueWatcherRepository =
-            IssueWatcherRepository(dsl)
+        open fun moveIssueWatcherRepository(dsl: DSLContext): IssueWatcherRepository = IssueWatcherRepository(dsl)
 
         /**
          * IssueApplicationService를 @Primary로 교체하여 IssueKeyRedirectRepository를 주입받는다.
@@ -223,9 +219,8 @@ class IssueMoveIntegrationTest {
             )
 
         @Bean
-        open fun workflowStateCatalogImpl(
-            workflowResolver: WorkflowResolverImpl,
-        ): WorkflowStateCatalogImpl = WorkflowStateCatalogImpl(workflowResolver)
+        open fun workflowStateCatalogImpl(workflowResolver: WorkflowResolverImpl): WorkflowStateCatalogImpl =
+            WorkflowStateCatalogImpl(workflowResolver)
 
         @Bean
         open fun issueMoveHistoryRecorder(): IssueHistoryRecorder = mockk(relaxed = true)
@@ -397,14 +392,20 @@ class IssueMoveIntegrationTest {
                 conn.prepareStatement(
                     "SELECT COUNT(*) FROM issue_key_redirects WHERE old_key = '$SRC_KEY-1' AND new_key = '$DST_KEY-1'",
                 ).use { ps ->
-                    ps.executeQuery().use { rs -> rs.next(); rs.getLong(1) }
+                    ps.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getLong(1)
+                    }
                 }
             assert(redirectCount == 1L) { "issue_key_redirects 에 행이 없음" }
 
             // 원본 키 소멸
             val srcCount =
                 conn.prepareStatement("SELECT COUNT(*) FROM issues WHERE key = '$SRC_KEY-1'").use { ps ->
-                    ps.executeQuery().use { rs -> rs.next(); rs.getLong(1) }
+                    ps.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getLong(1)
+                    }
                 }
             assert(srcCount == 0L) { "이동 후에도 원본 키 MVSRC-1이 남아 있음" }
         }
@@ -641,7 +642,7 @@ class IssueMoveIntegrationTest {
      * TestConfig.seedWorkflowsAndSchemes()가 같은 컨테이너에 시드하는 경우 ON CONFLICT 멱등.
      * 아직 시드되지 않은 경우를 대비해 IssueCloneIntegrationTest 패턴처럼 fallback 시드도 수행한다.
      */
-    @Suppress("LongMethod")
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun seedProjects() {
         getConnection().use { conn ->
             conn.autoCommit = false
@@ -737,7 +738,10 @@ class IssueMoveIntegrationTest {
                 )
             }
 
-            // software-scheme default mapping → software-default workflow (ON CONFLICT 멱등)
+            // software-scheme default mapping → software-default workflow (멱등)
+            // ix_scheme_default_mapping은 (scheme_id) WHERE issue_type_id IS NULL partial UNIQUE INDEX이므로
+            // ON CONFLICT ON CONSTRAINT uq_scheme_issue_type으로는 NULL 중복을 막지 못한다.
+            // WHERE NOT EXISTS로 이미 삽입된 경우 skip한다.
             conn.createStatement().use { stmt ->
                 stmt.execute(
                     """
@@ -745,7 +749,10 @@ class IssueMoveIntegrationTest {
                     SELECT s.id, NULL, '$wfId'
                     FROM workflow_schemes s
                     WHERE s.key = 'software-scheme'
-                    ON CONFLICT ON CONSTRAINT uq_scheme_issue_type DO NOTHING
+                      AND NOT EXISTS (
+                        SELECT 1 FROM workflow_scheme_issue_type_mappings m
+                        WHERE m.scheme_id = s.id AND m.issue_type_id IS NULL
+                      )
                     """.trimIndent(),
                 )
             }
