@@ -51,6 +51,64 @@ classify 결과. type=qa로 오판정(E2E 키워드) → ui로 교정(본체는 
 
 ✅ 통과 (1회). gap 1건(자동 watcher 라이브 갱신 FR-7) 보강 완료.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 선례. API/훅=`api/issue-links.ts`, MSW=`mocks/issue-link-handlers.ts`, E2E=`e2e/issue-links.spec.ts`. invalidate-only(setQueryData 금지·플리커 회피). 현재 userId=`useAuthUser().userId`.
+
+### Task 1. issue-watchers API 모듈 + React Query 훅
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/issue-watchers.ts`, `apps/web/src/api/issue-watchers.test.ts`]
+- depends-on: []
+
+**RED**: `issue-watchers.test.ts` — (1) `fetchWatchers(key)`가 `DataResponse` 언래핑 후 `{watchers:[{userId,displayName}],count,isWatching}` 반환, (2) `addWatcher(key)` POST 본문없음 → 201 통과, (3) `removeWatcher(key,userId)` DELETE `/{userId}` → 204, (4) `extractWatcherErrorCode`가 ApiError body에서 code 추출. `issue-links.test.ts`의 fetch mock 패턴 그대로.
+**GREEN**: `issue-watchers.ts` — `dataResponseSchema(watcherListResponseSchema)` Zod 미러(백엔드 DTO 1:1), `fetchWatchers/addWatcher/removeWatcher`, `issueWatchersKey(key)=['issue-watchers',key,'list']`, 훅 `useWatchers/useAddWatcher/useRemoveWatcher`(mutation onSettled→invalidate `issueWatchersKey`), `ISSUE_WATCHER_ERROR_CODES`+`extractWatcherErrorCode`. CSRF는 issue-links 선례 따름(apiFetch 자동/수동 동일하게).
+**REFACTOR**: 경로 상수화 + 함수 상단 메서드/경로/상태코드 주석.
+**검증**: `pnpm --dir apps/web exec vitest run src/api/issue-watchers.test.ts`
+
+### Task 2. WatchersSection 컴포넌트 + MSW 핸들러 + i18n
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/issue/WatchersSection.tsx`, `apps/web/src/components/issue/WatchersSection.test.tsx`, `apps/web/src/mocks/issue-watcher-handlers.ts`, `apps/web/src/mocks/handlers.ts`, `apps/web/src/i18n/ko.ts`, `apps/web/src/i18n/ko.test.ts`]
+- depends-on: [1]
+
+**RED**: `WatchersSection.test.tsx`(MSW 사용) — (1) 카운트 "N명"+명단(displayName) 렌더, (2) `isWatching=false`면 "보기" 버튼·`true`면 "보기 취소", (3) "보기" 클릭 → POST(self) → MSW store 갱신 → 카운트+1·버튼 토글, (4) "보기 취소" 클릭 → DELETE(`useAuthUser().userId`) → 카운트-1, (5) 0명이면 "감시자가 없습니다." 표시. 컴포넌트 테스트가 MSW 핸들러 부재로 먼저 실패(RED) → 핸들러 추가가 GREEN.
+**GREEN**: (a) `issue-watcher-handlers.ts` — stateful `watcherStore: Map<issueKey,Set<userId>>` + `seedIssueWatchers`/`resetIssueWatcherStore`, GET/POST/DELETE 핸들러(현재 userId는 기존 auth 핸들러에서 읽어 isWatching 계산), `handlers.ts` 등록. (b) `WatchersSection.tsx` — `useWatchers`+토글 버튼+카운트+명단. (c) `ko.ts` `issueDetailStrings`에 watcher 문자열(콜론 종결 금지) + `ko.test.ts` 검증.
+**REFACTOR**: data-testid/aria-label i18n 정본 재노출, 로딩/에러 상태 정리.
+**검증**: `pnpm --dir apps/web exec vitest run src/components/issue/WatchersSection.test.tsx src/i18n/ko.test.ts`
+
+### Task 3. IssueMetaPanel 통합 + FR-7 자동 watcher 라이브 갱신
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/issue/IssueMetaPanel.tsx`, `apps/web/src/api/issues.ts`, `apps/web/src/api/issues.test.ts`]
+- depends-on: [1, 2]
+
+**RED**: `issues.test.ts` — 담당자 변경 / 컴포넌트 변경 mutation 성공 시 `issueWatchersKey(key)`가 invalidate되는지(spy on `invalidateQueries`) 단언. (자동 watcher 라이브 갱신 FR-7.)
+**GREEN**: (a) `IssueMetaPanel.tsx`에 `WatchersSection` 마운트(감시자 섹션 위치=메타패널 상단/담당자 근처). (b) `issues.ts` 담당자·컴포넌트 변경 mutation 훅 onSettled/onSuccess에 `invalidateQueries({queryKey: issueWatchersKey(key)})` 1줄 추가.
+**REFACTOR**: 중복 invalidate 정리, KDoc 주석.
+**검증**: `pnpm --dir apps/web exec vitest run src/api/issues.test.ts` + IssueMetaPanel 관련 기존 테스트 회귀 확인(`pnpm --dir apps/web typecheck`).
+
+### Task 4. E2E — watch/unwatch + 카운트 + 명단 + 회귀
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/issue-watchers.spec.ts`, `apps/web/e2e/fixtures/issue-fixtures.ts`]
+- depends-on: [3]
+
+**RED**: `issue-watchers.spec.ts` — loginAsAlice → 이슈 상세 진입(SPA 내부 이동) → 감시자 섹션 대기 → (1) "보기" 클릭 → 카운트 증가·명단에 본인 표시·버튼 "보기 취소"로, (2) "보기 취소" 클릭 → 카운트 감소·명단에서 본인 제거. MSW watcher store seed로 초기 상태 구성. 텍스트 중복 버튼은 감시자 섹션 컨테이너 한정(strict mode 회피).
+**GREEN**: E2E 통과까지 셀렉터/대기 조정. 필요 시 `issue-fixtures.ts`에 watcher seed 헬퍼 추가.
+**REFACTOR**: 상수/헬퍼 정리.
+**검증**: `pnpm --dir apps/web exec playwright test issue-watchers` + 기존 `issue-` E2E 회귀 실행.
+
+## Plan 메타
+
+- task 수: 4
+- 예상 wave: Wave1=T1 → Wave2=T2 → Wave3=T3 → Wave4=T4 (대부분 직렬 — 코드 의존 + 공유 파일). 병렬 여지 적음.
+- TDD 강제: yes (RED→GREEN→REFACTOR, test: 커밋이 feat: 보다 선행).
+- 추가 검증: typecheck(tsconfig.app), ktlint/detekt 해당없음(프론트 전용), vitest, playwright(qa).
+- 회귀 주의: IssueMetaPanel은 공유 컴포넌트 → 기존 테스트/E2E 동반 실행. issues.ts mock fanout 점검.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
