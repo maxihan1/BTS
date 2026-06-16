@@ -433,4 +433,45 @@ class WorkflowStateCatalogImplTest {
             assertThat(view.name).isNotBlank()
         }
     }
+
+    // ── isDone — DONE 카테고리 상태는 isDone=true, 그 외는 false ─────────────────
+
+    @Test
+    fun `listStates sets isDone=true for DONE category state and false for others`() {
+        val result: List<WorkflowStateView> =
+            txTemplate.execute {
+                // software-default 워크플로우: open(TODO), in-progress(IN_PROGRESS), done(DONE)
+                catalog.listStates(ProjectKey(PROJECT_ASSIGNED_KEY), issueTypeKey = null)
+            }!!
+
+        // done 상태는 isDone=true
+        val doneState = result.first { it.key == "done" }
+        assertThat(doneState.isDone).isTrue()
+
+        // open / in-progress 상태는 isDone=false
+        val nonDoneStates = result.filter { it.key != "done" }
+        nonDoneStates.forEach { view ->
+            assertThat(view.isDone)
+                .describedAs("${view.key} 는 DONE 카테고리가 아니므로 isDone=false 이어야 한다")
+                .isFalse()
+        }
+    }
+
+    @Test
+    fun `listStates sets isDone=true for all DONE category states in bug-tracking workflow`() {
+        val result: List<WorkflowStateView> =
+            txTemplate.execute {
+                // bug-tracking 워크플로우: new(TODO), resolved(DONE)
+                catalog.listStates(
+                    ProjectKey(PROJECT_ASSIGNED_KEY),
+                    issueTypeKey = IssueTypeKey(ISSUE_TYPE_BUG_KEY),
+                )
+            }!!
+
+        val resolvedState = result.first { it.key == "resolved" }
+        assertThat(resolvedState.isDone).isTrue()
+
+        val newState = result.first { it.key == "new" }
+        assertThat(newState.isDone).isFalse()
+    }
 }
