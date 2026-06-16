@@ -29,9 +29,19 @@ D4(백엔드 preview/move 노드별 매핑) 확장. 신규 cross-BC SPI `Workflo
 - **기존 결정 충돌**: 없음. ADR `2026-06-16-issue-move-semantics` 에 "후속 결정 — 서브태스크 동반 이동" 단락 확장.
 - **관련 ADR**: [docs/adr/2026-06-16-issue-move-semantics.md](../adr/2026-06-16-issue-move-semantics.md) (확장됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-16-fr-mv-01-subtask.md](../specs/2026-06-16-fr-mv-01-subtask.md) (단건 spec `2026-06-16-fr-mv-01.md` 대비 deviation 명시: 1레벨·완전 노드별).
+
+핵심 시나리오 3줄 요약.
+- 부모 이슈 이동 시 직접 자식(서브태스크, 1레벨) 동반 — 각 노드 id 보존·새 키 발번·redirect+308, 자식 `parent_id` 자동 유지(부모만 `parent_id=null` detach)
+- preview/move 페이로드에 노드별 `subtasks` 추가(완전 노드별 매핑, 자식 식별=`issueKey`), 단일 트랜잭션·노드별 OCC·노드별 `issueTypeKey` 상태 조회
+- EC15 재정의(불완전 매핑 422 `INCOMPLETE_SUBTASK_MAPPING`)·EC16 다단계 거부(`SUBTASK_HAS_OWN_SUBTASKS`)·EC17 자식 OCC 409. 자식 없으면 단건 회귀 보존
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). adversarial sanity check 보강.
+- G1 식별자 통일(`issueKey`) · G2 자식 워크플로우 미설정 EC19 흡수 · G3 자식 비관락 id 오름차순 · G4 자식 보안수준 단건 일관(프로젝트 범위)
 
 ## Plan (← /bts-plan 채움)
 
