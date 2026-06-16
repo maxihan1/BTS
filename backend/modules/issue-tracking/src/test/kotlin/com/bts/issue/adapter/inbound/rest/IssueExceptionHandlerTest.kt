@@ -1,9 +1,10 @@
-// IssueExceptionHandler MockMvc 슬라이스 테스트 — task-17 RED + task-5 RED
+// IssueExceptionHandler MockMvc 슬라이스 테스트 — task-17 RED + task-5 RED + fr-mv-01-subtask T3
 
 package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.AssigneeNotFoundException
+import com.bts.issue.domain.IncompleteSubtaskMappingException
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueKeyPrefixReservedException
@@ -11,6 +12,7 @@ import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
+import com.bts.issue.domain.SubtaskHasOwnSubtasksException
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssueScope
 import org.junit.jupiter.api.BeforeEach
@@ -118,6 +120,17 @@ class IssueExceptionHandlerTest {
         @Suppress("TooGenericExceptionThrown")
         @GetMapping("/internal-error")
         fun throwInternalError(): Nothing = throw Exception("예기치 않은 오류")
+
+        @GetMapping("/subtask-has-own-subtasks")
+        fun throwSubtaskHasOwnSubtasks(): Nothing =
+            throw SubtaskHasOwnSubtasksException(setOf("SRC-3"))
+
+        @GetMapping("/incomplete-subtask-mapping")
+        fun throwIncompleteSubtaskMapping(): Nothing =
+            throw IncompleteSubtaskMappingException(
+                expected = setOf("SRC-2", "SRC-3"),
+                provided = setOf("SRC-2"),
+            )
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -206,5 +219,21 @@ class IssueExceptionHandlerTest {
             .andExpect(status().isUnprocessableEntity)
             .andExpect(jsonPath("$.status").value(422))
             .andExpect(jsonPath("$.errorCode").value("ASSIGNEE_NOT_FOUND"))
+    }
+
+    @Test
+    fun `SubtaskHasOwnSubtasks는 422 SUBTASK_HAS_OWN_SUBTASKS`() {
+        mockMvc.perform(get("/exceptions/subtask-has-own-subtasks").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isUnprocessableEntity)
+            .andExpect(jsonPath("$.status").value(422))
+            .andExpect(jsonPath("$.errorCode").value("SUBTASK_HAS_OWN_SUBTASKS"))
+    }
+
+    @Test
+    fun `IncompleteSubtaskMapping은 422 INCOMPLETE_SUBTASK_MAPPING`() {
+        mockMvc.perform(get("/exceptions/incomplete-subtask-mapping").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isUnprocessableEntity)
+            .andExpect(jsonPath("$.status").value(422))
+            .andExpect(jsonPath("$.errorCode").value("INCOMPLETE_SUBTASK_MAPPING"))
     }
 }
