@@ -98,20 +98,20 @@ class IssueWatcherService(
         actor: ActorId,
         targetUserId: UUID?,
     ) {
-        val effectiveUserId = targetUserId ?: actor.value
-        val isSelf = effectiveUserId == actor.value
+        val watcherId = targetUserId ?: actor.value
+        val isSelf = watcherId == actor.value
         checkPermission(actor, issueKey, isSelf)
 
         if (!isSelf) {
-            if (!userLookupPort.exists(effectiveUserId)) {
+            if (!userLookupPort.exists(watcherId)) {
                 log.warn("watch 대상 사용자 미존재 — issueKey={}", issueKey.value)
-                throw WatcherUserNotFoundException(effectiveUserId)
+                throw WatcherUserNotFoundException(watcherId)
             }
         }
 
         val issueId = resolveIssueId(issueKey)
-        log.debug("watch issueKey={} userId={}", issueKey.value, effectiveUserId)
-        watcherRepository.add(issueId, effectiveUserId)
+        log.debug("watch issueKey={} userId={}", issueKey.value, watcherId)
+        watcherRepository.add(issueId, watcherId)
     }
 
     /**
