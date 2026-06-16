@@ -332,6 +332,11 @@ class IssueMoveService(
 
     /**
      * 루트+자식 동반 이동 — 단일 트랜잭션, id 오름차순 비관락(B2), 노드별 검증(B3), before 스냅샷(C3).
+     *
+     * TOCTOU 방어: 락 획득 후 findDirectChildren 재조회로 불완전 매핑 검증.
+     * 1차 조회는 락 대상 id 파악용이며, 실제 완전성 검증(IncompleteSubtaskMapping)은
+     * 락 획득 후 재조회한 children2 를 기준으로 수행한다.
+     * 락 사이에 신규 자식이 추가됐다면 children2 에 잡혀 요청과 불일치 → 422 거부 후 전체 롤백.
      */
     @Suppress("ThrowsCount", "LongMethod", "LongParameterList")
     private fun moveWithSubtasks(
@@ -349,14 +354,9 @@ class IssueMoveService(
         // 루트 읽기 (락 없이 id 조회용)
         val rootIssue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
 
-        // 자식 목록 조회
+        // 1차 자식 목록 조회 — 락 대상(루트+자식) id 파악용
         val children = issueRepository.findDirectChildren(rootIssue.id.value)
-        val actualChildKeys = children.map { it.key.value }.toSet()
         val providedChildKeys = request.subtasks.map { it.issueKey }.toSet()
-        val childKeysWithOwnChildren =
-            children
-                .filter { child -> issueRepository.countDirectChildren(child.id.value) > 0 }
-                .map { it.key.value }.toSet()
 
         // (B2) id 오름차순 비관락: 루트+자식 통합 정렬
         val allKeys = listOf(rootIssue) + children
@@ -382,6 +382,14 @@ class IssueMoveService(
                 throw IssueVersionConflictException(IssueKey(spec.issueKey), childIssue.version)
             }
         }
+
+        // TOCTOU 방어: 락 획득 후 재조회 — 락 사이 추가된 자식까지 포함한 최신 집합
+        val children2 = issueRepository.findDirectChildren(root.id.value)
+        val actualChildKeys = children2.map { it.key.value }.toSet()
+        val childKeysWithOwnChildren =
+            children2
+                .filter { child -> issueRepository.countDirectChildren(child.id.value) > 0 }
+                .map { it.key.value }.toSet()
 
         // 노드별 ctx 구성 + validateWithSubtasks (B3)
         val rootCtx =
