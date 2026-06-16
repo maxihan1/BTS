@@ -144,13 +144,14 @@ test.describe('FR-MV-01 D7 이슈 이동 마법사 (MoveIssueDialog + 308 redire
   // E2E MSW 환경에서는 이 경로를 검증할 수 없다.
   //
   // 대안 coverage.
-  //   - issues.$key.test.tsx 단위 테스트: IssueRedirectError → navigate replace 경로 검증됨
+  //   - issues.test.ts 단위 테스트: fetchIssue redirected:true → IssueRedirectError(newKey) 분기 검증됨
+  //     (vi.spyOn(globalThis,'fetch')로 redirected Response 주입 — T1-2c-1/T1-2c-2)
   //   - 백엔드 통합 테스트: GET :oldKey → 308 + Location 응답 검증됨
   //
   // 이 시나리오는 실 백엔드 연동 E2E 환경(CI staging)에서 검증 예정.
   // ─────────────────────────────────────────────────────────────────────────
   // test('E2E-3 옛 키 308 redirect — SKIPPED: MSW SW는 308 opaque redirect를 유발하지 않음')
-  // SKIPPED: MSW fetch redirect 시뮬 불가 — 단위 테스트(issues.$key.test.tsx) + 백엔드 통합테스트 커버리지
+  // SKIPPED: MSW fetch redirect 시뮬 불가 — fetchIssue 308 redirected→IssueRedirectError 분기는 issues.test.ts 단위 테스트로 커버, navigate replace는 issues.$key 경로. E2E는 MSW가 non-opaque 308을 못 만드는 한계로 SKIP
 
   // ─────────────────────────────────────────────────────────────────────────
   // E2E-4 Dialog 취소 — 이동 취소 시 URL 유지, Dialog 닫힘

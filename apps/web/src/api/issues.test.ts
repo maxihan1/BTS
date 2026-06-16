@@ -19,6 +19,7 @@ import {
   changeAssignee,
   fetchBulkAvailableTransitions,
   downloadIssuePdf,
+  IssueRedirectError,
 } from './issues'
 import { ApiError } from './client'
 import { useChangeAssignee } from './useChangeAssignee'
@@ -256,6 +257,47 @@ describe('fetchIssue', () => {
 
   it('T1-2b: 없는 key 조회 시 ApiError(404)를 throw한다', async () => {
     await expect(fetchIssue('NOT-EXISTS')).rejects.toThrow()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-2c. fetchIssue — 308 redirect 분기 단위 테스트 (FR-MV-01 C1)
+//
+// MSW ServiceWorker는 opaque 308을 만들 수 없어 E2E에서 검증이 불가능하다.
+// 따라서 전역 fetch를 vi.spyOn으로 일시 override해 redirected:true 응답을 주입한다.
+// MSW는 각 테스트 afterEach에서 restore되므로 기존 테스트와 격리된다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('fetchIssue — 308 redirect IssueRedirectError (FR-MV-01)', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>
+
+  afterEach(() => {
+    fetchSpy.mockRestore()
+  })
+
+  it('T1-2c-1: response.redirected=true 시 IssueRedirectError(newKey)를 throw한다', async () => {
+    // fetch가 redirected:true + url=/api/v1/issues/NEW-1 인 Response를 반환하도록 주입
+    const redirectedResponse = new Response(null, { status: 200 })
+    Object.defineProperty(redirectedResponse, 'redirected', { value: true })
+    Object.defineProperty(redirectedResponse, 'url', { value: 'http://localhost/api/v1/issues/NEW-1' })
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(redirectedResponse)
+
+    await expect(fetchIssue('OLD-1')).rejects.toSatisfy(
+      (e) => e instanceof IssueRedirectError && (e as IssueRedirectError).newKey === 'NEW-1',
+    )
+  })
+
+  it('T1-2c-2: response.redirected=false 시 IssueRedirectError를 throw하지 않고 이슈를 반환한다', async () => {
+    // 정상 200 응답 — redirected=false(기본값)
+    const okResponse = new Response(JSON.stringify({ data: issueFixture }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(okResponse)
+
+    const result = await fetchIssue('ATLAS-1')
+
+    expect(result.key).toBe('ATLAS-1')
+    expect(result.summary).toBe('로그인 버튼이 클릭되지 않는 버그')
   })
 })
 
