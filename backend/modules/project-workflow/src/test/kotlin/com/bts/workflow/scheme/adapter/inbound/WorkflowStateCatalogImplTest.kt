@@ -253,17 +253,7 @@ class WorkflowStateCatalogImplTest {
                     )
                 }
 
-                // bug 이슈 타입 seed (S2 명시 타입 매핑 테스트용)
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        """
-                        INSERT INTO issue_types (key, name, is_standard)
-                        VALUES ('$ISSUE_TYPE_BUG_KEY', '버그', true)
-                        ON CONFLICT (key) DO NOTHING
-                        """.trimIndent(),
-                    )
-                }
-
+                // bug 이슈 타입은 Flyway V003 표준 seed 에 이미 존재하므로 별도 INSERT 생략.
                 // software-scheme 에 bug → bug-tracking 명시 매핑 추가
                 conn.prepareStatement("SELECT id FROM issue_types WHERE key = ?").use { stmt ->
                     stmt.setString(1, ISSUE_TYPE_BUG_KEY)
