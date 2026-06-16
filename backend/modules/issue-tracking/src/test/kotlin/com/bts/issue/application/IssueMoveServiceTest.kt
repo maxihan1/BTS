@@ -585,6 +585,7 @@ class IssueMoveServiceTest {
      * Then   이동 후 DB issues.resolution_id IS NULL
      */
     @Test
+    @Suppress("NestedBlockDepth") // DB 단언을 위한 중첩 use/use 블록 — 리소스 해제 안전성 우선
     fun `C4 회귀 - 이동 전 resolution_id 세팅 후 비DONE 이동 시 DB resolution_id null`() {
         val resolutionId = UUID.fromString("00000000-0000-4000-8000-000000000077")
         insertIssueWithResolution(SRC_PROJECT, srcProjectId, STATE_OPEN, resolutionId)

@@ -160,7 +160,8 @@ data class ReleaseNoteIssueRow(
  */
 
 @Repository
-@Suppress("TooManyFunctions")
+// LargeClass: 이슈 집계 루트의 단일 jOOQ 접근점 — 응집이 분리보다 적합
+@Suppress("TooManyFunctions", "LargeClass")
 class IssueRepository(
     private val dsl: DSLContext,
 ) {

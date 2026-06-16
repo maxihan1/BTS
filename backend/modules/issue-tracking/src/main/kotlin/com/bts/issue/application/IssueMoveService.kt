@@ -70,7 +70,11 @@ data class IssueMoveRequest(
  */
 @Service
 @Transactional
-@Suppress("TooManyFunctions")
+@Suppress(
+    "TooManyFunctions",
+    // 이동 유스케이스 협력자 9개(ComponentRepository/VersionRepository/CustomFieldDefinitionRepository 포함) — 불가분
+    "LongParameterList",
+)
 class IssueMoveService(
     private val issueRepository: IssueRepository,
     private val redirectRepository: IssueKeyRedirectRepository,

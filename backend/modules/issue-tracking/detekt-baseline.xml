@@ -2,7 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues></ManuallySuppressedIssues>
   <CurrentIssues>
-    <ID>LargeClass:IssueRepository.kt$IssueRepository</ID>
     <ID>LargeClass:IssueTest.kt$IssueTest</ID>
     <ID>LongParameterList:IssueMoveOperationTest.kt$IssueMoveOperationTest$( targetProjectKey: String = this.targetProjectKey, hasSubtasks: Boolean = false, sourceStatusKey: String = "IN_PROGRESS", targetWorkflowStatuses: Set&lt;String&gt; = setOf("TO_DO", "IN_PROGRESS", "DONE"), targetStateKey: String? = null, componentMappingTargetIds: Set&lt;UUID&gt; = emptySet(), targetProjectComponentIds: Set&lt;UUID&gt; = emptySet(), versionMappingTargetIds: Set&lt;UUID&gt; = emptySet(), targetProjectVersionIds: Set&lt;UUID&gt; = emptySet(), requiredFieldKeys: Set&lt;String&gt; = emptySet(), providedFieldKeys: Set&lt;String&gt; = emptySet(), )</ID>
     <ID>MagicNumber:Issue.kt$255</ID>
