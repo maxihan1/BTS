@@ -4,6 +4,7 @@ package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.customfield.domain.CustomFieldValidationException
 import com.bts.issue.domain.AssigneeNotFoundException
+import com.bts.issue.domain.IncompleteSubtaskMappingException
 import com.bts.issue.domain.InvalidTargetMappingException
 import com.bts.issue.domain.InvalidTargetStateException
 import com.bts.issue.domain.IssueAccessDeniedException
@@ -20,6 +21,7 @@ import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.domain.MoveSameProjectException
 import com.bts.issue.domain.RequiredFieldMissingException
+import com.bts.issue.domain.SubtaskHasOwnSubtasksException
 import com.bts.issue.resolution.domain.ResolutionNotFoundException
 import com.bts.issue.type.domain.IssueTypeNotFoundException
 import org.slf4j.LoggerFactory
@@ -80,6 +82,8 @@ import java.time.Instant
  * FR-MV-01 Task 8 에서 이동 도메인 예외 5종([MoveSameProjectException]/[IssueHasSubtasksException]/
  * [InvalidTargetStateException]/[InvalidTargetMappingException]/[RequiredFieldMissingException])
  * 및 [HttpMessageNotReadableException]/[MethodArgumentTypeMismatchException] 핸들러가 추가됐다 (모두 400/422).
+ * FR-MV-01 서브태스크 동반 T3 에서 [SubtaskHasOwnSubtasksException]/[IncompleteSubtaskMappingException]
+ * 핸들러가 추가됐다 (422 + SUBTASK_HAS_OWN_SUBTASKS / INCOMPLETE_SUBTASK_MAPPING).
  */
 @Suppress("TooManyFunctions")
 @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
@@ -572,6 +576,49 @@ class IssueExceptionHandler {
         )
     }
 
+    // ── 422 SUBTASK_HAS_OWN_SUBTASKS (FR-MV-01 서브태스크 동반) ─────────────────
+
+    /**
+     * [SubtaskHasOwnSubtasksException] — 직접 자식이 또 자식을 가지는 다단계 트리 이동 시도 — 422 (EC16).
+     *
+     * BTS 서브태스크 1레벨 모델 위반. 이동 거부.
+     * 보안 — 위반 자식 키 목록을 응답에 포함하지 않는다. 로그에만 기록한다.
+     *
+     * @param ex 다단계 위반 자식 키 집합을 포함하는 예외.
+     */
+    @ExceptionHandler(SubtaskHasOwnSubtasksException::class)
+    fun handleSubtaskHasOwnSubtasks(ex: SubtaskHasOwnSubtasksException): ProblemDetail {
+        log.info("ISSUE_422 subtask_has_own_subtasks childKeys='{}'", ex.childKeys)
+        return problem(
+            status = HttpStatus.UNPROCESSABLE_ENTITY,
+            type = "subtask-has-own-subtasks",
+            title = "Subtask Has Own Subtasks",
+            errorCode = IssueErrorCodes.SUBTASK_HAS_OWN_SUBTASKS,
+            detail = "서브태스크가 또 자식을 가지는 다단계 구조는 이동할 수 없습니다. 1레벨 서브태스크만 동반 이동이 가능합니다.",
+        )
+    }
+
+    // ── 422 INCOMPLETE_SUBTASK_MAPPING (FR-MV-01 서브태스크 동반) ───────────────
+
+    /**
+     * [IncompleteSubtaskMappingException] — 동반 이동 요청에서 모든 직접 자식 매핑 미제공 — 422 (EC15 재정의).
+     *
+     * 일부 자식 누락 또는 요청에 없는 자식 키 포함 시 발생한다.
+     *
+     * @param ex expected/provided 자식 키 집합을 포함하는 예외.
+     */
+    @ExceptionHandler(IncompleteSubtaskMappingException::class)
+    fun handleIncompleteSubtaskMapping(ex: IncompleteSubtaskMappingException): ProblemDetail {
+        log.info("ISSUE_422 incomplete_subtask_mapping expected='{}' provided='{}'", ex.expected, ex.provided)
+        return problem(
+            status = HttpStatus.UNPROCESSABLE_ENTITY,
+            type = "incomplete-subtask-mapping",
+            title = "Incomplete Subtask Mapping",
+            errorCode = IssueErrorCodes.INCOMPLETE_SUBTASK_MAPPING,
+            detail = "모든 직접 자식 이슈의 매핑 정보를 포함해야 합니다.",
+        )
+    }
+
     // ── 404 RESOLUTION_NOT_FOUND ──────────────────────────────────────────────
 
     /**
@@ -709,6 +756,8 @@ object IssueErrorCodes {
     const val CUSTOM_FIELD_VALIDATION_FAILED = "CUSTOM_FIELD_VALIDATION_FAILED"
     const val MOVE_SAME_PROJECT = "MOVE_SAME_PROJECT"
     const val ISSUE_HAS_SUBTASKS = "ISSUE_HAS_SUBTASKS"
+    const val SUBTASK_HAS_OWN_SUBTASKS = "SUBTASK_HAS_OWN_SUBTASKS"
+    const val INCOMPLETE_SUBTASK_MAPPING = "INCOMPLETE_SUBTASK_MAPPING"
     const val INVALID_TARGET_STATE = "INVALID_TARGET_STATE"
     const val INVALID_TARGET_MAPPING = "INVALID_TARGET_MAPPING"
     const val REQUIRED_FIELD_MISSING = "REQUIRED_FIELD_MISSING"
