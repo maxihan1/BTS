@@ -8,17 +8,26 @@ import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { useAuthStore } from '@/auth/authStore'
 import { aliceUser } from '@/mocks/auth-fixtures'
-import { seedIssueWatchers, resetIssueWatcherStore } from '@/mocks/issue-watcher-handlers'
 import { WatchersSection } from './WatchersSection'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 테스트 픽스처
+// 테스트 픽스처 — Zod v4 UUID 검증을 통과하는 RFC4122 v4 형식 UUID
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** alice userId — auth-fixtures aliceUser와 동일 고정값 */
-const ALICE_ID = '00000000-0000-0000-0000-000000000001'
-/** bob userId — auth-fixtures bobUser와 동일 고정값 */
-const BOB_ID = '00000000-0000-0000-0000-000000000002'
+/**
+ * alice 테스트 userId — RFC4122 v4 형식 (Zod v4 UUID 검증 통과).
+ * auth store를 이 값으로 시드하고 MSW 응답 watcher.userId도 이 값을 사용한다.
+ */
+const ALICE_UUID = 'a0000000-0000-4000-a000-000000000001'
+/**
+ * bob 테스트 userId — RFC4122 v4 형식 (Zod v4 UUID 검증 통과).
+ */
+const BOB_UUID = 'b0000000-0000-4000-a000-000000000002'
+
+/** alice 워처 응답 픽스처 */
+const aliceWatcher = { userId: ALICE_UUID, displayName: 'User alice' }
+/** bob 워처 응답 픽스처 */
+const bobWatcher = { userId: BOB_UUID, displayName: 'User bob' }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 헬퍼
@@ -33,23 +42,47 @@ function createWrapper() {
   }
 }
 
+/**
+ * GET /api/v1/issues/:key/watchers 핸들러를 server.use()로 등록한다.
+ *
+ * @param issueKey 이슈 키
+ * @param opts.watchers 워처 목록
+ * @param opts.isWatching 현재 사용자 워칭 여부
+ */
+function useWatcherGetHandler(
+  issueKey: string,
+  opts: {
+    watchers: ReadonlyArray<{ userId: string; displayName: string }>
+    isWatching: boolean
+  },
+) {
+  server.use(
+    http.get(`/api/v1/issues/${issueKey}/watchers`, () =>
+      HttpResponse.json({
+        data: {
+          watchers: opts.watchers,
+          count: opts.watchers.length,
+          isWatching: opts.isWatching,
+        },
+      }),
+    ),
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Setup / Teardown
 // ─────────────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
-  // alice 로그인 상태 시드
+  // alice 로그인 상태 시드 — userId는 RFC4122 v4 형식 UUID로 오버라이드
   useAuthStore.getState().setSession({
     accessToken: 'test-token',
-    user: aliceUser,
+    user: { ...aliceUser, userId: ALICE_UUID },
   })
-  // 워처 저장소 초기화
-  resetIssueWatcherStore()
 })
 
 afterEach(() => {
   useAuthStore.getState().clearSession()
-  resetIssueWatcherStore()
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -58,18 +91,16 @@ afterEach(() => {
 
 describe('WatchersSection — S1 목록 렌더', () => {
   it('S1a: 워처 카운트 "N명"과 displayName이 표시된다', async () => {
-    seedIssueWatchers('ATLAS-1', [BOB_ID])
+    useWatcherGetHandler('ATLAS-1', { watchers: [bobWatcher], isWatching: false })
     const Wrapper = createWrapper()
     render(<WatchersSection issueKey="ATLAS-1" />, { wrapper: Wrapper })
 
-    // 카운트
     expect(await screen.findByText('1명')).toBeInTheDocument()
-    // displayName
     expect(screen.getByText('User bob')).toBeInTheDocument()
   })
 
   it('S1b: 감시자가 없으면 "0명"과 빈 상태 메시지가 표시된다', async () => {
-    seedIssueWatchers('ATLAS-1', [])
+    useWatcherGetHandler('ATLAS-1', { watchers: [], isWatching: false })
     const Wrapper = createWrapper()
     render(<WatchersSection issueKey="ATLAS-1" />, { wrapper: Wrapper })
 
@@ -78,11 +109,10 @@ describe('WatchersSection — S1 목록 렌더', () => {
   })
 
   it('S1c: 본인(alice)은 displayName 뒤에 "(나)"가 표기된다', async () => {
-    seedIssueWatchers('ATLAS-1', [ALICE_ID])
+    useWatcherGetHandler('ATLAS-1', { watchers: [aliceWatcher], isWatching: true })
     const Wrapper = createWrapper()
     render(<WatchersSection issueKey="ATLAS-1" />, { wrapper: Wrapper })
 
-    // "User alice (나)" 또는 "(나)" 텍스트
     expect(await screen.findByText(/\(나\)/)).toBeInTheDocument()
   })
 })
@@ -93,8 +123,7 @@ describe('WatchersSection — S1 목록 렌더', () => {
 
 describe('WatchersSection — S2 토글 버튼 초기 상태', () => {
   it('S2a: isWatching=false 이면 버튼 텍스트가 "지켜보기"이다', async () => {
-    // alice는 워처 아님 (빈 저장소)
-    seedIssueWatchers('ATLAS-1', [])
+    useWatcherGetHandler('ATLAS-1', { watchers: [], isWatching: false })
     const Wrapper = createWrapper()
     render(<WatchersSection issueKey="ATLAS-1" />, { wrapper: Wrapper })
 
@@ -104,8 +133,7 @@ describe('WatchersSection — S2 토글 버튼 초기 상태', () => {
   })
 
   it('S2b: isWatching=true 이면 버튼 텍스트가 "지켜보는 중"이다', async () => {
-    // alice가 이미 워처
-    seedIssueWatchers('ATLAS-1', [ALICE_ID])
+    useWatcherGetHandler('ATLAS-1', { watchers: [aliceWatcher], isWatching: true })
     const Wrapper = createWrapper()
     render(<WatchersSection issueKey="ATLAS-1" />, { wrapper: Wrapper })
 
@@ -122,18 +150,33 @@ describe('WatchersSection — S2 토글 버튼 초기 상태', () => {
 describe('WatchersSection — S3 Watch 클릭 (POST self)', () => {
   it('S3a: "지켜보기" 클릭 시 POST가 호출되고 카운트가 +1 되며 버튼이 "지켜보는 중"으로 바뀐다', async () => {
     const user = userEvent.setup()
-    // alice는 워처 아님
-    seedIssueWatchers('ATLAS-1', [BOB_ID])
+
+    let getCallCount = 0
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/watchers', () => {
+        getCallCount++
+        if (getCallCount === 1) {
+          return HttpResponse.json({
+            data: { watchers: [bobWatcher], count: 1, isWatching: false },
+          })
+        }
+        // POST 후 refetch — alice 포함
+        return HttpResponse.json({
+          data: { watchers: [bobWatcher, aliceWatcher], count: 2, isWatching: true },
+        })
+      }),
+      http.post('/api/v1/issues/ATLAS-1/watchers', () => new HttpResponse(null, { status: 201 })),
+    )
+
     const Wrapper = createWrapper()
     render(<WatchersSection issueKey="ATLAS-1" />, { wrapper: Wrapper })
 
-    // 초기 렌더 대기 — 버튼 "지켜보기"
-    const btn = await screen.findByRole('button', { name: '지켜보기' })
-    expect(screen.getByText('1명')).toBeInTheDocument()
+    // 카운트 표시될 때까지 대기 (로딩 완료 후 버튼 클릭)
+    expect(await screen.findByText('1명')).toBeInTheDocument()
+    const btn = screen.getByRole('button', { name: '지켜보기' })
 
     await user.click(btn)
 
-    // POST 후 invalidate → refetch → store에 alice 추가됨
     await waitFor(() => {
       expect(screen.getByRole('button', { name: '지켜보는 중' })).toBeInTheDocument()
     })
@@ -148,8 +191,25 @@ describe('WatchersSection — S3 Watch 클릭 (POST self)', () => {
 describe('WatchersSection — S4 Unwatch 클릭 (DELETE)', () => {
   it('S4a: "지켜보는 중" 클릭 시 DELETE가 호출되고 카운트가 -1 된다', async () => {
     const user = userEvent.setup()
-    // alice가 이미 워처
-    seedIssueWatchers('ATLAS-1', [ALICE_ID, BOB_ID])
+
+    let getCallCount = 0
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/watchers', () => {
+        getCallCount++
+        if (getCallCount === 1) {
+          return HttpResponse.json({
+            data: { watchers: [aliceWatcher, bobWatcher], count: 2, isWatching: true },
+          })
+        }
+        return HttpResponse.json({
+          data: { watchers: [bobWatcher], count: 1, isWatching: false },
+        })
+      }),
+      http.delete(`/api/v1/issues/ATLAS-1/watchers/${ALICE_UUID}`, () =>
+        new HttpResponse(null, { status: 204 }),
+      ),
+    )
+
     const Wrapper = createWrapper()
     render(<WatchersSection issueKey="ATLAS-1" />, { wrapper: Wrapper })
 
@@ -189,11 +249,10 @@ describe('WatchersSection — S5 에러 상태', () => {
 
 describe('WatchersSection — S6 data-testid', () => {
   it('S6a: 섹션 컨테이너와 토글 버튼에 data-testid가 존재한다', async () => {
-    seedIssueWatchers('ATLAS-1', [])
+    useWatcherGetHandler('ATLAS-1', { watchers: [], isWatching: false })
     const Wrapper = createWrapper()
     render(<WatchersSection issueKey="ATLAS-1" />, { wrapper: Wrapper })
 
-    // 로딩 완료 대기
     await screen.findByText('감시자가 없습니다.')
 
     expect(screen.getByTestId('watchers-section')).toBeInTheDocument()
