@@ -3,6 +3,26 @@ import { z } from 'zod'
 import { apiGet, apiPost, apiFetch, ApiError } from './client'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 이슈 redirect 에러 — 308 옛 키 → 새 키 redirect 감지용
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 이슈 GET 요청이 308 redirect(옛 키 → 새 키)로 응답된 경우 throw되는 에러.
+ *
+ * fetch `redirect:'follow'`(기본)는 308을 자동 추적하므로
+ * `response.redirected === true` + `response.url`에서 새 키를 추출한다.
+ * 호출 측(IssueDetailPage useQuery)에서 navigate로 새 키 라우트로 이동한다.
+ *
+ * @property newKey 이동된 이슈의 새 키 (예: "INFRA-5")
+ */
+export class IssueRedirectError extends Error {
+  constructor(public readonly newKey: string) {
+    super(`Issue redirected to ${newKey}`)
+    this.name = 'IssueRedirectError'
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Zod 스키마 정의
 // backend IssueResponse DTO 직렬화 형태와 1:1 대응.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -292,20 +312,40 @@ export type IssuePage = z.infer<ReturnType<typeof pageSchema<IssueResponse>>>
 /**
  * 이슈 단건을 조회한다.
  *
+ * 308 redirect(옛 키 → 새 키) 감지 처리 포함.
+ * fetch `redirect:'follow'`(기본)가 308을 자동 추적하므로
+ * `response.redirected === true`이면 `response.url`에서 새 키를 추출해
+ * `IssueRedirectError`를 throw한다 (호출 측이 navigate로 처리).
+ *
  * @param key 이슈 식별 키 (예: "ATLAS-1")
  * @returns IssueResponse — 백엔드 `{ data: IssueResponse }` 래퍼를 언래핑해 반환
  * @throws ApiError(404) 해당 key의 이슈가 없을 때
+ * @throws IssueRedirectError 이슈가 이동되어 308 redirect된 경우
  */
 export async function fetchIssue(key: string): Promise<IssueResponse> {
-  const wrapped = await apiGet(
-    `/api/v1/issues/${key}`,
-    dataResponseSchema(issueResponseSchema),
-  ).catch((err: unknown) => {
-    if (err instanceof ApiError && err.status === 404) {
+  const res = await apiFetch(`/api/v1/issues/${key}`, { method: 'GET' })
+
+  // 308 redirect 감지 — fetch redirect:follow(기본)가 자동 추적한 경우
+  // response.redirected=true + response.url = /api/v1/issues/{newKey}
+  if (res.redirected) {
+    // URL 마지막 경로 세그먼트가 새 이슈 키
+    const urlMatch = /\/issues\/([^/?#]+)/.exec(res.url)
+    const newKey = urlMatch?.[1]
+    if (newKey !== undefined && newKey !== '') {
+      throw new IssueRedirectError(newKey)
+    }
+  }
+
+  if (!res.ok) {
+    if (res.status === 404) {
       throw new ApiError(404, { message: `이슈를 찾을 수 없습니다: ${key}` })
     }
-    throw err
-  })
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+
+  const raw: unknown = await res.json()
+  const wrapped = dataResponseSchema(issueResponseSchema).parse(raw)
   return wrapped.data
 }
 

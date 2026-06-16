@@ -20,10 +20,13 @@ package com.bts.shared.workflow
  *
  * @property key 상태 키. 예: `"open"`, `"in-progress"`, `"closed"`. 소문자, 워크플로우 YAML 정본 기준.
  * @property name 사용자에게 표시되는 상태 이름. 예: `"열림"`, `"진행 중"`, `"완료"`.
+ * @property isDone 이 상태가 DONE 카테고리에 속하면 true. 이슈 이동 마법사에서 targetStateIsDone 을 채우는 데 사용된다.
+ *   기본값 false — 생성 시 명시하지 않으면 비완료 상태로 간주한다.
  */
 data class WorkflowStateView(
     val key: String,
     val name: String,
+    val isDone: Boolean = false,
 ) {
     init {
         require(key.isNotBlank()) { "WorkflowStateView.key must not be blank." }

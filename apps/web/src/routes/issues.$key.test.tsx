@@ -1766,3 +1766,41 @@ describe('IssueDetailPage — AttachmentSection 배선', () => {
     })
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-MV-PAGE: 이슈 이동 진입점 + 308 redirect 처리 (FR-MV-01 Task 5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDetailPage — 이슈 이동 진입점 + 308 redirect', () => {
+  /**
+   * T-MV-PAGE-1: UPDATE 권한이 있으면 "이동" 버튼이 표시된다.
+   */
+  it('T-MV-PAGE-1: UPDATE 권한이 있으면 이동 버튼이 표시된다', async () => {
+    setupIssueFoundHandler()
+    renderPage('ATLAS-1')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /이슈 이동/i })).toBeInTheDocument()
+    })
+  })
+
+  /**
+   * T-MV-PAGE-2: 이동 버튼 클릭 시 MoveIssueDialog가 열린다.
+   */
+  it('T-MV-PAGE-2: 이동 버튼 클릭 시 MoveIssueDialog가 열린다', async () => {
+    setupIssueFoundHandler()
+    renderPage('ATLAS-1')
+    const user = userEvent.setup()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /이슈 이동/i })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /이슈 이동/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+  })
+
+})

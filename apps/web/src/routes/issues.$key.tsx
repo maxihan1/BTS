@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { fetchIssue, updateIssue, transitionIssue } from '@/api/issues'
+import { fetchIssue, updateIssue, transitionIssue, IssueRedirectError } from '@/api/issues'
 import type { IssueTransition, CustomFieldValues } from '@/api/issues'
 import { ApiError } from '@/api/client'
 import { useUpdateIssueSummary, issueQueryKey } from '@/api/useUpdateIssueSummary'
@@ -35,6 +35,7 @@ import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
 import { ResolutionModal } from '@/components/issue/ResolutionModal'
 import { CloneIssueDialog } from '@/components/issues/CloneIssueDialog'
+import { MoveIssueDialog } from '@/components/issues/MoveIssueDialog'
 import { issueDetailStrings } from '@/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -101,6 +102,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   const [editSummary, setEditSummary] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false)
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false)
   const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('')
   const [isPdfDownloading, setIsPdfDownloading] = useState(false)
 
@@ -110,7 +112,24 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
 
   const { data: issue, isLoading, error } = useQuery({
     queryKey: issueQueryKey(issueKey),
-    queryFn: () => fetchIssue(issueKey),
+    queryFn: async () => {
+      try {
+        return await fetchIssue(issueKey)
+      } catch (err: unknown) {
+        // 308 옛 키 redirect — 새 키 라우트로 교체 이동
+        if (err instanceof IssueRedirectError) {
+          void navigate({
+            to: '/issues/$key' as string,
+            params: { key: err.newKey },
+            replace: true,
+          })
+          // navigate 후 query를 pending 상태로 유지하기 위해 re-throw
+          // (undefined를 반환하면 이슈 없음 UI가 잠깐 렌더될 수 있다)
+          throw err
+        }
+        throw err
+      }
+    },
     retry: false,
   })
 
@@ -531,16 +550,29 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
           <span className="mx-1.5">/</span>
           <span className="font-medium text-foreground">{issue.key}</span>
         </nav>
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={isPdfDownloading}
-          aria-label={issueDetailStrings.pdfDownloadAriaLabel}
-          onClick={() => { void handlePdfDownload(issue.key) }}
-        >
-          <FileDown className="size-4 mr-1.5" aria-hidden="true" />
-          {issueDetailStrings.pdfDownloadButton}
-        </Button>
+        <div className="flex gap-2">
+          {/* 이슈 이동 버튼 — UPDATE 권한 게이팅 (FR-MV-01 D6) */}
+          {canEdit && (
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label="이슈 이동"
+              onClick={() => setMoveDialogOpen(true)}
+            >
+              이슈 이동
+            </Button>
+          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={isPdfDownloading}
+            aria-label={issueDetailStrings.pdfDownloadAriaLabel}
+            onClick={() => { void handlePdfDownload(issue.key) }}
+          >
+            <FileDown className="size-4 mr-1.5" aria-hidden="true" />
+            {issueDetailStrings.pdfDownloadButton}
+          </Button>
+        </div>
       </div>
 
       {/* 2-컬럼 그리드 — 좌 본문 / 우 메타패널 */}
@@ -704,6 +736,14 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
         issueKey={issue.key}
         open={cloneDialogOpen}
         onOpenChange={setCloneDialogOpen}
+      />
+
+      {/* 이슈 이동 마법사 Dialog (FR-MV-01 D6) */}
+      <MoveIssueDialog
+        issueKey={issue.key}
+        issueVersion={issue.version}
+        open={moveDialogOpen}
+        onOpenChange={setMoveDialogOpen}
       />
     </div>
   )

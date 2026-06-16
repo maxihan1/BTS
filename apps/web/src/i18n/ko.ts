@@ -681,3 +681,74 @@ export const issueCreateStrings = {
   errorProjectNotFound: '존재하지 않는 프로젝트입니다.',
   errorDefault: '이슈 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
 } as const
+
+/** 이슈 이동 마법사 Dialog 문자열 — FR-MV-01 D6 */
+export const issueMoveStrings = {
+  // ── Dialog 공통 ──────────────────────────────────────────────────────
+  /** Dialog 제목 */
+  dialogTitle: '이슈 이동',
+  /** 취소 버튼 */
+  cancelButton: '취소',
+  /** 뒤로 버튼 */
+  backButton: '뒤로',
+  /** 다음 버튼 (Step 1 → Step 2) */
+  nextButton: '다음',
+  /** 이동 실행 버튼 */
+  moveButton: '이동',
+  /** preview 로딩 중 메시지 */
+  previewLoading: '대상 프로젝트 분석 중',
+
+  // ── Step 1 — 대상 프로젝트 선택 ──────────────────────────────────────
+  /** Step 1 섹션 제목 */
+  step1Title: '대상 프로젝트 선택',
+  /** 대상 프로젝트 키 입력 레이블 */
+  targetProjectKeyLabel: '대상 프로젝트 키',
+  /** 대상 프로젝트 키 입력 placeholder */
+  targetProjectKeyPlaceholder: '예: INFRA',
+
+  // ── Step 2 — 매핑 확인 ───────────────────────────────────────────────
+  /** Step 2 섹션 제목 */
+  step2Title: '이동 매핑 확인',
+  /** 루트 이슈 섹션 헤더 */
+  rootIssueSectionHeader: '루트 이슈',
+  /** 서브태스크 섹션 헤더 */
+  subtaskSectionHeader: '서브태스크',
+  /** 상태 선택 레이블 */
+  targetStateLabel: '대상 상태 선택',
+  /** 워크플로우 상태 호환 안내 */
+  workflowIncompatible: '현재 상태가 대상 프로젝트에 없습니다. 대상 상태를 선택하세요.',
+  /** 미매핑 제거 옵션 레이블 */
+  mappingRemoveOption: '(제거)',
+  /** 컴포넌트 매핑 섹션 제목 */
+  componentMappingTitle: '컴포넌트 매핑',
+  /** affects 버전 매핑 섹션 제목 */
+  affectsVersionMappingTitle: '영향 버전 매핑',
+  /** fix 버전 매핑 섹션 제목 */
+  fixVersionMappingTitle: '수정 버전 매핑',
+  /** 제거될 커스텀 필드 안내 */
+  removedFieldsLabel: '제거될 커스텀 필드',
+  /** 필수 커스텀 필드 입력 안내 */
+  requiredMissingLabel: '필수 항목 입력',
+
+  // ── 성공/오류 메시지 ──────────────────────────────────────────────────
+  /** 이동 성공 토스트 */
+  moveSuccessToast: '이슈가 이동되었습니다.',
+  /** 서브태스크 포함 이동 성공 토스트 */
+  moveSuccessWithSubtasksToast: (count: number) => `${count}개 이슈가 이동되었습니다.`,
+  /** 403 권한 없음 에러 */
+  errorForbidden: '이슈를 이동할 권한이 없습니다.',
+  /** 404 대상 프로젝트 없음 에러 */
+  errorProjectNotFound: '대상 프로젝트를 찾을 수 없습니다.',
+  /** 409 OCC 충돌 에러 */
+  errorVersionConflict: '다른 변경이 발생했습니다. 새로고침 후 다시 시도해 주세요.',
+  /** 422 비호환 상태 미선택 에러 */
+  errorInvalidTargetState: '비호환 상태를 선택해 주세요.',
+  /** 422 다단계 서브태스크 에러 */
+  errorSubtaskHasOwnSubtasks: '다단계 서브태스크는 이동할 수 없습니다.',
+  /** 422 같은 프로젝트 에러 */
+  errorSameProject: '현재 프로젝트와 같은 프로젝트로는 이동할 수 없습니다.',
+  /** 기본 에러 */
+  errorDefault: '이슈 이동 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+  /** preview 실패 에러 */
+  errorPreview: '이슈 이동 정보를 불러오지 못했습니다. 대상 프로젝트 키를 확인해 주세요.',
+} as const

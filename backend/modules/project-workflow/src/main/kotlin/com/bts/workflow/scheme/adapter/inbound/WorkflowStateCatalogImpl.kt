@@ -5,6 +5,7 @@ package com.bts.workflow.scheme.adapter.inbound
 import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowStateView
+import com.bts.workflow.domain.StateCategory
 import com.bts.workflow.scheme.port.outbound.WorkflowResolver
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -75,7 +76,11 @@ class WorkflowStateCatalogImpl(
                 }
 
         return workflow.states.map { state ->
-            WorkflowStateView(key = state.key, name = state.name)
+            WorkflowStateView(
+                key = state.key,
+                name = state.name,
+                isDone = state.category == StateCategory.DONE,
+            )
         }
     }
 }
