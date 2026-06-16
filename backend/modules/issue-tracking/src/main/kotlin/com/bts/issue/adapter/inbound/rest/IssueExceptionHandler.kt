@@ -4,25 +4,35 @@ package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.customfield.domain.CustomFieldValidationException
 import com.bts.issue.domain.AssigneeNotFoundException
+import com.bts.issue.domain.InvalidTargetMappingException
+import com.bts.issue.domain.InvalidTargetStateException
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueComponentNotFoundException
+import com.bts.issue.domain.IssueHasSubtasksException
 import com.bts.issue.domain.IssueKeyPrefixReservedException
 import com.bts.issue.domain.IssueLinkedVersionNotFoundException
+import com.bts.issue.domain.IssueMovedException
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueSecurityLevelNotInSchemeException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
+import com.bts.issue.domain.MoveSameProjectException
+import com.bts.issue.domain.RequiredFieldMissingException
 import com.bts.issue.resolution.domain.ResolutionNotFoundException
 import com.bts.issue.type.domain.IssueTypeNotFoundException
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
+import org.springframework.http.ResponseEntity
+import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.security.core.AuthenticationException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.server.ResponseStatusException
 import java.net.URI
 import java.time.Instant
@@ -32,10 +42,13 @@ import java.time.Instant
  *
  * [basePackages] 를 `com.bts.issue.adapter.inbound.rest` 로 한정하여 다른 BC 의 예외를 잡지 않는다.
  *
- * 매핑 규칙 (spec §6.1, 10건).
+ * 매핑 규칙 (spec §6.1).
  * - [MethodArgumentNotValidException] → 400 + [IssueErrorCodes.VALIDATION_FAILED]
+ * - [HttpMessageNotReadableException] → 400 + [IssueErrorCodes.VALIDATION_FAILED]
+ * - [MethodArgumentTypeMismatchException] → 400 + [IssueErrorCodes.VALIDATION_FAILED]
  * - [AuthenticationException] → 401 + [IssueErrorCodes.UNAUTHENTICATED]
  * - [IssueAccessDeniedException] → 403 + [IssueErrorCodes.ACCESS_DENIED]
+ * - [IssueMovedException] → 308 Permanent Redirect + Location 헤더 (FR-MV-01, DATA.md §2)
  * - [IssueNotFoundException] → 404 + [IssueErrorCodes.ISSUE_NOT_FOUND]
  * - [IssueProjectNotFoundException] → 404 + [IssueErrorCodes.PROJECT_NOT_FOUND]
  * - [ResolutionNotFoundException] → 404 + [IssueErrorCodes.RESOLUTION_NOT_FOUND]
@@ -47,6 +60,11 @@ import java.time.Instant
  * - [IssueComponentNotFoundException] → 422 + [IssueErrorCodes.COMPONENT_NOT_FOUND]
  * - [IssueLinkedVersionNotFoundException] → 422 + [IssueErrorCodes.LINKED_VERSION_NOT_FOUND]
  * - [CustomFieldValidationException] → 422 + [IssueErrorCodes.CUSTOM_FIELD_VALIDATION_FAILED]
+ * - [MoveSameProjectException] → 422 + [IssueErrorCodes.MOVE_SAME_PROJECT]
+ * - [IssueHasSubtasksException] → 422 + [IssueErrorCodes.ISSUE_HAS_SUBTASKS]
+ * - [InvalidTargetStateException] → 422 + [IssueErrorCodes.INVALID_TARGET_STATE]
+ * - [InvalidTargetMappingException] → 422 + [IssueErrorCodes.INVALID_TARGET_MAPPING]
+ * - [RequiredFieldMissingException] → 422 + [IssueErrorCodes.REQUIRED_FIELD_MISSING]
  * - [Exception] (fallback) → 500 + [IssueErrorCodes.INTERNAL_ERROR]
  *
  * TooManyFunctions: 도메인 예외 종류(400/401/403/404/409/422/500) 각각에 @ExceptionHandler 가 필요하므로
@@ -58,6 +76,10 @@ import java.time.Instant
  * FR-CM-02 Task 5 에서 [IssueComponentNotFoundException] 핸들러가 추가됐다 (422 + COMPONENT_NOT_FOUND).
  * FR-IS-10 BLOCKER 1 에서 [CustomFieldValidationException] 핸들러가 추가됐다 (422 + CUSTOM_FIELD_VALIDATION_FAILED).
  * FR-VR-03 Task 5 에서 [IssueLinkedVersionNotFoundException] 핸들러가 추가됐다 (422 + LINKED_VERSION_NOT_FOUND).
+ * FR-MV-01 Task 4 에서 [IssueMovedException] 핸들러가 추가됐다 (308 Permanent Redirect + Location 헤더).
+ * FR-MV-01 Task 8 에서 이동 도메인 예외 5종([MoveSameProjectException]/[IssueHasSubtasksException]/
+ * [InvalidTargetStateException]/[InvalidTargetMappingException]/[RequiredFieldMissingException])
+ * 및 [HttpMessageNotReadableException]/[MethodArgumentTypeMismatchException] 핸들러가 추가됐다 (모두 400/422).
  */
 @Suppress("TooManyFunctions")
 @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
@@ -84,6 +106,52 @@ class IssueExceptionHandler {
             title = "Validation Failed",
             errorCode = IssueErrorCodes.VALIDATION_FAILED,
             detail = fieldErrors.ifBlank { "요청 값 검증에 실패했습니다." },
+        )
+    }
+
+    /**
+     * 요청 본문 역직렬화 실패 — 400.
+     *
+     * JSON 형식 오류 또는 타입 불일치(UUID 필드에 정수 등) 시 Jackson 이 발생시킨다.
+     * catch-all [handleInternalError] 가 이 예외를 500 으로 변질시키지 못하도록 명시 핸들러로 등록한다.
+     * (FR-WT-01 WatcherExceptionHandler 동일 패턴 — 메모리 참조.)
+     *
+     * 보안 — 역직렬화 오류 상세를 응답에 포함하지 않고 일반 메시지만 반환한다. 원인은 로그에만 기록한다.
+     *
+     * @param ex 역직렬화 실패를 나타내는 Spring HTTP 메시지 변환 예외.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleHttpMessageNotReadable(ex: HttpMessageNotReadableException): ProblemDetail {
+        log.info("ISSUE_400 message_not_readable cause='{}'", ex.cause?.message ?: ex.message)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "validation-failed",
+            title = "Validation Failed",
+            errorCode = IssueErrorCodes.VALIDATION_FAILED,
+            detail = "요청 본문을 읽을 수 없습니다. JSON 형식 또는 필드 값을 확인해 주세요.",
+        )
+    }
+
+    /**
+     * 경로 변수 또는 요청 파라미터 타입 불일치 — 400.
+     *
+     * 경로 변수가 UUID 타입이어야 할 때 올바르지 않은 값이 전달되면 Spring MVC 가 발생시킨다.
+     * catch-all [handleInternalError] 가 이 예외를 500 으로 변질시키지 못하도록 명시 핸들러로 등록한다.
+     * (FR-WT-01 WatcherExceptionHandler 동일 패턴 — 메모리 참조.)
+     *
+     * 보안 — 파라미터 이름·요청값 등 내부 정보를 응답에 포함하지 않는다. 로그에만 기록한다.
+     *
+     * @param ex 파라미터 이름·요청값·목표 타입 정보를 포함하는 예외.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException::class)
+    fun handleMethodArgumentTypeMismatch(ex: MethodArgumentTypeMismatchException): ProblemDetail {
+        log.info("ISSUE_400 type_mismatch param='{}' value='{}'", ex.name, ex.value)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "validation-failed",
+            title = "Validation Failed",
+            errorCode = IssueErrorCodes.VALIDATION_FAILED,
+            detail = "요청 경로 또는 파라미터 형식이 올바르지 않습니다.",
         )
     }
 
@@ -123,6 +191,30 @@ class IssueExceptionHandler {
             errorCode = IssueErrorCodes.ACCESS_DENIED,
             detail = "이 작업을 수행할 권한이 없습니다.",
         )
+    }
+
+    // ── 308 ISSUE_MOVED (Permanent Redirect) ────────────────────────────────
+
+    /**
+     * [IssueMovedException] — 이슈가 다른 프로젝트로 이동되어 옛 키가 redirect 체인에 존재함 — 308.
+     *
+     * 308 Permanent Redirect 를 사용하는 이유 (DATA.md §2).
+     * - 이슈 키는 Slack·이메일 등 외부에서 인용되므로 영속성이 보장돼야 한다 (이슈 키 영속성 §10).
+     * - 301/302 는 POST 를 GET 으로 변경할 수 있어 PATCH/DELETE 시 의도치 않은 동작이 발생한다.
+     * - 308 은 원본 HTTP 메서드를 그대로 유지하므로 클라이언트가 동일 메서드로 새 URL 에 재시도한다.
+     *
+     * 보안 — Location 헤더에 내부 식별자(issueId)를 노출하지 않고 새 키 경로만 사용한다.
+     *
+     * catch-all [handleInternalError] 보다 먼저 선택되도록 구체 예외 타입으로 등록한다.
+     *
+     * @param ex 이동 후 최종 이슈 키를 포함하는 예외.
+     */
+    @ExceptionHandler(IssueMovedException::class)
+    fun handleIssueMoved(ex: IssueMovedException): ResponseEntity<Void> {
+        log.info("ISSUE_308 issue_moved newKey='{}'", ex.newKey)
+        val headers = HttpHeaders()
+        headers.location = URI.create("/api/v1/issues/${ex.newKey}")
+        return ResponseEntity<Void>(headers, HttpStatus.PERMANENT_REDIRECT)
     }
 
     // ── 404 ISSUE_NOT_FOUND ───────────────────────────────────────────────────
@@ -381,6 +473,105 @@ class IssueExceptionHandler {
         )
     }
 
+    // ── 422 MOVE_SAME_PROJECT (FR-MV-01) ─────────────────────────────────────
+
+    /**
+     * [MoveSameProjectException] — 원본과 대상이 동일한 프로젝트일 때 — 422 (EC1, FR-MV-01).
+     *
+     * @param ex 원본·대상이 같은 프로젝트 키를 포함하는 예외.
+     */
+    @ExceptionHandler(MoveSameProjectException::class)
+    fun handleMoveSameProject(ex: MoveSameProjectException): ProblemDetail {
+        log.info("ISSUE_422 move_same_project message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.UNPROCESSABLE_ENTITY,
+            type = "move-same-project",
+            title = "Move Same Project",
+            errorCode = IssueErrorCodes.MOVE_SAME_PROJECT,
+            detail = "같은 프로젝트 내로 이슈를 이동할 수 없습니다.",
+        )
+    }
+
+    // ── 422 ISSUE_HAS_SUBTASKS (FR-MV-01) ────────────────────────────────────
+
+    /**
+     * [IssueHasSubtasksException] — 서브태스크를 보유한 이슈 이동 시도 — 422 (EC15, FR-MV-01).
+     *
+     * @param ex 서브태스크 존재로 이동이 거부된 예외.
+     */
+    @ExceptionHandler(IssueHasSubtasksException::class)
+    fun handleIssueHasSubtasks(ex: IssueHasSubtasksException): ProblemDetail {
+        log.info("ISSUE_422 issue_has_subtasks message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.UNPROCESSABLE_ENTITY,
+            type = "issue-has-subtasks",
+            title = "Issue Has Subtasks",
+            errorCode = IssueErrorCodes.ISSUE_HAS_SUBTASKS,
+            detail = "서브태스크가 있는 이슈는 이동할 수 없습니다.",
+        )
+    }
+
+    // ── 422 INVALID_TARGET_STATE (FR-MV-01) ──────────────────────────────────
+
+    /**
+     * [InvalidTargetStateException] — 대상 프로젝트에서 유효한 상태를 결정할 수 없을 때 — 422 (EC7, FR-MV-01).
+     *
+     * @param ex 원본 상태 키와 지정한 대상 상태 키 정보를 포함하는 예외.
+     */
+    @ExceptionHandler(InvalidTargetStateException::class)
+    fun handleInvalidTargetState(ex: InvalidTargetStateException): ProblemDetail {
+        log.info("ISSUE_422 invalid_target_state message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.UNPROCESSABLE_ENTITY,
+            type = "invalid-target-state",
+            title = "Invalid Target State",
+            errorCode = IssueErrorCodes.INVALID_TARGET_STATE,
+            detail = "대상 프로젝트에서 유효한 상태를 결정할 수 없습니다. targetStateKey 를 명시해 주세요.",
+        )
+    }
+
+    // ── 422 INVALID_TARGET_MAPPING (FR-MV-01) ────────────────────────────────
+
+    /**
+     * [InvalidTargetMappingException] — 컴포넌트 또는 버전 매핑 대상 id 가 대상 프로젝트에 없을 때 — 422 (EC8, FR-MV-01).
+     *
+     * 보안 — 존재하지 않는 id 목록을 응답에 포함하지 않는다. 로그에만 기록한다.
+     *
+     * @param ex 매핑 종류(컴포넌트/버전)와 미존재 UUID 집합을 포함하는 예외.
+     */
+    @ExceptionHandler(InvalidTargetMappingException::class)
+    fun handleInvalidTargetMapping(ex: InvalidTargetMappingException): ProblemDetail {
+        log.info("ISSUE_422 invalid_target_mapping kind='{}' ids='{}'", ex.kind, ex.unknownIds)
+        return problem(
+            status = HttpStatus.UNPROCESSABLE_ENTITY,
+            type = "invalid-target-mapping",
+            title = "Invalid Target Mapping",
+            errorCode = IssueErrorCodes.INVALID_TARGET_MAPPING,
+            detail = "지정한 ${ex.kind.name.lowercase()} 매핑 대상이 대상 프로젝트에 존재하지 않습니다.",
+        )
+    }
+
+    // ── 422 REQUIRED_FIELD_MISSING (FR-MV-01) ────────────────────────────────
+
+    /**
+     * [RequiredFieldMissingException] — 대상 프로젝트 필수 커스텀필드가 제공되지 않았을 때 — 422 (EC9, FR-MV-01).
+     *
+     * 보안 — 누락된 필드 키 목록을 응답에 포함하지 않는다. 로그에만 기록한다.
+     *
+     * @param ex 누락된 필수 커스텀필드 키 집합을 포함하는 예외.
+     */
+    @ExceptionHandler(RequiredFieldMissingException::class)
+    fun handleRequiredFieldMissing(ex: RequiredFieldMissingException): ProblemDetail {
+        log.info("ISSUE_422 required_field_missing keys='{}'", ex.missingKeys)
+        return problem(
+            status = HttpStatus.UNPROCESSABLE_ENTITY,
+            type = "required-field-missing",
+            title = "Required Field Missing",
+            errorCode = IssueErrorCodes.REQUIRED_FIELD_MISSING,
+            detail = "대상 프로젝트에서 필수인 커스텀 필드 값이 누락되었습니다.",
+        )
+    }
+
     // ── 404 RESOLUTION_NOT_FOUND ──────────────────────────────────────────────
 
     /**
@@ -516,5 +707,10 @@ object IssueErrorCodes {
     const val SECURITY_LEVEL_NOT_IN_SCHEME = "SECURITY_LEVEL_NOT_IN_SCHEME"
     const val RESOLUTION_NOT_FOUND = "RESOLUTION_NOT_FOUND"
     const val CUSTOM_FIELD_VALIDATION_FAILED = "CUSTOM_FIELD_VALIDATION_FAILED"
+    const val MOVE_SAME_PROJECT = "MOVE_SAME_PROJECT"
+    const val ISSUE_HAS_SUBTASKS = "ISSUE_HAS_SUBTASKS"
+    const val INVALID_TARGET_STATE = "INVALID_TARGET_STATE"
+    const val INVALID_TARGET_MAPPING = "INVALID_TARGET_MAPPING"
+    const val REQUIRED_FIELD_MISSING = "REQUIRED_FIELD_MISSING"
     const val INTERNAL_ERROR = "INTERNAL_ERROR"
 }

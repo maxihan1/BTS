@@ -620,7 +620,10 @@ class IssueControllerTransitionIntegrationTest {
             insertTransition(conn, wfId, inProgressId, inReviewId, "Submit for Review")
             insertTransition(conn, wfId, inReviewId, doneId, "Approve")
 
-            // 3. software-scheme + default mapping → software-default
+            // 3. software-scheme + default mapping → software-default (멱등)
+            // ix_scheme_default_mapping은 (scheme_id) WHERE issue_type_id IS NULL partial UNIQUE INDEX이므로
+            // ON CONFLICT ON CONSTRAINT uq_scheme_issue_type으로는 NULL 중복을 막지 못한다.
+            // WHERE NOT EXISTS로 이미 삽입된 경우 skip한다.
             conn.createStatement().use { stmt ->
                 stmt.execute(
                     """
@@ -628,7 +631,10 @@ class IssueControllerTransitionIntegrationTest {
                     SELECT s.id, NULL, '$wfId'
                     FROM workflow_schemes s
                     WHERE s.key = 'software-scheme'
-                    ON CONFLICT ON CONSTRAINT uq_scheme_issue_type DO NOTHING
+                      AND NOT EXISTS (
+                        SELECT 1 FROM workflow_scheme_issue_type_mappings m
+                        WHERE m.scheme_id = s.id AND m.issue_type_id IS NULL
+                      )
                     """.trimIndent(),
                 )
             }

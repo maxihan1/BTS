@@ -7,6 +7,7 @@ import com.bts.issue.component.adapter.AlwaysAllowComponentPermissionResolver
 import com.bts.shared.permission.ComponentPermissionResolver
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.WorkflowKeyResolver
+import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowTransitionPort
 import com.bts.workflow.scheme.application.port.IssueTypeUsagePort
 import org.assertj.core.api.Assertions.assertThat
@@ -56,6 +57,9 @@ class ComponentPermissionResolverBootTest {
 
     @MockBean
     lateinit var workflowKeyResolver: WorkflowKeyResolver
+
+    @MockBean
+    lateinit var workflowStateCatalog: WorkflowStateCatalog
 
     @MockBean
     lateinit var userLookupPort: UserLookupPort

@@ -5,6 +5,7 @@ package com.bts.issue.project.web
 import com.bts.issue.IssueTrackingApplication
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.WorkflowKeyResolver
+import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowTransitionPort
 import com.bts.workflow.scheme.application.port.IssueTypeUsagePort
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -74,6 +75,9 @@ class ProjectRequire2faControllerIntegrationTest {
 
     @MockBean
     lateinit var workflowKeyResolver: WorkflowKeyResolver
+
+    @MockBean
+    lateinit var workflowStateCatalog: WorkflowStateCatalog
 
     @MockBean
     lateinit var userLookupPort: UserLookupPort

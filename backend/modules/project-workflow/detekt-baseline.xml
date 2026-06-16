@@ -5,6 +5,7 @@
     <ID>CyclomaticComplexMethod:SchemeIssueTypeMappingRepositoryIntegrationTest.kt$SchemeIssueTypeMappingRepositoryIntegrationTest.Companion$@BeforeAll @JvmStatic fun setup()</ID>
     <ID>LongMethod:SchemeIssueTypeMappingRepositoryIntegrationTest.kt$SchemeIssueTypeMappingRepositoryIntegrationTest.Companion$@BeforeAll @JvmStatic fun setup()</ID>
     <ID>LongMethod:WorkflowKeyResolverImplIntegrationTest.kt$WorkflowKeyResolverImplIntegrationTest.Companion$private fun seedWorkflowsAndMappings()</ID>
+    <ID>LongMethod:WorkflowStateCatalogImplTest.kt$WorkflowStateCatalogImplTest.Companion$private fun seedWorkflowsAndMappings()</ID>
     <ID>LongMethod:WorkflowResolverImplIntegrationTest.kt$WorkflowResolverImplIntegrationTest.Companion$private fun seedWorkflowsAndMappings()</ID>
     <ID>LongMethod:WorkflowSchemeRepositoryIntegrationTest.kt$WorkflowSchemeRepositoryIntegrationTest$@Test @Order(50) fun `findAllWithCounts - cartesian product 없이 정확한 카운트 반환`()</ID>
     <ID>LongMethod:WorkflowSchemeRepositoryIntegrationTest.kt$WorkflowSchemeRepositoryIntegrationTest.Companion$@BeforeAll @JvmStatic fun setup()</ID>
@@ -40,6 +41,8 @@
     <ID>MaxLineLength:WorkflowSchemeExceptionHandlerTest.kt$WorkflowSchemeExceptionHandlerTest.StubExceptionController$fun</ID>
     <ID>NestedBlockDepth:WorkflowKeyResolverImplIntegrationTest.kt$WorkflowKeyResolverImplIntegrationTest.Companion$private fun insertProjectFixtures()</ID>
     <ID>NestedBlockDepth:WorkflowKeyResolverImplIntegrationTest.kt$WorkflowKeyResolverImplIntegrationTest.Companion$private fun seedWorkflowsAndMappings()</ID>
+    <ID>NestedBlockDepth:WorkflowStateCatalogImplTest.kt$WorkflowStateCatalogImplTest.Companion$private fun insertProjectFixtures()</ID>
+    <ID>NestedBlockDepth:WorkflowStateCatalogImplTest.kt$WorkflowStateCatalogImplTest.Companion$private fun seedWorkflowsAndMappings()</ID>
     <ID>NestedBlockDepth:WorkflowResolverImplIntegrationTest.kt$WorkflowResolverImplIntegrationTest.Companion$private fun insertProjectFixtures()</ID>
     <ID>NestedBlockDepth:WorkflowResolverImplIntegrationTest.kt$WorkflowResolverImplIntegrationTest.Companion$private fun seedWorkflowsAndMappings()</ID>
     <ID>NestedBlockDepth:WorkflowSchemeRepositoryIntegrationTest.kt$WorkflowSchemeRepositoryIntegrationTest$@Test @Order(30) fun `softDelete - deleted_at 컬럼이 SET됨`()</ID>

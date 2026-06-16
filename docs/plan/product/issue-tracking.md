@@ -438,11 +438,13 @@
 
 **우선순위**. 필수 | **선행**. §2.1.1 | **Plan slug**. `issue/move`
 
-- [ ] D1. 도메인 — IssueMoveOperation (책임. backend-engineer)
-- [ ] D2. 명세 — 새 이슈 키 생성 + 옛 키 redirect (DATA.md §이슈키 영속성) (책임. backend-engineer + Maxi)
+> **PR #153 (2026-06-16)** — **단건 이동** 완료: Jira식 매핑 마법사(`POST /move/preview`+`POST /move` 2단계), cross-BC SPI `WorkflowStateCatalog`(대상 워크플로우 상태목록), 옛 키 308 redirect(체인 순회), id 보존+종속데이터(컴포넌트/버전/커스텀필드) 서버측 매핑검증, resolution clear(비DONE). 자식(서브태스크) 있으면 422 거부. **서브태스크 동반 이동(노드별 매핑)·프론트 마법사 UI는 후속 PR.** ADR `2026-06-16-issue-move-semantics`.
+
+- [~] D1. 도메인 — IssueMoveOperation (책임. backend-engineer) — PR #153 (단건 검증; 서브태스크 동반 후속)
+- [~] D2. 명세 — 새 이슈 키 생성 + 옛 키 redirect (DATA.md §이슈키 영속성) (책임. backend-engineer + Maxi) — PR #153 (spec/ADR, 단건)
 - [x] D3. 데이터 모델 — `issue_key_redirects(old_key, new_key, moved_at)` (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST /api/v1/issues/{key}/move` 트랜잭션 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — 옛 키로 조회 시 308 redirect (책임. backend-engineer)
+- [~] D4. 백엔드 — `POST /api/v1/issues/{key}/move` 트랜잭션 (책임. backend-engineer) — PR #153 (단건 preview/move; 서브태스크 동반 후속)
+- [~] D5. 백엔드 테스트 — 옛 키로 조회 시 308 redirect (책임. backend-engineer) — PR #153 (308 체인+EC 전수 통합테스트)
 - [ ] D6. 프론트 UI — 이동 다이얼로그 (책임. designer → frontend-engineer)
 - [ ] D7. E2E — 이동 + **옛 키 redirect E2E** (FR-IS-01 D7에서 이관, 2026-05-30) (책임. qa-engineer)
 
