@@ -604,3 +604,27 @@ COMMENT ON COLUMN issue_attachments.created_at   IS '업로드 시각. TIMESTAMP
 
 -- FK 인덱스 (DATA.md §7). issue_id 단독 조회(이슈별 첨부 목록)에 사용.
 CREATE INDEX idx_issue_attachments_issue_id ON issue_attachments(issue_id);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V024: issue_watchers 조인 테이블 (FR-WT-01 이슈 관심 등록 사용자)
+-- 원본: db/migration/issue-tracking/V024__issue_watchers.sql
+-- jOOQ: IssueWatchers 테이블 + ISSUE_ID/USER_ID/CREATED_AT 상수 생성 대상.
+--       이 미러가 빠지면 상수/테이블 미생성 → WatcherRepository 컴파일 불가 (jooq-init-codegen-mirror).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- 이슈 워처(관심 등록 사용자) 조인 테이블. 다대다(이슈↔사용자)라 복합 PK + 소프트 삭제 없음 (하드 remove 정상).
+-- issue_id 실 FK + ON DELETE CASCADE (같은 BC — 이슈 하드 삭제 경로에서 고아 워처 행 자동 정리).
+-- user_id 는 identity-access BC users.id 대응이나 BC 격리로 FK 미적용 (assignee_id 선례).
+CREATE TABLE issue_watchers (
+    issue_id   UUID        NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+    user_id    UUID        NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (issue_id, user_id)
+);
+COMMENT ON TABLE  issue_watchers            IS '이슈 워처(관심 등록 사용자) 조인 테이블. 다대다라 복합 PK, 소프트 삭제 없음 (FR-WT-01).';
+COMMENT ON COLUMN issue_watchers.issue_id   IS '대상 이슈 (issues.id). 같은 BC 라 실 FK + ON DELETE CASCADE.';
+COMMENT ON COLUMN issue_watchers.user_id    IS '관심 등록 사용자 ID (identity-access users.id 대응). BC 격리로 FK 미적용.';
+COMMENT ON COLUMN issue_watchers.created_at IS '관심 등록 시각. TIMESTAMPTZ (DATA.md §4).';
+
+-- FK 인덱스 (DATA.md §7). issue_id 단독 조회(이슈별 워처 목록)에 사용 (PK 선두 컬럼이나 명시 인덱스로 의도 고정).
+CREATE INDEX idx_issue_watchers_issue ON issue_watchers (issue_id);
