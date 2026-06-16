@@ -165,6 +165,6 @@ class IssueKeyRedirectRepositoryTest : IssueTestcontainersBase() {
 
         // 예외 없이 반환되어야 한다
         val result = redirectRepository.findCurrentKey(keys[0])
-        assertThat(result).isNotNull()
+        assertThat(result).isNotNull
     }
 }
