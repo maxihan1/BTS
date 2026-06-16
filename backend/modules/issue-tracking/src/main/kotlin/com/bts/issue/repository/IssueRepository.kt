@@ -1031,7 +1031,9 @@ class IssueRepository(
             versionIds.forEach { versionId -> insert.values(issueId, versionId) }
             insert.execute()
         } else {
-            val insert = dsl.insertInto(ISSUE_AFFECTS_VERSIONS, ISSUE_AFFECTS_VERSIONS.ISSUE_ID, ISSUE_AFFECTS_VERSIONS.VERSION_ID)
+            val insert = dsl.insertInto(
+                ISSUE_AFFECTS_VERSIONS, ISSUE_AFFECTS_VERSIONS.ISSUE_ID, ISSUE_AFFECTS_VERSIONS.VERSION_ID,
+            )
             versionIds.forEach { versionId -> insert.values(issueId, versionId) }
             insert.execute()
         }
@@ -1142,6 +1144,7 @@ class IssueRepository(
      * @return 업데이트된 행 수 (성공=1, 낙관락 충돌=0).
      */
     @Transactional
+    @Suppress("LongParameterList") // issues 이동은 단일 UPDATE 에 7개 필드가 불가분 — data class 도입 불필요
     fun moveIssue(
         oldKey: IssueKey,
         newKey: IssueKey,

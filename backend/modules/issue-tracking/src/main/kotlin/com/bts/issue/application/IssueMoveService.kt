@@ -10,6 +10,7 @@ import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.domain.IssueMoveContext
 import com.bts.issue.domain.IssueMoveOperation
+import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.repository.IssueKeyRedirectRepository
 import com.bts.issue.repository.IssueRepository
@@ -134,23 +135,24 @@ class IssueMoveService(
         assertPermission(actor, IssuePermission.CREATE, IssueScope.Project(targetProjectKey))
 
         // 4. 대상 워크플로우 미설정 검증 (resolveExisting — 부수효과 없는 읽기 전용)
-        val targetWorkflow = try {
-            workflowKeyResolver.resolveExisting(ProjectKey.of(targetProjectKey), null)
+        // WorkflowSchemeNoDefaultException 은 project-workflow BC 내부 예외이므로 직접 import 불가.
+        // simpleName 비교로 감지하고 BC 경계 공개 예외 IssueWorkflowNotConfiguredException 으로 변환한다.
+        // resolveExisting 이 null 반환하면 기본 워크플로우 없음 → 422.
+        val hasWorkflow = try {
+            workflowKeyResolver.resolveExisting(ProjectKey.of(targetProjectKey), null) != null
         } catch (e: RuntimeException) {
-            if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") {
-                throw IssueWorkflowNotConfiguredException(targetProjectKey, null)
-            }
-            throw e
-        } ?: throw IssueWorkflowNotConfiguredException(targetProjectKey, null)
+            if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") false else throw e
+        }
+        if (!hasWorkflow) throw IssueWorkflowNotConfiguredException(targetProjectKey, null)
 
-        // 대상 워크플로우 상태 목록 조회
+        // 대상 워크플로우 상태 목록 조회 — issueTypeKey=null 은 이슈 타입 무관 전체 상태 목록.
         val targetStates = workflowStateCatalog.listStates(ProjectKey.of(targetProjectKey), null)
         val targetStateKeys = targetStates.map { it.key }.toSet()
 
         // 5. 도메인 검증 (EC1/EC15/EC7/EC8/EC9)
         val hasSubtasks = issueRepository.countDirectChildren(issue.id.value) > 0
         val targetProjectId = issueRepository.findProjectIdByKey(targetProjectKey)
-            ?: throw com.bts.issue.domain.IssueProjectNotFoundException(targetProjectKey)
+            ?: throw IssueProjectNotFoundException(targetProjectKey)
 
         val componentMappingTargetIds = request.componentMapping.values.filterNotNull().toSet()
         val versionMappingTargetIds =
@@ -185,7 +187,10 @@ class IssueMoveService(
         val resolvedStateKey = if (issue.currentStateKey in targetStateKeys) {
             issue.currentStateKey
         } else {
-            requireNotNull(request.targetStateKey) { "targetStateKey must not be null when source state is incompatible" }
+            // IssueMoveOperation.validate(EC7) 통과 후에는 targetStateKey 가 반드시 non-null.
+            requireNotNull(request.targetStateKey) {
+                "targetStateKey must be set when source state is not in target workflow"
+            }
         }
 
         // 커스텀 필드 필터링 (대상 프로젝트에 있는 키만 유지 + 추가 필드)
@@ -216,16 +221,12 @@ class IssueMoveService(
             sourceVersionIds = issue.affectsVersionIds,
             mapping = request.affectsVersionMapping,
             isFixVersion = false,
-            newKey = newKey,
-            version = request.expectedVersion + 1,
         )
         replaceVersionsAfterMove(
             issueId = issue.id.value,
             sourceVersionIds = issue.fixVersionIds,
             mapping = request.fixVersionMapping,
             isFixVersion = true,
-            newKey = newKey,
-            version = request.expectedVersion + 1,
         )
 
         // 9. redirect 영구 보존 (DATA.md §2)
@@ -316,24 +317,20 @@ class IssueMoveService(
     /**
      * 이동 후 버전 연결을 매핑에 따라 교체한다.
      *
+     * moveIssue 가 이미 version bump 를 수행했으므로 여기서는 OCC 없이 issueId 기준 DELETE+INSERT.
+     *
      * @param issueId 이슈 UUID.
      * @param sourceVersionIds 이동 전 버전 UUID 목록.
-     * @param mapping 원본 → 대상 버전 UUID 매핑.
+     * @param mapping 원본 → 대상 버전 UUID 매핑. 값이 null 이면 미매핑(해당 버전 제거).
      * @param isFixVersion true 이면 fix-version, false 이면 affects-version.
-     * @param newKey 이동 후 새 이슈 키 (로그용).
-     * @param version 이동 후 현재 version (조인 테이블 직접 교체용).
      */
     private fun replaceVersionsAfterMove(
         issueId: UUID,
         sourceVersionIds: List<UUID>,
         mapping: Map<UUID, UUID?>,
         isFixVersion: Boolean,
-        newKey: IssueKey,
-        version: Long,
     ) {
-        val targetVersionIds = sourceVersionIds
-            .mapNotNull { srcId -> mapping[srcId] }
-
+        val targetVersionIds = sourceVersionIds.mapNotNull { srcId -> mapping[srcId] }
         issueRepository.deleteVersionsByIssueId(issueId, isFixVersion)
         if (targetVersionIds.isNotEmpty()) {
             issueRepository.insertVersionLinks(issueId, targetVersionIds, isFixVersion)

@@ -118,10 +118,12 @@ class IssueMoveServiceTest {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.createStatement().use { stmt ->
                 stmt.execute(
-                    "INSERT INTO projects (key, name) VALUES ('$SRC_PROJECT', 'Move Source') ON CONFLICT (key) DO NOTHING",
+                    "INSERT INTO projects (key, name) VALUES ('$SRC_PROJECT', 'Move Source') " +
+                        "ON CONFLICT (key) DO NOTHING",
                 )
                 stmt.execute(
-                    "INSERT INTO projects (key, name) VALUES ('$DST_PROJECT', 'Move Dest') ON CONFLICT (key) DO NOTHING",
+                    "INSERT INTO projects (key, name) VALUES ('$DST_PROJECT', 'Move Dest') " +
+                        "ON CONFLICT (key) DO NOTHING",
                 )
             }
             conn.prepareStatement("SELECT id FROM projects WHERE key = '$SRC_PROJECT'").use { ps ->
