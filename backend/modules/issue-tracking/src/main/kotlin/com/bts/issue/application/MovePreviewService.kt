@@ -244,6 +244,7 @@ class MovePreviewService(
      * @param sourceProjectId 원본 프로젝트 UUID.
      * @param targetProjectId 대상 프로젝트 UUID.
      * @return [ResourceMappingSection].
+     * @see computeNameMatchMapping
      */
     private fun buildComponentSection(
         issueComponentIds: List<UUID>,
@@ -254,8 +255,8 @@ class MovePreviewService(
         val targetComponents = componentRepository.findByProject(targetProjectId)
 
         val currentComponents = sourceComponents.filter { comp -> comp.id in issueComponentIds }
-        val sourceNameById = sourceComponents.mapNotNull { comp -> comp.id?.let { id -> id to comp.name } }.toMap()
-        val targetIdByName = targetComponents.mapNotNull { comp -> comp.id?.let { id -> comp.name to id } }.toMap()
+        val sourceNameById = sourceComponents.idToNameMap { comp -> comp.name }
+        val targetIdByName = targetComponents.nameToIdMap { comp -> comp.name }
 
         val autoMapping = computeNameMatchMapping(issueComponentIds, sourceNameById, targetIdByName)
 
@@ -275,6 +276,7 @@ class MovePreviewService(
      * @param sourceProjectId 원본 프로젝트 UUID.
      * @param targetProjectId 대상 프로젝트 UUID.
      * @return [VersionMappingSection].
+     * @see computeNameMatchMapping
      */
     private fun buildVersionSection(
         issueVersionIds: List<UUID>,
@@ -285,8 +287,8 @@ class MovePreviewService(
         val targetVersions = versionRepository.findByProject(targetProjectId)
 
         val currentVersions = sourceVersions.filter { ver -> ver.id in issueVersionIds }
-        val sourceNameById = sourceVersions.mapNotNull { ver -> ver.id?.let { id -> id to ver.name } }.toMap()
-        val targetIdByName = targetVersions.mapNotNull { ver -> ver.id?.let { id -> ver.name to id } }.toMap()
+        val sourceNameById = sourceVersions.idToNameMap { ver -> ver.name }
+        val targetIdByName = targetVersions.nameToIdMap { ver -> ver.name }
 
         val autoMapping = computeNameMatchMapping(issueVersionIds, sourceNameById, targetIdByName)
 
@@ -356,3 +358,47 @@ class MovePreviewService(
             sourceId to (if (sourceName != null) targetIdByName[sourceName] else null)
         }
 }
+
+// ── 파일 로컬 확장 함수 — 자동매핑 헬퍼 ──────────────────────────────────────
+
+/**
+ * id가 null이 아닌 요소에 대해 id → [nameExtractor] 결과 맵을 빌드한다.
+ *
+ * id 가 null 인 요소는 무시한다 (DB id 미할당 상태 방어).
+ *
+ * @param nameExtractor 리소스 객체에서 이름 문자열을 추출하는 함수.
+ * @return id → 이름 맵.
+ */
+private fun <T> List<T>.idToNameMap(nameExtractor: (T) -> String): Map<UUID, String>
+    where T : Any =
+    buildMap {
+        for (item in this@idToNameMap) {
+            val id = when (item) {
+                is Component -> item.id
+                is Version -> item.id
+                else -> null
+            }
+            if (id != null) put(id, nameExtractor(item))
+        }
+    }
+
+/**
+ * id가 null이 아닌 요소에 대해 [nameExtractor] 결과 → id 맵을 빌드한다.
+ *
+ * 이름 중복 시 나중에 등장한 항목이 이전 항목을 덮어쓴다 (활성 제약으로 중복 없음).
+ *
+ * @param nameExtractor 리소스 객체에서 이름 문자열을 추출하는 함수.
+ * @return 이름 → id 맵.
+ */
+private fun <T> List<T>.nameToIdMap(nameExtractor: (T) -> String): Map<String, UUID>
+    where T : Any =
+    buildMap {
+        for (item in this@nameToIdMap) {
+            val id = when (item) {
+                is Component -> item.id
+                is Version -> item.id
+                else -> null
+            }
+            if (id != null) put(nameExtractor(item), id)
+        }
+    }
