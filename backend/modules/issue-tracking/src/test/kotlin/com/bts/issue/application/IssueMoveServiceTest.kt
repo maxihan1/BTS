@@ -5,12 +5,14 @@ package com.bts.issue.application
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.IncompleteSubtaskMappingException
 import com.bts.issue.domain.InvalidTargetMappingException
 import com.bts.issue.domain.IssueDomainException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.domain.RequiredFieldMissingException
+import com.bts.issue.domain.SubtaskHasOwnSubtasksException
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.repository.IssueKeyRedirectRepository
 import com.bts.issue.repository.IssueRepository
@@ -248,6 +250,8 @@ class IssueMoveServiceTest {
             }
 
         assertThat(result).isNotNull
+        assertThat(result!!.newKey.value).isEqualTo("MDST-1")
+        assertThat(result.movedSubtasks).isEmpty()
 
         // 새 키 MDST-1
         val dstKey = IssueKey.of(DST_PROJECT, 1)
@@ -633,6 +637,258 @@ class IssueMoveServiceTest {
                 }
             }
         assertThat(afterResolution).isNull()
+    }
+
+    // ── ST1. 동반 이동 happy path ─────────────────────────────────────────────
+
+    /**
+     * ST1 — 루트+자식 동반 이동: 새 키 발번 + redirect 노드별 + 자식 parent_id 유지 + 루트 detach.
+     *
+     * Given  MSRC-1(루트) + MSRC-2(자식, parent_id=MSRC-1.id)
+     * When   subtasks=[MSRC-2 매핑] 포함 이동 요청
+     * Then   - 루트 새 키 MDST-1, 자식 새 키 MDST-2
+     *        - 자식 parent_id = 루트의 원래 id(불변) 유지
+     *        - 루트 parent_id = null (외부 부모 끊김)
+     *        - redirect MSRC-1→MDST-1, MSRC-2→MDST-2
+     *        - MoveResult.movedSubtasks.size == 1
+     */
+    @Test
+    fun `ST1 동반 이동 - 루트+자식 새키+redirect+자식 parent유지+루트 detach`() {
+        val rootId = insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN)
+        insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN, parentId = rootId)
+        val srcRootKey = IssueKey.of(SRC_PROJECT, 1)
+        val srcChildKey = IssueKey.of(SRC_PROJECT, 2)
+
+        every {
+            workflowStateCatalog.listStates(any(), any())
+        } returns listOf(WorkflowStateView(key = STATE_OPEN, name = "열림"))
+
+        val request =
+            IssueMoveRequest(
+                targetProjectKey = DST_PROJECT,
+                expectedVersion = 1L,
+                targetStateKey = null,
+                targetStateIsDone = false,
+                componentMapping = emptyMap(),
+                affectsVersionMapping = emptyMap(),
+                fixVersionMapping = emptyMap(),
+                additionalCustomFields = emptyMap(),
+                subtasks = listOf(
+                    SubtaskMoveSpec(
+                        issueKey = srcChildKey.value,
+                        expectedVersion = 1L,
+                        targetStateKey = null,
+                        targetStateIsDone = false,
+                        componentMapping = emptyMap(),
+                        affectsVersionMapping = emptyMap(),
+                        fixVersionMapping = emptyMap(),
+                        additionalCustomFields = emptyMap(),
+                    ),
+                ),
+            )
+
+        val result = txTemplate.execute { sut.move(actor, srcRootKey, request) }
+
+        assertThat(result).isNotNull
+        assertThat(result!!.movedSubtasks).hasSize(1)
+
+        // 루트 새 키 MDST-1
+        val dstRootKey = IssueKey.of(DST_PROJECT, 1)
+        val movedRoot = issueRepository.findByKey(dstRootKey)
+        assertThat(movedRoot).isNotNull
+        assertThat(movedRoot!!.id.value).isEqualTo(rootId)
+        assertThat(movedRoot.parentId).isNull()
+
+        // 자식 새 키 MDST-2, parent_id = 루트 id(불변)
+        val dstChildKey = IssueKey.of(DST_PROJECT, 2)
+        val movedChild = issueRepository.findByKey(dstChildKey)
+        assertThat(movedChild).isNotNull
+        assertThat(movedChild!!.parentId).isEqualTo(rootId)
+
+        // redirect 노드별
+        assertThat(redirectRepository.findByOldKey(srcRootKey)).isNotNull
+        assertThat(redirectRepository.findByOldKey(srcChildKey)).isNotNull
+    }
+
+    // ── ST2. 다단계(자식의 자식) 거부 ────────────────────────────────────────
+
+    /**
+     * ST2 — 자식 노드가 또 자식을 가지면 SubtaskHasOwnSubtasksException.
+     *
+     * Given  루트 MSRC-1 → 자식 MSRC-2 → 손자 MSRC-3
+     * When   subtasks=[MSRC-2] 동반 이동
+     * Then   SubtaskHasOwnSubtasksException (전체 롤백)
+     */
+    @Test
+    fun `ST2 자식의 자식 있으면 SubtaskHasOwnSubtasksException 전체롤백`() {
+        val rootId = insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN)
+        val childId = insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN, parentId = rootId)
+        // 손자
+        insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN, parentId = childId)
+        val srcRootKey = IssueKey.of(SRC_PROJECT, 1)
+        val srcChildKey = IssueKey.of(SRC_PROJECT, 2)
+
+        val request =
+            IssueMoveRequest(
+                targetProjectKey = DST_PROJECT,
+                expectedVersion = 1L,
+                targetStateKey = null,
+                targetStateIsDone = false,
+                componentMapping = emptyMap(),
+                affectsVersionMapping = emptyMap(),
+                fixVersionMapping = emptyMap(),
+                additionalCustomFields = emptyMap(),
+                subtasks = listOf(
+                    SubtaskMoveSpec(
+                        issueKey = srcChildKey.value,
+                        expectedVersion = 1L,
+                        targetStateKey = null,
+                        targetStateIsDone = false,
+                        componentMapping = emptyMap(),
+                        affectsVersionMapping = emptyMap(),
+                        fixVersionMapping = emptyMap(),
+                        additionalCustomFields = emptyMap(),
+                    ),
+                ),
+            )
+
+        assertThrows<SubtaskHasOwnSubtasksException> {
+            txTemplate.execute { sut.move(actor, srcRootKey, request) }
+        }
+    }
+
+    // ── ST3. 불완전 매핑(자식 일부 누락) 거부 ─────────────────────────────────
+
+    /**
+     * ST3 — 실제 자식 키 집합 ≠ 제공 자식 키 집합이면 IncompleteSubtaskMappingException.
+     *
+     * Given  루트 MSRC-1 → 자식 MSRC-2, MSRC-3 (자식 2개)
+     * When   subtasks=[MSRC-2만] (MSRC-3 누락)
+     * Then   IncompleteSubtaskMappingException
+     */
+    @Test
+    fun `ST3 자식 매핑 불완전이면 IncompleteSubtaskMappingException`() {
+        val rootId = insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN)
+        insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN, parentId = rootId)
+        insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN, parentId = rootId)
+        val srcRootKey = IssueKey.of(SRC_PROJECT, 1)
+        val srcChild1Key = IssueKey.of(SRC_PROJECT, 2)
+
+        val request =
+            IssueMoveRequest(
+                targetProjectKey = DST_PROJECT,
+                expectedVersion = 1L,
+                targetStateKey = null,
+                targetStateIsDone = false,
+                componentMapping = emptyMap(),
+                affectsVersionMapping = emptyMap(),
+                fixVersionMapping = emptyMap(),
+                additionalCustomFields = emptyMap(),
+                // 자식 2개 중 1개만 제공
+                subtasks = listOf(
+                    SubtaskMoveSpec(
+                        issueKey = srcChild1Key.value,
+                        expectedVersion = 1L,
+                        targetStateKey = null,
+                        targetStateIsDone = false,
+                        componentMapping = emptyMap(),
+                        affectsVersionMapping = emptyMap(),
+                        fixVersionMapping = emptyMap(),
+                        additionalCustomFields = emptyMap(),
+                    ),
+                ),
+            )
+
+        assertThrows<IncompleteSubtaskMappingException> {
+            txTemplate.execute { sut.move(actor, srcRootKey, request) }
+        }
+    }
+
+    // ── ST4. 자식 OCC 충돌 → 전체 롤백 ─────────────────────────────────────
+
+    /**
+     * ST4 — 자식 expectedVersion 불일치 시 IssueVersionConflictException + 전체 롤백.
+     *
+     * Given  루트 MSRC-1(version=1) + 자식 MSRC-2(version=1)
+     * When   자식 expectedVersion=999 (불일치)
+     * Then   IssueVersionConflictException, 루트도 미이동
+     */
+    @Test
+    fun `ST4 자식 OCC 충돌이면 IssueVersionConflictException 전체롤백`() {
+        val rootId = insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN)
+        insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN, parentId = rootId)
+        val srcRootKey = IssueKey.of(SRC_PROJECT, 1)
+        val srcChildKey = IssueKey.of(SRC_PROJECT, 2)
+
+        every {
+            workflowStateCatalog.listStates(any(), any())
+        } returns listOf(WorkflowStateView(key = STATE_OPEN, name = "열림"))
+
+        val request =
+            IssueMoveRequest(
+                targetProjectKey = DST_PROJECT,
+                expectedVersion = 1L,
+                targetStateKey = null,
+                targetStateIsDone = false,
+                componentMapping = emptyMap(),
+                affectsVersionMapping = emptyMap(),
+                fixVersionMapping = emptyMap(),
+                additionalCustomFields = emptyMap(),
+                subtasks = listOf(
+                    SubtaskMoveSpec(
+                        issueKey = srcChildKey.value,
+                        // 의도적 불일치
+                        expectedVersion = 999L,
+                        targetStateKey = null,
+                        targetStateIsDone = false,
+                        componentMapping = emptyMap(),
+                        affectsVersionMapping = emptyMap(),
+                        fixVersionMapping = emptyMap(),
+                        additionalCustomFields = emptyMap(),
+                    ),
+                ),
+            )
+
+        assertThrows<IssueVersionConflictException> {
+            txTemplate.execute { sut.move(actor, srcRootKey, request) }
+        }
+
+        // 루트도 미이동
+        assertThat(issueRepository.findByKey(srcRootKey)).isNotNull
+    }
+
+    // ── ST5. 자식 없으면 단건 회귀 ───────────────────────────────────────────
+
+    /**
+     * ST5 — subtasks 빈 배열 + 실제 자식 없으면 단건 #153과 동일 동작(회귀 보존).
+     *
+     * Given  루트 MSRC-1 (자식 없음)
+     * When   subtasks=[] 빈 배열로 이동 요청
+     * Then   MoveResult.newKey = MDST-1, movedSubtasks 빈 배열
+     */
+    @Test
+    fun `ST5 자식 없으면 단건 회귀 - subtasks 빈 배열 movedSubtasks 빈 배열`() {
+        insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN)
+        val srcKey = IssueKey.of(SRC_PROJECT, 1)
+
+        val request =
+            IssueMoveRequest(
+                targetProjectKey = DST_PROJECT,
+                expectedVersion = 1L,
+                targetStateKey = null,
+                targetStateIsDone = false,
+                componentMapping = emptyMap(),
+                affectsVersionMapping = emptyMap(),
+                fixVersionMapping = emptyMap(),
+                additionalCustomFields = emptyMap(),
+                subtasks = emptyList(),
+            )
+
+        val result = txTemplate.execute { sut.move(actor, srcKey, request) }
+
+        assertThat(result).isNotNull
+        assertThat(result!!.newKey.value).isEqualTo("MDST-1")
+        assertThat(result.movedSubtasks).isEmpty()
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
