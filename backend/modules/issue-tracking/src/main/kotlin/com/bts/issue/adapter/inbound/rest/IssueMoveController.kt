@@ -2,13 +2,16 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.adapter.inbound.rest.dto.MovedSubtask
 import com.bts.issue.adapter.inbound.rest.dto.MovePreviewRequest
 import com.bts.issue.adapter.inbound.rest.dto.MoveRequest
 import com.bts.issue.adapter.inbound.rest.dto.MoveResponse
+import com.bts.issue.adapter.inbound.rest.dto.SubtaskMoveMapping
 import com.bts.issue.application.IssueMoveRequest
 import com.bts.issue.application.IssueMoveService
 import com.bts.issue.application.MovePreview
 import com.bts.issue.application.MovePreviewService
+import com.bts.issue.application.SubtaskMoveSpec
 import com.bts.issue.domain.IssueKey
 import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
@@ -108,13 +111,34 @@ class IssueMoveController(
                 affectsVersionMapping = request.affectsVersionMapping,
                 fixVersionMapping = request.fixVersionMapping,
                 additionalCustomFields = request.customFieldValues,
+                subtasks = request.subtasks.map { it.toSpec() },
             )
-        val newKey = moveService.move(actor, issueKey, appRequest)
+        val result = moveService.move(actor, issueKey, appRequest)
         val response =
             MoveResponse(
-                issueKey = newKey.value,
+                issueKey = result.newKey.value,
                 previousKey = issueKey.value,
+                movedSubtasks = result.movedSubtasks.map { node ->
+                    MovedSubtask(previousKey = node.previousKey.value, issueKey = node.newKey.value)
+                },
             )
         return ResponseEntity.ok(DataResponse(data = response))
     }
 }
+
+// ── 파일 로컬 확장 함수 ──────────────────────────────────────────────────────────
+
+/**
+ * DTO [SubtaskMoveMapping] 을 서비스 요청 [SubtaskMoveSpec] 으로 변환한다.
+ */
+private fun SubtaskMoveMapping.toSpec(): SubtaskMoveSpec =
+    SubtaskMoveSpec(
+        issueKey = issueKey,
+        expectedVersion = expectedVersion,
+        targetStateKey = targetStateKey,
+        targetStateIsDone = targetStateIsDone,
+        componentMapping = componentMapping,
+        affectsVersionMapping = affectsVersionMapping,
+        fixVersionMapping = fixVersionMapping,
+        additionalCustomFields = customFieldValues,
+    )

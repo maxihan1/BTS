@@ -1164,14 +1164,16 @@ class IssueRepository(
         resolvedResolutionId: UUID?,
         filteredCustomFields: Map<String, Any?>,
         expectedVersion: Long,
+        newParentId: UUID? = null,
     ): Int {
         log.debug(
-            "moveIssue oldKey={} newKey={} targetProjectId={} targetStateKey={} expectedVersion={}",
+            "moveIssue oldKey={} newKey={} targetProjectId={} targetStateKey={} expectedVersion={} newParentId={}",
             oldKey.value,
             newKey.value,
             targetProjectId,
             targetStateKey,
             expectedVersion,
+            newParentId,
         )
         return dsl.update(ISSUES)
             .set(ISSUES.PROJECT_ID, targetProjectId)
@@ -1179,7 +1181,7 @@ class IssueRepository(
             .set(ISSUES.CURRENT_STATE_KEY, targetStateKey)
             .set(ISSUES.RESOLUTION_ID, resolvedResolutionId)
             .set(ISSUES.CUSTOM_FIELDS, filteredCustomFields.toJsonb())
-            .set(ISSUES.PARENT_ID, null as UUID?)
+            .set(ISSUES.PARENT_ID, newParentId)
             .set(ISSUES.UPDATED_AT, java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC))
             .set(ISSUES.VERSION, expectedVersion + 1)
             .where(ISSUES.KEY.eq(oldKey.value))

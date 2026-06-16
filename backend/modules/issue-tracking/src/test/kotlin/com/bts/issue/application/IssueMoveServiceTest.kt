@@ -659,9 +659,7 @@ class IssueMoveServiceTest {
         val srcRootKey = IssueKey.of(SRC_PROJECT, 1)
         val srcChildKey = IssueKey.of(SRC_PROJECT, 2)
 
-        every {
-            workflowStateCatalog.listStates(any(), any())
-        } returns listOf(WorkflowStateView(key = STATE_OPEN, name = "열림"))
+        // setUp() 이 listStates(ProjectKey.of(DST_PROJECT), null) → STATE_OPEN 포함 목록을 stub 했으므로 추가 stub 불필요.
 
         val request =
             IssueMoveRequest(
@@ -820,9 +818,7 @@ class IssueMoveServiceTest {
         val srcRootKey = IssueKey.of(SRC_PROJECT, 1)
         val srcChildKey = IssueKey.of(SRC_PROJECT, 2)
 
-        every {
-            workflowStateCatalog.listStates(any(), any())
-        } returns listOf(WorkflowStateView(key = STATE_OPEN, name = "열림"))
+        // setUp() 이 listStates(ProjectKey.of(DST_PROJECT), null) stub 했으므로 추가 stub 불필요.
 
         val request =
             IssueMoveRequest(
