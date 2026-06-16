@@ -1,6 +1,6 @@
 // 이슈 상세 감시자 섹션 — Watch 토글 + 카운트 + 명단 (FR-WT-01 D6)
 import { useAuthUser } from '@/auth/authStore'
-import { useWatchers, useAddWatcher, useRemoveWatcher, extractWatcherErrorCode } from '@/api/issue-watchers'
+import { useWatchers, useAddWatcher, useRemoveWatcher } from '@/api/issue-watchers'
 import { issueDetailStrings } from '@/i18n/ko'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
@@ -41,12 +41,12 @@ export const WatchersSection = ({ issueKey }: WatchersSectionProps) => {
    */
   const canToggle = !isMutating && !!user?.userId && data !== undefined
 
-  /** mutation 실패 시 에러 코드를 추출해 toast로 사용자에게 알린다. */
-  const onMutationError = (error: unknown) => {
-    const code = extractWatcherErrorCode(error)
-    // errorCode가 있어도 별도 메시지 맵이 없으므로 공통 에러 문구를 사용한다.
-    // watchersError는 ko.ts에 정의된 기존 키를 재사용한다.
-    void code // 향후 코드별 메시지 분기 확장 시 활용
+  /**
+   * mutation 실패 시 에러 코드를 추출해 toast로 사용자에게 알린다.
+   * 현재는 errorCode와 무관하게 공통 메시지를 사용한다.
+   * 향후 코드별 메시지 분기가 필요하면 extractWatcherErrorCode(error) 결과를 switch로 확장한다.
+   */
+  const onMutationError = (_error: unknown) => {
     toast.error(issueDetailStrings.watchersError)
   }
 
