@@ -972,6 +972,72 @@ class IssueRepository(
     }
 
     /**
+     * 이슈에 연결된 컴포넌트 행을 모두 삭제한다 (이슈 이동 전용).
+     *
+     * 이슈 이동 시 기존 컴포넌트 연결을 제거하고 매핑된 대상 컴포넌트를 [insertComponents] 로 재삽입한다.
+     * OCC version bump 없이 issueId 기준 DELETE — 이동 서비스가 moveIssue 에서 이미 version+1 을 수행한 뒤 호출한다.
+     *
+     * **이동 전용.** 일반 컴포넌트 편집(PATCH /components)은 반드시 [replaceComponents] 를 사용해야 한다.
+     *
+     * @param issueId 컴포넌트 연결을 삭제할 이슈 UUID.
+     */
+    @Transactional
+    fun deleteComponentsByIssueId(issueId: UUID) {
+        log.debug("deleteComponentsByIssueId issueId={}", issueId)
+        dsl.deleteFrom(ISSUE_COMPONENTS)
+            .where(ISSUE_COMPONENTS.ISSUE_ID.eq(issueId))
+            .execute()
+    }
+
+    /**
+     * 이슈에 연결된 버전 행을 모두 삭제한다 (이슈 이동 전용).
+     *
+     * [isFixVersion] 에 따라 issue_fix_versions 또는 issue_affects_versions 테이블에서 삭제한다.
+     * OCC version bump 없이 issueId 기준 DELETE.
+     *
+     * @param issueId 버전 연결을 삭제할 이슈 UUID.
+     * @param isFixVersion true 이면 fix-version, false 이면 affects-version.
+     */
+    @Transactional
+    fun deleteVersionsByIssueId(issueId: UUID, isFixVersion: Boolean) {
+        log.debug("deleteVersionsByIssueId issueId={} isFixVersion={}", issueId, isFixVersion)
+        if (isFixVersion) {
+            dsl.deleteFrom(ISSUE_FIX_VERSIONS)
+                .where(ISSUE_FIX_VERSIONS.ISSUE_ID.eq(issueId))
+                .execute()
+        } else {
+            dsl.deleteFrom(ISSUE_AFFECTS_VERSIONS)
+                .where(ISSUE_AFFECTS_VERSIONS.ISSUE_ID.eq(issueId))
+                .execute()
+        }
+    }
+
+    /**
+     * 이슈에 버전 연결을 삽입한다 (이슈 이동 전용).
+     *
+     * 이슈 이동 시 매핑된 대상 버전을 batch INSERT 한다.
+     * OCC version bump 없음 — 이동 서비스가 moveIssue 에서 이미 version+1 을 수행한 뒤 호출한다.
+     *
+     * @param issueId 이슈 UUID.
+     * @param versionIds 삽입할 버전 UUID 목록.
+     * @param isFixVersion true 이면 fix-version, false 이면 affects-version.
+     */
+    @Transactional
+    fun insertVersionLinks(issueId: UUID, versionIds: List<UUID>, isFixVersion: Boolean) {
+        if (versionIds.isEmpty()) return
+        log.debug("insertVersionLinks issueId={} count={} isFixVersion={}", issueId, versionIds.size, isFixVersion)
+        if (isFixVersion) {
+            val insert = dsl.insertInto(ISSUE_FIX_VERSIONS, ISSUE_FIX_VERSIONS.ISSUE_ID, ISSUE_FIX_VERSIONS.VERSION_ID)
+            versionIds.forEach { versionId -> insert.values(issueId, versionId) }
+            insert.execute()
+        } else {
+            val insert = dsl.insertInto(ISSUE_AFFECTS_VERSIONS, ISSUE_AFFECTS_VERSIONS.ISSUE_ID, ISSUE_AFFECTS_VERSIONS.VERSION_ID)
+            versionIds.forEach { versionId -> insert.values(issueId, versionId) }
+            insert.execute()
+        }
+    }
+
+    /**
      * 이슈 보안 등급을 갱신한다 (낙관락 OCC UPDATE).
      *
      * WHERE key=? AND version=? AND deleted_at IS NULL 조건으로 UPDATE.
@@ -1044,6 +1110,87 @@ class IssueRepository(
         log.debug("collectAncestors issueId={}", issueId)
         return dsl.fetch(SQL_COLLECT_ANCESTORS.trimIndent(), issueId)
             .mapNotNull { record -> record.get("ancestor_id", UUID::class.java) }
+    }
+
+    /**
+     * 이슈를 다른 프로젝트로 이동한다 (단건 원자 UPDATE).
+     *
+     * 호출자는 반드시 [findByKeyForUpdate] 로 비관락을 획득한 뒤 이 메서드를 호출해야 한다.
+     * version 불일치(OCC 충돌) 시 영향 행 0 반환 — 호출자가 [IssueVersionConflictException] 으로 처리한다.
+     *
+     * ### 변경 필드
+     * - `project_id` → targetProjectId
+     * - `key` → newKey
+     * - `current_state_key` → targetStateKey
+     * - `custom_fields` → filteredCustomFields (대상 프로젝트 정의에 있는 키만 + 추가 필드)
+     * - `resolution_id` → resolvedResolutionId (targetStateIsDone=false 이면 null clear, C4)
+     * - `parent_id` → null (외부 부모 끊기)
+     * - `updated_at` → NOW()
+     * - `version` → expectedVersion + 1
+     *
+     * ### 불변 필드
+     * - `id` 는 절대 변경하지 않는다 (이슈 고유 식별자 보존 — DATA.md §2).
+     *
+     * @param oldKey 이동 전 이슈 키 (WHERE 조건 + OCC version 검증에 사용).
+     * @param newKey 이동 후 이슈 키.
+     * @param targetProjectId 대상 프로젝트 UUID.
+     * @param targetStateKey 대상 프로젝트 워크플로우 상태 키.
+     * @param resolvedResolutionId DONE 전이 시 유지할 resolution UUID.
+     *   null 이면 resolution_id 를 NULL 로 clear 한다 (비DONE 이동, C4).
+     * @param filteredCustomFields 대상 프로젝트 정의 키만 남긴 최종 커스텀 필드 맵.
+     * @param expectedVersion 낙관락 버전. DB version 과 일치해야 UPDATE 가 실행된다.
+     * @return 업데이트된 행 수 (성공=1, 낙관락 충돌=0).
+     */
+    @Transactional
+    fun moveIssue(
+        oldKey: IssueKey,
+        newKey: IssueKey,
+        targetProjectId: UUID,
+        targetStateKey: String,
+        resolvedResolutionId: UUID?,
+        filteredCustomFields: Map<String, Any?>,
+        expectedVersion: Long,
+    ): Int {
+        log.debug(
+            "moveIssue oldKey={} newKey={} targetProjectId={} targetStateKey={} expectedVersion={}",
+            oldKey.value,
+            newKey.value,
+            targetProjectId,
+            targetStateKey,
+            expectedVersion,
+        )
+        return dsl.update(ISSUES)
+            .set(ISSUES.PROJECT_ID, targetProjectId)
+            .set(ISSUES.KEY, newKey.value)
+            .set(ISSUES.CURRENT_STATE_KEY, targetStateKey)
+            .set(ISSUES.RESOLUTION_ID, resolvedResolutionId)
+            .set(ISSUES.CUSTOM_FIELDS, filteredCustomFields.toJsonb())
+            .set(ISSUES.PARENT_ID, null as UUID?)
+            .set(ISSUES.UPDATED_AT, java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC))
+            .set(ISSUES.VERSION, expectedVersion + 1)
+            .where(ISSUES.KEY.eq(oldKey.value))
+            .and(ISSUES.VERSION.eq(expectedVersion))
+            .and(ISSUES.DELETED_AT.isNull)
+            .execute()
+    }
+
+    /**
+     * 이슈의 직접 자식 수를 반환한다 (이슈 이동 전 자식 존재 여부 확인용).
+     *
+     * `parent_id = issueId AND deleted_at IS NULL` 조건으로 카운트한다.
+     * cartesian product 없음 — 단순 WHERE 스칼라 집계.
+     *
+     * @param issueId 자식 수를 조회할 이슈 UUID.
+     * @return 활성 자식 이슈 수.
+     */
+    @Transactional(readOnly = true)
+    fun countDirectChildren(issueId: UUID): Int {
+        log.debug("countDirectChildren issueId={}", issueId)
+        return dsl.selectCount()
+            .from(ISSUES)
+            .where(ISSUES.PARENT_ID.eq(issueId))
+            .and(ISSUES.DELETED_AT.isNull)
+            .fetchOne(0, Int::class.java) ?: 0
     }
 
     /**
