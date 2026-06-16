@@ -342,11 +342,11 @@
 
 **우선순위**. 필수 | **선행**. §2.1.1 | **Plan slug**. `issue/watchers`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — Reporter/Assignee 자동 Watcher (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `issue_watchers` (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST/DELETE /api/v1/issues/{key}/watchers` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 — Watcher(issue,user) 관계, user_id FK 미적용(BC 격리, assignee_id 선례) (책임. backend-engineer) — PR #151
+- [x] D2. 명세 — **deviation. 타인 추가 가능(Jira식, Maxi 확정)** + Reporter/Assignee 자동 Watcher. 자동 watcher 3진입점(createIssue·changeAssignee·changeComponents 자동재배정), 재배정 시 이전 assignee 유지·unassign 무변경. cloneIssue 자동watch 제외(ADR 이연) (책임. backend-engineer) — PR #151
+- [x] D3. 데이터 모델 — `issue_watchers(issue_id, user_id, created_at)` 복합PK 멱등 + issue_id FK ON DELETE CASCADE, V024 + init_codegen 미러 (책임. db-engineer) — PR #151
+- [x] D4. 백엔드 — **deviation. `GET` 추가** + `POST/DELETE /api/v1/issues/{key}/watchers`. 권한 분기(본인=VIEW/타인=UPDATE), 타인 추가 UserLookupPort 검증(422), 멱등(ON CONFLICT) (책임. backend-engineer) — PR #151
+- [x] D5. 백엔드 테스트 — repository 8 + service 21 + controller 11 + 자동watcher 8 + 마이그레이션 스키마 (책임. backend-engineer) — PR #151
 - [ ] D6. 프론트 UI — Watch 버튼 + 카운트 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
