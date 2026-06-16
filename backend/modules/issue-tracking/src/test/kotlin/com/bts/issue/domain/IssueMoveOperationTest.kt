@@ -1,4 +1,4 @@
-// 이슈 이동 도메인 검증 규칙 단위 테스트 — EC1/EC15/EC7/EC8/EC9
+// 이슈 이동 도메인 검증 규칙 단위 테스트 — EC1/EC15/EC7/EC8/EC9 + 서브태스크 동반(EC16/불완전매핑/B3)
 
 package com.bts.issue.domain
 
@@ -251,5 +251,144 @@ class IssueMoveOperationTest {
                 providedFieldKeys = setOf("severity"),
             )
         IssueMoveOperation.validate(ctx)
+    }
+
+    // ── validateWithSubtasks — 서브태스크 동반 이동 검증 ─────────────────────
+
+    @Test
+    fun `동반 경로는 자식의 자식이 있으면 SubtaskHasOwnSubtasks`() {
+        val childKey = "SRC-2"
+        val rootCtx =
+            validContext(
+                sourceStatusKey = "TO_DO",
+                targetWorkflowStatuses = setOf("TO_DO"),
+                hasSubtasks = true,
+            )
+        val childCtx =
+            validContext(
+                sourceStatusKey = "TO_DO",
+                targetWorkflowStatuses = setOf("TO_DO"),
+            )
+        assertThrows<SubtaskHasOwnSubtasksException> {
+            IssueMoveOperation.validateWithSubtasks(
+                rootCtx = rootCtx,
+                childCtxs = listOf(childCtx),
+                actualChildKeys = setOf(childKey),
+                providedChildKeys = setOf(childKey),
+                childKeysWithOwnChildren = setOf(childKey),
+            )
+        }
+    }
+
+    @Test
+    fun `제공 자식 키가 실제 자식 집합과 다르면 IncompleteSubtaskMapping`() {
+        val childKey1 = "SRC-2"
+        val childKey2 = "SRC-3"
+        val rootCtx =
+            validContext(
+                sourceStatusKey = "TO_DO",
+                targetWorkflowStatuses = setOf("TO_DO"),
+                hasSubtasks = true,
+            )
+        val childCtx =
+            validContext(
+                sourceStatusKey = "TO_DO",
+                targetWorkflowStatuses = setOf("TO_DO"),
+            )
+        // 실제 자식은 2개인데 제공된 것은 1개
+        assertThrows<IncompleteSubtaskMappingException> {
+            IssueMoveOperation.validateWithSubtasks(
+                rootCtx = rootCtx,
+                childCtxs = listOf(childCtx),
+                actualChildKeys = setOf(childKey1, childKey2),
+                providedChildKeys = setOf(childKey1),
+                childKeysWithOwnChildren = emptySet(),
+            )
+        }
+    }
+
+    @Test
+    fun `동반 경로 루트는 hasSubtasks여도 EC15 미발생`() {
+        val childKey = "SRC-2"
+        val rootCtx =
+            validContext(
+                sourceStatusKey = "TO_DO",
+                targetWorkflowStatuses = setOf("TO_DO"),
+                hasSubtasks = true,  // 자식 있어도 동반 경로에서는 EC15 미발생
+            )
+        val childCtx =
+            validContext(
+                sourceStatusKey = "TO_DO",
+                targetWorkflowStatuses = setOf("TO_DO"),
+            )
+        // 예외 없이 통과해야 함
+        IssueMoveOperation.validateWithSubtasks(
+            rootCtx = rootCtx,
+            childCtxs = listOf(childCtx),
+            actualChildKeys = setOf(childKey),
+            providedChildKeys = setOf(childKey),
+            childKeysWithOwnChildren = emptySet(),
+        )
+    }
+
+    @Test
+    fun `자식 노드 매핑대상이 대상프로젝트에 없으면 InvalidTargetMapping (populated 위반입력)`() {
+        // B3 vacuous 차단 — componentMappingTargetIds 와 targetProjectComponentIds 를 다른 집합으로
+        val childKey = "SRC-2"
+        val mappedId = UUID.randomUUID()          // 요청에서 매핑 대상으로 지정한 id
+        val existingId = UUID.randomUUID()         // 대상 프로젝트에 실제 존재하는 id (다른 값)
+        val rootCtx =
+            validContext(
+                sourceStatusKey = "TO_DO",
+                targetWorkflowStatuses = setOf("TO_DO"),
+                hasSubtasks = true,
+            )
+        val childCtxWithBadMapping =
+            validContext(
+                sourceStatusKey = "TO_DO",
+                targetWorkflowStatuses = setOf("TO_DO"),
+                // 요청 매핑값에 mappedId 가 있으나 대상 프로젝트엔 existingId 만 존재
+                componentMappingTargetIds = setOf(mappedId),
+                targetProjectComponentIds = setOf(existingId),
+            )
+        assertThrows<InvalidTargetMappingException> {
+            IssueMoveOperation.validateWithSubtasks(
+                rootCtx = rootCtx,
+                childCtxs = listOf(childCtxWithBadMapping),
+                actualChildKeys = setOf(childKey),
+                providedChildKeys = setOf(childKey),
+                childKeysWithOwnChildren = emptySet(),
+            )
+        }
+    }
+
+    @Test
+    fun `자식 노드 필수필드 누락이면 RequiredFieldMissing (populated)`() {
+        val childKey = "SRC-2"
+        val rootCtx =
+            validContext(
+                sourceStatusKey = "TO_DO",
+                targetWorkflowStatuses = setOf("TO_DO"),
+                hasSubtasks = true,
+            )
+        // requiredFieldKeys 에 있는 "priority" 가 providedFieldKeys 에 없음
+        val childCtxMissingField =
+            validContext(
+                sourceStatusKey = "TO_DO",
+                targetWorkflowStatuses = setOf("TO_DO"),
+                requiredFieldKeys = setOf("priority", "severity"),
+                providedFieldKeys = setOf("severity"),  // "priority" 누락
+            )
+        val ex =
+            assertThrows<RequiredFieldMissingException> {
+                IssueMoveOperation.validateWithSubtasks(
+                    rootCtx = rootCtx,
+                    childCtxs = listOf(childCtxMissingField),
+                    actualChildKeys = setOf(childKey),
+                    providedChildKeys = setOf(childKey),
+                    childKeysWithOwnChildren = emptySet(),
+                )
+            }
+        assertThat(ex.missingKeys).containsExactly("priority")
     }
 }
