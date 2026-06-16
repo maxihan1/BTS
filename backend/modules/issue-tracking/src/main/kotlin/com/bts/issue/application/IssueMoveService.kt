@@ -242,7 +242,7 @@ class IssueMoveService(
     /**
      * 단건 이슈 이동 — 서브태스크 없는 경로(단건 #153 회귀 보존).
      */
-    @Suppress("ThrowsCount", "LongParameterList")
+    @Suppress("ThrowsCount", "LongMethod", "LongParameterList")
     private fun moveSingle(
         actor: ActorId,
         issueKey: IssueKey,
@@ -263,17 +263,18 @@ class IssueMoveService(
 
         // 5. 도메인 검증 (EC1/EC15/EC7/EC8/EC9)
         val hasSubtasks = issueRepository.countDirectChildren(issue.id.value) > 0
-        val ctx = buildMoveContext(
-            issueKey = issueKey,
-            targetProjectKey = targetProjectKey,
-            hasSubtasks = hasSubtasks,
-            issue = issue,
-            spec = request.toSpec(),
-            targetStateKeys = targetStateKeys,
-            targetProjectComponentIds = targetProjectComponentIds,
-            targetProjectVersionIds = targetProjectVersionIds,
-            requiredFieldKeys = requiredFieldKeys,
-        )
+        val ctx =
+            buildMoveContext(
+                issueKey = issueKey,
+                targetProjectKey = targetProjectKey,
+                hasSubtasks = hasSubtasks,
+                issue = issue,
+                spec = request.toSpec(),
+                targetStateKeys = targetStateKeys,
+                targetProjectComponentIds = targetProjectComponentIds,
+                targetProjectVersionIds = targetProjectVersionIds,
+                requiredFieldKeys = requiredFieldKeys,
+            )
         IssueMoveOperation.validate(ctx)
 
         // (C3) before snapshot before moveIssue
@@ -285,16 +286,17 @@ class IssueMoveService(
         val filteredCustomFields = buildFilteredCustomFields(issue.customFields, request.additionalCustomFields)
         val resolvedResolutionId = if (request.targetStateIsDone) issue.resolutionId else null
 
-        val updatedRows = issueRepository.moveIssue(
-            oldKey = issueKey,
-            newKey = newKey,
-            targetProjectId = targetProjectId,
-            targetStateKey = resolvedStateKey,
-            resolvedResolutionId = resolvedResolutionId,
-            filteredCustomFields = filteredCustomFields,
-            expectedVersion = request.expectedVersion,
-            newParentId = null,
-        )
+        val updatedRows =
+            issueRepository.moveIssue(
+                oldKey = issueKey,
+                newKey = newKey,
+                targetProjectId = targetProjectId,
+                targetStateKey = resolvedStateKey,
+                resolvedResolutionId = resolvedResolutionId,
+                filteredCustomFields = filteredCustomFields,
+                expectedVersion = request.expectedVersion,
+                newParentId = null,
+            )
         if (updatedRows == 0) throw IssueVersionConflictException(issueKey, issue.version)
 
         replaceComponentsAfterMove(issue.id.value, issue.componentIds, request.componentMapping)
@@ -304,19 +306,26 @@ class IssueMoveService(
 
         historyRecorder.record(
             before = beforeIssue,
-            after = beforeIssue.copy(
-                key = newKey, projectId = targetProjectId,
-                currentStateKey = resolvedStateKey, resolutionId = resolvedResolutionId,
-                parentId = null, customFields = filteredCustomFields,
-                version = request.expectedVersion + 1,
-            ),
+            after =
+                beforeIssue.copy(
+                    key = newKey,
+                    projectId = targetProjectId,
+                    currentStateKey = resolvedStateKey,
+                    resolutionId = resolvedResolutionId,
+                    parentId = null,
+                    customFields = filteredCustomFields,
+                    version = request.expectedVersion + 1,
+                ),
             actor = actor,
             projectId = beforeIssue.projectId,
         )
 
         log.info(
             "issue_moved oldKey={} newKey={} targetProject={} actor={}",
-            issueKey.value, newKey.value, targetProjectKey, actor.value,
+            issueKey.value,
+            newKey.value,
+            targetProjectKey,
+            actor.value,
         )
         return MoveResult(newKey = newKey, movedSubtasks = emptyList())
     }
@@ -344,17 +353,19 @@ class IssueMoveService(
         val children = issueRepository.findDirectChildren(rootIssue.id.value)
         val actualChildKeys = children.map { it.key.value }.toSet()
         val providedChildKeys = request.subtasks.map { it.issueKey }.toSet()
-        val childKeysWithOwnChildren = children
-            .filter { child -> issueRepository.countDirectChildren(child.id.value) > 0 }
-            .map { it.key.value }.toSet()
+        val childKeysWithOwnChildren =
+            children
+                .filter { child -> issueRepository.countDirectChildren(child.id.value) > 0 }
+                .map { it.key.value }.toSet()
 
         // (B2) id 오름차순 비관락: 루트+자식 통합 정렬
         val allKeys = listOf(rootIssue) + children
         val sortedByIdAsc = allKeys.sortedBy { it.id.value }
         val lockedIssues = mutableMapOf<String, Issue>()
         for (issueToLock in sortedByIdAsc) {
-            val locked = issueRepository.findByKeyForUpdate(issueToLock.key)
-                ?: throw IssueNotFoundException(issueToLock.key)
+            val locked =
+                issueRepository.findByKeyForUpdate(issueToLock.key)
+                    ?: throw IssueNotFoundException(issueToLock.key)
             lockedIssues[locked.key.value] = locked
         }
         val root = lockedIssues[issueKey.value] ?: throw IssueNotFoundException(issueKey)
@@ -364,39 +375,42 @@ class IssueMoveService(
 
         // 자식 OCC
         for (spec in request.subtasks) {
-            val childIssue = lockedIssues[spec.issueKey]
-                ?: throw IssueNotFoundException(IssueKey(spec.issueKey))
+            val childIssue =
+                lockedIssues[spec.issueKey]
+                    ?: throw IssueNotFoundException(IssueKey(spec.issueKey))
             if (spec.expectedVersion != childIssue.version) {
                 throw IssueVersionConflictException(IssueKey(spec.issueKey), childIssue.version)
             }
         }
 
         // 노드별 ctx 구성 + validateWithSubtasks (B3)
-        val rootCtx = buildMoveContext(
-            issueKey = issueKey,
-            targetProjectKey = targetProjectKey,
-            hasSubtasks = true,
-            issue = root,
-            spec = request.toSpec(),
-            targetStateKeys = targetStateKeys,
-            targetProjectComponentIds = targetProjectComponentIds,
-            targetProjectVersionIds = targetProjectVersionIds,
-            requiredFieldKeys = requiredFieldKeys,
-        )
-        val childCtxs = request.subtasks.map { spec ->
-            val childIssue = lockedIssues[spec.issueKey]!!
+        val rootCtx =
             buildMoveContext(
-                issueKey = IssueKey(spec.issueKey),
+                issueKey = issueKey,
                 targetProjectKey = targetProjectKey,
-                hasSubtasks = false,
-                issue = childIssue,
-                spec = spec,
+                hasSubtasks = true,
+                issue = root,
+                spec = request.toSpec(),
                 targetStateKeys = targetStateKeys,
                 targetProjectComponentIds = targetProjectComponentIds,
                 targetProjectVersionIds = targetProjectVersionIds,
                 requiredFieldKeys = requiredFieldKeys,
             )
-        }
+        val childCtxs =
+            request.subtasks.map { spec ->
+                val childIssue = lockedIssues[spec.issueKey]!!
+                buildMoveContext(
+                    issueKey = IssueKey(spec.issueKey),
+                    targetProjectKey = targetProjectKey,
+                    hasSubtasks = false,
+                    issue = childIssue,
+                    spec = spec,
+                    targetStateKeys = targetStateKeys,
+                    targetProjectComponentIds = targetProjectComponentIds,
+                    targetProjectVersionIds = targetProjectVersionIds,
+                    requiredFieldKeys = requiredFieldKeys,
+                )
+            }
         IssueMoveOperation.validateWithSubtasks(
             rootCtx = rootCtx,
             childCtxs = childCtxs,
@@ -407,21 +421,27 @@ class IssueMoveService(
 
         // 키 발번 — 루트 먼저, 이후 자식 순서대로
         val newRootKey = IssueKey.of(targetProjectKey, issueRepository.incrementKeySequence(targetProjectKey))
-        val childNewKeys = request.subtasks.map { spec ->
-            spec.issueKey to IssueKey.of(targetProjectKey, issueRepository.incrementKeySequence(targetProjectKey))
-        }
+        val childNewKeys =
+            request.subtasks.map { spec ->
+                spec.issueKey to IssueKey.of(targetProjectKey, issueRepository.incrementKeySequence(targetProjectKey))
+            }
 
         // 루트 이동
         val rootBefore = root
         val rootStateKey = resolveState(root.currentStateKey, targetStateKeys, request.targetStateKey)
         val rootCustomFields = buildFilteredCustomFields(root.customFields, request.additionalCustomFields)
         val rootResolutionId = if (request.targetStateIsDone) root.resolutionId else null
-        val rootRows = issueRepository.moveIssue(
-            oldKey = issueKey, newKey = newRootKey,
-            targetProjectId = targetProjectId, targetStateKey = rootStateKey,
-            resolvedResolutionId = rootResolutionId, filteredCustomFields = rootCustomFields,
-            expectedVersion = request.expectedVersion, newParentId = null,
-        )
+        val rootRows =
+            issueRepository.moveIssue(
+                oldKey = issueKey,
+                newKey = newRootKey,
+                targetProjectId = targetProjectId,
+                targetStateKey = rootStateKey,
+                resolvedResolutionId = rootResolutionId,
+                filteredCustomFields = rootCustomFields,
+                expectedVersion = request.expectedVersion,
+                newParentId = null,
+            )
         if (rootRows == 0) throw IssueVersionConflictException(issueKey, root.version)
         replaceComponentsAfterMove(root.id.value, root.componentIds, request.componentMapping)
         replaceVersionsAfterMove(root.id.value, root.affectsVersionIds, request.affectsVersionMapping, false)
@@ -429,12 +449,18 @@ class IssueMoveService(
         redirectRepository.insert(issueKey, newRootKey)
         historyRecorder.record(
             before = rootBefore,
-            after = rootBefore.copy(
-                key = newRootKey, projectId = targetProjectId, currentStateKey = rootStateKey,
-                resolutionId = rootResolutionId, parentId = null, customFields = rootCustomFields,
-                version = request.expectedVersion + 1,
-            ),
-            actor = actor, projectId = rootBefore.projectId,
+            after =
+                rootBefore.copy(
+                    key = newRootKey,
+                    projectId = targetProjectId,
+                    currentStateKey = rootStateKey,
+                    resolutionId = rootResolutionId,
+                    parentId = null,
+                    customFields = rootCustomFields,
+                    version = request.expectedVersion + 1,
+                ),
+            actor = actor,
+            projectId = rootBefore.projectId,
         )
 
         // 자식 이동 — parent_id = 루트 id(불변, C3)
@@ -446,32 +472,51 @@ class IssueMoveService(
             val childStateKey = resolveState(childIssue.currentStateKey, targetStateKeys, spec.targetStateKey)
             val childCustomFields = buildFilteredCustomFields(childIssue.customFields, spec.additionalCustomFields)
             val childResolutionId = if (spec.targetStateIsDone) childIssue.resolutionId else null
-            val childRows = issueRepository.moveIssue(
-                oldKey = IssueKey(specKey), newKey = newChildKey,
-                targetProjectId = targetProjectId, targetStateKey = childStateKey,
-                resolvedResolutionId = childResolutionId, filteredCustomFields = childCustomFields,
-                expectedVersion = spec.expectedVersion, newParentId = root.id.value,
-            )
+            val childRows =
+                issueRepository.moveIssue(
+                    oldKey = IssueKey(specKey),
+                    newKey = newChildKey,
+                    targetProjectId = targetProjectId,
+                    targetStateKey = childStateKey,
+                    resolvedResolutionId = childResolutionId,
+                    filteredCustomFields = childCustomFields,
+                    expectedVersion = spec.expectedVersion,
+                    newParentId = root.id.value,
+                )
             if (childRows == 0) throw IssueVersionConflictException(IssueKey(specKey), childIssue.version)
             replaceComponentsAfterMove(childIssue.id.value, childIssue.componentIds, spec.componentMapping)
-            replaceVersionsAfterMove(childIssue.id.value, childIssue.affectsVersionIds, spec.affectsVersionMapping, false)
+            replaceVersionsAfterMove(
+                childIssue.id.value,
+                childIssue.affectsVersionIds,
+                spec.affectsVersionMapping,
+                false,
+            )
             replaceVersionsAfterMove(childIssue.id.value, childIssue.fixVersionIds, spec.fixVersionMapping, true)
             redirectRepository.insert(IssueKey(specKey), newChildKey)
             historyRecorder.record(
                 before = childBefore,
-                after = childBefore.copy(
-                    key = newChildKey, projectId = targetProjectId, currentStateKey = childStateKey,
-                    resolutionId = childResolutionId, parentId = root.id.value,
-                    customFields = childCustomFields, version = spec.expectedVersion + 1,
-                ),
-                actor = actor, projectId = childBefore.projectId,
+                after =
+                    childBefore.copy(
+                        key = newChildKey,
+                        projectId = targetProjectId,
+                        currentStateKey = childStateKey,
+                        resolutionId = childResolutionId,
+                        parentId = root.id.value,
+                        customFields = childCustomFields,
+                        version = spec.expectedVersion + 1,
+                    ),
+                actor = actor,
+                projectId = childBefore.projectId,
             )
             movedSubtasks.add(MovedNode(previousKey = IssueKey(specKey), newKey = newChildKey))
         }
 
         log.info(
             "issue_moved_with_subtasks rootOldKey={} rootNewKey={} subtaskCount={} actor={}",
-            issueKey.value, newRootKey.value, movedSubtasks.size, actor.value,
+            issueKey.value,
+            newRootKey.value,
+            movedSubtasks.size,
+            actor.value,
         )
         return MoveResult(newKey = newRootKey, movedSubtasks = movedSubtasks)
     }
@@ -515,9 +560,10 @@ class IssueMoveService(
             targetStateKey = spec.targetStateKey,
             componentMappingTargetIds = spec.componentMapping.values.filterNotNull().toSet(),
             targetProjectComponentIds = targetProjectComponentIds,
-            versionMappingTargetIds = (
-                spec.affectsVersionMapping.values.filterNotNull() +
-                    spec.fixVersionMapping.values.filterNotNull()
+            versionMappingTargetIds =
+                (
+                    spec.affectsVersionMapping.values.filterNotNull() +
+                        spec.fixVersionMapping.values.filterNotNull()
                 ).toSet(),
             targetProjectVersionIds = targetProjectVersionIds,
             requiredFieldKeys = requiredFieldKeys,

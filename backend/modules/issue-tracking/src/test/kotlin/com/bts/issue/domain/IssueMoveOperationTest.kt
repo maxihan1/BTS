@@ -314,7 +314,8 @@ class IssueMoveOperationTest {
             validContext(
                 sourceStatusKey = "TO_DO",
                 targetWorkflowStatuses = setOf("TO_DO"),
-                hasSubtasks = true,  // 자식 있어도 동반 경로에서는 EC15 미발생
+                // 자식 있어도 동반 경로에서는 EC15 미발생
+                hasSubtasks = true,
             )
         val childCtx =
             validContext(
@@ -335,8 +336,8 @@ class IssueMoveOperationTest {
     fun `자식 노드 매핑대상이 대상프로젝트에 없으면 InvalidTargetMapping (populated 위반입력)`() {
         // B3 vacuous 차단 — componentMappingTargetIds 와 targetProjectComponentIds 를 다른 집합으로
         val childKey = "SRC-2"
-        val mappedId = UUID.randomUUID()          // 요청에서 매핑 대상으로 지정한 id
-        val existingId = UUID.randomUUID()         // 대상 프로젝트에 실제 존재하는 id (다른 값)
+        val mappedId = UUID.randomUUID() // 요청에서 매핑 대상으로 지정한 id
+        val existingId = UUID.randomUUID() // 대상 프로젝트에 실제 존재하는 id (다른 값)
         val rootCtx =
             validContext(
                 sourceStatusKey = "TO_DO",
@@ -377,7 +378,8 @@ class IssueMoveOperationTest {
                 sourceStatusKey = "TO_DO",
                 targetWorkflowStatuses = setOf("TO_DO"),
                 requiredFieldKeys = setOf("priority", "severity"),
-                providedFieldKeys = setOf("severity"),  // "priority" 누락
+                // "priority" 누락
+                providedFieldKeys = setOf("severity"),
             )
         val ex =
             assertThrows<RequiredFieldMissingException> {

@@ -18,10 +18,10 @@ import com.bts.issue.version.domain.Version
 import com.bts.issue.version.domain.VersionStatus
 import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
-import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowStateView
@@ -500,25 +500,28 @@ class MovePreviewServiceTest : DescribeSpec({
 
         it("자식 있는 이슈 preview는 노드별 subtasks 섹션 반환") {
             val childIssueId = IssueId(UUID.randomUUID())
-            val childIssue = makeIssue(currentStateKey = "open").copy(
-                id = childIssueId,
-                key = childKey,
-                typeId = subtaskTypeId,
-            )
+            val childIssue =
+                makeIssue(currentStateKey = "open").copy(
+                    id = childIssueId,
+                    key = childKey,
+                    typeId = subtaskTypeId,
+                )
             // findDirectChildren 가 자식 반환
             every { issueRepository.findDirectChildren(any()) } returns listOf(childIssue)
 
             // C2: 자식 issueTypeKey 조회용 findByKeyWithType stub
-            val childIssueResponse = com.bts.issue.adapter.inbound.rest.IssueResponse.from(
-                issue = childIssue,
-                projectKey = sourceProjectKey,
-                typeInfo = com.bts.issue.adapter.inbound.rest.IssueResponse.IssueTypeInfo(
-                    id = subtaskTypeId.value,
-                    key = "subtask",
-                    name = "Subtask",
-                ),
-                parent = null,
-            )
+            val childIssueResponse =
+                com.bts.issue.adapter.inbound.rest.IssueResponse.from(
+                    issue = childIssue,
+                    projectKey = sourceProjectKey,
+                    typeInfo =
+                        com.bts.issue.adapter.inbound.rest.IssueResponse.IssueTypeInfo(
+                            id = subtaskTypeId.value,
+                            key = "subtask",
+                            name = "Subtask",
+                        ),
+                    parent = null,
+                )
             every { issueRepository.findByKeyWithType(childKey) } returns childIssueResponse
 
             // 자식 issueTypeKey="subtask" 로 listStates 호출
@@ -535,23 +538,26 @@ class MovePreviewServiceTest : DescribeSpec({
 
         it("자식 워크플로우는 자식 issueTypeKey로 조회") {
             val childIssueId = IssueId(UUID.randomUUID())
-            val childIssue = makeIssue(currentStateKey = "open").copy(
-                id = childIssueId,
-                key = childKey,
-                typeId = subtaskTypeId,
-            )
+            val childIssue =
+                makeIssue(currentStateKey = "open").copy(
+                    id = childIssueId,
+                    key = childKey,
+                    typeId = subtaskTypeId,
+                )
             every { issueRepository.findDirectChildren(any()) } returns listOf(childIssue)
 
-            val childIssueResponse = com.bts.issue.adapter.inbound.rest.IssueResponse.from(
-                issue = childIssue,
-                projectKey = sourceProjectKey,
-                typeInfo = com.bts.issue.adapter.inbound.rest.IssueResponse.IssueTypeInfo(
-                    id = subtaskTypeId.value,
-                    key = "subtask",
-                    name = "Subtask",
-                ),
-                parent = null,
-            )
+            val childIssueResponse =
+                com.bts.issue.adapter.inbound.rest.IssueResponse.from(
+                    issue = childIssue,
+                    projectKey = sourceProjectKey,
+                    typeInfo =
+                        com.bts.issue.adapter.inbound.rest.IssueResponse.IssueTypeInfo(
+                            id = subtaskTypeId.value,
+                            key = "subtask",
+                            name = "Subtask",
+                        ),
+                    parent = null,
+                )
             every { issueRepository.findByKeyWithType(childKey) } returns childIssueResponse
 
             // 자식 타입으로 목록 조회 호출 확인

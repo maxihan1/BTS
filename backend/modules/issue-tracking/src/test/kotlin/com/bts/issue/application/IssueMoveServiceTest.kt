@@ -61,7 +61,7 @@ import java.util.UUID
  * - S6. resolution clear — 대상 상태가 DONE이 아닐 때 resolution_id=null
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-@Suppress("LongMethod")
+@Suppress("LongMethod", "LargeClass")
 class IssueMoveServiceTest {
     companion object {
         @JvmStatic
@@ -671,18 +671,19 @@ class IssueMoveServiceTest {
                 affectsVersionMapping = emptyMap(),
                 fixVersionMapping = emptyMap(),
                 additionalCustomFields = emptyMap(),
-                subtasks = listOf(
-                    SubtaskMoveSpec(
-                        issueKey = srcChildKey.value,
-                        expectedVersion = 1L,
-                        targetStateKey = null,
-                        targetStateIsDone = false,
-                        componentMapping = emptyMap(),
-                        affectsVersionMapping = emptyMap(),
-                        fixVersionMapping = emptyMap(),
-                        additionalCustomFields = emptyMap(),
+                subtasks =
+                    listOf(
+                        SubtaskMoveSpec(
+                            issueKey = srcChildKey.value,
+                            expectedVersion = 1L,
+                            targetStateKey = null,
+                            targetStateIsDone = false,
+                            componentMapping = emptyMap(),
+                            affectsVersionMapping = emptyMap(),
+                            fixVersionMapping = emptyMap(),
+                            additionalCustomFields = emptyMap(),
+                        ),
                     ),
-                ),
             )
 
         val result = txTemplate.execute { sut.move(actor, srcRootKey, request) }
@@ -736,18 +737,19 @@ class IssueMoveServiceTest {
                 affectsVersionMapping = emptyMap(),
                 fixVersionMapping = emptyMap(),
                 additionalCustomFields = emptyMap(),
-                subtasks = listOf(
-                    SubtaskMoveSpec(
-                        issueKey = srcChildKey.value,
-                        expectedVersion = 1L,
-                        targetStateKey = null,
-                        targetStateIsDone = false,
-                        componentMapping = emptyMap(),
-                        affectsVersionMapping = emptyMap(),
-                        fixVersionMapping = emptyMap(),
-                        additionalCustomFields = emptyMap(),
+                subtasks =
+                    listOf(
+                        SubtaskMoveSpec(
+                            issueKey = srcChildKey.value,
+                            expectedVersion = 1L,
+                            targetStateKey = null,
+                            targetStateIsDone = false,
+                            componentMapping = emptyMap(),
+                            affectsVersionMapping = emptyMap(),
+                            fixVersionMapping = emptyMap(),
+                            additionalCustomFields = emptyMap(),
+                        ),
                     ),
-                ),
             )
 
         assertThrows<SubtaskHasOwnSubtasksException> {
@@ -783,18 +785,19 @@ class IssueMoveServiceTest {
                 fixVersionMapping = emptyMap(),
                 additionalCustomFields = emptyMap(),
                 // 자식 2개 중 1개만 제공
-                subtasks = listOf(
-                    SubtaskMoveSpec(
-                        issueKey = srcChild1Key.value,
-                        expectedVersion = 1L,
-                        targetStateKey = null,
-                        targetStateIsDone = false,
-                        componentMapping = emptyMap(),
-                        affectsVersionMapping = emptyMap(),
-                        fixVersionMapping = emptyMap(),
-                        additionalCustomFields = emptyMap(),
+                subtasks =
+                    listOf(
+                        SubtaskMoveSpec(
+                            issueKey = srcChild1Key.value,
+                            expectedVersion = 1L,
+                            targetStateKey = null,
+                            targetStateIsDone = false,
+                            componentMapping = emptyMap(),
+                            affectsVersionMapping = emptyMap(),
+                            fixVersionMapping = emptyMap(),
+                            additionalCustomFields = emptyMap(),
+                        ),
                     ),
-                ),
             )
 
         assertThrows<IncompleteSubtaskMappingException> {
@@ -830,19 +833,20 @@ class IssueMoveServiceTest {
                 affectsVersionMapping = emptyMap(),
                 fixVersionMapping = emptyMap(),
                 additionalCustomFields = emptyMap(),
-                subtasks = listOf(
-                    SubtaskMoveSpec(
-                        issueKey = srcChildKey.value,
-                        // 의도적 불일치
-                        expectedVersion = 999L,
-                        targetStateKey = null,
-                        targetStateIsDone = false,
-                        componentMapping = emptyMap(),
-                        affectsVersionMapping = emptyMap(),
-                        fixVersionMapping = emptyMap(),
-                        additionalCustomFields = emptyMap(),
+                subtasks =
+                    listOf(
+                        SubtaskMoveSpec(
+                            issueKey = srcChildKey.value,
+                            // 의도적 불일치
+                            expectedVersion = 999L,
+                            targetStateKey = null,
+                            targetStateIsDone = false,
+                            componentMapping = emptyMap(),
+                            affectsVersionMapping = emptyMap(),
+                            fixVersionMapping = emptyMap(),
+                            additionalCustomFields = emptyMap(),
+                        ),
                     ),
-                ),
             )
 
         assertThrows<IssueVersionConflictException> {

@@ -5,11 +5,11 @@ package com.bts.issue.adapter.inbound.rest
 import com.bts.issue.application.IssueMoveService
 import com.bts.issue.application.MovePreviewService
 import com.bts.issue.application.MoveResult
+import com.bts.issue.application.MovedNode
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IncompleteSubtaskMappingException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.SubtaskHasOwnSubtasksException
-import com.bts.issue.application.MovedNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.clearMocks
@@ -122,25 +122,28 @@ class IssueMoveControllerIntegrationTest {
         every { issueMoveService.move(any(), srcKey, any()) } returns
             MoveResult(
                 newKey = dstKey,
-                movedSubtasks = listOf(
-                    MovedNode(previousKey = IssueKey(srcChildKey), newKey = dstChildKey),
-                ),
+                movedSubtasks =
+                    listOf(
+                        MovedNode(previousKey = IssueKey(srcChildKey), newKey = dstChildKey),
+                    ),
             )
 
-        val body = buildMoveBody(
-            subtasks = listOf(
-                mapOf(
-                    "issueKey" to srcChildKey,
-                    "expectedVersion" to 1L,
-                    "targetStateKey" to null,
-                    "targetStateIsDone" to false,
-                    "componentMapping" to emptyMap<String, String?>(),
-                    "affectsVersionMapping" to emptyMap<String, String?>(),
-                    "fixVersionMapping" to emptyMap<String, String?>(),
-                    "customFieldValues" to emptyMap<String, Any?>(),
-                ),
-            ),
-        )
+        val body =
+            buildMoveBody(
+                subtasks =
+                    listOf(
+                        mapOf(
+                            "issueKey" to srcChildKey,
+                            "expectedVersion" to 1L,
+                            "targetStateKey" to null,
+                            "targetStateIsDone" to false,
+                            "componentMapping" to emptyMap<String, String?>(),
+                            "affectsVersionMapping" to emptyMap<String, String?>(),
+                            "fixVersionMapping" to emptyMap<String, String?>(),
+                            "customFieldValues" to emptyMap<String, Any?>(),
+                        ),
+                    ),
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/MSRC-1/move")
@@ -169,19 +172,21 @@ class IssueMoveControllerIntegrationTest {
         every { issueMoveService.move(any(), srcKey, any()) } throws
             SubtaskHasOwnSubtasksException(childKeys = setOf(srcChildKey))
 
-        val body = buildMoveBody(
-            subtasks = listOf(
-                mapOf(
-                    "issueKey" to srcChildKey,
-                    "expectedVersion" to 1L,
-                    "targetStateIsDone" to false,
-                    "componentMapping" to emptyMap<String, String?>(),
-                    "affectsVersionMapping" to emptyMap<String, String?>(),
-                    "fixVersionMapping" to emptyMap<String, String?>(),
-                    "customFieldValues" to emptyMap<String, Any?>(),
-                ),
-            ),
-        )
+        val body =
+            buildMoveBody(
+                subtasks =
+                    listOf(
+                        mapOf(
+                            "issueKey" to srcChildKey,
+                            "expectedVersion" to 1L,
+                            "targetStateIsDone" to false,
+                            "componentMapping" to emptyMap<String, String?>(),
+                            "affectsVersionMapping" to emptyMap<String, String?>(),
+                            "fixVersionMapping" to emptyMap<String, String?>(),
+                            "customFieldValues" to emptyMap<String, Any?>(),
+                        ),
+                    ),
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/MSRC-1/move")
@@ -209,19 +214,21 @@ class IssueMoveControllerIntegrationTest {
                 provided = setOf("MSRC-2"),
             )
 
-        val body = buildMoveBody(
-            subtasks = listOf(
-                mapOf(
-                    "issueKey" to srcChildKey,
-                    "expectedVersion" to 1L,
-                    "targetStateIsDone" to false,
-                    "componentMapping" to emptyMap<String, String?>(),
-                    "affectsVersionMapping" to emptyMap<String, String?>(),
-                    "fixVersionMapping" to emptyMap<String, String?>(),
-                    "customFieldValues" to emptyMap<String, Any?>(),
-                ),
-            ),
-        )
+        val body =
+            buildMoveBody(
+                subtasks =
+                    listOf(
+                        mapOf(
+                            "issueKey" to srcChildKey,
+                            "expectedVersion" to 1L,
+                            "targetStateIsDone" to false,
+                            "componentMapping" to emptyMap<String, String?>(),
+                            "affectsVersionMapping" to emptyMap<String, String?>(),
+                            "fixVersionMapping" to emptyMap<String, String?>(),
+                            "customFieldValues" to emptyMap<String, Any?>(),
+                        ),
+                    ),
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/MSRC-1/move")
@@ -271,19 +278,21 @@ class IssueMoveControllerIntegrationTest {
      */
     @Test
     fun `CI-5 subtasks 배열의 issueKey 빈값이면 400 VALIDATION_FAILED`() {
-        val body = buildMoveBody(
-            subtasks = listOf(
-                mapOf(
-                    "issueKey" to "",
-                    "expectedVersion" to 1L,
-                    "targetStateIsDone" to false,
-                    "componentMapping" to emptyMap<String, String?>(),
-                    "affectsVersionMapping" to emptyMap<String, String?>(),
-                    "fixVersionMapping" to emptyMap<String, String?>(),
-                    "customFieldValues" to emptyMap<String, Any?>(),
-                ),
-            ),
-        )
+        val body =
+            buildMoveBody(
+                subtasks =
+                    listOf(
+                        mapOf(
+                            "issueKey" to "",
+                            "expectedVersion" to 1L,
+                            "targetStateIsDone" to false,
+                            "componentMapping" to emptyMap<String, String?>(),
+                            "affectsVersionMapping" to emptyMap<String, String?>(),
+                            "fixVersionMapping" to emptyMap<String, String?>(),
+                            "customFieldValues" to emptyMap<String, Any?>(),
+                        ),
+                    ),
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/MSRC-1/move")

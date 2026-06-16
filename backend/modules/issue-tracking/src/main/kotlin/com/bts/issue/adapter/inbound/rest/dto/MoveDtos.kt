@@ -2,6 +2,7 @@
 
 package com.bts.issue.adapter.inbound.rest.dto
 
+import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import java.util.UUID
 
@@ -80,7 +81,7 @@ data class MoveRequest(
     val affectsVersionMapping: Map<UUID, UUID?> = emptyMap(),
     val fixVersionMapping: Map<UUID, UUID?> = emptyMap(),
     val customFieldValues: Map<String, Any?> = emptyMap(),
-    val subtasks: List<SubtaskMoveMapping> = emptyList(),
+    @field:Valid val subtasks: List<SubtaskMoveMapping> = emptyList(),
 )
 
 /**

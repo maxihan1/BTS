@@ -2,10 +2,10 @@
 
 package com.bts.issue.adapter.inbound.rest
 
-import com.bts.issue.adapter.inbound.rest.dto.MovedSubtask
 import com.bts.issue.adapter.inbound.rest.dto.MovePreviewRequest
 import com.bts.issue.adapter.inbound.rest.dto.MoveRequest
 import com.bts.issue.adapter.inbound.rest.dto.MoveResponse
+import com.bts.issue.adapter.inbound.rest.dto.MovedSubtask
 import com.bts.issue.adapter.inbound.rest.dto.SubtaskMoveMapping
 import com.bts.issue.application.IssueMoveRequest
 import com.bts.issue.application.IssueMoveService
@@ -118,9 +118,10 @@ class IssueMoveController(
             MoveResponse(
                 issueKey = result.newKey.value,
                 previousKey = issueKey.value,
-                movedSubtasks = result.movedSubtasks.map { node ->
-                    MovedSubtask(previousKey = node.previousKey.value, issueKey = node.newKey.value)
-                },
+                movedSubtasks =
+                    result.movedSubtasks.map { node ->
+                        MovedSubtask(previousKey = node.previousKey.value, issueKey = node.newKey.value)
+                    },
             )
         return ResponseEntity.ok(DataResponse(data = response))
     }

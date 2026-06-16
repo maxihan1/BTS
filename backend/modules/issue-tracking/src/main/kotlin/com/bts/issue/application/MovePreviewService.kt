@@ -15,10 +15,10 @@ import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.version.domain.Version
 import com.bts.issue.version.repository.VersionRepository
+import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
-import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowStateView

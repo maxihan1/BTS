@@ -756,7 +756,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
     fun `findDirectChildren는 활성 직접 자식만 반환하고 소프트삭제 제외`() {
         val parentId = IssueId(UUID.randomUUID())
         val childId1 = IssueId(UUID.randomUUID())
-        val childId2 = IssueId(UUID.randomUUID())  // 소프트삭제 대상
+        val childId2 = IssueId(UUID.randomUUID()) // 소프트삭제 대상
 
         // 부모 삽입
         repository.insert(
@@ -837,6 +837,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 currentStateKey = "open",
             ).copy(parentId = parentId.value),
         )
+        // 손자 — 자식의 자식
         repository.insert(
             Issue.create(
                 id = grandchildId,
@@ -846,7 +847,7 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
                 summary = "grandchild",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
-            ).copy(parentId = childId.value),  // 손자 — 자식의 자식
+            ).copy(parentId = childId.value),
         )
 
         val children = repository.findDirectChildren(parentId.value)

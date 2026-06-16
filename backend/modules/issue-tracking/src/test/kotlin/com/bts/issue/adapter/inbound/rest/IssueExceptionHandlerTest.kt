@@ -122,8 +122,7 @@ class IssueExceptionHandlerTest {
         fun throwInternalError(): Nothing = throw Exception("예기치 않은 오류")
 
         @GetMapping("/subtask-has-own-subtasks")
-        fun throwSubtaskHasOwnSubtasks(): Nothing =
-            throw SubtaskHasOwnSubtasksException(setOf("SRC-3"))
+        fun throwSubtaskHasOwnSubtasks(): Nothing = throw SubtaskHasOwnSubtasksException(setOf("SRC-3"))
 
         @GetMapping("/incomplete-subtask-mapping")
         fun throwIncompleteSubtaskMapping(): Nothing =
