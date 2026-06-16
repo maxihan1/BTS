@@ -347,8 +347,8 @@
 - [x] D3. 데이터 모델 — `issue_watchers(issue_id, user_id, created_at)` 복합PK 멱등 + issue_id FK ON DELETE CASCADE, V024 + init_codegen 미러 (책임. db-engineer) — PR #151
 - [x] D4. 백엔드 — **deviation. `GET` 추가** + `POST/DELETE /api/v1/issues/{key}/watchers`. 권한 분기(본인=VIEW/타인=UPDATE), 타인 추가 UserLookupPort 검증(422), 멱등(ON CONFLICT) (책임. backend-engineer) — PR #151
 - [x] D5. 백엔드 테스트 — repository 8 + service 21 + controller 11 + 자동watcher 8 + 마이그레이션 스키마 (책임. backend-engineer) — PR #151
-- [ ] D6. 프론트 UI — Watch 버튼 + 카운트 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — Watch 버튼(지켜보기/지켜보는 중 토글) + 카운트 + 감시자 명단(본인 "(나)") (책임. designer → frontend-engineer) — PR #152 (메타패널 WatchersSection 자체-훅, 4상태·긴목록 상한 8·aria-pressed·invalidate-only. FR-7 담당자/컴포넌트 변경 시 자동 watcher 라이브 갱신. watcher userId/displayName z.string 완화(whoami 공간 정합·빈 displayName 허용). 적대리뷰 P1/P2/P3(로딩윈도우 토글가드·mutation 에러토스트·빈displayName ZodError) 수정)
+- [x] D7. E2E (책임. qa-engineer) — PR #152 (issue-watchers.spec.ts 3종: 초기 빈상태/watch(나 표시·카운트+1)/unwatch(카운트-1). 컨테이너 한정 셀렉터, 전체 E2E 108 통과 회귀 0)
 
 ## §5 링크 / 히스토리 / 템플릿 (6개)
 
