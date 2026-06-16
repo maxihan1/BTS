@@ -87,11 +87,9 @@ describe('fetchWatchers — GET /watchers 200 DataResponse 언랩', () => {
 describe('addWatcher — POST /watchers 201 self 추가 (userId 없음)', () => {
   it('T-WT-2a: userId 없이 호출 시 body 없이 POST되고 undefined를 반환한다', async () => {
     let capturedBody: string | null = null
-    let capturedContentType: string | null = null
     server.use(
       http.post('/api/v1/issues/:key/watchers', async ({ request }) => {
         capturedBody = await request.text()
-        capturedContentType = request.headers.get('content-type')
         return new HttpResponse(null, { status: 201 })
       }),
     )
