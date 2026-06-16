@@ -6,6 +6,7 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.jooq.tables.references.ISSUE_WATCHERS
 import com.bts.issue.repository.IssueTestcontainersBase
 import com.bts.issue.watcher.repository.IssueWatcherRepository
 import com.bts.shared.issue.IssueTypeId
@@ -16,6 +17,8 @@ import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
 import java.sql.DriverManager
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import java.util.UUID
 
 /**
@@ -33,6 +36,7 @@ import java.util.UUID
  * - T2-E. countByIssue — 워처 수 정확히 반환.
  * - T2-F. existsForUser true/false — 등록/미등록 사용자 각각.
  * - T2-G. listByIssue 정렬 — created_at ASC (오래된 순).
+ * - T2-H. listByIssue tie-break — 동일 created_at 2건 → user_id ASC 결정적 정렬.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class IssueWatcherRepositoryTest : IssueTestcontainersBase() {
@@ -234,5 +238,45 @@ class IssueWatcherRepositoryTest : IssueTestcontainersBase() {
         assertThat(result).hasSize(2)
         // ASC 정렬 — 앞 원소 createdAt 이 뒤 원소보다 이전이거나 같아야 함
         assertThat(result[0].createdAt).isBeforeOrEqualTo(result[1].createdAt)
+    }
+
+    // ── T2-H. listByIssue tie-break ──────────────────────────────────────────
+
+    /**
+     * Given  동일 이슈, 동일 created_at, 서로 다른 user_id(큰 UUID → 작은 UUID 역순) 직접 INSERT
+     * When   listByIssue(issueId)
+     * Then   user_id ASC 오름차순으로 결정적 정렬.
+     *
+     * 자동 watcher(reporter + assignee) 는 같은 트랜잭션 now() 를 공유해 created_at 이 동일할 수
+     * 있다. tie-break 없이는 DB 인덱스 스캔 순서에 따라 결과가 비결정적으로 뒤집힌다.
+     * 이 테스트는 동률을 강제하기 위해 jOOQ DSL 로 명시적 같은 타임스탬프를 삽입한다.
+     */
+    @Test
+    @Order(8)
+    fun `T2-H - 동일 created_at 2건은 user_id ASC 로 결정적 정렬`() {
+        val issue = insertIssue(1L)
+        val fixedTime = OffsetDateTime.of(2024, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC)
+
+        // user_id 값이 작은 UUID 를 나중에 삽입해 역순 시드 → tie-break 없으면 역순 반환됨
+        val biggerUserId = UUID.fromString("ffffffff-ffff-ffff-ffff-ffffffffffff")
+        val smallerUserId = UUID.fromString("00000000-0000-0000-0000-000000000001")
+
+        // 역순(큰→작은)으로 INSERT 해 tie-break 부재 시 fail 유도
+        dsl.insertInto(ISSUE_WATCHERS)
+            .set(ISSUE_WATCHERS.ISSUE_ID, issue.id.value)
+            .set(ISSUE_WATCHERS.USER_ID, biggerUserId)
+            .set(ISSUE_WATCHERS.CREATED_AT, fixedTime)
+            .execute()
+        dsl.insertInto(ISSUE_WATCHERS)
+            .set(ISSUE_WATCHERS.ISSUE_ID, issue.id.value)
+            .set(ISSUE_WATCHERS.USER_ID, smallerUserId)
+            .set(ISSUE_WATCHERS.CREATED_AT, fixedTime)
+            .execute()
+
+        val result = watcherRepository.listByIssue(issue.id.value)
+
+        assertThat(result).hasSize(2)
+        assertThat(result[0].userId).isEqualTo(smallerUserId)
+        assertThat(result[1].userId).isEqualTo(biggerUserId)
     }
 }
