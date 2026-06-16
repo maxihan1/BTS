@@ -83,8 +83,9 @@ classify 결과. type=qa로 오판정(E2E 키워드) → ui로 교정(본체는 
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/issue/IssueMetaPanel.tsx`, `apps/web/src/api/issues.ts`, `apps/web/src/api/issues.test.ts`]
+- files: [`apps/web/src/components/issue/IssueMetaPanel.tsx`, `apps/web/src/api/useChangeAssignee.ts`, `apps/web/src/api/useChangeComponents.ts`, `apps/web/src/api/issues.test.ts`]
 - depends-on: [1, 2]
+- **구현 deviation(승인)**: mutation 훅이 `issues.ts`가 아니라 별도 파일 `useChangeAssignee.ts`/`useChangeComponents.ts`에 존재 → 실제 위치 수정. plan의 초기 files 추정 오류 교정.
 
 **RED**: `issues.test.ts` — 담당자 변경 / 컴포넌트 변경 mutation 성공 시 `issueWatchersKey(key)`가 invalidate되는지(spy on `invalidateQueries`) 단언. (자동 watcher 라이브 갱신 FR-7.)
 **GREEN**: (a) `IssueMetaPanel.tsx`에 `WatchersSection` 마운트(감시자 섹션 위치=메타패널 상단/담당자 근처). (b) `issues.ts` 담당자·컴포넌트 변경 mutation 훅 onSettled/onSuccess에 `invalidateQueries({queryKey: issueWatchersKey(key)})` 1줄 추가.
@@ -110,6 +111,15 @@ classify 결과. type=qa로 오판정(E2E 키워드) → ui로 교정(본체는 
 - TDD 강제: yes (RED→GREEN→REFACTOR, test: 커밋이 feat: 보다 선행).
 - 추가 검증: typecheck(tsconfig.app), ktlint/detekt 해당없음(프론트 전용), vitest, playwright(qa).
 - 회귀 주의: IssueMetaPanel은 공유 컴포넌트 → 기존 테스트/E2E 동반 실행. issues.ts mock fanout 점검.
+
+## 구현 결과 (/bts-impl)
+
+- **Task 1** ✅ issue-watchers API/훅 (test 568eec83 → feat e824c88f → refactor c1a8f6ab). 17 tests.
+- **Task 2** ✅ WatchersSection + MSW + i18n (test 7a3b6633 → feat f4c1acad → refactor 14c27711). 4상태·긴목록·a11y·"(나)".
+- **Task 3** ✅ IssueMetaPanel 통합 + FR-7 (test 1e50cbad → feat 589a3ba2). deviation: 훅이 useChangeAssignee.ts/useChangeComponents.ts.
+- **E2E-fix** ✅ (통합 발견) watcher userId z.string 완화 + 핸들러 토큰 현재사용자 도출 (test df89e6f6 → feat 32ee3dd9). 이유: Zod4 .uuid()가 fixture 인증 id(all-zeros) 거부 + 브라우저 E2E 현재사용자 미설정.
+- **Task 4** ✅ E2E 3종(초기/watch/unwatch) (2bd2640d).
+- **검증**: typecheck PASS · lint(변경) PASS · vitest 209파일 2992 통과 · E2E 3신규+105회귀 통과 · vite build 성공.
 
 ## 리뷰 결과
 
