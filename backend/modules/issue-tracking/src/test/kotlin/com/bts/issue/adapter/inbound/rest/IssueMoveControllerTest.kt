@@ -2,22 +2,21 @@
 
 package com.bts.issue.adapter.inbound.rest
 
-import com.bts.issue.application.IssueMoveRequest
+import com.bts.issue.application.CustomFieldPreviewSection
 import com.bts.issue.application.IssueMoveService
 import com.bts.issue.application.MovePreview
 import com.bts.issue.application.MovePreviewService
-import com.bts.issue.application.CustomFieldPreviewSection
 import com.bts.issue.application.ResourceMappingSection
 import com.bts.issue.application.VersionMappingSection
 import com.bts.issue.application.WorkflowPreviewSection
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.InvalidTargetMappingException
+import com.bts.issue.domain.InvalidTargetStateException
 import com.bts.issue.domain.IssueAccessDeniedException
+import com.bts.issue.domain.IssueHasSubtasksException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueVersionConflictException
-import com.bts.issue.domain.InvalidTargetMappingException
-import com.bts.issue.domain.InvalidTargetStateException
-import com.bts.issue.domain.IssueHasSubtasksException
 import com.bts.issue.domain.MappingKind
 import com.bts.issue.domain.MoveSameProjectException
 import com.bts.issue.domain.RequiredFieldMissingException
@@ -28,9 +27,7 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.slot
 import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -65,7 +62,7 @@ import java.util.UUID
  * - MV-P-3. preview — 권한 없음 → 403 ACCESS_DENIED
  * - MV-P-4. preview — body 없음(잘못된 JSON) → 400 VALIDATION_FAILED
  * - MV-P-5. preview — targetProjectKey 빈값 → 400 VALIDATION_FAILED
- * - MV-M-1. move 정상 → 200 + issueKey/previousKey/currentStateKey
+ * - MV-M-1. move 정상 → 200 + issueKey/previousKey
  * - MV-M-2. move — OCC 충돌 → 409 VERSION_CONFLICT
  * - MV-M-3. move — 같은 프로젝트 이동 → 422 MOVE_SAME_PROJECT
  * - MV-M-4. move — 서브태스크 존재 → 422 ISSUE_HAS_SUBTASKS
@@ -79,7 +76,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [IssueMoveControllerTest.TestMvcConfig::class])
 @WebAppConfiguration
 class IssueMoveControllerTest {
-
     @Configuration
     @EnableWebMvc
     open class TestMvcConfig {
@@ -116,32 +112,38 @@ class IssueMoveControllerTest {
     private val sourceKey = IssueKey("ATLAS-1")
     private val newKey = IssueKey("DEST-1")
 
-    private val samplePreview = MovePreview(
-        workflow = WorkflowPreviewSection(
-            compatible = true,
-            targetStates = emptyList(),
-            suggestedStateKey = "open",
-        ),
-        components = ResourceMappingSection(
-            current = emptyList(),
-            target = emptyList(),
-            autoMapping = emptyMap(),
-        ),
-        affectsVersions = VersionMappingSection(
-            current = emptyList(),
-            target = emptyList(),
-            autoMapping = emptyMap(),
-        ),
-        fixVersions = VersionMappingSection(
-            current = emptyList(),
-            target = emptyList(),
-            autoMapping = emptyMap(),
-        ),
-        customFields = CustomFieldPreviewSection(
-            removed = emptyList(),
-            requiredMissing = emptyList(),
-        ),
-    )
+    private val samplePreview =
+        MovePreview(
+            workflow =
+                WorkflowPreviewSection(
+                    compatible = true,
+                    targetStates = emptyList(),
+                    suggestedStateKey = "open",
+                ),
+            components =
+                ResourceMappingSection(
+                    current = emptyList(),
+                    target = emptyList(),
+                    autoMapping = emptyMap(),
+                ),
+            affectsVersions =
+                VersionMappingSection(
+                    current = emptyList(),
+                    target = emptyList(),
+                    autoMapping = emptyMap(),
+                ),
+            fixVersions =
+                VersionMappingSection(
+                    current = emptyList(),
+                    target = emptyList(),
+                    autoMapping = emptyMap(),
+                ),
+            customFields =
+                CustomFieldPreviewSection(
+                    removed = emptyList(),
+                    requiredMissing = emptyList(),
+                ),
+        )
 
     @BeforeEach
     fun setUp() {
@@ -210,7 +212,7 @@ class IssueMoveControllerTest {
             .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"))
     }
 
-    // ── MV-P-4: preview — body 없음(HTTP body 미전송) → 400 ─────────────────────
+    // ── MV-P-4: preview — body 없음 → 400 ──────────────────────────────────────
 
     @Test
     fun `POST move-preview — body 없이 보내면 400 VALIDATION_FAILED`() {
@@ -235,20 +237,21 @@ class IssueMoveControllerTest {
             .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
     }
 
-    // ── MV-M-1: move 정상 → 200 + issueKey/previousKey/currentStateKey ───────────
+    // ── MV-M-1: move 정상 → 200 + issueKey, previousKey ─────────────────────────
 
     @Test
-    fun `POST move — 정상이면 200 + issueKey, previousKey, currentStateKey`() {
-        val body = mapOf(
-            "targetProjectKey" to "DEST",
-            "expectedVersion" to 1L,
-            "targetStateKey" to "open",
-            "targetStateIsDone" to false,
-            "componentMapping" to emptyMap<String, String?>(),
-            "affectsVersionMapping" to emptyMap<String, String?>(),
-            "fixVersionMapping" to emptyMap<String, String?>(),
-            "customFieldValues" to emptyMap<String, Any?>(),
-        )
+    fun `POST move — 정상이면 200 + issueKey, previousKey`() {
+        val body =
+            mapOf(
+                "targetProjectKey" to "DEST",
+                "expectedVersion" to 1L,
+                "targetStateKey" to "open",
+                "targetStateIsDone" to false,
+                "componentMapping" to emptyMap<String, String?>(),
+                "affectsVersionMapping" to emptyMap<String, String?>(),
+                "fixVersionMapping" to emptyMap<String, String?>(),
+                "customFieldValues" to emptyMap<String, Any?>(),
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/ATLAS-1/move")
@@ -268,15 +271,16 @@ class IssueMoveControllerTest {
             issueMoveService.move(any(), sourceKey, any())
         } throws IssueVersionConflictException(sourceKey, 2L)
 
-        val body = mapOf(
-            "targetProjectKey" to "DEST",
-            "expectedVersion" to 1L,
-            "targetStateIsDone" to false,
-            "componentMapping" to emptyMap<String, String?>(),
-            "affectsVersionMapping" to emptyMap<String, String?>(),
-            "fixVersionMapping" to emptyMap<String, String?>(),
-            "customFieldValues" to emptyMap<String, Any?>(),
-        )
+        val body =
+            mapOf(
+                "targetProjectKey" to "DEST",
+                "expectedVersion" to 1L,
+                "targetStateIsDone" to false,
+                "componentMapping" to emptyMap<String, String?>(),
+                "affectsVersionMapping" to emptyMap<String, String?>(),
+                "fixVersionMapping" to emptyMap<String, String?>(),
+                "customFieldValues" to emptyMap<String, Any?>(),
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/ATLAS-1/move")
@@ -295,15 +299,16 @@ class IssueMoveControllerTest {
             issueMoveService.move(any(), sourceKey, any())
         } throws MoveSameProjectException("ATLAS")
 
-        val body = mapOf(
-            "targetProjectKey" to "ATLAS",
-            "expectedVersion" to 1L,
-            "targetStateIsDone" to false,
-            "componentMapping" to emptyMap<String, String?>(),
-            "affectsVersionMapping" to emptyMap<String, String?>(),
-            "fixVersionMapping" to emptyMap<String, String?>(),
-            "customFieldValues" to emptyMap<String, Any?>(),
-        )
+        val body =
+            mapOf(
+                "targetProjectKey" to "ATLAS",
+                "expectedVersion" to 1L,
+                "targetStateIsDone" to false,
+                "componentMapping" to emptyMap<String, String?>(),
+                "affectsVersionMapping" to emptyMap<String, String?>(),
+                "fixVersionMapping" to emptyMap<String, String?>(),
+                "customFieldValues" to emptyMap<String, Any?>(),
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/ATLAS-1/move")
@@ -322,15 +327,16 @@ class IssueMoveControllerTest {
             issueMoveService.move(any(), sourceKey, any())
         } throws IssueHasSubtasksException()
 
-        val body = mapOf(
-            "targetProjectKey" to "DEST",
-            "expectedVersion" to 1L,
-            "targetStateIsDone" to false,
-            "componentMapping" to emptyMap<String, String?>(),
-            "affectsVersionMapping" to emptyMap<String, String?>(),
-            "fixVersionMapping" to emptyMap<String, String?>(),
-            "customFieldValues" to emptyMap<String, Any?>(),
-        )
+        val body =
+            mapOf(
+                "targetProjectKey" to "DEST",
+                "expectedVersion" to 1L,
+                "targetStateIsDone" to false,
+                "componentMapping" to emptyMap<String, String?>(),
+                "affectsVersionMapping" to emptyMap<String, String?>(),
+                "fixVersionMapping" to emptyMap<String, String?>(),
+                "customFieldValues" to emptyMap<String, Any?>(),
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/ATLAS-1/move")
@@ -349,15 +355,16 @@ class IssueMoveControllerTest {
             issueMoveService.move(any(), sourceKey, any())
         } throws InvalidTargetStateException(sourceStatusKey = "open", targetStateKey = null)
 
-        val body = mapOf(
-            "targetProjectKey" to "DEST",
-            "expectedVersion" to 1L,
-            "targetStateIsDone" to false,
-            "componentMapping" to emptyMap<String, String?>(),
-            "affectsVersionMapping" to emptyMap<String, String?>(),
-            "fixVersionMapping" to emptyMap<String, String?>(),
-            "customFieldValues" to emptyMap<String, Any?>(),
-        )
+        val body =
+            mapOf(
+                "targetProjectKey" to "DEST",
+                "expectedVersion" to 1L,
+                "targetStateIsDone" to false,
+                "componentMapping" to emptyMap<String, String?>(),
+                "affectsVersionMapping" to emptyMap<String, String?>(),
+                "fixVersionMapping" to emptyMap<String, String?>(),
+                "customFieldValues" to emptyMap<String, Any?>(),
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/ATLAS-1/move")
@@ -377,15 +384,16 @@ class IssueMoveControllerTest {
             issueMoveService.move(any(), sourceKey, any())
         } throws InvalidTargetMappingException(kind = MappingKind.COMPONENT, unknownIds = setOf(unknownId))
 
-        val body = mapOf(
-            "targetProjectKey" to "DEST",
-            "expectedVersion" to 1L,
-            "targetStateIsDone" to false,
-            "componentMapping" to emptyMap<String, String?>(),
-            "affectsVersionMapping" to emptyMap<String, String?>(),
-            "fixVersionMapping" to emptyMap<String, String?>(),
-            "customFieldValues" to emptyMap<String, Any?>(),
-        )
+        val body =
+            mapOf(
+                "targetProjectKey" to "DEST",
+                "expectedVersion" to 1L,
+                "targetStateIsDone" to false,
+                "componentMapping" to emptyMap<String, String?>(),
+                "affectsVersionMapping" to emptyMap<String, String?>(),
+                "fixVersionMapping" to emptyMap<String, String?>(),
+                "customFieldValues" to emptyMap<String, Any?>(),
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/ATLAS-1/move")
@@ -404,15 +412,16 @@ class IssueMoveControllerTest {
             issueMoveService.move(any(), sourceKey, any())
         } throws RequiredFieldMissingException(missingKeys = setOf("priority"))
 
-        val body = mapOf(
-            "targetProjectKey" to "DEST",
-            "expectedVersion" to 1L,
-            "targetStateIsDone" to false,
-            "componentMapping" to emptyMap<String, String?>(),
-            "affectsVersionMapping" to emptyMap<String, String?>(),
-            "fixVersionMapping" to emptyMap<String, String?>(),
-            "customFieldValues" to emptyMap<String, Any?>(),
-        )
+        val body =
+            mapOf(
+                "targetProjectKey" to "DEST",
+                "expectedVersion" to 1L,
+                "targetStateIsDone" to false,
+                "componentMapping" to emptyMap<String, String?>(),
+                "affectsVersionMapping" to emptyMap<String, String?>(),
+                "fixVersionMapping" to emptyMap<String, String?>(),
+                "customFieldValues" to emptyMap<String, Any?>(),
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/ATLAS-1/move")
@@ -444,15 +453,16 @@ class IssueMoveControllerTest {
             issueMoveService.move(any(), sourceKey, any())
         } throws IssueAccessDeniedException(actorId, IssuePermission.UPDATE, IssueScope.Project("ATLAS"))
 
-        val body = mapOf(
-            "targetProjectKey" to "DEST",
-            "expectedVersion" to 1L,
-            "targetStateIsDone" to false,
-            "componentMapping" to emptyMap<String, String?>(),
-            "affectsVersionMapping" to emptyMap<String, String?>(),
-            "fixVersionMapping" to emptyMap<String, String?>(),
-            "customFieldValues" to emptyMap<String, Any?>(),
-        )
+        val body =
+            mapOf(
+                "targetProjectKey" to "DEST",
+                "expectedVersion" to 1L,
+                "targetStateIsDone" to false,
+                "componentMapping" to emptyMap<String, String?>(),
+                "affectsVersionMapping" to emptyMap<String, String?>(),
+                "fixVersionMapping" to emptyMap<String, String?>(),
+                "customFieldValues" to emptyMap<String, Any?>(),
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/ATLAS-1/move")

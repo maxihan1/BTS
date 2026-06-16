@@ -98,21 +98,23 @@ class IssueMoveController(
 
         val actor = CurrentActor.current()
         val issueKey = IssueKey(key)
-        val appRequest = IssueMoveRequest(
-            targetProjectKey = request.targetProjectKey,
-            expectedVersion = request.expectedVersion,
-            targetStateKey = request.targetStateKey,
-            targetStateIsDone = request.targetStateIsDone,
-            componentMapping = request.componentMapping,
-            affectsVersionMapping = request.affectsVersionMapping,
-            fixVersionMapping = request.fixVersionMapping,
-            additionalCustomFields = request.customFieldValues,
-        )
+        val appRequest =
+            IssueMoveRequest(
+                targetProjectKey = request.targetProjectKey,
+                expectedVersion = request.expectedVersion,
+                targetStateKey = request.targetStateKey,
+                targetStateIsDone = request.targetStateIsDone,
+                componentMapping = request.componentMapping,
+                affectsVersionMapping = request.affectsVersionMapping,
+                fixVersionMapping = request.fixVersionMapping,
+                additionalCustomFields = request.customFieldValues,
+            )
         val newKey = moveService.move(actor, issueKey, appRequest)
-        val response = MoveResponse(
-            issueKey = newKey.value,
-            previousKey = issueKey.value,
-        )
+        val response =
+            MoveResponse(
+                issueKey = newKey.value,
+                previousKey = issueKey.value,
+            )
         return ResponseEntity.ok(DataResponse(data = response))
     }
 }
