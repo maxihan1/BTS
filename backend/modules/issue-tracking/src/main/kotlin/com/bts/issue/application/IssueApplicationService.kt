@@ -132,6 +132,10 @@ class IssueApplicationService(
     // null 이면 발행을 skip 한다(기존 단위 테스트 호환용 fallback — customFieldDefinitionRepository 패턴 동형).
     // 통합 테스트에서는 실 Bean 을 주입해 enqueue 경로 전체를 검증한다.
     private val transitionEventPublisher: TransitionEventPublisher? = null,
+    // 자동 watcher 등록 저장소 (FR-WT-01). null 이면 자동 등록을 skip 한다
+    // (기존 단위 테스트 호환용 fallback — transitionEventPublisher 패턴 동형).
+    // Spring 컨텍스트에서는 IssueWatcherRepository Bean 이 주입된다.
+    private val watcherRepository: com.bts.issue.watcher.repository.IssueWatcherRepository? = null,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -234,6 +238,7 @@ class IssueApplicationService(
                 description = resolvedDescription,
             )
         val saved = repo.insert(issue)
+        autoWatch(saved.id.value, listOfNotNull(saved.reporterId.value, resolvedAssignee?.value))
         repo.insertComponents(saved.id.value, normalizedComponentIds)
         eventPublisher.publish(
             IssueCreated(
@@ -753,6 +758,9 @@ class IssueApplicationService(
         if (updatedRows == 0) {
             throw IssueVersionConflictException(key, existing.version)
         }
+        if (assigneeId != null) {
+            autoWatch(existing.id.value, listOf(assigneeId))
+        }
         recordHistory(before = existing, after = updated, actor = actor, projectId = existing.projectId)
         log.info("issue_assignee_changed key={} assigneeId={} actor={}", key.value, assigneeId, actor.value)
         return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
@@ -804,6 +812,7 @@ class IssueApplicationService(
             if (resolved != null) {
                 val withAssignee = existing.assignTo(resolved)
                 repo.setAssignee(existing.id.value, withAssignee.assigneeId?.value)
+                autoWatch(existing.id.value, listOf(resolved.value))
                 afterComponents = normalized.copy(assigneeId = resolved)
                 log.info(
                     "issue_components_auto_assigned key={} assigneeId={} actor={}",
@@ -1833,5 +1842,25 @@ class IssueApplicationService(
             affectsVersionIds = repo.findAffectsVersionIdsByIssue(this.id),
             fixVersionIds = repo.findFixVersionIdsByIssue(this.id),
         )
+    }
+
+    /**
+     * 자동 watcher 정책 FR-WT-01 — 시스템이 이슈 관련자를 자동으로 watcher 로 등록한다.
+     *
+     * reporter / assignee 배정 통로 전체(createIssue, changeAssignee, changeComponents 자동재배정)에서
+     * 동일하게 호출되어 watcher 추가 정책을 일관되게 유지한다 (리뷰 CONCERN-1).
+     *
+     * - [userIds] 를 distinct 처리하여 중복 등록 요청을 제거한다.
+     * - [IssueWatcherRepository.add] 의 `ON CONFLICT DO NOTHING` 으로 멱등성을 보장하므로
+     *   이미 등록된 사용자는 조용히 무시된다.
+     * - [watcherRepository] 가 null 이면(기존 단위 테스트 호환 fallback) 아무것도 수행하지 않는다.
+     * - cloneIssue 는 watcher 복사 의사결정이 이연(ADR 2026-06-02-issue-clone-semantics)됐으므로 제외한다.
+     *
+     * @param issueId 대상 이슈 UUID.
+     * @param userIds 자동 등록할 사용자 UUID 목록. 중복 포함 가능.
+     */
+    private fun autoWatch(issueId: UUID, userIds: List<UUID>) {
+        val repo = watcherRepository ?: return
+        userIds.distinct().forEach { userId -> repo.add(issueId, userId) }
     }
 }

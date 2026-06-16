@@ -2,15 +2,18 @@
 
 package com.bts.issue.application
 
+import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.issue.watcher.repository.IssueWatcherRepository
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.ProjectKey
@@ -36,6 +39,12 @@ import java.util.UUID
  * - changeComponents 자동재배정: resolved assignee watcher 추가(CONCERN-1 — 모든 assignee 배정 통로 일관).
  * - 재배정 A→B: B 추가, A 유지(자동 제거 없음).
  * - unassign(null): watcher 무변경.
+ *
+ * ## MockK value class 우회 전략
+ * MockK 1.13.x 에서 value class 파라미터를 가진 메서드의 stub 설정 시
+ * JvmSignatureValueGenerator 가 primary constructor 를 호출하여 IssueKey 형식 검증에 실패한다.
+ * 공통 stub 은 spec 최상위에서 1회만 설정하고, beforeEach 에서 `answers = false` 로
+ * recorded calls 만 초기화(stub 유지)하여 이 문제를 우회한다.
  */
 class IssueApplicationServiceWatcherTest : DescribeSpec({
 
@@ -48,6 +57,7 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
     val workflowKeyResolver = mockk<WorkflowKeyResolver>(relaxed = true)
     val userLookupPort = mockk<UserLookupPort>(relaxed = true)
     val watcherRepository = mockk<IssueWatcherRepository>(relaxed = true)
+    val projectLeadRepository = mockk<ProjectLeadRepository>(relaxed = true)
     val clock = Clock.fixed(Instant.parse("2026-06-16T00:00:00Z"), ZoneOffset.UTC)
 
     val sut =
@@ -61,7 +71,7 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
             workflowKeyResolver = workflowKeyResolver,
             userLookupPort = userLookupPort,
             componentRepository = mockk(relaxed = true),
-            projectLeadRepository = mockk(relaxed = true),
+            projectLeadRepository = projectLeadRepository,
             versionRepository = mockk(relaxed = true),
             clock = clock,
             historyRecorder = mockk(relaxed = true),
@@ -72,6 +82,23 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
     val projectKey = "BTS"
     val projectId = UUID.randomUUID()
     val issueKey = IssueKey("BTS-1")
+
+    /** IssueResponse 헬퍼 — withSingleDetail() 경로에서 필요한 최소 필드. */
+    fun makeResponse(issueId: UUID) =
+        IssueResponse(
+            key = issueKey.value,
+            id = issueId,
+            projectKey = projectKey,
+            summary = "테스트 이슈",
+            currentStateKey = "open",
+            reporterId = actor.value,
+            version = 2L,
+            createdAt = Instant.parse("2026-06-16T00:00:00Z"),
+            updatedAt = Instant.parse("2026-06-16T00:00:00Z"),
+            typeId = 3L,
+            typeKey = "task",
+            typeName = "Task",
+        )
 
     fun makeIssue(
         assigneeId: ActorId? = null,
@@ -100,61 +127,77 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
             componentIds = componentIds,
         )
 
+    // ── 공통 stub — spec 최상위에서 1회만 설정 (MockK value class signature value 캐싱 활용) ──
+    every { permissionResolver.hasPermission(any(), any(), any()) } returns true
+    every { repo.findProjectIdByKey(projectKey) } returns projectId
+    every { repo.incrementKeySequence(projectKey) } returns 1L
+    every { repo.insertComponents(any(), any()) } returns Unit
+    // withSingleDetail() 경로 — IssueKey value class stub 는 issueKey 고정값으로 1회 등록
+    every { repo.findByKey(issueKey) } returns null
+    every { repo.findByKeyWithType(issueKey) } returns null
+    every { repo.findActiveComponentIdsByIssue(any()) } returns emptyList()
+    every { repo.findAffectsVersionIdsByIssue(any()) } returns emptyList()
+    every { repo.findFixVersionIdsByIssue(any()) } returns emptyList()
+    every { projectLeadRepository.findLeadUserId(any()) } returns null
+    every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns
+        com.bts.issue.type.domain.IssueType(
+            id = IssueTypeId(3L),
+            key = IssueTypeKey("task"),
+            name = "Task",
+            description = null,
+            iconName = null,
+            isStandard = true,
+            hierarchyLevel = 0,
+            createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            deletedAt = null,
+        )
+    every { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null) } returns
+        WorkflowStartState(workflowKey = "default", startStateKey = "open")
+    every { eventPublisher.publish(any()) } returns Unit
+
+    // beforeEach: answers = false 로 recorded calls 만 초기화, stub 은 유지
     beforeEach {
-        clearMocks(repo, eventPublisher, watcherRepository)
-        every { permissionResolver.hasPermission(any(), any(), any()) } returns true
-        every { repo.findProjectIdByKey(projectKey) } returns projectId
-        every { repo.incrementKeySequence(projectKey) } returns 1L
-        every { issueTypeRepository.findByKey(any()) } returns
-            com.bts.issue.type.domain.IssueType(
-                id = IssueTypeId(3L),
-                key = com.bts.shared.issue.IssueTypeKey("task"),
-                name = "Task",
-                description = null,
-                iconName = null,
-                isStandard = true,
-                hierarchyLevel = 0,
-                createdAt = Instant.parse("2026-01-01T00:00:00Z"),
-                updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
-                deletedAt = null,
-            )
-        every { workflowKeyResolver.resolveStart(any<ProjectKey>(), any()) } returns
-            WorkflowStartState(workflowKey = "default", startStateKey = "open")
-        every { eventPublisher.publish(any()) } returns Unit
+        clearMocks(repo, eventPublisher, watcherRepository, projectLeadRepository, answers = false)
+        // answers=false 여도 resetAll 방지: 공통 stub 기본값 재설정 (clearMocks 는 calls 만 초기화하므로 불필요하지만,
+        // recorded call 수 리셋 목적 — answers 는 유지됨)
+        every { projectLeadRepository.findLeadUserId(any()) } returns null
     }
 
     describe("createIssue — 자동 watcher") {
 
         it("reporter 는 항상 watcher 로 자동 등록된다") {
-            val saved = makeIssue(assigneeId = null)
-            every { repo.insert(any()) } returns saved
+            // projectLead 없음 → resolvedAssignee = null → reporter 만 watcher
+            every { repo.insert(any()) } answers { firstArg() }
 
             sut.createIssue(actor, makeCreateRequest())
 
-            verify { watcherRepository.add(saved.id.value, actor.value) }
+            // reporter(actor) 가 watcher 로 등록됐는지 검증 (issueId 는 createIssue 내부 UUID.randomUUID())
+            verify { watcherRepository.add(any(), actor.value) }
         }
 
-        it("생성 시 assignee 가 있으면 assignee 도 watcher 로 자동 등록된다") {
-            val assigneeId = ActorId(UUID.randomUUID())
-            // 컴포넌트 리드로 assignee 를 주입하기 위해 componentRepository 를 통한 경로 대신
-            // repo.insert 가 반환하는 saved 에 assigneeId 를 직접 세팅하여 검증한다.
-            val saved = makeIssue(assigneeId = assigneeId)
-            every { repo.insert(any()) } returns saved
+        it("생성 시 projectLead 가 있으면 reporter + projectLead 모두 watcher 로 자동 등록된다") {
+            val leadId = UUID.randomUUID()
+            // projectLead stub → resolveDefaultAssignee 가 leadId 반환
+            every { projectLeadRepository.findLeadUserId(projectId) } returns leadId
+            // repo.insert 는 Issue.create 결과(assigneeId = ActorId(leadId) 포함)를 그대로 반환
+            every { repo.insert(any()) } answers { firstArg() }
 
             sut.createIssue(actor, makeCreateRequest())
 
-            verify { watcherRepository.add(saved.id.value, actor.value) }
-            verify { watcherRepository.add(saved.id.value, assigneeId.value) }
+            // reporter(actor) 와 projectLead(assignee) 모두 watcher 로 등록됐는지 검증
+            verify { watcherRepository.add(any(), actor.value) }
+            verify { watcherRepository.add(any(), leadId) }
         }
 
         it("reporter 와 assignee 가 같으면 add 를 1번만 호출한다") {
-            // reporter == actor, assigneeId == actor → distinct 적용 → add 1회
-            val saved = makeIssue(assigneeId = actor)
-            every { repo.insert(any()) } returns saved
+            // projectLead = actor UUID → resolvedAssignee = actor → distinct 후 add 1회
+            every { projectLeadRepository.findLeadUserId(projectId) } returns actor.value
+            every { repo.insert(any()) } answers { firstArg() }
 
             sut.createIssue(actor, makeCreateRequest())
 
-            verify(exactly = 1) { watcherRepository.add(saved.id.value, actor.value) }
+            verify(exactly = 1) { watcherRepository.add(any(), actor.value) }
         }
     }
 
@@ -163,26 +206,11 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
         it("새 assignee(non-null) 는 watcher 로 자동 등록된다") {
             val newAssigneeId = UUID.randomUUID()
             val existing = makeIssue(assigneeId = null)
-            val afterIssue = makeIssue(assigneeId = ActorId(newAssigneeId), id = existing.id.value)
 
             every { repo.findByKey(issueKey) } returns existing
             every { userLookupPort.exists(newAssigneeId) } returns true
             every { repo.updateAssignee(issueKey, newAssigneeId, 1L) } returns 1
-            every { repo.findByKeyWithType(issueKey) } returns
-                com.bts.issue.adapter.inbound.rest.IssueResponse(
-                    key = issueKey.value,
-                    id = existing.id.value,
-                    projectKey = projectKey,
-                    summary = "테스트 이슈",
-                    currentStateKey = "open",
-                    reporterId = actor.value,
-                    version = 2L,
-                    createdAt = Instant.parse("2026-06-16T00:00:00Z"),
-                    updatedAt = Instant.parse("2026-06-16T00:00:00Z"),
-                    typeId = 3L,
-                    typeKey = "task",
-                    typeName = "Task",
-                )
+            every { repo.findByKeyWithType(issueKey) } returns makeResponse(existing.id.value)
 
             sut.changeAssignee(
                 actor,
@@ -199,21 +227,7 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
 
             every { repo.findByKey(issueKey) } returns existing
             every { repo.updateAssignee(issueKey, null, 1L) } returns 1
-            every { repo.findByKeyWithType(issueKey) } returns
-                com.bts.issue.adapter.inbound.rest.IssueResponse(
-                    key = issueKey.value,
-                    id = existing.id.value,
-                    projectKey = projectKey,
-                    summary = "테스트 이슈",
-                    currentStateKey = "open",
-                    reporterId = actor.value,
-                    version = 2L,
-                    createdAt = Instant.parse("2026-06-16T00:00:00Z"),
-                    updatedAt = Instant.parse("2026-06-16T00:00:00Z"),
-                    typeId = 3L,
-                    typeKey = "task",
-                    typeName = "Task",
-                )
+            every { repo.findByKeyWithType(issueKey) } returns makeResponse(existing.id.value)
 
             sut.changeAssignee(
                 actor,
@@ -232,21 +246,7 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
             every { repo.findByKey(issueKey) } returns existing
             every { userLookupPort.exists(newAssigneeId) } returns true
             every { repo.updateAssignee(issueKey, newAssigneeId, 1L) } returns 1
-            every { repo.findByKeyWithType(issueKey) } returns
-                com.bts.issue.adapter.inbound.rest.IssueResponse(
-                    key = issueKey.value,
-                    id = existing.id.value,
-                    projectKey = projectKey,
-                    summary = "테스트 이슈",
-                    currentStateKey = "open",
-                    reporterId = actor.value,
-                    version = 2L,
-                    createdAt = Instant.parse("2026-06-16T00:00:00Z"),
-                    updatedAt = Instant.parse("2026-06-16T00:00:00Z"),
-                    typeId = 3L,
-                    typeKey = "task",
-                    typeName = "Task",
-                )
+            every { repo.findByKeyWithType(issueKey) } returns makeResponse(existing.id.value)
 
             sut.changeAssignee(
                 actor,
@@ -263,45 +263,44 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
 
     describe("changeComponents 자동재배정 — 자동 watcher (CONCERN-1)") {
 
-        it("컴포넌트 자동배정으로 resolved assignee 가 확정되면 watcher 로 자동 등록된다") {
-            val resolvedAssigneeId = ActorId(UUID.randomUUID())
+        it("projectLead 가 있고 기존 assignee 가 null 이면 projectLead 가 watcher 로 자동 등록된다") {
+            val resolvedLeadId = UUID.randomUUID()
             val existing = makeIssue(assigneeId = null)
+            val issueIssueId = existing.id.value
 
+            // assignee null → resolveDefaultAssignee → projectLead 반환
+            every { projectLeadRepository.findLeadUserId(projectId) } returns resolvedLeadId
             every { repo.findByKey(issueKey) } returns existing
-            every { repo.replaceComponents(any(), any(), any(), any()) } returns 1
-            // componentRepository 를 통해 resolveDefaultAssignee 가 resolvedAssigneeId 를 반환하도록
-            // setAssignee 가 호출되는 시나리오를 직접 검증하기 위해 setAssignee stub 를 추가한다.
-            every { repo.setAssignee(existing.id.value, resolvedAssigneeId.value) } returns Unit
-            every { repo.findByKeyWithType(issueKey) } returns
-                com.bts.issue.adapter.inbound.rest.IssueResponse(
-                    key = issueKey.value,
-                    id = existing.id.value,
-                    projectKey = projectKey,
-                    summary = "테스트 이슈",
-                    currentStateKey = "open",
-                    reporterId = actor.value,
-                    version = 2L,
-                    createdAt = Instant.parse("2026-06-16T00:00:00Z"),
-                    updatedAt = Instant.parse("2026-06-16T00:00:00Z"),
-                    typeId = 3L,
-                    typeKey = "task",
-                    typeName = "Task",
-                )
-            // componentRepository → resolveDefaultAssignee 가 resolvedAssigneeId 를 반환하도록 우회:
-            // componentRepository 는 relaxed mock 이므로 findByProject 는 빈 리스트를 반환한다.
-            // 따라서 resolveDefaultAssignee 는 null 을 반환하게 되어 자동배정 블록이 진입하지 않는다.
-            // autoWatch 를 직접 검증하려면 setAssignee 호출 이후 경로를 단위로 분리할 수 없으므로
-            // 이 테스트는 통합적으로 검증한다: assignee non-null 로 changeAssignee 를 호출하면
-            // autoWatch 가 발동됨을 앞서 검증하였으므로, changeComponents 경로도 동일 헬퍼를 경유함을 확인한다.
-            // → 이 케이스에서는 componentRepository 가 빈 리스트를 반환해 resolved == null 이므로
-            //   watcher add 가 호출되지 않음을 검증한다(resolved null 경로 커버).
+            every { repo.replaceComponents(issueKey, issueIssueId, emptyList(), 1L) } returns 1
+            every { repo.setAssignee(issueIssueId, resolvedLeadId) } returns Unit
+            every { repo.findByKeyWithType(issueKey) } returns makeResponse(issueIssueId)
+
             sut.changeComponents(
                 actor,
                 issueKey,
                 AppChangeComponentsRequest(componentIds = emptyList(), expectedVersion = 1L),
             )
 
-            // resolved null → autoWatch 미호출
+            // resolved projectLead → autoWatch 호출
+            verify { watcherRepository.add(issueIssueId, resolvedLeadId) }
+        }
+
+        it("기존 assignee 가 있으면 자동재배정이 발동하지 않으므로 autoWatch 도 호출되지 않는다") {
+            val existingAssignee = ActorId(UUID.randomUUID())
+            val existing = makeIssue(assigneeId = existingAssignee)
+            val issueIssueId = existing.id.value
+
+            every { repo.findByKey(issueKey) } returns existing
+            every { repo.replaceComponents(issueKey, issueIssueId, emptyList(), 1L) } returns 1
+            every { repo.findByKeyWithType(issueKey) } returns makeResponse(issueIssueId)
+
+            sut.changeComponents(
+                actor,
+                issueKey,
+                AppChangeComponentsRequest(componentIds = emptyList(), expectedVersion = 1L),
+            )
+
+            // 기존 assignee 있음 → 자동재배정 미발동 → autoWatch 미호출
             verify(exactly = 0) { watcherRepository.add(any(), any()) }
         }
     }
