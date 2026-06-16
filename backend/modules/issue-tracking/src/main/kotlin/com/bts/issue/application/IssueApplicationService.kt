@@ -88,6 +88,8 @@ import java.util.UUID
  * - 이벤트 발행: [IssueEventPublisher] (Propagation.MANDATORY — 같은 트랜잭션)
  * - 워크플로우 전이: [WorkflowTransitionPort] (inbound port — BC 격리 준수)
  * - 워크플로우 키 결정: [WorkflowKeyResolver] (shared-kernel SPI — project-workflow BC 내부 직접 import 금지)
+ * - 이슈 이동 리다이렉트: [IssueKeyRedirectRepository.findCurrentKey] — 옛 키 조회 시 redirect 체인 순회 후
+ *   [IssueMovedException] 발행 → 308 Permanent Redirect 응답 (FR-MV-01, DATA.md §2)
  *
  * 모든 public 메서드는 @Transactional 을 명시한다 (DEVELOPMENT.md §절대규칙).
  *
