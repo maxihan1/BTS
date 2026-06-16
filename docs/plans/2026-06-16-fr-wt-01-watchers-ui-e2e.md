@@ -75,8 +75,8 @@ classify 결과. type=qa로 오판정(E2E 키워드) → ui로 교정(본체는 
 - depends-on: [1]
 
 **RED**: `WatchersSection.test.tsx`(MSW 사용) — (1) 카운트 "N명"+명단(displayName) 렌더, (2) `isWatching=false`면 "보기" 버튼·`true`면 "보기 취소", (3) "보기" 클릭 → POST(self) → MSW store 갱신 → 카운트+1·버튼 토글, (4) "보기 취소" 클릭 → DELETE(`useAuthUser().userId`) → 카운트-1, (5) 0명이면 "감시자가 없습니다." 표시. 컴포넌트 테스트가 MSW 핸들러 부재로 먼저 실패(RED) → 핸들러 추가가 GREEN.
-**GREEN**: (a) `issue-watcher-handlers.ts` — stateful `watcherStore: Map<issueKey,Set<userId>>` + `seedIssueWatchers`/`resetIssueWatcherStore`, GET/POST/DELETE 핸들러(현재 userId는 기존 auth 핸들러에서 읽어 isWatching 계산), `handlers.ts` 등록. (b) `WatchersSection.tsx` — `useWatchers`+토글 버튼+카운트+명단. (c) `ko.ts` `issueDetailStrings`에 watcher 문자열(콜론 종결 금지) + `ko.test.ts` 검증.
-**REFACTOR**: data-testid/aria-label i18n 정본 재노출, 로딩/에러 상태 정리.
+**GREEN**: (a) `issue-watcher-handlers.ts` — stateful `watcherStore: Map<issueKey,Set<userId>>` + `seedIssueWatchers`/`resetIssueWatcherStore`, GET/POST/DELETE 핸들러(현재 userId는 기존 auth 핸들러에서 읽어 isWatching 계산), `handlers.ts` 등록. (b) `WatchersSection.tsx` — `useWatchers`+토글 버튼+카운트+명단. **디자인 FR 반영**: 로딩/에러/빈/진행중 4상태(FR-8), 긴 목록 N명+초과 접기·본인"(나)"표기(FR-9), `aria-pressed`·키보드·44px·outline/secondary 버튼(FR-10). 라벨은 게이트1 Maxi 확정값 사용(임시 "지켜보기/지켜보는 중"). (c) `ko.ts` `issueDetailStrings`에 watcher 문자열(콜론 종결 금지) + `ko.test.ts` 검증.
+**REFACTOR**: data-testid/aria-label i18n 정본 재노출, 4상태 정리.
 **검증**: `pnpm --dir apps/web exec vitest run src/components/issue/WatchersSection.test.tsx src/i18n/ko.test.ts`
 
 ### Task 3. IssueMetaPanel 통합 + FR-7 자동 watcher 라이브 갱신
@@ -111,4 +111,22 @@ classify 결과. type=qa로 오판정(E2E 키워드) → ui로 교정(본체는 
 - 추가 검증: typecheck(tsconfig.app), ktlint/detekt 해당없음(프론트 전용), vitest, playwright(qa).
 - 회귀 주의: IssueMetaPanel은 공유 컴포넌트 → 기존 테스트/E2E 동반 실행. issues.ts mock fanout 점검.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-design-review (2026-06-16)
+
+**초기 평점 6/10 → 반영 후 9/10.** mockup/비교보드 플로우는 스킵 — 기존 메타패널에 표준 컴포넌트(토글 버튼+카운트+읽기전용 명단) 추가라 새 비주얼 디자인 부재, DESIGN.md 기존 규칙 준수. 집중 텍스트 검토로 진행.
+
+- ✅ 통과: API 계약 명확, invalidate-only 플리커 방지, FR-7 자동 watcher 라이브 갱신, 권한 게이팅 단순(VIEW=상세열람으로 충족).
+- 🔧 반영(스펙 FR-8~10 추가): (1) 4상태 표현(로딩/에러/빈/진행중), (2) 1,000명 조직 긴 목록 처리(N명+접기·본인 "(나)" 표기), (3) 접근성 WCAG AA(aria-pressed 토글·키보드·44px·outline 버튼).
+- 🛑 **UNRESOLVED (게이트1 Maxi 결정 — taste)**: 버튼 라벨. 초안 "보기/보기 취소"는 "조회(view)" 오해 소지. 권장 "지켜보기/지켜보는 중"(Jira Watch/Watching) 또는 "알림 받기/알림 받는 중"(동작 직설). Maxi 확정 필요.
+- BLOCKER: 없음.
+
+### eng 집중 리뷰 (2026-06-16, self)
+
+작은 프론트 후속이라 autoplan overkill 회피, 핵심 기술 리스크만 점검.
+- ⚠️ 주의(반영됨): IssueMetaPanel은 공유 컴포넌트(많은 props·기존 테스트) → WatchersSection은 `issue.key`만 받는 자체-훅 컴포넌트로 prop drilling 회피. 기존 IssueMetaPanel 테스트/E2E 동반 실행(회귀).
+- ⚠️ 주의(반영됨): FR-7로 `issues.ts` 담당자/컴포넌트 mutation 수정 시 mock fanout — issues.test.ts 기존 단언 깨지지 않게 invalidate 추가만(메모리 "Zod 스키마 강화 mock 파급" 동형 주의).
+- ⚠️ 주의: self-unwatch는 `useAuthUser().userId` 필요 — 미인증 시 버튼 비활성(라우트 가드가 1차 방어).
+- ⚠️ 주의: 텍스트 중복 버튼(메타패널에 '저장' 등 다수) → E2E 셀렉터는 감시자 섹션 컨테이너 한정(메모리 "UI PR이 E2E 미루면 회귀 잠복").
+- BLOCKER: 없음.

@@ -51,6 +51,13 @@
 - **FR-6** 에러 처리: 422(USER_NOT_FOUND, self엔 사실상 미발생) / 403 / 404 시 토스트. errorCode 추출 헬퍼 사용.
 - **FR-7** (Brainstorming 발견) 같은 상세 화면의 **담당자 변경 / 컴포넌트 변경** mutation은 백엔드가 해당 인물을 자동 watcher로 등록하므로, 성공 시 `issueWatchersKey(key)`도 함께 invalidate해 카운트/명단이 라이브 갱신되게 한다. (기존 `issues.ts` 담당자/컴포넌트 mutation 훅의 onSettled/onSuccess에 invalidate 1줄 추가.)
 
+### 디자인 검토 반영 (plan-design-review)
+
+- **FR-8 (상태 표현)** 감시자 섹션은 4가지 상태를 모두 표현한다. 로딩(조회 중 — 간단한 스켈레톤/문구), 에러(조회 실패 — 차분한 안내 문구, --destructive 남발 금지), 빈 상태("감시자가 없습니다."), 진행 중(watch/unwatch in-flight 동안 버튼 disabled+로딩 표시로 더블클릭 방지).
+- **FR-9 (긴 목록 — 1,000명 조직)** 카운트는 항상 표시. 감시자 명단은 길어질 수 있으므로 기본 N명(예: 8명)까지 표시하고 초과분은 "+N명 더" 또는 max-height 스크롤로 접는다. 본인은 명단에서 "(나)" 표기로 식별 가능하게 한다.
+- **FR-10 (접근성 WCAG AA)** 토글 버튼은 shadcn `<Button variant="outline" 또는 secondary>`(페이지 핵심 CTA 아님 — 그건 상태/전이). `aria-pressed`로 watch 상태 노출, 키보드 조작(Enter/Space), 모바일 터치 타깃 44px, 색 대비 AA. 아이콘 사용 시 텍스트 라벨 병기.
+- **버튼 라벨 (🛑 게이트1 Maxi 결정 필요 — taste)** 초안 "보기/보기 취소"는 "조회(view)"로 오해될 수 있음. 권장안 "지켜보기 / 지켜보는 중"(Jira "Watch/Watching" 대응) 또는 "알림 받기 / 알림 받는 중"(동작 직설). glossary 정본은 "워처=이슈 변경 알림 수신자". Maxi가 라벨 확정.
+
 ## 비기능 요구사항 (NFR)
 
 - **NFR-1** API 모듈은 issue-tracking BC 관례(`issue-links.ts`)를 따른다. 신규 `issue-watchers.ts`.
