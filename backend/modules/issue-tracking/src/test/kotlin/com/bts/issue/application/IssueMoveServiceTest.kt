@@ -2,14 +2,19 @@
 
 package com.bts.issue.application
 
+import com.bts.issue.component.repository.ComponentRepository
+import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.InvalidTargetMappingException
 import com.bts.issue.domain.IssueDomainException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
+import com.bts.issue.domain.RequiredFieldMissingException
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.repository.IssueKeyRedirectRepository
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -84,6 +89,9 @@ class IssueMoveServiceTest {
     private val workflowKeyResolver = mockk<WorkflowKeyResolver>(relaxed = true)
     private val workflowStateCatalog = mockk<WorkflowStateCatalog>(relaxed = true)
     private val historyRecorder = mockk<IssueHistoryRecorder>(relaxed = true)
+    private lateinit var componentRepository: ComponentRepository
+    private lateinit var versionRepository: VersionRepository
+    private lateinit var customFieldDefinitionRepository: CustomFieldDefinitionRepository
 
     private val actor = ActorId(UUID.fromString("11111111-1111-4111-8111-111111111111"))
 
@@ -111,6 +119,9 @@ class IssueMoveServiceTest {
         txTemplate = TransactionTemplate(txManager)
         issueRepository = IssueRepository(dsl)
         redirectRepository = IssueKeyRedirectRepository(dsl)
+        componentRepository = ComponentRepository(dsl)
+        versionRepository = VersionRepository(dsl)
+        customFieldDefinitionRepository = CustomFieldDefinitionRepository(dsl)
 
         // SRC / DST 프로젝트 삽입
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
@@ -173,6 +184,9 @@ class IssueMoveServiceTest {
                 workflowKeyResolver = workflowKeyResolver,
                 workflowStateCatalog = workflowStateCatalog,
                 historyRecorder = historyRecorder,
+                componentRepository = componentRepository,
+                versionRepository = versionRepository,
+                customFieldDefinitionRepository = customFieldDefinitionRepository,
             )
 
         // 테이블 초기화
@@ -421,6 +435,203 @@ class IssueMoveServiceTest {
         val movedIssue = issueRepository.findByKey(dstKey)
         assertThat(movedIssue).isNotNull
         assertThat(movedIssue!!.resolutionId).isNull()
+    }
+
+    // ── EC8. 타 프로젝트 소속 컴포넌트 매핑 거부 (회귀) ─────────────────────────
+
+    /**
+     * EC8 회귀 — 대상 프로젝트에 없는 컴포넌트 UUID를 componentMapping 값으로 보내면
+     * InvalidTargetMappingException(422) 을 던진다.
+     *
+     * 수정 전 코드: componentMappingTargetIds == targetProjectComponentIds (항상 통과)
+     * 수정 후 코드: targetProjectComponentIds = componentRepository.findByProject(targetProjectId) 실조회
+     *
+     * Given  DST 프로젝트에 컴포넌트 없음, 임의 UUID를 componentMapping 값으로 전달
+     * When   IssueMoveService.move(...)
+     * Then   InvalidTargetMappingException
+     */
+    @Test
+    fun `EC8 회귀 - 타 프로젝트 컴포넌트 UUID 매핑 시 InvalidTargetMappingException`() {
+        val issueId = insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN)
+        val srcKey = IssueKey.of(SRC_PROJECT, 1)
+
+        // SRC 프로젝트에 컴포넌트 삽입 후 해당 id를 매핑 source 로 사용
+        val fakeSourceComponentId = UUID.fromString("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        val nonExistentTargetComponentId = UUID.fromString("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+
+        val request =
+            IssueMoveRequest(
+                targetProjectKey = DST_PROJECT,
+                expectedVersion = 1L,
+                targetStateKey = null,
+                targetStateIsDone = false,
+                // DST 프로젝트에 존재하지 않는 UUID를 매핑 대상으로 지정
+                componentMapping = mapOf(fakeSourceComponentId to nonExistentTargetComponentId),
+                affectsVersionMapping = emptyMap(),
+                fixVersionMapping = emptyMap(),
+                additionalCustomFields = emptyMap(),
+            )
+
+        assertThrows<InvalidTargetMappingException> {
+            txTemplate.execute { sut.move(actor, srcKey, request) }
+        }
+    }
+
+    /**
+     * EC8 회귀 — 대상 프로젝트에 없는 버전 UUID를 fixVersionMapping 값으로 보내면
+     * InvalidTargetMappingException(422) 을 던진다.
+     *
+     * Given  DST 프로젝트에 버전 없음, 임의 UUID를 fixVersionMapping 값으로 전달
+     * When   IssueMoveService.move(...)
+     * Then   InvalidTargetMappingException
+     */
+    @Test
+    fun `EC8 회귀 - 타 프로젝트 버전 UUID 매핑 시 InvalidTargetMappingException`() {
+        insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN)
+        val srcKey = IssueKey.of(SRC_PROJECT, 1)
+
+        val fakeSourceVersionId = UUID.fromString("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+        val nonExistentTargetVersionId = UUID.fromString("dddddddd-dddd-4ddd-8ddd-dddddddddddd")
+
+        val request =
+            IssueMoveRequest(
+                targetProjectKey = DST_PROJECT,
+                expectedVersion = 1L,
+                targetStateKey = null,
+                targetStateIsDone = false,
+                componentMapping = emptyMap(),
+                affectsVersionMapping = emptyMap(),
+                // DST 프로젝트에 존재하지 않는 버전 UUID를 매핑 대상으로 지정
+                fixVersionMapping = mapOf(fakeSourceVersionId to nonExistentTargetVersionId),
+                additionalCustomFields = emptyMap(),
+            )
+
+        assertThrows<InvalidTargetMappingException> {
+            txTemplate.execute { sut.move(actor, srcKey, request) }
+        }
+    }
+
+    // ── EC9. 대상 프로젝트 필수 커스텀필드 미제공 거부 (회귀) ───────────────────────
+
+    /**
+     * EC9 회귀 — 대상 프로젝트에 required=true 커스텀필드가 있고
+     * additionalCustomFields / issue 기존값에 해당 키가 없으면 RequiredFieldMissingException 을 던진다.
+     *
+     * Given  DST 프로젝트에 required 커스텀필드 "priority_score" 삽입
+     *        이슈 기존 customFields 에 "priority_score" 없음
+     *        additionalCustomFields 에도 없음
+     * When   IssueMoveService.move(...)
+     * Then   RequiredFieldMissingException
+     */
+    @Test
+    fun `EC9 회귀 - 대상 프로젝트 required 커스텀필드 미제공 시 RequiredFieldMissingException`() {
+        insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN)
+        val srcKey = IssueKey.of(SRC_PROJECT, 1)
+
+        // DST 프로젝트에 required 커스텀필드 삽입
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                """INSERT INTO custom_field_definitions
+                   (id, project_id, key, name, field_type, required, display_order, deleted_at)
+                   VALUES (gen_random_uuid(), ?, 'priority_score', '우선순위 점수', 'SHORT_TEXT', true, 0, NULL)
+                   ON CONFLICT DO NOTHING""",
+            ).use { ps ->
+                ps.setObject(1, dstProjectId)
+                ps.executeUpdate()
+            }
+        }
+
+        try {
+            val request =
+                IssueMoveRequest(
+                    targetProjectKey = DST_PROJECT,
+                    expectedVersion = 1L,
+                    targetStateKey = null,
+                    targetStateIsDone = false,
+                    componentMapping = emptyMap(),
+                    affectsVersionMapping = emptyMap(),
+                    fixVersionMapping = emptyMap(),
+                    // 필수 커스텀필드 'priority_score' 미제공
+                    additionalCustomFields = emptyMap(),
+                )
+
+            assertThrows<RequiredFieldMissingException> {
+                txTemplate.execute { sut.move(actor, srcKey, request) }
+            }
+        } finally {
+            // EC9 테스트용 커스텀필드 정리 (다른 테스트에 영향 차단)
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.prepareStatement(
+                    "DELETE FROM custom_field_definitions WHERE project_id = ? AND key = 'priority_score'",
+                ).use { ps ->
+                    ps.setObject(1, dstProjectId)
+                    ps.executeUpdate()
+                }
+            }
+        }
+    }
+
+    // ── C4. 비DONE 이동 후 resolution_id = null (기존 S6 강화) ────────────────────
+
+    /**
+     * C4 회귀 — 이동 전 resolution_id 가 세팅된 이슈를 비DONE 상태 대상으로 이동하면
+     * DB의 resolution_id 가 실제로 null 로 clear 됨을 단언한다.
+     *
+     * 기존 S6은 targetStateIsDone=false 만 전달하고 DB 단언이 있었으나,
+     * 이동 전 resolution_id 가 실제로 세팅된 상태에서 clear 여부를 명시적으로 확인한다.
+     *
+     * Given  이슈 resolution_id = 고정 UUID (이동 전)
+     * When   targetStateIsDone = false 로 이동
+     * Then   이동 후 DB issues.resolution_id IS NULL
+     */
+    @Test
+    fun `C4 회귀 - 이동 전 resolution_id 세팅 후 비DONE 이동 시 DB resolution_id null`() {
+        val resolutionId = UUID.fromString("00000000-0000-4000-8000-000000000077")
+        insertIssueWithResolution(SRC_PROJECT, srcProjectId, STATE_OPEN, resolutionId)
+        val srcKey = IssueKey.of(SRC_PROJECT, 1)
+
+        // 이동 전 resolution_id 설정됐는지 DB 확인
+        val beforeResolution =
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.prepareStatement(
+                    "SELECT resolution_id FROM issues WHERE key = ?",
+                ).use { ps ->
+                    ps.setString(1, srcKey.value)
+                    ps.executeQuery().use { rs ->
+                        if (rs.next()) rs.getObject(1) else null
+                    }
+                }
+            }
+        assertThat(beforeResolution).isNotNull()
+        assertThat(beforeResolution as UUID).isEqualTo(resolutionId)
+
+        val request =
+            IssueMoveRequest(
+                targetProjectKey = DST_PROJECT,
+                expectedVersion = 1L,
+                targetStateKey = null,
+                targetStateIsDone = false,
+                componentMapping = emptyMap(),
+                affectsVersionMapping = emptyMap(),
+                fixVersionMapping = emptyMap(),
+                additionalCustomFields = emptyMap(),
+            )
+
+        txTemplate.execute { sut.move(actor, srcKey, request) }
+
+        val dstKey = IssueKey.of(DST_PROJECT, 1)
+        val afterResolution =
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.prepareStatement(
+                    "SELECT resolution_id FROM issues WHERE key = ?",
+                ).use { ps ->
+                    ps.setString(1, dstKey.value)
+                    ps.executeQuery().use { rs ->
+                        if (rs.next()) rs.getObject(1) else "ROW_NOT_FOUND"
+                    }
+                }
+            }
+        assertThat(afterResolution).isNull()
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
