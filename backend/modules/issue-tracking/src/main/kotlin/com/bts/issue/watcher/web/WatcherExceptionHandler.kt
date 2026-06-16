@@ -8,8 +8,10 @@ import com.bts.issue.watcher.application.WatcherUserNotFoundException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
+import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.server.ResponseStatusException
 import java.net.URI
 import java.time.Instant
@@ -23,6 +25,8 @@ import java.time.Instant
  * 커버하지 않는다. 따라서 이 핸들러에서 공통 예외를 직접 처리한다.
  *
  * 매핑 규칙.
+ * - [MethodArgumentTypeMismatchException] → 400 Bad Request (경로 UUID 형식 오류)
+ * - [HttpMessageNotReadableException] → 400 Bad Request (JSON 역직렬화 실패)
  * - [IssueNotFoundException] → 404 Not Found
  * - [IssueAccessDeniedException] → 403 Forbidden (detail 에 내부 정보 비노출)
  * - [WatcherUserNotFoundException] → 422 Unprocessable Entity (userId 비노출)
@@ -124,6 +128,55 @@ class WatcherExceptionHandler {
         )
     }
 
+    // ── 400 WATCHER_VALIDATION_FAILED (클라이언트 입력 오류) ─────────────────────
+
+    /**
+     * [MethodArgumentTypeMismatchException] — 경로 변수 타입 불일치 — 400.
+     *
+     * DELETE /watchers/{userId} 에 UUID 형식이 아닌 값이 전달되면 Spring MVC 가 발생시킨다.
+     * 클라이언트 입력 오류이므로 log.info 로 기록하고 내부 정보는 응답에 포함하지 않는다.
+     *
+     * @param ex 파라미터 이름·요청값·목표 타입 정보를 포함하는 예외.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException::class)
+    fun handleMethodArgumentTypeMismatch(ex: MethodArgumentTypeMismatchException): ProblemDetail {
+        log.info(
+            "WATCHER_400 type_mismatch param='{}' value='{}'",
+            ex.name,
+            ex.value,
+        )
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "watcher-validation-failed",
+            title = "Bad Request",
+            errorCode = WATCHER_VALIDATION_FAILED,
+            detail = "요청 경로 또는 파라미터 형식이 올바르지 않습니다.",
+        )
+    }
+
+    /**
+     * [HttpMessageNotReadableException] — 요청 본문 역직렬화 실패 — 400.
+     *
+     * POST /watchers 에 UUID 여야 할 필드에 정수를 넣거나 JSON 이 깨진 경우 발생한다.
+     * 클라이언트 입력 오류이므로 log.info 로 기록하고 내부 정보는 응답에 포함하지 않는다.
+     *
+     * @param ex 역직렬화 실패를 나타내는 예외. 원인 메시지만 로그에 기록한다.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleHttpMessageNotReadable(ex: HttpMessageNotReadableException): ProblemDetail {
+        log.info(
+            "WATCHER_400 message_not_readable cause='{}'",
+            ex.cause?.message ?: ex.message,
+        )
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "watcher-validation-failed",
+            title = "Bad Request",
+            errorCode = WATCHER_VALIDATION_FAILED,
+            detail = "요청 본문을 읽을 수 없습니다. JSON 형식 또는 필드 값을 확인해 주세요.",
+        )
+    }
+
     // ── 500 INTERNAL_ERROR (fallback) ─────────────────────────────────────────
 
     /**
@@ -170,5 +223,10 @@ class WatcherExceptionHandler {
         pd.setProperty("errorCode", errorCode)
         pd.setProperty("timestamp", Instant.now().toString())
         return pd
+    }
+
+    companion object {
+        /** 워처 BC 클라이언트 입력 검증 실패 에러 코드. */
+        const val WATCHER_VALIDATION_FAILED = "ISSUE_WATCHER_VALIDATION_FAILED"
     }
 }
