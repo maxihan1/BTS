@@ -308,6 +308,44 @@ describe('watcherSummarySchema — 인증 userId 공간 허용', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// T-WT-11. watcherSummarySchema — displayName 빈 문자열 허용 (P3 fix)
+// 백엔드 WatcherSummary.displayName은 사용자 미존재 시 빈 문자열을 반환한다.
+// .min(1) 이면 그 한 명 때문에 GET 전체가 ZodError → 섹션 전체 에러가 되므로
+// .string() 으로 완화해야 한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('watcherSummarySchema — displayName 빈 문자열 허용 (P3)', () => {
+  it('T-WT-11a: displayName 빈 문자열 워처가 파싱을 통과한다', () => {
+    const result = watcherSummarySchema.safeParse({
+      userId: '550e8400-e29b-41d4-a716-446655440000',
+      displayName: '',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('T-WT-11b: displayName 빈 문자열 워처가 포함된 목록이 fetchWatchers에서 파싱된다', async () => {
+    server.use(
+      http.get('/api/v1/issues/:key/watchers', () =>
+        HttpResponse.json({
+          data: {
+            watchers: [
+              { userId: '550e8400-e29b-41d4-a716-446655440000', displayName: '' },
+              { userId: '550e8400-e29b-41d4-a716-446655440001', displayName: '홍길동' },
+            ],
+            count: 2,
+            isWatching: false,
+          },
+        }),
+      ),
+    )
+    // 빈 displayName 워처가 포함돼도 전체 목록 파싱이 성공해야 한다.
+    const result = await fetchWatchers(ISSUE_KEY)
+    expect(result.watchers).toHaveLength(2)
+    expect(result.watchers[0]?.displayName).toBe('')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // T-WT-9. extractWatcherErrorCode — ApiError에서 errorCode 추출
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 // WatchersSection 컴포넌트 단위 테스트 — FR-WT-01 D6 Task-2 (TDD RED)
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { ReactNode } from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -9,6 +9,17 @@ import { server } from '@/test/server'
 import { useAuthStore } from '@/auth/authStore'
 import { aliceUser } from '@/mocks/auth-fixtures'
 import { WatchersSection } from './WatchersSection'
+
+// sonner toast mock — 실제 DOM 없이 호출 여부만 검증
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}))
+
+// toast mock 참조 — P2 테스트에서 호출 검증
+import { toast } from 'sonner'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처 — Zod v4 UUID 검증을 통과하는 RFC4122 v4 형식 UUID
@@ -257,5 +268,137 @@ describe('WatchersSection — S6 data-testid', () => {
 
     expect(screen.getByTestId('watchers-section')).toBeInTheDocument()
     expect(screen.getByTestId('watch-toggle-button')).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S7. P1 — 로딩/에러 윈도우 토글 가드
+// GET in-flight 또는 data===undefined 상태에서 버튼이 disabled 이어야 하고,
+// 클릭해도 mutate가 발사되지 않아야 한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('WatchersSection — S7 로딩 윈도우 토글 가드 (P1)', () => {
+  it('S7a: GET 로딩 중에 토글 버튼이 disabled다', async () => {
+    // GET이 절대 응답하지 않도록 하여 로딩 상태를 고정한다.
+    server.use(
+      http.get('/api/v1/issues/ATLAS-LOADING/watchers', () => {
+        // 응답을 보내지 않으면 로딩 상태가 유지된다 — pending 상태 시뮬레이션
+        return new Promise<never>(() => {
+          // 영원히 pending
+        })
+      }),
+    )
+    const Wrapper = createWrapper()
+    render(<WatchersSection issueKey="ATLAS-LOADING" />, { wrapper: Wrapper })
+
+    // 버튼은 즉시 렌더되어야 하고, 로딩 중에는 disabled 이어야 한다.
+    const btn = screen.getByTestId('watch-toggle-button')
+    expect(btn).toBeDisabled()
+  })
+
+  it('S7b: GET 로딩 중 클릭해도 mutate가 발사되지 않는다', async () => {
+    const user = userEvent.setup()
+    let postCalled = false
+    let deleteCalled = false
+
+    server.use(
+      http.get('/api/v1/issues/ATLAS-LOADING2/watchers', () => {
+        return new Promise<never>(() => {
+          // 영원히 pending
+        })
+      }),
+      http.post('/api/v1/issues/ATLAS-LOADING2/watchers', () => {
+        postCalled = true
+        return new HttpResponse(null, { status: 201 })
+      }),
+      http.delete('/api/v1/issues/ATLAS-LOADING2/watchers/:userId', () => {
+        deleteCalled = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    const Wrapper = createWrapper()
+    render(<WatchersSection issueKey="ATLAS-LOADING2" />, { wrapper: Wrapper })
+
+    const btn = screen.getByTestId('watch-toggle-button')
+    // disabled 버튼에 강제 클릭 시도
+    await user.click(btn)
+
+    // 어떤 mutation도 발사되지 않아야 한다
+    expect(postCalled).toBe(false)
+    expect(deleteCalled).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S8. P2 — mutation 실패 시 toast.error 호출
+// watch(POST) / unwatch(DELETE) 실패 시 사용자에게 에러 토스트를 보여야 한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('WatchersSection — S8 mutation 실패 시 toast.error (P2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('S8a: watch(POST) 실패 시 toast.error가 호출된다', async () => {
+    const user = userEvent.setup()
+
+    server.use(
+      http.get('/api/v1/issues/ATLAS-FAIL/watchers', () =>
+        HttpResponse.json({
+          data: { watchers: [], count: 0, isWatching: false },
+        }),
+      ),
+      http.post('/api/v1/issues/ATLAS-FAIL/watchers', () =>
+        HttpResponse.json(
+          { errorCode: 'ISSUE_ACCESS_DENIED', message: '권한이 없습니다' },
+          { status: 403 },
+        ),
+      ),
+    )
+
+    const Wrapper = createWrapper()
+    render(<WatchersSection issueKey="ATLAS-FAIL" />, { wrapper: Wrapper })
+
+    // 데이터 로드 완료 대기
+    await screen.findByText('0명')
+    const btn = screen.getByRole('button', { name: '지켜보기' })
+    await user.click(btn)
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('S8b: unwatch(DELETE) 실패 시 toast.error가 호출된다', async () => {
+    const user = userEvent.setup()
+
+    server.use(
+      http.get('/api/v1/issues/ATLAS-FAIL2/watchers', () =>
+        HttpResponse.json({
+          data: {
+            watchers: [aliceWatcher],
+            count: 1,
+            isWatching: true,
+          },
+        }),
+      ),
+      http.delete(`/api/v1/issues/ATLAS-FAIL2/watchers/${ALICE_UUID}`, () =>
+        HttpResponse.json(
+          { errorCode: 'ISSUE_ACCESS_DENIED', message: '권한이 없습니다' },
+          { status: 403 },
+        ),
+      ),
+    )
+
+    const Wrapper = createWrapper()
+    render(<WatchersSection issueKey="ATLAS-FAIL2" />, { wrapper: Wrapper })
+
+    const btn = await screen.findByRole('button', { name: '지켜보는 중' })
+    await user.click(btn)
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledTimes(1)
+    })
   })
 })
