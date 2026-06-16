@@ -45,7 +45,7 @@
 | 메서드 | 경로 | 권한 | 응답 |
 |---|---|---|---|
 | GET | `/api/v1/issues/{key}/watchers` | VIEW | 200 `{ watchers: [{userId, displayName}], count, isWatching }` |
-| POST | `/api/v1/issues/{key}/watchers` | 본인=VIEW / 타인=UPDATE | 201 또는 200(멱등) `{ count, isWatching }` |
+| POST | `/api/v1/issues/{key}/watchers` | 본인=VIEW / 타인=UPDATE | 201 (멱등 재추가 포함 — 구현은 항상 201) |
 | DELETE | `/api/v1/issues/{key}/watchers/{userId}` | 본인=VIEW / 타인=UPDATE | 204 |
 
 - POST body: `{ "userId": "uuid" }` (옵션, 생략 시 actor).
