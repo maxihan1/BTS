@@ -9,6 +9,7 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.watcher.application.IssueWatcherService
+import com.bts.issue.watcher.application.WatcherEntry
 import com.bts.issue.watcher.application.WatcherUserNotFoundException
 import com.bts.issue.watcher.repository.IssueWatcherRepository
 import com.bts.shared.permission.IssuePermission
@@ -125,7 +126,7 @@ class IssueWatcherServiceTest : DescribeSpec({
                 sut.watch(issueKey, actorId, targetUserId = null)
             }
 
-            verify(exactly = 0) { issueRepository.findByKey(any()) }
+            verify(exactly = 0) { issueRepository.findByKey(issueKey) }
         }
     }
 
@@ -189,7 +190,7 @@ class IssueWatcherServiceTest : DescribeSpec({
                 sut.watch(issueKey, actorId, targetUserId = targetId)
             }
 
-            verify(exactly = 0) { issueRepository.findByKey(any()) }
+            verify(exactly = 0) { issueRepository.findByKey(issueKey) }
         }
     }
 
@@ -305,9 +306,9 @@ class IssueWatcherServiceTest : DescribeSpec({
 
             result.count shouldBe 2
             result.isWatching shouldBe true
-            result.watchers.map { it.userId } shouldBe listOf(userId1, userId2)
-            result.watchers.find { it.userId == userId1 }?.displayName shouldBe "Alice"
-            result.watchers.find { it.userId == userId2 }?.displayName shouldBe "Bob"
+            result.watchers.map { entry -> entry.userId } shouldBe listOf(userId1, userId2)
+            result.watchers.find { entry -> entry.userId == userId1 }?.displayName shouldBe "Alice"
+            result.watchers.find { entry -> entry.userId == userId2 }?.displayName shouldBe "Bob"
         }
 
         it("actor 가 watcher 아닐 때 isWatching = false") {
@@ -322,7 +323,7 @@ class IssueWatcherServiceTest : DescribeSpec({
 
             result.isWatching shouldBe false
             result.count shouldBe 0
-            result.watchers shouldBe emptyList()
+            result.watchers shouldBe emptyList<WatcherEntry>()
         }
 
         it("권한 체크를 이슈 조회보다 먼저 수행") {
@@ -332,7 +333,7 @@ class IssueWatcherServiceTest : DescribeSpec({
                 sut.listWatchers(issueKey, actorId)
             }
 
-            verify(exactly = 0) { issueRepository.findByKey(any()) }
+            verify(exactly = 0) { issueRepository.findByKey(issueKey) }
         }
 
         it("listWatchers — 권한 체크 후 이슈 조회 순서 보장") {
