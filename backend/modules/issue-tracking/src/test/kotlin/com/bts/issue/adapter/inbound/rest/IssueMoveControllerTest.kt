@@ -115,6 +115,7 @@ class IssueMoveControllerTest {
 
     private val samplePreview =
         MovePreview(
+            version = 1L,
             workflow =
                 WorkflowPreviewSection(
                     compatible = true,

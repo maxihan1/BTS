@@ -34,6 +34,7 @@ import java.util.UUID
  *
  * Controller DTO 는 Task 8(MoveController)에서 별도로 정의한다.
  *
+ * @property version 루트 이슈의 OCC 버전. 이동 마법사에서 move 요청의 expectedVersion 을 채우는 데 사용된다.
  * @property workflow 워크플로우 상태 호환성 정보.
  * @property components 컴포넌트 자동매핑 정보.
  * @property affectsVersions affectsVersions 자동매핑 정보.
@@ -42,6 +43,7 @@ import java.util.UUID
  * @property subtasks 직접 자식 이슈 노드별 매핑 섹션. 서브태스크 없으면 빈 목록.
  */
 data class MovePreview(
+    val version: Long,
     val workflow: WorkflowPreviewSection,
     val components: ResourceMappingSection,
     val affectsVersions: VersionMappingSection,
@@ -57,6 +59,7 @@ data class MovePreview(
  *
  * @property issueKey 자식 이슈 키 (이동 전 원본 키).
  * @property issueTypeKey 자식 이슈 타입 키. null 이면 타입 조회 실패.
+ * @property version 자식 이슈의 OCC 버전. 이동 마법사에서 move 요청의 자식 expectedVersion 을 채우는 데 사용된다.
  * @property workflow 워크플로우 상태 호환성 정보.
  * @property components 컴포넌트 자동매핑 정보.
  * @property affectsVersions affectsVersions 자동매핑 정보.
@@ -66,6 +69,7 @@ data class MovePreview(
 data class SubtaskPreviewNode(
     val issueKey: String,
     val issueTypeKey: String?,
+    val version: Long,
     val workflow: WorkflowPreviewSection,
     val components: ResourceMappingSection,
     val affectsVersions: VersionMappingSection,
@@ -205,6 +209,7 @@ class MovePreviewService(
         )
 
         return MovePreview(
+            version = issue.version,
             workflow = workflowSection,
             components = componentSection,
             affectsVersions = affectsVersionSection,
@@ -238,6 +243,7 @@ class MovePreviewService(
         return SubtaskPreviewNode(
             issueKey = child.key.value,
             issueTypeKey = childTypeKeyString,
+            version = child.version,
             workflow = buildWorkflowSection(child.currentStateKey, targetProjectKey, childTypeKey),
             components = buildComponentSection(child.componentIds, childSourceProjectId, targetProjectId),
             affectsVersions = buildVersionSection(child.affectsVersionIds, childSourceProjectId, targetProjectId),
