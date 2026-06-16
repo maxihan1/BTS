@@ -80,8 +80,7 @@ class IssueWatcherControllerTest {
         open fun issueWatcherService(): IssueWatcherService = mockk(relaxed = true)
 
         @Bean
-        open fun issueWatcherController(service: IssueWatcherService): IssueWatcherController =
-            IssueWatcherController(service)
+        open fun issueWatcherController(service: IssueWatcherService): IssueWatcherController = IssueWatcherController(service)
 
         @Bean
         open fun watcherExceptionHandler(): WatcherExceptionHandler = WatcherExceptionHandler()

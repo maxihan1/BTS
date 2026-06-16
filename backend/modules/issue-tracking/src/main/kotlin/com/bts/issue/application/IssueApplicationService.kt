@@ -1859,7 +1859,10 @@ class IssueApplicationService(
      * @param issueId 대상 이슈 UUID.
      * @param userIds 자동 등록할 사용자 UUID 목록. 중복 포함 가능.
      */
-    private fun autoWatch(issueId: UUID, userIds: List<UUID>) {
+    private fun autoWatch(
+        issueId: UUID,
+        userIds: List<UUID>,
+    ) {
         val repo = watcherRepository ?: return
         userIds.distinct().forEach { userId -> repo.add(issueId, userId) }
     }

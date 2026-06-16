@@ -7,8 +7,8 @@ import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.repository.IssueTestcontainersBase
-import com.bts.shared.issue.IssueTypeId
 import com.bts.issue.watcher.repository.IssueWatcherRepository
+import com.bts.shared.issue.IssueTypeId
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.MethodOrderer
@@ -82,8 +82,7 @@ class IssueWatcherRepositoryTest : IssueTestcontainersBase() {
             }
         }
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
+    private fun requireTaskTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
 
     /** 이슈 1건을 삽입하고 반환한다. seqNum 은 이슈 키 시퀀스 번호. */
     private fun insertIssue(seqNum: Long): Issue =

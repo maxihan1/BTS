@@ -53,7 +53,10 @@ class IssueWatcherRepository(
      * @param userId  관심 등록 사용자 UUID.
      */
     @Transactional
-    fun add(issueId: UUID, userId: UUID) {
+    fun add(
+        issueId: UUID,
+        userId: UUID,
+    ) {
         log.debug("add watcher issueId={} userId={}", issueId, userId)
         dsl.insertInto(ISSUE_WATCHERS)
             .set(ISSUE_WATCHERS.ISSUE_ID, issueId)
@@ -72,7 +75,10 @@ class IssueWatcherRepository(
      * @return 1행 삭제 성공 true / 이미 없어서 0행이면 false.
      */
     @Transactional
-    fun remove(issueId: UUID, userId: UUID): Boolean {
+    fun remove(
+        issueId: UUID,
+        userId: UUID,
+    ): Boolean {
         log.debug("remove watcher issueId={} userId={}", issueId, userId)
         val rows =
             dsl.deleteFrom(ISSUE_WATCHERS)
@@ -140,7 +146,10 @@ class IssueWatcherRepository(
      * @return 등록되어 있으면 true, 없으면 false.
      */
     @Transactional(readOnly = true)
-    fun existsForUser(issueId: UUID, userId: UUID): Boolean {
+    fun existsForUser(
+        issueId: UUID,
+        userId: UUID,
+    ): Boolean {
         log.debug("existsForUser issueId={} userId={}", issueId, userId)
         return dsl.fetchExists(
             dsl.selectFrom(ISSUE_WATCHERS)
