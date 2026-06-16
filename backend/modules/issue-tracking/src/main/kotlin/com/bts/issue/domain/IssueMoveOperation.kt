@@ -114,13 +114,28 @@ object IssueMoveOperation {
 
     /**
      * EC8 — 컴포넌트·버전 매핑에서 지정한 대상 id 가 실제 대상 프로젝트에 존재하는지 확인한다.
+     *
+     * 컴포넌트를 먼저 검사하고 위반 시 즉시 예외를 던진다. 버전 검사는 그 이후에 실행된다.
      */
     private fun checkMappings(ctx: IssueMoveContext) {
+        checkComponentMapping(ctx)
+        checkVersionMapping(ctx)
+    }
+
+    /**
+     * 컴포넌트 매핑 대상 id 가 대상 프로젝트에 모두 존재하는지 확인한다.
+     */
+    private fun checkComponentMapping(ctx: IssueMoveContext) {
         val unknownComponents = ctx.componentMappingTargetIds - ctx.targetProjectComponentIds
         if (unknownComponents.isNotEmpty()) {
             throw InvalidTargetMappingException(kind = MappingKind.COMPONENT, unknownIds = unknownComponents)
         }
+    }
 
+    /**
+     * 버전 매핑 대상 id 가 대상 프로젝트에 모두 존재하는지 확인한다.
+     */
+    private fun checkVersionMapping(ctx: IssueMoveContext) {
         val unknownVersions = ctx.versionMappingTargetIds - ctx.targetProjectVersionIds
         if (unknownVersions.isNotEmpty()) {
             throw InvalidTargetMappingException(kind = MappingKind.VERSION, unknownIds = unknownVersions)
