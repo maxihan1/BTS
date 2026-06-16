@@ -1,5 +1,6 @@
 // 이슈 워처 BC MSW 핸들러 — stateful CRUD (GET/POST/DELETE) (FR-WT-01 D6)
 import { http, HttpResponse } from 'msw'
+import { AUTH_USERS } from './auth-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 저장소 — issueKey → userId Set
@@ -44,6 +45,35 @@ export function setCurrentWatcherUserId(userId: string | null): void {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 요청 토큰 → 현재 사용자 도출 헬퍼
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** mock access token prefix — auth-fixtures.mockAccessToken 과 동일 형식 */
+const MOCK_TOKEN_PREFIX = 'mock-access-token-'
+
+/**
+ * Authorization Bearer 헤더에서 현재 사용자 userId 를 도출한다.
+ *
+ * 토큰 형식: `mock-access-token-<username>` (auth-handlers.ts whoami 핸들러와 동일 방식).
+ * username 은 AUTH_USERS 에서 조회해 userId 를 반환한다.
+ * 토큰 미존재 / 미인식 / 사용자 미존재 시 null 을 반환한다.
+ *
+ * @param request MSW Request 객체
+ * @returns userId 문자열 또는 null
+ */
+function resolveUserIdFromRequest(request: Request): string | null {
+  const authHeader = request.headers.get('Authorization')
+  if (authHeader === null || !authHeader.startsWith('Bearer ')) return null
+
+  const token = authHeader.slice('Bearer '.length)
+  if (!token.startsWith(MOCK_TOKEN_PREFIX)) return null
+
+  const username = token.slice(MOCK_TOKEN_PREFIX.length)
+  const user = AUTH_USERS[username]
+  return user?.userId ?? null
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // displayName 생성 헬퍼 — userId 기반 결정적 생성
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -57,7 +87,7 @@ const KNOWN_DISPLAY_NAMES: Readonly<Record<string, string>> = {
  * userId를 displayName으로 변환한다.
  * KNOWN_DISPLAY_NAMES에 없으면 `User {id 앞 8자}` 형식을 사용한다.
  *
- * @param userId 사용자 UUID
+ * @param userId 사용자 id
  * @returns 화면에 표시할 이름
  */
 function resolveDisplayName(userId: string): string {
@@ -71,8 +101,12 @@ function resolveDisplayName(userId: string): string {
 /**
  * GET /api/v1/issues/:key/watchers — 워처 목록 조회.
  * 성공 → 200 { data: { watchers, count, isWatching } }
+ *
+ * 현재 사용자 판정 우선순위.
+ * (a) setCurrentWatcherUserId() 로 명시 설정된 값 (vitest override)
+ * (b) 없으면 Authorization Bearer 토큰에서 도출 (브라우저 E2E)
  */
-const getWatchersHandler = http.get('/api/v1/issues/:key/watchers', ({ params }) => {
+const getWatchersHandler = http.get('/api/v1/issues/:key/watchers', ({ params, request }) => {
   const key = params['key'] as string
   const watchers = watcherStore.get(key) ?? new Set<string>()
   const watcherList = Array.from(watchers).map((userId) => ({
@@ -80,7 +114,9 @@ const getWatchersHandler = http.get('/api/v1/issues/:key/watchers', ({ params })
     displayName: resolveDisplayName(userId),
   }))
 
-  const isWatching = currentUserId !== null && watchers.has(currentUserId)
+  // vitest 명시 override 우선, 없으면 토큰 파생
+  const effectiveUserId = currentUserId ?? resolveUserIdFromRequest(request)
+  const isWatching = effectiveUserId !== null && watchers.has(effectiveUserId)
 
   return HttpResponse.json({
     data: {
@@ -93,19 +129,26 @@ const getWatchersHandler = http.get('/api/v1/issues/:key/watchers', ({ params })
 
 /**
  * POST /api/v1/issues/:key/watchers — 워처 추가 (멱등).
- * body.userId 있으면 해당 사용자를, 없으면 currentUserId(self)를 추가한다.
+ * body.userId 있으면 해당 사용자를, 없으면 self(현재 사용자)를 추가한다.
  * 성공 → 201 No Content
+ *
+ * 현재 사용자 판정 우선순위.
+ * (a) setCurrentWatcherUserId() 로 명시 설정된 값 (vitest override)
+ * (b) 없으면 Authorization Bearer 토큰에서 도출 (브라우저 E2E)
  */
 const addWatcherHandler = http.post('/api/v1/issues/:key/watchers', async ({ params, request }) => {
   const key = params['key'] as string
 
+  // vitest 명시 override 우선, 없으면 토큰 파생
+  const effectiveUserId = currentUserId ?? resolveUserIdFromRequest(request)
+
   let targetUserId: string | null = null
   try {
     const body = (await request.json()) as { userId?: string }
-    targetUserId = body.userId ?? currentUserId
+    targetUserId = body.userId ?? effectiveUserId
   } catch {
     // body 없음 → self 추가
-    targetUserId = currentUserId
+    targetUserId = effectiveUserId
   }
 
   if (targetUserId === null) {

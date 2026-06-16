@@ -20,8 +20,15 @@ const dataResponseSchema = <T>(innerSchema: z.ZodSchema<T>) =>
 
 /** 워처 단건 요약 스키마. */
 export const watcherSummarySchema = z.object({
-  /** 워처 사용자 UUID */
-  userId: z.string().uuid(),
+  /**
+   * 워처 사용자 id.
+   * .uuid() 대신 .min(1) 을 사용한다.
+   * whoami userId (z.string()) 는 픽스처에서 all-zeros 형식(00000000-...-000001)이며
+   * self-watch 라운드트립에서 watcher.userId 와 useAuthUser().userId 가 같은 id 공간을 공유한다.
+   * Zod 4.4.3 uuid() 는 all-zeros variant id 를 거부하므로, watcher.userId 도 관대하게 처리해야
+   * E2E 및 self-unwatch 라운드트립이 정상 동작한다. 프로덕션 실 UUID 는 .min(1) 도 통과한다.
+   */
+  userId: z.string().min(1),
   /** 화면에 표시할 이름 */
   displayName: z.string().min(1),
 })
