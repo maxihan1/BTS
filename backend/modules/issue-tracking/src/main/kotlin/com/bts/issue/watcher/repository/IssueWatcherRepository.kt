@@ -32,7 +32,7 @@ data class WatcherRow(
  * ## 메서드 목록
  * - [add] — 워처 1건 추가. `ON CONFLICT DO NOTHING` 으로 멱등 보장.
  * - [remove] — 워처 1건 삭제. 존재하지 않으면 false (예외 없음).
- * - [listByIssue] — issueId 에 속한 워처 목록을 `created_at` 오름차순으로 반환.
+ * - [listByIssue] — issueId 에 속한 워처 목록을 `created_at` 오름차순, 동률 시 `user_id` 오름차순으로 반환.
  * - [countByIssue] — issueId 의 워처 수 반환.
  * - [existsForUser] — 특정 (issueId, userId) 쌍의 워처 등록 여부 반환.
  */
@@ -89,7 +89,7 @@ class IssueWatcherRepository(
     }
 
     /**
-     * `issue_id = issueId` 인 워처 목록을 `created_at` 오름차순으로 반환한다.
+     * `issue_id = issueId` 인 워처 목록을 `created_at` 오름차순, 동률 시 `user_id` 오름차순으로 반환한다.
      *
      * @param issueId 조회할 이슈 UUID.
      * @return 해당 이슈의 [WatcherRow] 목록. 없으면 빈 리스트.
@@ -99,7 +99,7 @@ class IssueWatcherRepository(
         log.debug("listByIssue issueId={}", issueId)
         return dsl.selectFrom(ISSUE_WATCHERS)
             .where(ISSUE_WATCHERS.ISSUE_ID.eq(issueId))
-            .orderBy(ISSUE_WATCHERS.CREATED_AT.asc())
+            .orderBy(ISSUE_WATCHERS.CREATED_AT.asc(), ISSUE_WATCHERS.USER_ID.asc())
             .fetch()
             .map(::toWatcherRow)
     }
