@@ -60,6 +60,8 @@ import java.util.UUID
  * - W-7. DELETE /watchers/{userId} 멱등(없어도 204) → 204
  * - W-8. GET  /watchers 이슈 미존재 → 404
  * - W-9. 서비스 내부 오류 → 500 (fallback)
+ * - W-10. DELETE /watchers/{userId} 잘못된 UUID path → 400
+ * - W-11. POST /watchers 깨진 JSON body → 400
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [IssueWatcherControllerTest.TestMvcConfig::class])
@@ -340,5 +342,41 @@ class IssueWatcherControllerTest {
         mockMvc.perform(get("/api/v1/issues/ATLAS-1/watchers"))
             .andExpect(status().isInternalServerError)
             .andExpect(jsonPath("$.errorCode").value("ISSUE_INTERNAL_ERROR"))
+    }
+
+    // ── W-10. DELETE 잘못된 UUID path → 400 ──────────────────────────────────
+
+    /**
+     * W-10. DELETE /{userId} 에 UUID 가 아닌 값 전달 → 400 Bad Request.
+     *
+     * Given  path variable {userId} 에 "not-a-uuid" 전달
+     * When   DELETE /api/v1/issues/ATLAS-1/watchers/not-a-uuid
+     * Then   400, errorCode=ISSUE_WATCHER_VALIDATION_FAILED (클라이언트 입력 오류 — 500 아님)
+     */
+    @Test
+    fun `DELETE 잘못된 UUID path — 400 Bad Request`() {
+        mockMvc.perform(delete("/api/v1/issues/ATLAS-1/watchers/not-a-uuid"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_WATCHER_VALIDATION_FAILED"))
+    }
+
+    // ── W-11. POST 깨진 JSON body → 400 ──────────────────────────────────────
+
+    /**
+     * W-11. POST body 에 파싱 불가 JSON 전달 → 400 Bad Request.
+     *
+     * Given  body 에 `{"userId": 123}` (UUID 여야 할 자리에 정수) 전달
+     * When   POST /api/v1/issues/ATLAS-1/watchers
+     * Then   400, errorCode=ISSUE_WATCHER_VALIDATION_FAILED (클라이언트 입력 오류 — 500 아님)
+     */
+    @Test
+    fun `POST 잘못된 JSON body — 400 Bad Request`() {
+        mockMvc.perform(
+            post("/api/v1/issues/ATLAS-1/watchers")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"userId": 123}"""),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_WATCHER_VALIDATION_FAILED"))
     }
 }
