@@ -13,6 +13,7 @@ import { customFieldHandlers } from './custom-field-handlers'
 import { fieldPermissionHandlers } from './field-permission-handlers'
 import { groupHandlers } from './group-handlers'
 import { issueHandlers } from './issue-handlers'
+import { issueWatcherHandlers } from './issue-watcher-handlers'
 import { issuePermissionHandlers } from './issue-permission-handlers'
 import { issueTemplateHandlers } from './issue-template-handlers'
 import { issueTypeHandlers } from './issue-type-handlers'
@@ -58,6 +59,7 @@ export const handlers = [
   ...issueGraphHandlers,
   ...issueHandlers,
   ...issueLinkHandlers,
+  ...issueWatcherHandlers,
   ...issuePermissionHandlers,
   ...issueTemplateHandlers,
   ...issueTypeHandlers,

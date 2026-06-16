@@ -1,5 +1,8 @@
 // issue-tracking BC API client 단위 테스트 — MSW로 HTTP 가로채기 + Zod 파싱 검증
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { renderHook, act, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createElement, type ReactNode } from 'react'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import {
@@ -18,6 +21,9 @@ import {
   downloadIssuePdf,
 } from './issues'
 import { ApiError } from './client'
+import { useChangeAssignee } from './useChangeAssignee'
+import { useChangeComponents } from './useChangeComponents'
+import { issueWatchersKey } from './issue-watchers'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fixture — IssueResponse 22 필드 (12 기존 + 8 FR-IS-04 + 1 FR-IS-03 assigneeId + 1 FR-IS-10 customFields) + nullable timestamps
@@ -947,5 +953,91 @@ describe('updateIssue — FR-IS-10 customFields', () => {
     await updateIssue('ATLAS-1', { summary: '제목만 수정', expectedVersion: 1 })
 
     expect(Object.prototype.hasOwnProperty.call(capturedBody, 'customFields')).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-21. FR-WT-01 FR-7 — 담당자/컴포넌트 변경 시 watcher 목록 자동 갱신 (RED)
+//
+// 백엔드가 담당자/컴포넌트 변경 시 해당 인물을 자동 watcher로 등록하므로(FR-WT-01),
+// 각 mutation onSettled에서 issueWatchersKey(key) invalidate가 추가로 호출되어야 한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 훅 테스트용 QueryClient + Provider 래퍼 생성 헬퍼 */
+function createQueryWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
+
+  function Wrapper({ children }: { children: ReactNode }) {
+    return createElement(QueryClientProvider, { client: queryClient }, children)
+  }
+
+  return { queryClient, Wrapper }
+}
+
+/** issueWatchersKey 검증용 MSW 픽스처 — IssueResponse 최소 필드 */
+const watcherInvalidateFixture = issueFixture
+
+describe('FR-WT-01 FR-7 — 담당자 변경 시 watcher 목록 자동 갱신', () => {
+  beforeEach(() => {
+    server.use(
+      http.patch('/api/v1/issues/:key/assignee', async ({ params }) => {
+        return HttpResponse.json({
+          data: { ...watcherInvalidateFixture, key: params['key'] as string, version: 2 },
+        })
+      }),
+      http.get('/api/v1/issues/:key/watchers', () =>
+        HttpResponse.json({ data: { watchers: [], count: 0, isWatching: false } }),
+      ),
+    )
+  })
+
+  it('T1-21a: useChangeAssignee 성공 후 issueWatchersKey(key) invalidate가 호출된다', async () => {
+    const { queryClient, Wrapper } = createQueryWrapper()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useChangeAssignee(), { wrapper: Wrapper })
+
+    act(() => {
+      result.current.mutate({ key: 'ATLAS-1', assigneeId: null, expectedVersion: 1 })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: issueWatchersKey('ATLAS-1') })
+  })
+})
+
+describe('FR-WT-01 FR-7 — 컴포넌트 변경 시 watcher 목록 자동 갱신', () => {
+  beforeEach(() => {
+    server.use(
+      http.patch('/api/v1/issues/:key/components', async ({ params }) => {
+        return HttpResponse.json({
+          data: { ...watcherInvalidateFixture, key: params['key'] as string, version: 2 },
+        })
+      }),
+      http.get('/api/v1/issues/:key/watchers', () =>
+        HttpResponse.json({ data: { watchers: [], count: 0, isWatching: false } }),
+      ),
+    )
+  })
+
+  it('T1-21b: useChangeComponents 성공 후 issueWatchersKey(key) invalidate가 호출된다', async () => {
+    const { queryClient, Wrapper } = createQueryWrapper()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useChangeComponents(), { wrapper: Wrapper })
+
+    act(() => {
+      result.current.mutate({ key: 'ATLAS-1', componentIds: [], expectedVersion: 1 })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: issueWatchersKey('ATLAS-1') })
   })
 })

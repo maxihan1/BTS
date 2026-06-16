@@ -417,3 +417,68 @@ describe('attachmentLabels — 첨부 파일 섹션 UI 문자열 (FR-AC-01 D6)',
     expectTypeOf(attachmentLabels).toHaveProperty('deleteCancelButton')
   })
 })
+
+// ── issueDetailStrings — 감시자(watcher) 신규 키 검증 (FR-WT-01 D6) ──────────
+
+describe('issueDetailStrings — 감시자(watcher) 신규 키 존재 검증 (FR-WT-01)', () => {
+  it('watchersLabel 키가 존재한다', () => {
+    expectTypeOf<IssueDetailStrings>().toHaveProperty('watchersLabel')
+  })
+
+  it('watchButton 키가 존재한다', () => {
+    expectTypeOf<IssueDetailStrings>().toHaveProperty('watchButton')
+  })
+
+  it('unwatchButton 키가 존재한다', () => {
+    expectTypeOf<IssueDetailStrings>().toHaveProperty('unwatchButton')
+  })
+
+  it('watchersEmpty 키가 존재한다', () => {
+    expectTypeOf<IssueDetailStrings>().toHaveProperty('watchersEmpty')
+  })
+
+  it('watchersLoading 키가 존재한다', () => {
+    expectTypeOf<IssueDetailStrings>().toHaveProperty('watchersLoading')
+  })
+
+  it('watchersError 키가 존재한다', () => {
+    expectTypeOf<IssueDetailStrings>().toHaveProperty('watchersError')
+  })
+
+  it('watchersCount 키가 존재한다', () => {
+    expectTypeOf<IssueDetailStrings>().toHaveProperty('watchersCount')
+  })
+
+  it('watcherSelfSuffix 키가 존재한다', () => {
+    expectTypeOf<IssueDetailStrings>().toHaveProperty('watcherSelfSuffix')
+  })
+
+  it('watchersMore 키가 존재한다', () => {
+    expectTypeOf<IssueDetailStrings>().toHaveProperty('watchersMore')
+  })
+
+  it('문자열 값은 콜론으로 끝나지 않는다', () => {
+    const watcherStringKeys = [
+      'watchersLabel',
+      'watchButton',
+      'unwatchButton',
+      'watchersEmpty',
+      'watchersLoading',
+      'watchersError',
+      'watcherSelfSuffix',
+    ] as const
+    for (const key of watcherStringKeys) {
+      const value = issueDetailStrings[key]
+      expect(value, `"${value}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+    }
+  })
+
+  it('watchersCount(n)은 "N명" 형식의 문자열을 반환한다', () => {
+    expect(issueDetailStrings.watchersCount(3)).toBe('3명')
+    expect(issueDetailStrings.watchersCount(0)).toBe('0명')
+  })
+
+  it('watchersMore(n)은 "+N명 더" 형식의 문자열을 반환한다', () => {
+    expect(issueDetailStrings.watchersMore(5)).toBe('+5명 더')
+  })
+})

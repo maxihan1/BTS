@@ -308,6 +308,26 @@ export const issueDetailStrings = {
   changelogError: '변경 이력을 불러오지 못했습니다.',
   /** actorName=null일 때 표시 — 시스템 이벤트 */
   changelogSystemActor: '시스템',
+
+  // ── 감시자(watchers) — FR-WT-01 D6 ─────────────────────────────────────
+  /** 감시자 섹션 제목 레이블 */
+  watchersLabel: '감시자',
+  /** 지켜보기 시작 버튼 텍스트 */
+  watchButton: '지켜보기',
+  /** 지켜보는 중 버튼 텍스트 */
+  unwatchButton: '지켜보는 중',
+  /** 감시자가 없을 때 빈 상태 메시지 */
+  watchersEmpty: '감시자가 없습니다.',
+  /** 감시자 목록 로딩 중 표시 문구 */
+  watchersLoading: '감시자 불러오는 중',
+  /** 감시자 목록 로드 실패 에러 메시지 */
+  watchersError: '감시자를 불러오지 못했습니다.',
+  /** 감시자 카운트 표시 — N명 */
+  watchersCount: (n: number) => `${n}명`,
+  /** 본인 감시자 항목 접미사 */
+  watcherSelfSuffix: '(나)',
+  /** 목록 초과 시 더 보기 표시 — +N명 더 */
+  watchersMore: (n: number) => `+${n}명 더`,
 } as const
 
 /** 2단계 인증(TOTP) 설정 및 로그인 2단계 UI 문자열 */

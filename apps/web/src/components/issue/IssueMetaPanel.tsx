@@ -1,4 +1,4 @@
-// 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전이 셀렉터·우선순위·영향도·환경·라벨·담당자·보안등급·커스텀필드·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
+// 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전이 셀렉터·우선순위·영향도·환경·라벨·담당자·감시자·보안등급·커스텀필드·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
 import type { JSX } from 'react'
 import { useState, useEffect, useRef } from 'react'
 import type { IssueResponse, IssueTransition, CustomFieldValues } from '@/api/issues'
@@ -18,6 +18,7 @@ import { LabelAutocompleteInput } from '@/components/labels/LabelAutocompleteInp
 import { useCustomFields } from '@/hooks/use-custom-fields'
 import { CustomFieldInput } from '@/components/custom-fields/CustomFieldInput'
 import type { CustomField } from '@/api/custom-fields.types'
+import { WatchersSection } from '@/components/issue/WatchersSection'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // IssueMetaPanel
@@ -304,6 +305,11 @@ export function IssueMetaPanel({
             />
           </div>
         )}
+
+        {/* 감시자 — WatchersSection (FR-WT-01). 담당자/사람 관련 섹션 근처에 배치. */}
+        <div className="px-3.5 py-3 border-b border-border" data-testid="watchers-section-wrapper">
+          <WatchersSection issueKey={issue.key} />
+        </div>
 
         {/* 컴포넌트 — ComponentMultiSelect (FR-CM-02) */}
         <div className="px-3.5 py-3 border-b border-border" data-testid="components-section">
