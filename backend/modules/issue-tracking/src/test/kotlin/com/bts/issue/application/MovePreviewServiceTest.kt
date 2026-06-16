@@ -443,6 +443,64 @@ class MovePreviewServiceTest : DescribeSpec({
         }
     }
 
+    // ── MovePreview.version / SubtaskPreviewNode.version ──────────────────────
+
+    describe("preview version 필드") {
+
+        it("단건 이슈 preview 응답에 루트 이슈 version 포함") {
+            val rootIssue = makeIssue(currentStateKey = "open").copy(version = 7L)
+            every { issueRepository.findByKey(issueKey) } returns rootIssue
+            every { issueRepository.findDirectChildren(any()) } returns emptyList()
+
+            val result = sut.preview(actor, issueKey, targetProjectKey)
+
+            result.version shouldBe 7L
+        }
+
+        it("자식 있는 preview 응답에 루트 version 및 각 자식 version 포함") {
+            val childKey2 = IssueKey.of(sourceProjectKey, 2)
+            val childKey3 = IssueKey.of(sourceProjectKey, 3)
+            val childIssueId2 = IssueId(UUID.randomUUID())
+            val childIssueId3 = IssueId(UUID.randomUUID())
+
+            val rootIssue = makeIssue(currentStateKey = "open").copy(version = 3L)
+            val child2 = makeIssue(currentStateKey = "open").copy(id = childIssueId2, key = childKey2, version = 5L)
+            val child3 = makeIssue(currentStateKey = "open").copy(id = childIssueId3, key = childKey3, version = 9L)
+
+            every { issueRepository.findByKey(issueKey) } returns rootIssue
+            every { issueRepository.findDirectChildren(any()) } returns listOf(child2, child3)
+
+            val makeChildResponse = { child: com.bts.issue.domain.Issue, key: IssueKey ->
+                val typeInfo =
+                    com.bts.issue.adapter.inbound.rest.IssueResponse.IssueTypeInfo(
+                        id = child.typeId.value,
+                        key = "subtask",
+                        name = "Subtask",
+                    )
+                com.bts.issue.adapter.inbound.rest.IssueResponse.from(
+                    issue = child,
+                    projectKey = sourceProjectKey,
+                    typeInfo = typeInfo,
+                    parent = null,
+                )
+            }
+
+            every { issueRepository.findByKeyWithType(childKey2) } returns makeChildResponse(child2, childKey2)
+            every { issueRepository.findByKeyWithType(childKey3) } returns makeChildResponse(child3, childKey3)
+
+            every {
+                workflowStateCatalog.listStates(ProjectKey.of(targetProjectKey), IssueTypeKey("subtask"))
+            } returns listOf(WorkflowStateView("open", "열림"))
+
+            val result = sut.preview(actor, issueKey, targetProjectKey)
+
+            result.version shouldBe 3L
+            result.subtasks.size shouldBe 2
+            result.subtasks.first { it.issueKey == childKey2.value }.version shouldBe 5L
+            result.subtasks.first { it.issueKey == childKey3.value }.version shouldBe 9L
+        }
+    }
+
     // ── 복합 시나리오 ─────────────────────────────────────────────────────────
 
     describe("복합 시나리오") {
