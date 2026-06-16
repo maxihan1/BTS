@@ -65,11 +65,13 @@ D4(백엔드 preview/move 노드별 매핑) 확장. 신규 cross-BC SPI `Workflo
   - 제공된 자식 키 집합 ≠ 실제 직접 자식 키 집합이면 `IncompleteSubtaskMappingException`
   - 루트 ctx 에 `hasSubtasks=true` 여도 동반 경로에선 EC15 던지지 않음(자식 허용)
   - 각 자식 ctx 의 EC7(상태)/EC8(매핑)/EC9(필수필드)가 노드별로 검증됨
+  - **(B3) vacuous 차단 — populated 입력으로 실패 증명**: 자식 ctx 의 `componentMappingTargetIds` 에 대상 프로젝트에 **없는** UUID, `targetProjectComponentIds` 에 **다른** UUID 집합을 넣어 `InvalidTargetMappingException` 발생을 단언. 두 집합을 같게 두면 항상 통과(단건 #153 BLOCKER 전례)이므로 테스트가 이를 잡아야 함. EC9도 동일(자식 requiredFieldKeys 에 있고 providedFieldKeys 에 없는 키)
   ```kotlin
   @Test fun `동반 경로는 자식의 자식이 있으면 SubtaskHasOwnSubtasks`() { ... }
   @Test fun `제공 자식 키가 실제 자식 집합과 다르면 IncompleteSubtaskMapping`() { ... }
   @Test fun `동반 경로 루트는 hasSubtasks여도 EC15 미발생`() { ... }
-  @Test fun `자식 노드 매핑 대상 미존재면 InvalidTargetMapping`() { ... }
+  @Test fun `자식 노드 매핑대상이 대상프로젝트에 없으면 InvalidTargetMapping (populated 위반입력)`() { ... }
+  @Test fun `자식 노드 필수필드 누락이면 RequiredFieldMissing (populated)`() { ... }
   ```
 - [ ] **Step 2: 테스트 실패 확인** — `cd backend && ./gradlew :modules:issue-tracking:test --tests "*IssueMoveOperationTest" -i` → 컴파일 실패(`validateWithSubtasks`/신규 예외 없음)
 - [ ] **Step 3: GREEN — 최소 구현** (`IssueMoveOperation.kt`)
@@ -144,6 +146,7 @@ D4(백엔드 preview/move 노드별 매핑) 확장. 신규 cross-BC SPI `Workflo
     // MoveResponse 에 추가: val movedSubtasks: List<MovedSubtask> = emptyList()
     ```
   - `IssueExceptionHandler.kt`: 두 예외 `@ExceptionHandler` → `ProblemDetail` 422 (기존 `handleIssueHasSubtasks` 패턴 복사) + `IssueErrorCodes` 상수 2개 추가
+  - **(C4)** 기존 `IssueHasSubtasksException`(`IssueMoveOperation.validate` 단건 경로 전용)은 **유지**. 동반/단건 분기는 서비스/컨트롤러에서 `subtasks` 배열 비어있음 + 실제 자식 존재 여부로 결정(동반 경로는 EC15 미발생). 단건 detail 문구는 그대로 두되, 동반 이동이 정식 지원됨을 KDoc 에 보강
 - [ ] **Step 4: 통과 확인** → PASS
 - [ ] **Step 5: REFACTOR** — KDoc, 에러코드 상수 정렬
 - [ ] **Step 6: 커밋** — `feat: 동반 이동 DTO(subtasks) + 신규 예외 422 매핑`
@@ -167,7 +170,7 @@ D4(백엔드 preview/move 노드별 매핑) 확장. 신규 cross-BC SPI `Workflo
 - [ ] **Step 2: 실패 확인** — `--tests "*MovePreviewServiceTest"` → `MovePreview.subtasks` 없음
 - [ ] **Step 3: GREEN**
   - `MovePreview` 에 `subtasks: List<SubtaskPreviewNode> = emptyList()` 추가. `SubtaskPreviewNode(issueKey, issueTypeKey, version, workflow, components, affectsVersions, fixVersions, customFields)`
-  - `preview()`: `issueRepository.findDirectChildren(issue.id.value)` → 각 자식의 issueTypeKey 조회(`findByKeyWithType` 또는 타입 repo) → 기존 `buildWorkflowSection`/`buildComponentSection`/`buildVersionSection`/`buildCustomFieldSection` 을 자식별로 호출. 워크플로우는 자식 issueTypeKey 전달
+  - `preview()`: `issueRepository.findDirectChildren(issue.id.value)` → 각 자식의 issueTypeKey 조회(**(C2) `findByKeyWithType(childKey)?.typeKey` — `Issue` 도메인엔 typeId 만 있어 typeKey 없음. `findByKeyWithType` 은 `@Transactional(readOnly=true)` 라 preview 의 readOnly 트랜잭션 안에서 호출 가능**) → 기존 `buildWorkflowSection`/`buildComponentSection`/`buildVersionSection`/`buildCustomFieldSection` 을 자식별로 호출. 워크플로우는 자식 issueTypeKey 전달
   - 루트 워크플로우도 루트 issueTypeKey 로 조회(단건은 null — 노드별 정확도). `buildWorkflowSection` 시그니처에 issueTypeKey 추가
 - [ ] **Step 4: 통과 확인** → PASS
 - [ ] **Step 5: REFACTOR** — 노드 섹션 빌더를 루트/자식 공통 `buildNodeSections(issue, issueTypeKey, ...)` 로 추출
@@ -177,8 +180,9 @@ D4(백엔드 preview/move 노드별 매핑) 확장. 신규 cross-BC SPI `Workflo
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueMoveService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueMoveServiceTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueMoveService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueMoveController.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueMoveServiceTest.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueMoveControllerTest.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/integration/IssueMoveIntegrationTest.kt`]
 - depends-on: [1, 2]   # 도메인 검증 + findDirectChildren. (T2와 IssueRepository.kt 파일 겹침 → 직렬)
+- **리뷰 반영(B1/C1)**: `move()` 반환 타입 변경이 호출처(Controller)·기존 테스트 3종 컴파일을 깨므로 같은 task files 에 포함 (시그니처 변경 task = 모든 호출/테스트 동반 — learnings)
 
 - [ ] **Step 1: RED — 통합 테스트**
   - 동반 이동 happy: 루트+자식 새 키 발번, redirect 노드별, 자식 `parent_id`=루트 id 유지(이동 후 자식이 이동된 루트 가리킴), 루트 `parent_id`=null(외부 부모 끊김)
@@ -195,22 +199,32 @@ D4(백엔드 preview/move 노드별 매핑) 확장. 신규 cross-BC SPI `Workflo
   ```
 - [ ] **Step 2: 실패 확인** — `--tests "*IssueMoveServiceTest"`
 - [ ] **Step 3: GREEN**
-  - `IssueRepository.moveIssue` 에 `newParentId: UUID?` 파라미터 추가 → `.set(ISSUES.PARENT_ID, newParentId)`. **기존 단건 호출부는 `newParentId = null`** 전달
+  - `IssueRepository.moveIssue` 에 `newParentId: UUID?` 파라미터 추가 → `.set(ISSUES.PARENT_ID, newParentId)`. **기존 단건 호출부(IssueMoveService)는 `newParentId = null`** 전달
   - `IssueMoveRequest` 에 `subtasks: List<SubtaskMoveSpec> = emptyList()` 추가. `SubtaskMoveSpec(issueKey, expectedVersion, targetStateKey, targetStateIsDone, componentMapping, affectsVersionMapping, fixVersionMapping, additionalCustomFields)`
+  - **반환 타입 `IssueKey` → `MoveResult(newKey: IssueKey, movedSubtasks: List<MovedNode>)`** (단건 경로 movedSubtasks=empty). **(B1) 같은 Step 에서 `IssueMoveController.move()` 호출부도 `MoveResult` 를 받아 `MoveResponse(issueKey, previousKey, movedSubtasks)` 구성하도록 동시 수정**(컴파일 보존). 기존 테스트(IssueMoveServiceTest/IssueMoveControllerTest/IssueMoveIntegrationTest)도 새 반환 타입에 맞춰 갱신
   - `move()` 확장(자식 있을 때):
-    1. 루트 `findByKeyForUpdate`
-    2. `findDirectChildren(루트.id)` → 자식 목록(id 오름차순). 각 자식 `findByKeyForUpdate`(락)
-    3. 각 자식 `countDirectChildren > 0` → `childKeysWithOwnChildren`
-    4. `actualChildKeys`(실제) vs `providedChildKeys`(request.subtasks.issueKey)
-    5. 루트+자식 ctx 구성 → `IssueMoveOperation.validateWithSubtasks(...)`
+    1. 루트 `findByKey`(락 없이 읽어 id·자식조회용) → `findDirectChildren(루트.id)` → 자식 목록
+    2. **(B2) 락 순서**: `(루트 + 자식들)` 을 **id 오름차순 정렬** 후 순차 `findByKeyForUpdate(각 key)`. 루트를 별도로 먼저 락하지 않음 — 데드락 회피(spec §동시성, 루트 포함 정렬)
+    3. 각 자식 `countDirectChildren > 0` 인 키 집합 → `childKeysWithOwnChildren`
+    4. `actualChildKeys`(findDirectChildren 결과 키) vs `providedChildKeys`(request.subtasks 의 issueKey)
+    5. **(B3) 노드별 ctx 구성 — vacuous 차단**. 대상 프로젝트 실조회 집합을 루트/자식이 공유하되, 매핑 대상 집합과 **절대 같은 집합을 넘기지 않는다**:
+       ```
+       targetComponentIds = componentRepository.findByProject(targetProjectId).mapNotNull{it.id}.toSet()  // DB 실조회(단건 패턴)
+       targetVersionIds   = versionRepository.findByProject(targetProjectId).mapNotNull{it.id}.toSet()
+       requiredFieldKeys  = customFieldDefinitionRepository.findActiveByProject(targetProjectId).filter{it.required}.map{it.key}.toSet()
+       // 노드(루트/자식)별:
+       //   componentMappingTargetIds = spec.componentMapping.values.filterNotNull().toSet()    // 노드별 요청값(≠ targetComponentIds)
+       //   versionMappingTargetIds   = (affects+fix).values.filterNotNull().toSet()
+       //   providedFieldKeys         = spec.customFieldValues.keys + node.customFields.keys
+       //   targetProjectComponentIds/VersionIds, requiredFieldKeys = 위 공유 DB 집합
+       ```
+       → `IssueMoveOperation.validateWithSubtasks(rootCtx, childCtxs, actualChildKeys, providedChildKeys, childKeysWithOwnChildren)`
     6. 키 발번: 루트 `incrementKeySequence` → 각 자식 `incrementKeySequence`(순서대로)
-    7. 루트 `moveIssue(newParentId=null)` + 조인 교체 + redirect + 히스토리
-    8. 각 자식 `moveIssue(newParentId=루트.id)` + 조인 교체 + redirect + 히스토리(각 노드 원본 projectId)
-    9. `MoveResult`(newKey + movedSubtasks) 반환
-    - 자식 없으면(subtasks 빈 배열) 기존 단건 경로 그대로
-  - 반환 타입을 `IssueKey` → `MoveResult(newKey, movedSubtasks)` 로 변경(controller가 movedSubtasks 사용). 단건 경로는 movedSubtasks=empty
+    7. **(C3) 노드별 before 캡처**: 각 노드 `moveIssue` **호출 전** before snapshot 보관. 루트 `moveIssue(newParentId=null)`, 각 자식 `moveIssue(newParentId=루트.id)` + 조인 교체 + redirect + `historyRecorder.record(before, after, actor, projectId=before.projectId)`(각 노드 원본 projectId)
+    8. `MoveResult(newKey, movedSubtasks)` 반환
+    - 자식 없으면(subtasks 빈 배열 + 실제 자식 0) 기존 단건 경로 그대로(회귀 보존)
 - [ ] **Step 4: 통과 확인** → PASS (단건 회귀 테스트 포함)
-- [ ] **Step 5: REFACTOR** — 노드 이동을 private `moveNode(issue, newKey, newParentId, mapping, ...)` 공통 추출(루트/자식 재사용), `@Suppress` 사유 갱신
+- [ ] **Step 5: REFACTOR** — 노드 이동을 private `moveNode(issue, newKey, newParentId, mapping, ...)` 공통 추출(루트/자식 재사용). **(C5)** 자식 순회 추가로 `move()` 가 `LongMethod`/`CyclomaticComplexity` 추가 위반 가능 → 노드 순회를 위 private 헬퍼로 분리해 임계 내 유지, 불가피하면 `@Suppress` 사유 갱신. **ktlintFormat 모듈 실행 금지(파일 단위 수동 수정)**, detekt baseline regen 금지
 - [ ] **Step 6: 커밋** — `feat: IssueMoveService 노드별 동반 이동(단일 트랜잭션)`
 
 ### Task 6. IssueMoveController 결선 + HTTP 통합테스트
@@ -245,6 +259,24 @@ D4(백엔드 preview/move 노드별 매핑) 확장. 신규 cross-BC SPI `Workflo
 - 추가 검증: ktlint/detekt(모듈 baseline, ktlintFormat 금지·파일 단위 수동), 단건 회귀 테스트 필수, 머지 전 전체 `:modules:issue-tracking:test`
 - 마이그레이션: 없음 (기존 테이블/컬럼 재사용)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+### plan-eng-review (독립 backend-engineer, 2026-06-16)
+
+`plan-eng-review`/`autoplan` 스킬 미설치 → backend-engineer 에이전트로 독립 적대적 리뷰(메모리 교훈: 백엔드는 eng 집중 독립 리뷰).
+
+**BLOCKER 3건 — 모두 plan 보강으로 해소(본문 반영 완료)**.
+- **B1** T5 `move()` 반환 `IssueKey→MoveResult` 인데 `IssueMoveController`/기존 테스트가 T5 files 누락 → 컴파일 파괴. **해소**: T5 files 에 `IssueMoveController.kt`+`IssueMoveControllerTest.kt`+`IssueMoveIntegrationTest.kt` 추가, Step3 에 컨트롤러 동시 적응 명시.
+- **B2** 락 순서 — plan 은 루트 먼저 락, spec 은 "루트 포함 id 오름차순"(UUID v4 랜덤이라 루트 먼저 락 시 데드락). **해소**: T5 Step3-2 를 `(루트+자식) id 오름차순 통합 락`으로 수정.
+- **B3** `validateWithSubtasks` 자식 ctx 의 매핑/필수필드 집합 채우는 코드 미명시 → vacuous PASS 위험(단건 #153 EC8/EC9 전례). **해소**: T5 Step3-5 에 노드별 ctx 구성 pseudo-code(대상 DB 실조회 공유, 매핑값과 다른 집합) + T1 RED 에 populated 위반 입력 테스트 명시.
+
+**CONCERN 5건 — 반영**.
+- **C1** `IssueMoveIntegrationTest` 누락 → T5 files 포함.
+- **C2** T4 issueTypeKey 조회 경로 모호 → `findByKeyWithType(childKey)?.typeKey`(readOnly 내 호출 가능)로 구체화.
+- **C3** 자식 history before/after projectId → `moveIssue` 호출 전 before 캡처 명시.
+- **C4** `IssueHasSubtasksException` 단건/동반 분기 + 유지 명시.
+- **C5** detekt `LongMethod`/`CyclomaticComplexity` 위험 → 노드 순회 private 헬퍼 분리, ktlintFormat 금지.
+
+**통과**: 트랜잭션 원자성(단일 @Transactional), 키 발번 순서(advisory lock projectKey 단위), 자식 parent_id 유지(id 불변 전제 정확), cross-BC SPI 부팅 영향 없음(기존 SPI 재사용·mockk stub 확립), TDD task 경계/의존성 일관.
+
+**plan 수정 필요: YES → BLOCKER 3·CONCERN 5 전부 본문 반영 완료. BLOCKER 0 상태로 게이트1 진입.**
