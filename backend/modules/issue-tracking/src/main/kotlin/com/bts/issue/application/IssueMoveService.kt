@@ -2,6 +2,8 @@
 
 package com.bts.issue.application
 
+import com.bts.issue.component.repository.ComponentRepository
+import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
@@ -14,6 +16,7 @@ import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.repository.IssueKeyRedirectRepository
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -75,6 +78,9 @@ class IssueMoveService(
     private val workflowKeyResolver: WorkflowKeyResolver,
     private val workflowStateCatalog: WorkflowStateCatalog,
     private val historyRecorder: IssueHistoryRecorder,
+    private val componentRepository: ComponentRepository,
+    private val versionRepository: VersionRepository,
+    private val customFieldDefinitionRepository: CustomFieldDefinitionRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -164,10 +170,19 @@ class IssueMoveService(
                     request.fixVersionMapping.values.filterNotNull()
             ).toSet()
 
-        // 대상 프로젝트의 실제 컴포넌트/버전 ID (매핑 검증용 — 빈 집합이면 모두 통과)
-        // IssueMoveOperation.validate EC8 은 mapping target ids 가 대상 프로젝트에 존재하는지 검증하므로
-        // 컨트롤러(preview)에서 이미 검증된 mapping 을 그대로 전달받아 재확인한다.
-        // 여기서는 mapping value 자체를 targetProjectComponentIds / targetProjectVersionIds 로 취급한다.
+        // 대상 프로젝트의 실제 컴포넌트/버전/필수필드 집합 — EC8/EC9 서버측 검증
+        // MovePreviewService 와 동일한 repo 메서드로 조회하여 클라이언트 신뢰 없이 DB 실존 집합을 확보한다.
+        val targetProjectComponentIds =
+            componentRepository.findByProject(targetProjectId)
+                .mapNotNull { comp -> comp.id }
+                .toSet()
+        val targetProjectVersionIds =
+            versionRepository.findByProject(targetProjectId)
+                .mapNotNull { ver -> ver.id }
+                .toSet()
+        val targetDefinitions = customFieldDefinitionRepository.findActiveByProject(targetProjectId)
+        val requiredFieldKeys = targetDefinitions.filter { def -> def.required }.map { def -> def.key }.toSet()
+
         val ctx =
             IssueMoveContext(
                 sourceProjectKey = issueKey.projectPrefix,
@@ -177,12 +192,10 @@ class IssueMoveService(
                 targetWorkflowStatuses = targetStateKeys,
                 targetStateKey = request.targetStateKey,
                 componentMappingTargetIds = componentMappingTargetIds,
-                // 매핑 대상 = 대상 프로젝트 실존 간주
-                targetProjectComponentIds = componentMappingTargetIds,
+                targetProjectComponentIds = targetProjectComponentIds,
                 versionMappingTargetIds = versionMappingTargetIds,
-                targetProjectVersionIds = versionMappingTargetIds,
-                // 필수 필드 검증은 additionalCustomFields 로 충족
-                requiredFieldKeys = emptySet(),
+                targetProjectVersionIds = targetProjectVersionIds,
+                requiredFieldKeys = requiredFieldKeys,
                 providedFieldKeys = request.additionalCustomFields.keys + issue.customFields.keys,
             )
         IssueMoveOperation.validate(ctx)

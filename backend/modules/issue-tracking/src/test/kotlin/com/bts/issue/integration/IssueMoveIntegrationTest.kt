@@ -233,6 +233,9 @@ class IssueMoveIntegrationTest {
             workflowKeyResolver: WorkflowKeyResolverImpl,
             workflowStateCatalog: WorkflowStateCatalogImpl,
             historyRecorder: IssueHistoryRecorder,
+            componentRepository: ComponentRepository,
+            versionRepository: VersionRepository,
+            customFieldDefinitionRepository: CustomFieldDefinitionRepository,
         ): IssueMoveService =
             IssueMoveService(
                 issueRepository = repo,
@@ -241,6 +244,9 @@ class IssueMoveIntegrationTest {
                 workflowKeyResolver = workflowKeyResolver,
                 workflowStateCatalog = workflowStateCatalog,
                 historyRecorder = historyRecorder,
+                componentRepository = componentRepository,
+                versionRepository = versionRepository,
+                customFieldDefinitionRepository = customFieldDefinitionRepository,
             )
 
         @Bean
