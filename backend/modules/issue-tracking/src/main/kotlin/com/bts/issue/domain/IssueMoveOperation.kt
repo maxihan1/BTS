@@ -59,14 +59,80 @@ object IssueMoveOperation {
      *
      * @param ctx 이동 검증에 필요한 모든 입력 컨텍스트
      * @throws MoveSameProjectException EC1 — 대상이 원본과 동일한 프로젝트
-     * @throws IssueHasSubtasksException EC15 — 이동 이슈에 서브태스크 존재
+     * @throws IssueHasSubtasksException EC15 — 이동 이슈에 서브태스크 존재 (단건 경로 전용)
      * @throws InvalidTargetStateException EC7 — 유효한 대상 상태를 결정할 수 없음
      * @throws InvalidTargetMappingException EC8 — 컴포넌트 또는 버전 매핑 대상 미존재
      * @throws RequiredFieldMissingException EC9 — 필수 커스텀필드 누락
      */
     fun validate(ctx: IssueMoveContext) {
+        validateNode(ctx, includeSubtaskCheck = true)
+    }
+
+    /**
+     * 서브태스크 동반 이동(노드별 매핑) 검증.
+     *
+     * 단건 [validate] 와 달리 EC15([IssueHasSubtasksException]) 는 적용하지 않는다.
+     * 자식 존재는 정상(동반 이동 의도). 대신 다단계(EC16) 와 불완전 매핑(EC15 재정의) 을 검증한다.
+     *
+     * 검증 순서.
+     * 1. EC16 — 자식의 자식 존재(다단계) 거부
+     * 2. 불완전 매핑 거부 — actualChildKeys ≠ providedChildKeys
+     * 3. 루트 노드 검증 (EC1/EC7/EC8/EC9, EC15 제외)
+     * 4. 각 자식 노드 검증 (EC7/EC8/EC9)
+     *
+     * @param rootCtx 루트(부모) 이슈 이동 컨텍스트
+     * @param childCtxs 각 직접 자식의 이동 컨텍스트 목록
+     * @param actualChildKeys DB 에서 조회한 실제 직접 자식 키 집합
+     * @param providedChildKeys 요청에서 제공된 자식 키 집합
+     * @param childKeysWithOwnChildren 다단계 위반 자식 키 집합
+     * @throws SubtaskHasOwnSubtasksException EC16 — 자식이 또 자식을 가짐
+     * @throws IncompleteSubtaskMappingException EC15(재정의) — 자식 매핑 불완전
+     * @throws MoveSameProjectException EC1 — 같은 프로젝트 이동
+     * @throws InvalidTargetStateException EC7 — 유효한 대상 상태 결정 불가
+     * @throws InvalidTargetMappingException EC8 — 매핑 대상 미존재
+     * @throws RequiredFieldMissingException EC9 — 필수 커스텀필드 누락
+     */
+    fun validateWithSubtasks(
+        rootCtx: IssueMoveContext,
+        childCtxs: List<IssueMoveContext>,
+        actualChildKeys: Set<String>,
+        providedChildKeys: Set<String>,
+        childKeysWithOwnChildren: Set<String>,
+    ) {
+        // 1. EC16 — 다단계 거부
+        if (childKeysWithOwnChildren.isNotEmpty()) {
+            throw SubtaskHasOwnSubtasksException(childKeysWithOwnChildren)
+        }
+
+        // 2. 불완전 매핑 거부
+        if (actualChildKeys != providedChildKeys) {
+            throw IncompleteSubtaskMappingException(
+                expected = actualChildKeys,
+                provided = providedChildKeys,
+            )
+        }
+
+        // 3. 루트 노드 검증 (EC15 체크 제외)
+        validateNode(rootCtx, includeSubtaskCheck = false)
+
+        // 4. 각 자식 노드 검증
+        for (childCtx in childCtxs) {
+            validateNode(childCtx, includeSubtaskCheck = false)
+        }
+    }
+
+    /**
+     * 단일 노드(루트 또는 자식)에 대한 공통 검증을 실행한다.
+     *
+     * @param ctx 검증 대상 이동 컨텍스트
+     * @param includeSubtaskCheck true 이면 EC15([checkSubtasks]) 포함, false 이면 제외(동반 경로)
+     */
+    private fun validateNode(
+        ctx: IssueMoveContext,
+        includeSubtaskCheck: Boolean,
+    ) {
         checkSameProject(ctx)
-        checkSubtasks(ctx)
+        if (includeSubtaskCheck) checkSubtasks(ctx)
         checkTargetState(ctx)
         checkMappings(ctx)
         checkRequiredFields(ctx)
@@ -209,3 +275,28 @@ class InvalidTargetMappingException(
  */
 class RequiredFieldMissingException(val missingKeys: Set<String>) :
     IssueDomainException("Required custom fields missing for target project: $missingKeys")
+
+/**
+ * EC16 — 직접 자식이 또 자식을 가지는 다단계 트리를 이동 시도할 때.
+ *
+ * BTS 서브태스크는 1레벨 모델이므로 자식의 자식은 거부한다.
+ * 이동 시점에 1레벨 불변식을 명시 검증한다.
+ *
+ * @param childKeys 다단계 위반 자식 이슈 키 집합
+ */
+class SubtaskHasOwnSubtasksException(val childKeys: Set<String>) :
+    IssueDomainException("Subtask cannot have its own subtasks: $childKeys")
+
+/**
+ * EC15(재정의) — 동반 이동 요청에서 모든 직접 자식 매핑이 제공되지 않았을 때.
+ *
+ * 단건 이동의 [IssueHasSubtasksException](무조건 거부) 을 대체하는 동반 이동 전용 예외.
+ * 일부 자식 누락 또는 요청에 없는(비존재) 자식 키 포함 시 발생한다.
+ *
+ * @param expected DB 에서 조회한 실제 직접 자식 키 집합
+ * @param provided 요청에서 제공된 자식 키 집합
+ */
+class IncompleteSubtaskMappingException(
+    val expected: Set<String>,
+    val provided: Set<String>,
+) : IssueDomainException("Subtask mapping incomplete: expected=$expected provided=$provided")

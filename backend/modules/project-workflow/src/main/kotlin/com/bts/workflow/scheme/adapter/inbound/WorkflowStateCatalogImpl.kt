@@ -67,7 +67,10 @@ class WorkflowStateCatalogImpl(
         val workflow =
             workflowResolver.resolveExistingFor(internalProjectKey, issueTypeKey)
                 ?: run {
-                    log.debug("listStates: no scheme assignment for projectKey={} — returning empty list", projectKey.value)
+                    log.debug(
+                        "listStates: no scheme assignment for projectKey={} — returning empty list",
+                        projectKey.value,
+                    )
                     return emptyList()
                 }
 

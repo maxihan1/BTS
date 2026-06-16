@@ -5,6 +5,7 @@ package com.bts.issue.application
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueMoveContext
@@ -29,6 +30,55 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
+ * 단일 노드(루트 또는 자식) 이동 매핑 스펙.
+ *
+ * [IssueMoveRequest.subtasks] 배열의 원소로, 각 자식 이슈의 이동 파라미터를 담는다.
+ *
+ * @param issueKey 자식 이슈 키 (이동 전 원본 키).
+ * @param expectedVersion 자식 이슈 OCC 낙관락 버전.
+ * @param targetStateKey 대상 상태 키. null 이면 현재 상태 키를 그대로 사용 시도.
+ * @param targetStateIsDone 대상 상태가 DONE 카테고리인지 여부.
+ * @param componentMapping 원본 컴포넌트 UUID → 대상 컴포넌트 UUID 매핑.
+ * @param affectsVersionMapping 원본 affects-version UUID → 대상 버전 UUID 매핑.
+ * @param fixVersionMapping 원본 fix-version UUID → 대상 버전 UUID 매핑.
+ * @param additionalCustomFields 대상 프로젝트 필수 필드 추가 값.
+ */
+data class SubtaskMoveSpec(
+    val issueKey: String,
+    val expectedVersion: Long,
+    val targetStateKey: String?,
+    val targetStateIsDone: Boolean,
+    val componentMapping: Map<UUID, UUID?>,
+    val affectsVersionMapping: Map<UUID, UUID?>,
+    val fixVersionMapping: Map<UUID, UUID?>,
+    val additionalCustomFields: Map<String, Any?>,
+)
+
+/**
+ * 이슈 이동 결과.
+ *
+ * 단건 경로에서는 [movedSubtasks] 가 빈 목록이다.
+ *
+ * @param newKey 이동된 루트 이슈의 새 키.
+ * @param movedSubtasks 동반 이동된 자식 이슈 결과 목록.
+ */
+data class MoveResult(
+    val newKey: IssueKey,
+    val movedSubtasks: List<MovedNode>,
+)
+
+/**
+ * 이동된 자식 노드 결과.
+ *
+ * @param previousKey 이동 전 원본 자식 이슈 키.
+ * @param newKey 이동 후 새 자식 이슈 키.
+ */
+data class MovedNode(
+    val previousKey: IssueKey,
+    val newKey: IssueKey,
+)
+
+/**
  * 이슈 이동 실행 요청 DTO.
  *
  * Jira 마법사 2단계(매핑 적용 후 실제 이동)에 해당하는 파라미터를 담는다.
@@ -42,6 +92,7 @@ import java.util.UUID
  * @param affectsVersionMapping 원본 affects-version UUID → 대상 버전 UUID 매핑.
  * @param fixVersionMapping 원본 fix-version UUID → 대상 버전 UUID 매핑.
  * @param additionalCustomFields 대상 프로젝트에서 필수이지만 기존 이슈에 없는 커스텀 필드 추가 값.
+ * @param subtasks 동반 이동할 직접 자식 노드별 매핑. 빈 배열이면 단건 경로(회귀 보존).
  */
 data class IssueMoveRequest(
     val targetProjectKey: String,
@@ -52,6 +103,7 @@ data class IssueMoveRequest(
     val affectsVersionMapping: Map<UUID, UUID?>,
     val fixVersionMapping: Map<UUID, UUID?>,
     val additionalCustomFields: Map<String, Any?>,
+    val subtasks: List<SubtaskMoveSpec> = emptyList(),
 )
 
 /**
@@ -128,27 +180,15 @@ class IssueMoveService(
         actor: ActorId,
         issueKey: IssueKey,
         request: IssueMoveRequest,
-    ): IssueKey {
+    ): MoveResult {
         val targetProjectKey = request.targetProjectKey
 
-        // 1. SELECT FOR UPDATE — 비관락 (TOCTOU 방지)
-        val issue =
-            issueRepository.findByKeyForUpdate(issueKey)
-                ?: throw IssueNotFoundException(issueKey)
-
-        // 2. OCC 검증
-        if (request.expectedVersion != issue.version) {
-            throw IssueVersionConflictException(issueKey, issue.version)
-        }
-
-        // 3. 권한 검증
+        // 3. 권한 검증 — 리소스 조회보다 먼저 (존재 probe 방지)
         assertPermission(actor, IssuePermission.UPDATE, IssueScope.Project(issueKey.projectPrefix))
         assertPermission(actor, IssuePermission.CREATE, IssueScope.Project(targetProjectKey))
 
-        // 4. 대상 워크플로우 미설정 검증 (resolveExisting — 부수효과 없는 읽기 전용)
+        // 4. 대상 워크플로우 미설정 검증
         // WorkflowSchemeNoDefaultException 은 project-workflow BC 내부 예외이므로 직접 import 불가.
-        // simpleName 비교로 감지하고 BC 경계 공개 예외 IssueWorkflowNotConfiguredException 으로 변환한다.
-        // resolveExisting 이 null 반환하면 기본 워크플로우 없음 → 422.
         val hasWorkflow =
             try {
                 workflowKeyResolver.resolveExisting(ProjectKey.of(targetProjectKey), null) != null
@@ -157,75 +197,95 @@ class IssueMoveService(
             }
         if (!hasWorkflow) throw IssueWorkflowNotConfiguredException(targetProjectKey, null)
 
-        // 대상 워크플로우 상태 목록 조회 — issueTypeKey=null 은 이슈 타입 무관 전체 상태 목록.
+        // 대상 워크플로우 상태 목록 조회
         val targetStates = workflowStateCatalog.listStates(ProjectKey.of(targetProjectKey), null)
         val targetStateKeys = targetStates.map { it.key }.toSet()
 
-        // 5. 도메인 검증 (EC1/EC15/EC7/EC8/EC9)
-        val hasSubtasks = issueRepository.countDirectChildren(issue.id.value) > 0
         val targetProjectId =
             issueRepository.findProjectIdByKey(targetProjectKey)
                 ?: throw IssueProjectNotFoundException(targetProjectKey)
 
-        val componentMappingTargetIds = request.componentMapping.values.filterNotNull().toSet()
-        val versionMappingTargetIds =
-            (
-                request.affectsVersionMapping.values.filterNotNull() +
-                    request.fixVersionMapping.values.filterNotNull()
-            ).toSet()
-
-        // 대상 프로젝트의 실제 컴포넌트/버전/필수필드 집합 — EC8/EC9 서버측 검증
-        // MovePreviewService 와 동일한 repo 메서드로 조회하여 클라이언트 신뢰 없이 DB 실존 집합을 확보한다.
+        // 대상 프로젝트의 실제 컴포넌트/버전/필수필드 집합 — EC8/EC9 서버측 검증 (단건/동반 공유)
         val targetProjectComponentIds =
-            componentRepository.findByProject(targetProjectId)
-                .mapNotNull { comp -> comp.id }
-                .toSet()
+            componentRepository.findByProject(targetProjectId).mapNotNull { it.id }.toSet()
         val targetProjectVersionIds =
-            versionRepository.findByProject(targetProjectId)
-                .mapNotNull { ver -> ver.id }
-                .toSet()
-        val targetDefinitions = customFieldDefinitionRepository.findActiveByProject(targetProjectId)
-        val requiredFieldKeys = targetDefinitions.filter { def -> def.required }.map { def -> def.key }.toSet()
+            versionRepository.findByProject(targetProjectId).mapNotNull { it.id }.toSet()
+        val requiredFieldKeys =
+            customFieldDefinitionRepository.findActiveByProject(targetProjectId)
+                .filter { it.required }.map { it.key }.toSet()
 
-        val ctx =
-            IssueMoveContext(
-                sourceProjectKey = issueKey.projectPrefix,
-                targetProjectKey = targetProjectKey,
-                hasSubtasks = hasSubtasks,
-                sourceStatusKey = issue.currentStateKey,
-                targetWorkflowStatuses = targetStateKeys,
-                targetStateKey = request.targetStateKey,
-                componentMappingTargetIds = componentMappingTargetIds,
+        return if (request.subtasks.isEmpty()) {
+            moveSingle(
+                actor = actor,
+                issueKey = issueKey,
+                request = request,
+                targetProjectId = targetProjectId,
+                targetStateKeys = targetStateKeys,
                 targetProjectComponentIds = targetProjectComponentIds,
-                versionMappingTargetIds = versionMappingTargetIds,
                 targetProjectVersionIds = targetProjectVersionIds,
                 requiredFieldKeys = requiredFieldKeys,
-                providedFieldKeys = request.additionalCustomFields.keys + issue.customFields.keys,
+            )
+        } else {
+            moveWithSubtasks(
+                actor = actor,
+                issueKey = issueKey,
+                request = request,
+                targetProjectId = targetProjectId,
+                targetStateKeys = targetStateKeys,
+                targetProjectComponentIds = targetProjectComponentIds,
+                targetProjectVersionIds = targetProjectVersionIds,
+                requiredFieldKeys = requiredFieldKeys,
+            )
+        }
+    }
+
+    /**
+     * 단건 이슈 이동 — 서브태스크 없는 경로(단건 #153 회귀 보존).
+     */
+    @Suppress("ThrowsCount", "LongMethod", "LongParameterList")
+    private fun moveSingle(
+        actor: ActorId,
+        issueKey: IssueKey,
+        request: IssueMoveRequest,
+        targetProjectId: UUID,
+        targetStateKeys: Set<String>,
+        targetProjectComponentIds: Set<UUID>,
+        targetProjectVersionIds: Set<UUID>,
+        requiredFieldKeys: Set<String>,
+    ): MoveResult {
+        val targetProjectKey = request.targetProjectKey
+
+        // 1. SELECT FOR UPDATE — 비관락
+        val issue = issueRepository.findByKeyForUpdate(issueKey) ?: throw IssueNotFoundException(issueKey)
+
+        // 2. OCC 검증
+        if (request.expectedVersion != issue.version) throw IssueVersionConflictException(issueKey, issue.version)
+
+        // 5. 도메인 검증 (EC1/EC15/EC7/EC8/EC9)
+        val hasSubtasks = issueRepository.countDirectChildren(issue.id.value) > 0
+        val ctx =
+            buildMoveContext(
+                issueKey = issueKey,
+                targetProjectKey = targetProjectKey,
+                hasSubtasks = hasSubtasks,
+                issue = issue,
+                spec = request.toSpec(),
+                targetStateKeys = targetStateKeys,
+                targetProjectComponentIds = targetProjectComponentIds,
+                targetProjectVersionIds = targetProjectVersionIds,
+                requiredFieldKeys = requiredFieldKeys,
             )
         IssueMoveOperation.validate(ctx)
 
-        // 6. 대상 키 발번 (pg_advisory_xact_lock 포함)
-        val seq = issueRepository.incrementKeySequence(targetProjectKey)
-        val newKey = IssueKey.of(targetProjectKey, seq)
+        // (C3) before snapshot before moveIssue
+        val beforeIssue = issue
 
-        // 대상 상태 결정 (EC7 통과 보장됨)
-        val resolvedStateKey =
-            if (issue.currentStateKey in targetStateKeys) {
-                issue.currentStateKey
-            } else {
-                // IssueMoveOperation.validate(EC7) 통과 후에는 targetStateKey 가 반드시 non-null.
-                requireNotNull(request.targetStateKey) {
-                    "targetStateKey must be set when source state is not in target workflow"
-                }
-            }
-
-        // 커스텀 필드 필터링 (대상 프로젝트에 있는 키만 유지 + 추가 필드)
+        // 6. 키 발번 + 이동
+        val newKey = IssueKey.of(targetProjectKey, issueRepository.incrementKeySequence(targetProjectKey))
+        val resolvedStateKey = resolveState(issue.currentStateKey, targetStateKeys, request.targetStateKey)
         val filteredCustomFields = buildFilteredCustomFields(issue.customFields, request.additionalCustomFields)
-
-        // resolution_id C4: DONE 이 아니면 null clear
         val resolvedResolutionId = if (request.targetStateIsDone) issue.resolutionId else null
 
-        // 7. issues UPDATE (project_id / key / state / custom_fields / parent_id=null / version bump)
         val updatedRows =
             issueRepository.moveIssue(
                 oldKey = issueKey,
@@ -235,59 +295,306 @@ class IssueMoveService(
                 resolvedResolutionId = resolvedResolutionId,
                 filteredCustomFields = filteredCustomFields,
                 expectedVersion = request.expectedVersion,
+                newParentId = null,
             )
-        if (updatedRows == 0) {
-            throw IssueVersionConflictException(issueKey, issue.version)
-        }
+        if (updatedRows == 0) throw IssueVersionConflictException(issueKey, issue.version)
 
-        // 8. 조인 테이블 교체 (컴포넌트 / affects-version / fix-version)
-        // moveIssue 가 이미 version bump 했으므로 조인 테이블은 id 기준 직접 replace
         replaceComponentsAfterMove(issue.id.value, issue.componentIds, request.componentMapping)
-        replaceVersionsAfterMove(
-            issueId = issue.id.value,
-            sourceVersionIds = issue.affectsVersionIds,
-            mapping = request.affectsVersionMapping,
-            isFixVersion = false,
-        )
-        replaceVersionsAfterMove(
-            issueId = issue.id.value,
-            sourceVersionIds = issue.fixVersionIds,
-            mapping = request.fixVersionMapping,
-            isFixVersion = true,
-        )
-
-        // 9. redirect 영구 보존 (DATA.md §2)
+        replaceVersionsAfterMove(issue.id.value, issue.affectsVersionIds, request.affectsVersionMapping, false)
+        replaceVersionsAfterMove(issue.id.value, issue.fixVersionIds, request.fixVersionMapping, true)
         redirectRepository.insert(issueKey, newKey)
 
-        // 10. 히스토리 기록
-        val afterIssue =
-            issue.copy(
-                key = newKey,
-                projectId = targetProjectId,
-                currentStateKey = resolvedStateKey,
-                resolutionId = resolvedResolutionId,
-                parentId = null,
-                customFields = filteredCustomFields,
-                version = request.expectedVersion + 1,
-            )
         historyRecorder.record(
-            before = issue,
-            after = afterIssue,
+            before = beforeIssue,
+            after =
+                beforeIssue.copy(
+                    key = newKey,
+                    projectId = targetProjectId,
+                    currentStateKey = resolvedStateKey,
+                    resolutionId = resolvedResolutionId,
+                    parentId = null,
+                    customFields = filteredCustomFields,
+                    version = request.expectedVersion + 1,
+                ),
             actor = actor,
-            projectId = issue.projectId,
+            projectId = beforeIssue.projectId,
         )
 
         log.info(
-            "issue_moved oldKey={} newKey={} targetProject={} state={} actor={}",
+            "issue_moved oldKey={} newKey={} targetProject={} actor={}",
             issueKey.value,
             newKey.value,
             targetProjectKey,
-            resolvedStateKey,
             actor.value,
         )
-
-        return newKey
+        return MoveResult(newKey = newKey, movedSubtasks = emptyList())
     }
+
+    /**
+     * 루트+자식 동반 이동 — 단일 트랜잭션, id 오름차순 비관락(B2), 노드별 검증(B3), before 스냅샷(C3).
+     *
+     * TOCTOU 방어: 락 획득 후 findDirectChildren 재조회로 불완전 매핑 검증.
+     * 1차 조회는 락 대상 id 파악용이며, 실제 완전성 검증(IncompleteSubtaskMapping)은
+     * 락 획득 후 재조회한 children2 를 기준으로 수행한다.
+     * 락 사이에 신규 자식이 추가됐다면 children2 에 잡혀 요청과 불일치 → 422 거부 후 전체 롤백.
+     */
+    @Suppress("ThrowsCount", "LongMethod", "LongParameterList")
+    private fun moveWithSubtasks(
+        actor: ActorId,
+        issueKey: IssueKey,
+        request: IssueMoveRequest,
+        targetProjectId: UUID,
+        targetStateKeys: Set<String>,
+        targetProjectComponentIds: Set<UUID>,
+        targetProjectVersionIds: Set<UUID>,
+        requiredFieldKeys: Set<String>,
+    ): MoveResult {
+        val targetProjectKey = request.targetProjectKey
+
+        // 루트 읽기 (락 없이 id 조회용)
+        val rootIssue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
+
+        // 1차 자식 목록 조회 — 락 대상(루트+자식) id 파악용
+        val children = issueRepository.findDirectChildren(rootIssue.id.value)
+        val providedChildKeys = request.subtasks.map { it.issueKey }.toSet()
+
+        // (B2) id 오름차순 비관락: 루트+자식 통합 정렬
+        val allKeys = listOf(rootIssue) + children
+        val sortedByIdAsc = allKeys.sortedBy { it.id.value }
+        val lockedIssues = mutableMapOf<String, Issue>()
+        for (issueToLock in sortedByIdAsc) {
+            val locked =
+                issueRepository.findByKeyForUpdate(issueToLock.key)
+                    ?: throw IssueNotFoundException(issueToLock.key)
+            lockedIssues[locked.key.value] = locked
+        }
+        val root = lockedIssues[issueKey.value] ?: throw IssueNotFoundException(issueKey)
+
+        // OCC — 루트
+        if (request.expectedVersion != root.version) throw IssueVersionConflictException(issueKey, root.version)
+
+        // 자식 OCC
+        for (spec in request.subtasks) {
+            val childIssue =
+                lockedIssues[spec.issueKey]
+                    ?: throw IssueNotFoundException(IssueKey(spec.issueKey))
+            if (spec.expectedVersion != childIssue.version) {
+                throw IssueVersionConflictException(IssueKey(spec.issueKey), childIssue.version)
+            }
+        }
+
+        // TOCTOU 방어: 락 획득 후 재조회 — 락 사이 추가된 자식까지 포함한 최신 집합
+        val children2 = issueRepository.findDirectChildren(root.id.value)
+        val actualChildKeys = children2.map { it.key.value }.toSet()
+        val childKeysWithOwnChildren =
+            children2
+                .filter { child -> issueRepository.countDirectChildren(child.id.value) > 0 }
+                .map { it.key.value }.toSet()
+
+        // 노드별 ctx 구성 + validateWithSubtasks (B3)
+        val rootCtx =
+            buildMoveContext(
+                issueKey = issueKey,
+                targetProjectKey = targetProjectKey,
+                hasSubtasks = true,
+                issue = root,
+                spec = request.toSpec(),
+                targetStateKeys = targetStateKeys,
+                targetProjectComponentIds = targetProjectComponentIds,
+                targetProjectVersionIds = targetProjectVersionIds,
+                requiredFieldKeys = requiredFieldKeys,
+            )
+        val childCtxs =
+            request.subtasks.map { spec ->
+                val childIssue = lockedIssues[spec.issueKey]!!
+                buildMoveContext(
+                    issueKey = IssueKey(spec.issueKey),
+                    targetProjectKey = targetProjectKey,
+                    hasSubtasks = false,
+                    issue = childIssue,
+                    spec = spec,
+                    targetStateKeys = targetStateKeys,
+                    targetProjectComponentIds = targetProjectComponentIds,
+                    targetProjectVersionIds = targetProjectVersionIds,
+                    requiredFieldKeys = requiredFieldKeys,
+                )
+            }
+        IssueMoveOperation.validateWithSubtasks(
+            rootCtx = rootCtx,
+            childCtxs = childCtxs,
+            actualChildKeys = actualChildKeys,
+            providedChildKeys = providedChildKeys,
+            childKeysWithOwnChildren = childKeysWithOwnChildren,
+        )
+
+        // 키 발번 — 루트 먼저, 이후 자식 순서대로
+        val newRootKey = IssueKey.of(targetProjectKey, issueRepository.incrementKeySequence(targetProjectKey))
+        val childNewKeys =
+            request.subtasks.map { spec ->
+                spec.issueKey to IssueKey.of(targetProjectKey, issueRepository.incrementKeySequence(targetProjectKey))
+            }
+
+        // 루트 이동
+        val rootBefore = root
+        val rootStateKey = resolveState(root.currentStateKey, targetStateKeys, request.targetStateKey)
+        val rootCustomFields = buildFilteredCustomFields(root.customFields, request.additionalCustomFields)
+        val rootResolutionId = if (request.targetStateIsDone) root.resolutionId else null
+        val rootRows =
+            issueRepository.moveIssue(
+                oldKey = issueKey,
+                newKey = newRootKey,
+                targetProjectId = targetProjectId,
+                targetStateKey = rootStateKey,
+                resolvedResolutionId = rootResolutionId,
+                filteredCustomFields = rootCustomFields,
+                expectedVersion = request.expectedVersion,
+                newParentId = null,
+            )
+        if (rootRows == 0) throw IssueVersionConflictException(issueKey, root.version)
+        replaceComponentsAfterMove(root.id.value, root.componentIds, request.componentMapping)
+        replaceVersionsAfterMove(root.id.value, root.affectsVersionIds, request.affectsVersionMapping, false)
+        replaceVersionsAfterMove(root.id.value, root.fixVersionIds, request.fixVersionMapping, true)
+        redirectRepository.insert(issueKey, newRootKey)
+        historyRecorder.record(
+            before = rootBefore,
+            after =
+                rootBefore.copy(
+                    key = newRootKey,
+                    projectId = targetProjectId,
+                    currentStateKey = rootStateKey,
+                    resolutionId = rootResolutionId,
+                    parentId = null,
+                    customFields = rootCustomFields,
+                    version = request.expectedVersion + 1,
+                ),
+            actor = actor,
+            projectId = rootBefore.projectId,
+        )
+
+        // 자식 이동 — parent_id = 루트 id(불변, C3)
+        val movedSubtasks = mutableListOf<MovedNode>()
+        for ((specKey, newChildKey) in childNewKeys) {
+            val spec = request.subtasks.first { it.issueKey == specKey }
+            val childIssue = lockedIssues[specKey]!!
+            val childBefore = childIssue
+            val childStateKey = resolveState(childIssue.currentStateKey, targetStateKeys, spec.targetStateKey)
+            val childCustomFields = buildFilteredCustomFields(childIssue.customFields, spec.additionalCustomFields)
+            val childResolutionId = if (spec.targetStateIsDone) childIssue.resolutionId else null
+            val childRows =
+                issueRepository.moveIssue(
+                    oldKey = IssueKey(specKey),
+                    newKey = newChildKey,
+                    targetProjectId = targetProjectId,
+                    targetStateKey = childStateKey,
+                    resolvedResolutionId = childResolutionId,
+                    filteredCustomFields = childCustomFields,
+                    expectedVersion = spec.expectedVersion,
+                    newParentId = root.id.value,
+                )
+            if (childRows == 0) throw IssueVersionConflictException(IssueKey(specKey), childIssue.version)
+            replaceComponentsAfterMove(childIssue.id.value, childIssue.componentIds, spec.componentMapping)
+            replaceVersionsAfterMove(
+                childIssue.id.value,
+                childIssue.affectsVersionIds,
+                spec.affectsVersionMapping,
+                false,
+            )
+            replaceVersionsAfterMove(childIssue.id.value, childIssue.fixVersionIds, spec.fixVersionMapping, true)
+            redirectRepository.insert(IssueKey(specKey), newChildKey)
+            historyRecorder.record(
+                before = childBefore,
+                after =
+                    childBefore.copy(
+                        key = newChildKey,
+                        projectId = targetProjectId,
+                        currentStateKey = childStateKey,
+                        resolutionId = childResolutionId,
+                        parentId = root.id.value,
+                        customFields = childCustomFields,
+                        version = spec.expectedVersion + 1,
+                    ),
+                actor = actor,
+                projectId = childBefore.projectId,
+            )
+            movedSubtasks.add(MovedNode(previousKey = IssueKey(specKey), newKey = newChildKey))
+        }
+
+        log.info(
+            "issue_moved_with_subtasks rootOldKey={} rootNewKey={} subtaskCount={} actor={}",
+            issueKey.value,
+            newRootKey.value,
+            movedSubtasks.size,
+            actor.value,
+        )
+        return MoveResult(newKey = newRootKey, movedSubtasks = movedSubtasks)
+    }
+
+    /**
+     * IssueMoveRequest 를 단건 spec 으로 변환하는 헬퍼.
+     */
+    private fun IssueMoveRequest.toSpec(): SubtaskMoveSpec =
+        SubtaskMoveSpec(
+            issueKey = "",
+            expectedVersion = expectedVersion,
+            targetStateKey = targetStateKey,
+            targetStateIsDone = targetStateIsDone,
+            componentMapping = componentMapping,
+            affectsVersionMapping = affectsVersionMapping,
+            fixVersionMapping = fixVersionMapping,
+            additionalCustomFields = additionalCustomFields,
+        )
+
+    /**
+     * IssueMoveContext 를 빌드하는 헬퍼.
+     */
+    @Suppress("LongParameterList")
+    private fun buildMoveContext(
+        issueKey: IssueKey,
+        targetProjectKey: String,
+        hasSubtasks: Boolean,
+        issue: Issue,
+        spec: SubtaskMoveSpec,
+        targetStateKeys: Set<String>,
+        targetProjectComponentIds: Set<UUID>,
+        targetProjectVersionIds: Set<UUID>,
+        requiredFieldKeys: Set<String>,
+    ): IssueMoveContext =
+        IssueMoveContext(
+            sourceProjectKey = issueKey.projectPrefix,
+            targetProjectKey = targetProjectKey,
+            hasSubtasks = hasSubtasks,
+            sourceStatusKey = issue.currentStateKey,
+            targetWorkflowStatuses = targetStateKeys,
+            targetStateKey = spec.targetStateKey,
+            componentMappingTargetIds = spec.componentMapping.values.filterNotNull().toSet(),
+            targetProjectComponentIds = targetProjectComponentIds,
+            versionMappingTargetIds =
+                (
+                    spec.affectsVersionMapping.values.filterNotNull() +
+                        spec.fixVersionMapping.values.filterNotNull()
+                ).toSet(),
+            targetProjectVersionIds = targetProjectVersionIds,
+            requiredFieldKeys = requiredFieldKeys,
+            providedFieldKeys = spec.additionalCustomFields.keys + issue.customFields.keys,
+        )
+
+    /**
+     * 대상 상태 키를 결정한다.
+     *
+     * 현재 상태가 대상 워크플로우에 있으면 그대로 사용, 없으면 요청의 targetStateKey.
+     */
+    private fun resolveState(
+        currentStateKey: String,
+        targetStateKeys: Set<String>,
+        requestedTargetStateKey: String?,
+    ): String =
+        if (currentStateKey in targetStateKeys) {
+            currentStateKey
+        } else {
+            requireNotNull(requestedTargetStateKey) {
+                "targetStateKey must be set when source state is not in target workflow"
+            }
+        }
 
     // ── private helpers ───────────────────────────────────────────────────────
 

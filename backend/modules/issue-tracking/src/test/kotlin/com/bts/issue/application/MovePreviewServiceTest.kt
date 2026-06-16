@@ -18,6 +18,7 @@ import com.bts.issue.version.domain.Version
 import com.bts.issue.version.domain.VersionStatus
 import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -479,6 +480,94 @@ class MovePreviewServiceTest : DescribeSpec({
         it("preview 반환값 자체가 null이 아님") {
             val result = sut.preview(actor, issueKey, targetProjectKey)
             result shouldNotBe null
+        }
+    }
+
+    // ── 서브태스크 동반 preview — subtasks 섹션 ─────────────────────────────────
+
+    describe("서브태스크 동반 preview") {
+
+        val childKey = IssueKey.of(sourceProjectKey, 2)
+        val subtaskTypeId = IssueTypeId(2L)
+
+        it("자식 없으면 subtasks 빈 배열") {
+            every { issueRepository.findDirectChildren(any()) } returns emptyList()
+
+            val result = sut.preview(actor, issueKey, targetProjectKey)
+
+            result.subtasks shouldBe emptyList()
+        }
+
+        it("자식 있는 이슈 preview는 노드별 subtasks 섹션 반환") {
+            val childIssueId = IssueId(UUID.randomUUID())
+            val childIssue =
+                makeIssue(currentStateKey = "open").copy(
+                    id = childIssueId,
+                    key = childKey,
+                    typeId = subtaskTypeId,
+                )
+            // findDirectChildren 가 자식 반환
+            every { issueRepository.findDirectChildren(any()) } returns listOf(childIssue)
+
+            // C2: 자식 issueTypeKey 조회용 findByKeyWithType stub
+            val childIssueResponse =
+                com.bts.issue.adapter.inbound.rest.IssueResponse.from(
+                    issue = childIssue,
+                    projectKey = sourceProjectKey,
+                    typeInfo =
+                        com.bts.issue.adapter.inbound.rest.IssueResponse.IssueTypeInfo(
+                            id = subtaskTypeId.value,
+                            key = "subtask",
+                            name = "Subtask",
+                        ),
+                    parent = null,
+                )
+            every { issueRepository.findByKeyWithType(childKey) } returns childIssueResponse
+
+            // 자식 issueTypeKey="subtask" 로 listStates 호출
+            every {
+                workflowStateCatalog.listStates(ProjectKey.of(targetProjectKey), IssueTypeKey("subtask"))
+            } returns listOf(WorkflowStateView("open", "열림"))
+
+            val result = sut.preview(actor, issueKey, targetProjectKey)
+
+            result.subtasks.size shouldBe 1
+            result.subtasks[0].issueKey shouldBe childKey.value
+            result.subtasks[0].issueTypeKey shouldBe "subtask"
+        }
+
+        it("자식 워크플로우는 자식 issueTypeKey로 조회") {
+            val childIssueId = IssueId(UUID.randomUUID())
+            val childIssue =
+                makeIssue(currentStateKey = "open").copy(
+                    id = childIssueId,
+                    key = childKey,
+                    typeId = subtaskTypeId,
+                )
+            every { issueRepository.findDirectChildren(any()) } returns listOf(childIssue)
+
+            val childIssueResponse =
+                com.bts.issue.adapter.inbound.rest.IssueResponse.from(
+                    issue = childIssue,
+                    projectKey = sourceProjectKey,
+                    typeInfo =
+                        com.bts.issue.adapter.inbound.rest.IssueResponse.IssueTypeInfo(
+                            id = subtaskTypeId.value,
+                            key = "subtask",
+                            name = "Subtask",
+                        ),
+                    parent = null,
+                )
+            every { issueRepository.findByKeyWithType(childKey) } returns childIssueResponse
+
+            // 자식 타입으로 목록 조회 호출 확인
+            every {
+                workflowStateCatalog.listStates(ProjectKey.of(targetProjectKey), IssueTypeKey("subtask"))
+            } returns listOf(WorkflowStateView("subtask-open", "서브태스크 열림"))
+
+            val result = sut.preview(actor, issueKey, targetProjectKey)
+
+            result.subtasks[0].workflow.targetStates.map { it.key } shouldBe listOf("subtask-open")
         }
     }
 })

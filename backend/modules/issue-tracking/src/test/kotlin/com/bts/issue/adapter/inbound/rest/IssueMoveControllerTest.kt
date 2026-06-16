@@ -6,6 +6,7 @@ import com.bts.issue.application.CustomFieldPreviewSection
 import com.bts.issue.application.IssueMoveService
 import com.bts.issue.application.MovePreview
 import com.bts.issue.application.MovePreviewService
+import com.bts.issue.application.MoveResult
 import com.bts.issue.application.ResourceMappingSection
 import com.bts.issue.application.VersionMappingSection
 import com.bts.issue.application.WorkflowPreviewSection
@@ -156,7 +157,7 @@ class IssueMoveControllerTest {
             )
         clearMocks(movePreviewService, issueMoveService, answers = false)
         every { movePreviewService.preview(any(), sourceKey, any()) } returns samplePreview
-        every { issueMoveService.move(any(), sourceKey, any()) } returns newKey
+        every { issueMoveService.move(any(), sourceKey, any()) } returns MoveResult(newKey, emptyList())
     }
 
     @AfterEach

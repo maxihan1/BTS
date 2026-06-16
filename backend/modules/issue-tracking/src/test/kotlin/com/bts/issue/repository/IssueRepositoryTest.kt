@@ -744,6 +744,121 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
         assertThat(response.typeName).isEqualTo("Task")
     }
 
+    // ── findDirectChildren ──────────────────────────────────────────────────────
+
+    /**
+     * Given  부모 이슈와 직접 자식 2개(자식1 활성, 자식2 소프트삭제), 손자 1개
+     * When   findDirectChildren(parentId)
+     * Then   활성 직접 자식 1개만 반환(소프트삭제 제외, 손자 미포함)
+     */
+    @Test
+    @Order(20)
+    fun `findDirectChildren는 활성 직접 자식만 반환하고 소프트삭제 제외`() {
+        val parentId = IssueId(UUID.randomUUID())
+        val childId1 = IssueId(UUID.randomUUID())
+        val childId2 = IssueId(UUID.randomUUID()) // 소프트삭제 대상
+
+        // 부모 삽입
+        repository.insert(
+            Issue.create(
+                id = parentId,
+                key = IssueKey.of("TPRJ", 9001L),
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "parent for findDirectChildren",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+            ),
+        )
+        // 자식1 삽입 (활성) — Issue.create 는 parentId 미지원 → copy 패턴
+        repository.insert(
+            Issue.create(
+                id = childId1,
+                key = IssueKey.of("TPRJ", 9002L),
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "active child",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+            ).copy(parentId = parentId.value),
+        )
+        // 자식2 삽입 후 소프트삭제
+        repository.insert(
+            Issue.create(
+                id = childId2,
+                key = IssueKey.of("TPRJ", 9003L),
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "deleted child",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+            ).copy(parentId = parentId.value),
+        )
+        repository.softDelete(IssueKey.of("TPRJ", 9003L))
+
+        val children = repository.findDirectChildren(parentId.value)
+
+        assertThat(children).hasSize(1)
+        assertThat(children[0].id).isEqualTo(childId1)
+        assertThat(children[0].summary).isEqualTo("active child")
+    }
+
+    /**
+     * Given  부모→자식→손자 3레벨 구조
+     * When   findDirectChildren(parentId)
+     * Then   직접 자식만 반환(손자 미포함)
+     */
+    @Test
+    @Order(21)
+    fun `findDirectChildren는 손자(자식의 자식) 미포함`() {
+        val parentId = IssueId(UUID.randomUUID())
+        val childId = IssueId(UUID.randomUUID())
+        val grandchildId = IssueId(UUID.randomUUID())
+
+        repository.insert(
+            Issue.create(
+                id = parentId,
+                key = IssueKey.of("TPRJ", 9004L),
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "parent for grandchild test",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+            ),
+        )
+        repository.insert(
+            Issue.create(
+                id = childId,
+                key = IssueKey.of("TPRJ", 9005L),
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "direct child",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+            ).copy(parentId = parentId.value),
+        )
+        // 손자 — 자식의 자식
+        repository.insert(
+            Issue.create(
+                id = grandchildId,
+                key = IssueKey.of("TPRJ", 9006L),
+                projectId = testProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "grandchild",
+                reporterId = ActorId(UUID.randomUUID()),
+                currentStateKey = "open",
+            ).copy(parentId = childId.value),
+        )
+
+        val children = repository.findDirectChildren(parentId.value)
+
+        assertThat(children).hasSize(1)
+        assertThat(children[0].id).isEqualTo(childId)
+
+        // 손자 id 가 결과에 없음을 명시 검증
+        assertThat(children.map { it.id }).doesNotContain(grandchildId)
+    }
+
     /**
      * Given  task 타입 활성 이슈 2건
      * When   listWithType 으로 첫 페이지 조회
