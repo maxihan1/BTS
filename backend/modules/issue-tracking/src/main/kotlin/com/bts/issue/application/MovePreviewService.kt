@@ -7,6 +7,7 @@ import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.customfield.domain.CustomFieldDefinition
 import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
@@ -17,6 +18,7 @@ import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowStateView
@@ -37,8 +39,33 @@ import java.util.UUID
  * @property affectsVersions affectsVersions 자동매핑 정보.
  * @property fixVersions fixVersions 자동매핑 정보.
  * @property customFields 커스텀필드 호환성 정보.
+ * @property subtasks 직접 자식 이슈 노드별 매핑 섹션. 서브태스크 없으면 빈 목록.
  */
 data class MovePreview(
+    val workflow: WorkflowPreviewSection,
+    val components: ResourceMappingSection,
+    val affectsVersions: VersionMappingSection,
+    val fixVersions: VersionMappingSection,
+    val customFields: CustomFieldPreviewSection,
+    val subtasks: List<SubtaskPreviewNode> = emptyList(),
+)
+
+/**
+ * 서브태스크 노드별 preview 섹션.
+ *
+ * 부모 이슈의 직접 자식 각각에 대한 호환성 정보를 담는다.
+ *
+ * @property issueKey 자식 이슈 키 (이동 전 원본 키).
+ * @property issueTypeKey 자식 이슈 타입 키. null 이면 타입 조회 실패.
+ * @property workflow 워크플로우 상태 호환성 정보.
+ * @property components 컴포넌트 자동매핑 정보.
+ * @property affectsVersions affectsVersions 자동매핑 정보.
+ * @property fixVersions fixVersions 자동매핑 정보.
+ * @property customFields 커스텀필드 호환성 정보.
+ */
+data class SubtaskPreviewNode(
+    val issueKey: String,
+    val issueTypeKey: String?,
     val workflow: WorkflowPreviewSection,
     val components: ResourceMappingSection,
     val affectsVersions: VersionMappingSection,
@@ -160,16 +187,20 @@ class MovePreviewService(
             issueRepository.findProjectIdByKey(targetProjectKey)
                 ?: throw IssueProjectNotFoundException(targetProjectKey)
 
-        val workflowSection = buildWorkflowSection(issue.currentStateKey, targetProjectKey)
+        val workflowSection = buildWorkflowSection(issue.currentStateKey, targetProjectKey, issueTypeKey = null)
         val componentSection = buildComponentSection(issue.componentIds, sourceProjectId, targetProjectId)
         val affectsVersionSection = buildVersionSection(issue.affectsVersionIds, sourceProjectId, targetProjectId)
         val fixVersionSection = buildVersionSection(issue.fixVersionIds, sourceProjectId, targetProjectId)
         val customFieldSection = buildCustomFieldSection(issue.customFields, sourceProjectId, targetProjectId)
 
+        val children = issueRepository.findDirectChildren(issue.id.value)
+        val subtaskNodes = children.map { child -> buildSubtaskPreviewNode(child, targetProjectKey, targetProjectId) }
+
         log.info(
-            "move_preview issueKey={} targetProject={} actor={}",
+            "move_preview issueKey={} targetProject={} subtaskCount={} actor={}",
             issueKey.value,
             targetProjectKey,
+            subtaskNodes.size,
             actor.value,
         )
 
@@ -179,6 +210,39 @@ class MovePreviewService(
             affectsVersions = affectsVersionSection,
             fixVersions = fixVersionSection,
             customFields = customFieldSection,
+            subtasks = subtaskNodes,
+        )
+    }
+
+    /**
+     * 단일 자식 이슈에 대한 SubtaskPreviewNode 를 생성한다.
+     *
+     * issueTypeKey 는 [IssueRepository.findByKeyWithType] 로 조회한다 (C2 plan 제약).
+     * 타입 조회 실패 시 issueTypeKey=null, workflowStateCatalog 에 null 전달.
+     *
+     * @param child 자식 이슈 도메인 객체.
+     * @param targetProjectKey 대상 프로젝트 키.
+     * @param targetProjectId 대상 프로젝트 UUID.
+     * @return [SubtaskPreviewNode].
+     */
+    private fun buildSubtaskPreviewNode(
+        child: Issue,
+        targetProjectKey: String,
+        targetProjectId: UUID,
+    ): SubtaskPreviewNode {
+        val childWithType = issueRepository.findByKeyWithType(child.key)
+        val childTypeKey = childWithType?.typeKey?.let { IssueTypeKey(it) }
+        val childTypeKeyString = childWithType?.typeKey
+
+        val childSourceProjectId = child.projectId
+        return SubtaskPreviewNode(
+            issueKey = child.key.value,
+            issueTypeKey = childTypeKeyString,
+            workflow = buildWorkflowSection(child.currentStateKey, targetProjectKey, childTypeKey),
+            components = buildComponentSection(child.componentIds, childSourceProjectId, targetProjectId),
+            affectsVersions = buildVersionSection(child.affectsVersionIds, childSourceProjectId, targetProjectId),
+            fixVersions = buildVersionSection(child.fixVersionIds, childSourceProjectId, targetProjectId),
+            customFields = buildCustomFieldSection(child.customFields, childSourceProjectId, targetProjectId),
         )
     }
 
@@ -212,13 +276,15 @@ class MovePreviewService(
      *
      * @param currentStateKey 현재 이슈 상태 키.
      * @param targetProjectKey 대상 프로젝트 키.
+     * @param issueTypeKey 이슈 타입 키. null 이면 프로젝트 기본 워크플로우 조회.
      * @return [WorkflowPreviewSection].
      */
     private fun buildWorkflowSection(
         currentStateKey: String,
         targetProjectKey: String,
+        issueTypeKey: IssueTypeKey?,
     ): WorkflowPreviewSection {
-        val targetStates = workflowStateCatalog.listStates(ProjectKey.of(targetProjectKey), null)
+        val targetStates = workflowStateCatalog.listStates(ProjectKey.of(targetProjectKey), issueTypeKey)
         val targetStateKeys = targetStates.map { state -> state.key }.toSet()
         val compatible = currentStateKey in targetStateKeys
         val suggested =
