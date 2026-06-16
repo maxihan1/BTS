@@ -438,13 +438,15 @@
 
 **우선순위**. 필수 | **선행**. §2.1.1 | **Plan slug**. `issue/move`
 
-> **PR #153 (2026-06-16)** — **단건 이동** 완료: Jira식 매핑 마법사(`POST /move/preview`+`POST /move` 2단계), cross-BC SPI `WorkflowStateCatalog`(대상 워크플로우 상태목록), 옛 키 308 redirect(체인 순회), id 보존+종속데이터(컴포넌트/버전/커스텀필드) 서버측 매핑검증, resolution clear(비DONE). 자식(서브태스크) 있으면 422 거부. **서브태스크 동반 이동(노드별 매핑)·프론트 마법사 UI는 후속 PR.** ADR `2026-06-16-issue-move-semantics`.
+> **PR #153 (2026-06-16)** — **단건 이동** 완료: Jira식 매핑 마법사(`POST /move/preview`+`POST /move` 2단계), cross-BC SPI `WorkflowStateCatalog`(대상 워크플로우 상태목록), 옛 키 308 redirect(체인 순회), id 보존+종속데이터(컴포넌트/버전/커스텀필드) 서버측 매핑검증, resolution clear(비DONE). 자식(서브태스크) 있으면 422 거부. ADR `2026-06-16-issue-move-semantics`.
+>
+> **PR #154 (2026-06-16)** — **서브태스크 동반 이동(노드별 매핑)** 완료: 부모+직접 자식(1레벨) 동반 이동, 노드별 매핑(컴포넌트/버전/커스텀필드/상태, 각 노드 `issueTypeKey`로 상태 조회), 자식 `parent_id` 보존(루트만 detach), 노드별 OCC, (루트+자식) id 오름차순 비관락 + 락-후 재조회로 TOCTOU 시간창 제거. EC16(`SUBTASK_HAS_OWN_SUBTASKS` 다단계 거부)·EC15 재정의(`INCOMPLETE_SUBTASK_MAPPING`). 자식 없으면 단건 회귀 보존. ADR §후속 결정. **백엔드(D1·D2·D4·D5) 완료, 프론트 마법사 UI(D6/D7)는 후속 PR.**
 
-- [~] D1. 도메인 — IssueMoveOperation (책임. backend-engineer) — PR #153 (단건 검증; 서브태스크 동반 후속)
-- [~] D2. 명세 — 새 이슈 키 생성 + 옛 키 redirect (DATA.md §이슈키 영속성) (책임. backend-engineer + Maxi) — PR #153 (spec/ADR, 단건)
+- [x] D1. 도메인 — IssueMoveOperation (책임. backend-engineer) — PR #153 (단건 검증) + #154 (서브태스크 동반 노드별 검증)
+- [x] D2. 명세 — 새 이슈 키 생성 + 옛 키 redirect (DATA.md §이슈키 영속성) (책임. backend-engineer + Maxi) — PR #153 (단건 spec/ADR) + #154 (동반 노드별 spec/ADR §후속결정)
 - [x] D3. 데이터 모델 — `issue_key_redirects(old_key, new_key, moved_at)` (책임. db-engineer)
-- [~] D4. 백엔드 — `POST /api/v1/issues/{key}/move` 트랜잭션 (책임. backend-engineer) — PR #153 (단건 preview/move; 서브태스크 동반 후속)
-- [~] D5. 백엔드 테스트 — 옛 키로 조회 시 308 redirect (책임. backend-engineer) — PR #153 (308 체인+EC 전수 통합테스트)
+- [x] D4. 백엔드 — `POST /api/v1/issues/{key}/move` 트랜잭션 (책임. backend-engineer) — PR #153 (단건 preview/move) + #154 (서브태스크 동반 노드별 이동)
+- [x] D5. 백엔드 테스트 — 옛 키로 조회 시 308 redirect (책임. backend-engineer) — PR #153 (308 체인+EC 전수 통합테스트) + #154 (동반 ST1~7 + HTTP 슬라이스 CI)
 - [ ] D6. 프론트 UI — 이동 다이얼로그 (책임. designer → frontend-engineer)
 - [ ] D7. E2E — 이동 + **옛 키 redirect E2E** (FR-IS-01 D7에서 이관, 2026-05-30) (책임. qa-engineer)
 
