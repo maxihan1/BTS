@@ -276,6 +276,38 @@ describe('useRemoveWatcher — onSettled invalidateQueries', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// T-WT-10. watcherSummarySchema — 인증 사용자 id 공간 허용 (Fix 1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { watcherSummarySchema } from './issue-watchers'
+
+describe('watcherSummarySchema — 인증 userId 공간 허용', () => {
+  it('T-WT-10a: all-zeros 형식 인증 id가 watcher 파싱을 통과한다', () => {
+    // whoami userId 공간은 z.string() (관대) — 픽스처 alice id 는 00000000-...-000001
+    // 이 id 를 watcher.userId 로 받는 self-watch 라운드트립이 E2E 에서 발생한다.
+    // .uuid() 는 이 all-zeros-variant id 를 거부하므로 .min(1) 으로 완화한다.
+    const result = watcherSummarySchema.safeParse({
+      userId: '00000000-0000-0000-0000-000000000001',
+      displayName: 'User alice',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('T-WT-10b: 일반 RFC4122 v4 UUID도 여전히 통과한다', () => {
+    const result = watcherSummarySchema.safeParse({
+      userId: '550e8400-e29b-41d4-a716-446655440000',
+      displayName: '홍길동',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('T-WT-10c: 빈 문자열 userId는 거부된다', () => {
+    const result = watcherSummarySchema.safeParse({ userId: '', displayName: '홍길동' })
+    expect(result.success).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // T-WT-9. extractWatcherErrorCode — ApiError에서 errorCode 추출
 // ─────────────────────────────────────────────────────────────────────────────
 
