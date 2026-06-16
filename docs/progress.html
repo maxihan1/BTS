@@ -173,16 +173,16 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <svg viewBox="0 0 260 260" class="donut">
     <circle cx="130" cy="130" r="116" fill="none" stroke="#e5e7eb" stroke-width="28" />
     <circle cx="130" cy="130" r="116" fill="none" stroke="#22c55e" stroke-width="28"
-      stroke-dasharray="728.849495632832" stroke-dashoffset="393.5787276417293"
+      stroke-dasharray="728.849495632832" stroke-dashoffset="386.290232685401"
       transform="rotate(-90 130 130)" stroke-linecap="round" />
-    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">46%</text>
+    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">47%</text>
   </svg>
       <div class="overview-numbers">
-        <div class="big-num">57 / 123</div>
+        <div class="big-num">58 / 123</div>
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
-          <div><span class="dot dot-done"></span> 완료 <b>57</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>3</b></div>
+          <div><span class="dot dot-done"></span> 완료 <b>58</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>2</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
           <div><span class="dot dot-wait"></span> 대기 <b>63</b></div>
         </div>
@@ -191,9 +191,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h2>업무 영역별 진척</h2>
     <div class="bc-grid"><div class="bc-card" data-nav="bc-issue-tracking">
       <div class="bc-card-head">📌 이슈 관리</div>
-      <div class="bc-card-stats">27 / 31 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:87%"></div></div>
-      <div class="bc-card-pct">87%</div>
+      <div class="bc-card-stats">28 / 31 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:90%"></div></div>
+      <div class="bc-card-pct">90%</div>
     </div><div class="bc-card" data-nav="bc-project-workflow">
       <div class="bc-card-head">🔄 워크플로우</div>
       <div class="bc-card-stats">3 / 3 완료</div>
@@ -470,12 +470,12 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h1>📌 이슈 관리</h1>
     <p class="bc-desc">이슈를 만들고, 상태를 바꾸고, 댓글/첨부/링크를 관리하는 영역.</p>
     <div class="bc-detail-stats">
-      <div class="big-pct">87%</div>
-      <div>27 / 31 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:87%"></div></div>
+      <div class="big-pct">90%</div>
+      <div>28 / 31 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:90%"></div></div>
       <div class="status-grid">
-        <div>✅ 완료 27</div>
-        <div>🔄 진행중 3</div>
+        <div>✅ 완료 28</div>
+        <div>🔄 진행중 2</div>
         <div>⛔ 차단 0</div>
         <div>⬜ 대기 1</div>
       </div>
@@ -684,13 +684,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc">Watcher 추가/제거 + 자동 Watcher</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — Watcher(<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>,user) 관계, user_id FK 미적용(<span class="term" data-def="&quot;관련 업무 부서&quot; 시스템을 &#39;로그인 부서&#39;, &#39;알림 부서&#39;처럼 책임 범위별로 깔끔하게 나눈 구역입니다.">BC</span> 격리, <span class="term" data-def="&quot;신고자 / 담당자&quot; 버그를 찾아서 올린 사람(Reporter)과, 실제로 고칠 책임이 있는 사람(Assignee)입니다.">assignee</span>_id 선례) (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — PR #151</li><li><span class="step-icon">✅</span> D2 — 명세 — **deviation. 타인 추가 가능(Jira식, Maxi 확정)** + <span class="term" data-def="&quot;신고자 / 담당자&quot; 버그를 찾아서 올린 사람(Reporter)과, 실제로 고칠 책임이 있는 사람(Assignee)입니다.">Reporter</span>/Assignee 자동 Watcher. 자동 watcher 3진입점(create<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>·changeAssignee·change<span class="term" data-def="프로젝트 내 하위 영역 분류">Component</span>s 자동재배정), 재배정 시 이전 assignee 유지·unassign 무변경. cloneIssue 자동watch 제외(<span class="term" data-def="&quot;기술 결정 일기장&quot; &quot;왜 A 대신 B 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.">ADR</span> 이연) (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — PR #151</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_watchers(issue_id, user_id, created_at)` 복합PK 멱등 + issue_id FK ON DELETE <span class="term" data-def="&quot;미아 데이터와 꼬리자르기&quot; 부모 데이터가 지워질 때 자식 데이터도 싹 지울지(CASCADE), 아니면 엮인 자식이 있으면 아예 못 지우게 막을지(RESTRICT) 정하는 규칙입니다.">CASCADE</span>, V024 + init_codegen 미러 (책임. db-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — PR #151</li><li><span class="step-icon">✅</span> D4 — 백엔드 — **deviation. `GET` 추가** + `POST/DELETE /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s/{key}/watchers`. 권한 분기(본인=VIEW/타인=UPDATE), 타인 추가 UserLookupPort 검증(422), 멱등(ON CONFLICT) (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — PR #151</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — repository 8 + service 21 + controller 11 + 자동watcher 8 + 마이그레이션 <span class="term" data-def="&quot;데이터 엑셀 양식&quot; 이름은 문자, 나이는 숫자 등 데이터베이스에 정보를 어떤 모양으로 저장할지 정해둔 도면입니다.">스키마</span> (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #151</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — Watch 버튼(지켜보기/지켜보는 중 토글) + 카운트 + 감시자 명단(본인 &quot;(나)&quot;)</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-진행중">
+    </details><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">🔄</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-MV-01</span>
         <span class="fr-desc"><span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">프로젝트</span> 간 이슈 이동</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>MoveOperation</li><li><span class="step-icon">✅</span> D2 — 명세 — 새 <span class="term" data-def="`&lt;PROJECT_KEY&gt;-&lt;NUMBER&gt;` 형식. 한 번 발급되면 절대 재사용 불가"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 키</span> 생성 + 옛 키 redirect (DATA.md §이슈키 영속성)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_key_redirects(old_key, new_key, moved_at)`</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `POST /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s/{key}/move` 트랜잭션</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 옛 키로 조회 시 308 redirect</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 이동 다이얼로그</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 이동 + **옛 키 redirect E2E** (FR-IS-01 D7에서 이관, 2026-05-30)</li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>MoveOperation</li><li><span class="step-icon">✅</span> D2 — 명세 — 새 <span class="term" data-def="`&lt;PROJECT_KEY&gt;-&lt;NUMBER&gt;` 형식. 한 번 발급되면 절대 재사용 불가"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 키</span> 생성 + 옛 키 redirect (DATA.md §이슈키 영속성)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_key_redirects(old_key, new_key, moved_at)`</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `POST /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s/{key}/move` 트랜잭션</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 옛 키로 조회 시 308 redirect</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 이동 다이얼로그</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 이동 + **옛 키 redirect E2E** (FR-IS-01 D7에서 이관, 2026-05-30)</li></ol>
     </details><details class="fr-item fr-진행중">
       <summary>
         <span class="fr-status">🔄</span>
