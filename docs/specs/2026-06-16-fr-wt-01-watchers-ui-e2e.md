@@ -44,7 +44,7 @@
 ## 기능 요구사항 (FR)
 
 - **FR-1** 이슈 상세 메타패널에 감시자 섹션(레이블 "감시자" + 카운트 "N명")을 표시한다.
-- **FR-2** self watch/unwatch 토글 버튼. `isWatching` 값으로 라벨/동작 분기("보기" ↔ "보기 취소").
+- **FR-2** self watch/unwatch 토글 버튼. `isWatching` 값으로 라벨/동작 분기. **라벨(Maxi 확정)**: 미감시="지켜보기", 감시중="지켜보는 중".
 - **FR-3** 감시자 명단(displayName)을 읽기 전용으로 표시한다. 0명이면 "감시자가 없습니다." 표시.
 - **FR-4** watch = `POST /watchers`(본문 없음). unwatch = `DELETE /watchers/{현재userId}`(`useAuthUser().userId`).
 - **FR-5** mutation 성공/실패 모두 `onSettled`에서 감시자 쿼리 invalidate(낙관적 setQueryData 금지 — 부분응답 플리커 회피).
@@ -56,7 +56,7 @@
 - **FR-8 (상태 표현)** 감시자 섹션은 4가지 상태를 모두 표현한다. 로딩(조회 중 — 간단한 스켈레톤/문구), 에러(조회 실패 — 차분한 안내 문구, --destructive 남발 금지), 빈 상태("감시자가 없습니다."), 진행 중(watch/unwatch in-flight 동안 버튼 disabled+로딩 표시로 더블클릭 방지).
 - **FR-9 (긴 목록 — 1,000명 조직)** 카운트는 항상 표시. 감시자 명단은 길어질 수 있으므로 기본 N명(예: 8명)까지 표시하고 초과분은 "+N명 더" 또는 max-height 스크롤로 접는다. 본인은 명단에서 "(나)" 표기로 식별 가능하게 한다.
 - **FR-10 (접근성 WCAG AA)** 토글 버튼은 shadcn `<Button variant="outline" 또는 secondary>`(페이지 핵심 CTA 아님 — 그건 상태/전이). `aria-pressed`로 watch 상태 노출, 키보드 조작(Enter/Space), 모바일 터치 타깃 44px, 색 대비 AA. 아이콘 사용 시 텍스트 라벨 병기.
-- **버튼 라벨 (🛑 게이트1 Maxi 결정 필요 — taste)** 초안 "보기/보기 취소"는 "조회(view)"로 오해될 수 있음. 권장안 "지켜보기 / 지켜보는 중"(Jira "Watch/Watching" 대응) 또는 "알림 받기 / 알림 받는 중"(동작 직설). glossary 정본은 "워처=이슈 변경 알림 수신자". Maxi가 라벨 확정.
+- **버튼 라벨 (Maxi 확정 — 게이트1)** "지켜보기 / 지켜보는 중"(Jira "Watch/Watching" 대응). 미감시→"지켜보기", 감시중→"지켜보는 중". ko.ts에 정의.
 
 ## 비기능 요구사항 (NFR)
 
