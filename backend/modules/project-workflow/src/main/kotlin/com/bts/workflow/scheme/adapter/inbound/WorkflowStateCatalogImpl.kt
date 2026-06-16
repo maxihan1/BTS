@@ -64,11 +64,12 @@ class WorkflowStateCatalogImpl(
         val internalProjectKey = InternalProjectKey(projectKey.value)
         log.debug("listStates projectKey={} issueTypeKey={}", projectKey.value, issueTypeKey?.value)
 
-        val workflow = workflowResolver.resolveExistingFor(internalProjectKey, issueTypeKey)
-            ?: run {
-                log.debug("listStates: no scheme assignment for projectKey={} — returning empty list", projectKey.value)
-                return emptyList()
-            }
+        val workflow =
+            workflowResolver.resolveExistingFor(internalProjectKey, issueTypeKey)
+                ?: run {
+                    log.debug("listStates: no scheme assignment for projectKey={} — returning empty list", projectKey.value)
+                    return emptyList()
+                }
 
         return workflow.states.map { state ->
             WorkflowStateView(key = state.key, name = state.name)

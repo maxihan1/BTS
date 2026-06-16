@@ -35,7 +35,6 @@ import org.springframework.transaction.annotation.Transactional
  * ADR 근거. `docs/decisions/2026-05-27-shared-kernel-extraction.md`
  */
 interface WorkflowStateCatalog {
-
     /**
      * 프로젝트 + 이슈 타입 조합에서 가용한 전체 상태 목록을 반환한다.
      *

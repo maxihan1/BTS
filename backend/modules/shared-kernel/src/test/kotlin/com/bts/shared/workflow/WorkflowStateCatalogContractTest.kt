@@ -28,7 +28,6 @@ import org.springframework.transaction.annotation.Transactional
  * JVM reflection 대신 Kotlin reflection (`KClass.memberFunctions`) 을 사용해야 한다.
  */
 class WorkflowStateCatalogContractTest {
-
     @Test
     fun `WorkflowStateCatalog has listStates returning List`() {
         // Kotlin reflection 으로 listStates 메서드가 선언되어 있는지 검증한다.
@@ -115,8 +114,9 @@ class WorkflowStateCatalogContractTest {
                 ?: error("WorkflowStateCatalog 에 listStates 메서드가 없습니다.")
 
         // 두 번째 파라미터(인덱스 2 — 0=instance, 1=projectKey, 2=issueTypeKey)가 nullable 인지 확인한다.
-        val issueTypeKeyParam = method.parameters.firstOrNull { it.name == "issueTypeKey" }
-            ?: error("listStates 에 issueTypeKey 파라미터가 없습니다.")
+        val issueTypeKeyParam =
+            method.parameters.firstOrNull { it.name == "issueTypeKey" }
+                ?: error("listStates 에 issueTypeKey 파라미터가 없습니다.")
 
         assertThat(issueTypeKeyParam.type.isMarkedNullable).isTrue()
     }

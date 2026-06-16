@@ -5,12 +5,12 @@ package com.bts.issue.application
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
-import com.bts.issue.domain.IssueNotFoundException
-import com.bts.issue.domain.IssueVersionConflictException
-import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.domain.IssueMoveContext
 import com.bts.issue.domain.IssueMoveOperation
+import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueProjectNotFoundException
+import com.bts.issue.domain.IssueVersionConflictException
+import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.repository.IssueKeyRedirectRepository
 import com.bts.issue.repository.IssueRepository
@@ -122,8 +122,9 @@ class IssueMoveService(
         val targetProjectKey = request.targetProjectKey
 
         // 1. SELECT FOR UPDATE — 비관락 (TOCTOU 방지)
-        val issue = issueRepository.findByKeyForUpdate(issueKey)
-            ?: throw IssueNotFoundException(issueKey)
+        val issue =
+            issueRepository.findByKeyForUpdate(issueKey)
+                ?: throw IssueNotFoundException(issueKey)
 
         // 2. OCC 검증
         if (request.expectedVersion != issue.version) {
@@ -138,11 +139,12 @@ class IssueMoveService(
         // WorkflowSchemeNoDefaultException 은 project-workflow BC 내부 예외이므로 직접 import 불가.
         // simpleName 비교로 감지하고 BC 경계 공개 예외 IssueWorkflowNotConfiguredException 으로 변환한다.
         // resolveExisting 이 null 반환하면 기본 워크플로우 없음 → 422.
-        val hasWorkflow = try {
-            workflowKeyResolver.resolveExisting(ProjectKey.of(targetProjectKey), null) != null
-        } catch (e: RuntimeException) {
-            if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") false else throw e
-        }
+        val hasWorkflow =
+            try {
+                workflowKeyResolver.resolveExisting(ProjectKey.of(targetProjectKey), null) != null
+            } catch (e: RuntimeException) {
+                if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") false else throw e
+            }
         if (!hasWorkflow) throw IssueWorkflowNotConfiguredException(targetProjectKey, null)
 
         // 대상 워크플로우 상태 목록 조회 — issueTypeKey=null 은 이슈 타입 무관 전체 상태 목록.
@@ -151,32 +153,38 @@ class IssueMoveService(
 
         // 5. 도메인 검증 (EC1/EC15/EC7/EC8/EC9)
         val hasSubtasks = issueRepository.countDirectChildren(issue.id.value) > 0
-        val targetProjectId = issueRepository.findProjectIdByKey(targetProjectKey)
-            ?: throw IssueProjectNotFoundException(targetProjectKey)
+        val targetProjectId =
+            issueRepository.findProjectIdByKey(targetProjectKey)
+                ?: throw IssueProjectNotFoundException(targetProjectKey)
 
         val componentMappingTargetIds = request.componentMapping.values.filterNotNull().toSet()
         val versionMappingTargetIds =
-            (request.affectsVersionMapping.values.filterNotNull() +
-                request.fixVersionMapping.values.filterNotNull()).toSet()
+            (
+                request.affectsVersionMapping.values.filterNotNull() +
+                    request.fixVersionMapping.values.filterNotNull()
+            ).toSet()
 
         // 대상 프로젝트의 실제 컴포넌트/버전 ID (매핑 검증용 — 빈 집합이면 모두 통과)
         // IssueMoveOperation.validate EC8 은 mapping target ids 가 대상 프로젝트에 존재하는지 검증하므로
         // 컨트롤러(preview)에서 이미 검증된 mapping 을 그대로 전달받아 재확인한다.
         // 여기서는 mapping value 자체를 targetProjectComponentIds / targetProjectVersionIds 로 취급한다.
-        val ctx = IssueMoveContext(
-            sourceProjectKey = issueKey.projectPrefix,
-            targetProjectKey = targetProjectKey,
-            hasSubtasks = hasSubtasks,
-            sourceStatusKey = issue.currentStateKey,
-            targetWorkflowStatuses = targetStateKeys,
-            targetStateKey = request.targetStateKey,
-            componentMappingTargetIds = componentMappingTargetIds,
-            targetProjectComponentIds = componentMappingTargetIds, // 매핑 대상 = 대상 프로젝트 실존 간주
-            versionMappingTargetIds = versionMappingTargetIds,
-            targetProjectVersionIds = versionMappingTargetIds,
-            requiredFieldKeys = emptySet(), // 필수 필드 검증은 additionalCustomFields 로 충족
-            providedFieldKeys = request.additionalCustomFields.keys + issue.customFields.keys,
-        )
+        val ctx =
+            IssueMoveContext(
+                sourceProjectKey = issueKey.projectPrefix,
+                targetProjectKey = targetProjectKey,
+                hasSubtasks = hasSubtasks,
+                sourceStatusKey = issue.currentStateKey,
+                targetWorkflowStatuses = targetStateKeys,
+                targetStateKey = request.targetStateKey,
+                componentMappingTargetIds = componentMappingTargetIds,
+                // 매핑 대상 = 대상 프로젝트 실존 간주
+                targetProjectComponentIds = componentMappingTargetIds,
+                versionMappingTargetIds = versionMappingTargetIds,
+                targetProjectVersionIds = versionMappingTargetIds,
+                // 필수 필드 검증은 additionalCustomFields 로 충족
+                requiredFieldKeys = emptySet(),
+                providedFieldKeys = request.additionalCustomFields.keys + issue.customFields.keys,
+            )
         IssueMoveOperation.validate(ctx)
 
         // 6. 대상 키 발번 (pg_advisory_xact_lock 포함)
@@ -184,14 +192,15 @@ class IssueMoveService(
         val newKey = IssueKey.of(targetProjectKey, seq)
 
         // 대상 상태 결정 (EC7 통과 보장됨)
-        val resolvedStateKey = if (issue.currentStateKey in targetStateKeys) {
-            issue.currentStateKey
-        } else {
-            // IssueMoveOperation.validate(EC7) 통과 후에는 targetStateKey 가 반드시 non-null.
-            requireNotNull(request.targetStateKey) {
-                "targetStateKey must be set when source state is not in target workflow"
+        val resolvedStateKey =
+            if (issue.currentStateKey in targetStateKeys) {
+                issue.currentStateKey
+            } else {
+                // IssueMoveOperation.validate(EC7) 통과 후에는 targetStateKey 가 반드시 non-null.
+                requireNotNull(request.targetStateKey) {
+                    "targetStateKey must be set when source state is not in target workflow"
+                }
             }
-        }
 
         // 커스텀 필드 필터링 (대상 프로젝트에 있는 키만 유지 + 추가 필드)
         val filteredCustomFields = buildFilteredCustomFields(issue.customFields, request.additionalCustomFields)
@@ -200,15 +209,16 @@ class IssueMoveService(
         val resolvedResolutionId = if (request.targetStateIsDone) issue.resolutionId else null
 
         // 7. issues UPDATE (project_id / key / state / custom_fields / parent_id=null / version bump)
-        val updatedRows = issueRepository.moveIssue(
-            oldKey = issueKey,
-            newKey = newKey,
-            targetProjectId = targetProjectId,
-            targetStateKey = resolvedStateKey,
-            resolvedResolutionId = resolvedResolutionId,
-            filteredCustomFields = filteredCustomFields,
-            expectedVersion = request.expectedVersion,
-        )
+        val updatedRows =
+            issueRepository.moveIssue(
+                oldKey = issueKey,
+                newKey = newKey,
+                targetProjectId = targetProjectId,
+                targetStateKey = resolvedStateKey,
+                resolvedResolutionId = resolvedResolutionId,
+                filteredCustomFields = filteredCustomFields,
+                expectedVersion = request.expectedVersion,
+            )
         if (updatedRows == 0) {
             throw IssueVersionConflictException(issueKey, issue.version)
         }
@@ -233,15 +243,16 @@ class IssueMoveService(
         redirectRepository.insert(issueKey, newKey)
 
         // 10. 히스토리 기록
-        val afterIssue = issue.copy(
-            key = newKey,
-            projectId = targetProjectId,
-            currentStateKey = resolvedStateKey,
-            resolutionId = resolvedResolutionId,
-            parentId = null,
-            customFields = filteredCustomFields,
-            version = request.expectedVersion + 1,
-        )
+        val afterIssue =
+            issue.copy(
+                key = newKey,
+                projectId = targetProjectId,
+                currentStateKey = resolvedStateKey,
+                resolutionId = resolvedResolutionId,
+                parentId = null,
+                customFields = filteredCustomFields,
+                version = request.expectedVersion + 1,
+            )
         historyRecorder.record(
             before = issue,
             after = afterIssue,

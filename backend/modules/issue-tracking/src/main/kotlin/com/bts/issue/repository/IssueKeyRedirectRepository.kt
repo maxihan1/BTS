@@ -9,7 +9,6 @@ import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
-import java.time.OffsetDateTime
 
 /**
  * `issue_key_redirects` 테이블에 대한 jOOQ Repository.
@@ -65,11 +64,12 @@ class IssueKeyRedirectRepository(
         var hops = 0
 
         while (hops < MAX_HOPS) {
-            val nextKeyValue = dsl.select(ISSUE_KEY_REDIRECTS.NEW_KEY)
-                .from(ISSUE_KEY_REDIRECTS)
-                .where(ISSUE_KEY_REDIRECTS.OLD_KEY.eq(current.value))
-                .fetchOne(ISSUE_KEY_REDIRECTS.NEW_KEY)
-                ?: break
+            val nextKeyValue =
+                dsl.select(ISSUE_KEY_REDIRECTS.NEW_KEY)
+                    .from(ISSUE_KEY_REDIRECTS)
+                    .where(ISSUE_KEY_REDIRECTS.OLD_KEY.eq(current.value))
+                    .fetchOne(ISSUE_KEY_REDIRECTS.NEW_KEY)
+                    ?: break
 
             current = IssueKey(nextKeyValue)
             hops++

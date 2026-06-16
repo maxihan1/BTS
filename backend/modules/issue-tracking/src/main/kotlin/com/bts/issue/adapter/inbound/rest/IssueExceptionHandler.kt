@@ -4,6 +4,8 @@ package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.customfield.domain.CustomFieldValidationException
 import com.bts.issue.domain.AssigneeNotFoundException
+import com.bts.issue.domain.InvalidTargetMappingException
+import com.bts.issue.domain.InvalidTargetStateException
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueComponentNotFoundException
 import com.bts.issue.domain.IssueHasSubtasksException
@@ -16,8 +18,6 @@ import com.bts.issue.domain.IssueSecurityLevelNotInSchemeException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
-import com.bts.issue.domain.InvalidTargetMappingException
-import com.bts.issue.domain.InvalidTargetStateException
 import com.bts.issue.domain.MoveSameProjectException
 import com.bts.issue.domain.RequiredFieldMissingException
 import com.bts.issue.resolution.domain.ResolutionNotFoundException

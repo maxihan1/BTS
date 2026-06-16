@@ -45,7 +45,6 @@ data class IssueMoveContext(
  * DB·Spring·외부 I/O 의존이 없으므로 단위 테스트만으로 완전 검증 가능하다.
  */
 object IssueMoveOperation {
-
     /**
      * 이슈 이동 전 검증 규칙을 순서대로 실행한다.
      *

@@ -999,7 +999,10 @@ class IssueRepository(
      * @param isFixVersion true 이면 fix-version, false 이면 affects-version.
      */
     @Transactional
-    fun deleteVersionsByIssueId(issueId: UUID, isFixVersion: Boolean) {
+    fun deleteVersionsByIssueId(
+        issueId: UUID,
+        isFixVersion: Boolean,
+    ) {
         log.debug("deleteVersionsByIssueId issueId={} isFixVersion={}", issueId, isFixVersion)
         if (isFixVersion) {
             dsl.deleteFrom(ISSUE_FIX_VERSIONS)
@@ -1023,7 +1026,11 @@ class IssueRepository(
      * @param isFixVersion true 이면 fix-version, false 이면 affects-version.
      */
     @Transactional
-    fun insertVersionLinks(issueId: UUID, versionIds: List<UUID>, isFixVersion: Boolean) {
+    fun insertVersionLinks(
+        issueId: UUID,
+        versionIds: List<UUID>,
+        isFixVersion: Boolean,
+    ) {
         if (versionIds.isEmpty()) return
         log.debug("insertVersionLinks issueId={} count={} isFixVersion={}", issueId, versionIds.size, isFixVersion)
         if (isFixVersion) {
@@ -1031,9 +1038,12 @@ class IssueRepository(
             versionIds.forEach { versionId -> insert.values(issueId, versionId) }
             insert.execute()
         } else {
-            val insert = dsl.insertInto(
-                ISSUE_AFFECTS_VERSIONS, ISSUE_AFFECTS_VERSIONS.ISSUE_ID, ISSUE_AFFECTS_VERSIONS.VERSION_ID,
-            )
+            val insert =
+                dsl.insertInto(
+                    ISSUE_AFFECTS_VERSIONS,
+                    ISSUE_AFFECTS_VERSIONS.ISSUE_ID,
+                    ISSUE_AFFECTS_VERSIONS.VERSION_ID,
+                )
             versionIds.forEach { versionId -> insert.values(issueId, versionId) }
             insert.execute()
         }

@@ -167,11 +167,12 @@ class MovePreviewServiceTest : DescribeSpec({
         // 기본 워크플로우 상태 목록
         every {
             workflowStateCatalog.listStates(ProjectKey.of(targetProjectKey), null)
-        } returns listOf(
-            WorkflowStateView("open", "열림"),
-            WorkflowStateView("in-progress", "진행 중"),
-            WorkflowStateView("closed", "완료"),
-        )
+        } returns
+            listOf(
+                WorkflowStateView("open", "열림"),
+                WorkflowStateView("in-progress", "진행 중"),
+                WorkflowStateView("closed", "완료"),
+            )
 
         // 기본: 빈 컴포넌트/버전/커스텀필드
         every { componentRepository.findByProject(sourceProjectId) } returns emptyList()
@@ -354,13 +355,14 @@ class MovePreviewServiceTest : DescribeSpec({
 
         it("대상 프로젝트에 정의되지 않은 필드는 removed에 포함") {
             val srcFieldId = UUID.randomUUID()
-            val srcField = makeFieldDef(
-                id = srcFieldId,
-                projectId = sourceProjectId,
-                key = "src-only",
-                name = "Source Only Field",
-                required = false,
-            )
+            val srcField =
+                makeFieldDef(
+                    id = srcFieldId,
+                    projectId = sourceProjectId,
+                    key = "src-only",
+                    name = "Source Only Field",
+                    required = false,
+                )
 
             every { issueRepository.findByKey(issueKey) } returns
                 makeIssue(currentStateKey = "open", customFields = mapOf("src-only" to "value"))
@@ -374,13 +376,14 @@ class MovePreviewServiceTest : DescribeSpec({
 
         it("대상 프로젝트 필수 필드에 현재 값이 없으면 requiredMissing에 포함") {
             val tgtFieldId = UUID.randomUUID()
-            val tgtField = makeFieldDef(
-                id = tgtFieldId,
-                projectId = targetProjectId,
-                key = "required-field",
-                name = "필수 필드",
-                required = true,
-            )
+            val tgtField =
+                makeFieldDef(
+                    id = tgtFieldId,
+                    projectId = targetProjectId,
+                    key = "required-field",
+                    name = "필수 필드",
+                    required = true,
+                )
 
             // 현재 이슈에 해당 필드 값 없음
             every { issueRepository.findByKey(issueKey) } returns makeIssue(currentStateKey = "open")
@@ -393,13 +396,14 @@ class MovePreviewServiceTest : DescribeSpec({
 
         it("대상 프로젝트 필수 필드에 현재 값이 있으면 requiredMissing에 포함 안 됨") {
             val tgtFieldId = UUID.randomUUID()
-            val tgtField = makeFieldDef(
-                id = tgtFieldId,
-                projectId = targetProjectId,
-                key = "required-field",
-                name = "필수 필드",
-                required = true,
-            )
+            val tgtField =
+                makeFieldDef(
+                    id = tgtFieldId,
+                    projectId = targetProjectId,
+                    key = "required-field",
+                    name = "필수 필드",
+                    required = true,
+                )
 
             every { issueRepository.findByKey(issueKey) } returns
                 makeIssue(currentStateKey = "open", customFields = mapOf("required-field" to "some-value"))
@@ -411,18 +415,20 @@ class MovePreviewServiceTest : DescribeSpec({
         }
 
         it("비필수 필드가 양쪽에 모두 있으면 removed/requiredMissing 모두 비어있음") {
-            val srcField = makeFieldDef(
-                projectId = sourceProjectId,
-                key = "shared-field",
-                name = "공유 필드",
-                required = false,
-            )
-            val tgtField = makeFieldDef(
-                projectId = targetProjectId,
-                key = "shared-field",
-                name = "공유 필드",
-                required = false,
-            )
+            val srcField =
+                makeFieldDef(
+                    projectId = sourceProjectId,
+                    key = "shared-field",
+                    name = "공유 필드",
+                    required = false,
+                )
+            val tgtField =
+                makeFieldDef(
+                    projectId = targetProjectId,
+                    key = "shared-field",
+                    name = "공유 필드",
+                    required = false,
+                )
 
             every { issueRepository.findByKey(issueKey) } returns
                 makeIssue(currentStateKey = "open", customFields = mapOf("shared-field" to "val"))
@@ -445,18 +451,20 @@ class MovePreviewServiceTest : DescribeSpec({
             val tgtCompId = UUID.randomUUID()
             val srcComp = makeComponent(id = srcCompId, projectId = sourceProjectId, name = "Core")
             val tgtComp = makeComponent(id = tgtCompId, projectId = targetProjectId, name = "Core")
-            val tgtField = makeFieldDef(
-                projectId = targetProjectId,
-                key = "priority-field",
-                name = "우선순위",
-                required = true,
-            )
+            val tgtField =
+                makeFieldDef(
+                    projectId = targetProjectId,
+                    key = "priority-field",
+                    name = "우선순위",
+                    required = true,
+                )
 
-            every { issueRepository.findByKey(issueKey) } returns makeIssue(
-                currentStateKey = "open",
-                componentIds = listOf(srcCompId),
-                customFields = mapOf("priority-field" to "HIGH"),
-            )
+            every { issueRepository.findByKey(issueKey) } returns
+                makeIssue(
+                    currentStateKey = "open",
+                    componentIds = listOf(srcCompId),
+                    customFields = mapOf("priority-field" to "HIGH"),
+                )
             every { componentRepository.findByProject(sourceProjectId) } returns listOf(srcComp)
             every { componentRepository.findByProject(targetProjectId) } returns listOf(tgtComp)
             every { customFieldDefinitionRepository.findActiveByProject(targetProjectId) } returns listOf(tgtField)

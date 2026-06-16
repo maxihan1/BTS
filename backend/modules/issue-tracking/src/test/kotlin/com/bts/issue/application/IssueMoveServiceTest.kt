@@ -3,11 +3,10 @@
 package com.bts.issue.application
 
 import com.bts.issue.domain.ActorId
-import com.bts.issue.domain.IssueId
+import com.bts.issue.domain.IssueDomainException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
-import com.bts.issue.domain.IssueDomainException
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.repository.IssueKeyRedirectRepository
 import com.bts.issue.repository.IssueRepository
@@ -19,6 +18,9 @@ import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowStartState
 import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowStateView
+import io.mockk.every
+import io.mockk.mockk
+import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
@@ -36,9 +38,6 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.util.UUID
-import org.assertj.core.api.Assertions.assertThat
-import io.mockk.every
-import io.mockk.mockk
 
 /**
  * IssueMoveService 통합 테스트.
@@ -57,7 +56,6 @@ import io.mockk.mockk
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Suppress("LongMethod")
 class IssueMoveServiceTest {
-
     companion object {
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
@@ -161,19 +159,21 @@ class IssueMoveServiceTest {
         // workflowStateCatalog — 대상 프로젝트에 "open" 상태 존재
         every {
             workflowStateCatalog.listStates(ProjectKey.of(DST_PROJECT), null)
-        } returns listOf(
-            WorkflowStateView(key = STATE_OPEN, name = "열림"),
-            WorkflowStateView(key = "in_progress", name = "진행 중"),
-        )
+        } returns
+            listOf(
+                WorkflowStateView(key = STATE_OPEN, name = "열림"),
+                WorkflowStateView(key = "in_progress", name = "진행 중"),
+            )
 
-        sut = IssueMoveService(
-            issueRepository = issueRepository,
-            redirectRepository = redirectRepository,
-            permissionResolver = permissionResolver,
-            workflowKeyResolver = workflowKeyResolver,
-            workflowStateCatalog = workflowStateCatalog,
-            historyRecorder = historyRecorder,
-        )
+        sut =
+            IssueMoveService(
+                issueRepository = issueRepository,
+                redirectRepository = redirectRepository,
+                permissionResolver = permissionResolver,
+                workflowKeyResolver = workflowKeyResolver,
+                workflowStateCatalog = workflowStateCatalog,
+                historyRecorder = historyRecorder,
+            )
 
         // 테이블 초기화
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
@@ -216,20 +216,22 @@ class IssueMoveServiceTest {
         val originalIssueId = insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN)
         val srcKey = IssueKey.of(SRC_PROJECT, 1)
 
-        val request = IssueMoveRequest(
-            targetProjectKey = DST_PROJECT,
-            expectedVersion = 1L,
-            targetStateKey = null,
-            targetStateIsDone = false,
-            componentMapping = emptyMap(),
-            affectsVersionMapping = emptyMap(),
-            fixVersionMapping = emptyMap(),
-            additionalCustomFields = emptyMap(),
-        )
+        val request =
+            IssueMoveRequest(
+                targetProjectKey = DST_PROJECT,
+                expectedVersion = 1L,
+                targetStateKey = null,
+                targetStateIsDone = false,
+                componentMapping = emptyMap(),
+                affectsVersionMapping = emptyMap(),
+                fixVersionMapping = emptyMap(),
+                additionalCustomFields = emptyMap(),
+            )
 
-        val result = txTemplate.execute {
-            sut.move(actor, srcKey, request)
-        }
+        val result =
+            txTemplate.execute {
+                sut.move(actor, srcKey, request)
+            }
 
         assertThat(result).isNotNull
 
@@ -266,16 +268,18 @@ class IssueMoveServiceTest {
         insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN)
         val srcKey = IssueKey.of(SRC_PROJECT, 1)
 
-        val request = IssueMoveRequest(
-            targetProjectKey = DST_PROJECT,
-            expectedVersion = 999L, // 의도적 불일치
-            targetStateKey = null,
-            targetStateIsDone = false,
-            componentMapping = emptyMap(),
-            affectsVersionMapping = emptyMap(),
-            fixVersionMapping = emptyMap(),
-            additionalCustomFields = emptyMap(),
-        )
+        val request =
+            IssueMoveRequest(
+                targetProjectKey = DST_PROJECT,
+                // 의도적 불일치
+                expectedVersion = 999L,
+                targetStateKey = null,
+                targetStateIsDone = false,
+                componentMapping = emptyMap(),
+                affectsVersionMapping = emptyMap(),
+                fixVersionMapping = emptyMap(),
+                additionalCustomFields = emptyMap(),
+            )
 
         assertThrows<IssueVersionConflictException> {
             txTemplate.execute { sut.move(actor, srcKey, request) }
@@ -298,16 +302,17 @@ class IssueMoveServiceTest {
         insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN, parentId = parentId)
         val srcKey = IssueKey.of(SRC_PROJECT, 1)
 
-        val request = IssueMoveRequest(
-            targetProjectKey = DST_PROJECT,
-            expectedVersion = 1L,
-            targetStateKey = null,
-            targetStateIsDone = false,
-            componentMapping = emptyMap(),
-            affectsVersionMapping = emptyMap(),
-            fixVersionMapping = emptyMap(),
-            additionalCustomFields = emptyMap(),
-        )
+        val request =
+            IssueMoveRequest(
+                targetProjectKey = DST_PROJECT,
+                expectedVersion = 1L,
+                targetStateKey = null,
+                targetStateIsDone = false,
+                componentMapping = emptyMap(),
+                affectsVersionMapping = emptyMap(),
+                fixVersionMapping = emptyMap(),
+                additionalCustomFields = emptyMap(),
+            )
 
         assertThrows<IssueDomainException> {
             txTemplate.execute { sut.move(actor, srcKey, request) }
@@ -328,16 +333,18 @@ class IssueMoveServiceTest {
         insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN)
         val srcKey = IssueKey.of(SRC_PROJECT, 1)
 
-        val request = IssueMoveRequest(
-            targetProjectKey = SRC_PROJECT, // 동일 프로젝트
-            expectedVersion = 1L,
-            targetStateKey = null,
-            targetStateIsDone = false,
-            componentMapping = emptyMap(),
-            affectsVersionMapping = emptyMap(),
-            fixVersionMapping = emptyMap(),
-            additionalCustomFields = emptyMap(),
-        )
+        val request =
+            IssueMoveRequest(
+                // 동일 프로젝트
+                targetProjectKey = SRC_PROJECT,
+                expectedVersion = 1L,
+                targetStateKey = null,
+                targetStateIsDone = false,
+                componentMapping = emptyMap(),
+                affectsVersionMapping = emptyMap(),
+                fixVersionMapping = emptyMap(),
+                additionalCustomFields = emptyMap(),
+            )
 
         assertThrows<IssueDomainException> {
             txTemplate.execute { sut.move(actor, srcKey, request) }
@@ -363,16 +370,17 @@ class IssueMoveServiceTest {
             workflowKeyResolver.resolveExisting(ProjectKey.of(DST_PROJECT), null)
         } returns null
 
-        val request = IssueMoveRequest(
-            targetProjectKey = DST_PROJECT,
-            expectedVersion = 1L,
-            targetStateKey = null,
-            targetStateIsDone = false,
-            componentMapping = emptyMap(),
-            affectsVersionMapping = emptyMap(),
-            fixVersionMapping = emptyMap(),
-            additionalCustomFields = emptyMap(),
-        )
+        val request =
+            IssueMoveRequest(
+                targetProjectKey = DST_PROJECT,
+                expectedVersion = 1L,
+                targetStateKey = null,
+                targetStateIsDone = false,
+                componentMapping = emptyMap(),
+                affectsVersionMapping = emptyMap(),
+                fixVersionMapping = emptyMap(),
+                additionalCustomFields = emptyMap(),
+            )
 
         assertThrows<IssueWorkflowNotConfiguredException> {
             txTemplate.execute { sut.move(actor, srcKey, request) }
@@ -394,16 +402,18 @@ class IssueMoveServiceTest {
         insertIssueWithResolution(SRC_PROJECT, srcProjectId, STATE_OPEN, resolutionId)
         val srcKey = IssueKey.of(SRC_PROJECT, 1)
 
-        val request = IssueMoveRequest(
-            targetProjectKey = DST_PROJECT,
-            expectedVersion = 1L,
-            targetStateKey = null,
-            targetStateIsDone = false, // DONE 아님 → resolution clear
-            componentMapping = emptyMap(),
-            affectsVersionMapping = emptyMap(),
-            fixVersionMapping = emptyMap(),
-            additionalCustomFields = emptyMap(),
-        )
+        val request =
+            IssueMoveRequest(
+                targetProjectKey = DST_PROJECT,
+                expectedVersion = 1L,
+                targetStateKey = null,
+                // DONE 아님 → resolution clear
+                targetStateIsDone = false,
+                componentMapping = emptyMap(),
+                affectsVersionMapping = emptyMap(),
+                fixVersionMapping = emptyMap(),
+                additionalCustomFields = emptyMap(),
+            )
 
         txTemplate.execute { sut.move(actor, srcKey, request) }
 
@@ -432,9 +442,10 @@ class IssueMoveServiceTest {
     ): UUID {
         val issueId = UUID.randomUUID()
         // key_sequence를 증가시켜 키 발번
-        val seq = txTemplate.execute {
-            issueRepository.incrementKeySequence(projectKey)
-        }!!
+        val seq =
+            txTemplate.execute {
+                issueRepository.incrementKeySequence(projectKey)
+            }!!
         val issueKey = IssueKey.of(projectKey, seq)
 
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
@@ -465,9 +476,10 @@ class IssueMoveServiceTest {
         resolutionId: UUID,
     ): UUID {
         val issueId = UUID.randomUUID()
-        val seq = txTemplate.execute {
-            issueRepository.incrementKeySequence(projectKey)
-        }!!
+        val seq =
+            txTemplate.execute {
+                issueRepository.incrementKeySequence(projectKey)
+            }!!
         val issueKey = IssueKey.of(projectKey, seq)
 
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->

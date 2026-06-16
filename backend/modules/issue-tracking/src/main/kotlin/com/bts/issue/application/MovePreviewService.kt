@@ -373,11 +373,12 @@ private fun <T> List<T>.idToNameMap(nameExtractor: (T) -> String): Map<UUID, Str
     where T : Any =
     buildMap {
         for (item in this@idToNameMap) {
-            val id = when (item) {
-                is Component -> item.id
-                is Version -> item.id
-                else -> null
-            }
+            val id =
+                when (item) {
+                    is Component -> item.id
+                    is Version -> item.id
+                    else -> null
+                }
             if (id != null) put(id, nameExtractor(item))
         }
     }
@@ -394,11 +395,12 @@ private fun <T> List<T>.nameToIdMap(nameExtractor: (T) -> String): Map<String, U
     where T : Any =
     buildMap {
         for (item in this@nameToIdMap) {
-            val id = when (item) {
-                is Component -> item.id
-                is Version -> item.id
-                else -> null
-            }
+            val id =
+                when (item) {
+                    is Component -> item.id
+                    is Version -> item.id
+                    else -> null
+                }
             if (id != null) put(nameExtractor(item), id)
         }
     }
