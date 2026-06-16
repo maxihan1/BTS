@@ -4,11 +4,11 @@ package com.bts.issue.watcher.repository
 
 import com.bts.issue.jooq.tables.references.ISSUE_WATCHERS
 import org.jooq.DSLContext
+import org.jooq.Record
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
-import java.time.OffsetDateTime
 import java.util.UUID
 
 /**
@@ -95,18 +95,7 @@ class IssueWatcherRepository(
             .where(ISSUE_WATCHERS.ISSUE_ID.eq(issueId))
             .orderBy(ISSUE_WATCHERS.CREATED_AT.asc())
             .fetch()
-            .map { record ->
-                WatcherRow(
-                    userId =
-                        record.get(ISSUE_WATCHERS.USER_ID)
-                            ?: error("issue_watchers.user_id must not be null after DB read"),
-                    createdAt =
-                        (
-                            record.get(ISSUE_WATCHERS.CREATED_AT)
-                                ?: error("issue_watchers.created_at must not be null after DB read")
-                        ).toInstant(),
-                )
-            }
+            .map(::toWatcherRow)
     }
 
     /**
@@ -123,6 +112,25 @@ class IssueWatcherRepository(
                 .where(ISSUE_WATCHERS.ISSUE_ID.eq(issueId)),
         )
     }
+
+    // ── private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * jOOQ [Record] 를 도메인 [WatcherRow] 로 변환한다.
+     *
+     * TIMESTAMPTZ 컬럼([java.time.OffsetDateTime])을 [Instant] 로 변환한다 (DATA.md §4).
+     */
+    private fun toWatcherRow(record: Record): WatcherRow =
+        WatcherRow(
+            userId =
+                record.get(ISSUE_WATCHERS.USER_ID)
+                    ?: error("issue_watchers.user_id must not be null after DB read"),
+            createdAt =
+                (
+                    record.get(ISSUE_WATCHERS.CREATED_AT)
+                        ?: error("issue_watchers.created_at must not be null after DB read")
+                ).toInstant(),
+        )
 
     /**
      * `(issue_id, user_id)` 쌍의 워처 등록 여부를 반환한다.
