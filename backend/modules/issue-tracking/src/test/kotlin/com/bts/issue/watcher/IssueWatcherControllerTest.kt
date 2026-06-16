@@ -17,6 +17,8 @@ import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.not
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -255,7 +257,7 @@ class IssueWatcherControllerTest {
             .andExpect(status().isUnprocessableEntity)
             .andExpect(jsonPath("$.errorCode").value("ISSUE_WATCHER_USER_NOT_FOUND"))
             // userId 가 응답 본문에 노출되지 않음을 검증
-            .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(missingUuid.toString()))))
+            .andExpect(jsonPath("$.detail").value(not(containsString(missingUuid.toString()))))
     }
 
     // ── W-6. DELETE → 204 ────────────────────────────────────────────────────
