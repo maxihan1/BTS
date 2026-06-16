@@ -29,8 +29,13 @@ export const watcherSummarySchema = z.object({
    * E2E 및 self-unwatch 라운드트립이 정상 동작한다. 프로덕션 실 UUID 는 .min(1) 도 통과한다.
    */
   userId: z.string().min(1),
-  /** 화면에 표시할 이름 */
-  displayName: z.string().min(1),
+  /**
+   * 화면에 표시할 이름.
+   * .min(1) 이 아닌 .string() 을 사용한다.
+   * 백엔드 WatcherSummary.displayName 은 사용자 미존재 시 빈 문자열("")을 반환한다.
+   * 한 명의 빈 displayName 이 목록 전체 ZodError를 일으켜 섹션 전체가 에러 상태가 되는 것을 방지한다.
+   */
+  displayName: z.string(),
 })
 
 /**

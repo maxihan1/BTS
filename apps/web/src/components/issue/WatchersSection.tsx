@@ -1,8 +1,9 @@
 // 이슈 상세 감시자 섹션 — Watch 토글 + 카운트 + 명단 (FR-WT-01 D6)
 import { useAuthUser } from '@/auth/authStore'
-import { useWatchers, useAddWatcher, useRemoveWatcher } from '@/api/issue-watchers'
+import { useWatchers, useAddWatcher, useRemoveWatcher, extractWatcherErrorCode } from '@/api/issue-watchers'
 import { issueDetailStrings } from '@/i18n/ko'
 import { Button } from '@/components/ui/button'
+import { toast } from 'sonner'
 
 /** 명단 기본 표시 최대 인원 수 */
 const WATCHER_LIST_MAX = 8
@@ -19,6 +20,8 @@ interface WatchersSectionProps {
  * - 본인은 "(나)" 접미사로 식별한다.
  * - Watch/Unwatch 토글 버튼으로 감시 상태를 변경한다.
  * - mutation in-flight 동안 버튼을 disabled 처리해 더블클릭을 방지한다.
+ * - GET 로딩/에러 윈도우(data===undefined)에서 토글을 차단해 헛 POST를 방지한다.
+ * - mutation 실패 시 toast.error로 사용자에게 피드백을 제공한다.
  *
  * @param issueKey 이슈 키
  */
@@ -30,13 +33,31 @@ export const WatchersSection = ({ issueKey }: WatchersSectionProps) => {
 
   const isMutating = addWatcher.isPending || removeWatcher.isPending
 
-  const handleToggle = () => {
-    if (isMutating || user === null) return
+  /**
+   * 토글이 가능한 조건.
+   * - mutation in-flight 아님
+   * - 인증 사용자가 존재하고 userId가 빈 문자열이 아님 (!! 로 falsy 방어)
+   * - GET 응답 data가 확정됨 (undefined 이면 로딩/에러 윈도우 — 의도 역전 방지)
+   */
+  const canToggle = !isMutating && !!user?.userId && data !== undefined
 
-    if (data?.isWatching) {
-      removeWatcher.mutate(user.userId)
+  /** mutation 실패 시 에러 코드를 추출해 toast로 사용자에게 알린다. */
+  const onMutationError = (error: unknown) => {
+    const code = extractWatcherErrorCode(error)
+    // errorCode가 있어도 별도 메시지 맵이 없으므로 공통 에러 문구를 사용한다.
+    // watchersError는 ko.ts에 정의된 기존 키를 재사용한다.
+    void code // 향후 코드별 메시지 분기 확장 시 활용
+    toast.error(issueDetailStrings.watchersError)
+  }
+
+  const handleToggle = () => {
+    // data가 undefined이면 로딩/에러 윈도우 — 클릭을 무시해 헛 POST를 방지한다.
+    if (!canToggle) return
+
+    if (data.isWatching) {
+      removeWatcher.mutate(user.userId, { onError: onMutationError })
     } else {
-      addWatcher.mutate(undefined)
+      addWatcher.mutate(undefined, { onError: onMutationError })
     }
   }
 
@@ -52,7 +73,7 @@ export const WatchersSection = ({ issueKey }: WatchersSectionProps) => {
         size="sm"
         className="mb-3"
         onClick={handleToggle}
-        disabled={isMutating || user === null}
+        disabled={!canToggle}
         aria-pressed={data?.isWatching ?? false}
         data-testid="watch-toggle-button"
       >
