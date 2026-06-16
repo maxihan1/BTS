@@ -1189,6 +1189,27 @@ class IssueRepository(
     }
 
     /**
+     * 이슈의 직접 자식 목록을 반환한다 (서브태스크 동반 이동용).
+     *
+     * `parent_id = parentId AND deleted_at IS NULL` 조건으로 활성 직접 자식만 조회한다.
+     * 손자(자식의 자식)는 포함하지 않는다 — 1레벨 동반 이동 모델에 맞게 parent_id 1단계만 조회한다.
+     * 결과는 id 오름차순 정렬 — 비관락 획득 시 데드락 회피를 위한 일관된 순서 보장.
+     *
+     * @param parentId 자식 목록을 조회할 부모 이슈 UUID.
+     * @return 활성 직접 자식 [Issue] 목록. 자식 없으면 빈 목록.
+     */
+    @Transactional(readOnly = true)
+    fun findDirectChildren(parentId: UUID): List<Issue> {
+        log.debug("findDirectChildren parentId={}", parentId)
+        return dsl.selectFrom(ISSUES)
+            .where(ISSUES.PARENT_ID.eq(parentId))
+            .and(ISSUES.DELETED_AT.isNull)
+            .orderBy(ISSUES.ID.asc())
+            .fetch()
+            .map { record -> record.toIssue() }
+    }
+
+    /**
      * 이슈의 직접 자식 수를 반환한다 (이슈 이동 전 자식 존재 여부 확인용).
      *
      * `parent_id = issueId AND deleted_at IS NULL` 조건으로 카운트한다.
@@ -1338,6 +1359,7 @@ private fun Issue.toInsertRecord(): IssuesRecord =
         assigneeId = assigneeId?.value,
         securityLevelId = securityLevelId,
         customFields = customFields.toJsonb(),
+        parentId = parentId,
     )
 
 /**
