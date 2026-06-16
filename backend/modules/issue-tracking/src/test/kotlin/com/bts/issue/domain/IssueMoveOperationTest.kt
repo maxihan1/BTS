@@ -2,10 +2,10 @@
 
 package com.bts.issue.domain
 
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.util.UUID
-import kotlin.test.assertEquals
 
 class IssueMoveOperationTest {
 
@@ -192,7 +192,7 @@ class IssueMoveOperationTest {
         val ex = assertThrows<RequiredFieldMissingException> {
             IssueMoveOperation.validate(ctx)
         }
-        assertEquals(setOf("customer_impact"), ex.missingKeys)
+        assertThat(ex.missingKeys).containsExactly("customer_impact")
     }
 
     @Test
