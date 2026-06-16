@@ -13,6 +13,7 @@ import { customFieldHandlers } from './custom-field-handlers'
 import { fieldPermissionHandlers } from './field-permission-handlers'
 import { groupHandlers } from './group-handlers'
 import { issueHandlers } from './issue-handlers'
+import { issueMoveHandlers } from './issue-move-handlers'
 import { issueWatcherHandlers } from './issue-watcher-handlers'
 import { issuePermissionHandlers } from './issue-permission-handlers'
 import { issueTemplateHandlers } from './issue-template-handlers'
@@ -57,6 +58,8 @@ export const handlers = [
   ...fieldPermissionHandlers,
   ...groupHandlers,
   ...issueGraphHandlers,
+  // issueMoveHandlers를 issueHandlers보다 앞에 두어야 moved 이슈 GET을 먼저 가로챈다
+  ...issueMoveHandlers,
   ...issueHandlers,
   ...issueLinkHandlers,
   ...issueWatcherHandlers,
