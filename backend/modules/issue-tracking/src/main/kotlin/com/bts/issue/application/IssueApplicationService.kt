@@ -18,6 +18,7 @@ import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueImpact
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueLinkedVersionNotFoundException
+import com.bts.issue.domain.IssueMovedException
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssuePriority
 import com.bts.issue.domain.IssueProjectNotFoundException
@@ -136,6 +137,10 @@ class IssueApplicationService(
     // (기존 단위 테스트 호환용 fallback — transitionEventPublisher 패턴 동형).
     // Spring 컨텍스트에서는 IssueWatcherRepository Bean 이 주입된다.
     private val watcherRepository: com.bts.issue.watcher.repository.IssueWatcherRepository? = null,
+    // 이슈 키 리다이렉트 저장소 (FR-MV-01). null 이면 redirect 조회를 skip 한다
+    // (기존 단위 테스트 호환용 fallback — watcherRepository 패턴 동형).
+    // Spring 컨텍스트에서는 IssueKeyRedirectRepository Bean 이 주입된다.
+    private val keyRedirectRepository: com.bts.issue.repository.IssueKeyRedirectRepository? = null,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -407,6 +412,8 @@ class IssueApplicationService(
      * @param key 조회할 이슈 키.
      * @return [IssueResponse] DTO. descriptionHtml 이 채워져 있다.
      * @throws IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우, 또는 VIEW 권한 미인가(존재 숨김).
+     * @throws IssueMovedException 이슈가 다른 프로젝트로 이동되어 옛 키가 redirect 체인에 존재할 때.
+     *   308 Permanent Redirect 로 응답할 새 키를 [IssueMovedException.newKey] 에 담아 던진다 (DATA.md §2).
      */
     @Transactional(readOnly = true)
     fun findByKey(
@@ -414,7 +421,14 @@ class IssueApplicationService(
         key: IssueKey,
     ): IssueResponse {
         assertViewIssueOrNotFound(actor, key)
-        val response = repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)
+        val response =
+            repo.findByKeyWithType(key) ?: run {
+                val currentKey = keyRedirectRepository?.findCurrentKey(key)
+                if (currentKey != null) {
+                    throw IssueMovedException(currentKey.value)
+                }
+                throw IssueNotFoundException(key)
+            }
         val detailed = response.withSingleDetail()
         return maskFieldsForSingle(actor, key.projectPrefix, detailed)
     }

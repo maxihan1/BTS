@@ -5,6 +5,7 @@ package com.bts.issue.adapter.inbound.rest
 import com.bts.issue.customfield.domain.CustomFieldValidationException
 import com.bts.issue.domain.AssigneeNotFoundException
 import com.bts.issue.domain.IssueAccessDeniedException
+import com.bts.issue.domain.IssueMovedException
 import com.bts.issue.domain.IssueComponentNotFoundException
 import com.bts.issue.domain.IssueKeyPrefixReservedException
 import com.bts.issue.domain.IssueLinkedVersionNotFoundException
@@ -17,8 +18,10 @@ import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.resolution.domain.ResolutionNotFoundException
 import com.bts.issue.type.domain.IssueTypeNotFoundException
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
+import org.springframework.http.ResponseEntity
 import org.springframework.security.core.AuthenticationException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
@@ -36,6 +39,7 @@ import java.time.Instant
  * - [MethodArgumentNotValidException] → 400 + [IssueErrorCodes.VALIDATION_FAILED]
  * - [AuthenticationException] → 401 + [IssueErrorCodes.UNAUTHENTICATED]
  * - [IssueAccessDeniedException] → 403 + [IssueErrorCodes.ACCESS_DENIED]
+ * - [IssueMovedException] → 308 Permanent Redirect + Location 헤더 (FR-MV-01, DATA.md §2)
  * - [IssueNotFoundException] → 404 + [IssueErrorCodes.ISSUE_NOT_FOUND]
  * - [IssueProjectNotFoundException] → 404 + [IssueErrorCodes.PROJECT_NOT_FOUND]
  * - [ResolutionNotFoundException] → 404 + [IssueErrorCodes.RESOLUTION_NOT_FOUND]
@@ -58,6 +62,7 @@ import java.time.Instant
  * FR-CM-02 Task 5 에서 [IssueComponentNotFoundException] 핸들러가 추가됐다 (422 + COMPONENT_NOT_FOUND).
  * FR-IS-10 BLOCKER 1 에서 [CustomFieldValidationException] 핸들러가 추가됐다 (422 + CUSTOM_FIELD_VALIDATION_FAILED).
  * FR-VR-03 Task 5 에서 [IssueLinkedVersionNotFoundException] 핸들러가 추가됐다 (422 + LINKED_VERSION_NOT_FOUND).
+ * FR-MV-01 Task 4 에서 [IssueMovedException] 핸들러가 추가됐다 (308 Permanent Redirect + Location 헤더).
  */
 @Suppress("TooManyFunctions")
 @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
@@ -123,6 +128,30 @@ class IssueExceptionHandler {
             errorCode = IssueErrorCodes.ACCESS_DENIED,
             detail = "이 작업을 수행할 권한이 없습니다.",
         )
+    }
+
+    // ── 308 ISSUE_MOVED (Permanent Redirect) ────────────────────────────────
+
+    /**
+     * [IssueMovedException] — 이슈가 다른 프로젝트로 이동되어 옛 키가 redirect 체인에 존재함 — 308.
+     *
+     * 308 Permanent Redirect 를 사용하는 이유 (DATA.md §2).
+     * - 이슈 키는 Slack·이메일 등 외부에서 인용되므로 영속성이 보장돼야 한다 (이슈 키 영속성 §10).
+     * - 301/302 는 POST 를 GET 으로 변경할 수 있어 PATCH/DELETE 시 의도치 않은 동작이 발생한다.
+     * - 308 은 원본 HTTP 메서드를 그대로 유지하므로 클라이언트가 동일 메서드로 새 URL 에 재시도한다.
+     *
+     * 보안 — Location 헤더에 내부 식별자(issueId)를 노출하지 않고 새 키 경로만 사용한다.
+     *
+     * catch-all [handleInternalError] 보다 먼저 선택되도록 구체 예외 타입으로 등록한다.
+     *
+     * @param ex 이동 후 최종 이슈 키를 포함하는 예외.
+     */
+    @ExceptionHandler(IssueMovedException::class)
+    fun handleIssueMoved(ex: IssueMovedException): ResponseEntity<Void> {
+        log.info("ISSUE_308 issue_moved newKey='{}'", ex.newKey)
+        val headers = HttpHeaders()
+        headers.location = URI.create("/api/v1/issues/${ex.newKey}")
+        return ResponseEntity<Void>(headers, HttpStatus.PERMANENT_REDIRECT)
     }
 
     // ── 404 ISSUE_NOT_FOUND ───────────────────────────────────────────────────
