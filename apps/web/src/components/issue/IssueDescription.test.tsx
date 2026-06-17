@@ -1,7 +1,7 @@
 // IssueDescription 컴포넌트 단위 테스트 — Write/Preview 탭, 저장/취소 흐름 검증
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
-import type { ReactNode } from 'react'
+import type { ReactNode, JSX } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/server'
 import { userHandlers } from '@/mocks/user-handlers'
