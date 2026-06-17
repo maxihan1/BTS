@@ -206,14 +206,9 @@ describe('useMentionAutocomplete', () => {
     await triggerMentionInput(textarea, '@jo', 3)
 
     // MSW를 통한 실제 fetch를 기다린다.
-    // waitFor는 polling으로 listbox 출현을 감지한다.
     await waitFor(() => {
       expect(screen.queryByRole('listbox')).toBeInTheDocument()
     }, { timeout: 1000 })
-
-    // waitFor 완료 후 추가 act()로 pending React 업데이트를 모두 flush해
-    // 다음 테스트(FR8)의 이벤트 처리에 영향을 주지 않도록 한다.
-    await act(async () => { await Promise.resolve() })
   })
 
   it('FR3: @ 만 입력(query="" 길이 0) → fetch/open 안 함', () => {
