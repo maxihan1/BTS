@@ -113,7 +113,9 @@ class IssueMoveHistoryIntegrationTest {
         open fun historyTestPermissionResolver(): SwitchablePermissionResolver = SwitchablePermissionResolver()
 
         @Bean
-        open fun historyIssueKeyRedirectRepository(dsl: DSLContext): IssueKeyRedirectRepository = IssueKeyRedirectRepository(dsl)
+        open fun historyIssueKeyRedirectRepository(dsl: DSLContext): IssueKeyRedirectRepository {
+            return IssueKeyRedirectRepository(dsl)
+        }
 
         @Bean
         open fun historyComponentRepository(dsl: DSLContext): ComponentRepository = ComponentRepository(dsl)
@@ -135,8 +137,8 @@ class IssueMoveHistoryIntegrationTest {
             NamedParameterJdbcTemplate(dataSource)
 
         @Bean
-        open fun realIssueChangeHistoryRepository(namedParameterJdbcTemplate: NamedParameterJdbcTemplate): IssueChangeHistoryRepository =
-            JdbcIssueChangeHistoryRepository(namedParameterJdbcTemplate)
+        open fun realIssueChangeHistoryRepository(jdbc: NamedParameterJdbcTemplate): IssueChangeHistoryRepository =
+            JdbcIssueChangeHistoryRepository(jdbc)
 
         @Bean
         open fun realIssueChangeDetector(): IssueChangeDetector = IssueChangeDetector()
