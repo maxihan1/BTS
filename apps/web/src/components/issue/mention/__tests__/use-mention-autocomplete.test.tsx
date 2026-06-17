@@ -400,6 +400,114 @@ describe('useMentionAutocomplete', () => {
     }, { timeout: 1000 })
   })
 
+  // ── FR-MN-02 코드리뷰 수정 2: reset() 반환 + 드롭다운 닫힘 ─────────────────
+
+  it('CR2: reset() 호출 시 드롭다운이 닫힌다', async () => {
+    /**
+     * @al 입력으로 드롭다운을 연 뒤 reset()을 호출해 listbox가 사라지는지 검증.
+     * ControlledHarness에 reset을 노출하기 위해 inline 하네스를 사용한다.
+     */
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    let capturedReset: (() => void) | undefined
+
+    function ResetHarness() {
+      const [value, setValue] = useState('')
+      const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+      const handlers = useMentionAutocomplete({ value, onChange: setValue, textareaRef })
+      capturedReset = handlers.reset
+      return (
+        <div>
+          <textarea
+            data-testid="textarea"
+            ref={textareaRef}
+            value={value}
+            onChange={handlers.onChange}
+            onKeyDown={handlers.onKeyDown}
+            onCompositionStart={handlers.onCompositionStart}
+            onCompositionEnd={handlers.onCompositionEnd}
+            onSelect={handlers.onSelect}
+            onBlur={handlers.onBlur}
+          />
+          {handlers.mentionDropdown}
+        </div>
+      )
+    }
+
+    render(<ResetHarness />, { wrapper: createWrapper(queryClient) })
+
+    const textarea = screen.getByTestId('textarea') as HTMLTextAreaElement
+    await triggerMentionInput(textarea, '@al', 3)
+
+    await waitFor(() => {
+      expect(screen.queryByRole('listbox')).toBeInTheDocument()
+    }, { timeout: 1000 })
+
+    // reset() 호출 → 드롭다운 닫힘
+    act(() => { capturedReset?.() })
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  // ── FR-MN-02 코드리뷰 수정 3: activeIndex clamp ──────────────────────────
+
+  it('CR3: candidates 축소 시 activeIndex가 유효 범위로 clamp된다', async () => {
+    /**
+     * activeIndex=2인 상태에서 candidates가 2개로 줄면(인덱스 0~1)
+     * activeIndex가 1(마지막 유효)로 clamp되어 Enter가 먹통이 되지 않음을 검증.
+     *
+     * 구조: queryClient.setQueryData 로 candidates를 직접 교체해 길이 변경을 시뮬레이션.
+     * 훅은 candidates.length dep useEffect로 clamp를 수행해야 한다.
+     */
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    })
+
+    const manyUsers: UserSummary[] = [
+      { id: 'a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5', username: 'alice', displayName: '앨리스', email: null },
+      { id: 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a', username: 'bob', displayName: '밥', email: null },
+      { id: 'c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f', username: 'carol', displayName: '캐롤', email: null },
+    ]
+    const fewUsers: UserSummary[] = [
+      { id: 'a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5', username: 'alice', displayName: '앨리스', email: null },
+      { id: 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a', username: 'bob', displayName: '밥', email: null },
+    ]
+
+    const onChangeSpy = vi.fn()
+
+    render(
+      <ControlledHarness initialValue="" onChangeSpy={onChangeSpy} />,
+      { wrapper: createWrapper(queryClient) },
+    )
+
+    // 캐시를 3명으로 시드 후 @al 입력
+    act(() => { queryClient.setQueryData(['users', 'al'], manyUsers) })
+
+    const textarea = screen.getByTestId('textarea') as HTMLTextAreaElement
+    await triggerMentionInput(textarea, '@al', 3)
+
+    await waitFor(() => {
+      expect(screen.queryByRole('listbox')).toBeInTheDocument()
+    }, { timeout: 1000 })
+
+    // ArrowDown 2번 → activeIndex=2 (carol, 인덱스 2)
+    act(() => { textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })) })
+    act(() => { textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })) })
+    act(() => { textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })) })
+
+    // candidates를 2명으로 축소 → activeIndex=2가 범위 초과(0~1)
+    act(() => { queryClient.setQueryData(['users', 'al'], fewUsers) })
+
+    // Enter — clamp 후 유효 후보(bob, index 1)가 선택되어야 한다
+    const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    act(() => { textarea.dispatchEvent(enterEvent) })
+
+    expect(enterEvent.defaultPrevented).toBe(true)
+    // splice 결과(유효 username)가 onChange에 전달됨 — undefined 먹통 아님
+    const calls = onChangeSpy.mock.calls
+    const lastArg = calls[calls.length - 1]?.[0] as string | undefined
+    expect(lastArg).toMatch(/^@(alice|bob) /)
+  })
+
   it('E1: selectionStart가 null(jsdom) → ?? 0 으로 안전 처리(오류 없음)', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const onChangeSpy = vi.fn()

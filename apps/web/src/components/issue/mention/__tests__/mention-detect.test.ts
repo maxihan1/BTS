@@ -58,6 +58,53 @@ describe('detectActiveMention', () => {
       expect(detectActiveMention('@@', 2)).toEqual({ active: false })
     })
   })
+
+  // ── FR-MN-02 코드리뷰 수정 1: caret 중간 토큰 end 확장 ──────────────────
+
+  describe('caret이 토큰 중간에 있을 때 end를 토큰 끝까지 확장한다', () => {
+    it('caret=3인 "@alice"에서 end가 토큰 끝(6)이 된다', () => {
+      // '@alice', caret=3 → query='al'(caret 앞), end=6(토큰 끝 — 공백/문자열끝)
+      expect(detectActiveMention('@alice', 3)).toEqual({
+        active: true,
+        query: 'al',
+        start: 0,
+        end: 6,
+      })
+    })
+
+    it('"hi @alice bye"에서 caret=6일 때 end가 공백 직전(9)까지 확장된다', () => {
+      // 'hi @alice bye', caret=6 → query='al', start=3, end=9(공백 idx=9 직전)
+      expect(detectActiveMention('hi @alice bye', 6)).toEqual({
+        active: true,
+        query: 'al',
+        start: 3,
+        end: 9,
+      })
+    })
+
+    it('회귀: caret이 토큰 끝이면 end=caret 그대로다 (@jo, caret=3)', () => {
+      // caret 뒤에 문자가 없으므로 forward 스캔에서 즉시 멈춤 → end=3
+      expect(detectActiveMention('@jo', 3)).toEqual({
+        active: true,
+        query: 'jo',
+        start: 0,
+        end: 3,
+      })
+    })
+
+    it('회귀: "hi @jo"에서 caret=6이면 end=6 그대로다', () => {
+      expect(detectActiveMention('hi @jo', 6)).toEqual({
+        active: true,
+        query: 'jo',
+        start: 3,
+        end: 6,
+      })
+    })
+
+    it('회귀: "@jo bar" caret=7 → active:false 유지 (공백 내부 caret)', () => {
+      expect(detectActiveMention('@jo bar', 7)).toEqual({ active: false })
+    })
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

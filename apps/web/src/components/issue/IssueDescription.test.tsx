@@ -310,6 +310,60 @@ describe('IssueDescription — 멘션 자동완성 배선', () => {
     })
   })
 
+  it('CR2: Preview → Write 복귀 시 멘션 상태가 초기화되어 드롭다운이 재출현하지 않는다', async () => {
+    /**
+     * Write 탭에서 @al 입력으로 open=true 만든 뒤 Preview로 전환하면
+     * 훅의 open 상태가 reset()으로 초기화되어야 한다.
+     * Write 탭으로 돌아왔을 때 listbox가 즉시 재출현하면 reset 미적용 증거.
+     *
+     * 캐시 시드(staleTime: Infinity)를 사용해 Write 복귀 즉시 드롭다운 여부를 동기로 확인한다.
+     * reset이 없으면 open=true 잔존 → Write 복귀 시 즉시 listbox 재출현 → 실패.
+     */
+    server.use(...userHandlers)
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    })
+    const aliceResult = [
+      { id: 'a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5', username: 'alice', displayName: '앨리스', email: null as string | null },
+    ]
+
+    render(
+      <IssueDescription {...defaultProps} />,
+      { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider> },
+    )
+
+    const textarea = enterEditMode()
+
+    // 캐시 시드 — useUsers('al') 즉시 반환
+    act(() => { qc.setQueryData(['users', 'al'], aliceResult) })
+
+    // @al 입력
+    act(() => {
+      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
+      fireEvent.change(textarea, { target: { value: '@al' } })
+    })
+
+    // 드롭다운 노출 대기
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    }, { timeout: 2000 })
+
+    // Preview 탭으로 전환 → listbox DOM에서 사라짐(조건부 렌더)
+    act(() => {
+      fireEvent.click(screen.getByRole('tab', { name: '미리보기' }))
+    })
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+
+    // Write 탭으로 복귀 — reset이 없으면 open=true 잔존 → listbox 즉시 재출현
+    act(() => {
+      fireEvent.click(screen.getByRole('tab', { name: '편집' }))
+    })
+
+    // reset()이 호출되었다면 open=false → listbox 없음
+    // reset() 미호출이라면 open=true 잔존 → candidates 있으면 즉시 재출현 → 실패
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
   it('Escape 키 입력 시 드롭다운이 닫히고 textarea 값은 유지된다', async () => {
     server.use(...userHandlers)
     render(
