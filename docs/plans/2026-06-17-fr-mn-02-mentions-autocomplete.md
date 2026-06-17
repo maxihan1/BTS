@@ -185,3 +185,17 @@ classify: type=api, agent=backend-engineer, primary_bc=identity-access.
 - ⚠️ **주의4 (T2/T3 구현)**. docked dropdown은 `z-50` + textarea 바로 아래. 저장/취소 버튼·Preview 영역과 겹침 시 z-index/위치 확인(시각 회귀는 E2E 스냅 불요, 수동 확인).
 
 **BLOCKER: 없음.**
+
+### PR 단위 코드 리뷰 (2026-06-17, 게이트 2)
+
+**superpowers:code-reviewer**: ✅ PASS (CONCERNS 2, BLOCKER 0). 절대규칙 클린(any/!!/console/localStorage/빈catch 0), PII 안전(email 미참조), noUncheckedIndexedAccess 가드, 주의1·2 반영, race/blur cleanup 정상, 테스트 비-vacuous, IssueDescription 회귀 0.
+- CONCERN1 (빈쿼리 fetch): 기존 assignee 셀렉터(issues.$key.tsx:148)와 동일 production 패턴이라 수용. **거짓 주석 1줄 정정 완료**(커밋 38b955c1).
+- CONCERN2 (훅이 ReactNode 반환): 의도적 단순화, 수용.
+
+**독립 adversarial 리뷰**: BLOCKER 0. 발견 triage(controller 검증).
+- **P1 stale value splice — 기각**. controlled textarea라 DOM===value, 클릭은 키입력 커밋 후 실행, useCallback 동일-render 클로저. 버그 아님(리뷰어 자체 메모도 "consistent per-render").
+- **수용된 저심각 엣지(후속 후보)**: (a) caret를 기존 `@user` 중간에 두고 선택 시 `@user ` + 잔여(`ice`) 오염 — spec FR9(end=caret) 일치, 저빈도. (b) activeIndex 범위초과 dead-key — keystroke 없는 candidates 축소(백그라운드 refetch)만 트리거, 극희소. (c) Preview 탭 전환 후 드롭다운 잔존 — 경미 UX. (d) E2E `/@alice\s/` 느슨(기존 description 내용으로 부분일치 일부 정당).
+- **기존 앱 전역 패턴(신규 아님)**: blur 타이머 vs 터치(LabelAutocompleteInput), email 네트워크 노출(assignee 셀렉터 동일 DTO).
+
+**verify-master-plan**: ✅ exit 0 (FR 123/123 정합, drift 0).
+**검증**: typecheck ✅ · lint ✅ · 단위 3051/3051 ✅ · E2E 4 시나리오 + issue-body-meta 회귀 0 ✅.
