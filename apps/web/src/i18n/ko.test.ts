@@ -482,3 +482,13 @@ describe('issueDetailStrings — 감시자(watcher) 신규 키 존재 검증 (FR
     expect(issueDetailStrings.watchersMore(5)).toBe('+5명 더')
   })
 })
+
+// ── changelogFieldLabels — N1 (FR-MV-02) 콜론 가드 ───────────────────────────
+
+describe('issueDetailStrings.changelogFieldLabels — 콜론 종결 가드 (N1, FR-MV-02)', () => {
+  it('모든 필드 라벨 값은 콜론으로 끝나지 않는다 (글로벌 §5)', () => {
+    for (const [field, label] of Object.entries(issueDetailStrings.changelogFieldLabels)) {
+      expect(label, `changelogFieldLabels["${field}"] = "${label}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+    }
+  })
+})
