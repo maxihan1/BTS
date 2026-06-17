@@ -1,4 +1,8 @@
 // 멘션 트리거 감지 및 텍스트 splice 순수 함수 — FR-MN-02 Task 1
+
+/** '@' + 뒤 공백 1개 — splice 시 삽입되는 접두 문자 수 */
+const MENTION_PREFIX_LEN = 2
+
 /** caret 위치에서 활성 멘션(@쿼리)을 역방향 스캔으로 감지한 결과 */
 export interface ActiveMentionResult {
   active: boolean
@@ -15,9 +19,13 @@ export interface SpliceMentionResult {
 
 /**
  * 주어진 문자가 멘션 경계(공백·개행·문자열 시작)인지 판별한다.
+ *
+ * `@` 앞에 이 문자가 있어야 멘션 트리거로 인정된다.
+ * `undefined`는 문자열 인덱스 0 이전, 즉 문자열 시작을 의미한다.
+ *
  * @param ch - 검사할 문자 (undefined = 문자열 시작 이전)
  */
-function isBoundaryChar(ch: string | undefined): boolean {
+export function isBoundaryChar(ch: string | undefined): boolean {
   if (ch === undefined) return true
   return /\s/.test(ch)
 }
@@ -71,6 +79,6 @@ export function spliceMention(
   username: string,
 ): SpliceMentionResult {
   const next = text.slice(0, start) + '@' + username + ' ' + text.slice(end)
-  const caret = start + username.length + 2 // '@' + username + ' '
+  const caret = start + username.length + MENTION_PREFIX_LEN
   return { next, caret }
 }
