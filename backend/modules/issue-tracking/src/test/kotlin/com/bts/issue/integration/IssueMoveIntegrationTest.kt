@@ -663,11 +663,11 @@ class IssueMoveIntegrationTest {
         val issueId = insertIssue(SRC_KEY, "open")
         val otherIssueId = insertIssue(SRC_KEY, "open")
 
-        // 시드 — 링크
-        val outboundLink = issueLinkRepository.insert(
+        // 시드 — 링크 (반환값은 미사용 — populated 단언과 이동 후 재조회로 id 집합 비교)
+        issueLinkRepository.insert(
             IssueLink.create(sourceId = issueId, targetId = otherIssueId, linkType = LinkType.BLOCKS),
         )
-        val inboundLink = issueLinkRepository.insert(
+        issueLinkRepository.insert(
             IssueLink.create(sourceId = otherIssueId, targetId = issueId, linkType = LinkType.RELATES),
         )
 
@@ -1117,11 +1117,13 @@ class IssueMoveIntegrationTest {
         attachId: UUID,
         filename: String,
     ) {
+        @Suppress("MaxLineLength")
+        val sql =
+            "INSERT INTO issue_attachments " +
+                "(id, issue_id, filename, content_type, size_bytes, storage_key, uploaded_by, created_at) " +
+                "VALUES (?, ?, ?, 'text/plain', 0, ?, ?::uuid, NOW())"
         getConnection().use { conn ->
-            conn.prepareStatement(
-                "INSERT INTO issue_attachments (id, issue_id, filename, content_type, size_bytes, storage_key, uploaded_by, created_at) " +
-                    "VALUES (?, ?, ?, 'text/plain', 0, ?, ?::uuid, NOW())",
-            ).use { ps ->
+            conn.prepareStatement(sql).use { ps ->
                 ps.setObject(1, attachId)
                 ps.setObject(2, issueId)
                 ps.setString(3, filename)
