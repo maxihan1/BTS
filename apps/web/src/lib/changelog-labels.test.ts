@@ -343,3 +343,37 @@ describe('resolveValueLabel — null/empty 폴백', () => {
     expect(resolveValueLabel(item, 'from', emptyRefs)).toBe('(없음)')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-MV. FR-MV-02 — 이동(key 변경) 이력 라벨
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('resolveFieldLabel — key 이동 이벤트 (FR-MV-02)', () => {
+  it('T-FL-MV-01: key → "프로젝트 이동"을 반환한다', () => {
+    expect(resolveFieldLabel('key', emptyRefs)).toBe('프로젝트 이동')
+  })
+})
+
+describe('resolveValueLabel — key 이동 raw 반환 (폴백 경로 회귀)', () => {
+  it('T-VL-MV-01: field=key, from side에서 옛 이슈 키를 raw 그대로 반환한다', () => {
+    const item = makeItem({
+      field: 'key',
+      fromValue: 'BTS-1',
+      toValue: 'PROJ-42',
+      fromLabel: null,
+      toLabel: null,
+    })
+    expect(resolveValueLabel(item, 'from', emptyRefs)).toBe('BTS-1')
+  })
+
+  it('T-VL-MV-02: field=key, to side에서 새 이슈 키를 raw 그대로 반환한다', () => {
+    const item = makeItem({
+      field: 'key',
+      fromValue: 'BTS-1',
+      toValue: 'PROJ-42',
+      fromLabel: null,
+      toLabel: null,
+    })
+    expect(resolveValueLabel(item, 'to', emptyRefs)).toBe('PROJ-42')
+  })
+})
