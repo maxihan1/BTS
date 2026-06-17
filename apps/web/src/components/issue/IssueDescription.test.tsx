@@ -1,7 +1,25 @@
 // IssueDescription 컴포넌트 단위 테스트 — Write/Preview 탭, 저장/취소 흐름 검증
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
+import type { ReactNode } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { server } from '@/test/server'
+import { userHandlers } from '@/mocks/user-handlers'
 import { IssueDescription } from './IssueDescription'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 멘션 테스트용 wrapper 팩토리 — QueryClientProvider 제공
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 멘션 테스트 블록에서만 사용하는 QueryClient wrapper 생성 팩토리 */
+function makeMentionWrapper(): ({ children }: { children: ReactNode }) => JSX.Element {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return function MentionWrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  }
+}
 
 describe('IssueDescription', () => {
   const defaultProps = {
@@ -212,5 +230,108 @@ describe('IssueDescription', () => {
       />,
     )
     expect(screen.getByRole('button', { name: '본문 편집' })).toBeDisabled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 멘션 자동완성 배선 테스트 — FR-MN-02 Task 3
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDescription — 멘션 자동완성 배선', () => {
+  const defaultProps = {
+    descriptionHtml: '<p>본문 HTML</p>',
+    description: '본문 마크다운',
+    onSave: vi.fn(),
+    isSaving: false,
+  }
+
+  /**
+   * 편집 모드 진입 헬퍼 — 편집 버튼 클릭 후 textarea를 반환한다.
+   * wrapper 포함 렌더가 필요하므로 미리 server.use(userHandlers)를 호출한 상태에서 사용할 것.
+   */
+  function enterEditMode() {
+    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
+    return screen.getByRole('textbox', { name: '본문 편집' }) as HTMLTextAreaElement
+  }
+
+  it('@al 입력 후 debounce 완료 시 멘션 드롭다운(role=listbox)이 노출된다', async () => {
+    server.use(...userHandlers)
+    render(
+      <IssueDescription {...defaultProps} />,
+      { wrapper: makeMentionWrapper() },
+    )
+
+    const textarea = enterEditMode()
+
+    // @al 입력 — selectionStart를 3으로 맞춰 caret 위치를 시뮬레이션한다
+    act(() => {
+      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
+      fireEvent.change(textarea, { target: { value: '@al' } })
+    })
+
+    // debounce(250ms) + useUsers 응답 대기
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    }, { timeout: 2000 })
+  })
+
+  it('드롭다운 후보 클릭(onMouseDown) 시 textarea 값에 @<username> 공백이 반영된다', async () => {
+    server.use(...userHandlers)
+    render(
+      <IssueDescription {...defaultProps} />,
+      { wrapper: makeMentionWrapper() },
+    )
+
+    const textarea = enterEditMode()
+
+    act(() => {
+      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
+      fireEvent.change(textarea, { target: { value: '@al' } })
+    })
+
+    // 드롭다운 노출 대기
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    }, { timeout: 2000 })
+
+    // alice 항목 클릭 — onMouseDown으로 선택
+    const aliceOption = screen.getByTestId('mention-option-alice')
+    fireEvent.mouseDown(aliceOption)
+
+    // textarea 값에 @alice 공백 반영 확인
+    await waitFor(() => {
+      expect(textarea).toHaveValue('@alice ')
+    })
+  })
+
+  it('Escape 키 입력 시 드롭다운이 닫히고 textarea 값은 유지된다', async () => {
+    server.use(...userHandlers)
+    render(
+      <IssueDescription {...defaultProps} />,
+      { wrapper: makeMentionWrapper() },
+    )
+
+    const textarea = enterEditMode()
+
+    act(() => {
+      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
+      fireEvent.change(textarea, { target: { value: '@al' } })
+    })
+
+    // 드롭다운 노출 대기
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    }, { timeout: 2000 })
+
+    // Escape 키 입력
+    fireEvent.keyDown(textarea, { key: 'Escape' })
+
+    // 드롭다운 닫힘 확인
+    await waitFor(() => {
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    })
+
+    // textarea 값 유지 확인
+    expect(textarea).toHaveValue('@al')
   })
 })
