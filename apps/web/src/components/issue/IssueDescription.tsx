@@ -1,8 +1,9 @@
 // 이슈 본문(description) 표시 및 편집 컴포넌트 — GitHub 스타일 Write/Preview 탭
 import type { JSX } from 'react'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { issueDetailStrings } from '@/i18n/ko'
+import { useMentionAutocomplete } from './mention/use-mention-autocomplete'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -223,6 +224,14 @@ function EditMode({
   onCancel,
   isSaving,
 }: EditModeProps): JSX.Element {
+  // FR-MN-02: 멘션 자동완성 배선 — textarea ref + 훅 연결
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const mention = useMentionAutocomplete({
+    value: draftMarkdown,
+    onChange: onDraftChange,
+    textareaRef,
+  })
+
   return (
     <div className="flex flex-col gap-2">
       {/* 탭 헤더 */}
@@ -252,13 +261,23 @@ function EditMode({
       {/* 탭 콘텐츠 */}
       <div className="min-h-[120px]">
         {activeTab === 'write' ? (
-          <textarea
-            className="w-full min-h-[120px] resize-y rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            value={draftMarkdown}
-            onChange={(e) => onDraftChange(e.target.value)}
-            aria-label={issueDetailStrings.descriptionEditButton}
-            disabled={isSaving}
-          />
+          /* relative 컨테이너 — 드롭다운 absolute 앵커 역할(FR11/주의4) */
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              className="w-full min-h-[120px] resize-y rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              value={draftMarkdown}
+              onChange={mention.onChange}
+              onKeyDown={mention.onKeyDown}
+              onCompositionStart={mention.onCompositionStart}
+              onCompositionEnd={mention.onCompositionEnd}
+              onSelect={mention.onSelect}
+              onBlur={mention.onBlur}
+              aria-label={issueDetailStrings.descriptionEditButton}
+              disabled={isSaving}
+            />
+            {mention.mentionDropdown}
+          </div>
         ) : (
           /* Preview 탭: descriptionHtml만 표시, draftMarkdown 노출 금지(NFR2) */
           <div className="min-h-[120px] rounded-md border border-input bg-background px-3 py-2">

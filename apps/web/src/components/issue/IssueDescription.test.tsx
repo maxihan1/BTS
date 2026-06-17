@@ -11,12 +11,18 @@ import { IssueDescription } from './IssueDescription'
 // 멘션 테스트용 wrapper 팩토리 — QueryClientProvider 제공
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 멘션 테스트 블록에서만 사용하는 QueryClient wrapper 생성 팩토리 */
-function makeMentionWrapper(): ({ children }: { children: ReactNode }) => JSX.Element {
+/**
+ * QueryClient wrapper 생성 팩토리.
+ *
+ * IssueDescription의 EditMode는 useMentionAutocomplete → useUsers(TanStack Query)를
+ * 내부 호출하므로, 편집 모드로 진입하는 모든 테스트에 QueryClientProvider가 필요하다.
+ * 테스트마다 독립된 QueryClient 인스턴스를 생성해 캐시가 테스트 간 공유되지 않게 한다.
+ */
+function makeWrapper(): ({ children }: { children: ReactNode }) => JSX.Element {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
-  return function MentionWrapper({ children }: { children: ReactNode }) {
+  return function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   }
 }
@@ -67,14 +73,14 @@ describe('IssueDescription', () => {
   // ── 편집 모드 진입 ────────────────────────────────────────────────────────
 
   it('본문 편집 버튼 클릭 시 Write 탭 textarea에 raw description이 표시된다', () => {
-    render(<IssueDescription {...defaultProps} />)
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
     fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
     const textarea = screen.getByRole('textbox', { name: '본문 편집' })
     expect(textarea).toHaveValue('본문 마크다운')
   })
 
   it('편집 모드에서 Write/Preview 탭이 표시된다', () => {
-    render(<IssueDescription {...defaultProps} />)
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
     fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
     expect(screen.getByRole('tab', { name: '편집' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '미리보기' })).toBeInTheDocument()
@@ -84,7 +90,7 @@ describe('IssueDescription', () => {
 
   it('저장 버튼 클릭 시 onSave(rawMarkdown)을 호출한다', () => {
     const onSave = vi.fn()
-    render(<IssueDescription {...defaultProps} onSave={onSave} />)
+    render(<IssueDescription {...defaultProps} onSave={onSave} />, { wrapper: makeWrapper() })
     fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
     const textarea = screen.getByRole('textbox', { name: '본문 편집' })
     fireEvent.change(textarea, { target: { value: '수정된 내용' } })
@@ -94,7 +100,7 @@ describe('IssueDescription', () => {
 
   it('빈 입력 저장 시 onSave("")를 호출한다 (클리어)', () => {
     const onSave = vi.fn()
-    render(<IssueDescription {...defaultProps} onSave={onSave} />)
+    render(<IssueDescription {...defaultProps} onSave={onSave} />, { wrapper: makeWrapper() })
     fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
     const textarea = screen.getByRole('textbox', { name: '본문 편집' })
     fireEvent.change(textarea, { target: { value: '' } })
@@ -105,7 +111,7 @@ describe('IssueDescription', () => {
   // ── 취소 흐름 ─────────────────────────────────────────────────────────────
 
   it('취소 버튼 클릭 시 편집 모드가 닫힌다', () => {
-    render(<IssueDescription {...defaultProps} />)
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
     fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
     expect(screen.getByRole('textbox', { name: '본문 편집' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '취소' }))
@@ -115,7 +121,7 @@ describe('IssueDescription', () => {
   // ── isSaving 상태 ─────────────────────────────────────────────────────────
 
   it('isSaving=true이면 저장/취소 버튼이 disabled된다', () => {
-    render(<IssueDescription {...defaultProps} isSaving={true} />)
+    render(<IssueDescription {...defaultProps} isSaving={true} />, { wrapper: makeWrapper() })
     fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
     expect(screen.getByRole('button', { name: '저장' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '취소' })).toBeDisabled()
@@ -258,7 +264,7 @@ describe('IssueDescription — 멘션 자동완성 배선', () => {
     server.use(...userHandlers)
     render(
       <IssueDescription {...defaultProps} />,
-      { wrapper: makeMentionWrapper() },
+      { wrapper: makeWrapper() },
     )
 
     const textarea = enterEditMode()
@@ -279,7 +285,7 @@ describe('IssueDescription — 멘션 자동완성 배선', () => {
     server.use(...userHandlers)
     render(
       <IssueDescription {...defaultProps} />,
-      { wrapper: makeMentionWrapper() },
+      { wrapper: makeWrapper() },
     )
 
     const textarea = enterEditMode()
@@ -308,7 +314,7 @@ describe('IssueDescription — 멘션 자동완성 배선', () => {
     server.use(...userHandlers)
     render(
       <IssueDescription {...defaultProps} />,
-      { wrapper: makeMentionWrapper() },
+      { wrapper: makeWrapper() },
     )
 
     const textarea = enterEditMode()
