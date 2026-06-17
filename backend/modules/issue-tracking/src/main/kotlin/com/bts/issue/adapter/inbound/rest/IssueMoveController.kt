@@ -3,13 +3,13 @@
 package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.adapter.inbound.rest.dto.MovePreviewRequest
+import com.bts.issue.adapter.inbound.rest.dto.MovePreviewResponse
 import com.bts.issue.adapter.inbound.rest.dto.MoveRequest
 import com.bts.issue.adapter.inbound.rest.dto.MoveResponse
 import com.bts.issue.adapter.inbound.rest.dto.MovedSubtask
 import com.bts.issue.adapter.inbound.rest.dto.SubtaskMoveMapping
 import com.bts.issue.application.IssueMoveRequest
 import com.bts.issue.application.IssueMoveService
-import com.bts.issue.application.MovePreview
 import com.bts.issue.application.MovePreviewService
 import com.bts.issue.application.SubtaskMoveSpec
 import com.bts.issue.domain.IssueKey
@@ -56,7 +56,7 @@ class IssueMoveController(
      *
      * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
      * @param request preview 요청 바디 (Jakarta Validation 적용).
-     * @return 200 OK + [MovePreview] body
+     * @return 200 OK + [MovePreviewResponse] body
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우 → 404
      * @throws com.bts.issue.domain.IssueAccessDeniedException 원본 UPDATE 또는 대상 CREATE 권한 없을 때 → 403
      * @throws com.bts.issue.domain.IssueProjectNotFoundException 대상 프로젝트 미존재 → 404
@@ -65,13 +65,13 @@ class IssueMoveController(
     fun preview(
         @PathVariable key: String,
         @Valid @RequestBody request: MovePreviewRequest,
-    ): ResponseEntity<DataResponse<MovePreview>> {
+    ): ResponseEntity<DataResponse<MovePreviewResponse>> {
         log.info("IssueMoveController.preview key={} targetProject={}", key, request.targetProjectKey)
 
         val actor = CurrentActor.current()
         val issueKey = IssueKey(key)
         val result = previewService.preview(actor, issueKey, request.targetProjectKey)
-        return ResponseEntity.ok(DataResponse(data = result))
+        return ResponseEntity.ok(DataResponse(data = MovePreviewResponse.from(result)))
     }
 
     /**
