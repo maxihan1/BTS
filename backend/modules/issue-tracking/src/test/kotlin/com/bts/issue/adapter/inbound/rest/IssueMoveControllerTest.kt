@@ -193,6 +193,7 @@ class IssueMoveControllerTest {
     // ── MV-P-6: preview — 도메인 내부 필드 노출 없이 정식 DTO 직렬화 (C2 RED) ──────
 
     @Test
+    @Suppress("LongMethod")
     fun `POST move-preview — Version·Component·CustomField 채워진 preview는 deletedAt 미노출·날짜 ISO 직렬화`() {
         val projectId = UUID.fromString("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
         val versionId = UUID.fromString("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
