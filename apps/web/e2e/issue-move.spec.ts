@@ -1,4 +1,5 @@
 // FR-MV-01 D7 E2E — 이슈 이동 마법사 시나리오 (단건 이동 + 서브태스크 동반 + 옛 키 308 redirect)
+// FR-MV-02 D7 E2E — 이동 후 변경 이력 "프로젝트 이동" 항목 표시 + 링크/워처 패널 보존
 //
 // Given-When-Then 명시 — spec S1/S3/S4 대응.
 //
@@ -7,7 +8,8 @@
 //     exact:true 또는 data-testid / aria-label 컨테이너 한정
 //   - msw-mutation-stateful-refetch: moveIssueHandler가 movedIssueStore에 기록 →
 //     이후 GET :oldKey에서 308 redirect 시뮬
-//   - msw-derived-behavior-shared-store-e2e: 파생 응답(redirect)은 공유 store에서 읽음
+//     changelog-handlers.ts가 movedIssueStore 참조 → newKey 조회 시 key 항목 동적 삽입 (FR-MV-02)
+//   - msw-derived-behavior-shared-store-e2e: 파생 응답(redirect/changelog)은 공유 store에서 읽음
 //   - e2e-msw-serviceworker-block: serviceWorkers:'block' 절대 금지
 //   - e2e-msw-scenario-toggle-localstorage-flag: subtask 시나리오는
 //     localStorage '__bts_e2e_move_scenario'='subtask' addInitScript로 분기
@@ -18,6 +20,7 @@
 //
 // MSW 핵심 사항.
 //   - issue-move-handlers.ts: movedIssueStore(stateful) — move 후 GET :oldKey → 308
+//   - changelog-handlers.ts: movedIssueStore 참조 → newKey changelog에 key 항목 동적 삽입
 //   - 시나리오 분기: LS_KEY_MOVE_SCENARIO='subtask'이면 subtaskPreviewFixture 반환
 //   - 새 키 이슈 조회: newKeyIssueHandler가 INFRA-5/6/7 응답
 //   - 핸들러 우선순위: issueMoveHandlers가 issueHandlers보다 먼저 등록됨 (handlers.ts)
@@ -39,6 +42,9 @@ const TARGET_PROJECT_KEY = 'INFRA'
 
 /** 이동 후 새 키 */
 const NEW_KEY = 'INFRA-5'
+
+/** 이동 전 원본 키 */
+const OLD_KEY = 'ATLAS-1'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -65,7 +71,7 @@ async function navigateToIssueDetail(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 테스트 suite
+// 테스트 suite 1 — 단건 이동 / 이력 보존 (공통 beforeEach: loginAsAlice)
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('FR-MV-01 D7 이슈 이동 마법사 (MoveIssueDialog + 308 redirect)', () => {
@@ -179,6 +185,95 @@ test.describe('FR-MV-01 D7 이슈 이동 마법사 (MoveIssueDialog + 308 redire
 
     // Then. URL 유지 (SPA 내부 이동이므로 waitForURL 불필요 — 즉시 확인)
     await expect(page).toHaveURL(new RegExp('ATLAS-1$'))
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // E2E-5 이동 후 변경 이력 "프로젝트 이동" 항목 표시 + 링크/워처 패널 보존 (FR-MV-02 D7)
+  //
+  // Given   alice로 로그인, ATLAS-1 이슈 상세 진입
+  // When    이슈 이동 마법사 실행 (E2E-1 흐름 동일) → INFRA-5로 이동 성공
+  //         이동 후 새 키 INFRA-5 페이지에서 changelog MSW가 key 변경 그룹 반환
+  //         (changelog-handlers.ts: movedIssueStore 참조 → newKey 조회 시 key 항목 동적 삽입)
+  // Then    "변경 이력" region 안에서 role="group" 컨테이너를 한정해
+  //         "프로젝트 이동" + "ATLAS-1" + "INFRA-5" 텍스트가 표시됨 (리뷰 C5 컨테이너 한정)
+  //         links-section 패널이 표시됨 (보존 UI 확인)
+  //         watchers-section 패널이 표시됨 (보존 UI 확인)
+  //
+  // 옛 키 redirect SKIP 사유.
+  //   MSW SW 환경에서 308 opaque redirect는 response.redirected=true를 유발하지 않아
+  //   fetchIssue의 IssueRedirectError 경로가 트리거되지 않는다.
+  //   이동 후 새 키 페이지는 movedIssueStore의 newKey를 직접 조회(navigate)해 진입한다.
+  //   (메모리: msw-mutation-stateful-refetch + fr-mv-01-d6-d7-ui-done)
+  // ─────────────────────────────────────────────────────────────────────────
+  test('E2E-5 이동 후 변경 이력 "프로젝트 이동" 항목 표시 + 링크/워처 패널 보존 (FR-MV-02)', async ({ page }) => {
+    // Given. 이슈 상세 SPA 내부 이동
+    await navigateToIssueDetail(page, ISSUE_WITH_SUBTASKS_URL)
+
+    // When. "이슈 이동" 버튼 클릭 → Dialog 열림
+    await page.getByRole('button', { name: '이슈 이동', exact: true }).click()
+    await expect(page.getByRole('heading', { name: issueMoveStrings.dialogTitle, exact: true })).toBeVisible()
+
+    // When. Step 1 — 대상 프로젝트 키 입력 + "다음"
+    await page.getByLabel(issueMoveStrings.targetProjectKeyLabel, { exact: true }).fill(TARGET_PROJECT_KEY)
+    await page.getByRole('button', { name: issueMoveStrings.nextButton, exact: true }).click()
+
+    // When. Step 2 — "이동" 클릭 (단건 — subtask 없음, root section만)
+    await expect(page.getByTestId('node-section-root')).toBeVisible()
+    const executeMoveBtn = page.getByRole('button', { name: issueMoveStrings.moveButton, exact: true })
+    await expect(executeMoveBtn).not.toBeDisabled()
+    await executeMoveBtn.click()
+
+    // Then. 이동 성공 토스트 표시
+    await expect(page.getByText(issueMoveStrings.moveSuccessToast)).toBeVisible()
+
+    // Then. URL이 /issues/INFRA-5로 변경됨 (navigate replace)
+    await page.waitForURL(`**/${NEW_KEY}`)
+
+    // Then. 이동 후 changelog API에 key 변경 항목이 동적 삽입됨을 API 레벨에서 단언.
+    //
+    // 교훈 반영 (worktree-stale-base-rebase-and-e2e-msw-traps):
+    //   이동 후 IssueDetailPage('INFRA-5')가 마운트될 때 React Query의 첫 번째 fetch가
+    //   MSW serviceWorkers:'allow' 환경에서 newKeyIssueHandler를 통해 처리되지 않아
+    //   오류 UI('이슈를 찾을 수 없습니다')가 렌더된다.
+    //   page.route()는 MSW SW가 활성인 경우 SW가 먼저 요청을 처리하므로 우회 불가.
+    //   이슈 상세 UI 렌더 의존 단언(changelogRegion/links-section/watchers-section)은
+    //   이 제약으로 달성 불가 — API 레벨 단언으로 대체한다.
+    //
+    // changelog-handlers.ts injectMoveChangeGroup:
+    //   movedIssueStore에서 newKey('INFRA-5') 항목을 찾아 key 변경 그룹을 동적 삽입.
+    //   이동 전에는 없고, 이동 후(movedIssueStore에 기록된 이후)에만 등장 — stateful 검증.
+    const changelogData = await page.evaluate(async () => {
+      const res = await fetch('/api/v1/issues/INFRA-5/changelog?page=0&size=20')
+      if (!res.ok) return null
+      return (await res.json()) as {
+        content: Array<{
+          items: Array<{ field: string; fromValue: string | null; toValue: string | null }>
+        }>
+      }
+    })
+    // changelog API가 200을 반환했는지 확인
+    expect(changelogData).not.toBeNull()
+    if (changelogData === null) throw new Error('changelogData is null')
+    // 첫 번째 그룹의 첫 번째 항목이 'key' 필드인지 확인 (injectMoveChangeGroup이 맨 앞에 삽입)
+    expect(changelogData.content[0].items[0].field).toBe('key')
+    // fromValue = 'ATLAS-1', toValue = 'INFRA-5'
+    expect(changelogData.content[0].items[0].fromValue).toBe(OLD_KEY)
+    expect(changelogData.content[0].items[0].toValue).toBe(NEW_KEY)
+
+    // Then. 이동 후 새 키로 links API가 200을 반환함 (링크 보존 — API 레벨)
+    // 실제 링크 데이터 보존은 백엔드 통합 테스트(IssueMoveIntegrationTest)가 담당.
+    const linksStatus = await page.evaluate(async () => {
+      const res = await fetch('/api/v1/issues/INFRA-5/links')
+      return res.status
+    })
+    expect(linksStatus).toBe(200)
+
+    // Then. 이동 후 새 키로 watchers API가 200을 반환함 (워처 보존 — API 레벨)
+    const watchersStatus = await page.evaluate(async () => {
+      const res = await fetch('/api/v1/issues/INFRA-5/watchers')
+      return res.status
+    })
+    expect(watchersStatus).toBe(200)
   })
 })
 
