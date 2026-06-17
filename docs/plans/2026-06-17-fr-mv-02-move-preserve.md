@@ -59,6 +59,89 @@
 
 ✅ 통과 (1회, Maxi 결정 갭 0). G1(changelog 폴백 렌더 확인—라벨 1줄 추가)·G2(기존 detector 테스트 전수 실행)·G3(첨부는 DB행 보존으로 검증, MinIO 왕복 생략) 모두 구현 단계 처리.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 단일 PR (백엔드 detector 1줄 + 통합테스트 + 프론트 i18n 1줄 + E2E — 소규모 FR이라 D1~D7 한 PR).
+> 모든 작업 worktree `.worktrees/fr-mv-02-move-preserve` 내부. 경로는 repo 루트 기준.
+
+### Task 1. IssueChangeDetector에 `key` 추적 추가 → 이동 이벤트 감지
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/history/IssueChangeDetector.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/history/IssueChangeDetectorTest.kt`]
+- depends-on: []
+
+**RED** (`IssueChangeDetectorTest.kt`):
+- `detect()` 가 `before.key ≠ after.key` 일 때 `field="key"`, fromValue=옛 키, toValue=새 키 항목을 정확히 1건 포함한다.
+- `before.key == after.key` 면 `key` 항목을 만들지 않는다(이동 외 경로 회귀 가드, EC6).
+- 키 변경이 다른 필드 변경(예: status)과 공존 시 둘 다 기록(이동의 부수효과 status/resolution도 함께).
+- 실패 예상: 현재 SCALAR_FIELD_EXTRACTORS에 `key` 없음 → key 항목 0건으로 단언 실패.
+
+**GREEN** (`IssueChangeDetector.kt`):
+- `SCALAR_FIELD_EXTRACTORS` 에 `"key" to { it.key.value }` 1줄 추가(라벨 불요 — resolver passthrough, status/summary와 동일 정책).
+
+**REFACTOR**:
+- KDoc 한 줄 — "key 는 이동(FR-MV-02)에서만 변경되므로 이동 이벤트 마커 역할". detekt baseline 동결(메모리), 신규 위반 시 헬퍼 추출.
+
+**검증**: `./gradlew :backend:modules:issue-tracking:test --tests "*IssueChangeDetectorTest"` + 기존 detector 8진입점 테스트 전수 green(NFR2). `IssueChangeLabelResolverTest`도 회귀(`key`는 라벨 미해석 passthrough 확인).
+
+### Task 2. 이동 보존 invariant 통합 테스트 (D5) — 행 보존 + recorder 새 키 호출
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/integration/IssueMoveIntegrationTest.kt`]
+- depends-on: []
+
+**RED/GREEN** (테스트 추가 — 기존 mockk recorder 재사용, 신규 production 코드 0):
+- TestConfig에 `IssueLinkRepository`, `AttachmentRepository` 빈 추가(워처는 이미 wiring). 단순 jOOQ repo.
+- **단건 이동 보존**: 이슈 BTS-x에 링크(out: blocks, in: relates)·워처 2·첨부 2 시드 → 이동 → 이슈 id로 재조회해 `issue_links`/`issue_watchers`/`issue_attachments` 행 집합이 **이동 전과 동일**함을 단언(첨부는 DB 행만, MinIO 왕복 생략 — G3).
+- **이동 이벤트 호출 검증**: `verify { historyRecorder.record(before = any(), after = match { it.key == newKey && it.projectId == targetProjectId }, ...) }` — 이동이 새 키 after-스냅샷으로 recorder를 호출함을 mockk capture로 단언. Task1(detector key 감지)과 합쳐 "이동→이력 기록" end-to-end 증명(무거운 real recorder wiring 불요).
+- **서브태스크 동반 보존**: 부모+자식 각자 링크/워처/첨부 시드 → 동반 이동 → 노드별 행 보존 + 각 노드 recorder 새 키 호출 단언.
+- 실패 예상: 신규 테스트 메서드 부재(컴파일 후 단언). 보존은 현 구현이 이미 충족하므로 즉시 green — invariant를 회귀 가드로 고정(FR2).
+
+**검증**: `./gradlew :backend:modules:issue-tracking:test --tests "*IssueMoveIntegrationTest"` green. 기존 FR-MV-01 케이스 회귀 보존.
+
+### Task 3. 프론트 changelog "이동" i18n 라벨
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/i18n/ko.ts`, `apps/web/src/lib/changelog-labels.test.ts`]
+- depends-on: []
+
+**RED** (`changelog-labels.test.ts`):
+- `resolveFieldLabel('key', refs)` === `'이동'`(또는 ko.ts에 정의한 값).
+- `resolveValueLabel({field:'key', fromValue:'BTS-1', toValue:'PROJ-42', ...}, 'from'/'to', refs)` 가 각각 `'BTS-1'`/`'PROJ-42'` raw 반환(폴백 경로 회귀).
+- 실패 예상: `changelogFieldLabels.key` 미정의 → `resolveFieldLabel`이 `'key'` 폴백 반환 → 단언 실패.
+
+**GREEN** (`i18n/ko.ts`):
+- `issueDetailStrings.changelogFieldLabels` 에 `key: '이동'` 1줄 추가(콜론 종결 금지 — ko.test 자동검증, 라벨 값은 명사라 무관).
+
+**REFACTOR**:
+- `IssueChangelog.tsx`가 전 항목을 매핑·필드 화이트리스트 필터 없음 재확인(폴백 렌더 — G1). 변경 필요 시 최소.
+
+**검증**: `pnpm --filter web test -- changelog-labels` + `pnpm --filter web test -- ko` (i18n 콜론 가드) green.
+
+### Task 4. E2E — 이동 후 이력에 "이동" 표시 + 보존 (D7)
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/issue-move.spec.ts`, `apps/web/src/mocks/changelog-handlers.ts`, `apps/web/src/mocks/changelog-fixtures.ts`]
+- depends-on: [3]
+
+**시나리오**:
+- 기존 `issue-move.spec.ts` 이동 happy-path 위에서, 이동 성공 후 새 키 페이지의 변경 이력 패널에 **"이동" 항목(BTS-1 → PROJ-42)** 표시 단언.
+- 이동 후 링크/워처 패널이 보존 데이터를 그대로 표시(MSW가 새 키로 링크/워처 반환).
+- MSW: move 핸들러(기존) + changelog 핸들러에 `key` 변경 항목 추가(stateful — 이동 후 changelog에 이동 이벤트 등장). 메모리 교훈: MSW mutation stateful, 토스터/항목 컨테이너 한정 셀렉터, strict-mode within.
+
+**검증**: `pnpm --filter web test:e2e -- issue-move` green. 기존 이동 E2E 회귀 보존.
+
+## Plan 메타
+
+- task 수: 4 (T1 detector / T2 보존 통합테스트 / T3 프론트 라벨 / T4 E2E)
+- 예상 wave: 2 (Wave1 = T1·T2·T3 병렬 [deps 없음, 파일 무겹침], Wave2 = T4 [deps 3])
+- TDD 강제: yes (T1 RED→GREEN production 변경, T2/T3/T4는 테스트 우선)
+- 신규: DB 컬럼 0 · 엔드포인트 0 · cross-BC 0 · production 변경 = detector 1줄 + i18n 1줄
+- 추가 검증: ktlint/detekt(baseline 동결), pnpm typecheck/lint, vitest, playwright(qa)
+- 주의(메모리): 동시 브랜치 Flyway 충돌 무관(마이그레이션 0) · detekt 캐시 false-green→`--rerun-tasks` · 에이전트 lint 보고 불신 controller 직접검증 · 단일 Gradle 모듈 test 컴파일 직렬화 요인
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
