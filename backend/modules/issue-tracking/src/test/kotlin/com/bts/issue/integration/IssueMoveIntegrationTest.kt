@@ -790,26 +790,28 @@ class IssueMoveIntegrationTest {
         assert(childAttachBefore.isNotEmpty()) { "자식 첨부 0건 — vacuous 차단 실패" }
 
         // ─── 동반 이동 실행 ───────────────────────────────────────────────
-        val moveWithSubtasksRequest = mapOf(
-            "targetProjectKey" to DST_KEY,
-            "expectedVersion" to 1L,
-            "targetStateIsDone" to false,
-            "componentMapping" to emptyMap<String, String>(),
-            "affectsVersionMapping" to emptyMap<String, String>(),
-            "fixVersionMapping" to emptyMap<String, String>(),
-            "customFieldValues" to emptyMap<String, Any>(),
-            "subtasks" to listOf(
-                mapOf(
-                    "issueKey" to "$SRC_KEY-2",
-                    "expectedVersion" to 1L,
-                    "targetStateIsDone" to false,
-                    "componentMapping" to emptyMap<String, String>(),
-                    "affectsVersionMapping" to emptyMap<String, String>(),
-                    "fixVersionMapping" to emptyMap<String, String>(),
-                    "customFieldValues" to emptyMap<String, Any>(),
-                ),
-            ),
-        )
+        val moveWithSubtasksRequest =
+            mapOf(
+                "targetProjectKey" to DST_KEY,
+                "expectedVersion" to 1L,
+                "targetStateIsDone" to false,
+                "componentMapping" to emptyMap<String, String>(),
+                "affectsVersionMapping" to emptyMap<String, String>(),
+                "fixVersionMapping" to emptyMap<String, String>(),
+                "customFieldValues" to emptyMap<String, Any>(),
+                "subtasks" to
+                    listOf(
+                        mapOf(
+                            "issueKey" to "$SRC_KEY-2",
+                            "expectedVersion" to 1L,
+                            "targetStateIsDone" to false,
+                            "componentMapping" to emptyMap<String, String>(),
+                            "affectsVersionMapping" to emptyMap<String, String>(),
+                            "fixVersionMapping" to emptyMap<String, String>(),
+                            "customFieldValues" to emptyMap<String, Any>(),
+                        ),
+                    ),
+            )
 
         mockMvc.perform(
             post("/api/v1/issues/$SRC_KEY-1/move")
@@ -1127,7 +1129,7 @@ class IssueMoveIntegrationTest {
                 ps.setObject(1, attachId)
                 ps.setObject(2, issueId)
                 ps.setString(3, filename)
-                ps.setString(4, "test-storage/${attachId}")
+                ps.setString(4, "test-storage/$attachId")
                 ps.setString(5, ACTOR_ID)
                 ps.executeUpdate()
             }

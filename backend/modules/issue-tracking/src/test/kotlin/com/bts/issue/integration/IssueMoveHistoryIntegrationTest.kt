@@ -8,9 +8,9 @@ import com.bts.issue.application.IssueMoveService
 import com.bts.issue.application.MovePreviewService
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
-import com.bts.issue.history.IssueChangeLabelResolver
 import com.bts.issue.history.IssueChangeDetector
 import com.bts.issue.history.IssueChangeHistoryRepository
+import com.bts.issue.history.IssueChangeLabelResolver
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.history.JdbcIssueChangeHistoryRepository
 import com.bts.issue.integration.IssueMoveIntegrationTest.SwitchablePermissionResolver
@@ -31,9 +31,9 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.mockk
 import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.extension.ExtendWith
@@ -58,7 +58,6 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import java.sql.Connection
 import java.sql.DriverManager
-import java.time.Clock
 import java.util.UUID
 
 /**
@@ -96,7 +95,6 @@ import java.util.UUID
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Suppress("LongMethod", "TooManyFunctions")
 class IssueMoveHistoryIntegrationTest {
-
     /**
      * 실제 IssueHistoryRecorder를 주입한 이동 관련 빈 구성.
      *
@@ -109,28 +107,22 @@ class IssueMoveHistoryIntegrationTest {
     @Configuration
     @Suppress("LongParameterList")
     open class IssueMoveHistoryConfig {
-
         /** AlwaysAllow를 @Primary로 교체하여 권한 거부 없이 이동이 성공하도록 한다. */
         @Bean
         @Primary
-        open fun historyTestPermissionResolver(): SwitchablePermissionResolver =
-            SwitchablePermissionResolver()
+        open fun historyTestPermissionResolver(): SwitchablePermissionResolver = SwitchablePermissionResolver()
 
         @Bean
-        open fun historyIssueKeyRedirectRepository(dsl: DSLContext): IssueKeyRedirectRepository =
-            IssueKeyRedirectRepository(dsl)
+        open fun historyIssueKeyRedirectRepository(dsl: DSLContext): IssueKeyRedirectRepository = IssueKeyRedirectRepository(dsl)
 
         @Bean
-        open fun historyComponentRepository(dsl: DSLContext): ComponentRepository =
-            ComponentRepository(dsl)
+        open fun historyComponentRepository(dsl: DSLContext): ComponentRepository = ComponentRepository(dsl)
 
         @Bean
-        open fun historyVersionRepository(dsl: DSLContext): VersionRepository =
-            VersionRepository(dsl)
+        open fun historyVersionRepository(dsl: DSLContext): VersionRepository = VersionRepository(dsl)
 
         @Bean
-        open fun historyProjectLeadRepository(dsl: DSLContext): ProjectLeadRepository =
-            ProjectLeadRepository(dsl)
+        open fun historyProjectLeadRepository(dsl: DSLContext): ProjectLeadRepository = ProjectLeadRepository(dsl)
 
         @Bean
         open fun historyCustomFieldDefinitionRepository(dsl: DSLContext): CustomFieldDefinitionRepository =
@@ -143,9 +135,7 @@ class IssueMoveHistoryIntegrationTest {
             NamedParameterJdbcTemplate(dataSource)
 
         @Bean
-        open fun realIssueChangeHistoryRepository(
-            namedParameterJdbcTemplate: NamedParameterJdbcTemplate,
-        ): IssueChangeHistoryRepository =
+        open fun realIssueChangeHistoryRepository(namedParameterJdbcTemplate: NamedParameterJdbcTemplate): IssueChangeHistoryRepository =
             JdbcIssueChangeHistoryRepository(namedParameterJdbcTemplate)
 
         @Bean
@@ -182,9 +172,8 @@ class IssueMoveHistoryIntegrationTest {
         // ── WorkflowStateCatalog ────────────────────────────────────────────────
 
         @Bean
-        open fun historyWorkflowStateCatalog(
-            workflowResolver: WorkflowResolverImpl,
-        ): WorkflowStateCatalogImpl = WorkflowStateCatalogImpl(workflowResolver)
+        open fun historyWorkflowStateCatalog(workflowResolver: WorkflowResolverImpl): WorkflowStateCatalogImpl =
+            WorkflowStateCatalogImpl(workflowResolver)
 
         // ── IssueMoveService (실 recorder 주입) ─────────────────────────────────
 
