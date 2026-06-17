@@ -10,6 +10,9 @@ import com.bts.issue.application.MoveResult
 import com.bts.issue.application.ResourceMappingSection
 import com.bts.issue.application.VersionMappingSection
 import com.bts.issue.application.WorkflowPreviewSection
+import com.bts.issue.component.domain.Component
+import com.bts.issue.customfield.domain.CustomFieldDefinition
+import com.bts.issue.customfield.domain.FieldType
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.InvalidTargetMappingException
 import com.bts.issue.domain.InvalidTargetStateException
@@ -21,6 +24,8 @@ import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.MappingKind
 import com.bts.issue.domain.MoveSameProjectException
 import com.bts.issue.domain.RequiredFieldMissingException
+import com.bts.issue.version.domain.Version
+import com.bts.issue.version.domain.VersionStatus
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssueScope
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -49,6 +54,8 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -63,6 +70,7 @@ import java.util.UUID
  * - MV-P-3. preview — 권한 없음 → 403 ACCESS_DENIED
  * - MV-P-4. preview — body 없음(잘못된 JSON) → 400 VALIDATION_FAILED
  * - MV-P-5. preview — targetProjectKey 빈값 → 400 VALIDATION_FAILED
+ * - MV-P-6. preview — Version/Component/CustomField 채워진 응답이 정식 DTO 형태로 직렬화 (C2)
  * - MV-M-1. move 정상 → 200 + issueKey/previousKey
  * - MV-M-2. move — OCC 충돌 → 409 VERSION_CONFLICT
  * - MV-M-3. move — 같은 프로젝트 이동 → 422 MOVE_SAME_PROJECT
@@ -180,6 +188,102 @@ class IssueMoveControllerTest {
             .andExpect(jsonPath("$.data.workflow.suggestedStateKey").value("open"))
             .andExpect(jsonPath("$.data.components").exists())
             .andExpect(jsonPath("$.data.customFields").exists())
+    }
+
+    // ── MV-P-6: preview — 도메인 내부 필드 노출 없이 정식 DTO 직렬화 (C2 RED) ──────
+
+    @Test
+    fun `POST move-preview — Version·Component·CustomField 채워진 preview는 deletedAt 미노출·날짜 ISO 직렬화`() {
+        val projectId = UUID.fromString("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        val versionId = UUID.fromString("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        val componentId = UUID.fromString("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+        val fieldId = UUID.fromString("dddddddd-dddd-4ddd-8ddd-dddddddddddd")
+
+        val targetVersion =
+            Version(
+                id = versionId,
+                projectId = projectId,
+                name = "v1.0",
+                description = null,
+                startDate = LocalDate.of(2026, 6, 17),
+                releaseDate = LocalDate.of(2026, 12, 31),
+                status = VersionStatus.UNRELEASED,
+                releasedAt = null,
+                deletedAt = Instant.parse("2026-06-01T00:00:00Z"),
+            )
+
+        val targetComponent =
+            Component(
+                id = componentId,
+                projectId = projectId,
+                name = "backend",
+                description = null,
+                leadUserId = null,
+                deletedAt = Instant.parse("2026-05-01T00:00:00Z"),
+            )
+
+        val targetField =
+            CustomFieldDefinition(
+                id = fieldId,
+                projectId = projectId,
+                key = "priority",
+                name = "Priority",
+                description = null,
+                fieldType = FieldType.TEXT,
+                required = true,
+                displayOrder = 1,
+                options = emptyList(),
+            )
+
+        val richPreview =
+            MovePreview(
+                version = 2L,
+                workflow =
+                    WorkflowPreviewSection(
+                        compatible = false,
+                        targetStates = emptyList(),
+                        suggestedStateKey = null,
+                    ),
+                components =
+                    ResourceMappingSection(
+                        current = emptyList(),
+                        target = listOf(targetComponent),
+                        autoMapping = emptyMap(),
+                    ),
+                affectsVersions =
+                    VersionMappingSection(
+                        current = emptyList(),
+                        target = listOf(targetVersion),
+                        autoMapping = emptyMap(),
+                    ),
+                fixVersions =
+                    VersionMappingSection(
+                        current = emptyList(),
+                        target = emptyList(),
+                        autoMapping = emptyMap(),
+                    ),
+                customFields =
+                    CustomFieldPreviewSection(
+                        removed = emptyList(),
+                        requiredMissing = listOf(targetField),
+                    ),
+            )
+
+        every { movePreviewService.preview(any(), sourceKey, any()) } returns richPreview
+
+        mockMvc.perform(
+            post("/api/v1/issues/ATLAS-1/move/preview")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("targetProjectKey" to "DEST"))),
+        )
+            .andExpect(status().isOk)
+            // Version: deletedAt 미노출, startDate ISO "yyyy-MM-dd" 형식
+            .andExpect(jsonPath("$.data.affectsVersions.target[0].deletedAt").doesNotExist())
+            .andExpect(jsonPath("$.data.affectsVersions.target[0].startDate").value("2026-06-17"))
+            // Component: deletedAt 미노출
+            .andExpect(jsonPath("$.data.components.target[0].deletedAt").doesNotExist())
+            // CustomField: id 존재
+            .andExpect(jsonPath("$.data.customFields.requiredMissing[0].id").exists())
     }
 
     // ── MV-P-2: preview — 이슈 미존재 → 404 ────────────────────────────────────
