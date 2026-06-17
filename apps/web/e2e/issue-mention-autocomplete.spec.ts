@@ -84,7 +84,11 @@ test.describe('FR-MN-02 이슈 본문 멘션 자동완성 (S1~S4)', () => {
   test('S1 @al 타이핑 → 드롭다운 노출 → 클릭 선택 → @alice 삽입', async ({ page }) => {
     // Given.
     const { textarea } = await enterDescriptionEditMode(page)
-    await textarea.click()
+
+    // Given. textarea를 비워 결정론화 — 기존 description 내용이 caret 위치에 끼어들지 않도록
+    // fill('')은 change 이벤트를 발생시켜 비우는 데 충분하며, 이후 pressSequentially로
+    // 실 keydown을 발생시켜 caret이 끝(위치 3)에 정착하도록 한다.
+    await textarea.fill('')
 
     // When. "@al" 실 키 입력 — pressSequentially로 caret이 끝에 오도록
     // (fill은 change 이벤트만 발생하므로 실 keydown 순서가 없음 → pressSequentially 사용)
@@ -99,8 +103,9 @@ test.describe('FR-MN-02 이슈 본문 멘션 자동완성 (S1~S4)', () => {
     await expect(aliceOption).toBeVisible()
     await aliceOption.click()
 
-    // Then. textarea 값에 "@alice " 포함 (spliceMention: '@'+'alice'+' ')
-    await expect(textarea).toHaveValue(/@alice\s/)
+    // Then. textarea 값이 정확히 "@alice " (뒤 공백 1개 포함) — exact 단언으로 오염 방지
+    // "@alice ice" 같은 잘못된 splice 오염도 이 단언으로 잡힌다 (부분일치 regex 제거)
+    await expect(textarea).toHaveValue('@alice ')
 
     // Then. 드롭다운 닫힘 (선택 후 open=false)
     await expect(dropdown).not.toBeVisible()
@@ -121,7 +126,9 @@ test.describe('FR-MN-02 이슈 본문 멘션 자동완성 (S1~S4)', () => {
   test('S2 @al 타이핑 → ArrowDown → Enter → @alice 삽입 (줄바꿈 없음)', async ({ page }) => {
     // Given.
     const { textarea } = await enterDescriptionEditMode(page)
-    await textarea.click()
+
+    // Given. textarea를 비워 결정론화
+    await textarea.fill('')
 
     // When. "@al" 실 키 입력
     await textarea.pressSequentially('@al')
@@ -134,10 +141,10 @@ test.describe('FR-MN-02 이슈 본문 멘션 자동완성 (S1~S4)', () => {
     await textarea.press('ArrowDown')
     await textarea.press('Enter')
 
-    // Then. "@alice " 삽입 (줄바꿈 없음 — Enter가 가로채짐)
+    // Then. textarea 값이 정확히 "@alice " (exact 단언으로 오염 방지)
     const value = await textarea.inputValue()
-    expect(value).toMatch(/@alice\s/)
-    // 줄바꿈이 삽입됐다면 '\n'이 포함됨 — 없음 확인
+    expect(value).toBe('@alice ')
+    // 줄바꿈이 삽입됐다면 '\n'이 포함됨 — 없음 확인 (Enter가 onKeyDown에서 preventDefault됨)
     expect(value).not.toContain('\n')
 
     // Then. 드롭다운 닫힘
@@ -159,7 +166,9 @@ test.describe('FR-MN-02 이슈 본문 멘션 자동완성 (S1~S4)', () => {
   test('S3 @al 타이핑 → Escape → 드롭다운 닫힘 + 값 유지', async ({ page }) => {
     // Given.
     const { textarea } = await enterDescriptionEditMode(page)
-    await textarea.click()
+
+    // Given. textarea를 비워 결정론화 — Escape 후 "@al" 만 남아 있는지 exact 단언 가능하도록
+    await textarea.fill('')
 
     // When. "@al" 실 키 입력
     await textarea.pressSequentially('@al')
@@ -195,7 +204,9 @@ test.describe('FR-MN-02 이슈 본문 멘션 자동완성 (S1~S4)', () => {
   test('S4 @alice 삽입 후 저장 버튼 → 저장 경로 동작', async ({ page }) => {
     // Given.
     const { descriptionEditor, textarea } = await enterDescriptionEditMode(page)
-    await textarea.click()
+
+    // Given. textarea를 비워 결정론화
+    await textarea.fill('')
 
     // When. "@al" 입력 → 드롭다운 → alice 선택
     await textarea.pressSequentially('@al')
@@ -206,8 +217,8 @@ test.describe('FR-MN-02 이슈 본문 멘션 자동완성 (S1~S4)', () => {
     await expect(aliceOption).toBeVisible()
     await aliceOption.click()
 
-    // 삽입 확인
-    await expect(textarea).toHaveValue(/@alice\s/)
+    // 삽입 확인 — exact 단언으로 오염 방지
+    await expect(textarea).toHaveValue('@alice ')
 
     // When. 저장 버튼 클릭 — descriptionEditor 컨테이너로 strict-mode 방지
     const saveBtn = descriptionEditor.getByRole('button', {
