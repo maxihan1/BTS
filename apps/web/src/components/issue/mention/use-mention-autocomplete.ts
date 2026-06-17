@@ -1,0 +1,302 @@
+// 멘션 자동완성 상태 및 이벤트 핸들러 훅 — FR-MN-02 Task 2
+import { useState, useRef, useCallback, useEffect, type RefObject, type ReactNode } from 'react'
+import { createElement } from 'react'
+import { useUsers } from '@/hooks/use-users'
+import { useDebounce } from '@/hooks/use-debounce'
+import { detectActiveMention, spliceMention } from './mention-detect'
+import { MentionDropdown } from './MentionDropdown'
+import type { UserSummary } from '@/api/users'
+import type {
+  ChangeEvent,
+  KeyboardEvent,
+  CompositionEvent,
+  SyntheticEvent,
+  FocusEvent,
+} from 'react'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 상수
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 검색어 debounce 지연 시간(ms) */
+const DEBOUNCE_DELAY_MS = 250
+
+/** 활성 멘션 감지를 위한 최소 query 길이 */
+const MIN_QUERY_LENGTH = 1
+
+/** listbox 기본 id */
+const LISTBOX_ID = 'mention-autocomplete-listbox'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 순수 헬퍼
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * requestAnimationFrame 이후 textarea에 포커스를 두고 caret을 복원한다.
+ *
+ * F1: 언마운트된 노드에 focus()를 거는 race를 막기 위해 isConnected를 검사한다.
+ *
+ * @param el - 대상 textarea
+ * @param caretPos - 복원할 caret 위치
+ */
+function restoreCaretAfterFrame(el: HTMLTextAreaElement, caretPos: number): void {
+  requestAnimationFrame(() => {
+    if (!el.isConnected) return
+    el.focus()
+    el.setSelectionRange(caretPos, caretPos)
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 인터페이스
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** useMentionAutocomplete 훅 입력 props */
+export interface UseMentionAutocompleteProps {
+  /** 현재 textarea 전체 텍스트 (controlled) */
+  value: string
+  /** 텍스트 변경 콜백 — 부모 상태 갱신용 */
+  onChange: (next: string) => void
+  /** textarea DOM 참조 */
+  textareaRef: RefObject<HTMLTextAreaElement | null>
+}
+
+/** useMentionAutocomplete 훅 반환값 */
+export interface UseMentionAutocompleteReturn {
+  /** textarea onChange 핸들러 */
+  onChange: (e: ChangeEvent<HTMLTextAreaElement>) => void
+  /** textarea onKeyDown 핸들러 */
+  onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void
+  /** textarea onCompositionStart 핸들러 */
+  onCompositionStart: (e: CompositionEvent<HTMLTextAreaElement>) => void
+  /** textarea onCompositionEnd 핸들러 */
+  onCompositionEnd: (e: CompositionEvent<HTMLTextAreaElement>) => void
+  /** textarea onSelect 핸들러 (커서 이동 감지) */
+  onSelect: (e: SyntheticEvent<HTMLTextAreaElement>) => void
+  /** textarea onBlur 핸들러 */
+  onBlur: (e: FocusEvent<HTMLTextAreaElement>) => void
+  /** 드롭다운 ReactNode — open=false면 null */
+  mentionDropdown: ReactNode
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useMentionAutocomplete
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 멘션 자동완성 훅.
+ *
+ * textarea의 이벤트 핸들러와 드롭다운 ReactNode를 반환한다.
+ * 호출 측은 반환값을 textarea에 그대로 배선한다.
+ *
+ * 핵심 동작:
+ * - onChange/onSelect 이벤트의 `e.currentTarget.selectionStart ?? 0`에서 caret 읽기(render 중 ref 금지).
+ * - query 길이 ≥ 1일 때만 useDebounce → useUsers 호출.
+ * - 키보드: open 중에만 Arrow/Enter/Tab/Escape를 가로채고 preventDefault.
+ * - IME 조합 중에는 감지 보류(isComposingRef).
+ *
+ * @param value - 현재 textarea 텍스트 (controlled)
+ * @param onChange - 텍스트 변경 콜백
+ * @param textareaRef - textarea DOM 참조
+ */
+export function useMentionAutocomplete({
+  value,
+  onChange,
+  textareaRef,
+}: UseMentionAutocompleteProps): UseMentionAutocompleteReturn {
+  // 활성 멘션 상태
+  const [query, setQuery] = useState<string>('')
+  const [open, setOpen] = useState(false)
+  const [mentionRange, setMentionRange] = useState<{ start: number; end: number } | null>(null)
+  const [activeIndex, setActiveIndex] = useState(-1)
+
+  // IME 조합 상태 — state 불필요, ref로 추적
+  const isComposingRef = useRef(false)
+
+  // blur 지연 타이머 ref — unmount 시 cleanup으로 타이머 잔재 방지
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // debounce 된 쿼리 — MIN_QUERY_LENGTH 미만이면 빈 문자열(쿼리 비활성)
+  const debouncedQuery = useDebounce(query.length >= MIN_QUERY_LENGTH ? query : '', DEBOUNCE_DELAY_MS)
+
+  // useUsers — debouncedQuery가 빈 문자열이면 enabled=false로 실행 안 함
+  const { data: candidates = [] } = useUsers(debouncedQuery)
+
+  // 경합 방지: open 상태 + 현재 query를 최신 ref로 유지
+  const openRef = useRef(open)
+  openRef.current = open
+  const queryRef = useRef(query)
+  queryRef.current = query
+
+  /** 활성 멘션을 감지하고 state를 갱신한다. IME 조합 중이면 무시. */
+  const detectAndUpdate = useCallback(
+    (text: string, caret: number) => {
+      if (isComposingRef.current) return
+
+      const result = detectActiveMention(text, caret)
+      if (result.active && result.query !== undefined && result.start !== undefined && result.end !== undefined) {
+        const newQuery = result.query
+        if (newQuery.length >= MIN_QUERY_LENGTH) {
+          setQuery(newQuery)
+          setMentionRange({ start: result.start, end: result.end })
+          setOpen(true)
+          setActiveIndex(-1)
+        } else {
+          // query 길이 0(@만) — fetch/open 안 함
+          setQuery('')
+          setOpen(false)
+          setMentionRange(null)
+        }
+      } else {
+        // 활성 멘션 없음 — 닫기
+        setQuery('')
+        setOpen(false)
+        setMentionRange(null)
+      }
+    },
+    [],
+  )
+
+  /** textarea onChange — 부모 onChange 전파 + 멘션 감지 */
+  const handleChange = useCallback(
+    (e: ChangeEvent<HTMLTextAreaElement>) => {
+      const text = e.currentTarget.value
+      const caret = e.currentTarget.selectionStart ?? 0
+      onChange(text)
+      detectAndUpdate(text, caret)
+    },
+    [onChange, detectAndUpdate],
+  )
+
+  /**
+   * textarea onSelect — caret 이동 감지.
+   * E6: caret이 활성 멘션 구간 밖이면 닫음.
+   * 주의: value prop 클로저 대신 e.currentTarget.value를 직접 읽어
+   *       React 상태 업데이트 시차 문제를 회피한다.
+   */
+  const handleSelect = useCallback(
+    (e: SyntheticEvent<HTMLTextAreaElement>) => {
+      const el = e.currentTarget as HTMLTextAreaElement
+      const text = el.value
+      const caret = el.selectionStart ?? 0
+      detectAndUpdate(text, caret)
+    },
+    [detectAndUpdate],
+  )
+
+  /**
+   * 후보 선택 처리.
+   * spliceMention → onChange → caret 복원 → 닫기.
+   */
+  const handleSelectCandidate = useCallback(
+    (candidate: UserSummary) => {
+      if (mentionRange === null) return
+      const { next, caret } = spliceMention(value, mentionRange.start, mentionRange.end, candidate.username)
+      onChange(next)
+
+      const el = textareaRef.current
+      if (el !== null) {
+        restoreCaretAfterFrame(el, caret)
+      }
+
+      setOpen(false)
+      setQuery('')
+      setMentionRange(null)
+      setActiveIndex(-1)
+    },
+    [value, mentionRange, onChange, textareaRef],
+  )
+
+  /** textarea onKeyDown — open 중에만 Arrow/Enter/Tab/Escape 가로채기 */
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (!openRef.current) return
+
+      const total = candidates.length
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setActiveIndex((prev) => (total === 0 ? -1 : (prev + 1) % total))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setActiveIndex((prev) => (total === 0 ? -1 : (prev - 1 + total) % total))
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        const idx = activeIndex >= 0 ? activeIndex : 0
+        const candidate = candidates[idx]
+        if (candidate !== undefined) {
+          handleSelectCandidate(candidate)
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        setOpen(false)
+        setQuery('')
+        setMentionRange(null)
+        setActiveIndex(-1)
+      }
+    },
+    [candidates, activeIndex, handleSelectCandidate],
+  )
+
+  /** IME 조합 시작 */
+  const handleCompositionStart = useCallback(() => {
+    isComposingRef.current = true
+  }, [])
+
+  /**
+   * IME 조합 종료 — 즉시 재감지.
+   * isComposingRef를 false로 설정한 뒤, compositionEnd 시점의
+   * textarea.value / selectionStart로 detectAndUpdate를 직접 호출한다.
+   * 이렇게 하면 compositionEnd 이후 별도 onSelect 이벤트 없이도 드롭다운이 열린다.
+   */
+  const handleCompositionEnd = useCallback((e: CompositionEvent<HTMLTextAreaElement>) => {
+    isComposingRef.current = false
+    const el = e.currentTarget as HTMLTextAreaElement
+    detectAndUpdate(el.value, el.selectionStart ?? 0)
+  }, [detectAndUpdate])
+
+  /**
+   * textarea onBlur — 150ms 지연 후 닫기.
+   * onMouseDown preventDefault가 있으면 blur가 억제되므로 실제 blur 시에만 실행.
+   * blurTimerRef로 이전 타이머를 취소해 unmount 후 잔재 방지.
+   */
+  const handleBlur = useCallback(() => {
+    if (blurTimerRef.current !== null) {
+      clearTimeout(blurTimerRef.current)
+    }
+    blurTimerRef.current = setTimeout(() => {
+      blurTimerRef.current = null
+      setOpen(false)
+    }, 150)
+  }, [])
+
+  // blur 타이머 unmount cleanup — 컴포넌트 제거 시 pending 타이머 취소
+  useEffect(() => {
+    return () => {
+      if (blurTimerRef.current !== null) {
+        clearTimeout(blurTimerRef.current)
+      }
+    }
+  }, [])
+
+  // 드롭다운 렌더
+  const showDropdown = open && candidates.length > 0
+  const mentionDropdown: ReactNode = showDropdown
+    ? createElement(MentionDropdown, {
+        candidates,
+        activeIndex,
+        onSelect: handleSelectCandidate,
+        listboxId: LISTBOX_ID,
+      })
+    : null
+
+  return {
+    onChange: handleChange,
+    onKeyDown: handleKeyDown,
+    onCompositionStart: handleCompositionStart,
+    onCompositionEnd: handleCompositionEnd,
+    onSelect: handleSelect,
+    onBlur: handleBlur,
+    mentionDropdown,
+  }
+}
