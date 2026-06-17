@@ -496,8 +496,13 @@ describe('useMentionAutocomplete', () => {
 
     // candidates를 2명으로 축소 → activeIndex=2가 범위 초과(0~1)
     act(() => { queryClient.setQueryData(['users', 'al'], fewUsers) })
+    // TanStack Query 구독 알림이 React에 전달되어 re-render가 완료되기를 기다린다
+    await waitFor(() => {
+      // listbox options가 2개로 줄어들었을 때 candidates 교체 완료
+      expect(screen.getAllByRole('option')).toHaveLength(2)
+    }, { timeout: 500 })
 
-    // Enter — clamp 후 유효 후보(bob, index 1)가 선택되어야 한다
+    // Enter — clamp 후 유효 후보(alice|bob)가 선택되어야 한다
     const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
     act(() => { textarea.dispatchEvent(enterEvent) })
 

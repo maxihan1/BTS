@@ -77,6 +77,11 @@ export interface UseMentionAutocompleteReturn {
   onBlur: (e: FocusEvent<HTMLTextAreaElement>) => void
   /** 드롭다운 ReactNode — open=false면 null */
   mentionDropdown: ReactNode
+  /**
+   * 멘션 상태를 초기화한다 (드롭다운 닫기 + query/range/activeIndex 리셋).
+   * blur 타이머도 취소하므로 탭 전환 등 명시적 이탈 시 타이머 의존 없이 즉시 정리할 수 있다.
+   */
+  reset: () => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -123,11 +128,15 @@ export function useMentionAutocomplete({
   // 드롭다운 표시는 아래 showDropdown(open && candidates.length>0)으로 차단된다(open은 query 길이 ≥1에서만 true).
   const { data: candidates = [] } = useUsers(debouncedQuery)
 
-  // 경합 방지: open 상태 + 현재 query를 최신 ref로 유지
+  // 경합 방지: open 상태 + 현재 query + candidates + activeIndex를 최신 ref로 유지
   const openRef = useRef(open)
   openRef.current = open
   const queryRef = useRef(query)
   queryRef.current = query
+  const candidatesRef = useRef(candidates)
+  candidatesRef.current = candidates
+  const activeIndexRef = useRef(activeIndex)
+  activeIndexRef.current = activeIndex
 
   /** 활성 멘션을 감지하고 state를 갱신한다. IME 조합 중이면 무시. */
   const detectAndUpdate = useCallback(
@@ -213,7 +222,11 @@ export function useMentionAutocomplete({
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (!openRef.current) return
 
-      const total = candidates.length
+      // ref를 통해 최신 candidates / activeIndex 읽기
+      // setQueryData 직후 re-render 전에도 최신 값을 참조해 범위 초과 방지
+      const current = candidatesRef.current
+      const total = current.length
+      const currentActiveIndex = activeIndexRef.current
 
       if (e.key === 'ArrowDown') {
         e.preventDefault()
@@ -223,8 +236,11 @@ export function useMentionAutocomplete({
         setActiveIndex((prev) => (total === 0 ? -1 : (prev - 1 + total) % total))
       } else if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault()
-        const idx = activeIndex >= 0 ? activeIndex : 0
-        const candidate = candidates[idx]
+        // activeIndex가 범위 초과일 수 있으므로 최신 candidates 기준으로 clamp
+        const safeIndex = currentActiveIndex >= 0 && currentActiveIndex < total
+          ? currentActiveIndex
+          : total > 0 ? 0 : -1
+        const candidate = safeIndex >= 0 ? current[safeIndex] : undefined
         if (candidate !== undefined) {
           handleSelectCandidate(candidate)
         }
@@ -236,7 +252,7 @@ export function useMentionAutocomplete({
         setActiveIndex(-1)
       }
     },
-    [candidates, activeIndex, handleSelectCandidate],
+    [handleSelectCandidate],
   )
 
   /** IME 조합 시작 */
@@ -280,6 +296,31 @@ export function useMentionAutocomplete({
     }
   }, [])
 
+  /**
+   * 멘션 상태 전체 초기화.
+   * blur 타이머를 즉시 취소하므로 탭 전환 등 명시적 이탈 시 타이머 없이 바로 닫힌다.
+   */
+  const reset = useCallback(() => {
+    if (blurTimerRef.current !== null) {
+      clearTimeout(blurTimerRef.current)
+      blurTimerRef.current = null
+    }
+    setOpen(false)
+    setQuery('')
+    setMentionRange(null)
+    setActiveIndex(-1)
+  }, [])
+
+  // activeIndex clamp — candidates가 축소될 때 범위 초과 방지.
+  // Enter 핸들러와 별개로, UI 하이라이트도 항상 유효 범위를 가리키도록 보장한다.
+  useEffect(() => {
+    if (candidates.length > 0 && activeIndex >= candidates.length) {
+      setActiveIndex(candidates.length - 1)
+    } else if (candidates.length === 0 && activeIndex !== -1) {
+      setActiveIndex(-1)
+    }
+  }, [candidates.length, activeIndex])
+
   // 드롭다운 렌더
   const showDropdown = open && candidates.length > 0
   const mentionDropdown: ReactNode = showDropdown
@@ -299,5 +340,6 @@ export function useMentionAutocomplete({
     onSelect: handleSelect,
     onBlur: handleBlur,
     mentionDropdown,
+    reset,
   }
 }

@@ -31,6 +31,25 @@ export function isBoundaryChar(ch: string | undefined): boolean {
 }
 
 /**
+ * caret 위치에서 전방(forward)으로 스캔해 현재 멘션 토큰의 끝 인덱스를 구한다.
+ *
+ * 공백·개행을 만나거나 문자열 끝에 도달하면 멈춘다.
+ * caret 뒤에 비공백 문자가 없으면 caret 자체를 반환(기존 동작 보존).
+ *
+ * @param text - 전체 텍스트
+ * @param caret - 현재 커서 위치
+ */
+function findTokenEnd(text: string, caret: number): number {
+  let j = caret
+  while (j < text.length) {
+    const ch = text[j]
+    if (ch === undefined || /\s/.test(ch)) break
+    j++
+  }
+  return j
+}
+
+/**
  * textarea/input의 text와 caret 위치를 받아 활성 멘션(@쿼리)을 감지한다.
  *
  * 역방향으로 caret-1부터 스캔:
@@ -38,6 +57,10 @@ export function isBoundaryChar(ch: string | undefined): boolean {
  * - `@`를 만나면 앞 문자가 경계인지 확인:
  *   - 경계이면 `{ active: true, query, start, end }` 반환
  *   - 경계가 아니면 `{ active: false }` 반환 (이메일 등)
+ *
+ * `query`는 `@` 다음~caret(검색어), `end`는 caret부터 forward 스캔해
+ * 첫 공백/개행/문자열 끝까지 확장한다. caret이 이미 토큰 끝이면 end=caret.
+ * 이를 통해 caret이 토큰 중간에 있을 때도 splice가 잔여 문자 없이 완전히 치환된다.
  *
  * @param text - 전체 텍스트
  * @param caret - 현재 커서 위치 (텍스트 인덱스 기준)
@@ -57,7 +80,8 @@ export function detectActiveMention(text: string, caret: number): ActiveMentionR
         return { active: false }
       }
       const query = text.slice(i + 1, caret)
-      return { active: true, query, start: i, end: caret }
+      const end = findTokenEnd(text, caret)
+      return { active: true, query, start: i, end }
     }
   }
 

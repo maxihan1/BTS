@@ -1,6 +1,6 @@
 // 이슈 본문(description) 표시 및 편집 컴포넌트 — GitHub 스타일 Write/Preview 탭
 import type { JSX } from 'react'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { issueDetailStrings } from '@/i18n/ko'
 import { useMentionAutocomplete } from './mention/use-mention-autocomplete'
@@ -231,6 +231,14 @@ function EditMode({
     onChange: onDraftChange,
     textareaRef,
   })
+
+  // 탭 전환 시 멘션 상태 즉시 초기화 — blur 타이머 타이밍에 의존하지 않음
+  const mentionReset = mention.reset
+  useEffect(() => {
+    if (activeTab !== 'write') {
+      mentionReset()
+    }
+  }, [activeTab, mentionReset])
 
   return (
     <div className="flex flex-col gap-2">
