@@ -45,6 +45,7 @@ class IssueChangeDetector {
          */
         private val SCALAR_FIELD_EXTRACTORS: List<Pair<String, (Issue) -> String?>> =
             listOf(
+                "key" to { it.key.value },
                 "summary" to { it.summary },
                 "type" to { it.typeId.value.toString() },
                 "status" to { it.currentStateKey },
