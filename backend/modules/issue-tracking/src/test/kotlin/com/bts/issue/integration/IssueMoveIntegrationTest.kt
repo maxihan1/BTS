@@ -1,4 +1,4 @@
-// 이슈 이동 HTTP 통합 테스트 — EC 전수 + 308 redirect + 권한 end-to-end (FR-MV-01 Task 9)
+// 이슈 이동 HTTP 통합 테스트 — EC 전수 + 308 redirect + 권한 end-to-end + 보존 invariant (FR-MV-01 Task 9 / FR-MV-02 Task 2)
 
 package com.bts.issue.integration
 
@@ -7,10 +7,14 @@ import com.bts.issue.adapter.inbound.rest.IssueExceptionHandler
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.IssueMoveService
 import com.bts.issue.application.MovePreviewService
+import com.bts.issue.attachment.repository.AttachmentRepository
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.history.IssueHistoryRecorder
+import com.bts.issue.link.domain.IssueLink
+import com.bts.issue.link.domain.LinkType
+import com.bts.issue.link.repository.IssueLinkRepository
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueKeyRedirectRepository
 import com.bts.issue.repository.IssueRepository
@@ -175,6 +179,12 @@ class IssueMoveIntegrationTest {
         @Bean
         open fun moveIssueWatcherRepository(dsl: DSLContext): IssueWatcherRepository = IssueWatcherRepository(dsl)
 
+        @Bean
+        open fun moveIssueLinkRepository(dsl: DSLContext): IssueLinkRepository = IssueLinkRepository(dsl)
+
+        @Bean
+        open fun moveAttachmentRepository(dsl: DSLContext): AttachmentRepository = AttachmentRepository(dsl)
+
         /**
          * IssueApplicationService를 @Primary로 교체하여 IssueKeyRedirectRepository를 주입받는다.
          *
@@ -289,6 +299,15 @@ class IssueMoveIntegrationTest {
 
     @Autowired
     lateinit var permissionResolver: SwitchablePermissionResolver
+
+    @Autowired
+    lateinit var issueLinkRepository: IssueLinkRepository
+
+    @Autowired
+    lateinit var watcherRepository: IssueWatcherRepository
+
+    @Autowired
+    lateinit var attachmentRepository: AttachmentRepository
 
     lateinit var mockMvc: MockMvc
 
@@ -617,6 +636,220 @@ class IssueMoveIntegrationTest {
             .andExpect(jsonPath("$.errorCode").value("ACCESS_DENIED"))
     }
 
+    // ── FR-MV-02 Task 2 — 보존 invariant 테스트 (D5) ───────────────────────────
+
+    /**
+     * 단건 이동 시 링크·워처·첨부 행 집합이 보존됨을 검증한다 (FR-MV-02 Task 2).
+     *
+     * ## 시드 구성
+     * - 이동 대상 이슈(MVSRC-1)에 나가는 blocks 링크 1개 + 들어오는 relates 링크 1개.
+     * - 워처 2명.
+     * - 첨부 2개 (DB 행만 — MinIO 왕복 없음, G3).
+     *
+     * ## vacuous 차단 (메모리 B3)
+     * 시드 직후 populated(>0) 선단언으로 시드 0건 false-green을 차단한다.
+     *
+     * ## 보존 단언
+     * 이동 후 이슈 id로 재조회한 링크(id·type·방향)·워처(userId)·첨부(id) 집합이
+     * 이동 전과 동일함을 단언한다.
+     *
+     * Given  MVSRC-1에 나가는 blocks 링크 1 + 들어오는 relates 링크 1 + 워처 2 + 첨부 2 시드
+     * When   POST /api/v1/issues/MVSRC-1/move { targetProjectKey: "MVDST" }
+     * Then   issue_links·issue_watchers·issue_attachments 행 집합이 이동 전후 동일
+     */
+    @Test
+    @Suppress("LongMethod")
+    fun `INV1 단건 이동 - 링크 워처 첨부 행 집합 보존`() {
+        val issueId = insertIssue(SRC_KEY, "open")
+        val otherIssueId = insertIssue(SRC_KEY, "open")
+
+        // 시드 — 링크 (반환값은 미사용 — populated 단언과 이동 후 재조회로 id 집합 비교)
+        issueLinkRepository.insert(
+            IssueLink.create(sourceId = issueId, targetId = otherIssueId, linkType = LinkType.BLOCKS),
+        )
+        issueLinkRepository.insert(
+            IssueLink.create(sourceId = otherIssueId, targetId = issueId, linkType = LinkType.RELATES),
+        )
+
+        // 시드 — 워처
+        val watcher1Id = UUID.fromString("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        val watcher2Id = UUID.fromString("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+        watcherRepository.add(issueId, watcher1Id)
+        watcherRepository.add(issueId, watcher2Id)
+
+        // 시드 — 첨부 (DB 행 직접, MinIO 연결 없음)
+        val attachId1 = UUID.randomUUID()
+        val attachId2 = UUID.randomUUID()
+        insertAttachmentRow(issueId, attachId1, "file1.txt")
+        insertAttachmentRow(issueId, attachId2, "file2.txt")
+
+        // ─── populated 선단언 (vacuous 차단) ────────────────────────────────
+        val outboundBefore = issueLinkRepository.findBySourceId(issueId)
+        val inboundBefore = issueLinkRepository.findByTargetId(issueId)
+        val watchersBefore = watcherRepository.listByIssue(issueId)
+        val attachmentsBefore = attachmentRepository.findByIssueId(issueId)
+
+        assert(outboundBefore.isNotEmpty()) { "시드 후 나가는 링크가 0건 — vacuous 차단 실패" }
+        assert(inboundBefore.isNotEmpty()) { "시드 후 들어오는 링크가 0건 — vacuous 차단 실패" }
+        assert(watchersBefore.size == 2) { "시드 후 워처가 ${watchersBefore.size}건 (기대 2) — vacuous 차단 실패" }
+        assert(attachmentsBefore.size == 2) { "시드 후 첨부가 ${attachmentsBefore.size}건 (기대 2) — vacuous 차단 실패" }
+
+        // ─── 이동 실행 ────────────────────────────────────────────────────
+        mockMvc.perform(
+            post("/api/v1/issues/$SRC_KEY-1/move")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(buildMoveRequest(DST_KEY, 1L))),
+        ).andExpect(status().isOk)
+
+        // ─── 이동 후 보존 단언 — id·type·방향까지 동일 ─────────────────────
+        val outboundAfter = issueLinkRepository.findBySourceId(issueId)
+        val inboundAfter = issueLinkRepository.findByTargetId(issueId)
+        val watchersAfter = watcherRepository.listByIssue(issueId)
+        val attachmentsAfter = attachmentRepository.findByIssueId(issueId)
+
+        assert(outboundAfter.map { it.id }.toSet() == outboundBefore.map { it.id }.toSet()) {
+            "이동 후 나가는 링크 id 집합 변경됨. 전=${outboundBefore.map { it.id }} 후=${outboundAfter.map { it.id }}"
+        }
+        assert(outboundAfter.first().linkType == LinkType.BLOCKS) {
+            "이동 후 나가는 링크 타입 변경됨: ${outboundAfter.first().linkType}"
+        }
+        assert(inboundAfter.map { it.id }.toSet() == inboundBefore.map { it.id }.toSet()) {
+            "이동 후 들어오는 링크 id 집합 변경됨. 전=${inboundBefore.map { it.id }} 후=${inboundAfter.map { it.id }}"
+        }
+        assert(inboundAfter.first().linkType == LinkType.RELATES) {
+            "이동 후 들어오는 링크 타입 변경됨: ${inboundAfter.first().linkType}"
+        }
+        assert(watchersAfter.map { it.userId }.toSet() == watchersBefore.map { it.userId }.toSet()) {
+            "이동 후 워처 집합 변경됨. 전=${watchersBefore.map { it.userId }} 후=${watchersAfter.map { it.userId }}"
+        }
+        assert(attachmentsAfter.map { it.id }.toSet() == attachmentsBefore.map { it.id }.toSet()) {
+            "이동 후 첨부 id 집합 변경됨. 전=${attachmentsBefore.map { it.id }} 후=${attachmentsAfter.map { it.id }}"
+        }
+    }
+
+    /**
+     * 서브태스크 동반 이동 시 부모·자식 각각의 링크·워처·첨부 행 집합이 보존됨을 검증한다 (FR-MV-02 Task 2).
+     *
+     * ## 시드 구성
+     * - 부모 이슈(MVSRC-1): 나가는 blocks 링크 1 + 워처 1 + 첨부 1.
+     * - 자식 이슈(MVSRC-2, parent=MVSRC-1): 나가는 relates 링크 1 + 워처 1 + 첨부 1.
+     * - 링크 상대방(MVSRC-3)은 이동 대상에서 제외 — 링크 행 보존만 검증.
+     *
+     * ## vacuous 차단
+     * 부모·자식 각자에 대해 시드 직후 populated(>0) 선단언.
+     *
+     * Given  부모(MVSRC-1) + 자식(MVSRC-2)에 각각 링크·워처·첨부 시드
+     * When   POST /api/v1/issues/MVSRC-1/move (subtasks=[MVSRC-2])
+     * Then   부모·자식 각각의 issue_links·issue_watchers·issue_attachments 행 집합 보존
+     */
+    @Test
+    @Suppress("LongMethod")
+    fun `INV2 서브태스크 동반 이동 - 부모 자식 각각 링크 워처 첨부 보존`() {
+        val parentId = insertIssue(SRC_KEY, "open")
+        val childId = insertIssue(SRC_KEY, "open", parentId = parentId)
+        val otherIssueId = insertIssue(SRC_KEY, "open")
+
+        // 시드 — 부모 링크 (나가는 blocks)
+        issueLinkRepository.insert(
+            IssueLink.create(sourceId = parentId, targetId = otherIssueId, linkType = LinkType.BLOCKS),
+        )
+        // 시드 — 자식 링크 (나가는 relates)
+        issueLinkRepository.insert(
+            IssueLink.create(sourceId = childId, targetId = otherIssueId, linkType = LinkType.RELATES),
+        )
+
+        // 시드 — 부모 워처
+        val parentWatcherId = UUID.fromString("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+        watcherRepository.add(parentId, parentWatcherId)
+
+        // 시드 — 자식 워처
+        val childWatcherId = UUID.fromString("dddddddd-dddd-4ddd-8ddd-dddddddddddd")
+        watcherRepository.add(childId, childWatcherId)
+
+        // 시드 — 부모 첨부
+        val parentAttachId = UUID.randomUUID()
+        insertAttachmentRow(parentId, parentAttachId, "parent-doc.txt")
+
+        // 시드 — 자식 첨부
+        val childAttachId = UUID.randomUUID()
+        insertAttachmentRow(childId, childAttachId, "child-doc.txt")
+
+        // ─── populated 선단언 (vacuous 차단) ────────────────────────────────
+        val parentLinksBefore = issueLinkRepository.findBySourceId(parentId)
+        val childLinksBefore = issueLinkRepository.findBySourceId(childId)
+        val parentWatchersBefore = watcherRepository.listByIssue(parentId)
+        val childWatchersBefore = watcherRepository.listByIssue(childId)
+        val parentAttachBefore = attachmentRepository.findByIssueId(parentId)
+        val childAttachBefore = attachmentRepository.findByIssueId(childId)
+
+        assert(parentLinksBefore.isNotEmpty()) { "부모 나가는 링크 0건 — vacuous 차단 실패" }
+        assert(childLinksBefore.isNotEmpty()) { "자식 나가는 링크 0건 — vacuous 차단 실패" }
+        assert(parentWatchersBefore.isNotEmpty()) { "부모 워처 0건 — vacuous 차단 실패" }
+        assert(childWatchersBefore.isNotEmpty()) { "자식 워처 0건 — vacuous 차단 실패" }
+        assert(parentAttachBefore.isNotEmpty()) { "부모 첨부 0건 — vacuous 차단 실패" }
+        assert(childAttachBefore.isNotEmpty()) { "자식 첨부 0건 — vacuous 차단 실패" }
+
+        // ─── 동반 이동 실행 ───────────────────────────────────────────────
+        val moveWithSubtasksRequest =
+            mapOf(
+                "targetProjectKey" to DST_KEY,
+                "expectedVersion" to 1L,
+                "targetStateIsDone" to false,
+                "componentMapping" to emptyMap<String, String>(),
+                "affectsVersionMapping" to emptyMap<String, String>(),
+                "fixVersionMapping" to emptyMap<String, String>(),
+                "customFieldValues" to emptyMap<String, Any>(),
+                "subtasks" to
+                    listOf(
+                        mapOf(
+                            "issueKey" to "$SRC_KEY-2",
+                            "expectedVersion" to 1L,
+                            "targetStateIsDone" to false,
+                            "componentMapping" to emptyMap<String, String>(),
+                            "affectsVersionMapping" to emptyMap<String, String>(),
+                            "fixVersionMapping" to emptyMap<String, String>(),
+                            "customFieldValues" to emptyMap<String, Any>(),
+                        ),
+                    ),
+            )
+
+        mockMvc.perform(
+            post("/api/v1/issues/$SRC_KEY-1/move")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(moveWithSubtasksRequest)),
+        ).andExpect(status().isOk)
+
+        // ─── 이동 후 보존 단언 — 부모 ────────────────────────────────────
+        val parentLinksAfter = issueLinkRepository.findBySourceId(parentId)
+        val parentWatchersAfter = watcherRepository.listByIssue(parentId)
+        val parentAttachAfter = attachmentRepository.findByIssueId(parentId)
+
+        assert(parentLinksAfter.map { it.id }.toSet() == parentLinksBefore.map { it.id }.toSet()) {
+            "이동 후 부모 링크 집합 변경됨"
+        }
+        assert(parentWatchersAfter.map { it.userId }.toSet() == parentWatchersBefore.map { it.userId }.toSet()) {
+            "이동 후 부모 워처 집합 변경됨"
+        }
+        assert(parentAttachAfter.map { it.id }.toSet() == parentAttachBefore.map { it.id }.toSet()) {
+            "이동 후 부모 첨부 집합 변경됨"
+        }
+
+        // ─── 이동 후 보존 단언 — 자식 ────────────────────────────────────
+        val childLinksAfter = issueLinkRepository.findBySourceId(childId)
+        val childWatchersAfter = watcherRepository.listByIssue(childId)
+        val childAttachAfter = attachmentRepository.findByIssueId(childId)
+
+        assert(childLinksAfter.map { it.id }.toSet() == childLinksBefore.map { it.id }.toSet()) {
+            "이동 후 자식 링크 집합 변경됨"
+        }
+        assert(childWatchersAfter.map { it.userId }.toSet() == childWatchersBefore.map { it.userId }.toSet()) {
+            "이동 후 자식 워처 집합 변경됨"
+        }
+        assert(childAttachAfter.map { it.id }.toSet() == childAttachBefore.map { it.id }.toSet()) {
+            "이동 후 자식 첨부 집합 변경됨"
+        }
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     /**
@@ -869,6 +1102,38 @@ class IssueMoveIntegrationTest {
         }
 
         return issueId
+    }
+
+    /**
+     * `issue_attachments` 테이블에 첨부 메타데이터 행을 직접 삽입한다.
+     *
+     * MinIO 객체 업로드 없이 DB 행만 생성한다 (이동은 MinIO를 건드리지 않으므로 행 보존 검증에 충분).
+     * 파라미터 바인딩 prepared statement 사용 — SQL 문자열 결합 금지 (DATA.md §1.3).
+     *
+     * @param issueId 첨부가 속할 이슈 UUID.
+     * @param attachId 첨부 고유 UUID.
+     * @param filename 원본 파일명.
+     */
+    private fun insertAttachmentRow(
+        issueId: UUID,
+        attachId: UUID,
+        filename: String,
+    ) {
+        @Suppress("MaxLineLength")
+        val sql =
+            "INSERT INTO issue_attachments " +
+                "(id, issue_id, filename, content_type, size_bytes, storage_key, uploaded_by, created_at) " +
+                "VALUES (?, ?, ?, 'text/plain', 0, ?, ?::uuid, NOW())"
+        getConnection().use { conn ->
+            conn.prepareStatement(sql).use { ps ->
+                ps.setObject(1, attachId)
+                ps.setObject(2, issueId)
+                ps.setString(3, filename)
+                ps.setString(4, "test-storage/$attachId")
+                ps.setString(5, ACTOR_ID)
+                ps.executeUpdate()
+            }
+        }
     }
 
     /** 이동 요청 바디를 빌드한다. */

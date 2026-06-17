@@ -46,7 +46,7 @@ export const WatchersSection = ({ issueKey }: WatchersSectionProps) => {
    * 현재는 errorCode와 무관하게 공통 메시지를 사용한다.
    * 향후 코드별 메시지 분기가 필요하면 extractWatcherErrorCode(error) 결과를 switch로 확장한다.
    */
-  const onMutationError = (_error: unknown) => {
+  const onMutationError = () => {
     toast.error(issueDetailStrings.watchersError)
   }
 
