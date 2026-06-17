@@ -456,13 +456,15 @@
 
 **우선순위**. 필수 | **선행**. §6.1.1, §5.1.1, §5.3.1 | **Plan slug**. `issue/move-preserve`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — 히스토리/링크/Watcher/첨부 보존 (책임. backend-engineer)
+> **PR #157 (2026-06-17)** — **전체 종료**. FR-MV-01의 id 보존 in-place UPDATE 위에서 (1) 보존 invariant 명시 검증 + (2) 이동 이벤트 이력 기록. 보존은 구조적으로 이미 성립(id 불변 → issue_links/issue_watchers/issue_attachments/issue_change_group 자동 보존)이라 **신규 DB 컬럼 0**. 이동 기록은 `IssueChangeDetector.SCALAR_FIELD_EXTRACTORS`에 `key` 1줄 추가로, 이미 흐르는 `historyRecorder.record(before, after)`가 이동(key 변경)을 `issue_change_item`에 남기게 함(순수 이동도 no-op 회피). 프론트는 changelog i18n 라벨 "프로젝트 이동" 1줄. **vacuous 차단**: 보존 테스트 populated 선단언 + 실 recorder 통합테스트(`IssueMoveHistoryIntegrationTest`)가 mock 없이 issue_change_item 영속 단언(코드리뷰 mutation test로 입증). E2E 옛 키 308 redirect는 MSW opaque 한계로 단위+백엔드통합 대체. **issue_change_group.issue_key는 이동 그룹에 한해 새 키 박제**(from=옛키·to=새키로 이동 추론, 기존 이력 그룹은 옛 키 유지).
+
+- [x] D1. 도메인 (책임. backend-engineer) — PR #157
+- [x] D2. 명세 — 히스토리/링크/Watcher/첨부 보존 (책임. backend-engineer) — PR #157 (워처/링크 권한 무관 전부 보존, 권한 필터링은 알림 발송 시점 책임)
 - [x] D3. 데이터 모델 — (활용. id 보존 + key만 변경) (책임. db-engineer)
-- [ ] D4. 백엔드 — 이동 시 모든 FK 보존 검증 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — 이동 전후 invariant 비교 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 이동 후 페이지 자동 갱신 (책임. frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D4. 백엔드 — 이동 시 모든 FK 보존 검증 (책임. backend-engineer) — PR #157 (detector key 추적으로 이동 이력 기록, 신규 컬럼 0)
+- [x] D5. 백엔드 테스트 — 이동 전후 invariant 비교 (책임. backend-engineer) — PR #157 (INV1/INV2 행 보존 populated 선단언 + 실 recorder 통합 T3-1~3)
+- [x] D6. 프론트 UI — 이동 후 페이지 자동 갱신 (책임. frontend-engineer) — PR #157 (FR-MV-01 새 키 navigate 기존 + changelog "프로젝트 이동" 라벨)
+- [x] D7. E2E (책임. qa-engineer) — PR #157 (이동 마법사 흐름 + changelog 합성 렌더 단언, 옛 키 redirect는 단위+백엔드통합 대체)
 
 ## §NFR issue-tracking BC 완료 게이트
 
