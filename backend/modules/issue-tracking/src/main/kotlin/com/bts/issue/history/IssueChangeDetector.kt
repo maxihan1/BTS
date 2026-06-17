@@ -42,6 +42,10 @@ class IssueChangeDetector {
         /**
          * 스칼라 필드명 → Issue 값 추출 함수 매핑 테이블.
          * 새 스칼라 필드 추가 시 이 목록에만 추가하면 된다.
+         *
+         * key 는 이동(FR-MV-02)에서만 변경되므로 이동 이벤트 마커 역할.
+         * clone(IssueApplicationService.cloneIssue)은 record 미호출이라 spurious 이동 이력 없음
+         * — 이 불변식 깨면 clone에 가짜 이동 항목 생김.
          */
         private val SCALAR_FIELD_EXTRACTORS: List<Pair<String, (Issue) -> String?>> =
             listOf(
