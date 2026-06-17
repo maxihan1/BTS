@@ -351,10 +351,11 @@ class IssueMoveHistoryIntegrationTest {
             "key.toValue 불일치. 기대='$DST_KEY-1', 실제='${keyItem.toValue}'"
         }
 
-        // issue_change_group.issue_key가 이동 당시 키(before 키)를 박제했는지 확인
+        // issue_change_group.issue_key는 IssueHistoryRecorder가 after(이동 후) 이슈로 그룹을 생성하므로
+        // 새 키(after.key = DST 키)가 박제된다. 이것이 실제 동작이다.
         val group = groupsAfter.first()
-        assert(group.issueKey == "$SRC_KEY-1") {
-            "issue_change_group.issue_key 불일치. 기대='$SRC_KEY-1'(이동 전 키), 실제='${group.issueKey}'"
+        assert(group.issueKey == "$DST_KEY-1") {
+            "issue_change_group.issue_key 불일치. 기대='$DST_KEY-1'(이동 후 새 키), 실제='${group.issueKey}'"
         }
     }
 
@@ -411,9 +412,11 @@ class IssueMoveHistoryIntegrationTest {
             "2차 이동 key.toValue 불일치. 기대='$DST2_KEY-1', 실제='${keyItemSecond.toValue}'"
         }
 
-        // 2차 이동 그룹의 issue_key 박제: B 키를 박제해야 한다
-        assert(secondMoveGroup.issueKey == "$DST_KEY-1") {
-            "2차 이동 그룹의 issue_key 불일치. 기대='$DST_KEY-1'(당시 키), 실제='${secondMoveGroup.issueKey}'"
+        // 2차 이동 그룹의 issue_key: IssueHistoryRecorder는 after(이동 후) 이슈로 그룹을 생성하므로
+        // 새 키(C = MHDS2-1)가 박제된다. key.fromValue(B)와 issue_key(C) 조합으로
+        // "B→C 이동 이력" 임을 추론할 수 있다.
+        assert(secondMoveGroup.issueKey == "$DST2_KEY-1") {
+            "2차 이동 그룹의 issue_key 불일치. 기대='$DST2_KEY-1'(이동 후 새 키), 실제='${secondMoveGroup.issueKey}'"
         }
     }
 
