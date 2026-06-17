@@ -229,7 +229,7 @@ class IssueMoveControllerTest {
                 key = "priority",
                 name = "Priority",
                 description = null,
-                fieldType = FieldType.TEXT,
+                fieldType = FieldType.SHORT_TEXT,
                 required = true,
                 displayOrder = 1,
                 options = emptyList(),
