@@ -119,7 +119,8 @@ export function useMentionAutocomplete({
   // debounce 된 쿼리 — MIN_QUERY_LENGTH 미만이면 빈 문자열(쿼리 비활성)
   const debouncedQuery = useDebounce(query.length >= MIN_QUERY_LENGTH ? query : '', DEBOUNCE_DELAY_MS)
 
-  // useUsers — debouncedQuery가 빈 문자열이면 enabled=false로 실행 안 함
+  // useUsers — enabled 게이트가 없어 빈 문자열에도 GET /api/v1/users(전체 ≤50)를 호출하나(기존 assignee 셀렉터와 동일 패턴, staleTime 30s 캐시),
+  // 드롭다운 표시는 아래 showDropdown(open && candidates.length>0)으로 차단된다(open은 query 길이 ≥1에서만 true).
   const { data: candidates = [] } = useUsers(debouncedQuery)
 
   // 경합 방지: open 상태 + 현재 query를 최신 ref로 유지
