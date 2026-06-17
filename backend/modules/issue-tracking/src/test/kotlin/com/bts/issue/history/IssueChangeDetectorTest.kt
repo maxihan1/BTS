@@ -382,6 +382,46 @@ class IssueChangeDetectorTest : DescribeSpec({
         }
     }
 
+    // ── 이슈 키 변경 (FR-MV-02 — 프로젝트 이동 감지) ──────────────────────────────
+
+    describe("이슈 키 변경 감지 (FR-MV-02)") {
+
+        it("(EC1) key 변경 → field=key, fromValue=옛 키, toValue=새 키 항목 1건") {
+            val before = baseIssue()
+            val after = before.copy(key = IssueKey("PROJ-42"))
+
+            val items = detector.detect(before, after)
+
+            val keyItems = items.filter { it.field == "key" }
+            keyItems shouldHaveSize 1
+            keyItems[0].fromValue shouldBe "ATLAS-1"
+            keyItems[0].toValue shouldBe "PROJ-42"
+            keyItems[0].fromLabel shouldBe null
+            keyItems[0].toLabel shouldBe null
+        }
+
+        it("(EC6) key 동일 → key 항목 생성 안 함") {
+            val before = baseIssue()
+            val after = before.copy(summary = "다른 필드만 변경")
+
+            val items = detector.detect(before, after)
+
+            items.none { it.field == "key" } shouldBe true
+        }
+
+        it("(EC7) key 변경 + status 변경 공존 → 둘 다 기록") {
+            val before = baseIssue(currentStateKey = "open")
+            val after = before.copy(key = IssueKey("NEW-1"), currentStateKey = "in_progress")
+
+            val items = detector.detect(before, after)
+
+            val fields = items.map { it.field }.toSet()
+            fields shouldBe setOf("key", "status")
+            items.first { it.field == "key" }.fromValue shouldBe "ATLAS-1"
+            items.first { it.field == "key" }.toValue shouldBe "NEW-1"
+        }
+    }
+
     // ── IssueChangeGroup 모델 ──────────────────────────────────────────────────
 
     describe("IssueChangeGroup 모델") {
