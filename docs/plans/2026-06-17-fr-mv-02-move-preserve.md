@@ -81,11 +81,11 @@
 - `SCALAR_FIELD_EXTRACTORS` 에 `"key" to { it.key.value }` 1줄 추가(라벨 불요 — resolver passthrough, status/summary와 동일 정책).
 
 **REFACTOR**:
-- KDoc 한 줄 — "key 는 이동(FR-MV-02)에서만 변경되므로 이동 이벤트 마커 역할". detekt baseline 동결(메모리), 신규 위반 시 헬퍼 추출.
+- KDoc 한 줄 — "key 는 이동(FR-MV-02)에서만 변경되므로 이동 이벤트 마커 역할. clone(IssueApplicationService.cloneIssue)은 record 미호출이라 spurious 이동 이력 없음 — 이 불변식 깨면 clone에 가짜 이동 항목 생김"(리뷰 C3 미래 회귀 가드). detekt baseline 동결(메모리), 신규 위반 시 헬퍼 추출.
 
-**검증**: `./gradlew :backend:modules:issue-tracking:test --tests "*IssueChangeDetectorTest"` + 기존 detector 8진입점 테스트 전수 green(NFR2). `IssueChangeLabelResolverTest`도 회귀(`key`는 라벨 미해석 passthrough 확인).
+**검증** (리뷰 C2 — 이력 관련 테스트 전수): `./gradlew :backend:modules:issue-tracking:test --tests "*IssueChangeDetectorTest" --tests "*IssueChangeLabelResolverTest" --tests "*IssueHistoryRecorder*" --tests "*IssueHistoryRecording*" --tests "*IssueChangelog*"` + 기존 detector 8진입점 테스트 전수 green(NFR2). `key`는 라벨 미해석 passthrough(`IssueChangeLabelResolver`의 `else -> item` 분기) 확인.
 
-### Task 2. 이동 보존 invariant 통합 테스트 (D5) — 행 보존 + recorder 새 키 호출
+### Task 2. 이동 보존 invariant 통합 테스트 (D5) — 행 보존 (populated 단언)
 
 **메타**.
 - agent: `backend-engineer`
@@ -94,14 +94,33 @@
 
 **RED/GREEN** (테스트 추가 — 기존 mockk recorder 재사용, 신규 production 코드 0):
 - TestConfig에 `IssueLinkRepository`, `AttachmentRepository` 빈 추가(워처는 이미 wiring). 단순 jOOQ repo.
-- **단건 이동 보존**: 이슈 BTS-x에 링크(out: blocks, in: relates)·워처 2·첨부 2 시드 → 이동 → 이슈 id로 재조회해 `issue_links`/`issue_watchers`/`issue_attachments` 행 집합이 **이동 전과 동일**함을 단언(첨부는 DB 행만, MinIO 왕복 생략 — G3).
-- **이동 이벤트 호출 검증**: `verify { historyRecorder.record(before = any(), after = match { it.key == newKey && it.projectId == targetProjectId }, ...) }` — 이동이 새 키 after-스냅샷으로 recorder를 호출함을 mockk capture로 단언. Task1(detector key 감지)과 합쳐 "이동→이력 기록" end-to-end 증명(무거운 real recorder wiring 불요).
-- **서브태스크 동반 보존**: 부모+자식 각자 링크/워처/첨부 시드 → 동반 이동 → 노드별 행 보존 + 각 노드 recorder 새 키 호출 단언.
-- 실패 예상: 신규 테스트 메서드 부재(컴파일 후 단언). 보존은 현 구현이 이미 충족하므로 즉시 green — invariant를 회귀 가드로 고정(FR2).
+- **단건 이동 보존 (vacuous 차단 — 리뷰 C1)**:
+  1. 이슈 BTS-x에 링크(out: blocks, in: relates)·워처 2·첨부 2 시드.
+  2. **시드 직후 행 수가 기대값(>0)임을 먼저 단언** — 링크 2(방향별), 워처 2, 첨부 2. 시드 0건이면 여기서 실패(빈 집합 거짓 green 차단, 메모리 B3).
+  3. 이동 실행 → 이슈 id로 재조회해 `issue_links`/`issue_watchers`/`issue_attachments` 행 집합이 **이동 전과 동일**(단순 count가 아니라 id·type·방향까지)함을 단언(첨부는 DB 행만, MinIO 왕복 생략 — G3).
+- **서브태스크 동반 보존**: 부모+자식 각자 링크/워처/첨부 시드(각 populated 단언) → 동반 이동 → 노드별 행 보존 단언.
+- 실패 예상: 신규 테스트 메서드 부재(컴파일 후 단언). 보존은 현 구현이 이미 충족하므로 즉시 green — invariant를 회귀 가드로 고정(FR2). (이동→이력 기록 end-to-end는 Task 3가 실 recorder로 별도 증명 — 본 task는 행 보존만.)
 
 **검증**: `./gradlew :backend:modules:issue-tracking:test --tests "*IssueMoveIntegrationTest"` green. 기존 FR-MV-01 케이스 회귀 보존.
 
-### Task 3. 프론트 changelog "이동" i18n 라벨
+### Task 3. 이동→이력 기록 실 recorder 통합 검증 (리뷰 B1 — vacuous 차단)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/integration/IssueMoveHistoryIntegrationTest.kt`]
+- depends-on: [1]
+
+**왜 별도 task**: 기존 IssueMoveIntegrationTest는 recorder가 `mockk(relaxed=true)`라 이동이 실제 `IssueChangeDetector.detect()`→`issue_change_item` 영속을 **절대 거치지 않는다**. Task1(detector 단위)+Task2(mock capture)만으로는 "이동 서비스의 after 스냅샷이 실제 detector를 통과해 key 항목으로 DB에 남는가"가 무검증(가짜 green 가능). 이 task가 그 유일한 빈틈을 닫는다.
+
+**RED/GREEN** (신규 통합 테스트 — **실제 `IssueHistoryRecorder`**(real detector + real `IssueChangeLabelResolver` + real `JdbcIssueChangeHistoryRepository`) 주입):
+- resolver의 cross-BC 포트(`UserLookupPort`/`IssueSecurityDirectory`)는 `mockk(relaxed=true)` 스텁(key 항목은 라벨 해석 불요). 나머지 repo는 기존 IssueMoveIntegrationTest 빈 패턴 재사용. **기존 FR-MV-01 테스트의 mockk recorder 빈은 건드리지 않는다**(별도 파일·별도 config).
+- **순수 이동 (FR3·EC1)**: 대상에 같은 state/component/version 존재(비호환 매핑 0건)인 이슈를 이동 → `issue_change_item` 직접 조회(또는 `GET /changelog`)해 `field='key', fromValue=옛키, toValue=새키` 항목이 **실제로 1건 영속**됨을 단언. detector 미수정 상태면 0건으로 RED.
+- **체인 이동 박제 키 (N1)**: BTS-1→PROJ-42→X-7 두 번 이동 후, 두 번째 이동 이력 그룹의 `key` 항목 fromValue가 `PROJ-42`(당시 키)임을 단언(`BTS-1` 아님).
+- **서브태스크 동반**: 부모+자식 동반 이동 시 각 노드별로 key 항목이 각각 영속됨을 단언.
+
+**검증**: `./gradlew :backend:modules:issue-tracking:test --tests "*IssueMoveHistoryIntegrationTest"` green. Task1 미적용 시 RED 확인(detector key 추적이 진짜 동작 주체).
+
+### Task 4. 프론트 changelog "프로젝트 이동" i18n 라벨
 
 **메타**.
 - agent: `frontend-engineer`
@@ -109,27 +128,27 @@
 - depends-on: []
 
 **RED** (`changelog-labels.test.ts`):
-- `resolveFieldLabel('key', refs)` === `'이동'`(또는 ko.ts에 정의한 값).
+- `resolveFieldLabel('key', refs)` === `'프로젝트 이동'`(리뷰 C4 — 가독성, ko.ts 정의값).
 - `resolveValueLabel({field:'key', fromValue:'BTS-1', toValue:'PROJ-42', ...}, 'from'/'to', refs)` 가 각각 `'BTS-1'`/`'PROJ-42'` raw 반환(폴백 경로 회귀).
 - 실패 예상: `changelogFieldLabels.key` 미정의 → `resolveFieldLabel`이 `'key'` 폴백 반환 → 단언 실패.
 
 **GREEN** (`i18n/ko.ts`):
-- `issueDetailStrings.changelogFieldLabels` 에 `key: '이동'` 1줄 추가(콜론 종결 금지 — ko.test 자동검증, 라벨 값은 명사라 무관).
+- `issueDetailStrings.changelogFieldLabels` 에 `key: '프로젝트 이동'` 1줄 추가(콜론 종결 금지 — ko.test 자동검증, 라벨 값은 명사라 무관).
 
 **REFACTOR**:
 - `IssueChangelog.tsx`가 전 항목을 매핑·필드 화이트리스트 필터 없음 재확인(폴백 렌더 — G1). 변경 필요 시 최소.
 
 **검증**: `pnpm --filter web test -- changelog-labels` + `pnpm --filter web test -- ko` (i18n 콜론 가드) green.
 
-### Task 4. E2E — 이동 후 이력에 "이동" 표시 + 보존 (D7)
+### Task 5. E2E — 이동 후 이력에 "프로젝트 이동" 표시 + 보존 (D7)
 
 **메타**.
 - agent: `qa-engineer`
 - files: [`apps/web/e2e/issue-move.spec.ts`, `apps/web/src/mocks/changelog-handlers.ts`, `apps/web/src/mocks/changelog-fixtures.ts`]
-- depends-on: [3]
+- depends-on: [4]
 
 **시나리오**:
-- 기존 `issue-move.spec.ts` 이동 happy-path 위에서, 이동 성공 후 새 키 페이지의 변경 이력 패널에 **"이동" 항목(BTS-1 → PROJ-42)** 표시 단언.
+- 기존 `issue-move.spec.ts` 이동 happy-path 위에서, 이동 성공 후 새 키 페이지의 변경 이력 패널 **변경 그룹 안에서** `key` 항목("프로젝트 이동: BTS-1 → PROJ-42")을 컨테이너 한정 셀렉터로 단언(리뷰 C5 — 같은 그룹의 status/resolution 등 다른 항목과 충돌 회피, strict-mode within).
 - 이동 후 링크/워처 패널이 보존 데이터를 그대로 표시(MSW가 새 키로 링크/워처 반환).
 - MSW: move 핸들러(기존) + changelog 핸들러에 `key` 변경 항목 추가(stateful — 이동 후 changelog에 이동 이벤트 등장). 메모리 교훈: MSW mutation stateful, 토스터/항목 컨테이너 한정 셀렉터, strict-mode within.
 
@@ -137,11 +156,26 @@
 
 ## Plan 메타
 
-- task 수: 4 (T1 detector / T2 보존 통합테스트 / T3 프론트 라벨 / T4 E2E)
-- 예상 wave: 2 (Wave1 = T1·T2·T3 병렬 [deps 없음, 파일 무겹침], Wave2 = T4 [deps 3])
-- TDD 강제: yes (T1 RED→GREEN production 변경, T2/T3/T4는 테스트 우선)
+- task 수: 5 (T1 detector / T2 보존 통합테스트 / T3 이동→이력 실 recorder 통합 / T4 프론트 라벨 / T5 E2E)
+- 예상 wave: 2 (Wave1 = T1·T2·T4 병렬 [deps 없음, 파일 무겹침], Wave2 = T3 [deps 1]·T5 [deps 4])
+- TDD 강제: yes (T1 RED→GREEN production 변경, T2/T3/T5는 테스트 우선, T4 라벨 RED→GREEN)
 - 신규: DB 컬럼 0 · 엔드포인트 0 · cross-BC 0 · production 변경 = detector 1줄 + i18n 1줄
 - 추가 검증: ktlint/detekt(baseline 동결), pnpm typecheck/lint, vitest, playwright(qa)
-- 주의(메모리): 동시 브랜치 Flyway 충돌 무관(마이그레이션 0) · detekt 캐시 false-green→`--rerun-tasks` · 에이전트 lint 보고 불신 controller 직접검증 · 단일 Gradle 모듈 test 컴파일 직렬화 요인
+- 주의(메모리): 동시 브랜치 Flyway 충돌 무관(마이그레이션 0) · detekt 캐시 false-green→`--rerun-tasks` · 에이전트 lint 보고 불신 controller 직접검증 · 단일 Gradle 모듈 test 컴파일 직렬화 요인 · **vacuous 통과(가짜 green) 차단이 본 FR 핵심 리스크 — T3가 실 recorder, T2가 populated 단언으로 봉쇄**
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (독립 code-reviewer dispatch, 2026-06-17)
+
+코드 직접 대조 리뷰. 갭 진단·프론트 폴백·resolver/clone 안전을 모두 실측 확인. 발견·반영 결과.
+
+- **B1 (BLOCKER) → 반영 완료**. Task 2가 `mockk(relaxed=true)` recorder라 "이동→이력 실제 기록"을 우회 증명(가짜 green 가능). → **Task 3 신설**: 실제 `IssueHistoryRecorder` 주입 통합 테스트로 순수 이동 시 `issue_change_item`에 key 항목 실제 영속 단언(detector 미적용 시 RED).
+- **C1 (CONCERN) → 반영 완료**. 보존 invariant 시드 0건 vacuous 통과 위험 → Task 2에 **시드 직후 populated(>0) 선단언** 추가(메모리 B3).
+- **C2 (CONCERN) → 반영 완료**. 기존 테스트는 안 깨지나(실측: 모두 `before.copy` 키 동일) 이력 관련 테스트(detector/resolver/recorder/recording/changelog) 전수 실행 커맨드 명시.
+- **C3 (CONCERN) → 반영 완료**. clone은 record 미호출이라 false-positive 0(실측). Task 1 KDoc에 미래 회귀 가드 주석.
+- **C4 (CONCERN) → 반영 완료**. project 미기록은 수용된 트레이드오프. 프론트 라벨 `'프로젝트 이동'`으로 가독성 보완 + spec FR1 과한 주장 완화.
+- **C5 (CONCERN) → 반영 완료**. 순수 이동도 status/resolution 등이 같은 그룹에 섞임 → spec S1 "1 그룹 N 항목"으로 정정 + E2E는 그룹 내 key 항목 컨테이너 한정(Task 5).
+- **N1 (NIT) → 반영 완료**. 체인 이동 박제 키(2차 이동 fromValue=당시 키) Task 3에 추가.
+- **N2/N3 (NIT)**. customField:key prefix 분리로 라벨 충돌 0(실측). 스코프 적정(과/소 엔지니어링 없음).
+
+- **BLOCKER 잔여: 없음** (B1 Task 3로 해소). 머지 가능 수준.

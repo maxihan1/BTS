@@ -29,7 +29,7 @@ FR-MV-01의 이동은 `issues` row를 **in-place UPDATE** 한다(`IssueRepositor
 ### S1. 이동해도 이력이 보존된다
 - **Given** 사용자 A가 `BTS-1` 이슈를 만들고 제목/담당자/컴포넌트를 여러 번 변경해 이력이 N건 쌓였다.
 - **When** A가 `BTS-1`을 프로젝트 `PROJ`로 이동한다(→ `PROJ-42`).
-- **Then** 이동 후 `PROJ-42`의 변경 이력 조회(`GET /api/v1/issues/PROJ-42/changelog`)에 **기존 N건이 그대로 보이고**, 거기에 **"이동" 이력 1건이 추가**된다(`key: BTS-1 → PROJ-42`). 기존 이력의 당시 키(`BTS-1`)는 박제되어 그대로 보존된다.
+- **Then** 이동 후 `PROJ-42`의 변경 이력 조회(`GET /api/v1/issues/PROJ-42/changelog`)에 **기존 N건이 그대로 보이고**, 거기에 **이동을 나타내는 `key` 변경 항목 1건이 추가**된다(`key: BTS-1 → PROJ-42`). 이동이 status/resolution/customFields 등도 함께 바꾸면 그 항목들은 **같은 변경 그룹에 함께** 기록된다(이동은 1 그룹 N 항목). 기존 이력의 당시 키(`BTS-1`)는 박제되어 그대로 보존된다.
 
 ### S2. 이동해도 링크가 유지된다
 - **Given** `BTS-1`이 `BTS-9`를 *blocks* 링크로 가리키고, `OTHER-3`이 `BTS-1`을 *relates* 링크로 가리킨다.
@@ -60,7 +60,7 @@ FR-MV-01의 이동은 `issues` row를 **in-place UPDATE** 한다(`IssueRepositor
 
 - **FR1 (이동 이벤트 기록)**. `IssueChangeDetector`가 `before.key ≠ after.key`를 변경 항목으로 감지해 이력에 기록한다. 필드명 `key`, fromValue=옛 키, toValue=새 키. 이동 시에만 발생(키는 이동 외 경로에서 불변).
   - 라벨: `key`는 값이 곧 표시이므로 resolver passthrough(label=null). `status`/`summary`와 동일 정책. **resolver 변경·신규 의존성 없음**.
-  - `project`(UUID)는 키 prefix가 프로젝트 이동을 이미 드러내므로 별도 기록 안 함(신규 ProjectRepository 의존성 회피, 단순성 우선). → Brainstorming/리뷰에서 재확인.
+  - `project`(UUID)는 **별도 기록하지 않는다**(신규 ProjectRepository 의존성 회피, 단순성 우선 — Maxi 확정). 키 prefix(BTS-1→PROJ-42)가 출발/도착 프로젝트 키를 드러내 1차 추적성은 확보되나, 프로젝트 *이름*(키≠이름인 경우)은 key 항목만으로는 안 보인다 — 이는 수용된 트레이드오프. 프론트 라벨을 "프로젝트 이동"으로 둬 가독성 보완(리뷰 C4).
 - **FR2 (보존 보장)**. 이동(단건·서브태스크 동반)은 이슈 `id`를 보존하여 히스토리·링크·워처·첨부 행을 **삭제·변경하지 않는다**. (현재 구현이 이미 충족 — 본 FR은 회귀 가드로 고정.)
 - **FR3 (순수 이동도 기록)**. 비호환 매핑이 0건이어도 이동은 최소 `key` 변경 1건으로 이력에 남는다(no-op 회피).
 - **FR4 (프론트 이력 표시)**. 변경 이력 패널이 `key` 변경 항목을 "이동"으로 표시한다(i18n 라벨 추가). 이동 후 SPA가 새 키로 자동 navigate(FR-MV-01 기존 동작 확인).
@@ -84,7 +84,7 @@ FR-MV-01의 이동은 `issues` row를 **in-place UPDATE** 한다(`IssueRepositor
 
 ## 엣지 케이스
 
-- **EC1 (순수 이동)**. 비호환 매핑 0건 → 기존엔 이력 0건. 본 FR로 `key` 변경 1건 기록. (FR3)
+- **EC1 (순수 이동)**. 비호환 매핑 0건 → 기존엔 이력 0건(detect no-op). 본 FR로 최소 `key` 변경 1건 기록. (FR3) — **실제 recorder 통합 테스트로 검증**(mock 뒤 vacuous 통과 차단, 리뷰 B1).
 - **EC2 (체인 이동)**. `BTS-1`→`PROJ-42`→`X-7` 두 번 이동 → 이력에 이동 이벤트 2건(`BTS-1→PROJ-42`, `PROJ-42→X-7`). 각 그룹의 박제 키는 당시 키.
 - **EC3 (cross-project 링크)**. 이동 후 링크가 다른 프로젝트 이슈를 가리키게 됨 → 끊지 않음(Jira식, id 기반). 링크 조회/그래프가 정상 반환.
 - **EC4 (워처 권한 부재)**. 워처가 대상 프로젝트 VIEW 권한이 없어도 워처 행 보존. 알림 발송 시점 권한 체크는 FR-NT 책임.
