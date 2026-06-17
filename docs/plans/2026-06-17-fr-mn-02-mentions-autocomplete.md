@@ -198,4 +198,14 @@ classify: type=api, agent=backend-engineer, primary_bc=identity-access.
 - **기존 앱 전역 패턴(신규 아님)**: blur 타이머 vs 터치(LabelAutocompleteInput), email 네트워크 노출(assignee 셀렉터 동일 DTO).
 
 **verify-master-plan**: ✅ exit 0 (FR 123/123 정합, drift 0).
-**검증**: typecheck ✅ · lint ✅ · 단위 3051/3051 ✅ · E2E 4 시나리오 + issue-body-meta 회귀 0 ✅.
+
+### 게이트 2 후속 엣지 수정 (Maxi 확정 — 일부 수정 후 머지)
+
+adversarial 발견 중 3건을 TDD로 수정(커밋 43472a26 test → 130cee39 feat, E2E 408c4513).
+- **(a) caret 중간 토큰 오염**: `detectActiveMention`의 `end`를 `findTokenEnd`로 토큰 끝까지 확장 → `@user ice` 잔여 제거(단위 케이스 추가).
+- **(b) Preview 탭 잔존**: 훅 `reset()` 노출 + `IssueDescription` EditMode가 `activeTab!=='write'` 시 reset(타이머 의존 제거).
+- **(c) activeIndex dead-key**: candidates 축소 시 clamp(useEffect) + handleKeyDown `safeIndex` 이중 방어, ref로 최신값 참조.
+- **(d) E2E 정밀화**: `fill('')`로 결정론화 + `toHaveValue('@alice ')` exact 단언(오염 포착).
+- P1(stale value splice)는 controlled 특성상 버그 아님 → 미수정(기각 유지).
+
+**최종 검증**: typecheck ✅ · lint ✅ · 단위 **3059/3059** ✅ · E2E 4 + issue-body-meta 회귀 0 ✅.
