@@ -68,7 +68,7 @@ classify-task 오판정(auth/security) → feature/backend-engineer override.
 
 **GREEN**:
 - `V025`: `ALTER TABLE issues ADD COLUMN start_date DATE NULL, ADD COLUMN due_date DATE NULL, ADD COLUMN target_date DATE NULL;` + 3 COMMENT('일정 — 날짜 단위라 DATE'). V010 versions 주석 톤 일치.
-- `init_codegen.sql` 의 `issues` 블록(35행~)에 동일 3컬럼 미러 (jOOQ codegen 정합).
+- `init_codegen.sql` **파일 하단**(V024 블록 다음)에 `-- V025: issues 일정 3컬럼 추가` 주석 + `ALTER TABLE issues ADD COLUMN ...` trailing 블록으로 미러 (B2 리뷰 — V006(184행)/V007(200행)/V014(381행) 지배적 컨벤션. **35행 CREATE TABLE 인라인 아님** — 인라인은 parent_id 예외 1건뿐).
 
 **REFACTOR**: COMMENT 문구 통일, 컬럼 순서 SDD 05.1 따름(start→due→target).
 
@@ -115,10 +115,10 @@ classify-task 오판정(auth/security) → feature/backend-engineer override.
 
 **GREEN**:
 - `IssueFieldPatch`(104행)에 `startDate/dueDate/targetDate: DatePatch = DatePatch.Unchanged` 추가.
-- `updateFields`(236행)에 3필드 when-분기: `Set→set(ISSUES.START_DATE, value)`, `Clear→set(ISSUES.START_DATE, null as LocalDate?)`, `Unchanged→{}`.
-- row 매퍼(findByKey/findByKeyWithType의 Issue 조립부)가 3컬럼 → Issue.startDate 등 읽기.
+- `updateFields`(236행)에 3필드 when-분기: `Set→set(ISSUES.START_DATE, value)`, `Clear→set(ISSUES.START_DATE, null as LocalDate?)`, `Unchanged→{}`. (jOOQ null-set 실행 선례 — `updateSecurityLevel` 1079행 `UUID?`, description 247행.)
+- row 매퍼 — `IssueRepository.kt` **1376행 `private fun IssuesRecord.toIssue()` 단일 확장함수**에 `startDate = startDate, dueDate = dueDate, targetDate = targetDate` 3줄 추가. 모든 조회 경로(findByKey 198행·findByKeyWithType 481/565행·list 384행)가 이 한 함수 공유 (B3 리뷰 — "조립부"가 여러 곳 아님, 단일 매퍼). codegen 의존이라 depends-on:[1] 유효.
 
-**REFACTOR**: when-분기 중복 3회 → private 헬퍼(`UpdateSetStep.applyDatePatch(field, patch)`)로 추출(detekt 중복 회피).
+**REFACTOR**: when-분기 중복 3회 → private 헬퍼 추출 **시도**. ⚠️ jOOQ `set(Field, T)`/`set(Field, Field)` 오버로드 모호로 막히면 기존 `.apply { ... set(...) }` 인라인 패턴(245~252행) 유지 (C1 리뷰 — `updateFields`에 `@Suppress("CyclomaticComplexMethod")` 이미 부착돼 분기 추가 detekt 무해).
 
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*IssueRepositoryTest"` (단독 재실행 — 동시 suite flaky 회피, memory).
 
@@ -129,7 +129,12 @@ classify-task 오판정(auth/security) → feature/backend-engineer override.
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueApplicationServiceTest.kt`]
 - depends-on: [2, 3, 4]
 
-**RED**: 서비스 단위 테스트 — App req의 DatePatch가 `IssueFieldPatch`로 전달되는지 / 날짜만 바뀐 PATCH가 changedFields 비어있지 않아 updateFields 호출되는지 / Unchanged면 무변경 → 실패.
+**RED** (C3 리뷰 — 경계 명시): 서비스 단위 테스트 —
+- App req의 DatePatch가 `IssueFieldPatch`로 전달되는지.
+- **날짜-only PATCH → `changedFields`에 해당 날짜 필드명 포함 → `updateFields` 호출됨(492행 `handleCoreFieldsUnchanged` 1734행 경로 **아님**) → version+1**.
+- `Unchanged` → 무변경(감지 false).
+- **Clear 경계**: 기존 null인데 Clear 요청 = no-op(미감지), 기존 값 있는데 Clear = 변경(감지). 두 케이스 분리 단언.
+→ 미구현으로 실패.
 
 **GREEN**:
 - `updateIssue`(470행)의 `IssueFieldPatch(...)` 생성에 `startDate=request.startDate, dueDate=request.dueDate, targetDate=request.targetDate` 추가.
@@ -146,16 +151,20 @@ classify-task 오판정(auth/security) → feature/backend-engineer override.
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/UpdateIssueRequest.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueResponse.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueControllerTest.kt`]
 - depends-on: [3, 5]
 
-**RED**: WebMvc/통합 테스트 — `PATCH /api/v1/issues/{key}` body `{startDate, dueDate:null, targetDate}` → 응답 IssueResponse에 날짜 반영(설정/클리어), 잘못된 형식 400(E4), 미포함 필드 무변경 → 실패.
+**RED** (B1/C4 리뷰 강화): WebMvc/통합 테스트 —
+- `PATCH /api/v1/issues/{key}` body `{startDate, dueDate:null, targetDate}` → 응답 IssueResponse에 **설정값 그대로 반영**(설정/클리어). **C4 — `from()` 매핑 누락 시 응답이 default null로 새는 가짜그린** 방지: 설정한 날짜가 응답에 동일하게 나오는지 단언.
+- **B1 — 응답 JSON의 날짜가 `"yyyy-MM-dd"` 문자열인지 직접 단언**(배열 `[2026,6,20]` 아님).
+- 잘못된 형식("2026-13-40") 400(E4), 미포함 필드 무변경.
+→ 실패.
 
 **GREEN**:
 - REST `UpdateIssueRequest`: `startDate/dueDate/targetDate: JsonNullable<LocalDate> = JsonNullable.undefined()` 추가.
-- `IssueController.update`(184행): App req 빌드에 `startDate = toDatePatch(request.startDate)` ×3. `toDatePatch(raw: JsonNullable<LocalDate>): DatePatch`(565행 toSecurityLevelPatch 동형: !present→Unchanged / get()==null→Clear / else→Set).
-- `IssueResponse`: `startDate/dueDate/targetDate: LocalDate? = null` + `from(issue)` 매핑(314행 securityLevelId 인근).
+- `IssueController.update`(184행): `AppUpdateIssueRequest`(alias, 40행) 빌드에 `startDate = toDatePatch(request.startDate)` ×3. `toDatePatch(raw: JsonNullable<LocalDate>): DatePatch`(565행 toSecurityLevelPatch 동형: !present→Unchanged / get()==null→Clear / else→Set).
+- `IssueResponse`: `startDate/dueDate/targetDate: LocalDate? = null` 추가. **B1 — 각 필드에 `@field:JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")` 부착**(VersionResponse.kt 32~35행 동형. IssueParentResponse 12행 — "prod ObjectMapper 기본값 비의존" 컨벤션. 전역 Jackson 날짜설정 부재 실측). `from(issue)` 본문(290~317행)에 `startDate = issue.startDate` ×3 매핑(securityLevelId 314행 인근). `maskInvisible`(122행) copy는 새 필드 자동 보존(무해).
 
 **REFACTOR**: `toDatePatch` KDoc, 3필드 응답 KDoc.
 
-**검증**: `./gradlew :backend:issue-tracking:test --tests "*IssueControllerTest"`. ⚠️ ktlint/detekt는 controller 직접 검증(에이전트 false-green 불신, memory).
+**검증**: `./gradlew :backend:issue-tracking:test --tests "*IssueControllerTest"`. ⚠️ ktlint/detekt는 controller 직접 검증(에이전트 false-green 불신, memory). **C4 — `IssueResponse` 파라미터 증가 시 detekt `LongParameterList` baseline 영향 직접 확인**.
 
 ### Task 7. 프론트 api + Zod 스키마 + MSW 핸들러 (날짜 3필드 계약)
 
@@ -182,7 +191,7 @@ classify-task 오판정(auth/security) → feature/backend-engineer override.
 - files: [`apps/web/src/components/issue/IssueScheduleFields.tsx`, `apps/web/src/components/issue/IssueScheduleFields.test.tsx`, `apps/web/src/routes/issues.$key.tsx`]
 - depends-on: [7]
 
-**RED**: 컴포넌트 테스트 — 3필드 데이트픽커 렌더, 날짜 선택→updateIssue 호출, 비우기→null 전송, 기존값 표시(date-fns 포맷) → 미존재로 실패.
+**RED** (C2 리뷰 — clear 정확성): 컴포넌트 테스트 — 3필드 데이트픽커 렌더, 날짜 선택→updateIssue 호출, **비우기 시 `updateIssue({ dueDate: null, ... })` — 키가 존재하고 값이 null인지 capture 단언(키 생략 아님)**. `updateIssue`(issues.ts 408행)가 input 직접 전송이라 키 생략=무변경/명시 null=클리어 구분 필수(createIssue securityLevelId가 동일 방어). 기존값 표시(date-fns 포맷) → 미존재로 실패.
 
 **GREEN**:
 - `IssueScheduleFields`: 시작일/마감일/목표일 3 입력. **네이티브 `<input type="date">` 우선**(신규 의존성 0, 절대규칙 #17) + date-fns 표시 포맷(기존 deps 확인). 기존 버전 날짜 UI(FR-VR) 패턴 있으면 재사용.
@@ -221,4 +230,25 @@ classify-task 오판정(auth/security) → feature/backend-engineer override.
 - TDD 강제: yes (각 task RED→GREEN→REFACTOR)
 - 추가 검증: generateJooq, ktlint, detekt(aggregate baseline), vitest, typecheck, playwright(qa)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 독립 eng-review (code-reviewer, 2026-06-19)
+
+autoplan(CEO/design/eng/DX 4종) 대신 eng 집중 독립 적대 리뷰 (memory: bts-review-plan-autoplan-overkill — 백엔드 중심 기계적 FR). 코드 전수 대조.
+
+**핵심 설계 검증 ✅ (OK)**:
+- **OCC version 체인 안 깨짐** — securityLevel은 updateFields 전 적용(488행)→`versionAfterSecurity`로 updateFields 호출(509행). 날짜를 updateFields에 태우면 동시 PATCH도 단일 UPDATE라 정합 유지, 이중 bump 없음. 날짜-only는 securityLevel Unchanged early-return(1423행)→updateFields version+1(244행). **plan 설계 근거 정확**.
+- V025 실측 정확(최신 V024). DTO 이름충돌 alias 기해결(IssueController 40행). toDatePatch=toSecurityLevelPatch(565행) 동형. jOOQ null-set 실행 선례 다수. Zod nullable 미러 패턴 정확.
+
+**BLOCKER 3건 (전부 plan 누락 = 빠진 명시, 오설계 아님 → plan 직접 반영 완료)**:
+- **B1**: IssueResponse 날짜에 `@field:JsonFormat(STRING, "yyyy-MM-dd")` 누락 → VersionResponse 32~35행 동형 필수(전역 Jackson 날짜설정 부재, IssueParentResponse 12행 "prod 기본값 비의존" 컨벤션). → **Task 6 반영**.
+- **B2**: init_codegen 미러는 35행 인라인 아니라 **파일 하단 trailing ALTER 블록**(V006/V007/V014 지배 컨벤션). → **Task 1 반영**.
+- **B3**: row 매퍼는 1376행 `toIssue()` **단일 확장함수**(전 조회경로 공유). → **Task 4 반영**.
+
+**CONCERN 4건 (RED 단언/REFACTOR fallback으로 흡수 → 반영 완료)**:
+- **C1**: when-분기 헬퍼 추출 시 jOOQ 오버로드 모호 가능 → 인라인 `.apply{}` fallback(CyclomaticComplexMethod 이미 Suppress). → Task 4.
+- **C2**: 프론트 `updateIssue`(408행) input 직접전송 → clear=명시 null 키(키생략=무변경). → Task 8 RED.
+- **C3**: 날짜-only PATCH가 handleCoreFieldsUnchanged(1734행)로 새지 않게 buildChangedFields 감지+Clear 경계 단언. → Task 5 RED.
+- **C4**: IssueResponse `from()` 매핑 누락=응답 null 가짜그린 + LongParameterList detekt. → Task 6 RED/검증.
+
+**BLOCKER 잔여: 없음** (3건 모두 plan 반영 완료). 게이트1 진입 가능.
