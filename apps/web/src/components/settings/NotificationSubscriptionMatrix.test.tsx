@@ -40,10 +40,14 @@ function renderMatrix() {
 beforeEach(() => {
   resetUserNotificationSubscriptionStore()
   server.use(...userNotificationSubscriptionHandlers)
+  // XSRF-TOKEN 쿠키 설정 — apiFetch가 X-XSRF-TOKEN 헤더로 재전송하는 double submit cookie 패턴
+  // MSW CSRF 검사가 통과하지 않으면 mutation이 403으로 실패함 (CreateUserForm.test.tsx 선례)
+  document.cookie = 'XSRF-TOKEN=test-xsrf; path=/'
 })
 
 afterEach(() => {
   server.resetHandlers()
+  document.cookie = 'XSRF-TOKEN=; max-age=0; path=/'
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -126,8 +130,12 @@ describe('NotificationSubscriptionMatrix — S3 셀 토글 mutation', () => {
     await user.click(toggle)
 
     // 토글 후 unchecked — MSW PATCH → invalidate → re-fetch → store 갱신값 반영
+    // re-query로 최신 DOM 참조 (React 리렌더 후 다른 노드일 수 있음)
     await waitFor(() => {
-      expect(toggle).not.toBeChecked()
+      const updated = screen.getByRole('checkbox', {
+        name: /이슈 생성.*인앱 알림|인앱 알림.*이슈 생성/,
+      })
+      expect(updated).not.toBeChecked()
     })
   })
 })

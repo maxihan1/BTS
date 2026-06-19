@@ -772,3 +772,23 @@ export const issueMoveStrings = {
   /** preview 실패 에러 */
   errorPreview: '이슈 이동 정보를 불러오지 못했습니다. 대상 프로젝트 키를 확인해 주세요.',
 } as const
+
+/** 사용자 알림 구독 설정 페이지 문자열 — /settings/notifications (FR-NT-04) */
+export const notificationSubscriptionStrings = {
+  /** 페이지 제목 */
+  pageTitle: '알림 구독 설정',
+  /** 페이지 설명 */
+  pageDescription: '이벤트별로 원하는 채널을 선택해 알림을 받으세요.',
+  /** 로딩 중 안내 */
+  loading: '설정을 불러오는 중입니다.',
+  /** 에러 안내 */
+  errorGeneric: '알림 구독 설정을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
+  /** 이벤트 유형 열 헤더 */
+  columnEvent: '이벤트',
+  /** 이슈 멘션 이벤트 라벨 — notification-policy-labels.ts 미포함 신규 라벨 */
+  eventIssueMentioned: '이슈 멘션',
+  /** 토글 활성 상태 레이블 (시각적 보조) */
+  toggleEnabled: '알림 켜짐',
+  /** 토글 비활성 상태 레이블 (시각적 보조) */
+  toggleDisabled: '알림 꺼짐',
+} as const

@@ -21,6 +21,7 @@ import { issueTypeHandlers } from './issue-type-handlers'
 import { labelHandlers } from './label-handlers'
 import { mfaHandlers } from './mfa-handlers'
 import { notificationPolicyHandlers } from './notification-policy-handlers'
+import { userNotificationSubscriptionHandlers } from './user-notification-subscription-handlers'
 import { postActionHandlers } from './post-action-handlers'
 import { passwordHandlers } from './password-handlers'
 import { projectLeadHandlers } from './project-lead-handlers'
@@ -42,8 +43,8 @@ import { securityLevelHandlers } from './security-level-handlers'
 /**
  * 애플리케이션 전체 MSW 핸들러 집합.
  *
- * 모든 BC(issue-tracking, project-workflow, auth, identity-access, project-management)의 mock endpoint를
- * 하나의 배열로 통합한다. 알파벳순 BC 그룹 정렬.
+ * 모든 BC(issue-tracking, project-workflow, auth, identity-access, project-management, notification)의
+ * mock endpoint를 하나의 배열로 통합한다. 알파벳순 BC 그룹 정렬.
  */
 export const handlers = [
   ...accountLinkHandlers,
@@ -69,6 +70,7 @@ export const handlers = [
   ...labelHandlers,
   ...mfaHandlers,
   ...notificationPolicyHandlers,
+  ...userNotificationSubscriptionHandlers,
   ...postActionHandlers,
   ...passwordHandlers,
   ...projectLeadHandlers,

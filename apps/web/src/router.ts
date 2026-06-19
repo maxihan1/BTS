@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 25개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + settings 4 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 26개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -30,6 +30,7 @@ import { SessionsSettingsRouteAdapter } from './routes/settings.sessions'
 import { PasswordSettingsRouteAdapter } from './routes/settings.password'
 import { AccountLinksSettingsRouteAdapter } from './routes/settings.account-links'
 import { MfaSettingsRouteAdapter } from './routes/settings.mfa'
+import { NotificationSettingsRouteAdapter } from './routes/settings.notifications'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -250,6 +251,15 @@ const settingsMfaRoute = createRoute({
   beforeLoad: requireAuth,
 })
 
+/** 알림 구독 설정 라우트 — /settings/notifications, requireAuth (FR-NT-04) */
+const settingsNotificationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/notifications',
+  component: NotificationSettingsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
 /** 계정 연결 설정 라우트 — /settings/account-links, requireAuth + mustChangePassword 차단 */
 const settingsAccountLinksRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -267,7 +277,7 @@ const settingsAccountLinksRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 25개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 26개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
  *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
@@ -275,6 +285,7 @@ const settingsAccountLinksRoute = createRoute({
  *   · /projects/:projectKey/settings/custom-fields · /projects/:projectKey/settings/issue-templates
  *   · /projects/:projectKey/settings/field-permissions · /projects/:projectKey/settings/project-lead
  *   · /settings/sessions · /settings/password · /settings/account-links · /settings/mfa
+ *   · /settings/notifications
  * requireAuth 라우트: /dashboard · /issues · /issues/* · /admin/* · /projects/*\/settings/* · /settings/*
  */
 export const routeTree = rootRoute.addChildren([
@@ -320,6 +331,8 @@ export const routeTree = rootRoute.addChildren([
   settingsAccountLinksRoute,
   // identity-access BC — 2단계 인증 설정 (FR-MF-01)
   settingsMfaRoute,
+  // notification BC — 사용자 알림 구독 설정 (FR-NT-04)
+  settingsNotificationsRoute,
   // workflows (레거시 workflow 상세 — 향후 마이그레이션 예정)
   workflowsKeyRoute,
 ])
