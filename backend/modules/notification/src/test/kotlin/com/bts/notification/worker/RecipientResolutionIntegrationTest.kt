@@ -2,6 +2,9 @@
 
 package com.bts.notification.worker
 
+import com.bts.notification.NotificationDeliverySchedulingConfig
+import com.bts.notification.NotificationTestBootApplication
+import com.bts.notification.TestPermissionConfig
 import org.assertj.core.api.Assertions.assertThat
 import org.awaitility.Awaitility.await
 import org.jooq.DSLContext
@@ -14,9 +17,6 @@ import org.springframework.test.context.ActiveProfiles
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-import com.bts.notification.NotificationDeliverySchedulingConfig
-import com.bts.notification.NotificationTestBootApplication
-import com.bts.notification.TestPermissionConfig
 
 /**
  * worker 경로 수신자 해석 end-to-end 통합 테스트 (FR-NT-03 Task 7).

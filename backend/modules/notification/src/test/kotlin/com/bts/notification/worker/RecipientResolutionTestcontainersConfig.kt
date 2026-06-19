@@ -22,7 +22,6 @@ import org.springframework.security.oauth2.jwt.JwtException
 import org.springframework.transaction.PlatformTransactionManager
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
-import java.time.Instant
 import javax.sql.DataSource
 
 /**
@@ -107,8 +106,9 @@ class RecipientResolutionTestcontainersConfig {
     }
 
     @Bean
-    fun transactionManager(dataSource: DataSource): PlatformTransactionManager =
-        DataSourceTransactionManager(dataSource)
+    fun transactionManager(dataSource: DataSource): PlatformTransactionManager {
+        return DataSourceTransactionManager(dataSource)
+    }
 
     /**
      * 테스트 전용 JwtDecoder stub — 이 테스트는 STOMP 를 사용하지 않으므로 호출되지 않는다.

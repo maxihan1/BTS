@@ -88,8 +88,9 @@ class RecipientResolutionTestPortsConfig {
     @Bean
     fun projectRecipientLookupPort(): ProjectRecipientLookupPort =
         object : ProjectRecipientLookupPort {
-            override fun findProjectRecipients(projectKey: String): ProjectRecipients =
-                ProjectRecipients.empty()
+            override fun findProjectRecipients(projectKey: String): ProjectRecipients {
+                return ProjectRecipients.empty()
+            }
         }
 
     /**
