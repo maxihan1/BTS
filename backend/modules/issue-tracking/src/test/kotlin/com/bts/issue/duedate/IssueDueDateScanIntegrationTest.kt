@@ -4,6 +4,7 @@ package com.bts.issue.duedate
 
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueRepository
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -288,7 +289,7 @@ class IssueDueDateScanIntegrationTest {
      * 이 테스트의 경량 TestConfig 는 스프링 부트 자동구성을 사용하지 않으므로 숫자로 수신된다.
      * isNumber() 분기로 두 형식을 모두 처리한다.
      */
-    private fun parseOccurredAt(node: com.fasterxml.jackson.databind.JsonNode): Instant {
+    private fun parseOccurredAt(node: JsonNode): Instant {
         return if (node.isNumber) {
             Instant.ofEpochSecond(node.asLong())
         } else {
@@ -368,18 +369,14 @@ class IssueDueDateScanIntegrationTest {
      * pgmq.read raw SQL — DATA.md §5 예외 허용 (? 바인딩).
      * visibility_timeout=1, qty=100 — 100건 이하 단언용.
      */
-    private fun readAllQueueMessages(): List<com.fasterxml.jackson.databind.JsonNode> {
-        val connection =
-            DriverManager.getConnection(
-                TestConfig.postgres.jdbcUrl,
-                TestConfig.postgres.username,
-                TestConfig.postgres.password,
-            )
-        val dsl = DSL.using(connection, SQLDialect.POSTGRES)
-        val records = dsl.fetch("SELECT * FROM pgmq.read('q_issue_events', 1, 100)")
-        return records.map { record ->
-            val body = record.get("message", String::class.java)
-            objectMapper.readTree(body)
+    private fun readAllQueueMessages(): List<JsonNode> {
+        return conn().use { connection ->
+            val dsl = DSL.using(connection, SQLDialect.POSTGRES)
+            val records = dsl.fetch("SELECT * FROM pgmq.read('q_issue_events', 1, 100)")
+            records.map { record ->
+                val body = record.get("message", String::class.java)
+                objectMapper.readTree(body)
+            }
         }
     }
 
