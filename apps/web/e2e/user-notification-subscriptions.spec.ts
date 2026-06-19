@@ -148,21 +148,39 @@ test.describe('S1 매트릭스 표시 — 채널 2열 + 이벤트 행 확인 (FR
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S4 — 토글(끄기) + 영속: 셀 토글 후 페이지 새로고침 시 꺼진 상태 유지
+// S4 — 토글(끄기) + SPA 재진입 후 영속
 //
 // Given   alice 로그인 → /settings/notifications 진입 (store 시드: 20셀 enabled=true)
 //         "이슈 댓글 작성 × 이메일" 셀이 켜짐 상태
-// When    해당 셀 체크박스 클릭 → enabled=false로 PATCH 발송
+// When    해당 셀 체크박스 클릭 → enabled=false PATCH 발송
 // Then    refetch 완료 후 해당 셀 꺼짐 상태 반영
-//         (invalidate-only 패턴 — setQueryData 없이 refetch로 반영, useUserNotificationSubscriptions.ts)
-// When    페이지 새로고침 (page.reload())
-// Then    새로고침 후에도 "이슈 댓글 작성 × 이메일" 셀 꺼짐 상태 유지
-//         (MSW stateful store가 변경을 영속 — msw-mutation-stateful-refetch 교훈)
+//         (invalidate-only 패턴 — setQueryData 없이 refetch로 반영)
+// When    SPA 내부 네비게이션 → /settings/sessions 이동 (pushState+popstate, MSW 워커 유지)
+// Then    세션 설정 페이지 렌더
+// When    SPA 내부 네비게이션 → /settings/notifications 복귀 (pushState+popstate)
+// Then    매트릭스 테이블 재렌더 — "이슈 댓글 × 이메일" 셀 여전히 꺼짐 (MSW store 영속)
+//         "이슈 댓글 × 인앱" 셀은 여전히 켜짐 (부분 변경 격리)
+//         MSW store 직접 fetch 단언도 통과 (enabled=false 영속 확인)
+//
+// SPA 내부 전환 방식.
+//   window.history.pushState + PopStateEvent('popstate') 조합.
+//   TanStack Router는 popstate 이벤트를 감청해 URL에 맞는 컴포넌트를 마운트한다.
+//   full navigation(page.goto)과 달리 브라우저 컨텍스트를 유지하므로
+//   MSW ServiceWorker 모듈/store가 buildSeedStore()로 리셋되지 않는다.
+//   (custom-fields.spec.ts:327-333 / issue-links.spec.ts:75-78 선례 동형)
 // ─────────────────────────────────────────────────────────────────────────────
 
-test.describe('S4 토글(끄기) + 새로고침 후 영속 (FR-NT-04)', () => {
-  test('Given enabled=true 셀 When 체크박스 클릭 Then 꺼짐 + 새로고침 후에도 꺼짐 유지', async ({ page }) => {
-    // Given. alice 로그인 → CSRF 쿠키 시드 → 페이지 진입 + 시드 복원
+/** SPA 내부 전환 헬퍼 — pushState + popstate로 MSW store를 보존한 채 라우트 변경 */
+async function spaNavigate(page: import('@playwright/test').Page, url: string): Promise<void> {
+  await page.evaluate((targetUrl: string) => {
+    window.history.pushState({}, '', targetUrl)
+    window.dispatchEvent(new PopStateEvent('popstate', { state: {} }))
+  }, url)
+}
+
+test.describe('S4 토글(끄기) + SPA 재진입 후 영속 (FR-NT-04)', () => {
+  test('Given enabled=true 셀 When 체크박스 클릭 Then 꺼짐 + SPA 재진입 후에도 꺼짐 유지', async ({ page }) => {
+    // Given. alice 로그인 → CSRF 쿠키 시드 → 페이지 진입 + store 시드 복원
     await loginAsAlice(page)
     await seedXsrfCookie(page)
     await page.goto(PAGE_URL)
@@ -174,7 +192,6 @@ test.describe('S4 토글(끄기) + 새로고침 후 영속 (FR-NT-04)', () => {
     await waitForMatrix(page)
 
     // Given. "이슈 댓글 작성 × 이메일" 셀 켜짐 상태 확인
-    // 켜짐 상태일 때의 aria-label로 locator 구성
     const targetCellOn = page.getByRole('checkbox', {
       name: cellAriaLabel('issue.commented', 'EMAIL', true),
       exact: true,
@@ -185,7 +202,7 @@ test.describe('S4 토글(끄기) + 새로고침 후 영속 (FR-NT-04)', () => {
     // When. 셀 체크박스 클릭 → enabled=false PATCH 발송
     await targetCellOn.click()
 
-    // Then. invalidate-only 패턴 — refetch 완료 후 꺼짐 aria-label을 가진 체크박스 출현 대기
+    // Then. invalidate-only 패턴 — refetch 완료 후 꺼짐 aria-label 체크박스 출현 대기
     // (mutation onSuccess → invalidateQueries → GET refetch → aria-label 갱신)
     const targetCellOff = page.getByRole('checkbox', {
       name: cellAriaLabel('issue.commented', 'EMAIL', false),
@@ -194,11 +211,41 @@ test.describe('S4 토글(끄기) + 새로고침 후 영속 (FR-NT-04)', () => {
     await expect(targetCellOff).toBeVisible()
     await expect(targetCellOff).not.toBeChecked()
 
-    // When. MSW store 영속 직접 확인 — page.evaluate로 GET 재호출
-    // page.goto('/dashboard') + page.goto(PAGE_URL) 방식은 full navigation을 유발해
-    // MSW 서비스 워커 모듈이 재평가되면서 store가 buildSeedStore()로 리셋될 수 있다.
-    // 대신 현재 페이지 컨텍스트에서 직접 fetch로 현재 MSW store 상태를 조회한다.
-    // (worktree-stale-base-rebase-and-e2e-msw-traps: MSW store는 같은 워커 컨텍스트에서 fetch)
+    // When. SPA 내부 네비게이션 → /settings/sessions 이동
+    // pushState + popstate 조합으로 MSW 워커/store를 보존한 채 다른 settings 라우트로 전환
+    await spaNavigate(page, '/settings/sessions')
+
+    // Then. 세션 설정 페이지 렌더 확인 — /settings/sessions 라우트의 SessionList가 마운트됨
+    // NotificationSubscriptionMatrix가 언마운트되어 컴포넌트 상태 초기화 검증 준비 완료
+    await expect(page).toHaveURL(/settings\/sessions/)
+
+    // When. SPA 내부 네비게이션 → /settings/notifications 복귀
+    await spaNavigate(page, PAGE_URL)
+
+    // Then. 알림 구독 설정 페이지 URL 확인
+    await expect(page).toHaveURL(/settings\/notifications/)
+
+    // Then. 매트릭스 재렌더 완료 대기
+    await waitForMatrix(page)
+
+    // Then. "이슈 댓글 × 이메일" 셀이 여전히 꺼짐 상태 (MSW store 영속 + 컴포넌트 재마운트 후)
+    const targetCellOffAfterReentry = page.getByRole('checkbox', {
+      name: cellAriaLabel('issue.commented', 'EMAIL', false),
+      exact: true,
+    })
+    await expect(targetCellOffAfterReentry).toBeVisible()
+    await expect(targetCellOffAfterReentry).not.toBeChecked()
+
+    // Then. "이슈 댓글 × 인앱" 셀은 여전히 켜짐 (부분 변경 격리 — 다른 셀 영향 없음)
+    const commentInAppCellOn = page.getByRole('checkbox', {
+      name: cellAriaLabel('issue.commented', 'IN_APP', true),
+      exact: true,
+    })
+    await expect(commentInAppCellOn).toBeVisible()
+    await expect(commentInAppCellOn).toBeChecked()
+
+    // Then. MSW store 직접 fetch 단언 — page.evaluate로 GET 재호출해 store 영속 이중 확인
+    // (msw-mutation-stateful-refetch 교훈: store 영속이 가짜그린 원인이 될 수 있어 명시 검증)
     type SubscriptionEntry = { eventType: string; channel: string; enabled: boolean }
     const storeState = await page.evaluate(async (url: string): Promise<SubscriptionEntry[]> => {
       const res = await fetch(url)
@@ -206,14 +253,12 @@ test.describe('S4 토글(끄기) + 새로고침 후 영속 (FR-NT-04)', () => {
       return json.data.subscriptions
     }, API_URL)
 
-    // Then. MSW store에서 "이슈 댓글 × 이메일" enabled=false로 영속됨
     const commentEmailEntry = storeState.find(
       (e) => e.eventType === 'issue.commented' && e.channel === 'EMAIL',
     )
     expect(commentEmailEntry).toBeDefined()
     expect(commentEmailEntry?.enabled).toBe(false)
 
-    // 그리고 다른 셀(이슈 댓글 × 인앱)은 그대로 enabled=true (부분 변경 격리 검증)
     const commentInAppEntry = storeState.find(
       (e) => e.eventType === 'issue.commented' && e.channel === 'IN_APP',
     )
