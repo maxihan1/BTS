@@ -6,6 +6,7 @@ import com.bts.shared.issue.IssueTypeId
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -47,6 +48,10 @@ import java.util.UUID
  * - assignFixVersions_dedup — 중복 UUID 를 전달하면 distinct 정규화되어 반환된다.
  * - assignFixVersions_replaces_existing — 기존 fixVersionIds 를 새 목록으로 교체한다.
  * - clearFixVersions_empties_list — clearFixVersions() 호출 후 fixVersionIds 는 빈 리스트다.
+ * - create_default_startDate_null — startDate 기본값은 null 이다.
+ * - create_default_dueDate_null — dueDate 기본값은 null 이다.
+ * - create_default_targetDate_null — targetDate 기본값은 null 이다.
+ * - create_date_fields_all_null — create() 호출 시 3일정 필드가 모두 null 이다.
  */
 class IssueTest {
     private val validId = IssueId(UUID.randomUUID())
@@ -840,5 +845,77 @@ class IssueTest {
         val cleared = issue.clearFixVersions()
 
         assertThat(cleared.fixVersionIds).isEmpty()
+    }
+
+    // ─── FR-PL-01: 일정 필드 불변식 ──────────────────────────────────────────
+
+    @Test
+    fun `create_default_startDate_null — startDate 기본값은 null 이다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+
+        assertThat(issue.startDate).isNull()
+    }
+
+    @Test
+    fun `create_default_dueDate_null — dueDate 기본값은 null 이다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+
+        assertThat(issue.dueDate).isNull()
+    }
+
+    @Test
+    fun `create_default_targetDate_null — targetDate 기본값은 null 이다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+
+        assertThat(issue.targetDate).isNull()
+    }
+
+    @Test
+    fun `create_date_fields_all_null — create() 호출 시 3일정 필드가 모두 null 이다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+
+        // 컴파일 시점 타입 확인 — LocalDate? 로 대입 가능해야 한다
+        val startDate: LocalDate? = issue.startDate
+        val dueDate: LocalDate? = issue.dueDate
+        val targetDate: LocalDate? = issue.targetDate
+        assertThat(startDate).isNull()
+        assertThat(dueDate).isNull()
+        assertThat(targetDate).isNull()
     }
 }

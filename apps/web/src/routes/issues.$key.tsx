@@ -33,6 +33,7 @@ import { IssueDescription } from '@/components/issue/IssueDescription'
 import { AttachmentSection } from '@/components/issue/AttachmentSection'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
+import { IssueScheduleFields } from '@/components/issue/IssueScheduleFields'
 import { ResolutionModal } from '@/components/issue/ResolutionModal'
 import { CloneIssueDialog } from '@/components/issues/CloneIssueDialog'
 import { MoveIssueDialog } from '@/components/issues/MoveIssueDialog'
@@ -668,35 +669,42 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
             </div>
           </aside>
         ) : (
-          <IssueMetaPanel
-            issue={issue}
-            availableTypes={availableTypes}
-            onTypeChange={handleTypeChange}
-            onDeleteClick={handleDeleteClick}
-            onCloneClick={() => setCloneDialogOpen(true)}
-            transitions={transitions}
-            onTransition={handleTransition}
-            isTransitioning={transitionMutation.isPending}
-            unavailableReason={transitionUnavailableReason}
-            onPriorityChange={handlePriorityChange}
-            onImpactChange={handleImpactChange}
-            onEnvironmentSave={handleEnvironmentSave}
-            onLabelsSave={handleLabelsSave}
-            users={users}
-            onAssigneeSearch={setAssigneeSearchQuery}
-            onAssigneeChange={handleAssigneeChange}
-            currentAssignee={currentAssignee}
-            componentIds={issue.componentIds}
-            components={projectComponents}
-            onComponentsChange={handleComponentsChange}
-            versions={projectVersions}
-            affectsVersionIds={issue.affectsVersionIds}
-            fixVersionIds={issue.fixVersionIds}
-            onAffectsVersionsChange={handleAffectsVersionsChange}
-            onFixVersionsChange={handleFixVersionsChange}
-            onSecurityLevelChange={handleSecurityLevelChange}
-            onCustomFieldsSave={handleCustomFieldsSave}
-          />
+          <div className="flex flex-col gap-4">
+            <IssueMetaPanel
+              issue={issue}
+              availableTypes={availableTypes}
+              onTypeChange={handleTypeChange}
+              onDeleteClick={handleDeleteClick}
+              onCloneClick={() => setCloneDialogOpen(true)}
+              transitions={transitions}
+              onTransition={handleTransition}
+              isTransitioning={transitionMutation.isPending}
+              unavailableReason={transitionUnavailableReason}
+              onPriorityChange={handlePriorityChange}
+              onImpactChange={handleImpactChange}
+              onEnvironmentSave={handleEnvironmentSave}
+              onLabelsSave={handleLabelsSave}
+              users={users}
+              onAssigneeSearch={setAssigneeSearchQuery}
+              onAssigneeChange={handleAssigneeChange}
+              currentAssignee={currentAssignee}
+              componentIds={issue.componentIds}
+              components={projectComponents}
+              onComponentsChange={handleComponentsChange}
+              versions={projectVersions}
+              affectsVersionIds={issue.affectsVersionIds}
+              fixVersionIds={issue.fixVersionIds}
+              onAffectsVersionsChange={handleAffectsVersionsChange}
+              onFixVersionsChange={handleFixVersionsChange}
+              onSecurityLevelChange={handleSecurityLevelChange}
+              onCustomFieldsSave={handleCustomFieldsSave}
+            />
+            {/* 일정 필드 — FR-PL-01 시작일·마감일·목표일 (IssueMetaPanel 인근 하단 배치) */}
+            <div className="border border-border rounded-xl px-3.5 py-3">
+              <p className="text-xs text-muted-foreground mb-3">{issueDetailStrings.scheduleLabel}</p>
+              <IssueScheduleFields issue={issue} disabled={!canEdit} />
+            </div>
+          </div>
         )}
       </div>
 

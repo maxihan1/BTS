@@ -3,6 +3,7 @@
 package com.bts.issue.repository
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
+import com.bts.issue.application.DatePatch
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
@@ -27,12 +28,14 @@ import org.jooq.JSONB
 import org.jooq.Record
 import org.jooq.Table
 import org.jooq.TableField
+import org.jooq.UpdateSetMoreStep
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
@@ -100,6 +103,10 @@ private const val SQL_COLLECT_ANCESTORS =
  * null 필드는 변경하지 않는다.
  * description/environment 는 빈/공백 문자열이면 DB NULL 로 클리어한다 (ifBlank).
  * customFields 는 non-null 이면 병합된 최종 맵 전체를 JSONB 로 저장한다.
+ * startDate/dueDate/targetDate 는 [DatePatch] 3-state 로 변경 의도를 표현한다 (FR-PL-01).
+ *   - [DatePatch.Unchanged] (기본값) — 변경하지 않는다.
+ *   - [DatePatch.Clear] — DB NULL 로 클리어한다.
+ *   - [DatePatch.Set] — 지정 날짜로 SET 한다.
  */
 data class IssueFieldPatch(
     val summary: String? = null,
@@ -110,6 +117,9 @@ data class IssueFieldPatch(
     val environment: String? = null,
     val impact: Int? = null,
     val customFields: Map<String, Any?>? = null,
+    val startDate: DatePatch = DatePatch.Unchanged,
+    val dueDate: DatePatch = DatePatch.Unchanged,
+    val targetDate: DatePatch = DatePatch.Unchanged,
 )
 
 /**
@@ -250,6 +260,10 @@ class IssueRepository(
             .apply { if (patch.environment != null) set(ISSUES.ENVIRONMENT, patch.environment.ifBlank { null }) }
             .apply { if (patch.impact != null) set(ISSUES.IMPACT, patch.impact.toShort()) }
             .apply { if (patch.customFields != null) set(ISSUES.CUSTOM_FIELDS, patch.customFields.toJsonb()) }
+            // 날짜 3-state SET (FR-PL-01). applyDatePatch 헬퍼로 중복 when-분기 추출.
+            .applyDatePatch(ISSUES.START_DATE, patch.startDate)
+            .applyDatePatch(ISSUES.DUE_DATE, patch.dueDate)
+            .applyDatePatch(ISSUES.TARGET_DATE, patch.targetDate)
             .where(ISSUES.KEY.eq(key.value))
             .and(ISSUES.VERSION.eq(expectedVersion))
             .and(ISSUES.DELETED_AT.isNull)
@@ -1362,6 +1376,9 @@ private fun Issue.toInsertRecord(): IssuesRecord =
         securityLevelId = securityLevelId,
         customFields = customFields.toJsonb(),
         parentId = parentId,
+        startDate = startDate,
+        dueDate = dueDate,
+        targetDate = targetDate,
     )
 
 /**
@@ -1398,6 +1415,10 @@ private fun IssuesRecord.toIssue(): Issue {
         customFields = customFields.toCustomFieldsMap(),
         // parent_id 컬럼 매핑 — null = 최상위 이슈 (FR-LK-01, V021)
         parentId = parentId,
+        // 일정 필드 3컬럼 — null = 미지정 (FR-PL-01, V025)
+        startDate = startDate,
+        dueDate = dueDate,
+        targetDate = targetDate,
     )
 }
 
@@ -1442,4 +1463,24 @@ private fun JSONB?.toCustomFieldsMap(): Map<String, Any?> {
     val json = this?.data()
     if (json.isNullOrBlank() || json == "{}") return emptyMap()
     return CUSTOM_FIELDS_MAPPER.readValue(json, CUSTOM_FIELDS_TYPE_REF)
+}
+
+/**
+ * jOOQ UPDATE 체인에 [DatePatch] 3-state 를 적용하는 헬퍼 (FR-PL-01).
+ *
+ * [DatePatch.Set] → `SET field = value`, [DatePatch.Clear] → `SET field = NULL`,
+ * [DatePatch.Unchanged] → SET 절 추가 없음.
+ *
+ * 반환값: 동일 [UpdateSetMoreStep] 인스턴스 (jOOQ 체인 연속 가능).
+ */
+private fun UpdateSetMoreStep<IssuesRecord>.applyDatePatch(
+    field: TableField<IssuesRecord, LocalDate?>,
+    patch: DatePatch,
+): UpdateSetMoreStep<IssuesRecord> {
+    when (patch) {
+        is DatePatch.Set -> set(field, patch.value)
+        DatePatch.Clear -> set(field, null as LocalDate?)
+        DatePatch.Unchanged -> Unit
+    }
+    return this
 }

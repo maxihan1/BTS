@@ -344,6 +344,15 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
      * { key: value } → 키 단위 병합 (value가 null이면 해당 키 삭제).
      */
     customFields?: Record<string, unknown> | null
+    /**
+     * FR-PL-01 — 일정 3필드 (JsonNullable 3-state).
+     * undefined(미전달) → 기존값 유지.
+     * null → DB NULL 클리어.
+     * "yyyy-MM-dd" → 해당 날짜로 설정.
+     */
+    startDate?: string | null
+    dueDate?: string | null
+    targetDate?: string | null
   }
 
   // (2) typeId 검증 — 카탈로그에 없는 id 는 404
@@ -399,6 +408,12 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     body.customFields,
   )
 
+  // FR-PL-01 — 일정 3필드 3-state 적용.
+  // undefined(미전달) → 기존값 유지, null → 클리어, "yyyy-MM-dd" → 설정.
+  const resolvedStartDate = applyDatePatch(found.startDate ?? null, body.startDate)
+  const resolvedDueDate = applyDatePatch(found.dueDate ?? null, body.dueDate)
+  const resolvedTargetDate = applyDatePatch(found.targetDate ?? null, body.targetDate)
+
   const updated: IssueResponse = {
     ...found,
     summary: body.summary ?? found.summary,
@@ -415,6 +430,9 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     impactName: impactNameOf(resolvedImpact),
     securityLevelId: resolvedSecurityLevelId,
     customFields: resolvedCustomFields,
+    startDate: resolvedStartDate,
+    dueDate: resolvedDueDate,
+    targetDate: resolvedTargetDate,
     version: found.version + 1,
     updatedAt: new Date().toISOString(),
   }
@@ -737,6 +755,26 @@ function mergeCustomFields(
     }
   }
   return merged
+}
+
+/**
+ * FR-PL-01 — 날짜 필드 3-state 패치 헬퍼.
+ *
+ * 3-state 규칙 (JsonNullable<LocalDate> 백엔드 계약 미러).
+ * - incoming undefined(미전달) → current 그대로 반환 (무변경).
+ * - incoming null → null 반환 (클리어).
+ * - incoming "yyyy-MM-dd" 문자열 → 해당 값 반환 (설정).
+ *
+ * @param current 현재 저장된 날짜 값 (null 허용)
+ * @param incoming PATCH body의 날짜 값 (undefined/null/"yyyy-MM-dd" 허용)
+ * @returns 패치 결과
+ */
+function applyDatePatch(
+  current: string | null,
+  incoming: string | null | undefined,
+): string | null {
+  if (incoming === undefined) return current
+  return incoming
 }
 
 /**

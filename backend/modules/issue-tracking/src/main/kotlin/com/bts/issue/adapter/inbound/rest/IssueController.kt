@@ -5,6 +5,7 @@ package com.bts.issue.adapter.inbound.rest
 import com.bts.issue.application.AppChangeAssigneeRequest
 import com.bts.issue.application.AppChangeComponentsRequest
 import com.bts.issue.application.AppChangeVersionsRequest
+import com.bts.issue.application.DatePatch
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.IssueChangelogService
 import com.bts.issue.application.SecurityLevelPatch
@@ -33,6 +34,7 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.net.URI
+import java.time.LocalDate
 import java.util.UUID
 import com.bts.issue.application.CloneIssueRequest as AppCloneIssueRequest
 import com.bts.issue.application.CreateIssueRequest as AppCreateIssueRequest
@@ -200,6 +202,9 @@ class IssueController(
                 environment = request.environment,
                 impact = request.impact,
                 securityLevel = toSecurityLevelPatch(request.securityLevelId),
+                startDate = toDatePatch(request.startDate),
+                dueDate = toDatePatch(request.dueDate),
+                targetDate = toDatePatch(request.targetDate),
             )
         val response = service.updateIssue(actor, issueKey, appRequest)
         return ResponseEntity.ok(DataResponse(data = response))
@@ -567,6 +572,23 @@ class IssueController(
             !raw.isPresent -> SecurityLevelPatch.Unchanged
             raw.get() == null -> SecurityLevelPatch.Clear
             else -> SecurityLevelPatch.Assign(raw.get())
+        }
+
+    /**
+     * `JsonNullable<LocalDate>` 의 presence 를 [DatePatch] 3-state 로 매핑한다 (FR-PL-01).
+     *
+     * Jira Cloud 방식 — 필드 부재(undefined)=무변경, 명시 null=날짜 해제, 값=날짜 지정.
+     * application 계층이 웹 직렬화 라이브러리(JsonNullable)에 결합되지 않도록 transport 계층에서 변환한다.
+     * startDate / dueDate / targetDate 세 필드가 동일 변환 함수를 공용으로 사용한다.
+     *
+     * @param raw PATCH 요청의 날짜 필드 JsonNullable 값.
+     * @return 대응하는 [DatePatch].
+     */
+    private fun toDatePatch(raw: JsonNullable<LocalDate>): DatePatch =
+        when {
+            !raw.isPresent -> DatePatch.Unchanged
+            raw.get() == null -> DatePatch.Clear
+            else -> DatePatch.Set(raw.get())
         }
 }
 

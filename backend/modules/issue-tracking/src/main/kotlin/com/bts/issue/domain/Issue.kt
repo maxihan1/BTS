@@ -4,6 +4,7 @@ package com.bts.issue.domain
 
 import com.bts.shared.issue.IssueTypeId
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 
 /** 라벨 한 개의 최대 글자 수. */
@@ -80,6 +81,9 @@ private const val IMPACT_MAX = 3
  * @property parentId 부모 이슈의 내부 UUID. null 이면 최상위 이슈.
  *   구조적 계층 컬럼(issues.parent_id) — 링크(issue_links)와 별개 (FR-LK-01, V021).
  *   변경은 [IssueRepository.updateParent] 를 통해 수행하며, cycle-free 보장은 서비스 계층(Task 6) 책임.
+ * @property startDate 이슈 시작일(캘린더 날짜). null 이면 미설정. 교차 검증 없음(FR-PL-01).
+ * @property dueDate 이슈 마감일(캘린더 날짜). null 이면 미설정. 교차 검증 없음(FR-PL-01).
+ * @property targetDate 이슈 목표일(캘린더 날짜). null 이면 미설정. 교차 검증 없음(FR-PL-01).
  */
 data class Issue(
     val id: IssueId,
@@ -106,6 +110,9 @@ data class Issue(
     val securityLevelId: UUID? = null,
     val customFields: Map<String, Any?> = emptyMap(),
     val parentId: UUID? = null,
+    val startDate: LocalDate? = null,
+    val dueDate: LocalDate? = null,
+    val targetDate: LocalDate? = null,
 ) {
     companion object {
         /**

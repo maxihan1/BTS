@@ -60,6 +60,9 @@ class IssueChangeDetector {
                 "assignee" to { it.assigneeId?.value?.toString() },
                 "resolution" to { it.resolutionId?.toString() },
                 "securityLevel" to { it.securityLevelId?.toString() },
+                "startDate" to { it.startDate?.toString() },
+                "dueDate" to { it.dueDate?.toString() },
+                "targetDate" to { it.targetDate?.toString() },
             )
     }
 

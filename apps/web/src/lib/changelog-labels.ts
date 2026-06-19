@@ -56,7 +56,15 @@ const CUSTOM_FIELD_PREFIX = 'customField:'
 const UUID_ARRAY_FIELDS = new Set(['components', 'affectsVersions', 'fixVersions'])
 
 /** raw 값을 그대로 표시하는 텍스트 필드 집합 */
-const RAW_TEXT_FIELDS = new Set(['summary', 'description', 'environment', 'labels'])
+const RAW_TEXT_FIELDS = new Set([
+  'summary',
+  'description',
+  'environment',
+  'labels',
+  'startDate',
+  'dueDate',
+  'targetDate',
+])
 
 /** lifecycle 이벤트 키 */
 const LIFECYCLE_CREATED = 'created'

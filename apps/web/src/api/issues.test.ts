@@ -946,6 +946,186 @@ describe('issueResponseSchema — FR-LK-01 parent 필드', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// T1-22. issueResponseSchema — FR-PL-01 일정 3필드 파싱 회귀가드
+//
+// 백엔드 IssueResponse에 startDate/dueDate/targetDate: LocalDate? 3필드 추가.
+// @JsonFormat(STRING, "yyyy-MM-dd") 직렬화 → 프론트 Zod: z.string().nullable()
+// ─────────────────────────────────────────────────────────────────────────────
+describe('issueResponseSchema — FR-PL-01 일정 3필드', () => {
+  it('T1-22a: startDate/dueDate/targetDate 가 "yyyy-MM-dd" 문자열인 경우 파싱 성공', () => {
+    const result = issueResponseSchema.parse({
+      ...issueFixture,
+      startDate: '2026-06-01',
+      dueDate: '2026-06-30',
+      targetDate: '2026-07-15',
+    })
+    expect(result.startDate).toBe('2026-06-01')
+    expect(result.dueDate).toBe('2026-06-30')
+    expect(result.targetDate).toBe('2026-07-15')
+  })
+
+  it('T1-22b: startDate/dueDate/targetDate 가 null 인 경우도 파싱 성공', () => {
+    const result = issueResponseSchema.parse({
+      ...issueFixture,
+      startDate: null,
+      dueDate: null,
+      targetDate: null,
+    })
+    // optional() 스키마에서 명시 null 은 null 그대로 파싱된다
+    expect(result.startDate).toBeNull()
+    expect(result.dueDate).toBeNull()
+    expect(result.targetDate).toBeNull()
+  })
+
+  it('T1-22c: 일정 3필드가 누락된 경우 파싱 성공 + undefined — 기존 인라인 mock 파급 방지', () => {
+    // optional()로 두어 기존 인라인 mock(필드 미포함)이 TS 컴파일 에러 없이 통과한다
+    // (zod-schema-strengthen-inline-mock-fanout 교훈 — securityLevelId 패턴).
+    // 필드가 없으면 undefined가 된다. null이 아님 — IssueResponse 타입에서 optional 처리.
+    const result = issueResponseSchema.parse(issueFixture)
+    expect(result.startDate).toBeUndefined()
+    expect(result.dueDate).toBeUndefined()
+    expect(result.targetDate).toBeUndefined()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-23. updateIssue — FR-PL-01 일정 3필드 PATCH 3-state 계약 검증
+//
+// updateIssue 는 input 을 body에 직접 전달한다 (JSON.stringify undefined 키 자동 누락).
+// - 무변경 = 키를 input 에서 생략 (undefined → JSON.stringify 가 키 제거)
+// - 클리어 = 키를 명시 null 로 포함 (null → JSON 에 "dueDate":null)
+// - 설정   = "yyyy-MM-dd" 문자열로 포함
+// ─────────────────────────────────────────────────────────────────────────────
+describe('updateIssue — FR-PL-01 일정 3필드 3-state PATCH', () => {
+  it('T1-23a: 날짜 설정 시 "yyyy-MM-dd" 문자열로 PATCH body 에 포함된다', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.patch('/api/v1/issues/:key', async ({ request, params }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json({
+          data: {
+            ...issueFixture,
+            key: params['key'] as string,
+            startDate: capturedBody['startDate'] as string | null ?? null,
+            dueDate: capturedBody['dueDate'] as string | null ?? null,
+            targetDate: capturedBody['targetDate'] as string | null ?? null,
+          },
+        })
+      }),
+    )
+
+    const result = await updateIssue('ATLAS-1', {
+      startDate: '2026-06-01',
+      dueDate: '2026-06-30',
+      targetDate: '2026-07-15',
+      expectedVersion: 1,
+    })
+
+    // body 에 yyyy-MM-dd 문자열이 포함되었는지 검증
+    expect(capturedBody['startDate']).toBe('2026-06-01')
+    expect(capturedBody['dueDate']).toBe('2026-06-30')
+    expect(capturedBody['targetDate']).toBe('2026-07-15')
+    // 응답 파싱도 성공해야 한다
+    expect(result.startDate).toBe('2026-06-01')
+    expect(result.dueDate).toBe('2026-06-30')
+    expect(result.targetDate).toBe('2026-07-15')
+  })
+
+  it('T1-23b: 클리어(clear) 시 해당 키가 null 로 명시 포함된다 (키 생략 아님)', async () => {
+    // C2 리뷰 핵심 — 클리어는 "dueDate":null (키 있음+값 null) 이어야 한다.
+    // 키가 생략되면 백엔드가 무변경으로 처리해 클리어되지 않는다.
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.patch('/api/v1/issues/:key', async ({ request, params }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json({
+          data: {
+            ...issueFixture,
+            key: params['key'] as string,
+            startDate: null,
+            dueDate: null,
+            targetDate: null,
+          },
+        })
+      }),
+    )
+
+    await updateIssue('ATLAS-1', {
+      startDate: null,
+      dueDate: null,
+      targetDate: null,
+      expectedVersion: 1,
+    })
+
+    // 키가 존재하고 값이 null 이어야 한다 (Object.prototype.hasOwnProperty 로 키 존재 검증)
+    expect(Object.prototype.hasOwnProperty.call(capturedBody, 'startDate')).toBe(true)
+    expect(capturedBody['startDate']).toBeNull()
+    expect(Object.prototype.hasOwnProperty.call(capturedBody, 'dueDate')).toBe(true)
+    expect(capturedBody['dueDate']).toBeNull()
+    expect(Object.prototype.hasOwnProperty.call(capturedBody, 'targetDate')).toBe(true)
+    expect(capturedBody['targetDate']).toBeNull()
+  })
+
+  it('T1-23c: 무변경(undefined) 시 해당 키가 PATCH body 에서 생략된다', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.patch('/api/v1/issues/:key', async ({ request, params }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json({
+          data: { ...issueFixture, key: params['key'] as string },
+        })
+      }),
+    )
+
+    // 날짜 필드 미전달 → 키 자체가 body 에서 제외되어야 한다
+    await updateIssue('ATLAS-1', { summary: '제목만 수정', expectedVersion: 1 })
+
+    expect(Object.prototype.hasOwnProperty.call(capturedBody, 'startDate')).toBe(false)
+    expect(Object.prototype.hasOwnProperty.call(capturedBody, 'dueDate')).toBe(false)
+    expect(Object.prototype.hasOwnProperty.call(capturedBody, 'targetDate')).toBe(false)
+  })
+
+  it('T1-23d: MSW stateful — 날짜 설정 후 GET 단건 조회 시 반영된 날짜가 반환된다', async () => {
+    // msw-mutation-stateful-refetch 교훈 — mutation 결과가 invalidate 후 refetch 시에도 유지돼야 한다.
+    // stateful 시나리오: PATCH 후 issueStore에 보관, GET 단건 재조회 시 반영.
+    // beforeEach 의 기본 핸들러는 날짜를 echo하지 않으므로 stateful store 핸들러를 별도 설정.
+    const store: { issue: typeof issueFixture & { startDate: string | null; dueDate: string | null } } = {
+      issue: { ...issueFixture, startDate: null, dueDate: null },
+    }
+
+    server.use(
+      http.patch('/api/v1/issues/:key', async ({ request, params }) => {
+        const body = await request.json() as { startDate?: string | null; dueDate?: string | null; expectedVersion?: number }
+        store.issue = {
+          ...store.issue,
+          key: params['key'] as string,
+          startDate: body.startDate !== undefined ? body.startDate : store.issue.startDate,
+          dueDate: body.dueDate !== undefined ? body.dueDate : store.issue.dueDate,
+          version: (body.expectedVersion ?? store.issue.version) + 1,
+        }
+        return HttpResponse.json({ data: store.issue })
+      }),
+      http.get('/api/v1/issues/:key', () => {
+        return HttpResponse.json({ data: store.issue })
+      }),
+    )
+
+    const patchResult = await updateIssue('ATLAS-1', {
+      startDate: '2026-06-01',
+      dueDate: '2026-06-30',
+      expectedVersion: 0,
+    })
+    expect(patchResult.startDate).toBe('2026-06-01')
+    expect(patchResult.dueDate).toBe('2026-06-30')
+
+    // invalidate 후 GET 단건 재조회 — store 에 보관된 값 반영 확인
+    const fetched = await fetchIssue('ATLAS-1')
+    expect(fetched.startDate).toBe('2026-06-01')
+    expect(fetched.dueDate).toBe('2026-06-30')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // T1-19. updateIssue — FR-IS-10 customFields PATCH body 직렬화 검증
 // ─────────────────────────────────────────────────────────────────────────────
 describe('updateIssue — FR-IS-10 customFields', () => {

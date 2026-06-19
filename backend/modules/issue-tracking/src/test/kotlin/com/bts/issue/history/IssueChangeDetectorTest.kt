@@ -13,6 +13,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -51,6 +52,9 @@ class IssueChangeDetectorTest : DescribeSpec({
         securityLevelId: UUID? = null,
         typeIdValue: Long = 1L,
         customFields: Map<String, Any?> = emptyMap(),
+        startDate: LocalDate? = null,
+        dueDate: LocalDate? = null,
+        targetDate: LocalDate? = null,
     ): Issue =
         Issue(
             id = IssueId(id),
@@ -76,6 +80,9 @@ class IssueChangeDetectorTest : DescribeSpec({
             fixVersionIds = fixVersionIds,
             securityLevelId = securityLevelId,
             customFields = customFields,
+            startDate = startDate,
+            dueDate = dueDate,
+            targetDate = targetDate,
         )
 
     // ── 라이프사이클 마커 ───────────────────────────────────────────────────────
@@ -379,6 +386,124 @@ class IssueChangeDetectorTest : DescribeSpec({
 
             items shouldHaveSize 1
             items[0].field shouldBe "customField:key2"
+        }
+    }
+
+    // ── 일정 필드 변경 (FR-PL-01) ──────────────────────────────────────────────────
+
+    describe("일정 필드 변경 (FR-PL-01)") {
+
+        it("startDate null→2025-01-10 변경 감지") {
+            val before = baseIssue(startDate = null)
+            val after = before.copy(startDate = LocalDate.of(2025, 1, 10))
+
+            val items = detector.detect(before, after)
+
+            items shouldHaveSize 1
+            items[0].field shouldBe "startDate"
+            items[0].fromValue shouldBe null
+            items[0].toValue shouldBe "2025-01-10"
+            items[0].fromLabel shouldBe null
+            items[0].toLabel shouldBe null
+        }
+
+        it("startDate 2025-01-10→null 클리어 감지") {
+            val before = baseIssue(startDate = LocalDate.of(2025, 1, 10))
+            val after = before.copy(startDate = null)
+
+            val items = detector.detect(before, after)
+
+            items shouldHaveSize 1
+            items[0].field shouldBe "startDate"
+            items[0].fromValue shouldBe "2025-01-10"
+            items[0].toValue shouldBe null
+        }
+
+        it("startDate 동일 날짜 → 변경 없음") {
+            val date = LocalDate.of(2025, 3, 15)
+            val before = baseIssue(startDate = date)
+            val after = before.copy(startDate = date)
+
+            detector.detect(before, after).shouldBeEmpty()
+        }
+
+        it("dueDate null→2025-06-30 변경 감지") {
+            val before = baseIssue(dueDate = null)
+            val after = before.copy(dueDate = LocalDate.of(2025, 6, 30))
+
+            val items = detector.detect(before, after)
+
+            items shouldHaveSize 1
+            items[0].field shouldBe "dueDate"
+            items[0].fromValue shouldBe null
+            items[0].toValue shouldBe "2025-06-30"
+        }
+
+        it("dueDate 2025-06-30→null 클리어 감지") {
+            val before = baseIssue(dueDate = LocalDate.of(2025, 6, 30))
+            val after = before.copy(dueDate = null)
+
+            val items = detector.detect(before, after)
+
+            items shouldHaveSize 1
+            items[0].field shouldBe "dueDate"
+            items[0].fromValue shouldBe "2025-06-30"
+            items[0].toValue shouldBe null
+        }
+
+        it("dueDate 동일 날짜 → 변경 없음") {
+            val date = LocalDate.of(2025, 6, 30)
+            val before = baseIssue(dueDate = date)
+            val after = before.copy(dueDate = date)
+
+            detector.detect(before, after).shouldBeEmpty()
+        }
+
+        it("targetDate null→2025-12-31 변경 감지") {
+            val before = baseIssue(targetDate = null)
+            val after = before.copy(targetDate = LocalDate.of(2025, 12, 31))
+
+            val items = detector.detect(before, after)
+
+            items shouldHaveSize 1
+            items[0].field shouldBe "targetDate"
+            items[0].fromValue shouldBe null
+            items[0].toValue shouldBe "2025-12-31"
+        }
+
+        it("targetDate 2025-12-31→null 클리어 감지") {
+            val before = baseIssue(targetDate = LocalDate.of(2025, 12, 31))
+            val after = before.copy(targetDate = null)
+
+            val items = detector.detect(before, after)
+
+            items shouldHaveSize 1
+            items[0].field shouldBe "targetDate"
+            items[0].fromValue shouldBe "2025-12-31"
+            items[0].toValue shouldBe null
+        }
+
+        it("targetDate 동일 날짜 → 변경 없음") {
+            val date = LocalDate.of(2025, 12, 31)
+            val before = baseIssue(targetDate = date)
+            val after = before.copy(targetDate = date)
+
+            detector.detect(before, after).shouldBeEmpty()
+        }
+
+        it("startDate + dueDate 동시 변경 → item 2개") {
+            val before = baseIssue(startDate = null, dueDate = null)
+            val after =
+                before.copy(
+                    startDate = LocalDate.of(2025, 1, 1),
+                    dueDate = LocalDate.of(2025, 3, 31),
+                )
+
+            val items = detector.detect(before, after)
+
+            items shouldHaveSize 2
+            val fields = items.map { it.field }.toSet()
+            fields shouldBe setOf("startDate", "dueDate")
         }
     }
 

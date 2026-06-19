@@ -139,6 +139,26 @@ export const issueResponseSchema = z.object({
     key: z.string(),
     summary: z.string(),
   }).nullish(),
+  // ── FR-PL-01 일정 필드 (Schedule Dates) ─────────────────────────────────
+  /**
+   * FR-PL-01 — 이슈 시작일.
+   * 백엔드 IssueResponse.startDate: LocalDate? → @JsonFormat(STRING, "yyyy-MM-dd") 직렬화.
+   * null이면 미설정. optional()로 두어 기존 인라인 mock(필드 미포함)이 TS 컴파일 에러 없이
+   * 통과하게 한다 (zod-schema-strengthen-inline-mock-fanout 교훈 — securityLevelId 패턴과 동일).
+   */
+  startDate: z.string().nullable().optional(),
+  /**
+   * FR-PL-01 — 이슈 마감일(Due Date).
+   * 백엔드 IssueResponse.dueDate: LocalDate? → @JsonFormat(STRING, "yyyy-MM-dd") 직렬화.
+   * null이면 미설정. optional()로 두어 기존 인라인 mock이 깨지지 않게 한다.
+   */
+  dueDate: z.string().nullable().optional(),
+  /**
+   * FR-PL-01 — 이슈 목표일(Target Date).
+   * 백엔드 IssueResponse.targetDate: LocalDate? → @JsonFormat(STRING, "yyyy-MM-dd") 직렬화.
+   * null이면 미설정. optional()로 두어 기존 인라인 mock이 깨지지 않게 한다.
+   */
+  targetDate: z.string().nullable().optional(),
 })
 
 /** Spring Page 응답 Zod 스키마 — 래퍼 없음 (DataResponse 감싸지 않음) */
@@ -279,6 +299,27 @@ export interface UpdateIssueInput {
    * - { key: value } = 키 단위 병합; 값이 null인 키는 삭제 (백엔드 처리)
    */
   customFields?: CustomFieldValues | null
+  /**
+   * FR-PL-01 — 시작일 수정 (JsonNullable 3-state).
+   * - undefined(미전달) = 무변경 (키 생략 → JSON.stringify 가 제거)
+   * - null = 클리어 (키 존재 + 값 null → 백엔드가 DB NULL로 설정)
+   * - "yyyy-MM-dd" 문자열 = 설정
+   */
+  startDate?: string | null
+  /**
+   * FR-PL-01 — 마감일(Due Date) 수정 (JsonNullable 3-state).
+   * - undefined(미전달) = 무변경
+   * - null = 클리어
+   * - "yyyy-MM-dd" 문자열 = 설정
+   */
+  dueDate?: string | null
+  /**
+   * FR-PL-01 — 목표일(Target Date) 수정 (JsonNullable 3-state).
+   * - undefined(미전달) = 무변경
+   * - null = 클리어
+   * - "yyyy-MM-dd" 문자열 = 설정
+   */
+  targetDate?: string | null
   expectedVersion: number
 }
 

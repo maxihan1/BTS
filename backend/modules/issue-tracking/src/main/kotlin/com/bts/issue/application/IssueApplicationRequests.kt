@@ -4,6 +4,7 @@ package com.bts.issue.application
 
 import com.bts.issue.domain.ActorId
 import com.bts.shared.issue.IssueTypeId
+import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -31,6 +32,31 @@ data class CreateIssueRequest(
     val securityLevelId: UUID? = null,
     val customFields: Map<String, Any?>? = null,
 )
+
+/**
+ * 이슈 일정 날짜 수정 의도 3-state (FR-PL-01).
+ *
+ * PATCH 시맨틱에서 "필드 부재(무변경)" 와 "명시 null(해제)" 를 구분하기 위한 sealed 표현이다.
+ * 컨트롤러(transport)가 `JsonNullable<LocalDate>` 의 presence 를 이 타입으로 변환하여 서비스에 전달한다.
+ * 웹 직렬화 라이브러리(JsonNullable)에 application 계층이 결합되지 않도록 별도 타입으로 분리한다.
+ * startDate / dueDate / targetDate 세 필드가 동일 타입을 공용으로 사용한다.
+ *
+ * when 식에서 else 분기 없이 컴파일러가 완전성(exhaustiveness)을 보장한다.
+ */
+sealed interface DatePatch {
+    /** 필드 부재 — 날짜를 변경하지 않는다. */
+    data object Unchanged : DatePatch
+
+    /** 명시 null — 날짜를 해제하여 미지정 상태로 되돌린다. */
+    data object Clear : DatePatch
+
+    /**
+     * 값 지정 — 날짜를 [value] 로 설정한다.
+     *
+     * @param value 지정할 캘린더 날짜 (DATE, 타임존 무관).
+     */
+    data class Set(val value: LocalDate) : DatePatch
+}
 
 /**
  * 이슈 보안 등급 수정 의도 3-state (FR-PM-06, Jira Cloud 방식).
@@ -79,6 +105,12 @@ sealed interface SecurityLevelPatch {
  *   Unchanged=무변경(기본), Clear=해제, Assign=지정. 무변경 외에는 SET_SECURITY 권한을 검증한다.
  * @param customFields 커스텀 필드 패치 맵 (FR-IS-10, E11). null=무변경, 맵 명시=키 단위 병합,
  *   키 값 null=해당 필드 제거. required 검증은 병합 후 최종 상태 기준.
+ * @param startDate 시작일 수정 의도 (FR-PL-01). [DatePatch] 3-state —
+ *   Unchanged=무변경(기본), Clear=날짜 해제, Set=날짜 지정. 교차 필드 검증 없음.
+ * @param dueDate 마감일 수정 의도 (FR-PL-01). [DatePatch] 3-state —
+ *   Unchanged=무변경(기본), Clear=날짜 해제, Set=날짜 지정.
+ * @param targetDate 목표일 수정 의도 (FR-PL-01). [DatePatch] 3-state —
+ *   Unchanged=무변경(기본), Clear=날짜 해제, Set=날짜 지정.
  */
 data class UpdateIssueRequest(
     val summary: String?,
@@ -91,6 +123,9 @@ data class UpdateIssueRequest(
     val impact: Int? = null,
     val securityLevel: SecurityLevelPatch = SecurityLevelPatch.Unchanged,
     val customFields: Map<String, Any?>? = null,
+    val startDate: DatePatch = DatePatch.Unchanged,
+    val dueDate: DatePatch = DatePatch.Unchanged,
+    val targetDate: DatePatch = DatePatch.Unchanged,
 )
 
 /**

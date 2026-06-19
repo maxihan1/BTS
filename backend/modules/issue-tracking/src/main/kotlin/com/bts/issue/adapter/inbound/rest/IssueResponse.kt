@@ -8,8 +8,10 @@ import com.bts.issue.domain.IssuePriority
 import com.bts.issue.markdown.MarkdownRenderer
 import com.bts.shared.permission.FieldKind
 import com.bts.shared.permission.FieldRef
+import com.fasterxml.jackson.annotation.JsonFormat
 import com.fasterxml.jackson.annotation.JsonInclude
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -58,6 +60,13 @@ import java.util.UUID
  *   목록 조회([listWithType]) 경로에서는 N+1/비용 회피를 위해 항상 null 로 반환된다.
  *   null 이면 JSON 키 자체를 생략한다([JsonInclude.Include.NON_NULL] 적용) — 프론트 Zod `.nullish()` 정합.
  *   FR-LK-01 Task 1.
+ * @property startDate 이슈 시작일(캘린더 날짜). null 이면 미설정. FR-PL-01.
+ *   JSON 직렬화 형식은 `"yyyy-MM-dd"` 문자열 — 전역 Jackson 날짜 설정이 없으므로
+ *   [JsonFormat] 어노테이션으로 직접 지정한다(prod ObjectMapper 기본값 비의존).
+ * @property dueDate 이슈 마감일(캘린더 날짜). null 이면 미설정. FR-PL-01.
+ *   [startDate] 와 동일한 직렬화 규칙을 따른다.
+ * @property targetDate 이슈 목표일(캘린더 날짜). null 이면 미설정. FR-PL-01.
+ *   [startDate] 와 동일한 직렬화 규칙을 따른다.
  */
 data class IssueResponse(
     val key: String,
@@ -94,6 +103,15 @@ data class IssueResponse(
     /** 단건 조회 경로에서만 채워짐. 목록 경로는 null. null 이면 JSON 키 생략. */
     @field:JsonInclude(JsonInclude.Include.NON_NULL)
     val parent: ParentSummary? = null,
+    /** 이슈 시작일. null 이면 미설정. "yyyy-MM-dd" 문자열 직렬화(prod ObjectMapper 기본값 비의존). */
+    @field:JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+    val startDate: LocalDate? = null,
+    /** 이슈 마감일. null 이면 미설정. "yyyy-MM-dd" 문자열 직렬화. */
+    @field:JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+    val dueDate: LocalDate? = null,
+    /** 이슈 목표일. null 이면 미설정. "yyyy-MM-dd" 문자열 직렬화. */
+    @field:JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+    val targetDate: LocalDate? = null,
 ) {
     /**
      * [visible] 집합을 기준으로 열람 불가 필드를 마스킹하고, [editable] 집합을 기준으로
@@ -314,6 +332,9 @@ data class IssueResponse(
                 securityLevelId = issue.securityLevelId,
                 customFields = issue.customFields,
                 parent = parent,
+                startDate = issue.startDate,
+                dueDate = issue.dueDate,
+                targetDate = issue.targetDate,
             )
     }
 }
