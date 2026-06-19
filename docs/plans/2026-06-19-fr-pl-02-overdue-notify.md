@@ -141,4 +141,29 @@ Maxi 확정 4결정. ①임박=마감 1일 전 ②혼합 재알림(임박1회+�
 - D6/D7 deviation: 프론트 토스트 무코드(FR-NT-02 제네릭), E2E는 통합테스트 대체. product 체크박스 마킹 시 근거 명시.
 - 머지 전 동기화 대상: product/agile-planning.md §6.2 D단계 + fr-index/README/CLAUDE 카운트(완료 FR +1) + dashboard 재생성 + verify-master-plan.sh.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-19, eng 집중 독립 리뷰)
+
+**Step 0 — 스코프 챌린지**.
+- 기존 코드 재사용 극대화 확인 ✅. notification 소비(NotificationEventType/buildTitleBody/V401 seed/NotificationWorker/EventRecipientResolver)·프론트 토스트(useNotificationStream)·발행(IssueEventPublisher)·스케줄링(SchedulingConfiguration)·워커 패턴(BulkOperationCleanupWorker) 모두 재사용. 신규는 발행 측 최소(이벤트2·쿼리2·워커1·emitter1·인덱스1).
+- 최소 변경 ✅. 4 task, 단일 BC. notification/프론트 0.
+- 복잡도 — 신규 클래스 2개(worker+emitter)로 "2+ 신규 서비스" smell 약하게 트리거. 단 emitter 분리는 tx 경계(self-invocation 회피) 목적이라 정당. 아래 ⚠️1.
+- 검색 — @Scheduled(Layer1 built-in)·pgmq(프로젝트 표준)·occurredAt dedup(기존 패턴). 재발명 0.
+
+**Architecture** ✅.
+- 데이터 흐름 깔끔: 스케줄러→repo(열림+날짜필터)→per-이슈 emitter(tx)→IssueEventPublisher→q_issue_events→[기존 소비 파이프라인]. BC 격리 준수.
+- ⚠️1 (taste) **per-이슈 emitter tx vs 단일 tx**. 현 설계=per-이슈(결함격리: 한 이슈 실패가 그날 전체 롤백 안 함, "systems over heroes"). 반론: 이벤트 payload가 trivial(issueKey/projectKey/occurredAt 전부 non-null)이라 직렬화 실패 비현실적, 실패는 DB/pgmq 연결뿐(모든 방식 동일). 단일 @Transactional은 BulkOperationCleanupWorker 선례와 정확히 일치(단순성). → **권장: per-이슈 emitter 유지**(알림 누락=핵심 실패모드라 격리가 옳음, 추가 복잡도=빈 1개로 미미). Maxi 게이트1 확인 항목.
+- ⚠️2 (non-blocker) **무조건 발행 낭비**. 정책 비활성 프로젝트의 지연 이슈도 매일 발행→소비측서 정책필터로 폐기. 1K 규모서 허용, BC 격리상 발행측서 정책 조회 불가하니 현 설계가 맞음. 기록만.
+- ⚠️3 (non-blocker) **보관/비활성 프로젝트 이슈**. 스캔이 모든 due_date 이슈 대상. 보관 프로젝트 멤버도 알림 받을 수 있음. resolver 가시성 필터가 접근은 차단하나 알림 자체는 발생. 엣지, 후속 고려.
+
+**Code Quality / Tests** ✅.
+- TDD RED/GREEN/REFACTOR 각 task 구비. 경계일(today/today±1)·종료/삭제/null 제외·멱등·결함격리 커버.
+- DRY: 열림 필터 두 쿼리 중복 → REFACTOR서 헬퍼 추출 명시. 좋음.
+- ⚠️4 (확인 필요, non-blocker) **소비측 due_soon/overdue 테스트 커버리지**. 발행측은 Task4가 완전 커버. 소비측(이벤트→토스트)은 notification 기존 테스트 의존. enum/seed 사전등록 시 소비 테스트도 추가됐는지 확인 권장. cross-BC라 이 PR서 추가 시 FR-NT-04 충돌 위험 → 발행측 커버 + 수동 verify로 갈음 가능.
+
+**Performance** ✅.
+- V026 부분 인덱스가 due_date<today(범위)·=today+1(포인트) 둘 다 지원. 일일 스캔 효율적.
+- per-이슈 N tx 오버헤드 미미(1K 규모). 필요 시 배치(100/tx) 중간안 가능하나 현재 premature.
+
+**BLOCKER: 없음.** plan 진행 가능. 게이트1 확인 항목 = ⚠1(emitter tx 설계, 권장=유지).
