@@ -82,7 +82,7 @@ class UserNotificationSubscriptionController(
      * @return 200 OK + [SubscriptionMatrixResponse] (갱신 후 20개 셀)
      */
     @PatchMapping
-    @Suppress("ThrowsCount") // eventType / channel 파싱 2종 throw — 응집이 분리보다 적합
+    @Suppress("ThrowsCount") // 크기 상한 + eventType / channel 파싱 3종 throw — 응집이 분리보다 적합
     fun patch(
         @RequestBody request: PatchSubscriptionsRequest,
     ): ResponseEntity<DataResponse<SubscriptionMatrixResponse>> {
@@ -92,6 +92,12 @@ class UserNotificationSubscriptionController(
             actorId,
             request.subscriptions.size,
         )
+
+        // 크기 상한 명시 검사 — Bean Validation provider 미의존(모듈 슬라이스에 provider 부재).
+        // 초과 시 IllegalArgumentException → NotificationExceptionHandler 가 400 으로 변환.
+        require(request.subscriptions.size <= PatchSubscriptionsRequest.MAX_SUBSCRIPTION_PATCH_ENTRIES) {
+            "구독 엔트리는 최대 ${PatchSubscriptionsRequest.MAX_SUBSCRIPTION_PATCH_ENTRIES}개까지 허용합니다."
+        }
 
         val entries =
             request.subscriptions.map { dto ->

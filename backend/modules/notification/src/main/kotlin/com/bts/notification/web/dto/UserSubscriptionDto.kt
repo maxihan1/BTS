@@ -30,11 +30,27 @@ data class SubscriptionEntryDto(
  * [subscriptions] 에 갱신할 셀 목록을 담는다.
  * 빈 목록이면 upsert 없이 현재 매트릭스를 그대로 반환한다 (EC10).
  *
+ * 크기 상한은 [MAX_SUBSCRIPTION_PATCH_ENTRIES] 로 제한한다.
+ * 정상 매트릭스는 최대 20셀(10 eventType × {IN_APP, EMAIL})이며,
+ * 상한은 100으로 설정하여 enum 증가 여유를 포함하면서도 DoS 표면을 차단한다.
+ *
  * @param subscriptions 갱신할 셀 목록
  */
 data class PatchSubscriptionsRequest(
     val subscriptions: List<SubscriptionEntryDto>,
-)
+) {
+    companion object {
+        /**
+         * PATCH body 에 허용되는 [subscriptions] 최대 엔트리 수.
+         *
+         * 정상 매트릭스 최대 크기는 20셀(10 eventType × 2 channel)이며,
+         * enum 값 증가 여유를 두어 100으로 설정한다.
+         * 컨트롤러가 이 상한을 명시 검사한다(초과 시 [IllegalArgumentException] → 400).
+         * Bean Validation provider 미의존(notification 모듈 슬라이스에 provider 부재) — 명시 검사로 통일.
+         */
+        const val MAX_SUBSCRIPTION_PATCH_ENTRIES = 100
+    }
+}
 
 /**
  * 구독 매트릭스 조회·갱신 응답 바디.
