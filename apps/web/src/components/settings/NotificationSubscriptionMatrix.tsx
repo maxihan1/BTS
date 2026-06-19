@@ -89,12 +89,7 @@ function SubscriptionCell({
 }: SubscriptionCellProps): JSX.Element {
   const eventLabel = labelFor(eventTypeLabels, eventType)
   const channelLabel = labelFor(channelLabels, channel)
-  // issue.mentioned는 notification-policy-labels에 없으므로 ko.ts 추가 라벨로 보완
-  const resolvedEventLabel =
-    eventType === 'issue.mentioned'
-      ? notificationSubscriptionStrings.eventIssueMentioned
-      : eventLabel
-  const ariaLabel = `${resolvedEventLabel} ${channelLabel} 알림 ${enabled ? '켜짐' : '꺼짐'}`
+  const ariaLabel = `${eventLabel} ${channelLabel} 알림 ${enabled ? '켜짐' : '꺼짐'}`
 
   return (
     <td className="px-4 py-2 text-center">
@@ -171,10 +166,7 @@ export function NotificationSubscriptionMatrix(): JSX.Element {
         </thead>
         <tbody>
           {eventTypes.map((eventType) => {
-            const eventLabel =
-              eventType === 'issue.mentioned'
-                ? notificationSubscriptionStrings.eventIssueMentioned
-                : labelFor(eventTypeLabels, eventType)
+            const eventLabel = labelFor(eventTypeLabels, eventType)
 
             return (
               <tr
@@ -185,7 +177,7 @@ export function NotificationSubscriptionMatrix(): JSX.Element {
                   {eventLabel}
                 </td>
                 {channels.map((channel) => {
-                  const enabled = lookup.get(`${eventType}|${channel}`) ?? false
+                  const enabled = lookup.get(`${eventType}|${channel}`) ?? true
 
                   return (
                     <SubscriptionCell
