@@ -5,6 +5,9 @@ package com.bts.notification
 
 import com.bts.shared.issue.IssueRecipientLookupPort
 import com.bts.shared.issue.IssueRecipients
+import com.bts.shared.issue.ProjectRecipientLookupPort
+import com.bts.shared.issue.ProjectRecipients
+import com.bts.shared.permission.IssueVisibilityPort
 import com.bts.shared.user.UserLookupPort
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.PlainJWT
@@ -193,6 +196,35 @@ class NotificationDeliveryTestcontainersConfig {
     fun userLookupPort(): UserLookupPort =
         object : UserLookupPort {
             override fun exists(userId: java.util.UUID): Boolean = false
+        }
+
+    /**
+     * 테스트 전용 ProjectRecipientLookupPort fail-safe stub 빈.
+     *
+     * EventRecipientResolver(@Component) 가 cross-BC [ProjectRecipientLookupPort] 를 주입받으므로
+     * 전체 컨텍스트를 띄우는 이 테스트에도 빈이 필요하다. 이 테스트는 PROJECT_MEMBER 수신자 fanout 을
+     * 검증하지 않으므로 빈 수신자를 반환하는 fail-safe stub 으로 충분하다.
+     */
+    @Bean
+    fun projectRecipientLookupPort(): ProjectRecipientLookupPort =
+        object : ProjectRecipientLookupPort {
+            override fun findProjectRecipients(projectKey: String): ProjectRecipients = ProjectRecipients.empty()
+        }
+
+    /**
+     * 테스트 전용 IssueVisibilityPort allow-all stub 빈.
+     *
+     * EventRecipientResolver(@Component) 가 cross-BC [IssueVisibilityPort] 를 주입받으므로
+     * 전체 컨텍스트를 띄우는 이 테스트에도 빈이 필요하다. 이 테스트는 visibility 누출을 검증하지 않으므로
+     * allow-all stub 이 정당하다. 실 판정은 T6 RecipientResolutionIntegrationTest 가 검증한다.
+     */
+    @Bean
+    fun issueVisibilityPort(): IssueVisibilityPort =
+        object : IssueVisibilityPort {
+            override fun filterVisibleUserIds(
+                issueKey: String,
+                candidateUserIds: Set<java.util.UUID>,
+            ): Set<java.util.UUID> = candidateUserIds
         }
 
     /**
