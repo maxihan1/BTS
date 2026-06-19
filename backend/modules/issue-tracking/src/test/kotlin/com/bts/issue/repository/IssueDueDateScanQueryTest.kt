@@ -111,6 +111,47 @@ class IssueDueDateScanQueryTest : IssueTestcontainersBase() {
         }
     }
 
+    /**
+     * 소프트삭제된 프로젝트(DELP)를 보장 삽입하고 그 id 를 반환한다.
+     * projects 행은 테스트 간 정리되지 않으므로 ON CONFLICT 로 멱등 삽입한다.
+     */
+    private fun ensureSoftDeletedProject(): UUID {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "INSERT INTO projects (key, name, deleted_at) VALUES ('DELP', 'Deleted Project', NOW()) " +
+                    "ON CONFLICT (key) DO UPDATE SET deleted_at = NOW()",
+            ).use { it.executeUpdate() }
+        }
+        return DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement("SELECT id FROM projects WHERE key = 'DELP'").use { stmt ->
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getObject(1) as UUID
+                }
+            }
+        }
+    }
+
+    /** 지정 프로젝트에 열린 이슈를 삽입한다 (프로젝트 deleted_at 필터 검증용). */
+    private fun insertIssueInProject(
+        projectId: UUID,
+        key: IssueKey,
+        dueDate: LocalDate,
+    ): Issue {
+        val issue =
+            Issue
+                .create(
+                    id = IssueId(UUID.randomUUID()),
+                    key = key,
+                    projectId = projectId,
+                    typeId = requireTaskTypeId(),
+                    summary = "deleted-project seed ${key.value}",
+                    reporterId = ActorId(UUID.randomUUID()),
+                    currentStateKey = "open",
+                ).copy(dueDate = dueDate)
+        return repository.insert(issue)
+    }
+
     // ── T1. findOpenIssuesDueOn — 정확히 해당 날짜인 열린 이슈만 반환 ──────────
 
     /**
@@ -145,6 +186,37 @@ class IssueDueDateScanQueryTest : IssueTestcontainersBase() {
         assertThat(result).hasSize(1)
         assertThat(result[0].issueKey).isEqualTo(s1.key.value)
         assertThat(result[0].projectKey).isEqualTo("TPRJ")
+    }
+
+    // ── T3. 소프트삭제 프로젝트의 열린 이슈는 스캔에서 제외 ──────────────────
+
+    /**
+     * Given  활성 프로젝트(TPRJ)의 임박·지연 이슈 + 소프트삭제 프로젝트(DELP)의 임박·지연 이슈
+     * When   findOpenIssuesDueOn(내일) / findOpenOverdueIssues(오늘)
+     * Then   활성 프로젝트 이슈만 반환. 소프트삭제 프로젝트 이슈는 알림 대상에서 제외.
+     */
+    @Test
+    fun `T3 - 소프트삭제 프로젝트의 열린 이슈는 임박·지연 스캔에서 제외된다`() {
+        val today = LocalDate.now()
+        val tomorrow = today.plusDays(1)
+        val yesterday = today.minusDays(1)
+
+        // 활성 프로젝트(TPRJ) — 양성 대조군
+        val activeDueSoon = insertIssue(seq = 1L, dueDate = tomorrow)
+        val activeOverdue = insertIssue(seq = 2L, dueDate = yesterday)
+
+        // 소프트삭제 프로젝트(DELP)의 열린 이슈 — 제외 대상
+        val deletedProjectId = ensureSoftDeletedProject()
+        insertIssueInProject(deletedProjectId, IssueKey.of("DELP", 1L), tomorrow)
+        insertIssueInProject(deletedProjectId, IssueKey.of("DELP", 2L), yesterday)
+
+        val dueSoon = repository.findOpenIssuesDueOn(tomorrow)
+        val overdue = repository.findOpenOverdueIssues(today)
+
+        assertThat(dueSoon).hasSize(1)
+        assertThat(dueSoon[0].issueKey).isEqualTo(activeDueSoon.key.value)
+        assertThat(overdue).hasSize(1)
+        assertThat(overdue[0].issueKey).isEqualTo(activeOverdue.key.value)
     }
 
     // ── T2. findOpenOverdueIssues — 오늘 미만 due + 열린 이슈만 반환 ───────────
