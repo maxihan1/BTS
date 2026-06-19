@@ -4,13 +4,16 @@ package com.bts.notification.worker
 
 import com.bts.notification.application.NotificationPolicyEvaluator
 import com.bts.notification.channel.NotificationChannelSender
+import com.bts.notification.domain.Channel
 import com.bts.notification.domain.Notification
 import com.bts.notification.domain.NotificationEventType
 import com.bts.notification.domain.NotificationStatus
+import com.bts.notification.domain.UserSubscription
 import com.bts.notification.recipient.EventRecipientResolver
 import com.bts.notification.recipient.NotificationSourceEvent
 import com.bts.notification.recipient.ResolvedRecipient
 import com.bts.notification.repository.NotificationRepository
+import com.bts.notification.repository.UserSubscriptionRepository
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.jooq.DSLContext
@@ -29,10 +32,14 @@ import java.util.UUID
  * 3. type 별 필드 파싱 → [NotificationSourceEvent] 구성
  * 4. [NotificationPolicyEvaluator.evaluate] → [com.bts.notification.application.PolicyMatch] 목록
  * 5. [EventRecipientResolver.resolve] → [ResolvedRecipient] 목록
- * 6. 각 수신자: [Notification] 생성 → [NotificationRepository.insertIfAbsent]
+ * 6. **구독 필터** — [UserSubscription.isConfigurable] 채널(IN_APP/EMAIL) 수신자를 channel 별로 묶어
+ *    [UserSubscriptionRepository.fetchDisabled] 1회 호출 후 disabled userId 제거 (NFR1 N+1 방지).
+ *    비설정 채널(SLACK 등) 수신자는 필터 없이 통과 (EC9).
+ *    이 단계는 관리자 정책(4번) 통과분 중 사용자 opt-out 을 추가로 제거 — AND 결합 하위 게이트.
+ * 7. 필터 통과 수신자: [Notification] 생성 → [NotificationRepository.insertIfAbsent]
  *    - true(신규): 채널 매칭 sender 로 [NotificationChannelSender.send]
  *    - false(중복): send 생략 (멱등, S4)
- * 7. 성공 → `pgmq.delete`. 예외 → delete 안 함 (vt 만료 재전달, at-least-once)
+ * 8. 성공 → `pgmq.delete`. 예외 → delete 안 함 (vt 만료 재전달, at-least-once)
  *
  * ## dead-letter (poison 메시지)
  * 예외 발생 시 [read_ct][MAX_RECEIVE_COUNT] 초과 여부 확인.
@@ -51,6 +58,7 @@ import java.util.UUID
  * @param policyEvaluator 알림 정책 평가 서비스
  * @param recipientResolver 이벤트+정책 → 수신자 목록 해석기
  * @param repository 알림 멱등 INSERT repository
+ * @param userSubscriptionRepository 사용자 구독 opt-out 조회 repository
  * @param channelSenders 채널 sender 목록 (Spring 자동 주입)
  * @param objectMapper JSON 파싱용 Jackson ObjectMapper
  */
@@ -61,6 +69,7 @@ class NotificationWorker(
     private val policyEvaluator: NotificationPolicyEvaluator,
     private val recipientResolver: EventRecipientResolver,
     private val repository: NotificationRepository,
+    private val userSubscriptionRepository: UserSubscriptionRepository,
     private val channelSenders: List<NotificationChannelSender>,
     private val objectMapper: ObjectMapper,
 ) {
@@ -149,7 +158,11 @@ class NotificationWorker(
     }
 
     /**
-     * 정책 평가 → 수신자 해석 → 알림 생성·발송을 순서대로 수행한다.
+     * 정책 평가 → 수신자 해석 → 구독 필터 → 알림 생성·발송을 순서대로 수행한다.
+     *
+     * ## 구독 필터 (AND 결합 하위 게이트)
+     * 관리자 정책(PolicyEvaluator) 통과분 중 사용자가 opt-out 한 수신자를 추가로 제거한다.
+     * 설정 가능 채널(IN_APP/EMAIL) 수신자만 필터 대상이며, 비설정 채널(SLACK 등)은 항상 통과 (EC9).
      *
      * @param event pgmq 역직렬화된 이벤트 표현
      */
@@ -161,8 +174,61 @@ class NotificationWorker(
         }
 
         val recipients = recipientResolver.resolve(event, matches)
-        for (recipient in recipients) {
+        val filtered = filterBySubscription(event.eventType, recipients)
+        for (recipient in filtered) {
             sendToRecipient(event, recipient)
+        }
+    }
+
+    /**
+     * 사용자 구독 opt-out 필터를 적용해 발송 대상 수신자 목록을 반환한다.
+     *
+     * ## 필터 로직
+     * 1. 설정 가능 채널([UserSubscription.isConfigurable])인 수신자를 채널별로 그룹화한다.
+     * 2. 채널마다 [UserSubscriptionRepository.fetchDisabled] 를 1회 호출 (이벤트당 최대 2쿼리, NFR1).
+     * 3. disabled userId 집합에 속한 (userId, channel) 수신자를 결과에서 제거한다.
+     * 4. 비설정 채널(SLACK 등) 수신자는 무조건 통과 (EC9).
+     *
+     * ## 빈 목록 최적화
+     * [recipients] 가 비어 있으면 DB 쿼리 없이 빈 리스트를 반환한다.
+     *
+     * @param eventType 구독 조회에 사용할 이벤트 유형
+     * @param recipients 구독 필터 전 수신자 목록
+     * @return opt-out 수신자를 제거한 발송 대상 수신자 목록
+     */
+    private fun filterBySubscription(
+        eventType: NotificationEventType,
+        recipients: List<ResolvedRecipient>,
+    ): List<ResolvedRecipient> {
+        if (recipients.isEmpty()) return emptyList()
+
+        // 설정 가능 채널별로 disabled userId 집합을 배치 조회 (N+1 방지)
+        val disabledByChannel: Map<Channel, Set<UUID>> =
+            recipients
+                .filter { UserSubscription.isConfigurable(it.channel) }
+                .groupBy { it.channel }
+                .mapValues { (channel, channelRecipients) ->
+                    val userIds = channelRecipients.map { it.userId }.toSet()
+                    userSubscriptionRepository.fetchDisabled(eventType, channel, userIds)
+                }
+
+        return recipients.filter { recipient ->
+            if (!UserSubscription.isConfigurable(recipient.channel)) {
+                // 비설정 채널(SLACK 등) — 무조건 통과 (EC9)
+                true
+            } else {
+                val disabled = disabledByChannel[recipient.channel] ?: emptySet()
+                val keep = recipient.userId !in disabled
+                if (!keep) {
+                    log.debug(
+                        "notification_worker_subscription_filtered recipientUserId={} channel={} eventType={}",
+                        recipient.userId,
+                        recipient.channel,
+                        eventType,
+                    )
+                }
+                keep
+            }
         }
     }
 

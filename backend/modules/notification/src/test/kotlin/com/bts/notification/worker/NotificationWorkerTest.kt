@@ -14,6 +14,7 @@ import com.bts.notification.recipient.EventRecipientResolver
 import com.bts.notification.recipient.NotificationSourceEvent
 import com.bts.notification.recipient.ResolvedRecipient
 import com.bts.notification.repository.NotificationRepository
+import com.bts.notification.repository.UserSubscriptionRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.core.spec.style.DescribeSpec
 import io.mockk.clearMocks
@@ -46,6 +47,7 @@ class NotificationWorkerTest : DescribeSpec({
     val policyEvaluator = mockk<NotificationPolicyEvaluator>()
     val recipientResolver = mockk<EventRecipientResolver>()
     val repository = mockk<NotificationRepository>()
+    val userSubscriptionRepository = mockk<UserSubscriptionRepository>()
     val channelSender = mockk<NotificationChannelSender>()
     val objectMapper = ObjectMapper()
 
@@ -55,6 +57,7 @@ class NotificationWorkerTest : DescribeSpec({
             policyEvaluator = policyEvaluator,
             recipientResolver = recipientResolver,
             repository = repository,
+            userSubscriptionRepository = userSubscriptionRepository,
             channelSenders = listOf(channelSender),
             objectMapper = objectMapper,
         )
@@ -63,7 +66,7 @@ class NotificationWorkerTest : DescribeSpec({
     val mentionedId: UUID = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
     val fixedNow: Instant = Instant.parse("2026-06-12T10:00:00Z")
 
-    afterEach { clearMocks(dsl, policyEvaluator, recipientResolver, repository, channelSender) }
+    afterEach { clearMocks(dsl, policyEvaluator, recipientResolver, repository, userSubscriptionRepository, channelSender) }
 
     // ── POLL-8: 빈 큐 ─────────────────────────────────────────────────────────
 
@@ -90,6 +93,7 @@ class NotificationWorkerTest : DescribeSpec({
 
             every { policyEvaluator.evaluate(NotificationEventType.ISSUE_MENTIONED, "ATLAS") } returns matches
             every { recipientResolver.resolve(any<NotificationSourceEvent>(), matches) } returns listOf(recipient)
+            every { userSubscriptionRepository.fetchDisabled(any(), any(), any()) } returns emptySet()
             every { repository.insertIfAbsent(any()) } returns true
             every { channelSender.supports(Channel.IN_APP) } returns true
             justRun { channelSender.send(any()) }
@@ -179,6 +183,7 @@ class NotificationWorkerTest : DescribeSpec({
             stubMentionMessage(dsl, actorId, mentionedId, msgId, fixedNow)
             every { policyEvaluator.evaluate(any(), any()) } returns matches
             every { recipientResolver.resolve(any<NotificationSourceEvent>(), any()) } returns listOf(recipient)
+            every { userSubscriptionRepository.fetchDisabled(any(), any(), any()) } returns emptySet()
             every { repository.insertIfAbsent(any()) } returns true
             every { channelSender.supports(Channel.IN_APP) } returns true
             justRun { channelSender.send(any()) }
@@ -210,6 +215,7 @@ class NotificationWorkerTest : DescribeSpec({
             stubMentionMessage(dsl, actorId, mentionedId, msgId, fixedNow)
             every { policyEvaluator.evaluate(any(), any()) } returns matches
             every { recipientResolver.resolve(any<NotificationSourceEvent>(), any()) } returns listOf(recipient)
+            every { userSubscriptionRepository.fetchDisabled(any(), any(), any()) } returns emptySet()
             every { repository.insertIfAbsent(any()) } returns false
             every { channelSender.supports(Channel.IN_APP) } returns true
             every { dsl.execute(any<String>(), NotificationWorker.QUEUE_NAME, msgId) } returns 1
