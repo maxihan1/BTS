@@ -6,6 +6,7 @@ import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueRepository
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.assertj.core.api.Assertions.assertThat
@@ -109,6 +110,10 @@ class IssueDueDateScanIntegrationTest {
             ObjectMapper()
                 .registerKotlinModule()
                 .registerModule(JavaTimeModule())
+                // 운영 앱(스프링 부트 자동구성)과 동일하게 Instant 를 ISO-8601 문자열로 직렬화.
+                // notification 소비측 parseInstant 가 Instant.parse(ISO 문자열)만 수용하므로,
+                // 이 설정을 빠뜨리면 테스트는 통과해도 운영 계약(ISO)을 검증하지 못한다.
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 
         @Bean
         open fun issueRepository(dsl: DSLContext): IssueRepository = IssueRepository(dsl)
@@ -282,20 +287,12 @@ class IssueDueDateScanIntegrationTest {
     /**
      * occurredAt JSON 노드를 [Instant] 로 변환한다.
      *
-     * Jackson 의 [com.fasterxml.jackson.databind.ObjectMapper] 기본 설정에서
-     * [java.time.Instant] 는 에포크 초(epoch seconds) 숫자로 직렬화된다.
-     * [com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS] 가
-     * 기본 true 이기 때문이다. 운영 앱은 스프링 부트가 이 설정을 false 로 강제하지만
-     * 이 테스트의 경량 TestConfig 는 스프링 부트 자동구성을 사용하지 않으므로 숫자로 수신된다.
-     * isNumber() 분기로 두 형식을 모두 처리한다.
+     * TestConfig 의 ObjectMapper 가 운영과 동일하게 WRITE_DATES_AS_TIMESTAMPS 를 끈 상태라
+     * occurredAt 은 ISO-8601 문자열로 직렬화된다. notification 소비측 parseInstant 도 동일하게
+     * Instant.parse(ISO 문자열)만 수용한다. 여기서 같은 방식으로 파싱해 운영 계약을 검증한다 —
+     * 직렬화가 숫자 형식으로 회귀하면 Instant.parse 가 던져 테스트가 즉시 실패한다.
      */
-    private fun parseOccurredAt(node: JsonNode): Instant {
-        return if (node.isNumber) {
-            Instant.ofEpochSecond(node.asLong())
-        } else {
-            Instant.parse(node.asText())
-        }
-    }
+    private fun parseOccurredAt(node: JsonNode): Instant = Instant.parse(node.asText())
 
     /**
      * 이슈를 직접 INSERT 한다.
