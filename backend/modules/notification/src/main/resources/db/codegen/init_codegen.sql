@@ -38,3 +38,19 @@ CREATE TABLE notifications (
 
 CREATE INDEX ix_notifications_recipient
     ON notifications (recipient_user_id, created_at DESC);
+
+-- ── user_notification_subs (V404 미러) ─────────────────────────────────────────
+CREATE TABLE user_notification_subs (
+    id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID         NOT NULL,
+    event_type  TEXT         NOT NULL,
+    channel     TEXT         NOT NULL,
+    enabled     BOOLEAN      NOT NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT uq_user_notif_subs UNIQUE (user_id, event_type, channel)
+);
+
+CREATE INDEX idx_user_notif_subs_disabled
+    ON user_notification_subs (event_type, channel, user_id)
+    WHERE enabled = false;

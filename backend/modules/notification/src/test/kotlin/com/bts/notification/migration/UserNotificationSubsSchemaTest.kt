@@ -224,7 +224,8 @@ class UserNotificationSubsSchemaTest {
         val userId = UUID.randomUUID()
         insertSub(userId, "issue.created", "EMAIL", enabled = false)
         // enabled 값이 달라도 (user_id, event_type, channel) 조합이 같으면 위반이어야 한다.
+        // PostgreSQL 은 제약 위반 메시지에 제약명(uq_user_notif_subs)을 담는다.
         assertThatThrownBy { insertSub(userId, "issue.created", "EMAIL", enabled = true) }
-            .hasMessageContaining("user_notification_subs")
+            .hasMessageContaining("uq_user_notif_subs")
     }
 }
