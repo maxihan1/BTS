@@ -279,7 +279,13 @@ class IssueVisibilityAdapterIntegrationTest {
     @Test
     fun `(d) ASSIGNEE 등급 — 이 이슈의 담당자만 통과한다`() {
         addMember(assigneeLevelId, TYPE_ASSIGNEE, null)
-        insertIssue("NTVIS-6", reporterId = memberAlice, assigneeId = memberBob, levelId = assigneeLevelId, deleted = false)
+        insertIssue(
+            "NTVIS-6",
+            reporterId = memberAlice,
+            assigneeId = memberBob,
+            levelId = assigneeLevelId,
+            deleted = false,
+        )
 
         val visible = port.filterVisibleUserIds("NTVIS-6", setOf(memberAlice, memberBob))
 

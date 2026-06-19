@@ -52,6 +52,9 @@ class IssueVisibilityAdapter(
     private val permissionResolver: IssuePermissionResolver,
     private val securityLookup: IssueSecurityLookup,
 ) : IssueVisibilityPort {
+    // ReturnCount: 빈 후보 단락 + 이슈 미존재 단락 + 후보별 위임 결과 — 3개 guard-clause early return.
+    // DEVELOPMENT.md §2.3 Early return 권장에 부합(전역 임계 완화 대신 국소 Suppress).
+    @Suppress("ReturnCount")
     @Transactional(readOnly = true)
     override fun filterVisibleUserIds(
         issueKey: String,
