@@ -40,13 +40,25 @@ interface IssueRecipientLookupPort {
  *
  * @param reporterId 이슈 리포터 UUID. 알 수 없는 경우 null.
  * @param assigneeId 이슈 담당자 UUID. 담당자가 없거나 알 수 없는 경우 null.
+ * @param watcherIds 이슈를 구독 중인 watcher UUID 목록. adapter 부재 시 빈 리스트.
+ * @param componentLeadIds 이슈가 속한 컴포넌트의 리드 UUID 목록. adapter 부재 시 빈 리스트.
+ * @param previousAssigneeId 직전 담당자 UUID (전이·재배정 이벤트 전용). 해당 없는 경우 null.
  */
 data class IssueRecipients(
     val reporterId: UUID?,
     val assigneeId: UUID?,
+    val watcherIds: List<UUID> = emptyList(),
+    val componentLeadIds: List<UUID> = emptyList(),
+    val previousAssigneeId: UUID? = null,
 ) {
     companion object {
         /** adapter 부재 또는 이슈 미존재 시 반환하는 fail-safe 빈 수신자. */
-        fun empty(): IssueRecipients = IssueRecipients(reporterId = null, assigneeId = null)
+        fun empty(): IssueRecipients = IssueRecipients(
+            reporterId = null,
+            assigneeId = null,
+            watcherIds = emptyList(),
+            componentLeadIds = emptyList(),
+            previousAssigneeId = null,
+        )
     }
 }
