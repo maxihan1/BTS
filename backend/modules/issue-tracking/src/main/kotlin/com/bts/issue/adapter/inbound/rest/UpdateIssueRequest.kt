@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Positive
 import jakarta.validation.constraints.Size
 import org.openapitools.jackson.nullable.JsonNullable
+import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -47,6 +48,11 @@ import java.util.UUID
  * @property customFields 커스텀 필드 패치 맵 (FR-IS-10, E11 필드단위 병합).
  *   null=무변경, 맵 명시=키 단위 병합(나머지 기존 값 유지), 키 값 null=해당 필드 제거.
  *   required 검증은 병합 후 최종 상태 기준으로 수행한다.
+ * @property startDate 시작일 (FR-PL-01, Jira Cloud 방식 3-state).
+ *   [JsonNullable] presence 로 구분한다 — 필드 부재(undefined)=무변경, 명시 null=날짜 해제, 값=날짜 설정.
+ *   기본값 [JsonNullable.undefined] 이므로 본문에 없으면 무변경이다. 교차 필드 검증 없음.
+ * @property dueDate 마감일 (FR-PL-01). [startDate] 와 동일한 3-state 시맨틱.
+ * @property targetDate 목표일 (FR-PL-01). [startDate] 와 동일한 3-state 시맨틱.
  */
 data class UpdateIssueRequest(
     @field:Size(max = 200, message = "summary는 200자 이하여야 합니다.")
@@ -76,4 +82,7 @@ data class UpdateIssueRequest(
     val impact: Int? = null,
     val securityLevelId: JsonNullable<UUID> = JsonNullable.undefined(),
     val customFields: Map<String, Any?>? = null,
+    val startDate: JsonNullable<LocalDate> = JsonNullable.undefined(),
+    val dueDate: JsonNullable<LocalDate> = JsonNullable.undefined(),
+    val targetDate: JsonNullable<LocalDate> = JsonNullable.undefined(),
 )

@@ -17,7 +17,6 @@ import io.mockk.slot
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.openapitools.jackson.nullable.JsonNullableModule
@@ -217,135 +216,6 @@ class IssueControllerTest {
         assertThat(appRequestSlot.captured.componentIds).isEmpty()
     }
 
-    // ── FR-PL-01 Task-6: 날짜 필드 PATCH 검증 ───────────────────────────────
-
-    /**
-     * FR-PL-01 Task-6 — PATCH 날짜 필드 역직렬화·직렬화·응답 매핑 MockMvc 슬라이스 테스트.
-     *
-     * 검증 범위.
-     * - B1: 응답 JSON의 날짜가 "yyyy-MM-dd" 문자열 형식인지 단언 (배열 [2026,6,20] 아님).
-     * - C4: IssueResponse.from() 매핑 반영 — 서비스가 반환한 날짜가 응답 body에 그대로 나오는지 단언.
-     * - 잘못된 날짜 형식("2026-13-40") → 400.
-     * - 미포함 필드는 응답에 null 유지(무변경).
-     *
-     * JsonNullableModule + JavaTimeModule 을 MockMvc 컨버터에 직접 등록한다.
-     * @EnableWebMvc 슬라이스에는 Boot JacksonAutoConfiguration이 없으므로 수동 등록이 필요하다.
-     */
-    @Nested
-    @ExtendWith(SpringExtension::class)
-    @ContextConfiguration(classes = [DatePatchTestConfig::class])
-    @WebAppConfiguration
-    inner class DatePatchTests {
-        @Autowired
-        lateinit var dateMvc: WebApplicationContext
-
-        @Autowired
-        lateinit var dateSvc: IssueApplicationService
-
-        private lateinit var mockMvc: MockMvc
-        private val dateMapper: ObjectMapper =
-            ObjectMapper()
-                .registerKotlinModule()
-                .registerModule(JavaTimeModule())
-                .registerModule(JsonNullableModule())
-
-        private val startDate = LocalDate.of(2026, 6, 20)
-        private val targetDate = LocalDate.of(2026, 7, 1)
-
-        /** 날짜가 설정된 IssueResponse 스텁 — C4 매핑 확인용. */
-        private val dateResponse =
-            IssueResponse(
-                key = "ATLAS-1",
-                id = UUID.fromString("00000000-0000-4000-8000-000000000002"),
-                projectKey = "ATLAS",
-                summary = "날짜 테스트 이슈",
-                currentStateKey = "open",
-                reporterId = UUID.fromString("11111111-1111-4111-8111-111111111111"),
-                version = 2L,
-                createdAt = Instant.parse("2026-06-01T00:00:00Z"),
-                updatedAt = Instant.parse("2026-06-20T00:00:00Z"),
-                typeId = 3L,
-                typeKey = "task",
-                typeName = "Task",
-                startDate = startDate,
-                dueDate = null,
-                targetDate = targetDate,
-            )
-
-        @BeforeEach
-        fun setUp() {
-            mockMvc = MockMvcBuilders.webAppContextSetup(dateMvc).build()
-            SecurityContextHolder.getContext().authentication =
-                UsernamePasswordAuthenticationToken(
-                    "11111111-1111-4111-8111-111111111111",
-                    null,
-                    listOf(SimpleGrantedAuthority("ROLE_USER")),
-                )
-            every { dateSvc.updateIssue(any(), IssueKey("ATLAS-1"), any()) } returns dateResponse
-        }
-
-        @AfterEach
-        fun tearDown() {
-            SecurityContextHolder.clearContext()
-        }
-
-        @Test
-        fun `PL-01-1 날짜 PATCH 응답에 B1 yyyy-MM-dd 문자열 형식으로 직렬화됨`() {
-            // B1: 응답 JSON이 [2026,6,20] 배열이 아닌 "2026-06-20" 문자열인지 단언
-            val body = """{"expectedVersion":1,"startDate":"2026-06-20","targetDate":"2026-07-01"}"""
-
-            mockMvc.perform(
-                patch("/api/v1/issues/ATLAS-1")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(body),
-            )
-                .andExpect(status().isOk)
-                .andExpect(jsonPath("$.data.startDate").value("2026-06-20"))
-                .andExpect(jsonPath("$.data.targetDate").value("2026-07-01"))
-        }
-
-        @Test
-        fun `PL-01-2 C4 서비스가 반환한 날짜가 응답 data에 그대로 매핑됨`() {
-            // C4: from() 매핑 누락 시 null이 나오는 가짜그린을 실제 값 단언으로 차단
-            val body = """{"expectedVersion":1,"startDate":"2026-06-20","targetDate":"2026-07-01"}"""
-
-            mockMvc.perform(
-                patch("/api/v1/issues/ATLAS-1")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(body),
-            )
-                .andExpect(status().isOk)
-                .andExpect(jsonPath("$.data.startDate").value("2026-06-20"))
-                .andExpect(jsonPath("$.data.dueDate").isEmpty)
-                .andExpect(jsonPath("$.data.targetDate").value("2026-07-01"))
-        }
-
-        @Test
-        fun `PL-01-3 잘못된 날짜 형식은 400 반환`() {
-            // 존재하지 않는 날짜(월 13) → Jackson 역직렬화 실패 → 400
-            val body = """{"expectedVersion":1,"startDate":"2026-13-40"}"""
-
-            mockMvc.perform(
-                patch("/api/v1/issues/ATLAS-1")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(body),
-            ).andExpect(status().isBadRequest)
-        }
-
-        @Test
-        fun `PL-01-4 날짜 필드 미포함 시 응답에 null 유지`() {
-            // 날짜를 보내지 않으면 서비스가 반환한 값 그대로 (스텁은 startDate=2026-06-20 설정됨)
-            val body = """{"expectedVersion":1}"""
-
-            mockMvc.perform(
-                patch("/api/v1/issues/ATLAS-1")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(body),
-            )
-                .andExpect(status().isOk)
-                .andExpect(jsonPath("$.data.startDate").value("2026-06-20"))
-        }
-    }
 }
 
 /**
@@ -380,5 +250,126 @@ open class DatePatchTestConfig : WebMvcConfigurer {
                 it.objectMapper.registerModule(JsonNullableModule())
                 it.objectMapper.registerModule(JavaTimeModule())
             }
+    }
+}
+
+/**
+ * FR-PL-01 Task-6 — PATCH 날짜 필드 역직렬화·직렬화·응답 매핑 MockMvc 슬라이스 테스트.
+ *
+ * 검증 범위.
+ * - B1: 응답 JSON의 날짜가 "yyyy-MM-dd" 문자열 형식인지 단언 (배열 [2026,6,20] 아님).
+ * - C4: IssueResponse.from() 매핑 반영 — 서비스가 반환한 날짜가 응답 body에 그대로 나오는지 단언.
+ * - 잘못된 날짜 형식("2026-13-40") → 400.
+ * - 미포함 필드는 응답에 null 유지(무변경).
+ *
+ * [DatePatchTestConfig] 를 독립 컨텍스트로 사용한다 — [IssueControllerTest] 와 컨텍스트 공유 없음.
+ */
+@ExtendWith(SpringExtension::class)
+@ContextConfiguration(classes = [DatePatchTestConfig::class])
+@WebAppConfiguration
+class IssueControllerDatePatchTest {
+    @Autowired
+    lateinit var webApplicationContext: WebApplicationContext
+
+    @Autowired
+    lateinit var issueApplicationService: IssueApplicationService
+
+    private lateinit var mockMvc: MockMvc
+
+    private val startDate: LocalDate = LocalDate.of(2026, 6, 20)
+    private val targetDate: LocalDate = LocalDate.of(2026, 7, 1)
+
+    /** 날짜가 설정된 IssueResponse 스텁 — C4 매핑 확인용. */
+    private val dateResponse =
+        IssueResponse(
+            key = "ATLAS-1",
+            id = UUID.fromString("00000000-0000-4000-8000-000000000002"),
+            projectKey = "ATLAS",
+            summary = "날짜 테스트 이슈",
+            currentStateKey = "open",
+            reporterId = UUID.fromString("11111111-1111-4111-8111-111111111111"),
+            version = 2L,
+            createdAt = Instant.parse("2026-06-01T00:00:00Z"),
+            updatedAt = Instant.parse("2026-06-20T00:00:00Z"),
+            typeId = 3L,
+            typeKey = "task",
+            typeName = "Task",
+            startDate = startDate,
+            dueDate = null,
+            targetDate = targetDate,
+        )
+
+    @BeforeEach
+    fun setUp() {
+        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+        SecurityContextHolder.getContext().authentication =
+            UsernamePasswordAuthenticationToken(
+                "11111111-1111-4111-8111-111111111111",
+                null,
+                listOf(SimpleGrantedAuthority("ROLE_USER")),
+            )
+        every { issueApplicationService.updateIssue(any(), IssueKey("ATLAS-1"), any()) } returns dateResponse
+    }
+
+    @AfterEach
+    fun tearDown() {
+        SecurityContextHolder.clearContext()
+    }
+
+    @Test
+    fun `PL-01-1 날짜 PATCH 응답에 B1 yyyy-MM-dd 문자열 형식으로 직렬화됨`() {
+        // B1: 응답 JSON이 [2026,6,20] 배열이 아닌 "2026-06-20" 문자열인지 단언
+        val body = """{"expectedVersion":1,"startDate":"2026-06-20","targetDate":"2026-07-01"}"""
+
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.startDate").value("2026-06-20"))
+            .andExpect(jsonPath("$.data.targetDate").value("2026-07-01"))
+    }
+
+    @Test
+    fun `PL-01-2 C4 서비스가 반환한 날짜가 응답 data에 그대로 매핑됨`() {
+        // C4: from() 매핑 누락 시 null이 나오는 가짜그린을 실제 값 단언으로 차단
+        val body = """{"expectedVersion":1,"startDate":"2026-06-20","targetDate":"2026-07-01"}"""
+
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.startDate").value("2026-06-20"))
+            .andExpect(jsonPath("$.data.dueDate").isEmpty)
+            .andExpect(jsonPath("$.data.targetDate").value("2026-07-01"))
+    }
+
+    @Test
+    fun `PL-01-3 잘못된 날짜 형식은 400 반환`() {
+        // 존재하지 않는 날짜(월 13) → Jackson 역직렬화 실패 → 400
+        val body = """{"expectedVersion":1,"startDate":"2026-13-40"}"""
+
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        ).andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `PL-01-4 날짜 필드 미포함 시 응답에 null 유지`() {
+        // 날짜를 보내지 않으면 서비스가 반환한 값 그대로 (스텁은 startDate=2026-06-20 설정됨)
+        val body = """{"expectedVersion":1}"""
+
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.startDate").value("2026-06-20"))
     }
 }
