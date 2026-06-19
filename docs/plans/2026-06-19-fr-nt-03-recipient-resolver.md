@@ -37,9 +37,24 @@ notification-dashboard BC. FR-NT-01 notification_policies.recipient_role을
 - **기존 결정 충돌**: 없음. FR-NT-01 ADR(결정 2/결과) + FR-NT-02 ADR(결정 3/4)이 RecipientResolver=FR-NT-03 경계를 명시적으로 예약함.
 - **관련 ADR**: FR-NT-03 cross-BC 포트 설계 ADR은 spec 단계에서 포트 분해(역할별 vs 통합) 확정 후 작성 검토. 현재 IssueRecipientLookupPort 선례 답습이라 신규 결정 비중 낮음.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-19-fr-nt-03-recipient-resolver.md](../specs/2026-06-19-fr-nt-03-recipient-resolver.md)
+
+핵심 요약.
+- `EventRecipientResolver.resolveRole`의 `else→skip`을 5개 역할(WATCHER/COMPONENT_LEAD/PREVIOUS_ASSIGNEE/PROJECT_MEMBER/PROJECT_ADMIN)로 확장, RULE_OWNER만 skip 유지.
+- cross-BC 포트 3종: ① IssueRecipientLookupPort 확장(IssueRecipients에 watcherIds/componentLeadIds/previousAssigneeId 추가, issue-tracking adapter) ② ProjectRecipientLookupPort 신규(projectKey→멤버/관리자, identity-access adapter, ProjectDirectory.resolveKeyToId 재사용) ③ IssueVisibilityPort 신규(보안수준 필터, 발송 전 배치).
+- 해석 → actor 제외 → dedup → **visibility 필터(기존 MENTIONED/REPORTER/ASSIGNEE 포함, 동작 강화)**. 마이그레이션 0.
+- Maxi 확정: 보안수준=발송 전 visibility 필터, PREVIOUS_ASSIGNEE=직전 1명, PROJECT_LEAD enum 미추가.
+
+## Brainstorming Check
+
+✅ 통과 (1회 보강). 5개 gap 발견 후 전부 스펙 반영.
+- G1 PREVIOUS_ASSIGNEE 근사(이벤트~처리 시점 재변경) 한계 수용
+- G2 visibility 순서/범위(dedup 후, 기존 역할 포함) → FR7
+- G3 visibility 런타임 장애 fail-closed(이벤트 보류)
+- G4 조회 시점 eventual 일관성 명시
+- G5 광역 발송 부하(배치 필수, 그룹화 별도)
 
 ## Plan (← /bts-plan 채움)
 

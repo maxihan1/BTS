@@ -8,6 +8,8 @@
 
 `EventRecipientResolver`의 `else → skip (FR-NT-03 대상)` 분기를 실제 cross-BC 조회로 채운다. enum `RecipientRole`(9개)·정책 평가 엔진·`NotificationWorker`·dedup·actor 제외 파이프라인은 이미 완성되어 있고, 본 작업은 **수신자 역할 → 실제 userId 집합 해석 + 발송 전 보안수준 visibility 필터**를 추가한다. 신규 DB 테이블/마이그레이션 없음 (전부 기존 테이블 조회).
 
+**일관성 모델 (G4)**. 모든 역할 해석은 이벤트 큐 적재 시점이 아닌 **NotificationWorker 처리 시점의 현재 상태**를 조회한다(watcher/assignee/component lead/member 모두). 즉 eventual consistency — 이벤트~처리 사이 상태가 바뀌면 처리 시점 기준으로 수신자가 결정된다(FR-NT-02 assignee 조회와 동일 철학). 이는 의도된 동작이다.
+
 ## 범위 (Maxi 확정 2026-06-19)
 
 | RecipientRole | 이번 작업 | 데이터 출처 | 원본 BC |
@@ -38,9 +40,10 @@
 - **FR1** `EventRecipientResolver.resolveRole`의 `else` 분기를 WATCHER / COMPONENT_LEAD / PREVIOUS_ASSIGNEE / PROJECT_MEMBER / PROJECT_ADMIN 5개 분기로 확장. RULE_OWNER는 명시적 skip(로그) 유지.
 - **FR2** issue-tracking 기반 역할(WATCHER/COMPONENT_LEAD/PREVIOUS_ASSIGNEE)은 기존 `IssueRecipientLookupPort.findRecipients(issueKey)` 1회 호출로 확장된 `IssueRecipients`에서 읽는다(N+1 방지, 기존 lazy 패턴 확장).
 - **FR3** project 기반 역할(PROJECT_MEMBER/PROJECT_ADMIN)은 신규 `ProjectRecipientLookupPort.findProjectRecipients(projectKey)` 1회 호출로 해석. projectKey→projectId 변환은 adapter 내부 책임(`ProjectDirectory.resolveKeyToId` 재사용).
-- **FR4** 해석된 전체 수신자 집합을 발송 전 신규 `IssueVisibilityPort.filterVisible(issueKey, userIds)`로 배치 필터링해 이슈 열람 권한 없는 사용자를 제외(보안수준 누출 차단). 이슈가 없는(projectKey만 있는) 이벤트는 필터 비대상.
+- **FR4** 해석된 전체 수신자 집합을 발송 전 신규 `IssueVisibilityPort.filterVisible(issueKey, userIds)`로 배치 필터링해 이슈 열람 권한 없는 사용자를 제외(보안수준 누출 차단). 이슈가 없는(issueKey=null) 이벤트는 필터 비대상.
 - **FR5** 포트 조회는 **정책 매치에 해당 역할군이 있을 때만** 수행(역할 없으면 조회 skip, 효율).
-- **FR6** actor 제외 + (userId, channel) dedup은 기존 `resolve()` 말미 파이프라인을 그대로 통과(추가 변경 없음).
+- **FR6** actor 제외 + (userId, channel) dedup은 기존 `resolve()` 말미 파이프라인을 그대로 통과.
+- **FR7 (G2 — visibility 적용 순서·범위)** visibility 필터는 **actor 제외 + dedup 이후** distinct userId 집합에 1회 배치 적용하고, 통과한 userId의 (userId, channel) 항목만 남긴다(채널 무관, 이슈 열람 권한 기준). **기존 MENTIONED/REPORTER/ASSIGNEE 수신자도 이 필터를 통과**한다 — FR-NT-02 대비 동작 강화(보안). 따라서 기존 `EventRecipientResolverTest`도 visibility 포트 주입·mock이 필요하다(완료 기준 참조).
 
 ## 포트 인터페이스 (cross-BC, shared-kernel)
 
@@ -77,7 +80,9 @@ interface IssueVisibilityPort {
     fun filterVisible(issueKey: String, candidateUserIds: Set<UUID>): Set<UUID> = candidateUserIds
 }
 ```
-- 구현 BC와 default/fail-safe 방향은 **plan에서 security-engineer가 확정**(보안수준 판정 로직이 issue-tracking인지 identity-access인지 + adapter 부재 시 prod 부팅 가드). 기본 동작: 보안수준 미설정 이슈는 전체 통과, 설정 이슈는 각 user가 해당 level 멤버인지 판정. [[crossbc-resolver-nullable-fail-open]] 주의 — allow-all default는 비-prod 한정, prod는 adapter 필수.
+- 구현 BC와 adapter 부재 시 prod 부팅 가드는 **plan에서 security-engineer가 확정**(보안수준 판정 로직이 issue-tracking인지 identity-access인지). 기본 동작: 보안수준 미설정 이슈는 전체 통과, 설정 이슈는 각 user가 해당 level 멤버인지 판정.
+- **default 메서드 = allow-all(전체 통과)**: adapter 미등록 환경(보안수준 미적용) 한정. [[crossbc-resolver-nullable-fail-open]] 주의 — prod는 adapter 필수(부팅 가드로 강제).
+- **G3 — 런타임 장애 시 fail-closed**: adapter가 등록됐으나 판정 중 예외/장애가 나면 **해당 이벤트 처리를 실패시켜 보류**한다(pgmq vt 만료 후 재전달, 멱등 처리됨). 권한 없는 사용자에게 알림이 새는 것(fail-open)보다 알림 지연(fail-closed)이 안전 — notification 전반의 fail-safe 철학("누락이 과발송보다 안전")과 일관. allow-all로 삼키지 않는다.
 
 ## 데이터 모델 변경
 
@@ -94,6 +99,7 @@ interface IssueVisibilityPort {
 - 이슈에 컴포넌트 없음/lead 미지정 → componentLeadIds 빈.
 - assignee 변경 이력 0(한 번도 안 바뀜) → previousAssigneeId null.
 - previousAssignee `from_value` 형식(UUID 텍스트 vs 'NONE' 리터럴)은 impl에서 실측 확인 후 파싱(미할당→할당 전이의 from_value 처리 포함).
+- **G1 — PREVIOUS_ASSIGNEE 근사성**: 본 작업은 "처리 시점 change history의 가장 최근 assignee 변경 from_value"를 직전 담당자로 본다. 이벤트가 큐에 적재된 후 처리 전에 담당자가 또 바뀌면(u1→u2 이벤트 처리 전 u2→u3 발생), 최근 from_value(u2)는 이 이벤트가 의도한 이전 담당자(u1)와 다를 수 있다. 이벤트 payload에 이전 담당자 필드가 없어(IssueUpdated 스키마 한계, FR-NT-02 결정 4) 발생하는 근사이며, **한계를 수용**한다(eventual consistency G4의 일부). 정확화는 이벤트 스키마 확장이 필요한 별도 작업.
 - RULE_OWNER 정책 → skip + 디버그 로그(다른 역할 정상).
 
 ## 비기능 요구사항 (NFR)
@@ -103,6 +109,7 @@ interface IssueVisibilityPort {
 - 수신자 조회 실패(adapter 부재/이슈 미존재) → 빈 수신자(알림 누락이 과발송보다 안전). visibility는 보안이라 prod adapter 필수(부팅 가드).
 - ArchUnit BC 격리 룰 통과(notification → shared-kernel만 의존).
 - detekt/ktlint 통과, baseline 동결만(신규 위반 코드 수정).
+- **G5 — 광역 역할 발송 부하**: PROJECT_MEMBER 정책 1건은 1,000명 규모 프로젝트에서 단일 이벤트당 최대 1,000 알림(notifications insert + visibility 1,000명 배치 + 채널 발송)을 만든다. RecipientResolver는 **해석만** 책임지고, 발송 상한/배치/그룹화(SDD §9 "스팸 방지 알림 그룹화")는 본 FR 범위 밖(별도). 광역 정책의 신중한 설정은 관리자 책임이며, visibility 필터는 반드시 **배치 1회**로 1,000회 개별 호출을 피한다(NFR 위 N+1 방지).
 
 ## 제약 조건
 
@@ -115,7 +122,7 @@ interface IssueVisibilityPort {
 - [ ] 5개 역할 단위 테스트(각 역할 해석 + 빈/다중/중복 케이스).
 - [ ] visibility 필터 단위 + 통합 테스트(보안수준 설정 이슈에서 권한 없는 수신자 제외, S5).
 - [ ] 포트 3종(P1 확장·P2·P3) adapter 통합 테스트(Testcontainers 실 repo + 시드).
-- [ ] RULE_OWNER skip 회귀 테스트(기존 EventRecipientResolverTest 갱신).
+- [ ] RULE_OWNER skip 회귀 테스트(기존 EventRecipientResolverTest 갱신 + visibility 포트 주입/mock 추가, FR7).
 - [ ] N+1 방지 검증(역할군별 포트 1회 호출).
 - [ ] ArchUnit BC 격리 + detekt/ktlint 그린.
 - [ ] product §2.3 D1~D5 [x] 마킹(D6 정책 페이지 확장·D7 E2E는 후속 — 아래 분리 결정 참조).
@@ -124,4 +131,12 @@ interface IssueVisibilityPort {
 
 product §2.3은 D6(정책 페이지 확장)·D7(E2E)를 포함하나, FR-NT-03의 본질은 **백엔드 수신자 해석**이다. recipient_role은 FR-NT-01 D6 관리자 정책 페이지(#124)에서 이미 CRUD 가능(enum 9종 노출). FR-NT-03이 새 UI를 요구하는지는 plan/리뷰에서 확정 — 백엔드(D1~D5) 우선 완결, D6/D7은 별도 판단(FR-NT-01/02 패턴: 백엔드 PR + 프론트 PR 분할).
 
-## Brainstorming Check (← Phase B 채움)
+## Brainstorming Check
+
+✅ 통과 (1회 보강). sanity check에서 5개 gap 발견 후 전부 스펙에 반영.
+- G1 PREVIOUS_ASSIGNEE 근사성(이벤트~처리 시점 재변경) → 엣지 케이스에 한계 수용 명시.
+- G2 visibility 필터 순서/범위(dedup 후 적용 + 기존 역할 포함, 동작 강화) → FR7 신설.
+- G3 visibility 런타임 장애 fail-closed(이벤트 보류·재전달) → P3 보강.
+- G4 조회 시점 일관성(eventual) → 개요에 명시.
+- G5 광역 역할 발송 부하(배치 필수, 그룹화는 별도) → NFR 보강.
+Maxi 추가 결정 불필요(G3는 notification fail-safe 철학과 일관, 나머지는 명시화).
