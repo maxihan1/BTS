@@ -45,7 +45,7 @@
 
 - **NFR1 (멱등)**. 같은 날 N회 실행 시 수신자당 알림 ≤ 1 (dedupKey 결정성). 통합 테스트로 검증.
 - **NFR2 (성능)**. 스캔 쿼리는 `due_date` 부분 인덱스 활용. 신규 마이그레이션 1개로 부분 인덱스 추가 권장 — `CREATE INDEX CONCURRENTLY ... ON issues(due_date) WHERE deleted_at IS NULL AND resolution_id IS NULL`. (product D3 "활용"의 성능 보강. plan에서 최종 확정.)
-- **NFR3 (트랜잭션 경계)**. 스캔=readOnly, 발행=MANDATORY. 일일 지연 이슈 수가 매우 많을 경우(>수천) 단일 트랜잭션 부담 → 배치 발행 고려(현 규모 1K 사용자에서는 단일 tx 허용, plan에서 판단).
+- **NFR3 (트랜잭션 경계 + 결함 격리)**. 스캔=readOnly, 발행=MANDATORY. **이슈 단위(또는 배치 단위) 트랜잭션 경계**로 발행 → 한 이슈의 발행 실패가 그날 전체 알림을 롤백하지 않도록 격리. self-invocation 시 `@Transactional` 프록시 우회 함정 주의([[transaction-self-invocation-requires-new]]) — tx 경계 메서드는 별도 Bean 또는 올바른 프록시 경유로 배치. 현 규모(1K 사용자)에서 단일 tx도 허용되나, fault isolation 위해 배치 권장. plan에서 확정.
 - **NFR4 (테스트 결정성)**. `Clock` 주입 필수. `Clock.fixed()`로 임박/지연/경계일 검증.
 - **NFR5 (관측성)**. 발행 건수 로그(`due_scan_published dueSoon={} overdue={}`). PII 미포함.
 
@@ -66,6 +66,8 @@
 - **actor 부재**. 스케줄러 이벤트는 actorId 없음 → resolver의 actor 제외 로직 무영향(아무도 제외 안 함). `buildSourceEvent`의 actorId는 MissingNode 허용.
 - **대량 동일 발행**. notification 워커가 배치(qty=10) 폴링이라 다수 이벤트도 순차 소비. 백프레셔 문제 없음.
 - **타임존 경계**. due_date가 캘린더 날짜라 시/분 무관. FR7 비교 존(KST)으로 일관.
+- **due_date 재조정 → 임박 재발화**. 임박 알림(today+1, 1회) 후 사용자가 due_date를 미래로 미루면, 새 due_date가 다시 "내일"이 되는 날 임박 알림이 **재발화**(occurredAt 다른 날 → 새 알림). 의도된 동작(재조정 후 다시 임박해진 것이 맞음).
+- **buildSourceEvent 수용 검증 완료**. 소비 경로(`fromWire`→`buildSourceEvent` 공통 파싱→`dispatch`)가 `issue.due_soon`/`issue.overdue`를 거부하지 않음을 코드 실측 확인(2026-06-19). "notification 변경 0"은 가정이 아니라 **검증된 사실**.
 
 ## 측정 가능한 완료 기준
 

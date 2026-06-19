@@ -44,9 +44,23 @@
 - **기존 결정 충돌**: 없음. 관련 ADR(notification BC bootstrap/in-app channel/webhook) 모두 파이프라인 구축 건, FR-PL-02는 신규 생산자.
 - **관련 ADR**: 없음 (신규 아키텍처 결정 없음 — 기존 파이프라인 재사용). 재알림 정책은 spec에 인라인.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-19-fr-pl-02-overdue-notify.md](../specs/2026-06-19-fr-pl-02-overdue-notify.md)
+
+핵심 3줄 요약.
+- 매일 KST 09:00(UTC 00:00) 스케줄러가 `due_date` 스캔 — 임박(due tomorrow, 1회)·지연(overdue, 매일) 이슈에 도메인 이벤트 발행. `resolution_id IS NULL AND deleted_at IS NULL`(열림) 필터.
+- 신규 = issue-tracking 발행 측만(이벤트 2종 + due_date 쿼리 + @Scheduled 워커). notification 소비·프론트 토스트는 변경 0 (코드 실측 검증).
+- 재알림 = occurredAt(스캔일 UTC 자정)로 제어 — 같은 날 멱등, 지연은 날마다 새 알림. 결함 격리 위해 발행 tx를 이슈/배치 단위로.
+
+Maxi 확정 4결정. ①임박=마감 1일 전 ②혼합 재알림(임박1회+지연매일) ③due_date만 ④cron `0 0 0 * * *`(KST 09시).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration — 직접 적대적 새너티 체크). 발견·반영 갭 2건.
+- 발행 결함 격리(이슈/배치 단위 tx, self-invocation 함정) → NFR3 보강.
+- due_date 재조정 시 임박 재발화 엣지 → 엣지 케이스 추가.
+- "notification 변경 0" 가정을 소비 경로 코드 실측으로 검증 완료(가정→사실).
 
 ## Plan (← /bts-plan 채움)
 
