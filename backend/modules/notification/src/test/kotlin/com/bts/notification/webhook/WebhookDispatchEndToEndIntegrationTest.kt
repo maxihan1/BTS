@@ -366,7 +366,7 @@ class WebhookDispatchEndToEndIntegrationTest {
          *
          * EventRecipientResolver(@Component) 가 cross-BC [IssueVisibilityPort] 를 주입받으므로
          * 전체 컨텍스트를 띄우는 이 테스트에도 빈이 필요하다. 이 테스트는 visibility 누출을 검증하지 않으므로
-         * allow-all stub 이 정당하다. 실 판정은 T6 RecipientResolutionIntegrationTest 가 검증한다.
+         * allow-all stub 이 정당하다. 실 판정은 T6, worker 배선은 T7 이 검증한다.
          */
         @Bean
         open fun issueVisibilityPort(): IssueVisibilityPort =

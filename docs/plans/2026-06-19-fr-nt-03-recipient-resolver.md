@@ -180,7 +180,7 @@ notification-dashboard BC. FR-NT-01 notification_policies.recipient_role을
 **RED**: Testcontainers full-context — 이벤트(transition, 워처+컴포넌트 lead+멤버 시드, **보안수준 제한 이슈 + VIEW 권한 없는 멤버 포함**) 발행 → NotificationWorker 소비 → notifications 테이블에 **visibility 통과 수신자만** 기록(권한 없는 멤버 미기록=누출 차단 단언). actor 제외·dedup 확인. 실패: 미해석/누출.
 
 **GREEN**:
-- **C5/B-SEC-3 — 실 adapter 강제**: test-assembled 컨텍스트에 `IssueVisibilityAdapter`·`ProjectRecipientLookupAdapter`·`IssueRecipientLookupAdapter` **실 구현 빈 등록**. AlwaysAllow류 stub 등록 금지(누출 못 잡는 가짜 그린). notification 컨텍스트가 포트 빈을 못 찾으면 부팅 실패하도록 non-null 주입 유지.
+- **C5/B-SEC-3 — 누출 재현 stub + T6 실DB 책임 분리**: notification은 BC 격리상 cross-BC adapter(IssueVisibilityAdapter 등)를 클래스패스에 못 둬 실 adapter 인스턴스화 불가([[no-cross-bc-deployment-assembly]]). test-assembled 컨텍스트에 **누출 재현형 제어 stub**(EXCLUDED_USER 실제 제외) 등록 → worker 경로 배선·누출 차단을 단언(allow-all stub 금지=가짜그린 회피). 보안 판정 정확성은 T6 IssueVisibilityAdapterIntegrationTest가 prod 실DB로 검증. notification 컨텍스트가 포트 빈을 못 찾으면 부팅 실패(non-null 주입 유지).
 - 신규 @Component(T5·T6)가 기존 전체-컨텍스트 통합테스트 부팅을 깨면([[fr-nt-02-email-channel-done]] 선례) TestcontainersConfig에 실 빈 보강(stub 아님).
 
 **REFACTOR**: ArchUnit BC 격리(notification → shared-kernel만) 룰 재확인, detekt/ktlint baseline 동결.
