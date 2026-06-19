@@ -52,8 +52,10 @@ class IssueDueDateScanWorkerTest : DescribeSpec({
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
 
-    fun item(issueKey: String, projectKey: String = "PROJ"): IssueDueScanItem =
-        IssueDueScanItem(issueKey = issueKey, projectKey = projectKey)
+    fun item(
+        issueKey: String,
+        projectKey: String = "PROJ",
+    ): IssueDueScanItem = IssueDueScanItem(issueKey = issueKey, projectKey = projectKey)
 
     // ── 테스트 ─────────────────────────────────────────────────────────────────
 

@@ -46,3 +46,9 @@ bts:
   clamav:
     host: ${BTS_CLAMAV_HOST:localhost}
     port: ${BTS_CLAMAV_PORT:3310}
+  issue:
+    # 마감일 스캔 배치 cron (Spring cron: 초 분 시 일 월 요일).
+    # 기본값: 매일 00:00 UTC = KST 09:00 — 한국 사용자 업무 시작 직전 스캔.
+    # @Scheduled 어노테이션의 placeholder 기본값으로도 동작하므로 이 항목 미설정 시 기본값 적용.
+    due-scan:
+      cron: "0 0 0 * * *"
