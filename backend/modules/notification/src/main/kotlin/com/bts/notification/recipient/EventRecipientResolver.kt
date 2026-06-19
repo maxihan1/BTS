@@ -41,7 +41,10 @@ import java.util.UUID
  * @param projectRecipientLookupPort 프로젝트 멤버·관리자 cross-BC 조회 포트 (shared-kernel)
  * @param issueVisibilityPort 이슈 VIEW 가시성 판정 포트 (shared-kernel). non-null 필수 —
  *   빈 Bean 부재 시 부팅 실패가 의도된 안전망이다(allow-all fallback 금지).
+ *
+ * 역할 8종을 각각 전용 private 해석 메서드로 분리하므로 함수 수가 detekt 임계값을 넘는다(의도된 구조).
  */
+@Suppress("TooManyFunctions")
 @Component
 class EventRecipientResolver(
     private val issueRecipientLookupPort: IssueRecipientLookupPort,
@@ -53,9 +56,13 @@ class EventRecipientResolver(
     /**
      * [event] 의 이벤트 정보와 [matches] 의 역할×채널 목록을 결합해 실제 수신자를 반환한다.
      *
+     * 처리 순서는 역할 해석 → actor 제외 → 중복 제거 → 가시성 필터([applyVisibilityFilter])다.
+     * 가시성 필터는 마지막 단계로, 보안등급으로 이슈를 볼 수 없는 사용자를 제거한다.
+     *
      * @param event pgmq 역직렬화된 이벤트 표현
      * @param matches 정책 평가기가 반환한 역할×채널 목록
-     * @return 중복 제거된 수신자 목록 (actorId 제외)
+     * @return actor 제외·중복 제거·가시성 필터를 통과한 수신자 목록
+     * @throws RuntimeException 가시성 포트 장애 시 예외를 전파한다(fail-closed) — [applyVisibilityFilter] 참고
      */
     fun resolve(
         event: NotificationSourceEvent,
@@ -92,6 +99,11 @@ class EventRecipientResolver(
      *   통과한 userId 의 (userId, channel) 항목만 남긴다.
      * - 포트가 예외를 던지면 **잡지 않고 전파**한다. worker 가 메시지를 보류·재전달(at-least-once)하도록
      *   하는 것이 의도된 동작이며, allow-all 통과나 빈 목록 삼킴은 보안 누출이므로 절대 금지한다.
+     *
+     * ## G3 — 런타임 장애 시 동작
+     * 가시성 판정 포트가 일시 장애(DB·네트워크 등)로 예외를 던지면 이 메서드는 예외를 그대로 올려보내고,
+     * 그 결과 이벤트 처리가 실패해 메시지가 큐에 남아 재처리된다. 장애 중 잘못된 수신자에게 알림이
+     * 새어 나가는 것보다, 알림이 잠시 지연되는 편이 안전하다는 보안 결정이다.
      */
     private fun applyVisibilityFilter(
         issueKey: String?,
