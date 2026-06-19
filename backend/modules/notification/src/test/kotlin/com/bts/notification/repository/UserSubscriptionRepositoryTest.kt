@@ -60,7 +60,7 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
     // ── upsert — 신규 INSERT ─────────────────────────────────────────────────────
 
     @Test
-    fun `upsert 신규: 저장 후 findByUser로 1행이 조회되고 enabled 값이 일치한다`() {
+    fun `upsert 신규 — 저장 후 findByUser로 1행이 조회되고 enabled 값이 일치한다`() {
         repository.upsert(sub(enabled = true))
 
         val results = repository.findByUser(userId1)
@@ -74,7 +74,7 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
     // ── upsert — 멱등(ON CONFLICT DO UPDATE) ─────────────────────────────────────
 
     @Test
-    fun `upsert 멱등: 같은 (user,event,channel) 재호출 시 enabled와 updated_at만 갱신되고 행 수는 1이다`() {
+    fun `upsert 멱등 — 같은 (user,event,channel) 재호출 시 enabled와 updated_at만 갱신되고 행 수는 1이다`() {
         repository.upsert(sub(enabled = true, updatedAt = t0))
         repository.upsert(sub(enabled = false, updatedAt = t1))
 
@@ -87,7 +87,7 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
     // ── findByUser — 타 사용자 격리 ──────────────────────────────────────────────
 
     @Test
-    fun `findByUser: 해당 사용자의 행만 반환하고 타 사용자 행은 포함하지 않는다`() {
+    fun `findByUser — 해당 사용자의 행만 반환하고 타 사용자 행은 포함하지 않는다`() {
         repository.upsert(sub(userId = userId1, channel = Channel.IN_APP))
         repository.upsert(sub(userId = userId2, channel = Channel.EMAIL))
 
@@ -104,7 +104,7 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
     }
 
     @Test
-    fun `findByUser: 행이 없는 사용자는 빈 리스트를 반환한다`() {
+    fun `findByUser — 행이 없는 사용자는 빈 리스트를 반환한다`() {
         val results = repository.findByUser(UUID.randomUUID())
         assertThat(results).hasSize(0)
     }
@@ -112,7 +112,7 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
     // ── fetchDisabled ─────────────────────────────────────────────────────────────
 
     @Test
-    fun `fetchDisabled: enabled=false 행의 userId만 Set으로 반환한다`() {
+    fun `fetchDisabled — enabled=false 행의 userId만 Set으로 반환한다`() {
         // userId1: IN_APP ISSUE_CREATED → disabled
         repository.upsert(sub(userId = userId1, enabled = false))
         // userId2: IN_APP ISSUE_CREATED → enabled (반환되면 안 됨)
@@ -128,7 +128,7 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
     }
 
     @Test
-    fun `fetchDisabled: 행이 없는 userId는 결과에 포함되지 않는다`() {
+    fun `fetchDisabled — 행이 없는 userId는 결과에 포함되지 않는다`() {
         val unknown = UUID.randomUUID()
         val disabled = repository.fetchDisabled(
             eventType = NotificationEventType.ISSUE_CREATED,
@@ -139,7 +139,7 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
     }
 
     @Test
-    fun `fetchDisabled: userIds가 비면 쿼리 없이 빈 Set을 반환한다`() {
+    fun `fetchDisabled — userIds가 비면 쿼리 없이 빈 Set을 반환한다`() {
         repository.upsert(sub(userId = userId1, enabled = false))
 
         val disabled = repository.fetchDisabled(
@@ -151,7 +151,7 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
     }
 
     @Test
-    fun `fetchDisabled: 다른 (event,channel) 조합의 disabled 행은 포함하지 않는다`() {
+    fun `fetchDisabled — 다른 (event,channel) 조합의 disabled 행은 포함하지 않는다`() {
         // userId1: EMAIL ISSUE_CREATED → disabled (다른 channel)
         repository.upsert(sub(userId = userId1, channel = Channel.EMAIL, enabled = false))
         // userId2: IN_APP ISSUE_ASSIGNED → disabled (다른 eventType)
