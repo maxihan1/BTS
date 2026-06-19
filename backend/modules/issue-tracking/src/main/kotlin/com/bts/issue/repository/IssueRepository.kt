@@ -1291,8 +1291,9 @@ class IssueRepository(
     /**
      * 지정 날짜에 마감 예정인 열린 이슈 목록을 반환한다 (마감임박 스캔).
      *
-     * `due_date = date AND resolution_id IS NULL AND deleted_at IS NULL` 조건.
-     * V026 부분 인덱스(`idx_issues_due_date_open`)가 이 쿼리를 가속한다.
+     * `due_date = date AND resolution_id IS NULL AND issues.deleted_at IS NULL` 조건 +
+     * `projects.deleted_at IS NULL`(소프트삭제 프로젝트 이슈는 알림 대상 제외).
+     * V026 부분 인덱스(`idx_issues_due_date_open`)가 issues 필터를 가속한다.
      *
      * projectKey 는 issues × projects INNER JOIN 으로 projects.key 를 직접 읽는다.
      * issues.key 파싱(substringBefore) 대신 JOIN — 다건 스캔에서 정확성이 우선.
@@ -1307,6 +1308,7 @@ class IssueRepository(
             .from(ISSUES)
             .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
             .where(openIssue())
+            .and(PROJECTS.DELETED_AT.isNull)
             .and(ISSUES.DUE_DATE.eq(date))
             .fetch { record ->
                 IssueDueScanItem(
@@ -1319,8 +1321,9 @@ class IssueRepository(
     /**
      * 지정 날짜 이전에 마감이 지난 열린 이슈 목록을 반환한다 (지연 스캔).
      *
-     * `due_date < today AND resolution_id IS NULL AND deleted_at IS NULL` 조건.
-     * V026 부분 인덱스(`idx_issues_due_date_open`)가 이 쿼리를 가속한다.
+     * `due_date < today AND resolution_id IS NULL AND issues.deleted_at IS NULL` 조건 +
+     * `projects.deleted_at IS NULL`(소프트삭제 프로젝트 이슈는 알림 대상 제외).
+     * V026 부분 인덱스(`idx_issues_due_date_open`)가 issues 필터를 가속한다.
      *
      * @param today 오늘 날짜. due_date 가 이 날보다 과거인 이슈를 반환한다.
      * @return [IssueDueScanItem] 목록. 없으면 빈 리스트.
@@ -1332,6 +1335,7 @@ class IssueRepository(
             .from(ISSUES)
             .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
             .where(openIssue())
+            .and(PROJECTS.DELETED_AT.isNull)
             .and(ISSUES.DUE_DATE.lt(today))
             .fetch { record ->
                 IssueDueScanItem(
