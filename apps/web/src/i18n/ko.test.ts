@@ -1,7 +1,7 @@
 // issueDetailStrings 신규 키 존재 여부를 타입 레벨에서 검증하는 테스트
 
 import { describe, it, expect, expectTypeOf } from 'vitest'
-import { issueDetailStrings, mfaStrings, mfaErrorMessage, issueLinkStrings, linkGraphStrings } from './ko'
+import { issueDetailStrings, mfaStrings, mfaErrorMessage, issueLinkStrings, linkGraphStrings, notificationSubscriptionStrings } from './ko'
 import { attachmentLabels } from './attachment-labels'
 
 // IssueDetailStrings 타입을 추론해서 키 존재를 검증한다.
@@ -489,6 +489,18 @@ describe('issueDetailStrings.changelogFieldLabels — 콜론 종결 가드 (N1, 
   it('모든 필드 라벨 값은 콜론으로 끝나지 않는다 (글로벌 §5)', () => {
     for (const [field, label] of Object.entries(issueDetailStrings.changelogFieldLabels)) {
       expect(label, `changelogFieldLabels["${field}"] = "${label}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+    }
+  })
+})
+
+// ── notificationSubscriptionStrings — 콜론 가드 (FR-NT-04) ───────────────────
+
+describe('notificationSubscriptionStrings — 사용자 알림 구독 설정 문자열 콜론 종결 가드 (FR-NT-04)', () => {
+  it('모든 문자열 값은 콜론으로 끝나지 않는다 (글로벌 §5)', () => {
+    for (const [key, value] of Object.entries(notificationSubscriptionStrings)) {
+      if (typeof value === 'string') {
+        expect(value, `notificationSubscriptionStrings["${key}"] = "${value}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+      }
     }
   })
 })

@@ -30,6 +30,7 @@ export const eventTypeLabels: Record<string, string> = {
   'issue.assigned': '이슈 담당자 지정',
   'issue.transitioned': '이슈 상태 전이',
   'issue.commented': '이슈 댓글 작성',
+  'issue.mentioned': '이슈 멘션',
   'issue.due_soon': '이슈 기한 임박',
   'issue.overdue': '이슈 기한 초과',
   'sprint.started': '스프린트 시작',

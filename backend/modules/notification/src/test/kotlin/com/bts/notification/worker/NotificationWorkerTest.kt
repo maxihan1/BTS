@@ -14,6 +14,7 @@ import com.bts.notification.recipient.EventRecipientResolver
 import com.bts.notification.recipient.NotificationSourceEvent
 import com.bts.notification.recipient.ResolvedRecipient
 import com.bts.notification.repository.NotificationRepository
+import com.bts.notification.repository.UserSubscriptionRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.core.spec.style.DescribeSpec
 import io.mockk.clearMocks
@@ -46,6 +47,7 @@ class NotificationWorkerTest : DescribeSpec({
     val policyEvaluator = mockk<NotificationPolicyEvaluator>()
     val recipientResolver = mockk<EventRecipientResolver>()
     val repository = mockk<NotificationRepository>()
+    val userSubscriptionRepository = mockk<UserSubscriptionRepository>()
     val channelSender = mockk<NotificationChannelSender>()
     val objectMapper = ObjectMapper()
 
@@ -55,6 +57,7 @@ class NotificationWorkerTest : DescribeSpec({
             policyEvaluator = policyEvaluator,
             recipientResolver = recipientResolver,
             repository = repository,
+            userSubscriptionRepository = userSubscriptionRepository,
             channelSenders = listOf(channelSender),
             objectMapper = objectMapper,
         )
@@ -63,7 +66,9 @@ class NotificationWorkerTest : DescribeSpec({
     val mentionedId: UUID = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
     val fixedNow: Instant = Instant.parse("2026-06-12T10:00:00Z")
 
-    afterEach { clearMocks(dsl, policyEvaluator, recipientResolver, repository, channelSender) }
+    afterEach {
+        clearMocks(dsl, policyEvaluator, recipientResolver, repository, userSubscriptionRepository, channelSender)
+    }
 
     // ── POLL-8: 빈 큐 ─────────────────────────────────────────────────────────
 
@@ -90,6 +95,7 @@ class NotificationWorkerTest : DescribeSpec({
 
             every { policyEvaluator.evaluate(NotificationEventType.ISSUE_MENTIONED, "ATLAS") } returns matches
             every { recipientResolver.resolve(any<NotificationSourceEvent>(), matches) } returns listOf(recipient)
+            every { userSubscriptionRepository.fetchDisabled(any(), any(), any()) } returns emptySet()
             every { repository.insertIfAbsent(any()) } returns true
             every { channelSender.supports(Channel.IN_APP) } returns true
             justRun { channelSender.send(any()) }
@@ -179,6 +185,7 @@ class NotificationWorkerTest : DescribeSpec({
             stubMentionMessage(dsl, actorId, mentionedId, msgId, fixedNow)
             every { policyEvaluator.evaluate(any(), any()) } returns matches
             every { recipientResolver.resolve(any<NotificationSourceEvent>(), any()) } returns listOf(recipient)
+            every { userSubscriptionRepository.fetchDisabled(any(), any(), any()) } returns emptySet()
             every { repository.insertIfAbsent(any()) } returns true
             every { channelSender.supports(Channel.IN_APP) } returns true
             justRun { channelSender.send(any()) }
@@ -210,6 +217,7 @@ class NotificationWorkerTest : DescribeSpec({
             stubMentionMessage(dsl, actorId, mentionedId, msgId, fixedNow)
             every { policyEvaluator.evaluate(any(), any()) } returns matches
             every { recipientResolver.resolve(any<NotificationSourceEvent>(), any()) } returns listOf(recipient)
+            every { userSubscriptionRepository.fetchDisabled(any(), any(), any()) } returns emptySet()
             every { repository.insertIfAbsent(any()) } returns false
             every { channelSender.supports(Channel.IN_APP) } returns true
             every { dsl.execute(any<String>(), NotificationWorker.QUEUE_NAME, msgId) } returns 1
@@ -325,6 +333,54 @@ class NotificationWorkerTest : DescribeSpec({
             verify(exactly = 1) {
                 dsl.execute(match<String> { it.contains("pgmq.delete") }, NotificationWorker.QUEUE_NAME, msgId)
             }
+        }
+    }
+
+    // ── EC9: 비설정 채널(SLACK) 수신자 — fetchDisabled 미호출, sendToRecipient 도달 ─
+
+    describe("EC9 비설정 채널(SLACK) 수신자는 구독 필터를 통과한다") {
+        val msgId = 10L
+        // IN_APP 정책 매치 1건 + SLACK 정책 매치 1건
+        val matches =
+            listOf(
+                PolicyMatch(RecipientRole.MENTIONED, Channel.IN_APP),
+                PolicyMatch(RecipientRole.MENTIONED, Channel.SLACK),
+            )
+        val inAppRecipient = ResolvedRecipient(userId = mentionedId, channel = Channel.IN_APP)
+        val slackRecipient = ResolvedRecipient(userId = mentionedId, channel = Channel.SLACK)
+
+        beforeEach {
+            stubMentionMessage(dsl, actorId, mentionedId, msgId, fixedNow)
+            every { policyEvaluator.evaluate(any(), any()) } returns matches
+            every {
+                recipientResolver.resolve(any<NotificationSourceEvent>(), matches)
+            } returns listOf(inAppRecipient, slackRecipient)
+            // IN_APP fetchDisabled — 설정 가능 채널이므로 호출됨, disabled 없음
+            every {
+                userSubscriptionRepository.fetchDisabled(any(), eq(Channel.IN_APP), any())
+            } returns emptySet()
+            every { repository.insertIfAbsent(any()) } returns true
+            // channelSender: IN_APP 만 supports, SLACK 은 supports=false (sender 부재 시뮬레이션)
+            every { channelSender.supports(Channel.IN_APP) } returns true
+            every { channelSender.supports(Channel.SLACK) } returns false
+            justRun { channelSender.send(any()) }
+            justRun { repository.markSent(any()) }
+            every { dsl.execute(any<String>(), NotificationWorker.QUEUE_NAME, msgId) } returns 1
+        }
+
+        it("SLACK 채널로 fetchDisabled 가 호출되지 않는다 (isConfigurable=false 라 그룹화에서 제외 — EC9)") {
+            worker.pollAndProcess()
+
+            verify(exactly = 0) {
+                userSubscriptionRepository.fetchDisabled(any(), eq(Channel.SLACK), any())
+            }
+        }
+
+        it("SLACK 수신자도 repository.insertIfAbsent 경로까지 도달한다 (필터 통과 2건)") {
+            worker.pollAndProcess()
+
+            // IN_APP + SLACK 수신자 2건 모두 insertIfAbsent 호출
+            verify(exactly = 2) { repository.insertIfAbsent(any()) }
         }
     }
 
