@@ -19,6 +19,7 @@ import com.bts.issue.jooq.tables.references.PROJECTS
 import com.bts.issue.jooq.tables.references.VERSIONS
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssueSecurityAccess
+import com.bts.issue.application.DatePatch
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.jooq.Condition
@@ -33,6 +34,7 @@ import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
@@ -100,6 +102,10 @@ private const val SQL_COLLECT_ANCESTORS =
  * null 필드는 변경하지 않는다.
  * description/environment 는 빈/공백 문자열이면 DB NULL 로 클리어한다 (ifBlank).
  * customFields 는 non-null 이면 병합된 최종 맵 전체를 JSONB 로 저장한다.
+ * startDate/dueDate/targetDate 는 [DatePatch] 3-state 로 변경 의도를 표현한다 (FR-PL-01).
+ *   - [DatePatch.Unchanged] (기본값) — 변경하지 않는다.
+ *   - [DatePatch.Clear] — DB NULL 로 클리어한다.
+ *   - [DatePatch.Set] — 지정 날짜로 SET 한다.
  */
 data class IssueFieldPatch(
     val summary: String? = null,
@@ -110,6 +116,9 @@ data class IssueFieldPatch(
     val environment: String? = null,
     val impact: Int? = null,
     val customFields: Map<String, Any?>? = null,
+    val startDate: DatePatch = DatePatch.Unchanged,
+    val dueDate: DatePatch = DatePatch.Unchanged,
+    val targetDate: DatePatch = DatePatch.Unchanged,
 )
 
 /**
@@ -250,6 +259,28 @@ class IssueRepository(
             .apply { if (patch.environment != null) set(ISSUES.ENVIRONMENT, patch.environment.ifBlank { null }) }
             .apply { if (patch.impact != null) set(ISSUES.IMPACT, patch.impact.toShort()) }
             .apply { if (patch.customFields != null) set(ISSUES.CUSTOM_FIELDS, patch.customFields.toJsonb()) }
+            // 날짜 3-state SET (FR-PL-01). jOOQ set(Field<LocalDate?>, LocalDate?) 단일 오버로드로 명확.
+            .apply {
+                when (val d = patch.startDate) {
+                    is DatePatch.Set -> set(ISSUES.START_DATE, d.value)
+                    DatePatch.Clear -> set(ISSUES.START_DATE, null as LocalDate?)
+                    DatePatch.Unchanged -> Unit
+                }
+            }
+            .apply {
+                when (val d = patch.dueDate) {
+                    is DatePatch.Set -> set(ISSUES.DUE_DATE, d.value)
+                    DatePatch.Clear -> set(ISSUES.DUE_DATE, null as LocalDate?)
+                    DatePatch.Unchanged -> Unit
+                }
+            }
+            .apply {
+                when (val d = patch.targetDate) {
+                    is DatePatch.Set -> set(ISSUES.TARGET_DATE, d.value)
+                    DatePatch.Clear -> set(ISSUES.TARGET_DATE, null as LocalDate?)
+                    DatePatch.Unchanged -> Unit
+                }
+            }
             .where(ISSUES.KEY.eq(key.value))
             .and(ISSUES.VERSION.eq(expectedVersion))
             .and(ISSUES.DELETED_AT.isNull)
@@ -1362,6 +1393,9 @@ private fun Issue.toInsertRecord(): IssuesRecord =
         securityLevelId = securityLevelId,
         customFields = customFields.toJsonb(),
         parentId = parentId,
+        startDate = startDate,
+        dueDate = dueDate,
+        targetDate = targetDate,
     )
 
 /**
@@ -1398,6 +1432,10 @@ private fun IssuesRecord.toIssue(): Issue {
         customFields = customFields.toCustomFieldsMap(),
         // parent_id 컬럼 매핑 — null = 최상위 이슈 (FR-LK-01, V021)
         parentId = parentId,
+        // 일정 필드 3컬럼 — null = 미지정 (FR-PL-01, V025)
+        startDate = startDate,
+        dueDate = dueDate,
+        targetDate = targetDate,
     )
 }
 
