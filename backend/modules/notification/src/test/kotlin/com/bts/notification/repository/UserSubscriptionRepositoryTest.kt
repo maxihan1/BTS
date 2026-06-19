@@ -26,7 +26,6 @@ import java.util.UUID
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
-
     private val repository: UserSubscriptionRepository by lazy {
         UserSubscriptionRepository(dsl)
     }
@@ -118,11 +117,12 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
         // userId2: IN_APP ISSUE_CREATED → enabled (반환되면 안 됨)
         repository.upsert(sub(userId = userId2, enabled = true))
 
-        val disabled = repository.fetchDisabled(
-            eventType = NotificationEventType.ISSUE_CREATED,
-            channel = Channel.IN_APP,
-            userIds = setOf(userId1, userId2),
-        )
+        val disabled =
+            repository.fetchDisabled(
+                eventType = NotificationEventType.ISSUE_CREATED,
+                channel = Channel.IN_APP,
+                userIds = setOf(userId1, userId2),
+            )
 
         assertThat(disabled).containsExactly(userId1)
     }
@@ -130,11 +130,12 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
     @Test
     fun `fetchDisabled — 행이 없는 userId는 결과에 포함되지 않는다`() {
         val unknown = UUID.randomUUID()
-        val disabled = repository.fetchDisabled(
-            eventType = NotificationEventType.ISSUE_CREATED,
-            channel = Channel.IN_APP,
-            userIds = setOf(unknown),
-        )
+        val disabled =
+            repository.fetchDisabled(
+                eventType = NotificationEventType.ISSUE_CREATED,
+                channel = Channel.IN_APP,
+                userIds = setOf(unknown),
+            )
         assertThat(disabled).hasSize(0)
     }
 
@@ -142,11 +143,12 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
     fun `fetchDisabled — userIds가 비면 쿼리 없이 빈 Set을 반환한다`() {
         repository.upsert(sub(userId = userId1, enabled = false))
 
-        val disabled = repository.fetchDisabled(
-            eventType = NotificationEventType.ISSUE_CREATED,
-            channel = Channel.IN_APP,
-            userIds = emptySet(),
-        )
+        val disabled =
+            repository.fetchDisabled(
+                eventType = NotificationEventType.ISSUE_CREATED,
+                channel = Channel.IN_APP,
+                userIds = emptySet(),
+            )
         assertThat(disabled).hasSize(0)
     }
 
@@ -164,11 +166,12 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
             ),
         )
 
-        val disabled = repository.fetchDisabled(
-            eventType = NotificationEventType.ISSUE_CREATED,
-            channel = Channel.IN_APP,
-            userIds = setOf(userId1, userId2),
-        )
+        val disabled =
+            repository.fetchDisabled(
+                eventType = NotificationEventType.ISSUE_CREATED,
+                channel = Channel.IN_APP,
+                userIds = setOf(userId1, userId2),
+            )
         assertThat(disabled).hasSize(0)
     }
 }

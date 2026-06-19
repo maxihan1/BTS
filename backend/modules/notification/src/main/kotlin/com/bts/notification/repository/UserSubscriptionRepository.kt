@@ -131,17 +131,19 @@ class UserSubscriptionRepository(
      * @return 변환된 도메인 객체, enum 역매핑 실패 시 null
      */
     private fun toDomain(record: UserNotificationSubsRecord): UserSubscription? {
-        val eventType = NotificationEventType.fromWire(record.eventType ?: return null)
-            ?: run {
-                log.warn("알 수 없는 event_type 값: {} — 행 건너뜀", record.eventType)
-                return null
-            }
+        val rawEventType = record.eventType ?: return null
+        val eventType = NotificationEventType.fromWire(rawEventType)
+        if (eventType == null) {
+            log.warn("알 수 없는 event_type 값: {} — 행 건너뜀", rawEventType)
+            return null
+        }
 
-        val channel = Channel.fromWire(record.channel ?: return null)
-            ?: run {
-                log.warn("알 수 없는 channel 값: {} — 행 건너뜀", record.channel)
-                return null
-            }
+        val rawChannel = record.channel ?: return null
+        val channel = Channel.fromWire(rawChannel)
+        if (channel == null) {
+            log.warn("알 수 없는 channel 값: {} — 행 건너뜀", rawChannel)
+            return null
+        }
 
         val userId = record.userId ?: return null
         val enabled = record.enabled ?: return null
