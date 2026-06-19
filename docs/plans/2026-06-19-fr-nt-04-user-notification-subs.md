@@ -140,7 +140,7 @@
 
 **RED**: WebMvc 통합 테스트 — (1) GET 인증 사용자 200 + 20셀, (2) PATCH (issue.commented,EMAIL,false) 200 + 반영 매트릭스, (3) channel=SLACK PATCH 400(EC1), 미지원 eventType 400(EC2), (4) 미인증 401(EC6). 컨트롤러 없어 실패.
 
-**GREEN**: `@RestController("/api/v1/users/me/notifications")`. `currentActorId()` 401 패턴(NotificationPolicyController 선례 복제). enum 파싱 실패→IllegalArgumentException→`NotificationExceptionHandler` 400. DataResponse 래퍼 재사용. 요청/응답 DTO(SubscriptionEntry, SubscriptionMatrixResponse, PatchRequest).
+**GREEN**: `@RestController("/api/v1/users/me/notifications")`. `currentActorId()` 401 패턴. **[eng-review C2] 복붙 금지 — notification web 패키지 공유 헬퍼로 추출**(NotificationPolicyController도 같은 헬퍼 사용하도록 1줄 리팩토링, 3중 복제 차단). enum 파싱 실패→IllegalArgumentException→`NotificationExceptionHandler` 400. 기존 `DataResponse` 재사용(재선언 금지). 요청/응답 DTO(SubscriptionEntry, SubscriptionMatrixResponse, PatchRequest).
 
 **REFACTOR**: KDoc + enum 파싱 헬퍼.
 
@@ -153,7 +153,7 @@
 - files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/worker/NotificationWorker.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/worker/NotificationWorkerSubscriptionFilterTest.kt`]
 - depends-on: [3]
 
-**RED**: `NotificationWorkerSubscriptionFilterTest` (Testcontainers, 실 repo + 시드) — (1) 수신자 A가 (event,EMAIL) enabled=false 행 보유 → A의 EMAIL 알림 미생성/미발송, A의 IN_APP·타 수신자는 발송(FR7). (2) channel ∉ {IN_APP,EMAIL} 수신자는 필터 통과(EC9). (3) 비활성 행 0건 → 전원 발송(EC5). 필터 없어 실패(현재 전원 발송).
+**RED**: `NotificationWorkerSubscriptionFilterTest` (Testcontainers, 실 repo + 시드) — (1) 수신자 A가 (event,EMAIL) enabled=false 행 보유 → A의 EMAIL 알림 미생성/미발송, A의 IN_APP·타 수신자는 발송(FR7). (2) channel ∉ {IN_APP,EMAIL} 수신자는 필터 통과(EC9). (3) 비활성 행 0건 → 전원 발송(EC5). **[eng-review C3] (4) S3 락 — 관리자 정책 OFF면 사용자 enabled=true 행이 있어도 미발송**(PolicyEvaluator가 PolicyMatch 0 → recipient 0 → 필터 무관, AND 결합 의미 명시 단언). 필터 없어 실패(현재 전원 발송).
 
 **GREEN**: `NotificationWorker`에 `UserSubscriptionRepository` 주입. `dispatch()`에서 `recipientResolver.resolve()` 직후 — 설정가능 채널 수신자 대상 `fetchDisabled` 배치 조회(이벤트당 ≤2쿼리, N+1 금지 NFR1)로 enabled=false 수신자 제거 후 발송 루프. 생성자 확장 → 기존 통합테스트 부팅 영향 점검([[fr-nt-03-recipient-resolver-done]] config stub 교훈).
 
@@ -185,7 +185,7 @@
 
 **RED**: 컴포넌트 vitest — (1) 매트릭스 렌더(이벤트행 × 인앱/이메일 열), (2) 셀 토글 → patch 호출 + 낙관적 반영, (3) 라벨은 ko.ts 재사용(EC12). 컴포넌트 없어 실패.
 
-**GREEN**: settings.password.tsx 레이아웃(`mx-auto max-w-2xl`) 패턴. 토글은 버튼/체크박스(Switch 미설치 — NotificationPolicyTable 선례 버튼 토글). 이벤트/채널 라벨 ko.ts(기존 정책 라벨 재사용·누락분 보강). router.ts adapter 등록(code-based 패턴). MSW stateful 핸들러 + reset 헤더([[msw-mutation-stateful-refetch]]·[[e2e-msw-scenario-toggle-localstorage-flag]]).
+**GREEN**: settings.password.tsx 레이아웃(`mx-auto max-w-2xl`) 패턴. 토글은 버튼/체크박스(Switch 미설치 — NotificationPolicyTable 선례 버튼 토글). **[eng-review C1] 매트릭스는 GET 응답 기반 data-driven 렌더** — 행(이벤트)·열(채널) 집합을 응답 셀에서 도출(IN_APP/EMAIL 하드코딩 금지, 백엔드 화이트리스트와 drift 차단). 이벤트/채널 라벨 ko.ts(기존 정책 라벨 재사용·누락분 보강). router.ts adapter 등록(code-based 패턴). MSW stateful 핸들러 + reset 헤더([[msw-mutation-stateful-refetch]]·[[e2e-msw-scenario-toggle-localstorage-flag]]).
 
 **REFACTOR**: 매트릭스 셀 컴포넌트 추출 + a11y(aria-label 행 컨텍스트).
 
@@ -216,4 +216,24 @@
 - 추가 검증: generateJooq, ktlintCheck, detekt, vitest, typecheck, playwright(qa)
 - classify.json task_count: 9 — 단 현재 classify.json은 병렬 FR-PL-02가 점유([[bts-cache-multisession-collision]]). FR-NT-04 진실출처=이 plan. bts-impl 직전 classify-fr-nt-04 복원 시 task_count=9 기록.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-19) — 백엔드 중심 plan, autoplan 대신 eng 집중 ([[bts-review-plan-autoplan-overkill]])
+
+**Step 0 스코프 챌린지**: ✅ 통과
+- 기존 파이프라인(PolicyEvaluator/RecipientResolver/Worker) + DataResponse/currentActorId/jOOQ/settings 레이아웃/MSW 전부 재사용. 병렬 인프라 없음.
+- 9 task = D1~D7 수직 슬라이스 최소 구성(워커 필터 없으면 토글 무의미). 스코프 크립 없음.
+- 파일 8+·신규 클래스 4종은 FR-NT-01/03과 동일 BC 레이어 패턴(boring by default, 혁신 토큰 0). 과설계 아님.
+- opt-out/AND결합/ON CONFLICT = Layer 1 표준. WebSearch 미사용(in-distribution).
+
+**4섹션 — BLOCKER 0, CONCERN 3 (전부 task에 반영 완료)**
+- **C1 (아키텍처/drift)** → T8: 프론트 매트릭스 data-driven(GET 응답에서 행·열 도출, 채널 하드코딩 금지).
+- **C2 (DRY)** → T5: `currentActorId()` notification web 공유 헬퍼 추출(3중 복제 차단, NotificationPolicyController도 전환).
+- **C3 (테스트)** → T6: S3(관리자 OFF + 사용자 ON → 미발송) 명시 단언으로 AND 결합 의미 락.
+
+**긍정**:
+- partial index `WHERE enabled=false`로 워커 조회를 opt-out 행만으로 최소화(성능).
+- dedup 이전 필터(EC7)로 끈 알림은 notifications 행 자체 미생성 — 깔끔.
+- 채널 화이트리스트 단일 출처(T2 도메인 상수)로 controller/service/worker drift 차단.
+
+**BLOCKER: 없음.** 게이트 1 진입 가능.
