@@ -93,15 +93,13 @@ class RecipientResolutionTestPortsConfig {
         }
 
     /**
-     * allow-all IssueVisibilityPort 빈 — RED 단계용.
+     * 누출 재현형 IssueVisibilityPort 빈 — worker 경로 배선 검증 핵심.
      *
-     * 모든 후보를 통과시킨다. 이 구현이면 [EXCLUDED_USER_ID] 도 notifications 에 기록되므로,
-     * "EXCLUDED_USER_ID 미기록" 단언이 **실패(RED)** 한다.
-     *
-     * GREEN 단계에서 이 구현을 [EXCLUDED_USER_ID] 를 제거하는 누출 재현형으로 교체한다.
+     * [EXCLUDED_USER_ID] 를 후보에서 명시적으로 제거한다.
+     * 나머지 후보는 모두 통과시킨다.
      *
      * ## 실 판정 계약과의 관계
-     * 이 빈은 "필터가 동작한다" 를 확인하기 위한 제어 가능 구현이다.
+     * 이 빈은 "필터가 worker 경로에 배선되어 동작한다" 를 확인하기 위한 제어 가능 구현이다.
      * 프로덕션 보안 판정 정확성(권한 매트릭스 + 보안등급 결합)은
      * T6 `IssueVisibilityAdapterIntegrationTest` 가 identity-access 실 DB 로 검증한다.
      */
@@ -111,6 +109,6 @@ class RecipientResolutionTestPortsConfig {
             override fun filterVisibleUserIds(
                 issueKey: String,
                 candidateUserIds: Set<UUID>,
-            ): Set<UUID> = candidateUserIds // allow-all — RED 단계: EXCLUDED_USER_ID 도 통과해 단언 실패
+            ): Set<UUID> = candidateUserIds - EXCLUDED_USER_ID
         }
 }
