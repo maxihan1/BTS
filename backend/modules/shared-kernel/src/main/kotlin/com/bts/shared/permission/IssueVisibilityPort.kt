@@ -5,19 +5,20 @@ package com.bts.shared.permission
 import java.util.UUID
 
 /**
- * 이슈 VIEW 가시성(매트릭스+보안등급 결합) 판정의 단일 source of truth (FR-NT-03 Task 1).
+ * 이슈 VIEW 가시성(매트릭스+보안등급 결합) 판정의 단일 source of truth.
  *
+ * identity-access BC 구현에서 이미 검증된 권한 판정 로직을 재사용한다.
  * notification BC 가 알림 수신자 후보군을 확정하기 전에 이 포트를 통해
  * 실제로 이슈를 볼 수 있는 사용자만 필터링한다.
- * 구현체는 identity-access BC 가 prod 구현을 제공한다.
  *
- * ### fail-closed (보안 우선)
- * **default 구현 없음.** 빈 부재 시 notification BC 부팅 실패가 의도된 안전망이다.
+ * ### 새 보안 경로 금지
+ * 이 포트 또는 구현체 외부에 별도의 가시성 판정 경로를 만드는 것을 금지한다.
+ * 보안 판정은 반드시 이 인터페이스 하나를 통해서만 이루어진다.
+ *
+ * ### default 금지 (fail-closed)
+ * **default 구현 없음.** 빈 Bean 부재 시 notification BC 부팅 실패가 의도된 안전망이다.
  * allow-all default 는 이슈 보안등급을 우회하는 보안 누출을 초래하므로 절대 금지한다.
- *
- * ### 재사용 범위
- * identity-access BC 에서 이미 검증된 권한 판정 로직을 재사용한다.
- * 새로운 보안 판정 경로를 이 포트 또는 구현체 외부에 만드는 것을 금지한다.
+ * 이는 수신자 포트의 fail-safe(빈 반환)와 다른 방향 — 가시성 판정은 보안 결정이다.
  *
  * ### BC 경계 규칙
  * identity-access / issue-tracking 타입을 이 interface 에 사용하면
