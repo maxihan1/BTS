@@ -106,7 +106,7 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
     @Test
     fun `findByUser: 행이 없는 사용자는 빈 리스트를 반환한다`() {
         val results = repository.findByUser(UUID.randomUUID())
-        assertThat(results).isEmpty()
+        assertThat(results).hasSize(0)
     }
 
     // ── fetchDisabled ─────────────────────────────────────────────────────────────
@@ -135,7 +135,7 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
             channel = Channel.IN_APP,
             userIds = setOf(unknown),
         )
-        assertThat(disabled).isEmpty()
+        assertThat(disabled).hasSize(0)
     }
 
     @Test
@@ -147,7 +147,7 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
             channel = Channel.IN_APP,
             userIds = emptySet(),
         )
-        assertThat(disabled).isEmpty()
+        assertThat(disabled).hasSize(0)
     }
 
     @Test
@@ -169,6 +169,6 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
             channel = Channel.IN_APP,
             userIds = setOf(userId1, userId2),
         )
-        assertThat(disabled).isEmpty()
+        assertThat(disabled).hasSize(0)
     }
 }
