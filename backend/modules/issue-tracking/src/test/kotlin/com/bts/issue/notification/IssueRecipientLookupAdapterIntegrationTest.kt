@@ -89,19 +89,24 @@ class IssueRecipientLookupAdapterIntegrationTest : IssueTestcontainersBase() {
         }
     }
 
+    /**
+     * 각 테스트 전에 부모 [IssueTestcontainersBase.cleanIssues] 이후 실행된다 (JUnit 5 부모 먼저).
+     *
+     * - issue_watchers — issues ON DELETE CASCADE 로 cleanIssues() 에서 자동 정리.
+     * - issue_components — issues ON DELETE CASCADE 로 cleanIssues() 에서 자동 정리.
+     * - issue_change_item — issue_change_group(id) FK 자식이므로 group 보다 먼저 삭제해야 한다.
+     * - issue_change_group — issues FK 없음(이력 보존 우선 설계). 별도 수동 정리.
+     * - components — issue_components 자동 정리 후 부모 행 수동 정리.
+     */
     @BeforeEach
     fun cleanRelatedData() {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.createStatement().use { stmt ->
-                // issue_watchers, issue_change_item, issue_change_group 은 issues 행 삭제 시
-                // issue_watchers(ON DELETE CASCADE), 단 issue_change_group 은 FK 없으므로 별도 정리
                 stmt.execute("DELETE FROM issue_change_item")
                 stmt.execute("DELETE FROM issue_change_group")
-                // issue_components 는 issues ON DELETE CASCADE 적용
                 stmt.execute("DELETE FROM components WHERE project_id = '$testProjectId'")
             }
         }
-        // IssueTestcontainersBase.cleanIssues() 가 issues/key_sequence 정리
     }
 
     private fun requireTaskTypeId(): IssueTypeId =

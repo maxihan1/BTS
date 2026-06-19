@@ -108,7 +108,7 @@ class IssueRecipientLookupAdapter(
         return try {
             UUID.fromString(fromValue)
         } catch (e: IllegalArgumentException) {
-            log.debug("previousAssigneeId 파싱 실패 (fail-safe null 반환) fromValue={}", fromValue)
+            log.debug("previousAssigneeId 파싱 실패 (fail-safe null 반환) fromValue={} error={}", fromValue, e.message)
             null
         }
     }
