@@ -971,17 +971,20 @@ describe('issueResponseSchema — FR-PL-01 일정 3필드', () => {
       dueDate: null,
       targetDate: null,
     })
+    // optional() 스키마에서 명시 null 은 null 그대로 파싱된다
     expect(result.startDate).toBeNull()
     expect(result.dueDate).toBeNull()
     expect(result.targetDate).toBeNull()
   })
 
-  it('T1-22c: 일정 3필드가 누락된 경우 default null 로 fallback — 기존 인라인 mock 파급 방지', () => {
-    // 기존 issueFixture 에는 일정 필드가 없으므로 파싱 시 default null 처리돼야 한다
+  it('T1-22c: 일정 3필드가 누락된 경우 파싱 성공 + undefined — 기존 인라인 mock 파급 방지', () => {
+    // optional()로 두어 기존 인라인 mock(필드 미포함)이 TS 컴파일 에러 없이 통과한다
+    // (zod-schema-strengthen-inline-mock-fanout 교훈 — securityLevelId 패턴).
+    // 필드가 없으면 undefined가 된다. null이 아님 — IssueResponse 타입에서 optional 처리.
     const result = issueResponseSchema.parse(issueFixture)
-    expect(result.startDate).toBeNull()
-    expect(result.dueDate).toBeNull()
-    expect(result.targetDate).toBeNull()
+    expect(result.startDate).toBeUndefined()
+    expect(result.dueDate).toBeUndefined()
+    expect(result.targetDate).toBeUndefined()
   })
 })
 
@@ -1083,7 +1086,30 @@ describe('updateIssue — FR-PL-01 일정 3필드 3-state PATCH', () => {
   })
 
   it('T1-23d: MSW stateful — 날짜 설정 후 GET 단건 조회 시 반영된 날짜가 반환된다', async () => {
-    // msw-mutation-stateful-refetch 교훈 — mutation 결과가 invalidate 후 refetch 시에도 유지돼야 한다
+    // msw-mutation-stateful-refetch 교훈 — mutation 결과가 invalidate 후 refetch 시에도 유지돼야 한다.
+    // stateful 시나리오: PATCH 후 issueStore에 보관, GET 단건 재조회 시 반영.
+    // beforeEach 의 기본 핸들러는 날짜를 echo하지 않으므로 stateful store 핸들러를 별도 설정.
+    const store: { issue: typeof issueFixture & { startDate: string | null; dueDate: string | null } } = {
+      issue: { ...issueFixture, startDate: null, dueDate: null },
+    }
+
+    server.use(
+      http.patch('/api/v1/issues/:key', async ({ request, params }) => {
+        const body = await request.json() as { startDate?: string | null; dueDate?: string | null; expectedVersion?: number }
+        store.issue = {
+          ...store.issue,
+          key: params['key'] as string,
+          startDate: body.startDate !== undefined ? body.startDate : store.issue.startDate,
+          dueDate: body.dueDate !== undefined ? body.dueDate : store.issue.dueDate,
+          version: (body.expectedVersion ?? store.issue.version) + 1,
+        }
+        return HttpResponse.json({ data: store.issue })
+      }),
+      http.get('/api/v1/issues/:key', () => {
+        return HttpResponse.json({ data: store.issue })
+      }),
+    )
+
     const patchResult = await updateIssue('ATLAS-1', {
       startDate: '2026-06-01',
       dueDate: '2026-06-30',
@@ -1092,7 +1118,7 @@ describe('updateIssue — FR-PL-01 일정 3필드 3-state PATCH', () => {
     expect(patchResult.startDate).toBe('2026-06-01')
     expect(patchResult.dueDate).toBe('2026-06-30')
 
-    // invalidate 후 GET 단건 재조회
+    // invalidate 후 GET 단건 재조회 — store 에 보관된 값 반영 확인
     const fetched = await fetchIssue('ATLAS-1')
     expect(fetched.startDate).toBe('2026-06-01')
     expect(fetched.dueDate).toBe('2026-06-30')
