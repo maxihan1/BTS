@@ -377,3 +377,48 @@ describe('resolveValueLabel — key 이동 raw 반환 (폴백 경로 회귀)', (
     expect(resolveValueLabel(item, 'to', emptyRefs)).toBe('PROJ-42')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-PL. FR-PL-01 — 일정 필드(startDate/dueDate/targetDate) changelog 라벨
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('resolveFieldLabel — 일정 필드 (FR-PL-01)', () => {
+  it('T-FL-PL-01: startDate → "시작일"을 반환한다', () => {
+    expect(resolveFieldLabel('startDate', emptyRefs)).toBe('시작일')
+  })
+
+  it('T-FL-PL-02: dueDate → "마감일"을 반환한다', () => {
+    expect(resolveFieldLabel('dueDate', emptyRefs)).toBe('마감일')
+  })
+
+  it('T-FL-PL-03: targetDate → "목표일"을 반환한다', () => {
+    expect(resolveFieldLabel('targetDate', emptyRefs)).toBe('목표일')
+  })
+})
+
+describe('resolveValueLabel — 일정 필드 raw 반환 (FR-PL-01)', () => {
+  it('T-VL-PL-01: startDate toValue는 날짜 문자열을 raw 그대로 반환한다', () => {
+    const item = makeItem({ field: 'startDate', toValue: '2026-06-20', toLabel: null })
+    expect(resolveValueLabel(item, 'to', emptyRefs)).toBe('2026-06-20')
+  })
+
+  it('T-VL-PL-02: dueDate fromValue는 날짜 문자열을 raw 그대로 반환한다', () => {
+    const item = makeItem({ field: 'dueDate', fromValue: '2026-05-01', fromLabel: null })
+    expect(resolveValueLabel(item, 'from', emptyRefs)).toBe('2026-05-01')
+  })
+
+  it('T-VL-PL-03: targetDate toValue는 날짜 문자열을 raw 그대로 반환한다', () => {
+    const item = makeItem({ field: 'targetDate', toValue: '2026-12-31', toLabel: null })
+    expect(resolveValueLabel(item, 'to', emptyRefs)).toBe('2026-12-31')
+  })
+
+  it('T-VL-PL-04: startDate 클리어(toValue=null) 시 "(없음)"을 반환한다', () => {
+    const item = makeItem({ field: 'startDate', toValue: null, toLabel: null })
+    expect(resolveValueLabel(item, 'to', emptyRefs)).toBe('(없음)')
+  })
+
+  it('T-VL-PL-05: dueDate 클리어(fromValue=null) 시 "(없음)"을 반환한다', () => {
+    const item = makeItem({ field: 'dueDate', fromValue: null, fromLabel: null })
+    expect(resolveValueLabel(item, 'from', emptyRefs)).toBe('(없음)')
+  })
+})
