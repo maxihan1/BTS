@@ -1,7 +1,9 @@
 // IssueScheduleFields 컴포넌트 단위 테스트 — 시작일·마감일·목표일 편집 + updateIssue 호출 검증
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { ReactNode, JSX } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import * as issuesApi from '@/api/issues'
 import { IssueScheduleFields } from './IssueScheduleFields'
 
@@ -13,6 +15,16 @@ vi.mock('@/api/issues', async (importOriginal) => {
     updateIssue: vi.fn(),
   }
 })
+
+/** QueryClientProvider wrapper 팩토리 — 테스트마다 독립된 캐시 보장 */
+function makeWrapper(): ({ children }: { children: ReactNode }) => JSX.Element {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  }
+}
 
 /** 테스트용 최소 이슈 픽스처 */
 const makeIssue = (overrides?: Partial<issuesApi.IssueResponse>): issuesApi.IssueResponse => ({
@@ -56,6 +68,7 @@ describe('IssueScheduleFields', () => {
   const mockUpdateIssue = vi.mocked(issuesApi.updateIssue)
 
   beforeEach(() => {
+    mockUpdateIssue.mockClear()
     mockUpdateIssue.mockResolvedValue(makeIssue())
   })
 
@@ -63,7 +76,7 @@ describe('IssueScheduleFields', () => {
 
   it('시작일·마감일·목표일 3개 날짜 입력 필드를 렌더한다', () => {
     const issue = makeIssue()
-    render(<IssueScheduleFields issue={issue} />)
+    render(<IssueScheduleFields issue={issue} />, { wrapper: makeWrapper() })
 
     expect(screen.getByLabelText('시작일')).toBeInTheDocument()
     expect(screen.getByLabelText('마감일')).toBeInTheDocument()
@@ -72,7 +85,7 @@ describe('IssueScheduleFields', () => {
 
   it('input[type=date] 네이티브 입력을 사용한다', () => {
     const issue = makeIssue()
-    render(<IssueScheduleFields issue={issue} />)
+    render(<IssueScheduleFields issue={issue} />, { wrapper: makeWrapper() })
 
     // date input은 role=textbox 대신 직접 type 확인
     const startDateInput = screen.getByLabelText('시작일')
@@ -90,7 +103,7 @@ describe('IssueScheduleFields', () => {
       dueDate: '2026-06-30',
       targetDate: '2026-07-15',
     })
-    render(<IssueScheduleFields issue={issue} />)
+    render(<IssueScheduleFields issue={issue} />, { wrapper: makeWrapper() })
 
     expect(screen.getByLabelText('시작일')).toHaveValue('2026-06-01')
     expect(screen.getByLabelText('마감일')).toHaveValue('2026-06-30')
@@ -102,13 +115,13 @@ describe('IssueScheduleFields', () => {
   it('시작일 선택 후 저장하면 updateIssue({ startDate: "yyyy-MM-dd", ... })를 호출한다', async () => {
     const user = userEvent.setup()
     const issue = makeIssue({ version: 5 })
-    render(<IssueScheduleFields issue={issue} />)
+    render(<IssueScheduleFields issue={issue} />, { wrapper: makeWrapper() })
 
     const startDateInput = screen.getByLabelText('시작일')
     await user.clear(startDateInput)
     await user.type(startDateInput, '2026-06-19')
 
-    const saveButton = screen.getByRole('button', { name: '저장' })
+    const saveButton = screen.getByTestId('schedule-save')
     await user.click(saveButton)
 
     await waitFor(() => {
@@ -125,13 +138,13 @@ describe('IssueScheduleFields', () => {
   it('마감일 선택 후 저장하면 updateIssue({ dueDate: "yyyy-MM-dd", ... })를 호출한다', async () => {
     const user = userEvent.setup()
     const issue = makeIssue({ version: 3 })
-    render(<IssueScheduleFields issue={issue} />)
+    render(<IssueScheduleFields issue={issue} />, { wrapper: makeWrapper() })
 
     const dueDateInput = screen.getByLabelText('마감일')
     await user.clear(dueDateInput)
     await user.type(dueDateInput, '2026-07-31')
 
-    const saveButton = screen.getByRole('button', { name: '저장' })
+    const saveButton = screen.getByTestId('schedule-save')
     await user.click(saveButton)
 
     await waitFor(() => {
@@ -150,12 +163,13 @@ describe('IssueScheduleFields', () => {
   it('기존 마감일을 비우면 updateIssue 호출 시 dueDate 키가 존재하고 값이 null이다', async () => {
     const user = userEvent.setup()
     const issue = makeIssue({ dueDate: '2026-06-30', version: 2 })
-    render(<IssueScheduleFields issue={issue} />)
+    render(<IssueScheduleFields issue={issue} />, { wrapper: makeWrapper() })
 
+    // jsdom의 input[type=date]는 user.clear()가 실제 비우기 동작을 안 함 — fireEvent.change로 직접 '' 전달
     const dueDateInput = screen.getByLabelText('마감일')
-    await user.clear(dueDateInput)
+    fireEvent.change(dueDateInput, { target: { value: '' } })
 
-    const saveButton = screen.getByRole('button', { name: '저장' })
+    const saveButton = screen.getByTestId('schedule-save')
     await user.click(saveButton)
 
     await waitFor(() => {
@@ -176,12 +190,13 @@ describe('IssueScheduleFields', () => {
   it('기존 시작일을 비우면 updateIssue 호출 시 startDate 키가 존재하고 값이 null이다', async () => {
     const user = userEvent.setup()
     const issue = makeIssue({ startDate: '2026-05-01', version: 4 })
-    render(<IssueScheduleFields issue={issue} />)
+    render(<IssueScheduleFields issue={issue} />, { wrapper: makeWrapper() })
 
+    // jsdom의 input[type=date]는 user.clear()가 실제 비우기 동작을 안 함 — fireEvent.change로 직접 '' 전달
     const startDateInput = screen.getByLabelText('시작일')
-    await user.clear(startDateInput)
+    fireEvent.change(startDateInput, { target: { value: '' } })
 
-    const saveButton = screen.getByRole('button', { name: '저장' })
+    const saveButton = screen.getByTestId('schedule-save')
     await user.click(saveButton)
 
     await waitFor(() => {
@@ -195,12 +210,13 @@ describe('IssueScheduleFields', () => {
   it('기존 목표일을 비우면 updateIssue 호출 시 targetDate 키가 존재하고 값이 null이다', async () => {
     const user = userEvent.setup()
     const issue = makeIssue({ targetDate: '2026-08-15', version: 7 })
-    render(<IssueScheduleFields issue={issue} />)
+    render(<IssueScheduleFields issue={issue} />, { wrapper: makeWrapper() })
 
+    // jsdom의 input[type=date]는 user.clear()가 실제 비우기 동작을 안 함 — fireEvent.change로 직접 '' 전달
     const targetDateInput = screen.getByLabelText('목표일')
-    await user.clear(targetDateInput)
+    fireEvent.change(targetDateInput, { target: { value: '' } })
 
-    const saveButton = screen.getByRole('button', { name: '저장' })
+    const saveButton = screen.getByTestId('schedule-save')
     await user.click(saveButton)
 
     await waitFor(() => {
@@ -216,13 +232,13 @@ describe('IssueScheduleFields', () => {
   it('3필드 모두 입력 후 저장하면 3필드를 포함한 updateIssue를 호출한다', async () => {
     const user = userEvent.setup()
     const issue = makeIssue({ version: 1 })
-    render(<IssueScheduleFields issue={issue} />)
+    render(<IssueScheduleFields issue={issue} />, { wrapper: makeWrapper() })
 
     await user.type(screen.getByLabelText('시작일'), '2026-06-01')
     await user.type(screen.getByLabelText('마감일'), '2026-06-30')
     await user.type(screen.getByLabelText('목표일'), '2026-07-15')
 
-    await user.click(screen.getByRole('button', { name: '저장' }))
+    await user.click(screen.getByTestId('schedule-save'))
 
     await waitFor(() => {
       expect(mockUpdateIssue).toHaveBeenCalledWith(

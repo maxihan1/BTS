@@ -329,6 +329,22 @@ export const issueDetailStrings = {
   watcherSelfSuffix: '(나)',
   /** 목록 초과 시 더 보기 표시 — +N명 더 */
   watchersMore: (n: number) => `+${n}명 더`,
+
+  // ── 일정 필드(schedule dates) — FR-PL-01 ────────────────────────────────
+  /** 메타패널 — 일정 섹션 레이블 */
+  scheduleLabel: '일정',
+  /** 시작일 필드 레이블 */
+  startDateLabel: '시작일',
+  /** 마감일 필드 레이블 */
+  dueDateLabel: '마감일',
+  /** 목표일 필드 레이블 */
+  targetDateLabel: '목표일',
+  /** 일정 저장 버튼 */
+  scheduleSaveButton: '저장',
+  /** 일정 저장 버튼 aria-label */
+  scheduleSaveAriaLabel: '일정 저장',
+  /** 일정 저장 실패 에러 메시지 */
+  scheduleSaveError: '일정 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
 } as const
 
 /** 2단계 인증(TOTP) 설정 및 로그인 2단계 UI 문자열 */
