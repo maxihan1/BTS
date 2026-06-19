@@ -176,3 +176,11 @@ Maxi 확정 4결정. ①임박=마감 1일 전 ②혼합 재알림(임박1회+�
 - per-이슈 N tx 오버헤드 미미(1K 규모). 필요 시 배치(100/tx) 중간안 가능하나 현재 premature.
 
 **BLOCKER: 없음.** plan 진행 가능. 게이트1 확인 항목 = ⚠1(emitter tx 설계, 권장=유지).
+
+### PR 단위 리뷰 (2026-06-19, 게이트2 직전)
+
+**superpowers:code-reviewer → PASS** (절대규칙 19 위반 0, BLOCKER 0). 검증: occurredAt ISO 계약 발행↔소비 일치, 결함격리 tx self-invocation 우회 없음, jOOQ DSL only+readOnly, V026 부분인덱스 정렬, BC격리(notification import 0), enum/이벤트 추가 카운트가드 비해당. CONCERNS 2(비차단): C1 테스트 시드 .copy(dueDate)는 dueDate 검증 추가 시 재점검(현 무해), C2 발행/소비 멱등 경계는 소비측 dedup 의존(cross-BC 계약 인지).
+
+**적대적 리뷰(general-purpose) → PASS** (BLOCKER 0). 8지점 정확성 추적: 날짜경계 off-by-one 없음(임박=today+1 1회·지연=<today 매일·당일 미포함 의도), occurredAt UTC자정 정규화로 같은날 dedupKey 동일(소비 멱등), per-item try-catch 결함격리 실증, 이벤트 와이어값 1:1, 발행/소비 멱등 구분 정확. CONCERN 1: **PROJECTS INNER JOIN이 DELETED_AT 미필터** → 삭제 프로젝트 이슈 알림 가능. **단 프로젝트 소프트삭제 기능 미구현(deleteProject 0건)이라 현재 무효 + 기존 전 list 쿼리 관례와 동일** → 이 PR 미수정(프로젝트 삭제 구현 시 일괄 재검토). NIT 2(페이징 없음·prod yml 부재): 둘 다 1K 규모서 무해 + BulkOperationCleanupWorker 선례 동일.
+
+**종합: BLOCKER 0, 변경 불필요.** 모든 CONCERN은 pre-existing 관례 또는 미래 고려사항.
