@@ -505,6 +505,9 @@ class IssueApplicationService(
                         environment = request.environment,
                         impact = request.impact,
                         customFields = mergedCustomFields,
+                        startDate = request.startDate,
+                        dueDate = request.dueDate,
+                        targetDate = request.targetDate,
                     ),
                 expectedVersion = versionAfterSecurity,
             )
@@ -1154,6 +1157,11 @@ class IssueApplicationService(
         // customFields: null=무변경, 병합맵=기존과 다를 때 변경
         if (mergedCustomFields != null && existing.customFields != mergedCustomFields) fields.add("customFields")
 
+        // 날짜 필드 (FR-PL-01): DatePatch 3-state 감지
+        if (isDatePatchChanged(existing.startDate, request.startDate)) fields.add("startDate")
+        if (isDatePatchChanged(existing.dueDate, request.dueDate)) fields.add("dueDate")
+        if (isDatePatchChanged(existing.targetDate, request.targetDate)) fields.add("targetDate")
+
         return fields
     }
 
@@ -1171,6 +1179,23 @@ class IssueApplicationService(
         if (requestValue == null) return false
         return existingValue != requestValue
     }
+
+    /**
+     * 날짜 필드([DatePatch])의 3-state 변경 여부를 판정한다 (FR-PL-01).
+     *
+     * - [DatePatch.Unchanged] → 무변경 → false
+     * - [DatePatch.Clear] → 기존값이 non-null 이면 true (기존 null 이면 no-op)
+     * - [DatePatch.Set] → 기존값과 다르면 true
+     */
+    private fun isDatePatchChanged(
+        existingValue: LocalDate?,
+        patch: DatePatch,
+    ): Boolean =
+        when (patch) {
+            is DatePatch.Unchanged -> false
+            is DatePatch.Clear -> existingValue != null
+            is DatePatch.Set -> existingValue != patch.value
+        }
 
     /**
      * description 변경 시 새로 추가된 멘션을 해석해 [IssueMentioned] 이벤트를 발행한다 (FR-MN-01).
