@@ -4,6 +4,7 @@ package com.bts.issue.component.repository
 import com.bts.issue.component.domain.Component
 import com.bts.issue.jooq.tables.records.ComponentsRecord
 import com.bts.issue.jooq.tables.references.COMPONENTS
+import com.bts.issue.jooq.tables.references.ISSUE_COMPONENTS
 import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
@@ -145,6 +146,30 @@ class ComponentRepository(
             .and(COMPONENTS.DELETED_AT.isNull)
             .execute()
         return component
+    }
+
+    /**
+     * 이슈에 연결된 컴포넌트 중 lead_user_id 가 지정된 컴포넌트의 리드 UUID 목록을 반환한다.
+     *
+     * `issue_components` ⋈ `components` 조인으로 이슈에 연결된 컴포넌트를 찾는다.
+     * `lead_user_id IS NOT NULL` + `deleted_at IS NULL` 필터를 적용하고 DISTINCT 로 중복을 제거한다.
+     *
+     * N+1 없음 — 단일 쿼리.
+     *
+     * @param issueId 조회할 이슈 UUID.
+     * @return 리드 UUID 목록. 이슈에 컴포넌트가 없거나 리드가 없으면 빈 리스트.
+     */
+    @Transactional(readOnly = true)
+    fun findLeadUserIdsByIssue(issueId: UUID): List<UUID> {
+        log.debug("findLeadUserIdsByIssue issueId={}", issueId)
+        return dsl.selectDistinct(COMPONENTS.LEAD_USER_ID)
+            .from(ISSUE_COMPONENTS)
+            .join(COMPONENTS).on(ISSUE_COMPONENTS.COMPONENT_ID.eq(COMPONENTS.ID))
+            .where(ISSUE_COMPONENTS.ISSUE_ID.eq(issueId))
+            .and(COMPONENTS.LEAD_USER_ID.isNotNull)
+            .and(COMPONENTS.DELETED_AT.isNull)
+            .fetch(COMPONENTS.LEAD_USER_ID)
+            .filterNotNull()
     }
 
     // ── private helpers ───────────────────────────────────────────────────────

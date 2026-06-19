@@ -134,6 +134,25 @@ class JdbcIssueChangeHistoryRepository(
         ) ?: 0L
     }
 
+    /**
+     * 특정 이슈의 최근 assignee 변경 이력의 from_value 를 반환한다.
+     *
+     * field = 'assignee' 인 변경 항목 중 가장 최근(item.id DESC) 1건의 from_value 를 반환한다.
+     * 이력이 없거나 from_value 가 null 이면 null 을 반환한다.
+     *
+     * 단일 SQL 쿼리로 처리 — 전 이력 메모리 로드 없음.
+     *
+     * @param issueId 조회할 이슈의 UUID.
+     * @return 최근 assignee 변경의 from_value 문자열. 없으면 null.
+     */
+    @Transactional(readOnly = true)
+    override fun findLatestAssigneeChangeFromValue(issueId: UUID): String? {
+        return jdbc.query(
+            SQL_FIND_LATEST_ASSIGNEE_FROM_VALUE,
+            mapOf("issueId" to issueId),
+        ) { rs, _ -> rs.getString("from_value") }.firstOrNull()
+    }
+
     // ── private 헬퍼 ──────────────────────────────────────────────────────────
 
     /**
@@ -311,6 +330,22 @@ class JdbcIssueChangeHistoryRepository(
             SELECT COUNT(*)
             FROM issue_change_group
             WHERE issue_id = :issueId
+        """
+
+        /**
+         * 특정 이슈의 최근 assignee 변경 항목의 from_value 조회.
+         * issue_change_group.issue_id 로 그룹을 찾고, issue_change_item.field = 'assignee' 로 필터링.
+         * item.id DESC 로 정렬해 가장 최근 변경의 from_value 1건만 반환.
+         * 전 이력 로드 없이 단일 쿼리로 처리.
+         */
+        const val SQL_FIND_LATEST_ASSIGNEE_FROM_VALUE = """
+            SELECT i.from_value
+            FROM issue_change_item i
+            JOIN issue_change_group g ON i.group_id = g.id
+            WHERE g.issue_id = :issueId
+              AND i.field = 'assignee'
+            ORDER BY i.id DESC
+            LIMIT 1
         """
     }
 }

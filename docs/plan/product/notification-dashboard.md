@@ -61,11 +61,11 @@
 
 **우선순위**. 필수 | **선행**. §2.1 | **Plan slug**. `notify/recipients`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — 수신자 해석 규칙 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (정책 활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — RecipientResolver (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 — RecipientRole 5종 해석 (책임. backend-engineer) — PR #159
+- [x] D2. 명세 — 수신자 해석 규칙 + 보안수준 visibility 필터 (책임. backend-engineer) — PR #159
+- [x] D3. 데이터 모델 — (정책 활용, 마이그레이션 0 — 기존 테이블 읽기) (책임. db-engineer) — PR #159
+- [x] D4. 백엔드 — EventRecipientResolver 5역할(WATCHER/COMPONENT_LEAD/PREVIOUS_ASSIGNEE/PROJECT_MEMBER/PROJECT_ADMIN) + cross-BC 포트 3종 + IssueVisibilityPort(VIEW 매트릭스+보안등급 재사용, RULE_OWNER는 automation BC 부재로 skip) (책임. backend-engineer) — PR #159
+- [x] D5. 백엔드 테스트 — 단위 + Testcontainers 통합 + ArchUnit (책임. backend-engineer) — PR #159
 - [ ] D6. 프론트 UI — 정책 페이지 확장 (책임. frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
