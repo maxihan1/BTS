@@ -183,13 +183,13 @@
 
 **우선순위**. 필수 | **선행**. issue-tracking §2.1.1 | **Plan slug**. `agile/dates`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — 타임존 정책 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `issues.start_date, due_date, target_date` (DATE) (책임. db-engineer)
-- [ ] D4. 백엔드 — 이슈 PATCH 확장 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — date-fns + 데이트픽커 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. backend-engineer)
+- [x] D2. 명세 — 타임존 정책 (DATE = 캘린더 날짜, 타임존 무관) (책임. backend-engineer)
+- [x] D3. 데이터 모델 — `issues.start_date, due_date, target_date` (DATE) (책임. db-engineer)
+- [x] D4. 백엔드 — 이슈 PATCH 확장 (JsonNullable 3-state) (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D6. 프론트 UI — 네이티브 input[type=date] 데이트픽커 (date-fns 미사용, 의존성 0) (책임. frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ### §6.2 FR-PL-02 — 지연/임박 자동 알림
 
