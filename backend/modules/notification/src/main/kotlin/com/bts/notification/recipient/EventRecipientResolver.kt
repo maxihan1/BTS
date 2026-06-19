@@ -173,14 +173,18 @@ class EventRecipientResolver(
     private fun resolveWatcher(
         channel: Channel,
         issueRecipients: IssueRecipients?,
-    ): List<ResolvedRecipient> =
-        issueRecipients?.watcherIds.orEmpty().map { ResolvedRecipient(userId = it, channel = channel) }
+    ): List<ResolvedRecipient> {
+        return issueRecipients?.watcherIds.orEmpty()
+            .map { ResolvedRecipient(userId = it, channel = channel) }
+    }
 
     private fun resolveComponentLead(
         channel: Channel,
         issueRecipients: IssueRecipients?,
-    ): List<ResolvedRecipient> =
-        issueRecipients?.componentLeadIds.orEmpty().map { ResolvedRecipient(userId = it, channel = channel) }
+    ): List<ResolvedRecipient> {
+        return issueRecipients?.componentLeadIds.orEmpty()
+            .map { ResolvedRecipient(userId = it, channel = channel) }
+    }
 
     private fun resolvePreviousAssignee(
         channel: Channel,
@@ -195,14 +199,18 @@ class EventRecipientResolver(
     private fun resolveProjectMember(
         channel: Channel,
         projectRecipients: ProjectRecipients?,
-    ): List<ResolvedRecipient> =
-        projectRecipients?.memberIds.orEmpty().map { ResolvedRecipient(userId = it, channel = channel) }
+    ): List<ResolvedRecipient> {
+        return projectRecipients?.memberIds.orEmpty()
+            .map { ResolvedRecipient(userId = it, channel = channel) }
+    }
 
     private fun resolveProjectAdmin(
         channel: Channel,
         projectRecipients: ProjectRecipients?,
-    ): List<ResolvedRecipient> =
-        projectRecipients?.adminIds.orEmpty().map { ResolvedRecipient(userId = it, channel = channel) }
+    ): List<ResolvedRecipient> {
+        return projectRecipients?.adminIds.orEmpty()
+            .map { ResolvedRecipient(userId = it, channel = channel) }
+    }
 
     /**
      * 이슈 기반 역할(REPORTER/ASSIGNEE/WATCHER/COMPONENT_LEAD/PREVIOUS_ASSIGNEE)이 포함된 경우에만
@@ -217,16 +225,18 @@ class EventRecipientResolver(
         event: NotificationSourceEvent,
         matches: List<PolicyMatch>,
     ): IssueRecipients? {
-        val needsPortLookup = matches.any { match ->
-            when (match.recipientRole) {
-                RecipientRole.REPORTER -> event.reporterId == null
-                RecipientRole.ASSIGNEE,
-                RecipientRole.WATCHER,
-                RecipientRole.COMPONENT_LEAD,
-                RecipientRole.PREVIOUS_ASSIGNEE -> true
-                else -> false
+        val needsPortLookup =
+            matches.any { match ->
+                when (match.recipientRole) {
+                    RecipientRole.REPORTER -> event.reporterId == null
+                    RecipientRole.ASSIGNEE,
+                    RecipientRole.WATCHER,
+                    RecipientRole.COMPONENT_LEAD,
+                    RecipientRole.PREVIOUS_ASSIGNEE,
+                    -> true
+                    else -> false
+                }
             }
-        }
         if (!needsPortLookup || event.issueKey == null) return null
         return issueRecipientLookupPort.findRecipients(event.issueKey)
     }
