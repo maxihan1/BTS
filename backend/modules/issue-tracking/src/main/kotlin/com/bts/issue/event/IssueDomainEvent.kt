@@ -27,6 +27,8 @@ import java.util.UUID
     JsonSubTypes.Type(value = IssueTransitioned::class, name = "issue.transitioned"),
     JsonSubTypes.Type(value = IssueSoftDeleted::class, name = "issue.soft_deleted"),
     JsonSubTypes.Type(value = IssueMentioned::class, name = "issue.mentioned"),
+    JsonSubTypes.Type(value = IssueDueSoon::class, name = "issue.due_soon"),
+    JsonSubTypes.Type(value = IssueOverdue::class, name = "issue.overdue"),
 )
 sealed interface IssueDomainEvent
 
@@ -117,5 +119,41 @@ data class IssueMentioned(
     val mentionedUserIds: List<UUID>,
     val actorId: ActorId,
     val sourceField: String,
+    val occurredAt: Instant,
+) : IssueDomainEvent
+
+/**
+ * 마감일 스캔 스케줄러가 발행하는 "마감 임박" 이벤트.
+ *
+ * 발행 주체: 마감일 스캔 스케줄러 (DueDateScanWorker).
+ * 수신자: notification resolver — issueKey 로 수신자 목록을 포트 조회해 알림 전달.
+ * notification BC 의 NotificationEventType 이 "issue.due_soon" 식별자로 매핑한다.
+ *
+ * @property issueKey 마감 임박 이슈의 키 문자열. 예: PROJ-1
+ * @property projectKey 소속 프로젝트 키. 예: PROJ
+ * @property occurredAt 이벤트 발생 시각 (UTC).
+ */
+@JsonTypeName("issue.due_soon")
+data class IssueDueSoon(
+    val issueKey: String,
+    val projectKey: String,
+    val occurredAt: Instant,
+) : IssueDomainEvent
+
+/**
+ * 마감일 스캔 스케줄러가 발행하는 "마감 초과" 이벤트.
+ *
+ * 발행 주체: 마감일 스캔 스케줄러 (DueDateScanWorker).
+ * 수신자: notification resolver — issueKey 로 수신자 목록을 포트 조회해 알림 전달.
+ * notification BC 의 NotificationEventType 이 "issue.overdue" 식별자로 매핑한다.
+ *
+ * @property issueKey 마감 초과 이슈의 키 문자열. 예: PROJ-1
+ * @property projectKey 소속 프로젝트 키. 예: PROJ
+ * @property occurredAt 이벤트 발생 시각 (UTC).
+ */
+@JsonTypeName("issue.overdue")
+data class IssueOverdue(
+    val issueKey: String,
+    val projectKey: String,
     val occurredAt: Instant,
 ) : IssueDomainEvent
