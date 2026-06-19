@@ -73,13 +73,15 @@
 
 **우선순위**. 높음 | **선행**. §2.1 | **Plan slug**. `notify/user-subscription`
 
-- [ ] D1. 도메인 — UserSubscription (책임. backend-engineer)
-- [ ] D2. 명세 — opt-in/out 단위 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `user_notification_subs(user_id, event_type, channel, enabled)` (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET/PATCH /api/v1/users/me/notifications` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 개인 설정 페이지 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+**범위**. opt-out 기본(행 없으면 수신) + 관리자 정책(FR-NT-01)과 AND 결합(사용자는 끄기만, reduce-only). 채널 IN_APP·EMAIL만 사용자 설정(SLACK=별도 BC·TEAMS=범위밖·WEBHOOK=FR-NT-05). 이벤트 NotificationEventType 10종 전부. NotificationWorker가 발송 직전 배치 필터. ADR `2026-06-19-fr-nt-04-user-notification-subscription`. **FR-NT-04 전체 완료**(PR #162).
+
+- [x] D1. 도메인 — UserSubscription (책임. backend-engineer) — PR #162 (CONFIGURABLE_CHANNELS 단일출처, Clock 주입)
+- [x] D2. 명세 — opt-in/out 단위 (책임. backend-engineer) — PR #162 (opt-out 기본 + AND 결합, 이벤트×채널 단위)
+- [x] D3. 데이터 모델 — `user_notification_subs(user_id, event_type, channel, enabled)` (책임. db-engineer) — PR #162 (Flyway V404 + init_codegen 미러, UNIQUE + partial index)
+- [x] D4. 백엔드 — `GET/PATCH /api/v1/users/me/notifications` (책임. backend-engineer) — PR #162 (currentActorId 401, 명시 크기상한, 워커 구독 필터)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #162 (도메인·repository·service·controller·워커 필터 Testcontainers, EC9/created_at 단언)
+- [x] D6. 프론트 UI — 개인 설정 페이지 (책임. designer → frontend-engineer) — PR #162 (`/settings/notifications` data-driven 매트릭스 토글, 버튼 토글)
+- [x] D7. E2E (책임. qa-engineer) — PR #162 (Playwright S1 매트릭스 표시 + S4 토글·SPA 재진입 영속)
 
 ### §2.5 FR-NT-05 — Webhook 알림 채널 (전이 post-action 이벤트 발행 + HTTP POST 디스패처)
 
