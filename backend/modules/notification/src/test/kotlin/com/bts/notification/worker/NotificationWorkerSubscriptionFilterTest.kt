@@ -328,15 +328,19 @@ class NotificationWorkerSubscriptionFilterTest {
         enabled: Boolean,
     ) {
         val now = Instant.now()
+        val resolvedEventType =
+            requireNotNull(NotificationEventType.fromWire(eventType)) {
+                "알 수 없는 eventType wire 값: $eventType"
+            }
+        val resolvedChannel =
+            requireNotNull(Channel.fromWire(channelName)) {
+                "알 수 없는 channel wire 값: $channelName"
+            }
         val sub =
             UserSubscription(
                 userId = userId,
-                eventType = requireNotNull(NotificationEventType.fromWire(eventType)) {
-                    "알 수 없는 eventType wire 값: $eventType"
-                },
-                channel = requireNotNull(Channel.fromWire(channelName)) {
-                    "알 수 없는 channel wire 값: $channelName"
-                },
+                eventType = resolvedEventType,
+                channel = resolvedChannel,
                 enabled = enabled,
                 createdAt = now,
                 updatedAt = now,
