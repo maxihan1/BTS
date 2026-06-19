@@ -19,7 +19,6 @@ import java.util.UUID
  * Spring 컨텍스트 없이 순수 단위 테스트로 실행한다.
  */
 class RecipientPortsDefaultTest {
-
     // ── (a) IssueRecipients 필드 확장 ──────────────────────────────────────────
 
     @Test
@@ -43,39 +42,42 @@ class RecipientPortsDefaultTest {
     @Test
     fun `IssueRecipients 는 watcherIds 를 보유한다`() {
         val id = UUID.randomUUID()
-        val recipients = IssueRecipients(
-            reporterId = null,
-            assigneeId = null,
-            watcherIds = listOf(id),
-            componentLeadIds = emptyList(),
-            previousAssigneeId = null,
-        )
+        val recipients =
+            IssueRecipients(
+                reporterId = null,
+                assigneeId = null,
+                watcherIds = listOf(id),
+                componentLeadIds = emptyList(),
+                previousAssigneeId = null,
+            )
         assertThat(recipients.watcherIds).containsExactly(id)
     }
 
     @Test
     fun `IssueRecipients 는 componentLeadIds 를 보유한다`() {
         val id = UUID.randomUUID()
-        val recipients = IssueRecipients(
-            reporterId = null,
-            assigneeId = null,
-            watcherIds = emptyList(),
-            componentLeadIds = listOf(id),
-            previousAssigneeId = null,
-        )
+        val recipients =
+            IssueRecipients(
+                reporterId = null,
+                assigneeId = null,
+                watcherIds = emptyList(),
+                componentLeadIds = listOf(id),
+                previousAssigneeId = null,
+            )
         assertThat(recipients.componentLeadIds).containsExactly(id)
     }
 
     @Test
     fun `IssueRecipients 는 previousAssigneeId 를 보유한다`() {
         val id = UUID.randomUUID()
-        val recipients = IssueRecipients(
-            reporterId = null,
-            assigneeId = null,
-            watcherIds = emptyList(),
-            componentLeadIds = emptyList(),
-            previousAssigneeId = id,
-        )
+        val recipients =
+            IssueRecipients(
+                reporterId = null,
+                assigneeId = null,
+                watcherIds = emptyList(),
+                componentLeadIds = emptyList(),
+                previousAssigneeId = id,
+            )
         assertThat(recipients.previousAssigneeId).isEqualTo(id)
     }
 
@@ -106,12 +108,13 @@ class RecipientPortsDefaultTest {
     @Test
     fun `IssueVisibilityPort 구현체는 filterVisibleUserIds 를 반드시 구현해야 한다`() {
         val candidateId = UUID.randomUUID()
-        val port = object : IssueVisibilityPort {
-            override fun filterVisibleUserIds(
-                issueKey: String,
-                candidateUserIds: Set<UUID>,
-            ): Set<UUID> = candidateUserIds
-        }
+        val port =
+            object : IssueVisibilityPort {
+                override fun filterVisibleUserIds(
+                    issueKey: String,
+                    candidateUserIds: Set<UUID>,
+                ): Set<UUID> = candidateUserIds
+            }
         val result = port.filterVisibleUserIds("PROJ-1", setOf(candidateId))
         assertThat(result).containsExactly(candidateId)
     }

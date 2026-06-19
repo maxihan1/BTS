@@ -80,9 +80,10 @@ class IssueRecipientLookupAdapter(
 
         val watcherIds = watcherRepository.listByIssue(issueId).map { it.userId }
         val componentLeadIds = componentRepository.findLeadUserIdsByIssue(issueId)
-        val previousAssigneeId = resolveFromValue(
-            historyRepository.findLatestAssigneeChangeFromValue(issueId),
-        )
+        val previousAssigneeId =
+            resolveFromValue(
+                historyRepository.findLatestAssigneeChangeFromValue(issueId),
+            )
 
         return IssueRecipients(
             reporterId = issue.reporterId.value,

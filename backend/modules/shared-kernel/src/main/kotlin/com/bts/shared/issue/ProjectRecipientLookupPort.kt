@@ -46,9 +46,10 @@ data class ProjectRecipients(
 ) {
     companion object {
         /** adapter 부재 또는 프로젝트 미존재 시 반환하는 fail-safe 빈 수신자. */
-        fun empty(): ProjectRecipients = ProjectRecipients(
-            memberIds = emptyList(),
-            adminIds = emptyList(),
-        )
+        fun empty(): ProjectRecipients =
+            ProjectRecipients(
+                memberIds = emptyList(),
+                adminIds = emptyList(),
+            )
     }
 }

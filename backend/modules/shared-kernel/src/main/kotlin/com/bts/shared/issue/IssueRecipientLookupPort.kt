@@ -53,12 +53,13 @@ data class IssueRecipients(
 ) {
     companion object {
         /** adapter 부재 또는 이슈 미존재 시 반환하는 fail-safe 빈 수신자. */
-        fun empty(): IssueRecipients = IssueRecipients(
-            reporterId = null,
-            assigneeId = null,
-            watcherIds = emptyList(),
-            componentLeadIds = emptyList(),
-            previousAssigneeId = null,
-        )
+        fun empty(): IssueRecipients =
+            IssueRecipients(
+                reporterId = null,
+                assigneeId = null,
+                watcherIds = emptyList(),
+                componentLeadIds = emptyList(),
+                previousAssigneeId = null,
+            )
     }
 }
