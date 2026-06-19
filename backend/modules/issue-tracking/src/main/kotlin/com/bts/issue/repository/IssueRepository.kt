@@ -1306,8 +1306,7 @@ class IssueRepository(
         return dsl.select(ISSUES.KEY, PROJECTS.KEY)
             .from(ISSUES)
             .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
-            .where(ISSUES.RESOLUTION_ID.isNull)
-            .and(ISSUES.DELETED_AT.isNull)
+            .where(openIssue())
             .and(ISSUES.DUE_DATE.eq(date))
             .fetch { record ->
                 IssueDueScanItem(
@@ -1332,8 +1331,7 @@ class IssueRepository(
         return dsl.select(ISSUES.KEY, PROJECTS.KEY)
             .from(ISSUES)
             .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
-            .where(ISSUES.RESOLUTION_ID.isNull)
-            .and(ISSUES.DELETED_AT.isNull)
+            .where(openIssue())
             .and(ISSUES.DUE_DATE.lt(today))
             .fetch { record ->
                 IssueDueScanItem(
@@ -1347,6 +1345,14 @@ class IssueRepository(
 
     /** 활성 이슈를 key 로 필터하는 jOOQ Condition. */
     private fun activeByKey(key: IssueKey): Condition = ISSUES.KEY.eq(key.value).and(ISSUES.DELETED_AT.isNull)
+
+    /**
+     * 열린 이슈(미해결·미삭제) 공통 필터 jOOQ Condition.
+     *
+     * `resolution_id IS NULL AND deleted_at IS NULL` — 두 스캔 쿼리([findOpenIssuesDueOn],
+     * [findOpenOverdueIssues])에서 공유하는 "열림" 조건. V026 부분 인덱스 predicate 와 일치.
+     */
+    private fun openIssue(): Condition = ISSUES.RESOLUTION_ID.isNull.and(ISSUES.DELETED_AT.isNull)
 
     /**
      * 이슈↔버전 조인 테이블의 연결 목록을 원자적으로 교체한다 (낙관락 OCC).
