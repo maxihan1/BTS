@@ -11,7 +11,6 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueUpdated
-import com.bts.issue.application.DatePatch
 import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -1277,11 +1276,12 @@ class IssueApplicationServiceTest : DescribeSpec({
         // (a) 날짜-only PATCH → IssueFieldPatch 에 DatePatch 전달 + updateFields 호출 → version+1
         context("(a) startDate=Set → IssueFieldPatch 에 DatePatch.Set 전달, updateFields 호출") {
             val newDate = LocalDate.of(2026, 7, 1)
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                startDate = DatePatch.Set(newDate),
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    startDate = DatePatch.Set(newDate),
+                )
             val existingIssue = makeIssue(startDate = null)
             val updatedResponse = makeResponse()
 
@@ -1323,11 +1323,12 @@ class IssueApplicationServiceTest : DescribeSpec({
 
         // (b) Unchanged → buildChangedFields 가 날짜 필드를 감지하지 않음 → no-op
         context("(b) startDate=Unchanged → 무변경, updateFields 미호출") {
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                startDate = DatePatch.Unchanged,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    startDate = DatePatch.Unchanged,
+                )
             val existingIssue = makeIssue(startDate = LocalDate.of(2026, 6, 1))
             val existingResponse = makeResponse()
 
@@ -1350,11 +1351,12 @@ class IssueApplicationServiceTest : DescribeSpec({
 
         // (c) Clear 경계 분리 — 기존 null → Clear = no-op
         context("(c) dueDate=Clear, 기존값=null → no-op (Clear 경계 1)") {
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                dueDate = DatePatch.Clear,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    dueDate = DatePatch.Clear,
+                )
             val existingIssue = makeIssue(dueDate = null) // 기존 null
 
             val existingResponse = makeResponse()
@@ -1379,11 +1381,12 @@ class IssueApplicationServiceTest : DescribeSpec({
         // (d) Clear 경계 분리 — 기존 값 있을 때 → Clear = 변경 감지
         context("(d) dueDate=Clear, 기존값=2026-06-30 → 변경 감지 (Clear 경계 2)") {
             val existingDueDate = LocalDate.of(2026, 6, 30)
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                dueDate = DatePatch.Clear,
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    dueDate = DatePatch.Clear,
+                )
             val existingIssue = makeIssue(dueDate = existingDueDate) // 기존 값 있음
             val updatedResponse = makeResponse()
 
@@ -1428,13 +1431,14 @@ class IssueApplicationServiceTest : DescribeSpec({
             val start = LocalDate.of(2026, 7, 1)
             val due = LocalDate.of(2026, 7, 31)
             val target = LocalDate.of(2026, 8, 15)
-            val request = UpdateIssueRequest(
-                summary = null,
-                expectedVersion = existingVersion,
-                startDate = DatePatch.Set(start),
-                dueDate = DatePatch.Set(due),
-                targetDate = DatePatch.Set(target),
-            )
+            val request =
+                UpdateIssueRequest(
+                    summary = null,
+                    expectedVersion = existingVersion,
+                    startDate = DatePatch.Set(start),
+                    dueDate = DatePatch.Set(due),
+                    targetDate = DatePatch.Set(target),
+                )
             val existingIssue = makeIssue()
             val updatedResponse = makeResponse()
 
@@ -1444,11 +1448,12 @@ class IssueApplicationServiceTest : DescribeSpec({
                 every {
                     repo.updateFields(
                         key = issueKey,
-                        patch = IssueFieldPatch(
-                            startDate = DatePatch.Set(start),
-                            dueDate = DatePatch.Set(due),
-                            targetDate = DatePatch.Set(target),
-                        ),
+                        patch =
+                            IssueFieldPatch(
+                                startDate = DatePatch.Set(start),
+                                dueDate = DatePatch.Set(due),
+                                targetDate = DatePatch.Set(target),
+                            ),
                         expectedVersion = existingVersion,
                     )
                 } returns 1

@@ -45,7 +45,6 @@ import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 import com.bts.issue.application.CreateIssueRequest as AppCreateIssueRequest
-import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
 
 /**
  * IssueController POST /api/v1/issues componentIds 전달 검증 테스트 — FR-CM-03 Task-3.
@@ -215,7 +214,6 @@ class IssueControllerTest {
 
         assertThat(appRequestSlot.captured.componentIds).isEmpty()
     }
-
 }
 
 /**

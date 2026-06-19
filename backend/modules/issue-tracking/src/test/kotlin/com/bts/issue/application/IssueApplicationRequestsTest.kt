@@ -2,13 +2,12 @@
 
 package com.bts.issue.application
 
-import java.time.LocalDate
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
+import java.time.LocalDate
 
 class IssueApplicationRequestsTest {
-
     // ──────────────────────────────────────────────────────────────────────
     // DatePatch 3-state 존재 검증
     // ──────────────────────────────────────────────────────────────────────
@@ -35,18 +34,20 @@ class IssueApplicationRequestsTest {
 
     @Test
     fun `DatePatch when 식이 else 없이 완전성을 보장한다`() {
-        val patches: List<DatePatch> = listOf(
-            DatePatch.Unchanged,
-            DatePatch.Clear,
-            DatePatch.Set(LocalDate.of(2026, 1, 1)),
-        )
-        val labels = patches.map { patch ->
-            when (patch) {
-                is DatePatch.Unchanged -> "unchanged"
-                is DatePatch.Clear -> "clear"
-                is DatePatch.Set -> "set:${patch.value}"
+        val patches: List<DatePatch> =
+            listOf(
+                DatePatch.Unchanged,
+                DatePatch.Clear,
+                DatePatch.Set(LocalDate.of(2026, 1, 1)),
+            )
+        val labels =
+            patches.map { patch ->
+                when (patch) {
+                    is DatePatch.Unchanged -> "unchanged"
+                    is DatePatch.Clear -> "clear"
+                    is DatePatch.Set -> "set:${patch.value}"
+                }
             }
-        }
         assertEquals(listOf("unchanged", "clear", "set:2026-01-01"), labels)
     }
 
@@ -75,13 +76,14 @@ class IssueApplicationRequestsTest {
     @Test
     fun `UpdateIssueRequest 날짜 3필드에 각각 다른 DatePatch를 지정할 수 있다`() {
         val startDate = LocalDate.of(2026, 6, 1)
-        val req = UpdateIssueRequest(
-            summary = null,
-            expectedVersion = 1L,
-            startDate = DatePatch.Set(startDate),
-            dueDate = DatePatch.Clear,
-            targetDate = DatePatch.Unchanged,
-        )
+        val req =
+            UpdateIssueRequest(
+                summary = null,
+                expectedVersion = 1L,
+                startDate = DatePatch.Set(startDate),
+                dueDate = DatePatch.Clear,
+                targetDate = DatePatch.Unchanged,
+            )
         assertEquals(DatePatch.Set(startDate), req.startDate)
         assertInstanceOf(DatePatch.Clear::class.java, req.dueDate)
         assertInstanceOf(DatePatch.Unchanged::class.java, req.targetDate)

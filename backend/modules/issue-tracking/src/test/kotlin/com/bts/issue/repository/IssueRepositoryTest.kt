@@ -891,5 +891,4 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
             assertThat(response.typeId).isEqualTo(requireTaskTypeId().value)
         }
     }
-
 }
