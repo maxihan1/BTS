@@ -9,6 +9,7 @@ import com.bts.shared.issue.IssueRecipientLookupPort
 import com.bts.shared.issue.IssueRecipients
 import com.bts.shared.issue.ProjectRecipientLookupPort
 import com.bts.shared.issue.ProjectRecipients
+import com.bts.shared.permission.IssueVisibilityPort
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.util.UUID
@@ -33,14 +34,19 @@ import java.util.UUID
  * - 중복 제거: 동일 (userId, channel) 쌍은 1개로 합친다.
  * - N+1 방지: 이슈 기반 역할(REPORTER/ASSIGNEE/WATCHER/COMPONENT_LEAD/PREVIOUS_ASSIGNEE)은
  *   issueKey 당 1회, 프로젝트 기반 역할(PROJECT_MEMBER/PROJECT_ADMIN)은 projectKey 당 1회 조회.
+ * - 가시성 필터(보안 누출 차단): actor 제외·중복 제거가 끝난 뒤 [IssueVisibilityPort] 로
+ *   이슈를 볼 수 있는 사용자만 남긴다. 자세한 보안 계약은 [applyVisibilityFilter] 참고.
  *
  * @param issueRecipientLookupPort 이슈 수신자 cross-BC 조회 포트 (shared-kernel)
  * @param projectRecipientLookupPort 프로젝트 멤버·관리자 cross-BC 조회 포트 (shared-kernel)
+ * @param issueVisibilityPort 이슈 VIEW 가시성 판정 포트 (shared-kernel). non-null 필수 —
+ *   빈 Bean 부재 시 부팅 실패가 의도된 안전망이다(allow-all fallback 금지).
  */
 @Component
 class EventRecipientResolver(
     private val issueRecipientLookupPort: IssueRecipientLookupPort,
     private val projectRecipientLookupPort: ProjectRecipientLookupPort,
+    private val issueVisibilityPort: IssueVisibilityPort,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -66,9 +72,36 @@ class EventRecipientResolver(
                 resolveRole(event, match, issueRecipients, projectRecipients)
             }
 
-        return resolved
-            .filter { it.userId != event.actorId }
-            .distinctBy { it.userId to it.channel }
+        val deduped =
+            resolved
+                .filter { it.userId != event.actorId }
+                .distinctBy { it.userId to it.channel }
+
+        return applyVisibilityFilter(event.issueKey, deduped)
+    }
+
+    /**
+     * actor 제외·중복 제거가 끝난 수신자 목록에서 이슈를 볼 수 없는 사용자를 제거한다.
+     *
+     * ## 보안 계약 (fail-closed)
+     * 알림은 이슈 제목·본문을 담으므로, 권한 없는 수신자에게 전달되면 정보 누출이다.
+     * **누출(fail-open)보다 알림 지연(fail-closed)이 안전하다.**
+     *
+     * - [issueKey] 가 null 이면 보안 판정 대상이 아니므로 [recipients] 를 그대로 반환한다.
+     * - 그 외에는 distinct userId 집합으로 [IssueVisibilityPort.filterVisibleUserIds] 를 **1회** 호출하고,
+     *   통과한 userId 의 (userId, channel) 항목만 남긴다.
+     * - 포트가 예외를 던지면 **잡지 않고 전파**한다. worker 가 메시지를 보류·재전달(at-least-once)하도록
+     *   하는 것이 의도된 동작이며, allow-all 통과나 빈 목록 삼킴은 보안 누출이므로 절대 금지한다.
+     */
+    private fun applyVisibilityFilter(
+        issueKey: String?,
+        recipients: List<ResolvedRecipient>,
+    ): List<ResolvedRecipient> {
+        if (issueKey == null || recipients.isEmpty()) return recipients
+
+        val candidateUserIds = recipients.mapTo(mutableSetOf()) { it.userId }
+        val visibleUserIds = issueVisibilityPort.filterVisibleUserIds(issueKey, candidateUserIds)
+        return recipients.filter { it.userId in visibleUserIds }
     }
 
     /** 역할 1개를 수신자 목록으로 해석한다. */
