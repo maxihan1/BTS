@@ -10,6 +10,8 @@ import com.bts.shared.issue.IssueRecipientLookupPort
 import com.bts.shared.issue.IssueRecipients
 import com.bts.shared.issue.ProjectRecipientLookupPort
 import com.bts.shared.issue.ProjectRecipients
+import com.bts.shared.permission.IssueVisibilityPort
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -26,7 +28,8 @@ class EventRecipientResolverTest : DescribeSpec({
 
     val port: IssueRecipientLookupPort = mockk()
     val projectPort: ProjectRecipientLookupPort = mockk()
-    val resolver = EventRecipientResolver(port, projectPort)
+    val visibilityPort: IssueVisibilityPort = mockk()
+    val resolver = EventRecipientResolver(port, projectPort, visibilityPort)
 
     val actor = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
     val reporter = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
@@ -63,7 +66,11 @@ class EventRecipientResolverTest : DescribeSpec({
         occurredAt = occurredAt,
     )
 
-    beforeEach { clearMocks(port, projectPort) }
+    beforeEach {
+        clearMocks(port, projectPort, visibilityPort)
+        // 기본값: 모든 후보가 이슈를 볼 수 있다(전원 통과). visibility 전용 테스트에서 개별 override.
+        every { visibilityPort.filterVisibleUserIds(any(), any()) } answers { secondArg() }
+    }
 
     describe("MENTIONED 역할 해석") {
         it("mentionedUserIds 각각에 대해 ResolvedRecipient를 생성한다") {
@@ -586,6 +593,128 @@ class EventRecipientResolverTest : DescribeSpec({
             val result = resolver.resolve(event, emptyList())
 
             result.shouldBeEmpty()
+        }
+    }
+
+    describe("visibility 필터 — 보안수준 제한 이슈 누출 차단 (FR7 / C-S2 / C3)") {
+        it("(a) 보안수준 제한 이슈에서 권한 없는 watcher를 제외한다") {
+            // watcherA 는 볼 수 있고, watcherB 는 보안등급 미달 → 제외
+            val event = buildEvent(issueKey = issueKey, actorId = null)
+            val matches = listOf(PolicyMatch(RecipientRole.WATCHER, Channel.IN_APP))
+
+            every { port.findRecipients(issueKey) } returns
+                IssueRecipients(
+                    reporterId = null,
+                    assigneeId = null,
+                    watcherIds = listOf(watcherA, watcherB),
+                )
+            every { visibilityPort.filterVisibleUserIds(issueKey, setOf(watcherA, watcherB)) } returns
+                setOf(watcherA)
+
+            val result = resolver.resolve(event, matches)
+
+            result shouldHaveSize 1
+            result[0].userId shouldBe watcherA
+            verify(exactly = 1) { visibilityPort.filterVisibleUserIds(issueKey, setOf(watcherA, watcherB)) }
+        }
+
+        it("(b) 권한 있는 REPORTER/ASSIGNEE 수신자는 visibility 필터를 통과한다") {
+            val event = buildEvent(reporterId = null, issueKey = issueKey, actorId = null)
+            val matches =
+                listOf(
+                    PolicyMatch(RecipientRole.REPORTER, Channel.IN_APP),
+                    PolicyMatch(RecipientRole.ASSIGNEE, Channel.IN_APP),
+                )
+
+            every { port.findRecipients(issueKey) } returns
+                IssueRecipients(reporterId = reporter, assigneeId = assignee)
+            every { visibilityPort.filterVisibleUserIds(issueKey, setOf(reporter, assignee)) } returns
+                setOf(reporter, assignee)
+
+            val result = resolver.resolve(event, matches)
+
+            result shouldHaveSize 2
+            result.map { it.userId } shouldContainExactlyInAnyOrder listOf(reporter, assignee)
+        }
+
+        it("(c) C-S2 — 보안수준 제한 이슈에서 권한 없는 멘션 대상은 제외한다") {
+            // 멘션도 누출 차단 우선: mentionedB 는 이슈를 볼 수 없으므로 제외
+            val event =
+                buildEvent(
+                    eventType = NotificationEventType.ISSUE_MENTIONED,
+                    issueKey = issueKey,
+                    mentionedUserIds = listOf(mentionedA, mentionedB),
+                    actorId = null,
+                )
+            val matches = listOf(PolicyMatch(RecipientRole.MENTIONED, Channel.IN_APP))
+
+            every { visibilityPort.filterVisibleUserIds(issueKey, setOf(mentionedA, mentionedB)) } returns
+                setOf(mentionedA)
+
+            val result = resolver.resolve(event, matches)
+
+            result shouldHaveSize 1
+            result[0].userId shouldBe mentionedA
+        }
+
+        it("(d) issueKey가 null인 이벤트는 visibility 필터 비대상 — 전원 통과") {
+            val event =
+                buildEvent(
+                    eventType = NotificationEventType.ISSUE_MENTIONED,
+                    issueKey = null,
+                    mentionedUserIds = listOf(mentionedA, mentionedB),
+                    actorId = null,
+                )
+            val matches = listOf(PolicyMatch(RecipientRole.MENTIONED, Channel.IN_APP))
+
+            val result = resolver.resolve(event, matches)
+
+            result shouldHaveSize 2
+            result.map { it.userId } shouldContainExactlyInAnyOrder listOf(mentionedA, mentionedB)
+            // issueKey 없으면 보안 판정 대상이 아니므로 포트 미호출
+            verify(exactly = 0) { visibilityPort.filterVisibleUserIds(any(), any()) }
+        }
+
+        it("(e) actor 제외 + dedup 이후의 distinct 집합으로 visibility를 1회 적용한다") {
+            // reporter == assignee 로 dedup, actor 는 watcher 로도 들어오지만 actor 제외.
+            // visibility 포트에는 dedup·actor제외 이후의 집합 {reporter} 만 전달되어야 한다.
+            val event = buildEvent(reporterId = null, issueKey = issueKey, actorId = actor)
+            val matches =
+                listOf(
+                    PolicyMatch(RecipientRole.REPORTER, Channel.IN_APP),
+                    PolicyMatch(RecipientRole.ASSIGNEE, Channel.IN_APP),
+                    PolicyMatch(RecipientRole.WATCHER, Channel.IN_APP),
+                )
+
+            every { port.findRecipients(issueKey) } returns
+                IssueRecipients(
+                    reporterId = reporter,
+                    assigneeId = reporter,
+                    watcherIds = listOf(actor),
+                )
+            every { visibilityPort.filterVisibleUserIds(issueKey, setOf(reporter)) } returns setOf(reporter)
+
+            val result = resolver.resolve(event, matches)
+
+            result shouldHaveSize 1
+            result[0].userId shouldBe reporter
+            // dedup·actor제외 이후의 distinct 집합 {reporter} 으로 정확히 1회 호출
+            verify(exactly = 1) { visibilityPort.filterVisibleUserIds(issueKey, setOf(reporter)) }
+        }
+
+        it("(f) C3/B-SEC-3 — visibility 포트가 예외를 던지면 resolve가 예외를 전파한다(fail-closed)") {
+            // 누출보다 알림 지연이 안전 — 빈 목록으로 삼키지 않고 예외 전파(worker 메시지 보류·재전달)
+            val event = buildEvent(issueKey = issueKey, actorId = null)
+            val matches = listOf(PolicyMatch(RecipientRole.WATCHER, Channel.IN_APP))
+
+            every { port.findRecipients(issueKey) } returns
+                IssueRecipients(reporterId = null, assigneeId = null, watcherIds = listOf(watcherA))
+            every { visibilityPort.filterVisibleUserIds(issueKey, setOf(watcherA)) } throws
+                IllegalStateException("visibility 판정 일시 장애")
+
+            shouldThrow<IllegalStateException> {
+                resolver.resolve(event, matches)
+            }
         }
     }
 })
