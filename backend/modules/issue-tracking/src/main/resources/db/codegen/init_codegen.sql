@@ -628,3 +628,16 @@ COMMENT ON COLUMN issue_watchers.created_at IS '관심 등록 시각. TIMESTAMPT
 
 -- FK 인덱스 (DATA.md §7). issue_id 단독 조회(이슈별 워처 목록)에 사용 (PK 선두 컬럼이나 명시 인덱스로 의도 고정).
 CREATE INDEX idx_issue_watchers_issue ON issue_watchers (issue_id);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V025: issues 일정 3컬럼 추가 — start_date / due_date / target_date (FR-PL-01 이슈 일정 필드)
+-- 원본: db/migration/issue-tracking/V025__issue_schedule_dates.sql
+-- jOOQ: Issues.START_DATE / DUE_DATE / TARGET_DATE 생성 대상.
+--       이 미러가 빠지면 상수 미생성 → IssueRepository(날짜 영속/매핑) 컴파일 불가 (jooq-init-codegen-mirror).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- 시작일/마감일/목표일 모두 선택(NULL=미지정). 날짜 단위라 DATE — 시각/타임존 성분 없음. 교차 검증 없음 (Jira 정석).
+ALTER TABLE issues
+    ADD COLUMN start_date  DATE NULL,
+    ADD COLUMN due_date    DATE NULL,
+    ADD COLUMN target_date DATE NULL;
