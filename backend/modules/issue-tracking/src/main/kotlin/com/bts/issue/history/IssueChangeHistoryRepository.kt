@@ -64,4 +64,18 @@ interface IssueChangeHistoryRepository {
      * @return 변경 그룹 수. 이력이 없으면 0.
      */
     fun countByIssue(issueId: UUID): Long
+
+    /**
+     * 특정 이슈의 최근 assignee 변경 이력의 from_value 를 반환한다.
+     *
+     * `field = 'assignee'` 인 변경 항목 중 가장 최근(item.id DESC) 항목의 from_value 를 반환한다.
+     * 이력이 없거나 from_value 가 null 이면 null 을 반환한다.
+     *
+     * **전 이력 메모리 로드 금지** — 단일 SQL 쿼리로 처리한다.
+     * append-only 인터페이스에 읽기 메서드 추가는 불변식 무해.
+     *
+     * @param issueId 조회할 이슈의 UUID.
+     * @return 최근 assignee 변경의 from_value 문자열. 없으면 null.
+     */
+    fun findLatestAssigneeChangeFromValue(issueId: UUID): String?
 }
