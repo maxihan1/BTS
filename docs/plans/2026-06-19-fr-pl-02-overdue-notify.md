@@ -62,6 +62,83 @@ Maxi 확정 4결정. ①임박=마감 1일 전 ②혼합 재알림(임박1회+�
 - due_date 재조정 시 임박 재발화 엣지 → 엣지 케이스 추가.
 - "notification 변경 0" 가정을 소비 경로 코드 실측으로 검증 완료(가정→사실).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 모두 issue-tracking 단일 BC. agent=backend-engineer. notification/프론트 변경 0.
+> 핵심 설계 — 워커(오케스트레이션, tx 없음)가 스캔 후 이슈마다 별도 `IssueDueEventEmitter`(`@Transactional` per-이슈) 호출 → 결함 격리 + MANDATORY publisher 충족 + self-invocation 함정 회피.
+
+### Task 1. IssueDomainEvent에 IssueDueSoon/IssueOverdue 추가
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/event/IssueDomainEvent.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/event/IssueDomainEventTest.kt`]
+- depends-on: []
+
+**RED**: `IssueDomainEventTest`에 Jackson round-trip 테스트 — `IssueDueSoon(issueKey, projectKey, occurredAt)` 직렬화 시 JSON `type`="issue.due_soon", 역직렬화 시 동일 객체 복원. `IssueOverdue`는 "issue.overdue". 실패: 두 클래스 미존재.
+
+**GREEN**: `IssueDomainEvent.kt`에 `@JsonSubTypes.Type(value=IssueDueSoon::class, name="issue.due_soon")`, `IssueOverdue::class name="issue.overdue"` 등록 + 두 data class(`@JsonTypeName` 부착, 필드 issueKey:String, projectKey:String, occurredAt:Instant). 기존 5종 패턴 그대로 미러.
+
+**REFACTOR**: KDoc(발행 주체=스케줄러, 수신자=resolver 포트조회) 한 줄. ktlint KDoc 중괄호/백틱 금지([[ktlint-kdoc-brace-parse-failure]]).
+
+**검증**: `./gradlew :backend:issue-tracking:test --tests '*IssueDomainEventTest'`
+
+### Task 2. IssueRepository due_date 범위 쿼리 + 부분 인덱스
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/repository/IssueDueDateScanQueryTest.kt`, `backend/modules/issue-tracking/src/main/resources/db/migration/issue-tracking/V026__issue_due_date_scan_index.sql`]
+- depends-on: []
+
+**RED**: `IssueDueDateScanQueryTest`(Testcontainers) — 시드: 이슈 6종(due=내일/과거/오늘/null + resolution있음/deleted_at있음). `findOpenIssuesDueOn(tomorrow)` → 내일+열림 이슈만. `findOpenOverdueIssues(today)` → 과거+열림 이슈만. resolution/deleted/오늘/null 전부 제외. 반환 projection에 issueKey+projectKey 포함. 실패: 메서드 미존재.
+
+**GREEN**: 두 메서드 추가. `WHERE due_date = ? AND resolution_id IS NULL AND deleted_at IS NULL` / `WHERE due_date < ? AND resolution_id IS NULL AND deleted_at IS NULL`. jOOQ DSL only. projectKey는 기존 IssueMentioned 발행 경로의 projectKey 도출 방식 미러(이슈키 substring 또는 컬럼). 경량 projection 데이터클래스(`IssueDueScanItem(issueKey, projectKey)`). V026 부분 인덱스 `CREATE INDEX idx_issues_due_date_open ON issues(due_date) WHERE deleted_at IS NULL AND resolution_id IS NULL`.
+
+**REFACTOR**: WHERE 조건 공통화(열림 필터 헬퍼) 검토. init_codegen.sql 미러 불요 확인(인덱스는 컬럼 추가 아님 → jOOQ 코드젠 무영향, [[jooq-init-codegen-mirror]]는 컬럼 추가에만 적용).
+
+**검증**: `./gradlew :backend:issue-tracking:test --tests '*IssueDueDateScanQueryTest'`
+
+### Task 3. IssueDueDateScanWorker + IssueDueEventEmitter (스캔 → 발행)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/duedate/IssueDueDateScanWorker.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/duedate/IssueDueEventEmitter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/duedate/IssueDueDateScanWorkerTest.kt`, `backend/modules/issue-tracking/src/main/resources/application.yml`]
+- depends-on: [1, 2]
+
+**RED**: `IssueDueDateScanWorkerTest`(단위, mockk repo+emitter, Clock.fixed) — (a) 임박 이슈 → `emitter.emitDueSoon(item, occurredAt)` 호출, occurredAt=scanDate UTC자정. (b) 지연 이슈 → `emitOverdue`. (c) today=고정일 때 repo에 `today+1`(임박)·`today`(지연 기준) 정확 전달. (d) emitter 한 건 예외 던져도 나머지 계속(결함 격리) + 로그. (e) 빈 결과 → 발행 0. 실패: 워커/emitter 미존재.
+
+**GREEN**: 
+- `IssueDueDateScanWorker`(@Component, clock·repo·emitter 주입). `@Scheduled(cron="\${bts.issue.due-scan.cron:0 0 0 * * *}")` `fun scan()` (tx 없음). today=`LocalDate.now(clock.withZone(Asia/Seoul))`. occurredAt=`today.atStartOfDay(UTC).toInstant()`. dueSoon=repo.findOpenIssuesDueOn(today.plusDays(1)), overdue=repo.findOpenOverdueIssues(today). 각 item try-catch로 emitter 호출(한 건 실패가 루프 중단 안 함). 카운트 로그.
+- `IssueDueEventEmitter`(@Component). `@Transactional fun emitDueSoon(item, occurredAt)` → `publisher.publish(IssueDueSoon(item.issueKey, item.projectKey, occurredAt))`. `emitOverdue` 동일. per-call REQUIRED tx(비-tx 워커서 호출 → 새 tx → 결함 격리). MANDATORY publisher 충족.
+- application.yml에 `bts.issue.due-scan.cron` 기본값 명시(주석으로 KST09시).
+
+**REFACTOR**: BulkOperationCleanupWorker KDoc 톤 미러(Clock 주입 사유, cron). 패키지 `com.bts.issue.duedate` 신설.
+
+**검증**: `./gradlew :backend:issue-tracking:test --tests '*IssueDueDateScanWorkerTest'`
+
+### Task 4. 발행 end-to-end 통합 테스트 (Testcontainers + pgmq)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/duedate/IssueDueDateScanIntegrationTest.kt`]
+- depends-on: [1, 2, 3]
+
+**RED**: `IssueDueDateScanIntegrationTest`(@SpringBootTest + Testcontainers) — 시드 이슈(임박1·지연1·종료1·삭제1·null1) → `worker.scan()` 직접 호출(Clock.fixed) → `q_issue_events`에서 `pgmq.read`로 메시지 조회 → 임박1건(type=issue.due_soon, issueKey 일치)·지연1건(type=issue.overdue)만 적재, 나머지 제외 확인. 멱등: 같은 Clock으로 scan() 2회 → 큐 메시지가 1회분만 늘어나는지(또는 dedup은 소비측이므로 발행은 2회분 — 발행 멱등이 아니라 소비 멱등임을 테스트로 명확화. 발행측은 매 실행 발행, dedup은 NotificationWorker dedupKey가 담당). 실패: 워커 미발행.
+
+**GREEN**: 워커 wiring 확정(빈 등록·@Scheduled 미발화 환경에서 직접 호출). 큐 적재 단언 통과.
+
+**REFACTOR**: 시드 헬퍼 정리. 동시 Testcontainers flaky 시 단독 재실행 확정([[concurrent-testcontainers-suite-flaky]]).
+
+**검증**: `./gradlew :backend:issue-tracking:test --tests '*IssueDueDateScanIntegrationTest'`
+
+> **발행 vs 소비 멱등 주의**(Task 4 RED 명확화). 발행측(스케줄러)은 매 실행 이벤트를 발행한다(지연은 매일 발행이 정상). "하루 1회"의 멱등은 **소비측** NotificationWorker의 dedupKey(occurredAt 포함)가 보장한다. 따라서 같은 날 scan() 2회 시 큐에는 2회분이 쌓이되 occurredAt이 동일 → 소비측 알림은 1회. Task 4는 발행 정확성만, 소비 멱등은 notification 모듈 기존 테스트가 커버.
+
+## Plan 메타
+
+- task 수: 4
+- 예상 wave: 2 (wave1: T1·T2 병렬, wave2: T3, wave3: T4 — 단일 모듈이라 test 컴파일 직렬화 영향 [[bts-plan-wave-gradle-module-compile]])
+- TDD 강제: yes (각 task test→impl 커밋 순서)
+- 단일 BC(issue-tracking) → security/db/frontend/qa sub-agent 불요. db 성격 마이그레이션(V026)은 backend-engineer가 인덱스 1개라 직접 처리.
+- D6/D7 deviation: 프론트 토스트 무코드(FR-NT-02 제네릭), E2E는 통합테스트 대체. product 체크박스 마킹 시 근거 명시.
+- 머지 전 동기화 대상: product/agile-planning.md §6.2 D단계 + fr-index/README/CLAUDE 카운트(완료 FR +1) + dashboard 재생성 + verify-master-plan.sh.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
