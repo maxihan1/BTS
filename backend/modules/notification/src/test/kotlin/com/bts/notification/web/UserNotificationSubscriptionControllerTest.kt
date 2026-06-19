@@ -50,6 +50,8 @@ import java.util.UUID
  * - PATCH-2. PATCH channel="SLACK" → 400 (EC1)
  * - PATCH-3. PATCH eventType 미지원 문자열 → 400 (EC2)
  * - PATCH-4. PATCH channel 미지원 문자열 → 400
+ * - PATCH-5. PATCH subscriptions 101개 (상한 초과) → 400
+ * - PATCH-6. PATCH subscriptions 빈 배열(0개) → 200 (EC10 no-op)
  * - AUTH-1. 미인증 GET → 401 (EC6)
  * - AUTH-2. 미인증 PATCH → 401 (EC6)
  */
@@ -235,6 +237,42 @@ class UserNotificationSubscriptionControllerTest {
                 .content(mapper.writeValueAsString(body)),
         )
             .andExpect(status().isBadRequest)
+    }
+
+    // ── PATCH-5. subscriptions 상한 초과 → 400 ──────────────────────────────
+
+    @Test
+    fun `PATCH users me notifications subscriptions가 상한 초과이면 400`() {
+        val oversizedBody =
+            mapOf(
+                "subscriptions" to
+                    (1..101).map { i ->
+                        mapOf("eventType" to "issue.commented", "channel" to "EMAIL", "enabled" to (i % 2 == 0))
+                    },
+            )
+
+        mockMvc.perform(
+            patch("/api/v1/users/me/notifications")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(oversizedBody)),
+        )
+            .andExpect(status().isBadRequest)
+    }
+
+    // ── PATCH-6. subscriptions 빈 배열(0개) — 여전히 허용 (EC10 no-op) ──────
+
+    @Test
+    fun `PATCH users me notifications subscriptions가 빈 배열이면 200`() {
+        every { userSubscriptionService.patch(actorId, emptyList()) } returns fullMatrix(allEnabled = true)
+
+        val emptyBody = mapOf("subscriptions" to emptyList<Any>())
+
+        mockMvc.perform(
+            patch("/api/v1/users/me/notifications")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(emptyBody)),
+        )
+            .andExpect(status().isOk)
     }
 
     // ── AUTH-1. 미인증 GET → 401 ─────────────────────────────────────────────
