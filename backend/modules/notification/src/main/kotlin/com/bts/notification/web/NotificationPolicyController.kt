@@ -14,8 +14,6 @@ import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
-import org.springframework.security.authentication.AnonymousAuthenticationToken
-import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
@@ -26,7 +24,6 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -170,29 +167,6 @@ class NotificationPolicyController(
         val actorId = currentActorId()
         log.info("NotificationPolicyController.deletePolicy id={}", id)
         service.delete(actorId, id)
-    }
-
-    // ── private helpers ────────────────────────────────────────────────────────
-
-    /**
-     * [SecurityContextHolder] 에서 인증 주체 UUID 를 추출한다.
-     *
-     * 미인증·익명·비-UUID 주체는 401(UNAUTHORIZED)로 거부한다.
-     * issue-tracking BC 의 `CurrentActor` 와 동일한 패턴을 따른다.
-     *
-     * @return 인증 주체 UUID
-     * @throws ResponseStatusException 인증이 없거나 주체가 유효한 UUID 가 아닐 때 (401)
-     */
-    private fun currentActorId(): UUID {
-        val authentication =
-            SecurityContextHolder.getContext().authentication
-                ?.takeIf { it.isAuthenticated && it !is AnonymousAuthenticationToken }
-                ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required")
-        return try {
-            UUID.fromString(authentication.name)
-        } catch (e: IllegalArgumentException) {
-            throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required", e)
-        }
     }
 }
 
