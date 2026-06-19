@@ -183,4 +183,8 @@ Maxi 확정 4결정. ①임박=마감 1일 전 ②혼합 재알림(임박1회+�
 
 **적대적 리뷰(general-purpose) → PASS** (BLOCKER 0). 8지점 정확성 추적: 날짜경계 off-by-one 없음(임박=today+1 1회·지연=<today 매일·당일 미포함 의도), occurredAt UTC자정 정규화로 같은날 dedupKey 동일(소비 멱등), per-item try-catch 결함격리 실증, 이벤트 와이어값 1:1, 발행/소비 멱등 구분 정확. CONCERN 1: **PROJECTS INNER JOIN이 DELETED_AT 미필터** → 삭제 프로젝트 이슈 알림 가능. **단 프로젝트 소프트삭제 기능 미구현(deleteProject 0건)이라 현재 무효 + 기존 전 list 쿼리 관례와 동일** → 이 PR 미수정(프로젝트 삭제 구현 시 일괄 재검토). NIT 2(페이징 없음·prod yml 부재): 둘 다 1K 규모서 무해 + BulkOperationCleanupWorker 선례 동일.
 
-**종합: BLOCKER 0, 변경 불필요.** 모든 CONCERN은 pre-existing 관례 또는 미래 고려사항.
+**종합: BLOCKER 0.** 
+
+### 게이트2 결정 — CONCERN 수정 후 머지 (Maxi)
+
+적대적 리뷰 CONCERN(소프트삭제 프로젝트 이슈 미제외)을 **수정**. 두 스캔 쿼리에 `.and(PROJECTS.DELETED_AT.isNull)` 추가 + TDD(T3 테스트: 소프트삭제 프로젝트 DELP의 임박·지연 이슈가 스캔서 제외됨, red→green). 프로젝트 소프트삭제 기능은 아직 미구현이라 현재 효과는 0이나, 알림 기능 한정 방어로 선제 적용. V026 인덱스는 issues 필터 가속 그대로(프로젝트 필터는 join predicate). 모듈 전체 재검증 BUILD SUCCESSFUL.
