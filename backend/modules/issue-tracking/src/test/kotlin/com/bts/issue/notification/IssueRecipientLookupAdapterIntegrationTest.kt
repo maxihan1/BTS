@@ -108,7 +108,9 @@ class IssueRecipientLookupAdapterIntegrationTest : IssueTestcontainersBase() {
         }
     }
 
-    private fun requireTaskTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 초기화 전 접근 — setupAdapter 확인" }
+    private fun requireTaskTypeId(): IssueTypeId {
+        return requireNotNull(taskTypeId) { "taskTypeId 초기화 전 접근 — setupAdapter 확인" }
+    }
 
     /**
      * 이슈를 삽입하고 반환된 Issue 를 제공하는 헬퍼.
