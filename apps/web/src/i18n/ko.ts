@@ -288,6 +288,9 @@ export const issueDetailStrings = {
     fixVersions: '수정 버전',
     securityLevel: '보안등급',
     key: '프로젝트 이동',
+    startDate: '시작일',
+    dueDate: '마감일',
+    targetDate: '목표일',
   } as Record<string, string>,
   /** 변경 이력 — 생명주기 "created" 표시 문자열 */
   changelogLifecycleCreated: '이슈를 생성했습니다',
