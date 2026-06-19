@@ -217,41 +217,6 @@ class IssueControllerTest {
 }
 
 /**
- * FR-PL-01 날짜 필드 테스트 전용 Spring MVC 최소 컨텍스트.
- *
- * [JsonNullableModule] + [JavaTimeModule] 을 MockMvc 컨버터에 등록한다.
- * Boot 자동 설정이 없는 @EnableWebMvc 슬라이스에서 LocalDate 직렬화와
- * JsonNullable 역직렬화가 모두 동작하도록 수동 구성한다.
- */
-@Configuration
-@EnableWebMvc
-open class DatePatchTestConfig : WebMvcConfigurer {
-    @Bean
-    open fun dateSvc(): IssueApplicationService = mockk(relaxed = true)
-
-    @Bean
-    open fun dateController(svc: IssueApplicationService): IssueController = IssueController(svc)
-
-    @Bean
-    open fun dateExceptionHandler(): IssueExceptionHandler = IssueExceptionHandler()
-
-    /**
-     * MockMvc Jackson 컨버터에 [JsonNullableModule] 과 [JavaTimeModule] 을 등록한다.
-     *
-     * [JavaTimeModule] 이 없으면 LocalDate 가 [2026,6,20] 배열로 직렬화되어
-     * B1 "@field:JsonFormat" 어노테이션이 있어도 적용되지 않는다.
-     */
-    override fun extendMessageConverters(converters: MutableList<HttpMessageConverter<*>>) {
-        converters
-            .filterIsInstance<MappingJackson2HttpMessageConverter>()
-            .forEach {
-                it.objectMapper.registerModule(JsonNullableModule())
-                it.objectMapper.registerModule(JavaTimeModule())
-            }
-    }
-}
-
-/**
  * FR-PL-01 Task-6 — PATCH 날짜 필드 역직렬화·직렬화·응답 매핑 MockMvc 슬라이스 테스트.
  *
  * 검증 범위.
@@ -263,9 +228,44 @@ open class DatePatchTestConfig : WebMvcConfigurer {
  * [DatePatchTestConfig] 를 독립 컨텍스트로 사용한다 — [IssueControllerTest] 와 컨텍스트 공유 없음.
  */
 @ExtendWith(SpringExtension::class)
-@ContextConfiguration(classes = [DatePatchTestConfig::class])
+@ContextConfiguration(classes = [IssueControllerDatePatchTest.DatePatchTestConfig::class])
 @WebAppConfiguration
 class IssueControllerDatePatchTest {
+    /**
+     * FR-PL-01 날짜 필드 테스트 전용 Spring MVC 최소 컨텍스트.
+     *
+     * [JsonNullableModule] + [JavaTimeModule] 을 MockMvc 컨버터에 등록한다.
+     * Boot 자동 설정이 없는 @EnableWebMvc 슬라이스에서 LocalDate 직렬화와
+     * JsonNullable 역직렬화가 모두 동작하도록 수동 구성한다.
+     */
+    @Configuration
+    @EnableWebMvc
+    open class DatePatchTestConfig : WebMvcConfigurer {
+        @Bean
+        open fun dateSvc(): IssueApplicationService = mockk(relaxed = true)
+
+        @Bean
+        open fun dateController(svc: IssueApplicationService): IssueController = IssueController(svc)
+
+        @Bean
+        open fun dateExceptionHandler(): IssueExceptionHandler = IssueExceptionHandler()
+
+        /**
+         * MockMvc Jackson 컨버터에 [JsonNullableModule] 과 [JavaTimeModule] 을 등록한다.
+         *
+         * [JavaTimeModule] 이 없으면 LocalDate 가 [2026,6,20] 배열로 직렬화되어
+         * B1 "@field:JsonFormat" 어노테이션이 있어도 적용되지 않는다.
+         */
+        override fun extendMessageConverters(converters: MutableList<HttpMessageConverter<*>>) {
+            converters
+                .filterIsInstance<MappingJackson2HttpMessageConverter>()
+                .forEach {
+                    it.objectMapper.registerModule(JsonNullableModule())
+                    it.objectMapper.registerModule(JavaTimeModule())
+                }
+        }
+    }
+
     @Autowired
     lateinit var webApplicationContext: WebApplicationContext
 
