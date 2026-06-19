@@ -910,15 +910,12 @@ class IssueTest {
                 typeId = validTypeId,
             )
 
-        assertThat(issue.startDate).isNull()
-        assertThat(issue.dueDate).isNull()
-        assertThat(issue.targetDate).isNull()
-        // data class 에 필드가 존재하는지 컴파일 시점에 검증 (LocalDate? 타입 확인)
-        val _startDate: LocalDate? = issue.startDate
-        val _dueDate: LocalDate? = issue.dueDate
-        val _targetDate: LocalDate? = issue.targetDate
-        assertThat(_startDate).isNull()
-        assertThat(_dueDate).isNull()
-        assertThat(_targetDate).isNull()
+        // 컴파일 시점 타입 확인 — LocalDate? 로 대입 가능해야 한다
+        val startDate: LocalDate? = issue.startDate
+        val dueDate: LocalDate? = issue.dueDate
+        val targetDate: LocalDate? = issue.targetDate
+        assertThat(startDate).isNull()
+        assertThat(dueDate).isNull()
+        assertThat(targetDate).isNull()
     }
 }
