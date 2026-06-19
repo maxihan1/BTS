@@ -40,6 +40,7 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
         dsl.execute("DELETE FROM user_notification_subs")
     }
 
+    @Suppress("LongParameterList") // 도메인 빌더 헬퍼 — 6개 필드 기본값 제공으로 테스트 편의성 확보
     private fun sub(
         userId: UUID = userId1,
         eventType: NotificationEventType = NotificationEventType.ISSUE_CREATED,

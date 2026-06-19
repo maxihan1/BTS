@@ -57,7 +57,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [UserNotificationSubscriptionControllerTest.TestMvcConfig::class])
 @WebAppConfiguration
 class UserNotificationSubscriptionControllerTest {
-
     /**
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
@@ -70,9 +69,9 @@ class UserNotificationSubscriptionControllerTest {
         open fun userSubscriptionService(): UserSubscriptionService = mockk(relaxed = true)
 
         @Bean
-        open fun userNotificationSubscriptionController(
-            service: UserSubscriptionService,
-        ): UserNotificationSubscriptionController = UserNotificationSubscriptionController(service)
+        @Suppress("MaxLineLength")
+        open fun userNotificationSubscriptionController(service: UserSubscriptionService): UserNotificationSubscriptionController =
+            UserNotificationSubscriptionController(service)
 
         @Bean
         open fun notificationExceptionHandler(): NotificationExceptionHandler = NotificationExceptionHandler()
@@ -144,9 +143,10 @@ class UserNotificationSubscriptionControllerTest {
     fun `PATCH users me notifications — 정상 요청이면 200과 반영된 매트릭스 반환`() {
         val patchedMatrix = fullMatrix(allEnabled = true).toMutableList()
         // issue.commented + EMAIL 셀은 false
-        val commentedEmailIdx = patchedMatrix.indexOfFirst {
-            it.eventType == NotificationEventType.ISSUE_COMMENTED && it.channel == Channel.EMAIL
-        }
+        val commentedEmailIdx =
+            patchedMatrix.indexOfFirst {
+                it.eventType == NotificationEventType.ISSUE_COMMENTED && it.channel == Channel.EMAIL
+            }
         if (commentedEmailIdx >= 0) {
             patchedMatrix[commentedEmailIdx] =
                 patchedMatrix[commentedEmailIdx].copy(enabled = false)

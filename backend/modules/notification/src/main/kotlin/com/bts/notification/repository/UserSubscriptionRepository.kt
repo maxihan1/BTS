@@ -130,6 +130,7 @@ class UserSubscriptionRepository(
      * @param record jOOQ 에서 읽어온 DB 레코드
      * @return 변환된 도메인 객체, enum 역매핑 실패 시 null
      */
+    @Suppress("ReturnCount") // null guard early-return 패턴 — 단일 책임 변환 함수의 정상 흐름
     private fun toDomain(record: UserNotificationSubsRecord): UserSubscription? {
         val rawEventType = record.eventType ?: return null
         val eventType = NotificationEventType.fromWire(rawEventType)

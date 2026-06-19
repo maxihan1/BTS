@@ -27,10 +27,11 @@ class UserSubscriptionServiceTest : DescribeSpec({
     val fixedInstant: Instant = Instant.parse("2026-06-11T12:00:00Z")
     val fixedClock: Clock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
 
-    val service = UserSubscriptionService(
-        repository = repository,
-        clock = fixedClock,
-    )
+    val service =
+        UserSubscriptionService(
+            repository = repository,
+            clock = fixedClock,
+        )
 
     val userId: UUID = UUID.randomUUID()
 
@@ -42,14 +43,15 @@ class UserSubscriptionServiceTest : DescribeSpec({
         eventType: NotificationEventType,
         channel: Channel,
         enabled: Boolean,
-    ): UserSubscription = UserSubscription(
-        userId = userId,
-        eventType = eventType,
-        channel = channel,
-        enabled = enabled,
-        createdAt = fixedInstant,
-        updatedAt = fixedInstant,
-    )
+    ): UserSubscription =
+        UserSubscription(
+            userId = userId,
+            eventType = eventType,
+            channel = channel,
+            enabled = enabled,
+            createdAt = fixedInstant,
+            updatedAt = fixedInstant,
+        )
 
     describe("getMatrix — 저장 이력 0건(opt-out 기본)") {
 
@@ -67,9 +69,10 @@ class UserSubscriptionServiceTest : DescribeSpec({
 
             val result: List<SubscriptionCell> = service.getMatrix(userId)
 
-            val expectedPairs = NotificationEventType.entries.flatMap { et ->
-                listOf(et to Channel.IN_APP, et to Channel.EMAIL)
-            }.toSet()
+            val expectedPairs =
+                NotificationEventType.entries.flatMap { et ->
+                    listOf(et to Channel.IN_APP, et to Channel.EMAIL)
+                }.toSet()
 
             val actualPairs = result.map { cell -> cell.eventType to cell.channel }.toSet()
             actualPairs shouldBe expectedPairs
@@ -80,9 +83,10 @@ class UserSubscriptionServiceTest : DescribeSpec({
 
             val result: List<SubscriptionCell> = service.getMatrix(userId)
 
-            val expected = NotificationEventType.entries.flatMap { et ->
-                listOf(et to Channel.IN_APP, et to Channel.EMAIL)
-            }
+            val expected =
+                NotificationEventType.entries.flatMap { et ->
+                    listOf(et to Channel.IN_APP, et to Channel.EMAIL)
+                }
 
             result.map { cell -> cell.eventType to cell.channel } shouldBe expected
         }
@@ -97,18 +101,20 @@ class UserSubscriptionServiceTest : DescribeSpec({
             val result: List<SubscriptionCell> = service.getMatrix(userId)
 
             result shouldHaveSize 20
-            val targetCell = result.find { cell ->
-                cell.eventType == NotificationEventType.ISSUE_COMMENTED && cell.channel == Channel.EMAIL
-            }
+            val targetCell =
+                result.find { cell ->
+                    cell.eventType == NotificationEventType.ISSUE_COMMENTED && cell.channel == Channel.EMAIL
+                }
             targetCell!!.enabled shouldBe false
             result.filter { cell -> cell != targetCell }.all { cell -> cell.enabled } shouldBe true
         }
 
         it("여러 행 오버레이 — 저장된 셀은 저장 값으로, 나머지는 true") {
-            val subs = listOf(
-                buildSub(NotificationEventType.ISSUE_CREATED, Channel.IN_APP, false),
-                buildSub(NotificationEventType.SPRINT_STARTED, Channel.EMAIL, false),
-            )
+            val subs =
+                listOf(
+                    buildSub(NotificationEventType.ISSUE_CREATED, Channel.IN_APP, false),
+                    buildSub(NotificationEventType.SPRINT_STARTED, Channel.EMAIL, false),
+                )
             every { repository.findByUser(userId) } returns subs
 
             val result: List<SubscriptionCell> = service.getMatrix(userId)
@@ -122,10 +128,11 @@ class UserSubscriptionServiceTest : DescribeSpec({
                 cell.eventType == NotificationEventType.SPRINT_STARTED && cell.channel == Channel.EMAIL
             }!!.enabled shouldBe false
 
-            val overriddenPairs = setOf(
-                NotificationEventType.ISSUE_CREATED to Channel.IN_APP,
-                NotificationEventType.SPRINT_STARTED to Channel.EMAIL,
-            )
+            val overriddenPairs =
+                setOf(
+                    NotificationEventType.ISSUE_CREATED to Channel.IN_APP,
+                    NotificationEventType.SPRINT_STARTED to Channel.EMAIL,
+                )
             result
                 .filter { cell -> (cell.eventType to cell.channel) !in overriddenPairs }
                 .all { cell -> cell.enabled } shouldBe true
@@ -145,15 +152,17 @@ class UserSubscriptionServiceTest : DescribeSpec({
         }
 
         it("1건 entry → upsert 1회 호출, userId·eventType·channel·enabled·now 검증") {
-            val entry = SubscriptionPatchEntry(
-                eventType = NotificationEventType.ISSUE_ASSIGNED,
-                channel = Channel.IN_APP,
-                enabled = false,
-            )
+            val entry =
+                SubscriptionPatchEntry(
+                    eventType = NotificationEventType.ISSUE_ASSIGNED,
+                    channel = Channel.IN_APP,
+                    enabled = false,
+                )
             every { repository.upsert(any()) } returns Unit
-            every { repository.findByUser(userId) } returns listOf(
-                buildSub(NotificationEventType.ISSUE_ASSIGNED, Channel.IN_APP, false),
-            )
+            every { repository.findByUser(userId) } returns
+                listOf(
+                    buildSub(NotificationEventType.ISSUE_ASSIGNED, Channel.IN_APP, false),
+                )
 
             val result: List<SubscriptionCell> = service.patch(userId, listOf(entry))
 
@@ -173,15 +182,17 @@ class UserSubscriptionServiceTest : DescribeSpec({
         }
 
         it("여러 entry → 각각 upsert 호출 후 최신 매트릭스 반환") {
-            val entries = listOf(
-                SubscriptionPatchEntry(NotificationEventType.ISSUE_CREATED, Channel.EMAIL, false),
-                SubscriptionPatchEntry(NotificationEventType.ISSUE_COMMENTED, Channel.IN_APP, false),
-            )
+            val entries =
+                listOf(
+                    SubscriptionPatchEntry(NotificationEventType.ISSUE_CREATED, Channel.EMAIL, false),
+                    SubscriptionPatchEntry(NotificationEventType.ISSUE_COMMENTED, Channel.IN_APP, false),
+                )
             every { repository.upsert(any()) } returns Unit
-            every { repository.findByUser(userId) } returns listOf(
-                buildSub(NotificationEventType.ISSUE_CREATED, Channel.EMAIL, false),
-                buildSub(NotificationEventType.ISSUE_COMMENTED, Channel.IN_APP, false),
-            )
+            every { repository.findByUser(userId) } returns
+                listOf(
+                    buildSub(NotificationEventType.ISSUE_CREATED, Channel.EMAIL, false),
+                    buildSub(NotificationEventType.ISSUE_COMMENTED, Channel.IN_APP, false),
+                )
 
             val result: List<SubscriptionCell> = service.patch(userId, entries)
 
@@ -196,11 +207,12 @@ class UserSubscriptionServiceTest : DescribeSpec({
     describe("patch — channel 검증(EC1/EC8)") {
 
         it("CONFIGURABLE_CHANNELS 밖 채널(WEBHOOK) → IllegalArgumentException, upsert 0건") {
-            val entry = SubscriptionPatchEntry(
-                eventType = NotificationEventType.ISSUE_CREATED,
-                channel = Channel.WEBHOOK,
-                enabled = false,
-            )
+            val entry =
+                SubscriptionPatchEntry(
+                    eventType = NotificationEventType.ISSUE_CREATED,
+                    channel = Channel.WEBHOOK,
+                    enabled = false,
+                )
 
             shouldThrow<IllegalArgumentException> {
                 service.patch(userId, listOf(entry))
@@ -210,10 +222,11 @@ class UserSubscriptionServiceTest : DescribeSpec({
         }
 
         it("유효한 entry와 무효한 entry 혼합 시 — 전체 거부, upsert 0건(EC8 부분 적용 금지)") {
-            val entries = listOf(
-                SubscriptionPatchEntry(NotificationEventType.ISSUE_CREATED, Channel.EMAIL, false),
-                SubscriptionPatchEntry(NotificationEventType.ISSUE_ASSIGNED, Channel.SLACK, true),
-            )
+            val entries =
+                listOf(
+                    SubscriptionPatchEntry(NotificationEventType.ISSUE_CREATED, Channel.EMAIL, false),
+                    SubscriptionPatchEntry(NotificationEventType.ISSUE_ASSIGNED, Channel.SLACK, true),
+                )
 
             shouldThrow<IllegalArgumentException> {
                 service.patch(userId, entries)
@@ -223,11 +236,12 @@ class UserSubscriptionServiceTest : DescribeSpec({
         }
 
         it("TEAMS 채널 → IllegalArgumentException") {
-            val entry = SubscriptionPatchEntry(
-                eventType = NotificationEventType.SPRINT_STARTED,
-                channel = Channel.TEAMS,
-                enabled = true,
-            )
+            val entry =
+                SubscriptionPatchEntry(
+                    eventType = NotificationEventType.SPRINT_STARTED,
+                    channel = Channel.TEAMS,
+                    enabled = true,
+                )
 
             shouldThrow<IllegalArgumentException> {
                 service.patch(userId, listOf(entry))

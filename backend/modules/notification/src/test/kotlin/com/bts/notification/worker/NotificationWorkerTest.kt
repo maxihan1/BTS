@@ -66,7 +66,9 @@ class NotificationWorkerTest : DescribeSpec({
     val mentionedId: UUID = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
     val fixedNow: Instant = Instant.parse("2026-06-12T10:00:00Z")
 
-    afterEach { clearMocks(dsl, policyEvaluator, recipientResolver, repository, userSubscriptionRepository, channelSender) }
+    afterEach {
+        clearMocks(dsl, policyEvaluator, recipientResolver, repository, userSubscriptionRepository, channelSender)
+    }
 
     // ── POLL-8: 빈 큐 ─────────────────────────────────────────────────────────
 

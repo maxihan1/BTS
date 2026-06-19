@@ -62,7 +62,7 @@ import java.util.UUID
  * @param channelSenders 채널 sender 목록 (Spring 자동 주입)
  * @param objectMapper JSON 파싱용 Jackson ObjectMapper
  */
-@Suppress("TooManyFunctions") // pgmq 워커 처리 흐름 헬퍼(parse/build/delete/archive 등) 포함, 역할 명확해 분리 불필요
+@Suppress("TooManyFunctions", "LongParameterList")
 @Component
 class NotificationWorker(
     private val dsl: DSLContext,

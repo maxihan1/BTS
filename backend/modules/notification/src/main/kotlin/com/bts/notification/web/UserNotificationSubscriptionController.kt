@@ -60,13 +60,14 @@ class UserNotificationSubscriptionController(
         val cells = service.getMatrix(actorId)
         val response =
             SubscriptionMatrixResponse(
-                subscriptions = cells.map { cell ->
-                    SubscriptionEntryDto(
-                        eventType = cell.eventType.wireValue,
-                        channel = cell.channel.name,
-                        enabled = cell.enabled,
-                    )
-                },
+                subscriptions =
+                    cells.map { cell ->
+                        SubscriptionEntryDto(
+                            eventType = cell.eventType.wireValue,
+                            channel = cell.channel.name,
+                            enabled = cell.enabled,
+                        )
+                    },
             )
         return ResponseEntity.ok(DataResponse(data = response))
     }
@@ -110,13 +111,14 @@ class UserNotificationSubscriptionController(
         val cells = service.patch(actorId, entries)
         val response =
             SubscriptionMatrixResponse(
-                subscriptions = cells.map { cell ->
-                    SubscriptionEntryDto(
-                        eventType = cell.eventType.wireValue,
-                        channel = cell.channel.name,
-                        enabled = cell.enabled,
-                    )
-                },
+                subscriptions =
+                    cells.map { cell ->
+                        SubscriptionEntryDto(
+                            eventType = cell.eventType.wireValue,
+                            channel = cell.channel.name,
+                            enabled = cell.enabled,
+                        )
+                    },
             )
         return ResponseEntity.ok(DataResponse(data = response))
     }

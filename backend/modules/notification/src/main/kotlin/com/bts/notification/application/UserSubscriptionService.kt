@@ -89,14 +89,15 @@ class UserSubscriptionService(
 
         val now = clock.instant()
         entries.forEach { entry ->
-            val sub = UserSubscription(
-                userId = userId,
-                eventType = entry.eventType,
-                channel = entry.channel,
-                enabled = entry.enabled,
-                createdAt = now,
-                updatedAt = now,
-            )
+            val sub =
+                UserSubscription(
+                    userId = userId,
+                    eventType = entry.eventType,
+                    channel = entry.channel,
+                    enabled = entry.enabled,
+                    createdAt = now,
+                    updatedAt = now,
+                )
             repository.upsert(sub)
             log.debug(
                 "구독 patch — userId={}, eventType={}, channel={}, enabled={}",
