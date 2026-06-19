@@ -48,16 +48,20 @@ class IssueDueDateScanWorker(
      * 마감일 스캔을 실행한다.
      *
      * 실행 주기: [SCAN_CRON] (기본 매일 UTC 00:00 = KST 09:00).
-     * 임박 기준: 내일(today + 1일) 마감. 지연 기준: 오늘보다 과거 마감.
+     * - 임박 기준: today + [DAYS_UNTIL_DUE_SOON] 일 마감인 이슈.
+     * - 지연 기준: today 보다 과거에 마감된 미해결 이슈.
      *
-     * 각 이슈 이벤트 발행은 try-catch 로 감싸 한 이슈 실패가 전체 루프를 멈추지 않게 한다.
+     * occurredAt = today.atStartOfDay(UTC) — 같은 날 재실행해도 소비자 dedupKey 가 동일해
+     * 알림이 중복 전송되지 않는다. 다음 날 새벽에 실행하면 새 occurredAt 으로 새 알림이 발송된다.
+     *
+     * 각 이슈 이벤트 발행은 [publishSafely] 로 감싸 한 이슈 실패가 전체 루프를 멈추지 않게 한다.
      */
     @Scheduled(cron = SCAN_CRON)
     fun scan() {
         val today = LocalDate.now(clock.withZone(KST_ZONE))
         val occurredAt = today.atStartOfDay(ZoneOffset.UTC).toInstant()
 
-        val dueSoon = repo.findOpenIssuesDueOn(today.plusDays(1))
+        val dueSoon = repo.findOpenIssuesDueOn(today.plusDays(DAYS_UNTIL_DUE_SOON))
         val overdue = repo.findOpenOverdueIssues(today)
 
         var dueSoonPublished = 0
@@ -106,6 +110,14 @@ class IssueDueDateScanWorker(
     companion object {
         /** KST(한국 표준시) 시간대 — 사용자 캘린더 날짜 기준. */
         val KST_ZONE: ZoneId = ZoneId.of("Asia/Seoul")
+
+        /**
+         * 임박 기준 — 마감일이 오늘로부터 며칠 뒤인 이슈를 임박으로 분류할지.
+         *
+         * 현재 값 1: 내일 마감 이슈를 "임박"으로 스캔한다.
+         * 요구사항 변경 시 이 상수만 수정하면 [scan] 로직 전체에 반영된다.
+         */
+        const val DAYS_UNTIL_DUE_SOON: Long = 1L
 
         /**
          * 스캔 배치 실행 cron 표현식 (Spring cron 형식: 초 분 시 일 월 요일).
