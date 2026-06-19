@@ -28,6 +28,7 @@ import org.jooq.JSONB
 import org.jooq.Record
 import org.jooq.Table
 import org.jooq.TableField
+import org.jooq.UpdateSetMoreStep
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
@@ -259,28 +260,10 @@ class IssueRepository(
             .apply { if (patch.environment != null) set(ISSUES.ENVIRONMENT, patch.environment.ifBlank { null }) }
             .apply { if (patch.impact != null) set(ISSUES.IMPACT, patch.impact.toShort()) }
             .apply { if (patch.customFields != null) set(ISSUES.CUSTOM_FIELDS, patch.customFields.toJsonb()) }
-            // 날짜 3-state SET (FR-PL-01). jOOQ set(Field<LocalDate?>, LocalDate?) 단일 오버로드로 명확.
-            .apply {
-                when (val d = patch.startDate) {
-                    is DatePatch.Set -> set(ISSUES.START_DATE, d.value)
-                    DatePatch.Clear -> set(ISSUES.START_DATE, null as LocalDate?)
-                    DatePatch.Unchanged -> Unit
-                }
-            }
-            .apply {
-                when (val d = patch.dueDate) {
-                    is DatePatch.Set -> set(ISSUES.DUE_DATE, d.value)
-                    DatePatch.Clear -> set(ISSUES.DUE_DATE, null as LocalDate?)
-                    DatePatch.Unchanged -> Unit
-                }
-            }
-            .apply {
-                when (val d = patch.targetDate) {
-                    is DatePatch.Set -> set(ISSUES.TARGET_DATE, d.value)
-                    DatePatch.Clear -> set(ISSUES.TARGET_DATE, null as LocalDate?)
-                    DatePatch.Unchanged -> Unit
-                }
-            }
+            // 날짜 3-state SET (FR-PL-01). applyDatePatch 헬퍼로 중복 when-분기 추출.
+            .applyDatePatch(ISSUES.START_DATE, patch.startDate)
+            .applyDatePatch(ISSUES.DUE_DATE, patch.dueDate)
+            .applyDatePatch(ISSUES.TARGET_DATE, patch.targetDate)
             .where(ISSUES.KEY.eq(key.value))
             .and(ISSUES.VERSION.eq(expectedVersion))
             .and(ISSUES.DELETED_AT.isNull)
@@ -1480,4 +1463,24 @@ private fun JSONB?.toCustomFieldsMap(): Map<String, Any?> {
     val json = this?.data()
     if (json.isNullOrBlank() || json == "{}") return emptyMap()
     return CUSTOM_FIELDS_MAPPER.readValue(json, CUSTOM_FIELDS_TYPE_REF)
+}
+
+/**
+ * jOOQ UPDATE 체인에 [DatePatch] 3-state 를 적용하는 헬퍼 (FR-PL-01).
+ *
+ * [DatePatch.Set] → `SET field = value`, [DatePatch.Clear] → `SET field = NULL`,
+ * [DatePatch.Unchanged] → SET 절 추가 없음.
+ *
+ * 반환값: 동일 [UpdateSetMoreStep] 인스턴스 (jOOQ 체인 연속 가능).
+ */
+private fun UpdateSetMoreStep<IssuesRecord>.applyDatePatch(
+    field: TableField<IssuesRecord, LocalDate?>,
+    patch: DatePatch,
+): UpdateSetMoreStep<IssuesRecord> {
+    when (patch) {
+        is DatePatch.Set -> set(field, patch.value)
+        DatePatch.Clear -> set(field, null as LocalDate?)
+        DatePatch.Unchanged -> Unit
+    }
+    return this
 }
