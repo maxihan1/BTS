@@ -11,6 +11,7 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueUpdated
+import com.bts.issue.application.DatePatch
 import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -32,6 +33,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import java.time.Clock
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.UUID
 
@@ -84,7 +86,7 @@ class IssueApplicationServiceTest : DescribeSpec({
     val issueKey = IssueKey("BTS-1")
     val existingVersion = 1L
 
-    /** 기존 이슈 — 5개 신규 필드를 원하는 값으로 세팅 가능. */
+    /** 기존 이슈 — 5개 신규 필드 및 날짜 필드를 원하는 값으로 세팅 가능. */
     @Suppress("LongParameterList") // 테스트 픽스처 헬퍼 — Issue 도메인 필드 수를 반영
     fun makeIssue(
         summary: String = "기존 제목",
@@ -94,6 +96,9 @@ class IssueApplicationServiceTest : DescribeSpec({
         environment: String? = null,
         impact: Int? = null,
         version: Long = existingVersion,
+        startDate: LocalDate? = null,
+        dueDate: LocalDate? = null,
+        targetDate: LocalDate? = null,
     ) = Issue(
         id = IssueId(UUID.randomUUID()),
         key = issueKey,
@@ -111,6 +116,9 @@ class IssueApplicationServiceTest : DescribeSpec({
         labels = labels,
         environment = environment,
         impact = impact,
+        startDate = startDate,
+        dueDate = dueDate,
+        targetDate = targetDate,
     )
 
     /**
@@ -1257,6 +1265,209 @@ class IssueApplicationServiceTest : DescribeSpec({
             it("IssueVersionConflictException 을 던진다") {
                 shouldThrow<IssueVersionConflictException> {
                     sut.changeAssignee(actor, issueKey, request)
+                }
+            }
+        }
+    }
+
+    // ── FR-PL-01 Task 5 — 날짜 필드 DatePatch 배선 + buildChangedFields 감지 (C3) ──
+
+    describe("updateIssue — 날짜 필드 DatePatch C3") {
+
+        // (a) 날짜-only PATCH → IssueFieldPatch 에 DatePatch 전달 + updateFields 호출 → version+1
+        context("(a) startDate=Set → IssueFieldPatch 에 DatePatch.Set 전달, updateFields 호출") {
+            val newDate = LocalDate.of(2026, 7, 1)
+            val request = UpdateIssueRequest(
+                summary = null,
+                expectedVersion = existingVersion,
+                startDate = DatePatch.Set(newDate),
+            )
+            val existingIssue = makeIssue(startDate = null)
+            val updatedResponse = makeResponse()
+
+            beforeEach {
+                stubPermissionGranted()
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every {
+                    repo.updateFields(
+                        key = issueKey,
+                        patch = IssueFieldPatch(startDate = DatePatch.Set(newDate)),
+                        expectedVersion = existingVersion,
+                    )
+                } returns 1
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+                every { eventPublisher.publish(any()) } returns Unit
+            }
+
+            it("repo.updateFields 가 startDate=Set(date) 를 담은 IssueFieldPatch 로 호출된다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 1) {
+                    repo.updateFields(
+                        key = issueKey,
+                        patch = IssueFieldPatch(startDate = DatePatch.Set(newDate)),
+                        expectedVersion = existingVersion,
+                    )
+                }
+            }
+
+            it("IssueUpdated 이벤트에 startDate 필드명이 포함된다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 1) {
+                    eventPublisher.publish(
+                        match { it is IssueUpdated && "startDate" in it.fields },
+                    )
+                }
+            }
+        }
+
+        // (b) Unchanged → buildChangedFields 가 날짜 필드를 감지하지 않음 → no-op
+        context("(b) startDate=Unchanged → 무변경, updateFields 미호출") {
+            val request = UpdateIssueRequest(
+                summary = null,
+                expectedVersion = existingVersion,
+                startDate = DatePatch.Unchanged,
+            )
+            val existingIssue = makeIssue(startDate = LocalDate.of(2026, 6, 1))
+            val existingResponse = makeResponse()
+
+            beforeEach {
+                stubPermissionGranted()
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every { repo.findByKeyWithType(issueKey) } returns existingResponse
+            }
+
+            it("updateFields 가 호출되지 않는다 (no-op)") {
+                sut.updateIssue(actor, issueKey, request)
+                // non-relaxed mock — updateFields stub 없음 → 호출되면 에러 → 통과=미호출 증명
+            }
+
+            it("eventPublisher 가 호출되지 않는다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 0) { eventPublisher.publish(any()) }
+            }
+        }
+
+        // (c) Clear 경계 분리 — 기존 null → Clear = no-op
+        context("(c) dueDate=Clear, 기존값=null → no-op (Clear 경계 1)") {
+            val request = UpdateIssueRequest(
+                summary = null,
+                expectedVersion = existingVersion,
+                dueDate = DatePatch.Clear,
+            )
+            val existingIssue = makeIssue(dueDate = null) // 기존 null
+
+            val existingResponse = makeResponse()
+
+            beforeEach {
+                stubPermissionGranted()
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every { repo.findByKeyWithType(issueKey) } returns existingResponse
+            }
+
+            it("updateFields 가 호출되지 않는다 — 기존 null 에 Clear 는 변경 없음") {
+                sut.updateIssue(actor, issueKey, request)
+                // non-relaxed mock — stub 없음 → 호출되면 에러 → 통과=미호출 증명
+            }
+
+            it("eventPublisher 가 호출되지 않는다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 0) { eventPublisher.publish(any()) }
+            }
+        }
+
+        // (d) Clear 경계 분리 — 기존 값 있을 때 → Clear = 변경 감지
+        context("(d) dueDate=Clear, 기존값=2026-06-30 → 변경 감지 (Clear 경계 2)") {
+            val existingDueDate = LocalDate.of(2026, 6, 30)
+            val request = UpdateIssueRequest(
+                summary = null,
+                expectedVersion = existingVersion,
+                dueDate = DatePatch.Clear,
+            )
+            val existingIssue = makeIssue(dueDate = existingDueDate) // 기존 값 있음
+            val updatedResponse = makeResponse()
+
+            beforeEach {
+                stubPermissionGranted()
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every {
+                    repo.updateFields(
+                        key = issueKey,
+                        patch = IssueFieldPatch(dueDate = DatePatch.Clear),
+                        expectedVersion = existingVersion,
+                    )
+                } returns 1
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+                every { eventPublisher.publish(any()) } returns Unit
+            }
+
+            it("repo.updateFields 가 dueDate=Clear 를 담은 IssueFieldPatch 로 호출된다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 1) {
+                    repo.updateFields(
+                        key = issueKey,
+                        patch = IssueFieldPatch(dueDate = DatePatch.Clear),
+                        expectedVersion = existingVersion,
+                    )
+                }
+            }
+
+            it("IssueUpdated 이벤트에 dueDate 필드명이 포함된다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 1) {
+                    eventPublisher.publish(
+                        match { it is IssueUpdated && "dueDate" in it.fields },
+                    )
+                }
+            }
+        }
+
+        // (e) 3필드 동시 Set → changedFields 에 3개 모두 포함, updateFields 1회 호출
+        context("(e) 3필드 동시 Set → changedFields 에 startDate/dueDate/targetDate 포함") {
+            val start = LocalDate.of(2026, 7, 1)
+            val due = LocalDate.of(2026, 7, 31)
+            val target = LocalDate.of(2026, 8, 15)
+            val request = UpdateIssueRequest(
+                summary = null,
+                expectedVersion = existingVersion,
+                startDate = DatePatch.Set(start),
+                dueDate = DatePatch.Set(due),
+                targetDate = DatePatch.Set(target),
+            )
+            val existingIssue = makeIssue()
+            val updatedResponse = makeResponse()
+
+            beforeEach {
+                stubPermissionGranted()
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every {
+                    repo.updateFields(
+                        key = issueKey,
+                        patch = IssueFieldPatch(
+                            startDate = DatePatch.Set(start),
+                            dueDate = DatePatch.Set(due),
+                            targetDate = DatePatch.Set(target),
+                        ),
+                        expectedVersion = existingVersion,
+                    )
+                } returns 1
+                every { repo.findByKey(issueKey) } returns existingIssue
+                every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+                every { eventPublisher.publish(any()) } returns Unit
+            }
+
+            it("IssueUpdated 이벤트에 3개 날짜 필드명이 모두 포함된다") {
+                sut.updateIssue(actor, issueKey, request)
+                verify(exactly = 1) {
+                    eventPublisher.publish(
+                        match { event ->
+                            event is IssueUpdated &&
+                                "startDate" in event.fields &&
+                                "dueDate" in event.fields &&
+                                "targetDate" in event.fields
+                        },
+                    )
                 }
             }
         }
