@@ -7,7 +7,6 @@ import com.bts.shared.issue.ProjectRecipients
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
-import java.util.UUID
 
 /**
  * [ProjectRecipientLookupPort] identity-access BC 구현체 (FR-NT-03 Task 5).
@@ -33,7 +32,6 @@ class ProjectRecipientLookupAdapter(
     private val projectDirectory: ProjectDirectory,
     private val membershipRepository: ProjectMembershipRepository,
 ) : ProjectRecipientLookupPort {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
@@ -48,19 +46,22 @@ class ProjectRecipientLookupAdapter(
     override fun findProjectRecipients(projectKey: String): ProjectRecipients {
         log.debug("findProjectRecipients projectKey={}", projectKey)
 
-        val projectId: UUID = projectDirectory.resolveKeyToId(projectKey)
-            ?: run {
-                log.debug("findProjectRecipients projectKey={} — 프로젝트 미존재 또는 소프트 삭제, 빈 수신자 반환", projectKey)
-                return ProjectRecipients.empty()
-            }
+        val projectId =
+            projectDirectory.resolveKeyToId(projectKey)
+                ?: run {
+                    log.debug("findProjectRecipients projectKey={} — 프로젝트 미존재 또는 소프트 삭제, 빈 수신자 반환", projectKey)
+                    return ProjectRecipients.empty()
+                }
 
         val memberships = membershipRepository.listByProject(projectId)
+        val adminIds =
+            memberships
+                .filter { it.role == ProjectRole.PROJECT_ADMIN }
+                .map { it.userId }
 
         return ProjectRecipients(
             memberIds = memberships.map { it.userId },
-            adminIds = memberships
-                .filter { it.role == ProjectRole.PROJECT_ADMIN }
-                .map { it.userId },
+            adminIds = adminIds,
         )
     }
 }

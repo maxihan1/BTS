@@ -2,8 +2,8 @@
 
 package com.atlas.bts.identity.project
 
-import com.bts.shared.issue.ProjectRecipients
 import com.bts.shared.issue.ProjectRecipientLookupPort
+import com.bts.shared.issue.ProjectRecipients
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -45,7 +45,6 @@ import java.util.UUID
 )
 @Testcontainers
 class ProjectRecipientLookupAdapterIntegrationTest {
-
     companion object {
         @Container
         @JvmStatic
