@@ -1,7 +1,31 @@
 // IssueDescription 컴포넌트 단위 테스트 — Write/Preview 탭, 저장/취소 흐름 검증
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
+import type { ReactNode, JSX } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { server } from '@/test/server'
+import { userHandlers } from '@/mocks/user-handlers'
 import { IssueDescription } from './IssueDescription'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 멘션 테스트용 wrapper 팩토리 — QueryClientProvider 제공
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * QueryClient wrapper 생성 팩토리.
+ *
+ * IssueDescription의 EditMode는 useMentionAutocomplete → useUsers(TanStack Query)를
+ * 내부 호출하므로, 편집 모드로 진입하는 모든 테스트에 QueryClientProvider가 필요하다.
+ * 테스트마다 독립된 QueryClient 인스턴스를 생성해 캐시가 테스트 간 공유되지 않게 한다.
+ */
+function makeWrapper(): ({ children }: { children: ReactNode }) => JSX.Element {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  }
+}
 
 describe('IssueDescription', () => {
   const defaultProps = {
@@ -49,14 +73,14 @@ describe('IssueDescription', () => {
   // ── 편집 모드 진입 ────────────────────────────────────────────────────────
 
   it('본문 편집 버튼 클릭 시 Write 탭 textarea에 raw description이 표시된다', () => {
-    render(<IssueDescription {...defaultProps} />)
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
     fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
     const textarea = screen.getByRole('textbox', { name: '본문 편집' })
     expect(textarea).toHaveValue('본문 마크다운')
   })
 
   it('편집 모드에서 Write/Preview 탭이 표시된다', () => {
-    render(<IssueDescription {...defaultProps} />)
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
     fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
     expect(screen.getByRole('tab', { name: '편집' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '미리보기' })).toBeInTheDocument()
@@ -66,7 +90,7 @@ describe('IssueDescription', () => {
 
   it('저장 버튼 클릭 시 onSave(rawMarkdown)을 호출한다', () => {
     const onSave = vi.fn()
-    render(<IssueDescription {...defaultProps} onSave={onSave} />)
+    render(<IssueDescription {...defaultProps} onSave={onSave} />, { wrapper: makeWrapper() })
     fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
     const textarea = screen.getByRole('textbox', { name: '본문 편집' })
     fireEvent.change(textarea, { target: { value: '수정된 내용' } })
@@ -76,7 +100,7 @@ describe('IssueDescription', () => {
 
   it('빈 입력 저장 시 onSave("")를 호출한다 (클리어)', () => {
     const onSave = vi.fn()
-    render(<IssueDescription {...defaultProps} onSave={onSave} />)
+    render(<IssueDescription {...defaultProps} onSave={onSave} />, { wrapper: makeWrapper() })
     fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
     const textarea = screen.getByRole('textbox', { name: '본문 편집' })
     fireEvent.change(textarea, { target: { value: '' } })
@@ -87,7 +111,7 @@ describe('IssueDescription', () => {
   // ── 취소 흐름 ─────────────────────────────────────────────────────────────
 
   it('취소 버튼 클릭 시 편집 모드가 닫힌다', () => {
-    render(<IssueDescription {...defaultProps} />)
+    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
     fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
     expect(screen.getByRole('textbox', { name: '본문 편집' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '취소' }))
@@ -97,7 +121,7 @@ describe('IssueDescription', () => {
   // ── isSaving 상태 ─────────────────────────────────────────────────────────
 
   it('isSaving=true이면 저장/취소 버튼이 disabled된다', () => {
-    render(<IssueDescription {...defaultProps} isSaving={true} />)
+    render(<IssueDescription {...defaultProps} isSaving={true} />, { wrapper: makeWrapper() })
     fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
     expect(screen.getByRole('button', { name: '저장' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '취소' })).toBeDisabled()
@@ -212,5 +236,162 @@ describe('IssueDescription', () => {
       />,
     )
     expect(screen.getByRole('button', { name: '본문 편집' })).toBeDisabled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 멘션 자동완성 배선 테스트 — FR-MN-02 Task 3
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDescription — 멘션 자동완성 배선', () => {
+  const defaultProps = {
+    descriptionHtml: '<p>본문 HTML</p>',
+    description: '본문 마크다운',
+    onSave: vi.fn(),
+    isSaving: false,
+  }
+
+  /**
+   * 편집 모드 진입 헬퍼 — 편집 버튼 클릭 후 textarea를 반환한다.
+   * wrapper 포함 렌더가 필요하므로 미리 server.use(userHandlers)를 호출한 상태에서 사용할 것.
+   */
+  function enterEditMode() {
+    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
+    return screen.getByRole('textbox', { name: '본문 편집' }) as HTMLTextAreaElement
+  }
+
+  it('@al 입력 후 debounce 완료 시 멘션 드롭다운(role=listbox)이 노출된다', async () => {
+    server.use(...userHandlers)
+    render(
+      <IssueDescription {...defaultProps} />,
+      { wrapper: makeWrapper() },
+    )
+
+    const textarea = enterEditMode()
+
+    // @al 입력 — selectionStart를 3으로 맞춰 caret 위치를 시뮬레이션한다
+    act(() => {
+      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
+      fireEvent.change(textarea, { target: { value: '@al' } })
+    })
+
+    // debounce(250ms) + useUsers 응답 대기
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    }, { timeout: 2000 })
+  })
+
+  it('드롭다운 후보 클릭(onMouseDown) 시 textarea 값에 @<username> 공백이 반영된다', async () => {
+    server.use(...userHandlers)
+    render(
+      <IssueDescription {...defaultProps} />,
+      { wrapper: makeWrapper() },
+    )
+
+    const textarea = enterEditMode()
+
+    act(() => {
+      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
+      fireEvent.change(textarea, { target: { value: '@al' } })
+    })
+
+    // 드롭다운 노출 대기
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    }, { timeout: 2000 })
+
+    // alice 항목 클릭 — onMouseDown으로 선택
+    const aliceOption = screen.getByTestId('mention-option-alice')
+    fireEvent.mouseDown(aliceOption)
+
+    // textarea 값에 @alice 공백 반영 확인
+    await waitFor(() => {
+      expect(textarea).toHaveValue('@alice ')
+    })
+  })
+
+  it('CR2: Preview → Write 복귀 시 멘션 상태가 초기화되어 드롭다운이 재출현하지 않는다', async () => {
+    /**
+     * Write 탭에서 @al 입력으로 open=true 만든 뒤 Preview로 전환하면
+     * 훅의 open 상태가 reset()으로 초기화되어야 한다.
+     * Write 탭으로 돌아왔을 때 listbox가 즉시 재출현하면 reset 미적용 증거.
+     *
+     * 캐시 시드(staleTime: Infinity)를 사용해 Write 복귀 즉시 드롭다운 여부를 동기로 확인한다.
+     * reset이 없으면 open=true 잔존 → Write 복귀 시 즉시 listbox 재출현 → 실패.
+     */
+    server.use(...userHandlers)
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    })
+    const aliceResult = [
+      { id: 'a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5', username: 'alice', displayName: '앨리스', email: null as string | null },
+    ]
+
+    render(
+      <IssueDescription {...defaultProps} />,
+      { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider> },
+    )
+
+    const textarea = enterEditMode()
+
+    // 캐시 시드 — useUsers('al') 즉시 반환
+    act(() => { qc.setQueryData(['users', 'al'], aliceResult) })
+
+    // @al 입력
+    act(() => {
+      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
+      fireEvent.change(textarea, { target: { value: '@al' } })
+    })
+
+    // 드롭다운 노출 대기
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    }, { timeout: 2000 })
+
+    // Preview 탭으로 전환 → listbox DOM에서 사라짐(조건부 렌더)
+    act(() => {
+      fireEvent.click(screen.getByRole('tab', { name: '미리보기' }))
+    })
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+
+    // Write 탭으로 복귀 — reset이 없으면 open=true 잔존 → listbox 즉시 재출현
+    act(() => {
+      fireEvent.click(screen.getByRole('tab', { name: '편집' }))
+    })
+
+    // reset()이 호출되었다면 open=false → listbox 없음
+    // reset() 미호출이라면 open=true 잔존 → candidates 있으면 즉시 재출현 → 실패
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  it('Escape 키 입력 시 드롭다운이 닫히고 textarea 값은 유지된다', async () => {
+    server.use(...userHandlers)
+    render(
+      <IssueDescription {...defaultProps} />,
+      { wrapper: makeWrapper() },
+    )
+
+    const textarea = enterEditMode()
+
+    act(() => {
+      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
+      fireEvent.change(textarea, { target: { value: '@al' } })
+    })
+
+    // 드롭다운 노출 대기
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    }, { timeout: 2000 })
+
+    // Escape 키 입력
+    fireEvent.keyDown(textarea, { key: 'Escape' })
+
+    // 드롭다운 닫힘 확인
+    await waitFor(() => {
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    })
+
+    // textarea 값 유지 확인
+    expect(textarea).toHaveValue('@al')
   })
 })
