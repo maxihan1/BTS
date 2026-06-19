@@ -239,5 +239,33 @@ class IssueDomainEventTest : DescribeSpec({
             val event = mapper.readValue(json, IssueDomainEvent::class.java)
             (event is IssueSoftDeleted) shouldBe true
         }
+
+        it("type=issue.due_soon JSON 을 IssueDomainEvent 로 읽으면 IssueDueSoon 인스턴스다") {
+            val json =
+                """
+                {
+                  "type": "issue.due_soon",
+                  "issueKey": "PROJ-1",
+                  "projectKey": "PROJ",
+                  "occurredAt": "2026-01-01T00:00:00Z"
+                }
+                """.trimIndent()
+            val event = mapper.readValue(json, IssueDomainEvent::class.java)
+            (event is IssueDueSoon) shouldBe true
+        }
+
+        it("type=issue.overdue JSON 을 IssueDomainEvent 로 읽으면 IssueOverdue 인스턴스다") {
+            val json =
+                """
+                {
+                  "type": "issue.overdue",
+                  "issueKey": "PROJ-1",
+                  "projectKey": "PROJ",
+                  "occurredAt": "2026-01-01T00:00:00Z"
+                }
+                """.trimIndent()
+            val event = mapper.readValue(json, IssueDomainEvent::class.java)
+            (event is IssueOverdue) shouldBe true
+        }
     }
 })
