@@ -163,29 +163,25 @@ class EventRecipientResolver(
      * 이슈 기반 역할(REPORTER/ASSIGNEE/WATCHER/COMPONENT_LEAD/PREVIOUS_ASSIGNEE)이 포함된 경우에만
      * 포트를 1회 호출해 반환한다 (N+1 방지).
      *
-     * REPORTER 는 event.reporterId 가 있으면 포트 불요이지만,
-     * 다른 이슈 기반 역할이 함께 있으면 어차피 1회 조회가 발생한다.
+     * REPORTER 는 event.reporterId 가 있어도 다른 이슈 기반 역할이 함께 요청되면
+     * 어차피 1회 조회가 발생한다. 조건 단순화: "포트가 필요한 이슈 기반 역할 중 하나라도 있으면 조회".
+     * - REPORTER 는 reporterId 가 없을 때만 포트 필요
+     * - ASSIGNEE/WATCHER/COMPONENT_LEAD/PREVIOUS_ASSIGNEE 는 항상 포트 필요
      */
     private fun lazyIssueRecipientsLookup(
         event: NotificationSourceEvent,
         matches: List<PolicyMatch>,
     ): IssueRecipients? {
-        val issueBasedRoles = setOf(
-            RecipientRole.REPORTER,
-            RecipientRole.ASSIGNEE,
-            RecipientRole.WATCHER,
-            RecipientRole.COMPONENT_LEAD,
-            RecipientRole.PREVIOUS_ASSIGNEE,
-        )
-        val needsPortLookup =
-            matches.any { it.recipientRole in issueBasedRoles } &&
-                matches.any {
-                    (it.recipientRole == RecipientRole.REPORTER && event.reporterId == null) ||
-                        it.recipientRole == RecipientRole.ASSIGNEE ||
-                        it.recipientRole == RecipientRole.WATCHER ||
-                        it.recipientRole == RecipientRole.COMPONENT_LEAD ||
-                        it.recipientRole == RecipientRole.PREVIOUS_ASSIGNEE
-                }
+        val needsPortLookup = matches.any { match ->
+            when (match.recipientRole) {
+                RecipientRole.REPORTER -> event.reporterId == null
+                RecipientRole.ASSIGNEE,
+                RecipientRole.WATCHER,
+                RecipientRole.COMPONENT_LEAD,
+                RecipientRole.PREVIOUS_ASSIGNEE -> true
+                else -> false
+            }
+        }
         if (!needsPortLookup || event.issueKey == null) return null
         return issueRecipientLookupPort.findRecipients(event.issueKey)
     }
