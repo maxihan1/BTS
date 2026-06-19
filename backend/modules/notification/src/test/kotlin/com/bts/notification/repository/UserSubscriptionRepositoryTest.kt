@@ -84,6 +84,29 @@ class UserSubscriptionRepositoryTest : NotificationTestcontainersBase() {
         assertThat(results[0].updatedAt).isEqualTo(t1)
     }
 
+    @Test
+    fun `upsert 멱등 — 재호출 시 created_at은 첫 INSERT 값이 보존되고 updated_at만 갱신된다`() {
+        // 첫 INSERT — created_at=t0, updated_at=t0
+        repository.upsert(sub(enabled = true, createdAt = t0, updatedAt = t0))
+        val firstResult = repository.findByUser(userId1)
+        assertThat(firstResult).hasSize(1)
+        val firstCreatedAt = firstResult[0].createdAt
+
+        // 재upsert — enabled 변경, updated_at=t1
+        repository.upsert(sub(enabled = false, createdAt = t0, updatedAt = t1))
+
+        val updated = repository.findByUser(userId1)
+        assertThat(updated).hasSize(1)
+        // created_at 은 doUpdate 에서 SET 대상이 아니므로 첫 INSERT 값 그대로 보존되어야 한다
+        assertThat(updated[0].createdAt)
+            .describedAs("재upsert 후 created_at 은 첫 INSERT 시각이 보존되어야 한다 (회귀 가드)")
+            .isEqualTo(firstCreatedAt)
+        // updated_at 은 갱신되어야 한다
+        assertThat(updated[0].updatedAt)
+            .describedAs("재upsert 후 updated_at 은 새 값으로 갱신되어야 한다")
+            .isEqualTo(t1)
+    }
+
     // ── findByUser — 타 사용자 격리 ──────────────────────────────────────────────
 
     @Test
