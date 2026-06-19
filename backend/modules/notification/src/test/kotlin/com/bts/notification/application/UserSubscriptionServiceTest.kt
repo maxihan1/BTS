@@ -10,6 +10,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -32,6 +33,9 @@ class UserSubscriptionServiceTest : DescribeSpec({
     )
 
     val userId: UUID = UUID.randomUUID()
+
+    // mockk 호출 기록을 각 테스트마다 초기화 — 이전 테스트 잔여 호출이 verify 에 영향을 주지 않도록
+    beforeEach { clearAllMocks() }
 
     /** 테스트용 UserSubscription 빌더 */
     fun buildSub(
