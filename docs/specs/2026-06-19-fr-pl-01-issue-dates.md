@@ -23,8 +23,8 @@
 - **F3**. 이슈 단건 응답(`IssueResponse`)에 3필드를 포함한다(미지정 시 null). 직렬화는 ISO-8601 `yyyy-MM-dd`.
 - **F4**. **교차 필드 검증 없음** — start/due/target 간 선후 관계를 강제하지 않는다(Version `ChangeVersionDatesRequest` 주석과 동일 정책).
 - **F5**. 권한은 기존 `IssuePermission.UPDATE` + `IssueScope.Issue(key)` 를 재사용한다(신규 권한 코드 없음). 다른 PATCH 스칼라 필드와 동일 게이트.
-- **F6**. 변경은 도메인 mutation 메서드를 경유한다(repository 직접 update 금지, patch-merge-domain-bypass 방지). OCC(`expectedVersion`) 적용 — 날짜 편집도 이슈 version을 올린다.
-- **F7**. (프론트) 이슈 상세 화면에 3개 데이트픽커를 추가한다. 날짜 선택/해제 가능, date-fns 포맷.
+- **F6**. 날짜는 도메인 불변식이 없어 mutation 메서드 없이 `updateFields` 단일 UPDATE에 3-state(`DatePatch`)로 합류한다(securityLevel과 달리 patch-merge-domain-bypass 대상 아님 — 보호할 불변식 없음). OCC(`expectedVersion`) 적용 — 날짜 편집도 이슈 version을 올린다.
+- **F7**. (프론트) 이슈 상세 화면에 3개 데이트픽커를 추가한다. 날짜 선택/해제 가능, 네이티브 `input[type=date]`(신규 의존성 0, date-fns 미사용).
 
 ## 비기능 요구사항 (NFR)
 
