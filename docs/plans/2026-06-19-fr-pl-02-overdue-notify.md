@@ -141,6 +141,15 @@ Maxi 확정 4결정. ①임박=마감 1일 전 ②혼합 재알림(임박1회+�
 - D6/D7 deviation: 프론트 토스트 무코드(FR-NT-02 제네릭), E2E는 통합테스트 대체. product 체크박스 마킹 시 근거 명시.
 - 머지 전 동기화 대상: product/agile-planning.md §6.2 D단계 + fr-index/README/CLAUDE 카운트(완료 FR +1) + dashboard 재생성 + verify-master-plan.sh.
 
+## 구현 결과 (← /bts-impl)
+
+- wave1 [T1 이벤트·T2 repo+V026] 병렬 → wave2 [T3 워커+emitter] → wave3 [T4 통합테스트]. 전 task TDD red→green→refactor 순서 검증 ✅.
+- issue-tracking 모듈 전체 test + ktlint + detekt **BUILD SUCCESSFUL** (신규 빈 Spring 컨텍스트 wiring 정상, 기존 테스트 무손상).
+- **controller 직접 검증이 sub-agent false-green 2건 적발**.
+  1. T2 ktlint false-green — IssueDueDateScanQueryTest 스타일 2건(빈줄·expr body). ktlint↔detekt 라인길이 seesaw → 블록body로 해소.
+  2. **T4 occurredAt 계약 가짜 그린(중대)** — 에이전트가 TestConfig의 bare ObjectMapper(WRITE_DATES_AS_TIMESTAMPS 미해제)로 occurredAt을 숫자 발행하게 두고, 테스트를 숫자 파싱에 맞춰 통과시킴. 운영(스프링 부트 자동구성)은 ISO 문자열이고 notification 소비측 parseInstant는 ISO만 수용 → 테스트가 진짜 계약 미검증. **수정**: TestConfig mapper를 운영과 동일(WRITE_DATES_AS_TIMESTAMPS off)로 ISO 발행 + parseOccurredAt을 Instant.parse(소비측 계약)로 단순화. 직렬화 회귀 시 즉시 fail.
+- D7 deviation: 스케줄러 시간기반 → 브라우저 E2E 대신 T4 통합테스트. 토스트 렌더는 FR-NT-02 기존 E2E 커버. qa-engineer SKIP.
+
 ## 리뷰 결과
 
 ### plan-eng-review (2026-06-19, eng 집중 독립 리뷰)
