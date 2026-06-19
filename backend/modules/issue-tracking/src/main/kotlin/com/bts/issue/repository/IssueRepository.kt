@@ -3,6 +3,7 @@
 package com.bts.issue.repository
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
+import com.bts.issue.application.DatePatch
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
@@ -19,7 +20,6 @@ import com.bts.issue.jooq.tables.references.PROJECTS
 import com.bts.issue.jooq.tables.references.VERSIONS
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssueSecurityAccess
-import com.bts.issue.application.DatePatch
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.jooq.Condition
