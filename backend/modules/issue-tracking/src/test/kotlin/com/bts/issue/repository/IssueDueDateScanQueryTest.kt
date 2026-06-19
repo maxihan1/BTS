@@ -34,7 +34,6 @@ import java.util.UUID
  * - 반환 item 에 issueKey + projectKey 정확.
  */
 class IssueDueDateScanQueryTest : IssueTestcontainersBase() {
-
     private var taskTypeId: IssueTypeId? = null
 
     /** V003 seed 에서 task 타입 id 조회. */
@@ -51,8 +50,11 @@ class IssueDueDateScanQueryTest : IssueTestcontainersBase() {
         }
     }
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다 — resolveTaskTypeId 실행 확인" }
+    private fun requireTaskTypeId(): IssueTypeId {
+        return requireNotNull(taskTypeId) {
+            "taskTypeId 가 초기화되지 않았습니다 — resolveTaskTypeId 실행 확인"
+        }
+    }
 
     // ── 헬퍼 ────────────────────────────────────────────────────────────────────
 
