@@ -69,7 +69,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [IssueDueDateScanIntegrationTest.TestConfig::class])
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueDueDateScanIntegrationTest {
-
     @Configuration
     @EnableTransactionManagement(proxyTargetClass = true)
     open class TestConfig {
@@ -100,8 +99,9 @@ class IssueDueDateScanIntegrationTest {
             DataSourceTransactionManager(dataSource)
 
         @Bean
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext =
-            DSL.using(dataSource, SQLDialect.POSTGRES)
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext {
+            return DSL.using(dataSource, SQLDialect.POSTGRES)
+        }
 
         @Bean
         open fun objectMapper(): ObjectMapper =
@@ -119,8 +119,9 @@ class IssueDueDateScanIntegrationTest {
         ): IssueEventPublisher = IssueEventPublisher(dsl, objectMapper)
 
         @Bean
-        open fun issueDueEventEmitter(publisher: IssueEventPublisher): IssueDueEventEmitter =
-            IssueDueEventEmitter(publisher)
+        open fun issueDueEventEmitter(publisher: IssueEventPublisher): IssueDueEventEmitter {
+            return IssueDueEventEmitter(publisher)
+        }
     }
 
     companion object {
@@ -231,7 +232,7 @@ class IssueDueDateScanIntegrationTest {
         assertThat(dueSoonMessages[0].get("projectKey").asText())
             .describedAs("due_soon projectKey 가 $PROJECT_KEY 이어야 한다")
             .isEqualTo(PROJECT_KEY)
-        assertThat(Instant.parse(dueSoonMessages[0].get("occurredAt").asText()))
+        assertThat(parseOccurredAt(dueSoonMessages[0].get("occurredAt")))
             .describedAs("due_soon occurredAt 이 today.atStartOfDay(UTC) 이어야 한다")
             .isEqualTo(EXPECTED_OCCURRED_AT)
 
@@ -241,7 +242,7 @@ class IssueDueDateScanIntegrationTest {
         assertThat(overdueMessages[0].get("projectKey").asText())
             .describedAs("overdue projectKey 가 $PROJECT_KEY 이어야 한다")
             .isEqualTo(PROJECT_KEY)
-        assertThat(Instant.parse(overdueMessages[0].get("occurredAt").asText()))
+        assertThat(parseOccurredAt(overdueMessages[0].get("occurredAt")))
             .describedAs("overdue occurredAt 이 today.atStartOfDay(UTC) 이어야 한다")
             .isEqualTo(EXPECTED_OCCURRED_AT)
 
@@ -269,13 +270,31 @@ class IssueDueDateScanIntegrationTest {
         val dueSoonMessages = messages.filter { it.get("type").asText() == "issue.due_soon" }
 
         assertThat(dueSoonMessages).hasSizeGreaterThanOrEqualTo(2)
-        val occurredAts = dueSoonMessages.map { Instant.parse(it.get("occurredAt").asText()) }.toSet()
+        val occurredAts = dueSoonMessages.map { parseOccurredAt(it.get("occurredAt")) }.toSet()
         assertThat(occurredAts)
             .describedAs("두 scan 호출 모두 동일한 occurredAt 이어야 한다")
             .containsOnly(EXPECTED_OCCURRED_AT)
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * occurredAt JSON 노드를 [Instant] 로 변환한다.
+     *
+     * Jackson 의 [com.fasterxml.jackson.databind.ObjectMapper] 기본 설정에서
+     * [java.time.Instant] 는 에포크 초(epoch seconds) 숫자로 직렬화된다.
+     * [com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS] 가
+     * 기본 true 이기 때문이다. 운영 앱은 스프링 부트가 이 설정을 false 로 강제하지만
+     * 이 테스트의 경량 TestConfig 는 스프링 부트 자동구성을 사용하지 않으므로 숫자로 수신된다.
+     * isNumber() 분기로 두 형식을 모두 처리한다.
+     */
+    private fun parseOccurredAt(node: com.fasterxml.jackson.databind.JsonNode): Instant {
+        return if (node.isNumber) {
+            Instant.ofEpochSecond(node.asLong())
+        } else {
+            Instant.parse(node.asText())
+        }
+    }
 
     /**
      * 이슈를 직접 INSERT 한다.
@@ -294,11 +313,12 @@ class IssueDueDateScanIntegrationTest {
         val issueKey = "$PROJECT_KEY-$seq"
         val pid = requireNotNull(projectId) { "projectId 미초기화 — seedProject() 확인" }
         val typeId = requireNotNull(taskTypeId) { "taskTypeId 미초기화 — resolveTaskTypeId() 확인" }
+        val sql =
+            "INSERT INTO issues " +
+                "(key, project_id, summary, reporter_id, current_state_key, version, type_id, due_date) " +
+                "VALUES (?, ?, ?, ?, 'open', 1, ?, ?)"
         conn().use { c ->
-            c.prepareStatement(
-                "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version, type_id, due_date) " +
-                    "VALUES (?, ?, ?, ?, 'open', 1, ?, ?)",
-            ).use { stmt ->
+            c.prepareStatement(sql).use { stmt ->
                 stmt.setString(1, issueKey)
                 stmt.setObject(2, pid)
                 stmt.setString(3, "due scan seed $seq")
@@ -349,14 +369,13 @@ class IssueDueDateScanIntegrationTest {
      * visibility_timeout=1, qty=100 — 100건 이하 단언용.
      */
     private fun readAllQueueMessages(): List<com.fasterxml.jackson.databind.JsonNode> {
-        val dsl = DSL.using(
+        val connection =
             DriverManager.getConnection(
                 TestConfig.postgres.jdbcUrl,
                 TestConfig.postgres.username,
                 TestConfig.postgres.password,
-            ),
-            SQLDialect.POSTGRES,
-        )
+            )
+        val dsl = DSL.using(connection, SQLDialect.POSTGRES)
         val records = dsl.fetch("SELECT * FROM pgmq.read('q_issue_events', 1, 100)")
         return records.map { record ->
             val body = record.get("message", String::class.java)
