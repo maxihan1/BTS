@@ -40,7 +40,7 @@
 - **FR1** `EventRecipientResolver.resolveRole`의 `else` 분기를 WATCHER / COMPONENT_LEAD / PREVIOUS_ASSIGNEE / PROJECT_MEMBER / PROJECT_ADMIN 5개 분기로 확장. RULE_OWNER는 명시적 skip(로그) 유지.
 - **FR2** issue-tracking 기반 역할(WATCHER/COMPONENT_LEAD/PREVIOUS_ASSIGNEE)은 기존 `IssueRecipientLookupPort.findRecipients(issueKey)` 1회 호출로 확장된 `IssueRecipients`에서 읽는다(N+1 방지, 기존 lazy 패턴 확장).
 - **FR3** project 기반 역할(PROJECT_MEMBER/PROJECT_ADMIN)은 신규 `ProjectRecipientLookupPort.findProjectRecipients(projectKey)` 1회 호출로 해석. projectKey→projectId 변환은 adapter 내부 책임(`ProjectDirectory.resolveKeyToId` 재사용).
-- **FR4** 해석된 전체 수신자 집합을 발송 전 신규 `IssueVisibilityPort.filterVisible(issueKey, userIds)`로 배치 필터링해 이슈 열람 권한 없는 사용자를 제외(보안수준 누출 차단). 이슈가 없는(issueKey=null) 이벤트는 필터 비대상.
+- **FR4** 해석된 전체 수신자 집합을 발송 전 신규 `IssueVisibilityPort.filterVisibleUserIds(issueKey, userIds)`로 필터링해 이슈 **VIEW 권한**(매트릭스+보안등급) 없는 사용자를 제외(누출 차단). identity-access가 기존 단건 VIEW 판정 재사용으로 구현. 이슈가 없는(issueKey=null) 이벤트는 필터 비대상.
 - **FR5** 포트 조회는 **정책 매치에 해당 역할군이 있을 때만** 수행(역할 없으면 조회 skip, 효율).
 - **FR6** actor 제외 + (userId, channel) dedup은 기존 `resolve()` 말미 파이프라인을 그대로 통과.
 - **FR7 (G2 — visibility 적용 순서·범위)** visibility 필터는 **actor 제외 + dedup 이후** distinct userId 집합에 1회 배치 적용하고, 통과한 userId의 (userId, channel) 항목만 남긴다(채널 무관, 이슈 열람 권한 기준). **기존 MENTIONED/REPORTER/ASSIGNEE 수신자도 이 필터를 통과**한다 — FR-NT-02 대비 동작 강화(보안). 따라서 기존 `EventRecipientResolverTest`도 visibility 포트 주입·mock이 필요하다(완료 기준 참조).
@@ -73,16 +73,17 @@ data class ProjectRecipients(val memberIds: List<UUID>, val adminIds: List<UUID>
 ```
 - 구현: identity-access adapter. `ProjectDirectory.resolveKeyToId(projectKey)` → projectId → `ProjectMembershipRepository.listByProject(projectId)` → role 분기. projectKey 미해결(삭제 프로젝트) → empty.
 
-### P3. IssueVisibilityPort 신규 (shared-kernel, 보안)
+### P3. IssueVisibilityPort 신규 (shared-kernel `com.bts.shared.permission`, 보안) — 리뷰 재설계 v2
 ```kotlin
 interface IssueVisibilityPort {
-    /** issueKey를 볼 수 있는 userId만 반환(보안수준 필터). 보안수준 미설정 이슈는 전부 통과. */
-    fun filterVisible(issueKey: String, candidateUserIds: Set<UUID>): Set<UUID> = candidateUserIds
+    /** issueKey를 VIEW 권한으로 볼 수 있는 userId만 반환(매트릭스+보안등급 결합). default 없음(fail-closed). */
+    fun filterVisibleUserIds(issueKey: String, candidateUserIds: Set<UUID>): Set<UUID>
 }
 ```
-- 구현 BC와 adapter 부재 시 prod 부팅 가드는 **plan에서 security-engineer가 확정**(보안수준 판정 로직이 issue-tracking인지 identity-access인지). 기본 동작: 보안수준 미설정 이슈는 전체 통과, 설정 이슈는 각 user가 해당 level 멤버인지 판정.
-- **default 메서드 = allow-all(전체 통과)**: adapter 미등록 환경(보안수준 미적용) 한정. [[crossbc-resolver-nullable-fail-open]] 주의 — prod는 adapter 필수(부팅 가드로 강제).
-- **G3 — 런타임 장애 시 fail-closed**: adapter가 등록됐으나 판정 중 예외/장애가 나면 **해당 이벤트 처리를 실패시켜 보류**한다(pgmq vt 만료 후 재전달, 멱등 처리됨). 권한 없는 사용자에게 알림이 새는 것(fail-open)보다 알림 지연(fail-closed)이 안전 — notification 전반의 fail-safe 철학("누락이 과발송보다 안전")과 일관. allow-all로 삼키지 않는다.
+- **source of truth (security 리뷰 확정)**: 단건 이슈 VIEW 가시성 = **VIEW_ISSUE 매트릭스 권한 + 보안등급 게이트의 결합**(`IdentityAccessIssuePermissionResolver` + `IssueSecurityDecider`). `IssueSecurityDirectory.accessibleLevels`(목록 WHERE 필터용)를 재조립하면 매트릭스 게이트 누락 + Decider drift로 **누출** → 폐기. 구현은 **identity-access**가 기존 검증 로직을 재사용(새 보안 경로 금지).
+- **default 메서드 없음(추상)**: allow-all default는 빈 부재 시 silent 누출(B-SEC-3). notification 생성자에 **non-null 필수 주입** → 빈 부재 시 부팅 실패가 안전망.
+- **prod 부팅 가드 정정**: BTS는 cross-BC 배포 조립 모듈 부재([[no-cross-bc-deployment-assembly]])라 "prod 부팅 가드"는 실증 불가. test-assembled 컨텍스트가 현 표준이며 통합테스트(T7)는 **실 adapter 강제**(stub=가짜그린).
+- **G3 — 런타임 장애 시 fail-closed**: 판정 중 예외/장애 시 `resolve()`가 예외를 **전파**해 이벤트 처리를 실패시켜 보류한다(pgmq vt 만료 후 재전달, 멱등). 권한 없는 사용자 누출(fail-open)보다 알림 지연(fail-closed)이 안전. 빈 목록/allow-all로 삼키지 않는다.
 
 ## 데이터 모델 변경
 
@@ -104,12 +105,12 @@ interface IssueVisibilityPort {
 
 ## 비기능 요구사항 (NFR)
 
-- visibility 필터·project/issue 포트는 **배치(수신자 전체 1회 판정)**로 N+1 방지.
+- project/issue 포트는 역할군당 1회 호출(N+1 방지). visibility 필터는 후보 userId 집합을 **한 메서드 호출**에 넘겨 identity-access 내부에서 role/group 조회를 배치/캐시로 묶어 메시지당 쿼리 폭증을 회피(완전 set-based가 어려우면 내부 최적화, 단 VIEW 매트릭스 게이트는 항상 적용 — 리뷰 B-ENG-1/C2).
 - 알림 지연 p95 < 1s(기존 §NFR) 영향 최소 — 이벤트당 추가 쿼리는 소수.
 - 수신자 조회 실패(adapter 부재/이슈 미존재) → 빈 수신자(알림 누락이 과발송보다 안전). visibility는 보안이라 prod adapter 필수(부팅 가드).
 - ArchUnit BC 격리 룰 통과(notification → shared-kernel만 의존).
 - detekt/ktlint 통과, baseline 동결만(신규 위반 코드 수정).
-- **G5 — 광역 역할 발송 부하**: PROJECT_MEMBER 정책 1건은 1,000명 규모 프로젝트에서 단일 이벤트당 최대 1,000 알림(notifications insert + visibility 1,000명 배치 + 채널 발송)을 만든다. RecipientResolver는 **해석만** 책임지고, 발송 상한/배치/그룹화(SDD §9 "스팸 방지 알림 그룹화")는 본 FR 범위 밖(별도). 광역 정책의 신중한 설정은 관리자 책임이며, visibility 필터는 반드시 **배치 1회**로 1,000회 개별 호출을 피한다(NFR 위 N+1 방지).
+- **G5 — 광역 역할 발송 부하**: PROJECT_MEMBER 정책 1건은 1,000명 규모 프로젝트에서 단일 이벤트당 최대 1,000 알림(notifications insert + visibility 판정 + 채널 발송)을 만든다. RecipientResolver는 **해석만** 책임지고, 발송 상한/배치/그룹화(SDD §9 "스팸 방지 알림 그룹화")는 본 FR 범위 밖(별도). 광역 정책의 신중한 설정은 관리자 책임이며, visibility 필터는 후보 집합을 한 번에 넘겨 identity-access 내부에서 role/group 조회를 묶어 메시지당 쿼리 폭증을 피한다(리뷰 B-ENG-1/C2 반영).
 
 ## 제약 조건
 

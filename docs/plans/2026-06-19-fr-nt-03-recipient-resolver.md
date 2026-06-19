@@ -61,21 +61,21 @@ notification-dashboard BC. FR-NT-01 notification_policies.recipient_role을
 > 모든 경로는 repo 루트 기준. 검증 명령은 worktree 내부 `cd backend && ./gradlew ...`.
 > 모듈 약칭: SK=shared-kernel, NT=notification, IT=issue-tracking, IA=identity-access.
 
-### Task 1. shared-kernel 포트 3종 정의 + IssueRecipients 확장
+### Task 1. shared-kernel 포트 정의 + IssueRecipients 확장 (v2)
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/issue/IssueRecipientLookupPort.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/issue/ProjectRecipientLookupPort.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/issue/IssueVisibilityPort.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/issue/RecipientPortsDefaultTest.kt`]
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/issue/IssueRecipientLookupPort.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/issue/ProjectRecipientLookupPort.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/permission/IssueVisibilityPort.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/issue/RecipientPortsDefaultTest.kt`]
 - depends-on: []
 
-**RED**: `RecipientPortsDefaultTest` — (a) `IssueRecipients`가 watcherIds/componentLeadIds/previousAssigneeId 필드 보유 + `empty()`가 빈/ null, (b) `ProjectRecipientLookupPort` default가 `ProjectRecipients.empty()`, (c) `IssueVisibilityPort` default `filterVisible`가 입력 집합 그대로 반환(allow-all). 실패: 클래스/필드 없음.
+**RED**: `RecipientPortsDefaultTest` — (a) `IssueRecipients`가 watcherIds/componentLeadIds/previousAssigneeId 필드 보유 + `empty()`가 빈/null, (b) `ProjectRecipientLookupPort` default가 `ProjectRecipients.empty()`. 실패: 클래스/필드 없음.
 
 **GREEN**:
 - `IssueRecipients`에 `watcherIds: List<UUID> = emptyList()`, `componentLeadIds: List<UUID> = emptyList()`, `previousAssigneeId: UUID? = null` 추가 + `empty()` 갱신. `findRecipients` default 유지(기존 fake 보호, [[interface-extension-default-method]]).
-- `ProjectRecipientLookupPort { fun findProjectRecipients(projectKey: String): ProjectRecipients = ProjectRecipients.empty() }` + `data class ProjectRecipients(memberIds, adminIds)` + `empty()`.
-- `IssueVisibilityPort { fun filterVisible(issueKey: String, candidateUserIds: Set<UUID>): Set<UUID> = candidateUserIds }`.
+- `ProjectRecipientLookupPort { fun findProjectRecipients(projectKey: String): ProjectRecipients = ProjectRecipients.empty() }` + `data class ProjectRecipients(memberIds, adminIds)` + `empty()`. (수신자 조회 fail-safe=빈=누락 안전)
+- **`IssueVisibilityPort`(`com.bts.shared.permission`, IssueSecurityDirectory 옆)**: `fun filterVisibleUserIds(issueKey: String, candidateUserIds: Set<UUID>): Set<UUID>` — **추상 메서드(default 없음)**. allow-all default 금지(B-SEC-3 fail-open 차단). 구현 부재 시 notification 컨텍스트 부팅 실패가 의도된 안전(non-null 필수 주입).
 
-**REFACTOR**: KDoc(fail-safe 방향 명시 — recipient 조회 빈=누락 안전 / visibility default allow-all=비-prod 한정, prod adapter 필수). SharedKernelBoundaryArchTest 통과(원시 타입만).
+**REFACTOR**: KDoc — IssueVisibilityPort는 "이슈 VIEW 가시성(매트릭스+보안등급) 판정의 단일 source of truth를 재사용한다, 새 보안 경로 금지, default 금지(fail-closed)". SharedKernelBoundaryArchTest 통과(원시 타입만).
 
 **검증**: `cd backend && ./gradlew :shared-kernel:test --tests "*RecipientPortsDefaultTest*"`
 
@@ -87,6 +87,7 @@ notification-dashboard BC. FR-NT-01 notification_policies.recipient_role을
 - depends-on: [1]
 
 **RED**: fake 포트로 5개 역할 단위 테스트 — WATCHER(다중), COMPONENT_LEAD(다중·lead 없음 제외), PREVIOUS_ASSIGNEE(직전 1명·이력 없음 null), PROJECT_MEMBER(전체), PROJECT_ADMIN(admin만), RULE_OWNER skip(로그). 실패: else→skip이라 빈 목록.
+- **C4 — 기존 테스트 갱신 필수**: 현 `EventRecipientResolverTest`(생성자 1-인자 mock, line ~26)는 `ProjectRecipientLookupPort` 추가로 **컴파일 깨짐** → 생성자 갱신. 기존 line 217-234의 "WATCHER/PROJECT_ADMIN은 빈 목록으로 skip" 단언은 **이제 의미 상실** → **WATCHER/PROJECT_ADMIN은 해석 단언으로 교체, RULE_OWNER skip 단언만 유지**. 가짜 그린 방지.
 
 **GREEN**:
 - `EventRecipientResolver` 생성자에 `ProjectRecipientLookupPort` 추가 주입.
@@ -104,30 +105,33 @@ notification-dashboard BC. FR-NT-01 notification_policies.recipient_role을
 - files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/recipient/EventRecipientResolver.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/recipient/EventRecipientResolverTest.kt`]
 - depends-on: [1, 2]   # 같은 파일, Task 2 다음 직렬
 
-**RED**: visibility fake 포트로 — (a) 권한 없는 user 제외(보안수준 제한 이슈), (b) **기존 MENTIONED/REPORTER/ASSIGNEE도 필터 통과**(FR7 동작 강화), (c) issueKey=null 이벤트는 필터 비대상, (d) dedup/actor 제외 후 visibility 순서. 실패: 필터 미적용.
+**RED**: visibility fake 포트로 — (a) 권한 없는 user 제외(보안수준 제한 이슈), (b) **기존 MENTIONED/REPORTER/ASSIGNEE도 필터 통과**(FR7 동작 강화), (c) **C-S2 — 보안수준 제한 이슈 + 권한 없는 멘션 대상 → 제외**(멘션도 누출 차단 우선, 명시 케이스), (d) issueKey=null 이벤트는 필터 비대상, (e) dedup/actor 제외 후 visibility 순서, (f) **C3/B-SEC-3 — visibility 포트가 예외를 던지면 `resolve()`가 예외 전파**(빈 목록으로 삼키지 않음 = fail-closed). 실패: 필터 미적용.
 
 **GREEN**:
-- 생성자에 `IssueVisibilityPort` 주입.
-- `resolve()` 말미: actor 제외 + dedup **이후** distinct userId 추출 → `issueKey != null`이면 `filterVisible(issueKey, userIds)` 1회 호출 → 통과 userId의 (userId, channel)만 유지.
+- 생성자에 `IssueVisibilityPort` **non-null 필수 주입**(빈 부재 = 부팅 실패, allow-all fallback/`?:` 금지 — B-SEC-3).
+- `resolve()` 말미: actor 제외 + dedup **이후** distinct userId 추출 → `issueKey != null`이면 `filterVisibleUserIds(issueKey, userIds)` 1회 호출 → 통과 userId의 (userId, channel)만 유지. 포트 예외는 잡지 않고 전파(worker가 메시지 보류·재전달).
 
-**REFACTOR**: 필터 단계 private 메서드 + KDoc(G3 — 런타임 장애 시 포트가 예외를 던져 이벤트 보류, allow-all 삼킴 금지).
+**REFACTOR**: 필터 단계 private 메서드 + KDoc(G3 — 런타임 장애 시 포트 예외 전파로 이벤트 보류, allow-all 삼킴 금지).
 
 **검증**: `cd backend && ./gradlew :notification:test --tests "*EventRecipientResolverTest*"`
 
-### Task 4. issue-tracking adapter — IssueRecipientLookupAdapter 확장 + ComponentRepository 메서드
+### Task 4. issue-tracking adapter — IssueRecipientLookupAdapter 확장 + repo 메서드 신설 (v2)
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/notification/IssueRecipientLookupAdapter.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/component/repository/ComponentRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/notification/IssueRecipientLookupAdapterIntegrationTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/notification/IssueRecipientLookupAdapter.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/component/repository/ComponentRepository.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/history/IssueChangeHistoryRepository.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/history/JdbcIssueChangeHistoryRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/notification/IssueRecipientLookupAdapterIntegrationTest.kt`]
 - depends-on: [1]
+- **주의 B-ENG-2**: 아래 JdbcIssueChangeHistoryRepository 실제 구현 클래스명은 impl 시 grep 확인(파일명이 다를 수 있음 — `find ... -name "*IssueChangeHistory*"`).
 
 **RED**: Testcontainers 통합 — 시드 이슈(워처 N, 컴포넌트 2개 중 lead 1개, assignee 변경 이력)에 `findRecipients(issueKey)` 호출 시 watcherIds/componentLeadIds/previousAssigneeId 채워짐. 미할당→할당 from_value, 이력 0 → null. 실패: 필드 빈.
+- repo 메서드 신설 RED: `IssueChangeHistoryRepository.findLatestAssigneeChangeFromValue(issueId): String?`가 최근 field='assignee' 변경의 from_value를 반환(없으면 null).
 
 **GREEN**:
+- **B-ENG-2 — `IssueChangeHistoryRepository`에 `findLatestAssigneeChangeFromValue(issueId): String?` 신설**(append-only 인터페이스에 읽기 메서드 추가, 불변식 무해) + Jdbc 구현(field='assignee' AND group.issue_id=? ORDER BY id DESC LIMIT 1, from_value). 전 이력 메모리 로드 금지(단일 쿼리).
 - `ComponentRepository`에 `findLeadUserIdsByIssue(issueId): List<UUID>` 추가(issue_components ⋈ components, lead_user_id NOT NULL, deleted_at IS NULL, DISTINCT).
-- `IssueRecipientLookupAdapter`에 `IssueWatcherRepository`·`ComponentRepository`·`IssueChangeHistoryRepository` 주입. 동일 issueId로 watcher 목록·component lead·직전 assignee(최근 field='assignee' 변경 from_value 파싱) 채움. 이슈 미존재 → empty.
+- `IssueRecipientLookupAdapter`에 `IssueWatcherRepository`·`ComponentRepository`·`IssueChangeHistoryRepository` 주입. 동일 issueId로 watcher 목록·component lead·직전 assignee 채움. 이슈 미존재 → empty.
 
-**REFACTOR**: from_value 파싱 헬퍼(UUID 텍스트/'NONE' 리터럴 방어), N+1 없는 단일 조회 묶음.
+**REFACTOR**: from_value 파싱 헬퍼(UUID 텍스트/'NONE'·null 방어, 파싱 실패→null fail-safe), N+1 없는 단일 조회 묶음.
 
 **검증**: `cd backend && ./gradlew :issue-tracking:test --tests "*IssueRecipientLookupAdapterIntegrationTest*"`
 
@@ -146,22 +150,25 @@ notification-dashboard BC. FR-NT-01 notification_policies.recipient_role을
 
 **검증**: `cd backend && ./gradlew :identity-access:test --tests "*ProjectRecipientLookupAdapterIntegrationTest*"`
 
-### Task 6. IssueVisibilityPort adapter — 보안수준 가시성 필터 (보안)
+### Task 6. IssueVisibilityPort 구현 — identity-access 배치 가시성 필터 (보안, 재설계 v2)
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/notification/IssueVisibilityAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/notification/IssueVisibilityAdapterIntegrationTest.kt`]
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/notification/IssueVisibilityAdapter.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/notification/IssueVisibilityAdapterIntegrationTest.kt`]
 - depends-on: [1]
+- **BC = identity-access**(issue-tracking 아님). 단건 이슈 VIEW 가시성의 source of truth가 identity-access(`IdentityAccessIssuePermissionResolver` + `IssueSecurityDecider` + `IssueSecurityLookup`)이기 때문. 패키지 경로는 impl 시 기존 issuesecurity/permission 패키지 관례 확인 후 확정.
 
-**RED**: Testcontainers — (a) 보안수준 미설정 이슈 → 전체 통과(unrestricted), (b) 보안수준 설정 이슈 → 접근 가능 등급 멤버만 통과·나머지 제외, (c) reporter/assignee 조건 등급은 해당 역할자만, (d) 이슈 미존재 → 빈. 실패: adapter 없음.
+**핵심(B-SEC-1·2·3 해소)**: `accessibleLevels` 재조립을 **폐기**. notification에 노출할 `IssueVisibilityPort.filterVisibleUserIds(issueKey, candidateIds)`를 identity-access가 구현하되, **기존 검증된 단건 VIEW 판정을 재사용**한다. 새 보안 판정 경로를 만들지 않는다(drift=누출).
+
+**RED**: Testcontainers — (a) 보안수준 미설정 + VIEW_ISSUE 권한 없는 멤버 → **제외**(B-SEC-1: 매트릭스 게이트 작동), (b) 보안수준 미설정 + VIEW 권한 있는 멤버 → 통과, (c) 보안수준 설정 이슈 → 등급 멤버(static/group/role)만 통과, (d) reporter/assignee 조건 등급은 **이 이슈의** reporter/assignee일 때만(IssueSecurityDecider 정확성), (e) 고아 등급(멤버0) → 보수적 차단, (f) **C-S5 — 소프트삭제 이슈 → 빈**, (g) 이슈 미존재 → 빈. 실패: adapter 없음.
 
 **GREEN**:
-- `IssueVisibilityAdapter(@Component)` — `IssueRepository`(이슈의 security_level_id·reporter·assignee 조회) + 기존 `IssueSecurityDirectory`(accessibleLevels) 재사용. 이슈 level_id null → 전체 통과. level 있으면 각 candidate userId의 `accessibleLevels(userId, projectKey)`로 staticLevelIds∪(reporter면 reporterLevelIds)∪(assignee면 assigneeLevelIds)에 이슈 level_id 포함 여부 판정.
-- prod 부팅 가드 검토(IssueSecurityDirectory는 !prod AlwaysAllow stub 존재 — 일관 동작).
+- `IssueVisibilityAdapter(@Component)` — issueKey로 이슈 컨텍스트(projectKey, reporterId, assigneeId, securityLevelId) 조회는 **기존 `IssueSecurityLookup`(deleted_at 필터 검증됨) 재사용**. 후보 userId 집합에 대해 **VIEW_ISSUE 매트릭스 권한 + 보안등급 게이트(`IssueSecurityDecider`)를 결합 적용**(단건 VIEW 판정과 동일 규칙). 관리자 우회 없음(ADR §결정5).
+- N+1 최소화: 보안등급 미설정이어도 VIEW 매트릭스는 항상 적용. 후보별 판정이 불가피하면 role/group 조회를 배치/캐시로 묶어 메시지당 쿼리 폭증 회피(C2). 가능하면 set-based 1회.
 
-**REFACTOR**: 판정 로직 캡슐화 + 빠른 경로(level_id null/ unrestricted) 우선. **security-engineer는 IssuePermissionResolver/IssueSecurityDirectory 중 정확한 재사용 대상을 impl에서 확정**(가시성=VIEW 권한과 보안등급 둘 다 관여하는지 검토).
+**REFACTOR**: 판정을 기존 resolver/decider 위임으로 캡슐화(복제 금지). **prod 부팅 가드 표현 정정**: BTS는 cross-BC 배포 조립 모듈 부재([[no-cross-bc-deployment-assembly]])라 "prod 부팅 가드"는 실증 불가 → IssueVisibilityPort는 **non-null 필수 주입**으로 빈 부재 시 부팅 실패가 안전망, test-assembled가 현 표준임을 KDoc에 명시.
 
-**검증**: `cd backend && ./gradlew :issue-tracking:test --tests "*IssueVisibilityAdapterIntegrationTest*"`
+**검증**: `cd backend && ./gradlew :identity-access:test --tests "*IssueVisibilityAdapterIntegrationTest*"`
 
 ### Task 7. end-to-end 통합 + ArchUnit BC 격리 확인
 
@@ -170,22 +177,41 @@ notification-dashboard BC. FR-NT-01 notification_policies.recipient_role을
 - files: [`backend/modules/notification/src/test/kotlin/com/bts/notification/worker/RecipientResolutionIntegrationTest.kt`]
 - depends-on: [2, 3, 4, 5, 6]
 
-**RED**: Testcontainers full-context — 이벤트(transition, 워처+컴포넌트 lead+멤버 시드, 보안수준 일부 제한) 발행 → NotificationWorker 소비 → notifications 테이블에 visibility 통과 수신자만 기록. actor 제외·dedup 확인. 실패: 미해석/누출.
+**RED**: Testcontainers full-context — 이벤트(transition, 워처+컴포넌트 lead+멤버 시드, **보안수준 제한 이슈 + VIEW 권한 없는 멤버 포함**) 발행 → NotificationWorker 소비 → notifications 테이블에 **visibility 통과 수신자만** 기록(권한 없는 멤버 미기록=누출 차단 단언). actor 제외·dedup 확인. 실패: 미해석/누출.
 
-**GREEN**: 실 adapter 빈 등록(또는 TestcontainersConfig stub 보강). 배선만, 로직 변경 없음.
+**GREEN**:
+- **C5/B-SEC-3 — 실 adapter 강제**: test-assembled 컨텍스트에 `IssueVisibilityAdapter`·`ProjectRecipientLookupAdapter`·`IssueRecipientLookupAdapter` **실 구현 빈 등록**. AlwaysAllow류 stub 등록 금지(누출 못 잡는 가짜 그린). notification 컨텍스트가 포트 빈을 못 찾으면 부팅 실패하도록 non-null 주입 유지.
+- 신규 @Component(T5·T6)가 기존 전체-컨텍스트 통합테스트 부팅을 깨면([[fr-nt-02-email-channel-done]] 선례) TestcontainersConfig에 실 빈 보강(stub 아님).
 
 **REFACTOR**: ArchUnit BC 격리(notification → shared-kernel만) 룰 재확인, detekt/ktlint baseline 동결.
 
 **검증**: `cd backend && ./gradlew :notification:test --tests "*RecipientResolutionIntegrationTest*"` + `:notification:test --tests "*ArchTest*"`
 
-## Plan 메타
+## Plan 메타 (v2 — 리뷰 반영)
 
 - task 수: 7
-- 모듈 분포: SK(T1) · NT(T2,T3,T7) · IT(T4,T6) · IA(T5)
-- 예상 wave: wave1=T1 / wave2=T2,T4,T5(+T6는 IT 모듈이라 T4와 직렬화 가능) / wave3=T3,T6 / wave4=T7. 약 4 wave.
+- 모듈 분포 (v2): SK(T1) · NT(T2,T3,T7) · IT(T4) · **IA(T5,T6)** — visibility(T6)가 issue-tracking→identity-access로 이동.
+- 예상 wave (v2): wave1=T1 / wave2=T2(NT),T4(IT),T5(IA) / wave3=T3(NT,T2후),T6(IA,T5와 같은 모듈 직렬) / wave4=T7. 약 4 wave. **T5·T6 둘 다 IA 모듈이라 같은 wave 불가(test 컴파일 공유, [[bts-plan-wave-gradle-module-compile]])** → bts-impl이 직렬화. C6 해소: T6 depends-on [1]이나 IA 모듈 직렬화로 T5와 같은 wave에 안 떨어짐.
 - TDD 강제: yes (test 커밋 선행 자동 검증)
-- 보안: T3·T6는 security-engineer (visibility 필터 = 정보 누출 차단). visibility 판정은 기존 IssueSecurityDirectory 재사용.
+- 보안: T3·T6 = security-engineer. **visibility 판정 = 기존 IssuePermissionResolver(VIEW 매트릭스)+IssueSecurityDecider+IssueSecurityLookup 재사용**(accessibleLevels 재조립 폐기, source of truth 단일화). IssueVisibilityPort는 non-null 필수 주입(fail-open 차단).
 - 마이그레이션: 0 (전부 기존 테이블 읽기). enum/시드/스키마 변경 0 → FR 카운트·정본 동기화 불요.
 - D6/D7(프론트/E2E): 백엔드(D1~D5) 완결 우선, 별도 판단(스펙 §D6/D7 분리 참조).
+- **리뷰 BLOCKER 4건 전부 plan 반영**(B-ENG-2 repo메서드 / B-SEC-1·2 visibility 재설계 / B-SEC-3 non-null 주입). 게이트 1에서 Maxi 검토.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-19, 독립 에이전트)
+- **BLOCKER B-ENG-1**: visibility "배치 1회"는 `IssueSecurityDirectory.accessibleLevels`(actor당 호출)로 불가능 → N+1(1000명×7쿼리). → B-SEC-2 배치 메서드 신설로 통합 해소.
+- **BLOCKER B-ENG-2**: `IssueChangeHistoryRepository`에 "직전 assignee 조회" 메서드 부재(record/findByIssue/findByIssuePaged/countByIssue만). → 신설 + plan files 반영 필요.
+- CONCERN: C1(visibility BC 위치 오기재), C2(워커 무트랜잭션×per-user), C3(fail-closed 테스트 누락), C4(기존 EventRecipientResolverTest 생성자/skip 단언 깨짐), C5(full-context 부팅 시 신규 @Component 포트 stub 필요), C6(T6 depends-on이 wave 배치와 어긋나 IT 모듈 race).
+- NIT: N2(Task5 GREEN 표기 깨짐), N3(from_value 'NONE' 가정), N4(다대다 표현).
+
+### plan-security-review (2026-06-19, 독립 에이전트) — **재설계 필수**
+- **BLOCKER B-SEC-1 (누출)**: 단건 이슈 가시성 source of truth = `IssuePermissionResolver.hasPermission(actorId, VIEW, IssueScope.Issue(key))` (VIEW_ISSUE 매트릭스 + 보안등급 게이트 **결합**, `IdentityAccessIssuePermissionResolver.kt:72-120`). plan T6의 `accessibleLevels` 단독 재사용은 VIEW 매트릭스 게이트를 빠뜨려 **VIEW 권한 없는 멤버에게 누출**(특히 보안수준 미설정 이슈 + 광역 역할).
+- **BLOCKER B-SEC-2 (drift)**: reporter/assignee 조건 등급 직접 재조립은 `IssueSecurityDecider`(검증된 단건 판정 순수함수)와 별도 보안 경로 생성 → drift = 누출. → **identity-access에 `filterVisibleUserIds(issueKey, candidateIds): Set<UUID>` 배치 메서드 신설**(기존 VIEW 판정 + IssueSecurityDecider 재사용, source of truth 단일화 + N+1 회피). 신규 보안 판정 경로 금지.
+- **BLOCKER B-SEC-3 (fail-open)**: notification은 issue-tracking/identity-access 미의존, cross-BC 결선은 test-assembled에서만([[no-cross-bc-deployment-assembly]]). "prod 부팅 가드"는 실재하지 않음. IssueVisibilityPort default=allow-all + 빈 부재 = silent 누출([[crossbc-resolver-nullable-fail-open]]). → **non-null 필수 주입**, allow-all default 제거(또는 fail-closed), T7은 실 adapter 강제(stub=가짜그린).
+- CONCERN: C-S2(멘션 전용 누출 테스트 명시), C-S5(소프트삭제 이슈→제외, 기존 `IssueSecurityLookup` deleted_at 필터 재사용).
+- 누락 없음 확인: 관리자 우회(ADR §결정5대로 우회 없음이 정답), 이메일 채널(userId 단위 필터로 자동 제외), actor/dedup 순서(안전).
+
+### 해소 — plan 수정 (아래 ## Plan v2 반영)
+B-SEC-2 권장(identity-access 배치 visibility 메서드)이 B-ENG-1/B-SEC-1/B-SEC-2/B-SEC-3를 통합 해소. visibility 아키텍처를 **`accessibleLevels` 재조립 → identity-access `IssueVisibilityPort` 구현(IssuePermissionResolver VIEW 판정 + IssueSecurityDecider 배치 재사용)**으로 재설계. BC도 issue-tracking → identity-access로 이동. **이 재설계는 게이트 1에서 Maxi 검토 핵심 항목.**
