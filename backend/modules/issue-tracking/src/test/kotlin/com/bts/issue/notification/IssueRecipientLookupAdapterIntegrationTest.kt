@@ -2,6 +2,7 @@
 
 package com.bts.issue.notification
 
+import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
@@ -9,10 +10,8 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.history.IssueChangeGroup
 import com.bts.issue.history.IssueChangeItem
 import com.bts.issue.history.JdbcIssueChangeHistoryRepository
-import com.bts.issue.repository.IssueRepository
 import com.bts.issue.repository.IssueTestcontainersBase
 import com.bts.issue.watcher.repository.IssueWatcherRepository
-import com.bts.issue.component.repository.ComponentRepository
 import com.bts.shared.issue.IssueRecipients
 import com.bts.shared.issue.IssueTypeId
 import org.assertj.core.api.Assertions.assertThat
@@ -47,7 +46,6 @@ import java.util.UUID
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueRecipientLookupAdapterIntegrationTest : IssueTestcontainersBase() {
-
     private lateinit var adapter: IssueRecipientLookupAdapter
     private lateinit var watcherRepository: IssueWatcherRepository
     private lateinit var componentRepository: ComponentRepository
@@ -70,12 +68,13 @@ class IssueRecipientLookupAdapterIntegrationTest : IssueTestcontainersBase() {
         componentRepository = ComponentRepository(dsl)
         historyRepository = JdbcIssueChangeHistoryRepository(namedJdbc)
 
-        adapter = IssueRecipientLookupAdapter(
-            issueRepository = repository,
-            watcherRepository = watcherRepository,
-            componentRepository = componentRepository,
-            historyRepository = historyRepository,
-        )
+        adapter =
+            IssueRecipientLookupAdapter(
+                issueRepository = repository,
+                watcherRepository = watcherRepository,
+                componentRepository = componentRepository,
+                historyRepository = historyRepository,
+            )
 
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.prepareStatement(
@@ -109,8 +108,7 @@ class IssueRecipientLookupAdapterIntegrationTest : IssueTestcontainersBase() {
         }
     }
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 초기화 전 접근 — setupAdapter 확인" }
+    private fun requireTaskTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 초기화 전 접근 — setupAdapter 확인" }
 
     /**
      * 이슈를 삽입하고 반환된 Issue 를 제공하는 헬퍼.
@@ -273,15 +271,16 @@ class IssueRecipientLookupAdapterIntegrationTest : IssueTestcontainersBase() {
                 issueId = inserted.id.value,
                 issueKey = inserted.key.value,
                 actorId = reporterId,
-                items = listOf(
-                    IssueChangeItem(
-                        field = "assignee",
-                        fromValue = previousAssignee.toString(),
-                        toValue = UUID.randomUUID().toString(),
-                        fromLabel = null,
-                        toLabel = null,
+                items =
+                    listOf(
+                        IssueChangeItem(
+                            field = "assignee",
+                            fromValue = previousAssignee.toString(),
+                            toValue = UUID.randomUUID().toString(),
+                            fromLabel = null,
+                            toLabel = null,
+                        ),
                     ),
-                ),
             ),
         )
 
@@ -308,15 +307,16 @@ class IssueRecipientLookupAdapterIntegrationTest : IssueTestcontainersBase() {
                 issueId = inserted.id.value,
                 issueKey = inserted.key.value,
                 actorId = reporterId,
-                items = listOf(
-                    IssueChangeItem(
-                        field = "status",
-                        fromValue = "open",
-                        toValue = "in_progress",
-                        fromLabel = null,
-                        toLabel = null,
+                items =
+                    listOf(
+                        IssueChangeItem(
+                            field = "status",
+                            fromValue = "open",
+                            toValue = "in_progress",
+                            fromLabel = null,
+                            toLabel = null,
+                        ),
                     ),
-                ),
             ),
         )
 
