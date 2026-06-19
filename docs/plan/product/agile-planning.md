@@ -195,13 +195,13 @@
 
 **우선순위**. 높음 | **선행**. §6.1, notification-dashboard §2 | **Plan slug**. `agile/dates-overdue`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — D-day 트리거 (스케줄러) (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — Spring `@Scheduled` 일 1회 + pgmq 이벤트 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 알림 토스트 (책임. frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. backend-engineer)
+- [x] D2. 명세 — D-day 트리거 (스케줄러) (책임. backend-engineer)
+- [x] D3. 데이터 모델 — (활용 + V026 부분 인덱스) (책임. db-engineer)
+- [x] D4. 백엔드 — Spring `@Scheduled` 일 1회 + pgmq 이벤트 (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D6. 프론트 UI — 알림 토스트 (FR-NT-02 제네릭 토스트 재사용, 신규 코드 0) (책임. frontend-engineer)
+- [x] D7. E2E (스케줄러 시간기반 → 발행 통합테스트 + FR-NT-02 토스트 E2E로 대체) (책임. qa-engineer)
 
 ## §7 에픽 (FR-EP, 2개)
 

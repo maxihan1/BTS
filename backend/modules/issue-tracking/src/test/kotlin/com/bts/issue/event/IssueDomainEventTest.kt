@@ -139,6 +139,46 @@ class IssueDomainEventTest : DescribeSpec({
         }
     }
 
+    describe("IssueDueSoon") {
+        val event =
+            IssueDueSoon(
+                issueKey = "PROJ-1",
+                projectKey = "PROJ",
+                occurredAt = now,
+            )
+
+        it("직렬화 시 type 필드가 'issue.due_soon' 으로 포함된다") {
+            val json = mapper.writeValueAsString(event)
+            json shouldContain "\"type\":\"issue.due_soon\""
+        }
+
+        it("round-trip: IssueDomainEvent 로 역직렬화하면 원본과 동일하다") {
+            val json = mapper.writeValueAsString(event)
+            val restored = mapper.readValue(json, IssueDomainEvent::class.java)
+            restored shouldBe event
+        }
+    }
+
+    describe("IssueOverdue") {
+        val event =
+            IssueOverdue(
+                issueKey = "PROJ-1",
+                projectKey = "PROJ",
+                occurredAt = now,
+            )
+
+        it("직렬화 시 type 필드가 'issue.overdue' 로 포함된다") {
+            val json = mapper.writeValueAsString(event)
+            json shouldContain "\"type\":\"issue.overdue\""
+        }
+
+        it("round-trip: IssueDomainEvent 로 역직렬화하면 원본과 동일하다") {
+            val json = mapper.writeValueAsString(event)
+            val restored = mapper.readValue(json, IssueDomainEvent::class.java)
+            restored shouldBe event
+        }
+    }
+
     describe("다형성 역직렬화") {
         it("type=issue.created JSON 을 IssueDomainEvent 로 읽으면 IssueCreated 인스턴스다") {
             val json =
@@ -198,6 +238,34 @@ class IssueDomainEventTest : DescribeSpec({
                 """.trimIndent()
             val event = mapper.readValue(json, IssueDomainEvent::class.java)
             (event is IssueSoftDeleted) shouldBe true
+        }
+
+        it("type=issue.due_soon JSON 을 IssueDomainEvent 로 읽으면 IssueDueSoon 인스턴스다") {
+            val json =
+                """
+                {
+                  "type": "issue.due_soon",
+                  "issueKey": "PROJ-1",
+                  "projectKey": "PROJ",
+                  "occurredAt": "2026-01-01T00:00:00Z"
+                }
+                """.trimIndent()
+            val event = mapper.readValue(json, IssueDomainEvent::class.java)
+            (event is IssueDueSoon) shouldBe true
+        }
+
+        it("type=issue.overdue JSON 을 IssueDomainEvent 로 읽으면 IssueOverdue 인스턴스다") {
+            val json =
+                """
+                {
+                  "type": "issue.overdue",
+                  "issueKey": "PROJ-1",
+                  "projectKey": "PROJ",
+                  "occurredAt": "2026-01-01T00:00:00Z"
+                }
+                """.trimIndent()
+            val event = mapper.readValue(json, IssueDomainEvent::class.java)
+            (event is IssueOverdue) shouldBe true
         }
     }
 })

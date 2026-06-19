@@ -152,6 +152,24 @@ data class ReleaseNoteIssueRow(
 )
 
 /**
+ * 마감일 스캔 결과 경량 projection.
+ *
+ * [IssueRepository.findOpenIssuesDueOn] / [IssueRepository.findOpenOverdueIssues] 가 반환하는
+ * 최소 필드 집합. 스케줄러는 풀 Issue 도메인 객체가 아니라 이벤트 발행에 필요한 키 2개만 필요하다.
+ *
+ * projectKey 는 issues × projects JOIN 으로 projects.key 를 직접 읽는다.
+ * issues.key 파싱(substringBefore) 대신 JOIN 을 선택한 이유: 스캔 쿼리는 다건 조회라
+ * PROJECTS.KEY 를 한 번에 가져오는 JOIN 이 더 명시적이고 도메인 불일치 위험이 없다.
+ *
+ * @property issueKey 이슈 전역 식별자 문자열 (예: "BTS-1").
+ * @property projectKey 소속 프로젝트 키 (예: "BTS").
+ */
+data class IssueDueScanItem(
+    val issueKey: String,
+    val projectKey: String,
+)
+
+/**
  * 이슈 Repository.
  *
  * jOOQ DSLContext 를 통해 issues / projects 테이블에 접근한다.
@@ -1270,10 +1288,75 @@ class IssueRepository(
         }.map { record -> record.get("label", String::class.java) }
     }
 
+    /**
+     * 지정 날짜에 마감 예정인 열린 이슈 목록을 반환한다 (마감임박 스캔).
+     *
+     * `due_date = date AND resolution_id IS NULL AND issues.deleted_at IS NULL` 조건 +
+     * `projects.deleted_at IS NULL`(소프트삭제 프로젝트 이슈는 알림 대상 제외).
+     * V026 부분 인덱스(`idx_issues_due_date_open`)가 issues 필터를 가속한다.
+     *
+     * projectKey 는 issues × projects INNER JOIN 으로 projects.key 를 직접 읽는다.
+     * issues.key 파싱(substringBefore) 대신 JOIN — 다건 스캔에서 정확성이 우선.
+     *
+     * @param date 조회 기준 날짜 (= due_date).
+     * @return [IssueDueScanItem] 목록. 없으면 빈 리스트.
+     */
+    @Transactional(readOnly = true)
+    fun findOpenIssuesDueOn(date: LocalDate): List<IssueDueScanItem> {
+        log.debug("findOpenIssuesDueOn date={}", date)
+        return dsl.select(ISSUES.KEY, PROJECTS.KEY)
+            .from(ISSUES)
+            .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+            .where(openIssue())
+            .and(PROJECTS.DELETED_AT.isNull)
+            .and(ISSUES.DUE_DATE.eq(date))
+            .fetch { record ->
+                IssueDueScanItem(
+                    issueKey = record.get(ISSUES.KEY) ?: error("issues.key must not be null"),
+                    projectKey = record.get(PROJECTS.KEY) ?: error("projects.key must not be null"),
+                )
+            }
+    }
+
+    /**
+     * 지정 날짜 이전에 마감이 지난 열린 이슈 목록을 반환한다 (지연 스캔).
+     *
+     * `due_date < today AND resolution_id IS NULL AND issues.deleted_at IS NULL` 조건 +
+     * `projects.deleted_at IS NULL`(소프트삭제 프로젝트 이슈는 알림 대상 제외).
+     * V026 부분 인덱스(`idx_issues_due_date_open`)가 issues 필터를 가속한다.
+     *
+     * @param today 오늘 날짜. due_date 가 이 날보다 과거인 이슈를 반환한다.
+     * @return [IssueDueScanItem] 목록. 없으면 빈 리스트.
+     */
+    @Transactional(readOnly = true)
+    fun findOpenOverdueIssues(today: LocalDate): List<IssueDueScanItem> {
+        log.debug("findOpenOverdueIssues today={}", today)
+        return dsl.select(ISSUES.KEY, PROJECTS.KEY)
+            .from(ISSUES)
+            .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+            .where(openIssue())
+            .and(PROJECTS.DELETED_AT.isNull)
+            .and(ISSUES.DUE_DATE.lt(today))
+            .fetch { record ->
+                IssueDueScanItem(
+                    issueKey = record.get(ISSUES.KEY) ?: error("issues.key must not be null"),
+                    projectKey = record.get(PROJECTS.KEY) ?: error("projects.key must not be null"),
+                )
+            }
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     /** 활성 이슈를 key 로 필터하는 jOOQ Condition. */
     private fun activeByKey(key: IssueKey): Condition = ISSUES.KEY.eq(key.value).and(ISSUES.DELETED_AT.isNull)
+
+    /**
+     * 열린 이슈(미해결·미삭제) 공통 필터 jOOQ Condition.
+     *
+     * `resolution_id IS NULL AND deleted_at IS NULL` — 두 스캔 쿼리([findOpenIssuesDueOn],
+     * [findOpenOverdueIssues])에서 공유하는 "열림" 조건. V026 부분 인덱스 predicate 와 일치.
+     */
+    private fun openIssue(): Condition = ISSUES.RESOLUTION_ID.isNull.and(ISSUES.DELETED_AT.isNull)
 
     /**
      * 이슈↔버전 조인 테이블의 연결 목록을 원자적으로 교체한다 (낙관락 OCC).
