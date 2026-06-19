@@ -298,13 +298,15 @@
 
 **우선순위**. 높음 | **선행**. §4.1.1 | **Plan slug**. `issue/mentions-autocomplete`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — prefix 매칭 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (users 활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/users/autocomplete?q=` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — `@` 트리거 popover (TipTap 확장) (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+> **구현 deviation (#158, Maxi 확정 2026-06-17)**. **프론트 전용·백엔드 신규 0**. D4 `GET /api/v1/users/autocomplete?q=` → **기존 `GET /api/v1/users?query=` 재사용**(FR-IS-03 Task 4 / ADR `2026-06-01-issue-assignee-user-lookup-port` §2, 담당자 셀렉터와 동일 엔드포인트). 매칭은 명세 "prefix" → **substring(ILIKE `%q%`) 유지**(Slack/GitHub식 관대 매칭). cross-BC 포트 불요(프론트가 identity-access 직접 호출). D6 "TipTap 확장" → **마크다운 textarea 기반 `@` typeahead**(TipTap 미도입, 의존성 0). 적용 위치는 `IssueDescription` 편집모드 Write 탭 textarea 단일(이슈 생성폼 description textarea·댓글 기능 부재로 후속). classify 조정 type=ui·agent=frontend-engineer. **전체 완료(프론트 #158, 백엔드 변경 0).**
+
+- [x] D1. 도메인 — 신규 엔티티 0, 기존 User 읽기. cross-BC 경계 해소(순수 identity-access) (책임. frontend-engineer) — PR #158
+- [x] D2. 명세 — **deviation. substring 재사용**(prefix 아님), 트리거 경계/쿼리 추출/IME 규칙 (책임. frontend-engineer) — PR #158
+- [x] D3. 데이터 모델 — (users 활용) 읽기만, 마이그레이션 0 (책임. —) — PR #158
+- [x] D4. 백엔드 — **deviation. 신규 0**(기존 `GET /api/v1/users?query=` 재사용) (책임. —) — PR #158
+- [x] D5. 백엔드 테스트 — **해당 없음**(백엔드 변경 0, 기존 UsersController 테스트 커버) (책임. —) — PR #158
+- [x] D6. 프론트 UI — **deviation. 마크다운 textarea `@` typeahead**(useMentionAutocomplete 훅 + MentionDropdown docked listbox, fetchUsers 재사용). caret splice·키보드 네비·IME 보류 (책임. frontend-engineer) — PR #158
+- [x] D7. E2E — issue-mention-autocomplete.spec.ts 4시나리오(클릭/키보드 선택·Escape·저장), 실 브라우저 caret 검증 (책임. qa-engineer) — PR #158
 
 ### §4.2 첨부 (FR-AC, 2개)
 
