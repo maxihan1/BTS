@@ -493,10 +493,11 @@ class IssueChangeDetectorTest : DescribeSpec({
 
         it("startDate + dueDate 동시 변경 → item 2개") {
             val before = baseIssue(startDate = null, dueDate = null)
-            val after = before.copy(
-                startDate = LocalDate.of(2025, 1, 1),
-                dueDate = LocalDate.of(2025, 3, 31),
-            )
+            val after =
+                before.copy(
+                    startDate = LocalDate.of(2025, 1, 1),
+                    dueDate = LocalDate.of(2025, 3, 31),
+                )
 
             val items = detector.detect(before, after)
 
