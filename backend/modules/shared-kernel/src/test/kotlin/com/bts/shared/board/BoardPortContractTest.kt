@@ -21,7 +21,6 @@ import java.util.UUID
  * - [BoardTransitionResult] 필드 계약(issueKey/currentStateKey/version).
  */
 class BoardPortContractTest {
-
     // ── WorkflowStateView 확장 ───────────────────────────────────────────────
 
     @Test
@@ -38,7 +37,14 @@ class BoardPortContractTest {
 
     @Test
     fun `WorkflowStateView 명시 category 와 displayOrder 를 지정하면 해당 값으로 생성된다`() {
-        val view = WorkflowStateView(key = "in-progress", name = "진행 중", isDone = false, category = "IN_PROGRESS", displayOrder = 1)
+        val view =
+            WorkflowStateView(
+                key = "in-progress",
+                name = "진행 중",
+                isDone = false,
+                category = "IN_PROGRESS",
+                displayOrder = 1,
+            )
 
         assertThat(view.category).isEqualTo("IN_PROGRESS")
         assertThat(view.displayOrder).isEqualTo(1)
@@ -46,7 +52,8 @@ class BoardPortContractTest {
 
     @Test
     fun `WorkflowStateView DONE 카테고리 명시`() {
-        val view = WorkflowStateView(key = "closed", name = "완료", isDone = true, category = "DONE", displayOrder = 2)
+        val view =
+            WorkflowStateView(key = "closed", name = "완료", isDone = true, category = "DONE", displayOrder = 2)
 
         assertThat(view.isDone).isTrue()
         assertThat(view.category).isEqualTo("DONE")
@@ -77,14 +84,15 @@ class BoardPortContractTest {
     @Test
     fun `BoardIssueView 는 모든 필드를 보존한다`() {
         val assigneeId = UUID.randomUUID()
-        val view = BoardIssueView(
-            key = "PROJ-1",
-            summary = "로그인 버그",
-            currentStateKey = "open",
-            assigneeId = assigneeId,
-            priority = 3,
-            version = 1L,
-        )
+        val view =
+            BoardIssueView(
+                key = "PROJ-1",
+                summary = "로그인 버그",
+                currentStateKey = "open",
+                assigneeId = assigneeId,
+                priority = 3,
+                version = 1L,
+            )
 
         assertThat(view.key).isEqualTo("PROJ-1")
         assertThat(view.summary).isEqualTo("로그인 버그")
@@ -96,14 +104,15 @@ class BoardPortContractTest {
 
     @Test
     fun `BoardIssueView 는 assigneeId 가 null 일 수 있다`() {
-        val view = BoardIssueView(
-            key = "PROJ-2",
-            summary = "미배정 이슈",
-            currentStateKey = "open",
-            assigneeId = null,
-            priority = 1,
-            version = 0L,
-        )
+        val view =
+            BoardIssueView(
+                key = "PROJ-2",
+                summary = "미배정 이슈",
+                currentStateKey = "open",
+                assigneeId = null,
+                priority = 1,
+                version = 0L,
+            )
 
         assertThat(view.assigneeId).isNull()
     }
@@ -114,22 +123,23 @@ class BoardPortContractTest {
     fun `IssueTransitionPort 는 default 구현 없이 추상 메서드만 선언된다`() {
         // IssueTransitionPort 에 default 구현이 없으면 익명 객체 생성 시 반드시 override 해야 한다.
         // 이 테스트는 컴파일 타임에 override 강제를 검증한다.
-        val port = object : IssueTransitionPort {
-            override fun transition(cmd: BoardTransitionCommand): BoardTransitionResult {
-                return BoardTransitionResult(
-                    issueKey = cmd.issueKey,
-                    currentStateKey = cmd.toStateKey,
-                    version = 1L,
-                )
+        val port =
+            object : IssueTransitionPort {
+                override fun transition(cmd: BoardTransitionCommand): BoardTransitionResult =
+                    BoardTransitionResult(
+                        issueKey = cmd.issueKey,
+                        currentStateKey = cmd.toStateKey,
+                        version = 1L,
+                    )
             }
-        }
 
-        val cmd = BoardTransitionCommand(
-            issueKey = "PROJ-1",
-            toStateKey = "in-progress",
-            expectedVersion = 0L,
-            resolutionId = null,
-        )
+        val cmd =
+            BoardTransitionCommand(
+                issueKey = "PROJ-1",
+                toStateKey = "in-progress",
+                expectedVersion = 0L,
+                resolutionId = null,
+            )
         val result = port.transition(cmd)
 
         assertThat(result.issueKey).isEqualTo("PROJ-1")
@@ -141,12 +151,13 @@ class BoardPortContractTest {
 
     @Test
     fun `BoardTransitionCommand 는 resolutionId 가 null 일 수 있다`() {
-        val cmd = BoardTransitionCommand(
-            issueKey = "PROJ-3",
-            toStateKey = "closed",
-            expectedVersion = 5L,
-            resolutionId = null,
-        )
+        val cmd =
+            BoardTransitionCommand(
+                issueKey = "PROJ-3",
+                toStateKey = "closed",
+                expectedVersion = 5L,
+                resolutionId = null,
+            )
 
         assertThat(cmd.issueKey).isEqualTo("PROJ-3")
         assertThat(cmd.toStateKey).isEqualTo("closed")
@@ -157,12 +168,13 @@ class BoardPortContractTest {
     @Test
     fun `BoardTransitionCommand 는 resolutionId 를 가질 수 있다`() {
         val resolutionId = UUID.randomUUID()
-        val cmd = BoardTransitionCommand(
-            issueKey = "PROJ-4",
-            toStateKey = "closed",
-            expectedVersion = 2L,
-            resolutionId = resolutionId,
-        )
+        val cmd =
+            BoardTransitionCommand(
+                issueKey = "PROJ-4",
+                toStateKey = "closed",
+                expectedVersion = 2L,
+                resolutionId = resolutionId,
+            )
 
         assertThat(cmd.resolutionId).isEqualTo(resolutionId)
     }
@@ -171,11 +183,12 @@ class BoardPortContractTest {
 
     @Test
     fun `BoardTransitionResult 는 전이 결과 필드를 보존한다`() {
-        val result = BoardTransitionResult(
-            issueKey = "PROJ-5",
-            currentStateKey = "done",
-            version = 10L,
-        )
+        val result =
+            BoardTransitionResult(
+                issueKey = "PROJ-5",
+                currentStateKey = "done",
+                version = 10L,
+            )
 
         assertThat(result.issueKey).isEqualTo("PROJ-5")
         assertThat(result.currentStateKey).isEqualTo("done")

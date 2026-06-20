@@ -1,0 +1,2 @@
+-- jOOQ 코드 생성용 초기화 SQL (agile-planning BC) — V500 테이블 구조만 미러 (시드 제외, codegen은 구조만 필요)
+-- boards / board_columns DDL은 Task 6(V500__boards.sql)에서 추가되며 동일하게 미러된다.
