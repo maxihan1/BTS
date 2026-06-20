@@ -157,11 +157,11 @@
 
 **우선순위**. 필수 | **선행**. issue-tracking §2.1.1 | **Plan slug**. `agile/worklog`
 
-- [ ] D1. 도메인 — Worklog Entry (책임. backend-engineer)
-- [ ] D2. 명세 — 추정/실제/잔여 + 시간 단위 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `worklogs(issue_id, user_id, time_spent_seconds, started_at)` (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST/PATCH/DELETE /api/v1/issues/{key}/worklogs` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 — Worklog Entry (책임. backend-engineer)
+- [x] D2. 명세 — 추정/실제/잔여 + 시간 단위 (책임. backend-engineer)
+- [x] D3. 데이터 모델 — `worklogs(issue_id, author_id, time_spent_seconds, started_at, deleted_at)` + issues 추정 3컬럼 (V027) (책임. db-engineer)
+- [x] D4. 백엔드 — `POST/GET/PATCH/DELETE /api/v1/issues/{key}/worklogs` + 추정 PATCH (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer)
 - [ ] D6. 프론트 UI — Worklog 입력 폼 + 잔여 시간 자동 계산 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 

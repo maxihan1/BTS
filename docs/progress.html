@@ -182,9 +182,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
           <div><span class="dot dot-done"></span> 완료 <b>64</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>1</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>2</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>58</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>57</b></div>
         </div>
       </div>
     </div>
@@ -810,9 +810,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:14%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 2</div>
-        <div>🔄 진행중 0</div>
+        <div>🔄 진행중 1</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 12</div>
+        <div>⬜ 대기 11</div>
       </div>
     </div>
     <h2>세부 기능 (14개)</h2>
@@ -830,13 +830,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc">지연/임박 자동 알림</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — D-day <span class="term" data-def="Trigger. 자동화 룰의 발화 조건">트리거</span> (스케줄러)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — (활용 + V026 부분 <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span>)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — <span class="term" data-def="Service Provider — IdP의 보증을 받아 로그인시키는 쪽. BTS 자신">Sp</span>ring `@Scheduled` 일 1회 + <span class="term" data-def="PostgreSQL 기반 메시지 큐 (Kafka 대체)">pgmq</span> 이벤트</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 알림 토스트 (FR-NT-02 제네릭 토스트 재사용, 신규 코드 0)</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> (스케줄러 시간기반 → 발행 통합테스트 + FR-NT-02 토스트 E2E로 대체)</li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-진행중">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">🔄</span>
         <span class="fr-id">FR-TT-01</span>
         <span class="fr-desc">Worklog (추정/실제/잔여 시간)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — Worklog Entry</li><li><span class="step-icon">⬜</span> D2 — 명세 — 추정/실제/잔여 + 시간 단위</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `worklogs(<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_id, user_id, time_spent_seconds, started_at)`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `POST/<span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>CH/DELETE /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s/{key}/worklogs`</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — Worklog 입력 폼 + 잔여 시간 자동 계산</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — Worklog Entry</li><li><span class="step-icon">✅</span> D2 — 명세 — 추정/실제/잔여 + 시간 단위</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `worklogs(<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_id, author_id, time_spent_seconds, started_at, deleted_at)` + issues 추정 3컬럼 (V027)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `POST/GET/<span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>CH/DELETE /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s/{key}/worklogs` + 추정 PATCH</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — Worklog 입력 폼 + 잔여 시간 자동 계산</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
