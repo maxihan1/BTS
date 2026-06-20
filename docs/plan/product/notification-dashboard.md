@@ -66,8 +66,8 @@
 - [x] D3. 데이터 모델 — (정책 활용, 마이그레이션 0 — 기존 테이블 읽기) (책임. db-engineer) — PR #159
 - [x] D4. 백엔드 — EventRecipientResolver 5역할(WATCHER/COMPONENT_LEAD/PREVIOUS_ASSIGNEE/PROJECT_MEMBER/PROJECT_ADMIN) + cross-BC 포트 3종 + IssueVisibilityPort(VIEW 매트릭스+보안등급 재사용, RULE_OWNER는 automation BC 부재로 skip) (책임. backend-engineer) — PR #159
 - [x] D5. 백엔드 테스트 — 단위 + Testcontainers 통합 + ArchUnit (책임. backend-engineer) — PR #159
-- [ ] D6. 프론트 UI — 정책 페이지 확장 (책임. frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 정책 페이지 확장 (책임. frontend-engineer) — PR #164 (수신자 역할 설명 동적 헬퍼 + RULE_OWNER 미지원 비활성, 9줄 범례 대신 선택역할 1줄 헬퍼+상시 안내. 공유 select.tsx 변경 0, 서버 카탈로그 위에서만 동작)
+- [x] D7. E2E (책임. qa-engineer) — PR #164 (S6 활성역할 정책 생성→SPA 영속, S7 RULE_OWNER aria-disabled+동적헬퍼+상시안내. 기존 S1~S5 보존)
 
 ### §2.4 FR-NT-04 — 사용자별 알림 구독 설정
 
