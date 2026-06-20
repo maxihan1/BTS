@@ -60,6 +60,96 @@ ADR 정정. 권한 표기 VIEW → **BROWSE** (집계는 cross-issue 목록 성�
 ✅ 통과 (self-review 1-pass — 정의된 FR이라 office-hours 스킵, Maxi 3종 결정으로 핵심 갈림길 사전 확정).
 보강 항목. period sparse 정책 · granularity 오용 관대 처리 · total 필드 · 프로젝트 존재 probe 방지(404→빈결과) · 타임존 UTC 고정 · 페이지네이션 부재 명시.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+레이어별 3 task 직렬(리포지토리 → 서비스 → 컨트롤러). 신규 스키마 0. 패키지 `com.bts.issue.worklog.aggregate.{domain,repository,application,web}`.
+
+### Task 1. 집계 도메인 타입 + 리포지토리 GROUP BY 쿼리
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/worklog/aggregate/domain/WorklogAggregate.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/worklog/aggregate/repository/WorklogAggregateRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/worklog/aggregate/repository/WorklogAggregateRepositoryTest.kt`]
+- depends-on: []
+
+**RED**: `WorklogAggregateRepositoryTest` (Testcontainers — 실 DB 시드).
+- `by=issue` 두 이슈 worklog SUM 정확 + worklogCount
+- `by=user` 두 author SUM
+- `by=period` granularity day/week/month 각 date_trunc 버킷 경계
+- `from`/`to` 필터 경계(to 당일 포함 = to+1일 00:00 UTC exclusive)
+- 다른 프로젝트 worklog 제외(project key 필터)
+- `deleted_at` 있는 worklog/issue 제외
+- 빈 결과 → `emptyList`
+- 실패 메시지(예상): `WorklogAggregateRepository` 클래스 없음
+
+**GREEN**:
+- `enum WorklogAggregateDimension { ISSUE, USER, PERIOD }`, `enum AggregateGranularity { DAY, WEEK, MONTH }`
+- `data class WorklogAggregateRow(groupKey: String, timeSpentSeconds: Long, worklogCount: Int)` — 리포는 SQL 집계만. groupKey = by=issue→`issues.key` / by=user→`author_id::text` / by=period→`to_char(date_trunc(granularity, started_at), 'YYYY-MM-DD')`. displayName(cross-BC)은 서비스 책임.
+- `WorklogAggregateRepository.aggregate(projectKey, dimension, granularity, from, to): List<WorklogAggregateRow>` — jOOQ: `worklogs w JOIN issues i ON ... AND i.deleted_at IS NULL JOIN projects p ON ... AND p.deleted_at IS NULL WHERE p.key=:project AND w.deleted_at IS NULL [AND w.started_at >= :from] [AND w.started_at < :toExcl] GROUP BY <dim>`. `@Transactional(readOnly=true)`.
+- period date_trunc는 `DSL.field("date_trunc({0}, {1})", ...)` 파라미터 바인딩(SQL 인젝션 방지 — granularity는 enum→안전 리터럴).
+
+**REFACTOR**: dimension별 groupKey 표현식 헬퍼 추출 + KDoc.
+
+**검증**: `cd backend && ./gradlew :modules:issue-tracking:test --tests "*WorklogAggregateRepositoryTest"`
+
+### Task 2. WorklogAggregateService — 권한 + displayName + total + 정렬
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/worklog/aggregate/application/WorklogAggregateService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/worklog/aggregate/application/WorklogAggregateServiceTest.kt`]
+- depends-on: [1]
+
+**RED**: `WorklogAggregateServiceTest` (mockk — repo/resolver/userLookup stub).
+- 권한 없음(`resolver.hasPermission(actor, BROWSE, IssueScope.Project(key))=false`) → `IssueAccessDeniedException`(403)
+- 권한 있음 → repo 호출 → 버킷 매핑
+- `by=user` → `UserLookupPort.findDisplayNamesByIds`로 label 채움, 미존재 시 빈 문자열(fail-safe). exactly 호출 1회(불필요 조회 0 — by≠user면 호출 안 함)
+- `by=issue|period` → label = groupKey
+- `totalTimeSpentSeconds` = 버킷 합
+- 정렬: issue/user DESC(동률 label ASC), period ASC
+
+**GREEN**:
+- `aggregate(actorId, projectKey, dimension, granularity, from, to): WorklogAggregateResult`
+- 권한 먼저 검증(resolver) → 실패 `IssueAccessDeniedException`. **리소스/repo 조회보다 앞**(probe 방지).
+- `repo.aggregate(...)` → rows
+- `by=user`면 authorId(UUID) 수집 → `userLookup.findDisplayNamesByIds(ids)` → label 매핑(없으면 `""`)
+- 정렬 + total 계산 → `WorklogAggregateResult(buckets, totalTimeSpentSeconds)`, `WorklogAggregateBucket(key, label, timeSpentSeconds, worklogCount)`
+
+**REFACTOR**: label 해석 + 정렬 helper 분리.
+
+**검증**: `cd backend && ./gradlew :modules:issue-tracking:test --tests "*WorklogAggregateServiceTest"`
+
+### Task 3. WorklogAggregateController + DTO + 입력 검증 + 예외
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/worklog/aggregate/web/WorklogAggregateController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/worklog/aggregate/web/dto/WorklogAggregateResponse.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/worklog/aggregate/web/WorklogAggregateControllerTest.kt`]
+- depends-on: [2]
+
+**RED**: `WorklogAggregateControllerTest` (HTTP 통합 — Testcontainers + 실 권한 stub).
+- `by=issue|user|period` 각 200 + 응답 구조(data.buckets/total/by/granularity/from/to)
+- 400: `project` 누락 / `by` 무효 / `granularity` 무효 / `from`·`to` 형식 무효 / `from > to`
+- 401: 미인증(actor 추출 먼저 → 리소스 probe 방지)
+- 403: 권한 없는 프로젝트
+- worklog 0 → 200 + `buckets: []`, `totalTimeSpentSeconds: 0`
+
+**GREEN**:
+- `@RestController @RequestMapping("/api/v1/worklogs")`, `@GetMapping("/aggregate")`
+- 쿼리 파라미터는 **String으로 받아 수동 검증**(enum 자동 바인딩의 MethodArgumentTypeMismatch→500 변질 회피, FR-TT-01 컨트롤러 선례). `project` blank→400, `by` enum 파싱 무효→400, `granularity` 기본 day·무효→400, `from`/`to` `LocalDate.parse` 무효→400, `from>to`→400.
+- `actor = CurrentActor.current()` 최상단(미인증 401, probe 방지).
+- `service.aggregate(...)` → `WorklogAggregateResponse.from(...)` → `DataResponse`.
+- 예외 매핑: 기존 worklog 패턴 재사용 — `ResponseStatusException`(400), `IssueAccessDeniedException`→403, `IssueNotFoundException`→404. **신규 컨트롤러라 기존 `WorklogExceptionHandler`가 `@RestControllerAdvice` basePackage로 커버하는지 확인**(미커버 시 전용 핸들러 추가 — catch-all이 401/400을 500으로 삼키지 않게 명시 핸들러, 메모리 catch-all-exceptionhandler-swallows / bulk-operation-exception-handler 패턴).
+
+**REFACTOR**: 파라미터 검증 helper 추출 + KDoc(엔드포인트 표).
+
+**검증**: `cd backend && ./gradlew :modules:issue-tracking:test --tests "*WorklogAggregateControllerTest"` + 모듈 전체 `./gradlew :modules:issue-tracking:test`
+
+## Plan 메타
+
+- task 수: 3 (각 TDD 사이클, 레이어별)
+- 예상 wave: 3 (직렬 — repo→service→controller 코드 의존, T1→T2→T3)
+- 예상 시간: 약 12~18분(직렬, Testcontainers 통합 테스트 2건 포함)
+- TDD 강제: yes (test 커밋이 feat 커밋보다 먼저)
+- 범위: 백엔드 D1~D5만. D6(프론트 표+recharts)/D7(E2E)는 후속 PR
+- 추가 검증: ktlint + detekt(aggregate) + 모듈 전체 test. init_codegen 미러 불요(신규 스키마 0)
+- 리스크: (1) jOOQ date_trunc 표현식 — granularity enum→안전 리터럴 바인딩. (2) 신규 컨트롤러 예외 핸들러 커버리지 — basePackage 확인 필수. (3) period 버킷 타임존 UTC 고정(spec E6).
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
