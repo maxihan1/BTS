@@ -80,6 +80,8 @@ class WorkflowStateCatalogImpl(
                 key = state.key,
                 name = state.name,
                 isDone = state.category == StateCategory.DONE,
+                category = state.category.name,
+                displayOrder = state.displayOrder,
             )
         }
     }
