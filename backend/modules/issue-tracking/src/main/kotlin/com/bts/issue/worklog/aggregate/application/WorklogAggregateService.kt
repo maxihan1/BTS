@@ -184,13 +184,14 @@ class WorklogAggregateService(
      * @return [WorklogAggregateBucket] 목록 (label = displayName 또는 "").
      */
     private fun resolveUserLabels(rows: List<WorklogAggregateRow>): List<WorklogAggregateBucket> {
-        // C2: UUID 변환은 !! 금지 — runCatching fail-safe
+        // C2: UUID 변환은 !! 금지 — mapNotNull + Pair 로 안전하게 변환
         val uuidByKey: Map<String, UUID> =
             rows
-                .associate { row ->
-                    row.groupKey to runCatching { UUID.fromString(row.groupKey) }.getOrNull()
-                }.filterValues { it != null }
-                .mapValues { (_, v) -> v!! } // filterValues(not null) 후 !! 는 안전
+                .mapNotNull { row ->
+                    runCatching { UUID.fromString(row.groupKey) }
+                        .getOrNull()
+                        ?.let { uuid -> row.groupKey to uuid }
+                }.toMap()
 
         val validIds: Set<UUID> = uuidByKey.values.toSet()
 
