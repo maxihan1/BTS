@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import * as issuesApi from '@/api/issues'
 import { ApiError } from '@/api/client'
 import { worklogStrings, issueDetailStrings } from '@/i18n/ko'
+import { issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { IssueEstimatePanel } from './IssueEstimatePanel'
 
 // updateIssue 모킹 — 실제 API 호출 없이 캡처만
@@ -17,6 +18,13 @@ vi.mock('@/api/issues', async (importOriginal) => {
     updateIssue: vi.fn(),
   }
 })
+
+// sonner toast mock — toast.error/toast.success 호출 여부 검증용
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}))
+
+import { toast } from 'sonner'
 
 /** QueryClientProvider wrapper 팩토리 — 테스트마다 독립된 캐시 보장 */
 function makeWrapper(): ({ children }: { children: ReactNode }) => JSX.Element {
@@ -262,23 +270,36 @@ describe('IssueEstimatePanel', () => {
 
   // ── (d) 409 충돌 처리 ──────────────────────────────────────────────────────
 
-  it('409 ApiError 시 versionConflictError 토스트를 표시하고 invalidate한다', async () => {
+  it('409 ApiError 시 versionConflictError 토스트를 표시하고 issueQueryKey로 invalidate한다', async () => {
     const user = userEvent.setup()
     const issue = makeIssue({ version: 1 })
 
     const conflictError = new ApiError(409, { status: 409, message: 'Version conflict' })
     mockUpdateIssue.mockRejectedValueOnce(conflictError)
 
-    render(<IssueEstimatePanel issue={issue} />, { wrapper: makeWrapper() })
+    // queryClient를 직접 생성해 invalidateQueries spy를 부착한다
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    function WrapperWithClient({ children }: { children: ReactNode }): JSX.Element {
+      return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    }
+
+    render(<IssueEstimatePanel issue={issue} />, { wrapper: WrapperWithClient })
 
     await user.click(screen.getByTestId('estimate-save'))
 
     await waitFor(() => {
       expect(mockUpdateIssue).toHaveBeenCalledTimes(1)
     })
-    // toast가 호출됐는지는 sonner mock 없이 versionConflictError 문자열 도달로만 확인
-    // (toast 라이브러리 직접 mock은 절대규칙 위반 없이 단위테스트로 충분히 커버)
-    expect(issueDetailStrings.versionConflictError).toBeTruthy()
+
+    // 409 분기가 실행됐음을 직접 검증
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(issueDetailStrings.versionConflictError)
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: issueQueryKey(issue.key) })
   })
 
   // ── (e) disabled fail-closed ────────────────────────────────────────────────

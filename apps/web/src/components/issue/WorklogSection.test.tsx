@@ -350,12 +350,26 @@ describe('WorklogSection — (c) 자동차감 미리보기 (FR6)', () => {
   })
 })
 
+// issueQueryKey 가져오기 — cross-invalidate 단언에 사용
+import { issueQueryKey } from '@/api/useUpdateIssueSummary'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // (d) cross-invalidate — 추가/수정/삭제 성공 시 worklog 쿼리 + issueQueryKey 둘 다 invalidate
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** queryClient를 외부에 노출하는 래퍼 팩토리 — cross-invalidate spy 부착용 */
+function createWrapperWithClient() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  function Wrapper({ children }: { readonly children: ReactNode }) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  }
+  return { queryClient, Wrapper }
+}
+
 describe('WorklogSection — (d) cross-invalidate (FR9)', () => {
-  it('d1: 추가 성공 시 POST가 호출되고 토스트가 표시된다', async () => {
+  it('d1: 추가 성공 시 worklogQueryKey와 issueQueryKey 둘 다 invalidate된다 (FR9 핵심 가드)', async () => {
     const user = userEvent.setup()
     let postCalled = false
 
@@ -375,7 +389,9 @@ describe('WorklogSection — (d) cross-invalidate (FR9)', () => {
       }),
     )
 
-    const Wrapper = createWrapper()
+    const { queryClient, Wrapper } = createWrapperWithClient()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
     render(<WorklogSection issueKey="ATLAS-1" canUpdate />, { wrapper: Wrapper })
 
     await screen.findByText('기록된 작업이 없습니다.')
@@ -398,6 +414,10 @@ describe('WorklogSection — (d) cross-invalidate (FR9)', () => {
       expect(postCalled).toBe(true)
       expect(toast.success).toHaveBeenCalled()
     })
+
+    // FR9 cross-invalidate: worklog 쿼리 키와 issue 쿼리 키 둘 다 invalidate 호출됐는지 단언
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['worklogs', 'list', 'ATLAS-1'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: issueQueryKey('ATLAS-1') })
   })
 
   it('d2: 추가 실패 시 toast.error가 호출된다', async () => {
