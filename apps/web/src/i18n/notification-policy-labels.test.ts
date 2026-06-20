@@ -326,3 +326,25 @@ describe('recipientRoleDescriptions', () => {
     expect(recipientRoleDescriptions['WATCHER']).toContain('구독')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// notificationPolicyLabels.form — 신규 키 (Task 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('notificationPolicyLabels.form 신규 키 (Task 3)', () => {
+  it('recipientUnsupportedSuffix 키가 존재한다', () => {
+    expect(notificationPolicyLabels.form.recipientUnsupportedSuffix).toBeTruthy()
+  })
+
+  it('recipientUnsupportedHint 키가 존재한다', () => {
+    expect(notificationPolicyLabels.form.recipientUnsupportedHint).toBeTruthy()
+  })
+
+  it('recipientUnsupportedSuffix 값이 콜론으로 끝나지 않는다', () => {
+    expect(notificationPolicyLabels.form.recipientUnsupportedSuffix.trimEnd().endsWith(':')).toBe(false)
+  })
+
+  it('recipientUnsupportedHint 값이 콜론으로 끝나지 않는다', () => {
+    expect(notificationPolicyLabels.form.recipientUnsupportedHint.trimEnd().endsWith(':')).toBe(false)
+  })
+})

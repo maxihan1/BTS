@@ -69,8 +69,8 @@ vi.mock('@/components/ui/select', async () => {
     return createElement('span', { 'data-testid': 'select-content' }, children)
   }
 
-  function SelectItem({ value, children }: { value: string; children: React.ReactNode }) {
-    return createElement('option', { value }, children)
+  function SelectItem({ value, children, disabled }: { value: string; children: React.ReactNode; disabled?: boolean }) {
+    return createElement('option', { value, disabled }, children)
   }
 
   return { Select, SelectTrigger, SelectValue, SelectContent, SelectItem }
@@ -86,7 +86,7 @@ const CATALOG: PolicyCatalog = {
     { value: 'issue.created', publishable: true },
     { value: 'issue.assigned', publishable: false },
   ],
-  recipientRoles: ['REPORTER', 'ASSIGNEE'],
+  recipientRoles: ['REPORTER', 'ASSIGNEE', 'WATCHER', 'RULE_OWNER'],
   channels: ['EMAIL', 'IN_APP'],
 }
 
@@ -261,6 +261,91 @@ describe('NotificationPolicyForm', () => {
       expect(
         screen.getByRole('button', { name: /정책 추가/i }),
       ).not.toBeDisabled()
+    })
+  })
+
+  // ── (f) 동적 헬퍼 — 수신자 역할 선택 시 설명 표시 (Task 3-a) ─────────────
+
+  describe('동적 헬퍼 — 수신자 역할 선택 시 설명이 표시된다', () => {
+    it('초기(미선택) 상태에서는 WATCHER 설명 문구가 보이지 않는다', () => {
+      renderForm()
+
+      expect(
+        screen.queryByText('이슈를 구독(지켜보기)한 사용자'),
+      ).not.toBeInTheDocument()
+    })
+
+    it('WATCHER 선택 후 WATCHER 설명 문구가 폼에 표시된다', async () => {
+      const user = userEvent.setup()
+      renderForm()
+
+      await user.selectOptions(
+        screen.getByRole('combobox', { name: /수신자/i }),
+        'WATCHER',
+      )
+
+      expect(
+        screen.getByText('이슈를 구독(지켜보기)한 사용자'),
+      ).toBeInTheDocument()
+    })
+
+    it('ASSIGNEE 선택 후 ASSIGNEE 설명 문구가 폼에 표시된다', async () => {
+      const user = userEvent.setup()
+      renderForm()
+
+      await user.selectOptions(
+        screen.getByRole('combobox', { name: /수신자/i }),
+        'ASSIGNEE',
+      )
+
+      expect(
+        screen.getByText('현재 담당자'),
+      ).toBeInTheDocument()
+    })
+  })
+
+  // ── (g) RULE_OWNER 비활성 옵션 (Task 3-b) ────────────────────────────────
+
+  describe('RULE_OWNER 옵션이 disabled이고 라벨에 "(미지원)"이 포함된다', () => {
+    it('RULE_OWNER 옵션이 disabled이다', () => {
+      renderForm()
+
+      const option = screen.getByRole('option', { name: /규칙 소유자/ })
+      expect(option).toBeDisabled()
+    })
+
+    it('RULE_OWNER 옵션 라벨에 "(미지원)"이 포함된다', () => {
+      renderForm()
+
+      expect(
+        screen.getByRole('option', { name: /미지원/ }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  // ── (h) 상시 안내 문구 (Task 3-c) ────────────────────────────────────────
+
+  describe('상시 안내 — 비활성 사유 안내 문구가 항상 렌더된다', () => {
+    it('초기 상태에서도 비활성 사유 안내 문구가 폼에 존재한다', () => {
+      renderForm()
+
+      expect(
+        screen.getByText(/규칙 소유자는 자동화 기능/),
+      ).toBeInTheDocument()
+    })
+
+    it('역할을 선택한 이후에도 비활성 사유 안내 문구가 폼에 존재한다', async () => {
+      const user = userEvent.setup()
+      renderForm()
+
+      await user.selectOptions(
+        screen.getByRole('combobox', { name: /수신자/i }),
+        'ASSIGNEE',
+      )
+
+      expect(
+        screen.getByText(/규칙 소유자는 자동화 기능/),
+      ).toBeInTheDocument()
     })
   })
 })
