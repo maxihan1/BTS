@@ -123,14 +123,14 @@ class BoardCardPlacementTest {
                     issueView("PROJ-3", "open"),
                 )
 
-            val placed =
+            val result =
                 BoardCardPlacement.placeCards(
                     columns = listOf(todoColumn, inProgressColumn),
                     issues = issues,
                 )
 
-            val todoCards = placed.first { it.column.stateKey == "open" }.cards
-            val inProgressCards = placed.first { it.column.stateKey == "in-progress" }.cards
+            val todoCards = result.columns.first { it.column.stateKey == "open" }.cards
+            val inProgressCards = result.columns.first { it.column.stateKey == "in-progress" }.cards
             assertThat(todoCards.map { it.key }).containsExactlyInAnyOrder("PROJ-1", "PROJ-3")
             assertThat(inProgressCards.map { it.key }).containsExactly("PROJ-2")
         }
@@ -139,18 +139,18 @@ class BoardCardPlacementTest {
         fun `이슈가 없는 컬럼은 빈 카드 목록으로 포함된다`() {
             val emptyColumn = column("closed", category = "DONE")
 
-            val placed =
+            val result =
                 BoardCardPlacement.placeCards(
                     columns = listOf(emptyColumn),
                     issues = emptyList(),
                 )
 
-            assertThat(placed).hasSize(1)
-            assertThat(placed.single().cards).isEmpty()
+            assertThat(result.columns).hasSize(1)
+            assertThat(result.columns.single().cards).isEmpty()
         }
     }
 
-    // (c) 미매핑 상태 이슈 제외 (E2)
+    // (c) 미매핑 상태 이슈 제외 (E2) + unplacedCount 신호
     @Nested
     inner class UnmappedStateExclusion {
         @Test
@@ -162,13 +162,13 @@ class BoardCardPlacementTest {
                     issueView("PROJ-2", "unknown-state"),
                 )
 
-            val placed =
+            val result =
                 BoardCardPlacement.placeCards(
                     columns = listOf(openColumn),
                     issues = issues,
                 )
 
-            val allCards = placed.flatMap { it.cards }
+            val allCards = result.columns.flatMap { it.cards }
             assertThat(allCards.map { it.key }).containsExactly("PROJ-1")
             assertThat(allCards.map { it.key }).doesNotContain("PROJ-2")
         }
@@ -182,13 +182,46 @@ class BoardCardPlacementTest {
                     issueView("PROJ-2", "another-ghost"),
                 )
 
-            val placed =
+            val result =
                 BoardCardPlacement.placeCards(
                     columns = listOf(openColumn),
                     issues = issues,
                 )
 
-            assertThat(placed.flatMap { it.cards }).isEmpty()
+            assertThat(result.columns.flatMap { it.cards }).isEmpty()
+        }
+
+        @Test
+        fun `미매핑 이슈가 있으면 unplacedCount 가 해당 수만큼 반환된다`() {
+            val openColumn = column("open")
+            val issues =
+                listOf(
+                    issueView("PROJ-1", "open"),
+                    issueView("PROJ-2", "unknown-state"),
+                    issueView("PROJ-3", "another-ghost"),
+                )
+
+            val result =
+                BoardCardPlacement.placeCards(
+                    columns = listOf(openColumn),
+                    issues = issues,
+                )
+
+            assertThat(result.unplacedCount).isEqualTo(2)
+        }
+
+        @Test
+        fun `미매핑 이슈가 없으면 unplacedCount 가 0 이다`() {
+            val openColumn = column("open")
+            val issues = listOf(issueView("PROJ-1", "open"))
+
+            val result =
+                BoardCardPlacement.placeCards(
+                    columns = listOf(openColumn),
+                    issues = issues,
+                )
+
+            assertThat(result.unplacedCount).isEqualTo(0)
         }
     }
 
@@ -205,13 +238,13 @@ class BoardCardPlacementTest {
                     issueView("PROJ-2", "open", priority = 2),
                 )
 
-            val placed =
+            val result =
                 BoardCardPlacement.placeCards(
                     columns = listOf(openColumn),
                     issues = issues,
                 )
 
-            val keys = placed.single().cards.map { it.key }
+            val keys = result.columns.single().cards.map { it.key }
             assertThat(keys).containsExactly("PROJ-1", "PROJ-2", "PROJ-3")
         }
 
@@ -225,13 +258,13 @@ class BoardCardPlacementTest {
                     issueView("PROJ-2", "open", priority = 2),
                 )
 
-            val placed =
+            val result =
                 BoardCardPlacement.placeCards(
                     columns = listOf(openColumn),
                     issues = issues,
                 )
 
-            val keys = placed.single().cards.map { it.key }
+            val keys = result.columns.single().cards.map { it.key }
             assertThat(keys).containsExactly("PROJ-1", "PROJ-2", "PROJ-3")
         }
 
@@ -244,13 +277,13 @@ class BoardCardPlacementTest {
                     issueView("PROJ-HIGH", "open", priority = 1),
                 )
 
-            val placed =
+            val result =
                 BoardCardPlacement.placeCards(
                     columns = listOf(openColumn),
                     issues = issues,
                 )
 
-            val keys = placed.single().cards.map { it.key }
+            val keys = result.columns.single().cards.map { it.key }
             assertThat(keys).containsExactly("PROJ-HIGH", "PROJ-LOW")
         }
     }

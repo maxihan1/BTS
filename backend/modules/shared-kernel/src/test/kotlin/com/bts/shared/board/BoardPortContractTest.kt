@@ -63,20 +63,48 @@ class BoardPortContractTest {
     // ── BoardIssueLookupPort fail-safe ───────────────────────────────────────
 
     @Test
-    fun `BoardIssueLookupPort default 구현은 빈 목록을 반환한다`() {
-        // default = emptyList() 이므로 adapter 가 없는 환경에서 빈 목록 반환(데이터 누출 없음).
+    fun `BoardIssueLookupPort default 구현은 빈 BoardIssuePage 를 반환한다`() {
+        // default = 빈 페이지이므로 adapter 가 없는 환경에서 빈 목록 반환(데이터 누출 없음).
         val port = object : BoardIssueLookupPort {}
         val result = port.listVisibleIssuesByProject("PROJ", UUID.randomUUID())
 
-        assertThat(result).isEmpty()
+        assertThat(result.issues).isEmpty()
+        assertThat(result.truncated).isFalse()
     }
 
     @Test
-    fun `BoardIssueLookupPort default 는 projectKey 나 viewerUserId 가 달라도 빈 목록을 반환한다`() {
+    fun `BoardIssueLookupPort default 는 projectKey 나 viewerUserId 가 달라도 빈 페이지를 반환한다`() {
         val port = object : BoardIssueLookupPort {}
 
-        assertThat(port.listVisibleIssuesByProject("OTHER", UUID.randomUUID())).isEmpty()
-        assertThat(port.listVisibleIssuesByProject("ATLAS", UUID.randomUUID())).isEmpty()
+        assertThat(port.listVisibleIssuesByProject("OTHER", UUID.randomUUID()).issues).isEmpty()
+        assertThat(port.listVisibleIssuesByProject("ATLAS", UUID.randomUUID()).issues).isEmpty()
+    }
+
+    // ── BoardIssuePage 계약 ──────────────────────────────────────────────────
+
+    @Test
+    fun `BoardIssuePage 는 issues 목록과 truncated 플래그를 보존한다`() {
+        val issue =
+            BoardIssueView(
+                key = "PROJ-1",
+                summary = "테스트",
+                currentStateKey = "open",
+                assigneeId = null,
+                priority = 1,
+                version = 1L,
+            )
+        val page = BoardIssuePage(issues = listOf(issue), truncated = true)
+
+        assertThat(page.issues).containsExactly(issue)
+        assertThat(page.truncated).isTrue()
+    }
+
+    @Test
+    fun `BoardIssuePage truncated=false 는 LIMIT 미초과 정상 조회를 나타낸다`() {
+        val page = BoardIssuePage(issues = emptyList(), truncated = false)
+
+        assertThat(page.issues).isEmpty()
+        assertThat(page.truncated).isFalse()
     }
 
     // ── BoardIssueView 필드 계약 ─────────────────────────────────────────────

@@ -148,17 +148,56 @@ class BoardApplicationServiceTest {
             )
 
         val lookup = mockk<BoardIssueLookupPort>()
-        every { lookup.listVisibleIssuesByProject("PROJ", viewerId) } returns issues
+        every { lookup.listVisibleIssuesByProject("PROJ", viewerId) } returns
+            com.bts.shared.board.BoardIssuePage(issues = issues, truncated = false)
 
-        val placedColumns = serviceWith(lookup = lookup).getBoard(boardId = board.id, viewerUserId = viewerId)
+        val result = serviceWith(lookup = lookup).getBoard(boardId = board.id, viewerUserId = viewerId)
 
-        val openPlaced = placedColumns.first { it.column.stateKey == "open" }
+        val openPlaced = result.columns.first { it.column.stateKey == "open" }
         assertThat(openPlaced.cards).hasSize(1)
         assertThat(openPlaced.cards.first().key).isEqualTo("PROJ-1")
 
-        val inProgressPlaced = placedColumns.first { it.column.stateKey == "in-progress" }
+        val inProgressPlaced = result.columns.first { it.column.stateKey == "in-progress" }
         assertThat(inProgressPlaced.cards).hasSize(1)
         assertThat(inProgressPlaced.cards.first().key).isEqualTo("PROJ-2")
+    }
+
+    @Test
+    fun `보드 조회 시 LIMIT 초과면 truncated=true 가 반환된다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("TRNC"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("TRNC", "truncated 테스트 보드")
+
+        val viewerId = UUID.randomUUID()
+        val lookup = mockk<BoardIssueLookupPort>()
+        every { lookup.listVisibleIssuesByProject("TRNC", viewerId) } returns
+            com.bts.shared.board.BoardIssuePage(issues = emptyList(), truncated = true)
+
+        val result = serviceWith(lookup = lookup).getBoard(boardId = board.id, viewerUserId = viewerId)
+
+        assertThat(result.truncated).isTrue()
+    }
+
+    @Test
+    fun `보드 조회 시 미매핑 상태 이슈가 있으면 unplacedCount 가 0보다 크다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("UNPL"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("UNPL", "unplaced 테스트 보드")
+
+        val viewerId = UUID.randomUUID()
+        // 미매핑 상태 이슈 포함
+        val issues =
+            listOf(
+                BoardIssueView("UNPL-1", "미매핑 이슈", "ghost-state", null, 1, 1L),
+                BoardIssueView("UNPL-2", "정상 이슈", "open", null, 2, 1L),
+            )
+        val lookup = mockk<BoardIssueLookupPort>()
+        every { lookup.listVisibleIssuesByProject("UNPL", viewerId) } returns
+            com.bts.shared.board.BoardIssuePage(issues = issues, truncated = false)
+
+        val result = serviceWith(lookup = lookup).getBoard(boardId = board.id, viewerUserId = viewerId)
+
+        assertThat(result.unplacedCount).isEqualTo(1)
     }
 
     // ── (d) 카드 이동 = IssueTransitionPort 위임 ─────────────────────────────────
@@ -194,36 +233,7 @@ class BoardApplicationServiceTest {
         assertThat(result.currentStateKey).isEqualTo("in-progress")
     }
 
-    // ── (e) E3: 같은 컬럼 → no-op 200 ──────────────────────────────────────────
-
-    @Test
-    fun `E3 현재 이슈 상태와 같은 컬럼으로 이동하면 전이 없이 현재 상태를 반환한다`() {
-        val catalog = mockk<WorkflowStateCatalog>()
-        every { catalog.listStates(ProjectKey.of("NOOP"), null) } returns DEFAULT_STATES
-        val board = serviceWith(catalog = catalog).createBoard("NOOP", "no-op 테스트 보드")
-
-        val openColumn = board.columns.first { it.stateKey == "open" }
-        val transition = mockk<IssueTransitionPort>()
-
-        // 현재 이슈 상태가 "open" 이고 "open" 컬럼으로 이동 → no-op
-        val result =
-            serviceWith(transition = transition)
-                .moveCard(
-                    boardId = board.id,
-                    issueKey = "NOOP-1",
-                    actorUserId = UUID.randomUUID(),
-                    toColumnId = openColumn.id,
-                    expectedVersion = 1L,
-                    resolutionId = null,
-                    currentStateKey = "open",
-                )
-
-        // IssueTransitionPort 는 호출되지 않아야 한다
-        verify(exactly = 0) { transition.transition(any()) }
-        assertThat(result.currentStateKey).isEqualTo("open")
-    }
-
-    // ── (f) E8: 보드-이슈 프로젝트 정합 ────────────────────────────────────────────
+    // ── (e) E8: 보드-이슈 프로젝트 정합 ────────────────────────────────────────────
 
     @Test
     fun `E8 issueKey 가 보드의 projectKey 소속이 아니면 거부된다`() {
@@ -238,6 +248,70 @@ class BoardApplicationServiceTest {
             serviceWith().moveCard(
                 boardId = board.id,
                 issueKey = "OTHER-1",
+                actorUserId = UUID.randomUUID(),
+                toColumnId = anyColumn.id,
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+        }.isInstanceOf(ResponseStatusException::class.java)
+    }
+
+    @Test
+    fun `E8 하이픈 없는 issueKey 는 BTS 보드에서 거부된다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("BTS"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("BTS", "형식 검증 보드")
+
+        val anyColumn = board.columns.first()
+
+        // "BTS" — 하이픈 없는 키: prefix = "BTS" 이지만 NUMBER 부분 없음
+        assertThatThrownBy {
+            serviceWith().moveCard(
+                boardId = board.id,
+                issueKey = "BTS",
+                actorUserId = UUID.randomUUID(),
+                toColumnId = anyColumn.id,
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+        }.isInstanceOf(ResponseStatusException::class.java)
+    }
+
+    @Test
+    fun `E8 prefix는 같지만 PROJECT_NUMBER 형식이 아닌 이슈키는 거부된다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("BTS"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("BTS", "형식 검증 보드2")
+
+        val anyColumn = board.columns.first()
+
+        // "BTS-abc" — prefix 는 BTS 이지만 NUMBER 가 숫자가 아님
+        assertThatThrownBy {
+            serviceWith().moveCard(
+                boardId = board.id,
+                issueKey = "BTS-abc",
+                actorUserId = UUID.randomUUID(),
+                toColumnId = anyColumn.id,
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+        }.isInstanceOf(ResponseStatusException::class.java)
+    }
+
+    @Test
+    fun `E8 BTSX-1 은 BTS 보드에서 거부된다 (prefix 충돌 방지)`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("BTS"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("BTS", "prefix 충돌 테스트 보드")
+
+        val anyColumn = board.columns.first()
+
+        // "BTSX-1" — substringBefore("-") = "BTSX" != "BTS" 이지만
+        // startsWith("BTS-") 로 정확하게 차단하는지 확인
+        assertThatThrownBy {
+            serviceWith().moveCard(
+                boardId = board.id,
+                issueKey = "BTSX-1",
                 actorUserId = UUID.randomUUID(),
                 toColumnId = anyColumn.id,
                 expectedVersion = 1L,

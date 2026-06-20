@@ -280,23 +280,28 @@ class BoardControllerIntegrationTest {
         val board = sampleBoard()
         every { boardRepository.findById(board.id) } returns board
         every { boardApplicationService.getBoard(board.id, actorId) } returns
-            listOf(
-                PlacedColumn(
-                    column = board.columns[0],
-                    cards =
-                        listOf(
-                            BoardIssueView(
-                                key = "BTS-1",
-                                summary = "첫 이슈",
-                                currentStateKey = "open",
-                                assigneeId = null,
-                                priority = 1,
-                                version = 1L,
-                            ),
+            com.bts.agileplanning.application.BoardPlacementResult(
+                columns =
+                    listOf(
+                        PlacedColumn(
+                            column = board.columns[0],
+                            cards =
+                                listOf(
+                                    BoardIssueView(
+                                        key = "BTS-1",
+                                        summary = "첫 이슈",
+                                        currentStateKey = "open",
+                                        assigneeId = null,
+                                        priority = 1,
+                                        version = 1L,
+                                    ),
+                                ),
                         ),
-                ),
-                PlacedColumn(column = board.columns[1], cards = emptyList()),
-                PlacedColumn(column = board.columns[2], cards = emptyList()),
+                        PlacedColumn(column = board.columns[1], cards = emptyList()),
+                        PlacedColumn(column = board.columns[2], cards = emptyList()),
+                    ),
+                truncated = false,
+                unplacedCount = 0,
             )
 
         mockMvc.perform(get("/api/v1/boards/${board.id}").accept(MediaType.APPLICATION_JSON))
@@ -308,10 +313,35 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.data.columns[0].cards[0].issueKey").value("BTS-1"))
             // NIT: priority 는 정렬 내부용 → 응답 카드 DTO 에서 제외
             .andExpect(jsonPath("$.data.columns[0].cards[0].priority").doesNotExist())
+            // truncated/unplacedCount 신호 필드 단언 (P2)
+            .andExpect(jsonPath("$.data.truncated").value(false))
+            .andExpect(jsonPath("$.data.unplacedCount").value(0))
 
         // 권한 게이트가 BROWSE + Project(보드 projectKey) 로 판정됐는지 검증 (sec P2)
         assertThat(permissionGate.calls)
             .containsExactly(Triple(actorId, IssuePermission.BROWSE, IssueScope.Project("BTS")))
+    }
+
+    @Test
+    fun `GET boards id truncated=true 이면 응답에 truncated=true 가 포함된다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.getBoard(board.id, actorId) } returns
+            com.bts.agileplanning.application.BoardPlacementResult(
+                columns =
+                    listOf(
+                        PlacedColumn(column = board.columns[0], cards = emptyList()),
+                        PlacedColumn(column = board.columns[1], cards = emptyList()),
+                        PlacedColumn(column = board.columns[2], cards = emptyList()),
+                    ),
+                truncated = true,
+                unplacedCount = 5,
+            )
+
+        mockMvc.perform(get("/api/v1/boards/${board.id}").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.truncated").value(true))
+            .andExpect(jsonPath("$.data.unplacedCount").value(5))
     }
 
     // ── GET-2. GET BROWSE 권한 미충족 → 403 ───────────────────────────────────
@@ -448,7 +478,7 @@ class BoardControllerIntegrationTest {
         val toColumnId = board.columns[1].id
         every { boardRepository.findById(board.id) } returns board
         every {
-            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any(), any())
+            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any())
         } throws
             ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT, "version conflict")
 
@@ -470,7 +500,7 @@ class BoardControllerIntegrationTest {
         val toColumnId = board.columns[1].id
         every { boardRepository.findById(board.id) } returns board
         every {
-            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any(), any())
+            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any())
         } throws
             ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "mismatch")
 
