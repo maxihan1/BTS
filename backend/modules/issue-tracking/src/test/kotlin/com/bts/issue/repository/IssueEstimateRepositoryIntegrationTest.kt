@@ -9,6 +9,7 @@ import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.shared.issue.IssueTypeId
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.MethodOrderer
 import org.junit.jupiter.api.Order
@@ -32,6 +33,7 @@ import java.util.UUID
  * - T04. remaining NULL 일 때 decrement 후에도 NULL 유지.
  * - T05. recomputeTimeSpentSetRemaining — remaining 직접 override.
  * - T06. recomputeTimeSpent — time_spent 만 재집계, remaining 미변경, version 불변.
+ * - T07a~c. 소프트 삭제된 이슈에 recompute* 호출 시 예외 발생 (DELETED_AT IS NULL 필터 검증).
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class IssueEstimateRepositoryIntegrationTest : IssueTestcontainersBase() {
@@ -326,5 +328,89 @@ class IssueEstimateRepositoryIntegrationTest : IssueTestcontainersBase() {
         assertThat(found.remainingEstimateSeconds).isEqualTo(2000)
         // no-bump
         assertThat(found.version).isEqualTo(1L)
+    }
+
+    // ── T07a~c. 소프트 삭제된 이슈에 recompute* 호출 시 예외 (DELETED_AT IS NULL 필터 검증) ─
+
+    /**
+     * 소프트 삭제 헬퍼 — issues.deleted_at 를 JDBC 로 직접 설정한다.
+     *
+     * IssueRepository.softDelete(key) 를 사용하지 않는 이유: 이 테스트는 recompute* 의
+     * DELETED_AT IS NULL 필터 단독 검증이 목적이다. softDelete 가 side-effect 없이
+     * deleted_at 만 설정함을 가정하고 JDBC 로 직접 수행해 격리성을 높인다.
+     */
+    private fun softDeleteIssue(issueId: UUID) {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "UPDATE issues SET deleted_at = NOW() WHERE id = ?",
+            ).use { stmt ->
+                stmt.setObject(1, issueId)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    /**
+     * T07a — 소프트 삭제된 이슈에 recomputeTimeSpentWithDecrement 호출 시 예외.
+     *
+     * Given  이슈를 삽입하고 소프트 삭제(deleted_at 설정)
+     * When   recomputeTimeSpentWithDecrement 호출
+     * Then   IllegalStateException 발생 (0행 갱신 → RETURNING null → error()).
+     *
+     * GREEN 조건: recompute* WHERE 에 DELETED_AT.isNull 이 추가되면 UPDATE 대상이 0행 →
+     * RETURNING fetchOne() = null → IllegalStateException 발생.
+     * 현재(RED): 필터 없어서 삭제 이슈도 갱신 → RETURNING 행 반환 → 예외 미발생 → 테스트 실패.
+     */
+    @Test
+    @Order(50)
+    fun `T07a - 소프트 삭제된 이슈에 recomputeTimeSpentWithDecrement 호출 시 예외`() {
+        val inserted = insertTestIssue(remaining = 1000)
+        softDeleteIssue(inserted.id.value)
+
+        assertThatThrownBy {
+            repository.recomputeTimeSpentWithDecrement(
+                issueId = inserted.id.value,
+                decrementSeconds = 100,
+            )
+        }.isInstanceOf(IllegalStateException::class.java)
+    }
+
+    /**
+     * T07b — 소프트 삭제된 이슈에 recomputeTimeSpentSetRemaining 호출 시 예외.
+     *
+     * Given  이슈를 삽입하고 소프트 삭제
+     * When   recomputeTimeSpentSetRemaining 호출
+     * Then   IllegalStateException 발생.
+     */
+    @Test
+    @Order(51)
+    fun `T07b - 소프트 삭제된 이슈에 recomputeTimeSpentSetRemaining 호출 시 예외`() {
+        val inserted = insertTestIssue(remaining = 1000)
+        softDeleteIssue(inserted.id.value)
+
+        assertThatThrownBy {
+            repository.recomputeTimeSpentSetRemaining(
+                issueId = inserted.id.value,
+                newRemaining = 500,
+            )
+        }.isInstanceOf(IllegalStateException::class.java)
+    }
+
+    /**
+     * T07c — 소프트 삭제된 이슈에 recomputeTimeSpent 호출 시 예외.
+     *
+     * Given  이슈를 삽입하고 소프트 삭제
+     * When   recomputeTimeSpent 호출
+     * Then   IllegalStateException 발생.
+     */
+    @Test
+    @Order(52)
+    fun `T07c - 소프트 삭제된 이슈에 recomputeTimeSpent 호출 시 예외`() {
+        val inserted = insertTestIssue(remaining = null)
+        softDeleteIssue(inserted.id.value)
+
+        assertThatThrownBy {
+            repository.recomputeTimeSpent(inserted.id.value)
+        }.isInstanceOf(IllegalStateException::class.java)
     }
 }

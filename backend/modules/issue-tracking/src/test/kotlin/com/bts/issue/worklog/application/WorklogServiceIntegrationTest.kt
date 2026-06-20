@@ -580,6 +580,54 @@ class WorklogServiceIntegrationTest {
         assertThat(remainingItems.first().toValue).isEqualTo(H6.toString())
     }
 
+    // ── (11) 소프트삭제 후 update → 404 ─────────────────────────────────────────────
+
+    /**
+     * (11) 소프트삭제된 worklog update → 404.
+     *
+     * Given  worklog 1건 추가 후 소프트삭제 (findById = null 상태)
+     * When   update 호출
+     * Then   IssueNotFoundException(404) 발생.
+     *
+     * 이 경로는 step1(findById)에서 null 반환 → IssueNotFoundException.
+     * 동시 삭제 레이스 윈도우 방어 가드(worklogRepository.update 반환 0 체크)는
+     * step1 통과 후 커밋 완료된 삭제를 처리하며, 결정적 재현이 어렵기 때문에
+     * 이 테스트로 step1 경로를 검증한다.
+     */
+    @Test
+    fun `(11) 소프트삭제된 worklog update — 404`() {
+        val issueKey = insertIssue(remainingSeconds = null)
+
+        val worklog =
+            worklogService.create(
+                actor = ACTOR,
+                issueKey = IssueKey(issueKey),
+                timeSpentSeconds = H2,
+                startedAt = Instant.now(),
+                comment = null,
+                newRemainingEstimateSeconds = null,
+            )
+
+        // worklog 소프트삭제 — findById 가 null 을 반환하는 상태로 만든다
+        conn().use { c ->
+            c.prepareStatement("UPDATE worklogs SET deleted_at = NOW() WHERE id = ?").use { stmt ->
+                stmt.setObject(1, worklog.id)
+                stmt.executeUpdate()
+            }
+        }
+
+        assertThatThrownBy {
+            worklogService.update(
+                actor = ACTOR,
+                issueKey = IssueKey(issueKey),
+                worklogId = worklog.id,
+                timeSpentSeconds = H4,
+                startedAt = null,
+                comment = null,
+            )
+        }.isInstanceOf(IssueNotFoundException::class.java)
+    }
+
     // ── (10) CONCERN-1 순차 2건 누적 정확성 ──────────────────────────────────────────
 
     /**
