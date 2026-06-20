@@ -8,16 +8,21 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.history.IssueChangeDetector
 import com.bts.issue.history.IssueChangeHistoryRepository
 import com.bts.issue.history.IssueChangeLabelResolver
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.history.JdbcIssueChangeHistoryRepository
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.resolution.repository.ResolutionRepository
+import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.issue.version.repository.VersionRepository
 import com.bts.issue.worklog.repository.WorklogRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import com.bts.shared.user.UserLookupPort
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -105,13 +110,23 @@ class WorklogServiceIntegrationTest {
         open fun issueChangeDetector(): IssueChangeDetector = IssueChangeDetector()
 
         /**
-         * IssueChangeLabelResolver — labelResolver는 실 타입/컴포넌트 DB 조회가 필요하지만
-         * worklog 테스트에서는 remainingEstimate 스칼라 감지만 필요하므로 stub-light 버전을 사용한다.
-         * 실 issueTypeRepository 등은 TestConfig에서 이미 존재하므로 relaxed mockk 대체.
+         * IssueChangeLabelResolver — 실 인스턴스. remainingEstimate 는 스칼라 passthrough 이므로
+         * type/component/version/user/security lookup 의존성들은 relaxed mock 으로 주입한다.
+         * 스칼라 items(remainingEstimate 포함) 는 `else -> item` passthrough 라 라벨 lookup 없음.
          */
         @Bean
-        open fun issueChangeLabelResolver(): IssueChangeLabelResolver =
-            mockk(relaxed = true)
+        open fun issueChangeLabelResolver(
+            issueTypeRepository: IssueTypeRepository,
+            resolutionRepository: ResolutionRepository,
+        ): IssueChangeLabelResolver =
+            IssueChangeLabelResolver(
+                issueTypeRepository = issueTypeRepository,
+                resolutionRepository = resolutionRepository,
+                componentRepository = mockk(relaxed = true),
+                versionRepository = mockk(relaxed = true),
+                userLookupPort = mockk<UserLookupPort>(relaxed = true),
+                issueSecurityDirectory = com.bts.issue.adapter.outbound.AlwaysAllowIssueSecurityDirectory(),
+            )
 
         @Bean
         open fun issueHistoryRecorder(
@@ -206,9 +221,9 @@ class WorklogServiceIntegrationTest {
     fun cleanBetweenTests() {
         conn().use { c ->
             c.createStatement().use { stmt ->
-                // 이력 삭제 (change_items → change_groups 순서 — FK)
-                stmt.execute("DELETE FROM issue_change_items")
-                stmt.execute("DELETE FROM issue_change_groups")
+                // 이력 삭제 (issue_change_item → issue_change_group 순서 — FK)
+                stmt.execute("DELETE FROM issue_change_item")
+                stmt.execute("DELETE FROM issue_change_group")
                 // worklogs → issues 순서
                 stmt.execute("DELETE FROM worklogs")
                 stmt.execute("DELETE FROM issues WHERE key LIKE '$PROJECT_KEY-%'")
