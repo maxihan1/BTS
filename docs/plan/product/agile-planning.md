@@ -169,11 +169,11 @@
 
 **우선순위**. 높음 | **선행**. §5.1 | **Plan slug**. `agile/worklog-aggregate`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — 집계 차원 (이슈/사용자/기간/프로젝트) (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — 머티리얼라이즈드 뷰 검토 (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/worklogs/aggregate?by=...` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 (책임. backend-engineer)
+- [x] D2. 명세 — 집계 차원 이슈/사용자/기간 (by=issue|user|period, 프로젝트는 ?project 필수 필터라 그룹축 제외) (책임. backend-engineer)
+- [x] D3. 데이터 모델 — 머티뷰 미채택·실시간 SQL 집계 (ADR D3, 신규 스키마 0) (책임. backend-engineer)
+- [x] D4. 백엔드 — `GET /api/v1/worklogs/aggregate?project=&by=&granularity=&from=&to=` (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer)
 - [ ] D6. 프론트 UI — 표 + recharts 차트 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
