@@ -95,6 +95,7 @@ class WorklogService(
      * @throws [IssueAccessDeniedException] UPDATE 권한 미보유 시 (403).
      * @throws [IssueNotFoundException] 이슈 미존재·소프트 삭제 시 (404).
      */
+    @Suppress("LongParameterList") // worklog 생성 입력 불가분 (모듈 선례)
     fun create(
         actor: ActorId,
         issueKey: IssueKey,
@@ -169,6 +170,7 @@ class WorklogService(
      * @throws [IssueAccessDeniedException] UPDATE 권한 미보유 또는 타인 수정 시 (403).
      * @throws [IssueNotFoundException] 이슈·워크로그 미존재·이슈 불일치 시 (404).
      */
+    @Suppress("LongParameterList", "ThrowsCount") // 입력 불가분 + 오류코드별 분리 throw
     fun update(
         actor: ActorId,
         issueKey: IssueKey,
@@ -237,6 +239,7 @@ class WorklogService(
      * @throws [IssueAccessDeniedException] UPDATE 권한 미보유 또는 타인 삭제 시 (403).
      * @throws [IssueNotFoundException] 이슈·워크로그 미존재·이슈 불일치 시 (404).
      */
+    @Suppress("ThrowsCount") // 권한(403)·이슈없음(404)·워크로그없음/불일치(404)·타인(403) 각기 다른 오류코드라 분리 throw가 명확
     fun delete(
         actor: ActorId,
         issueKey: IssueKey,

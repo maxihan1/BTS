@@ -652,7 +652,7 @@ class WorklogServiceIntegrationTest {
      *
      * @param remainingSeconds remaining_estimate_seconds. null 이면 미추정.
      */
-    @Suppress("NestedBlockDepth")
+    @Suppress("NestedBlockDepth", "LongMethod")
     private fun insertIssue(remainingSeconds: Int?): String =
         conn().use { c ->
             c.autoCommit = false

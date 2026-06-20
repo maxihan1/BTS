@@ -65,6 +65,7 @@ class WorklogController(
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈 미존재·소프트 삭제 시 → 404.
      */
     @PostMapping
+    @Suppress("ThrowsCount") // 요청 유효성(timeSpent≤0, newRemaining<0 등) 단계별로 명확한 400 메시지 위해 분리 throw 유지
     fun addWorklog(
         @PathVariable key: String,
         @RequestBody request: AddWorklogRequest,
