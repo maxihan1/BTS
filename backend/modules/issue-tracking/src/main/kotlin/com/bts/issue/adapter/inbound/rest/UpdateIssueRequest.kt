@@ -53,6 +53,11 @@ import java.util.UUID
  *   기본값 [JsonNullable.undefined] 이므로 본문에 없으면 무변경이다. 교차 필드 검증 없음.
  * @property dueDate 마감일 (FR-PL-01). [startDate] 와 동일한 3-state 시맨틱.
  * @property targetDate 목표일 (FR-PL-01). [startDate] 와 동일한 3-state 시맨틱.
+ * @property originalEstimateSeconds 최초 추정 시간 (FR-TT-01, Jira Cloud 방식 3-state, 단위: 초).
+ *   [JsonNullable] presence 로 구분한다 — 필드 부재(undefined)=무변경, 명시 null=해제, 값=지정.
+ *   기본값 [JsonNullable.undefined] 이므로 본문에 없으면 무변경이다. 0 이상이어야 한다 (@field:Min(0)).
+ *   timeSpentSeconds 는 읽기 전용이므로 PATCH 필드로 노출하지 않는다.
+ * @property remainingEstimateSeconds 잔여 추정 시간 (FR-TT-01). [originalEstimateSeconds] 와 동일한 3-state 시맨틱.
  */
 data class UpdateIssueRequest(
     @field:Size(max = 200, message = "summary는 200자 이하여야 합니다.")
@@ -85,4 +90,6 @@ data class UpdateIssueRequest(
     val startDate: JsonNullable<LocalDate> = JsonNullable.undefined(),
     val dueDate: JsonNullable<LocalDate> = JsonNullable.undefined(),
     val targetDate: JsonNullable<LocalDate> = JsonNullable.undefined(),
+    val originalEstimateSeconds: JsonNullable<Int> = JsonNullable.undefined(),
+    val remainingEstimateSeconds: JsonNullable<Int> = JsonNullable.undefined(),
 )

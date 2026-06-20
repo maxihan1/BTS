@@ -67,6 +67,10 @@ import java.util.UUID
  *   [startDate] 와 동일한 직렬화 규칙을 따른다.
  * @property targetDate 이슈 목표일(캘린더 날짜). null 이면 미설정. FR-PL-01.
  *   [startDate] 와 동일한 직렬화 규칙을 따른다.
+ * @property originalEstimateSeconds 최초 추정 시간(초). null 이면 미추정. FR-TT-01.
+ * @property timeSpentSeconds 누적 작업 시간(초). 작업 기록(Worklog) 합산값. 항상 0 이상. FR-TT-01.
+ *   읽기 전용 — PATCH 로 직접 설정 불가. Worklog 추가·수정·삭제 시 자동 갱신된다.
+ * @property remainingEstimateSeconds 잔여 추정 시간(초). null 이면 미추정. FR-TT-01.
  */
 data class IssueResponse(
     val key: String,
@@ -112,6 +116,12 @@ data class IssueResponse(
     /** 이슈 목표일. null 이면 미설정. "yyyy-MM-dd" 문자열 직렬화. */
     @field:JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
     val targetDate: LocalDate? = null,
+    /** 최초 추정 시간(초). null 이면 미추정. FR-TT-01. */
+    val originalEstimateSeconds: Int? = null,
+    /** 누적 작업 시간(초). Worklog 합산값. 0 이상. FR-TT-01. */
+    val timeSpentSeconds: Int = 0,
+    /** 잔여 추정 시간(초). null 이면 미추정. FR-TT-01. */
+    val remainingEstimateSeconds: Int? = null,
 ) {
     /**
      * [visible] 집합을 기준으로 열람 불가 필드를 마스킹하고, [editable] 집합을 기준으로
@@ -335,6 +345,9 @@ data class IssueResponse(
                 startDate = issue.startDate,
                 dueDate = issue.dueDate,
                 targetDate = issue.targetDate,
+                originalEstimateSeconds = issue.originalEstimateSeconds,
+                timeSpentSeconds = issue.timeSpentSeconds,
+                remainingEstimateSeconds = issue.remainingEstimateSeconds,
             )
     }
 }

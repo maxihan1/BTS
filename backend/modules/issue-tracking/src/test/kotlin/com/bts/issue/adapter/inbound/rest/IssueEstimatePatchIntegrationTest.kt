@@ -13,8 +13,12 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.extension.ExtendWith
+import org.openapitools.jackson.nullable.JsonNullableModule
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
+import org.springframework.http.converter.HttpMessageConverter
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
@@ -30,6 +34,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import java.sql.DriverManager
 import java.util.UUID
 
@@ -48,11 +53,29 @@ import java.util.UUID
  * - EP-5. PATCH {originalEstimateSeconds: -1} → 400.
  */
 @ExtendWith(SpringExtension::class)
-@ContextConfiguration(classes = [TestConfig::class])
+@ContextConfiguration(classes = [TestConfig::class, IssueEstimatePatchIntegrationTest.JsonNullableConfig::class])
 @WebAppConfiguration
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueEstimatePatchIntegrationTest {
+    /**
+     * JsonNullable 역직렬화 활성화를 위한 WebMvcConfigurer 보조 설정.
+     *
+     * [TestConfig] 는 @EnableWebMvc 를 포함하므로 컨텍스트의 Jackson 컨버터는 Spring 이 별도 생성한다.
+     * JsonNullable 역직렬화(필드 부재 vs. 명시 null 구분)가 동작하려면 해당 컨버터의 ObjectMapper 에
+     * [JsonNullableModule] 이 등록되어야 한다 — [IssueControllerSecurityLevelTest] 와 동일한 패턴.
+     *
+     * Spring Boot 운영 환경에서는 JacksonAutoConfiguration 이 자동으로 등록하지만
+     * @EnableWebMvc 슬라이스에는 자동 등록 경로가 없으므로 명시 등록한다.
+     */
+    @Configuration
+    open class JsonNullableConfig : WebMvcConfigurer {
+        override fun extendMessageConverters(converters: MutableList<HttpMessageConverter<*>>) {
+            converters
+                .filterIsInstance<MappingJackson2HttpMessageConverter>()
+                .forEach { it.objectMapper.registerModule(JsonNullableModule()) }
+        }
+    }
     @Autowired
     lateinit var webApplicationContext: WebApplicationContext
 

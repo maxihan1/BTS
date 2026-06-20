@@ -508,6 +508,8 @@ class IssueApplicationService(
                         startDate = request.startDate,
                         dueDate = request.dueDate,
                         targetDate = request.targetDate,
+                        originalEstimate = request.originalEstimate,
+                        remainingEstimate = request.remainingEstimate,
                     ),
                 expectedVersion = versionAfterSecurity,
             )
@@ -1162,6 +1164,14 @@ class IssueApplicationService(
         if (isDatePatchChanged(existing.dueDate, request.dueDate)) fields.add("dueDate")
         if (isDatePatchChanged(existing.targetDate, request.targetDate)) fields.add("targetDate")
 
+        // 추정 필드 (FR-TT-01): EstimatePatch 3-state 감지
+        if (isEstimatePatchChanged(existing.originalEstimateSeconds, request.originalEstimate)) {
+            fields.add("originalEstimateSeconds")
+        }
+        if (isEstimatePatchChanged(existing.remainingEstimateSeconds, request.remainingEstimate)) {
+            fields.add("remainingEstimateSeconds")
+        }
+
         return fields
     }
 
@@ -1195,6 +1205,23 @@ class IssueApplicationService(
             is DatePatch.Unchanged -> false
             is DatePatch.Clear -> existingValue != null
             is DatePatch.Set -> existingValue != patch.value
+        }
+
+    /**
+     * 추정 시간 필드([EstimatePatch])의 3-state 변경 여부를 판정한다 (FR-TT-01).
+     *
+     * - [EstimatePatch.Unchanged] → 무변경 → false
+     * - [EstimatePatch.Clear] → 기존값이 non-null 이면 true (기존 null 이면 no-op)
+     * - [EstimatePatch.Set] → 기존값과 다르면 true
+     */
+    private fun isEstimatePatchChanged(
+        existingValue: Int?,
+        patch: EstimatePatch,
+    ): Boolean =
+        when (patch) {
+            is EstimatePatch.Unchanged -> false
+            is EstimatePatch.Clear -> existingValue != null
+            is EstimatePatch.Set -> existingValue != patch.value
         }
 
     /**
