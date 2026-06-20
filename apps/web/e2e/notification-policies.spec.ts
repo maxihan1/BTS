@@ -1,4 +1,4 @@
-// FR-NT-01 D7 E2E — 관리자 알림 정책 페이지 (SYSTEM_ADMIN 전용)
+// FR-NT-01/NT-03 D7 E2E — 관리자 알림 정책 페이지 (SYSTEM_ADMIN 전용)
 //
 // 교훈 반영.
 //   - e2e-msw-scenario-toggle-localstorage-flag: addInitScript + localStorage 플래그로 시나리오 토글
@@ -13,6 +13,7 @@ import { loginAsAlice } from './fixtures/issue-fixtures'
 import {
   eventTypeLabels,
   recipientRoleLabels,
+  recipientRoleDescriptions,
   channelLabels,
   notificationPolicyLabels,
 } from '../src/i18n/notification-policy-labels'
@@ -350,4 +351,277 @@ test.describe('S5 비관리자 미노출 + 차단 (FR-NT-01)', () => {
     await page.waitForURL('**/dashboard')
     expect(new URL(page.url()).pathname).toBe('/dashboard')
   })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S6 — 활성 역할 정책 생성 영속 (FR-NT-03)
+//
+// Given   SYSTEM_ADMIN alice → /admin/notification-policies 진입 (시드 4건)
+// When    WATCHER+이슈 기한 초과+이메일 / COMPONENT_LEAD+스프린트 종료+인앱 / PROJECT_MEMBER+자동화 실패+Slack 순으로 각각 정책 추가
+// Then    목록 행 5, 6, 7건으로 순차 증가
+// When    page.reload()로 SPA 재진입
+// Then    추가된 행들이 MSW stateful store에 영속되어 7건 그대로 유지
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('S6 활성 역할 정책 생성 영속 (FR-NT-03)', () => {
+  test(
+    'Given 정책 페이지 When 활성 역할 3종 순차 추가 Then 행 7건 영속',
+    async ({ page }) => {
+      // Given. SYSTEM_ADMIN alice 로그인 → 페이지 진입 + 시드 복원
+      await loginAsSystemAdmin(page)
+      await page.goto(PAGE_URL)
+      await page.waitForURL(`**${PAGE_URL}`)
+      await resetPolicyStore(page)
+      await page.reload()
+
+      // Given. 페이지 로딩 완료 + 시드 4건 확인
+      await expect(
+        page.getByRole('heading', { name: notificationPolicyLabels.page.heading, exact: true }),
+      ).toBeVisible()
+      const tbody = page.locator('tbody')
+      await expect(tbody.locator('tr').first()).toBeVisible()
+      expect(await tbody.locator('tr').count()).toBe(4)
+
+      // ── 1차 추가: WATCHER + 이슈 기한 초과 + 이메일 ──────────────────────
+
+      // 이벤트 유형 선택
+      const eventTrigger = page.getByRole('combobox', {
+        name: notificationPolicyLabels.form.eventType,
+        exact: true,
+      })
+      await eventTrigger.click()
+      const event1Option = page.getByRole('option', {
+        name: eventTypeLabels['issue.overdue']!,
+        exact: true,
+      })
+      await expect(event1Option).toBeVisible()
+      await event1Option.click()
+
+      // 수신자 역할 선택
+      const recipientTrigger = page.getByRole('combobox', {
+        name: notificationPolicyLabels.form.recipientRole,
+        exact: true,
+      })
+      await recipientTrigger.click()
+      const recipient1Option = page.getByRole('option', {
+        name: recipientRoleLabels['WATCHER']!,
+        exact: true,
+      })
+      await expect(recipient1Option).toBeVisible()
+      await recipient1Option.click()
+
+      // 채널 선택
+      const channelTrigger = page.getByRole('combobox', {
+        name: notificationPolicyLabels.form.channel,
+        exact: true,
+      })
+      await channelTrigger.click()
+      const channel1Option = page.getByRole('option', {
+        name: channelLabels['EMAIL']!,
+        exact: true,
+      })
+      await expect(channel1Option).toBeVisible()
+      await channel1Option.click()
+
+      // 정책 추가
+      await page.getByRole('button', {
+        name: notificationPolicyLabels.form.addButton,
+        exact: true,
+      }).click()
+
+      // Then. 5건으로 증가 확인
+      await expect(tbody.locator('tr').nth(4)).toBeVisible()
+      expect(await tbody.locator('tr').count()).toBe(5)
+
+      // ── 2차 추가: COMPONENT_LEAD + 스프린트 종료 + 인앱 알림 ─────────────
+
+      await eventTrigger.click()
+      const event2Option = page.getByRole('option', {
+        name: eventTypeLabels['sprint.ended']!,
+        exact: true,
+      })
+      await expect(event2Option).toBeVisible()
+      await event2Option.click()
+
+      await recipientTrigger.click()
+      const recipient2Option = page.getByRole('option', {
+        name: recipientRoleLabels['COMPONENT_LEAD']!,
+        exact: true,
+      })
+      await expect(recipient2Option).toBeVisible()
+      await recipient2Option.click()
+
+      await channelTrigger.click()
+      const channel2Option = page.getByRole('option', {
+        name: channelLabels['IN_APP']!,
+        exact: true,
+      })
+      await expect(channel2Option).toBeVisible()
+      await channel2Option.click()
+
+      await page.getByRole('button', {
+        name: notificationPolicyLabels.form.addButton,
+        exact: true,
+      }).click()
+
+      // Then. 6건으로 증가 확인
+      await expect(tbody.locator('tr').nth(5)).toBeVisible()
+      expect(await tbody.locator('tr').count()).toBe(6)
+
+      // ── 3차 추가: PROJECT_MEMBER + 자동화 규칙 실패 + Slack ──────────────
+
+      await eventTrigger.click()
+      const event3Option = page.getByRole('option', {
+        name: eventTypeLabels['automation.failed']!,
+        exact: true,
+      })
+      await expect(event3Option).toBeVisible()
+      await event3Option.click()
+
+      await recipientTrigger.click()
+      const recipient3Option = page.getByRole('option', {
+        name: recipientRoleLabels['PROJECT_MEMBER']!,
+        exact: true,
+      })
+      await expect(recipient3Option).toBeVisible()
+      await recipient3Option.click()
+
+      await channelTrigger.click()
+      const channel3Option = page.getByRole('option', {
+        name: channelLabels['SLACK']!,
+        exact: true,
+      })
+      await expect(channel3Option).toBeVisible()
+      await channel3Option.click()
+
+      await page.getByRole('button', {
+        name: notificationPolicyLabels.form.addButton,
+        exact: true,
+      }).click()
+
+      // Then. 7건으로 증가 확인
+      await expect(tbody.locator('tr').nth(6)).toBeVisible()
+      expect(await tbody.locator('tr').count()).toBe(7)
+
+      // ── SPA 재진입 후 영속 확인 ───────────────────────────────────────────
+
+      // When. 페이지 리로드 (MSW stateful store → 재조회)
+      await page.reload()
+      await page.waitForURL(`**${PAGE_URL}`)
+
+      // Then. 7건 그대로 유지
+      await expect(
+        page.getByRole('heading', { name: notificationPolicyLabels.page.heading, exact: true }),
+      ).toBeVisible()
+      const tbodyAfterReload = page.locator('tbody')
+      await expect(tbodyAfterReload.locator('tr').nth(6)).toBeVisible()
+      expect(await tbodyAfterReload.locator('tr').count()).toBe(7)
+
+      // 추가한 이벤트 라벨 tbody 내 존재 확인 — 컨테이너 한정(strict mode 회피)
+      await expect(tbodyAfterReload.getByText(eventTypeLabels['issue.overdue']!, { exact: true })).toBeVisible()
+      await expect(tbodyAfterReload.getByText(eventTypeLabels['sprint.ended']!, { exact: true })).toBeVisible()
+      await expect(tbodyAfterReload.getByText(eventTypeLabels['automation.failed']!, { exact: true })).toBeVisible()
+    },
+  )
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S7 — RULE_OWNER 비활성 + 동적 헬퍼 + 상시 안내 (FR-NT-03)
+//
+// Given   SYSTEM_ADMIN alice → /admin/notification-policies 진입 (시드 4건)
+// When    수신자 역할 select 열기
+// Then    RULE_OWNER 옵션이 aria-disabled="true" + data-disabled 속성 보유
+// When    활성 역할(WATCHER) 선택
+// Then    동적 헬퍼에 recipientRoleDescriptions['WATCHER'] 문구 visible
+//         상시 안내(recipientUnsupportedHint) 항상 visible
+// When    RULE_OWNER 옵션을 클릭 시도
+// Then    select 트리거 값이 바뀌지 않음 (WATCHER 유지 — disabled 옵션 미선택)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('S7 RULE_OWNER 비활성 + 동적 헬퍼 + 상시 안내 (FR-NT-03)', () => {
+  test(
+    'Given 정책 페이지 When 수신자 드롭다운 열기 Then RULE_OWNER 비활성 + 활성 역할 헬퍼 + 상시 안내',
+    async ({ page }) => {
+      // Given. SYSTEM_ADMIN alice 로그인 → 페이지 진입 + 시드 복원
+      await loginAsSystemAdmin(page)
+      await page.goto(PAGE_URL)
+      await page.waitForURL(`**${PAGE_URL}`)
+      await resetPolicyStore(page)
+      await page.reload()
+
+      // Given. 페이지 로딩 완료 확인
+      await expect(
+        page.getByRole('heading', { name: notificationPolicyLabels.page.heading, exact: true }),
+      ).toBeVisible()
+
+      // ── 상시 안내 — 역할 선택 전에도 항상 표시 ───────────────────────────
+
+      // Then. 상시 안내 문구 visible (수신자 역할 선택 여부 무관)
+      await expect(
+        page.getByText(notificationPolicyLabels.form.recipientUnsupportedHint, { exact: true }),
+      ).toBeVisible()
+
+      // ── RULE_OWNER 비활성 단언 ────────────────────────────────────────────
+
+      // When. 수신자 역할 select 열기
+      const recipientTrigger = page.getByRole('combobox', {
+        name: notificationPolicyLabels.form.recipientRole,
+        exact: true,
+      })
+      await recipientTrigger.click()
+
+      // Then. RULE_OWNER 옵션 visible
+      // recipientRoleLabels['RULE_OWNER'] + "(미지원)" 접미사가 붙은 텍스트로 렌더됨
+      const ruleOwnerLabel = `${recipientRoleLabels['RULE_OWNER']!} ${notificationPolicyLabels.form.recipientUnsupportedSuffix}`
+      const ruleOwnerOption = page.getByRole('option', { name: ruleOwnerLabel, exact: true })
+      await expect(ruleOwnerOption).toBeVisible()
+
+      // Then. RULE_OWNER 옵션에 aria-disabled="true" 속성 존재
+      // Radix UI SelectItem: disabled prop → aria-disabled="true" + data-disabled
+      await expect(ruleOwnerOption).toHaveAttribute('aria-disabled', 'true')
+
+      // ── 활성 역할 선택 → 동적 헬퍼 노출 ─────────────────────────────────
+
+      // When. 활성 역할 WATCHER 선택
+      const watcherOption = page.getByRole('option', {
+        name: recipientRoleLabels['WATCHER']!,
+        exact: true,
+      })
+      await expect(watcherOption).toBeVisible()
+      await watcherOption.click()
+
+      // Then. 동적 헬퍼에 WATCHER 역할 설명 문구 visible
+      await expect(
+        page.getByText(recipientRoleDescriptions['WATCHER']!, { exact: true }),
+      ).toBeVisible()
+
+      // Then. 상시 안내 여전히 visible (역할 선택 후에도 항상)
+      await expect(
+        page.getByText(notificationPolicyLabels.form.recipientUnsupportedHint, { exact: true }),
+      ).toBeVisible()
+
+      // ── RULE_OWNER 클릭 시도 → 트리거 값 불변 단언 ───────────────────────
+
+      // When. 드롭다운 다시 열기
+      await recipientTrigger.click()
+
+      // Then. RULE_OWNER 옵션 표시
+      const ruleOwnerOption2 = page.getByRole('option', { name: ruleOwnerLabel, exact: true })
+      await expect(ruleOwnerOption2).toBeVisible()
+
+      // When. RULE_OWNER 클릭 시도 (disabled 옵션이므로 선택 불가)
+      await ruleOwnerOption2.click({ force: true })
+
+      // Then. select 트리거가 여전히 WATCHER 값 표시 (RULE_OWNER로 바뀌지 않음)
+      // 동적 헬퍼가 WATCHER 설명을 여전히 표시하면 선택이 바뀌지 않은 것
+      await expect(
+        page.getByText(recipientRoleDescriptions['WATCHER']!, { exact: true }),
+      ).toBeVisible()
+
+      // RULE_OWNER 설명 문구는 표시되지 않음을 확인
+      await expect(
+        page.getByText(recipientRoleDescriptions['RULE_OWNER']!, { exact: true }),
+      ).not.toBeVisible()
+    },
+  )
 })
