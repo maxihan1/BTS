@@ -11,6 +11,9 @@ import {
 import { Button } from '@/components/ui/button'
 import type { PolicyCatalog } from '@/api/notification-policies'
 import { UNSUPPORTED_RECIPIENT_ROLES } from '@/api/notification-policies'
+
+/** 미지원 역할 Set — 모듈 수준 상수(매 렌더마다 재생성 방지). */
+const UNSUPPORTED_ROLE_SET = new Set<string>(UNSUPPORTED_RECIPIENT_ROLES)
 import {
   eventTypeLabels,
   recipientRoleLabels,
@@ -67,9 +70,8 @@ function buildEventTypeOptions(eventTypes: PolicyCatalog['eventTypes']): JSX.Ele
 
 /** 수신자 역할 카탈로그 → SelectItem 배열. 미지원 역할은 disabled + 접미사. */
 function buildRecipientRoleOptions(recipientRoles: PolicyCatalog['recipientRoles']): JSX.Element[] {
-  const unsupportedSet = new Set<string>(UNSUPPORTED_RECIPIENT_ROLES)
   return recipientRoles.map((role) => {
-    const isUnsupported = unsupportedSet.has(role)
+    const isUnsupported = UNSUPPORTED_ROLE_SET.has(role)
     const label = isUnsupported
       ? `${labelFor(recipientRoleLabels, role)} ${notificationPolicyLabels.form.recipientUnsupportedSuffix}`
       : labelFor(recipientRoleLabels, role)
@@ -102,6 +104,8 @@ function buildChannelOptions(channels: PolicyCatalog['channels']): JSX.Element[]
  * - enabled는 항상 true로 고정 — 생성 후 토글은 NotificationPolicyTable에서 처리.
  * - submitError: 부모(T7 페이지)가 409 중복 오류를 i18n 변환 후 prop으로 전달.
  * - isSubmitting: 제출 중 버튼 비활성.
+ * - UNSUPPORTED_RECIPIENT_ROLES 역할은 select 옵션 disabled + "(미지원)" 접미사.
+ * - 수신자 역할 선택 시 동적 헬퍼(한 줄 설명) 표시. 상시 안내 문구 항상 표시.
  */
 export function NotificationPolicyForm({
   catalog,
