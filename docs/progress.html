@@ -182,9 +182,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
           <div><span class="dot dot-done"></span> 완료 <b>65</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>1</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>2</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>57</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>56</b></div>
         </div>
       </div>
     </div>
@@ -810,9 +810,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:21%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 3</div>
-        <div>🔄 진행중 0</div>
+        <div>🔄 진행중 1</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 11</div>
+        <div>⬜ 대기 10</div>
       </div>
     </div>
     <h2>세부 기능 (14개)</h2>
@@ -844,13 +844,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span>/사용자/기간별 시간 집계</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인</li><li><span class="step-icon">⬜</span> D2 — 명세 — 집계 차원 (<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span>/사용자/기간/<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">프로젝트</span>)</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — 머티리얼라이즈드 뷰 검토</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `GET /api/v1/worklogs/aggregate?by=...`</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 표 + recharts 차트</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-진행중">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">🔄</span>
         <span class="fr-id">FR-BD-01</span>
         <span class="fr-desc">칸반 보드 (컬럼 표시, 드래그앤드롭)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — Board / Column / Swimlane</li><li><span class="step-icon">⬜</span> D2 — 명세 — 컬럼=상태 매핑</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `boards`, `board_columns(state_id)`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `GET /api/v1/boards/{id}` + 카드 이동 API</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — @<span class="term" data-def="&quot;드래그 앤 드롭 순서 맞추기&quot; Jira처럼 게시물 목록을 마우스로 끌어서 순서를 바꿀 때, 다른 게시물들의 순서가 꼬이지 않게 중간 번호를 기가 막히게 계산해 주는 기술입니다.">dnd-kit</span> 컬럼/카드</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> + <span class="term" data-def="&quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.">NFR</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — Board / Column (Swimlane은 FR-BD-03)</li><li><span class="step-icon">✅</span> D2 — 명세 — 컬럼=상태 매핑</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `boards`, `board_columns(state_key)`</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `GET /api/v1/boards/{id}` + 보드 CRUD + 카드 이동(<span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span> 위임) API</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — @<span class="term" data-def="&quot;드래그 앤 드롭 순서 맞추기&quot; Jira처럼 게시물 목록을 마우스로 끌어서 순서를 바꿀 때, 다른 게시물들의 순서가 꼬이지 않게 중간 번호를 기가 막히게 계산해 주는 기술입니다.">dnd-kit</span> 컬럼/카드</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> + <span class="term" data-def="&quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.">NFR</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
