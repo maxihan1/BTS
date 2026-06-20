@@ -51,6 +51,130 @@ cross-BC 포트. WorkflowStateCatalog 확장(category/displayOrder) · BoardIssu
 
 ✅ 통과 (직접 adversarial 점검, gap 3건 발견 후 보강 — G1 visibility 누출, G2 권한 레벨, G3 카드 정렬).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 모듈 직렬화 원칙. agile-planning(T1·T6·T7·T8·T9)·issue-tracking(T4·T5)은 같은 모듈이므로 test 컴파일 race 회피 위해 직렬 depends-on. 다른 모듈은 병렬 허용.
+> 교훈 반영. WorkflowStateView 확장=default로 기존 호출자/fake 보호(interface-extension-default-method, FR-MV-01 isDone 전례). IssueTransitionPort=fail-closed(crossbc-resolver-nullable-fail-open). 신규 cross-BC 포트 non-null이 기존 전체-컨텍스트 통합테스트 부팅 깸→config stub 빈(fr-nt-02/03 전례). 마이그레이션 V번호 머지 직전 재확인. detekt baseline regen 금지. implementer ktlint false-green→controller --rerun-tasks 직접검증.
+
+### Task 1. agile-planning BC 모듈 부트스트랩
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/settings.gradle.kts`, `backend/modules/agile-planning/build.gradle.kts`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/package-info.kt`, `backend/modules/agile-planning/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/architecture/AgilePlanningBcArchTest.kt`]
+- depends-on: []
+
+**RED**: `AgilePlanningBcArchTest` — BC 격리 룰(issue-tracking/project-workflow/identity-access 직접 import 금지, jOOQ 생성코드는 repository 패키지만, @Transactional=@Service/@Component). 모듈/패키지 부재로 실패.
+**GREEN**: settings.gradle.kts에 `include(":modules:agile-planning")`. build.gradle.kts = notification 템플릿 복제(jOOQ codegen packageName=`com.bts.agileplanning.jooq`+init_codegen.sql, Flyway `db/migration/agile-planning`, detekt/ktlint, `implementation(project(":modules:shared-kernel"))`). `com.bts.agileplanning.{domain,application,repository,web,config}` 레이아웃 + ArchUnit 통과 최소 클래스.
+**REFACTOR**: init_codegen.sql 헤더 주석(한국어). ArchUnit 룰 KDoc.
+**검증**: `cd backend && ./gradlew :modules:agile-planning:test --tests *AgilePlanningBcArchTest`
+
+### Task 2. shared-kernel cross-BC 포트 정의
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/WorkflowStateView.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/board/BoardIssueLookupPort.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/board/IssueTransitionPort.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/board/BoardPortContractTest.kt`]
+- depends-on: []
+
+**RED**: `BoardPortContractTest` — (a) `WorkflowStateView`가 category/displayOrder 기본값으로 생성됨(기존 2-arg 호출 보호), (b) `BoardIssueLookupPort.listVisibleIssuesByProject` default=빈 목록, (c) `IssueTransitionPort`는 default 없음(구현 필수) 컴파일 검증.
+**GREEN**:
+- `WorkflowStateView`에 `category: String = "TODO"`, `displayOrder: Int = 0` 추가(기존 `key/name/isDone` 유지, default로 기존 호출 보호).
+- `BoardIssueLookupPort { fun listVisibleIssuesByProject(projectKey: String, viewerUserId: UUID): List<BoardIssueView> = emptyList() }` + `BoardIssueView(key, summary, currentStateKey, assigneeId, priority, version)`.
+- `IssueTransitionPort { fun transition(cmd: BoardTransitionCommand): BoardTransitionResult }`(default 없음, fail-closed) + `BoardTransitionCommand(issueKey, toStateKey, expectedVersion, resolutionId?, actorUserId)` + `BoardTransitionResult(issueKey, currentStateKey, version)`.
+**REFACTOR**: KDoc(BC 격리 사유·fail-closed 명시).
+**검증**: `cd backend && ./gradlew :modules:shared-kernel:test --tests *BoardPortContractTest`
+
+### Task 3. project-workflow WorkflowStateCatalogImpl view 확장
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/adapter/inbound/WorkflowStateCatalogImpl.kt`, `backend/modules/project-workflow/src/test/kotlin/com/bts/workflow/scheme/adapter/inbound/WorkflowStateCatalogImplTest.kt`]
+- depends-on: [2]
+
+**RED**: `listStates`가 반환하는 `WorkflowStateView`에 category(상태의 StateCategory.name)·displayOrder가 채워짐을 단언(기존 isDone 유지).
+**GREEN**: `WorkflowStateView(key, name, isDone=..., category=state.category.name, displayOrder=state.displayOrder)`.
+**REFACTOR**: 매핑 정리.
+**검증**: `cd backend && ./gradlew :modules:project-workflow:test --tests *WorkflowStateCatalogImplTest`
+
+### Task 4. issue-tracking BoardIssueLookupPort 구현 (visibility 필터)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/board/BoardIssueLookupAdapter.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/board/BoardIssueLookupAdapterTest.kt`]
+- depends-on: [2]
+
+**RED**: 통합테스트 — 프로젝트 이슈 목록을 viewer 기준으로 반환하되 (a) soft-deleted 제외, (b) **viewer 미가시 보안수준 이슈 제외(누출 차단)**, (c) priority 포함, (d) N+1 없이 단일/소수 쿼리.
+**GREEN**: `@Component BoardIssueLookupAdapter : BoardIssueLookupPort`. project_key→이슈 목록 조회 + `IssueSecurityDecider`/visibility 적용(FR-NT-03 패턴 재사용). priority/current_state_key/assignee 매핑.
+**REFACTOR**: 쿼리 상수화. ktlint↔detekt 라인길이 블록body.
+**검증**: `cd backend && ./gradlew :modules:issue-tracking:test --tests *BoardIssueLookupAdapterTest`
+
+### Task 5. issue-tracking IssueTransitionPort 구현 (전이 위임)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/board/IssueTransitionAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/board/IssueTransitionAdapterTest.kt`]
+- depends-on: [2, 4]
+
+**RED**: 통합테스트 — `transition(cmd)`가 기존 전이 application service에 위임해 상태 변경. 전이 불가→예외 전파, 버전 충돌→예외 전파, 권한 강제, DONE+resolution 누락→예외.
+**GREEN**: `@Component IssueTransitionAdapter : IssueTransitionPort`. 기존 `TransitionIssue` application service(IssueController가 쓰는 동일 경로) 위임. 도메인 직접 UPDATE 금지(불변식 우회 회피).
+**REFACTOR**: 예외 매핑 정리.
+**검증**: `cd backend && ./gradlew :modules:issue-tracking:test --tests *IssueTransitionAdapterTest`
+
+### Task 6. agile-planning 마이그레이션 V500 boards/board_columns
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V500__boards.sql`, `backend/modules/agile-planning/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/migration/BoardSchemaMigrationTest.kt`]
+- depends-on: [1]
+
+**RED**: `BoardSchemaMigrationTest`(Testcontainers) — Flyway 적용 후 boards/board_columns 테이블·UNIQUE(board_id,state_key)·FK CASCADE·idx_boards_project_key 존재 단언.
+**GREEN**: spec §데이터 모델 DDL. `init_codegen.sql`에 동일 DDL 미러(jOOQ codegen, jooq-init-codegen-mirror 교훈).
+**REFACTOR**: 주석. V번호는 머지 직전 재확인(migration-vnumber 교훈).
+**검증**: `cd backend && ./gradlew :modules:agile-planning:test --tests *BoardSchemaMigrationTest`
+
+### Task 7. agile-planning 도메인 + 컬럼 시드/카드 배치 로직
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/domain/Board.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/domain/BoardColumn.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/domain/BoardCardPlacement.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/domain/BoardCardPlacementTest.kt`]
+- depends-on: [1, 2, 6]
+
+**RED**: 순수 단위테스트 — (a) 워크플로우 상태 목록(WorkflowStateView)→컬럼 시드(state_key/name/category/displayOrder 매핑, displayOrder 순), (b) 이슈(BoardIssueView) 목록을 current_state_key로 컬럼 배치, (c) 미매핑 상태 이슈 제외(E2), (d) 컬럼 내 priority ASC + created 보조 정렬.
+**GREEN**: Board/BoardColumn 도메인 + 시드/배치 순수 함수.
+**REFACTOR**: VO 정리.
+**검증**: `cd backend && ./gradlew :modules:agile-planning:test --tests *BoardCardPlacementTest`
+
+### Task 8. agile-planning 보드 서비스 + repository (CRUD + 이동 위임)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardApplicationService.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/repository/BoardRepository.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/BoardApplicationServiceTest.kt`]
+- depends-on: [3, 5, 6, 7]
+
+**RED**: 통합테스트(Testcontainers) — (a) 보드 생성 시 WorkflowStateCatalog(포트)로 default 상태 조회→컬럼 시드+영속, (b) E1 스킴 미할당→422, (c) 조회 시 BoardIssueLookupPort로 카드 배치, (d) 카드 이동=toColumnId→state_key 도출 후 IssueTransitionPort 위임, (e) E3 같은 컬럼 no-op 200, (f) E8 보드-이슈 프로젝트 정합.
+**GREEN**: `@Service BoardApplicationService`(@Transactional) + `BoardRepository`(jOOQ). cross-BC는 포트만 호출(BC 격리). 신규 포트 non-null 주입.
+**REFACTOR**: 쿼리/매핑 정리.
+**검증**: `cd backend && ./gradlew :modules:agile-planning:test --tests *BoardApplicationServiceTest`
+
+### Task 9. agile-planning 보드 컨트롤러 + 권한 결선 + HTTP 통합테스트
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardResponses.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/board/BoardPermissionPort.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardControllerIntegrationTest.kt`]
+- depends-on: [8]
+
+**RED**: HTTP 통합테스트 — POST/GET/move 4 엔드포인트. 권한: 조회·생성=프로젝트 이슈 VIEW(403 미충족), 이동=전이권한(IssueTransitionPort 강제). 에러코드(400/403/404/409/422) + 응답 봉투(DataResponse/{error}). 도메인예외 HTTP 매핑(catch-all이 401/타입미스매치 삼키지 않음 — catch-all-exceptionhandler 교훈).
+**GREEN**: `@RestController BoardController` + `BoardPermissionPort`(프로젝트 VIEW, fail-closed, identity-access 구현 또는 기존 resolver 재사용) + 명시 ExceptionHandler.
+**REFACTOR**: DTO/핸들러 정리.
+**검증**: `cd backend && ./gradlew :modules:agile-planning:test --tests *BoardControllerIntegrationTest && ./gradlew :modules:agile-planning:ktlintCheck detekt`
+
+## Plan 메타
+
+- task 수: 9
+- 모듈 분포: agile-planning(T1·T6·T7·T8·T9 직렬) · shared-kernel(T2) · project-workflow(T3) · issue-tracking(T4·T5 직렬)
+- 예상 wave: 5 (W1: T1·T2 / W2: T3·T4·T6 / W3: T5·T7 / W4: T8 / W5: T9)
+- TDD 강제: yes (RED→GREEN→REFACTOR, test 커밋 선행)
+- agent 분담: backend-engineer(T1·T2·T3·T5·T7·T8) · security-engineer(T4·T9, visibility/권한) · db-engineer(T6)
+- 추가 검증: ktlint + detekt(--rerun-tasks, false-green 방지) + 모듈 통합테스트(Testcontainers)
+- 후속 PR: 프론트 D6(@dnd-kit)/D7(E2E+NFR)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
