@@ -34,10 +34,12 @@ import { AttachmentSection } from '@/components/issue/AttachmentSection'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
 import { IssueScheduleFields } from '@/components/issue/IssueScheduleFields'
+import { IssueEstimatePanel } from '@/components/issue/IssueEstimatePanel'
+import { WorklogSection } from '@/components/issue/WorklogSection'
 import { ResolutionModal } from '@/components/issue/ResolutionModal'
 import { CloneIssueDialog } from '@/components/issues/CloneIssueDialog'
 import { MoveIssueDialog } from '@/components/issues/MoveIssueDialog'
-import { issueDetailStrings } from '@/i18n/ko'
+import { issueDetailStrings, worklogStrings } from '@/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼 — 전이 컨트롤 사유 계산 (스펙 E5)
@@ -704,9 +706,17 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
               <p className="text-xs text-muted-foreground mb-3">{issueDetailStrings.scheduleLabel}</p>
               <IssueScheduleFields issue={issue} disabled={!canEdit} />
             </div>
+            {/* 추정 카드 — FR-TT-01 원 추정·잔여 추정·기록 시간 (design-C1: wrapper는 route가) */}
+            <div className="border border-border rounded-xl px-3.5 py-3">
+              <p className="text-xs text-muted-foreground mb-3">{worklogStrings.estimateSectionTitle}</p>
+              <IssueEstimatePanel issue={issue} disabled={!canEdit} />
+            </div>
           </div>
         )}
       </div>
+
+      {/* 작업 기록 섹션 — 2단 grid 바깥 전체폭 (FR-TT-01 D6) */}
+      <WorklogSection issueKey={issue.key} canUpdate={canEdit} />
 
       {/* 이슈 링크 패널 — 2단 grid 바깥 전체폭, 변경 이력 상단 (FR-LK-01 D6) */}
       <IssueLinksPanel

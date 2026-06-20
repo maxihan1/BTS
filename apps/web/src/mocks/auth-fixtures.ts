@@ -76,12 +76,15 @@ export function resetMfaStore(): void {
   mfaStore.backupCodesRemaining = 0
 }
 
-/** alice fixture — backend DB seed 사용자와 일치 (userId는 UUID v4 고정값) */
+/**
+ * alice fixture — backend DB seed 사용자와 일치.
+ * userId: RFC4122 v4 형식 (version=4, variant=8) — Zod v4 z.string().uuid() 통과 보장.
+ */
 export const aliceUser: WhoamiResponse = {
   username: 'alice',
   email: 'alice@bts.local',
   authMethod: 'jwt',
-  userId: '00000000-0000-0000-0000-000000000001',
+  userId: '00000000-0000-4000-8000-000000000001',
   mustChangePassword: false,
   isSystemAdmin: false,
   mfaEnrollmentRequired: false,
@@ -92,7 +95,7 @@ export const bobUser: WhoamiResponse = {
   username: 'bob',
   email: 'bob@bts.local',
   authMethod: 'jwt',
-  userId: '00000000-0000-0000-0000-000000000002',
+  userId: '00000000-0000-4000-8000-000000000002',
   mustChangePassword: false,
   isSystemAdmin: false,
   mfaEnrollmentRequired: false,

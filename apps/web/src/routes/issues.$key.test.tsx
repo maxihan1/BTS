@@ -1804,3 +1804,85 @@ describe('IssueDetailPage — 이슈 이동 진입점 + 308 redirect', () => {
   })
 
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 7 — 추정 카드 + WorklogSection 배선 (FR-TT-01 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { worklogStrings } from '@/i18n/ko'
+
+describe('IssueDetailPage — Task 7 (추정 카드 + WorklogSection 배선)', () => {
+  beforeEach(() => {
+    setupIssueFoundHandler(issueAtlas1Fixture)
+    server.use(
+      ...issueTypeHandlers,
+      // 전이 목록 — WorklogSection 마운트와 무관하나 useIssueTransitions 호출됨
+      http.get('/api/v1/issues/ATLAS-1/transitions', () =>
+        HttpResponse.json({ data: { transitions: [] } }),
+      ),
+      // 워크로그 목록 핸들러 — WorklogSection이 fetchWorklogs 호출
+      http.get('/api/v1/issues/:key/worklogs', () =>
+        HttpResponse.json({
+          data: {
+            worklogs: [],
+            summary: {
+              totalTimeSpentSeconds: 0,
+              remainingEstimateSeconds: null,
+            },
+          },
+        }),
+      ),
+    )
+    setupUsersHandler()
+  })
+
+  /**
+   * TTT7-1: 추정 카드 wrapper가 렌더된다.
+   * IssueEstimatePanel을 감싸는 카드 안에 worklogStrings.estimateSectionTitle 라벨이 있어야 한다.
+   */
+  it('TTT7-1: 추정 카드 wrapper가 estimateSectionTitle 라벨과 함께 렌더된다', async () => {
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText(worklogStrings.estimateSectionTitle)).toBeInTheDocument()
+    })
+  })
+
+  /**
+   * TTT7-2: IssueEstimatePanel의 입력 필드(data-testid="estimate-fields")가 렌더된다.
+   * 추정 카드 안에 IssueEstimatePanel이 마운트됐음을 data-testid로 검증.
+   */
+  it('TTT7-2: IssueEstimatePanel(estimate-fields)이 추정 카드 안에 렌더된다', async () => {
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('estimate-fields')).toBeInTheDocument()
+    })
+  })
+
+  /**
+   * TTT7-3: WorklogSection이 이슈 상세 페이지 하단에 렌더된다.
+   * section[aria-label="작업 기록"]이 DOM에 존재해야 한다.
+   */
+  it('TTT7-3: WorklogSection(aria-label="작업 기록")이 페이지 하단에 렌더된다', async () => {
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('region', { name: worklogStrings.worklogSectionTitle }),
+      ).toBeInTheDocument()
+    })
+  })
+})

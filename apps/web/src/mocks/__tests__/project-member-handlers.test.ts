@@ -127,7 +127,7 @@ describe('POST /api/v1/projects/:projectKey/members', () => {
 
   it('S2-3: 이미 멤버인 userId 추가 → 409 + { error: "membership_already_exists" }', async () => {
     // fixture의 alice는 이미 ATLAS 멤버
-    const res = await addMember('ATLAS', { userId: '00000000-0000-0000-0000-000000000001', role: 'MEMBER' })
+    const res = await addMember('ATLAS', { userId: '00000000-0000-4000-8000-000000000001', role: 'MEMBER' })
 
     expect(res.status).toBe(409)
     const body = await res.json() as { error: string }
@@ -149,7 +149,7 @@ describe('POST /api/v1/projects/:projectKey/members', () => {
 
 describe('PATCH /api/v1/projects/:projectKey/members/:userId', () => {
   it('S3-1: 멤버 역할 변경 → 200 + 변경된 ProjectMember 반환', async () => {
-    const res = await changeRole('ATLAS', '00000000-0000-0000-0000-000000000002', 'PROJECT_ADMIN')
+    const res = await changeRole('ATLAS', '00000000-0000-4000-8000-000000000002', 'PROJECT_ADMIN')
 
     expect(res.status).toBe(200)
     const body = await res.json() as { role: string }
@@ -157,17 +157,17 @@ describe('PATCH /api/v1/projects/:projectKey/members/:userId', () => {
   })
 
   it('S3-2: PATCH 후 GET refetch → 변경된 역할이 목록에 반영됨 (stateful 영속)', async () => {
-    await changeRole('ATLAS', '00000000-0000-0000-0000-000000000002', 'PROJECT_ADMIN')
+    await changeRole('ATLAS', '00000000-0000-4000-8000-000000000002', 'PROJECT_ADMIN')
 
     const listRes = await listMembers('ATLAS')
     const body = await listRes.json() as { members: Array<{ userId: string; role: string }> }
-    const bob = body.members.find((m) => m.userId === '00000000-0000-0000-0000-000000000002')
+    const bob = body.members.find((m) => m.userId === '00000000-0000-4000-8000-000000000002')
     expect(bob?.role).toBe('PROJECT_ADMIN')
   })
 
   it('S3-3: 마지막 admin 강등 시도 → 409 + { error: "last_admin_protected" }', async () => {
     // alice 만 PROJECT_ADMIN — bob은 MEMBER. alice를 MEMBER로 강등하면 admin 0명
-    const res = await changeRole('ATLAS', '00000000-0000-0000-0000-000000000001', 'MEMBER')
+    const res = await changeRole('ATLAS', '00000000-0000-4000-8000-000000000001', 'MEMBER')
 
     expect(res.status).toBe(409)
     const body = await res.json() as { error: string }
@@ -183,7 +183,7 @@ describe('PATCH /api/v1/projects/:projectKey/members/:userId', () => {
   })
 
   it('S3-5: 미존재 프로젝트 → 404 + { error: "project_not_found" }', async () => {
-    const res = await changeRole('UNKNOWN', '00000000-0000-0000-0000-000000000001', 'MEMBER')
+    const res = await changeRole('UNKNOWN', '00000000-0000-4000-8000-000000000001', 'MEMBER')
 
     expect(res.status).toBe(404)
     const body = await res.json() as { error: string }
@@ -197,23 +197,23 @@ describe('PATCH /api/v1/projects/:projectKey/members/:userId', () => {
 
 describe('DELETE /api/v1/projects/:projectKey/members/:userId', () => {
   it('S4-1: 멤버 삭제 → 204 No Content', async () => {
-    const res = await removeMember('ATLAS', '00000000-0000-0000-0000-000000000002')
+    const res = await removeMember('ATLAS', '00000000-0000-4000-8000-000000000002')
 
     expect(res.status).toBe(204)
   })
 
   it('S4-2: DELETE 후 GET refetch → 제거된 멤버가 목록에서 사라짐 (stateful 영속)', async () => {
-    await removeMember('ATLAS', '00000000-0000-0000-0000-000000000002')
+    await removeMember('ATLAS', '00000000-0000-4000-8000-000000000002')
 
     const listRes = await listMembers('ATLAS')
     const body = await listRes.json() as { members: Array<{ userId: string }> }
-    const found = body.members.find((m) => m.userId === '00000000-0000-0000-0000-000000000002')
+    const found = body.members.find((m) => m.userId === '00000000-0000-4000-8000-000000000002')
     expect(found).toBeUndefined()
   })
 
   it('S4-3: 마지막 admin 삭제 시도 → 409 + { error: "last_admin_protected" }', async () => {
     // alice만 PROJECT_ADMIN
-    const res = await removeMember('ATLAS', '00000000-0000-0000-0000-000000000001')
+    const res = await removeMember('ATLAS', '00000000-0000-4000-8000-000000000001')
 
     expect(res.status).toBe(409)
     const body = await res.json() as { error: string }
@@ -229,7 +229,7 @@ describe('DELETE /api/v1/projects/:projectKey/members/:userId', () => {
   })
 
   it('S4-5: 미존재 프로젝트 → 404 + { error: "project_not_found" }', async () => {
-    const res = await removeMember('UNKNOWN', '00000000-0000-0000-0000-000000000001')
+    const res = await removeMember('UNKNOWN', '00000000-0000-4000-8000-000000000001')
 
     expect(res.status).toBe(404)
     const body = await res.json() as { error: string }
@@ -257,10 +257,10 @@ describe('X-MSW-Reset-Members 헤더', () => {
   })
 
   it('S5-2: reset 후 fixture 초기 alice, bob 멤버가 복원됨', async () => {
-    await removeMember('ATLAS', '00000000-0000-0000-0000-000000000002')
+    await removeMember('ATLAS', '00000000-0000-4000-8000-000000000002')
 
     const resetBody = await resetAndList('ATLAS') as { members: Array<{ userId: string }> }
-    const bob = resetBody.members.find((m) => m.userId === '00000000-0000-0000-0000-000000000002')
+    const bob = resetBody.members.find((m) => m.userId === '00000000-0000-4000-8000-000000000002')
     expect(bob).toBeDefined()
   })
 })

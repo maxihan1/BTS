@@ -32,14 +32,14 @@ export const makeMember = (overrides: Partial<ProjectMember>): ProjectMember => 
 export const atlasInitialMembers: ProjectMember[] = [
   makeMember({
     projectId: 'project-atlas-uuid',
-    userId: '00000000-0000-0000-0000-000000000001',
+    userId: '00000000-0000-4000-8000-000000000001',
     role: 'PROJECT_ADMIN',
     displayName: '앨리스',
     username: 'alice',
   }),
   makeMember({
     projectId: 'project-atlas-uuid',
-    userId: '00000000-0000-0000-0000-000000000002',
+    userId: '00000000-0000-4000-8000-000000000002',
     role: 'MEMBER',
     displayName: '밥',
     username: 'bob',

@@ -773,6 +773,81 @@ export const issueMoveStrings = {
   errorPreview: '이슈 이동 정보를 불러오지 못했습니다. 대상 프로젝트 키를 확인해 주세요.',
 } as const
 
+/** 워크로그 및 시간 추정 패널 문자열 — FR-TT-01 D6 */
+export const worklogStrings = {
+  // ── 추정(Estimate) 카드 ────────────────────────────────────────────────
+  /** 추정 카드 섹션 제목 */
+  estimateSectionTitle: '시간 추적',
+  /** 원 추정 필드 레이블 */
+  originalEstimateLabel: '원 추정',
+  /** 기록 시간 필드 레이블 (읽기 전용) */
+  timeSpentLabel: '기록 시간',
+  /** 잔여 추정 필드 레이블 */
+  remainingEstimateLabel: '잔여 추정',
+  /** 추정 미설정 시 안내 문구 (E1) */
+  estimateNotSet: '추정이 설정되지 않았습니다.',
+  /** 추정 저장 버튼 텍스트 */
+  estimateSaveButton: '저장',
+  /** 추정 저장 버튼 aria-label */
+  estimateSaveAriaLabel: '시간 추정 저장',
+  /** 추정 저장 실패 토스트 메시지 */
+  estimateSaveError: '시간 추정 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+  /** 시간 입력 필드 레이블 */
+  hoursLabel: '시간',
+  /** 분 입력 필드 레이블 */
+  minutesLabel: '분',
+
+  // ── 워크로그 섹션 ──────────────────────────────────────────────────────
+  /** 워크로그 섹션 제목 */
+  worklogSectionTitle: '작업 기록',
+  /** 워크로그 항목이 없을 때 빈 상태 메시지 (E7) */
+  worklogEmptyState: '기록된 작업이 없습니다.',
+  /** 워크로그 추가 폼 — 작업 시간(시간) 레이블 */
+  worklogTimeHoursLabel: '시간',
+  /** 워크로그 추가 폼 — 작업 시간(분) 레이블 */
+  worklogTimeMinutesLabel: '분',
+  /** 워크로그 추가 폼 — 시작 시각 레이블 */
+  worklogStartedAtLabel: '시작 시각',
+  /** 워크로그 추가 폼 — 코멘트 레이블 */
+  worklogCommentLabel: '코멘트',
+  /** 워크로그 추가 폼 — "잔여 직접 지정" 체크박스 레이블 */
+  worklogAdjustRemainingLabel: '잔여 추정 직접 지정',
+  /** 워크로그 추가 폼 — 자동 조정 미리보기 텍스트 */
+  worklogAutoAdjustPreview: '기록 후 잔여 추정이 자동 조정됩니다.',
+  /** 워크로그 추가 버튼 텍스트 */
+  worklogAddButton: '추가',
+  /** 워크로그 추가 버튼 aria-label */
+  worklogAddAriaLabel: '작업 기록 추가',
+  /** 워크로그 수정 버튼 텍스트 */
+  worklogEditButton: '수정',
+  /** 워크로그 수정 버튼 aria-label */
+  worklogEditAriaLabel: '작업 기록 수정',
+  /** 워크로그 삭제 버튼 텍스트 */
+  worklogDeleteButton: '삭제',
+  /** 워크로그 삭제 버튼 aria-label */
+  worklogDeleteAriaLabel: '작업 기록 삭제',
+  /** 워크로그 저장 버튼 텍스트 */
+  worklogSaveButton: '저장',
+  /** 워크로그 항목 — 작성자 레이블 */
+  worklogAuthorLabel: '작성자',
+  /** 워크로그 목록 로딩 중 표시 */
+  worklogLoading: '작업 기록 불러오는 중',
+  /** 워크로그 목록 로드 실패 토스트 메시지 */
+  worklogLoadError: '작업 기록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
+  /** 워크로그 추가 성공 토스트 메시지 */
+  worklogAddSuccess: '작업 기록이 추가되었습니다.',
+  /** 워크로그 추가 실패 토스트 메시지 */
+  worklogAddError: '작업 기록 추가 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+  /** 워크로그 수정 성공 토스트 메시지 */
+  worklogEditSuccess: '작업 기록이 수정되었습니다.',
+  /** 워크로그 수정 실패 토스트 메시지 */
+  worklogEditError: '작업 기록 수정 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+  /** 워크로그 삭제 성공 토스트 메시지 */
+  worklogDeleteSuccess: '작업 기록이 삭제되었습니다.',
+  /** 워크로그 삭제 실패 토스트 메시지 */
+  worklogDeleteError: '작업 기록 삭제 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+} as const
+
 /** 사용자 알림 구독 설정 페이지 문자열 — /settings/notifications (FR-NT-04) */
 export const notificationSubscriptionStrings = {
   /** 페이지 제목 */

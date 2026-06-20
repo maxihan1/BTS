@@ -159,6 +159,29 @@ export const issueResponseSchema = z.object({
    * null이면 미설정. optional()로 두어 기존 인라인 mock이 깨지지 않게 한다.
    */
   targetDate: z.string().nullable().optional(),
+  // ── FR-TT-01 추정 필드 (Time Tracking) ─────────────────────────────────────
+  /**
+   * FR-TT-01 — 원본 추정 시간(초).
+   * 백엔드 IssueResponse.originalEstimateSeconds: Long? — @JsonInclude(NON_NULL) 미적용이므로
+   * null인 경우에도 키가 항상 존재한다. nullable()이 본질.
+   * optional()은 기존 인라인 mock(estimate 필드 0개) fanout 회피 전용
+   * (zod-schema-strengthen-inline-mock-fanout 교훈 — startDate 패턴과 동일).
+   */
+  originalEstimateSeconds: z.number().nullable().optional(),
+  /**
+   * FR-TT-01 — 실제 소요 시간(초).
+   * 백엔드 IssueResponse.timeSpentSeconds: Long — non-null, 기본값 0.
+   * @JsonInclude(NON_NULL) 미적용이므로 키가 항상 존재한다.
+   * optional()은 기존 인라인 mock 파급 방지용.
+   */
+  timeSpentSeconds: z.number().optional(),
+  /**
+   * FR-TT-01 — 잔여 추정 시간(초).
+   * 백엔드 IssueResponse.remainingEstimateSeconds: Long? — @JsonInclude(NON_NULL) 미적용이므로
+   * null인 경우에도 키가 항상 존재한다. nullable()이 본질.
+   * optional()은 기존 인라인 mock 파급 방지용.
+   */
+  remainingEstimateSeconds: z.number().nullable().optional(),
 })
 
 /** Spring Page 응답 Zod 스키마 — 래퍼 없음 (DataResponse 감싸지 않음) */
@@ -320,6 +343,20 @@ export interface UpdateIssueInput {
    * - "yyyy-MM-dd" 문자열 = 설정
    */
   targetDate?: string | null
+  /**
+   * FR-TT-01 — 원본 추정 시간(초) 수정 (JsonNullable 3-state).
+   * - undefined(미전달) = 무변경 (JSON.stringify가 키 제거)
+   * - null = 클리어 (키 존재 + 값 null → 백엔드가 추정 초기화로 처리)
+   * - number = 설정 (단위: 초)
+   */
+  originalEstimateSeconds?: number | null
+  /**
+   * FR-TT-01 — 잔여 추정 시간(초) 수정 (JsonNullable 3-state).
+   * - undefined(미전달) = 무변경
+   * - null = 클리어
+   * - number = 설정 (단위: 초)
+   */
+  remainingEstimateSeconds?: number | null
   expectedVersion: number
 }
 

@@ -2,6 +2,7 @@
 // 소프트 삭제 stateful: deletedKeys 와 createdIssues 로 모듈-스코프 상태 유지 (E2E 검증 gap-H + E2E-1 happy path).
 // FR-PM-07: restrictedFields/noneditableFields 시나리오 시드 — field-permission store 파생.
 import { http, HttpResponse } from 'msw'
+import { setIssueEstimate, getIssueEstimate } from './worklog-handlers'
 import { getStoredComponentsByIds } from './component-handlers'
 import { getStoredProjectLead } from './project-lead-handlers'
 import { getFieldPermissionsForProject } from './field-permission-handlers'
@@ -217,11 +218,23 @@ const getIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
       .map((fp) => fp.fieldKey)
   }
 
+  // estimateStore에 설정된 값이 있으면 issueOverrides보다 우선 사용.
+  // worklog POST 자동차감 후 remainingEstimateSeconds가 estimateStore에 업데이트되면
+  // GET 이슈 refetch 시 이 값이 IssueEstimatePanel에 반영된다.
+  const liveEstimate = getIssueEstimate(key)
   const withHtml: IssueResponse = {
     ...found,
     descriptionHtml: renderDescriptionHtml(found.description),
     restrictedFields: resolvedRestrictedFields,
     noneditableFields: resolvedNoneditableFields,
+    originalEstimateSeconds:
+      liveEstimate.originalEstimateSeconds !== null
+        ? liveEstimate.originalEstimateSeconds
+        : found.originalEstimateSeconds,
+    remainingEstimateSeconds:
+      liveEstimate.remainingEstimateSeconds !== null
+        ? liveEstimate.remainingEstimateSeconds
+        : found.remainingEstimateSeconds,
   }
   return HttpResponse.json({ data: withHtml })
 })
@@ -353,6 +366,14 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     startDate?: string | null
     dueDate?: string | null
     targetDate?: string | null
+    /**
+     * FR-TT-01 — 추정 2필드 (JsonNullable 3-state, applyDatePatch와 동일).
+     * undefined(미전달) → 기존값 유지.
+     * null → DB NULL 클리어.
+     * number → 해당 초 값으로 설정.
+     */
+    originalEstimateSeconds?: number | null
+    remainingEstimateSeconds?: number | null
   }
 
   // (2) typeId 검증 — 카탈로그에 없는 id 는 404
@@ -414,6 +435,27 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
   const resolvedDueDate = applyDatePatch(found.dueDate ?? null, body.dueDate)
   const resolvedTargetDate = applyDatePatch(found.targetDate ?? null, body.targetDate)
 
+  // FR-TT-01 — 추정 2필드 3-state 적용 (worklog-handlers estimateStore 동기화).
+  // applyDatePatch와 동일한 3-state 의미론: undefined=유지, null=클리어, number=설정.
+  const currentEstimate = getIssueEstimate(key)
+  const resolvedOriginalEstimateSeconds =
+    body.originalEstimateSeconds !== undefined
+      ? body.originalEstimateSeconds
+      : (found.originalEstimateSeconds ?? currentEstimate.originalEstimateSeconds)
+  const resolvedRemainingEstimateSeconds =
+    body.remainingEstimateSeconds !== undefined
+      ? body.remainingEstimateSeconds
+      : (found.remainingEstimateSeconds ?? currentEstimate.remainingEstimateSeconds)
+
+  // estimateStore에 동기화 — worklog summary 조회 시 일관된 값 반환
+  if (body.originalEstimateSeconds !== undefined || body.remainingEstimateSeconds !== undefined) {
+    setIssueEstimate(key, body.originalEstimateSeconds, body.remainingEstimateSeconds)
+  }
+
+  // timeSpentSeconds는 worklog store SUM에서 파생 — IssueResponse 고정값 대신 0 기본값 유지
+  // (이슈 단건 GET에서 getIssueEstimate로 조회한 값을 보강하는 방식은 issue-handlers 범위 밖이므로
+  //  추정 필드만 issueOverrides에 저장하고, WorklogSection이 GET /worklogs의 summary를 단일 출처로 사용)
+
   const updated: IssueResponse = {
     ...found,
     summary: body.summary ?? found.summary,
@@ -433,6 +475,9 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     startDate: resolvedStartDate,
     dueDate: resolvedDueDate,
     targetDate: resolvedTargetDate,
+    // FR-TT-01 — 추정 2필드: PATCH 응답에 반영 (IssueEstimatePanel이 issue 단건 refetch로 draft 재동기화)
+    originalEstimateSeconds: resolvedOriginalEstimateSeconds,
+    remainingEstimateSeconds: resolvedRemainingEstimateSeconds,
     version: found.version + 1,
     updatedAt: new Date().toISOString(),
   }
