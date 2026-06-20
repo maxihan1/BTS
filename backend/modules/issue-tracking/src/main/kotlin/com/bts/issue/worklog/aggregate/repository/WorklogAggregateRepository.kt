@@ -129,6 +129,13 @@ class WorklogAggregateRepository(
      * PostgreSQL `date_trunc($1, col)` 의 첫 인자는 bind 파라미터를 받지 않는다.
      * [AggregateGranularity.sqlLiteral] 은 enum 화이트리스트이므로 [DSL.inline] 으로 안전하게 삽입한다.
      * `DSL.param` / `DSL.val` 경로 절대 금지.
+     *
+     * ### E6 — 세션 TZ 무관 UTC 버킷
+     * PgJDBC 는 JVM 기본 타임존을 세션 TimeZone GUC 로 전파한다.
+     * 한국 호스트(KST=UTC+9)에서 `date_trunc('day', started_at)` 를 그냥 쓰면
+     * 경계 시각(예: UTC 23시 = KST 다음날 08시)이 다음 날 버킷으로 들어간다.
+     * PERIOD 차원에서는 `started_at AT TIME ZONE 'UTC'` 로 UTC 벽시계로 먼저 변환한 뒤
+     * date_trunc 를 적용해 세션 TZ 에 무관한 UTC 기준 버킷을 보장한다.
      */
     private fun buildGroupKeyExpression(
         dimension: WorklogAggregateDimension,
@@ -150,13 +157,23 @@ class WorklogAggregateRepository(
                     requireNotNull(granularity) {
                         "PERIOD 차원에서는 granularity 가 필수입니다."
                     }
-                // date_trunc 첫 인자는 DSL.inline 으로 삽입 (B2 — bind 파라미터 금지)
+                // date_trunc 첫 인자는 DSL.inline 으로 삽입 (B2 — bind 파라미터 금지).
+                // AT TIME ZONE 'UTC' 로 started_at 을 UTC 벽시계로 변환한 뒤 자른다.
+                // 이렇게 해야 세션 TimeZone GUC 설정(PgJDBC 가 JVM TZ 로 전파)에 무관하게
+                // 항상 UTC 기준 버킷을 생성한다 (spec E6 — "UTC 기준 해석" 보장).
+                // 'UTC' 는 고정 문자열 리터럴이므로 SQL 인젝션 위험 없음.
+                val startedAtUtc =
+                    DSL.field(
+                        "{0} AT TIME ZONE 'UTC'",
+                        OffsetDateTime::class.java,
+                        WORKLOGS.STARTED_AT,
+                    )
                 val truncated =
                     DSL.field(
                         "date_trunc({0}, {1})",
                         OffsetDateTime::class.java,
                         DSL.inline(gran.sqlLiteral),
-                        WORKLOGS.STARTED_AT,
+                        startedAtUtc,
                     )
                 DSL.field(
                     "to_char({0}, 'YYYY-MM-DD')",

@@ -646,13 +646,14 @@ class WorklogAggregateRepositoryTest : IssueTestcontainersBase() {
         // JDBC URL 에 options=-c timezone=Asia/Seoul 를 추가해 세션 TZ 를 KST 로 고정한다.
         // DriverManagerDataSource 는 커넥션 풀 없이 매번 새 연결을 만들고, PostgreSQL JDBC 드라이버는
         // options 파라미터를 서버에 SET 명령으로 전달하므로 세션 TZ 가 Asia/Seoul 로 설정된다.
-        val kstJdbcUrl = IssueTestcontainersBase.postgres.jdbcUrl +
-            "?options=-c%20timezone%3DAsia%2FSeoul"
-        val kstDataSource = DriverManagerDataSource(
-            kstJdbcUrl,
-            IssueTestcontainersBase.postgres.username,
-            IssueTestcontainersBase.postgres.password,
-        )
+        val kstJdbcUrl =
+            IssueTestcontainersBase.postgres.jdbcUrl + "?options=-c%20timezone%3DAsia%2FSeoul"
+        val kstDataSource =
+            DriverManagerDataSource(
+                kstJdbcUrl,
+                IssueTestcontainersBase.postgres.username,
+                IssueTestcontainersBase.postgres.password,
+            )
         val kstDsl = DSL.using(kstDataSource, SQLDialect.POSTGRES)
         val kstRepository = WorklogAggregateRepository(kstDsl)
 
@@ -667,13 +668,14 @@ class WorklogAggregateRepositoryTest : IssueTestcontainersBase() {
             startedAt = Instant.parse("2024-06-15T23:00:00Z"),
         )
 
-        val rows = kstRepository.aggregate(
-            projectKey = "TPRJ",
-            dimension = WorklogAggregateDimension.PERIOD,
-            granularity = AggregateGranularity.DAY,
-            from = null,
-            to = null,
-        )
+        val rows =
+            kstRepository.aggregate(
+                projectKey = "TPRJ",
+                dimension = WorklogAggregateDimension.PERIOD,
+                granularity = AggregateGranularity.DAY,
+                from = null,
+                to = null,
+            )
 
         assertThat(rows).hasSize(1)
         assertThat(rows[0].groupKey)
