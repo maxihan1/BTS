@@ -69,7 +69,8 @@ data class WorklogAggregateResponse(
         ): WorklogAggregateResponse =
             WorklogAggregateResponse(
                 by = dimension.name.lowercase(),
-                granularity = if (dimension == WorklogAggregateDimension.PERIOD) granularity?.name?.lowercase() else null,
+                granularity =
+                    if (dimension == WorklogAggregateDimension.PERIOD) granularity?.name?.lowercase() else null,
                 from = from,
                 to = to,
                 buckets =

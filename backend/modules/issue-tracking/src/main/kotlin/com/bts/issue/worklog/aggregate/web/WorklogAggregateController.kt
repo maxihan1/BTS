@@ -121,13 +121,14 @@ class WorklogAggregateController(
             )
 
         // 7. 응답 변환
-        val response = WorklogAggregateResponse.from(
-            result = result,
-            dimension = dimension,
-            granularity = parsedGranularity,
-            from = fromDate,
-            to = toDate,
-        )
+        val response =
+            WorklogAggregateResponse.from(
+                result = result,
+                dimension = dimension,
+                granularity = parsedGranularity,
+                from = fromDate,
+                to = toDate,
+            )
 
         return DataResponse(data = response)
     }
@@ -187,6 +188,7 @@ class WorklogAggregateController(
      * @return 파싱된 [AggregateGranularity] 또는 null.
      * @throws ResponseStatusException 400 — by=period 이고 무효 값.
      */
+    @Suppress("ReturnCount") // C6 관대처리·기본값·파싱 실패 3-branch 분리가 가독성 최선
     private fun parseGranularity(
         granularity: String?,
         dimension: WorklogAggregateDimension,
