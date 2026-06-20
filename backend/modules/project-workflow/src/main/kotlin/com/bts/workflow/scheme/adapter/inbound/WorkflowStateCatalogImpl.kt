@@ -24,7 +24,8 @@ import com.bts.workflow.scheme.domain.ProjectKey as InternalProjectKey
  * - 워크플로우 결정 로직은 [WorkflowResolver.resolveExistingFor] 가 담당한다 (auto-assign 없음).
  * - 본 구현체는 SPI 경계 변환과 도메인 VO 매핑만 수행한다.
  *   - [SharedProjectKey] → [InternalProjectKey] 변환 (값 동일, 타입만 변환).
- *   - [com.bts.workflow.domain.WorkflowState] → [WorkflowStateView] 변환 (key + name 추출).
+ *   - [com.bts.workflow.domain.WorkflowState] → [WorkflowStateView] 변환
+ *     (key, name, isDone, category, displayOrder 전체 필드 매핑).
  *
  * ## 스킴 미할당 동작
  * [WorkflowResolver.resolveExistingFor] 가 null 을 반환하는 경우(스킴 미할당)
