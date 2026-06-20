@@ -3,6 +3,7 @@
 package com.bts.agileplanning.web
 
 import com.bts.agileplanning.application.BoardApplicationService
+import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.agileplanning.web.dto.BoardDetailResponse
 import com.bts.agileplanning.web.dto.BoardResponse
@@ -109,9 +110,7 @@ class BoardController(
     ): ResponseEntity<DataResponse<BoardDetailResponse>> {
         log.info("BoardController.getBoard id={}", id)
 
-        val actor = currentActorId()
-        val board = boardRepository.findById(id) ?: throw BoardNotFoundException()
-        requirePermission(actor, IssuePermission.BROWSE, IssueScope.Project(board.projectKey))
+        val (actor, board) = loadBoardWithBrowse(id)
 
         val placedColumns = service.getBoard(id, actor)
         return ResponseEntity.ok(DataResponse(BoardDetailResponse.of(board, placedColumns)))
@@ -159,9 +158,7 @@ class BoardController(
     ): ResponseEntity<DataResponse<MoveCardResponse>> {
         log.info("BoardController.moveCard id={} issueKey={}", id, issueKey)
 
-        val actor = currentActorId()
-        val board = boardRepository.findById(id) ?: throw BoardNotFoundException()
-        requirePermission(actor, IssuePermission.BROWSE, IssueScope.Project(board.projectKey))
+        loadBoardWithBrowse(id)
 
         // @field:NotNull 검증 통과 후이므로 non-null. !! 금지 규칙에 따라 명시 체크.
         val toColumnId =
@@ -181,6 +178,26 @@ class BoardController(
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * actor 추출 → 보드 메타 조회(404) → BROWSE 권한 판정을 한 순서로 수행한다.
+     *
+     * 단건 조회·카드 이동이 공유하는 보드 접근 게이트다. 처리 순서를 한 곳에 응집하여
+     * 순서 실수(존재 probe·권한 누락) 회귀를 차단한다(sec CONCERN-4). projectKey 는 보드에 묶여 있으므로
+     * scope 산출을 위해 메타 조회가 권한 판정보다 선행하며, 미인증자는 actor 추출 단계에서 401 로 차단된다.
+     *
+     * @param boardId 접근할 보드 UUID.
+     * @return 인증 주체 UUID 와 보드 메타의 쌍.
+     * @throws ResponseStatusException 401 — 미인증.
+     * @throws BoardNotFoundException 404 — 보드 미존재 또는 soft-deleted.
+     * @throws BoardAccessDeniedException 403 — BROWSE 권한 미충족.
+     */
+    private fun loadBoardWithBrowse(boardId: UUID): Pair<UUID, Board> {
+        val actor = currentActorId()
+        val board = boardRepository.findById(boardId) ?: throw BoardNotFoundException()
+        requirePermission(actor, IssuePermission.BROWSE, IssueScope.Project(board.projectKey))
+        return actor to board
+    }
 
     /**
      * 권한을 판정하고 미충족 시 [BoardAccessDeniedException](403)을 던진다.
