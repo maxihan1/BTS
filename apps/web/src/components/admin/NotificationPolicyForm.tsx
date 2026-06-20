@@ -11,9 +11,6 @@ import {
 import { Button } from '@/components/ui/button'
 import type { PolicyCatalog } from '@/api/notification-policies'
 import { UNSUPPORTED_RECIPIENT_ROLES } from '@/api/notification-policies'
-
-/** 미지원 역할 Set — 모듈 수준 상수(매 렌더마다 재생성 방지). */
-const UNSUPPORTED_ROLE_SET = new Set<string>(UNSUPPORTED_RECIPIENT_ROLES)
 import {
   eventTypeLabels,
   recipientRoleLabels,
@@ -22,6 +19,9 @@ import {
   labelFor,
   notificationPolicyLabels,
 } from '@/i18n/notification-policy-labels'
+
+/** 미지원 역할 Set — 모듈 수준 상수(매 렌더마다 재생성 방지). */
+const UNSUPPORTED_ROLE_SET = new Set<string>(UNSUPPORTED_RECIPIENT_ROLES)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입
