@@ -1,0 +1,261 @@
+// 보드 REST API 요청/응답 DTO + DataResponse 봉투 — agile-planning BC (FR-BD-01)
+
+package com.bts.agileplanning.web.dto
+
+import com.bts.agileplanning.domain.Board
+import com.bts.agileplanning.domain.BoardColumn
+import com.bts.agileplanning.domain.PlacedColumn
+import com.bts.shared.board.BoardIssueView
+import com.bts.shared.board.BoardTransitionResult
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotNull
+import jakarta.validation.constraints.PositiveOrZero
+import java.util.UUID
+
+/**
+ * 성공 응답 래퍼.
+ *
+ * issue-tracking `com.bts.issue.adapter.inbound.rest.DataResponse` 와 동일한 봉투 형태를
+ * BC 격리 원칙에 따라 agile-planning 이 독자적으로 정의한다(다른 BC 의 타입을 직접 import 하지 않는다).
+ *
+ * @param T 응답 데이터 타입.
+ * @property data 응답 페이로드.
+ */
+data class DataResponse<T>(val data: T)
+
+/**
+ * 보드 생성 요청 바디.
+ *
+ * @property projectKey 보드를 생성할 프로젝트 키. 예: `"BTS"`. 공백 불가.
+ * @property name 보드 표시 이름. 공백 불가.
+ */
+data class CreateBoardRequest(
+    @field:NotBlank
+    val projectKey: String,
+    @field:NotBlank
+    val name: String,
+)
+
+/**
+ * 카드 이동(전이) 요청 바디.
+ *
+ * actor 는 body 로 받지 않는다 — SecurityContext 에서 추출한다(actor 위조 차단).
+ *
+ * @property toColumnId 이동 대상 컬럼 UUID. 필수.
+ * @property expectedVersion 낙관적 락(OCC) 기대 버전. 0 이상 필수.
+ * @property resolutionId DONE 카테고리 전이 시 필요한 해결 방안 ID. 불필요하면 null.
+ */
+data class MoveCardRequest(
+    @field:NotNull
+    val toColumnId: UUID?,
+    @field:NotNull
+    @field:PositiveOrZero
+    val expectedVersion: Long?,
+    val resolutionId: UUID? = null,
+)
+
+/**
+ * 보드 컬럼 응답 DTO(카드 미포함, 생성 응답용).
+ *
+ * @property columnId 컬럼 UUID.
+ * @property stateKey 매핑된 워크플로우 상태 키.
+ * @property name 컬럼 표시 이름.
+ * @property category 칸반 카테고리. `"TODO"` · `"IN_PROGRESS"` · `"DONE"`.
+ * @property displayOrder 컬럼 표시 순서(오름차순).
+ */
+data class BoardColumnResponse(
+    val columnId: UUID,
+    val stateKey: String,
+    val name: String,
+    val category: String,
+    val displayOrder: Int,
+) {
+    companion object {
+        /** 도메인 [BoardColumn] 을 [BoardColumnResponse] 로 변환한다. */
+        fun from(column: BoardColumn): BoardColumnResponse =
+            BoardColumnResponse(
+                columnId = column.id,
+                stateKey = column.stateKey,
+                name = column.name,
+                category = column.category,
+                displayOrder = column.displayOrder,
+            )
+    }
+}
+
+/**
+ * 보드 생성 응답 DTO.
+ *
+ * @property boardId 생성된 보드 UUID.
+ * @property projectKey 소속 프로젝트 키.
+ * @property name 보드 표시 이름.
+ * @property columns 시드된 컬럼 목록(카드 미포함).
+ */
+data class BoardResponse(
+    val boardId: UUID,
+    val projectKey: String,
+    val name: String,
+    val columns: List<BoardColumnResponse>,
+) {
+    companion object {
+        /** 도메인 [Board] 를 [BoardResponse](컬럼 포함, 카드 미포함) 로 변환한다. */
+        fun from(board: Board): BoardResponse =
+            BoardResponse(
+                boardId = board.id,
+                projectKey = board.projectKey,
+                name = board.name,
+                columns = board.columns.map(BoardColumnResponse::from),
+            )
+    }
+}
+
+/**
+ * 보드 목록 항목 응답 DTO(컬럼 미포함).
+ *
+ * @property boardId 보드 UUID.
+ * @property projectKey 소속 프로젝트 키.
+ * @property name 보드 표시 이름.
+ */
+data class BoardSummaryResponse(
+    val boardId: UUID,
+    val projectKey: String,
+    val name: String,
+) {
+    companion object {
+        /** 도메인 [Board] 를 [BoardSummaryResponse](메타만) 로 변환한다. */
+        fun from(board: Board): BoardSummaryResponse =
+            BoardSummaryResponse(
+                boardId = board.id,
+                projectKey = board.projectKey,
+                name = board.name,
+            )
+    }
+}
+
+/**
+ * 보드 카드(이슈) 응답 DTO.
+ *
+ * NIT(sec NIT-1): `priority` 는 컬럼 내 정렬 내부용이므로 응답에서 제외한다(spec 응답 필드 정합).
+ *
+ * @property issueKey 이슈 키. 예: `"BTS-1"`.
+ * @property summary 이슈 제목.
+ * @property assigneeId 담당자 UUID. 미배정이면 null.
+ * @property version 낙관적 락(OCC) 버전. 카드 이동 시 expectedVersion 으로 사용.
+ */
+data class BoardCardResponse(
+    val issueKey: String,
+    val summary: String,
+    val assigneeId: UUID?,
+    val version: Long,
+) {
+    companion object {
+        /** cross-BC [BoardIssueView] 를 [BoardCardResponse] 로 변환한다(priority 제외). */
+        fun from(card: BoardIssueView): BoardCardResponse =
+            BoardCardResponse(
+                issueKey = card.key,
+                summary = card.summary,
+                assigneeId = card.assigneeId,
+                version = card.version,
+            )
+    }
+}
+
+/**
+ * 보드 단건 조회 컬럼 응답 DTO(카드 포함).
+ *
+ * @property columnId 컬럼 UUID.
+ * @property stateKey 매핑된 워크플로우 상태 키.
+ * @property name 컬럼 표시 이름.
+ * @property category 칸반 카테고리.
+ * @property displayOrder 컬럼 표시 순서.
+ * @property cards 이 컬럼에 배치된 카드 목록(priority ASC 정렬).
+ */
+data class BoardColumnWithCardsResponse(
+    val columnId: UUID,
+    val stateKey: String,
+    val name: String,
+    val category: String,
+    val displayOrder: Int,
+    val cards: List<BoardCardResponse>,
+) {
+    companion object {
+        /** [PlacedColumn] 을 [BoardColumnWithCardsResponse] 로 변환한다. */
+        fun from(placed: PlacedColumn): BoardColumnWithCardsResponse =
+            BoardColumnWithCardsResponse(
+                columnId = placed.column.id,
+                stateKey = placed.column.stateKey,
+                name = placed.column.name,
+                category = placed.column.category,
+                displayOrder = placed.column.displayOrder,
+                cards = placed.cards.map(BoardCardResponse::from),
+            )
+    }
+}
+
+/**
+ * 보드 단건 조회 응답 DTO(컬럼 + 카드).
+ *
+ * @property boardId 보드 UUID.
+ * @property projectKey 소속 프로젝트 키.
+ * @property name 보드 표시 이름.
+ * @property columns 카드가 배치된 컬럼 목록.
+ */
+data class BoardDetailResponse(
+    val boardId: UUID,
+    val projectKey: String,
+    val name: String,
+    val columns: List<BoardColumnWithCardsResponse>,
+) {
+    companion object {
+        /**
+         * 보드 메타([Board])와 카드 배치 결과([PlacedColumn] 목록)를 합쳐 응답을 만든다.
+         *
+         * @param board 보드 메타(boardId/projectKey/name 출처).
+         * @param placedColumns 카드가 배치된 컬럼 목록.
+         */
+        fun of(
+            board: Board,
+            placedColumns: List<PlacedColumn>,
+        ): BoardDetailResponse =
+            BoardDetailResponse(
+                boardId = board.id,
+                projectKey = board.projectKey,
+                name = board.name,
+                columns = placedColumns.map(BoardColumnWithCardsResponse::from),
+            )
+    }
+}
+
+/**
+ * 카드 이동(전이) 응답 DTO.
+ *
+ * @property issueKey 이동한 이슈 키.
+ * @property currentStateKey 전이 후 현재 상태 키.
+ * @property version 전이 후 갱신된 OCC 버전.
+ * @property columnId 이동한 대상 컬럼 UUID(요청 toColumnId echo).
+ */
+data class MoveCardResponse(
+    val issueKey: String,
+    val currentStateKey: String,
+    val version: Long,
+    val columnId: UUID,
+) {
+    companion object {
+        /**
+         * 전이 결과([BoardTransitionResult])와 대상 컬럼 UUID 를 합쳐 응답을 만든다.
+         *
+         * @param result 전이 결과(issueKey/currentStateKey/version 출처).
+         * @param toColumnId 이동 대상 컬럼 UUID(응답 columnId echo).
+         */
+        fun of(
+            result: BoardTransitionResult,
+            toColumnId: UUID,
+        ): MoveCardResponse =
+            MoveCardResponse(
+                issueKey = result.issueKey,
+                currentStateKey = result.currentStateKey,
+                version = result.version,
+                columnId = toColumnId,
+            )
+    }
+}

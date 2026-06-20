@@ -14,6 +14,7 @@ import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -91,14 +92,11 @@ class BoardControllerIntegrationTest {
         open fun permissionGate(): PermissionGate = PermissionGate()
 
         @Bean
-        open fun issuePermissionResolver(gate: PermissionGate): IssuePermissionResolver = gate
-
-        @Bean
         open fun boardController(
             service: BoardApplicationService,
             repository: BoardRepository,
-            resolver: IssuePermissionResolver,
-        ): BoardController = BoardController(service, repository, resolver)
+            gate: PermissionGate,
+        ): BoardController = BoardController(service, repository, gate)
 
         @Bean
         open fun boardExceptionHandler(): BoardExceptionHandler = BoardExceptionHandler()
@@ -136,6 +134,8 @@ class BoardControllerIntegrationTest {
     @BeforeEach
     fun setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+        // 컨텍스트 캐시로 MockK mock 이 테스트 간 공유되므로 호출 기록을 리셋해 verify 누적을 끊는다.
+        clearMocks(boardApplicationService, boardRepository)
         permissionGate.allowAll = true
         val auth =
             UsernamePasswordAuthenticationToken(
