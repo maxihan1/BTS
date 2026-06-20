@@ -67,9 +67,9 @@ test.describe('프로젝트 멤버 관리 (FR-PM-01)', () => {
     await expect(page.getByText('밥')).toBeVisible()
     await expect(page.getByText('멤버').first()).toBeVisible()
 
-    // UUID 가 화면에 노출되지 않음
-    await expect(page.getByText('00000000-0000-0000-0000-000000000001')).toHaveCount(0)
-    await expect(page.getByText('00000000-0000-0000-0000-000000000002')).toHaveCount(0)
+    // UUID 가 화면에 노출되지 않음 (auth-fixtures userId v4 형식과 일치 — 옛 all-zeros는 vacuous)
+    await expect(page.getByText('00000000-0000-4000-8000-000000000001')).toHaveCount(0)
+    await expect(page.getByText('00000000-0000-4000-8000-000000000002')).toHaveCount(0)
   })
 
   // ─────────────────────────────────────────────────────────────────────────────
