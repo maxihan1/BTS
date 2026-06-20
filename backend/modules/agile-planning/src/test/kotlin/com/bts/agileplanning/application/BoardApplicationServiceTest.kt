@@ -1,0 +1,254 @@
+// BoardApplicationService 통합 테스트 (Testcontainers) — 보드 생성/조회/이동 시나리오 RED 명세 (FR-BD-01 Task 8)
+
+package com.bts.agileplanning.application
+
+import com.bts.agileplanning.AgilePlanningTestBootApplication
+import com.bts.agileplanning.AgilePlanningTestcontainersConfig
+import com.bts.shared.board.BoardIssueView
+import com.bts.shared.board.BoardIssueLookupPort
+import com.bts.shared.board.BoardTransitionCommand
+import com.bts.shared.board.BoardTransitionResult
+import com.bts.shared.board.IssueTransitionPort
+import com.bts.shared.issue.IssueTypeKey
+import com.bts.shared.workflow.ProjectKey
+import com.bts.shared.workflow.WorkflowStateCatalog
+import com.bts.shared.workflow.WorkflowStateView
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.slot
+import io.mockk.verify
+import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.annotation.Import
+import org.springframework.web.server.ResponseStatusException
+import java.util.UUID
+
+/**
+ * [BoardApplicationService] 통합 테스트 — Testcontainers PostgreSQL 사용.
+ *
+ * 검증 시나리오.
+ * - (a) 보드 생성 시 WorkflowStateCatalog 조회 → 컬럼 시드 + boards/board_columns 영속
+ * - (b) E1: 스킴 미할당(빈 상태 목록) → 422 UnprocessableEntity
+ * - (c) 보드 조회 시 BoardIssueLookupPort 카드 배치
+ * - (d) 카드 이동 = toColumnId → state_key 도출 후 IssueTransitionPort 위임
+ * - (e) E3: 같은 컬럼으로 이동 → no-op 200
+ * - (f) E8: 보드-이슈 프로젝트 정합 위반 → 거부
+ */
+@SpringBootTest(
+    classes = [AgilePlanningTestBootApplication::class],
+    webEnvironment = SpringBootTest.WebEnvironment.NONE,
+)
+@Import(AgilePlanningTestcontainersConfig::class)
+class BoardApplicationServiceTest {
+    @Autowired
+    private lateinit var boardRepository: com.bts.agileplanning.repository.BoardRepository
+
+    companion object {
+        /** 테스트용 상태 목록 — 3개 컬럼(TODO·IN_PROGRESS·DONE). */
+        val DEFAULT_STATES =
+            listOf(
+                WorkflowStateView(key = "open", name = "열림", isDone = false, category = "TODO", displayOrder = 0),
+                WorkflowStateView(
+                    key = "in-progress",
+                    name = "진행 중",
+                    isDone = false,
+                    category = "IN_PROGRESS",
+                    displayOrder = 1,
+                ),
+                WorkflowStateView(key = "closed", name = "완료", isDone = true, category = "DONE", displayOrder = 2),
+            )
+    }
+
+    /** 테스트마다 독립 [BoardApplicationService] 인스턴스를 생성해 포트를 교체한다. */
+    private fun serviceWith(
+        catalog: WorkflowStateCatalog = mockk(relaxed = true),
+        lookup: BoardIssueLookupPort = mockk(relaxed = true),
+        transition: IssueTransitionPort = mockk(relaxed = true),
+    ): BoardApplicationService =
+        BoardApplicationService(
+            workflowStateCatalog = catalog,
+            boardIssueLookupPort = lookup,
+            issueTransitionPort = transition,
+            boardRepository = boardRepository,
+        )
+
+    // ── (a) 보드 생성 시 컬럼 시드 + 영속 ────────────────────────────────────────
+
+    @Test
+    fun `보드 생성 시 WorkflowStateCatalog 조회 후 컬럼이 3개 시드되고 DB 에 영속된다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(any(), null) } returns DEFAULT_STATES
+
+        val service = serviceWith(catalog = catalog)
+        val board = service.createBoard(projectKey = "BTS", name = "BTS 보드")
+
+        assertThat(board.columns).hasSize(3)
+        assertThat(board.columns.map { it.stateKey })
+            .containsExactly("open", "in-progress", "closed")
+        assertThat(board.columns.map { it.category })
+            .containsExactly("TODO", "IN_PROGRESS", "DONE")
+
+        // DB 에 실제로 영속됐는지 재조회로 확인
+        val reloaded = boardRepository.findById(board.id)
+        assertThat(reloaded).isNotNull()
+        assertThat(reloaded!!.columns).hasSize(3)
+    }
+
+    // ── (b) E1: 스킴 미할당 → 422 ───────────────────────────────────────────────
+
+    @Test
+    fun `E1 워크플로우 스킴 미할당 프로젝트는 보드 생성 시 422 를 던진다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(any(), null) } returns emptyList()
+
+        val service = serviceWith(catalog = catalog)
+
+        assertThatThrownBy { service.createBoard(projectKey = "BTS", name = "빈 보드") }
+            .isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(422)
+    }
+
+    // ── (c) 보드 조회 시 카드 배치 ───────────────────────────────────────────────
+
+    @Test
+    fun `보드 조회 시 BoardIssueLookupPort 결과가 state_key 기준으로 컬럼에 배치된다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(any(), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("PROJ", "조회 테스트 보드")
+
+        val viewerId = UUID.randomUUID()
+        val issues =
+            listOf(
+                BoardIssueView(
+                    key = "PROJ-1",
+                    summary = "첫 이슈",
+                    currentStateKey = "open",
+                    assigneeId = null,
+                    priority = 2,
+                    version = 1L,
+                ),
+                BoardIssueView(
+                    key = "PROJ-2",
+                    summary = "두 번째 이슈",
+                    currentStateKey = "in-progress",
+                    assigneeId = null,
+                    priority = 1,
+                    version = 1L,
+                ),
+            )
+
+        val lookup = mockk<BoardIssueLookupPort>()
+        every { lookup.listVisibleIssuesByProject("PROJ", viewerId) } returns issues
+
+        val result = serviceWith(lookup = lookup).getBoard(boardId = board.id, viewerUserId = viewerId)
+
+        val openPlaced = result.first { it.column.stateKey == "open" }
+        assertThat(openPlaced.cards).hasSize(1)
+        assertThat(openPlaced.cards.first().key).isEqualTo("PROJ-1")
+
+        val inProgressPlaced = result.first { it.column.stateKey == "in-progress" }
+        assertThat(inProgressPlaced.cards).hasSize(1)
+        assertThat(inProgressPlaced.cards.first().key).isEqualTo("PROJ-2")
+    }
+
+    // ── (d) 카드 이동 = IssueTransitionPort 위임 ─────────────────────────────────
+
+    @Test
+    fun `카드 이동 시 대상 컬럼의 state_key 로 IssueTransitionPort 에 위임한다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(any(), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("CARD", "이동 테스트 보드")
+
+        val inProgressColumn = board.columns.first { it.stateKey == "in-progress" }
+        val cmdSlot = slot<BoardTransitionCommand>()
+        val transition = mockk<IssueTransitionPort>()
+        every { transition.transition(capture(cmdSlot)) } returns
+            BoardTransitionResult(issueKey = "CARD-1", currentStateKey = "in-progress", version = 2L)
+
+        val result =
+            serviceWith(transition = transition)
+                .moveCard(
+                    boardId = board.id,
+                    issueKey = "CARD-1",
+                    toColumnId = inProgressColumn.id,
+                    expectedVersion = 1L,
+                    resolutionId = null,
+                )
+
+        assertThat(cmdSlot.captured.toStateKey).isEqualTo("in-progress")
+        assertThat(cmdSlot.captured.issueKey).isEqualTo("CARD-1")
+        assertThat(cmdSlot.captured.expectedVersion).isEqualTo(1L)
+        assertThat(result.currentStateKey).isEqualTo("in-progress")
+    }
+
+    // ── (e) E3: 같은 컬럼 → no-op 200 ──────────────────────────────────────────
+
+    @Test
+    fun `E3 현재 이슈 상태와 같은 컬럼으로 이동하면 전이 없이 현재 상태를 반환한다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(any(), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("NOOP", "no-op 테스트 보드")
+
+        val openColumn = board.columns.first { it.stateKey == "open" }
+        val transition = mockk<IssueTransitionPort>()
+
+        // 현재 이슈 상태가 "open" 이고 "open" 컬럼으로 이동 → no-op
+        val result =
+            serviceWith(transition = transition)
+                .moveCard(
+                    boardId = board.id,
+                    issueKey = "NOOP-1",
+                    toColumnId = openColumn.id,
+                    expectedVersion = 1L,
+                    resolutionId = null,
+                    currentStateKey = "open",
+                )
+
+        // IssueTransitionPort 는 호출되지 않아야 한다
+        verify(exactly = 0) { transition.transition(any()) }
+        assertThat(result.currentStateKey).isEqualTo("open")
+    }
+
+    // ── (f) E8: 보드-이슈 프로젝트 정합 ────────────────────────────────────────────
+
+    @Test
+    fun `E8 issueKey 가 보드의 projectKey 소속이 아니면 거부된다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(any(), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("BTS", "정합 테스트 보드")
+
+        val anyColumn = board.columns.first()
+
+        // BTS 보드에 OTHER 프로젝트 이슈 이동 시도
+        assertThatThrownBy {
+            serviceWith().moveCard(
+                boardId = board.id,
+                issueKey = "OTHER-1",
+                toColumnId = anyColumn.id,
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+        }.isInstanceOf(ResponseStatusException::class.java)
+    }
+
+    // ── 보드 목록 조회 ────────────────────────────────────────────────────────────
+
+    @Test
+    fun `listBoards 는 projectKey 로 활성 보드 목록을 반환한다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(any(), null) } returns DEFAULT_STATES
+        val service = serviceWith(catalog = catalog)
+
+        service.createBoard("LIST", "목록 보드 1")
+        service.createBoard("LIST", "목록 보드 2")
+
+        val boards = service.listBoards("LIST")
+
+        assertThat(boards).hasSizeGreaterThanOrEqualTo(2)
+        assertThat(boards.map { it.name }).contains("목록 보드 1", "목록 보드 2")
+    }
+}
