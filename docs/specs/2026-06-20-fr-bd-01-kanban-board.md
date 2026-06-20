@@ -24,9 +24,9 @@
 - **FR-BD-01-2** 보드 CRUD: 생성(POST), 단건 조회(GET /{id}), 프로젝트별 목록(GET ?projectKey=). 수정/삭제는 이번 범위 제외(후속).
 - **FR-BD-01-3** 보드 생성 시 프로젝트 default 워크플로우 상태(`WorkflowStateCatalog.listStates(projectKey, null)`)를 컬럼으로 자동 시드. 각 컬럼은 state_key·name·category·displayOrder를 갖는다.
 - **FR-BD-01-4** 보드 조회 시 컬럼별로 카드(이슈)를 배치. 카드 = 프로젝트 이슈를 cross-BC 포트로 읽어 current_state_key로 컬럼에 매핑. 어떤 컬럼에도 매핑되지 않는 상태의 이슈는 보드에서 제외(엣지 케이스 E2). **컬럼 내 카드 정렬 = priority ASC(1=최상위 먼저), created_at ASC 보조**(issues.priority 존재 확인).
-- **FR-BD-01-4b (보안)** 보드 카드 목록은 **조회 사용자(viewer) 기준 이슈 visibility/보안수준 필터를 적용**한다. viewer가 볼 수 없는 보안수준 이슈는 카드로 노출 금지(제목 누출 차단, FR-NT-03 visibility 교훈). issue-tracking이 `IssueSecurityDecider`/visibility를 BoardIssueLookupPort 구현에서 적용(N+1 금지, NFR-1).
+- **FR-BD-01-4b (보안, 리뷰 정정)** 보드 카드 목록은 viewer 기준 보안수준 필터를 적용한다. **목록 정석 경로 재사용**: `IssueSecurityDirectory.accessibleLevels(viewerUserId, projectKey)`로 접근 가능 레벨 집합을 1회 조회 → `IssueRepository.listWithType`의 SQL WHERE 푸시다운으로 비가시 행 제외(FR-PM-06 목록 필터, `IssueSecurityListFilterTest` S1~S8 경로). **단건 위임(IssueVisibilityPort/IssueSecurityDecider)은 카드 200건에 N+1이라 금지**(목록 산출 부적합·NFR-1 위반). viewer 미가시 이슈는 카드에서 제외(제목 누출 차단).
 - **FR-BD-01-5** 카드 이동 = 대상 컬럼의 state_key로 워크플로우 전이. cross-BC 전이 포트에 위임(전이 규칙·권한·OCC는 issue-tracking이 강제). 전이 불가/버전 충돌/워크플로우 미설정은 그대로 전파.
-- **FR-BD-01-6** 권한 레벨(security-engineer plan 검토): **보드 조회·생성 = 프로젝트 이슈 VIEW 권한**(프로젝트 멤버). **카드 이동 = 전이 권한**(전이 포트가 강제). 미충족 403. 보드 생성을 admin 전용으로 제한할지는 plan에서 재확인하되 기본은 VIEW.
+- **FR-BD-01-6 (리뷰 정정, 2단 게이트)** **보드 조회 = `IssuePermission.BROWSE`**(프로젝트 목록 권한; VIEW는 단건 조회용이라 부적합) on `IssueScope.Project`. **카드 노출은 추가로 행 단위 보안수준 필터**(FR-BD-01-4b accessibleLevels) — BROWSE는 목록 자격, 보안수준은 개별 행, 둘 다 필요(listIssues 동일 패턴). **카드 이동 = TRANSITION 권한**(전이 포트가 강제). 권한 체크는 기존 `IssuePermissionResolver`(shared-kernel 포트) 재사용(신규 BoardPermissionPort 불필요). **보드 생성 권한 = Maxi 게이트1 결정 사항**(BROWSE/CREATE/MANAGE_SCHEME 중). actor 추출은 리소스 조회(404)보다 먼저(존재 probe 차단), 권한/정합 거부 message는 일반화. 미충족 403.
 
 ## 비기능 요구사항 (NFR)
 
@@ -64,6 +64,7 @@ Errors:   403(권한)
 ### POST /api/v1/boards/{id}/cards/{issueKey}/move — 카드 이동(전이)
 ```
 Request:  { "toColumnId": "<uuid>", "expectedVersion": 3, "resolutionId": "<uuid>"? }
+          (actor는 body에 받지 않음 — SecurityContext에서 추출)
 Response: 200 { "data": { issueKey, currentStateKey, version, columnId } }
 Errors:   400(검증), 403(권한), 404(보드/컬럼/이슈 없음),
           409(전이 불가 IssueTransitionNotAllowed / 버전 충돌 VersionConflict),
@@ -117,7 +118,8 @@ CREATE TABLE board_columns (
        fun transition(cmd: BoardTransitionCommand): BoardTransitionResult
    }
    ```
-4. **보드 권한 포트** — 프로젝트 이슈 VIEW 권한 확인(현재 사용자). identity-access의 프로젝트 권한 resolver를 cross-BC 포트로 노출/재사용(security-engineer가 plan에서 정확히 결선). fail-closed.
+   **actor는 cmd 인자로 받지 않는다(리뷰 정정)** — adapter가 `CurrentActor.current()`로 SecurityContext에서 추출(issue-tracking 전이 정석과 동일, actor 위조/impersonation 차단). BoardTransitionCommand = `(issueKey, toStateKey, expectedVersion, resolutionId?)`.
+4. **권한 포트 = 기존 `IssuePermissionResolver` 재사용(리뷰 정정, 신규 포트 X)** — shared-kernel `IssuePermissionResolver.hasPermission(actorId, permission, scope)`로 BROWSE/TRANSITION 판정. prod=identity-access `IdentityAccessIssuePermissionResolver`, non-prod=issue-tracking `AlwaysAllowIssuePermissionResolver` 자동 해석. agile-planning은 이 포트를 **non-null 주입**(빈 부재=부팅 실패, fail-closed). 통합테스트는 test-assembled stub.
 
 ## 엣지 케이스
 
