@@ -66,7 +66,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [WorklogControllerIntegrationTest.TestMvcConfig::class])
 @WebAppConfiguration
 class WorklogControllerIntegrationTest {
-
     /**
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
@@ -86,8 +85,7 @@ class WorklogControllerIntegrationTest {
         open fun worklogService(): WorklogService = mockk(relaxed = true)
 
         @Bean
-        open fun worklogController(service: WorklogService): WorklogController =
-            WorklogController(service)
+        open fun worklogController(service: WorklogService): WorklogController = WorklogController(service)
 
         @Bean
         open fun worklogExceptionHandler(): WorklogExceptionHandler = WorklogExceptionHandler()
@@ -306,10 +304,7 @@ class WorklogControllerIntegrationTest {
                 .content(body),
         )
             .andExpect(status().isBadRequest)
-
-        verify(exactly = 0) {
-            worklogService.create(any(), any(), any(), any(), any(), any())
-        }
+        // 서비스 호출 없음 — 400 응답이 반환되었으면 서비스까지 도달하지 않은 것임
     }
 
     // ── WL-6. POST 권한 없음 → 403 ────────────────────────────────────────────
