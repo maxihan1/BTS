@@ -162,8 +162,8 @@
 - [x] D3. 데이터 모델 — `worklogs(issue_id, author_id, time_spent_seconds, started_at, deleted_at)` + issues 추정 3컬럼 (V027) (책임. db-engineer)
 - [x] D4. 백엔드 — `POST/GET/PATCH/DELETE /api/v1/issues/{key}/worklogs` + 추정 PATCH (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — Worklog 입력 폼 + 잔여 시간 자동 계산 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — Worklog 입력 폼 + 잔여 시간 자동 계산 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ### §5.2 FR-TT-02 — 이슈/사용자/기간별 시간 집계
 
