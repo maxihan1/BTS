@@ -59,6 +59,28 @@ sealed interface DatePatch {
 }
 
 /**
+ * 이슈 추정 시간 수정 의도 3-state (FR-TT-01).
+ *
+ * PATCH 시맨틱에서 "필드 부재(무변경)" 와 "명시 null(해제)" 를 구분하기 위한 sealed 표현이다.
+ * originalEstimate / remainingEstimate 두 필드가 동일 타입을 공용으로 사용한다.
+ * [DatePatch] 와 동형 구조 — when 식에서 else 분기 없이 컴파일러가 완전성을 보장한다.
+ */
+sealed interface EstimatePatch {
+    /** 필드 부재 — 추정 값을 변경하지 않는다. */
+    data object Unchanged : EstimatePatch
+
+    /** 명시 null — 추정 값을 해제하여 미추정 상태로 되돌린다. */
+    data object Clear : EstimatePatch
+
+    /**
+     * 값 지정 — 추정 값을 [value](초)로 설정한다.
+     *
+     * @param value 지정할 추정 시간(초). 호출자가 양수임을 보장해야 한다.
+     */
+    data class Set(val value: Int) : EstimatePatch
+}
+
+/**
  * 이슈 보안 등급 수정 의도 3-state (FR-PM-06, Jira Cloud 방식).
  *
  * PATCH 시맨틱에서 "필드 부재(무변경)" 와 "명시 null(해제)" 를 구분하기 위한 sealed 표현이다.
@@ -111,6 +133,10 @@ sealed interface SecurityLevelPatch {
  *   Unchanged=무변경(기본), Clear=날짜 해제, Set=날짜 지정.
  * @param targetDate 목표일 수정 의도 (FR-PL-01). [DatePatch] 3-state —
  *   Unchanged=무변경(기본), Clear=날짜 해제, Set=날짜 지정.
+ * @param originalEstimate 최초 추정 시간 수정 의도 (FR-TT-01). [EstimatePatch] 3-state —
+ *   Unchanged=무변경(기본), Clear=해제, Set=지정(초). 수동 추정 변경 = 정식 이슈 수정(version 증가).
+ * @param remainingEstimate 잔여 추정 시간 수정 의도 (FR-TT-01). [EstimatePatch] 3-state —
+ *   Unchanged=무변경(기본), Clear=해제, Set=지정(초). 수동 추정 변경 = 정식 이슈 수정(version 증가).
  */
 data class UpdateIssueRequest(
     val summary: String?,
@@ -126,6 +152,8 @@ data class UpdateIssueRequest(
     val startDate: DatePatch = DatePatch.Unchanged,
     val dueDate: DatePatch = DatePatch.Unchanged,
     val targetDate: DatePatch = DatePatch.Unchanged,
+    val originalEstimate: EstimatePatch = EstimatePatch.Unchanged,
+    val remainingEstimate: EstimatePatch = EstimatePatch.Unchanged,
 )
 
 /**

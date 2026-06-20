@@ -6,6 +6,7 @@ import com.bts.issue.application.AppChangeAssigneeRequest
 import com.bts.issue.application.AppChangeComponentsRequest
 import com.bts.issue.application.AppChangeVersionsRequest
 import com.bts.issue.application.DatePatch
+import com.bts.issue.application.EstimatePatch
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.IssueChangelogService
 import com.bts.issue.application.SecurityLevelPatch
@@ -205,6 +206,8 @@ class IssueController(
                 startDate = toDatePatch(request.startDate),
                 dueDate = toDatePatch(request.dueDate),
                 targetDate = toDatePatch(request.targetDate),
+                originalEstimate = toEstimatePatch(request.originalEstimateSeconds),
+                remainingEstimate = toEstimatePatch(request.remainingEstimateSeconds),
             )
         val response = service.updateIssue(actor, issueKey, appRequest)
         return ResponseEntity.ok(DataResponse(data = response))
@@ -589,6 +592,35 @@ class IssueController(
             !raw.isPresent -> DatePatch.Unchanged
             raw.get() == null -> DatePatch.Clear
             else -> DatePatch.Set(raw.get())
+        }
+
+    /**
+     * `JsonNullable<Int>` 의 presence 를 [EstimatePatch] 3-state 로 매핑한다 (FR-TT-01).
+     *
+     * Jira Cloud 방식 — 필드 부재(undefined)=무변경, 명시 null=해제, 값=지정.
+     * application 계층이 웹 직렬화 라이브러리(JsonNullable)에 결합되지 않도록 transport 계층에서 변환한다.
+     * originalEstimateSeconds / remainingEstimateSeconds 두 필드가 동일 변환 함수를 공용으로 사용한다.
+     *
+     * 음수 값은 400 Bad Request 로 거부한다 (비즈니스 불변식 — 추정 시간은 0 이상).
+     *
+     * @param raw PATCH 요청의 추정 시간 필드 JsonNullable 값.
+     * @return 대응하는 [EstimatePatch].
+     * @throws org.springframework.web.server.ResponseStatusException (400) 값이 음수인 경우.
+     */
+    private fun toEstimatePatch(raw: JsonNullable<Int>): EstimatePatch =
+        when {
+            !raw.isPresent -> EstimatePatch.Unchanged
+            raw.get() == null -> EstimatePatch.Clear
+            else -> {
+                val value = raw.get()
+                if (value < 0) {
+                    throw org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "추정 시간(초)은 0 이상이어야 합니다.",
+                    )
+                }
+                EstimatePatch.Set(value)
+            }
         }
 }
 

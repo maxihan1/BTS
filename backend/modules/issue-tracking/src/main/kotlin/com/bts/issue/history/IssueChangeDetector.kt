@@ -63,6 +63,8 @@ class IssueChangeDetector {
                 "startDate" to { it.startDate?.toString() },
                 "dueDate" to { it.dueDate?.toString() },
                 "targetDate" to { it.targetDate?.toString() },
+                "originalEstimate" to { it.originalEstimateSeconds?.toString() },
+                "remainingEstimate" to { it.remainingEstimateSeconds?.toString() },
             )
     }
 
