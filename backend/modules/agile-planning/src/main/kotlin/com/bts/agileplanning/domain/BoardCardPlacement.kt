@@ -24,7 +24,6 @@ import java.util.UUID
  * issue-tracking · project-workflow · identity-access 내부 패키지를 직접 import 하지 않는다.
  */
 object BoardCardPlacement {
-
     /** 컬럼 내 카드 정렬: priority ASC → issueKey ASC 보조. */
     private val CARD_COMPARATOR: Comparator<BoardIssueView> =
         compareBy<BoardIssueView> { it.priority }.thenBy { it.key }
@@ -35,7 +34,7 @@ object BoardCardPlacement {
      * 각 [WorkflowStateView] 는 [BoardColumn] 1개로 변환되며, [WorkflowStateView.displayOrder]
      * 오름차순으로 정렬된다. 빈 목록이 주어지면 빈 컬럼 목록이 반환된다.
      *
-     * @param states 워크플로우 상태 목록. [WorkflowStateCatalog.listStates] 반환 값.
+     * @param states 워크플로우 상태 목록. WorkflowStateCatalog.listStates 반환 값.
      * @return [BoardColumn] 목록. displayOrder 오름차순 정렬.
      */
     fun seedColumns(states: List<WorkflowStateView>): List<BoardColumn> =
@@ -63,7 +62,7 @@ object BoardCardPlacement {
      * 2. [BoardIssueView.key] ASC (동순위 이슈의 안정 보조 기준).
      *
      * @param columns 보드 컬럼 목록. 순서는 그대로 유지된다.
-     * @param issues 배치할 이슈 목록. [BoardIssueLookupPort.listVisibleIssuesByProject] 반환 값.
+     * @param issues 배치할 이슈 목록. BoardIssueLookupPort.listVisibleIssuesByProject 반환 값.
      * @return 컬럼별 카드 배치 결과 목록. 입력 [columns] 와 동일 순서.
      */
     fun placeCards(
@@ -74,9 +73,10 @@ object BoardCardPlacement {
             issues.groupBy { it.currentStateKey }
 
         return columns.map { column ->
-            val cards = issuesByStateKey[column.stateKey]
-                ?.sortedWith(CARD_COMPARATOR)
-                ?: emptyList()
+            val cards =
+                issuesByStateKey[column.stateKey]
+                    ?.sortedWith(CARD_COMPARATOR)
+                    ?: emptyList()
             PlacedColumn(column = column, cards = cards)
         }
     }
