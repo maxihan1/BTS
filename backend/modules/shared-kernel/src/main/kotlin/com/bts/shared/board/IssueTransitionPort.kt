@@ -24,6 +24,13 @@ import java.util.UUID
  * cmd 로 actor 를 전달하면 호출자가 임의 actor 를 주입할 수 있어 보안 위반이다
  * (sec CONCERN-3, Plan review 반영).
  *
+ * ### BC 격리 사유 — shared-kernel 배치
+ *
+ * agile-planning 과 issue-tracking 이 shared-kernel 만 공유 의존한다.
+ * agile-planning 이 issue-tracking 내부를 직접 import 하면 BC 경계가 무너지고
+ * 순환 의존 위험이 생긴다. 이 포트를 shared-kernel 에 배치함으로써 두 BC 는 서로를
+ * gradle 수준에서 의존하지 않는다 (BC 격리 룰, ArchUnit 강제).
+ *
  * ### 의존 방향
  * ```
  * agile-planning ──(port)──▶ shared-kernel ◀──(impl)──  issue-tracking

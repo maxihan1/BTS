@@ -11,6 +11,13 @@ import java.util.UUID
  * 구현체는 issue-tracking BC 가 제공하며, 두 BC 는 shared-kernel 을 통해 간접 의존한다.
  * agile-planning 은 issue-tracking 을 직접 gradle 의존하지 않는다.
  *
+ * ### BC 격리 사유 — shared-kernel 배치
+ *
+ * agile-planning 과 issue-tracking 이 shared-kernel 만 공유 의존한다.
+ * agile-planning 이 issue-tracking 내부를 직접 import 하면 BC 경계가 무너지고
+ * 순환 의존 위험이 생긴다. 이 포트를 shared-kernel 에 배치함으로써 두 BC 는 서로를
+ * gradle 수준에서 의존하지 않는다 (BC 격리 룰, ArchUnit 강제).
+ *
  * ### 의존 방향
  * ```
  * agile-planning ──(port)──▶ shared-kernel ◀──(impl)──  issue-tracking

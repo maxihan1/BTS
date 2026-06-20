@@ -1,4 +1,4 @@
-// agile-planning BC 루트 패키지 — 칸반 보드/컬럼 관리 Bounded Context 진입점
+// agile-planning BC 루트 패키지 문서 — 칸반 보드/컬럼 관리 Bounded Context 개요
 
 /**
  * agile-planning 바운디드 컨텍스트(BC).

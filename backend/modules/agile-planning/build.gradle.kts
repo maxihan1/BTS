@@ -241,6 +241,8 @@ sourceSets {
 //   → setSource로 task 입력 자체를 src/main/kotlin로 한정해야 implicit-dependency 해소.
 afterEvaluate {
     tasks.named<org.jlleitschuh.gradle.ktlint.tasks.BaseKtLintCheckTask>("runKtlintCheckOverMainSourceSet") {
-        setSource(fileTree("src/main/kotlin"))
+        // package-info.kt: Java 관례에서 가져온 파일명으로 ktlint PascalCase 규칙을 충족하지 못한다.
+        // 패키지 문서 목적이므로 컴파일 소스에는 포함하되 ktlint 검사에서는 제외한다.
+        setSource(fileTree("src/main/kotlin") { exclude("**/package-info.kt") })
     }
 }
