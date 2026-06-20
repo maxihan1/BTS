@@ -79,6 +79,121 @@ FR-BD-02 보드 필터. 칸반 보드 조회 API(`GET /api/v1/boards/{id}`)에 �
 
 ✅ 통과 (1회 iteration, 집중 갭 스캔). 형식 오류 400 보장 보강. 정렬/visibility 우선/빈 필터 회귀/sentinel 무충돌 확인.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 포트 확장 방식 = **비파괴 오버로드 default 메서드**. 기존 `listVisibleIssuesByProject(projectKey, viewerUserId)`는
+> 그대로 두고, `(projectKey, viewerUserId, filter: BoardCardFilter)` 3-인자 default 메서드를 추가한다
+> (default 본문은 무필터 2-인자로 위임 = fail-safe). prod adapter는 3-인자를 실제 SQL로 override.
+> 근거: 모듈 컴파일 비파괴(wave 병렬) + 인라인 fake 보호(interface-extension-default-method).
+> false-green 완화: prod adapter 실 SQL override(Testcontainers) + filter-aware fake가 filter 수신 단언.
+
+### Task 1. shared-kernel — BoardCardFilter VO + 포트 3-인자 오버로드
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/board/BoardCardFilter.kt`,
+  `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/board/BoardIssueLookupPort.kt`,
+  `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/board/BoardCardFilterTest.kt`,
+  `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/board/BoardPortContractTest.kt`]
+- depends-on: []
+
+**RED**.
+- `BoardCardFilterTest`: `BoardCardFilter.EMPTY.isEmpty()` == true; assigneeIds/labels/componentIds/includeUnassigned 중
+  하나라도 있으면 `isEmpty()` == false.
+- `BoardPortContractTest`: (1) 3-인자 default 메서드가 무필터 결과로 위임(기존 fake가 2-인자만 override해도 동작),
+  (2) filter-aware fake에 3-인자 호출 시 전달한 `filter`가 그대로 수신됨(filter 캡처 단언).
+- 예상 실패: `BoardCardFilter` 미존재 / 3-인자 메서드 미존재.
+
+**GREEN**.
+- `BoardCardFilter.kt`: `data class BoardCardFilter(assigneeIds: List<UUID>, includeUnassigned: Boolean, labels: List<String>, componentIds: List<UUID>)`
+  + `companion EMPTY` + `fun isEmpty(): Boolean`.
+- `BoardIssueLookupPort.kt`: 3-인자 default 메서드 추가 — `fun listVisibleIssuesByProject(projectKey, viewerUserId, filter): BoardIssuePage = listVisibleIssuesByProject(projectKey, viewerUserId)`.
+  기존 2-인자 메서드/`BoardIssuePage`/`BoardIssueView` 불변. KDoc에 filter 의미·fail-safe·푸시다운 책임 명시.
+
+**REFACTOR**. KDoc 정리, `isEmpty` 단일 표현. ktlint/detekt 그린.
+
+**검증**. `cd backend && ./gradlew :backend:shared-kernel:test --tests '*BoardCardFilter*' --tests '*BoardPortContract*'`
+
+---
+
+### Task 2. issue-tracking — SQL 필터 푸시다운 + adapter override
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`,
+  `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/board/BoardIssueLookupAdapter.kt`,
+  `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/board/BoardIssueLookupAdapterTest.kt`]
+- depends-on: [1]
+
+**RED** (Testcontainers — 실 SQL).
+- `BoardIssueLookupAdapterTest`에 필터 시나리오 추가 (시드 후 단언).
+  - assignee 단일/다중(OR) / `unassigned` 센티널(assignee_id IS NULL) / unassigned+UUID 혼합(OR).
+  - label 단일/다중(OR) — `labels @>` 배열 포함, 대소문자 보존 정확 일치.
+  - component 단일/다중(OR) — `issue_components` EXISTS.
+  - 필드간 AND (assignee+label).
+  - **truncated+필터**: 필터 적용 후 LIMIT 초과 시 truncated=true (필터 전 LIMIT 금지 확인).
+  - **EC2 회귀**: `BoardCardFilter.EMPTY` → 무필터와 동일 결과(기존 테스트 유지).
+- 예상 실패: 3-인자 미구현 → 필터 무시되어 전체 반환.
+
+**GREEN**.
+- `IssueRepository.listVisibleForBoard`에 `filter: BoardCardFilter` 인자 추가. `buildActiveSecureWhere` 결과에
+  필터 Condition을 **AND**로 결합.
+  - assignee: `ASSIGNEE_ID IN (...)` OR `ASSIGNEE_ID IS NULL`(includeUnassigned) — 필드내 OR.
+  - label: 각 라벨 `LABELS @> ARRAY[?]`를 OR. (jOOQ bind value — 배열 리터럴 주입 금지)
+  - component: `DSL.exists(selectFrom(ISSUE_COMPONENTS).where(ISSUE_ID eq ISSUES.ID and COMPONENT_ID in (...)))` — **JOIN 금지**.
+  - 빈 필터: Condition 미추가(무필터 동일). LIMIT+1 truncated 로직은 그대로(필터 WHERE 뒤).
+- `BoardIssueLookupAdapter`: 3-인자 override, `filter`를 repository로 전달. 2-인자는 `EMPTY`로 위임.
+
+**REFACTOR**. 필터 Condition 빌더를 private 함수로 추출(가독성). detekt NestedBlockDepth/MaxLineLength 그린.
+
+**검증**. `cd backend && ./gradlew :backend:issue-tracking:test --tests '*BoardIssueLookupAdapter*'`
+
+---
+
+### Task 3. agile-planning — 쿼리파라미터 파싱 + 컨트롤러/서비스 위임
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardFilterQueryParser.kt`,
+  `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardController.kt`,
+  `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardApplicationService.kt`,
+  `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardFilterQueryParserTest.kt`,
+  `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardControllerIntegrationTest.kt`,
+  `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/BoardApplicationServiceTest.kt`]
+- depends-on: [1]
+
+**RED**.
+- `BoardFilterQueryParserTest` (순수 단위, 부트 없음):
+  - assignee UUID 파싱 / `unassigned` 센티널 → includeUnassigned=true / 혼합.
+  - component UUID 파싱. label 그대로 통과.
+  - 빈/공백 문자열 무시 → `BoardCardFilter.EMPTY`(EC2).
+  - 형식 오류(UUID도 unassigned도 아님 / component 비-UUID) → `ResponseStatusException(400)`.
+- `BoardControllerIntegrationTest`에 추가 (filter-aware fake port로):
+  - `?assignee=&label=&component=` 없음 → 기존 동작(EC2 회귀).
+  - `?assignee={uuid}&label=bug&component={uuid}` → fake port가 수신한 filter 캡처 단언(파싱·전달 검증).
+  - 형식 오류 → 400. 인증/404/403 기존 동작 유지.
+- `BoardApplicationServiceTest`: fake port를 filter-aware로 갱신, `getBoard(id, actor, filter)`가 filter를 포트로 전달 단언.
+- 예상 실패: `BoardFilterQueryParser` 미존재, `getBoard` 3-인자 미존재.
+
+**GREEN**.
+- `BoardFilterQueryParser.kt`: `fun parse(assignee: List<String>, label: List<String>, component: List<String>): BoardCardFilter`.
+  trim/blank 제거, `unassigned` 센티널, UUID 파싱 실패 시 400.
+- `BoardController.getBoard`: `@RequestParam(required=false) assignee/label/component: List<String> = emptyList()` 추가 →
+  parser로 `BoardCardFilter` 조립 → `service.getBoard(id, actor, filter)`. 권한 게이트(loadBoardWithBrowse) 순서 불변.
+- `BoardApplicationService.getBoard`: `filter: BoardCardFilter = BoardCardFilter.EMPTY` 인자 추가 →
+  `boardIssueLookupPort.listVisibleIssuesByProject(projectKey, viewerUserId, filter)` 3-인자 호출.
+
+**REFACTOR**. parser 책임 응집, 컨트롤러 슬림 유지. ktlint/detekt 그린.
+
+**검증**. `cd backend && ./gradlew :backend:agile-planning:test`
+
+## Plan 메타
+
+- task 수: 3
+- wave 예상: 2 — W1={T1}, W2={T2, T3 병렬} (T2 issue-tracking · T3 agile-planning, 파일 겹침 0, 둘 다 depends-on [1]).
+- 모듈 컴파일 직렬화 요인: 포트 비파괴 오버로드로 Task 1 후에도 두 모듈 컴파일 유지 → W2 병렬 성립.
+- TDD 강제: yes (각 task RED→GREEN→REFACTOR).
+- 추가 검증: ktlint/detekt, ArchUnit BC 격리, 전체 `./gradlew test`(머지 게이트), NFR1(200건 p95<1.5s).
+- 신규 마이그레이션/스키마: 0. init_codegen.sql 변경 없음.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
