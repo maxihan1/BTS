@@ -45,11 +45,12 @@ class WorklogAggregateServiceTest : DescribeSpec({
     val resolver = mockk<IssuePermissionResolver>()
     val userLookup = mockk<UserLookupPort>()
 
-    val sut = WorklogAggregateService(
-        repo = repo,
-        permissionResolver = resolver,
-        userLookup = userLookup,
-    )
+    val sut =
+        WorklogAggregateService(
+            repo = repo,
+            permissionResolver = resolver,
+            userLookup = userLookup,
+        )
 
     val actor = ActorId(UUID.randomUUID())
     val projectKey = "TPRJ"
@@ -127,14 +128,15 @@ class WorklogAggregateServiceTest : DescribeSpec({
                 ),
             )
 
-            val result = sut.aggregate(
-                actorId = actor,
-                projectKey = projectKey,
-                dimension = WorklogAggregateDimension.ISSUE,
-                granularity = null,
-                from = null,
-                to = null,
-            )
+            val result =
+                sut.aggregate(
+                    actorId = actor,
+                    projectKey = projectKey,
+                    dimension = WorklogAggregateDimension.ISSUE,
+                    granularity = null,
+                    from = null,
+                    to = null,
+                )
 
             result.buckets shouldHaveSize 2
             result.buckets[0].key shouldBe "TPRJ-2"
@@ -172,14 +174,15 @@ class WorklogAggregateServiceTest : DescribeSpec({
                 ),
             )
 
-            val result = sut.aggregate(
-                actorId = actor,
-                projectKey = projectKey,
-                dimension = WorklogAggregateDimension.ISSUE,
-                granularity = null,
-                from = null,
-                to = null,
-            )
+            val result =
+                sut.aggregate(
+                    actorId = actor,
+                    projectKey = projectKey,
+                    dimension = WorklogAggregateDimension.ISSUE,
+                    granularity = null,
+                    from = null,
+                    to = null,
+                )
 
             result.buckets.map { it.key } shouldBe listOf("TPRJ-3", "TPRJ-1", "TPRJ-2")
         }
@@ -193,14 +196,15 @@ class WorklogAggregateServiceTest : DescribeSpec({
                 ),
             )
 
-            val result = sut.aggregate(
-                actorId = actor,
-                projectKey = projectKey,
-                dimension = WorklogAggregateDimension.ISSUE,
-                granularity = null,
-                from = null,
-                to = null,
-            )
+            val result =
+                sut.aggregate(
+                    actorId = actor,
+                    projectKey = projectKey,
+                    dimension = WorklogAggregateDimension.ISSUE,
+                    granularity = null,
+                    from = null,
+                    to = null,
+                )
 
             result.totalTimeSpentSeconds shouldBe 10800L
         }
@@ -219,14 +223,15 @@ class WorklogAggregateServiceTest : DescribeSpec({
                 )
             } returns emptyList()
 
-            val result = sut.aggregate(
-                actorId = actor,
-                projectKey = projectKey,
-                dimension = WorklogAggregateDimension.ISSUE,
-                granularity = null,
-                from = futureFrom,
-                to = pastTo,
-            )
+            val result =
+                sut.aggregate(
+                    actorId = actor,
+                    projectKey = projectKey,
+                    dimension = WorklogAggregateDimension.ISSUE,
+                    granularity = null,
+                    from = futureFrom,
+                    to = pastTo,
+                )
 
             result.buckets.shouldBeEmpty()
             result.totalTimeSpentSeconds shouldBe 0L
@@ -251,14 +256,15 @@ class WorklogAggregateServiceTest : DescribeSpec({
                 userLookup.findDisplayNamesByIds(setOf(userId1, userId2))
             } returns mapOf(userId1 to "Alice", userId2 to "Bob")
 
-            val result = sut.aggregate(
-                actorId = actor,
-                projectKey = projectKey,
-                dimension = WorklogAggregateDimension.USER,
-                granularity = null,
-                from = null,
-                to = null,
-            )
+            val result =
+                sut.aggregate(
+                    actorId = actor,
+                    projectKey = projectKey,
+                    dimension = WorklogAggregateDimension.USER,
+                    granularity = null,
+                    from = null,
+                    to = null,
+                )
 
             result.buckets shouldHaveSize 2
             result.buckets.find { it.key == userId1.toString() }?.label shouldBe "Alice"
@@ -272,19 +278,24 @@ class WorklogAggregateServiceTest : DescribeSpec({
             stubAllowed()
             stubRepo(
                 listOf(
-                    WorklogAggregateRow(groupKey = unknownUserId.toString(), timeSpentSeconds = 1000L, worklogCount = 1),
+                    WorklogAggregateRow(
+                        groupKey = unknownUserId.toString(),
+                        timeSpentSeconds = 1000L,
+                        worklogCount = 1,
+                    ),
                 ),
             )
             every { userLookup.findDisplayNamesByIds(setOf(unknownUserId)) } returns emptyMap()
 
-            val result = sut.aggregate(
-                actorId = actor,
-                projectKey = projectKey,
-                dimension = WorklogAggregateDimension.USER,
-                granularity = null,
-                from = null,
-                to = null,
-            )
+            val result =
+                sut.aggregate(
+                    actorId = actor,
+                    projectKey = projectKey,
+                    dimension = WorklogAggregateDimension.USER,
+                    granularity = null,
+                    from = null,
+                    to = null,
+                )
 
             result.buckets[0].label shouldBe ""
         }
@@ -301,14 +312,15 @@ class WorklogAggregateServiceTest : DescribeSpec({
             )
             every { userLookup.findDisplayNamesByIds(any()) } returns mapOf(userA to "Charlie", userB to "Alice")
 
-            val result = sut.aggregate(
-                actorId = actor,
-                projectKey = projectKey,
-                dimension = WorklogAggregateDimension.USER,
-                granularity = null,
-                from = null,
-                to = null,
-            )
+            val result =
+                sut.aggregate(
+                    actorId = actor,
+                    projectKey = projectKey,
+                    dimension = WorklogAggregateDimension.USER,
+                    granularity = null,
+                    from = null,
+                    to = null,
+                )
 
             // 동률: label ASC → Alice(userB) 먼저, Charlie(userA) 다음
             result.buckets[0].label shouldBe "Alice"
@@ -329,19 +341,21 @@ class WorklogAggregateServiceTest : DescribeSpec({
                     from = null,
                     to = null,
                 )
-            } returns listOf(
-                WorklogAggregateRow(groupKey = "2026-06-01", timeSpentSeconds = 3600L, worklogCount = 1),
-                WorklogAggregateRow(groupKey = "2026-06-03", timeSpentSeconds = 7200L, worklogCount = 2),
-            )
+            } returns
+                listOf(
+                    WorklogAggregateRow(groupKey = "2026-06-01", timeSpentSeconds = 3600L, worklogCount = 1),
+                    WorklogAggregateRow(groupKey = "2026-06-03", timeSpentSeconds = 7200L, worklogCount = 2),
+                )
 
-            val result = sut.aggregate(
-                actorId = actor,
-                projectKey = projectKey,
-                dimension = WorklogAggregateDimension.PERIOD,
-                granularity = AggregateGranularity.DAY,
-                from = null,
-                to = null,
-            )
+            val result =
+                sut.aggregate(
+                    actorId = actor,
+                    projectKey = projectKey,
+                    dimension = WorklogAggregateDimension.PERIOD,
+                    granularity = AggregateGranularity.DAY,
+                    from = null,
+                    to = null,
+                )
 
             result.buckets.find { it.key == "2026-06-01" }?.label shouldBe "2026-06-01"
             result.buckets.find { it.key == "2026-06-03" }?.label shouldBe "2026-06-03"
@@ -357,9 +371,10 @@ class WorklogAggregateServiceTest : DescribeSpec({
                     from = null,
                     to = null,
                 )
-            } returns listOf(
-                WorklogAggregateRow(groupKey = "2026-06-01", timeSpentSeconds = 1000L, worklogCount = 1),
-            )
+            } returns
+                listOf(
+                    WorklogAggregateRow(groupKey = "2026-06-01", timeSpentSeconds = 1000L, worklogCount = 1),
+                )
 
             sut.aggregate(
                 actorId = actor,
@@ -383,20 +398,22 @@ class WorklogAggregateServiceTest : DescribeSpec({
                     from = null,
                     to = null,
                 )
-            } returns listOf(
-                WorklogAggregateRow(groupKey = "2026-03-01", timeSpentSeconds = 1000L, worklogCount = 1),
-                WorklogAggregateRow(groupKey = "2026-01-01", timeSpentSeconds = 5000L, worklogCount = 2),
-                WorklogAggregateRow(groupKey = "2026-02-01", timeSpentSeconds = 2000L, worklogCount = 1),
-            )
+            } returns
+                listOf(
+                    WorklogAggregateRow(groupKey = "2026-03-01", timeSpentSeconds = 1000L, worklogCount = 1),
+                    WorklogAggregateRow(groupKey = "2026-01-01", timeSpentSeconds = 5000L, worklogCount = 2),
+                    WorklogAggregateRow(groupKey = "2026-02-01", timeSpentSeconds = 2000L, worklogCount = 1),
+                )
 
-            val result = sut.aggregate(
-                actorId = actor,
-                projectKey = projectKey,
-                dimension = WorklogAggregateDimension.PERIOD,
-                granularity = AggregateGranularity.MONTH,
-                from = null,
-                to = null,
-            )
+            val result =
+                sut.aggregate(
+                    actorId = actor,
+                    projectKey = projectKey,
+                    dimension = WorklogAggregateDimension.PERIOD,
+                    granularity = AggregateGranularity.MONTH,
+                    from = null,
+                    to = null,
+                )
 
             result.buckets.map { it.key } shouldBe listOf("2026-01-01", "2026-02-01", "2026-03-01")
         }
