@@ -10,9 +10,11 @@ import {
 } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import type { PolicyCatalog } from '@/api/notification-policies'
+import { UNSUPPORTED_RECIPIENT_ROLES } from '@/api/notification-policies'
 import {
   eventTypeLabels,
   recipientRoleLabels,
+  recipientRoleDescriptions,
   channelLabels,
   labelFor,
   notificationPolicyLabels,
@@ -63,13 +65,20 @@ function buildEventTypeOptions(eventTypes: PolicyCatalog['eventTypes']): JSX.Ele
   ))
 }
 
-/** 수신자 역할 카탈로그 → SelectItem 배열. 미지 값은 원문 fallback. */
+/** 수신자 역할 카탈로그 → SelectItem 배열. 미지원 역할은 disabled + 접미사. */
 function buildRecipientRoleOptions(recipientRoles: PolicyCatalog['recipientRoles']): JSX.Element[] {
-  return recipientRoles.map((role) => (
-    <SelectItem key={role} value={role}>
-      {labelFor(recipientRoleLabels, role)}
-    </SelectItem>
-  ))
+  const unsupportedSet = new Set<string>(UNSUPPORTED_RECIPIENT_ROLES)
+  return recipientRoles.map((role) => {
+    const isUnsupported = unsupportedSet.has(role)
+    const label = isUnsupported
+      ? `${labelFor(recipientRoleLabels, role)} ${notificationPolicyLabels.form.recipientUnsupportedSuffix}`
+      : labelFor(recipientRoleLabels, role)
+    return (
+      <SelectItem key={role} value={role} disabled={isUnsupported}>
+        {label}
+      </SelectItem>
+    )
+  })
 }
 
 /** 채널 카탈로그 → SelectItem 배열. 미지 값은 원문 fallback. */
@@ -152,6 +161,16 @@ export function NotificationPolicyForm({
             {buildRecipientRoleOptions(catalog.recipientRoles)}
           </SelectContent>
         </Select>
+        {/* 동적 헬퍼 — 선택한 역할의 한 줄 설명. 미선택이면 미표시. */}
+        {recipientRole !== '' && (
+          <p className="text-xs text-muted-foreground">
+            {labelFor(recipientRoleDescriptions, recipientRole)}
+          </p>
+        )}
+        {/* 상시 안내 — 미지원 역할 사유. 항상 표시. */}
+        <p className="text-xs text-muted-foreground">
+          {notificationPolicyLabels.form.recipientUnsupportedHint}
+        </p>
       </div>
 
       {/* 채널 select */}

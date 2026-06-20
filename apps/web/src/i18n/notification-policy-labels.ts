@@ -147,6 +147,10 @@ export const notificationPolicyLabels = {
     channel: '채널',
     /** 정책 추가 버튼 텍스트 */
     addButton: '정책 추가',
+    /** 미지원 수신자 역할 옵션 라벨 접미사 */
+    recipientUnsupportedSuffix: '(미지원)',
+    /** 미지원 수신자 역할 상시 안내 — 폼 하단에 항상 표시 */
+    recipientUnsupportedHint: '규칙 소유자는 자동화 기능 도입 전까지 선택할 수 없습니다.',
   },
 
   /** 인라인 액션 버튼 */
