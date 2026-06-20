@@ -46,8 +46,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.transaction.support.TransactionTemplate
 import java.sql.Connection
@@ -68,19 +66,20 @@ import java.util.UUID
  * - S2. 전이 불가 — open → done(미정의 전이) → [IssueTransitionNotAllowedException] 전파.
  * - S3. 버전 충돌 — expectedVersion 불일치 → [IssueVersionConflictException] 전파.
  * - S4. 워크플로우 미설정 — no-scheme 프로젝트 → [IssueWorkflowNotConfiguredException] 전파.
- * - S5. 권한 강제 — SecurityContext actor 추출. 인증 없으면 401 ResponseStatusException.
+ * - S5. actor 신뢰 — `cmd.actorUserId` 를 actor 로 위임한다. SecurityContext 에 의존하지 않는다.
  *
  * ## 마이그레이션 전략
  *
  * [com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest] 와 동형 구조.
  * issue-tracking V001~V004 + project-workflow V200~V202 순차 적용.
  *
- * ## actor 추출 계약
+ * ## actor 전달 계약 (sec codereview-fix P1)
  *
- * adapter 는 cmd 에서 actor 를 받지 않고 `CurrentActor.current()` 로
- * SecurityContext 에서 추출한다 (actor 위조 차단, sec CONCERN-3).
- * 이 테스트는 `@BeforeEach` 에서 SecurityContext 를 설정하고
- * `@AfterEach` 에서 clear 하여 격리한다.
+ * adapter 는 SecurityContext 가 아닌 `cmd.actorUserId` 를 신뢰한다.
+ * actor 는 호출 컨트롤러([com.bts.agileplanning.web.BoardController])가 SecurityContext 에서 추출해
+ * cmd 로 전달한다. adapter 가 직접 SecurityContext 를 읽지 않으므로 스레드 무관(async 안전)하다.
+ * 위조 차단은 cmd 를 채우는 유일한 곳이 컨트롤러의 SecurityContext 추출이라는 점으로 보장된다
+ * (컨트롤러는 body/param 으로 actor 를 받지 않는다).
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Suppress("LongMethod")
@@ -187,16 +186,6 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
     }
 
     // ── 헬퍼 ────────────────────────────────────────────────────────────────────
-
-    /** SecurityContext 에 actor UUID 를 심는다 (CurrentActor.current() 성공 조건). */
-    private fun setActor(id: UUID = actorId) {
-        SecurityContextHolder.getContext().authentication =
-            UsernamePasswordAuthenticationToken(
-                id.toString(),
-                null,
-                listOf(SimpleGrantedAuthority("ROLE_USER")),
-            )
-    }
 
     /**
      * 테스트용 이슈를 DB 에 직접 삽입하고 이슈 키 문자열을 반환한다.
@@ -426,11 +415,11 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
      */
     @Test
     fun `transition delegates to IssueApplicationService and returns updated state`() {
-        setActor()
         val issueKey = insertIssue(currentStateKey = "open")
 
         val cmd =
             BoardTransitionCommand(
+                actorUserId = actorId,
                 issueKey = issueKey,
                 toStateKey = "in_progress",
                 expectedVersion = 1L,
@@ -456,11 +445,11 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
      */
     @Test
     fun `transition propagates IssueTransitionNotAllowedException for invalid transition`() {
-        setActor()
         val issueKey = insertIssue(currentStateKey = "open")
 
         val cmd =
             BoardTransitionCommand(
+                actorUserId = actorId,
                 issueKey = issueKey,
                 toStateKey = "done",
                 expectedVersion = 1L,
@@ -482,11 +471,11 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
      */
     @Test
     fun `transition propagates IssueVersionConflictException on version mismatch`() {
-        setActor()
         val issueKey = insertIssue(currentStateKey = "open")
 
         val cmd =
             BoardTransitionCommand(
+                actorUserId = actorId,
                 issueKey = issueKey,
                 toStateKey = "in_progress",
                 expectedVersion = 99L,
@@ -508,11 +497,11 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
      */
     @Test
     fun `transition propagates IssueWorkflowNotConfiguredException when no scheme`() {
-        setActor()
         val issueKey = insertIssue(projectKey = NOSCHEME_PROJECT_KEY, currentStateKey = "open")
 
         val cmd =
             BoardTransitionCommand(
+                actorUserId = actorId,
                 issueKey = issueKey,
                 toStateKey = "in_progress",
                 expectedVersion = 1L,
@@ -523,32 +512,38 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
             .isInstanceOf(IssueWorkflowNotConfiguredException::class.java)
     }
 
-    // ── S5. 권한 강제 — SecurityContext actor 추출 ────────────────────────────────
+    // ── S5. actor 신뢰 — cmd.actorUserId 위임, SecurityContext 무관 ────────────────
 
     /**
-     * S5. SecurityContext 에 인증 정보가 없으면 `CurrentActor.current()` 가 401 을 던진다.
+     * S5. adapter 는 SecurityContext 가 아닌 `cmd.actorUserId` 를 actor 로 신뢰해 위임한다.
      *
-     * adapter 는 cmd 에서 actor 를 받지 않고 SecurityContext 에서 추출한다.
-     * actor 위조 차단 설계 (sec CONCERN-3) 의 핵심 게이트.
+     * SecurityContext 가 비어 있어도(adapter 가 그것을 읽지 않으므로) 전이가 정상 동작한다.
+     * 이는 스레드 무관(async 안전) 설계이며(sec codereview-fix P1), 401 인증 강제는
+     * 호출 컨트롤러([com.bts.agileplanning.web.BoardController])가 담당한다.
+     *
+     * Given  SecurityContext clear + BDTRANS-N 이슈 (open, version=1)
+     * When   adapter.transition(cmd(actorUserId=actorId, toStateKey="in_progress"))
+     * Then   SecurityContext 가 비어도 cmd.actorUserId 로 위임되어 전이 성공.
      */
     @Test
-    fun `transition throws 401 when SecurityContext is not authenticated`() {
-        // SecurityContext clear — setActor() 호출 없음
+    fun `transition trusts cmd actorUserId and does not read SecurityContext`() {
+        // SecurityContext 를 비운다 — adapter 가 SecurityContext 를 읽지 않음을 검증.
         SecurityContextHolder.clearContext()
         val issueKey = insertIssue(currentStateKey = "open")
 
         val cmd =
             BoardTransitionCommand(
+                actorUserId = actorId,
                 issueKey = issueKey,
                 toStateKey = "in_progress",
                 expectedVersion = 1L,
                 resolutionId = null,
             )
 
-        assertThatThrownBy { adapter.transition(cmd) }
-            .isInstanceOf(org.springframework.web.server.ResponseStatusException::class.java)
-            .matches { ex ->
-                (ex as org.springframework.web.server.ResponseStatusException).statusCode.value() == 401
-            }
+        val result = adapter.transition(cmd)
+
+        assertThat(result.issueKey).isEqualTo(issueKey)
+        assertThat(result.currentStateKey).isEqualTo("in_progress")
+        assertThat(result.version).isEqualTo(2L)
     }
 }

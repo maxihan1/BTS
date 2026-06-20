@@ -18,6 +18,7 @@ import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -102,16 +103,28 @@ class BoardControllerIntegrationTest {
         open fun boardExceptionHandler(): BoardExceptionHandler = BoardExceptionHandler()
     }
 
-    /** 테스트별 allow/deny 토글이 가능한 [IssuePermissionResolver] stub. */
+    /**
+     * 테스트별 allow/deny 토글 + 전달 인자 캡처가 가능한 [IssuePermissionResolver] stub.
+     *
+     * boolean allow-all 만으로는 컨트롤러가 잘못된 권한코드/scope 를 넘겨도 그린이 되어
+     * 권한 게이트의 의미를 검증하지 못한다(sec codereview-fix P2). 모든 [hasPermission] 호출의
+     * (actorId, permission, scope) 를 [calls] 에 기록해 테스트가 실제 전달 인자를 단언하도록 한다.
+     */
     open class PermissionGate : IssuePermissionResolver {
         /** false 면 모든 권한 판정을 거부한다. */
         var allowAll: Boolean = true
+
+        /** [hasPermission] 호출마다 전달된 (actorId, permission, scope) 를 순서대로 기록한다. */
+        val calls: MutableList<Triple<UUID, IssuePermission, IssueScope>> = mutableListOf()
 
         override fun hasPermission(
             actorId: UUID,
             permission: IssuePermission,
             scope: IssueScope,
-        ): Boolean = allowAll
+        ): Boolean {
+            calls.add(Triple(actorId, permission, scope))
+            return allowAll
+        }
     }
 
     @Autowired
@@ -137,6 +150,7 @@ class BoardControllerIntegrationTest {
         // 컨텍스트 캐시로 MockK mock 이 테스트 간 공유되므로 호출 기록을 리셋해 verify 누적을 끊는다.
         clearMocks(boardApplicationService, boardRepository)
         permissionGate.allowAll = true
+        permissionGate.calls.clear()
         val auth =
             UsernamePasswordAuthenticationToken(
                 actorId.toString(),
@@ -183,6 +197,10 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.data.projectKey").value("BTS"))
             .andExpect(jsonPath("$.data.columns.length()").value(3))
             .andExpect(jsonPath("$.data.columns[0].stateKey").value("open"))
+
+        // 권한 게이트가 CREATE + Project(요청 projectKey) 로 판정됐는지 검증 (sec P2)
+        assertThat(permissionGate.calls)
+            .containsExactly(Triple(actorId, IssuePermission.CREATE, IssueScope.Project("BTS")))
     }
 
     // ── CREATE-2. POST CREATE 권한 미충족 → 403 ────────────────────────────────
@@ -290,6 +308,10 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.data.columns[0].cards[0].issueKey").value("BTS-1"))
             // NIT: priority 는 정렬 내부용 → 응답 카드 DTO 에서 제외
             .andExpect(jsonPath("$.data.columns[0].cards[0].priority").doesNotExist())
+
+        // 권한 게이트가 BROWSE + Project(보드 projectKey) 로 판정됐는지 검증 (sec P2)
+        assertThat(permissionGate.calls)
+            .containsExactly(Triple(actorId, IssuePermission.BROWSE, IssueScope.Project("BTS")))
     }
 
     // ── GET-2. GET BROWSE 권한 미충족 → 403 ───────────────────────────────────
@@ -343,6 +365,10 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.data[0].projectKey").value("BTS"))
 
         verify { boardApplicationService.listBoards("BTS") }
+
+        // 권한 게이트가 BROWSE + Project(요청 projectKey) 로 판정됐는지 검증 (sec P2)
+        assertThat(permissionGate.calls)
+            .containsExactly(Triple(actorId, IssuePermission.BROWSE, IssueScope.Project("BTS")))
     }
 
     // ── LIST-2. GET 목록 BROWSE 권한 미충족 → 403 ─────────────────────────────
@@ -370,6 +396,7 @@ class BoardControllerIntegrationTest {
             boardApplicationService.moveCard(
                 boardId = board.id,
                 issueKey = "BTS-1",
+                actorUserId = actorId,
                 toColumnId = toColumnId,
                 expectedVersion = 3L,
                 resolutionId = null,
@@ -388,6 +415,11 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.data.currentStateKey").value("in-progress"))
             .andExpect(jsonPath("$.data.version").value(4))
             .andExpect(jsonPath("$.data.columnId").value(toColumnId.toString()))
+
+        // move 의 보드 접근 게이트가 BROWSE + Project(보드 projectKey) 로 판정됐는지 검증 (sec P2).
+        // 이동 자체의 TRANSITION 강제는 전이 포트(IssueTransitionAdapter)가 담당한다.
+        assertThat(permissionGate.calls)
+            .containsExactly(Triple(actorId, IssuePermission.BROWSE, IssueScope.Project("BTS")))
     }
 
     // ── MOVE-2. POST move 보드 미존재 → 404 ───────────────────────────────────
@@ -416,7 +448,7 @@ class BoardControllerIntegrationTest {
         val toColumnId = board.columns[1].id
         every { boardRepository.findById(board.id) } returns board
         every {
-            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any())
+            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any(), any())
         } throws
             ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT, "version conflict")
 
@@ -438,7 +470,7 @@ class BoardControllerIntegrationTest {
         val toColumnId = board.columns[1].id
         every { boardRepository.findById(board.id) } returns board
         every {
-            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any())
+            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any(), any())
         } throws
             ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "mismatch")
 
@@ -483,5 +515,34 @@ class BoardControllerIntegrationTest {
             .andExpect(status().isForbidden)
 
         verify(exactly = 0) { boardApplicationService.createBoard(any(), any()) }
+    }
+
+    // ── SCOPE-1. 권한 게이트가 올바른 permission/scope 로만 판정됨 (가짜그린 차단) ───
+
+    /**
+     * 일부러 검증 — 컨트롤러가 잘못된 권한코드/scope 를 넘기면 이 테스트가 실패해야 한다(sec P2).
+     *
+     * 보드 생성은 반드시 [IssuePermission.CREATE] + [IssueScope.Project] 여야 하며,
+     * BROWSE 나 Issue scope 로 판정되면 회귀로 간주한다. 권한코드/scope 가 약화돼도
+     * allow-all boolean stub 으로는 그린이 되던 갭을 막는다.
+     */
+    @Test
+    fun `보드 생성 권한 판정은 BROWSE 나 Issue scope 가 아니라 CREATE + Project scope 여야 한다`() {
+        val board = sampleBoard()
+        every { boardApplicationService.createBoard("BTS", "보드") } returns board
+        val body = mapOf("projectKey" to "BTS", "name" to "보드")
+
+        mockMvc.perform(
+            post("/api/v1/boards")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        ).andExpect(status().isCreated)
+
+        assertThat(permissionGate.calls).hasSize(1)
+        val (_, permission, scope) = permissionGate.calls.single()
+        assertThat(permission).isEqualTo(IssuePermission.CREATE)
+        assertThat(permission).isNotEqualTo(IssuePermission.BROWSE)
+        assertThat(scope).isEqualTo(IssueScope.Project("BTS"))
+        assertThat(scope).isNotInstanceOf(IssueScope.Issue::class.java)
     }
 }

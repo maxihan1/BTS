@@ -17,7 +17,7 @@ import java.util.UUID
  * - [BoardIssueLookupPort.listVisibleIssuesByProject] default 구현이 빈 목록을 반환함(fail-safe).
  * - [IssueTransitionPort] 는 default 구현이 없음 — 추상 구현 필수(fail-closed).
  * - [BoardIssueView] 필드 계약(key/summary/currentStateKey/assigneeId/priority/version).
- * - [BoardTransitionCommand] 필드 계약(issueKey/toStateKey/expectedVersion/resolutionId).
+ * - [BoardTransitionCommand] 필드 계약(actorUserId/issueKey/toStateKey/expectedVersion/resolutionId).
  * - [BoardTransitionResult] 필드 계약(issueKey/currentStateKey/version).
  */
 class BoardPortContractTest {
@@ -135,6 +135,7 @@ class BoardPortContractTest {
 
         val cmd =
             BoardTransitionCommand(
+                actorUserId = UUID.randomUUID(),
                 issueKey = "PROJ-1",
                 toStateKey = "in-progress",
                 expectedVersion = 0L,
@@ -150,9 +151,27 @@ class BoardPortContractTest {
     // ── BoardTransitionCommand 필드 계약 ─────────────────────────────────────
 
     @Test
+    fun `BoardTransitionCommand 는 actorUserId 를 보존한다 (컨트롤러가 SecurityContext 에서 채움)`() {
+        // actor 는 호출 컨트롤러가 SecurityContext 에서 추출해 cmd 로 전달한다.
+        // adapter 는 SecurityContext 가 아닌 이 값을 신뢰한다(스레드 무관 → async 안전).
+        val actorUserId = UUID.randomUUID()
+        val cmd =
+            BoardTransitionCommand(
+                actorUserId = actorUserId,
+                issueKey = "PROJ-6",
+                toStateKey = "in-progress",
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+
+        assertThat(cmd.actorUserId).isEqualTo(actorUserId)
+    }
+
+    @Test
     fun `BoardTransitionCommand 는 resolutionId 가 null 일 수 있다`() {
         val cmd =
             BoardTransitionCommand(
+                actorUserId = UUID.randomUUID(),
                 issueKey = "PROJ-3",
                 toStateKey = "closed",
                 expectedVersion = 5L,
@@ -170,6 +189,7 @@ class BoardPortContractTest {
         val resolutionId = UUID.randomUUID()
         val cmd =
             BoardTransitionCommand(
+                actorUserId = UUID.randomUUID(),
                 issueKey = "PROJ-4",
                 toStateKey = "closed",
                 expectedVersion = 2L,

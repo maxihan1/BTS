@@ -175,16 +175,19 @@ class BoardApplicationServiceTest {
         every { transition.transition(capture(cmdSlot)) } returns
             BoardTransitionResult(issueKey = "CARD-1", currentStateKey = "in-progress", version = 2L)
 
+        val actorUserId = UUID.randomUUID()
         val result =
             serviceWith(transition = transition)
                 .moveCard(
                     boardId = board.id,
                     issueKey = "CARD-1",
+                    actorUserId = actorUserId,
                     toColumnId = inProgressColumn.id,
                     expectedVersion = 1L,
                     resolutionId = null,
                 )
 
+        assertThat(cmdSlot.captured.actorUserId).isEqualTo(actorUserId)
         assertThat(cmdSlot.captured.toStateKey).isEqualTo("in-progress")
         assertThat(cmdSlot.captured.issueKey).isEqualTo("CARD-1")
         assertThat(cmdSlot.captured.expectedVersion).isEqualTo(1L)
@@ -208,6 +211,7 @@ class BoardApplicationServiceTest {
                 .moveCard(
                     boardId = board.id,
                     issueKey = "NOOP-1",
+                    actorUserId = UUID.randomUUID(),
                     toColumnId = openColumn.id,
                     expectedVersion = 1L,
                     resolutionId = null,
@@ -234,6 +238,7 @@ class BoardApplicationServiceTest {
             serviceWith().moveCard(
                 boardId = board.id,
                 issueKey = "OTHER-1",
+                actorUserId = UUID.randomUUID(),
                 toColumnId = anyColumn.id,
                 expectedVersion = 1L,
                 resolutionId = null,
