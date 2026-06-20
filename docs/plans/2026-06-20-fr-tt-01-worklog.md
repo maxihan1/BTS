@@ -202,6 +202,6 @@ type=backend → autoplan 대신 eng 집중 리뷰([[bts-review-plan-autoplan-ov
 - ⚠️ 주의(비차단): worklog 작성 권한=UPDATE 재사용은 의도적 단순화(Jira의 "Work On Issues" 별도권한 미도입). 후속 FR로 세분 가능.
 - **BLOCKER: 없음**.
 
-### G2 — Maxi 결정 대기 (게이트1)
+### G2 — Maxi 확정 (게이트1, 2026-06-20)
 
-추정 changelog 통합: **기본값=통합**(T4 + T5 history). 대안=미통합(T4 제거).
+추정 changelog **통합 확정** → Task 4 유지 + T5 history 기록 유지. 게이트1 승인 → 구현 진행.
