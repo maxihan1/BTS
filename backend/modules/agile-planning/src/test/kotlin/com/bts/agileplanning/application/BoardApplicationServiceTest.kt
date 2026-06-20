@@ -4,12 +4,12 @@ package com.bts.agileplanning.application
 
 import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
+import com.bts.agileplanning.repository.BoardRepository
 import com.bts.shared.board.BoardIssueView
 import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.board.BoardTransitionCommand
 import com.bts.shared.board.BoardTransitionResult
 import com.bts.shared.board.IssueTransitionPort
-import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowStateView
@@ -29,6 +29,10 @@ import java.util.UUID
 /**
  * [BoardApplicationService] 통합 테스트 — Testcontainers PostgreSQL 사용.
  *
+ * 각 테스트가 [BoardRepository] 는 Spring 컨텍스트에서 주입받고,
+ * cross-BC 포트([WorkflowStateCatalog] / [BoardIssueLookupPort] / [IssueTransitionPort])는
+ * MockK 로 교체해 독립적으로 주입한다.
+ *
  * 검증 시나리오.
  * - (a) 보드 생성 시 WorkflowStateCatalog 조회 → 컬럼 시드 + boards/board_columns 영속
  * - (b) E1: 스킴 미할당(빈 상태 목록) → 422 UnprocessableEntity
@@ -44,7 +48,7 @@ import java.util.UUID
 @Import(AgilePlanningTestcontainersConfig::class)
 class BoardApplicationServiceTest {
     @Autowired
-    private lateinit var boardRepository: com.bts.agileplanning.repository.BoardRepository
+    private lateinit var boardRepository: BoardRepository
 
     companion object {
         /** 테스트용 상태 목록 — 3개 컬럼(TODO·IN_PROGRESS·DONE). */
@@ -62,7 +66,12 @@ class BoardApplicationServiceTest {
             )
     }
 
-    /** 테스트마다 독립 [BoardApplicationService] 인스턴스를 생성해 포트를 교체한다. */
+    /**
+     * 테스트마다 독립 [BoardApplicationService] 인스턴스를 생성해 cross-BC 포트를 MockK 로 교체한다.
+     *
+     * [BoardRepository] 는 Testcontainers DB 에 실제로 접근하는 Spring Bean 을 공유하여
+     * DB 영속 동작을 검증한다.
+     */
     private fun serviceWith(
         catalog: WorkflowStateCatalog = mockk(relaxed = true),
         lookup: BoardIssueLookupPort = mockk(relaxed = true),
@@ -80,10 +89,9 @@ class BoardApplicationServiceTest {
     @Test
     fun `보드 생성 시 WorkflowStateCatalog 조회 후 컬럼이 3개 시드되고 DB 에 영속된다`() {
         val catalog = mockk<WorkflowStateCatalog>()
-        every { catalog.listStates(any(), null) } returns DEFAULT_STATES
+        every { catalog.listStates(ProjectKey.of("BTS"), null) } returns DEFAULT_STATES
 
-        val service = serviceWith(catalog = catalog)
-        val board = service.createBoard(projectKey = "BTS", name = "BTS 보드")
+        val board = serviceWith(catalog = catalog).createBoard(projectKey = "BTS", name = "BTS 보드")
 
         assertThat(board.columns).hasSize(3)
         assertThat(board.columns.map { it.stateKey })
@@ -102,11 +110,9 @@ class BoardApplicationServiceTest {
     @Test
     fun `E1 워크플로우 스킴 미할당 프로젝트는 보드 생성 시 422 를 던진다`() {
         val catalog = mockk<WorkflowStateCatalog>()
-        every { catalog.listStates(any(), null) } returns emptyList()
+        every { catalog.listStates(ProjectKey.of("BTS"), null) } returns emptyList()
 
-        val service = serviceWith(catalog = catalog)
-
-        assertThatThrownBy { service.createBoard(projectKey = "BTS", name = "빈 보드") }
+        assertThatThrownBy { serviceWith(catalog = catalog).createBoard(projectKey = "BTS", name = "빈 보드") }
             .isInstanceOf(ResponseStatusException::class.java)
             .extracting("statusCode.value")
             .isEqualTo(422)
@@ -117,7 +123,7 @@ class BoardApplicationServiceTest {
     @Test
     fun `보드 조회 시 BoardIssueLookupPort 결과가 state_key 기준으로 컬럼에 배치된다`() {
         val catalog = mockk<WorkflowStateCatalog>()
-        every { catalog.listStates(any(), null) } returns DEFAULT_STATES
+        every { catalog.listStates(ProjectKey.of("PROJ"), null) } returns DEFAULT_STATES
         val board = serviceWith(catalog = catalog).createBoard("PROJ", "조회 테스트 보드")
 
         val viewerId = UUID.randomUUID()
@@ -144,13 +150,13 @@ class BoardApplicationServiceTest {
         val lookup = mockk<BoardIssueLookupPort>()
         every { lookup.listVisibleIssuesByProject("PROJ", viewerId) } returns issues
 
-        val result = serviceWith(lookup = lookup).getBoard(boardId = board.id, viewerUserId = viewerId)
+        val placedColumns = serviceWith(lookup = lookup).getBoard(boardId = board.id, viewerUserId = viewerId)
 
-        val openPlaced = result.first { it.column.stateKey == "open" }
+        val openPlaced = placedColumns.first { it.column.stateKey == "open" }
         assertThat(openPlaced.cards).hasSize(1)
         assertThat(openPlaced.cards.first().key).isEqualTo("PROJ-1")
 
-        val inProgressPlaced = result.first { it.column.stateKey == "in-progress" }
+        val inProgressPlaced = placedColumns.first { it.column.stateKey == "in-progress" }
         assertThat(inProgressPlaced.cards).hasSize(1)
         assertThat(inProgressPlaced.cards.first().key).isEqualTo("PROJ-2")
     }
@@ -160,7 +166,7 @@ class BoardApplicationServiceTest {
     @Test
     fun `카드 이동 시 대상 컬럼의 state_key 로 IssueTransitionPort 에 위임한다`() {
         val catalog = mockk<WorkflowStateCatalog>()
-        every { catalog.listStates(any(), null) } returns DEFAULT_STATES
+        every { catalog.listStates(ProjectKey.of("CARD"), null) } returns DEFAULT_STATES
         val board = serviceWith(catalog = catalog).createBoard("CARD", "이동 테스트 보드")
 
         val inProgressColumn = board.columns.first { it.stateKey == "in-progress" }
@@ -190,7 +196,7 @@ class BoardApplicationServiceTest {
     @Test
     fun `E3 현재 이슈 상태와 같은 컬럼으로 이동하면 전이 없이 현재 상태를 반환한다`() {
         val catalog = mockk<WorkflowStateCatalog>()
-        every { catalog.listStates(any(), null) } returns DEFAULT_STATES
+        every { catalog.listStates(ProjectKey.of("NOOP"), null) } returns DEFAULT_STATES
         val board = serviceWith(catalog = catalog).createBoard("NOOP", "no-op 테스트 보드")
 
         val openColumn = board.columns.first { it.stateKey == "open" }
@@ -218,7 +224,7 @@ class BoardApplicationServiceTest {
     @Test
     fun `E8 issueKey 가 보드의 projectKey 소속이 아니면 거부된다`() {
         val catalog = mockk<WorkflowStateCatalog>()
-        every { catalog.listStates(any(), null) } returns DEFAULT_STATES
+        every { catalog.listStates(ProjectKey.of("BTS"), null) } returns DEFAULT_STATES
         val board = serviceWith(catalog = catalog).createBoard("BTS", "정합 테스트 보드")
 
         val anyColumn = board.columns.first()
@@ -240,7 +246,7 @@ class BoardApplicationServiceTest {
     @Test
     fun `listBoards 는 projectKey 로 활성 보드 목록을 반환한다`() {
         val catalog = mockk<WorkflowStateCatalog>()
-        every { catalog.listStates(any(), null) } returns DEFAULT_STATES
+        every { catalog.listStates(ProjectKey.of("LIST"), null) } returns DEFAULT_STATES
         val service = serviceWith(catalog = catalog)
 
         service.createBoard("LIST", "목록 보드 1")

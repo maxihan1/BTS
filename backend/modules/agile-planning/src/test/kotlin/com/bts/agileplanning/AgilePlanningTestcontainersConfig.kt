@@ -51,7 +51,7 @@ import javax.sql.DataSource
  *   여기서 직접 Flyway 를 실행해 V500 마이그레이션을 적용한다.
  * - [IssueTransitionPort] 는 fail-closed(default 구현 없음). 테스트에서 MockK 로 교체 가능.
  */
-@TestConfiguration
+@TestConfiguration(proxyBeanMethods = false)
 class AgilePlanningTestcontainersConfig {
     companion object {
         /**
@@ -131,15 +131,21 @@ class AgilePlanningTestcontainersConfig {
      * 보드 생성 시 default 워크플로우 상태를 반환하는 stub.
      * 테스트별로 행동을 직접 지정할 수 있도록 기본 구현은 빈 목록을 반환한다.
      * 각 통합 테스트가 io.mockk.mockk() 로 교체하거나 이 default 를 사용한다.
+     *
+     * `open class` 선언: [WorkflowStateCatalog.listStates] 에 `@Transactional(MANDATORY)` 가 있어서
+     * Spring AOP 가 CGLIB 프록시를 생성하려 한다. Kotlin 익명 클래스는 final 이므로 CGLIB 불가.
+     * → named `open class` 로 분리하면 CGLIB 서브클래싱이 가능하다.
      */
     @Bean
-    fun workflowStateCatalog(): WorkflowStateCatalog =
-        object : WorkflowStateCatalog {
-            override fun listStates(
-                projectKey: ProjectKey,
-                issueTypeKey: IssueTypeKey?,
-            ): List<WorkflowStateView> = emptyList()
-        }
+    fun workflowStateCatalog(): WorkflowStateCatalog = EmptyWorkflowStateCatalogStub()
+
+    /** [WorkflowStateCatalog] fail-safe stub — CGLIB 서브클래싱을 허용하기 위한 open 클래스. */
+    open class EmptyWorkflowStateCatalogStub : WorkflowStateCatalog {
+        override fun listStates(
+            projectKey: ProjectKey,
+            issueTypeKey: IssueTypeKey?,
+        ): List<WorkflowStateView> = emptyList()
+    }
 
     /**
      * [BoardIssueLookupPort] 테스트 stub 빈.
