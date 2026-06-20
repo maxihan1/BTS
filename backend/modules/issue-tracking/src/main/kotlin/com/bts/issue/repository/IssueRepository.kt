@@ -553,19 +553,8 @@ class IssueRepository(
         actor: UUID,
         access: IssueSecurityAccess = UNRESTRICTED_ACCESS,
     ): Page<IssueResponse> {
-        val activeInProject =
-            PROJECTS.KEY.eq(projectKey)
-                .and(ISSUES.DELETED_AT.isNull)
-
-        // 보안 등급 WHERE 술어 — unrestricted=true 이면 null(필터 미적용).
-        val securityCondition = buildSecurityCondition(actor, access)
-
-        val baseWhere =
-            if (securityCondition != null) {
-                activeInProject.and(securityCondition)
-            } else {
-                activeInProject
-            }
+        // 활성 프로젝트 술어 + 보안 등급 필터 — listVisibleForBoard 와 동일 source.
+        val baseWhere = buildActiveSecureWhere(projectKey, actor, access)
 
         // count 쿼리: ISSUE_TYPES join 제외 — 불필요한 join 으로 count 왜곡 방지
         val total =
@@ -638,18 +627,8 @@ class IssueRepository(
         actor: UUID,
         access: IssueSecurityAccess,
     ): List<Issue> {
-        val activeInProject =
-            PROJECTS.KEY.eq(projectKey)
-                .and(ISSUES.DELETED_AT.isNull)
-
-        // listWithType 과 동일한 보안 술어 재사용 — unrestricted=true 이면 null(필터 미적용).
-        val securityCondition = buildSecurityCondition(actor, access)
-        val where =
-            if (securityCondition != null) {
-                activeInProject.and(securityCondition)
-            } else {
-                activeInProject
-            }
+        // 활성 프로젝트 술어 + 보안 등급 필터 — listWithType 과 동일 source.
+        val where = buildActiveSecureWhere(projectKey, actor, access)
 
         return dsl.select(ISSUES.fields().toList())
             .from(ISSUES)
@@ -658,6 +637,34 @@ class IssueRepository(
             .orderBy(ISSUES.CREATED_AT.desc())
             .limit(BOARD_CARD_FETCH_LIMIT)
             .fetch { it.into(ISSUES).toIssue() }
+    }
+
+    /**
+     * "활성 프로젝트 이슈" 술어와 [buildSecurityCondition] 보안 필터를 결합한 WHERE 조건을 만든다.
+     *
+     * [listWithType](페이지 조회)과 [listVisibleForBoard](보드 비페이지 조회)가 동일한 보안 필터를
+     * 적용하도록 **단일 source** 로 추출했다. 보안 술어 변경 시 두 경로가 자동 동기화되어,
+     * 한쪽 경로 누락에 의한 보안 등급 이슈 누출을 구조적으로 차단한다.
+     *
+     * @param projectKey 프로젝트 접두사. 예: `"BTS"`.
+     * @param actor 조회 행위자 UUID. reporter/assignee 동적 조건에 사용.
+     * @param access 접근 가능 보안 등급 집합. unrestricted=true 이면 보안 술어 미적용.
+     * @return `projects.key = ? AND issues.deleted_at IS NULL` + (필요 시) 보안 술어 결합 [Condition].
+     */
+    private fun buildActiveSecureWhere(
+        projectKey: String,
+        actor: UUID,
+        access: IssueSecurityAccess,
+    ): Condition {
+        val activeInProject =
+            PROJECTS.KEY.eq(projectKey)
+                .and(ISSUES.DELETED_AT.isNull)
+        val securityCondition = buildSecurityCondition(actor, access)
+        return if (securityCondition != null) {
+            activeInProject.and(securityCondition)
+        } else {
+            activeInProject
+        }
     }
 
     /**
