@@ -641,3 +641,43 @@ ALTER TABLE issues
     ADD COLUMN start_date  DATE NULL,
     ADD COLUMN due_date    DATE NULL,
     ADD COLUMN target_date DATE NULL;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V026: due_date 스캔 부분 인덱스 (FR-PL-02)
+-- 원본: db/migration/issue-tracking/V026__issue_due_date_scan_index.sql
+-- 인덱스만 추가 — jOOQ codegen 상수 생성 대상 외라 미러 생략 (V016 released_at 등과 달리 컬럼 변경 없음).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- (인덱스 전용 — codegen init 에 DDL 추가 불필요)
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V027: worklogs 테이블 + issues 추정 3컬럼 (FR-TT-01 작업 시간 기록/추정)
+-- 원본: db/migration/issue-tracking/V027__worklogs_and_estimates.sql
+-- jOOQ: Worklogs 테이블 + ID/ISSUE_ID/AUTHOR_ID/TIME_SPENT_SECONDS/STARTED_AT/COMMENT/CREATED_AT/UPDATED_AT/DELETED_AT 상수 생성 대상.
+--       issues.ORIGINAL_ESTIMATE_SECONDS / TIME_SPENT_SECONDS / REMAINING_ESTIMATE_SECONDS 컬럼 상수도 추가.
+--       이 미러가 빠지면 상수/테이블 미생성 → WorklogRepository 컴파일 불가 (jooq-init-codegen-mirror).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- 이슈 작업 시간 기록 단건. 엔티티라 deleted_at 소프트 삭제. issue_id 실 FK + ON DELETE CASCADE (같은 BC).
+-- author_id 는 identity-access BC users.id 대응이나 BC 격리로 FK 미적용 (assignee_id 선례). time_spent_seconds 양수 CHECK.
+CREATE TABLE worklogs (
+    id                 UUID         PRIMARY KEY,
+    issue_id           UUID         NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+    author_id          UUID         NOT NULL,
+    time_spent_seconds INT          NOT NULL CHECK (time_spent_seconds > 0),
+    started_at         TIMESTAMPTZ  NOT NULL,
+    comment            TEXT         NULL,
+    created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    deleted_at         TIMESTAMPTZ  NULL
+);
+
+-- FK 인덱스 (DATA.md §7). 이슈별 활성 worklog 조회용 부분 인덱스 + 작성자별 기간 조회용 복합 인덱스.
+CREATE INDEX idx_worklogs_issue_id ON worklogs (issue_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_worklogs_author_started ON worklogs (author_id, started_at);
+
+-- issues 추정 시간 3컬럼. original/remaining 선택(NULL), time_spent 집계 캐시 NOT NULL DEFAULT 0.
+ALTER TABLE issues
+    ADD COLUMN original_estimate_seconds  INT NULL,
+    ADD COLUMN time_spent_seconds         INT NOT NULL DEFAULT 0,
+    ADD COLUMN remaining_estimate_seconds INT NULL;
