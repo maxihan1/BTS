@@ -151,8 +151,9 @@ FR-TT-01 — Worklog (추정/실제/잔여 시간). 이슈별 작업 시간 기�
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`.../adapter/inbound/rest/UpdateIssueRequest.kt`, `.../adapter/inbound/rest/IssueController.kt`, `.../adapter/inbound/rest/IssueResponse.kt`, `.../test/.../adapter/inbound/rest/IssueEstimatePatchIntegrationTest.kt`]
+- files: [`.../adapter/inbound/rest/UpdateIssueRequest.kt`, `.../adapter/inbound/rest/IssueController.kt`, `.../adapter/inbound/rest/IssueResponse.kt`, `.../application/IssueApplicationService.kt`, `.../test/.../adapter/inbound/rest/IssueEstimatePatchIntegrationTest.kt`]
 - depends-on: [3]
+- 비고: AppUpdateIssueRequest→IssueFieldPatch 서비스 매핑(IssueApplicationService) 포함 — controller→service→repo 전체 배선. T4/T5와 파일 무충돌.
 
 **RED**: `IssueEstimatePatchIntegrationTest` (MockMvc) — PATCH `{originalEstimateSeconds, remainingEstimateSeconds}` 3-state(미변경/null/값), GET 이슈가 original/timeSpent/remaining 노출, timeSpent는 PATCH 무시(읽기전용), 음수 400. 실패: 필드 없음.
 
