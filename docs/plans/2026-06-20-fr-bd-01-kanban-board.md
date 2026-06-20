@@ -34,9 +34,22 @@ classify 결과. type=backend → 풀스택 feature로 교정 (칸반 보드 = �
 - **기존 결정 충돌**: 없음. BC 신설 + 컬럼=상태 매핑 + 카드 이동=전이 재사용은 ADR 신규 후보.
 - **관련 ADR**: [docs/decisions/2026-06-20-fr-bd-01-agile-planning-bootstrap.md](../decisions/2026-06-20-fr-bd-01-agile-planning-bootstrap.md) (생성됨). 간접 관련 — workflow-transition-identity-policy(2026-05-28), workflow-yaml-vs-db-storage(2026-05-21).
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-20-fr-bd-01-kanban-board.md](../specs/2026-06-20-fr-bd-01-kanban-board.md)
+
+핵심 시나리오 요약.
+- 보드 CRUD(명시적 생성, 한 프로젝트 다중 보드). 생성 시 default 워크플로우 상태를 컬럼으로 자동 시드.
+- 보드 조회 = 컬럼(상태별 1:1 매핑) + 컬럼별 카드(이슈). 카드는 current_state_key로 컬럼 배치, viewer visibility 필터, priority ASC 정렬.
+- 카드 이동 = `POST /boards/{id}/cards/{issueKey}/move` → 대상 컬럼 state_key로 cross-BC 전이 포트(issue-tracking) 위임. 전이 규칙/권한/OCC는 issue-tracking 강제.
+
+API. POST /boards · GET /boards/{id} · GET /boards?projectKey · POST /boards/{id}/cards/{issueKey}/move
+데이터. boards / board_columns (V500~, project_key 문자열 BC격리)
+cross-BC 포트. WorkflowStateCatalog 확장(category/displayOrder) · BoardIssueLookupPort 신규(visibility 필터) · IssueTransitionPort 신규(fail-closed) · 보드 권한 포트
+
+## Brainstorming Check
+
+✅ 통과 (직접 adversarial 점검, gap 3건 발견 후 보강 — G1 visibility 누출, G2 권한 레벨, G3 카드 정렬).
 
 ## Plan (← /bts-plan 채움)
 
