@@ -11,11 +11,14 @@ import com.bts.issue.worklog.aggregate.domain.AggregateGranularity
 import com.bts.issue.worklog.aggregate.domain.WorklogAggregateDimension
 import com.bts.shared.issue.IssueTypeId
 import org.assertj.core.api.Assertions.assertThat
+import org.jooq.SQLDialect
+import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.MethodOrderer
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
+import org.springframework.jdbc.datasource.DriverManagerDataSource
 import java.sql.DriverManager
 import java.time.Instant
 import java.util.UUID
@@ -613,5 +616,72 @@ class WorklogAggregateRepositoryTest : IssueTestcontainersBase() {
         assertThat(p95)
             .withFailMessage("p95=%dms 이 500ms 를 초과합니다 — 집계 전용 인덱스 필요", p95)
             .isLessThan(500L)
+    }
+
+    // ── E6. 세션 TZ 비-UTC(KST) 환경에서 period 버킷이 UTC 기준인지 검증 ──────────
+
+    /**
+     * ## 회귀 테스트 — E6 UTC 버킷 강제 (spec E6 요건)
+     *
+     * ### 왜 이 테스트가 필요한가
+     * C1~C3 기존 테스트는 정오(T10:00:00Z) 데이터를 사용한다. 정오는 KST(UTC+9)로 변환해도
+     * 같은 날(10+9=19시)이므로 date_trunc 세션 TZ 버그가 드러나지 않는다.
+     * 경계 시각(UTC 23시대 = KST 다음날)만이 세션 TZ 의존을 표면화한다.
+     *
+     * ### 세션 TZ 오염 방법
+     * Testcontainers 기본 컨테이너는 Docker 기본 TZ(UTC)로 기동되므로, 세션 수준에서
+     * TZ 를 비-UTC 로 만들어야 결함이 드러난다.
+     * [IssueTestcontainersBase] 의 DSLContext 는 `DriverManagerDataSource`(비풀) 기반이므로
+     * 매 쿼리마다 새 JDBC 연결을 사용한다. 따라서 JDBC URL 에
+     * `options=-c%20timezone%3DAsia%2FSeoul` 파라미터를 추가한 별도 DataSource 를 생성하면
+     * 해당 DataSource 를 통한 **모든 커넥션**의 세션 TZ 가 Asia/Seoul 로 고정된다.
+     *
+     * ### 검증 시나리오
+     * - `2024-06-15T23:00:00Z` = KST 기준 2024-06-16 08:00
+     * - AT TIME ZONE 없는 현재 코드 → 세션 TZ = KST 이면 버킷 `"2024-06-16"` (결함)
+     * - AT TIME ZONE 'UTC' 적용 후 → 세션 TZ 무관, 버킷 `"2024-06-15"` (spec E6 준수)
+     */
+    @Test
+    fun `E6 - 세션TZ가 Asia-Seoul 일 때 period 버킷이 UTC 기준 2024-06-15 이어야 한다`() {
+        // JDBC URL 에 options=-c timezone=Asia/Seoul 를 추가해 세션 TZ 를 KST 로 고정한다.
+        // DriverManagerDataSource 는 커넥션 풀 없이 매번 새 연결을 만들고, PostgreSQL JDBC 드라이버는
+        // options 파라미터를 서버에 SET 명령으로 전달하므로 세션 TZ 가 Asia/Seoul 로 설정된다.
+        val kstJdbcUrl = IssueTestcontainersBase.postgres.jdbcUrl +
+            "?options=-c%20timezone%3DAsia%2FSeoul"
+        val kstDataSource = DriverManagerDataSource(
+            kstJdbcUrl,
+            IssueTestcontainersBase.postgres.username,
+            IssueTestcontainersBase.postgres.password,
+        )
+        val kstDsl = DSL.using(kstDataSource, SQLDialect.POSTGRES)
+        val kstRepository = WorklogAggregateRepository(kstDsl)
+
+        val issue = insertIssue(1L)
+
+        // 2024-06-15T23:00:00Z = KST 기준 2024-06-16 08:00
+        // date_trunc('day', started_at) 을 KST 세션에서 실행하면 "2024-06-16" 이 나온다 (결함).
+        // UTC 강제 후에는 "2024-06-15" 가 나와야 한다 (spec E6).
+        insertWorklog(
+            issueId = issue.id.value,
+            timeSpentSeconds = 1800,
+            startedAt = Instant.parse("2024-06-15T23:00:00Z"),
+        )
+
+        val rows = kstRepository.aggregate(
+            projectKey = "TPRJ",
+            dimension = WorklogAggregateDimension.PERIOD,
+            granularity = AggregateGranularity.DAY,
+            from = null,
+            to = null,
+        )
+
+        assertThat(rows).hasSize(1)
+        assertThat(rows[0].groupKey)
+            .withFailMessage(
+                "세션 TZ=Asia/Seoul 에서 버킷이 '%s' 이지만 UTC 기준 '2024-06-15' 이어야 합니다." +
+                    " date_trunc 에 AT TIME ZONE 'UTC' 가 없으면 KST 세션에서 하루 어긋납니다.",
+                rows[0].groupKey,
+            )
+            .isEqualTo("2024-06-15")
     }
 }
